@@ -1,0 +1,20 @@
+8081
+svc
+Marker: public true, abstract true, interface true, annotation true
+  implements java.lang.annotation.Annotation
+Tag: public true, abstract true, interface true, annotation true
+  implements java.lang.annotation.Annotation
+  level(): int
+  name(): java.lang.String
+Rated: public true, abstract true, interface true, annotation true
+  implements java.lang.annotation.Annotation
+  inner(): Marker
+  level(): Level
+  names(): [Ljava.lang.String;
+  scores(): [I
+Many: public true, abstract true, interface true, annotation true
+  implements java.lang.annotation.Annotation
+  values(): [Ljava.lang.String;
+Outer$Nested: public true, abstract true, interface true, annotation true
+  implements java.lang.annotation.Annotation
+  v(): long

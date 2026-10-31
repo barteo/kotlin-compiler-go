@@ -1,0 +1,23 @@
+{1=a, 2=bb}
+{1=x}
+{1=[a, c], 2=[bb]}
+[1, 2]
+{1=q}
+s o 0
+[u o 1, u o 2]
+o
+3 NEW
+0
+a
+b
+1
+2
+missing from context EmptyCoroutineContext
+0
+null after 2
+none
+lazy
+b null null b
+closed x null
+ok
+closed y null

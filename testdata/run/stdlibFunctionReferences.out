@@ -1,0 +1,12 @@
+createSeg
+3
+5
+add 3
+add 6 [7, 9]
+reset kotlin.Unit 0
+twice 3
+<init> 4
+<init> In(1, 2)
+<init> In(7, 3) true
+[invokeSuspend x, releaseIntercepted]
+true

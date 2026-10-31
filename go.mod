@@ -1,0 +1,3 @@
+module github.com/barteo/kotlin-compiler-go
+
+go 1.27.2

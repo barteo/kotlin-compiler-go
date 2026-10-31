@@ -1,0 +1,32 @@
+-4
+(1 + -(2 + 3))
+true
+false
+false
+int 2
+string of 5
+null
+number
+number
+num 7
+other
+3
+true
+false
+maybe no maybe
+2.0
+circle 2.0
+null
+square 2.0
+2.0
+12.0
+42
+null
+text
+true
+text 3, something
+5
+leaf x branch
+6
+seven: 7
+yes

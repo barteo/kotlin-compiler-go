@@ -1,0 +1,28 @@
+named
+String
+named
+start 1
+lazy
+red
+[1, 2]
+[1, 2]
+not allowed 1
+override 1
+true
+s
+null
+t
+u
+null
+[e0, e0, e1]
+[e0, e0, e1]
+[a, e0]
+[e0, e0, e0, e1]
+built
+root:String:a
+root:String:null
+root:String:b
+[getOld$main$annotations, getResolver$main$annotations]
+[getEngine$annotations]
+[a: private volatile, b: private final transient, c: private volatile, d: private volatile]
+[top: private static volatile]

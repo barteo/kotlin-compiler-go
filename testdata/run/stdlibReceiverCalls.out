@@ -1,0 +1,16 @@
+21
+op receiver 
+abab
+OK
+12
+<Companion>
+<Box>
+[n1, n1]
+negative non-negative
+6
+HI!
+shout [[String]]
+getSize [[var]]
+setSize [[var], []]
+7
+[a]

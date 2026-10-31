@@ -1,0 +1,18 @@
+hello dog > dog HELLO DOG HELLO DOGHELLO DOG 3
+1
+HELLO HUSH shh psst
+base * leaf HELLO LEAFHELLO LEAF
+a false b true
+lib.Named$DefaultImpls: [describe$default(Named,String,int,Object) public static synthetic, describe(Named,String) public static, echo(Named,Object) public static, getGreeting(Named) public static, getVolume(Named) public static, setVolume(Named,int) public static]
+lib.Loud$DefaultImpls: [describe(Loud,String) public static, echo(Loud,Object) public static, getGreeting(Loud) public static, getVolume(Loud) public static, setVolume(Loud,int) public static, shout(Loud) public static, twice(Loud) public static]
+lib.Silent$DefaultImpls: [describe(Silent,String) public static, echo(Silent,Object) public static, getGreeting(Silent) public static, getVolume(Silent) public static, setVolume(Silent,int) public static, shout(Silent) public static]
+no lib.Quiet$DefaultImpls
+lib.Registry$DefaultImpls: [register$default(Registry,String,boolean,int,Object) public static synthetic]
+lib.Base: [describe(String) public, echo(Object) public volatile bridge, getGreeting() public volatile bridge, getName() public, getVolume() public volatile bridge, setVolume(int) public volatile bridge, shout() public volatile bridge, twice() public volatile bridge, whisper() public volatile bridge]
+lib.Leaf: []
+Dog: [describe(String) public volatile bridge, echo(Object) public volatile bridge, getGreeting() public volatile bridge, getName() public, getVolume() public volatile bridge, setVolume(int) public volatile bridge, shout() public volatile bridge, twice() public volatile bridge]
+Hush: [describe(String) public volatile bridge, echo(Object) public volatile bridge, getGreeting() public volatile bridge, getName() public, getVolume() public volatile bridge, setVolume(int) public volatile bridge, shout() public volatile bridge, twice() public, whisper() public volatile bridge]
+HELLO DOGHELLO DOG
+hello dog
+# dog
+c false

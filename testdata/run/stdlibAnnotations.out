@@ -1,0 +1,9 @@
+class: Info(box, 2, ERROR, a|b)
+old: Deprecated(use other, other(), WARNING), Info(none, 1, WARNING, x)
+old param: Marker
+getDoubled: Marker
+stored field: Info(field, 1, WARNING, )
+label property: Info(prop, 1, WARNING, )
+ctor param: Marker
+deprecated: false
+default: 1

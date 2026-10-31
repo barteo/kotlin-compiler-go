@@ -1,0 +1,9 @@
+Hi, you Hi, Ann HI, YOU true
+Hi, you Hi, Bo HI, YOU true
+Yo, you; Yo, again
+Yo, you Yo, Bo YO, YOU true
+y 4 Names(list=[x, a, b, c]) [x, a, b, c]
+x 3 true
+3 a, b, c
+3 [a, b, c] [1, 2, 3] 2 {a=1, b=2, c=3}
+p q 1 [r]

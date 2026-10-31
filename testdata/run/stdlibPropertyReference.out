@@ -1,0 +1,22 @@
+currencyCode GBP
+5
+gbp
+6
+7
+4
+14
+9
+boxed
+audited, amount (var), total (var), currencyCode
+true
+Money.amount
+GBP
+[GBP, EUR]
+book
+total 8 8
+amount 11 11
+GBP
+22
+true
+[GBP]
+[property currencyCode=USD, name amount=2, property amount=3]

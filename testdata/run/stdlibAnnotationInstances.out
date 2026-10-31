@@ -1,0 +1,16 @@
+@Spec(tags=[@Tag(name=a, weight=1), @Tag(name=b, weight=2)], ids=[1, 2], type=class java.lang.String, primary=@Tag(name=p, weight=1), color=GREEN, ratio=0.5, flag=false, letter=x, big=1099511627776, types=[class java.lang.String, int])
+true
+true
+true
+true
+true
+4
+GREEN x false 0.5
+true
+false
+@Marker()
+true
+0
+@Outer.Nested(value=n)
+true
+true

@@ -1,0 +1,9 @@
+14
+(2 + 3 * (4 + 0))
+Add(left=Num(value=2), right=Mul(left=Num(value=3), right=Add(left=Num(value=4), right=Zero)))
+ok 5
+error: division by zero
+timeout
+true
+none one
+statement ok

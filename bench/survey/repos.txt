@@ -1,0 +1,20 @@
+# The Kotlin JVM libraries that bench/survey.sh surveys.
+#
+# Each line names a repository, its Git URL, the release tag it is pinned
+# to, and its source sets: a label and the directories whose .kt files it
+# contains, relative to the clone. A directory can be a glob. For a
+# multiplatform project, the sets are the ones its JVM compilation
+# includes: commonMain, jvmMain, and the intermediate sets between them
+# in its Gradle hierarchy (such as okio's nonJsMain or kotlinx.coroutines'
+# concurrent). The survey ranks the main sets; tests are reported apart.
+#
+# name                        url                                                   tag                                sets
+kotlinpoet                    https://github.com/square/kotlinpoet.git              2.4.0                              main:kotlinpoet/src/commonMain,kotlinpoet/src/jvmMain tests:kotlinpoet/src/jvmTest/kotlin
+okio                          https://github.com/square/okio.git                    parent-3.18.2                      main:okio/src/commonMain,okio/src/zlibMain,okio/src/systemFileSystemMain,okio/src/nonJsMain,okio/src/jvmMain tests:okio/src/commonTest,okio/src/hashFunctions,okio/src/nonWasmTest,okio/src/zlibTest,okio/src/jvmTest
+kotlinx-serialization         https://github.com/Kotlin/kotlinx.serialization.git   v1.11.0                            main:core/commonMain/src,core/jvmMain/src,formats/json/commonMain/src,formats/json/jvmMain/src tests:core/commonTest/src,core/jvmTest/src,formats/json-tests/commonTest/src,formats/json-tests/jvmTest/src
+kotlinx-coroutines            https://github.com/Kotlin/kotlinx.coroutines.git      1.11.0                             main:kotlinx-coroutines-core/common/src,kotlinx-coroutines-core/concurrent/src,kotlinx-coroutines-core/jvm/src tests:kotlinx-coroutines-core/common/test,kotlinx-coroutines-core/concurrent/test,kotlinx-coroutines-core/jvm/test
+kotlinx-datetime              https://github.com/Kotlin/kotlinx-datetime.git        v0.8.0                             main:core/common/src,core/jvm/src tests:core/common/test,core/jvm/test
+exposed                       https://github.com/JetBrains/Exposed.git              1.5.1                              main:exposed-core/src/main,exposed-dao/src/main,exposed-jdbc/src/main tests:exposed-tests/src
+ktor                          https://github.com/ktorio/ktor.git                    3.6.0                              main:ktor-io/common/src,ktor-io/jvmAndPosix/src,ktor-io/jvm/src,ktor-utils/common/src,ktor-utils/jvm/src,ktor-http/common/src,ktor-http/jvm/src tests:ktor-io/common/test,ktor-io/jvm/test,ktor-utils/common/test,ktor-utils/jvm/test,ktor-http/common/test,ktor-http/jvm/test
+arrow                         https://github.com/arrow-kt/arrow.git                 2.2.3                              main:arrow-libs/core/*/src/commonMain,arrow-libs/core/*/src/androidAndJvmMain,arrow-libs/core/*/src/jvmMain,arrow-libs/fx/*/src/commonMain,arrow-libs/fx/*/src/androidAndJvmMain tests:arrow-libs/core/arrow-core/src/commonTest,arrow-libs/core/arrow-core/src/jvmTest
+mockk                         https://github.com/mockk/mockk.git                    v1.14.11                           main:modules/mockk/src/commonMain,modules/mockk/src/jvmMain,modules/mockk-dsl/src/commonMain,modules/mockk-dsl/src/jvmMain,modules/mockk-core/src/commonMain,modules/mockk-core/src/jvmMain,modules/mockk-agent-api/src/commonMain,modules/mockk-agent-api/src/jvmMain,modules/mockk-agent/src/jvmMain tests:modules/mockk/src/commonTest,modules/mockk/src/jvmTest

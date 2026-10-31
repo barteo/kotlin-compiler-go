@@ -1,0 +1,30 @@
+init 3 1
+[first]
+9
+11
+4
+9 26
+10
+4
+tx
+14
+false
+true set
+22
+reg 7
+18
+0
+10
+11 2
+5
+ab
+[1, 2]
+true
+true
+false
+true
+11
+true
+0
+ab
+[1, 2]

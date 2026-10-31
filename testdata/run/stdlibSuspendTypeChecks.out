@@ -1,0 +1,11 @@
+lambda: false true
+reference: false true
+plain: false false
+plain2: false false
+suspend0: true false
+true
+raw
+8
+cast
+null
+null cannot be cast to non-null type kotlin.coroutines.SuspendFunction1<kotlin.Int, kotlin.Unit>

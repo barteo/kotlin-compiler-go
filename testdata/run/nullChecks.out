@@ -1,0 +1,21 @@
+top: Parameter specified as non-null is null: method NullChecksKt.top, parameter s
+ext: Parameter specified as non-null is null: method NullChecksKt.ext, parameter <this>
+ext arg: Parameter specified as non-null is null: method NullChecksKt.ext, parameter x
+member: Parameter specified as non-null is null: method Box.put, parameter s
+nullable: ok
+hidden null
+private: ok
+setter: Parameter specified as non-null is null: method Box.setName, parameter <set-?>
+constructor: Parameter specified as non-null is null: method Box.<init>, parameter name
+secondary: Parameter specified as non-null is null: method Box.<init>, parameter a
+copy: Parameter specified as non-null is null: method Item.copy, parameter a
+platform: getProperty(...) must not be null
+argument: getProperty(...) must not be null
+any: getProperty(...) must not be null
+branch: getProperty(...) must not be null
+variable: null
+null
+nullable platform: ok
+1
+field: ok
+bang: null

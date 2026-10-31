@@ -1,0 +1,30 @@
+true
+job true 1 3.0 2
+0 1
+DefaultImpls.fold(Job,Object,Function2)Object public static
+DefaultImpls.get(Job,Key)Element public static
+DefaultImpls.minusKey(Job,Key)CoroutineContext public static
+DefaultImpls.plus(Job,CoroutineContext)CoroutineContext public static
+DefaultImpls.fold(ChildJob,Object,Function2)Object public static
+DefaultImpls.get(ChildJob,Key)Element public static
+DefaultImpls.minusKey(ChildJob,Key)CoroutineContext public static
+DefaultImpls.plus(ChildJob,CoroutineContext)CoroutineContext public static
+JobSupport.fold(Object,Function2)Object public volatile
+JobSupport.get(Key)Element public volatile
+JobSupport.minusKey(Key)CoroutineContext public volatile
+JobSupport.plus(CoroutineContext)CoroutineContext public volatile
+Iterator.delay$suspendImpl(Iterator,long,Continuation)Object public static synthetic
+Iterator.delay(long,Continuation)Object public
+Iterator.next(Continuation)Object public synthetic
+Iterator.next(Iterator,Continuation)Object public static synthetic
+Locks.locked()int public final synchronized
+Locks.strict(double)double public final strictfp
+StdlibCoroutinesAbiKt.getIO(Dispatchers)String public static final synthetic
+StdlibCoroutinesAbiKt.inlineOnly$default(int,int,Object)int static synthetic
+StdlibCoroutinesAbiKt.inlineOnly(int)int private static final
+WeakMap.entrySet()Set public final volatile
+WeakMap.getKeys()Set public
+WeakMap.getSize()int public
+WeakMap.keySet()Set public final volatile
+WeakMap.size()int public final volatile
+Operator.field flow List protected final

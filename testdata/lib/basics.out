@@ -1,0 +1,16 @@
+C circle 1.0 3.0
+R rect 2.0x2.0 4.0
+R rect 2.0x3.0 6.0
+E empty 0.0
+2.0 5.0 Rect(w=2.0, h=1.0) true
+RED#f00, GREEN#0f0, BLUE#00f 1
+3.5
+3.0m 2.0cm 4.0
+3
+Hello, Ann Hi, Ann n AnnAnn 2 null
+human Bob 3
+1.5 2.5m <3.0>
+HEY! k -1 4
+5
+7 2.5 plum
+FUN lambda!

@@ -1,0 +1,14 @@
+act
+u: kotlin.Unit
+act
+call: kotlin.Unit
+act
+block: kotlin.Unit
+concat: kotlin.Unit
+act
+concat call: kotlin.Unit
+act
+plus:kotlin.Unitkotlin.Unit
+nullable: null kotlin.Unit
+generic: kotlin.Unit
+component: kotlin.Unit A(x=kotlin.Unit)

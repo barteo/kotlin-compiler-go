@@ -1,0 +1,22 @@
+rect: 6.0, named rect with 4 sides, hello, rect
+square: 4.0, named square with 4 sides, hello, square
+circle: 3.0, round named circle with 0 sides, hello, circle
+big circle: 12.0, round named big circle with 0 sides, hello, big circle
+25.0
+9.0
+1
+square, a rectangle
+rectangle
+4
+big circle(6.75)
+square named square with 4 sides
+5
+int 10
+x put z
+[0.9, 1.2, 1.10]
+true
+31
+true
+b 2
+42: error 42
+error 42

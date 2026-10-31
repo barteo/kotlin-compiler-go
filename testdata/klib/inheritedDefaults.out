@@ -1,0 +1,10 @@
+get true false
+get false true
+get true false
+app false false
+[hey a!, yo b!, yo c?, sup d!]
+ab
+ababab
+start sipp null
+app start isa x
+app start lisa null

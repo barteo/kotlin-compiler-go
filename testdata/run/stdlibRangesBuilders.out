@@ -1,0 +1,19 @@
+1..4
+[0, 1, 2, 0, 1]
+[10, 7, 4]
+5
+abcd
+01true
+3
+[needs a getter: false, needs a setter]
+[1, 2]
+{k=1}
+java.lang.String[]
+java.lang.Integer?[]
+java.util.List[INVARIANT java.lang.String[]]
+java.util.Map[INVARIANT java.lang.String[], INVARIANT java.util.List[INVARIANT int[]]]
+java.util.List[OUT java.lang.Number[]]
+[Ljava.lang.String;[INVARIANT java.lang.String[]]
+[I[]
+kotlin.Triple[INVARIANT int[], INVARIANT long[], INVARIANT char[]]
+java.lang.Comparable[null *]

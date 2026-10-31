@@ -1,0 +1,14 @@
+unnamed
+lateinit property name has not been initialized
+named svc
+3
+lateinit property secret has not been initialized
+false
+abc true
+later 3
+false
+lateinit property config has not been initialized
+on true
+lateinit property local has not been initialized
+set
+[guarded:protected, name:public, secret:private, shared:public]

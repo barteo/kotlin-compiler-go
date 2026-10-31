@@ -1,0 +1,9 @@
+Meters(v=1500)
+Meters(v=12)
+Meters(v=7)
+Meters(v=6)
+Meters(v=0)
+[init 1500, km 1.5 -> Meters(v=1500), init 12, init 7, init 6, parts 6, init 0]
+Label(s=OK)
+Label(s=x!x!)
+[a, b]

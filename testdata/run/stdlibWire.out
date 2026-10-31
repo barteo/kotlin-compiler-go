@@ -1,0 +1,36 @@
+16 two kotlin.Unit
+init 1
+init 2 2
+BAD
+3
+14
+8
+unit
+3
+5
+4
+3
+[true, null]
+null
+Marked ArrayList
+0
+5
+[a, b]
+list [1]
+map
+set
+other
+{1=2}
+null
+42
+43
+-2
+closed inner
+closed outer
+outer+inner
+custom close
+c
+false
+true
+2
+limit=7

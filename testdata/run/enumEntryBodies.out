@@ -1,0 +1,12 @@
+PLUS 9 4 op + #0
+TIMES 18 2 times, op * #1
+MINUS 3 1 minus twice: 4
+*
+1
+true
+TIMES
+HIGH created after LOW
+LOW false 
+HIGH true LOW
+MAX true HIGH
+not low

@@ -1,0 +1,8 @@
+Solid(42)
+Options(1.0, 2, null)
+Options(3.0, 2, null)
+Options(1.0, 5, null)
+Options(2.0, 1, all)
+Options(4.0, 0, named)
+Shape(6.0)
+Rounded(7.0)

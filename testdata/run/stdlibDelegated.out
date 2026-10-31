@@ -1,0 +1,40 @@
+Ada Lovelace
+Ada Lovelace
+1
+ada
+set age = 31
+get age
+set age = 32
+get age
+32
+10
+Ada Lovelace
+(x, x)
+get level
+level 1
+set level = 2
+get level
+2
+localhost:8080
+{title=new}
+init topLazy
+42
+42
+set topLogged = b
+get topLogged
+set topLogged = bc
+get topLogged
+bc
+counter: 0 -> 1
+counter: 1 -> 2
+2
+Property late should be initialized before get.
+set
+before
+init local
+LL
+get logged
+14
+20
+[$$delegatedProperties, age$delegate, computed, name$delegate, nickname$delegate, ten$delegate]
+[computedTimes, getAge, getName, getNickname, getTen, setAge]

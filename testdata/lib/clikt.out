@@ -1,0 +1,12 @@
+root
+1
+null
+tty none
+root
+app version 1.0
+v2.0!
+[shell, path] bash /tmp
+(APP, 42)
+(N, 3)
+a=1, b=2
+42

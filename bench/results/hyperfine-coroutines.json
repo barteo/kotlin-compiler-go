@@ -1,0 +1,936 @@
+{
+  "results": [
+    {
+      "command": "/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-coroutines-time/kc -j 1 -module-name kotlinx-coroutines-core -jvm-default=enable -cp /opt/homebrew/opt/kotlin/libexec/lib/kotlin-stdlib.jar:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-coroutines-deps/atomicfu-jvm-0.32.1.jar:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-coroutines-deps/annotations-4.1.1.4.jar:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-coroutines-deps/animal-sniffer-annotations-1.24.jar -d /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-coroutines-time/out-kc /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/concurrent/src /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src",
+      "name": "kc -j 1",
+      "measurements": [
+        {
+          "time_wall_clock": {
+            "value": 0.275053208,
+            "unit": "second"
+          },
+          "time_cpu": {
+            "value": 0.440282,
+            "unit": "second"
+          },
+          "time_user": {
+            "value": 0.341244,
+            "unit": "second"
+          },
+          "time_system": {
+            "value": 0.099038,
+            "unit": "second"
+          },
+          "memory_peak_resident": {
+            "value": 109314048.0,
+            "unit": "byte"
+          },
+          "cpu_cycles": {
+            "value": 1298367044
+          },
+          "instructions": {
+            "value": 3724510393
+          },
+          "exit_code": 0
+        },
+        {
+          "time_wall_clock": {
+            "value": 0.288467709,
+            "unit": "second"
+          },
+          "time_cpu": {
+            "value": 0.47449199999999997,
+            "unit": "second"
+          },
+          "time_user": {
+            "value": 0.372393,
+            "unit": "second"
+          },
+          "time_system": {
+            "value": 0.102099,
+            "unit": "second"
+          },
+          "memory_peak_resident": {
+            "value": 114589696.0,
+            "unit": "byte"
+          },
+          "cpu_cycles": {
+            "value": 1314380533
+          },
+          "instructions": {
+            "value": 3753369319
+          },
+          "exit_code": 0
+        },
+        {
+          "time_wall_clock": {
+            "value": 0.28970458400000004,
+            "unit": "second"
+          },
+          "time_cpu": {
+            "value": 0.47013399999999994,
+            "unit": "second"
+          },
+          "time_user": {
+            "value": 0.36681199999999997,
+            "unit": "second"
+          },
+          "time_system": {
+            "value": 0.103322,
+            "unit": "second"
+          },
+          "memory_peak_resident": {
+            "value": 108478464.0,
+            "unit": "byte"
+          },
+          "cpu_cycles": {
+            "value": 1304836021
+          },
+          "instructions": {
+            "value": 3734186770
+          },
+          "exit_code": 0
+        },
+        {
+          "time_wall_clock": {
+            "value": 0.28171012500000003,
+            "unit": "second"
+          },
+          "time_cpu": {
+            "value": 0.45865599999999995,
+            "unit": "second"
+          },
+          "time_user": {
+            "value": 0.35804199999999997,
+            "unit": "second"
+          },
+          "time_system": {
+            "value": 0.100614,
+            "unit": "second"
+          },
+          "memory_peak_resident": {
+            "value": 109608960.0,
+            "unit": "byte"
+          },
+          "cpu_cycles": {
+            "value": 1293463736
+          },
+          "instructions": {
+            "value": 3723756256
+          },
+          "exit_code": 0
+        },
+        {
+          "time_wall_clock": {
+            "value": 0.288082334,
+            "unit": "second"
+          },
+          "time_cpu": {
+            "value": 0.467607,
+            "unit": "second"
+          },
+          "time_user": {
+            "value": 0.36491999999999997,
+            "unit": "second"
+          },
+          "time_system": {
+            "value": 0.102687,
+            "unit": "second"
+          },
+          "memory_peak_resident": {
+            "value": 114606080.0,
+            "unit": "byte"
+          },
+          "cpu_cycles": {
+            "value": 1315000800
+          },
+          "instructions": {
+            "value": 3765032768
+          },
+          "exit_code": 0
+        },
+        {
+          "time_wall_clock": {
+            "value": 0.288458625,
+            "unit": "second"
+          },
+          "time_cpu": {
+            "value": 0.480714,
+            "unit": "second"
+          },
+          "time_user": {
+            "value": 0.37669199999999997,
+            "unit": "second"
+          },
+          "time_system": {
+            "value": 0.10402199999999999,
+            "unit": "second"
+          },
+          "memory_peak_resident": {
+            "value": 114360320.0,
+            "unit": "byte"
+          },
+          "cpu_cycles": {
+            "value": 1329590830
+          },
+          "instructions": {
+            "value": 3772055376
+          },
+          "exit_code": 0
+        },
+        {
+          "time_wall_clock": {
+            "value": 0.280611708,
+            "unit": "second"
+          },
+          "time_cpu": {
+            "value": 0.45006599999999997,
+            "unit": "second"
+          },
+          "time_user": {
+            "value": 0.35036999999999996,
+            "unit": "second"
+          },
+          "time_system": {
+            "value": 0.09969599999999999,
+            "unit": "second"
+          },
+          "memory_peak_resident": {
+            "value": 112263168.0,
+            "unit": "byte"
+          },
+          "cpu_cycles": {
+            "value": 1286808594
+          },
+          "instructions": {
+            "value": 3722277537
+          },
+          "exit_code": 0
+        },
+        {
+          "time_wall_clock": {
+            "value": 0.28943687500000004,
+            "unit": "second"
+          },
+          "time_cpu": {
+            "value": 0.469568,
+            "unit": "second"
+          },
+          "time_user": {
+            "value": 0.363668,
+            "unit": "second"
+          },
+          "time_system": {
+            "value": 0.1059,
+            "unit": "second"
+          },
+          "memory_peak_resident": {
+            "value": 106708992.0,
+            "unit": "byte"
+          },
+          "cpu_cycles": {
+            "value": 1298404669
+          },
+          "instructions": {
+            "value": 3737830050
+          },
+          "exit_code": 0
+        },
+        {
+          "time_wall_clock": {
+            "value": 0.288381041,
+            "unit": "second"
+          },
+          "time_cpu": {
+            "value": 0.47702999999999995,
+            "unit": "second"
+          },
+          "time_user": {
+            "value": 0.37247399999999997,
+            "unit": "second"
+          },
+          "time_system": {
+            "value": 0.104556,
+            "unit": "second"
+          },
+          "memory_peak_resident": {
+            "value": 115474432.0,
+            "unit": "byte"
+          },
+          "cpu_cycles": {
+            "value": 1317814801
+          },
+          "instructions": {
+            "value": 3760996840
+          },
+          "exit_code": 0
+        },
+        {
+          "time_wall_clock": {
+            "value": 0.281416375,
+            "unit": "second"
+          },
+          "time_cpu": {
+            "value": 0.448174,
+            "unit": "second"
+          },
+          "time_user": {
+            "value": 0.351115,
+            "unit": "second"
+          },
+          "time_system": {
+            "value": 0.09705899999999999,
+            "unit": "second"
+          },
+          "memory_peak_resident": {
+            "value": 112164864.0,
+            "unit": "byte"
+          },
+          "cpu_cycles": {
+            "value": 1322527354
+          },
+          "instructions": {
+            "value": 3757067252
+          },
+          "exit_code": 0
+        }
+      ],
+      "summary": {
+        "cpu_cycles": {
+          "count": 10,
+          "mean": 1308119438.2,
+          "stddev": 13817748.895742685,
+          "median": 1309608277.0,
+          "min": 1286808594.0,
+          "max": 1329590830.0
+        },
+        "instructions": {
+          "count": 10,
+          "mean": 3745108256.1,
+          "stddev": 18739489.014514383,
+          "median": 3745599684.5,
+          "min": 3722277537.0,
+          "max": 3772055376.0
+        },
+        "memory_peak_resident": {
+          "unit": "byte",
+          "count": 10,
+          "mean": 111756902.4,
+          "stddev": 3054574.5575841996,
+          "median": 112214016.0,
+          "min": 106708992.0,
+          "max": 115474432.0
+        },
+        "time_cpu": {
+          "unit": "second",
+          "count": 10,
+          "mean": 0.4636723,
+          "stddev": 0.013644316717145546,
+          "median": 0.4685875,
+          "min": 0.440282,
+          "max": 0.480714
+        },
+        "time_system": {
+          "unit": "second",
+          "count": 10,
+          "mean": 0.10189929999999998,
+          "stddev": 0.0027563261801011704,
+          "median": 0.102393,
+          "min": 0.09705899999999999,
+          "max": 0.1059
+        },
+        "time_user": {
+          "unit": "second",
+          "count": 10,
+          "mean": 0.361773,
+          "stddev": 0.011390737426133174,
+          "median": 0.364294,
+          "min": 0.341244,
+          "max": 0.37669199999999997
+        },
+        "time_wall_clock": {
+          "unit": "second",
+          "count": 10,
+          "mean": 0.2851322584,
+          "stddev": 0.005037909450581188,
+          "median": 0.2882316875,
+          "min": 0.275053208,
+          "max": 0.28970458400000004
+        }
+      }
+    },
+    {
+      "command": "/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-coroutines-time/kc -j 8 -module-name kotlinx-coroutines-core -jvm-default=enable -cp /opt/homebrew/opt/kotlin/libexec/lib/kotlin-stdlib.jar:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-coroutines-deps/atomicfu-jvm-0.32.1.jar:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-coroutines-deps/annotations-4.1.1.4.jar:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-coroutines-deps/animal-sniffer-annotations-1.24.jar -d /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-coroutines-time/out-kc /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/concurrent/src /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src",
+      "name": "kc -j 8",
+      "measurements": [
+        {
+          "time_wall_clock": {
+            "value": 0.157349875,
+            "unit": "second"
+          },
+          "time_cpu": {
+            "value": 0.717604,
+            "unit": "second"
+          },
+          "time_user": {
+            "value": 0.508093,
+            "unit": "second"
+          },
+          "time_system": {
+            "value": 0.209511,
+            "unit": "second"
+          },
+          "memory_peak_resident": {
+            "value": 116441088.0,
+            "unit": "byte"
+          },
+          "cpu_cycles": {
+            "value": 1928817915
+          },
+          "instructions": {
+            "value": 4116712966
+          },
+          "exit_code": 0
+        },
+        {
+          "time_wall_clock": {
+            "value": 0.152000917,
+            "unit": "second"
+          },
+          "time_cpu": {
+            "value": 0.664012,
+            "unit": "second"
+          },
+          "time_user": {
+            "value": 0.470439,
+            "unit": "second"
+          },
+          "time_system": {
+            "value": 0.193573,
+            "unit": "second"
+          },
+          "memory_peak_resident": {
+            "value": 121929728.0,
+            "unit": "byte"
+          },
+          "cpu_cycles": {
+            "value": 1780341449
+          },
+          "instructions": {
+            "value": 3960199146
+          },
+          "exit_code": 0
+        },
+        {
+          "time_wall_clock": {
+            "value": 0.151489334,
+            "unit": "second"
+          },
+          "time_cpu": {
+            "value": 0.6627409999999999,
+            "unit": "second"
+          },
+          "time_user": {
+            "value": 0.47281799999999996,
+            "unit": "second"
+          },
+          "time_system": {
+            "value": 0.18992299999999998,
+            "unit": "second"
+          },
+          "memory_peak_resident": {
+            "value": 125386752.0,
+            "unit": "byte"
+          },
+          "cpu_cycles": {
+            "value": 1787392759
+          },
+          "instructions": {
+            "value": 3958825377
+          },
+          "exit_code": 0
+        },
+        {
+          "time_wall_clock": {
+            "value": 0.158335208,
+            "unit": "second"
+          },
+          "time_cpu": {
+            "value": 0.674522,
+            "unit": "second"
+          },
+          "time_user": {
+            "value": 0.47498999999999997,
+            "unit": "second"
+          },
+          "time_system": {
+            "value": 0.199532,
+            "unit": "second"
+          },
+          "memory_peak_resident": {
+            "value": 132857856.0,
+            "unit": "byte"
+          },
+          "cpu_cycles": {
+            "value": 1894492477
+          },
+          "instructions": {
+            "value": 4129375201
+          },
+          "exit_code": 0
+        },
+        {
+          "time_wall_clock": {
+            "value": 0.164105625,
+            "unit": "second"
+          },
+          "time_cpu": {
+            "value": 0.6876869999999999,
+            "unit": "second"
+          },
+          "time_user": {
+            "value": 0.47903599999999996,
+            "unit": "second"
+          },
+          "time_system": {
+            "value": 0.208651,
+            "unit": "second"
+          },
+          "memory_peak_resident": {
+            "value": 127582208.0,
+            "unit": "byte"
+          },
+          "cpu_cycles": {
+            "value": 1848926966
+          },
+          "instructions": {
+            "value": 3996536806
+          },
+          "exit_code": 0
+        },
+        {
+          "time_wall_clock": {
+            "value": 0.16570458400000002,
+            "unit": "second"
+          },
+          "time_cpu": {
+            "value": 0.677821,
+            "unit": "second"
+          },
+          "time_user": {
+            "value": 0.46934499999999996,
+            "unit": "second"
+          },
+          "time_system": {
+            "value": 0.208476,
+            "unit": "second"
+          },
+          "memory_peak_resident": {
+            "value": 119881728.0,
+            "unit": "byte"
+          },
+          "cpu_cycles": {
+            "value": 1837707659
+          },
+          "instructions": {
+            "value": 3993876396
+          },
+          "exit_code": 0
+        },
+        {
+          "time_wall_clock": {
+            "value": 0.162574833,
+            "unit": "second"
+          },
+          "time_cpu": {
+            "value": 0.6904279999999999,
+            "unit": "second"
+          },
+          "time_user": {
+            "value": 0.48818999999999996,
+            "unit": "second"
+          },
+          "time_system": {
+            "value": 0.202238,
+            "unit": "second"
+          },
+          "memory_peak_resident": {
+            "value": 125353984.0,
+            "unit": "byte"
+          },
+          "cpu_cycles": {
+            "value": 1848687287
+          },
+          "instructions": {
+            "value": 3980684033
+          },
+          "exit_code": 0
+        },
+        {
+          "time_wall_clock": {
+            "value": 0.154319333,
+            "unit": "second"
+          },
+          "time_cpu": {
+            "value": 0.671634,
+            "unit": "second"
+          },
+          "time_user": {
+            "value": 0.478522,
+            "unit": "second"
+          },
+          "time_system": {
+            "value": 0.19311199999999998,
+            "unit": "second"
+          },
+          "memory_peak_resident": {
+            "value": 120537088.0,
+            "unit": "byte"
+          },
+          "cpu_cycles": {
+            "value": 1803190527
+          },
+          "instructions": {
+            "value": 3981869719
+          },
+          "exit_code": 0
+        },
+        {
+          "time_wall_clock": {
+            "value": 0.159294333,
+            "unit": "second"
+          },
+          "time_cpu": {
+            "value": 0.663558,
+            "unit": "second"
+          },
+          "time_user": {
+            "value": 0.472655,
+            "unit": "second"
+          },
+          "time_system": {
+            "value": 0.190903,
+            "unit": "second"
+          },
+          "memory_peak_resident": {
+            "value": 119226368.0,
+            "unit": "byte"
+          },
+          "cpu_cycles": {
+            "value": 1791086554
+          },
+          "instructions": {
+            "value": 3988408463
+          },
+          "exit_code": 0
+        },
+        {
+          "time_wall_clock": {
+            "value": 0.16339883400000002,
+            "unit": "second"
+          },
+          "time_cpu": {
+            "value": 0.719023,
+            "unit": "second"
+          },
+          "time_user": {
+            "value": 0.520222,
+            "unit": "second"
+          },
+          "time_system": {
+            "value": 0.19880099999999998,
+            "unit": "second"
+          },
+          "memory_peak_resident": {
+            "value": 126058496.0,
+            "unit": "byte"
+          },
+          "cpu_cycles": {
+            "value": 1915940932
+          },
+          "instructions": {
+            "value": 4089558117
+          },
+          "exit_code": 0
+        }
+      ],
+      "summary": {
+        "cpu_cycles": {
+          "count": 10,
+          "mean": 1843658452.5,
+          "stddev": 54493400.21247623,
+          "median": 1843197473.0,
+          "min": 1780341449.0,
+          "max": 1928817915.0
+        },
+        "instructions": {
+          "count": 10,
+          "mean": 4019604622.4,
+          "stddev": 65576274.83378568,
+          "median": 3991142429.5,
+          "min": 3958825377.0,
+          "max": 4129375201.0
+        },
+        "memory_peak_resident": {
+          "unit": "byte",
+          "count": 10,
+          "mean": 123525529.6,
+          "stddev": 4832747.413519266,
+          "median": 123641856.0,
+          "min": 116441088.0,
+          "max": 132857856.0
+        },
+        "time_cpu": {
+          "unit": "second",
+          "count": 10,
+          "mean": 0.682903,
+          "stddev": 0.020946995218089556,
+          "median": 0.6761714999999999,
+          "min": 0.6627409999999999,
+          "max": 0.719023
+        },
+        "time_system": {
+          "unit": "second",
+          "count": 10,
+          "mean": 0.19947199999999998,
+          "stddev": 0.007557712308187805,
+          "median": 0.19916649999999997,
+          "min": 0.18992299999999998,
+          "max": 0.209511
+        },
+        "time_user": {
+          "unit": "second",
+          "count": 10,
+          "mean": 0.48343100000000006,
+          "stddev": 0.01730468850405064,
+          "median": 0.47675599999999996,
+          "min": 0.46934499999999996,
+          "max": 0.520222
+        },
+        "time_wall_clock": {
+          "unit": "second",
+          "count": 10,
+          "mean": 0.1588572876,
+          "stddev": 0.005093588120842611,
+          "median": 0.1588147705,
+          "min": 0.151489334,
+          "max": 0.16570458400000002
+        }
+      }
+    },
+    {
+      "command": "kotlinc -nowarn -Xmulti-platform -Xexpect-actual-classes -Xfragments=common,concurrent,jvm -Xfragment-refines=concurrent:common,jvm:concurrent -Xfragment-sources=common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/AbstractCoroutine.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/Annotations.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/Await.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/Builders.common.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/CancellableContinuation.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/CancellableContinuationImpl.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/CloseableCoroutineDispatcher.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/CompletableDeferred.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/CompletableJob.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/CompletionHandler.common.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/CompletionState.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/CoroutineContext.common.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/CoroutineDispatcher.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/CoroutineExceptionHandler.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/CoroutineName.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/CoroutineScope.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/CoroutineStart.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/Debug.common.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/Deferred.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/Delay.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/Dispatchers.common.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/EventLoop.common.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/Exceptions.common.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/Guidance.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/Job.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/JobSupport.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/MainCoroutineDispatcher.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/NonCancellable.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/Runnable.common.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/SchedulerTask.common.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/Supervisor.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/Timeout.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/Unconfined.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/Waiter.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/Yield.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/channels/Broadcast.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/channels/BroadcastChannel.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/channels/BufferOverflow.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/channels/BufferedChannel.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/channels/Channel.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/channels/ChannelCoroutine.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/channels/Channels.common.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/channels/ConflatedBufferedChannel.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/channels/Deprecated.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/channels/Produce.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/flow/Builders.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/flow/Channels.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/flow/Flow.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/flow/FlowCollector.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/flow/Migration.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/flow/SharedFlow.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/flow/SharingStarted.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/flow/StateFlow.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/flow/internal/AbstractSharedFlow.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/flow/internal/ChannelFlow.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/flow/internal/Combine.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/flow/internal/FlowCoroutine.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/flow/internal/FlowExceptions.common.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/flow/internal/Merge.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/flow/internal/NopCollector.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/flow/internal/NullSurrogate.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/flow/internal/SafeCollector.common.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/flow/internal/SendingCollector.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/flow/operators/Context.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/flow/operators/Delay.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/flow/operators/Distinct.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/flow/operators/Emitters.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/flow/operators/Errors.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/flow/operators/Limit.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/flow/operators/Lint.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/flow/operators/Merge.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/flow/operators/Share.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/flow/operators/Transform.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/flow/operators/Zip.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/flow/terminal/Collect.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/flow/terminal/Collection.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/flow/terminal/Count.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/flow/terminal/Logic.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/flow/terminal/Reduce.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/internal/Concurrent.common.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/internal/ConcurrentLinkedList.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/internal/CoroutineExceptionHandlerImpl.common.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/internal/DispatchedContinuation.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/internal/DispatchedTask.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/internal/InlineList.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/internal/InternalAnnotations.common.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/internal/LimitedDispatcher.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/internal/LocalAtomics.common.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/internal/LockFreeLinkedList.common.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/internal/LockFreeTaskQueue.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/internal/MainDispatcherFactory.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/internal/NamedDispatcher.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/internal/OnUndeliveredElement.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/internal/ProbesSupport.common.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/internal/Scopes.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/internal/StackTraceRecovery.common.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/internal/Symbol.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/internal/Synchronized.common.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/internal/SystemProps.common.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/internal/ThreadContext.common.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/internal/ThreadLocal.common.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/internal/ThreadSafeHeap.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/intrinsics/Cancellable.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/intrinsics/Undispatched.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/selects/OnTimeout.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/selects/Select.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/selects/SelectOld.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/selects/SelectUnbiased.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/selects/WhileSelect.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/sync/Mutex.kt,common:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/sync/Semaphore.kt,concurrent:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/concurrent/src/Builders.concurrent.kt,concurrent:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/concurrent/src/Dispatchers.kt,concurrent:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/concurrent/src/MultithreadedDispatchers.common.kt,concurrent:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/concurrent/src/channels/Channels.kt,concurrent:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/concurrent/src/internal/LockFreeLinkedList.kt,concurrent:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/concurrent/src/internal/OnDemandAllocatingPool.kt,jvm:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/AbstractTimeSource.kt,jvm:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/Builders.kt,jvm:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/CoroutineContext.kt,jvm:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/Debug.kt,jvm:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/DebugStrings.kt,jvm:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/DefaultExecutor.kt,jvm:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/Dispatchers.kt,jvm:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/EventLoop.kt,jvm:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/Exceptions.kt,jvm:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/Executors.kt,jvm:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/Future.kt,jvm:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/GuidanceJvm.kt,jvm:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/Interruptible.kt,jvm:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/Runnable.kt,jvm:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/SchedulerTask.kt,jvm:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/ThreadContextElement.kt,jvm:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/ThreadPoolDispatcher.kt,jvm:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/channels/Actor.kt,jvm:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/channels/TickerChannels.kt,jvm:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/debug/CoroutineDebugging.kt,jvm:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/debug/internal/AgentInstallationType.kt,jvm:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/debug/internal/AgentPremain.kt,jvm:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/debug/internal/ConcurrentWeakMap.kt,jvm:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/debug/internal/DebugCoroutineInfo.kt,jvm:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/debug/internal/DebugCoroutineInfoImpl.kt,jvm:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/debug/internal/DebugProbes.kt,jvm:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/debug/internal/DebugProbesImpl.kt,jvm:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/debug/internal/DebuggerInfo.kt,jvm:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/debug/internal/StackTraceFrame.kt,jvm:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/flow/internal/FlowExceptions.kt,jvm:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/flow/internal/SafeCollector.kt,jvm:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/future/Future.kt,jvm:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/internal/Concurrent.kt,jvm:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/internal/CoroutineExceptionHandlerImpl.kt,jvm:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/internal/ExceptionsConstructor.kt,jvm:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/internal/FastServiceLoader.kt,jvm:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/internal/InternalAnnotations.kt,jvm:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/internal/LocalAtomics.kt,jvm:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/internal/MainDispatchers.kt,jvm:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/internal/ProbesSupport.kt,jvm:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/internal/ResizableAtomicArray.kt,jvm:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/internal/StackTraceRecovery.kt,jvm:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/internal/Synchronized.kt,jvm:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/internal/SystemProps.kt,jvm:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/internal/ThreadContext.kt,jvm:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/internal/ThreadLocal.kt,jvm:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/scheduling/CoroutineScheduler.kt,jvm:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/scheduling/Dispatcher.kt,jvm:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/scheduling/Tasks.kt,jvm:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/scheduling/WorkQueue.kt,jvm:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/stream/Stream.kt,jvm:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/time/Time.kt -progressive -Xexplicit-api=strict -Xdont-warn-on-error-suppression -Xno-param-assertions -Xno-call-assertions -Xno-receiver-assertions -jvm-target 1.8 -opt-in=kotlin.ExperimentalMultiplatform,kotlin.experimental.ExperimentalTypeInference,kotlinx.coroutines.DelicateCoroutinesApi,kotlinx.coroutines.ExperimentalCoroutinesApi,kotlinx.coroutines.ObsoleteCoroutinesApi,kotlinx.coroutines.InternalCoroutinesApi,kotlinx.coroutines.FlowPreview -cp /opt/homebrew/opt/kotlin/libexec/lib/kotlin-stdlib.jar:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-coroutines-deps/atomicfu-jvm-0.32.1.jar:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-coroutines-deps/annotations-4.1.1.4.jar:/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-coroutines-deps/animal-sniffer-annotations-1.24.jar -module-name kotlinx-coroutines-core -jvm-default=enable -d /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-coroutines-time/out-kotlinc /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/AbstractCoroutine.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/Annotations.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/Await.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/Builders.common.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/CancellableContinuation.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/CancellableContinuationImpl.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/CloseableCoroutineDispatcher.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/CompletableDeferred.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/CompletableJob.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/CompletionHandler.common.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/CompletionState.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/CoroutineContext.common.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/CoroutineDispatcher.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/CoroutineExceptionHandler.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/CoroutineName.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/CoroutineScope.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/CoroutineStart.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/Debug.common.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/Deferred.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/Delay.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/Dispatchers.common.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/EventLoop.common.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/Exceptions.common.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/Guidance.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/Job.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/JobSupport.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/MainCoroutineDispatcher.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/NonCancellable.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/Runnable.common.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/SchedulerTask.common.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/Supervisor.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/Timeout.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/Unconfined.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/Waiter.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/Yield.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/channels/Broadcast.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/channels/BroadcastChannel.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/channels/BufferOverflow.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/channels/BufferedChannel.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/channels/Channel.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/channels/ChannelCoroutine.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/channels/Channels.common.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/channels/ConflatedBufferedChannel.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/channels/Deprecated.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/channels/Produce.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/flow/Builders.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/flow/Channels.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/flow/Flow.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/flow/FlowCollector.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/flow/Migration.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/flow/SharedFlow.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/flow/SharingStarted.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/flow/StateFlow.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/flow/internal/AbstractSharedFlow.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/flow/internal/ChannelFlow.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/flow/internal/Combine.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/flow/internal/FlowCoroutine.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/flow/internal/FlowExceptions.common.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/flow/internal/Merge.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/flow/internal/NopCollector.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/flow/internal/NullSurrogate.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/flow/internal/SafeCollector.common.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/flow/internal/SendingCollector.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/flow/operators/Context.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/flow/operators/Delay.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/flow/operators/Distinct.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/flow/operators/Emitters.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/flow/operators/Errors.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/flow/operators/Limit.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/flow/operators/Lint.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/flow/operators/Merge.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/flow/operators/Share.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/flow/operators/Transform.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/flow/operators/Zip.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/flow/terminal/Collect.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/flow/terminal/Collection.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/flow/terminal/Count.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/flow/terminal/Logic.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/flow/terminal/Reduce.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/internal/Concurrent.common.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/internal/ConcurrentLinkedList.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/internal/CoroutineExceptionHandlerImpl.common.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/internal/DispatchedContinuation.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/internal/DispatchedTask.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/internal/InlineList.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/internal/InternalAnnotations.common.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/internal/LimitedDispatcher.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/internal/LocalAtomics.common.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/internal/LockFreeLinkedList.common.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/internal/LockFreeTaskQueue.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/internal/MainDispatcherFactory.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/internal/NamedDispatcher.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/internal/OnUndeliveredElement.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/internal/ProbesSupport.common.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/internal/Scopes.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/internal/StackTraceRecovery.common.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/internal/Symbol.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/internal/Synchronized.common.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/internal/SystemProps.common.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/internal/ThreadContext.common.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/internal/ThreadLocal.common.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/internal/ThreadSafeHeap.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/intrinsics/Cancellable.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/intrinsics/Undispatched.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/selects/OnTimeout.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/selects/Select.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/selects/SelectOld.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/selects/SelectUnbiased.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/selects/WhileSelect.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/sync/Mutex.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/common/src/sync/Semaphore.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/concurrent/src/Builders.concurrent.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/concurrent/src/Dispatchers.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/concurrent/src/MultithreadedDispatchers.common.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/concurrent/src/channels/Channels.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/concurrent/src/internal/LockFreeLinkedList.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/concurrent/src/internal/OnDemandAllocatingPool.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/AbstractTimeSource.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/Builders.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/CoroutineContext.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/Debug.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/DebugStrings.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/DefaultExecutor.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/Dispatchers.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/EventLoop.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/Exceptions.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/Executors.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/Future.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/GuidanceJvm.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/Interruptible.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/Runnable.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/SchedulerTask.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/ThreadContextElement.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/ThreadPoolDispatcher.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/channels/Actor.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/channels/TickerChannels.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/debug/CoroutineDebugging.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/debug/internal/AgentInstallationType.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/debug/internal/AgentPremain.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/debug/internal/ConcurrentWeakMap.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/debug/internal/DebugCoroutineInfo.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/debug/internal/DebugCoroutineInfoImpl.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/debug/internal/DebugProbes.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/debug/internal/DebugProbesImpl.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/debug/internal/DebuggerInfo.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/debug/internal/StackTraceFrame.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/flow/internal/FlowExceptions.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/flow/internal/SafeCollector.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/future/Future.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/internal/Concurrent.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/internal/CoroutineExceptionHandlerImpl.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/internal/ExceptionsConstructor.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/internal/FastServiceLoader.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/internal/InternalAnnotations.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/internal/LocalAtomics.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/internal/MainDispatchers.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/internal/ProbesSupport.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/internal/ResizableAtomicArray.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/internal/StackTraceRecovery.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/internal/Synchronized.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/internal/SystemProps.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/internal/ThreadContext.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/internal/ThreadLocal.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/scheduling/CoroutineScheduler.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/scheduling/Dispatcher.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/scheduling/Tasks.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/scheduling/WorkQueue.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/stream/Stream.kt /var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T//kc-survey/kotlinx-coroutines-1.11.0/kotlinx-coroutines-core/jvm/src/time/Time.kt",
+      "name": "kotlinc (cold JVM)",
+      "measurements": [
+        {
+          "time_wall_clock": {
+            "value": 11.083224959,
+            "unit": "second"
+          },
+          "time_cpu": {
+            "value": 28.761855,
+            "unit": "second"
+          },
+          "time_user": {
+            "value": 28.044915,
+            "unit": "second"
+          },
+          "time_system": {
+            "value": 0.71694,
+            "unit": "second"
+          },
+          "memory_peak_resident": {
+            "value": 1266024448.0,
+            "unit": "byte"
+          },
+          "cpu_cycles": {
+            "value": 1247850300
+          },
+          "instructions": {
+            "value": 6877730198
+          },
+          "exit_code": 0
+        },
+        {
+          "time_wall_clock": {
+            "value": 11.518087,
+            "unit": "second"
+          },
+          "time_cpu": {
+            "value": 48.256816,
+            "unit": "second"
+          },
+          "time_user": {
+            "value": 47.414132,
+            "unit": "second"
+          },
+          "time_system": {
+            "value": 0.842684,
+            "unit": "second"
+          },
+          "memory_peak_resident": {
+            "value": 1258897408.0,
+            "unit": "byte"
+          },
+          "cpu_cycles": {
+            "value": 1283056750
+          },
+          "instructions": {
+            "value": 6877304102
+          },
+          "exit_code": 0
+        },
+        {
+          "time_wall_clock": {
+            "value": 10.600052041,
+            "unit": "second"
+          },
+          "time_cpu": {
+            "value": 36.443253,
+            "unit": "second"
+          },
+          "time_user": {
+            "value": 35.752241,
+            "unit": "second"
+          },
+          "time_system": {
+            "value": 0.691012,
+            "unit": "second"
+          },
+          "memory_peak_resident": {
+            "value": 1104084992.0,
+            "unit": "byte"
+          },
+          "cpu_cycles": {
+            "value": 1279598278
+          },
+          "instructions": {
+            "value": 6877822010
+          },
+          "exit_code": 0
+        },
+        {
+          "time_wall_clock": {
+            "value": 10.699007959,
+            "unit": "second"
+          },
+          "time_cpu": {
+            "value": 36.750561,
+            "unit": "second"
+          },
+          "time_user": {
+            "value": 36.034951,
+            "unit": "second"
+          },
+          "time_system": {
+            "value": 0.71561,
+            "unit": "second"
+          },
+          "memory_peak_resident": {
+            "value": 1102561280.0,
+            "unit": "byte"
+          },
+          "cpu_cycles": {
+            "value": 1254044836
+          },
+          "instructions": {
+            "value": 6878237716
+          },
+          "exit_code": 0
+        },
+        {
+          "time_wall_clock": {
+            "value": 10.650092125,
+            "unit": "second"
+          },
+          "time_cpu": {
+            "value": 36.765402,
+            "unit": "second"
+          },
+          "time_user": {
+            "value": 36.016574,
+            "unit": "second"
+          },
+          "time_system": {
+            "value": 0.7488279999999999,
+            "unit": "second"
+          },
+          "memory_peak_resident": {
+            "value": 1277820928.0,
+            "unit": "byte"
+          },
+          "cpu_cycles": {
+            "value": 1249647705
+          },
+          "instructions": {
+            "value": 6877303836
+          },
+          "exit_code": 0
+        }
+      ],
+      "summary": {
+        "cpu_cycles": {
+          "count": 5,
+          "mean": 1262839573.8,
+          "stddev": 17070731.709738404,
+          "median": 1254044836.0,
+          "min": 1247850300.0,
+          "max": 1283056750.0
+        },
+        "instructions": {
+          "count": 5,
+          "mean": 6877679572.4,
+          "stddev": 392597.61940541613,
+          "median": 6877730198.0,
+          "min": 6877303836.0,
+          "max": 6878237716.0
+        },
+        "memory_peak_resident": {
+          "unit": "byte",
+          "count": 5,
+          "mean": 1201877811.2,
+          "stddev": 90222767.74457845,
+          "median": 1258897408.0,
+          "min": 1102561280.0,
+          "max": 1277820928.0
+        },
+        "time_cpu": {
+          "unit": "second",
+          "count": 5,
+          "mean": 37.39557739999999,
+          "stddev": 6.9682809099565794,
+          "median": 36.750561,
+          "min": 28.761855,
+          "max": 48.256816
+        },
+        "time_system": {
+          "unit": "second",
+          "count": 5,
+          "mean": 0.7430148,
+          "stddev": 0.059377925588555217,
+          "median": 0.71694,
+          "min": 0.691012,
+          "max": 0.842684
+        },
+        "time_user": {
+          "unit": "second",
+          "count": 5,
+          "mean": 36.652562599999996,
+          "stddev": 6.919166816315626,
+          "median": 36.016574,
+          "min": 28.044915,
+          "max": 47.414132
+        },
+        "time_wall_clock": {
+          "unit": "second",
+          "count": 5,
+          "mean": 10.910092816799999,
+          "stddev": 0.38984423974691057,
+          "median": 10.699007959,
+          "min": 10.600052041,
+          "max": 11.518087
+        }
+      }
+    }
+  ]
+}

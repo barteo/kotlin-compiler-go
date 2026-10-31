@@ -1,0 +1,9 @@
+true true false
+[Circle, Empty]
+[balance: kotlin.Long, owner: kotlin.String]
+[audit[]: kotlin.collections.List<kotlin.String>, deposit[amount: kotlin.Long, note: kotlin.String??=]: kotlin.Long, describe[]: kotlin.String]
+[owner, balance optional]
+true true
+true
+[NAME: kotlin.String, accounts: kotlin.collections.MutableList<Account>]
+true true

@@ -1,0 +1,23 @@
+1 2 3 4 5.5 6.25 x true str 8 null
+70
+one default small 10
+two default big 20
+many default big 30
+23
+1y2zw
+a caught boom after finally! 42
+finally runs
+rethrown out
+2
+3
+9
+unit
+[g, g]
+4
+null
+15
+12
+EmptyCoroutineContext
+StdlibSuspendKt.middle stdlibSuspend.kt:168
+StdlibSuspendKt.outer stdlibSuspend.kt:162
+StdlibSuspendKt.main stdlibSuspend.kt:196

@@ -1,0 +1,62 @@
+G<T : class java.lang.Object>
+  extends class java.lang.Object
+B<T : java.lang.Comparable<? super T>, U : interface java.lang.CharSequence, V : class java.lang.Object>
+  extends class java.lang.Object
+TypeSerializer<T : class java.lang.Object>
+  extends null
+  implements java.lang.Comparable<T>
+  implements interface java.io.Serializable
+Deserializer<T : class java.lang.Object>
+  extends class java.lang.Object
+  implements TypeSerializer<T>
+C1<>
+  extends B<java.lang.String, java.lang.String, java.util.List<? extends java.lang.String>>
+C2<X : class java.lang.Object>
+  extends B<java.lang.Integer, java.lang.StringBuilder, java.util.Map<X, ? extends java.util.List<? extends java.lang.Integer>>>
+C3<>
+  extends G<java.util.List<? super java.lang.Number>>
+C4<>
+  extends G<java.util.List<? extends java.lang.String>[]>
+C5<>
+  extends G<int[]>
+  implements java.lang.Comparable<kotlin.Unit>
+C6<>
+  extends G<java.util.List<?>>
+C7<>
+  extends G<kotlin.jvm.functions.Function1<? super java.lang.String, ? extends java.lang.Integer>>
+C8<>
+  extends G<kotlin.jvm.functions.Function2<? super java.lang.String, ? super kotlin.coroutines.Continuation<? super java.lang.Integer>, ?>>
+C9<>
+  extends class G
+C10<>
+  extends G<java.util.List<? extends java.util.List>>
+C11<T : interface java.lang.CharSequence & java.lang.Comparable<? super T>>
+  extends class java.lang.Object
+C12<T : java.util.List<? extends java.lang.CharSequence>, U : T>
+  extends class java.lang.Object
+C13<>
+  extends class java.lang.Object
+  implements kotlin.jvm.functions.Function1<java.lang.Integer, java.lang.String>
+C14<E : class java.lang.Object>
+  extends class java.lang.Object
+  implements java.util.List<E>
+  implements interface kotlin.jvm.internal.markers.KMutableList
+C15<>
+  extends class java.lang.Object
+  implements java.util.List<java.lang.String>
+  implements interface kotlin.jvm.internal.markers.KMappedMarker
+Inner<U : class java.lang.Object>
+  extends G<kotlin.Pair<? extends T, ? extends U>>
+E<>
+  extends java.lang.Enum<E>
+Res<T : class java.lang.Object>
+  extends class java.lang.Object
+Ok<T : class java.lang.Object>
+  extends Res<T>
+Err<>
+  extends class Res
+Plain<>
+  extends class java.lang.Object
+<>
+  extends class java.lang.Object
+  implements java.util.Comparator<java.lang.String>

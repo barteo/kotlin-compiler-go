@@ -1,0 +1,62 @@
+primitives: parcelable(p.Primitives) string(s) string(ns) int(1) int(1) int(2) long(3) int(1) long(4) int(1) int(1) int(0) double(1.5) int(1) double(2.5) float(3.5) int(1) float(4.5) int(99) int(1) int(100) byte(5) int(1) byte(6) int(7) int(1) int(8)
+  read: Primitives(s=s, ns=ns, i=1, ni=2, l=3, nl=4, b=true, nb=false, d=1.5, nd=2.5, f=3.5, nf=4.5, c=c, nc=d, by=5, nby=6, sh=7, nsh=8)
+  equal: true, describeContents: 0
+nulls: parcelable(p.Primitives) string(s) string(null) int(1) int(0) long(3) int(0) int(0) int(0) double(1.5) int(0) float(3.5) int(0) int(99) int(0) byte(5) int(0) int(7) int(0)
+  read: Primitives(s=s, ns=null, i=1, ni=null, l=3, nl=null, b=false, nb=null, d=1.5, nd=null, f=3.5, nf=null, c=c, nc=null, by=5, nby=null, sh=7, nsh=null)
+  equal: true, describeContents: 0
+nested: parcelable(p.Nested) string(GREEN) int(1) string(BLUE) int(1) string(one) int(1) int(2) string(two) int(1) int(1) int(1) parcelable(p.Shape$Circle) double(1.0) parcelable(p.Shape$Dot) int(1) double(2.0) serializable(100 EUR) serializable(5 USD) serializable(1.50) serializable(2) parcelable(lib.LibPoint) int(1) int(2) parcelable(lib.LibPoint) int(3) int(4) parcelable(lib.LibOpen) string(open) parcelable(p.Base) string(base) long(9)
+  read: Nested(color=GREEN, ncolor=BLUE, inner=Inner(x=1, name=one), ninner=Inner(x=2, name=two), empty=Empty, nempty=Empty, shape=Circle(r=1.0), nshape=Dot, circle=Circle(r=2.0), money=100 EUR, nmoney=5 USD, big=1.50, nbig=2, point=LibPoint(x=1, y=2), npoint=LibPoint(x=3, y=4), open=LibOpen(open), base=Base(base), deep=Deep(id=9))
+  equal: true, describeContents: 0
+nested nulls: parcelable(p.Nested) string(RED) int(0) int(1) string(one) int(0) int(1) int(0) parcelable(p.Shape$Dot) int(1) parcelable(null) double(2.0) serializable(1 CZK) serializable(null) serializable(0.1) serializable(null) parcelable(lib.LibPoint) int(0) int(0) parcelable(null) parcelable(lib.LibOpen) string(x) parcelable(p.Base) string(y) long(0)
+  read: Nested(color=RED, ncolor=null, inner=Inner(x=1, name=one), ninner=null, empty=Empty, nempty=null, shape=Dot, nshape=null, circle=Circle(r=2.0), money=1 CZK, nmoney=null, big=0.1, nbig=null, point=LibPoint(x=0, y=0), npoint=null, open=LibOpen(x), base=Base(y), deep=Deep(id=0))
+  equal: true, describeContents: 0
+collections: parcelable(p.Collections) stringList([a, b]) stringList([c]) stringList([d, null]) stringList([e]) int(2) int(1) string(one) int(3) string(three) int(1) int(1) int(1) string(one) int(3) int(1) int(1) int(0) int(1) int(3) int(2) long(4) long(5) int(2) string(x) string(y) int(2) string(BLUE) string(RED) int(1) string(k) int(1) string(one) int(1) int(1) int(1) long(2) int(1) string(h) int(1) int(2) int(2) long(1) long(2) int(0) int(1) string(m) int(2) int(1) int(1) string(one) int(0) int(2) parcelable(p.Shape$Dot) int(1) parcelable(p.Shape$Circle) double(3.0)
+  read: Collections(strings=[a, b], nstrings=[c], nullableStrings=[d, null], arrayList=[e], inners=[Inner(x=1, name=one), Inner(x=3, name=three)], ninners=[Inner(x=1, name=one)], ints=[1, null, 3], longs=[4, 5], set=[x, y], colors=[BLUE, RED], map={k=Inner(x=1, name=one)}, nmap={1=2}, hashMap={h=1}, nested=[[1, 2], []], mapOfLists={m=[Inner(x=1, name=one), null]}, shapes=[Dot, Circle(r=3.0)])
+  equal: true, describeContents: 0
+empty collections: parcelable(p.Collections) stringList([]) stringList(null) stringList([]) stringList([]) int(0) int(0) int(0) int(0) int(0) int(0) int(0) int(0) int(0) int(0) int(0) int(0)
+  read: Collections(strings=[], nstrings=null, nullableStrings=[], arrayList=[], inners=[], ninners=null, ints=[], longs=[], set=[], colors=[], map={}, nmap=null, hashMap={}, nested=[], mapOfLists={}, shapes=[])
+  equal: true, describeContents: 0
+object: parcelable(p.Empty) int(1)
+  read: Empty
+  equal: true, describeContents: 0
+sealed object: parcelable(p.Shape$Dot) int(1)
+  read: Dot
+  equal: true, describeContents: 0
+open: parcelable(p.Base) string(b)
+  read: Base(b)
+  equal: true, describeContents: 0
+described: parcelable(p.Described) int(3)
+  read: Described(3)
+  equal: true, describeContents: 7
+deep: parcelable(p.Outer$Deep) long(42)
+  read: Deep(id=42)
+  equal: true, describeContents: 0
+enum: parcelable(p.Level) string(HIGH)
+  read: HIGH
+  equal: true, describeContents: 0
+enum with bodies: parcelable(p.Tone$LOUD) string(LOUD)
+  read: LOUD
+  equal: true, describeContents: 0
+sealed subclass: parcelable(p.Step$Go) int(3) string(LOW)
+  read: Go(steps=3, level=LOW)
+  equal: true, describeContents: 0
+sealed object: parcelable(p.Step$Stop) int(1)
+  read: Stop
+  equal: true, describeContents: 0
+nested sealed: parcelable(p.Step$Nest) int(1) string(one) parcelable(p.Step$Nest$Kind$Named) string(n)
+  read: Nest(inner=Inner(x=1, name=one), kind=Named(name=n))
+  equal: true, describeContents: 0
+top-level sealed subclass: parcelable(p.Jump) int(4)
+  read: Jump(to=4)
+  equal: true, describeContents: 0
+sealed interface: parcelable(p.Edit) string(e) stringArray([a, b]) stringArray(null)
+  read: Edit(e, [a, b], null)
+  equal: true, describeContents: 0
+modes: parcelable(p.Modes) string(LOW) int(0) parcelable(p.Tone) string(SOFT) parcelable(p.Tone$LOUD) string(LOUD) parcelable(p.Jump) int(5) int(6) string(HIGH) int(1) parcelable(p.Edit) string(f) stringArray([]) stringArray([c]) int(0)
+  read: Modes(level=LOW, nlevel=null, tone=SOFT, ntone=LOUD, step=Jump(to=5), go=Go(steps=6, level=HIGH), stop=Stop, mode=Edit(f, [], [c]), edit=null)
+  equal: true, describeContents: 0
+tone: ! 2
+newArray: 2 Inner[]
+use: parcelable(Holder) parcelable(p.Inner) int(7) string(seven) parcelable(p.Empty) int(1) parcelable(p.Outer$Deep) long(8) parcelable(p.Shape$Circle) double(9.0) parcelable(p.Base) string(ten) string(RED) parcelable(p.Level) string(HIGH) parcelable(p.Step$Go) int(1) string(LOW)
+  read: Holder(inner=Inner(x=7, name=seven), empty=Empty, deep=Deep(id=8), shape=Circle(r=9.0), base=Base(ten), color=RED, level=HIGH, step=Go(steps=1, level=LOW))
+  equal: true

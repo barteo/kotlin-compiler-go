@@ -1,0 +1,9 @@
+a string of 3
+Expected Integer but was abc
+i=1 l=2 d=3.5 c=c b=true s=null f=lambda
+i=-1 l=9223372036854775807 d=-0.0 c= b=false s=s f=[7]
+[1, 91, 51, 93, 2]
+{4242}|{<42>}
+Integer: 5
+List: [x]
+hidden(#9)

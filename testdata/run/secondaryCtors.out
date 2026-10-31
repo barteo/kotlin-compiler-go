@@ -1,0 +1,73 @@
+Point(1, 2)
+  sum of 1 and 2
+  init Point
+(1, 2)
+Point(3)
+  sum of 3 and 3
+  init Point
+  Point(both)
+(3, 3)
+Point("ab")
+  sum of 20 and 20
+  init Point
+  Point(both)
+  Point(s, scale)
+(20, 20)
+Point("ab", scale = 2)
+  sum of 4 and 4
+  init Point
+  Point(both)
+  Point(s, scale)
+(4, 4)
+Point()
+  sum of 0 and 0
+  init Point
+  Point(both)
+  Point(s, scale)
+  Point()
+(0, 0)
+Shape("s")
+  id
+  Shape(label)
+s
+Shape(2, 3)
+  id
+  Shape(label)
+  Shape(w, h)
+rect 2x3
+Shape("a", "b", "c")
+  id
+3
+Circle(2)
+  id
+  Shape(label)
+  Circle(Int)
+circle 12.0 2
+Square(4)
+  id
+  Shape(label)
+  Shape(w, h)
+rect 4x4
+bad 3
+inner -1
+0
+[x, y]
+[1]
+fixed 1
+  negative
+0
+5
+  sum of 7 and 7
+  init Point
+  Point(both)
+(7, 7)
+  id
+  Shape(label)
+ref
+45
+rex says woof
+anonymous says meow
+Pair2(a=4, b=4)
+true
+inner 9
+60

@@ -1,0 +1,37 @@
+Point(x=1, y=2)
+true
+false
+true
+33
+Point(x=11, y=22)
+Point(x=1, y=5)
+Point(x=1, y=2)
+3
+Person(name=Ann, nick=null, age=30, score=1.5, active=true, id=7)
+-120248551
+Person(name=Ann, nick=annie, age=31, score=1.5, active=true, id=7)
+false
+1026459573
+Person(name=Ann, nick=annie, age=40, score=1.5, active=true, id=7)
+3 9
+Ann is 30
+2
+12
+30
+Wrapper(value=42, label=w)
+Wrapper(value=42, label=x)
+true
+Custom<3>
+true
+Empty
+true
+67081517
+Hello, Bob.
+Hello, Cy. Hello, Cy.
+Hi, Di.
+307200
+75
+20000
+0..10 by 1
+0..5 by 1
+1..10 by 2

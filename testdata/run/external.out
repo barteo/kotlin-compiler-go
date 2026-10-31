@@ -1,0 +1,34 @@
+top: 'java.lang.String ExternalKt.top(int)'
+m: 'int C.m(long)'
+get both: 'int C.getBoth()'
+set both: 'void C.setBoth(int)'
+getter: 'int C.getGetter()'
+1
+get setter: returned
+set setter: 'void C.setSetter(int)'
+s: 'void C.s(int)'
+t: 'void C$Companion.t()'
+o: 'void O.o()'
+so: 'java.lang.String O.so()'
+B.f, B.f: 'void A.f()'
+i: 'int D.i()'
+C:
+  getSetter
+  native getBoth
+  native getGetter
+  native m
+  native setBoth
+  native setSetter
+  static native s
+C$Companion:
+  native t
+  s
+O:
+  native o
+  static native so
+A:
+  native f
+D:
+  native i
+ExternalKt:
+  static native top

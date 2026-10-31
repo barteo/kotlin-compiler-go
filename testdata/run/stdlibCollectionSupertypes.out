@@ -1,0 +1,27 @@
+4 b 1 3
+a-b-c-b
+[a, b, c, b]
+4
+true false false
+-1
+4
+2
+add: Operation is not supported for read-only collection
+sort: Operation is not supported for read-only collection
+clear: Operation is not supported for read-only collection
+[0, 2, 4, 6, 8]
+true 3 false
+1
+20
+[3, 2, 1]
+[16, 9, 4, 1]
+remove: Operation is not supported for read-only collection
+k=1
+setValue: Operation is not supported for read-only collection
+30 2 [ann, bob] [30, 25]
+true false 0
+{ann=30, bob=25}
+true false 5
+aeiou
+true 3 [1, 2, 3] [1, 2, 3]
+removeIf: Operation is not supported for read-only collection

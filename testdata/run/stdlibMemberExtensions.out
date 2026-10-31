@@ -1,0 +1,9 @@
+id = 1
+name <> x
+id IS NULL
+int 255 / hex ff
+hex a
+9.0
+NOT (id = 3)
+[id = 1, id = 2]
+NOT (id = 4)

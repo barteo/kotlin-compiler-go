@@ -1,0 +1,7 @@
+string true
+int false
+other true Long
+suspend string false
+suspend int true
+[suspend string true, listener string true, nested string true]
+[suspend int false, listener int false, nested int false]

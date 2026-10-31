@@ -1,0 +1,11 @@
+node join null
+disposed false true
+cancel null
+high
+1
+ctx
+2
+42
+base delay 1000
+base delay 5
+base debounce 5

@@ -1,0 +1,135 @@
+prims: {"i":1,"l":2,"s":3,"b":4,"c":"c","f":1.5,"d":2.5,"z":true,"str":"s"}
+  back: Prims(i=1, l=2, s=3, b=4, c=c, f=1.5, d=2.5, z=true, str=s) true
+  defaults: {"i":1,"l":2,"s":3,"b":4,"c":"c","f":1.5,"d":2.5,"z":true,"str":"s"}
+  list: [1, 2, 3, 4, c, 1.5, 2.5, true, s] -> Prims(i=1, l=2, s=3, b=4, c=c, f=1.5, d=2.5, z=true, str=s)
+nullables: {"str":null}
+  back: Nullables(i=null, str=null, p=null, list=null, e=RED) true
+  defaults: {"i":null,"str":null,"p":null,"list":null,"e":"RED"}
+  list: [null, null, null, null, !, 0] -> Nullables(i=null, str=null, p=null, list=null, e=RED)
+nullables2: {"i":1,"str":"s","p":{"x":1,"y":2},"list":["a",null],"e":null}
+  back: Nullables(i=1, str=s, p=LibPoint(x=1, y=2), list=[a, null], e=null) true
+  defaults: {"i":1,"str":"s","p":{"x":1,"y":2},"list":["a",null],"e":null}
+  list: [!, 1, !, s, !, 1, 2, !, 2, !, a, null, null] -> Nullables(i=1, str=s, p=LibPoint(x=1, y=2), list=[a, null], e=null)
+defaults: {"r":"req"}
+  back: Defaults(a=5, b=10, r=req, n=n, body=body5, t=11, computed=6, lazyV=500) false
+  defaults: {"a":5,"b":10,"r":"req","renamed":"n","body":"body5"}
+  list: [5, 10, req, n, body5] -> Defaults(a=5, b=10, r=req, n=n, body=body5, t=11, computed=6, lazyV=500)
+defaults2: {"a":1,"r":"r","renamed":"m"}
+  back: Defaults(a=1, b=2, r=r, n=m, body=body1, t=3, computed=2, lazyV=100) false
+  defaults: {"a":1,"b":2,"r":"r","renamed":"m","body":"body1"}
+  list: [1, 2, r, m, body1] -> Defaults(a=1, b=2, r=r, n=m, body=body1, t=3, computed=2, lazyV=100)
+Defaults(a=3, b=6, r=x, n=n, body=b, t=7, computed=4, lazyV=300)
+enums: {"c":"vert","m":"SAD","p":"Y","lc":"verde","lp":"B"}
+  back: Enums(c=GREEN, m=SAD, p=Y, lc=GREEN, lp=B) true
+  defaults: {"c":"vert","m":"SAD","p":"Y","lc":"verde","lp":"B"}
+  list: [1, 1, 1, 1, 1] -> Enums(c=GREEN, m=SAD, p=Y, lc=GREEN, lp=B)
+collections: {"list":[1,2],"ml":["a"],"al":[3],"set":["s"],"hs":[4],"map":{"k":1},"hm":{"5":"v"},"pair":{"first":1,"second":"one"},"triple":{"first":1,"second":2,"third":"three"},"nested":[{"m":[1,null]}],"points":[{"x":7}]}
+  back: Collections(list=[1, 2], ml=[a], al=[3], set=[s], hs=[4], map={k=1}, hm={5=v}, pair=(1, one), triple=(1, 2, three), nested=[{m=[1, null]}], points=[LibPoint(x=7, y=0)]) true
+  defaults: {"list":[1,2],"ml":["a"],"al":[3],"set":["s"],"hs":[4],"map":{"k":1},"hm":{"5":"v"},"pair":{"first":1,"second":"one"},"triple":{"first":1,"second":2,"third":"three"},"nested":[{"m":[1,null]}],"points":[{"x":7,"y":0}]}
+  list: [2, 1, 2, 1, a, 1, 3, 1, s, 1, 4, 1, k, 1, 1, 5, v, 1, one, 1, 2, three, 1, 1, m, 2, !, 1, null, 1, 7, 0] -> Collections(list=[1, 2], ml=[a], al=[3], set=[s], hs=[4], map={k=1}, hm={5=v}, pair=(1, one), triple=(1, 2, three), nested=[{m=[1, null]}], points=[LibPoint(x=7, y=0)])
+circle: {"type":"circle","r":1.5}
+  back: Circle(r=1.5) true
+  defaults: {"type":"circle","r":1.5}
+  list: [circle, 1.5] -> Circle(r=1.5)
+rect: {"type":"app.Shape.Rect","w":2}
+  back: Rect(w=2, h=2) true
+  defaults: {"type":"app.Shape.Rect","w":2,"h":2}
+  list: [app.Shape.Rect, 2, 2] -> Rect(w=2, h=2)
+empty: {"type":"app.Shape.Empty"}
+  back: Empty true
+  defaults: {"type":"app.Shape.Empty"}
+  list: [app.Shape.Empty] -> Empty
+deep: {"type":"app.Shape.Nested.Deep","q":"q"}
+  back: Deep(q=q) true
+  defaults: {"type":"app.Shape.Nested.Deep","q":"q"}
+  list: [app.Shape.Nested.Deep, q] -> Deep(q=q)
+route: {"type":"detail","id":"d"}
+  back: Detail(id=d) true
+  defaults: {"type":"detail","id":"d"}
+  list: [detail, d] -> Detail(id=d)
+route object: {"type":"app.Route.Home"}
+  back: Home true
+  defaults: {"type":"app.Route.Home"}
+  list: [app.Route.Home] -> Home
+route nested: {"type":"app.Page","n":1}
+  back: Page(n=1) true
+  defaults: {"type":"app.Page","n":1}
+  list: [app.Page, 1] -> Page(n=1)
+trip: {"from":{"type":"app.Route.Home"},"to":{"type":"app.Page","n":2}}
+  back: Trip(from=Home, to=Page(n=2)) true
+  defaults: {"from":{"type":"app.Route.Home"},"to":{"type":"app.Page","n":2}}
+  list: [app.Route.Home, !, app.Page, 2] -> Trip(from=Home, to=Page(n=2))
+app.Route app.Route.Nested true
+click: {"type":"app.Event.Click","id":1,"x":3}
+  back: Click(x=3) true
+  defaults: {"type":"app.Event.Click","id":1,"x":3}
+  list: [app.Event.Click, 1, 3] -> Click(x=3)
+key: {"id":2,"code":"k","shift":true}
+  back: Key(2, k, true) false
+  defaults: {"id":2,"code":"k","shift":true}
+  list: [2, k, true] -> Key(2, k, true)
+base: {"id":5}
+  back: Base(5, t) false
+  defaults: {"id":5,"tag":"t"}
+  list: [5, t] -> Base(5, t)
+derived: {"id":1,"extra":6}
+  back: Derived(1, t, 6) false
+  defaults: {"id":1,"tag":"t","extra":6}
+  list: [1, t, 6] -> Derived(1, t, 6)
+fromPlain: {"w":8}
+  back: FromPlain(w=8) true
+  defaults: {"w":8}
+  list: [8] -> FromPlain(w=8)
+singleton: {}
+  back: Singleton true
+  defaults: {}
+  list: [] -> Singleton
+wrapper: {"shape":{"type":"app.Shape.Empty"},"event":{"type":"app.Event.Click","id":1,"x":1},"base":{"id":1},"o":{},"lp":{"x":3},"ls":{"type":"dot"},"lo":{}}
+  back: Wrapper(shape=Empty, event=Click(x=1), base=Base(1, t), o=Singleton, lp=LibPoint(x=3, y=0), ls=Dot, lo=LibObj, iface=null) false
+  defaults: {"shape":{"type":"app.Shape.Empty"},"event":{"type":"app.Event.Click","id":1,"x":1},"base":{"id":1,"tag":"t"},"o":{},"lp":{"x":3,"y":0},"ls":{"type":"dot"},"lo":{},"iface":null}
+  list: [app.Shape.Empty, app.Event.Click, 1, 1, 1, t, 3, 0, dot, null] -> Wrapper(shape=Empty, event=Click(x=1), base=Base(1, t), o=Singleton, lp=LibPoint(x=3, y=0), ls=Dot, lo=LibObj, iface=null)
+companion: {"v":7}
+  back: WithCompanion(v=7) true
+  defaults: {"v":7}
+  list: [7] -> WithCompanion(v=7)
+inner: {"q":9}
+  back: Inner(q=9) true
+  defaults: {"q":9}
+  list: [9] -> Inner(q=9)
+hidden: {"secret":1,"inner":"i"}
+  back: Hidden(secret=1, inner=i) true
+  defaults: {"secret":1,"inner":"i"}
+  list: [1, i] -> Hidden(secret=1, inner=i)
+color: "vert"
+  back: GREEN true
+  defaults: "vert"
+  list: [1] -> GREEN
+stamp: {"seconds":0,"color":"RED","ts":5}
+  back: Stamp(seconds=0, color=RED, ts=5) true
+  defaults: {"seconds":0,"color":"RED","ts":5}
+  list: [0, 0, 5] -> Stamp(seconds=0, color=RED, ts=5)
+stamp2: {"seconds":1,"color":"BLUE","ts":2}
+  back: Stamp(seconds=1, color=BLUE, ts=2) true
+  defaults: {"seconds":1,"color":"BLUE","ts":2}
+  list: [1, 2, 2] -> Stamp(seconds=1, color=BLUE, ts=2)
+app.Prims
+app.Prims?
+app.Prims(i: kotlin.Int, l: kotlin.Long, s: kotlin.Short, b: kotlin.Byte, c: kotlin.Char, f: kotlin.Float, d: kotlin.Double, z: kotlin.Boolean, str: kotlin.String)
+app.Defaults(a: kotlin.Int, b: kotlin.Int, r: kotlin.String, renamed: kotlin.String, body: kotlin.String)
+app.Derived(id: kotlin.Int, tag: kotlin.String, extra: kotlin.Long)
+kotlinx.serialization.Polymorphic<Animal>
+app.Shape
+Mood(HAPPY, SAD)
+app.Prims
+app.Color
+missing: MissingFieldException: Fields [l, s, b, c, f, d, z, str] are required for type with serial name 'app.Prims', but they were missing at path: $
+missingBase: MissingFieldException: Field 'id' is required for type with serial name 'app.Derived', but it was missing at path: $
+unknown: JsonDecodingException: Encountered an unknown key 'x' at offset 9 at path: $
+unknownType: JsonDecodingException: Unexpected JSON token at offset 0: Serializer for subclass 'nope' is not found in the polymorphic scope of 'Shape' at path: $
+true
+[init 5 10 body5 11, init 5 10 body5 11, init 5 10 body5 11, init 1 2 body1 3, init 1 2 body1 3, init 1 2 body1 3, init 3 6 b 7]
+use: {"p":{"i":1,"l":2,"s":3,"b":4,"c":"c","f":1.5,"d":2.5,"z":true,"str":"s"},"c":"vert","s":{"type":"app.Shape.Rect","w":2,"h":3},"e":{"type":"app.Event.Key","id":2,"code":"k"},"w":{"v":1},"inner":{"q":2},"r":{"type":"app.Page","n":3}}
+  back: false
+sub: {"id":2,"more":3} -> Sub(2, t, 3)
+sub: Sub(4, t, 5)
+app.Prims

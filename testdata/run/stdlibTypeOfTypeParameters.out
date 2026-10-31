@@ -1,0 +1,12 @@
+Container<X> (Kotlin reflection is not available) INVARIANT false [Y? (Kotlin reflection is not available)]
+Container<X?> (Kotlin reflection is not available) INVARIANT false [java.lang.CharSequence (Kotlin reflection is not available), java.lang.Comparable<java.lang.String> (Kotlin reflection is not available)]
+Container<X> (Kotlin reflection is not available) INVARIANT false [java.lang.Object? (Kotlin reflection is not available)]
+Container<in I> (Kotlin reflection is not available) IN false [java.lang.Object? (Kotlin reflection is not available)]
+Container<M> (Kotlin reflection is not available) INVARIANT false [X (Kotlin reflection is not available)]
+Container<Z> (Kotlin reflection is not available) INVARIANT false [Y (Kotlin reflection is not available)]
+Container<P> (Kotlin reflection is not available) INVARIANT false [java.lang.Object? (Kotlin reflection is not available)]
+Container<Y> (Kotlin reflection is not available) INVARIANT false [R (Kotlin reflection is not available)]
+kotlin.Pair<A, java.lang.Integer> (Kotlin reflection is not available)
+true
+false
+a, b, c

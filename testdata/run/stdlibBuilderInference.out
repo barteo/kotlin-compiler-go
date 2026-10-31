@@ -1,0 +1,50 @@
+Buildee[Target(a)]
+consumed Target(b)
+Buildee[Target(b)]
+Buildee[]
+2
+1
+d
+Buildee[Target(d)]
+Buildee[Target(e)]
+f
+14
+Buildee[g!]
+Buildee[Target(h)]
+2
+3
+i cancelled x
+j
+k Target(l)
+m
+consumed Target(m)
+m
+any Buildee[Target(q)]
+o
+1
+Target(s)
+true
+start.group.map
+owned
+t
+sank Target(u)
+Buildee[Target(v)]
+kotlin.Unit
+caught w
+Buildee[]
+Failure(java.lang.IllegalStateException: y)
+y
+false
+false
+Buildee[Target(x)]
+any Target(a1)
+Buildee[Target(b1)]
+[2]
+[r, c]
+offer c1
+sent to box
+outbox
+kotlin.Unit
+kotlin.Unit
+kotlin.Unit
+[2]

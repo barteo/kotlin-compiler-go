@@ -1,0 +1,44 @@
+4.0 m
+1
+Tags(tags=[])
+[2.0, 4.0]
+Meters(value=4.0)
+1
+{k=1}
+true
+Meters:
+  <init>[double] private synthetic
+  constructor-impl[double]: double
+  equals-impl0[double, double]: boolean
+  equals-impl[double, Object]: boolean
+  equals[Object]: boolean
+  format-impl[double]: String
+  getValue[]: double
+  hashCode-impl[double]: int
+  hashCode[]: int
+  plus-FezfitI[double, double]: double
+  toString-impl[double]: String
+  toString[]: String
+Tags:
+  <init>[List] private synthetic
+  constructor-impl[List]: List
+  equals-impl0[List, List]: boolean
+  equals-impl[List, Object]: boolean
+  equals[Object]: boolean
+  getSize-impl[List]: int
+  getTags[]: List
+  hashCode-impl[List]: int
+  hashCode[]: int
+  toString-impl[List]: String
+  toString[]: String
+Route:
+  <init>[String, double, DefaultConstructorMarker] public synthetic
+  <init>[String, double] private
+  <init>[double, List, DefaultConstructorMarker] public synthetic
+  <init>[double, List, int, DefaultConstructorMarker] public synthetic
+  <init>[double, List] private
+  getLength-l_w6SgY[]: double
+  getTags-TKXh5FQ[]: List
+Walk:
+  <init>[double, DefaultConstructorMarker] public synthetic
+  <init>[double] private

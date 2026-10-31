@@ -1,0 +1,13 @@
+[kiwi, pear, apple, fig] 4
+[apple, fig, kiwi, pear]
+fig false [apple, kiwi, pear]
+[kiwi, pear]
+concurrent modification
+true [5, 9, 3] 5 [9, 3]
+true 1 false
+[9, 3]
+{a=1, b=2, c=3} 1 {b=2, c=3}
+{b=2, c=3}
+{b=20, c=3}
+[kotlin, go] 2 true
+[x, z]

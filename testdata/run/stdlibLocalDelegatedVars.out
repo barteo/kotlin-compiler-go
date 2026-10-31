@@ -1,0 +1,7 @@
+9
+9
+[set x=5, get x, set x=7, get x, set x=8, get x, set x=9, get x, get x, get x, set x=8]
+abcd
+name
+changed
+2

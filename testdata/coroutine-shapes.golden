@@ -1,0 +1,996 @@
+# Differences between the coroutine classes of kc and kotlinc, which
+# TestCoroutineShapes allows: - lines are kotlinc's, + lines kc's.
+
+# Captured vars: kc keeps them in one-element arrays, kotlinc in
+# kotlin.jvm.internal.Ref objects.
++ StdlibCoroutinesFlowKt$main$1$7 field $last [I 0x1010
++ StdlibCoroutinesSyncKt$main$1$workers$1 field $maxRunning [I 0x1010
++ StdlibCoroutinesSyncKt$main$1$workers$1 field $running [I 0x1010
++ StdlibSequencesKt$main$lazy$1 field $evaluated [I 0x1010
++ StdlibSuspendBigArityKt$main$1$lambda$1 field $count [I 0x1010
++ StdlibSuspendLambdaKt$main$add$1 field $captured [I 0x1010
+- StdlibCoroutinesSyncKt$main$1$workers$1$1 field $maxRunning Lkotlin/jvm/internal/Ref$IntRef; 0x1010
+- StdlibCoroutinesSyncKt$main$1$workers$1$1 field $running Lkotlin/jvm/internal/Ref$IntRef; 0x1010
+- StdlibSequencesKt$main$lazy$1 field $evaluated Lkotlin/jvm/internal/Ref$IntRef; 0x1010
+- StdlibSuspendBigArityKt$main$1$lambda$1 field $count Lkotlin/jvm/internal/Ref$IntRef; 0x1010
+- StdlibSuspendLambdaKt$main$add$1 field $captured Lkotlin/jvm/internal/Ref$IntRef; 0x1010
+
+# Crossinline suspend lambdas that inline functions capture in objects
+# (Flow.map, filter, onEach): kc passes them as SuspendLambda objects to
+# the inline functions' classes, which kotlinc copies with the lambdas
+# inlined into them.
++ StdlibCoroutinesChannelsKt$main$1$workers$1 debug c=StdlibCoroutinesChannelsKt$main$1$workers$1
++ StdlibCoroutinesChannelsKt$main$1$workers$1 debug f=stdlibCoroutinesChannels.kt
++ StdlibCoroutinesChannelsKt$main$1$workers$1 debug i=
++ StdlibCoroutinesChannelsKt$main$1$workers$1 debug l=41
++ StdlibCoroutinesChannelsKt$main$1$workers$1 debug m=invokeSuspend
++ StdlibCoroutinesChannelsKt$main$1$workers$1 debug n=
++ StdlibCoroutinesChannelsKt$main$1$workers$1 debug s=
++ StdlibCoroutinesChannelsKt$main$1$workers$1 debug v=2
++ StdlibCoroutinesChannelsKt$main$1$workers$1 extends kotlin/coroutines/jvm/internal/SuspendLambda
++ StdlibCoroutinesChannelsKt$main$1$workers$1 field $id I 0x1010
++ StdlibCoroutinesChannelsKt$main$1$workers$1 field $results Lkotlinx/coroutines/channels/Channel; 0x1010
++ StdlibCoroutinesChannelsKt$main$1$workers$1 field label I 0x0
++ StdlibCoroutinesFlowKt$main$1$3 debug c=StdlibCoroutinesFlowKt$main$1$3
++ StdlibCoroutinesFlowKt$main$1$3 debug f=stdlibCoroutinesFlow.kt
++ StdlibCoroutinesFlowKt$main$1$3 debug i=
++ StdlibCoroutinesFlowKt$main$1$3 debug l=
++ StdlibCoroutinesFlowKt$main$1$3 debug m=invokeSuspend
++ StdlibCoroutinesFlowKt$main$1$3 debug n=
++ StdlibCoroutinesFlowKt$main$1$3 debug s=
++ StdlibCoroutinesFlowKt$main$1$3 debug v=2
++ StdlibCoroutinesFlowKt$main$1$3 extends kotlin/coroutines/jvm/internal/SuspendLambda
++ StdlibCoroutinesFlowKt$main$1$3 field I$0 I 0x1000
++ StdlibCoroutinesFlowKt$main$1$3 field label I 0x0
++ StdlibCoroutinesFlowKt$main$1$5 debug c=StdlibCoroutinesFlowKt$main$1$5
++ StdlibCoroutinesFlowKt$main$1$5 debug f=stdlibCoroutinesFlow.kt
++ StdlibCoroutinesFlowKt$main$1$5 debug i=
++ StdlibCoroutinesFlowKt$main$1$5 debug l=
++ StdlibCoroutinesFlowKt$main$1$5 debug m=invokeSuspend
++ StdlibCoroutinesFlowKt$main$1$5 debug n=
++ StdlibCoroutinesFlowKt$main$1$5 debug s=
++ StdlibCoroutinesFlowKt$main$1$5 debug v=2
++ StdlibCoroutinesFlowKt$main$1$5 extends kotlin/coroutines/jvm/internal/SuspendLambda
++ StdlibCoroutinesFlowKt$main$1$5 field I$0 I 0x1000
++ StdlibCoroutinesFlowKt$main$1$5 field label I 0x0
++ StdlibCoroutinesFlowKt$main$1$7 debug c=StdlibCoroutinesFlowKt$main$1$7
++ StdlibCoroutinesFlowKt$main$1$7 debug f=stdlibCoroutinesFlow.kt
++ StdlibCoroutinesFlowKt$main$1$7 debug i=
++ StdlibCoroutinesFlowKt$main$1$7 debug l=
++ StdlibCoroutinesFlowKt$main$1$7 debug m=invokeSuspend
++ StdlibCoroutinesFlowKt$main$1$7 debug n=
++ StdlibCoroutinesFlowKt$main$1$7 debug s=
++ StdlibCoroutinesFlowKt$main$1$7 debug v=2
++ StdlibCoroutinesFlowKt$main$1$7 extends kotlin/coroutines/jvm/internal/SuspendLambda
++ StdlibCoroutinesFlowKt$main$1$7 field I$0 I 0x1000
++ StdlibCoroutinesFlowKt$main$1$7 field I$1 I 0x1000
++ StdlibCoroutinesFlowKt$main$1$7 field label I 0x0
++ StdlibCoroutinesFlowKt$main$1$doubled$1 debug c=StdlibCoroutinesFlowKt$main$1$doubled$1
++ StdlibCoroutinesFlowKt$main$1$doubled$1 debug f=stdlibCoroutinesFlow.kt
++ StdlibCoroutinesFlowKt$main$1$doubled$1 debug i=
++ StdlibCoroutinesFlowKt$main$1$doubled$1 debug l=
++ StdlibCoroutinesFlowKt$main$1$doubled$1 debug m=invokeSuspend
++ StdlibCoroutinesFlowKt$main$1$doubled$1 debug n=
++ StdlibCoroutinesFlowKt$main$1$doubled$1 debug s=
++ StdlibCoroutinesFlowKt$main$1$doubled$1 debug v=2
++ StdlibCoroutinesFlowKt$main$1$doubled$1 extends kotlin/coroutines/jvm/internal/SuspendLambda
++ StdlibCoroutinesFlowKt$main$1$doubled$1 field I$0 I 0x1000
++ StdlibCoroutinesFlowKt$main$1$doubled$1 field label I 0x0
++ StdlibCoroutinesFlowKt$main$1$doubled$2 debug c=StdlibCoroutinesFlowKt$main$1$doubled$2
++ StdlibCoroutinesFlowKt$main$1$doubled$2 debug f=stdlibCoroutinesFlow.kt
++ StdlibCoroutinesFlowKt$main$1$doubled$2 debug i=
++ StdlibCoroutinesFlowKt$main$1$doubled$2 debug l=
++ StdlibCoroutinesFlowKt$main$1$doubled$2 debug m=invokeSuspend
++ StdlibCoroutinesFlowKt$main$1$doubled$2 debug n=
++ StdlibCoroutinesFlowKt$main$1$doubled$2 debug s=
++ StdlibCoroutinesFlowKt$main$1$doubled$2 debug v=2
++ StdlibCoroutinesFlowKt$main$1$doubled$2 extends kotlin/coroutines/jvm/internal/SuspendLambda
++ StdlibCoroutinesFlowKt$main$1$doubled$2 field I$0 I 0x1000
++ StdlibCoroutinesFlowKt$main$1$doubled$2 field label I 0x0
++ StdlibCoroutinesFlowKt$main$1$transformed$1 debug c=StdlibCoroutinesFlowKt$main$1$transformed$1
++ StdlibCoroutinesFlowKt$main$1$transformed$1 debug f=stdlibCoroutinesFlow.kt
++ StdlibCoroutinesFlowKt$main$1$transformed$1 debug i=0,0,1,1
++ StdlibCoroutinesFlowKt$main$1$transformed$1 debug l=33,34
++ StdlibCoroutinesFlowKt$main$1$transformed$1 debug m=invokeSuspend
++ StdlibCoroutinesFlowKt$main$1$transformed$1 debug n=$this$transform,v,$this$transform,v
++ StdlibCoroutinesFlowKt$main$1$transformed$1 debug s=L$0,I$0,L$0,I$0
++ StdlibCoroutinesFlowKt$main$1$transformed$1 debug v=2
++ StdlibCoroutinesFlowKt$main$1$transformed$1 extends kotlin/coroutines/jvm/internal/SuspendLambda
++ StdlibCoroutinesFlowKt$main$1$transformed$1 field I$0 I 0x1000
++ StdlibCoroutinesFlowKt$main$1$transformed$1 field L$0 Ljava/lang/Object; 0x1002
++ StdlibCoroutinesFlowKt$main$1$transformed$1 field label I 0x0
++ StdlibCoroutinesSyncKt$main$1$jobs$1 debug c=StdlibCoroutinesSyncKt$main$1$jobs$1
++ StdlibCoroutinesSyncKt$main$1$jobs$1 debug f=stdlibCoroutinesSync.kt
++ StdlibCoroutinesSyncKt$main$1$jobs$1 debug i=
++ StdlibCoroutinesSyncKt$main$1$jobs$1 debug l=28
++ StdlibCoroutinesSyncKt$main$1$jobs$1 debug m=invokeSuspend
++ StdlibCoroutinesSyncKt$main$1$jobs$1 debug n=
++ StdlibCoroutinesSyncKt$main$1$jobs$1 debug s=
++ StdlibCoroutinesSyncKt$main$1$jobs$1 debug v=2
++ StdlibCoroutinesSyncKt$main$1$jobs$1 extends kotlin/coroutines/jvm/internal/SuspendLambda
++ StdlibCoroutinesSyncKt$main$1$jobs$1 field $account LAccount; 0x1010
++ StdlibCoroutinesSyncKt$main$1$jobs$1 field $i I 0x1010
++ StdlibCoroutinesSyncKt$main$1$jobs$1 field label I 0x0
++ StdlibCoroutinesSyncKt$main$1$workers$1 debug c=StdlibCoroutinesSyncKt$main$1$workers$1
++ StdlibCoroutinesSyncKt$main$1$workers$1 debug f=stdlibCoroutinesSync.kt
++ StdlibCoroutinesSyncKt$main$1$workers$1 debug i=
++ StdlibCoroutinesSyncKt$main$1$workers$1 debug l=43,46
++ StdlibCoroutinesSyncKt$main$1$workers$1 debug m=invokeSuspend
++ StdlibCoroutinesSyncKt$main$1$workers$1 debug n=
++ StdlibCoroutinesSyncKt$main$1$workers$1 debug s=
++ StdlibCoroutinesSyncKt$main$1$workers$1 debug v=2
++ StdlibCoroutinesSyncKt$main$1$workers$1 extends kotlin/coroutines/jvm/internal/SuspendLambda
++ StdlibCoroutinesSyncKt$main$1$workers$1 field $sem Lkotlinx/coroutines/sync/Semaphore; 0x1010
++ StdlibCoroutinesSyncKt$main$1$workers$1 field I$0 I 0x0
++ StdlibCoroutinesSyncKt$main$1$workers$1 field L$0 Ljava/lang/Object; 0x0
++ StdlibCoroutinesSyncKt$main$1$workers$1 field label I 0x0
+
+# Classes only kotlinc has, for the same reason.
+- StdlibCoroutinesChannelsKt$main$1$workers$1$1 debug c=StdlibCoroutinesChannelsKt$main$1$workers$1$1
+- StdlibCoroutinesChannelsKt$main$1$workers$1$1 debug f=stdlibCoroutinesChannels.kt
+- StdlibCoroutinesChannelsKt$main$1$workers$1$1 debug i=
+- StdlibCoroutinesChannelsKt$main$1$workers$1$1 debug l=41
+- StdlibCoroutinesChannelsKt$main$1$workers$1$1 debug m=invokeSuspend
+- StdlibCoroutinesChannelsKt$main$1$workers$1$1 debug n=
+- StdlibCoroutinesChannelsKt$main$1$workers$1$1 debug s=
+- StdlibCoroutinesChannelsKt$main$1$workers$1$1 debug v=2
+- StdlibCoroutinesChannelsKt$main$1$workers$1$1 extends kotlin/coroutines/jvm/internal/SuspendLambda
+- StdlibCoroutinesChannelsKt$main$1$workers$1$1 field $id I 0x1010
+- StdlibCoroutinesChannelsKt$main$1$workers$1$1 field $results Lkotlinx/coroutines/channels/Channel; 0x1010
+- StdlibCoroutinesChannelsKt$main$1$workers$1$1 field label I 0x0
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$filter$1$1 debug c=StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$filter$1
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$filter$1$1 debug f=stdlibCoroutinesFlow.kt
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$filter$1$1 debug i=0,0,0
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$filter$1$1 debug l=112
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$filter$1$1 debug m=collect
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$filter$1$1 debug n=collector,$completion,$this$unsafeTransform_u24lambda_u240
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$filter$1$1 debug s=L$0,L$1,L$2
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$filter$1$1 debug v=2
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$filter$1$1 extends kotlin/coroutines/jvm/internal/ContinuationImpl
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$filter$1$1 field L$0 Ljava/lang/Object; 0x0
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$filter$1$1 field L$1 Ljava/lang/Object; 0x0
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$filter$1$1 field L$2 Ljava/lang/Object; 0x0
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$filter$1$1 field label I 0x0
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$filter$1$1 field result Ljava/lang/Object; 0x1000
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$filter$1$1 field this$0 LStdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$filter$1; 0x1010
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$filter$1$2$1 debug c=StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$filter$1$2
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$filter$1$2$1 debug f=stdlibCoroutinesFlow.kt
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$filter$1$2$1 debug i=0,0,0,0
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$filter$1$2$1 debug l=219
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$filter$1$2$1 debug m=emit
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$filter$1$2$1 debug n=value,$completion,value,$this$filter_u24lambda_u240
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$filter$1$2$1 debug s=L$0,L$1,L$2,L$3
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$filter$1$2$1 debug v=2
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$filter$1$2$1 extends kotlin/coroutines/jvm/internal/ContinuationImpl
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$filter$1$2$1 field L$0 Ljava/lang/Object; 0x0
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$filter$1$2$1 field L$1 Ljava/lang/Object; 0x0
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$filter$1$2$1 field L$2 Ljava/lang/Object; 0x0
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$filter$1$2$1 field L$3 Ljava/lang/Object; 0x0
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$filter$1$2$1 field label I 0x0
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$filter$1$2$1 field result Ljava/lang/Object; 0x1000
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$filter$1$2$1 field this$0 LStdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$filter$1$2; 0x1010
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$1$1 debug c=StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$1
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$1$1 debug f=stdlibCoroutinesFlow.kt
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$1$1 debug i=0,0,0
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$1$1 debug l=112
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$1$1 debug m=collect
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$1$1 debug n=collector,$completion,$this$unsafeTransform_u24lambda_u240
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$1$1 debug s=L$0,L$1,L$2
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$1$1 debug v=2
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$1$1 extends kotlin/coroutines/jvm/internal/ContinuationImpl
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$1$1 field L$0 Ljava/lang/Object; 0x0
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$1$1 field L$1 Ljava/lang/Object; 0x0
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$1$1 field L$2 Ljava/lang/Object; 0x0
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$1$1 field label I 0x0
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$1$1 field result Ljava/lang/Object; 0x1000
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$1$1 field this$0 LStdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$1; 0x1010
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$1$2$1 debug c=StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$1$2
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$1$2$1 debug f=stdlibCoroutinesFlow.kt
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$1$2$1 debug i=0,0,0,0
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$1$2$1 debug l=219
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$1$2$1 debug m=emit
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$1$2$1 debug n=value,$completion,value,$this$map_u24lambda_u245
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$1$2$1 debug s=L$0,L$1,L$2,L$3
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$1$2$1 debug v=2
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$1$2$1 extends kotlin/coroutines/jvm/internal/ContinuationImpl
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$1$2$1 field L$0 Ljava/lang/Object; 0x0
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$1$2$1 field L$1 Ljava/lang/Object; 0x0
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$1$2$1 field L$2 Ljava/lang/Object; 0x0
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$1$2$1 field L$3 Ljava/lang/Object; 0x0
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$1$2$1 field label I 0x0
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$1$2$1 field result Ljava/lang/Object; 0x1000
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$1$2$1 field this$0 LStdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$1$2; 0x1010
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$2$1 debug c=StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$2
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$2$1 debug f=stdlibCoroutinesFlow.kt
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$2$1 debug i=0,0,0
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$2$1 debug l=112
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$2$1 debug m=collect
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$2$1 debug n=collector,$completion,$this$unsafeTransform_u24lambda_u240
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$2$1 debug s=L$0,L$1,L$2
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$2$1 debug v=2
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$2$1 extends kotlin/coroutines/jvm/internal/ContinuationImpl
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$2$1 field L$0 Ljava/lang/Object; 0x0
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$2$1 field L$1 Ljava/lang/Object; 0x0
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$2$1 field L$2 Ljava/lang/Object; 0x0
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$2$1 field label I 0x0
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$2$1 field result Ljava/lang/Object; 0x1000
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$2$1 field this$0 LStdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$2; 0x1010
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$2$2$1 debug c=StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$2$2
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$2$2$1 debug f=stdlibCoroutinesFlow.kt
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$2$2$1 debug i=0,0,0,0
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$2$2$1 debug l=219
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$2$2$1 debug m=emit
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$2$2$1 debug n=value,$completion,value,$this$map_u24lambda_u245
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$2$2$1 debug s=L$0,L$1,L$2,L$3
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$2$2$1 debug v=2
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$2$2$1 extends kotlin/coroutines/jvm/internal/ContinuationImpl
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$2$2$1 field L$0 Ljava/lang/Object; 0x0
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$2$2$1 field L$1 Ljava/lang/Object; 0x0
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$2$2$1 field L$2 Ljava/lang/Object; 0x0
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$2$2$1 field L$3 Ljava/lang/Object; 0x0
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$2$2$1 field label I 0x0
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$2$2$1 field result Ljava/lang/Object; 0x1000
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$2$2$1 field this$0 LStdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$2$2; 0x1010
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$3$1 debug c=StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$3
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$3$1 debug f=stdlibCoroutinesFlow.kt
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$3$1 debug i=0,0,0
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$3$1 debug l=112
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$3$1 debug m=collect
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$3$1 debug n=collector,$completion,$this$unsafeTransform_u24lambda_u240
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$3$1 debug s=L$0,L$1,L$2
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$3$1 debug v=2
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$3$1 extends kotlin/coroutines/jvm/internal/ContinuationImpl
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$3$1 field L$0 Ljava/lang/Object; 0x0
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$3$1 field L$1 Ljava/lang/Object; 0x0
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$3$1 field L$2 Ljava/lang/Object; 0x0
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$3$1 field label I 0x0
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$3$1 field result Ljava/lang/Object; 0x1000
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$3$1 field this$0 LStdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$3; 0x1010
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$3$2$1 debug c=StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$3$2
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$3$2$1 debug f=stdlibCoroutinesFlow.kt
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$3$2$1 debug i=0,0,0,0
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$3$2$1 debug l=219
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$3$2$1 debug m=emit
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$3$2$1 debug n=value,$completion,value,$this$map_u24lambda_u245
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$3$2$1 debug s=L$0,L$1,L$2,L$3
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$3$2$1 debug v=2
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$3$2$1 extends kotlin/coroutines/jvm/internal/ContinuationImpl
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$3$2$1 field L$0 Ljava/lang/Object; 0x0
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$3$2$1 field L$1 Ljava/lang/Object; 0x0
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$3$2$1 field L$2 Ljava/lang/Object; 0x0
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$3$2$1 field L$3 Ljava/lang/Object; 0x0
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$3$2$1 field label I 0x0
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$3$2$1 field result Ljava/lang/Object; 0x1000
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$3$2$1 field this$0 LStdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$map$3$2; 0x1010
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$transform$1 debug c=StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$transform$1
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$transform$1 debug f=stdlibCoroutinesFlow.kt
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$transform$1 debug i=0
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$transform$1 debug l=36
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$transform$1 debug m=invokeSuspend
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$transform$1 debug n=$this$flow
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$transform$1 debug s=L$0
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$transform$1 debug v=2
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$transform$1 extends kotlin/coroutines/jvm/internal/SuspendLambda
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$transform$1 field $this_transform Lkotlinx/coroutines/flow/Flow; 0x1010
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$transform$1 field L$0 Ljava/lang/Object; 0x1002
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$transform$1 field label I 0x0
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$transform$1$1$1 debug c=StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$transform$1$1
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$transform$1$1$1 debug f=stdlibCoroutinesFlow.kt
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$transform$1$1$1 debug i=0,0,0,0,1,1,1,1
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$transform$1$1$1 debug l=219,220
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$transform$1$1$1 debug m=emit
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$transform$1$1$1 debug n=value,$completion,$this$invokeSuspend_u24lambda_u245,v,value,$completion,$this$invokeSuspend_u24lambda_u245,v
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$transform$1$1$1 debug s=L$0,L$1,L$2,I$0,L$0,L$1,L$2,I$0
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$transform$1$1$1 debug v=2
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$transform$1$1$1 extends kotlin/coroutines/jvm/internal/ContinuationImpl
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$transform$1$1$1 field I$0 I 0x0
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$transform$1$1$1 field L$0 Ljava/lang/Object; 0x0
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$transform$1$1$1 field L$1 Ljava/lang/Object; 0x0
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$transform$1$1$1 field L$2 Ljava/lang/Object; 0x0
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$transform$1$1$1 field label I 0x0
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$transform$1$1$1 field result Ljava/lang/Object; 0x1000
+- StdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$transform$1$1$1 field this$0 LStdlibCoroutinesFlowKt$main$1$invokeSuspend$$inlined$transform$1$1; 0x1010
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$1$1 debug c=StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$1
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$1$1 debug f=stdlibCoroutinesSuspendRefs.kt
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$1$1 debug i=0,0,0
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$1$1 debug l=112
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$1$1 debug m=collect
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$1$1 debug n=collector,$completion,$this$unsafeTransform_u24lambda_u240
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$1$1 debug s=L$0,L$1,L$2
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$1$1 debug v=2
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$1$1 extends kotlin/coroutines/jvm/internal/ContinuationImpl
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$1$1 field L$0 Ljava/lang/Object; 0x0
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$1$1 field L$1 Ljava/lang/Object; 0x0
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$1$1 field L$2 Ljava/lang/Object; 0x0
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$1$1 field label I 0x0
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$1$1 field result Ljava/lang/Object; 0x1000
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$1$1 field this$0 LStdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$1; 0x1010
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$1$2$1 debug c=StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$1$2
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$1$2$1 debug f=stdlibCoroutinesSuspendRefs.kt
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$1$2$1 debug i=0,0,0,0
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$1$2$1 debug l=219
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$1$2$1 debug m=emit
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$1$2$1 debug n=value,$completion,value,$this$map_u24lambda_u245
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$1$2$1 debug s=L$0,L$1,L$2,L$3
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$1$2$1 debug v=2
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$1$2$1 extends kotlin/coroutines/jvm/internal/ContinuationImpl
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$1$2$1 field L$0 Ljava/lang/Object; 0x0
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$1$2$1 field L$1 Ljava/lang/Object; 0x0
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$1$2$1 field L$2 Ljava/lang/Object; 0x0
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$1$2$1 field L$3 Ljava/lang/Object; 0x0
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$1$2$1 field label I 0x0
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$1$2$1 field result Ljava/lang/Object; 0x1000
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$1$2$1 field this$0 LStdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$1$2; 0x1010
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$2$1 debug c=StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$2
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$2$1 debug f=stdlibCoroutinesSuspendRefs.kt
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$2$1 debug i=0,0,0
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$2$1 debug l=112
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$2$1 debug m=collect
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$2$1 debug n=collector,$completion,$this$unsafeTransform_u24lambda_u240
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$2$1 debug s=L$0,L$1,L$2
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$2$1 debug v=2
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$2$1 extends kotlin/coroutines/jvm/internal/ContinuationImpl
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$2$1 field L$0 Ljava/lang/Object; 0x0
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$2$1 field L$1 Ljava/lang/Object; 0x0
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$2$1 field L$2 Ljava/lang/Object; 0x0
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$2$1 field label I 0x0
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$2$1 field result Ljava/lang/Object; 0x1000
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$2$1 field this$0 LStdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$2; 0x1010
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$2$2$1 debug c=StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$2$2
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$2$2$1 debug f=stdlibCoroutinesSuspendRefs.kt
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$2$2$1 debug i=0,0,0,0,0,0,1,1,1,1
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$2$2$1 debug l=220,219
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$2$2$1 debug m=emit
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$2$2$1 debug n=value,$completion,value,$this$map_u24lambda_u245,$completion,p0,value,$completion,value,$this$map_u24lambda_u245
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$2$2$1 debug s=L$0,L$1,L$2,L$3,L$5,I$0,L$0,L$1,L$2,L$3
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$2$2$1 debug v=2
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$2$2$1 extends kotlin/coroutines/jvm/internal/ContinuationImpl
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$2$2$1 field I$0 I 0x0
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$2$2$1 field L$0 Ljava/lang/Object; 0x0
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$2$2$1 field L$1 Ljava/lang/Object; 0x0
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$2$2$1 field L$2 Ljava/lang/Object; 0x0
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$2$2$1 field L$3 Ljava/lang/Object; 0x0
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$2$2$1 field L$4 Ljava/lang/Object; 0x0
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$2$2$1 field L$5 Ljava/lang/Object; 0x0
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$2$2$1 field label I 0x0
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$2$2$1 field result Ljava/lang/Object; 0x1000
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$2$2$1 field this$0 LStdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$2$2; 0x1010
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$3$1 debug c=StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$3
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$3$1 debug f=stdlibCoroutinesSuspendRefs.kt
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$3$1 debug i=0,0,0
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$3$1 debug l=112
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$3$1 debug m=collect
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$3$1 debug n=collector,$completion,$this$unsafeTransform_u24lambda_u240
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$3$1 debug s=L$0,L$1,L$2
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$3$1 debug v=2
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$3$1 extends kotlin/coroutines/jvm/internal/ContinuationImpl
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$3$1 field L$0 Ljava/lang/Object; 0x0
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$3$1 field L$1 Ljava/lang/Object; 0x0
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$3$1 field L$2 Ljava/lang/Object; 0x0
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$3$1 field label I 0x0
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$3$1 field result Ljava/lang/Object; 0x1000
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$3$1 field this$0 LStdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$3; 0x1010
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$3$2$1 debug c=StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$3$2
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$3$2$1 debug f=stdlibCoroutinesSuspendRefs.kt
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$3$2$1 debug i=0,0,0,0
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$3$2$1 debug l=219
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$3$2$1 debug m=emit
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$3$2$1 debug n=value,$completion,value,$this$map_u24lambda_u245
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$3$2$1 debug s=L$0,L$1,L$2,L$3
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$3$2$1 debug v=2
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$3$2$1 extends kotlin/coroutines/jvm/internal/ContinuationImpl
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$3$2$1 field L$0 Ljava/lang/Object; 0x0
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$3$2$1 field L$1 Ljava/lang/Object; 0x0
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$3$2$1 field L$2 Ljava/lang/Object; 0x0
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$3$2$1 field L$3 Ljava/lang/Object; 0x0
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$3$2$1 field label I 0x0
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$3$2$1 field result Ljava/lang/Object; 0x1000
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$3$2$1 field this$0 LStdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$3$2; 0x1010
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$4$1 debug c=StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$4
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$4$1 debug f=stdlibCoroutinesSuspendRefs.kt
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$4$1 debug i=0,0,0
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$4$1 debug l=112
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$4$1 debug m=collect
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$4$1 debug n=collector,$completion,$this$unsafeTransform_u24lambda_u240
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$4$1 debug s=L$0,L$1,L$2
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$4$1 debug v=2
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$4$1 extends kotlin/coroutines/jvm/internal/ContinuationImpl
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$4$1 field L$0 Ljava/lang/Object; 0x0
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$4$1 field L$1 Ljava/lang/Object; 0x0
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$4$1 field L$2 Ljava/lang/Object; 0x0
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$4$1 field label I 0x0
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$4$1 field result Ljava/lang/Object; 0x1000
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$4$1 field this$0 LStdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$4; 0x1010
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$4$2$1 debug c=StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$4$2
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$4$2$1 debug f=stdlibCoroutinesSuspendRefs.kt
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$4$2$1 debug i=0,0,0,0
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$4$2$1 debug l=219
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$4$2$1 debug m=emit
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$4$2$1 debug n=value,$completion,value,$this$map_u24lambda_u245
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$4$2$1 debug s=L$0,L$1,L$2,L$3
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$4$2$1 debug v=2
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$4$2$1 extends kotlin/coroutines/jvm/internal/ContinuationImpl
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$4$2$1 field L$0 Ljava/lang/Object; 0x0
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$4$2$1 field L$1 Ljava/lang/Object; 0x0
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$4$2$1 field L$2 Ljava/lang/Object; 0x0
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$4$2$1 field L$3 Ljava/lang/Object; 0x0
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$4$2$1 field label I 0x0
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$4$2$1 field result Ljava/lang/Object; 0x1000
+- StdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$4$2$1 field this$0 LStdlibCoroutinesSuspendRefsKt$main$1$invokeSuspend$$inlined$map$4$2; 0x1010
+- StdlibCoroutinesSyncKt$main$1$jobs$1$1 debug c=StdlibCoroutinesSyncKt$main$1$jobs$1$1
+- StdlibCoroutinesSyncKt$main$1$jobs$1$1 debug f=stdlibCoroutinesSync.kt
+- StdlibCoroutinesSyncKt$main$1$jobs$1$1 debug i=
+- StdlibCoroutinesSyncKt$main$1$jobs$1$1 debug l=28
+- StdlibCoroutinesSyncKt$main$1$jobs$1$1 debug m=invokeSuspend
+- StdlibCoroutinesSyncKt$main$1$jobs$1$1 debug n=
+- StdlibCoroutinesSyncKt$main$1$jobs$1$1 debug s=
+- StdlibCoroutinesSyncKt$main$1$jobs$1$1 debug v=2
+- StdlibCoroutinesSyncKt$main$1$jobs$1$1 extends kotlin/coroutines/jvm/internal/SuspendLambda
+- StdlibCoroutinesSyncKt$main$1$jobs$1$1 field $account LAccount; 0x1010
+- StdlibCoroutinesSyncKt$main$1$jobs$1$1 field $i I 0x1010
+- StdlibCoroutinesSyncKt$main$1$jobs$1$1 field label I 0x0
+- StdlibCoroutinesSyncKt$main$1$workers$1$1 debug c=StdlibCoroutinesSyncKt$main$1$workers$1$1
+- StdlibCoroutinesSyncKt$main$1$workers$1$1 debug f=stdlibCoroutinesSync.kt
+- StdlibCoroutinesSyncKt$main$1$workers$1$1 debug i=0,1
+- StdlibCoroutinesSyncKt$main$1$workers$1$1 debug l=73,46
+- StdlibCoroutinesSyncKt$main$1$workers$1$1 debug m=invokeSuspend
+- StdlibCoroutinesSyncKt$main$1$workers$1$1 debug n=$this$withPermit$iv,$this$withPermit$iv
+- StdlibCoroutinesSyncKt$main$1$workers$1$1 debug s=L$0,L$0
+- StdlibCoroutinesSyncKt$main$1$workers$1$1 debug v=2
+- StdlibCoroutinesSyncKt$main$1$workers$1$1 extends kotlin/coroutines/jvm/internal/SuspendLambda
+- StdlibCoroutinesSyncKt$main$1$workers$1$1 field $sem Lkotlinx/coroutines/sync/Semaphore; 0x1010
+- StdlibCoroutinesSyncKt$main$1$workers$1$1 field L$0 Ljava/lang/Object; 0x0
+- StdlibCoroutinesSyncKt$main$1$workers$1$1 field L$1 Ljava/lang/Object; 0x0
+- StdlibCoroutinesSyncKt$main$1$workers$1$1 field L$2 Ljava/lang/Object; 0x0
+- StdlibCoroutinesSyncKt$main$1$workers$1$1 field label I 0x0
+
+# A var that an inlined lambda uses: kotlinc keeps it in a Ref.
++ StdlibSequencesKt$main$doubling$1 debug s=L$0,I$0,I$3
++ StdlibSequencesKt$main$doubling$1 field I$3 I 0x0
+- StdlibSequencesKt$main$doubling$1 debug s=L$0,L$1,I$2
++ StdlibSequencesKt$primes$1 debug s=L$0,L$1,I$0
++ StdlibSequencesKt$primes$1 field I$0 I 0x0
++ StdlibSequencesKt$primes$1 field I$1 I 0x0
+- StdlibSequencesKt$primes$1 debug s=L$0,L$1,L$2
+
+# Temporaries of kc's code that kotlinc's doesn't have, which are on the
+# operand stack when a call suspends: the receiver of a safe call
+# (left?.let), and the nested StringBuilders of string concatenation.
++ Derived$greet$1 field L$3 Ljava/lang/Object; 0x0
++ StdlibSuspendKt$stack$1 field L$1 Ljava/lang/Object; 0x0
++ StdlibSuspendMembersKt$main$1 field L$3 Ljava/lang/Object; 0x0
++ Tree$walk$1 debug s=L$0,L$3,L$0,L$0,L$3
++ Tree$walk$1 field L$2 Ljava/lang/Object; 0x0
++ Tree$walk$1 field L$3 Ljava/lang/Object; 0x0
+- Tree$walk$1 debug s=L$0,L$1,L$0,L$0,L$1
+
+# Inlined functions: kotlinc names the locals of the copies of inline
+# functions (v$iv, element$iv) and saves them; kc's inliner leaves them
+# unnamed, and saves those that are live. The names of a few of the
+# classes in inlined lambdas differ for the same reason.
++ Account$deposit$1 debug i=0,1,1
++ Account$deposit$1 debug l=10,12
++ Account$deposit$1 debug n=n,n,b
++ Account$deposit$1 debug s=I$0,I$0,I$2
++ Account$deposit$1 field I$2 I 0x0
++ Account$deposit$1 field L$1 Ljava/lang/Object; 0x0
++ Account$deposit$1 field L$2 Ljava/lang/Object; 0x0
++ Account$deposit$1 field L$3 Ljava/lang/Object; 0x0
++ StdlibCoroutinesBasicsKt$main$1$cancelled$1 field L$0 Ljava/lang/Object; 0x0
++ StdlibCoroutinesChannelsKt$main$1 debug i=0,0,1,1,1,1,2,2,2,2,2,3,3,3,3,3,4,4,4,4,4,5,5,5,5,5,6,6,6,6,6,6,6,6,7,7,7,7,7,7,7,7,8,8,8,8,8,8,8,8,8,8,8,9,9,9,9,9,9,9,9,9,9
++ StdlibCoroutinesChannelsKt$main$1 debug n=$this$runBlocking,ch,$this$runBlocking,ch,sq,total,$this$runBlocking,ch,sq,buffered,total,$this$runBlocking,ch,sq,buffered,total,$this$runBlocking,ch,sq,buffered,total,$this$runBlocking,ch,sq,buffered,total,$this$runBlocking,ch,sq,buffered,results,workers,it,total,$this$runBlocking,ch,sq,buffered,results,workers,got,total,$this$runBlocking,ch,sq,buffered,results,workers,got,rendezvous,consumer,total,it,$this$runBlocking,ch,sq,buffered,results,workers,got,rendezvous,consumer,total
++ StdlibCoroutinesChannelsKt$main$1 debug s=L$0,L$1,L$0,L$1,L$2,I$0,L$0,L$1,L$2,L$3,I$0,L$0,L$1,L$2,L$3,I$0,L$0,L$1,L$2,L$3,I$0,L$0,L$1,L$2,L$3,I$0,L$0,L$1,L$2,L$3,L$4,L$5,L$10,I$0,L$0,L$1,L$2,L$3,L$4,L$5,L$6,I$0,L$0,L$1,L$2,L$3,L$4,L$5,L$6,L$7,L$8,I$0,I$3,L$0,L$1,L$2,L$3,L$4,L$5,L$6,L$7,L$8,I$0
++ StdlibCoroutinesChannelsKt$main$1 field L$10 Ljava/lang/Object; 0x0
++ StdlibCoroutinesChannelsKt$main$1$consumer$1 debug s=I$0,I$3
++ StdlibCoroutinesChannelsKt$main$1$consumer$1 field I$4 I 0x0
++ StdlibCoroutinesFlowKt$main$1 debug i=3,3,4,4,5,5,6,6,7,7,7,8,8,8,8,8
++ StdlibCoroutinesFlowKt$main$1 debug l=18,19,20,23,25,26,27,32,38
++ StdlibCoroutinesFlowKt$main$1 debug n=doubled,seen,doubled,seen,doubled,seen,doubled,seen,doubled,seen,state,doubled,seen,state,transformed,last
++ StdlibCoroutinesFlowKt$main$1 debug s=L$0,L$1,L$0,L$1,L$0,L$1,L$0,L$1,L$0,L$1,L$2,L$0,L$1,L$2,L$3,L$4
++ StdlibCoroutinesFlowKt$main$1 field I$0 I 0x0
++ StdlibCoroutinesFlowKt$main$1 field I$1 I 0x0
++ StdlibCoroutinesFlowKt$main$1 field I$2 I 0x0
++ StdlibCoroutinesFlowKt$main$1 field I$3 I 0x0
++ StdlibCoroutinesFlowKt$main$1 field I$4 I 0x0
++ StdlibCoroutinesFlowKt$main$1 field I$5 I 0x0
++ StdlibCoroutinesFlowKt$main$1 field L$6 Ljava/lang/Object; 0x0
++ StdlibCoroutinesSyncKt$main$1 debug i=0,0,0,0,1,1,1,1,2,2,2,2,2,3,3,3,3,3,4,4,4,4,4,4,4,4,4,5,5,5,5,5,5,5,5,5,5,5,5
++ StdlibCoroutinesSyncKt$main$1 debug n=$this$runBlocking,account,jobs,it,$this$runBlocking,account,jobs,cancelled,$this$runBlocking,account,jobs,cancelled,pending,$this$runBlocking,account,jobs,cancelled,pending,$this$runBlocking,account,jobs,cancelled,pending,sem,maxRunning,running,workers,$this$runBlocking,account,jobs,cancelled,pending,sem,maxRunning,running,workers,order,a,b
++ StdlibCoroutinesSyncKt$main$1 debug s=L$0,L$1,L$2,L$7,L$0,L$1,L$2,L$3,L$0,L$1,L$2,L$3,L$4,L$0,L$1,L$2,L$3,L$4,L$0,L$1,L$2,L$3,L$4,L$5,L$6,L$7,L$8,L$0,L$1,L$2,L$3,L$4,L$5,L$6,L$7,L$8,L$9,L$10,L$11
++ StdlibCoroutinesSyncKt$main$1 field I$0 I 0x0
++ StdlibSuspendInlineKt$inlineSuspend$1 debug i=1,1,2,2,3,3,3
++ StdlibSuspendInlineKt$inlineSuspend$1 debug l=42,44,45,45
++ StdlibSuspendInlineKt$inlineSuspend$1 debug n=sb,a,sb,a,sb,a,i
++ StdlibSuspendInlineKt$inlineSuspend$1 debug s=L$0,I$0,L$0,I$0,L$0,I$0,I$3
++ StdlibSuspendInlineKt$lambdas$1 debug i=0,0,1,1,2,3,3,4,4,5,5,5,5,5
++ StdlibSuspendInlineKt$lambdas$1 debug n=sum,it,sum,it,sum,sum,it,sum,x,k,sum,x,y,v
++ StdlibSuspendInlineKt$lambdas$1 debug s=I$0,I$3,I$0,I$2,I$0,I$0,I$1,I$0,I$1,L$7,I$0,I$1,I$2,I$5
++ StdlibSuspendInlineKt$lambdas$1 field I$4 I 0x0
++ StdlibSuspendInlineKt$lambdas$1 field I$5 I 0x0
++ StdlibSuspendInlineKt$lambdas$1 field L$9 Ljava/lang/Object; 0x0
++ StdlibSuspendInlineKt$resources$1 debug s=L$3,L$0,L$4
++ StdlibSuspendInlineKt$resources$1 field L$3 Ljava/lang/Object; 0x0
++ StdlibSuspendInlineKt$resources$1 field L$4 Ljava/lang/Object; 0x0
++ StdlibSuspendMembersKt$take$1 debug s=L$0,L$1,I$0,I$3
++ StdlibSuspendMembersKt$take$1 field I$3 I 0x0
++ StdlibSuspendMembersKt$take$1 field L$3 Ljava/lang/Object; 0x0
+- Account$deposit$1 debug i=0,0,1,1,1
+- Account$deposit$1 debug l=74,12
+- Account$deposit$1 debug n=$this$withLock_u24default$iv,n,$this$withLock_u24default$iv,n,b
+- Account$deposit$1 debug s=L$0,I$0,L$0,I$0,I$1
+- StdlibCoroutinesChannelsKt$main$1 debug i=0,0,1,1,1,1,2,2,2,2,2,3,3,3,3,3,4,4,4,4,4,5,5,5,5,5,6,6,6,6,6,6,6,6,6,6,7,7,7,7,7,7,7,7,8,8,8,8,8,8,8,8,8,8,8,9,9,9,9,9,9,9,9,9,9
+- StdlibCoroutinesChannelsKt$main$1 debug n=$this$runBlocking,ch,$this$runBlocking,ch,sq,total,$this$runBlocking,ch,sq,buffered,total,$this$runBlocking,ch,sq,buffered,total,$this$runBlocking,ch,sq,buffered,total,$this$runBlocking,ch,sq,buffered,total,$this$runBlocking,ch,sq,buffered,results,workers,$this$forEach$iv,element$iv,it,total,$this$runBlocking,ch,sq,buffered,results,workers,got,total,$this$runBlocking,ch,sq,buffered,results,workers,got,rendezvous,consumer,total,it,$this$runBlocking,ch,sq,buffered,results,workers,got,rendezvous,consumer,total
+- StdlibCoroutinesChannelsKt$main$1 debug s=L$0,L$1,L$0,L$1,L$2,I$0,L$0,L$1,L$2,L$3,I$0,L$0,L$1,L$2,L$3,I$0,L$0,L$1,L$2,L$3,I$0,L$0,L$1,L$2,L$3,I$0,L$0,L$1,L$2,L$3,L$4,L$5,L$6,L$8,L$9,I$0,L$0,L$1,L$2,L$3,L$4,L$5,L$6,I$0,L$0,L$1,L$2,L$3,L$4,L$5,L$6,L$7,L$8,I$0,I$3,L$0,L$1,L$2,L$3,L$4,L$5,L$6,L$7,L$8,I$0
+- StdlibCoroutinesChannelsKt$main$1$consumer$1 debug s=L$0,I$2
+- StdlibCoroutinesChannelsKt$main$1$consumer$1 field L$1 Ljava/lang/Object; 0x0
+- StdlibCoroutinesChannelsKt$main$1$consumer$1 field L$2 Ljava/lang/Object; 0x0
+- StdlibCoroutinesFlowKt$main$1 debug i=3,3,4,4,5,5,6,6,7,7,7,8,8,8,8,8,8
+- StdlibCoroutinesFlowKt$main$1 debug l=18,19,20,23,25,26,27,35,71
+- StdlibCoroutinesFlowKt$main$1 debug n=doubled,seen,doubled,seen,doubled,seen,doubled,seen,doubled,seen,state,doubled,seen,state,transformed,last,$this$collectIndexed$iv
+- StdlibCoroutinesFlowKt$main$1 debug s=L$0,L$1,L$0,L$1,L$0,L$1,L$0,L$1,L$0,L$1,L$2,L$0,L$1,L$2,L$3,L$4,L$5
+- StdlibCoroutinesSyncKt$main$1 debug i=0,0,0,0,0,0,1,1,1,1,2,2,2,2,2,3,3,3,3,3,4,4,4,4,4,4,4,4,4,5,5,5,5,5,5,5,5,5,5,5,5
+- StdlibCoroutinesSyncKt$main$1 debug n=$this$runBlocking,account,jobs,$this$forEach$iv,element$iv,it,$this$runBlocking,account,jobs,cancelled,$this$runBlocking,account,jobs,cancelled,pending,$this$runBlocking,account,jobs,cancelled,pending,$this$runBlocking,account,jobs,cancelled,pending,sem,maxRunning,running,workers,$this$runBlocking,account,jobs,cancelled,pending,sem,maxRunning,running,workers,order,a,b
+- StdlibCoroutinesSyncKt$main$1 debug s=L$0,L$1,L$2,L$3,L$5,L$6,L$0,L$1,L$2,L$3,L$0,L$1,L$2,L$3,L$4,L$0,L$1,L$2,L$3,L$4,L$0,L$1,L$2,L$3,L$4,L$5,L$6,L$7,L$8,L$0,L$1,L$2,L$3,L$4,L$5,L$6,L$7,L$8,L$9,L$10,L$11
+- StdlibSuspendInlineKt$inlineSuspend$1 debug i=0,1,1,1,1,2,2,2,2,3,3,3,3,3
+- StdlibSuspendInlineKt$inlineSuspend$1 debug l=67,69,73,45
+- StdlibSuspendInlineKt$inlineSuspend$1 debug n=v$iv,sb,a,n$iv,i$iv,sb,a,n$iv,i$iv,sb,a,n$iv,i$iv,i
+- StdlibSuspendInlineKt$inlineSuspend$1 debug s=L$0,L$0,I$0,I$1,I$2,L$0,I$0,I$1,I$2,L$0,I$0,I$1,I$2,I$3
+- StdlibSuspendInlineKt$lambdas$1 debug i=0,0,1,1,1,1,2,3,3,4,4,4,5,5,5,5,5,5,5,5,5
+- StdlibSuspendInlineKt$lambdas$1 debug n=sum,it,sum,$this$forEach$iv,element$iv,it,sum,sum,it,sum,name$iv,x,sum,$this$map$iv,$this$mapTo$iv$iv,destination$iv$iv,item$iv$iv,k,x,y,v
+- StdlibSuspendInlineKt$lambdas$1 debug s=L$0,I$2,L$0,L$1,L$3,I$0,L$0,L$0,I$0,L$0,L$1,I$0,L$0,L$1,L$2,L$3,L$5,L$6,I$0,I$1,I$2
+- StdlibSuspendInlineKt$resources$1 debug s=L$1,L$0,L$2
+- StdlibSuspendMembersKt$take$1 debug s=L$0,L$1,I$0,I$2
++ StdlibCoroutinesTurbineKt$race$2 debug c=StdlibCoroutinesTurbineKt$race$2
++ StdlibCoroutinesTurbineKt$race$2 debug f=stdlibCoroutinesTurbine.kt
++ StdlibCoroutinesTurbineKt$race$2 debug i=
++ StdlibCoroutinesTurbineKt$race$2 debug l=
++ StdlibCoroutinesTurbineKt$race$2 debug m=invokeSuspend
++ StdlibCoroutinesTurbineKt$race$2 debug n=
++ StdlibCoroutinesTurbineKt$race$2 debug s=
++ StdlibCoroutinesTurbineKt$race$2 debug v=2
++ StdlibCoroutinesTurbineKt$race$2 extends kotlin/coroutines/jvm/internal/SuspendLambda
++ StdlibCoroutinesTurbineKt$race$2 field I$0 I 0x1000
++ StdlibCoroutinesTurbineKt$race$2 field label I 0x0
++ StdlibCoroutinesTurbineKt$race$3 debug c=StdlibCoroutinesTurbineKt$race$3
++ StdlibCoroutinesTurbineKt$race$3 debug f=stdlibCoroutinesTurbine.kt
++ StdlibCoroutinesTurbineKt$race$3 debug i=
++ StdlibCoroutinesTurbineKt$race$3 debug l=
++ StdlibCoroutinesTurbineKt$race$3 debug m=invokeSuspend
++ StdlibCoroutinesTurbineKt$race$3 debug n=
++ StdlibCoroutinesTurbineKt$race$3 debug s=
++ StdlibCoroutinesTurbineKt$race$3 debug v=2
++ StdlibCoroutinesTurbineKt$race$3 extends kotlin/coroutines/jvm/internal/SuspendLambda
++ StdlibCoroutinesTurbineKt$race$3 field label I 0x0
+- StdlibCoroutinesTurbineKt$race$2$1 debug c=StdlibCoroutinesTurbineKt$race$2$1
+- StdlibCoroutinesTurbineKt$race$2$1 debug f=stdlibCoroutinesTurbine.kt
+- StdlibCoroutinesTurbineKt$race$2$1 debug i=
+- StdlibCoroutinesTurbineKt$race$2$1 debug l=
+- StdlibCoroutinesTurbineKt$race$2$1 debug m=invokeSuspend
+- StdlibCoroutinesTurbineKt$race$2$1 debug n=
+- StdlibCoroutinesTurbineKt$race$2$1 debug s=
+- StdlibCoroutinesTurbineKt$race$2$1 debug v=2
+- StdlibCoroutinesTurbineKt$race$2$1 extends kotlin/coroutines/jvm/internal/SuspendLambda
+- StdlibCoroutinesTurbineKt$race$2$1 field I$0 I 0x1000
+- StdlibCoroutinesTurbineKt$race$2$1 field label I 0x0
+- StdlibCoroutinesTurbineKt$race$2$2 debug c=StdlibCoroutinesTurbineKt$race$2$2
+- StdlibCoroutinesTurbineKt$race$2$2 debug f=stdlibCoroutinesTurbine.kt
+- StdlibCoroutinesTurbineKt$race$2$2 debug i=
+- StdlibCoroutinesTurbineKt$race$2$2 debug l=
+- StdlibCoroutinesTurbineKt$race$2$2 debug m=invokeSuspend
+- StdlibCoroutinesTurbineKt$race$2$2 debug n=
+- StdlibCoroutinesTurbineKt$race$2$2 debug s=
+- StdlibCoroutinesTurbineKt$race$2$2 debug v=2
+- StdlibCoroutinesTurbineKt$race$2$2 extends kotlin/coroutines/jvm/internal/SuspendLambda
+- StdlibCoroutinesTurbineKt$race$2$2 field label I 0x0
+
+# A function whose only suspend calls are of inline suspend functions
+# without suspension points in their bodies, as named() calls
+# currentCoroutineContext(): kc gives it a state machine, which kotlinc
+# leaves out once the body is inlined.
++ StdlibCoroutinesTurbineKt$named$1 debug c=StdlibCoroutinesTurbineKt
++ StdlibCoroutinesTurbineKt$named$1 debug f=stdlibCoroutinesTurbine.kt
++ StdlibCoroutinesTurbineKt$named$1 debug i=
++ StdlibCoroutinesTurbineKt$named$1 debug l=
++ StdlibCoroutinesTurbineKt$named$1 debug m=named
++ StdlibCoroutinesTurbineKt$named$1 debug n=
++ StdlibCoroutinesTurbineKt$named$1 debug s=
++ StdlibCoroutinesTurbineKt$named$1 debug v=2
++ StdlibCoroutinesTurbineKt$named$1 extends kotlin/coroutines/jvm/internal/ContinuationImpl
++ StdlibCoroutinesTurbineKt$named$1 field label I 0x0
++ StdlibCoroutinesTurbineKt$named$1 field result Ljava/lang/Object; 0x1000
+
+# combine of more than five flows: kotlinc copies its Flow object with
+# the crossinline transform inlined, which gives collect a continuation
+# class ($1$1), so its copies of the lambdas collect creates are $1$2
+# and $1$3; kc keeps the transforms (and map's) objects, combine6$1 and
+# main$1$1 to $3, and its copies are $1$1 and $1$2. kc's main$1 also
+# saves the locals of the inlined combine calls across first().
++ StdlibCoroutinesCombineManyKt$combine6$$inlined$combine$1$3 debug f=Zip.kt
++ StdlibCoroutinesCombineManyKt$combine6$$inlined$combine$1$3 debug i=
++ StdlibCoroutinesCombineManyKt$combine6$$inlined$combine$1$3 debug l=234,234
++ StdlibCoroutinesCombineManyKt$combine6$$inlined$combine$1$3 debug n=
++ StdlibCoroutinesCombineManyKt$combine6$$inlined$combine$1$3 debug s=
++ StdlibCoroutinesCombineManyKt$combine6$$inlined$combine$1$3 field $transform Lkotlin/jvm/functions/Function2; 0x1010
++ StdlibCoroutinesCombineManyKt$combine6$1 debug c=StdlibCoroutinesCombineManyKt$combine6$1
++ StdlibCoroutinesCombineManyKt$combine6$1 debug f=stdlibCoroutinesCombineMany.kt
++ StdlibCoroutinesCombineManyKt$combine6$1 debug i=0
++ StdlibCoroutinesCombineManyKt$combine6$1 debug l=12
++ StdlibCoroutinesCombineManyKt$combine6$1 debug m=invokeSuspend
++ StdlibCoroutinesCombineManyKt$combine6$1 debug n=args
++ StdlibCoroutinesCombineManyKt$combine6$1 debug s=L$0
++ StdlibCoroutinesCombineManyKt$combine6$1 debug v=2
++ StdlibCoroutinesCombineManyKt$combine6$1 extends kotlin/coroutines/jvm/internal/SuspendLambda
++ StdlibCoroutinesCombineManyKt$combine6$1 field $transform Lkotlin/jvm/functions/Function7; 0x1010
++ StdlibCoroutinesCombineManyKt$combine6$1 field L$0 Ljava/lang/Object; 0x1000
++ StdlibCoroutinesCombineManyKt$combine6$1 field label I 0x0
++ StdlibCoroutinesCombineManyKt$main$1 field I$0 I 0x0
++ StdlibCoroutinesCombineManyKt$main$1 field I$1 I 0x0
++ StdlibCoroutinesCombineManyKt$main$1 field I$2 I 0x0
++ StdlibCoroutinesCombineManyKt$main$1 field I$3 I 0x0
++ StdlibCoroutinesCombineManyKt$main$1 field I$4 I 0x0
++ StdlibCoroutinesCombineManyKt$main$1 field L$2 Ljava/lang/Object; 0x0
++ StdlibCoroutinesCombineManyKt$main$1 field L$3 Ljava/lang/Object; 0x0
++ StdlibCoroutinesCombineManyKt$main$1 field L$4 Ljava/lang/Object; 0x0
++ StdlibCoroutinesCombineManyKt$main$1 field L$5 Ljava/lang/Object; 0x0
++ StdlibCoroutinesCombineManyKt$main$1 field L$6 Ljava/lang/Object; 0x0
++ StdlibCoroutinesCombineManyKt$main$1$1 debug c=StdlibCoroutinesCombineManyKt$main$1$1
++ StdlibCoroutinesCombineManyKt$main$1$1 debug f=stdlibCoroutinesCombineMany.kt
++ StdlibCoroutinesCombineManyKt$main$1$1 debug i=
++ StdlibCoroutinesCombineManyKt$main$1$1 debug l=
++ StdlibCoroutinesCombineManyKt$main$1$1 debug m=invokeSuspend
++ StdlibCoroutinesCombineManyKt$main$1$1 debug n=
++ StdlibCoroutinesCombineManyKt$main$1$1 debug s=
++ StdlibCoroutinesCombineManyKt$main$1$1 debug v=2
++ StdlibCoroutinesCombineManyKt$main$1$1 extends kotlin/coroutines/jvm/internal/SuspendLambda
++ StdlibCoroutinesCombineManyKt$main$1$1 field L$0 Ljava/lang/Object; 0x1000
++ StdlibCoroutinesCombineManyKt$main$1$1 field label I 0x0
++ StdlibCoroutinesCombineManyKt$main$1$2 debug c=StdlibCoroutinesCombineManyKt$main$1$2
++ StdlibCoroutinesCombineManyKt$main$1$2 debug f=stdlibCoroutinesCombineMany.kt
++ StdlibCoroutinesCombineManyKt$main$1$2 debug i=
++ StdlibCoroutinesCombineManyKt$main$1$2 debug l=
++ StdlibCoroutinesCombineManyKt$main$1$2 debug m=invokeSuspend
++ StdlibCoroutinesCombineManyKt$main$1$2 debug n=
++ StdlibCoroutinesCombineManyKt$main$1$2 debug s=
++ StdlibCoroutinesCombineManyKt$main$1$2 debug v=2
++ StdlibCoroutinesCombineManyKt$main$1$2 extends kotlin/coroutines/jvm/internal/SuspendLambda
++ StdlibCoroutinesCombineManyKt$main$1$2 field I$0 I 0x1000
++ StdlibCoroutinesCombineManyKt$main$1$2 field label I 0x0
++ StdlibCoroutinesCombineManyKt$main$1$3 debug c=StdlibCoroutinesCombineManyKt$main$1$3
++ StdlibCoroutinesCombineManyKt$main$1$3 debug f=stdlibCoroutinesCombineMany.kt
++ StdlibCoroutinesCombineManyKt$main$1$3 debug i=
++ StdlibCoroutinesCombineManyKt$main$1$3 debug l=
++ StdlibCoroutinesCombineManyKt$main$1$3 debug m=invokeSuspend
++ StdlibCoroutinesCombineManyKt$main$1$3 debug n=
++ StdlibCoroutinesCombineManyKt$main$1$3 debug s=
++ StdlibCoroutinesCombineManyKt$main$1$3 debug v=2
++ StdlibCoroutinesCombineManyKt$main$1$3 extends kotlin/coroutines/jvm/internal/SuspendLambda
++ StdlibCoroutinesCombineManyKt$main$1$3 field L$0 Ljava/lang/Object; 0x1000
++ StdlibCoroutinesCombineManyKt$main$1$3 field label I 0x0
++ StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$combine$1$3 debug f=Zip.kt
++ StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$combine$1$3 debug i=
++ StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$combine$1$3 debug l=288,288
++ StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$combine$1$3 debug n=
++ StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$combine$1$3 debug s=
++ StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$combine$1$3 field $transform Lkotlin/jvm/functions/Function2; 0x1010
++ StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$combine$2$3 debug f=Zip.kt
++ StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$combine$2$3 debug i=
++ StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$combine$2$3 debug l=234,234
++ StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$combine$2$3 debug n=
++ StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$combine$2$3 debug s=
++ StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$combine$2$3 field $transform Lkotlin/jvm/functions/Function2; 0x1010
+- StdlibCoroutinesCombineManyKt$combine6$$inlined$combine$1$1 debug c=StdlibCoroutinesCombineManyKt$combine6$$inlined$combine$1
+- StdlibCoroutinesCombineManyKt$combine6$$inlined$combine$1$1 debug f=stdlibCoroutinesCombineMany.kt
+- StdlibCoroutinesCombineManyKt$combine6$$inlined$combine$1$1 debug i=0,0,0
+- StdlibCoroutinesCombineManyKt$combine6$$inlined$combine$1$1 debug l=112
+- StdlibCoroutinesCombineManyKt$combine6$$inlined$combine$1$1 debug m=collect
+- StdlibCoroutinesCombineManyKt$combine6$$inlined$combine$1$1 debug n=collector,$completion,$this$combine_u24lambda_u249
+- StdlibCoroutinesCombineManyKt$combine6$$inlined$combine$1$1 debug s=L$0,L$1,L$2
+- StdlibCoroutinesCombineManyKt$combine6$$inlined$combine$1$1 debug v=2
+- StdlibCoroutinesCombineManyKt$combine6$$inlined$combine$1$1 field L$0 Ljava/lang/Object; 0x0
+- StdlibCoroutinesCombineManyKt$combine6$$inlined$combine$1$1 field L$1 Ljava/lang/Object; 0x0
+- StdlibCoroutinesCombineManyKt$combine6$$inlined$combine$1$1 field L$2 Ljava/lang/Object; 0x0
+- StdlibCoroutinesCombineManyKt$combine6$$inlined$combine$1$3 debug f=stdlibCoroutinesCombineMany.kt
+- StdlibCoroutinesCombineManyKt$combine6$$inlined$combine$1$3 debug i=0,0,0,0,1,1
+- StdlibCoroutinesCombineManyKt$combine6$$inlined$combine$1$3 debug l=329,234
+- StdlibCoroutinesCombineManyKt$combine6$$inlined$combine$1$3 debug n=$this$combineInternal,it,$completion,args,$this$combineInternal,it
+- StdlibCoroutinesCombineManyKt$combine6$$inlined$combine$1$3 debug s=L$0,L$1,L$3,L$4,L$0,L$1
+- StdlibCoroutinesCombineManyKt$combine6$$inlined$combine$1$3 debug v=2
+- StdlibCoroutinesCombineManyKt$combine6$$inlined$combine$1$3 field $transform$inlined Lkotlin/jvm/functions/Function7; 0x1010
+- StdlibCoroutinesCombineManyKt$combine6$$inlined$combine$1$3 field L$2 Ljava/lang/Object; 0x0
+- StdlibCoroutinesCombineManyKt$combine6$$inlined$combine$1$3 field L$3 Ljava/lang/Object; 0x0
+- StdlibCoroutinesCombineManyKt$combine6$$inlined$combine$1$3 field L$4 Ljava/lang/Object; 0x0
+- StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$combine$1$1 debug c=StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$combine$1
+- StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$combine$1$1 debug f=stdlibCoroutinesCombineMany.kt
+- StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$combine$1$1 debug i=0,0,0
+- StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$combine$1$1 debug l=112
+- StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$combine$1$1 debug m=collect
+- StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$combine$1$1 debug n=collector,$completion,$this$combine_u24lambda_u2411
+- StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$combine$1$1 debug s=L$0,L$1,L$2
+- StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$combine$1$1 debug v=2
+- StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$combine$1$1 field L$0 Ljava/lang/Object; 0x0
+- StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$combine$1$1 field L$1 Ljava/lang/Object; 0x0
+- StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$combine$1$1 field L$2 Ljava/lang/Object; 0x0
+- StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$combine$1$3 debug f=stdlibCoroutinesCombineMany.kt
+- StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$combine$1$3 debug i=0,0
+- StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$combine$1$3 debug l=288
+- StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$combine$1$3 debug n=$this$combineInternal,it
+- StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$combine$1$3 debug s=L$0,L$1
+- StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$combine$1$3 debug v=2
+- StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$combine$2$1 debug c=StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$combine$2
+- StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$combine$2$1 debug f=stdlibCoroutinesCombineMany.kt
+- StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$combine$2$1 debug i=0,0,0
+- StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$combine$2$1 debug l=112
+- StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$combine$2$1 debug m=collect
+- StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$combine$2$1 debug n=collector,$completion,$this$combine_u24lambda_u249
+- StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$combine$2$1 debug s=L$0,L$1,L$2
+- StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$combine$2$1 debug v=2
+- StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$combine$2$1 field L$0 Ljava/lang/Object; 0x0
+- StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$combine$2$1 field L$1 Ljava/lang/Object; 0x0
+- StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$combine$2$1 field L$2 Ljava/lang/Object; 0x0
+- StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$combine$2$3 debug f=stdlibCoroutinesCombineMany.kt
+- StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$combine$2$3 debug i=0,0
+- StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$combine$2$3 debug l=234
+- StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$combine$2$3 debug n=$this$combineInternal,it
+- StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$combine$2$3 debug s=L$0,L$1
+- StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$combine$2$3 debug v=2
+- StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$map$1$1 debug c=StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$map$1
+- StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$map$1$1 debug f=stdlibCoroutinesCombineMany.kt
+- StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$map$1$1 debug i=0,0,0
+- StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$map$1$1 debug l=112
+- StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$map$1$1 debug m=collect
+- StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$map$1$1 debug n=collector,$completion,$this$unsafeTransform_u24lambda_u240
+- StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$map$1$1 debug s=L$0,L$1,L$2
+- StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$map$1$1 debug v=2
+- StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$map$1$1 extends kotlin/coroutines/jvm/internal/ContinuationImpl
+- StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$map$1$1 field L$0 Ljava/lang/Object; 0x0
+- StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$map$1$1 field L$1 Ljava/lang/Object; 0x0
+- StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$map$1$1 field L$2 Ljava/lang/Object; 0x0
+- StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$map$1$1 field label I 0x0
+- StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$map$1$1 field result Ljava/lang/Object; 0x1000
+- StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$map$1$1 field this$0 LStdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$map$1; 0x1010
+- StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$map$1$2$1 debug c=StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$map$1$2
+- StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$map$1$2$1 debug f=stdlibCoroutinesCombineMany.kt
+- StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$map$1$2$1 debug i=0,0,0,0
+- StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$map$1$2$1 debug l=219
+- StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$map$1$2$1 debug m=emit
+- StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$map$1$2$1 debug n=value,$completion,value,$this$map_u24lambda_u245
+- StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$map$1$2$1 debug s=L$0,L$1,L$2,L$3
+- StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$map$1$2$1 debug v=2
+- StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$map$1$2$1 extends kotlin/coroutines/jvm/internal/ContinuationImpl
+- StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$map$1$2$1 field L$0 Ljava/lang/Object; 0x0
+- StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$map$1$2$1 field L$1 Ljava/lang/Object; 0x0
+- StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$map$1$2$1 field L$2 Ljava/lang/Object; 0x0
+- StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$map$1$2$1 field L$3 Ljava/lang/Object; 0x0
+- StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$map$1$2$1 field label I 0x0
+- StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$map$1$2$1 field result Ljava/lang/Object; 0x1000
+- StdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$map$1$2$1 field this$0 LStdlibCoroutinesCombineManyKt$main$1$invokeSuspend$$inlined$map$1$2; 0x1010
+
+# A callable reference to an inline function passed for a suspend
+# function type (map(String::uppercase)): kc makes it a SuspendLambda
+# class, main$1$4, whose body calls the function, where kotlinc inlines
+# the function into its copy of map's object. kc's main$1 also saves the
+# locals of the inlined map and onEach calls across collect() and
+# toList().
++ StdlibCoroutinesSuspendRefsKt$main$1 field I$1 I 0x0
++ StdlibCoroutinesSuspendRefsKt$main$1 field I$2 I 0x0
++ StdlibCoroutinesSuspendRefsKt$main$1$4 debug c=StdlibCoroutinesSuspendRefsKt$main$1$4
++ StdlibCoroutinesSuspendRefsKt$main$1$4 debug f=stdlibCoroutinesSuspendRefs.kt
++ StdlibCoroutinesSuspendRefsKt$main$1$4 debug i=
++ StdlibCoroutinesSuspendRefsKt$main$1$4 debug l=
++ StdlibCoroutinesSuspendRefsKt$main$1$4 debug m=invokeSuspend
++ StdlibCoroutinesSuspendRefsKt$main$1$4 debug n=
++ StdlibCoroutinesSuspendRefsKt$main$1$4 debug s=
++ StdlibCoroutinesSuspendRefsKt$main$1$4 debug v=2
++ StdlibCoroutinesSuspendRefsKt$main$1$4 extends kotlin/coroutines/jvm/internal/SuspendLambda
++ StdlibCoroutinesSuspendRefsKt$main$1$4 field L$0 Ljava/lang/Object; 0x1000
++ StdlibCoroutinesSuspendRefsKt$main$1$4 field label I 0x0
+
+# Builders whose types are inferred (stdlibCoroutinesBuilders.kt): kc
+# saves the locals of the inlined buildMap and suspendCancellableCoroutine
+# across the suspending calls they are in, and gives the latter's
+# suspension the line of the call, where kotlinc's is the inlined body's.
+# It also saves the subject of when (val m = ...) at the emit after the
+# when, after its last use. Its map { } after transformLatest { } is a
+# crossinline suspend lambda in an object, as above: summaries$3.
++ Repository$methods$1 field L$2 Ljava/lang/Object; 0x0
++ Repository$methods$1 field L$3 Ljava/lang/Object; 0x0
++ Repository$optional$1 debug i=0,0,1,1,2,2,2,3,3
++ Repository$optional$1 debug n=$this$flow,m,$this$flow,m,$this$flow,r,m,$this$flow,e
++ Repository$optional$1 debug s=L$0,L$1,L$0,L$1,L$0,L$1,L$2,L$0,L$1
++ Repository$optional$1 field L$2 Ljava/lang/Object; 0x0
++ Sources$update$1 field I$0 I 0x0
+- Repository$optional$1 debug i=0,0,1,1,2,2,3,3
+- Repository$optional$1 debug n=$this$flow,m,$this$flow,m,$this$flow,r,$this$flow,e
+- Repository$optional$1 debug s=L$0,L$1,L$0,L$1,L$0,L$1,L$0,L$1
++ Sources$update$1 debug l=129
++ StdlibCoroutinesBuildersKt$summaries$3 debug c=StdlibCoroutinesBuildersKt$summaries$3
++ StdlibCoroutinesBuildersKt$summaries$3 debug f=stdlibCoroutinesBuilders.kt
++ StdlibCoroutinesBuildersKt$summaries$3 debug i=
++ StdlibCoroutinesBuildersKt$summaries$3 debug l=
++ StdlibCoroutinesBuildersKt$summaries$3 debug m=invokeSuspend
++ StdlibCoroutinesBuildersKt$summaries$3 debug n=
++ StdlibCoroutinesBuildersKt$summaries$3 debug s=
++ StdlibCoroutinesBuildersKt$summaries$3 debug v=2
++ StdlibCoroutinesBuildersKt$summaries$3 extends kotlin/coroutines/jvm/internal/SuspendLambda
++ StdlibCoroutinesBuildersKt$summaries$3 field L$0 Ljava/lang/Object; 0x1000
++ StdlibCoroutinesBuildersKt$summaries$3 field label I 0x0
+- Sources$update$1 debug l=203
+- StdlibCoroutinesBuildersKt$summaries$$inlined$map$1$1 debug c=StdlibCoroutinesBuildersKt$summaries$$inlined$map$1
+- StdlibCoroutinesBuildersKt$summaries$$inlined$map$1$1 debug f=stdlibCoroutinesBuilders.kt
+- StdlibCoroutinesBuildersKt$summaries$$inlined$map$1$1 debug i=0,0,0
+- StdlibCoroutinesBuildersKt$summaries$$inlined$map$1$1 debug l=112
+- StdlibCoroutinesBuildersKt$summaries$$inlined$map$1$1 debug m=collect
+- StdlibCoroutinesBuildersKt$summaries$$inlined$map$1$1 debug n=collector,$completion,$this$unsafeTransform_u24lambda_u240
+- StdlibCoroutinesBuildersKt$summaries$$inlined$map$1$1 debug s=L$0,L$1,L$2
+- StdlibCoroutinesBuildersKt$summaries$$inlined$map$1$1 debug v=2
+- StdlibCoroutinesBuildersKt$summaries$$inlined$map$1$1 extends kotlin/coroutines/jvm/internal/ContinuationImpl
+- StdlibCoroutinesBuildersKt$summaries$$inlined$map$1$1 field L$0 Ljava/lang/Object; 0x0
+- StdlibCoroutinesBuildersKt$summaries$$inlined$map$1$1 field L$1 Ljava/lang/Object; 0x0
+- StdlibCoroutinesBuildersKt$summaries$$inlined$map$1$1 field L$2 Ljava/lang/Object; 0x0
+- StdlibCoroutinesBuildersKt$summaries$$inlined$map$1$1 field label I 0x0
+- StdlibCoroutinesBuildersKt$summaries$$inlined$map$1$1 field result Ljava/lang/Object; 0x1000
+- StdlibCoroutinesBuildersKt$summaries$$inlined$map$1$1 field this$0 LStdlibCoroutinesBuildersKt$summaries$$inlined$map$1; 0x1010
+- StdlibCoroutinesBuildersKt$summaries$$inlined$map$1$2$1 debug c=StdlibCoroutinesBuildersKt$summaries$$inlined$map$1$2
+- StdlibCoroutinesBuildersKt$summaries$$inlined$map$1$2$1 debug f=stdlibCoroutinesBuilders.kt
+- StdlibCoroutinesBuildersKt$summaries$$inlined$map$1$2$1 debug i=0,0,0,0
+- StdlibCoroutinesBuildersKt$summaries$$inlined$map$1$2$1 debug l=219
+- StdlibCoroutinesBuildersKt$summaries$$inlined$map$1$2$1 debug m=emit
+- StdlibCoroutinesBuildersKt$summaries$$inlined$map$1$2$1 debug n=value,$completion,value,$this$map_u24lambda_u245
+- StdlibCoroutinesBuildersKt$summaries$$inlined$map$1$2$1 debug s=L$0,L$1,L$2,L$3
+- StdlibCoroutinesBuildersKt$summaries$$inlined$map$1$2$1 debug v=2
+- StdlibCoroutinesBuildersKt$summaries$$inlined$map$1$2$1 extends kotlin/coroutines/jvm/internal/ContinuationImpl
+- StdlibCoroutinesBuildersKt$summaries$$inlined$map$1$2$1 field L$0 Ljava/lang/Object; 0x0
+- StdlibCoroutinesBuildersKt$summaries$$inlined$map$1$2$1 field L$1 Ljava/lang/Object; 0x0
+- StdlibCoroutinesBuildersKt$summaries$$inlined$map$1$2$1 field L$2 Ljava/lang/Object; 0x0
+- StdlibCoroutinesBuildersKt$summaries$$inlined$map$1$2$1 field L$3 Ljava/lang/Object; 0x0
+- StdlibCoroutinesBuildersKt$summaries$$inlined$map$1$2$1 field label I 0x0
+- StdlibCoroutinesBuildersKt$summaries$$inlined$map$1$2$1 field result Ljava/lang/Object; 0x1000
+- StdlibCoroutinesBuildersKt$summaries$$inlined$map$1$2$1 field this$0 LStdlibCoroutinesBuildersKt$summaries$$inlined$map$1$2; 0x1010
+
+# A crossinline lambda that an inline function invokes in the lambda of
+# suspendCoroutineUninterceptedOrReturn (stdlibSuspendSharedVars.kt's
+# parked): kc passes it as a function object, which own() saves across
+# the suspension, where kotlinc copies it into the intrinsic's lambda. The
+# suspension has the line of the call, as for suspendCancellableCoroutine
+# above.
++ StdlibSuspendSharedVarsKt$own$1 debug l=42
++ StdlibSuspendSharedVarsKt$own$1 field L$1 Ljava/lang/Object; 0x0
+- StdlibSuspendSharedVarsKt$own$1 debug l=69
+
+# Function values passed for suspend function types (stdlibSuspendConversion.kt):
+# kc converts each to a SuspendLambda class, main$1$1, main$2 to $7 and
+# main$8$1, that calls it, where kotlinc passes adapters that have no
+# continuation class. kc's main$1 and main$8 also save the inlined
+# let's locals across the calls they pass the conversions to.
++ StdlibSuspendConversionKt$main$1 field L$0 Ljava/lang/Object; 0x0
++ StdlibSuspendConversionKt$main$1 field L$1 Ljava/lang/Object; 0x0
++ StdlibSuspendConversionKt$main$1 field L$2 Ljava/lang/Object; 0x0
++ StdlibSuspendConversionKt$main$1$1 debug c=StdlibSuspendConversionKt$main$1$1
++ StdlibSuspendConversionKt$main$1$1 debug f=stdlibSuspendConversion.kt
++ StdlibSuspendConversionKt$main$1$1 debug i=
++ StdlibSuspendConversionKt$main$1$1 debug l=
++ StdlibSuspendConversionKt$main$1$1 debug m=invokeSuspend
++ StdlibSuspendConversionKt$main$1$1 debug n=
++ StdlibSuspendConversionKt$main$1$1 debug s=
++ StdlibSuspendConversionKt$main$1$1 debug v=2
++ StdlibSuspendConversionKt$main$1$1 extends kotlin/coroutines/jvm/internal/SuspendLambda
++ StdlibSuspendConversionKt$main$1$1 field $$f Lkotlin/jvm/functions/Function1; 0x1010
++ StdlibSuspendConversionKt$main$1$1 field L$0 Ljava/lang/Object; 0x1000
++ StdlibSuspendConversionKt$main$1$1 field label I 0x0
++ StdlibSuspendConversionKt$main$2 debug c=StdlibSuspendConversionKt$main$2
++ StdlibSuspendConversionKt$main$2 debug f=stdlibSuspendConversion.kt
++ StdlibSuspendConversionKt$main$2 debug i=
++ StdlibSuspendConversionKt$main$2 debug l=
++ StdlibSuspendConversionKt$main$2 debug m=invokeSuspend
++ StdlibSuspendConversionKt$main$2 debug n=
++ StdlibSuspendConversionKt$main$2 debug s=
++ StdlibSuspendConversionKt$main$2 debug v=2
++ StdlibSuspendConversionKt$main$2 extends kotlin/coroutines/jvm/internal/SuspendLambda
++ StdlibSuspendConversionKt$main$2 field $$f Lkotlin/jvm/functions/Function1; 0x1010
++ StdlibSuspendConversionKt$main$2 field I$0 I 0x1002
++ StdlibSuspendConversionKt$main$2 field label I 0x0
++ StdlibSuspendConversionKt$main$3 debug c=StdlibSuspendConversionKt$main$3
++ StdlibSuspendConversionKt$main$3 debug f=stdlibSuspendConversion.kt
++ StdlibSuspendConversionKt$main$3 debug i=
++ StdlibSuspendConversionKt$main$3 debug l=
++ StdlibSuspendConversionKt$main$3 debug m=invokeSuspend
++ StdlibSuspendConversionKt$main$3 debug n=
++ StdlibSuspendConversionKt$main$3 debug s=
++ StdlibSuspendConversionKt$main$3 debug v=2
++ StdlibSuspendConversionKt$main$3 extends kotlin/coroutines/jvm/internal/SuspendLambda
++ StdlibSuspendConversionKt$main$3 field $$f Lkotlin/jvm/functions/Function1; 0x1010
++ StdlibSuspendConversionKt$main$3 field I$0 I 0x1002
++ StdlibSuspendConversionKt$main$3 field label I 0x0
++ StdlibSuspendConversionKt$main$4 debug c=StdlibSuspendConversionKt$main$4
++ StdlibSuspendConversionKt$main$4 debug f=stdlibSuspendConversion.kt
++ StdlibSuspendConversionKt$main$4 debug i=
++ StdlibSuspendConversionKt$main$4 debug l=
++ StdlibSuspendConversionKt$main$4 debug m=invokeSuspend
++ StdlibSuspendConversionKt$main$4 debug n=
++ StdlibSuspendConversionKt$main$4 debug s=
++ StdlibSuspendConversionKt$main$4 debug v=2
++ StdlibSuspendConversionKt$main$4 extends kotlin/coroutines/jvm/internal/SuspendLambda
++ StdlibSuspendConversionKt$main$4 field $$f Lkotlin/jvm/functions/Function0; 0x1010
++ StdlibSuspendConversionKt$main$4 field label I 0x0
++ StdlibSuspendConversionKt$main$5 debug c=StdlibSuspendConversionKt$main$5
++ StdlibSuspendConversionKt$main$5 debug f=stdlibSuspendConversion.kt
++ StdlibSuspendConversionKt$main$5 debug i=
++ StdlibSuspendConversionKt$main$5 debug l=
++ StdlibSuspendConversionKt$main$5 debug m=invokeSuspend
++ StdlibSuspendConversionKt$main$5 debug n=
++ StdlibSuspendConversionKt$main$5 debug s=
++ StdlibSuspendConversionKt$main$5 debug v=2
++ StdlibSuspendConversionKt$main$5 extends kotlin/coroutines/jvm/internal/SuspendLambda
++ StdlibSuspendConversionKt$main$5 field $$f Lkotlin/jvm/functions/Function0; 0x1010
++ StdlibSuspendConversionKt$main$5 field label I 0x0
++ StdlibSuspendConversionKt$main$6 debug c=StdlibSuspendConversionKt$main$6
++ StdlibSuspendConversionKt$main$6 debug f=stdlibSuspendConversion.kt
++ StdlibSuspendConversionKt$main$6 debug i=
++ StdlibSuspendConversionKt$main$6 debug l=
++ StdlibSuspendConversionKt$main$6 debug m=invokeSuspend
++ StdlibSuspendConversionKt$main$6 debug n=
++ StdlibSuspendConversionKt$main$6 debug s=
++ StdlibSuspendConversionKt$main$6 debug v=2
++ StdlibSuspendConversionKt$main$6 extends kotlin/coroutines/jvm/internal/SuspendLambda
++ StdlibSuspendConversionKt$main$6 field $$f Lkotlin/jvm/functions/Function0; 0x1010
++ StdlibSuspendConversionKt$main$6 field label I 0x0
++ StdlibSuspendConversionKt$main$7 debug c=StdlibSuspendConversionKt$main$7
++ StdlibSuspendConversionKt$main$7 debug f=stdlibSuspendConversion.kt
++ StdlibSuspendConversionKt$main$7 debug i=
++ StdlibSuspendConversionKt$main$7 debug l=
++ StdlibSuspendConversionKt$main$7 debug m=invokeSuspend
++ StdlibSuspendConversionKt$main$7 debug n=
++ StdlibSuspendConversionKt$main$7 debug s=
++ StdlibSuspendConversionKt$main$7 debug v=2
++ StdlibSuspendConversionKt$main$7 extends kotlin/coroutines/jvm/internal/SuspendLambda
++ StdlibSuspendConversionKt$main$7 field $$f Lkotlin/jvm/functions/Function0; 0x1010
++ StdlibSuspendConversionKt$main$7 field label I 0x0
++ StdlibSuspendConversionKt$main$8 field L$0 Ljava/lang/Object; 0x0
++ StdlibSuspendConversionKt$main$8 field L$1 Ljava/lang/Object; 0x0
++ StdlibSuspendConversionKt$main$8 field L$2 Ljava/lang/Object; 0x0
++ StdlibSuspendConversionKt$main$8$1 debug c=StdlibSuspendConversionKt$main$8$1
++ StdlibSuspendConversionKt$main$8$1 debug f=stdlibSuspendConversion.kt
++ StdlibSuspendConversionKt$main$8$1 debug i=
++ StdlibSuspendConversionKt$main$8$1 debug l=
++ StdlibSuspendConversionKt$main$8$1 debug m=invokeSuspend
++ StdlibSuspendConversionKt$main$8$1 debug n=
++ StdlibSuspendConversionKt$main$8$1 debug s=
++ StdlibSuspendConversionKt$main$8$1 debug v=2
++ StdlibSuspendConversionKt$main$8$1 extends kotlin/coroutines/jvm/internal/SuspendLambda
++ StdlibSuspendConversionKt$main$8$1 field $$f LFns; 0x1010
++ StdlibSuspendConversionKt$main$8$1 field I$0 I 0x1000
++ StdlibSuspendConversionKt$main$8$1 field label I 0x0
+
+# A for loop over an array parameter (stdlibSuspendMainArgs.kt's args):
+# kotlinc iterates the parameter, kc a copy of it, which it saves too.
++ StdlibSuspendMainArgsKt$main$1 debug s=L$0,L$0,I$0,L$0,L$2,I$0
++ StdlibSuspendMainArgsKt$main$1 field L$2 Ljava/lang/Object; 0x0
+- StdlibSuspendMainArgsKt$main$1 debug s=L$0,L$0,I$0,L$0,L$1,I$0
+
+# A local suspend function in a suspend lambda (stdlibCoroutinesSuspendRefs.kt's
+# local): kc names its continuation class after the lambda's, main$1$7,
+# kotlinc after the function too, main$1$local$1.
++ StdlibCoroutinesSuspendRefsKt$main$1$7 debug c=StdlibCoroutinesSuspendRefsKt$main$1
++ StdlibCoroutinesSuspendRefsKt$main$1$7 debug f=stdlibCoroutinesSuspendRefs.kt
++ StdlibCoroutinesSuspendRefsKt$main$1$7 debug i=0
++ StdlibCoroutinesSuspendRefsKt$main$1$7 debug l=87
++ StdlibCoroutinesSuspendRefsKt$main$1$7 debug m=invokeSuspend$local
++ StdlibCoroutinesSuspendRefsKt$main$1$7 debug n=x
++ StdlibCoroutinesSuspendRefsKt$main$1$7 debug s=I$0
++ StdlibCoroutinesSuspendRefsKt$main$1$7 debug v=2
++ StdlibCoroutinesSuspendRefsKt$main$1$7 extends kotlin/coroutines/jvm/internal/ContinuationImpl
++ StdlibCoroutinesSuspendRefsKt$main$1$7 field I$0 I 0x0
++ StdlibCoroutinesSuspendRefsKt$main$1$7 field label I 0x0
++ StdlibCoroutinesSuspendRefsKt$main$1$7 field result Ljava/lang/Object; 0x1000
+- StdlibCoroutinesSuspendRefsKt$main$1$local$1 debug c=StdlibCoroutinesSuspendRefsKt$main$1
+- StdlibCoroutinesSuspendRefsKt$main$1$local$1 debug f=stdlibCoroutinesSuspendRefs.kt
+- StdlibCoroutinesSuspendRefsKt$main$1$local$1 debug i=0
+- StdlibCoroutinesSuspendRefsKt$main$1$local$1 debug l=87
+- StdlibCoroutinesSuspendRefsKt$main$1$local$1 debug m=invokeSuspend$local
+- StdlibCoroutinesSuspendRefsKt$main$1$local$1 debug n=x
+- StdlibCoroutinesSuspendRefsKt$main$1$local$1 debug s=I$0
+- StdlibCoroutinesSuspendRefsKt$main$1$local$1 debug v=2
+- StdlibCoroutinesSuspendRefsKt$main$1$local$1 extends kotlin/coroutines/jvm/internal/ContinuationImpl
+- StdlibCoroutinesSuspendRefsKt$main$1$local$1 field I$0 I 0x0
+- StdlibCoroutinesSuspendRefsKt$main$1$local$1 field label I 0x0
+- StdlibCoroutinesSuspendRefsKt$main$1$local$1 field result Ljava/lang/Object; 0x1000

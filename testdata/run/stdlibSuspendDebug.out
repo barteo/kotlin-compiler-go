@@ -1,0 +1,7 @@
+dead x
+L$0=x, L$1=dead x
+L$0=x, L$1=dead x
+work: 1
+y!
+L$0=y, L$1=y!
+lambda: 1
