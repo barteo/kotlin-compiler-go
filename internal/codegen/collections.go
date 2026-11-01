@@ -82,6 +82,7 @@ const (
 	collStub               // throws an UnsupportedOperationException
 	collToArray            // toArray() or toArray(T[])
 	collBridge             // a bridge to the Kotlin member: remove(int) to removeAt(int)
+	collGuard              // not a method: the class's override, which returns a result for null
 )
 
 // collMethod is a method that a class gets for its collection types.
@@ -409,6 +410,7 @@ func (cc *Cache) collectionMethods(cls *types.ClassSym) []collMethod {
 
 	// Type-safe bridges of the members Java declares with Object
 	// parameters, where the class gives them other types.
+	guarded := map[string]bool{}
 	for _, st := range supers {
 		safe := typeSafe[st.C.KotlinName]
 		if safe == nil {
@@ -440,6 +442,16 @@ func (cc *Cache) collectionMethods(cls *types.ClassSym) []collMethod {
 					nullable[i] = types.MayBeNull(params[pi].Type)
 				}
 				view, ok := safeDesc(params, viewRet(s, f.Ret))
+				if ok {
+					// The class's override, whose checked parameters may
+					// be Objects: as with kotlinc, it returns the bridge's
+					// result for a null instead of checking it.
+					guard := collMethod{kind: collGuard, name: name, desc: view, safe: sb}
+					if !guarded[guard.name+guard.desc] {
+						guarded[guard.name+guard.desc] = true
+						out = append(out, guard)
+					}
+				}
 				if !ok || view == java {
 					continue // generic: the Object parameter is the class's too
 				}
@@ -463,6 +475,9 @@ func (cc *Cache) collectionMethods(cls *types.ClassSym) []collMethod {
 					descs = append(descs, "("+strings.Join(vps, "")+r)
 				}
 				for i, d := range descs {
+					if d == view && i > 0 {
+						continue // the class's own member: get(Object)Integer
+					}
 					if final, ok := inherited[name+d]; ok && final || own[name+d] {
 						continue
 					}
@@ -766,6 +781,67 @@ func (g *gen) collSafeBridge(m collMethod) {
 	g.check()
 }
 
+// collGuard returns params, without the parameters of function sym, which
+// is being generated, that kotlinc doesn't check: the Object parameters of
+// an override of a member with a type-safe bridge, as Map's get(Any). For
+// a null argument, as with kotlinc, the override returns the bridge's
+// result instead.
+func (g *gen) collGuard(sym *types.FunSym, params []*types.VarSym) []*types.VarSym {
+	if g.owner == nil || sym.Owner != g.owner || sym.Static {
+		return params
+	}
+	nd := g.code.Name() + g.code.Desc()
+	for _, m := range g.cache().collectionMethods(g.owner) {
+		if m.kind != collGuard || m.name+m.desc != nd {
+			continue
+		}
+		ps := descParams(m.desc)
+		var out []*types.VarSym
+		for _, p := range params {
+			guard := false
+			for _, pi := range m.safe.params {
+				if pi < len(sym.Params) && sym.Params[pi] == p && ps[pi] == "Ljava/lang/Object;" && checked(p.Type) {
+					guard = true
+				}
+			}
+			if !guard {
+				out = append(out, p)
+				continue
+			}
+			ok := cf.NewLabel()
+			g.code.Local(cf.ALOAD, p.Slot)
+			g.code.Jump(cf.IFNONNULL, ok)
+			g.safeResult(m, ps)
+			g.code.Place(ok)
+		}
+		return out
+	}
+	return params
+}
+
+// safeResult returns what type-safe bridge m returns for an argument of
+// another type; ps are its parameters' descriptors.
+func (g *gen) safeResult(m collMethod, ps []string) {
+	ret := m.desc[strings.IndexByte(m.desc, ')')+1:]
+	switch m.safe.result {
+	case falseResult:
+		g.code.Iconst(0)
+	case minusOne:
+		g.code.Iconst(-1)
+	case nullResult:
+		g.code.Op(cf.ACONST_NULL)
+	case defaultArg:
+		last := len(ps) - 1
+		slot := 1
+		for _, pd := range ps[:last] {
+			slot += descSize(pd)
+		}
+		g.code.Local(loadOpOf(ps[last]), slot)
+		g.convertDesc(ps[last], ret)
+	}
+	g.code.Op(returnOpOf(ret))
+}
+
 // collStub writes a stub of a mutable collection's member, which throws.
 func (g *gen) collStub(m collMethod) {
 	g.collMethodStart(cf.AccPublic, m.name, m.desc)
@@ -816,7 +892,7 @@ func (cc *Cache) collectionBridge(cls *types.ClassSym, nd string) bool {
 		return true
 	}
 	for _, m := range cc.collectionMethods(cls) {
-		if m.name+m.desc == nd {
+		if m.kind != collGuard && m.name+m.desc == nd {
 			return true
 		}
 	}
