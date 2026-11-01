@@ -541,7 +541,7 @@ func (g *gen) composeKey(x *syntax.Call) {
 // arguments by tracked parameter (all uncertain if nil: see skip.go), and
 // the masks of the omitted arguments, whose bits are in mask. The invoke
 // of a composable function type takes the change flags as Integers.
-func (g *gen) composeArgs(f *types.FunSym, mask int, args []callArg) {
+func (g *gen) composeArgs(f *types.FunSym, mask argMask, args []callArg) {
 	if !f.Composable {
 		return
 	}
@@ -558,14 +558,14 @@ func (g *gen) composeArgs(f *types.FunSym, mask int, args []callArg) {
 		}
 	}
 	for i := range f.Defaults {
-		g.code.Iconst(int32(mask >> (31 * i) & (1<<31 - 1)))
+		g.code.Iconst(mask.bits31(i))
 	}
 }
 
 // callArgs returns the arguments of call x of composable function f by
 // its tracked parameters: the extension receiver, the parameters, whose
 // omitted ones' bits are in mask, and the dispatch receiver.
-func (g *gen) composeCallArgs(x *syntax.Call, f *types.FunSym, mask int) []callArg {
+func (g *gen) composeCallArgs(x *syntax.Call, f *types.FunSym, mask argMask) []callArg {
 	var args []callArg
 	m, member := x.Fun.(*syntax.Member)
 	recv := func(t types.Type) callArg {
@@ -585,7 +585,7 @@ func (g *gen) composeCallArgs(x *syntax.Call, f *types.FunSym, mask int) []callA
 			}
 		}
 		switch {
-		case mask&(1<<j) != 0:
+		case mask.has(j):
 			args = append(args, callArg{omitted: true})
 		case p.Vararg:
 			args = append(args, callArg{vararg: true, args: as, elem: types.StoredElem(p.Type)})
@@ -771,8 +771,8 @@ func (g *gen) invokeArgs(x *syntax.Call) []callArg {
 // member and its overrides call it, with their masks.
 
 // composeDefaultsMask is what callArgs returns for a call of name$default,
-// whose arguments it pushed, for invokeDefault to call it: not zero.
-const composeDefaultsMask = 1
+// whose arguments it pushed, for invokeDefault to call it: not empty.
+var composeDefaultsMask = argMask{1}
 
 // composeDefaultsOf returns the function whose name$default method a call
 // of f calls, or nil: f, or the function whose default values it
@@ -831,7 +831,7 @@ func (g *gen) composeDefaultsArgs(x *syntax.Call, f, df *types.FunSym) {
 	g.loadComposer()
 	g.changedArgs(args, f.Changed, false)
 	for i := range types.DefaultInts(n) {
-		g.code.Iconst(int32(mask >> (31 * i) & (1<<31 - 1)))
+		g.code.Iconst(mask.bits31(i))
 	}
 }
 

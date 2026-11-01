@@ -225,8 +225,13 @@ func (g *gen) inlineBody(x *syntax.Call, d *syntax.FunDecl) {
 			continue
 		}
 		p.Slot = c.AllocLocal(desc(p.Type))
-		if size(p.Type) > 0 {
+		switch {
+		case size(p.Type) > 0:
 			c.Local(storeOp(p.Type), p.Slot)
+		case p.Type.K == types.Unit && !p.Type.N:
+			// A Unit argument is a kotlin.Unit, or null if omitted, which
+			// the copy doesn't read.
+			c.Op(cf.POP)
 		}
 	}
 	// A composable's copy is a flag scope of its own.
@@ -240,7 +245,7 @@ func (g *gen) inlineBody(x *syntax.Call, d *syntax.FunDecl) {
 		reified: g.reifiedArgs(x, f), noLines: g.noLines, self: self, defaults: true, inl: len(g.inl), scope: scope}
 	g.srcInl = append(g.srcInl, defaults)
 	for i, p := range f.Params {
-		if mask&(1<<(len(f.Contexts)+i)) != 0 && d.Params[i].Default != nil {
+		if mask.has(len(f.Contexts)+i) && d.Params[i].Default != nil {
 			g.exprAs(d.Params[i].Default, p.Type)
 			if size(p.Type) > 0 {
 				c.Local(storeOp(p.Type), p.Slot)
@@ -292,7 +297,7 @@ func (g *gen) inlineBody(x *syntax.Call, d *syntax.FunDecl) {
 // copyScope returns the flag scope of the copy of composable inline
 // function d for call x, whose omitted arguments' bits are in mask: its
 // parameters' change flags, which it computes into new locals.
-func (g *gen) copyScope(x *syntax.Call, d *syntax.FunDecl, mask int) *flagScope {
+func (g *gen) copyScope(x *syntax.Call, d *syntax.FunDecl, mask argMask) *flagScope {
 	f, c := d.Sym, g.code
 	g.changedArgs(g.composeCallArgs(x, f, mask), f.Changed, false)
 	flags := make([]int, f.Changed)
@@ -336,7 +341,7 @@ func handlersIn(xs []any, seen map[*syntax.FunDecl]bool) bool {
 				seen[d] = true
 				found = found || handlersIn([]any{d.Body, d.ExprBody}, seen)
 			} else if n.Sym != nil && n.Sym.Inline != nil {
-				b := inlineBody(n.Sym, 0)
+				b := inlineBody(n.Sym, nil)
 				found = found || b != nil && b.HasHandlers()
 			}
 		}
