@@ -1,0 +1,24 @@
+name: Set up the tests
+description: Installs Go, a JDK, kotlinc and the library jars that kc's tests use.
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      with:
+        go-version-file: go.mod
+        cache-dependency-path: go.mod
+    - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+      with:
+        distribution: temurin
+        java-version: '21'
+    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.cache/kc-ci
+        key: kc-deps-${{ runner.os }}-${{ hashFiles('.github/ci/deps.sh') }}
+    # Java takes file names from the locale, and a test program has a
+    # class named Größe; without a UTF-8 locale it can't load it.
+    - if: runner.os == 'Linux'
+      shell: bash
+      run: echo LANG=C.UTF-8 >>"$GITHUB_ENV"
+    - shell: bash
+      run: .github/ci/deps.sh

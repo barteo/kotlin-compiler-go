@@ -188,6 +188,23 @@ skipped without them.
 - Package tests in `internal/` cover the parser, Kotlin metadata, class
   file frames and methods, the inliner and class path loading.
 
+### CI
+
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on each pull
+request and push to `main`: `gofmt`, `go vet`, the tests on Linux and
+macOS, and the tests under `-race` on Linux. To run the tests the way CI
+does, with nothing skipped for lack of `kotlinc` or a library:
+
+```sh
+eval "$(.github/ci/deps.sh)"
+.github/ci/test.sh
+```
+
+`deps.sh` downloads `kotlinc` and the library jars to `~/.cache/kc-ci` and
+prints the environment the tests read. `test.sh` takes `go test` flags,
+such as `-race`, and fails if a test is skipped for a reason other than
+the expected ones it lists.
+
 ## License
 
 Apache License 2.0, the same as `kotlinc`. See [LICENSE](LICENSE).
