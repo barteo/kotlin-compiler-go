@@ -1,9 +1,12 @@
 package javasrc
 
 import (
+	"fmt"
 	"math"
 	"strconv"
 	"strings"
+
+	"github.com/barteo/kotlin-compiler-go/internal/intbits"
 )
 
 // A cval is the value of a constant expression, of a primitive type or
@@ -66,6 +69,10 @@ func fieldKind(t *Type) byte {
 func (v cval) attr() any {
 	switch v.k {
 	case 'Z', 'C', 'B', 'S', 'I':
+		// convert and fromAttr keep these within an int.
+		if v.i < math.MinInt32 || v.i > math.MaxInt32 {
+			panic(fmt.Sprintf("javasrc: %c constant %d is out of int range", v.k, v.i))
+		}
 		return int32(v.i)
 	case 'J':
 		return v.i
@@ -130,13 +137,13 @@ func convert(v cval, k byte) (cval, bool) {
 	}
 	switch k {
 	case 'B':
-		return cval{k: k, i: int64(int8(i))}, true
+		return cval{k: k, i: intbits.SignExtend(i, 8)}, true
 	case 'S':
-		return cval{k: k, i: int64(int16(i))}, true
+		return cval{k: k, i: intbits.SignExtend(i, 16)}, true
 	case 'C':
-		return cval{k: k, i: int64(uint16(i))}, true
+		return cval{k: k, i: intbits.ZeroExtend(i, 16)}, true
 	case 'I':
-		return cval{k: k, i: int64(int32(i))}, true
+		return cval{k: k, i: intbits.SignExtend(i, 32)}, true
 	case 'J':
 		return cval{k: k, i: i}, true
 	case 'F':
@@ -182,6 +189,10 @@ func (v cval) str() (string, bool) {
 	case 'Z':
 		return strconv.FormatBool(v.i != 0), true
 	case 'C':
+		// convert keeps a char within 16 bits.
+		if v.i < 0 || v.i > math.MaxUint16 {
+			return "", false
+		}
 		return string(rune(v.i)), true
 	case 'B', 'S', 'I', 'J':
 		return strconv.FormatInt(v.i, 10), true
@@ -529,7 +540,7 @@ func binop(op string, x, y cval) (cval, bool) {
 			if x.k == 'J' {
 				x.i = int64(uint64(x.i) >> n)
 			} else {
-				x.i = int64(uint32(x.i) >> n)
+				x.i = intbits.ZeroExtend(x.i, 32) >> n
 			}
 		}
 		return convert(x, x.k)
@@ -668,8 +679,9 @@ func number(s string) (cval, bool) {
 		k == 'J' && base == 10 && u > 1<<63 {
 		return cval{}, false
 	}
+	i := intbits.FromBits(u)
 	if k == 'I' {
-		return cval{k: k, i: int64(int32(uint32(u)))}, true
+		i = intbits.SignExtend(i, 32)
 	}
-	return cval{k: k, i: int64(u)}, true
+	return cval{k: k, i: i}, true
 }

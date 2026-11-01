@@ -10,6 +10,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/barteo/kotlin-compiler-go/internal/intbits"
 	"github.com/barteo/kotlin-compiler-go/internal/types"
 )
 
@@ -2932,7 +2933,7 @@ func (p *parser) intLit(t Token) Expr {
 	if err != nil || v > math.MaxInt64 && !unsigned {
 		p.failAt(t.Pos, "the value is out of range")
 	}
-	lit := &IntLit{Val: int64(v), Unsigned: unsigned}
+	lit := &IntLit{Val: intbits.FromBits(v), Unsigned: unsigned}
 	lit.P = t.Pos
 	lit.Long = long || v > math.MaxInt32 && !unsigned || v > math.MaxUint32
 	return lit
