@@ -12,8 +12,7 @@
 // with error recovery: an error the detector didn't predict is listed, so
 // gaps in the detector show up.
 //
-// The report ranks the features by the files they block, and shows how
-// many files each planned milestone would unblock.
+// The report ranks the features by the files they block.
 //
 //	go run ./bench/survey -repos bench/survey/repos.txt -cache dir -stdlib kotlin-stdlib.jar -cp ... -o report.md
 //
@@ -1456,18 +1455,7 @@ func reportSet(sb *strings.Builder, s *sourceSet) {
 	fmt.Fprintf(sb, "## %s: %d files, %d lines\n\n", s.label, len(s.files), lines)
 	fmt.Fprintf(sb, "Directories: %s\n\n", "`"+strings.Join(s.dirs, "`, `")+"`")
 
-	// The milestones, cumulatively.
-	fmt.Fprintf(sb, "### Milestone by milestone\n\nThe features each milestone of kc's plans added, and how many files would use no unsupported feature with them. Each row adds a milestone's features to the ones above it.\n\n")
-	fmt.Fprintf(sb, "| After milestone | Files unblocked | Files still blocked | Median blockers left per blocked file |\n|:---|---:|---:|---:|\n")
-	done := map[string]bool{}
-	fmt.Fprintf(sb, "| (before) | %d | %d | %s |\n", unblocked(s.files, done), len(s.files)-unblocked(s.files, done), median(s.files, done))
-	for _, m := range milestones {
-		for _, f := range m.features {
-			done[f] = true
-		}
-		n := unblocked(s.files, done)
-		fmt.Fprintf(sb, "| %s | %d | %d | %s |\n", m.name, n, len(s.files)-n, median(s.files, done))
-	}
+	done := doneFeatures()
 
 	// The features left, by the files they block.
 	type count struct {
@@ -1558,35 +1546,25 @@ func reportSet(sb *strings.Builder, s *sourceSet) {
 		return names[i] < names[j]
 	})
 	if len(names) > 0 {
-		fmt.Fprintf(sb, "\n### Inline-only functions called\n\n`require`, `check`, `requireNotNull`, `checkNotNull`, `error` and `TODO` are built in; kc inlines the others, since milestone 22 also those with reified type parameters.\n\n| Function | Files | Calls |\n|:---|---:|---:|\n")
+		fmt.Fprintf(sb, "\n### Inline-only functions called\n\n`require`, `check`, `requireNotNull`, `checkNotNull`, `error` and `TODO` are built in; kc inlines the others, also those with reified type parameters.\n\n| Function | Files | Calls |\n|:---|---:|---:|\n")
 		for _, n := range names {
 			fmt.Fprintf(sb, "| `%s` | %d | %d |\n", n, files[n], calls[n])
 		}
 	}
 
 	// Per file.
-	fmt.Fprintf(sb, "\n### Files\n\nThe features each file still needs, then, in parentheses, the ones the milestones above added.\n\n| File | Lines | Blockers left |\n|:---|---:|:---|\n")
+	fmt.Fprintf(sb, "\n### Files\n\nThe features each file still needs.\n\n| File | Lines | Blockers left |\n|:---|---:|:---|\n")
 	sorted := slices.Clone(s.files)
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i].path < sorted[j].path })
 	for _, f := range sorted {
-		var left, planned []string
+		var left []string
 		for feat := range f.features {
-			if done[feat] {
-				planned = append(planned, feat)
-			} else {
+			if !done[feat] {
 				left = append(left, feat)
 			}
 		}
 		sort.Strings(left)
-		sort.Strings(planned)
-		cell := strings.Join(left, ", ")
-		if len(planned) > 0 {
-			if cell != "" {
-				cell += " "
-			}
-			cell += "(" + strings.Join(planned, ", ") + ")"
-		}
-		fmt.Fprintf(sb, "| %s | %d | %s |\n", f.path, f.lines, cell)
+		fmt.Fprintf(sb, "| %s | %d | %s |\n", f.path, f.lines, strings.Join(left, ", "))
 	}
 
 	// Cross-check with the parser.
@@ -1654,3 +1632,4 @@ func median(files []*file, done map[string]bool) string {
 	sort.Ints(ns)
 	return fmt.Sprint(ns[len(ns)/2])
 }
+
