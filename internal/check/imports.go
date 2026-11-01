@@ -185,12 +185,13 @@ func (c *Checker) importTarget(x syntax.Expr) syntax.Expr {
 
 // importsOnlyHidden reports whether everything an import of a package's
 // name finds is another file's private declaration: kotlinc reports the
-// import. Nested declarations are checked where they are used.
+// import. Nested declarations and typealiases are checked where they are
+// used.
 func (c *Checker) importsOnlyHidden(user *Package, name string) bool {
 	if cls, ok := user.Classes[name]; ok && !c.privateElsewhere(classifier{cls: cls}) {
 		return false
 	}
-	if a, ok := user.Aliases[name]; ok && !c.privateElsewhere(classifier{alias: a}) {
+	if _, ok := user.Aliases[name]; ok {
 		return false
 	}
 	if slices.ContainsFunc(user.Funs[name], c.funVisible) || slices.ContainsFunc(user.ExtProps[name], c.funVisible) {

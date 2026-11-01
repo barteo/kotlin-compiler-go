@@ -137,15 +137,15 @@ Kotlin 2.4.21's tests on `kc`:
 | Diagnostics tests | Tests | Share of run |
 |:---|---:|---:|
 | run (of 10,827) | 7,200 | |
-| rejects invalid | 3,016 | 41.9% |
-| accepts valid | 2,782 | 38.6% |
-| accepts invalid | 802 | 11.1% |
-| rejects valid | 520 | 7.2% |
+| rejects invalid | 3,039 | 42.2% |
+| accepts valid | 2,784 | 38.7% |
+| accepts invalid | 779 | 10.8% |
+| rejects valid | 518 | 7.2% |
 | parse/unsupported | 79 | 1.1% |
 | crash | 1 | 0.0% |
 
-`kc` agrees with `kotlinc` on 80% of the diagnostics tests, and reports
-10,257 of the 18,906 expected errors (54%) on their lines. The reports
+`kc` agrees with `kotlinc` on 81% of the diagnostics tests, and reports
+10,414 of the 18,906 expected errors (55%) on their lines. The reports
 break the failures down; the largest groups are:
 
 - **Silent miscompilation** (86 box tests): `tailrec` functions that

@@ -422,7 +422,8 @@ func (c *Checker) exposedDecl(d syntax.Decl, owner *types.ClassSym, s exposedSco
 			c.exposedFun(d, owner, s.with(d.Annotations))
 		}
 	case *syntax.PropDecl:
-		if !d.Plugin && d.Sym != nil {
+		// A delegated property's field, x$delegate, isn't checked.
+		if !d.Plugin && d.Sym != nil && d.DelegateOf == nil {
 			c.exposedProp(d, owner, s.with(d.Annotations))
 		}
 	case *syntax.TypeAliasDecl:

@@ -701,7 +701,7 @@ tests/callableReference/bound/innerNested.kt	rejects invalid	on an expected line
 tests/callableReference/bound/kt12843.kt	rejects invalid	on an expected line	
 tests/callableReference/bound/noThisInSuperCall.kt	rejects invalid	on an expected line	
 tests/callableReference/bound/object.kt	accepts valid		
-tests/callableReference/bound/privateToThis.kt	accepts invalid	INVISIBLE_REFERENCE	privateToThis.kt:14: INVISIBLE_REFERENCE
+tests/callableReference/bound/privateToThis.kt	rejects invalid	on an expected line	
 tests/callableReference/bound/referenceToStaticMethodOnInstance.kt	skip	Java sources	
 tests/callableReference/bound/reservedExpressionSyntax.kt	rejects invalid	on an expected line	
 tests/callableReference/bound/reservedExpressionSyntax2.kt	rejects invalid	on an expected line	
@@ -1619,7 +1619,7 @@ tests/contextParameters/declarationAndUsages/usageWithoutContext.kt	rejects inva
 tests/contextParameters/declarationAndUsages/usageWithoutContextForMultipleParameters.kt	rejects invalid	on an expected line	
 tests/contextParameters/declarationAndUsages/valVarOnContextParameter.kt	rejects invalid	on an expected line	
 tests/contextParameters/declarationAndUsages/visibilityOfContextTypeOnFunction.kt	rejects invalid	on an expected line	
-tests/contextParameters/declarationAndUsages/visibilityOfContextTypeOnProperty.kt	accepts invalid	EXPOSED_PARAMETER_TYPE	visibilityOfContextTypeOnProperty.kt:15: EXPOSED_PARAMETER_TYPE
+tests/contextParameters/declarationAndUsages/visibilityOfContextTypeOnProperty.kt	rejects invalid	on an expected line	
 tests/contextParameters/declarationAndUsages/withNestedContext.kt	rejects invalid	on an expected line	
 tests/contextParameters/deeplyGenericTypeCheckWithMaxTypeDepth.kt	skip	LANGUAGE	
 tests/contextParameters/deeplyGenericTypeCheckWithoutMaxTypeDepth.kt	skip	LANGUAGE	
@@ -2970,7 +2970,7 @@ tests/enum/InsideSecondaryConstructorCall.kt	rejects invalid	on an expected line
 tests/enum/NonPrivateConstructor.kt	rejects invalid	on an expected line	
 tests/enum/SecondaryConstructorCall.kt	accepts valid		
 tests/enum/classObjectInEnum.kt	accepts valid		
-tests/enum/classObjectInEnumPrivate.kt	accepts invalid	EXPOSED_FUNCTION_RETURN_TYPE; INVISIBLE_REFERENCE	classObjectInEnumPrivate.kt:11: EXPOSED_FUNCTION_RETURN_TYPE
+tests/enum/classObjectInEnumPrivate.kt	rejects invalid	on an expected line	
 tests/enum/commonSupertype.kt	accepts valid		
 tests/enum/compareTwoDifferentEnums.kt	skip	Java sources	
 tests/enum/constructorWithDefaultParametersOnly.kt	rejects invalid	on an expected line	
@@ -3177,12 +3177,12 @@ tests/exposed/ambiguousAnonymousExposed.kt	accepts invalid	AMBIGUOUS_ANONYMOUS_T
 tests/exposed/delegate.kt	accepts valid		
 tests/exposed/exceptionOnFakeInvisible.kt	rejects invalid	on an expected line	
 tests/exposed/exposingPackagePrivateInInternal.kt	skip	Java sources	
-tests/exposed/functional.kt	accepts invalid	EXPOSED_PARAMETER_TYPE; EXPOSED_FUNCTION_RETURN_TYPE	functional.kt:7: EXPOSED_PARAMETER_TYPE
+tests/exposed/functional.kt	rejects invalid	on an expected line	
 tests/exposed/implements.kt	accepts valid		
-tests/exposed/implictlyExposed.kt	accepts invalid	EXPOSED_TYPE_PARAMETER_BOUND; EXPOSED_FUNCTION_RETURN_TYPE	implictlyExposed.kt:10: EXPOSED_TYPE_PARAMETER_BOUND
+tests/exposed/implictlyExposed.kt	rejects invalid	on an expected line	
 tests/exposed/implictlyExposedAndSuppressed.kt	skip	LANGUAGE	
 tests/exposed/inaccessibleType.kt	skip	Java sources	
-tests/exposed/internal.kt	accepts invalid	EXPOSED_SUPER_CLASS; EXPOSED_PROPERTY_TYPE; EXPOSED_FUNCTION_RETURN_TYPE	internal.kt:11: EXPOSED_SUPER_CLASS
+tests/exposed/internal.kt	rejects invalid	on an expected line	
 tests/exposed/internalAndProtected.kt	accepts valid		
 tests/exposed/internalFromLocal.kt	accepts valid		
 tests/exposed/local.kt	accepts valid		
@@ -3192,21 +3192,21 @@ tests/exposed/localInFunReturnType.kt	accepts valid
 tests/exposed/localInMemberType.kt	accepts valid		
 tests/exposed/localInPropertyType.kt	accepts valid		
 tests/exposed/nested.kt	accepts valid		
-tests/exposed/nestedInheritance.kt	accepts invalid	EXPOSED_SUPER_INTERFACE	nestedInheritance.kt:12: EXPOSED_SUPER_INTERFACE
-tests/exposed/object.kt	accepts invalid	EXPOSED_SUPER_CLASS; EXPOSED_FUNCTION_RETURN_TYPE; EXPOSED_PARAMETER_TYPE; EXPOSED_PROPERTY_TYPE	object.kt:3: EXPOSED_SUPER_CLASS
+tests/exposed/nestedInheritance.kt	rejects invalid	on an expected line	
+tests/exposed/object.kt	rejects invalid	on an expected line	
 tests/exposed/packagePrivate.kt	skip	Java sources	
 tests/exposed/privateFromLocal.kt	accepts valid		
-tests/exposed/privateInFile.kt	accepts invalid	EXPOSED_FUNCTION_RETURN_TYPE; EXPOSED_PARAMETER_TYPE; EXPOSED_RECEIVER_TYPE; EXPOSED_PROPERTY_TYPE; EXPOSED_SUPER_CLASS	privateInFile.kt:6: EXPOSED_FUNCTION_RETURN_TYPE
+tests/exposed/privateInFile.kt	rejects invalid	on an expected line	
 tests/exposed/privatePropertyInPrivateConstructor.kt	accepts valid		
 tests/exposed/propertyInConstructorOfPrivateClass.kt	accepts valid		
-tests/exposed/propertyInPrivateConstructorError.kt	accepts invalid	EXPOSED_PROPERTY_TYPE_IN_CONSTRUCTOR_ERROR	propertyInPrivateConstructorError.kt:5: EXPOSED_PROPERTY_TYPE_IN_CONSTRUCTOR_ERROR
-tests/exposed/propertyInSimpleConstructor.kt	accepts invalid	EXPOSED_PARAMETER_TYPE	propertyInSimpleConstructor.kt:4: EXPOSED_PARAMETER_TYPE
-tests/exposed/protected.kt	accepts invalid	EXPOSED_SUPER_CLASS	protected.kt:9: EXPOSED_SUPER_CLASS
-tests/exposed/protectedInProtected.kt	accepts invalid	EXPOSED_SUPER_INTERFACE	protectedInProtected.kt:9: EXPOSED_SUPER_INTERFACE
+tests/exposed/propertyInPrivateConstructorError.kt	rejects invalid	on an expected line	
+tests/exposed/propertyInSimpleConstructor.kt	rejects invalid	on an expected line	
+tests/exposed/protected.kt	rejects invalid	on an expected line	
+tests/exposed/protectedInProtected.kt	rejects invalid	on an expected line	
 tests/exposed/protectedJava.kt	skip	Java sources	
 tests/exposed/protectedSameWay.kt	accepts valid		
-tests/exposed/simple.kt	accepts invalid	EXPOSED_SUPER_INTERFACE; EXPOSED_TYPE_PARAMETER_BOUND; EXPOSED_PARAMETER_TYPE; EXPOSED_SUPER_CLASS; EXPOSED_PROPERTY_TYPE; EXPOSED_RECEIVER_TYPE; EXPOSED_FUNCTION_RETURN_TYPE	simple.kt:7: EXPOSED_SUPER_INTERFACE
-tests/exposed/typeArgs.kt	accepts invalid	EXPOSED_FUNCTION_RETURN_TYPE; EXPOSED_SUPER_INTERFACE; EXPOSED_TYPE_PARAMETER_BOUND	case1.kt:5: EXPOSED_FUNCTION_RETURN_TYPE
+tests/exposed/simple.kt	rejects invalid	on an expected line	
+tests/exposed/typeArgs.kt	rejects invalid	on an expected line	
 tests/expressions/UnusedExpressionByLocation.kt	accepts valid		
 tests/expressions/UnusedExpressionByType.kt	rejects invalid	on an expected line	
 tests/expressionsInQaSelectorsCornerCases.kt	rejects invalid	on an expected line	
@@ -3794,8 +3794,8 @@ tests/imports/AllUnderImportsSamePriorityForFunction.kt	accepts valid
 tests/imports/AllUnderImportsSamePriorityForProperty.kt	accepts valid		
 tests/imports/CheckJavaVisibility.kt	skip	Java sources	
 tests/imports/CheckJavaVisibility2.kt	skip	Java sources	
-tests/imports/CheckVisibility_differentModule.kt	accepts invalid	INVISIBLE_REFERENCE	k3.kt:3: INVISIBLE_REFERENCE
-tests/imports/CheckVisibility_sameModule.kt	accepts invalid	INVISIBLE_REFERENCE	k2.kt:3: INVISIBLE_REFERENCE
+tests/imports/CheckVisibility_differentModule.kt	rejects invalid	on an expected line	
+tests/imports/CheckVisibility_sameModule.kt	rejects invalid	on an expected line	
 tests/imports/ClassClash.kt	rejects invalid	on an expected line	
 tests/imports/ClassClashStarImport.kt	rejects invalid	elsewhere	
 tests/imports/ClassClashStarImport_topLevel.kt	rejects invalid	on an expected line	
@@ -3834,13 +3834,13 @@ tests/imports/ImportTwoTimesStar.kt	accepts valid
 tests/imports/Imports.kt	rejects invalid	on an expected line	
 tests/imports/ImportsConflicting.kt	accepts valid		
 tests/imports/InaccessiblePrivateClass.kt	rejects invalid	on an expected line	
-tests/imports/InaccessiblePrivateInFile.kt	rejects valid	return type of '_' is not a subtype of the return type of the overridden member '_' defined in '_'	f22.kt:7: return type of 'highlightingApplicabilities' is not a subtype of the return type of the overridden member 'highlightingApplicabilities' defined in 'ArgumentMapping'
+tests/imports/InaccessiblePrivateInFile.kt	accepts valid		
 tests/imports/JavaPackageLocalClassNotImported.kt	accepts valid		
 tests/imports/MalformedImports.kt	rejects invalid	on an expected line	
 tests/imports/NestedClassClash.kt	accepts invalid	CONFLICTING_IMPORT; OVERLOAD_RESOLUTION_AMBIGUITY; UNRESOLVED_REFERENCE	c.kt:1: CONFLICTING_IMPORT
 tests/imports/OperatorRenameOnImport.kt	accepts invalid	OPERATOR_MODIFIER_REQUIRED	b.kt:7: OPERATOR_MODIFIER_REQUIRED
 tests/imports/OptionalAnnotationClasses.kt	accepts valid		
-tests/imports/PackageLocalClassNotImported.kt	rejects valid	cannot access '_': it is private in file	Main.kt:6: cannot access 'SomeClass': it is private in file
+tests/imports/PackageLocalClassNotImported.kt	accepts valid		
 tests/imports/PackageLocalClassReferencedError.kt	rejects invalid	on an expected line	
 tests/imports/PackageVsClass.kt	accepts valid		
 tests/imports/PrivateClassNotImported.kt	accepts valid		
@@ -5088,7 +5088,7 @@ tests/inlineClasses/inefficientEqualsOverridingInInlineClass.kt	skip	LANGUAGE
 tests/inlineClasses/inlineClassCanImplementInterfaceByDelegation.kt	rejects invalid	on an expected line	
 tests/inlineClasses/inlineClassCanOnlyImplementInterfaces.kt	skip	LANGUAGE	
 tests/inlineClasses/inlineClassCannotImplementInterfaceByDelegation.kt	skip	LANGUAGE	
-tests/inlineClasses/inlineClassConstructor.kt	crash	stack overflow in types.Unboxed (value.go:23)	
+tests/inlineClasses/inlineClassConstructor.kt	crash	stack overflow in types.Repr (value.go:36)	
 tests/inlineClasses/inlineClassConstructorParameterWithDefaultValue.kt	skip	LANGUAGE	
 tests/inlineClasses/inlineClassDeclaration.kt	rejects invalid	on an expected line	
 tests/inlineClasses/inlineClassDeclarationCheck.kt	skip	LANGUAGE	
@@ -8757,8 +8757,8 @@ tests/suppress/singleError.kt	rejects valid	type mismatch: inferred type is _ bu
 tests/suppress/singleWarning.kt	accepts valid		
 tests/suppress/withSuppression.kt	rejects invalid	on an expected line	
 tests/suppress/withSuppression2.kt	rejects invalid	on an expected line	
-tests/suppressExposedPropertyTypeInConstructor.kt	accepts invalid	EXPOSED_PARAMETER_TYPE	suppressExposedPropertyTypeInConstructor.kt:7: EXPOSED_PARAMETER_TYPE
-tests/suppressExposedPropertyTypeInPrivateConstructor.kt	accepts invalid	EXPOSED_PROPERTY_TYPE_IN_CONSTRUCTOR_ERROR	suppressExposedPropertyTypeInPrivateConstructor.kt:13: EXPOSED_PROPERTY_TYPE_IN_CONSTRUCTOR_ERROR
+tests/suppressExposedPropertyTypeInConstructor.kt	rejects invalid	on an expected line	
+tests/suppressExposedPropertyTypeInPrivateConstructor.kt	rejects invalid	on an expected line	
 tests/suppressInWhen.kt	accepts valid		
 tests/suppressNamedArg.kt	accepts valid		
 tests/suppressOnPlusAssign.kt	accepts valid		
@@ -9064,13 +9064,13 @@ tests/typealias/callableReferenceWithTypeAliasToObjectLHSOriginal.kt	accepts val
 tests/typealias/capturingTypeParametersFromOuterClass.kt	rejects invalid	on an expected line	
 tests/typealias/classReference.kt	rejects valid	unresolved reference: _	classReference.kt:4: unresolved reference: S
 tests/typealias/conflictingProjections.kt	rejects invalid	on an expected line	
-tests/typealias/constructorCallThroughPrivateAlias.kt	rejects invalid	elsewhere	
+tests/typealias/constructorCallThroughPrivateAlias.kt	rejects invalid	on an expected line	
 tests/typealias/cyclicInheritanceViaTypeAlias.kt	accepts invalid	CYCLIC_INHERITANCE_HIERARCHY; RECURSIVE_TYPEALIAS_EXPANSION	cyclicInheritanceViaTypeAlias.kt:3: CYCLIC_INHERITANCE_HIERARCHY
 tests/typealias/enumEntryQualifier.kt	accepts valid		
 tests/typealias/expansionDnnTypeArgument.kt	accepts valid		
 tests/typealias/expansionToCompilerRequiredAnnotation.kt	rejects invalid	on an expected line	
 tests/typealias/expansionWithinElvis.kt	accepts valid		
-tests/typealias/exposedExpandedType.kt	accepts invalid	EXPOSED_TYPEALIAS_EXPANDED_TYPE	exposedExpandedType.kt:11: EXPOSED_TYPEALIAS_EXPANDED_TYPE
+tests/typealias/exposedExpandedType.kt	rejects invalid	on an expected line	
 tests/typealias/flexibleTypeExpansion.kt	skip	Java sources	
 tests/typealias/functionTypeInTypeAlias.kt	accepts valid		
 tests/typealias/functionalTypeWithParameterNameVisibility.kt	rejects invalid	on an expected line	
@@ -9158,7 +9158,7 @@ tests/typealias/typeAliasConstructorWrongVisibility.kt	rejects invalid	on an exp
 tests/typealias/typeAliasExpansionRepeatedAnnotations.kt	accepts invalid	REPEATED_ANNOTATION	typeAliasExpansionRepeatedAnnotations.kt:8: REPEATED_ANNOTATION
 tests/typealias/typeAliasForProjectionInSuperInterfaces.kt	accepts invalid	CONSTRUCTOR_OR_SUPERTYPE_ON_TYPEALIAS_WITH_TYPE_PROJECTION_ERROR; PROJECTION_IN_IMMEDIATE_ARGUMENT_TO_SUPERTYPE	typeAliasForProjectionInSuperInterfaces.kt:19: CONSTRUCTOR_OR_SUPERTYPE_ON_TYPEALIAS_WITH_TYPE_PROJECTION_ERROR
 tests/typealias/typeAliasInAnonymousObjectType.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	typeAliasInAnonymousObjectType.kt:6: cannot infer type for type parameter 'T'. Specify it explicitly.
-tests/typealias/typeAliasInvisibleObject.kt	accepts invalid	EXPOSED_PROPERTY_TYPE; INVISIBLE_REFERENCE	typeAliasInvisibleObject.kt:8: EXPOSED_PROPERTY_TYPE
+tests/typealias/typeAliasInvisibleObject.kt	rejects invalid	on an expected line	
 tests/typealias/typeAliasIsUsedAsATypeArgumentInOtherAlias.kt	accepts valid		
 tests/typealias/typeAliasNotNull.kt	accepts valid		
 tests/typealias/typeAliasObject.kt	accepts valid		
@@ -9378,7 +9378,7 @@ tests/visibility/privateCompanionInSuperClass.kt	rejects invalid	elsewhere
 tests/visibility/privateDeclarationInAnotherFile.kt	rejects invalid	on an expected line	
 tests/visibility/privateFromInAnonymousObject.kt	accepts valid		
 tests/visibility/privateSealedNested.kt	rejects invalid	on an expected line	
-tests/visibility/privateToThis.kt	accepts invalid	INVISIBLE_REFERENCE	privateToThis.kt:16: INVISIBLE_REFERENCE
+tests/visibility/privateToThis.kt	rejects invalid	on an expected line	
 tests/visibility/privateToThisCallableReference.kt	skip	LANGUAGE	
 tests/visibility/privateToThisCallableReferenceLegacy.kt	skip	LANGUAGE	
 tests/visibility/privateToThisExotic.kt	skip	Java sources	
@@ -9395,7 +9395,7 @@ tests/visibility/singletonConstructors.kt	rejects invalid	on an expected line
 tests/visibility/smartCastAndSuppressedVisibility.kt	accepts valid		
 tests/visibility/superAccessToJavaField.kt	skip	Java sources	
 tests/visibility/visibilityWithOverrides.kt	rejects invalid	on an expected line	
-tests/visibility/visibleDeclarationThroughInvisibleTypeAlias.kt	accepts invalid	INVISIBLE_REFERENCE	Main.kt:2: INVISIBLE_REFERENCE
+tests/visibility/visibleDeclarationThroughInvisibleTypeAlias.kt	rejects invalid	on an expected line	
 tests/visibleVsInvisibleQualifier.kt	skip	Java sources	
 tests/warningsForBreakingChanges/capturedTypes/incorrectCapturedApproximationForValueParameters.kt	skip	Java sources	
 tests/warningsForBreakingChanges/capturedTypes/noWarningAfterSmartcast.kt	accepts valid		
