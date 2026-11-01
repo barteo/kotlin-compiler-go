@@ -36,13 +36,12 @@ How each number is measured, and the full tables with CPU time, are in
 
 `kc` doesn't do all the work `kotlinc` does. It leaves out:
 
-- **Some of the language.** A few features aren't supported, and
-  visibility isn't checked. [Unsupported Kotlin](docs/unsupported.md)
-  lists them all.
+- **Some of the language.** A few features aren't supported.
+  [Unsupported Kotlin](docs/unsupported.md) lists them all.
 - **Most of `kotlinc`'s checks.** `kotlinc` runs 290 checkers for
   warnings and errors after type checking. `kc` has no separate
   checkers: it reports the errors that type checking finds, which is why
-  it agrees with `kotlinc` on only 79% of the diagnostics tests.
+  it agrees with `kotlinc` on only 80% of the diagnostics tests.
 - **Anything but the JVM.** There is no Kotlin/Native, JS or Wasm, and no
   language versions.
 - **Incremental compilation, a Gradle plugin and IDE support.**

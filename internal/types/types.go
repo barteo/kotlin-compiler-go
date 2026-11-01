@@ -799,6 +799,10 @@ type ClassSym struct {
 	// Local is set on a class declared in a block, whose instances hold
 	// what its code captures, as an object expression's do.
 	Local bool
+	// File is set on the program's classes: the class of the file that
+	// declares them (see syntax.File.Class), in which a private
+	// top-level class is visible.
+	File string
 	// Inner is set on an inner class, whose instances hold their outer
 	// class's in this$0. Its TypeParams are its own and then its outer
 	// class's, the last OuterParams of them.

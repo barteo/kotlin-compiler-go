@@ -81,7 +81,7 @@ tests/Operators.kt	rejects invalid	on an expected line
 tests/OperatorsWithWrongNames.kt	rejects invalid	on an expected line	
 tests/OverrideFunctionWithParamDefaultValue.kt	accepts valid		
 tests/OverridenFunctionAndSpecifiedTypeParameter.kt	accepts valid		
-tests/OverridenSetterVisibility.kt	accepts invalid	CANNOT_WEAKEN_ACCESS_PRIVILEGE; CANNOT_CHANGE_ACCESS_PRIVILEGE; SETTER_VISIBILITY_INCONSISTENT_WITH_PROPERTY_VISIBILITY; INVISIBLE_SETTER	OverridenSetterVisibility.kt:17: CANNOT_WEAKEN_ACCESS_PRIVILEGE
+tests/OverridenSetterVisibility.kt	rejects invalid	on an expected line	
 tests/OverridingVarByVal.kt	rejects invalid	on an expected line	
 tests/PackageInExpressionPosition.kt	rejects invalid	on an expected line	
 tests/PackageInTypePosition.kt	rejects invalid	on an expected line	
@@ -827,7 +827,7 @@ tests/callableReference/kt34314_lambda.kt	rejects invalid	on an expected line
 tests/callableReference/kt35105.kt	accepts valid		
 tests/callableReference/kt35959.kt	accepts valid		
 tests/callableReference/kt37530.kt	rejects invalid	on an expected line	
-tests/callableReference/kt46437.kt	accepts invalid	INVISIBLE_REFERENCE	kt46437.kt:3: INVISIBLE_REFERENCE
+tests/callableReference/kt46437.kt	rejects invalid	on an expected line	
 tests/callableReference/kt49038.kt	rejects invalid	on an expected line	
 tests/callableReference/kt52503.kt	rejects invalid	elsewhere	
 tests/callableReference/kt55373.kt	rejects invalid	on an expected line	
@@ -1153,7 +1153,7 @@ tests/classLiteral/smartCast.kt	rejects invalid	on an expected line
 tests/classLiteral/typealiases.kt	rejects invalid	on an expected line	
 tests/classLiteral/unresolvedClass.kt	rejects invalid	on an expected line	
 tests/classObjects/ClassObjectCannotAccessClassFields.kt	rejects invalid	on an expected line	
-tests/classObjects/ClassObjectVisibility.kt	accepts invalid	INVISIBLE_REFERENCE	ClassObjectVisibility.kt:6: INVISIBLE_REFERENCE
+tests/classObjects/ClassObjectVisibility.kt	rejects invalid	on an expected line	
 tests/classObjects/ClassObjects.kt	rejects invalid	on an expected line	
 tests/classObjects/InnerClassAccessThroughClassObject.kt	rejects invalid	on an expected line	
 tests/classObjects/InnerClassAccessThroughEnum.kt	rejects invalid	on an expected line	
@@ -1169,10 +1169,10 @@ tests/classObjects/companionInInnerOfObjectExpression.kt	skip	LANGUAGE
 tests/classObjects/companionInInnerOfObjectExpressionAfter.kt	skip	LANGUAGE	
 tests/classObjects/companionObjectOfPrivateClassVisibility.kt	accepts invalid	INVISIBLE_REFERENCE	companionObjectOfPrivateClassVisibility.kt:7: INVISIBLE_REFERENCE
 tests/classObjects/importClassInClassObject.kt	accepts valid		
-tests/classObjects/invisibleClassObjects.kt	accepts invalid	INVISIBLE_REFERENCE	b.kt:5: INVISIBLE_REFERENCE
+tests/classObjects/invisibleClassObjects.kt	rejects invalid	on an expected line	
 tests/classObjects/kt3866.kt	accepts valid		
 tests/classObjects/multipleDissallowedDefaultObjects.kt	rejects invalid	on an expected line	
-tests/classObjects/nestedClassInPrivateClassObject.kt	accepts invalid	EXPOSED_FUNCTION_RETURN_TYPE; INVISIBLE_REFERENCE	nestedClassInPrivateClassObject.kt:14: EXPOSED_FUNCTION_RETURN_TYPE
+tests/classObjects/nestedClassInPrivateClassObject.kt	rejects invalid	on an expected line	
 tests/classObjects/protectedFieldFromSuperCompanion.kt	skip	LANGUAGE_FEATURE_TOGGLED	
 tests/classObjects/resolveFunctionInsideClassObject.kt	rejects invalid	on an expected line	
 tests/classObjects/selfCallsInCompanionSuperConstructor_error.kt	rejects invalid	on an expected line	
@@ -1618,7 +1618,7 @@ tests/contextParameters/declarationAndUsages/usageOfTypeWithContext.kt	accepts v
 tests/contextParameters/declarationAndUsages/usageWithoutContext.kt	rejects invalid	on an expected line	
 tests/contextParameters/declarationAndUsages/usageWithoutContextForMultipleParameters.kt	rejects invalid	on an expected line	
 tests/contextParameters/declarationAndUsages/valVarOnContextParameter.kt	rejects invalid	on an expected line	
-tests/contextParameters/declarationAndUsages/visibilityOfContextTypeOnFunction.kt	accepts invalid	EXPOSED_PARAMETER_TYPE; INVISIBLE_REFERENCE	visibilityOfContextTypeOnFunction.kt:15: EXPOSED_PARAMETER_TYPE
+tests/contextParameters/declarationAndUsages/visibilityOfContextTypeOnFunction.kt	rejects invalid	on an expected line	
 tests/contextParameters/declarationAndUsages/visibilityOfContextTypeOnProperty.kt	accepts invalid	EXPOSED_PARAMETER_TYPE	visibilityOfContextTypeOnProperty.kt:15: EXPOSED_PARAMETER_TYPE
 tests/contextParameters/declarationAndUsages/withNestedContext.kt	rejects invalid	on an expected line	
 tests/contextParameters/deeplyGenericTypeCheckWithMaxTypeDepth.kt	skip	LANGUAGE	
@@ -2022,7 +2022,7 @@ tests/controlFlowAnalysis/nestedTryFinallyLambda.kt	accepts valid
 tests/controlFlowAnalysis/nonLocalReturnUnreachable.kt	accepts valid		
 tests/controlFlowAnalysis/nonLocalReturnWithFinally.kt	accepts valid		
 tests/controlFlowAnalysis/postponed/postponedLambdaUnreachable.kt	accepts valid		
-tests/controlFlowAnalysis/privateSetter.kt	accepts invalid	INVISIBLE_SETTER	privateSetter.kt:10: INVISIBLE_SETTER
+tests/controlFlowAnalysis/privateSetter.kt	rejects invalid	on an expected line	
 tests/controlFlowAnalysis/propertiesInitWithOtherInstance.kt	rejects invalid	on an expected line	
 tests/controlFlowAnalysis/propertiesInitWithOtherInstanceInner.kt	rejects invalid	on an expected line	
 tests/controlFlowAnalysis/propertiesInitWithOtherInstanceThisLabel.kt	rejects invalid	on an expected line	
@@ -3175,7 +3175,7 @@ tests/explicitDefinitelyNotNullableViaIntersection/simple.kt	rejects invalid	on 
 tests/explicitDefinitelyNotNullableViaIntersection/starProjection.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	starProjection.kt:9: type mismatch: inferred type is Result<*> but Result<Any> was expected
 tests/exposed/ambiguousAnonymousExposed.kt	accepts invalid	AMBIGUOUS_ANONYMOUS_TYPE_INFERRED	ambiguousAnonymousExposed.kt:9: AMBIGUOUS_ANONYMOUS_TYPE_INFERRED
 tests/exposed/delegate.kt	accepts valid		
-tests/exposed/exceptionOnFakeInvisible.kt	accepts invalid	INVISIBLE_REFERENCE	exceptionOnFakeInvisible.kt:11: INVISIBLE_REFERENCE
+tests/exposed/exceptionOnFakeInvisible.kt	rejects invalid	on an expected line	
 tests/exposed/exposingPackagePrivateInInternal.kt	skip	Java sources	
 tests/exposed/functional.kt	accepts invalid	EXPOSED_PARAMETER_TYPE; EXPOSED_FUNCTION_RETURN_TYPE	functional.kt:7: EXPOSED_PARAMETER_TYPE
 tests/exposed/implements.kt	accepts valid		
@@ -3270,7 +3270,7 @@ tests/expresssions/localWithBooleanNot.kt	skip	Java sources
 tests/expresssions/memberExtension.kt	accepts valid		
 tests/expresssions/nestedConstructorCallable.kt	accepts valid		
 tests/expresssions/nestedObjects.kt	rejects invalid	on an expected line	
-tests/expresssions/nestedVisibility.kt	accepts invalid	INVISIBLE_REFERENCE	nestedVisibility.kt:15: INVISIBLE_REFERENCE
+tests/expresssions/nestedVisibility.kt	rejects invalid	on an expected line	
 tests/expresssions/objectOverrideCallViaImport.kt	accepts valid		
 tests/expresssions/objectVsProperty.kt	accepts invalid	REDECLARATION	objectVsProperty.kt:2: REDECLARATION
 tests/expresssions/objects.kt	accepts valid		
@@ -3287,7 +3287,7 @@ tests/expresssions/plusWithAssignSmartCast.kt	rejects valid	operator '_' cannot 
 tests/expresssions/privateObjectLiteral.kt	rejects invalid	on an expected line	
 tests/expresssions/privateVisibility.kt	rejects invalid	on an expected line	
 tests/expresssions/propertyAccessWithExplicitTypeArguments.kt	rejects invalid	on an expected line	
-tests/expresssions/protectedVisibility.kt	accepts invalid	INVISIBLE_REFERENCE; SUBCLASS_CANT_CALL_COMPANION_PROTECTED_NON_STATIC	protectedVisibility.kt:35: INVISIBLE_REFERENCE
+tests/expresssions/protectedVisibility.kt	rejects invalid	on an expected line	
 tests/expresssions/qualifiedExpressions.kt	accepts valid		
 tests/expresssions/qualifierPriority.kt	accepts valid		
 tests/expresssions/receiverConsistency.kt	rejects invalid	on an expected line	
@@ -3726,7 +3726,7 @@ tests/generics/projectionsScope/unsafeVarianceOnInputTypeOfFunctionalType.kt	rej
 tests/generics/projectionsScope/unsafeVarianceStar.kt	accepts valid		
 tests/generics/projectionsScope/unsafeVarianceWithRecursiveGenerics.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	unsafeVarianceWithRecursiveGenerics.kt:10: type mismatch: inferred type is UpdatableRendering<*> but UpdatableRendering<out UpdatableRendering<*>> was expected
 tests/generics/projectionsScope/varargs.kt	rejects invalid	on an expected line	
-tests/generics/protectedSuperCall.kt	accepts invalid	PROTECTED_CONSTRUCTOR_NOT_IN_SUPER_CALL	Main.kt:7: PROTECTED_CONSTRUCTOR_NOT_IN_SUPER_CALL
+tests/generics/protectedSuperCall.kt	rejects invalid	on an expected line	
 tests/generics/recursive.kt	accepts valid		
 tests/generics/resolveGenericBoundsBeforeSupertypes.kt	accepts valid		
 tests/generics/sameTypeParameterUse.kt	accepts valid		
@@ -3823,17 +3823,17 @@ tests/imports/ImportNestedWithDifferentName.kt	accepts valid
 tests/imports/ImportObjectAndUseAsSupertype.kt	rejects invalid	on an expected line	
 tests/imports/ImportObjectHidesCurrentPackage.kt	accepts valid		
 tests/imports/ImportOverloadFunctions.kt	rejects invalid	on an expected line	
-tests/imports/ImportPrivateMember.kt	accepts invalid	INVISIBLE_REFERENCE	ImportPrivateMember.kt:33: INVISIBLE_REFERENCE
+tests/imports/ImportPrivateMember.kt	rejects invalid	on an expected line	
 tests/imports/ImportPrivateMemberFromOtherFile.kt	skip	Java sources	
-tests/imports/ImportPrivateMembersWithStar.kt	accepts invalid	INVISIBLE_REFERENCE	ImportPrivateMembersWithStar.kt:30: INVISIBLE_REFERENCE
-tests/imports/ImportProtectedClass.kt	accepts invalid	INVISIBLE_REFERENCE	ImportProtectedClass.kt:14: INVISIBLE_REFERENCE
+tests/imports/ImportPrivateMembersWithStar.kt	rejects invalid	on an expected line	
+tests/imports/ImportProtectedClass.kt	rejects invalid	on an expected line	
 tests/imports/ImportResolutionOrder.kt	accepts valid		
 tests/imports/ImportStaticFunctionWithNonStaticSibling.kt	skip	Java sources	
 tests/imports/ImportTwoTimes.kt	accepts valid		
 tests/imports/ImportTwoTimesStar.kt	accepts valid		
 tests/imports/Imports.kt	rejects invalid	on an expected line	
 tests/imports/ImportsConflicting.kt	accepts valid		
-tests/imports/InaccessiblePrivateClass.kt	accepts invalid	EXPOSED_PROPERTY_TYPE; INVISIBLE_REFERENCE	c.kt:6: EXPOSED_PROPERTY_TYPE
+tests/imports/InaccessiblePrivateClass.kt	rejects invalid	on an expected line	
 tests/imports/InaccessiblePrivateInFile.kt	rejects valid	return type of '_' is not a subtype of the return type of the overridden member '_' defined in '_'	f22.kt:7: return type of 'highlightingApplicabilities' is not a subtype of the return type of the overridden member 'highlightingApplicabilities' defined in 'ArgumentMapping'
 tests/imports/JavaPackageLocalClassNotImported.kt	accepts valid		
 tests/imports/MalformedImports.kt	rejects invalid	on an expected line	
@@ -3841,7 +3841,7 @@ tests/imports/NestedClassClash.kt	accepts invalid	CONFLICTING_IMPORT; OVERLOAD_R
 tests/imports/OperatorRenameOnImport.kt	accepts invalid	OPERATOR_MODIFIER_REQUIRED	b.kt:7: OPERATOR_MODIFIER_REQUIRED
 tests/imports/OptionalAnnotationClasses.kt	accepts valid		
 tests/imports/PackageLocalClassNotImported.kt	rejects valid	this type is final, so it cannot be inherited from	Main.kt:6: this type is final, so it cannot be inherited from
-tests/imports/PackageLocalClassReferencedError.kt	accepts invalid	INVISIBLE_REFERENCE	Main.kt:5: INVISIBLE_REFERENCE
+tests/imports/PackageLocalClassReferencedError.kt	rejects invalid	on an expected line	
 tests/imports/PackageVsClass.kt	accepts valid		
 tests/imports/PrivateClassNotImported.kt	accepts valid		
 tests/imports/PrivateClassReferencedError.kt	rejects invalid	on an expected line	
@@ -3859,7 +3859,7 @@ tests/imports/aliasedImportOfEnumConstructor.kt	rejects valid	unresolved import:
 tests/imports/brokenImport.kt	rejects invalid	on an expected line	
 tests/imports/importFunctionWithAllUnderImport.kt	accepts valid		
 tests/imports/importFunctionWithAllUnderImportAfterNamedImport.kt	accepts valid		
-tests/imports/invisibleFakeReferenceInImport.kt	accepts invalid	INVISIBLE_REFERENCE	A.kt:2: INVISIBLE_REFERENCE
+tests/imports/invisibleFakeReferenceInImport.kt	rejects invalid	on an expected line	
 tests/imports/kt13112.kt	rejects invalid	on an expected line	
 tests/imports/propertyClassFileDependencyRecursion.kt	rejects invalid	on an expected line	
 tests/imports/renamedImportInDifferentFile.kt	skip	Java sources	
@@ -4979,7 +4979,7 @@ tests/inline/inlineReified.kt	accepts valid
 tests/inline/inlinedReturnInBranch.kt	rejects valid	missing return statement in function '_'	inlinedReturnInBranch.kt:12: missing return statement in function 'bar'
 tests/inline/invoke.kt	rejects invalid	on an expected line	
 tests/inline/isCheck.kt	accepts invalid	USAGE_IS_NOT_INLINABLE	isCheck.kt:9: USAGE_IS_NOT_INLINABLE
-tests/inline/kt15410.kt	accepts invalid	PROTECTED_CONSTRUCTOR_CALL_FROM_PUBLIC_INLINE; PROTECTED_CONSTRUCTOR_NOT_IN_SUPER_CALL	kt15410.kt:9: PROTECTED_CONSTRUCTOR_CALL_FROM_PUBLIC_INLINE
+tests/inline/kt15410.kt	rejects invalid	on an expected line	
 tests/inline/kt19679.kt	accepts invalid	NULLABLE_INLINE_PARAMETER	kt19679.kt:2: NULLABLE_INLINE_PARAMETER
 tests/inline/kt21177.kt	accepts invalid	PROTECTED_CONSTRUCTOR_CALL_FROM_PUBLIC_INLINE; PROTECTED_CALL_FROM_PUBLIC_INLINE_ERROR	kt21177.kt:10: PROTECTED_CONSTRUCTOR_CALL_FROM_PUBLIC_INLINE
 tests/inline/kt4869.kt	accepts invalid	USAGE_IS_NOT_INLINABLE	kt4869.kt:6: USAGE_IS_NOT_INLINABLE
@@ -5182,7 +5182,7 @@ tests/inner/starProjectedInnerType.kt	accepts valid
 tests/inner/traits.kt	accepts valid		
 tests/inner/typeVarianceConflict.kt	rejects invalid	on an expected line	
 tests/inner/uninitializedSuperType.kt	rejects invalid	on an expected line	
-tests/inner/visibility.kt	accepts invalid	INVISIBLE_REFERENCE	visibility.kt:15: INVISIBLE_REFERENCE
+tests/inner/visibility.kt	rejects invalid	on an expected line	
 tests/innerClasses/inCallableReferenceLHS/adaptedReference.kt	rejects invalid	elsewhere	
 tests/innerClasses/inCallableReferenceLHS/classReference.kt	rejects invalid	on an expected line	
 tests/innerClasses/inCallableReferenceLHS/fromSuperclass.kt	rejects invalid	on an expected line	
@@ -5219,7 +5219,7 @@ tests/integerLiterals/vararg.kt	accepts valid
 tests/intersectedVisibilitiesAccessorDifferences_Huge.kt	rejects invalid	elsewhere	
 tests/intersectedVisibilitiesAccessorDifferences_Small.kt	accepts invalid	CANNOT_WEAKEN_ACCESS_PRIVILEGE	intersectedVisibilitiesAccessorDifferences_Small.kt:30: CANNOT_WEAKEN_ACCESS_PRIVILEGE
 tests/intersectedVisibilitiesAccessorDifferences_Useful1.kt	rejects invalid	on an expected line	
-tests/intersectedVisibilitiesAccessorDifferences_Useful2.kt	accepts invalid	INVISIBLE_SETTER	intersectedVisibilitiesAccessorDifferences_Useful2.kt:15: INVISIBLE_SETTER
+tests/intersectedVisibilitiesAccessorDifferences_Useful2.kt	rejects invalid	on an expected line	
 tests/intersectedVisibilitiesForAbstractPropertyAccessors.kt	accepts valid		
 tests/intersectedVisibilitiesForNonAbstractPropertyAccessors.kt	accepts invalid	CANNOT_WEAKEN_ACCESS_PRIVILEGE	intersectedVisibilitiesForNonAbstractPropertyAccessors.kt:23: CANNOT_WEAKEN_ACCESS_PRIVILEGE
 tests/intersectedVisibilitiesPropertyAccessorsAdditionalWarnigns.kt	accepts invalid	WRONG_MODIFIER_CONTAINING_DECLARATION; CANNOT_WEAKEN_ACCESS_PRIVILEGE	intersectedVisibilitiesPropertyAccessorsAdditionalWarnigns.kt:14: WRONG_MODIFIER_CONTAINING_DECLARATION
@@ -5232,7 +5232,7 @@ tests/intersectionWithMultipleDefaultsInJavaWithAdditionalSymbolsAfterNonSubsume
 tests/invalidAnnotation.kt	rejects invalid	elsewhere	
 tests/invalidTargetCrashesCompiler.kt	rejects invalid	on an expected line	
 tests/invisibleClassInsteadOfFun.kt	rejects invalid	on an expected line	
-tests/invisibleMemberDestructuring.kt	accepts invalid	INVISIBLE_REFERENCE	invisibleMemberDestructuring.kt:7: INVISIBLE_REFERENCE
+tests/invisibleMemberDestructuring.kt	rejects invalid	on an expected line	
 tests/invokeInWhenSubjectVariableInitializer.kt	accepts valid		
 tests/invokeOfLambdaWithReceiver.kt	accepts valid		
 tests/j+k/GenericsInSupertypes.kt	skip	Java sources	
@@ -6633,7 +6633,7 @@ tests/nullabilityAndSmartCasts/kt2234.kt	rejects valid	unresolved import: _	kt22
 tests/nullabilityAndSmartCasts/kt2336.kt	accepts valid		
 tests/nullabilityAndSmartCasts/kt244.kt	accepts valid		
 tests/nullabilityAndSmartCasts/kt30734.kt	accepts valid		
-tests/nullabilityAndSmartCasts/kt362.kt	accepts invalid	INVISIBLE_REFERENCE	this.kt:8: INVISIBLE_REFERENCE
+tests/nullabilityAndSmartCasts/kt362.kt	rejects invalid	on an expected line	
 tests/nullabilityAndSmartCasts/noSenselessNullOnNullableType.kt	skip	Java sources	
 tests/nullabilityAndSmartCasts/noUnnecessaryNotNullAssertionOnErrorType.kt	rejects invalid	on an expected line	
 tests/nullabilityAndSmartCasts/notnullTypesFromJavaWithSmartcast.kt	skip	Java sources	
@@ -6817,7 +6817,7 @@ tests/override/AbstractValImplemented.kt	accepts valid
 tests/override/AbstractValNotImplemented.kt	rejects invalid	on an expected line	
 tests/override/AbstractVarImplemented.kt	accepts valid		
 tests/override/AbstractVarNotImplemented.kt	rejects invalid	on an expected line	
-tests/override/AllPrivateFromSuperTypes.kt	accepts invalid	NONE_APPLICABLE	AllPrivateFromSuperTypes.kt:14: NONE_APPLICABLE
+tests/override/AllPrivateFromSuperTypes.kt	rejects invalid	on an expected line	
 tests/override/ComplexValRedeclaration.kt	rejects invalid	on an expected line	
 tests/override/ConflictingFunctionSignatureFromSuperclass.kt	accepts invalid	CONFLICTING_OVERLOADS	ConflictingFunctionSignatureFromSuperclass.kt:7: CONFLICTING_OVERLOADS
 tests/override/ConflictingPropertySignatureFromSuperclass.kt	rejects invalid	on an expected line	
@@ -7128,7 +7128,7 @@ tests/primaryVsSecondaryConstructorAfter.kt	skip	LANGUAGE
 tests/privateInFile/kt12429.kt	accepts valid		
 tests/privateInFile/topLevelAnnotationCall.kt	rejects invalid	on an expected line	
 tests/privateInFile/visibility.kt	rejects invalid	on an expected line	
-tests/privateSetterSmartcastsToPublicSetter.kt	accepts invalid	INVISIBLE_SETTER	privateSetterSmartcastsToPublicSetter.kt:31: INVISIBLE_SETTER
+tests/privateSetterSmartcastsToPublicSetter.kt	rejects invalid	on an expected line	
 tests/privateSubclassAsTypeArgInParentClass.kt	accepts valid		
 tests/problems/classLiteralWithExclExcl.kt	rejects invalid	on an expected line	
 tests/problems/compilerPhase.kt	rejects invalid	elsewhere	
@@ -7271,7 +7271,7 @@ tests/projectionProblemInIsTypealiasArgument.kt	accepts invalid	CONFLICTING_PROJ
 tests/projectionProblemWithTypealiasArgument.kt	accepts invalid	CONFLICTING_PROJECTION_IN_TYPEALIAS_EXPANSION	projectionProblemWithTypealiasArgument.kt:13: CONFLICTING_PROJECTION_IN_TYPEALIAS_EXPANSION
 tests/properDefaultInitializationInTailrec.kt	accepts valid		
 tests/properLocalPackages.kt	rejects invalid	on an expected line	
-tests/properties/PrivateSetInSuperclass.kt	accepts invalid	INVISIBLE_SETTER	PrivateSetInSuperclass.kt:13: INVISIBLE_SETTER
+tests/properties/PrivateSetInSuperclass.kt	rejects invalid	on an expected line	
 tests/properties/abstarctPropertyInPrimaryConstructor.kt	rejects invalid	on an expected line	
 tests/properties/assignToStarProjectedType.kt	rejects invalid	on an expected line	
 tests/properties/backingField/trivialExplicitBackingFIeld.kt	skip	LANGUAGE	
@@ -7322,7 +7322,7 @@ tests/properties/syntheticPropertiesForJavaAnnotations.kt	skip	Java sources
 tests/propertyFromJavaPlusAssign.kt	skip	Java sources	
 tests/propertyGetterWithoutType.kt	rejects invalid	on an expected line	
 tests/propertyOfFinalClassSmartcastEdgeCases.kt	skip	Java sources	
-tests/propertyPrivateSetttersPlusAssign.kt	accepts invalid	INVISIBLE_SETTER	propertyPrivateSetttersPlusAssign.kt:12: INVISIBLE_SETTER
+tests/propertyPrivateSetttersPlusAssign.kt	rejects invalid	on an expected line	
 tests/propertyVsField/fieldPropertyShadow.kt	skip	Java sources	
 tests/propertyVsField/javaFieldAndKotlinPropertyReferenceFromInner.kt	skip	Java sources	
 tests/propertyVsField/propertyAndTwoFields.kt	skip	Java sources	
@@ -7900,7 +7900,7 @@ tests/samConversions/typeMismatchOnGenericSam.kt	rejects invalid	on an expected 
 tests/scopes/AmbiguityBetweenRootAndPackage.kt	accepts valid		
 tests/scopes/AmbiguousNonExtensions.kt	rejects invalid	on an expected line	
 tests/scopes/NoAmbiguityBetweenRootAndPackage.kt	accepts valid		
-tests/scopes/VisibilityInClassObject.kt	accepts invalid	INVISIBLE_REFERENCE; SUBCLASS_CANT_CALL_COMPANION_PROTECTED_NON_STATIC	VisibilityInClassObject.kt:23: INVISIBLE_REFERENCE
+tests/scopes/VisibilityInClassObject.kt	rejects invalid	on an expected line	
 tests/scopes/VisibilityInheritModifier.kt	rejects invalid	on an expected line	
 tests/scopes/classHeader/annotationOnClass.kt	rejects invalid	on an expected line	
 tests/scopes/classHeader/annotationOnConstructors.kt	rejects invalid	on an expected line	
@@ -7958,47 +7958,47 @@ tests/scopes/invisibleInternalSetterAccessFromDeriviedClassOn_direct.kt	skip	LAN
 tests/scopes/invisibleInternalSetterAccessFromDeriviedClassOn_inherited.kt	skip	LANGUAGE	
 tests/scopes/invisibleInternalSetterAccessFromDeriviedClass_direct.kt	skip	LANGUAGE	
 tests/scopes/invisibleInternalSetterAccessFromDeriviedClass_inherited.kt	skip	LANGUAGE	
-tests/scopes/invisibleSetter.kt	accepts invalid	INVISIBLE_SETTER	invisibleSetter.kt:9: INVISIBLE_SETTER
+tests/scopes/invisibleSetter.kt	rejects invalid	on an expected line	
 tests/scopes/javaFunctionAndKotlinPropertyFromDifferentSupertypes.kt	skip	Java sources	
 tests/scopes/jkjSyntheticProperty.kt	skip	LANGUAGE	
 tests/scopes/kotlinAccessorsLikeFunctionsThrowJavaClass.kt	skip	Java sources	
 tests/scopes/kt1078.kt	accepts valid		
 tests/scopes/kt1080.kt	rejects invalid	on an expected line	
-tests/scopes/kt1244.kt	accepts invalid	INVISIBLE_REFERENCE	kt1244.kt:12: INVISIBLE_REFERENCE
+tests/scopes/kt1244.kt	rejects invalid	on an expected line	
 tests/scopes/kt1248.kt	accepts invalid	CANNOT_WEAKEN_ACCESS_PRIVILEGE	kt1248.kt:10: CANNOT_WEAKEN_ACCESS_PRIVILEGE
 tests/scopes/kt151.kt	rejects invalid	on an expected line	
 tests/scopes/kt1579.kt	accepts valid		
 tests/scopes/kt1579_map_entry.kt	accepts valid		
 tests/scopes/kt1580.kt	accepts valid		
 tests/scopes/kt1642.kt	accepts valid		
-tests/scopes/kt1738.kt	accepts invalid	INVISIBLE_REFERENCE	kt1738.kt:10: INVISIBLE_REFERENCE
-tests/scopes/kt1805.kt	accepts invalid	INVISIBLE_REFERENCE	kt1805.kt:11: INVISIBLE_REFERENCE
-tests/scopes/kt1806.kt	accepts invalid	INVISIBLE_REFERENCE	kt1806.kt:12: INVISIBLE_REFERENCE
+tests/scopes/kt1738.kt	rejects invalid	on an expected line	
+tests/scopes/kt1805.kt	rejects invalid	on an expected line	
+tests/scopes/kt1806.kt	rejects invalid	on an expected line	
 tests/scopes/kt1822.kt	accepts invalid	WRONG_MODIFIER_CONTAINING_DECLARATION; CANNOT_CHANGE_ACCESS_PRIVILEGE	kt1822.kt:10: WRONG_MODIFIER_CONTAINING_DECLARATION
 tests/scopes/kt1942.kt	skip	Java sources	
 tests/scopes/kt2262.kt	accepts valid		
 tests/scopes/kt323.kt	rejects invalid	on an expected line	
-tests/scopes/kt37.kt	accepts invalid	INVISIBLE_REFERENCE	kt37.kt:15: INVISIBLE_REFERENCE
+tests/scopes/kt37.kt	rejects invalid	on an expected line	
 tests/scopes/kt587.kt	accepts valid		
 tests/scopes/kt900-1.kt	rejects invalid	on an expected line	
 tests/scopes/kt900-2.kt	rejects invalid	on an expected line	
 tests/scopes/kt900.kt	rejects invalid	on an expected line	
 tests/scopes/kt939.kt	accepts valid		
-tests/scopes/kt9430.kt	accepts invalid	INVISIBLE_REFERENCE	kt9430.kt:10: INVISIBLE_REFERENCE
+tests/scopes/kt9430.kt	rejects invalid	on an expected line	
 tests/scopes/noIntersectionOverrideOfTwoMembers.kt	accepts valid		
 tests/scopes/noIntersectionOverrideOfTwoMembers_java.kt	accepts valid		
 tests/scopes/protectedVisibility/complexCompanion.kt	accepts invalid	INVISIBLE_REFERENCE	complexCompanion.kt:17: INVISIBLE_REFERENCE
-tests/scopes/protectedVisibility/constructors.kt	accepts invalid	INVISIBLE_REFERENCE	constructors.kt:11: INVISIBLE_REFERENCE
+tests/scopes/protectedVisibility/constructors.kt	rejects invalid	on an expected line	
 tests/scopes/protectedVisibility/constructorsInner.kt	accepts valid		
 tests/scopes/protectedVisibility/generic.kt	accepts valid		
 tests/scopes/protectedVisibility/innerClassInJava.kt	skip	Java sources	
-tests/scopes/protectedVisibility/innerProtectedClass.kt	accepts invalid	INVISIBLE_REFERENCE	innerProtectedClass.kt:12: INVISIBLE_REFERENCE
+tests/scopes/protectedVisibility/innerProtectedClass.kt	rejects invalid	on an expected line	
 tests/scopes/protectedVisibility/javaInheritedInKotlin.kt	skip	Java sources	
 tests/scopes/protectedVisibility/kt7971.kt	skip	Java sources	
-tests/scopes/protectedVisibility/nonSuperCallConstructor.kt	accepts invalid	PROTECTED_CONSTRUCTOR_NOT_IN_SUPER_CALL	nonSuperCallConstructor.kt:11: PROTECTED_CONSTRUCTOR_NOT_IN_SUPER_CALL
+tests/scopes/protectedVisibility/nonSuperCallConstructor.kt	rejects invalid	on an expected line	
 tests/scopes/protectedVisibility/nonSuperCallConstructorJavaDifferentPackage.kt	skip	Java sources	
 tests/scopes/protectedVisibility/nonSuperCallConstructorJavaSamePackage.kt	skip	Java sources	
-tests/scopes/protectedVisibility/protectedCallOnSubClass.kt	accepts invalid	INVISIBLE_REFERENCE	protectedCallOnSubClass.kt:8: INVISIBLE_REFERENCE
+tests/scopes/protectedVisibility/protectedCallOnSubClass.kt	rejects invalid	on an expected line	
 tests/scopes/protectedVisibility/protectedPropertyInPrimaryConstructor.kt	accepts valid		
 tests/scopes/protectedVisibility/smartcastOnExtensionReceiver.kt	accepts valid		
 tests/scopes/protectedVisibility/syntheticPropertyExtensions.kt	skip	Java sources	
@@ -8070,14 +8070,14 @@ tests/sealed/internalTypeInConstructor.kt	accepts valid
 tests/sealed/kt44316.kt	accepts valid		
 tests/sealed/kt44861.kt	accepts valid		
 tests/sealed/nonExhaustiveByNegation.kt	rejects invalid	on an expected line	
-tests/sealed/privateSealedConstructors_error.kt	accepts invalid	INVISIBLE_REFERENCE	base.kt:6: INVISIBLE_REFERENCE
-tests/sealed/privateSealedConstructors_warning.kt	accepts invalid	INVISIBLE_REFERENCE	base.kt:6: INVISIBLE_REFERENCE
+tests/sealed/privateSealedConstructors_error.kt	rejects invalid	on an expected line	
+tests/sealed/privateSealedConstructors_warning.kt	rejects invalid	on an expected line	
 tests/sealed/privateTypeInConstructor.kt	skip	LANGUAGE	
-tests/sealed/protectedConstructors.kt	accepts invalid	INVISIBLE_REFERENCE; NON_PRIVATE_OR_PROTECTED_CONSTRUCTOR_IN_SEALED	protectedConstructors.kt:25: INVISIBLE_REFERENCE
+tests/sealed/protectedConstructors.kt	rejects invalid	on an expected line	
 tests/sealed/sealedInheritorErrorMessage.kt	accepts invalid	SEALED_SUPERTYPE_IN_LOCAL_CLASS	sealedInheritorErrorMessage.kt:6: SEALED_SUPERTYPE_IN_LOCAL_CLASS
 tests/sealed/sealedJavaClass.kt	skip	LANGUAGE	
 tests/sealed/sealedJavaClassEnabled.kt	skip	LANGUAGE	
-tests/sealedClass.kt	accepts invalid	INVISIBLE_REFERENCE	sealedClass.kt:10: INVISIBLE_REFERENCE
+tests/sealedClass.kt	rejects invalid	on an expected line	
 tests/secondaryConstructors/argumentsResolveInBodyAndDelegationCall.kt	rejects invalid	on an expected line	
 tests/secondaryConstructors/classInitializersWithoutPrimary.kt	accepts valid		
 tests/secondaryConstructors/companionObjectScope.kt	accepts invalid	NONE_APPLICABLE	companionObjectScope.kt:17: NONE_APPLICABLE
@@ -9322,9 +9322,9 @@ tests/variance/VarProperty.kt	rejects invalid	on an expected line
 tests/variance/Visibility.kt	rejects invalid	on an expected line	
 tests/variance/ea1337846.kt	rejects invalid	on an expected line	
 tests/variance/privateToThis/Abstract.kt	accepts valid		
-tests/variance/privateToThis/FunctionCall.kt	accepts invalid	INVISIBLE_REFERENCE	FunctionCall.kt:18: INVISIBLE_REFERENCE
-tests/variance/privateToThis/GetVal.kt	accepts invalid	INVISIBLE_REFERENCE	GetVal.kt:18: INVISIBLE_REFERENCE
-tests/variance/privateToThis/SetVar.kt	accepts invalid	INVISIBLE_REFERENCE	SetVar.kt:18: INVISIBLE_REFERENCE
+tests/variance/privateToThis/FunctionCall.kt	rejects invalid	on an expected line	
+tests/variance/privateToThis/GetVal.kt	rejects invalid	on an expected line	
+tests/variance/privateToThis/SetVar.kt	rejects invalid	on an expected line	
 tests/variance/privateToThis/ValReassigned.kt	accepts valid		
 tests/versionOverload/abstractMember.kt	accepts invalid	INVALID_VERSIONING_ON_NONFINAL_FUNCTION	abstractMember.kt:7: INVALID_VERSIONING_ON_NONFINAL_FUNCTION
 tests/versionOverload/defaultNewerParam.kt	rejects invalid	on an expected line	
@@ -9344,18 +9344,18 @@ tests/vfir/expressions/for.kt	accepts valid
 tests/visibility/abstractInvisibleMemberFromJava.kt	skip	Java sources	
 tests/visibility/abstractInvisibleMemberFromKotlin.kt	rejects invalid	on an expected line	
 tests/visibility/checkCastToInaccessibleInterface.kt	rejects invalid	on an expected line	
-tests/visibility/exposedFunctionParameterType.kt	accepts invalid	EXPOSED_PARAMETER_TYPE; INVISIBLE_REFERENCE	exposedFunctionParameterType.kt:7: EXPOSED_PARAMETER_TYPE
+tests/visibility/exposedFunctionParameterType.kt	rejects invalid	on an expected line	
 tests/visibility/exposedFunctionReturnType.kt	rejects invalid	on an expected line	
 tests/visibility/exposedPropertyType.kt	rejects invalid	on an expected line	
 tests/visibility/exposedSupertype.kt	rejects invalid	on an expected line	
-tests/visibility/exposedTypeAlias.kt	accepts invalid	EXPOSED_TYPEALIAS_EXPANDED_TYPE; INVISIBLE_REFERENCE	exposedTypeAlias.kt:6: EXPOSED_TYPEALIAS_EXPANDED_TYPE
+tests/visibility/exposedTypeAlias.kt	rejects invalid	on an expected line	
 tests/visibility/exposedTypeParameters.kt	rejects invalid	on an expected line	
 tests/visibility/innerClassDelegatingConstructorCallToPrivate.kt	accepts valid		
 tests/visibility/innerConstructorThroughSubclass.kt	accepts valid		
-tests/visibility/innerNestedAndAnonymousClasses.kt	accepts invalid	INVISIBLE_REFERENCE	innerNestedAndAnonymousClasses.kt:17: INVISIBLE_REFERENCE
+tests/visibility/innerNestedAndAnonymousClasses.kt	rejects invalid	on an expected line	
 tests/visibility/intersectionOverrideWithImplicitTypes.kt	accepts valid		
-tests/visibility/invisiblePrivateThroughSubClass.kt	accepts invalid	INVISIBLE_REFERENCE	invisiblePrivateThroughSubClass.kt:5: INVISIBLE_REFERENCE
-tests/visibility/invisiblePrivateThroughSubClassDoubleSmartCast.kt	accepts invalid	INVISIBLE_REFERENCE	invisiblePrivateThroughSubClassDoubleSmartCast.kt:9: INVISIBLE_REFERENCE
+tests/visibility/invisiblePrivateThroughSubClass.kt	rejects invalid	on an expected line	
+tests/visibility/invisiblePrivateThroughSubClassDoubleSmartCast.kt	rejects invalid	on an expected line	
 tests/visibility/invisiblePrivateThroughSubClassSmartCast.kt	accepts valid		
 tests/visibility/invisibleSetterOfJavaClass.kt	skip	Java sources	
 tests/visibility/javaInterfaceFieldDirectAccess.kt	skip	Java sources	
@@ -9375,15 +9375,15 @@ tests/visibility/packagePrivateStaticViaInternal.kt	skip	Java sources
 tests/visibility/packagePrivateStaticViaTypeAlias.kt	skip	Java sources	
 tests/visibility/privateAliasInSamePackage.kt	skip	Java sources	
 tests/visibility/privateCompanionInSuperClass.kt	rejects invalid	elsewhere	
-tests/visibility/privateDeclarationInAnotherFile.kt	accepts invalid	INVISIBLE_REFERENCE	2.kt:2: INVISIBLE_REFERENCE
+tests/visibility/privateDeclarationInAnotherFile.kt	rejects invalid	on an expected line	
 tests/visibility/privateFromInAnonymousObject.kt	accepts valid		
 tests/visibility/privateSealedNested.kt	rejects invalid	on an expected line	
 tests/visibility/privateToThis.kt	accepts invalid	INVISIBLE_REFERENCE	privateToThis.kt:16: INVISIBLE_REFERENCE
 tests/visibility/privateToThisCallableReference.kt	skip	LANGUAGE	
 tests/visibility/privateToThisCallableReferenceLegacy.kt	skip	LANGUAGE	
 tests/visibility/privateToThisExotic.kt	skip	Java sources	
-tests/visibility/privateToThisK1Crash.kt	rejects valid	type checking has run into a recursive problem; specify the type of '_'	privateToThisK1Crash.kt:7: type checking has run into a recursive problem; specify the type of 'tt'
-tests/visibility/privateTypeInProjection.kt	accepts invalid	INVISIBLE_REFERENCE	b.kt:7: INVISIBLE_REFERENCE
+tests/visibility/privateToThisK1Crash.kt	accepts valid		
+tests/visibility/privateTypeInProjection.kt	rejects invalid	on an expected line	
 tests/visibility/protectedAnnotationClassFromJava.kt	skip	Java sources	
 tests/visibility/protectedInCompanion.kt	accepts invalid	SUBCLASS_CANT_CALL_COMPANION_PROTECTED_NON_STATIC	protectedInCompanion.kt:9: SUBCLASS_CANT_CALL_COMPANION_PROTECTED_NON_STATIC
 tests/visibility/protectedInternal.kt	accepts valid		
@@ -9394,7 +9394,7 @@ tests/visibility/protectedVisibilityAndSmartcast_overrideSameType.kt	accepts val
 tests/visibility/singletonConstructors.kt	rejects invalid	on an expected line	
 tests/visibility/smartCastAndSuppressedVisibility.kt	accepts valid		
 tests/visibility/superAccessToJavaField.kt	skip	Java sources	
-tests/visibility/visibilityWithOverrides.kt	accepts invalid	INVISIBLE_REFERENCE	main.kt:3: INVISIBLE_REFERENCE
+tests/visibility/visibilityWithOverrides.kt	rejects invalid	on an expected line	
 tests/visibility/visibleDeclarationThroughInvisibleTypeAlias.kt	accepts invalid	INVISIBLE_REFERENCE	Main.kt:2: INVISIBLE_REFERENCE
 tests/visibleVsInvisibleQualifier.kt	skip	Java sources	
 tests/warningsForBreakingChanges/capturedTypes/incorrectCapturedApproximationForValueParameters.kt	skip	Java sources	

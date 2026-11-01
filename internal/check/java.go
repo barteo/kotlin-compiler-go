@@ -1736,6 +1736,7 @@ func (c *Checker) construct(x *syntax.Call, cls *types.ClassSym, p syntax.Pos, w
 		return c.samConstructor(x, cls, want, sink) // a fun interface of the program
 	}
 	if !cls.External {
+		c.checkClassVisible(cls, p)
 		ctors := c.visibleCtors(cls)
 		if comp := cls.Companion; comp != nil && !c.anyMayTake(ctors, x) && c.companionInvokes(comp, x) {
 			// The companion's invoke operator, as kotlinc calls it when
@@ -1765,7 +1766,11 @@ func (c *Checker) construct(x *syntax.Call, cls *types.ClassSym, p syntax.Pos, w
 		}
 		switch {
 		case len(cands) == 0 && len(userCtors(cls)) > 0:
-			c.errorf(p, "cannot access 'constructor': it is private in '%s'", cls.DisplayName())
+			what := "private"
+			if ctorVisibility(userCtors(cls)[0]) == syntax.Protected {
+				what = "protected"
+			}
+			c.errorf(p, "cannot access 'constructor': it is %s in '%s'", what, cls.DisplayName())
 			c.args(x, nil)
 			return types.InvalidType
 		case len(cands) == 0:
@@ -1886,13 +1891,22 @@ func (c *Checker) javaCall(x *syntax.Call, fn *syntax.Member, rt types.Type, wan
 		c.args(x, nil)
 		return types.InvalidType
 	}
-	ms := c.lowPriorityGivesWay(c.accessible(c.javaMethods(cls, fn.Name)), fn.Name, rt, x)
+	ms := c.lowPriorityGivesWay(c.accessible(cls, c.javaMethods(cls, fn.Name), c.declaredClass(fn.X, cls)), fn.Name, rt, x)
 	if len(ms) == 0 && fn.Name == "get" && c.isCharSequence(cls) {
 		ms = []*types.FunSym{c.charSequenceGet()} // s[i]: charAt(i)
 	}
 	if len(ms) == 0 {
 		if cands := c.extCalleesFor(fn.Name, rt, x); len(cands) > 0 {
 			return c.resolve(x, cands, want, sink)
+		}
+		if hidden := c.javaMethods(cls, fn.Name); len(hidden) > 0 {
+			// Only members the code can't see, or private members of
+			// cls's supertypes, which it doesn't inherit.
+			t := c.resolve(x, c.memberCallees(hidden, rt), want, sink)
+			if f := x.Sym; f != nil && c.funVisible(f) {
+				c.invisibleFun(fn.P, f)
+			}
+			return t
 		}
 		c.errorf(fn.P, "unresolved reference: %s", fn.Name)
 		c.args(x, nil)
@@ -2026,7 +2040,7 @@ func (c *Checker) javaProperty(x *syntax.Member, rt types.Type) (types.Type, boo
 	// Not those of an earlier check of x, an extension property's: a
 	// member setTextColor isn't the setter of TextView.textColor.
 	x.Getter, x.Setter = nil, nil
-	for _, f := range c.accessible(c.javaMethods(cls, getterName)) {
+	for _, f := range c.accessible(cls, c.javaMethods(cls, getterName)) {
 		// Only Java methods are seen as properties, and the program's
 		// overrides of them.
 		if c.javaAccessor(f) && len(f.Params) == 0 && !f.Unsupported && f.Ret.K != types.Unit &&
@@ -2035,7 +2049,7 @@ func (c *Checker) javaProperty(x *syntax.Member, rt types.Type) (types.Type, boo
 		}
 	}
 	if g := acronymAccessor("get", x.Name); x.Getter == nil && !special && g != "" {
-		for _, f := range c.accessible(c.javaMethods(cls, g)) {
+		for _, f := range c.accessible(cls, c.javaMethods(cls, g)) {
 			if f.Owner.External && len(f.Params) == 0 && !f.Unsupported && f.Ret.K != types.Unit {
 				x.Getter, setterName = f, acronymAccessor("set", x.Name)
 			}
@@ -2047,7 +2061,7 @@ func (c *Checker) javaProperty(x *syntax.Member, rt types.Type) (types.Type, boo
 	sub := c.memberSubst(rt, x.Getter.Owner)
 	// A setter may return a value, which an assignment drops: Android's
 	// Intent.setFlags returns the Intent.
-	for _, f := range c.accessible(c.javaMethods(cls, setterName)) {
+	for _, f := range c.accessible(cls, c.javaMethods(cls, setterName)) {
 		if c.javaAccessor(f) && len(f.Params) == 1 && !f.Unsupported && sameJavaType(f, x.Getter) {
 			x.Setter = f
 		}

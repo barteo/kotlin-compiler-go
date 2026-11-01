@@ -13,9 +13,10 @@ own tests.
 - Secondary constructors of enum classes. They compile, but to a
   constructor the JVM verifier rejects.
 - A `try` as an argument of an enum entry's constructor call.
-- Visibility isn't checked, but for private constructors: private,
-  protected and internal declarations can be used where Kotlin doesn't
-  allow it. It still shapes the class files as with `kotlinc`.
+- Visibility is checked where declarations are used, but not in
+  imports, nor whether a declaration exposes a less visible type
+  (`EXPOSED_*`), nor `private` to `this` in classes with variant type
+  parameters.
 - `@DslMarker` markers are those of classes: markers on types, as in
   `(@M A).() -> Unit`, are ignored, so code they forbid compiles.
 - Reified type parameters of members of interfaces and value classes

@@ -182,7 +182,7 @@ func (c *Checker) hasFun(t types.Type, name string, x *syntax.Call) bool {
 		}
 		if cls := c.classOf(t); cls != nil {
 			cls.Ensure()
-			if !cls.Missing && fits(c.accessible(c.javaMethods(cls, name))) {
+			if !cls.Missing && fits(c.accessible(cls, c.javaMethods(cls, name))) {
 				return true
 			}
 			if n, _ := c.innerNamed(cls, name); n != nil {

@@ -118,6 +118,7 @@ func (c *Checker) expr1(x syntax.Expr, want types.Type, allowRange bool, sink *s
 			if cls != nil {
 				// An object named as a function is the object: a value.
 				if obj := objectOf(cls); obj != nil {
+					c.checkClassVisible(cls, x.P)
 					return objectValue(x, obj)
 				}
 			}
@@ -321,7 +322,9 @@ func (c *Checker) lookupVar(name string) (*types.VarSym, types.Type, bool, bool)
 		return e, e.Type, false, true
 	}
 	if c.cls != nil {
-		if p := c.userProp(c.cls, name); p != nil {
+		if p := c.memberProp(c.cls, name); p != nil && (c.propVisible(p) || c.topVar(name) == nil) {
+			// A superclass's private property gives way to a top-level
+			// one; without one, the use is an error (see checkTopVar).
 			c.captureThis()
 			ensureVar(p)
 			declared := c.memberSubst(c.cls.This(), p.Owner).Apply(p.Type)
@@ -1515,6 +1518,7 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 	}
 	if cls := c.classRef(x); cls != nil && !c.hasStatic(c.classRef(x.X), x.Name) {
 		if obj := objectOf(cls); obj != nil {
+			c.checkClassVisible(cls, x.P)
 			return objectValue(x, obj) // a.b.Obj, Outer.Companion, kotlin.random.Random
 		}
 	}
@@ -1608,16 +1612,25 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 		x.Prop = cls.Underlying
 		t = cls.Underlying.Type
 	case cls != nil && !cls.External:
-		if x.Prop = c.userProp(cls, x.Name); x.Prop == nil {
+		x.Prop = c.memberProp(cls, x.Name)
+		if d := c.declaredClass(x.X, cls); x.Prop == nil && d != nil && !d.External {
+			// A private property of a smart-cast variable's declared
+			// type: a.p for a: A smart-cast to B, in A's code.
+			if p := c.memberProp(d, x.Name); p != nil && cls.IsSubclassOf(p.Owner) {
+				x.Prop = p
+			}
+		}
+		if x.Prop == nil {
 			t, found = c.javaProperty(x, rt)
 			break
 		}
-		if p := x.Prop; c.privateElsewhere(p) {
+		if p := x.Prop; !c.propVisible(p) {
 			// An extension of the name is read instead, as with calls.
 			x.Prop = nil
 			if t, found = c.extProp(x, rt); found {
 				break
 			}
+			c.invisibleProp(x.P, p)
 			x.Prop, found = p, true
 		}
 		ensureVar(x.Prop)
@@ -1747,7 +1760,7 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 			// unless none takes the arguments and an object in scope's,
 			// a top-level function of the package or one of the class
 			// path's, or an extension of this does.
-			ms := c.lowPriorityGivesWay(c.accessible(c.javaMethods(c.cls, name)), name, c.cls.This(), x)
+			ms := c.lowPriorityGivesWay(c.accessible(c.cls, c.javaMethods(c.cls, name)), name, c.cls.This(), x)
 			if len(ms) > 0 && (c.anyMayTake(ms, x) ||
 				c.objectTaking(name, x) == nil && !c.anyMayTake(c.topFuns(name), x) && !c.anyMayTake(c.kotlinFuns(name, false), x) &&
 					!c.thisExtension(name, x)) {
@@ -1955,6 +1968,15 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 		if isVar || c.cls != nil && c.userProp(c.cls, name) != nil {
 			return c.invoke(x, want, sink) // reports that it can't be invoked
 		}
+		if c.cls != nil {
+			if hidden := c.javaMethods(c.cls, name); len(hidden) > 0 {
+				// Only methods of this that the code can't see: a
+				// superclass's private ones.
+				c.invisibleFun(fn.P, hidden[0])
+				c.args(x, nil)
+				return types.InvalidType
+			}
+		}
 		c.errorf(fn.P, "unresolved reference: %s", name)
 		c.args(x, nil)
 		return types.InvalidType
@@ -2112,7 +2134,7 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 			t = c.resolve(x, nullExts, want, sink)
 		case cls != nil && !cls.External:
 			ms := c.javaMethods(cls, fn.Name)
-			if p := c.userProp(cls, fn.Name); len(ms) == 0 && p != nil && !((c.privateElsewhere(p) || !c.invokeFits(p, x)) && c.extCallees(fn.Name, rt) != nil) {
+			if p := c.userProp(cls, fn.Name); len(ms) == 0 && p != nil && !((!c.propVisible(p) || !c.invokeFits(p, x)) && c.extCallees(fn.Name, rt) != nil) {
 				// A property of function type, called: obj.f(x).
 				if fn.Safe {
 					return c.safeInvoke(x, fn, want, sink)
@@ -2326,30 +2348,6 @@ func (c *Checker) implicitOf(t types.Type) bool {
 		}
 	}
 	return c.cls != nil && fits(c.cls.This())
-}
-
-// privateElsewhere reports whether p is a private property of a class
-// that the code isn't in, which an extension with its name is called
-// instead of: okio's PeekSource(this).buffer() calls Source.buffer(), not
-// PeekSource's private buffer. Code in local classes and object
-// expressions is taken to see it.
-func (c *Checker) privateElsewhere(p *types.VarSym) bool {
-	priv := p.Private
-	switch d := p.Decl.(type) {
-	case *syntax.PropDecl:
-		priv = d.Visibility == syntax.Private
-	case *syntax.CtorParam:
-		priv = d.Visibility == syntax.Private
-	}
-	if !priv || p.Owner == nil {
-		return false
-	}
-	for k := c.cls; k != nil; k = k.Outer {
-		if k == p.Owner || k.Anonymous || k.Local {
-			return false
-		}
-	}
-	return true
 }
 
 // constructible reports whether a class has constructors to call.

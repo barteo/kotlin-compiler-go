@@ -2,19 +2,19 @@
 
 The box tests of JetBrains/kotlin v2.4.21 (`compiler/testData/codegen/box`), each compiled by kc and run: its `box()` must return `"OK"`. `bench/kotlin-tests.sh box` writes this file, and [docs/conformance.md](../../docs/conformance.md) explains it.
 
-Of 7480 test files, 997 are skipped and 6483 run. 6166 pass (95.1%).
+Of 7480 test files, 997 are skipped and 6483 run. 6167 pass (95.1%).
 
 | Result | Tests | Share |
 |:---|---:|---:|
-| pass | 6166 | 95.1% |
+| pass | 6167 | 95.1% |
 | parse/unsupported | 0 | 0.0% |
 | check error | 211 | 3.3% |
 | crash | 0 | 0.0% |
 | codegen error | 16 | 0.2% |
 | VerifyError | 21 | 0.3% |
-| linkage error | 10 | 0.2% |
+| linkage error | 11 | 0.2% |
 | exception | 32 | 0.5% |
-| wrong result | 27 | 0.4% |
+| wrong result | 25 | 0.4% |
 | timeout | 0 | 0.0% |
 
 ## Skipped
@@ -55,8 +55,8 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 | controlStructures | 146 | 140 | 0 | 5 | 0 | 0 | 1 |
 | bridges | 137 | 136 | 0 | 0 | 0 | 1 | 0 |
 | inline | 132 | 127 | 0 | 4 | 1 | 0 | 0 |
-| classes | 120 | 116 | 0 | 2 | 0 | 1 | 1 |
-| objects | 116 | 112 | 0 | 2 | 0 | 1 | 1 |
+| classes | 120 | 116 | 0 | 2 | 0 | 2 | 0 |
+| objects | 116 | 113 | 0 | 2 | 0 | 1 | 0 |
 | properties | 109 | 106 | 0 | 2 | 0 | 1 | 0 |
 | closures | 107 | 103 | 0 | 3 | 0 | 0 | 1 |
 | functions | 106 | 95 | 0 | 11 | 0 | 0 | 0 |
@@ -283,8 +283,8 @@ A class kc wrote refers to a member or class that doesn't exist, or doesn't fit.
 | Error | Tests | Examples |
 |:---|---:|:---|
 | `java.lang.NoSuchMethodError` | 4 | `classes/kt5347.kt`, `javaInterop/objectMethods/cloneCallsSuper.kt` |
+| `java.lang.IncompatibleClassChangeError` | 3 | `classes/kt2477.kt`, `dataClasses/nonTrivialFinalMemberInSuperClass.kt` |
 | `java.lang.IllegalAccessError` | 2 | `syntheticAccessors/kt9958.kt`, `syntheticAccessors/kt9958Interface.kt` |
-| `java.lang.IncompatibleClassChangeError` | 2 | `dataClasses/nonTrivialFinalMemberInSuperClass.kt`, `dataObjects/toString.kt` |
 | `java.lang.AbstractMethodError` | 1 | `coroutines/inlineClasses/kt84305.kt` |
 | `java.lang.NoSuchFieldError` | 1 | `objects/interfaceCompanionObjectReference.kt` |
 
@@ -310,7 +310,6 @@ box() returned something other than `"OK"`, with numbers replaced by n.
 | `FAILn` | 2 | `controlStructures/breakContinueInExpressions/breakInLoopConditions.kt`, `finally/returnNullFromInlined.kt` |
 | `fail` | 2 | `callableReference/property/extensionPropertyReferenceWithTypeParameter.kt`, `unsignedTypes/unsignedLiteralsWithSignedOverflow.kt` |
 | `fail: _` | 2 | `coroutines/unitTypeReturn/unitSafeCall.kt`, `inference/noCoercionToUniForNullableLambdaReturnType.kt` |
-| `FAIL` | 1 | `classes/kt2477.kt` |
 | `FAIL: expected NPE` | 1 | `casts/castToDefinitelyNotNullType.kt` |
 | `Fail` | 1 | `invokedynamic/extensionFunInvoke.kt` |
 | `Fail n` | 1 | `primitiveTypes/comparisonWithNullCallsFun.kt` |
@@ -324,5 +323,4 @@ box() returned something other than `"OK"`, with numbers replaced by n.
 | `fail: Char.MIN_VALUE - n should overflow to positive.` | 1 | `binaryOp/overflowChar.kt` |
 | `fail: in this case we should add to ints and than cast the r…` | 1 | `binaryOp/overflowLong.kt` |
 | `failn` | 1 | `annotations/resolveWithLowPriorityAnnotation.kt` |
-| `inner` | 1 | `objects/kt3684.kt` |
 

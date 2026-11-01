@@ -510,7 +510,11 @@ func (c *Checker) refTarget(p syntax.Pos, r *syntax.CallableRef, recvType types.
 			rt = r.Bound.Type
 		}
 		if cls := c.classOf(rt.NonNull()); cls != nil {
-			for _, f := range c.accessible(c.javaMethods(cls, r.Name)) {
+			ms := c.accessible(cls, c.javaMethods(cls, r.Name))
+			if len(ms) == 0 && len(c.extCallees(r.Name, rt)) == 0 {
+				ms = c.javaMethods(cls, r.Name) // invisible: the call reports it
+			}
+			for _, f := range ms {
 				if !f.Static || objectStatic(f) {
 					fs = append(fs, f)
 				}
@@ -553,11 +557,11 @@ func (c *Checker) refTarget(p syntax.Pos, r *syntax.CallableRef, recvType types.
 		// this.
 		for i := len(c.recvs) - 1; i >= 0 && len(fs) == 0; i-- {
 			if cls := c.classOf(c.scope.narrowed(c.recvs[i].sym).NonNull()); cls != nil {
-				fs = c.accessible(c.javaMethods(cls, r.Name))
+				fs = c.accessible(cls, c.javaMethods(cls, r.Name))
 			}
 		}
 		if len(fs) == 0 && c.cls != nil {
-			fs = c.accessible(c.javaMethods(c.cls, r.Name))
+			fs = c.accessible(c.cls, c.javaMethods(c.cls, r.Name))
 		}
 		// An extension of an implicit receiver, the innermost first, or of
 		// this or an inner class's outer instances: ::f for fun A.f() in
@@ -834,17 +838,6 @@ func refStateMachine(x *syntax.Lambda, f *types.FunSym) bool {
 	r := f.Ret
 	return x.Ret.K == types.Unit && r.K != types.Unit || syntax.SourceInline(f) != nil || f.Inline != nil ||
 		types.Unboxed(r) && !r.N && !types.Repr(r).IsPrimitive()
-}
-
-// inside reports whether the code being checked is in class cls, or in a
-// class nested in it, where its private members are visible.
-func (c *Checker) inside(cls *types.ClassSym) bool {
-	for k := c.cls; k != nil; k = k.Outer {
-		if k == cls {
-			return true
-		}
-	}
-	return false
 }
 
 // hasCallable reports whether cls has a member function or a property

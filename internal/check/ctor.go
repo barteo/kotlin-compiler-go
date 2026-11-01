@@ -15,9 +15,20 @@ func userCtors(cls *types.ClassSym) []*types.FunSym {
 	return append(out, cls.Ctors...)
 }
 
+// ctorVisibility returns the visibility of a constructor of the program.
+func ctorVisibility(f *types.FunSym) syntax.Visibility {
+	switch d := f.Decl.(type) {
+	case *syntax.ClassDecl:
+		return d.CtorMods.Visibility
+	case *syntax.SecondaryCtor:
+		return d.Visibility
+	}
+	return syntax.Public
+}
+
 // visibleCtors returns the constructors of one of the program's classes
-// that code here can call: a private one only in the class, and the
-// classes nested in it.
+// that code here can call: a private or protected one only in the class,
+// and the classes nested in it.
 func (c *Checker) visibleCtors(cls *types.ClassSym) []*types.FunSym {
 	all := userCtors(cls)
 	for k := c.cls; k != nil; k = k.Outer {
@@ -27,14 +38,10 @@ func (c *Checker) visibleCtors(cls *types.ClassSym) []*types.FunSym {
 	}
 	var out []*types.FunSym
 	for _, f := range all {
-		var vis syntax.Visibility
-		switch d := f.Decl.(type) {
-		case *syntax.ClassDecl:
-			vis = d.CtorMods.Visibility
-		case *syntax.SecondaryCtor:
-			vis = d.Visibility
-		}
-		if vis != syntax.Private {
+		vis := ctorVisibility(f)
+		// A protected constructor is only for the subclasses' super(...)
+		// calls, which don't look here.
+		if vis != syntax.Private && vis != syntax.Protected {
 			out = append(out, f)
 		}
 	}

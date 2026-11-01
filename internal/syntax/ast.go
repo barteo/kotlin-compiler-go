@@ -232,8 +232,9 @@ type Modifiers struct {
 	ContextP Pos
 }
 
-// Visibility is a declaration's visibility modifier. kc doesn't check
-// visibility, but the JVM flags and names it writes depend on it.
+// Visibility is a declaration's visibility modifier, which the checker
+// checks uses of (see check/visibility.go), and the JVM flags and names
+// kc writes depend on.
 type Visibility uint8
 
 const (

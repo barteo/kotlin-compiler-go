@@ -982,7 +982,7 @@ classes/kt2384.kt	pass
 classes/kt2390.kt	pass		
 classes/kt2391.kt	pass		
 classes/kt2417.kt	pass		
-classes/kt2477.kt	wrong result	FAIL	FAIL
+classes/kt2477.kt	linkage error	java.lang.IncompatibleClassChangeError	Conflicting default methods: test/A.getC test/B.getC at test.D.getC
 classes/kt2480.kt	pass		
 classes/kt2482.kt	pass		
 classes/kt2485.kt	pass		
@@ -5257,7 +5257,7 @@ objects/kt2822.kt	pass
 objects/kt32351.kt	pass		
 objects/kt3238.kt	pass		
 objects/kt32749.kt	pass		
-objects/kt3684.kt	wrong result	inner	inner
+objects/kt3684.kt	pass		
 objects/kt4086.kt	pass		
 objects/kt45170.kt	pass		
 objects/kt46136.kt	pass		

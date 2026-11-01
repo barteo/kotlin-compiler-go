@@ -547,8 +547,17 @@ func countArgs(n int) string {
 // returns may mention them.
 func (c *Checker) resolve(x *syntax.Call, cands []callee, want types.Type, sink *system) types.Type {
 	t := c.resolve1(x, cands, want, sink)
-	if f := x.Sym; f != nil && f.Private && f.Owner == nil && f.Facade != "" && f.Facade != c.file.Class() {
-		c.privateInFile(x.Fun.Pos(), f.Name)
+	switch f := x.Sym; {
+	case f == nil:
+	case f.Name != "<init>":
+		if !c.funVisible(f) {
+			c.invisibleFun(x.Fun.Pos(), f)
+		}
+	case f.Owner != nil && !f.Owner.External && ctorVisibility(f) == syntax.Private && !c.canSee(syntax.Private, f.Owner, ""):
+		// A superclass's private constructor, which only the classes
+		// nested in it may call: a sealed class's. construct leaves
+		// the others out (see visibleCtors).
+		c.errorf(x.P, "cannot access 'constructor': it is private in '%s'", f.Owner.DisplayName())
 	}
 	if f := x.Sym; f != nil && f.Ext {
 		if lf, ok := f.Decl.(*syntax.LocalFun); ok {
@@ -558,16 +567,12 @@ func (c *Checker) resolve(x *syntax.Call, cands []callee, want types.Type, sink 
 	return t
 }
 
-// privateInFile reports a use of another file's private top-level
-// declaration, which is visible in its file only.
-func (c *Checker) privateInFile(p syntax.Pos, name string) {
-	c.errorf(p, "cannot access '%s': it is private in file", name)
-}
-
-// checkTopVar reports a use of another file's private top-level property.
+// checkTopVar reports a use of a property the code can't see: another
+// file's private top-level property, or a class's private or protected
+// property, which a lookup falls back to if nothing else has the name.
 func (c *Checker) checkTopVar(v *types.VarSym, p syntax.Pos) {
-	if d, ok := v.Decl.(*syntax.PropDecl); ok && v.Kind == types.Global && d.Visibility == syntax.Private && v.Facade != c.file.Class() {
-		c.privateInFile(p, v.Name)
+	if (v.Kind == types.Global || v.Kind == types.Prop) && !c.propVisible(v) {
+		c.invisibleProp(p, v)
 	}
 }
 

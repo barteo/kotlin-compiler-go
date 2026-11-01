@@ -138,6 +138,9 @@ type Checker struct {
 	// lookupCls is the class whose signatures are being resolved, for its
 	// nested classes' names; in bodies, cls is.
 	lookupCls *types.ClassSym
+	// supersOf is the class whose supertypes are being resolved, which
+	// may name its private nested classes: class A : I<A.N>.
+	supersOf *types.ClassSym
 	// anon are the classes of the file's object expressions, with the
 	// code around each; anonCount numbers them, by enclosing function.
 	anon      map[*types.ClassSym]*anonCtx
@@ -619,6 +622,7 @@ func (c *Checker) resolveType(ref *syntax.TypeRef) types.Type {
 			if !c.usable(cls, ref.P) {
 				return types.InvalidType
 			}
+			c.checkClassVisible(cls, ref.P)
 			return c.applyTypeArgs(cls, ref)
 		}
 		if ref.Args != nil {
@@ -1035,7 +1039,8 @@ func (c *Checker) declareClass(d *syntax.ClassDecl, name string, outer *types.Cl
 		Value: d.Value && !d.Interface && !d.Object, Fun: d.Fun,
 		Interface: d.Interface || d.Annotation, Abstract: d.Abstract || d.Interface || d.Annotation || d.Sealed,
 		Final:  d.Object || d.Enum || !d.Open && !d.Abstract && !d.Interface && !d.Sealed,
-		Object: d.Object, Outer: outer, Nested: map[string]*types.ClassSym{}, Aliases: map[string]*types.AliasSym{}, Sealed: d.Sealed}
+		Object: d.Object, Outer: outer, Nested: map[string]*types.ClassSym{}, Aliases: map[string]*types.AliasSym{}, Sealed: d.Sealed,
+		File: c.file.Class()}
 	if c.trial != nil {
 		c.trial.classes[sym] = true
 	}
@@ -1233,9 +1238,11 @@ func (c *Checker) visible(fs []*types.FunSym, x *syntax.Call) []*types.FunSym {
 	return slices.DeleteFunc(slices.Clone(fs), c.hiddenFun)
 }
 
-// hiddenFun reports whether f is another file's private top-level function.
+// hiddenFun reports whether the code can't see function f: another
+// file's private top-level function, or a class's private or protected
+// member extension.
 func (c *Checker) hiddenFun(f *types.FunSym) bool {
-	return f.Private && f.Owner == nil && f.Facade != "" && f.Facade != c.file.Class()
+	return !c.funVisible(f)
 }
 
 // topVar returns the program's top-level property that a simple name
