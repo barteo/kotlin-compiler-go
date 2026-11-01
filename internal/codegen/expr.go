@@ -738,7 +738,7 @@ func (g *gen) global(p *types.VarSym) {
 	case p.Suspend:
 		g.coroutineContext()
 	case p.Getter != nil:
-		g.composeArgs(p.Getter, 0, nil)
+		g.composeArgs(p.Getter, nil, nil)
 		g.callStatic(p.Getter, p.Facade, p.Getter.JVM(), composeGetterDesc(p, "()"+d))
 	case p.Const:
 		g.constProp(p)
@@ -1219,11 +1219,11 @@ func (g *gen) member(x *syntax.Member) {
 				g.swapUnder(rt)
 			}
 			g.coerceRecv(rt, f.Recv)
-			if b := inlineBody(f, 0); b != nil {
+			if b := inlineBody(f, nil); b != nil {
 				g.inline(b, nil) // inline-only, of the class path
 				return
 			}
-			g.composeArgs(f, 0, nil)
+			g.composeArgs(f, nil, nil)
 			g.callMethod(f, f.Owner, f.JVM(), funDesc(f))
 		})
 		return
@@ -1237,10 +1237,10 @@ func (g *gen) member(x *syntax.Member) {
 		}
 		g.safeCall(x, types.JVMRet(f), x.T, func() {
 			g.coerceRecv(rt, f.Recv)
-			if inlineBody(f, 0) == nil {
-				g.composeArgs(f, 0, nil) // a composable getter's Composer
+			if inlineBody(f, nil) == nil {
+				g.composeArgs(f, nil, nil) // a composable getter's Composer
 			}
-			g.invokeFun(nil, f, 0) // copied if inline-only
+			g.invokeFun(nil, f, nil) // copied if inline-only
 		})
 		return
 	case x.Getter != nil && x.Getter.Builtin == types.ArraySize:
@@ -1250,12 +1250,12 @@ func (g *gen) member(x *syntax.Member) {
 		rt := x.X.Type().NonNull()
 		g.safeCall(x, types.JVMRet(x.Getter), x.T, func() {
 			if x.Getter.Impl {
-				g.invokeFun(nil, x.Getter, 0)
+				g.invokeFun(nil, x.Getter, nil)
 				return
 			}
 			g.boxReceiver(rt)
 			rt := g.boundReceiver(rt, x.Getter)
-			g.composeArgs(x.Getter, 0, nil)
+			g.composeArgs(x.Getter, nil, nil)
 			g.invokeJava(x.Getter, rt)
 		})
 		return
@@ -1466,7 +1466,7 @@ func passedArg(x *syntax.Call, i int, vararg bool) syntax.Expr {
 // parameters: those for a vararg parameter in an array, and zeros for
 // omitted ones, whose bits it sets in the returned mask. A composable
 // function takes the mask itself, after its Composer: see composeArgs.
-func (g *gen) callArgs(x *syntax.Call, f *types.FunSym) int {
+func (g *gen) callArgs(x *syntax.Call, f *types.FunSym) argMask {
 	if df := composeDefaultsOf(f); df != nil && !superCall(x) {
 		g.composeDefaultsArgs(x, f, df)
 		return composeDefaultsMask
@@ -1474,17 +1474,17 @@ func (g *gen) callArgs(x *syntax.Call, f *types.FunSym) int {
 	mask := g.valueArgs(x, f)
 	if f.Composable {
 		g.composeArgs(f, mask, g.composeCallArgs(x, f, mask))
-		return 0
+		return nil
 	}
 	return mask
 }
 
 // valueArgs pushes the arguments of a call of f that its parameters
 // declare, as callArgs does, and returns the mask of the omitted ones.
-func (g *gen) valueArgs(x *syntax.Call, f *types.FunSym) int {
+func (g *gen) valueArgs(x *syntax.Call, f *types.FunSym) argMask {
 	if x.ArgMap == nil {
 		g.args(x, f)
-		return 0
+		return nil
 	}
 	if o := f.DefaultsOf; o != nil && omits(x, f) && !f.Impl {
 		// The $default of the function whose default values f inherits
@@ -1528,7 +1528,7 @@ func (g *gen) valueArgs(x *syntax.Call, f *types.FunSym) int {
 			g.code.Local(storeOp(p.Type), stored[i])
 		}
 	}
-	mask := 0
+	var mask argMask
 	for j, p := range f.Params {
 		var args []syntax.Expr
 		arg := -1
@@ -1549,7 +1549,7 @@ func (g *gen) valueArgs(x *syntax.Call, f *types.FunSym) int {
 			// Omitted, or a vararg parameter with a default value that
 			// gets no arguments.
 			g.zero(jvm[j])
-			mask |= 1 << (len(f.Contexts) + j) // as kotlinc's, the contexts count
+			mask.set(len(f.Contexts) + j) // as kotlinc's, the contexts count
 		default:
 			if slot, ok := stored[arg]; ok {
 				g.code.Local(loadOp(p.Type), slot)
@@ -1635,22 +1635,20 @@ func descParams(d string) []string {
 }
 
 // invokeStatic calls a static method of owner: f itself, or with omitted
-// arguments (a mask other than 0), its $default variant, which takes the
-// mask and an unused marker after the arguments. A member function's
+// arguments (a mask with bits set), its $default variant, which takes the
+// masks and an unused marker after the arguments. A member function's
 // $default takes the receiver first.
-func (g *gen) invokeStatic(owner string, f *types.FunSym, mask int, iface bool) {
+func (g *gen) invokeStatic(owner string, f *types.FunSym, mask argMask, iface bool) {
 	name, d := f.JVM(), funDesc(f)
-	if mask != 0 {
-		g.code.Iconst(int32(mask))
-		g.code.Op(cf.ACONST_NULL)
-		i := strings.IndexByte(d, ')')
-		d = d[:i] + "ILjava/lang/Object;" + d[i:]
+	if mask.any() {
+		g.pushMask(mask, types.DefaultBits(f))
+		d = defaultsDesc(d, types.DefaultBits(f), objMarker)
 		name += "$default"
 	}
 	switch {
 	case iface:
 		g.code.InvokeStaticInterface(owner, name, d)
-	case mask == 0:
+	case !mask.any():
 		g.callStatic(f, owner, name, d)
 	default:
 		g.code.Invoke(cf.INVOKESTATIC, owner, name, d)
@@ -1660,8 +1658,8 @@ func (g *gen) invokeStatic(owner string, f *types.FunSym, mask int, iface bool) 
 // invokeMember calls a Java method or a member of a Kotlin class on a
 // receiver of type rt, below the arguments. With omitted arguments, it
 // calls the static $default variant.
-func (g *gen) invokeMember(f *types.FunSym, rt types.Type, mask int) {
-	if mask == 0 {
+func (g *gen) invokeMember(f *types.FunSym, rt types.Type, mask argMask) {
+	if !mask.any() {
 		g.invokeJava(f, rt)
 		return
 	}
@@ -1669,10 +1667,10 @@ func (g *gen) invokeMember(f *types.FunSym, rt types.Type, mask int) {
 }
 
 // invokeDefault calls the static name$default method of a method, which
-// takes the receiver first, then the arguments, the mask of the omitted
+// takes the receiver first, then the arguments, the masks of the omitted
 // ones and an unused marker: a value class's takes the value. An override
 // calls the one of the method whose default values it inherits.
-func (g *gen) invokeDefault(f *types.FunSym, mask int) {
+func (g *gen) invokeDefault(f *types.FunSym, mask argMask) {
 	if o := f.DefaultsOf; o != nil {
 		// The overridden function's $default, whose result may be of a
 		// class the override's narrows, as T's erasure.
@@ -1694,15 +1692,12 @@ func (g *gen) invokeDefault(f *types.FunSym, mask int) {
 		g.code.Invoke(cf.INVOKESTATIC, f.Owner.Name+"$ComposeDefaultImpls", f.JVM()+"$default", composeDefaultsDesc(f))
 		return
 	}
-	g.code.Iconst(int32(mask))
-	g.code.Op(cf.ACONST_NULL)
-	fd := funDesc(f)
-	i := strings.IndexByte(fd, ')')
+	g.pushMask(mask, types.DefaultBits(f))
 	self := "L" + f.Owner.Name + ";"
 	if f.Owner.Value {
 		self = desc(f.Owner.Underlying.Type)
 	}
-	d := "(" + self + fd[1:i] + "ILjava/lang/Object;" + fd[i:]
+	d := defaultsDesc("("+self+funDesc(f)[1:], types.DefaultBits(f), objMarker)
 	switch {
 	case f.Owner.HasDefaultImpls():
 		// A Kotlin interface compiled without default methods: the
@@ -1886,7 +1881,7 @@ func (g *gen) ungroupedCall(x *syntax.Call) {
 				g.contextsUnder(x, f, m.X.Type().NonNull())
 			}
 			g.coerceRecv(rt, f.Recv)
-			if mask := g.callArgs(x, f); mask != 0 {
+			if mask := g.callArgs(x, f); mask.any() {
 				g.invokeDefault(f, mask)
 			} else {
 				g.callMethod(f, f.Owner, f.JVM(), funDesc(f))
@@ -1949,7 +1944,7 @@ func (g *gen) ungroupedCall(x *syntax.Call) {
 			return
 		}
 		g.args(x, f)
-		g.composeArgs(f, 0, g.invokeArgs(x))
+		g.composeArgs(f, nil, g.invokeArgs(x))
 		g.code.InvokeInterface(f.Owner.Name, f.Name, funDesc(f))
 		g.coerce(types.JVMRet(f), x.T)
 
@@ -1972,7 +1967,7 @@ func (g *gen) ungroupedCall(x *syntax.Call) {
 
 	case x.Ctor != nil:
 		d := ctorJVMDesc(x.Sym)
-		var mask int
+		var mask argMask
 		if g.sm != nil && hasSuspension(x.Args) || hasHandlers(x.Args) {
 			// The object under construction can't be stored while the
 			// arguments suspend, or in the locals that a try's handler
@@ -1991,12 +1986,10 @@ func (g *gen) ungroupedCall(x *syntax.Call) {
 			g.outerArg(x)
 			mask = g.callArgs(x, x.Sym)
 		}
-		if mask != 0 {
-			// The constructor for omitted arguments takes a mask and a marker.
-			g.code.Iconst(int32(mask))
-			g.code.Op(cf.ACONST_NULL)
-			i := strings.IndexByte(d, ')')
-			d = d[:i] + "ILkotlin/jvm/internal/DefaultConstructorMarker;" + d[i:]
+		if mask.any() {
+			// The constructor for omitted arguments takes masks and a marker.
+			g.pushMask(mask, len(x.Sym.Params))
+			d = defaultsDesc(d, len(x.Sym.Params), ctorMarker)
 		} else if g.viaMarker(x.Sym) {
 			g.useMarker(x.Sym)
 			d = g.marker(d)
@@ -2054,7 +2047,7 @@ func (g *gen) ungroupedCall(x *syntax.Call) {
 				// A value class's member: a static method that takes the
 				// value first, or with omitted arguments its $default.
 				g.contextArgs(x, f)
-				if mask := g.callArgs(x, f); mask != 0 {
+				if mask := g.callArgs(x, f); mask.any() {
 					g.invokeDefault(f, mask)
 					return
 				}
@@ -2080,7 +2073,7 @@ func (g *gen) ungroupedCall(x *syntax.Call) {
 				g.code.InvokeInterface(f.Owner.Name, f.Name, f.Desc)
 			case f.Owner.Func:
 				g.code.InvokeInterface(f.Owner.Name, f.Name, d)
-			case mask != 0:
+			case mask.any():
 				g.invokeDefault(f, mask)
 			default:
 				g.callMethod(f, cls, f.JVM(), d)
@@ -2596,8 +2589,8 @@ func (g *gen) tailCall(x *syntax.Call, t *tailrec) {
 		g.code.Local(storeOp(p.Type), p.Slot)
 	}
 	for i, p := range f.Params {
-		if mask&(1<<i) != 0 && fd.Params[i].Default != nil {
-			g.exprAs(fd.Params[i].Default, p.Type)
+		if mask.has(i) && fd.Params[i].Default != nil {
+			g.argAs(fd.Params[i].Default, p.Type)
 			g.code.Local(storeOp(p.Type), p.Slot)
 		}
 	}

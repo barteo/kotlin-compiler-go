@@ -1771,7 +1771,7 @@ coroutines/featureIntersection/tailrec/extention.kt	pass
 coroutines/featureIntersection/tailrec/infixCall.kt	exception	java.lang.StackOverflowError	 at InfixCallKt.test
 coroutines/featureIntersection/tailrec/infixRecursiveCall.kt	exception	java.lang.StackOverflowError	 at InfixRecursiveCallKt.foo
 coroutines/featureIntersection/tailrec/kt38920_localTailrec.kt	pass		
-coroutines/featureIntersection/tailrec/realIteratorFoldl.kt	exception	java.lang.StackOverflowError	 at kotlin.collections.IntIterator.next
+coroutines/featureIntersection/tailrec/realIteratorFoldl.kt	exception	java.lang.StackOverflowError	 at RealIteratorFoldlKt$box$1.invokeSuspend$lambda$0
 coroutines/featureIntersection/tailrec/realStringEscape.kt	pass		
 coroutines/featureIntersection/tailrec/realStringRepeat.kt	pass		
 coroutines/featureIntersection/tailrec/returnInParentheses.kt	exception	java.lang.StackOverflowError	 at ReturnInParenthesesKt.foo
@@ -2003,7 +2003,7 @@ coroutines/localDelegate.kt	pass
 coroutines/localFunctions/named/callTopLevelFromLocal.kt	pass		
 coroutines/localFunctions/named/capturedParameters.kt	pass		
 coroutines/localFunctions/named/capturedVariables.kt	pass		
-coroutines/localFunctions/named/defaultArgument.kt	codegen error	code generation: operand stack underflow at offset n	/tmp/claude-0/-home-user-kotlin-compiler-go/330dd56e-5377-5690-b7c7-3a8b130ad6ab/scratchpad/kc-conformance/2004/m0/src/defaultArgument.kt: code generation failed: DefaultArgumentKt.doAction$run$default: operand stack underflow at offset 24
+coroutines/localFunctions/named/defaultArgument.kt	pass		
 coroutines/localFunctions/named/extension.kt	pass		
 coroutines/localFunctions/named/infix.kt	pass		
 coroutines/localFunctions/named/insideLambda.kt	pass		
@@ -2173,7 +2173,7 @@ dataClasses/copy/valInConstructorParams.kt	pass
 dataClasses/copy/varInConstructorParams.kt	pass		
 dataClasses/copy/withGenericParameter.kt	pass		
 dataClasses/copy/withSecondaryConstructor.kt	pass		
-dataClasses/dataClassWithManyFields.kt	exception	java.lang.NullPointerException	Parameter specified as non-null is null: method DC.<init>, parameter d32 at DC.<init>
+dataClasses/dataClassWithManyFields.kt	pass		
 dataClasses/dnnInPropertyType.kt	pass		
 dataClasses/doubleParam.kt	pass		
 dataClasses/equalityChecksPrimitiveUnboxed.kt	pass		
@@ -2257,7 +2257,7 @@ defaultArguments/function/complexInheritance.kt	pass
 defaultArguments/function/covariantOverride.kt	pass		
 defaultArguments/function/covariantOverrideGeneric.kt	pass		
 defaultArguments/function/defaultLambdaInline.kt	pass		
-defaultArguments/function/extensionFunctionManyArgs.kt	wrong result	testn = n n n n n n n n n n n n n n n n n n n n n n n n n n …	test4 = 54 217 3 4 5 6 7 236 9 10 11 18 13 14 15 16 3216 18 19 20 8 22 23 24 25 26 22 28 29 30 31 33 0 0 0 44 0 0 55 0
+defaultArguments/function/extensionFunctionManyArgs.kt	pass		
 defaultArguments/function/extentionFunction.kt	pass		
 defaultArguments/function/extentionFunctionDouble.kt	pass		
 defaultArguments/function/extentionFunctionDoubleTwoArgs.kt	pass		
@@ -2269,16 +2269,16 @@ defaultArguments/function/funInTraitChain.kt	pass
 defaultArguments/function/innerExtentionFunction.kt	pass		
 defaultArguments/function/innerExtentionFunctionDouble.kt	pass		
 defaultArguments/function/innerExtentionFunctionDoubleTwoArgs.kt	pass		
-defaultArguments/function/innerExtentionFunctionManyArgs.kt	wrong result	testn = n n n n n n n n n n n n n n n n n n n n n n n n n n …	test4 = 54 217 3 4 5 6 7 236 9 10 11 18 13 14 15 16 3216 18 19 20 8 22 23 24 25 26 22 28 29 30 31 33 0 0 0 44 0 0 55 0
+defaultArguments/function/innerExtentionFunctionManyArgs.kt	pass		
 defaultArguments/function/kt15971.kt	pass		
 defaultArguments/function/kt15971_2.kt	pass		
 defaultArguments/function/kt15971_3.kt	pass		
 defaultArguments/function/kt36188.kt	pass		
 defaultArguments/function/kt36188_2.kt	pass		
 defaultArguments/function/kt5232.kt	pass		
-defaultArguments/function/memberFunctionManyArgs.kt	wrong result	testn = n n n n n n n n n n n n n n n n n n n n n n n n n n …	test4 = 54 217 3 4 5 6 7 236 9 10 11 18 13 14 15 16 3216 18 19 20 8 22 23 24 25 26 22 28 29 30 31 33 0 0 0 44 0 0 55 0
+defaultArguments/function/memberFunctionManyArgs.kt	pass		
 defaultArguments/function/mixingNamedAndPositioned.kt	pass		
-defaultArguments/function/topLevelManyArgs.kt	wrong result	testn = n n n n n n n n n n n n n n n n n n n n n n n n n n …	test4 = 54 217 3 4 5 6 7 236 9 10 11 18 13 14 15 16 3216 18 19 20 8 22 23 24 25 26 22 28 29 30 31 33 0 0 0 44 0 0 55 0
+defaultArguments/function/topLevelManyArgs.kt	pass		
 defaultArguments/function/trait.kt	pass		
 defaultArguments/implementedByFake.kt	pass		
 defaultArguments/implementedByFake2.kt	pass		
@@ -3559,7 +3559,7 @@ inline/inline20.kt	pass
 inline/inline21.kt	pass		
 inline/inline22.kt	pass		
 inline/inline23.kt	pass		
-inline/inline24.kt	codegen error	code generation: operand stack underflow at offset n	/tmp/claude-0/-home-user-kotlin-compiler-go/330dd56e-5377-5690-b7c7-3a8b130ad6ab/scratchpad/kc-conformance/3560/m0/src/lib.kt: code generation failed: LibKt.baz$default: operand stack underflow at offset 10
+inline/inline24.kt	pass		
 inline/inline25.kt	pass		
 inline/inline26.kt	pass		
 inline/inline3.kt	pass		
@@ -4051,8 +4051,8 @@ inlineClasses/funInterface/argumentICGeneric2.kt	pass
 inlineClasses/funInterface/argumentResult.kt	pass		
 inlineClasses/funInterface/kt51121.kt	pass		
 inlineClasses/funInterface/kt51121_2.kt	pass		
-inlineClasses/funInterface/mangledSamWrappers.kt	codegen error	code generation: operand stack underflow at offset n	/tmp/claude-0/-home-user-kotlin-compiler-go/330dd56e-5377-5690-b7c7-3a8b130ad6ab/scratchpad/kc-conformance/4052/m0/src/lib.kt: code generation failed: LibKt.g$default: operand stack underflow at offset 7
-inlineClasses/funInterface/mangledSamWrappersGeneric.kt	codegen error	code generation: operand stack underflow at offset n	/tmp/claude-0/-home-user-kotlin-compiler-go/330dd56e-5377-5690-b7c7-3a8b130ad6ab/scratchpad/kc-conformance/4053/m0/src/lib.kt: code generation failed: LibKt.g$default: operand stack underflow at offset 7
+inlineClasses/funInterface/mangledSamWrappers.kt	pass		
+inlineClasses/funInterface/mangledSamWrappersGeneric.kt	pass		
 inlineClasses/funInterface/returnIC.kt	pass		
 inlineClasses/funInterface/returnICGeneric.kt	pass		
 inlineClasses/funInterface/returnICGeneric2.kt	pass		
@@ -4546,10 +4546,10 @@ innerClass/getOuterVal.kt	pass
 innerClass/inCallableReferenceLHS.kt	skip	LANGUAGE	
 innerClass/inCallableReferenceLHSclassReference.kt	skip	LANGUAGE	
 innerClass/inCallableReferenceLHSwithGenericFun.kt	skip	LANGUAGE	
-innerClass/inheritanceMultipleModules1.kt	codegen error	code generation: operand stack underflow at offset n	/tmp/claude-0/-home-user-kotlin-compiler-go/330dd56e-5377-5690-b7c7-3a8b130ad6ab/scratchpad/kc-conformance/4547/m1/src/main.kt: code generation failed: Bar$BarInner.<init>: operand stack underflow at offset 12
+innerClass/inheritanceMultipleModules1.kt	pass		
 innerClass/inheritanceMultipleModules2.kt	check error	unresolved reference: _	main.kt:2: unresolved reference: Middle
 innerClass/inheritanceMultipleModules3.kt	check error	unresolved reference: _	main.kt:5: unresolved reference: Middle
-innerClass/multipleModules.kt	codegen error	code generation: operand stack underflow at offset n	/tmp/claude-0/-home-user-kotlin-compiler-go/330dd56e-5377-5690-b7c7-3a8b130ad6ab/scratchpad/kc-conformance/4550/m1/src/main.kt: code generation failed: B$Inner.<init>: operand stack underflow at offset 12
+innerClass/multipleModules.kt	pass		
 innerClass/noPrimaryConstructor.kt	pass		
 innerClass/qualifiedThis.kt	pass		
 innerClass/secondaryConstructor.kt	pass		
@@ -4806,11 +4806,11 @@ localClass/virtualCallFromConstructor.kt	exception	java.lang.NullPointerExceptio
 localClasses/anonymousObjectInExtension.kt	check error	type mismatch: inferred type is _ but _ was expected	anonymousObjectInExtension.kt:2: type mismatch: inferred type is WithCompanion but WithCompanion.Companion was expected
 localClasses/anonymousObjectInInitializer.kt	pass		
 localClasses/anonymousObjectInParameterInitializer.kt	pass		
-localClasses/capturingInDefaultConstructorParameter.kt	codegen error	code generation: operand stack underflow at offset n	/tmp/claude-0/-home-user-kotlin-compiler-go/330dd56e-5377-5690-b7c7-3a8b130ad6ab/scratchpad/kc-conformance/4807/m0/src/capturingInDefaultConstructorParameter.kt: code generation failed: CapturingInDefaultConstructorParameterKt$Local.<init>: operand stack underflow at offset 18
+localClasses/capturingInDefaultConstructorParameter.kt	pass		
 localClasses/closureOfInnerLocalClass.kt	pass		
 localClasses/closureOfLambdaInLocalClass.kt	pass		
 localClasses/closureWithSelfInstantiation.kt	pass		
-localClasses/defaultParameterInConstructor.kt	codegen error	code generation: operand stack underflow at offset n	/tmp/claude-0/-home-user-kotlin-compiler-go/330dd56e-5377-5690-b7c7-3a8b130ad6ab/scratchpad/kc-conformance/4811/m0/src/defaultParameterInConstructor.kt: code generation failed: DefaultParameterInConstructorKt$box$MyEvent.<init>: operand stack underflow at offset 21
+localClasses/defaultParameterInConstructor.kt	pass		
 localClasses/inCallableReferenceLHS.kt	skip	LANGUAGE	
 localClasses/inExtensionFunction.kt	pass		
 localClasses/inExtensionProperty.kt	pass		
@@ -4824,7 +4824,7 @@ localClasses/kt2700.kt	pass
 localClasses/kt2873.kt	pass		
 localClasses/kt3210.kt	pass		
 localClasses/kt3389.kt	pass		
-localClasses/kt3584.kt	codegen error	code generation: operand stack underflow at offset n	/tmp/claude-0/-home-user-kotlin-compiler-go/330dd56e-5377-5690-b7c7-3a8b130ad6ab/scratchpad/kc-conformance/4825/m0/src/kt3584.kt: code generation failed: Kt3584Kt$box$A.<init>: operand stack underflow at offset 18
+localClasses/kt3584.kt	pass		
 localClasses/kt4174.kt	pass		
 localClasses/kt45383.kt	pass		
 localClasses/localClass.kt	pass		
@@ -5461,8 +5461,8 @@ primitiveTypes/numberEqualsHashCodeToString.kt	pass
 primitiveTypes/numberToChar/abstractMethodInSuperinterface.kt	check error	class '_' is not abstract and does not implement abstract member '_'	abstractMethodInSuperinterface.kt:8: class 'MyNumber' is not abstract and does not implement abstract member 'intValue'
 primitiveTypes/numberToChar/fakeOverride.kt	check error	class '_' is not abstract and does not implement abstract member '_'	fakeOverride.kt:4: class 'MyNumber' is not abstract and does not implement abstract member 'floatValue'
 primitiveTypes/numberToChar/simple.kt	check error	class '_' is not abstract and does not implement abstract member '_'	simple.kt:4: class 'MyNumber' is not abstract and does not implement abstract member 'intValue'
-primitiveTypes/numberToChar/superCallToClass.kt	check error	class '_' is not abstract and does not implement abstract member '_'	superCallToClass.kt:4: class 'MyNumber' is not abstract and does not implement abstract member 'longValue'
-primitiveTypes/numberToChar/superCallToInterface.kt	check error	class '_' is not abstract and does not implement abstract member '_'	superCallToInterface.kt:8: class 'MyNumber' is not abstract and does not implement abstract member 'floatValue'
+primitiveTypes/numberToChar/superCallToClass.kt	check error	class '_' is not abstract and does not implement abstract member '_'	superCallToClass.kt:4: class 'MyNumber' is not abstract and does not implement abstract member 'intValue'
+primitiveTypes/numberToChar/superCallToInterface.kt	check error	class '_' is not abstract and does not implement abstract member '_'	superCallToInterface.kt:8: class 'MyNumber' is not abstract and does not implement abstract member 'intValue'
 primitiveTypes/numberToChar/superCallToNumber.kt	check error	class '_' is not abstract and does not implement abstract member '_'	superCallToNumber.kt:4: class 'MyNumber' is not abstract and does not implement abstract member 'intValue'
 primitiveTypes/rangeTo.kt	check error	type argument is not within its bounds: inferred type Number of type _ '_' is not a subtype of Comparable<Number>	rangeTo.kt:10: type argument is not within its bounds: inferred type Number of type parameter 'T' is not a subtype of Comparable<Number>
 primitiveTypes/reassignDestructured.kt	skip	LANGUAGE	
@@ -5470,7 +5470,7 @@ primitiveTypes/smartCastOnNullableDoubleIdentityEquals.kt	pass
 primitiveTypes/stringEqualsHashCodeToString.kt	pass		
 primitiveTypes/substituteIntForGeneric.kt	pass		
 primitiveTypes/unboxComparable.kt	pass		
-primitiveTypes/virtualCallToCustomNumber.kt	check error	class '_' is not abstract and does not implement abstract member '_'	virtualCallToCustomNumber.kt:4: class 'FortyTwo' is not abstract and does not implement abstract member 'intValue'
+primitiveTypes/virtualCallToCustomNumber.kt	check error	class '_' is not abstract and does not implement abstract member '_'	virtualCallToCustomNumber.kt:4: class 'FortyTwo' is not abstract and does not implement abstract member 'longValue'
 private/arrayConvention.kt	pass		
 private/kt9855.kt	pass		
 privateConstructors/base.kt	pass		
