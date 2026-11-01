@@ -36,7 +36,7 @@ func (c *Checker) stmts(b *syntax.Block, want types.Type, valueUsed bool) types.
 			c.sink, c.tailBlock = c.tailSink, nil
 		}
 		st := c.stmt(s, valueUsed && last, want)
-		if st.K == types.Nothing {
+		if st.K == types.Nothing || stmtJumps(s) {
 			nothing = true
 		}
 		if last {
@@ -49,6 +49,125 @@ func (c *Checker) stmts(b *syntax.Block, want types.Type, valueUsed bool) types.
 	}
 	b.T = t
 	return t
+}
+
+// stmtJumps reports whether a statement always jumps, though its type
+// isn't Nothing: what it always evaluates is, as foo(x, return y),
+// val a = Array(n, return "OK") and for (i in 1u..return "OK").
+func stmtJumps(s syntax.Stmt) bool {
+	switch s := s.(type) {
+	case *syntax.ExprStmt:
+		return jumps(s.X)
+	case *syntax.VarStmt:
+		return s.Delegate == nil && jumps(s.Init)
+	case *syntax.Destructure:
+		return jumps(s.Init)
+	case *syntax.Assign:
+		switch t := s.Target.(type) {
+		case *syntax.Member:
+			if jumps(t.X) {
+				return true
+			}
+		case *syntax.Index:
+			if jumps(t.X) || !hasSafeCall(t.X) && anyJumps(t.Args) {
+				return true
+			}
+		}
+		return jumps(s.Value)
+	case *syntax.For:
+		return jumps(s.Range)
+	case *syntax.While:
+		return !s.Do && jumps(s.Cond)
+	}
+	return false
+}
+
+// jumps reports whether evaluating e always jumps: e, or an expression
+// that evaluating it always evaluates, is of type Nothing, as return y
+// in foo(x, return y), or it is a lambda that the call it is passed to
+// calls exactly once, whose body jumps out of it, as { return a.y } in
+// C().apply { return a.y }. The expressions it always evaluates are
+// those that alwaysCasts walks.
+func jumps(e syntax.Expr) bool {
+	if e == nil {
+		return false
+	}
+	if t := e.Type(); t.K == types.Nothing && !t.N {
+		return true
+	}
+	switch e := e.(type) {
+	case *syntax.Call:
+		if e.Invoke {
+			if jumps(e.Fun) {
+				return true
+			}
+		} else if m, ok := e.Fun.(*syntax.Member); ok {
+			if jumps(m.X) {
+				return true
+			}
+			if hasSafeCall(m) {
+				return false
+			}
+		}
+		for _, a := range e.Args {
+			if l, ok := a.(*syntax.Lambda); ok {
+				if l.Once && l.Body != nil && l.Body.T.K == types.Nothing && !returnsFrom(l) {
+					return true
+				}
+				continue
+			}
+			if jumps(a) {
+				return true
+			}
+		}
+	case *syntax.Member:
+		return jumps(e.X)
+	case *syntax.Index:
+		return jumps(e.X) || !hasSafeCall(e.X) && anyJumps(e.Args)
+	case *syntax.Binary:
+		return jumps(e.X) || e.Op != syntax.AND && e.Op != syntax.OR && e.Op != syntax.ELVIS && jumps(e.Y)
+	case *syntax.Unary:
+		return jumps(e.X)
+	case *syntax.As:
+		return jumps(e.X)
+	case *syntax.Is:
+		return jumps(e.X)
+	case *syntax.NotNull:
+		return jumps(e.X)
+	case *syntax.If:
+		return jumps(e.Cond)
+	case *syntax.When:
+		return jumps(e.Subject)
+	case *syntax.StringLit:
+		for _, p := range e.Parts {
+			if jumps(p.X) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func anyJumps(es []syntax.Expr) bool {
+	for _, e := range es {
+		if jumps(e) {
+			return true
+		}
+	}
+	return false
+}
+
+// returnsFrom reports whether lambda l has a return from it, return@l,
+// whose type is Nothing but which completes the call l is passed to.
+func returnsFrom(l *syntax.Lambda) bool {
+	found := false
+	inspect(l.Body, func(n any) bool {
+		if j, ok := n.(*syntax.Jump); ok && j.Kind == syntax.RETURN && j.Lambda == l {
+			found = true
+		}
+		return !found
+	})
+	return found
 }
 
 // narrowAfter applies smart casts that hold after a statement such as
@@ -273,6 +392,9 @@ func (c *Checker) stmt(s syntax.Stmt, valueUsed bool, want types.Type) types.Typ
 		if lit, ok := s.Cond.(*syntax.BoolLit); ok && lit.Val && !loop.hasBreak {
 			s.Infinite = true
 			return types.NothingType
+		}
+		if s.Do && s.Body.T.K == types.Nothing && !loop.hasBreak && !loop.hasContinue {
+			return types.NothingType // the body runs once, and jumps
 		}
 	case *syntax.For:
 		if len(s.Names) > 0 && s.Var == "" {

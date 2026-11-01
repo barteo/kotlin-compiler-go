@@ -2,13 +2,13 @@
 
 The box tests of JetBrains/kotlin v2.4.21 (`compiler/testData/codegen/box`), each compiled by kc and run: its `box()` must return `"OK"`. `bench/kotlin-tests.sh box` writes this file, and [docs/conformance.md](../../docs/conformance.md) explains it.
 
-Of 7480 test files, 997 are skipped and 6483 run. 6166 pass (95.1%).
+Of 7480 test files, 997 are skipped and 6483 run. 6182 pass (95.4%).
 
 | Result | Tests | Share |
 |:---|---:|---:|
-| pass | 6166 | 95.1% |
+| pass | 6182 | 95.4% |
 | parse/unsupported | 0 | 0.0% |
-| check error | 211 | 3.3% |
+| check error | 195 | 3.0% |
 | crash | 0 | 0.0% |
 | codegen error | 16 | 0.2% |
 | VerifyError | 21 | 0.3% |
@@ -47,24 +47,24 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 | Directory | Run | Pass | Unsupported | Check error | Crash | Bad bytecode | Wrong |
 |:---|---:|---:|---:|---:|---:|---:|---:|
 | ranges | 805 | 802 | 0 | 3 | 0 | 0 | 0 |
-| inlineClasses | 784 | 758 | 0 | 17 | 2 | 7 | 0 |
+| inlineClasses | 784 | 759 | 0 | 16 | 2 | 7 | 0 |
 | coroutines | 497 | 482 | 0 | 1 | 4 | 1 | 9 |
 | callableReference | 297 | 280 | 0 | 15 | 0 | 0 | 2 |
 | inference | 205 | 194 | 0 | 10 | 0 | 0 | 1 |
-| delegatedProperty | 149 | 144 | 0 | 4 | 0 | 0 | 1 |
-| controlStructures | 146 | 140 | 0 | 5 | 0 | 0 | 1 |
+| delegatedProperty | 149 | 145 | 0 | 3 | 0 | 0 | 1 |
+| controlStructures | 146 | 142 | 0 | 3 | 0 | 0 | 1 |
 | bridges | 137 | 136 | 0 | 0 | 0 | 1 | 0 |
 | inline | 132 | 127 | 0 | 4 | 1 | 0 | 0 |
 | classes | 120 | 116 | 0 | 2 | 0 | 1 | 1 |
 | objects | 116 | 112 | 0 | 2 | 0 | 1 | 1 |
 | properties | 109 | 106 | 0 | 2 | 0 | 1 | 0 |
 | closures | 107 | 103 | 0 | 3 | 0 | 0 | 1 |
-| functions | 106 | 95 | 0 | 11 | 0 | 0 | 0 |
+| functions | 106 | 97 | 0 | 9 | 0 | 0 | 0 |
 | enum | 101 | 97 | 0 | 1 | 0 | 0 | 3 |
-| when | 99 | 97 | 0 | 2 | 0 | 0 | 0 |
+| when | 99 | 98 | 0 | 1 | 0 | 0 | 0 |
 | primitiveTypes | 98 | 89 | 0 | 8 | 0 | 0 | 1 |
 | defaultArguments | 82 | 78 | 0 | 0 | 0 | 0 | 4 |
-| arrays | 78 | 76 | 0 | 2 | 0 | 0 | 0 |
+| arrays | 78 | 77 | 0 | 1 | 0 | 0 | 0 |
 | regressions | 75 | 68 | 0 | 6 | 1 | 0 | 0 |
 | contextParameters | 70 | 70 | 0 | 0 | 0 | 0 | 0 |
 | casts | 68 | 64 | 0 | 1 | 0 | 0 | 3 |
@@ -78,7 +78,7 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 | reflection | 50 | 48 | 0 | 2 | 0 | 0 | 0 |
 | funInterface | 48 | 46 | 0 | 2 | 0 | 0 | 0 |
 | unsignedTypes | 44 | 42 | 0 | 1 | 0 | 0 | 1 |
-| boxingOptimization | 41 | 35 | 0 | 6 | 0 | 0 | 0 |
+| boxingOptimization | 41 | 41 | 0 | 0 | 0 | 0 | 0 |
 | ir | 41 | 38 | 0 | 3 | 0 | 0 | 0 |
 | reified | 40 | 38 | 0 | 0 | 0 | 2 | 0 |
 | localClasses | 39 | 34 | 0 | 1 | 3 | 1 | 0 |
@@ -97,12 +97,12 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 | secondaryConstructors | 30 | 30 | 0 | 0 | 0 | 0 | 0 |
 | syntheticAccessors | 30 | 28 | 0 | 0 | 0 | 2 | 0 |
 | initializers | 26 | 26 | 0 | 0 | 0 | 0 | 0 |
-| try | 26 | 25 | 0 | 1 | 0 | 0 | 0 |
+| try | 26 | 26 | 0 | 0 | 0 | 0 | 0 |
 | fir | 25 | 20 | 0 | 3 | 0 | 2 | 0 |
 | fp | 25 | 25 | 0 | 0 | 0 | 0 | 0 |
 | increment | 25 | 17 | 0 | 8 | 0 | 0 | 0 |
 | specialBuiltins | 25 | 19 | 0 | 2 | 0 | 2 | 2 |
-| finally | 24 | 22 | 0 | 1 | 0 | 0 | 1 |
+| finally | 24 | 23 | 0 | 0 | 0 | 0 | 1 |
 | delegation | 23 | 20 | 0 | 3 | 0 | 0 | 0 |
 | binaryOp | 22 | 16 | 0 | 3 | 0 | 0 | 3 |
 | intrinsics | 22 | 19 | 0 | 3 | 0 | 0 | 0 |
@@ -205,7 +205,6 @@ Tests kotlinc compiles that kc's checker rejects, by its first error, with names
 
 | First error | Tests | Examples |
 |:---|---:|:---|
-| `missing return statement in function '_'` | 16 | `arrays/kt47483.kt`, `boxingOptimization/kt49092a.kt` |
 | `unresolved or unsupported type: _` | 14 | `callableReference/callableReferencetoInnerAndLocal.kt`, `callableReference/genericConstructorReference.kt` |
 | `cannot infer type for type parameter '_'. Specify it explicitly.` | 13 | `callableReference/adaptedReferences/extensionPropertyToFun.kt`, `callableReference/adaptedReferences/innerConstructorToExtensionWithTypeParam.kt` |
 | `unresolved reference: _` | 11 | `classLiteral/bound/primitives.kt`, `classLiteral/primitiveClassEquality.kt` |
@@ -245,7 +244,8 @@ Tests kotlinc compiles that kc's checker rejects, by its first error, with names
 | `'_' is not defined in this context` | 1 | `objects/thisRefToObjectInNestedClassConstructorCall.kt` |
 | `'_' modifier is inapplicable on this function: must have no value parameters` | 1 | `extensionFunctions/kt3969.kt` |
 | `ambiguous call: n candidates for '_' take (_)` | 1 | `callableReference/function/overloadedFun.kt` |
-| *45 more* | 45 | |
+| `cannot create an instance of Outer` | 1 | `annotations/instances/AnnotationInstantiationWithArray.kt` |
+| *44 more* | 44 | |
 
 ## Code generation errors
 
