@@ -15,8 +15,8 @@ import (
 // which are resolved in the code around it, it is that class, then the
 // classes it is in: object { inner class C : B(); open inner class B }.
 func (c *Checker) scopeClass() *types.ClassSym {
-	if k := c.lookupCls; k != nil && c.cls != nil && (k.Anonymous || k.Local || k.Inner) {
-		return k
+	if k := c.lookupCls; k != nil && c.cls != nil && (k.Anonymous || k.Local || k.Inner) && k != c.supersOf {
+		return k // not in its own supertypes, which don't see its nested classes
 	}
 	if c.cls != nil {
 		return c.cls
@@ -60,8 +60,8 @@ func (c *Checker) nestedClassifier(name string) classifier {
 			}
 		}
 		// And its companion's: class X { companion object { class Y };
-		// val y: Y }.
-		if found == (classifier{}) && k.Companion != nil && !k.Companion.External {
+		// val y: Y }, but not in the companion's supertypes.
+		if found == (classifier{}) && k.Companion != nil && !k.Companion.External && k.Companion != c.supersOf {
 			if n := k.Companion.Nested[name]; n != nil {
 				found = classifier{cls: n}
 			}

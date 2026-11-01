@@ -233,6 +233,7 @@ func (c *Checker) anonClass(d *syntax.ClassDecl, what, whats string, name func()
 	}
 	c.resolveSupertypes()
 	c.checkSupers()
+	c.genericThrowable(sym, ctx, d.P)
 	for _, d := range c.classes {
 		c.lookupCls = d.Sym
 		c.resolveClass(d)
@@ -273,6 +274,19 @@ func (c *Checker) anonClass(d *syntax.ClassDecl, what, whats string, name func()
 	c.onUndo(func() { c.file.Anon = c.file.Anon[:n] })
 	c.file.Anon = append(c.file.Anon, d)
 	return sym
+}
+
+// genericThrowable reports a local class or an object expression's class,
+// sym, declared at p in code where type parameters are, ctx's, that
+// extends Throwable: catch couldn't tell its instances apart by their
+// type arguments.
+func (c *Checker) genericThrowable(sym *types.ClassSym, ctx *anonCtx, p syntax.Pos) {
+	if len(ctx.tparams) == 0 {
+		return
+	}
+	if thr := c.u.ext.class("java/lang/Throwable"); thr != nil && sym.IsSubclassOf(thr) {
+		c.errorf(p, "inner class of generic class extending 'Throwable' is prohibited")
+	}
 }
 
 // localMembers reports whether the classes declared in d, a local class

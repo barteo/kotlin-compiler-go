@@ -534,6 +534,69 @@ func (c *Checker) typeArgs(x *syntax.Call) []types.Type {
 	return ts
 }
 
+// underscoreSub returns the substitution of type parameters tparams of a
+// call, foo<Int, _>(), whose type arguments typeArgs, resolved as targs,
+// include _: the others are theirs, and those _ are variables of sys,
+// which the call infers. Bounds that mention both relate them, as they
+// relate variables (see fresh): C : Component<P, *> gives P in
+// child<_, MyComponent<X>>(), and C in child<MyProps<X>, _>(). A given
+// one's violated bound adds nothing; typeArgBounds reports it. sys may be
+// replaced.
+func underscoreSub(sys *system, tparams []*types.TypeParamSym, recv types.Subst, typeArgs []*syntax.TypeArg, targs []types.Type, pos syntax.Pos) (types.Subst, *system) {
+	base := make(types.Subst, len(recv)+len(targs))
+	for p, a := range recv {
+		base[p] = a
+	}
+	var inferred []*types.TypeParamSym
+	for j, p := range tparams {
+		if typeArgs[j].Underscore {
+			inferred = append(inferred, p)
+		} else {
+			base[p] = types.Arg{T: targs[j]}
+		}
+	}
+	sub := sys.fresh(inferred, base, pos)
+	given := func(t types.Type) bool {
+		return t.IsParam() && slices.Contains(tparams, t.Param()) && !slices.Contains(inferred, t.Param())
+	}
+	relate := func(a, b types.Type) {
+		trial := sys.clone()
+		trial.sub(a, b)
+		if trial.ok {
+			sys = trial
+		}
+	}
+	for j, p := range tparams {
+		for _, b := range p.Bounds {
+			switch {
+			case typeArgs[j].Underscore && b.Has(given):
+				relate(sub[p].T, sub.Apply(b)) // U : T, T given
+			case !typeArgs[j].Underscore && targs[j].K != types.Invalid && sub.Apply(b).HasVars():
+				relate(targs[j], sub.Apply(b)) // C : Component<P, *>, P inferred
+			}
+		}
+	}
+	return sub, sys
+}
+
+// typeArgBounds checks the explicit type arguments targs of call x, of
+// candidate cd, against their parameters' bounds, with the other type
+// arguments as the call inferred them: T : Element<K> in
+// Container<Alpha, BetaKey, _>(). Arguments _ were inferred within them.
+func (c *Checker) typeArgBounds(x *syntax.Call, cd *candidate, targs []types.Type, s *system) {
+	for j, p := range cd.tparams {
+		t := targs[j]
+		if x.TypeArgs[j].Underscore || t.K == types.Invalid {
+			continue
+		}
+		for _, b := range p.Bounds {
+			if b = s.final(cd.sub.Apply(b)); !b.HasVars() && b.K != types.Invalid && !c.subtype(t, b) {
+				c.errorf(x.TypeArgs[j].P, "type argument is not within its bounds: type parameter '%s' must be subtype of '%s', but actual: '%s'", p.Name, b, t)
+			}
+		}
+	}
+}
+
 func countArgs(n int) string {
 	switch n {
 	case 0:
@@ -658,18 +721,7 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 		cd := &candidate{callee: cl, sys: newSystem(c)}
 		switch {
 		case targs != nil && hasUnderscore(x.TypeArgs):
-			// foo<Int, _>(): every parameter is a variable, as when
-			// none is given, and those given equal their arguments, so
-			// that the bounds relate the others to them, as C's in
-			// <P, C : Component<P, *>>.
-			cd.sub = cd.sys.fresh(cl.tparams, cl.recv, x.P)
-			for j, p := range cl.tparams {
-				if !x.TypeArgs[j].Underscore {
-					v := cd.sub[p].T
-					cd.sys.sub(v, targs[j])
-					cd.sys.sub(targs[j], v)
-				}
-			}
+			cd.sub, cd.sys = underscoreSub(cd.sys, cl.tparams, cl.recv, x.TypeArgs, targs, x.P)
 		case targs != nil:
 			cd.sub = make(types.Subst, len(cl.recv)+len(targs))
 			for p, a := range cl.recv {
@@ -843,6 +895,9 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 	}
 	if hasReified(f) {
 		sys.fixups = append(sys.fixups, func(s *system) { c.reifiedArgs(x, f, best.sub, s) })
+	}
+	if targs != nil {
+		sys.fixups = append(sys.fixups, func(s *system) { c.typeArgBounds(x, best, targs, s) })
 	}
 	sys.fixups = append(sys.fixups, func(s *system) {
 		for i, a := range x.Args {

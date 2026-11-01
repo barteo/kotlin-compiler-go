@@ -237,31 +237,29 @@ func (c *Checker) contextArgs(cl *callee, x *syntax.Call) ([]contextArg, bool) {
 	explicit := false
 	if n := len(x.TypeArgs); n > 0 && n == len(cl.tparams) {
 		// Explicit ones, contextOf<A>(), whose errors resolve reports. With
-		// a _, contextOf<_>(), they are variables, as resolve1 makes them,
-		// and the others equal their arguments.
+		// a _, contextOf<_>(), those are variables, as resolve1 makes them.
 		e := len(c.errs)
 		explicit = !hasUnderscore(x.TypeArgs)
+		targs := make([]types.Type, len(cl.tparams))
+		for j := range cl.tparams {
+			if a := x.TypeArgs[j]; a.Type != nil && !a.Underscore {
+				targs[j] = c.resolveType(a.Type)
+			} else {
+				targs[j] = types.InvalidType
+			}
+		}
 		if explicit {
 			sub = maps.Clone(cl.recv)
 			if sub == nil {
 				sub = types.Subst{}
 			}
+			for j, tp := range cl.tparams {
+				if x.TypeArgs[j].Type != nil {
+					sub[tp] = types.Arg{T: targs[j]}
+				}
+			}
 		} else {
-			sub = sys.fresh(cl.tparams, cl.recv, x.P)
-		}
-		for j, tp := range cl.tparams {
-			a := x.TypeArgs[j]
-			if a.Type == nil || a.Underscore {
-				continue
-			}
-			t := c.resolveType(a.Type)
-			if explicit {
-				sub[tp] = types.Arg{T: t}
-			} else {
-				v := sub[tp].T
-				sys.sub(v, t)
-				sys.sub(t, v)
-			}
+			sub, sys = underscoreSub(sys, cl.tparams, cl.recv, x.TypeArgs, targs, x.P)
 		}
 		c.errs = c.errs[:e]
 	} else {

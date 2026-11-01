@@ -850,9 +850,26 @@ func (t *classTable) kparams(ps []*kmeta.Param, scope tscope, ok bool) ([]*types
 		// A parameter of a type kc doesn't support can still be left to
 		// its default value: its type is then Invalid.
 		ok = ok && (pok || def && p.Vararg == nil)
-		syms[i] = &types.VarSym{Name: p.Name, Type: pt, Kind: types.Param, Vararg: p.Vararg != nil, Default: def}
+		syms[i] = &types.VarSym{Name: p.Name, Type: pt, Kind: types.Param, Vararg: p.Vararg != nil, Default: def, NoInfer: kNoInfer(kt)}
 	}
 	return syms, ok
+}
+
+// kNoInfer reports whether a type of metadata, or a type in it, is
+// annotated @NoInfer, as noInfer does for the program's.
+func kNoInfer(t *kmeta.Type) bool {
+	if t == nil {
+		return false
+	}
+	if t.NoInfer {
+		return true
+	}
+	for _, a := range t.Args {
+		if kNoInfer(a.Type) {
+			return true
+		}
+	}
+	return false
 }
 
 // jvmParams splits a method descriptor's parameter types, and returns
