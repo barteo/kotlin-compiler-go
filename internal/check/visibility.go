@@ -313,3 +313,31 @@ func (c *Checker) checkClassVisible(cls *types.ClassSym, p syntax.Pos) {
 		c.errorf(p, "cannot access '%s': it is %s", k.DisplayName(), visibilityOf(v, k.Outer))
 	}
 }
+
+// checkAliasVisible reports a use of a typealias of the program that the
+// code can't see.
+func (c *Checker) checkAliasVisible(a *types.AliasSym, p syntax.Pos) {
+	if v, ok := declVisibility(a.Decl); ok && !c.canSee(v, a.Outer, c.aliasFileClass(a)) {
+		c.errorf(p, "cannot access '%s': it is %s", a.Name, visibilityOf(v, a.Outer))
+	}
+}
+
+// aliasFileClass returns the class of the file that declares typealias a.
+func (c *Checker) aliasFileClass(a *types.AliasSym) string {
+	if f := c.u.aliasFile[a]; f != nil {
+		return f.file.Class()
+	}
+	return ""
+}
+
+// privateElsewhere reports whether k is a private top-level class or
+// typealias of another file, which a simple name finds only if nothing
+// else is found: then its use is an error.
+func (c *Checker) privateElsewhere(k classifier) bool {
+	if k.cls != nil {
+		v, ok := declVisibility(k.cls.Decl)
+		return ok && v == syntax.Private && k.cls.Outer == nil && !c.canSee(v, nil, k.cls.File)
+	}
+	v, ok := declVisibility(k.alias.Decl)
+	return ok && v == syntax.Private && k.alias.Outer == nil && !c.canSee(v, nil, c.aliasFileClass(k.alias))
+}

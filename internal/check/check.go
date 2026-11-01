@@ -120,7 +120,10 @@ type Checker struct {
 	// objects by name: enum entries, Java statics, objects' members, and
 	// those of the classes of starOwners.
 	memberImports map[string]memberImport
-	stars         []string // star-imported packages of the class path (internal names)
+	// classImports are the explicitly imported top-level classes of the
+	// class path, whose visibility checkMemberImports checks.
+	classImports []memberImport
+	stars        []string // star-imported packages of the class path (internal names)
 	// starOwners are the classes whose members and nested classes are
 	// star-imported: import E.*.
 	starOwners []*types.ClassSym
@@ -571,6 +574,7 @@ func (c *Checker) resolveType(ref *syntax.TypeRef) types.Type {
 		return c.innerType(ref)
 	}
 	if a := c.lookupAlias(ref.Name); a != nil && c.lookupTypeParam(ref.Name) == nil {
+		c.checkAliasVisible(a, ref.P)
 		return c.expandAlias(a, ref)
 	}
 	var t types.Type

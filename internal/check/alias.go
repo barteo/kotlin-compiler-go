@@ -134,6 +134,7 @@ func (c *Checker) expandAlias(a *types.AliasSym, ref *syntax.TypeRef) types.Type
 // alias fixes: Names() is an ArrayList<String> for typealias Names =
 // ArrayList<String>. Type arguments of the call are the alias's.
 func (c *Checker) aliasConstruct(x *syntax.Call, a *types.AliasSym, cls *types.ClassSym, p syntax.Pos, want types.Type, sink *system) types.Type {
+	c.checkAliasVisible(a, p)
 	if len(a.TypeParams) == 0 || len(x.TypeArgs) > 0 {
 		t := c.expandAlias(a, &syntax.TypeRef{P: p, Name: a.Name, Args: x.TypeArgs})
 		if t.K == types.Invalid {

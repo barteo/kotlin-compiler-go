@@ -1,6 +1,7 @@
 package check
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
@@ -32,6 +33,9 @@ type memberImport struct {
 // checkMemberImports reports the member imports that name nothing. They
 // are checked once the members of the program's classes are declared.
 func (c *Checker) checkMemberImports() {
+	for _, ci := range c.classImports {
+		c.checkClassImport(ci)
+	}
 	for _, mi := range c.memberImports {
 		if !c.usable(mi.owner, mi.p) {
 			continue
@@ -177,4 +181,44 @@ func (c *Checker) importTarget(x syntax.Expr) syntax.Expr {
 		return x
 	}
 	return c.importedRef(c.memberImports[id.Name], id.P)
+}
+
+// importsOnlyHidden reports whether everything an import of a package's
+// name finds is another file's private declaration: kotlinc reports the
+// import. Nested declarations are checked where they are used.
+func (c *Checker) importsOnlyHidden(user *Package, name string) bool {
+	if cls, ok := user.Classes[name]; ok && !c.privateElsewhere(classifier{cls: cls}) {
+		return false
+	}
+	if a, ok := user.Aliases[name]; ok && !c.privateElsewhere(classifier{alias: a}) {
+		return false
+	}
+	if slices.ContainsFunc(user.Funs[name], c.funVisible) || slices.ContainsFunc(user.ExtProps[name], c.funVisible) {
+		return false
+	}
+	if _, ok := user.Vars[name]; ok {
+		return false
+	}
+	if _, ok := c.fileVars[name]; ok && user == c.pkg {
+		return false
+	}
+	return true
+}
+
+// checkClassImport reports an import of a class of the class path that
+// the file can't see: another module's private or internal class, or a
+// Java class that isn't public, of another package.
+func (c *Checker) checkClassImport(ci memberImport) {
+	cls := ci.owner
+	if !cls.External || c.file.SuppressInvisible {
+		return
+	}
+	cls.Ensure()
+	switch {
+	case cls.Missing || !cls.Private:
+	case cls.Internal:
+		c.errorf(ci.p, "cannot access '%s': it is internal in module", ci.name)
+	case ci.path != c.file.Package:
+		c.errorf(ci.p, "cannot access '%s': it is private in file", ci.name)
+	}
 }
