@@ -1029,6 +1029,7 @@ func (c *Checker) assign(s *syntax.Assign) {
 	}
 	s.OpType = tt
 	vt := c.value(s.Value, noWant).Flex()
+	s.Value, vt = builtinBound(s.Value, vt) // counter += i for an i: T, T : Int
 	if tt.K == types.Invalid || vt.K == types.Invalid {
 		return
 	}
