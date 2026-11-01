@@ -1,0 +1,12 @@
+over plain w 1
+v x
+x arg given
+s x
+top x ext 3 x
+aab
+mem n x N M n x
+aab[nc][naab[nc]d]
+memExt 4 n x
+inline aab[nc][naab[nc]d]<
+10
+fetched 1 x

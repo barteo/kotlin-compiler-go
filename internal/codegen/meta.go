@@ -259,7 +259,7 @@ func (s *metaScope) typ(t types.Type) *kmeta.Type {
 		// suspend (A) -> R is Function2<A, Continuation<R>, Any?>.
 		n := t.A.Len() - 1
 		kt.Class = "kotlin/Function" + strconv.Itoa(n+1)
-		kt.ExtFunc = t.E
+		kt.ExtFunc, kt.Contexts = t.E, int(t.X)
 		kt.Flags |= kmeta.TypeSuspend
 		for _, a := range t.A.List[:n] {
 			if a.V == types.Star {
@@ -275,7 +275,7 @@ func (s *metaScope) typ(t types.Type) *kmeta.Type {
 		// parameters, annotated @Composable.
 		n := t.A.Len() - 1
 		kt.Class = "kotlin/Function" + strconv.Itoa(n)
-		kt.ExtFunc, kt.Composable = t.E, true
+		kt.ExtFunc, kt.Composable, kt.Contexts = t.E, true, int(t.X)
 		for _, a := range t.A.List {
 			if a.V == types.Star {
 				kt.Args = append(kt.Args, kmeta.Arg{Proj: kmeta.Star})
@@ -286,6 +286,9 @@ func (s *metaScope) typ(t types.Type) *kmeta.Type {
 	case t.K == types.Class:
 		kt.Class = classID(t.C)
 		kt.ExtFunc = t.E && t.C.Func
+		if t.C.Func {
+			kt.Contexts = int(t.X)
+		}
 		if t.C.Inner {
 			// Its own arguments, and the outer class's in the outer type.
 			n := len(t.C.TypeParams) - t.C.OuterParams
@@ -357,7 +360,7 @@ func (g *gen) lambdaMeta(x *syntax.Lambda) *kmeta.Function {
 		TypeParams: tps,
 		Ret:        s.typ(x.Ret),
 	}
-	params := x.ParamSyms()
+	params := x.ParamSyms()[len(x.Ctx):] // as kotlinc's, without its context parameters
 	if x.Recv != nil {
 		f.Recv = s.typ(x.Recv.Type)
 		params = params[1:]
@@ -463,6 +466,13 @@ func (g *gen) funMeta(s *metaScope, fd *syntax.FunDecl, owner *types.ClassSym) *
 	if sym.Ext {
 		f.Recv = s.typ(sym.Recv)
 	}
+	for _, p := range sym.Contexts {
+		name := p.Name
+		if d, ok := p.Decl.(*syntax.Param); ok && d.Name == "_" {
+			name = "<unused var>" // as kotlinc names it
+		}
+		f.ContextParams = append(f.ContextParams, &kmeta.Param{Name: name, Type: s.typ(p.Type)})
+	}
 	if fd.Operator || sym.KotlinOperator {
 		f.Flags |= kmeta.FunOperator // overrides of operators are operators
 	}
@@ -553,7 +563,7 @@ func (g *gen) propMeta(s *metaScope, p *types.VarSym, pd *syntax.PropDecl, cp *s
 		mods, as = &cp.Modifiers, cp.Modifiers.Annotations
 	}
 	var tps []*kmeta.TypeParam
-	if pd != nil && pd.Getter != nil && pd.Getter.Sym != nil && pd.Recv != nil {
+	if pd != nil && pd.Getter != nil && pd.Getter.Sym != nil && (pd.Recv != nil || len(pd.TypeParams) > 0) {
 		s, tps = s.with(pd.Getter.Sym.TypeParams)
 	}
 	mod := kmeta.Final
@@ -608,11 +618,22 @@ func (g *gen) propMeta(s *metaScope, p *types.VarSym, pd *syntax.PropDecl, cp *s
 		}
 	}
 	d := desc(types.FieldType(p))
-	getterDesc := "()" + desc(types.GetterType(p))
+	ctx := "" // the context parameters, which the accessors take first
+	for _, q := range p.Contexts {
+		ctx += paramDesc(q.Type)
+		name := q.Name
+		if d, ok := q.Decl.(*syntax.Param); ok && d.Name == "_" {
+			name = "<unused var>" // as kotlinc names it
+		}
+		kp.ContextParams = append(kp.ContextParams, &kmeta.Param{Name: name, Type: s.typ(q.Type)})
+	}
+	getterDesc := "(" + ctx + ")" + desc(types.GetterType(p))
 	var recv *types.Type
 	if pd != nil && pd.Getter != nil && pd.Getter.Sym != nil && pd.Getter.Sym.Ext {
 		recv = &pd.Getter.Sym.Recv
 		kp.Recv = s.typ(*recv)
+	}
+	if pd != nil && pd.Getter != nil && pd.Getter.Sym != nil && (pd.Getter.Sym.Ext || ctx != "") {
 		getterDesc = funDesc(pd.Getter.Sym)
 	}
 	getterDesc = composeGetterDesc(p, getterDesc)
@@ -692,14 +713,14 @@ func (g *gen) propMeta(s *metaScope, p *types.VarSym, pd *syntax.PropDecl, cp *s
 			kp.Getter = &kmeta.JVMSig{Name: pd.Getter.Sym.JVM(), Desc: getterDesc}
 		}
 		if p.Mutable && !p.SetterPrivate {
-			sd := "(" + d + ")V"
+			sd := "(" + ctx + d + ")V"
 			if owner != nil && owner.Value && p != owner.Underlying {
 				sd = "(" + desc(owner.Underlying.Type) + d + ")V"
 			}
 			kp.Setter = &kmeta.JVMSig{Name: types.SetterJVM(p), Desc: sd}
 			if pd != nil && pd.Setter != nil && pd.Setter.Sym != nil {
 				kp.Setter.Name = pd.Setter.Sym.JVM()
-				if pd.Setter.Sym.Ext {
+				if pd.Setter.Sym.Ext || ctx != "" {
 					kp.Setter.Desc = funDesc(pd.Setter.Sym)
 					if owner != nil && owner.Value {
 						kp.Setter.Desc = "(" + desc(owner.Underlying.Type) + kp.Setter.Desc[1:]

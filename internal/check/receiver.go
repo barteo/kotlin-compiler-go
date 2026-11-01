@@ -45,6 +45,14 @@ func (c *Checker) receiverFor(x *syntax.This) *implicitRecv {
 			return r
 		}
 	}
+	if x.Recv != nil {
+		// A context argument: a context parameter.
+		for i := range c.ctxs {
+			if r := &c.ctxs[i]; r.sym == x.Recv {
+				return r
+			}
+		}
+	}
 	return nil
 }
 
@@ -82,7 +90,7 @@ func (c *Checker) thisExpr(x *syntax.This) types.Type {
 
 // recvThis returns this, referring to an implicit receiver.
 func recvThis(r *implicitRecv, p syntax.Pos) *syntax.This {
-	this := &syntax.This{Recv: r.sym}
+	this := &syntax.This{Recv: r.sym, Implicit: true}
 	this.P = p
 	return this
 }
@@ -141,11 +149,11 @@ func (c *Checker) recvCall(x *syntax.Call, id *syntax.Ident) bool {
 		if r.outer && c.cls != nil && c.hasFun(c.cls.This(), id.Name, x) {
 			return false // the object's own
 		}
-		if t := c.scope.narrowed(r.sym); !c.hasFun(t, id.Name, x) && !c.hasFunProp(t, id.Name, x) {
-			continue
-		}
 		m := &syntax.Member{X: recvThis(r, id.P), Name: id.Name}
 		m.P = id.P
+		if t := c.scope.narrowed(r.sym); !c.hasFun(t, id.Name, x) && !c.hasFunProp(t, id.Name, x) && !c.extPropInvoked(m, t, c.classOf(t), x) {
+			continue
+		}
 		x.Fun = m
 		return true
 	}
@@ -294,13 +302,17 @@ func (c *Checker) lowPriorityGivesWay(ms []*types.FunSym, name string, rt types.
 // locals, literals) fit parameters that aren't generic. An implicit
 // receiver whose functions don't take the arguments gives way to the
 // next one, as emit(this) in buildCodeString { } calls the enclosing
-// class's emit(CodeWriter), not CodeWriter.emit(String).
+// class's emit(CodeWriter), not CodeWriter.emit(String). So does one
+// whose function has a context parameter that no implicit value fits.
 func (c *Checker) mayTake(f *types.FunSym, x *syntax.Call) bool {
 	amap, ok := mapArgs(f, x)
 	if !ok {
 		return false
 	}
-	cl := callee{f: f, amap: amap, names: x.Names}
+	cl := callee{f: f, tparams: f.TypeParams, amap: amap, names: x.Names}
+	if _, ok := c.contextArgs(&cl, x); !ok {
+		return false
+	}
 	for i, a := range x.Args {
 		p := cl.argType(i, x.Args)
 		if l, ok := a.(*syntax.Lambda); ok && !c.lambdaFits(l, p) {
@@ -518,12 +530,15 @@ func builtinFun(t types.Type, name string, n int) bool {
 
 // implicitArg passes the implicit receiver to a call of a function value
 // with a receiver that leaves it out: block() for block: A.() -> R, in a
-// lambda whose receiver is an A, is block(this).
+// lambda whose receiver is an A, is block(this). It passes the context
+// arguments of a context function type that leaves them out too.
 func (c *Checker) implicitArg(x *syntax.Call, ft types.Type) {
-	if !ft.IsExtFunc() || len(x.Args) != ft.A.Len()-2 {
+	defer c.implicitContexts(x, ft)
+	k := ft.Contexts()
+	if !ft.IsExtFunc() || len(x.Args) != ft.A.Len()-2-k {
 		return
 	}
-	recv := ft.A.Get(0).T
+	recv := ft.A.Get(k).T
 	for i := len(c.recvs) - 1; i >= 0; i-- {
 		r := &c.recvs[i]
 		if c.subtype(c.scope.narrowed(r.sym), recv) {

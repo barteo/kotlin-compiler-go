@@ -12,8 +12,7 @@
 // with error recovery: an error the detector didn't predict is listed, so
 // gaps in the detector show up.
 //
-// The report ranks the features by the files they block, and shows how
-// many files each planned milestone would unblock.
+// The report ranks the features by the files they block.
 //
 //	go run ./bench/survey -repos bench/survey/repos.txt -cache dir -stdlib kotlin-stdlib.jar -cp ... -o report.md
 //
@@ -101,6 +100,8 @@ var milestones = []struct {
 	{"70c: fun interfaces", []string{"fun interface"}},
 	{"delegated extension properties", []string{"delegated extension property"}},
 	{"qualified super", []string{"qualified super"}},
+	{"context parameters of top-level functions", []string{"context function", "context function type"}},
+	{"context parameters of members, properties and local functions", []string{"context member", "context property", "context local function", "context anonymous function"}},
 	// Supported all along, but counted by an earlier detector.
 	{"also supported", []string{"prefix increment"}},
 }
@@ -1094,7 +1095,7 @@ func (d *detector) ident(i int) {
 	case t.Text == "suspend" && next == syntax.LPAREN && !member:
 		d.add("suspend function type")
 	case t.Text == "context" && next == syntax.LPAREN && !member && d.contextParams(i):
-		d.add("context parameters")
+		d.add(d.contextFeature(i))
 	case (t.Text == "get" || t.Text == "set") && d.memberLevel():
 		p := i - 1
 		if visibility[d.text(p)] {
@@ -1146,6 +1147,9 @@ func (d *detector) ident(i int) {
 	if next == syntax.LT {
 		k := d.kind(d.match(i+1) + 1)
 		call = k == syntax.LPAREN || k == syntax.LBRACE
+	}
+	if t.Text == "context" && call && d.kind(d.skipNL(d.match(i+1)+1)) != syntax.LBRACE {
+		call = false // context parameters, not the standard library's context(a) { }
 	}
 	if feat := d.inlineOnly[t.Text]; feat != "" && prev != syntax.FUN && prev != syntax.COLON_COLON && call {
 		d.inline[t.Text]++
@@ -1237,6 +1241,76 @@ func (d *detector) contextParams(i int) bool {
 		return modifierWords[d.text(j)] || visibility[d.text(j)] || d.text(j) == "context"
 	}
 	return false
+}
+
+// contextFeature returns the feature of the context(...) at i, which
+// contextParams reports declares context parameters: those of a function,
+// top-level, a member or local, or anonymous, of a property or of a
+// function type, which kc supports, or those of another declaration, a
+// class or a constructor, which it doesn't, nor the context receivers that
+// came before them, context(A).
+func (d *detector) contextFeature(i int) string {
+	j := d.skipNL(d.match(i+1) + 1)
+	if d.kind(j) == syntax.LPAREN {
+		return "context function type"
+	}
+	if k := d.skipNL(i + 2); d.kind(k) != syntax.RPAREN && (d.kind(k) != syntax.IDENT || d.kind(k+1) != syntax.COLON) {
+		return "context receivers"
+	}
+	// Past the annotations and modifiers, to the declaration.
+	for {
+		switch {
+		case d.kind(j) == syntax.AT:
+			j++
+			for d.kind(j+1) == syntax.DOT || d.kind(j+1) == syntax.COLON {
+				j += 2
+			}
+			if j++; d.kind(j) == syntax.LPAREN {
+				j = d.match(j) + 1
+			}
+		case d.kind(j) == syntax.IDENT && (modifierWords[d.text(j)] || visibility[d.text(j)]):
+			j++
+		default:
+			switch k := d.kind(j); {
+			case k == syntax.FUN && d.anonFun(j):
+				return "context anonymous function"
+			case k == syntax.FUN && d.kind(j+1) == syntax.INTERFACE:
+			case k == syntax.FUN && len(d.braces) == 0:
+				return "context function"
+			case k == syntax.FUN && d.memberLevel():
+				return "context member"
+			case k == syntax.FUN:
+				return "context local function"
+			case (k == syntax.VAL || k == syntax.VAR) && d.memberLevel():
+				return "context property"
+			}
+			return "context parameters"
+		}
+		j = d.skipNL(j)
+	}
+}
+
+// anonFun reports whether the fun at i starts an anonymous function, fun
+// (x: Int) or fun Int.(): the parenthesis of its parameters follows fun or
+// a receiver's dot, not a name.
+func (d *detector) anonFun(i int) bool {
+	depth := 0
+	for j := i + 1; ; j++ {
+		switch k := d.kind(j); {
+		case k == syntax.EOF:
+			return false
+		case k == syntax.LT:
+			depth++
+		case k == syntax.GT:
+			depth--
+		case depth > 0:
+		case k == syntax.LPAREN:
+			k := d.kind(j - 1)
+			return k == syntax.FUN || k == syntax.DOT || k == syntax.SAFE_DOT
+		case k != syntax.IDENT && k != syntax.DOT && k != syntax.SAFE_DOT && k != syntax.QUEST:
+			return false
+		}
+	}
 }
 
 // declStart reports whether a token can follow a modifier.
@@ -1381,18 +1455,7 @@ func reportSet(sb *strings.Builder, s *sourceSet) {
 	fmt.Fprintf(sb, "## %s: %d files, %d lines\n\n", s.label, len(s.files), lines)
 	fmt.Fprintf(sb, "Directories: %s\n\n", "`"+strings.Join(s.dirs, "`, `")+"`")
 
-	// The milestones, cumulatively.
-	fmt.Fprintf(sb, "### Milestone by milestone\n\nThe features each milestone of kc's plans added, and how many files would use no unsupported feature with them. Each row adds a milestone's features to the ones above it.\n\n")
-	fmt.Fprintf(sb, "| After milestone | Files unblocked | Files still blocked | Median blockers left per blocked file |\n|:---|---:|---:|---:|\n")
-	done := map[string]bool{}
-	fmt.Fprintf(sb, "| (before) | %d | %d | %s |\n", unblocked(s.files, done), len(s.files)-unblocked(s.files, done), median(s.files, done))
-	for _, m := range milestones {
-		for _, f := range m.features {
-			done[f] = true
-		}
-		n := unblocked(s.files, done)
-		fmt.Fprintf(sb, "| %s | %d | %d | %s |\n", m.name, n, len(s.files)-n, median(s.files, done))
-	}
+	done := doneFeatures()
 
 	// The features left, by the files they block.
 	type count struct {
@@ -1483,35 +1546,25 @@ func reportSet(sb *strings.Builder, s *sourceSet) {
 		return names[i] < names[j]
 	})
 	if len(names) > 0 {
-		fmt.Fprintf(sb, "\n### Inline-only functions called\n\n`require`, `check`, `requireNotNull`, `checkNotNull`, `error` and `TODO` are built in; kc inlines the others, since milestone 22 also those with reified type parameters.\n\n| Function | Files | Calls |\n|:---|---:|---:|\n")
+		fmt.Fprintf(sb, "\n### Inline-only functions called\n\n`require`, `check`, `requireNotNull`, `checkNotNull`, `error` and `TODO` are built in; kc inlines the others, also those with reified type parameters.\n\n| Function | Files | Calls |\n|:---|---:|---:|\n")
 		for _, n := range names {
 			fmt.Fprintf(sb, "| `%s` | %d | %d |\n", n, files[n], calls[n])
 		}
 	}
 
 	// Per file.
-	fmt.Fprintf(sb, "\n### Files\n\nThe features each file still needs, then, in parentheses, the ones the milestones above added.\n\n| File | Lines | Blockers left |\n|:---|---:|:---|\n")
+	fmt.Fprintf(sb, "\n### Files\n\nThe features each file still needs.\n\n| File | Lines | Blockers left |\n|:---|---:|:---|\n")
 	sorted := slices.Clone(s.files)
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i].path < sorted[j].path })
 	for _, f := range sorted {
-		var left, planned []string
+		var left []string
 		for feat := range f.features {
-			if done[feat] {
-				planned = append(planned, feat)
-			} else {
+			if !done[feat] {
 				left = append(left, feat)
 			}
 		}
 		sort.Strings(left)
-		sort.Strings(planned)
-		cell := strings.Join(left, ", ")
-		if len(planned) > 0 {
-			if cell != "" {
-				cell += " "
-			}
-			cell += "(" + strings.Join(planned, ", ") + ")"
-		}
-		fmt.Fprintf(sb, "| %s | %d | %s |\n", f.path, f.lines, cell)
+		fmt.Fprintf(sb, "| %s | %d | %s |\n", f.path, f.lines, strings.Join(left, ", "))
 	}
 
 	// Cross-check with the parser.
@@ -1579,3 +1632,4 @@ func median(files []*file, done map[string]bool) string {
 	sort.Ints(ns)
 	return fmt.Sprint(ns[len(ns)/2])
 }
+

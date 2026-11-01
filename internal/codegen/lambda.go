@@ -371,6 +371,9 @@ func (g *gen) lambdaMethod(x *syntax.Lambda, name string) (method, samDesc, impl
 	var out types.Type
 	if x.SAM != nil {
 		method, samDesc = x.SAM.JVM(), samMethodDesc(x.SAM)
+		for _, p := range x.SAM.Contexts {
+			in = append(in, types.Erase(p.Type))
+		}
 		if x.SAM.Ext {
 			in = append(in, types.Erase(x.SAM.Recv))
 		}
@@ -516,6 +519,9 @@ func (g *gen) lambdaClass(x *syntax.Lambda) {
 		}
 	case x.SAM != nil:
 		iface, method, samDesc = x.SAM.Owner.Name, x.SAM.JVM(), samMethodDesc(x.SAM)
+		for _, p := range x.SAM.Contexts {
+			in = append(in, types.Erase(p.Type))
+		}
 		if x.SAM.Ext {
 			in = append(in, types.Erase(x.SAM.Recv))
 		}

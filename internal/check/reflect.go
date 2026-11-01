@@ -307,6 +307,15 @@ func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.
 		return c.kpropLambda(x, propForm(ps), recv != nil)
 	case w.known:
 		ps := slices.Clone(w.params)
+		if unbound && r.X != nil && (len(ps) == 0 || !c.subtype(ps[0], recvType)) {
+			if name, _ := c.typeName(r.X); c.lookupClass(name) != nil && c.lookupClass(name).Companion != nil {
+				// Without a receiver of the class to take, the reference
+				// is bound to its companion, which may extend it.
+				c.bindRef(r, c.value(r.X, noWant))
+				recv = func() syntax.Expr { return ident(r.Bound.Name) }
+				unbound = false
+			}
+		}
 		switch {
 		case !unbound:
 			if len(ps) == 0 && !c.namesClass(r, recv != nil) {
@@ -405,8 +414,10 @@ func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.
 		}
 	}
 
-	// Try each form; report the errors of the last one if none fits.
-	w.recv, w.known = false, true
+	// Try each form; report the errors of the last one if none fits. The
+	// expected type's receiver and context parameters are the lambda's
+	// first parameters.
+	w.recv, w.ctx, w.known = false, 0, true
 	suspend := w.suspend
 	for i, f := range forms {
 		w.suspend = suspend || f.suspend
@@ -419,7 +430,11 @@ func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.
 		x.Captures, x.This = nil, false
 		w.params = f.params
 		ps, rt, ok := c.checkLambda1(x, w)
-		if len(c.errs) == n || i == len(forms)-1 {
+		if len(c.errs) == n {
+			c.refContexts(x, p)
+			return ps, rt, ok
+		}
+		if i == len(forms)-1 {
 			return ps, rt, ok
 		}
 		c.errs = c.errs[:n]
@@ -670,7 +685,7 @@ func (c *Checker) kpropLambda(x *syntax.Lambda, f refForm, bound bool) ([]types.
 	get := lambdaOf(f.params, &syntax.ExprStmt{X: f.body()})
 	x.Arrow, x.Params, x.Body, x.Captures, x.This = true, get.Params, get.Body, nil, false
 	ps, rt, ok := c.checkLambda1(x, lambdaWant{params: f.params, known: true, ret: noWant})
-	if !ok || rt.K == types.Invalid {
+	if !ok || rt.K == types.Invalid || c.refContexts(x, p) {
 		return ps, rt, false
 	}
 	k := &syntax.KProp{Bound: bound}

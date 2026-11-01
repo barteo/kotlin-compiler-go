@@ -365,6 +365,23 @@ func litsFit(lits []*syntax.IntLit, t types.Type) bool {
 	return true
 }
 
+// litsFitUppers reports whether the integer literals of each variable
+// can be of the types it is known to be below: not those of t in f(1)
+// for f(t: T) once Box<String> is a Box<T>.
+func (s *system) litsFitUppers() bool {
+	for _, tv := range s.vars {
+		if tv.fixed || len(tv.lits) == 0 {
+			continue
+		}
+		for _, u := range tv.upper {
+			if u = s.apply(u); !u.HasVars() && !s.c.subtype(types.IntType, u) && !litsFit(tv.lits, u) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 // unfixed reports whether any variable is not fixed yet.
 func (s *system) unfixed() bool {
 	for _, tv := range s.vars {

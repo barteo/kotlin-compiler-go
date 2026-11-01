@@ -42,6 +42,11 @@ type Type struct {
 	// E marks a function type with a receiver, A.(B) -> R, which is the
 	// function type (A, B) -> R. Each is assignable to the other.
 	E bool
+	// X is the number of context parameters of a context function type,
+	// context(A) B.(C) -> R, which is the function type (A, B, C) -> R
+	// with its first X parameters, before the receiver, marked as
+	// contexts. Each is assignable to the other too.
+	X uint8
 	// B marks the boxed form of a value class type, its instances, which
 	// only codegen uses: the elements of an array of a value class.
 	B bool
@@ -282,6 +287,11 @@ type VarSym struct {
 	// that holds its delegate, which reading it calls getValue on.
 	Delegate *VarSym
 
+	// NoInfer is set on a context parameter whose type, or one of its
+	// type arguments, is annotated @NoInfer: its argument is chosen by the
+	// call's type arguments, not used to infer them.
+	NoInfer bool
+
 	// Parameters of Kotlin and Java functions read from class files.
 	Vararg  bool // takes any number of arguments of Type, passed in an array
 	Default bool // declares a default value, so the argument can be omitted
@@ -296,6 +306,13 @@ type VarSym struct {
 	Final    bool    // can't be overridden: not open, abstract or override
 	Getter   *FunSym // a custom getter
 	Setter   *FunSym // a custom setter, or a delegated property's
+	// Contexts are the context parameters of a property, which its
+	// accessors take first, as their Contexts.
+	Contexts []*VarSym
+	// Alt links the properties of the same name and owner, which Kotlin
+	// allows if their context parameters differ, in a ring: the next one,
+	// or nil if there is no other. Lookups find the first declared.
+	Alt *VarSym
 	// FieldUsed is set on a property whose accessors use field, which
 	// then has a backing field though both accessors are custom.
 	FieldUsed bool
@@ -460,6 +477,10 @@ type FunSym struct {
 	Infix    bool   // can be called as an infix operator: a to b
 	Ext      bool   // an extension function, called on a receiver of type Recv
 	Recv     Type   // Invalid if kc doesn't support the receiver's type
+	// Contexts are the context parameters of a function of the program,
+	// context(a: A) fun f(), which calls pass implicitly. On the JVM,
+	// it takes them first, before the extension receiver.
+	Contexts []*VarSym
 	// BoxedRet is set on an override whose result is a primitive where
 	// a member it overrides has a type parameter or a nullable type: as
 	// with kotlinc, its JVM method returns the box, Integer for Int. On a
@@ -666,6 +687,7 @@ func (f *FunSym) JVM() string {
 type KProp struct {
 	Getter *FunSym // Ret is the property's type
 	Setter *FunSym // nil for a val
+	Alt    *KProp  // as VarSym.Alt
 }
 
 // ClassSym is a user class or a Java class from the class path. Name is the
@@ -791,8 +813,8 @@ type ClassSym struct {
 	// metadata doesn't declare, such as kotlinc's collection stubs.
 	JVMMethods map[string]uint16
 	// Annotations are the classes of the annotations of a class on the
-	// class path that its class file keeps, but not for reflection, such
-	// as Compose's @Stable, and StabilityInferred is the parameters of its
+	// class path that its class file keeps, such as Compose's @Stable, or
+	// of the program's that are classes, and StabilityInferred is the parameters of its
 	// @StabilityInferred, which Compose's compiler plugin writes, or -1:
 	// see codegen/stability.go.
 	Annotations       []*ClassSym

@@ -25,7 +25,8 @@ type callee struct {
 	// receiver's class, a lambda's: that receiver is its dispatch
 	// receiver, as in with(builder) { x eq 1 }.
 	dispatchRecv *implicitRecv
-	amap         []int // the parameter each argument is passed to; nil: the one at its position
+	amap         []int        // the parameter each argument is passed to; nil: the one at its position
+	ctx          []contextArg // the context arguments, if the function has context parameters
 	// names are the call's argument names, with amap: a named argument
 	// of a vararg parameter is its array.
 	names []string
@@ -574,12 +575,17 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 	name := cands[0].f.Name
 	byArity := cands[:0] // cands is the caller's own slice
 	unsupported, why, feature := false, "", "inline-only call"
+	var noCtx *types.FunSym
 	for _, cl := range cands {
 		if cl.f.Hidden {
 			continue
 		}
 		amap, ok := mapArgs(cl.f, x)
 		if !ok {
+			continue
+		}
+		if cl.ctx, ok = c.contextArgs(&cl, x); !ok {
+			noCtx = cl.f
 			continue
 		}
 		if cl.f.Unsupported {
@@ -604,6 +610,8 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			c.errorf(x.P, "the spread operator (*foo) can only be applied in a vararg position")
 		case why != "":
 			c.unsupported(x.P, feature, "%s", why)
+		case noCtx != nil:
+			c.noContextArg(x.P, noCtx)
 		case unsupported:
 			c.unsupported(x.P, "unsupported types in signature", "'%s' uses types kc doesn't support", name)
 		default:
@@ -726,6 +734,7 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 				maximal = append(maximal, cd)
 			}
 		}
+		maximal = overriddenGiveWay(maximal)
 		if len(maximal) == 0 {
 			if fewer, ok := fewestSAM(match, x.Args, func(cd *candidate) *callee { return &cd.callee }); ok {
 				for _, cd := range fewer {
@@ -772,6 +781,9 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 	f := best.f
 	x.Sym, x.ArgMap = f, best.amap
 	c.setDispatch(x, &best.callee)
+	c.receiverShadowed(x, &best.callee)
+	c.dslCall(x, &best.callee)
+	c.setContexts(x, &best.callee, best.sys, best.sub)
 	ensureFun(f)
 	c.suspendCall(x.P, f)
 	c.composeFunCall(x.P, f)
@@ -959,7 +971,7 @@ func (c *Checker) byLambdaResult(x *syntax.Call, match []*candidate) *candidate 
 	if cd := c.byLambdaResultClass(l, li, match, params); cd != nil {
 		return cd
 	}
-	_, bt, _ := c.checkLambda(l, lambdaWant{params: params, known: true, recv: match[0].params[li].Flex().E, suspend: isSuspendFunc(match[0].params[li]), composable: isComposableFunc(match[0].params[li]), ret: noWant})
+	_, bt, _ := c.checkLambda(l, lambdaWant{params: params, known: true, recv: match[0].params[li].Flex().E, ctx: match[0].params[li].Flex().Contexts(), suspend: isSuspendFunc(match[0].params[li]), composable: isComposableFunc(match[0].params[li]), ret: noWant})
 	if bt.K == types.Invalid {
 		return nil
 	}
@@ -1171,6 +1183,9 @@ func (c *Checker) resolvePlain(x *syntax.Call, cs []callee, want types.Type) typ
 	f := best.f
 	x.Sym, x.ArgMap = f, best.amap
 	c.setDispatch(x, best)
+	c.receiverShadowed(x, best)
+	c.dslCall(x, best)
+	c.setContexts(x, best, nil, nil)
 	ensureFun(f)
 	c.suspendCall(x.P, f)
 	c.composeFunCall(x.P, f)
@@ -1277,6 +1292,37 @@ func (c *Checker) constrain(cd *candidate, x *syntax.Call, ts []types.Type, part
 		}
 		cd.sys.sub(t, p)
 	}
+	c.constrainContexts(cd, x)
+}
+
+// constrainContexts adds the constraints of a candidate's context
+// arguments, once its arguments' are in its system. As in kotlinc, an
+// argument of a generic context parameter is chosen again then: the
+// nearest implicit value that fits with the arguments' constraints, as
+// for context(t: T) f(b: Box<T>), with A and B in scope, f(Box<A>())
+// takes the A. Those of @NoInfer types are left to setContexts.
+func (c *Checker) constrainContexts(cd *candidate, x *syntax.Call) {
+	if len(cd.ctx) > 0 {
+		cd.ctx = slices.Clone(cd.ctx) // the callee's, which other attempts share
+	}
+	for k, a := range cd.ctx {
+		if a.noInfer {
+			continue
+		}
+		want := cd.sub.ApplyIn(cd.f.Contexts[k].Type)
+		if want.HasVars() {
+			v, t, ok, amb := c.contextValue(x.P, func(t types.Type) bool {
+				trial := cd.sys.clone()
+				trial.sub(t, want)
+				return trial.ok && trial.litsFitUppers()
+			})
+			if ok {
+				a = contextArg{x: v, t: t, ambiguous: amb}
+				cd.ctx[k] = a
+			}
+		}
+		cd.sys.sub(a.t, want)
+	}
 }
 
 // suspendConstraint reports whether argument a, of type t, is a function
@@ -1307,7 +1353,7 @@ func (c *Checker) unsuspended(p types.Type) types.Type {
 		ps[i] = pt.A.List[i].T
 	}
 	plain := c.u.ext.funcs.Type(ps, pt.A.List[len(ps)].T)
-	plain.E = pt.E
+	plain.E, plain.X = pt.E, pt.X
 	if p.N {
 		plain = plain.Nullable()
 	}
@@ -1332,13 +1378,18 @@ func (c *Checker) suspendConverted(a syntax.Expr, pt types.Type) syntax.Expr {
 	inner := &syntax.Lambda{Arrow: true}
 	inner.P = p
 	for k := 0; k < fn.A.Len()-1; k++ {
-		if k == 0 && fn.E {
+		switch {
+		case k < int(fn.X):
+			// A context parameter, which the lambda names to pass it on.
+			inner.AnonCtx = append(inner.AnonCtx, &syntax.Param{P: p, Name: refParam(k)})
+		case k == int(fn.X) && fn.E:
 			th := &syntax.This{}
 			th.P = p
 			call.Args = append(call.Args, th)
 			continue
+		default:
+			inner.Params = append(inner.Params, &syntax.LambdaParam{P: p, Name: refParam(k)})
 		}
-		inner.Params = append(inner.Params, &syntax.LambdaParam{P: p, Name: refParam(k)})
 		arg := &syntax.Ident{Name: refParam(k)}
 		arg.P = p
 		call.Args = append(call.Args, arg)
@@ -1438,13 +1489,42 @@ func (c *Checker) mostSpecific(f *candidate, cs []*candidate, args []syntax.Expr
 			sys.sub(fa, ga)
 		}
 		if f.f.Ext && g.f.Ext {
-			sys.sub(f.f.Recv, sub.ApplyIn(g.f.Recv))
+			// A member extension's receiver with its dispatch receiver's
+			// type arguments, as its parameters: Raise<Error>'s
+			// List<Box<Error, A>>.bindAll() is more specific than its
+			// Iterable<Box<Error, A>>.bindAll().
+			sys.sub(f.recv.ApplyIn(f.f.Recv), sub.ApplyIn(g.f.Recv))
 		}
 		if !sys.ok {
 			return false
 		}
 	}
 	return true
+}
+
+// overriddenGiveWay drops the candidates among equally specific ones
+// that another one, declared in a subclass of theirs with the same
+// parameters, overrides: Kotlin sees only the override, as value class
+// Tag's Int.ext(n) for the T.ext(n) of its supertype Ext<Int>, which
+// dropOverridden keeps, as their JVM descriptors differ.
+func overriddenGiveWay(cs []*candidate) []*candidate {
+	if len(cs) < 2 {
+		return cs
+	}
+	sameParams := func(f, g *types.FunSym) bool {
+		return f.Ext == g.Ext && slices.EqualFunc(f.Params, g.Params, func(p, q *types.VarSym) bool { return p.Vararg == q.Vararg })
+	}
+	var out []*candidate
+	for _, f := range cs {
+		overridden := slices.ContainsFunc(cs, func(g *candidate) bool {
+			return f.f.Owner != nil && g.f.Owner != nil && g.f.Owner != f.f.Owner && g.f.Name == f.f.Name &&
+				g.f.Owner.IsSubclassOf(f.f.Owner) && sameParams(f.f, g.f)
+		})
+		if !overridden {
+			out = append(out, f)
+		}
+	}
+	return out
 }
 
 // boxedPrimitive reports whether a is a Java boxed primitive, Long!, and b

@@ -37,6 +37,7 @@ func (c *Checker) resolveSupertypes() {
 		if cls.Anonymous || cls.Local {
 			c.lookupCls = cls
 		}
+		cls.Annotations = c.classAnnotations(cd.Annotations)
 		cls.Supers = []types.Type{}
 		seen := map[*types.ClassSym]bool{}
 		for _, st := range cd.Supers {
@@ -45,6 +46,9 @@ func (c *Checker) resolveSupertypes() {
 				st.Delegate = nil
 			}
 			t := c.supertype(cd, st, seen)
+			if t.E || t.X > 0 {
+				c.errorf(st.Type.P, "extension function type or function type with context parameters is not allowed as supertype")
+			}
 			if t.IsComposableFunc() {
 				c.unsupported(st.Type.P, "compose", "classes that implement composable function types are not supported")
 				t = types.InvalidType
@@ -279,6 +283,33 @@ func paramKey(f *types.FunSym) string {
 }
 
 func paramKey1(f *types.FunSym) string {
+	if len(f.Contexts) == 0 {
+		return paramKey2(f)
+	}
+	// The context parameters, apart, which a function without them but
+	// with parameters of the same types doesn't override.
+	k := paramKey2(f)
+	if f.Desc == "" {
+		d, ok := types.ParamsDesc(f.Contexts)
+		if !ok {
+			return k
+		}
+		return "c" + d + k
+	}
+	i := 1 // a class-path function's descriptor takes them first
+	for range f.Contexts {
+		for k[i] == '[' {
+			i++
+		}
+		if k[i] == 'L' {
+			i = strings.IndexByte(k[i:], ';') + i
+		}
+		i++
+	}
+	return "c" + k[:i] + ")(" + k[i:]
+}
+
+func paramKey2(f *types.FunSym) string {
 	if f.Impl {
 		// A static method that takes the value first: its parameters.
 		d := f.Desc[:strings.IndexByte(f.Desc, ')')+1]
@@ -337,7 +368,7 @@ func (c *Checker) userProp(cls *types.ClassSym, name string) *types.VarSym {
 		}
 		return p == nil
 	})
-	return p
+	return c.propAlt(p)
 }
 
 // accessible drops the protected members that code outside a subclass of
@@ -378,10 +409,16 @@ func (c *Checker) memberCallees(ms []*types.FunSym, rt types.Type) []callee {
 // sameParams reports whether method g, seen from a receiver of type rt,
 // takes the same parameter types as f: whether one overrides the other.
 func (c *Checker) sameParams(rt types.Type, f, g *types.FunSym) bool {
-	if len(f.Params) != len(g.Params) || len(f.TypeParams) != len(g.TypeParams) || f.Static != g.Static || f.Ext != g.Ext {
+	if len(f.Params) != len(g.Params) || len(f.Contexts) != len(g.Contexts) || len(f.TypeParams) != len(g.TypeParams) || f.Static != g.Static || f.Ext != g.Ext {
 		return false
 	}
 	fs, gs := c.memberSubst(rt, f.Owner), c.overrideSubst(rt, f, g)
+	// The context parameters too, in order.
+	for i, p := range f.Contexts {
+		if !c.sameType(fs.Apply(p.Type), gs.Apply(g.Contexts[i].Type)) {
+			return false
+		}
+	}
 	for i, p := range f.Params {
 		if !c.sameType(fs.Apply(p.Type), gs.Apply(g.Params[i].Type)) {
 			return false
@@ -459,6 +496,55 @@ type superProp struct {
 	getter    string // the getter's JVM name and descriptor
 	setter    string // and the setter's, if it has one
 	protected bool
+	ctx       []*types.VarSym // its context parameters, in owner's type parameters
+}
+
+// implementingProp returns the property of cls, declared or inherited,
+// that implements a property of its supertype s, of a name and context
+// parameters ctx, or nil.
+func (c *Checker) implementingProp(cls, s *types.ClassSym, name string, ctx []*types.VarSym) *types.VarSym {
+	q := c.userProp(cls, name)
+	if len(ctx) == 0 && (q == nil || q.Alt == nil) {
+		return q
+	}
+	this := cls.This()
+	want := c.memberSubst(this, s)
+	q = nil
+	cls.Supertypes(func(o *types.ClassSym) bool {
+		if p := o.Prop(name); p != nil && !o.External {
+			sub := c.memberSubst(this, o)
+			for p := range altProps(p) {
+				if c.sameContextsIn(ctx, want, p.Contexts, sub) {
+					q = p
+					return false
+				}
+			}
+		}
+		return true
+	})
+	return q
+}
+
+// overriddenProps returns the properties of cls's supertypes that its
+// property p may override: of its name and context parameters.
+func (c *Checker) overriddenProps(cls *types.ClassSym, p *types.VarSym) []superProp {
+	return slices.DeleteFunc(c.superProps(cls, p.Name), func(o superProp) bool {
+		return !c.sameContextsIn(o.ctx, c.memberSubst(cls.This(), o.owner), p.Contexts, nil)
+	})
+}
+
+// sameContextsIn reports whether context parameters a, with substitution
+// sa, and b, with sb, have the same types, in order.
+func (c *Checker) sameContextsIn(a []*types.VarSym, sa types.Subst, b []*types.VarSym, sb types.Subst) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i, p := range a {
+		if !c.sameType(sa.Apply(p.Type), sb.Apply(b[i].Type)) {
+			return false
+		}
+	}
+	return true
 }
 
 // superProps returns the properties of cls's supertypes named name.
@@ -471,29 +557,36 @@ func (c *Checker) superProps(cls *types.ClassSym, name string) []superProp {
 		if !s.External {
 			// A private property isn't inherited: a subclass's of the
 			// same name neither hides nor overrides it.
-			if p := s.Prop(name); p != nil && !p.Private {
-				ensureVar(p)
-				d, _ := types.Desc(types.GetterType(p))
-				var setter string
-				if p.Mutable && !p.SetterPrivate {
-					fd, _ := types.Desc(types.FieldType(p))
-					setter = types.SetterJVM(p) + "(" + fd + ")V"
+			if p := s.Prop(name); p != nil {
+				for p := range altProps(p) {
+					if p.Private {
+						continue
+					}
+					ensureVar(p)
+					d, _ := types.Desc(types.GetterType(p))
+					var setter string
+					if p.Mutable && !p.SetterPrivate {
+						fd, _ := types.Desc(types.FieldType(p))
+						setter = types.SetterJVM(p) + "(" + fd + ")V"
+					}
+					out = append(out, superProp{s, p.Type, p.Final, p.Mutable, p.Abstract, types.GetterJVM(p) + "()" + d, setter, protectedProp(p), p.Contexts})
 				}
-				out = append(out, superProp{s, p.Type, p.Final, p.Mutable, p.Abstract, types.GetterJVM(p) + "()" + d, setter, protectedProp(p)})
 			}
 			return true
 		}
 		if kp := s.KProps[name]; kp != nil {
-			var setter string
-			if kp.Setter != nil {
-				setter = kp.Setter.JVM() + types.FunDesc(kp.Setter)
+			for kp := range kpropAlts(kp) {
+				var setter string
+				if kp.Setter != nil {
+					setter = kp.Setter.JVM() + types.FunDesc(kp.Setter)
+				}
+				out = append(out, superProp{s, kp.Getter.Ret, kp.Getter.Final, kp.Setter != nil, kp.Getter.Abstract, kp.Getter.JVM() + types.FunDesc(kp.Getter), setter, kp.Getter.Protected, kp.Getter.Contexts})
 			}
-			out = append(out, superProp{s, kp.Getter.Ret, kp.Getter.Final, kp.Setter != nil, kp.Getter.Abstract, kp.Getter.JVM() + types.FunDesc(kp.Getter), setter, kp.Getter.Protected})
 			return true
 		}
 		if s.Name == charSequence && name == "length" {
 			// CharSequence's length, java.lang.CharSequence.length().
-			out = append(out, superProp{s, types.IntType, false, false, true, "length()I", "", false})
+			out = append(out, superProp{s, types.IntType, false, false, true, "length()I", "", false, nil})
 			return true
 		}
 		if s.KotlinName != "" || !builtinJava[s.Name] {
@@ -505,7 +598,7 @@ func (c *Checker) superProps(cls *types.ClassSym, name string) []superProp {
 		// A Kotlin built-in type's, as Throwable's message.
 		for _, g := range s.Methods[types.GetterName(name)] {
 			if len(g.Params) == 0 && !g.Static && g.Ret.K != types.Unit {
-				out = append(out, superProp{s, g.Ret, g.Final, false, g.Abstract, g.JVM() + types.FunDesc(g), "", g.Protected})
+				out = append(out, superProp{s, g.Ret, g.Final, false, g.Abstract, g.JVM() + types.FunDesc(g), "", g.Protected, nil})
 			}
 		}
 		return true
@@ -629,7 +722,7 @@ func (c *Checker) checkInheritance(d *syntax.ClassDecl) {
 		if p.Private && !op.override {
 			continue // only a field: it hides and overrides nothing
 		}
-		over := c.superProps(cls, p.Name)
+		over := c.overriddenProps(cls, p)
 		switch {
 		case len(over) == 0 && op.override:
 			c.errorf(op.pos, "'%s' overrides nothing", p.Name)
@@ -708,7 +801,7 @@ func (c *Checker) inheritedBridges(d *syntax.ClassDecl) {
 				}
 				if h := c.superImpl(cls, this, g); h != nil {
 					ensureFun(h)
-					add(syntax.InheritedBridge{Bridge: od, Target: types.InstanceJVM(h), Params: h.Params, Ret: types.JVMRet(h), Over: g, Fun: h}, types.InstanceJVM(h)+memberDesc(h))
+					add(syntax.InheritedBridge{Bridge: od, Target: types.InstanceJVM(h), Params: append(slices.Clone(h.Contexts), h.Params...), Ret: types.JVMRet(h), Over: g, Fun: h}, types.InstanceJVM(h)+memberDesc(h))
 				}
 			}
 		}
@@ -904,16 +997,18 @@ func (c *Checker) checkImplemented(d *syntax.ClassDecl) {
 		if !s.External {
 			for _, p := range s.Props {
 				if p.Abstract {
-					if q := c.userProp(cls, p.Name); q == nil || q.Abstract {
+					if q := c.implementingProp(cls, s, p.Name, p.Contexts); q == nil || q.Abstract {
 						missing(p.Name)
 					}
 				}
 			}
 		}
 		for name, kp := range s.KProps {
-			if kp.Getter.Abstract {
-				if q := c.userProp(cls, name); (q == nil || q.Abstract) && !concreteInSuper(cls, kp.Getter.JVM()+types.FunDesc(kp.Getter)) {
-					missing(name)
+			for kp := range kpropAlts(kp) {
+				if kp.Getter.Abstract {
+					if q := c.implementingProp(cls, s, name, kp.Getter.Contexts); (q == nil || q.Abstract) && !concreteInSuper(cls, kp.Getter.JVM()+types.FunDesc(kp.Getter)) {
+						missing(name)
+					}
 				}
 			}
 		}
@@ -1299,7 +1394,7 @@ func (c *Checker) boxedReturns() {
 			if !p.Type.IsPrimitive() {
 				continue
 			}
-			for _, o := range c.superProps(cls, p.Name) {
+			for _, o := range c.overriddenProps(cls, p) {
 				if o.getter != "" && !strings.HasSuffix(o.getter, ")"+primDesc(p.Type)) {
 					p.BoxedGetter = true
 					if p.Getter != nil {
@@ -1336,15 +1431,25 @@ func instanceField(cls *types.ClassSym, name string) *types.VarSym {
 	return f
 }
 
-// memberDesc returns the JVM descriptor of method f, with a member
-// extension's receiver first: a class file's descriptors have it, and
-// the program's functions' leave it out.
+// memberDesc returns the JVM descriptor of method f, with its context
+// parameters and a member extension's receiver first: a class file's
+// descriptors have them, and the program's functions' leave them out.
 func memberDesc(f *types.FunSym) string {
 	d := types.FunDesc(f)
 	if f.Ext && f.Desc == "" && d != "" {
-		if r, ok := types.ParamDesc(f.Recv); ok {
-			return "(" + r + d[1:]
+		r, ok := types.ParamDesc(f.Recv)
+		if !ok {
+			return d
 		}
+		d = "(" + r + d[1:]
+	}
+	if len(f.Contexts) > 0 && f.Desc == "" && d != "" {
+		// Its context parameters come first.
+		cd, ok := types.ParamsDesc(f.Contexts)
+		if !ok {
+			return d
+		}
+		d = cd[:len(cd)-1] + d[1:]
 	}
 	return d
 }

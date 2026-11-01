@@ -27,7 +27,8 @@ import (
 type lambdaWant struct {
 	params     []types.Type // expected parameter types, if known
 	known      bool         // the expected type is a function type
-	recv       bool         // with a receiver, the first of params
+	recv       bool         // with a receiver, the first of params after the contexts
+	ctx        int          // the number of context parameters, the first of params
 	suspend    bool         // the expected type is a suspend function type
 	composable bool         // the expected type is a composable function type
 	ret        types.Type   // expected result type, or noWant
@@ -125,7 +126,7 @@ func (c *Checker) lambda(x *syntax.Lambda, want types.Type) types.Type {
 	}
 	w := lambdaWant{ret: noWant, kprop: c.u.ext.kotlin}
 	if ps, r, ok := funcParts(want); ok && proper {
-		w = lambdaWant{params: ps, known: true, recv: want.Flex().E, suspend: isSuspendFunc(want), composable: isComposableFunc(want), ret: r, check: true}
+		w = lambdaWant{params: ps, known: true, recv: want.Flex().E, ctx: want.Flex().Contexts(), suspend: isSuspendFunc(want), composable: isComposableFunc(want), ret: r, check: true}
 	}
 	if x.Anon && !c.anonWant(x, &w) {
 		return types.InvalidType
@@ -248,7 +249,10 @@ func (c *Checker) lambdaType(x *syntax.Lambda, ps []types.Type, r types.Type) ty
 		t = c.u.ext.funcs.Type(ps, r)
 	}
 	if x.Recv != nil {
-		return t.WithReceiver()
+		t = t.WithReceiver()
+	}
+	if len(x.Ctx) > 0 {
+		t = t.WithContexts(len(x.Ctx))
 	}
 	return t
 }
@@ -298,6 +302,45 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 	}
 	ok := true
 	params := w.params
+	// Context parameters checked before keep their locals too.
+	ctx := x.Ctx
+	x.Ctx = nil
+	reported := false
+	if w.ctx > 0 && len(params) >= w.ctx {
+		for i, t := range params[:w.ctx] {
+			s := &types.VarSym{Name: "$context" + strconv.Itoa(i), Type: t, Kind: types.Param}
+			if reservedContext(t) && !reported {
+				if i < len(x.AnonCtx) && x.AnonCtx[i].Type != nil {
+					c.reservedContextError(x.AnonCtx[i].P)
+				} else {
+					c.reservedContextError(x.P)
+				}
+				reported = true
+			}
+			if i < len(x.AnonCtx) {
+				// An anonymous function's, which it names.
+				p := x.AnonCtx[i]
+				if p.Name != "_" {
+					s.Name = p.Name
+				}
+				s.Decl = p
+				if p.Type == nil {
+					// A lambda the checker made, which only names them.
+				} else if pt := c.resolveType(p.Type); !c.subtype(t, pt) {
+					c.errorf(p.P, "expected context parameter of type %s", t)
+					ok = false
+				}
+			}
+			if i < len(ctx) {
+				*ctx[i], s = *s, ctx[i]
+			}
+			if i < len(x.AnonCtx) {
+				x.AnonCtx[i].Sym = s
+			}
+			x.Ctx = append(x.Ctx, s)
+		}
+		params = params[w.ctx:]
+	}
 	if w.recv && len(params) > 0 && !anonRecvParam(x, w) {
 		// The receiver is the first parameter, and this in the body:
 		// without a label, kotlinc names it <this>.
@@ -366,10 +409,17 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 			c.errorf(s.Decl.(*syntax.LambdaParam).P, "conflicting declarations: %s", s.Name)
 		}
 	}
+	for _, p := range x.AnonCtx {
+		if p.Name != "_" && p.Sym != nil && !c.scope.declare(p.Sym) {
+			c.errorf(p.P, "conflicting declarations: %s", p.Name)
+		}
+	}
+	c.pushContexts(x.Ctx, x)
 	if x.Recv != nil {
-		c.recvs = append(c.recvs[:len(c.recvs):len(c.recvs)], implicitRecv{sym: x.Recv, label: x.Label, depth: len(c.lambdas)})
+		c.recvs = append(c.recvs[:len(c.recvs):len(c.recvs)], implicitRecv{sym: x.Recv, label: x.Label, depth: len(c.lambdas), owner: x})
 		syms = append([]*types.VarSym{x.Recv}, syms...)
 	}
+	syms = append(x.Ctx[:len(x.Ctx):len(x.Ctx)], syms...)
 	if !x.Once {
 		// As in a loop, the vars it assigns lose their narrowing at its
 		// start: it may run again after it assigns them.
@@ -900,6 +950,11 @@ func (c *Checker) samTarget(p types.Type) (*types.FunSym, types.Type) {
 		// A member extension: the lambda's receiver is its receiver.
 		ps = append([]types.Type{lambdaParam(sub, m.Recv)}, ps...)
 	}
+	var ctx []types.Type // and its context parameters, its own
+	for _, q := range m.Contexts {
+		ctx = append(ctx, lambdaParam(sub, q.Type))
+	}
+	ps = append(ctx, ps...)
 	var ft types.Type
 	if m.Suspend {
 		ft = c.u.ext.funcs.SuspendType(ps, sub.Apply(m.Ret))
@@ -909,7 +964,7 @@ func (c *Checker) samTarget(p types.Type) (*types.FunSym, types.Type) {
 	if m.Ext {
 		ft = ft.WithReceiver()
 	}
-	return m, ft
+	return m, ft.WithContexts(len(ctx))
 }
 
 // lambdaParam returns the type of a lambda's parameter for a parameter
@@ -1071,7 +1126,7 @@ func (c *Checker) argValue(arg *syntax.Expr, p types.Type, f *types.FunSym) type
 				return c.value(obj, p)
 			}
 			ps, r, _ := funcParts(ft)
-			_, r, _ = c.checkLambda(l, lambdaWant{params: ps, known: true, recv: ft.E, suspend: m.Suspend, ret: r, check: true})
+			_, r, _ = c.checkLambda(l, lambdaWant{params: ps, known: true, recv: ft.E, ctx: ft.Contexts(), suspend: m.Suspend, ret: r, check: true})
 			l.SAM, l.Ret, l.T = m, r, p
 			c.samRef(l)
 			return p
@@ -1144,7 +1199,7 @@ func (c *Checker) lambdaFits(l *syntax.Lambda, p types.Type) bool {
 	case t.K == types.TypeVar || t.K == types.TypeParam || t.K == types.Any || wantsKProp(l, t):
 		return true // list += { }, MutableCollection<in T>.plusAssign(element: T)
 	case t.IsFunc():
-		n = t.A.Len() - 1
+		n = t.A.Len() - 1 - t.Contexts() // nor are its contexts
 		if t.E {
 			n-- // the receiver isn't declared
 		}
@@ -1422,7 +1477,8 @@ type stubLambda struct {
 func stubbable(s *system, sl stubLambda) bool {
 	// As in Kotlin, a receiver whose type is a variable has no members to
 	// call: generate { consume(it) } for T.() -> Unit.
-	return sl.l.Ref == nil && !(sl.ft.Flex().E && len(sl.params) > 0 && s.isVar(sl.params[0]))
+	k := sl.ft.Flex().Contexts()
+	return sl.l.Ref == nil && !(sl.ft.Flex().E && len(sl.params) > k && s.isVar(sl.params[k]))
 }
 
 // stubVars returns vars with the variables of s in params that nothing
@@ -1468,7 +1524,7 @@ func (c *Checker) stubCheck(s *system, sl stubLambda, r *stubRun) bool {
 	n, checked, saved := len(c.errs), c.checked, c.scope
 	c.checked, c.scope = maps.Clone(checked), sl.scope
 	ft := sl.ft
-	w := lambdaWant{params: ps, known: true, recv: ft.Flex().E, suspend: isSuspendFunc(ft), composable: isComposableFunc(ft), ret: noWant}
+	w := lambdaWant{params: ps, known: true, recv: ft.Flex().E, ctx: ft.Flex().Contexts(), suspend: isSuspendFunc(ft), composable: isComposableFunc(ft), ret: noWant}
 	_, ret, _ := funcParts(ft)
 	if ret = s.apply(ret); !ret.HasVars() {
 		w.ret, w.check = ret, true
@@ -1882,7 +1938,7 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type) {
 	for i := range params {
 		params[i] = s.final(params[i])
 	}
-	w := lambdaWant{params: params, known: true, recv: ft.Flex().E, suspend: isSuspendFunc(ft), composable: isComposableFunc(ft), ret: noWant}
+	w := lambdaWant{params: params, known: true, recv: ft.Flex().E, ctx: ft.Flex().Contexts(), suspend: isSuspendFunc(ft), composable: isComposableFunc(ft), ret: noWant}
 	r := s.apply(ret)
 	switch {
 	case !r.HasVars():
@@ -2007,6 +2063,14 @@ type implicitRecv struct {
 	// members: the enclosing class's this and lambdas' receivers, which
 	// come after the object's own members.
 	outer bool
+	// at is set on a context parameter, in state.ctxs: the number of
+	// receivers declared before it, which it is nearer than. outer is set
+	// on those around an object expression or a local class too.
+	at int
+	// owner is the function or lambda whose receiver or context parameter
+	// this is: a function's context parameters are as near as its
+	// receiver, though at is its index.
+	owner any
 }
 
 // destructureParams names a lambda's destructured parameters, { (a, b) ->
@@ -2037,6 +2101,9 @@ func (c *Checker) destructureParams(x *syntax.Lambda) {
 func (c *Checker) anonWant(x *syntax.Lambda, w *lambdaWant) bool {
 	if !w.known {
 		var ps []types.Type
+		for _, p := range x.AnonCtx {
+			ps = append(ps, c.resolveType(p.Type))
+		}
 		if x.AnonRecv != nil {
 			ps = append(ps, c.resolveType(x.AnonRecv))
 		}
@@ -2047,9 +2114,12 @@ func (c *Checker) anonWant(x *syntax.Lambda, w *lambdaWant) bool {
 			}
 			ps = append(ps, c.resolveType(p.Type))
 		}
-		*w = lambdaWant{params: ps, known: true, recv: x.AnonRecv != nil, ret: noWant}
+		*w = lambdaWant{params: ps, known: true, recv: x.AnonRecv != nil, ctx: len(x.AnonCtx), ret: noWant}
 	} else if x.AnonRecv != nil != w.recv && !anonRecvParam(x, *w) {
 		c.errorf(x.P, "the anonymous function's receiver doesn't match the expected function type")
+		return false
+	} else if len(x.AnonCtx) != w.ctx {
+		c.errorf(x.P, "the anonymous function's context parameters don't match the expected function type")
 		return false
 	}
 	switch {

@@ -44,6 +44,7 @@ func (c *Checker) localFun(s *syntax.LocalFun) {
 	if d.Recv != nil {
 		c.declareRecv(d) // a local extension function
 	}
+	c.declareContexts(d, sym)
 	names := map[string]bool{}
 	for _, p := range d.Params {
 		if names[p.Name] {
@@ -89,8 +90,10 @@ func (c *Checker) localFun(s *syntax.LocalFun) {
 	}
 	c.fn, c.retType, c.retAllowed = sym, sym.Ret, sym.Resolved
 	c.declName = ""
+	declareNamedContexts(c.scope, d)
+	c.pushContexts(sym.Contexts, d) // the receiver is nearer
 	if d.RecvSym != nil {
-		c.recvs = append(c.recvs[:len(c.recvs):len(c.recvs)], implicitRecv{sym: d.RecvSym, label: d.Name, depth: len(c.lambdas)})
+		c.recvs = append(c.recvs[:len(c.recvs):len(c.recvs)], implicitRecv{sym: d.RecvSym, label: d.Name, depth: len(c.lambdas), owner: d})
 	}
 	if sym.Suspend {
 		d.Continuation = c.anonName()

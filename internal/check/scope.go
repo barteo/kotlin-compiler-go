@@ -1,6 +1,9 @@
 package check
 
 import (
+	"slices"
+	"strings"
+
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
 	"github.com/barteo/kotlin-compiler-go/internal/types"
 )
@@ -26,14 +29,29 @@ type scope struct {
 // declareFun declares a local function. If the scope has one with the
 // same name and parameters, it returns that one instead.
 func (s *scope) declareFun(f *types.FunSym) *types.FunSym {
-	k := paramKey(f)
+	k := localKey(f)
 	for _, g := range s.funs {
-		if g.Name == f.Name && paramKey(g) == k {
+		if g.Name == f.Name && localKey(g) == k {
 			return g
 		}
 	}
 	s.funs = append(s.funs, f)
 	return nil
+}
+
+// localKey is paramKey for a local function, whose context parameters
+// tell it apart by their types, not erased, and in any order: local
+// functions' JVM names differ.
+func localKey(f *types.FunSym) string {
+	if len(f.Contexts) == 0 {
+		return paramKey(f)
+	}
+	ctx := make([]string, len(f.Contexts))
+	for i, p := range f.Contexts {
+		ctx[i] = p.Type.String()
+	}
+	slices.Sort(ctx)
+	return paramKey2(f) + "c" + strings.Join(ctx, ",")
 }
 
 // findFuns finds the local functions named name in the innermost scope

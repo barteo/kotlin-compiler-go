@@ -171,12 +171,28 @@ func (c *Checker) contractEffects(d *syntax.FunDecl, sym *types.FunSym) {
 					e.Param = i
 				}
 			}
+			// As in metadata, a context parameter's index follows the
+			// value parameters'.
+			for i, p := range d.Contexts {
+				if e.Param == -2 && p.Name == im.Param && p.Name != "_" {
+					e.Param = len(d.Params) + i
+				}
+			}
 		}
 		if e.Param == -2 {
 			continue
 		}
 		if im.Is != nil {
+			// As in x is T, T's type arguments may be left out where
+			// x's type gives them: this@bind is Either.Right.
+			c.bareRef, c.bareSubject = im.Is, sym.Recv
+			if e.Param >= len(sym.Params) {
+				c.bareSubject = sym.Contexts[e.Param-len(sym.Params)].Type
+			} else if e.Param >= 0 {
+				c.bareSubject = sym.Params[e.Param].Type
+			}
 			t := c.resolveType(im.Is)
+			c.bareRef = nil
 			if t.K == types.Invalid {
 				continue
 			}

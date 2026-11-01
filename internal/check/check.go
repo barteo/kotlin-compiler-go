@@ -153,7 +153,18 @@ type Checker struct {
 	funCache   map[funKey][]*types.FunSym
 	levelCache map[funKey][][]*types.FunSym // see kotlinFunLevels
 	errs       []*syntax.Error
-	done       map[any]bool // declarations already checked during inference
+	// shadowed are the calls whose implicit receiver a context parameter
+	// shadows, reported once checked (see receiverShadowed).
+	shadowed map[syntax.Expr]shadowedUse
+	// dslUses are the uses of implicit values that DSL markers don't
+	// allow, reported once checked, and markers the markers of classes
+	// (see dsl.go).
+	dslUses map[dslKey]shadowedUse
+	markers map[*types.ClassSym][]*types.ClassSym
+	// accessed names the properties with context parameters whose
+	// accessors' calls reading or assigning them are (see contextAccess).
+	accessed map[*syntax.Call]string
+	done     map[any]bool // declarations already checked during inference
 	// jumps says, for each inlined lambda, whether a non-local return,
 	// break or continue can leave it.
 	jumps map[*syntax.Lambda]inlineJumps
@@ -234,6 +245,7 @@ type state struct {
 	tparams    []*types.TypeParamSym // type parameters in scope, innermost first
 	lambdas    []*syntax.Lambda      // lambdas being checked, outermost first
 	recvs      []implicitRecv        // the receivers of lambdas with receivers, innermost last
+	ctxs       []implicitRecv        // the context parameters in scope, innermost last: see context.go
 	lrets      []*lambdaResult       // the labeled returns of each of lambdas
 	// defaultsOf is the function whose default value of parameter
 	// defaultParam is being checked.
@@ -472,6 +484,8 @@ func CheckWith(files []*syntax.File, lib *Library, jobs int) []*syntax.Error {
 
 	var errs []*syntax.Error
 	for _, c := range checkers {
+		c.shadowedErrors()
+		c.dslErrors()
 		sort.SliceStable(c.errs, func(i, j int) bool {
 			a, b := c.errs[i].Pos, c.errs[j].Pos
 			return a.Line < b.Line || a.Line == b.Line && a.Col < b.Col
@@ -616,6 +630,10 @@ func (c *Checker) resolveType(ref *syntax.TypeRef) types.Type {
 }
 
 // resolveFuncType resolves a function type (A, B) -> R.
+// reservedRef keys Checker.done for a function type whose reserved
+// context parameter is reported: types are resolved more than once.
+type reservedRef struct{ *syntax.TypeRef }
+
 func (c *Checker) resolveFuncType(ref *syntax.TypeRef) types.Type {
 	if len(ref.Params) > types.MaxVarArity {
 		c.errorf(ref.P, "function types with more than %d parameters are not supported", types.MaxVarArity)
@@ -639,6 +657,21 @@ func (c *Checker) resolveFuncType(ref *syntax.TypeRef) types.Type {
 		}
 		ps = append([]types.Type{recv}, ps...)
 	}
+	if len(ref.Contexts) > 0 {
+		// context(C) R.(A) -> T is (C, R, A) -> T, marked as having a
+		// context parameter.
+		ctx := make([]types.Type, len(ref.Contexts))
+		for i, p := range ref.Contexts {
+			if ctx[i] = c.resolveType(p); ctx[i].K == types.Invalid {
+				return types.InvalidType
+			}
+			if reservedContext(ctx[i]) && !c.done[reservedRef{ref}] {
+				c.done[reservedRef{ref}] = true
+				c.reservedContextError(ref.P)
+			}
+		}
+		ps = append(ctx, ps...)
+	}
 	var t types.Type
 	switch {
 	case ref.Composable && c.u.compose && (ref.Suspend || len(ps) > types.MaxComposableArity):
@@ -661,6 +694,9 @@ func (c *Checker) resolveFuncType(ref *syntax.TypeRef) types.Type {
 	}
 	if ref.Recv != nil {
 		t = t.WithReceiver()
+	}
+	if len(ref.Contexts) > 0 {
+		t = t.WithContexts(len(ref.Contexts))
 	}
 	return c.nullable(t, ref)
 }
@@ -891,6 +927,7 @@ func (c *Checker) resolveClassBounds() {
 
 // declare enters the file's top-level names into its package.
 func (c *Checker) declare() {
+	c.errs = append(c.errs, c.file.Errors...)
 	c.dropExtensions()
 	c.serializableWith()
 	c.parcelize()
@@ -913,9 +950,12 @@ func (c *Checker) declare() {
 				continue
 			}
 			private := d.Visibility == syntax.Private
-			if _, dup := c.fileVars[d.Name]; dup {
-				c.errorf(d.P, "conflicting declarations: %s", d.Name)
-			} else if _, dup := c.pkg.Vars[d.Name]; dup && !private {
+			prev, dup := c.fileVars[d.Name]
+			if !dup && !private {
+				prev, dup = c.pkg.Vars[d.Name]
+			}
+			alt := dup && altProp(prev, d)
+			if dup && !alt {
 				c.errorf(d.P, "conflicting declarations: %s", d.Name)
 			}
 			sym := &types.VarSym{Name: d.Name, Kind: types.Global, Mutable: d.Mutable, Facade: c.file.Class(), Decl: d,
@@ -935,6 +975,12 @@ func (c *Checker) declare() {
 			sym.Private = d.Visibility == syntax.Private && d.Getter == nil && d.Setter == nil && d.Field == nil &&
 				d.DelegateOf == nil && !sym.Const && !sym.JvmField
 			d.Sym = sym
+			if alt {
+				addAlt(prev, sym)
+			}
+			if dup && prev.Alt != nil {
+				continue // the pair stays
+			}
 			if private {
 				if c.fileVars == nil {
 					c.fileVars = map[string]*types.VarSym{}
@@ -1195,6 +1241,10 @@ func (c *Checker) hiddenFun(f *types.FunSym) bool {
 // topVar returns the program's top-level property that a simple name
 // refers to, in the same order, or nil.
 func (c *Checker) topVar(name string) *types.VarSym {
+	return c.propAlt(c.topVar1(name))
+}
+
+func (c *Checker) topVar1(name string) *types.VarSym {
 	if v, ok := c.userVars[name]; ok {
 		return v
 	}
@@ -1277,6 +1327,7 @@ func (c *Checker) resolveFun(d *syntax.FunDecl, owner *types.ClassSym) {
 	if d.Recv != nil {
 		c.declareRecv(d)
 	}
+	c.declareContexts(d, sym)
 	c.memberModifiers(d.Modifiers, owner, d.P, "function '"+d.Name+"'")
 	if d.Find("", "JvmStatic") != nil {
 		switch {
@@ -1518,7 +1569,7 @@ func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
 	if d.SetterVis == syntax.Internal && jvmName(&d.Modifiers, "set") == "" {
 		sym.SetterModule = c.internal(&syntax.Modifiers{Visibility: syntax.Internal}, owner, "")
 	}
-	hasField := !sym.Abstract && (d.Getter == nil || d.Mutable && d.Setter == nil || sym.FieldUsed)
+	hasField := !sym.Abstract && (d.Getter == nil || d.Mutable && d.Setter == nil || sym.FieldUsed) && len(d.Contexts) == 0
 	ext := d.Getter != nil && d.Getter.External || d.Setter != nil && d.Setter.External
 	if ext && !sym.Abstract && (owner == nil || !owner.Interface) {
 		// kotlinc gives the property a field, which its external
@@ -1590,6 +1641,16 @@ func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
 		st.Visibility = d.SetterVis
 		sym.Setter = st.Sym
 	}
+	if g := d.Getter; g != nil && len(d.TypeParams) > 0 {
+		// Those of a property with context parameters, which they use.
+		g.Sym.TypeParams = c.declareTypeParams(d.TypeParams, g.Sym, false)
+		c.tparams = funTypeParams(g.Sym, owner)
+		c.resolveBounds(d.TypeParams)
+		if d.Setter != nil {
+			d.Setter.Sym.TypeParams = g.Sym.TypeParams
+		}
+	}
+	c.propContexts(d, sym)
 	c.externalAccessors(d, owner)
 	switch {
 	case d.Type != nil:
@@ -1651,8 +1712,12 @@ func (c *Checker) resolveClass(d *syntax.ClassDecl) {
 		cls.Ctor = ctor
 	}
 	addProp := func(p *types.VarSym, pos syntax.Pos) {
-		if cls.Prop(p.Name) != nil {
-			c.errorf(pos, "conflicting declarations: %s", p.Name)
+		if prev := cls.Prop(p.Name); prev != nil {
+			if d, ok := p.Decl.(*syntax.PropDecl); ok && altProp(prev, d) {
+				addAlt(prev, p)
+			} else {
+				c.errorf(pos, "conflicting declarations: %s", p.Name)
+			}
 		}
 		cls.Props = append(cls.Props, p)
 	}
@@ -1916,6 +1981,7 @@ func argRefs(ref *syntax.TypeRef, n int) []*syntax.TypeRef {
 	switch {
 	case ref == nil:
 	case ref.Ret != nil:
+		refs = append(refs, ref.Contexts...)
 		if ref.Recv != nil {
 			refs = append(refs, ref.Recv)
 		}
@@ -2118,7 +2184,8 @@ func (c *Checker) checkDefaults(params []*syntax.Param, cls *types.ClassSym, f *
 		c.cls, c.this = cls, newThis(cls)
 	}
 	if d, ok := f.Decl.(*syntax.FunDecl); ok {
-		c.recvs = extRecvs(d)
+		c.recvs, c.ctxs = extRecvs(d), funContexts(d)
+		declareNamedContexts(s, d)
 	}
 	c.inAnon(cls)
 	for i, p := range params {
@@ -2369,11 +2436,12 @@ func (c *Checker) checkFun(d *syntax.FunDecl, cls *types.ClassSym) {
 		// An accessor's field is its property's backing field.
 		s.declare(&types.VarSym{Name: "field", Kind: types.BackingField, Type: p.Type, Mutable: p.Mutable, Prop: p, Resolved: true})
 	}
+	declareNamedContexts(s, d)
 	for _, p := range sym.Params {
 		s.declare(p)
 	}
 	c.state = state{scope: s, cls: cls, this: newThis(cls), fn: sym, retType: sym.Ret, retAllowed: true, tparams: funTypeParams(sym, cls),
-		recvs: extRecvs(d)}
+		recvs: extRecvs(d), ctxs: funContexts(d)}
 	c.inAnon(cls)
 	if sym.Suspend {
 		d.Continuation = c.anonName()

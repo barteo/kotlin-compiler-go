@@ -446,7 +446,7 @@ bridges/propertySetter.kt	pass
 bridges/returnTypeSignature.kt	pass		
 bridges/simple.kt	pass		
 bridges/simpleEnum.kt	pass		
-bridges/simpleGenericMethod.kt	check error	ambiguous call: n candidates for '_' take (_)	simpleGenericMethod.kt:14: ambiguous call: 2 candidates for 'foo' take (String, Int)
+bridges/simpleGenericMethod.kt	pass		
 bridges/simpleObject.kt	pass		
 bridges/simpleReturnType.kt	pass		
 bridges/simpleTraitImpl.kt	pass		
@@ -460,7 +460,7 @@ bridges/substitutionInSuperClass/delegation.kt	pass
 bridges/substitutionInSuperClass/differentErasureInSuperClass.kt	pass		
 bridges/substitutionInSuperClass/differentErasureInSuperClassComplex.kt	pass		
 bridges/substitutionInSuperClass/enum.kt	pass		
-bridges/substitutionInSuperClass/genericMethod.kt	check error	ambiguous call: n candidates for '_' take (_)	genericMethod.kt:17: ambiguous call: 2 candidates for 'foo' take (String, Int)
+bridges/substitutionInSuperClass/genericMethod.kt	pass		
 bridges/substitutionInSuperClass/object.kt	pass		
 bridges/substitutionInSuperClass/property.kt	pass		
 bridges/substitutionInSuperClass/simple.kt	pass		
@@ -512,15 +512,15 @@ callableReference/adaptedReferences/adaptedSecondArgTypeVariable.kt	skip	LANGUAG
 callableReference/adaptedReferences/adaptedVarargFunImportedFromObject.kt	pass		
 callableReference/adaptedReferences/bothWithCoercionToUnit.kt	pass		
 callableReference/adaptedReferences/boundReferences.kt	pass		
-callableReference/adaptedReferences/contextFunctionAdaptedReferences.kt	skip	LANGUAGE	
-callableReference/adaptedReferences/contextFunctionAnonymous.kt	skip	LANGUAGE	
-callableReference/adaptedReferences/contextFunctionWithDefaultValue.kt	skip	LANGUAGE	
-callableReference/adaptedReferences/contextFunctionWithExtensionProperty.kt	skip	LANGUAGE	
-callableReference/adaptedReferences/contextFunctionWithPassedSuperType.kt	skip	LANGUAGE	
-callableReference/adaptedReferences/contextFunctionWithSam.kt	skip	LANGUAGE	
-callableReference/adaptedReferences/contextFunctionWithVararg.kt	skip	LANGUAGE	
-callableReference/adaptedReferences/contextPropertyWithSam.kt	skip	LANGUAGE	
-callableReference/adaptedReferences/contextTypeWithSam.kt	skip	LANGUAGE	
+callableReference/adaptedReferences/contextFunctionAdaptedReferences.kt	pass		
+callableReference/adaptedReferences/contextFunctionAnonymous.kt	pass		
+callableReference/adaptedReferences/contextFunctionWithDefaultValue.kt	pass		
+callableReference/adaptedReferences/contextFunctionWithExtensionProperty.kt	pass		
+callableReference/adaptedReferences/contextFunctionWithPassedSuperType.kt	pass		
+callableReference/adaptedReferences/contextFunctionWithSam.kt	pass		
+callableReference/adaptedReferences/contextFunctionWithVararg.kt	pass		
+callableReference/adaptedReferences/contextPropertyWithSam.kt	pass		
+callableReference/adaptedReferences/contextTypeWithSam.kt	pass		
 callableReference/adaptedReferences/defaultAfterVararg.kt	pass		
 callableReference/adaptedReferences/defaultWithGenericExpectedType.kt	pass		
 callableReference/adaptedReferences/emptyVarargAndDefault.kt	pass		
@@ -531,7 +531,7 @@ callableReference/adaptedReferences/extensionFunctionWithPassedSupertype.kt	pass
 callableReference/adaptedReferences/extensionInSamWithPassedSupertype.kt	pass		
 callableReference/adaptedReferences/extensionParameterToValueParameter.kt	pass		
 callableReference/adaptedReferences/extensionPropertyToFun.kt	check error	cannot infer type for type parameter '_'. Specify it explicitly.	main.kt:16: cannot infer type for type parameter 'T'. Specify it explicitly.
-callableReference/adaptedReferences/extensionPropertyWithAnonymousContextFun.kt	skip	LANGUAGE	
+callableReference/adaptedReferences/extensionPropertyWithAnonymousContextFun.kt	pass		
 callableReference/adaptedReferences/extensionPropertyWithAnonymousExtensionFun.kt	pass		
 callableReference/adaptedReferences/inlineBound.kt	pass		
 callableReference/adaptedReferences/inlineDefault.kt	pass		
@@ -564,8 +564,8 @@ callableReference/adaptedReferences/suspendConversion/inlineAdaptedWithDefaultAr
 callableReference/adaptedReferences/suspendConversion/inlineAdaptedWithVarargs.kt	pass		
 callableReference/adaptedReferences/suspendConversion/inlineBound.kt	pass		
 callableReference/adaptedReferences/suspendConversion/inlineSimple.kt	pass		
-callableReference/adaptedReferences/suspendConversion/inlineWithContextParameter.kt	skip	LANGUAGE	
-callableReference/adaptedReferences/suspendConversion/inlineWithContextParameterAsAPropertyType.kt	skip	LANGUAGE	
+callableReference/adaptedReferences/suspendConversion/inlineWithContextParameter.kt	pass		
+callableReference/adaptedReferences/suspendConversion/inlineWithContextParameterAsAPropertyType.kt	pass		
 callableReference/adaptedReferences/suspendConversion/inlineWithContextParameterAsASupertype.kt	skip	LANGUAGE	
 callableReference/adaptedReferences/suspendConversion/inlineWithExtensionAsASuperType.kt	skip	LANGUAGE	
 callableReference/adaptedReferences/suspendConversion/inlineWithExtensionFunction.kt	pass		
@@ -575,8 +575,8 @@ callableReference/adaptedReferences/suspendConversion/isAs.kt	pass
 callableReference/adaptedReferences/suspendConversion/nullableParameter.kt	pass		
 callableReference/adaptedReferences/suspendConversion/propertyReferenceToSuspendFunction.kt	pass		
 callableReference/adaptedReferences/suspendConversion/simple.kt	pass		
-callableReference/adaptedReferences/suspendConversion/withContextParameterAsAPropertyType.kt	skip	LANGUAGE	
-callableReference/adaptedReferences/suspendConversion/withContextParameters.kt	skip	LANGUAGE	
+callableReference/adaptedReferences/suspendConversion/withContextParameterAsAPropertyType.kt	pass		
+callableReference/adaptedReferences/suspendConversion/withContextParameters.kt	pass		
 callableReference/adaptedReferences/suspendConversion/withContextParametersAsASupertype.kt	skip	LANGUAGE	
 callableReference/adaptedReferences/suspendConversion/withParameters.kt	pass		
 callableReference/adaptedReferences/suspendUnitConversion.kt	pass		
@@ -601,7 +601,7 @@ callableReference/bound/captureVarInInitBlock.kt	pass
 callableReference/bound/captureVarInPropertyInit.kt	pass		
 callableReference/bound/coercionToUnit.kt	pass		
 callableReference/bound/companionObjectReceiver.kt	pass		
-callableReference/bound/companionObjectReceiverInheritsFromOuter.kt	skip	LANGUAGE	
+callableReference/bound/companionObjectReceiverInheritsFromOuter.kt	pass		
 callableReference/bound/dontShareReceiver.kt	check error	expression '_' of type _ String> cannot be invoked as a function	dontShareReceiver.kt:6: expression 'f' of type KFunction1<Int, String> cannot be invoked as a function
 callableReference/bound/emptyLHS.kt	pass		
 callableReference/bound/enumEntryMember.kt	pass		
@@ -1306,87 +1306,87 @@ constants/literalToLongConversion.kt	pass
 constants/long.kt	pass		
 constants/numberLiteralCoercionToInferredType.kt	skip	Java sources	
 constants/privateConst.kt	pass		
-contextParameters/ImplicitReceiverWithTheSameContextAndExtension.kt	skip	LANGUAGE	
-contextParameters/arrayAccessCompositveOperators.kt	skip	LANGUAGE	
-contextParameters/arrayAccessOperators.kt	skip	LANGUAGE	
-contextParameters/assignmentOfContextVar.kt	skip	LANGUAGE	
-contextParameters/choosingTheNearestContext.kt	skip	LANGUAGE	
-contextParameters/classCastException.kt	skip	LANGUAGE	
-contextParameters/classMemberAndTopLevelExtensionWithContext.kt	skip	LANGUAGE	
-contextParameters/classMemberAndTopLevelWithContext.kt	skip	LANGUAGE	
-contextParameters/companionObjectInContext.kt	skip	LANGUAGE	
-contextParameters/compoundAssignmentOperators.kt	skip	LANGUAGE	
+contextParameters/ImplicitReceiverWithTheSameContextAndExtension.kt	pass		
+contextParameters/arrayAccessCompositveOperators.kt	pass		
+contextParameters/arrayAccessOperators.kt	pass		
+contextParameters/assignmentOfContextVar.kt	pass		
+contextParameters/choosingTheNearestContext.kt	pass		
+contextParameters/classCastException.kt	pass		
+contextParameters/classMemberAndTopLevelExtensionWithContext.kt	pass		
+contextParameters/classMemberAndTopLevelWithContext.kt	pass		
+contextParameters/companionObjectInContext.kt	pass		
+contextParameters/compoundAssignmentOperators.kt	pass		
 contextParameters/contextAndNoContextOverloads.kt	skip	LANGUAGE	
-contextParameters/contextFunInSam.kt	skip	LANGUAGE	
-contextParameters/contextOnInvokeResolve.kt	skip	LANGUAGE	
-contextParameters/contextParameterToDefaultArgument.kt	skip	LANGUAGE	
-contextParameters/contextPropertyInInterface.kt	skip	LANGUAGE	
-contextParameters/contextResolveDependingOnCallSite.kt	skip	LANGUAGE	
-contextParameters/contextualAnonymousFunAsAnExpression.kt	skip	LANGUAGE	
-contextParameters/contextualAnonymousFunction.kt	skip	LANGUAGE	
+contextParameters/contextFunInSam.kt	pass		
+contextParameters/contextOnInvokeResolve.kt	pass		
+contextParameters/contextParameterToDefaultArgument.kt	pass		
+contextParameters/contextPropertyInInterface.kt	pass		
+contextParameters/contextResolveDependingOnCallSite.kt	pass		
+contextParameters/contextualAnonymousFunAsAnExpression.kt	pass		
+contextParameters/contextualAnonymousFunction.kt	pass		
 contextParameters/contextualCallableReference.kt	skip	LANGUAGE	
 contextParameters/contextualCallableReferenceEquality.kt	skip	LANGUAGE	
 contextParameters/contextualCallableReferenceReturnType.kt	skip	LANGUAGE	
-contextParameters/contextualFunctionConversion.kt	skip	LANGUAGE	
-contextParameters/contextualInlineCall.kt	skip	LANGUAGE	
-contextParameters/contextualLocalFunAndTopLevelFun.kt	skip	LANGUAGE	
-contextParameters/contextualLocalFunWithExtensiionReceiver.kt	skip	LANGUAGE	
-contextParameters/contextualLocalFunWithTypeParam.kt	skip	LANGUAGE	
-contextParameters/contextualLocalFunction.kt	skip	LANGUAGE	
-contextParameters/contextualLocalWithLocalExtensionAndValue.kt	skip	LANGUAGE	
-contextParameters/dispatchExtensionAndContextReceiverResolve.kt	skip	LANGUAGE	
+contextParameters/contextualFunctionConversion.kt	pass		
+contextParameters/contextualInlineCall.kt	pass		
+contextParameters/contextualLocalFunAndTopLevelFun.kt	pass		
+contextParameters/contextualLocalFunWithExtensiionReceiver.kt	pass		
+contextParameters/contextualLocalFunWithTypeParam.kt	pass		
+contextParameters/contextualLocalFunction.kt	pass		
+contextParameters/contextualLocalWithLocalExtensionAndValue.kt	pass		
+contextParameters/dispatchExtensionAndContextReceiverResolve.kt	pass		
 contextParameters/explicitPassing.kt	skip	LANGUAGE	
-contextParameters/functionalType.kt	skip	LANGUAGE	
-contextParameters/genericPropertyWithContextParameters.kt	skip	LANGUAGE	
-contextParameters/inferGenericPropertyType.kt	skip	LANGUAGE	
-contextParameters/inlineAnonymousParameter.kt	skip	LANGUAGE	
+contextParameters/functionalType.kt	pass		
+contextParameters/genericPropertyWithContextParameters.kt	pass		
+contextParameters/inferGenericPropertyType.kt	pass		
+contextParameters/inlineAnonymousParameter.kt	pass		
 contextParameters/inlineContextParameter.kt	skip	LANGUAGE	
-contextParameters/inlineContextualReceiverLambda.kt	skip	LANGUAGE	
-contextParameters/invokeMultipleContextParametersOfSameType.kt	skip	LANGUAGE	
-contextParameters/invokeOnTypeWithContext.kt	skip	LANGUAGE	
-contextParameters/kt51277.kt	skip	LANGUAGE	
-contextParameters/kt51284.kt	skip	LANGUAGE	
-contextParameters/kt51290.kt	skip	LANGUAGE	
-contextParameters/kt51475.kt	skip	LANGUAGE	
-contextParameters/kt51863.kt	skip	LANGUAGE	
-contextParameters/kt51951.kt	skip	LANGUAGE	
-contextParameters/kt52207.kt	skip	LANGUAGE	
-contextParameters/kt52213.kt	skip	LANGUAGE	
-contextParameters/kt52373.kt	skip	LANGUAGE	
-contextParameters/kt52459.kt	skip	LANGUAGE	
-contextParameters/kt52967.kt	skip	LANGUAGE	
-contextParameters/kt53551.kt	skip	LANGUAGE	
-contextParameters/kt58476.kt	skip	LANGUAGE	
-contextParameters/kt63430.kt	skip	LANGUAGE	
-contextParameters/kt65953.kt	skip	LANGUAGE	
-contextParameters/kt66368.kt	skip	LANGUAGE	
-contextParameters/kt74998.kt	skip	LANGUAGE	
-contextParameters/propertyCompoundAssignment.kt	skip	LANGUAGE	
-contextParameters/propertyWithContextAndWithout.kt	skip	LANGUAGE	
-contextParameters/receiversOrder.kt	skip	LANGUAGE	
-contextParameters/sameArgForContextAndExtension.kt	skip	LANGUAGE	
-contextParameters/sameExtensionContextAndDispatchReceiver.kt	skip	LANGUAGE	
-contextParameters/sameNameWithGlobalProperty.kt	skip	LANGUAGE	
-contextParameters/sameNameWithLocalArguments.kt	skip	LANGUAGE	
-contextParameters/sameNameWithLocalProperty.kt	skip	LANGUAGE	
-contextParameters/sameNameWithLocalValueParameter.kt	skip	LANGUAGE	
-contextParameters/sameNameWithMemberProperty.kt	skip	LANGUAGE	
-contextParameters/sameNameWithOuterContext.kt	skip	LANGUAGE	
-contextParameters/sameNameWithPropertyName.kt	skip	LANGUAGE	
-contextParameters/specificity.kt	skip	LANGUAGE	
-contextParameters/substitutedContextReceivers.kt	skip	LANGUAGE	
-contextParameters/suspendContextParemetersWithExtension.kt	skip	LANGUAGE	
-contextParameters/suspendContextualWithExtension.kt	skip	LANGUAGE	
-contextParameters/typealiasOnTypeWithContext.kt	skip	LANGUAGE	
-contextParameters/unaryOperators.kt	skip	LANGUAGE	
-contextParameters/useFromAnotherModuleSuspending.kt	skip	LANGUAGE	
-contextParameters/useFromAnotherModuleWithDefaultParameterValues.kt	skip	LANGUAGE	
-contextParameters/withExtensionReceiverAndThis.kt	skip	LANGUAGE	
+contextParameters/inlineContextualReceiverLambda.kt	pass		
+contextParameters/invokeMultipleContextParametersOfSameType.kt	pass		
+contextParameters/invokeOnTypeWithContext.kt	pass		
+contextParameters/kt51277.kt	pass		
+contextParameters/kt51284.kt	pass		
+contextParameters/kt51290.kt	pass		
+contextParameters/kt51475.kt	pass		
+contextParameters/kt51863.kt	pass		
+contextParameters/kt51951.kt	pass		
+contextParameters/kt52207.kt	pass		
+contextParameters/kt52213.kt	pass		
+contextParameters/kt52373.kt	pass		
+contextParameters/kt52459.kt	pass		
+contextParameters/kt52967.kt	pass		
+contextParameters/kt53551.kt	pass		
+contextParameters/kt58476.kt	pass		
+contextParameters/kt63430.kt	pass		
+contextParameters/kt65953.kt	pass		
+contextParameters/kt66368.kt	pass		
+contextParameters/kt74998.kt	pass		
+contextParameters/propertyCompoundAssignment.kt	pass		
+contextParameters/propertyWithContextAndWithout.kt	pass		
+contextParameters/receiversOrder.kt	pass		
+contextParameters/sameArgForContextAndExtension.kt	pass		
+contextParameters/sameExtensionContextAndDispatchReceiver.kt	pass		
+contextParameters/sameNameWithGlobalProperty.kt	pass		
+contextParameters/sameNameWithLocalArguments.kt	pass		
+contextParameters/sameNameWithLocalProperty.kt	pass		
+contextParameters/sameNameWithLocalValueParameter.kt	pass		
+contextParameters/sameNameWithMemberProperty.kt	pass		
+contextParameters/sameNameWithOuterContext.kt	pass		
+contextParameters/sameNameWithPropertyName.kt	pass		
+contextParameters/specificity.kt	pass		
+contextParameters/substitutedContextReceivers.kt	pass		
+contextParameters/suspendContextParemetersWithExtension.kt	pass		
+contextParameters/suspendContextualWithExtension.kt	pass		
+contextParameters/typealiasOnTypeWithContext.kt	pass		
+contextParameters/unaryOperators.kt	pass		
+contextParameters/useFromAnotherModuleSuspending.kt	pass		
+contextParameters/useFromAnotherModuleWithDefaultParameterValues.kt	pass		
+contextParameters/withExtensionReceiverAndThis.kt	pass		
 contextParameters/withExtensionReceiverInSupertype.kt	skip	LANGUAGE	
-contextParameters/withExtensionReceiverInType.kt	skip	LANGUAGE	
+contextParameters/withExtensionReceiverInType.kt	skip	IGNORE_BACKEND: JVM_IR	
 contracts/constructorArgument.kt	pass		
 contracts/contractForCast.kt	pass		
-contracts/contractOnContextParameter.kt	skip	LANGUAGE	
+contracts/contractOnContextParameter.kt	pass		
 contracts/destructuredVariable.kt	skip	LANGUAGE	
 contracts/exactlyOnceNotInline.kt	VerifyError	java.lang.VerifyError: get long/double overflows locals	get long/double overflows locals at java.lang.Class.getDeclaredMethods0
 contracts/exception.kt	pass		
@@ -1396,7 +1396,7 @@ contracts/forLoop.kt	skip	LANGUAGE
 contracts/functionParameter.kt	VerifyError	java.lang.VerifyError: Bad local variable type	Bad local variable type at java.lang.Class.getDeclaredMethods0
 contracts/isNullString.kt	pass		
 contracts/kt39374.kt	pass		
-contracts/kt45236.kt	check error	one type argument expected for class NetRequestStatus.Error<T>	kt45236.kt:17: one type argument expected for class NetRequestStatus.Error<T>
+contracts/kt45236.kt	check error	unresolved reference: _	kt45236.kt:23: unresolved reference: error
 contracts/kt47168.kt	pass		
 contracts/kt47300.kt	pass		
 contracts/lambdaParameter.kt	skip	LANGUAGE	
@@ -2565,7 +2565,7 @@ directInvokeOptimization/boundInnerContructorRef.kt	pass
 directInvokeOptimization/boundMemberRef.kt	pass		
 directInvokeOptimization/canary.kt	pass		
 directInvokeOptimization/capturingLambda.kt	pass		
-directInvokeOptimization/contextParameters.kt	skip	LANGUAGE	
+directInvokeOptimization/contextParameters.kt	pass		
 directInvokeOptimization/contructorRef.kt	pass		
 directInvokeOptimization/kt53202.kt	pass		
 directInvokeOptimization/kt53202_funLiteral.kt	pass		
@@ -2839,7 +2839,7 @@ extensionFunctions/suspendConversionForExtensionFunAsASuperType.kt	skip	LANGUAGE
 extensionFunctions/thisMethodInObjectLiteral.kt	check error	operator '_' cannot be applied to T and Int	thisMethodInObjectLiteral.kt:9: operator '+' cannot be applied to T and Int
 extensionFunctions/virtual.kt	pass		
 extensionProperties/accessorForPrivateSetter.kt	pass		
-extensionProperties/contextPropertyInInterface.kt	skip	LANGUAGE	
+extensionProperties/contextPropertyInInterface.kt	pass		
 extensionProperties/extensionMemberWithTypeParameter.kt	pass		
 extensionProperties/extensionPropertyDelegated.kt	pass		
 extensionProperties/extensionPropertyDifferentReceiver.kt	pass		
@@ -2853,7 +2853,7 @@ extensionProperties/extensionPropertyWithExtensionAsReceiver.kt	pass
 extensionProperties/extensionPropertyWithExtensionNestedType.kt	pass		
 extensionProperties/extensionPropertyWithInline.kt	pass		
 extensionProperties/extensionProperyWithExtensionType.kt	pass		
-extensionProperties/genericContextOverride.kt	skip	LANGUAGE	
+extensionProperties/genericContextOverride.kt	pass		
 extensionProperties/genericValForPrimitiveType.kt	pass		
 extensionProperties/genericVarForPrimitiveType.kt	pass		
 extensionProperties/inClass.kt	pass		
@@ -2925,7 +2925,7 @@ fir/deserializedOptInDeprecated.kt	pass
 fir/falsePositiveBoundSmartcast.kt	pass		
 fir/functionsDifferInTypeParameterBounds.kt	check error	'_' in '_' is final and cannot be overridden	functionsDifferInTypeParameterBounds.kt:22: 'foo' in 'X' is final and cannot be overridden
 fir/functionsDifferInTypeParameterBounds2.kt	VerifyError	java.lang.ClassFormatError: Duplicate method name "_" with signature "_" in class _ Y	Duplicate method name "foo" with signature "(Ljava.lang.Object;LB;Ljava.lang.Object;)Ljava.lang.String;" in class file Y at java.lang.ClassLoader.defineClass1
-fir/functionsDifferInTypeParameterBounds3.kt	check error	ambiguous call: n candidates for '_' take (_)	functionsDifferInTypeParameterBounds3.kt:29: ambiguous call: 2 candidates for 'foo' take (<anonymous object>)
+fir/functionsDifferInTypeParameterBounds3.kt	VerifyError	java.lang.ClassFormatError: Duplicate method name "_" with signature "_" in class _ Y	Duplicate method name "foo" with signature "(LK;)Ljava.lang.String;" in class file Y at java.lang.ClassLoader.defineClass1
 fir/inferenceWithTypeAliasFromOtherModule.kt	pass		
 fir/initializationInLocalInnerClassWithSecondaryConstructor.kt	check error	property must be initialized or be abstract	initializationInLocalInnerClassWithSecondaryConstructor.kt:11: property must be initialized or be abstract
 fir/kt68806.kt	pass		
@@ -3292,7 +3292,7 @@ inference/pcla/callableReferenceAndCoercionToUnit.kt	pass
 inference/pcla/callableReferencesProperCompletion.kt	pass		
 inference/pcla/capturedTypes.kt	skip	IGNORE_BACKEND: JVM_IR	
 inference/pcla/constraintsBetweenTwoStubVariables.kt	pass		
-inference/pcla/contextParameters.kt	skip	LANGUAGE	
+inference/pcla/contextParameters.kt	pass		
 inference/pcla/issues/kt41164.kt	pass		
 inference/pcla/issues/kt42139.kt	pass		
 inference/pcla/issues/kt43710.kt	pass		
@@ -3766,8 +3766,8 @@ inlineClasses/boxReturnValueOnOverride/kt31585Generic.kt	pass
 inlineClasses/boxReturnValueOnOverride/kt35234.kt	pass		
 inlineClasses/boxReturnValueOnOverride/kt35234Generic.kt	pass		
 inlineClasses/boxReturnValueOnOverride/kt35234a.kt	pass		
-inlineClasses/boxReturnValueOnOverride/overrideGenericWithInlineClass.kt	check error	ambiguous call: n candidates for '_' take (_)	overrideGenericWithInlineClass.kt:22: ambiguous call: 2 candidates for 'foo' take (Marker)
-inlineClasses/boxReturnValueOnOverride/overrideGenericWithInlineClassGeneric.kt	check error	ambiguous call: n candidates for '_' take (_)	overrideGenericWithInlineClassGeneric.kt:22: ambiguous call: 2 candidates for 'foo' take (Marker)
+inlineClasses/boxReturnValueOnOverride/overrideGenericWithInlineClass.kt	pass		
+inlineClasses/boxReturnValueOnOverride/overrideGenericWithInlineClassGeneric.kt	pass		
 inlineClasses/boxReturnValueOnOverride/overrideGenericWithNullableInlineClassUpperBoundWithNonNullAny.kt	pass		
 inlineClasses/boxReturnValueOnOverride/overrideGenericWithNullableInlineClassUpperBoundWithNonNullAnyGeneric.kt	pass		
 inlineClasses/boxReturnValueOnOverride/overrideGenericWithNullableInlineClassUpperBoundWithNonNullNullableAny.kt	pass		
@@ -3910,7 +3910,7 @@ inlineClasses/conformToComparableAndCallInterfaceMethod.kt	pass
 inlineClasses/conformToComparableAndCallInterfaceMethodGeneric.kt	pass		
 inlineClasses/constructorCallableReference.kt	pass		
 inlineClasses/constructorCallableReferenceGeneric.kt	pass		
-inlineClasses/contextParameterPropertyDeserialization.kt	skip	LANGUAGE	
+inlineClasses/contextParameterPropertyDeserialization.kt	pass		
 inlineClasses/contextsAndAccessors/accessPrivateInlineClassCompanionMethod.kt	pass		
 inlineClasses/contextsAndAccessors/accessPrivateInlineClassCompanionMethod2.kt	pass		
 inlineClasses/contextsAndAccessors/accessPrivateInlineClassCompanionMethod2Generic.kt	check error	type argument is not within its bounds: inferred type Int of type _ '_' is not a subtype of Long	accessPrivateInlineClassCompanionMethod2Generic.kt:13: type argument is not within its bounds: inferred type Int of type parameter 'T' is not a subtype of Long
@@ -5458,11 +5458,11 @@ primitiveTypes/nullAsNullableIntIsNull.kt	pass
 primitiveTypes/nullableAsIndex.kt	pass		
 primitiveTypes/nullableCharBoolean.kt	pass		
 primitiveTypes/numberEqualsHashCodeToString.kt	pass		
-primitiveTypes/numberToChar/abstractMethodInSuperinterface.kt	check error	class '_' is not abstract and does not implement abstract member '_'	abstractMethodInSuperinterface.kt:8: class 'MyNumber' is not abstract and does not implement abstract member 'intValue'
-primitiveTypes/numberToChar/fakeOverride.kt	check error	class '_' is not abstract and does not implement abstract member '_'	fakeOverride.kt:4: class 'MyNumber' is not abstract and does not implement abstract member 'intValue'
-primitiveTypes/numberToChar/simple.kt	check error	class '_' is not abstract and does not implement abstract member '_'	simple.kt:4: class 'MyNumber' is not abstract and does not implement abstract member 'longValue'
-primitiveTypes/numberToChar/superCallToClass.kt	check error	class '_' is not abstract and does not implement abstract member '_'	superCallToClass.kt:4: class 'MyNumber' is not abstract and does not implement abstract member 'floatValue'
-primitiveTypes/numberToChar/superCallToInterface.kt	check error	class '_' is not abstract and does not implement abstract member '_'	superCallToInterface.kt:8: class 'MyNumber' is not abstract and does not implement abstract member 'doubleValue'
+primitiveTypes/numberToChar/abstractMethodInSuperinterface.kt	check error	class '_' is not abstract and does not implement abstract member '_'	abstractMethodInSuperinterface.kt:8: class 'MyNumber' is not abstract and does not implement abstract member 'floatValue'
+primitiveTypes/numberToChar/fakeOverride.kt	check error	class '_' is not abstract and does not implement abstract member '_'	fakeOverride.kt:4: class 'MyNumber' is not abstract and does not implement abstract member 'floatValue'
+primitiveTypes/numberToChar/simple.kt	check error	class '_' is not abstract and does not implement abstract member '_'	simple.kt:4: class 'MyNumber' is not abstract and does not implement abstract member 'intValue'
+primitiveTypes/numberToChar/superCallToClass.kt	check error	class '_' is not abstract and does not implement abstract member '_'	superCallToClass.kt:4: class 'MyNumber' is not abstract and does not implement abstract member 'doubleValue'
+primitiveTypes/numberToChar/superCallToInterface.kt	check error	class '_' is not abstract and does not implement abstract member '_'	superCallToInterface.kt:8: class 'MyNumber' is not abstract and does not implement abstract member 'intValue'
 primitiveTypes/numberToChar/superCallToNumber.kt	check error	class '_' is not abstract and does not implement abstract member '_'	superCallToNumber.kt:4: class 'MyNumber' is not abstract and does not implement abstract member 'longValue'
 primitiveTypes/rangeTo.kt	check error	type argument is not within its bounds: inferred type Number of type _ '_' is not a subtype of Comparable<Number>	rangeTo.kt:10: type argument is not within its bounds: inferred type Number of type parameter 'T' is not a subtype of Comparable<Number>
 primitiveTypes/reassignDestructured.kt	skip	LANGUAGE	
@@ -5470,7 +5470,7 @@ primitiveTypes/smartCastOnNullableDoubleIdentityEquals.kt	pass
 primitiveTypes/stringEqualsHashCodeToString.kt	pass		
 primitiveTypes/substituteIntForGeneric.kt	pass		
 primitiveTypes/unboxComparable.kt	pass		
-primitiveTypes/virtualCallToCustomNumber.kt	check error	class '_' is not abstract and does not implement abstract member '_'	virtualCallToCustomNumber.kt:4: class 'FortyTwo' is not abstract and does not implement abstract member 'intValue'
+primitiveTypes/virtualCallToCustomNumber.kt	check error	class '_' is not abstract and does not implement abstract member '_'	virtualCallToCustomNumber.kt:4: class 'FortyTwo' is not abstract and does not implement abstract member 'longValue'
 private/arrayConvention.kt	pass		
 private/kt9855.kt	pass		
 privateConstructors/base.kt	pass		
@@ -7049,10 +7049,10 @@ try/try3.kt	pass
 try/try4.kt	pass		
 try/try5.kt	pass		
 typeErasure/funWithReifiedTypeParameter.kt	pass		
-typeErasure/funWithReifiedTypeParameterAndContextParameter.kt	skip	LANGUAGE	
+typeErasure/funWithReifiedTypeParameterAndContextParameter.kt	pass		
 typeErasure/funWithReifiedTypeParameterAndExtensionReceiver.kt	pass		
-typeErasure/funWithReifiedTypeParameterContextParameterAndExtensionReceiver.kt	skip	LANGUAGE	
-typeErasure/funWithReifiedTypeParameterContextParameterAndExtensionReceiverInsideClass.kt	skip	LANGUAGE	
+typeErasure/funWithReifiedTypeParameterContextParameterAndExtensionReceiver.kt	pass		
+typeErasure/funWithReifiedTypeParameterContextParameterAndExtensionReceiverInsideClass.kt	pass		
 typeErasure/funWithReifiedTypeParameterInlinesFunWithThreeTypeParameters.kt	pass		
 typeErasure/funWithReifiedTypeParameterInlinesFunWithTwoTypeParameters.kt	pass		
 typeErasure/funWithReifiedTypeParameterInsideClass.kt	pass		
@@ -7061,10 +7061,10 @@ typeErasure/funWithReifiedTypeParameterInsideNestedClass.kt	pass
 typeErasure/funWithReifiedTypeParameterWithTwoUpperBounds.kt	pass		
 typeErasure/funWithReifiedTypeParameterWithUpperBound.kt	pass		
 typeErasure/funWithTypeParameter.kt	pass		
-typeErasure/funWithTypeParameterAndContextParameter.kt	skip	LANGUAGE	
+typeErasure/funWithTypeParameterAndContextParameter.kt	pass		
 typeErasure/funWithTypeParameterAndExtensionReceiver.kt	pass		
-typeErasure/funWithTypeParameterContextParameterAndExtensionReceiver.kt	skip	LANGUAGE	
-typeErasure/funWithTypeParameterContextParameterAndExtensionReceiverInsideClass.kt	skip	LANGUAGE	
+typeErasure/funWithTypeParameterContextParameterAndExtensionReceiver.kt	pass		
+typeErasure/funWithTypeParameterContextParameterAndExtensionReceiverInsideClass.kt	pass		
 typeErasure/funWithTypeParameterInsideClass.kt	pass		
 typeErasure/funWithTypeParameterInsideInnerClass.kt	pass		
 typeErasure/funWithTypeParameterInsideNestedClass.kt	pass		

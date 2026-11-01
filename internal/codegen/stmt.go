@@ -282,7 +282,7 @@ func (g *gen) invokeOperatorMember(f *types.FunSym, rt types.Type) {
 		return
 	}
 	if o := f.Owner; o != nil && o.Value && f.Desc == "" && o.Underlying != nil && types.Unboxed(rt) {
-		g.code.Invoke(cf.INVOKESTATIC, o.Name, f.JVM(), "("+desc(o.Underlying.Type)+sigDesc(f)[1:])
+		g.code.Invoke(cf.INVOKESTATIC, o.Name, f.JVM(), "("+desc(o.Underlying.Type)+funDesc(f)[1:])
 		return
 	}
 	g.invokeJava(f, rt)
@@ -969,6 +969,18 @@ func (g *gen) propLvalue(p *types.VarSym, t types.Type, recv func(), cls *types.
 	return lv
 }
 
+// accessCall returns the call of an accessor that x, the read or the
+// assignment of a property with context parameters, is, or nil.
+func accessCall(x syntax.Expr) *syntax.Call {
+	switch x := x.(type) {
+	case *syntax.Ident:
+		return x.Call
+	case *syntax.Member:
+		return x.Call
+	}
+	return nil
+}
+
 func (g *gen) assign(s *syntax.Assign) {
 	if s.Stmts != nil {
 		g.stmts(s.Stmts) // operator calls
@@ -977,6 +989,11 @@ func (g *gen) assign(s *syntax.Assign) {
 	if ix, ok := s.Target.(*syntax.Index); ok && s.Op == syntax.ASSIGN {
 		g.call(ix.Call) // x[i] = v is x.set(i, v)
 		g.pop(ix.Call.T)
+		return
+	}
+	if call := accessCall(s.Target); call != nil {
+		g.call(call) // a property with context parameters: x.setP(v)
+		g.pop(call.T)
 		return
 	}
 	if id, ok := s.Target.(*syntax.Ident); ok && id.Sym != nil && id.Sym.UnitLocal() {

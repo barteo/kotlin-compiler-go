@@ -21,12 +21,23 @@ type File struct {
 	// JVM only, where the actual declarations are the ones that count, so
 	// these are only checked against them.
 	Expects []Decl
+	// Errors are the syntax errors parsing went on after, as kotlinc
+	// does: context parameters where Kotlin doesn't allow them, which the
+	// checker reports.
+	Errors []*Error
 	// SuppressInvisible is set on a file with an annotation, on any
 	// declaration or expression, that suppresses INVISIBLE_MEMBER or
 	// INVISIBLE_REFERENCE: its code may call the class path's internal
 	// top-level functions, as ktor's calls kotlinx.coroutines's
 	// recoverStackTrace.
 	SuppressInvisible bool
+	// SuppressShadowed is set on a file with an annotation that
+	// suppresses RECEIVER_SHADOWED_BY_CONTEXT_PARAMETER, an error kotlinc
+	// lets code suppress: the checker doesn't report it in the file.
+	SuppressShadowed bool
+	// SuppressDSL is set on a file with an annotation that suppresses
+	// DSL_SCOPE_VIOLATION, which the checker then doesn't report.
+	SuppressDSL bool
 	// Arities is set by the checker: bit n is set if the file uses
 	// function types with n parameters.
 	Arities uint32
@@ -91,6 +102,9 @@ type TypeRef struct {
 	Recv   *TypeRef
 	// Suspend is set on a suspend function type: suspend (A) -> R.
 	Suspend bool
+	// Contexts are the context parameters' types of a context function
+	// type, context(A, B) R.(C) -> T, which on the JVM takes them first.
+	Contexts []*TypeRef
 	// Composable is set on a type annotated @Composable, as Compose's
 	// composable function types are.
 	Composable bool
@@ -101,6 +115,9 @@ type TypeRef struct {
 	// UnsafeVariance is set on a type annotated @UnsafeVariance, whose
 	// type parameters' variance isn't checked.
 	UnsafeVariance bool
+	// NoInfer is set on a type annotated @kotlin.internal.NoInfer, which
+	// doesn't infer a call's type arguments.
+	NoInfer bool
 	// Wildcards is what the type's annotations say of the wildcards of
 	// generic signatures: SuppressWildcards for @JvmSuppressWildcards,
 	// ForceWildcards for @JvmWildcard or @JvmSuppressWildcards(false).
@@ -208,6 +225,11 @@ type Modifiers struct {
 	// Annotations are the declaration's annotations, with their
 	// use-site targets (@get:JvmName applies to a property's getter).
 	Annotations []Annotation
+	// Contexts are the context parameters of a function or a property,
+	// context(a: A, _: B) fun f(), whose names may be _. ContextP is the position of
+	// context, if it is written.
+	Contexts []*Param
+	ContextP Pos
 }
 
 // Visibility is a declaration's visibility modifier. kc doesn't check
@@ -901,6 +923,10 @@ type Ident struct {
 	// Unit is set when the identifier is the Unit object, or a local of
 	// type Unit, which has no storage.
 	Unit bool
+	// Call is set on the read or the assignment of a property with
+	// context parameters: the call of its getter or setter, which the
+	// checker writes and which is evaluated instead.
+	Call *Call
 }
 
 type This struct {
@@ -913,6 +939,9 @@ type This struct {
 	// Class is set on a this the checker writes for the instance of the
 	// class the code is in, which lambdas' receivers don't hide.
 	Class bool
+	// Implicit is set on a this the checker writes for an implicit
+	// receiver or context argument.
+	Implicit bool
 }
 
 // Super is super, or super<I>, as the receiver of a member access or call,
@@ -1111,6 +1140,9 @@ type Member struct {
 	// with reified type parameters, whose getter it copies, as
 	// Call.Reified.
 	Reified []types.Type
+	// Call is set on the read or the assignment of a property with
+	// context parameters, as Ident.Call.
+	Call *Call
 }
 
 // Index is x[i]. It calls the operator get, or set when it is assigned.
@@ -1161,6 +1193,10 @@ type Call struct {
 	// "" for a positional argument. It is nil without named arguments, and
 	// may be shorter than Args.
 	Names []string
+	// Ctx is set by the checker on a call of a function with context
+	// parameters: the context arguments, implicit values the call passes
+	// first, before the receiver.
+	Ctx []Expr
 	// RefArgs is set by the checker on the call a callable reference's
 	// lambda makes: the types of its arguments, the reference's
 	// parameters, which go to the callee's as Kotlin adapts a reference
@@ -1223,6 +1259,9 @@ type Lambda struct {
 	SuspendMod bool
 
 	// Set by the checker.
+	// Ctx are the context parameters of a lambda whose expected type is
+	// a context function type: its first parameters, before a receiver.
+	Ctx      []*types.VarSym
 	Recv     *types.VarSym   // the receiver of a lambda with a receiver, its first parameter
 	It       *types.VarSym   // the implicit parameter
 	Ret      types.Type      // the body's result type, as the function type sees it
@@ -1279,6 +1318,10 @@ type Lambda struct {
 	AnonRecv *TypeRef
 	AnonRet  *TypeRef
 	AnonUnit bool
+	// AnonCtx are the context parameters of an anonymous function,
+	// context(a: A) fun () = a, whose symbols are Ctx's. The checker
+	// names a lambda's it makes too, without types: see suspendConverted.
+	AnonCtx []*Param
 	// Annotated is set on a lambda annotated @Composable, which is
 	// composable whatever its expected type, with -compose.
 	Annotated bool
@@ -1315,10 +1358,10 @@ type KProp struct {
 	Set *Lambda
 }
 
-// ParamSyms returns the lambda's parameters, including a receiver, which
-// comes first, and an implicit it.
+// ParamSyms returns the lambda's parameters, including its context
+// parameters and a receiver, which come first, and an implicit it.
 func (l *Lambda) ParamSyms() []*types.VarSym {
-	var syms []*types.VarSym
+	syms := l.Ctx[:len(l.Ctx):len(l.Ctx)]
 	if l.Recv != nil {
 		syms = append(syms, l.Recv)
 	}

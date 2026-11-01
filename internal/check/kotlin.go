@@ -553,6 +553,9 @@ func (t *classTable) ktype(kt *kmeta.Type, scope tscope) (types.Type, bool) {
 	if kt.ExtFunc && cls.Func && len(args) > 1 {
 		r = r.WithReceiver()
 	}
+	if kt.Contexts > 0 && cls.Func && len(args) > kt.Contexts {
+		r = r.WithContexts(kt.Contexts)
+	}
 	return nullable(r), true
 }
 
@@ -591,6 +594,9 @@ func (t *classTable) suspendType(kt *kmeta.Type, scope tscope) (types.Type, bool
 	r := types.GenericType(t.funcs.SuspendClass(n-1), args)
 	if kt.ExtFunc && n > 1 {
 		r = r.WithReceiver()
+	}
+	if kt.Contexts > 0 && n > kt.Contexts {
+		r = r.WithContexts(kt.Contexts)
 	}
 	return r, true
 }
@@ -687,7 +693,8 @@ func (t *classTable) kfun(f *kmeta.Function, owner *types.ClassSym, scope tscope
 		}
 	}
 	for _, im := range f.Implies {
-		if im.Param < len(f.Params) && (im.Param >= 0 || f.Recv != nil) {
+		// A context parameter's index follows the value parameters'.
+		if im.Param < len(f.Params)+len(f.ContextParams) && (im.Param >= 0 || f.Recv != nil) {
 			r := -1
 			switch im.Returns {
 			case kmeta.ReturnsTrue:
@@ -717,7 +724,15 @@ func (t *classTable) kfun(f *kmeta.Function, owner *types.ClassSym, scope tscope
 			jvm = kmeta.JVMSig{Name: name, Desc: desc}
 		}
 	}
-	ok = ok && rok && f.Contexts == 0 && sym.Desc != "" && zeroable(sym)
+	if f.Contexts > len(f.ContextParams) && sym.Why == "" {
+		sym.Why, sym.Feature = "calling a library's functions with context receivers is not supported", "context receivers"
+	}
+	if len(f.ContextParams) > 0 {
+		var cok bool
+		sym.Contexts, cok = t.kparams(f.ContextParams, scope, true)
+		ok = ok && cok
+	}
+	ok = ok && rok && f.Contexts == len(f.ContextParams) && sym.Desc != "" && zeroable(sym)
 	matchJVM(sym)
 	composeShape(sym, owner != nil)
 	composeTypes(sym)
@@ -876,13 +891,19 @@ func matchJVM(f *types.FunSym) {
 		return
 	}
 	ps, ret := jvmParams(f.Desc)
-	n := len(f.Params)
+	n := len(f.Contexts) + len(f.Params)
 	if f.Ext {
 		n++
 	}
 	if o := f.Owner; o != nil && o.Value && f.Name != "<init>" && len(ps) == n+1 {
 		ps = ps[1:] // a value class's static -impl method takes the value first
 	}
+	for i, p := range f.Contexts {
+		if i < len(ps) {
+			p.Type = boxedOnJVM(p.Type, ps[i])
+		}
+	}
+	ps = ps[min(len(f.Contexts), len(ps)):]
 	if f.Ext && len(ps) > 0 {
 		f.Recv = boxedOnJVM(f.Recv, ps[0])
 		ps = ps[1:]
@@ -910,7 +931,7 @@ func composeShape(f *types.FunSym, member bool) {
 		return
 	}
 	ps, _ := jvmParams(f.Desc)
-	n := len(f.Params)
+	n := len(f.Contexts) + len(f.Params)
 	if f.Ext {
 		n++
 	}
@@ -998,7 +1019,7 @@ func zeroable(f *types.FunSym) bool {
 // can't use it.
 func (t *classTable) kprop(p *kmeta.Property, owner *types.ClassSym, scope tscope, methods map[string]bool, getter, setter func(*kmeta.Property) *kmeta.JVMSig) *types.KProp {
 	friend := t.friend(owner.Name)
-	if !visibleOutside(p.Flags.Visibility(), friend) || !visibleOutside(p.GetterFlags.Visibility(), friend) || p.Recv != nil || p.Contexts > 0 || len(p.TypeParams) > 0 {
+	if !visibleOutside(p.Flags.Visibility(), friend) || !visibleOutside(p.GetterFlags.Visibility(), friend) || p.Recv != nil || p.Contexts > len(p.ContextParams) || len(p.TypeParams) > 0 {
 		return nil
 	}
 	g := getter(p)
@@ -1009,14 +1030,18 @@ func (t *classTable) kprop(p *kmeta.Property, owner *types.ClassSym, scope tscop
 	if !ok {
 		return nil
 	}
+	ctx, ok := t.kparams(p.ContextParams, scope, true)
+	if !ok {
+		return nil
+	}
 	abstract := p.Flags.Modality() == kmeta.Abstract
 	kp := &types.KProp{Getter: &types.FunSym{Name: g.Name, Owner: owner, Ret: pt, Desc: g.Desc, Resolved: true, Abstract: abstract,
-		Protected: p.GetterFlags.Visibility() == kmeta.Protected}}
+		Protected: p.GetterFlags.Visibility() == kmeta.Protected, Contexts: ctx}}
 	matchJVM(kp.Getter)
 	composeShape(kp.Getter, true)
 	if s := setter(p); p.IsVar() && s != nil && visibleOutside(p.SetterFlags.Visibility(), friend) && (methods == nil || methods[s.Name+s.Desc]) {
 		kp.Setter = &types.FunSym{Name: s.Name, Owner: owner, Ret: types.UnitType, Desc: s.Desc, Resolved: true, Abstract: abstract,
-			Protected: p.SetterFlags.Visibility() == kmeta.Protected, Params: []*types.VarSym{{Name: "value", Type: pt, Kind: types.Param}}}
+			Protected: p.SetterFlags.Visibility() == kmeta.Protected, Params: []*types.VarSym{{Name: "value", Type: pt, Kind: types.Param}}, Contexts: ctx}
 		matchJVM(kp.Setter)
 	}
 	return kp
@@ -1054,7 +1079,7 @@ func (t *classTable) memberExtProp(p *kmeta.Property, owner *types.ClassSym, sco
 	inlineOnly := g != nil && !methods[g.Name+g.Desc] && p.GetterFlags>>8&1 != 0
 	friend := t.friend(owner.Name)
 	if !visibleOutside(p.Flags.Visibility(), friend) || !visibleOutside(p.GetterFlags.Visibility(), friend) || g == nil ||
-		!methods[g.Name+g.Desc] && !inlineOnly || p.Contexts > 0 {
+		!methods[g.Name+g.Desc] && !inlineOnly || p.Contexts > len(p.ContextParams) {
 		return nil
 	}
 	sym := &types.FunSym{Name: g.Name, Owner: owner, Desc: g.Desc, Ext: true, Resolved: true,
@@ -1066,10 +1091,11 @@ func (t *classTable) memberExtProp(p *kmeta.Property, owner *types.ClassSym, sco
 	tps, ok := t.ktypeParams(p.TypeParams, sym, scope)
 	recv, rok := t.ktype(p.Recv, scope)
 	ret, tok := t.ktype(p.Type, scope)
-	if !ok || !rok || !tok {
+	ctx, cok := t.kparams(p.ContextParams, scope, true)
+	if !ok || !rok || !tok || !cok {
 		return nil
 	}
-	sym.TypeParams, sym.Recv, sym.Ret = tps, recv, ret
+	sym.TypeParams, sym.Recv, sym.Ret, sym.Contexts = tps, recv, ret, ctx
 	if owner.Value {
 		sym.Impl, sym.Facade = true, owner.Name // a static method, as a value class's other members
 	}
@@ -1425,6 +1451,10 @@ func (t *classTable) loadKotlin(cls *types.ClassSym, info *classfile.Info, kc *k
 			kp.Getter.Static = statics[kp.Getter.JVM()+kp.Getter.Desc]
 			if kp.Setter != nil {
 				kp.Setter.Static = statics[kp.Setter.JVM()+kp.Setter.Desc]
+			}
+			if prev := cls.KProps[p.Name]; prev != nil && !sameContexts(prev.Getter.Contexts, kp.Getter.Contexts) {
+				addKAlt(prev, kp) // one with other context parameters
+				continue
 			}
 			cls.KProps[p.Name] = kp
 		}
@@ -1829,7 +1859,7 @@ func (t *classTable) pkgExtProps(pkg, name string) []*types.FunSym {
 			g := pr.Getter
 			// An inline-only getter is private: its body is copied.
 			inlineOnly := g != nil && !part.methods[g.Name+g.Desc] && pr.GetterFlags>>8&1 != 0
-			if pr.Recv == nil || !public(pr.Flags.Visibility(), part.friend) || g == nil || !part.methods[g.Name+g.Desc] && !inlineOnly || pr.Contexts > 0 {
+			if pr.Recv == nil || !public(pr.Flags.Visibility(), part.friend) || g == nil || !part.methods[g.Name+g.Desc] && !inlineOnly || pr.Contexts > len(pr.ContextParams) {
 				continue
 			}
 			sym := &types.FunSym{Name: g.Name, Desc: g.Desc, Facade: part.facade, Ext: true, Resolved: true}
@@ -1841,16 +1871,17 @@ func (t *classTable) pkgExtProps(pkg, name string) []*types.FunSym {
 			sym.TypeParams = tps
 			recv, rok := t.ktype(pr.Recv, scope)
 			ret, tok := t.ktype(pr.Type, scope)
-			if !ok || !rok || !tok {
+			ctx, cok := t.kparams(pr.ContextParams, scope, true)
+			if !ok || !rok || !tok || !cok {
 				continue
 			}
-			sym.Recv, sym.Ret = recv, ret
+			sym.Recv, sym.Ret, sym.Contexts = recv, ret, ctx
 			matchJVM(sym)
 			composeShape(sym, false) // WindowInsets.isImeVisible
 			// A var's setter: (receiver, value) on the same facade.
 			if s := pr.Setter; pr.IsVar() && s != nil && public(pr.SetterFlags.Visibility(), part.friend) && part.methods[s.Name+s.Desc] {
 				set := &types.FunSym{Name: s.Name, Desc: s.Desc, Facade: part.facade, Ext: true, Final: true, Resolved: true,
-					TypeParams: tps, Recv: recv, Ret: types.UnitType, Params: []*types.VarSym{{Name: "value", Type: ret, Kind: types.Param}}}
+					TypeParams: tps, Recv: recv, Ret: types.UnitType, Params: []*types.VarSym{{Name: "value", Type: ret, Kind: types.Param}}, Contexts: ctx}
 				matchJVM(set)
 				sym.ExtSetter = set
 			}
@@ -1874,22 +1905,31 @@ func (t *classTable) pkgVar(pkg, name string) *types.VarSym {
 	if v, ok := p.vars[name]; ok {
 		return v
 	}
-	var v *types.VarSym
+	var v, first *types.VarSym // first of those with other context parameters
 	for _, part := range p.parts {
 		decls, err := part.meta.Properties(name)
 		if err != nil {
 			continue
 		}
 		for _, pr := range decls {
-			if pr.Recv != nil || !public(pr.Flags.Visibility(), part.friend) || len(pr.TypeParams) > 0 || pr.Contexts > 0 {
+			if pr.Recv != nil || !public(pr.Flags.Visibility(), part.friend) || len(pr.TypeParams) > 0 || pr.Contexts > len(pr.ContextParams) {
 				continue
 			}
 			typ, ok := t.ktype(pr.Type, tscope{})
-			if !ok {
+			ctx, cok := t.kparams(pr.ContextParams, tscope{}, true)
+			if !ok || !cok {
 				continue
 			}
+			prev := v
 			v = &types.VarSym{Name: pr.Name, Type: typ, Kind: types.Global, Mutable: pr.IsVar(), Facade: part.facade,
-				Resolved: true, Const: pr.IsConst()}
+				Resolved: true, Const: pr.IsConst(), Contexts: ctx}
+			if prev != nil && !sameContexts(prev.Contexts, ctx) {
+				// One with other context parameters.
+				addAlt(prev, v)
+				if first == nil {
+					first = prev
+				}
+			}
 			if v.Const {
 				v.Constant = t.facadeConstant(part.facade, pr.Name)
 			}
@@ -1908,6 +1948,9 @@ func (t *classTable) pkgVar(pkg, name string) *types.VarSym {
 				v.JvmField = true // only a public field
 			}
 		}
+	}
+	if first != nil {
+		v = first
 	}
 	p.vars[name] = v
 	return v

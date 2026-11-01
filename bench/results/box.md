@@ -2,16 +2,16 @@
 
 The box tests of JetBrains/kotlin v2.4.21 (`compiler/testData/codegen/box`), each compiled by kc and run: its `box()` must return `"OK"`. `bench/kotlin-tests.sh box` writes this file, and [docs/conformance.md](../../docs/conformance.md) explains it.
 
-Of 7480 test files, 1094 are skipped and 6386 run. 6065 pass (95.0%).
+Of 7480 test files, 997 are skipped and 6483 run. 6166 pass (95.1%).
 
 | Result | Tests | Share |
 |:---|---:|---:|
-| pass | 6065 | 95.0% |
+| pass | 6166 | 95.1% |
 | parse/unsupported | 0 | 0.0% |
-| check error | 216 | 3.4% |
+| check error | 211 | 3.3% |
 | crash | 0 | 0.0% |
-| codegen error | 16 | 0.3% |
-| VerifyError | 20 | 0.3% |
+| codegen error | 16 | 0.2% |
+| VerifyError | 21 | 0.3% |
 | linkage error | 10 | 0.2% |
 | exception | 32 | 0.5% |
 | wrong result | 27 | 0.4% |
@@ -23,9 +23,9 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 
 | Reason | Tests | Examples |
 |:---|---:|:---|
-| `LANGUAGE` | 726 | `annotations/checkReturnValue.kt`, `annotations/instances/multiplatformInstantiation.kt` |
+| `LANGUAGE` | 628 | `annotations/checkReturnValue.kt`, `annotations/instances/multiplatformInstantiation.kt` |
 | `TARGET_BACKEND: WASM` | 122 | `casts/kt73931.kt`, `casts/wasmCastMessages.kt` |
-| `IGNORE_BACKEND: JVM_IR` | 47 | `binaryOp/call.kt`, `binaryOp/callNullable.kt` |
+| `IGNORE_BACKEND: JVM_IR` | 48 | `binaryOp/call.kt`, `binaryOp/callNullable.kt` |
 | `TARGET_BACKEND: JS_IR, JS_IR_ES6` | 36 | `builtins/stringTemplateWithValueOf.kt`, `casts/functions/isFunKSmallJS.kt` |
 | `TARGET_BACKEND: JS_IR` | 34 | `bridges/jsName.kt`, `bridges/jsNative.kt` |
 | `TARGET_BACKEND: NATIVE` | 27 | `annotations/nativeThrows.kt`, `argumentOrder/varargAndDefaultParameters_ForNative.kt` |
@@ -47,13 +47,13 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 | Directory | Run | Pass | Unsupported | Check error | Crash | Bad bytecode | Wrong |
 |:---|---:|---:|---:|---:|---:|---:|---:|
 | ranges | 805 | 802 | 0 | 3 | 0 | 0 | 0 |
-| inlineClasses | 783 | 755 | 0 | 19 | 2 | 7 | 0 |
+| inlineClasses | 784 | 758 | 0 | 17 | 2 | 7 | 0 |
 | coroutines | 497 | 482 | 0 | 1 | 4 | 1 | 9 |
-| callableReference | 282 | 265 | 0 | 15 | 0 | 0 | 2 |
-| inference | 204 | 193 | 0 | 10 | 0 | 0 | 1 |
+| callableReference | 297 | 280 | 0 | 15 | 0 | 0 | 2 |
+| inference | 205 | 194 | 0 | 10 | 0 | 0 | 1 |
 | delegatedProperty | 149 | 144 | 0 | 4 | 0 | 0 | 1 |
 | controlStructures | 146 | 140 | 0 | 5 | 0 | 0 | 1 |
-| bridges | 137 | 134 | 0 | 2 | 0 | 1 | 0 |
+| bridges | 137 | 136 | 0 | 0 | 0 | 1 | 0 |
 | inline | 132 | 127 | 0 | 4 | 1 | 0 | 0 |
 | classes | 120 | 116 | 0 | 2 | 0 | 1 | 1 |
 | objects | 116 | 112 | 0 | 2 | 0 | 1 | 1 |
@@ -66,6 +66,7 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 | defaultArguments | 82 | 78 | 0 | 0 | 0 | 0 | 4 |
 | arrays | 78 | 76 | 0 | 2 | 0 | 0 | 0 |
 | regressions | 75 | 68 | 0 | 6 | 1 | 0 | 0 |
+| contextParameters | 70 | 70 | 0 | 0 | 0 | 0 | 0 |
 | casts | 68 | 64 | 0 | 1 | 0 | 0 | 3 |
 | compileKotlinAgainstKotlin | 65 | 59 | 0 | 5 | 0 | 0 | 1 |
 | diagnostics | 60 | 49 | 0 | 2 | 0 | 0 | 9 |
@@ -89,15 +90,15 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 | smartCasts | 36 | 32 | 0 | 4 | 0 | 0 | 0 |
 | operatorConventions | 34 | 31 | 0 | 2 | 0 | 0 | 1 |
 | traits | 34 | 34 | 0 | 0 | 0 | 0 | 0 |
+| typeErasure | 32 | 32 | 0 | 0 | 0 | 0 | 0 |
+| extensionProperties | 31 | 30 | 0 | 0 | 1 | 0 | 0 |
 | typealias | 31 | 28 | 0 | 3 | 0 | 0 | 0 |
 | basics | 30 | 28 | 0 | 2 | 0 | 0 | 0 |
 | secondaryConstructors | 30 | 30 | 0 | 0 | 0 | 0 | 0 |
 | syntheticAccessors | 30 | 28 | 0 | 0 | 0 | 2 | 0 |
-| extensionProperties | 29 | 28 | 0 | 0 | 1 | 0 | 0 |
 | initializers | 26 | 26 | 0 | 0 | 0 | 0 | 0 |
 | try | 26 | 25 | 0 | 1 | 0 | 0 | 0 |
-| typeErasure | 26 | 26 | 0 | 0 | 0 | 0 | 0 |
-| fir | 25 | 20 | 0 | 4 | 0 | 1 | 0 |
+| fir | 25 | 20 | 0 | 3 | 0 | 2 | 0 |
 | fp | 25 | 25 | 0 | 0 | 0 | 0 | 0 |
 | increment | 25 | 17 | 0 | 8 | 0 | 0 | 0 |
 | specialBuiltins | 25 | 19 | 0 | 2 | 0 | 2 | 2 |
@@ -108,18 +109,18 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 | boxing | 21 | 19 | 0 | 0 | 0 | 0 | 2 |
 | lambda | 21 | 21 | 0 | 0 | 0 | 0 | 0 |
 | sam | 21 | 19 | 0 | 2 | 0 | 0 | 0 |
+| contracts | 20 | 15 | 0 | 1 | 0 | 4 | 0 |
 | controlflow | 20 | 20 | 0 | 0 | 0 | 0 | 0 |
 | wasmStringSwitch | 20 | 20 | 0 | 0 | 0 | 0 | 0 |
-| contracts | 19 | 14 | 0 | 1 | 0 | 4 | 0 |
 | platformTypes | 19 | 19 | 0 | 0 | 0 | 0 | 0 |
 | bce | 18 | 18 | 0 | 0 | 0 | 0 | 0 |
 | vararg | 18 | 18 | 0 | 0 | 0 | 0 | 0 |
 | inlineSizeReduction | 17 | 17 | 0 | 0 | 0 | 0 | 0 |
 | lazyCodegen | 17 | 17 | 0 | 0 | 0 | 0 | 0 |
+| directInvokeOptimization | 16 | 16 | 0 | 0 | 0 | 0 | 0 |
 | escapeAnalysis | 16 | 16 | 0 | 0 | 0 | 0 | 0 |
 | safeCall | 16 | 14 | 0 | 0 | 0 | 0 | 2 |
 | argumentOrder | 15 | 15 | 0 | 0 | 0 | 0 | 0 |
-| directInvokeOptimization | 15 | 15 | 0 | 0 | 0 | 0 | 0 |
 | unit | 15 | 13 | 0 | 2 | 0 | 0 | 0 |
 | fakeOverride | 14 | 13 | 0 | 1 | 0 | 0 | 0 |
 | suspendConversion | 14 | 14 | 0 | 0 | 0 | 0 | 0 |
@@ -207,13 +208,12 @@ Tests kotlinc compiles that kc's checker rejects, by its first error, with names
 | `missing return statement in function '_'` | 16 | `arrays/kt47483.kt`, `boxingOptimization/kt49092a.kt` |
 | `unresolved or unsupported type: _` | 14 | `callableReference/callableReferencetoInnerAndLocal.kt`, `callableReference/genericConstructorReference.kt` |
 | `cannot infer type for type parameter '_'. Specify it explicitly.` | 13 | `callableReference/adaptedReferences/extensionPropertyToFun.kt`, `callableReference/adaptedReferences/innerConstructorToExtensionWithTypeParam.kt` |
-| `unresolved reference: _` | 10 | `classLiteral/bound/primitives.kt`, `classLiteral/primitiveClassEquality.kt` |
+| `unresolved reference: _` | 11 | `classLiteral/bound/primitives.kt`, `classLiteral/primitiveClassEquality.kt` |
 | `invalid type of annotation member` | 9 | `annotations/instances/annotationInstances.kt`, `annotations/instances/annotationToString.kt` |
 | `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 9 | `callableReference/function/nullableExtension.kt`, `casts/intersectionTypeMultipleBounds.kt` |
 | `type argument is not within its bounds: inferred type Int of type _ '_' is not a subtype of Long` | 9 | `inlineClasses/checkBoxingForNonLocalAndLabeledReturnsGeneric.kt`, `inlineClasses/contextsAndAccessors/accessPrivateInlineClassCompanionMethod2Generic.kt` |
 | `class '_' is not abstract and does not implement abstract member '_'` | 8 | `primitiveTypes/numberToChar/abstractMethodInSuperinterface.kt`, `primitiveTypes/numberToChar/fakeOverride.kt` |
 | `operator '_' cannot be applied to Int?` | 8 | `classes/kt723.kt`, `functions/localFunctions/kt4989.kt` |
-| `ambiguous call: n candidates for '_' take (_)` | 6 | `bridges/simpleGenericMethod.kt`, `bridges/substitutionInSuperClass/genericMethod.kt` |
 | `for-loop range must have an '_' method` | 5 | `controlStructures/forLoopMemberExtensionAll.kt`, `functions/kt1199.kt` |
 | `operator '_' cannot be applied to String` | 5 | `extensionFunctions/kt1953.kt`, `extensionFunctions/kt1953_class.kt` |
 | `type mismatch: inferred type is _ but _ was expected` | 4 | `delegation/delegationToIntersectionType.kt`, `delegation/delegationToIntersectionType3.kt` |
@@ -244,7 +244,8 @@ Tests kotlinc compiles that kc's checker rejects, by its first error, with names
 | `'_' is not allowed here` | 1 | `arrays/nonLocalReturnArrayConstructor.kt` |
 | `'_' is not defined in this context` | 1 | `objects/thisRefToObjectInNestedClassConstructorCall.kt` |
 | `'_' modifier is inapplicable on this function: must have no value parameters` | 1 | `extensionFunctions/kt3969.kt` |
-| *46 more* | 46 | |
+| `ambiguous call: n candidates for '_' take (_)` | 1 | `callableReference/function/overloadedFun.kt` |
+| *45 more* | 45 | |
 
 ## Code generation errors
 
@@ -267,9 +268,9 @@ The JVM rejected a class kc wrote.
 | `java.lang.VerifyError: Bad local variable type` | 7 | `contracts/functionParameter.kt`, `contracts/nestedLambdaInNonInlineCallExactlyOnce.kt` |
 | `java.lang.ClassFormatError: Method "_" in class _ has illegal signature "_"` | 3 | `inlineClasses/dnnInValue.kt`, `inlineClasses/genericInlineClassSynthMembers.kt` |
 | `java.lang.ClassFormatError: Duplicate method name "_" with signature "_" in class _ NotEmptyMap` | 2 | `bridges/special.kt`, `specialBuiltins/bridgeNotEmptyMap.kt` |
+| `java.lang.ClassFormatError: Duplicate method name "_" with signature "_" in class _ Y` | 2 | `fir/functionsDifferInTypeParameterBounds2.kt`, `fir/functionsDifferInTypeParameterBounds3.kt` |
 | `java.lang.VerifyError: Bad invokespecial instruction: interface method reference is in an indirect superinterface.` | 2 | `inlineClasses/smartCastOnThisOfInlineClassType.kt`, `inlineClasses/smartCastOnThisOfInlineClassTypeGeneric.kt` |
 | `java.lang.ClassFormatError: Duplicate method name "_" with signature "_" in class _ EmptyMap` | 1 | `specialBuiltins/emptyMap.kt` |
-| `java.lang.ClassFormatError: Duplicate method name "_" with signature "_" in class _ Y` | 1 | `fir/functionsDifferInTypeParameterBounds2.kt` |
 | `java.lang.VerifyError: Bad type on operand stack` | 1 | `inlineClasses/kt57973.kt` |
 | `java.lang.VerifyError: Bad type on operand stack in putfield` | 1 | `properties/classFieldInsideLocalInSetter.kt` |
 | `java.lang.VerifyError: Instruction type does not match stack map` | 1 | `inlineClasses/checkCastToInlineClassGeneric.kt` |

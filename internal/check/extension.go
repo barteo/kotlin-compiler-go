@@ -109,7 +109,7 @@ func extRecvs(d *syntax.FunDecl) []implicitRecv {
 	if d.RecvSym == nil {
 		return nil
 	}
-	return []implicitRecv{{sym: d.RecvSym, label: strings.TrimPrefix(d.RecvSym.Name, "$this$")}}
+	return []implicitRecv{{sym: d.RecvSym, label: strings.TrimPrefix(d.RecvSym.Name, "$this$"), owner: d}}
 }
 
 // Extension properties.
@@ -202,6 +202,7 @@ func (c *Checker) resolveExtProp(d *syntax.PropDecl) {
 		st.RecvSym = &types.VarSym{Name: "$this$" + d.Name, Type: gs.Recv, Kind: types.Param, Decl: st}
 		sym.Setter = ss
 	}
+	c.propContexts(d, sym)
 	switch {
 	case d.Type != nil:
 		sym.Type, sym.Resolved = c.resolveType(d.Type), true

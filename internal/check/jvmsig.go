@@ -119,6 +119,13 @@ func jvmSig(f *types.FunSym) (string, bool) {
 		}
 		params = "(" + recv + params[1:]
 	}
+	if len(f.Contexts) > 0 {
+		ctx, ok := types.ParamsDesc(f.Contexts)
+		if !ok {
+			return "", false
+		}
+		params = ctx[:len(ctx)-1] + params[1:] // they come first
+	}
 	if f.Suspend {
 		// With its continuation: @JvmName("next") suspend fun next0() is
 		// next(Continuation), which next() doesn't clash with.

@@ -218,7 +218,7 @@ tests/annotations/RetentionsOfAnnotationWithExpressionTarget.kt	accepts invalid	
 tests/annotations/UnresolvedAnnotationOnObject.kt	accepts invalid	UNRESOLVED_REFERENCE	UnresolvedAnnotationOnObject.kt:7: UNRESOLVED_REFERENCE
 tests/annotations/WrongAnnotationArgsOnObject.kt	rejects invalid	on an expected line	
 tests/annotations/annotatedExpressionInsideAnnotation.kt	skip	LANGUAGE_FEATURE_TOGGLED	
-tests/annotations/annotatedLocalContextParameterWithAnnotatedType.kt	skip	LANGUAGE	
+tests/annotations/annotatedLocalContextParameterWithAnnotatedType.kt	accepts valid		
 tests/annotations/annotatedWhenExpression.kt	rejects invalid	on an expected line	
 tests/annotations/annotationArgumentOnCompanionResolvesToInner.kt	accepts invalid	UNRESOLVED_REFERENCE; INSTANCE_ACCESS_BEFORE_SUPER_CALL	annotationArgumentOnCompanionResolvesToInner.kt:10: UNRESOLVED_REFERENCE
 tests/annotations/annotationArgumentOnDoWhile.kt	accepts valid		
@@ -281,7 +281,7 @@ tests/annotations/danglingModifierInsideEnumEntry.kt	rejects invalid	elsewhere
 tests/annotations/deprecatedDanglingFileModifierWithNestedDeclarations.kt	rejects invalid	elsewhere	
 tests/annotations/deprecatedResolutionOfAnonymousObject.kt	accepts invalid	DEPRECATION_ERROR	deprecatedResolutionOfAnonymousObject.kt:11: DEPRECATION_ERROR
 tests/annotations/dontReportWarningAboutChangingExecutionOrderForVararg.kt	rejects invalid	on an expected line	
-tests/annotations/dslMarkerPropagation.kt	skip	LANGUAGE	
+tests/annotations/dslMarkerPropagation.kt	accepts valid		
 tests/annotations/extensionFunctionType.kt	rejects invalid	on an expected line	
 tests/annotations/forParameterAnnotationResolve.kt	skip	LANGUAGE	
 tests/annotations/functionInsideFileAnnotation.kt	rejects invalid	elsewhere	
@@ -701,7 +701,7 @@ tests/callableReference/bound/innerNested.kt	rejects invalid	on an expected line
 tests/callableReference/bound/kt12843.kt	rejects invalid	on an expected line	
 tests/callableReference/bound/noThisInSuperCall.kt	rejects invalid	on an expected line	
 tests/callableReference/bound/object.kt	accepts valid		
-tests/callableReference/bound/privateToThis.kt	skip	LANGUAGE	
+tests/callableReference/bound/privateToThis.kt	accepts invalid	INVISIBLE_REFERENCE	privateToThis.kt:14: INVISIBLE_REFERENCE
 tests/callableReference/bound/referenceToStaticMethodOnInstance.kt	skip	Java sources	
 tests/callableReference/bound/reservedExpressionSyntax.kt	rejects invalid	on an expected line	
 tests/callableReference/bound/reservedExpressionSyntax2.kt	rejects invalid	on an expected line	
@@ -872,7 +872,7 @@ tests/callableReference/property/topLevelFromTopLevel.kt	rejects invalid	on an e
 tests/callableReference/propertyOfNestedGenericClass.kt	accepts valid		
 tests/callableReference/referenceAdaptationCompatibility.kt	accepts valid		
 tests/callableReference/referenceInCycleInProperties.kt	accepts valid		
-tests/callableReference/referenceToCompanionObjectMemberViaClassName.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	referenceToCompanionObjectMemberViaClassName.kt:29: cannot infer type for type parameter 'T'. Specify it explicitly.
+tests/callableReference/referenceToCompanionObjectMemberViaClassName.kt	accepts valid		
 tests/callableReference/referenceToCompanionObjectMemberViaClassNameCompatibility.kt	rejects valid	overload resolution ambiguity for A::foo: specify the expected function type	referenceToCompanionObjectMemberViaClassNameCompatibility.kt:26: overload resolution ambiguity for A::foo: specify the expected function type
 tests/callableReference/resolve/adaptedReferenceAgainstKCallable.kt	rejects valid	function invocation '_' expected; use ::foo for a reference	adaptedReferenceAgainstKCallable.kt:11: function invocation 'foo()' expected; use ::foo for a reference
 tests/callableReference/resolve/adaptedReferenceAgainstReflectionType.kt	skip	LANGUAGE	
@@ -1124,14 +1124,14 @@ tests/checkers/importAnnotationWithRequiresOptIn.kt	rejects valid	unresolved imp
 tests/checkers/internalImplicitInvokeFromInlineFun.kt	rejects invalid	on an expected line	
 tests/checkers/internalSuperCallFromInlineFun.kt	accepts invalid	NON_PUBLIC_CALL_FROM_PUBLIC_INLINE	internalSuperCallFromInlineFun.kt:11: NON_PUBLIC_CALL_FROM_PUBLIC_INLINE
 tests/checkers/invalidLhsOfClassLiteral.kt	rejects invalid	on an expected line	
-tests/checkers/notImplementedEqualsWithContextParameters.kt	skip	LANGUAGE	
+tests/checkers/notImplementedEqualsWithContextParameters.kt	rejects invalid	on an expected line	
 tests/checkers/notUselessCast_1.kt	rejects invalid	on an expected line	
 tests/checkers/notUselessCast_2.kt	rejects invalid	on an expected line	
 tests/checkers/notUselessCast_3.kt	rejects invalid	on an expected line	
 tests/checkers/recursiveDependencyBetweenReturnTypeAndSupertype.kt	rejects invalid	on an expected line	
 tests/checkers/redundantNullCheckOnAsCast.kt	accepts valid		
 tests/checkers/unsuccessfullCastToStartProjectedType.kt	accepts valid		
-tests/checkers/uselessCast.kt	skip	LANGUAGE	
+tests/checkers/uselessCast.kt	accepts valid		
 tests/checkers/uselessCastLeadsToRecursiveProblem.kt	rejects valid	type checking has run into a recursive problem; specify the type of '_'	uselessCastLeadsToRecursiveProblem.kt:13: type checking has run into a recursive problem; specify the type of 'extProp1'
 tests/classCallInLambda.kt	accepts valid		
 tests/classLiteral/arrayNothingGetClass.kt	skip	LANGUAGE_FEATURE_TOGGLED	
@@ -1565,90 +1565,90 @@ tests/constructorConsistency/twoSuperTypeCalls.kt	rejects invalid	on an expected
 tests/constructors/erroneousDelegatedConstructorCall.kt	rejects invalid	on an expected line	
 tests/constructors/noSuperCallInSupertypes.kt	skip	Java sources	
 tests/contentEqualsSuggestionForTypedArrays.kt	rejects valid	operator '_' cannot be applied to Array<Char> and CharArray	contentEqualsSuggestionForTypedArrays.kt:19: operator '==' cannot be applied to Array<Char> and CharArray
-tests/contextParameters/ambiguityBetweenReceiverAndContext.kt	skip	LANGUAGE	
-tests/contextParameters/callableReference.kt	skip	LANGUAGE	
-tests/contextParameters/callableReferenceCompatibility.kt	skip	LANGUAGE	
-tests/contextParameters/contextAndExtensionTypesTogether.kt	skip	LANGUAGE	
-tests/contextParameters/contextFunctionTypeInNestedLambda.kt	skip	LANGUAGE	
-tests/contextParameters/contextLambda.kt	skip	LANGUAGE	
-tests/contextParameters/contextParameterUsage.kt	skip	LANGUAGE	
+tests/contextParameters/ambiguityBetweenReceiverAndContext.kt	rejects invalid	on an expected line	
+tests/contextParameters/callableReference.kt	skip	LANGUAGE_FEATURE_TOGGLED	
+tests/contextParameters/callableReferenceCompatibility.kt	rejects invalid	on an expected line	
+tests/contextParameters/contextAndExtensionTypesTogether.kt	accepts valid		
+tests/contextParameters/contextFunctionTypeInNestedLambda.kt	accepts valid		
+tests/contextParameters/contextLambda.kt	rejects invalid	on an expected line	
+tests/contextParameters/contextParameterUsage.kt	rejects invalid	on an expected line	
 tests/contextParameters/contextualFunctionTypeInSignatureWithoutLF.kt	skip	LANGUAGE	
-tests/contextParameters/contextualInvokeWithIncorrectNamedArgument.kt	skip	LANGUAGE	
-tests/contextParameters/contextualLambdaWithExplicitParameterType.kt	skip	LANGUAGE	
-tests/contextParameters/contextualLateinit.kt	skip	LANGUAGE	
-tests/contextParameters/declarationAndUsages/annotationOnTypeWithContext.kt	skip	LANGUAGE	
-tests/contextParameters/declarationAndUsages/annotationTargetInContext.kt	skip	LANGUAGE	
-tests/contextParameters/declarationAndUsages/anonymousFunctionContextWithoutType.kt	skip	LANGUAGE	
-tests/contextParameters/declarationAndUsages/anonymousFunctionWithWrongShape.kt	skip	LANGUAGE	
-tests/contextParameters/declarationAndUsages/classMembersWithContext.kt	skip	LANGUAGE	
-tests/contextParameters/declarationAndUsages/contextInCompanionObject.kt	skip	LANGUAGE	
-tests/contextParameters/declarationAndUsages/contextInLocalFunction.kt	skip	LANGUAGE	
-tests/contextParameters/declarationAndUsages/contextInLocalFunctionResolution.kt	skip	LANGUAGE	
-tests/contextParameters/declarationAndUsages/contextOnGetterSetter.kt	skip	LANGUAGE	
-tests/contextParameters/declarationAndUsages/contextOrderWithAnnotation.kt	skip	LANGUAGE	
-tests/contextParameters/declarationAndUsages/contextParameterIsNotInlined.kt	skip	LANGUAGE	
-tests/contextParameters/declarationAndUsages/contextParameterToDefaultArgument.kt	skip	LANGUAGE	
-tests/contextParameters/declarationAndUsages/contextWithAnnotation.kt	skip	LANGUAGE	
-tests/contextParameters/declarationAndUsages/contextualAnonymousFunction.kt	skip	LANGUAGE	
-tests/contextParameters/declarationAndUsages/emptyContextName.kt	skip	LANGUAGE	
-tests/contextParameters/declarationAndUsages/emptyListOfContextParameters.kt	skip	LANGUAGE	
-tests/contextParameters/declarationAndUsages/funWithContextWithTypeParameter.kt	skip	LANGUAGE	
-tests/contextParameters/declarationAndUsages/genericContextAmbiguity.kt	skip	LANGUAGE	
-tests/contextParameters/declarationAndUsages/inFunctionDeclaration.kt	skip	LANGUAGE	
-tests/contextParameters/declarationAndUsages/inFunctionalType.kt	skip	LANGUAGE	
-tests/contextParameters/declarationAndUsages/inPropertyDeclaration.kt	skip	LANGUAGE	
-tests/contextParameters/declarationAndUsages/initializerInProperty.kt	skip	LANGUAGE	
-tests/contextParameters/declarationAndUsages/inlineForTypeWithContext.kt	skip	LANGUAGE	
-tests/contextParameters/declarationAndUsages/memberUsageFromContextScope.kt	skip	LANGUAGE	
-tests/contextParameters/declarationAndUsages/moreThenOneContext.kt	skip	LANGUAGE	
-tests/contextParameters/declarationAndUsages/multipleContextsWithTheSameType.kt	skip	LANGUAGE	
-tests/contextParameters/declarationAndUsages/nameClashes.kt	skip	LANGUAGE	
-tests/contextParameters/declarationAndUsages/onClassifierDeclaration.kt	skip	LANGUAGE	
-tests/contextParameters/declarationAndUsages/onConstructor.kt	skip	LANGUAGE	
-tests/contextParameters/declarationAndUsages/parameterModifiersOnContextParameter.kt	skip	LANGUAGE	
-tests/contextParameters/declarationAndUsages/parameterType.kt	skip	LANGUAGE	
-tests/contextParameters/declarationAndUsages/parameterTypeWithContext.kt	skip	LANGUAGE	
-tests/contextParameters/declarationAndUsages/parameterWithDefault.kt	skip	LANGUAGE	
-tests/contextParameters/declarationAndUsages/propertyWithContextAndContextType.kt	skip	LANGUAGE	
-tests/contextParameters/declarationAndUsages/propertyWithContextWithTypeParameter.kt	skip	LANGUAGE	
-tests/contextParameters/declarationAndUsages/theSameContextAndDispatchReceiver.kt	skip	LANGUAGE	
-tests/contextParameters/declarationAndUsages/typeWithContextWithTypeParameter.kt	skip	LANGUAGE	
-tests/contextParameters/declarationAndUsages/typealiasToContextFunctionType.kt	skip	LANGUAGE	
-tests/contextParameters/declarationAndUsages/usageOfTypeWithContext.kt	skip	LANGUAGE	
-tests/contextParameters/declarationAndUsages/usageWithoutContext.kt	skip	LANGUAGE	
-tests/contextParameters/declarationAndUsages/usageWithoutContextForMultipleParameters.kt	skip	LANGUAGE	
-tests/contextParameters/declarationAndUsages/valVarOnContextParameter.kt	skip	LANGUAGE	
-tests/contextParameters/declarationAndUsages/visibilityOfContextTypeOnFunction.kt	skip	LANGUAGE	
-tests/contextParameters/declarationAndUsages/visibilityOfContextTypeOnProperty.kt	skip	LANGUAGE	
-tests/contextParameters/declarationAndUsages/withNestedContext.kt	skip	LANGUAGE	
+tests/contextParameters/contextualInvokeWithIncorrectNamedArgument.kt	rejects invalid	on an expected line	
+tests/contextParameters/contextualLambdaWithExplicitParameterType.kt	rejects valid	no context argument for '_' found	contextualLambdaWithExplicitParameterType.kt:16: no context argument for 'context: A' found
+tests/contextParameters/contextualLateinit.kt	rejects invalid	on an expected line	
+tests/contextParameters/declarationAndUsages/annotationOnTypeWithContext.kt	accepts valid		
+tests/contextParameters/declarationAndUsages/annotationTargetInContext.kt	accepts invalid	WRONG_ANNOTATION_TARGET	annotationTargetInContext.kt:22: WRONG_ANNOTATION_TARGET
+tests/contextParameters/declarationAndUsages/anonymousFunctionContextWithoutType.kt	rejects invalid	on an expected line	
+tests/contextParameters/declarationAndUsages/anonymousFunctionWithWrongShape.kt	rejects invalid	on an expected line	
+tests/contextParameters/declarationAndUsages/classMembersWithContext.kt	accepts valid		
+tests/contextParameters/declarationAndUsages/contextInCompanionObject.kt	rejects invalid	on an expected line	
+tests/contextParameters/declarationAndUsages/contextInLocalFunction.kt	accepts valid		
+tests/contextParameters/declarationAndUsages/contextInLocalFunctionResolution.kt	rejects invalid	on an expected line	
+tests/contextParameters/declarationAndUsages/contextOnGetterSetter.kt	rejects invalid	on an expected line	
+tests/contextParameters/declarationAndUsages/contextOrderWithAnnotation.kt	accepts valid		
+tests/contextParameters/declarationAndUsages/contextParameterIsNotInlined.kt	accepts valid		
+tests/contextParameters/declarationAndUsages/contextParameterToDefaultArgument.kt	accepts valid		
+tests/contextParameters/declarationAndUsages/contextWithAnnotation.kt	accepts valid		
+tests/contextParameters/declarationAndUsages/contextualAnonymousFunction.kt	accepts valid		
+tests/contextParameters/declarationAndUsages/emptyContextName.kt	rejects invalid	on an expected line	
+tests/contextParameters/declarationAndUsages/emptyListOfContextParameters.kt	rejects invalid	on an expected line	
+tests/contextParameters/declarationAndUsages/funWithContextWithTypeParameter.kt	rejects invalid	on an expected line	
+tests/contextParameters/declarationAndUsages/genericContextAmbiguity.kt	accepts valid		
+tests/contextParameters/declarationAndUsages/inFunctionDeclaration.kt	accepts valid		
+tests/contextParameters/declarationAndUsages/inFunctionalType.kt	rejects invalid	on an expected line	
+tests/contextParameters/declarationAndUsages/inPropertyDeclaration.kt	accepts valid		
+tests/contextParameters/declarationAndUsages/initializerInProperty.kt	rejects invalid	elsewhere	
+tests/contextParameters/declarationAndUsages/inlineForTypeWithContext.kt	rejects invalid	elsewhere	
+tests/contextParameters/declarationAndUsages/memberUsageFromContextScope.kt	rejects invalid	on an expected line	
+tests/contextParameters/declarationAndUsages/moreThenOneContext.kt	accepts valid		
+tests/contextParameters/declarationAndUsages/multipleContextsWithTheSameType.kt	rejects invalid	on an expected line	
+tests/contextParameters/declarationAndUsages/nameClashes.kt	rejects invalid	on an expected line	
+tests/contextParameters/declarationAndUsages/onClassifierDeclaration.kt	rejects invalid	on an expected line	
+tests/contextParameters/declarationAndUsages/onConstructor.kt	rejects invalid	on an expected line	
+tests/contextParameters/declarationAndUsages/parameterModifiersOnContextParameter.kt	rejects invalid	on an expected line	
+tests/contextParameters/declarationAndUsages/parameterType.kt	skip	Java sources	
+tests/contextParameters/declarationAndUsages/parameterTypeWithContext.kt	accepts valid		
+tests/contextParameters/declarationAndUsages/parameterWithDefault.kt	rejects invalid	on an expected line	
+tests/contextParameters/declarationAndUsages/propertyWithContextAndContextType.kt	accepts valid		
+tests/contextParameters/declarationAndUsages/propertyWithContextWithTypeParameter.kt	rejects invalid	on an expected line	
+tests/contextParameters/declarationAndUsages/theSameContextAndDispatchReceiver.kt	accepts valid		
+tests/contextParameters/declarationAndUsages/typeWithContextWithTypeParameter.kt	accepts valid		
+tests/contextParameters/declarationAndUsages/typealiasToContextFunctionType.kt	accepts valid		
+tests/contextParameters/declarationAndUsages/usageOfTypeWithContext.kt	accepts valid		
+tests/contextParameters/declarationAndUsages/usageWithoutContext.kt	rejects invalid	on an expected line	
+tests/contextParameters/declarationAndUsages/usageWithoutContextForMultipleParameters.kt	rejects invalid	on an expected line	
+tests/contextParameters/declarationAndUsages/valVarOnContextParameter.kt	rejects invalid	on an expected line	
+tests/contextParameters/declarationAndUsages/visibilityOfContextTypeOnFunction.kt	accepts invalid	EXPOSED_PARAMETER_TYPE; INVISIBLE_REFERENCE	visibilityOfContextTypeOnFunction.kt:15: EXPOSED_PARAMETER_TYPE
+tests/contextParameters/declarationAndUsages/visibilityOfContextTypeOnProperty.kt	accepts invalid	EXPOSED_PARAMETER_TYPE	visibilityOfContextTypeOnProperty.kt:15: EXPOSED_PARAMETER_TYPE
+tests/contextParameters/declarationAndUsages/withNestedContext.kt	rejects invalid	on an expected line	
 tests/contextParameters/deeplyGenericTypeCheckWithMaxTypeDepth.kt	skip	LANGUAGE	
 tests/contextParameters/deeplyGenericTypeCheckWithoutMaxTypeDepth.kt	skip	LANGUAGE	
 tests/contextParameters/deeplyGenericTypeMismatch.kt	skip	LANGUAGE	
-tests/contextParameters/diagnostics/ambigousContext.kt	skip	LANGUAGE	
-tests/contextParameters/diagnostics/anonymousFunctionsWithModifiers.kt	skip	LANGUAGE	
-tests/contextParameters/diagnostics/contextParameterNameChanged.kt	skip	LANGUAGE	
-tests/contextParameters/diagnostics/contextParameterOnPackage.kt	skip	LANGUAGE	
+tests/contextParameters/diagnostics/ambigousContext.kt	rejects invalid	on an expected line	
+tests/contextParameters/diagnostics/anonymousFunctionsWithModifiers.kt	rejects invalid	on an expected line	
+tests/contextParameters/diagnostics/contextParameterNameChanged.kt	accepts valid		
+tests/contextParameters/diagnostics/contextParameterOnPackage.kt	rejects invalid	on an expected line	
 tests/contextParameters/diagnostics/contextParameterSyntaxWithoutLanguageFeature.kt	skip	LANGUAGE	
-tests/contextParameters/diagnostics/coroutineContextIsReserved.kt	skip	LANGUAGE	
-tests/contextParameters/diagnostics/danglingContextParameter.kt	skip	LANGUAGE	
-tests/contextParameters/diagnostics/danglingContextParameterAndAnnotations.kt	skip	LANGUAGE	
-tests/contextParameters/diagnostics/dispatchReceiverShadowed.kt	skip	LANGUAGE	
-tests/contextParameters/diagnostics/extensionShadowedWithContextParameters.kt	skip	LANGUAGE	
-tests/contextParameters/diagnostics/inapplicableModifier.kt	skip	LANGUAGE	
-tests/contextParameters/diagnostics/multipleContextParameterLists.kt	skip	LANGUAGE	
-tests/contextParameters/diagnostics/multipleMissingContextArguments.kt	skip	LANGUAGE	
-tests/contextParameters/diagnostics/noContextArgument.kt	skip	LANGUAGE	
-tests/contextParameters/diagnostics/receiverShadowed.kt	skip	LANGUAGE	
-tests/contextParameters/diagnostics/receiverShadowedMemberExtension.kt	skip	LANGUAGE	
-tests/contextParameters/diagnostics/receiverShadowedSubtype.kt	skip	LANGUAGE	
-tests/contextParameters/diagnostics/renderingOfUnnamedContextParameter.kt	skip	LANGUAGE	
-tests/contextParameters/diagnostics/subtyping.kt	skip	LANGUAGE	
+tests/contextParameters/diagnostics/coroutineContextIsReserved.kt	rejects invalid	on an expected line	
+tests/contextParameters/diagnostics/danglingContextParameter.kt	rejects invalid	on an expected line	
+tests/contextParameters/diagnostics/danglingContextParameterAndAnnotations.kt	rejects invalid	on an expected line	
+tests/contextParameters/diagnostics/dispatchReceiverShadowed.kt	rejects invalid	on an expected line	
+tests/contextParameters/diagnostics/extensionShadowedWithContextParameters.kt	accepts valid		
+tests/contextParameters/diagnostics/inapplicableModifier.kt	rejects invalid	on an expected line	
+tests/contextParameters/diagnostics/multipleContextParameterLists.kt	rejects invalid	on an expected line	
+tests/contextParameters/diagnostics/multipleMissingContextArguments.kt	rejects invalid	on an expected line	
+tests/contextParameters/diagnostics/noContextArgument.kt	rejects invalid	on an expected line	
+tests/contextParameters/diagnostics/receiverShadowed.kt	rejects invalid	on an expected line	
+tests/contextParameters/diagnostics/receiverShadowedMemberExtension.kt	rejects invalid	on an expected line	
+tests/contextParameters/diagnostics/receiverShadowedSubtype.kt	rejects invalid	on an expected line	
+tests/contextParameters/diagnostics/renderingOfUnnamedContextParameter.kt	accepts valid		
+tests/contextParameters/diagnostics/subtyping.kt	accepts valid		
 tests/contextParameters/diagnostics/unsupportedContextParameters.kt	skip	LANGUAGE	
-tests/contextParameters/diagnostics/varianceConflict.kt	skip	LANGUAGE	
-tests/contextParameters/dslMarker.kt	skip	LANGUAGE	
-tests/contextParameters/dslMarker/dslMarkerOnContextType.kt	skip	LANGUAGE	
-tests/contextParameters/dslMarker/dslMarkerOnFunctionType.kt	skip	LANGUAGE	
-tests/contextParameters/dslMarker/multipleDslMarkers.kt	skip	LANGUAGE	
+tests/contextParameters/diagnostics/varianceConflict.kt	rejects invalid	on an expected line	
+tests/contextParameters/dslMarker.kt	rejects invalid	on an expected line	
+tests/contextParameters/dslMarker/dslMarkerOnContextType.kt	rejects invalid	on an expected line	
+tests/contextParameters/dslMarker/dslMarkerOnFunctionType.kt	rejects invalid	on an expected line	
+tests/contextParameters/dslMarker/multipleDslMarkers.kt	rejects invalid	on an expected line	
 tests/contextParameters/expectActualMatch.kt	skip	LANGUAGE	
 tests/contextParameters/expectActualMismatch.kt	skip	LANGUAGE	
 tests/contextParameters/explicit/anonymousFunctions.kt	skip	LANGUAGE	
@@ -1671,16 +1671,16 @@ tests/contextParameters/explicit/suspendConversion.kt	skip	LANGUAGE
 tests/contextParameters/explicit/trailingLambda.kt	skip	LANGUAGE	
 tests/contextParameters/explicit/unnamed.kt	skip	LANGUAGE	
 tests/contextParameters/explicit/vararg.kt	skip	LANGUAGE	
-tests/contextParameters/falsePositiveCausedByForkPoint.kt	skip	LANGUAGE	
-tests/contextParameters/functionTypeWithNamedContextParametersEnabled.kt	skip	LANGUAGE	
-tests/contextParameters/inaccessibleReceiver.kt	skip	LANGUAGE	
-tests/contextParameters/inference/noInfer/MismatchingClosestImplicitValue.kt	skip	LANGUAGE	
-tests/contextParameters/inference/noInfer/MultipleClosestImplicitValues.kt	skip	LANGUAGE	
-tests/contextParameters/inferringContextOfType.kt	skip	LANGUAGE	
-tests/contextParameters/inline.kt	skip	LANGUAGE	
-tests/contextParameters/invoke.kt	skip	LANGUAGE	
+tests/contextParameters/falsePositiveCausedByForkPoint.kt	accepts valid		
+tests/contextParameters/functionTypeWithNamedContextParametersEnabled.kt	rejects invalid	on an expected line	
+tests/contextParameters/inaccessibleReceiver.kt	rejects invalid	on an expected line	
+tests/contextParameters/inference/noInfer/MismatchingClosestImplicitValue.kt	accepts valid		
+tests/contextParameters/inference/noInfer/MultipleClosestImplicitValues.kt	accepts valid		
+tests/contextParameters/inferringContextOfType.kt	rejects invalid	on an expected line	
+tests/contextParameters/inline.kt	rejects invalid	on an expected line	
+tests/contextParameters/invoke.kt	rejects invalid	on an expected line	
 tests/contextParameters/invokeWithReceiverAgainstContextFunctionTypeContextDisabled.kt	skip	LANGUAGE	
-tests/contextParameters/localDeclsDisambiguation.kt	skip	LANGUAGE	
+tests/contextParameters/localDeclsDisambiguation.kt	accepts valid		
 tests/contextParameters/multiplatform/contextInFunctionAsAType.kt	skip	LANGUAGE	
 tests/contextParameters/multiplatform/contextInPropertyAsAType.kt	skip	LANGUAGE	
 tests/contextParameters/multiplatform/extensionFunWithContextInExpectActual.kt	skip	LANGUAGE	
@@ -1689,45 +1689,45 @@ tests/contextParameters/multiplatform/funWithContextInExpectActual.kt	skip	LANGU
 tests/contextParameters/multiplatform/memberWithAContext.kt	skip	LANGUAGE	
 tests/contextParameters/multiplatform/overloadWithContext.kt	skip	LANGUAGE	
 tests/contextParameters/multiplatform/propertyWithContextInExpectActual.kt	skip	LANGUAGE	
-tests/contextParameters/operators/baseOperatorsWithContext.kt	skip	LANGUAGE	
-tests/contextParameters/operators/infixOperator.kt	skip	LANGUAGE	
-tests/contextParameters/operators/infixOperatorOnTypeWithContext.kt	skip	LANGUAGE	
-tests/contextParameters/operators/invokeOnTypeWithContext.kt	skip	LANGUAGE	
-tests/contextParameters/overloadAmbiguity.kt	skip	LANGUAGE	
-tests/contextParameters/overloads/IdenticalDeclarations.kt	skip	LANGUAGE	
-tests/contextParameters/overloads/OverloadingByName.kt	skip	LANGUAGE	
-tests/contextParameters/overloads/OverloadingByNumber.kt	skip	LANGUAGE	
-tests/contextParameters/overloads/OverloadingByOrder.kt	skip	LANGUAGE	
-tests/contextParameters/overloads/OverloadingByPresence.kt	skip	LANGUAGE	
-tests/contextParameters/overloads/OverloadingBySubType.kt	skip	LANGUAGE	
-tests/contextParameters/overloads/OverloadingBySubset.kt	skip	LANGUAGE	
-tests/contextParameters/overloads/OverloadingByTypeAlias.kt	skip	LANGUAGE	
-tests/contextParameters/overloads/OverloadingByUnrelatedType.kt	skip	LANGUAGE	
-tests/contextParameters/overloads/constraintInteractionBetweenContextAndParameter.kt	skip	LANGUAGE	
-tests/contextParameters/overrides/KJKHierarchyWithOverride.kt	skip	LANGUAGE	
-tests/contextParameters/overrides/baseKotlinJavaOverride.kt	skip	LANGUAGE	
-tests/contextParameters/overrides/baseKotlinJavaOverrideWithExtension.kt	skip	LANGUAGE	
-tests/contextParameters/overrides/baseOverride.kt	skip	LANGUAGE	
-tests/contextParameters/overrides/genericPropertyOverride.kt	skip	LANGUAGE	
-tests/contextParameters/overrides/intersectionOverride.kt	skip	LANGUAGE	
-tests/contextParameters/overrides/intersectionOverrideWithContextTypeAndJava.kt	skip	LANGUAGE	
-tests/contextParameters/overrides/intersectionOverrideWithExtensionAndValue.kt	skip	LANGUAGE	
-tests/contextParameters/overrides/intersectionOverrideWithJava.kt	skip	LANGUAGE	
-tests/contextParameters/overrides/intersectionWithTypeParameter.kt	skip	LANGUAGE	
-tests/contextParameters/overrides/kjkContextParameterOverridesValueParameter.kt	skip	LANGUAGE	
-tests/contextParameters/overrides/nameCanBeChangedInOverride.kt	skip	LANGUAGE	
-tests/contextParameters/overrides/orderAndTypeOfContextsInOverride.kt	skip	LANGUAGE	
-tests/contextParameters/overrides/overrideWithFlexibleBaseReceiver.kt	skip	LANGUAGE	
-tests/contextParameters/overrides/substitutionOverride.kt	skip	LANGUAGE	
-tests/contextParameters/overrides/varPropertyOverride.kt	skip	LANGUAGE	
-tests/contextParameters/overrides/withContextInType.kt	skip	LANGUAGE	
-tests/contextParameters/receiverShadowed2.kt	skip	LANGUAGE	
-tests/contextParameters/smartcast/onContextParameters.kt	skip	LANGUAGE	
-tests/contextParameters/smartcast/onPropertyWithContext.kt	skip	LANGUAGE	
-tests/contextParameters/smartcast/onTypeWithContext.kt	skip	LANGUAGE	
-tests/contextParameters/smartcast/withCallInPlaceContract.kt	skip	LANGUAGE	
-tests/contextParameters/smartcast/withImpliesContract.kt	skip	LANGUAGE	
-tests/contextParameters/smoke.kt	skip	LANGUAGE	
+tests/contextParameters/operators/baseOperatorsWithContext.kt	rejects invalid	on an expected line	
+tests/contextParameters/operators/infixOperator.kt	rejects invalid	on an expected line	
+tests/contextParameters/operators/infixOperatorOnTypeWithContext.kt	rejects invalid	on an expected line	
+tests/contextParameters/operators/invokeOnTypeWithContext.kt	rejects invalid	on an expected line	
+tests/contextParameters/overloadAmbiguity.kt	rejects invalid	on an expected line	
+tests/contextParameters/overloads/IdenticalDeclarations.kt	rejects invalid	on an expected line	
+tests/contextParameters/overloads/OverloadingByName.kt	rejects invalid	on an expected line	
+tests/contextParameters/overloads/OverloadingByNumber.kt	accepts valid		
+tests/contextParameters/overloads/OverloadingByOrder.kt	rejects invalid	on an expected line	
+tests/contextParameters/overloads/OverloadingByPresence.kt	accepts valid		
+tests/contextParameters/overloads/OverloadingBySubType.kt	rejects invalid	on an expected line	
+tests/contextParameters/overloads/OverloadingBySubset.kt	accepts valid		
+tests/contextParameters/overloads/OverloadingByTypeAlias.kt	rejects invalid	on an expected line	
+tests/contextParameters/overloads/OverloadingByUnrelatedType.kt	accepts valid		
+tests/contextParameters/overloads/constraintInteractionBetweenContextAndParameter.kt	accepts valid		
+tests/contextParameters/overrides/KJKHierarchyWithOverride.kt	skip	Java sources	
+tests/contextParameters/overrides/baseKotlinJavaOverride.kt	skip	Java sources	
+tests/contextParameters/overrides/baseKotlinJavaOverrideWithExtension.kt	skip	Java sources	
+tests/contextParameters/overrides/baseOverride.kt	rejects invalid	on an expected line	
+tests/contextParameters/overrides/genericPropertyOverride.kt	accepts valid		
+tests/contextParameters/overrides/intersectionOverride.kt	rejects invalid	on an expected line	
+tests/contextParameters/overrides/intersectionOverrideWithContextTypeAndJava.kt	skip	Java sources	
+tests/contextParameters/overrides/intersectionOverrideWithExtensionAndValue.kt	accepts valid		
+tests/contextParameters/overrides/intersectionOverrideWithJava.kt	skip	Java sources	
+tests/contextParameters/overrides/intersectionWithTypeParameter.kt	accepts valid		
+tests/contextParameters/overrides/kjkContextParameterOverridesValueParameter.kt	skip	Java sources	
+tests/contextParameters/overrides/nameCanBeChangedInOverride.kt	accepts valid		
+tests/contextParameters/overrides/orderAndTypeOfContextsInOverride.kt	rejects invalid	on an expected line	
+tests/contextParameters/overrides/overrideWithFlexibleBaseReceiver.kt	skip	Java sources	
+tests/contextParameters/overrides/substitutionOverride.kt	accepts valid		
+tests/contextParameters/overrides/varPropertyOverride.kt	accepts valid		
+tests/contextParameters/overrides/withContextInType.kt	accepts valid		
+tests/contextParameters/receiverShadowed2.kt	rejects invalid	on an expected line	
+tests/contextParameters/smartcast/onContextParameters.kt	rejects invalid	on an expected line	
+tests/contextParameters/smartcast/onPropertyWithContext.kt	rejects invalid	on an expected line	
+tests/contextParameters/smartcast/onTypeWithContext.kt	accepts valid		
+tests/contextParameters/smartcast/withCallInPlaceContract.kt	rejects invalid	on an expected line	
+tests/contextParameters/smartcast/withImpliesContract.kt	accepts valid		
+tests/contextParameters/smoke.kt	rejects invalid	on an expected line	
 tests/contextParameters/specificity/baseSpecificity.kt	skip	LANGUAGE	
 tests/contextParameters/specificity/callableReference.kt	skip	LANGUAGE	
 tests/contextParameters/specificity/generics.kt	skip	LANGUAGE	
@@ -1737,7 +1737,7 @@ tests/contextParameters/specificity/overrides.kt	skip	LANGUAGE
 tests/contextParameters/specificity/specificityInExpectAndActual.kt	skip	LANGUAGE	
 tests/contextParameters/specificity/subtyping.kt	skip	LANGUAGE	
 tests/contextParameters/specificity/transaction.kt	skip	LANGUAGE	
-tests/contextParameters/upperBoundViolatedDiagnosticInContextualFunctionType.kt	skip	LANGUAGE	
+tests/contextParameters/upperBoundViolatedDiagnosticInContextualFunctionType.kt	rejects invalid	on an expected line	
 tests/contextSensitiveResolutionUsingExpectedType/ambiguity/companion.kt	skip	LANGUAGE	
 tests/contextSensitiveResolutionUsingExpectedType/ambiguity/local.kt	skip	LANGUAGE	
 tests/contextSensitiveResolutionUsingExpectedType/ambiguity/samePackage.kt	skip	LANGUAGE	
@@ -2189,7 +2189,7 @@ tests/crv/otherAnnotations/jetbrainsAnnotations.kt	skip	Java sources
 tests/crv/otherAnnotations/jooq.kt	skip	Java sources	
 tests/crv/otherAnnotations/spotbugs.kt	skip	Java sources	
 tests/crv/otherAnnotations/springframework.kt	skip	Java sources	
-tests/crv/receiverInFunctionalCall.kt	skip	LANGUAGE	
+tests/crv/receiverInFunctionalCall.kt	skip	return value checker (crv/, crvFull/)	
 tests/crv/scopes.kt	skip	return value checker (crv/, crvFull/)	
 tests/crv/syntheticMembers.kt	skip	return value checker (crv/, crvFull/)	
 tests/crv/unresolveds.kt	skip	return value checker (crv/, crvFull/)	
@@ -2748,7 +2748,7 @@ tests/deprecated/kt82555/deprecatedHiddenCallableReferenceLHS.kt	skip	LANGUAGE_F
 tests/deprecated/kt82555/deprecatedHiddenCompanionObject.kt	skip	LANGUAGE_FEATURE_TOGGLED	
 tests/deprecated/kt82555/deprecatedHiddenCompanionObjectReferencedByTypealias.kt	skip	LANGUAGE	
 tests/deprecated/kt82555/deprecatedHiddenGetClassLHS.kt	skip	LANGUAGE_FEATURE_TOGGLED	
-tests/deprecated/kt82555/deprecatedHiddenObjectVsContextProperty.kt	skip	LANGUAGE	
+tests/deprecated/kt82555/deprecatedHiddenObjectVsContextProperty.kt	skip	LANGUAGE_FEATURE_TOGGLED	
 tests/deprecated/kt82555/deprecatedHiddenObjectVsExtensionProperty.kt	skip	LANGUAGE_FEATURE_TOGGLED	
 tests/deprecated/kt82555/deprecatedHiddenObjectVsImported.kt	skip	LANGUAGE_FEATURE_TOGGLED	
 tests/deprecated/kt82555/deprecatedHiddenObjectVsStarImported.kt	skip	LANGUAGE_FEATURE_TOGGLED	
@@ -2757,7 +2757,7 @@ tests/deprecated/kt82555/deprecatedHiddenTypealiasedUsedAsQualifier.kt	skip	LANG
 tests/deprecated/kt82555/deprecatedHiddenUsedAsQualifier.kt	skip	LANGUAGE_FEATURE_TOGGLED	
 tests/deprecated/kt82555/enumClassWithDeprecatedHiddenCompanionAndValueOfCall.kt	skip	LANGUAGE_FEATURE_TOGGLED	
 tests/deprecated/kt82555/getClassWithDeprecatedCompanion.kt	skip	LANGUAGE_FEATURE_TOGGLED	
-tests/deprecated/kt82555/hiddenCompanionInClassVsContextProperty.kt	skip	LANGUAGE	
+tests/deprecated/kt82555/hiddenCompanionInClassVsContextProperty.kt	skip	LANGUAGE_FEATURE_TOGGLED	
 tests/deprecated/kt82555/nestedClassesChainWithDeprecatedCompanion.kt	skip	LANGUAGE_FEATURE_TOGGLED	
 tests/deprecated/kt82555/nestedWithSinceKotlinCompanionVsTopLevel.kt	skip	API_VERSION	
 tests/deprecated/kt82555/propertyInCompanionVsDeprecatedClassWithHiddenCompanion.kt	skip	LANGUAGE_FEATURE_TOGGLED	
@@ -2888,7 +2888,7 @@ tests/diagnostics/conflictingOverloads.kt	parse/unsupported	destructuring declar
 tests/diagnostics/conflictingOverloads2.kt	accepts valid		
 tests/diagnostics/conflictingProjection.kt	rejects invalid	on an expected line	
 tests/diagnostics/constructorInInterface.kt	rejects invalid	on an expected line	
-tests/diagnostics/contextParameterOnPrimaryConstructor.kt	skip	LANGUAGE	
+tests/diagnostics/contextParameterOnPrimaryConstructor.kt	rejects invalid	on an expected line	
 tests/diagnostics/cyclicConstructorDelegationCall.kt	rejects invalid	on an expected line	
 tests/diagnostics/delegationInInterface.kt	rejects invalid	on an expected line	
 tests/diagnostics/delegationSuperCallInEnumConstructor.kt	rejects invalid	on an expected line	
@@ -2909,7 +2909,7 @@ tests/diagnostics/javaInheritsPrivateKtClassEnabled.kt	skip	LANGUAGE
 tests/diagnostics/localAnnotationClass.kt	rejects invalid	on an expected line	
 tests/diagnostics/localEntitytNotAllowed.kt	rejects invalid	on an expected line	
 tests/diagnostics/manyCompanionObjects.kt	rejects invalid	on an expected line	
-tests/diagnostics/methodOfAnyImplementedInInterface.kt	skip	LANGUAGE	
+tests/diagnostics/methodOfAnyImplementedInInterface.kt	rejects invalid	on an expected line	
 tests/diagnostics/nonConstValInAnnotationArgument.kt	accepts invalid	NON_CONST_VAL_USED_IN_CONSTANT_EXPRESSION	nonConstValInAnnotationArgument.kt:9: NON_CONST_VAL_USED_IN_CONSTANT_EXPRESSION
 tests/diagnostics/notASupertype.kt	rejects invalid	on an expected line	
 tests/diagnostics/operatorRenamedOnImportProvideDelegate.kt	accepts valid		
@@ -3286,7 +3286,7 @@ tests/expresssions/parenthesizedSafeCallsAndOperators.kt	skip	LANGUAGE
 tests/expresssions/plusWithAssignSmartCast.kt	rejects valid	operator '_' cannot be applied to String? and String	plusWithAssignSmartCast.kt:9: operator '+=' cannot be applied to String? and String
 tests/expresssions/privateObjectLiteral.kt	rejects invalid	on an expected line	
 tests/expresssions/privateVisibility.kt	rejects invalid	on an expected line	
-tests/expresssions/propertyAccessWithExplicitTypeArguments.kt	skip	LANGUAGE	
+tests/expresssions/propertyAccessWithExplicitTypeArguments.kt	rejects invalid	on an expected line	
 tests/expresssions/protectedVisibility.kt	accepts invalid	INVISIBLE_REFERENCE; SUBCLASS_CANT_CALL_COMPANION_PROTECTED_NON_STATIC	protectedVisibility.kt:35: INVISIBLE_REFERENCE
 tests/expresssions/qualifiedExpressions.kt	accepts valid		
 tests/expresssions/qualifierPriority.kt	accepts valid		
@@ -3302,16 +3302,16 @@ tests/expresssions/vararg.kt	accepts valid
 tests/expresssions/when.kt	accepts valid		
 tests/extension.kt	accepts valid		
 tests/extensionShadowedByHiddenMember.kt	accepts valid		
-tests/extensionShadowedByMember.kt	skip	LANGUAGE	
+tests/extensionShadowedByMember.kt	skip	Java sources	
 tests/extensionShadowedByMemberExtensionFalsePositive.kt	accepts valid		
-tests/extensionShadowedByMemberExtensionFalsePositiveContext.kt	skip	LANGUAGE	
+tests/extensionShadowedByMemberExtensionFalsePositiveContext.kt	accepts valid		
 tests/extensionShadowedByMemberOverride.kt	accepts valid		
 tests/extensionShadowedByMemberWithMpp.kt	skip	LANGUAGE	
 tests/extensions/ExtensionFunctions.kt	rejects invalid	on an expected line	
 tests/extensions/ExtensionsCalledOnSuper.kt	rejects invalid	on an expected line	
 tests/extensions/GenericIterator.kt	rejects valid	not nullable value required to call an '_' method on for-loop range	GenericIterator.kt:33: not nullable value required to call an 'iterator()' method on for-loop range
 tests/extensions/GenericIterator2.kt	rejects valid	for-loop range must have an '_' method	GenericIterator2.kt:13: for-loop range must have an 'iterator()' method
-tests/extensions/ViolatedUpperBoundInExtensionReceiver.kt	skip	LANGUAGE	
+tests/extensions/ViolatedUpperBoundInExtensionReceiver.kt	rejects invalid	on an expected line	
 tests/extensions/classObject.kt	rejects invalid	on an expected line	
 tests/extensions/extensionMemberInClassObject.kt	rejects invalid	on an expected line	
 tests/extensions/extensionPropertyVsParameter.kt	accepts valid		
@@ -4101,7 +4101,7 @@ tests/inference/completion/postponedArgumentsAnalysis/wrongVariableFixationOrder
 tests/inference/completion/transitiveConstraint.kt	accepts valid		
 tests/inference/completion/withExact.kt	rejects invalid	on an expected line	
 tests/inference/completionOfMultipleLambdas.kt	rejects invalid	on an expected line	
-tests/inference/complexInferenceOnParentizedExpression.kt	rejects valid	unresolved reference: _	complexInferenceOnParentizedExpression.kt:26: unresolved reference: impl
+tests/inference/complexInferenceOnParentizedExpression.kt	accepts valid		
 tests/inference/conflictedExpectedType.kt	rejects invalid	on an expected line	
 tests/inference/conflictingSubstitutions.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	conflictingSubstitutions.kt:11: type mismatch: inferred type is ArrayList<String> but MutableList<Any?> was expected
 tests/inference/constraints/approximationWithDefNotNullInInvPositionDuringInference.kt	accepts valid		
@@ -4334,7 +4334,7 @@ tests/inference/lambdasReturnsShareCSFeatureDisabled.kt	skip	LANGUAGE
 tests/inference/lambdasWithExplicitParametersViaReceivers.kt	rejects invalid	on an expected line	
 tests/inference/lambdasWithExplicitParametersViaReceiversFeatureDisabled.kt	skip	LANGUAGE	
 tests/inference/lambdasWithExplicitParametersViaReceiversFeatureEnabled.kt	skip	LANGUAGE	
-tests/inference/lambdasWithExplicitParametersWithContexts.kt	skip	LANGUAGE	
+tests/inference/lambdasWithExplicitParametersWithContexts.kt	rejects invalid	on an expected line	
 tests/inference/listConstructor.kt	rejects valid	unresolved import: _	listConstructor.kt:7: unresolved import: checkSubtype
 tests/inference/localFunctionInsideIfBlock.kt	accepts valid		
 tests/inference/mapFunction.kt	rejects invalid	on an expected line	
@@ -4426,7 +4426,7 @@ tests/inference/pcla/callableReferenceInsideInvokeCall.kt	accepts valid
 tests/inference/pcla/changingResolveIfDontUseBuilderInference.kt	rejects invalid	on an expected line	
 tests/inference/pcla/considerContractsOfIncompleteCalls.kt	accepts valid		
 tests/inference/pcla/constraints/violating.kt	rejects invalid	elsewhere	
-tests/inference/pcla/contextParameters.kt	skip	LANGUAGE	
+tests/inference/pcla/contextParameters.kt	accepts valid		
 tests/inference/pcla/csForks/postponingForksNecessary.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	postponingForksNecessary.kt:25: cannot infer type for type parameter 'S'. Specify it explicitly.
 tests/inference/pcla/csForks/postponingForksNecessaryWithLambda.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	postponingForksNecessaryWithLambda.kt:25: cannot infer type for type parameter 'S'. Specify it explicitly.
 tests/inference/pcla/csForks/relatedToOuter.kt	rejects invalid	on an expected line	
@@ -4912,7 +4912,7 @@ tests/inference/underscoredInEnumMap.kt	rejects valid	unresolved or unsupported 
 tests/inference/underscoredTypeArgumentInErroneousCall.kt	rejects invalid	on an expected line	
 tests/inference/underscoredTypeArgumentInTypeAliasedConstructor.kt	rejects valid	unresolved or unsupported type: _	underscoredTypeArgumentInTypeAliasedConstructor.kt:9: unresolved or unsupported type: _
 tests/inference/underscoredTypeArgumentInTypeAliasedSamConstructor.kt	rejects valid	unresolved or unsupported type: _	underscoredTypeArgumentInTypeAliasedSamConstructor.kt:11: unresolved or unsupported type: _
-tests/inference/underscoredTypeInForbiddenPositions.kt	skip	LANGUAGE	
+tests/inference/underscoredTypeInForbiddenPositions.kt	rejects invalid	on an expected line	
 tests/inference/unitUpperBound.kt	accepts valid		
 tests/inference/unsoundness1.kt	rejects invalid	on an expected line	
 tests/inference/unsoundness2.kt	rejects valid	type argument is not within its bounds: type parameter '_' must be subtype of '_', but actual: _	unsoundness2.kt:11: type argument is not within its bounds: type parameter 'C' must be subtype of 'U', but actual: 'T'
@@ -5651,13 +5651,13 @@ tests/jvm/classpath/classFromJdkInLibrary.kt	skip	Java sources
 tests/jvm/classpath/dependencyOnItself.kt	accepts valid		
 tests/jvm/classpath/prohibitNestedClassesByDollarName.kt	skip	Java sources	
 tests/jvm/classpath/sameLibraryTwiceInClasspath.kt	rejects valid	unresolved reference: _	source.kt:8: unresolved reference: Inner
-tests/jvm/contextParameters/extensionAndContextParameters.kt	skip	LANGUAGE	
-tests/jvm/contextParameters/intersectionContextValueJava.kt	skip	LANGUAGE	
-tests/jvm/contextParameters/intersectionExtensionValueContext.kt	skip	LANGUAGE	
-tests/jvm/contextParameters/intersectionExtensionValueContextJava.kt	skip	LANGUAGE	
-tests/jvm/contextParameters/kt59590WithContextParameters.kt	skip	LANGUAGE	
-tests/jvm/contextParameters/valueAndContextParameter.kt	skip	LANGUAGE	
-tests/jvm/contextParameters/valueAndContextParametersWithJava.kt	skip	LANGUAGE	
+tests/jvm/contextParameters/extensionAndContextParameters.kt	rejects invalid	on an expected line	
+tests/jvm/contextParameters/intersectionContextValueJava.kt	skip	Java sources	
+tests/jvm/contextParameters/intersectionExtensionValueContext.kt	accepts invalid	CONFLICTING_INHERITED_JVM_DECLARATIONS	intersectionExtensionValueContext.kt:23: CONFLICTING_INHERITED_JVM_DECLARATIONS
+tests/jvm/contextParameters/intersectionExtensionValueContextJava.kt	skip	Java sources	
+tests/jvm/contextParameters/kt59590WithContextParameters.kt	skip	IGNORE_FIR_DIAGNOSTICS	
+tests/jvm/contextParameters/valueAndContextParameter.kt	rejects invalid	on an expected line	
+tests/jvm/contextParameters/valueAndContextParametersWithJava.kt	skip	Java sources	
 tests/jvm/dataClassNonPublicConstructor/dataClassInternalConstructorUsageWillBecomeInaccessible.kt	accepts invalid	DATA_CLASS_INVISIBLE_COPY_USAGE_ERROR	main.kt:2: DATA_CLASS_INVISIBLE_COPY_USAGE_ERROR
 tests/jvm/dataClassNonPublicConstructor/dataClassNonPublicConstructorIrrelevantCopyFunctions.kt	skip	LANGUAGE	
 tests/jvm/duplicateJvmSignature/accidentalOverrides/accidentalOverrideFromGrandparent.kt	accepts invalid	ACCIDENTAL_OVERRIDE	accidentalOverrideFromGrandparent.kt:13: ACCIDENTAL_OVERRIDE
@@ -5772,7 +5772,7 @@ tests/jvm/duplicateJvmSignature/valueClasses/functionsJvmSignaturesClashInlineCl
 tests/jvm/duplicateJvmSignature/vararg.kt	rejects invalid	on an expected line	
 tests/jvm/exposedPrivate/anonymousObjectSupertype.kt	accepts valid		
 tests/jvm/exposedPrivate/anonymousObjects.kt	skip	IGNORE_FIR_DIAGNOSTICS	
-tests/jvm/exposedPrivate/contextParameter.kt	skip	LANGUAGE	
+tests/jvm/exposedPrivate/contextParameter.kt	accepts invalid	PRIVATE_TYPE_USED_IN_NON_PRIVATE_INLINE_FUNCTION_ERROR	contextParameter.kt:12: PRIVATE_TYPE_USED_IN_NON_PRIVATE_INLINE_FUNCTION_ERROR
 tests/jvm/exposedPrivate/differentInstructions.kt	skip	IGNORE_FIR_DIAGNOSTICS	
 tests/jvm/exposedPrivate/effectivelyPrivate.kt	accepts valid		
 tests/jvm/exposedPrivate/extensionReceiver.kt	accepts invalid	PRIVATE_TYPE_USED_IN_NON_PRIVATE_INLINE_FUNCTION_ERROR	extensionReceiver.kt:11: PRIVATE_TYPE_USED_IN_NON_PRIVATE_INLINE_FUNCTION_ERROR
@@ -5914,7 +5914,7 @@ tests/localObject.kt	accepts valid
 tests/makeSureCastNeverSucceedsRequiresDfaWarningsFeature_Off.kt	skip	LANGUAGE	
 tests/makeSureCastNeverSucceedsRequiresDfaWarningsFeature_On.kt	skip	LANGUAGE	
 tests/mapStringIntAsDelegate.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	mapStringIntAsDelegate.kt:18: type mismatch: inferred type is Int but String was expected
-tests/mappingWithEmptyParameter.kt	skip	LANGUAGE	
+tests/mappingWithEmptyParameter.kt	rejects invalid	on an expected line	
 tests/metadata/exhaustiveExpectBoolean.kt	accepts valid		
 tests/missedTypeArgumentsInAnnotationCall.kt	rejects invalid	elsewhere	
 tests/missingAbstractSuperCall.kt	accepts invalid	ABSTRACT_SUPER_CALL	missingAbstractSuperCall.kt:20: ABSTRACT_SUPER_CALL
@@ -6103,7 +6103,7 @@ tests/multiplatform/actualAnnotationsNotMatchExpect/differentOrder.kt	skip	modul
 tests/multiplatform/actualAnnotationsNotMatchExpect/enumEntries.kt	skip	modules with friends or dependsOn	
 tests/multiplatform/actualAnnotationsNotMatchExpect/fakeOverrides.kt	skip	modules with friends or dependsOn	
 tests/multiplatform/actualAnnotationsNotMatchExpect/floatNumbersComparison.kt	skip	modules with friends or dependsOn	
-tests/multiplatform/actualAnnotationsNotMatchExpect/functionTypeContext.kt	skip	LANGUAGE	
+tests/multiplatform/actualAnnotationsNotMatchExpect/functionTypeContext.kt	skip	modules with friends or dependsOn	
 tests/multiplatform/actualAnnotationsNotMatchExpect/gettersAndSetters.kt	skip	modules with friends or dependsOn	
 tests/multiplatform/actualAnnotationsNotMatchExpect/intrinsicConstEvaluation.kt	skip	LANGUAGE	
 tests/multiplatform/actualAnnotationsNotMatchExpect/kclassArgWithExpectClass.kt	skip	modules with friends or dependsOn	
@@ -6133,7 +6133,7 @@ tests/multiplatform/actualClassifierMustHasTheSameMembersAsNonFinalExpectClassif
 tests/multiplatform/actualClassifierMustHasTheSameMembersAsNonFinalExpectClassifierChecker/actualizeFakeOverridePropertyToJavaMethod.kt	skip	Java sources	
 tests/multiplatform/actualClassifierMustHasTheSameMembersAsNonFinalExpectClassifierChecker/actualizePrimaryConstructorWithSecondaryConstructor.kt	skip	modules with friends or dependsOn	
 tests/multiplatform/actualClassifierMustHasTheSameMembersAsNonFinalExpectClassifierChecker/actualizeSecondaryConstructorWithPrimaryConstructor.kt	skip	modules with friends or dependsOn	
-tests/multiplatform/actualClassifierMustHasTheSameMembersAsNonFinalExpectClassifierChecker/changeClassTypeParameterNames.kt	skip	LANGUAGE	
+tests/multiplatform/actualClassifierMustHasTheSameMembersAsNonFinalExpectClassifierChecker/changeClassTypeParameterNames.kt	skip	modules with friends or dependsOn	
 tests/multiplatform/actualClassifierMustHasTheSameMembersAsNonFinalExpectClassifierChecker/changeFunctionTypeParameterNamesInOverride.kt	skip	modules with friends or dependsOn	
 tests/multiplatform/actualClassifierMustHasTheSameMembersAsNonFinalExpectClassifierChecker/changeLateinitInOverride.kt	skip	modules with friends or dependsOn	
 tests/multiplatform/actualClassifierMustHasTheSameMembersAsNonFinalExpectClassifierChecker/changeModalityFromAbstractToFinalInOverride.kt	skip	modules with friends or dependsOn	
@@ -6155,7 +6155,7 @@ tests/multiplatform/actualClassifierMustHasTheSameMembersAsNonFinalExpectClassif
 tests/multiplatform/actualClassifierMustHasTheSameMembersAsNonFinalExpectClassifierChecker/finalMethodIsActualizedByOpenMethod.kt	skip	modules with friends or dependsOn	
 tests/multiplatform/actualClassifierMustHasTheSameMembersAsNonFinalExpectClassifierChecker/flexibleTypesMatching.kt	skip	Java sources	
 tests/multiplatform/actualClassifierMustHasTheSameMembersAsNonFinalExpectClassifierChecker/injectClass.kt	skip	modules with friends or dependsOn	
-tests/multiplatform/actualClassifierMustHasTheSameMembersAsNonFinalExpectClassifierChecker/injectContextReceiverOverload.kt	skip	LANGUAGE	
+tests/multiplatform/actualClassifierMustHasTheSameMembersAsNonFinalExpectClassifierChecker/injectContextReceiverOverload.kt	skip	modules with friends or dependsOn	
 tests/multiplatform/actualClassifierMustHasTheSameMembersAsNonFinalExpectClassifierChecker/injectEmptySuperClass.kt	skip	modules with friends or dependsOn	
 tests/multiplatform/actualClassifierMustHasTheSameMembersAsNonFinalExpectClassifierChecker/injectExtensionReceiverOverload.kt	skip	modules with friends or dependsOn	
 tests/multiplatform/actualClassifierMustHasTheSameMembersAsNonFinalExpectClassifierChecker/injectGenericUpperBoundOverload.kt	skip	modules with friends or dependsOn	
@@ -6535,7 +6535,7 @@ tests/multiplatform/typealias/actualTypealiasToAnyFromInterface.kt	skip	LANGUAGE
 tests/multiplatform/typealias/actualTypealiasToAnyFromInterfaceMultiModule.kt	skip	LANGUAGE	
 tests/multiplatform/typealias/actualTypealiasToNothing.kt	skip	modules with friends or dependsOn	
 tests/multiplatform/typealias/actualTypealiasToNullableType.kt	skip	modules with friends or dependsOn	
-tests/multiplatform/valueClassWithExtraProperty.kt	skip	LANGUAGE	
+tests/multiplatform/valueClassWithExtraProperty.kt	skip	modules with friends or dependsOn	
 tests/multiplatform/valueClassWithPrivateConstructor.kt	skip	modules with friends or dependsOn	
 tests/multiplatform/varSetterVisibility.kt	skip	modules with friends or dependsOn	
 tests/multiplatform/widerVisibilityInActualClassifier.kt	skip	modules with friends or dependsOn	
@@ -6772,7 +6772,7 @@ tests/overload/RedeclarationThroughDestructuringOld.kt	skip	LANGUAGE
 tests/overload/SyntheticAndNotSynthetic.kt	accepts valid		
 tests/overload/TypeParameterMultipleBounds.kt	accepts invalid	CONFLICTING_OVERLOADS	TypeParameterMultipleBounds.kt:5: CONFLICTING_OVERLOADS
 tests/overload/UnsubstitutedJavaGenetics.kt	skip	Java sources	
-tests/overload/conflictingOverloadsWithContextParameters.kt	skip	LANGUAGE	
+tests/overload/conflictingOverloadsWithContextParameters.kt	accepts invalid	CONFLICTING_OVERLOADS	conflictingOverloadsWithContextParameters.kt:19: CONFLICTING_OVERLOADS
 tests/overload/defaultParameters.kt	rejects invalid	on an expected line	
 tests/overload/disambiguateByFailedAbstractClassCheck.kt	rejects invalid	on an expected line	
 tests/overload/disambiguateByNumberOfLambdaArgument.kt	accepts valid		
@@ -6879,7 +6879,7 @@ tests/override/clashesOnInheritance/supertypeOrder.kt	skip	Java sources
 tests/override/clashesOnInheritance/unrelatedInherited.kt	rejects invalid	on an expected line	
 tests/override/clashesOnInheritance/valTypeMismatch.kt	accepts invalid	PROPERTY_TYPE_MISMATCH_ON_INHERITANCE	valTypeMismatch.kt:18: PROPERTY_TYPE_MISMATCH_ON_INHERITANCE
 tests/override/clashesOnInheritance/varTypeMismatch.kt	accepts invalid	VAR_TYPE_MISMATCH_ON_INHERITANCE	varTypeMismatch.kt:18: VAR_TYPE_MISMATCH_ON_INHERITANCE
-tests/override/contextParameters.kt	skip	LANGUAGE	
+tests/override/contextParameters.kt	rejects invalid	on an expected line	
 tests/override/derivedClasses/Constructor.kt	accepts valid		
 tests/override/derivedClasses/DelegatedConstructor.kt	accepts valid		
 tests/override/derivedClasses/EnumValues.kt	accepts valid		
@@ -7374,7 +7374,7 @@ tests/recursiveTypeAlias.kt	rejects invalid	on an expected line
 tests/recursiveTypealiasWithProjection.kt	rejects invalid	on an expected line	
 tests/redeclarations/ClassRedeclarationInDifferentFiles.kt	rejects invalid	on an expected line	
 tests/redeclarations/ClassifierRedeclaresLibPackage.kt	skip	ALLOW_KOTLIN_PACKAGE	
-tests/redeclarations/ConflictingExtensionProperties.kt	skip	LANGUAGE	
+tests/redeclarations/ConflictingExtensionProperties.kt	rejects invalid	on an expected line	
 tests/redeclarations/DuplicateParameterNamesInFunctionType.kt	accepts invalid	DUPLICATE_PARAMETER_NAME_IN_FUNCTION_TYPE; REPEATED_ANNOTATION	DuplicateParameterNamesInFunctionType.kt:6: DUPLICATE_PARAMETER_NAME_IN_FUNCTION_TYPE
 tests/redeclarations/EnumName.kt	accepts invalid	REDECLARATION; DECLARATION_OF_ENUM_ENTRY_ENTRIES_ERROR	EnumName.kt:2: REDECLARATION
 tests/redeclarations/FunVsCtorInDifferentFiles.kt	accepts invalid	CONFLICTING_OVERLOADS	test1.kt:1: CONFLICTING_OVERLOADS
@@ -7394,7 +7394,7 @@ tests/redeclarations/PropertyAndInnerClass.kt	accepts invalid	REDECLARATION	Prop
 tests/redeclarations/RedeclarationInDefaultObject.kt	accepts invalid	REDECLARATION	RedeclarationInDefaultObject.kt:4: REDECLARATION
 tests/redeclarations/RedeclarationInMultiFile.kt	rejects invalid	on an expected line	
 tests/redeclarations/RedeclarationMainInFile.kt	rejects invalid	on an expected line	
-tests/redeclarations/RedeclarationMainInOtherFile.kt	skip	LANGUAGE	
+tests/redeclarations/RedeclarationMainInOtherFile.kt	accepts invalid	CONFLICTING_OVERLOADS	fake_main1.kt:1: CONFLICTING_OVERLOADS
 tests/redeclarations/RedeclarationOfMain.kt	rejects invalid	on an expected line	
 tests/redeclarations/Redeclarations.kt	rejects invalid	on an expected line	
 tests/redeclarations/RedeclarationsInObjects.kt	rejects invalid	on an expected line	
@@ -7433,7 +7433,7 @@ tests/redeclarations/shadowedExtension/extensionOnNullableReceiver.kt	accepts va
 tests/redeclarations/shadowedExtension/extensionPropertyShadowedByMemberProperty.kt	accepts valid		
 tests/redeclarations/shadowedExtension/extensionShadowedByDelegatedMember.kt	accepts valid		
 tests/redeclarations/shadowedExtension/extensionVsNonPublicMember.kt	accepts valid		
-tests/redeclarations/shadowedExtension/extensionWithContext.kt	skip	LANGUAGE	
+tests/redeclarations/shadowedExtension/extensionWithContext.kt	accepts valid		
 tests/redeclarations/shadowedExtension/infixExtensionVsNonInfixMember.kt	accepts valid		
 tests/redeclarations/shadowedExtension/localExtensionShadowedByMember.kt	accepts valid		
 tests/redeclarations/shadowedExtension/memberExtensionShadowedByMember.kt	accepts valid		
@@ -7620,7 +7620,7 @@ tests/regressions/resolveSubclassOfList.kt	accepts valid
 tests/regressions/testNestedSpecialCalls.kt	parse/unsupported	parse error: expected expression, found '_'	testNestedSpecialCalls.kt:8: expected expression, found 'else'
 tests/reifiedTypeOverload.kt	rejects valid	ambiguous call: n candidates for '_' take (_)	main.kt:10: ambiguous call: 2 candidates for 'nameOf' take ()
 tests/renderConstructorWithIntersection.kt	skip	Java sources	
-tests/renderFunctionTypesNicely.kt	skip	LANGUAGE	
+tests/renderFunctionTypesNicely.kt	rejects invalid	on an expected line	
 tests/renderingOfGenericInnerTypes.kt	rejects invalid	on an expected line	
 tests/renderingOfTypesWithSameName.kt	rejects invalid	on an expected line	
 tests/reportErrorsForImpossibleTypeChecks.kt	accepts invalid	IMPOSSIBLE_IS_CHECK_ERROR	reportErrorsForImpossibleTypeChecks.kt:6: IMPOSSIBLE_IS_CHECK_ERROR
@@ -7642,36 +7642,36 @@ tests/resolve/dslMarker/annotatedFunctionType.kt	accepts invalid	DSL_SCOPE_VIOLA
 tests/resolve/dslMarker/annotatedTypeArgument.kt	accepts invalid	DSL_SCOPE_VIOLATION	annotatedTypeArgument.kt:22: DSL_SCOPE_VIOLATION
 tests/resolve/dslMarker/behaviorIfApplicabilityIsResolveWithError.kt	rejects invalid	on an expected line	
 tests/resolve/dslMarker/callableReferenceAsCallArgument.kt	accepts invalid	DSL_SCOPE_VIOLATION	callableReferenceAsCallArgument.kt:32: DSL_SCOPE_VIOLATION
-tests/resolve/dslMarker/callableReferences.kt	accepts invalid	DSL_SCOPE_VIOLATION	callableReferences.kt:23: DSL_SCOPE_VIOLATION
+tests/resolve/dslMarker/callableReferences.kt	rejects invalid	on an expected line	
 tests/resolve/dslMarker/dslLambdaAssignment.kt	skip	LANGUAGE_FEATURE_TOGGLED	
 tests/resolve/dslMarker/dslMarkerNamedArgumentLambda.kt	accepts invalid	DSL_SCOPE_VIOLATION	dslMarkerNamedArgumentLambda.kt:16: DSL_SCOPE_VIOLATION
 tests/resolve/dslMarker/dslMarkerOnExpectedTypeForInvokeExtensionCall.kt	accepts invalid	DSL_SCOPE_VIOLATION	dslMarkerOnExpectedTypeForInvokeExtensionCall.kt:19: DSL_SCOPE_VIOLATION
 tests/resolve/dslMarker/dslMarkerOnTypealias.kt	accepts invalid	DSL_SCOPE_VIOLATION	dslMarkerOnTypealias.kt:23: DSL_SCOPE_VIOLATION
 tests/resolve/dslMarker/dslMarkerWithTypealiasRecursion.kt	rejects invalid	on an expected line	
-tests/resolve/dslMarker/inheritedMarker.kt	accepts invalid	DSL_SCOPE_VIOLATION	inheritedMarker.kt:26: DSL_SCOPE_VIOLATION
-tests/resolve/dslMarker/insideTopLevelExtension.kt	accepts invalid	DSL_SCOPE_VIOLATION	insideTopLevelExtension.kt:20: DSL_SCOPE_VIOLATION
+tests/resolve/dslMarker/inheritedMarker.kt	rejects invalid	on an expected line	
+tests/resolve/dslMarker/insideTopLevelExtension.kt	rejects invalid	on an expected line	
 tests/resolve/dslMarker/insideTopLevelExtensionAnnotatedType.kt	accepts invalid	DSL_SCOPE_VIOLATION	insideTopLevelExtensionAnnotatedType.kt:19: DSL_SCOPE_VIOLATION
 tests/resolve/dslMarker/kt29948.kt	accepts valid		
 tests/resolve/dslMarker/kt31360.kt	accepts valid		
 tests/resolve/dslMarker/kt46969.kt	accepts valid		
-tests/resolve/dslMarker/lowPriority.kt	accepts invalid	DSL_SCOPE_VIOLATION	lowPriority.kt:25: DSL_SCOPE_VIOLATION
+tests/resolve/dslMarker/lowPriority.kt	rejects invalid	on an expected line	
 tests/resolve/dslMarker/markedReceiverWithCapturedTypeArgument.kt	accepts valid		
 tests/resolve/dslMarker/markersIntersection.kt	accepts invalid	DSL_SCOPE_VIOLATION	markersIntersection.kt:33: DSL_SCOPE_VIOLATION
 tests/resolve/dslMarker/nestedWithSameReceiver.kt	accepts invalid	DSL_SCOPE_VIOLATION	nestedWithSameReceiver.kt:24: DSL_SCOPE_VIOLATION
 tests/resolve/dslMarker/noErrorInsideDelegatedConstructorCallOfAnonymousObject.kt	accepts valid		
-tests/resolve/dslMarker/properties.kt	accepts invalid	DSL_SCOPE_VIOLATION	properties.kt:38: DSL_SCOPE_VIOLATION
-tests/resolve/dslMarker/simpleAnnotatedClasses.kt	accepts invalid	DSL_SCOPE_VIOLATION	simpleAnnotatedClasses.kt:23: DSL_SCOPE_VIOLATION
+tests/resolve/dslMarker/properties.kt	rejects invalid	on an expected line	
+tests/resolve/dslMarker/simpleAnnotatedClasses.kt	rejects invalid	on an expected line	
 tests/resolve/dslMarker/simpleAnnotatedTypes.kt	accepts invalid	DSL_SCOPE_VIOLATION	simpleAnnotatedTypes.kt:22: DSL_SCOPE_VIOLATION
-tests/resolve/dslMarker/substitutedReceiverAnnotatedClasses.kt	accepts invalid	DSL_SCOPE_VIOLATION	substitutedReceiverAnnotatedClasses.kt:23: DSL_SCOPE_VIOLATION
+tests/resolve/dslMarker/substitutedReceiverAnnotatedClasses.kt	rejects invalid	on an expected line	
 tests/resolve/dslMarker/substitutedReceiverAnnotatedType.kt	accepts invalid	DSL_SCOPE_VIOLATION	substitutedReceiverAnnotatedType.kt:22: DSL_SCOPE_VIOLATION
 tests/resolve/dslMarker/threeImplicitReceivers.kt	rejects invalid	on an expected line	
 tests/resolve/dslMarker/threeImplicitReceivers2.kt	rejects invalid	on an expected line	
 tests/resolve/dslMarker/twoImplicitReceivers.kt	accepts invalid	DSL_SCOPE_VIOLATION	twoImplicitReceivers.kt:29: DSL_SCOPE_VIOLATION
 tests/resolve/dslMarker/twoLanguages.kt	accepts invalid	DSL_SCOPE_VIOLATION	twoLanguages.kt:35: DSL_SCOPE_VIOLATION
 tests/resolve/dslMarker/typeAliasToBuiltinFunctionType.kt	accepts invalid	DSL_SCOPE_VIOLATION	typeAliasToBuiltinFunctionType.kt:24: DSL_SCOPE_VIOLATION
-tests/resolve/dslMarker/typeParameter.kt	accepts invalid	DSL_SCOPE_VIOLATION	typeParameter.kt:13: DSL_SCOPE_VIOLATION
-tests/resolve/dslMarker/useOfExtensions.kt	accepts invalid	DSL_SCOPE_VIOLATION	useOfExtensions.kt:23: DSL_SCOPE_VIOLATION
-tests/resolve/dslMarker/usingWith.kt	accepts invalid	DSL_SCOPE_VIOLATION	usingWith.kt:20: DSL_SCOPE_VIOLATION
+tests/resolve/dslMarker/typeParameter.kt	rejects invalid	on an expected line	
+tests/resolve/dslMarker/useOfExtensions.kt	rejects invalid	on an expected line	
+tests/resolve/dslMarker/usingWith.kt	rejects invalid	on an expected line	
 tests/resolve/dslMarker/usingWithThis.kt	accepts invalid	DSL_SCOPE_VIOLATION	usingWithThis.kt:24: DSL_SCOPE_VIOLATION
 tests/resolve/errorPriority.kt	skip	Java sources	
 tests/resolve/functionCallExpectedWrongReceiver.kt	rejects invalid	on an expected line	
@@ -7703,9 +7703,9 @@ tests/resolve/invoke/implicitInvoke.kt	accepts valid
 tests/resolve/invoke/implicitInvokeAfterSafeCall.kt	rejects invalid	on an expected line	
 tests/resolve/invoke/implicitPropertyType.kt	accepts valid		
 tests/resolve/invoke/invokeAndSmartCast.kt	rejects invalid	on an expected line	
-tests/resolve/invoke/invokeAsExtension.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	invokeAsExtension.kt:34: cannot infer type for type parameter 'R'. Specify it explicitly.
-tests/resolve/invoke/invokeAsMember.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	invokeAsMember.kt:33: cannot infer type for type parameter 'R'. Specify it explicitly.
-tests/resolve/invoke/invokeAsMemberExtension.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	invokeAsMemberExtension.kt:53: cannot infer type for type parameter 'R'. Specify it explicitly.
+tests/resolve/invoke/invokeAsExtension.kt	accepts valid		
+tests/resolve/invoke/invokeAsMember.kt	accepts valid		
+tests/resolve/invoke/invokeAsMemberExtension.kt	accepts valid		
 tests/resolve/invoke/invokeAsMemberExtensionToExplicitReceiver.kt	rejects invalid	on an expected line	
 tests/resolve/invoke/invokeCommonSystem.kt	accepts valid		
 tests/resolve/invoke/invokeCommonSystem2.kt	rejects invalid	on an expected line	
@@ -7719,8 +7719,8 @@ tests/resolve/invoke/kt3772.kt	accepts valid
 tests/resolve/invoke/kt3833-invokeInsideNestedClass.kt	accepts valid		
 tests/resolve/invoke/kt4204-completeNestedCallsForInvoke.kt	accepts invalid	INCOMPATIBLE_MODIFIERS	kt4204-completeNestedCallsForInvoke.kt:15: INCOMPATIBLE_MODIFIERS
 tests/resolve/invoke/kt4321InvokeOnEnum.kt	accepts valid		
-tests/resolve/invoke/kt51793.kt	rejects valid	unresolved reference: _	kt51793.kt:16: unresolved reference: k
-tests/resolve/invoke/kt51793Complex.kt	rejects valid	unresolved reference: _	kt51793Complex.kt:27: unresolved reference: k
+tests/resolve/invoke/kt51793.kt	accepts valid		
+tests/resolve/invoke/kt51793Complex.kt	accepts valid		
 tests/resolve/invoke/kt9517.kt	accepts valid		
 tests/resolve/invoke/kt9805.kt	accepts invalid	NO_VALUE_FOR_PARAMETER	kt9805.kt:10: NO_VALUE_FOR_PARAMETER
 tests/resolve/invoke/privateInvokeOwner.kt	accepts valid		
@@ -7827,7 +7827,7 @@ tests/restrictsSuspensionDifference.kt	accepts invalid	ILLEGAL_RESTRICTED_SUSPEN
 tests/resuiresOptInConstantExpression.kt	accepts invalid	OPT_IN_USAGE_ERROR	resuiresOptInConstantExpression.kt:22: OPT_IN_USAGE_ERROR
 tests/returnFromDelegatedConstuctor.kt	rejects invalid	on an expected line	
 tests/returnInExpressionBodies/returnExpressionInOverride.kt	skip	LANGUAGE_FEATURE_TOGGLED	
-tests/returnInExpressionBodies/returnInAnonymousExpressionBody.kt	skip	LANGUAGE	
+tests/returnInExpressionBodies/returnInAnonymousExpressionBody.kt	skip	LANGUAGE_FEATURE_TOGGLED	
 tests/returnInExpressionBodies/returnInExpressionBodyBefore.kt	skip	LANGUAGE	
 tests/returnInExpressionBodies/returnInExpressionBodyPhase1.kt	skip	LANGUAGE	
 tests/returnInExpressionBodies/returnInExpressionBodyPhase2.kt	skip	LANGUAGE	
@@ -7835,7 +7835,7 @@ tests/returnInExpressionBodies/returnInExpressionBodyProgressiveMode.kt	skip	LAN
 tests/returnInExpressionBodies/returnInGetterSetter.kt	skip	LANGUAGE	
 tests/returnInExpressionBodies/returnInInlineLambdaWithTypeParam.kt	skip	LANGUAGE_FEATURE_TOGGLED	
 tests/returnInExpressionBodies/returnInLocalPropertyInWhen.kt	skip	LANGUAGE_FEATURE_TOGGLED	
-tests/returnInExpressionBodies/returnInNestedCall.kt	skip	LANGUAGE	
+tests/returnInExpressionBodies/returnInNestedCall.kt	skip	LANGUAGE_FEATURE_TOGGLED	
 tests/returnTypeMismatchOnCallableReferenceInReturnOfLambda.kt	rejects invalid	on an expected line	
 tests/returnTypeMismatchOnComplexAnonymousFunctionInReturnOfLambda.kt	rejects invalid	on an expected line	
 tests/returnTypeMismatchOnLambdaInReturnOfLambda.kt	rejects invalid	on an expected line	
@@ -8203,7 +8203,7 @@ tests/smartCasts/comparisonOfClassTypesUnderOr.kt	rejects invalid	on an expected
 tests/smartCasts/comparisonUnderAnd.kt	rejects invalid	on an expected line	
 tests/smartCasts/complexComparison.kt	rejects invalid	on an expected line	
 tests/smartCasts/complexConditionsWithExcl.kt	rejects invalid	on an expected line	
-tests/smartCasts/complexSealedContracts.kt	rejects valid	one type argument expected for class AsyncStatus.Pending<T>	complexSealedContracts.kt:29: one type argument expected for class AsyncStatus.Pending<T>
+tests/smartCasts/complexSealedContracts.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	complexSealedContracts.kt:73: type mismatch: inferred type is String? but String was expected
 tests/smartCasts/contractSafeCall.kt	rejects invalid	on an expected line	
 tests/smartCasts/controlStructures/earlyReturnInNonExhaustiveWhen.kt	rejects valid	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _	earlyReturnInNonExhaustiveWhen.kt:8: only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type String?
 tests/smartCasts/controlStructures/elvis.kt	accepts valid		
@@ -8535,7 +8535,7 @@ tests/smartCasts/subjectVariableWithSmartcastedInitializer.kt	skip	LANGUAGE
 tests/smartCasts/syntheticAccessorOnSmartcastedReceiver.kt	skip	Java sources	
 tests/smartCasts/thisWithLabel.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	thisWithLabel.kt:7: type mismatch: inferred type is Int? but Int was expected
 tests/smartCasts/thisWithLabelAsReceiverPart.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	thisWithLabelAsReceiverPart.kt:10: type mismatch: inferred type is Int? but Int was expected
-tests/smartCasts/threeImplicitReceivers.kt	rejects valid	unresolved reference: _	threeImplicitReceivers.kt:23: unresolved reference: foo
+tests/smartCasts/threeImplicitReceivers.kt	accepts valid		
 tests/smartCasts/throwInTry.kt	rejects invalid	on an expected line	
 tests/smartCasts/toInvisible.kt	skip	Java sources	
 tests/smartCasts/twoImplicitReceivers.kt	accepts valid		
@@ -8692,7 +8692,7 @@ tests/substitutions/starProjections.kt	rejects invalid	on an expected line
 tests/substitutions/upperBoundsSubstitutionForOverloadResolutionWithAmbiguity.kt	rejects invalid	on an expected line	
 tests/substitutions/upperBoundsSubstitutionForOverloadResolutionWithErrorTypes.kt	rejects invalid	on an expected line	
 tests/subtyping/delegatedConstructor.kt	accepts valid		
-tests/subtyping/extFunctionTypeAsSuperType.kt	parse/unsupported	context parameters	extFunctionTypeAsSuperType.kt:31: context parameters are not supported
+tests/subtyping/extFunctionTypeAsSuperType.kt	rejects invalid	on an expected line	
 tests/subtyping/extFunctionTypeAsSuperTypeRestrictionLifted.kt	skip	LANGUAGE	
 tests/subtyping/extensionOnLocalClasses.kt	accepts valid		
 tests/subtyping/findClosestCorrespondingSupertype.kt	rejects invalid	on an expected line	
@@ -8711,7 +8711,7 @@ tests/subtyping/localClasses.kt	rejects invalid	on an expected line
 tests/subtyping/memberAnonymousObjects.kt	rejects invalid	on an expected line	
 tests/subtyping/nestedIntoLocalClasses.kt	rejects invalid	on an expected line	
 tests/subtyping/nestedLocalClasses.kt	rejects invalid	on an expected line	
-tests/subtyping/suspendExtFunctionTypeAsSuperType.kt	accepts invalid	SUPERTYPE_IS_EXTENSION_OR_CONTEXT_FUNCTION_TYPE	suspendExtFunctionTypeAsSuperType.kt:2: SUPERTYPE_IS_EXTENSION_OR_CONTEXT_FUNCTION_TYPE
+tests/subtyping/suspendExtFunctionTypeAsSuperType.kt	rejects invalid	on an expected line	
 tests/subtyping/suspendExtFunctionTypeAsSuperTypeRestrictionLifted.kt	skip	LANGUAGE	
 tests/subtyping/topLevelAnonymousObjects.kt	rejects invalid	on an expected line	
 tests/subtyping/unresolvedSupertype.kt	rejects invalid	on an expected line	
@@ -9019,7 +9019,7 @@ tests/typeParameters/destructuringDeclarationsOld.kt	skip	LANGUAGE
 tests/typeParameters/dnnAsPropertyReceiver.kt	accepts valid		
 tests/typeParameters/dontIntersectUpperBoundWithExpectedType.kt	rejects valid	type argument is not within its bounds: inferred type Bar of type _ '_' is not a subtype of Foo	dontIntersectUpperBoundWithExpectedType.kt:13: type argument is not within its bounds: inferred type Bar of type parameter 'T' is not a subtype of Foo
 tests/typeParameters/dontLoseUpperNonExpectedTypeConstraints.kt	rejects valid	type argument is not within its bounds: inferred type Any? of type _ '_' is not a subtype of Number?	dontLoseUpperNonExpectedTypeConstraints.kt:16: type argument is not within its bounds: inferred type Any? of type parameter 'S' is not a subtype of Number?
-tests/typeParameters/extFunctionTypeAsUpperBound.kt	parse/unsupported	context parameters	extFunctionTypeAsUpperBound.kt:10: context parameters are not supported
+tests/typeParameters/extFunctionTypeAsUpperBound.kt	rejects invalid	on an expected line	
 tests/typeParameters/functionTypeAsUpperBound.kt	rejects invalid	on an expected line	
 tests/typeParameters/illFormed.kt	rejects invalid	on an expected line	
 tests/typeParameters/implicitNothingAgainstNotNothingExpectedType.kt	rejects invalid	elsewhere	
@@ -9239,7 +9239,7 @@ tests/unsignedTypes/conversions/signedToUnsignedConversionWithExpectedType.kt	re
 tests/unsignedTypes/explicitUnsignedLongTypeCheck.kt	rejects invalid	on an expected line	
 tests/unsignedTypes/forbiddenEqualsOnUnsignedTypes.kt	rejects invalid	on an expected line	
 tests/unsignedTypes/lateinitUnsignedType.kt	rejects invalid	on an expected line	
-tests/unsignedTypes/numberReceiverNotValid.kt	skip	LANGUAGE	
+tests/unsignedTypes/numberReceiverNotValid.kt	rejects invalid	on an expected line	
 tests/unsignedTypes/overloadResolutionOfBasicOperations.kt	accepts valid		
 tests/unsignedTypes/overloadsWithUnsigned.kt	skip	LANGUAGE	
 tests/unsignedTypes/overloadsWithUnsignedAfter.kt	skip	LANGUAGE	
@@ -9778,7 +9778,7 @@ testsWithStdLib/complexPostponedCfg.kt	accepts valid
 testsWithStdLib/components.kt	accepts valid		
 testsWithStdLib/concurrent.kt	accepts valid		
 testsWithStdLib/concurrentMapOfAliases.kt	accepts valid		
-testsWithStdLib/contextParametersFunctions.kt	skip	LANGUAGE	
+testsWithStdLib/contextParametersFunctions.kt	rejects invalid	on an expected line	
 testsWithStdLib/contracts/complexConditionWithSafeCall.kt	rejects valid	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _	complexConditionWithSafeCall.kt:17: only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type PersonDto?
 testsWithStdLib/contracts/controlflow/flowInlining/breakContinuesInInlinedLambda.kt	rejects invalid	on an expected line	
 testsWithStdLib/contracts/controlflow/flowInlining/complexTryWithTryInFinally.kt	accepts valid		
@@ -10183,7 +10183,7 @@ testsWithStdLib/deprecated/deprecationOnReadBytes.kt	rejects invalid	on an expec
 testsWithStdLib/deprecated/noDeprecationOnReadBytes.kt	skip	API_VERSION	
 testsWithStdLib/diagnostics/forLoopChecker.kt	rejects invalid	on an expected line	
 testsWithStdLib/diagnostics/functionReturnTypeMismatchChecker/basic.kt	rejects invalid	on an expected line	
-testsWithStdLib/diagnostics/initializerTypeMismatchChecker/functionType.kt	rejects valid	type mismatch: V::a needs a receiver of type _ but () -> String was expected	TestCase1.kt:7: type mismatch: V::a needs a receiver of type V, but () -> String was expected
+testsWithStdLib/diagnostics/initializerTypeMismatchChecker/functionType.kt	accepts valid		
 testsWithStdLib/duplicateJvmSignature/delegatedProperty.kt	rejects valid	conflicting declarations: _	delegatedProperty.kt:7: conflicting declarations: x$delegate
 testsWithStdLib/duplicateJvmSignature/jvmNames.kt	accepts valid		
 testsWithStdLib/duplicateJvmSignature/statics/kotlinMembersVsJavaNonVisibleStatics.kt	skip	Java sources	
@@ -10475,7 +10475,7 @@ testsWithStdLib/java/checkEnhancedUpperBoundsWithEnabledImprovements.kt	skip	LAN
 testsWithStdLib/java/concurrentHashMapContainsError.kt	accepts invalid	CONCURRENT_HASH_MAP_CONTAINS_OPERATOR_ERROR; TYPE_INFERENCE_ONLY_INPUT_TYPES_ERROR	concurrentHashMapContainsError.kt:26: CONCURRENT_HASH_MAP_CONTAINS_OPERATOR_ERROR
 testsWithStdLib/java/functionN.kt	skip	Java sources	
 testsWithStdLib/java/implementationWithBoundedTypeParameters.kt	skip	Java sources	
-testsWithStdLib/java/inheritedFunctionN.kt	skip	LANGUAGE	
+testsWithStdLib/java/inheritedFunctionN.kt	skip	Java sources	
 testsWithStdLib/java/intersectFlexibleAndMutable.kt	skip	Java sources	
 testsWithStdLib/java/patternCompileCallableReference.kt	accepts valid		
 testsWithStdLib/javaClassOnCompanion.kt	rejects invalid	on an expected line	
@@ -10506,7 +10506,7 @@ testsWithStdLib/multiModule/FakeOverrides.kt	skip	LANGUAGE
 testsWithStdLib/multiModule/MemberType.kt	skip	LANGUAGE	
 testsWithStdLib/multiModule/Members.kt	skip	LANGUAGE	
 testsWithStdLib/multiModule/SuperTypes.kt	skip	LANGUAGE	
-testsWithStdLib/multipleImplicitReceivers.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	multipleImplicitReceivers.kt:16: cannot infer type for type parameter 'R'. Specify it explicitly.
+testsWithStdLib/multipleImplicitReceivers.kt	accepts valid		
 testsWithStdLib/native/abstract.kt	rejects invalid	on an expected line	
 testsWithStdLib/native/body.kt	rejects invalid	on an expected line	
 testsWithStdLib/native/constructor.kt	rejects invalid	on an expected line	
@@ -10590,7 +10590,7 @@ testsWithStdLib/problems/valueOfOrNull.kt	rejects valid	cannot infer type for ty
 testsWithStdLib/problems/weakHashMap.kt	accepts valid		
 testsWithStdLib/properties/backingField/backingFieldExplicitAndImplicit.kt	rejects invalid	on an expected line	
 testsWithStdLib/properties/backingField/backingFieldInInnerAndNestedScopes.kt	rejects invalid	elsewhere	
-testsWithStdLib/properties/backingField/backingFieldInReceiverScope.kt	skip	LANGUAGE	
+testsWithStdLib/properties/backingField/backingFieldInReceiverScope.kt	rejects invalid	elsewhere	
 testsWithStdLib/properties/backingField/backingFieldInitializedFromLocalProperty.kt	parse/unsupported	parse error: expected newline or '_', found '_'	backingFieldInitializedFromLocalProperty.kt:6: expected newline or ';', found 'field'
 testsWithStdLib/properties/backingField/backingFieldInitializedInInit.kt	rejects invalid	elsewhere	
 testsWithStdLib/properties/backingField/backingFieldInitializedInInitAndConstructor.kt	rejects invalid	elsewhere	
@@ -10598,7 +10598,7 @@ testsWithStdLib/properties/backingField/backingFieldInitializedInSecondaryConstr
 testsWithStdLib/properties/backingField/backingFieldModifiers.kt	rejects invalid	on an expected line	
 testsWithStdLib/properties/backingField/backingFieldTypeModifier.kt	rejects invalid	elsewhere	
 testsWithStdLib/properties/backingField/backingFieldVisibility.kt	rejects invalid	on an expected line	
-testsWithStdLib/properties/backingField/backingFieldWithContextParameter.kt	skip	LANGUAGE	
+testsWithStdLib/properties/backingField/backingFieldWithContextParameter.kt	rejects invalid	elsewhere	
 testsWithStdLib/properties/backingField/backingFieldWithSmartTypeParameters.kt	parse/unsupported	parse error: expected declaration, found '_'	backingFieldWithSmartTypeParameters.kt:3: expected declaration, found 'field'
 testsWithStdLib/properties/backingField/callableReferenceOnBackingField.kt	rejects invalid	elsewhere	
 testsWithStdLib/properties/backingField/callableReferenceOnOverride.kt	rejects invalid	elsewhere	
@@ -10654,7 +10654,7 @@ testsWithStdLib/properties/backingField/explicitFieldControlFlowGraph.kt	rejects
 testsWithStdLib/properties/backingField/explicitFieldRefersToThePropertyInTheInitializer.kt	rejects invalid	on an expected line	
 testsWithStdLib/properties/backingField/explicitFieldWithFunctionType.kt	parse/unsupported	parse error: expected member declaration, found '_'	explicitFieldWithFunctionType.kt:6: expected member declaration, found 'field'
 testsWithStdLib/properties/backingField/explicitFieldWithFunctionTypeAndEarlySmartcast.kt	parse/unsupported	parse error: expected member declaration, found '_'	explicitFieldWithFunctionTypeAndEarlySmartcast.kt:6: expected member declaration, found 'field'
-testsWithStdLib/properties/backingField/explicitFieldWithFunctionTypeWithReceiver.kt	skip	LANGUAGE	
+testsWithStdLib/properties/backingField/explicitFieldWithFunctionTypeWithReceiver.kt	rejects invalid	elsewhere	
 testsWithStdLib/properties/backingField/explicitFieldsInitializerTypeMismatch.kt	rejects invalid	on an expected line	
 testsWithStdLib/properties/backingField/filePrivateBackingFieldAccess.kt	parse/unsupported	parse error: expected declaration, found '_'	filePrivateBackingFieldAccess.kt:3: expected declaration, found 'field'
 testsWithStdLib/properties/backingField/lateinitBackingFields.kt	rejects invalid	on an expected line	
@@ -10742,9 +10742,9 @@ testsWithStdLib/resolve/samConstructorVsFun.kt	skip	Java sources
 testsWithStdLib/resolve/samOverloadsWithGenerics.kt	skip	Java sources	
 testsWithStdLib/resolve/samOverloadsWithKtFunction.kt	skip	Java sources	
 testsWithStdLib/resolve/sameNameClassesFromSupertypes.kt	accepts valid		
-testsWithStdLib/restrictSuspension/contextParameters.kt	skip	LANGUAGE	
-testsWithStdLib/restrictSuspension/invoke.kt	skip	LANGUAGE	
-testsWithStdLib/restrictSuspension/region.kt	skip	LANGUAGE	
+testsWithStdLib/restrictSuspension/contextParameters.kt	accepts invalid	ILLEGAL_RESTRICTED_SUSPENDING_FUNCTION_CALL	contextParameters.kt:20: ILLEGAL_RESTRICTED_SUSPENDING_FUNCTION_CALL
+testsWithStdLib/restrictSuspension/invoke.kt	accepts invalid	ILLEGAL_RESTRICTED_SUSPENDING_FUNCTION_CALL	invoke.kt:19: ILLEGAL_RESTRICTED_SUSPENDING_FUNCTION_CALL
+testsWithStdLib/restrictSuspension/region.kt	accepts valid		
 testsWithStdLib/restrictSuspension/smartcastReceiver.kt	skip	LANGUAGE	
 testsWithStdLib/runOnIntegerLiteral.kt	accepts valid		
 testsWithStdLib/samForComparator.kt	accepts valid		
@@ -10810,7 +10810,7 @@ testsWithStdLib/varargs/kt4172j.kt	skip	Java sources
 testsWithStdLib/varargs/kt5534.kt	accepts valid		
 testsWithStdLib/versionOverloads/complexArguments.kt	accepts invalid	VERSION_OVERLOADS_TOO_COMPLEX_EXPRESSION	complexArguments.kt:8: VERSION_OVERLOADS_TOO_COMPLEX_EXPRESSION
 testsWithStdLib/versionOverloads/futureDependency.kt	accepts invalid	INVALID_DEFAULT_VALUE_DEPENDENCY	futureDependency.kt:16: INVALID_DEFAULT_VALUE_DEPENDENCY
-testsWithStdLib/versionOverloads/invalid.kt	skip	LANGUAGE	
+testsWithStdLib/versionOverloads/invalid.kt	rejects invalid	on an expected line	
 testsWithStdLib/versionOverloads/multiplatformAnnotations.kt	skip	LANGUAGE	
 testsWithStdLib/versionOverloads/multiplatformDefaults.kt	skip	LANGUAGE	
 testsWithStdLib/versionOverloads/multiplatformOk.kt	skip	LANGUAGE	

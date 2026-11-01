@@ -377,10 +377,16 @@ func (w *writer) function(f *Function) []byte {
 	if f.Flags != 6 {
 		e.int(9, int(f.Flags))
 	}
+	for _, p := range f.ContextParams {
+		e.msg(10, w.typ(p.Type))
+	}
 	for _, a := range f.Annotations {
 		var x enc
 		x.int(1, w.st.class(a))
 		e.msg(12, x.b)
+	}
+	for _, p := range f.ContextParams {
+		e.msg(13, w.param(p))
 	}
 	if len(f.InPlace) > 0 || len(f.Implies) > 0 {
 		var c enc
@@ -461,6 +467,12 @@ func (w *writer) property(p *Property) []byte {
 	}
 	if p.Flags != 518 {
 		e.int(11, int(p.Flags))
+	}
+	for _, c := range p.ContextParams {
+		e.msg(12, w.typ(c.Type))
+	}
+	for _, c := range p.ContextParams {
+		e.msg(17, w.param(c))
 	}
 	var sig enc
 	if p.Field != nil {
@@ -623,6 +635,18 @@ func (w *writer) typ(t *Type) []byte {
 	if t.ExtFunc {
 		var a enc
 		a.int(1, w.st.class("kotlin/ExtensionFunctionType"))
+		e.msg(100, a.b)
+	}
+	if t.Contexts > 0 {
+		// @ContextFunctionTypeParams(count = n): an argument whose value
+		// is an INT, in zigzag encoding.
+		var a, arg, v enc
+		a.int(1, w.st.class("kotlin/ContextFunctionTypeParams"))
+		v.int(1, 3)
+		v.int(2, t.Contexts<<1)
+		arg.int(1, w.st.str("count"))
+		arg.msg(2, v.b)
+		a.msg(2, arg.b)
 		e.msg(100, a.b)
 	}
 	return e.b

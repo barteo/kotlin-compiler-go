@@ -82,6 +82,9 @@ func Inspect(node any, f func(any) bool) {
 		}
 	case *Call:
 		inspectExpr(n.Fun, f)
+		for _, a := range n.Ctx {
+			inspectExpr(a, f)
+		}
 		for _, a := range n.Args {
 			inspectExpr(a, f)
 		}
