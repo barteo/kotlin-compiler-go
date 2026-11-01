@@ -28,16 +28,14 @@ own tests.
 - Builder inference that can't check a lambda's body with the type
   variables open, as a member of a value of one of them whose type
   nothing gives yet: it needs a type argument or an expected type.
-- Context parameters, `context(a: A) fun f()`, work on functions
-  (top-level, members, extensions, local and anonymous) and properties,
-  in context function types and their lambdas, and on fun interfaces'
-  methods, the program's and the class path's. These are reported as
-  unsupported: context parameters of classes and constructors; the
-  context receivers that came before them, `context(A)`; and callable
-  references to functions with context parameters. Two properties of a
-  name that differ only in their context parameters conflict. Where two
-  implicit values at the same level fit a context parameter, `kotlinc`
-  reports an ambiguity, and `kc` passes one of them.
+- Context parameters of classes and constructors, which are reported as
+  unsupported. Those of functions (top-level, members, extensions, local
+  and anonymous) and properties, of context function types and their
+  lambdas, and of fun interfaces' methods work, the program's and the
+  class path's. Of their checks, `kc` doesn't report a receiver that a
+  context parameter of its type shadows
+  (`RECEIVER_SHADOWED_BY_CONTEXT_PARAMETER`), nor a context parameter of
+  type `CoroutineContext`, which Kotlin reserves.
 
 ## Without the standard library
 
@@ -138,6 +136,10 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   its last expression has a value.
 - Without an expected type, a reference to a generic or vararg function
   is an error.
+- A value of function type `(A, B) -> R` is accepted for a context
+  function type `context(A) (B) -> R`, and the other way round, as it is
+  for an extension function type `A.(B) -> R`; `kotlinc` accepts only
+  references and lambdas there.
 
 **Classes and members**
 

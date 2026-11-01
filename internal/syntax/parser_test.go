@@ -140,6 +140,9 @@ func TestParseErrors(t *testing.T) {
 		{"vararg fun f() {}", "1:1", "modifier 'vararg' is only allowed on parameters"},
 		{"val x by d\n get() = 1", "2:2", "delegated property cannot have accessors with non-default implementations"},
 		{"fun <T> f() where U : Any {}", "1:19", "'U' does not refer to a type parameter of this declaration"},
+		{"context(Int) fun f() = 1", "1:9", "context parameters must be named"},
+		{"context() fun f() = 1", "1:9", "expected a context parameter"},
+		{"fun f(g: context() () -> Unit) {}", "1:18", "expected a context parameter type"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.msg, func(t *testing.T) {
@@ -161,7 +164,6 @@ func TestUnsupportedFeatures(t *testing.T) {
 	tests := []struct{ src, feature string }{
 		{"context(c: Int) class C", "context parameters"},
 		{"class C {\n  context(c: Int)\n  constructor()\n}", "context parameters"},
-		{"context(Int) fun f() = 1", "context receivers"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.src, func(t *testing.T) {

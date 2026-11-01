@@ -127,8 +127,8 @@ Kotlin 2.4.21's tests on `kc`:
 | Box tests | Tests | Share of run |
 |:---|---:|---:|
 | run (of 7,480) | 6,483 | |
-| pass | 6,152 | 94.9% |
-| check error | 225 | 3.5% |
+| pass | 6,166 | 95.1% |
+| check error | 211 | 3.3% |
 | codegen error | 16 | 0.2% |
 | VerifyError and linkage error | 31 | 0.5% |
 | exception and wrong result | 59 | 0.9% |
@@ -137,15 +137,15 @@ Kotlin 2.4.21's tests on `kc`:
 | Diagnostics tests | Tests | Share of run |
 |:---|---:|---:|
 | run (of 10,827) | 7,200 | |
-| rejects invalid | 2,919 | 40.5% |
-| accepts valid | 2,754 | 38.2% |
-| accepts invalid | 880 | 12.2% |
-| rejects valid | 545 | 7.6% |
-| parse/unsupported | 101 | 1.4% |
+| rejects invalid | 2,939 | 40.8% |
+| accepts valid | 2,769 | 38.5% |
+| accepts invalid | 872 | 12.1% |
+| rejects valid | 530 | 7.4% |
+| parse/unsupported | 89 | 1.2% |
 | crash | 1 | 0.0% |
 
 `kc` agrees with `kotlinc` on 79% of the diagnostics tests, and reports
-9,895 of the 18,773 expected errors (53%) on their lines. The reports
+9,953 of the 18,851 expected errors (53%) on their lines. The reports
 break the failures down; the largest groups are:
 
 - **Silent miscompilation** (90 box tests): `tailrec` functions that
@@ -159,7 +159,7 @@ break the failures down; the largest groups are:
   `@DslMarker` (28), and JVM signature clashes (`ACCIDENTAL_OVERRIDE`,
   `CONFLICTING_JVM_DECLARATIONS`, 24 each).
 - **Rejects valid**, by `kc`'s first error: type mismatches (91 + 4
-  box), inference failures (88 + 13), unresolved names and imports (78 +
+  box), inference failures (82 + 13), unresolved names and imports (74 +
   25), and calls on nullable receivers (49 + 9).
 
 The committed `.tsv` files serve as a ratchet: a change must make

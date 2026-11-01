@@ -1451,6 +1451,10 @@ func (t *classTable) loadKotlin(cls *types.ClassSym, info *classfile.Info, kc *k
 			if kp.Setter != nil {
 				kp.Setter.Static = statics[kp.Setter.JVM()+kp.Setter.Desc]
 			}
+			if prev := cls.KProps[p.Name]; prev != nil && !sameContexts(prev.Getter.Contexts, kp.Getter.Contexts) {
+				addKAlt(prev, kp) // one with other context parameters
+				continue
+			}
 			cls.KProps[p.Name] = kp
 		}
 	}
@@ -1900,7 +1904,7 @@ func (t *classTable) pkgVar(pkg, name string) *types.VarSym {
 	if v, ok := p.vars[name]; ok {
 		return v
 	}
-	var v *types.VarSym
+	var v, first *types.VarSym // first of those with other context parameters
 	for _, part := range p.parts {
 		decls, err := part.meta.Properties(name)
 		if err != nil {
@@ -1915,8 +1919,16 @@ func (t *classTable) pkgVar(pkg, name string) *types.VarSym {
 			if !ok || !cok {
 				continue
 			}
+			prev := v
 			v = &types.VarSym{Name: pr.Name, Type: typ, Kind: types.Global, Mutable: pr.IsVar(), Facade: part.facade,
 				Resolved: true, Const: pr.IsConst(), Contexts: ctx}
+			if prev != nil && !sameContexts(prev.Contexts, ctx) {
+				// One with other context parameters.
+				addAlt(prev, v)
+				if first == nil {
+					first = prev
+				}
+			}
 			if v.Const {
 				v.Constant = t.facadeConstant(part.facade, pr.Name)
 			}
@@ -1935,6 +1947,9 @@ func (t *classTable) pkgVar(pkg, name string) *types.VarSym {
 				v.JvmField = true // only a public field
 			}
 		}
+	}
+	if first != nil {
+		v = first
 	}
 	p.vars[name] = v
 	return v

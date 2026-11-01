@@ -315,7 +315,9 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 					s.Name = p.Name
 				}
 				s.Decl = p
-				if pt := c.resolveType(p.Type); !c.subtype(t, pt) {
+				if p.Type == nil {
+					// A lambda the checker made, which only names them.
+				} else if pt := c.resolveType(p.Type); !c.subtype(t, pt) {
 					c.errorf(p.P, "expected context parameter of type %s", t)
 					ok = false
 				}

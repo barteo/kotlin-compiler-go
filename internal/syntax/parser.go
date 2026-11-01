@@ -452,15 +452,18 @@ func (p *parser) modifiers() Modifiers {
 }
 
 // contextParams parses a declaration's context parameters, context(a: A,
-// _: B). The context receivers that came before them, context(A), aren't
-// supported.
+// _: B). The context receivers that came before them, context(A), are an
+// error in Kotlin 2.4.
 func (p *parser) contextParams() []*Param {
 	p.next()
 	p.expect(LPAREN)
 	ps := []*Param{}
+	if p.skipNL(); p.at(RPAREN) {
+		p.failAt(p.tok().Pos, "expected a context parameter")
+	}
 	for p.skipNL(); !p.at(RPAREN); p.skipNL() {
 		if !p.at(IDENT) || p.toks[p.i+1].Kind != COLON {
-			p.unsupported(p.tok().Pos, "context receivers", "context receivers are not supported: use context parameters, context(name: Type)")
+			p.failAt(p.tok().Pos, "context parameters must be named: use '_' for an anonymous one, context(_: Type)")
 		}
 		name := p.next()
 		p.next()
@@ -864,6 +867,9 @@ func (p *parser) parseType() *TypeRef {
 		p.next()
 		p.next()
 		var ctx []*TypeRef
+		if p.skipNL(); p.at(RPAREN) {
+			p.failAt(p.tok().Pos, "expected a context parameter type")
+		}
 		for p.skipNL(); !p.at(RPAREN); p.skipNL() {
 			ctx = append(ctx, p.parseType())
 			p.skipNL()

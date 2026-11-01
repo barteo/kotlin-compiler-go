@@ -211,8 +211,8 @@ type Modifiers struct {
 	// Annotations are the declaration's annotations, with their
 	// use-site targets (@get:JvmName applies to a property's getter).
 	Annotations []Annotation
-	// Contexts are the context parameters of a function, context(a: A,
-	// _: B) fun f(), whose names may be _. ContextP is the position of
+	// Contexts are the context parameters of a function or a property,
+	// context(a: A, _: B) fun f(), whose names may be _. ContextP is the position of
 	// context, if it is written.
 	Contexts []*Param
 	ContextP Pos
@@ -1302,7 +1302,8 @@ type Lambda struct {
 	AnonRet  *TypeRef
 	AnonUnit bool
 	// AnonCtx are the context parameters of an anonymous function,
-	// context(a: A) fun () = a, whose symbols are Ctx's.
+	// context(a: A) fun () = a, whose symbols are Ctx's. The checker
+	// names a lambda's it makes too, without types: see suspendConverted.
 	AnonCtx []*Param
 	// Annotated is set on a lambda annotated @Composable, which is
 	// composable whatever its expected type, with -compose.

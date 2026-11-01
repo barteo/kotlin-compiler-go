@@ -149,11 +149,11 @@ func (c *Checker) recvCall(x *syntax.Call, id *syntax.Ident) bool {
 		if r.outer && c.cls != nil && c.hasFun(c.cls.This(), id.Name, x) {
 			return false // the object's own
 		}
-		if t := c.scope.narrowed(r.sym); !c.hasFun(t, id.Name, x) && !c.hasFunProp(t, id.Name, x) {
-			continue
-		}
 		m := &syntax.Member{X: recvThis(r, id.P), Name: id.Name}
 		m.P = id.P
+		if t := c.scope.narrowed(r.sym); !c.hasFun(t, id.Name, x) && !c.hasFunProp(t, id.Name, x) && !c.extPropInvoked(m, t, c.classOf(t), x) {
+			continue
+		}
 		x.Fun = m
 		return true
 	}

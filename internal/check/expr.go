@@ -1594,8 +1594,9 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 		// field, after the instance's effects.
 		x.EvalX = !effectless(x.X)
 		return c.staticField(x, cls)
-	case cls != nil && cls.External && cls.Value && cls.Underlying != nil && x.Name == cls.Underlying.Name:
-		// A class-path value class's value: the unboxed value itself.
+	case cls != nil && cls.External && cls.Value && cls.Underlying != nil && x.Name == cls.Underlying.Name && !c.contextKProp(cls, x.Name):
+		// A class-path value class's value: the unboxed value itself,
+		// unless it is a property of the name with context parameters.
 		x.Prop = cls.Underlying
 		t = cls.Underlying.Type
 	case cls != nil && !cls.External:

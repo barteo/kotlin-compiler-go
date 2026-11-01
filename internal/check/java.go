@@ -2001,7 +2001,7 @@ func (c *Checker) javaProperty(x *syntax.Member, rt types.Type) (types.Type, boo
 		kp = s.KProps[x.Name]
 		return kp == nil
 	})
-	if kp != nil {
+	if kp = c.kpropAlt(kp); kp != nil {
 		x.Getter, x.Setter = kp.Getter, kp.Setter
 		return c.memberSubst(rt, kp.Getter.Owner).Apply(kp.Getter.Ret), true
 	}

@@ -781,7 +781,7 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 	f := best.f
 	x.Sym, x.ArgMap = f, best.amap
 	c.setDispatch(x, &best.callee)
-	c.setContexts(x, &best.callee)
+	c.setContexts(x, &best.callee, best.sys, best.sub)
 	ensureFun(f)
 	c.suspendCall(x.P, f)
 	c.composeFunCall(x.P, f)
@@ -1181,7 +1181,7 @@ func (c *Checker) resolvePlain(x *syntax.Call, cs []callee, want types.Type) typ
 	f := best.f
 	x.Sym, x.ArgMap = f, best.amap
 	c.setDispatch(x, best)
-	c.setContexts(x, best)
+	c.setContexts(x, best, nil, nil)
 	ensureFun(f)
 	c.suspendCall(x.P, f)
 	c.composeFunCall(x.P, f)
@@ -1346,13 +1346,18 @@ func (c *Checker) suspendConverted(a syntax.Expr, pt types.Type) syntax.Expr {
 	inner := &syntax.Lambda{Arrow: true}
 	inner.P = p
 	for k := 0; k < fn.A.Len()-1; k++ {
-		if k == 0 && fn.E {
+		switch {
+		case k < int(fn.X):
+			// A context parameter, which the lambda names to pass it on.
+			inner.AnonCtx = append(inner.AnonCtx, &syntax.Param{P: p, Name: refParam(k)})
+		case k == int(fn.X) && fn.E:
 			th := &syntax.This{}
 			th.P = p
 			call.Args = append(call.Args, th)
 			continue
+		default:
+			inner.Params = append(inner.Params, &syntax.LambdaParam{P: p, Name: refParam(k)})
 		}
-		inner.Params = append(inner.Params, &syntax.LambdaParam{P: p, Name: refParam(k)})
 		arg := &syntax.Ident{Name: refParam(k)}
 		arg.P = p
 		call.Args = append(call.Args, arg)

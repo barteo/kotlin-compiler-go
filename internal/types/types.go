@@ -304,6 +304,10 @@ type VarSym struct {
 	// Contexts are the context parameters of a property, which its
 	// accessors take first, as their Contexts.
 	Contexts []*VarSym
+	// Alt links the properties of the same name and owner, which Kotlin
+	// allows if their context parameters differ, in a ring: the next one,
+	// or nil if there is no other. Lookups find the first declared.
+	Alt *VarSym
 	// FieldUsed is set on a property whose accessors use field, which
 	// then has a backing field though both accessors are custom.
 	FieldUsed bool
@@ -678,6 +682,7 @@ func (f *FunSym) JVM() string {
 type KProp struct {
 	Getter *FunSym // Ret is the property's type
 	Setter *FunSym // nil for a val
+	Alt    *KProp  // as VarSym.Alt
 }
 
 // ClassSym is a user class or a Java class from the class path. Name is the

@@ -14,7 +14,9 @@ class Square(val side: Int) : Shape<Ctx>() {
 }
 
 fun main() {
+    println(over + " " + P(1).w)
     with(Ctx("x")) {
+        println(P(2).v)
         println(f(false) + " " + f(true) + " " + f(true, "given"))
         println("s".ext())
         println(top + " " + 3.extProp)

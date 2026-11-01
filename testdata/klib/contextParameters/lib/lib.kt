@@ -1,8 +1,9 @@
 // A library's declarations with context parameters, which its classes
 // take first, before an extension receiver: functions, with default
 // values, inline and suspend; properties, top-level, extension and
-// member, and member extensions; and an abstract member a subclass
-// overrides.
+// member, and member extensions; an abstract member a subclass
+// overrides; and properties beside others of their name without context
+// parameters, private or not.
 package lib
 
 class Ctx(val n: String) {
@@ -57,6 +58,26 @@ open class M(val m: String) {
 
     context(c: Ctx)
     open fun describe(): String = "M $m ${c.n}"
+}
+
+context(c: Ctx)
+val over: String
+    get() = "over ${c.n}"
+
+val over: String
+    get() = "over plain"
+
+class P(private val v: Int) {
+    context(c: Ctx)
+    val v: String
+        get() = "v ${c.n}"
+
+    context(c: Ctx)
+    val w: String
+        get() = "w ${c.n}"
+
+    val w: String
+        get() = "w $v"
 }
 
 abstract class Shape<T> {

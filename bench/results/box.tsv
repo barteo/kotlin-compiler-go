@@ -512,14 +512,14 @@ callableReference/adaptedReferences/adaptedSecondArgTypeVariable.kt	skip	LANGUAG
 callableReference/adaptedReferences/adaptedVarargFunImportedFromObject.kt	pass		
 callableReference/adaptedReferences/bothWithCoercionToUnit.kt	pass		
 callableReference/adaptedReferences/boundReferences.kt	pass		
-callableReference/adaptedReferences/contextFunctionAdaptedReferences.kt	check error	expected n parameter of type _ but n were declared	main.kt:10: expected 1 parameter of type Int, but 2 were declared
+callableReference/adaptedReferences/contextFunctionAdaptedReferences.kt	pass		
 callableReference/adaptedReferences/contextFunctionAnonymous.kt	pass		
-callableReference/adaptedReferences/contextFunctionWithDefaultValue.kt	check error	expected no parameters, but n were declared	contextFunctionWithDefaultValue.kt:15: expected no parameters, but 1 were declared
-callableReference/adaptedReferences/contextFunctionWithExtensionProperty.kt	check error	expected no parameters, but n were declared	main.kt:11: expected no parameters, but 1 were declared
-callableReference/adaptedReferences/contextFunctionWithPassedSuperType.kt	check error	expected no parameters, but n were declared	contextFunctionWithPassedSuperType.kt:16: expected no parameters, but 1 were declared
-callableReference/adaptedReferences/contextFunctionWithSam.kt	check error	expected n parameter of type _ but n were declared	contextFunctionWithSam.kt:12: expected 1 parameter of type String, but 2 were declared
-callableReference/adaptedReferences/contextFunctionWithVararg.kt	check error	expected n parameter of type _ but n were declared	contextFunctionWithVararg.kt:15: expected 1 parameter of type C, but 2 were declared
-callableReference/adaptedReferences/contextPropertyWithSam.kt	check error	expected no parameters, but n were declared	contextPropertyWithSam.kt:15: expected no parameters, but 1 were declared
+callableReference/adaptedReferences/contextFunctionWithDefaultValue.kt	pass		
+callableReference/adaptedReferences/contextFunctionWithExtensionProperty.kt	pass		
+callableReference/adaptedReferences/contextFunctionWithPassedSuperType.kt	pass		
+callableReference/adaptedReferences/contextFunctionWithSam.kt	pass		
+callableReference/adaptedReferences/contextFunctionWithVararg.kt	pass		
+callableReference/adaptedReferences/contextPropertyWithSam.kt	pass		
 callableReference/adaptedReferences/contextTypeWithSam.kt	pass		
 callableReference/adaptedReferences/defaultAfterVararg.kt	pass		
 callableReference/adaptedReferences/defaultWithGenericExpectedType.kt	pass		
@@ -564,8 +564,8 @@ callableReference/adaptedReferences/suspendConversion/inlineAdaptedWithDefaultAr
 callableReference/adaptedReferences/suspendConversion/inlineAdaptedWithVarargs.kt	pass		
 callableReference/adaptedReferences/suspendConversion/inlineBound.kt	pass		
 callableReference/adaptedReferences/suspendConversion/inlineSimple.kt	pass		
-callableReference/adaptedReferences/suspendConversion/inlineWithContextParameter.kt	check error	expected no parameters, but n were declared	main.kt:16: expected no parameters, but 1 were declared
-callableReference/adaptedReferences/suspendConversion/inlineWithContextParameterAsAPropertyType.kt	check error	expected no parameters, but n were declared	main.kt:3: expected no parameters, but 1 were declared
+callableReference/adaptedReferences/suspendConversion/inlineWithContextParameter.kt	pass		
+callableReference/adaptedReferences/suspendConversion/inlineWithContextParameterAsAPropertyType.kt	pass		
 callableReference/adaptedReferences/suspendConversion/inlineWithContextParameterAsASupertype.kt	skip	LANGUAGE	
 callableReference/adaptedReferences/suspendConversion/inlineWithExtensionAsASuperType.kt	skip	LANGUAGE	
 callableReference/adaptedReferences/suspendConversion/inlineWithExtensionFunction.kt	pass		
@@ -575,8 +575,8 @@ callableReference/adaptedReferences/suspendConversion/isAs.kt	pass
 callableReference/adaptedReferences/suspendConversion/nullableParameter.kt	pass		
 callableReference/adaptedReferences/suspendConversion/propertyReferenceToSuspendFunction.kt	pass		
 callableReference/adaptedReferences/suspendConversion/simple.kt	pass		
-callableReference/adaptedReferences/suspendConversion/withContextParameterAsAPropertyType.kt	check error	expected no parameters, but n were declared	withContextParameterAsAPropertyType.kt:29: expected no parameters, but 1 were declared
-callableReference/adaptedReferences/suspendConversion/withContextParameters.kt	check error	expected no parameters, but n were declared	withContextParameters.kt:19: expected no parameters, but 1 were declared
+callableReference/adaptedReferences/suspendConversion/withContextParameterAsAPropertyType.kt	pass		
+callableReference/adaptedReferences/suspendConversion/withContextParameters.kt	pass		
 callableReference/adaptedReferences/suspendConversion/withContextParametersAsASupertype.kt	skip	LANGUAGE	
 callableReference/adaptedReferences/suspendConversion/withParameters.kt	pass		
 callableReference/adaptedReferences/suspendUnitConversion.kt	pass		
@@ -601,7 +601,7 @@ callableReference/bound/captureVarInInitBlock.kt	pass
 callableReference/bound/captureVarInPropertyInit.kt	pass		
 callableReference/bound/coercionToUnit.kt	pass		
 callableReference/bound/companionObjectReceiver.kt	pass		
-callableReference/bound/companionObjectReceiverInheritsFromOuter.kt	check error	type mismatch: A::instance needs a receiver of type _ but () -> Boolean was expected	main.kt:9: type mismatch: A::instance needs a receiver of type A, but () -> Boolean was expected
+callableReference/bound/companionObjectReceiverInheritsFromOuter.kt	pass		
 callableReference/bound/dontShareReceiver.kt	check error	expression '_' of type _ String> cannot be invoked as a function	dontShareReceiver.kt:6: expression 'f' of type KFunction1<Int, String> cannot be invoked as a function
 callableReference/bound/emptyLHS.kt	pass		
 callableReference/bound/enumEntryMember.kt	pass		
@@ -1362,7 +1362,7 @@ contextParameters/kt65953.kt	pass
 contextParameters/kt66368.kt	pass		
 contextParameters/kt74998.kt	pass		
 contextParameters/propertyCompoundAssignment.kt	pass		
-contextParameters/propertyWithContextAndWithout.kt	check error	conflicting declarations: _	propertyWithContextAndWithout.kt:10: conflicting declarations: b
+contextParameters/propertyWithContextAndWithout.kt	pass		
 contextParameters/receiversOrder.kt	pass		
 contextParameters/sameArgForContextAndExtension.kt	pass		
 contextParameters/sameExtensionContextAndDispatchReceiver.kt	pass		
@@ -3910,7 +3910,7 @@ inlineClasses/conformToComparableAndCallInterfaceMethod.kt	pass
 inlineClasses/conformToComparableAndCallInterfaceMethodGeneric.kt	pass		
 inlineClasses/constructorCallableReference.kt	pass		
 inlineClasses/constructorCallableReferenceGeneric.kt	pass		
-inlineClasses/contextParameterPropertyDeserialization.kt	check error	conflicting declarations: _	lib.kt:4: conflicting declarations: value
+inlineClasses/contextParameterPropertyDeserialization.kt	pass		
 inlineClasses/contextsAndAccessors/accessPrivateInlineClassCompanionMethod.kt	pass		
 inlineClasses/contextsAndAccessors/accessPrivateInlineClassCompanionMethod2.kt	pass		
 inlineClasses/contextsAndAccessors/accessPrivateInlineClassCompanionMethod2Generic.kt	check error	type argument is not within its bounds: inferred type Int of type _ '_' is not a subtype of Long	accessPrivateInlineClassCompanionMethod2Generic.kt:13: type argument is not within its bounds: inferred type Int of type parameter 'T' is not a subtype of Long
@@ -5459,18 +5459,18 @@ primitiveTypes/nullableAsIndex.kt	pass
 primitiveTypes/nullableCharBoolean.kt	pass		
 primitiveTypes/numberEqualsHashCodeToString.kt	pass		
 primitiveTypes/numberToChar/abstractMethodInSuperinterface.kt	check error	class '_' is not abstract and does not implement abstract member '_'	abstractMethodInSuperinterface.kt:8: class 'MyNumber' is not abstract and does not implement abstract member 'floatValue'
-primitiveTypes/numberToChar/fakeOverride.kt	check error	class '_' is not abstract and does not implement abstract member '_'	fakeOverride.kt:4: class 'MyNumber' is not abstract and does not implement abstract member 'intValue'
+primitiveTypes/numberToChar/fakeOverride.kt	check error	class '_' is not abstract and does not implement abstract member '_'	fakeOverride.kt:4: class 'MyNumber' is not abstract and does not implement abstract member 'floatValue'
 primitiveTypes/numberToChar/simple.kt	check error	class '_' is not abstract and does not implement abstract member '_'	simple.kt:4: class 'MyNumber' is not abstract and does not implement abstract member 'intValue'
-primitiveTypes/numberToChar/superCallToClass.kt	check error	class '_' is not abstract and does not implement abstract member '_'	superCallToClass.kt:4: class 'MyNumber' is not abstract and does not implement abstract member 'intValue'
-primitiveTypes/numberToChar/superCallToInterface.kt	check error	class '_' is not abstract and does not implement abstract member '_'	superCallToInterface.kt:8: class 'MyNumber' is not abstract and does not implement abstract member 'longValue'
-primitiveTypes/numberToChar/superCallToNumber.kt	check error	class '_' is not abstract and does not implement abstract member '_'	superCallToNumber.kt:4: class 'MyNumber' is not abstract and does not implement abstract member 'intValue'
+primitiveTypes/numberToChar/superCallToClass.kt	check error	class '_' is not abstract and does not implement abstract member '_'	superCallToClass.kt:4: class 'MyNumber' is not abstract and does not implement abstract member 'doubleValue'
+primitiveTypes/numberToChar/superCallToInterface.kt	check error	class '_' is not abstract and does not implement abstract member '_'	superCallToInterface.kt:8: class 'MyNumber' is not abstract and does not implement abstract member 'intValue'
+primitiveTypes/numberToChar/superCallToNumber.kt	check error	class '_' is not abstract and does not implement abstract member '_'	superCallToNumber.kt:4: class 'MyNumber' is not abstract and does not implement abstract member 'longValue'
 primitiveTypes/rangeTo.kt	check error	type argument is not within its bounds: inferred type Number of type _ '_' is not a subtype of Comparable<Number>	rangeTo.kt:10: type argument is not within its bounds: inferred type Number of type parameter 'T' is not a subtype of Comparable<Number>
 primitiveTypes/reassignDestructured.kt	skip	LANGUAGE	
 primitiveTypes/smartCastOnNullableDoubleIdentityEquals.kt	pass		
 primitiveTypes/stringEqualsHashCodeToString.kt	pass		
 primitiveTypes/substituteIntForGeneric.kt	pass		
 primitiveTypes/unboxComparable.kt	pass		
-primitiveTypes/virtualCallToCustomNumber.kt	check error	class '_' is not abstract and does not implement abstract member '_'	virtualCallToCustomNumber.kt:4: class 'FortyTwo' is not abstract and does not implement abstract member 'intValue'
+primitiveTypes/virtualCallToCustomNumber.kt	check error	class '_' is not abstract and does not implement abstract member '_'	virtualCallToCustomNumber.kt:4: class 'FortyTwo' is not abstract and does not implement abstract member 'longValue'
 private/arrayConvention.kt	pass		
 private/kt9855.kt	pass		
 privateConstructors/base.kt	pass		

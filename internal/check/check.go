@@ -928,9 +928,12 @@ func (c *Checker) declare() {
 				continue
 			}
 			private := d.Visibility == syntax.Private
-			if _, dup := c.fileVars[d.Name]; dup {
-				c.errorf(d.P, "conflicting declarations: %s", d.Name)
-			} else if _, dup := c.pkg.Vars[d.Name]; dup && !private {
+			prev, dup := c.fileVars[d.Name]
+			if !dup && !private {
+				prev, dup = c.pkg.Vars[d.Name]
+			}
+			alt := dup && altProp(prev, d)
+			if dup && !alt {
 				c.errorf(d.P, "conflicting declarations: %s", d.Name)
 			}
 			sym := &types.VarSym{Name: d.Name, Kind: types.Global, Mutable: d.Mutable, Facade: c.file.Class(), Decl: d,
@@ -950,6 +953,12 @@ func (c *Checker) declare() {
 			sym.Private = d.Visibility == syntax.Private && d.Getter == nil && d.Setter == nil && d.Field == nil &&
 				d.DelegateOf == nil && !sym.Const && !sym.JvmField
 			d.Sym = sym
+			if alt {
+				addAlt(prev, sym)
+			}
+			if dup && prev.Alt != nil {
+				continue // the pair stays
+			}
 			if private {
 				if c.fileVars == nil {
 					c.fileVars = map[string]*types.VarSym{}
@@ -1210,6 +1219,10 @@ func (c *Checker) hiddenFun(f *types.FunSym) bool {
 // topVar returns the program's top-level property that a simple name
 // refers to, in the same order, or nil.
 func (c *Checker) topVar(name string) *types.VarSym {
+	return c.propAlt(c.topVar1(name))
+}
+
+func (c *Checker) topVar1(name string) *types.VarSym {
 	if v, ok := c.userVars[name]; ok {
 		return v
 	}
@@ -1677,8 +1690,12 @@ func (c *Checker) resolveClass(d *syntax.ClassDecl) {
 		cls.Ctor = ctor
 	}
 	addProp := func(p *types.VarSym, pos syntax.Pos) {
-		if cls.Prop(p.Name) != nil {
-			c.errorf(pos, "conflicting declarations: %s", p.Name)
+		if prev := cls.Prop(p.Name); prev != nil {
+			if d, ok := p.Decl.(*syntax.PropDecl); ok && altProp(prev, d) {
+				addAlt(prev, p)
+			} else {
+				c.errorf(pos, "conflicting declarations: %s", p.Name)
+			}
 		}
 		cls.Props = append(cls.Props, p)
 	}

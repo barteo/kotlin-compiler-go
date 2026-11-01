@@ -3,6 +3,7 @@ package check
 import (
 	"maps"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
@@ -116,21 +117,38 @@ func (c *Checker) pushContexts(syms []*types.VarSym) {
 
 // contextValue returns the nearest implicit value that fits, as an
 // expression at p, and its type: a context parameter or a receiver of the
-// lambdas and functions around, or the class's this.
-func (c *Checker) contextValue(p syntax.Pos, fits func(types.Type) bool) (syntax.Expr, types.Type, bool) {
+// lambdas and functions around, or the class's this. It reports whether
+// another of the same level fits too, the same function's or lambda's
+// context parameters and receiver, which kotlinc reports as ambiguous.
+func (c *Checker) contextValue(p syntax.Pos, fits func(types.Type) bool) (x syntax.Expr, t types.Type, ok, ambiguous bool) {
 	i, j := len(c.recvs)-1, len(c.ctxs)-1
+	var found *implicitRecv
+	var level [2]int // a receiver's lambda depth and index, as its context parameters' depth and at
 	for i >= 0 || j >= 0 {
 		var r *implicitRecv
+		var lv [2]int
 		if j >= 0 && (i < 0 || c.ctxs[j].at > i) {
 			r = &c.ctxs[j]
+			lv = [2]int{r.depth, r.at}
 			j--
 		} else {
 			r = &c.recvs[i]
+			lv = [2]int{r.depth, i}
 			i--
 		}
-		if t := c.scope.narrowed(r.sym); fits(t) {
-			return recvThis(r, p), t, true
+		switch {
+		case found == nil:
+			if rt := c.scope.narrowed(r.sym); fits(rt) {
+				found, level, t = r, lv, rt
+			}
+		case lv != level:
+			return recvThis(found, p), t, true, false
+		case fits(c.scope.narrowed(r.sym)):
+			return recvThis(found, p), t, true, true
 		}
+	}
+	if found != nil {
+		return recvThis(found, p), t, true, false
 	}
 	if c.cls != nil {
 		t := c.cls.This()
@@ -140,17 +158,19 @@ func (c *Checker) contextValue(p syntax.Pos, fits func(types.Type) bool) (syntax
 		if fits(t) {
 			this := &syntax.This{}
 			this.P = p
-			return this, t, true
+			return this, t, true, false
 		}
 	}
-	return nil, types.InvalidType, false
+	return nil, types.InvalidType, false, false
 }
 
 // contextArg is a context argument a call of a callee passes: an implicit
-// value, and its type.
+// value, and its type. If ambiguous, another of the same level fits too
+// (see contextValue).
 type contextArg struct {
-	x syntax.Expr
-	t types.Type
+	x         syntax.Expr
+	t         types.Type
+	ambiguous bool
 }
 
 // contextArgs chooses the context arguments of call x of callee cl, the
@@ -183,7 +203,7 @@ func (c *Checker) contextArgs(cl *callee, x *syntax.Call) ([]contextArg, bool) {
 	out := make([]contextArg, len(ctx))
 	for k, cp := range ctx {
 		want := sub.ApplyIn(cp.Type)
-		v, t, ok := c.contextValue(x.P, func(t types.Type) bool {
+		v, t, ok, amb := c.contextValue(x.P, func(t types.Type) bool {
 			trial := sys.clone()
 			trial.sub(t, want)
 			return trial.ok
@@ -191,9 +211,15 @@ func (c *Checker) contextArgs(cl *callee, x *syntax.Call) ([]contextArg, bool) {
 		if !ok {
 			return nil, false
 		}
-		out[k] = contextArg{v, t}
+		out[k] = contextArg{v, t, amb}
 	}
 	return out, true
+}
+
+// ambiguousContext reports a context argument at p for a parameter of type
+// t that two implicit values of the same level fit.
+func (c *Checker) ambiguousContext(p syntax.Pos, t types.Type) {
+	c.errorf(p, "multiple potential context arguments for '%s' in scope", t)
 }
 
 // noContextArg reports a call at p of f, none of whose candidates found
@@ -205,23 +231,61 @@ func (c *Checker) noContextArg(p syntax.Pos, f *types.FunSym) {
 	}
 }
 
-// setContexts records the context arguments of call x, of callee cl.
-func (c *Checker) setContexts(x *syntax.Call, cl *callee) {
+// setContexts records the context arguments of call x, of callee cl. If
+// sys, the call's inference, those of generic parameters that contextArgs
+// found ambiguous, before the type arguments were inferred, are chosen
+// again with them, sub's solution.
+func (c *Checker) setContexts(x *syntax.Call, cl *callee, sys *system, sub types.Subst) {
 	x.Ctx = nil
-	for _, a := range cl.ctx {
+	for k, a := range cl.ctx {
+		pt := cl.f.Contexts[k].Type
+		switch {
+		case !a.ambiguous:
+		case sys != nil && pt.HasParams():
+			sys.fixups = append(sys.fixups, func(s *system) {
+				want := s.final(sub.ApplyIn(pt))
+				v, _, ok, amb := c.contextValue(x.P, func(t types.Type) bool { return c.subtype(t, want) })
+				if !ok {
+					v, amb = a.x, true
+				}
+				if amb {
+					c.ambiguousContext(x.P, pt)
+				}
+				c.value(v, noWant)
+				x.Ctx[k] = v
+			})
+		default:
+			c.ambiguousContext(x.P, pt)
+		}
 		c.value(a.x, noWant)
 		x.Ctx = append(x.Ctx, a.x)
 	}
 }
 
-// namesContextFun reports whether a top-level function of the program with
-// a name has context parameters, which a callable reference can't name.
-func (c *Checker) namesContextFun(name string) bool {
-	contexts := func(f *types.FunSym) bool {
-		d, ok := f.Decl.(*syntax.FunDecl)
-		return ok && len(d.Contexts) > 0
+// refContexts reports the declaration with context parameters that the
+// body of callable reference x, at p, uses, which Kotlin rejects, and
+// true if there is one.
+func (c *Checker) refContexts(x *syntax.Lambda, p syntax.Pos) bool {
+	var name string
+	switch b := x.Body.Stmts[0].(*syntax.ExprStmt).X.(type) {
+	case *syntax.Call:
+		if b.Sym != nil && !b.Invoke && len(b.Sym.Contexts) > 0 {
+			name = b.Sym.Name
+		}
+	case *syntax.Ident:
+		if b.Call != nil {
+			name = b.Name
+		}
+	case *syntax.Member:
+		if b.Call != nil {
+			name = b.Name
+		}
 	}
-	return slices.ContainsFunc(c.pkg.Funs[name], contexts) || slices.ContainsFunc(c.userFuns[name], contexts)
+	if name == "" {
+		return false
+	}
+	c.errorf(p, "callable reference to '%s' is unsupported because it has context parameters", name)
+	return true
 }
 
 // implicitContexts passes the contexts of a call of a value of context
@@ -235,10 +299,13 @@ func (c *Checker) implicitContexts(x *syntax.Call, ft types.Type) {
 	ctx := make([]syntax.Expr, k)
 	for i := range k {
 		want := ft.A.Get(i).T
-		v, _, ok := c.contextValue(x.P, func(t types.Type) bool { return c.subtype(t, want) })
+		v, _, ok, amb := c.contextValue(x.P, func(t types.Type) bool { return c.subtype(t, want) })
 		if !ok {
 			c.errorf(x.P, "no context argument for '%s' found", want)
 			return
+		}
+		if amb {
+			c.ambiguousContext(x.P, want)
 		}
 		ctx[i] = v
 	}
@@ -357,12 +424,238 @@ func (c *Checker) contextAccess(x syntax.Expr, f *types.FunSym, m *syntax.Member
 	return call, []callee{cl}
 }
 
+// altProp reports whether property d can be declared beside prev, the
+// property of its name and owner declared before, and those of the name
+// declared beside it (see VarSym.Alt): if the sets of their context
+// parameters' types differ, as written, or, if one is hidden, their
+// order, and so their accessors' JVM descriptors.
+func altProp(prev *types.VarSym, d *syntax.PropDecl) bool {
+	ctx := contextTypes(d)
+	for q := range altProps(prev) {
+		var qctx []string
+		hidden := d.Hidden()
+		if pd, ok := q.Decl.(*syntax.PropDecl); ok {
+			// Not a constructor's, which has none.
+			qctx, hidden = contextTypes(pd), hidden || pd.Hidden()
+		}
+		if slices.Equal(qctx, ctx) || !hidden && slices.Equal(sorted(qctx), sorted(ctx)) {
+			return false
+		}
+	}
+	return true
+}
+
+// contextTypes returns the context parameters' types of d, as written.
+func contextTypes(d *syntax.PropDecl) []string {
+	var out []string
+	for _, p := range d.Contexts {
+		var b strings.Builder
+		typeKey(&b, p.Type)
+		out = append(out, b.String())
+	}
+	return out
+}
+
+// sorted returns a sorted copy of s.
+func sorted(s []string) []string {
+	s = slices.Clone(s)
+	slices.Sort(s)
+	return s
+}
+
+// typeKey writes type t as written, for comparisons.
+func typeKey(b *strings.Builder, t *syntax.TypeRef) {
+	if t.Suspend {
+		b.WriteString("suspend ")
+	}
+	if t.Contexts != nil {
+		b.WriteString("context(")
+		for _, c := range t.Contexts {
+			typeKey(b, c)
+			b.WriteByte(',')
+		}
+		b.WriteString(") ")
+	}
+	if t.Recv != nil {
+		typeKey(b, t.Recv)
+		b.WriteByte('.')
+	}
+	if t.Ret != nil {
+		b.WriteByte('(')
+		for _, p := range t.Params {
+			typeKey(b, p)
+			b.WriteByte(',')
+		}
+		b.WriteString(")->")
+		typeKey(b, t.Ret)
+	}
+	b.WriteString(t.Name)
+	if t.Args != nil {
+		b.WriteByte('<')
+		for _, a := range t.Args {
+			b.WriteString(strconv.Itoa(int(a.Variance)))
+			if a.Type != nil {
+				typeKey(b, a.Type)
+			}
+			b.WriteByte(',')
+		}
+		b.WriteByte('>')
+	}
+	if t.Nullable {
+		b.WriteByte('?')
+	}
+}
+
+// addAlt adds p to the properties of its name that differ from q's in
+// their context parameters (see VarSym.Alt).
+func addAlt(q, p *types.VarSym) {
+	if q.Alt == nil {
+		q.Alt = q
+	}
+	p.Alt, q.Alt = q.Alt, p
+}
+
+// altProps yields p and the properties of its name beside it.
+func altProps(p *types.VarSym) func(func(*types.VarSym) bool) {
+	return func(yield func(*types.VarSym) bool) {
+		for q := p; yield(q) && q.Alt != nil && q.Alt != p; {
+			q = q.Alt
+		}
+	}
+}
+
+// kpropAlts yields kp and the class path's properties of its name beside
+// it (see KProp.Alt).
+func kpropAlts(kp *types.KProp) func(func(*types.KProp) bool) {
+	return func(yield func(*types.KProp) bool) {
+		for q := kp; yield(q) && q.Alt != nil && q.Alt != kp; {
+			q = q.Alt
+		}
+	}
+}
+
+// addKAlt is addAlt for the class path's properties.
+func addKAlt(q, p *types.KProp) {
+	if q.Alt == nil {
+		q.Alt = q
+	}
+	p.Alt, q.Alt = q.Alt, p
+}
+
+// sameContexts reports whether two lists of context parameters have the
+// same types.
+func sameContexts(a, b []*types.VarSym) bool {
+	return slices.EqualFunc(a, b, func(p, q *types.VarSym) bool { return p.Type == q.Type })
+}
+
+// propAlt returns the property of p's name that a use here refers to: the
+// first of p and those beside it (see VarSym.Alt) that applies, or p. One
+// applies if it is visible here and the context arguments it needs are
+// found. If more than one does, kotlinc reports an ambiguity, as
+// contextRead and contextWrite do.
+func (c *Checker) propAlt(p *types.VarSym) *types.VarSym {
+	if p == nil || p.Alt == nil {
+		return p
+	}
+	for q := range altProps(p) {
+		if c.propApplies(q) {
+			return q
+		}
+	}
+	return p
+}
+
+// kpropAlt is propAlt for a class path's property.
+func (c *Checker) kpropAlt(kp *types.KProp) *types.KProp {
+	if kp == nil || kp.Alt == nil {
+		return kp
+	}
+	for q := range kpropAlts(kp) {
+		if c.contextsFound(q.Getter) {
+			return q
+		}
+	}
+	return kp
+}
+
+// contextKProp reports whether a use here of the class path's property
+// name of cls refers to one with context parameters (see kpropAlt).
+func (c *Checker) contextKProp(cls *types.ClassSym, name string) bool {
+	kp := c.kpropAlt(ensured(cls).KProps[name])
+	return kp != nil && len(kp.Getter.Contexts) > 0
+}
+
+// propApplies reports whether a use here can refer to property p: if it
+// is visible, which kc otherwise doesn't check, and its context arguments
+// are found.
+func (c *Checker) propApplies(p *types.VarSym) bool {
+	if d, ok := p.Decl.(*syntax.PropDecl); ok && d.Visibility == syntax.Private && p.Owner != nil && !c.inside(p.Owner) {
+		return false
+	}
+	return c.contextsFound(accessor(p, false))
+}
+
+// contextsFound reports whether the context arguments of a call of f here
+// are found.
+func (c *Checker) contextsFound(f *types.FunSym) bool {
+	if len(f.Contexts) == 0 {
+		return true
+	}
+	n := len(c.errs)
+	_, ok := c.contextArgs(&callee{f: f, tparams: f.TypeParams}, &syntax.Call{})
+	c.errs = c.errs[:n]
+	return ok
+}
+
+// altAmbiguity reports use x of a property, and true, if another of its
+// name applies too: see propAlt.
+func (c *Checker) altAmbiguity(x syntax.Expr) bool {
+	var prop *types.VarSym
+	var m *syntax.Member
+	switch x := x.(type) {
+	case *syntax.Ident:
+		prop, m = x.Sym, x.Member
+	case *syntax.Member:
+		m = x
+	}
+	ambiguous := false
+	if m != nil {
+		prop = m.Prop
+		if g := m.Getter; prop == nil && g != nil && g.Owner != nil {
+			if kp := g.Owner.KProps[m.Name]; kp != nil && kp.Alt != nil {
+				for q := range kpropAlts(kp) {
+					ambiguous = ambiguous || q.Getter != g && c.contextsFound(q.Getter)
+				}
+			}
+		}
+	}
+	if prop != nil && prop.Alt != nil {
+		for q := range altProps(prop) {
+			ambiguous = ambiguous || q != prop && c.propApplies(q)
+		}
+	}
+	if ambiguous {
+		var name string
+		if m != nil {
+			name = m.Name
+		}
+		if prop != nil {
+			name = prop.Name
+		}
+		c.errorf(x.Pos(), "overload resolution ambiguity: %s", name)
+	}
+	return ambiguous
+}
+
 // contextRead checks read x, of type t, of a property with context
 // parameters as the call of its getter, and returns its type; that of
 // another, t.
 func (c *Checker) contextRead(x syntax.Expr, t, want types.Type) types.Type {
 	if t.K == types.Invalid {
 		return t
+	}
+	if c.altAmbiguity(x) {
+		return types.InvalidType
 	}
 	f, m := contextAccessor(x, false)
 	if f == nil {
@@ -383,6 +676,9 @@ func (c *Checker) contextRead(x syntax.Expr, t, want types.Type) types.Type {
 // as the call of its setter, or a compound one as an assignment of the
 // value read and v. It reports false for the assignment of another.
 func (c *Checker) contextWrite(s *syntax.Assign) bool {
+	if c.altAmbiguity(s.Target) {
+		return true
+	}
 	f, m := contextAccessor(s.Target, true)
 	if f == nil {
 		return false
