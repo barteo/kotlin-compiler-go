@@ -1737,6 +1737,11 @@ func (g *gen) constructor(cd *syntax.ClassDecl) {
 			g.checkParam(cp.Sym.Slot, cp.Sym.Type, cp.Name)
 		}
 	}
+	if !cls.Inner {
+		// Before the superclass's constructor, which may call the
+		// members that read them, as kotlinc stores them.
+		g.storeCaptures(cd)
+	}
 	g.code.Local(cf.ALOAD, 0)
 	if cls.Entries != nil {
 		g.code.Local(cf.ALOAD, 1)
@@ -1750,9 +1755,6 @@ func (g *gen) constructor(cd *syntax.ClassDecl) {
 			super = cls.Super.Name
 		}
 		g.code.Invoke(cf.INVOKESPECIAL, super, "<init>", "()V")
-	}
-	if !cls.Inner {
-		g.storeCaptures(cd)
 	}
 	g.initializers(cd)
 	g.line(cd.P)
@@ -1893,6 +1895,9 @@ func (g *gen) secondary(cd *syntax.ClassDecl, sc *syntax.SecondaryCtor) {
 	if access&cf.AccPrivate == 0 {
 		g.checkParams(nil, nil, f.Params)
 	}
+	if !sc.ToThis && cls.Local {
+		g.storeCaptures(cd) // before the superclass's constructor
+	}
 	g.code.Local(cf.ALOAD, 0)
 	switch {
 	case sc.Delegation == nil && enum:
@@ -1905,9 +1910,6 @@ func (g *gen) secondary(cd *syntax.ClassDecl, sc *syntax.SecondaryCtor) {
 		g.ctorCall(sc.Delegation)
 	}
 	if !sc.ToThis {
-		if cls.Local {
-			g.storeCaptures(cd)
-		}
 		g.initializers(cd)
 		g.line(sc.P)
 	}
@@ -2151,7 +2153,15 @@ func (g *gen) defaults(fd *syntax.FunDecl, owner *types.ClassSym) {
 		r.Slot = g.code.AllocLocal(paramDesc(r.Type))
 		g.named(r)
 	}
-	k := g.fillDefaultsCont(fd.Params, f.Params, len(f.Contexts), f.Suspend, nil)
+	var prologue func()
+	if o := g.owner; owner != nil && o != nil && (o.Anonymous || o.Inner || o.Local) && f.Owner == o {
+		if cd, ok := o.Decl.(*syntax.ClassDecl); ok {
+			// The default values, as the body, read the captures and an
+			// inner class's outer instance from locals.
+			prologue = func() { g.loadCaptures(cd, 0) }
+		}
+	}
+	k := g.fillDefaultsCont(fd.Params, f.Params, len(f.Contexts), f.Suspend, prologue)
 	if copied && !f.Suspend && (fd.Body != nil || fd.ExprBody != nil) {
 		// As kotlinc's, the body follows the default values, rather than
 		// a call of the function: copiers copy the function's lambda

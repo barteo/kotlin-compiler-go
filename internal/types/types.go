@@ -284,6 +284,10 @@ type VarSym struct {
 	// value, which code assigns later: val x: Int, then x = 1. The checker
 	// checks that it is assigned before it is read, and a val only once.
 	Deferred bool
+	// InitInLambda is set on a Deferred local val that a lambda which
+	// isn't inlined assigns, one called in place exactly once: the lambda
+	// shares it, as it does a captured var.
+	InitInLambda bool
 	// Delegate is set on a local delegated property: the hidden local
 	// that holds its delegate, which reading it calls getValue on.
 	Delegate *VarSym
@@ -456,9 +460,9 @@ func (v *VarSym) FieldClass() string {
 	return v.Facade
 }
 
-// Boxed reports whether v is a var captured by a lambda, which is kept in a
-// one-element array.
-func (v *VarSym) Boxed() bool { return v.Captured && v.Mutable && v.Kind == Local }
+// Boxed reports whether v is a var captured by a lambda, or a val a
+// lambda assigns, which is kept in a one-element array.
+func (v *VarSym) Boxed() bool { return v.Captured && (v.Mutable || v.InitInLambda) && v.Kind == Local }
 
 // UnitLocal reports whether v is a local of type Unit, which has no
 // storage: its value is the Unit object, and an assignment to it only
