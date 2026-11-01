@@ -219,9 +219,10 @@ func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.
 				nested = cls
 				break
 			}
-			if cls := c.lookupClass(name); cls != nil && cls.Companion != nil && !c.hasCallable(cls, r.Name) && c.hasCallable(cls.Companion, r.Name) {
+			if cls := c.lookupClass(name); cls != nil && cls.Companion != nil && !c.hasCallable(cls, r.Name) && c.hasCallable(cls.Companion, r.Name) && len(c.extCallees(r.Name, cls.This())) == 0 {
 				// A member of the companion, which the class doesn't
-				// have, is bound to the companion: Level::parse.
+				// have nor an extension of it, is bound to the companion:
+				// Level::parse, but B::foo is fun B.foo().
 				c.bindRef(r, c.value(r.X, noWant))
 				recv = func() syntax.Expr { return ident(r.Bound.Name) }
 				break
@@ -341,7 +342,7 @@ func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.
 		if unbound {
 			ps = []types.Type{recvType}
 		}
-		if !c.namesClass(r, recv != nil) {
+		if !c.namesClass(r, recv != nil) && !c.localExtWins(r, recvType) {
 			if w.kprop {
 				// A property's reference is a KProperty object, as in
 				// Kotlin, if kc can make one, and otherwise a function.
@@ -570,6 +571,26 @@ func (c *Checker) bindRef(r *syntax.CallableRef, t types.Type) {
 	}
 }
 
+// localExtWins reports whether an unbound reference T::f names a local
+// extension function f rather than a property: as in Kotlin, the local
+// scope comes before the top level's extension properties, though not
+// before a member property of T's.
+func (c *Checker) localExtWins(r *syntax.CallableRef, recvType types.Type) bool {
+	if recvType.K == types.Invalid {
+		return false
+	}
+	if cls := c.classOf(recvType.NonNull()); cls != nil && c.hasProp(cls, r.Name) {
+		return false
+	}
+	fs, _ := c.scope.findFuns(r.Name)
+	for _, f := range fs {
+		if f.Ext {
+			return true
+		}
+	}
+	return false
+}
+
 // refTarget finds the only function a reference without an expected type
 // can name, nil if it names none (it may name a property), and reports
 // an error and false if it names several.
@@ -782,10 +803,21 @@ func wantsKProp(x *syntax.Lambda, t types.Type) bool {
 	return x.Ref != nil && t.K == types.Class && kpropTypes[t.C.Name]
 }
 
-// kpropRef checks a property reference whose expected type is one of
-// kotlin.reflect's, and returns its type.
-func (c *Checker) kpropRef(x *syntax.Lambda) types.Type {
+// kpropRef checks a property reference whose expected type, want, is one
+// of kotlin.reflect's, and returns its type. Where a KCallable is
+// expected, the reference may be a function's, a KFunctionN: ::box.
+func (c *Checker) kpropRef(x *syntax.Lambda, want types.Type) types.Type {
+	n := len(c.errs)
 	ps, rt, ok := c.checkRef(x, lambdaWant{ret: noWant, prop: true})
+	if (!ok || rt.K == types.Invalid) && len(c.errs) > n && want.Flex().NonNull().C.Name == "kotlin/reflect/KCallable" {
+		errs := c.errs[n:]
+		c.errs, x.KProp = c.errs[:n], nil
+		if t := c.lambda(x, noWant); t.K != types.Invalid && len(c.errs) == n {
+			return t
+		}
+		c.errs = append(c.errs[:n], errs...)
+		return types.InvalidType
+	}
 	if !ok || rt.K == types.Invalid {
 		return types.InvalidType
 	}

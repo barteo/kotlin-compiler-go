@@ -869,7 +869,13 @@ func (c *Checker) binary(x *syntax.Binary, want types.Type, allowRange bool) typ
 
 	case syntax.EQ, syntax.NE, syntax.EQ_EQ_EQ, syntax.NOT_EQ_EQ:
 		xt := c.value(x.X, noWant)
-		yt := c.value(x.Y, xt)
+		yWant := xt
+		if l, ok := x.Y.(*syntax.Lambda); ok && l.Ref != nil {
+			// As in Kotlin, a reference compared is checked on its own,
+			// as equals' argument: ::top == Int::intExt.
+			yWant = noWant
+		}
+		yt := c.value(x.Y, yWant)
 		x.OpType = c.castEquality(x, xt, yt)
 		return types.BoolType
 	}

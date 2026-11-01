@@ -116,7 +116,7 @@ func funcParts(t types.Type) ([]types.Type, types.Type, bool) {
 // (T) -> Unit p gives T f's parameter type.
 func (c *Checker) lambda(x *syntax.Lambda, want types.Type) types.Type {
 	if wantsKProp(x, want) {
-		return c.kpropRef(x)
+		return c.kpropRef(x, want)
 	}
 	proper := !want.HasVars() || c.onlyStubs(want)
 	if x.Ref != nil && proper {
@@ -1892,7 +1892,7 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type) {
 	pt := s.apply(p)
 	if wantsKProp(l, pt) {
 		// Its type doesn't depend on the parameter's.
-		lt := c.kpropRef(l)
+		lt := c.kpropRef(l, pt)
 		l.T = lt
 		switch {
 		case lt.K == types.Invalid:

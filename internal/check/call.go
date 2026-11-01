@@ -858,6 +858,7 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 		if len(match) == 0 {
 			match = c.applicable(cs, x, ts, partials, true)
 		}
+		match = c.notPropRefs(x, match)
 		var maximal []*candidate
 		for _, cd := range match {
 			if c.mostSpecific(cd, match, x.Args) {
@@ -1015,6 +1016,41 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 	}
 	sys.finish()
 	return c.unitResult(f.Ret, sys.final(ret))
+}
+
+// notPropRefs drops from match the candidates that take a property
+// reference object for an argument ::f naming only functions or classes,
+// unless none would remain: register(::box) is register(vararg items:
+// KCallable<*>), not register(vararg items: KProperty<*>).
+func (c *Checker) notPropRefs(x *syntax.Call, match []*candidate) []*candidate {
+	var refs []int
+	for i, a := range x.Args {
+		if l, ok := a.(*syntax.Lambda); ok && l.Ref != nil {
+			r := l.Ref
+			if r.X == nil && r.Type == nil && r.Bound == nil && !c.isVar(r.Name) && (len(c.topFuns(r.Name)) > 0 || c.lookupClass(r.Name) != nil) {
+				refs = append(refs, i)
+			}
+		}
+	}
+	if len(refs) == 0 {
+		return match
+	}
+	var keep []*candidate
+	for _, cd := range match {
+		ok := true
+		for _, i := range refs {
+			if pt := cd.params[i].Flex().NonNull(); wantsKProp(x.Args[i].(*syntax.Lambda), pt) && pt.C.Name != "kotlin/reflect/KCallable" {
+				ok = false
+			}
+		}
+		if ok {
+			keep = append(keep, cd)
+		}
+	}
+	if len(keep) == 0 {
+		return match
+	}
+	return keep
 }
 
 // byRefShape chooses among candidates the only one whose parameters take
