@@ -1732,7 +1732,7 @@ func (g *gen) ungroupedCall(x *syntax.Call) {
 		g.code.Sconst(s) // as kotlinc's, a constant
 		return
 	}
-	if t := g.tail; x.Tail && t != nil && x.Sym == t.fd.Sym && len(g.inl) == 0 && len(g.srcInl) == 0 {
+	if t := g.tail; x.Tail && t != nil && x.Sym == t.fd.Sym && len(g.srcInl) == 0 && (len(g.inl) == 0 || g.compose == nil) {
 		g.tailCall(x, t)
 		return
 	}
@@ -2605,5 +2605,9 @@ func (g *gen) tailCall(x *syntax.Call, t *tailrec) {
 			g.code.Local(storeOp(p.Type), p.Slot)
 		}
 	}
+	// From an inlined lambda's return: the finally blocks of the inlined
+	// bodies' trys run, and the values their code left are dropped.
+	g.leaveTries(0)
+	g.code.PopTo(0)
 	g.code.Jump(cf.GOTO, t.start)
 }

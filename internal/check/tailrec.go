@@ -10,9 +10,14 @@ import (
 // body, as kotlinc does: the value of a return, of the expression body,
 // or of the last statement of the body, through if and when branches and
 // the right side of ?:, && and ||, and a statement followed by a return
-// without a value, which leaves the function. Calls in lambdas, local
-// functions, object expressions and try blocks aren't, and stay calls:
-// kotlinc warns about them, kc has no warnings.
+// without a value, which leaves the function. In a lambda passed to an
+// inline function, so are the values of its returns from the function,
+// but not its last statement, which doesn't leave it: those jumps run
+// the finally blocks of the inlined body's trys they leave, as kotlinc's
+// do. Calls in other lambdas, local functions, object expressions and
+// try blocks aren't, and stay calls: kotlinc warns about them, kc has no
+// warnings. Neither are a suspend function's in inline lambdas, which
+// codegen can't always turn into jumps.
 func (c *Checker) tailCalls(d *syntax.FunDecl) {
 	sym := d.Sym
 	var tail func(e syntax.Expr)
@@ -51,7 +56,9 @@ func (c *Checker) tailCalls(d *syntax.FunDecl) {
 	}
 	walk := func(n any) bool {
 		switch n := n.(type) {
-		case *syntax.Lambda, *syntax.LocalFun, *syntax.ObjectExpr, *syntax.Try:
+		case *syntax.Lambda:
+			return n.Inline && !sym.Suspend
+		case *syntax.LocalFun, *syntax.ObjectExpr, *syntax.Try:
 			return false
 		case *syntax.Jump:
 			tail(n)

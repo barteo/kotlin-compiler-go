@@ -144,6 +144,76 @@ class Stepper(val step: Int) {
     }
 }
 
+// Returns of tailrec functions from lambdas passed to inline functions:
+// through a try whose finally block runs on each jump, past a value the
+// inlined code left on the stack, before a return without a value, and
+// in nested lambdas. A lambda's result isn't a tail call.
+inline fun act(f: () -> Unit) {
+    f()
+}
+
+var finallies = 0
+
+inline fun guarded(f: () -> Unit) {
+    try {
+        f()
+    } finally {
+        finallies++
+    }
+}
+
+inline fun plus(a: Int, f: () -> Int): Int = a + f()
+
+inline fun twice(f: () -> Int): Int = f() + f()
+
+tailrec fun viaAct(n: Int, acc: Long): Long {
+    act {
+        if (n == 0) return acc
+        return viaAct(n - 1, acc + n)
+    }
+    return -1
+}
+
+tailrec fun viaGuarded(n: Int): Int {
+    guarded {
+        if (n == 0) return n
+        return viaGuarded(n - 1)
+    }
+    return -1
+}
+
+tailrec fun viaPlus(n: Int): Int = plus(1) {
+    if (n == 0) return 7
+    return viaPlus(n - 1)
+}
+
+var lambdaSteps = 0
+
+tailrec fun unitInLambda(n: Int) {
+    act {
+        lambdaSteps++
+        if (n > 0) {
+            unitInLambda(n - 1)
+            return
+        }
+    }
+}
+
+tailrec fun nested(n: Int): Int {
+    act {
+        act {
+            if (n == 0) return 3
+            return nested(n - 1)
+        }
+    }
+    return -1
+}
+
+tailrec fun lambdaResult(n: Int): Int {
+    if (n == 0) return 1
+    return twice { lambdaResult(n - 1) }
+}
+
 fun main() {
     println(sum(1000000))
     println(gcd(1071, 462))
@@ -171,4 +241,12 @@ fun main() {
     println(localCount(1000000))
     println(localExt(1000000))
     println(Stepper(3).run(3000000))
+    println(viaAct(1000000, 0))
+    println(viaGuarded(1000000))
+    println(finallies)
+    println(viaPlus(1000000))
+    unitInLambda(1000000)
+    println(lambdaSteps)
+    println(nested(1000000))
+    println(lambdaResult(10))
 }
