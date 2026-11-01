@@ -109,7 +109,7 @@ func extRecvs(d *syntax.FunDecl) []implicitRecv {
 	if d.RecvSym == nil {
 		return nil
 	}
-	return []implicitRecv{{sym: d.RecvSym, label: strings.TrimPrefix(d.RecvSym.Name, "$this$")}}
+	return []implicitRecv{{sym: d.RecvSym, label: strings.TrimPrefix(d.RecvSym.Name, "$this$"), owner: d}}
 }
 
 // Extension properties.

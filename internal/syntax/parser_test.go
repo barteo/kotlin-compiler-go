@@ -143,6 +143,9 @@ func TestParseErrors(t *testing.T) {
 		{"context(Int) fun f() = 1", "1:9", "context parameters must be named"},
 		{"context() fun f() = 1", "1:9", "expected a context parameter"},
 		{"fun f(g: context() () -> Unit) {}", "1:18", "expected a context parameter type"},
+		{"context(_: Any?) package p", "1:1", "context parameters are unsupported in this position"},
+		{"class C {\n  context(a: A)\n}", "2:3", "expected a declaration after the context parameters"},
+		{"context(a: A)", "1:1", "expected a declaration after the context parameters"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.msg, func(t *testing.T) {
@@ -162,8 +165,8 @@ func TestParseErrors(t *testing.T) {
 // construct is reported as, which bench/survey counts.
 func TestUnsupportedFeatures(t *testing.T) {
 	tests := []struct{ src, feature string }{
-		{"context(c: Int) class C", "context parameters"},
-		{"class C {\n  context(c: Int)\n  constructor()\n}", "context parameters"},
+		{"val (a, b) = p", "destructuring declaration"},
+		{"fun f() {\n  external fun g()\n}", "local external function"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.src, func(t *testing.T) {
@@ -302,7 +305,7 @@ package a.b
 
 import a.C
 
-context(c: Int) class D(val x: Int)
+val (a, b) = 1 to 2
 
 fun ok() = 1
 
@@ -331,7 +334,7 @@ fun ok2() {
 	for _, e := range errs {
 		got = append(got, e.Pos.String()+" "+e.Feature)
 	}
-	want := []string{"6:1 context parameters"}
+	want := []string{"6:5 destructuring declaration"}
 	if strings.Join(got, ", ") != strings.Join(want, ", ") {
 		t.Errorf("got  %s\nwant %s", strings.Join(got, ", "), strings.Join(want, ", "))
 	}
@@ -351,6 +354,49 @@ fun ok2() {
 	}
 	if got, want := strings.Join(names, " "), "ok K K.f K.g I I.f ok2"; got != want {
 		t.Errorf("parsed declarations: got %s, want %s", got, want)
+	}
+}
+
+// TestMisplacedContexts checks the errors that parsing goes on after:
+// context parameters where Kotlin doesn't allow them, and their modifiers
+// and default values.
+func TestMisplacedContexts(t *testing.T) {
+	src := "context(c: A) class C context(c: A) constructor() {\n" +
+		"  context(c: A)\n  constructor(x: Int)\n" +
+		"  context(c: A) typealias T = Int\n" +
+		"  context(c: A) init {}\n" +
+		"}\n" +
+		"enum class E {\n  context(c: A)\n  X\n}\n" +
+		"val p: Int\n  context(c: A)\n  get() = 1\n" +
+		"context(vararg a: A, b: B = b0) fun f() {}\n" +
+		"context(private _: A) fun h() {}\n" +
+		"context(noinline @Ann a: () -> Unit) fun g() {}\n"
+	f, errs := Parse("t.kt", src)
+	if len(errs) > 0 {
+		t.Fatal(errs[0])
+	}
+	var got []string
+	for _, e := range f.Errors {
+		got = append(got, e.Pos.String()+" "+e.Msg)
+	}
+	want := []string{
+		"1:1 context parameters on classes are unsupported",
+		"1:23 context parameters on primary constructors are unsupported",
+		"2:3 context parameters on constructors are unsupported",
+		"4:3 context parameters on type aliases are unsupported",
+		"5:3 context parameters on initializers are unsupported",
+		"8:3 context parameters on enum entries are unsupported",
+		"12:3 context parameters on property accessors are unsupported",
+		"14:9 modifier 'vararg' is not applicable to 'context parameter'",
+		"14:22 context parameters cannot have default values",
+		"15:9 modifier 'private' is not applicable to 'context parameter'",
+	}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Errorf("got\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+	g := f.Decls[len(f.Decls)-1].(*FunDecl)
+	if p := g.Contexts[0]; !p.Noinline || len(p.Annotations) != 1 {
+		t.Errorf("context parameter of g: noinline %v, %d annotations", p.Noinline, len(p.Annotations))
 	}
 }
 

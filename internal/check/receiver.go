@@ -90,7 +90,7 @@ func (c *Checker) thisExpr(x *syntax.This) types.Type {
 
 // recvThis returns this, referring to an implicit receiver.
 func recvThis(r *implicitRecv, p syntax.Pos) *syntax.This {
-	this := &syntax.This{Recv: r.sym}
+	this := &syntax.This{Recv: r.sym, Implicit: true}
 	this.P = p
 	return this
 }

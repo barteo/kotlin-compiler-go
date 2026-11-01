@@ -28,14 +28,6 @@ own tests.
 - Builder inference that can't check a lambda's body with the type
   variables open, as a member of a value of one of them whose type
   nothing gives yet: it needs a type argument or an expected type.
-- Context parameters of classes and constructors, which are reported as
-  unsupported. Those of functions (top-level, members, extensions, local
-  and anonymous) and properties, of context function types and their
-  lambdas, and of fun interfaces' methods work, the program's and the
-  class path's. Of their checks, `kc` doesn't report a receiver that a
-  context parameter of its type shadows
-  (`RECEIVER_SHADOWED_BY_CONTEXT_PARAMETER`), nor a context parameter of
-  type `CoroutineContext`, which Kotlin reserves.
 
 ## Without the standard library
 

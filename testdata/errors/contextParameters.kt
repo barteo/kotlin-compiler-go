@@ -1,5 +1,5 @@
-// The parser's unsupported uses of context parameters are in
-// internal/syntax's TestUnsupportedFeatures.
+// The parser's errors in context parameters are in internal/syntax's
+// TestParseErrors and TestMisplacedContexts.
 class Logger(val name: String)
 
 context(logger: Logger)
@@ -69,3 +69,46 @@ val ordered: String get() = ""
 
 context(b: Holder, a: Logger)
 val ordered: String get() = "" // ERROR conflicting declarations: ordered
+
+context(l: Logger) // ERROR context parameters on classes are unsupported
+class WithContext {
+    fun f() = l.name // ERROR unresolved reference: l
+}
+
+class Ctor {
+    context(l: Logger) // ERROR context parameters on constructors are unsupported
+    constructor()
+}
+
+context(f: () -> Unit) // ERROR context parameter 'f: () -> Unit' must be 'noinline'
+inline fun inlineContext() {}
+
+context(noinline f: () -> Unit)
+inline fun noinlineContext() {}
+
+class Named(val name: String) {
+    fun hello() = name
+}
+
+context(n: Named)
+fun Named.shadowed() = hello() // ERROR 'hello' uses an implicit receiver shadowed by a context parameter
+
+context(n: Named)
+fun Named.explicit() = this.hello() + n.hello()
+
+fun withNamed(block: context(Named) () -> Unit) = block(Named("c"))
+
+fun Named.nested() {
+    withNamed {
+        hello() // ERROR 'hello' uses an implicit receiver shadowed by a context parameter
+        name // ERROR 'name' uses an implicit receiver shadowed by a context parameter
+    }
+}
+
+fun <T> on(t: T, block: T.() -> Unit) = t.block()
+
+context(n: Named)
+fun inner() {
+    on(Named("w")) { hello() } // the receiver is nearer
+    fun Named.local() = hello() // the local function's receiver is nearer
+}

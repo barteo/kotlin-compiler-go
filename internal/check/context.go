@@ -35,6 +35,32 @@ import (
 // and declares them.
 func (c *Checker) declareContexts(d *syntax.FunDecl, sym *types.FunSym) {
 	sym.Contexts = c.contextSyms(d.Contexts)
+	if d.Inline {
+		c.noinlineContexts(d.Contexts)
+	}
+}
+
+// noinlineContexts reports the context parameters of an inline function or
+// accessor, ps, of function types that aren't noinline: as with kotlinc,
+// they aren't inlined.
+func (c *Checker) noinlineContexts(ps []*syntax.Param) {
+	for _, p := range ps {
+		if t := p.Sym.Type; !p.Noinline && !t.N && t.Flex().IsFunc() {
+			c.errorf(p.P, "context parameter '%s: %s' must be 'noinline': inlining context parameters is not yet supported", p.Name, t)
+		}
+	}
+}
+
+// reservedContext reports whether t, a context parameter's type, is
+// CoroutineContext, which Kotlin reserves for suspend functions' own.
+func reservedContext(t types.Type) bool {
+	return t.K == types.Class && t.C.Name == "kotlin/coroutines/CoroutineContext"
+}
+
+// reservedContextError reports a context parameter at p of type t, or a
+// lambda or function type with one, that reservedContext rejects.
+func (c *Checker) reservedContextError(p syntax.Pos) {
+	c.errorf(p, "context parameter of type 'kotlin.coroutines.CoroutineContext' is reserved for future use")
 }
 
 // contextSyms resolves the types of context parameters ps and returns
@@ -55,6 +81,9 @@ func (c *Checker) contextSyms(ps []*syntax.Param) []*types.VarSym {
 			name = "$context-" + p.Type.Name[strings.LastIndexByte(p.Type.Name, '.')+1:]
 		}
 		p.Sym = &types.VarSym{Name: name, Type: c.resolveType(p.Type), Kind: types.Param, Decl: p}
+		if reservedContext(p.Sym.Type) {
+			c.reservedContextError(p.P)
+		}
 		out = append(out, p.Sym)
 	}
 	return out
@@ -75,6 +104,9 @@ func (c *Checker) propContexts(d *syntax.PropDecl, sym *types.VarSym) {
 		c.errorf(d.P, "a property with context parameters must have accessors or be abstract")
 	}
 	sym.Contexts = c.contextSyms(d.Contexts)
+	if d.Inline || d.InlineGetter || d.InlineSetter {
+		c.noinlineContexts(d.Contexts)
+	}
 	for _, a := range []*syntax.FunDecl{d.Getter, d.Setter} {
 		if a != nil && a.Sym != nil {
 			a.Contexts = d.Contexts
@@ -88,7 +120,7 @@ func (c *Checker) propContexts(d *syntax.PropDecl, sym *types.VarSym) {
 func funContexts(d *syntax.FunDecl) []implicitRecv {
 	var out []implicitRecv
 	for _, p := range d.Contexts {
-		out = append(out, implicitRecv{sym: p.Sym})
+		out = append(out, implicitRecv{sym: p.Sym, owner: d})
 	}
 	return out
 }
@@ -103,15 +135,16 @@ func declareNamedContexts(s *scope, d *syntax.FunDecl) {
 	}
 }
 
-// pushContexts makes the context parameters of a lambda implicit values
-// in its body, nearer than the receivers around it.
-func (c *Checker) pushContexts(syms []*types.VarSym) {
+// pushContexts makes the context parameters of a lambda or a local
+// function, owner, implicit values in its body, nearer than the receivers
+// around it.
+func (c *Checker) pushContexts(syms []*types.VarSym, owner any) {
 	if len(syms) == 0 {
 		return
 	}
 	c.ctxs = c.ctxs[:len(c.ctxs):len(c.ctxs)]
 	for _, s := range syms {
-		c.ctxs = append(c.ctxs, implicitRecv{sym: s, depth: len(c.lambdas), at: len(c.recvs)})
+		c.ctxs = append(c.ctxs, implicitRecv{sym: s, depth: len(c.lambdas), at: len(c.recvs), owner: owner})
 	}
 }
 
@@ -723,4 +756,161 @@ func setAccess(x syntax.Expr, call *syntax.Call) {
 	case *syntax.Member:
 		x.Call = call
 	}
+}
+
+// shadowedUse is a call or a property read, named at p, whose implicit
+// receiver a context parameter shadows, if still reports that it resolves
+// as it did then.
+type shadowedUse struct {
+	name  string
+	p     syntax.Pos
+	still func() bool
+}
+
+// receiverShadowed records call x of callee cl if an implicit receiver it
+// passes, as its dispatch or extension receiver, is shadowed by a context
+// parameter: one declared as near as the receiver or nearer, whose value
+// it could have been passed. Context parameters aren't implicit
+// receivers, so kotlinc asks for the receiver to be explicit. The error
+// waits for the end of checking: it must not make the calls that try
+// candidates, and drop those with errors, try another, and x may be
+// checked again, in a lambda, and resolve otherwise.
+func (c *Checker) receiverShadowed(x *syntax.Call, cl *callee) {
+	delete(c.shadowed, x)
+	f := cl.f
+	if len(c.ctxs) == 0 || f.Static || f.Name == "<init>" {
+		return
+	}
+	var p syntax.Pos
+	switch fn := x.Fun.(type) {
+	case *syntax.Member:
+		if !c.memberShadowed(fn, f.Ext, f.Recv, f.Owner) {
+			return
+		}
+		p = fn.P
+	case *syntax.Ident:
+		if f.Ext || f.Owner == nil || c.cls == nil || !c.cls.IsSubclassOf(f.Owner) || !c.shadows(-1, c.instanceOf(f.Owner)) {
+			return
+		}
+		p = fn.P
+	default:
+		return
+	}
+	c.shadowedAt(x, shadowedUse{f.Name, p, func() bool { return x.Sym == f }})
+}
+
+// propShadowed records x, a property read on an implicit receiver, if a
+// context parameter shadows the receiver, as receiverShadowed does.
+func (c *Checker) propShadowed(x *syntax.Ident) {
+	delete(c.shadowed, x)
+	m := x.Member
+	if len(c.ctxs) == 0 || m == nil {
+		return
+	}
+	switch {
+	case m.Prop != nil && m.Prop.Owner != nil:
+		if !c.memberShadowed(m, false, types.Type{}, m.Prop.Owner) {
+			return
+		}
+	case m.Getter != nil && !m.Getter.Static:
+		if !c.memberShadowed(m, m.Getter.Ext, m.Getter.Recv, m.Getter.Owner) {
+			return
+		}
+	default:
+		return
+	}
+	c.shadowedAt(x, shadowedUse{x.Name, x.P, func() bool { return x.Member == m }})
+}
+
+// memberShadowed reports whether a context parameter shadows an implicit
+// receiver of m, a member of class owner or, if ext, an extension with
+// receiver type recv: its receiver, or a member extension's dispatch
+// receiver.
+func (c *Checker) memberShadowed(m *syntax.Member, ext bool, recv types.Type, owner *types.ClassSym) bool {
+	if th, _ := m.X.(*syntax.This); th != nil && th.Implicit {
+		i := c.recvIndex(th.Recv)
+		if ext && c.shadows(i, func(t types.Type) bool { return c.fitsRecv(t, recv) }) || !ext && owner != nil && c.shadows(i, c.instanceOf(owner)) {
+			return true
+		}
+	}
+	if !ext || owner == nil || m.Dispatch != nil {
+		return false
+	}
+	i := -1
+	if m.DispatchThis != nil {
+		i = c.recvIndex(m.DispatchThis.Recv)
+	} else if c.cls == nil || !c.cls.IsSubclassOf(owner) {
+		return false
+	}
+	return c.shadows(i, c.instanceOf(owner))
+}
+
+// instanceOf returns whether a value of a type is an instance of cls.
+func (c *Checker) instanceOf(cls *types.ClassSym) func(types.Type) bool {
+	return func(t types.Type) bool {
+		k := c.classOf(t)
+		return k != nil && k.IsSubclassOf(cls)
+	}
+}
+
+// shadowedAt records u, the use x, for shadowedErrors.
+func (c *Checker) shadowedAt(x syntax.Expr, u shadowedUse) {
+	if c.shadowed == nil {
+		c.shadowed = map[syntax.Expr]shadowedUse{}
+	}
+	c.shadowed[x] = u
+}
+
+// shadowedErrors reports the uses that receiverShadowed and propShadowed
+// recorded which still resolve as they did then.
+func (c *Checker) shadowedErrors() {
+	if c.file.SuppressShadowed {
+		return
+	}
+	for _, u := range c.shadowed {
+		if u.still() {
+			c.errorf(u.p, "'%s' uses an implicit receiver shadowed by a context parameter: make the receiver explicit", u.name)
+		}
+	}
+}
+
+// recvIndex returns the index in c.recvs of the implicit receiver held by
+// v, or -2.
+func (c *Checker) recvIndex(v *types.VarSym) int {
+	for i := range c.recvs {
+		if c.recvs[i].sym == v {
+			return i
+		}
+	}
+	return -2
+}
+
+// shadows reports whether a context parameter as near as implicit
+// receiver i or nearer, or than the class's this if i is -1, has a type
+// that fits.
+func (c *Checker) shadows(i int, fits func(types.Type) bool) bool {
+	if i < -1 {
+		return false
+	}
+	for _, k := range c.ctxs {
+		near := !k.outer
+		if i >= 0 {
+			near = k.at > i || k.at == i && k.owner != nil && k.owner == c.recvs[i].owner
+		}
+		if near && fits(c.scope.narrowed(k.sym)) {
+			return true
+		}
+	}
+	return false
+}
+
+// fitsRecv reports whether a value of type t could be the receiver of an
+// extension whose receiver type is rt: of a subclass of its class if rt
+// has type parameters.
+func (c *Checker) fitsRecv(t, rt types.Type) bool {
+	if rt.HasParams() {
+		cls, rc := c.classOf(t), c.classOf(rt)
+		return cls != nil && rc != nil && cls.IsSubclassOf(rc)
+	}
+	return c.subtype(t, rt)
 }

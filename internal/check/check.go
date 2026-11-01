@@ -153,7 +153,10 @@ type Checker struct {
 	funCache   map[funKey][]*types.FunSym
 	levelCache map[funKey][][]*types.FunSym // see kotlinFunLevels
 	errs       []*syntax.Error
-	done       map[any]bool // declarations already checked during inference
+	// shadowed are the calls whose implicit receiver a context parameter
+	// shadows, reported once checked (see receiverShadowed).
+	shadowed map[syntax.Expr]shadowedUse
+	done     map[any]bool // declarations already checked during inference
 	// jumps says, for each inlined lambda, whether a non-local return,
 	// break or continue can leave it.
 	jumps map[*syntax.Lambda]inlineJumps
@@ -473,6 +476,7 @@ func CheckWith(files []*syntax.File, lib *Library, jobs int) []*syntax.Error {
 
 	var errs []*syntax.Error
 	for _, c := range checkers {
+		c.shadowedErrors()
 		sort.SliceStable(c.errs, func(i, j int) bool {
 			a, b := c.errs[i].Pos, c.errs[j].Pos
 			return a.Line < b.Line || a.Line == b.Line && a.Col < b.Col
@@ -617,6 +621,10 @@ func (c *Checker) resolveType(ref *syntax.TypeRef) types.Type {
 }
 
 // resolveFuncType resolves a function type (A, B) -> R.
+// reservedRef keys Checker.done for a function type whose reserved
+// context parameter is reported: types are resolved more than once.
+type reservedRef struct{ *syntax.TypeRef }
+
 func (c *Checker) resolveFuncType(ref *syntax.TypeRef) types.Type {
 	if len(ref.Params) > types.MaxVarArity {
 		c.errorf(ref.P, "function types with more than %d parameters are not supported", types.MaxVarArity)
@@ -647,6 +655,10 @@ func (c *Checker) resolveFuncType(ref *syntax.TypeRef) types.Type {
 		for i, p := range ref.Contexts {
 			if ctx[i] = c.resolveType(p); ctx[i].K == types.Invalid {
 				return types.InvalidType
+			}
+			if reservedContext(ctx[i]) && !c.done[reservedRef{ref}] {
+				c.done[reservedRef{ref}] = true
+				c.reservedContextError(ref.P)
 			}
 		}
 		ps = append(ctx, ps...)
@@ -906,6 +918,7 @@ func (c *Checker) resolveClassBounds() {
 
 // declare enters the file's top-level names into its package.
 func (c *Checker) declare() {
+	c.errs = append(c.errs, c.file.Errors...)
 	c.dropExtensions()
 	c.serializableWith()
 	c.parcelize()

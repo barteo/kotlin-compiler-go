@@ -6,16 +6,16 @@ Of 10827 test files, 3627 are skipped and 7200 run.
 
 | Result | Tests | Share |
 |:---|---:|---:|
-| rejects invalid | 2939 | 40.8% |
-| accepts valid | 2769 | 38.5% |
-| accepts invalid | 872 | 12.1% |
+| rejects invalid | 2950 | 41.0% |
+| accepts valid | 2772 | 38.5% |
+| accepts invalid | 868 | 12.1% |
 | rejects valid | 530 | 7.4% |
-| parse/unsupported | 89 | 1.2% |
+| parse/unsupported | 79 | 1.1% |
 | crash | 1 | 0.0% |
 
 *Rejects invalid* and *accepts valid* agree with kotlinc. *Accepts invalid* is code kotlinc rejects that kc compiles; *rejects valid*, code kotlinc compiles that kc's checker rejects. Both are bugs. A *parse/unsupported* test uses a feature kc doesn't support, which says nothing about its checks.
 
-Of the 2939 tests both reject, kc reports an error on the line of an expected one in 2658.
+Of the 2950 tests both reject, kc reports an error on the line of an expected one in 2672.
 
 A test is invalid if it stops before the backend or marks an error: one that runs to it (`BACKEND`) can mark the JVM backend's errors, such as `CONFLICTING_JVM_DECLARATIONS`. Of the tests run, 177 stop at `FRONTEND` but mark no error: most add the `CHECK_TYPE` helpers, whose names (`_`) kotlinc reports outside the test infrastructure, and count as valid; the others leave their errors out with the `DIAGNOSTICS` directive. 101 run to the backend and mark one. 5 marked names have no declared severity (debug information, for one), and count as neither.
 
@@ -52,7 +52,7 @@ Tests kotlinc rejects that kc compiles, by the errors their markup expects. A te
 | Expected error | Tests | Only error | Examples |
 |:---|---:|---:|:---|
 | `INVISIBLE_REFERENCE` | 53 | 42 | `tests/callableReference/bound/privateToThis.kt`, `tests/callableReference/kt46437.kt` |
-| `WRONG_ANNOTATION_TARGET` | 46 | 35 | `tests/Casts.kt`, `tests/annotationOnGetClassCall.kt` |
+| `WRONG_ANNOTATION_TARGET` | 47 | 36 | `tests/Casts.kt`, `tests/annotationOnGetClassCall.kt` |
 | `ARGUMENT_TYPE_MISMATCH` | 38 | 22 | `tests/annotations/AnnotationForClassTypeParameter.kt`, `tests/annotations/AnnotationForFunctionTypeParameter.kt` |
 | `ANNOTATION_ARGUMENT_MUST_BE_CONST` | 34 | 22 | `tests/annotations/MutuallyRecursivelyAnnotatedGlobalFunction.kt`, `tests/annotations/RecursivelyAnnotatedFunctionParameter.kt` |
 | `UNRESOLVED_REFERENCE` | 31 | 19 | `tests/annotations/AnnotationForObject.kt`, `tests/annotations/UnresolvedAnnotationOnObject.kt` |
@@ -111,7 +111,7 @@ Tests kotlinc rejects that kc compiles, by the errors their markup expects. A te
 | `ILLEGAL_JVM_NAME` | 4 | 3 | `tests/inlineClasses/jvmExposeBoxed/simple.kt`, `tests/jvmNameInvalidCharacters.kt` |
 | `INAPPLICABLE_TARGET_ON_PROPERTY` | 4 | 0 | `tests/annotations/withUseSiteTarget/GetterAnnotations.kt`, `tests/annotations/withUseSiteTarget/PropertyAnnotations.kt` |
 | `INVALID_VERSIONING_ON_NONFINAL_FUNCTION` | 4 | 3 | `tests/versionOverload/abstractMember.kt`, `tests/versionOverload/interfaceMember.kt` |
-| *208 more* | 345 | |
+| *206 more* | 340 | |
 
 ## Rejects valid
 
@@ -165,23 +165,23 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 9953 of 18851 expected errors (52.8%) on their lines.
+kc reports 10021 of 18906 expected errors (53.0%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
 | `CONFLICTING_JVM_DECLARATIONS` | 996 | 472 | 524 |
 | `ARGUMENT_TYPE_MISMATCH` | 1257 | 781 | 476 |
-| `UNRESOLVED_REFERENCE` | 2023 | 1560 | 463 |
-| `SYNTAX` | 624 | 189 | 435 |
+| `UNRESOLVED_REFERENCE` | 2026 | 1562 | 464 |
+| `SYNTAX` | 638 | 197 | 441 |
 | `CONFLICTING_OVERLOADS` | 719 | 364 | 355 |
 | `WRONG_ANNOTATION_TARGET` | 337 | 12 | 325 |
 | `INVISIBLE_REFERENCE` | 361 | 120 | 241 |
-| `WRONG_MODIFIER_TARGET` | 298 | 115 | 183 |
+| `WRONG_MODIFIER_TARGET` | 298 | 116 | 182 |
 | `RETURN_TYPE_MISMATCH` | 395 | 231 | 164 |
 | `CONST_VAL_WITH_NON_CONST_INITIALIZER` | 183 | 24 | 159 |
+| `UNSUPPORTED` | 192 | 34 | 158 |
 | `USAGE_IS_NOT_INLINABLE` | 177 | 31 | 146 |
-| `UNSUPPORTED` | 161 | 26 | 135 |
-| `REDECLARATION` | 190 | 70 | 120 |
+| `REDECLARATION` | 192 | 72 | 120 |
 | `ANNOTATION_ARGUMENT_MUST_BE_CONST` | 157 | 41 | 116 |
 | `DSL_SCOPE_VIOLATION` | 108 | 0 | 108 |
 | `ILLEGAL_RESTRICTED_SUSPENDING_FUNCTION_CALL` | 100 | 2 | 98 |
@@ -189,13 +189,13 @@ kc reports 9953 of 18851 expected errors (52.8%) on their lines.
 | `OPT_IN_USAGE_ERROR` | 96 | 2 | 94 |
 | `UNINITIALIZED_VARIABLE` | 196 | 108 | 88 |
 | `UNRESOLVED_REFERENCE_WRONG_RECEIVER` | 211 | 125 | 86 |
-| `MUST_BE_INITIALIZED` | 100 | 17 | 83 |
+| `MUST_BE_INITIALIZED` | 101 | 18 | 83 |
 | `INITIALIZER_TYPE_MISMATCH` | 381 | 307 | 74 |
 | `UNSAFE_CALL` | 471 | 397 | 74 |
 | `UPPER_BOUND_VIOLATED` | 110 | 41 | 69 |
 | `IMPOSSIBLE_IS_CHECK_ERROR` | 71 | 3 | 68 |
 | `TYPE_VARIANCE_CONFLICT_ERROR` | 122 | 54 | 68 |
-| `WRONG_ANNOTATION_TARGET_WITH_USE_SITE_TARGET` | 79 | 12 | 67 |
+| `WRONG_ANNOTATION_TARGET_WITH_USE_SITE_TARGET` | 79 | 13 | 66 |
 | `WRONG_NUMBER_OF_TYPE_ARGUMENTS` | 158 | 92 | 66 |
 | `NULL_FOR_NONNULL_TYPE` | 102 | 38 | 64 |
 | `UNINITIALIZED_ENUM_COMPANION` | 65 | 1 | 64 |
@@ -278,13 +278,11 @@ By the features the parser (with error recovery) and the checker found. A test c
 | `parse error: expected newline or '_', found '_'` | 15 | 15 | `tests/callableReference/whitespacesInExpression.kt`, `tests/cast/bare/RedundantNullable.kt` |
 | `parse error: expected member declaration, found '_'` | 13 | 12 | `tests/nestedTypeAliases/annotations.kt`, `testsWithStdLib/properties/backingField/explicitBackingFieldAndMultipleIntersection.kt` |
 | `parse error: expected '_', found '_'` | 11 | 11 | `tests/innerClasses/inCallableReferenceLHS/withParenthesizes.kt`, `tests/kt55666.kt` |
-| `context parameters` | 7 | 7 | `tests/contextParameters/contextParameterUsage.kt`, `tests/contextParameters/declarationAndUsages/contextOnGetterSetter.kt` |
 | `parse error: expected function body, found '_'` | 7 | 7 | `tests/suppress/manyWarnings/mixed.kt`, `tests/suppress/manyWarnings/onClass.kt` |
 | `parse error: expected declaration, found '_'` | 5 | 4 | `testsWithStdLib/properties/backingField/backingFieldWithSmartTypeParameters.kt`, `testsWithStdLib/properties/backingField/explicitBackingFieldsInInlineExtensionFun.kt` |
 | `destructuring declaration` | 4 | 4 | `tests/destructuring/topLevelWithLambda.kt`, `tests/diagnostics/conflictingOverloads.kt` |
 | `parse error: expected expression, found '_'` | 4 | 4 | `tests/controlStructures/redundantLabel.kt`, `tests/innerClasses/inCallableReferenceLHS/misplacedArgumentsInChain.kt` |
 | `property reference` | 4 | 4 | `tests/callableReference/unsupported/localVariableWithSubstitution.kt`, `tests/callableReference/unsupported/parameterWithSubstitution.kt` |
-| `parse error: context parameters must be named: use '_' for an anonymous one, context(_: _` | 3 | 3 | `tests/annotations/annotatedLocalContextParameterWithAnnotatedType.kt`, `tests/contextParameters/declarationAndUsages/contextParameterIsNotInlined.kt` |
 | `parse error: expected getter body, found '_'` | 3 | 3 | `tests/suppress/allWarnings/suppressWarningsOnPropertyAccessor.kt`, `tests/suppress/manyWarnings/onPropertyAccessor.kt` |
 | `parse error: expected identifier, found '_'` | 3 | 3 | `testsWithStdLib/pureReifiable.kt`, `testsWithStdLib/trailingComma/valueParametersWithEnabledFeature.kt` |
 | `callable reference` | 2 | 2 | `tests/callableReference/compatibilityResolveWithVarargAndOperatorCall.kt`, `tests/callableReference/genericCallWithReferenceAgainstVarargAndKFunction.kt` |
@@ -304,22 +302,20 @@ At each step, the feature that unblocks the most tests given the ones before it.
 | 1 | `parse error: expected newline or '_', found '_'` | 15 | 15 |
 | 2 | `parse error: expected member declaration, found '_'` | 12 | 27 |
 | 3 | `parse error: expected '_', found '_'` | 11 | 38 |
-| 4 | `context parameters` | 7 | 45 |
-| 5 | `parse error: expected function body, found '_'` | 7 | 52 |
-| 6 | `parse error: expected declaration, found '_'` | 5 | 57 |
-| 7 | `destructuring declaration` | 4 | 61 |
-| 8 | `parse error: expected expression, found '_'` | 4 | 65 |
-| 9 | `property reference` | 4 | 69 |
-| 10 | `parse error: context parameters must be named: use '_' for an anonymous one, context(_: _` | 3 | 72 |
-| 11 | `parse error: expected getter body, found '_'` | 3 | 75 |
-| 12 | `parse error: expected identifier, found '_'` | 3 | 78 |
-| 13 | `callable reference` | 2 | 80 |
-| 14 | `checker: '_' is not allowed here: local interfaces are not supported` | 2 | 82 |
-| 15 | `inline-only call` | 2 | 84 |
-| 16 | `safe-call assignment` | 2 | 86 |
-| 17 | `checker: lambdas with more than n parameters are not supported` | 1 | 87 |
-| 18 | `package` | 1 | 88 |
-| 19 | `parse error: invalid float literal` | 1 | 89 |
+| 4 | `parse error: expected function body, found '_'` | 7 | 45 |
+| 5 | `parse error: expected declaration, found '_'` | 5 | 50 |
+| 6 | `destructuring declaration` | 4 | 54 |
+| 7 | `parse error: expected expression, found '_'` | 4 | 58 |
+| 8 | `property reference` | 4 | 62 |
+| 9 | `parse error: expected getter body, found '_'` | 3 | 65 |
+| 10 | `parse error: expected identifier, found '_'` | 3 | 68 |
+| 11 | `callable reference` | 2 | 70 |
+| 12 | `checker: '_' is not allowed here: local interfaces are not supported` | 2 | 72 |
+| 13 | `inline-only call` | 2 | 74 |
+| 14 | `safe-call assignment` | 2 | 76 |
+| 15 | `checker: lambdas with more than n parameters are not supported` | 1 | 77 |
+| 16 | `package` | 1 | 78 |
+| 17 | `parse error: invalid float literal` | 1 | 79 |
 
 ## Crashes
 

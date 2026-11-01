@@ -50,8 +50,11 @@ func (c *Checker) expr(x syntax.Expr, want types.Type) types.Type {
 	allowRange, sink := c.allowRange, c.sink
 	c.allowRange, c.sink = false, nil
 	t := c.expr1(x, want, allowRange, sink)
-	switch x.(type) {
-	case *syntax.Ident, *syntax.Member:
+	switch x := x.(type) {
+	case *syntax.Ident:
+		c.propShadowed(x)
+		t = c.contextRead(x, t, want)
+	case *syntax.Member:
 		t = c.contextRead(x, t, want)
 	}
 	x.SetType(t)

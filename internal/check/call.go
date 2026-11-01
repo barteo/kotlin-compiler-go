@@ -781,6 +781,7 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 	f := best.f
 	x.Sym, x.ArgMap = f, best.amap
 	c.setDispatch(x, &best.callee)
+	c.receiverShadowed(x, &best.callee)
 	c.setContexts(x, &best.callee, best.sys, best.sub)
 	ensureFun(f)
 	c.suspendCall(x.P, f)
@@ -1181,6 +1182,7 @@ func (c *Checker) resolvePlain(x *syntax.Call, cs []callee, want types.Type) typ
 	f := best.f
 	x.Sym, x.ArgMap = f, best.amap
 	c.setDispatch(x, best)
+	c.receiverShadowed(x, best)
 	c.setContexts(x, best, nil, nil)
 	ensureFun(f)
 	c.suspendCall(x.P, f)

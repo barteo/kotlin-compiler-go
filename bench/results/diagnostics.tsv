@@ -218,7 +218,7 @@ tests/annotations/RetentionsOfAnnotationWithExpressionTarget.kt	accepts invalid	
 tests/annotations/UnresolvedAnnotationOnObject.kt	accepts invalid	UNRESOLVED_REFERENCE	UnresolvedAnnotationOnObject.kt:7: UNRESOLVED_REFERENCE
 tests/annotations/WrongAnnotationArgsOnObject.kt	rejects invalid	on an expected line	
 tests/annotations/annotatedExpressionInsideAnnotation.kt	skip	LANGUAGE_FEATURE_TOGGLED	
-tests/annotations/annotatedLocalContextParameterWithAnnotatedType.kt	parse/unsupported	parse error: context parameters must be named: use '_' for an anonymous one, context(_: _	annotatedLocalContextParameterWithAnnotatedType.kt:9: context parameters must be named: use '_' for an anonymous one, context(_: Type)
+tests/annotations/annotatedLocalContextParameterWithAnnotatedType.kt	accepts valid		
 tests/annotations/annotatedWhenExpression.kt	rejects invalid	on an expected line	
 tests/annotations/annotationArgumentOnCompanionResolvesToInner.kt	accepts invalid	UNRESOLVED_REFERENCE; INSTANCE_ACCESS_BEFORE_SUPER_CALL	annotationArgumentOnCompanionResolvesToInner.kt:10: UNRESOLVED_REFERENCE
 tests/annotations/annotationArgumentOnDoWhile.kt	accepts valid		
@@ -1571,24 +1571,24 @@ tests/contextParameters/callableReferenceCompatibility.kt	rejects invalid	on an 
 tests/contextParameters/contextAndExtensionTypesTogether.kt	accepts valid		
 tests/contextParameters/contextFunctionTypeInNestedLambda.kt	accepts valid		
 tests/contextParameters/contextLambda.kt	rejects invalid	on an expected line	
-tests/contextParameters/contextParameterUsage.kt	parse/unsupported	context parameters	contextParameterUsage.kt:4: context parameters on classes are not supported
+tests/contextParameters/contextParameterUsage.kt	rejects invalid	on an expected line	
 tests/contextParameters/contextualFunctionTypeInSignatureWithoutLF.kt	skip	LANGUAGE	
 tests/contextParameters/contextualInvokeWithIncorrectNamedArgument.kt	rejects invalid	on an expected line	
 tests/contextParameters/contextualLambdaWithExplicitParameterType.kt	rejects valid	no context argument for '_' found	contextualLambdaWithExplicitParameterType.kt:16: no context argument for 'context: A' found
 tests/contextParameters/contextualLateinit.kt	rejects invalid	on an expected line	
 tests/contextParameters/declarationAndUsages/annotationOnTypeWithContext.kt	accepts valid		
-tests/contextParameters/declarationAndUsages/annotationTargetInContext.kt	rejects invalid	elsewhere	
+tests/contextParameters/declarationAndUsages/annotationTargetInContext.kt	accepts invalid	WRONG_ANNOTATION_TARGET	annotationTargetInContext.kt:22: WRONG_ANNOTATION_TARGET
 tests/contextParameters/declarationAndUsages/anonymousFunctionContextWithoutType.kt	rejects invalid	on an expected line	
 tests/contextParameters/declarationAndUsages/anonymousFunctionWithWrongShape.kt	rejects invalid	on an expected line	
 tests/contextParameters/declarationAndUsages/classMembersWithContext.kt	accepts valid		
 tests/contextParameters/declarationAndUsages/contextInCompanionObject.kt	rejects invalid	on an expected line	
 tests/contextParameters/declarationAndUsages/contextInLocalFunction.kt	accepts valid		
 tests/contextParameters/declarationAndUsages/contextInLocalFunctionResolution.kt	rejects invalid	on an expected line	
-tests/contextParameters/declarationAndUsages/contextOnGetterSetter.kt	parse/unsupported	context parameters	contextOnGetterSetter.kt:9: context parameters on classes are not supported
+tests/contextParameters/declarationAndUsages/contextOnGetterSetter.kt	rejects invalid	on an expected line	
 tests/contextParameters/declarationAndUsages/contextOrderWithAnnotation.kt	accepts valid		
-tests/contextParameters/declarationAndUsages/contextParameterIsNotInlined.kt	parse/unsupported	parse error: context parameters must be named: use '_' for an anonymous one, context(_: _	contextParameterIsNotInlined.kt:10: context parameters must be named: use '_' for an anonymous one, context(_: Type)
+tests/contextParameters/declarationAndUsages/contextParameterIsNotInlined.kt	accepts valid		
 tests/contextParameters/declarationAndUsages/contextParameterToDefaultArgument.kt	accepts valid		
-tests/contextParameters/declarationAndUsages/contextWithAnnotation.kt	parse/unsupported	parse error: context parameters must be named: use '_' for an anonymous one, context(_: _	contextWithAnnotation.kt:17: context parameters must be named: use '_' for an anonymous one, context(_: Type)
+tests/contextParameters/declarationAndUsages/contextWithAnnotation.kt	accepts valid		
 tests/contextParameters/declarationAndUsages/contextualAnonymousFunction.kt	accepts valid		
 tests/contextParameters/declarationAndUsages/emptyContextName.kt	rejects invalid	on an expected line	
 tests/contextParameters/declarationAndUsages/emptyListOfContextParameters.kt	rejects invalid	on an expected line	
@@ -1603,8 +1603,8 @@ tests/contextParameters/declarationAndUsages/memberUsageFromContextScope.kt	reje
 tests/contextParameters/declarationAndUsages/moreThenOneContext.kt	accepts valid		
 tests/contextParameters/declarationAndUsages/multipleContextsWithTheSameType.kt	rejects invalid	on an expected line	
 tests/contextParameters/declarationAndUsages/nameClashes.kt	rejects invalid	on an expected line	
-tests/contextParameters/declarationAndUsages/onClassifierDeclaration.kt	parse/unsupported	context parameters	onClassifierDeclaration.kt:7: context parameters on classes are not supported
-tests/contextParameters/declarationAndUsages/onConstructor.kt	parse/unsupported	context parameters	onConstructor.kt:10: context parameters on constructors are not supported
+tests/contextParameters/declarationAndUsages/onClassifierDeclaration.kt	rejects invalid	on an expected line	
+tests/contextParameters/declarationAndUsages/onConstructor.kt	rejects invalid	on an expected line	
 tests/contextParameters/declarationAndUsages/parameterModifiersOnContextParameter.kt	rejects invalid	on an expected line	
 tests/contextParameters/declarationAndUsages/parameterType.kt	skip	Java sources	
 tests/contextParameters/declarationAndUsages/parameterTypeWithContext.kt	accepts valid		
@@ -1627,20 +1627,20 @@ tests/contextParameters/deeplyGenericTypeMismatch.kt	skip	LANGUAGE
 tests/contextParameters/diagnostics/ambigousContext.kt	rejects invalid	on an expected line	
 tests/contextParameters/diagnostics/anonymousFunctionsWithModifiers.kt	rejects invalid	on an expected line	
 tests/contextParameters/diagnostics/contextParameterNameChanged.kt	accepts valid		
-tests/contextParameters/diagnostics/contextParameterOnPackage.kt	parse/unsupported	context parameters	contextParameterOnPackage.kt:3: context parameters on classes are not supported
+tests/contextParameters/diagnostics/contextParameterOnPackage.kt	rejects invalid	on an expected line	
 tests/contextParameters/diagnostics/contextParameterSyntaxWithoutLanguageFeature.kt	skip	LANGUAGE	
-tests/contextParameters/diagnostics/coroutineContextIsReserved.kt	accepts invalid	COROUTINE_CONTEXT_AS_CONTEXT_PARAMETER_IS_RESERVED	coroutineContextIsReserved.kt:10: COROUTINE_CONTEXT_AS_CONTEXT_PARAMETER_IS_RESERVED
+tests/contextParameters/diagnostics/coroutineContextIsReserved.kt	rejects invalid	on an expected line	
 tests/contextParameters/diagnostics/danglingContextParameter.kt	rejects invalid	on an expected line	
 tests/contextParameters/diagnostics/danglingContextParameterAndAnnotations.kt	rejects invalid	on an expected line	
-tests/contextParameters/diagnostics/dispatchReceiverShadowed.kt	accepts invalid	RECEIVER_SHADOWED_BY_CONTEXT_PARAMETER	dispatchReceiverShadowed.kt:9: RECEIVER_SHADOWED_BY_CONTEXT_PARAMETER
+tests/contextParameters/diagnostics/dispatchReceiverShadowed.kt	rejects invalid	on an expected line	
 tests/contextParameters/diagnostics/extensionShadowedWithContextParameters.kt	accepts valid		
 tests/contextParameters/diagnostics/inapplicableModifier.kt	rejects invalid	on an expected line	
 tests/contextParameters/diagnostics/multipleContextParameterLists.kt	rejects invalid	on an expected line	
 tests/contextParameters/diagnostics/multipleMissingContextArguments.kt	rejects invalid	on an expected line	
 tests/contextParameters/diagnostics/noContextArgument.kt	rejects invalid	on an expected line	
-tests/contextParameters/diagnostics/receiverShadowed.kt	accepts invalid	RECEIVER_SHADOWED_BY_CONTEXT_PARAMETER	receiverShadowed.kt:11: RECEIVER_SHADOWED_BY_CONTEXT_PARAMETER
-tests/contextParameters/diagnostics/receiverShadowedMemberExtension.kt	accepts invalid	RECEIVER_SHADOWED_BY_CONTEXT_PARAMETER	receiverShadowedMemberExtension.kt:13: RECEIVER_SHADOWED_BY_CONTEXT_PARAMETER
-tests/contextParameters/diagnostics/receiverShadowedSubtype.kt	rejects invalid	elsewhere	
+tests/contextParameters/diagnostics/receiverShadowed.kt	rejects invalid	on an expected line	
+tests/contextParameters/diagnostics/receiverShadowedMemberExtension.kt	rejects invalid	on an expected line	
+tests/contextParameters/diagnostics/receiverShadowedSubtype.kt	rejects invalid	on an expected line	
 tests/contextParameters/diagnostics/renderingOfUnnamedContextParameter.kt	accepts valid		
 tests/contextParameters/diagnostics/subtyping.kt	accepts valid		
 tests/contextParameters/diagnostics/unsupportedContextParameters.kt	skip	LANGUAGE	
@@ -1677,7 +1677,7 @@ tests/contextParameters/inaccessibleReceiver.kt	rejects invalid	on an expected l
 tests/contextParameters/inference/noInfer/MismatchingClosestImplicitValue.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	MismatchingClosestImplicitValue.kt:18: cannot infer type for type parameter 'R'. Specify it explicitly.
 tests/contextParameters/inference/noInfer/MultipleClosestImplicitValues.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	MultipleClosestImplicitValues.kt:21: cannot infer type for type parameter 'R'. Specify it explicitly.
 tests/contextParameters/inferringContextOfType.kt	rejects invalid	on an expected line	
-tests/contextParameters/inline.kt	rejects invalid	elsewhere	
+tests/contextParameters/inline.kt	rejects invalid	on an expected line	
 tests/contextParameters/invoke.kt	rejects invalid	on an expected line	
 tests/contextParameters/invokeWithReceiverAgainstContextFunctionTypeContextDisabled.kt	skip	LANGUAGE	
 tests/contextParameters/localDeclsDisambiguation.kt	accepts valid		
@@ -1721,13 +1721,13 @@ tests/contextParameters/overrides/overrideWithFlexibleBaseReceiver.kt	skip	Java 
 tests/contextParameters/overrides/substitutionOverride.kt	accepts valid		
 tests/contextParameters/overrides/varPropertyOverride.kt	accepts valid		
 tests/contextParameters/overrides/withContextInType.kt	accepts valid		
-tests/contextParameters/receiverShadowed2.kt	accepts invalid	RECEIVER_SHADOWED_BY_CONTEXT_PARAMETER	receiverShadowed2.kt:33: RECEIVER_SHADOWED_BY_CONTEXT_PARAMETER
+tests/contextParameters/receiverShadowed2.kt	rejects invalid	on an expected line	
 tests/contextParameters/smartcast/onContextParameters.kt	rejects invalid	on an expected line	
 tests/contextParameters/smartcast/onPropertyWithContext.kt	rejects invalid	on an expected line	
 tests/contextParameters/smartcast/onTypeWithContext.kt	accepts valid		
 tests/contextParameters/smartcast/withCallInPlaceContract.kt	rejects invalid	on an expected line	
 tests/contextParameters/smartcast/withImpliesContract.kt	rejects valid	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _	withImpliesContract.kt:19: only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type String?
-tests/contextParameters/smoke.kt	parse/unsupported	context parameters	smoke.kt:4: context parameters on classes are not supported
+tests/contextParameters/smoke.kt	rejects invalid	on an expected line	
 tests/contextParameters/specificity/baseSpecificity.kt	skip	LANGUAGE	
 tests/contextParameters/specificity/callableReference.kt	skip	LANGUAGE	
 tests/contextParameters/specificity/generics.kt	skip	LANGUAGE	
@@ -2888,7 +2888,7 @@ tests/diagnostics/conflictingOverloads.kt	parse/unsupported	destructuring declar
 tests/diagnostics/conflictingOverloads2.kt	accepts valid		
 tests/diagnostics/conflictingProjection.kt	rejects invalid	on an expected line	
 tests/diagnostics/constructorInInterface.kt	rejects invalid	on an expected line	
-tests/diagnostics/contextParameterOnPrimaryConstructor.kt	parse/unsupported	context parameters	contextParameterOnPrimaryConstructor.kt:8: context parameters on classes are not supported
+tests/diagnostics/contextParameterOnPrimaryConstructor.kt	rejects invalid	on an expected line	
 tests/diagnostics/cyclicConstructorDelegationCall.kt	rejects invalid	on an expected line	
 tests/diagnostics/delegationInInterface.kt	rejects invalid	on an expected line	
 tests/diagnostics/delegationSuperCallInEnumConstructor.kt	rejects invalid	on an expected line	

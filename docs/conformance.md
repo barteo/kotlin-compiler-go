@@ -137,15 +137,15 @@ Kotlin 2.4.21's tests on `kc`:
 | Diagnostics tests | Tests | Share of run |
 |:---|---:|---:|
 | run (of 10,827) | 7,200 | |
-| rejects invalid | 2,939 | 40.8% |
-| accepts valid | 2,769 | 38.5% |
-| accepts invalid | 872 | 12.1% |
+| rejects invalid | 2,950 | 41.0% |
+| accepts valid | 2,772 | 38.5% |
+| accepts invalid | 868 | 12.1% |
 | rejects valid | 530 | 7.4% |
-| parse/unsupported | 89 | 1.2% |
+| parse/unsupported | 79 | 1.1% |
 | crash | 1 | 0.0% |
 
 `kc` agrees with `kotlinc` on 79% of the diagnostics tests, and reports
-9,953 of the 18,851 expected errors (53%) on their lines. The reports
+10,021 of the 18,906 expected errors (53%) on their lines. The reports
 break the failures down; the largest groups are:
 
 - **Silent miscompilation** (90 box tests): `tailrec` functions that
@@ -154,7 +154,7 @@ break the failures down; the largest groups are:
   implementations (3).
 - **Accepts invalid**: visibility, which isn't checked
   (`INVISIBLE_REFERENCE` 53), annotation targets and arguments
-  (`WRONG_ANNOTATION_TARGET` 46, `ANNOTATION_ARGUMENT_MUST_BE_CONST` 34),
+  (`WRONG_ANNOTATION_TARGET` 47, `ANNOTATION_ARGUMENT_MUST_BE_CONST` 34),
   inline-only parameters (`USAGE_IS_NOT_INLINABLE` 27), opt-in (26),
   `@DslMarker` (28), and JVM signature clashes (`ACCIDENTAL_OVERRIDE`,
   `CONFLICTING_JVM_DECLARATIONS`, 24 each).

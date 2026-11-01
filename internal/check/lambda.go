@@ -305,9 +305,18 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 	// Context parameters checked before keep their locals too.
 	ctx := x.Ctx
 	x.Ctx = nil
+	reported := false
 	if w.ctx > 0 && len(params) >= w.ctx {
 		for i, t := range params[:w.ctx] {
 			s := &types.VarSym{Name: "$context" + strconv.Itoa(i), Type: t, Kind: types.Param}
+			if reservedContext(t) && !reported {
+				if i < len(x.AnonCtx) && x.AnonCtx[i].Type != nil {
+					c.reservedContextError(x.AnonCtx[i].P)
+				} else {
+					c.reservedContextError(x.P)
+				}
+				reported = true
+			}
 			if i < len(x.AnonCtx) {
 				// An anonymous function's, which it names.
 				p := x.AnonCtx[i]
@@ -405,9 +414,9 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 			c.errorf(p.P, "conflicting declarations: %s", p.Name)
 		}
 	}
-	c.pushContexts(x.Ctx)
+	c.pushContexts(x.Ctx, x)
 	if x.Recv != nil {
-		c.recvs = append(c.recvs[:len(c.recvs):len(c.recvs)], implicitRecv{sym: x.Recv, label: x.Label, depth: len(c.lambdas)})
+		c.recvs = append(c.recvs[:len(c.recvs):len(c.recvs)], implicitRecv{sym: x.Recv, label: x.Label, depth: len(c.lambdas), owner: x})
 		syms = append([]*types.VarSym{x.Recv}, syms...)
 	}
 	syms = append(x.Ctx[:len(x.Ctx):len(x.Ctx)], syms...)
@@ -2055,8 +2064,13 @@ type implicitRecv struct {
 	// come after the object's own members.
 	outer bool
 	// at is set on a context parameter, in state.ctxs: the number of
-	// receivers declared before it, which it is nearer than.
+	// receivers declared before it, which it is nearer than. outer is set
+	// on those around an object expression or a local class too.
 	at int
+	// owner is the function or lambda whose receiver or context parameter
+	// this is: a function's context parameters are as near as its
+	// receiver, though at is its index.
+	owner any
 }
 
 // destructureParams names a lambda's destructured parameters, { (a, b) ->

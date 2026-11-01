@@ -21,12 +21,20 @@ type File struct {
 	// JVM only, where the actual declarations are the ones that count, so
 	// these are only checked against them.
 	Expects []Decl
+	// Errors are the syntax errors parsing went on after, as kotlinc
+	// does: context parameters where Kotlin doesn't allow them, which the
+	// checker reports.
+	Errors []*Error
 	// SuppressInvisible is set on a file with an annotation, on any
 	// declaration or expression, that suppresses INVISIBLE_MEMBER or
 	// INVISIBLE_REFERENCE: its code may call the class path's internal
 	// top-level functions, as ktor's calls kotlinx.coroutines's
 	// recoverStackTrace.
 	SuppressInvisible bool
+	// SuppressShadowed is set on a file with an annotation that
+	// suppresses RECEIVER_SHADOWED_BY_CONTEXT_PARAMETER, an error kotlinc
+	// lets code suppress: the checker doesn't report it in the file.
+	SuppressShadowed bool
 	// Arities is set by the checker: bit n is set if the file uses
 	// function types with n parameters.
 	Arities uint32
@@ -925,6 +933,9 @@ type This struct {
 	// Class is set on a this the checker writes for the instance of the
 	// class the code is in, which lambdas' receivers don't hide.
 	Class bool
+	// Implicit is set on a this the checker writes for an implicit
+	// receiver or context argument.
+	Implicit bool
 }
 
 // Super is super, or super<I>, as the receiver of a member access or call,

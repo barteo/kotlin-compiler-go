@@ -185,6 +185,9 @@ func (c *Checker) anonClass(d *syntax.ClassDecl, what, whats string, name func()
 		ctx.recvs = append(ctx.recvs, r)
 	}
 	ctx.ctxs = slices.Clone(c.ctxs)
+	for i := range ctx.ctxs {
+		ctx.ctxs[i].outer = true
+	}
 	var outer *types.VarSym
 	if c.cls != nil {
 		// The enclosing class's this: inside the receivers outside an
