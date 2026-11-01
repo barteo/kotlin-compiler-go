@@ -1736,6 +1736,10 @@ func (g *gen) ungroupedCall(x *syntax.Call) {
 		g.tailCall(x, t)
 		return
 	}
+	if x.Tail && x.Sym.Suspend {
+		// Not a suspension point of the state machine: see suspensionPoint.
+		panic("tail call of suspend function " + x.Sym.Name + " not generated as a jump")
+	}
 	if x.Builtin == types.SuspendIntrinsic {
 		g.suspendIntrinsic(x)
 		return

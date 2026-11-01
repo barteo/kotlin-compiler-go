@@ -15,7 +15,8 @@ import (
 // kotlinc warns about them, kc has no warnings.
 func (c *Checker) tailCalls(d *syntax.FunDecl) {
 	sym := d.Sym
-	if sym.Suspend {
+	if d.Inline {
+		// Codegen inlines copies of the body, with no start to jump to.
 		return
 	}
 	var tail func(e syntax.Expr)

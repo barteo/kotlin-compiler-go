@@ -1096,7 +1096,9 @@ func (g *gen) functionBody(fd *syntax.FunDecl) {
 	saved := g.tail // of a function this one is local to
 	defer func() { g.tail = saved }()
 	g.tail = nil
-	if fd.Tailrec && !sym.Suspend {
+	if fd.Tailrec {
+		// In a suspend function, after the state machine's entry: a tail
+		// call reruns the body with the same continuation, as kotlinc's.
 		g.tail = &tailrec{fd: fd, start: cf.NewLabel()}
 		g.code.Place(g.tail.start)
 	}
