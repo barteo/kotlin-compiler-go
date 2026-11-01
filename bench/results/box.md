@@ -2,13 +2,13 @@
 
 The box tests of JetBrains/kotlin v2.4.21 (`compiler/testData/codegen/box`), each compiled by kc and run: its `box()` must return `"OK"`. `bench/kotlin-tests.sh box` writes this file, and [docs/conformance.md](../../docs/conformance.md) explains it.
 
-Of 7480 test files, 997 are skipped and 6483 run. 6198 pass (95.6%).
+Of 7480 test files, 997 are skipped and 6483 run. 6201 pass (95.7%).
 
 | Result | Tests | Share |
 |:---|---:|---:|
-| pass | 6198 | 95.6% |
+| pass | 6201 | 95.7% |
 | parse/unsupported | 0 | 0.0% |
-| check error | 183 | 2.8% |
+| check error | 180 | 2.8% |
 | crash | 0 | 0.0% |
 | codegen error | 16 | 0.2% |
 | VerifyError | 21 | 0.3% |
@@ -74,7 +74,7 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 | extensionFunctions | 53 | 43 | 0 | 10 | 0 | 0 | 0 |
 | inlineEvaluationOrder | 52 | 52 | 0 | 0 | 0 | 0 | 0 |
 | innerNested | 52 | 50 | 0 | 0 | 0 | 2 | 0 |
-| annotations | 51 | 44 | 0 | 6 | 0 | 0 | 1 |
+| annotations | 51 | 47 | 0 | 3 | 0 | 0 | 1 |
 | reflection | 50 | 48 | 0 | 2 | 0 | 0 | 0 |
 | funInterface | 48 | 46 | 0 | 2 | 0 | 0 | 0 |
 | unsignedTypes | 44 | 43 | 0 | 0 | 0 | 0 | 1 |
@@ -242,10 +242,10 @@ Tests kotlinc compiles that kc's checker rejects, by its first error, with names
 | `'_' is not defined in this context` | 1 | `objects/thisRefToObjectInNestedClassConstructorCall.kt` |
 | `'_' modifier is inapplicable on this function: must have no value parameters` | 1 | `extensionFunctions/kt3969.kt` |
 | `ambiguous call: n candidates for '_' take (_)` | 1 | `callableReference/function/overloadedFun.kt` |
-| `cannot create an instance of Outer` | 1 | `annotations/instances/AnnotationInstantiationWithArray.kt` |
 | `cannot create an instance of Result` | 1 | `inlineClasses/resultGeneric.kt` |
-| `cannot create an instance of SinceKotlin` | 1 | `annotations/instances/annotationFromStdlib.kt` |
-| *42 more* | 42 | |
+| `class '_' cannot be used as a value` | 1 | `package/privateMembersInImportList.kt` |
+| `class A.X is not public` | 1 | `ir/serializationRegressions/innerClassInEnumEntryClass.kt` |
+| *39 more* | 39 | |
 
 ## Code generation errors
 

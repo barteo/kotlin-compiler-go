@@ -6,16 +6,16 @@ Of 10827 test files, 3627 are skipped and 7200 run.
 
 | Result | Tests | Share |
 |:---|---:|---:|
-| rejects invalid | 3101 | 43.1% |
+| rejects invalid | 3106 | 43.1% |
 | accepts valid | 2788 | 38.7% |
-| accepts invalid | 717 | 10.0% |
+| accepts invalid | 712 | 9.9% |
 | rejects valid | 514 | 7.1% |
 | parse/unsupported | 79 | 1.1% |
 | crash | 1 | 0.0% |
 
 *Rejects invalid* and *accepts valid* agree with kotlinc. *Accepts invalid* is code kotlinc rejects that kc compiles; *rejects valid*, code kotlinc compiles that kc's checker rejects. Both are bugs. A *parse/unsupported* test uses a feature kc doesn't support, which says nothing about its checks.
 
-Of the 3101 tests both reject, kc reports an error on the line of an expected one in 2831.
+Of the 3106 tests both reject, kc reports an error on the line of an expected one in 2837.
 
 A test is invalid if it stops before the backend or marks an error: one that runs to it (`BACKEND`) can mark the JVM backend's errors, such as `CONFLICTING_JVM_DECLARATIONS`. Of the tests run, 177 stop at `FRONTEND` but mark no error: most add the `CHECK_TYPE` helpers, whose names (`_`) kotlinc reports outside the test infrastructure, and count as valid; the others leave their errors out with the `DIAGNOSTICS` directive. 101 run to the backend and mark one. 5 marked names have no declared severity (debug information, for one), and count as neither.
 
@@ -52,7 +52,7 @@ Tests kotlinc rejects that kc compiles, by the errors their markup expects. A te
 | Expected error | Tests | Only error | Examples |
 |:---|---:|---:|:---|
 | `ARGUMENT_TYPE_MISMATCH` | 36 | 21 | `tests/annotations/AnnotationForClassTypeParameter.kt`, `tests/annotations/AnnotationForFunctionTypeParameter.kt` |
-| `UNRESOLVED_REFERENCE` | 30 | 19 | `tests/annotations/AnnotationForObject.kt`, `tests/annotations/UnresolvedAnnotationOnObject.kt` |
+| `UNRESOLVED_REFERENCE` | 28 | 19 | `tests/annotations/AnnotationForObject.kt`, `tests/annotations/UnresolvedAnnotationOnObject.kt` |
 | `USAGE_IS_NOT_INLINABLE` | 27 | 25 | `tests/inline/assignment.kt`, `tests/inline/binaryExpressions/arrayAccess.kt` |
 | `OPT_IN_USAGE_ERROR` | 26 | 14 | `tests/errorSuppressionsWithoutWarning.kt`, `tests/jvm/jvmDefault/annotationsFromBinariesWithNonTrivialJvmDefaultConfiguration.kt` |
 | `ACCIDENTAL_OVERRIDE` | 24 | 21 | `tests/jvm/duplicateJvmSignature/accidentalOverrides/accidentalOverrideFromGrandparent.kt`, `tests/jvm/duplicateJvmSignature/accidentalOverrides/classFunctionOverriddenByProperty.kt` |
@@ -77,12 +77,12 @@ Tests kotlinc rejects that kc compiles, by the errors their markup expects. A te
 | `INITIALIZER_TYPE_MISMATCH` | 8 | 5 | `tests/callableReference/adapted/noKFunctionForAdaptation.kt`, `tests/functionAsExpression/NonSuspendAnonFuncAsInitializerOfSuspendFunctionType.kt` |
 | `NESTED_CLASS_NOT_ALLOWED` | 8 | 7 | `tests/classObjects/InnerClassClassObject.kt`, `tests/enum/inner/insideInnerClassNotAllowed.kt` |
 | `NON_LOCAL_RETURN_NOT_ALLOWED` | 8 | 5 | `tests/inline/inlineLambdaInDefaultInlineParameter.kt`, `tests/inline/nonLocalReturns/anonymousObjects.kt` |
-| `OVERLOAD_RESOLUTION_AMBIGUITY` | 8 | 6 | `tests/callResolution/kt50386.kt`, `tests/imports/NestedClassClash.kt` |
 | `REPEATED_ANNOTATION` | 8 | 5 | `tests/annotations/AnnotationForClassTypeParameter.kt`, `tests/annotations/AnnotationForFunctionTypeParameter.kt` |
 | `UPPER_BOUND_VIOLATED` | 8 | 3 | `tests/generics/RecursiveUpperBoundWithTwoArguments.kt`, `tests/inference/capturedTypes/kt49101.kt` |
 | `WRONG_MODIFIER_CONTAINING_DECLARATION` | 8 | 3 | `tests/dataClasses/implementTraitWhichHasFinalComponent1.kt`, `tests/inner/innerClassInEnumEntryClass.kt` |
 | `CONFLICTING_INHERITED_JVM_DECLARATIONS` | 7 | 6 | `tests/jvm/contextParameters/intersectionExtensionValueContext.kt`, `tests/jvm/duplicateJvmSignature/erasure/clashFromInterfaceAndSuperClass.kt` |
 | `EXPOSED_PARAMETER_TYPE` | 7 | 3 | `tests/contextParameters/declarationAndUsages/visibilityOfContextTypeOnProperty.kt`, `tests/exposed/functional.kt` |
+| `OVERLOAD_RESOLUTION_AMBIGUITY` | 7 | 6 | `tests/callResolution/kt50386.kt`, `tests/inference/pcla/overloadResolutionByLambdaReturnType.kt` |
 | `PRIVATE_TYPE_USED_IN_NON_PRIVATE_INLINE_FUNCTION_ERROR` | 7 | 7 | `tests/jvm/exposedPrivate/contextParameter.kt`, `tests/jvm/exposedPrivate/extensionReceiver.kt` |
 | `SMARTCAST_IMPOSSIBLE` | 7 | 4 | `tests/smartCasts/lambdaAndArgumentFun.kt`, `tests/smartCasts/localClassChanges.kt` |
 | `WRONG_MODIFIER_TARGET` | 7 | 4 | `tests/constVal/constValNotTopLevelOrObject.kt`, `tests/dataClasses/companionDataObject.kt` |
@@ -92,7 +92,6 @@ Tests kotlinc rejects that kc compiles, by the errors their markup expects. A te
 | `NULL_FOR_NONNULL_TYPE` | 6 | 2 | `tests/j+k/types/newListMethodsNullabilityLinkedListLatest.kt`, `tests/targetedBuiltIns/concurrentMapRemove.kt` |
 | `RETURN_TYPE_MISMATCH` | 6 | 5 | `tests/functionLiterals/return/LocalReturnNoCoercionToUnit.kt`, `tests/functionLiterals/return/LocalReturnSecondUnit.kt` |
 | `(no error marked)` | 5 | 5 | `tests/inline/anonymousObjects.kt`, `tests/nullableTypes/nullAssertOnTypeWithNullableUpperBound.kt` |
-| `CONFLICTING_IMPORT` | 5 | 3 | `tests/exceptions/uninitializedTypeArgumentsMappingIfErrorCandidates.kt`, `tests/imports/ClassImportsConflicting.kt` |
 | `EXPOSED_PROPERTY_TYPE` | 5 | 0 | `tests/exposed/internal.kt`, `tests/exposed/object.kt` |
 | `EXPOSED_SUPER_CLASS` | 5 | 1 | `tests/exposed/internal.kt`, `tests/exposed/object.kt` |
 | `INCOMPATIBLE_MODIFIERS` | 5 | 3 | `tests/dataClasses/innerDataClass.kt`, `tests/modifiers/inlineParameters.kt` |
@@ -111,7 +110,8 @@ Tests kotlinc rejects that kc compiles, by the errors their markup expects. A te
 | `MUST_BE_INITIALIZED_OR_BE_ABSTRACT` | 4 | 3 | `tests/controlFlowAnalysis/deadCode/initializationInUnreachableCode.kt`, `tests/controlFlowAnalysis/smartcastOnThisInInitializationSection.kt` |
 | `NOT_AN_ANNOTATION_CLASS` | 4 | 3 | `tests/annotations/AnnotationIdentifier.kt`, `tests/annotations/NonAnnotationClass.kt` |
 | `OPT_IN_OVERRIDE_ERROR` | 4 | 1 | `testsWithStdLib/annotations/subclassOptInRequired/UsageOptInIsNotImplied.kt`, `testsWithStdLib/experimental/errors.kt` |
-| *187 more* | 289 | |
+| `PROTECTED_CALL_FROM_PUBLIC_INLINE_ERROR` | 4 | 2 | `tests/callingProtectedFromInline.kt`, `tests/inline/kt21177.kt` |
+| *186 more* | 285 | |
 
 ## Rejects valid
 
@@ -165,7 +165,7 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 10709 of 18906 expected errors (56.6%) on their lines.
+kc reports 10729 of 18906 expected errors (56.7%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
@@ -267,7 +267,7 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | `expected no parameters, but n were declared` | 12 |
 | `expression '_' of type _ cannot be invoked as a function` | 12 |
 | `private setters are not allowed for open properties` | 12 |
-| *206 more* | |
+| *204 more* | |
 
 ## Unsupported features
 

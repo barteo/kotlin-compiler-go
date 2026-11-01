@@ -4,11 +4,11 @@ annotations/annotations0.kt	pass
 annotations/checkReturnValue.kt	skip	LANGUAGE	
 annotations/deserializedLocalClassArgument.kt	pass		
 annotations/genericAnnotations.kt	pass		
-annotations/instances/AnnotationInstantiationWithArray.kt	check error	cannot create an instance of Outer	AnnotationInstantiationWithArrayApp.kt:7: cannot create an instance of Outer
+annotations/instances/AnnotationInstantiationWithArray.kt	pass		
 annotations/instances/annotationAnnotationParam.kt	pass		
 annotations/instances/annotationAnyDispatch.kt	pass		
 annotations/instances/annotationEqHc.kt	pass		
-annotations/instances/annotationFromStdlib.kt	check error	cannot create an instance of SinceKotlin	annotationFromStdlib.kt:6: cannot create an instance of SinceKotlin
+annotations/instances/annotationFromStdlib.kt	pass		
 annotations/instances/annotationInlineMultiModule.kt	pass		
 annotations/instances/annotationInstances.kt	pass		
 annotations/instances/annotationInstancesEmptyDefault.kt	pass		
@@ -28,7 +28,7 @@ annotations/instances/innerAnnotationInstantiation.kt	pass
 annotations/instances/instanceEquality.kt	check error	operator '_' cannot be applied to An and An	instanceEquality.kt:40: operator '==' cannot be applied to A1 and A2
 annotations/instances/mixedArray.kt	pass		
 annotations/instances/multifileEqHc.kt	pass		
-annotations/instances/multimoduleTypeParams.kt	check error	cannot create an instance of Two	app.kt:8: cannot create an instance of Two
+annotations/instances/multimoduleTypeParams.kt	pass		
 annotations/instances/multiplatformInstantiation.kt	skip	LANGUAGE	
 annotations/instances/naNAndZero.kt	pass		
 annotations/instances/nested.kt	pass		

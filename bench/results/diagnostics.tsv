@@ -3114,7 +3114,7 @@ tests/exceptions/keywordsInsteadOfIdentifiers.kt	rejects invalid	on an expected 
 tests/exceptions/kt24158.kt	rejects invalid	on an expected line	
 tests/exceptions/stackOverflowOnDoUnify.kt	rejects invalid	on an expected line	
 tests/exceptions/transformErrorTypeChildrenWhileTransformingPartiallyResolvedType.kt	rejects invalid	on an expected line	
-tests/exceptions/uninitializedTypeArgumentsMappingIfErrorCandidates.kt	accepts invalid	CONFLICTING_IMPORT; UNRESOLVED_REFERENCE	main.kt:4: CONFLICTING_IMPORT
+tests/exceptions/uninitializedTypeArgumentsMappingIfErrorCandidates.kt	rejects invalid	on an expected line	
 tests/exceptions/unresolvedReferenceDuringProjectionRelationChecking.kt	rejects invalid	on an expected line	
 tests/exceptions/unresolvedTypeWithIllegalSelector.kt	rejects invalid	on an expected line	
 tests/exhaustiveness/negative/exhaustiveWithNegativeBooleans.kt	skip	LANGUAGE	
@@ -3800,11 +3800,11 @@ tests/imports/ClassClash.kt	rejects invalid	on an expected line
 tests/imports/ClassClashStarImport.kt	rejects invalid	elsewhere	
 tests/imports/ClassClashStarImport_topLevel.kt	rejects invalid	on an expected line	
 tests/imports/ClassClash_topLevel.kt	rejects invalid	on an expected line	
-tests/imports/ClassImportsConflicting.kt	accepts invalid	CONFLICTING_IMPORT	a.kt:3: CONFLICTING_IMPORT
+tests/imports/ClassImportsConflicting.kt	rejects invalid	on an expected line	
 tests/imports/CurrentPackageAndAllUnderImport.kt	accepts valid		
 tests/imports/CurrentPackageAndExplicitImport.kt	accepts valid		
 tests/imports/DefaultImportsPriority.kt	accepts valid		
-tests/imports/DoubleImports.kt	accepts invalid	CONFLICTING_IMPORT	Test.kt:4: CONFLICTING_IMPORT
+tests/imports/DoubleImports.kt	rejects invalid	on an expected line	
 tests/imports/EnumEntryVsStaticAmbiguity.kt	skip	Java sources	
 tests/imports/EnumEntryVsStaticAmbiguity2.kt	skip	Java sources	
 tests/imports/EnumEntryVsStaticAmbiguity3.kt	skip	Java sources	
@@ -3812,7 +3812,7 @@ tests/imports/EnumEntryVsStaticAmbiguity4.kt	skip	Java sources
 tests/imports/ExplicitImportsAmbiguity.kt	rejects invalid	on an expected line	
 tests/imports/ExplicitImportsUnambiguityForFunction.kt	accepts valid		
 tests/imports/ExplicitPackageImportsAmbiguity.kt	rejects invalid	on an expected line	
-tests/imports/ImportClassClash.kt	accepts invalid	CONFLICTING_IMPORT	3.kt:1: CONFLICTING_IMPORT
+tests/imports/ImportClassClash.kt	rejects invalid	on an expected line	
 tests/imports/ImportFromCompanionObject.kt	rejects invalid	on an expected line	
 tests/imports/ImportFromCurrentWithDifferentName.kt	accepts invalid	UNRESOLVED_REFERENCE	ImportFromCurrentWithDifferentName.kt:7: UNRESOLVED_REFERENCE
 tests/imports/ImportFromCurrentWithDifferentNameComplex.kt	accepts invalid	UNRESOLVED_REFERENCE	ImportFromCurrentWithDifferentNameComplex.kt:16: UNRESOLVED_REFERENCE
@@ -3837,7 +3837,7 @@ tests/imports/InaccessiblePrivateClass.kt	rejects invalid	on an expected line
 tests/imports/InaccessiblePrivateInFile.kt	rejects valid	return type of '_' is not a subtype of the return type of the overridden member '_' defined in '_'	f22.kt:7: return type of 'highlightingApplicabilities' is not a subtype of the return type of the overridden member 'highlightingApplicabilities' defined in 'ArgumentMapping'
 tests/imports/JavaPackageLocalClassNotImported.kt	accepts valid		
 tests/imports/MalformedImports.kt	rejects invalid	on an expected line	
-tests/imports/NestedClassClash.kt	accepts invalid	CONFLICTING_IMPORT; OVERLOAD_RESOLUTION_AMBIGUITY; UNRESOLVED_REFERENCE	c.kt:1: CONFLICTING_IMPORT
+tests/imports/NestedClassClash.kt	rejects invalid	on an expected line	
 tests/imports/OperatorRenameOnImport.kt	accepts invalid	OPERATOR_MODIFIER_REQUIRED	b.kt:7: OPERATOR_MODIFIER_REQUIRED
 tests/imports/OptionalAnnotationClasses.kt	accepts valid		
 tests/imports/PackageLocalClassNotImported.kt	rejects valid	cannot access '_': it is private in file	Main.kt:6: cannot access 'SomeClass': it is private in file
@@ -9710,7 +9710,7 @@ testsWithStdLib/annotations/subclassOptInRequired/WithInterfaces.kt	accepts inva
 testsWithStdLib/annotations/subclassOptInRequired/WithOpenClasses.kt	accepts invalid	OPT_IN_TO_INHERITANCE_ERROR; OPT_IN_USAGE_ERROR	WithOpenClasses.kt:9: OPT_IN_TO_INHERITANCE_ERROR
 testsWithStdLib/annotations/subclassOptInRequired/differentDiagnosticsOnSameMarker.kt	accepts invalid	OPT_IN_TO_INHERITANCE_ERROR; OPT_IN_USAGE_ERROR	differentDiagnosticsOnSameMarker.kt:11: OPT_IN_TO_INHERITANCE_ERROR
 testsWithStdLib/annotations/targetuse.kt	skip	Java sources	
-testsWithStdLib/annotations/throws.kt	rejects invalid	elsewhere	
+testsWithStdLib/annotations/throws.kt	rejects invalid	on an expected line	
 testsWithStdLib/annotations/throwsByStarWinsBuiltin.kt	accepts valid		
 testsWithStdLib/annotations/useSiteTargetOnExpression.kt	skip	LANGUAGE	
 testsWithStdLib/annotations/useSiteTargetOnExpressionForbidden.kt	skip	LANGUAGE	
