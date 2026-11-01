@@ -47,6 +47,9 @@ func (c *Checker) wantBool(x syntax.Expr) {
 }
 
 func (c *Checker) expr(x syntax.Expr, want types.Type) types.Type {
+	if c.file.Annotated != nil {
+		c.annotatedExpr(x)
+	}
 	allowRange, sink := c.allowRange, c.sink
 	c.allowRange, c.sink = false, nil
 	t := c.expr1(x, want, allowRange, sink)

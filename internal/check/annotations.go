@@ -28,6 +28,62 @@ type annotArg struct {
 // those of the program's SOURCE annotation classes, have their arguments
 // checked.
 func (c *Checker) annotations(as []syntax.Annotation, owner *types.ClassSym, site annotSite) {
+	c.checkAnnotations(as, owner, site, false)
+}
+
+// localAnnotations checks the annotations as of a local declaration, a
+// statement or an expression, written on site, as annotations does, but
+// in the current scope, and without keeping them: kc doesn't write them.
+// A statement can be checked more than once, as in a lambda's body, so
+// the errors are reported once.
+func (c *Checker) localAnnotations(as []syntax.Annotation, site annotSite) {
+	if len(as) == 0 {
+		return
+	}
+	n := len(c.errs)
+	c.checkAnnotations(as, c.cls, site, true)
+	if len(c.errs) == n {
+		return
+	}
+	news := c.errs[n:]
+	c.errs = c.errs[:n]
+	for _, e := range news {
+		if !slices.ContainsFunc(c.errs, func(o *syntax.Error) bool { return o.Pos == e.Pos && o.Msg == e.Msg && o.File == e.File }) {
+			c.errs = append(c.errs, e)
+		}
+	}
+}
+
+// annotatedNode checks the annotations the parser recorded of statement
+// or expression n (see syntax.File.Annotated), written on site.
+func (c *Checker) annotatedNode(n any, site annotSite) {
+	if c.file == nil || c.file.Annotated == nil {
+		return
+	}
+	if as, ok := c.file.Annotated[n]; ok {
+		c.localAnnotations(as, site)
+	}
+}
+
+// annotatedExpr checks the annotations of expression x.
+func (c *Checker) annotatedExpr(x syntax.Expr) {
+	if c.file == nil || c.file.Annotated == nil {
+		return
+	}
+	site := exprSite
+	switch x := x.(type) {
+	case *syntax.Lambda:
+		if x.Ref == nil { // not ::f
+			site = lambdaSite
+		}
+	case *syntax.ObjectExpr:
+		site = objectExprSite
+	}
+	c.annotatedNode(x, site)
+}
+
+// checkAnnotations is annotations, or localAnnotations if local is set.
+func (c *Checker) checkAnnotations(as []syntax.Annotation, owner *types.ClassSym, site annotSite, local bool) {
 	seen := map[repeatKey]bool{}
 	for i := range as {
 		a := &as[i]
@@ -53,7 +109,7 @@ func (c *Checker) annotations(as []syntax.Annotation, owner *types.ClassSym, sit
 			}
 		}
 		source := cls.Retention == types.RetentionSource
-		if source {
+		if source && !local {
 			a.Source = cls
 		}
 		if cls.Retention == types.NoRetention || source && !cls.Annotation {
@@ -81,6 +137,10 @@ func (c *Checker) annotations(as []syntax.Annotation, owner *types.ClassSym, sit
 			args = append(args, annotArg{name: arg.Name, elems: elems, array: array, pos: p})
 		}
 		if !ok {
+			continue
+		}
+		if local {
+			c.annotationValues(cls, args, a.P)
 			continue
 		}
 		saved := c.state
@@ -310,6 +370,8 @@ func (c *Checker) declAnnotations(d syntax.Decl, owner *types.ClassSym) {
 			switch m := m.(type) {
 			case *syntax.FunDecl, *syntax.PropDecl:
 				c.declAnnotations(m, cls)
+			case *syntax.InitBlock:
+				c.annotations(m.Annotations, cls, initSite)
 			case *syntax.SecondaryCtor:
 				c.noReceiver(m.Annotations)
 				c.annotations(m.Annotations, cls, ctorSite)

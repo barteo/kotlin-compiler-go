@@ -26,6 +26,9 @@ const (
 	siteParam    // a value parameter
 	siteTypealias
 	siteFile
+	siteLocal // a local variable, or a catch block's parameter
+	siteExpr  // an expression or another statement
+	siteInit  // an init block
 )
 
 // annotSite is an element annotations are written on: its kind, the
@@ -42,6 +45,15 @@ var (
 	typealiasSite = annotSite{siteTypealias, types.TargetTypealias, "typealias"}
 	fileSite      = annotSite{siteFile, types.TargetFile, "file"}
 	enumEntrySite = annotSite{siteEnumEntry, types.TargetProperty | types.TargetField, "enum entry"}
+	localVarSite  = annotSite{siteLocal, types.TargetLocalVariable, "local variable"}
+	catchSite     = annotSite{siteLocal, types.TargetValueParameter | types.TargetLocalVariable, "value parameter"}
+	localFunSite  = annotSite{siteFun, types.TargetFunction, "local function"}
+	exprSite      = annotSite{siteExpr, types.TargetExpression, "expression"}
+	// A lambda and an anonymous function are functions too, and an object
+	// expression a class.
+	lambdaSite     = annotSite{siteExpr, types.TargetFunction | types.TargetExpression, "expression"}
+	objectExprSite = annotSite{siteExpr, types.TargetClass | types.TargetExpression, "expression"}
+	initSite       = annotSite{siteInit, 0, "initializer"}
 )
 
 func classSite(d *syntax.ClassDecl) annotSite {

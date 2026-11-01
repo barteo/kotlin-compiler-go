@@ -40,6 +40,21 @@ type parser struct {
 	suppressDSL bool
 	// later are the errors parsing goes on after (see File.Errors).
 	later []*Error
+	// annotated are the annotations of statements and expressions (see
+	// File.Annotated).
+	annotated map[any][]Annotation
+}
+
+// annotate records annotations as of statement or expression n, before
+// those it has.
+func (p *parser) annotate(n any, as []Annotation) {
+	if len(as) == 0 {
+		return
+	}
+	if p.annotated == nil {
+		p.annotated = map[any][]Annotation{}
+	}
+	p.annotated[n] = append(slices.Clip(as), p.annotated[n]...)
 }
 
 type bailout struct{}
@@ -65,6 +80,7 @@ func Parse(path, src string) (f *File, errs []*Error) {
 	f.SuppressInvisible = p.suppressInvisible
 	f.SuppressShadowed = p.suppressShadowed
 	f.SuppressDSL = p.suppressDSL
+	f.Annotated = p.annotated
 	f.Facade = facade(f, path)
 	f.Part = part(f, path)
 	return f, nil
@@ -114,6 +130,7 @@ func ParseAll(path, src string) (*File, []*Error) {
 	f.SuppressInvisible = p.suppressInvisible
 	f.SuppressShadowed = p.suppressShadowed
 	f.SuppressDSL = p.suppressDSL
+	f.Annotated = p.annotated
 	f.Facade = facade(f, path)
 	f.Part = part(f, path)
 	return f, p.errs
@@ -2022,7 +2039,7 @@ func (p *parser) member(cd *ClassDecl) {
 			p.noContexts(&m, "initializers")
 			p.next()
 			p.skipNL()
-			cd.Members = append(cd.Members, &InitBlock{P: t.Pos, Body: p.parseBlock()})
+			cd.Members = append(cd.Members, &InitBlock{P: t.Pos, Body: p.parseBlock(), Annotations: m.Annotations})
 			break
 		}
 		p.danglingContexts(m)
@@ -2251,9 +2268,10 @@ func (p *parser) parseBody() *Block {
 }
 
 func (p *parser) parseStmt() Stmt {
-	// Annotations on local declarations and expressions are ignored, but
-	// for a local class's, which LocalClass keeps, and a local function's
-	// and a lambda's, which the checker and codegen look at for Compose's.
+	// A local class keeps its annotations, and a local function its, as
+	// declarations do; those of other statements are recorded for the
+	// checker (see File.Annotated). Codegen looks at a lambda's for
+	// Compose's.
 	var as []Annotation
 	for p.at(AT) {
 		as = append(as, p.annotation())
@@ -2271,6 +2289,9 @@ func (p *parser) parseStmt() Stmt {
 				annotateLambda(l, a)
 			}
 		}
+		p.annotate(s.X, as)
+	default:
+		p.annotate(s, as)
 	}
 	return s
 }
@@ -2409,6 +2430,7 @@ func (p *parser) parseStmtAfterAnnotations() Stmt {
 				if vs, ok := s.(*VarStmt); ok {
 					vs.Lateinit, vs.LateinitP = m.Lateinit, t.Pos
 				}
+				p.annotate(s, m.Annotations)
 				return s
 			}
 		}
@@ -2742,6 +2764,7 @@ func (p *parser) parsePostfix() Expr {
 			for _, a := range as {
 				annotateLambda(l, a)
 			}
+			p.annotate(l, as)
 			if !ok {
 				fn = &Call{Fun: x}
 				fn.P = t.Pos
@@ -3056,14 +3079,14 @@ func (p *parser) parsePrimary() Expr {
 		return p.callableRef(t.Pos, &CallableRef{Name: p.ident().Text})
 	case AT:
 		// An annotated expression, whose annotation can be on the line
-		// before it: the annotation is ignored, but for Compose's on a
-		// lambda (see annotateLambda).
+		// before it (see File.Annotated, and annotateLambda).
 		a := p.annotation()
 		p.skipNL()
 		x := p.parsePrefix()
 		if l, ok := x.(*Lambda); ok {
 			annotateLambda(l, a)
 		}
+		p.annotate(x, []Annotation{a})
 		return x
 	case LABEL:
 		// lit@{ ... }: the label replaces the function's name.
@@ -3280,13 +3303,14 @@ func (p *parser) parseTry() Expr {
 			continue
 		}
 		p.expect(LPAREN)
+		var as []Annotation
 		for p.at(AT) {
-			p.annotation() // ignored, as on locals
+			as = append(as, p.annotation())
 			p.skipNL()
 		}
 		name := p.ident()
 		p.expect(COLON)
-		c := &Catch{P: t.Pos, Name: name.Text, Type: p.parseType()}
+		c := &Catch{P: t.Pos, Name: name.Text, Type: p.parseType(), Annotations: as}
 		p.expect(RPAREN)
 		p.skipNL()
 		c.Body = p.parseBlock()

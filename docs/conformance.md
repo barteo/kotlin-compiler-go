@@ -137,15 +137,15 @@ Kotlin 2.4.21's tests on `kc`:
 | Diagnostics tests | Tests | Share of run |
 |:---|---:|---:|
 | run (of 10,827) | 7,200 | |
-| rejects invalid | 3,081 | 42.8% |
+| rejects invalid | 3,101 | 43.1% |
 | accepts valid | 2,788 | 38.7% |
-| accepts invalid | 737 | 10.2% |
+| accepts invalid | 717 | 10.0% |
 | rejects valid | 514 | 7.1% |
 | parse/unsupported | 79 | 1.1% |
 | crash | 1 | 0.0% |
 
 `kc` agrees with `kotlinc` on 82% of the diagnostics tests, and reports
-10,621 of the 18,906 expected errors (56%) on their lines. The reports
+10,709 of the 18,906 expected errors (57%) on their lines. The reports
 break the failures down; the largest groups are:
 
 - **Silent miscompilation** (86 box tests): `tailrec` functions that
@@ -153,10 +153,10 @@ break the failures down; the largest groups are:
   for bad local variable types (7), and duplicate bridge methods in `Map`
   implementations (3).
 - **Accepts invalid**: inline-only parameters (`USAGE_IS_NOT_INLINABLE`
-  27), opt-in (26), annotations on expressions, local declarations and
-  types (`WRONG_ANNOTATION_TARGET` 26), JVM signature clashes
-  (`ACCIDENTAL_OVERRIDE`, `CONFLICTING_JVM_DECLARATIONS`, 24 each), and
-  DSL markers on types (`DSL_SCOPE_VIOLATION` 15).
+  27), opt-in (26), JVM signature clashes (`ACCIDENTAL_OVERRIDE`,
+  `CONFLICTING_JVM_DECLARATIONS`, 24 each), calls on nullable values
+  (`UNSAFE_CALL` 19), and DSL markers on types (`DSL_SCOPE_VIOLATION`
+  15).
 - **Rejects valid**, by `kc`'s first error: type mismatches (91 + 4
   box), inference failures (80 + 13), unresolved names and imports (74 +
   25), and calls on nullable receivers (48 + 9).

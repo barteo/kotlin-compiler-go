@@ -344,6 +344,16 @@ func hasSafeCall(e syntax.Expr) bool {
 }
 
 func (c *Checker) stmt(s syntax.Stmt, valueUsed bool, want types.Type) types.Type {
+	if c.file.Annotated != nil {
+		switch s := s.(type) {
+		case *syntax.ExprStmt:
+			c.annotatedExpr(s.X) // also an if, when or try exprStmt checks
+		case *syntax.VarStmt, *syntax.Destructure:
+			c.annotatedNode(s, localVarSite)
+		case *syntax.Assign, *syntax.While, *syntax.For:
+			c.annotatedNode(s, exprSite)
+		}
+	}
 	switch s := s.(type) {
 	case *syntax.ExprStmt:
 		if valueUsed {
