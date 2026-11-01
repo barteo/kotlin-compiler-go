@@ -1,0 +1,12 @@
+null
+uninitialized
+true
+NPE: null cannot be cast to non-null type kotlin.String
+null
+true
+foo(null) foo(null) 
+false
+true
+true
+false
+side2 
