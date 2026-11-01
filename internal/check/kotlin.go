@@ -1628,10 +1628,13 @@ func (t *classTable) loadCollection(cls *types.ClassSym) {
 
 // platform returns the names and descriptors of the members of the Java
 // collection interfaces that Kotlin's collection types don't declare,
-// such as forEach(Consumer).
+// such as forEach(Consumer). One that a Kotlin collection type declares
+// isn't, though a subtype gets it from Java: MutableIterator's hasNext(),
+// which Iterator declares.
 func (t *classTable) platform() map[string]bool {
 	t.platformOnce.Do(func() {
 		t.platformSet = map[string]bool{}
+		declared := map[string]bool{}
 		for id := range collectionJVM {
 			cls := t.kclass(id)
 			cls.Ensure()
@@ -1639,9 +1642,14 @@ func (t *classTable) platform() map[string]bool {
 				for _, f := range fs {
 					if f.Platform {
 						t.platformSet[f.Name+f.Desc] = true
+					} else {
+						declared[f.Name+f.Desc] = true
 					}
 				}
 			}
+		}
+		for k := range declared {
+			delete(t.platformSet, k)
 		}
 	})
 	return t.platformSet
