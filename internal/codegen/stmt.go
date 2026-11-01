@@ -265,7 +265,7 @@ func (g *gen) forEach(s *syntax.For) {
 func (g *gen) invokeOperator(f *types.FunSym, rt types.Type) {
 	if f.Ext {
 		g.coerce(rt, f.Recv)
-		g.invokeStatic(f.Facade, f, 0, false)
+		g.invokeStatic(f.Facade, f, nil, false)
 		return
 	}
 	g.invokeOperatorMember(f, rt)
@@ -278,7 +278,7 @@ func (g *gen) invokeOperatorMember(f *types.FunSym, rt types.Type) {
 	if f.Impl && f.Inline == nil {
 		// A class-path value class's: a static method, also taking the
 		// value first, as UIntArray's iterator-impl.
-		g.invokeStatic(f.Facade, f, 0, false)
+		g.invokeStatic(f.Facade, f, nil, false)
 		return
 	}
 	if o := f.Owner; o != nil && o.Value && f.Desc == "" && o.Underlying != nil && types.Unboxed(rt) {
@@ -783,12 +783,12 @@ func (g *gen) lvalue(x syntax.Expr) lvalue {
 			}
 			lv := lvalue{t: t, prepare: prepare, recv: size(f.Recv), reread: true,
 				load: func() {
-					g.invokeFun(nil, f, 0)
+					g.invokeFun(nil, f, nil)
 					g.coerce(types.JVMRet(f), t)
 				},
 				store: func() {
 					g.coerce(t, s.Params[0].Type)
-					g.invokeFun(nil, s, 0)
+					g.invokeFun(nil, s, nil)
 				}}
 			if gd := syntax.SourceInline(f); gd != nil {
 				// Accessors with reified type parameters: copies of their

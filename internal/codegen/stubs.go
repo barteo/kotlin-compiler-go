@@ -15,8 +15,8 @@ import (
 // overload is a method that @JvmOverloads asks for: the function without
 // some of its parameters that have default values.
 type overload struct {
-	desc    string // its descriptor
-	omitted int    // the mask of the parameters it omits
+	desc    string  // its descriptor
+	omitted argMask // the mask of the parameters it omits
 }
 
 // overloadsOf returns the overloads of a function annotated @JvmOverloads,
@@ -35,9 +35,9 @@ func overloadsOf(fd *syntax.FunDecl) []overload {
 	f := fd.Sym
 	var out []overload
 	for n := len(defaults) - 1; n >= 0; n-- {
-		mask := 0
+		var mask argMask
 		for _, i := range defaults[n:] {
-			mask |= 1 << i
+			mask.set(i)
 		}
 		var sb strings.Builder
 		sb.WriteByte('(')
@@ -45,7 +45,7 @@ func overloadsOf(fd *syntax.FunDecl) []overload {
 			sb.WriteString(desc(f.Recv))
 		}
 		for i, p := range f.Params {
-			if mask&(1<<i) == 0 {
+			if !mask.has(i) {
 				sb.WriteString(desc(p.Type))
 			}
 		}
@@ -68,9 +68,7 @@ func (g *gen) ctorOverloads(m *syntax.Modifiers, ctor *types.FunSym, params []*s
 	if m.Find("", "JvmOverloads") == nil {
 		return
 	}
-	full := methodDesc(ctor.Params, types.UnitType)
-	i := strings.IndexByte(full, ')')
-	d := full[:i] + "ILkotlin/jvm/internal/DefaultConstructorMarker;" + full[i:]
+	d := defaultsDesc(methodDesc(ctor.Params, types.UnitType), len(ctor.Params), ctorMarker)
 	var defaults []int
 	for i, p := range params {
 		if p.Default != nil {
@@ -78,15 +76,15 @@ func (g *gen) ctorOverloads(m *syntax.Modifiers, ctor *types.FunSym, params []*s
 		}
 	}
 	for n := len(defaults) - 1; n >= 0; n-- {
-		mask := 0
+		var mask argMask
 		for _, i := range defaults[n:] {
-			mask |= 1 << i
+			mask.set(i)
 		}
 		var sb strings.Builder
 		sb.WriteByte('(')
 		access := uint16(cf.AccPublic)
 		for i, p := range ctor.Params {
-			if mask&(1<<i) == 0 {
+			if !mask.has(i) {
 				sb.WriteString(desc(p.Type))
 			}
 		}
@@ -98,7 +96,7 @@ func (g *gen) ctorOverloads(m *syntax.Modifiers, ctor *types.FunSym, params []*s
 		if len(params) == len(ctor.Params) {
 			var ps []sigPart
 			for i, p := range ctor.Params {
-				if mask&(1<<i) == 0 {
+				if !mask.has(i) {
 					var ref *syntax.TypeRef
 					if !params[i].Vararg {
 						ref = params[i].Type
@@ -113,7 +111,7 @@ func (g *gen) ctorOverloads(m *syntax.Modifiers, ctor *types.FunSym, params []*s
 		g.code.Local(cf.ALOAD, g.code.AllocLocal("L"+ctor.Owner.Name+";"))
 		for i, p := range ctor.Params {
 			pd := desc(p.Type)
-			if mask&(1<<i) != 0 {
+			if mask.has(i) {
 				g.zero(pd)
 				continue
 			}
@@ -122,8 +120,7 @@ func (g *gen) ctorOverloads(m *syntax.Modifiers, ctor *types.FunSym, params []*s
 			g.checkParam(slot, p.Type, p.Name)
 			g.code.Local(loadOpOf(pd), slot)
 		}
-		g.code.Iconst(int32(mask))
-		g.code.Op(cf.ACONST_NULL)
+		g.pushMask(mask, len(ctor.Params))
 		g.code.Invoke(cf.INVOKESPECIAL, ctor.Owner.Name, "<init>", d)
 		g.code.Op(cf.RETURN)
 		g.check()
@@ -156,17 +153,14 @@ func (g *gen) emptyConstructor(cd *syntax.ClassDecl, params []*syntax.Param) {
 	if cd.CtorMods.Visibility == syntax.Protected {
 		access = cf.AccProtected
 	}
-	full := methodDesc(ctor.Params, types.UnitType)
-	i := strings.IndexByte(full, ')')
 	g.code = g.cls.NewMethod(access, "<init>", "()V")
 	g.code.Line(cd.P.Line)
 	g.code.Local(cf.ALOAD, g.code.AllocLocal("L"+cls.Name+";"))
 	for _, p := range ctor.Params {
 		g.zero(desc(p.Type))
 	}
-	g.code.Iconst(int32(1<<len(params) - 1))
-	g.code.Op(cf.ACONST_NULL)
-	g.code.Invoke(cf.INVOKESPECIAL, cls.Name, "<init>", full[:i]+"ILkotlin/jvm/internal/DefaultConstructorMarker;"+full[i:])
+	g.pushMask(allMask(len(params)), len(ctor.Params))
+	g.code.Invoke(cf.INVOKESPECIAL, cls.Name, "<init>", defaultsDesc(methodDesc(ctor.Params, types.UnitType), len(ctor.Params), ctorMarker))
 	g.code.Op(cf.RETURN)
 	g.check()
 }
@@ -177,9 +171,7 @@ func (g *gen) emptyConstructor(cd *syntax.ClassDecl, params []*syntax.Param) {
 func (g *gen) overloads(fd *syntax.FunDecl, owner *types.ClassSym, access uint16) {
 	f := fd.Sym
 	access |= synthetic(&fd.Modifiers)
-	full := funDesc(f)
-	i := strings.IndexByte(full, ')')
-	d := full[:i] + "ILjava/lang/Object;" + full[i:]
+	d := defaultsDesc(funDesc(f), types.DefaultBits(f), objMarker)
 	if owner != nil {
 		d = "(L" + owner.Name + ";" + d[1:]
 	}
@@ -206,7 +198,7 @@ func (g *gen) overloads(fd *syntax.FunDecl, owner *types.ClassSym, access uint16
 		}
 		for i, p := range f.Params {
 			pd := desc(p.Type)
-			if o.omitted&(1<<i) != 0 {
+			if o.omitted.has(i) {
 				g.zero(pd)
 				continue
 			}
@@ -220,8 +212,7 @@ func (g *gen) overloads(fd *syntax.FunDecl, owner *types.ClassSym, access uint16
 			g.code.NameLocal(k, "$completion")
 			g.code.Local(cf.ALOAD, k)
 		}
-		g.code.Iconst(int32(o.omitted))
-		g.code.Op(cf.ACONST_NULL)
+		g.pushMask(o.omitted, types.DefaultBits(f))
 		g.code.Invoke(cf.INVOKESTATIC, g.cls.Name, f.JVM()+"$default", d)
 		g.code.Op(returnOpOf(o.desc[strings.IndexByte(o.desc, ')')+1:]))
 		g.check()
@@ -230,10 +221,10 @@ func (g *gen) overloads(fd *syntax.FunDecl, owner *types.ClassSym, access uint16
 
 // taken returns the parameters that an overload with omitted parameters
 // (a mask) takes.
-func taken(params []*types.VarSym, omitted int) []*types.VarSym {
+func taken(params []*types.VarSym, omitted argMask) []*types.VarSym {
 	var out []*types.VarSym
 	for i, p := range params {
-		if omitted&(1<<i) == 0 {
+		if !omitted.has(i) {
 			out = append(out, p)
 		}
 	}
@@ -500,7 +491,7 @@ func (g *gen) defaultImpls(cd *syntax.ClassDecl, iface *cf.Class) *cf.Class {
 		if m.decl != nil && hasDefaults(m.decl.Params) {
 			// name$default, which calls the interface's.
 			i := strings.IndexByte(m.desc, ')')
-			d := "(" + self + m.desc[1:i] + "ILjava/lang/Object;" + m.desc[i:]
+			d := defaultsDesc("("+self+m.desc[1:], types.DefaultBits(m.decl.Sym), objMarker)
 			code := c.NewMethod(cf.AccPublic|cf.AccStatic|cf.AccSynthetic, m.name+"$default", d)
 			code.Line(m.line)
 			for _, pd := range descParams(d) {

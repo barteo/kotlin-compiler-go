@@ -1796,11 +1796,9 @@ func (g *gen) ctorCall(x *syntax.Call) {
 		g.code.Local(cf.ILOAD, 2)
 		d = "(Ljava/lang/String;I" + d[1:]
 	}
-	if mask := g.callArgs(x, f); mask != 0 {
-		g.code.Iconst(int32(mask))
-		g.code.Op(cf.ACONST_NULL)
-		i := strings.IndexByte(d, ')')
-		d = d[:i] + "ILkotlin/jvm/internal/DefaultConstructorMarker;" + d[i:]
+	if mask := g.callArgs(x, f); mask.any() {
+		g.pushMask(mask, len(f.Params))
+		d = defaultsDesc(d, len(f.Params), ctorMarker)
 	} else if enum && x.Ctor != g.owner {
 		d = g.marker(d)
 	} else if x.Ctor != g.owner && g.viaMarker(f) {
@@ -2071,14 +2069,14 @@ func hasDefaults(params []*syntax.Param) bool {
 
 // defaults generates the static method that supplies a function's omitted
 // arguments, as kotlinc writes it: name$default takes the receiver of a
-// method, the parameters, a mask with bit i set if parameter i was
-// omitted, and an unused marker. It computes the omitted ones' default
-// values, in order, and calls the function. A value class's member takes
-// the value instead of the object, as its static method does.
+// method, the parameters, masks with bit i set if parameter i was
+// omitted (see argMask), and an unused marker. It computes the omitted
+// ones' default values, in order, and calls the function. A value class's
+// member takes the value instead of the object, as its static method
+// does.
 func (g *gen) defaults(fd *syntax.FunDecl, owner *types.ClassSym) {
 	f := fd.Sym
 	d := sigDesc(f)
-	i := strings.IndexByte(d, ')')
 	self := "" // the method's object
 	value := owner != nil && owner.Value
 	switch {
@@ -2102,7 +2100,7 @@ func (g *gen) defaults(fd *syntax.FunDecl, owner *types.ClassSym) {
 		// are public or private.
 		access &^= cf.AccPublic
 	}
-	g.code = g.cls.NewMethod(access, f.JVM()+"$default", "("+recv+d[1:i]+"ILjava/lang/Object;"+d[i:])
+	g.code = g.cls.NewMethod(access, f.JVM()+"$default", defaultsDesc("("+recv+d[1:], types.DefaultBits(f), objMarker))
 	g.cls.Throws(f.Throws...) // as kotlinc declares them
 	copied := (fd.Inline || inlineAccessor(fd)) && !f.Private
 	if copied {
@@ -2183,14 +2181,14 @@ func (g *gen) defaults(fd *syntax.FunDecl, owner *types.ClassSym) {
 }
 
 // fillDefaults allocates the parameters of a $default method, followed by
-// the mask and the marker, and stores the default value of each omitted
+// the masks and the marker, and stores the default value of each omitted
 // parameter in its local.
 func (g *gen) fillDefaults(params []*syntax.Param, syms []*types.VarSym) {
 	g.fillDefaultsCont(params, syms, 0, false, nil)
 }
 
 // fillDefaultsCont is fillDefaults for a suspend function if suspend is
-// set: its continuation comes before the mask. It returns its slot, or
+// set: its continuation comes before the masks. It returns its slot, or
 // -1. prologue, if not nil, runs before the default values. shift is the
 // mask's bit of the first parameter: as kotlinc's, a function's context
 // parameters come before it.
@@ -2204,8 +2202,7 @@ func (g *gen) fillDefaultsCont(params []*syntax.Param, syms []*types.VarSym, shi
 		k = g.code.AllocLocal(types.ContinuationDesc)
 		g.code.NameLocal(k, "$completion")
 	}
-	mask := g.code.AllocLocal("I")
-	g.code.AllocLocal("Ljava/lang/Object;")
+	masks := g.allocMasks(shift+len(params), objMarker)
 	if prologue != nil {
 		prologue()
 	}
@@ -2214,11 +2211,8 @@ func (g *gen) fillDefaultsCont(params []*syntax.Param, syms []*types.VarSym, shi
 			continue
 		}
 		skip := cf.NewLabel()
-		g.code.Local(cf.ILOAD, mask)
-		g.code.Iconst(int32(1) << (shift + j))
-		g.code.Op(cf.IAND)
-		g.code.Jump(cf.IFEQ, skip)
-		g.exprAs(p.Default, p.Sym.Type)
+		g.jumpIfPassed(masks, shift+j, skip)
+		g.argAs(p.Default, p.Sym.Type) // a Unit one is kotlin.Unit
 		g.code.Local(storeOp(p.Sym.Type), p.Sym.Slot)
 		g.code.Place(skip)
 	}
@@ -2226,10 +2220,10 @@ func (g *gen) fillDefaultsCont(params []*syntax.Param, syms []*types.VarSym, shi
 }
 
 // defaultConstructor generates the constructor for calls that omit
-// arguments: it takes a mask and an unused DefaultConstructorMarker after
+// arguments: it takes masks and an unused DefaultConstructorMarker after
 // the parameters, as kotlinc writes it, and calls ctor, the primary or a
 // secondary constructor. An enum's takes the entry's name and ordinal
-// first, and passes them on.
+// first, and passes them on, and a local class's its captures.
 func (g *gen) defaultConstructor(ctor *types.FunSym, params []*syntax.Param) {
 	cls := ctor.Owner
 	d := ctorJVMDesc(ctor)
@@ -2237,12 +2231,11 @@ func (g *gen) defaultConstructor(ctor *types.FunSym, params []*syntax.Param) {
 	if enum {
 		d = "(Ljava/lang/String;I" + d[1:]
 	}
-	i := strings.IndexByte(d, ')')
 	access := uint16(cf.AccPublic | cf.AccSynthetic)
 	if ctor.Private || enum {
 		access = cf.AccSynthetic // as kotlinc's: its package calls it
 	}
-	g.code = g.cls.NewMethod(access, "<init>", d[:i]+"ILkotlin/jvm/internal/DefaultConstructorMarker;"+d[i:])
+	g.code = g.cls.NewMethod(access, "<init>", defaultsDesc(d, len(ctor.Params), ctorMarker))
 	g.prefix = "_init_$default$lambda"
 	g.retType = types.UnitType
 	g.loops, g.tries = nil, nil
@@ -2254,6 +2247,14 @@ func (g *gen) defaultConstructor(ctor *types.FunSym, params []*syntax.Param) {
 	if enum {
 		g.code.AllocLocal("Ljava/lang/String;")
 		g.code.AllocLocal("I")
+	}
+	var captures []*types.VarSym // a local class's, which come first
+	if cd != nil && !cls.Inner {
+		captures = cd.Captures
+	}
+	for _, v := range captures {
+		v.Slot = g.code.AllocLocal(storageDesc(v))
+		g.named(v)
 	}
 	g.fillDefaultsCont(params, ctor.Params, 0, false, func() {
 		if cls.Inner {
@@ -2267,6 +2268,9 @@ func (g *gen) defaultConstructor(ctor *types.FunSym, params []*syntax.Param) {
 	if enum {
 		g.code.Local(cf.ALOAD, 1)
 		g.code.Local(cf.ILOAD, 2)
+	}
+	for _, v := range captures {
+		g.code.Local(storageLoadOp(v), v.Slot)
 	}
 	for _, p := range ctor.Params {
 		g.code.Local(loadOp(p.Type), p.Slot)
@@ -2489,11 +2493,9 @@ func (g *gen) staticInit(cd *syntax.ClassDecl) {
 			g.code.Iconst(int32(i))
 			f := e.Call.Sym
 			d := "(Ljava/lang/String;I" + ctorJVMDesc(f)[1:]
-			if mask := g.callArgs(e.Call, f); mask != 0 {
-				g.code.Iconst(int32(mask))
-				g.code.Op(cf.ACONST_NULL)
-				i := strings.IndexByte(d, ')')
-				d = d[:i] + "ILkotlin/jvm/internal/DefaultConstructorMarker;" + d[i:]
+			if mask := g.callArgs(e.Call, f); mask.any() {
+				g.pushMask(mask, len(f.Params))
+				d = defaultsDesc(d, len(f.Params), ctorMarker)
 			}
 			g.code.Invoke(cf.INVOKESPECIAL, cls.Name, "<init>", d)
 			g.code.FieldInsn(cf.PUTSTATIC, cls.Name, e.Name, self)
@@ -3265,7 +3267,7 @@ func (g *gen) getProp(cls *types.ClassSym, p *types.VarSym) {
 	}
 	gd := composeGetterDesc(p, "()"+desc(types.GetterType(p)))
 	if p.Getter != nil {
-		g.composeArgs(p.Getter, 0, nil)
+		g.composeArgs(p.Getter, nil, nil)
 	}
 	switch {
 	case protectedProp(p, false) && g.protectedAccess(p.Owner, types.GetterJVM(p), gd):

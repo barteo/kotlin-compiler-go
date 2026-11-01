@@ -127,11 +127,11 @@ Kotlin 2.4.21's tests on `kc`:
 | Box tests | Tests | Share of run |
 |:---|---:|---:|
 | run (of 7,480) | 6,483 | |
-| pass | 6,203 | 95.7% |
+| pass | 6,217 | 95.9% |
 | check error | 195 | 3.0% |
-| codegen error | 16 | 0.2% |
+| codegen error | 7 | 0.1% |
 | VerifyError and linkage error | 29 | 0.4% |
-| exception and wrong result | 40 | 0.6% |
+| exception and wrong result | 35 | 0.5% |
 | parse/unsupported, crash, timeout | 0 | |
 
 | Diagnostics tests | Tests | Share of run |
@@ -148,8 +148,8 @@ Kotlin 2.4.21's tests on `kc`:
 10,257 of the 18,906 expected errors (54%) on their lines. The reports
 break the failures down; the largest groups are:
 
-- **Silent miscompilation** (69 box tests): `NullPointerException`s
-  (14), `VerifyError`s for bad local variable types (7), and duplicate
+- **Silent miscompilation** (64 box tests): `NullPointerException`s
+  (13), `VerifyError`s for bad local variable types (7), and duplicate
   bridge methods in `Map` implementations (3).
 - **Accepts invalid**: annotation targets and arguments
   (`WRONG_ANNOTATION_TARGET` 47, `ANNOTATION_ARGUMENT_MUST_BE_CONST` 34),
