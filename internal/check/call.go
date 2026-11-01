@@ -579,6 +579,33 @@ func underscoreSub(sys *system, tparams []*types.TypeParamSym, recv types.Subst,
 	return sub, sys
 }
 
+// typeArgsFit reports whether the given type arguments of a call, targs,
+// written as typeArgs, are within the bounds of callee cl's type
+// parameters, as far as those don't depend on arguments it infers (_).
+func (c *Checker) typeArgsFit(cl callee, typeArgs []*syntax.TypeArg, targs []types.Type) bool {
+	sub := make(types.Subst, len(cl.recv)+len(targs))
+	for p, a := range cl.recv {
+		sub[p] = a
+	}
+	for j, p := range cl.tparams {
+		if !typeArgs[j].Underscore {
+			sub[p] = types.Arg{T: targs[j]}
+		}
+	}
+	for j, p := range cl.tparams {
+		t := targs[j]
+		if typeArgs[j].Underscore || t.K == types.Invalid {
+			continue
+		}
+		for _, b := range p.Bounds {
+			if b = sub.Apply(b); !b.HasParams() && b.K != types.Invalid && !c.subtype(t, b) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 // typeArgBounds checks the explicit type arguments targs of call x, of
 // candidate cd, against their parameters' bounds, with the other type
 // arguments as the call inferred them: T : Element<K> in
@@ -714,6 +741,20 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			return types.InvalidType
 		}
 		byArity = ok
+		// A candidate whose given type arguments violate its bounds
+		// doesn't apply, unless none fits: then typeArgBounds reports it.
+		// x.myUse<AutoCloseable, Int>() isn't the overload of T2 : Closeable.
+		if len(byArity) > 1 {
+			var fits []callee
+			for _, cl := range byArity {
+				if c.typeArgsFit(cl, x.TypeArgs, targs) {
+					fits = append(fits, cl)
+				}
+			}
+			if len(fits) > 0 {
+				byArity = fits
+			}
+		}
 	}
 
 	cs := make([]*candidate, len(byArity))
