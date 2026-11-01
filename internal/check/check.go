@@ -467,6 +467,9 @@ func CheckWith(files []*syntax.File, lib *Library, jobs int) []*syntax.Error {
 		c.inferAll()
 	}
 	for _, c := range checkers {
+		c.checkExposure()
+	}
+	for _, c := range checkers {
 		c.serialBodies()
 	}
 	for _, c := range checkers {
