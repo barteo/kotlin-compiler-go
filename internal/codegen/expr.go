@@ -2353,9 +2353,9 @@ func (g *gen) whenBody(subj *types.VarSym, b *syntax.Block, t types.Type, value 
 		g.block(b, t, value)
 		return
 	}
-	if name, _ := g.code.Named(subj.Slot); name == "" && !g.code.Retired(subj.Slot) {
-		g.code.Retire(subj.Slot)
-		defer g.code.Unretire(subj.Slot)
+	if name, _ := g.code.Named(g.slot(subj)); name == "" && !g.code.Retired(g.slot(subj)) {
+		g.code.Retire(g.slot(subj))
+		defer g.code.Unretire(g.slot(subj))
 	}
 	g.block(b, t, value)
 }
@@ -2364,10 +2364,10 @@ func (g *gen) when(x *syntax.When, t types.Type, value bool) {
 	var subj *types.VarSym
 	if x.Subject != nil {
 		subj = x.SubjSym
-		subj.Slot = g.code.AllocLocal(desc(subj.Type))
+		g.setSlot(subj, g.code.AllocLocal(desc(subj.Type)))
 		g.named(subj)
 		g.exprAs(x.Subject, subj.Type)
-		g.code.Local(storeOp(subj.Type), subj.Slot)
+		g.code.Local(storeOp(subj.Type), g.slot(subj))
 	}
 	end := cf.NewLabel()
 	if value {
@@ -2397,7 +2397,7 @@ func (g *gen) when(x *syntax.When, t types.Type, value bool) {
 			}
 			switch {
 			case c.Is || c.NotIs:
-				g.code.Local(loadOp(subj.Type), subj.Slot)
+				g.code.Local(loadOp(subj.Type), g.slot(subj))
 				g.instanceOf(subj.Type, c.Target)
 				if c.Is == jumpIf {
 					g.code.Jump(cf.IFNE, target)
@@ -2414,14 +2414,14 @@ func (g *gen) when(x *syntax.When, t types.Type, value bool) {
 				}
 			case c.In || c.NotIn:
 				r := c.X.(*syntax.Binary)
-				g.inRange(nil, func() { g.code.Local(loadOp(subj.Type), subj.Slot) }, subj.Type, r, c.In, target, jumpIf)
+				g.inRange(nil, func() { g.code.Local(loadOp(subj.Type), g.slot(subj)) }, subj.Type, r, c.In, target, jumpIf)
 			case subj != nil:
-				load := func() { g.code.Local(loadOp(subj.Type), subj.Slot) }
+				load := func() { g.code.Local(loadOp(subj.Type), g.slot(subj)) }
 				lt := subj.Type
 				if c.SubjType.K != types.Invalid {
 					lt = c.SubjType
 					load = func() {
-						g.code.Local(loadOp(subj.Type), subj.Slot)
+						g.code.Local(loadOp(subj.Type), g.slot(subj))
 						g.castErased(subj.Type, lt)
 					}
 				}
@@ -2536,15 +2536,15 @@ func (g *gen) tailCall(x *syntax.Call, t *tailrec) {
 	mask := g.callArgs(x, f)
 	for i := len(f.Params) - 1; i >= 0; i-- {
 		p := f.Params[i]
-		g.code.Local(storeOp(p.Type), p.Slot)
+		g.code.Local(storeOp(p.Type), g.slot(p))
 	}
 	if recv {
-		g.code.Local(storeOp(fd.RecvSym.Type), fd.RecvSym.Slot)
+		g.code.Local(storeOp(fd.RecvSym.Type), g.slot(fd.RecvSym))
 	}
 	for i, p := range f.Params {
 		if mask&(1<<i) != 0 && fd.Params[i].Default != nil {
 			g.exprAs(fd.Params[i].Default, p.Type)
-			g.code.Local(storeOp(p.Type), p.Slot)
+			g.code.Local(storeOp(p.Type), g.slot(p))
 		}
 	}
 	g.code.Jump(cf.GOTO, t.start)

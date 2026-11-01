@@ -330,10 +330,10 @@ func (g *gen) valueClass(cd *syntax.ClassDecl) *cf.Class {
 	g.prefix = "_init_$lambda"
 	g.retType = types.UnitType
 	g.loops, g.tries = nil, nil
-	cp.Sym.Slot = g.code.AllocLocal(ud)
+	g.setSlot(cp.Sym, g.code.AllocLocal(ud))
 	g.named(cp.Sym)
 	if !cd.Sym.Ctor.Private {
-		g.checkParam(cp.Sym.Slot, u.Type, cp.Name)
+		g.checkParam(g.slot(cp.Sym), u.Type, cp.Name)
 	}
 	g.valueThis = true
 	for _, m := range cd.Members {
@@ -431,7 +431,7 @@ func (g *gen) valueSecondary(cd *syntax.ClassDecl, sc *syntax.SecondaryCtor) {
 	g.retType = types.UnitType
 	g.loops, g.tries = nil, nil
 	for _, p := range f.Params {
-		p.Slot = g.code.AllocLocal(paramDesc(p.Type))
+		g.setSlot(p, g.code.AllocLocal(paramDesc(p.Type)))
 		g.named(p)
 	}
 	g.line(sc.P)
@@ -465,7 +465,7 @@ func (g *gen) valueSecondary(cd *syntax.ClassDecl, sc *syntax.SecondaryCtor) {
 		g.prefix = "constructor_impl$default$lambda"
 		g.fillDefaults(sc.Params, f.Params)
 		for _, p := range f.Params {
-			g.code.Local(loadOp(p.Type), p.Slot)
+			g.code.Local(loadOp(p.Type), g.slot(p))
 		}
 		g.code.Invoke(cf.INVOKESTATIC, cls.Name, "constructor-impl", d)
 		g.code.Op(returnOp(u))

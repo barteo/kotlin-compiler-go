@@ -52,7 +52,7 @@ func statementOnly(x syntax.Expr) bool {
 // temporaries.
 func (g *gen) named(v *types.VarSym) {
 	if g.noLines == 0 && v.Name != "" && v.Name != "_" && !strings.HasPrefix(v.Name, "$") && !strings.HasPrefix(v.Name, "<") {
-		g.code.NameLocal(v.Slot, v.Name)
+		g.code.NameLocal(g.slot(v), v.Name)
 	}
 }
 
@@ -76,8 +76,8 @@ func (g *gen) stmt(s syntax.Stmt) {
 			g.code.RetireTemps(from)
 			if v, ok := s.(*syntax.VarStmt); ok {
 				for _, sym := range []*types.VarSym{v.Sym, v.DelegateSym} {
-					if sym != nil && sym.Slot >= from {
-						g.code.Unretire(sym.Slot)
+					if sym != nil && g.slot(sym) >= from {
+						g.code.Unretire(g.slot(sym))
 					}
 				}
 			}
@@ -90,12 +90,12 @@ func (g *gen) stmt(s syntax.Stmt) {
 		if s.Delegate != nil {
 			// A local delegated property: only its delegate is stored.
 			d := s.DelegateSym
-			d.Slot = g.code.AllocLocal(desc(d.Type))
+			g.setSlot(d, g.code.AllocLocal(desc(d.Type)))
 			if g.noLines == 0 {
-				g.code.NameLocal(d.Slot, s.Sym.Name+"$delegate")
+				g.code.NameLocal(g.slot(d), s.Sym.Name+"$delegate")
 			}
 			g.exprAs(s.Delegate, d.Type)
-			g.code.Local(storeOp(d.Type), d.Slot)
+			g.code.Local(storeOp(d.Type), g.slot(d))
 			break
 		}
 		if s.Sym.UnitLocal() {
@@ -105,7 +105,7 @@ func (g *gen) stmt(s syntax.Stmt) {
 			break
 		}
 		if t := s.Sym.Type; s.Sym.Boxed() {
-			s.Sym.Slot = g.code.AllocLocal(storageDesc(s.Sym))
+			g.setSlot(s.Sym, g.code.AllocLocal(storageDesc(s.Sym)))
 			g.named(s.Sym)
 			g.newBox(t)
 			if s.Init != nil {
@@ -114,14 +114,14 @@ func (g *gen) stmt(s syntax.Stmt) {
 				g.exprAs(s.Init, t)
 				g.arrayStore(t)
 			}
-			g.code.Local(cf.ASTORE, s.Sym.Slot)
+			g.code.Local(cf.ASTORE, g.slot(s.Sym))
 			break
 		}
-		s.Sym.Slot = g.code.AllocLocal(desc(s.Sym.Type))
+		g.setSlot(s.Sym, g.code.AllocLocal(desc(s.Sym.Type)))
 		g.named(s.Sym)
 		if s.Lateinit {
 			g.code.Op(cf.ACONST_NULL) // null until assigned, as with kotlinc
-			g.code.Local(cf.ASTORE, s.Sym.Slot)
+			g.code.Local(cf.ASTORE, g.slot(s.Sym))
 			break
 		}
 		if s.Init == nil {
@@ -129,7 +129,7 @@ func (g *gen) stmt(s syntax.Stmt) {
 		}
 		g.exprAs(s.Init, s.Sym.Type)
 		if size(s.Sym.Type) > 0 {
-			g.code.Local(storeOp(s.Sym.Type), s.Sym.Slot)
+			g.code.Local(storeOp(s.Sym.Type), g.slot(s.Sym))
 		}
 	case *syntax.Destructure:
 		for _, vs := range s.Stmts {
@@ -243,7 +243,7 @@ func (g *gen) forEach(s *syntax.For) {
 	}
 	it := g.code.AllocLocal(desc(s.IterT))
 	g.code.Local(cf.ASTORE, it)
-	s.Sym.Slot = g.code.AllocLocal(desc(s.Sym.Type))
+	g.setSlot(s.Sym, g.code.AllocLocal(desc(s.Sym.Type)))
 	g.named(s.Sym)
 	top, exit := cf.NewLabel(), cf.NewLabel()
 	g.code.Place(top)
@@ -253,7 +253,7 @@ func (g *gen) forEach(s *syntax.For) {
 	g.code.Jump(cf.IFEQ, exit)
 	g.suspendOperator(s.Next, s.IterT, func() { g.code.Local(cf.ALOAD, it) })
 	g.coerce(types.JVMRet(s.Next), s.Sym.Type)
-	g.code.Local(storeOp(s.Sym.Type), s.Sym.Slot)
+	g.code.Local(storeOp(s.Sym.Type), g.slot(s.Sym))
 	g.pushLoop(s, exit, top)
 	g.loopBody(func() { g.block(s.Body, types.UnitType, false) })
 	g.code.Jump(cf.GOTO, top)
@@ -346,7 +346,7 @@ func (g *gen) forLoop(s *syntax.For) {
 		return
 	}
 	i := g.code.AllocLocal("I")
-	s.Sym.Slot = i
+	g.setSlot(s.Sym, i)
 	g.named(s.Sym)
 	g.exprAs(r.X, types.IntType)
 	g.code.Local(cf.ISTORE, i)
@@ -410,7 +410,7 @@ func (g *gen) forLoop(s *syntax.For) {
 // over an Int range, with the bound in a local.
 func (g *gen) forLongRange(s *syntax.For, r *syntax.Binary, op syntax.Kind) {
 	i := g.code.AllocLocal("J")
-	s.Sym.Slot = i
+	g.setSlot(s.Sym, i)
 	g.named(s.Sym)
 	g.exprAs(r.X, types.LongType)
 	g.code.Local(cf.LSTORE, i)
@@ -478,7 +478,7 @@ func (g *gen) forStepped(s *syntax.For, r *syntax.Binary, op syntax.Kind, step s
 		return slot
 	}
 	i := local(r.X)
-	s.Sym.Slot = i
+	g.setSlot(s.Sym, i)
 	g.named(s.Sym)
 	last, st := local(r.Y), local(step)
 	exit := cf.NewLabel()
@@ -715,11 +715,11 @@ func (g *gen) lvalue(x syntax.Expr) lvalue {
 					},
 					store: func() {
 						v := vs.ValueSym
-						v.Slot = g.code.AllocLocal(desc(t))
-						g.code.Local(storeOp(t), v.Slot)
+						g.setSlot(v, g.code.AllocLocal(desc(t)))
+						g.code.Local(storeOp(t), g.slot(v))
 						g.expr(vs.Set)
 						g.pop(vs.Set.T)
-						g.code.Retire(v.Slot)
+						g.code.Retire(g.slot(v))
 					}}
 			}
 			if sym.Boxed() {
@@ -732,8 +732,8 @@ func (g *gen) lvalue(x syntax.Expr) lvalue {
 					store: func() { g.arrayStore(t) }}
 			}
 			return lvalue{t: t, prepare: func() {},
-				load:  func() { g.code.Local(loadOp(t), sym.Slot) },
-				store: func() { g.code.Local(storeOp(t), sym.Slot) }}
+				load:  func() { g.code.Local(loadOp(t), g.slot(sym)) },
+				store: func() { g.code.Local(storeOp(t), g.slot(sym)) }}
 		case types.BackingField:
 			p := sym.Prop
 			if p.Kind == types.Global {
@@ -803,8 +803,9 @@ func (g *gen) lvalue(x syntax.Expr) lvalue {
 				lv.store = func() {
 					pt := s.Params[0].Type
 					g.coerce(t, pt)
-					v := &types.VarSym{Name: s.Params[0].Name, Type: pt, Kind: types.Local, Slot: g.code.AllocLocal(desc(pt))}
-					g.code.Local(storeOp(pt), v.Slot)
+					v := &types.VarSym{Name: s.Params[0].Name, Type: pt, Kind: types.Local}
+					g.setSlot(v, g.code.AllocLocal(desc(pt)))
+					g.code.Local(storeOp(pt), g.slot(v))
 					arg := &syntax.Ident{Name: v.Name, Sym: v}
 					arg.P, arg.T = x.P, pt
 					set := &syntax.Call{Fun: x, Sym: s, Args: []syntax.Expr{arg}, Reified: x.Reified}
@@ -1078,7 +1079,7 @@ func (g *gen) incDec(u *syntax.Unary) {
 		if u.Op == syntax.DEC {
 			inc = -1
 		}
-		g.code.Iinc(id.Sym.Slot, inc)
+		g.code.Iinc(g.slot(id.Sym), inc)
 		return
 	}
 	lv := g.lvalue(u.X)

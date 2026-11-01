@@ -850,9 +850,9 @@ func (g *gen) inlineLambda(l *syntax.Lambda) {
 		}
 		c.Local(cf.ALOAD, args[k])
 		g.castErased(types.AnyType.Nullable(), p.Type)
-		p.Slot = c.AllocLocal(desc(p.Type))
+		g.setSlot(p, c.AllocLocal(desc(p.Type)))
 		g.named(p)
-		c.Local(storeOp(p.Type), p.Slot)
+		c.Local(storeOp(p.Type), g.slot(p))
 	}
 	ctx := &inlineLambda{l: l, end: cf.NewJoin("Ljava/lang/Object;"), depth: c.Depth(), tries: len(g.tries)}
 	g.inl = append(g.inl, ctx)

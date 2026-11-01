@@ -58,10 +58,10 @@ func (g *gen) checkParam(slot int, t types.Type, name string) {
 // private.
 func (g *gen) checkParams(recv *types.VarSym, params []*types.VarSym) {
 	if recv != nil {
-		g.checkParam(recv.Slot, recv.Type, "<this>")
+		g.checkParam(g.slot(recv), recv.Type, "<this>")
 	}
 	for _, p := range params {
-		g.checkParam(p.Slot, p.Type, p.Name)
+		g.checkParam(g.slot(p), p.Type, p.Name)
 	}
 }
 
