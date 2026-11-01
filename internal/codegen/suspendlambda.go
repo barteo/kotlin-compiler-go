@@ -221,9 +221,9 @@ func (g *gen) suspendLambdaBody(c *cf.Class, x *syntax.Lambda, ps []lambdaParam,
 		if !sm.forInline {
 			sm.useField(p.field)
 		}
-		p.sym.Slot = code.AllocLocal(d)
+		g.setSlot(p.sym, code.AllocLocal(d))
 		if p.sym == x.Recv {
-			code.NameLocal(p.sym.Slot, p.sym.Name) // $this$sequence
+			code.NameLocal(g.slot(p.sym), p.sym.Name) // $this$sequence
 		} else {
 			lg.named(p.sym)
 		}
@@ -232,7 +232,7 @@ func (g *gen) suspendLambdaBody(c *cf.Class, x *syntax.Lambda, ps []lambdaParam,
 		if fieldKind(d) == 'L' && d != objectDesc {
 			code.Checkcast(className(d))
 		}
-		code.Local(storeOpOf(d), p.sym.Slot)
+		code.Local(storeOpOf(d), g.slot(p.sym))
 	}
 	for _, v := range x.Captures {
 		slot := code.AllocLocal(storageDesc(v))
@@ -312,9 +312,9 @@ func (g *gen) suspendSAMMethod(c *cf.Class, x *syntax.Lambda, typed, cont string
 	code := lg.code
 	code.AllocLocal("L" + name + ";")
 	for _, p := range params {
-		p.Slot = code.AllocLocal(paramDesc(p.Type))
+		g.setSlot(p, code.AllocLocal(paramDesc(p.Type)))
 		if x.Ref != nil && g.noLines == 0 {
-			code.NameLocal(p.Slot, strings.TrimPrefix(p.Name, "$")) // a reference's $p0, p0 as kotlinc's
+			code.NameLocal(g.slot(p), strings.TrimPrefix(p.Name, "$")) // a reference's $p0, p0 as kotlinc's
 			continue
 		}
 		lg.named(p)

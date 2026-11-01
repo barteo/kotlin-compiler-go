@@ -222,7 +222,7 @@ func (g *gen) forArray(s *syntax.For) {
 	g.code.Local(cf.ALOAD, arr)
 	g.code.Op(cf.ARRAYLENGTH)
 	g.code.Local(cf.ISTORE, n)
-	s.Sym.Slot = g.code.AllocLocal(desc(s.Sym.Type))
+	g.setSlot(s.Sym, g.code.AllocLocal(desc(s.Sym.Type)))
 	g.named(s.Sym)
 	g.indexLoop(n, func(i int) {
 		g.line(s.P)
@@ -230,7 +230,7 @@ func (g *gen) forArray(s *syntax.For) {
 		g.code.Local(cf.ILOAD, i)
 		g.elemLoad(d)
 		g.coerce(types.StoredElem(rt), s.Sym.Type)
-		g.code.Local(storeOp(s.Sym.Type), s.Sym.Slot)
+		g.code.Local(storeOp(s.Sym.Type), g.slot(s.Sym))
 		g.loopBody(func() { g.block(s.Body, types.UnitType, false) })
 	}, func(brk, cont *cf.Label) {
 		g.pushLoop(s, brk, cont)
@@ -247,14 +247,14 @@ func (g *gen) forString(s *syntax.For) {
 	g.code.Local(cf.ALOAD, str)
 	g.code.Invoke(cf.INVOKEVIRTUAL, "java/lang/String", "length", "()I")
 	g.code.Local(cf.ISTORE, n)
-	s.Sym.Slot = g.code.AllocLocal(desc(s.Sym.Type))
+	g.setSlot(s.Sym, g.code.AllocLocal(desc(s.Sym.Type)))
 	g.named(s.Sym)
 	g.indexLoop(n, func(i int) {
 		g.line(s.P)
 		g.code.Local(cf.ALOAD, str)
 		g.code.Local(cf.ILOAD, i)
 		g.code.Invoke(cf.INVOKEVIRTUAL, "java/lang/String", "charAt", "(I)C")
-		g.code.Local(storeOp(s.Sym.Type), s.Sym.Slot)
+		g.code.Local(storeOp(s.Sym.Type), g.slot(s.Sym))
 		g.loopBody(func() { g.block(s.Body, types.UnitType, false) })
 	}, func(brk, cont *cf.Label) {
 		g.pushLoop(s, brk, cont)

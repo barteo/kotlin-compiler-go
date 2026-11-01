@@ -67,12 +67,12 @@ func (g *gen) localFun(lf *syntax.LocalFun) {
 	lg.code = g.cls.NewMethod(access, name, d)
 	lg.retType = f.Ret
 	if r := fd.RecvSym; r != nil {
-		r.Slot = lg.code.AllocLocal(desc(r.Type))
+		g.setSlot(r, lg.code.AllocLocal(desc(r.Type)))
 		lg.named(r)
 	}
 	lg.allocFrame(lf.Frame, lc)
 	for _, p := range f.Params {
-		p.Slot = lg.code.AllocLocal(paramDesc(p.Type))
+		g.setSlot(p, lg.code.AllocLocal(paramDesc(p.Type)))
 		lg.named(p)
 	}
 	if f.Suspend {
@@ -122,16 +122,16 @@ func (g *gen) localDefaults(lf *syntax.LocalFun) {
 	lg.code = g.cls.NewMethod(access, lf.Method+"$default", d[:i]+"ILjava/lang/Object;"+d[i:])
 	lg.retType = f.Ret
 	if r := lf.Decl.RecvSym; r != nil {
-		r.Slot = lg.code.AllocLocal(desc(r.Type))
+		g.setSlot(r, lg.code.AllocLocal(desc(r.Type)))
 	}
 	lg.allocFrame(lf.Frame, lc)
 	lg.fillDefaults(lf.Decl.Params, f.Params)
 	if r := lf.Decl.RecvSym; r != nil {
-		lg.code.Local(loadOp(r.Type), r.Slot)
+		lg.code.Local(loadOp(r.Type), g.slot(r))
 	}
 	lg.loadFrame(lf.Frame)
 	for _, p := range f.Params {
-		lg.code.Local(loadOp(p.Type), p.Slot)
+		lg.code.Local(loadOp(p.Type), g.slot(p))
 	}
 	lg.invokeLocal(lf.Method, d)
 	lg.code.Op(returnOp(f.Ret))

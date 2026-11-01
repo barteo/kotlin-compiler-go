@@ -159,18 +159,18 @@ func (g *gen) inlineBody(x *syntax.Call, d *syntax.FunDecl) {
 		g.nameObjects(d)
 	}
 	c := g.code
-	saved := saveSlots(d)
-	defer restoreSlots(saved)
+	saved := g.saveSlots(d)
+	defer g.restoreSlots(saved)
 	self := -1
 	switch {
 	case f.Ext && f.Owner != nil:
 		self = c.AllocLocal("L" + f.Owner.Name + ";")
 		c.Local(cf.ASTORE, self)
-		d.RecvSym.Slot = c.AllocLocal(desc(f.Recv))
-		c.Local(storeOp(f.Recv), d.RecvSym.Slot)
+		g.setSlot(d.RecvSym, c.AllocLocal(desc(f.Recv)))
+		c.Local(storeOp(f.Recv), g.slot(d.RecvSym))
 	case f.Ext:
-		d.RecvSym.Slot = c.AllocLocal(desc(f.Recv))
-		c.Local(storeOp(f.Recv), d.RecvSym.Slot)
+		g.setSlot(d.RecvSym, c.AllocLocal(desc(f.Recv)))
+		c.Local(storeOp(f.Recv), g.slot(d.RecvSym))
 	case f.Owner != nil:
 		self = c.AllocLocal("L" + f.Owner.Name + ";")
 		c.Local(cf.ASTORE, self)
@@ -180,11 +180,11 @@ func (g *gen) inlineBody(x *syntax.Call, d *syntax.FunDecl) {
 	if o := f.Owner; self >= 0 && (o.Anonymous || o.Inner || o.Local) {
 		if cd, ok := o.Decl.(*syntax.ClassDecl); ok {
 			for _, v := range cd.Captures {
-				saved[v] = v.Slot
+				saved[v] = g.slot(v)
 			}
 			if _, od := outerLocal(cd); od != nil {
 				for _, v := range od.Captures {
-					saved[v] = v.Slot
+					saved[v] = g.slot(v)
 				}
 			}
 			g.loadCaptures(cd, self)
@@ -208,9 +208,9 @@ func (g *gen) inlineBody(x *syntax.Call, d *syntax.FunDecl) {
 			lambdas[p], owners[l] = l, owner
 			continue
 		}
-		p.Slot = c.AllocLocal(desc(p.Type))
+		g.setSlot(p, c.AllocLocal(desc(p.Type)))
 		if size(p.Type) > 0 {
-			c.Local(storeOp(p.Type), p.Slot)
+			c.Local(storeOp(p.Type), g.slot(p))
 		}
 	}
 	// A composable's copy is a flag scope of its own.
@@ -227,7 +227,7 @@ func (g *gen) inlineBody(x *syntax.Call, d *syntax.FunDecl) {
 		if mask&(1<<i) != 0 && d.Params[i].Default != nil {
 			g.exprAs(d.Params[i].Default, p.Type)
 			if size(p.Type) > 0 {
-				c.Local(storeOp(p.Type), p.Slot)
+				c.Local(storeOp(p.Type), g.slot(p))
 			}
 		}
 	}
@@ -509,9 +509,9 @@ func (g *gen) invokeInlined(x *syntax.Call, l *syntax.Lambda, ctx *srcInline) {
 	for i, a := range x.Args {
 		p := params[i]
 		g.exprAs(a, p.Type)
-		p.Slot = c.AllocLocal(desc(p.Type))
+		g.setSlot(p, c.AllocLocal(desc(p.Type)))
 		if size(p.Type) > 0 {
-			c.Local(storeOp(p.Type), p.Slot)
+			c.Local(storeOp(p.Type), g.slot(p))
 		}
 	}
 	if owner := ctx.owners[l]; owner != nil {
@@ -543,13 +543,15 @@ func (g *gen) invokeInlined(x *syntax.Call, l *syntax.Lambda, ctx *srcInline) {
 	g.coerce(l.Ret, x.T)
 }
 
-// inlineMu guards the locals of the program's inline functions' variables,
-// which are in their shared syntax trees: files are generated in parallel,
-// and a copy of a function in one file assigns them while its own file
-// generates its method, or another file another copy. It is held while a
-// file generates an inline function's method or the outermost copy of one,
-// and taken again by the copies and methods within those only in name:
-// one goroutine generates a file.
+// inlineMu guards the names of the classes of the object expressions in
+// the program's inline functions, which are in their shared syntax trees:
+// files are generated in parallel, and a copy of a function in one file
+// renames them (see nameObjects) while its own file generates its method,
+// or another file another copy. It is held while a file generates an
+// inline function's method or the outermost copy of one, and taken again
+// by the copies and methods within those only in name: one goroutine
+// generates a file. The variables' locals aren't in the trees but in each
+// file's fileState (see slot), so no lock guards them.
 var inlineMu sync.Mutex
 
 func (g *gen) lockInline() {
@@ -570,11 +572,11 @@ func (g *gen) unlockInline() {
 // saveSlots records the locals of d's parameters and of the variables
 // declared in its body, which a copy reassigns: a lambda passed to a copy
 // may contain another copy.
-func saveSlots(d *syntax.FunDecl) map[*types.VarSym]int {
+func (g *gen) saveSlots(d *syntax.FunDecl) map[*types.VarSym]int {
 	saved := map[*types.VarSym]int{}
 	add := func(v *types.VarSym) {
 		if v != nil {
-			saved[v] = v.Slot
+			saved[v] = g.slot(v)
 		}
 	}
 	add(d.RecvSym)
@@ -611,10 +613,27 @@ func saveSlots(d *syntax.FunDecl) map[*types.VarSym]int {
 	return saved
 }
 
-func restoreSlots(saved map[*types.VarSym]int) {
+// restoreSlots gives the variables back the locals saveSlots recorded.
+func (g *gen) restoreSlots(saved map[*types.VarSym]int) {
 	for v, slot := range saved {
-		v.Slot = slot
+		g.setSlot(v, slot)
 	}
+}
+
+// slot returns the local that holds variable v, a local or a parameter,
+// in the code being generated.
+//
+// The locals are kept by file, not on the VarSyms: those of the program's
+// inline functions, and the captures of their object expressions, are
+// shared by every file that copies them, and files are generated in
+// parallel. One goroutine generates a file, so its map needs no lock.
+func (g *gen) slot(v *types.VarSym) int {
+	return g.shared.slots[v]
+}
+
+// setSlot records that local slot holds variable v: see slot.
+func (g *gen) setSlot(v *types.VarSym, slot int) {
+	g.shared.slots[v] = slot
 }
 
 // Kinds of operations on reified type parameters, as kotlinc numbers them

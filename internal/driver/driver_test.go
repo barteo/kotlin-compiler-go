@@ -305,6 +305,71 @@ func TestStdlibParallel(t *testing.T) {
 	}
 }
 
+// TestParallelInlineObjects checks that files copying an inline function
+// whose object expression captures its crossinline lambda compile in
+// parallel as on one thread. The copies and the file of the function
+// generate the object's class at once, and once overwrote each other's
+// locals of the shared variables: "local 3 is not allocated", or a
+// constructor passed the wrong local. Run it with -race.
+func TestParallelInlineObjects(t *testing.T) {
+	dir := t.TempDir()
+	lib := "package repro\n\n" +
+		"interface Task { fun run(): Int }\n\n" +
+		"inline fun task(crossinline block: () -> Int): Task = object : Task {\n" +
+		"    override fun run(): Int = block()\n" +
+		"}\n"
+	files := []string{filepath.Join(dir, "Lib.kt")}
+	if err := os.WriteFile(files[0], []byte(lib), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for i := range 64 {
+		n := strconv.Itoa(i)
+		src := "package repro\n\n" +
+			"fun use" + n + "(x: Int): Int {\n" +
+			"    val a = x + 1\n" +
+			"    val t = task { a * 2 }\n" +
+			"    return t.run()\n" +
+			"}\n"
+		f := filepath.Join(dir, "Use"+n+".kt")
+		if err := os.WriteFile(f, []byte(src), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		files = append(files, f)
+	}
+	compile := func(jobs int) map[string][]byte {
+		out := t.TempDir()
+		if err := Compile(files, Options{OutDir: out, Jobs: jobs, NoJDK: true}); err != nil {
+			t.Fatalf("-j %d: %v", jobs, err)
+		}
+		classes := map[string][]byte{}
+		err := filepath.WalkDir(out, func(path string, d fs.DirEntry, err error) error {
+			if err != nil || d.IsDir() {
+				return err
+			}
+			b, err := os.ReadFile(path)
+			classes[strings.TrimPrefix(path, out)] = b
+			return err
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return classes
+	}
+	want := compile(1)
+	jobs := max(runtime.NumCPU(), 8)
+	for range 10 {
+		got := compile(jobs)
+		for name, b := range want {
+			if !bytes.Equal(got[name], b) {
+				t.Fatalf("-j %d: %s differs from -j 1's", jobs, name)
+			}
+		}
+		if len(got) != len(want) {
+			t.Fatalf("-j %d: %d classes, -j 1: %d", jobs, len(got), len(want))
+		}
+	}
+}
+
 func diff(want, got string) string {
 	w, g := strings.Split(want, "\n"), strings.Split(got, "\n")
 	var sb strings.Builder
