@@ -88,9 +88,6 @@ func (c *Checker) annotationClass(d *syntax.ClassDecl) {
 	if len(d.Supers) > 0 {
 		c.errorf(d.Supers[0].Type.P, "annotation class cannot have supertypes")
 	}
-	if len(d.TypeParams) > 0 {
-		c.errorf(d.P, "annotation class cannot have type parameters")
-	}
 	for _, m := range d.Members {
 		var p syntax.Pos
 		switch m := m.(type) {
@@ -129,8 +126,9 @@ func (c *Checker) annotationParam(cls *types.ClassSym, cp *syntax.CtorParam) {
 }
 
 // annotationType reports whether an annotation parameter can have type
-// t: a primitive type, String, an enum, KClass, an annotation, or an
-// array of one of them.
+// t: a primitive or unsigned integer type, String, an enum, KClass, an
+// annotation, or an array of one of them (an unsigned array, as UIntArray,
+// of unsigned integers).
 func annotationType(t types.Type, arrays bool) bool {
 	if t.N {
 		return false
@@ -142,7 +140,11 @@ func annotationType(t types.Type, arrays bool) bool {
 		cls := t.C
 		switch {
 		case cls.Array:
-			return arrays && annotationType(types.ArrayElem(t), false)
+			return arrays && annotationType(types.ArrayElem(t), false) && !isUnsigned(types.ArrayElem(t))
+		case types.IsUnsignedArray(cls):
+			return arrays
+		case isUnsigned(t):
+			return true
 		case cls.Annotation, cls.Entries != nil, cls.KotlinName == "kotlin/reflect/KClass":
 			return true
 		}
@@ -169,7 +171,7 @@ func (c *Checker) annotationConstruct(x *syntax.Call, cls *types.ClassSym, p syn
 	saved := c.ctorArgs
 	c.ctorArgs = true
 	defer func() { c.ctorArgs = saved }()
-	t := c.resolve(x, []callee{{f: f}}, want, sink)
+	t := c.resolve(x, []callee{{f: f, tparams: cls.TypeParams}}, want, sink)
 	if x.Sym == f && cls.External {
 		passed := make([]bool, len(params))
 		for i := range x.Args {

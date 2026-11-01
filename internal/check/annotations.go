@@ -131,6 +131,16 @@ func (c *Checker) kclassOfJava(t types.Type) types.Type {
 // parameter takes the rest, then named ones.
 func (c *Checker) annotationValues(cls *types.ClassSym, args []annotArg, p syntax.Pos) ([]syntax.AnnotationValue, bool) {
 	params := c.annotationParams(cls)
+	// The arguments of a generic annotation class's annotation, @A<T>(x),
+	// are checked with its type parameters projected: KClass<*> for a
+	// KClass<T>.
+	var star types.Subst
+	if len(cls.TypeParams) > 0 {
+		star = types.Subst{}
+		for _, tp := range cls.TypeParams {
+			star[tp] = types.Arg{V: types.Star}
+		}
+	}
 	byParam := make([][]annotArg, len(params))
 	next := 0
 	ok := true
@@ -169,20 +179,23 @@ func (c *Checker) annotationValues(cls *types.ClassSym, args []annotArg, p synta
 			}
 			continue
 		}
-		t := v.Type
-		val := syntax.AnnotationValue{Name: v.Name, Type: t, Array: t.IsArray()}
+		t := star.Apply(v.Type)
+		val := syntax.AnnotationValue{Name: v.Name, Type: t, Array: t.IsArray() || t.K == types.Class && types.IsUnsignedArray(t.C)}
 		elem := t
 		if val.Array {
-			elem = types.ArrayElem(t)
+			elem = types.VarargElem(t)
 		}
 		for _, arg := range byParam[j] {
 			elems := arg.elems
 			if val.Array && !arg.array && (!v.Vararg || arg.name != "") && len(elems) == 1 {
 				// arrayOf(a, b) or [a, b] for an array parameter, or a
 				// vararg one by name: ReplaceWith(imports = ["a.b"])
-				if call, isCall := elems[0].(*syntax.Call); isCall && isArrayOf(call) {
-					elems = call.Args
+				if inner, ok := syntax.ArrayElems(elems[0]); ok {
+					elems = inner
 				}
+			}
+			if val.Array {
+				elems = syntax.FlattenSpreads(elems) // *arrayOf(a, b)
 			}
 			for _, x := range elems {
 				e, eok := c.annotationElem(x, elem)
@@ -193,28 +206,6 @@ func (c *Checker) annotationValues(cls *types.ClassSym, args []annotArg, p synta
 		values = append(values, val)
 	}
 	return values, ok
-}
-
-// isArrayOf reports whether call is arrayOf(...) or a primitive array's
-// intArrayOf(...), or kotlin.arrayOf(...), by name: the checker hasn't
-// seen it yet.
-func isArrayOf(call *syntax.Call) bool {
-	var name string
-	switch f := call.Fun.(type) {
-	case *syntax.Ident:
-		name = f.Name
-	case *syntax.Member:
-		if pkg, ok := f.X.(*syntax.Ident); !ok || pkg.Name != "kotlin" {
-			return false
-		}
-		name = f.Name
-	}
-	switch name {
-	case "arrayOf", "booleanArrayOf", "byteArrayOf", "charArrayOf", "shortArrayOf", "intArrayOf", "longArrayOf",
-		"floatArrayOf", "doubleArrayOf", "emptyArray":
-		return true
-	}
-	return false
 }
 
 // annotationElem checks a value of an annotation's argument, of type t:

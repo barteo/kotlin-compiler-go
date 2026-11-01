@@ -2169,6 +2169,12 @@ func ParseAnnotationArg(path string, arg *AnnotationArg) (elems []Expr, array bo
 			p.next()
 		}
 		p.expect(RBRACK)
+	} else if p.at(STAR) {
+		// *arrayOf(a, b), a vararg parameter's elements
+		pos := p.next().Pos
+		sp := &Spread{X: p.parseExpr()}
+		sp.P = pos
+		elems = []Expr{sp}
 	} else {
 		elems = []Expr{p.parseExpr()}
 	}

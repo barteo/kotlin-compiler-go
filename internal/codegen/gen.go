@@ -511,8 +511,16 @@ func (g *gen) annotationClass(cd *syntax.ClassDecl) *cf.Class {
 	c := cf.NewClass(cf.AccPublic|cf.AccInterface|cf.AccAbstract|cf.AccAnnotation, cls.Name, "java/lang/Object")
 	c.Interfaces = []string{"java/lang/annotation/Annotation"}
 	c.SourceFile = filepath.Base(g.file.Path)
+	c.Signature = classSignature(cls, "java/lang/Object", c.Interfaces)
 	for i, p := range cls.AnnotationParams {
-		c.AddAbstractMethod(cf.AccPublic|cf.AccAbstract, p.Name, "()"+annotationJVM(p.Type))
+		d := "()" + annotationJVM(p.Type)
+		c.AddAbstractMethod(cf.AccPublic|cf.AccAbstract, p.Name, d)
+		// A KClass's generic signature, as a Class's: ()Ljava/lang/Class<*>;
+		var w sigWriter
+		w.typ(p.Type, nil, inResult)
+		if sig := "()" + strings.ReplaceAll(w.String(), "Lkotlin/reflect/KClass<", "Ljava/lang/Class<"); strings.Contains(sig, "<") {
+			c.LastMethod().SetSignature(sig)
+		}
 		if i < len(cd.CtorParams) && cd.CtorParams[i].Default != nil {
 			if ev, ok := annotationDefault(p.Type, cd.CtorParams[i].Default); ok {
 				c.LastMethod().SetDefault(ev)
