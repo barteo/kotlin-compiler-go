@@ -2,17 +2,17 @@
 
 The box tests of JetBrains/kotlin v2.4.21 (`compiler/testData/codegen/box`), each compiled by kc and run: its `box()` must return `"OK"`. `bench/kotlin-tests.sh box` writes this file, and [docs/conformance.md](../../docs/conformance.md) explains it.
 
-Of 7480 test files, 997 are skipped and 6483 run. 6167 pass (95.1%).
+Of 7480 test files, 997 are skipped and 6483 run. 6170 pass (95.2%).
 
 | Result | Tests | Share |
 |:---|---:|---:|
-| pass | 6167 | 95.1% |
+| pass | 6170 | 95.2% |
 | parse/unsupported | 0 | 0.0% |
 | check error | 211 | 3.3% |
 | crash | 0 | 0.0% |
 | codegen error | 16 | 0.2% |
 | VerifyError | 21 | 0.3% |
-| linkage error | 11 | 0.2% |
+| linkage error | 8 | 0.1% |
 | exception | 32 | 0.5% |
 | wrong result | 25 | 0.4% |
 | timeout | 0 | 0.0% |
@@ -55,7 +55,7 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 | controlStructures | 146 | 140 | 0 | 5 | 0 | 0 | 1 |
 | bridges | 137 | 136 | 0 | 0 | 0 | 1 | 0 |
 | inline | 132 | 127 | 0 | 4 | 1 | 0 | 0 |
-| classes | 120 | 116 | 0 | 2 | 0 | 2 | 0 |
+| classes | 120 | 117 | 0 | 2 | 0 | 1 | 0 |
 | objects | 116 | 113 | 0 | 2 | 0 | 1 | 0 |
 | properties | 109 | 106 | 0 | 2 | 0 | 1 | 0 |
 | closures | 107 | 103 | 0 | 3 | 0 | 0 | 1 |
@@ -95,7 +95,7 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 | typealias | 31 | 28 | 0 | 3 | 0 | 0 | 0 |
 | basics | 30 | 28 | 0 | 2 | 0 | 0 | 0 |
 | secondaryConstructors | 30 | 30 | 0 | 0 | 0 | 0 | 0 |
-| syntheticAccessors | 30 | 28 | 0 | 0 | 0 | 2 | 0 |
+| syntheticAccessors | 30 | 30 | 0 | 0 | 0 | 0 | 0 |
 | initializers | 26 | 26 | 0 | 0 | 0 | 0 | 0 |
 | try | 26 | 25 | 0 | 1 | 0 | 0 | 0 |
 | fir | 25 | 20 | 0 | 3 | 0 | 2 | 0 |
@@ -283,8 +283,7 @@ A class kc wrote refers to a member or class that doesn't exist, or doesn't fit.
 | Error | Tests | Examples |
 |:---|---:|:---|
 | `java.lang.NoSuchMethodError` | 4 | `classes/kt5347.kt`, `javaInterop/objectMethods/cloneCallsSuper.kt` |
-| `java.lang.IncompatibleClassChangeError` | 3 | `classes/kt2477.kt`, `dataClasses/nonTrivialFinalMemberInSuperClass.kt` |
-| `java.lang.IllegalAccessError` | 2 | `syntheticAccessors/kt9958.kt`, `syntheticAccessors/kt9958Interface.kt` |
+| `java.lang.IncompatibleClassChangeError` | 2 | `dataClasses/nonTrivialFinalMemberInSuperClass.kt`, `dataObjects/toString.kt` |
 | `java.lang.AbstractMethodError` | 1 | `coroutines/inlineClasses/kt84305.kt` |
 | `java.lang.NoSuchFieldError` | 1 | `objects/interfaceCompanionObjectReference.kt` |
 

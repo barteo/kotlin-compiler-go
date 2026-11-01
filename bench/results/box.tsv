@@ -982,7 +982,7 @@ classes/kt2384.kt	pass
 classes/kt2390.kt	pass		
 classes/kt2391.kt	pass		
 classes/kt2417.kt	pass		
-classes/kt2477.kt	linkage error	java.lang.IncompatibleClassChangeError	Conflicting default methods: test/A.getC test/B.getC at test.D.getC
+classes/kt2477.kt	pass		
 classes/kt2480.kt	pass		
 classes/kt2482.kt	pass		
 classes/kt2485.kt	pass		
@@ -1728,7 +1728,7 @@ coroutines/defaultParametersInSuspend.kt	pass
 coroutines/degenerate1.kt	pass		
 coroutines/degenerate2.kt	pass		
 coroutines/delegatedSuspendMember.kt	pass		
-coroutines/deserializedSuspendFunctionProperty.kt	codegen error	code generation: no metadata for type <error>	/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T/kc-conformance/1729/m0/src/m1.kt: code generation failed: no metadata for type <error>
+coroutines/deserializedSuspendFunctionProperty.kt	codegen error	code generation: no metadata for type <error>	/tmp/claude-0/kc-conformance/1729/m0/src/m1.kt: code generation failed: no metadata for type <error>
 coroutines/dispatchResume.kt	pass		
 coroutines/doubleColonExpressionsGenerationInBuilderInference.kt	pass		
 coroutines/emptyClosure.kt	pass		
@@ -1964,7 +1964,7 @@ coroutines/intrinsicSemantics/startCoroutineUninterceptedOrReturnInterception.kt
 coroutines/intrinsicSemantics/suspendCoroutineUninterceptedOrReturn.kt	pass		
 coroutines/iterateOverArray.kt	pass		
 coroutines/kt12958.kt	pass		
-coroutines/kt15016.kt	codegen error	code generation: a suspension point in the arguments of a constructor call	/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T/kc-conformance/1965/m0/src/main.kt: code generation failed: a suspension point in the arguments of a constructor call
+coroutines/kt15016.kt	codegen error	code generation: a suspension point in the arguments of a constructor call	/tmp/claude-0/kc-conformance/1965/m0/src/main.kt: code generation failed: a suspension point in the arguments of a constructor call
 coroutines/kt15017.kt	pass		
 coroutines/kt15930.kt	pass		
 coroutines/kt21080.kt	pass		
@@ -2003,7 +2003,7 @@ coroutines/localDelegate.kt	pass
 coroutines/localFunctions/named/callTopLevelFromLocal.kt	pass		
 coroutines/localFunctions/named/capturedParameters.kt	pass		
 coroutines/localFunctions/named/capturedVariables.kt	pass		
-coroutines/localFunctions/named/defaultArgument.kt	codegen error	code generation: operand stack underflow at offset n	/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T/kc-conformance/2004/m0/src/defaultArgument.kt: code generation failed: DefaultArgumentKt.doAction$run$default: operand stack underflow at offset 24
+coroutines/localFunctions/named/defaultArgument.kt	codegen error	code generation: operand stack underflow at offset n	/tmp/claude-0/kc-conformance/2004/m0/src/defaultArgument.kt: code generation failed: DefaultArgumentKt.doAction$run$default: operand stack underflow at offset 24
 coroutines/localFunctions/named/extension.kt	pass		
 coroutines/localFunctions/named/infix.kt	pass		
 coroutines/localFunctions/named/insideLambda.kt	pass		
@@ -2043,7 +2043,7 @@ coroutines/returnsUnit1.kt	pass
 coroutines/simple.kt	pass		
 coroutines/simple2.kt	pass		
 coroutines/simpleException.kt	pass		
-coroutines/simpleSuspendCallableReference.kt	codegen error	code generation: operand stack underflow at offset n	/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T/kc-conformance/2044/m0/src/simpleSuspendCallableReference.kt: code generation failed: SimpleSuspendCallableReferenceKt$box$1.invokeSuspend: operand stack underflow at offset 262
+coroutines/simpleSuspendCallableReference.kt	codegen error	code generation: operand stack underflow at offset n	/tmp/claude-0/kc-conformance/2044/m0/src/simpleSuspendCallableReference.kt: code generation failed: SimpleSuspendCallableReferenceKt$box$1.invokeSuspend: operand stack underflow at offset 262
 coroutines/simpleWithDefaultValue.kt	pass		
 coroutines/simpleWithHandleResult.kt	pass		
 coroutines/stackUnwinding/exception.kt	pass		
@@ -2863,7 +2863,7 @@ extensionProperties/inClassWithPrivateGetter.kt	pass
 extensionProperties/inClassWithPrivateSetter.kt	pass		
 extensionProperties/inClassWithSetter.kt	pass		
 extensionProperties/kt46952.kt	pass		
-extensionProperties/kt9897.kt	codegen error	code generation: operand stack underflow at offset n	/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T/kc-conformance/2864/m0/src/kt9897.kt: code generation failed: Test.changeLong: operand stack underflow at offset 15
+extensionProperties/kt9897.kt	codegen error	code generation: operand stack underflow at offset n	/tmp/claude-0/kc-conformance/2864/m0/src/kt9897.kt: code generation failed: Test.changeLong: operand stack underflow at offset 15
 extensionProperties/kt9897_topLevel.kt	pass		
 extensionProperties/nonAbstractInInterface.kt	pass		
 extensionProperties/propertyWithExtensionNestedType.kt	pass		
@@ -3559,7 +3559,7 @@ inline/inline20.kt	pass
 inline/inline21.kt	pass		
 inline/inline22.kt	pass		
 inline/inline23.kt	pass		
-inline/inline24.kt	codegen error	code generation: operand stack underflow at offset n	/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T/kc-conformance/3560/m0/src/lib.kt: code generation failed: LibKt.baz$default: operand stack underflow at offset 10
+inline/inline24.kt	codegen error	code generation: operand stack underflow at offset n	/tmp/claude-0/kc-conformance/3560/m0/src/lib.kt: code generation failed: LibKt.baz$default: operand stack underflow at offset 10
 inline/inline25.kt	pass		
 inline/inline26.kt	pass		
 inline/inline3.kt	pass		
@@ -4051,8 +4051,8 @@ inlineClasses/funInterface/argumentICGeneric2.kt	pass
 inlineClasses/funInterface/argumentResult.kt	pass		
 inlineClasses/funInterface/kt51121.kt	pass		
 inlineClasses/funInterface/kt51121_2.kt	pass		
-inlineClasses/funInterface/mangledSamWrappers.kt	codegen error	code generation: operand stack underflow at offset n	/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T/kc-conformance/4052/m0/src/lib.kt: code generation failed: LibKt.g$default: operand stack underflow at offset 7
-inlineClasses/funInterface/mangledSamWrappersGeneric.kt	codegen error	code generation: operand stack underflow at offset n	/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T/kc-conformance/4053/m0/src/lib.kt: code generation failed: LibKt.g$default: operand stack underflow at offset 7
+inlineClasses/funInterface/mangledSamWrappers.kt	codegen error	code generation: operand stack underflow at offset n	/tmp/claude-0/kc-conformance/4052/m0/src/lib.kt: code generation failed: LibKt.g$default: operand stack underflow at offset 7
+inlineClasses/funInterface/mangledSamWrappersGeneric.kt	codegen error	code generation: operand stack underflow at offset n	/tmp/claude-0/kc-conformance/4053/m0/src/lib.kt: code generation failed: LibKt.g$default: operand stack underflow at offset 7
 inlineClasses/funInterface/returnIC.kt	pass		
 inlineClasses/funInterface/returnICGeneric.kt	pass		
 inlineClasses/funInterface/returnICGeneric2.kt	pass		
@@ -4546,10 +4546,10 @@ innerClass/getOuterVal.kt	pass
 innerClass/inCallableReferenceLHS.kt	skip	LANGUAGE	
 innerClass/inCallableReferenceLHSclassReference.kt	skip	LANGUAGE	
 innerClass/inCallableReferenceLHSwithGenericFun.kt	skip	LANGUAGE	
-innerClass/inheritanceMultipleModules1.kt	codegen error	code generation: operand stack underflow at offset n	/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T/kc-conformance/4547/m1/src/main.kt: code generation failed: Bar$BarInner.<init>: operand stack underflow at offset 12
+innerClass/inheritanceMultipleModules1.kt	codegen error	code generation: operand stack underflow at offset n	/tmp/claude-0/kc-conformance/4547/m1/src/main.kt: code generation failed: Bar$BarInner.<init>: operand stack underflow at offset 12
 innerClass/inheritanceMultipleModules2.kt	check error	unresolved reference: _	main.kt:2: unresolved reference: Middle
 innerClass/inheritanceMultipleModules3.kt	check error	unresolved reference: _	main.kt:5: unresolved reference: Middle
-innerClass/multipleModules.kt	codegen error	code generation: operand stack underflow at offset n	/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T/kc-conformance/4550/m1/src/main.kt: code generation failed: B$Inner.<init>: operand stack underflow at offset 12
+innerClass/multipleModules.kt	codegen error	code generation: operand stack underflow at offset n	/tmp/claude-0/kc-conformance/4550/m1/src/main.kt: code generation failed: B$Inner.<init>: operand stack underflow at offset 12
 innerClass/noPrimaryConstructor.kt	pass		
 innerClass/qualifiedThis.kt	pass		
 innerClass/secondaryConstructor.kt	pass		
@@ -4806,11 +4806,11 @@ localClass/virtualCallFromConstructor.kt	exception	java.lang.NullPointerExceptio
 localClasses/anonymousObjectInExtension.kt	check error	type mismatch: inferred type is _ but _ was expected	anonymousObjectInExtension.kt:2: type mismatch: inferred type is WithCompanion but WithCompanion.Companion was expected
 localClasses/anonymousObjectInInitializer.kt	pass		
 localClasses/anonymousObjectInParameterInitializer.kt	pass		
-localClasses/capturingInDefaultConstructorParameter.kt	codegen error	code generation: operand stack underflow at offset n	/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T/kc-conformance/4807/m0/src/capturingInDefaultConstructorParameter.kt: code generation failed: CapturingInDefaultConstructorParameterKt$Local.<init>: operand stack underflow at offset 18
+localClasses/capturingInDefaultConstructorParameter.kt	codegen error	code generation: operand stack underflow at offset n	/tmp/claude-0/kc-conformance/4807/m0/src/capturingInDefaultConstructorParameter.kt: code generation failed: CapturingInDefaultConstructorParameterKt$Local.<init>: operand stack underflow at offset 18
 localClasses/closureOfInnerLocalClass.kt	pass		
 localClasses/closureOfLambdaInLocalClass.kt	pass		
 localClasses/closureWithSelfInstantiation.kt	pass		
-localClasses/defaultParameterInConstructor.kt	codegen error	code generation: operand stack underflow at offset n	/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T/kc-conformance/4811/m0/src/defaultParameterInConstructor.kt: code generation failed: DefaultParameterInConstructorKt$box$MyEvent.<init>: operand stack underflow at offset 21
+localClasses/defaultParameterInConstructor.kt	codegen error	code generation: operand stack underflow at offset n	/tmp/claude-0/kc-conformance/4811/m0/src/defaultParameterInConstructor.kt: code generation failed: DefaultParameterInConstructorKt$box$MyEvent.<init>: operand stack underflow at offset 21
 localClasses/inCallableReferenceLHS.kt	skip	LANGUAGE	
 localClasses/inExtensionFunction.kt	pass		
 localClasses/inExtensionProperty.kt	pass		
@@ -4824,7 +4824,7 @@ localClasses/kt2700.kt	pass
 localClasses/kt2873.kt	pass		
 localClasses/kt3210.kt	pass		
 localClasses/kt3389.kt	pass		
-localClasses/kt3584.kt	codegen error	code generation: operand stack underflow at offset n	/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T/kc-conformance/4825/m0/src/kt3584.kt: code generation failed: Kt3584Kt$box$A.<init>: operand stack underflow at offset 18
+localClasses/kt3584.kt	codegen error	code generation: operand stack underflow at offset n	/tmp/claude-0/kc-conformance/4825/m0/src/kt3584.kt: code generation failed: Kt3584Kt$box$A.<init>: operand stack underflow at offset 18
 localClasses/kt4174.kt	pass		
 localClasses/kt45383.kt	pass		
 localClasses/localClass.kt	pass		
@@ -5458,19 +5458,19 @@ primitiveTypes/nullAsNullableIntIsNull.kt	pass
 primitiveTypes/nullableAsIndex.kt	pass		
 primitiveTypes/nullableCharBoolean.kt	pass		
 primitiveTypes/numberEqualsHashCodeToString.kt	pass		
-primitiveTypes/numberToChar/abstractMethodInSuperinterface.kt	check error	class '_' is not abstract and does not implement abstract member '_'	abstractMethodInSuperinterface.kt:8: class 'MyNumber' is not abstract and does not implement abstract member 'floatValue'
-primitiveTypes/numberToChar/fakeOverride.kt	check error	class '_' is not abstract and does not implement abstract member '_'	fakeOverride.kt:4: class 'MyNumber' is not abstract and does not implement abstract member 'floatValue'
-primitiveTypes/numberToChar/simple.kt	check error	class '_' is not abstract and does not implement abstract member '_'	simple.kt:4: class 'MyNumber' is not abstract and does not implement abstract member 'intValue'
-primitiveTypes/numberToChar/superCallToClass.kt	check error	class '_' is not abstract and does not implement abstract member '_'	superCallToClass.kt:4: class 'MyNumber' is not abstract and does not implement abstract member 'doubleValue'
-primitiveTypes/numberToChar/superCallToInterface.kt	check error	class '_' is not abstract and does not implement abstract member '_'	superCallToInterface.kt:8: class 'MyNumber' is not abstract and does not implement abstract member 'intValue'
-primitiveTypes/numberToChar/superCallToNumber.kt	check error	class '_' is not abstract and does not implement abstract member '_'	superCallToNumber.kt:4: class 'MyNumber' is not abstract and does not implement abstract member 'longValue'
+primitiveTypes/numberToChar/abstractMethodInSuperinterface.kt	check error	class '_' is not abstract and does not implement abstract member '_'	abstractMethodInSuperinterface.kt:8: class 'MyNumber' is not abstract and does not implement abstract member 'longValue'
+primitiveTypes/numberToChar/fakeOverride.kt	check error	class '_' is not abstract and does not implement abstract member '_'	fakeOverride.kt:4: class 'MyNumber' is not abstract and does not implement abstract member 'intValue'
+primitiveTypes/numberToChar/simple.kt	check error	class '_' is not abstract and does not implement abstract member '_'	simple.kt:4: class 'MyNumber' is not abstract and does not implement abstract member 'longValue'
+primitiveTypes/numberToChar/superCallToClass.kt	check error	class '_' is not abstract and does not implement abstract member '_'	superCallToClass.kt:4: class 'MyNumber' is not abstract and does not implement abstract member 'intValue'
+primitiveTypes/numberToChar/superCallToInterface.kt	check error	class '_' is not abstract and does not implement abstract member '_'	superCallToInterface.kt:8: class 'MyNumber' is not abstract and does not implement abstract member 'longValue'
+primitiveTypes/numberToChar/superCallToNumber.kt	check error	class '_' is not abstract and does not implement abstract member '_'	superCallToNumber.kt:4: class 'MyNumber' is not abstract and does not implement abstract member 'intValue'
 primitiveTypes/rangeTo.kt	check error	type argument is not within its bounds: inferred type Number of type _ '_' is not a subtype of Comparable<Number>	rangeTo.kt:10: type argument is not within its bounds: inferred type Number of type parameter 'T' is not a subtype of Comparable<Number>
 primitiveTypes/reassignDestructured.kt	skip	LANGUAGE	
 primitiveTypes/smartCastOnNullableDoubleIdentityEquals.kt	pass		
 primitiveTypes/stringEqualsHashCodeToString.kt	pass		
 primitiveTypes/substituteIntForGeneric.kt	pass		
 primitiveTypes/unboxComparable.kt	pass		
-primitiveTypes/virtualCallToCustomNumber.kt	check error	class '_' is not abstract and does not implement abstract member '_'	virtualCallToCustomNumber.kt:4: class 'FortyTwo' is not abstract and does not implement abstract member 'longValue'
+primitiveTypes/virtualCallToCustomNumber.kt	check error	class '_' is not abstract and does not implement abstract member '_'	virtualCallToCustomNumber.kt:4: class 'FortyTwo' is not abstract and does not implement abstract member 'intValue'
 private/arrayConvention.kt	pass		
 private/kt9855.kt	pass		
 privateConstructors/base.kt	pass		
@@ -6585,7 +6585,7 @@ regressions/kt51927.kt	skip	TARGET_BACKEND: NATIVE
 regressions/kt5395.kt	pass		
 regressions/kt57487.kt	pass		
 regressions/kt5786_privateWithDefault.kt	pass		
-regressions/kt5953.kt	codegen error	code generation: local n is not allocated	/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T/kc-conformance/6586/m0/src/kt5953.kt: code generation failed: Kt5953Kt.box: local 12 is not allocated
+regressions/kt5953.kt	codegen error	code generation: local n is not allocated	/tmp/claude-0/kc-conformance/6586/m0/src/kt5953.kt: code generation failed: Kt5953Kt.box: local 12 is not allocated
 regressions/kt6153.kt	pass		
 regressions/kt6434.kt	skip	LANGUAGE	
 regressions/kt6434_2.kt	skip	LANGUAGE	
@@ -6856,12 +6856,12 @@ strings/constInStringTemplate.kt	pass
 strings/ea35743.kt	pass		
 strings/forInString.kt	pass		
 strings/interpolation.kt	pass		
-strings/kt13213.kt	codegen error	code generation: string constant too long	/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T/kc-conformance/6857/m0/src/kt13213.kt: code generation failed: string constant too long
+strings/kt13213.kt	codegen error	code generation: string constant too long	/tmp/claude-0/kc-conformance/6857/m0/src/kt13213.kt: code generation failed: string constant too long
 strings/kt13213a.kt	pass		
 strings/kt2592.kt	pass		
 strings/kt3571.kt	pass		
 strings/kt3652.kt	pass		
-strings/kt47917.kt	codegen error	code generation: string constant too long	/var/folders/qh/k7k0fwmn08xbpc2gnrywm3j40000gn/T/kc-conformance/6862/m0/src/kt47917.kt: code generation failed: string constant too long
+strings/kt47917.kt	codegen error	code generation: string constant too long	/tmp/claude-0/kc-conformance/6862/m0/src/kt47917.kt: code generation failed: string constant too long
 strings/kt50140.kt	pass		
 strings/kt5389_stringBuilderGet.kt	pass		
 strings/kt5956.kt	pass		
@@ -6970,8 +6970,8 @@ syntheticAccessors/kt21258_simple.kt	pass
 syntheticAccessors/kt49316.kt	skip	IGNORE_BACKEND: JVM_IR	
 syntheticAccessors/kt9717.kt	pass		
 syntheticAccessors/kt9717DifferentPackages.kt	pass		
-syntheticAccessors/kt9958.kt	linkage error	java.lang.IllegalAccessError	class a.B tried to access protected method 'void b.A.foo()' (a.B and b.A are in unnamed module of loader java.net.URLClassLoader ) at a.B.<init>
-syntheticAccessors/kt9958Interface.kt	linkage error	java.lang.IllegalAccessError	class a.B tried to access protected method 'void b.A.foo()' (a.B and b.A are in unnamed module of loader java.net.URLClassLoader ) at a.B.test
+syntheticAccessors/kt9958.kt	pass		
+syntheticAccessors/kt9958Interface.kt	pass		
 syntheticAccessors/protectedFromLambda.kt	pass		
 syntheticAccessors/protectedMemberReferenceAccessor/kt46597_crossinline_method.kt	pass		
 syntheticAccessors/protectedMemberReferenceAccessor/kt46597_crossinline_property.kt	pass		

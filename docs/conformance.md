@@ -127,10 +127,10 @@ Kotlin 2.4.21's tests on `kc`:
 | Box tests | Tests | Share of run |
 |:---|---:|---:|
 | run (of 7,480) | 6,483 | |
-| pass | 6,167 | 95.1% |
+| pass | 6,170 | 95.2% |
 | check error | 211 | 3.3% |
 | codegen error | 16 | 0.2% |
-| VerifyError and linkage error | 32 | 0.5% |
+| VerifyError and linkage error | 29 | 0.4% |
 | exception and wrong result | 57 | 0.9% |
 | parse/unsupported, crash, timeout | 0 | |
 
