@@ -101,7 +101,10 @@ type loopCtx struct {
 	node     syntax.Stmt // the *syntax.While or *syntax.For
 	label    string
 	hasBreak bool
-	lambdas  int // len(c.lambdas) where the loop is
+	// hasContinue is set on a continue of the loop: a do-while whose
+	// body jumps completes if it continues it.
+	hasContinue bool
+	lambdas     int // len(c.lambdas) where the loop is
 }
 
 // Checker checks one file. Only one goroutine uses a Checker at a time.

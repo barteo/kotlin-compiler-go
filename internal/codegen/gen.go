@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"unicode/utf16"
 
 	cf "github.com/barteo/kotlin-compiler-go/internal/classfile"
@@ -233,7 +234,20 @@ type Options struct {
 	// does: classes get bridges to the default methods they inherit from
 	// Kotlin interfaces. See defaultBridges.
 	JVMDefaultCompat bool
+	// Cache is shared by the files of a compilation, which compute what
+	// it holds once; if nil, each file has its own.
+	Cache *Cache
 }
+
+// Cache holds what code generation computes once for a compilation and
+// shares between its files. It belongs to one compilation: kept longer,
+// it would keep the compilation's symbols. The zero value is ready to
+// use.
+type Cache struct {
+	methods sync.Map // *types.ClassSym -> map[string]bool: see jvmMethods
+}
+
+func (g *gen) cache() *Cache { return g.shared.opts.Cache }
 
 // GenerateFile generates the facade class (if the file has top-level
 // functions or properties) and one class per class declaration.
@@ -248,6 +262,9 @@ func GenerateFile(f *syntax.File, opts Options) (out []Output, err error) {
 	}()
 	if opts.Module == "" {
 		opts.Module = "main"
+	}
+	if opts.Cache == nil {
+		opts.Cache = &Cache{}
 	}
 	g := &gen{file: f, shared: &fileState{opts: opts, count: map[string]int{}, classes: map[string]*cf.Class{}, access: map[*types.VarSym]uint8{},
 		annotated: map[*types.VarSym][2]string{}, markers: map[*types.FunSym]bool{}, impls: map[*types.ClassSym]*cf.Class{},
@@ -1355,7 +1372,7 @@ func (g *gen) class(cd *syntax.ClassDecl) *cf.Class {
 			}
 		}
 		for _, b := range p.Bridges {
-			if !collectionBridge(cls, b) && !cls.HasDefaultImpls() {
+			if !g.cache().collectionBridge(cls, b) && !cls.HasDefaultImpls() {
 				g.bridge(b, types.GetterJVM(p), nil, types.GetterType(p), false, nil, nil)
 			}
 		}
@@ -1476,7 +1493,7 @@ func (g *gen) class(cd *syntax.ClassDecl) *cf.Class {
 		}
 		params := bridgeParams(f)
 		for _, b := range f.Bridges {
-			if !collectionBridge(cls, b) && !cls.HasDefaultImpls() {
+			if !g.cache().collectionBridge(cls, b) && !cls.HasDefaultImpls() {
 				g.bridge(b, f.JVM(), params, types.JVMRet(f), slices.Contains(f.BoxingBridges, b), f.BridgeOf[b], f)
 				bridgeAnnotations(g.cls.LastMethod(), fd.Annotations)
 			}
@@ -1489,7 +1506,7 @@ func (g *gen) class(cd *syntax.ClassDecl) *cf.Class {
 		g.delegated(dl)
 	}
 	for _, b := range cd.InheritedBridges {
-		if i := strings.IndexByte(b.Bridge, '('); !collectionBridge(cls, b.Bridge) && !c.HasMethod(b.Bridge[:i], b.Bridge[i:]) {
+		if i := strings.IndexByte(b.Bridge, '('); !g.cache().collectionBridge(cls, b.Bridge) && !c.HasMethod(b.Bridge[:i], b.Bridge[i:]) {
 			g.bridge(b.Bridge, b.Target, b.Params, b.Ret, false, b.Over, b.Fun)
 		}
 	}
@@ -1606,7 +1623,7 @@ func (g *gen) delegated(dl *syntax.Delegated) {
 		return
 	}
 	for _, b := range f.Bridges {
-		if !collectionBridge(g.owner, b) { // a collection's own bridge, as contains(Object)
+		if !g.cache().collectionBridge(g.owner, b) { // a collection's own bridge, as contains(Object)
 			g.bridge(b, f.JVM(), params, types.JVMRet(f), slices.Contains(f.BoxingBridges, b), f.BridgeOf[b], f)
 		}
 	}

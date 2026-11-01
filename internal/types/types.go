@@ -824,10 +824,15 @@ type ClassSym struct {
 	Annotations       []*ClassSym
 	StabilityInferred int
 
+	// Global is set on a class that a package-level variable declares for
+	// all compilations in the process, such as kotlin.Array: see MakeArgs.
+	Global bool
+
 	load    func(*ClassSym)
 	once    sync.Once
 	samOnce sync.Once
 	sam     *FunSym
+	lists   argsTable // the interned lists whose table is the class's: see MakeArgs
 }
 
 // SAM returns the single abstract method of a Java interface, which
@@ -1213,7 +1218,7 @@ func GetterType(p *VarSym) Type {
 }
 
 // unitObject is kotlin.Unit's class, the type of Unit as an object.
-var unitObject = &ClassSym{Name: "kotlin/Unit", KotlinName: "kotlin/Unit", External: true, Final: true}
+var unitObject = &ClassSym{Name: "kotlin/Unit", KotlinName: "kotlin/Unit", External: true, Final: true, Global: true}
 
 // FieldType returns the type of property p's field, and of its setter's
 // parameter, on the JVM: its type, but as with kotlinc a Unit property

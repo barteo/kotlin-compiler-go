@@ -127,8 +127,8 @@ Kotlin 2.4.21's tests on `kc`:
 | Box tests | Tests | Share of run |
 |:---|---:|---:|
 | run (of 7,480) | 6,483 | |
-| pass | 6,170 | 95.2% |
-| check error | 211 | 3.3% |
+| pass | 6,186 | 95.4% |
+| check error | 195 | 3.0% |
 | codegen error | 16 | 0.2% |
 | VerifyError and linkage error | 29 | 0.4% |
 | exception and wrong result | 57 | 0.9% |
@@ -138,9 +138,9 @@ Kotlin 2.4.21's tests on `kc`:
 |:---|---:|---:|
 | run (of 10,827) | 7,200 | |
 | rejects invalid | 3,016 | 41.9% |
-| accepts valid | 2,776 | 38.6% |
+| accepts valid | 2,782 | 38.6% |
 | accepts invalid | 802 | 11.1% |
-| rejects valid | 526 | 7.3% |
+| rejects valid | 520 | 7.2% |
 | parse/unsupported | 79 | 1.1% |
 | crash | 1 | 0.0% |
 
@@ -148,7 +148,7 @@ Kotlin 2.4.21's tests on `kc`:
 10,257 of the 18,906 expected errors (54%) on their lines. The reports
 break the failures down; the largest groups are:
 
-- **Silent miscompilation** (89 box tests): `tailrec` functions that
+- **Silent miscompilation** (86 box tests): `tailrec` functions that
   overflow the stack (16), `NullPointerException`s (14), `VerifyError`s
   for bad local variable types (7), and duplicate bridge methods in `Map`
   implementations (3).

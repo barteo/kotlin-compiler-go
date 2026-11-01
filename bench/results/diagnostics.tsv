@@ -1935,14 +1935,14 @@ tests/controlFlowAnalysis/deadCode/initializationInUnreachableCode.kt	accepts in
 tests/controlFlowAnalysis/deadCode/kt2585_1.kt	accepts valid		
 tests/controlFlowAnalysis/deadCode/kt2585_2.kt	accepts valid		
 tests/controlFlowAnalysis/deadCode/kt2585_3.kt	accepts valid		
-tests/controlFlowAnalysis/deadCode/kt3162tryAsInitializer.kt	rejects valid	missing return statement in function '_'	kt3162tryAsInitializer.kt:4: missing return statement in function 'foo'
+tests/controlFlowAnalysis/deadCode/kt3162tryAsInitializer.kt	accepts valid		
 tests/controlFlowAnalysis/deadCode/kt5200DeadCodeInLambdas.kt	accepts valid		
 tests/controlFlowAnalysis/deadCode/nonLocalJump.kt	skip	LANGUAGE	
 tests/controlFlowAnalysis/deadCode/reassignementInUnreachableCode.kt	rejects invalid	on an expected line	
 tests/controlFlowAnalysis/deadCode/returnInDeadLambda.kt	accepts valid		
 tests/controlFlowAnalysis/deadCode/smartCastAfterDeadCode.kt	accepts valid		
 tests/controlFlowAnalysis/deadCode/uninitializedMemberAfterUnreachableFunction.kt	rejects invalid	on an expected line	
-tests/controlFlowAnalysis/definiteReturn/InlineReturn.kt	rejects valid	missing return statement in function '_'	InlineReturn.kt:16: missing return statement in function 'test'
+tests/controlFlowAnalysis/definiteReturn/InlineReturn.kt	accepts valid		
 tests/controlFlowAnalysis/definiteReturn/ReturnFromFunctionInObject.kt	rejects invalid	elsewhere	
 tests/controlFlowAnalysis/definiteReturn/elvisOperator.kt	accepts valid		
 tests/controlFlowAnalysis/definiteReturn/kt3444_ReturnFromLocalFunctions.kt	rejects invalid	elsewhere	
@@ -2954,7 +2954,7 @@ tests/duplicateRedundantOpen.kt	accepts valid
 tests/dynamicTypes/delegationBy.kt	rejects invalid	on an expected line	
 tests/dynamicTypes/unsupported.kt	rejects invalid	on an expected line	
 tests/dynamicTypes/withInvisibleSynthesized.kt	skip	Java sources	
-tests/elvisReturnSimple.kt	rejects valid	missing return statement in function '_'	elvisReturnSimple.kt:4: missing return statement in function 'stringReturnInLeftLen'
+tests/elvisReturnSimple.kt	accepts valid		
 tests/emptyLhsClassLiterals.kt	rejects invalid	on an expected line	
 tests/emptyParanthesesAsArgument.kt	rejects invalid	on an expected line	
 tests/enum.kt	rejects invalid	on an expected line	
@@ -3840,7 +3840,7 @@ tests/imports/MalformedImports.kt	rejects invalid	on an expected line
 tests/imports/NestedClassClash.kt	accepts invalid	CONFLICTING_IMPORT; OVERLOAD_RESOLUTION_AMBIGUITY; UNRESOLVED_REFERENCE	c.kt:1: CONFLICTING_IMPORT
 tests/imports/OperatorRenameOnImport.kt	accepts invalid	OPERATOR_MODIFIER_REQUIRED	b.kt:7: OPERATOR_MODIFIER_REQUIRED
 tests/imports/OptionalAnnotationClasses.kt	accepts valid		
-tests/imports/PackageLocalClassNotImported.kt	rejects valid	this type is final, so it cannot be inherited from	Main.kt:6: this type is final, so it cannot be inherited from
+tests/imports/PackageLocalClassNotImported.kt	rejects valid	cannot access '_': it is private in file	Main.kt:6: cannot access 'SomeClass': it is private in file
 tests/imports/PackageLocalClassReferencedError.kt	rejects invalid	on an expected line	
 tests/imports/PackageVsClass.kt	accepts valid		
 tests/imports/PrivateClassNotImported.kt	accepts valid		
@@ -4258,8 +4258,8 @@ tests/inference/ifWithDependentBranches.kt	rejects invalid	on an expected line
 tests/inference/illegalUnderscoredTypeArgument.kt	rejects invalid	on an expected line	
 tests/inference/immutableArrayList.kt	skip	Java sources	
 tests/inference/implicitInvokeExtensionWithFunctionalArgument.kt	accepts valid		
-tests/inference/implicitInvokeInCompanionObjectWithFunctionalArgument.kt	rejects valid	missing return statement in function '_'	implicitInvokeInCompanionObjectWithFunctionalArgument.kt:11: missing return statement in function 'test'
-tests/inference/implicitInvokeInObjectWithFunctionalArgument.kt	rejects valid	missing return statement in function '_'	implicitInvokeInObjectWithFunctionalArgument.kt:9: missing return statement in function 'test'
+tests/inference/implicitInvokeInCompanionObjectWithFunctionalArgument.kt	accepts valid		
+tests/inference/implicitInvokeInObjectWithFunctionalArgument.kt	accepts valid		
 tests/inference/implicitInvokeWithFunctionLiteralArgument.kt	accepts valid		
 tests/inference/inVarianceVsParameterBound.kt	accepts valid		
 tests/inference/incorporation/allowBigIncorporatedConstraints.kt	accepts valid		
@@ -7281,7 +7281,7 @@ tests/properties/extensionPropertyMustHaveAccessorsOrBeAbstract2.kt	rejects inva
 tests/properties/extensionPropertyMustHaveAccessorsOrBeAbstract3.kt	rejects invalid	on an expected line	
 tests/properties/flexibleTypeReceiver.kt	skip	Java sources	
 tests/properties/getterTypeDiffersByAnnotation.kt	accepts valid		
-tests/properties/getterWithEarlyReturn.kt	rejects valid	missing return statement in function '_'	getterWithEarlyReturn.kt:8: missing return statement in function 'get'
+tests/properties/getterWithEarlyReturn.kt	accepts valid		
 tests/properties/inferPropertyTypeFromGetter.kt	accepts valid		
 tests/properties/inferenceFromGetters/blockBodyGetter.kt	rejects invalid	on an expected line	
 tests/properties/inferenceFromGetters/cantBeInferred.kt	rejects invalid	on an expected line	

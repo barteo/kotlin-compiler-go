@@ -3212,6 +3212,8 @@ func (c *Checker) jump(x *syntax.Jump) {
 		x.Loop = loop.node
 		if x.Kind == syntax.BREAK {
 			loop.hasBreak = true
+		} else {
+			loop.hasContinue = true
 		}
 	}
 }

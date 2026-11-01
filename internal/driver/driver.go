@@ -277,7 +277,7 @@ func Compile(paths []string, opts Options) error {
 	var written atomic.Int64
 	genOpts := codegen.Options{Stdlib: cp.HasKotlin(), Module: opts.ModuleName,
 		Spilling: cp.Has("kotlin/coroutines/jvm/internal/SpillingKt") && !opts.Debug, Compose: opts.Compose,
-		JVMDefaultCompat: opts.JVMDefaultCompat}
+		JVMDefaultCompat: opts.JVMDefaultCompat, Cache: &codegen.Cache{}}
 	if opts.Compose {
 		genOpts.ShouldExecute = hasMethod(cp, "androidx/compose/runtime/Composer", "shouldExecute", "(ZI)Z")
 	}

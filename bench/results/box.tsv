@@ -145,7 +145,7 @@ arrays/kt4118.kt	pass
 arrays/kt42932.kt	pass		
 arrays/kt4348.kt	pass		
 arrays/kt4357.kt	pass		
-arrays/kt47483.kt	check error	missing return statement in function '_'	kt47483.kt:1: missing return statement in function 'box'
+arrays/kt47483.kt	pass		
 arrays/kt503.kt	pass		
 arrays/kt55984.kt	pass		
 arrays/kt594.kt	pass		
@@ -314,12 +314,12 @@ boxingOptimization/kt19767_2.kt	pass
 boxingOptimization/kt19767_chain.kt	pass		
 boxingOptimization/kt46859.kt	pass		
 boxingOptimization/kt48394.kt	pass		
-boxingOptimization/kt49092a.kt	check error	missing return statement in function '_'	kt49092a.kt:6: missing return statement in function 'box'
-boxingOptimization/kt49092b.kt	check error	missing return statement in function '_'	kt49092b.kt:6: missing return statement in function 'box'
-boxingOptimization/kt49092c.kt	check error	missing return statement in function '_'	kt49092c.kt:7: missing return statement in function 'box'
-boxingOptimization/kt49092d.kt	check error	missing return statement in function '_'	kt49092d.kt:6: missing return statement in function 'box'
-boxingOptimization/kt49092e.kt	check error	missing return statement in function '_'	kt49092e.kt:7: missing return statement in function 'box'
-boxingOptimization/kt49092f.kt	check error	missing return statement in function '_'	kt49092f.kt:6: missing return statement in function 'box'
+boxingOptimization/kt49092a.kt	pass		
+boxingOptimization/kt49092b.kt	pass		
+boxingOptimization/kt49092c.kt	pass		
+boxingOptimization/kt49092d.kt	pass		
+boxingOptimization/kt49092e.kt	pass		
+boxingOptimization/kt49092f.kt	pass		
 boxingOptimization/kt49548.kt	pass		
 boxingOptimization/kt49548a.kt	pass		
 boxingOptimization/kt5493.kt	pass		
@@ -1408,7 +1408,7 @@ contracts/require.kt	pass
 contracts/runLambdaForVal.kt	pass		
 contracts/valInWhen.kt	VerifyError	java.lang.VerifyError: Bad local variable type	Bad local variable type at java.lang.Class.getDeclaredMethods0
 controlStructures/bottles.kt	pass		
-controlStructures/breakContinueInExpressions/breakFromOuter.kt	check error	missing return statement in function '_'	breakFromOuter.kt:2: missing return statement in function 'box'
+controlStructures/breakContinueInExpressions/breakFromOuter.kt	pass		
 controlStructures/breakContinueInExpressions/breakInDoWhile.kt	pass		
 controlStructures/breakContinueInExpressions/breakInExpr.kt	pass		
 controlStructures/breakContinueInExpressions/breakInLoopConditions.kt	wrong result	FAILn	FAIL2
@@ -1577,7 +1577,7 @@ controlStructures/kt769.kt	pass
 controlStructures/kt772.kt	pass		
 controlStructures/kt773.kt	pass		
 controlStructures/kt8148.kt	pass		
-controlStructures/kt8148_break.kt	check error	missing return statement in function '_'	kt8148_break.kt:18: missing return statement in function 'test'
+controlStructures/kt8148_break.kt	pass		
 controlStructures/kt8148_continue.kt	pass		
 controlStructures/kt870.kt	pass		
 controlStructures/kt9022Return.kt	pass		
@@ -2327,7 +2327,7 @@ delegatedProperty/delegateToAnother/custom.kt	pass
 delegatedProperty/delegateToAnother/kt49793_companionObject.kt	pass		
 delegatedProperty/delegateToAnother/kt49793_interfaceCompanionObject.kt	pass		
 delegatedProperty/delegateToAnother/kt49793_object.kt	pass		
-delegatedProperty/delegateToAnother/kt79979_memberExtension.kt	check error	missing return statement in function '_'	kt79979_memberExtension.kt:11: missing return statement in function 'box'
+delegatedProperty/delegateToAnother/kt79979_memberExtension.kt	pass		
 delegatedProperty/delegateToAnother/memberExtensionWithBoundReceiver.kt	pass		
 delegatedProperty/delegateToAnother/memberExtensionWithBoundReceiverSameType.kt	pass		
 delegatedProperty/delegateToAnother/mutable.kt	pass		
@@ -2901,7 +2901,7 @@ finally/kt3549.kt	pass
 finally/kt3706.kt	pass		
 finally/kt3867.kt	pass		
 finally/kt3874.kt	pass		
-finally/kt3894.kt	check error	missing return statement in function '_'	kt3894.kt:13: missing return statement in function 'test1'
+finally/kt3894.kt	pass		
 finally/kt4134.kt	pass		
 finally/loopAndFinally.kt	pass		
 finally/nestedFinallyAndNonFinallyTry.kt	pass		
@@ -3104,8 +3104,8 @@ functions/functionNtoStringGeneric.kt	skip	LAMBDAS: CLASS
 functions/infixRecursiveCall.kt	pass		
 functions/invoke/castFunctionToExtension.kt	pass		
 functions/invoke/extensionInvokeOnExpr.kt	pass		
-functions/invoke/implicitInvokeInCompanionObjectWithFunctionalArgument.kt	check error	missing return statement in function '_'	implicitInvokeInCompanionObjectWithFunctionalArgument.kt:7: missing return statement in function 'box'
-functions/invoke/implicitInvokeWithFunctionLiteralArgument.kt	check error	missing return statement in function '_'	implicitInvokeWithFunctionLiteralArgument.kt:5: missing return statement in function 'box'
+functions/invoke/implicitInvokeInCompanionObjectWithFunctionalArgument.kt	pass		
+functions/invoke/implicitInvokeWithFunctionLiteralArgument.kt	pass		
 functions/invoke/invoke.kt	pass		
 functions/invoke/invokeOnExprByConvention.kt	pass		
 functions/invoke/kt3189.kt	pass		
@@ -4278,7 +4278,7 @@ inlineClasses/kt46554.kt	pass
 inlineClasses/kt46554Generic.kt	pass		
 inlineClasses/kt47762.kt	pass		
 inlineClasses/kt47762Generic.kt	pass		
-inlineClasses/kt47823.kt	check error	missing return statement in function '_'	kt47823.kt:3: missing return statement in function 'box'
+inlineClasses/kt47823.kt	pass		
 inlineClasses/kt50974_resultMultiModule.kt	pass		
 inlineClasses/kt51157.kt	pass		
 inlineClasses/kt51254.kt	pass		
@@ -5458,9 +5458,9 @@ primitiveTypes/nullAsNullableIntIsNull.kt	pass
 primitiveTypes/nullableAsIndex.kt	pass		
 primitiveTypes/nullableCharBoolean.kt	pass		
 primitiveTypes/numberEqualsHashCodeToString.kt	pass		
-primitiveTypes/numberToChar/abstractMethodInSuperinterface.kt	check error	class '_' is not abstract and does not implement abstract member '_'	abstractMethodInSuperinterface.kt:8: class 'MyNumber' is not abstract and does not implement abstract member 'longValue'
-primitiveTypes/numberToChar/fakeOverride.kt	check error	class '_' is not abstract and does not implement abstract member '_'	fakeOverride.kt:4: class 'MyNumber' is not abstract and does not implement abstract member 'intValue'
-primitiveTypes/numberToChar/simple.kt	check error	class '_' is not abstract and does not implement abstract member '_'	simple.kt:4: class 'MyNumber' is not abstract and does not implement abstract member 'longValue'
+primitiveTypes/numberToChar/abstractMethodInSuperinterface.kt	check error	class '_' is not abstract and does not implement abstract member '_'	abstractMethodInSuperinterface.kt:8: class 'MyNumber' is not abstract and does not implement abstract member 'intValue'
+primitiveTypes/numberToChar/fakeOverride.kt	check error	class '_' is not abstract and does not implement abstract member '_'	fakeOverride.kt:4: class 'MyNumber' is not abstract and does not implement abstract member 'floatValue'
+primitiveTypes/numberToChar/simple.kt	check error	class '_' is not abstract and does not implement abstract member '_'	simple.kt:4: class 'MyNumber' is not abstract and does not implement abstract member 'intValue'
 primitiveTypes/numberToChar/superCallToClass.kt	check error	class '_' is not abstract and does not implement abstract member '_'	superCallToClass.kt:4: class 'MyNumber' is not abstract and does not implement abstract member 'intValue'
 primitiveTypes/numberToChar/superCallToInterface.kt	check error	class '_' is not abstract and does not implement abstract member '_'	superCallToInterface.kt:8: class 'MyNumber' is not abstract and does not implement abstract member 'longValue'
 primitiveTypes/numberToChar/superCallToNumber.kt	check error	class '_' is not abstract and does not implement abstract member '_'	superCallToNumber.kt:4: class 'MyNumber' is not abstract and does not implement abstract member 'intValue'
@@ -5470,7 +5470,7 @@ primitiveTypes/smartCastOnNullableDoubleIdentityEquals.kt	pass
 primitiveTypes/stringEqualsHashCodeToString.kt	pass		
 primitiveTypes/substituteIntForGeneric.kt	pass		
 primitiveTypes/unboxComparable.kt	pass		
-primitiveTypes/virtualCallToCustomNumber.kt	check error	class '_' is not abstract and does not implement abstract member '_'	virtualCallToCustomNumber.kt:4: class 'FortyTwo' is not abstract and does not implement abstract member 'intValue'
+primitiveTypes/virtualCallToCustomNumber.kt	check error	class '_' is not abstract and does not implement abstract member '_'	virtualCallToCustomNumber.kt:4: class 'FortyTwo' is not abstract and does not implement abstract member 'doubleValue'
 private/arrayConvention.kt	pass		
 private/kt9855.kt	pass		
 privateConstructors/base.kt	pass		
@@ -7030,7 +7030,7 @@ try/catch8.kt	pass
 try/finally1.kt	pass		
 try/finally10.kt	pass		
 try/finally11.kt	pass		
-try/finally12.kt	check error	missing return statement in function '_'	finally12.kt:1: missing return statement in function 'box'
+try/finally12.kt	pass		
 try/finally13.kt	pass		
 try/finally14.kt	pass		
 try/finally15.kt	pass		
@@ -7432,7 +7432,7 @@ when/noElseExhaustiveStatement.kt	pass
 when/noElseExhaustiveUnitExpected.kt	pass		
 when/noElseInStatement.kt	pass		
 when/noElseNoMatch.kt	pass		
-when/nothingTyped.kt	check error	missing return statement in function '_'	nothingTyped.kt:1: missing return statement in function 'nothingTypedWhenSimple'
+when/nothingTyped.kt	pass		
 when/nullableWhen.kt	pass		
 when/oneUnitBranch.kt	pass		
 when/range.kt	pass		
