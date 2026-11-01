@@ -305,6 +305,40 @@ func TestStdlibParallel(t *testing.T) {
 	}
 }
 
+// TestRetained checks that a compilation keeps nothing once it is done:
+// compiling again and again in one process, as these tests do, mustn't
+// make the heap grow. Each compilation used to stay reachable from the
+// process-wide intern table of type arguments, with every class it read.
+func TestRetained(t *testing.T) {
+	var cp []string
+	if lib := stdlib(); lib != "" {
+		cp = []string{lib}
+	}
+	srcs := []string{"../../testdata/run/lambdas.kt", "../../testdata/run/frames.kt"}
+	compile := func() {
+		if err := Compile(srcs, Options{OutDir: t.TempDir(), Jobs: runtime.NumCPU(), ClassPath: cp}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	heap := func() uint64 {
+		runtime.GC()
+		var m runtime.MemStats
+		runtime.ReadMemStats(&m)
+		return m.HeapAlloc
+	}
+	compile() // fills what the process keeps for all compilations
+	before := heap()
+	const n = 8
+	for range n {
+		compile()
+	}
+	// A compilation of these used to keep about 15 MB, with the standard
+	// library.
+	if grew := int64(heap()) - int64(before); grew > 4<<20 {
+		t.Errorf("the heap grew by %d MB over %d compilations", grew>>20, n)
+	}
+}
+
 func diff(want, got string) string {
 	w, g := strings.Split(want, "\n"), strings.Split(got, "\n")
 	var sb strings.Builder

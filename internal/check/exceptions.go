@@ -18,6 +18,7 @@ func (c *Checker) tryExpr(x *syntax.Try, want types.Type, valueUsed bool) types.
 	// assignments drop the vars' narrowing there, and after the try.
 	bodyVars := c.watchedVars(x.Body)
 	defer c.reset(c.watchedVars(x))
+	exits := c.loopExits()
 	result := c.block(x.Body, want, valueUsed)
 	allJump := result.K == types.Nothing
 	for _, cb := range x.Catches {
@@ -51,6 +52,10 @@ func (c *Checker) tryExpr(x *syntax.Try, want types.Type, valueUsed bool) types.
 		ft := c.block(x.Finally, noWant, false)
 		c.pop()
 		if ft.K == types.Nothing {
+			// A break or continue in the try or its catch blocks runs the
+			// finally block, which jumps instead: it doesn't leave the
+			// loop.
+			c.restoreLoopExits(exits)
 			return types.NothingType
 		}
 	}
@@ -61,6 +66,24 @@ func (c *Checker) tryExpr(x *syntax.Try, want types.Type, valueUsed bool) types.
 		return types.UnitType
 	}
 	return result
+}
+
+// loopExits returns whether each of the loops the code is in has a break
+// and a continue so far.
+func (c *Checker) loopExits() [][2]bool {
+	exits := make([][2]bool, len(c.loops))
+	for i, l := range c.loops {
+		exits[i] = [2]bool{l.hasBreak, l.hasContinue}
+	}
+	return exits
+}
+
+// restoreLoopExits forgets the breaks and continues of the loops that
+// loopExits returned found after it.
+func (c *Checker) restoreLoopExits(exits [][2]bool) {
+	for i, e := range exits {
+		c.loops[i].hasBreak, c.loops[i].hasContinue = e[0], e[1]
+	}
 }
 
 // throwable reports whether t is a subtype of Throwable. Without a JDK,

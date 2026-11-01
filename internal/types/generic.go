@@ -3,6 +3,7 @@ package types
 import (
 	"strings"
 	"sync"
+	"sync/atomic"
 )
 
 // Variance is the variance of a type parameter or of a type argument.
@@ -49,16 +50,69 @@ func (a Arg) String() string {
 type Args struct {
 	List  []Arg
 	param *TypeParamSym // set instead of List in a parameter's own Args
+	// local is set if the list holds a symbol of one compilation: see
+	// MakeArgs.
+	local bool
+	// lists holds the interned lists whose table is this one's: see
+	// MakeArgs.
+	lists argsTable
 }
 
+// A list of arguments is its first argument, the head, before the list of
+// the others, the tail (nil for a list of one).
 type argsKey struct {
 	head Arg
 	tail *Args
 }
 
-// argsTab interns argument lists. Checking in parallel looks lists up far
-// more often than it adds them, which sync.Map does without locking.
-var argsTab sync.Map // argsKey -> *Args
+// Interning. Equal lists must share one *Args for as long as either is in
+// use, but a table of every list that lives as long as the process keeps
+// every compilation's symbols after it is done, and through their loaders
+// the classes and metadata it read: a process that compiles many times,
+// as the tests do, grows without bound.
+//
+// So a list is kept in a table that belongs to one of its parts, which
+// the list can't outlive: its tail, its head type's arguments and its
+// head type's class. The table is that of the first of these that is
+// local, a symbol of one compilation or a list holding one. Equal lists
+// have the same parts, so they are found in the same table, and a list is
+// collected with the compilation it belongs to. Symbols are local unless
+// they are among the few that package-level variables declare for all
+// compilations (see ClassSym.Global and TypeParamSym.Global). Lists of
+// only those and of types without symbols, such as Int, are in a table
+// for the process, globalArgs.
+
+// argsTable interns lists of arguments: argsKey -> *Args. Checking in
+// parallel looks lists up far more often than it adds them, which
+// sync.Map does without locking. It is allocated on first use: most
+// symbols and lists hold no table.
+type argsTable struct{ m atomic.Pointer[sync.Map] }
+
+func (t *argsTable) get() *sync.Map {
+	if m := t.m.Load(); m != nil {
+		return m
+	}
+	t.m.CompareAndSwap(nil, new(sync.Map))
+	return t.m.Load()
+}
+
+// globalArgs interns the lists that hold no local symbols.
+var globalArgs sync.Map
+
+func (a *Args) isLocal() bool { return a != nil && a.local }
+
+// table returns the table that interns the list k.
+func (k *argsKey) table() *sync.Map {
+	switch {
+	case k.tail.isLocal():
+		return k.tail.lists.get()
+	case k.head.T.A.isLocal():
+		return k.head.T.A.lists.get()
+	case k.head.T.C != nil && !k.head.T.C.Global:
+		return k.head.T.C.lists.get()
+	}
+	return &globalArgs
+}
 
 // MakeArgs returns the interned list for args, or nil if it is empty.
 func MakeArgs(args []Arg) *Args {
@@ -69,14 +123,15 @@ func MakeArgs(args []Arg) *Args {
 			a.T = Type{}
 		}
 		k := argsKey{a, tail}
-		n, ok := argsTab.Load(k)
+		tab := k.table()
+		n, ok := tab.Load(k)
 		if !ok {
 			list := make([]Arg, 0, len(args)-i)
 			list = append(list, a)
 			if tail != nil {
 				list = append(list, tail.List...)
 			}
-			n, _ = argsTab.LoadOrStore(k, &Args{List: list})
+			n, _ = tab.LoadOrStore(k, &Args{List: list, local: tab != &globalArgs})
 		}
 		tail = n.(*Args)
 	}
@@ -107,6 +162,10 @@ type TypeParamSym struct {
 	// Reified is set on a reified type parameter of an inline function,
 	// which a copy of its body knows.
 	Reified bool
+	// Global is set on a parameter of a symbol that a package-level
+	// variable declares for all compilations in the process, such as
+	// kotlin.Array's T: see MakeArgs.
+	Global bool
 
 	once sync.Once
 	self *Args // what types of this parameter point to
@@ -122,7 +181,7 @@ func (p *TypeParamSym) Redeclare(q *TypeParamSym) {
 func (t Type) Param() *TypeParamSym { return t.A.param }
 
 func (p *TypeParamSym) args() *Args {
-	p.once.Do(func() { p.self = &Args{param: p} })
+	p.once.Do(func() { p.self = &Args{param: p, local: !p.Global} })
 	return p.self
 }
 

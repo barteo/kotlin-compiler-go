@@ -2,7 +2,6 @@ package codegen
 
 import (
 	"strings"
-	"sync"
 
 	cf "github.com/barteo/kotlin-compiler-go/internal/classfile"
 	"github.com/barteo/kotlin-compiler-go/internal/types"
@@ -163,17 +162,15 @@ func directlyMapped(cls *types.ClassSym) bool {
 	return false
 }
 
-// classMethods are the methods of a class with code, by name and
+// jvmMethods returns the methods of a class with code, by name and
 // descriptor, and whether each is final: those of the program are
 // computed from its symbols, since its own class file may not be
-// generated yet. It memoizes the result for the program's classes.
-var classMethods sync.Map // *types.ClassSym -> map[string]bool
-
-func jvmMethods(cls *types.ClassSym) map[string]bool {
+// generated yet. It memoizes the result in the compilation's cache.
+func (cc *Cache) jvmMethods(cls *types.ClassSym) map[string]bool {
 	if cls == nil {
 		return nil
 	}
-	if m, ok := classMethods.Load(cls); ok {
+	if m, ok := cc.methods.Load(cls); ok {
 		return m.(map[string]bool)
 	}
 	m := map[string]bool{}
@@ -188,23 +185,23 @@ func jvmMethods(cls *types.ClassSym) map[string]bool {
 		for nd, final := range declaredMethods(cls, false) {
 			m[nd] = final
 		}
-		for _, cm := range collectionMethods(cls) {
+		for _, cm := range cc.collectionMethods(cls) {
 			if cm.kind != collAbstract {
 				m[cm.name+cm.desc] = cm.final()
 			}
 		}
 	}
-	classMethods.Store(cls, m)
+	cc.methods.Store(cls, m)
 	return m
 }
 
 // superMethods returns the methods with code of cls's superclasses, and
 // whether each is final.
-func superMethods(cls *types.ClassSym) map[string]bool {
+func (cc *Cache) superMethods(cls *types.ClassSym) map[string]bool {
 	out := map[string]bool{}
 	for s := cls.Super; s != nil; s = s.Super {
 		s.Ensure()
-		for nd, final := range jvmMethods(s) {
+		for nd, final := range cc.jvmMethods(s) {
 			if _, ok := out[nd]; !ok {
 				out[nd] = final
 			}
@@ -281,7 +278,7 @@ func declaredMethods(cls *types.ClassSym, abstract bool) map[string]bool {
 
 // collectionMethods returns the methods that class cls of the program
 // gets for its Kotlin collection types (see the top of this file).
-func collectionMethods(cls *types.ClassSym) []collMethod {
+func (cc *Cache) collectionMethods(cls *types.ClassSym) []collMethod {
 	if cls.Interface || cls.External {
 		return nil
 	}
@@ -289,7 +286,7 @@ func collectionMethods(cls *types.ClassSym) []collMethod {
 	if len(supers) == 0 {
 		return nil
 	}
-	inherited := superMethods(cls)
+	inherited := cc.superMethods(cls)
 	own := declaredMethods(cls, true)
 	var out []collMethod
 	has := func(nd string) bool {
@@ -633,7 +630,7 @@ func collectionMarkers(cls *types.ClassSym) []string {
 // collectionMembers writes the methods class cls gets for its Kotlin
 // collection types.
 func (g *gen) collectionMembers(cls *types.ClassSym) {
-	for _, m := range collectionMethods(cls) {
+	for _, m := range g.cache().collectionMethods(cls) {
 		switch m.kind {
 		case collAbstract:
 			g.cls.AddAbstractMethod(cf.AccPublic|cf.AccAbstract, m.name, m.desc)
@@ -814,11 +811,11 @@ func (g *gen) collToArray(m collMethod) {
 // collectionBridge reports whether an override's bridge nd of class cls
 // isn't written: a collection member replaces it, or a superclass has the
 // method as final.
-func collectionBridge(cls *types.ClassSym, nd string) bool {
-	if final, ok := superMethods(cls)[nd]; ok && final {
+func (cc *Cache) collectionBridge(cls *types.ClassSym, nd string) bool {
+	if final, ok := cc.superMethods(cls)[nd]; ok && final {
 		return true
 	}
-	for _, m := range collectionMethods(cls) {
+	for _, m := range cc.collectionMethods(cls) {
 		if m.name+m.desc == nd {
 			return true
 		}

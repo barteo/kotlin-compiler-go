@@ -7,9 +7,9 @@ Of 10827 test files, 3627 are skipped and 7200 run.
 | Result | Tests | Share |
 |:---|---:|---:|
 | rejects invalid | 2963 | 41.2% |
-| accepts valid | 2775 | 38.5% |
+| accepts valid | 2781 | 38.6% |
 | accepts invalid | 855 | 11.9% |
-| rejects valid | 527 | 7.3% |
+| rejects valid | 521 | 7.2% |
 | parse/unsupported | 79 | 1.1% |
 | crash | 1 | 0.0% |
 
@@ -128,7 +128,6 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 | `unresolved or unsupported type: _` | 12 | `tests/arguments/genericVarargInferredToNothing.kt`, `tests/arguments/genericVarargInferredToNullableNothing.kt` |
 | `cannot infer a type for this parameter. Please specify it explicitly.` | 10 | `tests/inference/completion/postponedArgumentsAnalysis/lackOfDeepIncorporation.kt`, `tests/inference/kt36819.kt` |
 | `'_' expression must be exhaustive, add necessary '_' branch` | 8 | `tests/controlStructures/whenWithNothingTypedSubject.kt`, `tests/exhaustiveness/positive/smartcastToExhaustiveInterface.kt` |
-| `missing return statement in function '_'` | 7 | `tests/controlFlowAnalysis/deadCode/kt3162tryAsInitializer.kt`, `tests/controlFlowAnalysis/definiteReturn/InlineReturn.kt` |
 | `expression '_' of type _ cannot be invoked as a function` | 6 | `tests/companionObjectCall.kt`, `tests/expresssions/invoke/incorrectInvokeReceiver.kt` |
 | `no function '_' takes n arguments` | 6 | `tests/cast/kt15161.kt`, `tests/errorProneAtomicArrayArguments.kt` |
 | `type argument is not within its bounds: inferred type K of type _ '_' is not a subtype of Out<B>` | 6 | `tests/inference/emptyIntersectionTypes/kt45461_11.kt`, `tests/inference/emptyIntersectionTypes/kt45461_14.kt` |
@@ -159,7 +158,8 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 | `too many arguments for annotation java/lang/annotation/Target` | 2 | `tests/annotations/JavaAnnotationConstructors.kt`, `testsWithStdLib/annotations/annotationIncompatibleTargets.kt` |
 | `type argument is not within its bounds: inferred type K of type _ '_' is not a subtype of B<String>` | 2 | `tests/inference/emptyIntersectionTypes/substitutingSuperTypes.kt`, `tests/inference/emptyIntersectionTypes/substitutingSuperTypes2.kt` |
 | `type argument is not within its bounds: inferred type K of type _ '_' is not a subtype of In<Inv<Int>>` | 2 | `tests/inference/emptyIntersectionTypes/kt45461_20.kt`, `tests/inference/emptyIntersectionTypes/kt45461_21.kt` |
-| *68 more* | 72 | |
+| `type argument is not within its bounds: inferred type K of type _ '_' is not a subtype of Inv<in Inv<in Int>>` | 2 | `tests/inference/emptyIntersectionTypes/kt45461_23.kt`, `tests/inference/emptyIntersectionTypes/kt45461_27.kt` |
+| *68 more* | 71 | |
 
 ## Errors by diagnostic
 
@@ -249,7 +249,7 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | `ambiguous call: n candidates for '_' take (_)` | 50 |
 | `suspend function '_' cannot override non-suspend function '_' defined in '_'` | 50 |
 | `operator '_' cannot be applied to Any?` | 48 |
-| `missing return statement in function '_'` | 47 |
+| `missing return statement in function '_'` | 35 |
 | `no function '_' takes n arguments` | 32 |
 | `expected member declaration, found '_'` | 31 |
 | `expected expression, found '_'` | 23 |

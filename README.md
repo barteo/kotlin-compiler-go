@@ -86,9 +86,14 @@ Even without its checkers, `kotlinc` would take 33 s, 13x as long as
 ## Try it
 
 Requires Go 1.27.2+ and a JDK. The tests and benchmarks also need
-`kotlinc` and `hyperfine` (`brew install go openjdk@21 kotlin hyperfine`).
+`kotlinc` and `hyperfine`. On macOS: `brew install go openjdk@21 kotlin
+hyperfine`. On Linux, get Go from [go.dev/dl](https://go.dev/dl/) and the
+rest from your package manager (for example `apt install openjdk-21-jdk
+hyperfine`, plus `kotlinc` from the
+[Kotlin releases](https://github.com/JetBrains/kotlin/releases)).
 
 ```sh
+git clone https://github.com/barteo/kotlin-compiler-go && cd kotlin-compiler-go
 go build -o bin/kc ./cmd/kc
 bin/kc -d out testdata/run/fizzBuzz.kt
 java -cp out FizzBuzzKt
