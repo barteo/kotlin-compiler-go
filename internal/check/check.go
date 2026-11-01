@@ -120,7 +120,10 @@ type Checker struct {
 	// objects by name: enum entries, Java statics, objects' members, and
 	// those of the classes of starOwners.
 	memberImports map[string]memberImport
-	stars         []string // star-imported packages of the class path (internal names)
+	// classImports are the explicitly imported top-level classes of the
+	// class path, whose visibility checkMemberImports checks.
+	classImports []memberImport
+	stars        []string // star-imported packages of the class path (internal names)
 	// starOwners are the classes whose members and nested classes are
 	// star-imported: import E.*.
 	starOwners []*types.ClassSym
@@ -180,6 +183,9 @@ type Checker struct {
 	checked map[*syntax.Lambda]types.Type
 	// refCount numbers the locals holding bound references' receivers.
 	refCount int
+	// thisRefs are the locals holding the receivers of references bound
+	// to this, this::p, which may name members private to this.
+	thisRefs []*types.VarSym
 	// stubs are the variables of builder lambdas' parameter types that
 	// stubInference is inferring, with the run that records constraints on
 	// them.
@@ -218,6 +224,9 @@ type Checker struct {
 	concurrent    map[varFrame]bool
 	nestedAssigns map[*types.VarSym][]types.Type
 	assignsMemo   map[any][]string
+	// loopKept has the vars that the loops being checked keep smart cast
+	// to their types, as loopVars has them.
+	loopKept map[*types.VarSym]types.Type
 	// implied has the smart casts that a local val's not being null
 	// implies: those of the safe calls of its value, as K2's for
 	// val t = a?.b, where t != null means a != null.
@@ -461,6 +470,9 @@ func CheckWith(files []*syntax.File, lib *Library, jobs int) []*syntax.Error {
 		c.inferAll()
 	}
 	for _, c := range checkers {
+		c.checkExposure()
+	}
+	for _, c := range checkers {
 		c.serialBodies()
 	}
 	for _, c := range checkers {
@@ -571,6 +583,7 @@ func (c *Checker) resolveType(ref *syntax.TypeRef) types.Type {
 		return c.innerType(ref)
 	}
 	if a := c.lookupAlias(ref.Name); a != nil && c.lookupTypeParam(ref.Name) == nil {
+		c.checkAliasVisible(a, ref.P)
 		return c.expandAlias(a, ref)
 	}
 	var t types.Type
@@ -812,9 +825,10 @@ func (c *Checker) lookupTypeParam(name string) *types.TypeParamSym {
 			return p
 		}
 	}
-	// An object expression's signatures see the enclosing code's, and so
-	// do its inner classes'.
-	for k := c.lookupCls; k != nil && (k.Anonymous || k.Inner); k = k.Outer {
+	// An object expression's or a local class's signatures see the
+	// enclosing code's, class Local(val x: T) in fun <T> f(), and so do
+	// their inner classes'.
+	for k := c.lookupCls; k != nil && (k.Anonymous || k.Inner || k.Local); k = k.Outer {
 		for _, p := range c.anon[k].tparams {
 			if p.Name == name {
 				return p
@@ -1908,66 +1922,121 @@ func (c *Checker) defNotNull(ref *syntax.TypeRef) types.Type {
 // in out positions (property and return types) and in parameters only in
 // in positions (parameter types). A var property is both.
 func (c *Checker) checkClassVariance(d *syntax.ClassDecl) {
-	variant := false
-	for _, p := range d.Sym.TypeParams {
-		variant = variant || p.Var != types.Inv
-	}
-	if !variant {
+	if !variantClass(d.Sym) {
 		return
 	}
-	propPos := func(mutable bool) types.Variance {
-		if mutable {
-			return types.Inv
-		}
-		return types.Out
-	}
 	// As in Kotlin, private members aren't checked: only this class's
-	// code, which knows its type arguments, sees them.
+	// code, which knows its type arguments, sees them. Those that break
+	// the variance are private to this (see markPrivateToThis); the
+	// types inferred later are looked at when they are.
 	for _, cp := range d.CtorParams {
-		if cp.IsProp && cp.Visibility != syntax.Private {
-			c.checkVariance(cp.PropSym.Type, cp.Type, propPos(cp.Mutable))
+		if cp.IsProp {
+			c.propVariance(cp.PropSym, cp.Type, cp.Mutable, cp.Visibility != syntax.Private)
 		}
 	}
 	for _, m := range d.Members {
 		switch m := m.(type) {
 		case *syntax.PropDecl:
-			if m.Type != nil && m.Visibility != syntax.Private {
-				c.checkVariance(m.Sym.Type, m.Type, propPos(m.Mutable))
+			if m.Recv == nil && (m.Type != nil || m.Visibility == syntax.Private && m.Sym.Resolved) {
+				c.propVariance(m.Sym, m.Type, m.Mutable, m.Visibility != syntax.Private)
 			}
 		case *syntax.FunDecl:
-			if m.Visibility == syntax.Private {
-				continue
+			if m.Recv == nil && (m.Visibility != syntax.Private || m.Sym.Resolved || m.Sym.Infer == nil) {
+				c.funVariance(m, m.Visibility != syntax.Private)
 			}
-			for _, p := range m.Params {
-				c.checkVariance(p.Sym.Type, p.Type, types.In)
-			}
-			if m.Ret != nil {
-				c.checkVariance(m.Sym.Ret, m.Ret, types.Out)
-			}
+		}
+	}
+}
+
+// variantClass reports whether cls has in or out type parameters.
+func variantClass(cls *types.ClassSym) bool {
+	return cls != nil && slices.ContainsFunc(cls.TypeParams, func(p *types.TypeParamSym) bool { return p.Var != types.Inv })
+}
+
+// propVariance checks the type of property v, written as ref (nil if it
+// is inferred), with report, or marks v PrivateToThis if it breaks the
+// variance.
+func (c *Checker) propVariance(v *types.VarSym, ref *syntax.TypeRef, mutable, report bool) {
+	pos := types.Out
+	if mutable {
+		pos = types.Inv
+	}
+	if !c.checkVariance(v.Type, ref, pos, report) {
+		v.PrivateToThis = true
+	}
+}
+
+// funVariance checks the parameter and return types of member function
+// d, as propVariance does.
+func (c *Checker) funVariance(d *syntax.FunDecl, report bool) {
+	ok := true
+	for _, p := range d.Params {
+		ok = c.checkVariance(p.Sym.Type, p.Type, types.In, report) && ok
+	}
+	if !report {
+		// The context parameters, which kotlinc checks only to find the
+		// members private to this.
+		for _, p := range d.Contexts {
+			ok = c.checkVariance(p.Sym.Type, p.Type, types.In, report) && ok
+		}
+	}
+	if d.Ret != nil || !report {
+		ok = c.checkVariance(d.Sym.Ret, d.Ret, types.Out, report) && ok
+	}
+	if !ok {
+		d.Sym.PrivateToThis = true
+	}
+}
+
+// markPrivateToThis marks a private member of a class with in or out
+// type parameters private to this, once its inferred type is known, if
+// the type breaks their variance.
+func (c *Checker) markPrivateToThis(d syntax.Decl, owner *types.ClassSym) {
+	if !variantClass(owner) {
+		return
+	}
+	switch d := d.(type) {
+	case *syntax.PropDecl:
+		if d.Visibility == syntax.Private && d.Recv == nil {
+			c.propVariance(d.Sym, d.Type, d.Mutable, false)
+		}
+	case *syntax.FunDecl:
+		if d.Visibility == syntax.Private && d.Recv == nil && d.AccessorOf == nil {
+			c.funVariance(d, false)
 		}
 	}
 }
 
 var positionNames = map[types.Variance]string{types.Out: "out", types.In: "in", types.Inv: "invariant"}
 
-// checkVariance checks type t, written as ref, in position pos. The
-// parts of ref annotated @UnsafeVariance aren't checked.
-func (c *Checker) checkVariance(t types.Type, ref *syntax.TypeRef, pos types.Variance) {
-	c.checkVariance1(t, t, ref, pos, ref.P)
+// checkVariance checks type t, written as ref, in position pos, and
+// reports whether its type parameters occur only where their variance
+// allows; with report, it reports where they don't. The parts of ref
+// annotated @UnsafeVariance aren't checked.
+func (c *Checker) checkVariance(t types.Type, ref *syntax.TypeRef, pos types.Variance, report bool) bool {
+	at := syntax.Pos{}
+	if ref != nil {
+		at = ref.P
+	}
+	return c.checkVariance1(t, t, ref, pos, at, report)
 }
 
-func (c *Checker) checkVariance1(whole, t types.Type, ref *syntax.TypeRef, pos types.Variance, at syntax.Pos) {
+func (c *Checker) checkVariance1(whole, t types.Type, ref *syntax.TypeRef, pos types.Variance, at syntax.Pos, report bool) bool {
 	if ref != nil && ref.UnsafeVariance {
-		return
+		return true
 	}
+	ok := true
 	switch t.K {
 	case types.TypeParam:
 		if v := t.Param().Var; v != types.Inv && v != pos {
-			c.errorf(at, "type parameter %s is declared as '%s' but occurs in '%s' position in type %s", t.Param().Name, positionNames[v], positionNames[pos], whole)
+			if report {
+				c.errorf(at, "type parameter %s is declared as '%s' but occurs in '%s' position in type %s", t.Param().Name, positionNames[v], positionNames[pos], whole)
+			}
+			ok = false
 		}
 	case types.Class:
 		if t.A == nil {
-			return
+			return true
 		}
 		refs := argRefs(ref, len(t.A.List))
 		for i, a := range t.A.List {
@@ -1990,9 +2059,10 @@ func (c *Checker) checkVariance1(whole, t types.Type, ref *syntax.TypeRef, pos t
 					p = types.Out
 				}
 			}
-			c.checkVariance1(whole, a.T, refs[i], p, at)
+			ok = c.checkVariance1(whole, a.T, refs[i], p, at, report) && ok
 		}
 	}
+	return ok
 }
 
 // argRefs returns the type references that type ref writes its n type
@@ -2070,6 +2140,7 @@ func (c *Checker) inferFun(d *syntax.FunDecl) {
 	c.state, c.trial = saved, trial
 	sym.InProgress = false
 	sym.Resolved = true
+	c.markPrivateToThis(d, sym.Owner)
 }
 
 func (c *Checker) inferProp(d *syntax.PropDecl) {
@@ -2103,6 +2174,7 @@ func (c *Checker) inferProp(d *syntax.PropDecl) {
 	c.state, c.trial = saved, trial
 	sym.InProgress = false
 	sym.Resolved = true
+	c.markPrivateToThis(d, sym.Owner)
 }
 
 // checkBodies checks everything not already checked during inference.

@@ -348,16 +348,12 @@ func (g *gen) valueClass(cd *syntax.ClassDecl) *cf.Class {
 	if cp.Default != nil {
 		// constructor-impl$default, for a call that omits the value,
 		// computes its default value.
-		g.code = c.NewMethod(cf.AccPublic|cf.AccStatic|cf.AccSynthetic, "constructor-impl$default", "("+ud+"ILkotlin/jvm/internal/DefaultConstructorMarker;)"+ud)
+		g.code = c.NewMethod(cf.AccPublic|cf.AccStatic|cf.AccSynthetic, "constructor-impl$default", defaultsDesc("("+ud+")"+ud, 1, ctorMarker))
 		g.prefix = "constructor_impl$default$lambda"
 		g.code.AllocLocal(ud)
-		mask := g.code.AllocLocal("I")
-		g.code.AllocLocal("Lkotlin/jvm/internal/DefaultConstructorMarker;")
+		masks := g.allocMasks(1, ctorMarker)
 		skip := cf.NewLabel()
-		g.code.Local(cf.ILOAD, mask)
-		g.code.Iconst(1)
-		g.code.Op(cf.IAND)
-		g.code.Jump(cf.IFEQ, skip)
+		g.jumpIfPassed(masks, 0, skip)
 		g.exprAs(cp.Default, u.Type)
 		g.code.Local(storeOp(u.Type), 0)
 		g.code.Place(skip)
@@ -388,12 +384,10 @@ func (g *gen) valueCtorCall(x *syntax.Call) {
 	case !x.Ctor.External && f != x.Ctor.Ctor:
 		d = methodDesc(f.Params, x.Ctor.This()) // a secondary constructor
 	}
-	if mask != 0 {
+	if mask.any() {
 		// Arguments omitted: their default values.
-		g.code.Iconst(int32(mask))
-		g.code.Op(cf.ACONST_NULL)
-		i := strings.IndexByte(d, ')')
-		g.code.Invoke(cf.INVOKESTATIC, x.Ctor.Name, "constructor-impl$default", d[:i]+"ILkotlin/jvm/internal/DefaultConstructorMarker;"+d[i:])
+		g.pushMask(mask, len(f.Params))
+		g.code.Invoke(cf.INVOKESTATIC, x.Ctor.Name, "constructor-impl$default", defaultsDesc(d, len(f.Params), ctorMarker))
 		return
 	}
 	g.callStatic(f, x.Ctor.Name, "constructor-impl", d)
@@ -456,12 +450,11 @@ func (g *gen) valueSecondary(cd *syntax.ClassDecl, sc *syntax.SecondaryCtor) {
 	g.check()
 	if hasDefaults(sc.Params) {
 		// constructor-impl$default computes the omitted arguments.
-		i := strings.IndexByte(d, ')')
 		access := uint16(cf.AccPublic | cf.AccStatic | cf.AccSynthetic)
 		if f.Private {
 			access &^= cf.AccPublic
 		}
-		g.code = g.cls.NewMethod(access, "constructor-impl$default", d[:i]+"ILkotlin/jvm/internal/DefaultConstructorMarker;"+d[i:])
+		g.code = g.cls.NewMethod(access, "constructor-impl$default", defaultsDesc(d, len(f.Params), ctorMarker))
 		g.prefix = "constructor_impl$default$lambda"
 		g.fillDefaults(sc.Params, f.Params)
 		for _, p := range f.Params {

@@ -196,7 +196,7 @@ func (c *Checker) anonClass(d *syntax.ClassDecl, what, whats string, name func()
 		// outside the lambdas'.
 		outer = &types.VarSym{Name: "this$0", Kind: types.Local, Type: c.cls.This()}
 		name := c.cls.DisplayName()
-		r := implicitRecv{sym: outer, label: name[strings.LastIndexByte(name, '.')+1:], depth: depth, outer: true}
+		r := implicitRecv{sym: outer, label: name[strings.LastIndexByte(name, '.')+1:], depth: depth, outer: true, class: true}
 		n := 0
 		if cc := c.anon[c.cls]; cc != nil {
 			n = min(len(cc.recvs), len(ctx.recvs))
@@ -234,6 +234,7 @@ func (c *Checker) anonClass(d *syntax.ClassDecl, what, whats string, name func()
 	}
 	c.resolveSupertypes()
 	c.checkSupers()
+	c.genericThrowable(sym, ctx, d.P)
 	for _, d := range c.classes {
 		c.lookupCls = d.Sym
 		c.resolveClass(d)
@@ -274,6 +275,19 @@ func (c *Checker) anonClass(d *syntax.ClassDecl, what, whats string, name func()
 	c.onUndo(func() { c.file.Anon = c.file.Anon[:n] })
 	c.file.Anon = append(c.file.Anon, d)
 	return sym
+}
+
+// genericThrowable reports a local class or an object expression's class,
+// sym, declared at p in code where type parameters are, ctx's, that
+// extends Throwable: catch couldn't tell its instances apart by their
+// type arguments.
+func (c *Checker) genericThrowable(sym *types.ClassSym, ctx *anonCtx, p syntax.Pos) {
+	if len(ctx.tparams) == 0 {
+		return
+	}
+	if thr := c.u.ext.class("java/lang/Throwable"); thr != nil && sym.IsSubclassOf(thr) {
+		c.errorf(p, "inner class of generic class extending 'Throwable' is prohibited")
+	}
 }
 
 // localMembers reports whether the classes declared in d, a local class
@@ -319,7 +333,7 @@ func (c *Checker) localInner(d *syntax.ClassDecl) {
 	for _, r := range oc.recvs {
 		if r.depth >= depth {
 			v := &types.VarSym{Name: r.sym.Name, Kind: types.Local, Type: r.sym.Type, OuterOf: d.OuterThis, OuterCls: outer}
-			r = implicitRecv{sym: v, label: r.label, depth: depth, outer: true}
+			r = implicitRecv{sym: v, label: r.label, depth: depth, outer: true, class: r.class}
 		}
 		ctx.recvs = append(ctx.recvs, r)
 	}

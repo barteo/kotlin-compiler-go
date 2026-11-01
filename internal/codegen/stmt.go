@@ -260,12 +260,31 @@ func (g *gen) forEach(s *syntax.For) {
 	g.code.Place(exit)
 }
 
+// forCalls generates a loop over a collection whose iterator(), hasNext()
+// and next() the checker resolved as calls: IterVar holds the iterator.
+func (g *gen) forCalls(s *syntax.For) {
+	g.stmt(s.IterVar)
+	s.Sym.Slot = g.code.AllocLocal(desc(s.Sym.Type))
+	g.named(s.Sym)
+	top, exit := cf.NewLabel(), cf.NewLabel()
+	g.code.Place(top)
+	g.line(s.P)
+	g.exprAs(s.HasNextX, types.BoolType)
+	g.code.Jump(cf.IFEQ, exit)
+	g.exprAs(s.NextX, s.Sym.Type)
+	g.code.Local(storeOp(s.Sym.Type), s.Sym.Slot)
+	g.pushLoop(s, exit, top)
+	g.loopBody(func() { g.block(s.Body, types.UnitType, false) })
+	g.code.Jump(cf.GOTO, top)
+	g.code.Place(exit)
+}
+
 // invokeOperator calls an operator function without parameters on a
 // receiver of type rt on the stack: a method, or a top-level extension.
 func (g *gen) invokeOperator(f *types.FunSym, rt types.Type) {
 	if f.Ext {
 		g.coerce(rt, f.Recv)
-		g.invokeStatic(f.Facade, f, 0, false)
+		g.invokeStatic(f.Facade, f, nil, false)
 		return
 	}
 	g.invokeOperatorMember(f, rt)
@@ -278,7 +297,7 @@ func (g *gen) invokeOperatorMember(f *types.FunSym, rt types.Type) {
 	if f.Impl && f.Inline == nil {
 		// A class-path value class's: a static method, also taking the
 		// value first, as UIntArray's iterator-impl.
-		g.invokeStatic(f.Facade, f, 0, false)
+		g.invokeStatic(f.Facade, f, nil, false)
 		return
 	}
 	if o := f.Owner; o != nil && o.Value && f.Desc == "" && o.Underlying != nil && types.Unboxed(rt) {
@@ -318,6 +337,10 @@ func (g *gen) stmts(ss []syntax.Stmt) {
 }
 
 func (g *gen) forLoop(s *syntax.For) {
+	if s.IterVar != nil {
+		g.forCalls(s)
+		return
+	}
 	if s.HasNext != nil {
 		g.forEach(s)
 		return
@@ -783,12 +806,12 @@ func (g *gen) lvalue(x syntax.Expr) lvalue {
 			}
 			lv := lvalue{t: t, prepare: prepare, recv: size(f.Recv), reread: true,
 				load: func() {
-					g.invokeFun(nil, f, 0)
+					g.invokeFun(nil, f, nil)
 					g.coerce(types.JVMRet(f), t)
 				},
 				store: func() {
 					g.coerce(t, s.Params[0].Type)
-					g.invokeFun(nil, s, 0)
+					g.invokeFun(nil, s, nil)
 				}}
 			if gd := syntax.SourceInline(f); gd != nil {
 				// Accessors with reified type parameters: copies of their

@@ -850,9 +850,26 @@ func (t *classTable) kparams(ps []*kmeta.Param, scope tscope, ok bool) ([]*types
 		// A parameter of a type kc doesn't support can still be left to
 		// its default value: its type is then Invalid.
 		ok = ok && (pok || def && p.Vararg == nil)
-		syms[i] = &types.VarSym{Name: p.Name, Type: pt, Kind: types.Param, Vararg: p.Vararg != nil, Default: def}
+		syms[i] = &types.VarSym{Name: p.Name, Type: pt, Kind: types.Param, Vararg: p.Vararg != nil, Default: def, NoInfer: kNoInfer(kt)}
 	}
 	return syms, ok
+}
+
+// kNoInfer reports whether a type of metadata, or a type in it, is
+// annotated @NoInfer, as noInfer does for the program's.
+func kNoInfer(t *kmeta.Type) bool {
+	if t == nil {
+		return false
+	}
+	if t.NoInfer {
+		return true
+	}
+	for _, a := range t.Args {
+		if kNoInfer(a.Type) {
+			return true
+		}
+	}
+	return false
 }
 
 // jvmParams splits a method descriptor's parameter types, and returns
@@ -1223,6 +1240,15 @@ func (t *classTable) loadKotlin(cls *types.ClassSym, info *classfile.Info, kc *k
 	cls.Abstract = cls.Interface || mod == kmeta.Abstract || mod == kmeta.Sealed
 	cls.Final = !cls.Interface && mod == kmeta.Final
 	cls.Object = kc.Kind() == kmeta.KindObject || kc.Kind() == kmeta.KindCompanion
+	if kc.IsInner() && info.Inner != nil && info.Inner.Outer != "" {
+		// An inner class: its constructors take the outer class's
+		// instance first, which a subclass's call of one passes, as the
+		// program's inner classes' do. Its own type parameters are all it
+		// has: OuterParams stays 0.
+		if o := t.class(info.Inner.Outer); o != nil {
+			cls.Inner, cls.Outer = true, o
+		}
+	}
 	if kc.Companion != "" {
 		// The companion object is a nested class, whose instance is in a
 		// static field of this class named after it.
@@ -1639,10 +1665,13 @@ func (t *classTable) loadCollection(cls *types.ClassSym) {
 
 // platform returns the names and descriptors of the members of the Java
 // collection interfaces that Kotlin's collection types don't declare,
-// such as forEach(Consumer).
+// such as forEach(Consumer). One that a Kotlin collection type declares
+// isn't, though a subtype gets it from Java: MutableIterator's hasNext(),
+// which Iterator declares.
 func (t *classTable) platform() map[string]bool {
 	t.platformOnce.Do(func() {
 		t.platformSet = map[string]bool{}
+		declared := map[string]bool{}
 		for id := range collectionJVM {
 			cls := t.kclass(id)
 			cls.Ensure()
@@ -1650,9 +1679,14 @@ func (t *classTable) platform() map[string]bool {
 				for _, f := range fs {
 					if f.Platform {
 						t.platformSet[f.Name+f.Desc] = true
+					} else {
+						declared[f.Name+f.Desc] = true
 					}
 				}
 			}
+		}
+		for k := range declared {
+			delete(t.platformSet, k)
 		}
 	})
 	return t.platformSet

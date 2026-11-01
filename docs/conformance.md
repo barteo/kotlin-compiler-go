@@ -127,39 +127,39 @@ Kotlin 2.4.21's tests on `kc`:
 | Box tests | Tests | Share of run |
 |:---|---:|---:|
 | run (of 7,480) | 6,483 | |
-| pass | 6,201 | 95.7% |
-| check error | 180 | 2.8% |
-| codegen error | 16 | 0.2% |
+| pass | 6,270 | 96.7% |
+| check error | 142 | 2.2% |
+| codegen error | 7 | 0.1% |
 | VerifyError and linkage error | 29 | 0.4% |
-| exception and wrong result | 57 | 0.9% |
+| exception and wrong result | 35 | 0.5% |
 | parse/unsupported, crash, timeout | 0 | |
 
 | Diagnostics tests | Tests | Share of run |
 |:---|---:|---:|
 | run (of 10,827) | 7,200 | |
-| rejects invalid | 3,106 | 43.1% |
-| accepts valid | 2,788 | 38.7% |
-| accepts invalid | 712 | 9.9% |
-| rejects valid | 514 | 7.1% |
+| rejects invalid | 3,047 | 42.3% |
+| accepts valid | 2,807 | 39.0% |
+| accepts invalid | 771 | 10.7% |
+| rejects valid | 495 | 6.9% |
 | parse/unsupported | 79 | 1.1% |
 | crash | 1 | 0.0% |
 
-`kc` agrees with `kotlinc` on 82% of the diagnostics tests, and reports
-10,729 of the 18,906 expected errors (57%) on their lines. The reports
+`kc` agrees with `kotlinc` on 81% of the diagnostics tests, and reports
+10,478 of the 18,906 expected errors (55%) on their lines. The reports
 break the failures down; the largest groups are:
 
-- **Silent miscompilation** (86 box tests): `tailrec` functions that
-  overflow the stack (16), `NullPointerException`s (14), `VerifyError`s
-  for bad local variable types (7), and duplicate bridge methods in `Map`
-  implementations (3).
-- **Accepts invalid**: inline-only parameters (`USAGE_IS_NOT_INLINABLE`
-  27), opt-in (26), JVM signature clashes (`ACCIDENTAL_OVERRIDE`,
-  `CONFLICTING_JVM_DECLARATIONS`, 24 each), calls on nullable values
-  (`UNSAFE_CALL` 19), and DSL markers on types (`DSL_SCOPE_VIOLATION`
-  15).
-- **Rejects valid**, by `kc`'s first error: type mismatches (91 + 4
-  box), inference failures (80 + 13), unresolved names and imports (74 +
-  25), and calls on nullable receivers (48 + 9).
+- **Silent miscompilation** (64 box tests): `NullPointerException`s
+  (13), `VerifyError`s for bad local variable types (7), and duplicate
+  bridge methods in `Map` implementations (3).
+- **Accepts invalid**: annotation targets and arguments
+  (`WRONG_ANNOTATION_TARGET` 47, `ANNOTATION_ARGUMENT_MUST_BE_CONST` 34),
+  inline-only parameters (`USAGE_IS_NOT_INLINABLE` 27), opt-in (26),
+  JVM signature clashes (`ACCIDENTAL_OVERRIDE`,
+  `CONFLICTING_JVM_DECLARATIONS`, 24 each), and DSL markers on types
+  (`DSL_SCOPE_VIOLATION` 15).
+- **Rejects valid**, by `kc`'s first error: type mismatches (92 + 4
+  box), inference failures (80 + 13), unresolved names and imports (73 +
+  11), and calls on nullable receivers (48 + 9).
 
 The committed `.tsv` files serve as a ratchet: a change must make
 `-baseline` report no regressions, and the tests it fixes measure it.

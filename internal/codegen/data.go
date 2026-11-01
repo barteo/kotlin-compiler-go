@@ -115,21 +115,16 @@ func (g *gen) dataMembers(cd *syntax.ClassDecl) {
 		g.check()
 
 		// copy$default: an omitted argument is the property's value.
-		i := strings.IndexByte(d, ')')
-		g.code = g.cls.NewMethod(cf.AccPublic|cf.AccStatic|cf.AccSynthetic, f.JVM()+"$default", "("+self+d[1:i]+"ILjava/lang/Object;"+d[i:])
+		g.code = g.cls.NewMethod(cf.AccPublic|cf.AccStatic|cf.AccSynthetic, f.JVM()+"$default", defaultsDesc("("+self+d[1:], len(f.Params), objMarker))
 		g.code.AllocLocal(self)
 		for _, p := range f.Params {
 			p.Slot = g.code.AllocLocal(paramDesc(p.Type))
 			g.named(p)
 		}
-		mask := g.code.AllocLocal("I")
-		g.code.AllocLocal("Ljava/lang/Object;")
+		masks := g.allocMasks(len(f.Params), objMarker)
 		for j, p := range f.Params {
 			skip := cf.NewLabel()
-			g.code.Local(cf.ILOAD, mask)
-			g.code.Iconst(int32(1) << j)
-			g.code.Op(cf.IAND)
-			g.code.Jump(cf.IFEQ, skip)
+			g.jumpIfPassed(masks, j, skip)
 			field(0, props[j])
 			g.code.Local(storeOp(p.Type), p.Slot)
 			g.code.Place(skip)

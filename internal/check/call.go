@@ -512,7 +512,8 @@ func hasLambda(args []syntax.Expr) bool {
 	return false
 }
 
-// typeArgs resolves a call's explicit type arguments.
+// typeArgs resolves a call's explicit type arguments. Those written _,
+// which the call infers, are left invalid: see resolve1.
 func (c *Checker) typeArgs(x *syntax.Call) []types.Type {
 	if x.TypeArgs == nil {
 		return nil
@@ -524,9 +525,103 @@ func (c *Checker) typeArgs(x *syntax.Call) []types.Type {
 			ts[i] = types.InvalidType
 			continue
 		}
+		if a.Underscore {
+			ts[i] = types.InvalidType
+			continue
+		}
 		ts[i] = c.resolveType(a.Type)
 	}
 	return ts
+}
+
+// underscoreSub returns the substitution of type parameters tparams of a
+// call, foo<Int, _>(), whose type arguments typeArgs, resolved as targs,
+// include _: the others are theirs, and those _ are variables of sys,
+// which the call infers. Bounds that mention both relate them, as they
+// relate variables (see fresh): C : Component<P, *> gives P in
+// child<_, MyComponent<X>>(), and C in child<MyProps<X>, _>(). A given
+// one's violated bound adds nothing; typeArgBounds reports it. sys may be
+// replaced.
+func underscoreSub(sys *system, tparams []*types.TypeParamSym, recv types.Subst, typeArgs []*syntax.TypeArg, targs []types.Type, pos syntax.Pos) (types.Subst, *system) {
+	base := make(types.Subst, len(recv)+len(targs))
+	for p, a := range recv {
+		base[p] = a
+	}
+	var inferred []*types.TypeParamSym
+	for j, p := range tparams {
+		if typeArgs[j].Underscore {
+			inferred = append(inferred, p)
+		} else {
+			base[p] = types.Arg{T: targs[j]}
+		}
+	}
+	sub := sys.fresh(inferred, base, pos)
+	given := func(t types.Type) bool {
+		return t.IsParam() && slices.Contains(tparams, t.Param()) && !slices.Contains(inferred, t.Param())
+	}
+	relate := func(a, b types.Type) {
+		trial := sys.clone()
+		trial.sub(a, b)
+		if trial.ok {
+			sys = trial
+		}
+	}
+	for j, p := range tparams {
+		for _, b := range p.Bounds {
+			switch {
+			case typeArgs[j].Underscore && b.Has(given):
+				relate(sub[p].T, sub.Apply(b)) // U : T, T given
+			case !typeArgs[j].Underscore && targs[j].K != types.Invalid && sub.Apply(b).HasVars():
+				relate(targs[j], sub.Apply(b)) // C : Component<P, *>, P inferred
+			}
+		}
+	}
+	return sub, sys
+}
+
+// typeArgsFit reports whether the given type arguments of a call, targs,
+// written as typeArgs, are within the bounds of callee cl's type
+// parameters, as far as those don't depend on arguments it infers (_).
+func (c *Checker) typeArgsFit(cl callee, typeArgs []*syntax.TypeArg, targs []types.Type) bool {
+	sub := make(types.Subst, len(cl.recv)+len(targs))
+	for p, a := range cl.recv {
+		sub[p] = a
+	}
+	for j, p := range cl.tparams {
+		if !typeArgs[j].Underscore {
+			sub[p] = types.Arg{T: targs[j]}
+		}
+	}
+	for j, p := range cl.tparams {
+		t := targs[j]
+		if typeArgs[j].Underscore || t.K == types.Invalid {
+			continue
+		}
+		for _, b := range p.Bounds {
+			if b = sub.Apply(b); !b.HasParams() && b.K != types.Invalid && !c.subtype(t, b) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// typeArgBounds checks the explicit type arguments targs of call x, of
+// candidate cd, against their parameters' bounds, with the other type
+// arguments as the call inferred them: T : Element<K> in
+// Container<Alpha, BetaKey, _>(). Arguments _ were inferred within them.
+func (c *Checker) typeArgBounds(x *syntax.Call, cd *candidate, targs []types.Type, s *system) {
+	for j, p := range cd.tparams {
+		t := targs[j]
+		if x.TypeArgs[j].Underscore || t.K == types.Invalid {
+			continue
+		}
+		for _, b := range p.Bounds {
+			if b = s.final(cd.sub.Apply(b)); !b.HasVars() && b.K != types.Invalid && !c.subtype(t, b) {
+				c.errorf(x.TypeArgs[j].P, "type argument is not within its bounds: type parameter '%s' must be subtype of '%s', but actual: '%s'", p.Name, b, t)
+			}
+		}
+	}
 }
 
 func countArgs(n int) string {
@@ -552,6 +647,8 @@ func (c *Checker) resolve(x *syntax.Call, cands []callee, want types.Type, sink 
 	case f.Name != "<init>":
 		if !c.funVisible(f) {
 			c.invisibleFun(x.Fun.Pos(), f)
+		} else if m, ok := x.Fun.(*syntax.Member); ok && f.PrivateToThis {
+			c.checkPrivateToThis(m.X, f.Name, f.Owner, m.P)
 		}
 	case f.Owner != nil && !f.Owner.External && ctorVisibility(f) == syntax.Private && !c.canSee(syntax.Private, f.Owner, ""):
 		// A superclass's private constructor, which only the classes
@@ -646,12 +743,29 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			return types.InvalidType
 		}
 		byArity = ok
+		// A candidate whose given type arguments violate its bounds
+		// doesn't apply, unless none fits: then typeArgBounds reports it.
+		// x.myUse<AutoCloseable, Int>() isn't the overload of T2 : Closeable.
+		if len(byArity) > 1 {
+			var fits []callee
+			for _, cl := range byArity {
+				if c.typeArgsFit(cl, x.TypeArgs, targs) {
+					fits = append(fits, cl)
+				}
+			}
+			if len(fits) > 0 {
+				byArity = fits
+			}
+		}
 	}
 
 	cs := make([]*candidate, len(byArity))
 	for i, cl := range byArity {
 		cd := &candidate{callee: cl, sys: newSystem(c)}
-		if targs != nil {
+		switch {
+		case targs != nil && hasUnderscore(x.TypeArgs):
+			cd.sub, cd.sys = underscoreSub(cd.sys, cl.tparams, cl.recv, x.TypeArgs, targs, x.P)
+		case targs != nil:
 			cd.sub = make(types.Subst, len(cl.recv)+len(targs))
 			for p, a := range cl.recv {
 				cd.sub[p] = a
@@ -659,7 +773,7 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			for j, p := range cl.tparams {
 				cd.sub[p] = types.Arg{T: targs[j]}
 			}
-		} else {
+		default:
 			cd.sub = cd.sys.fresh(cl.tparams, cl.recv, x.P)
 		}
 		cd.params = make([]types.Type, len(x.Args))
@@ -824,6 +938,9 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 	}
 	if hasReified(f) {
 		sys.fixups = append(sys.fixups, func(s *system) { c.reifiedArgs(x, f, best.sub, s) })
+	}
+	if targs != nil {
+		sys.fixups = append(sys.fixups, func(s *system) { c.typeArgBounds(x, best, targs, s) })
 	}
 	sys.fixups = append(sys.fixups, func(s *system) {
 		for i, a := range x.Args {

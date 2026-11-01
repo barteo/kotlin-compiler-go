@@ -512,6 +512,45 @@ func (c *Checker) rangeValue(x *syntax.Binary, want types.Type) types.Type {
 	return infix("step", checked(x.X, rt))
 }
 
+// rangeMember reports whether name is a member of a receiver of type t
+// that makes a range, called with n arguments: an integral number's or a
+// Char's rangeTo or rangeUntil, intrinsics without a JVM method.
+func rangeMember(t types.Type, name string, n int) bool {
+	return (name == "rangeTo" || name == "rangeUntil") && n == 1 && (t == types.LongType || isIntLike(t) || t == types.CharType)
+}
+
+// memberRange checks a call of rangeTo or rangeUntil on an integral
+// number or a Char, r.rangeTo(b), as the range r..b used as a value, and
+// r.rangeUntil(b) as r until b: x becomes the call that makes it. It
+// reports false, checking only the argument, if that doesn't fit, for
+// an extension to take the call.
+func (c *Checker) memberRange(x *syntax.Call, fn *syntax.Member, rt types.Type, want types.Type) (types.Type, bool) {
+	if len(x.Names) > 0 || x.Trailing() {
+		return types.InvalidType, false
+	}
+	c.noSpread(x)
+	at := c.value(x.Args[0], noWant)
+	x.Args[0] = checked(x.Args[0], at)
+	a := at.Flex()
+	if rt == types.CharType && a != types.CharType || rt != types.CharType && a != types.LongType && !isIntLike(a) {
+		return types.InvalidType, false
+	}
+	op := syntax.RANGE
+	if fn.Name == "rangeUntil" {
+		op = syntax.RANGE_LT
+	}
+	b := &syntax.Binary{Op: op, X: checked(fn.X, rt), Y: x.Args[0]}
+	b.P = x.P
+	t := c.rangeValue(b, want)
+	if b.Call == nil || t.K == types.Invalid {
+		return t, true
+	}
+	p := x.P
+	*x = *b.Call
+	x.P = p
+	return t, true
+}
+
 // nullableIn reports whether x in r, for a range r written in place of
 // type rt, tests a nullable x of r's element type, as kotlinc does with
 // an inline contains of the standard library: IntRange.contains(Int?).
@@ -831,7 +870,7 @@ func (c *Checker) binary(x *syntax.Binary, want types.Type, allowRange bool) typ
 	case syntax.EQ, syntax.NE, syntax.EQ_EQ_EQ, syntax.NOT_EQ_EQ:
 		xt := c.value(x.X, noWant)
 		yt := c.value(x.Y, xt)
-		x.OpType = c.equality(x.P, x.Op, xt, yt)
+		x.OpType = c.castEquality(x, xt, yt)
 		return types.BoolType
 	}
 
@@ -850,6 +889,11 @@ func (c *Checker) binary(x *syntax.Binary, want types.Type, allowRange bool) typ
 			return c.binaryOp(x, xt, want)
 		}
 	}
+	if name := binaryOpName(x.Op); name != "" && nullableOperand(xt) && c.opExtension(xt, name, x.Y) {
+		// An operator extension of a nullable receiver: Int?.plus(Int),
+		// Long?.compareTo(Long?).
+		return c.binaryOp(x, xt, want)
+	}
 	yWant := xt
 	switch x.Y.(type) {
 	case *syntax.If, *syntax.When, *syntax.Try:
@@ -864,7 +908,9 @@ func (c *Checker) binary(x *syntax.Binary, want types.Type, allowRange bool) typ
 	}
 	switch x.Op {
 	case syntax.PLUS:
-		if xt.NonNull() == types.StringType {
+		if xt.NonNull() == types.StringType || xt.K == types.Null {
+			// null + x is the built-in String?.plus(Any?), as s + x for
+			// a String? s: "null" and x's string.
 			x.OpType = types.StringType
 			return types.StringType
 		}
@@ -876,11 +922,17 @@ func (c *Checker) binary(x *syntax.Binary, want types.Type, allowRange bool) typ
 		fallthrough
 	case syntax.MINUS, syntax.STAR, syntax.SLASH, syntax.PERCENT:
 		op, t, ok := arith(x.Op, xt, yt)
-		if !ok && !builtinOperand(yt) {
+		if !ok && (!builtinOperand(yt) || c.opExtension(xt, opNames[x.Op], checked(x.Y, yt))) {
 			// An operator extension of a built-in type: 3 * v is
 			// 3.times(v).
 			x.Y = checked(x.Y, yt)
 			return c.binaryOp(x, xt, want)
+		}
+		if !ok && (never(xt) || never(yt)) {
+			// An operand that never completes, as todo() * "": the
+			// operator is dead code.
+			x.OpType = types.NothingType
+			return types.NothingType
 		}
 		if !ok {
 			c.errorf(x.P, "operator '%s' cannot be applied to %s and %s", x.Op, xt, yt)
@@ -898,10 +950,11 @@ func (c *Checker) binary(x *syntax.Binary, want types.Type, allowRange bool) typ
 			x.OpType = types.StringType
 		case c.comparable(xt, yt):
 			x.OpType = types.ClassType(c.u.ext.class("java/lang/Comparable"))
-		case xt.IsParam():
+		case xt.IsParam(), c.opExtension(xt, "compareTo", checked(x.Y, yt)):
 			// An operator extension of a type parameter: a context
 			// parameter's T.compareTo, as Arrow's x <= y in
-			// with(comparator).
+			// with(comparator). Or of a built-in type, for another type
+			// than its own compareTo takes: Int.compareTo(Char).
 			x.Y = checked(x.Y, yt)
 			return c.binaryOp(x, xt, want)
 		default:
@@ -1017,6 +1070,62 @@ func (c *Checker) equality(p syntax.Pos, op syntax.Kind, xt, yt types.Type) type
 	return xt.Nullable()
 }
 
+// castEquality is equality for the operands of x, of types xt and yt,
+// where an operand smart-cast to another class is compared as Kotlin
+// does: two numbers, as numbers of the wider type, -0.0 == 0 for x is
+// Double and y is Int, and other operands whose declared types may be
+// compared as values of those types, with equals.
+func (c *Checker) castEquality(x *syntax.Binary, xt, yt types.Type) types.Type {
+	dx, cx := declaredOf(x.X)
+	dy, cy := declaredOf(x.Y)
+	if !cx && !cy || xt.K == types.Invalid || yt.K == types.Invalid {
+		return c.equality(x.P, x.Op, xt, yt)
+	}
+	if !cx {
+		dx = xt
+	}
+	if !cy {
+		dy = yt
+	}
+	n := len(c.errs)
+	if xn, yn := xt.Flex().NonNull(), yt.Flex().NonNull(); xn.IsNumeric() && yn.IsNumeric() && xn != yn {
+		if t := c.equality(x.P, syntax.EQ, dx, dy); t.K != types.Invalid {
+			t = types.Wider(xn, yn)
+			if types.MayBeNull(xt) || types.MayBeNull(yt) {
+				t = t.Nullable()
+			}
+			return t
+		}
+		c.errs = c.errs[:n]
+	}
+	if t := c.equality(x.P, x.Op, xt, yt); t.K != types.Invalid {
+		return t
+	}
+	m := len(c.errs)
+	if t := c.equality(x.P, x.Op, dx, dy); t.K != types.Invalid {
+		// Compared as the declared types: the operands are read as those.
+		c.errs = c.errs[:n]
+		for _, e := range []syntax.Expr{x.X, x.Y} {
+			if id, ok := e.(*syntax.Ident); ok && id.Cast {
+				id.Cast = false
+				id.SetType(id.Sym.Type)
+			}
+		}
+		return t
+	}
+	c.errs = c.errs[:m]
+	return types.InvalidType
+}
+
+// declaredOf returns the declared type of x if x is a variable that a
+// smart cast gives another class.
+func declaredOf(x syntax.Expr) (types.Type, bool) {
+	if id, ok := x.(*syntax.Ident); ok && id.Cast && id.Sym != nil && id.Sym.Type.K != types.Invalid {
+		return id.Sym.Type, true
+	}
+	return types.Type{}, false
+}
+
 // floatOf returns Double or Float if values of type t are of that type:
 // t is it, nullable or not, or a type parameter bounded by it, or else
 // InvalidType.
@@ -1037,8 +1146,17 @@ func floatOf(t types.Type) types.Type {
 // class can be subclassed. ktor compares a Continuation<TSubject> with an
 // object that is a Continuation<Unit>.
 func (c *Checker) mayBeSame(x, y types.Type) bool {
-	if x.K != types.Class || y.K != types.Class {
+	if x.K != types.Class && y.K == types.Class {
+		x, y = y, x
+	}
+	if x.K != types.Class {
 		return false
+	}
+	if y.K != types.Class {
+		// A built-in type and a supertype of its class with other type
+		// arguments: Double and Comparable<Float>.
+		_, ok := c.asSuper(y, x.C)
+		return ok
 	}
 	if _, ok := c.asSuper(x, y.C); ok {
 		return true
@@ -1048,6 +1166,11 @@ func (c *Checker) mayBeSame(x, y types.Type) bool {
 	}
 	x.C.Ensure()
 	y.C.Ensure()
+	if x.C.Annotation || y.C.Annotation {
+		// As with kotlinc, an annotation may be compared with any
+		// object: A == B for two annotation classes.
+		return true
+	}
 	return x.C.Interface && !y.C.Final || y.C.Interface && !x.C.Final
 }
 
@@ -1639,6 +1762,8 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 			}
 			c.invisibleProp(x.P, p)
 			x.Prop, found = p, true
+		} else if ensureVar(p); p.PrivateToThis {
+			c.checkPrivateToThis(x.X, x.Name, p.Owner, x.P)
 		}
 		ensureVar(x.Prop)
 		t = c.memberSubst(rt, x.Prop.Owner).Apply(x.Prop.Type)
@@ -2116,7 +2241,13 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 				return c.call(x, want, sink)
 			} else if n != nil {
 				fn.T = rt
-				if alias != nil && len(x.TypeArgs) > 0 {
+				if alias != nil && hasUnderscore(x.TypeArgs) {
+					// outer.Alias<_>(): the class's, which the call infers.
+					if !c.aliasUnderscores(x, alias, n, fn.P) {
+						c.args(x, nil)
+						return types.InvalidType
+					}
+				} else if alias != nil && len(x.TypeArgs) > 0 {
 					// outer.Alias<A>(): the alias's type arguments.
 					if want = c.expandAlias(alias, &syntax.TypeRef{P: fn.P, Name: alias.Name, Args: x.TypeArgs}); want.K == types.Invalid {
 						c.args(x, nil)
@@ -2428,8 +2559,30 @@ func (c *Checker) extShadows(name string, rt types.Type, x *syntax.Call) bool {
 	return false
 }
 
+// builtinShadowed reports whether an extension comes before the built-in
+// operator function name of a number or a Char for call x, as extShadows
+// reports: not when the member takes the argument, as members win over
+// extensions. A unary one always does: this.inc() in an Int?.inc() for a
+// this known not to be null, compareTo(c.code) in an Int.compareTo(Char).
+func (c *Checker) builtinShadowed(name string, rt types.Type, x *syntax.Call) bool {
+	if len(x.Args) == 0 || !c.extShadows(name, rt, x) {
+		return false
+	}
+	if t := c.argTypes(x)[0]; t.K != types.Invalid {
+		if _, _, ok := types.OperatorFunType(name, rt, t.Flex()); ok {
+			return false
+		}
+	}
+	return true
+}
+
 func (c *Checker) builtinMember(x *syntax.Call, fn *syntax.Member, rt types.Type, want types.Type, sink *system) types.Type {
-	if n, ok := types.OperatorFuns[fn.Name]; ok && (rt.IsNumeric() || rt == types.CharType) && len(x.Args) == n && !c.extShadows(fn.Name, rt, x) {
+	if rangeMember(rt, fn.Name, len(x.Args)) && !fn.Safe {
+		if t, ok := c.memberRange(x, fn, rt, want); ok {
+			return t
+		}
+	}
+	if n, ok := types.OperatorFuns[fn.Name]; ok && (rt.IsNumeric() || rt == types.CharType) && len(x.Args) == n && !c.builtinShadowed(fn.Name, rt, x) {
 		// An operator function called by name, 1.plus(2), is the
 		// operator: 1 + 2.
 		c.noSpread(x)

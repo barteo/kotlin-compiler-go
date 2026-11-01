@@ -474,6 +474,10 @@ func (c *Checker) resolveImports() {
 			}
 			if v, ok := user.Vars[simple]; ok {
 				c.userVars[alias], found = v, true
+			} else if v, ok := c.fileVars[simple]; ok && user == c.pkg {
+				c.userVars[alias], found = v, true
+			} else if v, ok := user.PrivateVars[simple]; ok {
+				c.userVars[alias], found = v, true // reported below
 			}
 			if gs := user.ExtProps[simple]; len(gs) > 0 {
 				for _, g := range gs {
@@ -484,6 +488,9 @@ func (c *Checker) resolveImports() {
 				found = true
 			}
 			if found {
+				if c.importsOnlyHidden(user, simple) {
+					c.errorf(imp.P, "cannot access '%s': it is private in file", simple)
+				}
 				continue
 			}
 		}
@@ -494,6 +501,7 @@ func (c *Checker) resolveImports() {
 		fs := ext.pkgFuns(pkg, simple)
 		if cls != nil {
 			c.imports[alias] = cls
+			c.classImports = append(c.classImports, memberImport{owner: cls, name: simple, p: imp.P, path: pkg})
 		}
 		var ta *types.AliasSym
 		if cls == nil && ext.kotlin && pkg != "" {
@@ -714,17 +722,30 @@ func (c *Checker) findClassifier1(name string) classifier {
 	if a, ok := c.aliasImports[name]; ok {
 		return classifier{alias: a}
 	}
-	if cls, ok := c.pkg.Classes[name]; ok {
+	// Another file's private class or typealias is found only if nothing
+	// else is: pack1's private SomeClass doesn't hide pack2's by import
+	// pack1.*, import pack2.*.
+	var hidden classifier
+	visible := func(k classifier) bool {
+		if c.privateElsewhere(k) {
+			if hidden == (classifier{}) {
+				hidden = k
+			}
+			return false
+		}
+		return true
+	}
+	if cls, ok := c.pkg.Classes[name]; ok && visible(classifier{cls: cls}) {
 		return classifier{cls: cls}
 	}
-	if a, ok := c.pkg.Aliases[name]; ok {
+	if a, ok := c.pkg.Aliases[name]; ok && visible(classifier{alias: a}) {
 		return classifier{alias: a}
 	}
 	for _, p := range c.userStars {
-		if cls, ok := p.Classes[name]; ok {
+		if cls, ok := p.Classes[name]; ok && visible(classifier{cls: cls}) {
 			return classifier{cls: cls}
 		}
-		if a, ok := p.Aliases[name]; ok {
+		if a, ok := p.Aliases[name]; ok && visible(classifier{alias: a}) {
 			return classifier{alias: a}
 		}
 	}
@@ -736,7 +757,10 @@ func (c *Checker) findClassifier1(name string) classifier {
 	if cls := c.extClass(name); cls != nil {
 		return classifier{cls: cls}
 	}
-	return classifier{alias: c.extAlias(name)}
+	if a := c.extAlias(name); a != nil {
+		return classifier{alias: a}
+	}
+	return hidden
 }
 
 // extAlias resolves a simple name of a typealias on the class path that
@@ -1987,15 +2011,20 @@ func (c *Checker) javaCall(x *syntax.Call, fn *syntax.Member, rt types.Type, wan
 			// Resolving checks the arguments; lambdas are checked once.
 			n := len(c.errs)
 			if t := c.resolve(x, cands, want, sink); len(c.errs) == n {
-				return t
+				return c.mapGet(x, fn, cls, t)
 			}
 			c.errs = c.errs[:n]
 			return c.resolve(x, exts, want, sink)
 		}
 	}
-	t := c.resolve(x, cands, want, sink)
+	return c.mapGet(x, fn, cls, c.resolve(x, cands, want, sink))
+}
+
+// mapGet returns the type t of a call x of a member of cls, or t? for
+// get(key) of a Java Map: Kotlin's Map.get returns V?.
+func (c *Checker) mapGet(x *syntax.Call, fn *syntax.Member, cls *types.ClassSym, t types.Type) types.Type {
 	if fn.Name == "get" && len(x.Args) == 1 && t.K != types.Invalid && c.isSubclassOf(cls, "java/util/Map") {
-		t = t.Nullable() // Kotlin's Map.get returns V?
+		return t.Nullable()
 	}
 	return t
 }
@@ -2008,7 +2037,7 @@ func (c *Checker) allPlatform(ms []*types.FunSym) bool {
 		return false
 	}
 	for _, f := range ms {
-		if !f.Platform && !(f.Owner != nil && f.Owner.External && c.u.ext.platform()[f.Name+f.Desc]) {
+		if !(f.Platform || f.Owner != nil && f.Owner.External) || !c.u.ext.platform()[f.Name+f.Desc] {
 			return false
 		}
 	}

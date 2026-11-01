@@ -25,11 +25,9 @@ func (g *gen) annotationNew(x *syntax.Call) {
 	d := methodDesc(x.Sym.Params, types.UnitType)
 	g.code.New(impl)
 	g.code.Op(cf.DUP)
-	if mask := g.callArgs(x, x.Sym); mask != 0 {
-		g.code.Iconst(int32(mask))
-		g.code.Op(cf.ACONST_NULL)
-		i := strings.IndexByte(d, ')')
-		d = d[:i] + "ILkotlin/jvm/internal/DefaultConstructorMarker;" + d[i:]
+	if mask := g.callArgs(x, x.Sym); mask.any() {
+		g.pushMask(mask, len(x.Sym.Params))
+		d = defaultsDesc(d, len(x.Sym.Params), ctorMarker)
 	}
 	g.code.Invoke(cf.INVOKESPECIAL, impl, "<init>", d)
 	g.code.Checkcast(x.Ctor.Name)
@@ -103,24 +101,19 @@ func (g *gen) annotationClassImpl(name, outer string, ann *types.ClassSym, line 
 	// The constructor for omitted arguments computes their default
 	// values.
 	if hasDefault(params) {
-		i := strings.IndexByte(d, ')')
-		g.code = c.NewMethod(cf.AccPublic|cf.AccSynthetic, "<init>", d[:i]+"ILkotlin/jvm/internal/DefaultConstructorMarker;"+d[i:])
+		g.code = c.NewMethod(cf.AccPublic|cf.AccSynthetic, "<init>", defaultsDesc(d, len(params), ctorMarker))
 		g.code.AllocLocal(self)
 		for i, p := range params {
 			slots[i] = g.code.AllocLocal(desc(p.Type))
 		}
-		mask := g.code.AllocLocal("I")
-		g.code.AllocLocal("Lkotlin/jvm/internal/DefaultConstructorMarker;")
+		masks := g.allocMasks(len(params), ctorMarker)
 		for j, p := range params {
 			lib := ann.AnnotationDefaults[p.Name] // a class-path annotation's
-			if !p.Default || j >= 32 || lib == nil && (j >= len(defaults) || defaults[j].Default == nil) {
+			if !p.Default || lib == nil && (j >= len(defaults) || defaults[j].Default == nil) {
 				continue
 			}
 			skip := cf.NewLabel()
-			g.code.Local(cf.ILOAD, mask)
-			g.code.Iconst(int32(1) << j)
-			g.code.Op(cf.IAND)
-			g.code.Jump(cf.IFEQ, skip)
+			g.jumpIfPassed(masks, j, skip)
 			if lib != nil {
 				g.elementValue(*lib, p.Type, outer, line)
 			} else {
