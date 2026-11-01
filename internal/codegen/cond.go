@@ -222,7 +222,7 @@ func (g *gen) equals(left func(), lt types.Type, right syntax.Expr, opType types
 		} else {
 			g.code.Jump(cf.IFNONNULL, l)
 		}
-	case opType.N && opType.NonNull().IsNumeric() && (lt.Flex().NonNull() != opType.NonNull() || rt.Flex().NonNull() != opType.NonNull()):
+	case opType.N && mixedNumbers(lt, rt):
 		// Numbers of two types, smart casts of which one may be null, as
 		// numbers of the wider type: x is Double? && y is Int? && x == y.
 		a, b := lt.Flex().NonNull(), rt.Flex().NonNull()
@@ -338,6 +338,13 @@ func (g *gen) bound(e syntax.Expr, t types.Type) func() {
 	g.exprAs(e, t)
 	g.code.Local(storeOp(t), slot)
 	return func() { g.code.Local(loadOp(t), slot) }
+}
+
+// mixedNumbers reports whether x and y are number types, nullable or
+// not, of two kinds: Double? and Int.
+func mixedNumbers(x, y types.Type) bool {
+	x, y = x.Flex().NonNull(), y.Flex().NonNull()
+	return x.IsNumeric() && y.IsNumeric() && x != y
 }
 
 // areEqual replaces two nullable Doubles or Floats, as f says, with
