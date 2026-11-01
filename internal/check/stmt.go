@@ -364,7 +364,7 @@ func (c *Checker) stmt(s syntax.Stmt, valueUsed bool, want types.Type) types.Typ
 		loop := &loopCtx{node: s, label: s.Label, lambdas: len(c.lambdas)}
 		// The vars the loop assigns lose their narrowing in it and after
 		// it.
-		vars := c.watchedVars(s.Cond, s.Body)
+		vars, unkeep := c.loopVars(s.Cond, s.Body)
 		if s.Do {
 			// The condition sees the body's declarations.
 			c.push()
@@ -389,6 +389,7 @@ func (c *Checker) stmt(s syntax.Stmt, valueUsed bool, want types.Type) types.Typ
 			c.loops = c.loops[:len(c.loops)-1]
 			c.pop()
 		}
+		unkeep()
 		c.reset(vars)
 		if lit, ok := s.Cond.(*syntax.BoolLit); ok && lit.Val && !loop.hasBreak {
 			s.Infinite = true
@@ -426,7 +427,7 @@ func (c *Checker) stmt(s syntax.Stmt, valueUsed bool, want types.Type) types.Typ
 			}
 			s.Type = nil
 		}
-		vars := c.watchedVars(s.Body)
+		vars, unkeep := c.loopVars(s.Body)
 		c.push()
 		c.reset(vars)
 		s.Sym = &types.VarSym{Name: s.Var, Type: elem, Kind: types.Local}
@@ -435,6 +436,7 @@ func (c *Checker) stmt(s syntax.Stmt, valueUsed bool, want types.Type) types.Typ
 		c.block(s.Body, noWant, false)
 		c.loops = c.loops[:len(c.loops)-1]
 		c.pop()
+		unkeep()
 		c.reset(vars)
 	case *syntax.Block:
 		return c.block(s, want, valueUsed)
@@ -994,6 +996,12 @@ func (c *Checker) assign(s *syntax.Assign) {
 			b.P = s.P
 			return b
 		})
+		if kt, ok := c.loopKept[v]; v != nil && ok && len(c.errs) == n {
+			// A loop around kept v smart cast to kt for its whole body.
+			if t := c.scope.narrowed(v); t != kt {
+				c.errorf(s.P, "smart cast to '%s' is impossible, because '%s' is a local variable that the loop changes to %s", kt, v.Name, t)
+			}
+		}
 		return
 	}
 	if v != nil {

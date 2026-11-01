@@ -109,8 +109,49 @@ fun equality() {
     println(d == (1.5 as Comparable<Double>))
 }
 
+// A loop that only increments, decrements or assigns a smart-cast var with
+// op= keeps its smart cast.
+fun loops() {
+    var i: Int? = 1
+    if (i != null) {
+        while (i != 10) {
+            i++
+        }
+        val n: Int = i
+        print("$n ")
+    }
+    var a: Any = 'a'
+    if (a is Char) {
+        do {
+            ++a
+        } while (a < 'e')
+        val c: Char = a
+        print("$c ")
+    }
+    var b: Byte? = 3
+    var steps = 0
+    if (b != null) {
+        for (k in 1..3) {
+            b--
+            steps += b
+        }
+        val r: Byte = b
+        print("$r $steps ")
+    }
+    var l: Long? = 1L
+    if (l != null) {
+        while (l < 100) {
+            l *= 3
+            l -= 1
+        }
+        val m: Long = l
+        println(m)
+    }
+}
+
 fun main() {
     incrementSmartCast()
+    loops()
     nullableOperands()
     equality()
     println(compoundOnAny("O"))

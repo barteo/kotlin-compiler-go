@@ -59,3 +59,46 @@ fun captured(): Int {
     if (z != null) return z.length + reads()
     return 0
 }
+
+// A loop keeps the smart cast of a var it only increments, decrements and
+// assigns with op=, but not of one it also assigns another value, or that
+// a function in it assigns.
+operator fun Int.plus(s: String): Int? = if (s == "") null else this + s.length
+
+fun loopSmartCasts(): Int {
+    var i: Int? = 1
+    if (i != null) {
+        while (i != 10) {
+            i++
+            i -= 2
+        }
+        val n: Int = i
+    }
+    var j: Int? = 1
+    if (j != null) {
+        while (j != 10) {
+            j++ // ERROR operator '++' cannot be applied to Int?
+            j = null
+        }
+    }
+    var k: Int? = 1
+    if (k != null) {
+        while (k != 10) {
+            k-- // ERROR operator '--' cannot be applied to Int?
+            fun clear() { k = null }
+        }
+    }
+    var a: Any = 1
+    if (a is Int) {
+        do {
+            a += 1 // ERROR operator '+=' cannot be applied to Any
+        } while (a != 10)
+    }
+    var m: Int? = 1
+    if (m != null) {
+        while (m != 10) {
+            m += "" // ERROR smart cast to 'Int' is impossible, because 'm' is a local variable that the loop changes to Int?
+        }
+    }
+    return 0
+}
