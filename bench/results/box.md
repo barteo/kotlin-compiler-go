@@ -2,19 +2,19 @@
 
 The box tests of JetBrains/kotlin v2.4.21 (`compiler/testData/codegen/box`), each compiled by kc and run: its `box()` must return `"OK"`. `bench/kotlin-tests.sh box` writes this file, and [docs/conformance.md](../../docs/conformance.md) explains it.
 
-Of 7480 test files, 997 are skipped and 6483 run. 6186 pass (95.4%).
+Of 7480 test files, 997 are skipped and 6483 run. 6231 pass (96.1%).
 
 | Result | Tests | Share |
 |:---|---:|---:|
-| pass | 6186 | 95.4% |
+| pass | 6231 | 96.1% |
 | parse/unsupported | 0 | 0.0% |
-| check error | 195 | 3.0% |
+| check error | 181 | 2.8% |
 | crash | 0 | 0.0% |
-| codegen error | 16 | 0.2% |
+| codegen error | 7 | 0.1% |
 | VerifyError | 21 | 0.3% |
 | linkage error | 8 | 0.1% |
-| exception | 32 | 0.5% |
-| wrong result | 25 | 0.4% |
+| exception | 14 | 0.2% |
+| wrong result | 21 | 0.3% |
 | timeout | 0 | 0.0% |
 
 ## Skipped
@@ -47,30 +47,30 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 | Directory | Run | Pass | Unsupported | Check error | Crash | Bad bytecode | Wrong |
 |:---|---:|---:|---:|---:|---:|---:|---:|
 | ranges | 805 | 802 | 0 | 3 | 0 | 0 | 0 |
-| inlineClasses | 784 | 759 | 0 | 16 | 2 | 7 | 0 |
-| coroutines | 497 | 482 | 0 | 1 | 4 | 1 | 9 |
-| callableReference | 297 | 280 | 0 | 15 | 0 | 0 | 2 |
+| inlineClasses | 784 | 761 | 0 | 16 | 0 | 7 | 0 |
+| coroutines | 497 | 491 | 0 | 1 | 3 | 1 | 1 |
+| callableReference | 297 | 283 | 0 | 12 | 0 | 0 | 2 |
 | inference | 205 | 194 | 0 | 10 | 0 | 0 | 1 |
 | delegatedProperty | 149 | 145 | 0 | 3 | 0 | 0 | 1 |
 | controlStructures | 146 | 142 | 0 | 3 | 0 | 0 | 1 |
 | bridges | 137 | 136 | 0 | 0 | 0 | 1 | 0 |
-| inline | 132 | 127 | 0 | 4 | 1 | 0 | 0 |
+| inline | 132 | 128 | 0 | 4 | 0 | 0 | 0 |
 | classes | 120 | 117 | 0 | 2 | 0 | 1 | 0 |
 | objects | 116 | 113 | 0 | 2 | 0 | 1 | 0 |
 | properties | 109 | 106 | 0 | 2 | 0 | 1 | 0 |
-| closures | 107 | 103 | 0 | 3 | 0 | 0 | 1 |
-| functions | 106 | 97 | 0 | 9 | 0 | 0 | 0 |
+| closures | 107 | 104 | 0 | 2 | 0 | 0 | 1 |
+| functions | 106 | 99 | 0 | 7 | 0 | 0 | 0 |
 | enum | 101 | 97 | 0 | 1 | 0 | 0 | 3 |
 | when | 99 | 98 | 0 | 1 | 0 | 0 | 0 |
 | primitiveTypes | 98 | 89 | 0 | 8 | 0 | 0 | 1 |
-| defaultArguments | 82 | 78 | 0 | 0 | 0 | 0 | 4 |
+| defaultArguments | 82 | 82 | 0 | 0 | 0 | 0 | 0 |
 | arrays | 78 | 77 | 0 | 1 | 0 | 0 | 0 |
-| regressions | 75 | 68 | 0 | 6 | 1 | 0 | 0 |
+| regressions | 75 | 72 | 0 | 2 | 1 | 0 | 0 |
 | contextParameters | 70 | 70 | 0 | 0 | 0 | 0 | 0 |
 | casts | 68 | 64 | 0 | 1 | 0 | 0 | 3 |
 | compileKotlinAgainstKotlin | 65 | 59 | 0 | 5 | 0 | 0 | 1 |
-| diagnostics | 60 | 49 | 0 | 2 | 0 | 0 | 9 |
-| dataClasses | 53 | 51 | 0 | 0 | 0 | 1 | 1 |
+| diagnostics | 60 | 58 | 0 | 2 | 0 | 0 | 0 |
+| dataClasses | 53 | 52 | 0 | 0 | 0 | 1 | 0 |
 | extensionFunctions | 53 | 43 | 0 | 10 | 0 | 0 | 0 |
 | inlineEvaluationOrder | 52 | 52 | 0 | 0 | 0 | 0 | 0 |
 | innerNested | 52 | 50 | 0 | 0 | 0 | 2 | 0 |
@@ -81,7 +81,7 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 | boxingOptimization | 41 | 41 | 0 | 0 | 0 | 0 | 0 |
 | ir | 41 | 38 | 0 | 3 | 0 | 0 | 0 |
 | reified | 40 | 38 | 0 | 0 | 0 | 2 | 0 |
-| localClasses | 39 | 34 | 0 | 1 | 3 | 1 | 0 |
+| localClasses | 39 | 37 | 0 | 1 | 0 | 1 | 0 |
 | strings | 39 | 32 | 0 | 4 | 2 | 0 | 1 |
 | super | 39 | 37 | 0 | 1 | 0 | 0 | 1 |
 | ieee754 | 38 | 33 | 0 | 5 | 0 | 0 | 0 |
@@ -103,7 +103,7 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 | increment | 25 | 17 | 0 | 8 | 0 | 0 | 0 |
 | specialBuiltins | 25 | 19 | 0 | 2 | 0 | 2 | 2 |
 | finally | 24 | 23 | 0 | 0 | 0 | 0 | 1 |
-| delegation | 23 | 20 | 0 | 3 | 0 | 0 | 0 |
+| delegation | 23 | 21 | 0 | 2 | 0 | 0 | 0 |
 | binaryOp | 22 | 16 | 0 | 3 | 0 | 0 | 3 |
 | intrinsics | 22 | 19 | 0 | 3 | 0 | 0 | 0 |
 | boxing | 21 | 19 | 0 | 0 | 0 | 0 | 2 |
@@ -128,7 +128,7 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 | labels | 13 | 12 | 0 | 1 | 0 | 0 | 0 |
 | branching | 12 | 12 | 0 | 0 | 0 | 0 | 0 |
 | classDelegation | 12 | 12 | 0 | 0 | 0 | 0 | 0 |
-| innerClass | 12 | 8 | 0 | 2 | 2 | 0 | 0 |
+| innerClass | 12 | 10 | 0 | 2 | 0 | 0 | 0 |
 | privateConstructors | 12 | 12 | 0 | 0 | 0 | 0 | 0 |
 | arithmetic | 11 | 11 | 0 | 0 | 0 | 0 | 0 |
 | elvis | 11 | 11 | 0 | 0 | 0 | 0 | 0 |
@@ -165,7 +165,7 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 | nonLocalReturns | 4 | 3 | 0 | 0 | 0 | 0 | 1 |
 | objectExpression | 4 | 4 | 0 | 0 | 0 | 0 | 0 |
 | unaryOp | 4 | 4 | 0 | 0 | 0 | 0 | 0 |
-| underscoredTypeArguments | 4 | 1 | 0 | 3 | 0 | 0 | 0 |
+| underscoredTypeArguments | 4 | 4 | 0 | 0 | 0 | 0 | 0 |
 | checkcastOptimization | 3 | 2 | 0 | 1 | 0 | 0 | 0 |
 | companion | 3 | 3 | 0 | 0 | 0 | 0 | 0 |
 | cycles | 3 | 3 | 0 | 0 | 0 | 0 | 0 |
@@ -205,7 +205,6 @@ Tests kotlinc compiles that kc's checker rejects, by its first error, with names
 
 | First error | Tests | Examples |
 |:---|---:|:---|
-| `unresolved or unsupported type: _` | 14 | `callableReference/callableReferencetoInnerAndLocal.kt`, `callableReference/genericConstructorReference.kt` |
 | `cannot infer type for type parameter '_'. Specify it explicitly.` | 13 | `callableReference/adaptedReferences/extensionPropertyToFun.kt`, `callableReference/adaptedReferences/innerConstructorToExtensionWithTypeParam.kt` |
 | `unresolved reference: _` | 11 | `classLiteral/bound/primitives.kt`, `classLiteral/primitiveClassEquality.kt` |
 | `invalid type of annotation member` | 9 | `annotations/instances/annotationInstances.kt`, `annotations/instances/annotationToString.kt` |
@@ -245,7 +244,8 @@ Tests kotlinc compiles that kc's checker rejects, by its first error, with names
 | `'_' modifier is inapplicable on this function: must have no value parameters` | 1 | `extensionFunctions/kt3969.kt` |
 | `ambiguous call: n candidates for '_' take (_)` | 1 | `callableReference/function/overloadedFun.kt` |
 | `cannot create an instance of Outer` | 1 | `annotations/instances/AnnotationInstantiationWithArray.kt` |
-| *44 more* | 44 | |
+| `cannot create an instance of Result` | 1 | `inlineClasses/resultGeneric.kt` |
+| *43 more* | 43 | |
 
 ## Code generation errors
 
@@ -253,7 +253,7 @@ kc checked the test but failed to generate its code.
 
 | Error | Tests | Examples |
 |:---|---:|:---|
-| `code generation: operand stack underflow at offset n` | 11 | `coroutines/localFunctions/named/defaultArgument.kt`, `coroutines/simpleSuspendCallableReference.kt` |
+| `code generation: operand stack underflow at offset n` | 2 | `coroutines/simpleSuspendCallableReference.kt`, `extensionProperties/kt9897.kt` |
 | `code generation: string constant too long` | 2 | `strings/kt13213.kt`, `strings/kt47917.kt` |
 | `code generation: a suspension point in the arguments of a constructor call` | 1 | `coroutines/kt15016.kt` |
 | `code generation: local n is not allocated` | 1 | `regressions/kt5953.kt` |
@@ -293,9 +293,7 @@ box() threw.
 
 | Exception | Tests | Examples |
 |:---|---:|:---|
-| `java.lang.StackOverflowError` | 16 | `coroutines/featureIntersection/tailrec/infixCall.kt`, `coroutines/featureIntersection/tailrec/infixRecursiveCall.kt` |
-| `java.lang.NullPointerException` | 14 | `boxing/kt84727.kt`, `boxing/kt84727_inline.kt` |
-| `java.lang.IllegalStateException` | 1 | `diagnostics/functions/tailRecursion/checkStackDepth.kt` |
+| `java.lang.NullPointerException` | 13 | `boxing/kt84727.kt`, `boxing/kt84727_inline.kt` |
 | `kotlin.reflect.jvm.internal.KotlinReflectionInternalError` | 1 | `compileKotlinAgainstKotlin/inlineClasses/privateCompanionObjectValInDifferentModule.kt` |
 
 ## Wrong results
@@ -304,7 +302,6 @@ box() returned something other than `"OK"`, with numbers replaced by n.
 
 | Result | Tests | Examples |
 |:---|---:|:---|
-| `testn = n n n n n n n n n n n n n n n n n n n n n n n n n n …` | 4 | `defaultArguments/function/extensionFunctionManyArgs.kt`, `defaultArguments/function/innerExtentionFunctionManyArgs.kt` |
 | `FAIL n` | 2 | `casts/kt59022.kt`, `constants/doNotTriggerInit.kt` |
 | `FAILn` | 2 | `controlStructures/breakContinueInExpressions/breakInLoopConditions.kt`, `finally/returnNullFromInlined.kt` |
 | `fail` | 2 | `callableReference/property/extensionPropertyReferenceWithTypeParameter.kt`, `unsignedTypes/unsignedLiteralsWithSignedOverflow.kt` |

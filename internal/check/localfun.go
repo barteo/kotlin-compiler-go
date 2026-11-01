@@ -125,6 +125,9 @@ func (c *Checker) localFun(s *syntax.LocalFun) {
 		}
 		sym.Ret, sym.Resolved, sym.InProgress = t, true, false
 	}
+	if d.Tailrec {
+		c.tailCalls(d)
+	}
 	c.state = saved
 	c.propagateCaptures()
 }

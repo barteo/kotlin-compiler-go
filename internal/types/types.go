@@ -657,11 +657,12 @@ func (i *InlineInfo) Body() (*inline.Body, error) {
 }
 
 // Defaults returns the body of the function's name$default method, which
-// takes a mask of the omitted arguments and a marker after the
-// parameters, and computes their default values first.
-func (i *InlineInfo) Defaults() (*inline.Body, error) {
+// takes the masks of the omitted arguments of its n parameters (see
+// MaskInts) and a marker after the parameters, and computes their default
+// values first.
+func (i *InlineInfo) Defaults(n int) (*inline.Body, error) {
 	k := strings.IndexByte(i.Desc, ')')
-	desc := i.Desc[:k] + "ILjava/lang/Object;" + i.Desc[k:]
+	desc := i.Desc[:k] + strings.Repeat("I", MaskInts(n)) + "Ljava/lang/Object;" + i.Desc[k:]
 	if i.Owner == "" {
 		return i.defaults.get(i.Load, i.Name+"$default", desc)
 	}
@@ -1292,6 +1293,16 @@ func ChangedInts(slots int) int { return max(1, (slots+9)/10) }
 // composable function with n parameters takes, if any has a default
 // value: each holds the bits of 31.
 func DefaultInts(n int) int { return (n + 30) / 31 }
+
+// MaskInts returns how many ints of masks of the omitted arguments a
+// name$default method or a constructor for omitted arguments takes for a
+// function with n parameters, as kotlinc writes them: one for every 32.
+func MaskInts(n int) int { return max(1, (n+31)/32) }
+
+// DefaultBits returns the number of bits of f's masks of omitted
+// arguments: as kotlinc's, its context parameters come before its
+// parameters, but not its receivers.
+func DefaultBits(f *FunSym) int { return len(f.Contexts) + len(f.Params) }
 
 // KotlinParamsDesc returns the parameters part of descriptor d, "(...)",
 // without a composable function's Composer and ints, if f is one.

@@ -159,9 +159,10 @@ func WildcardsOf(as []Annotation) Wildcards {
 
 // TypeArg is a type argument: T, out T, in T or *.
 type TypeArg struct {
-	P        Pos
-	Variance types.Variance // Inv, Out, In or Star
-	Type     *TypeRef       // nil for *
+	P          Pos
+	Variance   types.Variance // Inv, Out, In or Star
+	Type       *TypeRef       // nil for *
+	Underscore bool           // _, a call's type argument it infers
 }
 
 // TypeParam is a declared type parameter: T, out T : Bound.
