@@ -512,7 +512,8 @@ func hasLambda(args []syntax.Expr) bool {
 	return false
 }
 
-// typeArgs resolves a call's explicit type arguments.
+// typeArgs resolves a call's explicit type arguments. Those written _,
+// which the call infers, are left invalid: see resolve1.
 func (c *Checker) typeArgs(x *syntax.Call) []types.Type {
 	if x.TypeArgs == nil {
 		return nil
@@ -521,6 +522,10 @@ func (c *Checker) typeArgs(x *syntax.Call) []types.Type {
 	for i, a := range x.TypeArgs {
 		if a.Variance != types.Inv {
 			c.errorf(a.P, "projections are not allowed on type arguments of functions and properties")
+			ts[i] = types.InvalidType
+			continue
+		}
+		if a.Underscore {
 			ts[i] = types.InvalidType
 			continue
 		}
@@ -651,7 +656,21 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 	cs := make([]*candidate, len(byArity))
 	for i, cl := range byArity {
 		cd := &candidate{callee: cl, sys: newSystem(c)}
-		if targs != nil {
+		switch {
+		case targs != nil && hasUnderscore(x.TypeArgs):
+			// foo<Int, _>(): every parameter is a variable, as when
+			// none is given, and those given equal their arguments, so
+			// that the bounds relate the others to them, as C's in
+			// <P, C : Component<P, *>>.
+			cd.sub = cd.sys.fresh(cl.tparams, cl.recv, x.P)
+			for j, p := range cl.tparams {
+				if !x.TypeArgs[j].Underscore {
+					v := cd.sub[p].T
+					cd.sys.sub(v, targs[j])
+					cd.sys.sub(targs[j], v)
+				}
+			}
+		case targs != nil:
 			cd.sub = make(types.Subst, len(cl.recv)+len(targs))
 			for p, a := range cl.recv {
 				cd.sub[p] = a
@@ -659,7 +678,7 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			for j, p := range cl.tparams {
 				cd.sub[p] = types.Arg{T: targs[j]}
 			}
-		} else {
+		default:
 			cd.sub = cd.sys.fresh(cl.tparams, cl.recv, x.P)
 		}
 		cd.params = make([]types.Type, len(x.Args))

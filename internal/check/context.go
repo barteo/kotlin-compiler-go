@@ -236,16 +236,31 @@ func (c *Checker) contextArgs(cl *callee, x *syntax.Call) ([]contextArg, bool) {
 	var sub types.Subst
 	explicit := false
 	if n := len(x.TypeArgs); n > 0 && n == len(cl.tparams) {
-		explicit = true
-		// Explicit ones, contextOf<A>(), whose errors resolve reports.
+		// Explicit ones, contextOf<A>(), whose errors resolve reports. With
+		// a _, contextOf<_>(), they are variables, as resolve1 makes them,
+		// and the others equal their arguments.
 		e := len(c.errs)
-		sub = maps.Clone(cl.recv)
-		if sub == nil {
-			sub = types.Subst{}
+		explicit = !hasUnderscore(x.TypeArgs)
+		if explicit {
+			sub = maps.Clone(cl.recv)
+			if sub == nil {
+				sub = types.Subst{}
+			}
+		} else {
+			sub = sys.fresh(cl.tparams, cl.recv, x.P)
 		}
 		for j, tp := range cl.tparams {
-			if a := x.TypeArgs[j]; a.Type != nil {
-				sub[tp] = types.Arg{T: c.resolveType(a.Type)}
+			a := x.TypeArgs[j]
+			if a.Type == nil || a.Underscore {
+				continue
+			}
+			t := c.resolveType(a.Type)
+			if explicit {
+				sub[tp] = types.Arg{T: t}
+			} else {
+				v := sub[tp].T
+				sys.sub(v, t)
+				sys.sub(t, v)
 			}
 		}
 		c.errs = c.errs[:e]

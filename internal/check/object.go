@@ -11,7 +11,13 @@ import (
 // used as values.
 
 // scopeClass returns the class whose nested classes' names are in scope.
+// In the signatures of an object expression's class or a local class,
+// which are resolved in the code around it, it is that class, then the
+// classes it is in: object { inner class C : B(); open inner class B }.
 func (c *Checker) scopeClass() *types.ClassSym {
+	if k := c.lookupCls; k != nil && c.cls != nil && (k.Anonymous || k.Local || k.Inner) {
+		return k
+	}
 	if c.cls != nil {
 		return c.cls
 	}
@@ -51,6 +57,13 @@ func (c *Checker) nestedClassifier(name string) classifier {
 				found = classifier{cls: n}
 			} else if a := s.Aliases[name]; a != nil {
 				found = classifier{alias: a}
+			}
+		}
+		// And its companion's: class X { companion object { class Y };
+		// val y: Y }.
+		if found == (classifier{}) && k.Companion != nil && !k.Companion.External {
+			if n := k.Companion.Nested[name]; n != nil {
+				found = classifier{cls: n}
 			}
 		}
 		if found != (classifier{}) {
