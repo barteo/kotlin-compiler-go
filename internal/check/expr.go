@@ -824,7 +824,7 @@ func (c *Checker) binary(x *syntax.Binary, want types.Type, allowRange bool) typ
 	case syntax.EQ, syntax.NE, syntax.EQ_EQ_EQ, syntax.NOT_EQ_EQ:
 		xt := c.value(x.X, noWant)
 		yt := c.value(x.Y, xt)
-		x.OpType = c.equality(x.P, x.Op, xt, yt)
+		x.OpType = c.castEquality(x, xt, yt)
 		return types.BoolType
 	}
 
@@ -1024,6 +1024,62 @@ func (c *Checker) equality(p syntax.Pos, op syntax.Kind, xt, yt types.Type) type
 	return xt.Nullable()
 }
 
+// castEquality is equality for the operands of x, of types xt and yt,
+// where an operand smart-cast to another class is compared as Kotlin
+// does: two numbers, as numbers of the wider type, -0.0 == 0 for x is
+// Double and y is Int, and other operands whose declared types may be
+// compared as values of those types, with equals.
+func (c *Checker) castEquality(x *syntax.Binary, xt, yt types.Type) types.Type {
+	dx, cx := declaredOf(x.X)
+	dy, cy := declaredOf(x.Y)
+	if !cx && !cy || xt.K == types.Invalid || yt.K == types.Invalid {
+		return c.equality(x.P, x.Op, xt, yt)
+	}
+	if !cx {
+		dx = xt
+	}
+	if !cy {
+		dy = yt
+	}
+	n := len(c.errs)
+	if xn, yn := xt.Flex().NonNull(), yt.Flex().NonNull(); xn.IsNumeric() && yn.IsNumeric() && xn != yn {
+		if t := c.equality(x.P, syntax.EQ, dx, dy); t.K != types.Invalid {
+			t = types.Wider(xn, yn)
+			if types.MayBeNull(xt) || types.MayBeNull(yt) {
+				t = t.Nullable()
+			}
+			return t
+		}
+		c.errs = c.errs[:n]
+	}
+	if t := c.equality(x.P, x.Op, xt, yt); t.K != types.Invalid {
+		return t
+	}
+	m := len(c.errs)
+	if t := c.equality(x.P, x.Op, dx, dy); t.K != types.Invalid {
+		// Compared as the declared types: the operands are read as those.
+		c.errs = c.errs[:n]
+		for _, e := range []syntax.Expr{x.X, x.Y} {
+			if id, ok := e.(*syntax.Ident); ok && id.Cast {
+				id.Cast = false
+				id.SetType(id.Sym.Type)
+			}
+		}
+		return t
+	}
+	c.errs = c.errs[:m]
+	return types.InvalidType
+}
+
+// declaredOf returns the declared type of x if x is a variable that a
+// smart cast gives another class.
+func declaredOf(x syntax.Expr) (types.Type, bool) {
+	if id, ok := x.(*syntax.Ident); ok && id.Cast && id.Sym != nil && id.Sym.Type.K != types.Invalid {
+		return id.Sym.Type, true
+	}
+	return types.Type{}, false
+}
+
 // floatOf returns Double or Float if values of type t are of that type:
 // t is it, nullable or not, or a type parameter bounded by it, or else
 // InvalidType.
@@ -1044,8 +1100,17 @@ func floatOf(t types.Type) types.Type {
 // class can be subclassed. ktor compares a Continuation<TSubject> with an
 // object that is a Continuation<Unit>.
 func (c *Checker) mayBeSame(x, y types.Type) bool {
-	if x.K != types.Class || y.K != types.Class {
+	if x.K != types.Class && y.K == types.Class {
+		x, y = y, x
+	}
+	if x.K != types.Class {
 		return false
+	}
+	if y.K != types.Class {
+		// A built-in type and a supertype of its class with other type
+		// arguments: Double and Comparable<Float>.
+		_, ok := c.asSuper(y, x.C)
+		return ok
 	}
 	if _, ok := c.asSuper(x, y.C); ok {
 		return true
@@ -1055,6 +1120,11 @@ func (c *Checker) mayBeSame(x, y types.Type) bool {
 	}
 	x.C.Ensure()
 	y.C.Ensure()
+	if x.C.Annotation || y.C.Annotation {
+		// As with kotlinc, an annotation may be compared with any
+		// object: A == B for two annotation classes.
+		return true
+	}
 	return x.C.Interface && !y.C.Final || y.C.Interface && !x.C.Final
 }
 

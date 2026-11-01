@@ -82,9 +82,37 @@ fun nullableOperands() {
     println(n + null)
 }
 
+annotation class Tag1
+annotation class Tag2
+
+fun eqDI(x: Any?, y: Any?) = x is Double? && y is Int? && x == y
+fun eqLF(x: Any?, y: Any?) = x is Long? && y is Float? && x == y
+fun neDF(x: Any, y: Any) = x is Double && y is Float && x != y
+
+val minusZero: Any = -0.0
+
+fun equality() {
+    println("${eqDI(null, null)} ${eqDI(null, 0)} ${eqDI(0.0, null)} ${eqDI(-0.0, 0)} ${eqDI(0.5, 0)}")
+    println("${eqLF(3L, 3.0F)} ${eqLF(0L, -0.0F)} ${eqLF(1L, null)}")
+    println("${neDF(0.0, -0.0F)} ${neDF(1.0, 2.0F)}")
+    val x: Any = 1
+    val y: Any = 1L
+    if (x is Int && y is Long) println("${x == y} ${x != y}")
+    if (x is Int) println("${x == 1L} ${x == 2.0}")
+    val s: Any = "a"
+    if (s is String && x is Int) println(s == x)
+    println(Tag1() == Tag2())
+    if (minusZero is Double) {
+        println("${minusZero == 0.0F} ${minusZero == (0.0F as Comparable<Float>)}")
+    }
+    val d = 1.5
+    println(d == (1.5 as Comparable<Double>))
+}
+
 fun main() {
     incrementSmartCast()
     nullableOperands()
+    equality()
     println(compoundOnAny("O"))
     println(compoundOnAny(41))
     println(compoundOnAny(null))

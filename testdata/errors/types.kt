@@ -17,6 +17,12 @@ fun f(x: Int): String {
     return s
 }
 
+fun equalities(n: Number, s: String, d: Double, cs: CharSequence, c: Comparable<Float>) {
+    if (n is Int) println(n == s) // ERROR operator '==' cannot be applied to Int and String
+    println(d == cs) // ERROR operator '==' cannot be applied to Double and CharSequence
+    println(d == c)
+}
+
 fun g(): Int { // ERROR missing return statement
     println("no return")
 }
