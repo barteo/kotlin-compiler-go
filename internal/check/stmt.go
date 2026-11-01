@@ -971,8 +971,10 @@ func (c *Checker) assign(s *syntax.Assign) {
 	// x op= v is x = x op v, whose result must have x's type.
 	op, rt, ok := arith(arithOf(s.Op), tt.Flex(), vt)
 	switch {
-	case !ok && never(vt):
-		// x += todo(): the assignment is dead code.
+	case !ok && never(vt) && !never(tt.Flex()):
+		// x += todo(): the assignment is dead code. Not for a target of
+		// type Nothing, an out-projected property's setter, whose
+		// assignment is an error.
 	case !ok:
 		c.errorf(s.P, "operator '%s' cannot be applied to %s and %s", s.Op, tt, vt)
 	case rt != tt.Flex():
