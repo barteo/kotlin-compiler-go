@@ -16,7 +16,7 @@ tests/Bounds.kt	rejects invalid	on an expected line
 tests/BreakContinue.kt	rejects invalid	elsewhere	
 tests/BreakContinueInWhen_after.kt	rejects invalid	on an expected line	
 tests/Builders.kt	rejects valid	operator '_' cannot be applied to String	a.kt:19: operator '+' cannot be applied to String
-tests/Casts.kt	accepts invalid	WRONG_ANNOTATION_TARGET	Casts.kt:22: WRONG_ANNOTATION_TARGET
+tests/Casts.kt	rejects invalid	on an expected line	
 tests/CharacterLiterals.kt	rejects invalid	on an expected line	
 tests/CompareToWithErrorType.kt	rejects invalid	on an expected line	
 tests/Constants.kt	rejects invalid	on an expected line	
@@ -161,12 +161,12 @@ tests/annotatedClassWithFactoryFunctionAsGenericFunctionBody.kt	rejects invalid	
 tests/annotatedPackageQualifiers.kt	skip	LANGUAGE_FEATURE_TOGGLED	
 tests/annotationArgumentWithAliasedArrayType.kt	accepts valid		
 tests/annotationOnDeclarationWithDifferentArguments.kt	rejects invalid	on an expected line	
-tests/annotationOnGetClassCall.kt	accepts invalid	WRONG_ANNOTATION_TARGET	annotationOnGetClassCall.kt:5: WRONG_ANNOTATION_TARGET
+tests/annotationOnGetClassCall.kt	rejects invalid	on an expected line	
 tests/annotationUsedAsAnnotationArgument.kt	skip	LANGUAGE_FEATURE_TOGGLED	
 tests/annotations/AmbigiousAnnotationConstructor.kt	rejects invalid	on an expected line	
 tests/annotations/AnnotatedArrayLiteral.kt	skip	LANGUAGE_FEATURE_TOGGLED	
-tests/annotations/AnnotatedBlock.kt	accepts invalid	WRONG_ANNOTATION_TARGET	AnnotatedBlock.kt:13: WRONG_ANNOTATION_TARGET
-tests/annotations/AnnotatedCatchValueParameter.kt	accepts invalid	WRONG_ANNOTATION_TARGET	AnnotatedCatchValueParameter.kt:20: WRONG_ANNOTATION_TARGET
+tests/annotations/AnnotatedBlock.kt	rejects invalid	on an expected line	
+tests/annotations/AnnotatedCatchValueParameter.kt	rejects invalid	on an expected line	
 tests/annotations/AnnotatedConstructor.kt	accepts valid		
 tests/annotations/AnnotatedConstructorParams.kt	accepts valid		
 tests/annotations/AnnotatedErrorTypeRef.kt	rejects invalid	on an expected line	
@@ -230,21 +230,21 @@ tests/annotations/annotationInheritance.kt	rejects invalid	on an expected line
 tests/annotations/annotationModifier.kt	rejects invalid	on an expected line	
 tests/annotations/annotationOnParameterInFunctionType.kt	rejects invalid	on an expected line	
 tests/annotations/annotationParameterMustBeConstant/annotationConstructorDefaultParameter.kt	rejects invalid	on an expected line	
-tests/annotations/annotationParameterMustBeConstant/booleanLocalVal.kt	accepts invalid	ANNOTATION_ARGUMENT_MUST_BE_CONST	booleanLocalVal.kt:6: ANNOTATION_ARGUMENT_MUST_BE_CONST
-tests/annotations/annotationParameterMustBeConstant/compareAndEquals.kt	accepts invalid	ANNOTATION_ARGUMENT_MUST_BE_CONST	compareAndEquals.kt:11: ANNOTATION_ARGUMENT_MUST_BE_CONST
+tests/annotations/annotationParameterMustBeConstant/booleanLocalVal.kt	rejects invalid	on an expected line	
+tests/annotations/annotationParameterMustBeConstant/compareAndEquals.kt	rejects invalid	on an expected line	
 tests/annotations/annotationParameterMustBeConstant/enumConst.kt	rejects invalid	on an expected line	
 tests/annotations/annotationParameterMustBeConstant/javaProperties.kt	skip	Java sources	
 tests/annotations/annotationParameterMustBeConstant/kotlinProperties.kt	rejects invalid	on an expected line	
 tests/annotations/annotationParameterMustBeConstant/lambdaParameter.kt	accepts invalid	ANNOTATION_ARGUMENT_MUST_BE_CONST; ARGUMENT_TYPE_MISMATCH	lambdaParameter.kt:8: ANNOTATION_ARGUMENT_MUST_BE_CONST
 tests/annotations/annotationParameterMustBeConstant/standaloneInExpression.kt	rejects invalid	on an expected line	
-tests/annotations/annotationParameterMustBeConstant/strings.kt	accepts invalid	ANNOTATION_ARGUMENT_MUST_BE_CONST	strings.kt:16: ANNOTATION_ARGUMENT_MUST_BE_CONST
+tests/annotations/annotationParameterMustBeConstant/strings.kt	rejects invalid	on an expected line	
 tests/annotations/annotationRenderingInTypes.kt	rejects invalid	on an expected line	
 tests/annotations/annotationsOnDataClassCopy.kt	accepts valid		
-tests/annotations/annotationsOnLambdaAsCallArgument.kt	accepts invalid	ARGUMENT_TYPE_MISMATCH	annotationsOnLambdaAsCallArgument.kt:17: ARGUMENT_TYPE_MISMATCH
+tests/annotations/annotationsOnLambdaAsCallArgument.kt	rejects invalid	on an expected line	
 tests/annotations/annotationsOnNullableTypes.kt	accepts invalid	WRONG_ANNOTATION_TARGET	annotationsOnNullableTypes.kt:39: WRONG_ANNOTATION_TARGET
 tests/annotations/arrayLiteralFalseNegativeInsideLambda.kt	skip	LANGUAGE	
 tests/annotations/arrayLiteralInAnnotationCompanion.kt	skip	LANGUAGE	
-tests/annotations/atAnnotationResolve.kt	accepts invalid	ARGUMENT_TYPE_MISMATCH	atAnnotationResolve.kt:12: ARGUMENT_TYPE_MISMATCH
+tests/annotations/atAnnotationResolve.kt	rejects invalid	on an expected line	
 tests/annotations/backingFieldWithAnnotatedType.kt	skip	LANGUAGE	
 tests/annotations/blockLevelOnTheSameLineWarning.kt	skip	LANGUAGE	
 tests/annotations/classAnnotationsInLocalClass.kt	rejects invalid	on an expected line	
@@ -294,8 +294,8 @@ tests/annotations/illegalRequireKotlinValue.kt	accepts invalid	ILLEGAL_KOTLIN_VE
 tests/annotations/illegalSinceKotlinValue.kt	accepts invalid	ILLEGAL_KOTLIN_VERSION_STRING_VALUE	illegalSinceKotlinValue.kt:2: ILLEGAL_KOTLIN_VERSION_STRING_VALUE
 tests/annotations/inheritFromAnnotationClass.kt	skip	LANGUAGE	
 tests/annotations/inheritFromAnnotationClass2.kt	skip	LANGUAGE	
-tests/annotations/initializerWithNestedAnnotation.kt	accepts invalid	WRONG_ANNOTATION_TARGET	initializerWithNestedAnnotation.kt:5: WRONG_ANNOTATION_TARGET
-tests/annotations/initializerWithNestedAnnotationInLocalClass.kt	accepts invalid	WRONG_ANNOTATION_TARGET; NON_CONST_VAL_USED_IN_CONSTANT_EXPRESSION	initializerWithNestedAnnotationInLocalClass.kt:8: WRONG_ANNOTATION_TARGET
+tests/annotations/initializerWithNestedAnnotation.kt	rejects invalid	on an expected line	
+tests/annotations/initializerWithNestedAnnotationInLocalClass.kt	rejects invalid	on an expected line	
 tests/annotations/invalidTypesInAnnotationConstructor.kt	rejects invalid	on an expected line	
 tests/annotations/javaAnnotationAndJavaClassWithIt.kt	skip	Java sources	
 tests/annotations/javaAnnotationWithClassArray.kt	skip	Java sources	
@@ -323,8 +323,8 @@ tests/annotations/nonConstArrayAsSpreadArgument.kt	rejects invalid	on an expecte
 tests/annotations/nonConstArrayAsSpreadArgumentInDefaults.kt	rejects invalid	on an expected line	
 tests/annotations/onExpression.kt	accepts valid		
 tests/annotations/onFunctionParameter.kt	accepts valid		
-tests/annotations/onInitializer.kt	accepts invalid	WRONG_ANNOTATION_TARGET; UNRESOLVED_REFERENCE; ANONYMOUS_INITIALIZER_IN_INTERFACE	onInitializer.kt:3: WRONG_ANNOTATION_TARGET
-tests/annotations/onLoops.kt	accepts invalid	WRONG_ANNOTATION_TARGET	onLoops.kt:3: WRONG_ANNOTATION_TARGET
+tests/annotations/onInitializer.kt	rejects invalid	on an expected line	
+tests/annotations/onLoops.kt	rejects invalid	on an expected line	
 tests/annotations/onMultiDeclaration.kt	skip	LANGUAGE	
 tests/annotations/optInInAnnotation.kt	skip	LANGUAGE_FEATURE_TOGGLED	
 tests/annotations/options/annotationAsArg.kt	accepts valid		
@@ -333,14 +333,14 @@ tests/annotations/options/assignment.kt	skip	LANGUAGE
 tests/annotations/options/documented.kt	accepts valid		
 tests/annotations/options/forParam.kt	rejects invalid	on an expected line	
 tests/annotations/options/functionExpression.kt	accepts valid		
-tests/annotations/options/functions.kt	accepts invalid	NON_SOURCE_ANNOTATION_ON_INLINED_LAMBDA_EXPRESSION; WRONG_ANNOTATION_TARGET	functions.kt:25: NON_SOURCE_ANNOTATION_ON_INLINED_LAMBDA_EXPRESSION
+tests/annotations/options/functions.kt	rejects invalid	on an expected line	
 tests/annotations/options/javaDocumented.kt	skip	Java sources	
 tests/annotations/options/javaKotlinTargetRetention.kt	accepts valid		
 tests/annotations/options/javaKotlinTargetRetentionWithExplicitImport.kt	accepts valid		
 tests/annotations/options/javaretention.kt	skip	Java sources	
 tests/annotations/options/multiDeclaration.kt	rejects invalid	on an expected line	
 tests/annotations/options/objectLiteral.kt	accepts valid		
-tests/annotations/options/prefix.kt	accepts invalid	WRONG_ANNOTATION_TARGET	prefix.kt:11: WRONG_ANNOTATION_TARGET
+tests/annotations/options/prefix.kt	rejects invalid	on an expected line	
 tests/annotations/options/retention.kt	accepts valid		
 tests/annotations/options/setterParam.kt	rejects invalid	on an expected line	
 tests/annotations/options/target.kt	accepts valid		
@@ -353,9 +353,9 @@ tests/annotations/options/targets/expr.kt	rejects invalid	on an expected line
 tests/annotations/options/targets/field.kt	rejects invalid	on an expected line	
 tests/annotations/options/targets/file.kt	rejects invalid	on an expected line	
 tests/annotations/options/targets/function.kt	rejects invalid	on an expected line	
-tests/annotations/options/targets/funtypeargs.kt	accepts invalid	WRONG_ANNOTATION_TARGET	funtypeargs.kt:9: WRONG_ANNOTATION_TARGET
+tests/annotations/options/targets/funtypeargs.kt	rejects invalid	on an expected line	
 tests/annotations/options/targets/incorrect.kt	rejects invalid	on an expected line	
-tests/annotations/options/targets/init.kt	accepts invalid	WRONG_ANNOTATION_TARGET	init.kt:5: WRONG_ANNOTATION_TARGET
+tests/annotations/options/targets/init.kt	rejects invalid	on an expected line	
 tests/annotations/options/targets/java.kt	skip	Java sources	
 tests/annotations/options/targets/local.kt	rejects invalid	on an expected line	
 tests/annotations/options/targets/mixedTargeting.kt	skip	Java sources	
@@ -3215,7 +3215,7 @@ tests/expressionsInQaSelectorsWithElvis.kt	accepts valid
 tests/expresssions/CallBasedInExpressionGenerator.kt	rejects invalid	on an expected line	
 tests/expresssions/access.kt	rejects invalid	on an expected line	
 tests/expresssions/annotationWithReturn.kt	rejects invalid	on an expected line	
-tests/expresssions/annotations.kt	accepts invalid	WRONG_ANNOTATION_TARGET	annotations.kt:11: WRONG_ANNOTATION_TARGET
+tests/expresssions/annotations.kt	rejects invalid	on an expected line	
 tests/expresssions/baseQualifier.kt	skip	Java sources	
 tests/expresssions/blockLocalScopes.kt	accepts valid		
 tests/expresssions/checkArguments.kt	rejects invalid	on an expected line	
@@ -3400,7 +3400,7 @@ tests/extraCheckers/unused/lambdaOverload.kt	accepts valid
 tests/extraCheckers/unused/localVariable.kt	accepts valid		
 tests/extraCheckers/unused/localVariableInSecondaryConstructor.kt	accepts valid		
 tests/extraCheckers/unused/manyLocalVariables.kt	accepts valid		
-tests/extraCheckers/unused/usedInAnnotationArguments.kt	accepts invalid	ANNOTATION_ARGUMENT_MUST_BE_CONST	usedInAnnotationArguments.kt:6: ANNOTATION_ARGUMENT_MUST_BE_CONST
+tests/extraCheckers/unused/usedInAnnotationArguments.kt	rejects invalid	on an expected line	
 tests/extraCheckers/unused/valueIsNeverRead.kt	accepts valid		
 tests/fakeExpression.kt	rejects invalid	on an expected line	
 tests/fakeRecursiveSupertype.kt	rejects invalid	on an expected line	
@@ -9400,7 +9400,7 @@ tests/visibleVsInvisibleQualifier.kt	skip	Java sources
 tests/warningsForBreakingChanges/capturedTypes/incorrectCapturedApproximationForValueParameters.kt	skip	Java sources	
 tests/warningsForBreakingChanges/capturedTypes/noWarningAfterSmartcast.kt	accepts valid		
 tests/warningsForBreakingChanges/capturedTypes/noWarningOnSAMAdaption.kt	skip	Java sources	
-tests/when/AnnotatedWhenStatement.kt	accepts invalid	WRONG_ANNOTATION_TARGET	AnnotatedWhenStatement.kt:12: WRONG_ANNOTATION_TARGET
+tests/when/AnnotatedWhenStatement.kt	rejects invalid	on an expected line	
 tests/when/BranchBypassVal.kt	rejects invalid	on an expected line	
 tests/when/BranchBypassVar.kt	rejects invalid	on an expected line	
 tests/when/BranchFalseBypass.kt	accepts valid		

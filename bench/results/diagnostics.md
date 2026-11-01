@@ -6,16 +6,16 @@ Of 10827 test files, 3627 are skipped and 7200 run.
 
 | Result | Tests | Share |
 |:---|---:|---:|
-| rejects invalid | 3081 | 42.8% |
+| rejects invalid | 3101 | 43.1% |
 | accepts valid | 2788 | 38.7% |
-| accepts invalid | 737 | 10.2% |
+| accepts invalid | 717 | 10.0% |
 | rejects valid | 514 | 7.1% |
 | parse/unsupported | 79 | 1.1% |
 | crash | 1 | 0.0% |
 
 *Rejects invalid* and *accepts valid* agree with kotlinc. *Accepts invalid* is code kotlinc rejects that kc compiles; *rejects valid*, code kotlinc compiles that kc's checker rejects. Both are bugs. A *parse/unsupported* test uses a feature kc doesn't support, which says nothing about its checks.
 
-Of the 3081 tests both reject, kc reports an error on the line of an expected one in 2811.
+Of the 3101 tests both reject, kc reports an error on the line of an expected one in 2831.
 
 A test is invalid if it stops before the backend or marks an error: one that runs to it (`BACKEND`) can mark the JVM backend's errors, such as `CONFLICTING_JVM_DECLARATIONS`. Of the tests run, 177 stop at `FRONTEND` but mark no error: most add the `CHECK_TYPE` helpers, whose names (`_`) kotlinc reports outside the test infrastructure, and count as valid; the others leave their errors out with the `DIAGNOSTICS` directive. 101 run to the backend and mark one. 5 marked names have no declared severity (debug information, for one), and count as neither.
 
@@ -51,21 +51,21 @@ Tests kotlinc rejects that kc compiles, by the errors their markup expects. A te
 
 | Expected error | Tests | Only error | Examples |
 |:---|---:|---:|:---|
-| `ARGUMENT_TYPE_MISMATCH` | 38 | 23 | `tests/annotations/AnnotationForClassTypeParameter.kt`, `tests/annotations/AnnotationForFunctionTypeParameter.kt` |
-| `UNRESOLVED_REFERENCE` | 31 | 19 | `tests/annotations/AnnotationForObject.kt`, `tests/annotations/UnresolvedAnnotationOnObject.kt` |
+| `ARGUMENT_TYPE_MISMATCH` | 36 | 21 | `tests/annotations/AnnotationForClassTypeParameter.kt`, `tests/annotations/AnnotationForFunctionTypeParameter.kt` |
+| `UNRESOLVED_REFERENCE` | 30 | 19 | `tests/annotations/AnnotationForObject.kt`, `tests/annotations/UnresolvedAnnotationOnObject.kt` |
 | `USAGE_IS_NOT_INLINABLE` | 27 | 25 | `tests/inline/assignment.kt`, `tests/inline/binaryExpressions/arrayAccess.kt` |
 | `OPT_IN_USAGE_ERROR` | 26 | 14 | `tests/errorSuppressionsWithoutWarning.kt`, `tests/jvm/jvmDefault/annotationsFromBinariesWithNonTrivialJvmDefaultConfiguration.kt` |
-| `WRONG_ANNOTATION_TARGET` | 26 | 19 | `tests/Casts.kt`, `tests/annotationOnGetClassCall.kt` |
 | `ACCIDENTAL_OVERRIDE` | 24 | 21 | `tests/jvm/duplicateJvmSignature/accidentalOverrides/accidentalOverrideFromGrandparent.kt`, `tests/jvm/duplicateJvmSignature/accidentalOverrides/classFunctionOverriddenByProperty.kt` |
 | `CONFLICTING_JVM_DECLARATIONS` | 24 | 22 | `tests/jvm/duplicateJvmSignature/caseInProperties.kt`, `tests/jvm/duplicateJvmSignature/erasure/delegationAndOwnMethod.kt` |
 | `UNSAFE_CALL` | 19 | 17 | `tests/dataFlow/assignment/assignToNewVal.kt`, `tests/dataFlow/assignment/uninitializedValNullability.kt` |
 | `CONFLICTING_OVERLOADS` | 18 | 15 | `tests/annotations/rendering/conflictingOverloads.kt`, `tests/dataClasses/conflictingCopyOverloads.kt` |
-| `ANNOTATION_ARGUMENT_MUST_BE_CONST` | 16 | 9 | `tests/annotations/annotationParameterMustBeConstant/booleanLocalVal.kt`, `tests/annotations/annotationParameterMustBeConstant/compareAndEquals.kt` |
 | `DSL_SCOPE_VIOLATION` | 15 | 15 | `tests/resolve/dslMarker/annotatedFunctionType.kt`, `tests/resolve/dslMarker/annotatedTypeArgument.kt` |
 | `IMPOSSIBLE_IS_CHECK_ERROR` | 15 | 12 | `tests/cast/classVsClassIsCheck.kt`, `tests/cast/classVsClassIsCheckAndIntersectionType.kt` |
 | `ERROR_IN_CONTRACT_DESCRIPTION` | 14 | 9 | `tests/kt56877.kt`, `testsWithStdLib/contracts/dsl/errors/accessToOuterThis.kt` |
+| `ANNOTATION_ARGUMENT_MUST_BE_CONST` | 12 | 5 | `tests/annotations/annotationParameterMustBeConstant/lambdaParameter.kt`, `tests/annotations/cycleAnnotationOnFunctionParameterType.kt` |
 | `CONST_VAL_WITH_NON_CONST_INITIALIZER` | 12 | 10 | `tests/constantEvaluator/constant/typeAliasToUnsigned.kt`, `tests/constantEvaluator/constant/unsignedOperations.kt` |
 | `OPT_IN_TO_INHERITANCE_ERROR` | 12 | 6 | `testsWithStdLib/annotations/subclassOptInRequired/DiagnosticCustomMessage_error.kt`, `testsWithStdLib/annotations/subclassOptInRequired/DiagnosticDefaultMessage_error.kt` |
+| `WRONG_ANNOTATION_TARGET` | 12 | 8 | `tests/annotations/AnnotatedNullableTypes.kt`, `tests/annotations/AnnotatedTryCatch.kt` |
 | `DEPRECATION_ERROR` | 11 | 7 | `tests/annotations/deprecatedResolutionOfAnonymousObject.kt`, `tests/deprecated/deprecatedError.kt` |
 | `ILLEGAL_RESTRICTED_SUSPENDING_FUNCTION_CALL` | 11 | 11 | `tests/restrictsSuspensionDifference.kt`, `testsWithStdLib/coroutines/restrictSuspension/complicatedTypes.kt` |
 | `INVISIBLE_REFERENCE` | 11 | 8 | `tests/callableReference/bound/privateToThis.kt`, `tests/callingProtectedFromInline.kt` |
@@ -89,7 +89,6 @@ Tests kotlinc rejects that kc compiles, by the errors their markup expects. A te
 | `CANNOT_WEAKEN_ACCESS_PRIVILEGE` | 6 | 4 | `tests/intersectedVisibilitiesAccessorDifferences_Small.kt`, `tests/intersectedVisibilitiesForNonAbstractPropertyAccessors.kt` |
 | `DECLARATION_CANT_BE_INLINED` | 6 | 5 | `tests/inline/nonVirtualMembersWithInline.kt`, `tests/inline/override.kt` |
 | `MISSING_DEPENDENCY_CLASS` | 6 | 3 | `tests/multimodule/AnonymousFunctionParametersOfInaccessibleTypes.kt`, `tests/multimodule/BoxedInaccessibleGenericTypeUsedByDependencies.kt` |
-| `NON_CONST_VAL_USED_IN_CONSTANT_EXPRESSION` | 6 | 2 | `tests/annotations/annotationArgumentScopeForNestedClass.kt`, `tests/annotations/initializerWithNestedAnnotationInLocalClass.kt` |
 | `NULL_FOR_NONNULL_TYPE` | 6 | 2 | `tests/j+k/types/newListMethodsNullabilityLinkedListLatest.kt`, `tests/targetedBuiltIns/concurrentMapRemove.kt` |
 | `RETURN_TYPE_MISMATCH` | 6 | 5 | `tests/functionLiterals/return/LocalReturnNoCoercionToUnit.kt`, `tests/functionLiterals/return/LocalReturnSecondUnit.kt` |
 | `(no error marked)` | 5 | 5 | `tests/inline/anonymousObjects.kt`, `tests/nullableTypes/nullAssertOnTypeWithNullableUpperBound.kt` |
@@ -97,6 +96,7 @@ Tests kotlinc rejects that kc compiles, by the errors their markup expects. A te
 | `EXPOSED_PROPERTY_TYPE` | 5 | 0 | `tests/exposed/internal.kt`, `tests/exposed/object.kt` |
 | `EXPOSED_SUPER_CLASS` | 5 | 1 | `tests/exposed/internal.kt`, `tests/exposed/object.kt` |
 | `INCOMPATIBLE_MODIFIERS` | 5 | 3 | `tests/dataClasses/innerDataClass.kt`, `tests/modifiers/inlineParameters.kt` |
+| `NON_CONST_VAL_USED_IN_CONSTANT_EXPRESSION` | 5 | 2 | `tests/annotations/annotationArgumentScopeForNestedClass.kt`, `tests/diagnostics/annotationArgumentKClassLiteralTypeError.kt` |
 | `NOTHING_TO_OVERRIDE` | 5 | 2 | `tests/j+k/types/newListMethodsNullabilityOverridesLinkedListLatest.kt`, `tests/multimodule/duplicateSuper/sameSuperTraitDifferentBounds.kt` |
 | `NO_TYPE_ARGUMENTS_ON_RHS` | 5 | 5 | `tests/cast/bare/AsNullableNotEnough.kt`, `tests/cast/bare/NullableAsNotEnough.kt` |
 | `REDECLARATION` | 5 | 4 | `tests/expresssions/objectVsProperty.kt`, `tests/redeclarations/EnumName.kt` |
@@ -111,7 +111,7 @@ Tests kotlinc rejects that kc compiles, by the errors their markup expects. A te
 | `MUST_BE_INITIALIZED_OR_BE_ABSTRACT` | 4 | 3 | `tests/controlFlowAnalysis/deadCode/initializationInUnreachableCode.kt`, `tests/controlFlowAnalysis/smartcastOnThisInInitializationSection.kt` |
 | `NOT_AN_ANNOTATION_CLASS` | 4 | 3 | `tests/annotations/AnnotationIdentifier.kt`, `tests/annotations/NonAnnotationClass.kt` |
 | `OPT_IN_OVERRIDE_ERROR` | 4 | 1 | `testsWithStdLib/annotations/subclassOptInRequired/UsageOptInIsNotImplied.kt`, `testsWithStdLib/experimental/errors.kt` |
-| *189 more* | 291 | |
+| *187 more* | 289 | |
 
 ## Rejects valid
 
@@ -165,22 +165,22 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 10621 of 18906 expected errors (56.2%) on their lines.
+kc reports 10709 of 18906 expected errors (56.6%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
 | `CONFLICTING_JVM_DECLARATIONS` | 996 | 472 | 524 |
-| `ARGUMENT_TYPE_MISMATCH` | 1257 | 782 | 475 |
+| `ARGUMENT_TYPE_MISMATCH` | 1257 | 785 | 472 |
 | `UNRESOLVED_REFERENCE` | 2026 | 1562 | 464 |
 | `SYNTAX` | 638 | 197 | 441 |
 | `CONFLICTING_OVERLOADS` | 719 | 364 | 355 |
 | `WRONG_MODIFIER_TARGET` | 298 | 116 | 182 |
-| `WRONG_ANNOTATION_TARGET` | 337 | 166 | 171 |
 | `RETURN_TYPE_MISMATCH` | 395 | 231 | 164 |
 | `CONST_VAL_WITH_NON_CONST_INITIALIZER` | 183 | 24 | 159 |
 | `UNSUPPORTED` | 192 | 34 | 158 |
 | `USAGE_IS_NOT_INLINABLE` | 177 | 31 | 146 |
 | `REDECLARATION` | 192 | 72 | 120 |
+| `WRONG_ANNOTATION_TARGET` | 337 | 230 | 107 |
 | `ILLEGAL_RESTRICTED_SUSPENDING_FUNCTION_CALL` | 100 | 2 | 98 |
 | `CANNOT_INFER_PARAMETER_TYPE` | 559 | 465 | 94 |
 | `OPT_IN_USAGE_ERROR` | 96 | 2 | 94 |
@@ -203,8 +203,7 @@ kc reports 10621 of 18906 expected errors (56.2%) on their lines.
 | `NO_RETURN_IN_FUNCTION_WITH_BLOCK_BODY` | 145 | 90 | 55 |
 | `NO_VALUE_FOR_PARAMETER` | 167 | 113 | 54 |
 | `TYPE_INFERENCE_ONLY_INPUT_TYPES_ERROR` | 61 | 8 | 53 |
-| `ANNOTATION_ARGUMENT_MUST_BE_CONST` | 157 | 108 | 49 |
-| `REPEATED_ANNOTATION` | 62 | 16 | 46 |
+| `REPEATED_ANNOTATION` | 62 | 17 | 45 |
 | `SMARTCAST_IMPOSSIBLE` | 176 | 131 | 45 |
 | `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` | 85 | 40 | 45 |
 | `NON_PUBLIC_CALL_FROM_PUBLIC_INLINE` | 59 | 18 | 41 |
@@ -222,6 +221,7 @@ kc reports 10621 of 18906 expected errors (56.2%) on their lines.
 | `DEPRECATION_ERROR` | 42 | 9 | 33 |
 | `WRONG_ANNOTATION_TARGET_WITH_USE_SITE_TARGET` | 79 | 46 | 33 |
 | `CONFUSING_BRANCH_CONDITION_ERROR` | 35 | 3 | 32 |
+| `ANNOTATION_ARGUMENT_MUST_BE_CONST` | 157 | 126 | 31 |
 | `EXPLICIT_TYPE_ARGUMENTS_IN_PROPERTY_ACCESS` | 36 | 5 | 31 |
 | `INAPPLICABLE_JVM_FIELD` | 33 | 2 | 31 |
 | `ASSIGNMENT_IN_EXPRESSION_CONTEXT` | 32 | 3 | 29 |
