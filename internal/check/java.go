@@ -1978,15 +1978,20 @@ func (c *Checker) javaCall(x *syntax.Call, fn *syntax.Member, rt types.Type, wan
 			// Resolving checks the arguments; lambdas are checked once.
 			n := len(c.errs)
 			if t := c.resolve(x, cands, want, sink); len(c.errs) == n {
-				return t
+				return c.mapGet(x, fn, cls, t)
 			}
 			c.errs = c.errs[:n]
 			return c.resolve(x, exts, want, sink)
 		}
 	}
-	t := c.resolve(x, cands, want, sink)
+	return c.mapGet(x, fn, cls, c.resolve(x, cands, want, sink))
+}
+
+// mapGet returns the type t of a call x of a member of cls, or t? for
+// get(key) of a Java Map: Kotlin's Map.get returns V?.
+func (c *Checker) mapGet(x *syntax.Call, fn *syntax.Member, cls *types.ClassSym, t types.Type) types.Type {
 	if fn.Name == "get" && len(x.Args) == 1 && t.K != types.Invalid && c.isSubclassOf(cls, "java/util/Map") {
-		t = t.Nullable() // Kotlin's Map.get returns V?
+		return t.Nullable()
 	}
 	return t
 }
@@ -1999,7 +2004,7 @@ func (c *Checker) allPlatform(ms []*types.FunSym) bool {
 		return false
 	}
 	for _, f := range ms {
-		if !f.Platform && !(f.Owner != nil && f.Owner.External && c.u.ext.platform()[f.Name+f.Desc]) {
+		if !(f.Platform || f.Owner != nil && f.Owner.External) || !c.u.ext.platform()[f.Name+f.Desc] {
 			return false
 		}
 	}

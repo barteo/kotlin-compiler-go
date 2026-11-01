@@ -222,6 +222,19 @@ func (g *gen) equals(left func(), lt types.Type, right syntax.Expr, opType types
 		} else {
 			g.code.Jump(cf.IFNONNULL, l)
 		}
+	case opType.N && mixedNumbers(lt, rt):
+		// Numbers of two types, smart casts of which one may be null, as
+		// numbers of the wider type: x is Double? && y is Int? && x == y.
+		a, b := lt.Flex().NonNull(), rt.Flex().NonNull()
+		left()
+		g.coerce(lt, a.Nullable())
+		g.exprAs(right, b.Nullable())
+		g.areEqualAs(a, b, opType.NonNull())
+		if wantEqual {
+			g.code.Jump(cf.IFNE, l)
+		} else {
+			g.code.Jump(cf.IFEQ, l)
+		}
 	case opType.IsPrimitive():
 		left()
 		g.coerce(lt, opType)
@@ -327,6 +340,13 @@ func (g *gen) bound(e syntax.Expr, t types.Type) func() {
 	return func() { g.code.Local(loadOp(t), slot) }
 }
 
+// mixedNumbers reports whether x and y are number types, nullable or
+// not, of two kinds: Double? and Int.
+func mixedNumbers(x, y types.Type) bool {
+	x, y = x.Flex().NonNull(), y.Flex().NonNull()
+	return x.IsNumeric() && y.IsNumeric() && x != y
+}
+
 // areEqual replaces two nullable Doubles or Floats, as f says, with
 // whether they are equal as IEEE 754 says, or both null, 1 or 0, as
 // Intrinsics.areEqual does.
@@ -336,7 +356,13 @@ func (g *gen) areEqual(f types.Type) {
 		g.code.Invoke(cf.INVOKESTATIC, "kotlin/jvm/internal/Intrinsics", "areEqual", "("+ref+ref+")Z")
 		return
 	}
-	a, b := g.code.AllocLocal(ref), g.code.AllocLocal(ref)
+	g.areEqualAs(f, f, f)
+}
+
+// areEqualAs is areEqual for boxed numbers of types x and y, compared as
+// numbers of type f.
+func (g *gen) areEqualAs(x, y, f types.Type) {
+	a, b := g.code.AllocLocal(desc(x.Nullable())), g.code.AllocLocal(desc(y.Nullable()))
 	g.code.Local(cf.ASTORE, b)
 	g.code.Local(cf.ASTORE, a)
 	aSet, yes, no, end := cf.NewLabel(), cf.NewLabel(), cf.NewLabel(), cf.NewLabel()
@@ -349,9 +375,11 @@ func (g *gen) areEqual(f types.Type) {
 	g.code.Local(cf.ALOAD, b)
 	g.code.Jump(cf.IFNULL, no)
 	g.code.Local(cf.ALOAD, a)
-	g.unbox(f)
+	g.unbox(x)
+	g.convert(x, f)
 	g.code.Local(cf.ALOAD, b)
-	g.unbox(f)
+	g.unbox(y)
+	g.convert(y, f)
 	g.branchCompare(f, syntax.EQ, no, false)
 	g.code.Place(yes)
 	g.code.Iconst(1)

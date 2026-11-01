@@ -2,13 +2,13 @@
 
 The box tests of JetBrains/kotlin v2.4.21 (`compiler/testData/codegen/box`), each compiled by kc and run: its `box()` must return `"OK"`. `bench/kotlin-tests.sh box` writes this file, and [docs/conformance.md](../../docs/conformance.md) explains it.
 
-Of 7480 test files, 997 are skipped and 6483 run. 6231 pass (96.1%).
+Of 7480 test files, 997 are skipped and 6483 run. 6270 pass (96.7%).
 
 | Result | Tests | Share |
 |:---|---:|---:|
-| pass | 6231 | 96.1% |
+| pass | 6270 | 96.7% |
 | parse/unsupported | 0 | 0.0% |
-| check error | 181 | 2.8% |
+| check error | 142 | 2.2% |
 | crash | 0 | 0.0% |
 | codegen error | 7 | 0.1% |
 | VerifyError | 21 | 0.3% |
@@ -46,23 +46,23 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 
 | Directory | Run | Pass | Unsupported | Check error | Crash | Bad bytecode | Wrong |
 |:---|---:|---:|---:|---:|---:|---:|---:|
-| ranges | 805 | 802 | 0 | 3 | 0 | 0 | 0 |
+| ranges | 805 | 804 | 0 | 1 | 0 | 0 | 0 |
 | inlineClasses | 784 | 761 | 0 | 16 | 0 | 7 | 0 |
 | coroutines | 497 | 491 | 0 | 1 | 3 | 1 | 1 |
 | callableReference | 297 | 283 | 0 | 12 | 0 | 0 | 2 |
 | inference | 205 | 194 | 0 | 10 | 0 | 0 | 1 |
 | delegatedProperty | 149 | 145 | 0 | 3 | 0 | 0 | 1 |
-| controlStructures | 146 | 142 | 0 | 3 | 0 | 0 | 1 |
+| controlStructures | 146 | 145 | 0 | 0 | 0 | 0 | 1 |
 | bridges | 137 | 136 | 0 | 0 | 0 | 1 | 0 |
 | inline | 132 | 128 | 0 | 4 | 0 | 0 | 0 |
-| classes | 120 | 117 | 0 | 2 | 0 | 1 | 0 |
-| objects | 116 | 113 | 0 | 2 | 0 | 1 | 0 |
+| classes | 120 | 119 | 0 | 0 | 0 | 1 | 0 |
+| objects | 116 | 114 | 0 | 1 | 0 | 1 | 0 |
 | properties | 109 | 106 | 0 | 2 | 0 | 1 | 0 |
 | closures | 107 | 104 | 0 | 2 | 0 | 0 | 1 |
-| functions | 106 | 99 | 0 | 7 | 0 | 0 | 0 |
+| functions | 106 | 102 | 0 | 4 | 0 | 0 | 0 |
 | enum | 101 | 97 | 0 | 1 | 0 | 0 | 3 |
 | when | 99 | 98 | 0 | 1 | 0 | 0 | 0 |
-| primitiveTypes | 98 | 89 | 0 | 8 | 0 | 0 | 1 |
+| primitiveTypes | 98 | 90 | 0 | 7 | 0 | 0 | 1 |
 | defaultArguments | 82 | 82 | 0 | 0 | 0 | 0 | 0 |
 | arrays | 78 | 77 | 0 | 1 | 0 | 0 | 0 |
 | regressions | 75 | 72 | 0 | 2 | 1 | 0 | 0 |
@@ -74,7 +74,7 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 | extensionFunctions | 53 | 43 | 0 | 10 | 0 | 0 | 0 |
 | inlineEvaluationOrder | 52 | 52 | 0 | 0 | 0 | 0 | 0 |
 | innerNested | 52 | 50 | 0 | 0 | 0 | 2 | 0 |
-| annotations | 51 | 34 | 0 | 16 | 0 | 0 | 1 |
+| annotations | 51 | 36 | 0 | 14 | 0 | 0 | 1 |
 | reflection | 50 | 48 | 0 | 2 | 0 | 0 | 0 |
 | funInterface | 48 | 46 | 0 | 2 | 0 | 0 | 0 |
 | unsignedTypes | 44 | 42 | 0 | 1 | 0 | 0 | 1 |
@@ -82,30 +82,30 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 | ir | 41 | 38 | 0 | 3 | 0 | 0 | 0 |
 | reified | 40 | 38 | 0 | 0 | 0 | 2 | 0 |
 | localClasses | 39 | 37 | 0 | 1 | 0 | 1 | 0 |
-| strings | 39 | 32 | 0 | 4 | 2 | 0 | 1 |
+| strings | 39 | 34 | 0 | 2 | 2 | 0 | 1 |
 | super | 39 | 37 | 0 | 1 | 0 | 0 | 1 |
-| ieee754 | 38 | 33 | 0 | 5 | 0 | 0 | 0 |
+| ieee754 | 38 | 38 | 0 | 0 | 0 | 0 | 0 |
 | evaluate | 37 | 37 | 0 | 0 | 0 | 0 | 0 |
 | function | 37 | 37 | 0 | 0 | 0 | 0 | 0 |
 | smartCasts | 36 | 32 | 0 | 4 | 0 | 0 | 0 |
-| operatorConventions | 34 | 31 | 0 | 2 | 0 | 0 | 1 |
+| operatorConventions | 34 | 33 | 0 | 0 | 0 | 0 | 1 |
 | traits | 34 | 34 | 0 | 0 | 0 | 0 | 0 |
 | typeErasure | 32 | 32 | 0 | 0 | 0 | 0 | 0 |
 | extensionProperties | 31 | 30 | 0 | 0 | 1 | 0 | 0 |
 | typealias | 31 | 28 | 0 | 3 | 0 | 0 | 0 |
-| basics | 30 | 28 | 0 | 2 | 0 | 0 | 0 |
+| basics | 30 | 30 | 0 | 0 | 0 | 0 | 0 |
 | secondaryConstructors | 30 | 30 | 0 | 0 | 0 | 0 | 0 |
 | syntheticAccessors | 30 | 30 | 0 | 0 | 0 | 0 | 0 |
 | initializers | 26 | 26 | 0 | 0 | 0 | 0 | 0 |
 | try | 26 | 26 | 0 | 0 | 0 | 0 | 0 |
 | fir | 25 | 20 | 0 | 3 | 0 | 2 | 0 |
 | fp | 25 | 25 | 0 | 0 | 0 | 0 | 0 |
-| increment | 25 | 17 | 0 | 8 | 0 | 0 | 0 |
+| increment | 25 | 25 | 0 | 0 | 0 | 0 | 0 |
 | specialBuiltins | 25 | 19 | 0 | 2 | 0 | 2 | 2 |
 | finally | 24 | 23 | 0 | 0 | 0 | 0 | 1 |
 | delegation | 23 | 21 | 0 | 2 | 0 | 0 | 0 |
-| binaryOp | 22 | 16 | 0 | 3 | 0 | 0 | 3 |
-| intrinsics | 22 | 19 | 0 | 3 | 0 | 0 | 0 |
+| binaryOp | 22 | 19 | 0 | 0 | 0 | 0 | 3 |
+| intrinsics | 22 | 21 | 0 | 1 | 0 | 0 | 0 |
 | boxing | 21 | 19 | 0 | 0 | 0 | 0 | 2 |
 | lambda | 21 | 21 | 0 | 0 | 0 | 0 | 0 |
 | sam | 21 | 19 | 0 | 2 | 0 | 0 | 0 |
@@ -166,7 +166,7 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 | objectExpression | 4 | 4 | 0 | 0 | 0 | 0 | 0 |
 | unaryOp | 4 | 4 | 0 | 0 | 0 | 0 | 0 |
 | underscoredTypeArguments | 4 | 4 | 0 | 0 | 0 | 0 | 0 |
-| checkcastOptimization | 3 | 2 | 0 | 1 | 0 | 0 | 0 |
+| checkcastOptimization | 3 | 3 | 0 | 0 | 0 | 0 | 0 |
 | companion | 3 | 3 | 0 | 0 | 0 | 0 | 0 |
 | cycles | 3 | 3 | 0 | 0 | 0 | 0 | 0 |
 | dataObjects | 3 | 2 | 0 | 0 | 0 | 1 | 0 |
@@ -211,14 +211,11 @@ Tests kotlinc compiles that kc's checker rejects, by its first error, with names
 | `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 9 | `callableReference/function/nullableExtension.kt`, `casts/intersectionTypeMultipleBounds.kt` |
 | `type argument is not within its bounds: inferred type Int of type _ '_' is not a subtype of Long` | 9 | `inlineClasses/checkBoxingForNonLocalAndLabeledReturnsGeneric.kt`, `inlineClasses/contextsAndAccessors/accessPrivateInlineClassCompanionMethod2Generic.kt` |
 | `class '_' is not abstract and does not implement abstract member '_'` | 8 | `primitiveTypes/numberToChar/abstractMethodInSuperinterface.kt`, `primitiveTypes/numberToChar/fakeOverride.kt` |
-| `operator '_' cannot be applied to Int?` | 8 | `classes/kt723.kt`, `functions/localFunctions/kt4989.kt` |
-| `for-loop range must have an '_' method` | 5 | `controlStructures/forLoopMemberExtensionAll.kt`, `functions/kt1199.kt` |
 | `operator '_' cannot be applied to String` | 5 | `extensionFunctions/kt1953.kt`, `extensionFunctions/kt1953_class.kt` |
 | `type mismatch: inferred type is _ but _ was expected` | 4 | `delegation/delegationToIntersectionType.kt`, `delegation/delegationToIntersectionType3.kt` |
 | `annotation class cannot have type parameters` | 3 | `annotations/genericAnnotations.kt`, `annotations/instances/annotationWithTypeParameters.kt` |
 | `expression of type _ cannot be invoked as a function` | 3 | `functions/invoke/kt3631invokeOnString.kt`, `inline/operators.kt` |
 | `many supertypes available, please specify the one you mean in angle brackets, e.g. '_'` | 3 | `compileKotlinAgainstKotlin/jvm8/jvm8against6/delegation/diamond.kt`, `compileKotlinAgainstKotlin/jvm8/jvm8against6/delegation/diamond3.kt` |
-| `operator '_' cannot be applied to Int and Char` | 3 | `binaryOp/kt11163.kt`, `binaryOp/kt11163_properIeee754comparisons.kt` |
 | `type argument is not within its bounds: inferred type I of type _ '_' is not a subtype of In` | 3 | `inference/tryCatchAtAssignmentWithSmartCast.kt`, `inference/whenAtAssignmentWithSmartCast.kt` |
 | `'_' is not an expression, it can only be used on the left-hand side of a dot ('_')` | 2 | `closures/kt11634.kt`, `closures/kt11634_2.kt` |
 | `cannot find a parameter with this name: _` | 2 | `compileKotlinAgainstKotlin/clashingFakeOverrideSignatures.kt`, `ir/serializationRegressions/signatureClash.kt` |
@@ -226,14 +223,8 @@ Tests kotlinc compiles that kc's checker rejects, by its first error, with names
 | `enum entry '_' does not implement abstract member '_'` | 2 | `callableReference/function/local/enumExtendsTrait.kt`, `specialBuiltins/enumAsOrdinaled.kt` |
 | `expression '_' of type _ cannot be invoked as a function` | 2 | `smartCasts/invokeRecieverSmartcastK2.kt`, `typealias/typeAliasObjectCallable.kt` |
 | `initializer is not allowed here because this property has no backing field` | 2 | `properties/classFieldInsideNested.kt`, `properties/fieldInsideNested.kt` |
-| `operator '_' cannot be applied to Byte?` | 2 | `increment/nullable.kt`, `intrinsics/kt12125_2.kt` |
-| `operator '_' cannot be applied to Double and Comparable<Float>` | 2 | `ieee754/asComparableToDouble.kt`, `ieee754/asComparableToDouble_properIeeeComparisons.kt` |
-| `operator '_' cannot be applied to Double and Float` | 2 | `ieee754/smartCastToDifferentTypes_properIeeeComparisons.kt`, `ieee754/smartCastToDoubleAndComparableToDouble.kt` |
-| `operator '_' cannot be applied to Int? and Int` | 2 | `functions/localFunctions/kt4119.kt`, `increment/assignPlusOnSmartCast.kt` |
-| `operator '_' cannot be applied to T and T` | 2 | `basics/k42000_1.kt`, `basics/k42000_crossmodule.kt` |
 | `overload resolution ambiguity for Z::hashCode: specify the expected function type` | 2 | `inlineClasses/callableReferences/equalsHashCodeToString.kt`, `inlineClasses/callableReferences/equalsHashCodeToStringGeneric.kt` |
 | `platform declaration clash: the following declarations have the same JVM signature (getData()I)` | 2 | `extensionFunctions/classMethodCallExtensionSuper.kt`, `extensionFunctions/defaultMethodInterfaceCallExtensionSuper.kt` |
-| `the iterator of the for-loop range has no '_' or '_' method` | 2 | `controlStructures/forLoopMemberExtensionHasNext.kt`, `controlStructures/forLoopMemberExtensionNext.kt` |
 | `type argument is not within its bounds: inferred type IcLong<Int> of type _ '_' is not a subtype of IcLong<Long>` | 2 | `inlineClasses/boundCallableReferencePassedToInlineFunctionGeneric.kt`, `inlineClasses/boundCallableReferencePassedToInlineFunctionGeneric2.kt` |
 | `type mismatch: '_' branches have incompatible types Unit and Nothing?` | 2 | `inference/noCoercionToUnitWithEqualityConstraintForNullableReturnType.kt`, `unit/nullableUnitInWhen3.kt` |
 | `val cannot be reassigned` | 2 | `extensionFunctions/kt475.kt`, `fakeOverride/intersectionOverrideBetweenValAndVar.kt` |
@@ -245,7 +236,16 @@ Tests kotlinc compiles that kc's checker rejects, by its first error, with names
 | `ambiguous call: n candidates for '_' take (_)` | 1 | `callableReference/function/overloadedFun.kt` |
 | `cannot create an instance of Outer` | 1 | `annotations/instances/AnnotationInstantiationWithArray.kt` |
 | `cannot create an instance of Result` | 1 | `inlineClasses/resultGeneric.kt` |
-| *43 more* | 43 | |
+| `cannot create an instance of SinceKotlin` | 1 | `annotations/instances/annotationFromStdlib.kt` |
+| `class '_' cannot be used as a value` | 1 | `package/privateMembersInImportList.kt` |
+| `class A.X is not public` | 1 | `ir/serializationRegressions/innerClassInEnumEntryClass.kt` |
+| `class Foo.FOO is not public` | 1 | `enum/enumEntryMembers.kt` |
+| `expected expression, found '_'` | 1 | `annotations/spreadOperatorInAnnotationArguments.kt` |
+| `expected parameter of type _` | 1 | `diagnostics/functions/tailRecursion/realIteratorFoldl.kt` |
+| `expression '_' of type _ String> cannot be invoked as a function` | 1 | `callableReference/bound/dontShareReceiver.kt` |
+| `function invocation '_' expected; use ::box for a reference` | 1 | `functions/kt58825_arrayOverloads.kt` |
+| `function invocation '_' expected; use ::right for a reference` | 1 | `delegatedProperty/functionRefDelefate.kt` |
+| *23 more* | 23 | |
 
 ## Code generation errors
 

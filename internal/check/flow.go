@@ -288,6 +288,68 @@ func (c *Checker) watchedVars(nodes ...any) []*types.VarSym {
 	return out
 }
 
+// loopVars returns the vars of watchedVars(nodes...) whose narrowing a
+// loop over nodes drops, and a function to call after the loop. It keeps
+// those smart cast to a non-null number or Char that the nodes only
+// increment and decrement, or, if declared as its nullable type, also
+// assign with op=, whose results, which assign checks, keep the type.
+func (c *Checker) loopVars(nodes ...any) ([]*types.VarSym, func()) {
+	vars := c.watchedVars(nodes...)
+	out := vars[:0:0]
+	var kept []*types.VarSym
+	var old []types.Type
+	var had []bool
+	for _, v := range vars {
+		if t := c.scope.narrowed(v); t == v.Type || t.N || t.P || !t.IsNumeric() && t.K != types.Char || !onlyIncDec(v.Name, nodes, v.Type.NonNull() == t) {
+			out = append(out, v)
+		} else {
+			if c.loopKept == nil {
+				c.loopKept = map[*types.VarSym]types.Type{}
+			}
+			kept = append(kept, v)
+			prev, ok := c.loopKept[v]
+			old, had = append(old, prev), append(had, ok)
+			c.loopKept[v] = t
+		}
+	}
+	return out, func() {
+		for i, v := range kept {
+			if had[i] {
+				c.loopKept[v] = old[i]
+			} else {
+				delete(c.loopKept, v)
+			}
+		}
+	}
+}
+
+// onlyIncDec reports whether every assignment of the local name in nodes
+// is a ++, a -- or, if opAssign, an op=, outside lambdas, local functions
+// and classes, and object expressions.
+func onlyIncDec(name string, nodes []any, opAssign bool) bool {
+	ok := true
+	for _, node := range nodes {
+		if b, isBlock := node.(*syntax.Block); node == nil || isBlock && b == nil {
+			continue
+		}
+		inspect(node, func(n any) bool {
+			switch n := n.(type) {
+			case *syntax.Lambda, *syntax.ObjectExpr, *syntax.LocalFun, *syntax.LocalClass:
+				if assignedNames(n)[name] {
+					ok = false
+				}
+				return false
+			case *syntax.Assign:
+				if id, isID := n.Target.(*syntax.Ident); isID && id.Name == name && (n.Op == syntax.ASSIGN || !opAssign) {
+					ok = false
+				}
+			}
+			return ok
+		})
+	}
+	return ok
+}
+
 // hasVars reports whether a local var whose type can be narrowed is in
 // scope.
 func (c *Checker) hasVars() bool {

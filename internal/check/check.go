@@ -224,6 +224,9 @@ type Checker struct {
 	concurrent    map[varFrame]bool
 	nestedAssigns map[*types.VarSym][]types.Type
 	assignsMemo   map[any][]string
+	// loopKept has the vars that the loops being checked keep smart cast
+	// to their types, as loopVars has them.
+	loopKept map[*types.VarSym]types.Type
 	// implied has the smart casts that a local val's not being null
 	// implies: those of the safe calls of its value, as K2's for
 	// val t = a?.b, where t != null means a != null.

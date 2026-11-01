@@ -260,6 +260,25 @@ func (g *gen) forEach(s *syntax.For) {
 	g.code.Place(exit)
 }
 
+// forCalls generates a loop over a collection whose iterator(), hasNext()
+// and next() the checker resolved as calls: IterVar holds the iterator.
+func (g *gen) forCalls(s *syntax.For) {
+	g.stmt(s.IterVar)
+	s.Sym.Slot = g.code.AllocLocal(desc(s.Sym.Type))
+	g.named(s.Sym)
+	top, exit := cf.NewLabel(), cf.NewLabel()
+	g.code.Place(top)
+	g.line(s.P)
+	g.exprAs(s.HasNextX, types.BoolType)
+	g.code.Jump(cf.IFEQ, exit)
+	g.exprAs(s.NextX, s.Sym.Type)
+	g.code.Local(storeOp(s.Sym.Type), s.Sym.Slot)
+	g.pushLoop(s, exit, top)
+	g.loopBody(func() { g.block(s.Body, types.UnitType, false) })
+	g.code.Jump(cf.GOTO, top)
+	g.code.Place(exit)
+}
+
 // invokeOperator calls an operator function without parameters on a
 // receiver of type rt on the stack: a method, or a top-level extension.
 func (g *gen) invokeOperator(f *types.FunSym, rt types.Type) {
@@ -318,6 +337,10 @@ func (g *gen) stmts(ss []syntax.Stmt) {
 }
 
 func (g *gen) forLoop(s *syntax.For) {
+	if s.IterVar != nil {
+		g.forCalls(s)
+		return
+	}
 	if s.HasNext != nil {
 		g.forEach(s)
 		return

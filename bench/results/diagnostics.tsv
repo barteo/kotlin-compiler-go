@@ -1916,12 +1916,12 @@ tests/controlFlowAnalysis/deadCode/deadCallInReceiver.kt	accepts valid
 tests/controlFlowAnalysis/deadCode/deadCodeElvis.kt	accepts valid		
 tests/controlFlowAnalysis/deadCode/deadCodeFromDifferentSources.kt	accepts valid		
 tests/controlFlowAnalysis/deadCode/deadCodeInArrayAccess.kt	accepts valid		
-tests/controlFlowAnalysis/deadCode/deadCodeInAssignment.kt	rejects valid	operator '_' cannot be applied to Int and Nothing	deadCodeInAssignment.kt:24: operator '+=' cannot be applied to Int and Nothing
-tests/controlFlowAnalysis/deadCode/deadCodeInBinaryExpressions.kt	rejects valid	operator '_' cannot be applied to Nothing and String	deadCodeInBinaryExpressions.kt:5: operator '*' cannot be applied to Nothing and String
+tests/controlFlowAnalysis/deadCode/deadCodeInAssignment.kt	accepts valid		
+tests/controlFlowAnalysis/deadCode/deadCodeInBinaryExpressions.kt	accepts valid		
 tests/controlFlowAnalysis/deadCode/deadCodeInCalls.kt	accepts valid		
 tests/controlFlowAnalysis/deadCode/deadCodeInDeadCode.kt	accepts valid		
 tests/controlFlowAnalysis/deadCode/deadCodeInIf.kt	accepts valid		
-tests/controlFlowAnalysis/deadCode/deadCodeInInnerExpressions.kt	rejects valid	operator '_' cannot be applied to Nothing and String	deadCodeInInnerExpressions.kt:11: operator '*' cannot be applied to Nothing and String
+tests/controlFlowAnalysis/deadCode/deadCodeInInnerExpressions.kt	rejects valid	unresolved reference: _	deadCodeInInnerExpressions.kt:11: unresolved reference: get
 tests/controlFlowAnalysis/deadCode/deadCodeInLocalDeclarations.kt	accepts valid		
 tests/controlFlowAnalysis/deadCode/deadCodeInLoops.kt	accepts valid		
 tests/controlFlowAnalysis/deadCode/deadCodeInReturn.kt	accepts valid		
@@ -2083,7 +2083,7 @@ tests/controlStructures/continueInInitBlock.kt	rejects invalid	on an expected li
 tests/controlStructures/emptyIf.kt	rejects invalid	on an expected line	
 tests/controlStructures/forLoopWithNullableRange.kt	rejects invalid	on an expected line	
 tests/controlStructures/forWithIncorrectTypeSpecializer.kt	rejects invalid	on an expected line	
-tests/controlStructures/forWithNullableIterator.kt	accepts invalid	HAS_NEXT_FUNCTION_NONE_APPLICABLE; NEXT_NONE_APPLICABLE	forWithNullableIterator.kt:12: HAS_NEXT_FUNCTION_NONE_APPLICABLE
+tests/controlStructures/forWithNullableIterator.kt	rejects invalid	on an expected line	
 tests/controlStructures/ifElseIntersection.kt	rejects invalid	on an expected line	
 tests/controlStructures/ifInResultOfLambda.kt	accepts valid		
 tests/controlStructures/ifToAnyDiscriminatingUsages.kt	rejects invalid	on an expected line	
@@ -2104,7 +2104,7 @@ tests/controlStructures/kt786.kt	rejects invalid	on an expected line
 tests/controlStructures/kt799.kt	rejects invalid	on an expected line	
 tests/controlStructures/lambdasInExclExclAndElvis.kt	accepts valid		
 tests/controlStructures/localReturnInsidePropertyAccessor.kt	rejects invalid	on an expected line	
-tests/controlStructures/loopFunctionAmbiguity.kt	accepts invalid	HAS_NEXT_FUNCTION_AMBIGUITY	loopFunctionAmbiguity.kt:18: HAS_NEXT_FUNCTION_AMBIGUITY
+tests/controlStructures/loopFunctionAmbiguity.kt	rejects invalid	on an expected line	
 tests/controlStructures/nestedLoopsWithMultipleLabels.kt	rejects invalid	on an expected line	
 tests/controlStructures/noTypeMismatchWithWhenWithoutElse.kt	rejects invalid	on an expected line	
 tests/controlStructures/nonExhaustiveIfInElvis.kt	rejects invalid	on an expected line	
@@ -3283,7 +3283,7 @@ tests/expresssions/outerMemberAccesses.kt	skip	Java sources
 tests/expresssions/outerObject.kt	accepts valid		
 tests/expresssions/overriddenJavaGetter.kt	skip	Java sources	
 tests/expresssions/parenthesizedSafeCallsAndOperators.kt	skip	LANGUAGE	
-tests/expresssions/plusWithAssignSmartCast.kt	rejects valid	operator '_' cannot be applied to String? and String	plusWithAssignSmartCast.kt:9: operator '+=' cannot be applied to String? and String
+tests/expresssions/plusWithAssignSmartCast.kt	accepts valid		
 tests/expresssions/privateObjectLiteral.kt	rejects invalid	on an expected line	
 tests/expresssions/privateVisibility.kt	rejects invalid	on an expected line	
 tests/expresssions/propertyAccessWithExplicitTypeArguments.kt	rejects invalid	on an expected line	
@@ -3309,8 +3309,8 @@ tests/extensionShadowedByMemberOverride.kt	accepts valid
 tests/extensionShadowedByMemberWithMpp.kt	skip	LANGUAGE	
 tests/extensions/ExtensionFunctions.kt	rejects invalid	on an expected line	
 tests/extensions/ExtensionsCalledOnSuper.kt	rejects invalid	on an expected line	
-tests/extensions/GenericIterator.kt	rejects valid	not nullable value required to call an '_' method on for-loop range	GenericIterator.kt:33: not nullable value required to call an 'iterator()' method on for-loop range
-tests/extensions/GenericIterator2.kt	rejects valid	for-loop range must have an '_' method	GenericIterator2.kt:13: for-loop range must have an 'iterator()' method
+tests/extensions/GenericIterator.kt	accepts valid		
+tests/extensions/GenericIterator2.kt	accepts valid		
 tests/extensions/ViolatedUpperBoundInExtensionReceiver.kt	rejects invalid	on an expected line	
 tests/extensions/classObject.kt	rejects invalid	on an expected line	
 tests/extensions/extensionMemberInClassObject.kt	rejects invalid	on an expected line	
@@ -5088,7 +5088,7 @@ tests/inlineClasses/inefficientEqualsOverridingInInlineClass.kt	skip	LANGUAGE
 tests/inlineClasses/inlineClassCanImplementInterfaceByDelegation.kt	rejects invalid	on an expected line	
 tests/inlineClasses/inlineClassCanOnlyImplementInterfaces.kt	skip	LANGUAGE	
 tests/inlineClasses/inlineClassCannotImplementInterfaceByDelegation.kt	skip	LANGUAGE	
-tests/inlineClasses/inlineClassConstructor.kt	crash	stack overflow in types.Repr (value.go:36)	
+tests/inlineClasses/inlineClassConstructor.kt	crash	stack overflow in types.Unboxed (value.go:23)	
 tests/inlineClasses/inlineClassConstructorParameterWithDefaultValue.kt	skip	LANGUAGE	
 tests/inlineClasses/inlineClassDeclaration.kt	rejects invalid	on an expected line	
 tests/inlineClasses/inlineClassDeclarationCheck.kt	skip	LANGUAGE	
@@ -7588,7 +7588,7 @@ tests/regressions/kt57845.kt	skip	Java sources
 tests/regressions/kt58.kt	rejects invalid	elsewhere	
 tests/regressions/kt580.kt	accepts valid		
 tests/regressions/kt588.kt	accepts valid		
-tests/regressions/kt597.kt	rejects valid	operator '_' cannot be applied to Int?	kt597.kt:19: operator '++' cannot be applied to Int?
+tests/regressions/kt597.kt	accepts valid		
 tests/regressions/kt600.kt	accepts valid		
 tests/regressions/kt604.kt	accepts valid		
 tests/regressions/kt618.kt	rejects invalid	on an expected line	
@@ -8321,7 +8321,7 @@ tests/smartCasts/kt5427.kt	accepts valid
 tests/smartCasts/kt5455.kt	accepts valid		
 tests/smartCasts/kt6819.kt	rejects invalid	on an expected line	
 tests/smartCasts/kt68970.kt	skip	LANGUAGE	
-tests/smartCasts/kt7561.kt	rejects valid	operator '_' cannot be applied to Int?	kt7561.kt:8: operator '++' cannot be applied to Int?
+tests/smartCasts/kt7561.kt	accepts valid		
 tests/smartCasts/lambdaAndArgument.kt	accepts valid		
 tests/smartCasts/lambdaAndArgumentFun.kt	accepts invalid	SMARTCAST_IMPOSSIBLE	lambdaAndArgumentFun.kt:14: SMARTCAST_IMPOSSIBLE
 tests/smartCasts/lambdaArgumentNoSubstitutedReturn.kt	accepts valid		
@@ -8604,7 +8604,7 @@ tests/smartCasts/variables/staticJavaFieldFromSameModule.kt	skip	Java sources
 tests/smartCasts/variables/unstableAliasing.kt	rejects invalid	on an expected line	
 tests/smartCasts/variables/varAsUse.kt	accepts valid		
 tests/smartCasts/variables/varChangedInLoop.kt	rejects invalid	on an expected line	
-tests/smartCasts/variables/varNotChangedInLoop.kt	rejects valid	unresolved reference: _	varNotChangedInLoop.kt:6: unresolved reference: inc
+tests/smartCasts/variables/varNotChangedInLoop.kt	accepts valid		
 tests/smartCasts/variables/whileTrue.kt	rejects invalid	on an expected line	
 tests/smartCasts/variables/whileWithBreak.kt	accepts valid		
 tests/smartCasts/varnotnull/assignNestedWhile.kt	rejects invalid	on an expected line	
@@ -8638,10 +8638,10 @@ tests/smartCasts/varnotnull/nestedWhile.kt	rejects invalid	on an expected line
 tests/smartCasts/varnotnull/plusplusMinusminus.kt	rejects invalid	on an expected line	
 tests/smartCasts/varnotnull/postfixNotnullClassIncrement.kt	accepts valid		
 tests/smartCasts/varnotnull/postfixNullableClassIncrement.kt	accepts valid		
-tests/smartCasts/varnotnull/postfixNullableIncrement.kt	rejects invalid	elsewhere	
+tests/smartCasts/varnotnull/postfixNullableIncrement.kt	rejects invalid	on an expected line	
 tests/smartCasts/varnotnull/prefixNotnullClassIncrement.kt	accepts valid		
 tests/smartCasts/varnotnull/prefixNullableClassIncrement.kt	accepts invalid	UNSAFE_CALL	prefixNullableClassIncrement.kt:13: UNSAFE_CALL
-tests/smartCasts/varnotnull/prefixNullableIncrement.kt	rejects invalid	elsewhere	
+tests/smartCasts/varnotnull/prefixNullableIncrement.kt	rejects invalid	on an expected line	
 tests/smartCasts/varnotnull/setNotNullInTry.kt	accepts invalid	UNSAFE_CALL	setNotNullInTry.kt:13: UNSAFE_CALL
 tests/smartCasts/varnotnull/setNullInTry.kt	accepts invalid	UNSAFE_CALL	setNullInTry.kt:9: UNSAFE_CALL
 tests/smartCasts/varnotnull/setNullInTryFinally.kt	accepts invalid	UNSAFE_CALL	setNullInTryFinally.kt:15: UNSAFE_CALL
@@ -8656,7 +8656,7 @@ tests/smartCasts/varnotnull/varCapturedInSafeClosure.kt	accepts valid
 tests/smartCasts/varnotnull/varChangedInLoop.kt	rejects invalid	on an expected line	
 tests/smartCasts/varnotnull/varCheck.kt	accepts valid		
 tests/smartCasts/varnotnull/varIntNull.kt	rejects invalid	on an expected line	
-tests/smartCasts/varnotnull/varNotChangedInLoop.kt	rejects valid	operator '_' cannot be applied to Int?	varNotChangedInLoop.kt:6: operator '++' cannot be applied to Int?
+tests/smartCasts/varnotnull/varNotChangedInLoop.kt	accepts valid		
 tests/smartCasts/varnotnull/varNull.kt	rejects invalid	on an expected line	
 tests/smartCasts/varnotnull/whileTrue.kt	rejects valid	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _	whileTrue.kt:13: only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type String?
 tests/smartCasts/varnotnull/whileTrueWithBracketSet.kt	skip	LANGUAGE	
@@ -10680,7 +10680,7 @@ testsWithStdLib/purelyImplementedCollection/mapsWithNullableKey.kt	rejects inval
 testsWithStdLib/purelyImplementedCollection/mapsWithNullableValues.kt	rejects invalid	on an expected line	
 testsWithStdLib/purelyImplementedCollection/sets.kt	accepts invalid	NULL_FOR_NONNULL_TYPE; ARGUMENT_TYPE_MISMATCH; INITIALIZER_TYPE_MISMATCH	sets.kt:11: NULL_FOR_NONNULL_TYPE
 testsWithStdLib/purelyImplementedCollection/wrongTypeParametersCount.kt	skip	Java sources	
-testsWithStdLib/rangeTo.kt	rejects valid	type argument is not within its bounds: inferred type Number of type _ '_' is not a subtype of Comparable<Number>	rangeTo.kt:3: type argument is not within its bounds: inferred type Number of type parameter 'T' is not a subtype of Comparable<Number>
+testsWithStdLib/rangeTo.kt	accepts valid		
 testsWithStdLib/recursiveBug.kt	accepts valid		
 testsWithStdLib/reflection/classArrayInAnnotation.kt	skip	Java sources	
 testsWithStdLib/reflection/lambdaInsteadOfKFunction.kt	rejects invalid	on an expected line	

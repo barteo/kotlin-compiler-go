@@ -520,6 +520,9 @@ func builtinFun(t types.Type, name string, n int) bool {
 		if _, ok := types.CharMethods[name]; ok && t == types.CharType && n == 0 {
 			return true
 		}
+		if rangeMember(t, name, n) {
+			return true
+		}
 	case t == types.BoolType:
 		switch name {
 		case "toString", "not":
