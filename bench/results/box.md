@@ -2,18 +2,18 @@
 
 The box tests of JetBrains/kotlin v2.4.21 (`compiler/testData/codegen/box`), each compiled by kc and run: its `box()` must return `"OK"`. `bench/kotlin-tests.sh box` writes this file, and [docs/conformance.md](../../docs/conformance.md) explains it.
 
-Of 7480 test files, 997 are skipped and 6483 run. 6186 pass (95.4%).
+Of 7480 test files, 997 are skipped and 6483 run. 6203 pass (95.7%).
 
 | Result | Tests | Share |
 |:---|---:|---:|
-| pass | 6186 | 95.4% |
+| pass | 6203 | 95.7% |
 | parse/unsupported | 0 | 0.0% |
 | check error | 195 | 3.0% |
 | crash | 0 | 0.0% |
 | codegen error | 16 | 0.2% |
 | VerifyError | 21 | 0.3% |
 | linkage error | 8 | 0.1% |
-| exception | 32 | 0.5% |
+| exception | 15 | 0.2% |
 | wrong result | 25 | 0.4% |
 | timeout | 0 | 0.0% |
 
@@ -48,7 +48,7 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 |:---|---:|---:|---:|---:|---:|---:|---:|
 | ranges | 805 | 802 | 0 | 3 | 0 | 0 | 0 |
 | inlineClasses | 784 | 759 | 0 | 16 | 2 | 7 | 0 |
-| coroutines | 497 | 482 | 0 | 1 | 4 | 1 | 9 |
+| coroutines | 497 | 490 | 0 | 1 | 4 | 1 | 1 |
 | callableReference | 297 | 280 | 0 | 15 | 0 | 0 | 2 |
 | inference | 205 | 194 | 0 | 10 | 0 | 0 | 1 |
 | delegatedProperty | 149 | 145 | 0 | 3 | 0 | 0 | 1 |
@@ -69,7 +69,7 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 | contextParameters | 70 | 70 | 0 | 0 | 0 | 0 | 0 |
 | casts | 68 | 64 | 0 | 1 | 0 | 0 | 3 |
 | compileKotlinAgainstKotlin | 65 | 59 | 0 | 5 | 0 | 0 | 1 |
-| diagnostics | 60 | 49 | 0 | 2 | 0 | 0 | 9 |
+| diagnostics | 60 | 58 | 0 | 2 | 0 | 0 | 0 |
 | dataClasses | 53 | 51 | 0 | 0 | 0 | 1 | 1 |
 | extensionFunctions | 53 | 43 | 0 | 10 | 0 | 0 | 0 |
 | inlineEvaluationOrder | 52 | 52 | 0 | 0 | 0 | 0 | 0 |
@@ -293,9 +293,7 @@ box() threw.
 
 | Exception | Tests | Examples |
 |:---|---:|:---|
-| `java.lang.StackOverflowError` | 16 | `coroutines/featureIntersection/tailrec/infixCall.kt`, `coroutines/featureIntersection/tailrec/infixRecursiveCall.kt` |
 | `java.lang.NullPointerException` | 14 | `boxing/kt84727.kt`, `boxing/kt84727_inline.kt` |
-| `java.lang.IllegalStateException` | 1 | `diagnostics/functions/tailRecursion/checkStackDepth.kt` |
 | `kotlin.reflect.jvm.internal.KotlinReflectionInternalError` | 1 | `compileKotlinAgainstKotlin/inlineClasses/privateCompanionObjectValInDifferentModule.kt` |
 
 ## Wrong results
