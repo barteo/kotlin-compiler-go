@@ -1192,7 +1192,7 @@ func (g *gen) suspendOperator(f *types.FunSym, rt types.Type, load func()) {
 	g.passContinuation(p)
 	g.code.OnCall(func() { g.suspended(p) })
 	if f.Ext {
-		g.invokeStatic(f.Facade, f, 0, false)
+		g.invokeStatic(f.Facade, f, nil, false)
 	} else {
 		g.invokeOperatorMember(f, rt)
 	}
@@ -1470,7 +1470,7 @@ func tailInline(x *syntax.Call) bool {
 			return false
 		}
 	}
-	b := inlineBody(x.Sym, 0)
+	b := inlineBody(x.Sym, nil)
 	return b != nil && len(x.Args) == len(x.Sym.Params) && b.ReturnsSuspended()
 }
 

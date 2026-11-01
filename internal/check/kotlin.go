@@ -1223,6 +1223,15 @@ func (t *classTable) loadKotlin(cls *types.ClassSym, info *classfile.Info, kc *k
 	cls.Abstract = cls.Interface || mod == kmeta.Abstract || mod == kmeta.Sealed
 	cls.Final = !cls.Interface && mod == kmeta.Final
 	cls.Object = kc.Kind() == kmeta.KindObject || kc.Kind() == kmeta.KindCompanion
+	if kc.IsInner() && info.Inner != nil && info.Inner.Outer != "" {
+		// An inner class: its constructors take the outer class's
+		// instance first, which a subclass's call of one passes, as the
+		// program's inner classes' do. Its own type parameters are all it
+		// has: OuterParams stays 0.
+		if o := t.class(info.Inner.Outer); o != nil {
+			cls.Inner, cls.Outer = true, o
+		}
+	}
 	if kc.Companion != "" {
 		// The companion object is a nested class, whose instance is in a
 		// static field of this class named after it.
