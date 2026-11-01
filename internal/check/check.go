@@ -1686,10 +1686,11 @@ func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
 
 // privateMethod reports whether a function or accessor declared with
 // modifiers m in class owner, or at the top level if it is nil, is
-// private on the JVM, as with kotlinc. kc keeps those of interfaces and
-// value classes public.
+// private on the JVM, as with kotlinc: an interface's too, if its bodies
+// are default methods, not in DefaultImpls. kc keeps those of value
+// classes public.
 func privateMethod(m *syntax.Modifiers, owner *types.ClassSym) bool {
-	return m.Visibility == syntax.Private && (owner == nil || !owner.Interface && !owner.Value)
+	return m.Visibility == syntax.Private && (owner == nil || !owner.Value && (!owner.Interface || owner.JVMDefault))
 }
 
 // privateCtor reports whether a constructor of class d with modifiers m

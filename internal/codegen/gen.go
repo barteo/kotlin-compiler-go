@@ -376,7 +376,11 @@ func (g *gen) privateAccessors() {
 		if !m.static {
 			d, op = "(L"+m.class+";"+d[1:], cf.INVOKESPECIAL
 		}
-		const acc = cf.AccPublic | cf.AccStatic | cf.AccFinal | cf.AccSynthetic
+		acc := uint16(cf.AccPublic | cf.AccStatic | cf.AccFinal | cf.AccSynthetic)
+		inIface := c.Access&cf.AccInterface != 0
+		if inIface {
+			acc &^= cf.AccFinal // an interface's methods can't be final
+		}
 		code := c.NewMethod(acc, m.accessor(), d)
 		for _, pd := range descParams(d) {
 			code.Local(loadOpOf(pd), code.AllocLocal(pd))
@@ -384,6 +388,9 @@ func (g *gen) privateAccessors() {
 		switch {
 		case m.virtual:
 			code.Invoke(cf.INVOKEVIRTUAL, m.class, m.name, m.desc)
+		case m.iface && m.super == "":
+			// A private method of the interface.
+			code.InvokeSpecialInterface(m.class, m.name, m.desc)
 		case m.iface:
 			code.InvokeSpecialInterface(m.super, m.name, m.desc)
 		case m.super != "":
@@ -898,6 +905,8 @@ func (g *gen) function(fd *syntax.FunDecl, access uint16) cf.MemberRef {
 		}
 	}
 	switch {
+	case sym.Private && g.inInterface():
+		access = access&^(cf.AccPublic|cf.AccProtected) | cf.AccPrivate // an interface's methods can't be final
 	case sym.Private:
 		access = access&^(cf.AccPublic|cf.AccProtected) | cf.AccPrivate | cf.AccFinal
 	case fd.Inline && fd.Find("", "InlineOnly") != nil && access&cf.AccStatic != 0:
@@ -2069,8 +2078,10 @@ func (g *gen) defaults(fd *syntax.FunDecl, owner *types.ClassSym) {
 		recv += paramDesc(r.Type)
 	}
 	access := uint16(cf.AccPublic | cf.AccStatic | cf.AccSynthetic)
-	if f.Private || fd.Inline && fd.Find("", "InlineOnly") != nil {
-		access &^= cf.AccPublic // as kotlinc's: its package calls it
+	if (f.Private || fd.Inline && fd.Find("", "InlineOnly") != nil) && !g.inInterface() {
+		// As kotlinc's: its package calls it. An interface's methods
+		// are public or private.
+		access &^= cf.AccPublic
 	}
 	g.code = g.cls.NewMethod(access, f.JVM()+"$default", "("+recv+d[1:i]+"ILjava/lang/Object;"+d[i:])
 	g.cls.Throws(f.Throws...) // as kotlinc declares them
@@ -2866,12 +2877,20 @@ func (g *gen) callMethod(f *types.FunSym, cls *types.ClassSym, name, d string) {
 		g.invokeVirtual(cls, name, d)
 	case g.inClass(f.Owner):
 		if g.publicInline {
-			g.shared.methods[privateMethod{class: f.Owner.Name, name: name, desc: d}] = true // for copies
+			g.shared.methods[privateMethod{class: f.Owner.Name, name: name, desc: d, iface: f.Owner.Interface}] = true // for copies
 		}
-		g.code.Invoke(cf.INVOKESPECIAL, f.Owner.Name, name, d)
+		if f.Owner.Interface {
+			g.code.InvokeSpecialInterface(f.Owner.Name, name, d)
+		} else {
+			g.code.Invoke(cf.INVOKESPECIAL, f.Owner.Name, name, d)
+		}
 	default:
-		g.shared.methods[privateMethod{class: f.Owner.Name, name: name, desc: d}] = true
-		g.code.Invoke(cf.INVOKESTATIC, f.Owner.Name, "access$"+name, "(L"+f.Owner.Name+";"+d[1:])
+		g.shared.methods[privateMethod{class: f.Owner.Name, name: name, desc: d, iface: f.Owner.Interface}] = true
+		if f.Owner.Interface {
+			g.code.InvokeStaticInterface(f.Owner.Name, "access$"+name, "(L"+f.Owner.Name+";"+d[1:])
+		} else {
+			g.code.Invoke(cf.INVOKESTATIC, f.Owner.Name, "access$"+name, "(L"+f.Owner.Name+";"+d[1:])
+		}
 	}
 }
 
@@ -2903,7 +2922,8 @@ func protectedFun(f *types.FunSym) bool {
 // descriptor d, on the receiver below the arguments, through a static
 // accessor of the class that may call it, if the code is in another
 // class: a lambda's, an object's or a nested class's in a subclass of
-// owner in another package, which the JVM doesn't let call it. As with
+// owner in another package, which the JVM doesn't let call it, or a
+// class's whose companion is the subclass, on the companion. As with
 // kotlinc, the body of an inline function that isn't private, which
 // classes of other packages copy, and its copies call it through an
 // accessor of the function's class too. It reports whether it did.
@@ -2912,11 +2932,13 @@ func (g *gen) protectedAccess(owner *types.ClassSym, name, d string) bool {
 	switch {
 	case owner == nil:
 	case g.publicCopy() != nil:
-		host = subclassOf(g.publicCopy().Owner, owner)
+		host = protectedHost(g.publicCopy().Owner, owner)
 	case g.publicInline:
-		host = subclassOf(g.owner, owner)
+		host = protectedHost(g.owner, owner)
 	case pkgPath(owner.Name) != pkgPath(g.cls.Name):
-		host = g.subclassHost(owner)
+		if k := protectedHost(g.owner, owner); k != nil && k.Name != g.cls.Name {
+			host = k
+		}
 	}
 	if host == nil {
 		return false
@@ -2950,6 +2972,22 @@ func (g *gen) superAccess(sup *types.ClassSym, name, d string) bool {
 func (g *gen) subclassHost(cls *types.ClassSym) *types.ClassSym {
 	if k := subclassOf(g.owner, cls); k != nil && k.Name != g.cls.Name {
 		return k
+	}
+	return nil
+}
+
+// protectedHost returns class k, or the class enclosing it, that is a
+// subclass of cls, or else the companion of one of them that is, if it
+// is of the program: B's code calls the protected members of A on B's
+// companion object : A().
+func protectedHost(k, cls *types.ClassSym) *types.ClassSym {
+	if s := subclassOf(k, cls); s != nil || k == nil {
+		return s
+	}
+	for ; k != nil; k = k.Outer {
+		if c := k.Companion; c != nil && !c.External && c.IsSubclassOf(cls) {
+			return c
+		}
 	}
 	return nil
 }
