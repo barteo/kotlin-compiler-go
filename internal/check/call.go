@@ -451,7 +451,8 @@ func (c *Checker) capturable(f *types.FunSym, ext types.Type, nothing func(param
 			continue
 		}
 		tp := ra.T.Param()
-		if pa.V == types.Star && !c.starWithin(a.C, i, tp) {
+		if pa.V == types.Star && (tp.Reified || !c.starWithin(a.C, i, tp)) {
+			// A capture can't be a reified type argument either.
 			return a, false
 		}
 		is := func(u types.Type) bool { return u.K == types.TypeParam && u.Param() == tp }

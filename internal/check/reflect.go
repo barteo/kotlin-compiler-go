@@ -358,6 +358,10 @@ func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.
 		if !ok {
 			return nil, types.InvalidType, false
 		}
+		if f != nil && f.Ext && f.Owner != nil && !f.Owner.External {
+			c.errorf(p, "%s: a reference to an extension declared in a class is not allowed", refString(r))
+			return nil, types.InvalidType, false
+		}
 		if f != nil {
 			fps := ps
 			sub := c.memberSubst(recvType, f.Owner)
