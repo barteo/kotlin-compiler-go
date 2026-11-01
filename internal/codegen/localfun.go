@@ -90,6 +90,12 @@ func (g *gen) localFun(lf *syntax.LocalFun) {
 			g.code.Invoke(cf.INVOKESTATIC, owner, "access$"+name, d)
 		}})
 	}
+	if fd.Tailrec {
+		// After the state machine's entry, as in a member function; the
+		// captures in the frame stay the same across the jumps.
+		lg.tail = &tailrec{fd: fd, start: cf.NewLabel()}
+		lg.code.Place(lg.tail.start)
+	}
 	if fd.Body != nil {
 		lg.block(fd.Body, types.UnitType, false)
 		if lg.code.Reachable() {

@@ -1541,8 +1541,9 @@ func neverSuspends(x *syntax.Call) bool {
 	return ok && es.X.Type().K == types.Nothing && !es.X.Type().N
 }
 
-// suspensionPoint reports whether x is a call of a suspend function.
-func suspensionPoint(x *syntax.Call) bool { return x.Sym != nil && x.Sym.Suspend }
+// suspensionPoint reports whether x is a call of a suspend function, but
+// for a tailrec function's tail call of itself, a jump back to its start.
+func suspensionPoint(x *syntax.Call) bool { return x.Sym != nil && x.Sym.Suspend && !x.Tail }
 
 // returnable reports whether a suspend function can return the result of
 // call x unchanged, as its result of type ret: in a Unit function, x's is

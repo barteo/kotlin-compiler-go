@@ -1768,17 +1768,17 @@ coroutines/featureIntersection/suspendOperatorPlusCallFromLambda.kt	pass
 coroutines/featureIntersection/tailrec/controlFlowIf.kt	pass		
 coroutines/featureIntersection/tailrec/controlFlowWhen.kt	pass		
 coroutines/featureIntersection/tailrec/extention.kt	pass		
-coroutines/featureIntersection/tailrec/infixCall.kt	exception	java.lang.StackOverflowError	 at InfixCallKt.test
-coroutines/featureIntersection/tailrec/infixRecursiveCall.kt	exception	java.lang.StackOverflowError	 at InfixRecursiveCallKt.foo
+coroutines/featureIntersection/tailrec/infixCall.kt	pass		
+coroutines/featureIntersection/tailrec/infixRecursiveCall.kt	pass		
 coroutines/featureIntersection/tailrec/kt38920_localTailrec.kt	pass		
-coroutines/featureIntersection/tailrec/realIteratorFoldl.kt	exception	java.lang.StackOverflowError	 at RealIteratorFoldlKt$box$1.invokeSuspend$lambda$0
+coroutines/featureIntersection/tailrec/realIteratorFoldl.kt	pass		
 coroutines/featureIntersection/tailrec/realStringEscape.kt	pass		
 coroutines/featureIntersection/tailrec/realStringRepeat.kt	pass		
-coroutines/featureIntersection/tailrec/returnInParentheses.kt	exception	java.lang.StackOverflowError	 at ReturnInParenthesesKt.foo
-coroutines/featureIntersection/tailrec/sum.kt	exception	java.lang.StackOverflowError	 at SumKt.sum
-coroutines/featureIntersection/tailrec/tailCallInBlockInParentheses.kt	exception	java.lang.StackOverflowError	 at TailCallInBlockInParenthesesKt.foo
-coroutines/featureIntersection/tailrec/tailCallInParentheses.kt	exception	java.lang.StackOverflowError	 at TailCallInParenthesesKt.foo
-coroutines/featureIntersection/tailrec/whenWithIs.kt	exception	java.lang.StackOverflowError	 at WhenWithIsKt.withWhen
+coroutines/featureIntersection/tailrec/returnInParentheses.kt	pass		
+coroutines/featureIntersection/tailrec/sum.kt	pass		
+coroutines/featureIntersection/tailrec/tailCallInBlockInParentheses.kt	pass		
+coroutines/featureIntersection/tailrec/tailCallInParentheses.kt	pass		
+coroutines/featureIntersection/tailrec/whenWithIs.kt	pass		
 coroutines/functionReference_Function_SuspendFunction_casts.kt	pass		
 coroutines/functionReference_eqeq_name.kt	pass		
 coroutines/functionReference_invokeAsFunction.kt	pass		
@@ -2512,7 +2512,7 @@ diagnostics/functions/invoke/onObjects/invokeOnImportedEnum1.kt	pass
 diagnostics/functions/invoke/onObjects/invokeOnImportedEnum2.kt	pass		
 diagnostics/functions/invoke/onObjects/invokeOnObject1.kt	pass		
 diagnostics/functions/invoke/onObjects/invokeOnObject2.kt	pass		
-diagnostics/functions/tailRecursion/checkStackDepth.kt	exception	java.lang.IllegalStateException	Fail: TailrecLowering did not happen, VM stack depth=12 at CheckStackDepthKt.checkShallowStackDepth
+diagnostics/functions/tailRecursion/checkStackDepth.kt	pass		
 diagnostics/functions/tailRecursion/defaultArgs.kt	pass		
 diagnostics/functions/tailRecursion/defaultArgs2.kt	pass		
 diagnostics/functions/tailRecursion/defaultArgsOverridden.kt	check error	tailrec is not allowed on open members	defaultArgsOverridden.kt:8: tailrec is not allowed on open members
@@ -2524,7 +2524,7 @@ diagnostics/functions/tailRecursion/functionWithNonTailRecursions.kt	pass
 diagnostics/functions/tailRecursion/functionWithoutAnnotation.kt	pass		
 diagnostics/functions/tailRecursion/infixCall.kt	pass		
 diagnostics/functions/tailRecursion/infixRecursiveCall.kt	pass		
-diagnostics/functions/tailRecursion/insideElvis.kt	exception	java.lang.StackOverflowError	 at InsideElvisKt.test
+diagnostics/functions/tailRecursion/insideElvis.kt	pass		
 diagnostics/functions/tailRecursion/kt47084_lambdaInDefaultArgument.kt	pass		
 diagnostics/functions/tailRecursion/labeledThisReferences.kt	pass		
 diagnostics/functions/tailRecursion/loops.kt	pass		
@@ -2532,18 +2532,18 @@ diagnostics/functions/tailRecursion/multilevelBlocks.kt	pass
 diagnostics/functions/tailRecursion/realIteratorFoldl.kt	check error	expected parameter of type _	realIteratorFoldl.kt:9: expected parameter of type Int
 diagnostics/functions/tailRecursion/realStringEscape.kt	pass		
 diagnostics/functions/tailRecursion/realStringRepeat.kt	pass		
-diagnostics/functions/tailRecursion/recursiveCallInInlineLambda.kt	exception	java.lang.StackOverflowError	 at TailInline.test
+diagnostics/functions/tailRecursion/recursiveCallInInlineLambda.kt	pass		
 diagnostics/functions/tailRecursion/recursiveCallInInlineLambdaWithCapture.kt	pass		
 diagnostics/functions/tailRecursion/recursiveCallInLambda.kt	pass		
 diagnostics/functions/tailRecursion/recursiveCallInLocalFunction.kt	pass		
-diagnostics/functions/tailRecursion/recursiveInnerFunction.kt	exception	java.lang.StackOverflowError	 at RecursiveInnerFunctionKt.test$g3
+diagnostics/functions/tailRecursion/recursiveInnerFunction.kt	pass		
 diagnostics/functions/tailRecursion/returnIf.kt	pass		
 diagnostics/functions/tailRecursion/returnInCatch.kt	pass		
 diagnostics/functions/tailRecursion/returnInFinally.kt	pass		
 diagnostics/functions/tailRecursion/returnInIfInFinally.kt	pass		
 diagnostics/functions/tailRecursion/returnInParentheses.kt	pass		
 diagnostics/functions/tailRecursion/returnInTry.kt	pass		
-diagnostics/functions/tailRecursion/shortCircuit.kt	exception	java.lang.StackOverflowError	 at ShortCircuitKt.maybe
+diagnostics/functions/tailRecursion/shortCircuit.kt	pass		
 diagnostics/functions/tailRecursion/simpleBlock.kt	pass		
 diagnostics/functions/tailRecursion/simpleReturn.kt	pass		
 diagnostics/functions/tailRecursion/simpleReturnWithElse.kt	pass		
@@ -2551,14 +2551,14 @@ diagnostics/functions/tailRecursion/sum.kt	pass
 diagnostics/functions/tailRecursion/tailCallInBlockInParentheses.kt	pass		
 diagnostics/functions/tailRecursion/tailCallInParentheses.kt	pass		
 diagnostics/functions/tailRecursion/tailRecursionInFinally.kt	pass		
-diagnostics/functions/tailRecursion/tailrecWithExplicitCompanionObjectDispatcher.kt	exception	java.lang.StackOverflowError	 at C$Companion.rec
-diagnostics/functions/tailRecursion/tailrecWithExplicitObjectDispatcher.kt	exception	java.lang.StackOverflowError	 at O.rec
+diagnostics/functions/tailRecursion/tailrecWithExplicitCompanionObjectDispatcher.kt	pass		
+diagnostics/functions/tailRecursion/tailrecWithExplicitObjectDispatcher.kt	pass		
 diagnostics/functions/tailRecursion/thisReferences.kt	pass		
-diagnostics/functions/tailRecursion/unitBlocks.kt	exception	java.lang.StackOverflowError	 at UnitBlocksKt.test
+diagnostics/functions/tailRecursion/unitBlocks.kt	pass		
 diagnostics/functions/tailRecursion/whenWithCondition.kt	pass		
 diagnostics/functions/tailRecursion/whenWithInRange.kt	pass		
 diagnostics/functions/tailRecursion/whenWithIs.kt	pass		
-diagnostics/functions/tailRecursion/whenWithLambda.kt	exception	java.lang.StackOverflowError	 at WhenWithLambdaKt.withWhen
+diagnostics/functions/tailRecursion/whenWithLambda.kt	pass		
 diagnostics/functions/tailRecursion/whenWithoutCondition.kt	pass		
 diagnostics/vararg/kt4172.kt	pass		
 directInvokeOptimization/boundInnerContructorRef.kt	pass		
@@ -5470,7 +5470,7 @@ primitiveTypes/smartCastOnNullableDoubleIdentityEquals.kt	pass
 primitiveTypes/stringEqualsHashCodeToString.kt	pass		
 primitiveTypes/substituteIntForGeneric.kt	pass		
 primitiveTypes/unboxComparable.kt	pass		
-primitiveTypes/virtualCallToCustomNumber.kt	check error	class '_' is not abstract and does not implement abstract member '_'	virtualCallToCustomNumber.kt:4: class 'FortyTwo' is not abstract and does not implement abstract member 'longValue'
+primitiveTypes/virtualCallToCustomNumber.kt	check error	class '_' is not abstract and does not implement abstract member '_'	virtualCallToCustomNumber.kt:4: class 'FortyTwo' is not abstract and does not implement abstract member 'doubleValue'
 private/arrayConvention.kt	pass		
 private/kt9855.kt	pass		
 privateConstructors/base.kt	pass		

@@ -1727,9 +1727,13 @@ func (g *gen) ungroupedCall(x *syntax.Call) {
 		g.code.Sconst(s) // as kotlinc's, a constant
 		return
 	}
-	if t := g.tail; x.Tail && t != nil && x.Sym == t.fd.Sym && len(g.inl) == 0 && len(g.srcInl) == 0 && g.lam == nil {
+	if t := g.tail; x.Tail && t != nil && x.Sym == t.fd.Sym && len(g.srcInl) == 0 && (len(g.inl) == 0 || g.compose == nil) {
 		g.tailCall(x, t)
 		return
+	}
+	if x.Tail && x.Sym.Suspend {
+		// Not a suspension point of the state machine: see suspensionPoint.
+		panic("tail call of suspend function " + x.Sym.Name + " not generated as a jump")
 	}
 	if x.Builtin == types.SuspendIntrinsic {
 		g.suspendIntrinsic(x)
@@ -2594,5 +2598,9 @@ func (g *gen) tailCall(x *syntax.Call, t *tailrec) {
 			g.code.Local(storeOp(p.Type), p.Slot)
 		}
 	}
+	// From an inlined lambda's return: the finally blocks of the inlined
+	// bodies' trys run, and the values their code left are dropped.
+	g.leaveTries(0)
+	g.code.PopTo(0)
 	g.code.Jump(cf.GOTO, t.start)
 }
