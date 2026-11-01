@@ -137,15 +137,15 @@ Kotlin 2.4.21's tests on `kc`:
 | Diagnostics tests | Tests | Share of run |
 |:---|---:|---:|
 | run (of 10,827) | 7,200 | |
-| rejects invalid | 3,024 | 42.0% |
-| accepts valid | 2,805 | 39.0% |
-| accepts invalid | 794 | 11.0% |
-| rejects valid | 497 | 6.9% |
+| rejects invalid | 3,047 | 42.3% |
+| accepts valid | 2,807 | 39.0% |
+| accepts invalid | 771 | 10.7% |
+| rejects valid | 495 | 6.9% |
 | parse/unsupported | 79 | 1.1% |
 | crash | 1 | 0.0% |
 
 `kc` agrees with `kotlinc` on 81% of the diagnostics tests, and reports
-10,321 of the 18,906 expected errors (55%) on their lines. The reports
+10,478 of the 18,906 expected errors (55%) on their lines. The reports
 break the failures down; the largest groups are:
 
 - **Silent miscompilation** (64 box tests): `NullPointerException`s

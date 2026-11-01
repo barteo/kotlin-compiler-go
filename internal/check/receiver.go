@@ -112,7 +112,9 @@ func (c *Checker) recvMember(x *syntax.Ident) (types.Type, bool) {
 		c.noCapture = r.sym
 		t := c.expr(m, noWant)
 		c.noCapture = saved
-		if len(c.errs) > n {
+		// A property private to this is still the receiver's, as in K2,
+		// and its use an error.
+		if len(c.errs) > n && !(len(c.errs) == n+1 && m.Prop != nil && m.Prop.PrivateToThis && strings.Contains(c.errs[n].Msg, privateToThisMsg)) {
 			c.errs = c.errs[:n]
 			continue
 		}
@@ -133,7 +135,9 @@ func (c *Checker) recvTarget(x syntax.Expr) syntax.Expr {
 	if _, _, local := c.scope.lookup(id.Name); local {
 		return x
 	}
+	n := len(c.errs)
 	if _, ok := c.recvMember(id); ok && id.Member != nil && (id.Member.Prop != nil || id.Member.Getter != nil) {
+		c.errs = c.errs[:n] // the assignment checks the target again
 		return id.Member
 	}
 	id.Member = nil

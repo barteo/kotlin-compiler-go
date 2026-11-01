@@ -347,6 +347,10 @@ type VarSym struct {
 	// InheritsProtected is set on an override declared without a
 	// visibility of a protected property: its accessors are protected.
 	InheritsProtected bool
+	// PrivateToThis is set on a private property of a class with in or
+	// out type parameters whose type breaks their variance: only the
+	// class's own this may use it.
+	PrivateToThis bool
 	// Const is set on a const val, and JvmField on a class or top-level
 	// property annotated @JvmField: on the JVM, either is only its field,
 	// without accessors. A const of an object is a static field of its
@@ -537,6 +541,10 @@ type FunSym struct {
 	// synthetic one that takes an unused marker last. Desc leaves the
 	// marker out, as the constructor for omitted arguments adds its own.
 	Marker bool
+	// PrivateToThis is set on a private function of a class with in or
+	// out type parameters whose signature breaks their variance, as on a
+	// VarSym.
+	PrivateToThis bool
 	// Throws are the classes of the checked exceptions that a function of
 	// the program declares with @Throws, by internal name.
 	Throws []string

@@ -195,7 +195,7 @@ func (c *Checker) anonClass(d *syntax.ClassDecl, what, whats string, name func()
 		// outside the lambdas'.
 		outer = &types.VarSym{Name: "this$0", Kind: types.Local, Type: c.cls.This()}
 		name := c.cls.DisplayName()
-		r := implicitRecv{sym: outer, label: name[strings.LastIndexByte(name, '.')+1:], depth: depth, outer: true}
+		r := implicitRecv{sym: outer, label: name[strings.LastIndexByte(name, '.')+1:], depth: depth, outer: true, class: true}
 		n := 0
 		if cc := c.anon[c.cls]; cc != nil {
 			n = min(len(cc.recvs), len(ctx.recvs))
@@ -332,7 +332,7 @@ func (c *Checker) localInner(d *syntax.ClassDecl) {
 	for _, r := range oc.recvs {
 		if r.depth >= depth {
 			v := &types.VarSym{Name: r.sym.Name, Kind: types.Local, Type: r.sym.Type, OuterOf: d.OuterThis, OuterCls: outer}
-			r = implicitRecv{sym: v, label: r.label, depth: depth, outer: true}
+			r = implicitRecv{sym: v, label: r.label, depth: depth, outer: true, class: r.class}
 		}
 		ctx.recvs = append(ctx.recvs, r)
 	}

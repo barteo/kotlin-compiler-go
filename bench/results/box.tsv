@@ -5458,19 +5458,19 @@ primitiveTypes/nullAsNullableIntIsNull.kt	pass
 primitiveTypes/nullableAsIndex.kt	pass		
 primitiveTypes/nullableCharBoolean.kt	pass		
 primitiveTypes/numberEqualsHashCodeToString.kt	pass		
-primitiveTypes/numberToChar/abstractMethodInSuperinterface.kt	check error	class '_' is not abstract and does not implement abstract member '_'	abstractMethodInSuperinterface.kt:8: class 'MyNumber' is not abstract and does not implement abstract member 'longValue'
-primitiveTypes/numberToChar/fakeOverride.kt	check error	class '_' is not abstract and does not implement abstract member '_'	fakeOverride.kt:4: class 'MyNumber' is not abstract and does not implement abstract member 'intValue'
-primitiveTypes/numberToChar/simple.kt	check error	class '_' is not abstract and does not implement abstract member '_'	simple.kt:4: class 'MyNumber' is not abstract and does not implement abstract member 'longValue'
+primitiveTypes/numberToChar/abstractMethodInSuperinterface.kt	check error	class '_' is not abstract and does not implement abstract member '_'	abstractMethodInSuperinterface.kt:8: class 'MyNumber' is not abstract and does not implement abstract member 'intValue'
+primitiveTypes/numberToChar/fakeOverride.kt	check error	class '_' is not abstract and does not implement abstract member '_'	fakeOverride.kt:4: class 'MyNumber' is not abstract and does not implement abstract member 'floatValue'
+primitiveTypes/numberToChar/simple.kt	check error	class '_' is not abstract and does not implement abstract member '_'	simple.kt:4: class 'MyNumber' is not abstract and does not implement abstract member 'intValue'
 primitiveTypes/numberToChar/superCallToClass.kt	check error	class '_' is not abstract and does not implement abstract member '_'	superCallToClass.kt:4: class 'MyNumber' is not abstract and does not implement abstract member 'intValue'
 primitiveTypes/numberToChar/superCallToInterface.kt	check error	class '_' is not abstract and does not implement abstract member '_'	superCallToInterface.kt:8: class 'MyNumber' is not abstract and does not implement abstract member 'longValue'
-primitiveTypes/numberToChar/superCallToNumber.kt	check error	class '_' is not abstract and does not implement abstract member '_'	superCallToNumber.kt:4: class 'MyNumber' is not abstract and does not implement abstract member 'intValue'
+primitiveTypes/numberToChar/superCallToNumber.kt	check error	class '_' is not abstract and does not implement abstract member '_'	superCallToNumber.kt:4: class 'MyNumber' is not abstract and does not implement abstract member 'longValue'
 primitiveTypes/rangeTo.kt	pass		
 primitiveTypes/reassignDestructured.kt	skip	LANGUAGE	
 primitiveTypes/smartCastOnNullableDoubleIdentityEquals.kt	pass		
 primitiveTypes/stringEqualsHashCodeToString.kt	pass		
 primitiveTypes/substituteIntForGeneric.kt	pass		
 primitiveTypes/unboxComparable.kt	pass		
-primitiveTypes/virtualCallToCustomNumber.kt	check error	class '_' is not abstract and does not implement abstract member '_'	virtualCallToCustomNumber.kt:4: class 'FortyTwo' is not abstract and does not implement abstract member 'intValue'
+primitiveTypes/virtualCallToCustomNumber.kt	check error	class '_' is not abstract and does not implement abstract member '_'	virtualCallToCustomNumber.kt:4: class 'FortyTwo' is not abstract and does not implement abstract member 'doubleValue'
 private/arrayConvention.kt	pass		
 private/kt9855.kt	pass		
 privateConstructors/base.kt	pass		
