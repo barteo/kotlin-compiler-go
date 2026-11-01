@@ -2,13 +2,13 @@
 
 The box tests of JetBrains/kotlin v2.4.21 (`compiler/testData/codegen/box`), each compiled by kc and run: its `box()` must return `"OK"`. `bench/kotlin-tests.sh box` writes this file, and [docs/conformance.md](../../docs/conformance.md) explains it.
 
-Of 7480 test files, 997 are skipped and 6483 run. 6186 pass (95.4%).
+Of 7480 test files, 997 are skipped and 6483 run. 6198 pass (95.6%).
 
 | Result | Tests | Share |
 |:---|---:|---:|
-| pass | 6186 | 95.4% |
+| pass | 6198 | 95.6% |
 | parse/unsupported | 0 | 0.0% |
-| check error | 195 | 3.0% |
+| check error | 183 | 2.8% |
 | crash | 0 | 0.0% |
 | codegen error | 16 | 0.2% |
 | VerifyError | 21 | 0.3% |
@@ -68,16 +68,16 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 | regressions | 75 | 68 | 0 | 6 | 1 | 0 | 0 |
 | contextParameters | 70 | 70 | 0 | 0 | 0 | 0 | 0 |
 | casts | 68 | 64 | 0 | 1 | 0 | 0 | 3 |
-| compileKotlinAgainstKotlin | 65 | 59 | 0 | 5 | 0 | 0 | 1 |
+| compileKotlinAgainstKotlin | 65 | 60 | 0 | 4 | 0 | 0 | 1 |
 | diagnostics | 60 | 49 | 0 | 2 | 0 | 0 | 9 |
 | dataClasses | 53 | 51 | 0 | 0 | 0 | 1 | 1 |
 | extensionFunctions | 53 | 43 | 0 | 10 | 0 | 0 | 0 |
 | inlineEvaluationOrder | 52 | 52 | 0 | 0 | 0 | 0 | 0 |
 | innerNested | 52 | 50 | 0 | 0 | 0 | 2 | 0 |
-| annotations | 51 | 34 | 0 | 16 | 0 | 0 | 1 |
+| annotations | 51 | 44 | 0 | 6 | 0 | 0 | 1 |
 | reflection | 50 | 48 | 0 | 2 | 0 | 0 | 0 |
 | funInterface | 48 | 46 | 0 | 2 | 0 | 0 | 0 |
-| unsignedTypes | 44 | 42 | 0 | 1 | 0 | 0 | 1 |
+| unsignedTypes | 44 | 43 | 0 | 0 | 0 | 0 | 1 |
 | boxingOptimization | 41 | 41 | 0 | 0 | 0 | 0 | 0 |
 | ir | 41 | 38 | 0 | 3 | 0 | 0 | 0 |
 | reified | 40 | 38 | 0 | 0 | 0 | 2 | 0 |
@@ -208,7 +208,6 @@ Tests kotlinc compiles that kc's checker rejects, by its first error, with names
 | `unresolved or unsupported type: _` | 14 | `callableReference/callableReferencetoInnerAndLocal.kt`, `callableReference/genericConstructorReference.kt` |
 | `cannot infer type for type parameter '_'. Specify it explicitly.` | 13 | `callableReference/adaptedReferences/extensionPropertyToFun.kt`, `callableReference/adaptedReferences/innerConstructorToExtensionWithTypeParam.kt` |
 | `unresolved reference: _` | 11 | `classLiteral/bound/primitives.kt`, `classLiteral/primitiveClassEquality.kt` |
-| `invalid type of annotation member` | 9 | `annotations/instances/annotationInstances.kt`, `annotations/instances/annotationToString.kt` |
 | `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 9 | `callableReference/function/nullableExtension.kt`, `casts/intersectionTypeMultipleBounds.kt` |
 | `type argument is not within its bounds: inferred type Int of type _ '_' is not a subtype of Long` | 9 | `inlineClasses/checkBoxingForNonLocalAndLabeledReturnsGeneric.kt`, `inlineClasses/contextsAndAccessors/accessPrivateInlineClassCompanionMethod2Generic.kt` |
 | `class '_' is not abstract and does not implement abstract member '_'` | 8 | `primitiveTypes/numberToChar/abstractMethodInSuperinterface.kt`, `primitiveTypes/numberToChar/fakeOverride.kt` |
@@ -216,7 +215,6 @@ Tests kotlinc compiles that kc's checker rejects, by its first error, with names
 | `for-loop range must have an '_' method` | 5 | `controlStructures/forLoopMemberExtensionAll.kt`, `functions/kt1199.kt` |
 | `operator '_' cannot be applied to String` | 5 | `extensionFunctions/kt1953.kt`, `extensionFunctions/kt1953_class.kt` |
 | `type mismatch: inferred type is _ but _ was expected` | 4 | `delegation/delegationToIntersectionType.kt`, `delegation/delegationToIntersectionType3.kt` |
-| `annotation class cannot have type parameters` | 3 | `annotations/genericAnnotations.kt`, `annotations/instances/annotationWithTypeParameters.kt` |
 | `expression of type _ cannot be invoked as a function` | 3 | `functions/invoke/kt3631invokeOnString.kt`, `inline/operators.kt` |
 | `many supertypes available, please specify the one you mean in angle brackets, e.g. '_'` | 3 | `compileKotlinAgainstKotlin/jvm8/jvm8against6/delegation/diamond.kt`, `compileKotlinAgainstKotlin/jvm8/jvm8against6/delegation/diamond3.kt` |
 | `operator '_' cannot be applied to Int and Char` | 3 | `binaryOp/kt11163.kt`, `binaryOp/kt11163_properIeee754comparisons.kt` |
@@ -245,7 +243,9 @@ Tests kotlinc compiles that kc's checker rejects, by its first error, with names
 | `'_' modifier is inapplicable on this function: must have no value parameters` | 1 | `extensionFunctions/kt3969.kt` |
 | `ambiguous call: n candidates for '_' take (_)` | 1 | `callableReference/function/overloadedFun.kt` |
 | `cannot create an instance of Outer` | 1 | `annotations/instances/AnnotationInstantiationWithArray.kt` |
-| *44 more* | 44 | |
+| `cannot create an instance of Result` | 1 | `inlineClasses/resultGeneric.kt` |
+| `cannot create an instance of SinceKotlin` | 1 | `annotations/instances/annotationFromStdlib.kt` |
+| *42 more* | 42 | |
 
 ## Code generation errors
 

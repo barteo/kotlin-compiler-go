@@ -6,16 +6,16 @@ Of 10827 test files, 3627 are skipped and 7200 run.
 
 | Result | Tests | Share |
 |:---|---:|---:|
-| rejects invalid | 3016 | 41.9% |
-| accepts valid | 2782 | 38.6% |
-| accepts invalid | 802 | 11.1% |
-| rejects valid | 520 | 7.2% |
+| rejects invalid | 3015 | 41.9% |
+| accepts valid | 2788 | 38.7% |
+| accepts invalid | 803 | 11.2% |
+| rejects valid | 514 | 7.1% |
 | parse/unsupported | 79 | 1.1% |
 | crash | 1 | 0.0% |
 
 *Rejects invalid* and *accepts valid* agree with kotlinc. *Accepts invalid* is code kotlinc rejects that kc compiles; *rejects valid*, code kotlinc compiles that kc's checker rejects. Both are bugs. A *parse/unsupported* test uses a feature kc doesn't support, which says nothing about its checks.
 
-Of the 3016 tests both reject, kc reports an error on the line of an expected one in 2739.
+Of the 3015 tests both reject, kc reports an error on the line of an expected one in 2740.
 
 A test is invalid if it stops before the backend or marks an error: one that runs to it (`BACKEND`) can mark the JVM backend's errors, such as `CONFLICTING_JVM_DECLARATIONS`. Of the tests run, 177 stop at `FRONTEND` but mark no error: most add the `CHECK_TYPE` helpers, whose names (`_`) kotlinc reports outside the test infrastructure, and count as valid; the others leave their errors out with the `DIAGNOSTICS` directive. 101 run to the backend and mark one. 5 marked names have no declared severity (debug information, for one), and count as neither.
 
@@ -52,7 +52,7 @@ Tests kotlinc rejects that kc compiles, by the errors their markup expects. A te
 | Expected error | Tests | Only error | Examples |
 |:---|---:|---:|:---|
 | `WRONG_ANNOTATION_TARGET` | 47 | 36 | `tests/Casts.kt`, `tests/annotationOnGetClassCall.kt` |
-| `ARGUMENT_TYPE_MISMATCH` | 38 | 22 | `tests/annotations/AnnotationForClassTypeParameter.kt`, `tests/annotations/AnnotationForFunctionTypeParameter.kt` |
+| `ARGUMENT_TYPE_MISMATCH` | 39 | 23 | `tests/annotations/AnnotationForClassTypeParameter.kt`, `tests/annotations/AnnotationForFunctionTypeParameter.kt` |
 | `ANNOTATION_ARGUMENT_MUST_BE_CONST` | 34 | 22 | `tests/annotations/MutuallyRecursivelyAnnotatedGlobalFunction.kt`, `tests/annotations/RecursivelyAnnotatedFunctionParameter.kt` |
 | `UNRESOLVED_REFERENCE` | 31 | 19 | `tests/annotations/AnnotationForObject.kt`, `tests/annotations/UnresolvedAnnotationOnObject.kt` |
 | `USAGE_IS_NOT_INLINABLE` | 27 | 25 | `tests/inline/assignment.kt`, `tests/inline/binaryExpressions/arrayAccess.kt` |
@@ -133,7 +133,6 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 | `type argument is not within its bounds: inferred type K of type _ '_' is not a subtype of Out<B>` | 6 | `tests/inference/emptyIntersectionTypes/kt45461_11.kt`, `tests/inference/emptyIntersectionTypes/kt45461_14.kt` |
 | `conflicting overloads: _` | 5 | `tests/callableReference/function/localConstructorFromLocalExtension.kt`, `tests/localFunctionsHiding.kt` |
 | `'_' is not defined in this context` | 4 | `tests/functionLiterals/kt51317.kt`, `tests/inference/completion/postponedArgumentsAnalysis/takingExtensibilityFromDeclarationOfAnonymousFunction.kt` |
-| `annotation class cannot have type parameters` | 4 | `tests/annotations/ConstructorCallAllowed.kt`, `tests/annotations/kt55286.kt` |
 | `cannot check for instance of erased type: _` | 4 | `tests/cast/IsErasedAllowForDerivedWithOneSubstitutedAndOneSameGeneric.kt`, `tests/cast/IsErasedAllowForTypeWithTwoSameTypeSubstitutions.kt` |
 | `none of the n candidates for '_' take (_)` | 4 | `tests/callableReference/noAmbiguityWhenAllReferencesAreInapplicable.kt`, `tests/problems/kt52219.kt` |
 | `property must be initialized or be abstract` | 4 | `tests/backingField/FieldAsParam.kt`, `tests/backingField/FieldShadow.kt` |
@@ -159,13 +158,14 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 | `type argument is not within its bounds: inferred type K of type _ '_' is not a subtype of B<String>` | 2 | `tests/inference/emptyIntersectionTypes/substitutingSuperTypes.kt`, `tests/inference/emptyIntersectionTypes/substitutingSuperTypes2.kt` |
 | `type argument is not within its bounds: inferred type K of type _ '_' is not a subtype of In<Inv<Int>>` | 2 | `tests/inference/emptyIntersectionTypes/kt45461_20.kt`, `tests/inference/emptyIntersectionTypes/kt45461_21.kt` |
 | `type argument is not within its bounds: inferred type K of type _ '_' is not a subtype of Inv<in Inv<in Int>>` | 2 | `tests/inference/emptyIntersectionTypes/kt45461_23.kt`, `tests/inference/emptyIntersectionTypes/kt45461_27.kt` |
-| *68 more* | 71 | |
+| `type argument is not within its bounds: inferred type K of type _ '_' is not a subtype of Out<Int>` | 2 | `tests/inference/emptyIntersectionTypes/kt45461_10.kt`, `tests/inference/emptyIntersectionTypes/kt45461_18.kt` |
+| *65 more* | 67 | |
 
 ## Errors by diagnostic
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 10257 of 18906 expected errors (54.3%) on their lines.
+kc reports 10259 of 18906 expected errors (54.3%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
@@ -196,7 +196,7 @@ kc reports 10257 of 18906 expected errors (54.3%) on their lines.
 | `IMPOSSIBLE_IS_CHECK_ERROR` | 71 | 3 | 68 |
 | `TYPE_VARIANCE_CONFLICT_ERROR` | 122 | 54 | 68 |
 | `WRONG_ANNOTATION_TARGET_WITH_USE_SITE_TARGET` | 79 | 13 | 66 |
-| `WRONG_NUMBER_OF_TYPE_ARGUMENTS` | 158 | 92 | 66 |
+| `WRONG_NUMBER_OF_TYPE_ARGUMENTS` | 158 | 93 | 65 |
 | `NULL_FOR_NONNULL_TYPE` | 102 | 38 | 64 |
 | `UNINITIALIZED_ENUM_COMPANION` | 65 | 1 | 64 |
 | `REPEATED_ANNOTATION` | 62 | 0 | 62 |
@@ -241,7 +241,7 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | `cannot infer type for type parameter '_'. Specify it explicitly.` | 640 |
 | `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 504 |
 | `unresolved reference: _` | 456 |
-| `type mismatch: inferred type is _ but _ was expected` | 382 |
+| `type mismatch: inferred type is _ but _ was expected` | 376 |
 | `conflicting overloads: _` | 305 |
 | `unresolved import: _` | 76 |
 | `unresolved or unsupported type: _` | 57 |
@@ -252,9 +252,9 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | `missing return statement in function '_'` | 35 |
 | `no function '_' takes n arguments` | 32 |
 | `expected member declaration, found '_'` | 31 |
-| `expected expression, found '_'` | 23 |
 | `'_' expression must be exhaustive, add necessary '_' branch` | 21 |
 | `variable '_' must be initialized` | 20 |
+| `expected expression, found '_'` | 19 |
 | `val cannot be reassigned` | 17 |
 | `tailrec is not allowed on open members` | 16 |
 | `type checking has run into a recursive problem; specify the type of '_'` | 16 |
@@ -264,10 +264,10 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | `operator '_' cannot be applied to String` | 14 |
 | `expected n parameter of type _ but n were declared` | 13 |
 | `overload resolution ambiguity for ::foo: specify the expected function type` | 13 |
-| `annotation class cannot have type parameters` | 12 |
 | `expected no parameters, but n were declared` | 12 |
 | `expression '_' of type _ cannot be invoked as a function` | 12 |
-| *207 more* | |
+| `private setters are not allowed for open properties` | 12 |
+| *206 more* | |
 
 ## Unsupported features
 

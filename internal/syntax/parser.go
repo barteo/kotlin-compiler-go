@@ -2077,7 +2077,7 @@ func (p *parser) annotation() Annotation {
 		a.Name += "." + last.Text
 	}
 	if p.at(LT) {
-		p.parseTypeArgs()
+		a.TypeArgs = p.parseTypeArgs()
 		last = p.toks[p.i-1]
 	}
 	// Arguments follow the name with no space between: @A(x), not @A (x).

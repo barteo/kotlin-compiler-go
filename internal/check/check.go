@@ -1429,6 +1429,9 @@ func (c *Checker) paramSym(p *syntax.Param, t types.Type, decl any) *types.VarSy
 		c.errorf(p.ExternalP, "modifier 'external' is not applicable to 'value parameter'")
 	}
 	if p.Vararg {
+		if t.K == types.Class && t.C.Value && !isUnsigned(t) {
+			c.errorf(p.P, "prohibited vararg parameter type '%s'", t)
+		}
 		sym.Vararg, sym.Type = true, types.VarargArray(t)
 		if isUnsigned(t) && !t.N {
 			// An unsigned array: UIntArray for UInt.

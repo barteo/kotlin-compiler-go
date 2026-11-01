@@ -35,6 +35,15 @@ func (c *Checker) annotations(as []syntax.Annotation, owner *types.ClassSym) {
 			continue
 		}
 		cls.Ensure()
+		if ps := cls.TypeParams; cls.Annotation && len(a.TypeArgs) != len(ps) && c.lookupAlias(a.Name) == nil {
+			// Unlike a call, an annotation entry doesn't infer its
+			// type arguments; a typealias may give them.
+			if len(ps) == 0 {
+				c.errorf(a.P, "no type arguments expected for annotation class %s", cls.DisplayName())
+			} else {
+				c.errorf(a.P, "%s expected for annotation class %s%s", countArgs(len(ps)), cls.DisplayName(), types.TypeParamsString(ps))
+			}
+		}
 		if cls.Retention == types.RetentionSource {
 			a.Source = cls
 		}

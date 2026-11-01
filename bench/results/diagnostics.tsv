@@ -187,7 +187,7 @@ tests/annotations/AnnotationOnObject.kt	accepts valid
 tests/annotations/AnnotationsForClasses.kt	accepts valid		
 tests/annotations/AnnotationsForPropertyTypeParameter.kt	rejects invalid	on an expected line	
 tests/annotations/BasicAnnotations.kt	rejects invalid	on an expected line	
-tests/annotations/ConstructorCallAllowed.kt	rejects valid	annotation class cannot have type parameters	ConstructorCallAllowed.kt:10: annotation class cannot have type parameters
+tests/annotations/ConstructorCallAllowed.kt	accepts valid		
 tests/annotations/DanglingMixed.kt	rejects invalid	elsewhere	
 tests/annotations/DanglingNoBrackets.kt	rejects invalid	elsewhere	
 tests/annotations/DanglingWithBrackets.kt	rejects invalid	elsewhere	
@@ -306,7 +306,7 @@ tests/annotations/kt1860-positive.kt	rejects invalid	on an expected line
 tests/annotations/kt1886annotationBody.kt	rejects invalid	on an expected line	
 tests/annotations/kt43936.kt	accepts valid		
 tests/annotations/kt54478.kt	accepts valid		
-tests/annotations/kt55286.kt	rejects valid	annotation class cannot have type parameters	kt55286.kt:4: annotation class cannot have type parameters
+tests/annotations/kt55286.kt	accepts valid		
 tests/annotations/localAnnotationWithTarget.kt	accepts invalid	LOCAL_ANNOTATION_CLASS_ERROR	localAnnotationWithTarget.kt:5: LOCAL_ANNOTATION_CLASS_ERROR
 tests/annotations/localBackingFieldWithAnnotatedType.kt	skip	LANGUAGE	
 tests/annotations/localImplicitTypeUnavailable.kt	accepts valid		
@@ -453,7 +453,7 @@ tests/annotations/requiredAnnotationWithTypealiasedArgumentAsMetaAnnotation.kt	a
 tests/annotations/requiredAnnotationWithTypealiasedImportedArgument.kt	rejects invalid	on an expected line	
 tests/annotations/suppressInAnnotation.kt	skip	LANGUAGE	
 tests/annotations/typeAnnotations.kt	accepts invalid	NO_VALUE_FOR_PARAMETER; NAMED_PARAMETER_NOT_FOUND; ARGUMENT_TYPE_MISMATCH; WRONG_ANNOTATION_TARGET	typeAnnotations.kt:21: NO_VALUE_FOR_PARAMETER
-tests/annotations/typeArgumentsInAnnotation.kt	rejects valid	annotation class cannot have type parameters	typeArgumentsInAnnotation.kt:4: annotation class cannot have type parameters
+tests/annotations/typeArgumentsInAnnotation.kt	accepts valid		
 tests/annotations/typeParameterAnnotations.kt	accepts valid		
 tests/annotations/typeParameterAnnotationsInLocalClass.kt	rejects invalid	on an expected line	
 tests/annotations/typeParameterAsAnnotation.kt	accepts invalid	NOT_A_CLASS	typeParameterAsAnnotation.kt:3: NOT_A_CLASS
@@ -1251,7 +1251,7 @@ tests/collectionLiterals/kt81777/withDisabledCL.kt	skip	LANGUAGE
 tests/collectionLiterals/kt81777/withEnabledCL.kt	skip	LANGUAGE	
 tests/collectionLiterals/kt82684.kt	rejects invalid	on an expected line	
 tests/collectionLiterals/kt82684withArrayOf.kt	rejects invalid	on an expected line	
-tests/collectionLiterals/kt82964.kt	rejects invalid	on an expected line	
+tests/collectionLiterals/kt82964.kt	accepts invalid	ARGUMENT_TYPE_MISMATCH	kt82964.kt:11: ARGUMENT_TYPE_MISMATCH
 tests/collectionLiterals/kt84559.kt	skip	LANGUAGE	
 tests/collectionLiterals/kt84559WithFallback.kt	skip	LANGUAGE	
 tests/collectionLiterals/kt85842NoStdlib.kt	skip	LANGUAGE	
@@ -1780,7 +1780,7 @@ tests/contextSensitiveResolutionUsingExpectedType/ideHint/forExpressions/equalit
 tests/contextSensitiveResolutionUsingExpectedType/ideHint/forExpressions/equalsConstraintFromQualified.kt	accepts valid		
 tests/contextSensitiveResolutionUsingExpectedType/ideHint/forExpressions/falsePositiveUnresolvedDueSmartCast.kt	accepts valid		
 tests/contextSensitiveResolutionUsingExpectedType/ideHint/forExpressions/importedViaAlias.kt	accepts valid		
-tests/contextSensitiveResolutionUsingExpectedType/ideHint/forExpressions/inAnnotations.kt	rejects valid	expected expression, found '_'	main.kt:7: expected expression, found '*'
+tests/contextSensitiveResolutionUsingExpectedType/ideHint/forExpressions/inAnnotations.kt	accepts valid		
 tests/contextSensitiveResolutionUsingExpectedType/ideHint/forExpressions/multipleOverloads.kt	rejects valid	ambiguous call: n candidates for '_' take (_)	multipleOverloads.kt:42: ambiguous call: 2 candidates for 'baz' take (MyEnum1, lambda)
 tests/contextSensitiveResolutionUsingExpectedType/ideHint/forExpressions/noHintForImplicitlyTyped.kt	accepts valid		
 tests/contextSensitiveResolutionUsingExpectedType/ideHint/forExpressions/simple.kt	accepts valid		
@@ -5916,7 +5916,7 @@ tests/makeSureCastNeverSucceedsRequiresDfaWarningsFeature_On.kt	skip	LANGUAGE
 tests/mapStringIntAsDelegate.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	mapStringIntAsDelegate.kt:18: type mismatch: inferred type is Int but String was expected
 tests/mappingWithEmptyParameter.kt	rejects invalid	on an expected line	
 tests/metadata/exhaustiveExpectBoolean.kt	accepts valid		
-tests/missedTypeArgumentsInAnnotationCall.kt	rejects invalid	elsewhere	
+tests/missedTypeArgumentsInAnnotationCall.kt	rejects invalid	on an expected line	
 tests/missingAbstractSuperCall.kt	accepts invalid	ABSTRACT_SUPER_CALL	missingAbstractSuperCall.kt:20: ABSTRACT_SUPER_CALL
 tests/missingAbstractSuperCallExtra.kt	rejects invalid	on an expected line	
 tests/missingAbstractSuperCallWithClass.kt	accepts invalid	ABSTRACT_SUPER_CALL	missingAbstractSuperCallWithClass.kt:14: ABSTRACT_SUPER_CALL
@@ -9171,7 +9171,7 @@ tests/typealias/typealiasRhsRepeatedAnnotationInArguments.kt	accepts invalid	REP
 tests/typealias/typealiasRhsRepeatedAnnotations.kt	accepts invalid	REPEATED_ANNOTATION	typealiasRhsRepeatedAnnotations.kt:5: REPEATED_ANNOTATION
 tests/typealias/unusedTypeAliasParameter.kt	accepts valid		
 tests/typealias/wrongNumberOfArgumentsInTypeAliasConstructor.kt	rejects invalid	on an expected line	
-tests/typealiasAnnotationWithFixedTypeArgument.kt	rejects valid	annotation class cannot have type parameters	typealiasAnnotationWithFixedTypeArgument.kt:4: annotation class cannot have type parameters
+tests/typealiasAnnotationWithFixedTypeArgument.kt	accepts valid		
 tests/typealiasInAnnotationPrimitiveVararg.kt	accepts valid		
 tests/typealiasedFunInterface.kt	accepts valid		
 tests/types/bareWithDnnArg.kt	skip	Java sources	
@@ -9227,7 +9227,7 @@ tests/unqualifiedEnum/priority.kt	skip	LANGUAGE
 tests/unqualifiedEnum/typeAlias.kt	skip	LANGUAGE	
 tests/unqualifiedEnum/unqualifiedEnum.kt	skip	LANGUAGE	
 tests/unresolvedNameInBackticksInReceiver.kt	rejects invalid	on an expected line	
-tests/unsignedTypes/allowedVarargsOfUnsignedTypes.kt	rejects invalid	elsewhere	
+tests/unsignedTypes/allowedVarargsOfUnsignedTypes.kt	rejects invalid	on an expected line	
 tests/unsignedTypes/callDefaultConstructorOfUnsignedType.kt	rejects invalid	on an expected line	
 tests/unsignedTypes/conversions/conversionOfSignedToUnsigned.kt	skip	LANGUAGE	
 tests/unsignedTypes/conversions/implicitIntegerCoercionNamedArg.kt	skip	LANGUAGE	
@@ -9773,7 +9773,7 @@ testsWithStdLib/comparingDifferentSubclassesCommonInterface.kt	rejects invalid	o
 testsWithStdLib/comparingPlatformTypes.kt	rejects invalid	on an expected line	
 testsWithStdLib/comparingSmartCastValueToBoolean.kt	rejects invalid	on an expected line	
 testsWithStdLib/comparingTripleWithPair.kt	rejects invalid	on an expected line	
-testsWithStdLib/compileTimeUnsignedArray.kt	rejects valid	invalid type of annotation member	compileTimeUnsignedArray.kt:7: invalid type of annotation member
+testsWithStdLib/compileTimeUnsignedArray.kt	accepts valid		
 testsWithStdLib/complexPostponedCfg.kt	accepts valid		
 testsWithStdLib/components.kt	accepts valid		
 testsWithStdLib/concurrent.kt	accepts valid		

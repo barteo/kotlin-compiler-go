@@ -251,6 +251,9 @@ type Annotation struct {
 	Target string // use-site target: file, get, set, field, param, ...; or empty
 	Name   string // as written: JvmName or kotlin.jvm.JvmName
 	Args   []AnnotationArg
+	// TypeArgs are the explicit type arguments of a generic annotation
+	// class: @A<String>(..).
+	TypeArgs []*TypeArg
 	// Implicit is set on an annotation that isn't written but that
 	// kotlinc adds, as @JvmInline to an inline class: class files keep it,
 	// but the declaration's metadata doesn't count it.
