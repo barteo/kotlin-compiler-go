@@ -160,7 +160,7 @@ tests/ambiguousLabelInSuper.kt	accepts invalid	AMBIGUOUS_LABEL	ambiguousLabelInS
 tests/annotatedClassWithFactoryFunctionAsGenericFunctionBody.kt	rejects invalid	elsewhere	
 tests/annotatedPackageQualifiers.kt	skip	LANGUAGE_FEATURE_TOGGLED	
 tests/annotationArgumentWithAliasedArrayType.kt	accepts valid		
-tests/annotationOnDeclarationWithDifferentArguments.kt	accepts invalid	PROJECTION_IN_TYPE_OF_ANNOTATION_MEMBER_ERROR; ANNOTATION_ARGUMENT_MUST_BE_KCLASS_LITERAL	annotationOnDeclarationWithDifferentArguments.kt:12: PROJECTION_IN_TYPE_OF_ANNOTATION_MEMBER_ERROR
+tests/annotationOnDeclarationWithDifferentArguments.kt	rejects invalid	on an expected line	
 tests/annotationOnGetClassCall.kt	accepts invalid	WRONG_ANNOTATION_TARGET	annotationOnGetClassCall.kt:5: WRONG_ANNOTATION_TARGET
 tests/annotationUsedAsAnnotationArgument.kt	skip	LANGUAGE_FEATURE_TOGGLED	
 tests/annotations/AmbigiousAnnotationConstructor.kt	rejects invalid	on an expected line	
@@ -201,13 +201,13 @@ tests/annotations/LoadAnnotationsOnAnnotationProperties_after.kt	skip	LANGUAGE
 tests/annotations/LoadAnnotationsOnAnnotationProperties_before.kt	skip	LANGUAGE	
 tests/annotations/MultiDeclaration.kt	skip	LANGUAGE	
 tests/annotations/MultiDeclarationOld.kt	skip	LANGUAGE	
-tests/annotations/MutuallyRecursivelyAnnotatedGlobalFunction.kt	accepts invalid	ANNOTATION_ARGUMENT_MUST_BE_CONST	MutuallyRecursivelyAnnotatedGlobalFunction.kt:4: ANNOTATION_ARGUMENT_MUST_BE_CONST
+tests/annotations/MutuallyRecursivelyAnnotatedGlobalFunction.kt	rejects invalid	on an expected line	
 tests/annotations/NamedAndArrayLiteralOptInArgument.kt	accepts valid		
 tests/annotations/NonAnnotationClass.kt	accepts invalid	NOT_AN_ANNOTATION_CLASS	NonAnnotationClass.kt:4: NOT_AN_ANNOTATION_CLASS
 tests/annotations/OptInWithArrayArgument.kt	accepts valid		
 tests/annotations/RecursivelyAnnotated.kt	accepts valid		
-tests/annotations/RecursivelyAnnotatedFunctionParameter.kt	accepts invalid	ANNOTATION_ARGUMENT_MUST_BE_CONST	RecursivelyAnnotatedFunctionParameter.kt:4: ANNOTATION_ARGUMENT_MUST_BE_CONST
-tests/annotations/RecursivelyAnnotatedGlobalFunction.kt	accepts invalid	ANNOTATION_ARGUMENT_MUST_BE_CONST	RecursivelyAnnotatedGlobalFunction.kt:4: ANNOTATION_ARGUMENT_MUST_BE_CONST
+tests/annotations/RecursivelyAnnotatedFunctionParameter.kt	rejects invalid	on an expected line	
+tests/annotations/RecursivelyAnnotatedGlobalFunction.kt	rejects invalid	on an expected line	
 tests/annotations/RecursivelyAnnotatedGlobalProperty.kt	accepts valid		
 tests/annotations/RecursivelyAnnotatedParameter.kt	accepts valid		
 tests/annotations/RecursivelyAnnotatedParameterType.kt	accepts valid		
@@ -229,14 +229,14 @@ tests/annotations/annotationArgumentScopeForNestedTypeAlias.kt	skip	LANGUAGE
 tests/annotations/annotationInheritance.kt	rejects invalid	on an expected line	
 tests/annotations/annotationModifier.kt	rejects invalid	on an expected line	
 tests/annotations/annotationOnParameterInFunctionType.kt	rejects invalid	on an expected line	
-tests/annotations/annotationParameterMustBeConstant/annotationConstructorDefaultParameter.kt	accepts invalid	ANNOTATION_PARAMETER_DEFAULT_VALUE_MUST_BE_CONSTANT	annotationConstructorDefaultParameter.kt:10: ANNOTATION_PARAMETER_DEFAULT_VALUE_MUST_BE_CONSTANT
+tests/annotations/annotationParameterMustBeConstant/annotationConstructorDefaultParameter.kt	rejects invalid	on an expected line	
 tests/annotations/annotationParameterMustBeConstant/booleanLocalVal.kt	accepts invalid	ANNOTATION_ARGUMENT_MUST_BE_CONST	booleanLocalVal.kt:6: ANNOTATION_ARGUMENT_MUST_BE_CONST
 tests/annotations/annotationParameterMustBeConstant/compareAndEquals.kt	accepts invalid	ANNOTATION_ARGUMENT_MUST_BE_CONST	compareAndEquals.kt:11: ANNOTATION_ARGUMENT_MUST_BE_CONST
 tests/annotations/annotationParameterMustBeConstant/enumConst.kt	rejects invalid	on an expected line	
 tests/annotations/annotationParameterMustBeConstant/javaProperties.kt	skip	Java sources	
-tests/annotations/annotationParameterMustBeConstant/kotlinProperties.kt	accepts invalid	ANNOTATION_ARGUMENT_MUST_BE_CONST	kotlinProperties.kt:5: ANNOTATION_ARGUMENT_MUST_BE_CONST
+tests/annotations/annotationParameterMustBeConstant/kotlinProperties.kt	rejects invalid	on an expected line	
 tests/annotations/annotationParameterMustBeConstant/lambdaParameter.kt	accepts invalid	ANNOTATION_ARGUMENT_MUST_BE_CONST; ARGUMENT_TYPE_MISMATCH	lambdaParameter.kt:8: ANNOTATION_ARGUMENT_MUST_BE_CONST
-tests/annotations/annotationParameterMustBeConstant/standaloneInExpression.kt	accepts invalid	ANNOTATION_ARGUMENT_MUST_BE_CONST	standaloneInExpression.kt:8: ANNOTATION_ARGUMENT_MUST_BE_CONST
+tests/annotations/annotationParameterMustBeConstant/standaloneInExpression.kt	rejects invalid	on an expected line	
 tests/annotations/annotationParameterMustBeConstant/strings.kt	accepts invalid	ANNOTATION_ARGUMENT_MUST_BE_CONST	strings.kt:16: ANNOTATION_ARGUMENT_MUST_BE_CONST
 tests/annotations/annotationRenderingInTypes.kt	rejects invalid	on an expected line	
 tests/annotations/annotationsOnDataClassCopy.kt	accepts valid		
@@ -252,21 +252,21 @@ tests/annotations/companionAnnotations.kt	accepts invalid	UNRESOLVED_REFERENCE	c
 tests/annotations/companionObjectUnderRequiresOptIn.kt	skip	LANGUAGE_FEATURE_TOGGLED	
 tests/annotations/companionObjectUnderRequiresOptInWithOptIn.kt	accepts valid		
 tests/annotations/constantFromOuterScopeAsAnnotaionParameter.kt	accepts valid		
-tests/annotations/cycleAnnotationOnFunction.kt	accepts invalid	ANNOTATION_ARGUMENT_MUST_BE_CONST	cycleAnnotationOnFunction.kt:6: ANNOTATION_ARGUMENT_MUST_BE_CONST
+tests/annotations/cycleAnnotationOnFunction.kt	rejects invalid	on an expected line	
 tests/annotations/cycleAnnotationOnFunctionInsideLocalClass.kt	rejects invalid	on an expected line	
 tests/annotations/cycleAnnotationOnFunctionParameterType.kt	accepts invalid	ANNOTATION_ARGUMENT_MUST_BE_CONST	cycleAnnotationOnFunctionParameterType.kt:7: ANNOTATION_ARGUMENT_MUST_BE_CONST
 tests/annotations/cycleAnnotationOnFunctionParameterTypeInsideLocalClass.kt	accepts invalid	ANNOTATION_ARGUMENT_MUST_BE_CONST; TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM	cycleAnnotationOnFunctionParameterTypeInsideLocalClass.kt:9: ANNOTATION_ARGUMENT_MUST_BE_CONST
 tests/annotations/cycleAnnotationOnFunctionReceiverType.kt	accepts invalid	ANNOTATION_ARGUMENT_MUST_BE_CONST	cycleAnnotationOnFunctionReceiverType.kt:8: ANNOTATION_ARGUMENT_MUST_BE_CONST
 tests/annotations/cycleAnnotationOnFunctionReceiverTypeInsideLocalClass.kt	accepts invalid	ANNOTATION_ARGUMENT_MUST_BE_CONST; TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM	cycleAnnotationOnFunctionReceiverTypeInsideLocalClass.kt:10: ANNOTATION_ARGUMENT_MUST_BE_CONST
-tests/annotations/cycleAnnotationOnProperty.kt	accepts invalid	ANNOTATION_ARGUMENT_MUST_BE_CONST	cycleAnnotationOnProperty.kt:6: ANNOTATION_ARGUMENT_MUST_BE_CONST
-tests/annotations/cycleAnnotationOnPropertyField.kt	accepts invalid	ANNOTATION_ARGUMENT_MUST_BE_CONST	cycleAnnotationOnPropertyField.kt:6: ANNOTATION_ARGUMENT_MUST_BE_CONST
+tests/annotations/cycleAnnotationOnProperty.kt	rejects invalid	on an expected line	
+tests/annotations/cycleAnnotationOnPropertyField.kt	rejects invalid	on an expected line	
 tests/annotations/cycleAnnotationOnPropertyFieldInsideLocalClass.kt	rejects invalid	on an expected line	
 tests/annotations/cycleAnnotationOnPropertyInsideLocalClass.kt	rejects invalid	on an expected line	
 tests/annotations/cycleAnnotationOnPropertyReceiverType.kt	accepts invalid	ANNOTATION_ARGUMENT_MUST_BE_CONST	cycleAnnotationOnPropertyReceiverType.kt:8: ANNOTATION_ARGUMENT_MUST_BE_CONST
 tests/annotations/cycleAnnotationOnPropertyReceiverTypeInsideLocalClass.kt	accepts invalid	ANNOTATION_ARGUMENT_MUST_BE_CONST; TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM	cycleAnnotationOnPropertyReceiverTypeInsideLocalClass.kt:10: ANNOTATION_ARGUMENT_MUST_BE_CONST
-tests/annotations/cycleAnnotationOnReceiverParameterFunction.kt	accepts invalid	ANNOTATION_ARGUMENT_MUST_BE_CONST	cycleAnnotationOnReceiverParameterFunction.kt:6: ANNOTATION_ARGUMENT_MUST_BE_CONST
+tests/annotations/cycleAnnotationOnReceiverParameterFunction.kt	rejects invalid	on an expected line	
 tests/annotations/cycleAnnotationOnReceiverParameterFunctionInsideLocalClass.kt	rejects invalid	on an expected line	
-tests/annotations/cycleAnnotationOnReceiverParameterProperty.kt	accepts invalid	ANNOTATION_ARGUMENT_MUST_BE_CONST	cycleAnnotationOnReceiverParameterProperty.kt:6: ANNOTATION_ARGUMENT_MUST_BE_CONST
+tests/annotations/cycleAnnotationOnReceiverParameterProperty.kt	rejects invalid	on an expected line	
 tests/annotations/cycleAnnotationOnReceiverParameterPropertyInsideLocalClass.kt	rejects invalid	on an expected line	
 tests/annotations/cycleAnnotationOnTypeParameterFunction.kt	accepts invalid	ANNOTATION_ARGUMENT_MUST_BE_CONST	cycleAnnotationOnTypeParameterFunction.kt:7: ANNOTATION_ARGUMENT_MUST_BE_CONST
 tests/annotations/cycleAnnotationOnTypeParameterFunctionInsideLocalClass.kt	accepts invalid	ANNOTATION_ARGUMENT_MUST_BE_CONST; TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM	cycleAnnotationOnTypeParameterFunctionInsideLocalClass.kt:9: ANNOTATION_ARGUMENT_MUST_BE_CONST
@@ -320,7 +320,7 @@ tests/annotations/nestedClassesInAnnotations.kt	rejects invalid	on an expected l
 tests/annotations/nestedObjectAsAnnotationParameter.kt	rejects valid	unresolved reference: _	nestedObjectAsAnnotationParameter.kt:10: unresolved reference: Nested
 tests/annotations/noNameProperty.kt	rejects invalid	on an expected line	
 tests/annotations/nonConstArrayAsSpreadArgument.kt	rejects invalid	on an expected line	
-tests/annotations/nonConstArrayAsSpreadArgumentInDefaults.kt	accepts invalid	ANNOTATION_PARAMETER_DEFAULT_VALUE_MUST_BE_CONSTANT	nonConstArrayAsSpreadArgumentInDefaults.kt:7: ANNOTATION_PARAMETER_DEFAULT_VALUE_MUST_BE_CONSTANT
+tests/annotations/nonConstArrayAsSpreadArgumentInDefaults.kt	rejects invalid	on an expected line	
 tests/annotations/onExpression.kt	accepts valid		
 tests/annotations/onFunctionParameter.kt	accepts valid		
 tests/annotations/onInitializer.kt	accepts invalid	WRONG_ANNOTATION_TARGET; UNRESOLVED_REFERENCE; ANONYMOUS_INITIALIZER_IN_INTERFACE	onInitializer.kt:3: WRONG_ANNOTATION_TARGET
@@ -344,30 +344,30 @@ tests/annotations/options/prefix.kt	accepts invalid	WRONG_ANNOTATION_TARGET	pref
 tests/annotations/options/retention.kt	accepts valid		
 tests/annotations/options/setterParam.kt	rejects invalid	on an expected line	
 tests/annotations/options/target.kt	accepts valid		
-tests/annotations/options/targets/accessors.kt	accepts invalid	WRONG_ANNOTATION_TARGET	accessors.kt:12: WRONG_ANNOTATION_TARGET
-tests/annotations/options/targets/annotation.kt	accepts invalid	WRONG_ANNOTATION_TARGET	annotation.kt:6: WRONG_ANNOTATION_TARGET
-tests/annotations/options/targets/classifier.kt	accepts invalid	WRONG_ANNOTATION_TARGET	classifier.kt:7: WRONG_ANNOTATION_TARGET
-tests/annotations/options/targets/constructor.kt	accepts invalid	WRONG_ANNOTATION_TARGET	constructor.kt:4: WRONG_ANNOTATION_TARGET
-tests/annotations/options/targets/empty.kt	accepts invalid	WRONG_ANNOTATION_TARGET	empty.kt:5: WRONG_ANNOTATION_TARGET
-tests/annotations/options/targets/expr.kt	accepts invalid	WRONG_ANNOTATION_TARGET	expr.kt:8: WRONG_ANNOTATION_TARGET
+tests/annotations/options/targets/accessors.kt	rejects invalid	on an expected line	
+tests/annotations/options/targets/annotation.kt	rejects invalid	on an expected line	
+tests/annotations/options/targets/classifier.kt	rejects invalid	on an expected line	
+tests/annotations/options/targets/constructor.kt	rejects invalid	on an expected line	
+tests/annotations/options/targets/empty.kt	rejects invalid	on an expected line	
+tests/annotations/options/targets/expr.kt	rejects invalid	on an expected line	
 tests/annotations/options/targets/field.kt	rejects invalid	on an expected line	
-tests/annotations/options/targets/file.kt	accepts invalid	WRONG_ANNOTATION_TARGET; WRONG_ANNOTATION_TARGET_WITH_USE_SITE_TARGET	other.kt:6: WRONG_ANNOTATION_TARGET
-tests/annotations/options/targets/function.kt	accepts invalid	WRONG_ANNOTATION_TARGET	function.kt:4: WRONG_ANNOTATION_TARGET
+tests/annotations/options/targets/file.kt	rejects invalid	on an expected line	
+tests/annotations/options/targets/function.kt	rejects invalid	on an expected line	
 tests/annotations/options/targets/funtypeargs.kt	accepts invalid	WRONG_ANNOTATION_TARGET	funtypeargs.kt:9: WRONG_ANNOTATION_TARGET
 tests/annotations/options/targets/incorrect.kt	rejects invalid	on an expected line	
 tests/annotations/options/targets/init.kt	accepts invalid	WRONG_ANNOTATION_TARGET	init.kt:5: WRONG_ANNOTATION_TARGET
 tests/annotations/options/targets/java.kt	skip	Java sources	
-tests/annotations/options/targets/local.kt	accepts invalid	WRONG_ANNOTATION_TARGET	local.kt:4: WRONG_ANNOTATION_TARGET
+tests/annotations/options/targets/local.kt	rejects invalid	on an expected line	
 tests/annotations/options/targets/mixedTargeting.kt	skip	Java sources	
-tests/annotations/options/targets/nested.kt	accepts invalid	WRONG_ANNOTATION_TARGET	nested.kt:9: WRONG_ANNOTATION_TARGET
-tests/annotations/options/targets/property.kt	accepts invalid	WRONG_ANNOTATION_TARGET	property.kt:5: WRONG_ANNOTATION_TARGET
+tests/annotations/options/targets/nested.kt	rejects invalid	on an expected line	
+tests/annotations/options/targets/property.kt	rejects invalid	on an expected line	
 tests/annotations/options/targets/returntype.kt	accepts invalid	WRONG_ANNOTATION_TARGET	returntype.kt:7: WRONG_ANNOTATION_TARGET
 tests/annotations/options/targets/suppress.kt	accepts valid		
-tests/annotations/options/targets/type.kt	accepts invalid	WRONG_ANNOTATION_TARGET	type.kt:4: WRONG_ANNOTATION_TARGET
-tests/annotations/options/targets/typeParams.kt	accepts invalid	WRONG_ANNOTATION_TARGET	typeParams.kt:28: WRONG_ANNOTATION_TARGET
+tests/annotations/options/targets/type.kt	rejects invalid	on an expected line	
+tests/annotations/options/targets/typeParams.kt	rejects invalid	on an expected line	
 tests/annotations/options/targets/typeargs.kt	accepts invalid	WRONG_ANNOTATION_TARGET	typeargs.kt:4: WRONG_ANNOTATION_TARGET
-tests/annotations/options/targets/valueparam.kt	accepts invalid	WRONG_ANNOTATION_TARGET	valueparam.kt:5: WRONG_ANNOTATION_TARGET
-tests/annotations/options/unrepeatable.kt	accepts invalid	REPEATED_ANNOTATION	unrepeatable.kt:6: REPEATED_ANNOTATION
+tests/annotations/options/targets/valueparam.kt	rejects invalid	on an expected line	
+tests/annotations/options/unrepeatable.kt	rejects invalid	on an expected line	
 tests/annotations/parameters/byte.kt	rejects invalid	on an expected line	
 tests/annotations/parameters/char.kt	accepts valid		
 tests/annotations/parameters/double.kt	rejects valid	invalid double literal	double.kt:11: invalid double literal
@@ -391,8 +391,8 @@ tests/annotations/parameters/expressions/paranthesized.kt	rejects invalid	on an 
 tests/annotations/parameters/expressions/plus.kt	rejects invalid	on an expected line	
 tests/annotations/parameters/expressions/simpleCallBinary.kt	accepts valid		
 tests/annotations/parameters/expressions/stringPlusInt.kt	accepts valid		
-tests/annotations/parameters/expressions/stringTemplate.kt	accepts invalid	NON_CONST_VAL_USED_IN_CONSTANT_EXPRESSION	stringTemplate.kt:14: NON_CONST_VAL_USED_IN_CONSTANT_EXPRESSION
-tests/annotations/parameters/expressions/strings.kt	accepts invalid	NON_CONST_VAL_USED_IN_CONSTANT_EXPRESSION	strings.kt:8: NON_CONST_VAL_USED_IN_CONSTANT_EXPRESSION
+tests/annotations/parameters/expressions/stringTemplate.kt	rejects invalid	on an expected line	
+tests/annotations/parameters/expressions/strings.kt	rejects invalid	on an expected line	
 tests/annotations/parameters/expressions/unaryMinus.kt	accepts valid		
 tests/annotations/parameters/expressions/unaryPlus.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	unaryPlus.kt:13: type mismatch: inferred type is Int but Byte was expected
 tests/annotations/parameters/float.kt	accepts valid		
@@ -468,21 +468,21 @@ tests/annotations/typeUse/nonTypeUseAnnotationOnType.kt	accepts invalid	WRONG_AN
 tests/annotations/typealiasWithAnnotatedAbstractClass.kt	accepts valid		
 tests/annotations/unreachableNestedClassAsAnnotationParameter.kt	rejects invalid	on an expected line	
 tests/annotations/unresolvedReferenceRange.kt	accepts invalid	UNRESOLVED_REFERENCE	unresolvedReferenceRange.kt:2: UNRESOLVED_REFERENCE
-tests/annotations/withUseSiteTarget/DelegateAnnotations.kt	accepts invalid	WRONG_ANNOTATION_TARGET_WITH_USE_SITE_TARGET; INAPPLICABLE_TARGET_PROPERTY_HAS_NO_DELEGATE	DelegateAnnotations.kt:12: WRONG_ANNOTATION_TARGET_WITH_USE_SITE_TARGET
-tests/annotations/withUseSiteTarget/FieldAnnotations.kt	accepts invalid	WRONG_ANNOTATION_TARGET_WITH_USE_SITE_TARGET; INAPPLICABLE_TARGET_PROPERTY_HAS_NO_BACKING_FIELD	FieldAnnotations.kt:10: WRONG_ANNOTATION_TARGET_WITH_USE_SITE_TARGET
-tests/annotations/withUseSiteTarget/FileAnnotations.kt	accepts invalid	WRONG_ANNOTATION_TARGET_WITH_USE_SITE_TARGET	1.kt:1: WRONG_ANNOTATION_TARGET_WITH_USE_SITE_TARGET
-tests/annotations/withUseSiteTarget/GetterAnnotations.kt	accepts invalid	INAPPLICABLE_TARGET_ON_PROPERTY; WRONG_ANNOTATION_TARGET_WITH_USE_SITE_TARGET	GetterAnnotations.kt:10: INAPPLICABLE_TARGET_ON_PROPERTY
-tests/annotations/withUseSiteTarget/ParamAnnotations.kt	accepts invalid	INAPPLICABLE_PARAM_TARGET; WRONG_ANNOTATION_TARGET_WITH_USE_SITE_TARGET	ParamAnnotations.kt:5: INAPPLICABLE_PARAM_TARGET
-tests/annotations/withUseSiteTarget/PropertyAnnotations.kt	accepts invalid	INAPPLICABLE_TARGET_ON_PROPERTY; WRONG_ANNOTATION_TARGET_WITH_USE_SITE_TARGET	PropertyAnnotations.kt:11: INAPPLICABLE_TARGET_ON_PROPERTY
+tests/annotations/withUseSiteTarget/DelegateAnnotations.kt	rejects invalid	on an expected line	
+tests/annotations/withUseSiteTarget/FieldAnnotations.kt	rejects invalid	on an expected line	
+tests/annotations/withUseSiteTarget/FileAnnotations.kt	rejects invalid	on an expected line	
+tests/annotations/withUseSiteTarget/GetterAnnotations.kt	rejects invalid	on an expected line	
+tests/annotations/withUseSiteTarget/ParamAnnotations.kt	rejects invalid	on an expected line	
+tests/annotations/withUseSiteTarget/PropertyAnnotations.kt	rejects invalid	on an expected line	
 tests/annotations/withUseSiteTarget/ReceiverAnnotations.kt	rejects invalid	on an expected line	
 tests/annotations/withUseSiteTarget/SetterAnnotations.kt	accepts invalid	INAPPLICABLE_TARGET_ON_PROPERTY; WRONG_ANNOTATION_TARGET_WITH_USE_SITE_TARGET; INAPPLICABLE_TARGET_PROPERTY_IMMUTABLE	SetterAnnotations.kt:11: INAPPLICABLE_TARGET_ON_PROPERTY
-tests/annotations/withUseSiteTarget/SparamAnnotations.kt	accepts invalid	INAPPLICABLE_TARGET_ON_PROPERTY; WRONG_ANNOTATION_TARGET_WITH_USE_SITE_TARGET; INAPPLICABLE_TARGET_PROPERTY_IMMUTABLE	SparamAnnotations.kt:11: INAPPLICABLE_TARGET_ON_PROPERTY
+tests/annotations/withUseSiteTarget/SparamAnnotations.kt	rejects invalid	on an expected line	
 tests/annotations/withUseSiteTarget/diagnosticFileAnnotationInWrongPlace.kt	rejects invalid	on an expected line	
-tests/annotations/withUseSiteTarget/diagnosticWithoutPackage.kt	accepts invalid	WRONG_ANNOTATION_TARGET_WITH_USE_SITE_TARGET; INAPPLICABLE_FILE_TARGET	diagnosticWithoutPackage.kt:3: WRONG_ANNOTATION_TARGET_WITH_USE_SITE_TARGET
-tests/annotations/withUseSiteTarget/diagnosticWithoutPackageWithSimpleAnnotation.kt	accepts invalid	WRONG_ANNOTATION_TARGET_WITH_USE_SITE_TARGET; INAPPLICABLE_FILE_TARGET	diagnosticWithoutPackageWithSimpleAnnotation.kt:2: WRONG_ANNOTATION_TARGET_WITH_USE_SITE_TARGET
+tests/annotations/withUseSiteTarget/diagnosticWithoutPackage.kt	rejects invalid	on an expected line	
+tests/annotations/withUseSiteTarget/diagnosticWithoutPackageWithSimpleAnnotation.kt	rejects invalid	on an expected line	
 tests/annotations/withUseSiteTarget/fileAnnotationWithoutColon.kt	rejects invalid	on an expected line	
 tests/annotations/withUseSiteTarget/kt23992_after.kt	accepts invalid	ANNOTATION_ON_SUPERCLASS_ERROR; WRONG_ANNOTATION_TARGET_WITH_USE_SITE_TARGET	kt23992_after.kt:8: ANNOTATION_ON_SUPERCLASS_ERROR
-tests/annotations/withUseSiteTarget/kt26638.kt	accepts invalid	REPEATED_ANNOTATION	kt26638.kt:9: REPEATED_ANNOTATION
+tests/annotations/withUseSiteTarget/kt26638.kt	rejects invalid	on an expected line	
 tests/annotations/withUseSiteTarget/prohibitUseSiteGetTargetAnnotationsOff.kt	skip	LANGUAGE	
 tests/annotations/withUseSiteTarget/prohibitUseSiteGetTargetAnnotationsOn.kt	skip	LANGUAGE	
 tests/annotations/withUseSiteTarget/propertyTargetOnEnumEntry_error.kt	skip	LANGUAGE	
@@ -490,7 +490,7 @@ tests/annotations/withUseSiteTarget/propertyTargetOnEnumEntry_warning.kt	skip	LA
 tests/annotations/withUseSiteTarget/receiverUseSiteTargetOnExtensionFunction.kt	rejects invalid	on an expected line	
 tests/annotations/withUseSiteTarget/repeatable.kt	rejects invalid	on an expected line	
 tests/annotations/withUseSiteTarget/wrongParamAnnotationsOnTypes.kt	rejects invalid	on an expected line	
-tests/annotations/wrongAnnotationTarget.kt	accepts invalid	WRONG_ANNOTATION_TARGET_WITH_USE_SITE_TARGET; WRONG_ANNOTATION_TARGET	wrongAnnotationTarget.kt:9: WRONG_ANNOTATION_TARGET_WITH_USE_SITE_TARGET
+tests/annotations/wrongAnnotationTarget.kt	rejects invalid	on an expected line	
 tests/annotations/wrongAnnotationTargetAnnotationOrder.kt	skip	Java sources	
 tests/annotations/wrongAnnotationTargetAnnotationOrderProperSyntax.kt	skip	Java sources	
 tests/annotations/wrongDslMarkerTargets.kt	accepts valid		
@@ -1141,7 +1141,7 @@ tests/classLiteral/classLiteralType.kt	rejects invalid	on an expected line
 tests/classLiteral/expressionWithNullableType.kt	skip	Java sources	
 tests/classLiteral/genericArrays.kt	rejects invalid	on an expected line	
 tests/classLiteral/genericClasses.kt	rejects invalid	on an expected line	
-tests/classLiteral/inAnnotationArguments.kt	accepts invalid	ANNOTATION_ARGUMENT_MUST_BE_KCLASS_LITERAL; NON_CONST_VAL_USED_IN_CONSTANT_EXPRESSION; ANNOTATION_ARGUMENT_KCLASS_LITERAL_OF_TYPE_PARAMETER_ERROR	inAnnotationArguments.kt:16: ANNOTATION_ARGUMENT_MUST_BE_KCLASS_LITERAL
+tests/classLiteral/inAnnotationArguments.kt	rejects invalid	on an expected line	
 tests/classLiteral/integerValueType.kt	accepts valid		
 tests/classLiteral/nonClassesOnLHS.kt	rejects invalid	on an expected line	
 tests/classLiteral/parameterizedTypeAlias.kt	skip	LANGUAGE	
@@ -1506,7 +1506,7 @@ tests/constantEvaluator/constant/kCallableName.kt	skip	LANGUAGE_FEATURE_TOGGLED
 tests/constantEvaluator/constant/localVal.kt	accepts valid		
 tests/constantEvaluator/constant/localVar.kt	accepts valid		
 tests/constantEvaluator/constant/lowerUpper.kt	skip	LANGUAGE_FEATURE_TOGGLED	
-tests/constantEvaluator/constant/nonConstAnnotationConstructorParam.kt	accepts invalid	ANNOTATION_ARGUMENT_MUST_BE_CONST; ANNOTATION_PARAMETER_DEFAULT_VALUE_MUST_BE_CONSTANT	nonConstAnnotationConstructorParam.kt:13: ANNOTATION_ARGUMENT_MUST_BE_CONST
+tests/constantEvaluator/constant/nonConstAnnotationConstructorParam.kt	rejects invalid	on an expected line	
 tests/constantEvaluator/constant/nonConstValuesInConstContext.kt	rejects invalid	on an expected line	
 tests/constantEvaluator/constant/nonFinalProperty.kt	accepts valid		
 tests/constantEvaluator/constant/objectProperty.kt	accepts valid		
@@ -1577,7 +1577,7 @@ tests/contextParameters/contextualInvokeWithIncorrectNamedArgument.kt	rejects in
 tests/contextParameters/contextualLambdaWithExplicitParameterType.kt	rejects valid	no context argument for '_' found	contextualLambdaWithExplicitParameterType.kt:16: no context argument for 'context: A' found
 tests/contextParameters/contextualLateinit.kt	rejects invalid	on an expected line	
 tests/contextParameters/declarationAndUsages/annotationOnTypeWithContext.kt	accepts valid		
-tests/contextParameters/declarationAndUsages/annotationTargetInContext.kt	accepts invalid	WRONG_ANNOTATION_TARGET	annotationTargetInContext.kt:22: WRONG_ANNOTATION_TARGET
+tests/contextParameters/declarationAndUsages/annotationTargetInContext.kt	rejects invalid	on an expected line	
 tests/contextParameters/declarationAndUsages/anonymousFunctionContextWithoutType.kt	rejects invalid	on an expected line	
 tests/contextParameters/declarationAndUsages/anonymousFunctionWithWrongShape.kt	rejects invalid	on an expected line	
 tests/contextParameters/declarationAndUsages/classMembersWithContext.kt	accepts valid		
@@ -2512,8 +2512,8 @@ tests/delegatedProperty/abstractDelegatedProperty.kt	rejects invalid	on an expec
 tests/delegatedProperty/backingField.kt	rejects invalid	on an expected line	
 tests/delegatedProperty/defaultGetter.kt	accepts valid		
 tests/delegatedProperty/defaultSetter.kt	accepts valid		
-tests/delegatedProperty/delegateWithAnnotationOnAccessorWithExplicitType.kt	accepts invalid	ANNOTATION_ARGUMENT_MUST_BE_CONST	delegateWithAnnotationOnAccessorWithExplicitType.kt:5: ANNOTATION_ARGUMENT_MUST_BE_CONST
-tests/delegatedProperty/delegateWithAnnotationOnAccessorWithImplicitType.kt	accepts invalid	ANNOTATION_ARGUMENT_MUST_BE_CONST	delegateWithAnnotationOnAccessorWithImplicitType.kt:5: ANNOTATION_ARGUMENT_MUST_BE_CONST
+tests/delegatedProperty/delegateWithAnnotationOnAccessorWithExplicitType.kt	rejects invalid	on an expected line	
+tests/delegatedProperty/delegateWithAnnotationOnAccessorWithImplicitType.kt	rejects invalid	on an expected line	
 tests/delegatedProperty/delegatedPropertyOverridedInTrait.kt	accepts valid		
 tests/delegatedProperty/delegatedPropertyOverridedInTraitTypeMismatch.kt	rejects invalid	on an expected line	
 tests/delegatedProperty/disallowImplInTypeParameter.kt	rejects invalid	on an expected line	
@@ -2878,8 +2878,8 @@ tests/diagnostics/abstractSuperCall.kt	rejects invalid	on an expected line
 tests/diagnostics/abstractSuperCallInPresenseOfNonAbstractMethodInParent.kt	rejects invalid	on an expected line	
 tests/diagnostics/annotationArgumentKClassLiteralTypeError.kt	accepts invalid	NON_CONST_VAL_USED_IN_CONSTANT_EXPRESSION; ANNOTATION_ARGUMENT_KCLASS_LITERAL_OF_TYPE_PARAMETER_ERROR	annotationArgumentKClassLiteralTypeError.kt:9: NON_CONST_VAL_USED_IN_CONSTANT_EXPRESSION
 tests/diagnostics/annotationArgumentMustBeConst.kt	rejects invalid	on an expected line	
-tests/diagnostics/annotationArgumentMustBeEnumConst.kt	accepts invalid	ANNOTATION_ARGUMENT_MUST_BE_ENUM_CONST	annotationArgumentMustBeEnumConst.kt:11: ANNOTATION_ARGUMENT_MUST_BE_ENUM_CONST
-tests/diagnostics/annotationArgumentMustBeKClassLiteral.kt	accepts invalid	ANNOTATION_ARGUMENT_MUST_BE_KCLASS_LITERAL	annotationArgumentMustBeKClassLiteral.kt:14: ANNOTATION_ARGUMENT_MUST_BE_KCLASS_LITERAL
+tests/diagnostics/annotationArgumentMustBeEnumConst.kt	rejects invalid	on an expected line	
+tests/diagnostics/annotationArgumentMustBeKClassLiteral.kt	rejects invalid	on an expected line	
 tests/diagnostics/annotationArgumentRegex.kt	rejects invalid	on an expected line	
 tests/diagnostics/annotationClassMember.kt	rejects invalid	on an expected line	
 tests/diagnostics/anonymousObjectByDelegate.kt	rejects invalid	on an expected line	
@@ -2910,7 +2910,7 @@ tests/diagnostics/localAnnotationClass.kt	rejects invalid	on an expected line
 tests/diagnostics/localEntitytNotAllowed.kt	rejects invalid	on an expected line	
 tests/diagnostics/manyCompanionObjects.kt	rejects invalid	on an expected line	
 tests/diagnostics/methodOfAnyImplementedInInterface.kt	rejects invalid	on an expected line	
-tests/diagnostics/nonConstValInAnnotationArgument.kt	accepts invalid	NON_CONST_VAL_USED_IN_CONSTANT_EXPRESSION	nonConstValInAnnotationArgument.kt:9: NON_CONST_VAL_USED_IN_CONSTANT_EXPRESSION
+tests/diagnostics/nonConstValInAnnotationArgument.kt	rejects invalid	on an expected line	
 tests/diagnostics/notASupertype.kt	rejects invalid	on an expected line	
 tests/diagnostics/operatorRenamedOnImportProvideDelegate.kt	accepts valid		
 tests/diagnostics/outerClassArgumentsRequiredFromSuper.kt	rejects invalid	on an expected line	
@@ -3100,7 +3100,7 @@ tests/evaluate/numberBinaryOperationsInfixCall.kt	rejects invalid	on an expected
 tests/evaluate/otherOverflow.kt	accepts valid		
 tests/evaluate/parentesized.kt	rejects invalid	on an expected line	
 tests/evaluate/qualifiedExpressions.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	b.kt:3: type mismatch: inferred type is Any? but Int was expected
-tests/evaluate/trimMarginBlankPrefix.kt	accepts invalid	ANNOTATION_ARGUMENT_MUST_BE_CONST	trimMarginBlankPrefix.kt:14: ANNOTATION_ARGUMENT_MUST_BE_CONST
+tests/evaluate/trimMarginBlankPrefix.kt	rejects invalid	on an expected line	
 tests/evaluate/unaryMinusDepOnExpType.kt	rejects invalid	on an expected line	
 tests/evaluate/unaryMinusIndepWoExpType.kt	rejects invalid	on an expected line	
 tests/evaluate/unaryMinusIndependentExpType.kt	rejects invalid	on an expected line	
@@ -5102,7 +5102,7 @@ tests/inlineClasses/jvmExposeBoxed/jvmName.kt	rejects invalid	elsewhere
 tests/inlineClasses/jvmExposeBoxed/kt85086.kt	accepts invalid	JVM_EXPOSE_BOXED_CANNOT_BE_THE_SAME	kt85086.kt:11: JVM_EXPOSE_BOXED_CANNOT_BE_THE_SAME
 tests/inlineClasses/jvmExposeBoxed/method.kt	accepts valid		
 tests/inlineClasses/jvmExposeBoxed/private.kt	accepts invalid	JVM_EXPOSE_BOXED_CANNOT_EXPOSE_PRIVATE	private.kt:11: JVM_EXPOSE_BOXED_CANNOT_EXPOSE_PRIVATE
-tests/inlineClasses/jvmExposeBoxed/simple.kt	accepts invalid	WRONG_ANNOTATION_TARGET_WITH_USE_SITE_TARGET; INAPPLICABLE_JVM_EXPOSE_BOXED_WITH_NAME; WRONG_ANNOTATION_TARGET; JVM_EXPOSE_BOXED_REQUIRES_NAME; ILLEGAL_JVM_NAME; JVM_EXPOSE_BOXED_CANNOT_EXPOSE_REIFIED; JVM_EXPOSE_BOXED_CANNOT_BE_THE_SAME; JVM_EXPOSE_BOXED_CANNOT_EXPOSE_SUSPEND; JVM_EXPOSE_BOXED_CANNOT_EXPOSE_OPEN_ABSTRACT; JVM_EXPOSE_BOXED_CANNOT_EXPOSE_SYNTHETIC; JVM_EXPOSE_BOXED_CANNOT_EXPOSE_LOCALS	simple.kt:7: WRONG_ANNOTATION_TARGET_WITH_USE_SITE_TARGET
+tests/inlineClasses/jvmExposeBoxed/simple.kt	rejects invalid	on an expected line	
 tests/inlineClasses/kt51366.kt	skip	LANGUAGE	
 tests/inlineClasses/lateinitInlineClassesOff.kt	skip	LANGUAGE	
 tests/inlineClasses/presenceOfInitializerBlockInsideInlineClass.kt	skip	LANGUAGE	
@@ -5953,8 +5953,8 @@ tests/modifiers/const/fromJavaWithNonConstInitializer.kt	skip	Java sources
 tests/modifiers/const/ifConstVal.kt	accepts invalid	CONST_VAL_WITH_NON_CONST_INITIALIZER	ifConstVal.kt:6: CONST_VAL_WITH_NON_CONST_INITIALIZER
 tests/modifiers/const/incAndDecOperations.kt	rejects invalid	on an expected line	
 tests/modifiers/const/kCallable.kt	skip	LANGUAGE_FEATURE_TOGGLED	
-tests/modifiers/const/kClassInEquals.kt	accepts invalid	ANNOTATION_ARGUMENT_MUST_BE_CONST; CONST_VAL_WITH_NON_CONST_INITIALIZER	kClassInEquals.kt:7: ANNOTATION_ARGUMENT_MUST_BE_CONST
-tests/modifiers/const/kClassInStringConcatenation.kt	accepts invalid	ANNOTATION_ARGUMENT_MUST_BE_CONST; CONST_VAL_WITH_NON_CONST_INITIALIZER	kClassInStringConcatenation.kt:4: ANNOTATION_ARGUMENT_MUST_BE_CONST
+tests/modifiers/const/kClassInEquals.kt	rejects invalid	on an expected line	
+tests/modifiers/const/kClassInStringConcatenation.kt	rejects invalid	on an expected line	
 tests/modifiers/const/kotlinJavaCycle.kt	skip	Java sources	
 tests/modifiers/const/kt12248.kt	skip	Java sources	
 tests/modifiers/const/kt15913.kt	skip	Java sources	
@@ -5971,7 +5971,7 @@ tests/modifiers/const/wrongTypeInStringConcatenation.kt	skip	LANGUAGE
 tests/modifiers/defaultModifier.kt	rejects invalid	on an expected line	
 tests/modifiers/incompatibleVarianceModifiers.kt	rejects invalid	on an expected line	
 tests/modifiers/inlineParameters.kt	accepts invalid	ILLEGAL_INLINE_PARAMETER_MODIFIER; INCOMPATIBLE_MODIFIERS	inlineParameters.kt:4: ILLEGAL_INLINE_PARAMETER_MODIFIER
-tests/modifiers/inlineValueClass.kt	rejects invalid	elsewhere	
+tests/modifiers/inlineValueClass.kt	rejects invalid	on an expected line	
 tests/modifiers/internalInInterface.kt	accepts invalid	WRONG_MODIFIER_CONTAINING_DECLARATION	internalInInterface.kt:3: WRONG_MODIFIER_CONTAINING_DECLARATION
 tests/modifiers/modifierOnParameterInFunctionType.kt	rejects invalid	on an expected line	
 tests/modifiers/multipleSuspendFunctionType.kt	accepts invalid	REPEATED_MODIFIER	multipleSuspendFunctionType.kt:3: REPEATED_MODIFIER
@@ -7581,7 +7581,7 @@ tests/regressions/kt5326.kt	accepts valid
 tests/regressions/kt5362.kt	rejects invalid	on an expected line	
 tests/regressions/kt549.kt	accepts valid		
 tests/regressions/kt557.kt	rejects invalid	on an expected line	
-tests/regressions/kt55956.kt	accepts invalid	WRONG_ANNOTATION_TARGET_WITH_USE_SITE_TARGET	kt55956.kt:4: WRONG_ANNOTATION_TARGET_WITH_USE_SITE_TARGET
+tests/regressions/kt55956.kt	rejects invalid	on an expected line	
 tests/regressions/kt571.kt	accepts valid		
 tests/regressions/kt575.kt	accepts valid		
 tests/regressions/kt57845.kt	skip	Java sources	
@@ -9053,7 +9053,7 @@ tests/typealias/abbreviatedSupertypesErrors.kt	rejects invalid	on an expected li
 tests/typealias/aliasToNotKnownAnnotation.kt	skip	LANGUAGE	
 tests/typealias/aliasToNotKnownJavaAnnotation.kt	skip	LANGUAGE	
 tests/typealias/aliasesOnly.kt	accepts valid		
-tests/typealias/annotationsOnTypeAliases.kt	accepts invalid	WRONG_ANNOTATION_TARGET	annotationsOnTypeAliases.kt:13: WRONG_ANNOTATION_TARGET
+tests/typealias/annotationsOnTypeAliases.kt	rejects invalid	on an expected line	
 tests/typealias/boundViolationInTypeAliasConstructor.kt	rejects invalid	on an expected line	
 tests/typealias/boundsViolationInDeepTypeAliasExpansion.kt	rejects invalid	on an expected line	
 tests/typealias/boundsViolationInTypeAliasExpansion.kt	rejects invalid	on an expected line	
@@ -9586,25 +9586,25 @@ testsWithStdLib/annotations/annotationAllUseSiteTargetCompilable.kt	skip	LANGUAG
 testsWithStdLib/annotations/annotationAllUseSiteTargetOff.kt	skip	LANGUAGE	
 testsWithStdLib/annotations/annotationApplicability/annotationPropertyGettersDisabled.kt	skip	LANGUAGE	
 testsWithStdLib/annotations/annotationApplicability/annotationPropertyGettersEnabled.kt	skip	LANGUAGE	
-testsWithStdLib/annotations/annotationApplicability/annotationsOnUseSiteTargets.kt	accepts invalid	JVM_STATIC_NOT_IN_OBJECT_OR_COMPANION; INAPPLICABLE_JVM_NAME; SYNCHRONIZED_IN_INTERFACE; OVERLOADS_INTERFACE; WRONG_ANNOTATION_TARGET_WITH_USE_SITE_TARGET	annotationsOnUseSiteTargets.kt:3: JVM_STATIC_NOT_IN_OBJECT_OR_COMPANION
+testsWithStdLib/annotations/annotationApplicability/annotationsOnUseSiteTargets.kt	rejects invalid	on an expected line	
 testsWithStdLib/annotations/annotationApplicability/illegalPlatformName.kt	accepts invalid	ILLEGAL_JVM_NAME	illegalPlatformName.kt:3: ILLEGAL_JVM_NAME
-testsWithStdLib/annotations/annotationApplicability/jvmName.kt	rejects invalid	elsewhere	
+testsWithStdLib/annotations/annotationApplicability/jvmName.kt	rejects invalid	on an expected line	
 testsWithStdLib/annotations/annotationApplicability/jvmNameOnFile.kt	accepts invalid	ILLEGAL_JVM_NAME	illegal.kt:2: ILLEGAL_JVM_NAME
 testsWithStdLib/annotations/annotationApplicability/jvmNameOnMangledNames.kt	skip	LANGUAGE	
 testsWithStdLib/annotations/annotationApplicability/multifileClassPart.kt	accepts valid		
 testsWithStdLib/annotations/annotationApplicability/multifileClassPartWithJavaAnnotation.kt	skip	Java sources	
-testsWithStdLib/annotations/annotationApplicability/onPropertyAnnotation.kt	accepts invalid	WRONG_ANNOTATION_TARGET	onPropertyAnnotation.kt:14: WRONG_ANNOTATION_TARGET
+testsWithStdLib/annotations/annotationApplicability/onPropertyAnnotation.kt	rejects invalid	on an expected line	
 testsWithStdLib/annotations/annotationApplicability/suppressOnFunctionReference.kt	accepts valid		
 testsWithStdLib/annotations/annotationDefaultTargetFirstOnly.kt	skip	LANGUAGE	
 testsWithStdLib/annotations/annotationDefaultTargetFirstOnlyWarn.kt	skip	LANGUAGE	
 testsWithStdLib/annotations/annotationDefaultTargetParamProperty.kt	skip	LANGUAGE	
 testsWithStdLib/annotations/annotationIncompatibleTargets.kt	rejects valid	too many arguments for annotation java/lang/annotation/Target	annotationIncompatibleTargets.kt:10: too many arguments for annotation java/lang/annotation/Target
-testsWithStdLib/annotations/annotationParameterMustBeConstant/array.kt	accepts invalid	NON_CONST_VAL_USED_IN_CONSTANT_EXPRESSION; ANNOTATION_ARGUMENT_MUST_BE_CONST; ARGUMENT_TYPE_MISMATCH	array.kt:6: NON_CONST_VAL_USED_IN_CONSTANT_EXPRESSION
+testsWithStdLib/annotations/annotationParameterMustBeConstant/array.kt	rejects invalid	on an expected line	
 testsWithStdLib/annotations/annotationParameterMustBeConstant/simple.kt	rejects invalid	on an expected line	
-testsWithStdLib/annotations/annotationParameterMustBeConstant/useOfNonConstVal.kt	accepts invalid	NON_CONST_VAL_USED_IN_CONSTANT_EXPRESSION	useOfNonConstVal.kt:4: NON_CONST_VAL_USED_IN_CONSTANT_EXPRESSION
-testsWithStdLib/annotations/annotationParameterMustBeConstant/vararg.kt	accepts invalid	ANNOTATION_ARGUMENT_MUST_BE_CONST; NON_CONST_VAL_USED_IN_CONSTANT_EXPRESSION	vararg.kt:6: ANNOTATION_ARGUMENT_MUST_BE_CONST
-testsWithStdLib/annotations/annotationParameters/kt10136.kt	accepts invalid	ANNOTATION_PARAMETER_DEFAULT_VALUE_MUST_BE_CONSTANT	kt10136.kt:7: ANNOTATION_PARAMETER_DEFAULT_VALUE_MUST_BE_CONSTANT
-testsWithStdLib/annotations/annotationParameters/nonConstValAsArgument.kt	accepts invalid	ANNOTATION_PARAMETER_DEFAULT_VALUE_MUST_BE_CONSTANT	nonConstValAsArgument.kt:5: ANNOTATION_PARAMETER_DEFAULT_VALUE_MUST_BE_CONSTANT
+testsWithStdLib/annotations/annotationParameterMustBeConstant/useOfNonConstVal.kt	rejects invalid	on an expected line	
+testsWithStdLib/annotations/annotationParameterMustBeConstant/vararg.kt	rejects invalid	on an expected line	
+testsWithStdLib/annotations/annotationParameters/kt10136.kt	rejects invalid	on an expected line	
+testsWithStdLib/annotations/annotationParameters/nonConstValAsArgument.kt	rejects invalid	on an expected line	
 testsWithStdLib/annotations/annotationParameters/orderWithValue.kt	skip	Java sources	
 testsWithStdLib/annotations/annotationParameters/orderWithoutValue.kt	skip	Java sources	
 testsWithStdLib/annotations/annotationParameters/valueArray.kt	skip	Java sources	
@@ -9618,10 +9618,10 @@ testsWithStdLib/annotations/annotationWithVarargParameter/kotlinAnnotationWithVa
 testsWithStdLib/annotations/annotationsTargetingLateinitAccessors.kt	accepts valid		
 testsWithStdLib/annotations/annotationsTargetingNonExistentAccessor.kt	accepts valid		
 testsWithStdLib/annotations/combinationOfAllNotAllAndDefaultTarget.kt	skip	LANGUAGE	
-testsWithStdLib/annotations/defaultValueMustBeConstant.kt	accepts invalid	ANNOTATION_PARAMETER_DEFAULT_VALUE_MUST_BE_CONSTANT	defaultValueMustBeConstant.kt:20: ANNOTATION_PARAMETER_DEFAULT_VALUE_MUST_BE_CONSTANT
+testsWithStdLib/annotations/defaultValueMustBeConstant.kt	rejects invalid	on an expected line	
 testsWithStdLib/annotations/deprecatedAll.kt	skip	LANGUAGE	
 testsWithStdLib/annotations/dontPropagateExact.kt	accepts valid		
-testsWithStdLib/annotations/explicitMetadata.kt	rejects invalid	elsewhere	
+testsWithStdLib/annotations/explicitMetadata.kt	rejects invalid	on an expected line	
 testsWithStdLib/annotations/javaAnnotationsWithKClassParameter/annotationAsArgument.kt	skip	Java sources	
 testsWithStdLib/annotations/javaAnnotationsWithKClassParameter/arg.kt	skip	Java sources	
 testsWithStdLib/annotations/javaAnnotationsWithKClassParameter/argAndOtherDefault.kt	skip	Java sources	
@@ -9647,7 +9647,7 @@ testsWithStdLib/annotations/jvmDefault/jvmDefaultsWithJava.kt	skip	Java sources
 testsWithStdLib/annotations/jvmField/inMultiFileFacade.kt	rejects invalid	on an expected line	
 testsWithStdLib/annotations/jvmField/inSingleFileFacade.kt	accepts valid		
 testsWithStdLib/annotations/jvmField/interface13.kt	rejects invalid	elsewhere	
-testsWithStdLib/annotations/jvmField/jvmFieldApplicability_1_6.kt	rejects invalid	elsewhere	
+testsWithStdLib/annotations/jvmField/jvmFieldApplicability_1_6.kt	rejects invalid	on an expected line	
 testsWithStdLib/annotations/jvmOverloads/JvmOverloadWithNoDefaults.kt	accepts valid		
 testsWithStdLib/annotations/jvmOverloads/jvmOverloadsOnAbstractMethods.kt	accepts invalid	OVERLOADS_INTERFACE; OVERLOADS_ABSTRACT	jvmOverloadsOnAbstractMethods.kt:3: OVERLOADS_INTERFACE
 testsWithStdLib/annotations/jvmOverloads/jvmOverloadsOnAnnotationClassConstructor.kt	accepts invalid	OVERLOADS_ANNOTATION_CLASS_CONSTRUCTOR_ERROR	jvmOverloadsOnAnnotationClassConstructor.kt:3: OVERLOADS_ANNOTATION_CLASS_CONSTRUCTOR_ERROR
@@ -9658,7 +9658,7 @@ testsWithStdLib/annotations/jvmRecordWithoutJdk15.kt	skip	API_VERSION
 testsWithStdLib/annotations/jvmSpecialFunctions/apiVersionIsAtLeastHasConstArguments.kt	skip	ALLOW_KOTLIN_PACKAGE	
 testsWithStdLib/annotations/jvmStatic/constOrJvmFieldProperty.kt	rejects invalid	on an expected line	
 testsWithStdLib/annotations/jvmStatic/constructorProperty.kt	accepts invalid	JVM_STATIC_NOT_IN_OBJECT_OR_COMPANION	constructorProperty.kt:2: JVM_STATIC_NOT_IN_OBJECT_OR_COMPANION
-testsWithStdLib/annotations/jvmStatic/constructors.kt	accepts invalid	WRONG_ANNOTATION_TARGET	constructors.kt:3: WRONG_ANNOTATION_TARGET
+testsWithStdLib/annotations/jvmStatic/constructors.kt	rejects invalid	on an expected line	
 testsWithStdLib/annotations/jvmStatic/finalAndAbstract.kt	rejects invalid	on an expected line	
 testsWithStdLib/annotations/jvmStatic/functions.kt	rejects invalid	on an expected line	
 testsWithStdLib/annotations/jvmStatic/interfaceCompanion.kt	rejects invalid	on an expected line	
@@ -9675,14 +9675,14 @@ testsWithStdLib/annotations/kClass/kClassInvariantTP.kt	rejects invalid	on an ex
 testsWithStdLib/annotations/kClass/kClassOutArrayInAnnotationsOutVariance.kt	accepts invalid	PROJECTION_IN_TYPE_OF_ANNOTATION_MEMBER_ERROR	kClassOutArrayInAnnotationsOutVariance.kt:8: PROJECTION_IN_TYPE_OF_ANNOTATION_MEMBER_ERROR
 testsWithStdLib/annotations/multipleAnnotationsWithAllUseSiteTarget.kt	skip	LANGUAGE	
 testsWithStdLib/annotations/multipleAnnotationsWithDefaultTarget.kt	skip	LANGUAGE	
-testsWithStdLib/annotations/multipleRepeatables.kt	accepts invalid	REPEATED_ANNOTATION	multipleRepeatables.kt:15: REPEATED_ANNOTATION
+testsWithStdLib/annotations/multipleRepeatables.kt	rejects invalid	on an expected line	
 testsWithStdLib/annotations/prohibitPositionedArgument/incompleteCode.kt	skip	Java sources	
 testsWithStdLib/annotations/prohibitPositionedArgument/kotlinAnnotation.kt	accepts valid		
 testsWithStdLib/annotations/prohibitPositionedArgument/tooManyArgs.kt	skip	Java sources	
 testsWithStdLib/annotations/prohibitPositionedArgument/typeMismatch.kt	skip	Java sources	
 testsWithStdLib/annotations/prohibitPositionedArgument/withValue.kt	skip	Java sources	
 testsWithStdLib/annotations/prohibitPositionedArgument/withoutValue.kt	skip	Java sources	
-testsWithStdLib/annotations/qualifiedCallValue.kt	rejects invalid	elsewhere	
+testsWithStdLib/annotations/qualifiedCallValue.kt	rejects invalid	on an expected line	
 testsWithStdLib/annotations/recursiveTypeAnnotation.kt	accepts valid		
 testsWithStdLib/annotations/recursiveTypeAnnotationWithVararg.kt	accepts valid		
 testsWithStdLib/annotations/strictfpOnClass.kt	accepts invalid	STRICTFP_ON_CLASS	strictfpOnClass.kt:2: STRICTFP_ON_CLASS
@@ -9692,7 +9692,7 @@ testsWithStdLib/annotations/subclassOptInRequired/DiagnosticCustomMessage_warnin
 testsWithStdLib/annotations/subclassOptInRequired/DiagnosticDefaultMessage_error.kt	accepts invalid	OPT_IN_TO_INHERITANCE_ERROR; OPT_IN_USAGE_ERROR	DiagnosticDefaultMessage_error.kt:12: OPT_IN_TO_INHERITANCE_ERROR
 testsWithStdLib/annotations/subclassOptInRequired/DiagnosticDefaultMessage_warning.kt	accepts valid		
 testsWithStdLib/annotations/subclassOptInRequired/Experimentality.kt	skip	API_VERSION	
-testsWithStdLib/annotations/subclassOptInRequired/IncorrectApplicability.kt	accepts invalid	SUBCLASS_OPT_IN_INAPPLICABLE; WRONG_ANNOTATION_TARGET	IncorrectApplicability.kt:8: SUBCLASS_OPT_IN_INAPPLICABLE
+testsWithStdLib/annotations/subclassOptInRequired/IncorrectApplicability.kt	rejects invalid	on an expected line	
 testsWithStdLib/annotations/subclassOptInRequired/InheritingByLocalClassifiers.kt	accepts invalid	OPT_IN_TO_INHERITANCE_ERROR	InheritingByLocalClassifiers.kt:11: OPT_IN_TO_INHERITANCE_ERROR
 testsWithStdLib/annotations/subclassOptInRequired/InheritingDifferentOptInLevels.kt	accepts invalid	OPT_IN_USAGE_ERROR	InheritingDifferentOptInLevels.kt:14: OPT_IN_USAGE_ERROR
 testsWithStdLib/annotations/subclassOptInRequired/InnerAndNestedClasses.kt	accepts invalid	OPT_IN_TO_INHERITANCE_ERROR	InnerAndNestedClasses.kt:12: OPT_IN_TO_INHERITANCE_ERROR
