@@ -2,13 +2,13 @@
 
 The box tests of JetBrains/kotlin v2.4.21 (`compiler/testData/codegen/box`), each compiled by kc and run: its `box()` must return `"OK"`. `bench/kotlin-tests.sh box` writes this file, and [docs/conformance.md](../../docs/conformance.md) explains it.
 
-Of 7480 test files, 997 are skipped and 6483 run. 6217 pass (95.9%).
+Of 7480 test files, 997 are skipped and 6483 run. 6231 pass (96.1%).
 
 | Result | Tests | Share |
 |:---|---:|---:|
-| pass | 6217 | 95.9% |
+| pass | 6231 | 96.1% |
 | parse/unsupported | 0 | 0.0% |
-| check error | 195 | 3.0% |
+| check error | 181 | 2.8% |
 | crash | 0 | 0.0% |
 | codegen error | 7 | 0.1% |
 | VerifyError | 21 | 0.3% |
@@ -49,7 +49,7 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 | ranges | 805 | 802 | 0 | 3 | 0 | 0 | 0 |
 | inlineClasses | 784 | 761 | 0 | 16 | 0 | 7 | 0 |
 | coroutines | 497 | 491 | 0 | 1 | 3 | 1 | 1 |
-| callableReference | 297 | 280 | 0 | 15 | 0 | 0 | 2 |
+| callableReference | 297 | 283 | 0 | 12 | 0 | 0 | 2 |
 | inference | 205 | 194 | 0 | 10 | 0 | 0 | 1 |
 | delegatedProperty | 149 | 145 | 0 | 3 | 0 | 0 | 1 |
 | controlStructures | 146 | 142 | 0 | 3 | 0 | 0 | 1 |
@@ -58,14 +58,14 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 | classes | 120 | 117 | 0 | 2 | 0 | 1 | 0 |
 | objects | 116 | 113 | 0 | 2 | 0 | 1 | 0 |
 | properties | 109 | 106 | 0 | 2 | 0 | 1 | 0 |
-| closures | 107 | 103 | 0 | 3 | 0 | 0 | 1 |
-| functions | 106 | 97 | 0 | 9 | 0 | 0 | 0 |
+| closures | 107 | 104 | 0 | 2 | 0 | 0 | 1 |
+| functions | 106 | 99 | 0 | 7 | 0 | 0 | 0 |
 | enum | 101 | 97 | 0 | 1 | 0 | 0 | 3 |
 | when | 99 | 98 | 0 | 1 | 0 | 0 | 0 |
 | primitiveTypes | 98 | 89 | 0 | 8 | 0 | 0 | 1 |
 | defaultArguments | 82 | 82 | 0 | 0 | 0 | 0 | 0 |
 | arrays | 78 | 77 | 0 | 1 | 0 | 0 | 0 |
-| regressions | 75 | 68 | 0 | 6 | 1 | 0 | 0 |
+| regressions | 75 | 72 | 0 | 2 | 1 | 0 | 0 |
 | contextParameters | 70 | 70 | 0 | 0 | 0 | 0 | 0 |
 | casts | 68 | 64 | 0 | 1 | 0 | 0 | 3 |
 | compileKotlinAgainstKotlin | 65 | 59 | 0 | 5 | 0 | 0 | 1 |
@@ -103,7 +103,7 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 | increment | 25 | 17 | 0 | 8 | 0 | 0 | 0 |
 | specialBuiltins | 25 | 19 | 0 | 2 | 0 | 2 | 2 |
 | finally | 24 | 23 | 0 | 0 | 0 | 0 | 1 |
-| delegation | 23 | 20 | 0 | 3 | 0 | 0 | 0 |
+| delegation | 23 | 21 | 0 | 2 | 0 | 0 | 0 |
 | binaryOp | 22 | 16 | 0 | 3 | 0 | 0 | 3 |
 | intrinsics | 22 | 19 | 0 | 3 | 0 | 0 | 0 |
 | boxing | 21 | 19 | 0 | 0 | 0 | 0 | 2 |
@@ -165,7 +165,7 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 | nonLocalReturns | 4 | 3 | 0 | 0 | 0 | 0 | 1 |
 | objectExpression | 4 | 4 | 0 | 0 | 0 | 0 | 0 |
 | unaryOp | 4 | 4 | 0 | 0 | 0 | 0 | 0 |
-| underscoredTypeArguments | 4 | 1 | 0 | 3 | 0 | 0 | 0 |
+| underscoredTypeArguments | 4 | 4 | 0 | 0 | 0 | 0 | 0 |
 | checkcastOptimization | 3 | 2 | 0 | 1 | 0 | 0 | 0 |
 | companion | 3 | 3 | 0 | 0 | 0 | 0 | 0 |
 | cycles | 3 | 3 | 0 | 0 | 0 | 0 | 0 |
@@ -205,7 +205,6 @@ Tests kotlinc compiles that kc's checker rejects, by its first error, with names
 
 | First error | Tests | Examples |
 |:---|---:|:---|
-| `unresolved or unsupported type: _` | 14 | `callableReference/callableReferencetoInnerAndLocal.kt`, `callableReference/genericConstructorReference.kt` |
 | `cannot infer type for type parameter '_'. Specify it explicitly.` | 13 | `callableReference/adaptedReferences/extensionPropertyToFun.kt`, `callableReference/adaptedReferences/innerConstructorToExtensionWithTypeParam.kt` |
 | `unresolved reference: _` | 11 | `classLiteral/bound/primitives.kt`, `classLiteral/primitiveClassEquality.kt` |
 | `invalid type of annotation member` | 9 | `annotations/instances/annotationInstances.kt`, `annotations/instances/annotationToString.kt` |
@@ -245,7 +244,8 @@ Tests kotlinc compiles that kc's checker rejects, by its first error, with names
 | `'_' modifier is inapplicable on this function: must have no value parameters` | 1 | `extensionFunctions/kt3969.kt` |
 | `ambiguous call: n candidates for '_' take (_)` | 1 | `callableReference/function/overloadedFun.kt` |
 | `cannot create an instance of Outer` | 1 | `annotations/instances/AnnotationInstantiationWithArray.kt` |
-| *44 more* | 44 | |
+| `cannot create an instance of Result` | 1 | `inlineClasses/resultGeneric.kt` |
+| *43 more* | 43 | |
 
 ## Code generation errors
 

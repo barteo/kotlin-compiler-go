@@ -631,7 +631,7 @@ callableReference/callableReferenceOfCompanionProperty.kt	pass
 callableReference/callableReferenceOfKotlinNestedClass.kt	pass		
 callableReference/callableReferenceOfObjectMethod.kt	pass		
 callableReference/callableReferenceOnObjectTypealias.kt	pass		
-callableReference/callableReferencetoInnerAndLocal.kt	check error	unresolved or unsupported type: _	callableReferencetoInnerAndLocal.kt:4: unresolved or unsupported type: T
+callableReference/callableReferencetoInnerAndLocal.kt	pass		
 callableReference/charArrayOf.kt	pass		
 callableReference/equality/capturedDefaults.kt	pass		
 callableReference/equality/capturedVararg.kt	pass		
@@ -752,8 +752,8 @@ callableReference/function/topLevelFromTopLevelUnitOneStringArg.kt	pass
 callableReference/function/traitImplMethodWithClassReceiver.kt	pass		
 callableReference/function/traitMember.kt	pass		
 callableReference/functionAndKFunctionSharedClassSplit.kt	pass		
-callableReference/genericConstructorReference.kt	check error	unresolved or unsupported type: _	genericConstructorReference.kt:13: unresolved or unsupported type: OT
-callableReference/genericLocalClassConstructorReference.kt	check error	unresolved or unsupported type: _	genericLocalClassConstructorReference.kt:8: unresolved or unsupported type: FT
+callableReference/genericConstructorReference.kt	pass		
+callableReference/genericLocalClassConstructorReference.kt	pass		
 callableReference/generticReferences.kt	check error	not enough information to infer type arguments of A::foo: specify the expected function type	generticReferences.kt:30: not enough information to infer type arguments of A::foo: specify the expected function type
 callableReference/inlineArrayConstructors.kt	pass		
 callableReference/interfaceMethodReference.kt	pass		
@@ -1097,7 +1097,7 @@ closures/capturedVarsOptimization/kt45446.kt	pass
 closures/capturedVarsOptimization/sharedSlotsWithCapturedVars.kt	pass		
 closures/capturedVarsOptimization/withCoroutines.kt	pass		
 closures/capturedVarsOptimization/withCoroutinesNoStdLib.kt	pass		
-closures/closureCapturingGenericParam.kt	check error	unresolved or unsupported type: _	closureCapturingGenericParam.kt:27: unresolved or unsupported type: GroupingByTP
+closures/closureCapturingGenericParam.kt	pass		
 closures/closureInsideClosure/localFunInsideLocalFun.kt	pass		
 closures/closureInsideClosure/localFunInsideLocalFunDifferentSignatures.kt	pass		
 closures/closureInsideClosure/propertyAndFunctionNameClash.kt	pass		
@@ -1728,7 +1728,7 @@ coroutines/defaultParametersInSuspend.kt	pass
 coroutines/degenerate1.kt	pass		
 coroutines/degenerate2.kt	pass		
 coroutines/delegatedSuspendMember.kt	pass		
-coroutines/deserializedSuspendFunctionProperty.kt	codegen error	code generation: no metadata for type <error>	/tmp/claude-0/kc-conformance/1729/m0/src/m1.kt: code generation failed: no metadata for type <error>
+coroutines/deserializedSuspendFunctionProperty.kt	codegen error	code generation: no metadata for type <error>	/tmp/claude-0/-home-user-kotlin-compiler-go/330dd56e-5377-5690-b7c7-3a8b130ad6ab/scratchpad/kc-conformance/1729/m0/src/m1.kt: code generation failed: no metadata for type <error>
 coroutines/dispatchResume.kt	pass		
 coroutines/doubleColonExpressionsGenerationInBuilderInference.kt	pass		
 coroutines/emptyClosure.kt	pass		
@@ -1964,7 +1964,7 @@ coroutines/intrinsicSemantics/startCoroutineUninterceptedOrReturnInterception.kt
 coroutines/intrinsicSemantics/suspendCoroutineUninterceptedOrReturn.kt	pass		
 coroutines/iterateOverArray.kt	pass		
 coroutines/kt12958.kt	pass		
-coroutines/kt15016.kt	codegen error	code generation: a suspension point in the arguments of a constructor call	/tmp/claude-0/kc-conformance/1965/m0/src/main.kt: code generation failed: a suspension point in the arguments of a constructor call
+coroutines/kt15016.kt	codegen error	code generation: a suspension point in the arguments of a constructor call	/tmp/claude-0/-home-user-kotlin-compiler-go/330dd56e-5377-5690-b7c7-3a8b130ad6ab/scratchpad/kc-conformance/1965/m0/src/main.kt: code generation failed: a suspension point in the arguments of a constructor call
 coroutines/kt15017.kt	pass		
 coroutines/kt15930.kt	pass		
 coroutines/kt21080.kt	pass		
@@ -2043,7 +2043,7 @@ coroutines/returnsUnit1.kt	pass
 coroutines/simple.kt	pass		
 coroutines/simple2.kt	pass		
 coroutines/simpleException.kt	pass		
-coroutines/simpleSuspendCallableReference.kt	codegen error	code generation: operand stack underflow at offset n	/tmp/claude-0/kc-conformance/2044/m0/src/simpleSuspendCallableReference.kt: code generation failed: SimpleSuspendCallableReferenceKt$box$1.invokeSuspend: operand stack underflow at offset 262
+coroutines/simpleSuspendCallableReference.kt	codegen error	code generation: operand stack underflow at offset n	/tmp/claude-0/-home-user-kotlin-compiler-go/330dd56e-5377-5690-b7c7-3a8b130ad6ab/scratchpad/kc-conformance/2044/m0/src/simpleSuspendCallableReference.kt: code generation failed: SimpleSuspendCallableReferenceKt$box$1.invokeSuspend: operand stack underflow at offset 262
 coroutines/simpleWithDefaultValue.kt	pass		
 coroutines/simpleWithHandleResult.kt	pass		
 coroutines/stackUnwinding/exception.kt	pass		
@@ -2464,7 +2464,7 @@ delegatedProperty/valByMapDelegatedProperty.kt	pass
 delegatedProperty/valInInnerClass.kt	pass		
 delegatedProperty/varInInnerClass.kt	pass		
 delegation/delegatedAnonymousObject_noParametersOnDelegate.kt	pass		
-delegation/delegatedAnonymousObject_someParametersOnDelegate.kt	check error	unresolved or unsupported type: _	delegatedAnonymousObject_someParametersOnDelegate.kt:22: unresolved or unsupported type: T4
+delegation/delegatedAnonymousObject_someParametersOnDelegate.kt	pass		
 delegation/delegationDifferentModule.kt	pass		
 delegation/delegationDifferentModule2.kt	pass		
 delegation/delegationToInnerClassOfGenericClass.kt	pass		
@@ -2863,7 +2863,7 @@ extensionProperties/inClassWithPrivateGetter.kt	pass
 extensionProperties/inClassWithPrivateSetter.kt	pass		
 extensionProperties/inClassWithSetter.kt	pass		
 extensionProperties/kt46952.kt	pass		
-extensionProperties/kt9897.kt	codegen error	code generation: operand stack underflow at offset n	/tmp/claude-0/kc-conformance/2864/m0/src/kt9897.kt: code generation failed: Test.changeLong: operand stack underflow at offset 15
+extensionProperties/kt9897.kt	codegen error	code generation: operand stack underflow at offset n	/tmp/claude-0/-home-user-kotlin-compiler-go/330dd56e-5377-5690-b7c7-3a8b130ad6ab/scratchpad/kc-conformance/2864/m0/src/kt9897.kt: code generation failed: Test.changeLong: operand stack underflow at offset 15
 extensionProperties/kt9897_topLevel.kt	pass		
 extensionProperties/nonAbstractInInterface.kt	pass		
 extensionProperties/propertyWithExtensionNestedType.kt	pass		
@@ -3141,9 +3141,9 @@ functions/kt58825_arrayOverloads.kt	check error	function invocation '_' expected
 functions/kt785.kt	pass		
 functions/kt873.kt	pass		
 functions/localFunction.kt	pass		
-functions/localFunctions/boundTypeParameterInSupertype.kt	check error	unresolved or unsupported type: _	boundTypeParameterInSupertype.kt:7: unresolved or unsupported type: T
+functions/localFunctions/boundTypeParameterInSupertype.kt	pass		
 functions/localFunctions/boundTypeParameterInVararg.kt	pass		
-functions/localFunctions/callBetweenLocalFunctions.kt	check error	unresolved or unsupported type: _	callBetweenLocalFunctions.kt:8: unresolved or unsupported type: T
+functions/localFunctions/callBetweenLocalFunctions.kt	pass		
 functions/localFunctions/callInlineLocalInLambda.kt	pass		
 functions/localFunctions/captureUpperBoundedTypeParameter.kt	pass		
 functions/localFunctions/definedWithinLambda.kt	pass		
@@ -5462,7 +5462,7 @@ primitiveTypes/numberToChar/abstractMethodInSuperinterface.kt	check error	class 
 primitiveTypes/numberToChar/fakeOverride.kt	check error	class '_' is not abstract and does not implement abstract member '_'	fakeOverride.kt:4: class 'MyNumber' is not abstract and does not implement abstract member 'floatValue'
 primitiveTypes/numberToChar/simple.kt	check error	class '_' is not abstract and does not implement abstract member '_'	simple.kt:4: class 'MyNumber' is not abstract and does not implement abstract member 'intValue'
 primitiveTypes/numberToChar/superCallToClass.kt	check error	class '_' is not abstract and does not implement abstract member '_'	superCallToClass.kt:4: class 'MyNumber' is not abstract and does not implement abstract member 'intValue'
-primitiveTypes/numberToChar/superCallToInterface.kt	check error	class '_' is not abstract and does not implement abstract member '_'	superCallToInterface.kt:8: class 'MyNumber' is not abstract and does not implement abstract member 'longValue'
+primitiveTypes/numberToChar/superCallToInterface.kt	check error	class '_' is not abstract and does not implement abstract member '_'	superCallToInterface.kt:8: class 'MyNumber' is not abstract and does not implement abstract member 'intValue'
 primitiveTypes/numberToChar/superCallToNumber.kt	check error	class '_' is not abstract and does not implement abstract member '_'	superCallToNumber.kt:4: class 'MyNumber' is not abstract and does not implement abstract member 'intValue'
 primitiveTypes/rangeTo.kt	check error	type argument is not within its bounds: inferred type Number of type _ '_' is not a subtype of Comparable<Number>	rangeTo.kt:10: type argument is not within its bounds: inferred type Number of type parameter 'T' is not a subtype of Comparable<Number>
 primitiveTypes/reassignDestructured.kt	skip	LANGUAGE	
@@ -6536,8 +6536,8 @@ regressions/Kt2495Test.kt	pass
 regressions/arrayLengthNPE.kt	pass		
 regressions/commonSupertypeContravariant.kt	pass		
 regressions/commonSupertypeContravariant2.kt	pass		
-regressions/dataClassInInlineFunctionWithTypeParameters.kt	check error	unresolved or unsupported type: _	dataClassInInlineFunctionWithTypeParameters.kt:7: unresolved or unsupported type: T
-regressions/dataClassInRegularFunctionWithTypeParameters.kt	check error	unresolved or unsupported type: _	dataClassInRegularFunctionWithTypeParameters.kt:9: unresolved or unsupported type: T
+regressions/dataClassInInlineFunctionWithTypeParameters.kt	pass		
+regressions/dataClassInRegularFunctionWithTypeParameters.kt	pass		
 regressions/directInvokeDestructuring.kt	pass		
 regressions/directInvokeNameBasedDestructuring.kt	skip	LANGUAGE	
 regressions/dontCaptureTypesWithTypeVariables.kt	pass		
@@ -6564,7 +6564,7 @@ regressions/kt2060.kt	pass
 regressions/kt2210.kt	pass		
 regressions/kt2246.kt	pass		
 regressions/kt2470.kt	pass		
-regressions/kt24913.kt	check error	unresolved or unsupported type: _	kt24913.kt:7: unresolved or unsupported type: T
+regressions/kt24913.kt	pass		
 regressions/kt2509.kt	pass		
 regressions/kt3107.kt	pass		
 regressions/kt32949.kt	pass		
@@ -6585,12 +6585,12 @@ regressions/kt51927.kt	skip	TARGET_BACKEND: NATIVE
 regressions/kt5395.kt	pass		
 regressions/kt57487.kt	pass		
 regressions/kt5786_privateWithDefault.kt	pass		
-regressions/kt5953.kt	codegen error	code generation: local n is not allocated	/tmp/claude-0/kc-conformance/6586/m0/src/kt5953.kt: code generation failed: Kt5953Kt.box: local 12 is not allocated
+regressions/kt5953.kt	codegen error	code generation: local n is not allocated	/tmp/claude-0/-home-user-kotlin-compiler-go/330dd56e-5377-5690-b7c7-3a8b130ad6ab/scratchpad/kc-conformance/6586/m0/src/kt5953.kt: code generation failed: Kt5953Kt.box: local 12 is not allocated
 regressions/kt6153.kt	pass		
 regressions/kt6434.kt	skip	LANGUAGE	
 regressions/kt6434_2.kt	skip	LANGUAGE	
 regressions/kt68727.kt	pass		
-regressions/kt71119.kt	check error	unresolved or unsupported type: _	kt71119.kt:59: unresolved or unsupported type: _
+regressions/kt71119.kt	pass		
 regressions/kt7401.kt	pass		
 regressions/kt789.kt	pass		
 regressions/kt79516.kt	pass		
@@ -6856,12 +6856,12 @@ strings/constInStringTemplate.kt	pass
 strings/ea35743.kt	pass		
 strings/forInString.kt	pass		
 strings/interpolation.kt	pass		
-strings/kt13213.kt	codegen error	code generation: string constant too long	/tmp/claude-0/kc-conformance/6857/m0/src/kt13213.kt: code generation failed: string constant too long
+strings/kt13213.kt	codegen error	code generation: string constant too long	/tmp/claude-0/-home-user-kotlin-compiler-go/330dd56e-5377-5690-b7c7-3a8b130ad6ab/scratchpad/kc-conformance/6857/m0/src/kt13213.kt: code generation failed: string constant too long
 strings/kt13213a.kt	pass		
 strings/kt2592.kt	pass		
 strings/kt3571.kt	pass		
 strings/kt3652.kt	pass		
-strings/kt47917.kt	codegen error	code generation: string constant too long	/tmp/claude-0/kc-conformance/6862/m0/src/kt47917.kt: code generation failed: string constant too long
+strings/kt47917.kt	codegen error	code generation: string constant too long	/tmp/claude-0/-home-user-kotlin-compiler-go/330dd56e-5377-5690-b7c7-3a8b130ad6ab/scratchpad/kc-conformance/6862/m0/src/kt47917.kt: code generation failed: string constant too long
 strings/kt50140.kt	pass		
 strings/kt5389_stringBuilderGet.kt	pass		
 strings/kt5956.kt	pass		
@@ -7135,9 +7135,9 @@ unaryOp/intrinsic.kt	pass
 unaryOp/intrinsicNullable.kt	pass		
 unaryOp/longOverflow.kt	pass		
 underscoredTypeArguments/backTicked.kt	pass		
-underscoredTypeArguments/lambdaInputType.kt	check error	unresolved or unsupported type: _	main.kt:3: unresolved or unsupported type: _
-underscoredTypeArguments/react.kt	check error	unresolved or unsupported type: _	main.kt:2: unresolved or unsupported type: _
-underscoredTypeArguments/simple.kt	check error	unresolved or unsupported type: _	simple.kt:8: unresolved or unsupported type: _
+underscoredTypeArguments/lambdaInputType.kt	pass		
+underscoredTypeArguments/react.kt	pass		
+underscoredTypeArguments/simple.kt	pass		
 unit/UnitValue.kt	pass		
 unit/closureReturnsNullableUnit.kt	pass		
 unit/ifElse.kt	pass		

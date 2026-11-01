@@ -509,8 +509,8 @@ tests/arguments/destructuringOld.kt	skip	LANGUAGE
 tests/arguments/dnnMismatch.kt	rejects invalid	on an expected line	
 tests/arguments/extensionLambdaInDefaultArgument.kt	accepts valid		
 tests/arguments/fieldPlusAssign.kt	rejects invalid	on an expected line	
-tests/arguments/genericVarargInferredToNothing.kt	rejects valid	unresolved or unsupported type: _	genericVarargInferredToNothing.kt:15: unresolved or unsupported type: _
-tests/arguments/genericVarargInferredToNullableNothing.kt	rejects valid	unresolved or unsupported type: _	genericVarargInferredToNullableNothing.kt:15: unresolved or unsupported type: _
+tests/arguments/genericVarargInferredToNothing.kt	accepts valid		
+tests/arguments/genericVarargInferredToNullableNothing.kt	accepts valid		
 tests/arguments/incorrectFunctionalType.kt	accepts valid		
 tests/arguments/integerLiteralTypes.kt	rejects invalid	on an expected line	
 tests/arguments/integerOverloads.kt	skip	Java sources	
@@ -796,7 +796,7 @@ tests/callableReference/generic/kt11075.kt	accepts valid
 tests/callableReference/generic/kt12286.kt	accepts valid		
 tests/callableReference/generic/kt35896.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	kt35896.kt:14: cannot infer type for type parameter 'S'. Specify it explicitly.
 tests/callableReference/generic/kt7470.kt	accepts valid		
-tests/callableReference/generic/localClassWithCapturedTypeParameters.kt	rejects valid	unresolved or unsupported type: _	localClassWithCapturedTypeParameters.kt:6: unresolved or unsupported type: T
+tests/callableReference/generic/localClassWithCapturedTypeParameters.kt	accepts valid		
 tests/callableReference/generic/nestedCallWithOverload.kt	rejects invalid	on an expected line	
 tests/callableReference/generic/resolutionGenericCallableWithNullableTypes.kt	rejects invalid	on an expected line	
 tests/callableReference/generic/resolutionWithGenericCallable.kt	rejects invalid	on an expected line	
@@ -1399,7 +1399,7 @@ tests/collectionLiterals/withPcla/kt86618.kt	skip	LANGUAGE
 tests/collectionLiterals/withPcla/withVariable.kt	skip	LANGUAGE	
 tests/collectionLiterals/withPcla/withVariableWithDUB.kt	skip	LANGUAGE	
 tests/commonObjectWithBackingField.kt	skip	LANGUAGE	
-tests/companion.kt	rejects valid	unresolved or unsupported type: _	companion.kt:9: unresolved or unsupported type: InCompanion
+tests/companion.kt	accepts valid		
 tests/companionAccessInEnum.kt	accepts valid		
 tests/companionBlocks/allowBackingFields.kt	skip	LANGUAGE	
 tests/companionBlocks/binaryPoisoningBefore2_5.kt	skip	LANGUAGE	
@@ -2071,7 +2071,7 @@ tests/controlStructures/breakContinueInCrossInlineLambda.kt	skip	LANGUAGE
 tests/controlStructures/breakContinueInNoInlineLambda.kt	skip	LANGUAGE	
 tests/controlStructures/breakToLabel.kt	accepts valid		
 tests/controlStructures/catchGenerics.kt	accepts invalid	GENERIC_THROWABLE_SUBCLASS; TYPE_PARAMETER_IN_CATCH_CLAUSE	catchGenerics.kt:6: GENERIC_THROWABLE_SUBCLASS
-tests/controlStructures/catchInnerClassesOfGenerics.kt	accepts invalid	INNER_CLASS_OF_GENERIC_THROWABLE_SUBCLASS	catchInnerClassesOfGenerics.kt:6: INNER_CLASS_OF_GENERIC_THROWABLE_SUBCLASS
+tests/controlStructures/catchInnerClassesOfGenerics.kt	rejects invalid	on an expected line	
 tests/controlStructures/catchOfTypeNothing.kt	rejects invalid	on an expected line	
 tests/controlStructures/catchReifiedTypeAllowed.kt	skip	LANGUAGE	
 tests/controlStructures/catchReifiedTypeForbidden.kt	skip	LANGUAGE	
@@ -3595,7 +3595,7 @@ tests/generics/RecursiveUpperBoundCheck.kt	rejects invalid	on an expected line
 tests/generics/RecursiveUpperBoundWithTwoArguments.kt	accepts invalid	UPPER_BOUND_VIOLATED	RecursiveUpperBoundWithTwoArguments.kt:2: UPPER_BOUND_VIOLATED
 tests/generics/TypeParameterBounds.kt	accepts invalid	REPEATED_BOUND	TypeParameterBounds.kt:10: REPEATED_BOUND
 tests/generics/TypeParametersInTypeParameterBounds.kt	rejects invalid	on an expected line	
-tests/generics/anonymousObjectSupertypeWithTypeParameterFromFunction.kt	rejects valid	unresolved or unsupported type: _	anonymousObjectSupertypeWithTypeParameterFromFunction.kt:6: unresolved or unsupported type: ItemT
+tests/generics/anonymousObjectSupertypeWithTypeParameterFromFunction.kt	accepts valid		
 tests/generics/approximationOfBoundedProjection.kt	accepts valid		
 tests/generics/approximationOfInProjection.kt	accepts valid		
 tests/generics/argumentsForT.kt	rejects invalid	on an expected line	
@@ -3603,7 +3603,7 @@ tests/generics/bareTypesWithStarProjections.kt	accepts valid
 tests/generics/capturedParameters/captured.kt	rejects invalid	on an expected line	
 tests/generics/capturedParameters/innerLocalClass.kt	rejects invalid	elsewhere	
 tests/generics/capturedParameters/localClass.kt	rejects invalid	elsewhere	
-tests/generics/capturedParameters/localWithTypeParameter.kt	rejects valid	unresolved or unsupported type: _	localWithTypeParameter.kt:9: unresolved or unsupported type: E
+tests/generics/capturedParameters/localWithTypeParameter.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	localWithTypeParameter.kt:19: type mismatch: inferred type is CheckTypeInv<E> but CheckTypeInv<CharSequence> was expected
 tests/generics/capturedParameters/objectLiteral.kt	rejects invalid	elsewhere	
 tests/generics/capturedParameters/uncheckedCast.kt	rejects invalid	on an expected line	
 tests/generics/commonSupertypeContravariant.kt	accepts valid		
@@ -3624,7 +3624,7 @@ tests/generics/innerClasses/bareTypesComplex.kt	rejects invalid	on an expected l
 tests/generics/innerClasses/castAnElementToInnerClassWithTypeParameter.kt	rejects invalid	on an expected line	
 tests/generics/innerClasses/checkBoundsOuter.kt	rejects invalid	on an expected line	
 tests/generics/innerClasses/implicitArguments/fromCompanionObject_after.kt	rejects invalid	on an expected line	
-tests/generics/innerClasses/implicitArguments/fromOuterClassInObjectLiteral.kt	rejects valid	unresolved or unsupported type: _	fromOuterClassInObjectLiteral.kt:6: unresolved or unsupported type: B
+tests/generics/innerClasses/implicitArguments/fromOuterClassInObjectLiteral.kt	accepts valid		
 tests/generics/innerClasses/implicitArguments/fromSuperClasses.kt	rejects invalid	on an expected line	
 tests/generics/innerClasses/implicitArguments/fromSuperClassesLocal.kt	skip	LANGUAGE	
 tests/generics/innerClasses/implicitArguments/fromSuperClassesLocalInsideInner.kt	skip	LANGUAGE	
@@ -4011,7 +4011,7 @@ tests/inference/capturedTypes/overApproximationForInCaptured.kt	rejects valid	ty
 tests/inference/capturedTypes/overApproximationForOutCaptured.kt	accepts valid		
 tests/inference/capturedTypes/projectedOutTypeMismatch.kt	rejects invalid	on an expected line	
 tests/inference/capturedTypes/propagateNullailityOnSupertypesWhenCaptureTypes.kt	accepts valid		
-tests/inference/capturedTypes/selfTypeTypeHole.kt	accepts invalid	INAPPLICABLE_CANDIDATE; UPPER_BOUND_VIOLATED	selfTypeTypeHole.kt:15: INAPPLICABLE_CANDIDATE
+tests/inference/capturedTypes/selfTypeTypeHole.kt	rejects invalid	on an expected line	
 tests/inference/capturedTypes/starProjectionRegression.kt	accepts valid		
 tests/inference/capturedTypes/substituteCapturedTypesWithTypeVariables.kt	accepts valid		
 tests/inference/capturedTypes/topLevelCapturingInsideReturnType.kt	accepts valid		
@@ -4307,7 +4307,7 @@ tests/inference/kt47316.kt	skip	Java sources
 tests/inference/kt49658.kt	rejects invalid	elsewhere	
 tests/inference/kt49658Strict.kt	rejects invalid	elsewhere	
 tests/inference/kt49961.kt	skip	LANGUAGE	
-tests/inference/kt50232a.kt	accepts invalid	UPPER_BOUND_VIOLATED	kt50232a.kt:3: UPPER_BOUND_VIOLATED
+tests/inference/kt50232a.kt	rejects invalid	on an expected line	
 tests/inference/kt53124.kt	skip	Java sources	
 tests/inference/kt53494.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	kt53494.kt:10: type mismatch: inferred type is C<Nothing?> but C<T> was expected
 tests/inference/kt54990.kt	accepts valid		
@@ -4908,10 +4908,10 @@ tests/inference/typeDepthForTypeAlias.kt	accepts valid
 tests/inference/typeInferenceExpectedTypeMismatch.kt	rejects invalid	on an expected line	
 tests/inference/typeMismatchOnUninferred.kt	rejects invalid	on an expected line	
 tests/inference/typeParameterInConstructor.kt	accepts valid		
-tests/inference/underscoredInEnumMap.kt	rejects valid	unresolved or unsupported type: _	underscoredInEnumMap.kt:11: unresolved or unsupported type: _
+tests/inference/underscoredInEnumMap.kt	accepts valid		
 tests/inference/underscoredTypeArgumentInErroneousCall.kt	rejects invalid	on an expected line	
-tests/inference/underscoredTypeArgumentInTypeAliasedConstructor.kt	rejects valid	unresolved or unsupported type: _	underscoredTypeArgumentInTypeAliasedConstructor.kt:9: unresolved or unsupported type: _
-tests/inference/underscoredTypeArgumentInTypeAliasedSamConstructor.kt	rejects valid	unresolved or unsupported type: _	underscoredTypeArgumentInTypeAliasedSamConstructor.kt:11: unresolved or unsupported type: _
+tests/inference/underscoredTypeArgumentInTypeAliasedConstructor.kt	accepts valid		
+tests/inference/underscoredTypeArgumentInTypeAliasedSamConstructor.kt	accepts valid		
 tests/inference/underscoredTypeInForbiddenPositions.kt	rejects invalid	on an expected line	
 tests/inference/unitUpperBound.kt	accepts valid		
 tests/inference/unsoundness1.kt	rejects invalid	on an expected line	
@@ -6680,7 +6680,7 @@ tests/numbers/literalReceiverWithIntegerValueType.kt	rejects invalid	on an expec
 tests/numbers/newLiteralOperatorsResolution_warning.kt	rejects invalid	on an expected line	
 tests/numbers/numberAsUnionAndIntersection.kt	accepts valid		
 tests/numbers/numbersInSimpleConstraints.kt	rejects invalid	on an expected line	
-tests/objectInnerClass.kt	rejects valid	unresolved or unsupported type: _	objectInnerClass.kt:102: unresolved or unsupported type: Base
+tests/objectInnerClass.kt	accepts valid		
 tests/objects/Objects.kt	rejects invalid	on an expected line	
 tests/objects/ObjectsInheritance.kt	rejects invalid	on an expected line	
 tests/objects/ObjectsLocal.kt	rejects invalid	on an expected line	
@@ -7477,7 +7477,7 @@ tests/regressions/SpecififcityByReceiver.kt	accepts valid
 tests/regressions/TypeMismatchOnUnaryOperations.kt	rejects invalid	on an expected line	
 tests/regressions/TypeParameterAsASupertype.kt	rejects invalid	on an expected line	
 tests/regressions/UnavaliableQualifiedThis.kt	rejects invalid	on an expected line	
-tests/regressions/WrongTraceInCallResolver.kt	accepts invalid	INAPPLICABLE_CANDIDATE; UPPER_BOUND_VIOLATED	WrongTraceInCallResolver.kt:9: INAPPLICABLE_CANDIDATE
+tests/regressions/WrongTraceInCallResolver.kt	rejects invalid	on an expected line	
 tests/regressions/correctResultSubstitutorForErrorCandidate.kt	rejects invalid	on an expected line	
 tests/regressions/crashWithStarProjection.kt	accepts invalid	ARGUMENT_TYPE_MISMATCH	crashWithStarProjection.kt:3: ARGUMENT_TYPE_MISMATCH
 tests/regressions/delegationWithReceiver.kt	accepts valid		
@@ -7559,7 +7559,7 @@ tests/regressions/kt3647.kt	accepts valid
 tests/regressions/kt3731.kt	accepts valid		
 tests/regressions/kt3810.kt	rejects invalid	on an expected line	
 tests/regressions/kt385.109.441.kt	accepts valid		
-tests/regressions/kt394.kt	rejects valid	unresolved or unsupported type: _	kt394.kt:11: unresolved or unsupported type: Y
+tests/regressions/kt394.kt	accepts valid		
 tests/regressions/kt398.kt	rejects invalid	on an expected line	
 tests/regressions/kt399.kt	rejects invalid	on an expected line	
 tests/regressions/kt402.kt	rejects invalid	on an expected line	
@@ -7618,7 +7618,7 @@ tests/regressions/propertyWithExtensionTypeInvoke.kt	accepts valid
 tests/regressions/resolveCollectionLiteralInsideLambda.kt	skip	LANGUAGE	
 tests/regressions/resolveSubclassOfList.kt	accepts valid		
 tests/regressions/testNestedSpecialCalls.kt	parse/unsupported	parse error: expected expression, found '_'	testNestedSpecialCalls.kt:8: expected expression, found 'else'
-tests/reifiedTypeOverload.kt	rejects valid	ambiguous call: n candidates for '_' take (_)	main.kt:10: ambiguous call: 2 candidates for 'nameOf' take ()
+tests/reifiedTypeOverload.kt	accepts valid		
 tests/renderConstructorWithIntersection.kt	skip	Java sources	
 tests/renderFunctionTypesNicely.kt	rejects invalid	on an expected line	
 tests/renderingOfGenericInnerTypes.kt	rejects invalid	on an expected line	
@@ -7919,7 +7919,7 @@ tests/scopes/classHeader/superConstructorArgumentsInSecondaryConstructor.kt	reje
 tests/scopes/delegatedDataClass.kt	accepts valid		
 tests/scopes/explicitOverrideOfTwoMembers.kt	accepts valid		
 tests/scopes/explicitOverrideOfTwoMembers_java.kt	skip	Java sources	
-tests/scopes/genericVsNested.kt	rejects valid	unresolved reference: _	genericVsNested.kt:39: unresolved reference: T
+tests/scopes/genericVsNested.kt	accepts valid		
 tests/scopes/getterOverrideAndKotlinProperty.kt	skip	Java sources	
 tests/scopes/implicitReceiverMemberVsParameter.kt	accepts valid		
 tests/scopes/inheritance/companionObjectsOrder.kt	rejects valid	unresolved reference: _	companionObjectsOrder.kt:8: unresolved reference: foo
@@ -8971,7 +8971,7 @@ tests/thisAndSuper/unqualifiedSuper/unqualifiedSuperWithUnresolvedBase.kt	reject
 tests/thisAndSuper/unqualifiedSuper/withMethodOfAnyOverridenInInterface.kt	accepts valid		
 tests/thisAndSuper/unqualifiedSuper/withMethodOverriddenInAnotherSupertype.kt	rejects invalid	on an expected line	
 tests/thisAndSuper/unqualifiedSuper/withMethodsOfAny.kt	accepts valid		
-tests/throwableSubclass.kt	accepts invalid	GENERIC_THROWABLE_SUBCLASS; INNER_CLASS_OF_GENERIC_THROWABLE_SUBCLASS	throwableSubclass.kt:2: GENERIC_THROWABLE_SUBCLASS
+tests/throwableSubclass.kt	rejects invalid	on an expected line	
 tests/tooLargeFunctionNThroughACallableReference.kt	parse/unsupported	checker: lambdas with more than n parameters are not supported	
 tests/topLevelDestructuring.kt	parse/unsupported	destructuring declaration	topLevelDestructuring.kt:2: destructuring declarations are not supported
 tests/topLevelDestructuring2.kt	parse/unsupported	destructuring declaration	topLevelDestructuring2.kt:3: destructuring declarations are not supported
@@ -10394,7 +10394,7 @@ testsWithStdLib/instar.kt	rejects invalid	on an expected line
 testsWithStdLib/intellij/DailyAggregatedDoubleFactor.kt	accepts valid		
 testsWithStdLib/intellij/EnumWithToString.kt	accepts valid		
 testsWithStdLib/intellij/FieldVsSyntheticAccessor.kt	skip	Java sources	
-testsWithStdLib/intellij/InnerClassOfThrowableOnObject.kt	accepts invalid	INNER_CLASS_OF_GENERIC_THROWABLE_SUBCLASS	InnerClassOfThrowableOnObject.kt:17: INNER_CLASS_OF_GENERIC_THROWABLE_SUBCLASS
+testsWithStdLib/intellij/InnerClassOfThrowableOnObject.kt	rejects invalid	on an expected line	
 testsWithStdLib/intellij/IntersectionWithJavaString.kt	accepts valid		
 testsWithStdLib/intellij/ParentOfType.kt	skip	LANGUAGE_FEATURE_TOGGLED	
 testsWithStdLib/intellij/PersistentStateComponent.kt	skip	Java sources	

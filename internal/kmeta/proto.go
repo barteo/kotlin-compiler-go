@@ -26,6 +26,10 @@ type Type struct {
 	// @androidx.compose.runtime.Composable, as Compose's compiler plugin
 	// writes it.
 	Composable bool
+	// NoInfer is set on a type annotated @kotlin.internal.NoInfer, as
+	// contextOf's context parameter's, which doesn't infer a call's type
+	// arguments.
+	NoInfer bool
 }
 
 // Type flags.
@@ -495,6 +499,8 @@ func (s scope) typ(msg []byte) *Type {
 				t.Composable = true
 			case "kotlin/ContextFunctionTypeParams":
 				t.Contexts = intArg(a)
+			case "kotlin/internal/NoInfer":
+				t.NoInfer = true
 			}
 		default: // abbreviations, other extensions
 			d.skip(w)

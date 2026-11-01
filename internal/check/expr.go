@@ -2109,7 +2109,13 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 				return c.call(x, want, sink)
 			} else if n != nil {
 				fn.T = rt
-				if alias != nil && len(x.TypeArgs) > 0 {
+				if alias != nil && hasUnderscore(x.TypeArgs) {
+					// outer.Alias<_>(): the class's, which the call infers.
+					if !c.aliasUnderscores(x, alias, n, fn.P) {
+						c.args(x, nil)
+						return types.InvalidType
+					}
+				} else if alias != nil && len(x.TypeArgs) > 0 {
 					// outer.Alias<A>(): the alias's type arguments.
 					if want = c.expandAlias(alias, &syntax.TypeRef{P: fn.P, Name: alias.Name, Args: x.TypeArgs}); want.K == types.Invalid {
 						c.args(x, nil)

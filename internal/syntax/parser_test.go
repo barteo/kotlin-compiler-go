@@ -299,6 +299,27 @@ func TestGenericSyntax(t *testing.T) {
 	}
 }
 
+// A type argument _ is one the call infers; `_` names a class.
+func TestUnderscoreTypeArgs(t *testing.T) {
+	f, errs := Parse("t.kt", "fun f() {\n g<_, `_`, List<_>>()\n}")
+	if len(errs) > 0 {
+		t.Fatal(errs[0])
+	}
+	c, ok := f.Decls[0].(*FunDecl).Body.Stmts[0].(*ExprStmt).X.(*Call)
+	if !ok || len(c.TypeArgs) != 3 {
+		t.Fatalf("g<_, `_`, List<_>>() is not a call with three type arguments")
+	}
+	if a := c.TypeArgs[0]; !a.Underscore || a.Type == nil || a.Type.Name != "_" {
+		t.Errorf("_: %+v", a)
+	}
+	if a := c.TypeArgs[1]; a.Underscore || a.Type.Name != "_" {
+		t.Errorf("`_`: %+v", a)
+	}
+	if a := c.TypeArgs[2]; a.Underscore || !a.Type.Args[0].Underscore {
+		t.Errorf("List<_>: %+v", a)
+	}
+}
+
 func TestParseAllRecovers(t *testing.T) {
 	src := `@file:JvmName("X")
 package a.b
