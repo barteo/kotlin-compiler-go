@@ -828,7 +828,14 @@ type For struct {
 	// an iterator, which is its own. HasNext is nil for a range.
 	Iter, HasNext, Next *types.FunSym
 	IterT               types.Type // the iterator's type
-	Group, BodyGroup    bool       // see While.Group
+	// A loop whose operators aren't found that way, as member extensions
+	// of an implicit receiver or generic extensions, calls them as the
+	// checker resolved them: IterVar holds Range's iterator(), and
+	// HasNextX and NextX call hasNext() and next() on it. Iter, HasNext
+	// and Next are nil then.
+	IterVar          *VarStmt
+	HasNextX, NextX  Expr
+	Group, BodyGroup bool // see While.Group
 }
 
 // Destructure is a destructuring declaration, val (a, b) = e. The checker

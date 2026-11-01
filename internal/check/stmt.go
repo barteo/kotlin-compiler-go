@@ -732,6 +732,10 @@ func (c *Checker) forIterator(s *syntax.For, t types.Type) types.Type {
 		return t
 	}
 	if types.MayBeNull(t) && !t.P {
+		if c.opExtension(t, "iterator") {
+			// An extension of a nullable receiver: T?.iterator().
+			return c.forCalls(s)
+		}
 		c.errorf(s.Range.Pos(), "not nullable value required to call an 'iterator()' method on for-loop range")
 		return types.InvalidType
 	}
@@ -757,15 +761,16 @@ func (c *Checker) forIterator(s *syntax.For, t types.Type) types.Type {
 		// inline-only extension that returns it. Iter stays nil.
 		it = t.NonNull()
 	} else if iter == nil {
-		c.errorf(s.Range.Pos(), "for-loop range must have an 'iterator()' method")
-		return types.InvalidType
+		return c.forCalls(s)
+	}
+	if types.MayBeNull(it) && !it.P {
+		return c.forCalls(s) // only extensions may take it
 	}
 	it = it.Flex()
 	hasNext, ht := c.operatorMember(it, "hasNext")
 	next, elem := c.operatorMember(it, "next")
 	if hasNext == nil || next == nil || ht.Flex() != types.BoolType {
-		c.errorf(s.Range.Pos(), "the iterator of the for-loop range has no 'hasNext()' or 'next()' method")
-		return types.InvalidType
+		return c.forCalls(s)
 	}
 	s.Iter, s.HasNext, s.Next, s.IterT = iter, hasNext, next, it
 	for _, f := range []*types.FunSym{iter, hasNext, next} {
@@ -773,6 +778,42 @@ func (c *Checker) forIterator(s *syntax.For, t types.Type) types.Type {
 			c.suspendCall(s.Range.Pos(), f)
 		}
 	}
+	return elem
+}
+
+// forCalls checks a loop over a range whose iterator(), or whose
+// iterator's hasNext() or next(), operatorMember doesn't find, as calls
+// resolved as any other: a member extension of an implicit receiver, a
+// generic extension, as <T> FList<T>.iterator(), or one of a nullable
+// receiver, as <T : Any> T?.iterator(), and also among several
+// extensions, whose ambiguity the calls report. It returns the element
+// type.
+func (c *Checker) forCalls(s *syntax.For) types.Type {
+	p, t := s.Range.Pos(), s.Range.Type()
+	none := &syntax.Call{}
+	if !c.hasFun(t, "iterator", none) {
+		c.errorf(p, "for-loop range must have an 'iterator()' method")
+		return types.InvalidType
+	}
+	iter, it := c.opCall(p, checked(s.Range, t), "iterator", nil, noWant)
+	if it.K == types.Invalid {
+		return it
+	}
+	iv := c.temp(p, "iterator", iter, it)
+	if !c.hasFun(it, "hasNext", none) || !c.hasFun(it, "next", none) {
+		c.errorf(p, "the iterator of the for-loop range has no 'hasNext()' or 'next()' method")
+		return types.InvalidType
+	}
+	hasNext, ht := c.opCall(p, tempRef(iv, p), "hasNext", nil, noWant)
+	next, elem := c.opCall(p, tempRef(iv, p), "next", nil, noWant)
+	if ht.K == types.Invalid || elem.K == types.Invalid {
+		return types.InvalidType
+	}
+	if ht.Flex() != types.BoolType {
+		c.errorf(p, "the iterator of the for-loop range has no 'hasNext()' or 'next()' method")
+		return types.InvalidType
+	}
+	s.IterVar, s.HasNextX, s.NextX = iv, hasNext, next
 	return elem
 }
 
@@ -815,13 +856,22 @@ func (c *Checker) operatorMember(rt types.Type, name string) (*types.FunSym, typ
 			}
 		}
 	}
-	// A top-level extension, not generic: operator fun R.iterator().
+	// A top-level extension, not generic: operator fun R.iterator(), if
+	// it's the only one; among several, the call finds the most specific
+	// or reports the ambiguity.
+	var found *types.FunSym
 	for _, cl := range c.extCallees(name, rt) {
 		f := cl.f
 		if f.Owner == nil && len(f.Params) == 0 && len(f.TypeParams) == 0 && !f.Unsupported && f.Operator && f.Inline == nil {
-			ensureFun(f)
-			return f, f.Ret
+			if found != nil {
+				return nil, types.InvalidType
+			}
+			found = f
 		}
+	}
+	if found != nil {
+		ensureFun(found)
+		return found, found.Ret
 	}
 	return nil, types.InvalidType
 }

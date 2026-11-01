@@ -47,3 +47,45 @@ fun main() {
     var v = V(1)
     v++ // ERROR unresolved reference: inc
 }
+
+class NullableIt {
+    operator fun iterator(): Steps? = null
+}
+
+class Steps {
+    operator fun hasNext() = false
+    operator fun next() = 1
+}
+
+interface Left
+interface Right
+
+class Both2 : Left, Right
+
+class Ambiguous {
+    operator fun iterator() = Both2()
+}
+
+operator fun Left.hasNext() = false
+operator fun Right.hasNext() = false
+operator fun Both2.next() = 1
+
+class Counter
+
+class Scope {
+    operator fun Counter.iterator() = Steps()
+
+    fun loop() {
+        for (x in Counter()) {
+        }
+    }
+}
+
+fun loops() {
+    for (x in NullableIt()) { // ERROR the iterator of the for-loop range has no 'hasNext()' or 'next()' method
+    }
+    for (x in Ambiguous()) { // ERROR ambiguous call
+    }
+    for (x in Counter()) { // ERROR for-loop range must have an 'iterator()' method
+    }
+}

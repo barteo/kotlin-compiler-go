@@ -45,7 +45,13 @@ func Inspect(node any, f func(any) bool) {
 		inspectExpr(n.Cond, f)
 		Inspect(n.Body, f)
 	case *For:
-		inspectExpr(n.Range, f)
+		if n.IterVar != nil {
+			Inspect(n.IterVar, f) // holds Range's iterator()
+			inspectExpr(n.HasNextX, f)
+			inspectExpr(n.NextX, f)
+		} else {
+			inspectExpr(n.Range, f)
+		}
 		Inspect(n.Body, f)
 	case *LocalFun:
 		for _, p := range n.Decl.Params {
