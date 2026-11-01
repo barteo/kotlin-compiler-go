@@ -127,8 +127,8 @@ Kotlin 2.4.21's tests on `kc`:
 | Box tests | Tests | Share of run |
 |:---|---:|---:|
 | run (of 7,480) | 6,483 | |
-| pass | 6,270 | 96.7% |
-| check error | 142 | 2.2% |
+| pass | 6,285 | 96.9% |
+| check error | 127 | 2.0% |
 | codegen error | 7 | 0.1% |
 | VerifyError and linkage error | 29 | 0.4% |
 | exception and wrong result | 35 | 0.5% |
@@ -137,26 +137,25 @@ Kotlin 2.4.21's tests on `kc`:
 | Diagnostics tests | Tests | Share of run |
 |:---|---:|---:|
 | run (of 10,827) | 7,200 | |
-| rejects invalid | 3,047 | 42.3% |
-| accepts valid | 2,807 | 39.0% |
-| accepts invalid | 771 | 10.7% |
-| rejects valid | 495 | 6.9% |
+| rejects invalid | 3,137 | 43.6% |
+| accepts valid | 2,813 | 39.1% |
+| accepts invalid | 681 | 9.5% |
+| rejects valid | 489 | 6.8% |
 | parse/unsupported | 79 | 1.1% |
 | crash | 1 | 0.0% |
 
-`kc` agrees with `kotlinc` on 81% of the diagnostics tests, and reports
-10,478 of the 18,906 expected errors (55%) on their lines. The reports
+`kc` agrees with `kotlinc` on 83% of the diagnostics tests, and reports
+10,950 of the 18,906 expected errors (58%) on their lines. The reports
 break the failures down; the largest groups are:
 
 - **Silent miscompilation** (64 box tests): `NullPointerException`s
   (13), `VerifyError`s for bad local variable types (7), and duplicate
   bridge methods in `Map` implementations (3).
-- **Accepts invalid**: annotation targets and arguments
-  (`WRONG_ANNOTATION_TARGET` 47, `ANNOTATION_ARGUMENT_MUST_BE_CONST` 34),
-  inline-only parameters (`USAGE_IS_NOT_INLINABLE` 27), opt-in (26),
-  JVM signature clashes (`ACCIDENTAL_OVERRIDE`,
-  `CONFLICTING_JVM_DECLARATIONS`, 24 each), and DSL markers on types
-  (`DSL_SCOPE_VIOLATION` 15).
+- **Accepts invalid**: inline-only parameters (`USAGE_IS_NOT_INLINABLE`
+  27), opt-in (26), JVM signature clashes (`ACCIDENTAL_OVERRIDE`,
+  `CONFLICTING_JVM_DECLARATIONS`, 24 each), calls on nullable values
+  (`UNSAFE_CALL` 19), and DSL markers on types (`DSL_SCOPE_VIOLATION`
+  15).
 - **Rejects valid**, by `kc`'s first error: type mismatches (92 + 4
   box), inference failures (80 + 13), unresolved names and imports (73 +
   11), and calls on nullable receivers (48 + 9).
