@@ -156,6 +156,14 @@ type Checker struct {
 	// shadowed are the calls whose implicit receiver a context parameter
 	// shadows, reported once checked (see receiverShadowed).
 	shadowed map[syntax.Expr]shadowedUse
+	// dslUses are the uses of implicit values that DSL markers don't
+	// allow, reported once checked, and markers the markers of classes
+	// (see dsl.go).
+	dslUses map[dslKey]shadowedUse
+	markers map[*types.ClassSym][]*types.ClassSym
+	// accessed names the properties with context parameters whose
+	// accessors' calls reading or assigning them are (see contextAccess).
+	accessed map[*syntax.Call]string
 	done     map[any]bool // declarations already checked during inference
 	// jumps says, for each inlined lambda, whether a non-local return,
 	// break or continue can leave it.
@@ -477,6 +485,7 @@ func CheckWith(files []*syntax.File, lib *Library, jobs int) []*syntax.Error {
 	var errs []*syntax.Error
 	for _, c := range checkers {
 		c.shadowedErrors()
+		c.dslErrors()
 		sort.SliceStable(c.errs, func(i, j int) bool {
 			a, b := c.errs[i].Pos, c.errs[j].Pos
 			return a.Line < b.Line || a.Line == b.Line && a.Col < b.Col

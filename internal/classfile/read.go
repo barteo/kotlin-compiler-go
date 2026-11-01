@@ -46,8 +46,10 @@ type Info struct {
 	// it is a nested class: its outer class and its access as declared.
 	Inner *InnerClass
 	// Invisible are the descriptors of the class's annotations that are
-	// kept in its class file only, such as @RestrictsSuspension.
-	Invisible []string
+	// kept in its class file only, such as @RestrictsSuspension, and
+	// Visible those of the others but @Metadata and the annotations of
+	// annotation classes this records otherwise.
+	Invisible, Visible []string
 	// StabilityInferred is the parameters argument of the class's
 	// @androidx.compose.runtime.internal.StabilityInferred, which
 	// Compose's compiler plugin writes, or -1 without one.
@@ -387,7 +389,7 @@ func Parse(data []byte) (*Info, error) {
 
 // kotlinMeta reads a RuntimeVisibleAnnotations attribute and returns the
 // arguments of @kotlin.Metadata, if present. It records an annotation
-// class's retention and targets in info. Other annotations are skipped.
+// class's retention and targets in info, and the others' descriptors.
 func kotlinMeta(r *reader, p *pool, info *Info) (*KotlinMeta, error) {
 	var meta *KotlinMeta
 	for range r.u2() {
@@ -448,6 +450,7 @@ func kotlinMeta(r *reader, p *pool, info *Info) (*KotlinMeta, error) {
 			continue
 		}
 		if typ != "Lkotlin/Metadata;" {
+			info.Visible = append(info.Visible, typ)
 			skipPairs(r)
 			continue
 		}

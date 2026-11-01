@@ -80,13 +80,29 @@ func (c *Checker) contextSyms(ps []*syntax.Param) []*types.VarSym {
 			// As kotlinc names its local: $context-Logger.
 			name = "$context-" + p.Type.Name[strings.LastIndexByte(p.Type.Name, '.')+1:]
 		}
-		p.Sym = &types.VarSym{Name: name, Type: c.resolveType(p.Type), Kind: types.Param, Decl: p}
+		p.Sym = &types.VarSym{Name: name, Type: c.resolveType(p.Type), Kind: types.Param, Decl: p, NoInfer: noInfer(p.Type)}
 		if reservedContext(p.Sym.Type) {
 			c.reservedContextError(p.P)
 		}
 		out = append(out, p.Sym)
 	}
 	return out
+}
+
+// noInfer reports whether t or a type in it is annotated @NoInfer.
+func noInfer(t *syntax.TypeRef) bool {
+	if t == nil {
+		return false
+	}
+	if t.NoInfer {
+		return true
+	}
+	for _, a := range t.Args {
+		if noInfer(a.Type) {
+			return true
+		}
+	}
+	return false
 }
 
 // propContexts declares the context parameters of property d, of symbol
@@ -199,11 +215,12 @@ func (c *Checker) contextValue(p syntax.Pos, fits func(types.Type) bool) (x synt
 
 // contextArg is a context argument a call of a callee passes: an implicit
 // value, and its type. If ambiguous, another of the same level fits too
-// (see contextValue).
+// (see contextValue). If noInfer, its parameter's type is @NoInfer: it
+// doesn't constrain the call's type arguments, which choose it again.
 type contextArg struct {
-	x         syntax.Expr
-	t         types.Type
-	ambiguous bool
+	x                  syntax.Expr
+	t                  types.Type
+	ambiguous, noInfer bool
 }
 
 // contextArgs chooses the context arguments of call x of callee cl, the
@@ -217,7 +234,9 @@ func (c *Checker) contextArgs(cl *callee, x *syntax.Call) ([]contextArg, bool) {
 	}
 	sys := newSystem(c)
 	var sub types.Subst
+	explicit := false
 	if n := len(x.TypeArgs); n > 0 && n == len(cl.tparams) {
+		explicit = true
 		// Explicit ones, contextOf<A>(), whose errors resolve reports.
 		e := len(c.errs)
 		sub = maps.Clone(cl.recv)
@@ -244,7 +263,7 @@ func (c *Checker) contextArgs(cl *callee, x *syntax.Call) ([]contextArg, bool) {
 		if !ok {
 			return nil, false
 		}
-		out[k] = contextArg{v, t, amb}
+		out[k] = contextArg{v, t, amb, cp.NoInfer && !explicit && cp.Type.HasParams()}
 	}
 	return out, true
 }
@@ -266,19 +285,29 @@ func (c *Checker) noContextArg(p syntax.Pos, f *types.FunSym) {
 
 // setContexts records the context arguments of call x, of callee cl. If
 // sys, the call's inference, those of generic parameters that contextArgs
-// found ambiguous, before the type arguments were inferred, are chosen
-// again with them, sub's solution.
+// found ambiguous, before the type arguments were inferred, or whose
+// types are @NoInfer, are chosen again with them, sub's solution.
 func (c *Checker) setContexts(x *syntax.Call, cl *callee, sys *system, sub types.Subst) {
 	x.Ctx = nil
 	for k, a := range cl.ctx {
 		pt := cl.f.Contexts[k].Type
 		switch {
-		case !a.ambiguous:
+		case !a.ambiguous && !a.noInfer:
 		case sys != nil && pt.HasParams():
+			// The system may be solved outside the lambda the call is in,
+			// as one of an outer call's: choose among the values here.
+			recvs, ctxs, sc := c.recvs, c.ctxs, c.scope
 			sys.fixups = append(sys.fixups, func(s *system) {
 				want := s.final(sub.ApplyIn(pt))
+				savedRecvs, savedCtxs, savedScope := c.recvs, c.ctxs, c.scope
+				c.recvs, c.ctxs, c.scope = recvs, ctxs, sc
+				defer func() { c.recvs, c.ctxs, c.scope = savedRecvs, savedCtxs, savedScope }()
 				v, _, ok, amb := c.contextValue(x.P, func(t types.Type) bool { return c.subtype(t, want) })
-				if !ok {
+				switch {
+				case !ok && !a.ambiguous:
+					v = a.x
+					c.errorf(x.P, "no context argument for '%s: %s' found", cl.f.Contexts[k].Name, want)
+				case !ok:
 					v, amb = a.x, true
 				}
 				if amb {
@@ -286,12 +315,14 @@ func (c *Checker) setContexts(x *syntax.Call, cl *callee, sys *system, sub types
 				}
 				c.value(v, noWant)
 				x.Ctx[k] = v
+				c.dslContext(x, k, v, cl.f)
 			})
-		default:
+		case a.ambiguous:
 			c.ambiguousContext(x.P, pt)
 		}
 		c.value(a.x, noWant)
 		x.Ctx = append(x.Ctx, a.x)
+		c.dslContext(x, k, a.x, cl.f)
 	}
 }
 
@@ -341,6 +372,9 @@ func (c *Checker) implicitContexts(x *syntax.Call, ft types.Type) {
 			c.ambiguousContext(x.P, want)
 		}
 		ctx[i] = v
+		if id, ok := x.Fun.(*syntax.Ident); ok {
+			c.dslUse(dslKey{x, i}, v.(*syntax.This).Recv, id.Name, id.P, func() bool { return len(x.Args) > i && x.Args[i] == v })
+		}
 	}
 	x.Args = append(ctx, x.Args...)
 }
@@ -413,6 +447,15 @@ func (c *Checker) contextAccess(x syntax.Expr, f *types.FunSym, m *syntax.Member
 	call := &syntax.Call{}
 	call.P = x.Pos()
 	cl := callee{f: f, tparams: f.TypeParams}
+	if c.accessed == nil {
+		c.accessed = map[*syntax.Call]string{}
+	}
+	switch x := x.(type) {
+	case *syntax.Ident:
+		c.accessed[call] = x.Name
+	case *syntax.Member:
+		c.accessed[call] = x.Name
+	}
 	switch {
 	case m != nil:
 		rt := m.X.Type()

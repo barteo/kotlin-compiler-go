@@ -37,6 +37,7 @@ func (c *Checker) resolveSupertypes() {
 		if cls.Anonymous || cls.Local {
 			c.lookupCls = cls
 		}
+		cls.Annotations = c.classAnnotations(cd.Annotations)
 		cls.Supers = []types.Type{}
 		seen := map[*types.ClassSym]bool{}
 		for _, st := range cd.Supers {

@@ -693,7 +693,8 @@ func (t *classTable) kfun(f *kmeta.Function, owner *types.ClassSym, scope tscope
 		}
 	}
 	for _, im := range f.Implies {
-		if im.Param < len(f.Params) && (im.Param >= 0 || f.Recv != nil) {
+		// A context parameter's index follows the value parameters'.
+		if im.Param < len(f.Params)+len(f.ContextParams) && (im.Param >= 0 || f.Recv != nil) {
 			r := -1
 			switch im.Returns {
 			case kmeta.ReturnsTrue:

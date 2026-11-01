@@ -35,6 +35,9 @@ type File struct {
 	// suppresses RECEIVER_SHADOWED_BY_CONTEXT_PARAMETER, an error kotlinc
 	// lets code suppress: the checker doesn't report it in the file.
 	SuppressShadowed bool
+	// SuppressDSL is set on a file with an annotation that suppresses
+	// DSL_SCOPE_VIOLATION, which the checker then doesn't report.
+	SuppressDSL bool
 	// Arities is set by the checker: bit n is set if the file uses
 	// function types with n parameters.
 	Arities uint32
@@ -112,6 +115,9 @@ type TypeRef struct {
 	// UnsafeVariance is set on a type annotated @UnsafeVariance, whose
 	// type parameters' variance isn't checked.
 	UnsafeVariance bool
+	// NoInfer is set on a type annotated @kotlin.internal.NoInfer, which
+	// doesn't infer a call's type arguments.
+	NoInfer bool
 	// Wildcards is what the type's annotations say of the wildcards of
 	// generic signatures: SuppressWildcards for @JvmSuppressWildcards,
 	// ForceWildcards for @JvmWildcard or @JvmSuppressWildcards(false).

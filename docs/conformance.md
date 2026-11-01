@@ -137,15 +137,15 @@ Kotlin 2.4.21's tests on `kc`:
 | Diagnostics tests | Tests | Share of run |
 |:---|---:|---:|
 | run (of 10,827) | 7,200 | |
-| rejects invalid | 2,950 | 41.0% |
-| accepts valid | 2,772 | 38.5% |
-| accepts invalid | 868 | 12.1% |
-| rejects valid | 530 | 7.4% |
+| rejects invalid | 2,963 | 41.2% |
+| accepts valid | 2,775 | 38.5% |
+| accepts invalid | 855 | 11.9% |
+| rejects valid | 527 | 7.3% |
 | parse/unsupported | 79 | 1.1% |
 | crash | 1 | 0.0% |
 
-`kc` agrees with `kotlinc` on 79% of the diagnostics tests, and reports
-10,021 of the 18,906 expected errors (53%) on their lines. The reports
+`kc` agrees with `kotlinc` on 80% of the diagnostics tests, and reports
+10,055 of the 18,906 expected errors (53%) on their lines. The reports
 break the failures down; the largest groups are:
 
 - **Silent miscompilation** (90 box tests): `tailrec` functions that
@@ -156,11 +156,12 @@ break the failures down; the largest groups are:
   (`INVISIBLE_REFERENCE` 53), annotation targets and arguments
   (`WRONG_ANNOTATION_TARGET` 47, `ANNOTATION_ARGUMENT_MUST_BE_CONST` 34),
   inline-only parameters (`USAGE_IS_NOT_INLINABLE` 27), opt-in (26),
-  `@DslMarker` (28), and JVM signature clashes (`ACCIDENTAL_OVERRIDE`,
-  `CONFLICTING_JVM_DECLARATIONS`, 24 each).
+  JVM signature clashes (`ACCIDENTAL_OVERRIDE`,
+  `CONFLICTING_JVM_DECLARATIONS`, 24 each), and DSL markers on types
+  (`DSL_SCOPE_VIOLATION` 15).
 - **Rejects valid**, by `kc`'s first error: type mismatches (91 + 4
-  box), inference failures (82 + 13), unresolved names and imports (74 +
-  25), and calls on nullable receivers (49 + 9).
+  box), inference failures (80 + 13), unresolved names and imports (74 +
+  25), and calls on nullable receivers (48 + 9).
 
 The committed `.tsv` files serve as a ratchet: a change must make
 `-baseline` report no regressions, and the tests it fixes measure it.

@@ -782,6 +782,7 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 	x.Sym, x.ArgMap = f, best.amap
 	c.setDispatch(x, &best.callee)
 	c.receiverShadowed(x, &best.callee)
+	c.dslCall(x, &best.callee)
 	c.setContexts(x, &best.callee, best.sys, best.sub)
 	ensureFun(f)
 	c.suspendCall(x.P, f)
@@ -1183,6 +1184,7 @@ func (c *Checker) resolvePlain(x *syntax.Call, cs []callee, want types.Type) typ
 	x.Sym, x.ArgMap = f, best.amap
 	c.setDispatch(x, best)
 	c.receiverShadowed(x, best)
+	c.dslCall(x, best)
 	c.setContexts(x, best, nil, nil)
 	ensureFun(f)
 	c.suspendCall(x.P, f)
@@ -1262,9 +1264,6 @@ func (c *Checker) constrain(cd *candidate, x *syntax.Call, ts []types.Type, part
 	if cd.ext.K != types.Invalid {
 		cd.sys.sub(cd.ext, cd.sub.ApplyIn(cd.f.Recv))
 	}
-	for k, a := range cd.ctx {
-		cd.sys.sub(a.t, cd.sub.ApplyIn(cd.f.Contexts[k].Type))
-	}
 	for i, t := range ts {
 		p := cd.params[i]
 		if lit, ok := x.Args[i].(*syntax.IntLit); ok && !lit.Long && !lit.Unsigned {
@@ -1292,6 +1291,37 @@ func (c *Checker) constrain(cd *candidate, x *syntax.Call, ts []types.Type, part
 			continue
 		}
 		cd.sys.sub(t, p)
+	}
+	c.constrainContexts(cd, x)
+}
+
+// constrainContexts adds the constraints of a candidate's context
+// arguments, once its arguments' are in its system. As in kotlinc, an
+// argument of a generic context parameter is chosen again then: the
+// nearest implicit value that fits with the arguments' constraints, as
+// for context(t: T) f(b: Box<T>), with A and B in scope, f(Box<A>())
+// takes the A. Those of @NoInfer types are left to setContexts.
+func (c *Checker) constrainContexts(cd *candidate, x *syntax.Call) {
+	if len(cd.ctx) > 0 {
+		cd.ctx = slices.Clone(cd.ctx) // the callee's, which other attempts share
+	}
+	for k, a := range cd.ctx {
+		if a.noInfer {
+			continue
+		}
+		want := cd.sub.ApplyIn(cd.f.Contexts[k].Type)
+		if want.HasVars() {
+			v, t, ok, amb := c.contextValue(x.P, func(t types.Type) bool {
+				trial := cd.sys.clone()
+				trial.sub(t, want)
+				return trial.ok && trial.litsFitUppers()
+			})
+			if ok {
+				a = contextArg{x: v, t: t, ambiguous: amb}
+				cd.ctx[k] = a
+			}
+		}
+		cd.sys.sub(a.t, want)
 	}
 }
 

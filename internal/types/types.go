@@ -287,6 +287,11 @@ type VarSym struct {
 	// that holds its delegate, which reading it calls getValue on.
 	Delegate *VarSym
 
+	// NoInfer is set on a context parameter whose type, or one of its
+	// type arguments, is annotated @NoInfer: its argument is chosen by the
+	// call's type arguments, not used to infer them.
+	NoInfer bool
+
 	// Parameters of Kotlin and Java functions read from class files.
 	Vararg  bool // takes any number of arguments of Type, passed in an array
 	Default bool // declares a default value, so the argument can be omitted
@@ -808,8 +813,8 @@ type ClassSym struct {
 	// metadata doesn't declare, such as kotlinc's collection stubs.
 	JVMMethods map[string]uint16
 	// Annotations are the classes of the annotations of a class on the
-	// class path that its class file keeps, but not for reflection, such
-	// as Compose's @Stable, and StabilityInferred is the parameters of its
+	// class path that its class file keeps, such as Compose's @Stable, or
+	// of the program's that are classes, and StabilityInferred is the parameters of its
 	// @StabilityInferred, which Compose's compiler plugin writes, or -1:
 	// see codegen/stability.go.
 	Annotations       []*ClassSym

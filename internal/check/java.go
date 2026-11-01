@@ -135,7 +135,7 @@ func (t *classTable) load(cls *types.ClassSym) {
 		cls.JVMMethods[m.Name+m.Desc] = m.Access
 	}
 	cls.StabilityInferred = info.StabilityInferred
-	for _, a := range info.Invisible {
+	for _, a := range slices.Concat(info.Invisible, info.Visible) {
 		if strings.HasPrefix(a, "L") && strings.HasSuffix(a, ";") {
 			if c := t.class(a[1 : len(a)-1]); c != nil {
 				cls.Annotations = append(cls.Annotations, c)

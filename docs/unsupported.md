@@ -16,6 +16,8 @@ own tests.
 - Visibility isn't checked, but for private constructors: private,
   protected and internal declarations can be used where Kotlin doesn't
   allow it. It still shapes the class files as with `kotlinc`.
+- `@DslMarker` markers are those of classes: markers on types, as in
+  `(@M A).() -> Unit`, are ignored, so code they forbid compiles.
 - Reified type parameters of members of interfaces and value classes
   (those of final members and member extensions of classes work).
 - Properties of a `@file:JvmMultifileClass` class that are neither

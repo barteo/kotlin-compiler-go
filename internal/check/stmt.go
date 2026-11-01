@@ -553,6 +553,7 @@ func (c *Checker) lvalue(x syntax.Expr) (types.Type, bool) {
 		}
 		t := c.member(x)
 		x.T = t
+		c.dslTarget(x)
 		if x.Getter != nil && x.Setter == nil {
 			x.Setter = x.Getter.ExtSetter // a var extension property's
 		}

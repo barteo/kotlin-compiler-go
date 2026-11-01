@@ -6,16 +6,16 @@ Of 10827 test files, 3627 are skipped and 7200 run.
 
 | Result | Tests | Share |
 |:---|---:|---:|
-| rejects invalid | 2950 | 41.0% |
-| accepts valid | 2772 | 38.5% |
-| accepts invalid | 868 | 12.1% |
-| rejects valid | 530 | 7.4% |
+| rejects invalid | 2963 | 41.2% |
+| accepts valid | 2775 | 38.5% |
+| accepts invalid | 855 | 11.9% |
+| rejects valid | 527 | 7.3% |
 | parse/unsupported | 79 | 1.1% |
 | crash | 1 | 0.0% |
 
 *Rejects invalid* and *accepts valid* agree with kotlinc. *Accepts invalid* is code kotlinc rejects that kc compiles; *rejects valid*, code kotlinc compiles that kc's checker rejects. Both are bugs. A *parse/unsupported* test uses a feature kc doesn't support, which says nothing about its checks.
 
-Of the 2950 tests both reject, kc reports an error on the line of an expected one in 2672.
+Of the 2963 tests both reject, kc reports an error on the line of an expected one in 2686.
 
 A test is invalid if it stops before the backend or marks an error: one that runs to it (`BACKEND`) can mark the JVM backend's errors, such as `CONFLICTING_JVM_DECLARATIONS`. Of the tests run, 177 stop at `FRONTEND` but mark no error: most add the `CHECK_TYPE` helpers, whose names (`_`) kotlinc reports outside the test infrastructure, and count as valid; the others leave their errors out with the `DIAGNOSTICS` directive. 101 run to the backend and mark one. 5 marked names have no declared severity (debug information, for one), and count as neither.
 
@@ -56,7 +56,6 @@ Tests kotlinc rejects that kc compiles, by the errors their markup expects. A te
 | `ARGUMENT_TYPE_MISMATCH` | 38 | 22 | `tests/annotations/AnnotationForClassTypeParameter.kt`, `tests/annotations/AnnotationForFunctionTypeParameter.kt` |
 | `ANNOTATION_ARGUMENT_MUST_BE_CONST` | 34 | 22 | `tests/annotations/MutuallyRecursivelyAnnotatedGlobalFunction.kt`, `tests/annotations/RecursivelyAnnotatedFunctionParameter.kt` |
 | `UNRESOLVED_REFERENCE` | 31 | 19 | `tests/annotations/AnnotationForObject.kt`, `tests/annotations/UnresolvedAnnotationOnObject.kt` |
-| `DSL_SCOPE_VIOLATION` | 28 | 28 | `tests/contextParameters/dslMarker/dslMarkerOnFunctionType.kt`, `tests/contextParameters/dslMarker/multipleDslMarkers.kt` |
 | `USAGE_IS_NOT_INLINABLE` | 27 | 25 | `tests/inline/assignment.kt`, `tests/inline/binaryExpressions/arrayAccess.kt` |
 | `OPT_IN_USAGE_ERROR` | 26 | 14 | `tests/errorSuppressionsWithoutWarning.kt`, `tests/jvm/jvmDefault/annotationsFromBinariesWithNonTrivialJvmDefaultConfiguration.kt` |
 | `ACCIDENTAL_OVERRIDE` | 24 | 21 | `tests/jvm/duplicateJvmSignature/accidentalOverrides/accidentalOverrideFromGrandparent.kt`, `tests/jvm/duplicateJvmSignature/accidentalOverrides/classFunctionOverriddenByProperty.kt` |
@@ -64,6 +63,7 @@ Tests kotlinc rejects that kc compiles, by the errors their markup expects. A te
 | `UNSAFE_CALL` | 19 | 17 | `tests/dataFlow/assignment/assignToNewVal.kt`, `tests/dataFlow/assignment/uninitializedValNullability.kt` |
 | `CONFLICTING_OVERLOADS` | 18 | 15 | `tests/annotations/rendering/conflictingOverloads.kt`, `tests/dataClasses/conflictingCopyOverloads.kt` |
 | `WRONG_ANNOTATION_TARGET_WITH_USE_SITE_TARGET` | 16 | 2 | `tests/annotations/options/targets/file.kt`, `tests/annotations/withUseSiteTarget/DelegateAnnotations.kt` |
+| `DSL_SCOPE_VIOLATION` | 15 | 15 | `tests/resolve/dslMarker/annotatedFunctionType.kt`, `tests/resolve/dslMarker/annotatedTypeArgument.kt` |
 | `IMPOSSIBLE_IS_CHECK_ERROR` | 15 | 12 | `tests/cast/classVsClassIsCheck.kt`, `tests/cast/classVsClassIsCheckAndIntersectionType.kt` |
 | `CONST_VAL_WITH_NON_CONST_INITIALIZER` | 14 | 10 | `tests/constantEvaluator/constant/typeAliasToUnsigned.kt`, `tests/constantEvaluator/constant/unsignedOperations.kt` |
 | `ERROR_IN_CONTRACT_DESCRIPTION` | 14 | 9 | `tests/kt56877.kt`, `testsWithStdLib/contracts/dsl/errors/accessToOuterThis.kt` |
@@ -120,8 +120,8 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 | First error | Tests | Examples |
 |:---|---:|:---|
 | `type mismatch: inferred type is _ but _ was expected` | 91 | `tests/annotations/parameters/expressions/unaryPlus.kt`, `tests/callableReference/function/localConstructor.kt` |
-| `cannot infer type for type parameter '_'. Specify it explicitly.` | 82 | `tests/callableReference/generic/kt35896.kt`, `tests/callableReference/genericCallWithReferenceAgainstVararg.kt` |
-| `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 49 | `tests/cast/kt56629.kt`, `tests/cfg/safeCalls.kt` |
+| `cannot infer type for type parameter '_'. Specify it explicitly.` | 80 | `tests/callableReference/generic/kt35896.kt`, `tests/callableReference/genericCallWithReferenceAgainstVararg.kt` |
+| `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 48 | `tests/cast/kt56629.kt`, `tests/cfg/safeCalls.kt` |
 | `unresolved reference: _` | 44 | `tests/annotations/nestedClassAsAnnotationParameter.kt`, `tests/annotations/nestedObjectAsAnnotationParameter.kt` |
 | `unresolved import: _` | 30 | `tests/annotations/requiredAnnotationWithStarTypealiasedImportedArgument.kt`, `tests/callableReference/function/differentPackageClass.kt` |
 | `ambiguous call: n candidates for '_' take (_)` | 29 | `tests/arguments/overloadByReceiver.kt`, `tests/callResolution/eagerLambdaAnalysis/samVsKProperty.kt` |
@@ -165,7 +165,7 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 10021 of 18906 expected errors (53.0%) on their lines.
+kc reports 10055 of 18906 expected errors (53.2%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
@@ -183,13 +183,13 @@ kc reports 10021 of 18906 expected errors (53.0%) on their lines.
 | `USAGE_IS_NOT_INLINABLE` | 177 | 31 | 146 |
 | `REDECLARATION` | 192 | 72 | 120 |
 | `ANNOTATION_ARGUMENT_MUST_BE_CONST` | 157 | 41 | 116 |
-| `DSL_SCOPE_VIOLATION` | 108 | 0 | 108 |
 | `ILLEGAL_RESTRICTED_SUSPENDING_FUNCTION_CALL` | 100 | 2 | 98 |
 | `CANNOT_INFER_PARAMETER_TYPE` | 559 | 465 | 94 |
 | `OPT_IN_USAGE_ERROR` | 96 | 2 | 94 |
 | `UNINITIALIZED_VARIABLE` | 196 | 108 | 88 |
 | `UNRESOLVED_REFERENCE_WRONG_RECEIVER` | 211 | 125 | 86 |
 | `MUST_BE_INITIALIZED` | 101 | 18 | 83 |
+| `DSL_SCOPE_VIOLATION` | 108 | 34 | 74 |
 | `INITIALIZER_TYPE_MISMATCH` | 381 | 307 | 74 |
 | `UNSAFE_CALL` | 471 | 397 | 74 |
 | `UPPER_BOUND_VIOLATED` | 110 | 41 | 69 |
@@ -238,10 +238,10 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | Error | Count |
 |:---|---:|
 | `cannot infer a type for this parameter. Please specify it explicitly.` | 1058 |
-| `cannot infer type for type parameter '_'. Specify it explicitly.` | 647 |
-| `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 505 |
+| `cannot infer type for type parameter '_'. Specify it explicitly.` | 640 |
+| `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 504 |
 | `unresolved reference: _` | 456 |
-| `type mismatch: inferred type is _ but _ was expected` | 385 |
+| `type mismatch: inferred type is _ but _ was expected` | 382 |
 | `conflicting overloads: _` | 305 |
 | `unresolved import: _` | 76 |
 | `unresolved or unsupported type: _` | 57 |
@@ -267,7 +267,7 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | `annotation class cannot have type parameters` | 12 |
 | `expected no parameters, but n were declared` | 12 |
 | `expression '_' of type _ cannot be invoked as a function` | 12 |
-| *206 more* | |
+| *205 more* | |
 
 ## Unsupported features
 

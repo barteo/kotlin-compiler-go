@@ -34,6 +34,9 @@ type parser struct {
 	// suppressShadowed is set once an annotation suppresses
 	// RECEIVER_SHADOWED_BY_CONTEXT_PARAMETER (see File.SuppressShadowed).
 	suppressShadowed bool
+	// suppressDSL is set once an annotation suppresses
+	// DSL_SCOPE_VIOLATION (see File.SuppressDSL).
+	suppressDSL bool
 	// later are the errors parsing goes on after (see File.Errors).
 	later []*Error
 }
@@ -60,6 +63,7 @@ func Parse(path, src string) (f *File, errs []*Error) {
 	f.Errors = p.later
 	f.SuppressInvisible = p.suppressInvisible
 	f.SuppressShadowed = p.suppressShadowed
+	f.SuppressDSL = p.suppressDSL
 	f.Facade = facade(f, path)
 	f.Part = part(f, path)
 	return f, nil
@@ -108,6 +112,7 @@ func ParseAll(path, src string) (*File, []*Error) {
 	f.Errors = p.later
 	f.SuppressInvisible = p.suppressInvisible
 	f.SuppressShadowed = p.suppressShadowed
+	f.SuppressDSL = p.suppressDSL
 	f.Facade = facade(f, path)
 	f.Part = part(f, path)
 	return f, p.errs
@@ -877,7 +882,7 @@ func (p *parser) parseImport() *Import {
 }
 
 func (p *parser) parseType() *TypeRef {
-	unsafe, composable := false, false
+	unsafe, composable, noInfer := false, false, false
 	var wild Wildcards
 	for p.at(AT) {
 		a := p.annotation()
@@ -886,14 +891,16 @@ func (p *parser) parseType() *TypeRef {
 			p.failAt(a.P, "this annotation is not applicable to target 'type usage' and use-site target '@receiver'")
 		}
 		unsafe = unsafe || a.Is("UnsafeVariance")
+		noInfer = noInfer || a.Name == "NoInfer" || a.Is("internal.NoInfer")
 		composable = composable || composableAnno(a)
 		if w := WildcardsOf([]Annotation{a}); w != DefaultWildcards {
 			wild = w
 		}
 	}
-	if unsafe || composable || wild != DefaultWildcards {
+	if unsafe || composable || noInfer || wild != DefaultWildcards {
 		t := p.parseType()
 		t.UnsafeVariance = t.UnsafeVariance || unsafe
+		t.NoInfer = t.NoInfer || noInfer
 		t.Composable = t.Composable || composable
 		if wild != DefaultWildcards {
 			t.Wildcards = wild
@@ -2087,6 +2094,8 @@ func (p *parser) annotation() Annotation {
 						p.suppressInvisible = true
 					case "RECEIVER_SHADOWED_BY_CONTEXT_PARAMETER":
 						p.suppressShadowed = true
+					case "DSL_SCOPE_VIOLATION":
+						p.suppressDSL = true
 					}
 				}
 			}

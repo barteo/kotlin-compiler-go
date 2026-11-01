@@ -53,6 +53,7 @@ func (c *Checker) expr(x syntax.Expr, want types.Type) types.Type {
 	switch x := x.(type) {
 	case *syntax.Ident:
 		c.propShadowed(x)
+		c.dslProp(x)
 		t = c.contextRead(x, t, want)
 	case *syntax.Member:
 		t = c.contextRead(x, t, want)
@@ -1258,6 +1259,10 @@ func (c *Checker) contractNarrows(x *syntax.Call, returns int) []narrow {
 				continue
 			}
 			arg = m.X
+		} else if i := e.Param - len(f.Params); i >= 0 {
+			if i < len(x.Ctx) {
+				arg = x.Ctx[i]
+			}
 		} else {
 			for k, a := range x.Args {
 				i := k

@@ -1645,10 +1645,10 @@ tests/contextParameters/diagnostics/renderingOfUnnamedContextParameter.kt	accept
 tests/contextParameters/diagnostics/subtyping.kt	accepts valid		
 tests/contextParameters/diagnostics/unsupportedContextParameters.kt	skip	LANGUAGE	
 tests/contextParameters/diagnostics/varianceConflict.kt	rejects invalid	on an expected line	
-tests/contextParameters/dslMarker.kt	accepts invalid	DSL_SCOPE_VIOLATION	dslMarker.kt:43: DSL_SCOPE_VIOLATION
-tests/contextParameters/dslMarker/dslMarkerOnContextType.kt	rejects invalid	elsewhere	
-tests/contextParameters/dslMarker/dslMarkerOnFunctionType.kt	accepts invalid	DSL_SCOPE_VIOLATION	dslMarkerOnFunctionType.kt:34: DSL_SCOPE_VIOLATION
-tests/contextParameters/dslMarker/multipleDslMarkers.kt	accepts invalid	DSL_SCOPE_VIOLATION	multipleDslMarkers.kt:24: DSL_SCOPE_VIOLATION
+tests/contextParameters/dslMarker.kt	rejects invalid	on an expected line	
+tests/contextParameters/dslMarker/dslMarkerOnContextType.kt	rejects invalid	on an expected line	
+tests/contextParameters/dslMarker/dslMarkerOnFunctionType.kt	rejects invalid	on an expected line	
+tests/contextParameters/dslMarker/multipleDslMarkers.kt	rejects invalid	on an expected line	
 tests/contextParameters/expectActualMatch.kt	skip	LANGUAGE	
 tests/contextParameters/expectActualMismatch.kt	skip	LANGUAGE	
 tests/contextParameters/explicit/anonymousFunctions.kt	skip	LANGUAGE	
@@ -1674,8 +1674,8 @@ tests/contextParameters/explicit/vararg.kt	skip	LANGUAGE
 tests/contextParameters/falsePositiveCausedByForkPoint.kt	accepts valid		
 tests/contextParameters/functionTypeWithNamedContextParametersEnabled.kt	rejects invalid	on an expected line	
 tests/contextParameters/inaccessibleReceiver.kt	rejects invalid	on an expected line	
-tests/contextParameters/inference/noInfer/MismatchingClosestImplicitValue.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	MismatchingClosestImplicitValue.kt:18: cannot infer type for type parameter 'R'. Specify it explicitly.
-tests/contextParameters/inference/noInfer/MultipleClosestImplicitValues.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	MultipleClosestImplicitValues.kt:21: cannot infer type for type parameter 'R'. Specify it explicitly.
+tests/contextParameters/inference/noInfer/MismatchingClosestImplicitValue.kt	accepts valid		
+tests/contextParameters/inference/noInfer/MultipleClosestImplicitValues.kt	accepts valid		
 tests/contextParameters/inferringContextOfType.kt	rejects invalid	on an expected line	
 tests/contextParameters/inline.kt	rejects invalid	on an expected line	
 tests/contextParameters/invoke.kt	rejects invalid	on an expected line	
@@ -1726,7 +1726,7 @@ tests/contextParameters/smartcast/onContextParameters.kt	rejects invalid	on an e
 tests/contextParameters/smartcast/onPropertyWithContext.kt	rejects invalid	on an expected line	
 tests/contextParameters/smartcast/onTypeWithContext.kt	accepts valid		
 tests/contextParameters/smartcast/withCallInPlaceContract.kt	rejects invalid	on an expected line	
-tests/contextParameters/smartcast/withImpliesContract.kt	rejects valid	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _	withImpliesContract.kt:19: only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type String?
+tests/contextParameters/smartcast/withImpliesContract.kt	accepts valid		
 tests/contextParameters/smoke.kt	rejects invalid	on an expected line	
 tests/contextParameters/specificity/baseSpecificity.kt	skip	LANGUAGE	
 tests/contextParameters/specificity/callableReference.kt	skip	LANGUAGE	
@@ -7642,36 +7642,36 @@ tests/resolve/dslMarker/annotatedFunctionType.kt	accepts invalid	DSL_SCOPE_VIOLA
 tests/resolve/dslMarker/annotatedTypeArgument.kt	accepts invalid	DSL_SCOPE_VIOLATION	annotatedTypeArgument.kt:22: DSL_SCOPE_VIOLATION
 tests/resolve/dslMarker/behaviorIfApplicabilityIsResolveWithError.kt	rejects invalid	on an expected line	
 tests/resolve/dslMarker/callableReferenceAsCallArgument.kt	accepts invalid	DSL_SCOPE_VIOLATION	callableReferenceAsCallArgument.kt:32: DSL_SCOPE_VIOLATION
-tests/resolve/dslMarker/callableReferences.kt	accepts invalid	DSL_SCOPE_VIOLATION	callableReferences.kt:23: DSL_SCOPE_VIOLATION
+tests/resolve/dslMarker/callableReferences.kt	rejects invalid	on an expected line	
 tests/resolve/dslMarker/dslLambdaAssignment.kt	skip	LANGUAGE_FEATURE_TOGGLED	
 tests/resolve/dslMarker/dslMarkerNamedArgumentLambda.kt	accepts invalid	DSL_SCOPE_VIOLATION	dslMarkerNamedArgumentLambda.kt:16: DSL_SCOPE_VIOLATION
 tests/resolve/dslMarker/dslMarkerOnExpectedTypeForInvokeExtensionCall.kt	accepts invalid	DSL_SCOPE_VIOLATION	dslMarkerOnExpectedTypeForInvokeExtensionCall.kt:19: DSL_SCOPE_VIOLATION
 tests/resolve/dslMarker/dslMarkerOnTypealias.kt	accepts invalid	DSL_SCOPE_VIOLATION	dslMarkerOnTypealias.kt:23: DSL_SCOPE_VIOLATION
 tests/resolve/dslMarker/dslMarkerWithTypealiasRecursion.kt	rejects invalid	on an expected line	
-tests/resolve/dslMarker/inheritedMarker.kt	accepts invalid	DSL_SCOPE_VIOLATION	inheritedMarker.kt:26: DSL_SCOPE_VIOLATION
-tests/resolve/dslMarker/insideTopLevelExtension.kt	accepts invalid	DSL_SCOPE_VIOLATION	insideTopLevelExtension.kt:20: DSL_SCOPE_VIOLATION
+tests/resolve/dslMarker/inheritedMarker.kt	rejects invalid	on an expected line	
+tests/resolve/dslMarker/insideTopLevelExtension.kt	rejects invalid	on an expected line	
 tests/resolve/dslMarker/insideTopLevelExtensionAnnotatedType.kt	accepts invalid	DSL_SCOPE_VIOLATION	insideTopLevelExtensionAnnotatedType.kt:19: DSL_SCOPE_VIOLATION
 tests/resolve/dslMarker/kt29948.kt	accepts valid		
 tests/resolve/dslMarker/kt31360.kt	accepts valid		
 tests/resolve/dslMarker/kt46969.kt	accepts valid		
-tests/resolve/dslMarker/lowPriority.kt	accepts invalid	DSL_SCOPE_VIOLATION	lowPriority.kt:25: DSL_SCOPE_VIOLATION
+tests/resolve/dslMarker/lowPriority.kt	rejects invalid	on an expected line	
 tests/resolve/dslMarker/markedReceiverWithCapturedTypeArgument.kt	accepts valid		
 tests/resolve/dslMarker/markersIntersection.kt	accepts invalid	DSL_SCOPE_VIOLATION	markersIntersection.kt:33: DSL_SCOPE_VIOLATION
 tests/resolve/dslMarker/nestedWithSameReceiver.kt	accepts invalid	DSL_SCOPE_VIOLATION	nestedWithSameReceiver.kt:24: DSL_SCOPE_VIOLATION
 tests/resolve/dslMarker/noErrorInsideDelegatedConstructorCallOfAnonymousObject.kt	accepts valid		
-tests/resolve/dslMarker/properties.kt	accepts invalid	DSL_SCOPE_VIOLATION	properties.kt:38: DSL_SCOPE_VIOLATION
-tests/resolve/dslMarker/simpleAnnotatedClasses.kt	accepts invalid	DSL_SCOPE_VIOLATION	simpleAnnotatedClasses.kt:23: DSL_SCOPE_VIOLATION
+tests/resolve/dslMarker/properties.kt	rejects invalid	on an expected line	
+tests/resolve/dslMarker/simpleAnnotatedClasses.kt	rejects invalid	on an expected line	
 tests/resolve/dslMarker/simpleAnnotatedTypes.kt	accepts invalid	DSL_SCOPE_VIOLATION	simpleAnnotatedTypes.kt:22: DSL_SCOPE_VIOLATION
-tests/resolve/dslMarker/substitutedReceiverAnnotatedClasses.kt	accepts invalid	DSL_SCOPE_VIOLATION	substitutedReceiverAnnotatedClasses.kt:23: DSL_SCOPE_VIOLATION
+tests/resolve/dslMarker/substitutedReceiverAnnotatedClasses.kt	rejects invalid	on an expected line	
 tests/resolve/dslMarker/substitutedReceiverAnnotatedType.kt	accepts invalid	DSL_SCOPE_VIOLATION	substitutedReceiverAnnotatedType.kt:22: DSL_SCOPE_VIOLATION
 tests/resolve/dslMarker/threeImplicitReceivers.kt	rejects invalid	on an expected line	
 tests/resolve/dslMarker/threeImplicitReceivers2.kt	rejects invalid	on an expected line	
 tests/resolve/dslMarker/twoImplicitReceivers.kt	accepts invalid	DSL_SCOPE_VIOLATION	twoImplicitReceivers.kt:29: DSL_SCOPE_VIOLATION
 tests/resolve/dslMarker/twoLanguages.kt	accepts invalid	DSL_SCOPE_VIOLATION	twoLanguages.kt:35: DSL_SCOPE_VIOLATION
 tests/resolve/dslMarker/typeAliasToBuiltinFunctionType.kt	accepts invalid	DSL_SCOPE_VIOLATION	typeAliasToBuiltinFunctionType.kt:24: DSL_SCOPE_VIOLATION
-tests/resolve/dslMarker/typeParameter.kt	accepts invalid	DSL_SCOPE_VIOLATION	typeParameter.kt:13: DSL_SCOPE_VIOLATION
-tests/resolve/dslMarker/useOfExtensions.kt	accepts invalid	DSL_SCOPE_VIOLATION	useOfExtensions.kt:23: DSL_SCOPE_VIOLATION
-tests/resolve/dslMarker/usingWith.kt	accepts invalid	DSL_SCOPE_VIOLATION	usingWith.kt:20: DSL_SCOPE_VIOLATION
+tests/resolve/dslMarker/typeParameter.kt	rejects invalid	on an expected line	
+tests/resolve/dslMarker/useOfExtensions.kt	rejects invalid	on an expected line	
+tests/resolve/dslMarker/usingWith.kt	rejects invalid	on an expected line	
 tests/resolve/dslMarker/usingWithThis.kt	accepts invalid	DSL_SCOPE_VIOLATION	usingWithThis.kt:24: DSL_SCOPE_VIOLATION
 tests/resolve/errorPriority.kt	skip	Java sources	
 tests/resolve/functionCallExpectedWrongReceiver.kt	rejects invalid	on an expected line	
