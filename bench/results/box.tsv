@@ -19,13 +19,13 @@ annotations/instances/annotationWithTypeParameters.kt	check error	annotation cla
 annotations/instances/annotationsUnsignedTypes.kt	check error	invalid type of annotation member	annotationsUnsignedTypes.kt:4: invalid type of annotation member
 annotations/instances/arrayContentEqAny.kt	pass		
 annotations/instances/arraysAndKClass.kt	pass		
-annotations/instances/differentAnnotationTypes.kt	check error	operator '_' cannot be applied to A and B	differentAnnotationTypes.kt:7: operator '==' cannot be applied to A and B
+annotations/instances/differentAnnotationTypes.kt	pass		
 annotations/instances/differentOrder.kt	pass		
 annotations/instances/enumAndKClass.kt	pass		
 annotations/instances/enumArray.kt	pass		
 annotations/instances/inInlineFunction.kt	pass		
 annotations/instances/innerAnnotationInstantiation.kt	pass		
-annotations/instances/instanceEquality.kt	check error	operator '_' cannot be applied to An and An	instanceEquality.kt:40: operator '==' cannot be applied to A1 and A2
+annotations/instances/instanceEquality.kt	pass		
 annotations/instances/mixedArray.kt	pass		
 annotations/instances/multifileEqHc.kt	pass		
 annotations/instances/multimoduleTypeParams.kt	check error	annotation class cannot have type parameters	lib.kt:6: annotation class cannot have type parameters
@@ -198,9 +198,9 @@ basics/companion.kt	pass
 basics/concatenation.kt	pass		
 basics/const_infinity.kt	pass		
 basics/expression_as_statement.kt	pass		
-basics/k42000_1.kt	check error	operator '_' cannot be applied to T and T	lib.kt:18: operator '+' cannot be applied to T and T
+basics/k42000_1.kt	pass		
 basics/k42000_2.kt	pass		
-basics/k42000_crossmodule.kt	check error	operator '_' cannot be applied to T and T	lib.kt:18: operator '+' cannot be applied to T and T
+basics/k42000_crossmodule.kt	pass		
 basics/kt75483.kt	pass		
 basics/kt7972.kt	skip	FREE_COMPILER_ARGS	
 basics/local_variable.kt	pass		
@@ -265,9 +265,9 @@ binaryOp/eqNullableToPrimitiveWithSideEffects.kt	wrong result	OKOK	OKOK
 binaryOp/intrinsic.kt	skip	IGNORE_BACKEND: JVM_IR	
 binaryOp/intrinsicAny.kt	pass		
 binaryOp/intrinsicNullable.kt	skip	IGNORE_BACKEND: JVM_IR	
-binaryOp/kt11163.kt	check error	operator '_' cannot be applied to Int and Char	kt11163.kt:4: operator '<' cannot be applied to Int and Char
-binaryOp/kt11163_properIeee754comparisons.kt	check error	operator '_' cannot be applied to Int and Char	kt11163_properIeee754comparisons.kt:4: operator '<' cannot be applied to Int and Char
-binaryOp/kt23030_properIeee754comparisons.kt	check error	operator '_' cannot be applied to Int and Char	kt23030_properIeee754comparisons.kt:5: operator '<' cannot be applied to Int and Char
+binaryOp/kt11163.kt	pass		
+binaryOp/kt11163_properIeee754comparisons.kt	pass		
+binaryOp/kt23030_properIeee754comparisons.kt	pass		
 binaryOp/kt44402.kt	pass		
 binaryOp/kt6747_identityEquals.kt	pass		
 binaryOp/overflowChar.kt	wrong result	fail: Char.MIN_VALUE - n should overflow to positive.	fail: Char.MIN_VALUE - 1 should overflow to positive.
@@ -894,7 +894,7 @@ casts/unitNullableCast.kt	pass
 casts/wasmCastMessages.kt	skip	TARGET_BACKEND: WASM	
 casts/wasmCastMessagesWasmJs.kt	skip	TARGET_BACKEND: WASM_JS	
 char/unboxedCharSpecials.kt	skip	TARGET_BACKEND: JS_IR, JS_IR_ES6	
-checkcastOptimization/kt19128.kt	check error	operator '_' cannot be applied to Any?	kt19128.kt:19: operator '+=' cannot be applied to Any?
+checkcastOptimization/kt19128.kt	pass		
 checkcastOptimization/kt19246.kt	pass		
 checkcastOptimization/kt47851.kt	skip	IGNORE_BACKEND: JVM_IR	
 checkcastOptimization/kt50215.kt	pass		
@@ -1014,8 +1014,8 @@ classes/kt6136.kt	pass
 classes/kt633.kt	pass		
 classes/kt6816.kt	pass		
 classes/kt707.kt	pass		
-classes/kt723.kt	check error	operator '_' cannot be applied to Int?	kt723.kt:5: operator '++' cannot be applied to Int?
-classes/kt725.kt	check error	type checking has run into a recursive problem; specify the return type of '_'	kt725.kt:1: type checking has run into a recursive problem; specify the return type of 'inc'
+classes/kt723.kt	pass		
+classes/kt725.kt	pass		
 classes/kt8011.kt	pass		
 classes/kt8011a.kt	pass		
 classes/kt940.kt	pass		
@@ -1536,9 +1536,9 @@ controlStructures/forInSequenceWithIndex/forInSequenceWithIndexNoIndexVar.kt	ski
 controlStructures/forInSequenceWithIndex/forInSequenceWithIndexNoIndexVarCheckSideEffects.kt	skip	LANGUAGE	
 controlStructures/forInSequenceWithIndex/forInSequenceWithIndexWithExplicitlyTypedIndexVariable.kt	skip	LANGUAGE	
 controlStructures/forInSmartCastToArray.kt	pass		
-controlStructures/forLoopMemberExtensionAll.kt	check error	for-loop range must have an '_' method	forLoopMemberExtensionAll.kt:14: for-loop range must have an 'iterator()' method
-controlStructures/forLoopMemberExtensionHasNext.kt	check error	the iterator of the for-loop range has no '_' or '_' method	forLoopMemberExtensionHasNext.kt:14: the iterator of the for-loop range has no 'hasNext()' or 'next()' method
-controlStructures/forLoopMemberExtensionNext.kt	check error	the iterator of the for-loop range has no '_' or '_' method	forLoopMemberExtensionNext.kt:14: the iterator of the for-loop range has no 'hasNext()' or 'next()' method
+controlStructures/forLoopMemberExtensionAll.kt	pass		
+controlStructures/forLoopMemberExtensionHasNext.kt	pass		
+controlStructures/forLoopMemberExtensionNext.kt	pass		
 controlStructures/forNullableCharInString.kt	pass		
 controlStructures/forUserType.kt	pass		
 controlStructures/ifConst1.kt	pass		
@@ -1728,7 +1728,7 @@ coroutines/defaultParametersInSuspend.kt	pass
 coroutines/degenerate1.kt	pass		
 coroutines/degenerate2.kt	pass		
 coroutines/delegatedSuspendMember.kt	pass		
-coroutines/deserializedSuspendFunctionProperty.kt	codegen error	code generation: no metadata for type <error>	/tmp/claude-0/kc-conformance/1729/m0/src/m1.kt: code generation failed: no metadata for type <error>
+coroutines/deserializedSuspendFunctionProperty.kt	codegen error	code generation: no metadata for type <error>	/tmp/claude-0/-home-user-kotlin-compiler-go/d9889070-30af-5b94-9c44-377c669be94d/scratchpad/tmp/kc-conformance/1729/m0/src/m1.kt: code generation failed: no metadata for type <error>
 coroutines/dispatchResume.kt	pass		
 coroutines/doubleColonExpressionsGenerationInBuilderInference.kt	pass		
 coroutines/emptyClosure.kt	pass		
@@ -1964,7 +1964,7 @@ coroutines/intrinsicSemantics/startCoroutineUninterceptedOrReturnInterception.kt
 coroutines/intrinsicSemantics/suspendCoroutineUninterceptedOrReturn.kt	pass		
 coroutines/iterateOverArray.kt	pass		
 coroutines/kt12958.kt	pass		
-coroutines/kt15016.kt	codegen error	code generation: a suspension point in the arguments of a constructor call	/tmp/claude-0/kc-conformance/1965/m0/src/main.kt: code generation failed: a suspension point in the arguments of a constructor call
+coroutines/kt15016.kt	codegen error	code generation: a suspension point in the arguments of a constructor call	/tmp/claude-0/-home-user-kotlin-compiler-go/d9889070-30af-5b94-9c44-377c669be94d/scratchpad/tmp/kc-conformance/1965/m0/src/main.kt: code generation failed: a suspension point in the arguments of a constructor call
 coroutines/kt15017.kt	pass		
 coroutines/kt15930.kt	pass		
 coroutines/kt21080.kt	pass		
@@ -2003,7 +2003,7 @@ coroutines/localDelegate.kt	pass
 coroutines/localFunctions/named/callTopLevelFromLocal.kt	pass		
 coroutines/localFunctions/named/capturedParameters.kt	pass		
 coroutines/localFunctions/named/capturedVariables.kt	pass		
-coroutines/localFunctions/named/defaultArgument.kt	codegen error	code generation: operand stack underflow at offset n	/tmp/claude-0/kc-conformance/2004/m0/src/defaultArgument.kt: code generation failed: DefaultArgumentKt.doAction$run$default: operand stack underflow at offset 24
+coroutines/localFunctions/named/defaultArgument.kt	codegen error	code generation: operand stack underflow at offset n	/tmp/claude-0/-home-user-kotlin-compiler-go/d9889070-30af-5b94-9c44-377c669be94d/scratchpad/tmp/kc-conformance/2004/m0/src/defaultArgument.kt: code generation failed: DefaultArgumentKt.doAction$run$default: operand stack underflow at offset 24
 coroutines/localFunctions/named/extension.kt	pass		
 coroutines/localFunctions/named/infix.kt	pass		
 coroutines/localFunctions/named/insideLambda.kt	pass		
@@ -2043,7 +2043,7 @@ coroutines/returnsUnit1.kt	pass
 coroutines/simple.kt	pass		
 coroutines/simple2.kt	pass		
 coroutines/simpleException.kt	pass		
-coroutines/simpleSuspendCallableReference.kt	codegen error	code generation: operand stack underflow at offset n	/tmp/claude-0/kc-conformance/2044/m0/src/simpleSuspendCallableReference.kt: code generation failed: SimpleSuspendCallableReferenceKt$box$1.invokeSuspend: operand stack underflow at offset 262
+coroutines/simpleSuspendCallableReference.kt	codegen error	code generation: operand stack underflow at offset n	/tmp/claude-0/-home-user-kotlin-compiler-go/d9889070-30af-5b94-9c44-377c669be94d/scratchpad/tmp/kc-conformance/2044/m0/src/simpleSuspendCallableReference.kt: code generation failed: SimpleSuspendCallableReferenceKt$box$1.invokeSuspend: operand stack underflow at offset 262
 coroutines/simpleWithDefaultValue.kt	pass		
 coroutines/simpleWithHandleResult.kt	pass		
 coroutines/stackUnwinding/exception.kt	pass		
@@ -2863,7 +2863,7 @@ extensionProperties/inClassWithPrivateGetter.kt	pass
 extensionProperties/inClassWithPrivateSetter.kt	pass		
 extensionProperties/inClassWithSetter.kt	pass		
 extensionProperties/kt46952.kt	pass		
-extensionProperties/kt9897.kt	codegen error	code generation: operand stack underflow at offset n	/tmp/claude-0/kc-conformance/2864/m0/src/kt9897.kt: code generation failed: Test.changeLong: operand stack underflow at offset 15
+extensionProperties/kt9897.kt	codegen error	code generation: operand stack underflow at offset n	/tmp/claude-0/-home-user-kotlin-compiler-go/d9889070-30af-5b94-9c44-377c669be94d/scratchpad/tmp/kc-conformance/2864/m0/src/kt9897.kt: code generation failed: Test.changeLong: operand stack underflow at offset 15
 extensionProperties/kt9897_topLevel.kt	pass		
 extensionProperties/nonAbstractInInterface.kt	pass		
 extensionProperties/propertyWithExtensionNestedType.kt	pass		
@@ -3117,7 +3117,7 @@ functions/invoke/kt3772.kt	pass
 functions/invoke/kt3821invokeOnThis.kt	pass		
 functions/invoke/kt3822invokeOnThis.kt	pass		
 functions/kt1038.kt	pass		
-functions/kt1199.kt	check error	for-loop range must have an '_' method	kt1199.kt:23: for-loop range must have an 'iterator()' method
+functions/kt1199.kt	pass		
 functions/kt1413.kt	pass		
 functions/kt1649_1.kt	pass		
 functions/kt1649_2.kt	pass		
@@ -3153,13 +3153,13 @@ functions/localFunctions/kt2895.kt	pass
 functions/localFunctions/kt3308.kt	pass		
 functions/localFunctions/kt3978.kt	pass		
 functions/localFunctions/kt3978_2.kt	pass		
-functions/localFunctions/kt4119.kt	check error	operator '_' cannot be applied to Int? and Int	kt4119.kt:8: operator '+' cannot be applied to Int? and Int
+functions/localFunctions/kt4119.kt	pass		
 functions/localFunctions/kt4119_2.kt	pass		
 functions/localFunctions/kt4514.kt	pass		
 functions/localFunctions/kt4777.kt	pass		
 functions/localFunctions/kt4783.kt	pass		
 functions/localFunctions/kt4784.kt	pass		
-functions/localFunctions/kt4989.kt	check error	operator '_' cannot be applied to Int?	kt4989.kt:19: operator '++' cannot be applied to Int?
+functions/localFunctions/kt4989.kt	pass		
 functions/localFunctions/liftThroughFunObjectLambda.kt	pass		
 functions/localFunctions/localExtensionOnNullableParameter.kt	pass		
 functions/localFunctions/localFunctionInConstructor.kt	pass		
@@ -3184,8 +3184,8 @@ functions/typeParametersInLocalFunction.kt	pass
 ieee754/anyCastToPrimitiveCompareTo1.kt	pass		
 ieee754/anyCastToPrimitiveCompareTo2.kt	pass		
 ieee754/anyToReal.kt	pass		
-ieee754/asComparableToDouble.kt	check error	operator '_' cannot be applied to Double and Comparable<Float>	asComparableToDouble.kt:8: operator '==' cannot be applied to Double and Comparable<Float>
-ieee754/asComparableToDouble_properIeeeComparisons.kt	check error	operator '_' cannot be applied to Double and Comparable<Float>	asComparableToDouble_properIeeeComparisons.kt:8: operator '==' cannot be applied to Double and Comparable<Float>
+ieee754/asComparableToDouble.kt	pass		
+ieee754/asComparableToDouble_properIeeeComparisons.kt	pass		
 ieee754/comparableToTWithT_properIeeeComparisons.kt	skip	LANGUAGE	
 ieee754/comparableTypeCast.kt	pass		
 ieee754/dataClass.kt	pass		
@@ -3213,16 +3213,16 @@ ieee754/nullableFloatNotEquals.kt	pass
 ieee754/nullableIntEquals.kt	pass		
 ieee754/safeCall.kt	pass		
 ieee754/smartCastOnWhenSubjectAfterCheckInBranch_properIeeeComparisons.kt	pass		
-ieee754/smartCastToDifferentTypesWithNumericPromotion_properIeeeComparisons.kt	check error	operator '_' cannot be applied to Double? and Int?	smartCastToDifferentTypesWithNumericPromotion_properIeeeComparisons.kt:1: operator '==' cannot be applied to Double? and Int?
-ieee754/smartCastToDifferentTypes_properIeeeComparisons.kt	check error	operator '_' cannot be applied to Double and Float	smartCastToDifferentTypes_properIeeeComparisons.kt:1: operator '==' cannot be applied to Double and Float
-ieee754/smartCastToDoubleAndComparableToDouble.kt	check error	operator '_' cannot be applied to Double and Float	smartCastToDoubleAndComparableToDouble.kt:8: operator '==' cannot be applied to Double and Float
+ieee754/smartCastToDifferentTypesWithNumericPromotion_properIeeeComparisons.kt	pass		
+ieee754/smartCastToDifferentTypes_properIeeeComparisons.kt	pass		
+ieee754/smartCastToDoubleAndComparableToDouble.kt	pass		
 ieee754/smartCastToInt.kt	pass		
 ieee754/whenNoSubject_properIeeeComparisons.kt	pass		
 ieee754/whenNullableSmartCast.kt	pass		
 ieee754/when_properIeeeComparisons.kt	pass		
 increment/argumentWithSideEffects.kt	pass		
 increment/arrayElement.kt	pass		
-increment/assignPlusOnSmartCast.kt	check error	operator '_' cannot be applied to Int? and Int	assignPlusOnSmartCast.kt:5: operator '+=' cannot be applied to Int? and Int
+increment/assignPlusOnSmartCast.kt	pass		
 increment/augmentedAssignmentWithComplexRhs.kt	pass		
 increment/classNaryGetSet.kt	pass		
 increment/classVarargGetSet.kt	pass		
@@ -3233,19 +3233,19 @@ increment/genericClassWithGetSet.kt	pass
 increment/kt36956.kt	skip	LANGUAGE	
 increment/memberExtOnLong.kt	pass		
 increment/mutableListElement.kt	pass		
-increment/nullable.kt	check error	operator '_' cannot be applied to Byte?	nullable.kt:20: operator '--' cannot be applied to Byte?
-increment/postfixIncrementDoubleSmartCast.kt	check error	operator '_' cannot be applied to Int?	postfixIncrementDoubleSmartCast.kt:7: operator '++' cannot be applied to Int?
+increment/nullable.kt	pass		
+increment/postfixIncrementDoubleSmartCast.kt	pass		
 increment/postfixIncrementOnClass.kt	pass		
 increment/postfixIncrementOnClassSmartCast.kt	pass		
-increment/postfixIncrementOnShortSmartCast.kt	check error	operator '_' cannot be applied to Short?	postfixIncrementOnShortSmartCast.kt:5: operator '++' cannot be applied to Short?
-increment/postfixIncrementOnSmartCast.kt	check error	operator '_' cannot be applied to Int?	postfixIncrementOnSmartCast.kt:6: operator '++' cannot be applied to Int?
+increment/postfixIncrementOnShortSmartCast.kt	pass		
+increment/postfixIncrementOnSmartCast.kt	pass		
 increment/postfixNullableClassIncrement.kt	pass		
-increment/postfixNullableIncrement.kt	check error	operator '_' cannot be applied to Int?	postfixNullableIncrement.kt:7: operator '++' cannot be applied to Int?
+increment/postfixNullableIncrement.kt	pass		
 increment/prefixIncrementOnClass.kt	pass		
 increment/prefixIncrementOnClassSmartCast.kt	pass		
-increment/prefixIncrementOnSmartCast.kt	check error	operator '_' cannot be applied to Int?	prefixIncrementOnSmartCast.kt:5: operator '++' cannot be applied to Int?
+increment/prefixIncrementOnSmartCast.kt	pass		
 increment/prefixNullableClassIncrement.kt	pass		
-increment/prefixNullableIncrement.kt	check error	operator '_' cannot be applied to Int?	prefixNullableIncrement.kt:7: operator '++' cannot be applied to Int?
+increment/prefixNullableIncrement.kt	pass		
 inference/approximateNonTopLevelCapturedTypes.kt	pass		
 inference/builderInferenceLeakingVariable.kt	pass		
 inference/capturedSelfInsideIntersection.kt	check error	cannot infer type for type parameter '_'. Specify it explicitly.	lib.kt:18: cannot infer type for type parameter 'T'. Specify it explicitly.
@@ -3559,7 +3559,7 @@ inline/inline20.kt	pass
 inline/inline21.kt	pass		
 inline/inline22.kt	pass		
 inline/inline23.kt	pass		
-inline/inline24.kt	codegen error	code generation: operand stack underflow at offset n	/tmp/claude-0/kc-conformance/3560/m0/src/lib.kt: code generation failed: LibKt.baz$default: operand stack underflow at offset 10
+inline/inline24.kt	codegen error	code generation: operand stack underflow at offset n	/tmp/claude-0/-home-user-kotlin-compiler-go/d9889070-30af-5b94-9c44-377c669be94d/scratchpad/tmp/kc-conformance/3560/m0/src/lib.kt: code generation failed: LibKt.baz$default: operand stack underflow at offset 10
 inline/inline25.kt	pass		
 inline/inline26.kt	pass		
 inline/inline3.kt	pass		
@@ -4051,8 +4051,8 @@ inlineClasses/funInterface/argumentICGeneric2.kt	pass
 inlineClasses/funInterface/argumentResult.kt	pass		
 inlineClasses/funInterface/kt51121.kt	pass		
 inlineClasses/funInterface/kt51121_2.kt	pass		
-inlineClasses/funInterface/mangledSamWrappers.kt	codegen error	code generation: operand stack underflow at offset n	/tmp/claude-0/kc-conformance/4052/m0/src/lib.kt: code generation failed: LibKt.g$default: operand stack underflow at offset 7
-inlineClasses/funInterface/mangledSamWrappersGeneric.kt	codegen error	code generation: operand stack underflow at offset n	/tmp/claude-0/kc-conformance/4053/m0/src/lib.kt: code generation failed: LibKt.g$default: operand stack underflow at offset 7
+inlineClasses/funInterface/mangledSamWrappers.kt	codegen error	code generation: operand stack underflow at offset n	/tmp/claude-0/-home-user-kotlin-compiler-go/d9889070-30af-5b94-9c44-377c669be94d/scratchpad/tmp/kc-conformance/4052/m0/src/lib.kt: code generation failed: LibKt.g$default: operand stack underflow at offset 7
+inlineClasses/funInterface/mangledSamWrappersGeneric.kt	codegen error	code generation: operand stack underflow at offset n	/tmp/claude-0/-home-user-kotlin-compiler-go/d9889070-30af-5b94-9c44-377c669be94d/scratchpad/tmp/kc-conformance/4053/m0/src/lib.kt: code generation failed: LibKt.g$default: operand stack underflow at offset 7
 inlineClasses/funInterface/returnIC.kt	pass		
 inlineClasses/funInterface/returnICGeneric.kt	pass		
 inlineClasses/funInterface/returnICGeneric2.kt	pass		
@@ -4546,10 +4546,10 @@ innerClass/getOuterVal.kt	pass
 innerClass/inCallableReferenceLHS.kt	skip	LANGUAGE	
 innerClass/inCallableReferenceLHSclassReference.kt	skip	LANGUAGE	
 innerClass/inCallableReferenceLHSwithGenericFun.kt	skip	LANGUAGE	
-innerClass/inheritanceMultipleModules1.kt	codegen error	code generation: operand stack underflow at offset n	/tmp/claude-0/kc-conformance/4547/m1/src/main.kt: code generation failed: Bar$BarInner.<init>: operand stack underflow at offset 12
+innerClass/inheritanceMultipleModules1.kt	codegen error	code generation: operand stack underflow at offset n	/tmp/claude-0/-home-user-kotlin-compiler-go/d9889070-30af-5b94-9c44-377c669be94d/scratchpad/tmp/kc-conformance/4547/m1/src/main.kt: code generation failed: Bar$BarInner.<init>: operand stack underflow at offset 12
 innerClass/inheritanceMultipleModules2.kt	check error	unresolved reference: _	main.kt:2: unresolved reference: Middle
 innerClass/inheritanceMultipleModules3.kt	check error	unresolved reference: _	main.kt:5: unresolved reference: Middle
-innerClass/multipleModules.kt	codegen error	code generation: operand stack underflow at offset n	/tmp/claude-0/kc-conformance/4550/m1/src/main.kt: code generation failed: B$Inner.<init>: operand stack underflow at offset 12
+innerClass/multipleModules.kt	codegen error	code generation: operand stack underflow at offset n	/tmp/claude-0/-home-user-kotlin-compiler-go/d9889070-30af-5b94-9c44-377c669be94d/scratchpad/tmp/kc-conformance/4550/m1/src/main.kt: code generation failed: B$Inner.<init>: operand stack underflow at offset 12
 innerClass/noPrimaryConstructor.kt	pass		
 innerClass/qualifiedThis.kt	pass		
 innerClass/secondaryConstructor.kt	pass		
@@ -4620,7 +4620,7 @@ intrinsics/incWithLabel.kt	skip	LANGUAGE
 intrinsics/kt10131.kt	pass		
 intrinsics/kt10131a.kt	pass		
 intrinsics/kt12125.kt	pass		
-intrinsics/kt12125_2.kt	check error	operator '_' cannot be applied to Byte?	kt12125_2.kt:5: operator '--' cannot be applied to Byte?
+intrinsics/kt12125_2.kt	pass		
 intrinsics/kt12125_inc.kt	pass		
 intrinsics/kt12125_inc_2.kt	pass		
 intrinsics/kt52163_boolean.kt	pass		
@@ -4628,7 +4628,7 @@ intrinsics/kt52163_doubleCompareToInt.kt	pass
 intrinsics/kt8666.kt	check error	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _	kt8666.kt:10: only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type String?
 intrinsics/longRangeWithExplicitDot.kt	pass		
 intrinsics/nonShortCircuitAnd.kt	pass		
-intrinsics/nullPlusString.kt	check error	operator '_' cannot be applied to Nothing? and String	nullPlusString.kt:4: operator '+' cannot be applied to Nothing? and String
+intrinsics/nullPlusString.kt	pass		
 intrinsics/prefixIncDec.kt	pass		
 intrinsics/rangeFromCollection.kt	pass		
 intrinsics/stringFromCollection.kt	pass		
@@ -4806,11 +4806,11 @@ localClass/virtualCallFromConstructor.kt	exception	java.lang.NullPointerExceptio
 localClasses/anonymousObjectInExtension.kt	check error	type mismatch: inferred type is _ but _ was expected	anonymousObjectInExtension.kt:2: type mismatch: inferred type is WithCompanion but WithCompanion.Companion was expected
 localClasses/anonymousObjectInInitializer.kt	pass		
 localClasses/anonymousObjectInParameterInitializer.kt	pass		
-localClasses/capturingInDefaultConstructorParameter.kt	codegen error	code generation: operand stack underflow at offset n	/tmp/claude-0/kc-conformance/4807/m0/src/capturingInDefaultConstructorParameter.kt: code generation failed: CapturingInDefaultConstructorParameterKt$Local.<init>: operand stack underflow at offset 18
+localClasses/capturingInDefaultConstructorParameter.kt	codegen error	code generation: operand stack underflow at offset n	/tmp/claude-0/-home-user-kotlin-compiler-go/d9889070-30af-5b94-9c44-377c669be94d/scratchpad/tmp/kc-conformance/4807/m0/src/capturingInDefaultConstructorParameter.kt: code generation failed: CapturingInDefaultConstructorParameterKt$Local.<init>: operand stack underflow at offset 18
 localClasses/closureOfInnerLocalClass.kt	pass		
 localClasses/closureOfLambdaInLocalClass.kt	pass		
 localClasses/closureWithSelfInstantiation.kt	pass		
-localClasses/defaultParameterInConstructor.kt	codegen error	code generation: operand stack underflow at offset n	/tmp/claude-0/kc-conformance/4811/m0/src/defaultParameterInConstructor.kt: code generation failed: DefaultParameterInConstructorKt$box$MyEvent.<init>: operand stack underflow at offset 21
+localClasses/defaultParameterInConstructor.kt	codegen error	code generation: operand stack underflow at offset n	/tmp/claude-0/-home-user-kotlin-compiler-go/d9889070-30af-5b94-9c44-377c669be94d/scratchpad/tmp/kc-conformance/4811/m0/src/defaultParameterInConstructor.kt: code generation failed: DefaultParameterInConstructorKt$box$MyEvent.<init>: operand stack underflow at offset 21
 localClasses/inCallableReferenceLHS.kt	skip	LANGUAGE	
 localClasses/inExtensionFunction.kt	pass		
 localClasses/inExtensionProperty.kt	pass		
@@ -4824,7 +4824,7 @@ localClasses/kt2700.kt	pass
 localClasses/kt2873.kt	pass		
 localClasses/kt3210.kt	pass		
 localClasses/kt3389.kt	pass		
-localClasses/kt3584.kt	codegen error	code generation: operand stack underflow at offset n	/tmp/claude-0/kc-conformance/4825/m0/src/kt3584.kt: code generation failed: Kt3584Kt$box$A.<init>: operand stack underflow at offset 18
+localClasses/kt3584.kt	codegen error	code generation: operand stack underflow at offset n	/tmp/claude-0/-home-user-kotlin-compiler-go/d9889070-30af-5b94-9c44-377c669be94d/scratchpad/tmp/kc-conformance/4825/m0/src/kt3584.kt: code generation failed: Kt3584Kt$box$A.<init>: operand stack underflow at offset 18
 localClasses/kt4174.kt	pass		
 localClasses/kt45383.kt	pass		
 localClasses/localClass.kt	pass		
@@ -5233,7 +5233,7 @@ objects/compoundAssignmentToExtensionPropertyImportedFromObject.kt	pass
 objects/compoundAssignmentToObjectFromCall.kt	pass		
 objects/compoundAssignmentToPropertyImportedFromObject.kt	pass		
 objects/compoundAssignmentToPropertyWithQualifier.kt	pass		
-objects/flist.kt	check error	for-loop range must have an '_' method	flist.kt:49: for-loop range must have an 'iterator()' method
+objects/flist.kt	pass		
 objects/initializationOrder.kt	pass		
 objects/initializationOrderConsts.kt	pass		
 objects/initializerBlockResetToDefault.kt	pass		
@@ -5309,7 +5309,7 @@ operatorConventions/augmentedAssignmentInInitializer.kt	skip	LANGUAGE
 operatorConventions/augmentedAssignmentWithArrayLHS.kt	pass		
 operatorConventions/compareTo/boolean.kt	pass		
 operatorConventions/compareTo/comparable.kt	pass		
-operatorConventions/compareTo/customCompareTo.kt	check error	operator '_' cannot be applied to Long? and Long?	customCompareTo.kt:28: operator '>' cannot be applied to Long? and Long?
+operatorConventions/compareTo/customCompareTo.kt	pass		
 operatorConventions/compareTo/doubleInt.kt	pass		
 operatorConventions/compareTo/doubleLong.kt	pass		
 operatorConventions/compareTo/extensionArray.kt	pass		
@@ -5320,7 +5320,7 @@ operatorConventions/compareTo/longDouble.kt	pass
 operatorConventions/compareTo/longInt.kt	pass		
 operatorConventions/genericArrayAccessCall.kt	pass		
 operatorConventions/incDecOnObject.kt	pass		
-operatorConventions/infixFunctionOverBuiltinMember.kt	wrong result	fail n	fail 3
+operatorConventions/infixFunctionOverBuiltinMember.kt	wrong result	fail n	fail 1
 operatorConventions/kt14201.kt	pass		
 operatorConventions/kt14201_2.kt	pass		
 operatorConventions/kt14227.kt	pass		
@@ -5328,7 +5328,7 @@ operatorConventions/kt20387.kt	pass
 operatorConventions/kt4152.kt	pass		
 operatorConventions/kt44647.kt	pass		
 operatorConventions/kt45022.kt	pass		
-operatorConventions/kt4987.kt	check error	operator '_' cannot be applied to Int?	kt4987.kt:4: operator '++' cannot be applied to Int?
+operatorConventions/kt4987.kt	pass		
 operatorConventions/nestedMaps.kt	pass		
 operatorConventions/operatorSetLambda.kt	pass		
 operatorConventions/overloadedSet.kt	pass		
@@ -5459,18 +5459,18 @@ primitiveTypes/nullableAsIndex.kt	pass
 primitiveTypes/nullableCharBoolean.kt	pass		
 primitiveTypes/numberEqualsHashCodeToString.kt	pass		
 primitiveTypes/numberToChar/abstractMethodInSuperinterface.kt	check error	class '_' is not abstract and does not implement abstract member '_'	abstractMethodInSuperinterface.kt:8: class 'MyNumber' is not abstract and does not implement abstract member 'intValue'
-primitiveTypes/numberToChar/fakeOverride.kt	check error	class '_' is not abstract and does not implement abstract member '_'	fakeOverride.kt:4: class 'MyNumber' is not abstract and does not implement abstract member 'floatValue'
+primitiveTypes/numberToChar/fakeOverride.kt	check error	class '_' is not abstract and does not implement abstract member '_'	fakeOverride.kt:4: class 'MyNumber' is not abstract and does not implement abstract member 'intValue'
 primitiveTypes/numberToChar/simple.kt	check error	class '_' is not abstract and does not implement abstract member '_'	simple.kt:4: class 'MyNumber' is not abstract and does not implement abstract member 'intValue'
 primitiveTypes/numberToChar/superCallToClass.kt	check error	class '_' is not abstract and does not implement abstract member '_'	superCallToClass.kt:4: class 'MyNumber' is not abstract and does not implement abstract member 'intValue'
-primitiveTypes/numberToChar/superCallToInterface.kt	check error	class '_' is not abstract and does not implement abstract member '_'	superCallToInterface.kt:8: class 'MyNumber' is not abstract and does not implement abstract member 'longValue'
-primitiveTypes/numberToChar/superCallToNumber.kt	check error	class '_' is not abstract and does not implement abstract member '_'	superCallToNumber.kt:4: class 'MyNumber' is not abstract and does not implement abstract member 'intValue'
-primitiveTypes/rangeTo.kt	check error	type argument is not within its bounds: inferred type Number of type _ '_' is not a subtype of Comparable<Number>	rangeTo.kt:10: type argument is not within its bounds: inferred type Number of type parameter 'T' is not a subtype of Comparable<Number>
+primitiveTypes/numberToChar/superCallToInterface.kt	check error	class '_' is not abstract and does not implement abstract member '_'	superCallToInterface.kt:8: class 'MyNumber' is not abstract and does not implement abstract member 'intValue'
+primitiveTypes/numberToChar/superCallToNumber.kt	check error	class '_' is not abstract and does not implement abstract member '_'	superCallToNumber.kt:4: class 'MyNumber' is not abstract and does not implement abstract member 'longValue'
+primitiveTypes/rangeTo.kt	pass		
 primitiveTypes/reassignDestructured.kt	skip	LANGUAGE	
 primitiveTypes/smartCastOnNullableDoubleIdentityEquals.kt	pass		
 primitiveTypes/stringEqualsHashCodeToString.kt	pass		
 primitiveTypes/substituteIntForGeneric.kt	pass		
 primitiveTypes/unboxComparable.kt	pass		
-primitiveTypes/virtualCallToCustomNumber.kt	check error	class '_' is not abstract and does not implement abstract member '_'	virtualCallToCustomNumber.kt:4: class 'FortyTwo' is not abstract and does not implement abstract member 'doubleValue'
+primitiveTypes/virtualCallToCustomNumber.kt	check error	class '_' is not abstract and does not implement abstract member '_'	virtualCallToCustomNumber.kt:4: class 'FortyTwo' is not abstract and does not implement abstract member 'intValue'
 private/arrayConvention.kt	pass		
 private/kt9855.kt	pass		
 privateConstructors/base.kt	pass		
@@ -5832,7 +5832,7 @@ ranges/forInProgressionWithIndex/forInWithIndexWithDestructuringInLoop.kt	skip	L
 ranges/forInProgressionWithIndex/forInWithIndexWithIndex.kt	skip	LANGUAGE	
 ranges/forInProgressionWithIndex/kt42909.kt	skip	LANGUAGE	
 ranges/forInRangeLiteralWithMixedTypeBounds.kt	pass		
-ranges/forInRangeWithImplicitReceiver.kt	check error	for-loop range must have an '_' method	forInRangeWithImplicitReceiver.kt:7: for-loop range must have an 'iterator()' method
+ranges/forInRangeWithImplicitReceiver.kt	pass		
 ranges/forInReversed/ForInReversedReversedRange.kt	pass		
 ranges/forInReversed/forInReversedArrayIndices.kt	pass		
 ranges/forInReversed/forInReversedCharSequenceIndices.kt	pass		
@@ -5868,7 +5868,7 @@ ranges/forInUntil/forInUntilLongMinValueNonConst.kt	pass
 ranges/forInUntil/forIntInIntUntilSmartcastInt.kt	pass		
 ranges/forInUntil/kt42533.kt	pass		
 ranges/forIntRange.kt	pass		
-ranges/forNullableIntInRangeWithImplicitReceiver.kt	check error	for-loop range must have an '_' method	forNullableIntInRangeWithImplicitReceiver.kt:9: for-loop range must have an 'iterator()' method
+ranges/forNullableIntInRangeWithImplicitReceiver.kt	pass		
 ranges/forWithPossibleOverflow/forInDownToCharMinValue.kt	pass		
 ranges/forWithPossibleOverflow/forInDownToCharMinValueReversed.kt	pass		
 ranges/forWithPossibleOverflow/forInDownToIntMinValue.kt	pass		
@@ -6585,7 +6585,7 @@ regressions/kt51927.kt	skip	TARGET_BACKEND: NATIVE
 regressions/kt5395.kt	pass		
 regressions/kt57487.kt	pass		
 regressions/kt5786_privateWithDefault.kt	pass		
-regressions/kt5953.kt	codegen error	code generation: local n is not allocated	/tmp/claude-0/kc-conformance/6586/m0/src/kt5953.kt: code generation failed: Kt5953Kt.box: local 12 is not allocated
+regressions/kt5953.kt	codegen error	code generation: local n is not allocated	/tmp/claude-0/-home-user-kotlin-compiler-go/d9889070-30af-5b94-9c44-377c669be94d/scratchpad/tmp/kc-conformance/6586/m0/src/kt5953.kt: code generation failed: Kt5953Kt.box: local 12 is not allocated
 regressions/kt6153.kt	pass		
 regressions/kt6434.kt	skip	LANGUAGE	
 regressions/kt6434_2.kt	skip	LANGUAGE	
@@ -6856,19 +6856,19 @@ strings/constInStringTemplate.kt	pass
 strings/ea35743.kt	pass		
 strings/forInString.kt	pass		
 strings/interpolation.kt	pass		
-strings/kt13213.kt	codegen error	code generation: string constant too long	/tmp/claude-0/kc-conformance/6857/m0/src/kt13213.kt: code generation failed: string constant too long
+strings/kt13213.kt	codegen error	code generation: string constant too long	/tmp/claude-0/-home-user-kotlin-compiler-go/d9889070-30af-5b94-9c44-377c669be94d/scratchpad/tmp/kc-conformance/6857/m0/src/kt13213.kt: code generation failed: string constant too long
 strings/kt13213a.kt	pass		
 strings/kt2592.kt	pass		
 strings/kt3571.kt	pass		
 strings/kt3652.kt	pass		
-strings/kt47917.kt	codegen error	code generation: string constant too long	/tmp/claude-0/kc-conformance/6862/m0/src/kt47917.kt: code generation failed: string constant too long
+strings/kt47917.kt	codegen error	code generation: string constant too long	/tmp/claude-0/-home-user-kotlin-compiler-go/d9889070-30af-5b94-9c44-377c669be94d/scratchpad/tmp/kc-conformance/6862/m0/src/kt47917.kt: code generation failed: string constant too long
 strings/kt50140.kt	pass		
 strings/kt5389_stringBuilderGet.kt	pass		
 strings/kt5956.kt	pass		
 strings/kt86478_stringBuilderSetLength.kt	pass		
 strings/kt881.kt	pass		
-strings/kt889.kt	check error	operator '_' cannot be applied to Int and String	kt889.kt:6: operator '+' cannot be applied to Int and String
-strings/kt894.kt	check error	operator '_' cannot be applied to String? and String	kt894.kt:4: operator '+=' cannot be applied to String? and String
+strings/kt889.kt	pass		
+strings/kt894.kt	pass		
 strings/multilineStringsWithTemplates.kt	pass		
 strings/nestedConcat.kt	pass		
 strings/rawStrings.kt	pass		

@@ -127,8 +127,8 @@ Kotlin 2.4.21's tests on `kc`:
 | Box tests | Tests | Share of run |
 |:---|---:|---:|
 | run (of 7,480) | 6,483 | |
-| pass | 6,186 | 95.4% |
-| check error | 195 | 3.0% |
+| pass | 6,225 | 96.0% |
+| check error | 156 | 2.4% |
 | codegen error | 16 | 0.2% |
 | VerifyError and linkage error | 29 | 0.4% |
 | exception and wrong result | 57 | 0.9% |
@@ -137,14 +137,14 @@ Kotlin 2.4.21's tests on `kc`:
 | Diagnostics tests | Tests | Share of run |
 |:---|---:|---:|
 | run (of 10,827) | 7,200 | |
-| rejects invalid | 3,016 | 41.9% |
-| accepts valid | 2,782 | 38.6% |
-| accepts invalid | 802 | 11.1% |
-| rejects valid | 520 | 7.2% |
+| rejects invalid | 3,018 | 41.9% |
+| accepts valid | 2,792 | 38.8% |
+| accepts invalid | 800 | 11.1% |
+| rejects valid | 510 | 7.1% |
 | parse/unsupported | 79 | 1.1% |
 | crash | 1 | 0.0% |
 
-`kc` agrees with `kotlinc` on 80% of the diagnostics tests, and reports
+`kc` agrees with `kotlinc` on 81% of the diagnostics tests, and reports
 10,257 of the 18,906 expected errors (54%) on their lines. The reports
 break the failures down; the largest groups are:
 
