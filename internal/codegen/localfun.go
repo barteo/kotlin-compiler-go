@@ -90,6 +90,12 @@ func (g *gen) localFun(lf *syntax.LocalFun) {
 			g.code.Invoke(cf.INVOKESTATIC, owner, "access$"+name, d)
 		}})
 	}
+	if fd.Tailrec {
+		// After the state machine's entry, as in a member function; the
+		// captures in the frame stay the same across the jumps.
+		lg.tail = &tailrec{fd: fd, start: cf.NewLabel()}
+		lg.code.Place(lg.tail.start)
+	}
 	if fd.Body != nil {
 		lg.block(fd.Body, types.UnitType, false)
 		if lg.code.Reachable() {
@@ -130,7 +136,7 @@ func (g *gen) localDefaults(lf *syntax.LocalFun) {
 		r.Slot = lg.code.AllocLocal(desc(r.Type))
 	}
 	lg.allocFrame(lf.Frame, lc)
-	lg.fillDefaultsCont(lf.Decl.Params, f.Params, len(f.Contexts), false, nil)
+	k := lg.fillDefaultsCont(lf.Decl.Params, f.Params, len(f.Contexts), f.Suspend, nil)
 	for _, p := range f.Contexts {
 		lg.code.Local(loadOp(p.Type), p.Slot)
 	}
@@ -141,8 +147,11 @@ func (g *gen) localDefaults(lf *syntax.LocalFun) {
 	for _, p := range f.Params {
 		lg.code.Local(loadOp(p.Type), p.Slot)
 	}
+	if k >= 0 {
+		lg.code.Local(cf.ALOAD, k)
+	}
 	lg.invokeLocal(lf.Method, d)
-	lg.code.Op(returnOp(f.Ret))
+	lg.code.Op(returnOpOf(d[i+1:]))
 	lg.check()
 }
 

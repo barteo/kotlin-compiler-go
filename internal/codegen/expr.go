@@ -1732,7 +1732,7 @@ func (g *gen) ungroupedCall(x *syntax.Call) {
 		g.code.Sconst(s) // as kotlinc's, a constant
 		return
 	}
-	if t := g.tail; x.Tail && t != nil && x.Sym == t.fd.Sym && len(g.inl) == 0 && len(g.srcInl) == 0 && g.lam == nil {
+	if t := g.tail; x.Tail && t != nil && x.Sym == t.fd.Sym && len(g.inl) == 0 && len(g.srcInl) == 0 {
 		g.tailCall(x, t)
 		return
 	}

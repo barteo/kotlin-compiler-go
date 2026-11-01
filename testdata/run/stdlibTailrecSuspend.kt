@@ -68,6 +68,24 @@ tailrec suspend fun countDown(n: Int, acc: Long): Long {
 // Suspends in the tail call's arguments.
 tailrec suspend fun sumGot(n: Int, acc: Long = 0): Long = if (n == 0) acc else sumGot(n - 1, acc + get(n))
 
+// Local suspend tailrec functions: in tail form, and suspending before
+// each tail call, with a captured var.
+suspend fun localSum(n: Int): Long {
+  tailrec suspend fun go(i: Int, acc: Long = 0): Long = if (i == 0) acc else go(i - 1, acc + i)
+  return go(n)
+}
+
+suspend fun localPauses(n: Int): Int {
+  var seen = 0
+  tailrec suspend fun go(i: Int, step: Int = 1): Int {
+    if (i <= 0) return seen
+    pause()
+    seen++
+    return go(i - step)
+  }
+  return go(n, 2)
+}
+
 fun main() {
   println(drive { sum(1_000_000) })
   println(drive { 1_000_000 down 0 })
@@ -80,5 +98,8 @@ fun main() {
   println(drive { countDown(100_000, 0) })
   println(pauses)
   println(drive { sumGot(100_000) })
+  println(pauses)
+  println(drive { localSum(1_000_000) })
+  println(drive { localPauses(100_000) })
   println(pauses)
 }

@@ -120,6 +120,30 @@ class Outer {
     }
 }
 
+// Local tailrec functions: with a captured var and a default value the
+// tail call leaves out, as an extension, and in a class's method,
+// capturing this.
+fun localCount(n: Int): Int {
+    var calls = 0
+    tailrec fun go(i: Int, by: Int = 1): Int {
+        calls++
+        return if (i <= 0) calls else go(i - by)
+    }
+    return go(n, 2)
+}
+
+fun localExt(n: Int): Int {
+    tailrec fun Int.down(acc: Int): Int = if (this == 0) acc else (this - 1).down(acc + 1)
+    return n.down(0)
+}
+
+class Stepper(val step: Int) {
+    fun run(n: Int): Int {
+        tailrec fun go(i: Int, k: Int): Int = if (i <= 0) k else go(i - step, k + 1)
+        return go(n, 0)
+    }
+}
+
 fun main() {
     println(sum(1000000))
     println(gcd(1071, 462))
@@ -144,4 +168,7 @@ fun main() {
     println(Counter.count(1000000))
     println(Outer.down(1000000))
     println(Outer.downNamed(1000000))
+    println(localCount(1000000))
+    println(localExt(1000000))
+    println(Stepper(3).run(3000000))
 }
