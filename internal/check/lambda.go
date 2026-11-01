@@ -1923,6 +1923,16 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type) {
 		return
 	}
 	outerBounds(s, params)
+	if k := ft.Flex().Contexts(); l.Ref != nil && len(params) > k && s.apply(params[k]).HasVars() {
+		// An unbound reference's receiver is its first parameter's
+		// bound: T of check(Int::toString, ...) for a (T) -> R is Int.
+		if rt, ok := c.refRecvType(l.Ref); ok {
+			trial := s.clone()
+			if trial.sub(params[k], rt); trial.ok {
+				s.sub(params[k], rt)
+			}
+		}
+	}
 	// As in Kotlin, the parameter types whose variables are known are
 	// fixed first, and only the others are inferred from the body: T of
 	// transformLatest's FlowCollector<R>.(T) from its receiver.
@@ -2019,13 +2029,17 @@ func outerBounds(s *system, params []types.Type) {
 // result with the call it is passed to: xs + ys.flatMap { y -> all(y) },
 // whose all<T> gets its T from xs's elements, through flatMap's R.
 func (c *Checker) checkTail(s *system, l *syntax.Lambda, w lambdaWant, r types.Type) types.Type {
-	if !r.HasVars() || w.ret.K != types.Invalid || !endsWithCall(l.Body) {
+	if !r.HasVars() || w.ret.K != types.Invalid || l.Ref == nil && !endsWithCall(l.Body) {
 		_, bt, _ := c.checkLambda(l, w)
 		return bt
 	}
 	tail := newSystem(c)
 	savedBlock, savedSink := c.tailBlock, c.tailSink
 	c.tailBlock, c.tailSink = l.Body, tail
+	if l.Ref != nil {
+		// A reference's body, the call it makes, is built by checkRef.
+		c.tailBlock = refTail
+	}
 	_, bt, _ := c.checkLambda(l, w)
 	c.tailBlock, c.tailSink = savedBlock, savedSink
 	if len(tail.vars) == 0 && len(tail.fixups) == 0 {

@@ -429,8 +429,9 @@ func captured(arg, param, final types.Type) types.Type {
 // an Any). Those that in projections are for are parameters' types only,
 // which take a value of the projection's type, and not the result's.
 // Array<out T>.copyOf(), KClass<out T>.cast(value) and, for a
-// MutableMap<in K, in V>, set(key: K, value: V) can.
-func (c *Checker) capturable(f *types.FunSym, ext types.Type) (types.Type, bool) {
+// MutableMap<in K, in V>, set(key: K, value: V) can, and so can a
+// parameter of type T whose argument, nothing(j) reports, is Nothing.
+func (c *Checker) capturable(f *types.FunSym, ext types.Type, nothing func(param int) bool) (types.Type, bool) {
 	r := f.Recv.NonNull()
 	a := ext.Flex().NonNull()
 	if r.K != types.Class || r.A == nil {
@@ -457,8 +458,8 @@ func (c *Checker) capturable(f *types.FunSym, ext types.Type) (types.Type, bool)
 		if pa.V == types.In && f.Ret.Has(is) {
 			return a, false
 		}
-		for _, p := range f.Params {
-			if pa.V == types.In && is(p.Type) {
+		for j, p := range f.Params {
+			if pa.V == types.In && is(p.Type) || is(p.Type) && nothing(j) {
 				continue
 			}
 			if p.Type.Has(is) {
@@ -476,14 +477,24 @@ func (c *Checker) starWithin(cls *types.ClassSym, i int, tp *types.TypeParamSym)
 	if i >= len(cls.TypeParams) {
 		return len(tp.Bounds) == 0
 	}
-	own := cls.TypeParams[i].Bounds
+	cp := cls.TypeParams[i]
+	own := cp.Bounds
+	// A bound that mentions tp is the class parameter's with tp for it:
+	// T : Comparable<T> of fun <T : Comparable<T>> A3<T>.foo3() for class
+	// A3<T : Comparable<T>>.
+	self := types.Subst{tp: {T: types.ParamType(cp)}}
+	only := func(t types.Type) bool {
+		return !t.Has(func(u types.Type) bool { return u.K == types.TypeParam && u.Param() != cp })
+	}
 	for _, b := range tp.Bounds {
 		if b.HasParams() {
-			return false
+			if b = self.Apply(b); !only(b) {
+				return false
+			}
 		}
 		ok := false
 		for _, ob := range own {
-			if !ob.HasParams() && c.subtype(ob, b) {
+			if only(ob) && c.subtype(ob, b) {
 				ok = true
 			}
 		}
@@ -867,6 +878,9 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			best = maximal[i]
 		}
 		if best == nil && len(match) > 1 {
+			best = c.byRefShape(x, match)
+		}
+		if best == nil && len(match) > 1 {
 			best = c.byLambdaResult(x, match)
 		}
 		if best == nil {
@@ -930,7 +944,18 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 		recvParam := best.sub.ApplyIn(f.Recv)
 		sys.fixups = append(sys.fixups, func(s *system) {
 			want := s.final(recvParam)
-			if view, ok := c.capturable(f, best.ext); ok {
+			nothing := func(j int) bool {
+				// An argument of type Nothing, as a reference A<*>::foo
+				// passes for x: T of fun <T> A<T>.foo(x: T), fits a
+				// capture.
+				for i, t := range ts {
+					if (best.amap == nil && i == j || best.amap != nil && best.amap[i] == j) && t.K == types.Nothing && !t.N {
+						return true
+					}
+				}
+				return false
+			}
+			if view, ok := c.capturable(f, best.ext, nothing); ok {
 				want = captured(view, recvParam, want)
 			}
 			c.assignable(best.ext, want, x.Fun.Pos())
@@ -990,6 +1015,46 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 	}
 	sys.finish()
 	return c.unitResult(f.Ret, sys.final(ret))
+}
+
+// byRefShape chooses among candidates the only one whose parameters take
+// the types of the arguments that are references ::f to the only function
+// of their name (see eagerRefType), nil if none or several do: bar(::f)
+// for fun f(i: Int) is bar(f: (Int) -> Unit), not bar(f: () -> Unit). A
+// function's result fits a parameter whose result is Unit.
+func (c *Checker) byRefShape(x *syntax.Call, match []*candidate) *candidate {
+	refs := map[int]types.Type{}
+	for i, a := range x.Args {
+		if l, ok := a.(*syntax.Lambda); ok {
+			if ft, ok := c.eagerRefType(l); ok {
+				refs[i] = ft
+			}
+		}
+	}
+	if len(refs) == 0 {
+		return nil
+	}
+	var best *candidate
+	for _, cd := range match {
+		trial := cd.sys.clone()
+		for i, ft := range refs {
+			pt := trial.apply(cd.params[i])
+			if _, r, ok := funcParts(pt); ok && r.K == types.Unit && !r.N {
+				if ps, _, ok := funcParts(ft); ok {
+					ft = c.u.ext.funcs.Type(ps, r)
+				}
+			}
+			trial.sub(ft, pt)
+		}
+		if !trial.ok {
+			continue
+		}
+		if best != nil {
+			return nil
+		}
+		best = cd
+	}
+	return best
 }
 
 // eagerRefType returns the type of a reference ::f to a local or top-level
