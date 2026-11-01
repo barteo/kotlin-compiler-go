@@ -22,6 +22,14 @@ fun smart(s: String?, t: String?): Int {
 
 fun arith(a: Int?): Int = a + 1 // ERROR operator '+' cannot be applied to Int? and Int
 
+fun incNullable(a: Int?) {
+    var x = a
+    x++ // ERROR operator '++' cannot be applied to Int?
+    x += 1 // ERROR operator '+=' cannot be applied to Int? and Int
+    var s: String? = "a"
+    s -= "b" // ERROR operator '-=' cannot be applied to String? and String
+}
+
 fun recursive() = recursive() // ERROR recursive problem
 
 // A var that a local function assigns, as kotlinc has it: in the function,

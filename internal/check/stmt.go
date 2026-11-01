@@ -932,6 +932,20 @@ func (c *Checker) assign(s *syntax.Assign) {
 		}
 		return
 	}
+	if rt := c.targetCast(s.Target, tt); mutable && builtinOperand(rt) && !classBound(rt) &&
+		(rt != tt || s.Op == syntax.PLUS_EQ && types.MayBeNull(rt) && !rt.P && rt.NonNull() == types.StringType) {
+		// x op= v on an x that a smart cast narrows, an Int? known to be
+		// an Int, or on a String?, whose + is String?.plus: x = x op v,
+		// which reads x with its smart-cast type and narrows it to the
+		// result's.
+		op := arithOf(s.Op)
+		s.Stmts, _ = c.reassign(s.P, s.Target, tt, func(read syntax.Expr) syntax.Expr {
+			b := &syntax.Binary{Op: op, X: read, Y: s.Value}
+			b.P = s.P
+			return b
+		})
+		return
+	}
 	if v != nil {
 		defer c.reset([]*types.VarSym{v})
 		c.assignedNested(v, v.Type)
@@ -1063,10 +1077,15 @@ func (c *Checker) incDec(u *syntax.Unary, value bool) types.Type {
 		}
 	}
 	u.X = c.objectTarget(c.thisJavaTarget(c.importTarget(c.recvTarget(u.X))))
-	t, _ := c.lvalue(u.X)
+	t, mutable := c.lvalue(u.X)
 	if f, _ := contextAccessor(u.X, false); !builtinIncDec(t) || f != nil {
 		// Also a property with context parameters', whose accessors
 		// take them: x = x.inc().
+		return result(c.incDecOp(u, t, keep))
+	}
+	if rt := c.targetCast(u.X, t); mutable && rt != t && builtinIncDec(rt) && !types.MayBeNull(rt) {
+		// x++ on an x that a smart cast narrows, an Int? known to be an
+		// Int: x = x.inc() reads x as an Int, and the value of x++ is one.
 		return result(c.incDecOp(u, t, keep))
 	}
 	if t.K != types.Invalid && !t.Flex().IsNumeric() && t.Flex() != types.CharType {
@@ -1074,6 +1093,16 @@ func (c *Checker) incDec(u *syntax.Unary, value bool) types.Type {
 		return types.InvalidType
 	}
 	return t
+}
+
+// targetCast returns the type that a smart cast gives the target x of
+// x++ or x op= v, a stable variable declared of type t, or t.
+func (c *Checker) targetCast(x syntax.Expr, t types.Type) types.Type {
+	k, ok := c.narrowKeyOf(x)
+	if !ok || k.t == t || k.t.K == types.Invalid || k.t.K == types.Null || k.t.K == types.Nothing || !c.subtype(k.t, t) {
+		return t
+	}
+	return k.t
 }
 
 // builtinIncDec reports whether x++ on a value of type t is built in, as
