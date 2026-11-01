@@ -54,10 +54,10 @@ func (c *Checker) declareInner(d *syntax.ClassDecl, sym, outer *types.ClassSym) 
 			return &types.VarSym{Name: v.Name, Kind: types.Local, Type: v.Type, OuterOf: rebase(v.OuterOf), OuterCls: v.OuterCls}
 		}
 		for _, r := range ctx.recvs {
-			recvs = append(recvs, implicitRecv{sym: rebase(r.sym), label: r.label, outer: true})
+			recvs = append(recvs, implicitRecv{sym: rebase(r.sym), label: r.label, outer: true, class: r.class})
 		}
 	}
-	recvs = append(recvs, implicitRecv{sym: this, label: name[strings.LastIndexByte(name, '.')+1:], outer: true})
+	recvs = append(recvs, implicitRecv{sym: this, label: name[strings.LastIndexByte(name, '.')+1:], outer: true, class: true})
 	c.anon[sym] = &anonCtx{scope: &scope{}, recvs: recvs}
 }
 

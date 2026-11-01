@@ -2063,6 +2063,9 @@ type implicitRecv struct {
 	// members: the enclosing class's this and lambdas' receivers, which
 	// come after the object's own members.
 	outer bool
+	// class is set on the enclosing class's this among those, which,
+	// unlike a lambda's receiver, may use members private to this.
+	class bool
 	// at is set on a context parameter, in state.ctxs: the number of
 	// receivers declared before it, which it is nearer than. outer is set
 	// on those around an object expression or a local class too.

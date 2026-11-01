@@ -496,6 +496,9 @@ func (c *Checker) bindRef(r *syntax.CallableRef, t types.Type) {
 	c.refCount++
 	r.BoundExpr = r.X
 	c.scope.declare(r.Bound)
+	if th, ok := r.X.(*syntax.This); ok && c.classThis(th) {
+		c.thisRefs = append(c.thisRefs, r.Bound)
+	}
 }
 
 // refTarget finds the only function a reference without an expected type

@@ -1,6 +1,8 @@
 package check
 
 import (
+	"slices"
+
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
 	"github.com/barteo/kotlin-compiler-go/internal/types"
 )
@@ -340,4 +342,40 @@ func (c *Checker) privateElsewhere(k classifier) bool {
 	}
 	v, ok := declVisibility(k.alias.Decl)
 	return ok && v == syntax.Private && k.alias.Outer == nil && !c.canSee(v, nil, c.aliasFileClass(k.alias))
+}
+
+// checkPrivateToThis reports a use of a member of owner named name that
+// is private to this on a receiver other than this: on another instance
+// of its class, or on a lambda's receiver. x is the receiver, or nil for
+// the implicit this of the class the code is in.
+func (c *Checker) checkPrivateToThis(x syntax.Expr, name string, owner *types.ClassSym, p syntax.Pos) {
+	switch x := x.(type) {
+	case nil:
+		return
+	case *syntax.This:
+		if c.classThis(x) {
+			return
+		}
+	case *syntax.Ident:
+		if slices.Contains(c.thisRefs, x.Sym) {
+			return // the receiver of this::p
+		}
+	}
+	if c.file.SuppressInvisible {
+		return
+	}
+	c.errorf(p, "cannot access '%s': it is %s'%s'", name, privateToThisMsg, owner.DisplayName())
+}
+
+// privateToThisMsg is in checkPrivateToThis's message.
+const privateToThisMsg = "private to this in "
+
+// classThis reports whether this, checked, is the instance of the class
+// the code is in or of an enclosing class, not a lambda's receiver.
+func (c *Checker) classThis(x *syntax.This) bool {
+	if x.Recv == nil {
+		return true
+	}
+	r := c.receiverFor(x)
+	return r != nil && r.class
 }
