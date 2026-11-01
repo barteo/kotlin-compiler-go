@@ -159,9 +159,8 @@ func TestParseErrors(t *testing.T) {
 // construct is reported as, which bench/survey counts.
 func TestUnsupportedFeatures(t *testing.T) {
 	tests := []struct{ src, feature string }{
-		{"class C {\n  context(c: Comparator<T>)\n  fun <T> T.f(o: T) = 1\n}", "context parameters"},
-		{"context(c: Int) val x: Int get() = c", "context parameters"},
-		{"fun g() {\n  context(c: Int) fun f() = 1\n}", "context parameters"},
+		{"context(c: Int) class C", "context parameters"},
+		{"class C {\n  context(c: Int)\n  constructor()\n}", "context parameters"},
 		{"context(Int) fun f() = 1", "context receivers"},
 	}
 	for _, tt := range tests {
@@ -964,6 +963,33 @@ func TestContextParameters(t *testing.T) {
 	}
 	if d := f.Decls[1].(*FunDecl); d.Name != "context" || len(d.Contexts) != 0 {
 		t.Errorf("context is a name: %+v", d)
+	}
+
+	// Members, properties, local and anonymous functions.
+	src = "class C {\n  context(a: A)\n  fun f() = 1\n  context(a: A) var <T> p: T get() = a; set(v) {}\n}\n" +
+		"fun g() {\n  context(a: A) fun h() = 1\n  val k = context(a: A) fun (x: Int) = a\n  context(a)\n}"
+	f, errs = Parse("t.kt", src)
+	if len(errs) > 0 {
+		t.Fatal(errs[0])
+	}
+	c := f.Decls[0].(*ClassDecl)
+	if m := c.Members[0].(*FunDecl); len(m.Contexts) != 1 {
+		t.Errorf("member: %+v", m.Modifiers)
+	}
+	if p := c.Members[1].(*PropDecl); len(p.Contexts) != 1 || len(p.TypeParams) != 1 || p.Getter == nil || p.Setter == nil {
+		t.Errorf("property: %+v", p)
+	}
+	body := f.Decls[1].(*FunDecl).Body.Stmts
+	if lf, ok := body[0].(*LocalFun); !ok || len(lf.Decl.Contexts) != 1 {
+		t.Errorf("local function: %#v", body[0])
+	}
+	if vs, ok := body[1].(*VarStmt); !ok || len(vs.Init.(*Lambda).AnonCtx) != 1 {
+		t.Errorf("anonymous function: %#v", body[1])
+	}
+	if es, ok := body[2].(*ExprStmt); !ok {
+		t.Errorf("context(a) is a call: %#v", body[2])
+	} else if _, ok := es.X.(*Call); !ok {
+		t.Errorf("context(a) is a call: %#v", es.X)
 	}
 }
 

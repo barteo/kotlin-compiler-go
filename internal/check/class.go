@@ -279,6 +279,33 @@ func paramKey(f *types.FunSym) string {
 }
 
 func paramKey1(f *types.FunSym) string {
+	if len(f.Contexts) == 0 {
+		return paramKey2(f)
+	}
+	// The context parameters, apart, which a function without them but
+	// with parameters of the same types doesn't override.
+	k := paramKey2(f)
+	if f.Desc == "" {
+		d, ok := types.ParamsDesc(f.Contexts)
+		if !ok {
+			return k
+		}
+		return "c" + d + k
+	}
+	i := 1 // a class-path function's descriptor takes them first
+	for range f.Contexts {
+		for k[i] == '[' {
+			i++
+		}
+		if k[i] == 'L' {
+			i = strings.IndexByte(k[i:], ';') + i
+		}
+		i++
+	}
+	return "c" + k[:i] + ")(" + k[i:]
+}
+
+func paramKey2(f *types.FunSym) string {
 	if f.Impl {
 		// A static method that takes the value first: its parameters.
 		d := f.Desc[:strings.IndexByte(f.Desc, ')')+1]
@@ -708,7 +735,7 @@ func (c *Checker) inheritedBridges(d *syntax.ClassDecl) {
 				}
 				if h := c.superImpl(cls, this, g); h != nil {
 					ensureFun(h)
-					add(syntax.InheritedBridge{Bridge: od, Target: types.InstanceJVM(h), Params: h.Params, Ret: types.JVMRet(h), Over: g, Fun: h}, types.InstanceJVM(h)+memberDesc(h))
+					add(syntax.InheritedBridge{Bridge: od, Target: types.InstanceJVM(h), Params: append(slices.Clone(h.Contexts), h.Params...), Ret: types.JVMRet(h), Over: g, Fun: h}, types.InstanceJVM(h)+memberDesc(h))
 				}
 			}
 		}
@@ -1336,15 +1363,25 @@ func instanceField(cls *types.ClassSym, name string) *types.VarSym {
 	return f
 }
 
-// memberDesc returns the JVM descriptor of method f, with a member
-// extension's receiver first: a class file's descriptors have it, and
-// the program's functions' leave it out.
+// memberDesc returns the JVM descriptor of method f, with its context
+// parameters and a member extension's receiver first: a class file's
+// descriptors have them, and the program's functions' leave them out.
 func memberDesc(f *types.FunSym) string {
 	d := types.FunDesc(f)
 	if f.Ext && f.Desc == "" && d != "" {
-		if r, ok := types.ParamDesc(f.Recv); ok {
-			return "(" + r + d[1:]
+		r, ok := types.ParamDesc(f.Recv)
+		if !ok {
+			return d
 		}
+		d = "(" + r + d[1:]
+	}
+	if len(f.Contexts) > 0 && f.Desc == "" && d != "" {
+		// Its context parameters come first.
+		cd, ok := types.ParamsDesc(f.Contexts)
+		if !ok {
+			return d
+		}
+		d = cd[:len(cd)-1] + d[1:]
 	}
 	return d
 }

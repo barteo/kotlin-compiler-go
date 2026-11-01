@@ -102,6 +102,7 @@ var milestones = []struct {
 	{"delegated extension properties", []string{"delegated extension property"}},
 	{"qualified super", []string{"qualified super"}},
 	{"context parameters of top-level functions", []string{"context function", "context function type"}},
+	{"context parameters of members, properties and local functions", []string{"context member", "context property", "context local function", "context anonymous function"}},
 	// Supported all along, but counted by an earlier detector.
 	{"also supported", []string{"prefix increment"}},
 }
@@ -1244,10 +1245,11 @@ func (d *detector) contextParams(i int) bool {
 }
 
 // contextFeature returns the feature of the context(...) at i, which
-// contextParams reports declares context parameters: those of a
-// top-level function, or of a function type, which kc supports, or those
-// of another declaration, which it doesn't, nor the context receivers
-// that came before them, context(A).
+// contextParams reports declares context parameters: those of a function,
+// top-level, a member or local, or anonymous, of a property or of a
+// function type, which kc supports, or those of another declaration, a
+// class or a constructor, which it doesn't, nor the context receivers that
+// came before them, context(A).
 func (d *detector) contextFeature(i int) string {
 	j := d.skipNL(d.match(i+1) + 1)
 	if d.kind(j) == syntax.LPAREN {
@@ -1270,12 +1272,45 @@ func (d *detector) contextFeature(i int) string {
 		case d.kind(j) == syntax.IDENT && (modifierWords[d.text(j)] || visibility[d.text(j)]):
 			j++
 		default:
-			if d.kind(j) == syntax.FUN && d.kind(j+1) != syntax.INTERFACE && len(d.braces) == 0 {
+			switch k := d.kind(j); {
+			case k == syntax.FUN && d.anonFun(j):
+				return "context anonymous function"
+			case k == syntax.FUN && d.kind(j+1) == syntax.INTERFACE:
+			case k == syntax.FUN && len(d.braces) == 0:
 				return "context function"
+			case k == syntax.FUN && d.memberLevel():
+				return "context member"
+			case k == syntax.FUN:
+				return "context local function"
+			case (k == syntax.VAL || k == syntax.VAR) && d.memberLevel():
+				return "context property"
 			}
 			return "context parameters"
 		}
 		j = d.skipNL(j)
+	}
+}
+
+// anonFun reports whether the fun at i starts an anonymous function, fun
+// (x: Int) or fun Int.(): the parenthesis of its parameters follows fun or
+// a receiver's dot, not a name.
+func (d *detector) anonFun(i int) bool {
+	depth := 0
+	for j := i + 1; ; j++ {
+		switch k := d.kind(j); {
+		case k == syntax.EOF:
+			return false
+		case k == syntax.LT:
+			depth++
+		case k == syntax.GT:
+			depth--
+		case depth > 0:
+		case k == syntax.LPAREN:
+			k := d.kind(j - 1)
+			return k == syntax.FUN || k == syntax.DOT || k == syntax.SAFE_DOT
+		case k != syntax.IDENT && k != syntax.DOT && k != syntax.SAFE_DOT && k != syntax.QUEST:
+			return false
+		}
 	}
 }
 

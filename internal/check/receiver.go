@@ -310,7 +310,7 @@ func (c *Checker) mayTake(f *types.FunSym, x *syntax.Call) bool {
 		return false
 	}
 	cl := callee{f: f, tparams: f.TypeParams, amap: amap, names: x.Names}
-	if _, ok := c.contextArgs(&cl, x.P); !ok {
+	if _, ok := c.contextArgs(&cl, x); !ok {
 		return false
 	}
 	for i, a := range x.Args {

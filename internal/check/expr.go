@@ -50,6 +50,10 @@ func (c *Checker) expr(x syntax.Expr, want types.Type) types.Type {
 	allowRange, sink := c.allowRange, c.sink
 	c.allowRange, c.sink = false, nil
 	t := c.expr1(x, want, allowRange, sink)
+	switch x.(type) {
+	case *syntax.Ident, *syntax.Member:
+		t = c.contextRead(x, t, want)
+	}
 	x.SetType(t)
 	c.composeRead(x)
 	return t
@@ -1647,6 +1651,21 @@ func effectless(x syntax.Expr) bool {
 	return false
 }
 
+// invokableProp reports whether name is a property of this class or a
+// top-level one that can be invoked: local functions that don't take a
+// call give way to it, as context(a: String) fun c() to val c:
+// context(String) () -> String in c("1").
+func (c *Checker) invokableProp(name string) bool {
+	if c.cls != nil {
+		if p := c.userProp(c.cls, name); p != nil && !p.InProgress {
+			ensureVar(p)
+			return c.invokable(p.Type)
+		}
+	}
+	v := c.topVar(name)
+	return v != nil && !c.uninvokable(v, name)
+}
+
 // invokable reports whether a value of type t can be called: a function
 // type, or a class with an invoke operator.
 func (c *Checker) invokable(t types.Type) bool {
@@ -1681,8 +1700,14 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 			}
 			return c.invoke(x, want, sink)
 		}
-		if fs, depth := c.scope.findFunsFor(name, func(fs []*types.FunSym) bool { return c.anyMayTake(fs, x) }); len(fs) > 0 {
-			if slices.ContainsFunc(fs, func(f *types.FunSym) bool { return f.Ext }) {
+		if fs, depth := c.scope.findFunsFor(name, func(fs []*types.FunSym) bool { return c.anyMayTake(fs, x) }); len(fs) > 0 && (c.anyMayTake(fs, x) || !c.invokableProp(name)) {
+			plain := slices.DeleteFunc(slices.Clone(fs), func(f *types.FunSym) bool { return f.Ext })
+			switch {
+			case len(plain) < len(fs) && len(plain) > 0 && c.anyMayTake(plain, x):
+				// One without a receiver that takes the call comes before
+				// the extensions: context(a: A) fun f() before fun A.f().
+				fs = plain
+			case len(plain) < len(fs):
 				// A local extension function called on an implicit
 				// receiver: add(1) in buildString { } is this.add(1).
 				if len(c.recvs) > 0 && c.recvCall(x, fn) {
@@ -1695,6 +1720,9 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 					m.P = fn.P
 					x.Fun = m
 					return c.call(x, want, sink)
+				}
+				if len(plain) == 0 && c.invokableProp(name) {
+					return c.invoke(x, want, sink) // none has its receiver
 				}
 			}
 			return c.callLocal(x, fs, depth, want, sink)

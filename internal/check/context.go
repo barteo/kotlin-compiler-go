@@ -1,6 +1,7 @@
 package check
 
 import (
+	"maps"
 	"slices"
 	"strings"
 
@@ -32,9 +33,15 @@ import (
 // declareContexts resolves the types of a function's context parameters
 // and declares them.
 func (c *Checker) declareContexts(d *syntax.FunDecl, sym *types.FunSym) {
-	sym.Contexts = nil
+	sym.Contexts = c.contextSyms(d.Contexts)
+}
+
+// contextSyms resolves the types of context parameters ps and returns
+// their symbols.
+func (c *Checker) contextSyms(ps []*syntax.Param) []*types.VarSym {
+	var out []*types.VarSym
 	seen := map[string]bool{}
-	for _, p := range d.Contexts {
+	for _, p := range ps {
 		if p.Name != "_" {
 			if seen[p.Name] {
 				c.errorf(p.P, "conflicting declarations: %s", p.Name)
@@ -47,7 +54,31 @@ func (c *Checker) declareContexts(d *syntax.FunDecl, sym *types.FunSym) {
 			name = "$context-" + p.Type.Name[strings.LastIndexByte(p.Type.Name, '.')+1:]
 		}
 		p.Sym = &types.VarSym{Name: name, Type: c.resolveType(p.Type), Kind: types.Param, Decl: p}
-		sym.Contexts = append(sym.Contexts, p.Sym)
+		out = append(out, p.Sym)
+	}
+	return out
+}
+
+// propContexts declares the context parameters of property d, of symbol
+// sym, which its accessors take, and declare in their bodies. A property
+// with them has no field: it needs accessors unless abstract.
+func (c *Checker) propContexts(d *syntax.PropDecl, sym *types.VarSym) {
+	if len(d.Contexts) == 0 {
+		return
+	}
+	switch {
+	case d.Recv != nil, d.Init != nil:
+		// Reported as an extension property's, or as an initializer
+		// without a field.
+	case !sym.Abstract && (d.Getter == nil || d.Mutable && d.Setter == nil):
+		c.errorf(d.P, "a property with context parameters must have accessors or be abstract")
+	}
+	sym.Contexts = c.contextSyms(d.Contexts)
+	for _, a := range []*syntax.FunDecl{d.Getter, d.Setter} {
+		if a != nil && a.Sym != nil {
+			a.Contexts = d.Contexts
+			a.Sym.Contexts = sym.Contexts
+		}
 	}
 }
 
@@ -122,21 +153,37 @@ type contextArg struct {
 	t types.Type
 }
 
-// contextArgs chooses the context arguments of a call at p of callee cl,
-// the nearest implicit value for each of its context parameters, of a
-// type that fits the parameter's with some type arguments. It reports
-// false if one has none.
-func (c *Checker) contextArgs(cl *callee, p syntax.Pos) ([]contextArg, bool) {
+// contextArgs chooses the context arguments of call x of callee cl, the
+// nearest implicit value for each of its context parameters, of a type
+// that fits the parameter's with the call's type arguments, or some. It
+// reports false if one has none.
+func (c *Checker) contextArgs(cl *callee, x *syntax.Call) ([]contextArg, bool) {
 	ctx := cl.f.Contexts
 	if len(ctx) == 0 {
 		return nil, true
 	}
 	sys := newSystem(c)
-	sub := sys.fresh(cl.tparams, cl.recv, p)
+	var sub types.Subst
+	if n := len(x.TypeArgs); n > 0 && n == len(cl.tparams) {
+		// Explicit ones, contextOf<A>(), whose errors resolve reports.
+		e := len(c.errs)
+		sub = maps.Clone(cl.recv)
+		if sub == nil {
+			sub = types.Subst{}
+		}
+		for j, tp := range cl.tparams {
+			if a := x.TypeArgs[j]; a.Type != nil {
+				sub[tp] = types.Arg{T: c.resolveType(a.Type)}
+			}
+		}
+		c.errs = c.errs[:e]
+	} else {
+		sub = sys.fresh(cl.tparams, cl.recv, x.P)
+	}
 	out := make([]contextArg, len(ctx))
 	for k, cp := range ctx {
 		want := sub.ApplyIn(cp.Type)
-		x, t, ok := c.contextValue(p, func(t types.Type) bool {
+		v, t, ok := c.contextValue(x.P, func(t types.Type) bool {
 			trial := sys.clone()
 			trial.sub(t, want)
 			return trial.ok
@@ -144,7 +191,7 @@ func (c *Checker) contextArgs(cl *callee, p syntax.Pos) ([]contextArg, bool) {
 		if !ok {
 			return nil, false
 		}
-		out[k] = contextArg{x, t}
+		out[k] = contextArg{v, t}
 	}
 	return out, true
 }
@@ -196,4 +243,188 @@ func (c *Checker) implicitContexts(x *syntax.Call, ft types.Type) {
 		ctx[i] = v
 	}
 	x.Args = append(ctx, x.Args...)
+}
+
+// Properties with context parameters.
+//
+// A property with context parameters has no field, and its accessors take
+// them first, as a function does: a read of it is a call of its getter,
+// and an assignment a call of its setter, which pass the context
+// arguments. The checker records the call on the Ident or Member read or
+// assigned, as its Call, which is evaluated instead. A compound assignment
+// is a read and an assignment, x.p = x.p + v, with x in a temporary.
+
+// contextAccessor returns the accessor of the property with context
+// parameters that x reads, its getter, or assigns if set, its setter, and
+// the member access x is or stands for; nil if x isn't one.
+func contextAccessor(x syntax.Expr, set bool) (*types.FunSym, *syntax.Member) {
+	var m *syntax.Member
+	switch x := x.(type) {
+	case *syntax.Ident:
+		switch {
+		case x.Member != nil:
+			m = x.Member
+		case x.Sym != nil && len(x.Sym.Contexts) > 0:
+			return accessor(x.Sym, set), nil
+		}
+	case *syntax.Member:
+		m = x
+	}
+	switch {
+	case m == nil:
+	case m.Prop != nil && len(m.Prop.Contexts) > 0:
+		return accessor(m.Prop, set), m
+	case m.Getter != nil && len(m.Getter.Contexts) > 0:
+		// An extension property's, or a class path's.
+		switch {
+		case set && m.Setter != nil:
+			return m.Setter, m
+		case set:
+			return m.Getter.ExtSetter, m
+		}
+		return m.Getter, m
+	}
+	return nil, nil
+}
+
+// accessor returns property p's getter, or its setter if set: an abstract
+// property's, which it doesn't declare, made for the call.
+func accessor(p *types.VarSym, set bool) *types.FunSym {
+	ensureVar(p)
+	switch {
+	case set && p.Setter != nil:
+		return p.Setter
+	case set && p.Mutable:
+		return &types.FunSym{Name: types.SetterName(p.Name), JVMName: p.JVMSetter, Owner: p.Owner, Facade: p.Facade, Abstract: p.Abstract, Module: p.Module,
+			Contexts: p.Contexts, Params: []*types.VarSym{{Name: "value", Type: p.Type, Kind: types.Param, Resolved: true}}, Ret: types.UnitType, Resolved: true}
+	case set:
+		return nil
+	case p.Getter != nil:
+		return p.Getter
+	}
+	return &types.FunSym{Name: types.GetterName(p.Name), JVMName: p.JVMGetter, Owner: p.Owner, Facade: p.Facade, Abstract: p.Abstract, Module: p.Module,
+		Contexts: p.Contexts, Ret: p.Type, Resolved: true}
+}
+
+// contextAccess returns the call of accessor f that x, a read or an
+// assignment of a property with context parameters, is, unchecked, with
+// its callee; m is the member access x is or stands for, or nil.
+func (c *Checker) contextAccess(x syntax.Expr, f *types.FunSym, m *syntax.Member) (*syntax.Call, []callee) {
+	call := &syntax.Call{}
+	call.P = x.Pos()
+	cl := callee{f: f, tparams: f.TypeParams}
+	switch {
+	case m != nil:
+		rt := m.X.Type()
+		if m.Safe {
+			rt = rt.NonNull()
+		}
+		fn := &syntax.Member{X: m.X, Name: f.Name, Safe: m.Safe, Dispatch: m.Dispatch, DispatchThis: m.DispatchThis}
+		fn.P, fn.T = m.P, rt
+		call.Fun = fn
+		switch {
+		case f.Ext && f.Owner != nil:
+			// A member extension's dispatch receiver: an object, an
+			// implicit receiver or this.
+			cl.ext, cl.dispatch = rt, m.Dispatch
+			switch {
+			case m.DispatchThis != nil:
+				cl.recv = c.memberSubst(m.DispatchThis.Type(), f.Owner)
+			case m.Dispatch != nil:
+				cl.recv = c.memberSubst(types.ClassType(m.Dispatch), f.Owner)
+			case c.cls != nil:
+				cl.recv = c.memberSubst(c.cls.This(), f.Owner)
+			}
+		case f.Ext:
+			cl.ext = rt
+		default:
+			cl.recv = c.memberSubst(rt, f.Owner)
+		}
+	case f.Owner != nil:
+		// A member of this.
+		this := &syntax.This{Class: true}
+		this.P = x.Pos()
+		rt := c.value(this, noWant)
+		fn := &syntax.Member{X: this, Name: f.Name}
+		fn.P, fn.T = x.Pos(), rt
+		call.Fun = fn
+		cl.recv = c.memberSubst(rt, f.Owner)
+	default:
+		id := &syntax.Ident{Name: f.Name}
+		id.P = x.Pos()
+		call.Fun = id
+	}
+	return call, []callee{cl}
+}
+
+// contextRead checks read x, of type t, of a property with context
+// parameters as the call of its getter, and returns its type; that of
+// another, t.
+func (c *Checker) contextRead(x syntax.Expr, t, want types.Type) types.Type {
+	if t.K == types.Invalid {
+		return t
+	}
+	f, m := contextAccessor(x, false)
+	if f == nil {
+		return t
+	}
+	if f.Owner != nil && m == nil && (c.cls == nil || !c.cls.IsSubclassOf(f.Owner)) {
+		c.unsupported(x.Pos(), "context parameters", "reading an outer class's property with context parameters is not supported")
+		return t
+	}
+	call, cands := c.contextAccess(x, f, m)
+	t = c.resolve(call, cands, want, nil)
+	call.SetType(t)
+	setAccess(x, call)
+	return t
+}
+
+// contextWrite checks assignment s of a property with context parameters,
+// as the call of its setter, or a compound one as an assignment of the
+// value read and v. It reports false for the assignment of another.
+func (c *Checker) contextWrite(s *syntax.Assign) bool {
+	f, m := contextAccessor(s.Target, true)
+	if f == nil {
+		return false
+	}
+	if s.Op != syntax.ASSIGN {
+		// x.p op= v: val r = x; r.p = r.p op v.
+		target, read := func() syntax.Expr { return s.Target }, func() syntax.Expr { id := *s.Target.(*syntax.Ident); id.Call = nil; return &id }
+		if m != nil {
+			recv := c.temp(s.P, "receiver", m.X, m.X.Type())
+			s.Stmts = append(s.Stmts, recv)
+			member := func() syntax.Expr {
+				r := &syntax.Member{X: tempRef(recv, m.P), Name: m.Name}
+				r.P = m.P
+				return r
+			}
+			target, read = member, member
+		}
+		value := &syntax.Binary{Op: arithOf(s.Op), X: read(), Y: s.Value}
+		value.P = s.P
+		set := &syntax.Assign{P: s.P, Op: syntax.ASSIGN, Target: target(), Value: value}
+		c.assign(set)
+		s.Stmts = append(s.Stmts, set)
+		return true
+	}
+	if f.Owner != nil && m == nil && (c.cls == nil || !c.cls.IsSubclassOf(f.Owner)) {
+		c.unsupported(s.P, "context parameters", "assigning an outer class's property with context parameters is not supported")
+		return true
+	}
+	call, cands := c.contextAccess(s.Target, f, m)
+	call.Args = []syntax.Expr{s.Value}
+	call.SetType(c.resolve(call, cands, noWant, nil))
+	setAccess(s.Target, call)
+	return true
+}
+
+// setAccess records the call of an accessor on x, a read or an assignment
+// of a property with context parameters.
+func setAccess(x syntax.Expr, call *syntax.Call) {
+	switch x := x.(type) {
+	case *syntax.Ident:
+		x.Call = call
+	case *syntax.Member:
+		x.Call = call
+	}
 }

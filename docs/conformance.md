@@ -45,8 +45,10 @@ turns `OPTIONAL_JVM_INLINE_ANNOTATION` into `@JvmInline` and
 `JVM_DEFAULT_MODE: disable` into `-jvm-default=disable`, removes
 diagnostic markup, and looks for `box()` in the class `kotlinc` puts it
 in. It skips tests for other backends, tests `kotlinc`'s JVM backend
-ignores, and tests that need `LANGUAGE`, compiler arguments, Java
-sources, or modules with friends or `dependsOn`.
+ignores, and tests that need `LANGUAGE` features, compiler arguments,
+Java sources, or modules with friends or `dependsOn`. A `LANGUAGE` that
+only turns on `+ContextParameters`, which Kotlin 2.4 has on by default,
+doesn't count.
 
 | Category | What happened |
 |:---|:---|
@@ -104,8 +106,8 @@ Three things differ from the test infrastructure:
 - **Directory options.** Directories whose test classes give `kotlinc`
   options (the return value checker in `crv/`, explicit API mode, header
   mode, strict equality, `-jvm-default` modes) are skipped, as are tests
-  with `LANGUAGE`, Java sources, multiplatform modules or
-  `IGNORE_FIR_DIAGNOSTICS`.
+  with `LANGUAGE` features (but `+ContextParameters`), Java sources,
+  multiplatform modules or `IGNORE_FIR_DIAGNOSTICS`.
 
 ## Checking the harness
 
@@ -124,26 +126,26 @@ Kotlin 2.4.21's tests on `kc`:
 
 | Box tests | Tests | Share of run |
 |:---|---:|---:|
-| run (of 7,480) | 6,386 | |
-| pass | 6,069 | 95.0% |
-| check error | 211 | 3.3% |
-| codegen error | 16 | 0.3% |
+| run (of 7,480) | 6,483 | |
+| pass | 6,152 | 94.9% |
+| check error | 225 | 3.5% |
+| codegen error | 16 | 0.2% |
 | VerifyError and linkage error | 31 | 0.5% |
 | exception and wrong result | 59 | 0.9% |
 | parse/unsupported, crash, timeout | 0 | |
 
 | Diagnostics tests | Tests | Share of run |
 |:---|---:|---:|
-| run (of 10,827) | 7,049 | |
-| rejects invalid | 2,860 | 40.6% |
-| accepts valid | 2,716 | 38.5% |
-| accepts invalid | 857 | 12.2% |
-| rejects valid | 536 | 7.6% |
-| parse/unsupported | 79 | 1.1% |
+| run (of 10,827) | 7,200 | |
+| rejects invalid | 2,919 | 40.5% |
+| accepts valid | 2,754 | 38.2% |
+| accepts invalid | 880 | 12.2% |
+| rejects valid | 545 | 7.6% |
+| parse/unsupported | 101 | 1.4% |
 | crash | 1 | 0.0% |
 
 `kc` agrees with `kotlinc` on 79% of the diagnostics tests, and reports
-9,682 of the 18,180 expected errors (53%) on their lines. The reports
+9,895 of the 18,773 expected errors (53%) on their lines. The reports
 break the failures down; the largest groups are:
 
 - **Silent miscompilation** (90 box tests): `tailrec` functions that
@@ -151,14 +153,14 @@ break the failures down; the largest groups are:
   for bad local variable types (7), and duplicate bridge methods in `Map`
   implementations (3).
 - **Accepts invalid**: visibility, which isn't checked
-  (`INVISIBLE_REFERENCE` 51), annotation targets and arguments
+  (`INVISIBLE_REFERENCE` 53), annotation targets and arguments
   (`WRONG_ANNOTATION_TARGET` 46, `ANNOTATION_ARGUMENT_MUST_BE_CONST` 34),
   inline-only parameters (`USAGE_IS_NOT_INLINABLE` 27), opt-in (26),
-  `@DslMarker` (25), and JVM signature clashes (`ACCIDENTAL_OVERRIDE`,
+  `@DslMarker` (28), and JVM signature clashes (`ACCIDENTAL_OVERRIDE`,
   `CONFLICTING_JVM_DECLARATIONS`, 24 each).
 - **Rejects valid**, by `kc`'s first error: type mismatches (91 + 4
-  box), inference failures (85 + 13), unresolved names and imports (78 +
-  25), and calls on nullable receivers (48 + 9).
+  box), inference failures (88 + 13), unresolved names and imports (78 +
+  25), and calls on nullable receivers (49 + 9).
 
 The committed `.tsv` files serve as a ratchet: a change must make
 `-baseline` report no regressions, and the tests it fixes measure it.

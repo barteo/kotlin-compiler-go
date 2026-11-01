@@ -308,8 +308,23 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 	if w.ctx > 0 && len(params) >= w.ctx {
 		for i, t := range params[:w.ctx] {
 			s := &types.VarSym{Name: "$context" + strconv.Itoa(i), Type: t, Kind: types.Param}
+			if i < len(x.AnonCtx) {
+				// An anonymous function's, which it names.
+				p := x.AnonCtx[i]
+				if p.Name != "_" {
+					s.Name = p.Name
+				}
+				s.Decl = p
+				if pt := c.resolveType(p.Type); !c.subtype(t, pt) {
+					c.errorf(p.P, "expected context parameter of type %s", t)
+					ok = false
+				}
+			}
 			if i < len(ctx) {
 				*ctx[i], s = *s, ctx[i]
+			}
+			if i < len(x.AnonCtx) {
+				x.AnonCtx[i].Sym = s
 			}
 			x.Ctx = append(x.Ctx, s)
 		}
@@ -381,6 +396,11 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 	for _, s := range syms {
 		if s.Name != "_" && !c.scope.declare(s) {
 			c.errorf(s.Decl.(*syntax.LambdaParam).P, "conflicting declarations: %s", s.Name)
+		}
+	}
+	for _, p := range x.AnonCtx {
+		if p.Name != "_" && p.Sym != nil && !c.scope.declare(p.Sym) {
+			c.errorf(p.P, "conflicting declarations: %s", p.Name)
 		}
 	}
 	c.pushContexts(x.Ctx)
@@ -919,6 +939,11 @@ func (c *Checker) samTarget(p types.Type) (*types.FunSym, types.Type) {
 		// A member extension: the lambda's receiver is its receiver.
 		ps = append([]types.Type{lambdaParam(sub, m.Recv)}, ps...)
 	}
+	var ctx []types.Type // and its context parameters, its own
+	for _, q := range m.Contexts {
+		ctx = append(ctx, lambdaParam(sub, q.Type))
+	}
+	ps = append(ctx, ps...)
 	var ft types.Type
 	if m.Suspend {
 		ft = c.u.ext.funcs.SuspendType(ps, sub.Apply(m.Ret))
@@ -928,7 +953,7 @@ func (c *Checker) samTarget(p types.Type) (*types.FunSym, types.Type) {
 	if m.Ext {
 		ft = ft.WithReceiver()
 	}
-	return m, ft
+	return m, ft.WithContexts(len(ctx))
 }
 
 // lambdaParam returns the type of a lambda's parameter for a parameter
@@ -2060,6 +2085,9 @@ func (c *Checker) destructureParams(x *syntax.Lambda) {
 func (c *Checker) anonWant(x *syntax.Lambda, w *lambdaWant) bool {
 	if !w.known {
 		var ps []types.Type
+		for _, p := range x.AnonCtx {
+			ps = append(ps, c.resolveType(p.Type))
+		}
 		if x.AnonRecv != nil {
 			ps = append(ps, c.resolveType(x.AnonRecv))
 		}
@@ -2070,9 +2098,12 @@ func (c *Checker) anonWant(x *syntax.Lambda, w *lambdaWant) bool {
 			}
 			ps = append(ps, c.resolveType(p.Type))
 		}
-		*w = lambdaWant{params: ps, known: true, recv: x.AnonRecv != nil, ret: noWant}
+		*w = lambdaWant{params: ps, known: true, recv: x.AnonRecv != nil, ctx: len(x.AnonCtx), ret: noWant}
 	} else if x.AnonRecv != nil != w.recv && !anonRecvParam(x, *w) {
 		c.errorf(x.P, "the anonymous function's receiver doesn't match the expected function type")
+		return false
+	} else if len(x.AnonCtx) != w.ctx {
+		c.errorf(x.P, "the anonymous function's context parameters don't match the expected function type")
 		return false
 	}
 	switch {

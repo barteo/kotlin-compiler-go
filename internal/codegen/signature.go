@@ -586,13 +586,21 @@ func (g *gen) signField(mr cf.MemberRef, t types.Type, ref *syntax.TypeRef, d st
 // signAccessor gives mr, the default getter or setter of descriptor d of
 // a property of type t, written ref, its generic signature, as
 // signField's.
-func (g *gen) signAccessor(mr cf.MemberRef, t types.Type, ref *syntax.TypeRef, d string, as []syntax.Annotation, cls *types.ClassSym) {
+func (g *gen) signAccessor(mr cf.MemberRef, t types.Type, ref *syntax.TypeRef, d string, as []syntax.Annotation, cls *types.ClassSym, ctx ...*types.VarSym) {
 	m := g.wildcards(as, cls)
+	var parts []sigPart // the context parameters', which come first
+	for _, p := range ctx {
+		var r *syntax.TypeRef
+		if q, ok := p.Decl.(*syntax.Param); ok {
+			r = q.Type
+		}
+		parts = append(parts, typedPart(p.Type, r))
+	}
 	var s string
-	if strings.HasPrefix(d, "()") {
-		s = methodSig(nil, nil, typedPart(t, ref), d, 0, m)
+	if len(descParams(d)) == len(ctx) { // a getter's
+		s = methodSig(nil, parts, typedPart(t, ref), d, 0, m)
 	} else {
-		s = methodSig(nil, []sigPart{typedPart(t, ref)}, sigPart{t: types.UnitType}, d, 0, m)
+		s = methodSig(nil, append(parts, typedPart(t, ref)), sigPart{t: types.UnitType}, d, 0, m)
 	}
 	if s != "" {
 		mr.SetSignature(s)

@@ -551,11 +551,7 @@ func (g *gen) valueMember(fd *syntax.FunDecl) {
 func (g *gen) valueOverride(f *types.FunSym) {
 	name := types.InstanceJVM(f)
 	g.valueBridge(name, funDesc(f), f)
-	params := f.Params
-	if f.Ext {
-		// A member extension's receiver comes first.
-		params = append([]*types.VarSym{{Name: "<this>", Type: f.Recv, Kind: types.Param}}, params...)
-	}
+	params := bridgeParams(f)
 	for _, b := range f.Bridges {
 		if !collectionBridge(g.owner, b) { // a collection's own bridge, as remove(int)
 			g.bridge(b, name, params, f.Ret, slices.Contains(f.BoxingBridges, b), f.BridgeOf[b], f)

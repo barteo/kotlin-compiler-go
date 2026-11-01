@@ -1534,7 +1534,7 @@ func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
 	if d.SetterVis == syntax.Internal && jvmName(&d.Modifiers, "set") == "" {
 		sym.SetterModule = c.internal(&syntax.Modifiers{Visibility: syntax.Internal}, owner, "")
 	}
-	hasField := !sym.Abstract && (d.Getter == nil || d.Mutable && d.Setter == nil || sym.FieldUsed)
+	hasField := !sym.Abstract && (d.Getter == nil || d.Mutable && d.Setter == nil || sym.FieldUsed) && len(d.Contexts) == 0
 	ext := d.Getter != nil && d.Getter.External || d.Setter != nil && d.Setter.External
 	if ext && !sym.Abstract && (owner == nil || !owner.Interface) {
 		// kotlinc gives the property a field, which its external
@@ -1606,6 +1606,16 @@ func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
 		st.Visibility = d.SetterVis
 		sym.Setter = st.Sym
 	}
+	if g := d.Getter; g != nil && len(d.TypeParams) > 0 {
+		// Those of a property with context parameters, which they use.
+		g.Sym.TypeParams = c.declareTypeParams(d.TypeParams, g.Sym, false)
+		c.tparams = funTypeParams(g.Sym, owner)
+		c.resolveBounds(d.TypeParams)
+		if d.Setter != nil {
+			d.Setter.Sym.TypeParams = g.Sym.TypeParams
+		}
+	}
+	c.propContexts(d, sym)
 	c.externalAccessors(d, owner)
 	switch {
 	case d.Type != nil:

@@ -301,6 +301,9 @@ type VarSym struct {
 	Final    bool    // can't be overridden: not open, abstract or override
 	Getter   *FunSym // a custom getter
 	Setter   *FunSym // a custom setter, or a delegated property's
+	// Contexts are the context parameters of a property, which its
+	// accessors take first, as their Contexts.
+	Contexts []*VarSym
 	// FieldUsed is set on a property whose accessors use field, which
 	// then has a backing field though both accessors are custom.
 	FieldUsed bool

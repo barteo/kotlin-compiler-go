@@ -115,6 +115,7 @@ func (g *gen) inlineSource(x *syntax.Call, d *syntax.FunDecl) {
 		m := x.Fun.(*syntax.Member)
 		rt := m.T
 		g.safeCall(m, f.Ret, x.T, func() {
+			g.contextsUnder(x, f, m.X.Type().NonNull())
 			g.coerce(rt, f.Recv)
 			g.dispatch(m, f.Owner)
 			g.inlineBody(x, d)
@@ -125,11 +126,13 @@ func (g *gen) inlineSource(x *syntax.Call, d *syntax.FunDecl) {
 		// A member: its receiver is this in the copy.
 		if m, ok := x.Fun.(*syntax.Member); ok {
 			g.safeCall(m, f.Ret, x.T, func() {
+				g.contextsUnder(x, f, m.X.Type().NonNull())
 				g.coerce(m.T.NonNull(), f.Owner.This())
 				g.inlineBody(x, d)
 			})
 			return
 		}
+		g.contextArgs(x, f)
 		g.loadThis()
 		g.inlineBody(x, d)
 		g.coerce(f.Ret, x.T)

@@ -1268,12 +1268,17 @@ func (g *gen) class(cd *syntax.ClassDecl) *cf.Class {
 		}
 		switch {
 		case p.Abstract:
-			c.AddAbstractMethod(acc&(cf.AccPublic|cf.AccProtected)|cf.AccAbstract, types.GetterJVM(p), "()"+desc(types.GetterType(p)))
-			g.signAccessor(c.LastMethod(), types.GetterType(p), propRef(p), "()"+desc(types.GetterType(p)), as, cls)
+			// Taking the context parameters first, if any.
+			ctx := ""
+			for _, q := range p.Contexts {
+				ctx += paramDesc(q.Type)
+			}
+			c.AddAbstractMethod(acc&(cf.AccPublic|cf.AccProtected)|cf.AccAbstract, types.GetterJVM(p), "("+ctx+")"+desc(types.GetterType(p)))
+			g.signAccessor(c.LastMethod(), types.GetterType(p), propRef(p), "("+ctx+")"+desc(types.GetterType(p)), as, cls, p.Contexts...)
 			g.defaultAccessorAnnotations(c.LastMethod(), as, "get", p.Type)
 			if p.Mutable {
-				c.AddAbstractMethod(acc&(cf.AccPublic|cf.AccProtected)|cf.AccAbstract, types.SetterJVM(p), "("+d+")V")
-				g.signAccessor(c.LastMethod(), ft, propRef(p), "("+d+")V", as, cls)
+				c.AddAbstractMethod(acc&(cf.AccPublic|cf.AccProtected)|cf.AccAbstract, types.SetterJVM(p), "("+ctx+d+")V")
+				g.signAccessor(c.LastMethod(), ft, propRef(p), "("+ctx+d+")V", as, cls, p.Contexts...)
 				g.defaultAccessorAnnotations(c.LastMethod(), as, "set", p.Type)
 			}
 		case p.Private:
@@ -1460,11 +1465,7 @@ func (g *gen) class(cd *syntax.ClassDecl) *cf.Class {
 				g.composeDefaultsStub(fd)
 			}
 		}
-		params := f.Params
-		if f.Ext {
-			// A member extension's receiver comes first.
-			params = append([]*types.VarSym{{Name: "<this>", Type: f.Recv, Kind: types.Param}}, params...)
-		}
+		params := bridgeParams(f)
 		for _, b := range f.Bridges {
 			if !collectionBridge(cls, b) && !cls.HasDefaultImpls() {
 				g.bridge(b, f.JVM(), params, types.JVMRet(f), slices.Contains(f.BoxingBridges, b), f.BridgeOf[b], f)
@@ -1560,11 +1561,7 @@ func (g *gen) delegated(dl *syntax.Delegated) {
 	default:
 		g.code.Local(cf.ALOAD, 0)
 	}
-	params := f.Params
-	if f.Ext {
-		// A member extension's receiver comes first.
-		params = append([]*types.VarSym{{Name: "<this>", Type: f.Recv, Kind: types.Param}}, params...)
-	}
+	params := bridgeParams(f)
 	for i, pd := range from {
 		g.code.Local(loadOpOf(pd), slots[i])
 		if i < len(params) && types.Unboxed(params[i].Type) && pd != to[i] {
@@ -2627,6 +2624,16 @@ func (g *gen) companionAccessors() {
 			panic(err)
 		}
 	}
+}
+
+// bridgeParams returns the parameters of method f on the JVM: its context
+// parameters, then a member extension's receiver, then its parameters.
+func bridgeParams(f *types.FunSym) []*types.VarSym {
+	params := slices.Clone(f.Contexts)
+	if f.Ext {
+		params = append(params, &types.VarSym{Name: "<this>", Type: f.Recv, Kind: types.Param})
+	}
+	return append(params, f.Params...)
 }
 
 // bridge generates a bridge method: the name and erased descriptor d of

@@ -468,6 +468,12 @@ func (w *writer) property(p *Property) []byte {
 	if p.Flags != 518 {
 		e.int(11, int(p.Flags))
 	}
+	for _, c := range p.ContextParams {
+		e.msg(12, w.typ(c.Type))
+	}
+	for _, c := range p.ContextParams {
+		e.msg(17, w.param(c))
+	}
 	var sig enc
 	if p.Field != nil {
 		var s enc

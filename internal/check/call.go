@@ -584,7 +584,7 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 		if !ok {
 			continue
 		}
-		if cl.ctx, ok = c.contextArgs(&cl, x.P); !ok {
+		if cl.ctx, ok = c.contextArgs(&cl, x); !ok {
 			noCtx = cl.f
 			continue
 		}

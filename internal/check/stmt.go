@@ -784,6 +784,9 @@ func (c *Checker) assign(s *syntax.Assign) {
 		// ktor's this += bytes in an extension of its Digest.
 		tt = c.expr(s.Target, noWant)
 	}
+	if mutable && c.contextWrite(s) {
+		return
+	}
 	var v *types.VarSym // a local var, whose smart casts the assignment changes
 	if id, ok := s.Target.(*syntax.Ident); ok && id.Sym != nil && isVar(id.Sym) {
 		v = id.Sym
@@ -928,7 +931,9 @@ func (c *Checker) incDec(u *syntax.Unary, value bool) types.Type {
 	}
 	u.X = c.objectTarget(c.thisJavaTarget(c.importTarget(c.recvTarget(u.X))))
 	t, _ := c.lvalue(u.X)
-	if !builtinIncDec(t) {
+	if f, _ := contextAccessor(u.X, false); !builtinIncDec(t) || f != nil {
+		// Also a property with context parameters', whose accessors
+		// take them: x = x.inc().
 		return result(c.incDecOp(u, t, keep))
 	}
 	if t.K != types.Invalid && !t.Flex().IsNumeric() && t.Flex() != types.CharType {

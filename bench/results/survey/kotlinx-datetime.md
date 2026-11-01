@@ -59,6 +59,7 @@ The features each milestone of kc's plans added, and how many files would use no
 | delegated extension properties | 63 | 6 | 1 |
 | qualified super | 63 | 6 | 1 |
 | context parameters of top-level functions | 63 | 6 | 1 |
+| context parameters of members, properties and local functions | 63 | 6 | 1 |
 | also supported | 69 | 0 | – |
 
 ### Features left, by files blocked
@@ -240,6 +241,7 @@ The features each milestone of kc's plans added, and how many files would use no
 | delegated extension properties | 59 | 0 | – |
 | qualified super | 59 | 0 | – |
 | context parameters of top-level functions | 59 | 0 | – |
+| context parameters of members, properties and local functions | 59 | 0 | – |
 | also supported | 59 | 0 | – |
 
 ### Features left, by files blocked

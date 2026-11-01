@@ -196,9 +196,12 @@ type Property struct {
 	TypeParams  []*TypeParam
 	Recv        *Type
 	Type        *Type
-	Contexts    int
-	Getter      *JVMSig // nil if the property has no getter method
-	Setter      *JVMSig
+	Contexts    int // number of context receivers and parameters
+	// ContextParams are the context parameters of a property that kc
+	// supports, as Function's.
+	ContextParams []*Param
+	Getter        *JVMSig // nil if the property has no getter method
+	Setter        *JVMSig
 	// SetterParam is the setter's parameter, which kotlinc writes, and
 	// reads, when the setter isn't a default one.
 	SetterParam *Param
@@ -839,6 +842,7 @@ func (s scope) function(msg []byte) *Function {
 func (s scope) property(msg []byte) *Property {
 	p := &Property{Flags: 518}
 	var sig []byte
+	recvs := 0
 	hasFlags, hasGetter, hasSetter := false, false, false
 	d := decoder{msg}
 	for d.more() {
@@ -864,11 +868,13 @@ func (s scope) property(msg []byte) *Property {
 			p.Recv = s.typeID(d.int())
 		case 6:
 			p.SetterParam = s.param(d.bytes())
-		case 12, 17:
+		case 12:
 			d.skip(w)
-			p.Contexts++
+			recvs++
 		case 13:
-			p.Contexts += len(d.ints(w, nil))
+			recvs += len(d.ints(w, nil))
+		case 17:
+			p.ContextParams = append(p.ContextParams, s.param(d.bytes()))
 		case 7:
 			p.GetterFlags, hasGetter = Flags(d.int()), true
 		case 8:
@@ -882,7 +888,8 @@ func (s scope) property(msg []byte) *Property {
 	if p.Type == nil {
 		fail("property %s has no type", p.Name)
 	}
-	bindNames(p.TypeParams, p.Recv, p.Type)
+	p.Contexts = max(recvs, len(p.ContextParams))
+	bindNames(p.TypeParams, append(paramTypes(p.ContextParams), p.Recv, p.Type)...)
 	// Absent accessor flags share the property's annotations, visibility
 	// and modality.
 	if !hasGetter {

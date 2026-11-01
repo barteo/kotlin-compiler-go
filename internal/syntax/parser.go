@@ -494,7 +494,29 @@ func (p *parser) contextDecl() bool {
 	for j++; p.toks[j].Kind == NL; j++ {
 	}
 	k := p.toks[j]
-	return k.Kind == FUN || k.Kind == AT || k.Kind == IDENT && isModifier(k.Text) && declStart(p.toks[j+1].Kind)
+	return k.Kind == FUN && !p.anonFunAt(j) || k.Kind == AT || k.Kind == IDENT && isModifier(k.Text) && declStart(p.toks[j+1].Kind)
+}
+
+// contextAnonFun reports whether the context at the parser's position
+// starts the context parameters of an anonymous function, context(a: A)
+// fun () = a, rather than a call.
+func (p *parser) contextAnonFun() bool {
+	if p.toks[p.i+1].Kind != LPAREN {
+		return false
+	}
+	depth, j := 0, p.i+1
+	for ; p.toks[j].Kind != EOF; j++ {
+		if k := p.toks[j].Kind; k == LPAREN {
+			depth++
+		} else if k == RPAREN {
+			if depth--; depth == 0 {
+				break
+			}
+		}
+	}
+	for j++; p.toks[j].Kind == NL; j++ {
+	}
+	return p.toks[j].Kind == FUN && p.anonFunAt(j)
 }
 
 // noContexts reports context parameters on a declaration that kc doesn't
@@ -648,7 +670,6 @@ func (p *parser) localClass(m Modifiers) *LocalClass {
 // localFun parses a local function, after its modifiers.
 func (p *parser) localFun(m Modifiers) *LocalFun {
 	p.paramOnly(m)
-	p.noContexts(m, "local functions")
 	pos := p.tok().Pos
 	fd := p.parseFun()
 	fd.Modifiers = m
@@ -742,7 +763,6 @@ func (p *parser) parseFile() *File {
 			}
 			switch p.tok().Kind {
 			case VAL, VAR:
-				p.noContexts(m, "properties")
 			case FUN:
 				if p.toks[p.i+1].Kind == INTERFACE {
 					p.noContexts(m, "classes")
@@ -1408,7 +1428,7 @@ func (p *parser) parseProp(m Modifiers) *PropDecl {
 		p.unsupported(p.tok().Pos, "destructuring declaration", "destructuring declarations are not supported")
 	}
 	recv, recvAs := p.receiver(false)
-	if tps != nil && recv == nil {
+	if tps != nil && recv == nil && m.Contexts == nil {
 		p.failAt(kw.Pos, "type parameters of a property must be used in its receiver type")
 	}
 	name := p.ident()
@@ -1432,6 +1452,9 @@ func (p *parser) parseProp(m Modifiers) *PropDecl {
 		}
 	}
 	if t := p.tok(); t.Kind == IDENT && t.Text == "by" {
+		if m.Contexts != nil {
+			p.failAt(t.Pos, "delegated property cannot have context parameters")
+		}
 		p.next()
 		p.skipNL()
 		pd.Field = &PropDecl{P: t.Pos, Name: pd.Name + "$delegate", Init: p.parseExpr(), DelegateOf: pd}
@@ -1891,10 +1914,10 @@ func typeExpr(t *TypeRef) Expr {
 func (p *parser) member(cd *ClassDecl) {
 	m := p.modifiers()
 	p.paramOnly(m)
-	p.noContexts(m, "members")
 	switch t := p.tok(); t.Kind {
 	case FUN:
 		if p.toks[p.i+1].Kind == INTERFACE {
+			p.noContexts(m, "classes")
 			cd.Members = append(cd.Members, p.funInterface(m))
 			break
 		}
@@ -1905,10 +1928,12 @@ func (p *parser) member(cd *ClassDecl) {
 		pd := p.parseProp(m)
 		cd.Members = append(cd.Members, delegated(pd, true, cd.Members)...)
 	case CLASS, INTERFACE, OBJECT:
+		p.noContexts(m, "classes")
 		cd.Members = append(cd.Members, p.parseClass(m))
 	case TYPEALIAS:
 		cd.Members = append(cd.Members, p.parseTypeAlias(m))
 	case IDENT:
+		p.noContexts(m, "constructors")
 		if t.Text == "constructor" && p.toks[p.i+1].Kind == LPAREN {
 			cd.Members = append(cd.Members, p.secondaryCtor(m))
 			break
@@ -2269,7 +2294,7 @@ func (p *parser) parseStmtAfterAnnotations() Stmt {
 		}
 	case IDENT:
 		if t.Text == "context" && p.contextDecl() {
-			return p.localFun(p.modifiers()) // reports them
+			return p.localFun(p.modifiers())
 		}
 		// Modifiers of a local function: infix fun, private fun.
 		j := p.i
@@ -2832,6 +2857,15 @@ func (p *parser) parsePrimary() Expr {
 		th.P = t.Pos
 		return th
 	case IDENT:
+		if t.Text == "context" && p.contextAnonFun() {
+			// context(a: A) fun () = a: an anonymous function with
+			// context parameters.
+			ctx := p.contextParams()
+			p.skipNL()
+			l := p.anonFun("")
+			l.P, l.AnonCtx = t.Pos, ctx
+			return l
+		}
 		if t.Text == "suspend" && p.toks[p.i+1].Kind == LBRACE {
 			// suspend { x: Int -> x }, a lambda with the suspend modifier,
 			// as kotlinc's ParseLambdaWithSuspendModifier parses it, rather

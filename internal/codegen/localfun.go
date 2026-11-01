@@ -29,14 +29,12 @@ func localOf(f *types.FunSym) *syntax.LocalFun {
 	return lf
 }
 
-// localDesc returns the descriptor of a local function's method.
+// localDesc returns the descriptor of a local function's method. As
+// kotlinc's, its context parameters and an extension's receiver come
+// first.
 func (g *gen) localDesc(lf *syntax.LocalFun) string {
 	f := lf.Decl.Sym
-	if f.Ext {
-		// A local extension function's receiver comes first, as kotlinc's.
-		return "(" + desc(f.Recv) + g.frameDesc(lf.Frame) + sigDesc(f)[1:]
-	}
-	return "(" + g.frameDesc(lf.Frame) + sigDesc(f)[1:]
+	return "(" + leadDesc(f) + g.frameDesc(lf.Frame) + sigDesc(f)[1:]
 }
 
 // localFun generates the method of a local function.
@@ -66,6 +64,10 @@ func (g *gen) localFun(lf *syntax.LocalFun) {
 	lf.Desc = d
 	lg.code = g.cls.NewMethod(access, name, d)
 	lg.retType = f.Ret
+	for _, p := range f.Contexts {
+		p.Slot = lg.code.AllocLocal(paramDesc(p.Type))
+		lg.named(p)
+	}
 	if r := fd.RecvSym; r != nil {
 		r.Slot = lg.code.AllocLocal(desc(r.Type))
 		lg.named(r)
@@ -121,11 +123,17 @@ func (g *gen) localDefaults(lf *syntax.LocalFun) {
 		publicInline: g.publicInline, lambdaReified: g.reifiedSubst()} // copies of an inline function copy its lambdas
 	lg.code = g.cls.NewMethod(access, lf.Method+"$default", d[:i]+"ILjava/lang/Object;"+d[i:])
 	lg.retType = f.Ret
+	for _, p := range f.Contexts {
+		p.Slot = lg.code.AllocLocal(paramDesc(p.Type))
+	}
 	if r := lf.Decl.RecvSym; r != nil {
 		r.Slot = lg.code.AllocLocal(desc(r.Type))
 	}
 	lg.allocFrame(lf.Frame, lc)
-	lg.fillDefaults(lf.Decl.Params, f.Params)
+	lg.fillDefaultsCont(lf.Decl.Params, f.Params, len(f.Contexts), false, nil)
+	for _, p := range f.Contexts {
+		lg.code.Local(loadOp(p.Type), p.Slot)
+	}
 	if r := lf.Decl.RecvSym; r != nil {
 		lg.code.Local(loadOp(r.Type), r.Slot)
 	}
@@ -141,6 +149,7 @@ func (g *gen) localDefaults(lf *syntax.LocalFun) {
 // callLocal generates a call of a local function.
 func (g *gen) callLocal(x *syntax.Call, lf *syntax.LocalFun) {
 	f := x.Sym
+	g.contextArgs(x, f)
 	if m, ok := x.Fun.(*syntax.Member); ok && f.Ext {
 		g.exprAs(m.X, f.Recv) // the receiver, x in x.g()
 	}

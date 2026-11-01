@@ -175,6 +175,12 @@ func (p printer) function(f *kmeta.Function) string {
 
 func (p printer) property(pr *kmeta.Property) string {
 	q := p.with(pr.TypeParams)
+	ctx := ""
+	if len(pr.ContextParams) > 0 {
+		ctx = "context(" + q.params(pr.ContextParams) + ") "
+	} else if pr.Contexts > 0 {
+		ctx = "context(" + strconv.Itoa(pr.Contexts) + " receivers) "
+	}
 	recv := ""
 	if pr.Recv != nil {
 		recv = q.typ(pr.Recv) + "."
@@ -189,7 +195,7 @@ func (p printer) property(pr *kmeta.Property) string {
 	if pr.SetterParam != nil {
 		setterParam = " setparam=" + q.params([]*kmeta.Param{pr.SetterParam})
 	}
-	return fmt.Sprintf("prop %s %s%s%s: %s get=%s set=%s%s%s%s%s%s", flags(pr.Flags, "prop"), q.typeParams(pr.TypeParams), recv, pr.Name,
+	return fmt.Sprintf("prop %s %s%s%s%s: %s get=%s set=%s%s%s%s%s%s", flags(pr.Flags, "prop"), ctx, q.typeParams(pr.TypeParams), recv, pr.Name,
 		q.typ(pr.Type), flags(pr.GetterFlags, "accessor"), flags(pr.SetterFlags, "accessor"), setterParam,
 		sig("field", pr.Field), sig("getter", pr.Getter), sig("setter", pr.Setter), sig("annotations", pr.Synthetic))
 }

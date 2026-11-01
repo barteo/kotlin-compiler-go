@@ -909,6 +909,10 @@ type Ident struct {
 	// Unit is set when the identifier is the Unit object, or a local of
 	// type Unit, which has no storage.
 	Unit bool
+	// Call is set on the read or the assignment of a property with
+	// context parameters: the call of its getter or setter, which the
+	// checker writes and which is evaluated instead.
+	Call *Call
 }
 
 type This struct {
@@ -1119,6 +1123,9 @@ type Member struct {
 	// with reified type parameters, whose getter it copies, as
 	// Call.Reified.
 	Reified []types.Type
+	// Call is set on the read or the assignment of a property with
+	// context parameters, as Ident.Call.
+	Call *Call
 }
 
 // Index is x[i]. It calls the operator get, or set when it is assigned.
@@ -1294,6 +1301,9 @@ type Lambda struct {
 	AnonRecv *TypeRef
 	AnonRet  *TypeRef
 	AnonUnit bool
+	// AnonCtx are the context parameters of an anonymous function,
+	// context(a: A) fun () = a, whose symbols are Ctx's.
+	AnonCtx []*Param
 	// Annotated is set on a lambda annotated @Composable, which is
 	// composable whatever its expected type, with -compose.
 	Annotated bool
