@@ -1,6 +1,7 @@
 package check
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
@@ -134,6 +135,13 @@ func (c *Checker) expandAlias(a *types.AliasSym, ref *syntax.TypeRef) types.Type
 // alias fixes: Names() is an ArrayList<String> for typealias Names =
 // ArrayList<String>. Type arguments of the call are the alias's.
 func (c *Checker) aliasConstruct(x *syntax.Call, a *types.AliasSym, cls *types.ClassSym, p syntax.Pos, want types.Type, sink *system) types.Type {
+	if hasUnderscore(x.TypeArgs) {
+		if !c.aliasUnderscores(x, a, cls, p) {
+			c.args(x, nil)
+			return types.InvalidType
+		}
+		return c.construct(x, cls, p, want, sink)
+	}
 	if len(a.TypeParams) == 0 || len(x.TypeArgs) > 0 {
 		t := c.expandAlias(a, &syntax.TypeRef{P: p, Name: a.Name, Args: x.TypeArgs})
 		if t.K == types.Invalid {
@@ -148,4 +156,52 @@ func (c *Checker) aliasConstruct(x *syntax.Call, a *types.AliasSym, cls *types.C
 		}
 	}
 	return c.construct(x, cls, p, want, sink)
+}
+
+// hasUnderscore reports whether type arguments of a call include _, one
+// the call infers.
+func hasUnderscore(args []*syntax.TypeArg) bool {
+	return slices.ContainsFunc(args, func(a *syntax.TypeArg) bool { return a.Underscore })
+}
+
+// aliasUnderscores rewrites the type arguments of Alias<A, _>(x), a call
+// of the constructor of class cls that typealias a expands to, as the
+// class's own: those the alias's _ are in are _ too, and the call infers
+// them, as in Alias<_>("OK") for typealias Alias<T> = Box<T>. It reports
+// false, after an error, if the arguments don't fit the alias.
+func (c *Checker) aliasUnderscores(x *syntax.Call, a *types.AliasSym, cls *types.ClassSym, p syntax.Pos) bool {
+	// Each _ is a placeholder, which the expansion shows the uses of.
+	holes := map[*types.TypeParamSym]bool{}
+	args := make([]*syntax.TypeArg, len(x.TypeArgs))
+	for i, ta := range x.TypeArgs {
+		args[i] = ta
+		if ta.Underscore {
+			h := &types.TypeParamSym{Name: "_"}
+			holes[h] = true
+			t := types.ParamType(h)
+			args[i] = &syntax.TypeArg{P: ta.P, Type: &syntax.TypeRef{P: ta.P, Known: &t}}
+		}
+	}
+	t := c.expandAlias(a, &syntax.TypeRef{P: p, Name: a.Name, Args: args})
+	if t.K == types.Invalid {
+		return false
+	}
+	if t.K != types.Class || t.C != cls {
+		c.errorf(x.TypeArgs[0].P, "type arguments with _ are not supported for typealias %s", a.Name)
+		return false
+	}
+	pos := x.TypeArgs[0].P
+	own := len(cls.TypeParams) - cls.OuterParams // an inner class's outer ones aren't the call's
+	out := make([]*syntax.TypeArg, min(own, t.A.Len()))
+	for i := range out {
+		arg := t.A.Get(i)
+		if arg.V == types.Star || arg.T.Has(func(u types.Type) bool { return u.IsParam() && holes[u.Param()] }) {
+			out[i] = &syntax.TypeArg{P: pos, Underscore: true}
+			continue
+		}
+		at := arg.T
+		out[i] = &syntax.TypeArg{P: pos, Type: &syntax.TypeRef{P: pos, Known: &at}}
+	}
+	x.TypeArgs = out
+	return true
 }

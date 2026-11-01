@@ -637,6 +637,11 @@ func (w *writer) typ(t *Type) []byte {
 		a.int(1, w.st.class("kotlin/ExtensionFunctionType"))
 		e.msg(100, a.b)
 	}
+	if t.NoInfer {
+		var a enc
+		a.int(1, w.st.class("kotlin/internal/NoInfer"))
+		e.msg(100, a.b)
+	}
 	if t.Contexts > 0 {
 		// @ContextFunctionTypeParams(count = n): an argument whose value
 		// is an INT, in zigzag encoding.

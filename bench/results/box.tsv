@@ -631,7 +631,7 @@ callableReference/callableReferenceOfCompanionProperty.kt	pass
 callableReference/callableReferenceOfKotlinNestedClass.kt	pass		
 callableReference/callableReferenceOfObjectMethod.kt	pass		
 callableReference/callableReferenceOnObjectTypealias.kt	pass		
-callableReference/callableReferencetoInnerAndLocal.kt	check error	unresolved or unsupported type: _	callableReferencetoInnerAndLocal.kt:4: unresolved or unsupported type: T
+callableReference/callableReferencetoInnerAndLocal.kt	pass		
 callableReference/charArrayOf.kt	pass		
 callableReference/equality/capturedDefaults.kt	pass		
 callableReference/equality/capturedVararg.kt	pass		
@@ -752,8 +752,8 @@ callableReference/function/topLevelFromTopLevelUnitOneStringArg.kt	pass
 callableReference/function/traitImplMethodWithClassReceiver.kt	pass		
 callableReference/function/traitMember.kt	pass		
 callableReference/functionAndKFunctionSharedClassSplit.kt	pass		
-callableReference/genericConstructorReference.kt	check error	unresolved or unsupported type: _	genericConstructorReference.kt:13: unresolved or unsupported type: OT
-callableReference/genericLocalClassConstructorReference.kt	check error	unresolved or unsupported type: _	genericLocalClassConstructorReference.kt:8: unresolved or unsupported type: FT
+callableReference/genericConstructorReference.kt	pass		
+callableReference/genericLocalClassConstructorReference.kt	pass		
 callableReference/generticReferences.kt	check error	not enough information to infer type arguments of A::foo: specify the expected function type	generticReferences.kt:30: not enough information to infer type arguments of A::foo: specify the expected function type
 callableReference/inlineArrayConstructors.kt	pass		
 callableReference/interfaceMethodReference.kt	pass		
@@ -1097,7 +1097,7 @@ closures/capturedVarsOptimization/kt45446.kt	pass
 closures/capturedVarsOptimization/sharedSlotsWithCapturedVars.kt	pass		
 closures/capturedVarsOptimization/withCoroutines.kt	pass		
 closures/capturedVarsOptimization/withCoroutinesNoStdLib.kt	pass		
-closures/closureCapturingGenericParam.kt	check error	unresolved or unsupported type: _	closureCapturingGenericParam.kt:27: unresolved or unsupported type: GroupingByTP
+closures/closureCapturingGenericParam.kt	pass		
 closures/closureInsideClosure/localFunInsideLocalFun.kt	pass		
 closures/closureInsideClosure/localFunInsideLocalFunDifferentSignatures.kt	pass		
 closures/closureInsideClosure/propertyAndFunctionNameClash.kt	pass		
@@ -1768,17 +1768,17 @@ coroutines/featureIntersection/suspendOperatorPlusCallFromLambda.kt	pass
 coroutines/featureIntersection/tailrec/controlFlowIf.kt	pass		
 coroutines/featureIntersection/tailrec/controlFlowWhen.kt	pass		
 coroutines/featureIntersection/tailrec/extention.kt	pass		
-coroutines/featureIntersection/tailrec/infixCall.kt	exception	java.lang.StackOverflowError	 at InfixCallKt.test
-coroutines/featureIntersection/tailrec/infixRecursiveCall.kt	exception	java.lang.StackOverflowError	 at InfixRecursiveCallKt.foo
+coroutines/featureIntersection/tailrec/infixCall.kt	pass		
+coroutines/featureIntersection/tailrec/infixRecursiveCall.kt	pass		
 coroutines/featureIntersection/tailrec/kt38920_localTailrec.kt	pass		
-coroutines/featureIntersection/tailrec/realIteratorFoldl.kt	exception	java.lang.StackOverflowError	 at kotlin.collections.IntIterator.next
+coroutines/featureIntersection/tailrec/realIteratorFoldl.kt	pass		
 coroutines/featureIntersection/tailrec/realStringEscape.kt	pass		
 coroutines/featureIntersection/tailrec/realStringRepeat.kt	pass		
-coroutines/featureIntersection/tailrec/returnInParentheses.kt	exception	java.lang.StackOverflowError	 at ReturnInParenthesesKt.foo
-coroutines/featureIntersection/tailrec/sum.kt	exception	java.lang.StackOverflowError	 at SumKt.sum
-coroutines/featureIntersection/tailrec/tailCallInBlockInParentheses.kt	exception	java.lang.StackOverflowError	 at TailCallInBlockInParenthesesKt.foo
-coroutines/featureIntersection/tailrec/tailCallInParentheses.kt	exception	java.lang.StackOverflowError	 at TailCallInParenthesesKt.foo
-coroutines/featureIntersection/tailrec/whenWithIs.kt	exception	java.lang.StackOverflowError	 at WhenWithIsKt.withWhen
+coroutines/featureIntersection/tailrec/returnInParentheses.kt	pass		
+coroutines/featureIntersection/tailrec/sum.kt	pass		
+coroutines/featureIntersection/tailrec/tailCallInBlockInParentheses.kt	pass		
+coroutines/featureIntersection/tailrec/tailCallInParentheses.kt	pass		
+coroutines/featureIntersection/tailrec/whenWithIs.kt	pass		
 coroutines/functionReference_Function_SuspendFunction_casts.kt	pass		
 coroutines/functionReference_eqeq_name.kt	pass		
 coroutines/functionReference_invokeAsFunction.kt	pass		
@@ -2003,7 +2003,7 @@ coroutines/localDelegate.kt	pass
 coroutines/localFunctions/named/callTopLevelFromLocal.kt	pass		
 coroutines/localFunctions/named/capturedParameters.kt	pass		
 coroutines/localFunctions/named/capturedVariables.kt	pass		
-coroutines/localFunctions/named/defaultArgument.kt	codegen error	code generation: operand stack underflow at offset n	/tmp/claude-0/-home-user-kotlin-compiler-go/d9889070-30af-5b94-9c44-377c669be94d/scratchpad/tmp/kc-conformance/2004/m0/src/defaultArgument.kt: code generation failed: DefaultArgumentKt.doAction$run$default: operand stack underflow at offset 24
+coroutines/localFunctions/named/defaultArgument.kt	pass		
 coroutines/localFunctions/named/extension.kt	pass		
 coroutines/localFunctions/named/infix.kt	pass		
 coroutines/localFunctions/named/insideLambda.kt	pass		
@@ -2173,7 +2173,7 @@ dataClasses/copy/valInConstructorParams.kt	pass
 dataClasses/copy/varInConstructorParams.kt	pass		
 dataClasses/copy/withGenericParameter.kt	pass		
 dataClasses/copy/withSecondaryConstructor.kt	pass		
-dataClasses/dataClassWithManyFields.kt	exception	java.lang.NullPointerException	Parameter specified as non-null is null: method DC.<init>, parameter d32 at DC.<init>
+dataClasses/dataClassWithManyFields.kt	pass		
 dataClasses/dnnInPropertyType.kt	pass		
 dataClasses/doubleParam.kt	pass		
 dataClasses/equalityChecksPrimitiveUnboxed.kt	pass		
@@ -2257,7 +2257,7 @@ defaultArguments/function/complexInheritance.kt	pass
 defaultArguments/function/covariantOverride.kt	pass		
 defaultArguments/function/covariantOverrideGeneric.kt	pass		
 defaultArguments/function/defaultLambdaInline.kt	pass		
-defaultArguments/function/extensionFunctionManyArgs.kt	wrong result	testn = n n n n n n n n n n n n n n n n n n n n n n n n n n …	test4 = 54 217 3 4 5 6 7 236 9 10 11 18 13 14 15 16 3216 18 19 20 8 22 23 24 25 26 22 28 29 30 31 33 0 0 0 44 0 0 55 0
+defaultArguments/function/extensionFunctionManyArgs.kt	pass		
 defaultArguments/function/extentionFunction.kt	pass		
 defaultArguments/function/extentionFunctionDouble.kt	pass		
 defaultArguments/function/extentionFunctionDoubleTwoArgs.kt	pass		
@@ -2269,16 +2269,16 @@ defaultArguments/function/funInTraitChain.kt	pass
 defaultArguments/function/innerExtentionFunction.kt	pass		
 defaultArguments/function/innerExtentionFunctionDouble.kt	pass		
 defaultArguments/function/innerExtentionFunctionDoubleTwoArgs.kt	pass		
-defaultArguments/function/innerExtentionFunctionManyArgs.kt	wrong result	testn = n n n n n n n n n n n n n n n n n n n n n n n n n n …	test4 = 54 217 3 4 5 6 7 236 9 10 11 18 13 14 15 16 3216 18 19 20 8 22 23 24 25 26 22 28 29 30 31 33 0 0 0 44 0 0 55 0
+defaultArguments/function/innerExtentionFunctionManyArgs.kt	pass		
 defaultArguments/function/kt15971.kt	pass		
 defaultArguments/function/kt15971_2.kt	pass		
 defaultArguments/function/kt15971_3.kt	pass		
 defaultArguments/function/kt36188.kt	pass		
 defaultArguments/function/kt36188_2.kt	pass		
 defaultArguments/function/kt5232.kt	pass		
-defaultArguments/function/memberFunctionManyArgs.kt	wrong result	testn = n n n n n n n n n n n n n n n n n n n n n n n n n n …	test4 = 54 217 3 4 5 6 7 236 9 10 11 18 13 14 15 16 3216 18 19 20 8 22 23 24 25 26 22 28 29 30 31 33 0 0 0 44 0 0 55 0
+defaultArguments/function/memberFunctionManyArgs.kt	pass		
 defaultArguments/function/mixingNamedAndPositioned.kt	pass		
-defaultArguments/function/topLevelManyArgs.kt	wrong result	testn = n n n n n n n n n n n n n n n n n n n n n n n n n n …	test4 = 54 217 3 4 5 6 7 236 9 10 11 18 13 14 15 16 3216 18 19 20 8 22 23 24 25 26 22 28 29 30 31 33 0 0 0 44 0 0 55 0
+defaultArguments/function/topLevelManyArgs.kt	pass		
 defaultArguments/function/trait.kt	pass		
 defaultArguments/implementedByFake.kt	pass		
 defaultArguments/implementedByFake2.kt	pass		
@@ -2464,7 +2464,7 @@ delegatedProperty/valByMapDelegatedProperty.kt	pass
 delegatedProperty/valInInnerClass.kt	pass		
 delegatedProperty/varInInnerClass.kt	pass		
 delegation/delegatedAnonymousObject_noParametersOnDelegate.kt	pass		
-delegation/delegatedAnonymousObject_someParametersOnDelegate.kt	check error	unresolved or unsupported type: _	delegatedAnonymousObject_someParametersOnDelegate.kt:22: unresolved or unsupported type: T4
+delegation/delegatedAnonymousObject_someParametersOnDelegate.kt	pass		
 delegation/delegationDifferentModule.kt	pass		
 delegation/delegationDifferentModule2.kt	pass		
 delegation/delegationToInnerClassOfGenericClass.kt	pass		
@@ -2512,7 +2512,7 @@ diagnostics/functions/invoke/onObjects/invokeOnImportedEnum1.kt	pass
 diagnostics/functions/invoke/onObjects/invokeOnImportedEnum2.kt	pass		
 diagnostics/functions/invoke/onObjects/invokeOnObject1.kt	pass		
 diagnostics/functions/invoke/onObjects/invokeOnObject2.kt	pass		
-diagnostics/functions/tailRecursion/checkStackDepth.kt	exception	java.lang.IllegalStateException	Fail: TailrecLowering did not happen, VM stack depth=12 at CheckStackDepthKt.checkShallowStackDepth
+diagnostics/functions/tailRecursion/checkStackDepth.kt	pass		
 diagnostics/functions/tailRecursion/defaultArgs.kt	pass		
 diagnostics/functions/tailRecursion/defaultArgs2.kt	pass		
 diagnostics/functions/tailRecursion/defaultArgsOverridden.kt	check error	tailrec is not allowed on open members	defaultArgsOverridden.kt:8: tailrec is not allowed on open members
@@ -2524,7 +2524,7 @@ diagnostics/functions/tailRecursion/functionWithNonTailRecursions.kt	pass
 diagnostics/functions/tailRecursion/functionWithoutAnnotation.kt	pass		
 diagnostics/functions/tailRecursion/infixCall.kt	pass		
 diagnostics/functions/tailRecursion/infixRecursiveCall.kt	pass		
-diagnostics/functions/tailRecursion/insideElvis.kt	exception	java.lang.StackOverflowError	 at InsideElvisKt.test
+diagnostics/functions/tailRecursion/insideElvis.kt	pass		
 diagnostics/functions/tailRecursion/kt47084_lambdaInDefaultArgument.kt	pass		
 diagnostics/functions/tailRecursion/labeledThisReferences.kt	pass		
 diagnostics/functions/tailRecursion/loops.kt	pass		
@@ -2532,18 +2532,18 @@ diagnostics/functions/tailRecursion/multilevelBlocks.kt	pass
 diagnostics/functions/tailRecursion/realIteratorFoldl.kt	check error	expected parameter of type _	realIteratorFoldl.kt:9: expected parameter of type Int
 diagnostics/functions/tailRecursion/realStringEscape.kt	pass		
 diagnostics/functions/tailRecursion/realStringRepeat.kt	pass		
-diagnostics/functions/tailRecursion/recursiveCallInInlineLambda.kt	exception	java.lang.StackOverflowError	 at TailInline.test
+diagnostics/functions/tailRecursion/recursiveCallInInlineLambda.kt	pass		
 diagnostics/functions/tailRecursion/recursiveCallInInlineLambdaWithCapture.kt	pass		
 diagnostics/functions/tailRecursion/recursiveCallInLambda.kt	pass		
 diagnostics/functions/tailRecursion/recursiveCallInLocalFunction.kt	pass		
-diagnostics/functions/tailRecursion/recursiveInnerFunction.kt	exception	java.lang.StackOverflowError	 at RecursiveInnerFunctionKt.test$g3
+diagnostics/functions/tailRecursion/recursiveInnerFunction.kt	pass		
 diagnostics/functions/tailRecursion/returnIf.kt	pass		
 diagnostics/functions/tailRecursion/returnInCatch.kt	pass		
 diagnostics/functions/tailRecursion/returnInFinally.kt	pass		
 diagnostics/functions/tailRecursion/returnInIfInFinally.kt	pass		
 diagnostics/functions/tailRecursion/returnInParentheses.kt	pass		
 diagnostics/functions/tailRecursion/returnInTry.kt	pass		
-diagnostics/functions/tailRecursion/shortCircuit.kt	exception	java.lang.StackOverflowError	 at ShortCircuitKt.maybe
+diagnostics/functions/tailRecursion/shortCircuit.kt	pass		
 diagnostics/functions/tailRecursion/simpleBlock.kt	pass		
 diagnostics/functions/tailRecursion/simpleReturn.kt	pass		
 diagnostics/functions/tailRecursion/simpleReturnWithElse.kt	pass		
@@ -2551,14 +2551,14 @@ diagnostics/functions/tailRecursion/sum.kt	pass
 diagnostics/functions/tailRecursion/tailCallInBlockInParentheses.kt	pass		
 diagnostics/functions/tailRecursion/tailCallInParentheses.kt	pass		
 diagnostics/functions/tailRecursion/tailRecursionInFinally.kt	pass		
-diagnostics/functions/tailRecursion/tailrecWithExplicitCompanionObjectDispatcher.kt	exception	java.lang.StackOverflowError	 at C$Companion.rec
-diagnostics/functions/tailRecursion/tailrecWithExplicitObjectDispatcher.kt	exception	java.lang.StackOverflowError	 at O.rec
+diagnostics/functions/tailRecursion/tailrecWithExplicitCompanionObjectDispatcher.kt	pass		
+diagnostics/functions/tailRecursion/tailrecWithExplicitObjectDispatcher.kt	pass		
 diagnostics/functions/tailRecursion/thisReferences.kt	pass		
-diagnostics/functions/tailRecursion/unitBlocks.kt	exception	java.lang.StackOverflowError	 at UnitBlocksKt.test
+diagnostics/functions/tailRecursion/unitBlocks.kt	pass		
 diagnostics/functions/tailRecursion/whenWithCondition.kt	pass		
 diagnostics/functions/tailRecursion/whenWithInRange.kt	pass		
 diagnostics/functions/tailRecursion/whenWithIs.kt	pass		
-diagnostics/functions/tailRecursion/whenWithLambda.kt	exception	java.lang.StackOverflowError	 at WhenWithLambdaKt.withWhen
+diagnostics/functions/tailRecursion/whenWithLambda.kt	pass		
 diagnostics/functions/tailRecursion/whenWithoutCondition.kt	pass		
 diagnostics/vararg/kt4172.kt	pass		
 directInvokeOptimization/boundInnerContructorRef.kt	pass		
@@ -3141,9 +3141,9 @@ functions/kt58825_arrayOverloads.kt	check error	function invocation '_' expected
 functions/kt785.kt	pass		
 functions/kt873.kt	pass		
 functions/localFunction.kt	pass		
-functions/localFunctions/boundTypeParameterInSupertype.kt	check error	unresolved or unsupported type: _	boundTypeParameterInSupertype.kt:7: unresolved or unsupported type: T
+functions/localFunctions/boundTypeParameterInSupertype.kt	pass		
 functions/localFunctions/boundTypeParameterInVararg.kt	pass		
-functions/localFunctions/callBetweenLocalFunctions.kt	check error	unresolved or unsupported type: _	callBetweenLocalFunctions.kt:8: unresolved or unsupported type: T
+functions/localFunctions/callBetweenLocalFunctions.kt	pass		
 functions/localFunctions/callInlineLocalInLambda.kt	pass		
 functions/localFunctions/captureUpperBoundedTypeParameter.kt	pass		
 functions/localFunctions/definedWithinLambda.kt	pass		
@@ -3559,7 +3559,7 @@ inline/inline20.kt	pass
 inline/inline21.kt	pass		
 inline/inline22.kt	pass		
 inline/inline23.kt	pass		
-inline/inline24.kt	codegen error	code generation: operand stack underflow at offset n	/tmp/claude-0/-home-user-kotlin-compiler-go/d9889070-30af-5b94-9c44-377c669be94d/scratchpad/tmp/kc-conformance/3560/m0/src/lib.kt: code generation failed: LibKt.baz$default: operand stack underflow at offset 10
+inline/inline24.kt	pass		
 inline/inline25.kt	pass		
 inline/inline26.kt	pass		
 inline/inline3.kt	pass		
@@ -4051,8 +4051,8 @@ inlineClasses/funInterface/argumentICGeneric2.kt	pass
 inlineClasses/funInterface/argumentResult.kt	pass		
 inlineClasses/funInterface/kt51121.kt	pass		
 inlineClasses/funInterface/kt51121_2.kt	pass		
-inlineClasses/funInterface/mangledSamWrappers.kt	codegen error	code generation: operand stack underflow at offset n	/tmp/claude-0/-home-user-kotlin-compiler-go/d9889070-30af-5b94-9c44-377c669be94d/scratchpad/tmp/kc-conformance/4052/m0/src/lib.kt: code generation failed: LibKt.g$default: operand stack underflow at offset 7
-inlineClasses/funInterface/mangledSamWrappersGeneric.kt	codegen error	code generation: operand stack underflow at offset n	/tmp/claude-0/-home-user-kotlin-compiler-go/d9889070-30af-5b94-9c44-377c669be94d/scratchpad/tmp/kc-conformance/4053/m0/src/lib.kt: code generation failed: LibKt.g$default: operand stack underflow at offset 7
+inlineClasses/funInterface/mangledSamWrappers.kt	pass		
+inlineClasses/funInterface/mangledSamWrappersGeneric.kt	pass		
 inlineClasses/funInterface/returnIC.kt	pass		
 inlineClasses/funInterface/returnICGeneric.kt	pass		
 inlineClasses/funInterface/returnICGeneric2.kt	pass		
@@ -4546,10 +4546,10 @@ innerClass/getOuterVal.kt	pass
 innerClass/inCallableReferenceLHS.kt	skip	LANGUAGE	
 innerClass/inCallableReferenceLHSclassReference.kt	skip	LANGUAGE	
 innerClass/inCallableReferenceLHSwithGenericFun.kt	skip	LANGUAGE	
-innerClass/inheritanceMultipleModules1.kt	codegen error	code generation: operand stack underflow at offset n	/tmp/claude-0/-home-user-kotlin-compiler-go/d9889070-30af-5b94-9c44-377c669be94d/scratchpad/tmp/kc-conformance/4547/m1/src/main.kt: code generation failed: Bar$BarInner.<init>: operand stack underflow at offset 12
+innerClass/inheritanceMultipleModules1.kt	pass		
 innerClass/inheritanceMultipleModules2.kt	check error	unresolved reference: _	main.kt:2: unresolved reference: Middle
 innerClass/inheritanceMultipleModules3.kt	check error	unresolved reference: _	main.kt:5: unresolved reference: Middle
-innerClass/multipleModules.kt	codegen error	code generation: operand stack underflow at offset n	/tmp/claude-0/-home-user-kotlin-compiler-go/d9889070-30af-5b94-9c44-377c669be94d/scratchpad/tmp/kc-conformance/4550/m1/src/main.kt: code generation failed: B$Inner.<init>: operand stack underflow at offset 12
+innerClass/multipleModules.kt	pass		
 innerClass/noPrimaryConstructor.kt	pass		
 innerClass/qualifiedThis.kt	pass		
 innerClass/secondaryConstructor.kt	pass		
@@ -4806,11 +4806,11 @@ localClass/virtualCallFromConstructor.kt	exception	java.lang.NullPointerExceptio
 localClasses/anonymousObjectInExtension.kt	check error	type mismatch: inferred type is _ but _ was expected	anonymousObjectInExtension.kt:2: type mismatch: inferred type is WithCompanion but WithCompanion.Companion was expected
 localClasses/anonymousObjectInInitializer.kt	pass		
 localClasses/anonymousObjectInParameterInitializer.kt	pass		
-localClasses/capturingInDefaultConstructorParameter.kt	codegen error	code generation: operand stack underflow at offset n	/tmp/claude-0/-home-user-kotlin-compiler-go/d9889070-30af-5b94-9c44-377c669be94d/scratchpad/tmp/kc-conformance/4807/m0/src/capturingInDefaultConstructorParameter.kt: code generation failed: CapturingInDefaultConstructorParameterKt$Local.<init>: operand stack underflow at offset 18
+localClasses/capturingInDefaultConstructorParameter.kt	pass		
 localClasses/closureOfInnerLocalClass.kt	pass		
 localClasses/closureOfLambdaInLocalClass.kt	pass		
 localClasses/closureWithSelfInstantiation.kt	pass		
-localClasses/defaultParameterInConstructor.kt	codegen error	code generation: operand stack underflow at offset n	/tmp/claude-0/-home-user-kotlin-compiler-go/d9889070-30af-5b94-9c44-377c669be94d/scratchpad/tmp/kc-conformance/4811/m0/src/defaultParameterInConstructor.kt: code generation failed: DefaultParameterInConstructorKt$box$MyEvent.<init>: operand stack underflow at offset 21
+localClasses/defaultParameterInConstructor.kt	pass		
 localClasses/inCallableReferenceLHS.kt	skip	LANGUAGE	
 localClasses/inExtensionFunction.kt	pass		
 localClasses/inExtensionProperty.kt	pass		
@@ -4824,7 +4824,7 @@ localClasses/kt2700.kt	pass
 localClasses/kt2873.kt	pass		
 localClasses/kt3210.kt	pass		
 localClasses/kt3389.kt	pass		
-localClasses/kt3584.kt	codegen error	code generation: operand stack underflow at offset n	/tmp/claude-0/-home-user-kotlin-compiler-go/d9889070-30af-5b94-9c44-377c669be94d/scratchpad/tmp/kc-conformance/4825/m0/src/kt3584.kt: code generation failed: Kt3584Kt$box$A.<init>: operand stack underflow at offset 18
+localClasses/kt3584.kt	pass		
 localClasses/kt4174.kt	pass		
 localClasses/kt45383.kt	pass		
 localClasses/localClass.kt	pass		
@@ -5458,12 +5458,12 @@ primitiveTypes/nullAsNullableIntIsNull.kt	pass
 primitiveTypes/nullableAsIndex.kt	pass		
 primitiveTypes/nullableCharBoolean.kt	pass		
 primitiveTypes/numberEqualsHashCodeToString.kt	pass		
-primitiveTypes/numberToChar/abstractMethodInSuperinterface.kt	check error	class '_' is not abstract and does not implement abstract member '_'	abstractMethodInSuperinterface.kt:8: class 'MyNumber' is not abstract and does not implement abstract member 'intValue'
+primitiveTypes/numberToChar/abstractMethodInSuperinterface.kt	check error	class '_' is not abstract and does not implement abstract member '_'	abstractMethodInSuperinterface.kt:8: class 'MyNumber' is not abstract and does not implement abstract member 'longValue'
 primitiveTypes/numberToChar/fakeOverride.kt	check error	class '_' is not abstract and does not implement abstract member '_'	fakeOverride.kt:4: class 'MyNumber' is not abstract and does not implement abstract member 'intValue'
-primitiveTypes/numberToChar/simple.kt	check error	class '_' is not abstract and does not implement abstract member '_'	simple.kt:4: class 'MyNumber' is not abstract and does not implement abstract member 'intValue'
+primitiveTypes/numberToChar/simple.kt	check error	class '_' is not abstract and does not implement abstract member '_'	simple.kt:4: class 'MyNumber' is not abstract and does not implement abstract member 'longValue'
 primitiveTypes/numberToChar/superCallToClass.kt	check error	class '_' is not abstract and does not implement abstract member '_'	superCallToClass.kt:4: class 'MyNumber' is not abstract and does not implement abstract member 'intValue'
-primitiveTypes/numberToChar/superCallToInterface.kt	check error	class '_' is not abstract and does not implement abstract member '_'	superCallToInterface.kt:8: class 'MyNumber' is not abstract and does not implement abstract member 'intValue'
-primitiveTypes/numberToChar/superCallToNumber.kt	check error	class '_' is not abstract and does not implement abstract member '_'	superCallToNumber.kt:4: class 'MyNumber' is not abstract and does not implement abstract member 'longValue'
+primitiveTypes/numberToChar/superCallToInterface.kt	check error	class '_' is not abstract and does not implement abstract member '_'	superCallToInterface.kt:8: class 'MyNumber' is not abstract and does not implement abstract member 'longValue'
+primitiveTypes/numberToChar/superCallToNumber.kt	check error	class '_' is not abstract and does not implement abstract member '_'	superCallToNumber.kt:4: class 'MyNumber' is not abstract and does not implement abstract member 'intValue'
 primitiveTypes/rangeTo.kt	pass		
 primitiveTypes/reassignDestructured.kt	skip	LANGUAGE	
 primitiveTypes/smartCastOnNullableDoubleIdentityEquals.kt	pass		
@@ -6536,8 +6536,8 @@ regressions/Kt2495Test.kt	pass
 regressions/arrayLengthNPE.kt	pass		
 regressions/commonSupertypeContravariant.kt	pass		
 regressions/commonSupertypeContravariant2.kt	pass		
-regressions/dataClassInInlineFunctionWithTypeParameters.kt	check error	unresolved or unsupported type: _	dataClassInInlineFunctionWithTypeParameters.kt:7: unresolved or unsupported type: T
-regressions/dataClassInRegularFunctionWithTypeParameters.kt	check error	unresolved or unsupported type: _	dataClassInRegularFunctionWithTypeParameters.kt:9: unresolved or unsupported type: T
+regressions/dataClassInInlineFunctionWithTypeParameters.kt	pass		
+regressions/dataClassInRegularFunctionWithTypeParameters.kt	pass		
 regressions/directInvokeDestructuring.kt	pass		
 regressions/directInvokeNameBasedDestructuring.kt	skip	LANGUAGE	
 regressions/dontCaptureTypesWithTypeVariables.kt	pass		
@@ -6564,7 +6564,7 @@ regressions/kt2060.kt	pass
 regressions/kt2210.kt	pass		
 regressions/kt2246.kt	pass		
 regressions/kt2470.kt	pass		
-regressions/kt24913.kt	check error	unresolved or unsupported type: _	kt24913.kt:7: unresolved or unsupported type: T
+regressions/kt24913.kt	pass		
 regressions/kt2509.kt	pass		
 regressions/kt3107.kt	pass		
 regressions/kt32949.kt	pass		
@@ -6590,7 +6590,7 @@ regressions/kt6153.kt	pass
 regressions/kt6434.kt	skip	LANGUAGE	
 regressions/kt6434_2.kt	skip	LANGUAGE	
 regressions/kt68727.kt	pass		
-regressions/kt71119.kt	check error	unresolved or unsupported type: _	kt71119.kt:59: unresolved or unsupported type: _
+regressions/kt71119.kt	pass		
 regressions/kt7401.kt	pass		
 regressions/kt789.kt	pass		
 regressions/kt79516.kt	pass		
@@ -7135,9 +7135,9 @@ unaryOp/intrinsic.kt	pass
 unaryOp/intrinsicNullable.kt	pass		
 unaryOp/longOverflow.kt	pass		
 underscoredTypeArguments/backTicked.kt	pass		
-underscoredTypeArguments/lambdaInputType.kt	check error	unresolved or unsupported type: _	main.kt:3: unresolved or unsupported type: _
-underscoredTypeArguments/react.kt	check error	unresolved or unsupported type: _	main.kt:2: unresolved or unsupported type: _
-underscoredTypeArguments/simple.kt	check error	unresolved or unsupported type: _	simple.kt:8: unresolved or unsupported type: _
+underscoredTypeArguments/lambdaInputType.kt	pass		
+underscoredTypeArguments/react.kt	pass		
+underscoredTypeArguments/simple.kt	pass		
 unit/UnitValue.kt	pass		
 unit/closureReturnsNullableUnit.kt	pass		
 unit/ifElse.kt	pass		

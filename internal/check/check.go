@@ -815,9 +815,10 @@ func (c *Checker) lookupTypeParam(name string) *types.TypeParamSym {
 			return p
 		}
 	}
-	// An object expression's signatures see the enclosing code's, and so
-	// do its inner classes'.
-	for k := c.lookupCls; k != nil && (k.Anonymous || k.Inner); k = k.Outer {
+	// An object expression's or a local class's signatures see the
+	// enclosing code's, class Local(val x: T) in fun <T> f(), and so do
+	// their inner classes'.
+	for k := c.lookupCls; k != nil && (k.Anonymous || k.Inner || k.Local); k = k.Outer {
 		for _, p := range c.anon[k].tparams {
 			if p.Name == name {
 				return p

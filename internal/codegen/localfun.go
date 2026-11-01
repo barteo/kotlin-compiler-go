@@ -90,6 +90,12 @@ func (g *gen) localFun(lf *syntax.LocalFun) {
 			g.code.Invoke(cf.INVOKESTATIC, owner, "access$"+name, d)
 		}})
 	}
+	if fd.Tailrec {
+		// After the state machine's entry, as in a member function; the
+		// captures in the frame stay the same across the jumps.
+		lg.tail = &tailrec{fd: fd, start: cf.NewLabel()}
+		lg.code.Place(lg.tail.start)
+	}
 	if fd.Body != nil {
 		lg.block(fd.Body, types.UnitType, false)
 		if lg.code.Reachable() {
@@ -113,7 +119,6 @@ func (g *gen) localFun(lf *syntax.LocalFun) {
 func (g *gen) localDefaults(lf *syntax.LocalFun) {
 	f := lf.Decl.Sym
 	d := g.localDesc(lf)
-	i := strings.IndexByte(d, ')')
 	access := uint16(cf.AccStatic | cf.AccSynthetic)
 	if g.inInterface() {
 		access |= cf.AccPrivate // interface methods are public or private
@@ -121,7 +126,7 @@ func (g *gen) localDefaults(lf *syntax.LocalFun) {
 	lc := &lambdaCtx{slots: map[*types.VarSym]int{}, fun: true}
 	lg := &gen{file: g.file, cls: g.cls, owner: g.owner, shared: g.shared, prefix: lf.Method + "$default$lambda", lam: lc, noLines: g.noLines,
 		publicInline: g.publicInline, lambdaReified: g.reifiedSubst()} // copies of an inline function copy its lambdas
-	lg.code = g.cls.NewMethod(access, lf.Method+"$default", d[:i]+"ILjava/lang/Object;"+d[i:])
+	lg.code = g.cls.NewMethod(access, lf.Method+"$default", defaultsDesc(d, types.DefaultBits(f), objMarker))
 	lg.retType = f.Ret
 	for _, p := range f.Contexts {
 		p.Slot = lg.code.AllocLocal(paramDesc(p.Type))
@@ -130,7 +135,7 @@ func (g *gen) localDefaults(lf *syntax.LocalFun) {
 		r.Slot = lg.code.AllocLocal(desc(r.Type))
 	}
 	lg.allocFrame(lf.Frame, lc)
-	lg.fillDefaultsCont(lf.Decl.Params, f.Params, len(f.Contexts), false, nil)
+	k := lg.fillDefaultsCont(lf.Decl.Params, f.Params, len(f.Contexts), f.Suspend, nil)
 	for _, p := range f.Contexts {
 		lg.code.Local(loadOp(p.Type), p.Slot)
 	}
@@ -141,8 +146,11 @@ func (g *gen) localDefaults(lf *syntax.LocalFun) {
 	for _, p := range f.Params {
 		lg.code.Local(loadOp(p.Type), p.Slot)
 	}
+	if k >= 0 {
+		lg.code.Local(cf.ALOAD, k) // a suspend function's continuation
+	}
 	lg.invokeLocal(lf.Method, d)
-	lg.code.Op(returnOp(f.Ret))
+	lg.code.Op(returnOpOf(d[strings.IndexByte(d, ')')+1:])) // an Object for a suspend function
 	lg.check()
 }
 
@@ -155,11 +163,9 @@ func (g *gen) callLocal(x *syntax.Call, lf *syntax.LocalFun) {
 	}
 	g.loadFrame(lf.Frame)
 	name, d := lf.Method, g.localDesc(lf)
-	if mask := g.callArgs(x, f); mask != 0 {
-		g.code.Iconst(int32(mask))
-		g.code.Op(cf.ACONST_NULL)
-		i := strings.IndexByte(d, ')')
-		name, d = name+"$default", d[:i]+"ILjava/lang/Object;"+d[i:]
+	if mask := g.callArgs(x, f); mask.any() {
+		g.pushMask(mask, types.DefaultBits(f))
+		name, d = name+"$default", defaultsDesc(d, types.DefaultBits(f), objMarker)
 	}
 	if lf.Owner != g.cls.Name && !g.inInterface() {
 		// From another class, a function reference's: through an

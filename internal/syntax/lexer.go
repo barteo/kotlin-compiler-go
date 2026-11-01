@@ -206,7 +206,7 @@ func (lx *lexer) next() {
 			lx.errorf(p, "unterminated backtick identifier")
 		}
 		lx.advance(1)
-		lx.emit(IDENT, p, name)
+		lx.toks = append(lx.toks, Token{Kind: IDENT, Pos: p, Text: name, Quoted: true})
 		return
 	case isDigit(c) || c == '.' && isDigit(lx.peekByte(1)):
 		lx.number(p) // .5 is a Double

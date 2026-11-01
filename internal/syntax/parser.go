@@ -1059,6 +1059,9 @@ func (p *parser) parseTypeArgs() []*TypeArg {
 			a.Variance = types.Star
 		default:
 			a.Variance = p.variance()
+			if t := p.tok(); t.Kind == IDENT && t.Text == "_" && !t.Quoted && a.Variance == types.Inv {
+				a.Underscore = true
+			}
 			a.Type = p.parseType()
 		}
 		args = append(args, a)
