@@ -22,9 +22,13 @@ type annotArg struct {
 	pos   syntax.Pos
 }
 
-// annotations resolves and checks the annotations among as that class
-// files keep, of a declaration in class owner (nil at top level).
-func (c *Checker) annotations(as []syntax.Annotation, owner *types.ClassSym) {
+// annotations resolves and checks the annotations among as, of a
+// declaration in class owner (nil at top level), written on site: where
+// they are, and whether they repeat. Those that class files keep, and
+// those of the program's SOURCE annotation classes, have their arguments
+// checked.
+func (c *Checker) annotations(as []syntax.Annotation, owner *types.ClassSym, site annotSite) {
+	seen := map[repeatKey]bool{}
 	for i := range as {
 		a := &as[i]
 		if a.Name == "" {
@@ -35,6 +39,10 @@ func (c *Checker) annotations(as []syntax.Annotation, owner *types.ClassSym) {
 			continue
 		}
 		cls.Ensure()
+		if cls.Retention != types.NoRetention {
+			c.annotationTarget(a, cls, site)
+			c.repeated(a, cls, site, seen)
+		}
 		if ps := cls.TypeParams; cls.Annotation && len(a.TypeArgs) != len(ps) && c.lookupAlias(a.Name) == nil {
 			// Unlike a call, an annotation entry doesn't infer its
 			// type arguments; a typealias may give them.
@@ -44,10 +52,11 @@ func (c *Checker) annotations(as []syntax.Annotation, owner *types.ClassSym) {
 				c.errorf(a.P, "%s expected for annotation class %s%s", countArgs(len(ps)), cls.DisplayName(), types.TypeParamsString(ps))
 			}
 		}
-		if cls.Retention == types.RetentionSource {
+		source := cls.Retention == types.RetentionSource
+		if source {
 			a.Source = cls
 		}
-		if cls.Retention == types.NoRetention || cls.Retention == types.RetentionSource {
+		if cls.Retention == types.NoRetention || source && !cls.Annotation {
 			continue
 		}
 		if !c.u.ext.kotlin && !cls.Annotation {
@@ -76,10 +85,11 @@ func (c *Checker) annotations(as []syntax.Annotation, owner *types.ClassSym) {
 		}
 		saved := c.state
 		c.state = state{scope: &scope{}, staticCls: owner}
-		a.Values, ok = c.annotationValues(cls, args, a.P)
+		values, ok := c.annotationValues(cls, args, a.P)
 		c.state = saved
-		if ok {
-			a.Class = cls
+		if ok && !source {
+			// Class files keep it.
+			a.Class, a.Values = cls, values
 		}
 	}
 }
@@ -242,47 +252,59 @@ func (c *Checker) annotationElem(x syntax.Expr, t types.Type) (syntax.Annotation
 	}
 	before := len(c.errs)
 	c.assignable(c.value(x, t), t, x.Pos())
+	if len(c.errs) == before {
+		if bad := c.nonConst(x); bad != nil {
+			c.errorf(bad.Pos(), "annotation argument must be a compile-time constant")
+		}
+	}
 	return syntax.AnnotationElem{X: x}, len(c.errs) == before
 }
 
 // declAnnotations checks the annotations of declaration d, in class owner
 // (nil at top level), and of its parameters, accessors and members.
 func (c *Checker) declAnnotations(d syntax.Decl, owner *types.ClassSym) {
-	fun := func(f *syntax.FunDecl) {
+	params := func(ps []*syntax.Param) {
+		for _, p := range ps {
+			c.noReceiver(p.Annotations)
+			c.annotations(p.Annotations, owner, paramSite)
+		}
+	}
+	fun := func(f *syntax.FunDecl, site annotSite) {
 		if f == nil {
 			return
 		}
-		c.annotations(f.Annotations, owner)
-		c.annotations(f.RecvAnnotations, owner)
-		for _, p := range f.Params {
-			c.noReceiver(p.Annotations)
-			c.annotations(p.Annotations, owner)
+		c.annotations(f.Annotations, owner, site)
+		c.annotations(f.RecvAnnotations, owner, annotSite{})
+		if f.Property == "" {
+			params(f.Contexts) // an accessor's are its property's
 		}
+		params(f.Params)
 	}
 	switch d := d.(type) {
 	case *syntax.FunDecl:
 		c.noReceiver(d.Annotations)
-		fun(d)
+		fun(d, funSite(owner))
 	case *syntax.PropDecl:
 		c.noReceiver(d.Annotations)
-		c.annotations(d.Annotations, owner)
-		c.annotations(d.RecvAnnotations, owner)
-		fun(d.Getter)
-		fun(d.Setter)
+		c.annotations(d.Annotations, owner, propSite(owner))
+		c.annotations(d.RecvAnnotations, owner, annotSite{})
+		params(d.Contexts)
+		fun(d.Getter, annotSite{siteUnchecked, types.TargetGetter, "getter"})
+		fun(d.Setter, annotSite{siteUnchecked, types.TargetSetter, "setter"})
 	case *syntax.TypeAliasDecl:
-		c.annotations(d.Annotations, owner)
+		c.annotations(d.Annotations, owner, typealiasSite)
 	case *syntax.ClassDecl:
 		cls := d.Sym
 		c.noReceiver(d.Annotations)
 		c.noReceiver(d.CtorMods.Annotations)
-		c.annotations(d.Annotations, cls)
-		c.annotations(d.CtorMods.Annotations, cls)
+		c.annotations(d.Annotations, cls, classSite(d))
+		c.annotations(d.CtorMods.Annotations, cls, ctorSite)
 		for _, cp := range d.CtorParams {
 			c.noReceiver(cp.Modifiers.Annotations)
-			c.annotations(cp.Modifiers.Annotations, cls)
+			c.annotations(cp.Modifiers.Annotations, cls, ctorParamSite(cls, cp))
 		}
 		for _, e := range d.Entries {
-			c.annotations(e.Annotations, cls)
+			c.annotations(e.Annotations, cls, enumEntrySite)
 		}
 		for _, m := range d.Members {
 			switch m := m.(type) {
@@ -290,10 +312,10 @@ func (c *Checker) declAnnotations(d syntax.Decl, owner *types.ClassSym) {
 				c.declAnnotations(m, cls)
 			case *syntax.SecondaryCtor:
 				c.noReceiver(m.Annotations)
-				c.annotations(m.Annotations, cls)
+				c.annotations(m.Annotations, cls, ctorSite)
 				for _, p := range m.Params {
 					c.noReceiver(p.Annotations)
-					c.annotations(p.Annotations, cls)
+					c.annotations(p.Annotations, cls, paramSite)
 				}
 			}
 		}

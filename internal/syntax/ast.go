@@ -258,6 +258,9 @@ type Annotation struct {
 	// kotlinc adds, as @JvmInline to an inline class: class files keep it,
 	// but the declaration's metadata doesn't count it.
 	Implicit bool
+	// Accessor is set on an annotation written on an accessor, @A get(),
+	// which the property keeps with Target get or set.
+	Accessor bool
 
 	// Set by the checker on an annotation that class files keep (its
 	// class's retention isn't SOURCE): its class, and its arguments by

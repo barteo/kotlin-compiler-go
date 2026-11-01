@@ -776,6 +776,15 @@ type ClassSym struct {
 	// Container is set on a repeatable annotation class of the class
 	// path: the annotation class that holds several of its annotations.
 	Container *ClassSym
+	// TargetsKnown is set on an annotation class whose Targets, and
+	// whether it is Repeatable, kc knows for sure: the program's, and the
+	// class path's that are Kotlin or have a @Target, but not a Java
+	// source's, whose class info is only what javasrc reads.
+	TargetsKnown bool
+	// Repeatable is set on an annotation class annotated @Repeatable,
+	// @JvmRepeatable or Java's @Repeatable: an element can have several
+	// of its annotations.
+	Repeatable bool
 
 	// Kotlin classes read from metadata.
 	KotlinName string // class id, e.g. kotlin/collections/Map.Entry; "" for Java classes

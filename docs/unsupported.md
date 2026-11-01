@@ -134,6 +134,12 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   function type `context(A) (B) -> R`, and the other way round, as it is
   for an extension function type `A.(B) -> R`; `kotlinc` accepts only
   references and lambdas there.
+- Where annotations are written, and whether they repeat, is checked
+  on top-level and member declarations and files, not on local
+  declarations, expressions, types or type parameters, and not for Java
+  annotations without `@Target` or from Java sources. The arguments of a
+  library's `SOURCE` annotation aren't checked, so they need not be
+  constants.
 
 **Classes and members**
 

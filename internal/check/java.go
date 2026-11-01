@@ -150,11 +150,23 @@ func (t *classTable) load(cls *types.ClassSym) {
 		if info.Repeatable != "" {
 			cls.Container = t.class(info.Repeatable)
 		}
-		if info.KotlinTargets != nil {
+		cls.Repeatable = cls.Container != nil || slices.ContainsFunc(cls.Annotations, func(a *types.ClassSym) bool {
+			return a.Name == "kotlin/annotation/Repeatable"
+		})
+		known := !t.cp.IsSource(cls.Name)
+		switch {
+		case info.KotlinTargets != nil:
 			cls.Targets = types.KotlinTargets(info.KotlinTargets)
-		} else {
+		case info.Kotlin != nil:
+			cls.Targets = types.DefaultTargets // a Kotlin annotation class without @Target
+		default:
+			// A Java annotation class: without @Target, or with
+			// TYPE_USE, which Kotlin may apply to a declaration's type,
+			// kc doesn't check where it is written.
 			cls.Targets = types.JavaTargets(info.JavaTargets)
+			known = known && info.JavaTargets != nil && cls.Targets&types.TargetType == 0
 		}
+		cls.TargetsKnown = known
 	}
 	if t.kotlin && info.Kotlin != nil && info.Kotlin.K == kmeta.KindClassFile {
 		if kc, err := kmeta.ReadClass(info.Kotlin); err == nil {

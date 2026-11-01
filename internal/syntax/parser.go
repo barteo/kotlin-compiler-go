@@ -1583,7 +1583,7 @@ func (p *parser) accessors(pd *PropDecl) {
 		p.noContexts(&m, "property accessors")
 		for _, a := range m.Annotations {
 			if a.Target == "" {
-				a.Target = t.Text
+				a.Target, a.Accessor = t.Text, true
 			}
 			pd.Annotations = append(pd.Annotations, a)
 		}
