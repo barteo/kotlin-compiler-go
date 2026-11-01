@@ -971,6 +971,8 @@ func (c *Checker) assign(s *syntax.Assign) {
 	// x op= v is x = x op v, whose result must have x's type.
 	op, rt, ok := arith(arithOf(s.Op), tt.Flex(), vt)
 	switch {
+	case !ok && never(vt):
+		// x += todo(): the assignment is dead code.
 	case !ok:
 		c.errorf(s.P, "operator '%s' cannot be applied to %s and %s", s.Op, tt, vt)
 	case rt != tt.Flex():
@@ -1086,6 +1088,10 @@ func (c *Checker) incDec(u *syntax.Unary, value bool) types.Type {
 	if rt := c.targetCast(u.X, t); mutable && rt != t && builtinIncDec(rt) && !types.MayBeNull(rt) {
 		// x++ on an x that a smart cast narrows, an Int? known to be an
 		// Int: x = x.inc() reads x as an Int, and the value of x++ is one.
+		return result(c.incDecOp(u, t, keep))
+	}
+	if rt := c.targetCast(u.X, t); nullableOperand(rt) && c.opExtension(rt, opNames[u.Op]) {
+		// An operator extension of a nullable receiver: Int?.inc().
 		return result(c.incDecOp(u, t, keep))
 	}
 	if t.K != types.Invalid && !t.Flex().IsNumeric() && t.Flex() != types.CharType {

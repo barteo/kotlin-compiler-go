@@ -909,6 +909,12 @@ func (g *gen) binary(x *syntax.Binary) {
 			g.call(x.Call) // an operator function
 			return
 		}
+		if x.OpType.K == types.Nothing {
+			// An operand never completes: the code after it is dead.
+			g.expr(x.X)
+			g.expr(x.Y)
+			return
+		}
 		if x.OpType == types.StringType {
 			g.newStringBuilder()
 			g.appendExpr(x.X)

@@ -843,6 +843,11 @@ func (c *Checker) binary(x *syntax.Binary, want types.Type, allowRange bool) typ
 			return c.binaryOp(x, xt, want)
 		}
 	}
+	if name := binaryOpName(x.Op); name != "" && nullableOperand(xt) && c.opExtension(xt, name, x.Y) {
+		// An operator extension of a nullable receiver: Int?.plus(Int),
+		// Long?.compareTo(Long?).
+		return c.binaryOp(x, xt, want)
+	}
 	yWant := xt
 	switch x.Y.(type) {
 	case *syntax.If, *syntax.When, *syntax.Try:
@@ -857,7 +862,9 @@ func (c *Checker) binary(x *syntax.Binary, want types.Type, allowRange bool) typ
 	}
 	switch x.Op {
 	case syntax.PLUS:
-		if xt.NonNull() == types.StringType {
+		if xt.NonNull() == types.StringType || xt.K == types.Null {
+			// null + x is the built-in String?.plus(Any?), as s + x for
+			// a String? s: "null" and x's string.
 			x.OpType = types.StringType
 			return types.StringType
 		}
@@ -869,11 +876,17 @@ func (c *Checker) binary(x *syntax.Binary, want types.Type, allowRange bool) typ
 		fallthrough
 	case syntax.MINUS, syntax.STAR, syntax.SLASH, syntax.PERCENT:
 		op, t, ok := arith(x.Op, xt, yt)
-		if !ok && !builtinOperand(yt) {
+		if !ok && (!builtinOperand(yt) || c.opExtension(xt, opNames[x.Op], checked(x.Y, yt))) {
 			// An operator extension of a built-in type: 3 * v is
 			// 3.times(v).
 			x.Y = checked(x.Y, yt)
 			return c.binaryOp(x, xt, want)
+		}
+		if !ok && (never(xt) || never(yt)) {
+			// An operand that never completes, as todo() * "": the
+			// operator is dead code.
+			x.OpType = types.NothingType
+			return types.NothingType
 		}
 		if !ok {
 			c.errorf(x.P, "operator '%s' cannot be applied to %s and %s", x.Op, xt, yt)
@@ -891,10 +904,11 @@ func (c *Checker) binary(x *syntax.Binary, want types.Type, allowRange bool) typ
 			x.OpType = types.StringType
 		case c.comparable(xt, yt):
 			x.OpType = types.ClassType(c.u.ext.class("java/lang/Comparable"))
-		case xt.IsParam():
+		case xt.IsParam(), c.opExtension(xt, "compareTo", checked(x.Y, yt)):
 			// An operator extension of a type parameter: a context
 			// parameter's T.compareTo, as Arrow's x <= y in
-			// with(comparator).
+			// with(comparator). Or of a built-in type, for another type
+			// than its own compareTo takes: Int.compareTo(Char).
 			x.Y = checked(x.Y, yt)
 			return c.binaryOp(x, xt, want)
 		default:
@@ -2421,8 +2435,25 @@ func (c *Checker) extShadows(name string, rt types.Type, x *syntax.Call) bool {
 	return false
 }
 
+// builtinShadowed reports whether an extension comes before the built-in
+// operator function name of a number or a Char for call x, as extShadows
+// reports: not when the member takes the argument, as members win over
+// extensions. A unary one always does: this.inc() in an Int?.inc() for a
+// this known not to be null, compareTo(c.code) in an Int.compareTo(Char).
+func (c *Checker) builtinShadowed(name string, rt types.Type, x *syntax.Call) bool {
+	if len(x.Args) == 0 || !c.extShadows(name, rt, x) {
+		return false
+	}
+	if t := c.argTypes(x)[0]; t.K != types.Invalid {
+		if _, _, ok := types.OperatorFunType(name, rt, t.Flex()); ok {
+			return false
+		}
+	}
+	return true
+}
+
 func (c *Checker) builtinMember(x *syntax.Call, fn *syntax.Member, rt types.Type, want types.Type, sink *system) types.Type {
-	if n, ok := types.OperatorFuns[fn.Name]; ok && (rt.IsNumeric() || rt == types.CharType) && len(x.Args) == n && !c.extShadows(fn.Name, rt, x) {
+	if n, ok := types.OperatorFuns[fn.Name]; ok && (rt.IsNumeric() || rt == types.CharType) && len(x.Args) == n && !c.builtinShadowed(fn.Name, rt, x) {
 		// An operator function called by name, 1.plus(2), is the
 		// operator: 1 + 2.
 		c.noSpread(x)

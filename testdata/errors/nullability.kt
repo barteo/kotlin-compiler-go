@@ -30,6 +30,14 @@ fun incNullable(a: Int?) {
     s -= "b" // ERROR operator '-=' cannot be applied to String? and String
 }
 
+operator fun Int?.minus(s: String): Int = 0
+
+fun nullableOperands(a: Int?, l: Long?) {
+    println(a - "x") // Int?.minus(String)
+    println(a - 1) // ERROR operator '-' cannot be applied to Int? and Int
+    println(l < l) // ERROR operator '<' cannot be applied to Long? and Long?
+}
+
 fun recursive() = recursive() // ERROR recursive problem
 
 // A var that a local function assigns, as kotlinc has it: in the function,

@@ -55,8 +55,36 @@ fun nullableString(n: Int): String? {
     return s
 }
 
+operator fun Int?.inc(): Int? = if (this == null) 0 else this + 1
+
+private operator fun Long?.compareTo(other: Long?): Int = (this ?: 0L).compareTo(other ?: 0L)
+
+operator fun Int.compareTo(c: Char): Int = compareTo(c.code)
+
+class Counter {
+    operator fun Int?.plus(n: Int): Int = (this ?: 100) + n
+
+    fun add(x: Int?) = x + 1
+}
+
+fun nullableOperands() {
+    var i: Int? = null
+    i++ // Int?.inc()
+    val j = i++
+    println("$i $j")
+    val a: Long? = null
+    val b: Long? = 3L
+    println("${a < b} ${a >= b}")
+    println("${66 < 'A'} ${64 < 'A'}") // Int.compareTo(Char)
+    println("${Counter().add(null)} ${Counter().add(1)}")
+    println(null + "!")
+    val n: String? = null
+    println(n + null)
+}
+
 fun main() {
     incrementSmartCast()
+    nullableOperands()
     println(compoundOnAny("O"))
     println(compoundOnAny(41))
     println(compoundOnAny(null))
