@@ -505,6 +505,45 @@ func (c *Checker) rangeValue(x *syntax.Binary, want types.Type) types.Type {
 	return infix("step", checked(x.X, rt))
 }
 
+// rangeMember reports whether name is a member of a receiver of type t
+// that makes a range, called with n arguments: an integral number's or a
+// Char's rangeTo or rangeUntil, intrinsics without a JVM method.
+func rangeMember(t types.Type, name string, n int) bool {
+	return (name == "rangeTo" || name == "rangeUntil") && n == 1 && (t == types.LongType || isIntLike(t) || t == types.CharType)
+}
+
+// memberRange checks a call of rangeTo or rangeUntil on an integral
+// number or a Char, r.rangeTo(b), as the range r..b used as a value, and
+// r.rangeUntil(b) as r until b: x becomes the call that makes it. It
+// reports false, checking only the argument, if that doesn't fit, for
+// an extension to take the call.
+func (c *Checker) memberRange(x *syntax.Call, fn *syntax.Member, rt types.Type, want types.Type) (types.Type, bool) {
+	if len(x.Names) > 0 || x.Trailing() {
+		return types.InvalidType, false
+	}
+	c.noSpread(x)
+	at := c.value(x.Args[0], noWant)
+	x.Args[0] = checked(x.Args[0], at)
+	a := at.Flex()
+	if rt == types.CharType && a != types.CharType || rt != types.CharType && a != types.LongType && !isIntLike(a) {
+		return types.InvalidType, false
+	}
+	op := syntax.RANGE
+	if fn.Name == "rangeUntil" {
+		op = syntax.RANGE_LT
+	}
+	b := &syntax.Binary{Op: op, X: checked(fn.X, rt), Y: x.Args[0]}
+	b.P = x.P
+	t := c.rangeValue(b, want)
+	if b.Call == nil || t.K == types.Invalid {
+		return t, true
+	}
+	p := x.P
+	*x = *b.Call
+	x.P = p
+	return t, true
+}
+
 // nullableIn reports whether x in r, for a range r written in place of
 // type rt, tests a nullable x of r's element type, as kotlinc does with
 // an inline contains of the standard library: IntRange.contains(Int?).
@@ -2523,6 +2562,11 @@ func (c *Checker) builtinShadowed(name string, rt types.Type, x *syntax.Call) bo
 }
 
 func (c *Checker) builtinMember(x *syntax.Call, fn *syntax.Member, rt types.Type, want types.Type, sink *system) types.Type {
+	if rangeMember(rt, fn.Name, len(x.Args)) && !fn.Safe {
+		if t, ok := c.memberRange(x, fn, rt, want); ok {
+			return t
+		}
+	}
 	if n, ok := types.OperatorFuns[fn.Name]; ok && (rt.IsNumeric() || rt == types.CharType) && len(x.Args) == n && !c.builtinShadowed(fn.Name, rt, x) {
 		// An operator function called by name, 1.plus(2), is the
 		// operator: 1 + 2.
