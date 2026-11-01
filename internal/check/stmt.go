@@ -2,6 +2,7 @@ package check
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
 	"github.com/barteo/kotlin-compiler-go/internal/types"
@@ -659,6 +660,10 @@ func (c *Checker) lvalue(x syntax.Expr) (types.Type, bool) {
 			c.errorf(x.P, "val cannot be reassigned")
 			return sym.Type, false
 		}
+		if c.propVisible(sym) && !c.setterVisible(sym) {
+			c.invisibleSetter(x.P, sym)
+			return sym.Type, false
+		}
 		return sym.Type, true
 	case *syntax.Index:
 		// Compound assignment of an element: a[i] += x, a[i]++.
@@ -703,6 +708,10 @@ func (c *Checker) lvalue(x syntax.Expr) (types.Type, bool) {
 		}
 		if _, this := x.X.(*syntax.This); !x.Prop.Mutable && !(this && c.assignsDeferred(x.Prop)) {
 			c.errorf(x.P, "val cannot be reassigned")
+			return t, false
+		}
+		if c.propVisible(x.Prop) && !c.setterVisible(x.Prop) {
+			c.invisibleSetter(x.P, x.Prop)
 			return t, false
 		}
 		// Through a projected receiver, the type that can be written
@@ -928,8 +937,9 @@ func (c *Checker) assign(s *syntax.Assign) {
 		c.assignedNested(v, v.Type)
 	}
 	if !builtinOperand(tt) || classBound(tt) {
-		// x += v may call x.plusAssign(v), also on a val.
-		if !mutable && len(c.errs) == n+1 && c.errs[n].Msg == "val cannot be reassigned" {
+		// x += v may call x.plusAssign(v), also on a val or a var whose
+		// setter the code can't see.
+		if !mutable && len(c.errs) == n+1 && (c.errs[n].Msg == "val cannot be reassigned" || strings.HasPrefix(c.errs[n].Msg, invisibleSetterMsg)) {
 			c.errs = c.errs[:n]
 		}
 		c.compoundOp(s, tt, mutable)

@@ -24,6 +24,7 @@ func (c *Checker) resolveSupertypes() {
 	defer func() {
 		c.noBoundChecks = false
 		c.tparams = nil
+		c.supersOf = nil
 	}()
 	object := c.u.ext.class("java/lang/Object")
 	for _, cd := range c.classes {
@@ -33,7 +34,7 @@ func (c *Checker) resolveSupertypes() {
 		// implements the outer one. An object expression's or
 		// a local class's, which has none, see the enclosing function's
 		// type parameters through it.
-		c.tparams, c.lookupCls = cls.TypeParams, cls.Outer
+		c.tparams, c.lookupCls, c.supersOf = cls.TypeParams, cls.Outer, cls
 		if cls.Anonymous || cls.Local {
 			c.lookupCls = cls
 		}
@@ -359,26 +360,67 @@ func (c *Checker) hasProp(cls *types.ClassSym, name string) bool {
 }
 
 func (c *Checker) userProp(cls *types.ClassSym, name string) *types.VarSym {
-	var p *types.VarSym
+	return c.userProp1(cls, name, false)
+}
+
+// memberProp is userProp for a property of an instance of cls: its
+// supertypes' private properties aren't cls's.
+func (c *Checker) memberProp(cls *types.ClassSym, name string) *types.VarSym {
+	return c.userProp1(cls, name, true)
+}
+
+func (c *Checker) userProp1(cls *types.ClassSym, name string, inherited bool) *types.VarSym {
+	// The first the code can see, or else the first: a superclass's
+	// private property gives way to an interface's.
+	var p, hidden *types.VarSym
 	cls.Supertypes(func(s *types.ClassSym) bool {
+		var q *types.VarSym
 		if !s.External {
-			p = s.Prop(name)
+			q = s.Prop(name)
 		} else if f := s.JavaFields[name]; f != nil {
-			p = f // a Java class's field
+			q = f // a Java class's field
+		}
+		switch {
+		case q == nil:
+		case inherited && propNotInherited(q, cls):
+		case c.propVisible(q):
+			p = q
+		case hidden == nil:
+			hidden = q
 		}
 		return p == nil
 	})
+	if p == nil {
+		p = hidden
+	}
 	return c.propAlt(p)
 }
 
-// accessible drops the protected members that code outside a subclass of
-// their class can't use.
-func (c *Checker) accessible(fs []*types.FunSym) []*types.FunSym {
+// accessible drops the members of class on (nil for a super call) that
+// the code can't see: private ones outside their class, protected ones
+// outside its subclasses (see visibility.go), and the private members of
+// on's supertypes, which on doesn't inherit, unless they are members of
+// also, the class of a smart-cast variable's declared type.
+func (c *Checker) accessible(on *types.ClassSym, fs []*types.FunSym, also ...*types.ClassSym) []*types.FunSym {
+	keep := func(f *types.FunSym) bool {
+		if !c.funVisible(f) {
+			return false
+		}
+		if !notInherited(f, on) {
+			return true
+		}
+		for _, k := range also {
+			if k != nil && !notInherited(f, k) {
+				return true
+			}
+		}
+		return false
+	}
 	for i, f := range fs {
-		if f.Protected && !c.inSubclass(f.Owner) {
+		if !keep(f) {
 			out := append([]*types.FunSym(nil), fs[:i]...)
 			for _, g := range fs[i+1:] {
-				if !g.Protected || c.inSubclass(g.Owner) {
+				if keep(g) {
 					out = append(out, g)
 				}
 			}
@@ -1215,7 +1257,7 @@ func simpleName(cls *types.ClassSym) string {
 // property named name.
 func (c *Checker) superHas(cls *types.ClassSym, name string, call bool) bool {
 	if call {
-		for _, f := range c.accessible(c.javaMethods(cls, name)) {
+		for _, f := range c.accessible(nil, c.javaMethods(cls, name)) {
 			// An interface's equals, hashCode and toString are Any's.
 			if !cls.Interface || f.Owner == nil || f.Owner.Name != "java/lang/Object" {
 				return true
@@ -1239,7 +1281,7 @@ func (c *Checker) superHasImpl(cls *types.ClassSym, name string, call bool) bool
 		// AbstractCollection's.
 		found := false
 		cls.Supertypes(func(s *types.ClassSym) bool {
-			for _, f := range c.accessible(s.Methods[name]) {
+			for _, f := range c.accessible(nil, s.Methods[name]) {
 				if !f.Abstract {
 					found = true
 				}
@@ -1275,7 +1317,7 @@ func (c *Checker) superCall(x *syntax.Call, fn *syntax.Member, s *syntax.Super, 
 		fn.X = this
 		return c.call(x, want, sink)
 	}
-	ms := c.accessible(c.javaMethods(st.C, fn.Name))
+	ms := c.accessible(nil, c.javaMethods(st.C, fn.Name))
 	if len(ms) == 0 && st.C.Interface {
 		if object := c.u.ext.class("java/lang/Object"); object != nil {
 			ms = c.javaMethods(object, fn.Name)

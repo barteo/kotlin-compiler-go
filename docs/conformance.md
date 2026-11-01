@@ -127,33 +127,32 @@ Kotlin 2.4.21's tests on `kc`:
 | Box tests | Tests | Share of run |
 |:---|---:|---:|
 | run (of 7,480) | 6,483 | |
-| pass | 6,182 | 95.4% |
+| pass | 6,186 | 95.4% |
 | check error | 195 | 3.0% |
 | codegen error | 16 | 0.2% |
-| VerifyError and linkage error | 31 | 0.5% |
-| exception and wrong result | 59 | 0.9% |
+| VerifyError and linkage error | 29 | 0.4% |
+| exception and wrong result | 57 | 0.9% |
 | parse/unsupported, crash, timeout | 0 | |
 
 | Diagnostics tests | Tests | Share of run |
 |:---|---:|---:|
 | run (of 10,827) | 7,200 | |
-| rejects invalid | 2,963 | 41.2% |
-| accepts valid | 2,781 | 38.6% |
-| accepts invalid | 855 | 11.9% |
-| rejects valid | 521 | 7.2% |
+| rejects invalid | 3,016 | 41.9% |
+| accepts valid | 2,782 | 38.6% |
+| accepts invalid | 802 | 11.1% |
+| rejects valid | 520 | 7.2% |
 | parse/unsupported | 79 | 1.1% |
 | crash | 1 | 0.0% |
 
 `kc` agrees with `kotlinc` on 80% of the diagnostics tests, and reports
-10,055 of the 18,906 expected errors (53%) on their lines. The reports
+10,257 of the 18,906 expected errors (54%) on their lines. The reports
 break the failures down; the largest groups are:
 
-- **Silent miscompilation** (90 box tests): `tailrec` functions that
+- **Silent miscompilation** (86 box tests): `tailrec` functions that
   overflow the stack (16), `NullPointerException`s (14), `VerifyError`s
   for bad local variable types (7), and duplicate bridge methods in `Map`
   implementations (3).
-- **Accepts invalid**: visibility, which isn't checked
-  (`INVISIBLE_REFERENCE` 53), annotation targets and arguments
+- **Accepts invalid**: annotation targets and arguments
   (`WRONG_ANNOTATION_TARGET` 47, `ANNOTATION_ARGUMENT_MUST_BE_CONST` 34),
   inline-only parameters (`USAGE_IS_NOT_INLINABLE` 27), opt-in (26),
   JVM signature clashes (`ACCIDENTAL_OVERRIDE`,
