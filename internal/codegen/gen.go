@@ -550,16 +550,30 @@ func desc(t types.Type) string {
 }
 
 // funDesc is the descriptor of a function or method: the one read from the
-// class file for Java methods. An extension function takes its receiver
-// first.
+// class file for Java methods. A function with context parameters takes
+// them first, then an extension function its receiver.
 func funDesc(f *types.FunSym) string {
 	if f.Desc != "" {
 		return f.Desc
 	}
-	if f.Ext {
-		return "(" + paramDesc(f.Recv) + sigDesc(f)[1:]
+	if f.Ext || len(f.Contexts) > 0 {
+		return "(" + leadDesc(f) + sigDesc(f)[1:]
 	}
 	return sigDesc(f)
+}
+
+// leadDesc returns the descriptors of the parameters a function takes
+// before its value parameters: its context parameters and its extension
+// receiver.
+func leadDesc(f *types.FunSym) string {
+	var sb strings.Builder
+	for _, p := range f.Contexts {
+		sb.WriteString(paramDesc(p.Type))
+	}
+	if f.Ext {
+		sb.WriteString(paramDesc(f.Recv))
+	}
+	return sb.String()
 }
 
 // sigDesc returns the descriptor of a function of the program's
@@ -999,6 +1013,10 @@ func (g *gen) functionBody(fd *syntax.FunDecl) {
 	g.prefix = sym.Name + "$lambda"
 	g.retType = types.JVMRet(sym)
 	g.loops, g.tries = nil, nil
+	for _, p := range sym.Contexts {
+		p.Slot = g.code.AllocLocal(paramDesc(p.Type))
+		g.named(p)
+	}
 	if r := fd.RecvSym; r != nil {
 		r.Slot = g.code.AllocLocal(paramDesc(r.Type))
 		g.named(r)
@@ -1035,7 +1053,7 @@ func (g *gen) functionBody(fd *syntax.FunDecl) {
 				}
 			}
 		}
-		g.checkParams(fd.RecvSym, params)
+		g.checkParams(sym.Contexts, fd.RecvSym, params)
 	}
 	for _, i := range sym.BoxedParams {
 		p := sym.Params[i]
@@ -1828,7 +1846,7 @@ func (g *gen) secondary(cd *syntax.ClassDecl, sc *syntax.SecondaryCtor) {
 	}
 	g.line(sc.P)
 	if access&cf.AccPrivate == 0 {
-		g.checkParams(nil, f.Params)
+		g.checkParams(nil, nil, f.Params)
 	}
 	g.code.Local(cf.ALOAD, 0)
 	switch {
@@ -2046,7 +2064,10 @@ func (g *gen) defaults(fd *syntax.FunDecl, owner *types.ClassSym) {
 	case owner != nil:
 		self = "L" + owner.Name + ";"
 	}
-	recv := self // and an extension's receiver
+	recv := self // and the context parameters and an extension's receiver
+	for _, p := range f.Contexts {
+		recv += paramDesc(p.Type)
+	}
 	if r := fd.RecvSym; r != nil {
 		recv += paramDesc(r.Type)
 	}
@@ -2075,11 +2096,15 @@ func (g *gen) defaults(fd *syntax.FunDecl, owner *types.ClassSym) {
 		g.objThis = true // a @JvmStatic member's
 		defer func() { g.objThis = false }()
 	}
+	for _, p := range f.Contexts {
+		p.Slot = g.code.AllocLocal(paramDesc(p.Type))
+		g.named(p)
+	}
 	if r := fd.RecvSym; r != nil {
 		r.Slot = g.code.AllocLocal(paramDesc(r.Type))
 		g.named(r)
 	}
-	k := g.fillDefaultsCont(fd.Params, f.Params, f.Suspend, nil)
+	k := g.fillDefaultsCont(fd.Params, f.Params, len(f.Contexts), f.Suspend, nil)
 	if copied && !f.Suspend && (fd.Body != nil || fd.ExprBody != nil) {
 		// As kotlinc's, the body follows the default values, rather than
 		// a call of the function: copiers copy the function's lambda
@@ -2106,6 +2131,9 @@ func (g *gen) defaults(fd *syntax.FunDecl, owner *types.ClassSym) {
 	case owner != nil:
 		g.code.Local(cf.ALOAD, 0)
 	}
+	for _, p := range f.Contexts {
+		g.code.Local(loadOp(p.Type), p.Slot)
+	}
 	if r := fd.RecvSym; r != nil {
 		g.code.Local(loadOp(r.Type), r.Slot)
 	}
@@ -2131,13 +2159,15 @@ func (g *gen) defaults(fd *syntax.FunDecl, owner *types.ClassSym) {
 // the mask and the marker, and stores the default value of each omitted
 // parameter in its local.
 func (g *gen) fillDefaults(params []*syntax.Param, syms []*types.VarSym) {
-	g.fillDefaultsCont(params, syms, false, nil)
+	g.fillDefaultsCont(params, syms, 0, false, nil)
 }
 
 // fillDefaultsCont is fillDefaults for a suspend function if suspend is
 // set: its continuation comes before the mask. It returns its slot, or
-// -1. prologue, if not nil, runs before the default values.
-func (g *gen) fillDefaultsCont(params []*syntax.Param, syms []*types.VarSym, suspend bool, prologue func()) int {
+// -1. prologue, if not nil, runs before the default values. shift is the
+// mask's bit of the first parameter: as kotlinc's, a function's context
+// parameters come before it.
+func (g *gen) fillDefaultsCont(params []*syntax.Param, syms []*types.VarSym, shift int, suspend bool, prologue func()) int {
 	for _, p := range syms {
 		p.Slot = g.code.AllocLocal(paramDesc(p.Type))
 		g.named(p)
@@ -2158,7 +2188,7 @@ func (g *gen) fillDefaultsCont(params []*syntax.Param, syms []*types.VarSym, sus
 		}
 		skip := cf.NewLabel()
 		g.code.Local(cf.ILOAD, mask)
-		g.code.Iconst(int32(1) << j)
+		g.code.Iconst(int32(1) << (shift + j))
 		g.code.Op(cf.IAND)
 		g.code.Jump(cf.IFEQ, skip)
 		g.exprAs(p.Default, p.Sym.Type)
@@ -2198,7 +2228,7 @@ func (g *gen) defaultConstructor(ctor *types.FunSym, params []*syntax.Param) {
 		g.code.AllocLocal("Ljava/lang/String;")
 		g.code.AllocLocal("I")
 	}
-	g.fillDefaultsCont(params, ctor.Params, false, func() {
+	g.fillDefaultsCont(params, ctor.Params, 0, false, func() {
 		if cls.Inner {
 			g.outerCaptures(cd)
 		}

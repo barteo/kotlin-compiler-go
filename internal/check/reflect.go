@@ -161,6 +161,10 @@ func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.
 		return nil, types.InvalidType, false
 	}
 	p := x.P
+	if c.namesContextFun(r.Name) {
+		c.unsupported(p, "context parameters", "callable references to functions with context parameters are not supported")
+		return nil, types.InvalidType, false
+	}
 	ident := func(name string) syntax.Expr {
 		id := &syntax.Ident{Name: name}
 		id.P = p

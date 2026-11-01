@@ -28,6 +28,17 @@ own tests.
 - Builder inference that can't check a lambda's body with the type
   variables open, as a member of a value of one of them whose type
   nothing gives yet: it needs a type argument or an expected type.
+- Context parameters, `context(a: A) fun f()`, work on top-level and
+  extension functions, in context function types and their lambdas,
+  and with the standard library's `context(a) { }`. These are reported
+  as unsupported: context parameters of members, properties, local
+  functions and classes; the context receivers that came before them,
+  `context(A)`; calls of a library's functions with context
+  parameters; and callable references to functions with them. Where
+  two implicit values at the same level fit a context parameter,
+  `kotlinc` reports an ambiguity, and `kc` passes one of them; nor does
+  `kc` prefer a function without context parameters to an otherwise
+  equally specific one with them, as `kotlinc` does.
 
 ## Without the standard library
 

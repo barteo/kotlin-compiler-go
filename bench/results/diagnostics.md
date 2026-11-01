@@ -6,16 +6,16 @@ Of 10827 test files, 3778 are skipped and 7049 run.
 
 | Result | Tests | Share |
 |:---|---:|---:|
-| rejects invalid | 2859 | 40.6% |
+| rejects invalid | 2860 | 40.6% |
 | accepts valid | 2716 | 38.5% |
-| accepts invalid | 856 | 12.1% |
+| accepts invalid | 857 | 12.2% |
 | rejects valid | 536 | 7.6% |
-| parse/unsupported | 81 | 1.1% |
+| parse/unsupported | 79 | 1.1% |
 | crash | 1 | 0.0% |
 
 *Rejects invalid* and *accepts valid* agree with kotlinc. *Accepts invalid* is code kotlinc rejects that kc compiles; *rejects valid*, code kotlinc compiles that kc's checker rejects. Both are bugs. A *parse/unsupported* test uses a feature kc doesn't support, which says nothing about its checks.
 
-Of the 2859 tests both reject, kc reports an error on the line of an expected one in 2587.
+Of the 2860 tests both reject, kc reports an error on the line of an expected one in 2588.
 
 A test is invalid if it stops before the backend or marks an error: one that runs to it (`BACKEND`) can mark the JVM backend's errors, such as `CONFLICTING_JVM_DECLARATIONS`. Of the tests run, 177 stop at `FRONTEND` but mark no error: most add the `CHECK_TYPE` helpers, whose names (`_`) kotlinc reports outside the test infrastructure, and count as valid; the others leave their errors out with the `DIAGNOSTICS` directive. 97 run to the backend and mark one. 5 marked names have no declared severity (debug information, for one), and count as neither.
 
@@ -111,7 +111,7 @@ Tests kotlinc rejects that kc compiles, by the errors their markup expects. A te
 | `ILLEGAL_JVM_NAME` | 4 | 3 | `tests/inlineClasses/jvmExposeBoxed/simple.kt`, `tests/jvmNameInvalidCharacters.kt` |
 | `INAPPLICABLE_TARGET_ON_PROPERTY` | 4 | 0 | `tests/annotations/withUseSiteTarget/GetterAnnotations.kt`, `tests/annotations/withUseSiteTarget/PropertyAnnotations.kt` |
 | `INVALID_VERSIONING_ON_NONFINAL_FUNCTION` | 4 | 3 | `tests/versionOverload/abstractMember.kt`, `tests/versionOverload/interfaceMember.kt` |
-| *207 more* | 341 | |
+| *207 more* | 342 | |
 
 ## Rejects valid
 
@@ -119,7 +119,7 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 | First error | Tests | Examples |
 |:---|---:|:---|
-| `type mismatch: inferred type is _ but _ was expected` | 90 | `tests/annotations/parameters/expressions/unaryPlus.kt`, `tests/callableReference/function/localConstructor.kt` |
+| `type mismatch: inferred type is _ but _ was expected` | 91 | `tests/annotations/parameters/expressions/unaryPlus.kt`, `tests/callableReference/function/localConstructor.kt` |
 | `cannot infer type for type parameter '_'. Specify it explicitly.` | 85 | `tests/callableReference/generic/kt35896.kt`, `tests/callableReference/genericCallWithReferenceAgainstVararg.kt` |
 | `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 48 | `tests/cast/kt56629.kt`, `tests/cfg/safeCalls.kt` |
 | `unresolved reference: _` | 48 | `tests/annotations/nestedClassAsAnnotationParameter.kt`, `tests/annotations/nestedObjectAsAnnotationParameter.kt` |
@@ -159,13 +159,13 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 | `too many arguments for annotation java/lang/annotation/Target` | 2 | `tests/annotations/JavaAnnotationConstructors.kt`, `testsWithStdLib/annotations/annotationIncompatibleTargets.kt` |
 | `type argument is not within its bounds: inferred type K of type _ '_' is not a subtype of B<String>` | 2 | `tests/inference/emptyIntersectionTypes/substitutingSuperTypes.kt`, `tests/inference/emptyIntersectionTypes/substitutingSuperTypes2.kt` |
 | `type argument is not within its bounds: inferred type K of type _ '_' is not a subtype of In<Inv<Int>>` | 2 | `tests/inference/emptyIntersectionTypes/kt45461_20.kt`, `tests/inference/emptyIntersectionTypes/kt45461_21.kt` |
-| *69 more* | 73 | |
+| *68 more* | 72 | |
 
 ## Errors by diagnostic
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 9680 of 18158 expected errors (53.3%) on their lines.
+kc reports 9682 of 18180 expected errors (53.3%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
@@ -229,7 +229,7 @@ kc reports 9680 of 18158 expected errors (53.3%) on their lines.
 | `JVM_EXPOSE_BOXED_CANNOT_EXPOSE_PRIVATE` | 28 | 0 | 28 |
 | `INVISIBLE_SETTER` | 34 | 7 | 27 |
 | `DECLARATION_CANT_BE_INLINED` | 26 | 0 | 26 |
-| *495 more* | | | |
+| *496 more* | | | |
 
 ## Errors kotlinc doesn't report
 
@@ -267,7 +267,7 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | `annotation class cannot have type parameters` | 12 |
 | `expected no parameters, but n were declared` | 12 |
 | `private setters are not allowed for open properties` | 12 |
-| *193 more* | |
+| *189 more* | |
 
 ## Unsupported features
 
@@ -287,7 +287,6 @@ By the features the parser (with error recovery) and the checker found. A test c
 | `parse error: expected identifier, found '_'` | 3 | 3 | `testsWithStdLib/pureReifiable.kt`, `testsWithStdLib/trailingComma/valueParametersWithEnabledFeature.kt` |
 | `callable reference` | 2 | 2 | `tests/callableReference/compatibilityResolveWithVarargAndOperatorCall.kt`, `tests/callableReference/genericCallWithReferenceAgainstVarargAndKFunction.kt` |
 | `checker: '_' is not allowed here: local interfaces are not supported` | 2 | 2 | `tests/localInterfaces.kt`, `tests/thisAndSuper/unqualifiedSuper/unqualifiedSuperWithLocalClass.kt` |
-| `context parameters` | 2 | 2 | `tests/subtyping/extFunctionTypeAsSuperType.kt`, `tests/typeParameters/extFunctionTypeAsUpperBound.kt` |
 | `inline-only call` | 2 | 2 | `testsWithStdLib/cast/IsArray.kt`, `testsWithStdLib/cast/IsReified.kt` |
 | `safe-call assignment` | 2 | 2 | `tests/inference/pcla/fixationOnDemand/syntaxForms/PostfixIncrementOperatorCall.kt`, `tests/inference/pcla/fixationOnDemand/syntaxForms/PrefixIncrementOperatorCall.kt` |
 | `checker: lambdas with more than n parameters are not supported` | 1 | 1 | `tests/tooLargeFunctionNThroughACallableReference.kt` |
@@ -312,12 +311,11 @@ At each step, the feature that unblocks the most tests given the ones before it.
 | 10 | `parse error: expected identifier, found '_'` | 3 | 68 |
 | 11 | `callable reference` | 2 | 70 |
 | 12 | `checker: '_' is not allowed here: local interfaces are not supported` | 2 | 72 |
-| 13 | `context parameters` | 2 | 74 |
-| 14 | `inline-only call` | 2 | 76 |
-| 15 | `safe-call assignment` | 2 | 78 |
-| 16 | `checker: lambdas with more than n parameters are not supported` | 1 | 79 |
-| 17 | `package` | 1 | 80 |
-| 18 | `parse error: invalid float literal` | 1 | 81 |
+| 13 | `inline-only call` | 2 | 74 |
+| 14 | `safe-call assignment` | 2 | 76 |
+| 15 | `checker: lambdas with more than n parameters are not supported` | 1 | 77 |
+| 16 | `package` | 1 | 78 |
+| 17 | `parse error: invalid float literal` | 1 | 79 |
 
 ## Crashes
 

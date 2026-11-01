@@ -56,7 +56,10 @@ func (g *gen) checkParam(slot int, t types.Type, name string) {
 
 // checkParams checks the receiver and parameters of a function that isn't
 // private.
-func (g *gen) checkParams(recv *types.VarSym, params []*types.VarSym) {
+func (g *gen) checkParams(ctx []*types.VarSym, recv *types.VarSym, params []*types.VarSym) {
+	for _, p := range ctx {
+		g.checkParam(p.Slot, p.Type, p.Name)
+	}
 	if recv != nil {
 		g.checkParam(recv.Slot, recv.Type, "<this>")
 	}

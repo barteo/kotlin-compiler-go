@@ -91,6 +91,9 @@ type TypeRef struct {
 	Recv   *TypeRef
 	// Suspend is set on a suspend function type: suspend (A) -> R.
 	Suspend bool
+	// Contexts are the context parameters' types of a context function
+	// type, context(A, B) R.(C) -> T, which on the JVM takes them first.
+	Contexts []*TypeRef
 	// Composable is set on a type annotated @Composable, as Compose's
 	// composable function types are.
 	Composable bool
@@ -208,6 +211,11 @@ type Modifiers struct {
 	// Annotations are the declaration's annotations, with their
 	// use-site targets (@get:JvmName applies to a property's getter).
 	Annotations []Annotation
+	// Contexts are the context parameters of a function, context(a: A,
+	// _: B) fun f(), whose names may be _. ContextP is the position of
+	// context, if it is written.
+	Contexts []*Param
+	ContextP Pos
 }
 
 // Visibility is a declaration's visibility modifier. kc doesn't check
@@ -1161,6 +1169,10 @@ type Call struct {
 	// "" for a positional argument. It is nil without named arguments, and
 	// may be shorter than Args.
 	Names []string
+	// Ctx is set by the checker on a call of a function with context
+	// parameters: the context arguments, implicit values the call passes
+	// first, before the receiver.
+	Ctx []Expr
 	// RefArgs is set by the checker on the call a callable reference's
 	// lambda makes: the types of its arguments, the reference's
 	// parameters, which go to the callee's as Kotlin adapts a reference
@@ -1223,6 +1235,9 @@ type Lambda struct {
 	SuspendMod bool
 
 	// Set by the checker.
+	// Ctx are the context parameters of a lambda whose expected type is
+	// a context function type: its first parameters, before a receiver.
+	Ctx      []*types.VarSym
 	Recv     *types.VarSym   // the receiver of a lambda with a receiver, its first parameter
 	It       *types.VarSym   // the implicit parameter
 	Ret      types.Type      // the body's result type, as the function type sees it
@@ -1315,10 +1330,10 @@ type KProp struct {
 	Set *Lambda
 }
 
-// ParamSyms returns the lambda's parameters, including a receiver, which
-// comes first, and an implicit it.
+// ParamSyms returns the lambda's parameters, including its context
+// parameters and a receiver, which come first, and an implicit it.
 func (l *Lambda) ParamSyms() []*types.VarSym {
-	var syms []*types.VarSym
+	syms := l.Ctx[:len(l.Ctx):len(l.Ctx)]
 	if l.Recv != nil {
 		syms = append(syms, l.Recv)
 	}

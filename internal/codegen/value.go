@@ -436,7 +436,7 @@ func (g *gen) valueSecondary(cd *syntax.ClassDecl, sc *syntax.SecondaryCtor) {
 	}
 	g.line(sc.P)
 	if !f.Private {
-		g.checkParams(nil, f.Params)
+		g.checkParams(nil, nil, f.Params)
 	}
 	g.valueCtorCall(sc.Delegation)
 	self := g.code.AllocLocal(desc(u))

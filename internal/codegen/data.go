@@ -104,7 +104,7 @@ func (g *gen) dataMembers(cd *syntax.ClassDecl) {
 			g.named(p)
 			nullability(paramAdder(m, i), p.Type)
 		}
-		g.checkParams(nil, f.Params)
+		g.checkParams(nil, nil, f.Params)
 		g.code.New(cls.Name)
 		g.code.Op(cf.DUP)
 		for _, p := range f.Params {

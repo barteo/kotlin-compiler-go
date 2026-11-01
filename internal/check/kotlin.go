@@ -553,6 +553,9 @@ func (t *classTable) ktype(kt *kmeta.Type, scope tscope) (types.Type, bool) {
 	if kt.ExtFunc && cls.Func && len(args) > 1 {
 		r = r.WithReceiver()
 	}
+	if kt.Contexts > 0 && cls.Func && len(args) > kt.Contexts {
+		r = r.WithContexts(kt.Contexts)
+	}
 	return nullable(r), true
 }
 
@@ -591,6 +594,9 @@ func (t *classTable) suspendType(kt *kmeta.Type, scope tscope) (types.Type, bool
 	r := types.GenericType(t.funcs.SuspendClass(n-1), args)
 	if kt.ExtFunc && n > 1 {
 		r = r.WithReceiver()
+	}
+	if kt.Contexts > 0 && n > kt.Contexts {
+		r = r.WithContexts(kt.Contexts)
 	}
 	return r, true
 }
@@ -716,6 +722,9 @@ func (t *classTable) kfun(f *kmeta.Function, owner *types.ClassSym, scope tscope
 			sym.JVMName, sym.Desc = name, desc
 			jvm = kmeta.JVMSig{Name: name, Desc: desc}
 		}
+	}
+	if f.Contexts > 0 && sym.Why == "" {
+		sym.Why, sym.Feature = "calling a library's functions with context parameters is not supported", "context parameters"
 	}
 	ok = ok && rok && f.Contexts == 0 && sym.Desc != "" && zeroable(sym)
 	matchJVM(sym)

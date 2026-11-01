@@ -181,7 +181,7 @@ func argRef(ref *syntax.TypeRef, t types.Type, i int) *syntax.TypeRef {
 		return nil
 	}
 	if ref.Ret != nil {
-		var refs []*syntax.TypeRef
+		refs := ref.Contexts[:len(ref.Contexts):len(ref.Contexts)]
 		if ref.Recv != nil {
 			refs = append(refs, ref.Recv)
 		}
@@ -544,6 +544,13 @@ func (g *gen) signParams(mr cf.MemberRef, f *types.FunSym, fd *syntax.FunDecl, d
 		if len(this.C.TypeParams) > 0 {
 			tps = append(append([]*types.TypeParamSym(nil), this.C.TypeParams...), tps...)
 		}
+	}
+	for _, p := range f.Contexts {
+		var ref *syntax.TypeRef
+		if d, ok := p.Decl.(*syntax.Param); ok {
+			ref = d.Type
+		}
+		params = append(params, typedPart(p.Type, ref))
 	}
 	if f.Ext {
 		params = append(params, typedPart(f.Recv, recvRef))

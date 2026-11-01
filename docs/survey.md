@@ -60,23 +60,21 @@ Tests are counted apart.
 | kotlinx-datetime | 0.8.0 | 69 | 13,870 | 69 | 59 | 59 |
 | Exposed | 1.5.1 | 169 | 32,485 | 168 | 124 | 124 |
 | Ktor (`ktor-io`, `ktor-utils`, `ktor-http`) | 3.6.0 | 236 | 23,774 | 236 | 78 | 78 |
-| Arrow | 2.2.3 | 107 | 26,909 | 99 | 191 | 190 |
+| Arrow | 2.2.3 | 107 | 26,909 | 106 | 191 | 191 |
 | MockK | 1.14.11 | 144 | 17,302 | 143 | 117 | 117 |
-| **All** | | 1,128 | 190,921 | 1,116 (99%) | 1,373 | 1,371 |
+| **All** | | 1,128 | 190,921 | 1,123 (99%) | 1,373 | 1,372 |
 
-The 12 library files left are blocked by one feature each:
+The 5 library files left are blocked by one feature each:
 
 | Feature | Files | Libraries |
 |:---|---:|:---|
-| context parameters | 7 | Arrow |
 | member extension properties | 2 | kotlinx.serialization, Arrow |
 | safe-call assignments (`a?.b = c`) | 2 | Exposed, MockK |
 | a labeled expression | 1 | okio |
 
-The 2 test files left are blocked by context parameters and a safe-call
-assignment. The parser's 88 errors all name a feature the detector found
-in the file, and the checker finds no unsupported feature the detector
-misses. Each library's report, with every file's blockers, is in
+The test file left is blocked by a safe-call assignment. The parser
+rejects no file, and the checker finds no unsupported feature the
+detector misses. Each library's report, with every file's blockers, is in
 [bench/results/survey/](../bench/results/survey/).
 
 Between them the nine libraries cover a wide spread of features:

@@ -30,6 +30,7 @@ type anonCtx struct {
 	lambdas    []*syntax.Lambda // ending with the object's frame
 	lrets      []*lambdaResult
 	recvs      []implicitRecv
+	ctxs       []implicitRecv // the context parameters around: see context.go
 	tparams    []*types.TypeParamSym
 	localCalls *[]localCall
 	staticCls  *types.ClassSym // the class whose static scope the code is in, outside a class
@@ -60,6 +61,12 @@ func (c *Checker) inAnon(cls *types.ClassSym) {
 		own[i].depth = max(own[i].depth, n)
 	}
 	c.recvs = append(ctx.recvs[:len(ctx.recvs):len(ctx.recvs)], own...)
+	ownCtx := slices.Clone(c.ctxs)
+	for i := range ownCtx {
+		ownCtx[i].depth = max(ownCtx[i].depth, n)
+		ownCtx[i].at += len(ctx.recvs) // nearer than the receivers around
+	}
+	c.ctxs = append(ctx.ctxs[:len(ctx.ctxs):len(ctx.ctxs)], ownCtx...)
 	c.tparams = append(c.tparams[:len(c.tparams):len(c.tparams)], ctx.tparams...)
 	c.localCalls = ctx.localCalls
 }
@@ -177,6 +184,7 @@ func (c *Checker) anonClass(d *syntax.ClassDecl, what, whats string, name func()
 		r.outer = true
 		ctx.recvs = append(ctx.recvs, r)
 	}
+	ctx.ctxs = slices.Clone(c.ctxs)
 	var outer *types.VarSym
 	if c.cls != nil {
 		// The enclosing class's this: inside the receivers outside an
@@ -190,6 +198,11 @@ func (c *Checker) anonClass(d *syntax.ClassDecl, what, whats string, name func()
 			n = min(len(cc.recvs), len(ctx.recvs))
 		}
 		ctx.recvs = slices.Insert(ctx.recvs, n, r)
+		for i := range ctx.ctxs {
+			if ctx.ctxs[i].at >= n {
+				ctx.ctxs[i].at++
+			}
+		}
 	}
 
 	sym := c.declareClass(d, name(), c.cls)

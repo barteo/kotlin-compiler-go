@@ -125,28 +125,28 @@ Kotlin 2.4.21's tests on `kc`:
 | Box tests | Tests | Share of run |
 |:---|---:|---:|
 | run (of 7,480) | 6,386 | |
-| pass | 6,065 | 95.0% |
-| check error | 216 | 3.4% |
+| pass | 6,069 | 95.0% |
+| check error | 211 | 3.3% |
 | codegen error | 16 | 0.3% |
-| VerifyError and linkage error | 30 | 0.5% |
+| VerifyError and linkage error | 31 | 0.5% |
 | exception and wrong result | 59 | 0.9% |
 | parse/unsupported, crash, timeout | 0 | |
 
 | Diagnostics tests | Tests | Share of run |
 |:---|---:|---:|
 | run (of 10,827) | 7,049 | |
-| rejects invalid | 2,859 | 40.6% |
+| rejects invalid | 2,860 | 40.6% |
 | accepts valid | 2,716 | 38.5% |
-| accepts invalid | 856 | 12.1% |
+| accepts invalid | 857 | 12.2% |
 | rejects valid | 536 | 7.6% |
-| parse/unsupported | 81 | 1.1% |
+| parse/unsupported | 79 | 1.1% |
 | crash | 1 | 0.0% |
 
 `kc` agrees with `kotlinc` on 79% of the diagnostics tests, and reports
-9,680 of the 18,158 expected errors (53%) on their lines. The reports
+9,682 of the 18,180 expected errors (53%) on their lines. The reports
 break the failures down; the largest groups are:
 
-- **Silent miscompilation** (89 box tests): `tailrec` functions that
+- **Silent miscompilation** (90 box tests): `tailrec` functions that
   overflow the stack (16), `NullPointerException`s (14), `VerifyError`s
   for bad local variable types (7), and duplicate bridge methods in `Map`
   implementations (3).
@@ -156,9 +156,9 @@ break the failures down; the largest groups are:
   inline-only parameters (`USAGE_IS_NOT_INLINABLE` 27), opt-in (26),
   `@DslMarker` (25), and JVM signature clashes (`ACCIDENTAL_OVERRIDE`,
   `CONFLICTING_JVM_DECLARATIONS`, 24 each).
-- **Rejects valid**, by `kc`'s first error: type mismatches (90 + 4
+- **Rejects valid**, by `kc`'s first error: type mismatches (91 + 4
   box), inference failures (85 + 13), unresolved names and imports (78 +
-  24), and calls on nullable receivers (48 + 9).
+  25), and calls on nullable receivers (48 + 9).
 
 The committed `.tsv` files serve as a ratchet: a change must make
 `-baseline` report no regressions, and the tests it fixes measure it.

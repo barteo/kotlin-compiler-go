@@ -8203,7 +8203,7 @@ tests/smartCasts/comparisonOfClassTypesUnderOr.kt	rejects invalid	on an expected
 tests/smartCasts/comparisonUnderAnd.kt	rejects invalid	on an expected line	
 tests/smartCasts/complexComparison.kt	rejects invalid	on an expected line	
 tests/smartCasts/complexConditionsWithExcl.kt	rejects invalid	on an expected line	
-tests/smartCasts/complexSealedContracts.kt	rejects valid	one type argument expected for class AsyncStatus.Pending<T>	complexSealedContracts.kt:29: one type argument expected for class AsyncStatus.Pending<T>
+tests/smartCasts/complexSealedContracts.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	complexSealedContracts.kt:73: type mismatch: inferred type is String? but String was expected
 tests/smartCasts/contractSafeCall.kt	rejects invalid	on an expected line	
 tests/smartCasts/controlStructures/earlyReturnInNonExhaustiveWhen.kt	rejects valid	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _	earlyReturnInNonExhaustiveWhen.kt:8: only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type String?
 tests/smartCasts/controlStructures/elvis.kt	accepts valid		
@@ -8692,7 +8692,7 @@ tests/substitutions/starProjections.kt	rejects invalid	on an expected line
 tests/substitutions/upperBoundsSubstitutionForOverloadResolutionWithAmbiguity.kt	rejects invalid	on an expected line	
 tests/substitutions/upperBoundsSubstitutionForOverloadResolutionWithErrorTypes.kt	rejects invalid	on an expected line	
 tests/subtyping/delegatedConstructor.kt	accepts valid		
-tests/subtyping/extFunctionTypeAsSuperType.kt	parse/unsupported	context parameters	extFunctionTypeAsSuperType.kt:31: context parameters are not supported
+tests/subtyping/extFunctionTypeAsSuperType.kt	accepts invalid	SUPERTYPE_IS_EXTENSION_OR_CONTEXT_FUNCTION_TYPE	extFunctionTypeAsSuperType.kt:2: SUPERTYPE_IS_EXTENSION_OR_CONTEXT_FUNCTION_TYPE
 tests/subtyping/extFunctionTypeAsSuperTypeRestrictionLifted.kt	skip	LANGUAGE	
 tests/subtyping/extensionOnLocalClasses.kt	accepts valid		
 tests/subtyping/findClosestCorrespondingSupertype.kt	rejects invalid	on an expected line	
@@ -9019,7 +9019,7 @@ tests/typeParameters/destructuringDeclarationsOld.kt	skip	LANGUAGE
 tests/typeParameters/dnnAsPropertyReceiver.kt	accepts valid		
 tests/typeParameters/dontIntersectUpperBoundWithExpectedType.kt	rejects valid	type argument is not within its bounds: inferred type Bar of type _ '_' is not a subtype of Foo	dontIntersectUpperBoundWithExpectedType.kt:13: type argument is not within its bounds: inferred type Bar of type parameter 'T' is not a subtype of Foo
 tests/typeParameters/dontLoseUpperNonExpectedTypeConstraints.kt	rejects valid	type argument is not within its bounds: inferred type Any? of type _ '_' is not a subtype of Number?	dontLoseUpperNonExpectedTypeConstraints.kt:16: type argument is not within its bounds: inferred type Any? of type parameter 'S' is not a subtype of Number?
-tests/typeParameters/extFunctionTypeAsUpperBound.kt	parse/unsupported	context parameters	extFunctionTypeAsUpperBound.kt:10: context parameters are not supported
+tests/typeParameters/extFunctionTypeAsUpperBound.kt	rejects invalid	on an expected line	
 tests/typeParameters/functionTypeAsUpperBound.kt	rejects invalid	on an expected line	
 tests/typeParameters/illFormed.kt	rejects invalid	on an expected line	
 tests/typeParameters/implicitNothingAgainstNotNothingExpectedType.kt	rejects invalid	elsewhere	

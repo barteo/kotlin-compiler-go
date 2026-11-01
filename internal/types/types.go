@@ -42,6 +42,11 @@ type Type struct {
 	// E marks a function type with a receiver, A.(B) -> R, which is the
 	// function type (A, B) -> R. Each is assignable to the other.
 	E bool
+	// X is the number of context parameters of a context function type,
+	// context(A) B.(C) -> R, which is the function type (A, B, C) -> R
+	// with its first X parameters, before the receiver, marked as
+	// contexts. Each is assignable to the other too.
+	X uint8
 	// B marks the boxed form of a value class type, its instances, which
 	// only codegen uses: the elements of an array of a value class.
 	B bool
@@ -460,6 +465,10 @@ type FunSym struct {
 	Infix    bool   // can be called as an infix operator: a to b
 	Ext      bool   // an extension function, called on a receiver of type Recv
 	Recv     Type   // Invalid if kc doesn't support the receiver's type
+	// Contexts are the context parameters of a function of the program,
+	// context(a: A) fun f(), which calls pass implicitly. On the JVM,
+	// it takes them first, before the extension receiver.
+	Contexts []*VarSym
 	// BoxedRet is set on an override whose result is a primitive where
 	// a member it overrides has a type parameter or a nullable type: as
 	// with kotlinc, its JVM method returns the box, Integer for Int. On a

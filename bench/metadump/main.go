@@ -18,6 +18,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/barteo/kotlin-compiler-go/internal/classfile"
@@ -158,11 +159,17 @@ func (p printer) alias(a *kmeta.TypeAlias) string {
 
 func (p printer) function(f *kmeta.Function) string {
 	q := p.with(f.TypeParams)
+	ctx := ""
+	if len(f.ContextParams) > 0 {
+		ctx = "context(" + q.params(f.ContextParams) + ") "
+	} else if f.Contexts > 0 {
+		ctx = "context(" + strconv.Itoa(f.Contexts) + " receivers) "
+	}
 	recv := ""
 	if f.Recv != nil {
 		recv = q.typ(f.Recv) + "."
 	}
-	return fmt.Sprintf("fun %s %s%s%s(%s): %s jvm=%s%s", flags(f.Flags, "fun"), q.typeParams(f.TypeParams), recv, f.Name,
+	return fmt.Sprintf("fun %s %s%s%s%s(%s): %s jvm=%s%s", flags(f.Flags, "fun"), ctx, q.typeParams(f.TypeParams), recv, f.Name,
 		q.params(f.Params), q.typ(f.Ret), f.JVM.Name, f.JVM.Desc)
 }
 
@@ -284,6 +291,9 @@ func (p printer) typ(t *kmeta.Type) string {
 	}
 	if t.ExtFunc {
 		s = "@ExtensionFunctionType " + s
+	}
+	if t.Contexts > 0 {
+		s = "@ContextFunctionTypeParams(" + strconv.Itoa(t.Contexts) + ") " + s
 	}
 	if t.Flags&kmeta.TypeSuspend != 0 {
 		s = "suspend " + s

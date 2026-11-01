@@ -176,7 +176,14 @@ func (c *Checker) contractEffects(d *syntax.FunDecl, sym *types.FunSym) {
 			continue
 		}
 		if im.Is != nil {
+			// As in x is T, T's type arguments may be left out where
+			// x's type gives them: this@bind is Either.Right.
+			c.bareRef, c.bareSubject = im.Is, sym.Recv
+			if e.Param >= 0 {
+				c.bareSubject = sym.Params[e.Param].Type
+			}
 			t := c.resolveType(im.Is)
+			c.bareRef = nil
 			if t.K == types.Invalid {
 				continue
 			}

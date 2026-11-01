@@ -446,7 +446,7 @@ bridges/propertySetter.kt	pass
 bridges/returnTypeSignature.kt	pass		
 bridges/simple.kt	pass		
 bridges/simpleEnum.kt	pass		
-bridges/simpleGenericMethod.kt	check error	ambiguous call: n candidates for '_' take (_)	simpleGenericMethod.kt:14: ambiguous call: 2 candidates for 'foo' take (String, Int)
+bridges/simpleGenericMethod.kt	pass		
 bridges/simpleObject.kt	pass		
 bridges/simpleReturnType.kt	pass		
 bridges/simpleTraitImpl.kt	pass		
@@ -460,7 +460,7 @@ bridges/substitutionInSuperClass/delegation.kt	pass
 bridges/substitutionInSuperClass/differentErasureInSuperClass.kt	pass		
 bridges/substitutionInSuperClass/differentErasureInSuperClassComplex.kt	pass		
 bridges/substitutionInSuperClass/enum.kt	pass		
-bridges/substitutionInSuperClass/genericMethod.kt	check error	ambiguous call: n candidates for '_' take (_)	genericMethod.kt:17: ambiguous call: 2 candidates for 'foo' take (String, Int)
+bridges/substitutionInSuperClass/genericMethod.kt	pass		
 bridges/substitutionInSuperClass/object.kt	pass		
 bridges/substitutionInSuperClass/property.kt	pass		
 bridges/substitutionInSuperClass/simple.kt	pass		
@@ -1396,7 +1396,7 @@ contracts/forLoop.kt	skip	LANGUAGE
 contracts/functionParameter.kt	VerifyError	java.lang.VerifyError: Bad local variable type	Bad local variable type at java.lang.Class.getDeclaredMethods0
 contracts/isNullString.kt	pass		
 contracts/kt39374.kt	pass		
-contracts/kt45236.kt	check error	one type argument expected for class NetRequestStatus.Error<T>	kt45236.kt:17: one type argument expected for class NetRequestStatus.Error<T>
+contracts/kt45236.kt	check error	unresolved reference: _	kt45236.kt:23: unresolved reference: error
 contracts/kt47168.kt	pass		
 contracts/kt47300.kt	pass		
 contracts/lambdaParameter.kt	skip	LANGUAGE	
@@ -2925,7 +2925,7 @@ fir/deserializedOptInDeprecated.kt	pass
 fir/falsePositiveBoundSmartcast.kt	pass		
 fir/functionsDifferInTypeParameterBounds.kt	check error	'_' in '_' is final and cannot be overridden	functionsDifferInTypeParameterBounds.kt:22: 'foo' in 'X' is final and cannot be overridden
 fir/functionsDifferInTypeParameterBounds2.kt	VerifyError	java.lang.ClassFormatError: Duplicate method name "_" with signature "_" in class _ Y	Duplicate method name "foo" with signature "(Ljava.lang.Object;LB;Ljava.lang.Object;)Ljava.lang.String;" in class file Y at java.lang.ClassLoader.defineClass1
-fir/functionsDifferInTypeParameterBounds3.kt	check error	ambiguous call: n candidates for '_' take (_)	functionsDifferInTypeParameterBounds3.kt:29: ambiguous call: 2 candidates for 'foo' take (<anonymous object>)
+fir/functionsDifferInTypeParameterBounds3.kt	VerifyError	java.lang.ClassFormatError: Duplicate method name "_" with signature "_" in class _ Y	Duplicate method name "foo" with signature "(LK;)Ljava.lang.String;" in class file Y at java.lang.ClassLoader.defineClass1
 fir/inferenceWithTypeAliasFromOtherModule.kt	pass		
 fir/initializationInLocalInnerClassWithSecondaryConstructor.kt	check error	property must be initialized or be abstract	initializationInLocalInnerClassWithSecondaryConstructor.kt:11: property must be initialized or be abstract
 fir/kt68806.kt	pass		
@@ -3766,8 +3766,8 @@ inlineClasses/boxReturnValueOnOverride/kt31585Generic.kt	pass
 inlineClasses/boxReturnValueOnOverride/kt35234.kt	pass		
 inlineClasses/boxReturnValueOnOverride/kt35234Generic.kt	pass		
 inlineClasses/boxReturnValueOnOverride/kt35234a.kt	pass		
-inlineClasses/boxReturnValueOnOverride/overrideGenericWithInlineClass.kt	check error	ambiguous call: n candidates for '_' take (_)	overrideGenericWithInlineClass.kt:22: ambiguous call: 2 candidates for 'foo' take (Marker)
-inlineClasses/boxReturnValueOnOverride/overrideGenericWithInlineClassGeneric.kt	check error	ambiguous call: n candidates for '_' take (_)	overrideGenericWithInlineClassGeneric.kt:22: ambiguous call: 2 candidates for 'foo' take (Marker)
+inlineClasses/boxReturnValueOnOverride/overrideGenericWithInlineClass.kt	pass		
+inlineClasses/boxReturnValueOnOverride/overrideGenericWithInlineClassGeneric.kt	pass		
 inlineClasses/boxReturnValueOnOverride/overrideGenericWithNullableInlineClassUpperBoundWithNonNullAny.kt	pass		
 inlineClasses/boxReturnValueOnOverride/overrideGenericWithNullableInlineClassUpperBoundWithNonNullAnyGeneric.kt	pass		
 inlineClasses/boxReturnValueOnOverride/overrideGenericWithNullableInlineClassUpperBoundWithNonNullNullableAny.kt	pass		
@@ -5459,10 +5459,10 @@ primitiveTypes/nullableAsIndex.kt	pass
 primitiveTypes/nullableCharBoolean.kt	pass		
 primitiveTypes/numberEqualsHashCodeToString.kt	pass		
 primitiveTypes/numberToChar/abstractMethodInSuperinterface.kt	check error	class '_' is not abstract and does not implement abstract member '_'	abstractMethodInSuperinterface.kt:8: class 'MyNumber' is not abstract and does not implement abstract member 'intValue'
-primitiveTypes/numberToChar/fakeOverride.kt	check error	class '_' is not abstract and does not implement abstract member '_'	fakeOverride.kt:4: class 'MyNumber' is not abstract and does not implement abstract member 'intValue'
-primitiveTypes/numberToChar/simple.kt	check error	class '_' is not abstract and does not implement abstract member '_'	simple.kt:4: class 'MyNumber' is not abstract and does not implement abstract member 'longValue'
+primitiveTypes/numberToChar/fakeOverride.kt	check error	class '_' is not abstract and does not implement abstract member '_'	fakeOverride.kt:4: class 'MyNumber' is not abstract and does not implement abstract member 'floatValue'
+primitiveTypes/numberToChar/simple.kt	check error	class '_' is not abstract and does not implement abstract member '_'	simple.kt:4: class 'MyNumber' is not abstract and does not implement abstract member 'doubleValue'
 primitiveTypes/numberToChar/superCallToClass.kt	check error	class '_' is not abstract and does not implement abstract member '_'	superCallToClass.kt:4: class 'MyNumber' is not abstract and does not implement abstract member 'floatValue'
-primitiveTypes/numberToChar/superCallToInterface.kt	check error	class '_' is not abstract and does not implement abstract member '_'	superCallToInterface.kt:8: class 'MyNumber' is not abstract and does not implement abstract member 'doubleValue'
+primitiveTypes/numberToChar/superCallToInterface.kt	check error	class '_' is not abstract and does not implement abstract member '_'	superCallToInterface.kt:8: class 'MyNumber' is not abstract and does not implement abstract member 'intValue'
 primitiveTypes/numberToChar/superCallToNumber.kt	check error	class '_' is not abstract and does not implement abstract member '_'	superCallToNumber.kt:4: class 'MyNumber' is not abstract and does not implement abstract member 'longValue'
 primitiveTypes/rangeTo.kt	check error	type argument is not within its bounds: inferred type Number of type _ '_' is not a subtype of Comparable<Number>	rangeTo.kt:10: type argument is not within its bounds: inferred type Number of type parameter 'T' is not a subtype of Comparable<Number>
 primitiveTypes/reassignDestructured.kt	skip	LANGUAGE	
@@ -5470,7 +5470,7 @@ primitiveTypes/smartCastOnNullableDoubleIdentityEquals.kt	pass
 primitiveTypes/stringEqualsHashCodeToString.kt	pass		
 primitiveTypes/substituteIntForGeneric.kt	pass		
 primitiveTypes/unboxComparable.kt	pass		
-primitiveTypes/virtualCallToCustomNumber.kt	check error	class '_' is not abstract and does not implement abstract member '_'	virtualCallToCustomNumber.kt:4: class 'FortyTwo' is not abstract and does not implement abstract member 'intValue'
+primitiveTypes/virtualCallToCustomNumber.kt	check error	class '_' is not abstract and does not implement abstract member '_'	virtualCallToCustomNumber.kt:4: class 'FortyTwo' is not abstract and does not implement abstract member 'doubleValue'
 private/arrayConvention.kt	pass		
 private/kt9855.kt	pass		
 privateConstructors/base.kt	pass		

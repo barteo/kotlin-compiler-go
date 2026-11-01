@@ -41,7 +41,21 @@ class Query : ExpressionBuilder {
     fun nested(c: Column<Int>) = listOf(1, 2).map { c eq it }
 }
 
+// Overloads whose receivers mention the class's type parameter: as the
+// receiver, the List one is more specific, as in Arrow's Raise<Error>.
+class Box<out E, out A>(val e: E, val a: A)
+
+interface Binder<Error> {
+    fun <A> Iterable<Box<Error, A>>.bindAll(): String = "iterable"
+    fun <A> List<Box<Error, A>>.bindAll(): String = "list"
+}
+
+object StringBinder : Binder<String>
+
+fun <Error, A> List<Box<Error, A>>.viaWith(b: Binder<Error>): String = with(b) { bindAll() }
+
 fun main() {
+    println(listOf(Box("e", 1)).viaWith(StringBinder))
     val id = Column<Int>("id")
     val name = Column<String>("name")
     println(with(SqlBuilder) { id eq 1 })

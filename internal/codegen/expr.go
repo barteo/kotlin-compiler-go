@@ -1484,6 +1484,7 @@ func (g *gen) valueArgs(x *syntax.Call, f *types.FunSym) int {
 	if f.Impl {
 		jvm = jvm[1:] // a class-path value class's member takes the value first
 	}
+	jvm = jvm[len(f.Contexts):]
 	if f.Ext {
 		jvm = jvm[1:]
 	}
@@ -1537,7 +1538,7 @@ func (g *gen) valueArgs(x *syntax.Call, f *types.FunSym) int {
 			// Omitted, or a vararg parameter with a default value that
 			// gets no arguments.
 			g.zero(jvm[j])
-			mask |= 1 << j
+			mask |= 1 << (len(f.Contexts) + j) // as kotlinc's, the contexts count
 		default:
 			if slot, ok := stored[arg]; ok {
 				g.code.Local(loadOp(p.Type), slot)
@@ -1887,7 +1888,13 @@ func (g *gen) ungroupedCall(x *syntax.Call) {
 		f := x.Sym
 		m := x.Fun.(*syntax.Member)
 		rt := m.T
+		if !m.Safe {
+			g.contextArgs(x, f)
+		}
 		g.safeCall(m, types.JVMRet(f), x.T, func() {
+			if m.Safe {
+				g.contextsUnder(x, f, m.X.Type().NonNull())
+			}
 			g.coerceRecv(rt, f.Recv)
 			mask := g.callArgs(x, f)
 			switch f.Builtin {
@@ -2070,10 +2077,32 @@ func (g *gen) ungroupedCall(x *syntax.Call) {
 
 	default:
 		f := x.Sym
+		g.contextArgs(x, f)
 		g.invokeFun(x, f, g.callArgs(x, f))
 		g.returned(f)
 		g.coerce(types.JVMRet(f), x.T)
 	}
+}
+
+// contextArgs pushes the context arguments of call x of f, which takes
+// them first.
+func (g *gen) contextArgs(x *syntax.Call, f *types.FunSym) {
+	for i, a := range x.Ctx {
+		g.argAs(a, f.Contexts[i].Type)
+	}
+}
+
+// contextsUnder pushes the context arguments of call x of f below its
+// receiver on the stack, of type t: that of a safe call, evaluated first.
+func (g *gen) contextsUnder(x *syntax.Call, f *types.FunSym, t types.Type) {
+	if len(x.Ctx) == 0 {
+		return
+	}
+	slot := g.code.AllocLocal(desc(t))
+	g.code.Local(storeOp(t), slot)
+	g.contextArgs(x, f)
+	g.code.Local(loadOp(t), slot)
+	g.code.Retire(slot)
 }
 
 // returned handles the result of a call of a function that returns

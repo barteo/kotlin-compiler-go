@@ -18,7 +18,7 @@ The features each milestone of kc's plans added, and how many files would use no
 | 3: type checks | 0 | 107 | 5 |
 | 4: exceptions | 0 | 107 | 5 |
 | 5: objects | 0 | 107 | 5 |
-| 6: data, enum, sealed | 0 | 107 | 5 |
+| 6: data, enum, sealed | 0 | 107 | 4 |
 | 7: arrays, vararg, spread | 0 | 107 | 4 |
 | 8: Char, Float, Byte, Short | 0 | 107 | 4 |
 | 9: inliner | 0 | 107 | 4 |
@@ -34,8 +34,8 @@ The features each milestone of kc's plans added, and how many files would use no
 | 19: value classes | 26 | 81 | 2 |
 | 20: unsigned integers | 26 | 81 | 2 |
 | definite assignment | 26 | 81 | 2 |
-| 21: inline functions | 32 | 75 | 1 |
-| 22: reified type parameters | 32 | 75 | 1 |
+| 21: inline functions | 32 | 75 | 2 |
+| 22: reified type parameters | 32 | 75 | 2 |
 | 23: labels, do-while | 32 | 75 | 1 |
 | 24: delegated properties | 33 | 74 | 1 |
 | 25: object expressions | 33 | 74 | 1 |
@@ -51,22 +51,22 @@ The features each milestone of kc's plans added, and how many files would use no
 | 60: inner and local classes | 88 | 19 | 1 |
 | 61: when guards, anonymous functions, local extension functions | 94 | 13 | 1 |
 | 62a: @JvmField and @JvmStatic in objects | 94 | 13 | 1 |
-| 62b: generic value classes | 98 | 9 | 1 |
-| 63: definitely non-nullable types | 98 | 9 | 1 |
-| 70a: inline property accessors | 98 | 9 | 1 |
-| 70b: where clauses | 98 | 9 | 1 |
-| 70c: fun interfaces | 98 | 9 | 1 |
-| delegated extension properties | 98 | 9 | 1 |
-| qualified super | 98 | 9 | 1 |
-| also supported | 99 | 8 | 1 |
+| 62b: generic value classes | 98 | 9 | 2 |
+| 63: definitely non-nullable types | 98 | 9 | 2 |
+| 70a: inline property accessors | 98 | 9 | 2 |
+| 70b: where clauses | 98 | 9 | 2 |
+| 70c: fun interfaces | 98 | 9 | 2 |
+| delegated extension properties | 98 | 9 | 2 |
+| qualified super | 98 | 9 | 2 |
+| context parameters of top-level functions | 105 | 2 | 1 |
+| also supported | 106 | 1 | 1 |
 
 ### Features left, by files blocked
 
-99 of 107 files use no feature that kc doesn't support.
+106 of 107 files use no feature that kc doesn't support.
 
 | Feature | Files | Only blocker | Uses |
 |:---|---:|---:|---:|
-| context parameters | 7 | 7 | 187 |
 | member extension property | 1 | 1 | 1 |
 
 ### Greedy order of the features left
@@ -75,8 +75,7 @@ At each step, the feature that unblocks the most files given the ones before it,
 
 | Step | Feature | Files unblocked |
 |---:|:---|---:|
-| 1 | context parameters | 106 |
-| 2 | member extension property | 107 |
+| 1 | member extension property | 107 |
 
 ### Inline-only functions called
 
@@ -89,7 +88,6 @@ At each step, the feature that unblocks the most files given the ones before it,
 | `suspend` | 13 | 658 |
 | `recover` | 9 | 39 |
 | `getOrElse` | 8 | 15 |
-| `context` | 7 | 187 |
 | `isNotEmpty` | 7 | 16 |
 | `with` | 7 | 36 |
 | `buildList` | 6 | 12 |
@@ -141,7 +139,7 @@ The features each file still needs, then, in parentheses, the ones the milestone
 | arrow-libs/core/arrow-core/src/androidAndJvmMain/kotlin/arrow/core/raise/CancellationExceptionNoTrace.kt | 19 | (annotation, arrays, class literal, inheritance, modifier actual, modifier override, package) |
 | arrow-libs/core/arrow-core/src/androidAndJvmMain/kotlin/arrow/core/raise/RaiseCancellationException.kt | 9 | (annotation, modifier actual, modifier sealed, package) |
 | arrow-libs/core/arrow-core/src/commonMain/kotlin/arrow/core/ArrowCoreInternalException.kt | 4 | (annotation, inheritance, modifier expect, object, package) |
-| arrow-libs/core/arrow-core/src/commonMain/kotlin/arrow/core/Comparison.kt | 69 | context parameters (Byte and Short, arrays, extension function, inline-only call, modifier inline, modifier operator, modifier vararg, package, spread operator) |
+| arrow-libs/core/arrow-core/src/commonMain/kotlin/arrow/core/Comparison.kt | 69 | (Byte and Short, arrays, context function, extension function, inline-only call, modifier inline, modifier operator, modifier vararg, package, spread operator) |
 | arrow-libs/core/arrow-core/src/commonMain/kotlin/arrow/core/Either.kt | 1623 | (annotation, as, callable reference, class literal, extension function, function type with receiver, inheritance, inline-only call, is, modifier companion, modifier const, modifier data, modifier infix, modifier inline, modifier operator, modifier override, modifier reified, modifier sealed, nested class, package, qualified this, reified member type parameter, throw, typealias, when subject variable) |
 | arrow-libs/core/arrow-core/src/commonMain/kotlin/arrow/core/Ior.kt | 531 | (annotation, callable reference, class literal, extension function, inheritance, inline-only call, is, modifier companion, modifier data, modifier inline, modifier operator, modifier override, modifier sealed, nested class, package, qualified this, typealias, when subject variable) |
 | arrow-libs/core/arrow-core/src/commonMain/kotlin/arrow/core/Iterable.kt | 921 | (annotation, callable reference, class literal, destructuring lambda parameter, do-while, extension function, function type with receiver, identity equality, inline-only call, is, modifier infix, modifier inline, modifier operator, modifier tailrec, package, qualified this, uninitialized local variable, when subject variable) |
@@ -171,11 +169,11 @@ The features each file still needs, then, in parentheses, the ones the milestone
 | arrow-libs/core/arrow-core/src/commonMain/kotlin/arrow/core/raise/Raise.kt | 741 | (annotation, callable reference, class literal, destructuring lambda parameter, extension function, function type with receiver, function without body, inline-only call, interface, is, member extension function, modifier annotation, modifier inline, modifier reified, modifier suspend, package, qualified this, throw, try) |
 | arrow-libs/core/arrow-core/src/commonMain/kotlin/arrow/core/raise/RaiseAccumulate.kt | 1196 | (annotation, as, callable reference, class delegation, class literal, destructuring lambda parameter, extension function, function type with receiver, function without body, inheritance, inline-only call, interface, is, member extension function, modifier abstract, modifier annotation, modifier crossinline, modifier inline, modifier open, modifier operator, modifier override, modifier sealed, modifier value, nested class, package, property without initializer, qualified this, require, check, error, secondary constructor) |
 | arrow-libs/core/arrow-core/src/commonMain/kotlin/arrow/core/raise/Trace.kt | 45 | (annotation, inline-only call, modifier annotation, modifier value, package) |
-| arrow-libs/core/arrow-core/src/commonMain/kotlin/arrow/core/raise/context/Builders.kt | 81 | context parameters (annotation, class literal, default value, inline-only call, modifier inline, modifier noinline, package) |
-| arrow-libs/core/arrow-core/src/commonMain/kotlin/arrow/core/raise/context/RaiseAccumulateCombineContext.kt | 290 | context parameters (annotation, class literal, extension function, inline-only call, modifier inline, package) |
-| arrow-libs/core/arrow-core/src/commonMain/kotlin/arrow/core/raise/context/RaiseAccumulateContext.kt | 100 | context parameters (annotation, class literal, extension function, inline-only call, modifier inline, package, qualified this, typealias) |
-| arrow-libs/core/arrow-core/src/commonMain/kotlin/arrow/core/raise/context/RaiseAccumulateNelContext.kt | 301 | context parameters (annotation, class literal, extension function, function type with receiver, inline-only call, modifier inline, package) |
-| arrow-libs/core/arrow-core/src/commonMain/kotlin/arrow/core/raise/context/RaiseContext.kt | 152 | context parameters (annotation, class literal, extension function, inline-only call, is, modifier inline, modifier suspend, package, qualified this, typealias) |
+| arrow-libs/core/arrow-core/src/commonMain/kotlin/arrow/core/raise/context/Builders.kt | 81 | (annotation, class literal, context function type, default value, modifier inline, modifier noinline, package) |
+| arrow-libs/core/arrow-core/src/commonMain/kotlin/arrow/core/raise/context/RaiseAccumulateCombineContext.kt | 290 | (annotation, class literal, context function, context function type, extension function, modifier inline, package) |
+| arrow-libs/core/arrow-core/src/commonMain/kotlin/arrow/core/raise/context/RaiseAccumulateContext.kt | 100 | (annotation, class literal, context function, context function type, extension function, inline-only call, modifier inline, package, qualified this, typealias) |
+| arrow-libs/core/arrow-core/src/commonMain/kotlin/arrow/core/raise/context/RaiseAccumulateNelContext.kt | 301 | (annotation, class literal, context function, context function type, extension function, function type with receiver, modifier inline, package) |
+| arrow-libs/core/arrow-core/src/commonMain/kotlin/arrow/core/raise/context/RaiseContext.kt | 152 | (annotation, class literal, context function, context function type, extension function, inline-only call, is, modifier inline, modifier suspend, package, qualified this, typealias) |
 | arrow-libs/core/arrow-core/src/commonMain/kotlin/arrow/core/string.kt | 6 | (extension function, package) |
 | arrow-libs/core/arrow-core/src/commonMain/kotlin/arrow/core/utils.kt | 10 | (extension function, inline-only call, modifier const, package, qualified this, typealias) |
 | arrow-libs/core/arrow-eval/src/commonMain/kotlin/arrow/eval/Eval.kt | 613 | (annotation, as, callable reference, default value, delegated property, extension function, function without body, inheritance, inline-only call, is, labels, local function, modifier abstract, modifier companion, modifier crossinline, modifier data, modifier inline, modifier operator, modifier override, modifier sealed, modifier suspend, modifier tailrec, nested class, object expression, package, qualified this, secondary constructor, throw) |
@@ -213,7 +211,7 @@ The features each file still needs, then, in parentheses, the ones the milestone
 | arrow-libs/fx/arrow-fx-coroutines/src/commonMain/kotlin/arrow/fx/coroutines/Resource.kt | 567 | (annotation, callable reference, class literal, default value, destructuring declaration, extension function, function type with receiver, function without body, inheritance, inline-only call, interface, is, member extension function, modifier annotation, modifier expect, modifier infix, modifier inline, modifier override, modifier suspend, object, package, property without initializer, suspend function type, throw, typealias) |
 | arrow-libs/fx/arrow-fx-coroutines/src/commonMain/kotlin/arrow/fx/coroutines/await/AwaitAllScope.kt | 97 | (annotation, class delegation, class literal, default value, extension function, function type with receiver, inheritance, modifier annotation, modifier inner, modifier override, modifier suspend, nested class, package) |
 | arrow-libs/fx/arrow-fx-coroutines/src/commonMain/kotlin/arrow/fx/coroutines/flow.kt | 283 | (annotation, callable reference, default value, extension function, function type with receiver, inline-only call, modifier crossinline, modifier inline, modifier suspend, package, require, check, error, suspend function type, throw, try) |
-| arrow-libs/fx/arrow-fx-coroutines/src/commonMain/kotlin/arrow/fx/coroutines/resource/context/Resource.kt | 47 | context parameters (annotation, class literal, default value, extension function, inline-only call, modifier inline, modifier suspend, package, qualified this, suspend function type, typealias) |
+| arrow-libs/fx/arrow-fx-coroutines/src/commonMain/kotlin/arrow/fx/coroutines/resource/context/Resource.kt | 47 | (annotation, class literal, context function, context function type, default value, extension function, inline-only call, modifier inline, modifier suspend, package, qualified this, suspend function type, typealias) |
 | arrow-libs/fx/arrow-fx-stm/src/androidAndJvmMain/kotlin/arrow/fx/stm/internal/RetryException.kt | 6 | (inheritance, modifier actual, modifier override, package) |
 | arrow-libs/fx/arrow-fx-stm/src/commonMain/kotlin/arrow/fx/stm/STM.kt | 1705 | member extension property (annotation, anonymous function, class literal, extension function, extension property, function type with receiver, function without body, inline-only call, interface, is, member extension function, modifier infix, modifier inline, modifier noinline, modifier operator, modifier suspend, package, require, check, error, throw, when subject variable) |
 | arrow-libs/fx/arrow-fx-stm/src/commonMain/kotlin/arrow/fx/stm/TArray.kt | 129 | (arrays, extension function, identity equality, modifier companion, modifier data, modifier override, modifier suspend, modifier vararg, package) |
@@ -228,7 +226,7 @@ The features each file still needs, then, in parentheses, the ones the milestone
 
 ### Cross-check with the parser
 
-The parser, recovering after each declaration that fails, reported 84 errors. 84 of them name a feature that the detector also found in the file.
+The parser, recovering after each declaration that fails, reported 0 errors. 0 of them name a feature that the detector also found in the file.
 
 ## tests: 191 files, 11404 lines
 
@@ -248,7 +246,7 @@ The features each milestone of kc's plans added, and how many files would use no
 | 5: objects | 101 | 90 | 2 |
 | 6: data, enum, sealed | 102 | 89 | 2 |
 | 7: arrays, vararg, spread | 102 | 89 | 2 |
-| 8: Char, Float, Byte, Short | 102 | 89 | 2 |
+| 8: Char, Float, Byte, Short | 102 | 89 | 1 |
 | 9: inliner | 127 | 64 | 2 |
 | 10: lambdas with receivers | 127 | 64 | 2 |
 | 11: extensions | 130 | 61 | 2 |
@@ -286,15 +284,15 @@ The features each milestone of kc's plans added, and how many files would use no
 | 70c: fun interfaces | 190 | 1 | 1 |
 | delegated extension properties | 190 | 1 | 1 |
 | qualified super | 190 | 1 | 1 |
-| also supported | 190 | 1 | 1 |
+| context parameters of top-level functions | 191 | 0 | – |
+| also supported | 191 | 0 | – |
 
 ### Features left, by files blocked
 
-190 of 191 files use no feature that kc doesn't support.
+191 of 191 files use no feature that kc doesn't support.
 
 | Feature | Files | Only blocker | Uses |
 |:---|---:|---:|---:|
-| context parameters | 1 | 1 | 4 |
 
 ### Greedy order of the features left
 
@@ -302,7 +300,6 @@ At each step, the feature that unblocks the most files given the ones before it,
 
 | Step | Feature | Files unblocked |
 |---:|:---|---:|
-| 1 | context parameters | 191 |
 
 ### Inline-only functions called
 
@@ -327,7 +324,6 @@ At each step, the feature that unblocks the most files given the ones before it,
 | `Iterable` | 1 | 1 |
 | `buildList` | 1 | 1 |
 | `buildSet` | 1 | 1 |
-| `context` | 1 | 4 |
 | `error` | 1 | 2 |
 | `find` | 1 | 2 |
 | `firstNotNullOfOrNull` | 1 | 1 |
@@ -376,7 +372,7 @@ The features each file still needs, then, in parentheses, the ones the milestone
 | arrow-libs/core/arrow-core/src/commonTest/kotlin/arrow/core/test/laws/MonoidLaws.kt | 48 | (default value, inheritance, modifier data, modifier override, modifier suspend, package) |
 | arrow-libs/core/arrow-core/src/commonTest/kotlin/arrow/core/test/laws/SemigroupLaws.kt | 24 | (default value, inheritance, modifier data, modifier override, modifier suspend, package) |
 | arrow-libs/core/arrow-core/src/commonTest/kotlin/arrow/core/test/laws/SemiringLaws.kt | 106 | (default value, inheritance, modifier data, modifier override, modifier suspend, package) |
-| arrow-libs/core/arrow-core/src/commonTest/kotlin/arrow/core/usage/Context.kt | 38 | context parameters (inline-only call, named argument, package) |
+| arrow-libs/core/arrow-core/src/commonTest/kotlin/arrow/core/usage/Context.kt | 38 | (context function, named argument, package) |
 | arrow-libs/core/arrow-core/src/jvmTest/java/arrow/core/DeadlockTest.kt | 55 | (annotation, class literal, package) |
 | arrow-libs/core/arrow-core/src/jvmTest/kotlin/arrow/core/raise/EffectUsage.kt | 51 | (callable reference, extension function, inheritance, interface, is, modifier data, modifier sealed, modifier suspend, object, package) |
 | arrow-libs/core/arrow-core/src/jvmTest/kotlin/arrow/core/raise/TraceJvmSpec.kt | 25 | (annotation, class literal, package) |
@@ -534,7 +530,7 @@ The features each file still needs, then, in parentheses, the ones the milestone
 
 ### Cross-check with the parser
 
-The parser, recovering after each declaration that fails, reported 4 errors. 4 of them name a feature that the detector also found in the file.
+The parser, recovering after each declaration that fails, reported 0 errors. 0 of them name a feature that the detector also found in the file.
 
 ### Cross-check with the checker
 

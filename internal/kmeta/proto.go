@@ -17,6 +17,10 @@ type Type struct {
 	// ExtFunc is set on a function type with a receiver, A.(B) -> C:
 	// kotlin.Function2<A, B, C> annotated @ExtensionFunctionType.
 	ExtFunc bool
+	// Contexts is the number of context parameters of a context function
+	// type, context(A) (B) -> C: kotlin.Function2<A, B, C> annotated
+	// @ContextFunctionTypeParams(1).
+	Contexts int
 	// Composable is set on a composable function type, @Composable () ->
 	// Unit: kotlin.Function0<Unit> annotated
 	// @androidx.compose.runtime.Composable, as Compose's compiler plugin
@@ -113,7 +117,11 @@ type Function struct {
 	Params     []*Param
 	Ret        *Type
 	Contexts   int // number of context receivers and parameters
-	JVM        JVMSig
+	// ContextParams are the context parameters of a function that kc
+	// writes, whose types it writes as context receivers' too, as
+	// kotlinc does.
+	ContextParams []*Param
+	JVM           JVMSig
 	// InPlace are the callsInPlace effects of the function's contract.
 	InPlace []InPlace
 	// Implies are the conditional effects of the function's contract
@@ -476,17 +484,51 @@ func (s scope) typ(msg []byte) *Type {
 		case 11:
 			t.Outer = s.typeID(d.int())
 		case 100: // JvmProtoBuf.typeAnnotation
-			switch s.annotationClass(d.bytes()) {
+			a := d.bytes()
+			switch s.annotationClass(a) {
 			case "kotlin/ExtensionFunctionType":
 				t.ExtFunc = true
 			case "androidx/compose/runtime/Composable":
 				t.Composable = true
+			case "kotlin/ContextFunctionTypeParams":
+				t.Contexts = intArg(a)
 			}
 		default: // abbreviations, other extensions
 			d.skip(w)
 		}
 	}
 	return t
+}
+
+// intArg returns the value of the one argument of an Annotation message,
+// an integer: count of @ContextFunctionTypeParams(count).
+func intArg(msg []byte) int {
+	d := decoder{msg}
+	for d.more() {
+		f, w := d.key()
+		if f != 2 || w != wireBytes {
+			d.skip(w)
+			continue
+		}
+		arg := decoder{d.bytes()}
+		for arg.more() {
+			f, w := arg.key()
+			if f != 2 || w != wireBytes {
+				arg.skip(w)
+				continue
+			}
+			v := decoder{arg.bytes()}
+			for v.more() {
+				f, w := v.key()
+				if f == 2 && w == wireVarint {
+					n := v.varint()
+					return int(n>>1) ^ -int(n&1) // zigzag
+				}
+				v.skip(w)
+			}
+		}
+	}
+	return 0
 }
 
 // annotationClass returns the class of an Annotation message.
@@ -727,6 +769,7 @@ func (s scope) function(msg []byte) *Function {
 	fn := &Function{Flags: 6}
 	var sig []byte
 	hasFlags := false
+	recvs := 0 // context receivers' types, which kotlinc writes for context parameters too
 	d := decoder{msg}
 	for d.more() {
 		f, w := d.key()
@@ -749,11 +792,13 @@ func (s scope) function(msg []byte) *Function {
 			fn.Recv = s.typ(d.bytes())
 		case 8:
 			fn.Recv = s.typeID(d.int())
-		case 10, 13:
+		case 10:
 			d.skip(w)
-			fn.Contexts++
+			recvs++
 		case 11:
-			fn.Contexts += len(d.ints(w, nil))
+			recvs += len(d.ints(w, nil))
+		case 13:
+			fn.ContextParams = append(fn.ContextParams, s.param(d.bytes()))
 		case 6:
 			fn.Params = append(fn.Params, s.param(d.bytes()))
 		case 32:
@@ -767,7 +812,8 @@ func (s scope) function(msg []byte) *Function {
 	if fn.Ret == nil {
 		fail("function %s has no return type", fn.Name)
 	}
-	bindNames(fn.TypeParams, append(paramTypes(fn.Params), fn.Recv, fn.Ret)...)
+	fn.Contexts = max(recvs, len(fn.ContextParams))
+	bindNames(fn.TypeParams, append(paramTypes(append(fn.ContextParams[:len(fn.ContextParams):len(fn.ContextParams)], fn.Params...)), fn.Recv, fn.Ret)...)
 	// JvmProtoBufUtil.getJvmMethodSignature: absent parts are the defaults.
 	fn.JVM.Name = fn.Name
 	if sig != nil {

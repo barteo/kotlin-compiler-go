@@ -259,7 +259,7 @@ func (s *metaScope) typ(t types.Type) *kmeta.Type {
 		// suspend (A) -> R is Function2<A, Continuation<R>, Any?>.
 		n := t.A.Len() - 1
 		kt.Class = "kotlin/Function" + strconv.Itoa(n+1)
-		kt.ExtFunc = t.E
+		kt.ExtFunc, kt.Contexts = t.E, int(t.X)
 		kt.Flags |= kmeta.TypeSuspend
 		for _, a := range t.A.List[:n] {
 			if a.V == types.Star {
@@ -275,7 +275,7 @@ func (s *metaScope) typ(t types.Type) *kmeta.Type {
 		// parameters, annotated @Composable.
 		n := t.A.Len() - 1
 		kt.Class = "kotlin/Function" + strconv.Itoa(n)
-		kt.ExtFunc, kt.Composable = t.E, true
+		kt.ExtFunc, kt.Composable, kt.Contexts = t.E, true, int(t.X)
 		for _, a := range t.A.List {
 			if a.V == types.Star {
 				kt.Args = append(kt.Args, kmeta.Arg{Proj: kmeta.Star})
@@ -286,6 +286,9 @@ func (s *metaScope) typ(t types.Type) *kmeta.Type {
 	case t.K == types.Class:
 		kt.Class = classID(t.C)
 		kt.ExtFunc = t.E && t.C.Func
+		if t.C.Func {
+			kt.Contexts = int(t.X)
+		}
 		if t.C.Inner {
 			// Its own arguments, and the outer class's in the outer type.
 			n := len(t.C.TypeParams) - t.C.OuterParams
@@ -357,7 +360,7 @@ func (g *gen) lambdaMeta(x *syntax.Lambda) *kmeta.Function {
 		TypeParams: tps,
 		Ret:        s.typ(x.Ret),
 	}
-	params := x.ParamSyms()
+	params := x.ParamSyms()[len(x.Ctx):] // as kotlinc's, without its context parameters
 	if x.Recv != nil {
 		f.Recv = s.typ(x.Recv.Type)
 		params = params[1:]
@@ -462,6 +465,13 @@ func (g *gen) funMeta(s *metaScope, fd *syntax.FunDecl, owner *types.ClassSym) *
 	}
 	if sym.Ext {
 		f.Recv = s.typ(sym.Recv)
+	}
+	for _, p := range sym.Contexts {
+		name := p.Name
+		if d, ok := p.Decl.(*syntax.Param); ok && d.Name == "_" {
+			name = "<unused var>" // as kotlinc names it
+		}
+		f.ContextParams = append(f.ContextParams, &kmeta.Param{Name: name, Type: s.typ(p.Type)})
 	}
 	if fd.Operator || sym.KotlinOperator {
 		f.Flags |= kmeta.FunOperator // overrides of operators are operators

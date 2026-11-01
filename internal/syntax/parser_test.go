@@ -159,8 +159,10 @@ func TestParseErrors(t *testing.T) {
 // construct is reported as, which bench/survey counts.
 func TestUnsupportedFeatures(t *testing.T) {
 	tests := []struct{ src, feature string }{
-		{"context(c: Comparator<T>)\nfun <T> T.f(o: T) = 1", "context parameters"},
-		{"fun f(b: context(Int) () -> Unit) {}", "context parameters"},
+		{"class C {\n  context(c: Comparator<T>)\n  fun <T> T.f(o: T) = 1\n}", "context parameters"},
+		{"context(c: Int) val x: Int get() = c", "context parameters"},
+		{"fun g() {\n  context(c: Int) fun f() = 1\n}", "context parameters"},
+		{"context(Int) fun f() = 1", "context receivers"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.src, func(t *testing.T) {
@@ -936,6 +938,32 @@ func TestSuspend(t *testing.T) {
 	}
 	if f.Decls[2].(*FunDecl).Suspend {
 		t.Errorf("suspend is a name")
+	}
+}
+
+func TestContextParameters(t *testing.T) {
+	src := "context(a: A, _: B<C>)\n@Ann public inline fun <T> T.f(g: context(A) () -> Unit, h: suspend context(A, B) Int.(String) -> T) {}\n" +
+		"fun context(x: Int) = context(x) { }"
+	f, errs := Parse("t.kt", src)
+	if len(errs) > 0 {
+		t.Fatal(errs[0])
+	}
+	d := f.Decls[0].(*FunDecl)
+	if len(d.Contexts) != 2 || d.Contexts[0].Name != "a" || d.Contexts[1].Name != "_" || d.Contexts[1].Type.Name != "B" {
+		t.Errorf("contexts: %+v", d.Contexts)
+	}
+	if !d.Inline || d.Visibility != Public || len(d.Annotations) != 1 || d.Recv == nil {
+		t.Errorf("f: %+v", d.Modifiers)
+	}
+	g, h := d.Params[0].Type, d.Params[1].Type
+	if len(g.Contexts) != 1 || g.Contexts[0].Name != "A" || g.Ret == nil || len(g.Params) != 0 {
+		t.Errorf("g: %+v", g)
+	}
+	if !h.Suspend || len(h.Contexts) != 2 || h.Recv == nil || h.Recv.Name != "Int" || len(h.Params) != 1 {
+		t.Errorf("h: %+v", h)
+	}
+	if d := f.Decls[1].(*FunDecl); d.Name != "context" || len(d.Contexts) != 0 {
+		t.Errorf("context is a name: %+v", d)
 	}
 }
 

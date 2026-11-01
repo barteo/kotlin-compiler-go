@@ -880,6 +880,12 @@ func (c *Checker) binary(x *syntax.Binary, want types.Type, allowRange bool) typ
 			x.OpType = types.StringType
 		case c.comparable(xt, yt):
 			x.OpType = types.ClassType(c.u.ext.class("java/lang/Comparable"))
+		case xt.IsParam():
+			// An operator extension of a type parameter: a context
+			// parameter's T.compareTo, as Arrow's x <= y in
+			// with(comparator).
+			x.Y = checked(x.Y, yt)
+			return c.binaryOp(x, xt, want)
 		default:
 			c.errorf(x.P, "operator '%s' cannot be applied to %s and %s", x.Op, xt, yt)
 		}
@@ -2238,10 +2244,13 @@ func (c *Checker) invokeFitsType(ft types.Type, x *syntax.Call) bool {
 	}
 	n := ft.A.Len() - 1
 	params := ft.A.List[:n]
+	k := ft.Contexts()
 	switch {
 	case len(x.Args) == n:
-	case ft.IsExtFunc() && len(x.Args) == n-1 && c.implicitOf(params[0].T):
-		params = params[1:] // the implicit receiver's
+	case k > 0 && len(x.Args) == n-k:
+		params = params[k:] // implicit context arguments'
+	case ft.IsExtFunc() && len(x.Args) == n-k-1 && c.implicitOf(params[k].T):
+		params = params[k+1:] // and the implicit receiver's
 	default:
 		return false
 	}

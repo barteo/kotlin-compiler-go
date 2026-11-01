@@ -363,7 +363,11 @@ func (p *parser) modifiers() Modifiers {
 		case t.Kind != IDENT:
 			return m
 		case t.Text == "context" && p.toks[p.i+1].Kind == LPAREN:
-			p.unsupported(t.Pos, "context parameters", "context parameters are not supported")
+			if m.Contexts != nil {
+				p.failAt(t.Pos, "repeated context parameter lists")
+			}
+			m.Contexts, m.ContextP = p.contextParams(), t.Pos
+			p.skipNL()
 		case !declStart(p.toks[p.i+1].Kind):
 			return m
 		case t.Text == "private" || t.Text == "public" || t.Text == "internal" || t.Text == "protected":
@@ -444,6 +448,60 @@ func (p *parser) modifiers() Modifiers {
 		default:
 			return m
 		}
+	}
+}
+
+// contextParams parses a declaration's context parameters, context(a: A,
+// _: B). The context receivers that came before them, context(A), aren't
+// supported.
+func (p *parser) contextParams() []*Param {
+	p.next()
+	p.expect(LPAREN)
+	ps := []*Param{}
+	for p.skipNL(); !p.at(RPAREN); p.skipNL() {
+		if !p.at(IDENT) || p.toks[p.i+1].Kind != COLON {
+			p.unsupported(p.tok().Pos, "context receivers", "context receivers are not supported: use context parameters, context(name: Type)")
+		}
+		name := p.next()
+		p.next()
+		ps = append(ps, &Param{P: name.Pos, Name: name.Text, Type: p.parseType()})
+		p.skipNL()
+		if !p.at(COMMA) {
+			break
+		}
+		p.next()
+	}
+	p.expect(RPAREN)
+	return ps
+}
+
+// contextDecl reports whether a statement is a local declaration with
+// context parameters, context(a: A) fun f(), rather than a call.
+func (p *parser) contextDecl() bool {
+	if p.toks[p.i+1].Kind != LPAREN {
+		return false
+	}
+	depth, j := 0, p.i+1
+	for ; p.toks[j].Kind != EOF; j++ {
+		if k := p.toks[j].Kind; k == LPAREN {
+			depth++
+		} else if k == RPAREN {
+			if depth--; depth == 0 {
+				break
+			}
+		}
+	}
+	for j++; p.toks[j].Kind == NL; j++ {
+	}
+	k := p.toks[j]
+	return k.Kind == FUN || k.Kind == AT || k.Kind == IDENT && isModifier(k.Text) && declStart(p.toks[j+1].Kind)
+}
+
+// noContexts reports context parameters on a declaration that kc doesn't
+// support them on, what.
+func (p *parser) noContexts(m Modifiers, what string) {
+	if m.Contexts != nil {
+		p.unsupported(m.ContextP, "context parameters", "context parameters on %s are not supported", what)
 	}
 }
 
@@ -572,6 +630,7 @@ func (p *parser) anonFunAt(i int) bool {
 // localClass parses a local class, after its modifiers. Kotlin has no
 // local interfaces, objects or enum classes.
 func (p *parser) localClass(m Modifiers) *LocalClass {
+	p.noContexts(m, "classes")
 	t := p.tok()
 	switch {
 	case t.Kind == INTERFACE:
@@ -589,6 +648,7 @@ func (p *parser) localClass(m Modifiers) *LocalClass {
 // localFun parses a local function, after its modifiers.
 func (p *parser) localFun(m Modifiers) *LocalFun {
 	p.paramOnly(m)
+	p.noContexts(m, "local functions")
 	pos := p.tok().Pos
 	fd := p.parseFun()
 	fd.Modifiers = m
@@ -680,6 +740,16 @@ func (p *parser) parseFile() *File {
 					f.Decls = append(f.Decls, d)
 				}
 			}
+			switch p.tok().Kind {
+			case VAL, VAR:
+				p.noContexts(m, "properties")
+			case FUN:
+				if p.toks[p.i+1].Kind == INTERFACE {
+					p.noContexts(m, "classes")
+				}
+			default:
+				p.noContexts(m, "classes")
+			}
 			switch t := p.tok(); t.Kind {
 			case FUN:
 				if p.toks[p.i+1].Kind == INTERFACE {
@@ -770,7 +840,25 @@ func (p *parser) parseType() *TypeRef {
 		return ft
 	}
 	if t := p.tok(); t.Kind == IDENT && t.Text == "context" && p.toks[p.i+1].Kind == LPAREN {
-		p.unsupported(t.Pos, "context parameters", "context parameters are not supported")
+		// A context function type: context(A, B) R.(C) -> T.
+		p.next()
+		p.next()
+		var ctx []*TypeRef
+		for p.skipNL(); !p.at(RPAREN); p.skipNL() {
+			ctx = append(ctx, p.parseType())
+			p.skipNL()
+			if !p.at(COMMA) {
+				break
+			}
+			p.next()
+		}
+		p.expect(RPAREN)
+		ft := p.parseType()
+		if ft.Ret == nil || ft.Nullable || len(ft.Contexts) > 0 {
+			p.failAt(t.Pos, "expected a function type after the context parameters")
+		}
+		ft.P, ft.Contexts = t.Pos, ctx
+		return ft
 	}
 	if p.at(LPAREN) {
 		return p.parseParenType()
@@ -1803,6 +1891,7 @@ func typeExpr(t *TypeRef) Expr {
 func (p *parser) member(cd *ClassDecl) {
 	m := p.modifiers()
 	p.paramOnly(m)
+	p.noContexts(m, "members")
 	switch t := p.tok(); t.Kind {
 	case FUN:
 		if p.toks[p.i+1].Kind == INTERFACE {
@@ -2179,6 +2268,9 @@ func (p *parser) parseStmtAfterAnnotations() Stmt {
 			return p.localFun(Modifiers{})
 		}
 	case IDENT:
+		if t.Text == "context" && p.contextDecl() {
+			return p.localFun(p.modifiers()) // reports them
+		}
 		// Modifiers of a local function: infix fun, private fun.
 		j := p.i
 		for p.toks[j].Kind == IDENT && isModifier(p.toks[j].Text) {

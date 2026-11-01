@@ -136,20 +136,28 @@ func (g *gen) inlineSource(x *syntax.Call, d *syntax.FunDecl) {
 		return
 	}
 	if !f.Ext {
+		g.contextArgs(x, f)
 		g.inlineBody(x, d)
 		g.coerce(f.Ret, x.T)
 		return
 	}
 	m := x.Fun.(*syntax.Member)
 	rt := m.T
+	if !m.Safe {
+		g.contextArgs(x, f)
+	}
 	g.safeCall(m, f.Ret, x.T, func() {
+		if m.Safe {
+			g.contextsUnder(x, f, m.X.Type().NonNull())
+		}
 		g.coerce(rt, f.Recv)
 		g.inlineBody(x, d)
 	})
 }
 
-// inlineBody copies d's body, for call x whose receiver, if d is an
-// extension, is on the stack. It leaves the result, of d's result type.
+// inlineBody copies d's body, for call x whose context arguments and
+// receiver, if d is an extension, are on the stack. It leaves the
+// result, of d's result type.
 func (g *gen) inlineBody(x *syntax.Call, d *syntax.FunDecl) {
 	g.lockInline()
 	defer g.unlockInline()
@@ -174,6 +182,11 @@ func (g *gen) inlineBody(x *syntax.Call, d *syntax.FunDecl) {
 	case f.Owner != nil:
 		self = c.AllocLocal("L" + f.Owner.Name + ";")
 		c.Local(cf.ASTORE, self)
+	}
+	for i := len(f.Contexts) - 1; i >= 0; i-- {
+		p := f.Contexts[i]
+		p.Slot = c.AllocLocal(desc(p.Type))
+		c.Local(storeOp(p.Type), p.Slot)
 	}
 	// The body of a member of an inner, local or anonymous class reads
 	// what the class captures, its outer instance among them, from self.
@@ -224,7 +237,7 @@ func (g *gen) inlineBody(x *syntax.Call, d *syntax.FunDecl) {
 		reified: g.reifiedArgs(x, f), noLines: g.noLines, self: self, defaults: true, inl: len(g.inl), scope: scope}
 	g.srcInl = append(g.srcInl, defaults)
 	for i, p := range f.Params {
-		if mask&(1<<i) != 0 && d.Params[i].Default != nil {
+		if mask&(1<<(len(f.Contexts)+i)) != 0 && d.Params[i].Default != nil {
 			g.exprAs(d.Params[i].Default, p.Type)
 			if size(p.Type) > 0 {
 				c.Local(storeOp(p.Type), p.Slot)
@@ -578,6 +591,9 @@ func saveSlots(d *syntax.FunDecl) map[*types.VarSym]int {
 		}
 	}
 	add(d.RecvSym)
+	for _, p := range d.Sym.Contexts {
+		add(p)
+	}
 	for _, p := range d.Sym.Params {
 		add(p)
 	}

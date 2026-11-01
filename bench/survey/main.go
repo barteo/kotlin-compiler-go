@@ -101,6 +101,7 @@ var milestones = []struct {
 	{"70c: fun interfaces", []string{"fun interface"}},
 	{"delegated extension properties", []string{"delegated extension property"}},
 	{"qualified super", []string{"qualified super"}},
+	{"context parameters of top-level functions", []string{"context function", "context function type"}},
 	// Supported all along, but counted by an earlier detector.
 	{"also supported", []string{"prefix increment"}},
 }
@@ -1094,7 +1095,7 @@ func (d *detector) ident(i int) {
 	case t.Text == "suspend" && next == syntax.LPAREN && !member:
 		d.add("suspend function type")
 	case t.Text == "context" && next == syntax.LPAREN && !member && d.contextParams(i):
-		d.add("context parameters")
+		d.add(d.contextFeature(i))
 	case (t.Text == "get" || t.Text == "set") && d.memberLevel():
 		p := i - 1
 		if visibility[d.text(p)] {
@@ -1146,6 +1147,9 @@ func (d *detector) ident(i int) {
 	if next == syntax.LT {
 		k := d.kind(d.match(i+1) + 1)
 		call = k == syntax.LPAREN || k == syntax.LBRACE
+	}
+	if t.Text == "context" && call && d.kind(d.skipNL(d.match(i+1)+1)) != syntax.LBRACE {
+		call = false // context parameters, not the standard library's context(a) { }
 	}
 	if feat := d.inlineOnly[t.Text]; feat != "" && prev != syntax.FUN && prev != syntax.COLON_COLON && call {
 		d.inline[t.Text]++
@@ -1237,6 +1241,42 @@ func (d *detector) contextParams(i int) bool {
 		return modifierWords[d.text(j)] || visibility[d.text(j)] || d.text(j) == "context"
 	}
 	return false
+}
+
+// contextFeature returns the feature of the context(...) at i, which
+// contextParams reports declares context parameters: those of a
+// top-level function, or of a function type, which kc supports, or those
+// of another declaration, which it doesn't, nor the context receivers
+// that came before them, context(A).
+func (d *detector) contextFeature(i int) string {
+	j := d.skipNL(d.match(i+1) + 1)
+	if d.kind(j) == syntax.LPAREN {
+		return "context function type"
+	}
+	if k := d.skipNL(i + 2); d.kind(k) != syntax.RPAREN && (d.kind(k) != syntax.IDENT || d.kind(k+1) != syntax.COLON) {
+		return "context receivers"
+	}
+	// Past the annotations and modifiers, to the declaration.
+	for {
+		switch {
+		case d.kind(j) == syntax.AT:
+			j++
+			for d.kind(j+1) == syntax.DOT || d.kind(j+1) == syntax.COLON {
+				j += 2
+			}
+			if j++; d.kind(j) == syntax.LPAREN {
+				j = d.match(j) + 1
+			}
+		case d.kind(j) == syntax.IDENT && (modifierWords[d.text(j)] || visibility[d.text(j)]):
+			j++
+		default:
+			if d.kind(j) == syntax.FUN && d.kind(j+1) != syntax.INTERFACE && len(d.braces) == 0 {
+				return "context function"
+			}
+			return "context parameters"
+		}
+		j = d.skipNL(j)
+	}
 }
 
 // declStart reports whether a token can follow a modifier.

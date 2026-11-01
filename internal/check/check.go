@@ -234,6 +234,7 @@ type state struct {
 	tparams    []*types.TypeParamSym // type parameters in scope, innermost first
 	lambdas    []*syntax.Lambda      // lambdas being checked, outermost first
 	recvs      []implicitRecv        // the receivers of lambdas with receivers, innermost last
+	ctxs       []implicitRecv        // the context parameters in scope, innermost last: see context.go
 	lrets      []*lambdaResult       // the labeled returns of each of lambdas
 	// defaultsOf is the function whose default value of parameter
 	// defaultParam is being checked.
@@ -639,6 +640,17 @@ func (c *Checker) resolveFuncType(ref *syntax.TypeRef) types.Type {
 		}
 		ps = append([]types.Type{recv}, ps...)
 	}
+	if len(ref.Contexts) > 0 {
+		// context(C) R.(A) -> T is (C, R, A) -> T, marked as having a
+		// context parameter.
+		ctx := make([]types.Type, len(ref.Contexts))
+		for i, p := range ref.Contexts {
+			if ctx[i] = c.resolveType(p); ctx[i].K == types.Invalid {
+				return types.InvalidType
+			}
+		}
+		ps = append(ctx, ps...)
+	}
 	var t types.Type
 	switch {
 	case ref.Composable && c.u.compose && (ref.Suspend || len(ps) > types.MaxComposableArity):
@@ -661,6 +673,9 @@ func (c *Checker) resolveFuncType(ref *syntax.TypeRef) types.Type {
 	}
 	if ref.Recv != nil {
 		t = t.WithReceiver()
+	}
+	if len(ref.Contexts) > 0 {
+		t = t.WithContexts(len(ref.Contexts))
 	}
 	return c.nullable(t, ref)
 }
@@ -1277,6 +1292,7 @@ func (c *Checker) resolveFun(d *syntax.FunDecl, owner *types.ClassSym) {
 	if d.Recv != nil {
 		c.declareRecv(d)
 	}
+	c.declareContexts(d, sym)
 	c.memberModifiers(d.Modifiers, owner, d.P, "function '"+d.Name+"'")
 	if d.Find("", "JvmStatic") != nil {
 		switch {
@@ -1916,6 +1932,7 @@ func argRefs(ref *syntax.TypeRef, n int) []*syntax.TypeRef {
 	switch {
 	case ref == nil:
 	case ref.Ret != nil:
+		refs = append(refs, ref.Contexts...)
 		if ref.Recv != nil {
 			refs = append(refs, ref.Recv)
 		}
@@ -2118,7 +2135,8 @@ func (c *Checker) checkDefaults(params []*syntax.Param, cls *types.ClassSym, f *
 		c.cls, c.this = cls, newThis(cls)
 	}
 	if d, ok := f.Decl.(*syntax.FunDecl); ok {
-		c.recvs = extRecvs(d)
+		c.recvs, c.ctxs = extRecvs(d), funContexts(d)
+		declareNamedContexts(s, d)
 	}
 	c.inAnon(cls)
 	for i, p := range params {
@@ -2369,11 +2387,12 @@ func (c *Checker) checkFun(d *syntax.FunDecl, cls *types.ClassSym) {
 		// An accessor's field is its property's backing field.
 		s.declare(&types.VarSym{Name: "field", Kind: types.BackingField, Type: p.Type, Mutable: p.Mutable, Prop: p, Resolved: true})
 	}
+	declareNamedContexts(s, d)
 	for _, p := range sym.Params {
 		s.declare(p)
 	}
 	c.state = state{scope: s, cls: cls, this: newThis(cls), fn: sym, retType: sym.Ret, retAllowed: true, tparams: funTypeParams(sym, cls),
-		recvs: extRecvs(d)}
+		recvs: extRecvs(d), ctxs: funContexts(d)}
 	c.inAnon(cls)
 	if sym.Suspend {
 		d.Continuation = c.anonName()

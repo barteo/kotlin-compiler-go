@@ -58,6 +58,7 @@ The features each milestone of kc's plans added, and how many files would use no
 | 70c: fun interfaces | 143 | 1 | 1 |
 | delegated extension properties | 143 | 1 | 1 |
 | qualified super | 143 | 1 | 1 |
+| context parameters of top-level functions | 143 | 1 | 1 |
 | also supported | 143 | 1 | 1 |
 
 ### Features left, by files blocked
@@ -321,6 +322,7 @@ The features each milestone of kc's plans added, and how many files would use no
 | 70c: fun interfaces | 117 | 0 | – |
 | delegated extension properties | 117 | 0 | – |
 | qualified super | 117 | 0 | – |
+| context parameters of top-level functions | 117 | 0 | – |
 | also supported | 117 | 0 | – |
 
 ### Features left, by files blocked
