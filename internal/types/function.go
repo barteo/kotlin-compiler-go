@@ -92,7 +92,7 @@ func newFunctionClass(pkg string, n int, suspend, composable bool) *ClassSym {
 	if jvm > MaxArity {
 		name = pkg + "FunctionN"
 	}
-	c := &ClassSym{Name: name, Func: true, Suspend: suspend, Composable: composable, Interface: true, Methods: map[string][]*FunSym{}}
+	c := &ClassSym{Name: name, Func: true, Suspend: suspend, Composable: composable, Interface: true, Methods: map[string][]*FunSym{}, Global: true}
 	invoke := &FunSym{Name: "invoke", Owner: c, Resolved: true, Suspend: suspend, Composable: composable, Changed: changed, Abstract: true, Operator: true}
 	if suspend || composable {
 		// The JVM method of the larger FunctionN, which takes the
@@ -104,7 +104,7 @@ func newFunctionClass(pkg string, n int, suspend, composable bool) *ClassSym {
 		invoke.Desc = VarArityDesc
 	}
 	for i := range n + 1 {
-		p := &TypeParamSym{Name: "P" + strconv.Itoa(i+1), Var: In, Index: i, Owner: c}
+		p := &TypeParamSym{Name: "P" + strconv.Itoa(i+1), Var: In, Index: i, Owner: c, Global: true}
 		if i == n {
 			p.Name, p.Var = "R", Out
 			invoke.Ret = ParamType(p)

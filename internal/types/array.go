@@ -31,7 +31,7 @@ func init() {
 		{"ByteArray", ByteType, "[B"},
 		{"ShortArray", ShortType, "[S"},
 	} {
-		c := &ClassSym{Name: a.desc, KotlinName: "kotlin/" + a.name, External: true, Final: true, Array: true, Elem: a.elem}
+		c := &ClassSym{Name: a.desc, KotlinName: "kotlin/" + a.name, External: true, Final: true, Array: true, Elem: a.elem, Global: true}
 		arrayMembers(c, a.elem)
 		primArrays[a.elem.K] = c
 		arraysByID[c.KotlinName] = c
@@ -39,8 +39,8 @@ func init() {
 }
 
 func newArrayClass() *ClassSym {
-	c := &ClassSym{Name: "[Ljava/lang/Object;", KotlinName: "kotlin/Array", External: true, Final: true, Array: true}
-	t := &TypeParamSym{Name: "T", Owner: c}
+	c := &ClassSym{Name: "[Ljava/lang/Object;", KotlinName: "kotlin/Array", External: true, Final: true, Array: true, Global: true}
+	t := &TypeParamSym{Name: "T", Owner: c, Global: true}
 	c.TypeParams = []*TypeParamSym{t}
 	arrayMembers(c, ParamType(t))
 	return c
