@@ -36,12 +36,17 @@ func (g *gen) annotationNew(x *syntax.Call) {
 // annotationImpl returns the class that implements annotation class ann,
 // which it writes the first time, with the line of that instantiation.
 func (g *gen) annotationImpl(ann *types.ClassSym, line int) string {
-	if name, ok := g.shared.annImpls[ann]; ok {
-		return name
-	}
 	outer := g.cls.Name
 	if g.owner != nil {
 		outer = g.owner.Name
+	}
+	return g.annotationImplIn(ann, outer, line)
+}
+
+// annotationImplIn is annotationImpl in class outer.
+func (g *gen) annotationImplIn(ann *types.ClassSym, outer string, line int) string {
+	if name, ok := g.shared.annImpls[ann]; ok {
+		return name
 	}
 	name := outer + "$annotationImpl$" + ann.Name[strings.LastIndexAny(ann.Name, "/$")+1:] + "$0"
 	if g.shared.annImpls == nil {
@@ -103,12 +108,17 @@ func (g *gen) annotationClassImpl(name, outer string, ann *types.ClassSym, line 
 		}
 		masks := g.allocMasks(len(params), ctorMarker)
 		for j, p := range params {
-			if !p.Default || j >= len(defaults) || defaults[j].Default == nil {
+			lib := ann.AnnotationDefaults[p.Name] // a class-path annotation's
+			if !p.Default || lib == nil && (j >= len(defaults) || defaults[j].Default == nil) {
 				continue
 			}
 			skip := cf.NewLabel()
 			g.jumpIfPassed(masks, j, skip)
-			g.exprAs(defaults[j].Default, p.Type)
+			if lib != nil {
+				g.elementValue(*lib, p.Type, outer, line)
+			} else {
+				g.exprAs(defaults[j].Default, p.Type)
+			}
 			g.code.Local(storeOp(p.Type), slots[j])
 			g.code.Place(skip)
 		}
@@ -235,6 +245,62 @@ func (g *gen) annotationClassImpl(name, outer string, ann *types.ClassSym, line 
 	g.annotateMeta(c, kmeta.WriteSynthetic())
 	g.shared.classes[name] = c
 	g.shared.later = append(g.shared.later, name)
+}
+
+// elementValue pushes v, the AnnotationDefault of a class-path
+// annotation's parameter of type t, as a value of t: a class as a
+// KClass, and an annotation as an instance of its class, whose impl is a
+// class in outer.
+func (g *gen) elementValue(v cf.ElementValue, t types.Type, outer string, line int) {
+	switch v.Tag {
+	case 'B', 'C', 'I', 'S', 'Z', 'J', 'F', 'D', 's':
+		g.pushConst(v.Const, t)
+	case 'e':
+		g.code.FieldInsn(cf.GETSTATIC, className(v.Enum[0]), v.Enum[1], v.Enum[0])
+	case 'c':
+		switch d := v.Class; {
+		case d == "V":
+			g.code.FieldInsn(cf.GETSTATIC, "java/lang/Void", "TYPE", "Ljava/lang/Class;")
+		case len(d) == 1:
+			box := map[byte]string{'I': "Integer", 'J': "Long", 'D': "Double", 'Z': "Boolean", 'C': "Character", 'F': "Float", 'B': "Byte", 'S': "Short"}[d[0]]
+			g.code.FieldInsn(cf.GETSTATIC, "java/lang/"+box, "TYPE", "Ljava/lang/Class;")
+		default:
+			g.code.LdcClass(className(d))
+		}
+		g.code.Invoke(cf.INVOKESTATIC, "kotlin/jvm/internal/Reflection", "getOrCreateKotlinClass",
+			"(Ljava/lang/Class;)Lkotlin/reflect/KClass;")
+	case '@':
+		cls := t.C
+		cls.Ensure()
+		params := cls.AnnotationParams
+		impl := g.annotationImplIn(cls, outer, line)
+		g.code.New(impl)
+		g.code.Op(cf.DUP)
+		for _, p := range params {
+			var pv *cf.ElementValue
+			for i := range v.Ann.Values {
+				if v.Ann.Values[i].Name == p.Name {
+					pv = &v.Ann.Values[i].Value
+				}
+			}
+			if pv == nil {
+				pv = cls.AnnotationDefaults[p.Name]
+			}
+			g.elementValue(*pv, p.Type, outer, line)
+		}
+		g.code.Invoke(cf.INVOKESPECIAL, impl, "<init>", methodDesc(params, types.UnitType))
+	case '[':
+		elem := types.VarargElem(t)
+		d := desc(t)
+		g.code.Iconst(int32(len(v.Elems)))
+		g.newArray(d)
+		for i, e := range v.Elems {
+			g.code.Op(cf.DUP)
+			g.code.Iconst(int32(i))
+			g.elementValue(e, elem, outer, line)
+			g.elemStore(d)
+		}
+	}
 }
 
 // javaClasses converts a value of an annotation's parameter type t on

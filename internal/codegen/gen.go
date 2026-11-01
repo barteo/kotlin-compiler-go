@@ -511,8 +511,16 @@ func (g *gen) annotationClass(cd *syntax.ClassDecl) *cf.Class {
 	c := cf.NewClass(cf.AccPublic|cf.AccInterface|cf.AccAbstract|cf.AccAnnotation, cls.Name, "java/lang/Object")
 	c.Interfaces = []string{"java/lang/annotation/Annotation"}
 	c.SourceFile = filepath.Base(g.file.Path)
+	c.Signature = classSignature(cls, "java/lang/Object", c.Interfaces)
 	for i, p := range cls.AnnotationParams {
-		c.AddAbstractMethod(cf.AccPublic|cf.AccAbstract, p.Name, "()"+annotationJVM(p.Type))
+		d := "()" + annotationJVM(p.Type)
+		c.AddAbstractMethod(cf.AccPublic|cf.AccAbstract, p.Name, d)
+		// A KClass's generic signature, as a Class's: ()Ljava/lang/Class<*>;
+		var w sigWriter
+		w.typ(p.Type, nil, inResult)
+		if sig := "()" + strings.ReplaceAll(w.String(), "Lkotlin/reflect/KClass<", "Ljava/lang/Class<"); strings.Contains(sig, "<") {
+			c.LastMethod().SetSignature(sig)
+		}
 		if i < len(cd.CtorParams) && cd.CtorParams[i].Default != nil {
 			if ev, ok := annotationDefault(p.Type, cd.CtorParams[i].Default); ok {
 				c.LastMethod().SetDefault(ev)
@@ -526,6 +534,20 @@ func (g *gen) annotationClass(cd *syntax.ClassDecl) *cf.Class {
 // parameter on the JVM: a KClass is a java.lang.Class in an annotation.
 func annotationJVM(t types.Type) string {
 	return strings.ReplaceAll(desc(t), "Lkotlin/reflect/KClass;", "Ljava/lang/Class;")
+}
+
+// kotlinClasses converts the value of an annotation's method on the
+// stack, of descriptor d, to t: a java.lang.Class, or an array of them,
+// to a KClass, which the standard library's Reflection creates.
+func (g *gen) kotlinClasses(d string, t types.Type) {
+	if d == desc(t) || annotationJVM(t) != d {
+		return
+	}
+	conv, cd := "getOrCreateKotlinClass", "(Ljava/lang/Class;)Lkotlin/reflect/KClass;"
+	if d[0] == '[' {
+		conv, cd = "getOrCreateKotlinClasses", "([Ljava/lang/Class;)[Lkotlin/reflect/KClass;"
+	}
+	g.code.Invoke(cf.INVOKESTATIC, "kotlin/jvm/internal/Reflection", conv, cd)
 }
 
 // classes generates a class and the classes nested in it.
@@ -3254,14 +3276,8 @@ func (g *gen) getProp(cls *types.ClassSym, p *types.VarSym) {
 	}
 	if p.Owner != nil && p.Owner.Annotation {
 		if jd := annotationJVM(p.Type); jd != d {
-			// A KClass, or an array of them, is a java.lang.Class in an
-			// annotation, which the standard library's Reflection converts.
 			g.invokeVirtual(cls, p.JVMGetter, "()"+jd)
-			conv, cd := "getOrCreateKotlinClass", "(Ljava/lang/Class;)Lkotlin/reflect/KClass;"
-			if jd[0] == '[' {
-				conv, cd = "getOrCreateKotlinClasses", "([Ljava/lang/Class;)[Lkotlin/reflect/KClass;"
-			}
-			g.code.Invoke(cf.INVOKESTATIC, "kotlin/jvm/internal/Reflection", conv, cd)
+			g.kotlinClasses(jd, p.Type)
 			return
 		}
 	}

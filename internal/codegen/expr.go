@@ -1263,6 +1263,9 @@ func (g *gen) member(x *syntax.Member) {
 			rt := g.boundReceiver(rt, x.Getter)
 			g.composeArgs(x.Getter, nil, nil)
 			g.invokeJava(x.Getter, rt)
+			if o := x.Getter.Owner; o != nil && o.KotlinAnnotation() {
+				g.kotlinClasses(x.Getter.Desc[strings.IndexByte(x.Getter.Desc, ')')+1:], x.Getter.Ret)
+			}
 		})
 		return
 	}
@@ -1969,7 +1972,7 @@ func (g *gen) ungroupedCall(x *syntax.Call) {
 		ret := builtinRet(x)
 		g.safeCall(m, ret, x.T, func() { g.builtinMember(x, rt) })
 
-	case x.Ctor != nil && x.Ctor.Annotation:
+	case x.Ctor != nil && x.Ctor.KotlinAnnotation():
 		g.annotationNew(x)
 
 	case x.Ctor != nil && x.Ctor.Value:

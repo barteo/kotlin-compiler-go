@@ -699,7 +699,8 @@ func (g *gen) propMeta(s *metaScope, p *types.VarSym, pd *syntax.PropDecl, cp *s
 		kp.SetterParam = &kmeta.Param{Name: name, Type: s.typ(p.Type)}
 	}
 	if owner != nil && owner.Annotation {
-		kp.Getter = &kmeta.JVMSig{Name: p.Name, Desc: getterDesc}
+		// The annotation's method, which returns a KClass as a Class.
+		kp.Getter = &kmeta.JVMSig{Name: p.Name, Desc: "()" + annotationJVM(p.Type)}
 		kp.Flags = flags
 		return kp
 	}

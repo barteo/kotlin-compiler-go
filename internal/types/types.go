@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/barteo/kotlin-compiler-go/internal/classfile"
 	"github.com/barteo/kotlin-compiler-go/internal/inline"
 )
 
@@ -403,6 +404,19 @@ func (c *ClassSym) HasDefaultImpls() bool {
 	return c.Interface && !c.JVMDefault && !c.Annotation && c.Java == nil && (!c.External || c.KotlinName != "")
 }
 
+// KotlinAnnotation reports whether c is a Kotlin annotation class, the
+// program's or the class path's, whose instances A(x) create.
+func (c *ClassSym) KotlinAnnotation() bool {
+	if c.Annotation {
+		return true
+	}
+	if !c.External {
+		return false
+	}
+	c.Ensure()
+	return c.AnnotationParams != nil
+}
+
 // StaticField reports whether class property v's field is static, as
 // kotlinc writes it: a property of a named object, whose class holds it,
 // or a @JvmField property of a companion object, whose outer class does
@@ -778,6 +792,10 @@ type ClassSym struct {
 	// whose AnnotationParams are their abstract methods.
 	Annotation       bool
 	AnnotationParams []*VarSym
+	// AnnotationDefaults are the default values of a class-path Kotlin
+	// annotation class's parameters, by name: their methods'
+	// AnnotationDefault.
+	AnnotationDefaults map[string]*classfile.ElementValue
 	// Retention and Targets are set on annotation classes, the program's
 	// and the class path's.
 	Retention Retention
@@ -785,6 +803,15 @@ type ClassSym struct {
 	// Container is set on a repeatable annotation class of the class
 	// path: the annotation class that holds several of its annotations.
 	Container *ClassSym
+	// TargetsKnown is set on an annotation class whose Targets, and
+	// whether it is Repeatable, kc knows for sure: the program's, and the
+	// class path's that are Kotlin or have a @Target, but not a Java
+	// source's, whose class info is only what javasrc reads.
+	TargetsKnown bool
+	// Repeatable is set on an annotation class annotated @Repeatable,
+	// @JvmRepeatable or Java's @Repeatable: an element can have several
+	// of its annotations.
+	Repeatable bool
 
 	// Kotlin classes read from metadata.
 	KotlinName string // class id, e.g. kotlin/collections/Map.Entry; "" for Java classes

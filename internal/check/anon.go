@@ -113,6 +113,7 @@ func (c *Checker) objectExpr(x *syntax.ObjectExpr) types.Type {
 // too: a lambda in it that constructs it captures what it captures.
 func (c *Checker) localClass(s *syntax.LocalClass) {
 	d := s.Decl
+	c.localAnnotations(s.Annotations, classSite(d))
 	depth := len(c.lambdas)
 	scope := c.scope
 	c.anonClass(d, "local class", "local classes", func() string { return c.localName(d.Name) }, func(sym *types.ClassSym, frame *syntax.Lambda) {

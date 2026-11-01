@@ -38,6 +38,11 @@ type File struct {
 	// SuppressDSL is set on a file with an annotation that suppresses
 	// DSL_SCOPE_VIOLATION, which the checker then doesn't report.
 	SuppressDSL bool
+	// Annotated are the annotations of statements and expressions, by
+	// node: of local variables and destructuring declarations, loops,
+	// assignments, and expressions, @A x, which the checker checks but
+	// class files don't keep.
+	Annotated map[any][]Annotation
 	// Arities is set by the checker: bit n is set if the file uses
 	// function types with n parameters.
 	Arities uint32
@@ -252,10 +257,16 @@ type Annotation struct {
 	Target string // use-site target: file, get, set, field, param, ...; or empty
 	Name   string // as written: JvmName or kotlin.jvm.JvmName
 	Args   []AnnotationArg
+	// TypeArgs are the explicit type arguments of a generic annotation
+	// class: @A<String>(..).
+	TypeArgs []*TypeArg
 	// Implicit is set on an annotation that isn't written but that
 	// kotlinc adds, as @JvmInline to an inline class: class files keep it,
 	// but the declaration's metadata doesn't count it.
 	Implicit bool
+	// Accessor is set on an annotation written on an accessor, @A get(),
+	// which the property keeps with Target get or set.
+	Accessor bool
 
 	// Set by the checker on an annotation that class files keep (its
 	// class's retention isn't SOURCE): its class, and its arguments by
@@ -673,8 +684,9 @@ type Delegated struct {
 }
 
 type InitBlock struct {
-	P    Pos
-	Body *Block
+	P           Pos
+	Body        *Block
+	Annotations []Annotation // which are errors
 }
 
 // SecondaryCtor is a secondary constructor: constructor(x: Int) : this(x, 0)
@@ -1529,11 +1541,12 @@ type Try struct {
 
 // Catch is a catch block: catch (Name: Type) { Body }.
 type Catch struct {
-	P    Pos
-	Name string
-	Type *TypeRef
-	Sym  *types.VarSym
-	Body *Block
+	P           Pos
+	Name        string
+	Type        *TypeRef
+	Sym         *types.VarSym
+	Body        *Block
+	Annotations []Annotation // the parameter's
 }
 
 // Jump is return, break, continue or throw; its type is Nothing.

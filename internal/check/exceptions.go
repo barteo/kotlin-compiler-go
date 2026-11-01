@@ -22,6 +22,7 @@ func (c *Checker) tryExpr(x *syntax.Try, want types.Type, valueUsed bool) types.
 	result := c.block(x.Body, want, valueUsed)
 	allJump := result.K == types.Nothing
 	for _, cb := range x.Catches {
+		c.localAnnotations(cb.Annotations, catchSite)
 		t := c.resolveType(cb.Type)
 		if t.K != types.Invalid && !c.throwable(t) {
 			c.errorf(cb.Type.P, "the type of a catch parameter must be a subtype of Throwable")

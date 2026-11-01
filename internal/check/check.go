@@ -1063,6 +1063,14 @@ func (c *Checker) declareClass(d *syntax.ClassDecl, name string, outer *types.Cl
 	}
 	if d.Annotation {
 		sym.Retention, sym.Targets = declaredAnnotation(&d.Modifiers)
+		sym.TargetsKnown = true
+		sym.Repeatable = slices.ContainsFunc(d.Annotations, func(a syntax.Annotation) bool {
+			switch a.Name {
+			case "Repeatable", "kotlin.annotation.Repeatable", "JvmRepeatable", "kotlin.jvm.JvmRepeatable", "java.lang.annotation.Repeatable":
+				return a.Target == ""
+			}
+			return false
+		})
 	}
 	sym.JVMDefault = d.Interface && !c.u.noJVMDefault
 	if sym.JVMDefault {
@@ -1443,6 +1451,9 @@ func (c *Checker) paramSym(p *syntax.Param, t types.Type, decl any) *types.VarSy
 		c.errorf(p.ExternalP, "modifier 'external' is not applicable to 'value parameter'")
 	}
 	if p.Vararg {
+		if t.K == types.Class && t.C.Value && !isUnsigned(t) {
+			c.errorf(p.P, "prohibited vararg parameter type '%s'", t)
+		}
 		sym.Vararg, sym.Type = true, types.VarargArray(t)
 		if isUnsigned(t) && !t.N {
 			// An unsigned array: UIntArray for UInt.
@@ -2168,7 +2179,7 @@ func (c *Checker) inferProp(d *syntax.PropDecl) {
 
 // checkBodies checks everything not already checked during inference.
 func (c *Checker) checkBodies() {
-	c.annotations(c.file.Annotations, nil)
+	c.annotations(c.file.Annotations, nil, fileSite)
 	for _, d := range c.file.Decls {
 		c.declAnnotations(d, nil)
 	}
@@ -2274,7 +2285,11 @@ func (c *Checker) checkDefaults(params []*syntax.Param, cls *types.ClassSym, f *
 	for i, p := range params {
 		if p.Default != nil {
 			c.defaultParam = i
+			before := len(c.errs)
 			c.assignable(c.value(p.Default, p.Sym.Type), p.Sym.Type, p.Default.Pos())
+			if ctor && cls != nil && cls.Annotation && len(c.errs) == before && c.nonConst(p.Default) != nil {
+				c.errorf(p.Default.Pos(), "default value of annotation parameter must be a compile-time constant")
+			}
 		}
 		s.declare(p.Sym)
 	}

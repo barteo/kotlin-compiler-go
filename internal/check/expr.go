@@ -47,6 +47,9 @@ func (c *Checker) wantBool(x syntax.Expr) {
 }
 
 func (c *Checker) expr(x syntax.Expr, want types.Type) types.Type {
+	if c.file.Annotated != nil {
+		c.annotatedExpr(x)
+	}
 	allowRange, sink := c.allowRange, c.sink
 	c.allowRange, c.sink = false, nil
 	t := c.expr1(x, want, allowRange, sink)
@@ -207,6 +210,10 @@ func (c *Checker) expr1(x syntax.Expr, want types.Type, allowRange bool, sink *s
 			// [1, 2] where an IntArray is expected: intArrayOf(1, 2).
 			name := strings.TrimPrefix(w.C.KotlinName, "kotlin/")
 			x.Fun.(*syntax.Ident).Name = strings.ToLower(name[:1]) + name[1:] + "Of"
+		} else if x.Literal && w.K == types.Class && types.IsUnsignedArray(w.C) {
+			// [1u, 2u] where a UIntArray is expected: uintArrayOf(1u, 2u).
+			name := strings.TrimPrefix(w.C.Name, "kotlin/")
+			x.Fun.(*syntax.Ident).Name = strings.ToLower(name[:2]) + name[2:] + "Of"
 		}
 		return c.call(x, want, sink)
 	case *syntax.Index:

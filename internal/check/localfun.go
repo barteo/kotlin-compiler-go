@@ -23,6 +23,10 @@ type localCall struct {
 // it.
 func (c *Checker) localFun(s *syntax.LocalFun) {
 	d := s.Decl
+	c.localAnnotations(d.Annotations, localFunSite)
+	for _, p := range d.Params {
+		c.localAnnotations(p.Annotations, paramSite)
+	}
 	sym := &types.FunSym{Name: d.Name, Decl: s, Operator: d.Operator, Infix: d.Infix}
 	sym.Suspend = d.Suspend && c.coroutines(d.P)
 	d.Sym = sym

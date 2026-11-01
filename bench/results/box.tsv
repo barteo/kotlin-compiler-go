@@ -3,20 +3,20 @@ annotations/annotationWithDefaultArgInDifferentModule.kt	pass
 annotations/annotations0.kt	pass		
 annotations/checkReturnValue.kt	skip	LANGUAGE	
 annotations/deserializedLocalClassArgument.kt	pass		
-annotations/genericAnnotations.kt	check error	annotation class cannot have type parameters	l1.kt:3: annotation class cannot have type parameters
-annotations/instances/AnnotationInstantiationWithArray.kt	check error	cannot create an instance of Outer	AnnotationInstantiationWithArrayApp.kt:7: cannot create an instance of Outer
+annotations/genericAnnotations.kt	pass		
+annotations/instances/AnnotationInstantiationWithArray.kt	pass		
 annotations/instances/annotationAnnotationParam.kt	pass		
 annotations/instances/annotationAnyDispatch.kt	pass		
 annotations/instances/annotationEqHc.kt	pass		
-annotations/instances/annotationFromStdlib.kt	check error	cannot create an instance of SinceKotlin	annotationFromStdlib.kt:6: cannot create an instance of SinceKotlin
+annotations/instances/annotationFromStdlib.kt	pass		
 annotations/instances/annotationInlineMultiModule.kt	pass		
-annotations/instances/annotationInstances.kt	check error	invalid type of annotation member	annotationInstances.kt:27: invalid type of annotation member
+annotations/instances/annotationInstances.kt	pass		
 annotations/instances/annotationInstancesEmptyDefault.kt	pass		
 annotations/instances/annotationInstancesEmptyDefaultLowered.kt	pass		
-annotations/instances/annotationToString.kt	check error	invalid type of annotation member	annotationToString.kt:30: invalid type of annotation member
+annotations/instances/annotationToString.kt	pass		
 annotations/instances/annotationToStringDefaultsAndEmptyArrays.kt	pass		
-annotations/instances/annotationWithTypeParameters.kt	check error	annotation class cannot have type parameters	annotationWithTypeParameters.kt:9: annotation class cannot have type parameters
-annotations/instances/annotationsUnsignedTypes.kt	check error	invalid type of annotation member	annotationsUnsignedTypes.kt:4: invalid type of annotation member
+annotations/instances/annotationWithTypeParameters.kt	pass		
+annotations/instances/annotationsUnsignedTypes.kt	pass		
 annotations/instances/arrayContentEqAny.kt	pass		
 annotations/instances/arraysAndKClass.kt	pass		
 annotations/instances/differentAnnotationTypes.kt	pass		
@@ -28,7 +28,7 @@ annotations/instances/innerAnnotationInstantiation.kt	pass
 annotations/instances/instanceEquality.kt	pass		
 annotations/instances/mixedArray.kt	pass		
 annotations/instances/multifileEqHc.kt	pass		
-annotations/instances/multimoduleTypeParams.kt	check error	annotation class cannot have type parameters	lib.kt:6: annotation class cannot have type parameters
+annotations/instances/multimoduleTypeParams.kt	pass		
 annotations/instances/multiplatformInstantiation.kt	skip	LANGUAGE	
 annotations/instances/naNAndZero.kt	pass		
 annotations/instances/nested.kt	pass		
@@ -37,21 +37,21 @@ annotations/instances/nestedDefaults.kt	pass
 annotations/instances/rearrangedArgumentsInAnnotationCall.kt	pass		
 annotations/instances/repeatableInstantiation.kt	pass		
 annotations/instances/typeAliasesAndGenericsInterop.kt	pass		
-annotations/instances/unsignedAndBooleanArrays.kt	check error	invalid type of annotation member	unsignedAndBooleanArrays.kt:7: invalid type of annotation member
-annotations/instances/varargInAnnotationParameterInstantiation.kt	check error	invalid type of annotation member	varargInAnnotationParameterInstantiation.kt:7: invalid type of annotation member
+annotations/instances/unsignedAndBooleanArrays.kt	pass		
+annotations/instances/varargInAnnotationParameterInstantiation.kt	pass		
 annotations/instances/withDefaults.kt	pass		
 annotations/intrinsicConstEvaluationInSources.kt	skip	ALLOW_KOTLIN_PACKAGE	
 annotations/nativeThrows.kt	skip	TARGET_BACKEND: NATIVE	
 annotations/nestedAnnotation.kt	pass		
 annotations/nestedClassesInAnnotations.kt	pass		
-annotations/parameters.kt	check error	invalid type of annotation member	parameters.kt:17: invalid type of annotation member
+annotations/parameters.kt	pass		
 annotations/platformDependent.kt	check error	'_' hides member of supertype '_' and needs '_' modifier	Main.kt:12: 'f' hides member of supertype 'I' and needs 'override' modifier
 annotations/recursiveAnnotationWithVarargAndDefaultValue.kt	pass		
 annotations/recursiveAnnotationWithVarargAndWithoutDefaultValue.kt	pass		
 annotations/resolveWithLowPriorityAnnotation.kt	wrong result	failn	fail1
 annotations/selfReferentialAnnotation.kt	pass		
-annotations/spreadOperatorInAnnotationArguments.kt	check error	expected expression, found '_'	spreadOperatorInAnnotationArguments.kt:7: expected expression, found '*'
-annotations/spreadOperatorInArrayOf.kt	check error	invalid type of annotation member	spreadOperatorInArrayOf.kt:11: invalid type of annotation member
+annotations/spreadOperatorInAnnotationArguments.kt	pass		
+annotations/spreadOperatorInArrayOf.kt	pass		
 annotations/typeAnnotations/checkingNotincorporatedInputTypes.kt	pass		
 annotations/typeAnnotations/unsafeVarianceInDependency.kt	pass		
 argumentOrder/argumentOrderInObjectSuperCall.kt	pass		
@@ -1290,7 +1290,7 @@ compileKotlinAgainstKotlin/simpleValAnonymousObject.kt	pass
 compileKotlinAgainstKotlin/specialBridgesInDependencies.kt	pass		
 compileKotlinAgainstKotlin/starImportEnum.kt	pass		
 compileKotlinAgainstKotlin/typeAliasesKt13181.kt	pass		
-compileKotlinAgainstKotlin/unsignedTypesInAnnotations.kt	check error	invalid type of annotation member	A.kt:3: invalid type of annotation member
+compileKotlinAgainstKotlin/unsignedTypesInAnnotations.kt	pass		
 compileKotlinAgainstKotlin/useDeserializedFunInterface.kt	pass		
 constants/comparisonFalse.kt	pass		
 constants/comparisonTrue.kt	pass		
@@ -7204,7 +7204,7 @@ unsignedTypes/unsignedRangeIterator.kt	pass
 unsignedTypes/unsignedToSignedConversion.kt	pass		
 unsignedTypes/unsignedTypePrefixIncrementDecrementBoxing.kt	pass		
 unsignedTypes/unsignedTypeValuesInsideStringTemplates.kt	pass		
-unsignedTypes/varargsOfUnsignedTypes.kt	check error	invalid type of annotation member	main.kt:8: invalid type of annotation member
+unsignedTypes/varargsOfUnsignedTypes.kt	pass		
 unsignedTypes/whenByUnsigned.kt	pass		
 vararg/boxingArgumentsForVararg.kt	pass		
 vararg/doNotCopyImmediatelyCreatedArrays.kt	pass		
