@@ -183,11 +183,11 @@ var stableTypes = map[string]int{
 	"kotlinx/collections/immutable/PersistentList":       1,
 	"kotlinx/collections/immutable/PersistentSet":        1,
 	"kotlinx/collections/immutable/PersistentMap":        3,
-	"dagger/Lazy": 1,
-	"kotlin/coroutines/EmptyCoroutineContext": 0,
-	"java/math/BigInteger":                    0,
-	"java/math/BigDecimal":                    0,
-	"java/util/Locale":                        0,
+	"dagger/Lazy":                                        1,
+	"kotlin/coroutines/EmptyCoroutineContext":            0,
+	"java/math/BigInteger":                               0,
+	"java/math/BigDecimal":                               0,
+	"java/util/Locale":                                   0,
 }
 
 // stableFunctions are the functions whose results the plugin knows are
