@@ -94,6 +94,8 @@ type Member struct {
 	// Constant is a field's ConstantValue: an int32, int64, float32,
 	// float64 or string, or nil.
 	Constant any
+	// Default is an annotation method's AnnotationDefault, or nil.
+	Default *ElementValue
 }
 
 var errTruncated = errors.New("truncated class file")
@@ -278,6 +280,13 @@ func Parse(data []byte) (*Info, error) {
 					size = 0
 				case name == "ConstantValue" && size == 2:
 					m.Constant = p.constantValue(r.u2())
+					size = 0
+				case name == "AnnotationDefault" && info.Access&AccAnnotation != 0:
+					end := r.pos + size
+					if v, ok := readValue(r, p, 0); ok {
+						m.Default = &v
+					}
+					r.pos = min(end, len(r.b))
 					size = 0
 				case name == "RuntimeInvisibleAnnotations":
 					end := r.pos + size
@@ -577,6 +586,73 @@ func intArg(r *reader, p *pool, name string) int {
 		}
 	}
 	return v
+}
+
+// readValue reads an element value, or reports false if it can't. Depth
+// bounds the nesting of a malformed class file.
+func readValue(r *reader, p *pool, depth int) (ElementValue, bool) {
+	if depth > 32 {
+		return ElementValue{}, false
+	}
+	v := ElementValue{Tag: r.u1()}
+	switch v.Tag {
+	case 'B', 'C', 'I', 'S', 'Z':
+		n, err := p.int(r.u2())
+		v.Const = int64(n)
+		return v, err == nil
+	case 'J', 'F', 'D':
+		c := p.constantValue(r.u2())
+		switch c := c.(type) {
+		case int64:
+			v.Const = c
+			return v, v.Tag == 'J'
+		case float32:
+			v.Const = c
+			return v, v.Tag == 'F'
+		case float64:
+			v.Const = c
+			return v, v.Tag == 'D'
+		}
+		return v, false
+	case 's':
+		s, err := p.utf8(r.u2())
+		v.Const = s
+		return v, err == nil
+	case 'e':
+		t, err1 := p.utf8(r.u2())
+		n, err2 := p.utf8(r.u2())
+		v.Enum = [2]string{t, n}
+		return v, err1 == nil && err2 == nil
+	case 'c':
+		s, err := p.utf8(r.u2())
+		v.Class = s
+		return v, err == nil
+	case '@':
+		t, err := p.utf8(r.u2())
+		if err != nil {
+			return v, false
+		}
+		v.Ann = &Annotation{Type: t}
+		for range r.u2() {
+			name, err := p.utf8(r.u2())
+			e, ok := readValue(r, p, depth+1)
+			if err != nil || !ok {
+				return v, false
+			}
+			v.Ann.Values = append(v.Ann.Values, ElementPair{Name: name, Value: e})
+		}
+		return v, r.err == nil
+	case '[':
+		for range r.u2() {
+			e, ok := readValue(r, p, depth+1)
+			if !ok {
+				return v, false
+			}
+			v.Elems = append(v.Elems, e)
+		}
+		return v, r.err == nil
+	}
+	return v, false
 }
 
 func skipPairs(r *reader) {

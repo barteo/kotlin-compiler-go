@@ -402,14 +402,66 @@ func annotationDefault(t types.Type, x syntax.Expr) (cf.ElementValue, bool) {
 			elems = []syntax.Expr{x}
 		}
 		for _, e := range syntax.FlattenSpreads(elems) {
-			ev.Elems = append(ev.Elems, elementOf(types.VarargElem(t), syntax.AnnotationElem{X: e}))
+			v, ok := annotationDefault(types.VarargElem(t), e)
+			if !ok {
+				return cf.ElementValue{}, false
+			}
+			ev.Elems = append(ev.Elems, v)
 		}
 		return ev, true
 	}
 	if call, ok := x.(*syntax.Call); ok && call.Ctor != nil && call.Ctor.Retention != types.NoRetention {
-		return cf.ElementValue{}, false
+		a, ok := nestedDefault(call)
+		return cf.ElementValue{Tag: '@', Ann: &a}, ok
 	}
 	return elementOf(t, syntax.AnnotationElem{X: x}), true
+}
+
+// nestedDefault returns the annotation that call, an annotation class's
+// instantiation in a default value, creates: its arguments, as kotlinc
+// writes them, without the omitted ones.
+func nestedDefault(call *syntax.Call) (cf.Annotation, bool) {
+	a := cf.Annotation{Type: "L" + call.Ctor.Name + ";"}
+	if call.Sym == nil {
+		return a, false
+	}
+	params := call.Sym.Params
+	args := make([][]syntax.Expr, len(params))
+	for i, arg := range call.Args {
+		j := i
+		if call.ArgMap != nil {
+			j = call.ArgMap[i]
+		}
+		if j < 0 || j >= len(params) {
+			return a, false
+		}
+		if sp, ok := arg.(*syntax.Spread); ok && params[j].Vararg {
+			elems, ok := syntax.ArrayElems(sp.X)
+			if !ok {
+				return a, false
+			}
+			args[j] = append(args[j], elems...)
+			continue
+		}
+		args[j] = append(args[j], arg)
+	}
+	for j, p := range params {
+		if args[j] == nil {
+			continue
+		}
+		var v cf.ElementValue
+		ok := true
+		if p.Vararg {
+			v, ok = annotationDefault(p.Type, &syntax.Call{Literal: true, Args: args[j]})
+		} else {
+			v, ok = annotationDefault(p.Type, args[j][0])
+		}
+		if !ok {
+			return a, false
+		}
+		a.Values = append(a.Values, cf.ElementPair{Name: p.Name, Value: v})
+	}
+	return a, true
 }
 
 // propAnnotations writes the $annotations method of property p of class

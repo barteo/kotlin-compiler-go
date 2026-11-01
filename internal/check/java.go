@@ -415,6 +415,9 @@ func (c *Checker) resolveImports() {
 	}
 	starred := map[string]bool{}
 	var memberStars []*syntax.Import
+	// The explicit imports of classes and type aliases, by the name they
+	// import: two of one name conflict, even of one class.
+	classifiers := map[string][]syntax.Pos{}
 	for _, imp := range c.file.Imports {
 		name := strings.ReplaceAll(imp.Path, ".", "/")
 		if imp.Star {
@@ -454,6 +457,9 @@ func (c *Checker) resolveImports() {
 			}
 			if a, ok := user.Aliases[simple]; ok {
 				c.aliasImports[alias], found = a, true
+			}
+			if found {
+				classifiers[alias] = append(classifiers[alias], imp.P)
 			}
 			if fs := user.Funs[simple]; len(fs) > 0 {
 				// Functions of one name imported from several packages
@@ -516,6 +522,9 @@ func (c *Checker) resolveImports() {
 				}
 			}
 		}
+		if cls != nil || ta != nil {
+			classifiers[alias] = append(classifiers[alias], imp.P)
+		}
 		if cls != nil || ta != nil || len(fs) > 0 || v != nil || len(gs) > 0 {
 			continue
 		}
@@ -523,6 +532,7 @@ func (c *Checker) resolveImports() {
 		if owner := c.importOwner(pkg); owner != nil {
 			if n := c.nestedOf(owner, simple); n != nil {
 				c.imports[alias] = n
+				classifiers[alias] = append(classifiers[alias], imp.P)
 			} else {
 				c.memberImports[alias] = memberImport{owner: owner, name: simple, p: imp.P, path: imp.Path}
 			}
@@ -535,6 +545,15 @@ func (c *Checker) resolveImports() {
 			continue // import kotlin.String: a built-in type, imported by default
 		}
 		c.errorf(imp.P, "unresolved import: %s", imp.Path)
+	}
+	for _, imp := range c.file.Imports {
+		alias := imp.Alias
+		if alias == "" {
+			alias = imp.Path[strings.LastIndexByte(imp.Path, '.')+1:]
+		}
+		if ps := classifiers[alias]; !imp.Star && len(ps) > 1 && slices.Contains(ps, imp.P) {
+			c.errorf(imp.P, "conflicting import: imported name '%s' is ambiguous", imp.Path[strings.LastIndexByte(imp.Path, '.')+1:])
+		}
 	}
 	// import java.nio.file.StandardOpenOption.* imports a Java class's
 	// statics, enum entries too, after the explicit imports, and import
@@ -1732,7 +1751,9 @@ func (c *Checker) construct(x *syntax.Call, cls *types.ClassSym, p syntax.Pos, w
 		c.args(x, nil)
 		return types.InvalidType
 	}
-	if cls.Annotation {
+	if cls.KotlinAnnotation() {
+		// The program's annotation class, or a Kotlin one of the class
+		// path.
 		return c.annotationConstruct(x, cls, p, want, sink)
 	}
 	if cls.Inner && x.Outer == nil {

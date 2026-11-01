@@ -3,6 +3,7 @@ package check
 import (
 	"strings"
 
+	"github.com/barteo/kotlin-compiler-go/internal/classfile"
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
 	"github.com/barteo/kotlin-compiler-go/internal/types"
 )
@@ -157,8 +158,8 @@ func annotationType(t types.Type, arrays bool) bool {
 // annotationConstruct checks an instantiation of a Kotlin annotation
 // class, A(x): its constructor takes the annotation's parameters, and
 // codegen writes a class that implements the annotation, as kotlinc
-// does. A library's annotation's default values aren't in its class
-// file's code, so its arguments can't be omitted.
+// does. A library's annotation's omitted arguments are the
+// AnnotationDefault values of its class file.
 func (c *Checker) annotationConstruct(x *syntax.Call, cls *types.ClassSym, p syntax.Pos, want types.Type, sink *system) types.Type {
 	if cls.Java != nil {
 		c.unsupported(p, "annotation instantiation", "creating instances of Java annotation classes is not supported")
@@ -184,11 +185,45 @@ func (c *Checker) annotationConstruct(x *syntax.Call, cls *types.ClassSym, p syn
 			}
 		}
 		for j, q := range params {
-			if !passed[j] && q.Default && !q.Vararg {
+			if !passed[j] && q.Default && !q.Vararg && !completeDefault(cls.AnnotationDefaults[q.Name], q.Type) {
 				c.unsupported(p, "library annotation default", "omitting arguments of a library's annotation class is not supported")
 				break
 			}
 		}
 	}
 	return t
+}
+
+// completeDefault reports whether v, the AnnotationDefault of a class-path
+// annotation's parameter of type t, gives every value codegen creates: the
+// annotations in it have values, or default values, for all their
+// parameters.
+func completeDefault(v *classfile.ElementValue, t types.Type) bool {
+	if v == nil {
+		return false
+	}
+	switch v.Tag {
+	case '@':
+		if t.K != types.Class || v.Ann == nil || !t.C.KotlinAnnotation() {
+			return false
+		}
+		for _, p := range t.C.AnnotationParams {
+			pv := t.C.AnnotationDefaults[p.Name]
+			for i := range v.Ann.Values {
+				if v.Ann.Values[i].Name == p.Name {
+					pv = &v.Ann.Values[i].Value
+				}
+			}
+			if !completeDefault(pv, p.Type) {
+				return false
+			}
+		}
+	case '[':
+		for i := range v.Elems {
+			if !completeDefault(&v.Elems[i], types.VarargElem(t)) {
+				return false
+			}
+		}
+	}
+	return true
 }

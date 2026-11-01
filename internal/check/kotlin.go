@@ -1463,6 +1463,17 @@ func (t *classTable) loadKotlin(cls *types.ClassSym, info *classfile.Info, kc *k
 		// An annotation class's constructor has no method: its parameters
 		// are the annotation's.
 		cls.AnnotationParams, _ = t.kparams(kc.Ctors[0].Params, scope, true)
+		if cls.AnnotationParams == nil {
+			cls.AnnotationParams = []*types.VarSym{} // marks a Kotlin annotation class
+		}
+		for _, m := range info.Methods {
+			if m.Default != nil {
+				if cls.AnnotationDefaults == nil {
+					cls.AnnotationDefaults = map[string]*classfile.ElementValue{}
+				}
+				cls.AnnotationDefaults[m.Name] = m.Default
+			}
+		}
 	}
 	if kc.Kind() == kmeta.KindClass {
 		// An abstract class's constructors are for its subclasses.

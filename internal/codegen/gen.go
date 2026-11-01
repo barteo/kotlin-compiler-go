@@ -536,6 +536,20 @@ func annotationJVM(t types.Type) string {
 	return strings.ReplaceAll(desc(t), "Lkotlin/reflect/KClass;", "Ljava/lang/Class;")
 }
 
+// kotlinClasses converts the value of an annotation's method on the
+// stack, of descriptor d, to t: a java.lang.Class, or an array of them,
+// to a KClass, which the standard library's Reflection creates.
+func (g *gen) kotlinClasses(d string, t types.Type) {
+	if d == desc(t) || annotationJVM(t) != d {
+		return
+	}
+	conv, cd := "getOrCreateKotlinClass", "(Ljava/lang/Class;)Lkotlin/reflect/KClass;"
+	if d[0] == '[' {
+		conv, cd = "getOrCreateKotlinClasses", "([Ljava/lang/Class;)[Lkotlin/reflect/KClass;"
+	}
+	g.code.Invoke(cf.INVOKESTATIC, "kotlin/jvm/internal/Reflection", conv, cd)
+}
+
 // classes generates a class and the classes nested in it.
 func (g *gen) classes(cd *syntax.ClassDecl, out []Output) []Output {
 	c := g.class(cd)
@@ -3258,14 +3272,8 @@ func (g *gen) getProp(cls *types.ClassSym, p *types.VarSym) {
 	}
 	if p.Owner != nil && p.Owner.Annotation {
 		if jd := annotationJVM(p.Type); jd != d {
-			// A KClass, or an array of them, is a java.lang.Class in an
-			// annotation, which the standard library's Reflection converts.
 			g.invokeVirtual(cls, p.JVMGetter, "()"+jd)
-			conv, cd := "getOrCreateKotlinClass", "(Ljava/lang/Class;)Lkotlin/reflect/KClass;"
-			if jd[0] == '[' {
-				conv, cd = "getOrCreateKotlinClasses", "([Ljava/lang/Class;)[Lkotlin/reflect/KClass;"
-			}
-			g.code.Invoke(cf.INVOKESTATIC, "kotlin/jvm/internal/Reflection", conv, cd)
+			g.kotlinClasses(jd, p.Type)
 			return
 		}
 	}

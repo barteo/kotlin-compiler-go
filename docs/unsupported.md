@@ -26,7 +26,6 @@ own tests.
 - `@JvmStatic` on extensions of objects and on delegated properties,
   which is reported as unsupported.
 - Local `external` functions, which are reported as unsupported.
-- Omitted arguments of a library's annotation class.
 - Builder inference that can't check a lambda's body with the type
   variables open, as a member of a value of one of them whose type
   nothing gives yet: it needs a type argument or an expected type.
