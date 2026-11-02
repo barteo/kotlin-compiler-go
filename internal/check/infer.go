@@ -802,3 +802,24 @@ func (s *system) boundExcludes(t, u types.Type) bool {
 	}
 	return false
 }
+
+// withinBounds reports whether the proper lower constraints of each
+// unfixed variable are within its declared bounds that are proper.
+func (s *system) withinBounds() bool {
+	for _, tv := range s.vars {
+		if tv.fixed {
+			continue
+		}
+		for _, l := range tv.lower {
+			if l = s.apply(l); l.HasVars() || l.K == types.Invalid {
+				continue
+			}
+			for _, b := range tv.v.Bounds {
+				if b = s.apply(b); !b.HasVars() && !s.c.subtype(l, b) {
+					return false
+				}
+			}
+		}
+	}
+	return true
+}

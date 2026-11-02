@@ -939,6 +939,9 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			if trial.sub(ft, params[i]); trial.ok {
 				sys = trial
 			}
+		} else if trial := c.onlyRefFit(sys, l, params[i]); trial != nil {
+			// And so does one of whose callables only one fits.
+			sys = trial
 		}
 		sys.lambdas = append(sys.lambdas, pendingLambda{l, params[i], c.argScope(x.Args, i)})
 	}
@@ -1055,16 +1058,17 @@ func (c *Checker) notPropRefs(x *syntax.Call, match []*candidate) []*candidate {
 }
 
 // byRefShape chooses among candidates the only one whose parameters take
-// the types of the arguments that are references ::f to the only function
-// of their name (see eagerRefType), nil if none or several do: bar(::f)
-// for fun f(i: Int) is bar(f: (Int) -> Unit), not bar(f: () -> Unit). A
-// function's result fits a parameter whose result is Unit.
+// the types of the arguments that are callable references, one of the
+// types each may have (see refShapes), nil if none or several do:
+// bar(::f) for fun f(i: Int) is bar(f: (Int) -> Unit), not
+// bar(f: () -> Unit). A function's result fits a parameter whose result
+// is Unit.
 func (c *Checker) byRefShape(x *syntax.Call, match []*candidate) *candidate {
-	refs := map[int]types.Type{}
+	refs := map[int][]types.Type{}
 	for i, a := range x.Args {
 		if l, ok := a.(*syntax.Lambda); ok {
-			if ft, ok := c.eagerRefType(l); ok {
-				refs[i] = ft
+			if ts := c.refShapes(l); len(ts) > 0 {
+				refs[i] = ts
 			}
 		}
 	}
@@ -1073,17 +1077,20 @@ func (c *Checker) byRefShape(x *syntax.Call, match []*candidate) *candidate {
 	}
 	var best *candidate
 	for _, cd := range match {
-		trial := cd.sys.clone()
-		for i, ft := range refs {
-			pt := trial.apply(cd.params[i])
-			if _, r, ok := funcParts(pt); ok && r.K == types.Unit && !r.N {
-				if ps, _, ok := funcParts(ft); ok {
-					ft = c.u.ext.funcs.Type(ps, r)
+		trial := cd.sys
+		for i, ts := range refs {
+			var fit *system
+			for _, ft := range ts {
+				if s, ok := c.refFits(trial, ft, cd.params[i]); ok {
+					fit = s
+					break
 				}
 			}
-			trial.sub(ft, pt)
+			if trial = fit; trial == nil {
+				break
+			}
 		}
-		if !trial.ok {
+		if trial == nil {
 			continue
 		}
 		if best != nil {
