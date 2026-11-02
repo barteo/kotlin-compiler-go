@@ -1356,6 +1356,8 @@ func (c *Checker) narrowing(cond syntax.Expr) (whenTrue, whenFalse []narrow) {
 			t2, f2 := c.narrowing(x.Y)
 			c.pop()
 			return append(append(t1[:len(t1):len(t1)], t2...), c.asserted(x.Y)...), c.eitherNarrows(f1, t1, f2)
+		case syntax.ELVIS:
+			return c.elvisNarrowing(x)
 		case syntax.OR:
 			t1, f1 := c.narrowing(x.X)
 			c.push()
@@ -3355,7 +3357,8 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 				nullFirst = false
 				if bt.K == types.Nothing {
 					if hasSubj && types.MayBeNull(subjType()) {
-						afterNull = append(afterNull, narrow{recv: subj.recv, sym: subj.sym, t: subjType().NonNull()})
+						n := narrow{recv: subj.recv, sym: subj.sym, t: subjType().NonNull()}
+						afterNull = append(append(afterNull, n), c.implied[c.localKey(n)]...)
 					}
 					afterNull = append(afterNull, c.safeReceivers(x.Subject)...)
 				}

@@ -588,9 +588,14 @@ func (c *Checker) smartCastFrom(x syntax.Expr, t types.Type) (types.Type, bool) 
 
 // implyNonNull records the smart casts that v, a val of value x, not
 // being null implies: x's receivers of safe calls aren't null either,
-// when they are vals.
+// when they are vals, nor is x when it's a stable val itself: val s = x
+// is an alias of x.
 func (c *Checker) implyNonNull(v *types.VarSym, x syntax.Expr) {
 	var ns []narrow
+	if k, ok := c.narrowKeyOf(x); ok && !k.sym.Mutable && (k.recv == nil || !k.recv.Mutable) && types.MayBeNull(k.t) {
+		k.t = k.t.NonNull()
+		ns = append(ns, k)
+	}
 	for _, k := range c.safeReceivers(x) {
 		if !k.sym.Mutable && (k.recv == nil || !k.recv.Mutable) {
 			ns = append(ns, k)

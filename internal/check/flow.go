@@ -1061,3 +1061,19 @@ func onlyVars(ns []narrow, vars []*types.VarSym) []narrow {
 	}
 	return out
 }
+
+// elvisNarrowing returns the smart casts of x ?: false being true, and of
+// x ?: true being false: x is then the value, so it isn't null, nor are
+// its safe calls' receivers, and its own condition's smart casts hold.
+func (c *Checker) elvisNarrowing(x *syntax.Binary) (whenTrue, whenFalse []narrow) {
+	b, ok := x.Y.(*syntax.BoolLit)
+	if !ok {
+		return nil, nil
+	}
+	t, f := c.narrowing(x.X)
+	n := c.equalNonNull(x.X)
+	if b.Val {
+		return nil, append(f[:len(f):len(f)], n...)
+	}
+	return append(t[:len(t):len(t)], n...), nil
+}
