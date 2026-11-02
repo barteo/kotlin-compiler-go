@@ -256,7 +256,33 @@ func inherits(cls, target *types.ClassSym, seen map[*types.ClassSym]bool) bool {
 			return true
 		}
 	}
+	// Resolving a supertype written as a nested class of another, A.N or a
+	// typealias of it, looks N up among A's nested classes and those A
+	// inherits: kotlinc's supertypes of cls depend on A's, so
+	// class E : E.EE() is a cycle.
+	if cd, ok := cls.Decl.(*syntax.ClassDecl); ok {
+		for _, st := range cd.Supers {
+			if st.Type == nil || st.T.K != types.Class || st.T.C == nil || !viaOuter(st.Type.Name, st.T.C) {
+				continue
+			}
+			for o := st.T.C.Outer; o != nil; o = o.Outer {
+				if o == target || inherits(o, target, seen) {
+					return true
+				}
+			}
+		}
+	}
 	return false
+}
+
+// viaOuter reports whether a supertype written as name, which is the class
+// cls, names it through its outer class: A.N, or a typealias.
+func viaOuter(name string, cls *types.ClassSym) bool {
+	if cls.Outer == nil || cls.External {
+		return false
+	}
+	simple := cls.Name[strings.LastIndexAny(cls.Name, "/$")+1:]
+	return strings.Contains(name, ".") || name != simple
 }
 
 // platformOnly reports whether the members a function overrides are all

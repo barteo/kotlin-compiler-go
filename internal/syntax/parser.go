@@ -407,6 +407,7 @@ func (p *parser) modifiers() Modifiers {
 			p.skipNL()
 		case !declStart(p.toks[p.i+1].Kind):
 			return m
+		case isModifier(t.Text) && p.recordMod(&m, t):
 		case t.Text == "private" || t.Text == "public" || t.Text == "internal" || t.Text == "protected":
 			m.Visibility, m.Explicit = visibilities[t.Text], true
 			p.next()
@@ -748,6 +749,13 @@ func (p *parser) localFun(m Modifiers) *LocalFun {
 	return &LocalFun{Decl: fd}
 }
 
+// recordMod appends the modifier t to m.Written. It returns false so that
+// modifiers goes on to the case that sets the modifier's flag.
+func (p *parser) recordMod(m *Modifiers, t *Token) bool {
+	m.Written = append(m.Written, Mod{Name: t.Text, P: t.Pos})
+	return false
+}
+
 // isModifier reports whether s is a modifier keyword.
 func isModifier(s string) bool {
 	switch s {
@@ -928,6 +936,9 @@ func (p *parser) parseType() *TypeRef {
 	if t := p.tok(); t.Kind == IDENT && t.Text == "suspend" && (p.toks[p.i+1].Kind == LPAREN || p.toks[p.i+1].Kind == IDENT) {
 		// A suspend function type: suspend (A) -> R, suspend R.(A) -> T.
 		p.next()
+		if n := p.tok(); n.Kind == IDENT && n.Text == "suspend" {
+			p.errorLater(t.Pos, "repeated 'suspend'")
+		}
 		ft := p.parseType()
 		if ft.Ret == nil {
 			p.failAt(t.Pos, "expected a function type after 'suspend'")
@@ -1270,6 +1281,7 @@ func (p *parser) params() []*Param {
 		param := &Param{P: pn.Pos, Name: pn.Text, Type: p.parseType(), Vararg: m.Vararg, Noinline: m.Noinline, Crossinline: m.Crossinline,
 			Annotations: m.Annotations}
 		param.External, param.ExternalP = m.External, m.ExternalP
+		param.Mods = m.Written
 		if p.at(ASSIGN) {
 			p.next()
 			p.skipNL()
@@ -1601,6 +1613,9 @@ func (p *parser) accessors(pd *PropDecl) {
 		p.i = start
 		m := p.modifiers()
 		p.noContexts(&m, "property accessors")
+		if len(m.Written) > 0 {
+			pd.AccessorMods = append(pd.AccessorMods, m.Written)
+		}
 		for _, a := range m.Annotations {
 			if a.Target == "" {
 				a.Target, a.Accessor = t.Text, true
@@ -2432,6 +2447,7 @@ func (p *parser) parseStmtAfterAnnotations() Stmt {
 				s := p.parseStmt()
 				if vs, ok := s.(*VarStmt); ok {
 					vs.Lateinit, vs.LateinitP = m.Lateinit, t.Pos
+					vs.Mods = m.Written
 				}
 				p.annotate(s, m.Annotations)
 				return s

@@ -197,6 +197,8 @@ type Param struct {
 	// External is set on a parameter marked external, which is an error.
 	External  bool
 	ExternalP Pos
+	// Mods are its modifiers as written.
+	Mods []Mod
 }
 
 // Modifiers are the modifiers of a declaration that kc uses.
@@ -236,6 +238,25 @@ type Modifiers struct {
 	// context, if it is written.
 	Contexts []*Param
 	ContextP Pos
+	// Written are the modifier keywords as written, in order, repeats
+	// included, which the checker checks the targets and combinations of.
+	Written []Mod
+}
+
+// Mod is a modifier keyword as written, and its position.
+type Mod struct {
+	Name string
+	P    Pos
+}
+
+// Has reports whether name is among the written modifiers.
+func (m *Modifiers) Has(name string) bool {
+	for _, w := range m.Written {
+		if w.Name == name {
+			return true
+		}
+	}
+	return false
 }
 
 // Visibility is a declaration's visibility modifier, which the checker
@@ -444,6 +465,8 @@ type PropDecl struct {
 	// InlineGetter and InlineSetter are set on inline get and inline set,
 	// which compile as ordinary accessors.
 	InlineGetter, InlineSetter bool
+	// AccessorMods are the modifiers written on each accessor.
+	AccessorMods [][]Mod
 	// Plugin is set by the checker on a property it declares as a
 	// compiler plugin's that metadata doesn't list: serialization's
 	// $cachedSerializer$delegate.
@@ -782,9 +805,11 @@ type VarStmt struct {
 	// Lateinit is set on a local lateinit var, written at LateinitP.
 	Lateinit  bool
 	LateinitP Pos
-	Type      *TypeRef
-	Init      Expr // nil for a variable assigned later
-	Sym       *types.VarSym
+	// Mods are the modifiers written on a local variable.
+	Mods []Mod
+	Type *TypeRef
+	Init Expr // nil for a variable assigned later
+	Sym  *types.VarSym
 
 	// A local delegated property, val x by d, keeps d in Delegate, which
 	// the checker puts in a hidden local, DelegateSym: reading x is Get,
