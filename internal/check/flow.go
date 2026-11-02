@@ -646,6 +646,44 @@ func (c *Checker) assignedVar(v *types.VarSym, vt types.Type) {
 	c.scope.narrows = append(c.scope.narrows, narrow{sym: v, t: t})
 }
 
+// mayNotRun undoes the smart casts that code that may not run, as the
+// right side of ?:, added to the scope's narrows from index n on: casts
+// are dropped, unless other, those that hold where it doesn't run, has
+// them too, as x ?: x!!, and the values it assigns lose theirs.
+func (c *Checker) mayNotRun(n int, other []narrow) {
+	ns := c.scope.narrows
+	if n >= len(ns) {
+		return
+	}
+	added := slices.Clone(ns[n:])
+	c.scope.narrows = ns[:n]
+	for _, k := range added {
+		prev := c.scope.narrowedMember(k.recv, k.sym, k.sym.Type)
+		if k.t == prev || c.subtype(k.t, prev) {
+			// Both ways, the wider of the two.
+			if o, ok := findNarrow(other, k); ok && (c.subtype(k.t, o) || c.subtype(o, k.t)) {
+				if c.subtype(k.t, o) {
+					k.t = o
+				}
+				c.scope.narrows = append(c.scope.narrows, k)
+			}
+			continue
+		}
+		k.t = k.sym.Type
+		c.scope.narrows = append(c.scope.narrows, k)
+	}
+}
+
+// notNullOf returns the smart cast of stable value x to its type without
+// null, which holds where it isn't null.
+func (c *Checker) notNullOf(x syntax.Expr) []narrow {
+	if k, ok := c.narrowKeyOf(x); ok && k.t.K != types.Invalid {
+		k.t = k.t.NonNull()
+		return []narrow{k}
+	}
+	return nil
+}
+
 // assignedVal narrows a val property that an initializer block or a
 // constructor assigns, x = v, to v's type, as assignedVar a local var.
 func (c *Checker) assignedVal(target syntax.Expr, vt types.Type) {

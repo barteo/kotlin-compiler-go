@@ -163,6 +163,10 @@ func (c *Checker) asExpr(x *syntax.As) types.Type {
 	if x.Safe {
 		return t.Nullable()
 	}
+	if k, ok := c.castNarrow(x); ok {
+		// x is a T from here on: in (x as T).f(x), (x as T) + x.
+		c.scope.narrows = append(c.scope.narrows, k)
+	}
 	if t.K == types.Class && t.C.Name == "kotlin/Unit" && !t.N {
 		return types.UnitType // x as Unit, a cast to kotlin.Unit
 	}
