@@ -36,6 +36,15 @@ open class Guarded protected constructor() {
     inline fun make() = Guarded() // ERROR protected constructor call from public-API inline function is prohibited: 'Guarded'
 }
 
+open class Shielded : Base() {
+    protected inline fun protInline() = prot() + protVal
+    protected inline fun protSuper() = super.f() // ERROR accessing super members from public-API inline function is prohibited
+
+    protected open class Inner : Base() {
+        inline fun inProtClass() = prot()
+    }
+}
+
 private class Hidden : Base() {
     inline fun fine() = super.f() + prot()
 }

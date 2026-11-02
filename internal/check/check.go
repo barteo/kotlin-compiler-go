@@ -1429,6 +1429,7 @@ func (c *Checker) resolveFun(d *syntax.FunDecl, owner *types.ClassSym) {
 	if d.Inline {
 		c.inlineFun(d, owner)
 	}
+	c.inlineDecl(d, false)
 	for _, tp := range d.TypeParams {
 		switch {
 		case !tp.Reified:
