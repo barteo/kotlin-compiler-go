@@ -1834,6 +1834,7 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 		return t
 	}
 	if x.Safe {
+		x.SafeT = t
 		t = t.Nullable()
 	}
 	return t
@@ -2353,6 +2354,9 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 				c.reified(x, t)
 			}
 		}
+		if fn.Safe {
+			fn.SafeT = t
+		}
 		if fn.Safe && t.K != types.Unit {
 			fn.Nothing = t.K == types.Nothing && !t.N
 			t = t.Nullable()
@@ -2562,7 +2566,10 @@ func (c *Checker) noSpread(x *syntax.Call) {
 // index checks x[i] as a call of the operator get, or with name set,
 // x[i] = v as a call of set.
 func (c *Checker) index(x *syntax.Index, name string, args []syntax.Expr, want types.Type) types.Type {
-	m := &syntax.Member{X: x.X, Name: name}
+	// The index of a safe call is of its chain: a?.b[i] is a?.b?.get(i),
+	// if b's type isn't nullable.
+	safe := safeChain(x.X)
+	m := &syntax.Member{X: x.X, Name: name, Safe: safe}
 	m.P = x.P
 	call := &syntax.Call{Fun: m, Args: args}
 	call.P = x.P
@@ -2574,7 +2581,45 @@ func (c *Checker) index(x *syntax.Index, name string, args []syntax.Expr, want t
 	if f := call.Sym; f != nil && !f.Operator {
 		c.errorf(x.P, "'operator' modifier is required on '%s' in '%s'", name, f.Owner.DisplayName())
 	}
+	if rt := chainType(x.X); safe && rt.K != types.Invalid && types.MayBeNull(rt) && !rt.P {
+		c.errorf(x.P, "only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type %s", rt)
+		return types.InvalidType
+	}
 	return t
+}
+
+// safeChain reports whether x ends a chain of safe calls that an index
+// of it, x[i], continues: a?.b, a?.f(), or an index of one, a?.b[i].
+func safeChain(x syntax.Expr) bool {
+	switch x := x.(type) {
+	case *syntax.Member:
+		return x.Safe
+	case *syntax.Call:
+		m, ok := x.Fun.(*syntax.Member)
+		return ok && !x.Invoke && m.Safe
+	case *syntax.Index:
+		return safeChain(x.X)
+	}
+	return false
+}
+
+// chainType returns the type of x, the end of a chain of safe calls as
+// safeChain reports, on a receiver that isn't null, or the invalid type
+// if the checker didn't record it.
+func chainType(x syntax.Expr) types.Type {
+	switch x := x.(type) {
+	case *syntax.Member:
+		return x.SafeT
+	case *syntax.Call:
+		if m, ok := x.Fun.(*syntax.Member); ok {
+			return m.SafeT
+		}
+	case *syntax.Index:
+		if x.Call != nil {
+			return chainType(x.Call)
+		}
+	}
+	return types.InvalidType
 }
 
 // stdlibExt reports whether builtinMember's function name of receiver

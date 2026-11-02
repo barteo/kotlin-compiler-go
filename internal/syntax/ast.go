@@ -1130,6 +1130,10 @@ type Member struct {
 	// receiver, is of type Nothing: a generic one, which may return, as
 	// x?.f() for a T := Nothing.
 	Nothing bool
+	// SafeT is set by the checker on a safe call: its type on a receiver
+	// that isn't null, before ?. makes it nullable. A safe call's index,
+	// a?.b[i], is of the chain only if it is not nullable.
+	SafeT types.Type
 
 	// Object is set when the member access names an object, or a class's
 	// companion object, used as a value: Outer.Companion, a.b.Obj.
