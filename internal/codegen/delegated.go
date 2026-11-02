@@ -49,6 +49,9 @@ func (g *gen) kprops(refs []*syntax.PropRef) {
 			impl = "kotlin/jvm/internal/MutablePropertyReference"
 		}
 		flags := int32(1) // top level or local: no receiver
+		if r.Owner != g.file.Class() {
+			flags = 0 // a class's: its local's metadata is the class's
+		}
 		recvs := 0
 		if r.Recv {
 			recvs++
