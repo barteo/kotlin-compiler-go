@@ -560,3 +560,88 @@ func constString(v any, t types.Type) (string, bool) {
 	}
 	return "", false
 }
+
+// intLit pushes integer literal x as its type stores it: a ULong's bits,
+// and a UByte's or UShort's truncated, as 255u is the UByte stored as the
+// byte -1.
+func (g *gen) intLit(x *syntax.IntLit) {
+	switch types.Repr(x.T).K {
+	case types.Long:
+		g.code.Lconst(x.Val) // also a ULong's bits
+	case types.Byte:
+		g.code.Iconst(int32(int8(x.Val)))
+	case types.Short:
+		g.code.Iconst(int32(int16(x.Val)))
+	default:
+		g.code.Iconst(int32(x.Val))
+	}
+}
+
+// literalArithLong returns the value of arithmetic of integer literals
+// that is a Long because a Long is expected, val n: Long = 2147483647 + 1,
+// which kotlinc computes as Ints, overflowing as they do, and widens.
+func literalArithLong(x *syntax.Binary) (int64, bool) {
+	if x.T.K != types.Long || x.OpType.K != types.Long {
+		return 0, false
+	}
+	v, ok := literalInt(x, 0)
+	return int64(v), ok
+}
+
+// literalInt computes arithmetic of integer literals without a type of
+// their own, Int-sized, as Ints.
+func literalInt(e syntax.Expr, depth int) (int32, bool) {
+	if depth > 64 {
+		return 0, false
+	}
+	switch e := e.(type) {
+	case *syntax.IntLit:
+		if e.Long || e.Unsigned {
+			return 0, false
+		}
+		return int32(e.Val), true
+	case *syntax.Unary:
+		if e.Call != nil {
+			return 0, false
+		}
+		v, ok := literalInt(e.X, depth+1)
+		switch e.Op {
+		case syntax.MINUS:
+			return -v, ok
+		case syntax.PLUS:
+			return v, ok
+		}
+	case *syntax.Binary:
+		if e.Call != nil {
+			return 0, false
+		}
+		a, ok1 := literalInt(e.X, depth+1)
+		b, ok2 := literalInt(e.Y, depth+1)
+		if !ok1 || !ok2 {
+			return 0, false
+		}
+		switch e.Op {
+		case syntax.PLUS:
+			return a + b, true
+		case syntax.MINUS:
+			return a - b, true
+		case syntax.STAR:
+			return a * b, true
+		case syntax.SLASH:
+			if b != 0 {
+				if b == -1 {
+					return -a, true // MinInt32 / -1 wraps, as the JVM's
+				}
+				return a / b, true
+			}
+		case syntax.PERCENT:
+			if b != 0 {
+				if b == -1 {
+					return 0, true
+				}
+				return a % b, true
+			}
+		}
+	}
+	return 0, false
+}

@@ -277,11 +277,7 @@ func (g *gen) expr(x syntax.Expr) {
 		}
 		g.lambda(x)
 	case *syntax.IntLit:
-		if r := types.Repr(x.T); r.K == types.Long {
-			g.code.Lconst(x.Val) // also a ULong's bits
-		} else {
-			g.code.Iconst(int32(x.Val))
-		}
+		g.intLit(x)
 	case *syntax.DoubleLit:
 		g.code.Dconst(x.Val)
 	case *syntax.FloatLit:
@@ -936,9 +932,16 @@ func (g *gen) binary(x *syntax.Binary) {
 			g.code.Invoke(cf.INVOKEVIRTUAL, "java/lang/StringBuilder", "toString", "()Ljava/lang/String;")
 			return
 		}
+		if v, ok := literalArithLong(x); ok {
+			g.code.Lconst(v) // val n: Long = 2147483647 + 1, computed as Ints
+			return
+		}
 		g.exprAs(x.X, x.OpType)
 		g.exprAs(x.Y, x.OpType)
 		g.code.Op(arithOp(x.OpType, x.Op))
+		if x.T.K == types.Char && x.OpType.K == types.Int {
+			g.code.Op(cf.I2C) // a Char plus or minus an Int wraps to 16 bits
+		}
 	case syntax.ELVIS:
 		g.elvis(x)
 	default:
