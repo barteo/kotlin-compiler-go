@@ -533,6 +533,12 @@ func (g *gen) annotationClass(cd *syntax.ClassDecl) *cf.Class {
 			}
 		}
 	}
+	if cls.Companion != nil {
+		// The Companion field, which the static initializer sets, as
+		// an interface's.
+		g.cls, g.owner = c, cls
+		g.staticInit(cd)
+	}
 	return c
 }
 
@@ -2613,6 +2619,32 @@ func (g *gen) staticInit(cd *syntax.ClassDecl) {
 	g.stableInit(cd)
 	g.code.Op(cf.RETURN)
 	g.check()
+}
+
+// enumEntryThis pushes, for a reference to entry name of enum class enum
+// in the constructor of an inner class of that entry's class, the entry
+// being constructed, whose static field isn't set yet: the outer
+// instance, as kotlinc reads it. It reports whether it did.
+func (g *gen) enumEntryThis(enum *types.ClassSym, name string) bool {
+	o := g.owner
+	if o == nil || !o.Inner || enum.Entries == nil || g.code.Name() != "<init>" {
+		return false
+	}
+	k := o.Outer
+	for {
+		if cd, ok := k.Decl.(*syntax.ClassDecl); ok && cd.EnumEntry && k.Super == enum && k.Name == enum.Name+"$"+name {
+			break
+		}
+		if !k.Inner {
+			return false
+		}
+		k = k.Outer
+	}
+	g.loadOuterThis()
+	for c := o.Outer; c != k; c = c.Outer {
+		g.code.FieldInsn(cf.GETFIELD, c.Name, "this$0", desc(c.Outer.This()))
+	}
+	return true
 }
 
 // interfaceCompanion reports whether cls is the companion object of an

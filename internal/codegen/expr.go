@@ -409,6 +409,9 @@ func (g *gen) ident(x *syntax.Ident) {
 			g.pushConst(sym.Constant, sym.Type)
 			break
 		}
+		if g.enumEntryThis(sym.Owner, sym.Name) {
+			break
+		}
 		g.code.FieldInsn(cf.GETSTATIC, sym.Owner.Name, sym.Name, desc(sym.Type))
 	case types.BackingField:
 		g.backingField(sym.Prop, true)
@@ -1235,7 +1238,7 @@ func (g *gen) member(x *syntax.Member) {
 		}
 		if f.Constant != nil {
 			g.pushConst(f.Constant, f.Type) // a Java constant, inlined
-		} else {
+		} else if !g.enumEntryThis(x.Static, f.Name) {
 			g.code.FieldInsn(cf.GETSTATIC, x.Static.Name, f.Name, desc(f.Type))
 		}
 		g.coerce(f.Type, x.T)
@@ -1451,6 +1454,12 @@ func (g *gen) boxThis() {
 // super@Outer, through the outer class's accessor, as kotlinc does.
 func (g *gen) invokeSuper(s *syntax.Super, name, d string) {
 	if s.Outer == nil {
+		if s.Cls.Name == "java/lang/Cloneable" && name == "clone" {
+			// Cloneable declares no clone method on the JVM: its body
+			// is Object's, as kotlinc calls it.
+			g.code.Invoke(cf.INVOKESPECIAL, "java/lang/Object", name, d)
+			return
+		}
 		g.invokeSpecial(s.Cls, name, d)
 		return
 	}
