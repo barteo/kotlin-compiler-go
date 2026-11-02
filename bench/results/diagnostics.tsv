@@ -3251,7 +3251,7 @@ tests/expresssions/invoke/inBrackets.kt	accepts valid
 tests/expresssions/invoke/incorrectInvokeReceiver.kt	rejects valid	expression '_' of type _ cannot be invoked as a function	incorrectInvokeReceiver.kt:10: expression 'some' of type Int cannot be invoked as a function
 tests/expresssions/invoke/propertyFromParameter.kt	accepts valid		
 tests/expresssions/invoke/propertyWithExtensionType.kt	accepts valid		
-tests/expresssions/invoke/safeCallsWithImplicitInvoke.kt	rejects valid	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _	safeCallsWithImplicitInvoke.kt:15: only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type Foo?
+tests/expresssions/invoke/safeCallsWithImplicitInvoke.kt	rejects valid	expression of type _ cannot be invoked as a function	safeCallsWithImplicitInvoke.kt:17: expression of type Foo? cannot be invoked as a function
 tests/expresssions/invoke/simple.kt	accepts valid		
 tests/expresssions/invoke/threeReceivers.kt	rejects invalid	on an expected line	
 tests/expresssions/invoke/threeReceiversCorrect.kt	rejects invalid	on an expected line	
@@ -4504,8 +4504,8 @@ tests/inference/pcla/fixationOnDemand/syntaxForms/LogicalNotOperatorCall.kt	reje
 tests/inference/pcla/fixationOnDemand/syntaxForms/PlusAssignOperatorCall.kt	rejects invalid	elsewhere	
 tests/inference/pcla/fixationOnDemand/syntaxForms/PlusOperatorAssignment.kt	rejects invalid	elsewhere	
 tests/inference/pcla/fixationOnDemand/syntaxForms/PlusOperatorCall.kt	rejects invalid	elsewhere	
-tests/inference/pcla/fixationOnDemand/syntaxForms/PostfixIncrementOperatorCall.kt	parse/unsupported	safe-call assignment	
-tests/inference/pcla/fixationOnDemand/syntaxForms/PrefixIncrementOperatorCall.kt	parse/unsupported	safe-call assignment	
+tests/inference/pcla/fixationOnDemand/syntaxForms/PostfixIncrementOperatorCall.kt	rejects invalid	on an expected line	
+tests/inference/pcla/fixationOnDemand/syntaxForms/PrefixIncrementOperatorCall.kt	rejects invalid	on an expected line	
 tests/inference/pcla/fixationOnDemand/syntaxForms/RangeOperatorCall.kt	rejects invalid	elsewhere	
 tests/inference/pcla/fixationOnDemand/syntaxForms/ReferenceEqualityExpression.kt	accepts valid		
 tests/inference/pcla/fixationOnDemand/syntaxForms/StringInterpolationExpression.kt	accepts valid		

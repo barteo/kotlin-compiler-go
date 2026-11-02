@@ -6,16 +6,16 @@ Of 10827 test files, 3627 are skipped and 7200 run.
 
 | Result | Tests | Share |
 |:---|---:|---:|
-| rejects invalid | 3270 | 45.4% |
+| rejects invalid | 3272 | 45.4% |
 | accepts valid | 2894 | 40.2% |
 | accepts invalid | 548 | 7.6% |
 | rejects valid | 408 | 5.7% |
-| parse/unsupported | 79 | 1.1% |
+| parse/unsupported | 77 | 1.1% |
 | crash | 1 | 0.0% |
 
 *Rejects invalid* and *accepts valid* agree with kotlinc. *Accepts invalid* is code kotlinc rejects that kc compiles; *rejects valid*, code kotlinc compiles that kc's checker rejects. Both are bugs. A *parse/unsupported* test uses a feature kc doesn't support, which says nothing about its checks.
 
-Of the 3270 tests both reject, kc reports an error on the line of an expected one in 3005.
+Of the 3272 tests both reject, kc reports an error on the line of an expected one in 3007.
 
 A test is invalid if it stops before the backend or marks an error: one that runs to it (`BACKEND`) can mark the JVM backend's errors, such as `CONFLICTING_JVM_DECLARATIONS`. Of the tests run, 177 stop at `FRONTEND` but mark no error: most add the `CHECK_TYPE` helpers, whose names (`_`) kotlinc reports outside the test infrastructure, and count as valid; the others leave their errors out with the `DIAGNOSTICS` directive. 101 run to the backend and mark one. 5 marked names have no declared severity (debug information, for one), and count as neither.
 
@@ -124,7 +124,7 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 | `unresolved reference: _` | 40 | `tests/annotations/nestedClassAsAnnotationParameter.kt`, `tests/annotations/nestedObjectAsAnnotationParameter.kt` |
 | `unresolved import: _` | 30 | `tests/annotations/requiredAnnotationWithStarTypealiasedImportedArgument.kt`, `tests/callableReference/function/differentPackageClass.kt` |
 | `ambiguous call: n candidates for '_' take (_)` | 27 | `tests/arguments/overloadByReceiver.kt`, `tests/callResolution/eagerLambdaAnalysis/samVsKProperty.kt` |
-| `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 20 | `tests/cast/kt56629.kt`, `tests/cfg/safeCalls.kt` |
+| `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 19 | `tests/cast/kt56629.kt`, `tests/cfg/safeCalls.kt` |
 | `cannot infer a type for this parameter. Please specify it explicitly.` | 10 | `tests/inference/completion/postponedArgumentsAnalysis/lackOfDeepIncorporation.kt`, `tests/inference/kt36819.kt` |
 | `'_' expression must be exhaustive, add necessary '_' branch` | 8 | `tests/controlStructures/whenWithNothingTypedSubject.kt`, `tests/exhaustiveness/positive/smartcastToExhaustiveInterface.kt` |
 | `no function '_' takes n arguments` | 6 | `tests/cast/kt15161.kt`, `tests/errorProneAtomicArrayArguments.kt` |
@@ -141,6 +141,7 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 | `type checking has run into a recursive problem; specify the type of '_'` | 3 | `tests/checkers/uselessCastLeadsToRecursiveProblem.kt`, `tests/problems/kt27790.kt` |
 | `unresolved label: _` | 3 | `tests/labelAndReceiverForInfix.kt`, `tests/labeledReturnFromNotLabeledUnnamedFunction.kt` |
 | `conflicting declarations: _` | 2 | `tests/overload/noConflictingOverloadsWithDeprecatedHidden/ConflictingOverloadsValsDifferentTypeInClass.kt`, `testsWithStdLib/duplicateJvmSignature/delegatedProperty.kt` |
+| `expression of type _ cannot be invoked as a function` | 2 | `tests/controlFlowAnalysis/deadCode/deadCallInInvokeCall.kt`, `tests/expresssions/invoke/safeCallsWithImplicitInvoke.kt` |
 | `illegal usage of inline-parameter '_' in '_': add '_' modifier to the parameter declaration` | 2 | `tests/contracts/pos/1.kt`, `testsWithStdLib/contracts/dsl/fqnContractFunction.kt` |
 | `n type arguments expected for '_'` | 2 | `tests/delegatingConstructorsAndTypeAliases.kt`, `tests/generics/innerClasses/implicitArguments/secondLevelDepth.kt` |
 | `tailrec is not allowed on open members` | 2 | `tests/tailRecOverridden.kt`, `tests/tailRecSingleton.kt` |
@@ -155,7 +156,6 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 | `class EmptyList is not public` | 1 | `tests/arguments/nestedClassInAnnotationArgument.kt` |
 | `expected no parameters, but n were declared` | 1 | `tests/inference/extensionLambdasAndArrow.kt` |
 | `expected parameter of type _` | 1 | `tests/resolve/starProjectionAndFunctionType.kt` |
-| `expression of type _ cannot be invoked as a function` | 1 | `tests/controlFlowAnalysis/deadCode/deadCallInInvokeCall.kt` |
 | `function invocation '_' expected; use ::bar for a reference` | 1 | `tests/resolve/resolveAnnotatedLambdaArgument.kt` |
 | `function invocation '_' expected; use ::foo for a reference` | 1 | `tests/syntax/incorrectLTGTFallback.kt` |
 | `invalid double literal` | 1 | `tests/annotations/parameters/double.kt` |
@@ -165,13 +165,13 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 11496 of 18906 expected errors (60.8%) on their lines.
+kc reports 11496 of 18918 expected errors (60.8%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
 | `CONFLICTING_JVM_DECLARATIONS` | 996 | 518 | 478 |
+| `UNRESOLVED_REFERENCE` | 2038 | 1562 | 476 |
 | `ARGUMENT_TYPE_MISMATCH` | 1257 | 787 | 470 |
-| `UNRESOLVED_REFERENCE` | 2026 | 1558 | 468 |
 | `SYNTAX` | 638 | 197 | 441 |
 | `CONFLICTING_OVERLOADS` | 719 | 370 | 349 |
 | `WRONG_MODIFIER_TARGET` | 298 | 118 | 180 |
@@ -238,9 +238,9 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | Error | Count |
 |:---|---:|
 | `cannot infer a type for this parameter. Please specify it explicitly.` | 1059 |
-| `cannot infer type for type parameter '_'. Specify it explicitly.` | 608 |
+| `cannot infer type for type parameter '_'. Specify it explicitly.` | 616 |
 | `unresolved reference: _` | 422 |
-| `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 403 |
+| `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 381 |
 | `type mismatch: inferred type is _ but _ was expected` | 364 |
 | `conflicting overloads: _` | 305 |
 | `unresolved import: _` | 76 |
@@ -260,13 +260,13 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | `type checking has run into a recursive problem; specify the type of '_'` | 16 |
 | `'_' overrides nothing` | 15 |
 | `expected declaration, found '_'` | 15 |
+| `assignment operators ambiguity: '_' and '_' both apply` | 14 |
 | `not enough information to infer type arguments of ::foon: specify the expected function type` | 14 |
 | `expected n parameter of type _ but n were declared` | 13 |
 | `expected no parameters, but n were declared` | 12 |
 | `overload resolution ambiguity for ::foo: specify the expected function type` | 12 |
 | `private setters are not allowed for open properties` | 12 |
 | `'_' modifier is required on '_'` | 11 |
-| `expected '_', found '_'` | 11 |
 | *192 more* | |
 
 ## Unsupported features
@@ -288,7 +288,6 @@ By the features the parser (with error recovery) and the checker found. A test c
 | `callable reference` | 2 | 2 | `tests/callableReference/compatibilityResolveWithVarargAndOperatorCall.kt`, `tests/callableReference/genericCallWithReferenceAgainstVarargAndKFunction.kt` |
 | `checker: '_' is not allowed here: local interfaces are not supported` | 2 | 2 | `tests/localInterfaces.kt`, `tests/thisAndSuper/unqualifiedSuper/unqualifiedSuperWithLocalClass.kt` |
 | `inline-only call` | 2 | 2 | `testsWithStdLib/cast/IsArray.kt`, `testsWithStdLib/cast/IsReified.kt` |
-| `safe-call assignment` | 2 | 2 | `tests/inference/pcla/fixationOnDemand/syntaxForms/PostfixIncrementOperatorCall.kt`, `tests/inference/pcla/fixationOnDemand/syntaxForms/PrefixIncrementOperatorCall.kt` |
 | `checker: lambdas with more than n parameters are not supported` | 1 | 1 | `tests/tooLargeFunctionNThroughACallableReference.kt` |
 | `package` | 1 | 1 | `tests/modifiers/IllegalModifiers.kt` |
 | `parse error: invalid float literal` | 1 | 1 | `tests/evaluate/floatLiteralOutOfRange.kt` |
@@ -312,10 +311,9 @@ At each step, the feature that unblocks the most tests given the ones before it.
 | 11 | `callable reference` | 2 | 70 |
 | 12 | `checker: '_' is not allowed here: local interfaces are not supported` | 2 | 72 |
 | 13 | `inline-only call` | 2 | 74 |
-| 14 | `safe-call assignment` | 2 | 76 |
-| 15 | `checker: lambdas with more than n parameters are not supported` | 1 | 77 |
-| 16 | `package` | 1 | 78 |
-| 17 | `parse error: invalid float literal` | 1 | 79 |
+| 14 | `checker: lambdas with more than n parameters are not supported` | 1 | 75 |
+| 15 | `package` | 1 | 76 |
+| 16 | `parse error: invalid float literal` | 1 | 77 |
 
 ## Crashes
 
