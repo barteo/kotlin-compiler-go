@@ -2266,7 +2266,7 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 			return len(c.javaMethods(cls, fn.Name)) > 0 || !cls.External && c.userProp(cls, fn.Name) != nil
 		})
 		cls := c.classOf(rt)
-		if cls != nil && !cls.External {
+		if cls != nil {
 			n, alias := c.innerNamed(cls, fn.Name)
 			if n != nil && fn.Safe {
 				// outer?.Inner() constructs, and evaluates the arguments,
