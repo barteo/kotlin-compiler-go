@@ -848,6 +848,16 @@ func (c *Checker) sam(cls *types.ClassSym) *types.FunSym {
 	return cls.SAM(findSAM)
 }
 
+// JavaSAM reports whether cls is a Java interface with a single abstract
+// method, which a lambda converts to as to a fun interface.
+func JavaSAM(cls *types.ClassSym) bool {
+	if !cls.External || cls.KotlinName != "" {
+		return false
+	}
+	cls.Ensure()
+	return cls.Interface && !cls.Missing && cls.SAM(findSAM) != nil
+}
+
 // The methods of Object that interfaces may redeclare as abstract.
 var objectMethods = map[string]bool{"equals(Ljava/lang/Object;)": true, "hashCode()": true, "toString()": true}
 

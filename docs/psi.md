@@ -70,6 +70,8 @@ refuse to run rather than read zeros. `Result`'s methods return deep copies.
 | `UsedAsExpression`, `Unreachable` | the recorder; an Elvis whose left side can't be null is unreachable, as kotlinc reports it |
 | `SuspendOperation` | a `for` loop whose `iterator()`, `hasNext()` or `next()` is a suspend operator |
 | `ReturnTarget`, `ReceiverTarget` | the jump's lambda or enclosing function; `this`'s receiver |
+| `ImplicitReceiver`, `Call.ImplicitReceiver` | on a call (and its callee reference) or property reference with no explicit receiver: the lambda with a receiver, extension function, or class or object whose `this` supplies it |
+| `Type.SAM` | a `fun interface`, or a Java interface with one abstract method that Kotlin doesn't map to its own type (`Runnable`, not `Comparable`) |
 | `Call.Annotations`, `OwnerAnnotations`, `PackageAnnotations` | the callee declaration's annotations, or a library method's class-file annotations; its class's (not an enclosing class's); a library class's package's `package-info` |
 | `Deprecated` | the `@kotlin.Deprecated` message, folded as a constant, of what a reference or `USER_TYPE` names (a constructor falls back to its class), or `Deprecated in Java`; set only for the `WARNING` level |
 

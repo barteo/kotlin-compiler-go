@@ -751,6 +751,89 @@ fun f() {
 	}
 }
 
+func TestImplicitReceivers(t *testing.T) {
+	src := `package p
+
+fun interface Sam { fun foo() }
+
+fun Sam.bar() {}
+
+class K(var x: Int) {
+    fun m() {}
+    fun n() { m(); x = 1 }
+}
+
+fun Sam.ext() { bar() }
+
+fun f(k: K) {
+    object : Sam { override fun foo() { bar(); hashCode() } }
+    k.apply { m(); x = 2 }
+    with("s") { length; trim() }
+    k.m()
+}
+`
+	r, s := analyzed(t, withJDK(t), src)
+	k := at(t, s, "CLASS", s.Source()[strings.Index(s.Source(), "class K"):strings.Index(s.Source(), "\n\nfun Sam.ext")], 0)
+	obj := at(t, s, "OBJECT_DECLARATION", "object : Sam { override fun foo() { bar(); hashCode() } }", 0)
+	ext := at(t, s, "FUN", "fun Sam.ext() { bar() }", 0)
+	apply := at(t, s, "LAMBDA_EXPRESSION", "{ m(); x = 2 }", 0)
+	with := at(t, s, "LAMBDA_EXPRESSION", "{ length; trim() }", 0)
+	for _, want := range []struct {
+		kind, text string
+		i          int
+		target     psi.NodeRef
+	}{
+		{"CALL_EXPRESSION", "m()", 0, k},
+		{"REFERENCE_EXPRESSION", "x", 0, k},
+		{"CALL_EXPRESSION", "bar()", 0, ext},
+		{"REFERENCE_EXPRESSION", "bar", 0, ext},
+		{"CALL_EXPRESSION", "bar()", 1, obj},
+		{"CALL_EXPRESSION", "hashCode()", 0, obj},
+		{"REFERENCE_EXPRESSION", "hashCode", 0, obj},
+		{"CALL_EXPRESSION", "m()", 1, apply},
+		{"REFERENCE_EXPRESSION", "m", 1, apply},
+		{"REFERENCE_EXPRESSION", "x", 1, apply},
+		{"REFERENCE_EXPRESSION", "length", 0, with},
+		{"CALL_EXPRESSION", "trim()", 0, with},
+	} {
+		f := fact(t, r, at(t, s, want.kind, want.text, want.i))
+		if f.ImplicitReceiver == nil || f.ImplicitReceiver.Node != want.target.ID() {
+			t.Errorf("%s %q #%d: implicit receiver %v, want %d", want.kind, want.text, want.i, f.ImplicitReceiver, want.target.ID())
+		}
+		if want.kind == "CALL_EXPRESSION" && (f.Call == nil || f.Call.ImplicitReceiver == nil || f.Call.ImplicitReceiver.Node != want.target.ID()) {
+			t.Errorf("%s #%d: call %+v", want.text, want.i, f.Call)
+		}
+	}
+	if c := fact(t, r, at(t, s, "REFERENCE_EXPRESSION", "bar", 1)).Call; c == nil || c.Name != "p.bar" {
+		t.Errorf("bar in the object: %+v", c)
+	}
+	if f := fact(t, r, at(t, s, "CALL_EXPRESSION", "m()", 2)); f.ImplicitReceiver != nil || f.Call == nil || f.Call.ImplicitReceiver != nil {
+		t.Errorf("k.m(): %+v", f)
+	}
+	sam := fact(t, r, at(t, s, "USER_TYPE", "Sam", 2))
+	if sam.Type == nil || !sam.Type.SAM {
+		t.Errorf("Sam: %+v", sam.Type)
+	}
+}
+
+func TestJavaSAM(t *testing.T) {
+	src := `package p
+
+val r = object : Runnable { override fun run() {} }
+val c = object : Comparable<Int> { override fun compareTo(other: Int) = 0 }
+`
+	r, s := analyzed(t, withJDK(t), src)
+	for _, want := range []struct {
+		text string
+		sam  bool
+	}{{"Runnable", true}, {"Comparable<Int>", false}} {
+		f := fact(t, r, at(t, s, "USER_TYPE", want.text, 0))
+		if f.Type == nil || f.Type.SAM != want.sam {
+			t.Errorf("%s: %+v, want SAM %t", want.text, f.Type, want.sam)
+		}
+	}
+}
+
 func TestNullability(t *testing.T) {
 	src := `package p
 

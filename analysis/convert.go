@@ -4,6 +4,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/barteo/kotlin-compiler-go/internal/check"
 	"github.com/barteo/kotlin-compiler-go/internal/types"
 )
 
@@ -185,7 +186,7 @@ func (cv *converter) value(t types.Type, depth int) Type {
 	case types.Class:
 		c := t.C
 		out.Name = classFQ(c)
-		out.SAM = c.Fun
+		out.SAM = c.Fun || (kotlinNames[javaFQ(c)] == "" && check.JavaSAM(c))
 		out.Suspend = c.Suspend
 		if depth == 0 {
 			out.Supertypes = cv.supertypesOf(c)

@@ -214,6 +214,9 @@ type builder struct {
 	// receivers are the declarations of receivers: lambdas' and
 	// extension functions'.
 	receivers map[*types.VarSym]ElementID
+	// classAt are the classes and objects the program declares, by
+	// their declarations' elements.
+	classAt map[ElementID]*types.ClassSym
 	// later are visits that need every node's facts: return and receiver
 	// targets.
 	later []func()
@@ -221,7 +224,7 @@ type builder struct {
 
 func newBuilder(res *Result, snaps []*psi.Snapshot, files []*syntax.File, provs []*lower.Provenance, rec *recorder) *builder {
 	b := &builder{res: res, snaps: snaps, files: files, provs: provs, rec: rec,
-		where: map[any]ElementID{}, names: map[*types.FunSym]string{}, symIDs: map[any]uint32{}, receivers: map[*types.VarSym]ElementID{}, negatedAt: map[*syntax.IntLit]ElementID{}, pkgAnnots: map[string][]string{}}
+		where: map[any]ElementID{}, names: map[*types.FunSym]string{}, symIDs: map[any]uint32{}, receivers: map[*types.VarSym]ElementID{}, classAt: map[ElementID]*types.ClassSym{}, negatedAt: map[*syntax.IntLit]ElementID{}, pkgAnnots: map[string][]string{}}
 	b.cv = converter{decl: b.decl, supers: map[*types.ClassSym][]string{}}
 	return b
 }
@@ -401,6 +404,9 @@ func merge(f *Fact, src Fact) {
 	if f.ReturnTarget == nil {
 		f.ReturnTarget = src.ReturnTarget
 	}
+	if f.ImplicitReceiver == nil {
+		f.ImplicitReceiver = src.ImplicitReceiver
+	}
 	if f.ReceiverTarget == nil {
 		f.ReceiverTarget = src.ReceiverTarget
 	}
@@ -473,6 +479,7 @@ func (b *builder) visit(n any, el ElementID) {
 	case *syntax.ClassDecl:
 		if x.Sym != nil {
 			b.set(el, Fact{Role: "declaration", Symbol: b.sym(x.Sym)})
+			b.classAt[el] = x.Sym
 		}
 	case *syntax.CtorParam:
 		s := x.Sym
@@ -590,7 +597,7 @@ func (b *builder) expr(x syntax.Expr, el ElementID) {
 	f := Fact{Role: "expression", Type: b.cv.typ(x.Type())}
 	switch x := x.(type) {
 	case *syntax.Ident:
-		b.ident(x, &f)
+		b.ident(x, el, &f)
 	case *syntax.Member:
 		b.member(x, &f)
 	case *syntax.Call:
@@ -660,14 +667,18 @@ func (b *builder) expr(x syntax.Expr, el ElementID) {
 }
 
 // ident visits a simple name.
-func (b *builder) ident(x *syntax.Ident, f *Fact) {
+func (b *builder) ident(x *syntax.Ident, el ElementID, f *Fact) {
 	f.Role = "reference"
 	switch {
 	case x.Member != nil:
 		b.member(x.Member, f)
 		f.Role = "reference"
+		f.ImplicitReceiver = b.implicitReceiver(x.Member, nil, el)
 		return
 	case x.Sym != nil:
+		if x.Sym.Kind == types.Prop {
+			f.ImplicitReceiver = b.implicitReceiver(x, x.Sym.Owner, el)
+		}
 		f.Symbol = b.sym(x.Sym)
 		f.Deprecated = deprecated(symDeprecation(x.Sym))
 		if x.Sym.Kind == types.Global {
@@ -677,6 +688,9 @@ func (b *builder) ident(x *syntax.Ident, f *Fact) {
 	case x.Getter != nil:
 		f.Symbol = b.sym(x.Getter)
 		f.Deprecated = deprecated(symDeprecation(x.Getter))
+		if !x.Getter.Static {
+			f.ImplicitReceiver = b.implicitReceiver(x, x.Getter.Owner, el)
+		}
 		if x.Getter.Owner == nil {
 			f.ImportableName = funFQ(x.Getter)
 		}
@@ -737,6 +751,14 @@ func (b *builder) flow(v *types.VarSym, t types.Type, f *Fact) {
 // callExpr visits a call, and its callee's name.
 func (b *builder) callExpr(x *syntax.Call, el ElementID, f *Fact) {
 	f.Call = b.call(x)
+	if f.Call != nil && !x.Invoke && x.Ctor == nil && x.Sym != nil {
+		var owner *types.ClassSym
+		if !x.Sym.Static {
+			owner = x.Sym.Owner
+		}
+		f.Call.ImplicitReceiver = b.implicitReceiver(x.Fun, owner, el)
+		f.ImplicitReceiver = copyID(f.Call.ImplicitReceiver)
+	}
 	if f.Call != nil && x.Sym != nil && x.Sym.Decl == nil && strings.HasPrefix(f.Call.Name, "kotlin.") {
 		f.Builtin = f.Call.Name
 	}
@@ -751,10 +773,16 @@ func (b *builder) callExpr(x *syntax.Call, el ElementID, f *Fact) {
 		return
 	}
 	fe, ok := b.where[x.Fun]
+	if !ok {
+		// The checker rewrote f() to this.f() for an implicit receiver:
+		// the callee is the call's name.
+		ref := b.node(el).ChildKind(psi.KindREFERENCE_EXPRESSION)
+		fe, ok = ElementID{el.Snapshot, ref.ID()}, ref.Valid()
+	}
 	if !ok || fe == el {
 		return
 	}
-	cf := Fact{Role: "reference", Symbol: s, Call: copyCall(f.Call), Builtin: f.Builtin}
+	cf := Fact{Role: "reference", Symbol: s, Call: copyCall(f.Call), Builtin: f.Builtin, ImplicitReceiver: copyID(f.ImplicitReceiver)}
 	if x.Sym != nil {
 		cf.Deprecated = deprecated(symDeprecation(x.Sym))
 	}
@@ -1092,17 +1120,51 @@ func (b *builder) returnTarget(x *syntax.Jump, el ElementID) {
 
 // receiverTarget sets the declaration whose receiver a this is.
 func (b *builder) receiverTarget(x *syntax.This, el ElementID) {
+	if t := b.thisTarget(x); t != nil {
+		b.fact(el).ReceiverTarget = t
+	}
+}
+
+// thisTarget returns the declaration whose receiver this is: a lambda
+// with a receiver or an extension function, by the local the checker
+// keeps it in, or else the class of its type.
+func (b *builder) thisTarget(x *syntax.This) *ElementID {
 	if x.Recv != nil {
 		if t, ok := b.receivers[x.Recv]; ok {
-			b.fact(el).ReceiverTarget = &t
-			return
+			return &t
 		}
 	}
 	if t := x.Type(); t.K == types.Class && t.C != nil {
-		if d := b.decl(t.C.Decl); d != nil {
-			b.fact(el).ReceiverTarget = d
+		return b.decl(t.C.Decl)
+	}
+	return nil
+}
+
+// implicitReceiver returns the declaration that provides the receiver
+// that fun, the callee or property el names, takes without one being
+// written: the receiver of this.f the checker wrote for f, or, for a
+// member of owner named alone, the innermost class or object around el
+// that is an owner.
+func (b *builder) implicitReceiver(fun syntax.Expr, owner *types.ClassSym, el ElementID) *ElementID {
+	switch x := fun.(type) {
+	case *syntax.Member:
+		if th, ok := x.X.(*syntax.This); ok {
+			if _, written := b.where[th]; !written {
+				return b.thisTarget(th)
+			}
+		}
+	case *syntax.Ident:
+		if owner == nil {
+			return nil
+		}
+		for n := b.node(el).Parent(); n.Valid(); n = n.Parent() {
+			id := ElementID{el.Snapshot, n.ID()}
+			if c := b.classAt[id]; c != nil && c.IsSubclassOf(owner) {
+				return &id
+			}
 		}
 	}
+	return nil
 }
 
 // wrapperKinds are the psi nodes that wrap an expression, whose value

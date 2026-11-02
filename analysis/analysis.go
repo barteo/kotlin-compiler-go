@@ -87,7 +87,8 @@ type Type struct {
 	// if that is in the sources.
 	Parameter      bool       `json:"parameter,omitempty"`
 	ParameterOwner *ElementID `json:"parameterOwner,omitempty"`
-	// SAM is set on a fun interface, Suspend on a suspend function type.
+	// SAM is set on a fun interface or a Java interface with a single
+	// abstract method, Suspend on a suspend function type.
 	SAM     bool `json:"sam,omitempty"`
 	Suspend bool `json:"suspend,omitempty"`
 	// Projection is a type argument's projection: "", "in", "out" or
@@ -248,6 +249,11 @@ type Fact struct {
 	// is.
 	ReturnTarget   *ElementID `json:"returnTarget,omitempty"`
 	ReceiverTarget *ElementID `json:"receiverTarget,omitempty"`
+	// ImplicitReceiver is set on a call, its callee or a property
+	// reference whose receiver is implicit: the lambda with a receiver,
+	// extension function, or class or object whose this it is, as
+	// Call.ImplicitReceiver for a call.
+	ImplicitReceiver *ElementID `json:"implicitReceiver,omitempty"`
 
 	// DelegateType is a delegated property's delegate's type, and
 	// DelegatedCalls the getValue and setValue calls the property makes.
@@ -484,6 +490,7 @@ func copyFact(f Fact) Fact {
 	f.LambdaParameters = slices.Clone(f.LambdaParameters)
 	f.ReturnTarget = copyID(f.ReturnTarget)
 	f.ReceiverTarget = copyID(f.ReceiverTarget)
+	f.ImplicitReceiver = copyID(f.ImplicitReceiver)
 	f.DelegateType = copyType(f.DelegateType)
 	f.DelegatedCalls = copyCalls(f.DelegatedCalls)
 	if f.Deprecated != nil {
