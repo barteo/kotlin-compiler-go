@@ -184,6 +184,10 @@ func constOf(e syntax.Expr, depth int) (any, bool) {
 				s += part.Lit
 				continue
 			}
+			if _, ok := part.X.(*syntax.NullLit); ok {
+				s += "null" // "1 ${null}"
+				continue
+			}
 			v, ok := constOf(part.X, depth+1)
 			if !ok {
 				return nil, false
