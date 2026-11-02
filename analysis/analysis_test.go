@@ -834,6 +834,35 @@ val c = object : Comparable<Int> { override fun compareTo(other: Int) = 0 }
 	}
 }
 
+func TestBuiltinMemberCalls(t *testing.T) {
+	src := `package p
+
+fun f(a: Int) {
+    a.plus(1)
+    a.apply { plus(2) }
+    "s".apply { plus("x") }
+}
+`
+	r, s := analyzed(t, withJDK(t), src)
+	for _, want := range []struct {
+		text, name, lam string
+	}{{"plus(1)", "kotlin.Int.plus", ""}, {"plus(2)", "kotlin.Int.plus", "{ plus(2) }"}, {`plus("x")`, "kotlin.String.plus", `{ plus("x") }`}} {
+		call := at(t, s, "CALL_EXPRESSION", want.text, 0)
+		for _, n := range []psi.NodeRef{call, call.ChildKind(psi.KindREFERENCE_EXPRESSION)} {
+			f := fact(t, r, n)
+			if f.Call == nil || f.Call.Name != want.name {
+				t.Fatalf("%s %s: call %+v", want.text, n.Kind(), f.Call)
+			}
+			switch {
+			case want.lam == "" && f.Call.ImplicitReceiver != nil:
+				t.Errorf("%s: implicit receiver %v", want.text, f.Call.ImplicitReceiver)
+			case want.lam != "" && (f.ImplicitReceiver == nil || f.ImplicitReceiver.Node != at(t, s, "LAMBDA_EXPRESSION", want.lam, 0).ID()):
+				t.Errorf("%s: implicit receiver %v, want the lambda", want.text, f.ImplicitReceiver)
+			}
+		}
+	}
+}
+
 func TestNullability(t *testing.T) {
 	src := `package p
 

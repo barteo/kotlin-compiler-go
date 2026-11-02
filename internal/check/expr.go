@@ -73,7 +73,7 @@ func (c *Checker) expr1(x syntax.Expr, want types.Type, allowRange bool, sink *s
 			return types.ClassType(x.Object) // an object, already resolved
 		}
 		if len(c.recvs) > 0 {
-			if _, _, local := c.scope.lookup(x.Name); !local {
+			if v, _, local := c.scope.lookup(x.Name); !local || propParam(v) != nil {
 				if t, ok := c.recvMember(x); ok {
 					return t
 				}

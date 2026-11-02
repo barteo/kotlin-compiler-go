@@ -64,7 +64,7 @@ refuse to run rather than read zeros. `Result`'s methods return deep copies.
 |---|---|
 | `Type` | the checked expression's or declaration's `types.Type`, converted to Kotlin's names (`kotlin.Any`, `kotlin.Function1`, ...) |
 | `Symbol` | the symbol an identifier, member, call or declaration resolved to, interned per result |
-| `Call` | the resolved function, argument mapping, receivers, type arguments and inline flags; on a compound assignment and `x++`, the operator the checker rewrote it to; on a callable reference, the function or constructor it names; `suspend { }` is a call of `kotlin.suspend` |
+| `Call` | the resolved function, argument mapping, receivers, type arguments and inline flags; on a compound assignment and `x++`, the operator the checker rewrote it to; on a callable reference, the function or constructor it names; `suspend { }` is a call of `kotlin.suspend`; a member function the checker builds in, `1.plus(2)` or `"a".plus(b)`, is named by its receiver's type, `kotlin.Int.plus` |
 | `When` | the recorder; `Exhaustive` and `Missing` ignore the `else` branch |
 | `FlowNonNull`, `DefinitelyNonNull` | a nullable declaration read as non-null after a smart cast |
 | `UsedAsExpression`, `Unreachable` | the recorder; an Elvis whose left side can't be null is unreachable, as kotlinc reports it |

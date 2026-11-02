@@ -671,6 +671,11 @@ func (c *Checker) lvalue(x syntax.Expr) (types.Type, bool) {
 			c.errorf(x.P, "unresolved reference: %s", x.Name)
 			return types.InvalidType, false
 		}
+		if p := propParam(sym); p != nil {
+			// var x in the primary constructor: x = v assigns the property.
+			c.captureThis()
+			sym = p
+		}
 		c.checkTopVar(sym, x.P)
 		x.Sym = sym
 		x.T = sym.Type

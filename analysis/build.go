@@ -751,6 +751,13 @@ func (b *builder) flow(v *types.VarSym, t types.Type, f *Fact) {
 // callExpr visits a call, and its callee's name.
 func (b *builder) callExpr(x *syntax.Call, el ElementID, f *Fact) {
 	f.Call = b.call(x)
+	if m, ok := x.Fun.(*syntax.Member); ok && f.Call == nil && !x.Invoke && x.Ctor == nil && x.Builtin != types.NotBuiltin {
+		f.Call = b.builtinMember(m, x)
+		if f.Call != nil {
+			f.Call.ImplicitReceiver = b.implicitReceiver(x.Fun, nil, el)
+			f.ImplicitReceiver = copyID(f.Call.ImplicitReceiver)
+		}
+	}
 	if f.Call != nil && !x.Invoke && x.Ctor == nil && x.Sym != nil {
 		var owner *types.ClassSym
 		if !x.Sym.Static {
@@ -826,6 +833,26 @@ func (b *builder) builtinUnary(op syntax.Kind, operand, result types.Type) *Call
 	}
 	return &Call{Name: recv.Name + "." + name, Receiver: recv,
 		ReturnType: b.cv.typ(result), DeclaredReturnType: b.cv.typ(result)}
+}
+
+// builtinMember is the call of a member function the checker builds in,
+// 1.plus(2) or "a".plus(b), which has no symbol: named by its receiver's
+// type and its name.
+func (b *builder) builtinMember(m *syntax.Member, x *syntax.Call) *Call {
+	if m.X == nil {
+		return nil
+	}
+	recv := b.cv.typ(m.X.Type().NonNull())
+	if recv == nil || recv.Name == "" {
+		return nil
+	}
+	c := &Call{Name: recv.Name + "." + m.Name, Receiver: recv,
+		ReturnType: b.cv.typ(x.Type()), DeclaredReturnType: b.cv.typ(x.Type()),
+		ArgumentMapping: make([]int, len(x.Args))}
+	for i := range c.ArgumentMapping {
+		c.ArgumentMapping[i] = i
+	}
+	return c
 }
 
 // negated gives the prefix expressions folded into negative literals the
