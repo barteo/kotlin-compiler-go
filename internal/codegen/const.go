@@ -560,3 +560,9 @@ func constString(v any, t types.Type) (string, bool) {
 	}
 	return "", false
 }
+
+// ConstValue returns the value of a constant expression of the program,
+// as annotation arguments are computed: Int, Long, Char, Byte, Short and
+// Boolean values are int64s, Doubles float64s, Floats float32s and
+// Strings strings.
+func ConstValue(e syntax.Expr) (any, bool) { return constOf(e, 0) }

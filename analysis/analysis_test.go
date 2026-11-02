@@ -553,3 +553,119 @@ fun f(b: Boolean, d: Double, c: Char) {
 		t.Errorf("-1 is the if's value: %+v", f)
 	}
 }
+
+func TestCallAnnotations(t *testing.T) {
+	src := `package p
+
+annotation class CheckReturnValue
+annotation class Marker
+
+@CheckReturnValue
+fun checked() = 1
+
+@CheckReturnValue
+class Outer {
+    @Marker
+    class Inner {
+        fun g() = 2
+    }
+}
+
+fun f() {
+    checked()
+    Outer.Inner().g()
+    listOf(1)
+}
+`
+	r, s := analyzed(t, withStdlib(t), src)
+	c := fact(t, r, at(t, s, "CALL_EXPRESSION", "checked()", 0)).Call
+	if c == nil || !slices.Equal(c.Annotations, []string{"p.CheckReturnValue"}) || len(c.OwnerAnnotations) != 0 {
+		t.Errorf("checked(): %+v", c)
+	}
+	c = fact(t, r, at(t, s, "CALL_EXPRESSION", "g()", 0)).Call
+	if c == nil || len(c.Annotations) != 0 || !slices.Equal(c.OwnerAnnotations, []string{"p.Marker", "p.CheckReturnValue"}) {
+		t.Errorf("g(): %+v", c)
+	}
+	c = fact(t, r, at(t, s, "CALL_EXPRESSION", "listOf(1)", 0)).Call
+	if c == nil || len(c.Annotations)+len(c.OwnerAnnotations)+len(c.PackageAnnotations) != 0 {
+		t.Errorf("listOf(1): %+v", c)
+	}
+}
+
+func TestDeprecatedFacts(t *testing.T) {
+	src := `package p
+
+const val MESSAGE = "hello"
+
+@Deprecated("old fun") fun old() = 1
+@Deprecated("old property") val oldProp = 1
+@Deprecated("old class") open class Old
+class A { @Deprecated("old method") fun m() = 1 }
+@Deprecated(MESSAGE) fun constMsg() = 1
+@Deprecated("old " + "message") fun concat() = 1
+@Deprecated("error", level = DeprecationLevel.ERROR) fun err() = 1
+fun fresh() = 1
+
+class Sub : Old()
+
+fun f(a: A, l: List<Old>) {
+    old()
+    oldProp
+    Old()
+    a.m()
+    constMsg()
+    concat()
+    fresh()
+    err()
+}
+`
+	r, s := analyzed(t, withStdlib(t), src)
+	for _, c := range []struct {
+		kind, text string
+		nth        int
+		want       string
+	}{
+		{"REFERENCE_EXPRESSION", "old", 0, "old fun"},
+		{"REFERENCE_EXPRESSION", "oldProp", 0, "old property"},
+		{"REFERENCE_EXPRESSION", "Old", 2, "old class"},
+		{"REFERENCE_EXPRESSION", "m", 0, "old method"},
+		{"REFERENCE_EXPRESSION", "constMsg", 0, "hello"},
+		{"REFERENCE_EXPRESSION", "concat", 0, "old message"},
+		{"USER_TYPE", "Old", 0, "old class"},
+		{"USER_TYPE", "Old", 1, "old class"},
+	} {
+		f := fact(t, r, at(t, s, c.kind, c.text, c.nth))
+		if f.Deprecated == nil || *f.Deprecated != c.want {
+			t.Errorf("%s %s #%d: deprecated %v, want %q", c.kind, c.text, c.nth, f.Deprecated, c.want)
+		}
+	}
+	for _, text := range []string{"fresh", "err"} {
+		if f := fact(t, r, at(t, s, "REFERENCE_EXPRESSION", text, 0)); f.Deprecated != nil {
+			t.Errorf("%s: deprecated %q", text, *f.Deprecated)
+		}
+	}
+}
+
+func TestLibraryAnnotations(t *testing.T) {
+	src := `package p
+
+fun f(d: java.util.Date, r: Runnable, l: List<Int>) {
+    d.getYear()
+    r.run()
+    l.size
+}
+`
+	r, s := analyzed(t, withJDK(t), src)
+	n := at(t, s, "REFERENCE_EXPRESSION", "getYear", 0)
+	if f := fact(t, r, n); f.Deprecated == nil || *f.Deprecated != "Deprecated in Java" {
+		t.Errorf("getYear: deprecated %v", f.Deprecated)
+	}
+	c := fact(t, r, at(t, s, "CALL_EXPRESSION", "getYear()", 0)).Call
+	if c == nil || !slices.Contains(c.Annotations, "java.lang.Deprecated") {
+		t.Errorf("getYear(): %+v", c)
+	}
+	c = fact(t, r, at(t, s, "CALL_EXPRESSION", "run()", 0)).Call
+	if c == nil || !slices.Contains(c.OwnerAnnotations, "java.lang.FunctionalInterface") {
+		t.Errorf("run(): %+v", c)
+	}
+}

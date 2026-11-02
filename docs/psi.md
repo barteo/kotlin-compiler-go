@@ -69,6 +69,8 @@ refuse to run rather than read zeros. `Result`'s methods return deep copies.
 | `FlowNonNull`, `DefinitelyNonNull` | a nullable declaration read as non-null after a smart cast |
 | `UsedAsExpression`, `Unreachable` | the recorder |
 | `ReturnTarget`, `ReceiverTarget` | the jump's lambda or enclosing function; `this`'s receiver |
+| `Call.Annotations`, `OwnerAnnotations`, `PackageAnnotations` | the callee declaration's annotations, or a library method's class-file annotations; its class's and enclosing classes', outermost last; a library class's package's `package-info` |
+| `Deprecated` | the `@kotlin.Deprecated` message, folded as a constant, of what a reference or `USER_TYPE` names (a constructor falls back to its class), or `Deprecated in Java`; set only for the `WARNING` level |
 
 Facts recorded on an expression are copied to the wrapper nodes Kotlin's
 PSI puts around it (`DOT_QUALIFIED_EXPRESSION`, `PARENTHESIZED`, labels,

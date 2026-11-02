@@ -512,8 +512,13 @@ type FunSym struct {
 	// ExtSetter is set on the getter of a var extension property of the
 	// program: its setter, which takes the receiver and the value.
 	ExtSetter   *FunSym
-	Unsupported bool   // kc can't call it: see Why
-	Hidden      bool   // @Deprecated(level = HIDDEN): compiled, but not a candidate for calls
+	Unsupported bool // kc can't call it: see Why
+	Hidden      bool // @Deprecated(level = HIDDEN): compiled, but not a candidate for calls
+	// Annotations are the descriptors of the annotations of a method of
+	// the class path, La/b/C;, and Deprecated its deprecation: the
+	// program's functions have their declaration's.
+	Annotations []string
+	Deprecated  *Deprecation
 	Why         string // why it is unsupported, if not for its types
 	// Feature is the feature that Why reports unsupported, if it isn't
 	// an inline-only call.
@@ -863,6 +868,8 @@ type ClassSym struct {
 	// see codegen/stability.go.
 	Annotations       []*ClassSym
 	StabilityInferred int
+	// Deprecated is the deprecation of a class of the class path.
+	Deprecated *Deprecation
 
 	// Global is set on a class that a package-level variable declares for
 	// all compilations in the process, such as kotlin.Array: see MakeArgs.
@@ -1343,4 +1350,12 @@ func KotlinParamsDesc(d string, f *FunSym) string {
 		d = d[:i] + ")"
 	}
 	return d
+}
+
+// Deprecation is what a class file says of a deprecated class or method:
+// the message and level of its @kotlin.Deprecated, or Java's
+// deprecation, which kotlinc reports as "Deprecated in Java".
+type Deprecation struct {
+	Message string
+	Level   string // WARNING, ERROR or HIDDEN
 }

@@ -283,7 +283,7 @@ const (
 var capabilities = []string{
 	CapTypes, CapSymbols, CapCalls, CapWhen, CapUsedAsExpression, CapUnreachable,
 	CapFlowNonNull, CapLambdaParameters, CapReturnTargets, CapReceiverTargets,
-	CapClassifiers, CapDelegates, CapClassMembers,
+	CapClassifiers, CapDelegates, CapClassMembers, CapDeprecation, CapAnnotations,
 }
 
 // Data is all of a Result's facts and symbols, in order: facts by

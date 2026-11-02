@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/barteo/kotlin-compiler-go/internal/check"
+	"github.com/barteo/kotlin-compiler-go/internal/classpath"
 	"github.com/barteo/kotlin-compiler-go/internal/driver"
 	"github.com/barteo/kotlin-compiler-go/internal/lower"
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
@@ -51,7 +52,7 @@ func analyze(ctx context.Context, cfg Config, snaps []*psi.Snapshot) (*Result, e
 		return nil, fmt.Errorf("analysis: %w", err)
 	}
 	defer cp.Close()
-	rec := &recorder{when: map[*syntax.When]whenReport{}, stmt: map[syntax.Stmt]bool{}, unreachable: map[syntax.Stmt]bool{}, annots: map[*syntax.File]map[syntax.Pos]*types.ClassSym{}, elvis: map[*syntax.Binary]bool{}, typeRefs: map[*syntax.TypeRef]types.Type{}}
+	rec := &recorder{when: map[*syntax.When]whenReport{}, stmt: map[syntax.Stmt]bool{}, unreachable: map[syntax.Stmt]bool{}, annots: map[*syntax.File]map[syntax.Pos]*types.ClassSym{}, elvis: map[*syntax.Binary]bool{}, typeRefs: map[*syntax.TypeRef]types.Type{}, annotClass: map[*syntax.Annotation]*types.ClassSym{}}
 	errs, err := check.CheckContext(ctx, files, lib, jobs, rec)
 	if err != nil {
 		return nil, err
@@ -64,6 +65,7 @@ func analyze(ctx context.Context, cfg Config, snaps []*psi.Snapshot) (*Result, e
 	}
 
 	b := newBuilder(res, snaps, files, provs, rec)
+	b.cp = cp
 	b.build()
 	return res, nil
 }
@@ -136,6 +138,8 @@ type recorder struct {
 	elvis  map[*syntax.Binary]bool
 	// typeRefs are the types of the type references the checker resolved.
 	typeRefs map[*syntax.TypeRef]types.Type
+	// annotClass are the classes of the annotations, by annotation.
+	annotClass map[*syntax.Annotation]*types.ClassSym
 }
 
 func (r *recorder) When(x *syntax.When, exhaustive, valueUsed bool) {
@@ -176,6 +180,7 @@ func (r *recorder) Annotation(f *syntax.File, a *syntax.Annotation, cls *types.C
 		r.annots[f] = m
 	}
 	m[a.P] = cls
+	r.annotClass[a] = cls
 	r.mu.Unlock()
 }
 
@@ -194,6 +199,11 @@ type builder struct {
 	// makes up for the standard library's preconditions.
 	names map[*types.FunSym]string
 
+	// cp is the class path, and pkgAnnots the annotations of its
+	// packages, by internal name, as their package-info classes keep.
+	cp        *classpath.Path
+	pkgAnnots map[string][]string
+
 	symIDs map[any]uint32
 	syms   []any // *types.VarSym, *types.FunSym or *types.ClassSym, by ID-1
 
@@ -211,7 +221,7 @@ type builder struct {
 
 func newBuilder(res *Result, snaps []*psi.Snapshot, files []*syntax.File, provs []*lower.Provenance, rec *recorder) *builder {
 	b := &builder{res: res, snaps: snaps, files: files, provs: provs, rec: rec,
-		where: map[any]ElementID{}, names: map[*types.FunSym]string{}, symIDs: map[any]uint32{}, receivers: map[*types.VarSym]ElementID{}, negatedAt: map[*syntax.IntLit]ElementID{}}
+		where: map[any]ElementID{}, names: map[*types.FunSym]string{}, symIDs: map[any]uint32{}, receivers: map[*types.VarSym]ElementID{}, negatedAt: map[*syntax.IntLit]ElementID{}, pkgAnnots: map[string][]string{}}
 	b.cv = converter{decl: b.decl, supers: map[*types.ClassSym][]string{}}
 	return b
 }
@@ -400,6 +410,9 @@ func merge(f *Fact, src Fact) {
 	if f.NonNullLeftSubtypeRight == nil {
 		f.NonNullLeftSubtypeRight = src.NonNullLeftSubtypeRight
 	}
+	if f.Deprecated == nil {
+		f.Deprecated = src.Deprecated
+	}
 }
 
 func (b *builder) set(el ElementID, src Fact) {
@@ -419,7 +432,11 @@ func (b *builder) typeRef(r *syntax.TypeRef, t types.Type) {
 	if ct == nil {
 		return
 	}
-	b.set(el, Fact{Role: "type", Type: ct})
+	f := Fact{Role: "type", Type: ct}
+	if t.K == types.Class && b.node(el).Kind() == "USER_TYPE" {
+		f.Deprecated = deprecated(classDeprecation(t.C))
+	}
+	b.set(el, f)
 	// The type is recorded on the USER_TYPE; the TYPE_REFERENCE around it,
 	// through a NULLABLE_TYPE, is the same type.
 	for n := b.node(el).Parent(); n.Valid(); n = n.Parent() {
@@ -623,12 +640,14 @@ func (b *builder) ident(x *syntax.Ident, f *Fact) {
 		return
 	case x.Sym != nil:
 		f.Symbol = b.sym(x.Sym)
+		f.Deprecated = deprecated(symDeprecation(x.Sym))
 		if x.Sym.Kind == types.Global {
 			f.ImportableName = varFQ(x.Sym)
 		}
 		b.flow(x.Sym, x.Type(), f)
 	case x.Getter != nil:
 		f.Symbol = b.sym(x.Getter)
+		f.Deprecated = deprecated(symDeprecation(x.Getter))
 		if x.Getter.Owner == nil {
 			f.ImportableName = funFQ(x.Getter)
 		}
@@ -636,6 +655,7 @@ func (b *builder) ident(x *syntax.Ident, f *Fact) {
 		f.Symbol = b.sym(x.Object)
 		f.Classifier = true
 		f.ImportableName = classFQ(x.Object)
+		f.Deprecated = deprecated(classDeprecation(x.Object))
 	}
 	if x.Call != nil {
 		f.Call = b.call(x.Call)
@@ -648,15 +668,18 @@ func (b *builder) member(x *syntax.Member, f *Fact) {
 	switch {
 	case x.Prop != nil:
 		f.Symbol = b.sym(x.Prop)
+		f.Deprecated = deprecated(symDeprecation(x.Prop))
 		b.flow(x.Prop, x.Type(), f)
 	case x.Field != nil:
 		f.Symbol = b.sym(x.Field)
 	case x.Getter != nil:
 		f.Symbol = b.sym(x.Getter)
+		f.Deprecated = deprecated(symDeprecation(x.Getter))
 	case x.Object != nil:
 		f.Symbol = b.sym(x.Object)
 		f.Classifier = true
 		f.ImportableName = classFQ(x.Object)
+		f.Deprecated = deprecated(classDeprecation(x.Object))
 	}
 	if x.Static != nil && !x.EvalX {
 		// X names the class: Math in Math.max.
@@ -703,6 +726,12 @@ func (b *builder) callExpr(x *syntax.Call, el ElementID, f *Fact) {
 		return
 	}
 	cf := Fact{Role: "reference", Symbol: s, Call: copyCall(f.Call), Builtin: f.Builtin}
+	if x.Sym != nil {
+		cf.Deprecated = deprecated(symDeprecation(x.Sym))
+	}
+	if cf.Deprecated == nil && x.Ctor != nil {
+		cf.Deprecated = deprecated(classDeprecation(x.Ctor))
+	}
 	if x.Sym != nil && x.Sym.Owner == nil && x.Ctor == nil {
 		cf.ImportableName = b.funFQ(x.Sym)
 	}
@@ -814,6 +843,7 @@ func (b *builder) call(x *syntax.Call) *Call {
 			c.ArgumentMapping[i] = i
 		}
 	}
+	b.callAnnotations(c, f, x.Ctor)
 	if f == nil {
 		c.Declaration = b.decl(x.Ctor.Decl)
 		return c
