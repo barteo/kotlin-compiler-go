@@ -427,3 +427,35 @@ fun f(l: List<Int>?, s: String?, a: Any?) {
 		}
 	}
 }
+
+func TestBuiltinCallNames(t *testing.T) {
+	src := `package p
+
+fun f() {
+    val a = emptyArray<Int>()
+    val b = arrayOf(1)
+    val c = intArrayOf(1)
+    val d = arrayOfNulls<String>(2)
+    val e = Char(65)
+    val g = String(charArrayOf('a'))
+    val h = IntArray(3)
+    val i = Array(2) { it }
+}
+`
+	r, s := analyzed(t, withStdlib(t), src)
+	for text, want := range map[string]string{
+		"emptyArray<Int>()":        "kotlin.emptyArray",
+		"arrayOf(1)":               "kotlin.arrayOf",
+		"intArrayOf(1)":            "kotlin.intArrayOf",
+		"arrayOfNulls<String>(2)":  "kotlin.arrayOfNulls",
+		"Char(65)":                 "kotlin.Char",
+		"String(charArrayOf('a'))": "kotlin.text.String",
+		"IntArray(3)":              "kotlin.IntArray.<init>",
+		"Array(2) { it }":          "kotlin.Array.<init>",
+	} {
+		f := fact(t, r, at(t, s, "CALL_EXPRESSION", text, 0))
+		if f.Call == nil || f.Call.Name != want {
+			t.Errorf("%s: call %+v, want name %s", text, f.Call, want)
+		}
+	}
+}

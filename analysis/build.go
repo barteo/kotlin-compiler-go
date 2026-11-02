@@ -706,6 +706,20 @@ func (b *builder) call(x *syntax.Call) *Call {
 	case types.Require, types.Check, types.ErrorCall, types.Todo, types.RequireNotNull, types.CheckNotNull:
 		// The checker's own symbol, whose Facade is the exception thrown.
 		b.names[f] = "kotlin." + f.Name
+	case types.ArrayNew, types.ArrayInit, types.ArrayLiteral, types.EnumValues, types.EnumValueOf, types.ToChar, types.NewString:
+		// The checker's built-in array constructors and standard library
+		// factories, which have no facade: String(chars) is in kotlin.text,
+		// the others in kotlin.
+		if f != nil && f.Owner == nil && f.Facade == "" {
+			switch {
+			case x.Builtin == types.NewString:
+				b.names[f] = "kotlin.text." + f.Name
+			case (x.Builtin == types.ArrayNew || x.Builtin == types.ArrayInit) && strings.HasSuffix(f.Name, "Array"):
+				b.names[f] = "kotlin." + f.Name + ".<init>"
+			default:
+				b.names[f] = "kotlin." + f.Name
+			}
+		}
 	}
 	switch {
 	case x.Ctor != nil:
