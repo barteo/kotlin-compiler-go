@@ -945,6 +945,9 @@ func (c *Checker) binary(x *syntax.Binary, want types.Type, allowRange bool) typ
 	}
 	switch x.Op {
 	case syntax.PLUS:
+		if xt.Flex() == types.StringType.Nullable() && c.opExtension(xt, "plus", x.Y) {
+			return c.binaryOp(x, xt, want) // a String?.plus extension
+		}
 		if xt.NonNull() == types.StringType || xt.K == types.Null {
 			// null + x is the built-in String?.plus(Any?), as s + x for
 			// a String? s: "null" and x's string.
@@ -2649,6 +2652,9 @@ func (c *Checker) extShadows(name string, rt types.Type, x *syntax.Call) bool {
 // extensions. A unary one always does: this.inc() in an Int?.inc() for a
 // this known not to be null, compareTo(c.code) in an Int.compareTo(Char).
 func (c *Checker) builtinShadowed(name string, rt types.Type, x *syntax.Call) bool {
+	if x.Infix && c.infixExtOnly(name, rt) { // see call.go
+		return true
+	}
 	if len(x.Args) == 0 || !c.extShadows(name, rt, x) {
 		return false
 	}

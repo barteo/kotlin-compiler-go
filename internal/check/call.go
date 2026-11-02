@@ -1777,3 +1777,15 @@ func (c *Checker) setDispatch(x *syntax.Call, cl *callee) {
 		}
 	}
 }
+
+// infixExtOnly reports whether an infix call a name b of a number's or a
+// Char's operator function, which isn't infix, is an extension's: the
+// member isn't a candidate, and 5 rem 2 calls infix fun Int.rem.
+func (c *Checker) infixExtOnly(name string, rt types.Type) bool {
+	for _, f := range c.extCallees(name, rt) {
+		if f.f.Infix {
+			return true
+		}
+	}
+	return false
+}
