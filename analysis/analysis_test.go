@@ -1218,3 +1218,34 @@ func TestLambdaArgumentAnnotations(t *testing.T) {
 		t.Errorf("Suppress: %+v", f.Type)
 	}
 }
+
+func TestDestructuringEntries(t *testing.T) {
+	r, s := analyzed(t, withStdlib(t), `data class Foo(val a: Int, val b: Int)
+
+fun test(foo: Foo, foos: List<Foo>, j: Int) {
+    val (x, _) = foo
+    foo.let { (a, b) -> a + b + x }
+    foo.let { (_, c: Int) -> c }
+    for ((d, j) in foos) println(d + j)
+}`)
+	for _, want := range []struct {
+		text     string
+		shadowed bool
+	}{{"x", false}, {"a", false}, {"b", false}, {"c: Int", false}, {"d", false}, {"j", true}} {
+		e := fact(t, r, at(t, s, "DESTRUCTURING_DECLARATION_ENTRY", want.text, 0))
+		if e.Role != "declaration" || e.Symbol == 0 {
+			t.Errorf("%q: %+v", want.text, e)
+			continue
+		}
+		if sym := symbol(t, r, e.Symbol); sym.Shadowed != want.shadowed {
+			t.Errorf("%q: shadowed %t, want %t", want.text, sym.Shadowed, want.shadowed)
+		}
+		name, _, _ := strings.Cut(want.text, ":")
+		if ref := fact(t, r, at(t, s, "REFERENCE_EXPRESSION", name, 0)); ref.Symbol != e.Symbol {
+			t.Errorf("%q: reference symbol %d, entry %d", want.text, ref.Symbol, e.Symbol)
+		}
+	}
+	if f := fact(t, r, at(t, s, "TYPE_REFERENCE", "Int", 3)); f.Type == nil || f.Type.Name != "kotlin.Int" {
+		t.Errorf("c: Int: %+v", f.Type)
+	}
+}

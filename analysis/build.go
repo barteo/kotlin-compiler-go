@@ -562,7 +562,13 @@ func (b *builder) visit(n any, el ElementID) {
 		// A compound assignment's operator call: x.plusAssign(v), or
 		// the x.plus(v) of x = x.plus(v).
 		b.set(el, Fact{Role: "statement", Call: b.call(operatorCall(x.Stmts))})
+	case *syntax.Destructure:
+		b.destructured(x, b.node(el), el.Snapshot)
 	case *syntax.For:
+		if x.Names != nil && x.Body != nil {
+			d := b.node(el).ChildKind(psi.KindVALUE_PARAMETER).ChildKind(psi.KindDESTRUCTURING_DECLARATION)
+			b.destructured(generatedDestructure(x.Body, x.Var), d, el.Snapshot)
+		}
 		// A loop over a collection calls its iterator's operators.
 		for _, f := range []*types.FunSym{x.Iter, x.HasNext, x.Next} {
 			if f != nil && f.Suspend {
@@ -661,6 +667,40 @@ func (b *builder) varStmt(x *syntax.VarStmt, el ElementID) {
 	b.typeRef(x.Type, x.Sym.Type)
 }
 
+// destructured gives each entry of DESTRUCTURING_DECLARATION d the
+// declaration fact of the local that s, which the checker expanded,
+// declares for it. s's first statement holds the destructured value; the
+// others declare the entries in order, but for _.
+func (b *builder) destructured(s *syntax.Destructure, d psi.NodeRef, snap psi.SnapshotID) {
+	if s == nil || !d.Valid() || len(s.Stmts) == 0 {
+		return
+	}
+	vars := s.Stmts[1:]
+	for e := d.FirstChild(); e.Valid() && len(vars) > 0; e = e.NextSibling() {
+		if e.NumericKind() != psi.KindDESTRUCTURING_DECLARATION_ENTRY || e.Name() == "_" {
+			continue
+		}
+		if vars[0].Name == e.Name() {
+			b.varStmt(vars[0], ElementID{Snapshot: snap, Node: e.ID()})
+		}
+		vars = vars[1:]
+	}
+}
+
+// generatedDestructure returns the declaration the checker put at the
+// start of body for a lambda parameter's or a for loop's destructuring,
+// which reads the variable named tmp.
+func generatedDestructure(body *syntax.Block, tmp string) *syntax.Destructure {
+	for _, st := range body.Stmts {
+		if d, ok := st.(*syntax.Destructure); ok {
+			if id, ok := d.Init.(*syntax.Ident); ok && id.Name == tmp {
+				return d
+			}
+		}
+	}
+	return nil
+}
+
 // expr visits an expression.
 func (b *builder) expr(x syntax.Expr, el ElementID) {
 	f := Fact{Role: "expression", Type: b.cv.typ(x.Type())}
@@ -702,6 +742,9 @@ func (b *builder) expr(x syntax.Expr, el ElementID) {
 		for _, p := range x.Params {
 			if p.Sym != nil {
 				f.LambdaParameters = append(f.LambdaParameters, b.sym(p.Sym))
+			}
+			if pel, ok := b.where[p]; ok && p.Names != nil && x.Body != nil {
+				b.destructured(generatedDestructure(x.Body, p.Name), b.node(pel).ChildKind(psi.KindDESTRUCTURING_DECLARATION), pel.Snapshot)
 			}
 		}
 		if x.It != nil && len(x.Params) == 0 {
