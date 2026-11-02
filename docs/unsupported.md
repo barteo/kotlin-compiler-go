@@ -123,8 +123,10 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   replaces (`Number.intValue()`) aren't hidden.
 - A `return@label` without a value makes a lambda return `Unit`, even if
   its last expression has a value.
-- Without an expected type, a reference to a generic or vararg function
-  is an error.
+- Without an expected type, a reference to a vararg function, or to a
+  generic function whose type parameters its receiver's type doesn't
+  give (`Box<Int>::first` for `fun <T> Box<T>.first()` is fine), is an
+  error.
 - A value of function type `(A, B) -> R` is accepted for a context
   function type `context(A) (B) -> R`, and the other way round, as it is
   for an extension function type `A.(B) -> R`; `kotlinc` accepts only

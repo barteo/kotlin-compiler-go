@@ -219,9 +219,10 @@ func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.
 				nested = cls
 				break
 			}
-			if cls := c.lookupClass(name); cls != nil && cls.Companion != nil && !c.hasCallable(cls, r.Name) && c.hasCallable(cls.Companion, r.Name) {
+			if cls := c.lookupClass(name); cls != nil && cls.Companion != nil && !c.hasCallable(cls, r.Name) && c.hasCallable(cls.Companion, r.Name) && len(c.extCallees(r.Name, cls.This())) == 0 {
 				// A member of the companion, which the class doesn't
-				// have, is bound to the companion: Level::parse.
+				// have nor an extension of it, is bound to the companion:
+				// Level::parse, but B::foo is fun B.foo().
 				c.bindRef(r, c.value(r.X, noWant))
 				recv = func() syntax.Expr { return ident(r.Bound.Name) }
 				break
@@ -341,7 +342,7 @@ func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.
 		if unbound {
 			ps = []types.Type{recvType}
 		}
-		if !c.namesClass(r, recv != nil) {
+		if !c.namesClass(r, recv != nil) && !c.localExtWins(r, recvType) {
 			if w.kprop {
 				// A property's reference is a KProperty object, as in
 				// Kotlin, if kc can make one, and otherwise a function.
@@ -357,6 +358,10 @@ func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.
 		if !ok {
 			return nil, types.InvalidType, false
 		}
+		if f != nil && f.Ext && f.Owner != nil && !f.Owner.External {
+			c.errorf(p, "%s: a reference to an extension declared in a class is not allowed", refString(r))
+			return nil, types.InvalidType, false
+		}
 		if f != nil {
 			fps := ps
 			sub := c.memberSubst(recvType, f.Owner)
@@ -365,6 +370,22 @@ func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.
 				sub = c.memberSubst(r.Bound.Type, f.Owner)
 			case !unbound && r.X == nil && r.Type == nil:
 				sub = c.implicitSubst(f.Owner)
+			}
+			if f.Name == "<init>" && f.Owner.Inner {
+				// An inner class's constructor, whose outer class's type
+				// arguments are the receiver's: Foo<String>::Inner.
+				rt := recvType
+				if recv != nil {
+					rt = r.Bound.Type
+				}
+				sub = c.memberSubst(rt, f.Owner.Outer)
+			}
+			if len(f.TypeParams) > 0 {
+				rt := recvType
+				if recv != nil {
+					rt = r.Bound.Type
+				}
+				sub, _ = c.recvTypeArgs(f, rt)
 			}
 			for _, q := range f.Params {
 				if q.Vararg {
@@ -419,6 +440,14 @@ func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.
 	// first parameters.
 	w.recv, w.ctx, w.known = false, 0, true
 	suspend := w.suspend
+	// The call a reference to a generic function makes may be inferred
+	// with the call the reference is passed to (see checkTail): R of
+	// foo<T, R> in check("", 1, ::foo) from check's other arguments.
+	var sink *system
+	if c.tailBlock == refTail {
+		sink = c.tailSink
+		defer func() { c.tailBlock, c.tailSink = refTail, sink }()
+	}
 	for i, f := range forms {
 		w.suspend = suspend || f.suspend
 		n := len(c.errs)
@@ -429,18 +458,63 @@ func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.
 		x.Body = &syntax.Block{P: p, Stmts: []syntax.Stmt{&syntax.ExprStmt{X: f.body()}}}
 		x.Captures, x.This = nil, false
 		w.params = f.params
-		ps, rt, ok := c.checkLambda1(x, w)
-		if len(c.errs) == n {
-			c.refContexts(x, p)
-			return ps, rt, ok
+		var tail *system
+		if sink != nil {
+			tail = newSystem(c)
+			c.tailBlock, c.tailSink = x.Body, tail
 		}
-		if i == len(forms)-1 {
+		ps, rt, ok := c.checkLambda1(x, w)
+		if len(c.errs) == n || i == len(forms)-1 {
+			if tail != nil {
+				sink.merge(tail)
+			}
+			if len(c.errs) == n {
+				c.refContexts(x, p)
+			}
 			return ps, rt, ok
 		}
 		c.errs = c.errs[:n]
 	}
 	return nil, types.InvalidType, false
 }
+
+// refRecvType returns the receiver type of unbound reference r, C of
+// C::m, without reporting errors: false if r is bound or has none.
+func (c *Checker) refRecvType(r *syntax.CallableRef) (types.Type, bool) {
+	var ref *syntax.TypeRef
+	switch {
+	case r.Bound != nil:
+		return types.Type{}, false
+	case r.Type != nil:
+		ref = r.Type
+	case r.X != nil:
+		name, ok := c.typeName(r.X)
+		if !ok {
+			return types.Type{}, false
+		}
+		cls := c.lookupClass(name)
+		if cls != nil && (ensured(cls).Object || cls.Companion != nil) {
+			return types.Type{}, false // may be bound to the object
+		}
+		if c.lookupClass(name+"."+r.Name) != nil {
+			return types.Type{}, false // a nested class's constructor
+		}
+		ref = &syntax.TypeRef{P: r.X.Pos(), Name: name}
+	default:
+		return types.Type{}, false
+	}
+	n := len(c.errs)
+	t := c.classLitType(ref, true)
+	if len(c.errs) > n || t.K == types.Invalid {
+		c.errs = c.errs[:n]
+		return types.Type{}, false
+	}
+	return t, true
+}
+
+// refTail is the tail block that checkTail sets for a reference, whose
+// body checkRef builds: its call is checked with the tail system.
+var refTail = &syntax.Block{}
 
 // typesString lists types for messages.
 func typesString(ts []types.Type) string {
@@ -501,6 +575,26 @@ func (c *Checker) bindRef(r *syntax.CallableRef, t types.Type) {
 	}
 }
 
+// localExtWins reports whether an unbound reference T::f names a local
+// extension function f rather than a property: as in Kotlin, the local
+// scope comes before the top level's extension properties, though not
+// before a member property of T's.
+func (c *Checker) localExtWins(r *syntax.CallableRef, recvType types.Type) bool {
+	if recvType.K == types.Invalid {
+		return false
+	}
+	if cls := c.classOf(recvType.NonNull()); cls != nil && c.hasProp(cls, r.Name) {
+		return false
+	}
+	fs, _ := c.scope.findFuns(r.Name)
+	for _, f := range fs {
+		if f.Ext {
+			return true
+		}
+	}
+	return false
+}
+
 // refTarget finds the only function a reference without an expected type
 // can name, nil if it names none (it may name a property), and reports
 // an error and false if it names several.
@@ -534,8 +628,10 @@ func (c *Checker) refTarget(p syntax.Pos, r *syntax.CallableRef, recvType types.
 		} else if static != nil && !bound {
 			fs = append(fs, javaStatics(static, r.Name)...)
 		}
-		for _, cl := range c.extCallees(r.Name, rt) {
-			fs = append(fs, cl.f)
+		if _, ok := builtinRefParams(rt, r.Name); len(fs) == 0 && !ok {
+			// As in Kotlin, a member wins over an extension: Z::hashCode
+			// isn't Any?.hashCode(), 1::toString isn't Int.toString(radix).
+			fs = calleeFuns(c.extCallees(r.Name, rt))
 		}
 	default:
 		fs, _ = c.scope.findFuns(r.Name) // local functions first
@@ -589,11 +685,78 @@ func (c *Checker) refTarget(p syntax.Pos, r *syntax.CallableRef, recvType types.
 	case len(fs) > 1:
 		c.errorf(p, "overload resolution ambiguity for %s: specify the expected function type", refString(r))
 		return nil, false
-	case len(fs[0].TypeParams) > 0 || fs[0].Owner != nil && len(fs[0].Owner.TypeParams) > 0 && fs[0].Name == "<init>":
+	case len(fs[0].TypeParams) > 0 && !c.recvTypeArgsOK(fs[0], recvType, r, bound) || fs[0].Owner != nil && len(fs[0].Owner.TypeParams) > outerParams(fs[0].Owner) && fs[0].Name == "<init>":
 		c.errorf(p, "not enough information to infer type arguments of %s: specify the expected function type", refString(r))
 		return nil, false
 	}
 	return fs[0], true
+}
+
+// recvTypeArgsOK reports whether the type arguments of f, the extension
+// a reference names, are those of its receiver (see recvTypeArgs).
+func (c *Checker) recvTypeArgsOK(f *types.FunSym, recvType types.Type, r *syntax.CallableRef, bound bool) bool {
+	if bound {
+		recvType = r.Bound.Type
+	}
+	_, ok := c.recvTypeArgs(f, recvType)
+	return ok
+}
+
+// recvTypeArgs returns the type arguments of generic extension f, which a
+// reference with receiver type rt names, if they are rt's own: T := Int
+// for A<Int>::foo and fun <T> A<T>.foo(x: T), a star projection for
+// A<*>::foo. Each type parameter is a type argument of f's receiver type,
+// or that type.
+func (c *Checker) recvTypeArgs(f *types.FunSym, rt types.Type) (types.Subst, bool) {
+	if !f.Ext || f.Recv.K == types.Invalid || rt.K == types.Invalid {
+		return nil, false
+	}
+	sub := types.Subst{}
+	own := func(t types.Type) (*types.TypeParamSym, bool) {
+		if t.K != types.TypeParam {
+			return nil, false
+		}
+		p := t.Param()
+		return p, slices.Contains(f.TypeParams, p)
+	}
+	recv := f.Recv
+	if p, ok := own(recv); ok {
+		if recv.N {
+			rt = rt.NonNull()
+		} else if types.MayBeNull(rt) {
+			return nil, false
+		}
+		sub[p] = types.Arg{T: rt}
+	} else if recv.K == types.Class && recv.A != nil {
+		sup, ok := c.asSuper(rt, recv.C)
+		if !ok || sup.A == nil || sup.A.Len() != recv.A.Len() {
+			return nil, false
+		}
+		for i := range recv.A.Len() {
+			if p, ok := own(recv.A.Get(i).T); ok && recv.A.Get(i).V == types.Inv {
+				if _, dup := sub[p]; dup {
+					return nil, false
+				}
+				sub[p] = sup.A.Get(i)
+			}
+		}
+	}
+	for _, p := range f.TypeParams {
+		if _, ok := sub[p]; !ok {
+			return nil, false
+		}
+	}
+	return sub, true
+}
+
+// outerParams returns the number of the type parameters of cls that are
+// its outer class's, if it is an inner class: a reference to its
+// constructor takes them from its receiver.
+func outerParams(cls *types.ClassSym) int {
+	if cls.Inner {
+		return cls.OuterParams
+	}
+	return 0
 }
 
 // implicitSubst gives the type arguments of owner, the class of a member
@@ -644,10 +807,21 @@ func wantsKProp(x *syntax.Lambda, t types.Type) bool {
 	return x.Ref != nil && t.K == types.Class && kpropTypes[t.C.Name]
 }
 
-// kpropRef checks a property reference whose expected type is one of
-// kotlin.reflect's, and returns its type.
-func (c *Checker) kpropRef(x *syntax.Lambda) types.Type {
+// kpropRef checks a property reference whose expected type, want, is one
+// of kotlin.reflect's, and returns its type. Where a KCallable is
+// expected, the reference may be a function's, a KFunctionN: ::box.
+func (c *Checker) kpropRef(x *syntax.Lambda, want types.Type) types.Type {
+	n := len(c.errs)
 	ps, rt, ok := c.checkRef(x, lambdaWant{ret: noWant, prop: true})
+	if (!ok || rt.K == types.Invalid) && len(c.errs) > n && want.Flex().NonNull().C.Name == "kotlin/reflect/KCallable" {
+		errs := c.errs[n:]
+		c.errs, x.KProp = c.errs[:n], nil
+		if t := c.lambda(x, noWant); t.K != types.Invalid && len(c.errs) == n {
+			return t
+		}
+		c.errs = append(c.errs[:n], errs...)
+		return types.InvalidType
+	}
 	if !ok || rt.K == types.Invalid {
 		return types.InvalidType
 	}
