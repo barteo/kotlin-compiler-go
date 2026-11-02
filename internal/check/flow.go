@@ -748,3 +748,113 @@ func findNarrow(ns []narrow, n narrow) (types.Type, bool) {
 	}
 	return types.Type{}, false
 }
+
+// notNullCast returns the smart cast of (a as T)!! or (a as? T)!!, x
+// being the cast: a is a T and not null for the code after it.
+func (c *Checker) notNullCast(x syntax.Expr) []narrow {
+	as, ok := x.(*syntax.As)
+	if !ok {
+		return nil
+	}
+	k, ok := c.castNarrow(as)
+	if !ok {
+		if k, ok = c.narrowKeyOf(as.X); !ok {
+			return nil
+		}
+	}
+	k.t = k.t.NonNull()
+	return []narrow{k}
+}
+
+// safeArgCasts returns the smart casts of the casts and the x!! in the
+// arguments of a safe call x, a?.f(b as T), which run if it isn't null:
+// after a?.f(b as T) != null, b is a T.
+func (c *Checker) safeArgCasts(x syntax.Expr) []narrow {
+	call, ok := x.(*syntax.Call)
+	if !ok {
+		return nil
+	}
+	var out []narrow
+	for _, a := range call.Args {
+		if _, ok := a.(*syntax.Lambda); ok {
+			continue
+		}
+		alwaysCasts(a, func(as *syntax.As) {
+			if k, ok := c.castNarrow(as); ok {
+				out = append(out, k)
+			}
+		})
+		out = append(out, c.asserted(a)...)
+	}
+	return out
+}
+
+// tryAssigned returns the smart casts of vars, which blocks of a try
+// assign, in its catch and finally blocks, which may run after any of
+// those assignments: as with kotlinc, a var has the join of its type
+// before the try and the types of the values assigned to it, String
+// after s = "" before and in the try. It is the declared type when the
+// blocks assign it other than with =, or in nested code.
+func (c *Checker) tryAssigned(vars []*types.VarSym, blocks ...*syntax.Block) []narrow {
+	var out []narrow
+	for _, v := range vars {
+		t := c.scope.narrowed(v)
+		ok := true
+		for _, b := range blocks {
+			if b == nil || !ok {
+				continue
+			}
+			inspect(b, func(n any) bool {
+				if !ok {
+					return false
+				}
+				switch n := n.(type) {
+				case *syntax.Lambda, *syntax.LocalFun, *syntax.ObjectExpr, *syntax.LocalClass:
+					if assignedNames(n)[v.Name] {
+						ok = false
+					}
+					return false
+				case *syntax.Unary:
+					if name, is := assignedName(n); is && name == v.Name {
+						ok = false
+					}
+				case *syntax.Assign:
+					id, is := n.Target.(*syntax.Ident)
+					if !is || id.Name != v.Name || id.Sym != nil && id.Sym != v {
+						break
+					}
+					vt := n.Value.Type()
+					if n.Op != syntax.ASSIGN || vt.K == types.Invalid || vt.K == types.Nothing || !c.subtype(vt, v.Type) {
+						ok = false
+						break
+					}
+					if vt.K == types.Null {
+						vt = v.Type // assignedVar's
+					}
+					j, joined := c.join(t, vt)
+					if !joined || j.K == types.Invalid {
+						ok = false
+						break
+					}
+					t = j
+				}
+				return ok
+			})
+		}
+		if ok && t != v.Type && c.subtype(t, v.Type) {
+			out = append(out, narrow{sym: v, t: t})
+		}
+	}
+	return out
+}
+
+// onlyVars returns the smart casts in ns of the vars in vars.
+func onlyVars(ns []narrow, vars []*types.VarSym) []narrow {
+	var out []narrow
+	for _, n := range ns {
+		if n.recv == nil && slices.Contains(vars, n.sym) {
+			out = append(out, n)
+		}
+	}
+	return out
+}

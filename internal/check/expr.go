@@ -245,6 +245,7 @@ func (c *Checker) expr1(x syntax.Expr, want types.Type, allowRange bool, sink *s
 			k.t = k.t.NonNull()
 			c.scope.narrows = append(append(c.scope.narrows, k), c.implied[c.localKey(k)]...)
 		}
+		c.scope.narrows = append(c.scope.narrows, c.notNullCast(x.X)...)
 		return t.NonNull()
 	case *syntax.Spread:
 		// An argument for a vararg parameter: resolve checks where it goes.
@@ -1555,7 +1556,7 @@ func (c *Checker) safeReceivers(x syntax.Expr) []narrow {
 	if recv == nil {
 		return nil
 	}
-	return c.equalNonNull(recv)
+	return append(c.equalNonNull(recv), c.safeArgCasts(x)...)
 }
 
 // equalNonNull returns the smart casts implied by x being equal to a
