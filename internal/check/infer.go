@@ -546,6 +546,35 @@ func (s *system) fix(tv *tvar) {
 	default:
 		s.errs = append(s.errs, inferError{tv.pos, "cannot infer type for type parameter '" + tv.v.Name + "'. Specify it explicitly."})
 	}
+	// A variable with only upper constraints is their intersection with
+	// its declared bounds, as K2 infers it. kc has no intersection types:
+	// it takes a bound below the constraints, and otherwise keeps them,
+	// unless the intersection is empty: S of fun <S : Out<B>> for
+	// Foo<in S> and a Foo<K> of K : Out<L> is K & Out<B>.
+	upperOnly := len(lowers) == 0 && len(tv.lits) == 0 && len(uppers) > 0
+	inBounds := map[int]bool{}
+	if upperOnly {
+		for i, b := range tv.v.Bounds {
+			if b = s.apply(b); b.HasVars() || c.subtype(val, b) {
+				continue
+			}
+			switch {
+			case c.subtype(b, val):
+				val = b
+				inBounds[i] = true
+			case !types.MayBeNull(val) && c.subtype(b.NonNull(), val):
+				val = b.NonNull()
+				inBounds[i] = true
+			case tv.v.Origin != nil && tv.v.Origin.Reified:
+				// An intersection is no reified type argument.
+				s.errs = append(s.errs, inferError{tv.pos, "type argument for reified type parameter '" + tv.v.Name +
+					"' was inferred to the intersection of ['" + b.String() + "' & '" + val.String() + "']"})
+				inBounds[i] = true
+			case !c.emptyIntersection(val, b):
+				inBounds[i] = true
+			}
+		}
+	}
 	tv.fixed = true
 	if s.vals == nil {
 		s.vals = types.Subst{}
@@ -560,8 +589,8 @@ func (s *system) fix(tv *tvar) {
 	for _, u := range tv.upper {
 		s.sub(val, u)
 	}
-	for _, b := range tv.v.Bounds {
-		if b = s.apply(b); !captured && !tv.proj && !b.HasVars() && !c.subtype(val, b) {
+	for i, b := range tv.v.Bounds {
+		if b = s.apply(b); !captured && !tv.proj && !inBounds[i] && !b.HasVars() && !c.subtype(val, b) {
 			s.errs = append(s.errs, inferError{tv.pos, "type argument is not within its bounds: inferred type " +
 				val.String() + " of type parameter '" + tv.v.Name + "' is not a subtype of " + b.String()})
 		}
