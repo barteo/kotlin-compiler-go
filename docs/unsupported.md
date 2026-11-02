@@ -230,7 +230,9 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   abbreviations.
 - A private property initialized with an object expression has the
   object's supertype, not its anonymous type.
-- A class-path generic value class whose underlying type is its type
-  parameter isn't known as one until it is loaded.
+- A generic value class whose underlying type is a type parameter
+  bounded by a primitive type (`value class W<T : Int>(val s: T)`) is
+  unboxed as the boxed primitive (`Integer`); `kotlinc` passes the
+  primitive (`int`) to its `-impl` methods.
 - Annotations on local variables, type parameters, types and
   expressions aren't written, nor are `@[A B]` lists.

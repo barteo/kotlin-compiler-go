@@ -657,7 +657,12 @@ func (g *gen) as(x *syntax.As) {
 	}
 	cls := instanceClass(to) // as? T checks T's erasure, as kotlinc
 	if x.Safe {
+		// The box or null, which an unboxed value class's value unboxes
+		// after.
 		ok, end := cf.NewLabel(), join(x.T)
+		if types.Unboxed(x.T) {
+			end = join(types.Boxed(x.T))
+		}
 		g.code.Op(cf.DUP)
 		g.isInstance(to, cls)
 		g.code.Jump(cf.IFNE, ok)
@@ -2103,7 +2108,12 @@ func (g *gen) ungroupedCall(x *syntax.Call) {
 		invoke := func(cls *types.ClassSym, rt types.Type) {
 			if f.Owner.Value {
 				// A value class's member: a static method that takes the
-				// value first, or with omitted arguments its $default.
+				// value first, or with omitted arguments its $default; an
+				// override's is the overridden function's, of an
+				// interface, which takes the box.
+				if o := f.DefaultsOf; o != nil && !o.Owner.Value && omits(x, f) {
+					g.boxValue(f.Owner.This())
+				}
 				g.contextArgs(x, f)
 				if mask := g.callArgs(x, f); mask.any() {
 					g.invokeDefault(f, mask)
