@@ -283,6 +283,11 @@ func paramsString(ps []types.Type) string {
 // returns the parameter types and the result type, and false if the
 // parameters don't match the expected ones.
 func (c *Checker) checkLambda(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.Type, bool) {
+	if c.file.Annotated != nil {
+		// A lambda argument is checked here, not by expr, which checks
+		// the annotations of the others: list.map @A { }.
+		c.annotatedExpr(x)
+	}
 	if x.Ref != nil {
 		return c.checkRef(x, w)
 	}

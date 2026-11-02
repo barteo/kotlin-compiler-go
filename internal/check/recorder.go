@@ -23,7 +23,9 @@ type Recorder interface {
 	Stmt(s syntax.Stmt, valueUsed bool)
 	// Unreachable reports a statement after one that always jumps.
 	Unreachable(s syntax.Stmt)
-	// Annotation reports the class an annotation of file f resolves to.
+	// Annotation reports the class an annotation of file f resolves to,
+	// a nested one in another's arguments, ReplaceWith("x") in
+	// @Deprecated, included: that one's position is its call's.
 	Annotation(f *syntax.File, a *syntax.Annotation, cls *types.ClassSym)
 	// Elvis reports whether the non-null type of an elvis expression's
 	// left side is a subtype of its right side's type.

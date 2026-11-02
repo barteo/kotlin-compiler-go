@@ -23,7 +23,10 @@ import (
 type Provenance struct {
 	m map[any]psi.NodeID
 	// annots are the ANNOTATION_ENTRYs of annotations, by position:
-	// syntax.Annotation is a value the AST copies.
+	// syntax.Annotation is a value the AST copies. The checker parses an
+	// annotation's arguments from tokens, so the CALL_EXPRESSIONs in them,
+	// which may be nested annotations, are here too, by the position of
+	// their '(' as a parsed call's.
 	annots map[syntax.Pos]psi.NodeID
 	// negated are the PREFIX_EXPRESSIONs folded into negative literals:
 	// -1 is a literal, which the AST keeps for the INTEGER_CONSTANT.
@@ -41,7 +44,8 @@ func (p *Provenance) Negated(fn func(prefix psi.NodeID, lit *syntax.IntLit)) {
 	}
 }
 
-// Annotation returns the ANNOTATION_ENTRY of the annotation at p, or 0.
+// Annotation returns the ANNOTATION_ENTRY of the annotation at p, the
+// CALL_EXPRESSION of a nested annotation whose '(' is at p, or 0.
 func (p *Provenance) Annotation(at syntax.Pos) psi.NodeID {
 	if p == nil {
 		return 0

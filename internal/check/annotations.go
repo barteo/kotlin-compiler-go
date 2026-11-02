@@ -310,7 +310,11 @@ func (c *Checker) annotationElem(x syntax.Expr, t types.Type) (syntax.Annotation
 				}
 			}
 			values, ok := c.annotationValues(t.C, args, call.Pos())
-			return syntax.AnnotationElem{Nested: &syntax.Annotation{P: call.Pos(), Class: t.C, Values: values}}, ok
+			nested := &syntax.Annotation{P: call.Pos(), Class: t.C, Values: values}
+			if rec := c.u.rec; rec != nil {
+				rec.Annotation(c.file, nested, t.C)
+			}
+			return syntax.AnnotationElem{Nested: nested}, ok
 		}
 	}
 	before := len(c.errs)

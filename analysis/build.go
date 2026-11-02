@@ -1720,12 +1720,25 @@ func (b *builder) annotations() {
 			if id == 0 {
 				continue
 			}
-			ref := b.snaps[i].Node(id).ChildKind(psi.KindCONSTRUCTOR_CALLEE).ChildKind(psi.KindTYPE_REFERENCE)
+			n := b.snaps[i].Node(id)
 			ct := b.cv.typ(types.ClassType(cls))
-			if !ref.Valid() || ct == nil {
+			sid := b.snaps[i].ID()
+			if ct == nil {
 				continue
 			}
-			sid := b.snaps[i].ID()
+			if n.NumericKind() == psi.KindCALL_EXPRESSION {
+				// A nested annotation, ReplaceWith("x") in @Deprecated: a
+				// constructor call of its class.
+				b.set(ElementID{sid, n.ID()}, Fact{Role: "expression", Type: ct})
+				if callee := n.ChildKind(psi.KindREFERENCE_EXPRESSION); callee.Valid() {
+					b.set(ElementID{sid, callee.ID()}, Fact{Role: "reference", Classifier: true, ImportableName: classFQ(cls)})
+				}
+				continue
+			}
+			ref := n.ChildKind(psi.KindCONSTRUCTOR_CALLEE).ChildKind(psi.KindTYPE_REFERENCE)
+			if !ref.Valid() {
+				continue
+			}
 			b.set(ElementID{sid, ref.ID()}, Fact{Role: "type", Type: ct})
 			if u := ref.ChildKind(psi.KindUSER_TYPE); u.Valid() {
 				b.set(ElementID{sid, u.ID()}, Fact{Role: "type", Type: copyType(ct)})

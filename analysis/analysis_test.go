@@ -1189,3 +1189,32 @@ fun g(x: C) = C(1)
 		t.Errorf("Names: %+v", f.Type)
 	}
 }
+
+func TestNestedAnnotations(t *testing.T) {
+	r, s := analyzed(t, withStdlib(t), `package p
+
+@Deprecated(message = "unused", replaceWith = ReplaceWith("bar"))
+fun foo() = "1234"
+
+@Deprecated("x", kotlin.ReplaceWith("bar"))
+fun bar() = 1
+`)
+	if f := fact(t, r, at(t, s, "CALL_EXPRESSION", `ReplaceWith("bar")`, 0)); f.Type == nil || f.Type.Name != "kotlin.ReplaceWith" {
+		t.Errorf("ReplaceWith: %+v", f.Type)
+	}
+	if f := fact(t, r, at(t, s, "REFERENCE_EXPRESSION", "ReplaceWith", 0)); !f.Classifier || f.ImportableName != "kotlin.ReplaceWith" {
+		t.Errorf("ReplaceWith callee: %+v", f)
+	}
+	if f := fact(t, r, at(t, s, "CALL_EXPRESSION", `ReplaceWith("bar")`, 1)); f.Type == nil || f.Type.Name != "kotlin.ReplaceWith" {
+		t.Errorf("kotlin.ReplaceWith: %+v", f.Type)
+	}
+}
+
+func TestLambdaArgumentAnnotations(t *testing.T) {
+	r, s := analyzed(t, withStdlib(t), `fun f(list: List<String>) {
+    list.map @Suppress("x") { it.length }
+}`)
+	if f := fact(t, r, at(t, s, "TYPE_REFERENCE", "Suppress", 0)); f.Type == nil || f.Type.Name != "kotlin.Suppress" {
+		t.Errorf("Suppress: %+v", f.Type)
+	}
+}

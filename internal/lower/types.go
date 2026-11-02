@@ -404,6 +404,14 @@ func (l *lowerer) annotationArgs(n psi.NodeRef) []syntax.AnnotationArg {
 			arg.Name = ident(first(first(start)))
 			start = next(next(start)) // after the '='
 		}
+		psi.WalkNodes(c, func(k psi.NodeRef) bool {
+			if k.NumericKind() == psi.KindCALL_EXPRESSION {
+				if list := child(k, psi.KindVALUE_ARGUMENT_LIST); list.Valid() {
+					l.annots[l.pos(list)] = k.ID()
+				}
+			}
+			return true
+		})
 		if start.Valid() {
 			from := l.tokenStart(start)
 			toks, _ := syntax.TokenizeAt(l.path, l.src[from:c.Range().End], l.posAt(from))
