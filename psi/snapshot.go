@@ -1,7 +1,7 @@
 package psi
 
 import (
-	"errors"
+	"fmt"
 	"sort"
 	"sync/atomic"
 	"unicode/utf8"
@@ -171,11 +171,24 @@ func (s *Snapshot) DeclarationNodes() []NodeRef {
 	return out
 }
 
-var errOffset = errors.New("psi: offset out of range or inside a UTF-8 sequence")
-
+// checkOffset accepts the offsets at which decoding the source rune by rune
+// (as a range loop does, one rune per invalid byte) can stop.
 func (s *Snapshot) checkOffset(off int) error {
-	if off < 0 || off > len(s.src) || off < len(s.src) && !utf8.RuneStart(s.src[off]) {
-		return errOffset
+	if off < 0 || off > len(s.src) {
+		return fmt.Errorf("invalid UTF-8 boundary: %d", off)
+	}
+	if off == len(s.src) || utf8.RuneStart(s.src[off]) {
+		return nil
+	}
+	// A continuation byte is inside a rune only when the nearest preceding
+	// rune start decodes through it; otherwise it decodes on its own.
+	for p := off - 1; p >= 0 && p >= off-utf8.UTFMax; p-- {
+		if utf8.RuneStart(s.src[p]) {
+			if _, size := utf8.DecodeRuneInString(s.src[p:]); p+size > off {
+				return fmt.Errorf("invalid UTF-8 boundary: %d", off)
+			}
+			return nil
+		}
 	}
 	return nil
 }

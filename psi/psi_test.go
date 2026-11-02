@@ -265,6 +265,14 @@ func TestOffsets(t *testing.T) {
 			t.Errorf("UTF16Offset(%d) accepted", off)
 		}
 	}
+	// Invalid bytes decode one rune each, as in a range loop.
+	s = Parse("c.kt", "\xffa\xc0\x80😀")
+	for off, u16 := range []int{0, 1, 2, 3, 4, -1, -1, -1, 6} {
+		got, err := s.UTF16Offset(off)
+		if u16 < 0 && (err == nil || err.Error() != fmt.Sprintf("invalid UTF-8 boundary: %d", off)) || u16 >= 0 && (err != nil || got != u16) {
+			t.Errorf("UTF16Offset(%d) = %d %v, want %d", off, got, err, u16)
+		}
+	}
 	// Checkpoints: a long non-ASCII source.
 	long := strings.Repeat("ż\U0001F600x\n", 1000)
 	s = Parse("b.kt", long)
