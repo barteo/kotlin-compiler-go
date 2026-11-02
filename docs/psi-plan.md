@@ -236,6 +236,13 @@ The lowerer has to produce the **same** AST.
 
 ## Part B: kotlin-linters-go (new repo)
 
+> **Status: imported.** [barteo/kotlin-linters-go](https://github.com/barteo/kotlin-linters-go)
+> holds the import (one commit citing c462563) and depends on this branch by pseudo-version. Its
+> `docs/status.md` lists what passes: the syntax-only rules almost all do, and most remaining
+> failures are B3.2 fact families `analysis` does not provide yet. Not done: the version tags in
+> A6, which wait for this branch to merge, and the speed gate, whose harness still needs the
+> dropped bridge.
+
 **Prerequisite:** the user creates the empty GitHub repo `barteo/kotlin-linters-go`. This session
 cannot create repositories. It is then added to the session.
 
