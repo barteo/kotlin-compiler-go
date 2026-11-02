@@ -180,6 +180,8 @@ type TypeParam struct {
 	Bounds  []*TypeRef
 	Sym     *types.TypeParamSym
 	Reified bool
+	// OnlyInput is set by @kotlin.internal.OnlyInputTypes.
+	OnlyInput bool
 }
 
 type Param struct {

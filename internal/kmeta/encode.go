@@ -589,6 +589,9 @@ func (w *writer) typeParam(p *TypeParam) []byte {
 	for _, b := range p.Bounds {
 		e.msg(5, w.typ(b))
 	}
+	if p.OnlyInput {
+		e.msg(100, w.annotation(&Annotation{Class: "kotlin/internal/OnlyInputTypes"}))
+	}
 	return e.b
 }
 

@@ -1126,8 +1126,12 @@ func (p *parser) parseTypeParams() []*TypeParam {
 		if p.at(GT) && ps != nil {
 			break // a trailing comma
 		}
+		onlyInput := false
 		for p.at(AT) {
-			p.annotation() // ignored: kc writes no type annotations
+			// Ignored, as kc writes no type annotations, but for the
+			// inference's OnlyInputTypes.
+			a := p.annotation()
+			onlyInput = onlyInput || a.Is("internal.OnlyInputTypes")
 			p.skipNL()
 		}
 		reified := false
@@ -1135,7 +1139,7 @@ func (p *parser) parseTypeParams() []*TypeParam {
 			reified = true
 			p.next()
 		}
-		tp := &TypeParam{Variance: p.variance(), Reified: reified}
+		tp := &TypeParam{Variance: p.variance(), Reified: reified, OnlyInput: onlyInput}
 		name := p.ident()
 		tp.P, tp.Name = name.Pos, name.Text
 		if p.peekPastNL() == COLON {

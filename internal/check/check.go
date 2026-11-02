@@ -867,7 +867,7 @@ func (c *Checker) declareTypeParams(decls []*syntax.TypeParam, owner any, allowV
 		if d.Variance != types.Inv && !allowVariance {
 			c.errorf(d.P, "variance annotations are only allowed for type parameters of classes")
 		}
-		d.Sym = &types.TypeParamSym{Name: d.Name, Var: d.Variance, Index: i, Owner: owner, Reified: d.Reified}
+		d.Sym = &types.TypeParamSym{Name: d.Name, Var: d.Variance, Index: i, Owner: owner, Reified: d.Reified, OnlyInput: d.OnlyInput}
 		if d.Reified {
 			if _, fn := owner.(*types.FunSym); !fn {
 				c.errorf(d.P, "only type parameters of inline functions can be reified")

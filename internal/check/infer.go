@@ -575,6 +575,10 @@ func (s *system) fix(tv *tvar) {
 			}
 		}
 	}
+	if !s.onlyInputOK(tv, val) {
+		s.errs = append(s.errs, inferError{tv.pos, "type inference failed. The value of the type parameter '" + tv.v.Name +
+			"' must be mentioned in input types (argument types, receiver type, or expected type). Try to specify it explicitly."})
+	}
 	tv.fixed = true
 	if s.vals == nil {
 		s.vals = types.Subst{}

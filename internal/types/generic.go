@@ -162,6 +162,10 @@ type TypeParamSym struct {
 	// Reified is set on a reified type parameter of an inline function,
 	// which a copy of its body knows.
 	Reified bool
+	// OnlyInput is set on a parameter annotated @kotlin.internal.OnlyInputTypes,
+	// as T of contains(element: T): what a call infers for it must be the
+	// type of one of its inputs.
+	OnlyInput bool
 	// Global is set on a parameter of a symbol that a package-level
 	// variable declares for all compilations in the process, such as
 	// kotlin.Array's T: see MakeArgs.
@@ -175,6 +179,7 @@ type TypeParamSym struct {
 // types of p refer to: see check.trial.
 func (p *TypeParamSym) Redeclare(q *TypeParamSym) {
 	p.Name, p.Var, p.Bounds, p.Index, p.Owner, p.Origin, p.Reified = q.Name, q.Var, q.Bounds, q.Index, q.Owner, q.Origin, q.Reified
+	p.OnlyInput = q.OnlyInput
 }
 
 // Param returns the parameter or variable of a TypeParam or TypeVar type.

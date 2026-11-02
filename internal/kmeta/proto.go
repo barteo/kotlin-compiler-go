@@ -60,6 +60,9 @@ type TypeParam struct {
 	Reified  bool
 	Variance Projection // In, Out or Inv
 	Bounds   []*Type
+	// OnlyInput is set by @kotlin.internal.OnlyInputTypes, which the JVM
+	// extension typeParameterAnnotation keeps.
+	OnlyInput bool
 }
 
 // Param is a value parameter.
@@ -592,6 +595,8 @@ func (s scope) typeParam(msg []byte) *TypeParam {
 			for _, id := range d.ints(w, nil) {
 				p.Bounds = append(p.Bounds, s.typeID(id))
 			}
+		case 100:
+			p.OnlyInput = p.OnlyInput || s.annotationClass(d.bytes()) == "kotlin/internal/OnlyInputTypes"
 		default:
 			d.skip(w)
 		}
