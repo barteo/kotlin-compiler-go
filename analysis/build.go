@@ -53,7 +53,7 @@ func analyze(ctx context.Context, cfg Config, snaps []*psi.Snapshot) (*Result, e
 		return nil, fmt.Errorf("analysis: %w", err)
 	}
 	defer cp.Close()
-	rec := &recorder{when: map[*syntax.When]whenReport{}, stmt: map[syntax.Stmt]bool{}, unreachable: map[syntax.Stmt]bool{}, annots: map[*syntax.File]map[syntax.Pos]*types.ClassSym{}, elvis: map[*syntax.Binary]bool{}, typeRefs: map[*syntax.TypeRef]types.Type{}, annotClass: map[*syntax.Annotation]*types.ClassSym{}, stmtTypes: map[syntax.Expr]types.Type{}}
+	rec := &recorder{when: map[*syntax.When]whenReport{}, stmt: map[syntax.Stmt]bool{}, unreachable: map[syntax.Stmt]bool{}, annots: map[*syntax.File]map[syntax.Pos]*types.ClassSym{}, elvis: map[*syntax.Binary]bool{}, typeRefs: map[*syntax.TypeRef]types.Type{}, annotClass: map[*syntax.Annotation]*types.ClassSym{}, stmtTypes: map[syntax.Expr]types.Type{}, aliases: map[any]*types.AliasSym{}}
 	errs, err := check.CheckContext(ctx, files, lib, jobs, rec)
 	if err != nil {
 		return nil, err
@@ -146,6 +146,24 @@ type recorder struct {
 	// stmtTypes are the types of the ifs, whens and trys used as
 	// statements.
 	stmtTypes map[syntax.Expr]types.Type
+	// aliases are the typealiases type references and constructor calls
+	// name.
+	aliases map[any]*types.AliasSym
+}
+
+// Alias implements check.AliasRecorder.
+func (r *recorder) Alias(x any, a *types.AliasSym) {
+	r.mu.Lock()
+	r.aliases[x] = a
+	r.mu.Unlock()
+}
+
+// aliasFQ returns the fully qualified name of a typealias.
+func aliasFQ(a *types.AliasSym) string {
+	if a.Outer != nil {
+		return classFQ(a.Outer) + "." + a.Name
+	}
+	return qualify(a.Pkg, a.Name)
 }
 
 func (r *recorder) StmtType(x syntax.Expr, t types.Type) {
@@ -461,6 +479,9 @@ func (b *builder) typeRef(r *syntax.TypeRef, t types.Type) {
 		return
 	}
 	f := Fact{Role: "type", Type: ct}
+	if a := b.rec.aliases[r]; a != nil {
+		f.ImportableName = aliasFQ(a)
+	}
 	if t.K == types.Class && b.node(el).Kind() == "USER_TYPE" {
 		f.Deprecated = deprecated(classDeprecation(t.C))
 	}
@@ -473,7 +494,7 @@ func (b *builder) typeRef(r *syntax.TypeRef, t types.Type) {
 			break
 		}
 		if k == "TYPE_REFERENCE" {
-			b.set(ElementID{Snapshot: el.Snapshot, Node: n.ID()}, Fact{Role: "type", Type: copyType(ct)})
+			b.set(ElementID{Snapshot: el.Snapshot, Node: n.ID()}, Fact{Role: "type", Type: copyType(ct), ImportableName: f.ImportableName})
 			break
 		}
 	}
@@ -979,6 +1000,9 @@ func (b *builder) callExpr(x *syntax.Call, el ElementID, f *Fact) {
 	if x.Ctor != nil {
 		cf.Classifier = true
 		cf.ImportableName = classFQ(x.Ctor)
+		if a := b.rec.aliases[x]; a != nil {
+			cf.ImportableName = aliasFQ(a)
+		}
 	}
 	b.set(fe, cf)
 }

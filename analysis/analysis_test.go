@@ -1157,3 +1157,35 @@ abstract class Reabstract : I {
 		t.Error("HasAbstractSuperclass")
 	}
 }
+
+func TestAliasImportableNames(t *testing.T) {
+	r, s := analyzed(t, withStdlib(t), `package p
+
+class C(val n: Int)
+typealias Alias = C
+typealias Names = List<String>
+
+fun f(x: Alias?, y: List<Alias>, z: Names) = Alias(1)
+fun g(x: C) = C(1)
+`)
+	for _, c := range []struct {
+		kind, text string
+		nth        int
+		want       string
+	}{
+		{"TYPE_REFERENCE", "Alias?", 0, "p.Alias"},
+		{"USER_TYPE", "Alias", 1, "p.Alias"},
+		{"TYPE_REFERENCE", "Names", 0, "p.Names"},
+		{"REFERENCE_EXPRESSION", "Alias", 2, "p.Alias"},
+		{"REFERENCE_EXPRESSION", "C", 2, "p.C"},
+		{"TYPE_REFERENCE", "C", 1, ""},
+	} {
+		if f := fact(t, r, at(t, s, c.kind, c.text, c.nth)); f.ImportableName != c.want {
+			t.Errorf("%s %q #%d: %q, want %q", c.kind, c.text, c.nth, f.ImportableName, c.want)
+		}
+	}
+	// The type is the expansion.
+	if f := fact(t, r, at(t, s, "TYPE_REFERENCE", "Names", 0)); f.Type == nil || f.Type.Name != "kotlin.collections.List" {
+		t.Errorf("Names: %+v", f.Type)
+	}
+}

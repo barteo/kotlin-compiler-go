@@ -2093,6 +2093,7 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 			}
 		}
 		if a := c.findClassifier(name).alias; a != nil && cls != nil && len(fs) == 0 {
+			c.recordAlias(x, a)
 			return c.aliasConstruct(x, a, cls, fn.P, want, sink)
 		}
 		if cls != nil && cls.Object && len(fs) == 0 && c.hasFun(types.ClassType(cls), "invoke", x) {
@@ -2182,6 +2183,7 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 		if cls := c.classRef(fn); cls != nil {
 			if name := c.qualifiedName(fn); name != "" {
 				if a := c.lookupAlias(name); a != nil {
+					c.recordAlias(x, a)
 					return c.aliasConstruct(x, a, cls, fn.P, want, sink) // a.b.Alias(1)
 				}
 			}

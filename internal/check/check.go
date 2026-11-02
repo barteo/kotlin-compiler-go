@@ -630,6 +630,7 @@ func (c *Checker) resolveType1(ref *syntax.TypeRef) types.Type {
 	}
 	if a := c.lookupAlias(ref.Name); a != nil && c.lookupTypeParam(ref.Name) == nil {
 		c.checkAliasVisible(a, ref.P)
+		c.recordAlias(ref, a)
 		return c.expandAlias(a, ref)
 	}
 	var t types.Type

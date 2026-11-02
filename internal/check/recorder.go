@@ -13,13 +13,6 @@ import (
 // overloads are chosen: the last report counts.
 //
 // Compilation passes no Recorder and pays nothing for it.
-// An OverrideRecorder is a Recorder that, once checking is done, is
-// given a function that returns the functions of the supertypes of f's
-// owner that f overrides, directly: as the checker resolves overrides.
-type OverrideRecorder interface {
-	Overridden(func(f *types.FunSym) []*types.FunSym)
-}
-
 type Recorder interface {
 	// When reports whether the branches of a when with a subject cover
 	// every case of it, its else branch aside, and whether its value is
@@ -42,4 +35,25 @@ type Recorder interface {
 	// StmtType reports the type of an if, when or try used as a
 	// statement, which the checker doesn't give its node.
 	StmtType(x syntax.Expr, t types.Type)
+}
+
+// An OverrideRecorder is a Recorder that, once checking is done, is
+// given a function that returns the functions of the supertypes of f's
+// owner that f overrides, directly: as the checker resolves overrides.
+type OverrideRecorder interface {
+	Overridden(func(f *types.FunSym) []*types.FunSym)
+}
+
+// An AliasRecorder is a Recorder that is also told the typealias a type
+// reference or a constructor call names: Alias in x: Alias and Alias(1).
+type AliasRecorder interface {
+	// Alias reports that x, a *syntax.TypeRef or a *syntax.Call, names a.
+	Alias(x any, a *types.AliasSym)
+}
+
+// recordAlias reports to an AliasRecorder that x names a.
+func (c *Checker) recordAlias(x any, a *types.AliasSym) {
+	if r, ok := c.u.rec.(AliasRecorder); ok {
+		r.Alias(x, a)
+	}
 }
