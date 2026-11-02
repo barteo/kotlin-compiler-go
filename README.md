@@ -160,6 +160,8 @@ It expects `kotlinc` and the JDK where Homebrew installs them; set
   and libraries built with `kc` and tested end to end
 - [Conformance](docs/conformance.md): `kotlinc`'s own box and diagnostics
   tests run against `kc`
+- [PSI and analysis](docs/psi.md): the public parser and analysis API for
+  linters and other tools
 
 ## PSI API
 
@@ -176,8 +178,22 @@ for _, d := range s.DeclarationNodes() {
 ```
 
 Its tests compare every tree with stock Kotlin's, from dumps made by
-[`tools/psidump`](tools/psidump/README.md). The plan for connecting it to
-`kc`'s checker is in [docs/psi-plan.md](docs/psi-plan.md).
+[`tools/psidump`](tools/psidump/README.md).
+
+Package [`analysis`](analysis/analysis.go) runs `kc`'s checker on psi
+snapshots and reports what it resolved, keyed by psi node: expression
+types, symbols, calls, `when` coverage, smart casts, unreachable code and
+more:
+
+```go
+r, err := analysis.AnalyzeArena(ctx, analysis.Config{ClassPath: cp}, snapshots)
+if err != nil { ... }
+if d := r.Diagnostics(); len(d) > 0 { ... } // kc can't compile it: no facts
+f, ok := r.Fact(analysis.ElementID{Snapshot: s.ID(), Node: n.ID()})
+```
+
+See [docs/psi.md](docs/psi.md) for how both work, and
+[docs/psi-plan.md](docs/psi-plan.md) for the plan they came from.
 
 ## Tests
 
