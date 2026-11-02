@@ -44,6 +44,13 @@ imports them.
 ## Part A: kotlin-compiler-go (branch `work/busy-heisenberg-xkecpi`)
 
 ### A1. Shared scanner in `internal/syntax`
+
+> **Status: replaced.** psi has its own lexer (`psi/lexer.go`, a port of `Kotlin.flex`). Matching
+> stock Kotlin's token stream exactly (soft keywords, KDoc, template entries, `BAD_CHARACTER`,
+> shebang) needs the full Kotlin lexer, which `internal/syntax` doesn't have, and changing kc's
+> compile path to share it would risk the compiler for no gain to the lint API. kc's `Tokenize` is
+> unchanged. The steps below were not done.
+
 kc's lexer (`internal/syntax/lexer.go:25`, `Tokenize`) throws trivia away, keeps only line/column
 positions, and counts columns as bytes in some places and runes in others.
 - Add a streaming `Scan(src string, emit func(Tok))` that reports **byte offsets**, whitespace,
@@ -117,10 +124,11 @@ accessors.go, walk.go}` and `psi/testdata/`.
 
 **Tree-shape goldens.** The JNI gate that compared tree shapes is gone, so add a standalone dump tool
 in its place.
-- `tools/psidump/` is a small Kotlin/JVM program that parses with stock
+- `tools/psidump/` is a small Java program (single-file source launch) that parses with stock
   `kotlin-compiler-embeddable` 2.0.21 and writes `{kind, start, end}` in preorder.
-- Run it offline on `testdata/**/*.kt` plus targeted grammar fixtures, and commit the results as
-  `psi/testdata/trees/*.json`.
+- Run it offline on `testdata/**/*.kt` plus targeted grammar fixtures. The fixture dumps are
+  committed as `psi/testdata/trees/*.tree`; the corpus dumps are committed only as SHA-256 sums,
+  `psi/testdata/corpus.sum`, to keep the repository small.
 - `psi` tests compare against those goldens, so CI needs no JVM.
 
 ### A3. Direct lowering from PSI to the kc AST (`internal/lower`, new)

@@ -60,6 +60,23 @@ jobs:
       - name: go build
         run: go build ./...
 
+      - name: psi/kinds_gen.go is up to date
+        run: go run ./cmd/psi-kinds -check
+
+  fuzz-psi:
+    name: Fuzz psi
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.mod
+
+      - name: FuzzParse
+        run: go test ./psi -run '^$' -fuzz '^FuzzParse$' -fuzztime 60s
+
   test:
     name: Test
     runs-on: ubuntu-latest

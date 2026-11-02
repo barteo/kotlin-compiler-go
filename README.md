@@ -161,6 +161,24 @@ It expects `kotlinc` and the JDK where Homebrew installs them; set
 - [Conformance](docs/conformance.md): `kotlinc`'s own box and diagnostics
   tests run against `kc`
 
+## PSI API
+
+Package [`psi`](psi/doc.go) is a public, lossless Kotlin parser whose trees
+have the shape of the Kotlin compiler's PSI: the same element kinds, nesting,
+whitespace and comment placement, and syntax error messages. Linters and
+other tools use it without a JVM:
+
+```go
+s := psi.Parse("A.kt", text)
+for _, d := range s.DeclarationNodes() {
+    fmt.Println(d.Kind(), d.Name())
+}
+```
+
+Its tests compare every tree with stock Kotlin's, from dumps made by
+[`tools/psidump`](tools/psidump/README.md). The plan for connecting it to
+`kc`'s checker is in [docs/psi-plan.md](docs/psi-plan.md).
+
 ## Tests
 
 ```sh
@@ -194,4 +212,6 @@ skipped without them.
 
 ## License
 
-Apache License 2.0, the same as `kotlinc`. See [LICENSE](LICENSE).
+Apache License 2.0, the same as `kotlinc`. See [LICENSE](LICENSE). Package
+`psi` translates parts of Kotlin's and IntelliJ's parser; see
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
