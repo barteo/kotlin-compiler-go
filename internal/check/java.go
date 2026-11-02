@@ -442,6 +442,8 @@ func (c *Checker) resolveImports() {
 				c.errorf(imp.P, "cannot import on demand from object '%s'", owner.DisplayName())
 			} else if user == nil && owner != nil {
 				memberStars = append(memberStars, imp)
+			} else if a := c.importedAlias(imp.Path); user == nil && a != nil {
+				c.aliasStars = append(c.aliasStars, aliasStar{alias: a, imp: imp})
 			} else if user == nil && !optionalExpectationPackages[imp.Path] {
 				c.errorf(imp.P, "unresolved import: %s.*", imp.Path)
 			}
@@ -548,6 +550,9 @@ func (c *Checker) resolveImports() {
 			if n := c.nestedOf(owner, simple); n != nil {
 				c.imports[alias] = n
 				classifiers[alias] = append(classifiers[alias], imp.P)
+			} else if a := owner.Aliases[simple]; a != nil && !owner.External {
+				c.aliasImports[alias] = a // import p.Outer.A of a nested typealias
+				classifiers[alias] = append(classifiers[alias], imp.P)
 			} else {
 				c.memberImports[alias] = memberImport{owner: owner, name: simple, p: imp.P, path: imp.Path}
 			}
@@ -558,6 +563,9 @@ func (c *Checker) resolveImports() {
 		}
 		if pkg == "kotlin" && kotlinTypes[simple] && alias == simple {
 			continue // import kotlin.String: a built-in type, imported by default
+		}
+		if pkg == "kotlin" && builtinFuns[simple] && alias == simple {
+			continue // import kotlin.arrayOfNulls: built in, imported by default
 		}
 		c.errorf(imp.P, "unresolved import: %s", imp.Path)
 	}
@@ -574,26 +582,7 @@ func (c *Checker) resolveImports() {
 	// statics, enum entries too, after the explicit imports, and import
 	// kotlinx.coroutines.CoroutineStart.* a program's enum's entries.
 	for _, imp := range memberStars {
-		owner := c.importOwner(imp.Path)
-		owner.Ensure()
-		c.starOwners = append(c.starOwners, owner)
-		add := func(name string) {
-			if _, ok := c.memberImports[name]; !ok {
-				c.memberImports[name] = memberImport{owner: owner, name: name, p: imp.P, path: imp.Path + "." + name, star: true}
-			}
-		}
-		if !owner.External {
-			for _, name := range owner.Entries {
-				add(name)
-			}
-			continue
-		}
-		for name := range owner.Fields {
-			add(name)
-		}
-		for name := range owner.Statics {
-			add(name)
-		}
+		c.importMembers(c.importOwner(imp.Path), imp)
 	}
 }
 
