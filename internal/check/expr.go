@@ -3206,6 +3206,7 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 					continue
 				}
 				cond.Target = c.checkTarget(cond.Type, st, types.InvalidType, true)
+				c.whenIsCheck(x, cond, st)
 				if cond.Is && cond.Target.K == types.Class {
 					cov.classes = append(cov.classes, cond.Target.C)
 				}
