@@ -1302,9 +1302,9 @@ func (c *Checker) narrowing(cond syntax.Expr) (whenTrue, whenFalse []narrow) {
 			ok := false
 			ynull, xnull := isNull(x.Y), isNull(x.X)
 			if ynull {
-				k, ok = c.narrowKeyOf(x.X)
+				k, ok = c.chainKeyOf(x.X)
 			} else if xnull {
-				k, ok = c.narrowKeyOf(x.Y)
+				k, ok = c.chainKeyOf(x.Y)
 			}
 			var n, null []narrow
 			if ok && types.MayBeNull(k.t) {
@@ -1388,6 +1388,9 @@ func (c *Checker) narrowing(cond syntax.Expr) (whenTrue, whenFalse []narrow) {
 		}
 		k.t = c.isNarrowed(k.t, x.Target)
 		n := []narrow{k}
+		if !types.MayBeNull(k.t) {
+			n = append(n, c.implied[c.localKey(k)]...) // as for k != null
+		}
 		if x.Not {
 			return nil, n
 		}

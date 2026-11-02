@@ -674,6 +674,15 @@ func (c *Checker) mayNotRun(n int, other []narrow) {
 	}
 }
 
+// chainKeyOf is narrowKeyOf that also takes a?.b, as a.b, which a?.b
+// != null smart casts.
+func (c *Checker) chainKeyOf(x syntax.Expr) (narrow, bool) {
+	if m, ok := x.(*syntax.Member); ok && m.Safe {
+		return c.memberKey(m, m.Type())
+	}
+	return c.narrowKeyOf(x)
+}
+
 // notNullOf returns the smart cast of stable value x to its type without
 // null, which holds where it isn't null.
 func (c *Checker) notNullOf(x syntax.Expr) []narrow {
@@ -890,11 +899,19 @@ func findNarrow(ns []narrow, n narrow) (types.Type, bool) {
 }
 
 // notNullCast returns the smart cast of (a as T)!! or (a as? T)!!, x
-// being the cast: a is a T and not null for the code after it.
+// being the cast: a is a T and not null for the code after it. Of
+// a?.b!! and a?.f()!!, it returns those of a and a.b not being null.
 func (c *Checker) notNullCast(x syntax.Expr) []narrow {
 	as, ok := x.(*syntax.As)
 	if !ok {
-		return nil
+		out := c.safeReceivers(x)
+		if m, ok := x.(*syntax.Member); ok && m.Safe {
+			if k, ok := c.memberKey(m, m.Type()); ok && types.MayBeNull(k.t) {
+				k.t = k.t.NonNull()
+				out = append(out, k)
+			}
+		}
+		return out
 	}
 	k, ok := c.castNarrow(as)
 	if !ok {
