@@ -20,7 +20,9 @@ func (g *gen) dataMembers(cd *syntax.ClassDecl) {
 				return true
 			}
 		}
-		return false
+		// A superclass's final toString, hashCode or equals is
+		// inherited instead.
+		return finalInSuperclass(cls, name, params)
 	}
 	self := "L" + cls.Name + ";"
 	name := cls.Name[strings.LastIndexAny(cls.Name, "/$")+1:]
@@ -87,7 +89,7 @@ func (g *gen) dataMembers(cd *syntax.ClassDecl) {
 		g.check()
 	}
 	if f := synthesized(cls, "copy"); f != nil {
-		ctor := methodDesc(cd.Ctor.Params, types.UnitType)
+		ctor := ctorJVMDesc(cd.Ctor) // with an inner class's outer instance, or a local class's captures
 		d := methodDesc(f.Params, f.Ret)
 		newMethod(f.JVM(), d)
 		m := g.cls.LastMethod()
@@ -107,6 +109,17 @@ func (g *gen) dataMembers(cd *syntax.ClassDecl) {
 		g.checkParams(nil, nil, f.Params)
 		g.code.New(cls.Name)
 		g.code.Op(cf.DUP)
+		switch {
+		case cls.Inner:
+			g.code.Local(cf.ALOAD, 0)
+			g.code.FieldInsn(cf.GETFIELD, cls.Name, "this$0", desc(cls.Outer.This()))
+		case cls.Local:
+			// The copy captures what this instance captured.
+			for _, v := range cd.Captures {
+				g.code.Local(cf.ALOAD, 0)
+				g.code.FieldInsn(cf.GETFIELD, cls.Name, captureField(cd, v), storageDesc(v))
+			}
+		}
 		for _, p := range f.Params {
 			g.code.Local(loadOp(p.Type), p.Slot)
 		}
@@ -294,6 +307,20 @@ func arraysParam(t types.Type) string {
 		return d
 	}
 	return "[Ljava/lang/Object;"
+}
+
+// finalInSuperclass reports whether the nearest superclass of cls that
+// declares method name with params parameters declares it final.
+func finalInSuperclass(cls *types.ClassSym, name string, params int) bool {
+	for s := cls.Super; s != nil; s = s.Super {
+		s.Ensure()
+		for _, f := range s.Methods[name] {
+			if !f.Ext && !f.Static && len(f.Params) == params {
+				return f.Final && !f.Abstract
+			}
+		}
+	}
+	return false
 }
 
 func componentName(i int) string { return "component" + itoa(i+1) }

@@ -1,0 +1,7 @@
+s111 s111 s212 true A(x=1)
+final toString 42 false x y
+FinalToString InheritsAbstractToString
+false false Cloned(x=42) Cloned(x=1)
+o2 In(x=1)
+7 Anno hello Anno
+foo foo foo foo
