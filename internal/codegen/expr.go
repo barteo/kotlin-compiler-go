@@ -1786,6 +1786,12 @@ func (g *gen) invokeDefault(f *types.FunSym, mask argMask) {
 }
 
 func (g *gen) call(x *syntax.Call) {
+	if unconverted(x) != syntax.Expr(x) {
+		if l, _ := g.forwarded(x); l != nil {
+			g.code.Op(cf.ACONST_NULL) // see ident
+			return
+		}
+	}
 	if x.Group {
 		// An inline function's call whose lambda calls composables, in
 		// a replace group: see composeFlow.

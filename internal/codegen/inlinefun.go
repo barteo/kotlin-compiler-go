@@ -432,7 +432,7 @@ func inlinedArg(x *syntax.Call, i int) *syntax.Lambda {
 // an inline function, is if it is one of the copy's lambda parameters,
 // and the copy whose caller's code the lambda is.
 func (g *gen) forwarded(x syntax.Expr) (*syntax.Lambda, *srcInline) {
-	id, ok := x.(*syntax.Ident)
+	id, ok := unconverted(x).(*syntax.Ident)
 	if !ok || id.Sym == nil || len(g.srcInl) == 0 {
 		return nil, nil
 	}
@@ -445,6 +445,27 @@ func (g *gen) forwarded(x syntax.Expr) (*syntax.Lambda, *srcInline) {
 		return l, owner // forwarded to this copy in turn
 	}
 	return l, ctx
+}
+
+// unconverted returns the function value that the suspend conversion x
+// converts, f.let { $f -> { $f() } } (see check's suspendConverted), or
+// x: an inlined lambda converted to a suspend one for an inline function
+// is forwarded to it as it is, as kotlinc does.
+func unconverted(x syntax.Expr) syntax.Expr {
+	call, ok := x.(*syntax.Call)
+	if !ok || len(call.Args) != 1 {
+		return x
+	}
+	m, ok := call.Fun.(*syntax.Member)
+	if !ok || m.Name != "let" {
+		return x
+	}
+	ch, ok := m.X.(*syntax.Checked)
+	l, ok2 := call.Args[0].(*syntax.Lambda)
+	if !ok || !ok2 || len(l.Params) != 1 || l.Params[0].Name != "$f" {
+		return x
+	}
+	return ch.X
 }
 
 // forwardedArg returns the lambda that call x passes on for parameter i,

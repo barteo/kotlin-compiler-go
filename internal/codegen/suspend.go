@@ -1339,7 +1339,7 @@ func inlinedLambdas(x *syntax.Call, d *syntax.FunDecl, ctx *tailCtx) map[*types.
 		}
 	}
 	for k, a := range x.Args {
-		if id, ok := a.(*syntax.Ident); ok && id.Sym != nil {
+		if id, ok := unconverted(a).(*syntax.Ident); ok && id.Sym != nil {
 			if il, ok := ctx.lambdas[id.Sym]; ok {
 				i := k
 				if x.ArgMap != nil {
