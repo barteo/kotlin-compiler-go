@@ -261,6 +261,9 @@ func (c *Checker) anonClass(d *syntax.ClassDecl, what, whats string, name func()
 	for _, d := range c.classes {
 		c.checkClass(d)
 	}
+	for _, d := range c.classes {
+		c.classClashes(d) // as checkClashes does the file's classes'
+	}
 	c.state, c.classes, c.lookupCls = saved, savedClasses, savedLookup
 	c.propagateCaptures()
 
