@@ -2428,6 +2428,7 @@ func (c *Checker) checkProp(d *syntax.PropDecl, cls *types.ClassSym) {
 	if d.Init != nil && !c.done[d] {
 		c.checkPropInit(d, cls)
 	}
+	c.constInit(d)
 	if d.Getter != nil && !c.done[d.Getter] && hasBody(d.Getter) {
 		c.checkFun(d.Getter, cls)
 	}

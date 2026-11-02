@@ -277,11 +277,7 @@ func (g *gen) expr(x syntax.Expr) {
 		}
 		g.lambda(x)
 	case *syntax.IntLit:
-		if r := types.Repr(x.T); r.K == types.Long {
-			g.code.Lconst(x.Val) // also a ULong's bits
-		} else {
-			g.code.Iconst(int32(x.Val))
-		}
+		g.intLit(x)
 	case *syntax.DoubleLit:
 		g.code.Dconst(x.Val)
 	case *syntax.FloatLit:
@@ -859,6 +855,10 @@ func (g *gen) stringLit(x *syntax.StringLit) {
 		g.code.Sconst(x.Parts[0].Lit)
 		return
 	}
+	if s, ok := constStringValue(x); ok {
+		g.code.Sconst(s) // "1234$a" of a const a, folded as kotlinc does
+		return
+	}
 	g.newStringBuilder()
 	for _, p := range x.Parts {
 		if p.X == nil {
@@ -930,15 +930,26 @@ func (g *gen) binary(x *syntax.Binary) {
 			return
 		}
 		if x.OpType == types.StringType {
+			if s, ok := constStringValue(x); ok {
+				g.code.Sconst(s)
+				return
+			}
 			g.newStringBuilder()
 			g.appendExpr(x.X)
 			g.appendExpr(x.Y)
 			g.code.Invoke(cf.INVOKEVIRTUAL, "java/lang/StringBuilder", "toString", "()Ljava/lang/String;")
 			return
 		}
+		if v, ok := literalArithLong(x); ok {
+			g.code.Lconst(v) // val n: Long = 2147483647 + 1, computed as Ints
+			return
+		}
 		g.exprAs(x.X, x.OpType)
 		g.exprAs(x.Y, x.OpType)
 		g.code.Op(arithOp(x.OpType, x.Op))
+		if x.T.K == types.Char && x.OpType.K == types.Int {
+			g.code.Op(cf.I2C) // a Char plus or minus an Int wraps to 16 bits
+		}
 	case syntax.ELVIS:
 		g.elvis(x)
 	default:
@@ -1339,6 +1350,13 @@ func (g *gen) member(x *syntax.Member) {
 	if p.Kind == types.Global {
 		// A top-level property by its qualified name: a.b.x.
 		g.global(p)
+		g.coerce(p.Type, x.T)
+		return
+	}
+	if p.Const && !x.Safe && objectQualifier(x.X) {
+		// O.x, a const of an object named: inlined, without O's
+		// initialization.
+		g.constProp(p)
 		g.coerce(p.Type, x.T)
 		return
 	}
