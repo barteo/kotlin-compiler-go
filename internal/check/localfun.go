@@ -24,6 +24,7 @@ type localCall struct {
 func (c *Checker) localFun(s *syntax.LocalFun) {
 	d := s.Decl
 	c.localAnnotations(d.Annotations, localFunSite)
+	c.localTypeParamAnnotations(d.TypeParams)
 	for _, p := range d.Params {
 		c.localAnnotations(p.Annotations, paramSite)
 	}

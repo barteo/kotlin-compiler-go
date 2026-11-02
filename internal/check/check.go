@@ -52,6 +52,10 @@ type Universe struct {
 	// aliasFile is the checker of the file that declares each typealias,
 	// which resolves its right side in the file's scope.
 	aliasFile map[*types.AliasSym]*Checker
+
+	// typeAnnots holds the annotated *syntax.TypeRefs noted, and
+	// typeAnnotsDone those checked, for typeannot.go.
+	typeAnnots, typeAnnotsDone sync.Map
 }
 
 // Package holds the top-level declarations of one package of the program.
@@ -252,6 +256,9 @@ type Checker struct {
 	// serials are the file's classes annotated @Serializable, which the
 	// serialization plugin adds members to: see serialization.go.
 	serials []*serialInfo
+
+	// typeAnnots are the annotated types to check (typeannot.go).
+	typeAnnots []typeAnnot
 }
 
 type state struct {
@@ -585,6 +592,7 @@ func (c *Checker) resolveType(ref *syntax.TypeRef) types.Type {
 	if ref.Known != nil {
 		return *ref.Known
 	}
+	c.noteTypeAnnotations(ref)
 	if ref.And != nil {
 		return c.defNotNull(ref)
 	}
@@ -2221,6 +2229,7 @@ func (c *Checker) checkBodies() {
 	}
 	c.propRefs()
 	c.inlineFileChecks()
+	c.typeAnnotations()
 }
 
 // checkClass checks a class's code: its constructors' calls, property

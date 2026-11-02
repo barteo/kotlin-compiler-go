@@ -29,6 +29,9 @@ const (
 	siteLocal // a local variable, or a catch block's parameter
 	siteExpr  // an expression or another statement
 	siteInit  // an init block
+
+	siteType      // a type: @A T
+	siteTypeParam // a type parameter
 )
 
 // annotSite is an element annotations are written on: its kind, the

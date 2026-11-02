@@ -142,10 +142,13 @@ func (c *Checker) checkAnnotations(as []syntax.Annotation, owner *types.ClassSym
 			c.annotationValues(cls, args, a.P)
 			continue
 		}
-		saved := c.state
+		saved, savedCls := c.state, c.lookupCls
+		if k := annotationScope(owner, site); k != nil || c.cls == nil && c.scope == nil {
+			c.lookupCls = k // for its nested classes
+		}
 		c.state = state{scope: &scope{}, staticCls: owner}
 		values, ok := c.annotationValues(cls, args, a.P)
-		c.state = saved
+		c.state, c.lookupCls = saved, savedCls
 		if ok && !source {
 			// Class files keep it.
 			a.Class, a.Values = cls, values
@@ -334,6 +337,8 @@ func (c *Checker) declAnnotations(d syntax.Decl, owner *types.ClassSym) {
 		}
 		c.annotations(f.Annotations, owner, site)
 		c.annotations(f.RecvAnnotations, owner, annotSite{})
+		c.signatureTypeAnnotations(owner, f.Recv, f.Ret)
+		c.paramTypeAnnotations(owner, f.Params)
 		if f.Property == "" {
 			params(f.Contexts) // an accessor's are its property's
 		}
@@ -343,21 +348,33 @@ func (c *Checker) declAnnotations(d syntax.Decl, owner *types.ClassSym) {
 	case *syntax.FunDecl:
 		c.noReceiver(d.Annotations)
 		fun(d, funSite(owner))
+		c.typeParamAnnotations(d.TypeParams, owner)
 	case *syntax.PropDecl:
 		c.noReceiver(d.Annotations)
 		c.annotations(d.Annotations, owner, propSite(owner))
 		c.annotations(d.RecvAnnotations, owner, annotSite{})
+		c.typeParamAnnotations(d.TypeParams, owner)
+		c.signatureTypeAnnotations(owner, d.Recv, d.Type)
 		params(d.Contexts)
 		fun(d.Getter, annotSite{siteUnchecked, types.TargetGetter, "getter"})
 		fun(d.Setter, annotSite{siteUnchecked, types.TargetSetter, "setter"})
 	case *syntax.TypeAliasDecl:
 		c.annotations(d.Annotations, owner, typealiasSite)
+		c.typeParamAnnotations(d.TypeParams, owner)
+		c.signatureTypeAnnotations(owner, d.Type)
 	case *syntax.ClassDecl:
 		cls := d.Sym
 		c.noReceiver(d.Annotations)
 		c.noReceiver(d.CtorMods.Annotations)
 		c.annotations(d.Annotations, cls, classSite(d))
 		c.annotations(d.CtorMods.Annotations, cls, ctorSite)
+		c.typeParamAnnotations(d.TypeParams, cls)
+		for _, s := range d.Supers {
+			c.signatureTypeAnnotations(cls.Outer, s.Type) // outside it, as its annotations
+		}
+		for _, cp := range d.CtorParams {
+			c.signatureTypeAnnotations(cls, cp.Type)
+		}
 		for _, cp := range d.CtorParams {
 			c.noReceiver(cp.Modifiers.Annotations)
 			c.annotations(cp.Modifiers.Annotations, cls, ctorParamSite(cls, cp))

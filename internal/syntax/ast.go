@@ -131,6 +131,9 @@ type TypeRef struct {
 	// definitely non-nullable type: the type written before & is this
 	// TypeRef without it.
 	And *TypeRef
+	// Annotations are the type's annotations as written, @A T, which
+	// the checker checks but writes nowhere.
+	Annotations []Annotation
 }
 
 // Wildcards says whether the generic signatures of a declaration or a
@@ -180,6 +183,8 @@ type TypeParam struct {
 	Bounds  []*TypeRef
 	Sym     *types.TypeParamSym
 	Reified bool
+	// Annotations are the type parameter's annotations as written.
+	Annotations []Annotation
 }
 
 type Param struct {

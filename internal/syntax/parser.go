@@ -910,8 +910,10 @@ func (p *parser) parseImport() *Import {
 func (p *parser) parseType() *TypeRef {
 	unsafe, composable, noInfer := false, false, false
 	var wild Wildcards
+	var as []Annotation
 	for p.at(AT) {
 		a := p.annotation()
+		as = append(as, a)
 		if a.Target == "receiver" {
 			// receiver takes those of a receiver type.
 			p.failAt(a.P, "this annotation is not applicable to target 'type usage' and use-site target '@receiver'")
@@ -923,8 +925,9 @@ func (p *parser) parseType() *TypeRef {
 			wild = w
 		}
 	}
-	if unsafe || composable || noInfer || wild != DefaultWildcards {
+	if as != nil {
 		t := p.parseType()
+		t.Annotations = append(as, t.Annotations...)
 		t.UnsafeVariance = t.UnsafeVariance || unsafe
 		t.NoInfer = t.NoInfer || noInfer
 		t.Composable = t.Composable || composable
@@ -1126,8 +1129,9 @@ func (p *parser) parseTypeParams() []*TypeParam {
 		if p.at(GT) && ps != nil {
 			break // a trailing comma
 		}
+		var as []Annotation
 		for p.at(AT) {
-			p.annotation() // ignored: kc writes no type annotations
+			as = append(as, p.annotation()) // kc writes no type annotations
 			p.skipNL()
 		}
 		reified := false
@@ -1135,7 +1139,7 @@ func (p *parser) parseTypeParams() []*TypeParam {
 			reified = true
 			p.next()
 		}
-		tp := &TypeParam{Variance: p.variance(), Reified: reified}
+		tp := &TypeParam{Variance: p.variance(), Reified: reified, Annotations: as}
 		name := p.ident()
 		tp.P, tp.Name = name.Pos, name.Text
 		if p.peekPastNL() == COLON {

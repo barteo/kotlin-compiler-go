@@ -26,11 +26,7 @@ func (c *Checker) annotationClassOf(a *syntax.Annotation, owner *types.ClassSym,
 	}
 	saved := c.lookupCls
 	if !local && c.cls == nil && c.scope == nil {
-		k := owner
-		if site.kind == siteClass && k != nil {
-			k = k.Outer // a class's annotations are outside it
-		}
-		c.lookupCls = k
+		c.lookupCls = annotationScope(owner, site)
 	}
 	cls := c.lookupClass(a.Name)
 	c.lookupCls = saved
@@ -52,6 +48,15 @@ func (c *Checker) annotationClassOf(a *syntax.Annotation, owner *types.ClassSym,
 		return nil
 	}
 	return cls
+}
+
+// annotationScope returns the class whose classifiers the annotations
+// of a declaration in class owner, written on site, see.
+func annotationScope(owner *types.ClassSym, site annotSite) *types.ClassSym {
+	if site.kind == siteClass && owner != nil {
+		return owner.Outer // a class's annotations are outside it
+	}
+	return owner
 }
 
 // annotTypeParam reports whether name is a type parameter of class owner,
