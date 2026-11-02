@@ -241,6 +241,10 @@ func (cv *converter) value(t types.Type, depth int) Type {
 		out.Nullable, out.Platform = true, true
 	case t.N:
 		out.Nullable, out.MarkedNullable = true, true
+	case types.MayBeNull(t):
+		// T, whose bound is nullable, holds null as Kotlin's
+		// TypeUtils.isNullableType says.
+		out.Nullable = true
 	}
 	return out
 }

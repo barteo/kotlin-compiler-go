@@ -624,6 +624,9 @@ type FunSym struct {
 	// Inline is set on an inline function of the class path whose body
 	// kc can copy into its callers.
 	Inline *InlineInfo
+	// Declared is set on every inline function of the class path, one
+	// kc calls as an intrinsic too, with its parameters' flags.
+	Declared *InlineFlags
 	// Platform is set on a member of a Kotlin collection type that only
 	// its Java interface declares, such as forEach(Consumer). As in
 	// kotlinc, an extension that fits the call comes first.
@@ -1358,4 +1361,10 @@ func KotlinParamsDesc(d string, f *FunSym) string {
 type Deprecation struct {
 	Message string
 	Level   string // WARNING, ERROR or HIDDEN
+}
+
+// InlineFlags are the crossinline and noinline flags of each value
+// parameter of an inline function.
+type InlineFlags struct {
+	Crossinline, Noinline []bool
 }

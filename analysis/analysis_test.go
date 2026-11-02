@@ -669,3 +669,110 @@ fun f(d: java.util.Date, r: Runnable, l: List<Int>) {
 		t.Errorf("run(): %+v", c)
 	}
 }
+
+func TestSuspendOperators(t *testing.T) {
+	src := `package p
+
+class C {
+    suspend operator fun inc() = this
+    suspend operator fun plusAssign(o: Int) {}
+    suspend operator fun iterator(): Iterator<Int> = listOf(1).iterator()
+}
+
+class D {
+    suspend operator fun plus(o: Int) = this
+}
+
+suspend fun f() {
+    var c = C()
+    c++
+    c += 1
+    var d = D()
+    d += 1
+    for (x in c) {}
+    for (y in 1..2) {}
+    println(d)
+}
+`
+	r, s := analyzed(t, withStdlib(t), src)
+	for _, want := range []struct{ kind, text, name string }{
+		{"POSTFIX_EXPRESSION", "c++", "p.C.inc"},
+		{"BINARY_EXPRESSION", "c += 1", "p.C.plusAssign"},
+		{"BINARY_EXPRESSION", "d += 1", "p.D.plus"},
+	} {
+		c := fact(t, r, at(t, s, want.kind, want.text, 0)).Call
+		if c == nil || c.Name != want.name || !c.Suspend {
+			t.Errorf("%s: %+v", want.text, c)
+		}
+	}
+	if f := fact(t, r, at(t, s, "FOR", "for (x in c) {}", 0)); !f.SuspendOperation {
+		t.Errorf("for (x in c): %+v", f)
+	}
+	if n := at(t, s, "FOR", "for (y in 1..2) {}", 0); func() bool { f, _ := r.Fact(ElementID{n.ContainingFile().ID(), n.ID()}); return f.SuspendOperation }() {
+		t.Errorf("for (y in 1..2) suspends")
+	}
+	// println is an inline-only function kc calls as an intrinsic.
+	if c := fact(t, r, at(t, s, "CALL_EXPRESSION", "println(d)", 0)).Call; c == nil || !c.Inline {
+		t.Errorf("println(d): %+v", c)
+	}
+}
+
+func TestReferenceCalls(t *testing.T) {
+	src := `package p
+
+class C(val n: Int)
+
+fun g(x: Int) = x
+
+val s = suspend { g(1) }
+
+fun f() {
+    listOf(1).map(::C)
+    listOf(2).map(::g)
+    listOf("a").map(String::length)
+}
+`
+	r, s := analyzed(t, withStdlib(t), src)
+	for _, want := range []struct{ text, name string }{{"::C", "p.C.<init>"}, {"::g", "p.g"}} {
+		c := fact(t, r, at(t, s, "CALLABLE_REFERENCE_EXPRESSION", want.text, 0)).Call
+		if c == nil || c.Name != want.name {
+			t.Errorf("%s: %+v", want.text, c)
+		}
+	}
+	if c := fact(t, r, at(t, s, "CALLABLE_REFERENCE_EXPRESSION", "String::length", 0)).Call; c != nil {
+		t.Errorf("String::length: %+v", c)
+	}
+	c := fact(t, r, at(t, s, "CALL_EXPRESSION", "suspend { g(1) }", 0)).Call
+	if c == nil || c.Name != "kotlin.suspend" || !c.Inline || !slices.Equal(c.Noinline, []bool{true}) || len(c.Parameters) != 1 || !c.Parameters[0].Suspend {
+		t.Errorf("suspend { }: %+v", c)
+	}
+	if c := fact(t, r, at(t, s, "REFERENCE_EXPRESSION", "suspend", 0)).Call; c == nil || c.Name != "kotlin.suspend" {
+		t.Errorf("suspend: %+v", c)
+	}
+}
+
+func TestNullability(t *testing.T) {
+	src := `package p
+
+fun <T> f(x: T, y: String, z: String?) {
+    x!!
+    val a = y ?: "fallback"
+    val b = z ?: "fallback"
+}
+
+fun <T : Any> g(x: T) = x
+`
+	r, s := analyzed(t, withStdlib(t), src)
+	if ty := fact(t, r, at(t, s, "REFERENCE_EXPRESSION", "x", 0)).Type; ty == nil || !ty.Nullable || ty.MarkedNullable {
+		t.Errorf("x: T: %+v", ty)
+	}
+	if ty := fact(t, r, at(t, s, "REFERENCE_EXPRESSION", "x", 1)).Type; ty == nil || ty.Nullable {
+		t.Errorf("x: T : Any: %+v", ty)
+	}
+	if f := fact(t, r, at(t, s, "BINARY_EXPRESSION", `y ?: "fallback"`, 0)); !f.Unreachable {
+		t.Errorf("y ?: fallback: %+v", f)
+	}
+	if f := fact(t, r, at(t, s, "BINARY_EXPRESSION", `z ?: "fallback"`, 0)); f.Unreachable {
+		t.Errorf("z ?: fallback: %+v", f)
+	}
+}

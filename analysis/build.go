@@ -392,6 +392,9 @@ func merge(f *Fact, src Fact) {
 		f.FlowNonNull, f.DefinitelyNonNull = src.FlowNonNull, src.DefinitelyNonNull
 	}
 	f.UsedAsExpression = f.UsedAsExpression || src.UsedAsExpression
+	f.ImpossibleCast = f.ImpossibleCast || src.ImpossibleCast
+	f.Unreachable = f.Unreachable || src.Unreachable
+	f.SuspendOperation = f.SuspendOperation || src.SuspendOperation
 	if f.LambdaParameters == nil {
 		f.LambdaParameters, f.ImplicitParameter = src.LambdaParameters, src.ImplicitParameter
 	}
@@ -503,7 +506,17 @@ func (b *builder) visit(n any, el ElementID) {
 	case *syntax.SuperType:
 		b.typeRef(x.Type, x.T)
 	case *syntax.Assign:
-		b.set(el, Fact{Role: "statement"})
+		// A compound assignment's operator call: x.plusAssign(v), or
+		// the x.plus(v) of x = x.plus(v).
+		b.set(el, Fact{Role: "statement", Call: b.call(operatorCall(x.Stmts))})
+	case *syntax.For:
+		// A loop over a collection calls its iterator's operators.
+		for _, f := range []*types.FunSym{x.Iter, x.HasNext, x.Next} {
+			if f != nil && f.Suspend {
+				b.set(el, Fact{Role: "statement", SuspendOperation: true})
+				break
+			}
+		}
 	case syntax.Expr:
 		b.expr(x, el)
 	}
@@ -588,9 +601,18 @@ func (b *builder) expr(x syntax.Expr, el ElementID) {
 		f.Call = b.call(x.Call)
 		if sub, ok := b.rec.elvis[x]; ok {
 			f.NonNullLeftSubtypeRight = &sub
+			// x ?: y never evaluates y if x can't be null: kotlinc
+			// reports the elvis as unreachable code.
+			if t := x.X.Type(); !t.P && t.K != types.Invalid && !types.MayBeNull(t) {
+				f.Unreachable = true
+			}
 		}
 	case *syntax.Unary:
 		f.Call = b.call(x.Call)
+		if f.Call == nil && x.Stmts != nil {
+			// x++ on other types: the x.inc() of x = x.inc().
+			f.Call = b.call(operatorCall(x.Stmts))
+		}
 		if f.Call == nil {
 			f.Call = b.builtinUnary(x.Op, x.X.Type(), x.Type())
 		}
@@ -609,6 +631,13 @@ func (b *builder) expr(x syntax.Expr, el ElementID) {
 		}
 		if x.Recv != nil {
 			b.receivers[x.Recv] = el
+		}
+		switch {
+		case x.Ref != nil:
+			// A callable reference: the call its body makes.
+			f.Call = b.call(refCall(x))
+		case x.SuspendMod:
+			b.suspendCall(x, el)
 		}
 	case *syntax.When:
 		f.When = b.when(x)
@@ -885,6 +914,10 @@ func (b *builder) call(x *syntax.Call) *Call {
 		c.Inline = true
 		c.Crossinline = slices.Clone(f.Inline.Crossinline)
 		c.Noinline = slices.Clone(f.Inline.Noinline)
+	case f.Declared != nil:
+		c.Inline = true
+		c.Crossinline = slices.Clone(f.Declared.Crossinline)
+		c.Noinline = slices.Clone(f.Declared.Noinline)
 	default:
 		if d, ok := f.Decl.(*syntax.FunDecl); ok && d.Inline {
 			c.Inline = true
@@ -1294,4 +1327,93 @@ func (b *builder) classMembers(c *types.ClassSym, sym *Symbol) {
 		}
 		return !(sym.HasAbstractMembers && sym.HasConcreteMembers)
 	})
+}
+
+// operatorCall returns the first operator call of stmts, which the
+// checker rewrote a compound assignment, x++ or x-- into; nil if none.
+func operatorCall(stmts []syntax.Stmt) *syntax.Call {
+	var c *syntax.Call
+	for _, st := range stmts {
+		syntax.Inspect(st, func(n any) bool {
+			if c != nil {
+				return false
+			}
+			switch x := n.(type) {
+			case *syntax.Call:
+				if x.Operator && x.Sym != nil {
+					c = x
+				}
+			case *syntax.Binary:
+				c = x.Call
+			case *syntax.Unary:
+				c = x.Call
+			}
+			return c == nil
+		})
+		if c != nil {
+			break
+		}
+	}
+	return c
+}
+
+// refCall returns the call of the function, or constructor, that callable
+// reference l names, which the checker made l's body; nil for a
+// property.
+func refCall(l *syntax.Lambda) *syntax.Call {
+	if l.KFun != nil {
+		return l.KFun
+	}
+	var c *syntax.Call
+	syntax.Inspect(l.Body, func(n any) bool {
+		if x, ok := n.(*syntax.Call); ok && c == nil {
+			switch {
+			case x.Sym != nil && x.Sym.Name == l.Ref.Name && !x.Invoke:
+				c = x
+			case x.Ctor != nil:
+				c = x
+			}
+		}
+		return c == nil
+	})
+	return c
+}
+
+// suspendCall describes suspend { ... }, which kc reads as a lambda with
+// the suspend modifier, as Kotlin does: the call of the inline function
+// kotlin.suspend, whose block is noinline.
+func (b *builder) suspendCall(l *syntax.Lambda, el ElementID) {
+	n := b.node(el)
+	for n.Valid() && n.NumericKind() != psi.KindCALL_EXPRESSION {
+		if k := n.NumericKind(); k != psi.KindLAMBDA_EXPRESSION && k != psi.KindLAMBDA_ARGUMENT {
+			return
+		}
+		n = n.Parent()
+	}
+	t := b.cv.typ(l.Type())
+	if !n.Valid() || t == nil {
+		return
+	}
+	r := &Type{Name: "R", Parameter: true}
+	c := &Call{
+		Name:               "kotlin.suspend",
+		Parameters:         []Type{*t},
+		ParameterNames:     []string{"block"},
+		Varargs:            []bool{false},
+		ArgumentMapping:    []int{0},
+		ReturnType:         t,
+		DeclaredReturnType: &Type{Name: "kotlin.coroutines.SuspendFunction0", Suspend: true, Arguments: []Type{*r}},
+		TypeParameters:     1,
+		TypeParameterNames: []string{"R"},
+		Annotations:        []string{"kotlin.internal.InlineOnly"},
+		Inline:             true,
+		StableNames:        true,
+		Crossinline:        []bool{false},
+		Noinline:           []bool{true},
+	}
+	call := ElementID{el.Snapshot, n.ID()}
+	b.set(call, Fact{Role: "expression", Type: t, Call: c, Builtin: c.Name})
+	if callee := n.ChildKind(psi.KindREFERENCE_EXPRESSION); callee.Valid() {
+		b.set(ElementID{el.Snapshot, callee.ID()}, Fact{Role: "reference", Call: copyCall(c), Builtin: c.Name, ImportableName: c.Name})
+	}
 }

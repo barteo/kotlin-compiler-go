@@ -76,8 +76,9 @@ type Type struct {
 	// it maps, kotlin.Any for java.lang.Object. A type parameter has its
 	// own name.
 	Name string `json:"name"`
-	// Nullable is set on a type that holds null: T? or a nullable type
-	// parameter's T?. MarkedNullable is set when it is written with ?.
+	// Nullable is set on a type that holds null: T?, or a type parameter
+	// whose bound is nullable. MarkedNullable is set when it is written
+	// with ?.
 	Nullable       bool `json:"nullable,omitempty"`
 	MarkedNullable bool `json:"markedNullable,omitempty"`
 	// Platform is set on a Java type of unknown nullability, T!.
@@ -233,7 +234,9 @@ type Fact struct {
 	// Unreachable is set on a statement that can't be reached.
 	Unreachable bool `json:"unreachable,omitempty"`
 	// SuspendOperation is set on an operation that suspends other than
-	// a call of a suspend function: a suspend operator or delegate.
+	// a call: a for loop whose iterator(), hasNext() or next() is a
+	// suspend operator. An operator that is written, such as x + y or
+	// x++, has a Call.
 	SuspendOperation bool `json:"suspendOperation,omitempty"`
 
 	// LambdaParameters are the symbols of a lambda's parameters, its
@@ -285,6 +288,7 @@ var capabilities = []string{
 	CapTypes, CapSymbols, CapCalls, CapWhen, CapUsedAsExpression, CapUnreachable,
 	CapFlowNonNull, CapLambdaParameters, CapReturnTargets, CapReceiverTargets,
 	CapClassifiers, CapDelegates, CapClassMembers, CapDeprecation, CapAnnotations,
+	CapSuspendOperations,
 }
 
 // Data is all of a Result's facts and symbols, in order: facts by

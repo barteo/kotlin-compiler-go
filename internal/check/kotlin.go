@@ -748,6 +748,10 @@ func (t *classTable) kfun(f *kmeta.Function, owner *types.ClassSym, scope tscope
 			sym.Inline = inlineInfo(f, true)
 		}
 	}
+	if f.IsInline() {
+		in := inlineInfo(f, false)
+		sym.Declared = &types.InlineFlags{Crossinline: in.Crossinline, Noinline: in.Noinline}
+	}
 	return sym
 }
 
