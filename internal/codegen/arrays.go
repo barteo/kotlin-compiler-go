@@ -116,6 +116,10 @@ func (g *gen) arrayFactory(x *syntax.Call) {
 		g.exprAs(x.Args[0], types.IntType)
 		g.newArrayOf(d, types.ArrayElem(t))
 	case types.ArrayInit:
+		if l, ok := x.Args[1].(*syntax.Lambda); ok && g.usesInlined(l) {
+			g.arrayInitInlined(x, l, t)
+			return
+		}
 		// The init function is called with each index in turn.
 		ft := x.Sym.Params[1].Type
 		g.exprAs(x.Args[0], types.IntType)
@@ -140,6 +144,62 @@ func (g *gen) arrayFactory(x *syntax.Call) {
 		}, nil)
 		g.code.Local(cf.ALOAD, arr)
 	}
+}
+
+// usesInlined reports whether lambda l, in a copy of an inline function,
+// uses one of the copy's inlined lambda parameters, which has no object
+// for l to capture.
+func (g *gen) usesInlined(l *syntax.Lambda) bool {
+	if len(g.srcInl) == 0 {
+		return false
+	}
+	found := false
+	syntax.Inspect(l.Body, func(n any) bool {
+		if id, ok := n.(*syntax.Ident); ok && id.Sym != nil {
+			for _, ctx := range g.srcInl {
+				if ctx.lambdas[id.Sym] != nil {
+					found = true
+				}
+			}
+		}
+		return !found
+	})
+	return found
+}
+
+// arrayInitInlined generates Array(n) { init } of type t with init's body
+// inlined into the loop, as kotlinc's Array constructor, an inline
+// function, is: init uses an inlined lambda parameter of the copy of an
+// inline function it is in, as Array(1) { i -> x(i) } in
+// inline fun <reified T> f(x: (Int) -> T).
+func (g *gen) arrayInitInlined(x *syntax.Call, l *syntax.Lambda, t types.Type) {
+	d := desc(t)
+	elem := types.StoredElem(t)
+	g.exprAs(x.Args[0], types.IntType)
+	n := g.code.AllocLocal("I")
+	g.code.Local(cf.ISTORE, n)
+	g.code.Local(cf.ILOAD, n)
+	g.newArrayOf(d, types.ArrayElem(t))
+	arr := g.code.AllocLocal(d)
+	g.code.Local(cf.ASTORE, arr)
+	g.indexLoop(n, func(i int) {
+		g.code.Local(cf.ILOAD, i)
+		g.box(types.IntType)
+		// Its return@label is then an inlined lambda's. The copies of
+		// inline functions hold inlineMu, which guards l (see lockInline).
+		saved := l.Inline
+		l.Inline = true
+		g.inlineLambda(l)
+		l.Inline = saved
+		g.castErased(types.AnyType.Nullable(), elem)
+		v := g.code.AllocLocal(desc(elem))
+		g.code.Local(storeOp(elem), v)
+		g.code.Local(cf.ALOAD, arr)
+		g.code.Local(cf.ILOAD, i)
+		g.code.Local(loadOp(elem), v)
+		g.elemStore(d)
+	}, nil)
+	g.code.Local(cf.ALOAD, arr)
 }
 
 // enumIntrinsic generates enumValues<T>() as T.values() and

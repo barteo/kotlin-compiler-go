@@ -1,6 +1,8 @@
 package check
 
 import (
+	"slices"
+
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
 	"github.com/barteo/kotlin-compiler-go/internal/types"
 )
@@ -222,6 +224,13 @@ func (a *assignment) assign(v *types.VarSym, p syntax.Pos, s *daState) {
 		a.c.errorf(p, "captured values cannot be initialized because of possible reassignments")
 	case !v.Mutable && s.maybe[v]:
 		a.c.errorf(p, "val cannot be reassigned")
+	}
+	if !v.Mutable && v.Kind == types.Local {
+		for _, o := range a.once {
+			if !o.l.Inline && slices.Contains(o.l.Captures, v) {
+				v.InitInLambda = true
+			}
+		}
 	}
 	s.def[v], s.maybe[v] = true, true
 }
