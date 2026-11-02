@@ -386,72 +386,190 @@ func (c *Checker) reset(vars []*types.VarSym) {
 	}
 }
 
-// branchExit records the types of watched vars where a branch ends.
-type branchExit struct {
-	vars   []*types.VarSym
-	types  []types.Type
-	jumped bool // the branch doesn't end normally: its types don't count
+// flowKey is a value that smart casts narrow: a variable, or a property
+// of a stable value recv.
+type flowKey struct{ recv, sym *types.VarSym }
+
+// flowState is the smart casts where the code is: the narrowed type of
+// each value that the scopes around it narrow.
+type flowState map[flowKey]types.Type
+
+// flowState returns the smart casts in the current scope.
+func (c *Checker) flowState() flowState {
+	st := flowState{}
+	for sc := c.scope; sc != nil; sc = sc.parent {
+		for i := len(sc.narrows) - 1; i >= 0; i-- {
+			n := sc.narrows[i]
+			k := flowKey{n.recv, n.sym}
+			if _, ok := st[k]; !ok {
+				st[k] = n.t
+			}
+		}
+	}
+	return st
 }
 
-// watchExit makes the next block checked record the types of vars at its
-// end in the returned exit.
-func (c *Checker) watchExit(vars []*types.VarSym) *branchExit {
-	if len(vars) == 0 {
+// joinFlows returns the smart casts that hold where the code paths that
+// end in states meet, as the narrowings to add to the current scope, the
+// one before the paths split, or one whose smart casts are those of
+// every path: a value narrowed on every path has the join of its types,
+// and a var that one assigns has its declared type if they don't join.
+func (c *Checker) joinFlows(states []flowState) []narrow {
+	if len(states) == 0 {
 		return nil
 	}
-	e := &branchExit{vars: vars}
+	var out []narrow
+	for k, t := range states[0] {
+		if k.sym == nil {
+			continue
+		}
+		v := k.recv == nil && isVar(k.sym)
+		for _, s := range states[1:] {
+			u, ok := s[k]
+			if !ok {
+				if !v {
+					t = types.InvalidType
+					break
+				}
+				u = k.sym.Type
+			}
+			if t == u {
+				continue
+			}
+			j, ok := c.join(t, u)
+			if !ok {
+				j = types.InvalidType
+			}
+			t = j
+			if t.K == types.Invalid && !v {
+				break
+			}
+		}
+		cur := c.scope.narrowedMember(k.recv, k.sym, types.InvalidType)
+		switch {
+		case v && (t.K == types.Invalid || !c.subtype(t, k.sym.Type)):
+			t = k.sym.Type
+		case t.K == types.Invalid:
+			continue
+		case !v && cur.K != types.Invalid && !c.subtype(t, cur):
+			continue // only narrower than it is before the paths
+		}
+		if t != cur {
+			out = append(out, narrow{recv: k.recv, sym: k.sym, t: t})
+		}
+	}
+	// The map's order: sort for the same narrowing each time.
+	slices.SortFunc(out, func(a, b narrow) int {
+		return cmpNarrow(a, b)
+	})
+	return out
+}
+
+// cmpNarrow orders narrowings of different values by name.
+func cmpNarrow(a, b narrow) int {
+	name := func(n narrow) string {
+		if n.recv != nil {
+			return n.recv.Name + "." + n.sym.Name
+		}
+		return n.sym.Name
+	}
+	an, bn := name(a), name(b)
+	switch {
+	case an < bn:
+		return -1
+	case an > bn:
+		return 1
+	}
+	return 0
+}
+
+// branchExit records the smart casts where a branch ends.
+type branchExit struct {
+	state  flowState
+	jumped bool // the branch doesn't end normally: its smart casts don't count
+}
+
+// watchExit makes the next block checked record its smart casts at its
+// end in the returned exit.
+func (c *Checker) watchExit(vars []*types.VarSym) *branchExit {
+	e := &branchExit{}
 	c.exitWatch = e
 	return e
 }
 
-// record records the types of e's vars in the current scope, at the end
-// of a block whose type is t.
+// record records the smart casts in the current scope, at the end of a
+// block whose type is t.
 func (e *branchExit) record(c *Checker, t types.Type) {
 	if t.K == types.Nothing {
 		e.jumped = true
 		return
 	}
-	e.types = make([]types.Type, len(e.vars))
-	for i, v := range e.vars {
-		e.types[i] = c.scope.narrowed(v)
-	}
+	e.state = c.flowState()
 }
 
-// startExit returns an exit with the types of vars in the current scope:
-// the path past an if without else, or a when without a matching branch.
+// startExit returns an exit with the smart casts of the current scope
+// and ns: the path past an if without else, or a when without a
+// matching branch.
 func (c *Checker) startExit(vars []*types.VarSym, ns []narrow) *branchExit {
 	c.push()
 	c.scope.narrows = ns
-	e := &branchExit{vars: vars}
+	e := &branchExit{}
 	e.record(c, types.UnitType)
 	c.pop()
 	return e
 }
 
-// merge narrows each var to the join of its types at the exits that
-// don't jump, for the rest of the current scope.
+// merge adds the smart casts that hold after the exits that don't jump,
+// where they meet, for the rest of the current scope.
 func (c *Checker) merge(vars []*types.VarSym, exits []*branchExit) {
-	for i, v := range vars {
-		var t types.Type
-		any := false
-		for _, e := range exits {
-			if e == nil || e.jumped || e.types == nil {
-				continue
-			}
-			if !any {
-				t, any = e.types[i], true
-				continue
-			}
-			j, ok := c.join(t, e.types[i])
-			if !ok || !c.subtype(j, v.Type) {
-				j = v.Type
-			}
-			t = j
+	var states []flowState
+	for _, e := range exits {
+		if e == nil || e.jumped || e.state == nil {
+			continue
 		}
-		if !any {
-			continue // every branch jumps: the code after is unreachable
+		states = append(states, e.state)
+	}
+	if len(states) == 0 {
+		return // every branch jumps: the code after is unreachable
+	}
+	c.scope.narrows = append(c.scope.narrows, c.joinFlows(states)...)
+}
+
+// loopFlow has the smart casts where a loop's breaks and continues jump.
+type loopFlow struct {
+	breaks, continues []flowState
+	// lost is set when a jump's smart casts are unknown: it is in a
+	// lambda.
+	lost bool
+}
+
+// finallyCtx is a finally block around the code being checked: a break
+// or a continue out of it runs it, which may assign vars.
+type finallyCtx struct {
+	loops int // len(c.loops) where the try is
+	vars  []*types.VarSym
+}
+
+// loopJump records the smart casts where a break or a continue jumps
+// out of the loop at index i of c.loops.
+func (c *Checker) loopJump(i int, brk bool) {
+	loop := c.loops[i]
+	if len(c.lambdas) != loop.lambdas {
+		loop.flow.lost = true
+		return
+	}
+	st := c.flowState()
+	for _, f := range c.finallies {
+		if f.loops > i {
+			for _, v := range f.vars {
+				st[flowKey{sym: v}] = v.Type
+			}
 		}
-		c.scope.narrows = append(c.scope.narrows, narrow{sym: v, t: t})
+	}
+	if brk {
+		loop.flow.breaks = append(loop.flow.breaks, st)
+	} else {
+		loop.flow.continues = append(loop.flow.continues, st)
 	}
 }
 
@@ -510,4 +628,36 @@ func (c *Checker) memberKey(m *syntax.Member, t types.Type) (narrow, bool) {
 func (c *Checker) stableMember(p *types.VarSym) bool {
 	return p.Kind == types.Prop && !p.Mutable && p.Getter == nil && p.HasField() && p.Owner != nil && !p.Owner.External &&
 		(p.Final || p.Owner.Final && p.Owner.Entries == nil)
+}
+
+// isNull reports whether x is null: the literal, or a value of type
+// Nothing?, whose only value it is.
+func isNull(x syntax.Expr) bool {
+	if _, ok := x.(*syntax.NullLit); ok {
+		return true
+	}
+	t := x.Type()
+	return t.K == types.Null || t.K == types.Nothing && t.N
+}
+
+// boolEquality returns the smart casts of c == true and the like: those
+// of c, or of !c, when one side is a Boolean literal and the other a
+// condition.
+func (c *Checker) boolEquality(x *syntax.Binary) (whenTrue, whenFalse []narrow, ok bool) {
+	lit, cond := x.X, x.Y
+	l, isLit := lit.(*syntax.BoolLit)
+	if !isLit {
+		lit, cond = x.Y, x.X
+		if l, isLit = lit.(*syntax.BoolLit); !isLit {
+			return nil, nil, false
+		}
+	}
+	if cond.Type().Flex() != types.BoolType {
+		return nil, nil, false
+	}
+	whenTrue, whenFalse = c.narrowing(cond)
+	if l.Val != (x.Op == syntax.EQ || x.Op == syntax.EQ_EQ_EQ) {
+		whenTrue, whenFalse = whenFalse, whenTrue
+	}
+	return whenTrue, whenFalse, true
 }

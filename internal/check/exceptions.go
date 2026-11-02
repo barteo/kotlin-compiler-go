@@ -19,6 +19,11 @@ func (c *Checker) tryExpr(x *syntax.Try, want types.Type, valueUsed bool) types.
 	bodyVars := c.watchedVars(x.Body)
 	defer c.reset(c.watchedVars(x))
 	exits := c.loopExits()
+	if x.Finally != nil {
+		// A break or a continue in the body or a catch block runs the
+		// finally block, which may assign vars, before it jumps.
+		c.finallies = append(c.finallies, finallyCtx{loops: len(c.loops), vars: c.watchedVars(x.Finally)})
+	}
 	result := c.block(x.Body, want, valueUsed)
 	allJump := result.K == types.Nothing
 	for _, cb := range x.Catches {
@@ -42,12 +47,16 @@ func (c *Checker) tryExpr(x *syntax.Try, want types.Type, valueUsed bool) types.
 			j, ok := c.joinBranch(result, bt, want, cb.Body.P)
 			if !ok {
 				c.errorf(cb.Body.P, "type mismatch: 'try' and 'catch' blocks have incompatible types %s and %s", result, bt)
+				if x.Finally != nil {
+					c.finallies = c.finallies[:len(c.finallies)-1]
+				}
 				return types.InvalidType
 			}
 			result = j
 		}
 	}
 	if x.Finally != nil {
+		c.finallies = c.finallies[:len(c.finallies)-1]
 		c.push()
 		c.reset(bodyVars)
 		ft := c.block(x.Finally, noWant, false)
@@ -69,21 +78,29 @@ func (c *Checker) tryExpr(x *syntax.Try, want types.Type, valueUsed bool) types.
 	return result
 }
 
-// loopExits returns whether each of the loops the code is in has a break
-// and a continue so far.
-func (c *Checker) loopExits() [][2]bool {
-	exits := make([][2]bool, len(c.loops))
+// loopExit is what a loop knows of its breaks and continues.
+type loopExit struct {
+	hasBreak, hasContinue bool
+	breaks, continues     int // the number of their smart casts
+}
+
+// loopExits returns the breaks and continues each of the loops the code
+// is in has so far.
+func (c *Checker) loopExits() []loopExit {
+	exits := make([]loopExit, len(c.loops))
 	for i, l := range c.loops {
-		exits[i] = [2]bool{l.hasBreak, l.hasContinue}
+		exits[i] = loopExit{l.hasBreak, l.hasContinue, len(l.flow.breaks), len(l.flow.continues)}
 	}
 	return exits
 }
 
 // restoreLoopExits forgets the breaks and continues of the loops that
 // loopExits returned found after it.
-func (c *Checker) restoreLoopExits(exits [][2]bool) {
+func (c *Checker) restoreLoopExits(exits []loopExit) {
 	for i, e := range exits {
-		c.loops[i].hasBreak, c.loops[i].hasContinue = e[0], e[1]
+		l := c.loops[i]
+		l.hasBreak, l.hasContinue = e.hasBreak, e.hasContinue
+		l.flow.breaks, l.flow.continues = l.flow.breaks[:e.breaks], l.flow.continues[:e.continues]
 	}
 }
 

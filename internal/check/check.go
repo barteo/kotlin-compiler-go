@@ -105,6 +105,7 @@ type loopCtx struct {
 	// body jumps completes if it continues it.
 	hasContinue bool
 	lambdas     int // len(c.lambdas) where the loop is
+	flow        loopFlow
 }
 
 // Checker checks one file. Only one goroutine uses a Checker at a time.
@@ -256,6 +257,7 @@ type state struct {
 	retType    types.Type
 	retAllowed bool
 	loops      []*loopCtx
+	finallies  []finallyCtx // the finally blocks around the code
 	allowRange bool
 	tparams    []*types.TypeParamSym // type parameters in scope, innermost first
 	lambdas    []*syntax.Lambda      // lambdas being checked, outermost first

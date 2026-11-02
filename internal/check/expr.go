@@ -1291,10 +1291,12 @@ func (c *Checker) narrowing(cond syntax.Expr) (whenTrue, whenFalse []narrow) {
 	case *syntax.Binary:
 		switch x.Op {
 		case syntax.EQ, syntax.NE, syntax.EQ_EQ_EQ, syntax.NOT_EQ_EQ:
+			if t, f, ok := c.boolEquality(x); ok {
+				return t, f
+			}
 			var k narrow
 			ok := false
-			_, ynull := x.Y.(*syntax.NullLit)
-			_, xnull := x.X.(*syntax.NullLit)
+			ynull, xnull := isNull(x.Y), isNull(x.X)
 			if ynull {
 				k, ok = c.narrowKeyOf(x.X)
 			} else if xnull {
@@ -2815,18 +2817,14 @@ func (c *Checker) ifExpr(x *syntax.If, want types.Type, valueUsed bool) types.Ty
 		}
 	}
 	var exits []*branchExit
-	defer func() {
-		if len(vars) > 0 {
-			c.merge(vars, exits)
-		}
-	}()
+	defer func() { c.merge(vars, exits) }()
 	var pending []pendingBranch
 	c.push()
 	c.scope.narrows = whenTrue
 	exits = append(exits, c.watchExit(vars))
 	thenT := c.branch(x.Then, want, valueUsed, &pending)
 	c.pop()
-	if x.Else == nil && len(vars) > 0 {
+	if x.Else == nil {
 		exits = append(exits, c.startExit(vars, whenFalse))
 	}
 	if x.Else == nil {
@@ -3056,11 +3054,7 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 	// types: merged in the enclosing scope, after the pop below.
 	vars := c.watchedVars(x)
 	var exits []*branchExit
-	defer func() {
-		if len(vars) > 0 {
-			c.merge(vars, exits)
-		}
-	}()
+	defer func() { c.merge(vars, exits) }()
 	var st types.Type
 	// subj is the stable value that conditions on the subject smart cast:
 	// the subject's variable, a variable or a stable property.
@@ -3196,6 +3190,13 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 					cond.OpType = c.equality(cond.X.Pos(), syntax.EQ, st, ct)
 				}
 				cov.add(cond.X)
+				if single && x.SubjVar == "" {
+					// when (true) { c -> }, when (c) { true -> }: c's.
+					eq := &syntax.Binary{Op: syntax.EQ, X: x.Subject, Y: cond.X}
+					if t, f, ok := c.boolEquality(eq); ok {
+						whenTrue, later = append(whenTrue, t...), append(later, f...)
+					}
+				}
 				if single && nonNull(ct) {
 					// Equal to a value that isn't null: neither the
 					// subject nor the receivers of its safe calls are.
@@ -3209,7 +3210,8 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 					// Later branches see a non-null subject, and this one
 					// a null one, of type Nothing?.
 					if hasSubj && types.MayBeNull(subjType()) {
-						later = append(later, narrow{recv: subj.recv, sym: subj.sym, t: subjType().NonNull()})
+						n := narrow{recv: subj.recv, sym: subj.sym, t: subjType().NonNull()}
+						later = append(append(later, n), c.implied[c.localKey(n)]...)
 						if single {
 							whenTrue = append(whenTrue, narrow{recv: subj.recv, sym: subj.sym, t: types.NullType})
 						}
@@ -3285,8 +3287,8 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 		}
 	}
 	exhaustive := hasElse || x.Subject != nil && c.covers(st, &cov)
-	if !exhaustive && len(vars) > 0 {
-		exits = append(exits, c.startExit(vars, nil)) // no branch matched
+	if !exhaustive {
+		exits = append(exits, c.startExit(vars, later)) // no branch matched
 	}
 	if x.Soft && (!exhaustive || softFail) {
 		// The last statement of a lambda, which then returns Unit. Its
@@ -3412,6 +3414,7 @@ func (c *Checker) jump(x *syntax.Jump) {
 			return
 		}
 		x.Loop = loop.node
+		c.loopJump(slices.Index(c.loops, loop), x.Kind == syntax.BREAK)
 		if x.Kind == syntax.BREAK {
 			loop.hasBreak = true
 		} else {
