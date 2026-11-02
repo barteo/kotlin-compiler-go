@@ -3138,8 +3138,8 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 	result := types.NothingType
 	allJump := true
 	unused := types.NothingType // the join of the branches, whose value isn't used: see unusedJoin
-	var later []narrow // what the failed conditions of the branches so far imply
-	nullFirst := true  // no branch so far matches null
+	var later []narrow          // what the failed conditions of the branches so far imply
+	nullFirst := true           // no branch so far matches null
 	for i, br := range x.Branches {
 		if br.Else && br.Guard == nil { // else if guard -> can be anywhere
 			if i != len(x.Branches)-1 {
