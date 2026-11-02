@@ -528,6 +528,16 @@ func CheckContext(ctx context.Context, files []*syntax.File, lib *Library, jobs 
 		return nil, err
 	}
 
+	if r, ok := rec.(OverrideRecorder); ok && len(checkers) > 0 {
+		c := checkers[0]
+		r.Overridden(func(f *types.FunSym) []*types.FunSym {
+			if f == nil || f.Owner == nil || f.Static || f.Name == "<init>" {
+				return nil
+			}
+			return c.overridden(f.Owner, f)
+		})
+	}
+
 	var errs []*syntax.Error
 	for _, c := range checkers {
 		c.shadowedErrors()

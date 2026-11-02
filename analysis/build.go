@@ -129,7 +129,9 @@ type whenReport struct{ exhaustive, used bool }
 
 // recorder keeps what the checker reports, the last report of each node.
 type recorder struct {
-	mu          sync.Mutex
+	mu sync.Mutex
+	// overridden returns the functions a method overrides, directly.
+	overridden  func(*types.FunSym) []*types.FunSym
 	when        map[*syntax.When]whenReport
 	stmt        map[syntax.Stmt]bool
 	unreachable map[syntax.Stmt]bool
@@ -416,6 +418,9 @@ func merge(f *Fact, src Fact) {
 	if f.ImplicitReceiver == nil {
 		f.ImplicitReceiver = src.ImplicitReceiver
 	}
+	if f.Accessors == nil {
+		f.Accessors = src.Accessors
+	}
 	if f.ReceiverTarget == nil {
 		f.ReceiverTarget = src.ReceiverTarget
 	}
@@ -647,6 +652,9 @@ func (b *builder) expr(x syntax.Expr, el ElementID) {
 		f.Call = b.call(x.Call)
 	case *syntax.Binary:
 		f.Call = b.call(x.Call)
+		if f.Call == nil && (x.Op == syntax.EQ || x.Op == syntax.NE) {
+			f.Call = b.equalsCall(x.X.Type())
+		}
 		if sub, ok := b.rec.elvis[x]; ok {
 			f.NonNullLeftSubtypeRight = &sub
 			// x ?: y never evaluates y if x can't be null: kotlinc
@@ -693,6 +701,7 @@ func (b *builder) expr(x syntax.Expr, el ElementID) {
 		b.typeRef(x.Ref, x.Target)
 	case *syntax.As:
 		b.typeRef(x.Ref, x.Target)
+		f.ImpossibleCast = !b.castPossible(x.X.Type(), x.Target)
 	case *syntax.Jump:
 		if x.Kind == syntax.RETURN {
 			b.later = append(b.later, func() { b.returnTarget(x, el) })
@@ -769,6 +778,100 @@ func (b *builder) ident(x *syntax.Ident, el ElementID, f *Fact) {
 	}
 }
 
+// accessors returns the getter and setter of the property a member
+// access names, with the accessors they override as Targets.
+func (b *builder) accessors(x *syntax.Member) []Call {
+	switch {
+	case x.Getter != nil && x.Getter.Owner != nil && !x.Entries:
+		// A Java getter seen as a property, and its setter.
+		g := b.funCall(x.Getter)
+		g.Targets = b.targets(x.Getter)
+		out := []Call{g}
+		set := x.Setter
+		if set == nil {
+			set = javaSetter(x.Getter)
+		}
+		if set != nil {
+			s := b.funCall(set)
+			s.Targets = b.targets(set)
+			out = append(out, s)
+		}
+		return out
+	case x.Prop != nil && (x.Prop.Kind == types.Prop || x.Prop.Kind == types.Global):
+		get := func(p *types.VarSym) Call { return b.propAccessor(p, "get") }
+		set := func(p *types.VarSym) Call { return b.propAccessor(p, "set") }
+		var supers []*types.VarSym
+		if p := x.Prop; p.Kind == types.Prop && p.Owner != nil {
+			p.Owner.Supertypes(func(o *types.ClassSym) bool {
+				if q := o.Prop(p.Name); o != p.Owner && q != nil {
+					supers = append(supers, q)
+				}
+				return true
+			})
+		}
+		out := []Call{get(x.Prop)}
+		for _, q := range supers {
+			out[0].Targets = append(out[0].Targets, get(q))
+		}
+		if x.Prop.Mutable {
+			s := set(x.Prop)
+			for _, q := range supers {
+				if q.Mutable {
+					s.Targets = append(s.Targets, set(q))
+				}
+			}
+			out = append(out, s)
+		}
+		return out
+	}
+	return nil
+}
+
+// propAccessor describes a Kotlin property's getter or setter, kind get
+// or set, as kotlinc names it: Owner.<get-p>.
+func (b *builder) propAccessor(p *types.VarSym, kind string) Call {
+	fq := varFQ(p)
+	prefix := strings.TrimSuffix(fq, p.Name)
+	c := Call{Name: prefix + "<" + kind + "-" + p.Name + ">", Declaration: b.decl(p.Decl), StableNames: true}
+	t := b.cv.typ(p.Type)
+	if t == nil {
+		t = &Type{}
+	}
+	if kind == "get" {
+		c.DeclaredReturnType = t
+	} else {
+		c.Parameters, c.ParameterNames, c.Varargs = []Type{*t}, []string{"value"}, []bool{false}
+		c.DeclaredReturnType = b.cv.typ(types.UnitType)
+	}
+	return c
+}
+
+// javaSetter returns the setter that goes with Java getter g, getP or
+// isP: setP of one parameter of g's return type, in g's class or one of
+// its supertypes.
+func javaSetter(g *types.FunSym) *types.FunSym {
+	var name string
+	switch {
+	case strings.HasPrefix(g.Name, "get"):
+		name = "set" + g.Name[3:]
+	case strings.HasPrefix(g.Name, "is"):
+		name = "set" + g.Name[2:]
+	default:
+		return nil
+	}
+	var found *types.FunSym
+	g.Owner.Supertypes(func(o *types.ClassSym) bool {
+		for _, f := range o.Methods[name] {
+			if len(f.Params) == 1 && !f.Static && f.Params[0].Type.NonNull() == g.Ret.NonNull() {
+				found = f
+				return false
+			}
+		}
+		return true
+	})
+	return found
+}
+
 // member visits x.name.
 func (b *builder) member(x *syntax.Member, f *Fact) {
 	f.Role = "reference"
@@ -797,6 +900,7 @@ func (b *builder) member(x *syntax.Member, f *Fact) {
 	if x.Call != nil {
 		f.Call = b.call(x.Call)
 	}
+	f.Accessors = b.accessors(x)
 }
 
 // flow sets the facts of a read of v whose type t a smart cast may have
@@ -996,6 +1100,164 @@ func (b *builder) negated() {
 	}
 }
 
+// castPossible reports whether a value of type l may be cast to r: as
+// kotlinc's CastDiagnosticsUtil.isCastPossible, whose false is its
+// CAST_NEVER_SUCCEEDS warning. Classes are related when one is the
+// other's subclass; a final class's instances are only its own, and an
+// interface may be implemented by any class that isn't final.
+func (b *builder) castPossible(l, r types.Type) bool {
+	open := func(t types.Type) bool {
+		switch t.K {
+		case types.Invalid, types.Any, types.TypeParam, types.TypeVar, types.Range:
+			return true
+		}
+		return false
+	}
+	if open(l) || open(r) {
+		return true
+	}
+	rNull := r.N || r.P
+	if l.K == types.Null {
+		return rNull
+	}
+	if l.K == types.Nothing || r.K == types.Nothing {
+		return true
+	}
+	lt, rt := b.cv.typ(l), b.cv.typ(r)
+	if lt == nil || rt == nil {
+		return true
+	}
+	ln, rn := canonical(lt.Name), canonical(rt.Name)
+	if ln == rn || slices.ContainsFunc(lt.Supertypes, func(s string) bool { return canonical(s) == rn }) ||
+		slices.ContainsFunc(rt.Supertypes, func(s string) bool { return canonical(s) == ln }) {
+		return true
+	}
+	if finalType(l) || finalType(r) {
+		return false
+	}
+	return l.K == types.Class && l.C.Interface || r.K == types.Class && r.C.Interface
+}
+
+// canonical returns a type name with no nullability mark.
+func canonical(name string) string { return strings.TrimSuffix(name, "?") }
+
+// finalType reports whether type t has no subtypes but itself, as
+// kotlinc's !canHaveSubtypes, approximately: a final class, its type
+// arguments final too.
+func finalType(t types.Type) bool {
+	switch t.K {
+	case types.Unit, types.Bool, types.Int, types.Long, types.Double, types.Char, types.Float, types.Byte, types.Short, types.String:
+		return true
+	case types.Class:
+		if t.C == nil || !t.C.Final || t.C.Interface {
+			return false
+		}
+		for i := range t.A.Len() {
+			if a := t.A.Get(i); a.V != types.Inv || !finalType(a.T) {
+				return false
+			}
+		}
+		return true
+	}
+	return false
+}
+
+// equalsCall is the equals call == and != make on a left side of type
+// t, as kotlinc resolves it: the first equals(Any?) up t's class's
+// supertypes, or Any's, with the ones it overrides as Targets.
+func (b *builder) equalsCall(t types.Type) *Call {
+	if t.K == types.Invalid || t.K == types.Null || t.K == types.Nothing {
+		return nil
+	}
+	t = t.NonNull()
+	anyEq := Call{Name: "kotlin.Any.equals", Parameters: []Type{*b.cv.typ(types.Type{K: types.Any, N: true})}, ParameterNames: []string{"other"}, Varargs: []bool{false},
+		DeclaredReturnType: b.cv.typ(types.BoolType), Operator: true, StableNames: true}
+	if t.K == types.Class && t.C != nil {
+		var eq *types.FunSym
+		t.C.Supertypes(func(o *types.ClassSym) bool {
+			for _, f := range o.Methods["equals"] {
+				if len(f.Params) == 1 && !f.Static && !f.Ext && f.Params[0].Type.K == types.Any {
+					eq = f
+					return false
+				}
+			}
+			return true
+		})
+		if eq != nil && eq.Owner != nil && classFQ(eq.Owner) != "kotlin.Any" {
+			c := b.funCall(eq)
+			c.Targets = b.targets(eq)
+			if !slices.ContainsFunc(c.Targets, func(t Call) bool { return t.Name == anyEq.Name }) {
+				c.Targets = append(c.Targets, anyEq)
+			}
+			return &c
+		}
+		if t.C.Interface || eq == nil || classFQ(eq.Owner) == "kotlin.Any" {
+			return &anyEq
+		}
+	}
+	lt := b.cv.typ(t)
+	if lt == nil || canonical(lt.Name) == "kotlin.Any" {
+		return &anyEq
+	}
+	c := anyEq
+	c.Name = canonical(lt.Name) + ".equals"
+	c.Targets = []Call{anyEq}
+	return &c
+}
+
+// Overridden implements check.OverrideRecorder.
+func (r *recorder) Overridden(fn func(*types.FunSym) []*types.FunSym) { r.overridden = fn }
+
+// targets returns the functions f overrides, through every supertype,
+// each once: as kotlinc's overriddenTreeUniqueAsSequence, f aside.
+func (b *builder) targets(f *types.FunSym) []Call {
+	if b.rec.overridden == nil {
+		return nil
+	}
+	var out []Call
+	seen := map[*types.FunSym]bool{f: true}
+	var walk func(*types.FunSym)
+	walk = func(f *types.FunSym) {
+		for _, g := range b.rec.overridden(f) {
+			if seen[g] {
+				continue
+			}
+			seen[g] = true
+			out = append(out, b.funCall(g))
+			walk(g)
+		}
+	}
+	walk(f)
+	return out
+}
+
+// funCall describes function f as a call of it would, with no call's
+// arguments, receiver or annotations.
+func (b *builder) funCall(f *types.FunSym) Call {
+	c := Call{Name: b.funFQ(f), Declaration: b.decl(f.Decl), Extension: f.Ext}
+	if f.Ext {
+		c.DeclaredReceiver = b.cv.typ(f.Recv)
+	}
+	for _, p := range f.Params {
+		pt := b.cv.typ(p.Type)
+		if pt == nil {
+			pt = &Type{}
+		}
+		c.Parameters = append(c.Parameters, *pt)
+		c.ParameterNames = append(c.ParameterNames, p.Name)
+		c.Varargs = append(c.Varargs, p.Vararg)
+	}
+	c.DeclaredReturnType = b.cv.typ(f.Ret)
+	c.TypeParameters = len(f.TypeParams)
+	for _, p := range f.TypeParams {
+		c.TypeParameterNames = append(c.TypeParameterNames, p.Name)
+	}
+	c.Suspend, c.Operator = f.Suspend, f.Operator
+	c.FromJava = f.Owner != nil && f.Owner.External && f.Owner.KotlinName == "" && f.Decl == nil
+	c.StableNames = !c.FromJava
+	return c
+}
+
 // call converts a call; nil for none or one with no symbol.
 func (b *builder) call(x *syntax.Call) *Call {
 	if x == nil {
@@ -1079,6 +1341,9 @@ func (b *builder) call(x *syntax.Call) *Call {
 	// kotlinc: a function type's invoke has no stable parameter names,
 	// whatever names its type spells.
 	c.StableNames = !c.FromJava && !x.Invoke
+	if !x.Invoke {
+		c.Targets = b.targets(f)
+	}
 	switch {
 	case f.Inline != nil:
 		c.Inline = true
@@ -1491,6 +1756,7 @@ func (b *builder) symbol(id uint32, s any) Symbol {
 			sym.Kind = "property"
 		}
 		sym.Name = s.Name
+		sym.Shadowed = s.Shadowed
 		sym.QualifiedName = varFQ(s)
 		if s.Owner != nil {
 			sym.Owner = s.Owner.Name

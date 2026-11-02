@@ -13,6 +13,13 @@ import (
 // overloads are chosen: the last report counts.
 //
 // Compilation passes no Recorder and pays nothing for it.
+// An OverrideRecorder is a Recorder that, once checking is done, is
+// given a function that returns the functions of the supertypes of f's
+// owner that f overrides, directly: as the checker resolves overrides.
+type OverrideRecorder interface {
+	Overridden(func(f *types.FunSym) []*types.FunSym)
+}
+
 type Recorder interface {
 	// When reports whether the branches of a when with a subject cover
 	// every case of it, its else branch aside, and whether its value is

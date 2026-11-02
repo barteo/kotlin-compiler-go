@@ -954,3 +954,120 @@ fun h(s: String, n: String?, c: Boolean, k: (a: Int) -> Unit, a: Any?) {
 		t.Errorf("when subject: %+v", pd)
 	}
 }
+
+func TestFactFamilies(t *testing.T) {
+	src := `package p
+
+import java.math.BigDecimal
+import java.util.Calendar
+
+interface A { fun m() }
+interface B : A { override fun m() }
+interface C : A { override fun m() }
+class D : B, C { override fun m() {} }
+
+interface I
+interface J
+
+open class K { open var p: Int = 0 }
+class L : K() { override var p: Int = 1 }
+
+fun h(x: Int, l: List<Int>, d: D, s: String, a: Any, i: I, cal: Calendar, b: BigDecimal, k: L) {
+    val y = 1
+    run { val y = 2; println(y) }
+    l.forEach { x -> println(x) }
+    l.forEach { println(it) }
+    l.forEach { _ -> }
+    fun local(y: Int) = y
+    d.m()
+    s as Int
+    a as Int
+    i as J
+    cal.firstDayOfWeek
+    cal.firstDayOfWeek = 2
+    k.p
+    b == b
+    println(local(x) + y)
+}
+`
+	r, s := analyzed(t, withJDK(t), src)
+
+	// Shadowing: an inner y, a lambda parameter x and a local function
+	// parameter y shadow; the outer y, _ and the implicit it do not.
+	for _, want := range []struct {
+		kind, text string
+		nth        int
+		shadowed   bool
+	}{
+		{"PROPERTY", "val y = 1", 0, false},
+		{"PROPERTY", "val y = 2", 0, true},
+		{"VALUE_PARAMETER", "x", 0, true},
+		{"VALUE_PARAMETER", "y: Int", 0, true},
+		{"VALUE_PARAMETER", "_", 0, false},
+	} {
+		f := fact(t, r, at(t, s, want.kind, want.text, want.nth))
+		if f.Symbol == 0 || symbol(t, r, f.Symbol).Shadowed != want.shadowed {
+			t.Errorf("%s %q: shadowed %t, want %t", want.kind, want.text, f.Symbol != 0 && symbol(t, r, f.Symbol).Shadowed, want.shadowed)
+		}
+	}
+	if f := fact(t, r, at(t, s, "LAMBDA_EXPRESSION", "{ println(it) }", 0)); len(f.LambdaParameters) == 1 && symbol(t, r, f.LambdaParameters[0]).Shadowed {
+		t.Error("implicit it: shadowed")
+	}
+
+	// Call targets: D.m overrides B.m and C.m, which both override A.m,
+	// listed once.
+	f := fact(t, r, at(t, s, "CALL_EXPRESSION", "m()", 0))
+	if f.Call == nil {
+		t.Fatal("d.m(): no call")
+	}
+	var names []string
+	var walk func(c []Call)
+	walk = func(c []Call) {
+		for _, c := range c {
+			names = append(names, c.Name)
+			walk(c.Targets)
+		}
+	}
+	walk(f.Call.Targets)
+	if strings.Join(names, " ") != "p.B.m p.A.m p.C.m" {
+		t.Errorf("d.m() targets: %v", names)
+	}
+
+	// Impossible casts.
+	for _, want := range []struct {
+		text       string
+		impossible bool
+	}{{"s as Int", true}, {"a as Int", false}, {"i as J", false}} {
+		if f := fact(t, r, at(t, s, "BINARY_WITH_TYPE", want.text, 0)); f.ImpossibleCast != want.impossible {
+			t.Errorf("%s: ImpossibleCast %t", want.text, f.ImpossibleCast)
+		}
+	}
+
+	// Property accessors: Java getter and setter, Kotlin <get-p>/<set-p>
+	// with the overridden property's accessors as targets.
+	accessors := func(text string) []string {
+		f := fact(t, r, at(t, s, "DOT_QUALIFIED_EXPRESSION", text, 0))
+		if f.Call != nil {
+			t.Errorf("%s: unexpected call %s", text, f.Call.Name)
+		}
+		var out []string
+		for _, a := range f.Accessors {
+			out = append(out, a.Name)
+			for _, t := range a.Targets {
+				out = append(out, ">"+t.Name)
+			}
+		}
+		return out
+	}
+	if got := strings.Join(accessors("cal.firstDayOfWeek"), " "); got != "java.util.Calendar.getFirstDayOfWeek java.util.Calendar.setFirstDayOfWeek" {
+		t.Errorf("cal.firstDayOfWeek: %s", got)
+	}
+	if got := strings.Join(accessors("k.p"), " "); got != "p.L.<get-p> >p.K.<get-p> p.L.<set-p> >p.K.<set-p>" {
+		t.Errorf("k.p: %s", got)
+	}
+
+	// == calls equals, the first one up the operand's supertypes.
+	if f := fact(t, r, at(t, s, "BINARY_EXPRESSION", "b == b", 0)); f.Call == nil || f.Call.Name != "java.math.BigDecimal.equals" || len(f.Call.Targets) == 0 || f.Call.Targets[len(f.Call.Targets)-1].Name != "kotlin.Any.equals" {
+		t.Errorf("b == b: %+v", f.Call)
+	}
+}

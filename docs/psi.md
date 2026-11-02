@@ -74,6 +74,11 @@ refuse to run rather than read zeros. `Result`'s methods return deep copies.
 | `Type.SAM` | a `fun interface`, or a Java interface with one abstract method that Kotlin doesn't map to its own type (`Runnable`, not `Comparable`) |
 | `Call.Annotations`, `OwnerAnnotations`, `PackageAnnotations` | the callee declaration's annotations, or a library method's class-file annotations; its class's (not an enclosing class's); a library class's package's `package-info` |
 | `Deprecated` | the `@kotlin.Deprecated` message, folded as a constant, of what a reference or `USER_TYPE` names (a constructor falls back to its class), or `Deprecated in Java`; set only for the `WARNING` level |
+| `Symbol.Shadowed` | a local, `for` variable, local delegate, explicit lambda parameter or local function parameter whose name an enclosing local or parameter already has (`_` and the implicit `it` never shadow, as kotlinc's `NAME_SHADOWING`) |
+| `Call.Targets` | the functions the callee overrides, from the checker's own override resolution, each with its own `Targets`: the tree kotlinc's `overriddenTreeUniqueAsSequence` walks |
+| `ImpossibleCast` | an `as` between types kotlinc's `isCastPossible` rejects: unrelated, with either side final; a `null` cast to a non-null type |
+| `Accessors` | on a property access, the accessors it can call: a Java getter and its setter (`java.util.Calendar.getFirstDayOfWeek`, `setFirstDayOfWeek`), or a Kotlin property's `<get-p>` and, for a `var`, `<set-p>`, with the overridden properties' accessors as `Targets`; not a `Call`, which rules read as "this is a call" |
+| `Call` on `==`, `!=` | the `equals` found first up the left operand's supertypes, with `kotlin.Any.equals` as a target |
 
 Facts recorded on an expression are copied to the wrapper nodes Kotlin's
 PSI puts around it (`DOT_QUALIFIED_EXPRESSION`, `PARENTHESIZED`, labels,

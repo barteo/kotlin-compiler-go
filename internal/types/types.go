@@ -297,6 +297,11 @@ type VarSym struct {
 	// call's type arguments, not used to infer them.
 	NoInfer bool
 
+	// Shadowed is set on a local or parameter declared with the name of
+	// a local or parameter of an enclosing scope, which it hides: as
+	// kotlinc's NAME_SHADOWING warning.
+	Shadowed bool
+
 	// Parameters of Kotlin and Java functions read from class files.
 	Vararg  bool // takes any number of arguments of Type, passed in an array
 	Default bool // declares a default value, so the argument can be omitted

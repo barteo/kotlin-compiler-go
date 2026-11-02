@@ -405,6 +405,9 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 	c.lambdas = append(c.lambdas[:len(c.lambdas):len(c.lambdas)], x)
 	c.scope = &scope{parent: saved.scope, depth: len(c.lambdas)}
 	for _, s := range syms {
+		if s != x.It {
+			c.scope.shadow(s)
+		}
 		if s.Name != "_" && !c.scope.declare(s) {
 			c.errorf(s.Decl.(*syntax.LambdaParam).P, "conflicting declarations: %s", s.Name)
 		}

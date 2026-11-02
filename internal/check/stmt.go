@@ -447,6 +447,7 @@ func (c *Checker) stmt(s syntax.Stmt, valueUsed bool, want types.Type) types.Typ
 		c.push()
 		c.reset(vars)
 		s.Sym = &types.VarSym{Name: s.Var, Type: elem, Kind: types.Local}
+		c.scope.shadow(s.Sym)
 		c.scope.declare(s.Sym)
 		c.loops = append(c.loops, &loopCtx{node: s, label: s.Label, lambdas: len(c.lambdas)})
 		c.block(s.Body, noWant, false)
@@ -538,6 +539,7 @@ func (c *Checker) varStmt(s *syntax.VarStmt) {
 	if !s.Mutable && s.Init != nil && t.Flex() == types.BoolType {
 		c.condVal(s.Sym, s.Init)
 	}
+	c.scope.shadow(s.Sym)
 	if !c.scope.declare(s.Sym) {
 		c.errorf(s.P, "conflicting declarations: %s", s.Name)
 	}

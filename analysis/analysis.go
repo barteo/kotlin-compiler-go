@@ -260,6 +260,14 @@ type Fact struct {
 	DelegateType   *Type  `json:"delegateType,omitempty"`
 	DelegatedCalls []Call `json:"delegatedCalls,omitempty"`
 
+	// Accessors are set on a reference to a property through a receiver,
+	// a.p: its getter, and its setter if it has one, as kotlinc's
+	// PropertyDescriptor's accessors, whether the reference reads or
+	// writes it. A Kotlin property's are named Owner.<get-p> and
+	// Owner.<set-p>, a Java one's by their methods, getP and setP. Each
+	// lists the accessors it overrides as Targets.
+	Accessors []Call `json:"accessors,omitempty"`
+
 	// Deprecated is the deprecation message of what a reference names.
 	Deprecated *string `json:"deprecated,omitempty"`
 }
@@ -294,7 +302,7 @@ var capabilities = []string{
 	CapTypes, CapSymbols, CapCalls, CapWhen, CapUsedAsExpression, CapUnreachable,
 	CapFlowNonNull, CapLambdaParameters, CapReturnTargets, CapReceiverTargets,
 	CapClassifiers, CapDelegates, CapClassMembers, CapDeprecation, CapAnnotations,
-	CapSuspendOperations,
+	CapSuspendOperations, CapShadowing, CapCallTargets, CapImpossibleCasts,
 }
 
 // Data is all of a Result's facts and symbols, in order: facts by
@@ -493,6 +501,7 @@ func copyFact(f Fact) Fact {
 	f.ImplicitReceiver = copyID(f.ImplicitReceiver)
 	f.DelegateType = copyType(f.DelegateType)
 	f.DelegatedCalls = copyCalls(f.DelegatedCalls)
+	f.Accessors = copyCalls(f.Accessors)
 	if f.Deprecated != nil {
 		s := *f.Deprecated
 		f.Deprecated = &s
