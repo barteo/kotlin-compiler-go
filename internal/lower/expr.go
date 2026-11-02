@@ -190,12 +190,17 @@ func (l *lowerer) expr1(n psi.NodeRef) syntax.Expr {
 		name := l.label(n)
 		x := exprChild(n)
 		switch x.NumericKind() {
+		// The lambda's or function's facts are its own node's, which the
+		// label wraps.
 		case psi.KindLAMBDA_EXPRESSION:
 			lam := l.lambda(x)
 			lam.Label = name
+			l.prov[lam] = x.ID()
 			return lam
 		case psi.KindFUN:
-			return l.anonFun(x, name)
+			f := l.anonFun(x, name)
+			l.prov[f] = x.ID()
+			return f
 		}
 		// A label on another expression has no effect.
 		return l.expr(x)
@@ -777,6 +782,7 @@ func (l *lowerer) when(n psi.NodeRef) syntax.Expr {
 				l.fail(pd, "unexpected declaration in 'when' subject")
 			}
 			w.SubjVar = ident(child(pd, psi.KindIDENTIFIER))
+			l.prov[WhenSubject{w}] = pd.ID()
 			if t := child(pd, psi.KindTYPE_REFERENCE); t.Valid() {
 				w.SubjType = l.typeRef(t)
 			}

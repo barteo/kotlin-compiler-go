@@ -482,6 +482,12 @@ func (c *Checker) exprStmt(x syntax.Expr) types.Type {
 	if n := len(c.lrets); n > 0 && c.lrets[n-1].tail == x {
 		c.lrets[n-1].tailType = t
 	}
+	switch x.(type) {
+	case *syntax.If, *syntax.When, *syntax.Try:
+		if c.u.rec != nil && t.K != types.Invalid {
+			c.u.rec.StmtType(x, t)
+		}
+	}
 	if t.K == types.Range {
 		c.errorf(x.Pos(), "ranges are only supported in 'for' loops and 'in' checks")
 	}

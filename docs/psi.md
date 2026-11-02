@@ -62,11 +62,11 @@ refuse to run rather than read zeros. `Result`'s methods return deep copies.
 
 | Fact | Source |
 |---|---|
-| `Type` | the checked expression's or declaration's `types.Type`, converted to Kotlin's names (`kotlin.Any`, `kotlin.Function1`, ...) |
-| `Symbol` | the symbol an identifier, member, call or declaration resolved to, interned per result |
-| `Call` | the resolved function, argument mapping, receivers, type arguments and inline flags; on a compound assignment and `x++`, the operator the checker rewrote it to; on a callable reference, the function or constructor it names; `suspend { }` is a call of `kotlin.suspend`; a member function the checker builds in, `1.plus(2)` or `"a".plus(b)`, is named by its receiver's type, `kotlin.Int.plus` |
+| `Type` | the checked expression's or declaration's `types.Type`, converted to Kotlin's names (`kotlin.Any`, `kotlin.Function1`, ...); an `if`, `when` or `try` used as a statement has the type the recorder reports for it |
+| `Symbol` | the symbol an identifier, member, call or declaration resolved to, interned per result; `when (val x = e)`'s `PROPERTY` declares `x` |
+| `Call` | the resolved function, argument mapping, receivers, type arguments and inline flags; on a compound assignment and `x++`, the operator the checker rewrote it to; on a callable reference, the function or constructor it names; `suspend { }` is a call of `kotlin.suspend`; a member function the checker builds in, `1.plus(2)` or `"a".plus(b)`, is named by its receiver's type, `kotlin.Int.plus`, except those the standard library declares as extensions: `x.toString()` on a nullable `x` is `kotlin.toString` and `s.isEmpty()`, `uppercase`, `lowercase`, `substring` and `toCharArray` are `kotlin.text.*`, with `Extension` and `DeclaredReceiver`; a function-type value's call `f()` has no stable parameter names, and its callee reference the property's symbol; a delegate `by lazy { e }`'s `getValue` returns `e`'s type |
 | `When` | the recorder; `Exhaustive` and `Missing` ignore the `else` branch |
-| `FlowNonNull`, `DefinitelyNonNull` | a nullable declaration read as non-null after a smart cast |
+| `FlowNonNull`, `DefinitelyNonNull` | a nullable declaration read as non-null after a smart cast; a safe access `x?.a` on an `x` that can't be null, whose `Type` stays nullable, as kotlinc's |
 | `UsedAsExpression`, `Unreachable` | the recorder; an Elvis whose left side can't be null is unreachable, as kotlinc reports it |
 | `SuspendOperation` | a `for` loop whose `iterator()`, `hasNext()` or `next()` is a suspend operator |
 | `ReturnTarget`, `ReceiverTarget` | the jump's lambda or enclosing function; `this`'s receiver |

@@ -52,7 +52,7 @@ func analyze(ctx context.Context, cfg Config, snaps []*psi.Snapshot) (*Result, e
 		return nil, fmt.Errorf("analysis: %w", err)
 	}
 	defer cp.Close()
-	rec := &recorder{when: map[*syntax.When]whenReport{}, stmt: map[syntax.Stmt]bool{}, unreachable: map[syntax.Stmt]bool{}, annots: map[*syntax.File]map[syntax.Pos]*types.ClassSym{}, elvis: map[*syntax.Binary]bool{}, typeRefs: map[*syntax.TypeRef]types.Type{}, annotClass: map[*syntax.Annotation]*types.ClassSym{}}
+	rec := &recorder{when: map[*syntax.When]whenReport{}, stmt: map[syntax.Stmt]bool{}, unreachable: map[syntax.Stmt]bool{}, annots: map[*syntax.File]map[syntax.Pos]*types.ClassSym{}, elvis: map[*syntax.Binary]bool{}, typeRefs: map[*syntax.TypeRef]types.Type{}, annotClass: map[*syntax.Annotation]*types.ClassSym{}, stmtTypes: map[syntax.Expr]types.Type{}}
 	errs, err := check.CheckContext(ctx, files, lib, jobs, rec)
 	if err != nil {
 		return nil, err
@@ -140,6 +140,15 @@ type recorder struct {
 	typeRefs map[*syntax.TypeRef]types.Type
 	// annotClass are the classes of the annotations, by annotation.
 	annotClass map[*syntax.Annotation]*types.ClassSym
+	// stmtTypes are the types of the ifs, whens and trys used as
+	// statements.
+	stmtTypes map[syntax.Expr]types.Type
+}
+
+func (r *recorder) StmtType(x syntax.Expr, t types.Type) {
+	r.mu.Lock()
+	r.stmtTypes[x] = t
+	r.mu.Unlock()
 }
 
 func (r *recorder) When(x *syntax.When, exhaustive, valueUsed bool) {
@@ -240,7 +249,7 @@ type entry struct {
 // come from its PROPERTY too.
 func rank(n any) int {
 	switch n.(type) {
-	case *syntax.PropDecl, *syntax.CtorParam, *syntax.ClassDecl:
+	case *syntax.PropDecl, *syntax.CtorParam, *syntax.ClassDecl, lower.WhenSubject:
 		return 0
 	case *syntax.FunDecl, *syntax.Param:
 		return 1
@@ -464,6 +473,12 @@ func (b *builder) visit(n any, el ElementID) {
 	switch x := n.(type) {
 	case *syntax.PropDecl:
 		b.propDecl(x, el)
+	case lower.WhenSubject:
+		// when (val x = e): x, a local the checker declares.
+		if s := x.When.SubjSym; s != nil && x.When.SubjVar != "" {
+			b.set(el, Fact{Role: "declaration", Symbol: b.sym(s)})
+			b.typeRef(x.When.SubjType, s.Type)
+		}
 	case *syntax.FunDecl:
 		if x.Sym == nil {
 			return
@@ -551,6 +566,9 @@ func (b *builder) propDecl(x *syntax.PropDecl, el ElementID) {
 			visit := func(n any) bool {
 				if c, ok := n.(*syntax.Call); ok && c.Sym != nil && (c.Sym.Name == "getValue" || c.Sym.Name == "setValue") {
 					if cl := b.call(c); cl != nil {
+						if t, ok := lazyResult(x.Field.Init); ok && c.Sym.Name == "getValue" {
+							cl.ReturnType = b.cv.typ(t)
+						}
 						f.DelegatedCalls = append(f.DelegatedCalls, *cl)
 					}
 					return false
@@ -571,6 +589,26 @@ func (b *builder) propDecl(x *syntax.PropDecl, el ElementID) {
 	if x.Recv != nil && x.Getter != nil && x.Getter.Sym != nil {
 		b.typeRef(x.Recv, x.Getter.Sym.Recv)
 	}
+}
+
+// lazyResult returns the result type of the lambda of delegate x, a call
+// of the standard library's lazy without type arguments, which kotlinc
+// infers lazy's T from, the property's type being only its upper bound:
+// val a: Int? by lazy { 5 } reads a Lazy<Int>.
+func lazyResult(x syntax.Expr) (types.Type, bool) {
+	c, ok := x.(*syntax.Call)
+	if !ok || c.Sym == nil || c.Sym.Decl != nil || c.Sym.Name != "lazy" || len(c.TypeArgs) > 0 || len(c.Args) == 0 {
+		return types.Type{}, false
+	}
+	l, ok := c.Args[len(c.Args)-1].(*syntax.Lambda)
+	if !ok || l.Ref != nil || l.Body == nil || len(l.Body.Stmts) == 0 {
+		return types.Type{}, false
+	}
+	e, ok := l.Body.Stmts[len(l.Body.Stmts)-1].(*syntax.ExprStmt)
+	if !ok || e.X.Type().K == types.Invalid {
+		return types.Type{}, false
+	}
+	return e.X.Type(), true
 }
 
 func (b *builder) varStmt(x *syntax.VarStmt, el ElementID) {
@@ -595,6 +633,9 @@ func (b *builder) varStmt(x *syntax.VarStmt, el ElementID) {
 // expr visits an expression.
 func (b *builder) expr(x syntax.Expr, el ElementID) {
 	f := Fact{Role: "expression", Type: b.cv.typ(x.Type())}
+	if t, ok := b.rec.stmtTypes[x]; ok && f.Type == nil {
+		f.Type = b.cv.typ(t)
+	}
 	switch x := x.(type) {
 	case *syntax.Ident:
 		b.ident(x, el, &f)
@@ -663,7 +704,30 @@ func (b *builder) expr(x syntax.Expr, el ElementID) {
 			f.Symbol = b.sym(x.Decl.Sym)
 		}
 	}
+	if m := safeAccess(x); m != nil && m.SelNonNull {
+		// x?.a on an x that can't be null: as kotlinc's binding
+		// context, the type stays a?'s, which the compiler's own
+		// UNNECESSARY_SAFE_CALL reads, and data flow knows it non-null.
+		if rt := m.X.Type(); rt.K != types.Invalid && !rt.P && !types.MayBeNull(rt) {
+			f.FlowNonNull, f.DefinitelyNonNull = true, true
+		}
+	}
 	b.set(el, f)
+}
+
+// safeAccess returns the safe access x is, x?.a or x?.f(), or nil.
+func safeAccess(x syntax.Expr) *syntax.Member {
+	switch x := x.(type) {
+	case *syntax.Member:
+		if x.Safe {
+			return x
+		}
+	case *syntax.Call:
+		if m, ok := x.Fun.(*syntax.Member); ok && m.Safe && !x.Invoke {
+			return m
+		}
+	}
+	return nil
 }
 
 // ident visits a simple name.
@@ -776,7 +840,11 @@ func (b *builder) callExpr(x *syntax.Call, el ElementID, f *Fact) {
 	case x.Sym != nil && !x.Invoke:
 		s = b.sym(x.Sym)
 	}
-	if x.Invoke || x.Fun == nil {
+	if x.Invoke {
+		b.invokeCallee(x, el)
+		return
+	}
+	if x.Fun == nil {
 		return
 	}
 	fe, ok := b.where[x.Fun]
@@ -804,6 +872,28 @@ func (b *builder) callExpr(x *syntax.Call, el ElementID, f *Fact) {
 		cf.ImportableName = classFQ(x.Ctor)
 	}
 	b.set(fe, cf)
+}
+
+// invokeCallee sets the facts of the property a call of a value of
+// function type reads when the checker rewrote it, f() in an inner class
+// being outer.f(): the callee, written f, is that property's reference.
+func (b *builder) invokeCallee(x *syntax.Call, el ElementID) {
+	m, ok := x.Fun.(*syntax.Member)
+	if !ok {
+		return
+	}
+	if _, written := b.where[m]; written {
+		return
+	}
+	ref := b.node(el).ChildKind(psi.KindREFERENCE_EXPRESSION)
+	if !ref.Valid() || ref.Text() != m.Name {
+		return
+	}
+	cf := Fact{UsedAsExpression: true}
+	b.member(m, &cf)
+	cf.Type = b.cv.typ(m.Type())
+	cf.ImplicitReceiver = b.implicitReceiver(m, nil, el)
+	b.set(ElementID{el.Snapshot, ref.ID()}, cf)
 }
 
 func (b *builder) funFQ(f *types.FunSym) string {
@@ -852,7 +942,30 @@ func (b *builder) builtinMember(m *syntax.Member, x *syntax.Call) *Call {
 	for i := range c.ArgumentMapping {
 		c.ArgumentMapping[i] = i
 	}
+	t := m.X.Type()
+	switch ext, ok := textExtensions[x.Builtin]; {
+	case x.Builtin == types.ToString && len(x.Args) == 0 && !m.Safe && types.MayBeNull(t) && !t.P:
+		// toString() of a nullable value is the extension Any?.toString().
+		c.Name, c.Extension = "kotlin.toString", true
+		c.Receiver = b.cv.typ(t)
+		c.DeclaredReceiver = &Type{Name: "kotlin.Any", Nullable: true, MarkedNullable: true}
+	case ok && m.Name == ext.name:
+		// A function of kotlin.text, an extension of String or
+		// CharSequence the checker builds in.
+		c.Name, c.Extension = "kotlin.text."+m.Name, true
+		c.DeclaredReceiver = &Type{Name: ext.recv}
+	}
 	return c
+}
+
+// textExtensions are the built-in functions of strings that are
+// extensions of kotlin.text, by name, with their declared receiver.
+var textExtensions = map[types.Builtin]struct{ name, recv string }{
+	types.StrIsEmpty:     {"isEmpty", "kotlin.CharSequence"},
+	types.StrUppercase:   {"uppercase", "kotlin.String"},
+	types.StrLowercase:   {"lowercase", "kotlin.String"},
+	types.StrSubstring:   {"substring", "kotlin.String"},
+	types.StrToCharArray: {"toCharArray", "kotlin.String"},
 }
 
 // negated gives the prefix expressions folded into negative literals the
@@ -963,7 +1076,9 @@ func (b *builder) call(x *syntax.Call) *Call {
 	c.Suspend = f.Suspend
 	c.Operator = f.Operator
 	c.FromJava = f.Owner != nil && f.Owner.External && f.Owner.KotlinName == "" && f.Decl == nil
-	c.StableNames = !c.FromJava
+	// kotlinc: a function type's invoke has no stable parameter names,
+	// whatever names its type spells.
+	c.StableNames = !c.FromJava && !x.Invoke
 	switch {
 	case f.Inline != nil:
 		c.Inline = true

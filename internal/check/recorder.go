@@ -32,4 +32,7 @@ type Recorder interface {
 	// as type arguments and function types' parts, included. Unresolved
 	// references are not reported.
 	TypeRef(ref *syntax.TypeRef, t types.Type)
+	// StmtType reports the type of an if, when or try used as a
+	// statement, which the checker doesn't give its node.
+	StmtType(x syntax.Expr, t types.Type)
 }

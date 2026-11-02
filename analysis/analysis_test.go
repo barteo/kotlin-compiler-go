@@ -888,3 +888,69 @@ fun <T : Any> g(x: T) = x
 		t.Errorf("z ?: fallback: %+v", f)
 	}
 }
+
+func TestValueFacts(t *testing.T) {
+	src := `package p
+
+class O {
+    val f: () -> Unit = {}
+    inner class I {
+        fun g() { f() }
+    }
+}
+
+val lz by lazy { 1 }
+
+fun h(s: String, n: String?, c: Boolean, k: (a: Int) -> Unit, a: Any?) {
+    n.toString()
+    s.isEmpty()
+    s.uppercase()
+    s?.substring(0)
+    if (c) println(1) else println(2)
+    run outer@{ 1 }
+    k(1)
+    when (val x = a as? String) {
+        null -> {}
+        else -> println(x)
+    }
+}
+`
+	r, s := analyzed(t, withStdlib(t), src)
+	// The callee of an invoke on an outer class's property.
+	if f := fact(t, r, at(t, s, "REFERENCE_EXPRESSION", "f", 0)); f.Symbol == 0 || symbol(t, r, f.Symbol).Name != "f" {
+		t.Errorf("f(): %+v", f)
+	}
+	// lazy's getValue returns the lambda's own type.
+	if f := fact(t, r, at(t, s, "PROPERTY", "val lz by lazy { 1 }", 0)); len(f.DelegatedCalls) != 1 || f.DelegatedCalls[0].ReturnType == nil || f.DelegatedCalls[0].ReturnType.Nullable {
+		t.Errorf("lz: %+v", f.DelegatedCalls)
+	}
+	for _, want := range []struct{ text, name, recv string }{
+		{"n.toString()", "kotlin.toString", "kotlin.Any"},
+		{"s.isEmpty()", "kotlin.text.isEmpty", "kotlin.CharSequence"},
+		{"s.uppercase()", "kotlin.text.uppercase", "kotlin.String"},
+	} {
+		call := at(t, s, "DOT_QUALIFIED_EXPRESSION", want.text, 0).ChildKind(psi.KindCALL_EXPRESSION)
+		f := fact(t, r, call)
+		if f.Call == nil || f.Call.Name != want.name || !f.Call.Extension || f.Call.DeclaredReceiver == nil || f.Call.DeclaredReceiver.Name != want.recv {
+			t.Errorf("%s: %+v", want.text, f.Call)
+		}
+	}
+	// s?.substring(0) on a non-null s: String?, which data flow knows
+	// non-null.
+	if f := fact(t, r, at(t, s, "SAFE_ACCESS_EXPRESSION", "s?.substring(0)", 0)); f.Type == nil || !f.Type.Nullable || !f.FlowNonNull {
+		t.Errorf("s?.substring(0): %+v", f)
+	}
+	if f := fact(t, r, at(t, s, "IF", "if (c) println(1) else println(2)", 0)); f.Type == nil || f.Type.Name != "kotlin.Unit" {
+		t.Errorf("if statement: %+v", f.Type)
+	}
+	if _, ok := r.Fact(ElementID{s.ID(), at(t, s, "LAMBDA_EXPRESSION", "{ 1 }", 0).ID()}); !ok {
+		t.Error("labeled lambda: no fact")
+	}
+	if f := fact(t, r, at(t, s, "CALL_EXPRESSION", "k(1)", 0)); f.Call == nil || f.Call.StableNames {
+		t.Errorf("k(1): %+v", f.Call)
+	}
+	pd := fact(t, r, at(t, s, "PROPERTY", "val x = a as? String", 0))
+	if pd.Role != "declaration" || pd.Symbol == 0 || pd.Symbol != fact(t, r, at(t, s, "REFERENCE_EXPRESSION", "x", 0)).Symbol {
+		t.Errorf("when subject: %+v", pd)
+	}
+}

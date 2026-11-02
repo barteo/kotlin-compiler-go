@@ -76,6 +76,10 @@ func (p *Provenance) Each(fn func(n any, id psi.NodeID)) {
 	}
 }
 
+// WhenSubject is the provenance key of the PROPERTY a when declares
+// its subject with, when (val x = e): the AST keeps only its name.
+type WhenSubject struct{ When *syntax.When }
+
 type bailout struct{}
 
 type lowerer struct {

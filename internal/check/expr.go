@@ -1835,6 +1835,7 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 		return t
 	}
 	if x.Safe {
+		x.SelNonNull = !types.MayBeNull(t)
 		t = t.Nullable()
 	}
 	return t
@@ -2356,6 +2357,7 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 		}
 		if fn.Safe && t.K != types.Unit {
 			fn.Nothing = t.K == types.Nothing && !t.N
+			fn.SelNonNull = !types.MayBeNull(t)
 			t = t.Nullable()
 		}
 		fn.T = rt
