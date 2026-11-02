@@ -653,10 +653,61 @@ func (t *classTable) valueOf(cls *types.ClassSym, kc *kmeta.Class) {
 	if u == nil {
 		return
 	}
-	if ut, ok := t.ktype(u, tscope{}); ok && ut.K != types.Invalid {
+	// A generic value class's underlying type may use its type
+	// parameters, value class A<T>(val x: T & Any), so they are created
+	// here, before the class is loaded, which keeps them.
+	scope := tscope{}
+	var tps []*types.TypeParamSym
+	if len(kc.TypeParams) > 0 && cls.TypeParams == nil {
+		tps = t.valueTypeParams(cls, kc, scope)
+	}
+	if ut, ok := t.ktype(u, scope); ok && ut.K != types.Invalid {
 		cls.Value = true
 		cls.Underlying = &types.VarSym{Name: kc.UnderlyingProp, Type: ut, Kind: types.Prop, Owner: cls, Resolved: true, Final: true}
+		if tps != nil {
+			cls.TypeParams = tps
+		}
 	}
+}
+
+// valueTypeParams creates the type parameters of value class kc for
+// valueOf, and adds them to scope. Bounds that use the class itself, as
+// T : Comparable<A<T>>, are left out: they would load it again while it is
+// being created, and the underlying value's type erases to the first
+// bound's class, which is another.
+func (t *classTable) valueTypeParams(cls *types.ClassSym, kc *kmeta.Class, scope tscope) []*types.TypeParamSym {
+	syms := make([]*types.TypeParamSym, len(kc.TypeParams))
+	for i, p := range kc.TypeParams {
+		syms[i] = &types.TypeParamSym{Name: p.Name, Var: variance(p.Variance), Index: i, Owner: cls, Reified: p.Reified}
+		scope[p.ID] = syms[i]
+	}
+	for i, p := range kc.TypeParams {
+		for _, b := range p.Bounds {
+			if mentionsClass(b, kc.Name) {
+				continue
+			}
+			if bt, ok := t.ktype(b, scope); ok {
+				syms[i].Bounds = append(syms[i].Bounds, bt)
+			}
+		}
+	}
+	return syms
+}
+
+// mentionsClass reports whether type kt uses the class named name.
+func mentionsClass(kt *kmeta.Type, name string) bool {
+	if kt == nil {
+		return false
+	}
+	if kt.Class == name || mentionsClass(kt.Upper, name) {
+		return true
+	}
+	for _, a := range kt.Args {
+		if mentionsClass(a.Type, name) {
+			return true
+		}
+	}
+	return false
 }
 
 // kfun creates the symbol of a Kotlin function. scope holds the type
@@ -1262,7 +1313,30 @@ func (t *classTable) loadKotlin(cls *types.ClassSym, info *classfile.Info, kc *k
 	cls.Private = info.Access&classfile.AccPublic == 0 || !visibleOutside(kc.Flags.Visibility(), friend) && !builtinCompanions[cls.Name]
 	cls.Internal = info.Access&classfile.AccPublic != 0 && kc.Flags.Visibility() == kmeta.Internal
 	scope := tscope{}
-	tps, ok := t.ktypeParams(kc.TypeParams, cls, scope)
+	var tps []*types.TypeParamSym
+	ok := true
+	if early := cls.TypeParams; cls.Value && len(early) == len(kc.TypeParams) && len(early) > 0 {
+		// valueOf's, which the underlying value's type uses, with their
+		// complete bounds now.
+		for i, p := range kc.TypeParams {
+			scope[p.ID] = early[i]
+		}
+		for i, p := range kc.TypeParams {
+			var bounds []types.Type
+			for _, b := range p.Bounds {
+				bt, bok := t.ktype(b, scope)
+				if !bok {
+					ok = false
+					continue
+				}
+				bounds = append(bounds, bt)
+			}
+			early[i].Bounds = bounds
+		}
+		tps = early
+	} else {
+		tps, ok = t.ktypeParams(kc.TypeParams, cls, scope)
+	}
 	cls.TypeParams = tps
 	if kc.IsValue() && cls.Underlying == nil && kc.Underlying != nil {
 		if ut, uok := t.ktype(kc.Underlying, scope); uok {
