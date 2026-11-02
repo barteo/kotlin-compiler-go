@@ -256,11 +256,19 @@ func (g *gen) forEach(s *syntax.For) {
 	g.code.Jump(cf.IFEQ, exit)
 	g.suspendOperator(s.Next, s.IterT, func() { g.code.Local(cf.ALOAD, it) })
 	g.coerce(types.JVMRet(s.Next), s.Sym.Type)
-	g.code.Local(storeOp(s.Sym.Type), s.Sym.Slot)
+	g.storeLoopVar(s.Sym)
 	g.pushLoop(s, exit, top)
 	g.loopBody(func() { g.block(s.Body, types.UnitType, false) })
 	g.code.Jump(cf.GOTO, top)
 	g.code.Place(exit)
+}
+
+// storeLoopVar stores the element on the stack in loop variable v. A
+// Unit one, as a List<Unit>'s, has no local: its reads are Unit.
+func (g *gen) storeLoopVar(v *types.VarSym) {
+	if size(v.Type) > 0 {
+		g.code.Local(storeOp(v.Type), v.Slot)
+	}
 }
 
 // forCalls generates a loop over a collection whose iterator(), hasNext()
@@ -275,7 +283,7 @@ func (g *gen) forCalls(s *syntax.For) {
 	g.exprAs(s.HasNextX, types.BoolType)
 	g.code.Jump(cf.IFEQ, exit)
 	g.exprAs(s.NextX, s.Sym.Type)
-	g.code.Local(storeOp(s.Sym.Type), s.Sym.Slot)
+	g.storeLoopVar(s.Sym)
 	g.pushLoop(s, exit, top)
 	g.loopBody(func() { g.block(s.Body, types.UnitType, false) })
 	g.code.Jump(cf.GOTO, top)

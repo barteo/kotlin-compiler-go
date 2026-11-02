@@ -1879,7 +1879,7 @@ func (g *gen) ungroupedCall(x *syntax.Call) {
 	case x.Builtin == types.Println || x.Builtin == types.Print:
 		// As kotlinc's inlined println, an argument that suspends comes
 		// first, so that System.out isn't saved with the locals.
-		late := g.sm != nil && hasSuspension(x.Args)
+		late := g.argsSuspend(x.Args)
 		out := func(t types.Type) {
 			if !late {
 				return
@@ -2047,7 +2047,7 @@ func (g *gen) ungroupedCall(x *syntax.Call) {
 	case x.Ctor != nil:
 		d := ctorJVMDesc(x.Sym)
 		var mask argMask
-		if g.sm != nil && hasSuspension(x.Args) || hasHandlers(x.Args) {
+		if g.argsSuspend(x.Args) || hasHandlers(x.Args) {
 			// The object under construction can't be stored while the
 			// arguments suspend, or in the locals that a try's handler
 			// needs the stack spilled to: they are evaluated first, as

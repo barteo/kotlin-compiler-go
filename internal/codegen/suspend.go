@@ -774,6 +774,11 @@ func (g *gen) suspendStart(x *syntax.Call, f *types.FunSym) *suspendPoint {
 	if f == nil || !f.Suspend {
 		return nil
 	}
+	if x != nil && x.Invoke {
+		if l, _ := g.inlinedInvoke(x); l != nil {
+			return nil // the lambda's body is copied: its calls are the points
+		}
+	}
 	sm := g.sm
 	if sm == nil {
 		panic("suspend call " + f.Name + " outside suspend code")
@@ -1578,6 +1583,37 @@ func invokesCrossinline(x *syntax.Call) bool {
 	}
 	p, ok := id.Sym.Decl.(*syntax.Param)
 	return ok && p.Crossinline
+}
+
+// argsSuspend is hasSuspension for the arguments of a call in the code
+// being generated, where an invoke of an inlined lambda's parameter, in
+// the body of an inline function being copied, is the lambda's body.
+func (g *gen) argsSuspend(xs []syntax.Expr) bool {
+	if g.sm == nil {
+		return false
+	}
+	if hasSuspension(xs) {
+		return true
+	}
+	found := false
+	for _, x := range xs {
+		syntax.Inspect(x, func(n any) bool {
+			switch n := n.(type) {
+			case *syntax.Lambda:
+				return n.Inline
+			case *syntax.LocalFun:
+				return false
+			case *syntax.Call:
+				if n.Invoke {
+					if l, _ := g.inlinedInvoke(n); l != nil {
+						found = found || hasSuspension([]syntax.Expr{l})
+					}
+				}
+			}
+			return !found
+		})
+	}
+	return found
 }
 
 // hasSuspension reports whether the expressions have a suspension point
