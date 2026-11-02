@@ -89,7 +89,7 @@ func (g *gen) dataMembers(cd *syntax.ClassDecl) {
 		g.check()
 	}
 	if f := synthesized(cls, "copy"); f != nil {
-		ctor := ctorJVMDesc(cd.Ctor) // with an inner class's outer instance, or a local class's captures
+		ctor := ctorJVMDesc(cd.Ctor) // with a local class's captures
 		d := methodDesc(f.Params, f.Ret)
 		newMethod(f.JVM(), d)
 		m := g.cls.LastMethod()
@@ -109,11 +109,7 @@ func (g *gen) dataMembers(cd *syntax.ClassDecl) {
 		g.checkParams(nil, nil, f.Params)
 		g.code.New(cls.Name)
 		g.code.Op(cf.DUP)
-		switch {
-		case cls.Inner:
-			g.code.Local(cf.ALOAD, 0)
-			g.code.FieldInsn(cf.GETFIELD, cls.Name, "this$0", desc(cls.Outer.This()))
-		case cls.Local:
+		if cls.Local {
 			// The copy captures what this instance captured.
 			for _, v := range cd.Captures {
 				g.code.Local(cf.ALOAD, 0)

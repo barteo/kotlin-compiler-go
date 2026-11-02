@@ -28,8 +28,15 @@ data class Cloned(var x: Int) : Cloneable {
 }
 
 class Outer(val s: String) {
-    inner data class In(val x: Int) {
-        fun show() = s + x
+    inner class In(val t: String) {
+        // A local data class that captures the instances of In and Outer.
+        fun local(): String {
+            data class L(val x: Int) {
+                fun show() = s + t + x
+            }
+            val l = L(1)
+            return l.copy(x = 2).show() + " " + l.copy()
+        }
     }
 }
 
@@ -89,8 +96,7 @@ fun main() {
     val b = a.clone()
     b.x = 1
     println("" + (a == b) + " " + (a === b) + " " + a + " " + b)
-    val o = Outer("o").In(1)
-    println(o.copy(x = 2).show() + " " + o.copy())
+    println(Outer("o").In("i").local())
     println(Anno.X.toString() + " " + Anno.name + " " + Anno.greet())
     println(Entry.FOO.bar())
 }
