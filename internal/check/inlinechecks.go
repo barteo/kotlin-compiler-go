@@ -14,6 +14,139 @@ import (
 func (c *Checker) inlineBodyChecks(d *syntax.FunDecl, cls *types.ClassSym) {
 	c.inlineUsage(d)
 	c.publicInline(d, cls)
+	if publicAPIInline(d, cls) {
+		c.inlineAccess(d)
+	}
+}
+
+// publicAPIInline reports whether inline function d, a member of cls or
+// not, is public API, which other modules inline: not private, internal
+// unless @PublishedApi, or in a private, internal, local or anonymous
+// class.
+func publicAPIInline(d *syntax.FunDecl, cls *types.ClassSym) bool {
+	if d.Visibility == syntax.Private || d.Visibility == syntax.Internal && d.Find("", "PublishedApi") == nil {
+		return false
+	}
+	return publicAPIClass(cls)
+}
+
+// publicAPIClass reports whether the members of cls, or the top-level
+// declarations if nil, can be public API.
+func publicAPIClass(cls *types.ClassSym) bool {
+	for k := cls; k != nil; k = k.Outer {
+		if k.Local || k.Anonymous {
+			return false
+		}
+		cd, ok := k.Decl.(*syntax.ClassDecl)
+		if !ok {
+			return false
+		}
+		if cd.Visibility == syntax.Private || cd.Visibility == syntax.Internal || cd.Local || cd.Anonymous {
+			return false
+		}
+	}
+	return true
+}
+
+// localType reports whether t's class is one declared in a block or an
+// object expression's.
+func localType(t types.Type) bool {
+	if t.K != types.Class || t.C == nil {
+		return false
+	}
+	for k := t.C; k != nil; k = k.Outer {
+		if k.Local || k.Anonymous {
+			return true
+		}
+		if cd, ok := k.Decl.(*syntax.ClassDecl); ok && (cd.Local || cd.Anonymous) {
+			return true
+		}
+	}
+	return false
+}
+
+// inlineAccess reports what public-API inline function d's copies in
+// other modules couldn't do, as kotlinc does: call a member of a
+// superclass through super (SUPER_CALL_FROM_PUBLIC_INLINE), or a
+// protected member or constructor of the program's classes
+// (PROTECTED_CALL_FROM_PUBLIC_INLINE_ERROR,
+// PROTECTED_CONSTRUCTOR_CALL_FROM_PUBLIC_INLINE). The classes it
+// declares are its own: their super, and their members through their
+// instances, are not reported.
+func (c *Checker) inlineAccess(d *syntax.FunDecl) {
+	locals := map[string]bool{} // the names of the classes declared in d
+	depth := 0                  // the classes declared in d the code is in
+	protected := func(p syntax.Pos, recv syntax.Expr, owner *types.ClassSym, m *syntax.Modifiers, what, name string) {
+		if m == nil || m.Visibility != syntax.Protected || owner == nil || !publicAPIClass(owner) {
+			return
+		}
+		if recv == nil && depth > 0 || recv != nil && localType(recv.Type()) {
+			return
+		}
+		c.errorf(p, "protected %s call from public-API inline function is prohibited: '%s'", what, name)
+	}
+	receiver := func(f syntax.Expr) syntax.Expr {
+		if m, ok := f.(*syntax.Member); ok {
+			return m.X
+		}
+		return nil
+	}
+	var visit func(n any) bool
+	visit = func(n any) bool {
+		switch n := n.(type) {
+		case *syntax.ObjectExpr:
+			depth++
+			inspectClass(n.Decl, visit)
+			depth--
+			return false
+		case *syntax.LocalClass:
+			locals[n.Decl.Name] = true
+			depth++
+			inspectClass(n.Decl, visit)
+			depth--
+			return false
+		case *syntax.Super:
+			if n.Label == "" && depth == 0 || n.Label != "" && !locals[n.Label] {
+				c.errorf(n.P, "accessing super members from public-API inline function is prohibited")
+			}
+		case *syntax.Ident:
+			if v := n.Sym; v != nil && v.Kind == types.Prop && n.Member == nil {
+				protected(n.P, nil, v.Owner, varModifiers(v), "property", v.Name)
+			}
+		case *syntax.Member:
+			if v := n.Prop; v != nil && v.Kind == types.Prop {
+				if _, ok := n.X.(*syntax.Super); !ok {
+					protected(n.P, n.X, v.Owner, varModifiers(v), "property", v.Name)
+				}
+			}
+		case *syntax.Call:
+			f := n.Sym
+			if f == nil || n.Invoke {
+				break
+			}
+			if n.Ctor != nil {
+				if f.Decl != nil && depth == 0 && publicAPIClass(n.Ctor.Outer) && !localType(types.ClassType(n.Ctor)) {
+					if cd, ok := n.Ctor.Decl.(*syntax.ClassDecl); ok && (cd.Visibility == syntax.Protected || ctorVisibility(f) == syntax.Protected) {
+						c.errorf(n.P, "protected constructor call from public-API inline function is prohibited: '%s'", cd.Name)
+					}
+				}
+				break
+			}
+			if fd, ok := f.Decl.(*syntax.FunDecl); ok && fd != d {
+				recv := receiver(n.Fun)
+				if _, ok := recv.(*syntax.Super); !ok {
+					protected(n.P, recv, f.Owner, &fd.Modifiers, "function", f.Name)
+				}
+			}
+		}
+		return true
+	}
+	if d.Body != nil {
+		syntax.Inspect(d.Body, visit)
+	}
+	if d.ExprBody != nil {
+		syntax.Inspect(d.ExprBody, visit)
+	}
 }
 
 // inlineParams returns the parameters of inline function d whose
