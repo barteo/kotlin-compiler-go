@@ -455,23 +455,26 @@ func (c *Checker) while(s *syntax.While) types.Type {
 		c.pop()
 		c.pop()
 	} else {
+		pre := c.loopEntry(vars)
 		c.push()
 		c.reset(vars)
 		c.value(s.Cond, types.BoolType)
 		c.wantBool(s.Cond)
 		whenTrue, whenFalse := c.narrowing(s.Cond)
+		c.loops = append(c.loops, loop)
+		c.push()
+		c.scope.narrows = append(c.scope.narrows, whenTrue...)
+		end := c.watchExit(vars)
+		c.block(s.Body, noWant, false)
+		c.pop()
+		c.loops = c.loops[:len(c.loops)-1]
 		if lit, ok := s.Cond.(*syntax.BoolLit); !ok || !lit.Val {
 			c.push()
+			c.scope.narrows = append(c.scope.narrows, c.loopHead(vars, s.Cond, pre, end, loop)...)
 			c.scope.narrows = append(c.scope.narrows, whenFalse...)
 			exits = append(exits, c.flowState())
 			c.pop()
 		}
-		c.loops = append(c.loops, loop)
-		c.push()
-		c.scope.narrows = append(c.scope.narrows, whenTrue...)
-		c.block(s.Body, noWant, false)
-		c.pop()
-		c.loops = c.loops[:len(c.loops)-1]
 		c.pop()
 	}
 	unkeep()

@@ -1344,19 +1344,19 @@ func (c *Checker) narrowing(cond syntax.Expr) (whenTrue, whenFalse []narrow) {
 			// The right side ran if a && b is true: its x!! smart-cast x.
 			// The right side's smart casts build on the left's: x is Int?
 			// && x != null makes x an Int.
-			t1, _ := c.narrowing(x.X)
+			t1, f1 := c.narrowing(x.X)
 			c.push()
 			c.scope.narrows = t1
-			t2, _ := c.narrowing(x.Y)
+			t2, f2 := c.narrowing(x.Y)
 			c.pop()
-			return append(append(t1[:len(t1):len(t1)], t2...), c.asserted(x.Y)...), nil
+			return append(append(t1[:len(t1):len(t1)], t2...), c.asserted(x.Y)...), c.eitherNarrows(f1, t1, f2)
 		case syntax.OR:
-			_, f1 := c.narrowing(x.X)
+			t1, f1 := c.narrowing(x.X)
 			c.push()
 			c.scope.narrows = f1
-			_, f2 := c.narrowing(x.Y)
+			t2, f2 := c.narrowing(x.Y)
 			c.pop()
-			return nil, append(append(f1[:len(f1):len(f1)], f2...), c.asserted(x.Y)...)
+			return c.eitherNarrows(t1, f1, t2), append(append(f1[:len(f1):len(f1)], f2...), c.asserted(x.Y)...)
 		}
 	case *syntax.Unary:
 		if x.Op == syntax.NOT {

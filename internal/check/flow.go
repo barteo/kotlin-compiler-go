@@ -661,3 +661,90 @@ func (c *Checker) boolEquality(x *syntax.Binary) (whenTrue, whenFalse []narrow, 
 	}
 	return whenTrue, whenFalse, true
 }
+
+// loopEntry returns the smart casts before a loop that assigns vars, for
+// loopHead, or nil if there are no vars.
+func (c *Checker) loopEntry(vars []*types.VarSym) flowState {
+	if len(vars) == 0 {
+		return nil
+	}
+	return c.flowState()
+}
+
+// loopHead returns the smart casts of the vars a loop assigns where its
+// condition cond is checked, for the path out of it when cond is false:
+// as with kotlinc, which checks the loop once, its body sees them with
+// their declared types, but the paths to its condition, from before the
+// loop (pre) and from the end of its body (end) and its continues, join
+// as the branches of an if do. After
+//
+//	if (x != null) while (b()) { x = x.swap() }
+//
+// x is an Int if each swap() gives one. A var the condition assigns
+// keeps its declared type.
+func (c *Checker) loopHead(vars []*types.VarSym, cond syntax.Expr, pre flowState, end *branchExit, loop *loopCtx) []narrow {
+	if pre == nil || loop.flow.lost {
+		return nil
+	}
+	states := []flowState{pre}
+	if !end.jumped && end.state != nil {
+		states = append(states, end.state)
+	}
+	states = append(states, loop.flow.continues...)
+	var inCond []string
+	if cond != nil {
+		inCond = c.assigns(cond)
+	}
+	var out []narrow
+	for _, n := range c.joinFlows(states) {
+		if n.recv == nil && slices.Contains(vars, n.sym) && !slices.Contains(inCond, n.sym.Name) {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+// eitherNarrows returns the smart casts that hold when either of two
+// conditions' smart casts do: those of a || b being true, a's when it is
+// true (first) or b's when a is false and b true (ctx, the smart casts of
+// a being false, and second). A value narrowed on both paths has the join
+// of its types, as after a is B || a is C, where a has their common
+// supertype. a && b being false is the same with the sides' negations.
+func (c *Checker) eitherNarrows(first, ctx, second []narrow) []narrow {
+	var out []narrow
+	for _, n := range first {
+		u, ok := findNarrow(second, n)
+		if !ok {
+			if u, ok = findNarrow(ctx, n); !ok {
+				continue
+			}
+		}
+		t := n.t
+		if u != t {
+			j, ok := c.join(t, u)
+			if !ok || j.K == types.Invalid {
+				continue
+			}
+			t = j
+		}
+		cur := c.scope.narrowedMember(n.recv, n.sym, n.sym.Type)
+		if n.recv != nil {
+			cur = c.scope.narrowedMember(n.recv, n.sym, types.InvalidType)
+		}
+		if t == cur || cur.K != types.Invalid && !c.subtype(t, cur) {
+			continue
+		}
+		out = append(out, narrow{recv: n.recv, sym: n.sym, t: t})
+	}
+	return out
+}
+
+// findNarrow returns the last smart cast in ns of the value n narrows.
+func findNarrow(ns []narrow, n narrow) (types.Type, bool) {
+	for i := len(ns) - 1; i >= 0; i-- {
+		if ns[i].sym == n.sym && ns[i].recv == n.recv {
+			return ns[i].t, true
+		}
+	}
+	return types.Type{}, false
+}
