@@ -629,3 +629,35 @@ func (c *Checker) stableMember(p *types.VarSym) bool {
 	return p.Kind == types.Prop && !p.Mutable && p.Getter == nil && p.HasField() && p.Owner != nil && !p.Owner.External &&
 		(p.Final || p.Owner.Final && p.Owner.Entries == nil)
 }
+
+// isNull reports whether x is null: the literal, or a value of type
+// Nothing?, whose only value it is.
+func isNull(x syntax.Expr) bool {
+	if _, ok := x.(*syntax.NullLit); ok {
+		return true
+	}
+	t := x.Type()
+	return t.K == types.Null || t.K == types.Nothing && t.N
+}
+
+// boolEquality returns the smart casts of c == true and the like: those
+// of c, or of !c, when one side is a Boolean literal and the other a
+// condition.
+func (c *Checker) boolEquality(x *syntax.Binary) (whenTrue, whenFalse []narrow, ok bool) {
+	lit, cond := x.X, x.Y
+	l, isLit := lit.(*syntax.BoolLit)
+	if !isLit {
+		lit, cond = x.Y, x.X
+		if l, isLit = lit.(*syntax.BoolLit); !isLit {
+			return nil, nil, false
+		}
+	}
+	if cond.Type().Flex() != types.BoolType {
+		return nil, nil, false
+	}
+	whenTrue, whenFalse = c.narrowing(cond)
+	if l.Val != (x.Op == syntax.EQ || x.Op == syntax.EQ_EQ_EQ) {
+		whenTrue, whenFalse = whenFalse, whenTrue
+	}
+	return whenTrue, whenFalse, true
+}

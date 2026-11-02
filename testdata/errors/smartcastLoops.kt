@@ -43,6 +43,24 @@ fun earlyReturnInWhen(p: String?, k: Int): Int {
     return p.length
 }
 
+fun whenWithoutElse(p: String?, k: Int): Int {
+    when {
+        p == null -> return 0
+        k > 0 -> println(k)
+    }
+    return p.length // no branch matched: p != null
+}
+
+fun boolLiteral(p: String?): Int {
+    if ((p != null) == true) return p.length
+    return 0
+}
+
+fun boolLiteralFalse(p: String?): Int {
+    if ((p == null) == false) return p.length
+    return 0
+}
+
 fun continueSkips(p: String?) {
     do {
         if (cond()) continue
