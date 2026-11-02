@@ -2849,7 +2849,7 @@ func (c *Checker) ifExpr(x *syntax.If, want types.Type, valueUsed bool) types.Ty
 	elseT := c.branch(x.Else, elseWant, valueUsed, &pending)
 	c.pop()
 	if !valueUsed {
-		c.completeBranches(pending, types.NothingType, noWant, false)
+		c.completeBranches(pending, c.unusedJoin(types.NothingType, x.Then, x.Else), noWant, false)
 		if thenT.K == types.Nothing && elseT.K == types.Nothing {
 			return types.NothingType
 		}
@@ -2957,6 +2957,7 @@ func (c *Checker) branch(b *syntax.Block, want types.Type, valueUsed bool, pendi
 // the value isn't used, only the open ones take the others' type.
 func (c *Checker) completeBranches(pending []pendingBranch, result, want types.Type, valueUsed bool) types.Type {
 	c.openLast(pending)
+	done := types.NothingType // the completed pending branches' type
 	for _, p := range pending {
 		if p.lit != nil {
 			bt := p.t
@@ -2971,6 +2972,11 @@ func (c *Checker) completeBranches(pending []pendingBranch, result, want types.T
 			continue
 		}
 		target := result
+		if p.unused && len(p.sys.lambdas) > 0 {
+			// A builder's takes only the other builders' types: see
+			// unusedJoin.
+			target = done
+		}
 		if target.K == types.Nothing || target.K == types.Invalid || target.HasVars() {
 			target = want
 		}
@@ -2995,6 +3001,38 @@ func (c *Checker) completeBranches(pending []pendingBranch, result, want types.T
 			p.body.T = bt
 		}
 		if j, ok := c.join(result, bt); ok {
+			result = j
+		}
+		if j, ok := c.join(done, bt); ok {
+			done = j
+		}
+	}
+	return result
+}
+
+// unusedJoin joins the type of a branch of an if or when whose value
+// isn't used into the others', result, which complete a generic call
+// that can't be inferred on its own, as in K2, which infers the
+// branches together: T of fun <T : S> isEqualTo(): T is the Path in
+// if (c) path else e.isEqualTo(). Pending branches, of variables' types,
+// and Unit ones don't count, and a builder's lambdas, not these types,
+// give its variables, as without them.
+func (c *Checker) unusedJoin(result types.Type, bodies ...*syntax.Block) types.Type {
+	for _, b := range bodies {
+		if b == nil || len(b.Stmts) == 0 || b.T.K == types.Nothing {
+			continue
+		}
+		es, ok := b.Stmts[len(b.Stmts)-1].(*syntax.ExprStmt)
+		if !ok || es.X.Type().K == types.Invalid {
+			continue
+		}
+		bt := es.X.Type()
+		if bt.K == types.Invalid || bt.K == types.Unit || bt.K == types.Nothing || bt.HasVars() {
+			continue
+		}
+		if result.K == types.Nothing {
+			result = bt
+		} else if j, ok := c.join(result, bt); ok {
 			result = j
 		}
 	}
@@ -3093,8 +3131,9 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 	var cov coverage
 	result := types.NothingType
 	allJump := true
-	var later []narrow // what the failed conditions of the branches so far imply
-	nullFirst := true  // no branch so far matches null
+	unused := types.NothingType // the join of the branches, whose value isn't used: see unusedJoin
+	var later []narrow          // what the failed conditions of the branches so far imply
+	nullFirst := true           // no branch so far matches null
 	for i, br := range x.Branches {
 		if br.Else && br.Guard == nil { // else if guard -> can be anywhere
 			if i != len(x.Branches)-1 {
@@ -3269,6 +3308,9 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 				nullFirst = !matchesNull(br.Conds)
 			}
 		}
+		if !valueUsed {
+			unused = c.unusedJoin(unused, br.Body)
+		}
 		if valueUsed && !softFail {
 			if x.Soft {
 				if t, ok := c.join(result, bt); ok {
@@ -3317,7 +3359,7 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 		}
 	}
 	if !valueUsed {
-		c.completeBranches(pending, types.NothingType, noWant, false)
+		c.completeBranches(pending, unused, noWant, false)
 		if allJump {
 			return types.NothingType
 		}

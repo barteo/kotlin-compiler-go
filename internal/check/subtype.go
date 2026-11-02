@@ -135,6 +135,11 @@ func (c *Checker) argsFit(sup, u types.Type) bool {
 			declared = tp.Var
 			if len(tp.Bounds) == 1 && !tp.Bounds[0].HasParams() {
 				bound = tp.Bounds[0]
+			} else if len(tp.Bounds) == 1 && sup.A.List[i].V == types.Star && !tp.Bounds[0].Has(func(u types.Type) bool { return u.K == types.TypeParam && u.Param() == tp }) {
+				// A star's bound in sup's arguments: IS of
+				// Interpreter<IS : Intermediary<SELF>, TS, SELF> in
+				// Interpreter<*, T, I> is an Intermediary<I>.
+				bound = classSubst(sup).Apply(tp.Bounds[0])
 			}
 		}
 		if !c.argFits(sup.A.List[i], ua, declared, bound) {
@@ -560,4 +565,53 @@ func (c *Checker) stubConstraint(t, u types.Type) *stubRun {
 		return r
 	}
 	return c.stub(u.Flex())
+}
+
+// emptyIntersection reports whether no value can be both a t and a u, as
+// kotlinc's INFERRED_TYPE_VARIABLE_INTO_EMPTY_INTERSECTION finds it: when
+// two classes, neither an interface, are not one a subclass of the
+// other. A type parameter stands for the classes of its bounds. kotlinc
+// makes a candidate with one inapplicable, as Long & Int? of S in
+// greaterEq(n) with overloads, and warns, to be an error, for a single
+// candidate. A final class and an interface it doesn't implement only
+// make it warn that the intersection may be empty, and differing type
+// arguments, Inv<Int> & Inv<Number>, don't count.
+func (c *Checker) emptyIntersection(t, u types.Type) bool {
+	ts, us := c.boundClasses(t, nil, 0), c.boundClasses(u, nil, 0)
+	for _, a := range ts {
+		for _, b := range us {
+			if a.Interface || b.Interface {
+				continue
+			}
+			if _, ok := c.asSuper(rawType(a), b); ok {
+				continue
+			}
+			if _, ok := c.asSuper(rawType(b), a); ok {
+				continue
+			}
+			return true
+		}
+	}
+	return false
+}
+
+// boundClasses appends the classes t is: its own, or those of a type
+// parameter's bounds. Any is none.
+func (c *Checker) boundClasses(t types.Type, out []*types.ClassSym, depth int) []*types.ClassSym {
+	if depth > 20 {
+		return out
+	}
+	switch {
+	case t.IsParam():
+		for _, b := range t.Param().Bounds {
+			out = c.boundClasses(b, out, depth+1)
+		}
+	case t.K == types.Class:
+		out = append(out, t.C)
+	case isBuiltin(t) && t.K != types.Unit && t.K != types.Range:
+		if jc := c.jvmClass(t.NonNull()); jc != nil {
+			out = append(out, jc)
+		}
+	}
+	return out
 }
