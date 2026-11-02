@@ -1345,6 +1345,13 @@ func (g *gen) member(x *syntax.Member) {
 		g.coerce(p.Type, x.T)
 		return
 	}
+	if p.Const && !x.Safe && objectQualifier(x.X) {
+		// O.x, a const of an object named: inlined, without O's
+		// initialization.
+		g.constProp(p)
+		g.coerce(p.Type, x.T)
+		return
+	}
 	_, this := x.X.(*syntax.This)
 	direct := this && g.directGet(p)
 	cls := recvClass(x.X.Type())

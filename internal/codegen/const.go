@@ -645,3 +645,16 @@ func literalInt(e syntax.Expr, depth int) (int32, bool) {
 	}
 	return 0, false
 }
+
+// objectQualifier reports whether x names an object, as O or a.b.O, or
+// a class's companion object by its class, which reading a const
+// through doesn't evaluate.
+func objectQualifier(x syntax.Expr) bool {
+	switch x := x.(type) {
+	case *syntax.Ident:
+		return x.Object != nil && x.Sym == nil
+	case *syntax.Member:
+		return x.Object != nil
+	}
+	return false
+}
