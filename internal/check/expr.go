@@ -3284,7 +3284,8 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 			result = t
 		}
 	}
-	exhaustive := hasElse || x.Subject != nil && c.covers(st, &cov)
+	covered := x.Subject != nil && c.covers(st, &cov)
+	exhaustive := hasElse || covered
 	if !exhaustive && len(vars) > 0 {
 		exits = append(exits, c.startExit(vars, nil)) // no branch matched
 	}
@@ -3297,7 +3298,7 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 		pending = nil
 	}
 	if c.u.rec != nil {
-		c.u.rec.When(x, exhaustive, valueUsed)
+		c.u.rec.When(x, covered, valueUsed)
 	}
 	if !exhaustive {
 		// As of Kotlin 1.7, a when statement over a Boolean, an enum or a

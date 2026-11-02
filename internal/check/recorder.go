@@ -11,9 +11,10 @@ import "github.com/barteo/kotlin-compiler-go/internal/syntax"
 //
 // Compilation passes no Recorder and pays nothing for it.
 type Recorder interface {
-	// When reports whether a when covers every case of its subject, with
-	// an else branch or without, and whether its value is used.
-	When(x *syntax.When, exhaustive, valueUsed bool)
+	// When reports whether the branches of a when with a subject cover
+	// every case of it, its else branch aside, and whether its value is
+	// used.
+	When(x *syntax.When, covered, valueUsed bool)
 	// Stmt reports whether the value of a statement of a block is used:
 	// the last of a block whose value is.
 	Stmt(s syntax.Stmt, valueUsed bool)

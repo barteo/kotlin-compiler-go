@@ -16,10 +16,10 @@ type testRecorder struct {
 	unreachable []syntax.Stmt
 }
 
-func (r *testRecorder) When(x *syntax.When, exhaustive, valueUsed bool) {
+func (r *testRecorder) When(x *syntax.When, covered, valueUsed bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.whens[x] = [2]bool{exhaustive, valueUsed}
+	r.whens[x] = [2]bool{covered, valueUsed}
 }
 
 func (r *testRecorder) Stmt(s syntax.Stmt, valueUsed bool) {
@@ -47,6 +47,7 @@ fun f(e: E, n: Int): Int {
     val x = when (e) {
         E.A -> 1
         E.B -> 2
+        else -> 3
     }
     return x
     g(x)
@@ -68,10 +69,10 @@ fun f(e: E, n: Int): Int {
 	stmtWhen := body[0].(*syntax.ExprStmt).X.(*syntax.When)
 	exprWhen := body[1].(*syntax.VarStmt).Init.(*syntax.When)
 	if got := rec.whens[stmtWhen]; got != [2]bool{false, false} {
-		t.Errorf("when (n): exhaustive, used = %v, want false, false", got)
+		t.Errorf("when (n): covered, used = %v, want false, false", got)
 	}
 	if got := rec.whens[exprWhen]; got != [2]bool{true, true} {
-		t.Errorf("when (e): exhaustive, used = %v, want true, true", got)
+		t.Errorf("when (e): covered without else, used = %v, want true, true", got)
 	}
 	if len(rec.unreachable) != 1 || rec.unreachable[0] != body[3] {
 		t.Errorf("unreachable = %v, want the g(x) after return", rec.unreachable)
