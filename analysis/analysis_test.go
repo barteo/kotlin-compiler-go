@@ -521,6 +521,11 @@ fun f(b: Boolean, d: Double, c: Char) {
     i++
     val q = c + 1
     -(4)
+    i = if (b) {
+        -1
+    } else {
+        1
+    }
 }
 `
 	r, s := analyzed(t, withStdlib(t), src)
@@ -543,5 +548,8 @@ fun f(b: Boolean, d: Double, c: Char) {
 	}
 	if f := fact(t, r, at(t, s, "PREFIX_EXPRESSION", "-(4)", 0)); f.UsedAsExpression {
 		t.Errorf("-(4) is a statement: %+v", f)
+	}
+	if f := fact(t, r, at(t, s, "PREFIX_EXPRESSION", "-1", 0)); !f.UsedAsExpression {
+		t.Errorf("-1 is the if's value: %+v", f)
 	}
 }

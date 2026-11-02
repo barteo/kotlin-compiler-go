@@ -197,6 +197,10 @@ type builder struct {
 	symIDs map[any]uint32
 	syms   []any // *types.VarSym, *types.FunSym or *types.ClassSym, by ID-1
 
+	// negatedAt are the PREFIX_EXPRESSIONs of literals folded from them:
+	// -1 is the literal's statement.
+	negatedAt map[*syntax.IntLit]ElementID
+
 	// receivers are the declarations of receivers: lambdas' and
 	// extension functions'.
 	receivers map[*types.VarSym]ElementID
@@ -207,7 +211,7 @@ type builder struct {
 
 func newBuilder(res *Result, snaps []*psi.Snapshot, files []*syntax.File, provs []*lower.Provenance, rec *recorder) *builder {
 	b := &builder{res: res, snaps: snaps, files: files, provs: provs, rec: rec,
-		where: map[any]ElementID{}, names: map[*types.FunSym]string{}, symIDs: map[any]uint32{}, receivers: map[*types.VarSym]ElementID{}}
+		where: map[any]ElementID{}, names: map[*types.FunSym]string{}, symIDs: map[any]uint32{}, receivers: map[*types.VarSym]ElementID{}, negatedAt: map[*syntax.IntLit]ElementID{}}
 	b.cv = converter{decl: b.decl, supers: map[*types.ClassSym][]string{}}
 	return b
 }
@@ -754,6 +758,7 @@ func (b *builder) negated() {
 			}
 			cp := copyFact(*src)
 			cp.Element = ElementID{sid, id}
+			b.negatedAt[lit] = cp.Element
 			// -128 as a Byte is still Int.unaryMinus of 128.
 			operand := lit.Type().NonNull()
 			if operand == types.ByteType || operand == types.ShortType {
@@ -1081,7 +1086,13 @@ func (b *builder) usedAsExpression() {
 		if es, ok := s.(*syntax.ExprStmt); ok {
 			n = es.X
 		}
-		if el, ok := b.where[n]; ok {
+		el, ok := b.where[n]
+		if lit, isLit := n.(*syntax.IntLit); isLit {
+			if p, folded := b.negatedAt[lit]; folded {
+				el, ok = p, true
+			}
+		}
+		if ok {
 			t := top(b.node(el))
 			reported[ElementID{el.Snapshot, t.ID()}] = used
 		}
