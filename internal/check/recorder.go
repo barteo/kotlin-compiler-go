@@ -1,6 +1,9 @@
 package check
 
-import "github.com/barteo/kotlin-compiler-go/internal/syntax"
+import (
+	"github.com/barteo/kotlin-compiler-go/internal/syntax"
+	"github.com/barteo/kotlin-compiler-go/internal/types"
+)
 
 // Recorder receives facts the checker finds about the program that the
 // AST it annotates doesn't keep, for tools that analyze code rather than
@@ -20,4 +23,6 @@ type Recorder interface {
 	Stmt(s syntax.Stmt, valueUsed bool)
 	// Unreachable reports a statement after one that always jumps.
 	Unreachable(s syntax.Stmt)
+	// Annotation reports the class an annotation of file f resolves to.
+	Annotation(f *syntax.File, a *syntax.Annotation, cls *types.ClassSym)
 }

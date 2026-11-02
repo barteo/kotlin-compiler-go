@@ -347,6 +347,7 @@ func (l *lowerer) whereClause(n psi.NodeRef, tps []*syntax.TypeParam) {
 // annotation lowers an ANNOTATION_ENTRY.
 func (l *lowerer) annotation(n psi.NodeRef) syntax.Annotation {
 	a := syntax.Annotation{P: l.pos(n)}
+	l.annots[a.P] = n.ID()
 	if t := child(n, psi.KindANNOTATION_TARGET); t.Valid() {
 		a.Target = t.Text()
 	}

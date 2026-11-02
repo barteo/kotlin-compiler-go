@@ -3,6 +3,7 @@ package psi
 import (
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -222,6 +223,22 @@ class C(val p: Int) {
 	}
 	if !s.NodeAt(strings.Index(src, "// all")).IsTrivia() {
 		t.Error("comment is trivia")
+	}
+}
+
+func TestObjectNames(t *testing.T) {
+	src := "class A { companion object }\nclass B { companion object Named }\nval o = object {}\nobject O\n"
+	s := Parse("a.kt", src)
+	checkTree(t, s)
+	var names []string
+	WalkNodes(s.RootNode(), func(n NodeRef) bool {
+		if n.NumericKind() == KindOBJECT_DECLARATION {
+			names = append(names, n.Name())
+		}
+		return true
+	})
+	if want := []string{"Companion", "Named", "", "O"}; !slices.Equal(names, want) {
+		t.Errorf("object names %q, want %q", names, want)
 	}
 }
 

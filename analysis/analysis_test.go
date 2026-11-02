@@ -389,3 +389,20 @@ func TestNilResult(t *testing.T) {
 		t.Errorf("nil result's data: %+v", d)
 	}
 }
+
+func TestAnnotationTypes(t *testing.T) {
+	r, s := analyzed(t, withStdlib(t), "annotation class A\nannotation class B\n@B @A fun f() {}\n@Deprecated(\"x\") class K\n")
+	for _, c := range []struct {
+		text string
+		nth  int
+		want string
+	}{{"A", 0, "A"}, {"B", 0, "B"}, {"Deprecated", 0, "kotlin.Deprecated"}} {
+		for _, kind := range []string{"TYPE_REFERENCE", "USER_TYPE"} {
+			n := at(t, s, kind, c.text, c.nth)
+			f, ok := r.Fact(ElementID{Snapshot: s.ID(), Node: n.ID()})
+			if !ok || f.Type == nil || f.Type.Name != c.want {
+				t.Errorf("%s %s: %+v %v, want type %s", kind, c.text, f, ok, c.want)
+			}
+		}
+	}
+}

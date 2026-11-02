@@ -179,13 +179,17 @@ func (n NodeRef) Element() NodeRef { return n }
 // NameIdentifier returns the IDENTIFIER child.
 func (n NodeRef) NameIdentifier() NodeRef { return n.ChildKind(KindIDENTIFIER) }
 
-// Name returns the name identifier's text without backticks, or "".
+// Name returns the name identifier's text without backticks, or "". Like
+// KtObjectDeclaration.getName, an unnamed companion object is "Companion".
 func (n NodeRef) Name() string {
 	id := n
 	if !n.IsLeaf() {
 		id = n.NameIdentifier()
 	}
 	if id.NumericKind() != KindIDENTIFIER {
+		if n.NumericKind() == KindOBJECT_DECLARATION && n.ChildKind(KindMODIFIER_LIST).ChildKind(KindCOMPANION_KEYWORD).Valid() {
+			return "Companion"
+		}
 		return ""
 	}
 	return unquote(id.Text())

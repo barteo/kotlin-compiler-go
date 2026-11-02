@@ -22,6 +22,17 @@ import (
 // psi node of their own, have no entry.
 type Provenance struct {
 	m map[any]psi.NodeID
+	// annots are the ANNOTATION_ENTRYs of annotations, by position:
+	// syntax.Annotation is a value the AST copies.
+	annots map[syntax.Pos]psi.NodeID
+}
+
+// Annotation returns the ANNOTATION_ENTRY of the annotation at p, or 0.
+func (p *Provenance) Annotation(at syntax.Pos) psi.NodeID {
+	if p == nil {
+		return 0
+	}
+	return p.annots[at]
 }
 
 // Node returns the psi node AST node n was lowered from, or 0.
@@ -59,6 +70,8 @@ type lowerer struct {
 	path  string
 	lines []int // the offsets at which lines start
 	prov  map[any]psi.NodeID
+	// annots are the annotation entries, by position.
+	annots map[syntax.Pos]psi.NodeID
 
 	err   *syntax.Error
 	errs  []*syntax.Error
@@ -85,7 +98,7 @@ type lowerer struct {
 // same source: after an error in a declaration, it goes on with the next
 // one, so it returns the first error of each declaration that fails.
 func File(s *psi.Snapshot) (*syntax.File, *Provenance, []*syntax.Error) {
-	l := &lowerer{s: s, src: s.Source(), path: s.Path(), prov: map[any]psi.NodeID{}, hoisted: map[psi.NodeID]bool{}}
+	l := &lowerer{s: s, src: s.Source(), path: s.Path(), prov: map[any]psi.NodeID{}, annots: map[syntax.Pos]psi.NodeID{}, hoisted: map[psi.NodeID]bool{}}
 	l.lines = append(l.lines, 0)
 	for i := 0; i < len(l.src); i++ {
 		if l.src[i] == '\n' {
@@ -104,7 +117,7 @@ func File(s *psi.Snapshot) (*syntax.File, *Provenance, []*syntax.Error) {
 	f.SuppressDSL = l.suppressDSL
 	f.Annotated = l.annotated
 	syntax.FinishFile(f, l.path)
-	return f, &Provenance{l.prov}, l.errs
+	return f, &Provenance{l.prov, l.annots}, l.errs
 }
 
 // record notes that AST node x comes from n, and returns x.

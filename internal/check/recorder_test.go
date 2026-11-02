@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
+	"github.com/barteo/kotlin-compiler-go/internal/types"
 )
 
 type testRecorder struct {
@@ -33,6 +34,8 @@ func (r *testRecorder) Unreachable(s syntax.Stmt) {
 	defer r.mu.Unlock()
 	r.unreachable = append(r.unreachable, s)
 }
+
+func (r *testRecorder) Annotation(*syntax.File, *syntax.Annotation, *types.ClassSym) {}
 
 func TestRecorder(t *testing.T) {
 	src := `

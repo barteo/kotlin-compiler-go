@@ -51,7 +51,7 @@ func analyze(ctx context.Context, cfg Config, snaps []*psi.Snapshot) (*Result, e
 		return nil, fmt.Errorf("analysis: %w", err)
 	}
 	defer cp.Close()
-	rec := &recorder{when: map[*syntax.When]whenReport{}, stmt: map[syntax.Stmt]bool{}, unreachable: map[syntax.Stmt]bool{}}
+	rec := &recorder{when: map[*syntax.When]whenReport{}, stmt: map[syntax.Stmt]bool{}, unreachable: map[syntax.Stmt]bool{}, annots: map[*syntax.File]map[syntax.Pos]*types.ClassSym{}}
 	errs, err := check.CheckContext(ctx, files, lib, jobs, rec)
 	if err != nil {
 		return nil, err
@@ -131,6 +131,8 @@ type recorder struct {
 	when        map[*syntax.When]whenReport
 	stmt        map[syntax.Stmt]bool
 	unreachable map[syntax.Stmt]bool
+	// annots are the classes of each file's annotations, by position.
+	annots map[*syntax.File]map[syntax.Pos]*types.ClassSym
 }
 
 func (r *recorder) When(x *syntax.When, exhaustive, valueUsed bool) {
@@ -148,6 +150,17 @@ func (r *recorder) Stmt(s syntax.Stmt, valueUsed bool) {
 func (r *recorder) Unreachable(s syntax.Stmt) {
 	r.mu.Lock()
 	r.unreachable[s] = true
+	r.mu.Unlock()
+}
+
+func (r *recorder) Annotation(f *syntax.File, a *syntax.Annotation, cls *types.ClassSym) {
+	r.mu.Lock()
+	m := r.annots[f]
+	if m == nil {
+		m = map[syntax.Pos]*types.ClassSym{}
+		r.annots[f] = m
+	}
+	m[a.P] = cls
 	r.mu.Unlock()
 }
 
@@ -234,6 +247,7 @@ func (b *builder) build() {
 	b.usedAsExpression()
 	b.wrappers()
 	b.unreachable()
+	b.annotations()
 	b.symbols()
 
 	for id := range b.res.facts {
@@ -1021,6 +1035,29 @@ func (b *builder) unreachable() {
 		if el, ok := b.where[n]; ok {
 			t := top(b.node(el))
 			b.fact(ElementID{el.Snapshot, t.ID()}).Unreachable = true
+		}
+	}
+}
+
+// annotations types the callees of the annotations the checker resolved:
+// the USER_TYPE and TYPE_REFERENCE of each entry's CONSTRUCTOR_CALLEE.
+func (b *builder) annotations() {
+	for i, f := range b.files {
+		for at, cls := range b.rec.annots[f] {
+			id := b.provs[i].Annotation(at)
+			if id == 0 {
+				continue
+			}
+			ref := b.snaps[i].Node(id).ChildKind(psi.KindCONSTRUCTOR_CALLEE).ChildKind(psi.KindTYPE_REFERENCE)
+			ct := b.cv.typ(types.ClassType(cls))
+			if !ref.Valid() || ct == nil {
+				continue
+			}
+			sid := b.snaps[i].ID()
+			b.set(ElementID{sid, ref.ID()}, Fact{Role: "type", Type: ct})
+			if u := ref.ChildKind(psi.KindUSER_TYPE); u.Valid() {
+				b.set(ElementID{sid, u.ID()}, Fact{Role: "type", Type: copyType(ct)})
+			}
 		}
 	}
 }

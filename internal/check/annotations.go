@@ -94,6 +94,9 @@ func (c *Checker) checkAnnotations(as []syntax.Annotation, owner *types.ClassSym
 		if cls == nil {
 			continue
 		}
+		if rec := c.u.rec; rec != nil {
+			rec.Annotation(c.file, a, cls)
+		}
 		cls.Ensure()
 		if cls.Retention != types.NoRetention {
 			c.annotationTarget(a, cls, site)
