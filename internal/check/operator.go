@@ -64,7 +64,7 @@ func (c *Checker) checkOperatorDecl(d *syntax.FunDecl, owner *types.ClassSym) {
 		c.errorf(d.P, "'operator' modifier is inapplicable on this function: illegal function name")
 	case owner == nil && d.Recv == nil:
 		c.errorf(d.P, "'operator' modifier is inapplicable on this function: must be a member or an extension function")
-	case n >= 0 && len(d.Params) != n:
+	case n >= 0 && len(d.Params) != n && !((d.Name == "inc" || d.Name == "dec") && defaultsOnly(d.Params)):
 		c.errorf(d.P, "'operator' modifier is inapplicable on this function: must have %s", countParams(n))
 	case n < 0 && n != -0x7fff && len(d.Params) < -n:
 		c.errorf(d.P, "'operator' modifier is inapplicable on this function: must have at least %s", countParams(-n))
@@ -74,6 +74,18 @@ func (c *Checker) checkOperatorDecl(d *syntax.FunDecl, owner *types.ClassSym) {
 	case d.Name == "contains" && d.Sym.Ret.Flex() != types.BoolType:
 		c.errorf(d.P, "'operator' modifier is inapplicable on this function: must return Boolean")
 	}
+}
+
+// defaultsOnly reports whether every parameter has a default value: as
+// kotlinc, ++ calls an inc(s: String = "OK"), which other operators with
+// no value parameters may not take.
+func defaultsOnly(ps []*syntax.Param) bool {
+	for _, p := range ps {
+		if p.Default == nil || p.Vararg {
+			return false
+		}
+	}
+	return true
 }
 
 func countParams(n int) string {
@@ -216,7 +228,9 @@ func (c *Checker) unaryOp(x *syntax.Unary, xt types.Type, want types.Type) types
 // invokeOp checks x(args) on a value x of type ft that isn't a function:
 // x.invoke(args).
 func (c *Checker) invokeOp(x *syntax.Call, ft, want types.Type, sink *system) (types.Type, bool) {
-	if ft.K != types.Class || ft.C.Func || !c.hasFun(ft, "invoke", x) {
+	// Built-in types take invoke extensions too: "a"(12) for a
+	// String.invoke(i: Int).
+	if ft.K == types.Class && ft.C.Func || ft.K == types.Nothing || !c.hasFun(ft, "invoke", x) {
 		return types.InvalidType, false
 	}
 	m := &syntax.Member{X: checked(x.Fun, ft), Name: "invoke"}

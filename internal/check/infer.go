@@ -495,17 +495,21 @@ func (s *system) fix(tv *tvar) {
 			val = c.lub(val, l)
 		}
 		if len(tv.lits) > 0 && !litsFit(tv.lits, val) {
-			val = c.lub(val, types.IntType)
+			val = c.lub(val, s.litType(tv, nil))
 		}
-	case len(tv.lits) > 0:
-		// Integer literals are Ints, unless the variable must be a Long,
-		// Byte or Short that they fit.
-		val = types.IntType
-		for _, u := range uppers {
-			if litsFit(tv.lits, u) {
-				val = u.NonNull()
+		if isUnsigned(val) && val.NonNull().C.Name == "kotlin/UInt" {
+			// A UInt from unsigned literals is the variable's ULong,
+			// UByte or UShort bound, as T of f<T : UByte>(1u): the call
+			// retypes the literals that fit, and those that don't, or a
+			// UInt that is no literal, are not passed.
+			for _, b := range tv.v.Bounds {
+				if b = s.apply(b); !b.HasVars() && isUnsigned(b) && !c.subtype(val, b) {
+					val = b.NonNull()
+				}
 			}
 		}
+	case len(tv.lits) > 0:
+		val = s.litType(tv, uppers)
 	case len(uppers) > 0:
 		val = uppers[0]
 		for _, u := range uppers[1:] {
@@ -562,6 +566,27 @@ func (s *system) fix(tv *tvar) {
 				val.String() + " of type parameter '" + tv.v.Name + "' is not a subtype of " + b.String()})
 		}
 	}
+}
+
+// litType is the type of the integer literals passed for a variable: Int,
+// unless the variable must be a Long, Byte or Short that they fit, below
+// one of uppers or by its declared bound, as T of C<T : Long>(1).
+func (s *system) litType(tv *tvar, uppers []types.Type) types.Type {
+	t := types.IntType
+	for _, u := range uppers {
+		if litsFit(tv.lits, u) {
+			t = u.NonNull()
+		}
+	}
+	if t != types.IntType {
+		return t
+	}
+	for _, b := range tv.v.Bounds {
+		if b = s.apply(b); !b.HasVars() && !s.c.subtype(types.IntType, b) && litsFit(tv.lits, b) {
+			return b.NonNull()
+		}
+	}
+	return types.IntType
 }
 
 // lub is the common supertype of two inferred bounds.

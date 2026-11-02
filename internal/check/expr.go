@@ -405,14 +405,50 @@ func (c *Checker) unsignedLit(x *syntax.IntLit, want types.Type) types.Type {
 }
 
 // fitsLit reports whether an integer literal argument can be passed for a
-// parameter of type p, once Int doesn't fit: as a Long, Byte or Short.
+// parameter of type p, once Int doesn't fit: as a Long, Byte or Short,
+// or, unsigned and once UInt doesn't, as a ULong, UByte or UShort.
 func fitsLit(lit *syntax.IntLit, p types.Type) bool {
 	if lit.Unsigned {
+		w := p.NonNull()
+		if lit.Long || !types.IsValue(w) {
+			return false
+		}
+		switch v := uint64(lit.Val); w.C.Name {
+		case "kotlin/ULong":
+			return true
+		case "kotlin/UByte":
+			return v <= math.MaxUint8
+		case "kotlin/UShort":
+			return v <= math.MaxUint16
+		}
 		return false
 	}
 	switch p.NonNull() {
 	case types.LongType, types.ByteType, types.ShortType:
 		return intLit(lit, lit.Val, p) == p.NonNull()
+	}
+	return false
+}
+
+// unaryExt reports whether prefix operator x on a built-in operand of
+// type t, which has no such operator of its own, calls an operator
+// extension: +"OK" for a String.unaryPlus().
+func (c *Checker) unaryExt(x *syntax.Unary, t types.Type) bool {
+	switch n := t.NonNull(); {
+	case n.K == types.Invalid || n.K == types.Nothing || n.IsParam():
+		return false
+	case n.IsNumeric() || n == types.CharType:
+		// Int.unaryMinus() and the like, members that win, and Char,
+		// whose built-in calls take its extensions' names.
+		return false
+	case n == types.BoolType && x.Op == syntax.NOT:
+		return false
+	}
+	name := map[syntax.Kind]string{syntax.MINUS: "unaryMinus", syntax.PLUS: "unaryPlus", syntax.NOT: "not"}[x.Op]
+	for _, cl := range c.extCallees(name, t) {
+		if cl.f.Operator && len(cl.f.Params) == 0 {
+			return true
+		}
 	}
 	return false
 }
@@ -430,7 +466,7 @@ func (c *Checker) unary(x *syntax.Unary, want types.Type) types.Type {
 		}
 		t := c.value(x.X, want).Flex()
 		x.X, t = builtinBound(x.X, t)
-		if !builtinOperand(t) {
+		if !builtinOperand(t) || c.unaryExt(x, t) {
 			return c.unaryOp(x, t, want)
 		}
 		if t.K != types.Invalid && !t.IsNumeric() {
@@ -442,7 +478,7 @@ func (c *Checker) unary(x *syntax.Unary, want types.Type) types.Type {
 		}
 		return t
 	case syntax.NOT:
-		if t := c.value(x.X, types.BoolType); !builtinOperand(t) {
+		if t := c.value(x.X, types.BoolType); !builtinOperand(t) || c.unaryExt(x, t.Flex()) {
 			return c.unaryOp(x, t.Flex(), want)
 		}
 		c.wantBool(x.X)
