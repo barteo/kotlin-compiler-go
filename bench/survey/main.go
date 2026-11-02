@@ -1496,7 +1496,7 @@ func reportSet(sb *strings.Builder, s *sourceSet) {
 		}
 		return cs[i].feature < cs[j].feature
 	})
-	fmt.Fprintf(sb, "\n### Features left, by files blocked\n\n%d of %d files use no feature that kc doesn't support.\n\n", unblocked(s.files, done), len(s.files))
+	fmt.Fprintf(sb, "### Features left, by files blocked\n\n%d of %d files use no feature that kc doesn't support.\n\n", unblocked(s.files, done), len(s.files))
 	fmt.Fprintf(sb, "| Feature | Files | Only blocker | Uses |\n|:---|---:|---:|---:|\n")
 	for _, c := range cs {
 		fmt.Fprintf(sb, "| %s | %d | %d | %d |\n", c.feature, c.files, c.only, c.total)
