@@ -670,6 +670,9 @@ func (c *Checker) nestedOf(cls *types.ClassSym, name string) *types.ClassSym {
 	if !cls.External {
 		return cls.Nested[name]
 	}
+	if isEnumEntry(cls, name) {
+		return nil // Foo.FOO is the entry, not its class Foo$FOO
+	}
 	return c.u.ext.class(cls.Name + "$" + name)
 }
 
@@ -1375,11 +1378,11 @@ func (c *Checker) classRef(x syntax.Expr) *types.ClassSym {
 		}
 		if first := c.findClass(id.Name); first != nil && first.External {
 			// A nested class of a class on the class path: Thread.State.
-			name := first.Name
-			for i := len(parts) - 1; i >= 0; i-- {
-				name += "$" + parts[i]
+			cls := first
+			for i := len(parts) - 1; i >= 0 && cls != nil; i-- {
+				cls = c.nestedOf(cls, parts[i])
 			}
-			if cls := c.u.ext.class(name); cls != nil {
+			if cls != nil {
 				return cls
 			}
 		}

@@ -379,3 +379,26 @@ func (c *Checker) classThis(x *syntax.This) bool {
 	r := c.receiverFor(x)
 	return r != nil && r.class
 }
+
+// isEnumEntry reports whether name is an entry of enum class cls of the
+// class path. An entry with a body has a class of its own, Foo$FOO, which
+// isn't public, and which the name doesn't name: Foo.FOO is the entry.
+func isEnumEntry(cls *types.ClassSym, name string) bool {
+	cls.Ensure()
+	return cls.Entries != nil && slices.Contains(cls.Entries, name)
+}
+
+// annotationScope returns the class whose nested classifiers the
+// arguments of an annotation of a declaration in class owner see:
+// @Ann(Nested::class) on a member or the constructor of Outer names
+// Outer.Nested. A class's own annotations are outside it: they see its
+// outer class's.
+func annotationScope(owner, lookup *types.ClassSym, site annotSite) *types.ClassSym {
+	if owner != nil && site.kind == siteClass {
+		return owner.Outer
+	}
+	if owner != nil {
+		return owner
+	}
+	return lookup
+}
