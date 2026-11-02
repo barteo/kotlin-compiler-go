@@ -1103,6 +1103,8 @@ func (c *Checker) assign(s *syntax.Assign) {
 		if v != nil {
 			c.assignedVar(v, vt)
 			c.assignedNested(v, vt)
+		} else {
+			c.assignedVal(s.Target, vt)
 		}
 		return
 	}

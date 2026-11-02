@@ -384,6 +384,9 @@ func (c *Checker) narrowSym(x syntax.Expr) *types.VarSym {
 		if x.Sym != nil && x.Member == nil && c.stable(x.Sym) {
 			return x.Sym
 		}
+		if x.Member != nil {
+			return c.narrowSym(x.Member) // p of an implicit receiver, this.p
+		}
 	case *syntax.This:
 		if x.Recv != nil {
 			return x.Recv // a lambda's receiver, a parameter
@@ -393,6 +396,9 @@ func (c *Checker) narrowSym(x syntax.Expr) *types.VarSym {
 		// a.b.c is stable if a.b is: a stable property of a val.
 		if x.Safe || x.Prop == nil || !c.stableOn(x.Prop, x.X.Type()) {
 			return nil
+		}
+		if this, ok := x.X.(*syntax.This); ok && this.Recv == nil {
+			return x.Prop // this.p is p, as in memberKey
 		}
 		if r := c.narrowSym(x.X); r != nil && !r.Mutable {
 			k := [2]*types.VarSym{r, x.Prop}

@@ -109,6 +109,17 @@ func assignedOutside1(node any, name string, frame *syntax.Lambda) bool {
 			return false
 		}
 		switch n := n.(type) {
+		case *syntax.Block:
+			if n == nil || n == node {
+				break
+			}
+			// A var name in the block shadows name after it.
+			for _, st := range n.Stmts {
+				if found = assignedOutside1(st, name, frame); found || slices.Contains(declaredNames(st), name) {
+					break
+				}
+			}
+			return false
 		case *syntax.Lambda:
 			found = n != frame && assignedNames(n)[name]
 			return false
@@ -169,12 +180,45 @@ func (c *Checker) assignedNested(v *types.VarSym, t types.Type) {
 func assignedNames(node any) map[string]bool {
 	names := map[string]bool{}
 	inspect(node, func(n any) bool {
+		if b, ok := n.(*syntax.Block); ok && n != node && b != nil {
+			for name := range assignedNames(b) {
+				names[name] = true
+			}
+			return false
+		}
+		if b, ok := n.(*syntax.Block); ok && b != nil {
+			// A block's var x shadows the outer x after it.
+			shadowed := map[string]bool{}
+			for _, st := range b.Stmts {
+				for name := range assignedNames(st) {
+					if !shadowed[name] {
+						names[name] = true
+					}
+				}
+				for _, name := range declaredNames(st) {
+					shadowed[name] = true
+				}
+			}
+			return false
+		}
 		if name, ok := assignedName(n); ok {
 			names[name] = true
 		}
 		return true
 	})
 	return names
+}
+
+// declaredNames returns the names of the locals that statement st
+// declares.
+func declaredNames(st syntax.Stmt) []string {
+	switch st := st.(type) {
+	case *syntax.VarStmt:
+		return []string{st.Name}
+	case *syntax.Destructure:
+		return st.Names
+	}
+	return nil
 }
 
 // assignedName returns the name of the local that node assigns, if it is
@@ -208,6 +252,25 @@ func (c *Checker) assigns(node any) []string {
 			}
 		}
 		names = append(names, name)
+	}
+	if b, ok := node.(*syntax.Block); ok && b != nil {
+		// A block's own var x shadows the x outside it: its assignments
+		// after the declaration aren't of the outer x.
+		var shadowed []string
+		for _, st := range b.Stmts {
+			own := c.assigns(st)
+			if name, ok := assignedName(st); ok {
+				own = append([]string{name}, own...)
+			}
+			for _, name := range own {
+				if !slices.Contains(shadowed, name) {
+					add(name)
+				}
+			}
+			shadowed = append(shadowed, declaredNames(st)...)
+		}
+		c.assignsMemo[node] = names
+		return names
 	}
 	syntax.Inspect(node, func(n any) bool {
 		if n == node {
@@ -583,6 +646,20 @@ func (c *Checker) assignedVar(v *types.VarSym, vt types.Type) {
 	c.scope.narrows = append(c.scope.narrows, narrow{sym: v, t: t})
 }
 
+// assignedVal narrows a val property that an initializer block or a
+// constructor assigns, x = v, to v's type, as assignedVar a local var.
+func (c *Checker) assignedVal(target syntax.Expr, vt types.Type) {
+	if vt.K == types.Invalid || vt.K == types.Null || vt.K == types.Nothing {
+		return
+	}
+	k, ok := c.narrowKeyOf(target)
+	if !ok || k.sym.Kind != types.Prop || k.sym.Mutable || !c.subtype(vt, k.sym.Type) {
+		return
+	}
+	k.t = vt
+	c.scope.narrows = append(c.scope.narrows, k)
+}
+
 // narrowKeyOf returns the narrowing of a stable value x, with its current
 // type: a stable variable, this, or a final val property of the program
 // read through either.
@@ -610,8 +687,8 @@ func (c *Checker) memberKey(m *syntax.Member, t types.Type) (narrow, bool) {
 	if m.Prop == nil || !c.stableOn(m.Prop, m.X.Type()) {
 		return narrow{}, false
 	}
-	if this, ok := m.X.(*syntax.This); ok && this.Recv == nil && this.Label == "" {
-		// this.p is p.
+	if this, ok := m.X.(*syntax.This); ok && this.Recv == nil {
+		// this.p is p, as this@C.p in class C.
 		return narrow{sym: m.Prop, t: c.scope.narrowedMember(nil, m.Prop, t)}, true
 	}
 	recv := c.narrowSym(m.X)
