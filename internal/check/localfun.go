@@ -58,6 +58,7 @@ func (c *Checker) localFun(s *syntax.LocalFun) {
 		p.Sym = c.paramSym(p, c.resolveType(p.Type), p)
 		sym.Params = append(sym.Params, p.Sym)
 	}
+	c.inlineDecl(d, true)
 	c.checkVarargs(d.Params)
 	switch {
 	case d.Ret != nil:

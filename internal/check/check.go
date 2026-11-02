@@ -1431,6 +1431,7 @@ func (c *Checker) resolveFun(d *syntax.FunDecl, owner *types.ClassSym) {
 	if d.Inline {
 		c.inlineFun(d, owner)
 	}
+	c.inlineDecl(d, false)
 	for _, tp := range d.TypeParams {
 		switch {
 		case !tp.Reified:
@@ -1571,6 +1572,7 @@ func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
 		defer func() { c.tparams = nil }()
 	}
 	c.memberModifiers(d.Modifiers, owner, d.P, "property '"+d.Name+"'")
+	c.inlineProp(d, owner)
 	c.funModifiers(d.Modifiers, d.P, "property")
 	if d.Find("", "JvmStatic") != nil {
 		switch {
@@ -2206,7 +2208,7 @@ func (c *Checker) checkBodies() {
 		c.checkClass(d)
 	}
 	c.propRefs()
-	c.inlineCycles()
+	c.inlineFileChecks()
 }
 
 // checkClass checks a class's code: its constructors' calls, property
@@ -2529,7 +2531,7 @@ func (c *Checker) checkFun(d *syntax.FunDecl, cls *types.ClassSym) {
 	c.pluginSerializer(d)
 	c.parcelBody(d, cls)
 	if d.Inline {
-		defer c.publicInline(d, cls)
+		defer c.inlineBodyChecks(d, cls)
 	}
 	sym := d.Sym
 	s := &scope{}
