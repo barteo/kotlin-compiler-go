@@ -17,6 +17,9 @@ import (
 // its parameters take inlined lambdas: those of a function type, not
 // noinline, that its body only invokes.
 func (c *Checker) inlineFun(d *syntax.FunDecl, owner *types.ClassSym) {
+	if virtualMember(d.Modifiers, owner) {
+		c.errorf(d.P, "'inline' modifier is not allowed on virtual members: only private or final members can be inlined")
+	}
 	if owner != nil && (owner.Interface || owner.Value || !isFinal(d.Modifiers, owner)) {
 		return // an ordinary method
 	}
