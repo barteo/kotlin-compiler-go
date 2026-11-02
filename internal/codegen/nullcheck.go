@@ -65,6 +65,9 @@ func (g *gen) checkParams(ctx []*types.VarSym, recv *types.VarSym, params []*typ
 	}
 	for _, p := range params {
 		g.checkParam(p.Slot, p.Type, p.Name)
+		if checked(p.Type) {
+			g.markNonNull(p)
+		}
 	}
 }
 
@@ -168,4 +171,80 @@ func (g *gen) lateinit(p *types.VarSym) {
 	if p.Lateinit {
 		lateinitCheck(g.code, p.Name, g.shared.opts.Stdlib)
 	}
+}
+
+// safeCallChecks reports whether a safe call on receiver x, of type t
+// that can't be null, checks it for null anyway. A value of a non-null
+// reference type may still be null at run time: the result of an
+// unchecked cast to T, or a property read before it is initialized. As
+// kotlinc, whose bytecode optimizer removes only the checks it proves
+// redundant, the check stays unless the value is known not to be null.
+func (g *gen) safeCallChecks(x syntax.Expr, t types.Type) bool {
+	return nullableRef(t) && !types.Unboxed(types.Erase(t)) && !g.knownNonNull(x)
+}
+
+// knownNonNull reports whether the value of x is never null in kotlinc's
+// bytecode: a string literal, a new object, a parameter checked on entry
+// or a local holding one, or a variable smart cast to non-null after a
+// check of its value.
+func (g *gen) knownNonNull(x syntax.Expr) bool {
+	switch x := x.(type) {
+	case *syntax.StringLit:
+		for _, p := range x.Parts {
+			if p.X != nil {
+				return false // StringBuilder.toString's result
+			}
+		}
+		return true
+	case *syntax.Call:
+		return x.Ctor != nil && x.Outer == nil || x.Builtin == types.NewInstance
+	case *syntax.Ident:
+		v := x.Sym
+		if v == nil || x.Member != nil || x.Getter != nil || x.Call != nil || x.Object != nil || v.Captured {
+			return false
+		}
+		if v.Kind != types.Local && v.Kind != types.Param {
+			return false
+		}
+		return g.nonNull[v] || types.MayBeNull(v.Type) // checked, or smart cast
+	case *syntax.Binary:
+		// a ?: b, b never null.
+		return x.Op == syntax.ELVIS && (x.Y.Type().K == types.Nothing || g.knownNonNull(x.Y))
+	}
+	return false
+}
+
+// markNonNull records that local or parameter v holds a value that is
+// never null, for knownNonNull.
+func (g *gen) markNonNull(v *types.VarSym) {
+	if g.nonNull == nil {
+		g.nonNull = map[*types.VarSym]bool{}
+	}
+	g.nonNull[v] = true
+}
+
+// castChecks reports whether cast x, of a value of type from to type to,
+// checks the value for null first: a cast to a non-null type, as kotlinc,
+// of a value that isn't known not to be null, even of a non-null type.
+func (g *gen) castChecks(x *syntax.As, from, to types.Type) bool {
+	if x.Safe || types.MayBeNull(to) || types.Unboxed(to) || g.reifiedParam(to) {
+		return false
+	}
+	if from.IsPrimitive() || types.Unboxed(from) || from.K == types.Nothing && !from.N || x.X.Type().K == types.Unit && !x.X.Type().N {
+		return false
+	}
+	return types.MayBeNull(from) || from.P || !g.knownNonNull(x.X)
+}
+
+// checkCastNotNull throws a NullPointerException if the reference on the
+// stack, which a cast to type to casts next, is null.
+func (g *gen) checkCastNotNull(to types.Type) {
+	msg := "null cannot be cast to non-null type " + kotlinName(to)
+	g.code.Op(cf.DUP)
+	if g.shared.opts.Stdlib {
+		g.code.Sconst(msg)
+		g.code.Invoke(cf.INVOKESTATIC, intrinsics, "checkNotNull", "(Ljava/lang/Object;Ljava/lang/String;)V")
+		return
+	}
+	g.requireNonNull(msg)
 }

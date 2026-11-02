@@ -128,6 +128,9 @@ func (g *gen) stmt(s syntax.Stmt) {
 			break // assigned later
 		}
 		g.exprAs(s.Init, s.Sym.Type)
+		if !s.Mutable && g.knownNonNull(s.Init) {
+			g.markNonNull(s.Sym)
+		}
 		if size(s.Sym.Type) > 0 {
 			g.code.Local(storeOp(s.Sym.Type), s.Sym.Slot)
 		}

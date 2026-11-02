@@ -44,6 +44,12 @@ type gen struct {
 	tries   []*tryCtx       // the try blocks the code is in, innermost last
 	lam     *lambdaCtx      // set in a lambda's method
 	inl     []*inlineLambda // the inlined lambdas being generated, innermost last
+	// nonNull holds the parameters and locals whose values are never
+	// null, of which a safe call doesn't check for null: see knownNonNull.
+	nonNull map[*types.VarSym]bool
+	// safeEq is set while the left side of a?.b == v is generated: see
+	// safeEquals.
+	safeEq *safeEqual
 	// publicInline is set in the body of an inline function that isn't
 	// private, which other files' copies call private members from
 	// through their accessors.

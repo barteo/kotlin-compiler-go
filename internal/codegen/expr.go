@@ -186,9 +186,30 @@ func (g *gen) exprAs(x syntax.Expr, t types.Type) {
 			return
 		}
 	}
+	if c, ok := x.(*syntax.Call); ok && boxedResult(c, t) {
+		// The boxed value of a generic call, used as a boxed value, isn't
+		// unboxed: it may be null after an unchecked cast, as kotlinc.
+		xt := c.T
+		c.T = xt.Nullable()
+		defer func() { c.T = xt }()
+	}
 	g.expr(x)
 	g.checkPlatform(x, t)
 	g.coerce(x.Type(), t)
+}
+
+// boxedResult reports whether call x returns a primitive, as the value of
+// its function's type parameter, which is boxed on the JVM, used as t, a
+// reference: uncheckedCastNull<Int>() as an Int?.
+func boxedResult(x *syntax.Call, t types.Type) bool {
+	f := x.Sym
+	if f == nil || x.Ctor != nil || x.Builtin != 0 || x.Invoke || x.SAM || !x.T.IsPrimitive() || t.IsPrimitive() || size(t) == 0 {
+		return false
+	}
+	if m, ok := x.Fun.(*syntax.Member); ok && m.Safe {
+		return false
+	}
+	return f.Ret.IsParam() && !f.Ret.Param().Reified && desc(types.JVMRet(f))[0] == 'L'
 }
 
 // coerceRecv is coerce for the receiver of an extension: an extension of
@@ -579,6 +600,10 @@ func (g *gen) as(x *syntax.As) {
 		g.coerce(from, types.AnyType) // kotlin.Unit
 		from = types.AnyType
 	}
+	if g.castChecks(x, from, to) {
+		g.checkCastNotNull(to)
+		from = from.NonNull()
+	}
 	if from.IsPrimitive() {
 		if from == to {
 			g.coerce(from, x.T) // boxed for as?
@@ -650,17 +675,6 @@ func (g *gen) as(x *syntax.As) {
 			g.unboxValue(x.T)
 		}
 		return
-	}
-	if types.MayBeNull(from) && !types.MayBeNull(to) {
-		ok := cf.NewLabel()
-		g.code.Op(cf.DUP)
-		g.code.Jump(cf.IFNONNULL, ok)
-		g.code.New("java/lang/NullPointerException")
-		g.code.Op(cf.DUP)
-		g.code.Sconst("null cannot be cast to non-null type " + kotlinName(to))
-		g.code.Invoke(cf.INVOKESPECIAL, "java/lang/NullPointerException", "<init>", "(Ljava/lang/String;)V")
-		g.code.Op(cf.ATHROW)
-		g.code.Place(ok)
 	}
 	if m := mutableIntrinsic(to); m != "" {
 		g.code.Invoke(cf.INVOKESTATIC, "kotlin/jvm/internal/TypeIntrinsics", "as"+m, "(Ljava/lang/Object;)L"+cls+";")
@@ -1027,7 +1041,7 @@ func (g *gen) safeCall(m *syntax.Member, memberType, result types.Type, body fun
 	recv, safe := m.X, m.Safe
 	rt := recv.Type()
 	g.expr(recv)
-	if !safe || !types.MayBeNull(rt) {
+	if !safe || !types.MayBeNull(rt) && !g.safeCallChecks(recv, rt) {
 		switch nn := rt.NonNull(); {
 		case rt.P && nn.IsPrimitive():
 			g.unbox(rt) // a boxed platform value used as a primitive
@@ -1056,6 +1070,19 @@ func (g *gen) safeCall(m *syntax.Member, memberType, result types.Type, body fun
 			p = top
 			p.late = true
 		}
+	}
+	if c := g.safeEq; c != nil && c.m == m && p == nil && !m.Groups && !m.Nothing && memberType.IsPrimitive() && !types.MayBeNull(memberType) {
+		// In a?.b == v: b's value, or a jump for null.
+		c.used = true
+		ok := cf.NewLabel()
+		g.code.Op(cf.DUP)
+		g.code.Jump(cf.IFNONNULL, ok)
+		g.code.Op(cf.POP)
+		g.code.Jump(cf.GOTO, c.null)
+		g.code.Place(ok)
+		body()
+		g.coerce(memberType, c.t)
+		return
 	}
 	isNull, end := cf.NewLabel(), join(result)
 	g.code.Op(cf.DUP)
