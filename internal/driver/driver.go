@@ -19,11 +19,17 @@ import (
 	"github.com/barteo/kotlin-compiler-go/internal/codegen"
 	"github.com/barteo/kotlin-compiler-go/internal/javasrc"
 	"github.com/barteo/kotlin-compiler-go/internal/kmeta"
+	"github.com/barteo/kotlin-compiler-go/internal/lower"
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
 	"github.com/barteo/kotlin-compiler-go/internal/types"
+	"github.com/barteo/kotlin-compiler-go/psi"
 )
 
 type Options struct {
+	// Frontend picks the parser: "syntax", kc's token parser, the
+	// default, or "psi", which parses a lossless psi tree and lowers it.
+	// If empty, $KC_FRONTEND picks it.
+	Frontend  string
 	OutDir    string
 	Jobs      int
 	Timing    io.Writer // if set, per-phase timings are written here
@@ -156,6 +162,10 @@ func Compile(paths []string, opts Options) error {
 		}
 	}()
 
+	frontend, err := frontendOf(opts)
+	if err != nil {
+		return err
+	}
 	files := make([]*syntax.File, len(paths))
 	errLists := make([][]*syntax.Error, len(paths))
 	ioErrs := make([]error, len(paths))
@@ -165,7 +175,7 @@ func Compile(paths []string, opts Options) error {
 			ioErrs[i] = err
 			return
 		}
-		files[i], errLists[i] = syntax.Parse(paths[i], string(src))
+		files[i], errLists[i] = parse(frontend, paths[i], string(src))
 	})
 	if err := errors.Join(ioErrs...); err != nil {
 		return err
@@ -485,4 +495,32 @@ func kotlinClasses(files []*syntax.File) map[string]*syntax.ClassDecl {
 		}
 	}
 	return m
+}
+
+// frontendOf returns the parser opts pick.
+func frontendOf(opts Options) (string, error) {
+	f := opts.Frontend
+	if f == "" {
+		f = os.Getenv("KC_FRONTEND")
+	}
+	switch f {
+	case "", "syntax":
+		return "syntax", nil
+	case "psi":
+		return "psi", nil
+	}
+	return "", fmt.Errorf("unknown frontend %q: want syntax or psi", f)
+}
+
+// parse parses a source file with frontend. Like syntax.Parse, it returns
+// only the first error.
+func parse(frontend, path, src string) (*syntax.File, []*syntax.Error) {
+	if frontend != "psi" {
+		return syntax.Parse(path, src)
+	}
+	f, _, errs := lower.File(psi.Parse(path, src))
+	if len(errs) > 0 {
+		return nil, errs[:1]
+	}
+	return f, nil
 }

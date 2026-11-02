@@ -132,6 +132,18 @@ in its place.
 - `psi` tests compare against those goldens, so CI needs no JVM.
 
 ### A3. Direct lowering from PSI to the kc AST (`internal/lower`, new)
+
+> **Status: done.** `internal/lower` lowers psi trees; `internal/lower/lower_test.go` checks it
+> against `syntax.ParseAll` on every `testdata/**/*.kt` with `syntax.Diff`, which compares positions
+> too on ASCII files. Files that stock Kotlin 2.0.21's grammar rejects but kc accepts are skipped
+> there and fail under `KC_FRONTEND=psi`:
+> - context parameters, `context(x: T)`, which 2.0.21 doesn't have
+> - `@A (x)` in an expression, where stock Kotlin reads `(x)` as the annotation's arguments and kc
+>   only takes arguments directly after the name
+>
+> `driver.Options.Frontend` (or `$KC_FRONTEND`) picks the parser, and CI runs the whole suite with
+> each.
+
 kc's parser already desugars some constructs while parsing:
 - callable references become `Lambda{Ref}`
 - delegated properties get a `$delegate` field and generated accessors

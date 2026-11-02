@@ -78,9 +78,17 @@ jobs:
         run: go test ./psi -run '^$' -fuzz '^FuzzParse$' -fuzztime 60s
 
   test:
-    name: Test
+    name: Test (${{ matrix.frontend }} frontend)
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        # psi parses a lossless psi tree and lowers it to kc's AST
+        # (internal/lower); the whole suite runs through both.
+        frontend: [syntax, psi]
+    env:
+      KC_FRONTEND: ${{ matrix.frontend }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
