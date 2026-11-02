@@ -79,6 +79,8 @@ refuse to run rather than read zeros. `Result`'s methods return deep copies.
 | `ImpossibleCast` | an `as` between types kotlinc's `isCastPossible` rejects: unrelated, with either side final; a `null` cast to a non-null type |
 | `Accessors` | on a property access, the accessors it can call: a Java getter and its setter (`java.util.Calendar.getFirstDayOfWeek`, `setFirstDayOfWeek`), or a Kotlin property's `<get-p>` and, for a `var`, `<set-p>`, with the overridden properties' accessors as `Targets`; not a `Call`, which rules read as "this is a call" |
 | `Call` on `==`, `!=` | the `equals` found first up the left operand's supertypes, with `kotlin.Any.equals` as a target |
+| `Package` | on each name of a package that qualifies a reference to a top-level function, property, class or object, its fully qualified name: `kotlin` and `kotlin.math` in `kotlin.math.floor(x)`, `java.lang` in `java.lang.Math.max(a, b)` |
+| `Symbol.HasAbstractMembers`, `HasConcreteMembers` | whether a class's member scope, as kotlinc's `unsubstitutedMemberScope`, holds an abstract member or one that isn't: the class's and its supertypes' members that nothing in the hierarchy overrides, `kotlin.Any`'s open members and the nested classes |
 
 Facts recorded on an expression are copied to the wrapper nodes Kotlin's
 PSI puts around it (`DOT_QUALIFIED_EXPRESSION`, `PARENTHESIZED`, labels,

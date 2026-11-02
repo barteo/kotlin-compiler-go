@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -299,6 +300,7 @@ func (b *builder) build() {
 	for _, f := range b.later {
 		f()
 	}
+	b.packages(entries)
 	b.negated()
 	b.usedAsExpression()
 	b.wrappers()
@@ -398,6 +400,9 @@ func merge(f *Fact, src Fact) {
 	f.Classifier = f.Classifier || src.Classifier
 	if f.ImportableName == "" {
 		f.ImportableName = src.ImportableName
+	}
+	if f.Package == "" {
+		f.Package = src.Package
 	}
 	if f.When == nil {
 		f.When = src.When
@@ -1769,34 +1774,88 @@ func (b *builder) symbol(id uint32, s any) Symbol {
 	return sym
 }
 
-// classMembers sets what c inherits from its supertypes: abstract
-// members, members with bodies, an abstract superclass.
+// classMembers sets what c's member scope holds, as kotlinc's
+// unsubstitutedMemberScope does: c's and its supertypes' members that
+// nothing else in the hierarchy overrides, kotlin.Any's open members and
+// c's nested classes. HasAbstractMembers and HasConcreteMembers report
+// whether any of them is abstract, or not.
 func (b *builder) classMembers(c *types.ClassSym, sym *Symbol) {
 	if c.Super != nil && c.Super.Abstract && !c.Super.Interface {
 		sym.HasAbstractSuperclass = true
 	}
+	var funs []*types.FunSym
+	var props []*types.VarSym
+	hidden := map[*types.FunSym]bool{}
+	var hide func(f *types.FunSym)
+	hide = func(f *types.FunSym) {
+		if b.rec.overridden == nil {
+			return
+		}
+		for _, o := range b.rec.overridden(f) {
+			if !hidden[o] {
+				hidden[o] = true
+				hide(o)
+			}
+		}
+	}
 	c.Supertypes(func(s *types.ClassSym) bool {
-		if s == c || s.KotlinName == "kotlin/Any" || s.Name == "java/lang/Object" {
+		if s.KotlinName == "kotlin/Any" || s.Name == "java/lang/Object" {
 			return true
 		}
 		for _, fs := range s.Methods {
 			for _, f := range fs {
-				if f.Abstract {
-					sym.HasAbstractMembers = true
-				} else {
-					sym.HasConcreteMembers = true
+				if f.Static || f.Name == "<init>" {
+					continue
 				}
+				funs = append(funs, f)
+				hide(f)
 			}
 		}
 		for _, p := range s.Props {
-			if p.Abstract {
-				sym.HasAbstractMembers = true
-			} else {
-				sym.HasConcreteMembers = true
+			if p.Kind == types.Prop {
+				props = append(props, p)
 			}
 		}
-		return !(sym.HasAbstractMembers && sym.HasConcreteMembers)
+		return true
 	})
+	// kotlin.Any's equals, hashCode and toString are open unless the
+	// hierarchy re-declares them abstract.
+	anyOpen := map[string]bool{"equals/1": true, "hashCode/0": true, "toString/0": true}
+	member := func(abstract bool) {
+		if abstract {
+			sym.HasAbstractMembers = true
+		} else {
+			sym.HasConcreteMembers = true
+		}
+	}
+	for _, f := range funs {
+		if hidden[f] {
+			continue
+		}
+		member(f.Abstract)
+		if f.Abstract {
+			delete(anyOpen, f.Name+"/"+strconv.Itoa(len(f.Params)))
+		}
+	}
+	if len(anyOpen) > 0 {
+		sym.HasConcreteMembers = true
+	}
+	// A property is overridden by a same-named one in a subclass.
+	for _, p := range props {
+		overridden := false
+		for _, q := range props {
+			if q != p && q.Name == p.Name && q.Owner != p.Owner && q.Owner.IsSubclassOf(p.Owner) {
+				overridden = true
+				break
+			}
+		}
+		if !overridden {
+			member(p.Abstract)
+		}
+	}
+	for _, n := range c.Nested {
+		member(n.Abstract)
+	}
 }
 
 // operatorCall returns the first operator call of stmts, which the
@@ -1886,4 +1945,92 @@ func (b *builder) suspendCall(l *syntax.Lambda, el ElementID) {
 	if callee := n.ChildKind(psi.KindREFERENCE_EXPRESSION); callee.Valid() {
 		b.set(ElementID{el.Snapshot, callee.ID()}, Fact{Role: "reference", Call: copyCall(c), Builtin: c.Name, ImportableName: c.Name})
 	}
+}
+
+// packages sets Package on the names of packages that qualify a
+// reference to a top-level declaration: kotlin and kotlin.math in
+// kotlin.math.floor(x), p in p.Outer.Inner().
+func (b *builder) packages(entries [][]entry) {
+	for _, es := range entries {
+		for _, e := range es {
+			switch x := e.n.(type) {
+			case *syntax.Call:
+				m, ok := x.Fun.(*syntax.Member)
+				switch {
+				case !ok || x.Invoke:
+				case x.Ctor != nil:
+					b.qualifier(m.X, classPackage(x.Ctor))
+				case x.Sym != nil && x.Sym.Owner == nil && !x.Sym.Ext:
+					b.qualifier(m.X, facadePackage(x.Sym.Facade))
+				}
+			case *syntax.Member:
+				switch {
+				case x.Static != nil && !x.EvalX:
+					b.qualifier(x.X, classPackage(x.Static))
+				case x.Object != nil:
+					b.qualifier(x.X, classPackage(x.Object))
+				case x.Prop != nil && x.Prop.Kind == types.Global:
+					b.qualifier(x.X, facadePackage(x.Prop.Facade))
+				}
+			}
+		}
+	}
+}
+
+// qualifier sets Package on the part of x that spells pkg, and on the
+// parts of that that spell its parents. The rest of x names classes.
+func (b *builder) qualifier(x syntax.Expr, pkg string) {
+	if pkg == "" {
+		return
+	}
+	for {
+		m, ok := x.(*syntax.Member)
+		if !ok || !strings.HasPrefix(dotted(x), pkg+".") {
+			break
+		}
+		x = m.X
+	}
+	if dotted(x) != pkg {
+		return
+	}
+	for x != nil {
+		el, ok := b.where[x]
+		if !ok {
+			return
+		}
+		f := b.fact(el)
+		if f.Symbol != 0 || f.Type != nil || f.Classifier || f.Call != nil {
+			return
+		}
+		f.Package = dotted(x)
+		m, ok := x.(*syntax.Member)
+		if !ok {
+			return
+		}
+		x = m.X
+	}
+}
+
+// dotted returns the dotted name x spells, a.b.c, or "".
+func dotted(x syntax.Expr) string {
+	switch x := x.(type) {
+	case *syntax.Ident:
+		return x.Name
+	case *syntax.Member:
+		if q := dotted(x.X); q != "" && !x.Safe {
+			return q + "." + x.Name
+		}
+	}
+	return ""
+}
+
+// classPackage returns the dotted package of a class.
+func classPackage(c *types.ClassSym) string {
+	for c.Outer != nil {
+		c = c.Outer
+	}
+	if c.KotlinName != "" {
+		return facadePackage(c.KotlinName)
+	}
+	return facadePackage(c.Name)
 }

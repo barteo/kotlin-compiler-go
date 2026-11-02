@@ -126,8 +126,12 @@ type Symbol struct {
 	Supertypes []string `json:"supertypes,omitempty"`
 	// Shadowed is set on a local or parameter that hides another.
 	Shadowed bool `json:"shadowed,omitempty"`
-	// A class's supertypes have abstract members, have members with
-	// bodies, and its superclass is abstract.
+	// HasAbstractMembers and HasConcreteMembers report whether a class's
+	// member scope, as kotlinc's unsubstitutedMemberScope, holds an
+	// abstract member, or one that isn't: the members of the class and its
+	// supertypes that nothing in the hierarchy overrides, kotlin.Any's open
+	// ones and the nested classes. HasAbstractSuperclass is set when the
+	// superclass is abstract.
 	HasAbstractMembers    bool `json:"hasAbstractMembers,omitempty"`
 	HasConcreteMembers    bool `json:"hasConcreteMembers,omitempty"`
 	HasAbstractSuperclass bool `json:"hasAbstractSuperclass,omitempty"`
@@ -221,7 +225,11 @@ type Fact struct {
 	// import of what the reference names would have.
 	Classifier     bool   `json:"classifier,omitempty"`
 	ImportableName string `json:"importableName,omitempty"`
-	When           *When  `json:"when,omitempty"`
+	// Package is set on a name that refers to a package qualifying a
+	// reference: the package's fully qualified name, kotlin.math on
+	// kotlin.math and kotlin on kotlin in kotlin.math.floor(x).
+	Package string `json:"package,omitempty"`
+	When    *When  `json:"when,omitempty"`
 
 	FlowNonNull       bool `json:"flowNonNull,omitempty"`
 	DefinitelyNonNull bool `json:"definitelyNonNull,omitempty"`

@@ -1071,3 +1071,89 @@ fun h(x: Int, l: List<Int>, d: D, s: String, a: Any, i: I, cal: Calendar, b: Big
 		t.Errorf("b == b: %+v", f.Call)
 	}
 }
+
+func TestPackageQualifiers(t *testing.T) {
+	r, s := analyzed(t, withJDK(t), `package p
+
+class Bar
+object O { fun f() = 1 }
+
+val x = kotlin.math.floor(1.0)
+val y = p.O.f()
+val z = p.Bar()
+val w = java.lang.Math.max(1, 2)
+`)
+	for _, c := range []struct {
+		kind, text string
+		nth        int
+		pkg        string
+	}{
+		{"DOT_QUALIFIED_EXPRESSION", "kotlin.math", 0, "kotlin.math"},
+		{"REFERENCE_EXPRESSION", "kotlin", 0, "kotlin"},
+		{"REFERENCE_EXPRESSION", "p", 1, "p"},
+		{"REFERENCE_EXPRESSION", "p", 2, "p"},
+		{"DOT_QUALIFIED_EXPRESSION", "java.lang", 0, "java.lang"},
+		{"REFERENCE_EXPRESSION", "java", 0, "java"},
+		{"REFERENCE_EXPRESSION", "O", 0, ""},
+		{"DOT_QUALIFIED_EXPRESSION", "java.lang.Math", 0, ""},
+		{"REFERENCE_EXPRESSION", "floor", 0, ""},
+	} {
+		if f := fact(t, r, at(t, s, c.kind, c.text, c.nth)); f.Package != c.pkg {
+			t.Errorf("%s %q #%d: package %q, want %q", c.kind, c.text, c.nth, f.Package, c.pkg)
+		}
+	}
+}
+
+func TestClassMemberScope(t *testing.T) {
+	r, s := analyzed(t, withStdlib(t), `package p
+
+abstract class Base {
+    abstract fun a()
+    abstract val v: Int
+}
+abstract class AllOverridden : Base() {
+    override fun a() {}
+    override val v = 1
+}
+abstract class Partial : Base() {
+    override fun a() {}
+}
+interface I { fun m() }
+abstract class Reabstract : I {
+    abstract override fun equals(other: Any?): Boolean
+    abstract override fun hashCode(): Int
+    abstract override fun toString(): String
+}
+`)
+	class := func(name string) Symbol {
+		t.Helper()
+		var found psi.NodeRef
+		psi.WalkNodes(s.RootNode(), func(n psi.NodeRef) bool {
+			if !found.Valid() && n.Kind() == "CLASS" && n.Name() == name {
+				found = n
+			}
+			return !found.Valid()
+		})
+		if !found.Valid() {
+			t.Fatalf("no class %s", name)
+		}
+		return symbol(t, r, fact(t, r, found).Symbol)
+	}
+	for _, c := range []struct {
+		name               string
+		abstract, concrete bool
+	}{
+		{"Base", true, true},           // a, v; kotlin.Any's open members
+		{"AllOverridden", false, true}, // Base's members are overridden
+		{"Partial", true, true},        // v is still abstract
+		{"Reabstract", true, false},    // m, and Any's members made abstract
+	} {
+		sym := class(c.name)
+		if sym.HasAbstractMembers != c.abstract || sym.HasConcreteMembers != c.concrete {
+			t.Errorf("%s: abstract %v concrete %v, want %v %v", c.name, sym.HasAbstractMembers, sym.HasConcreteMembers, c.abstract, c.concrete)
+		}
+	}
+	if !class("AllOverridden").HasAbstractSuperclass || class("Reabstract").HasAbstractSuperclass {
+		t.Error("HasAbstractSuperclass")
+	}
+}
