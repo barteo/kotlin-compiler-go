@@ -2815,18 +2815,14 @@ func (c *Checker) ifExpr(x *syntax.If, want types.Type, valueUsed bool) types.Ty
 		}
 	}
 	var exits []*branchExit
-	defer func() {
-		if len(vars) > 0 {
-			c.merge(vars, exits)
-		}
-	}()
+	defer func() { c.merge(vars, exits) }()
 	var pending []pendingBranch
 	c.push()
 	c.scope.narrows = whenTrue
 	exits = append(exits, c.watchExit(vars))
 	thenT := c.branch(x.Then, want, valueUsed, &pending)
 	c.pop()
-	if x.Else == nil && len(vars) > 0 {
+	if x.Else == nil {
 		exits = append(exits, c.startExit(vars, whenFalse))
 	}
 	if x.Else == nil {
@@ -3056,11 +3052,7 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 	// types: merged in the enclosing scope, after the pop below.
 	vars := c.watchedVars(x)
 	var exits []*branchExit
-	defer func() {
-		if len(vars) > 0 {
-			c.merge(vars, exits)
-		}
-	}()
+	defer func() { c.merge(vars, exits) }()
 	var st types.Type
 	// subj is the stable value that conditions on the subject smart cast:
 	// the subject's variable, a variable or a stable property.
@@ -3285,7 +3277,7 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 		}
 	}
 	exhaustive := hasElse || x.Subject != nil && c.covers(st, &cov)
-	if !exhaustive && len(vars) > 0 {
+	if !exhaustive {
 		exits = append(exits, c.startExit(vars, nil)) // no branch matched
 	}
 	if x.Soft && (!exhaustive || softFail) {
@@ -3412,6 +3404,7 @@ func (c *Checker) jump(x *syntax.Jump) {
 			return
 		}
 		x.Loop = loop.node
+		c.loopJump(slices.Index(c.loops, loop), x.Kind == syntax.BREAK)
 		if x.Kind == syntax.BREAK {
 			loop.hasBreak = true
 		} else {

@@ -371,43 +371,7 @@ func (c *Checker) stmt(s syntax.Stmt, valueUsed bool, want types.Type) types.Typ
 	case *syntax.LocalClass:
 		c.localClass(s)
 	case *syntax.While:
-		loop := &loopCtx{node: s, label: s.Label, lambdas: len(c.lambdas)}
-		// The vars the loop assigns lose their narrowing in it and after
-		// it.
-		vars, unkeep := c.loopVars(s.Cond, s.Body)
-		if s.Do {
-			// The condition sees the body's declarations.
-			c.push()
-			c.reset(vars)
-			c.loops = append(c.loops, loop)
-			s.Body.T = c.stmts(s.Body, noWant, false)
-			c.loops = c.loops[:len(c.loops)-1]
-			c.value(s.Cond, types.BoolType)
-			c.wantBool(s.Cond)
-			c.pop()
-		} else {
-			c.push()
-			c.reset(vars)
-			c.value(s.Cond, types.BoolType)
-			c.wantBool(s.Cond)
-			whenTrue, _ := c.narrowing(s.Cond)
-			c.loops = append(c.loops, loop)
-			c.push()
-			c.scope.narrows = append(c.scope.narrows, whenTrue...)
-			c.block(s.Body, noWant, false)
-			c.pop()
-			c.loops = c.loops[:len(c.loops)-1]
-			c.pop()
-		}
-		unkeep()
-		c.reset(vars)
-		if lit, ok := s.Cond.(*syntax.BoolLit); ok && lit.Val && !loop.hasBreak {
-			s.Infinite = true
-			return types.NothingType
-		}
-		if s.Do && s.Body.T.K == types.Nothing && !loop.hasBreak && !loop.hasContinue {
-			return types.NothingType // the body runs once, and jumps
-		}
+		return c.while(s)
 	case *syntax.For:
 		if len(s.Names) > 0 && s.Var == "" {
 			// for ((k, v) in m) is for (e in m) { val (k, v) = e }.
@@ -450,6 +414,77 @@ func (c *Checker) stmt(s syntax.Stmt, valueUsed bool, want types.Type) types.Typ
 		c.reset(vars)
 	case *syntax.Block:
 		return c.block(s, want, valueUsed)
+	}
+	return types.UnitType
+}
+
+// while checks a while or a do-while loop. After it, the smart casts are
+// those where it ends: where its condition is false, unless it is true,
+// and at its breaks. A do-while's condition has those at the end of its
+// body and at its continues.
+func (c *Checker) while(s *syntax.While) types.Type {
+	loop := &loopCtx{node: s, label: s.Label, lambdas: len(c.lambdas)}
+	// The vars the loop assigns lose their narrowing in it and after it.
+	vars, unkeep := c.loopVars(s.Cond, s.Body)
+	var exits []flowState
+	if s.Do {
+		// The condition sees the body's declarations.
+		c.push()
+		c.reset(vars)
+		c.loops = append(c.loops, loop)
+		s.Body.T = c.stmts(s.Body, noWant, false)
+		c.loops = c.loops[:len(c.loops)-1]
+		if conts := loop.flow.continues; len(conts) > 0 || loop.flow.lost {
+			// The condition has the smart casts of the paths to it.
+			if s.Body.T.K != types.Nothing {
+				conts = append(conts, c.flowState())
+			}
+			body := c.scope
+			c.scope = &scope{parent: body.parent, vars: body.vars, funs: body.funs, classes: body.classes, depth: body.depth}
+			c.reset(vars)
+			if !loop.flow.lost {
+				c.scope.narrows = append(c.scope.narrows, c.joinFlows(conts)...)
+			}
+		}
+		c.value(s.Cond, types.BoolType)
+		c.wantBool(s.Cond)
+		_, whenFalse := c.narrowing(s.Cond)
+		c.push()
+		c.scope.narrows = append(c.scope.narrows, whenFalse...)
+		exits = append(exits, c.flowState())
+		c.pop()
+		c.pop()
+	} else {
+		c.push()
+		c.reset(vars)
+		c.value(s.Cond, types.BoolType)
+		c.wantBool(s.Cond)
+		whenTrue, whenFalse := c.narrowing(s.Cond)
+		if lit, ok := s.Cond.(*syntax.BoolLit); !ok || !lit.Val {
+			c.push()
+			c.scope.narrows = append(c.scope.narrows, whenFalse...)
+			exits = append(exits, c.flowState())
+			c.pop()
+		}
+		c.loops = append(c.loops, loop)
+		c.push()
+		c.scope.narrows = append(c.scope.narrows, whenTrue...)
+		c.block(s.Body, noWant, false)
+		c.pop()
+		c.loops = c.loops[:len(c.loops)-1]
+		c.pop()
+	}
+	unkeep()
+	c.reset(vars)
+	if !loop.flow.lost {
+		c.scope.narrows = append(c.scope.narrows, c.joinFlows(append(exits, loop.flow.breaks...))...)
+	}
+	if lit, ok := s.Cond.(*syntax.BoolLit); ok && lit.Val && !loop.hasBreak {
+		s.Infinite = true
+		return types.NothingType
+	}
+	if s.Do && s.Body.T.K == types.Nothing && !loop.hasBreak && !loop.hasContinue {
+		return types.NothingType // the body runs once, and jumps
 	}
 	return types.UnitType
 }
