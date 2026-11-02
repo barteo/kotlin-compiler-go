@@ -41,6 +41,11 @@ type Universe struct {
 	// serialInterfaces are the sealed interfaces annotated @Serializable,
 	// with serialization.
 	serialInterfaces map[*syntax.ClassDecl]bool
+	// typeUses holds the classifier, *types.ClassSym or *types.AliasSym,
+	// that each resolved *syntax.TypeRef names, and optIns are
+	// Library.OptIns, for the checks of optin.go.
+	typeUses sync.Map
+	optIns   []string
 	// module ends the JVM names of internal members: $ and the module's
 	// name.
 	module string
@@ -345,6 +350,9 @@ type Library struct {
 	// Compose is set to compile as kotlinc does with the Compose compiler
 	// plugin: see compose.go.
 	Compose bool
+	// OptIns are the qualified names of the requirement markers the
+	// module opts in to, as kotlinc's -opt-in: see optin.go.
+	OptIns []string
 }
 
 // EnableSerialization sets Serialization. The code that kc writes for the
@@ -408,7 +416,7 @@ func (l *Library) Prefetch() {
 func CheckWith(files []*syntax.File, lib *Library, jobs int) []*syntax.Error {
 	u := &Universe{Pkgs: map[string]*Package{}, prefixes: map[string]bool{}, ext: lib.t, module: moduleSuffix(lib.Module),
 		aliasFile: map[*types.AliasSym]*Checker{}, noJVMDefault: lib.NoJVMDefault, jvmDefaultCompat: lib.JVMDefaultCompat, parcelize: lib.Parcelize, serialization: lib.Serialization,
-		compose: lib.Compose, serialInterfaces: map[*syntax.ClassDecl]bool{}}
+		compose: lib.Compose, serialInterfaces: map[*syntax.ClassDecl]bool{}, optIns: lib.OptIns}
 	checkers := make([]*Checker, len(files))
 	for i, f := range files {
 		checkers[i] = &Checker{u: u, file: f, done: map[any]bool{}, checked: map[*syntax.Lambda]types.Type{},
@@ -502,6 +510,7 @@ func CheckWith(files []*syntax.File, lib *Library, jobs int) []*syntax.Error {
 	close(work)
 	wg.Wait()
 
+	optInErrors(checkers)
 	var errs []*syntax.Error
 	for _, c := range checkers {
 		c.shadowedErrors()
@@ -585,6 +594,7 @@ func (c *Checker) resolveType(ref *syntax.TypeRef) types.Type {
 		return c.innerType(ref)
 	}
 	if a := c.lookupAlias(ref.Name); a != nil && c.lookupTypeParam(ref.Name) == nil {
+		c.u.typeUses.Store(ref, a)
 		c.checkAliasVisible(a, ref.P)
 		return c.expandAlias(a, ref)
 	}
@@ -641,6 +651,7 @@ func (c *Checker) resolveType(ref *syntax.TypeRef) types.Type {
 				return types.InvalidType
 			}
 			c.checkClassVisible(cls, ref.P)
+			c.u.typeUses.Store(ref, cls)
 			return c.applyTypeArgs(cls, ref)
 		}
 		if ref.Args != nil {

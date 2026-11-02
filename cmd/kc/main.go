@@ -33,6 +33,11 @@ func main() {
 	serialization := flag.Bool("serialization", false, "compile as kotlinc does with the kotlinx.serialization compiler plugin: classes annotated @Serializable get their serializers")
 	compose := flag.Bool("compose", false, "compile as kotlinc does with the Compose compiler plugin: @Composable functions take a Composer and change flags")
 	debug := flag.Bool("Xdebug", false, "compile as kotlinc's -Xdebug: suspend functions keep dead variables' values for debuggers")
+	var optIns []string
+	flag.Func("opt-in", "opt in to the requirement marker with this qualified name, as kotlinc's -opt-in; may be repeated", func(v string) error {
+		optIns = append(optIns, v)
+		return nil
+	})
 	jvmDefault := flag.String("jvm-default", "no-compatibility", "how interfaces' bodies compile, as with kotlinc: no-compatibility (JVM default methods), enable (also in DefaultImpls classes) or disable (DefaultImpls classes)")
 	flag.Usage = func() {
 		fmt.Fprintln(os.Stderr, "usage: kc [-d outdir] [-cp path] [-module-name name] [-parcelize] [-serialization] [-compose] [-j N] [-time] files-or-dirs...")
@@ -66,7 +71,7 @@ func main() {
 		os.Exit(2)
 	}
 	opts := driver.Options{OutDir: *outDir, Jobs: *jobs, JDKHome: *jdkHome, NoJDK: *noJDK, ModuleName: *moduleName,
-		NoJVMDefault: *jvmDefault == "disable", JVMDefaultCompat: *jvmDefault == "enable", Parcelize: *parcelize, Serialization: *serialization, Compose: *compose, Debug: *debug}
+		NoJVMDefault: *jvmDefault == "disable", JVMDefaultCompat: *jvmDefault == "enable", Parcelize: *parcelize, Serialization: *serialization, Compose: *compose, Debug: *debug, OptIns: optIns}
 	if classPath != "" {
 		opts.ClassPath = filepath.SplitList(classPath)
 	}

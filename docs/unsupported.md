@@ -22,6 +22,10 @@ own tests.
 - `@JvmStatic` on extensions of objects and on delegated properties,
   which is reported as unsupported.
 - Local `external` functions, which are reported as unsupported.
+- Opt-in requirements (`@RequiresOptIn`, `@SubclassOptInRequired`) and
+  `@Deprecated` with level `ERROR` or `HIDDEN` are checked only for the
+  program's own declarations: the markers and deprecations of the class
+  path, the standard library's included, aren't read from class files.
 - Builder inference that can't check a lambda's body with the type
   variables open, as a member of a value of one of them whose type
   nothing gives yet: it needs a type argument or an expected type.

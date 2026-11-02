@@ -58,6 +58,9 @@ type Options struct {
 	// variables' values in their continuations as they are, not nulled
 	// out, for debuggers.
 	Debug bool
+	// OptIns are the qualified names of the requirement markers the whole
+	// module opts in to, as kotlinc's -opt-in.
+	OptIns []string
 }
 
 // parallel runs fn(i) for i in [0, n) on up to jobs goroutines.
@@ -136,6 +139,7 @@ func Compile(paths []string, opts Options) error {
 			lib.JVMDefaultCompat = opts.JVMDefaultCompat
 			lib.Parcelize = opts.Parcelize
 			lib.Compose = opts.Compose
+			lib.OptIns = opts.OptIns
 			if opts.Serialization {
 				lib.EnableSerialization()
 			}
