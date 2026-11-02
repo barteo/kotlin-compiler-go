@@ -414,6 +414,13 @@ func (g *gen) ident(x *syntax.Ident) {
 		}
 		g.code.FieldInsn(cf.GETSTATIC, sym.Owner.Name, sym.Name, desc(sym.Type))
 	case types.BackingField:
+		if sym.OuterOf != nil {
+			// In a local class or an object in the accessor: the
+			// accessor's this, which the class captured.
+			g.loadStorage(sym.OuterOf)
+			g.outerField(sym.Prop, false)
+			break
+		}
 		g.backingField(sym.Prop, true)
 	case types.Prop:
 		if sym.Const {

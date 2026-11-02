@@ -776,6 +776,12 @@ func (g *gen) lvalue(x syntax.Expr) lvalue {
 						g.code.FieldInsn(cf.PUTSTATIC, owner, p.Name, desc(ft))
 					}}
 			}
+			if sym.OuterOf != nil {
+				// The accessor's this, as in ident.
+				return lvalue{t: t, prepare: func() { g.loadStorage(sym.OuterOf) }, recv: 1,
+					load:  func() { g.outerField(p, false) },
+					store: func() { g.outerField(p, true) }}
+			}
 			return lvalue{t: t, prepare: g.loadThis, recv: 1,
 				load:  func() { g.getField(p) },
 				store: func() { g.putField(p) }}

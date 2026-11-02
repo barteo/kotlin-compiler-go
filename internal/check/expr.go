@@ -314,7 +314,11 @@ func (c *Checker) lookupVar(name string) (*types.VarSym, types.Type, bool, bool)
 		case sym.Kind == types.BackingField:
 			// field is this's field, or a static one: a lambda captures this.
 			if p := sym.Prop; p.Kind != types.Global && !p.StaticField() {
-				c.captureThis()
+				if v := c.localField(sym); v != nil {
+					sym = v
+				} else {
+					c.captureThis()
+				}
 			}
 		case !sym.UnitLocal():
 			c.capture(sym, depth)

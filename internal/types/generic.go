@@ -201,6 +201,9 @@ func (p *TypeParamSym) NullableBound() bool {
 func (p *TypeParamSym) ErasureBound() Type {
 	if len(p.Bounds) > 1 {
 		for _, b := range p.Bounds {
+			if b.K == Any {
+				return b // kotlin.Any is a class
+			}
 			if b.K == Class {
 				b.C.Ensure()
 				if !b.C.Interface {
