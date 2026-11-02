@@ -364,9 +364,15 @@ func (c *Checker) declAnnotations(d syntax.Decl, owner *types.ClassSym) {
 		c.signatureTypeAnnotations(owner, d.Type)
 	case *syntax.ClassDecl:
 		cls := d.Sym
+		if d.Annotation {
+			c.annotationCycles(d)
+		}
 		c.noReceiver(d.Annotations)
 		c.noReceiver(d.CtorMods.Annotations)
 		c.annotations(d.Annotations, cls, classSite(d))
+		if d.Annotation {
+			c.repeatableContainer(d)
+		}
 		c.annotations(d.CtorMods.Annotations, cls, ctorSite)
 		c.typeParamAnnotations(d.TypeParams, cls)
 		for _, s := range d.Supers {

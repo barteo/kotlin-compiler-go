@@ -136,6 +136,37 @@ func (c *Checker) annotationParam(cls *types.ClassSym, cp *syntax.CtorParam) {
 	cls.AnnotationParams = append(cls.AnnotationParams, cp.Sym)
 }
 
+// annotationCycles reports the parameters of annotation class d whose
+// types lead back to it. It runs once all classes' parameters are
+// resolved.
+func (c *Checker) annotationCycles(d *syntax.ClassDecl) {
+	for _, cp := range d.CtorParams {
+		if t := cp.Sym.Type; t.K == types.Class && !t.N && annotationCycle(t.C, d.Sym, map[*types.ClassSym]bool{}) {
+			c.errorf(cp.P, "type of this annotation parameter refers back to its annotation class")
+		}
+	}
+}
+
+// annotationCycle reports whether annotation class k, the type of an
+// annotation parameter, has parameters of annotation classes, not arrays
+// of them, that lead to annotation class cls: an annotation with it
+// couldn't be written.
+func annotationCycle(k, cls *types.ClassSym, seen map[*types.ClassSym]bool) bool {
+	if k == cls {
+		return true
+	}
+	if !k.Annotation || seen[k] {
+		return false
+	}
+	seen[k] = true
+	for _, p := range k.AnnotationParams {
+		if t := p.Type; t.K == types.Class && !t.N && annotationCycle(t.C, cls, seen) {
+			return true
+		}
+	}
+	return false
+}
+
 // annotationType reports whether an annotation parameter can have type
 // t: a primitive or unsigned integer type, String, an enum, KClass, an
 // annotation, or an array of one of them (an unsigned array, as UIntArray,
