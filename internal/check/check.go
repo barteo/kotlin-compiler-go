@@ -277,11 +277,11 @@ type state struct {
 	// but this isn't: in the arguments of its constructors' this(...) and
 	// super(...) calls.
 	staticCls *types.ClassSym
-	// ctorArgs is set while the arguments of an enum entry's or an
-	// annotation's constructor call are checked: on the JVM, the object
-	// is already on the stack, uninitialized. It isn't set for those of
-	// this(...) and super(...), whose receiver, this, can be kept in a
-	// local meanwhile, nor for other constructor calls, whose arguments
+	// ctorArgs is set while the arguments of an annotation's
+	// constructor call are checked: on the JVM, the object is already on
+	// the stack, uninitialized. It isn't set for those of this(...) and
+	// super(...), whose receiver, this, can be kept in a local meanwhile,
+	// nor for other constructor calls and enum entries, whose arguments
 	// codegen evaluates first if they have a try.
 	ctorArgs bool
 	// base is the number of lambdas outside the function being checked:
@@ -2236,8 +2236,9 @@ func (c *Checker) checkClass(d *syntax.ClassDecl) {
 				continue // its class's superclass constructor call
 			}
 			// An entry calls the enum's constructor. Its arguments see the
-			// enum's nested classes and entries, but not this.
-			c.state = state{scope: &scope{}, tparams: d.Sym.TypeParams, ctorArgs: true, staticCls: d.Sym}
+			// enum's nested classes and entries, but not this. Codegen
+			// evaluates them first if they have a try.
+			c.state = state{scope: &scope{}, tparams: d.Sym.TypeParams, staticCls: d.Sym}
 			c.lookupCls = d.Sym
 			e.Call.Ctor = d.Sym
 			var cands []callee

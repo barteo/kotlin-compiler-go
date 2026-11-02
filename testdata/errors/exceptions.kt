@@ -8,11 +8,6 @@ fun catchString(): Int = try {
     2
 }
 
-// An enum entry's object is on the stack while its arguments run.
-enum class Entry(val n: Int) {
-    A(try { 1 } catch (e: Exception) { 2 }) // ERROR a try expression can't be an argument of a constructor call
-}
-
 fun mismatch(): Int = try {
     1
 } catch (e: Exception) { // ERROR type mismatch
