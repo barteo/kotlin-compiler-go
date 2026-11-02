@@ -604,6 +604,19 @@ func (c *Code) Sconst(s string) {
 	if !c.reachable {
 		return
 	}
+	if ModifiedUTF8Len(s) > MaxStringConstant {
+		// Too long for one constant: its parts, concatenated, as
+		// kotlinc writes it.
+		c.New("java/lang/StringBuilder")
+		c.Op(DUP)
+		c.Invoke(INVOKESPECIAL, "java/lang/StringBuilder", "<init>", "()V")
+		for _, part := range SplitString(s) {
+			c.ldc(c.pool.String(part), stringType)
+			c.Invoke(INVOKEVIRTUAL, "java/lang/StringBuilder", "append", "(Ljava/lang/String;)Ljava/lang/StringBuilder;")
+		}
+		c.Invoke(INVOKEVIRTUAL, "java/lang/StringBuilder", "toString", "()Ljava/lang/String;")
+		return
+	}
 	c.ldc(c.pool.String(s), stringType)
 }
 

@@ -50,6 +50,9 @@ func constPool(c *cf.Class, p *types.VarSym) uint16 {
 	}
 	switch v := v.(type) {
 	case string:
+		if cf.ModifiedUTF8Len(v) > cf.MaxStringConstant {
+			return 0 // too long for a ConstantValue: the initializer assigns it
+		}
 		return c.String(v)
 	case float64:
 		return c.Double(v)
