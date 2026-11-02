@@ -127,38 +127,38 @@ Kotlin 2.4.21's tests on `kc`:
 | Box tests | Tests | Share of run |
 |:---|---:|---:|
 | run (of 7,480) | 6,483 | |
-| pass | 6,359 | 98.1% |
-| check error | 78 | 1.2% |
-| codegen error | 7 | 0.1% |
+| pass | 6,375 | 98.3% |
+| check error | 69 | 1.1% |
+| codegen error | 5 | 0.1% |
 | VerifyError and linkage error | 18 | 0.3% |
-| exception and wrong result | 21 | 0.3% |
+| exception and wrong result | 16 | 0.2% |
 | parse/unsupported, crash, timeout | 0 | |
 
 | Diagnostics tests | Tests | Share of run |
 |:---|---:|---:|
 | run (of 10,827) | 7,200 | |
-| rejects invalid | 3,136 | 43.6% |
-| accepts valid | 2,825 | 39.2% |
-| accepts invalid | 682 | 9.5% |
-| rejects valid | 477 | 6.6% |
-| parse/unsupported | 79 | 1.1% |
+| rejects invalid | 3,272 | 45.4% |
+| accepts valid | 2,894 | 40.2% |
+| accepts invalid | 548 | 7.6% |
+| rejects valid | 408 | 5.7% |
+| parse/unsupported | 77 | 1.1% |
 | crash | 1 | 0.0% |
 
-`kc` agrees with `kotlinc` on 83% of the diagnostics tests, and reports
-10,959 of the 18,906 expected errors (58%) on their lines. The reports
+`kc` agrees with `kotlinc` on 86% of the diagnostics tests, and reports
+11,496 of the 18,918 expected errors (61%) on their lines. The reports
 break the failures down; the largest groups are:
 
-- **Silent miscompilation** (39 box tests): `NullPointerException`s
+- **Silent miscompilation** (34 box tests): `NullPointerException`s
   (5), `NoSuchMethodError`s (4), and illegal method signatures in
   inline classes (3).
-- **Accepts invalid**: inline-only parameters (`USAGE_IS_NOT_INLINABLE`
-  27), opt-in (27), JVM signature clashes (`ACCIDENTAL_OVERRIDE`,
-  `CONFLICTING_JVM_DECLARATIONS`, 24 each), calls on nullable values
-  (`UNSAFE_CALL` 19), and DSL markers on types (`DSL_SCOPE_VIOLATION`
-  15).
-- **Rejects valid**, by `kc`'s first error: type mismatches (91 + 4
-  box), inference failures (79 + 8), unresolved names and imports (73 +
-  11), and calls on nullable receivers (48 + 9).
+- **Accepts invalid**: argument type mismatches
+  (`ARGUMENT_TYPE_MISMATCH` 36), unresolved names
+  (`UNRESOLVED_REFERENCE` 28), opt-in (27), calls on nullable values
+  (`UNSAFE_CALL` 19), conflicting overloads (16), and DSL markers on
+  types (`DSL_SCOPE_VIOLATION` 15).
+- **Rejects valid**, by `kc`'s first error: type mismatches (88 + 4
+  box), inference failures (79 + 6), unresolved names and imports (70 +
+  11), and calls on nullable receivers (19 + 9).
 
 The committed `.tsv` files serve as a ratchet: a change must make
 `-baseline` report no regressions, and the tests it fixes measure it.

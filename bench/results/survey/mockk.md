@@ -8,11 +8,10 @@ Directories: `modules/mockk/src/commonMain`, `modules/mockk/src/jvmMain`, `modul
 
 ### Features left, by files blocked
 
-143 of 144 files use no feature that kc doesn't support.
+144 of 144 files use no feature that kc doesn't support.
 
 | Feature | Files | Only blocker | Uses |
 |:---|---:|---:|---:|
-| safe-call assignment | 1 | 1 | 1 |
 
 ### Greedy order of the features left
 
@@ -20,7 +19,6 @@ At each step, the feature that unblocks the most files given the ones before it,
 
 | Step | Feature | Files unblocked |
 |---:|:---|---:|
-| 1 | safe-call assignment | 144 |
 
 ### Inline-only functions called
 
@@ -191,7 +189,7 @@ The features each file still needs.
 | modules/mockk/src/jvmMain/kotlin/io/mockk/impl/instantiation/JvmAnyValueGenerator.kt | 44 |  |
 | modules/mockk/src/jvmMain/kotlin/io/mockk/impl/instantiation/JvmConstructorMockFactory.kt | 315 |  |
 | modules/mockk/src/jvmMain/kotlin/io/mockk/impl/instantiation/JvmInstantiator.kt | 22 |  |
-| modules/mockk/src/jvmMain/kotlin/io/mockk/impl/instantiation/JvmMockFactory.kt | 69 | safe-call assignment |
+| modules/mockk/src/jvmMain/kotlin/io/mockk/impl/instantiation/JvmMockFactory.kt | 69 |  |
 | modules/mockk/src/jvmMain/kotlin/io/mockk/impl/instantiation/JvmMockFactoryHelper.kt | 258 |  |
 | modules/mockk/src/jvmMain/kotlin/io/mockk/impl/instantiation/JvmMockTypeChecker.kt | 20 |  |
 | modules/mockk/src/jvmMain/kotlin/io/mockk/impl/instantiation/JvmObjectMockFactory.kt | 104 |  |

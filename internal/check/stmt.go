@@ -625,24 +625,97 @@ func (c *Checker) condVal(v *types.VarSym, x syntax.Expr) {
 	c.conds[v] = [2][]narrow{whenTrue, whenFalse}
 }
 
+// safeTarget splits an assignment target that a safe call's chain ends
+// in, a?.b or a?.b.f()[i][j], at its last ?.: it returns the receiver, a,
+// and a function that makes the target on a value of it that isn't null,
+// t.b or t.b.f()[i][j]. The parts are copies, not yet checked.
+func safeTarget(x syntax.Expr) (syntax.Expr, func(syntax.Expr) syntax.Expr, bool) {
+	switch x := x.(type) {
+	case *syntax.Member:
+		if !x.Safe {
+			return nil, nil, false
+		}
+		return x.X, func(t syntax.Expr) syntax.Expr {
+			n := *x
+			n.X, n.Safe = t, false
+			return &n
+		}, true
+	case *syntax.Call:
+		m, ok := x.Fun.(*syntax.Member)
+		if !ok || x.Invoke || !m.Safe {
+			return nil, nil, false
+		}
+		return m.X, func(t syntax.Expr) syntax.Expr {
+			fn := *m
+			fn.X, fn.Safe = t, false
+			n := *x
+			n.Fun = &fn
+			return &n
+		}, true
+	case *syntax.Index:
+		recv, build, ok := safeTarget(x.X)
+		if !ok {
+			return nil, nil, false
+		}
+		return recv, func(t syntax.Expr) syntax.Expr {
+			n := *x
+			n.X = build(t)
+			return &n
+		}, true
+	}
+	return nil, nil, false
+}
+
+// safeIf checks the receiver of a safe target, a?.b or a?.b[i], into a
+// temporary, val t = a, and returns it with if (t != null) and the
+// target on t, t.b or t.b[i].
+func (c *Checker) safeIf(p syntax.Pos, recv syntax.Expr, build func(syntax.Expr) syntax.Expr) (*syntax.VarStmt, *syntax.If, syntax.Expr) {
+	tmp := c.temp(p, "receiver", recv, c.value(recv, noWant))
+	target := build(tempRef(tmp, recv.Pos()))
+	null := &syntax.NullLit{}
+	null.P = recv.Pos()
+	cond := &syntax.Binary{Op: syntax.NE, X: tempRef(tmp, recv.Pos()), Y: null}
+	cond.P = recv.Pos()
+	ifs := &syntax.If{Cond: cond}
+	ifs.P = p
+	return tmp, ifs, target
+}
+
 // safeAssign checks a?.b = v, or a?.b op= v, which assigns only if a
-// isn't null: val t = a; if (t != null) t.b = v.
-func (c *Checker) safeAssign(s *syntax.Assign, m *syntax.Member) {
+// isn't null: val t = a; if (t != null) t.b = v. So does a?.b[i] = v.
+func (c *Checker) safeAssign(s *syntax.Assign, recv syntax.Expr, build func(syntax.Expr) syntax.Expr) {
 	c.push()
 	defer c.pop()
-	recv := c.temp(s.P, "receiver", m.X, c.value(m.X, noWant))
-	target := &syntax.Member{X: tempRef(recv, m.P), Name: m.Name}
-	target.P = m.P
-	null := &syntax.NullLit{}
-	null.P = m.P
-	cond := &syntax.Binary{Op: syntax.NE, X: tempRef(recv, m.P), Y: null}
-	cond.P = m.P
+	tmp, ifs, target := c.safeIf(s.P, recv, build)
 	set := &syntax.Assign{P: s.P, Op: s.Op, Target: target, Value: s.Value}
-	ifs := &syntax.If{Cond: cond, Then: &syntax.Block{P: s.P, Stmts: []syntax.Stmt{set}}}
-	ifs.P = s.P
+	ifs.Then = &syntax.Block{P: s.P, Stmts: []syntax.Stmt{set}}
 	es := &syntax.ExprStmt{X: ifs}
 	c.stmt(es, false, noWant)
-	s.Stmts = []syntax.Stmt{recv, es}
+	s.Stmts = []syntax.Stmt{tmp, es}
+}
+
+// safeIncDec checks a?.b++, a?.b--, ++a?.b or --a?.b, and a?.b[i]++,
+// which change b only if a isn't null: val t = a; if (t != null) t.b++.
+// As a value it is null when a is: if (t != null) t.b++ else null.
+func (c *Checker) safeIncDec(u *syntax.Unary, recv syntax.Expr, build func(syntax.Expr) syntax.Expr, value bool) types.Type {
+	c.push()
+	defer c.pop()
+	tmp, ifs, target := c.safeIf(u.P, recv, build)
+	inner := &syntax.Unary{Op: u.Op, X: target, Prefix: u.Prefix}
+	inner.P = u.P
+	ifs.Then = &syntax.Block{P: u.P, Stmts: []syntax.Stmt{&syntax.ExprStmt{X: inner}}}
+	if !value {
+		es := &syntax.ExprStmt{X: ifs}
+		c.stmt(es, false, noWant)
+		u.Stmts = []syntax.Stmt{tmp, es}
+		return types.UnitType
+	}
+	null := &syntax.NullLit{}
+	null.P = u.P
+	ifs.Else = &syntax.Block{P: u.P, Stmts: []syntax.Stmt{&syntax.ExprStmt{X: null}}}
+	t := c.value(ifs, noWant)
+	u.Stmts = []syntax.Stmt{tmp, &syntax.ExprStmt{X: checked(ifs, t)}}
+	return t
 }
 
 // destructure checks val (a, b) = e, as val t = e; val a =
@@ -722,6 +795,7 @@ func (c *Checker) lvalue(x syntax.Expr) (types.Type, bool) {
 		return t, t.K != types.Invalid
 	case *syntax.Member:
 		if x.Safe {
+			// assign and incDec rewrite a?.b = v and a?.b++ first.
 			c.unsupported(x.P, "safe-call assignment", "safe-call assignment is not supported")
 			return types.InvalidType, false
 		}
@@ -971,8 +1045,8 @@ func (c *Checker) objectTarget(x syntax.Expr) syntax.Expr {
 }
 
 func (c *Checker) assign(s *syntax.Assign) {
-	if m, ok := s.Target.(*syntax.Member); ok && m.Safe {
-		c.safeAssign(s, m)
+	if recv, build, ok := safeTarget(s.Target); ok {
+		c.safeAssign(s, recv, build)
 		return
 	}
 	if ix, ok := s.Target.(*syntax.Index); ok && s.Op == syntax.ASSIGN {
@@ -1125,6 +1199,9 @@ func arithOf(k syntax.Kind) syntax.Kind {
 // after it.
 func (c *Checker) incDec(u *syntax.Unary, value bool) types.Type {
 	u.T = types.UnitType
+	if recv, build, ok := safeTarget(u.X); ok {
+		return c.safeIncDec(u, recv, build, value)
+	}
 	var old *syntax.VarStmt
 	keep := func(inc func(syntax.Expr) syntax.Expr) func(syntax.Expr) syntax.Expr {
 		if !value || u.Prefix {

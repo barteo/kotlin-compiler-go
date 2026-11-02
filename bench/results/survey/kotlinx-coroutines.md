@@ -245,11 +245,10 @@ Directories: `kotlinx-coroutines-core/common/test`, `kotlinx-coroutines-core/con
 
 ### Features left, by files blocked
 
-455 of 456 files use no feature that kc doesn't support.
+456 of 456 files use no feature that kc doesn't support.
 
 | Feature | Files | Only blocker | Uses |
 |:---|---:|---:|---:|
-| safe-call assignment | 1 | 1 | 1 |
 
 ### Greedy order of the features left
 
@@ -257,7 +256,6 @@ At each step, the feature that unblocks the most files given the ones before it,
 
 | Step | Feature | Files unblocked |
 |---:|:---|---:|
-| 1 | safe-call assignment | 456 |
 
 ### Inline-only functions called
 
@@ -508,7 +506,7 @@ The features each file still needs.
 | kotlinx-coroutines-core/jvm/test/LimitedParallelismStressTest.kt | 148 |  |
 | kotlinx-coroutines-core/jvm/test/LimitedParallelismUnhandledExceptionTest.kt | 29 |  |
 | kotlinx-coroutines-core/jvm/test/MemoryFootprintTest.kt | 43 |  |
-| kotlinx-coroutines-core/jvm/test/MultithreadedDispatchersJvmTest.kt | 30 | safe-call assignment |
+| kotlinx-coroutines-core/jvm/test/MultithreadedDispatchersJvmTest.kt | 30 |  |
 | kotlinx-coroutines-core/jvm/test/MutexCancellationStressTest.kt | 83 |  |
 | kotlinx-coroutines-core/jvm/test/NoParamAssertionsTest.kt | 27 |  |
 | kotlinx-coroutines-core/jvm/test/RejectedExecutionTest.kt | 166 |  |

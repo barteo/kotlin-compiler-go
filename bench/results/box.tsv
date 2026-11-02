@@ -270,9 +270,9 @@ binaryOp/kt11163_properIeee754comparisons.kt	pass
 binaryOp/kt23030_properIeee754comparisons.kt	pass		
 binaryOp/kt44402.kt	pass		
 binaryOp/kt6747_identityEquals.kt	pass		
-binaryOp/overflowChar.kt	wrong result	fail: Char.MIN_VALUE - n should overflow to positive.	fail: Char.MIN_VALUE - 1 should overflow to positive.
+binaryOp/overflowChar.kt	pass		
 binaryOp/overflowInt.kt	pass		
-binaryOp/overflowLong.kt	wrong result	fail: in this case we should add to ints and than cast the r…	fail: in this case we should add to ints and than cast the result to long - overflow expected
+binaryOp/overflowLong.kt	pass		
 binaryOp/primitiveEqualsSafeCall.kt	pass		
 boxing/boxBoolean.kt	pass		
 boxing/box_cache0.kt	pass		
@@ -1263,7 +1263,7 @@ compileKotlinAgainstKotlin/jvm8/defaults/superPropAccess.kt	pass
 compileKotlinAgainstKotlin/jvm8/defaults/superPropAccessFromInterface.kt	pass		
 compileKotlinAgainstKotlin/jvm8/jvm8against6/delegation/diamond.kt	check error	many supertypes available, please specify the one you mean in angle brackets, e.g. '_'	2.kt:14: many supertypes available, please specify the one you mean in angle brackets, e.g. 'super<Test2>'
 compileKotlinAgainstKotlin/jvm8/jvm8against6/delegation/diamond2.kt	pass		
-compileKotlinAgainstKotlin/jvm8/jvm8against6/delegation/diamond3.kt	check error	many supertypes available, please specify the one you mean in angle brackets, e.g. '_'	2.kt:14: many supertypes available, please specify the one you mean in angle brackets, e.g. 'super<TestClass>'
+compileKotlinAgainstKotlin/jvm8/jvm8against6/delegation/diamond3.kt	check error	platform declaration clash: the following declarations have the same JVM signature (test()Ljava/lang/String;)	2.kt:1: platform declaration clash: the following declarations have the same JVM signature (test()Ljava/lang/String;)
 compileKotlinAgainstKotlin/jvm8/jvm8against6/simpleCall.kt	pass		
 compileKotlinAgainstKotlin/jvm8/jvm8against6/simpleCallWithBigHierarchy.kt	pass		
 compileKotlinAgainstKotlin/jvm8/jvm8against6/simpleCallWithHierarchy.kt	pass		
@@ -1297,11 +1297,11 @@ constants/comparisonTrue.kt	pass
 constants/constValFromAnotherModuleInConsVal.kt	pass		
 constants/constantsInWhen.kt	pass		
 constants/divisionByZero.kt	pass		
-constants/doNotTriggerInit.kt	wrong result	FAIL n	FAIL 2
+constants/doNotTriggerInit.kt	pass		
 constants/float.kt	pass		
 constants/foldingBinaryOpsUnsigned.kt	pass		
 constants/foldingBinaryOpsUnsignedConst.kt	pass		
-constants/kt9532.kt	wrong result	Fail n: A.bNonConst !== B.bNonConst	Fail 4: A.bNonConst !== B.bNonConst
+constants/kt9532.kt	pass		
 constants/literalToLongConversion.kt	pass		
 constants/long.kt	pass		
 constants/numberLiteralCoercionToInferredType.kt	skip	Java sources	
@@ -1728,7 +1728,7 @@ coroutines/defaultParametersInSuspend.kt	pass
 coroutines/degenerate1.kt	pass		
 coroutines/degenerate2.kt	pass		
 coroutines/delegatedSuspendMember.kt	pass		
-coroutines/deserializedSuspendFunctionProperty.kt	codegen error	code generation: no metadata for type <error>	/tmp/claude-0/-home-user-kotlin-compiler-go/b71051c8-74d7-5a07-99bd-cc747f944a00/scratchpad/kc-conformance/1729/m0/src/m1.kt: code generation failed: no metadata for type <error>
+coroutines/deserializedSuspendFunctionProperty.kt	codegen error	code generation: no metadata for type <error>	/tmp/claude-0/-home-user-kotlin-compiler-go/750727f6-8b6a-55b7-bf7f-39f23eea6307/scratchpad/kc-conformance/1729/m0/src/m1.kt: code generation failed: no metadata for type <error>
 coroutines/dispatchResume.kt	pass		
 coroutines/doubleColonExpressionsGenerationInBuilderInference.kt	pass		
 coroutines/emptyClosure.kt	pass		
@@ -1964,7 +1964,7 @@ coroutines/intrinsicSemantics/startCoroutineUninterceptedOrReturnInterception.kt
 coroutines/intrinsicSemantics/suspendCoroutineUninterceptedOrReturn.kt	pass		
 coroutines/iterateOverArray.kt	pass		
 coroutines/kt12958.kt	pass		
-coroutines/kt15016.kt	codegen error	code generation: a suspension point in the arguments of a constructor call	/tmp/claude-0/-home-user-kotlin-compiler-go/b71051c8-74d7-5a07-99bd-cc747f944a00/scratchpad/kc-conformance/1965/m0/src/main.kt: code generation failed: a suspension point in the arguments of a constructor call
+coroutines/kt15016.kt	codegen error	code generation: a suspension point in the arguments of a constructor call	/tmp/claude-0/-home-user-kotlin-compiler-go/750727f6-8b6a-55b7-bf7f-39f23eea6307/scratchpad/kc-conformance/1965/m0/src/main.kt: code generation failed: a suspension point in the arguments of a constructor call
 coroutines/kt15017.kt	pass		
 coroutines/kt15930.kt	pass		
 coroutines/kt21080.kt	pass		
@@ -2043,7 +2043,7 @@ coroutines/returnsUnit1.kt	pass
 coroutines/simple.kt	pass		
 coroutines/simple2.kt	pass		
 coroutines/simpleException.kt	pass		
-coroutines/simpleSuspendCallableReference.kt	codegen error	code generation: operand stack underflow at offset n	/tmp/claude-0/-home-user-kotlin-compiler-go/b71051c8-74d7-5a07-99bd-cc747f944a00/scratchpad/kc-conformance/2044/m0/src/simpleSuspendCallableReference.kt: code generation failed: SimpleSuspendCallableReferenceKt$box$1.invokeSuspend: operand stack underflow at offset 262
+coroutines/simpleSuspendCallableReference.kt	codegen error	code generation: operand stack underflow at offset n	/tmp/claude-0/-home-user-kotlin-compiler-go/750727f6-8b6a-55b7-bf7f-39f23eea6307/scratchpad/kc-conformance/2044/m0/src/simpleSuspendCallableReference.kt: code generation failed: SimpleSuspendCallableReferenceKt$box$1.invokeSuspend: operand stack underflow at offset 262
 coroutines/simpleWithDefaultValue.kt	pass		
 coroutines/simpleWithHandleResult.kt	pass		
 coroutines/stackUnwinding/exception.kt	pass		
@@ -2780,8 +2780,8 @@ exclExcl/kt48440.kt	pass
 exclExcl/kt48440_2.kt	pass		
 exclExcl/primitive.kt	pass		
 expression/evaluationOrder/dangerousInline.kt	pass		
-extensionFunctions/classMethodCallExtensionSuper.kt	check error	platform declaration clash: the following declarations have the same JVM signature (getData()I)	classMethodCallExtensionSuper.kt:14: platform declaration clash: the following declarations have the same JVM signature (getData()I)
-extensionFunctions/defaultMethodInterfaceCallExtensionSuper.kt	check error	platform declaration clash: the following declarations have the same JVM signature (getData()I)	defaultMethodInterfaceCallExtensionSuper.kt:14: platform declaration clash: the following declarations have the same JVM signature (getData()I)
+extensionFunctions/classMethodCallExtensionSuper.kt	pass		
+extensionFunctions/defaultMethodInterfaceCallExtensionSuper.kt	pass		
 extensionFunctions/delegatedPropertyWithExtensionType.kt	pass		
 extensionFunctions/executionOrder.kt	pass		
 extensionFunctions/extensionFunctionAndSpreadOperator.kt	pass		
@@ -2863,7 +2863,7 @@ extensionProperties/inClassWithPrivateGetter.kt	pass
 extensionProperties/inClassWithPrivateSetter.kt	pass		
 extensionProperties/inClassWithSetter.kt	pass		
 extensionProperties/kt46952.kt	pass		
-extensionProperties/kt9897.kt	codegen error	code generation: operand stack underflow at offset n	/tmp/claude-0/-home-user-kotlin-compiler-go/b71051c8-74d7-5a07-99bd-cc747f944a00/scratchpad/kc-conformance/2864/m0/src/kt9897.kt: code generation failed: Test.changeLong: operand stack underflow at offset 15
+extensionProperties/kt9897.kt	codegen error	code generation: operand stack underflow at offset n	/tmp/claude-0/-home-user-kotlin-compiler-go/750727f6-8b6a-55b7-bf7f-39f23eea6307/scratchpad/kc-conformance/2864/m0/src/kt9897.kt: code generation failed: Test.changeLong: operand stack underflow at offset 15
 extensionProperties/kt9897_topLevel.kt	pass		
 extensionProperties/nonAbstractInInterface.kt	pass		
 extensionProperties/propertyWithExtensionNestedType.kt	pass		
@@ -3248,9 +3248,9 @@ increment/prefixNullableClassIncrement.kt	pass
 increment/prefixNullableIncrement.kt	pass		
 inference/approximateNonTopLevelCapturedTypes.kt	pass		
 inference/builderInferenceLeakingVariable.kt	pass		
-inference/capturedSelfInsideIntersection.kt	check error	cannot infer type for type parameter '_'. Specify it explicitly.	lib.kt:18: cannot infer type for type parameter 'T'. Specify it explicitly.
-inference/capturedSelfInsideIntersection2.kt	check error	type argument is not within its bounds: inferred type Path of type _ '_' is not a subtype of Entity<out Entity<*>>	capturedSelfInsideIntersection2.kt:18: type argument is not within its bounds: inferred type Path of type parameter 'T' is not a subtype of Entity<out Entity<*>>
-inference/capturedSelfInsideIntersection3.kt	check error	cannot infer type for type parameter '_'. Specify it explicitly.	capturedSelfInsideIntersection3.kt:18: cannot infer type for type parameter 'T'. Specify it explicitly.
+inference/capturedSelfInsideIntersection.kt	pass		
+inference/capturedSelfInsideIntersection2.kt	pass		
+inference/capturedSelfInsideIntersection3.kt	pass		
 inference/capturedStarProjection.kt	pass		
 inference/capturedTypeAsLambdaInputType.kt	pass		
 inference/capturedTypeWhenSubject.kt	pass		
@@ -3469,12 +3469,12 @@ inference/substituteIntersectionTypeInsideCapType.kt	pass
 inference/sumOfOverloads.kt	pass		
 inference/suspendExtensionRecevierFromConstraint.kt	pass		
 inference/tryCatchAtAssignment.kt	pass		
-inference/tryCatchAtAssignmentWithSmartCast.kt	check error	type argument is not within its bounds: inferred type I of type _ '_' is not a subtype of In	tryCatchAtAssignmentWithSmartCast.kt:29: type argument is not within its bounds: inferred type I of type parameter 'T' is not a subtype of I2
+inference/tryCatchAtAssignmentWithSmartCast.kt	pass		
 inference/tryWithAssignmentAndNothingTypedCatch.kt	pass		
 inference/unsafeVarianceCodegen.kt	pass		
 inference/whenAtAssignment.kt	pass		
-inference/whenAtAssignmentWithSmartCast.kt	check error	type argument is not within its bounds: inferred type I of type _ '_' is not a subtype of In	whenAtAssignmentWithSmartCast.kt:29: type argument is not within its bounds: inferred type I of type parameter 'T' is not a subtype of I2
-inference/whenAtAssignmentWithSmartCastInsideCapturedLambda.kt	check error	type argument is not within its bounds: inferred type I of type _ '_' is not a subtype of In	whenAtAssignmentWithSmartCastInsideCapturedLambda.kt:33: type argument is not within its bounds: inferred type I of type parameter 'T' is not a subtype of I2
+inference/whenAtAssignmentWithSmartCast.kt	pass		
+inference/whenAtAssignmentWithSmartCastInsideCapturedLambda.kt	pass		
 inheritance/overrideAnyMethods.kt	skip	TARGET_BACKEND: JS_IR, JS_IR_ES6	
 initializers/correctOrder1.kt	pass		
 initializers/correctOrder2.kt	pass		
@@ -6585,7 +6585,7 @@ regressions/kt51927.kt	skip	TARGET_BACKEND: NATIVE
 regressions/kt5395.kt	pass		
 regressions/kt57487.kt	pass		
 regressions/kt5786_privateWithDefault.kt	pass		
-regressions/kt5953.kt	codegen error	code generation: local n is not allocated	/tmp/claude-0/-home-user-kotlin-compiler-go/b71051c8-74d7-5a07-99bd-cc747f944a00/scratchpad/kc-conformance/6586/m0/src/kt5953.kt: code generation failed: Kt5953Kt.box: local 12 is not allocated
+regressions/kt5953.kt	codegen error	code generation: local n is not allocated	/tmp/claude-0/-home-user-kotlin-compiler-go/750727f6-8b6a-55b7-bf7f-39f23eea6307/scratchpad/kc-conformance/6586/m0/src/kt5953.kt: code generation failed: Kt5953Kt.box: local 12 is not allocated
 regressions/kt6153.kt	pass		
 regressions/kt6434.kt	skip	LANGUAGE	
 regressions/kt6434_2.kt	skip	LANGUAGE	
@@ -6715,7 +6715,7 @@ sameFileInSourceAndDependencies/memberFunctionWithDefaultArgumentsDeclaration.kt
 sameFileInSourceAndDependencies/memberPropertyDeclaration.kt	pass		
 sameFileInSourceAndDependencies/nestedClassDeclaration.kt	pass		
 sealed/delegatingConstructor.kt	pass		
-sealed/kt49752.kt	check error	type argument is not within its bounds: type parameter '_' must be subtype of '_', but actual: _	kt49752.kt:14: type argument is not within its bounds: type parameter 'INTERPRETER' must be subtype of 'Interpreter<out Interpreter.Intermediary<I>, out Interpreter.Terminal<I>, I>', but actual: 'I'
+sealed/kt49752.kt	pass		
 sealed/kt54028.kt	pass		
 sealed/kt54028_cursed.kt	pass		
 sealed/multipleFiles_enabled.kt	pass		
@@ -6856,12 +6856,12 @@ strings/constInStringTemplate.kt	pass
 strings/ea35743.kt	pass		
 strings/forInString.kt	pass		
 strings/interpolation.kt	pass		
-strings/kt13213.kt	codegen error	code generation: string constant too long	/tmp/claude-0/-home-user-kotlin-compiler-go/b71051c8-74d7-5a07-99bd-cc747f944a00/scratchpad/kc-conformance/6857/m0/src/kt13213.kt: code generation failed: string constant too long
+strings/kt13213.kt	pass		
 strings/kt13213a.kt	pass		
 strings/kt2592.kt	pass		
 strings/kt3571.kt	pass		
 strings/kt3652.kt	pass		
-strings/kt47917.kt	codegen error	code generation: string constant too long	/tmp/claude-0/-home-user-kotlin-compiler-go/b71051c8-74d7-5a07-99bd-cc747f944a00/scratchpad/kc-conformance/6862/m0/src/kt47917.kt: code generation failed: string constant too long
+strings/kt47917.kt	pass		
 strings/kt50140.kt	pass		
 strings/kt5389_stringBuilderGet.kt	pass		
 strings/kt5956.kt	pass		
@@ -7195,7 +7195,7 @@ unsignedTypes/unsignedIntDivide.kt	pass
 unsignedTypes/unsignedIntRemainder.kt	pass		
 unsignedTypes/unsignedIntToString.kt	pass		
 unsignedTypes/unsignedLiteralsForMaxLongValue.kt	pass		
-unsignedTypes/unsignedLiteralsWithSignedOverflow.kt	wrong result	fail	fail
+unsignedTypes/unsignedLiteralsWithSignedOverflow.kt	pass		
 unsignedTypes/unsignedLongCompare.kt	pass		
 unsignedTypes/unsignedLongDivide.kt	pass		
 unsignedTypes/unsignedLongRemainder.kt	pass		

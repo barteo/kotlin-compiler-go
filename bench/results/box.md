@@ -2,19 +2,19 @@
 
 The box tests of JetBrains/kotlin v2.4.21 (`compiler/testData/codegen/box`), each compiled by kc and run: its `box()` must return `"OK"`. `bench/kotlin-tests.sh box` writes this file, and [docs/conformance.md](../../docs/conformance.md) explains it.
 
-Of 7480 test files, 997 are skipped and 6483 run. 6359 pass (98.1%).
+Of 7480 test files, 997 are skipped and 6483 run. 6375 pass (98.3%).
 
 | Result | Tests | Share |
 |:---|---:|---:|
-| pass | 6359 | 98.1% |
+| pass | 6375 | 98.3% |
 | parse/unsupported | 0 | 0.0% |
-| check error | 78 | 1.2% |
+| check error | 69 | 1.1% |
 | crash | 0 | 0.0% |
-| codegen error | 7 | 0.1% |
+| codegen error | 5 | 0.1% |
 | VerifyError | 10 | 0.2% |
 | linkage error | 8 | 0.1% |
 | exception | 6 | 0.1% |
-| wrong result | 15 | 0.2% |
+| wrong result | 10 | 0.2% |
 | timeout | 0 | 0.0% |
 
 ## Skipped
@@ -50,7 +50,7 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 | inlineClasses | 784 | 775 | 0 | 2 | 0 | 7 | 0 |
 | coroutines | 497 | 492 | 0 | 0 | 3 | 1 | 1 |
 | callableReference | 297 | 295 | 0 | 2 | 0 | 0 | 0 |
-| inference | 205 | 194 | 0 | 10 | 0 | 0 | 1 |
+| inference | 205 | 200 | 0 | 4 | 0 | 0 | 1 |
 | delegatedProperty | 149 | 145 | 0 | 3 | 0 | 0 | 1 |
 | controlStructures | 146 | 145 | 0 | 0 | 0 | 0 | 1 |
 | bridges | 137 | 137 | 0 | 0 | 0 | 0 | 0 |
@@ -71,18 +71,18 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 | compileKotlinAgainstKotlin | 65 | 60 | 0 | 4 | 0 | 0 | 1 |
 | diagnostics | 60 | 58 | 0 | 2 | 0 | 0 | 0 |
 | dataClasses | 53 | 52 | 0 | 0 | 0 | 1 | 0 |
-| extensionFunctions | 53 | 48 | 0 | 5 | 0 | 0 | 0 |
+| extensionFunctions | 53 | 50 | 0 | 3 | 0 | 0 | 0 |
 | inlineEvaluationOrder | 52 | 52 | 0 | 0 | 0 | 0 | 0 |
 | innerNested | 52 | 52 | 0 | 0 | 0 | 0 | 0 |
 | annotations | 51 | 49 | 0 | 1 | 0 | 0 | 1 |
 | reflection | 50 | 49 | 0 | 1 | 0 | 0 | 0 |
 | funInterface | 48 | 47 | 0 | 1 | 0 | 0 | 0 |
-| unsignedTypes | 44 | 43 | 0 | 0 | 0 | 0 | 1 |
+| unsignedTypes | 44 | 44 | 0 | 0 | 0 | 0 | 0 |
 | boxingOptimization | 41 | 41 | 0 | 0 | 0 | 0 | 0 |
 | ir | 41 | 38 | 0 | 3 | 0 | 0 | 0 |
 | reified | 40 | 40 | 0 | 0 | 0 | 0 | 0 |
 | localClasses | 39 | 37 | 0 | 1 | 0 | 1 | 0 |
-| strings | 39 | 34 | 0 | 2 | 2 | 0 | 1 |
+| strings | 39 | 36 | 0 | 2 | 0 | 0 | 1 |
 | super | 39 | 38 | 0 | 1 | 0 | 0 | 0 |
 | ieee754 | 38 | 38 | 0 | 0 | 0 | 0 | 0 |
 | evaluate | 37 | 37 | 0 | 0 | 0 | 0 | 0 |
@@ -104,7 +104,7 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 | specialBuiltins | 25 | 25 | 0 | 0 | 0 | 0 | 0 |
 | finally | 24 | 23 | 0 | 0 | 0 | 0 | 1 |
 | delegation | 23 | 21 | 0 | 2 | 0 | 0 | 0 |
-| binaryOp | 22 | 20 | 0 | 0 | 0 | 0 | 2 |
+| binaryOp | 22 | 22 | 0 | 0 | 0 | 0 | 0 |
 | intrinsics | 22 | 21 | 0 | 1 | 0 | 0 | 0 |
 | boxing | 21 | 21 | 0 | 0 | 0 | 0 | 0 |
 | lambda | 21 | 21 | 0 | 0 | 0 | 0 | 0 |
@@ -124,7 +124,7 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 | unit | 15 | 14 | 0 | 1 | 0 | 0 | 0 |
 | fakeOverride | 14 | 13 | 0 | 1 | 0 | 0 | 0 |
 | suspendConversion | 14 | 14 | 0 | 0 | 0 | 0 | 0 |
-| constants | 13 | 11 | 0 | 0 | 0 | 0 | 2 |
+| constants | 13 | 13 | 0 | 0 | 0 | 0 | 0 |
 | labels | 13 | 12 | 0 | 1 | 0 | 0 | 0 |
 | branching | 12 | 12 | 0 | 0 | 0 | 0 | 0 |
 | classDelegation | 12 | 12 | 0 | 0 | 0 | 0 | 0 |
@@ -141,7 +141,7 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 | classLiteral | 8 | 6 | 0 | 2 | 0 | 0 | 0 |
 | exceptions | 8 | 8 | 0 | 0 | 0 | 0 | 0 |
 | propertyCallableReference | 8 | 8 | 0 | 0 | 0 | 0 | 0 |
-| sealed | 8 | 7 | 0 | 1 | 0 | 0 | 0 |
+| sealed | 8 | 8 | 0 | 0 | 0 | 0 | 0 |
 | statics | 8 | 8 | 0 | 0 | 0 | 0 | 0 |
 | builtinStubMethods | 7 | 7 | 0 | 0 | 0 | 0 | 0 |
 | collections | 7 | 7 | 0 | 0 | 0 | 0 | 0 |
@@ -207,15 +207,13 @@ Tests kotlinc compiles that kc's checker rejects, by its first error, with names
 |:---|---:|:---|
 | `unresolved reference: _` | 11 | `classLiteral/bound/primitives.kt`, `classLiteral/primitiveClassEquality.kt` |
 | `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 9 | `callableReference/function/nullableExtension.kt`, `casts/intersectionTypeMultipleBounds.kt` |
-| `cannot infer type for type parameter '_'. Specify it explicitly.` | 8 | `delegatedProperty/local/kt78073.kt`, `fir/localInvokeExtension.kt` |
+| `cannot infer type for type parameter '_'. Specify it explicitly.` | 6 | `delegatedProperty/local/kt78073.kt`, `fir/localInvokeExtension.kt` |
 | `type mismatch: inferred type is _ but _ was expected` | 4 | `delegation/delegationToIntersectionType.kt`, `delegation/delegationToIntersectionType3.kt` |
-| `many supertypes available, please specify the one you mean in angle brackets, e.g. '_'` | 3 | `compileKotlinAgainstKotlin/jvm8/jvm8against6/delegation/diamond.kt`, `compileKotlinAgainstKotlin/jvm8/jvm8against6/delegation/diamond3.kt` |
-| `type argument is not within its bounds: inferred type I of type _ '_' is not a subtype of In` | 3 | `inference/tryCatchAtAssignmentWithSmartCast.kt`, `inference/whenAtAssignmentWithSmartCast.kt` |
 | `'_' is not an expression, it can only be used on the left-hand side of a dot ('_')` | 2 | `closures/kt11634.kt`, `closures/kt11634_2.kt` |
 | `cannot find a parameter with this name: _` | 2 | `compileKotlinAgainstKotlin/clashingFakeOverrideSignatures.kt`, `ir/serializationRegressions/signatureClash.kt` |
 | `conflicting overloads: _` | 2 | `callableReference/function/extensionFunctionLocal.kt`, `extensionFunctions/extensionFunctionLocal.kt` |
 | `initializer is not allowed here because this property has no backing field` | 2 | `properties/classFieldInsideNested.kt`, `properties/fieldInsideNested.kt` |
-| `platform declaration clash: the following declarations have the same JVM signature (getData()I)` | 2 | `extensionFunctions/classMethodCallExtensionSuper.kt`, `extensionFunctions/defaultMethodInterfaceCallExtensionSuper.kt` |
+| `many supertypes available, please specify the one you mean in angle brackets, e.g. '_'` | 2 | `compileKotlinAgainstKotlin/jvm8/jvm8against6/delegation/diamond.kt`, `super/unqualifiedSuperWithMethodsOfAny.kt` |
 | `type mismatch: '_' branches have incompatible types Unit and Nothing?` | 2 | `inference/noCoercionToUnitWithEqualityConstraintForNullableReturnType.kt`, `unit/nullableUnitInWhen3.kt` |
 | `val cannot be reassigned` | 2 | `extensionFunctions/kt475.kt`, `fakeOverride/intersectionOverrideBetweenValAndVar.kt` |
 | `'_' hides member of supertype '_' and needs '_' modifier` | 1 | `annotations/platformDependent.kt` |
@@ -235,12 +233,11 @@ Tests kotlinc compiles that kc's checker rejects, by its first error, with names
 | `one type argument expected for typealias L<T>` | 1 | `typealias/typeAliasAsBareType.kt` |
 | `one type argument expected for typealias Z<U>` | 1 | `when/inferredTypeParameters.kt` |
 | `operator '_' cannot be applied to T and Int` | 1 | `extensionFunctions/thisMethodInObjectLiteral.kt` |
+| `platform declaration clash: the following declarations have the same JVM signature (test()Ljava/lang/String;)` | 1 | `compileKotlinAgainstKotlin/jvm8/jvm8against6/delegation/diamond3.kt` |
 | `property must be initialized or be abstract` | 1 | `fir/initializationInLocalInnerClassWithSecondaryConstructor.kt` |
 | `reference has a nullable type '_', use explicit '_' to make a function-like call instead` | 1 | `smartCasts/NullableFunctionTypeAsMemberImmutableProperty.kt` |
 | `tailrec is not allowed on open members` | 1 | `diagnostics/functions/tailRecursion/defaultArgsOverridden.kt` |
-| `type argument is not within its bounds: inferred type Path of type _ '_' is not a subtype of Entity<out Entity<*>>` | 1 | `inference/capturedSelfInsideIntersection2.kt` |
 | `type argument is not within its bounds: inferred type String of type _ '_' is not a subtype of MyClass` | 1 | `delegatedProperty/provideDelegate/generic.kt` |
-| `type argument is not within its bounds: type parameter '_' must be subtype of '_', but actual: _` | 1 | `sealed/kt49752.kt` |
 | `type checking has run into a recursive problem: '_' needs an explicit return type` | 1 | `functions/localFunctions/overloadedLocalFunWithoutClosure.kt` |
 | `type parameter L is declared as '_' but occurs in '_' position in type (L) -> Unit` | 1 | `inference/capturedTypesSubstitutionIntoAbbreviation.kt` |
 | `unresolved label: _` | 1 | `labels/infixCallLabelling.kt` |
@@ -252,7 +249,6 @@ kc checked the test but failed to generate its code.
 | Error | Tests | Examples |
 |:---|---:|:---|
 | `code generation: operand stack underflow at offset n` | 2 | `coroutines/simpleSuspendCallableReference.kt`, `extensionProperties/kt9897.kt` |
-| `code generation: string constant too long` | 2 | `strings/kt13213.kt`, `strings/kt47917.kt` |
 | `code generation: a suspension point in the arguments of a constructor call` | 1 | `coroutines/kt15016.kt` |
 | `code generation: local n is not allocated` | 1 | `regressions/kt5953.kt` |
 | `code generation: no metadata for type <error>` | 1 | `coroutines/deserializedSuspendFunctionProperty.kt` |
@@ -298,15 +294,10 @@ box() returned something other than `"OK"`, with numbers replaced by n.
 |:---|---:|:---|
 | `FAILn` | 2 | `controlStructures/breakContinueInExpressions/breakInLoopConditions.kt`, `finally/returnNullFromInlined.kt` |
 | `fail: _` | 2 | `coroutines/unitTypeReturn/unitSafeCall.kt`, `inference/noCoercionToUniForNullableLambdaReturnType.kt` |
-| `FAIL n` | 1 | `constants/doNotTriggerInit.kt` |
 | `FAIL: implicitReceiverCast(): String.invoke(Any) FAIL: expli…` | 1 | `smartCasts/invokeRecieverSmartcastK2.kt` |
 | `Fail` | 1 | `invokedynamic/extensionFunInvoke.kt` |
-| `Fail n: A.bNonConst !== B.bNonConst` | 1 | `constants/kt9532.kt` |
 | `Fail: _` | 1 | `closures/captureInSuperConstructorCall/properValueCapturedByClosure2.kt` |
 | `OK Fail` | 1 | `strings/stringPlusOverride.kt` |
-| `fail` | 1 | `unsignedTypes/unsignedLiteralsWithSignedOverflow.kt` |
 | `fail n` | 1 | `operatorConventions/infixFunctionOverBuiltinMember.kt` |
-| `fail: Char.MIN_VALUE - n should overflow to positive.` | 1 | `binaryOp/overflowChar.kt` |
-| `fail: in this case we should add to ints and than cast the r…` | 1 | `binaryOp/overflowLong.kt` |
 | `failn` | 1 | `annotations/resolveWithLowPriorityAnnotation.kt` |
 
