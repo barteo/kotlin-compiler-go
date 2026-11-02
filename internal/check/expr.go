@@ -191,7 +191,9 @@ func (c *Checker) expr1(x syntax.Expr, want types.Type, allowRange bool, sink *s
 	case *syntax.PropRef:
 		return c.propRef(x)
 	case *syntax.ObjectExpr:
-		return c.objectExpr(x)
+		t := c.objectExpr(x)
+		c.scope.narrows = append(c.scope.narrows, c.superArgNarrows(x)...)
+		return t
 	case *syntax.StringLit:
 		for _, p := range x.Parts {
 			if p.X != nil {

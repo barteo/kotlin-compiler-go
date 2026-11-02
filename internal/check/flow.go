@@ -674,6 +674,52 @@ func (c *Checker) mayNotRun(n int, other []narrow) {
 	}
 }
 
+// superArgNarrows returns the smart casts of the x!! and the casts in the
+// arguments of an object expression's superclass constructor call, which
+// run where it is: after object : A(o!!) {}, o isn't null.
+func (c *Checker) superArgNarrows(x *syntax.ObjectExpr) []narrow {
+	var out []narrow
+	for _, st := range x.Decl.Supers {
+		if st.Call == nil {
+			continue
+		}
+		for _, a := range st.Call.Args {
+			if _, ok := a.(*syntax.Lambda); ok {
+				continue
+			}
+			out = append(out, c.ranNarrows(a)...)
+		}
+	}
+	// And of those in its initializers, which also run where it is.
+	for _, m := range x.Decl.Members {
+		switch m := m.(type) {
+		case *syntax.PropDecl:
+			if m.Init != nil {
+				out = append(out, c.ranNarrows(m.Init)...)
+			}
+		case *syntax.InitBlock:
+			for _, st := range m.Body.Stmts {
+				if es, ok := st.(*syntax.ExprStmt); ok {
+					out = append(out, c.ranNarrows(es.X)...)
+				}
+			}
+		}
+	}
+	return out
+}
+
+// ranNarrows returns the smart casts of the x!! and the casts that
+// evaluating x always runs.
+func (c *Checker) ranNarrows(x syntax.Expr) []narrow {
+	out := c.asserted(x)
+	alwaysCasts(x, func(as *syntax.As) {
+		if k, ok := c.castNarrow(as); ok {
+			out = append(out, k)
+		}
+	})
+	return out
+}
+
 // chainKeyOf is narrowKeyOf that also takes a?.b, as a.b, which a?.b
 // != null smart casts.
 func (c *Checker) chainKeyOf(x syntax.Expr) (narrow, bool) {
