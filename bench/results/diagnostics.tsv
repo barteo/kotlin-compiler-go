@@ -15,7 +15,7 @@ tests/BinaryCallsOnNullableValues.kt	rejects invalid	on an expected line
 tests/Bounds.kt	rejects invalid	on an expected line	
 tests/BreakContinue.kt	rejects invalid	elsewhere	
 tests/BreakContinueInWhen_after.kt	rejects invalid	on an expected line	
-tests/Builders.kt	rejects valid	operator '_' cannot be applied to String	a.kt:19: operator '+' cannot be applied to String
+tests/Builders.kt	accepts valid		
 tests/Casts.kt	rejects invalid	on an expected line	
 tests/CharacterLiterals.kt	rejects invalid	on an expected line	
 tests/CompareToWithErrorType.kt	rejects invalid	on an expected line	
@@ -768,7 +768,7 @@ tests/callableReference/function/nestedConstructorFromClass.kt	rejects invalid	o
 tests/callableReference/function/nestedConstructorFromExtension.kt	rejects invalid	on an expected line	
 tests/callableReference/function/nestedConstructorFromTopLevel.kt	accepts valid		
 tests/callableReference/function/noAmbiguityLocalVsTopLevel.kt	accepts valid		
-tests/callableReference/function/noAmbiguityMemberVsExtension.kt	rejects valid	overload resolution ambiguity for A::foo: specify the expected function type	noAmbiguityMemberVsExtension.kt:13: overload resolution ambiguity for A::foo: specify the expected function type
+tests/callableReference/function/noAmbiguityMemberVsExtension.kt	accepts valid		
 tests/callableReference/function/noAmbiguityMemberVsTopLevel.kt	rejects invalid	on an expected line	
 tests/callableReference/function/privateStaticAndPublicMember.kt	skip	Java sources	
 tests/callableReference/function/renameOnImport.kt	accepts valid		
@@ -874,7 +874,7 @@ tests/callableReference/referenceAdaptationCompatibility.kt	accepts valid
 tests/callableReference/referenceInCycleInProperties.kt	accepts valid		
 tests/callableReference/referenceToCompanionObjectMemberViaClassName.kt	accepts valid		
 tests/callableReference/referenceToCompanionObjectMemberViaClassNameCompatibility.kt	rejects valid	overload resolution ambiguity for A::foo: specify the expected function type	referenceToCompanionObjectMemberViaClassNameCompatibility.kt:26: overload resolution ambiguity for A::foo: specify the expected function type
-tests/callableReference/resolve/adaptedReferenceAgainstKCallable.kt	rejects valid	function invocation '_' expected; use ::foo for a reference	adaptedReferenceAgainstKCallable.kt:11: function invocation 'foo()' expected; use ::foo for a reference
+tests/callableReference/resolve/adaptedReferenceAgainstKCallable.kt	accepts valid		
 tests/callableReference/resolve/adaptedReferenceAgainstReflectionType.kt	skip	LANGUAGE	
 tests/callableReference/resolve/ambiguityWhenNoApplicableCallableReferenceCandidate.kt	rejects invalid	on an expected line	
 tests/callableReference/resolve/ambiguityWithBoundExtensionReceiver.kt	accepts valid		
@@ -918,7 +918,7 @@ tests/callableReference/resolve/postponedResolveOfManyCallableReference.kt	accep
 tests/callableReference/resolve/resolveCallableReferencesAfterAllSimpleArguments.kt	rejects invalid	on an expected line	
 tests/callableReference/resolve/resolveEqualsOperatorWithAnyExpectedType.kt	accepts valid		
 tests/callableReference/resolve/resolveReferenceAgainstKFunctionAndKPrpoerty.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	resolveReferenceAgainstKFunctionAndKPrpoerty.kt:19: cannot infer type for type parameter 'T'. Specify it explicitly.
-tests/callableReference/resolve/resolveTwoReferencesAgainstGenerics.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	resolveTwoReferencesAgainstGenerics.kt:6: cannot infer type for type parameter 'T'. Specify it explicitly.
+tests/callableReference/resolve/resolveTwoReferencesAgainstGenerics.kt	accepts valid		
 tests/callableReference/resolve/valVsFun.kt	accepts valid		
 tests/callableReference/resolve/withAs.kt	rejects invalid	on an expected line	
 tests/callableReference/resolve/withExtFun.kt	rejects invalid	elsewhere	
@@ -2146,7 +2146,7 @@ tests/coroutines/suspendFunctionAsSupertype/suspendFunctionN/mixingSuspendAndNon
 tests/coroutines/suspendFunctionAsSupertype/suspendFunctionN/simple.kt	accepts valid		
 tests/coroutines/suspendInvokeInsideTry.kt	accepts valid		
 tests/coroutines/suspendInvokeInsideWhen.kt	accepts valid		
-tests/coroutines/suspendInvokeWithReceiver.kt	rejects valid	expression of type _ cannot be invoked as a function	suspendInvokeWithReceiver.kt:5: expression of type String cannot be invoked as a function
+tests/coroutines/suspendInvokeWithReceiver.kt	accepts valid		
 tests/coroutines/suspendLambdaFromExpectedType.kt	accepts valid		
 tests/covariantArrayAsReceiver.kt	rejects invalid	on an expected line	
 tests/crashOnPlusAssignInBuildList.kt	rejects invalid	elsewhere	
@@ -4772,7 +4772,7 @@ tests/inference/recursiveTypes/recursiveOutOut.kt	accepts valid
 tests/inference/recursiveTypes/recursiveTypeWithNonStarResult.kt	accepts valid		
 tests/inference/recursiveTypes/recursiveTypes.kt	accepts valid		
 tests/inference/recursiveTypes/selfTypes/enabledInferenceOnSelfTypes/basicInferenceForImplicitSelfType.kt	skip	Java sources	
-tests/inference/recursiveTypes/selfTypes/enabledInferenceOnSelfTypes/enumExtensionFunction.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	enumExtensionFunction.kt:14: type mismatch: inferred type is Enum<*> but Enum<Enum<out Enum<*>>> was expected
+tests/inference/recursiveTypes/selfTypes/enabledInferenceOnSelfTypes/enumExtensionFunction.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	enumExtensionFunction.kt:14: cannot infer type for type parameter 'T'. Specify it explicitly.
 tests/inference/recursiveTypes/selfTypes/enabledInferenceOnSelfTypes/overridingJKCases.kt	skip	Java sources	
 tests/inference/recursiveTypes/selfTypes/enabledInferenceOnSelfTypes/recursiveTypeWithTwoTypeParams.kt	skip	Java sources	
 tests/inference/recursiveTypes/selfTypes/enabledInferenceOnSelfTypes/whereAndWithCases.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	whereAndWithCases.kt:20: cannot infer type for type parameter 'T'. Specify it explicitly.
@@ -4841,7 +4841,7 @@ tests/inference/regressions/kt37043_2.kt	accepts valid
 tests/inference/regressions/kt37419.kt	accepts valid		
 tests/inference/regressions/kt37650.kt	accepts valid		
 tests/inference/regressions/kt38549.kt	accepts valid		
-tests/inference/regressions/kt38691.kt	rejects valid	ambiguous call: n candidates for '_' take (_)	kt38691.kt:13: ambiguous call: 2 candidates for 'foo' take (Inv<T>, lambda)
+tests/inference/regressions/kt38691.kt	accepts valid		
 tests/inference/regressions/kt41386.kt	accepts valid		
 tests/inference/regressions/kt4420.kt	accepts valid		
 tests/inference/regressions/kt44440.kt	accepts valid		
@@ -5491,7 +5491,7 @@ tests/j+k/serializable.kt	skip	Java sources
 tests/j+k/shadowingPrimitiveStaticField.kt	skip	Java sources	
 tests/j+k/signatureAnnotations/notNullVarargOverride.kt	skip	Java sources	
 tests/j+k/signatureAnnotations/nullableVarargOverride.kt	skip	Java sources	
-tests/j+k/specialBridges.kt	rejects valid	class '_' is not abstract and does not implement abstract member '_'	specialBridges.kt:7: class 'B2' is not abstract and does not implement abstract member 'size'
+tests/j+k/specialBridges.kt	accepts valid		
 tests/j+k/specialBuiltIns/hashtableInheritance.kt	accepts valid		
 tests/j+k/specialBuiltIns/inheritanceThroughEmptyClass.kt	skip	Java sources	
 tests/j+k/specialBuiltIns/securityProvider.kt	accepts valid		
@@ -6736,7 +6736,7 @@ tests/operatorsOverloading/kt1028.kt	rejects invalid	on an expected line
 tests/operatorsOverloading/kt11300.kt	rejects invalid	on an expected line	
 tests/operatorsOverloading/kt13330.kt	rejects invalid	on an expected line	
 tests/operatorsOverloading/kt13349.kt	accepts valid		
-tests/operatorsOverloading/kt3450.kt	rejects valid	operator '_' cannot be applied to String	kt3450.kt:11: operator '+' cannot be applied to String
+tests/operatorsOverloading/kt3450.kt	accepts valid		
 tests/operatorsOverloading/kt45503_1.kt	accepts valid		
 tests/operatorsOverloading/kt45503_2.kt	accepts valid		
 tests/operatorsOverloading/kt45503_3.kt	accepts valid		
@@ -7525,7 +7525,7 @@ tests/regressions/kt251.kt	rejects invalid	on an expected line
 tests/regressions/kt258.kt	accepts valid		
 tests/regressions/kt26-1.kt	accepts valid		
 tests/regressions/kt26.kt	accepts valid		
-tests/regressions/kt26303.kt	rejects valid	expression of type _ cannot be invoked as a function	b.kt:8: expression of type Int cannot be invoked as a function
+tests/regressions/kt26303.kt	rejects valid	ambiguous call: n candidates for '_' take (_)	b.kt:8: ambiguous call: 2 candidates for 'foo' take ()
 tests/regressions/kt2768.kt	rejects invalid	on an expected line	
 tests/regressions/kt28001.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	kt28001.kt:16: type mismatch: inferred type is CharSequence but String was expected
 tests/regressions/kt282.kt	rejects invalid	on an expected line	
@@ -7632,7 +7632,7 @@ tests/resolve/ambiguityOnPropertiesWithTheSamePackageName.kt	accepts invalid	OVE
 tests/resolve/ambiguityWithTwoCorrespondingFunctionTypes.kt	rejects invalid	on an expected line	
 tests/resolve/anonymousObjectFromTopLevelMember.kt	accepts valid		
 tests/resolve/callToProtectedOnSmartcast.kt	accepts valid		
-tests/resolve/callableReferenceAgainstTypeVariable.kt	rejects valid	ambiguous call: n candidates for '_' take (_)	callableReferenceAgainstTypeVariable.kt:13: ambiguous call: 2 candidates for 'foo' take (Inv<String>, lambda)
+tests/resolve/callableReferenceAgainstTypeVariable.kt	rejects valid	ambiguous call: n candidates for '_' take (_)	callableReferenceAgainstTypeVariable.kt:14: ambiguous call: 2 candidates for 'foo' take (Inv<String>, lambda)
 tests/resolve/callableReferenceInCST.kt	rejects invalid	on an expected line	
 tests/resolve/capturedTypesInLambdaParameter.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	capturedTypesInLambdaParameter.kt:14: type mismatch: inferred type is B<out Number> but B<Number> was expected
 tests/resolve/complexOrderAndImplicitTypes.kt	accepts valid		
@@ -7685,8 +7685,8 @@ tests/resolve/inferenceInLinkedLambdas.kt	accepts valid
 tests/resolve/inferenceInLinkedLambdasDependentOnExpectedType.kt	accepts valid		
 tests/resolve/invoke/KT-4372.kt	rejects invalid	on an expected line	
 tests/resolve/invoke/avoidTypeCheckerRecursion.kt	skip	Java sources	
-tests/resolve/invoke/closeInvokesFarVariable.kt	rejects valid	expression '_' of type _ cannot be invoked as a function	closeInvokesFarVariable.kt:13: expression 'foo' of type Any cannot be invoked as a function
-tests/resolve/invoke/closerVariableMatterMore.kt	rejects valid	expression '_' of type _ cannot be invoked as a function	closerVariableMatterMore.kt:13: expression 'bar' of type Double cannot be invoked as a function
+tests/resolve/invoke/closeInvokesFarVariable.kt	accepts valid		
+tests/resolve/invoke/closerVariableMatterMore.kt	accepts valid		
 tests/resolve/invoke/completePropertyBeforeInvoke.kt	accepts valid		
 tests/resolve/invoke/errors/ambiguityForInvoke.kt	rejects invalid	on an expected line	
 tests/resolve/invoke/errors/invisibleInvoke.kt	rejects invalid	on an expected line	
@@ -9753,8 +9753,8 @@ testsWithStdLib/callableReferences/manyCandidatesInference.kt	rejects valid	no f
 testsWithStdLib/callableReferences/manyInnerCandidates.kt	accepts valid		
 testsWithStdLib/callableReferences/manyInnerManyOuterCandidates.kt	rejects valid	ambiguous call: n candidates for '_' take (_)	manyInnerManyOuterCandidates.kt:10: ambiguous call: 2 candidates for 'foo' take (lambda)
 testsWithStdLib/callableReferences/manyInnermanyOuterCandidatesAmbiguity.kt	rejects invalid	on an expected line	
-testsWithStdLib/callableReferences/manyOuterCandidates.kt	rejects valid	ambiguous call: n candidates for '_' take (_)	manyOuterCandidates.kt:9: ambiguous call: 2 candidates for 'foo' take (lambda)
-testsWithStdLib/callableReferences/properties.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	properties.kt:22: cannot infer type for type parameter 'T'. Specify it explicitly.
+testsWithStdLib/callableReferences/manyOuterCandidates.kt	accepts valid		
+testsWithStdLib/callableReferences/properties.kt	accepts valid		
 testsWithStdLib/callableReferences/referenceToJavaStdlib.kt	rejects invalid	elsewhere	
 testsWithStdLib/callableReferences/sam.kt	rejects invalid	on an expected line	
 testsWithStdLib/callableReferences/simpleClassReceiver.kt	rejects invalid	on an expected line	
@@ -10223,7 +10223,7 @@ testsWithStdLib/experimental/experimentalSetter.kt	accepts invalid	OPT_IN_USAGE_
 testsWithStdLib/experimental/fileOptInSuppressesOverride.kt	accepts valid		
 testsWithStdLib/experimental/fullFqNameUsage.kt	accepts valid		
 testsWithStdLib/experimental/implicitThisReceiver.kt	accepts invalid	OPT_IN_USAGE_ERROR	implicitThisReceiver.kt:10: OPT_IN_USAGE_ERROR
-testsWithStdLib/experimental/implicitUsages.kt	rejects invalid	on an expected line	
+testsWithStdLib/experimental/implicitUsages.kt	accepts invalid	OPT_IN_USAGE_ERROR	implicitUsages.kt:13: OPT_IN_USAGE_ERROR
 testsWithStdLib/experimental/importStatement.kt	accepts valid		
 testsWithStdLib/experimental/importStatement2.kt	rejects valid	unresolved import: _	b.kt:3: unresolved import: Ann
 testsWithStdLib/experimental/incorrectTargetsForExperimentalAnnotation.kt	accepts invalid	OPT_IN_MARKER_WITH_WRONG_TARGET; OPT_IN_MARKER_WITH_WRONG_RETENTION; OPT_IN_MARKER_ON_WRONG_TARGET	api.kt:13: OPT_IN_MARKER_WITH_WRONG_TARGET
