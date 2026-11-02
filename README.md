@@ -39,9 +39,10 @@ How each number is measured, and the full tables with CPU time, are in
 - **Some of the language.** A few features aren't supported.
   [Unsupported Kotlin](docs/unsupported.md) lists them all.
 - **Most of `kotlinc`'s checks.** `kotlinc` runs 290 checkers for
-  warnings and errors after type checking. `kc` has no separate
-  checkers: it reports the errors that type checking finds, which is why
-  it agrees with `kotlinc` on only 87% of the diagnostics tests.
+  warnings and errors after type checking. `kc` reports the errors that
+  type checking finds, and only a few of those checkers' (opt-in and
+  deprecation, for example), which is why it agrees with `kotlinc` on
+  only 87% of the diagnostics tests.
 - **Anything but the JVM.** There is no Kotlin/Native, JS or Wasm, and no
   language versions.
 - **Incremental compilation, a Gradle plugin and IDE support.**
@@ -120,6 +121,7 @@ Arguments can be files or directories. Flags:
 | `-no-jdk` | don't use JDK classes |
 | `-module-name` | module name, as in `kotlinc` (default `main`) |
 | `-friend-paths` | class path entries whose internal declarations are visible (`kotlinc`'s `-Xfriend-paths`) |
+| `-opt-in` | opt in to a requirement marker by qualified name, as `kotlinc`'s `-opt-in`; may be repeated |
 | `-parcelize`, `-serialization`, `-compose` | apply the parcelize, kotlinx.serialization and Compose plugins |
 | `-jvm-default` | how interface bodies compile, as in `kotlinc` (default `no-compatibility`) |
 | `-Xdebug` | keep dead variables in suspend functions for debuggers, as in `kotlinc` |
@@ -148,6 +150,7 @@ It expects `kotlinc` and the JDK where Homebrew installs them; set
 `KOTLIN_HOME` and `JAVA_HOME` otherwise. `bench/kotlinpoet-time.sh` and
 `bench/ktor-time.sh` time the other two libraries
 ([Benchmark](docs/benchmark.md#running)).
+
 ## Documentation
 
 - [Unsupported Kotlin](docs/unsupported.md): what `kc` doesn't support, and
