@@ -135,6 +135,11 @@ func (c *Checker) argsFit(sup, u types.Type) bool {
 			declared = tp.Var
 			if len(tp.Bounds) == 1 && !tp.Bounds[0].HasParams() {
 				bound = tp.Bounds[0]
+			} else if len(tp.Bounds) == 1 && sup.A.List[i].V == types.Star && !tp.Bounds[0].Has(func(u types.Type) bool { return u.K == types.TypeParam && u.Param() == tp }) {
+				// A star's bound in sup's arguments: IS of
+				// Interpreter<IS : Intermediary<SELF>, TS, SELF> in
+				// Interpreter<*, T, I> is an Intermediary<I>.
+				bound = classSubst(sup).Apply(tp.Bounds[0])
 			}
 		}
 		if !c.argFits(sup.A.List[i], ua, declared, bound) {
