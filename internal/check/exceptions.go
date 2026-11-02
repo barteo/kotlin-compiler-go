@@ -116,7 +116,13 @@ func (c *Checker) throwable(t types.Type) bool {
 
 // throw checks throw e.
 func (c *Checker) throw(x *syntax.Jump) {
+	n := len(c.errs)
 	t := c.value(x.X, noWant)
+	if th := c.u.ext.class("java/lang/Throwable"); th != nil && c.cannotInferSince(n) && retryableCall(x.X) {
+		// throw a() for fun <T> a(): T is a's T Throwable.
+		c.errs = c.errs[:n]
+		t = c.value(x.X, types.ClassType(th))
+	}
 	if t.K != types.Invalid && t.K != types.Nothing && !c.throwable(t.NonNull()) {
 		c.errorf(x.X.Pos(), "type mismatch: inferred type is %s but Throwable was expected", t)
 	}

@@ -876,6 +876,11 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 				}
 			}
 		}
+		if len(maximal) != 1 {
+			if ng := c.nonGenericMaximal(match, x.Args); len(ng) == 1 {
+				maximal = ng
+			}
+		}
 		if i := preferred(len(maximal), x.Args, func(i int) *callee { return &maximal[i].callee }); i >= 0 {
 			best = maximal[i]
 		}
@@ -1731,6 +1736,37 @@ func (c *Checker) mostSpecific(f *candidate, cs []*candidate, args []syntax.Expr
 		}
 	}
 	return true
+}
+
+// nonGenericMaximal returns the most specific of the candidates without
+// type parameters of their own, when none of cs is the most specific: as
+// K2 discriminates generics then, a candidate that isn't generic is more
+// specific than one that is, B.foo() than T.foo() for T : A, T : C on a
+// D : B, C, though neither receiver is a subtype of the other.
+func (c *Checker) nonGenericMaximal(cs []*candidate, args []syntax.Expr) []*candidate {
+	var plain []*candidate
+	for _, cd := range cs {
+		if len(cd.f.TypeParams) == 0 {
+			plain = append(plain, cd)
+		}
+	}
+	if len(plain) == 0 || len(plain) == len(cs) {
+		return nil
+	}
+	for _, a := range args {
+		if l, ok := a.(*syntax.Lambda); ok && l.Ref != nil {
+			// A reference whose result a Runnable would drop is a
+			// Callable<V>'s: schedule(this::flush, ...) (see byRefShape).
+			return nil
+		}
+	}
+	var out []*candidate
+	for _, cd := range plain {
+		if c.mostSpecific(cd, plain, args) {
+			out = append(out, cd)
+		}
+	}
+	return overriddenGiveWay(out)
 }
 
 // overriddenGiveWay drops the candidates among equally specific ones
