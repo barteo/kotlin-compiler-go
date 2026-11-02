@@ -406,3 +406,24 @@ func TestAnnotationTypes(t *testing.T) {
 		}
 	}
 }
+
+func TestElvis(t *testing.T) {
+	src := `package p
+
+fun f(l: List<Int>?, s: String?, a: Any?) {
+    val x = l ?: emptyList()
+    val y = s ?: ""
+    val z = a ?: ""
+}
+`
+	r, s := analyzed(t, withStdlib(t), src)
+	for _, c := range []struct {
+		text string
+		want bool
+	}{{"l ?: emptyList()", true}, {`s ?: ""`, true}, {`a ?: ""`, false}} {
+		f := fact(t, r, at(t, s, "BINARY_EXPRESSION", c.text, 0))
+		if f.NonNullLeftSubtypeRight == nil || *f.NonNullLeftSubtypeRight != c.want {
+			t.Errorf("%s: NonNullLeftSubtypeRight %v, want %v", c.text, f.NonNullLeftSubtypeRight, c.want)
+		}
+	}
+}

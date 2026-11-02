@@ -37,6 +37,8 @@ func (r *testRecorder) Unreachable(s syntax.Stmt) {
 
 func (r *testRecorder) Annotation(*syntax.File, *syntax.Annotation, *types.ClassSym) {}
 
+func (r *testRecorder) Elvis(*syntax.Binary, bool) {}
+
 func TestRecorder(t *testing.T) {
 	src := `
 enum class E { A, B }

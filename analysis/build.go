@@ -51,7 +51,7 @@ func analyze(ctx context.Context, cfg Config, snaps []*psi.Snapshot) (*Result, e
 		return nil, fmt.Errorf("analysis: %w", err)
 	}
 	defer cp.Close()
-	rec := &recorder{when: map[*syntax.When]whenReport{}, stmt: map[syntax.Stmt]bool{}, unreachable: map[syntax.Stmt]bool{}, annots: map[*syntax.File]map[syntax.Pos]*types.ClassSym{}}
+	rec := &recorder{when: map[*syntax.When]whenReport{}, stmt: map[syntax.Stmt]bool{}, unreachable: map[syntax.Stmt]bool{}, annots: map[*syntax.File]map[syntax.Pos]*types.ClassSym{}, elvis: map[*syntax.Binary]bool{}}
 	errs, err := check.CheckContext(ctx, files, lib, jobs, rec)
 	if err != nil {
 		return nil, err
@@ -133,6 +133,7 @@ type recorder struct {
 	unreachable map[syntax.Stmt]bool
 	// annots are the classes of each file's annotations, by position.
 	annots map[*syntax.File]map[syntax.Pos]*types.ClassSym
+	elvis  map[*syntax.Binary]bool
 }
 
 func (r *recorder) When(x *syntax.When, exhaustive, valueUsed bool) {
@@ -150,6 +151,12 @@ func (r *recorder) Stmt(s syntax.Stmt, valueUsed bool) {
 func (r *recorder) Unreachable(s syntax.Stmt) {
 	r.mu.Lock()
 	r.unreachable[s] = true
+	r.mu.Unlock()
+}
+
+func (r *recorder) Elvis(x *syntax.Binary, nonNullLeftSubtypeRight bool) {
+	r.mu.Lock()
+	r.elvis[x] = nonNullLeftSubtypeRight
 	r.mu.Unlock()
 }
 
@@ -365,6 +372,9 @@ func merge(f *Fact, src Fact) {
 	if f.DelegatedCalls == nil {
 		f.DelegatedCalls = src.DelegatedCalls
 	}
+	if f.NonNullLeftSubtypeRight == nil {
+		f.NonNullLeftSubtypeRight = src.NonNullLeftSubtypeRight
+	}
 }
 
 func (b *builder) set(el ElementID, src Fact) {
@@ -534,6 +544,9 @@ func (b *builder) expr(x syntax.Expr, el ElementID) {
 		f.Call = b.call(x.Call)
 	case *syntax.Binary:
 		f.Call = b.call(x.Call)
+		if sub, ok := b.rec.elvis[x]; ok {
+			f.NonNullLeftSubtypeRight = &sub
+		}
 	case *syntax.Unary:
 		f.Call = b.call(x.Call)
 	case *syntax.Lambda:

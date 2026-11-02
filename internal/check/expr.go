@@ -744,6 +744,9 @@ func (c *Checker) binary(x *syntax.Binary, want types.Type, allowRange bool) typ
 			c.errorf(x.P, "type mismatch: incompatible types %s and %s", xt.NonNull(), yt)
 			return types.InvalidType
 		}
+		if c.u.rec != nil {
+			c.u.rec.Elvis(x, c.subtype(xt.NonNull(), yt))
+		}
 		if yt.K == types.Nothing {
 			// x ?: return: the code after it sees x not null.
 			c.scope.narrows = append(c.scope.narrows, c.equalNonNull(x.X)...)

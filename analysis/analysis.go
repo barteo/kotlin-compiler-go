@@ -222,9 +222,8 @@ type Fact struct {
 
 	FlowNonNull       bool `json:"flowNonNull,omitempty"`
 	DefinitelyNonNull bool `json:"definitelyNonNull,omitempty"`
-	// NonNullLeftSubtypeRight is set on a cast or type check whose
-	// operand's non-null type is a subtype of the target's: whether it
-	// is.
+	// NonNullLeftSubtypeRight is set on an elvis expression: whether its
+	// left side's non-null type is a subtype of its right side's type.
 	NonNullLeftSubtypeRight *bool `json:"nonNullLeftSubtypeRight,omitempty"`
 	ImpossibleCast          bool  `json:"impossibleCast,omitempty"`
 

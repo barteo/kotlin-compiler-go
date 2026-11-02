@@ -25,4 +25,7 @@ type Recorder interface {
 	Unreachable(s syntax.Stmt)
 	// Annotation reports the class an annotation of file f resolves to.
 	Annotation(f *syntax.File, a *syntax.Annotation, cls *types.ClassSym)
+	// Elvis reports whether the non-null type of an elvis expression's
+	// left side is a subtype of its right side's type.
+	Elvis(x *syntax.Binary, nonNullLeftSubtypeRight bool)
 }
