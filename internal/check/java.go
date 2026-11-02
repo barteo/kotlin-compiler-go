@@ -455,9 +455,9 @@ func (c *Checker) resolveImports() {
 		if i := strings.LastIndexByte(imp.Path, '.'); i > 0 {
 			pkg, simple = imp.Path[:i], imp.Path[i+1:]
 		}
-		// The program's own declarations come first. Declarations in the
-		// default package can't be imported.
-		if user := c.u.Pkgs[pkg]; user != nil && pkg != "" {
+		// The program's own declarations come first, those of the default
+		// package too: import checkSubtype.
+		if user := c.u.Pkgs[pkg]; user != nil {
 			found := false
 			if cls, ok := user.Classes[simple]; ok {
 				c.imports[alias], found = cls, true
