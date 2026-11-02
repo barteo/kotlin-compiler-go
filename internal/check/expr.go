@@ -1784,7 +1784,7 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 		// A class-path value class's value: the unboxed value itself,
 		// unless it is a property of the name with context parameters.
 		x.Prop = cls.Underlying
-		t = cls.Underlying.Type
+		t = c.memberSubst(rt, cls).Apply(cls.Underlying.Type)
 	case cls != nil && !cls.External:
 		x.Prop = c.memberProp(cls, x.Name)
 		if d := c.declaredClass(x.X, cls); x.Prop == nil && d != nil && !d.External {
@@ -3206,6 +3206,7 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 					continue
 				}
 				cond.Target = c.checkTarget(cond.Type, st, types.InvalidType, true)
+				c.whenIsCheck(x, cond, st)
 				if cond.Is && cond.Target.K == types.Class {
 					cov.classes = append(cov.classes, cond.Target.C)
 				}

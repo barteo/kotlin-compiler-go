@@ -197,6 +197,7 @@ func (c *Checker) contractEffects(d *syntax.FunDecl, sym *types.FunSym) {
 				continue
 			}
 			e.Is = &t
+			c.impossibleIs(im.Is.P, c.bareSubject, c.bareSubject, t, false)
 		}
 		sym.Implies = append(sym.Implies, e)
 	}
