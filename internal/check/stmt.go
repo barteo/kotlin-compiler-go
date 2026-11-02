@@ -36,6 +36,12 @@ func (c *Checker) stmts(b *syntax.Block, want types.Type, valueUsed bool) types.
 		if last && b == c.tailBlock {
 			c.sink, c.tailBlock = c.tailSink, nil
 		}
+		if rec := c.u.rec; rec != nil {
+			if nothing {
+				rec.Unreachable(s)
+			}
+			rec.Stmt(s, valueUsed && last)
+		}
 		st := c.stmt(s, valueUsed && last, want)
 		if st.K == types.Nothing || stmtJumps(s) {
 			nothing = true

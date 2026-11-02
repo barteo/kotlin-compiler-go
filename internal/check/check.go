@@ -3,6 +3,7 @@
 package check
 
 import (
+	"context"
 	"fmt"
 	"slices"
 	"sort"
@@ -47,6 +48,9 @@ type Universe struct {
 	// aliasFile is the checker of the file that declares each typealias,
 	// which resolves its right side in the file's scope.
 	aliasFile map[*types.AliasSym]*Checker
+	// ctx cancels checking, and rec, if set, receives its facts.
+	ctx context.Context
+	rec Recorder
 }
 
 // Package holds the top-level declarations of one package of the program.
@@ -404,7 +408,17 @@ func (l *Library) Prefetch() {
 
 // CheckWith is Check with a library that may have been prefetched.
 func CheckWith(files []*syntax.File, lib *Library, jobs int) []*syntax.Error {
-	u := &Universe{Pkgs: map[string]*Package{}, prefixes: map[string]bool{}, ext: lib.t, module: moduleSuffix(lib.Module),
+	errs, _ := CheckContext(context.Background(), files, lib, jobs, nil)
+	return errs
+}
+
+// CheckContext is CheckWith, which stops early, with ctx's error, once
+// ctx is done, and reports what it finds to rec, if it isn't nil.
+func CheckContext(ctx context.Context, files []*syntax.File, lib *Library, jobs int, rec Recorder) ([]*syntax.Error, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	u := &Universe{ctx: ctx, rec: rec, Pkgs: map[string]*Package{}, prefixes: map[string]bool{}, ext: lib.t, module: moduleSuffix(lib.Module),
 		aliasFile: map[*types.AliasSym]*Checker{}, noJVMDefault: lib.NoJVMDefault, jvmDefaultCompat: lib.JVMDefaultCompat, parcelize: lib.Parcelize, serialization: lib.Serialization,
 		compose: lib.Compose, serialInterfaces: map[*syntax.ClassDecl]bool{}}
 	checkers := make([]*Checker, len(files))
@@ -426,6 +440,9 @@ func CheckWith(files []*syntax.File, lib *Library, jobs int) []*syntax.Error {
 	if lib.t.cp != nil && lib.t.cp.HasSources() {
 		find := u.sourceClass
 		lib.t.sources.Store(&find)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 	expectActual(checkers)
 	// Imports can name declarations of any file.
@@ -451,6 +468,9 @@ func CheckWith(files []*syntax.File, lib *Library, jobs int) []*syntax.Error {
 	for _, c := range checkers {
 		c.resolveSignatures()
 	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	forwardInlinable(checkers)
 	for _, c := range checkers {
 		c.checkMemberImports()
@@ -468,6 +488,9 @@ func CheckWith(files []*syntax.File, lib *Library, jobs int) []*syntax.Error {
 	// the parallel phase only reads signatures.
 	for _, c := range checkers {
 		c.inferAll()
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 	for _, c := range checkers {
 		c.checkExposure()
@@ -490,7 +513,9 @@ func CheckWith(files []*syntax.File, lib *Library, jobs int) []*syntax.Error {
 	for range jobs {
 		wg.Go(func() {
 			for c := range work {
-				c.checkBodies()
+				if ctx.Err() == nil {
+					c.checkBodies()
+				}
 			}
 		})
 	}
@@ -499,6 +524,9 @@ func CheckWith(files []*syntax.File, lib *Library, jobs int) []*syntax.Error {
 	}
 	close(work)
 	wg.Wait()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 
 	var errs []*syntax.Error
 	for _, c := range checkers {
@@ -510,7 +538,7 @@ func CheckWith(files []*syntax.File, lib *Library, jobs int) []*syntax.Error {
 		})
 		errs = append(errs, c.errs...)
 	}
-	return errs
+	return errs, nil
 }
 
 // sourceClass returns the program's class with an internal name, as
@@ -2183,6 +2211,7 @@ func (c *Checker) checkBodies() {
 	for _, d := range c.file.Decls {
 		c.declAnnotations(d, nil)
 	}
+	done := c.u.ctx.Done()
 	for _, d := range c.classes {
 		if d.Sym != nil && d.Sym.Outer == nil {
 			continue // a top-level class, checked above
@@ -2190,6 +2219,9 @@ func (c *Checker) checkBodies() {
 		c.declAnnotations(d, d.Sym.Outer)
 	}
 	for _, d := range c.file.Decls {
+		if cancelled(done) {
+			return
+		}
 		switch d := d.(type) {
 		case *syntax.FunDecl:
 			c.checkDefaults(d.Params, nil, d.Sym)
@@ -2201,6 +2233,9 @@ func (c *Checker) checkBodies() {
 		}
 	}
 	for _, d := range c.classes {
+		if cancelled(done) {
+			return
+		}
 		c.checkClass(d)
 	}
 	c.propRefs()
@@ -2870,5 +2905,15 @@ func funTypeParams(f *types.FunSym, cls *types.ClassSym) []*types.TypeParamSym {
 func (c *Checker) assignable(from, to types.Type, p syntax.Pos) {
 	if !c.subtype(from, to) {
 		c.errorf(p, "type mismatch: inferred type is %s but %s was expected", from, to)
+	}
+}
+
+// cancelled reports whether done, a context's Done channel, is closed.
+func cancelled(done <-chan struct{}) bool {
+	select {
+	case <-done:
+		return true
+	default:
+		return false
 	}
 }

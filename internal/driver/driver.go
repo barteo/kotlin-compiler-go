@@ -87,6 +87,42 @@ func parallel(n, jobs int, fn func(i int)) {
 	wg.Wait()
 }
 
+// OpenLibrary opens the class path opts names (the JDK, unless NoJDK, and
+// ClassPath and FriendPaths) and returns the library the checker reads it
+// through, set up as opts says. The caller closes the class path when it
+// is done with the library. Java sources are not read.
+func OpenLibrary(opts Options) (*classpath.Path, *check.Library, error) {
+	cp, err := openClassPath(opts)
+	if err != nil {
+		return nil, nil, err
+	}
+	return cp, newLibrary(cp, opts), nil
+}
+
+// openClassPath opens the class path opts names.
+func openClassPath(opts Options) (*classpath.Path, error) {
+	jdk := opts.JDKHome
+	if jdk == "" && !opts.NoJDK {
+		// Without a JDK, programs can use everything but Java classes.
+		jdk, _ = classpath.FindJDK()
+	}
+	return classpath.Open(jdk, opts.ClassPath, opts.FriendPaths...)
+}
+
+// newLibrary returns the library over cp, set up as opts says.
+func newLibrary(cp *classpath.Path, opts Options) *check.Library {
+	lib := check.NewLibrary(cp)
+	lib.Module = opts.ModuleName
+	lib.NoJVMDefault = opts.NoJVMDefault
+	lib.JVMDefaultCompat = opts.JVMDefaultCompat
+	lib.Parcelize = opts.Parcelize
+	lib.Compose = opts.Compose
+	if opts.Serialization {
+		lib.EnableSerialization()
+	}
+	return lib
+}
+
 // Compile compiles the given .kt files into class files in opts.OutDir.
 // The .java files among them are the module's Java sources, whose
 // declarations the Kotlin code sees, as kotlinc's; javac compiles them.
@@ -125,26 +161,13 @@ func Compile(paths []string, opts Options) error {
 	var prefetch time.Duration
 	prefetched := make(chan struct{})
 	go func() {
-		jdk := opts.JDKHome
-		if jdk == "" && !opts.NoJDK {
-			// Without a JDK, programs can use everything but Java classes.
-			jdk, _ = classpath.FindJDK()
-		}
-		cp, err := classpath.Open(jdk, opts.ClassPath, opts.FriendPaths...)
+		cp, err := openClassPath(opts)
 		if err == nil && len(javaPaths) > 0 {
 			err = addJava(cp, javaPaths, opts.Jobs, java)
 		}
 		var lib *check.Library
 		if err == nil {
-			lib = check.NewLibrary(cp)
-			lib.Module = opts.ModuleName
-			lib.NoJVMDefault = opts.NoJVMDefault
-			lib.JVMDefaultCompat = opts.JVMDefaultCompat
-			lib.Parcelize = opts.Parcelize
-			lib.Compose = opts.Compose
-			if opts.Serialization {
-				lib.EnableSerialization()
-			}
+			lib = newLibrary(cp, opts)
 		}
 		cpDone <- cpResult{cp, lib, err}
 		if lib != nil {
