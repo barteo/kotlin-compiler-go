@@ -2526,7 +2526,7 @@ func (c *Checker) checkFun(d *syntax.FunDecl, cls *types.ClassSym) {
 	c.pluginSerializer(d)
 	c.parcelBody(d, cls)
 	if d.Inline {
-		defer c.publicInline(d, cls)
+		defer c.inlineBodyChecks(d, cls)
 	}
 	sym := d.Sym
 	s := &scope{}

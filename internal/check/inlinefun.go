@@ -518,6 +518,9 @@ func (c *Checker) forwardedArgs(x *syntax.Call, cl *callee) {
 		if j < 0 {
 			continue
 		}
+		if inlineArg(x, k) == argNotInline {
+			continue // inlineUsage reports it
+		}
 		i := cl.paramIndex(k)
 		if sd := syntax.SourceInline(cl.f); sd != nil {
 			if i < len(sd.Inlinable) && sd.Inlinable[i] {
