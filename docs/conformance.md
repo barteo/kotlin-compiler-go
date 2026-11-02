@@ -127,37 +127,38 @@ Kotlin 2.4.21's tests on `kc`:
 | Box tests | Tests | Share of run |
 |:---|---:|---:|
 | run (of 7,480) | 6,483 | |
-| pass | 6,375 | 98.3% |
+| pass | 6,393 | 98.6% |
 | check error | 69 | 1.1% |
 | codegen error | 5 | 0.1% |
-| VerifyError and linkage error | 18 | 0.3% |
-| exception and wrong result | 16 | 0.2% |
+| VerifyError and linkage error | 3 | 0.0% |
+| exception and wrong result | 13 | 0.2% |
 | parse/unsupported, crash, timeout | 0 | |
 
 | Diagnostics tests | Tests | Share of run |
 |:---|---:|---:|
 | run (of 10,827) | 7,200 | |
-| rejects invalid | 3,272 | 45.4% |
-| accepts valid | 2,894 | 40.2% |
-| accepts invalid | 548 | 7.6% |
-| rejects valid | 408 | 5.7% |
+| rejects invalid | 3,372 | 46.8% |
+| accepts valid | 2,898 | 40.2% |
+| accepts invalid | 448 | 6.2% |
+| rejects valid | 404 | 5.6% |
 | parse/unsupported | 77 | 1.1% |
 | crash | 1 | 0.0% |
 
-`kc` agrees with `kotlinc` on 86% of the diagnostics tests, and reports
-11,496 of the 18,918 expected errors (61%) on their lines. The reports
+`kc` agrees with `kotlinc` on 87% of the diagnostics tests, and reports
+11,902 of the 18,918 expected errors (63%) on their lines. The reports
 break the failures down; the largest groups are:
 
-- **Silent miscompilation** (34 box tests): `NullPointerException`s
-  (5), `NoSuchMethodError`s (4), and illegal method signatures in
-  inline classes (3).
+- **Silent miscompilation** (16 box tests): wrong results (10),
+  `NullPointerException`s (2), and duplicate methods for functions that
+  differ only in their type parameters' bounds (2).
 - **Accepts invalid**: argument type mismatches
-  (`ARGUMENT_TYPE_MISMATCH` 36), unresolved names
-  (`UNRESOLVED_REFERENCE` 28), opt-in (27), calls on nullable values
-  (`UNSAFE_CALL` 19), conflicting overloads (16), and DSL markers on
-  types (`DSL_SCOPE_VIOLATION` 15).
+  (`ARGUMENT_TYPE_MISMATCH` 35), unresolved names
+  (`UNRESOLVED_REFERENCE` 26), calls on nullable values (`UNSAFE_CALL`
+  19), conflicting overloads (16), DSL markers on types
+  (`DSL_SCOPE_VIOLATION` 15), and contract descriptions
+  (`ERROR_IN_CONTRACT_DESCRIPTION` 14).
 - **Rejects valid**, by `kc`'s first error: type mismatches (88 + 4
-  box), inference failures (79 + 6), unresolved names and imports (70 +
+  box), inference failures (79 + 6), unresolved names and imports (69 +
   11), and calls on nullable receivers (19 + 9).
 
 The committed `.tsv` files serve as a ratchet: a change must make

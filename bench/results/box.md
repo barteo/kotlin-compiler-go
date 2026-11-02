@@ -2,18 +2,18 @@
 
 The box tests of JetBrains/kotlin v2.4.21 (`compiler/testData/codegen/box`), each compiled by kc and run: its `box()` must return `"OK"`. `bench/kotlin-tests.sh box` writes this file, and [docs/conformance.md](../../docs/conformance.md) explains it.
 
-Of 7480 test files, 997 are skipped and 6483 run. 6375 pass (98.3%).
+Of 7480 test files, 997 are skipped and 6483 run. 6393 pass (98.6%).
 
 | Result | Tests | Share |
 |:---|---:|---:|
-| pass | 6375 | 98.3% |
+| pass | 6393 | 98.6% |
 | parse/unsupported | 0 | 0.0% |
 | check error | 69 | 1.1% |
 | crash | 0 | 0.0% |
 | codegen error | 5 | 0.1% |
-| VerifyError | 10 | 0.2% |
-| linkage error | 8 | 0.1% |
-| exception | 6 | 0.1% |
+| VerifyError | 3 | 0.0% |
+| linkage error | 0 | 0.0% |
+| exception | 3 | 0.0% |
 | wrong result | 10 | 0.2% |
 | timeout | 0 | 0.0% |
 
@@ -47,20 +47,20 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 | Directory | Run | Pass | Unsupported | Check error | Crash | Bad bytecode | Wrong |
 |:---|---:|---:|---:|---:|---:|---:|---:|
 | ranges | 805 | 805 | 0 | 0 | 0 | 0 | 0 |
-| inlineClasses | 784 | 775 | 0 | 2 | 0 | 7 | 0 |
-| coroutines | 497 | 492 | 0 | 0 | 3 | 1 | 1 |
+| inlineClasses | 784 | 782 | 0 | 2 | 0 | 0 | 0 |
+| coroutines | 497 | 493 | 0 | 0 | 3 | 0 | 1 |
 | callableReference | 297 | 295 | 0 | 2 | 0 | 0 | 0 |
 | inference | 205 | 200 | 0 | 4 | 0 | 0 | 1 |
 | delegatedProperty | 149 | 145 | 0 | 3 | 0 | 0 | 1 |
 | controlStructures | 146 | 145 | 0 | 0 | 0 | 0 | 1 |
 | bridges | 137 | 137 | 0 | 0 | 0 | 0 | 0 |
 | inline | 132 | 129 | 0 | 3 | 0 | 0 | 0 |
-| classes | 120 | 119 | 0 | 0 | 0 | 1 | 0 |
-| objects | 116 | 114 | 0 | 1 | 0 | 1 | 0 |
+| classes | 120 | 120 | 0 | 0 | 0 | 0 | 0 |
+| objects | 116 | 115 | 0 | 1 | 0 | 0 | 0 |
 | properties | 109 | 106 | 0 | 2 | 0 | 1 | 0 |
 | closures | 107 | 104 | 0 | 2 | 0 | 0 | 1 |
 | functions | 106 | 105 | 0 | 1 | 0 | 0 | 0 |
-| enum | 101 | 97 | 0 | 1 | 0 | 0 | 3 |
+| enum | 101 | 100 | 0 | 1 | 0 | 0 | 0 |
 | when | 99 | 98 | 0 | 1 | 0 | 0 | 0 |
 | primitiveTypes | 98 | 98 | 0 | 0 | 0 | 0 | 0 |
 | defaultArguments | 82 | 82 | 0 | 0 | 0 | 0 | 0 |
@@ -70,7 +70,7 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 | casts | 68 | 67 | 0 | 1 | 0 | 0 | 0 |
 | compileKotlinAgainstKotlin | 65 | 60 | 0 | 4 | 0 | 0 | 1 |
 | diagnostics | 60 | 58 | 0 | 2 | 0 | 0 | 0 |
-| dataClasses | 53 | 52 | 0 | 0 | 0 | 1 | 0 |
+| dataClasses | 53 | 53 | 0 | 0 | 0 | 0 | 0 |
 | extensionFunctions | 53 | 50 | 0 | 3 | 0 | 0 | 0 |
 | inlineEvaluationOrder | 52 | 52 | 0 | 0 | 0 | 0 | 0 |
 | innerNested | 52 | 52 | 0 | 0 | 0 | 0 | 0 |
@@ -81,7 +81,7 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 | boxingOptimization | 41 | 41 | 0 | 0 | 0 | 0 | 0 |
 | ir | 41 | 38 | 0 | 3 | 0 | 0 | 0 |
 | reified | 40 | 40 | 0 | 0 | 0 | 0 | 0 |
-| localClasses | 39 | 37 | 0 | 1 | 0 | 1 | 0 |
+| localClasses | 39 | 38 | 0 | 1 | 0 | 0 | 0 |
 | strings | 39 | 36 | 0 | 2 | 0 | 0 | 1 |
 | super | 39 | 38 | 0 | 1 | 0 | 0 | 0 |
 | ieee754 | 38 | 38 | 0 | 0 | 0 | 0 | 0 |
@@ -154,7 +154,7 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 | nullCheckOptimization | 6 | 6 | 0 | 0 | 0 | 0 | 0 |
 | typeInfo | 6 | 6 | 0 | 0 | 0 | 0 | 0 |
 | interfaceCallsNCasts | 5 | 5 | 0 | 0 | 0 | 0 | 0 |
-| javaInterop | 5 | 3 | 0 | 0 | 0 | 2 | 0 |
+| javaInterop | 5 | 5 | 0 | 0 | 0 | 0 | 0 |
 | jdk | 5 | 5 | 0 | 0 | 0 | 0 | 0 |
 | mangling | 5 | 5 | 0 | 0 | 0 | 0 | 0 |
 | storeStackBeforeInline | 5 | 5 | 0 | 0 | 0 | 0 | 0 |
@@ -169,7 +169,7 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 | checkcastOptimization | 3 | 3 | 0 | 0 | 0 | 0 | 0 |
 | companion | 3 | 3 | 0 | 0 | 0 | 0 | 0 |
 | cycles | 3 | 3 | 0 | 0 | 0 | 0 | 0 |
-| dataObjects | 3 | 2 | 0 | 0 | 0 | 1 | 0 |
+| dataObjects | 3 | 3 | 0 | 0 | 0 | 0 | 0 |
 | fieldRename | 3 | 3 | 0 | 0 | 0 | 0 | 0 |
 | nothingValue | 3 | 3 | 0 | 0 | 0 | 0 | 0 |
 | dataflow | 2 | 2 | 0 | 0 | 0 | 0 | 0 |
@@ -259,23 +259,8 @@ The JVM rejected a class kc wrote.
 
 | Error | Tests | Examples |
 |:---|---:|:---|
-| `java.lang.ClassFormatError: Method "_" in class _ has illegal signature "_"` | 3 | `inlineClasses/dnnInValue.kt`, `inlineClasses/genericInlineClassSynthMembers.kt` |
 | `java.lang.ClassFormatError: Duplicate method name "_" with signature "_" in class _ Y` | 2 | `fir/functionsDifferInTypeParameterBounds2.kt`, `fir/functionsDifferInTypeParameterBounds3.kt` |
-| `java.lang.VerifyError: Bad invokespecial instruction: interface method reference is in an indirect superinterface.` | 2 | `inlineClasses/smartCastOnThisOfInlineClassType.kt`, `inlineClasses/smartCastOnThisOfInlineClassTypeGeneric.kt` |
-| `java.lang.VerifyError: Bad type on operand stack` | 1 | `inlineClasses/kt57973.kt` |
 | `java.lang.VerifyError: Bad type on operand stack in putfield` | 1 | `properties/classFieldInsideLocalInSetter.kt` |
-| `java.lang.VerifyError: Instruction type does not match stack map` | 1 | `inlineClasses/checkCastToInlineClassGeneric.kt` |
-
-## Linkage errors
-
-A class kc wrote refers to a member or class that doesn't exist, or doesn't fit.
-
-| Error | Tests | Examples |
-|:---|---:|:---|
-| `java.lang.NoSuchMethodError` | 4 | `classes/kt5347.kt`, `javaInterop/objectMethods/cloneCallsSuper.kt` |
-| `java.lang.IncompatibleClassChangeError` | 2 | `dataClasses/nonTrivialFinalMemberInSuperClass.kt`, `dataObjects/toString.kt` |
-| `java.lang.AbstractMethodError` | 1 | `coroutines/inlineClasses/kt84305.kt` |
-| `java.lang.NoSuchFieldError` | 1 | `objects/interfaceCompanionObjectReference.kt` |
 
 ## Exceptions
 
@@ -283,7 +268,7 @@ box() threw.
 
 | Exception | Tests | Examples |
 |:---|---:|:---|
-| `java.lang.NullPointerException` | 5 | `delegatedProperty/local/localDelegatedPropertyCall.kt`, `enum/enumEntryReferenceFromInnerClassConstructor1.kt` |
+| `java.lang.NullPointerException` | 2 | `delegatedProperty/local/localDelegatedPropertyCall.kt`, `nonLocalReturns/suspendConversion.kt` |
 | `kotlin.reflect.jvm.internal.KotlinReflectionInternalError` | 1 | `compileKotlinAgainstKotlin/inlineClasses/privateCompanionObjectValInDifferentModule.kt` |
 
 ## Wrong results

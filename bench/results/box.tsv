@@ -1009,7 +1009,7 @@ classes/kt500.kt	pass
 classes/kt501.kt	pass		
 classes/kt504.kt	pass		
 classes/kt508.kt	pass		
-classes/kt5347.kt	linkage error	java.lang.NoSuchMethodError	'void Kt5347Kt$test1$A.<init>(int)' at Kt5347Kt$test1$A.copy
+classes/kt5347.kt	pass		
 classes/kt6136.kt	pass		
 classes/kt633.kt	pass		
 classes/kt6816.kt	pass		
@@ -1728,7 +1728,7 @@ coroutines/defaultParametersInSuspend.kt	pass
 coroutines/degenerate1.kt	pass		
 coroutines/degenerate2.kt	pass		
 coroutines/delegatedSuspendMember.kt	pass		
-coroutines/deserializedSuspendFunctionProperty.kt	codegen error	code generation: no metadata for type <error>	/tmp/claude-0/-home-user-kotlin-compiler-go/750727f6-8b6a-55b7-bf7f-39f23eea6307/scratchpad/kc-conformance/1729/m0/src/m1.kt: code generation failed: no metadata for type <error>
+coroutines/deserializedSuspendFunctionProperty.kt	codegen error	code generation: no metadata for type <error>	/tmp/kc-conformance/1729/m0/src/m1.kt: code generation failed: no metadata for type <error>
 coroutines/dispatchResume.kt	pass		
 coroutines/doubleColonExpressionsGenerationInBuilderInference.kt	pass		
 coroutines/emptyClosure.kt	pass		
@@ -1843,7 +1843,7 @@ coroutines/inlineClasses/direct/returnResult.kt	pass
 coroutines/inlineClasses/direct/syntheticAccessor.kt	pass		
 coroutines/inlineClasses/genericParameterResult.kt	pass		
 coroutines/inlineClasses/kt47129.kt	pass		
-coroutines/inlineClasses/kt84305.kt	linkage error	java.lang.AbstractMethodError	Receiver class MainKt$run$2 does not define or inherit an implementation of the resolved method 'abstract java.lang.Object getResult-IoAF18A(kotlin.coroutines.Continuation)' of interface ResultProvide... at MainKt.handleResult
+coroutines/inlineClasses/kt84305.kt	pass		
 coroutines/inlineClasses/nonLocalReturn.kt	pass		
 coroutines/inlineClasses/resume/boxReturnValueOfSuspendFunctionReference.kt	pass		
 coroutines/inlineClasses/resume/boxReturnValueOfSuspendLambda.kt	pass		
@@ -1964,7 +1964,7 @@ coroutines/intrinsicSemantics/startCoroutineUninterceptedOrReturnInterception.kt
 coroutines/intrinsicSemantics/suspendCoroutineUninterceptedOrReturn.kt	pass		
 coroutines/iterateOverArray.kt	pass		
 coroutines/kt12958.kt	pass		
-coroutines/kt15016.kt	codegen error	code generation: a suspension point in the arguments of a constructor call	/tmp/claude-0/-home-user-kotlin-compiler-go/750727f6-8b6a-55b7-bf7f-39f23eea6307/scratchpad/kc-conformance/1965/m0/src/main.kt: code generation failed: a suspension point in the arguments of a constructor call
+coroutines/kt15016.kt	codegen error	code generation: a suspension point in the arguments of a constructor call	/tmp/kc-conformance/1965/m0/src/main.kt: code generation failed: a suspension point in the arguments of a constructor call
 coroutines/kt15017.kt	pass		
 coroutines/kt15930.kt	pass		
 coroutines/kt21080.kt	pass		
@@ -2043,7 +2043,7 @@ coroutines/returnsUnit1.kt	pass
 coroutines/simple.kt	pass		
 coroutines/simple2.kt	pass		
 coroutines/simpleException.kt	pass		
-coroutines/simpleSuspendCallableReference.kt	codegen error	code generation: operand stack underflow at offset n	/tmp/claude-0/-home-user-kotlin-compiler-go/750727f6-8b6a-55b7-bf7f-39f23eea6307/scratchpad/kc-conformance/2044/m0/src/simpleSuspendCallableReference.kt: code generation failed: SimpleSuspendCallableReferenceKt$box$1.invokeSuspend: operand stack underflow at offset 262
+coroutines/simpleSuspendCallableReference.kt	codegen error	code generation: operand stack underflow at offset n	/tmp/kc-conformance/2044/m0/src/simpleSuspendCallableReference.kt: code generation failed: SimpleSuspendCallableReferenceKt$box$1.invokeSuspend: operand stack underflow at offset 262
 coroutines/simpleWithDefaultValue.kt	pass		
 coroutines/simpleWithHandleResult.kt	pass		
 coroutines/stackUnwinding/exception.kt	pass		
@@ -2202,7 +2202,7 @@ dataClasses/kt49715_behaviorChange.kt	pass
 dataClasses/mixedParams.kt	pass		
 dataClasses/multiDeclaration.kt	pass		
 dataClasses/multiDeclarationFor.kt	pass		
-dataClasses/nonTrivialFinalMemberInSuperClass.kt	linkage error	java.lang.IncompatibleClassChangeError	class DataClass overrides final method Base.equals(Ljava/lang/Object;)Z at java.lang.ClassLoader.defineClass1
+dataClasses/nonTrivialFinalMemberInSuperClass.kt	pass		
 dataClasses/nonTrivialMemberInSuperClass.kt	pass		
 dataClasses/privateValParams.kt	pass		
 dataClasses/propertyOfDnnType.kt	pass		
@@ -2218,7 +2218,7 @@ dataClasses/twoVarParams.kt	pass
 dataClasses/unitComponent.kt	pass		
 dataObjects/equals.kt	pass		
 dataObjects/hashCode.kt	pass		
-dataObjects/toString.kt	linkage error	java.lang.IncompatibleClassChangeError	class com.example.InheritedFromClassWithFinalToString overrides final method com.example.WithFinalToString.toString()Ljava/lang/String; at java.lang.ClassLoader.defineClass1
+dataObjects/toString.kt	pass		
 dataflow/scope1.kt	pass		
 dataflow/uninitialized_val.kt	pass		
 deadCodeElimination/emptyVariableRange.kt	pass		
@@ -2617,9 +2617,9 @@ enum/enumEntriesMultimoduleNoMappings.kt	pass
 enum/enumEntriesNameClashes.kt	skip	LANGUAGE	
 enum/enumEntryHashCode.kt	pass		
 enum/enumEntryMembers.kt	check error	class Foo.FOO is not public	main.kt:4: class Foo.FOO is not public
-enum/enumEntryReferenceFromInnerClassConstructor1.kt	exception	java.lang.NullPointerException	Parameter specified as non-null is null: method Base.<init>, parameter x at Base.<init> (in an initializer)
-enum/enumEntryReferenceFromInnerClassConstructor2.kt	exception	java.lang.NullPointerException	Cannot invoke "Test.foo()" because "Test.FOO" is null at Test$FOO$Inner.<init> (in an initializer)
-enum/enumEntryReferenceFromInnerClassConstructor3.kt	exception	java.lang.NullPointerException	Cannot invoke "IFoo.foo()" because "this.$$delegate_0" is null at Test$FOO$Inner.foo
+enum/enumEntryReferenceFromInnerClassConstructor1.kt	pass		
+enum/enumEntryReferenceFromInnerClassConstructor2.kt	pass		
+enum/enumEntryReferenceFromInnerClassConstructor3.kt	pass		
 enum/enumInheritedFromTrait.kt	pass		
 enum/enumMultiModule.kt	pass		
 enum/enumNestedObjectInit.kt	pass		
@@ -2863,7 +2863,7 @@ extensionProperties/inClassWithPrivateGetter.kt	pass
 extensionProperties/inClassWithPrivateSetter.kt	pass		
 extensionProperties/inClassWithSetter.kt	pass		
 extensionProperties/kt46952.kt	pass		
-extensionProperties/kt9897.kt	codegen error	code generation: operand stack underflow at offset n	/tmp/claude-0/-home-user-kotlin-compiler-go/750727f6-8b6a-55b7-bf7f-39f23eea6307/scratchpad/kc-conformance/2864/m0/src/kt9897.kt: code generation failed: Test.changeLong: operand stack underflow at offset 15
+extensionProperties/kt9897.kt	codegen error	code generation: operand stack underflow at offset n	/tmp/kc-conformance/2864/m0/src/kt9897.kt: code generation failed: Test.changeLong: operand stack underflow at offset 15
 extensionProperties/kt9897_topLevel.kt	pass		
 extensionProperties/nonAbstractInInterface.kt	pass		
 extensionProperties/propertyWithExtensionNestedType.kt	pass		
@@ -3895,7 +3895,7 @@ inlineClasses/checkBoxingUnboxingForInheritedTypeSpecializedFunctionsGeneric.kt	
 inlineClasses/checkCallingMembersInsideInlineClass.kt	pass		
 inlineClasses/checkCallingMembersInsideInlineClassGeneric.kt	pass		
 inlineClasses/checkCastToInlineClass.kt	pass		
-inlineClasses/checkCastToInlineClassGeneric.kt	VerifyError	java.lang.VerifyError: Instruction type does not match stack map	Instruction type does not match stack map at java.lang.Class.getDeclaredMethods0
+inlineClasses/checkCastToInlineClassGeneric.kt	pass		
 inlineClasses/checkForInstanceOfInlineClass.kt	pass		
 inlineClasses/checkForInstanceOfInlineClassGeneric.kt	pass		
 inlineClasses/checkLambdaWithInlineClassesInFunctionalType.kt	pass		
@@ -3996,7 +3996,7 @@ inlineClasses/delegationByUnderlyingType/defaultArgumentGeneric.kt	pass
 inlineClasses/delegationByUnderlyingType/defaultGeneric.kt	pass		
 inlineClasses/delegationByUnderlyingType/simple.kt	pass		
 inlineClasses/delegationByUnderlyingType/simpleGeneric.kt	pass		
-inlineClasses/dnnInValue.kt	VerifyError	java.lang.ClassFormatError: Method "_" in class _ has illegal signature "_"	Method "<init>" in class TestKt has illegal signature "(Ljava/lang/Object;)Ljava/lang/Object;" at java.lang.ClassLoader.defineClass1
+inlineClasses/dnnInValue.kt	pass		
 inlineClasses/elvisWithInlineClassAndNullConstant.kt	pass		
 inlineClasses/elvisWithInlineClassAndNullConstantGeneric.kt	pass		
 inlineClasses/emptyConstructorForInlineClass.kt	pass		
@@ -4091,7 +4091,7 @@ inlineClasses/functionNameMangling/syntheticAccessorForFunctionWithMangledName.k
 inlineClasses/functionNameMangling/syntheticAccessorForFunctionWithMangledNameGeneric.kt	pass		
 inlineClasses/functionNameMangling/syntheticAccessorsForPropertyOfInlineClassType.kt	pass		
 inlineClasses/functionNameMangling/syntheticAccessorsForPropertyOfInlineClassTypeGeneric.kt	pass		
-inlineClasses/genericInlineClassSynthMembers.kt	VerifyError	java.lang.ClassFormatError: Method "_" in class _ has illegal signature "_"	Method "<init>" in class MainKt has illegal signature "(LC;)LC;" at java.lang.ClassLoader.defineClass1
+inlineClasses/genericInlineClassSynthMembers.kt	pass		
 inlineClasses/genericUnderlyingValue/array.kt	pass		
 inlineClasses/genericUnderlyingValue/arrayIC.kt	pass		
 inlineClasses/genericUnderlyingValue/primitive.kt	pass		
@@ -4284,7 +4284,7 @@ inlineClasses/kt51157.kt	pass
 inlineClasses/kt51254.kt	pass		
 inlineClasses/kt52913.kt	pass		
 inlineClasses/kt54455.kt	pass		
-inlineClasses/kt57973.kt	VerifyError	java.lang.VerifyError: Bad type on operand stack	Bad type on operand stack at java.lang.Class.getDeclaredMethods0
+inlineClasses/kt57973.kt	pass		
 inlineClasses/kt70461.kt	check error	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _	kt70461.kt:11: only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type T
 inlineClasses/kt71649.kt	pass		
 inlineClasses/mangledDefaultParameterFunction.kt	pass		
@@ -4361,7 +4361,7 @@ inlineClasses/returnResult/topLevel.kt	pass
 inlineClasses/safeAsOfTypeParameterWithInlineClassBound.kt	pass		
 inlineClasses/safeAsOfTypeParameterWithInlineClassBoundGeneric.kt	pass		
 inlineClasses/samWrapperDifferentModule.kt	pass		
-inlineClasses/samWrapperDifferentModuleGeneric.kt	VerifyError	java.lang.ClassFormatError: Method "_" in class _ has illegal signature "_"	Method "<init>" in class TestKt has illegal signature "(Ljava/lang/String;)Ljava/lang/String;" at java.lang.ClassLoader.defineClass1
+inlineClasses/samWrapperDifferentModuleGeneric.kt	pass		
 inlineClasses/secondaryConstructorVisibilies.kt	pass		
 inlineClasses/secondaryConstructorWithVararg.kt	pass		
 inlineClasses/secondaryConstructorWithVarargGeneric.kt	pass		
@@ -4372,8 +4372,8 @@ inlineClasses/secondaryConstructorsInsideInlineClassWithPrimitiveCarrierTypeGene
 inlineClasses/secondaryConstructorsWithBody.kt	pass		
 inlineClasses/simpleSecondaryConstructor.kt	pass		
 inlineClasses/simpleSecondaryConstructorGeneric.kt	pass		
-inlineClasses/smartCastOnThisOfInlineClassType.kt	VerifyError	java.lang.VerifyError: Bad invokespecial instruction: interface method reference is in an indirect superinterface.	Bad invokespecial instruction: interface method reference is in an indirect superinterface. at SmartCastOnThisOfInlineClassTypeKt.box
-inlineClasses/smartCastOnThisOfInlineClassTypeGeneric.kt	VerifyError	java.lang.VerifyError: Bad invokespecial instruction: interface method reference is in an indirect superinterface.	Bad invokespecial instruction: interface method reference is in an indirect superinterface. at SmartCastOnThisOfInlineClassTypeGenericKt.box
+inlineClasses/smartCastOnThisOfInlineClassType.kt	pass		
+inlineClasses/smartCastOnThisOfInlineClassTypeGeneric.kt	pass		
 inlineClasses/stringPlus.kt	pass		
 inlineClasses/stringPlusGeneric.kt	pass		
 inlineClasses/toStringCallingPrivateFun.kt	pass		
@@ -4689,8 +4689,8 @@ ir/serializationRegressions/varAsFunctionCall.kt	pass
 ir/simple.kt	pass		
 javaInterop/notNullAssertions/mapPut.kt	pass		
 javaInterop/objectMethods/cloneCallsConstructor.kt	pass		
-javaInterop/objectMethods/cloneCallsSuper.kt	linkage error	java.lang.NoSuchMethodError	'java.lang.Object java.lang.Cloneable.clone()' at A.clone
-javaInterop/objectMethods/cloneCallsSuperAndModifies.kt	linkage error	java.lang.NoSuchMethodError	'java.lang.Object java.lang.Cloneable.clone()' at A.clone
+javaInterop/objectMethods/cloneCallsSuper.kt	pass		
+javaInterop/objectMethods/cloneCallsSuperAndModifies.kt	pass		
 javaInterop/objectMethods/cloneableClassWithoutClone.kt	pass		
 jdk/arrayList.kt	pass		
 jdk/hashMap.kt	pass		
@@ -4832,7 +4832,7 @@ localClasses/localClassCaptureExtensionReceiver.kt	pass
 localClasses/localClassInInitializer.kt	pass		
 localClasses/localClassInParameterInitializer.kt	pass		
 localClasses/localClassUsedBeforeDeclaration.kt	pass		
-localClasses/localDataClass.kt	linkage error	java.lang.NoSuchMethodError	'void LocalDataClassKt$box$A.<init>(int)' at LocalDataClassKt$box$A.copy
+localClasses/localDataClass.kt	pass		
 localClasses/localExtendsInnerAndReferencesOuterMember.kt	pass		
 localClasses/localGenericWithTypeParameters.kt	pass		
 localClasses/nameWithWhitespace.kt	skip	LANGUAGE	
@@ -5239,7 +5239,7 @@ objects/initializationOrderConsts.kt	pass
 objects/initializerBlockResetToDefault.kt	pass		
 objects/innerClassInsideAnonymousObject.kt	pass		
 objects/interfaceCompanion.kt	pass		
-objects/interfaceCompanionObjectReference.kt	linkage error	java.lang.NoSuchFieldError	Class Anno does not have member field 'Anno$Companion Companion' at InterfaceCompanionObjectReferenceKt.box
+objects/interfaceCompanionObjectReference.kt	pass		
 objects/kt1047.kt	pass		
 objects/kt1047a.kt	pass		
 objects/kt11117.kt	pass		
@@ -6585,7 +6585,7 @@ regressions/kt51927.kt	skip	TARGET_BACKEND: NATIVE
 regressions/kt5395.kt	pass		
 regressions/kt57487.kt	pass		
 regressions/kt5786_privateWithDefault.kt	pass		
-regressions/kt5953.kt	codegen error	code generation: local n is not allocated	/tmp/claude-0/-home-user-kotlin-compiler-go/750727f6-8b6a-55b7-bf7f-39f23eea6307/scratchpad/kc-conformance/6586/m0/src/kt5953.kt: code generation failed: Kt5953Kt.box: local 12 is not allocated
+regressions/kt5953.kt	codegen error	code generation: local n is not allocated	/tmp/kc-conformance/6586/m0/src/kt5953.kt: code generation failed: Kt5953Kt.box: local 12 is not allocated
 regressions/kt6153.kt	pass		
 regressions/kt6434.kt	skip	LANGUAGE	
 regressions/kt6434_2.kt	skip	LANGUAGE	
