@@ -607,7 +607,7 @@ func (c *Checker) narrowKeyOf(x syntax.Expr) (narrow, bool) {
 // memberKey returns the narrowing of a.p, where p is a stable property
 // of a stable value a, and the type of a.p is t.
 func (c *Checker) memberKey(m *syntax.Member, t types.Type) (narrow, bool) {
-	if m.Prop == nil || !c.stableMember(m.Prop) {
+	if m.Prop == nil || !c.stableOn(m.Prop, m.X.Type()) {
 		return narrow{}, false
 	}
 	if this, ok := m.X.(*syntax.This); ok && this.Recv == nil && this.Label == "" {
@@ -626,8 +626,33 @@ func (c *Checker) memberKey(m *syntax.Member, t types.Type) (narrow, bool) {
 // or an override of one in a final class other than an enum class, whose
 // entries may override it.
 func (c *Checker) stableMember(p *types.VarSym) bool {
-	return p.Kind == types.Prop && !p.Mutable && p.Getter == nil && p.HasField() && p.Owner != nil && !p.Owner.External &&
-		(p.Final || p.Owner.Final && p.Owner.Entries == nil)
+	return c.stableOn(p, types.InvalidType)
+}
+
+// stableOn is stableMember for p read through a value of type recv: an
+// open val is stable too if recv's class is final and inherits it, as
+// x.p for an x: B, where B doesn't override A's open val p.
+func (c *Checker) stableOn(p *types.VarSym, recv types.Type) bool {
+	if p.Kind != types.Prop || p.Mutable || p.Getter != nil || !p.HasField() || p.Owner == nil || p.Owner.External {
+		return false
+	}
+	if p.Final || p.Owner.Final && p.Owner.Entries == nil {
+		return true
+	}
+	r := recv.NonNull()
+	if r.K != types.Class || r.C == nil {
+		return false
+	}
+	r.C.Ensure()
+	return r.C.Final && r.C.Entries == nil && !r.C.Interface && r.C.IsSubclassOf(p.Owner) && c.memberProp(r.C, p.Name) == p
+}
+
+// thisType returns the type of this where the code is, or InvalidType.
+func (c *Checker) thisType() types.Type {
+	if c.this == nil {
+		return types.InvalidType
+	}
+	return c.this.Type
 }
 
 // isNull reports whether x is null: the literal, or a value of type

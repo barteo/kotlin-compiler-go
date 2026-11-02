@@ -748,6 +748,7 @@ func (c *Checker) binary(x *syntax.Binary, want types.Type, allowRange bool) typ
 		if yt.K == types.Nothing {
 			// x ?: return: the code after it sees x not null.
 			c.scope.narrows = append(c.scope.narrows, c.equalNonNull(x.X)...)
+			c.scope.narrows = append(c.scope.narrows, c.notNullCast(x.X)...)
 		}
 		if yt.P {
 			// a ?: javaCall() is of a platform type, as the Java value:
@@ -1812,7 +1813,7 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 		}
 		ensureVar(x.Prop)
 		t = c.memberSubst(rt, x.Prop.Owner).Apply(x.Prop.Type)
-		if !x.Safe && c.stableMember(x.Prop) {
+		if !x.Safe && c.stableOn(x.Prop, rt) {
 			// A smart cast of a.b.
 			x.T = t
 			if k, ok := c.narrowKeyOf(x); ok && k.t != t {

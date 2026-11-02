@@ -369,7 +369,7 @@ func (c *Checker) stable(v *types.VarSym) bool {
 	case types.Local, types.Param, types.BackingField:
 		return true
 	case types.Prop:
-		return v.Final && v.Getter == nil && v.HasField() && v.Owner != nil && !v.Owner.External
+		return c.stableOn(v, c.thisType())
 	case types.Global:
 		return v.Getter == nil
 	}
@@ -391,7 +391,7 @@ func (c *Checker) narrowSym(x syntax.Expr) *types.VarSym {
 		return c.this
 	case *syntax.Member:
 		// a.b.c is stable if a.b is: a stable property of a val.
-		if x.Safe || x.Prop == nil || !c.stableMember(x.Prop) {
+		if x.Safe || x.Prop == nil || !c.stableOn(x.Prop, x.X.Type()) {
 			return nil
 		}
 		if r := c.narrowSym(x.X); r != nil && !r.Mutable {
