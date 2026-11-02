@@ -90,11 +90,10 @@ func (c *Checker) checkAnnotations(as []syntax.Annotation, owner *types.ClassSym
 		if a.Name == "" {
 			continue // @[A B]
 		}
-		cls := c.lookupClass(a.Name)
+		cls := c.annotationClassOf(a, owner, site, local)
 		if cls == nil {
 			continue
 		}
-		cls.Ensure()
 		if cls.Retention != types.NoRetention {
 			c.annotationTarget(a, cls, site)
 			c.repeated(a, cls, site, seen)

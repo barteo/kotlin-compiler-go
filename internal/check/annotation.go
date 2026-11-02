@@ -89,6 +89,16 @@ func (c *Checker) annotationClass(d *syntax.ClassDecl) {
 	if len(d.Supers) > 0 {
 		c.errorf(d.Supers[0].Type.P, "annotation class cannot have supertypes")
 	}
+	if ret, targets := declaredAnnotation(&d.Modifiers); ret != types.RetentionSource && targets&types.TargetExpression != 0 {
+		// Class files don't keep an expression's annotations.
+		p := d.P
+		if a := d.Find("", "Retention"); a != nil {
+			p = a.P
+		} else if a := d.Find("", "Target"); a != nil {
+			p = a.P
+		}
+		c.errorf(p, "expression annotations with retention other than SOURCE are prohibited")
+	}
 	for _, m := range d.Members {
 		var p syntax.Pos
 		switch m := m.(type) {
@@ -226,4 +236,12 @@ func completeDefault(v *classfile.ElementValue, t types.Type) bool {
 		}
 	}
 	return true
+}
+
+// localAnnotationClass reports a local class d that is an annotation
+// class, which Kotlin doesn't allow.
+func (c *Checker) localAnnotationClass(d *syntax.ClassDecl) {
+	if d.Annotation {
+		c.errorf(d.P, "annotation class cannot be local")
+	}
 }

@@ -1,0 +1,32 @@
+// The names of annotations, and the declarations of annotation classes.
+
+@Missing class A // ERROR unresolved reference: Missing
+@kotlin.Missing(1) class B // ERROR unresolved reference: kotlin.Missing
+class Foo
+@Foo class C // ERROR Foo is not an annotation class
+class D<T> {
+    @T fun f() = 0 // ERROR not a class
+}
+class E(@E(1) val x: Int) // ERROR E is not an annotation class
+
+class Outer {
+    annotation class Nested
+    @Nested fun f() = 0
+    @Nested companion object {
+        annotation class InCompanion
+    }
+    @InCompanion val x = 0
+}
+
+@Target(AnnotationTarget.EXPRESSION)
+@Retention(AnnotationRetention.BINARY) // ERROR expression annotations with retention other than SOURCE are prohibited
+annotation class Expr
+
+@Target(AnnotationTarget.EXPRESSION)
+@Retention(AnnotationRetention.SOURCE)
+annotation class SourceExpr
+
+fun local() {
+    annotation class L // ERROR annotation class cannot be local
+    @Missing val y = 0 // ERROR unresolved reference: Missing
+}

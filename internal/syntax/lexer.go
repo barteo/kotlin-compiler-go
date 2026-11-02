@@ -190,6 +190,14 @@ func (lx *lexer) next() {
 					lx.advance(1)
 					lx.scanIdent()
 					word = lx.src[start:lx.off]
+				} else if lx.peekByte(0) == '@' && lx.peekByte(1) == '`' {
+					// return@`yield`
+					end := strings.IndexAny(lx.src[lx.off+2:], "`\n")
+					if end > 0 && lx.src[lx.off+2+end] == '`' {
+						name := lx.src[lx.off+2 : lx.off+2+end]
+						lx.advance(end + 3)
+						word += "@" + name
+					}
 				}
 			}
 			lx.emit(k, p, word)

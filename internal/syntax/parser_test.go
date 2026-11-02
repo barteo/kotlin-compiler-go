@@ -182,7 +182,7 @@ func TestUnsupportedFeatures(t *testing.T) {
 }
 
 func TestTokens(t *testing.T) {
-	toks, errs := Tokenize("t.kt", "a as? B; !is; !isOk; x === y !== z; A::f; @Ann; loop@ for; return@f; this@A; 'c'; 1f; 2uL; is as")
+	toks, errs := Tokenize("t.kt", "a as? B; !is; !isOk; x === y !== z; A::f; @Ann; loop@ for; return@f; return@`f g`; this@A; 'c'; 1f; 2uL; is as")
 	if len(errs) > 0 {
 		t.Fatal(errs[0])
 	}
@@ -195,7 +195,7 @@ func TestTokens(t *testing.T) {
 	}
 	got := strings.Join(kinds, " ")
 	want := "identifier(a) as?(as?) identifier(B) !is(!is) !(!) identifier(isOk) identifier(x) ===(===) identifier(y) !==(!==) identifier(z) " +
-		"identifier(A) ::(::) identifier(f) @(@) identifier(Ann) label(loop) for(for) return(return@f) this(this@A) " +
+		"identifier(A) ::(::) identifier(f) @(@) identifier(Ann) label(loop) for(for) return(return@f) return(return@f g) this(this@A) " +
 		"character literal('c') float literal(1f) unsigned literal(2uL) is(is) as(as) end of file()"
 	if got != want {
 		t.Errorf("got  %s\nwant %s", got, want)
