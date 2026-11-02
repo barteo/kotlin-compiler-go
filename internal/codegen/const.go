@@ -658,3 +658,12 @@ func objectQualifier(x syntax.Expr) bool {
 	}
 	return false
 }
+
+// constStringValue returns the value of string template or concatenation
+// x if it is a constant, which kotlinc folds into one String constant, so
+// that equal ones are the same interned String.
+func constStringValue(x syntax.Expr) (string, bool) {
+	v, ok := constOf(x, 0)
+	s, isString := v.(string)
+	return s, ok && isString
+}

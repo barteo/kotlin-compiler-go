@@ -855,6 +855,10 @@ func (g *gen) stringLit(x *syntax.StringLit) {
 		g.code.Sconst(x.Parts[0].Lit)
 		return
 	}
+	if s, ok := constStringValue(x); ok {
+		g.code.Sconst(s) // "1234$a" of a const a, folded as kotlinc does
+		return
+	}
 	g.newStringBuilder()
 	for _, p := range x.Parts {
 		if p.X == nil {
@@ -926,6 +930,10 @@ func (g *gen) binary(x *syntax.Binary) {
 			return
 		}
 		if x.OpType == types.StringType {
+			if s, ok := constStringValue(x); ok {
+				g.code.Sconst(s)
+				return
+			}
 			g.newStringBuilder()
 			g.appendExpr(x.X)
 			g.appendExpr(x.Y)
