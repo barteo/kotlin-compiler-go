@@ -136,12 +136,12 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   for an extension function type `A.(B) -> R`; `kotlinc` accepts only
   references and lambdas there.
 - Where annotations are written, and whether they repeat, isn't checked
-  on types and type parameters, nor for Java annotations without
-  `@Target` or from Java sources, nor for use-site targets on local
-  declarations and expressions (`@field:` on a local variable). The
-  arguments of a library's `SOURCE` annotation aren't checked, so they
-  need not be constants, nor are annotations on setter parameters,
-  `set(@A v)`.
+  for Java annotations without `@Target` or from Java sources, nor for
+  use-site targets on local declarations and expressions (`@field:` on a
+  local variable), nor across a typealias's expansion (`@A T` where
+  `typealias T = @A Int`) or in `where` clauses. The arguments of a
+  library's `SOURCE` annotation aren't checked, so they need not be
+  constants, nor are annotations on setter parameters, `set(@A v)`.
 
 **Classes and members**
 

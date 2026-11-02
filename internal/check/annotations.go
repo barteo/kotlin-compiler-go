@@ -97,6 +97,7 @@ func (c *Checker) checkAnnotations(as []syntax.Annotation, owner *types.ClassSym
 		if cls.Retention != types.NoRetention {
 			c.annotationTarget(a, cls, site)
 			c.repeated(a, cls, site, seen)
+			c.jvmAnnotation(a, cls, site)
 		}
 		if ps := cls.TypeParams; cls.Annotation && len(a.TypeArgs) != len(ps) && c.lookupAlias(a.Name) == nil {
 			// Unlike a call, an annotation entry doesn't infer its
@@ -344,6 +345,7 @@ func (c *Checker) declAnnotations(d syntax.Decl, owner *types.ClassSym) {
 		}
 		params(f.Params)
 	}
+	c.jvmMemberAnnotations(d, owner)
 	switch d := d.(type) {
 	case *syntax.FunDecl:
 		c.noReceiver(d.Annotations)
@@ -369,6 +371,7 @@ func (c *Checker) declAnnotations(d syntax.Decl, owner *types.ClassSym) {
 		cls := d.Sym
 		if d.Annotation {
 			c.annotationCycles(d)
+			c.projectedAnnotationParams(d)
 		}
 		c.noReceiver(d.Annotations)
 		c.noReceiver(d.CtorMods.Annotations)
