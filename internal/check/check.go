@@ -168,6 +168,9 @@ type Checker struct {
 	funCache   map[funKey][]*types.FunSym
 	levelCache map[funKey][][]*types.FunSym // see kotlinFunLevels
 	errs       []*syntax.Error
+	// tailIfs are ifs without else that end a branch of the if a lambda
+	// ends with: statements, not values (see markTailIfs).
+	tailIfs map[*syntax.If]bool
 	// shadowed are the calls whose implicit receiver a context parameter
 	// shadows, reported once checked (see receiverShadowed).
 	shadowed map[syntax.Expr]shadowedUse

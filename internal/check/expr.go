@@ -730,14 +730,9 @@ func (c *Checker) binary(x *syntax.Binary, want types.Type, allowRange bool) typ
 					yw = sup
 				}
 			}
-			n := len(c.errs)
-			yt = c.value(x.Y, yw)
-			if len(c.errs) > n && simpleExpr(x.Y) {
-				c.errs = c.errs[:n]
-				yt = c.value(x.Y, noWant)
-			}
+			yt = c.elvisRight(x.Y, yw, xt, true) // see expected.go
 		} else {
-			yt = c.value(x.Y, want)
+			yt = c.elvisRight(x.Y, want, xt, false)
 		}
 		t, ok := c.join(xt.NonNull(), yt)
 		if !ok {
@@ -2873,7 +2868,7 @@ func (c *Checker) ifExpr(x *syntax.If, want types.Type, valueUsed bool) types.Ty
 		exits = append(exits, c.startExit(vars, whenFalse))
 	}
 	if x.Else == nil {
-		if valueUsed {
+		if valueUsed && !c.tailIfs[x] {
 			c.errorf(x.P, "'if' must have both main and 'else' branches if used as an expression")
 			return types.InvalidType
 		}
@@ -3026,9 +3021,7 @@ func (c *Checker) completeBranches(pending []pendingBranch, result, want types.T
 			target = want
 		}
 		if target.K != types.Invalid && !target.HasVars() && (valueUsed || p.open) {
-			trial := p.sys.clone()
-			trial.sub(p.t, target)
-			if trial.ok {
+			if trial := c.branchTrial(p.sys, p.t, target); trial != nil { // see expected.go
 				p.sys = trial
 			}
 		}

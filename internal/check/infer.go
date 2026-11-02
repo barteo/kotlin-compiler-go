@@ -787,3 +787,18 @@ func (s *system) upperHint(v types.Type) types.Type {
 	}
 	return noWant
 }
+
+// boundExcludes reports whether t is an unfixed variable whose declared
+// bounds u can't be within.
+func (s *system) boundExcludes(t, u types.Type) bool {
+	tv := s.unfixedVar(t)
+	if tv == nil {
+		return false
+	}
+	for _, b := range tv.v.Bounds {
+		if b = s.apply(b); !b.HasVars() && !s.c.subtype(u, b) {
+			return true
+		}
+	}
+	return false
+}
