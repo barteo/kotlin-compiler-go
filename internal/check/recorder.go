@@ -28,4 +28,8 @@ type Recorder interface {
 	// Elvis reports whether the non-null type of an elvis expression's
 	// left side is a subtype of its right side's type.
 	Elvis(x *syntax.Binary, nonNullLeftSubtypeRight bool)
+	// TypeRef reports the type a type reference resolves to, nested ones,
+	// as type arguments and function types' parts, included. Unresolved
+	// references are not reported.
+	TypeRef(ref *syntax.TypeRef, t types.Type)
 }

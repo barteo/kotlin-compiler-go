@@ -51,7 +51,7 @@ func analyze(ctx context.Context, cfg Config, snaps []*psi.Snapshot) (*Result, e
 		return nil, fmt.Errorf("analysis: %w", err)
 	}
 	defer cp.Close()
-	rec := &recorder{when: map[*syntax.When]whenReport{}, stmt: map[syntax.Stmt]bool{}, unreachable: map[syntax.Stmt]bool{}, annots: map[*syntax.File]map[syntax.Pos]*types.ClassSym{}, elvis: map[*syntax.Binary]bool{}}
+	rec := &recorder{when: map[*syntax.When]whenReport{}, stmt: map[syntax.Stmt]bool{}, unreachable: map[syntax.Stmt]bool{}, annots: map[*syntax.File]map[syntax.Pos]*types.ClassSym{}, elvis: map[*syntax.Binary]bool{}, typeRefs: map[*syntax.TypeRef]types.Type{}}
 	errs, err := check.CheckContext(ctx, files, lib, jobs, rec)
 	if err != nil {
 		return nil, err
@@ -134,6 +134,8 @@ type recorder struct {
 	// annots are the classes of each file's annotations, by position.
 	annots map[*syntax.File]map[syntax.Pos]*types.ClassSym
 	elvis  map[*syntax.Binary]bool
+	// typeRefs are the types of the type references the checker resolved.
+	typeRefs map[*syntax.TypeRef]types.Type
 }
 
 func (r *recorder) When(x *syntax.When, exhaustive, valueUsed bool) {
@@ -157,6 +159,12 @@ func (r *recorder) Unreachable(s syntax.Stmt) {
 func (r *recorder) Elvis(x *syntax.Binary, nonNullLeftSubtypeRight bool) {
 	r.mu.Lock()
 	r.elvis[x] = nonNullLeftSubtypeRight
+	r.mu.Unlock()
+}
+
+func (r *recorder) TypeRef(ref *syntax.TypeRef, t types.Type) {
+	r.mu.Lock()
+	r.typeRefs[ref] = t
 	r.mu.Unlock()
 }
 
@@ -248,9 +256,22 @@ func (b *builder) build() {
 			b.visit(e.n, ElementID{sid, e.id})
 		}
 	}
+	// The other type references the checker resolved, after the
+	// declarations' own, which win: type arguments, function types'
+	// parts, typealiases, casts and bounds.
+	for _, es := range entries {
+		for _, e := range es {
+			if r, ok := e.n.(*syntax.TypeRef); ok {
+				if t, ok := b.rec.typeRefs[r]; ok {
+					b.typeRef(r, t)
+				}
+			}
+		}
+	}
 	for _, f := range b.later {
 		f()
 	}
+	b.negated()
 	b.usedAsExpression()
 	b.wrappers()
 	b.unreachable()
@@ -549,6 +570,9 @@ func (b *builder) expr(x syntax.Expr, el ElementID) {
 		}
 	case *syntax.Unary:
 		f.Call = b.call(x.Call)
+		if f.Call == nil {
+			f.Call = b.builtinUnary(x.Op, x.X.Type(), x.Type())
+		}
 	case *syntax.Lambda:
 		for _, p := range x.Params {
 			if p.Sym != nil {
@@ -690,6 +714,55 @@ func (b *builder) funFQ(f *types.FunSym) string {
 		return n
 	}
 	return funFQ(f)
+}
+
+// unaryNames are the member operators of built-in unary operators.
+var unaryNames = map[syntax.Kind]string{
+	syntax.MINUS: "unaryMinus", syntax.PLUS: "unaryPlus", syntax.NOT: "not",
+	syntax.INC: "inc", syntax.DEC: "dec",
+}
+
+// builtinUnary is the call of a unary operator the checker builds in on
+// a primitive operand, Int.unaryMinus and the like; nil for others.
+func (b *builder) builtinUnary(op syntax.Kind, operand, result types.Type) *Call {
+	name, ok := unaryNames[op]
+	operand = operand.NonNull()
+	if !ok || !(operand.IsNumeric() || operand == types.CharType || operand == types.BoolType) {
+		return nil
+	}
+	recv := b.cv.typ(operand)
+	if recv == nil {
+		return nil
+	}
+	return &Call{Name: recv.Name + "." + name, Receiver: recv,
+		ReturnType: b.cv.typ(result), DeclaredReturnType: b.cv.typ(result)}
+}
+
+// negated gives the prefix expressions folded into negative literals the
+// literals' facts, as calls of unaryMinus on the literals' values.
+func (b *builder) negated() {
+	for i, p := range b.provs {
+		sid := b.snaps[i].ID()
+		p.Negated(func(id psi.NodeID, lit *syntax.IntLit) {
+			el, ok := b.where[lit]
+			if !ok {
+				return
+			}
+			src, ok := b.res.facts[el]
+			if !ok || src.Type == nil {
+				return
+			}
+			cp := copyFact(*src)
+			cp.Element = ElementID{sid, id}
+			// -128 as a Byte is still Int.unaryMinus of 128.
+			operand := lit.Type().NonNull()
+			if operand == types.ByteType || operand == types.ShortType {
+				operand = types.IntType
+			}
+			cp.Call = b.builtinUnary(syntax.MINUS, operand, lit.Type())
+			merge(b.fact(cp.Element), cp)
+		})
+	}
 }
 
 // call converts a call; nil for none or one with no symbol.

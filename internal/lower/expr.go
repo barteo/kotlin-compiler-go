@@ -328,6 +328,7 @@ func (l *lowerer) prefix(n psi.NodeRef) syntax.Expr {
 		// -1 is a literal, but not -(1).
 		if last := l.lastLeaf(operand); last.NumericKind() == psi.KindINTEGER_LITERAL && !strings.ContainsAny(last.Text(), "uU") &&
 			syntax.NegateLiteral(lit, last.Text(), l.pos(op)) {
+			l.negated[n.ID()] = lit
 			return lit
 		}
 	}

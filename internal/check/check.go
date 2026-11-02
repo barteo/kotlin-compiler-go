@@ -598,6 +598,14 @@ func (c *Checker) hidesBuiltin(name string) bool {
 }
 
 func (c *Checker) resolveType(ref *syntax.TypeRef) types.Type {
+	t := c.resolveType1(ref)
+	if c.u.rec != nil && t.K != types.Invalid {
+		c.u.rec.TypeRef(ref, t)
+	}
+	return t
+}
+
+func (c *Checker) resolveType1(ref *syntax.TypeRef) types.Type {
 	if ref.Known != nil {
 		return *ref.Known
 	}

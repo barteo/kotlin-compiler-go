@@ -36,6 +36,18 @@ func withStdlib(t *testing.T) Config {
 	return Config{NoJDK: true, ClassPath: []string{jar}}
 }
 
+// withJDK returns a configuration with the JDK and the standard library,
+// or skips t.
+func withJDK(t *testing.T) Config {
+	t.Helper()
+	cfg := withStdlib(t)
+	if _, err := classpath.FindJDK(); err != nil {
+		t.Skipf("no JDK (set JAVA_HOME): %v", err)
+	}
+	cfg.NoJDK = false
+	return cfg
+}
+
 // at returns the node of kind whose text is text, the nth (from 0).
 func at(t *testing.T, s *psi.Snapshot, kind, text string, nth int) psi.NodeRef {
 	t.Helper()
@@ -457,5 +469,79 @@ fun f() {
 		if f.Call == nil || f.Call.Name != want {
 			t.Errorf("%s: call %+v, want name %s", text, f.Call, want)
 		}
+	}
+}
+
+func TestTypeRefFacts(t *testing.T) {
+	src := `package p
+
+open class A<T>
+class D : A<Void>()
+typealias V = java.lang.Void
+lateinit var c: () -> Void
+val l: List<java.lang.Void?> = emptyList()
+fun <T : Comparable<T>> g(vararg xs: String, y: Any): Map<String, Int?> {
+    val z = y as List<String>
+    val b = y is Set<*>
+    val e = emptyList<Int>()
+    return emptyMap()
+}
+`
+	r, s := analyzed(t, withJDK(t), src)
+	want := map[string]string{
+		"A<Void>": "p.A", "Void": "java.lang.Void", "java.lang.Void": "java.lang.Void",
+		"java.lang.Void?": "java.lang.Void", "() -> Void": "kotlin.Function0",
+		"List<java.lang.Void?>": "kotlin.collections.List", "Comparable<T>": "kotlin.Comparable",
+		"Int?": "kotlin.Int", "Set<*>": "kotlin.collections.Set",
+	}
+	psi.WalkNodes(s.RootNode(), func(n psi.NodeRef) bool {
+		if n.NumericKind() != psi.KindTYPE_REFERENCE {
+			return true
+		}
+		f, ok := r.Fact(ElementID{s.ID(), n.ID()})
+		if !ok || f.Type == nil {
+			t.Errorf("%q at %d: no type", n.Text(), n.Range().Start)
+		} else if w, ok := want[n.Text()]; ok && f.Type.Name != w {
+			t.Errorf("%q: %s, want %s", n.Text(), f.Type.Name, w)
+		}
+		return true
+	})
+}
+
+func TestUnaryCallNames(t *testing.T) {
+	src := `package p
+
+fun f(b: Boolean, d: Double, c: Char) {
+    var i = 1
+    val a = -3
+    val l = -3L
+    val p = +3
+    val n = !b
+    val m = -d
+    i++
+    val q = c + 1
+    -(4)
+}
+`
+	r, s := analyzed(t, withStdlib(t), src)
+	for _, c := range []struct{ kind, text, want string }{
+		{"PREFIX_EXPRESSION", "-3", "kotlin.Int.unaryMinus"},
+		{"PREFIX_EXPRESSION", "-3L", "kotlin.Long.unaryMinus"},
+		{"PREFIX_EXPRESSION", "+3", "kotlin.Int.unaryPlus"},
+		{"PREFIX_EXPRESSION", "!b", "kotlin.Boolean.not"},
+		{"PREFIX_EXPRESSION", "-d", "kotlin.Double.unaryMinus"},
+		{"POSTFIX_EXPRESSION", "i++", "kotlin.Int.inc"},
+		{"PREFIX_EXPRESSION", "-(4)", "kotlin.Int.unaryMinus"},
+	} {
+		f := fact(t, r, at(t, s, c.kind, c.text, 0))
+		if f.Call == nil || f.Call.Name != c.want {
+			t.Errorf("%s: call %+v, want %s", c.text, f.Call, c.want)
+		}
+	}
+	if f := fact(t, r, at(t, s, "PREFIX_EXPRESSION", "-3", 0)); !f.UsedAsExpression || f.Type == nil || f.Type.Name != "kotlin.Int" {
+		t.Errorf("-3: %+v", f)
+	}
+	if f := fact(t, r, at(t, s, "PREFIX_EXPRESSION", "-(4)", 0)); f.UsedAsExpression {
+		t.Errorf("-(4) is a statement: %+v", f)
 	}
 }
