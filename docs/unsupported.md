@@ -123,6 +123,9 @@ yet done. [Design](design.md) describes how `kc` compiles it.
 - A lambda's parameter types are fixed from the constraints known when
   the lambda is reached; K2 picks the order from the whole system, so it
   infers some combinations of lambdas `kc` can't.
+- `@OnlyInputTypes` (`contains`, `get`, `assertEquals`) is checked only
+  when the types a call's variable is constrained by have no platform
+  types, projections or captured types, and aren't literals.
 - Java module exports aren't checked, and the Java members Kotlin
   replaces (`Number.intValue()`) aren't hidden.
 - A `return@label` without a value makes a lambda return `Unit`, even if

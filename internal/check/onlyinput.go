@@ -11,8 +11,9 @@ import "github.com/barteo/kotlin-compiler-go/internal/types"
 // which neither is: kotlinc reports that it can't infer T.
 //
 // kc checks a variable only when each of its constraints is a type
-// without variables, captures or a platform type's flexibility, which
-// it compares as K2 does; it leaves the others be.
+// without variables, type parameters (a star projection's), captures or
+// a platform type's flexibility, which it compares as K2 does; it leaves
+// the others be.
 
 // onlyInputOK reports whether val, inferred for tv, is the type of one of
 // its constraints, or kc can't tell.
@@ -27,7 +28,7 @@ func (s *system) onlyInputOK(tv *tvar, val types.Type) bool {
 	for _, cs := range [][]types.Type{tv.lower, tv.upper} {
 		for _, t := range cs {
 			t = s.apply(t)
-			if t.K == types.Invalid || t.HasVars() || hasFlex(t) || t.K == types.Nothing && !t.N {
+			if t.K == types.Invalid || t.HasVars() || t.HasParams() || hasFlex(t) || t.K == types.Nothing && !t.N {
 				return true
 			}
 			inputs = append(inputs, t)
