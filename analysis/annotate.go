@@ -79,7 +79,8 @@ func (b *builder) classAnnotationNames(c *types.ClassSym) []string {
 }
 
 // callAnnotations sets the annotations of the callee of c: f, or the
-// constructor of class ctor; its classes', outermost last; and, of the
+// constructor of class ctor; its class's, not those of the classes that
+// enclose it, as detekt reads the containing declaration's; and, of the
 // class path, its Java package's.
 func (b *builder) callAnnotations(c *Call, f *types.FunSym, ctor *types.ClassSym) {
 	owner := ctor
@@ -93,8 +94,8 @@ func (b *builder) callAnnotations(c *Call, f *types.FunSym, ctor *types.ClassSym
 			owner = f.Owner
 		}
 	}
-	for k := owner; k != nil; k = k.Outer {
-		c.OwnerAnnotations = append(c.OwnerAnnotations, b.classAnnotationNames(k)...)
+	if owner != nil {
+		c.OwnerAnnotations = b.classAnnotationNames(owner)
 	}
 	if owner != nil && owner.External {
 		c.PackageAnnotations = b.packageAnnotations(owner.Name)

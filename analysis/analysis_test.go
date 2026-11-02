@@ -583,7 +583,7 @@ fun f() {
 		t.Errorf("checked(): %+v", c)
 	}
 	c = fact(t, r, at(t, s, "CALL_EXPRESSION", "g()", 0)).Call
-	if c == nil || len(c.Annotations) != 0 || !slices.Equal(c.OwnerAnnotations, []string{"p.Marker", "p.CheckReturnValue"}) {
+	if c == nil || len(c.Annotations) != 0 || !slices.Equal(c.OwnerAnnotations, []string{"p.Marker"}) {
 		t.Errorf("g(): %+v", c)
 	}
 	c = fact(t, r, at(t, s, "CALL_EXPRESSION", "listOf(1)", 0)).Call

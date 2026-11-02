@@ -161,7 +161,8 @@ type Call struct {
 	TypeParameters     int      `json:"typeParameters,omitempty"`
 	TypeParameterNames []string `json:"typeParameterNames,omitempty"`
 	// Annotations are the fully qualified names of the callee's
-	// annotations, its class's and its package's.
+	// annotations, its class's (not an enclosing class's) and its Java
+	// package's.
 	Annotations        []string `json:"annotations,omitempty"`
 	OwnerAnnotations   []string `json:"ownerAnnotations,omitempty"`
 	PackageAnnotations []string `json:"packageAnnotations,omitempty"`
