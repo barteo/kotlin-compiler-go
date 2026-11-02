@@ -710,6 +710,10 @@ type lvalue struct {
 	// reread is set when reading calls an accessor, which ++x and --x
 	// call again for their value after storing, as kotlinc does.
 	reread bool
+	// wide is set with recv 3: the two-word receiver on top of the
+	// dispatch receiver, a member extension's of Long or Double, which
+	// no instruction duplicates (see dup3).
+	wide types.Type
 }
 
 // dupRecv duplicates what prepare pushed, for compound assignment.
@@ -719,6 +723,8 @@ func (g *gen) dupRecv(lv lvalue) {
 		g.code.Op(cf.DUP)
 	case 2:
 		g.code.Op(cf.DUP2)
+	case 3:
+		g.dup3(lv.wide, types.Type{})
 	}
 }
 
@@ -849,7 +855,10 @@ func (g *gen) lvalue(x syntax.Expr) lvalue {
 				lv.prepare, lv.recv = func() {
 					g.dispatch(x, f.Owner)
 					prepare()
-				}, 2
+				}, 1+size(f.Recv)
+				if lv.recv == 3 {
+					lv.wide = f.Recv
+				}
 				lv.load = func() {
 					g.callMethod(f, f.Owner, f.JVM(), funDesc(f))
 					g.coerce(types.JVMRet(f), t)
@@ -1097,6 +1106,8 @@ func (g *gen) dupBelow(lv lvalue, t types.Type) {
 		g.code.Op(cf.DUP_X1)
 	case lv.recv == 1:
 		g.code.Op(cf.DUP2_X1)
+	case lv.recv == 3:
+		g.dup3(lv.wide, t)
 	case !wide:
 		g.code.Op(cf.DUP_X2)
 	default:
@@ -1164,4 +1175,31 @@ func (g *gen) incDec(u *syntax.Unary) {
 func isPositive(v any) bool {
 	n, ok := v.(int64)
 	return ok && n > 0
+}
+
+// dup3 duplicates the receivers of an lvalue of three words, an object
+// under a value of two-word type wide, through locals. With a value of
+// type t above them, it instead copies that value below them, as
+// dupBelow does.
+func (g *gen) dup3(wide, t types.Type) {
+	var v int
+	if t.K != types.Invalid {
+		v = g.code.AllocLocal(desc(t))
+		g.code.Local(storeOp(t), v)
+	}
+	w := g.code.AllocLocal(desc(wide))
+	g.code.Local(storeOp(wide), w)
+	o := g.code.AllocLocal(objectDesc)
+	g.code.Local(cf.ASTORE, o)
+	if t.K != types.Invalid {
+		g.code.Local(loadOp(t), v)
+	} else {
+		g.code.Local(cf.ALOAD, o)
+		g.code.Local(loadOp(wide), w)
+	}
+	g.code.Local(cf.ALOAD, o)
+	g.code.Local(loadOp(wide), w)
+	if t.K != types.Invalid {
+		g.code.Local(loadOp(t), v)
+	}
 }
