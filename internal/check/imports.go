@@ -249,6 +249,10 @@ func (c *Checker) importMembers(owner *types.ClassSym, imp *syntax.Import) {
 		for _, name := range owner.Entries {
 			add(name)
 		}
+		if owner.Entries != nil { // declared with the class's members, later
+			add("values")
+			add("valueOf")
+		}
 		return
 	}
 	for name := range owner.Fields {
@@ -298,4 +302,19 @@ func (c *Checker) resolveAliasStars() {
 			c.errorf(s.imp.P, "unresolved import: %s.*", s.imp.Path)
 		}
 	}
+}
+
+// starObject returns the object a class's star import brings in under a
+// name that names cls, a class that isn't a value, in a nearer scope:
+// kotlinc looks further for a value, so C is object A.B.C under import
+// A.B.* though a class C without a companion is in the file's package.
+func (c *Checker) starObject(name string, cls *types.ClassSym) *types.ClassSym {
+	for _, owner := range c.starOwners {
+		if n := c.nestedOf(owner, name); n != nil && n != cls {
+			if obj := objectOf(n); obj != nil {
+				return obj
+			}
+		}
+	}
+	return nil
 }

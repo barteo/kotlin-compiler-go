@@ -91,7 +91,7 @@ func (c *Checker) typeName(x syntax.Expr) (string, bool) {
 	if len(parts) == 1 && (builtinTypeNames[name] || c.lookupTypeParam(name) != nil) {
 		return name, true
 	}
-	return name, c.lookupClass(name) != nil
+	return name, c.lookupClass(name) != nil || c.lookupAlias(name) != nil
 }
 
 // classLitType resolves the class on the left of :: in a class literal or,
