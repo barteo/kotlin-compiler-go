@@ -352,6 +352,9 @@ func (c *Checker) declAnnotations(d syntax.Decl, owner *types.ClassSym) {
 	case *syntax.PropDecl:
 		c.noReceiver(d.Annotations)
 		c.annotations(d.Annotations, owner, propSite(owner))
+		if !d.Mutable {
+			c.setOnImmutable(d.Annotations)
+		}
 		c.annotations(d.RecvAnnotations, owner, annotSite{})
 		c.typeParamAnnotations(d.TypeParams, owner)
 		c.signatureTypeAnnotations(owner, d.Recv, d.Type)
@@ -384,6 +387,9 @@ func (c *Checker) declAnnotations(d syntax.Decl, owner *types.ClassSym) {
 		for _, cp := range d.CtorParams {
 			c.noReceiver(cp.Modifiers.Annotations)
 			c.annotations(cp.Modifiers.Annotations, cls, ctorParamSite(cls, cp))
+			if cp.IsProp && !cp.Mutable {
+				c.setOnImmutable(cp.Modifiers.Annotations)
+			}
 		}
 		for _, e := range d.Entries {
 			c.annotations(e.Annotations, cls, enumEntrySite)
@@ -402,6 +408,16 @@ func (c *Checker) declAnnotations(d syntax.Decl, owner *types.ClassSym) {
 					c.annotations(p.Annotations, cls, paramSite)
 				}
 			}
+		}
+	}
+}
+
+// setOnImmutable reports the annotations among as of a val with the
+// use-site targets of a setter.
+func (c *Checker) setOnImmutable(as []syntax.Annotation) {
+	for _, a := range as {
+		if a.Target == "set" || a.Target == "setparam" {
+			c.errorf(a.P, "'@%s:' annotations could be applied only to mutable properties", a.Target)
 		}
 	}
 }

@@ -46,3 +46,18 @@ annotation class Holder(val value: Array<R2>, val other: Int = 0)
 annotation class R3 {
     class Container
 }
+
+// Setter use-site targets need a mutable property.
+annotation class Ann
+class Props {
+    @set:Ann val fixed = 1 // ERROR '@set:' annotations could be applied only to mutable properties
+    @set:Ann var free = 1
+}
+
+// @all: applies an annotation to the property, its field and its accessors,
+// so repeating it there repeats the annotation.
+@Target(AnnotationTarget.PROPERTY, AnnotationTarget.FIELD)
+annotation class Once
+class AllTargets {
+    @all:Once @field:Once val v = 0 // ERROR this annotation is not repeatable
+}

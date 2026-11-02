@@ -37,6 +37,9 @@ func (c *Checker) annotationClassOf(a *syntax.Annotation, owner *types.ClassSym,
 		switch {
 		case !strings.Contains(a.Name, ".") && annotTypeParam(a.Name, owner, c.tparams):
 			c.errorf(a.P, "not a class")
+		case c.lookupClass("kotlin.Suppress") == nil:
+			// Without the standard library on the class path, kc still
+			// knows its annotations by name, so a name can't be judged.
 		default:
 			c.errorf(a.P, "unresolved reference: %s", a.Name)
 		}
