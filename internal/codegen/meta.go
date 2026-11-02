@@ -1309,27 +1309,39 @@ func delegatedPropMeta(s *metaScope, cd *syntax.ClassDecl, name string, getter, 
 // with no JVM signatures.
 func localsMeta(s *metaScope, decls []syntax.Decl) []*kmeta.Property {
 	byN := map[int]*kmeta.Property{}
-	var nodes []any // the bodies the checker numbers them in
+	// The bodies the checker numbers them in, with the type parameters
+	// their types may use.
+	type body struct {
+		n any
+		s *metaScope
+	}
+	var nodes []body
+	s, _ = s.with(nil)
 	for _, d := range decls {
 		switch d := d.(type) {
 		case *syntax.PropDecl:
-			nodes = append(nodes, d.Init)
+			nodes = append(nodes, body{d.Init, s})
 			if d.Getter != nil && d.Ref == nil {
-				nodes = append(nodes, d.Getter.Body, d.Getter.ExprBody)
+				nodes = append(nodes, body{d.Getter.Body, s}, body{d.Getter.ExprBody, s})
 			}
 		case *syntax.FunDecl:
-			for _, p := range d.Params {
-				nodes = append(nodes, p.Default)
+			fs := s
+			if d.Sym != nil {
+				fs, _ = s.with(d.Sym.TypeParams)
 			}
-			nodes = append(nodes, d.Body, d.ExprBody)
+			for _, p := range d.Params {
+				nodes = append(nodes, body{p.Default, fs})
+			}
+			nodes = append(nodes, body{d.Body, fs}, body{d.ExprBody, fs})
 		case *syntax.InitBlock:
-			nodes = append(nodes, d.Body)
+			nodes = append(nodes, body{d.Body, s})
 		case *syntax.SecondaryCtor:
-			nodes = append(nodes, d.Body)
+			nodes = append(nodes, body{d.Body, s})
 		}
 	}
-	for _, n := range nodes {
-		syntax.Inspect(n, func(n any) bool {
+	for _, b := range nodes {
+		s := b.s
+		syntax.Inspect(b.n, func(n any) bool {
 			vs, ok := n.(*syntax.VarStmt)
 			if !ok || vs.Get == nil || vs.Sym == nil || len(vs.Get.Args) < 2 {
 				return true
