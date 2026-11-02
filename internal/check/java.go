@@ -248,14 +248,21 @@ func (t *classTable) load(cls *types.ClassSym) {
 	}
 	if cls.Name == "java/lang/Number" {
 		// Kotlin's Number converts with toInt() and the others, its
-		// intValue() methods on the JVM.
+		// intValue() methods on the JVM. They are all abstract, though
+		// Java's byteValue() and shortValue() aren't: a subclass of the
+		// program implements them, and has the Java methods as bridges.
 		for _, conv := range numberConversions {
 			for _, f := range cls.Methods[conv[1]] {
 				k := *f
-				k.Name, k.JVMName = conv[0], conv[1]
+				k.Name, k.JVMName, k.Abstract = conv[0], conv[1], true
 				cls.Methods[conv[0]] = append(cls.Methods[conv[0]], &k)
 			}
 		}
+		// And toChar(), which java.lang.Number doesn't have: kotlinc
+		// compiles its calls as toInt().toChar(), and an override is an
+		// ordinary method.
+		cls.Methods["toChar"] = append(cls.Methods["toChar"], &types.FunSym{Name: "toChar", Owner: cls, Ret: types.CharType,
+			Builtin: types.ToChar, Desc: "()C", Resolved: true})
 	}
 	for _, fd := range info.Fields {
 		if fd.Access&classfile.AccStatic == 0 && fd.Access&(classfile.AccPublic|classfile.AccProtected) != 0 && fd.Access&classfile.AccSynthetic == 0 {

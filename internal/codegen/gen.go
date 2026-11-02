@@ -1101,7 +1101,7 @@ func (g *gen) functionBody(fd *syntax.FunDecl) {
 				}
 			}
 		}
-		g.checkParams(sym.Contexts, fd.RecvSym, params)
+		g.checkParams(sym.Contexts, fd.RecvSym, g.collGuard(sym, params))
 	}
 	for _, i := range sym.BoxedParams {
 		p := sym.Params[i]
@@ -2720,6 +2720,11 @@ func (g *gen) bridge(nameDesc, targetName string, params []*types.VarSym, result
 		// kotlinc's, ordinary final ones.
 		access = cf.AccPublic | cf.AccFinal
 	}
+	if numberBridge[nameDesc] && numberClass(g.owner) != nil {
+		// java.lang.Number's intValue() and the others, which call toInt()
+		// and the others: as kotlinc's, ordinary final ones.
+		access = cf.AccPublic | cf.AccFinal
+	}
 	spread := d == types.VarArityDesc && len(params) > types.MaxArity
 	if spread {
 		access |= cf.AccFinal // as kotlinc's
@@ -2816,6 +2821,23 @@ func charSequenceClass(cls *types.ClassSym) *types.ClassSym {
 		return out == nil
 	})
 	return out
+}
+
+// numberBridge are the methods of java.lang.Number that Kotlin names
+// toInt() and the others.
+var numberBridge = map[string]bool{
+	"byteValue()B": true, "shortValue()S": true, "intValue()I": true,
+	"longValue()J": true, "floatValue()F": true, "doubleValue()D": true,
+}
+
+// numberClass returns java.lang.Number if cls is or extends it, or nil.
+func numberClass(cls *types.ClassSym) *types.ClassSym {
+	for s := cls; s != nil; s = s.Super {
+		if s.Name == "java/lang/Number" {
+			return s
+		}
+	}
+	return nil
 }
 
 // convertDesc converts the value on the stack from one erased type to

@@ -2244,6 +2244,11 @@ func (g *gen) builtinMember(x *syntax.Call, rt types.Type) {
 			g.code.Invoke(cf.INVOKESTATIC, "java/lang/Integer", "parseInt", "(Ljava/lang/String;)I")
 			return
 		}
+		if numberClass(rt.C) != nil {
+			// Number.toChar(), which is toInt().toChar().
+			g.code.Invoke(cf.INVOKEVIRTUAL, "java/lang/Number", "intValue", "()I")
+			rt = types.IntType
+		}
 		g.convert(rt, builtinRet(x))
 	case types.StrGet:
 		g.exprAs(x.Args[0], types.IntType)

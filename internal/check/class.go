@@ -887,6 +887,9 @@ func (c *Checker) inheritedBridges(d *syntax.ClassDecl) {
 						add(syntax.InheritedBridge{Bridge: od.setter, Target: st.JVM(), Params: st.Params, Ret: types.UnitType}, st.JVM()+types.FunDesc(st))
 					}
 					break
+				} else if nd, t := c.javaProp(sc, name); nd != "" {
+					add(syntax.InheritedBridge{Bridge: od.getter, Target: nd[:strings.IndexByte(nd, '(')], Ret: t}, nd)
+					break
 				}
 			}
 		}
@@ -1012,10 +1015,10 @@ func (c *Checker) checkImplemented(d *syntax.ClassDecl) {
 		}
 		for name, fs := range s.Methods {
 			for _, g := range fs {
-				if !g.Abstract || g.Static || s.Java != nil && g.Platform {
+				if !g.Abstract || g.Static || s.Java != nil && g.Platform || numberJavaName(s, g) {
 					continue
 				}
-				if !c.implemented(cls, this, g) && !(s.Java != nil && concreteInSuper(cls, g.JVM()+types.FunDesc(g))) {
+				if !c.implemented(cls, this, g) && !(s.Java != nil && concreteInSuper(cls, g.JVM()+types.FunDesc(g))) && !numberImplemented(cls, s, g) {
 					missing(name)
 				}
 				if s.Interface && hasDefaults(g) && !inlineReported {
@@ -1039,7 +1042,7 @@ func (c *Checker) checkImplemented(d *syntax.ClassDecl) {
 		if !s.External {
 			for _, p := range s.Props {
 				if p.Abstract {
-					if q := c.implementingProp(cls, s, p.Name, p.Contexts); q == nil || q.Abstract {
+					if q := c.implementingProp(cls, s, p.Name, p.Contexts); (q == nil || q.Abstract) && (p.Mutable || !c.javaPropImplements(cls, this, s, p.Name, p.Type, p.Contexts)) {
 						missing(p.Name)
 					}
 				}
@@ -1048,7 +1051,8 @@ func (c *Checker) checkImplemented(d *syntax.ClassDecl) {
 		for name, kp := range s.KProps {
 			for kp := range kpropAlts(kp) {
 				if kp.Getter.Abstract {
-					if q := c.implementingProp(cls, s, name, kp.Getter.Contexts); (q == nil || q.Abstract) && !concreteInSuper(cls, kp.Getter.JVM()+types.FunDesc(kp.Getter)) {
+					if q := c.implementingProp(cls, s, name, kp.Getter.Contexts); (q == nil || q.Abstract) && !concreteInSuper(cls, kp.Getter.JVM()+types.FunDesc(kp.Getter)) &&
+						(kp.Setter != nil || !c.javaPropImplements(cls, this, s, name, kp.Getter.Ret, kp.Getter.Contexts)) {
 						missing(name)
 					}
 				}
@@ -1494,4 +1498,88 @@ func memberDesc(f *types.FunSym) string {
 		d = cd[:len(cd)-1] + d[1:]
 	}
 	return d
+}
+
+// numberJavaName reports whether g is one of java.lang.Number's methods
+// under its Java name, intValue(): Kotlin sees it as Number's toInt(),
+// which a subclass implements instead, and which numberConversions adds.
+func numberJavaName(s *types.ClassSym, g *types.FunSym) bool {
+	if s.Name != "java/lang/Number" || len(g.Params) != 0 {
+		return false
+	}
+	for _, conv := range numberConversions {
+		if g.Name == conv[1] {
+			return true
+		}
+	}
+	return false
+}
+
+// javaProp returns the method of class s of the class path, with code,
+// that Kotlin sees as the property name of its Kotlin type: size() of a
+// collection or a map, name() and ordinal() of an Enum. It returns its JVM
+// name and descriptor and the property's type, or "".
+func (c *Checker) javaProp(s *types.ClassSym, name string) (string, types.Type) {
+	if !s.External || s.Interface {
+		return "", types.InvalidType
+	}
+	var nd string
+	var t types.Type
+	switch {
+	case name == "size" && c.hasSize(s):
+		nd, t = "size()I", types.IntType
+	case name == "ordinal" && c.isSubclassOf(s, "java/lang/Enum"):
+		nd, t = "ordinal()I", types.IntType
+	case name == "name" && c.isSubclassOf(s, "java/lang/Enum"):
+		nd, t = "name()Ljava/lang/String;", types.StringType
+	default:
+		return "", types.InvalidType
+	}
+	s.Ensure()
+	if acc, ok := s.JVMMethods[nd]; !ok || acc&classfile.AccAbstract != 0 {
+		return "", types.InvalidType
+	}
+	return nd, t
+}
+
+// javaPropImplements reports whether a superclass of cls on the class
+// path implements property name of interface s, of type t as s declares
+// it, with a method that Kotlin sees as a property (see javaProp): an
+// enum's name implements an interface's val name: String.
+func (c *Checker) javaPropImplements(cls *types.ClassSym, this types.Type, s *types.ClassSym, name string, t types.Type, ctx []*types.VarSym) bool {
+	if !s.Interface || len(ctx) > 0 {
+		return false
+	}
+	for sc := cls.Super; sc != nil; sc = sc.Super {
+		if !sc.External {
+			continue
+		}
+		if _, pt := c.javaProp(sc, name); pt.K != types.Invalid {
+			return c.subtype(pt, c.memberSubst(this, s).Apply(t))
+		}
+	}
+	return false
+}
+
+// numberImplemented reports whether g, Kotlin's Number.toInt() or one of
+// the others, is implemented by its Java method, intValue(), for a class
+// cls that extends a subclass of Number on the class path, such as
+// AtomicInteger, which declares it.
+func numberImplemented(cls, s *types.ClassSym, g *types.FunSym) bool {
+	if s.Name != "java/lang/Number" || g.JVMName == "" {
+		return false
+	}
+	// As with kotlinc, Number's own byteValue() doesn't implement toByte():
+	// AtomicInteger's subclass must.
+	nd := g.JVMName + types.FunDesc(g)
+	for sc := cls.Super; sc != nil && sc != s; sc = sc.Super {
+		if !sc.External {
+			continue
+		}
+		sc.Ensure()
+		if acc, ok := sc.JVMMethods[nd]; ok {
+			return acc&classfile.AccAbstract == 0
+		}
+	}
+	return false
 }
