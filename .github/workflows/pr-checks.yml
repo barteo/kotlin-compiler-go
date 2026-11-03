@@ -64,7 +64,7 @@ jobs:
   # programs under test, so they are split among runners. The driver
   # package takes most of the time; its last shard skips the tests of the
   # others, so that a new test runs there.
-  test-shard:
+  test:
     name: Test (${{ matrix.name }})
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -139,20 +139,3 @@ jobs:
           fi
           echo "No tests skipped for a missing tool."
 
-  # One check for the shards, so that a branch protection rule can require
-  # it without naming each shard.
-  test:
-    name: Test
-    needs: test-shard
-    if: ${{ always() }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Check that every shard passed
-        run: |
-          if [ "$RESULT" != success ]; then
-            echo "::error::Test shards: $RESULT"
-            exit 1
-          fi
-        env:
-          RESULT: ${{ needs.test-shard.result }}
