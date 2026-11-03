@@ -194,7 +194,9 @@ func (c *Checker) expr1(x syntax.Expr, want types.Type, allowRange bool, sink *s
 	case *syntax.PropRef:
 		return c.propRef(x)
 	case *syntax.ObjectExpr:
-		return c.objectExpr(x)
+		t := c.objectExpr(x)
+		c.scope.narrows = append(c.scope.narrows, c.superArgNarrows(x)...)
+		return t
 	case *syntax.StringLit:
 		for _, p := range x.Parts {
 			if p.X != nil {
@@ -248,6 +250,7 @@ func (c *Checker) expr1(x syntax.Expr, want types.Type, allowRange bool, sink *s
 			k.t = k.t.NonNull()
 			c.scope.narrows = append(append(c.scope.narrows, k), c.implied[c.localKey(k)]...)
 		}
+		c.scope.narrows = append(c.scope.narrows, c.notNullCast(x.X)...)
 		return t.NonNull()
 	case *syntax.Spread:
 		// An argument for a vararg parameter: resolve checks where it goes.
@@ -721,7 +724,8 @@ func (c *Checker) binary(x *syntax.Binary, want types.Type, allowRange bool) typ
 		if want.K != types.Invalid && want.K != types.Unit {
 			xw = want.Nullable()
 		}
-		xt := c.safeUnit(x.X, c.value(x.X, xw)) // x?.f() ?: y for a Unit f
+		xt := c.safeUnit(x.X, c.value(x.X, xw))               // x?.f() ?: y for a Unit f
+		nn, nonNull := len(c.scope.narrows), c.notNullOf(x.X) // the right side's casts may not run
 		var yt types.Type
 		if want.K == types.Invalid && xt.K != types.Invalid {
 			// The right side expects the left's type, unless it can't be
@@ -741,6 +745,7 @@ func (c *Checker) binary(x *syntax.Binary, want types.Type, allowRange bool) typ
 		} else {
 			yt = c.elvisRight(x.Y, want, xt, false)
 		}
+		c.mayNotRun(nn, nonNull)
 		t, ok := c.join(xt.NonNull(), yt)
 		if !ok {
 			c.errorf(x.P, "type mismatch: incompatible types %s and %s", xt.NonNull(), yt)
@@ -749,6 +754,7 @@ func (c *Checker) binary(x *syntax.Binary, want types.Type, allowRange bool) typ
 		if yt.K == types.Nothing {
 			// x ?: return: the code after it sees x not null.
 			c.scope.narrows = append(c.scope.narrows, c.equalNonNull(x.X)...)
+			c.scope.narrows = append(c.scope.narrows, c.notNullCast(x.X)...)
 		}
 		if yt.P {
 			// a ?: javaCall() is of a platform type, as the Java value:
@@ -1303,9 +1309,9 @@ func (c *Checker) narrowing(cond syntax.Expr) (whenTrue, whenFalse []narrow) {
 			ok := false
 			ynull, xnull := isNull(x.Y), isNull(x.X)
 			if ynull {
-				k, ok = c.narrowKeyOf(x.X)
+				k, ok = c.chainKeyOf(x.X)
 			} else if xnull {
-				k, ok = c.narrowKeyOf(x.Y)
+				k, ok = c.chainKeyOf(x.Y)
 			}
 			var n, null []narrow
 			if ok && types.MayBeNull(k.t) {
@@ -1349,19 +1355,21 @@ func (c *Checker) narrowing(cond syntax.Expr) (whenTrue, whenFalse []narrow) {
 			// The right side ran if a && b is true: its x!! smart-cast x.
 			// The right side's smart casts build on the left's: x is Int?
 			// && x != null makes x an Int.
-			t1, _ := c.narrowing(x.X)
+			t1, f1 := c.narrowing(x.X)
 			c.push()
 			c.scope.narrows = t1
-			t2, _ := c.narrowing(x.Y)
+			t2, f2 := c.narrowing(x.Y)
 			c.pop()
-			return append(append(t1[:len(t1):len(t1)], t2...), c.asserted(x.Y)...), nil
+			return append(append(t1[:len(t1):len(t1)], t2...), c.asserted(x.Y)...), c.eitherNarrows(f1, t1, f2)
+		case syntax.ELVIS:
+			return c.elvisNarrowing(x)
 		case syntax.OR:
-			_, f1 := c.narrowing(x.X)
+			t1, f1 := c.narrowing(x.X)
 			c.push()
 			c.scope.narrows = f1
-			_, f2 := c.narrowing(x.Y)
+			t2, f2 := c.narrowing(x.Y)
 			c.pop()
-			return nil, append(append(f1[:len(f1):len(f1)], f2...), c.asserted(x.Y)...)
+			return c.eitherNarrows(t1, f1, t2), append(append(f1[:len(f1):len(f1)], f2...), c.asserted(x.Y)...)
 		}
 	case *syntax.Unary:
 		if x.Op == syntax.NOT {
@@ -1389,6 +1397,9 @@ func (c *Checker) narrowing(cond syntax.Expr) (whenTrue, whenFalse []narrow) {
 		}
 		k.t = c.isNarrowed(k.t, x.Target)
 		n := []narrow{k}
+		if !types.MayBeNull(k.t) {
+			n = append(n, c.implied[c.localKey(k)]...) // as for k != null
+		}
 		if x.Not {
 			return nil, n
 		}
@@ -1560,7 +1571,7 @@ func (c *Checker) safeReceivers(x syntax.Expr) []narrow {
 	if recv == nil {
 		return nil
 	}
-	return c.equalNonNull(recv)
+	return append(c.equalNonNull(recv), c.safeArgCasts(x)...)
 }
 
 // equalNonNull returns the smart casts implied by x being equal to a
@@ -1816,7 +1827,7 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 		}
 		ensureVar(x.Prop)
 		t = c.memberSubst(rt, x.Prop.Owner).Apply(x.Prop.Type)
-		if !x.Safe && c.stableMember(x.Prop) {
+		if !x.Safe && c.stableOn(x.Prop, rt) {
 			// A smart cast of a.b.
 			x.T = t
 			if k, ok := c.narrowKeyOf(x); ok && k.t != t {
@@ -3352,7 +3363,8 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 				nullFirst = false
 				if bt.K == types.Nothing {
 					if hasSubj && types.MayBeNull(subjType()) {
-						afterNull = append(afterNull, narrow{recv: subj.recv, sym: subj.sym, t: subjType().NonNull()})
+						n := narrow{recv: subj.recv, sym: subj.sym, t: subjType().NonNull()}
+						afterNull = append(append(afterNull, n), c.implied[c.localKey(n)]...)
 					}
 					afterNull = append(afterNull, c.safeReceivers(x.Subject)...)
 				}
