@@ -282,7 +282,7 @@ func (c *Checker) importedAlias(path string) *types.AliasSym {
 			return a
 		}
 	}
-	if owner := c.importOwner(pkg); owner != nil && !owner.External {
+	if owner := c.importOwner(pkg); owner != nil {
 		return owner.Aliases[simple]
 	}
 	return nil

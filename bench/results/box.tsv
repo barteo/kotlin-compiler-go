@@ -1415,18 +1415,18 @@ controlStructures/breakContinueInExpressions/breakInLoopConditions.kt	pass
 controlStructures/breakContinueInExpressions/continueInDoWhile.kt	pass		
 controlStructures/breakContinueInExpressions/continueInExpr.kt	pass		
 controlStructures/breakContinueInExpressions/inlineWithStack.kt	pass		
-controlStructures/breakContinueInExpressions/inlinedBreakContinue/continueInTryBlock.kt	skip	LANGUAGE	
-controlStructures/breakContinueInExpressions/inlinedBreakContinue/initializerBlock.kt	skip	LANGUAGE	
-controlStructures/breakContinueInExpressions/inlinedBreakContinue/inlineConstructor.kt	skip	LANGUAGE	
-controlStructures/breakContinueInExpressions/inlinedBreakContinue/inlineFunctionWithMultipleParameters.kt	skip	LANGUAGE	
-controlStructures/breakContinueInExpressions/inlinedBreakContinue/lambdaPassedToInlineFunction.kt	skip	LANGUAGE	
-controlStructures/breakContinueInExpressions/inlinedBreakContinue/loopWithinInlineFunction.kt	skip	LANGUAGE	
-controlStructures/breakContinueInExpressions/inlinedBreakContinue/simple.kt	skip	LANGUAGE	
-controlStructures/breakContinueInExpressions/inlinedBreakContinue/simpleDoWhile.kt	skip	LANGUAGE	
-controlStructures/breakContinueInExpressions/inlinedBreakContinue/stdlibFunctions.kt	skip	LANGUAGE	
-controlStructures/breakContinueInExpressions/inlinedBreakContinue/withReturnValue.kt	skip	LANGUAGE	
-controlStructures/breakContinueInExpressions/inlinedBreakContinue/withReturnValueDoWhileContinue.kt	skip	LANGUAGE	
-controlStructures/breakContinueInExpressions/inlinedBreakContinue/withReturnValueNested.kt	skip	LANGUAGE	
+controlStructures/breakContinueInExpressions/inlinedBreakContinue/continueInTryBlock.kt	pass		
+controlStructures/breakContinueInExpressions/inlinedBreakContinue/initializerBlock.kt	pass		
+controlStructures/breakContinueInExpressions/inlinedBreakContinue/inlineConstructor.kt	pass		
+controlStructures/breakContinueInExpressions/inlinedBreakContinue/inlineFunctionWithMultipleParameters.kt	pass		
+controlStructures/breakContinueInExpressions/inlinedBreakContinue/lambdaPassedToInlineFunction.kt	pass		
+controlStructures/breakContinueInExpressions/inlinedBreakContinue/loopWithinInlineFunction.kt	pass		
+controlStructures/breakContinueInExpressions/inlinedBreakContinue/simple.kt	pass		
+controlStructures/breakContinueInExpressions/inlinedBreakContinue/simpleDoWhile.kt	pass		
+controlStructures/breakContinueInExpressions/inlinedBreakContinue/stdlibFunctions.kt	pass		
+controlStructures/breakContinueInExpressions/inlinedBreakContinue/withReturnValue.kt	pass		
+controlStructures/breakContinueInExpressions/inlinedBreakContinue/withReturnValueDoWhileContinue.kt	pass		
+controlStructures/breakContinueInExpressions/inlinedBreakContinue/withReturnValueNested.kt	pass		
 controlStructures/breakContinueInExpressions/innerLoopWithStack.kt	pass		
 controlStructures/breakContinueInExpressions/kt14581.kt	pass		
 controlStructures/breakContinueInExpressions/kt16713.kt	pass		
@@ -5495,20 +5495,20 @@ properties/accessorForProtectedPropertyWithPrivateSetterInObjectLiteral.kt	pass
 properties/accessorForProtectedPropertyWithPrivateSetterViaSuper.kt	pass		
 properties/accessorForProtectedPropertyWithPrivateSetterWithIntermediateClass.kt	pass		
 properties/augmentedAssignmentsAndIncrements.kt	pass		
-properties/backingField/anyPropertyWithValueClassExplicitBackingField.kt	skip	LANGUAGE	
-properties/backingField/anySupertypeValueClassAnyMethodsWithExplicitBackingField.kt	skip	LANGUAGE	
-properties/backingField/backingFieldAndPropertyWithTheSameName.kt	skip	LANGUAGE	
-properties/backingField/backingFieldInitializedInInit.kt	skip	LANGUAGE	
-properties/backingField/backingFieldWithSmartTypeParameters.kt	skip	LANGUAGE	
-properties/backingField/equalsHashCodeWithValueClassExplicitBackingFieldAndSupertype.kt	skip	LANGUAGE	
-properties/backingField/explicitFieldCallableReference.kt	skip	LANGUAGE	
-properties/backingField/genericSupertypeWithValueClassExplicitBackingField.kt	skip	LANGUAGE	
-properties/backingField/multipleInterfacesExplicitBackingField.kt	skip	LANGUAGE	
-properties/backingField/nullableAnySupertypeWithValueClassExplicitBackingField.kt	skip	LANGUAGE	
-properties/backingField/nullableSupertypeWithValueClassExplicitBackingField.kt	skip	LANGUAGE	
-properties/backingField/overrideWithExplicitBackingField.kt	skip	LANGUAGE	
-properties/backingField/supertypePropertyWithValueClassExplicitBackingField.kt	skip	LANGUAGE	
-properties/backingField/typeCheckSupertypeWithValueClassExplicitBackingField.kt	skip	LANGUAGE	
+properties/backingField/anyPropertyWithValueClassExplicitBackingField.kt	pass		
+properties/backingField/anySupertypeValueClassAnyMethodsWithExplicitBackingField.kt	pass		
+properties/backingField/backingFieldAndPropertyWithTheSameName.kt	pass		
+properties/backingField/backingFieldInitializedInInit.kt	pass		
+properties/backingField/backingFieldWithSmartTypeParameters.kt	pass		
+properties/backingField/equalsHashCodeWithValueClassExplicitBackingFieldAndSupertype.kt	pass		
+properties/backingField/explicitFieldCallableReference.kt	pass		
+properties/backingField/genericSupertypeWithValueClassExplicitBackingField.kt	pass		
+properties/backingField/multipleInterfacesExplicitBackingField.kt	pass		
+properties/backingField/nullableAnySupertypeWithValueClassExplicitBackingField.kt	pass		
+properties/backingField/nullableSupertypeWithValueClassExplicitBackingField.kt	pass		
+properties/backingField/overrideWithExplicitBackingField.kt	pass		
+properties/backingField/supertypePropertyWithValueClassExplicitBackingField.kt	pass		
+properties/backingField/typeCheckSupertypeWithValueClassExplicitBackingField.kt	pass		
 properties/classArtificialFieldInsideNested.kt	pass		
 properties/classFieldInsideLambda.kt	pass		
 properties/classFieldInsideLocalInSetter.kt	pass		
@@ -6615,11 +6615,11 @@ reified/callChain.kt	pass
 reified/callableReferenceInlinedFun.kt	pass		
 reified/callableReferenceInlinedFunFromOtherModule.kt	pass		
 reified/capture.kt	pass		
-reified/catchParameter/nestedReifiedCatch.kt	skip	LANGUAGE	
-reified/catchParameter/nullableExceptionType.kt	skip	LANGUAGE	
-reified/catchParameter/nullableNothing.kt	skip	LANGUAGE	
-reified/catchParameter/reificationClash.kt	skip	LANGUAGE	
-reified/catchParameter/tryCatchReifiedType.kt	skip	LANGUAGE	
+reified/catchParameter/nestedReifiedCatch.kt	pass		
+reified/catchParameter/nullableExceptionType.kt	pass		
+reified/catchParameter/nullableNothing.kt	skip	IGNORE_BACKEND: JVM_IR	
+reified/catchParameter/reificationClash.kt	pass		
+reified/catchParameter/tryCatchReifiedType.kt	pass		
 reified/checkcast.kt	pass		
 reified/copyToArray.kt	pass		
 reified/extensionFun.kt	pass		
@@ -6843,7 +6843,7 @@ storeStackBeforeInline/simple.kt	pass
 storeStackBeforeInline/unreachableMarker.kt	pass		
 storeStackBeforeInline/withLambda.kt	pass		
 stringTrim/stringTrim.kt	pass		
-strings/MultiDollarInterpolation.kt	skip	LANGUAGE	
+strings/MultiDollarInterpolation.kt	pass		
 strings/charSequenceGet.kt	pass		
 strings/charSequenceSubSequence.kt	pass		
 strings/concatDynamicWithConstants.kt	pass		
@@ -7101,7 +7101,7 @@ typealias/extensionFunction.kt	pass
 typealias/genericTypeAliasConstructor.kt	pass		
 typealias/genericTypeAliasConstructor2.kt	pass		
 typealias/genericTypeAliasConstructor_implicitTypeArguments.kt	pass		
-typealias/importNestedTypealiasFromAnotherModule.kt	skip	LANGUAGE	
+typealias/importNestedTypealiasFromAnotherModule.kt	pass		
 typealias/incorrectTypeOfTypealiasForSuspendFTMM.kt	pass		
 typealias/incorrectTypeOfTypealiasForSuspendFunctionalType.kt	pass		
 typealias/innerClassTypeAliasConstructor.kt	pass		
@@ -7109,8 +7109,8 @@ typealias/innerClassTypeAliasConstructorInSupertypes.kt	pass
 typealias/kt15109.kt	pass		
 typealias/kt45308.kt	pass		
 typealias/localTypeAliases.kt	skip	LANGUAGE	
-typealias/nestedTypeAliasesAndStaticScope.kt	skip	LANGUAGE	
-typealias/nestedTypeAliasesAndTypeArguments.kt	skip	LANGUAGE	
+typealias/nestedTypeAliasesAndStaticScope.kt	pass		
+typealias/nestedTypeAliasesAndTypeArguments.kt	pass		
 typealias/objectLiteralConstructor.kt	pass		
 typealias/privateInKlib.kt	pass		
 typealias/simple.kt	pass		
@@ -7402,10 +7402,10 @@ when/exhaustiveBreakContinue.kt	pass
 when/exhaustiveCheckException.kt	skip	TARGET_BACKEND: JS_IR, JS_IR_ES6	
 when/exhaustiveWhenInitialization.kt	pass		
 when/exhaustiveWhenReturn.kt	pass		
-when/exhaustiveness/exhaustiveWithNegativeBoolean.kt	skip	LANGUAGE	
-when/exhaustiveness/exhaustiveWithNegativeEnum.kt	skip	LANGUAGE	
-when/exhaustiveness/exhaustiveWithNegativeSealed.kt	skip	LANGUAGE	
-when/guard/whenWithGuard.kt	skip	LANGUAGE	
+when/exhaustiveness/exhaustiveWithNegativeBoolean.kt	pass		
+when/exhaustiveness/exhaustiveWithNegativeEnum.kt	pass		
+when/exhaustiveness/exhaustiveWithNegativeSealed.kt	pass		
+when/guard/whenWithGuard.kt	pass		
 when/implicitExhaustiveAndReturn.kt	pass		
 when/inferredTypeParameters.kt	pass		
 when/integralWhenWithNoInlinedConstants.kt	pass		

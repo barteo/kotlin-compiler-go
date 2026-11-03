@@ -263,7 +263,7 @@ func (c *Checker) innerType(ref *syntax.TypeRef) types.Type {
 		}
 		outer = cls.Outer.This()
 	}
-	sup, ok := c.asSuper(outer, cls.Outer)
+	sup, ok := c.outerAs(outer, cls.Outer)
 	if !ok {
 		c.errorf(ref.P, "%s is not an inner class of %s", ref.Name, outer)
 		return types.InvalidType
@@ -272,4 +272,26 @@ func (c *Checker) innerType(ref *syntax.TypeRef) types.Type {
 		args = append(args, sup.A.Get(i))
 	}
 	return c.nullable(types.GenericType(cls, args), ref)
+}
+
+// outerAs returns outer, the type written before an inner class's name, as
+// a type of k, the inner class's outer class. k is outer's class or one of
+// its supertypes, or an inner class of one without type parameters of its
+// own: Foo<String>.Inner for Foo<String>.Inner.Deeper<A>.
+func (c *Checker) outerAs(outer types.Type, k *types.ClassSym) (types.Type, bool) {
+	if sup, ok := c.asSuper(outer, k); ok {
+		return sup, true
+	}
+	if !k.Inner || k.Outer == nil || len(k.TypeParams) != k.OuterParams {
+		return types.Type{}, false
+	}
+	sup, ok := c.outerAs(outer, k.Outer)
+	if !ok {
+		return types.Type{}, false
+	}
+	args := make([]types.Arg, len(k.TypeParams))
+	for i := range args {
+		args[i] = sup.A.Get(i)
+	}
+	return types.GenericType(k, args), true
 }

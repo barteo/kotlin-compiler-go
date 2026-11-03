@@ -2,6 +2,7 @@ package codegen
 
 import (
 	cf "github.com/barteo/kotlin-compiler-go/internal/classfile"
+	"github.com/barteo/kotlin-compiler-go/internal/inline"
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
 	"github.com/barteo/kotlin-compiler-go/internal/types"
 )
@@ -66,8 +67,15 @@ func (g *gen) try(x *syntax.Try, t types.Type, value bool) {
 	g.normalExit(t, value, end)
 	for _, cb := range x.Catches {
 		h := cf.NewLabel()
-		g.code.Catch(snap, ranges, h, instanceClass(cb.Sym.Type))
+		// catch (e: E) for a reified E catches E's type argument; in an
+		// inline function's own code, its erasure, with kotlinc's marker
+		// for inliners.
+		ct := g.reify(cb.Sym.Type)
+		g.code.Catch(snap, ranges, h, instanceClass(ct))
 		g.code.Place(h)
+		if g.reifiedParam(ct) {
+			g.reifiedMarker(ct, inline.Catch)
+		}
 		cstart := g.code.Pos()
 		scope := g.code.Scope()
 		g.setSlot(cb.Sym, g.code.AllocLocal(desc(cb.Sym.Type)))
