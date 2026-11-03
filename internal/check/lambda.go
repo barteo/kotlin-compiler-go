@@ -1512,15 +1512,19 @@ func (c *Checker) runLambdas(s *system, readyOnly bool) {
 			ready = ready && !(endsInLambda(pl.l) && c.lambdaResultOpen(s, pl))
 			// One passed for a variable without bounds waits for the call
 			// it is an argument of, which may give it a function type.
-			ready = ready && !(untypedParams(pl.l) && s.openVar(pl.p))
+			ready = ready && !((untypedParams(pl.l) || untypedResult(pl.l)) && s.openVar(pl.p))
 		}
 		if !ready {
 			rest = append(rest, pl)
 			continue
 		}
+		p := pl.p
+		if tv := s.unfixedVar(s.apply(p)); tv != nil && !readyOnly {
+			p = s.funcShape(tv, p)
+		}
 		saved := c.scope
 		c.scope = pl.scope
-		c.postponedLambda(s, pl.l, pl.p)
+		c.postponedLambda(s, pl.l, p)
 		c.scope = saved
 	}
 	s.lambdas = rest

@@ -157,7 +157,9 @@ func (c *Checker) readyFirst(s *system) {
 		// An anonymous function whose parameters have types has a type
 		// of its own, which the others passed for its variable then take:
 		// select(id { this }, fun Int.() = this).
-		ok := s.unfixedVar(s.apply(pl.p)) == nil || pl.l.Anon && !untypedParams(pl.l)
+		// Not one that the function type its variable is below types.
+		tv := s.unfixedVar(s.apply(pl.p))
+		ok := tv == nil || pl.l.Anon && !untypedParams(pl.l) && s.funcShape(tv, pl.p) == pl.p
 		for _, p := range c.inputs(s, pl) {
 			ok = ok && s.known(p)
 		}
@@ -175,4 +177,28 @@ func (c *Checker) readyFirst(s *system) {
 // val a by MyProperty() for getValue(thisRef: R, ...).
 func untypedDelegate(p *syntax.PropDecl) bool {
 	return p != nil && p.Sym != nil && p.Type == nil
+}
+
+// funcShape returns the function type, with variables, that variable tv
+// is below, if it has no other bounds, or p: a lambda passed for tv has
+// that type, whose result it constrains, and tv is then fixed to it:
+// { materialize() } of run(select({ materialize() }, ...)) for an Int
+// is a () -> R, R of run's, whose Int infers materialize's T.
+func (s *system) funcShape(tv *tvar, p types.Type) types.Type {
+	if len(tv.lower) > 0 || len(tv.upper) != 1 {
+		return p
+	}
+	if u := s.apply(tv.upper[0]); u.HasVars() && u.Flex().IsFunc() && s.unfixedVar(u) == nil {
+		return u
+	}
+	return p
+}
+
+// untypedResult reports whether lambda l is an anonymous function
+// without parameters whose result type is its expression body's, which
+// takes the expected type: fun() = materialize(). One with parameters
+// has their types to choose its call's overload with, as
+// foo(1, id(fun(x: Int) = x)) does.
+func untypedResult(l *syntax.Lambda) bool {
+	return l.Anon && l.AnonRet == nil && !l.AnonUnit && len(l.Params) == 0 && l.AnonRecv == nil
 }
