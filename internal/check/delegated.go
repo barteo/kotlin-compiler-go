@@ -43,7 +43,9 @@ func (c *Checker) localDelegate(s *syntax.VarStmt) {
 	}
 	var dt types.Type
 	provided := noWant
-	if s.Type != nil && want.K == types.Invalid && t.K != types.Invalid {
+	if want.K == types.Invalid && (s.Type == nil || t.K != types.Invalid) {
+		// Without a type, getValue's thisRef, a Nothing?, still infers
+		// the delegate's: T of a ReadOnlyProperty { _, p -> p }.
 		null := types.NothingType.Nullable()
 		dt, provided = c.inferDelegate(s.Delegate, t, null, null, s.Mutable)
 	} else {
@@ -101,8 +103,7 @@ func (c *Checker) localDelegate(s *syntax.VarStmt) {
 // noWant if it has none.
 func (c *Checker) inferDelegate(x syntax.Expr, pt, owner, this types.Type, mutable bool) (types.Type, types.Type) {
 	s := newSystem(c)
-	c.sink = s
-	t := c.value(x, noWant)
+	t := c.delegateValue(x, s)
 	// A constraint that can't hold is left out, for the operator calls'
 	// own checks to report.
 	try := func(a, b types.Type) {
@@ -120,12 +121,16 @@ func (c *Checker) inferDelegate(x syntax.Expr, pt, owner, this types.Type, mutab
 	}
 	if ps, r, ok := c.delegateOp(s, rt, "getValue", pos); ok {
 		try(this, ps[0])
-		try(r, pt)
+		if pt.K != types.Invalid {
+			try(r, pt)
+		}
 	}
 	if mutable {
 		if ps, _, ok := c.delegateOp(s, rt, "setValue", pos); ok {
 			try(this, ps[0])
-			try(pt, ps[2])
+			if pt.K != types.Invalid {
+				try(pt, ps[2])
+			}
 		}
 	}
 	c.runLambdas(s, false)

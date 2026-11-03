@@ -192,6 +192,20 @@ func projectionConflicts(t types.Type, p *types.TypeParamSym, v types.Variance) 
 // ArrayList<String>. Type arguments of the call are the alias's.
 func (c *Checker) aliasConstruct(x *syntax.Call, a *types.AliasSym, cls *types.ClassSym, p syntax.Pos, want types.Type, sink *system) types.Type {
 	c.checkAliasVisible(a, p)
+	if c.inferAliasArgs[x] || len(x.TypeArgs) == 0 && len(a.TypeParams) > 0 && !bareAlias(a) && a.Type.K == types.Class && a.Type.C == cls {
+		// Alias(x) infers the alias's type arguments, as Alias<_>(x),
+		// and the class's are those the alias gives: Int for A of
+		// TA { "s" } for typealias TA<K> = Foo<Int, K>, also when the
+		// call is checked again.
+		if c.inferAliasArgs == nil {
+			c.inferAliasArgs = map[*syntax.Call]bool{}
+		}
+		c.inferAliasArgs[x] = true
+		x.TypeArgs = nil
+		for range a.TypeParams {
+			x.TypeArgs = append(x.TypeArgs, &syntax.TypeArg{P: p, Underscore: true})
+		}
+	}
 	if hasUnderscore(x.TypeArgs) {
 		if !c.aliasUnderscores(x, a, cls, p) {
 			c.args(x, nil)
