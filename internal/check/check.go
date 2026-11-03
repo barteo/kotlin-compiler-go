@@ -535,6 +535,7 @@ func CheckWith(files []*syntax.File, lib *Library, jobs int) []*syntax.Error {
 	for _, c := range checkers {
 		c.shadowedErrors()
 		c.dslErrors()
+		c.versionOverloads()
 		c.checkModifiers()
 		sort.SliceStable(c.errs, func(i, j int) bool {
 			a, b := c.errs[i].Pos, c.errs[j].Pos
