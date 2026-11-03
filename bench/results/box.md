@@ -2,19 +2,19 @@
 
 The box tests of JetBrains/kotlin v2.4.21 (`compiler/testData/codegen/box`), each compiled by kc and run: its `box()` must return `"OK"`. `bench/kotlin-tests.sh box` writes this file, and [docs/conformance.md](../../docs/conformance.md) explains it.
 
-Of 7480 test files, 997 are skipped and 6483 run. 6421 pass (99.0%).
+Of 7480 test files, 997 are skipped and 6483 run. 6434 pass (99.2%).
 
 | Result | Tests | Share |
 |:---|---:|---:|
-| pass | 6421 | 99.0% |
+| pass | 6434 | 99.2% |
 | parse/unsupported | 0 | 0.0% |
-| check error | 53 | 0.8% |
+| check error | 44 | 0.7% |
 | crash | 0 | 0.0% |
 | codegen error | 0 | 0.0% |
 | VerifyError | 0 | 0.0% |
 | linkage error | 1 | 0.0% |
 | exception | 1 | 0.0% |
-| wrong result | 7 | 0.1% |
+| wrong result | 3 | 0.0% |
 | timeout | 0 | 0.0% |
 
 ## Skipped
@@ -47,14 +47,14 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 | Directory | Run | Pass | Unsupported | Check error | Crash | Bad bytecode | Wrong |
 |:---|---:|---:|---:|---:|---:|---:|---:|
 | ranges | 805 | 805 | 0 | 0 | 0 | 0 | 0 |
-| inlineClasses | 784 | 782 | 0 | 2 | 0 | 0 | 0 |
+| inlineClasses | 784 | 780 | 0 | 4 | 0 | 0 | 0 |
 | coroutines | 497 | 496 | 0 | 0 | 0 | 0 | 1 |
-| callableReference | 297 | 295 | 0 | 2 | 0 | 0 | 0 |
-| inference | 205 | 201 | 0 | 3 | 0 | 0 | 1 |
+| callableReference | 297 | 297 | 0 | 0 | 0 | 0 | 0 |
+| inference | 205 | 203 | 0 | 2 | 0 | 0 | 0 |
 | delegatedProperty | 149 | 146 | 0 | 3 | 0 | 0 | 0 |
 | controlStructures | 146 | 145 | 0 | 0 | 0 | 0 | 1 |
 | bridges | 137 | 137 | 0 | 0 | 0 | 0 | 0 |
-| inline | 132 | 129 | 0 | 2 | 0 | 1 | 0 |
+| inline | 132 | 130 | 0 | 1 | 0 | 1 | 0 |
 | classes | 120 | 120 | 0 | 0 | 0 | 0 | 0 |
 | objects | 116 | 115 | 0 | 1 | 0 | 0 | 0 |
 | properties | 109 | 107 | 0 | 2 | 0 | 0 | 0 |
@@ -67,14 +67,14 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 | arrays | 78 | 77 | 0 | 1 | 0 | 0 | 0 |
 | regressions | 75 | 74 | 0 | 1 | 0 | 0 | 0 |
 | contextParameters | 70 | 70 | 0 | 0 | 0 | 0 | 0 |
-| casts | 68 | 67 | 0 | 1 | 0 | 0 | 0 |
+| casts | 68 | 68 | 0 | 0 | 0 | 0 | 0 |
 | compileKotlinAgainstKotlin | 65 | 61 | 0 | 3 | 0 | 0 | 1 |
 | diagnostics | 60 | 58 | 0 | 2 | 0 | 0 | 0 |
 | dataClasses | 53 | 53 | 0 | 0 | 0 | 0 | 0 |
-| extensionFunctions | 53 | 50 | 0 | 3 | 0 | 0 | 0 |
+| extensionFunctions | 53 | 51 | 0 | 2 | 0 | 0 | 0 |
 | inlineEvaluationOrder | 52 | 52 | 0 | 0 | 0 | 0 | 0 |
 | innerNested | 52 | 52 | 0 | 0 | 0 | 0 | 0 |
-| annotations | 51 | 49 | 0 | 1 | 0 | 0 | 1 |
+| annotations | 51 | 50 | 0 | 1 | 0 | 0 | 0 |
 | reflection | 50 | 50 | 0 | 0 | 0 | 0 | 0 |
 | funInterface | 48 | 47 | 0 | 1 | 0 | 0 | 0 |
 | unsignedTypes | 44 | 44 | 0 | 0 | 0 | 0 | 0 |
@@ -82,12 +82,12 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 | ir | 41 | 39 | 0 | 2 | 0 | 0 | 0 |
 | reified | 40 | 40 | 0 | 0 | 0 | 0 | 0 |
 | localClasses | 39 | 38 | 0 | 1 | 0 | 0 | 0 |
-| strings | 39 | 37 | 0 | 2 | 0 | 0 | 0 |
+| strings | 39 | 39 | 0 | 0 | 0 | 0 | 0 |
 | super | 39 | 38 | 0 | 1 | 0 | 0 | 0 |
 | ieee754 | 38 | 38 | 0 | 0 | 0 | 0 | 0 |
 | evaluate | 37 | 37 | 0 | 0 | 0 | 0 | 0 |
 | function | 37 | 37 | 0 | 0 | 0 | 0 | 0 |
-| smartCasts | 36 | 34 | 0 | 2 | 0 | 0 | 0 |
+| smartCasts | 36 | 35 | 0 | 1 | 0 | 0 | 0 |
 | operatorConventions | 34 | 34 | 0 | 0 | 0 | 0 | 0 |
 | traits | 34 | 34 | 0 | 0 | 0 | 0 | 0 |
 | typeErasure | 32 | 32 | 0 | 0 | 0 | 0 | 0 |
@@ -102,10 +102,10 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 | fp | 25 | 25 | 0 | 0 | 0 | 0 | 0 |
 | increment | 25 | 25 | 0 | 0 | 0 | 0 | 0 |
 | specialBuiltins | 25 | 25 | 0 | 0 | 0 | 0 | 0 |
-| finally | 24 | 23 | 0 | 0 | 0 | 0 | 1 |
+| finally | 24 | 24 | 0 | 0 | 0 | 0 | 0 |
 | delegation | 23 | 21 | 0 | 2 | 0 | 0 | 0 |
 | binaryOp | 22 | 22 | 0 | 0 | 0 | 0 | 0 |
-| intrinsics | 22 | 21 | 0 | 1 | 0 | 0 | 0 |
+| intrinsics | 22 | 22 | 0 | 0 | 0 | 0 | 0 |
 | boxing | 21 | 21 | 0 | 0 | 0 | 0 | 0 |
 | lambda | 21 | 21 | 0 | 0 | 0 | 0 | 0 |
 | sam | 21 | 19 | 0 | 2 | 0 | 0 | 0 |
@@ -121,7 +121,7 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 | escapeAnalysis | 16 | 16 | 0 | 0 | 0 | 0 | 0 |
 | safeCall | 16 | 16 | 0 | 0 | 0 | 0 | 0 |
 | argumentOrder | 15 | 15 | 0 | 0 | 0 | 0 | 0 |
-| unit | 15 | 14 | 0 | 1 | 0 | 0 | 0 |
+| unit | 15 | 15 | 0 | 0 | 0 | 0 | 0 |
 | fakeOverride | 14 | 13 | 0 | 1 | 0 | 0 | 0 |
 | suspendConversion | 14 | 14 | 0 | 0 | 0 | 0 | 0 |
 | constants | 13 | 13 | 0 | 0 | 0 | 0 | 0 |
@@ -174,7 +174,7 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 | nothingValue | 3 | 3 | 0 | 0 | 0 | 0 | 0 |
 | dataflow | 2 | 2 | 0 | 0 | 0 | 0 | 0 |
 | instructions | 2 | 2 | 0 | 0 | 0 | 0 | 0 |
-| invokedynamic | 2 | 1 | 0 | 0 | 0 | 0 | 1 |
+| invokedynamic | 2 | 2 | 0 | 0 | 0 | 0 | 0 |
 | kclass | 2 | 2 | 0 | 0 | 0 | 0 | 0 |
 | literals | 2 | 2 | 0 | 0 | 0 | 0 | 0 |
 | multiDecl | 2 | 2 | 0 | 0 | 0 | 0 | 0 |
@@ -205,16 +205,14 @@ Tests kotlinc compiles that kc's checker rejects, by its first error, with names
 
 | First error | Tests | Examples |
 |:---|---:|:---|
-| `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 9 | `callableReference/function/nullableExtension.kt`, `casts/intersectionTypeMultipleBounds.kt` |
+| `type mismatch: inferred type is _ but _ was expected` | 6 | `delegation/delegationToIntersectionType.kt`, `delegation/delegationToIntersectionType3.kt` |
 | `unresolved reference: _` | 6 | `classLiteral/bound/primitives.kt`, `classLiteral/primitiveClassEquality.kt` |
 | `cannot infer type for type parameter '_'. Specify it explicitly.` | 4 | `delegatedProperty/local/kt78073.kt`, `fir/localInvokeExtension.kt` |
-| `type mismatch: inferred type is _ but _ was expected` | 4 | `delegation/delegationToIntersectionType.kt`, `delegation/delegationToIntersectionType3.kt` |
 | `'_' is not an expression, it can only be used on the left-hand side of a dot ('_')` | 2 | `closures/kt11634.kt`, `closures/kt11634_2.kt` |
 | `cannot find a parameter with this name: _` | 2 | `compileKotlinAgainstKotlin/clashingFakeOverrideSignatures.kt`, `ir/serializationRegressions/signatureClash.kt` |
-| `conflicting overloads: _` | 2 | `callableReference/function/extensionFunctionLocal.kt`, `extensionFunctions/extensionFunctionLocal.kt` |
 | `initializer is not allowed here because this property has no backing field` | 2 | `properties/classFieldInsideNested.kt`, `properties/fieldInsideNested.kt` |
 | `many supertypes available, please specify the one you mean in angle brackets, e.g. '_'` | 2 | `compileKotlinAgainstKotlin/jvm8/jvm8against6/delegation/diamond.kt`, `super/unqualifiedSuperWithMethodsOfAny.kt` |
-| `type mismatch: '_' branches have incompatible types Unit and Nothing?` | 2 | `inference/noCoercionToUnitWithEqualityConstraintForNullableReturnType.kt`, `unit/nullableUnitInWhen3.kt` |
+| `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 2 | `inlineClasses/kt70461.kt`, `ir/serializationRegressions/anonFakeOverride.kt` |
 | `val cannot be reassigned` | 2 | `extensionFunctions/kt475.kt`, `fakeOverride/intersectionOverrideBetweenValAndVar.kt` |
 | `'_' hides member of supertype '_' and needs '_' modifier` | 1 | `annotations/platformDependent.kt` |
 | `'_' is not allowed here` | 1 | `arrays/nonLocalReturnArrayConstructor.kt` |
@@ -255,9 +253,7 @@ box() returned something other than `"OK"`, with numbers replaced by n.
 
 | Result | Tests | Examples |
 |:---|---:|:---|
-| `FAILn` | 2 | `controlStructures/breakContinueInExpressions/breakInLoopConditions.kt`, `finally/returnNullFromInlined.kt` |
-| `fail: _` | 2 | `coroutines/unitTypeReturn/unitSafeCall.kt`, `inference/noCoercionToUniForNullableLambdaReturnType.kt` |
-| `Fail` | 1 | `invokedynamic/extensionFunInvoke.kt` |
+| `FAILn` | 1 | `controlStructures/breakContinueInExpressions/breakInLoopConditions.kt` |
 | `Fail: _` | 1 | `closures/captureInSuperConstructorCall/properValueCapturedByClosure2.kt` |
-| `failn` | 1 | `annotations/resolveWithLowPriorityAnnotation.kt` |
+| `fail: _` | 1 | `coroutines/unitTypeReturn/unitSafeCall.kt` |
 

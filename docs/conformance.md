@@ -127,39 +127,40 @@ Kotlin 2.4.21's tests on `kc`:
 | Box tests | Tests | Share of run |
 |:---|---:|---:|
 | run (of 7,480) | 6,483 | |
-| pass | 6,421 | 99.0% |
-| check error | 53 | 0.8% |
+| pass | 6,434 | 99.2% |
+| check error | 44 | 0.7% |
 | VerifyError and linkage error | 1 | 0.0% |
-| exception and wrong result | 8 | 0.1% |
+| exception and wrong result | 4 | 0.1% |
 | parse/unsupported, crash, codegen error, timeout | 0 | |
 
 | Diagnostics tests | Tests | Share of run |
 |:---|---:|---:|
 | run (of 10,827) | 7,200 | |
-| rejects invalid | 3,443 | 47.8% |
-| accepts valid | 2,985 | 41.5% |
-| accepts invalid | 377 | 5.2% |
-| rejects valid | 317 | 4.4% |
+| rejects invalid | 3,474 | 48.2% |
+| accepts valid | 3,008 | 41.8% |
+| accepts invalid | 346 | 4.8% |
+| rejects valid | 294 | 4.1% |
 | parse/unsupported | 77 | 1.1% |
 | crash | 1 | 0.0% |
 
-`kc` agrees with `kotlinc` on 89% of the diagnostics tests, and reports
-12,219 of the 18,918 expected errors (65%) on their lines. The reports
+`kc` agrees with `kotlinc` on 90% of the diagnostics tests, and reports
+12,506 of the 18,918 expected errors (66%) on their lines. The reports
 break the failures down; the largest groups are:
 
-- **Silent miscompilation** (9 box tests): wrong results (7), an
+- **Silent miscompilation** (5 box tests): wrong results (3), an
   `IllegalAccessError` from an inline function that captures its outer
   class, and a `KotlinReflectionInternalError` on a private companion
   object's property in another module.
 - **Accepts invalid**: argument type mismatches
-  (`ARGUMENT_TYPE_MISMATCH` 28), unresolved names
+  (`ARGUMENT_TYPE_MISMATCH` 27), unresolved names
   (`UNRESOLVED_REFERENCE` 19), calls on nullable values (`UNSAFE_CALL`
-  19), conflicting overloads (16), DSL markers on types
-  (`DSL_SCOPE_VIOLATION` 15), and contract descriptions
-  (`ERROR_IN_CONTRACT_DESCRIPTION` 14).
-- **Rejects valid**, by `kc`'s first error: type mismatches (82 + 4
-  box), inference failures (63 + 4), unresolved names and imports (33 +
-  6), ambiguous calls (14), and calls on nullable receivers (6 + 9).
+  19), DSL markers on types (`DSL_SCOPE_VIOLATION` 15), contract
+  descriptions (`ERROR_IN_CONTRACT_DESCRIPTION` 14), and suspending
+  calls in restricted scopes
+  (`ILLEGAL_RESTRICTED_SUSPENDING_FUNCTION_CALL` 11).
+- **Rejects valid**, by `kc`'s first error: type mismatches (66 + 6
+  box), inference failures (60 + 4), unresolved names and imports (33 +
+  6), ambiguous calls (14), and calls on nullable receivers (6 + 2).
 
 The committed `.tsv` files serve as a ratchet: a change must make
 `-baseline` report no regressions, and the tests it fixes measure it.
