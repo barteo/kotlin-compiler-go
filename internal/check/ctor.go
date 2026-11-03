@@ -131,8 +131,22 @@ func superCands(cls *types.ClassSym) []callee {
 		}
 		return cands
 	}
+	tps, recv := sc.TypeParams, types.Subst(nil)
+	if own := len(sc.TypeParams) - sc.OuterParams; sc.OuterParams > 0 {
+		// An inner class's outer type parameters are those of the
+		// supertype, which the subclass's outer class extends: T of
+		// GI() in inner class HI : GI() of H : G<String>.
+		for _, t := range cls.Supers {
+			if t.K == types.Class && t.C == sc && t.A.Len() == len(sc.TypeParams) {
+				tps, recv = sc.TypeParams[:own], types.Subst{}
+				for i, tp := range sc.TypeParams[own:] {
+					recv[tp] = t.A.Get(own + i)
+				}
+			}
+		}
+	}
 	for _, f := range sc.Ctors {
-		cands = append(cands, callee{f: f, tparams: append(sc.TypeParams[:len(sc.TypeParams):len(sc.TypeParams)], f.TypeParams...)})
+		cands = append(cands, callee{f: f, tparams: append(tps[:len(tps):len(tps)], f.TypeParams...), recv: recv})
 	}
 	return cands
 }

@@ -1522,12 +1522,49 @@ func (c *Checker) runLambdas(s *system, readyOnly bool) {
 		if tv := s.unfixedVar(s.apply(p)); tv != nil && !readyOnly {
 			p = s.funcShape(tv, p)
 		}
+		if !readyOnly {
+			c.fixRelated(s, pl)
+		}
 		saved := c.scope
 		c.scope = pl.scope
 		c.postponedLambda(s, pl.l, p)
 		c.scope = saved
 	}
 	s.lambdas = rest
+}
+
+// fixRelated fixes, before lambda pl is checked, the variables with
+// proper bounds whose other bounds have the variables without any in its
+// parameter types, as Kotlin does: listOf(bar<Char> { }, bar { }) fixes
+// listOf's T to Inv<Char>.() -> Unit, from which the second bar's T, of
+// its lambda's Inv<T> receiver, is Char.
+func (c *Checker) fixRelated(s *system, pl pendingLambda) {
+	var open []*types.TypeParamSym
+	for _, p := range c.inputs(s, pl) {
+		s.apply(p).Has(func(u types.Type) bool {
+			if u.K == types.TypeVar && !s.known(u) {
+				if tv := s.byVar[u.Param()]; tv != nil && !tv.fixed {
+					open = append(open, u.Param())
+				}
+			}
+			return false
+		})
+	}
+	if len(open) == 0 {
+		return
+	}
+	mentions := func(t types.Type) bool {
+		return s.apply(t).Has(func(u types.Type) bool { return u.K == types.TypeVar && slices.Contains(open, u.Param()) })
+	}
+	for _, tv := range s.vars {
+		if tv.fixed || slices.Contains(open, tv.v) {
+			continue
+		}
+		bounds := append(tv.lower[:len(tv.lower):len(tv.lower)], tv.upper...)
+		if slices.ContainsFunc(bounds, s.proper) && slices.ContainsFunc(bounds, mentions) {
+			s.fix(tv)
+		}
+	}
 }
 
 // ownLambda reports whether lambda l, passed for variable tv, has the type

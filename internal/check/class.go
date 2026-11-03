@@ -1245,8 +1245,48 @@ func (c *Checker) superCtor(d *syntax.ClassDecl) {
 		return
 	}
 	c.resolve(x, cands, noWant, nil)
+	if d.Sym.Object {
+		c.selfCalls(d.Sym, x)
+	}
 	if sc.Local {
 		c.localConstructed(sc) // the class passes its superclass's captures
+	}
+}
+
+// selfCalls reports the uses of object obj in its own superclass's
+// constructor call x, which runs before the object exists: prop, this.prop
+// and Companion.prop in companion object : Foo(...).
+func (c *Checker) selfCalls(obj *types.ClassSym, x *syntax.Call) {
+	self := func(e syntax.Expr) bool {
+		switch e := e.(type) {
+		case *syntax.Ident:
+			return e.Object == obj
+		case *syntax.Member:
+			return e.Object == obj
+		case *syntax.This:
+			return e.Obj == obj
+		}
+		return false
+	}
+	for _, a := range x.Args {
+		syntax.Inspect(a, func(n any) bool {
+			e, ok := n.(syntax.Expr)
+			if !ok {
+				return true
+			}
+			switch e.(type) {
+			case *syntax.Lambda, *syntax.ObjectExpr:
+				return false // runs later, when the object exists
+			}
+			at := e
+			if id, ok := e.(*syntax.Ident); ok && id.Member != nil && self(id.Member.X) {
+				at = id // a member of the object in scope
+			} else if !self(e) {
+				return true
+			}
+			c.errorf(at.Pos(), "self call in nested object constructor is prohibited")
+			return false
+		})
 	}
 }
 

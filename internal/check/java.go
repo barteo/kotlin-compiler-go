@@ -44,6 +44,9 @@ type classTable struct {
 	// values inheritExtDefaults looked for.
 	defaults     sync.Map // *types.FunSym -> *sync.Once
 	inlineBodies sync.Map // inlineKey -> func() (*inline.Body, error)
+	// scopes are the type parameters of the Kotlin classes loaded, by
+	// their metadata's ids, which their inner classes' metadata uses.
+	scopes sync.Map // *types.ClassSym -> tscope
 }
 
 type superKey struct {
@@ -1855,10 +1858,15 @@ func (c *Checker) construct(x *syntax.Call, cls *types.ClassSym, p syntax.Pos, w
 	var cands []callee
 	var ctors []*types.FunSym
 	if !cls.Abstract {
-		for _, f := range cls.Ctors {
+		all := cls.Ctors
+		if c.file.SuppressInvisible {
+			all = slices.Concat(all, cls.InternalCtors)
+		}
+		own := cls.TypeParams[:len(cls.TypeParams)-cls.OuterParams] // an inner class's outer ones are the receiver's
+		for _, f := range all {
 			if !f.Protected {
 				ctors = append(ctors, f)
-				cands = append(cands, callee{f: f, tparams: append(cls.TypeParams[:len(cls.TypeParams):len(cls.TypeParams)], f.TypeParams...)})
+				cands = append(cands, callee{f: f, tparams: append(own[:len(own):len(own)], f.TypeParams...), recv: c.outerSubst})
 			}
 		}
 	}

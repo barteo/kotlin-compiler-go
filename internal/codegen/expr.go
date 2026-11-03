@@ -240,6 +240,10 @@ func (g *gen) expr(x syntax.Expr) {
 	case *syntax.Ident:
 		g.ident(x)
 	case *syntax.This:
+		if x.Obj != nil {
+			g.objectRef(x.Obj) // in a class's header
+			return
+		}
 		if x.Recv != nil {
 			if x.Recv.Type.K == types.Unit && !x.Recv.Type.N && !x.Cast {
 				return // a Unit value is nothing on the stack
@@ -1375,7 +1379,7 @@ func (g *gen) member(x *syntax.Member) {
 		g.coerce(p.Type, x.T)
 		return
 	}
-	_, this := x.X.(*syntax.This)
+	this := isThis(x.X)
 	direct := this && g.directGet(p)
 	cls := recvClass(x.X.Type())
 	result := x.T
@@ -2673,7 +2677,7 @@ func (g *gen) tailCall(x *syntax.Call, t *tailrec) {
 	f, fd := x.Sym, t.fd
 	m, recv := x.Fun.(*syntax.Member)
 	if recv {
-		if _, this := m.X.(*syntax.This); this || fd.RecvSym == nil {
+		if isThis(m.X) || fd.RecvSym == nil {
 			recv = false
 		}
 	}
@@ -2704,4 +2708,11 @@ func (g *gen) tailCall(x *syntax.Call, t *tailrec) {
 	g.leaveTries(0)
 	g.code.PopTo(0)
 	g.code.Jump(cf.GOTO, t.start)
+}
+
+// isThis reports whether x is this, of the class or a receiver, rather
+// than an object a class's header names this.
+func isThis(x syntax.Expr) bool {
+	t, ok := x.(*syntax.This)
+	return ok && t.Obj == nil
 }

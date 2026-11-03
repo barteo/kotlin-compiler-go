@@ -215,6 +215,9 @@ func (w *sigWriter) classRef(t types.Type, ref *syntax.TypeRef, m wildMode) {
 		w.WriteString("." + c.Name[len(c.Outer.Name)+1:])
 	} else {
 		w.WriteString(c.Name)
+		if c.OuterParams > 0 && n == len(c.TypeParams) {
+			own = n - c.OuterParams // an object expression's, of the code around it
+		}
 	}
 	if own == 0 {
 		return

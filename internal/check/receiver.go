@@ -58,7 +58,12 @@ func (c *Checker) receiverFor(x *syntax.This) *implicitRecv {
 
 // thisExpr checks this, or this@label.
 func (c *Checker) thisExpr(x *syntax.This) types.Type {
-	if r := c.receiverFor(x); r != nil {
+	r := c.receiverFor(x)
+	if obj := c.headerThis(x, r); obj != nil {
+		x.Obj = obj
+		return obj.This()
+	}
+	if r != nil {
 		x.Recv = r.sym
 		if r.sym != c.noCapture {
 			c.capture(r.sym, r.depth)
@@ -86,6 +91,44 @@ func (c *Checker) thisExpr(x *syntax.This) types.Type {
 		t = n
 	}
 	return t
+}
+
+// headerThis returns the object this refers to in a class's header, the
+// arguments of its superclass's constructor and its delegates, where the
+// class's instance isn't one yet: as in kotlinc, its own and its
+// superclasses' companions come first, before the receivers of the code
+// around (but not of lambdas in the header, r), then the objects in the
+// static scope around (see scopeObjects). It returns nil if this is
+// another's.
+func (c *Checker) headerThis(x *syntax.This, r *implicitRecv) *types.ClassSym {
+	if x.Label != "" || x.Recv != nil || x.Class || c.cls != nil || c.staticCls == nil {
+		return nil
+	}
+	outside := 0 // the receivers of the code around
+	if ctx := c.anon[c.staticCls]; ctx != nil {
+		outside = len(ctx.recvs)
+	}
+	if r != nil {
+		for i := range c.recvs {
+			if &c.recvs[i] == r && i >= outside {
+				return nil // a lambda's in the header
+			}
+		}
+	}
+	for k := c.staticCls; k != nil; k = k.Super {
+		if k.Ensure(); k.Companion != nil {
+			return k.Companion
+		}
+	}
+	if r != nil || c.anon[c.staticCls] != nil {
+		return nil
+	}
+	// Then the objects in the static scope around: the enclosing
+	// classes' companions, their superclasses', and enclosing objects.
+	if objs := c.scopeObjects(); len(objs) > 0 {
+		return objs[0]
+	}
+	return nil
 }
 
 // recvThis returns this, referring to an implicit receiver.
