@@ -49,6 +49,18 @@ func (c *Checker) subtype1(t, u types.Type) bool {
 	if t.P {
 		t = t.Flex()
 	}
+	if u.IsIntersection() {
+		// A & B takes what each of A and B takes; (A & B)? takes null too.
+		for _, b := range u.Param().Bounds {
+			if u.N {
+				b = b.Nullable()
+			}
+			if !c.subtype(t, b) {
+				return false
+			}
+		}
+		return true
+	}
 	// Nullability first; then t and u are compared as non-null types.
 	switch {
 	case !u.IsParam():
@@ -441,6 +453,7 @@ func (c *Checker) commonSuper(a, b types.Type, depth int) types.Type {
 	// kc takes one: not Parcelable for objects of a sealed class some of
 	// which are Parcelable too.
 	var weak types.Type
+	var shared []types.Type
 	for _, s := range c.supertypes(a) {
 		sb, ok := c.asSuper(b, s.C)
 		if !ok {
@@ -449,16 +462,47 @@ func (c *Checker) commonSuper(a, b types.Type, depth int) types.Type {
 		r := c.joinArgs(s, sb, depth)
 		javaIface := s.C.External && s.C.Interface && s.C.KProps == nil && s.C.KotlinName == ""
 		if !markerInterfaces[s.C.Name] && !javaIface {
-			return r
+			shared = append(shared, r)
+			continue
 		}
 		if weak.K == types.Invalid {
 			weak = r
 		}
 	}
+	if len(shared) > 0 {
+		return c.minimalSupers(shared)
+	}
 	if weak.K != types.Invalid {
 		return weak
 	}
 	return types.AnyType
+}
+
+// minimalSupers returns the intersection of the shared supertypes of
+// commonSuper, in breadth-first order, that are not supertypes of others:
+// A & B for a C and a D that are both an A and a B. Only Kotlin classes
+// give one, and only from classes that are no supertype of the other.
+func (c *Checker) minimalSupers(shared []types.Type) types.Type {
+	var min []types.Type
+	for _, s := range shared {
+		if s.C.External && s.C.KProps == nil && s.C.KotlinName == "" {
+			continue // a Java class's supertypes keep the first
+		}
+		below := false
+		for _, o := range shared {
+			if o.C != s.C && o.C.IsSubclassOf(s.C) {
+				below = true
+				break
+			}
+		}
+		if !below && intersectable(s) {
+			min = append(min, s)
+		}
+	}
+	if len(min) < 2 || min[0] != shared[0] {
+		return shared[0]
+	}
+	return c.intersect(min)
 }
 
 var markerInterfaces = map[string]bool{
@@ -494,6 +538,9 @@ func (c *Checker) joinArgs(a, b types.Type, depth int) types.Type {
 				args[i] = x
 			case x.V == types.Inv && y.V == types.Inv && c.subtype(y.T, x.T):
 				args[i] = y
+			case x.V == types.Inv && y.V == types.Inv && intersectable(x.T) && intersectable(y.T):
+				// Or their intersection: In<A> and In<B> give In<A & B>.
+				args[i] = types.Arg{T: c.intersect([]types.Type{x.T, y.T})}
 			default:
 				args[i] = types.Arg{V: types.Star}
 			}

@@ -127,37 +127,37 @@ Kotlin 2.4.21's tests on `kc`:
 | Box tests | Tests | Share of run |
 |:---|---:|---:|
 | run (of 7,480) | 6,483 | |
-| pass | 6,443 | 99.4% |
-| check error | 40 | 0.6% |
-| parse/unsupported, crash, codegen error, timeout | 0 | |
+| pass | 6,483 | 100% |
+| check error, parse/unsupported, crash, codegen error, timeout | 0 | |
 | VerifyError, linkage error, exception, wrong result | 0 | |
 
 | Diagnostics tests | Tests | Share of run |
 |:---|---:|---:|
 | run (of 10,827) | 7,200 | |
-| rejects invalid | 3,555 | 49.4% |
-| accepts valid | 3,088 | 42.9% |
-| accepts invalid | 266 | 3.7% |
-| rejects valid | 273 | 3.8% |
+| rejects invalid | 3,562 | 49.5% |
+| accepts valid | 3,099 | 43.0% |
+| accepts invalid | 259 | 3.6% |
+| rejects valid | 262 | 3.6% |
 | parse/unsupported | 18 | 0.2% |
 | crash | 0 | |
 
 `kc` agrees with `kotlinc` on 92% of the diagnostics tests, and reports
-13,099 of the 18,930 expected errors (69%) on their lines. The reports
+13,125 of the 18,930 expected errors (69%) on their lines. The reports
 break the failures down; the largest groups are:
 
 - **Silent miscompilation**: none. No box test that `kc` compiles
   gives a wrong result, throws, or fails to verify or link.
 - **Accepts invalid**: argument type mismatches
-  (`ARGUMENT_TYPE_MISMATCH` 26), unresolved names
-  (`UNRESOLVED_REFERENCE` 19), calls on nullable values (`UNSAFE_CALL`
-  19), uninferred parameter types (`CANNOT_INFER_PARAMETER_TYPE` 10),
-  initializer type mismatches (`INITIALIZER_TYPE_MISMATCH` 7), overload
-  ambiguities (`OVERLOAD_RESOLUTION_AMBIGUITY` 7) and impossible smart
-  casts (`SMARTCAST_IMPOSSIBLE` 7).
-- **Rejects valid**, by `kc`'s first error: type mismatches (67 + 6
-  box), inference failures (52 + 1), unresolved names and imports (34 +
-  6), ambiguous calls (14), and calls on nullable receivers (6 + 2).
+  (`ARGUMENT_TYPE_MISMATCH` 26), calls on nullable values (`UNSAFE_CALL`
+  19), unresolved names (`UNRESOLVED_REFERENCE` 14), uninferred
+  parameter types (`CANNOT_INFER_PARAMETER_TYPE` 9), initializer type
+  mismatches (`INITIALIZER_TYPE_MISMATCH` 7), overload ambiguities
+  (`OVERLOAD_RESOLUTION_AMBIGUITY` 7) and impossible smart casts
+  (`SMARTCAST_IMPOSSIBLE` 7).
+- **Rejects valid**, by `kc`'s first error: type mismatches (65),
+  inference failures (52), unresolved names and imports (32), ambiguous
+  calls (14), and calls on nullable receivers (6). No box test is
+  rejected.
 
 The committed `.tsv` files serve as a ratchet: a change must make
 `-baseline` report no regressions, and the tests it fixes measure it.

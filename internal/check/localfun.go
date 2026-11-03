@@ -31,9 +31,14 @@ func (c *Checker) localFun(s *syntax.LocalFun) {
 	sym := &types.FunSym{Name: d.Name, Decl: s, Operator: d.Operator, Infix: d.Infix}
 	sym.Suspend = d.Suspend && c.coroutines(d.P)
 	d.Sym = sym
+	// Suppressed, the error leaves a local inline function, which kotlinc
+	// then compiles, as a plain local function.
+	suppressInline := c.suppressLocalInline || suppresses(d.Annotations, "NOT_YET_SUPPORTED_LOCAL_INLINE_FUNCTION")
 	switch {
 	case d.Open, d.Abstract, d.Override, d.Final:
 		c.errorf(d.P, "modifiers open, abstract, override and final are not applicable to local functions")
+	case d.Inline && suppressInline:
+		d.Inline = false
 	case d.Inline:
 		c.errorf(d.P, "local inline functions are not yet supported")
 	case c.u.compose && c.composeAnno(d.Annotations, "", "Composable"):
@@ -43,6 +48,7 @@ func (c *Checker) localFun(s *syntax.LocalFun) {
 		c.localCalls = new([]localCall)
 	}
 	saved := c.state
+	c.suppressLocalInline = suppressInline
 	sym.TypeParams = c.declareTypeParams(d.TypeParams, sym, false)
 	c.tparams = append(slices.Clone(sym.TypeParams), saved.tparams...)
 	c.resolveBounds(d.TypeParams)
@@ -141,14 +147,22 @@ func (c *Checker) localFun(s *syntax.LocalFun) {
 // callLocal checks a call of one of the local functions fs, declared in
 // a scope at the given depth.
 func (c *Checker) callLocal(x *syntax.Call, fs []*types.FunSym, depth int, want types.Type, sink *system) types.Type {
+	// A function whose return type isn't known yet, as one that calls
+	// itself, is an error only if it could take the call: fun foo() =
+	// foo("K") calls another foo.
+	var ok []*types.FunSym
 	for _, f := range fs {
-		if !f.Resolved {
+		if f.Resolved {
+			ok = append(ok, f)
+			continue
+		}
+		if _, fits := mapArgs(f, x); fits || len(fs) == 1 {
 			c.errorf(x.P, "type checking has run into a recursive problem: '%s' needs an explicit return type", f.Name)
 			c.args(x, nil)
 			return types.InvalidType
 		}
 	}
-	t := c.resolve(x, methodCallees(fs, nil), want, sink)
+	t := c.resolve(x, methodCallees(ok, nil), want, sink)
 	if x.Sym != nil {
 		if lf, ok := x.Sym.Decl.(*syntax.LocalFun); ok && c.localCalls != nil {
 			chain := slices.Clone(c.lambdas[min(depth, len(c.lambdas)):])

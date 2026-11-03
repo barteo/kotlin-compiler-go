@@ -292,11 +292,28 @@ func viaOuter(name string, cls *types.ClassSym) bool {
 // needn't be marked override, and is the JVM method that overrides them.
 func platformOnly(over []*types.FunSym) bool {
 	for _, g := range over {
-		if !g.Platform {
+		if !g.Platform && !declaredPlatformDependent(g) {
 			return false
 		}
 	}
 	return true
+}
+
+// declaredPlatformDependent reports whether the program declares f with
+// @kotlin.internal.PlatformDependent, which the standard library's
+// declarations of JDK methods have and a program can use where it
+// suppresses INVISIBLE_REFERENCE.
+func declaredPlatformDependent(f *types.FunSym) bool {
+	d, ok := f.Decl.(*syntax.FunDecl)
+	if !ok {
+		return false
+	}
+	for i := range d.Annotations {
+		if n := d.Annotations[i].Name; n == "PlatformDependent" || n == "kotlin.internal.PlatformDependent" {
+			return true
+		}
+	}
+	return false
 }
 
 // paramKey returns the erased parameter types of a method, which tell
@@ -410,12 +427,23 @@ func (c *Checker) userProp1(cls *types.ClassSym, name string, inherited bool) *t
 		switch {
 		case q == nil:
 		case inherited && propNotInherited(q, cls):
+		case p != nil:
+			// A val and a var of unrelated supertypes: the intersection
+			// override is a var, as C's x of A's abstract val x and
+			// B's var x.
+			if q.Mutable && q.Owner != nil && p.Owner != nil && !p.Owner.IsSubclassOf(q.Owner) && !q.Owner.IsSubclassOf(p.Owner) && c.propVisible(q) {
+				p = q
+				return false
+			}
 		case c.propVisible(q):
 			p = q
+			if p.Mutable || p.Owner == cls || p.Owner == nil || p.Owner.External {
+				return false
+			}
 		case hidden == nil:
 			hidden = q
 		}
-		return p == nil
+		return true
 	})
 	if p == nil {
 		p = hidden
@@ -1217,8 +1245,48 @@ func (c *Checker) superCtor(d *syntax.ClassDecl) {
 		return
 	}
 	c.resolve(x, cands, noWant, nil)
+	if d.Sym.Object {
+		c.selfCalls(d.Sym, x)
+	}
 	if sc.Local {
 		c.localConstructed(sc) // the class passes its superclass's captures
+	}
+}
+
+// selfCalls reports the uses of object obj in its own superclass's
+// constructor call x, which runs before the object exists: prop, this.prop
+// and Companion.prop in companion object : Foo(...).
+func (c *Checker) selfCalls(obj *types.ClassSym, x *syntax.Call) {
+	self := func(e syntax.Expr) bool {
+		switch e := e.(type) {
+		case *syntax.Ident:
+			return e.Object == obj
+		case *syntax.Member:
+			return e.Object == obj
+		case *syntax.This:
+			return e.Obj == obj
+		}
+		return false
+	}
+	for _, a := range x.Args {
+		syntax.Inspect(a, func(n any) bool {
+			e, ok := n.(syntax.Expr)
+			if !ok {
+				return true
+			}
+			switch e.(type) {
+			case *syntax.Lambda, *syntax.ObjectExpr:
+				return false // runs later, when the object exists
+			}
+			at := e
+			if id, ok := e.(*syntax.Ident); ok && id.Member != nil && self(id.Member.X) {
+				at = id // a member of the object in scope
+			} else if !self(e) {
+				return true
+			}
+			c.errorf(at.Pos(), "self call in nested object constructor is prohibited")
+			return false
+		})
 	}
 }
 
@@ -1236,6 +1304,13 @@ func (c *Checker) superTarget(s *syntax.Super, name string, call bool) (types.Ty
 			c.errorf(s.P, "unresolved label: %s", s.Label)
 			return types.InvalidType, false
 		}
+		s.Outer = recvThis(r, s.P)
+		c.value(s.Outer, noWant)
+		cls = r.sym.Type.C
+	case s.Label == "" && cls == nil && c.headerClassRecv() != nil:
+		// In an object expression's supertypes, the code around it's
+		// super, as object : A by super.f() in a class's method.
+		r := c.headerClassRecv()
 		s.Outer = recvThis(r, s.P)
 		c.value(s.Outer, noWant)
 		cls = r.sym.Type.C
@@ -1318,6 +1393,20 @@ func (c *Checker) superTarget(s *syntax.Super, name string, call bool) (types.Ty
 	return t, true
 }
 
+// headerClassRecv returns, in the supertypes of an object expression or
+// a local class, the receiver that is the enclosing class's this, or nil.
+func (c *Checker) headerClassRecv() *implicitRecv {
+	if c.cls != nil || c.staticCls == nil || c.anon[c.staticCls] == nil {
+		return nil
+	}
+	for i := len(c.recvs) - 1; i >= 0; i-- {
+		if r := &c.recvs[i]; r.class && r.outer && r.sym.Type.K == types.Class {
+			return r
+		}
+	}
+	return nil
+}
+
 // simpleName returns the name of class cls without its outer classes'.
 func simpleName(cls *types.ClassSym) string {
 	n := cls.DisplayName()
@@ -1350,16 +1439,28 @@ func (c *Checker) superHasImpl(cls *types.ClassSym, name string, call bool) bool
 		// the first method of each signature, which may be an interface's,
 		// as Set.addAll for AbstractMutableSet, whose implementation is
 		// AbstractCollection's.
-		found := false
+		// An implementation doesn't count where a subtype of its class
+		// redeclares it abstract, as IWithToString does Any's toString.
+		var impls, abstracts []*types.FunSym
 		cls.Supertypes(func(s *types.ClassSym) bool {
 			for _, f := range c.accessible(nil, s.Methods[name]) {
-				if !f.Abstract {
-					found = true
+				if f.Abstract {
+					abstracts = append(abstracts, f)
+				} else {
+					impls = append(impls, f)
 				}
 			}
-			return !found
+			return true
 		})
-		return found
+		for _, f := range impls {
+			if !slices.ContainsFunc(abstracts, func(a *types.FunSym) bool {
+				return a.Owner != nil && f.Owner != nil && a.Owner != f.Owner && paramKey(a) == paramKey(f) &&
+					(f.Owner.Name == "java/lang/Object" || a.Owner.IsSubclassOf(f.Owner))
+			}) {
+				return true
+			}
+		}
+		return false
 	}
 	if p := c.userProp(cls, name); p != nil {
 		return !p.Abstract

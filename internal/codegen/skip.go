@@ -212,7 +212,7 @@ func usedParams(params []*types.VarSym, roots ...any) []bool {
 			case *syntax.This:
 				if n.Recv != nil {
 					mark(n.Recv)
-				} else if this >= 0 {
+				} else if this >= 0 && n.Obj == nil {
 					used[this] = true
 				}
 			case *syntax.Super:

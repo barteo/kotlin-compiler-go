@@ -113,8 +113,11 @@ yet done. [Design](design.md) describes how `kc` compiles it.
 
 **Checking**
 
-- The common supertype of unrelated types is one class or interface (for
-  `Int` and `String`, `Any`), not an intersection type.
+- Intersection types (`A & B`) are inferred only for Kotlin classes'
+  shared supertypes, smart casts between a class type and an unrelated
+  interface, and incomparable upper bounds of a variable. The common
+  supertype of two builtin types is `Any`, or `Number` for numbers (for
+  `Int` and `String`, Kotlin's is `Comparable<*> & Serializable`).
 - A lambda's parameter types are fixed from the constraints known when
   the lambda is reached; K2 picks the order from the whole system, so it
   infers some combinations of lambdas `kc` can't.

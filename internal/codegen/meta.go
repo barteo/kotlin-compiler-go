@@ -225,6 +225,9 @@ func classID(c *types.ClassSym) string {
 
 // typ converts a type to metadata.
 func (s *metaScope) typ(t types.Type) *kmeta.Type {
+	if t.IsIntersection() {
+		t = types.Approx(t) // metadata has no intersection types
+	}
 	if t.P {
 		// A platform type, T!: flexible, from T to T?, with read-only
 		// collections as the upper bound.
@@ -304,6 +307,9 @@ func (s *metaScope) typ(t types.Type) *kmeta.Type {
 			if t.A != nil {
 				t.A = types.MakeArgs(t.A.List[:n])
 			}
+		} else if t.C.OuterParams > 0 && t.A != nil {
+			// An object expression's, of the code around it.
+			t.A = types.MakeArgs(t.A.List[:len(t.C.TypeParams)-t.C.OuterParams])
 		}
 		if t.A != nil {
 			for _, a := range t.A.List {
@@ -860,17 +866,30 @@ func inEnumEntry(cls *types.ClassSym) bool {
 	return false
 }
 
+// outerScope returns the scope of an inner class's outer classes' type
+// parameters, numbered as kotlinc does, the outermost class's first: X 0
+// and Y 1 for inner class E4<Z> of inner class D4<Y> of C4<X>, whose own Z
+// is 2. It is nil for other classes.
+func outerScope(cls *types.ClassSym) *metaScope {
+	if cls.OuterParams == 0 || !cls.Inner || cls.Outer == nil || len(cls.Outer.TypeParams) != cls.OuterParams {
+		if cls.OuterParams == 0 {
+			return nil
+		}
+		s, _ := (*metaScope)(nil).with(cls.TypeParams[len(cls.TypeParams)-cls.OuterParams:])
+		return s
+	}
+	o := cls.Outer
+	s, _ := outerScope(o).with(o.TypeParams[:len(o.TypeParams)-o.OuterParams])
+	return s
+}
+
 // classMeta converts a class.
 func (g *gen) classMeta(cd *syntax.ClassDecl) *kmeta.Class {
 	cls := cd.Sym
 	// An inner class sees its outer class's type parameters, as numbered
 	// in the outer class's metadata, and declares its own after them.
 	own := cls.TypeParams[:len(cls.TypeParams)-cls.OuterParams]
-	outer, _ := (*metaScope)(nil).with(cls.TypeParams[len(own):])
-	if cls.OuterParams == 0 {
-		outer = nil
-	}
-	s, tps := outer.with(own)
+	s, tps := outerScope(cls).with(own)
 	mod := kmeta.Final
 	kind := kmeta.KindClass
 	switch {

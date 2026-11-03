@@ -549,6 +549,21 @@ func (t *classTable) ktype(kt *kmeta.Type, scope tscope) (types.Type, bool) {
 		}
 		args[i].T = at
 	}
+	for o := kt.Outer; o != nil; o = o.Outer {
+		// An inner class's type has its outer class's arguments after
+		// its own, as its type parameters are.
+		for _, a := range o.Args {
+			arg := types.Arg{V: variance(a.Proj)}
+			if arg.V != types.Star {
+				at, ok := t.ktype(a.Type, scope)
+				if !ok {
+					return types.InvalidType, false
+				}
+				arg.T = at
+			}
+			args = append(args, arg)
+		}
+	}
 	r = types.GenericType(cls, args)
 	if kt.ExtFunc && cls.Func && len(args) > 1 {
 		r = r.WithReceiver()
@@ -1298,8 +1313,8 @@ func (t *classTable) loadKotlin(cls *types.ClassSym, info *classfile.Info, kc *k
 	if kc.IsInner() && info.Inner != nil && info.Inner.Outer != "" {
 		// An inner class: its constructors take the outer class's
 		// instance first, which a subclass's call of one passes, as the
-		// program's inner classes' do. Its own type parameters are all it
-		// has: OuterParams stays 0.
+		// program's inner classes' do. It sees the outer class's type
+		// parameters, which it has after its own (see the scope below).
 		if o := t.class(info.Inner.Outer); o != nil {
 			cls.Inner, cls.Outer = true, o
 		}
@@ -1317,6 +1332,20 @@ func (t *classTable) loadKotlin(cls *types.ClassSym, info *classfile.Info, kc *k
 	cls.Private = info.Access&classfile.AccPublic == 0 || !visibleOutside(kc.Flags.Visibility(), friend) && !builtinCompanions[cls.Name]
 	cls.Internal = info.Access&classfile.AccPublic != 0 && kc.Flags.Visibility() == kmeta.Internal
 	scope := tscope{}
+	var outerParams []*types.TypeParamSym
+	if cls.Inner && cls.Outer != nil {
+		// The outer class's, by the ids of its metadata, which the inner
+		// class's numbers its own after.
+		os, found := t.scopes.Load(cls.Outer)
+		if !found {
+			cls.Outer.Ensure()
+			os, found = t.scopes.Load(cls.Outer)
+		}
+		if found {
+			maps.Copy(scope, os.(tscope))
+			outerParams = cls.Outer.TypeParams
+		}
+	}
 	var tps []*types.TypeParamSym
 	ok := true
 	if early := cls.TypeParams; cls.Value && len(early) == len(kc.TypeParams) && len(early) > 0 {
@@ -1341,7 +1370,12 @@ func (t *classTable) loadKotlin(cls *types.ClassSym, info *classfile.Info, kc *k
 	} else {
 		tps, ok = t.ktypeParams(kc.TypeParams, cls, scope)
 	}
+	if len(outerParams) > 0 {
+		tps = append(tps[:len(tps):len(tps)], outerParams...)
+		cls.OuterParams = len(outerParams)
+	}
 	cls.TypeParams = tps
+	t.scopes.Store(cls, maps.Clone(scope))
 	if kc.IsValue() && cls.Underlying == nil && kc.Underlying != nil {
 		if ut, uok := t.ktype(kc.Underlying, scope); uok {
 			cls.Value = true
@@ -1582,11 +1616,14 @@ func (t *classTable) loadKotlin(cls *types.ClassSym, info *classfile.Info, kc *k
 	if kc.Kind() == kmeta.KindClass {
 		// An abstract class's constructors are for its subclasses.
 		for _, k := range kc.Ctors {
-			if !visibleOutside(k.Flags.Visibility(), friend) {
+			internal := !visibleOutside(k.Flags.Visibility(), friend) && k.Flags.Visibility() == kmeta.Internal
+			if !visibleOutside(k.Flags.Visibility(), friend) && !internal {
 				continue
 			}
 			d, marker := k.JVM.Desc, false
-			if !methods[k.JVM.Name+d] {
+			if internal && cls.Value {
+				// Its constructor-impl, which is public.
+			} else if !methods[k.JVM.Name+d] {
 				// One that takes a value class, as Compose's
 				// SolidColor(Color), is the synthetic one that takes a
 				// marker: the metadata names it.
@@ -1601,6 +1638,10 @@ func (t *classTable) loadKotlin(cls *types.ClassSym, info *classfile.Info, kc *k
 			f.Params, ok = t.kparams(k.Params, scope, true)
 			f.Unsupported = !ok
 			matchJVM(f)
+			if internal {
+				cls.InternalCtors = append(cls.InternalCtors, f)
+				continue
+			}
 			cls.Ctors = append(cls.Ctors, f)
 		}
 	}

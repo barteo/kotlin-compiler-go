@@ -141,6 +141,10 @@ func (w *sigWriter) typ(t types.Type, ref *syntax.TypeRef, m wildMode) {
 	}
 	switch t.K {
 	case types.TypeParam, types.TypeVar:
+		if t.IsIntersection() {
+			w.typ(types.Approx(t), nil, m) // no intersection on the JVM
+			return
+		}
 		w.WriteString("T" + t.Param().Name + ";")
 	case types.Any:
 		w.WriteString("Ljava/lang/Object;")
@@ -215,6 +219,9 @@ func (w *sigWriter) classRef(t types.Type, ref *syntax.TypeRef, m wildMode) {
 		w.WriteString("." + c.Name[len(c.Outer.Name)+1:])
 	} else {
 		w.WriteString(c.Name)
+		if c.OuterParams > 0 && n == len(c.TypeParams) {
+			own = n - c.OuterParams // an object expression's, of the code around it
+		}
 	}
 	if own == 0 {
 		return

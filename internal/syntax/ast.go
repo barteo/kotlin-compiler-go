@@ -1016,6 +1016,9 @@ type This struct {
 	// Implicit is set on a this the checker writes for an implicit
 	// receiver or context argument.
 	Implicit bool
+	// Obj is set by the checker on a this in a class's header that is
+	// an object: a companion's, or an enclosing object's.
+	Obj *types.ClassSym
 }
 
 // Super is super, or super<I>, as the receiver of a member access or call,

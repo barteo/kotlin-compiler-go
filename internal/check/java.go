@@ -39,11 +39,15 @@ type classTable struct {
 	// asks for again and again: supertypes with their type arguments, and
 	// the methods of a class by name.
 	supers  sync.Map // superKey -> superResult
+	inters  sync.Map // interKey -> types.Type, see intersect
 	methods sync.Map // methodsKey -> []*types.FunSym
 	// defaults has a sync.Once for each method whose inherited default
 	// values inheritExtDefaults looked for.
 	defaults     sync.Map // *types.FunSym -> *sync.Once
 	inlineBodies sync.Map // inlineKey -> func() (*inline.Body, error)
+	// scopes are the type parameters of the Kotlin classes loaded, by
+	// their metadata's ids, which their inner classes' metadata uses.
+	scopes sync.Map // *types.ClassSym -> tscope
 }
 
 type superKey struct {
@@ -1729,6 +1733,12 @@ outer:
 			if len(prev.f.Params) != len(cl.f.Params) || len(prev.tparams) != len(cl.tparams) || !generic(prev) && !generic(cl) {
 				continue
 			}
+			if prev.f.Owner != nil && prev.f.Owner == cl.f.Owner {
+				// Overloads of one class, which neither overrides, as
+				// Base<String>'s foo(x: T) and foo(y: String): named
+				// arguments tell them apart.
+				continue
+			}
 			same := true
 			for i, p := range cl.f.Params {
 				if !c.sameType(prev.recv.ApplyIn(prev.f.Params[i].Type), cl.recv.ApplyIn(p.Type)) {
@@ -1849,10 +1859,15 @@ func (c *Checker) construct(x *syntax.Call, cls *types.ClassSym, p syntax.Pos, w
 	var cands []callee
 	var ctors []*types.FunSym
 	if !cls.Abstract {
-		for _, f := range cls.Ctors {
+		all := cls.Ctors
+		if c.file.SuppressInvisible {
+			all = slices.Concat(all, cls.InternalCtors)
+		}
+		own := cls.TypeParams[:len(cls.TypeParams)-cls.OuterParams] // an inner class's outer ones are the receiver's
+		for _, f := range all {
 			if !f.Protected {
 				ctors = append(ctors, f)
-				cands = append(cands, callee{f: f, tparams: append(cls.TypeParams[:len(cls.TypeParams):len(cls.TypeParams)], f.TypeParams...)})
+				cands = append(cands, callee{f: f, tparams: append(own[:len(own):len(own)], f.TypeParams...), recv: c.outerSubst})
 			}
 		}
 	}
@@ -2101,6 +2116,12 @@ func (c *Checker) javaProperty(x *syntax.Member, rt types.Type) (types.Type, boo
 	// Not those of an earlier check of x, an extension property's: a
 	// member setTextColor isn't the setter of TextView.textColor.
 	x.Getter, x.Setter = nil, nil
+	if (getterName == "getFirst" || getterName == "getLast") && c.isSubclassOf(cls, "java/util/List") && !c.isSubclassOf(cls, "java/util/Deque") {
+		// JDK 21's List.getFirst() and getLast(), deprecated in Kotlin's
+		// List, aren't properties: list.last is the program's or the
+		// standard library's.
+		return types.InvalidType, false
+	}
 	for _, f := range c.accessible(cls, c.javaMethods(cls, getterName)) {
 		// Only Java methods are seen as properties, and the program's
 		// overrides of them.

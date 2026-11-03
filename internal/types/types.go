@@ -221,6 +221,9 @@ func (t Type) String() string {
 		s = t.RangeElem().String() + "Progression"
 	case TypeParam, TypeVar:
 		s = t.Param().Name
+		if t.N && t.Param().Intersection {
+			s = "(" + s + ")"
+		}
 		if t.D {
 			s += " & Any"
 		}
@@ -788,8 +791,12 @@ type ClassSym struct {
 	Interfaces []*ClassSym
 	Supers     []Type // generic supertypes from the class's signature, if it has one
 	Ctors      []*FunSym
-	Statics    map[string][]*FunSym
-	Fields     map[string]*VarSym // static fields
+	// InternalCtors are a class-path Kotlin class's internal
+	// constructors, which only code under @Suppress("INVISIBLE_MEMBER")
+	// may call: Result<String>("OK").
+	InternalCtors []*FunSym
+	Statics       map[string][]*FunSym
+	Fields        map[string]*VarSym // static fields
 
 	// Objects and nested classes. Object is set on object declarations
 	// and companion objects, whose one instance is in a static field: see

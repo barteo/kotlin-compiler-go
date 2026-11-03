@@ -424,9 +424,11 @@ func (c *Checker) narrowSym(x syntax.Expr) *types.VarSym {
 }
 
 // isNarrowed returns the type that a value of type cur has once it is
-// known to be a T. kc has no intersection types: if cur isn't a subtype
-// of T, the value is seen as a T, non-null if cur is: ktor's first !is T
-// for a first: Node and a reified T leaves a T & Any (see declaredIfNull).
+// known to be a T. If cur isn't a subtype of T, the value is seen as a T,
+// non-null if cur is: ktor's first !is T for a first: Node and a reified
+// T leaves a T & Any (see declaredIfNull). An interface unrelated to a
+// class type gives their intersection, as in Kotlin: an a: A? that is a B
+// is an A & B, whatever expression it is passed through.
 func (c *Checker) isNarrowed(cur, t types.Type) types.Type {
 	if c.subtype(cur.NonNull(), t) {
 		if types.MayBeNull(t) {
@@ -437,7 +439,34 @@ func (c *Checker) isNarrowed(cur, t types.Type) types.Type {
 	if t.IsParam() && !types.MayBeNull(cur) {
 		return t.NonNull()
 	}
+	if i, ok := c.narrowedIntersection(cur, t); ok {
+		return i
+	}
 	return t
+}
+
+// narrowedIntersection returns cur & t for a smart cast of a value of
+// type cur to an unrelated t, where one of them is an interface, both are
+// Kotlin or Java class types without type parameters, and t is no
+// subclass of cur's class: t & cur.
+func (c *Checker) narrowedIntersection(cur, t types.Type) (types.Type, bool) {
+	a, b := cur.Flex().NonNull(), t.NonNull()
+	if a.K != types.Class || b.K != types.Class || !intersectable(a) || !intersectable(b) ||
+		a.C.Func || b.C.Func || c.subtype(b, a) {
+		return types.InvalidType, false
+	}
+	a.C.Ensure()
+	b.C.Ensure()
+	if !a.C.Interface && !b.C.Interface {
+		return types.InvalidType, false
+	}
+	// The target first, whose members win, as they did when the value
+	// was seen as a T alone; the class erases it either way.
+	i := c.intersect([]types.Type{b, a})
+	if types.MayBeNull(t) && types.MayBeNull(cur) {
+		i = i.Nullable()
+	}
+	return i, true
 }
 
 // needsCast reports whether a value read as type from needs a cast to be

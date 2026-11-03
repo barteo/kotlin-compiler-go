@@ -34,7 +34,7 @@ func (c *Checker) tailCalls(d *syntax.FunDecl) {
 	tail = func(e syntax.Expr) {
 		switch e := e.(type) {
 		case *syntax.Call:
-			if e.Sym == sym && selfCall(e, sym) {
+			if e.Sym == sym && selfCall(e, sym) && !(sym.DefaultsOf != nil && omitsArgs(e, sym)) {
 				e.Tail = true
 			}
 		case *syntax.If:
@@ -78,6 +78,29 @@ func (c *Checker) tailCalls(d *syntax.FunDecl) {
 		syntax.Inspect(d.Body, walk)
 		tailBlock(d.Body)
 	}
+}
+
+// omitsArgs reports whether call of f leaves out arguments of
+// parameters with default values. An override's, inherited, come from
+// the overridden function's name$default: kotlinc doesn't make such a
+// call a tail call (NO_TAIL_CALLS_FOUND).
+func omitsArgs(call *syntax.Call, f *types.FunSym) bool {
+	passed := make([]bool, len(f.Params))
+	for i := range call.Args {
+		j := i
+		if call.ArgMap != nil {
+			j = call.ArgMap[i]
+		}
+		if j >= 0 && j < len(passed) {
+			passed[j] = true
+		}
+	}
+	for i, p := range f.Params {
+		if !passed[i] && !p.Vararg {
+			return true
+		}
+	}
+	return false
 }
 
 // bareReturn reports whether s is a return from the function without a

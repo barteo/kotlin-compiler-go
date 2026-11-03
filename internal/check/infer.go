@@ -550,6 +550,22 @@ func (s *system) fix(tv *tvar) {
 				val = val.NonNull()
 			}
 		}
+		// Bounds that none of the others is below give their
+		// intersection: E <: Int and E <: String, of In<E> for an
+		// In<Int> and an In<String>, give Int & String, of which kotlinc
+		// only warns that it is empty. Where the variable has declared
+		// bounds, an empty one stays an error, as S <: Long? and S <:
+		// Double? of S : T? are (see the bounds below).
+		comps := []types.Type{val}
+		for _, u := range uppers {
+			if !c.subtype(val, u) && intersectable(u) && intersectable(val) &&
+				(len(tv.v.Bounds) == 0 || !c.emptyIntersection(val, u)) {
+				comps = append(comps, u)
+			}
+		}
+		if len(comps) > 1 {
+			val = c.intersect(comps)
+		}
 		// A non-null bound intersects a nullable upper bound: T? <: X?
 		// for T : Annotation gives T = X, and T <: A, for a type parameter
 		// A with a nullable bound and T : Any, gives T = A & Any.
@@ -784,9 +800,14 @@ func (s *system) fixVarsIn(t types.Type) {
 			// only if T1 has no proper bound of its own: else T2's other
 			// bounds would give T1 its value, Nothing from TODO() in
 			// elvis(f { it.method() }, TODO()).
-			own := slices.ContainsFunc(tv.lower, s.proper) || slices.ContainsFunc(tv.upper, s.proper)
+			// But a proper upper bound gives way to T2's proper lower one,
+			// as kotlinc prefers fixing variables with lower bounds: VR of
+			// fun <T, VR : T> foo(x: T, fn: (VR?, T) -> Unit) in foo(1) {
+			// prev: Int?, new -> } is fixed after T, an Int.
+			lower := len(tv.lits) > 0 || slices.ContainsFunc(tv.lower, s.proper)
+			own := lower || slices.ContainsFunc(tv.upper, s.proper)
 			for _, b := range tv.upper {
-				if !own || !s.isVar(b) {
+				if !own || !s.isVar(b) || !lower && s.hasLower(b) {
 					visit(b, true)
 				}
 			}
@@ -800,6 +821,18 @@ func (s *system) fixVarsIn(t types.Type) {
 		})
 	}
 	visit(t, false)
+}
+
+// hasLower reports whether t is an unfixed variable with a proper lower
+// bound other than Nothing, which kotlinc deems trivial: TODO()'s.
+func (s *system) hasLower(t types.Type) bool {
+	if !s.isVar(t) {
+		return false
+	}
+	tv := s.byVar[s.apply(t).Param()]
+	return len(tv.lits) > 0 || slices.ContainsFunc(tv.lower, func(b types.Type) bool {
+		return s.proper(b) && s.apply(b).K != types.Nothing
+	})
 }
 
 // fixable reports whether fix finds a value for tv in its bounds.

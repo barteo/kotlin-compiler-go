@@ -58,7 +58,12 @@ func (c *Checker) receiverFor(x *syntax.This) *implicitRecv {
 
 // thisExpr checks this, or this@label.
 func (c *Checker) thisExpr(x *syntax.This) types.Type {
-	if r := c.receiverFor(x); r != nil {
+	r := c.receiverFor(x)
+	if obj := c.headerThis(x, r); obj != nil {
+		x.Obj = obj
+		return obj.This()
+	}
+	if r != nil {
 		x.Recv = r.sym
 		if r.sym != c.noCapture {
 			c.capture(r.sym, r.depth)
@@ -86,6 +91,44 @@ func (c *Checker) thisExpr(x *syntax.This) types.Type {
 		t = n
 	}
 	return t
+}
+
+// headerThis returns the object this refers to in a class's header, the
+// arguments of its superclass's constructor and its delegates, where the
+// class's instance isn't one yet: as in kotlinc, its own and its
+// superclasses' companions come first, before the receivers of the code
+// around (but not of lambdas in the header, r), then the objects in the
+// static scope around (see scopeObjects). It returns nil if this is
+// another's.
+func (c *Checker) headerThis(x *syntax.This, r *implicitRecv) *types.ClassSym {
+	if x.Label != "" || x.Recv != nil || x.Class || c.cls != nil || c.staticCls == nil {
+		return nil
+	}
+	outside := 0 // the receivers of the code around
+	if ctx := c.anon[c.staticCls]; ctx != nil {
+		outside = len(ctx.recvs)
+	}
+	if r != nil {
+		for i := range c.recvs {
+			if &c.recvs[i] == r && i >= outside {
+				return nil // a lambda's in the header
+			}
+		}
+	}
+	for k := c.staticCls; k != nil; k = k.Super {
+		if k.Ensure(); k.Companion != nil {
+			return k.Companion
+		}
+	}
+	if r != nil || c.anon[c.staticCls] != nil {
+		return nil
+	}
+	// Then the objects in the static scope around: the enclosing
+	// classes' companions, their superclasses', and enclosing objects.
+	if objs := c.scopeObjects(); len(objs) > 0 {
+		return objs[0]
+	}
+	return nil
 }
 
 // recvThis returns this, referring to an implicit receiver.
@@ -217,6 +260,28 @@ func (c *Checker) hasFun(t types.Type, name string, x *syntax.Call) bool {
 	}
 	for _, cl := range c.extCalleesFor(name, t, x) {
 		if c.mayTake(cl.f, x) {
+			return true
+		}
+	}
+	return false
+}
+
+// providesDelegate reports whether a delegate of type t has a
+// provideDelegate operator that call may call: hasFun's, but an
+// extension's receiver must be within its type parameter's bound, as
+// P.provideDelegate for P : MyClass isn't a String's.
+func (c *Checker) providesDelegate(t types.Type, call *syntax.Call) bool {
+	if !c.hasFun(t, "provideDelegate", call) {
+		return false
+	}
+	if cls := c.classOf(t.Flex()); cls != nil && !types.MayBeNull(t.Flex()) {
+		cls.Ensure()
+		if len(c.javaMethods(cls, "provideDelegate")) > 0 {
+			return true
+		}
+	}
+	for _, cl := range c.extCalleesFor("provideDelegate", t.Flex(), call) {
+		if c.recvTakes(t.Flex(), cl.f.Recv) && c.mayTake(cl.f, call) {
 			return true
 		}
 	}
@@ -604,7 +669,20 @@ func (c *Checker) memberExtFirst(fn *syntax.Member, x *syntax.Call) bool {
 		}
 	}
 	rt = rt.Flex()
-	if cls := c.classOf(rt.NonNull()); cls != nil && !types.MayBeNull(rt) {
+	anyArgs := 0
+	if fn.Name == "equals" {
+		anyArgs = 1
+	}
+	if !types.MayBeNull(rt) && (builtinFun(rt, fn.Name, len(x.Args)) || anyMember[fn.Name] && len(x.Args) == anyArgs) {
+		// A built-in member, as String's hashCode(): a local val
+		// hashCode = Z::hashCode doesn't shadow it.
+		return true
+	}
+	cls := c.classOf(rt.NonNull())
+	if cls == nil {
+		cls = c.jvmClass(rt.NonNull())
+	}
+	if cls != nil && !types.MayBeNull(rt) {
 		cls.Ensure()
 		if slices.ContainsFunc(c.javaMethods(cls, fn.Name), func(f *types.FunSym) bool { return c.mayTake(f, x) }) {
 			return true

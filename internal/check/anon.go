@@ -100,6 +100,13 @@ func (c *Checker) objectExpr(x *syntax.ObjectExpr) types.Type {
 	}
 	sym := c.anonClass(d, "object expression", "object expressions", func() string { return c.anonName() }, func(sym *types.ClassSym, _ *syntax.Lambda) {
 		sym.Anonymous, sym.Final = true, true
+		// It sees the type parameters around it, as an inner class sees
+		// its outer class's: 1.self().calc() is an Int for a
+		// <T> T.self() = object { fun calc(): T }.
+		if tps := c.tparams; len(tps) > 0 {
+			sym.TypeParams = append(sym.TypeParams[:len(sym.TypeParams):len(sym.TypeParams)], tps...)
+			sym.OuterParams = len(tps)
+		}
 	})
 	if sym == nil {
 		return types.InvalidType

@@ -58,7 +58,7 @@ func (c *Checker) localDelegate(s *syntax.VarStmt) {
 		m := &syntax.Member{X: checked(s.Delegate, dt), Name: "provideDelegate"}
 		call := &syntax.Call{Fun: m, Args: []syntax.Expr{null, ref}, Operator: true}
 		null.P, m.P, call.P = s.P, s.P, s.P
-		if c.hasFun(dt, "provideDelegate", call) {
+		if c.providesDelegate(dt, call) {
 			s.Delegate = call
 			dt = c.value(call, provided)
 		}

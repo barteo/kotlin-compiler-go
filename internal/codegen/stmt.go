@@ -929,7 +929,7 @@ func (g *gen) lvalue(x syntax.Expr) lvalue {
 		if p := x.Prop; p.Kind == types.Global {
 			return g.globalLvalue(p)
 		}
-		_, this := x.X.(*syntax.This)
+		this := isThis(x.X)
 		return g.propLvalue(x.Prop, x.T, func() { g.expr(x.X) }, recvClass(x.X.Type()), this)
 	}
 	panic("bad assignment target")
