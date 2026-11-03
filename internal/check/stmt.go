@@ -433,7 +433,6 @@ func (c *Checker) while(s *syntax.While) types.Type {
 		c.reset(vars)
 		c.loops = append(c.loops, loop)
 		s.Body.T = c.stmts(s.Body, noWant, false)
-		c.loops = c.loops[:len(c.loops)-1]
 		if conts := loop.flow.continues; len(conts) > 0 || loop.flow.lost {
 			// The condition has the smart casts of the paths to it.
 			if s.Body.T.K != types.Nothing {
@@ -446,8 +445,10 @@ func (c *Checker) while(s *syntax.While) types.Type {
 				c.scope.narrows = append(c.scope.narrows, c.joinFlows(conts)...)
 			}
 		}
+		// A break or continue in the condition is the do-while's own.
 		c.value(s.Cond, types.BoolType)
 		c.wantBool(s.Cond)
+		c.loops = c.loops[:len(c.loops)-1]
 		_, whenFalse := c.narrowing(s.Cond)
 		c.push()
 		c.scope.narrows = append(c.scope.narrows, whenFalse...)
