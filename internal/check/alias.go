@@ -100,6 +100,9 @@ func (c *Checker) lookupAlias(name string) *types.AliasSym {
 // for, with the reference's type arguments.
 func (c *Checker) expandAlias(a *types.AliasSym, ref *syntax.TypeRef) types.Type {
 	c.resolveAlias(a)
+	if ref.Args == nil && ref == c.bareRef && bareAlias(a) {
+		return c.bareType(a.Type.C, ref, c.bareSubject)
+	}
 	if len(ref.Args) != len(a.TypeParams) {
 		p := ref.P
 		if ref.Args != nil {
@@ -133,6 +136,25 @@ func (c *Checker) expandAlias(a *types.AliasSym, ref *syntax.TypeRef) types.Type
 		return t
 	}
 	return c.nullable(t, ref)
+}
+
+// bareAlias reports whether typealias a may be written without its type
+// arguments in an is or as, as its class may: it expands to a class whose
+// type arguments are its own type parameters, each once, as in
+// typealias L<T> = List<T>.
+func bareAlias(a *types.AliasSym) bool {
+	t := a.Type
+	if len(a.TypeParams) == 0 || t.K != types.Class || t.N || t.A == nil || len(t.A.List) != len(a.TypeParams) {
+		return false
+	}
+	seen := map[*types.TypeParamSym]bool{}
+	for _, arg := range t.A.List {
+		if arg.V != types.Inv || !arg.T.IsParam() || arg.T.N || seen[arg.T.Param()] {
+			return false
+		}
+		seen[arg.T.Param()] = true
+	}
+	return true
 }
 
 // projectionConflicts reports whether type parameter p of a typealias,

@@ -91,7 +91,7 @@ func (c *Checker) typeName(x syntax.Expr) (string, bool) {
 	if len(parts) == 1 && (builtinTypeNames[name] || c.lookupTypeParam(name) != nil) {
 		return name, true
 	}
-	return name, c.lookupClass(name) != nil
+	return name, c.lookupClass(name) != nil || c.lookupAlias(name) != nil
 }
 
 // classLitType resolves the class on the left of :: in a class literal or,
@@ -107,7 +107,9 @@ func (c *Checker) classLitType(ref *syntax.TypeRef, callable bool) types.Type {
 		return types.InvalidType
 	}
 	if ref.Args == nil && !builtinTypeNames[ref.Name] {
-		if cls := c.lookupClass(ref.Name); cls != nil && ensured(cls).TypeParams != nil {
+		if cls := c.lookupClass(ref.Name); cls != nil && ensured(cls).TypeParams != nil && cls.Inner && cls.OuterParams > 0 && !callable {
+			return starInner(cls) // Outer.Inner::class, for Outer<T>
+		} else if cls != nil && cls.TypeParams != nil {
 			stars := make([]*syntax.TypeArg, len(cls.TypeParams))
 			for i := range stars {
 				stars[i] = &syntax.TypeArg{P: ref.P, Variance: types.Star}
@@ -125,6 +127,16 @@ func (c *Checker) classLitType(ref *syntax.TypeRef, callable bool) types.Type {
 		}
 	}
 	return t
+}
+
+// starInner returns an inner class's type with all its type arguments,
+// its own and its outer classes', star-projected.
+func starInner(cls *types.ClassSym) types.Type {
+	args := make([]types.Arg, len(cls.TypeParams))
+	for i := range args {
+		args[i] = types.Arg{V: types.Star}
+	}
+	return types.GenericType(cls, args)
 }
 
 // ensured loads a class's declarations if they aren't yet, and returns it.

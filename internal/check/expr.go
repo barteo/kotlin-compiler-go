@@ -124,6 +124,9 @@ func (c *Checker) expr1(x syntax.Expr, want types.Type, allowRange bool, sink *s
 					c.checkClassVisible(cls, x.P)
 					return objectValue(x, obj)
 				}
+				if obj := c.starObject(x.Name, cls); obj != nil {
+					return objectValue(x, obj)
+				}
 			}
 			if len(c.topFuns(x.Name)) > 0 {
 				c.errorf(x.P, "function invocation '%s()' expected; use ::%s for a reference", x.Name, x.Name)
@@ -2089,7 +2092,7 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 				}
 			}
 		}
-		if a := c.findClassifier(name).alias; a != nil && cls != nil && len(fs) == 0 {
+		if a := c.findClassifier(name).alias; a != nil && cls != nil && !cls.Object && len(fs) == 0 {
 			return c.aliasConstruct(x, a, cls, fn.P, want, sink)
 		}
 		if cls != nil && cls.Object && len(fs) == 0 && c.hasFun(types.ClassType(cls), "invoke", x) {
@@ -2264,7 +2267,7 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 			return len(c.javaMethods(cls, fn.Name)) > 0 || !cls.External && c.userProp(cls, fn.Name) != nil
 		})
 		cls := c.classOf(rt)
-		if cls != nil && !cls.External {
+		if cls != nil {
 			n, alias := c.innerNamed(cls, fn.Name)
 			if n != nil && fn.Safe {
 				// outer?.Inner() constructs, and evaluates the arguments,
