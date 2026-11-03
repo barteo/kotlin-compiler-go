@@ -447,7 +447,7 @@ func CheckWith(files []*syntax.File, lib *Library, jobs int) []*syntax.Error {
 			levelCache: map[funKey][][]*types.FunSym{}}
 	}
 	inheritDefaults(files)
-	dropContracts(files)
+	dropContracts(checkers)
 	if u.parcelize {
 		u.parcelSealed = parcelizeSealed(checkers)
 	}
@@ -541,6 +541,7 @@ func CheckWith(files []*syntax.File, lib *Library, jobs int) []*syntax.Error {
 	for _, c := range checkers {
 		c.shadowedErrors()
 		c.dslErrors()
+		c.versionOverloads()
 		c.checkModifiers()
 		sort.SliceStable(c.errs, func(i, j int) bool {
 			a, b := c.errs[i].Pos, c.errs[j].Pos
@@ -608,6 +609,11 @@ func (c *Checker) hidesBuiltin(name string) bool {
 }
 
 func (c *Checker) resolveType(ref *syntax.TypeRef) types.Type {
+	return c.typeMarkers(ref, c.resolveTypeRef(ref))
+}
+
+// resolveTypeRef is resolveType without the type's DSL markers.
+func (c *Checker) resolveTypeRef(ref *syntax.TypeRef) types.Type {
 	if ref.Known != nil {
 		return *ref.Known
 	}

@@ -569,6 +569,7 @@ func (c *Checker) implicitArg(x *syntax.Call, ft types.Type) {
 		r := &c.recvs[i]
 		if c.subtype(c.scope.narrowed(r.sym), recv) {
 			x.Args = append([]syntax.Expr{recvThis(r, x.P)}, x.Args...)
+			c.dslInvoke(x, r.sym)
 			return
 		}
 	}
@@ -576,6 +577,7 @@ func (c *Checker) implicitArg(x *syntax.Call, ft types.Type) {
 		this := &syntax.This{}
 		this.P = x.P
 		x.Args = append([]syntax.Expr{this}, x.Args...)
+		c.dslInvoke(x, nil)
 	}
 }
 

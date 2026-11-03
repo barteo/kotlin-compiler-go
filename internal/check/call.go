@@ -941,7 +941,7 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 	c.dslCall(x, &best.callee)
 	c.setContexts(x, &best.callee, best.sys, best.sub)
 	ensureFun(f)
-	c.suspendCall(x.P, f)
+	c.suspendFunCall(x, f)
 	c.composeFunCall(x.P, f)
 	c.inlineCall(x, &best.callee)
 	ret := best.sub.Apply(f.Ret)
@@ -1440,7 +1440,7 @@ func (c *Checker) resolvePlain(x *syntax.Call, cs []callee, want types.Type) typ
 	c.dslCall(x, best)
 	c.setContexts(x, best, nil, nil)
 	ensureFun(f)
-	c.suspendCall(x.P, f)
+	c.suspendFunCall(x, f)
 	c.composeFunCall(x.P, f)
 	if len(cs) > 1 {
 		c.inlineCall(x, best)
