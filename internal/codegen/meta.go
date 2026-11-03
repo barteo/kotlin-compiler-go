@@ -709,6 +709,9 @@ func (g *gen) propMeta(s *metaScope, p *types.VarSym, pd *syntax.PropDecl, cp *s
 		return kp
 	}
 	hasAccessors := !p.Private && !p.Const && !p.JvmField
+	if reflectAccessors(p) {
+		hasAccessors = true
+	}
 	if owner != nil && owner.Value && p == owner.Underlying && !underlyingGetter(owner) {
 		hasAccessors = false
 	}
@@ -739,6 +742,15 @@ func (g *gen) propMeta(s *metaScope, p *types.VarSym, pd *syntax.PropDecl, cp *s
 	}
 	kp.Flags = flags
 	return kp
+}
+
+// ownerDecl returns the declaration of the program's class owner.
+func ownerDecl(owner *types.ClassSym) (*syntax.ClassDecl, bool) {
+	if owner == nil {
+		return nil, false
+	}
+	cd, ok := owner.Decl.(*syntax.ClassDecl)
+	return cd, ok && cd != nil
 }
 
 // packageMeta converts the file's top-level declarations.

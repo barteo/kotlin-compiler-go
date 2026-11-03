@@ -130,10 +130,11 @@ func (g *gen) kpropInit(c *cf.Code, x *syntax.Lambda, super string, bound int) {
 // private one with default ones, a const or a @JvmField) has none in its
 // metadata, so kotlin-reflect looks for the getter its field would have,
 // getX()T, without the mangling of a value class type: kotlinc passes
-// that.
+// that. A companion's private property has a getter: see
+// reflectAccessors.
 func propRefGetter(p *types.VarSym) string {
 	name := types.GetterJVM(p)
-	if p.Private || p.Const || p.JvmField {
+	if (p.Private || p.Const || p.JvmField) && !reflectAccessors(p) {
 		name = types.GetterName(p.Name)
 	}
 	return name + "()" + desc(types.GetterType(p))

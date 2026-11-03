@@ -164,7 +164,11 @@ func (g *gen) while(s *syntax.While) {
 		g.loopBody(func() { g.stmts(s.Body.Stmts) })
 		g.code.Place(cont)
 		g.line(s.Cond.Pos())
+		// The condition is in the loop: a break or continue in it, as
+		// in while (break), jumps to this loop's labels.
+		g.pushLoop(s, exit, cont)
 		g.cond(s.Cond, top, true)
+		g.loops = g.loops[:len(g.loops)-1]
 		g.code.Place(exit)
 		return
 	}

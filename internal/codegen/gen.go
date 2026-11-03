@@ -188,6 +188,9 @@ type fileState struct {
 	// companions are the private companion objects that other classes
 	// than their outer class get through its access$getCompanion$p.
 	companions map[*types.ClassSym]bool
+	// outers are the inner classes whose outer instance copies of their
+	// inline functions read through access$getThis$0$p: see loadCaptures.
+	outers map[*types.ClassSym]bool
 	// extra are classes copied from the class path for inlined calls,
 	// with the calls' type arguments.
 	extra []Output
@@ -278,7 +281,7 @@ func GenerateFile(f *syntax.File, opts Options) (out []Output, err error) {
 	}
 	g := &gen{file: f, shared: &fileState{opts: opts, count: map[string]int{}, classes: map[string]*cf.Class{}, access: map[*types.VarSym]uint8{},
 		annotated: map[*types.VarSym][2]string{}, markers: map[*types.FunSym]bool{}, impls: map[*types.ClassSym]*cf.Class{},
-		begun: map[*types.ClassSym]*cf.Class{}, methods: map[privateMethod]bool{}, companions: map[*types.ClassSym]bool{}, stabilities: map[types.Type]stability{},
+		begun: map[*types.ClassSym]*cf.Class{}, methods: map[privateMethod]bool{}, companions: map[*types.ClassSym]bool{}, outers: map[*types.ClassSym]bool{}, stabilities: map[types.Type]stability{},
 		stableInits: map[*syntax.ClassDecl]func(){}}}
 	if fc := g.facade(); fc != nil {
 		g.shared.classes[fc.Name] = fc
@@ -308,6 +311,7 @@ func GenerateFile(f *syntax.File, opts Options) (out []Output, err error) {
 	out = g.finishSingletons(out)
 	g.privateAccessors()
 	g.companionAccessors()
+	g.outerAccessors()
 	g.markerConstructors()
 	g.innerClasses()
 	g.writeMetadata()
@@ -1128,7 +1132,7 @@ func (g *gen) functionBody(fd *syntax.FunDecl) {
 	}
 	if g.owner != nil && (g.owner.Anonymous || g.owner.Inner || g.owner.Local) && sym.Owner == g.owner {
 		if cd, ok := g.owner.Decl.(*syntax.ClassDecl); ok {
-			g.loadCaptures(cd, 0)
+			g.loadCaptures(cd, 0, false)
 		}
 	}
 	saved := g.tail // of a function this one is local to
@@ -1347,10 +1351,13 @@ func (g *gen) class(cd *syntax.ClassDecl) *cf.Class {
 				g.signAccessor(c.LastMethod(), ft, propRef(p), "("+ctx+d+")V", as, cls, p.Contexts...)
 				g.defaultAccessorAnnotations(c.LastMethod(), as, "set", p.Type)
 			}
-		case p.Private:
+		case p.Private && !reflectAccessors(p):
 			// Only the field: the static accessors that other classes
 			// use are added at the end (privateAccessors).
 		default:
+			if p.Private {
+				acc = cf.AccPrivate | cf.AccFinal
+			}
 			if p.Getter != nil {
 				m := g.function(p.Getter.Decl.(*syntax.FunDecl), acc)
 				if pd != nil {
@@ -2071,6 +2078,31 @@ func (g *gen) propField(c *cf.Class, p *types.VarSym, inClinit bool) {
 	g.fieldAnnotations(c.LastField(), as, p.Type, field)
 }
 
+// reflectAccessors reports whether private property p of a companion
+// object has accessor methods, which kotlinc doesn't write:
+// kotlin-reflect looks for a companion's private property's field in
+// the outer class, which kotlinc's field is in and kc's isn't (see
+// docs/unsupported.md), unless the metadata names a getter.
+func reflectAccessors(p *types.VarSym) bool {
+	o := p.Owner
+	if !p.Private || o == nil || o.CompanionOf == nil || o.CompanionOf.Interface ||
+		p.Kind != types.Prop || p.Getter != nil || p.Mutable && p.Setter != nil || p.Const || p.JvmField || p.Abstract || !p.HasField() || p.StaticField() {
+		return false
+	}
+	cd, ok := ownerDecl(o)
+	if !ok {
+		return false
+	}
+	for _, m := range cd.Members {
+		// fun getOk() beside private val ok, which kotlinc allows.
+		if fd, ok := m.(*syntax.FunDecl); ok && fd.Sym != nil &&
+			(fd.Sym.JVM() == types.GetterJVM(p) || p.Mutable && fd.Sym.JVM() == types.SetterJVM(p)) {
+			return false
+		}
+	}
+	return true
+}
+
 // companionFields returns the properties of class cd's companion object
 // whose static fields cd's class holds: its @JvmField ones.
 func companionFields(cd *syntax.ClassDecl) []*types.VarSym {
@@ -2174,7 +2206,7 @@ func (g *gen) defaults(fd *syntax.FunDecl, owner *types.ClassSym) {
 		if cd, ok := o.Decl.(*syntax.ClassDecl); ok {
 			// The default values, as the body, read the captures and an
 			// inner class's outer instance from locals.
-			prologue = func() { g.loadCaptures(cd, 0) }
+			prologue = func() { g.loadCaptures(cd, 0, false) }
 		}
 	}
 	k := g.fillDefaultsCont(fd.Params, f.Params, len(f.Contexts), f.Suspend, prologue)
@@ -2741,6 +2773,33 @@ func (g *gen) companionAccessors() {
 		}
 		code := c.NewMethod(cf.AccPublic|cf.AccStatic|cf.AccFinal|cf.AccSynthetic, "access$get"+name+"$p", "()L"+obj.Name+";")
 		code.FieldInsn(cf.GETSTATIC, owner, name, "L"+obj.Name+";")
+		code.Op(cf.ARETURN)
+		if err := code.Err(); err != nil {
+			panic(err)
+		}
+	}
+}
+
+// outerAccessors adds access$getThis$0$p(inner), which returns the outer
+// instance, to the inner classes whose inline functions read it: their
+// copies in other classes can't read the synthetic field this$0, as
+// kotlinc's can't (KT-66096).
+func (g *gen) outerAccessors() {
+	cs := make([]*types.ClassSym, 0, len(g.shared.outers))
+	for c := range g.shared.outers {
+		cs = append(cs, c)
+	}
+	sort.Slice(cs, func(i, j int) bool { return cs[i].Name < cs[j].Name })
+	for _, cls := range cs {
+		c := g.shared.classes[cls.Name]
+		if c == nil {
+			continue
+		}
+		v := cls.Decl.(*syntax.ClassDecl).OuterThis
+		d := storageDesc(v)
+		code := c.NewMethod(cf.AccPublic|cf.AccStatic|cf.AccFinal|cf.AccSynthetic, privateGetter(v), "(L"+cls.Name+";)"+d)
+		code.Local(cf.ALOAD, code.AllocLocal("L"+cls.Name+";"))
+		code.FieldInsn(cf.GETFIELD, cls.Name, "this$0", d)
 		code.Op(cf.ARETURN)
 		if err := code.Err(); err != nil {
 			panic(err)

@@ -330,9 +330,9 @@ func (a *assignment) doLoop(st *syntax.While, s *daState) {
 		l = &daLoop{node: st}
 		a.loops = append(a.loops, l)
 		a.block(st.Body, in)
-		a.loops = a.loops[:len(a.loops)-1]
 		end = join(append([]*daState{in}, l.conts...)...)
-		a.expr(st.Cond, end)
+		a.expr(st.Cond, end) // in the loop: while (break) leaves it
+		a.loops = a.loops[:len(a.loops)-1]
 		return end, l
 	}
 	if lit, ok := st.Cond.(*syntax.BoolLit); ok && !lit.Val {

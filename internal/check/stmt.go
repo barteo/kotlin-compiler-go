@@ -446,7 +446,10 @@ func (c *Checker) while(s *syntax.While) types.Type {
 				c.scope.narrows = append(c.scope.narrows, c.joinFlows(conts)...)
 			}
 		}
+		// The condition is in the loop: while (break) leaves it.
+		c.loops = append(c.loops, loop)
 		c.value(s.Cond, types.BoolType)
+		c.loops = c.loops[:len(c.loops)-1]
 		c.wantBool(s.Cond)
 		_, whenFalse := c.narrowing(s.Cond)
 		c.push()

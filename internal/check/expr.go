@@ -17,7 +17,8 @@ func (c *Checker) value(x syntax.Expr, want types.Type) types.Type {
 		c.errorf(x.Pos(), "ranges are only supported in 'for' loops and 'in' checks")
 		return types.InvalidType
 	case types.Unit:
-		if want.K != types.Invalid && want.K != types.Unit {
+		// Without an expected type too: (a?.f()).ext gets null.
+		if want.K != types.Unit {
 			t = c.safeUnit(x, t)
 		}
 	}

@@ -204,13 +204,25 @@ func (g *gen) storeCaptures(cd *syntax.ClassDecl) {
 // loadCaptures copies the captures of class cd, of the instance in local
 // self, to locals, which the captured variables' slots become: those of
 // the class whose method is being generated, or of an inlined member's
-// receiver.
-func (g *gen) loadCaptures(cd *syntax.ClassDecl, self int) {
+// receiver. An inner class's public inline function, and a copy of one
+// in another class (copy set), reads the outer instance through
+// access$getThis$0$p, as kotlinc does: its copies in other packages
+// can't read the synthetic field.
+func (g *gen) loadCaptures(cd *syntax.ClassDecl, self int, copy bool) {
+	o := cd.Sym
+	viaAccessor := o.Inner && !o.Local && !o.Anonymous && (copy || g.publicInline)
 	for _, v := range cd.Captures {
 		d := storageDesc(v)
 		slot := g.code.AllocLocal(d)
 		g.code.Local(cf.ALOAD, self)
-		g.code.FieldInsn(cf.GETFIELD, cd.Sym.Name, captureField(cd, v), d)
+		if v == cd.OuterThis && viaAccessor {
+			if g.publicInline {
+				g.shared.outers[o] = true
+			}
+			g.code.Invoke(cf.INVOKESTATIC, o.Name, privateGetter(v), "(L"+o.Name+";)"+d)
+		} else {
+			g.code.FieldInsn(cf.GETFIELD, o.Name, captureField(cd, v), d)
+		}
 		if v.Boxed() {
 			g.code.Local(cf.ASTORE, slot)
 		} else {

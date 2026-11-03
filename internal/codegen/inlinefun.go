@@ -203,7 +203,7 @@ func (g *gen) inlineBody(x *syntax.Call, d *syntax.FunDecl) {
 					saved[v] = v.Slot
 				}
 			}
-			g.loadCaptures(cd, self)
+			g.loadCaptures(cd, self, !f.Private && g.cls.Name != cd.Sym.Name)
 		}
 	}
 	// A function value converted to a suspend one is inlined as the

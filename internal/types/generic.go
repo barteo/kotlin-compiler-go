@@ -490,6 +490,11 @@ func withFlags(r, occ Type) Type {
 	case r.K == Invalid:
 		return r
 	case occ.N && !occ.P:
+		if r.K == Unit {
+			// T? with T := Unit is Unit?, the kotlin.Unit object or null:
+			// a { null } passed for a () -> T? returns null.
+			return ClassType(unitObject).Nullable()
+		}
 		return r.Nullable()
 	case occ.D:
 		return r.NonNull()
