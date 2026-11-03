@@ -3253,7 +3253,7 @@ func (g *gen) backingField(p *types.VarSym, load bool) {
 	case p.Kind == types.Global && load:
 		g.code.FieldInsn(cf.GETSTATIC, p.FieldClass(), p.Name, d)
 	case p.Kind == types.Global:
-		g.coerce(p.Type, ft)
+		g.toField(p, ft)
 		g.code.FieldInsn(cf.PUTSTATIC, p.FieldClass(), p.Name, d)
 		return
 	case load && p.StaticField():
@@ -3286,7 +3286,7 @@ func (g *gen) getField(p *types.VarSym) {
 func (g *gen) putField(p *types.VarSym) {
 	ft := types.FieldType(p)
 	d := desc(ft)
-	g.coerce(p.Type, ft)
+	g.toField(p, ft)
 	if p.StaticField() {
 		g.dropUnder(ft)
 		g.code.FieldInsn(cf.PUTSTATIC, p.ConstOwner().Name, p.Name, d)
@@ -3403,7 +3403,7 @@ func (g *gen) setProp(cls *types.ClassSym, p *types.VarSym) {
 	}
 	ft := types.FieldType(p)
 	d := desc(ft)
-	g.coerce(p.Type, ft)
+	g.toField(p, ft)
 	switch {
 	case p.JvmStatic && p.Owner.CompanionOf == nil && !p.Private && !p.SetterPrivate:
 		g.dropUnder(ft)

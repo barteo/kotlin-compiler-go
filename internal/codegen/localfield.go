@@ -27,7 +27,7 @@ func (g *gen) outerField(p *types.VarSym, store bool) {
 	self := "L" + p.Owner.Name + ";"
 	if store {
 		g.shared.access[p] |= 2
-		g.coerce(p.Type, ft)
+		g.toField(p, ft)
 		g.code.Invoke(cf.INVOKESTATIC, p.Owner.Name, privateSetter(p), "("+self+d+")V")
 		return
 	}

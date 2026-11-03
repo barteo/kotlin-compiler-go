@@ -786,7 +786,7 @@ func (g *gen) lvalue(x syntax.Expr) lvalue {
 				return lvalue{t: t, prepare: func() {},
 					load: func() { g.backingField(p, true) },
 					store: func() {
-						g.coerce(p.Type, ft)
+						g.toField(p, ft)
 						g.code.FieldInsn(cf.PUTSTATIC, owner, p.Name, desc(ft))
 					}}
 			}
@@ -940,7 +940,7 @@ func (g *gen) globalLvalue(p *types.VarSym) lvalue {
 		return lvalue{t: p.Type, prepare: func() {}, reread: true,
 			load: func() { g.global(p) },
 			store: func() {
-				g.coerce(p.Type, ft)
+				g.toField(p, ft)
 				g.code.Invoke(cf.INVOKESTATIC, p.Facade, p.Setter.JVM(), "("+d+")V")
 			}}
 	}
@@ -951,7 +951,7 @@ func (g *gen) globalLvalue(p *types.VarSym) lvalue {
 				g.coerce(ft, p.Type)
 			},
 			store: func() {
-				g.coerce(p.Type, ft)
+				g.toField(p, ft)
 				g.code.FieldInsn(cf.PUTSTATIC, p.FieldClass(), p.Name, d)
 			}}
 	}
@@ -963,7 +963,7 @@ func (g *gen) globalLvalue(p *types.VarSym) lvalue {
 	return lvalue{t: p.Type, prepare: func() {}, reread: true,
 		load: func() { g.global(p) },
 		store: func() {
-			g.coerce(p.Type, ft)
+			g.toField(p, ft)
 			g.code.Invoke(cf.INVOKESTATIC, p.Facade, set, "("+d+")V")
 		}}
 }
@@ -987,7 +987,7 @@ func (g *gen) propLvalue(p *types.VarSym, t types.Type, recv func(), cls *types.
 			g.coerce(ft, p.Type)
 		}
 		lv.store = func() {
-			g.coerce(p.Type, ft)
+			g.toField(p, ft)
 			g.code.FieldInsn(cf.PUTSTATIC, owner, p.Name, d)
 		}
 	case this && g.directGet(p):
