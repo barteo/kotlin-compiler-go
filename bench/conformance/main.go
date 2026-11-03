@@ -74,6 +74,11 @@ func main() {
 	if *kotlinTest != "" {
 		libs = append(libs, *kotlinTest)
 	}
+	features, err := readLanguageFeatures(*kotlin)
+	if err != nil {
+		log.Fatal(err)
+	}
+	languageFeatures = features
 	comp := &compiler{kc: *kc, kotlinc: *kotlinc, libs: libs, reflect: *reflectJar, timeout: 2 * time.Minute}
 	if err := os.RemoveAll(*work); err != nil {
 		log.Fatal(err)

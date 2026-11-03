@@ -32,6 +32,7 @@ fi
 git -C "$repo" sparse-checkout set --no-cone \
 	/compiler/testData/codegen/box/ \
 	/compiler/testData/diagnostics/ \
+	/core/language.version-settings/src/org/jetbrains/kotlin/config/LanguageVersionSettings.kt \
 	/compiler/fir/checkers/gen/ \
 	/compiler/fir/checkers/checkers.jvm/gen/ \
 	/compiler/fir/raw-fir/raw-fir.common/gen/org/jetbrains/kotlin/fir/builder/FirSyntaxErrors.kt \

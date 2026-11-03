@@ -1,9 +1,13 @@
 package main
 
 import (
+	"bufio"
+	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -194,7 +198,7 @@ func commonSkip(t *test) string {
 		return "TARGET_PLATFORM: " + strings.Join(vs, ", ")
 	}
 	for _, f := range t.values("LANGUAGE") {
-		if !defaultFeatures[f] {
+		if !defaultLanguage(f) {
 			return "LANGUAGE"
 		}
 	}
@@ -225,10 +229,89 @@ func commonSkip(t *test) string {
 	return ""
 }
 
-// defaultFeatures are the LANGUAGE directive's values that change nothing:
-// features on by default in the Kotlin kc compiles, as in kotlinc's.
-var defaultFeatures = map[string]bool{
-	"+ContextParameters": true,
+// languageFeatures says, for each of kotlinc's language features, whether
+// it is on by default, as kotlinc's LanguageFeature at the checkout's tag
+// says (readLanguageFeatures). The Kotlin kc compiles is that version's.
+var languageFeatures map[string]bool
+
+// defaultLanguage reports whether a value of the LANGUAGE directive changes
+// nothing: it turns on a feature on by default, or turns off one off by
+// default.
+func defaultLanguage(v string) bool {
+	if len(v) < 2 {
+		return false
+	}
+	on, known := languageFeatures[v[1:]]
+	switch v[0] {
+	case '+':
+		return on
+	case '-':
+		return known && !on
+	}
+	return false
+}
+
+// languageSettings is the file of the checkout that declares kotlinc's
+// language features and versions.
+const languageSettings = "core/language.version-settings/src/org/jetbrains/kotlin/config/LanguageVersionSettings.kt"
+
+var (
+	latestStableRE = regexp.MustCompile(`\bval LATEST_STABLE = KOTLIN_(\d+)_(\d+)\b`)
+	// featureRE matches an entry of enum class LanguageFeature, which gives
+	// first the language version that turns it on, or null.
+	featureRE = regexp.MustCompile(`^    ([A-Z]\w*)\(\s*(?:sinceVersion\s*=\s*)?(?:null|KOTLIN_(\d+)_(\d+))\b`)
+	// apiVersionRE matches the API version an entry also needs.
+	apiVersionRE = regexp.MustCompile(`\bApiVersion\.KOTLIN_(\d+)_(\d+)\b`)
+)
+
+// readLanguageFeatures reads, from the checkout of JetBrains/kotlin in
+// dir, which language features kotlinc has on by default: those since a
+// language version, and API version if they give one, up to the latest
+// stable one, which kotlinc compiles by default.
+func readLanguageFeatures(dir string) (map[string]bool, error) {
+	path := filepath.Join(dir, languageSettings)
+	src, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	m := latestStableRE.FindSubmatch(src)
+	if m == nil {
+		return nil, fmt.Errorf("%s: no LanguageVersion.LATEST_STABLE", path)
+	}
+	latest := version(string(m[1]), string(m[2]))
+	features := map[string]bool{}
+	in := false
+	sc := bufio.NewScanner(bytes.NewReader(src))
+	for sc.Scan() {
+		line := sc.Text()
+		if !in {
+			in = strings.HasPrefix(line, "enum class LanguageFeature(")
+			continue
+		}
+		if strings.TrimSpace(line) == ";" {
+			break
+		}
+		m := featureRE.FindStringSubmatch(line)
+		if m == nil {
+			continue
+		}
+		on := m[2] != "" && version(m[2], m[3]) <= latest
+		if a := apiVersionRE.FindStringSubmatch(line); a != nil && version(a[1], a[2]) > latest {
+			on = false
+		}
+		features[m[1]] = on
+	}
+	if len(features) == 0 {
+		return nil, fmt.Errorf("%s: no entries of enum class LanguageFeature", path)
+	}
+	return features, nil
+}
+
+// version orders the version major.minor.
+func version(major, minor string) int {
+	a, _ := strconv.Atoi(major)
+	b, _ := strconv.Atoi(minor)
+	return a*1000 + b
 }
 
 func slicesContainsFold(vs []string, s string) bool {
