@@ -35,7 +35,7 @@ tests/DiamondProperty.kt	accepts valid
 tests/DisabledMultiDollarInterpolation.kt	skip	LANGUAGE	
 tests/Dollar.kt	accepts valid		
 tests/EmptyThrow.kt	rejects invalid	elsewhere	
-tests/EnabledMultiDollarInterpolation.kt	skip	LANGUAGE	
+tests/EnabledMultiDollarInterpolation.kt	accepts valid		
 tests/EnumEntryAsType.kt	rejects invalid	on an expected line	
 tests/ExtensionCallInvoke.kt	rejects invalid	on an expected line	
 tests/ExternalAccessors.kt	rejects invalid	on an expected line	
@@ -51,9 +51,9 @@ tests/GenericFunctionIsLessSpecific.kt	accepts valid
 tests/IdentityComparisonWithPrimitives.kt	rejects invalid	on an expected line	
 tests/IncDec.kt	rejects invalid	on an expected line	
 tests/IncorrectCharacterLiterals.kt	rejects invalid	on an expected line	
-tests/IncorrectMultiDollarInterpolationCodeA.kt	skip	LANGUAGE	
+tests/IncorrectMultiDollarInterpolationCodeA.kt	rejects invalid	on an expected line	
 tests/IncorrectMultiDollarInterpolationCodeB.kt	skip	LANGUAGE	
-tests/IncorrectPaddedMultiDollarInterpolationCodeA.kt	skip	LANGUAGE	
+tests/IncorrectPaddedMultiDollarInterpolationCodeA.kt	rejects invalid	on an expected line	
 tests/IncorrectPaddedMultiDollarInterpolationCodeB.kt	skip	LANGUAGE	
 tests/InferNullabilityInThenBlock.kt	accepts valid		
 tests/Infix.kt	rejects invalid	on an expected line	
@@ -98,7 +98,7 @@ tests/QualifiedExpressions.kt	rejects invalid	on an expected line
 tests/RecursiveResolve.kt	accepts valid		
 tests/RecursiveTypeInference.kt	rejects invalid	on an expected line	
 tests/RecursiveTypeParameterEqualityCheck.kt	rejects valid	operator '_' cannot be applied to Barn and Barn	RecursiveTypeParameterEqualityCheck.kt:9: operator '==' cannot be applied to Bar1 and Bar3
-tests/RedundantInterpolationPrefixCornerCases.kt	skip	LANGUAGE	
+tests/RedundantInterpolationPrefixCornerCases.kt	rejects invalid	on an expected line	
 tests/ReserveYieldNoMore.kt	accepts valid		
 tests/ReserveYieldNoMore2.kt	skip	LANGUAGE	
 tests/ResolveOfJavaGenerics.kt	rejects invalid	on an expected line	
@@ -225,7 +225,7 @@ tests/annotations/annotationArgumentOnDoWhile.kt	accepts valid
 tests/annotations/annotationArgumentScopeForConstructorHeader.kt	skip	LANGUAGE	
 tests/annotations/annotationArgumentScopeForConstructorHeaderAfter.kt	skip	LANGUAGE	
 tests/annotations/annotationArgumentScopeForNestedClass.kt	accepts invalid	ARGUMENT_TYPE_MISMATCH; NON_CONST_VAL_USED_IN_CONSTANT_EXPRESSION	annotationArgumentScopeForNestedClass.kt:19: ARGUMENT_TYPE_MISMATCH
-tests/annotations/annotationArgumentScopeForNestedTypeAlias.kt	skip	LANGUAGE	
+tests/annotations/annotationArgumentScopeForNestedTypeAlias.kt	rejects invalid	on an expected line	
 tests/annotations/annotationInheritance.kt	rejects invalid	on an expected line	
 tests/annotations/annotationModifier.kt	rejects invalid	on an expected line	
 tests/annotations/annotationOnParameterInFunctionType.kt	rejects invalid	on an expected line	
@@ -245,7 +245,7 @@ tests/annotations/annotationsOnNullableTypes.kt	rejects invalid	on an expected l
 tests/annotations/arrayLiteralFalseNegativeInsideLambda.kt	skip	LANGUAGE	
 tests/annotations/arrayLiteralInAnnotationCompanion.kt	skip	LANGUAGE	
 tests/annotations/atAnnotationResolve.kt	rejects invalid	on an expected line	
-tests/annotations/backingFieldWithAnnotatedType.kt	skip	LANGUAGE	
+tests/annotations/backingFieldWithAnnotatedType.kt	accepts valid		
 tests/annotations/blockLevelOnTheSameLineWarning.kt	skip	LANGUAGE	
 tests/annotations/classAnnotationsInLocalClass.kt	rejects invalid	on an expected line	
 tests/annotations/companionAnnotations.kt	rejects invalid	on an expected line	
@@ -308,7 +308,7 @@ tests/annotations/kt43936.kt	accepts valid
 tests/annotations/kt54478.kt	accepts valid		
 tests/annotations/kt55286.kt	accepts valid		
 tests/annotations/localAnnotationWithTarget.kt	rejects invalid	on an expected line	
-tests/annotations/localBackingFieldWithAnnotatedType.kt	skip	LANGUAGE	
+tests/annotations/localBackingFieldWithAnnotatedType.kt	accepts valid		
 tests/annotations/localImplicitTypeUnavailable.kt	accepts valid		
 tests/annotations/missingValOnParameter.kt	rejects invalid	on an expected line	
 tests/annotations/nestedAliasWithNestedAnnotation.kt	rejects invalid	on an expected line	
@@ -1027,7 +1027,7 @@ tests/cast/classVsClassIsCheck.kt	rejects invalid	on an expected line
 tests/cast/classVsClassIsCheckAndIntersectionType.kt	rejects invalid	on an expected line	
 tests/cast/classVsClassIsCheckJava.kt	skip	Java sources	
 tests/cast/classVsClassIsCheckNullable.kt	rejects invalid	on an expected line	
-tests/cast/classVsClassIsCheckTypealias.kt	skip	LANGUAGE	
+tests/cast/classVsClassIsCheckTypealias.kt	rejects invalid	on an expected line	
 tests/cast/classVsClassIsCheckWithTypeParameter.kt	rejects invalid	on an expected line	
 tests/cast/constants.kt	accepts valid		
 tests/cast/isAlwaysFalse.kt	rejects invalid	on an expected line	
@@ -1052,7 +1052,7 @@ tests/cast/usefulCastInMap.kt	accepts valid
 tests/cast/uselessVsImpossibleIsChecks.kt	rejects invalid	on an expected line	
 tests/castToNullableParameter.kt	skip	Java sources	
 tests/castingMutableListVariance.kt	rejects invalid	on an expected line	
-tests/catchParameter.kt	skip	LANGUAGE	
+tests/catchParameter.kt	rejects invalid	on an expected line	
 tests/cfa/comparisonWithChangingTryBlock.kt	skip	LANGUAGE	
 tests/cfa/equalsContractOnTypeParameter.kt	rejects invalid	on an expected line	
 tests/cfa/initializationInTry.kt	accepts valid		
@@ -1898,10 +1898,10 @@ tests/controlFlowAnalysis/assignmentOfSyntheticVarWithInconsistentNullability.kt
 tests/controlFlowAnalysis/backingFieldInsideGetter.kt	rejects invalid	on an expected line	
 tests/controlFlowAnalysis/breakContinueInTryFinally.kt	accepts valid		
 tests/controlFlowAnalysis/breakContinueInTryFinallyInLoop.kt	accepts valid		
-tests/controlFlowAnalysis/breakContinueNoinline.kt	skip	LANGUAGE	
+tests/controlFlowAnalysis/breakContinueNoinline.kt	rejects invalid	on an expected line	
 tests/controlFlowAnalysis/breakContinueWithElvisInLambda.kt	rejects invalid	on an expected line	
-tests/controlFlowAnalysis/breakInLambdaPassedToDirectInvoke.kt	skip	LANGUAGE	
-tests/controlFlowAnalysis/breakInsideLocal.kt	skip	LANGUAGE	
+tests/controlFlowAnalysis/breakInLambdaPassedToDirectInvoke.kt	rejects invalid	on an expected line	
+tests/controlFlowAnalysis/breakInsideLocal.kt	rejects invalid	on an expected line	
 tests/controlFlowAnalysis/breakOrContinueInLoopCondition.kt	rejects invalid	on an expected line	
 tests/controlFlowAnalysis/capturingUninitializedVariableInNonInPlaceLambda.kt	rejects invalid	on an expected line	
 tests/controlFlowAnalysis/cfgOfFullyIncorrectCode.kt	rejects invalid	on an expected line	
@@ -1937,7 +1937,7 @@ tests/controlFlowAnalysis/deadCode/kt2585_2.kt	accepts valid
 tests/controlFlowAnalysis/deadCode/kt2585_3.kt	accepts valid		
 tests/controlFlowAnalysis/deadCode/kt3162tryAsInitializer.kt	accepts valid		
 tests/controlFlowAnalysis/deadCode/kt5200DeadCodeInLambdas.kt	accepts valid		
-tests/controlFlowAnalysis/deadCode/nonLocalJump.kt	skip	LANGUAGE	
+tests/controlFlowAnalysis/deadCode/nonLocalJump.kt	accepts valid		
 tests/controlFlowAnalysis/deadCode/reassignementInUnreachableCode.kt	rejects invalid	on an expected line	
 tests/controlFlowAnalysis/deadCode/returnInDeadLambda.kt	accepts valid		
 tests/controlFlowAnalysis/deadCode/smartCastAfterDeadCode.kt	accepts valid		
@@ -2010,7 +2010,7 @@ tests/controlFlowAnalysis/lambdaCaptureInConstructor.kt	rejects invalid	on an ex
 tests/controlFlowAnalysis/lambdaCaptureInExtensionReceiver.kt	rejects invalid	on an expected line	
 tests/controlFlowAnalysis/lambdaCaptureInJavaFunction.kt	skip	Java sources	
 tests/controlFlowAnalysis/lambdaCaptureInitializedPropertyInOtherArgument.kt	rejects invalid	on an expected line	
-tests/controlFlowAnalysis/lambdaCaptureUninitializedInOtherArgument.kt	skip	LANGUAGE	
+tests/controlFlowAnalysis/lambdaCaptureUninitializedInOtherArgument.kt	rejects invalid	on an expected line	
 tests/controlFlowAnalysis/lambdaCaptureUninitializedLambda.kt	rejects invalid	on an expected line	
 tests/controlFlowAnalysis/lambdaCaptureUninitializedProperty.kt	rejects invalid	on an expected line	
 tests/controlFlowAnalysis/localClasses.kt	rejects invalid	elsewhere	
@@ -2067,13 +2067,13 @@ tests/controlFlowAnalysis/varInitializationInIfInCycle.kt	accepts valid
 tests/controlStructures/ForLoopWithExtensionIteratorOnNullable.kt	rejects invalid	on an expected line	
 tests/controlStructures/ForWithoutBraces.kt	accepts valid		
 tests/controlStructures/ForbidStatementAsDirectFunctionBody.kt	rejects invalid	on an expected line	
-tests/controlStructures/breakContinueInCrossInlineLambda.kt	skip	LANGUAGE	
-tests/controlStructures/breakContinueInNoInlineLambda.kt	skip	LANGUAGE	
+tests/controlStructures/breakContinueInCrossInlineLambda.kt	rejects invalid	on an expected line	
+tests/controlStructures/breakContinueInNoInlineLambda.kt	rejects invalid	on an expected line	
 tests/controlStructures/breakToLabel.kt	accepts valid		
 tests/controlStructures/catchGenerics.kt	accepts invalid	GENERIC_THROWABLE_SUBCLASS; TYPE_PARAMETER_IN_CATCH_CLAUSE	catchGenerics.kt:6: GENERIC_THROWABLE_SUBCLASS
 tests/controlStructures/catchInnerClassesOfGenerics.kt	rejects invalid	on an expected line	
 tests/controlStructures/catchOfTypeNothing.kt	rejects invalid	on an expected line	
-tests/controlStructures/catchReifiedTypeAllowed.kt	skip	LANGUAGE	
+tests/controlStructures/catchReifiedTypeAllowed.kt	accepts valid		
 tests/controlStructures/catchReifiedTypeForbidden.kt	skip	LANGUAGE	
 tests/controlStructures/catchWithDefault.kt	rejects invalid	on an expected line	
 tests/controlStructures/catchingLocalClassesCapturingTypeParameters.kt	rejects invalid	on an expected line	
@@ -2161,7 +2161,7 @@ tests/crv/classesAndThis.kt	skip	return value checker (crv/, crvFull/)
 tests/crv/coercions.kt	skip	return value checker (crv/, crvFull/)	
 tests/crv/collectionsAndJavaTypes.kt	skip	return value checker (crv/, crvFull/)	
 tests/crv/contracts.kt	skip	return value checker (crv/, crvFull/)	
-tests/crv/controlFlow.kt	skip	LANGUAGE	
+tests/crv/controlFlow.kt	skip	return value checker (crv/, crvFull/)	
 tests/crv/enums.kt	skip	return value checker (crv/, crvFull/)	
 tests/crv/exclusions.kt	skip	return value checker (crv/, crvFull/)	
 tests/crv/expectActual/actualizeInheritance.kt	skip	LANGUAGE	
@@ -2172,7 +2172,7 @@ tests/crv/expectActual/actualizeTypealiasToUnspecified.kt	skip	LANGUAGE
 tests/crv/expectActual/actualizeUnspecified.kt	skip	LANGUAGE	
 tests/crv/expectActual/inheritanceInCommon.kt	skip	LANGUAGE	
 tests/crv/expectActual/noMemberInExpect.kt	skip	LANGUAGE	
-tests/crv/ignorabilityOnClassMembers.kt	skip	LANGUAGE	
+tests/crv/ignorabilityOnClassMembers.kt	skip	return value checker (crv/, crvFull/)	
 tests/crv/ignorabilityOnOverride.kt	skip	return value checker (crv/, crvFull/)	
 tests/crv/inheritanceChainIgnorability.kt	skip	return value checker (crv/, crvFull/)	
 tests/crv/javaAnnotationsOverride.kt	skip	Java sources	
@@ -2746,14 +2746,14 @@ tests/deprecated/kt82555/chooseCloserQualifierWithDeprecatedCompanionForCallable
 tests/deprecated/kt82555/chooseCloserQualifierWithDeprecatedCompanionForGetClassLHS.kt	skip	LANGUAGE_FEATURE_TOGGLED	
 tests/deprecated/kt82555/deprecatedHiddenCallableReferenceLHS.kt	skip	LANGUAGE_FEATURE_TOGGLED	
 tests/deprecated/kt82555/deprecatedHiddenCompanionObject.kt	skip	LANGUAGE_FEATURE_TOGGLED	
-tests/deprecated/kt82555/deprecatedHiddenCompanionObjectReferencedByTypealias.kt	skip	LANGUAGE	
+tests/deprecated/kt82555/deprecatedHiddenCompanionObjectReferencedByTypealias.kt	skip	LANGUAGE_FEATURE_TOGGLED	
 tests/deprecated/kt82555/deprecatedHiddenGetClassLHS.kt	skip	LANGUAGE_FEATURE_TOGGLED	
 tests/deprecated/kt82555/deprecatedHiddenObjectVsContextProperty.kt	skip	LANGUAGE_FEATURE_TOGGLED	
 tests/deprecated/kt82555/deprecatedHiddenObjectVsExtensionProperty.kt	skip	LANGUAGE_FEATURE_TOGGLED	
 tests/deprecated/kt82555/deprecatedHiddenObjectVsImported.kt	skip	LANGUAGE_FEATURE_TOGGLED	
 tests/deprecated/kt82555/deprecatedHiddenObjectVsStarImported.kt	skip	LANGUAGE_FEATURE_TOGGLED	
-tests/deprecated/kt82555/deprecatedHiddenTypealiasUsedAsQualifier.kt	skip	LANGUAGE	
-tests/deprecated/kt82555/deprecatedHiddenTypealiasedUsedAsQualifier.kt	skip	LANGUAGE	
+tests/deprecated/kt82555/deprecatedHiddenTypealiasUsedAsQualifier.kt	skip	LANGUAGE_FEATURE_TOGGLED	
+tests/deprecated/kt82555/deprecatedHiddenTypealiasedUsedAsQualifier.kt	skip	LANGUAGE_FEATURE_TOGGLED	
 tests/deprecated/kt82555/deprecatedHiddenUsedAsQualifier.kt	skip	LANGUAGE_FEATURE_TOGGLED	
 tests/deprecated/kt82555/enumClassWithDeprecatedHiddenCompanionAndValueOfCall.kt	skip	LANGUAGE_FEATURE_TOGGLED	
 tests/deprecated/kt82555/getClassWithDeprecatedCompanion.kt	skip	LANGUAGE_FEATURE_TOGGLED	
@@ -3117,27 +3117,27 @@ tests/exceptions/transformErrorTypeChildrenWhileTransformingPartiallyResolvedTyp
 tests/exceptions/uninitializedTypeArgumentsMappingIfErrorCandidates.kt	rejects invalid	on an expected line	
 tests/exceptions/unresolvedReferenceDuringProjectionRelationChecking.kt	rejects invalid	on an expected line	
 tests/exceptions/unresolvedTypeWithIllegalSelector.kt	rejects invalid	on an expected line	
-tests/exhaustiveness/negative/exhaustiveWithNegativeBooleans.kt	skip	LANGUAGE	
-tests/exhaustiveness/negative/exhaustiveWithNegativeBounds.kt	skip	LANGUAGE	
+tests/exhaustiveness/negative/exhaustiveWithNegativeBooleans.kt	skip	Java sources	
+tests/exhaustiveness/negative/exhaustiveWithNegativeBounds.kt	rejects invalid	on an expected line	
 tests/exhaustiveness/negative/exhaustiveWithNegativeContextParameters.kt	skip	LANGUAGE	
 tests/exhaustiveness/negative/exhaustiveWithNegativeContextSensitiveResolution.kt	skip	LANGUAGE	
-tests/exhaustiveness/negative/exhaustiveWithNegativeContract.kt	skip	LANGUAGE	
-tests/exhaustiveness/negative/exhaustiveWithNegativeContractDifferentInvocationKinds.kt	skip	LANGUAGE	
-tests/exhaustiveness/negative/exhaustiveWithNegativeDataClasses.kt	skip	LANGUAGE	
-tests/exhaustiveness/negative/exhaustiveWithNegativeDeepSealedHierarchy.kt	skip	LANGUAGE	
-tests/exhaustiveness/negative/exhaustiveWithNegativeEnums.kt	skip	LANGUAGE	
+tests/exhaustiveness/negative/exhaustiveWithNegativeContract.kt	rejects invalid	on an expected line	
+tests/exhaustiveness/negative/exhaustiveWithNegativeContractDifferentInvocationKinds.kt	rejects invalid	on an expected line	
+tests/exhaustiveness/negative/exhaustiveWithNegativeDataClasses.kt	rejects invalid	on an expected line	
+tests/exhaustiveness/negative/exhaustiveWithNegativeDeepSealedHierarchy.kt	accepts valid		
+tests/exhaustiveness/negative/exhaustiveWithNegativeEnums.kt	accepts valid		
 tests/exhaustiveness/negative/exhaustiveWithNegativeEnums_Disabled.kt	skip	LANGUAGE	
-tests/exhaustiveness/negative/exhaustiveWithNegativeEqualsOverride.kt	skip	LANGUAGE	
-tests/exhaustiveness/negative/exhaustiveWithNegativeGuards.kt	skip	LANGUAGE	
-tests/exhaustiveness/negative/exhaustiveWithNegativeMutableVar.kt	skip	LANGUAGE	
-tests/exhaustiveness/negative/exhaustiveWithNegativeNullable.kt	skip	LANGUAGE	
-tests/exhaustiveness/negative/exhaustiveWithNegativeSealedDataObjects.kt	skip	LANGUAGE	
-tests/exhaustiveness/negative/exhaustiveWithNegativeSealedTypes.kt	skip	LANGUAGE	
-tests/exhaustiveness/negative/exhaustiveWithNegativeUntrustworthySealedTypes.kt	skip	LANGUAGE	
-tests/exhaustiveness/negative/exhaustiveWithNegativeUntrustworthySealedTypesFromAnotherModule.kt	skip	LANGUAGE	
-tests/exhaustiveness/negative/exhaustiveWithNegativeValueClasses.kt	skip	LANGUAGE	
-tests/exhaustiveness/negative/exhaustiveWithReversedNegativeUntrustworthySealedTypes.kt	skip	LANGUAGE	
-tests/exhaustiveness/negative/exhaustiveWithUnstableNegativeInformation.kt	skip	LANGUAGE	
+tests/exhaustiveness/negative/exhaustiveWithNegativeEqualsOverride.kt	accepts valid		
+tests/exhaustiveness/negative/exhaustiveWithNegativeGuards.kt	rejects invalid	on an expected line	
+tests/exhaustiveness/negative/exhaustiveWithNegativeMutableVar.kt	rejects invalid	on an expected line	
+tests/exhaustiveness/negative/exhaustiveWithNegativeNullable.kt	accepts valid		
+tests/exhaustiveness/negative/exhaustiveWithNegativeSealedDataObjects.kt	rejects invalid	on an expected line	
+tests/exhaustiveness/negative/exhaustiveWithNegativeSealedTypes.kt	rejects invalid	on an expected line	
+tests/exhaustiveness/negative/exhaustiveWithNegativeUntrustworthySealedTypes.kt	accepts valid		
+tests/exhaustiveness/negative/exhaustiveWithNegativeUntrustworthySealedTypesFromAnotherModule.kt	accepts valid		
+tests/exhaustiveness/negative/exhaustiveWithNegativeValueClasses.kt	rejects invalid	on an expected line	
+tests/exhaustiveness/negative/exhaustiveWithReversedNegativeUntrustworthySealedTypes.kt	accepts valid		
+tests/exhaustiveness/negative/exhaustiveWithUnstableNegativeInformation.kt	rejects invalid	on an expected line	
 tests/exhaustiveness/negative/exhaustiveWithUntrustworthyExpectAny.kt	skip	LANGUAGE	
 tests/exhaustiveness/negative/inheritorNameClashesWithBase.kt	rejects invalid	on an expected line	
 tests/exhaustiveness/negative/missingBooleanBranch.kt	rejects invalid	on an expected line	
@@ -4988,16 +4988,16 @@ tests/inline/labelsAndNonInlineUsage.kt	rejects invalid	on an expected line
 tests/inline/lambdaCast.kt	rejects invalid	on an expected line	
 tests/inline/localFun.kt	rejects invalid	on an expected line	
 tests/inline/messagesForUnsupportedInInline.kt	rejects invalid	on an expected line	
-tests/inline/nonLocalBreakContinue/baseFeatureInteractions.kt	skip	LANGUAGE	
-tests/inline/nonLocalBreakContinue/defaultLambdaInline.kt	skip	LANGUAGE	
-tests/inline/nonLocalBreakContinue/inlineExtensionFunction.kt	skip	LANGUAGE	
-tests/inline/nonLocalBreakContinue/lambdaAsGeneric.kt	skip	LANGUAGE	
-tests/inline/nonLocalBreakContinue/lambdaAsNonFunction.kt	skip	LANGUAGE	
-tests/inline/nonLocalBreakContinue/lambdaCallWithSuper.kt	skip	LANGUAGE	
-tests/inline/nonLocalBreakContinue/lambdaWithReceiver.kt	skip	LANGUAGE	
-tests/inline/nonLocalBreakContinue/nestedLambdas.kt	skip	LANGUAGE	
-tests/inline/nonLocalBreakContinue/withGuards.kt	skip	LANGUAGE	
-tests/inline/nonLocalBreakContinue/withOverrideByInline.kt	skip	LANGUAGE	
+tests/inline/nonLocalBreakContinue/baseFeatureInteractions.kt	rejects invalid	on an expected line	
+tests/inline/nonLocalBreakContinue/defaultLambdaInline.kt	rejects invalid	on an expected line	
+tests/inline/nonLocalBreakContinue/inlineExtensionFunction.kt	accepts valid		
+tests/inline/nonLocalBreakContinue/lambdaAsGeneric.kt	rejects invalid	on an expected line	
+tests/inline/nonLocalBreakContinue/lambdaAsNonFunction.kt	rejects invalid	on an expected line	
+tests/inline/nonLocalBreakContinue/lambdaCallWithSuper.kt	rejects invalid	on an expected line	
+tests/inline/nonLocalBreakContinue/lambdaWithReceiver.kt	accepts valid		
+tests/inline/nonLocalBreakContinue/nestedLambdas.kt	rejects invalid	on an expected line	
+tests/inline/nonLocalBreakContinue/withGuards.kt	rejects invalid	on an expected line	
+tests/inline/nonLocalBreakContinue/withOverrideByInline.kt	rejects invalid	on an expected line	
 tests/inline/nonLocalReturns/anonymousObjects.kt	rejects invalid	on an expected line	
 tests/inline/nonLocalReturns/anonymousObjectsNested.kt	rejects invalid	on an expected line	
 tests/inline/nonLocalReturns/explicitReturnType.kt	accepts valid		
@@ -7832,7 +7832,7 @@ tests/returnInExpressionBodies/returnInExpressionBodyBefore.kt	skip	LANGUAGE
 tests/returnInExpressionBodies/returnInExpressionBodyPhase1.kt	skip	LANGUAGE	
 tests/returnInExpressionBodies/returnInExpressionBodyPhase2.kt	skip	LANGUAGE	
 tests/returnInExpressionBodies/returnInExpressionBodyProgressiveMode.kt	skip	LANGUAGE	
-tests/returnInExpressionBodies/returnInGetterSetter.kt	skip	LANGUAGE	
+tests/returnInExpressionBodies/returnInGetterSetter.kt	skip	LANGUAGE_FEATURE_TOGGLED	
 tests/returnInExpressionBodies/returnInInlineLambdaWithTypeParam.kt	skip	LANGUAGE_FEATURE_TOGGLED	
 tests/returnInExpressionBodies/returnInLocalPropertyInWhen.kt	skip	LANGUAGE_FEATURE_TOGGLED	
 tests/returnInExpressionBodies/returnInNestedCall.kt	skip	LANGUAGE_FEATURE_TOGGLED	
@@ -8298,7 +8298,7 @@ tests/smartCasts/kt1461.kt	accepts valid
 tests/smartCasts/kt2422.kt	rejects invalid	on an expected line	
 tests/smartCasts/kt27221.kt	accepts valid		
 tests/smartCasts/kt27221_2.kt	accepts valid		
-tests/smartCasts/kt27221_irrelevantClasses.kt	rejects valid	'_' expression must be exhaustive, add necessary '_' branch	kt27221_irrelevantClasses.kt:23: 'when' expression must be exhaustive, add necessary 'else' branch
+tests/smartCasts/kt27221_irrelevantClasses.kt	accepts valid		
 tests/smartCasts/kt2865.kt	rejects invalid	on an expected line	
 tests/smartCasts/kt30826.kt	rejects invalid	on an expected line	
 tests/smartCasts/kt30927.kt	rejects invalid	on an expected line	
@@ -9472,36 +9472,36 @@ tests/when/WhenTypeDisjunctions.kt	accepts valid
 tests/when/deprecatedSyntaxInConditionsNoSubject.kt	rejects invalid	on an expected line	
 tests/when/deprecatedSyntaxInConditions_after.kt	rejects invalid	on an expected line	
 tests/when/exhaustive/ExhaustiveStarProjection.kt	rejects invalid	on an expected line	
-tests/when/exhaustive/complementarySealedVariantsLimitations.kt	skip	LANGUAGE	
-tests/when/exhaustive/exhaustiveWithComplementaryLowersFromNegativeCheck.kt	skip	LANGUAGE	
-tests/when/exhaustive/exhaustiveWithComplementarySealedVariants.kt	skip	LANGUAGE	
-tests/when/exhaustive/exhaustivenessWithSelfType.kt	skip	LANGUAGE	
-tests/when/exhaustive/exhaustivenessWithSelfTypeCornerCases.kt	skip	LANGUAGE	
+tests/when/exhaustive/complementarySealedVariantsLimitations.kt	rejects invalid	on an expected line	
+tests/when/exhaustive/exhaustiveWithComplementaryLowersFromNegativeCheck.kt	rejects invalid	on an expected line	
+tests/when/exhaustive/exhaustiveWithComplementarySealedVariants.kt	accepts valid		
+tests/when/exhaustive/exhaustivenessWithSelfType.kt	accepts valid		
+tests/when/exhaustive/exhaustivenessWithSelfTypeCornerCases.kt	rejects invalid	on an expected line	
 tests/when/exhaustiveBooleanWhenWithUntrivialConst.kt	rejects invalid	on an expected line	
 tests/when/exhaustiveWhenWithConstVal.kt	rejects invalid	on an expected line	
 tests/when/extractingEntireCall.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	extractingEntireCall.kt:13: cannot infer type for type parameter 'T'. Specify it explicitly.
 tests/when/falsePositiveDuplicateCodition.kt	accepts valid		
 tests/when/flexibleEnumInSubject.kt	skip	Java sources	
-tests/when/guard/diverseBooleanExpression.kt	skip	LANGUAGE	
-tests/when/guard/earlyJumps.kt	skip	LANGUAGE	
-tests/when/guard/elvisOperator.kt	skip	LANGUAGE	
-tests/when/guard/exhaustiveness.kt	skip	LANGUAGE	
-tests/when/guard/expectedTypeInGuard.kt	skip	LANGUAGE	
-tests/when/guard/guardWithNoSubject.kt	skip	LANGUAGE	
-tests/when/guard/ifElseExpressions.kt	skip	LANGUAGE	
-tests/when/guard/initializationAnalyses.kt	skip	LANGUAGE	
-tests/when/guard/lambda.kt	skip	LANGUAGE	
-tests/when/guard/multipleCondition.kt	skip	LANGUAGE	
-tests/when/guard/returnAnalysis.kt	skip	LANGUAGE	
-tests/when/guard/smartCasts.kt	skip	LANGUAGE	
-tests/when/guard/suggestGuard.kt	skip	LANGUAGE	
-tests/when/guard/thisInSubject.kt	skip	LANGUAGE	
-tests/when/guard/typeCheckerBehaves.kt	skip	LANGUAGE	
+tests/when/guard/diverseBooleanExpression.kt	rejects invalid	on an expected line	
+tests/when/guard/earlyJumps.kt	accepts valid		
+tests/when/guard/elvisOperator.kt	rejects invalid	on an expected line	
+tests/when/guard/exhaustiveness.kt	rejects invalid	on an expected line	
+tests/when/guard/expectedTypeInGuard.kt	rejects invalid	on an expected line	
+tests/when/guard/guardWithNoSubject.kt	rejects invalid	on an expected line	
+tests/when/guard/ifElseExpressions.kt	rejects invalid	on an expected line	
+tests/when/guard/initializationAnalyses.kt	rejects invalid	on an expected line	
+tests/when/guard/lambda.kt	accepts valid		
+tests/when/guard/multipleCondition.kt	rejects invalid	on an expected line	
+tests/when/guard/returnAnalysis.kt	rejects invalid	elsewhere	
+tests/when/guard/smartCasts.kt	rejects invalid	on an expected line	
+tests/when/guard/suggestGuard.kt	rejects invalid	on an expected line	
+tests/when/guard/thisInSubject.kt	accepts valid		
+tests/when/guard/typeCheckerBehaves.kt	rejects invalid	on an expected line	
 tests/when/guard/whenWithGuardDisabled.kt	skip	LANGUAGE	
-tests/when/guard/whenWithGuardEnabled.kt	skip	LANGUAGE	
-tests/when/guard/whenWithGuardSyntax.kt	skip	LANGUAGE	
-tests/when/guard/whenWithNamedSubject.kt	skip	LANGUAGE	
-tests/when/guard/whenWithSealed.kt	skip	LANGUAGE	
+tests/when/guard/whenWithGuardEnabled.kt	rejects invalid	on an expected line	
+tests/when/guard/whenWithGuardSyntax.kt	rejects invalid	on an expected line	
+tests/when/guard/whenWithNamedSubject.kt	rejects invalid	on an expected line	
+tests/when/guard/whenWithSealed.kt	accepts valid		
 tests/when/intersectionExhaustivenessComplex.kt	rejects invalid	on an expected line	
 tests/when/intersectionExhaustivenessSimple.kt	rejects valid	'_' expression must be exhaustive, add necessary '_' branch	intersectionExhaustivenessSimple.kt:14: 'when' expression must be exhaustive, add necessary 'else' branch
 tests/when/kt10439.kt	rejects invalid	on an expected line	
@@ -10616,7 +10616,7 @@ testsWithStdLib/properties/backingField/explicitBackingFieldGenericWithConstrain
 testsWithStdLib/properties/backingField/explicitBackingFieldGenericWithDNN.kt	rejects invalid	on an expected line	
 testsWithStdLib/properties/backingField/explicitBackingFieldGenericWithInner.kt	rejects invalid	on an expected line	
 testsWithStdLib/properties/backingField/explicitBackingFieldGenericWithTypealias.kt	rejects invalid	on an expected line	
-testsWithStdLib/properties/backingField/explicitBackingFieldInConstProperty.kt	skip	LANGUAGE	
+testsWithStdLib/properties/backingField/explicitBackingFieldInConstProperty.kt	rejects invalid	elsewhere	
 testsWithStdLib/properties/backingField/explicitBackingFieldInInterface.kt	rejects invalid	on an expected line	
 testsWithStdLib/properties/backingField/explicitBackingFieldIntersectionOverrides.kt	accepts valid		
 testsWithStdLib/properties/backingField/explicitBackingFieldIntersectionOverridesUnresolvedElements.kt	accepts valid		
