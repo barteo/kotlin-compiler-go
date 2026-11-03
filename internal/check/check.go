@@ -224,7 +224,13 @@ type Checker struct {
 	// tailBlock is a branch whose last statement, a call, is checked with
 	// the inference system tailSink: see branch.
 	tailBlock *syntax.Block
-	tailSink  *system
+	// branchSink is the system of the delegate an if, a try or an
+	// elvis is: see delegateValue.
+	branchSink *system
+	// inferAliasArgs are the calls of typealiases' constructors that
+	// infer the aliases' type arguments: see aliasConstruct.
+	inferAliasArgs map[*syntax.Call]bool
+	tailSink       *system
 	// bareRef is the type of an is or as being resolved, whose class's type
 	// arguments may be left out, and bareSubject the type checked.
 	bareRef     *syntax.TypeRef
@@ -2651,13 +2657,17 @@ func (c *Checker) checkPropInit(d *syntax.PropDecl, cls *types.ClassSym) {
 	}
 	var t types.Type
 	provided := noWant
-	if want := c.delegateWant(d); want.K == types.Invalid && delegateTyped(d.DelegateOf) {
+	if want := c.delegateWant(d); want.K == types.Invalid && (delegateTyped(d.DelegateOf) || untypedDelegate(d.DelegateOf)) {
 		p := d.DelegateOf
 		owner := types.NothingType.Nullable()
 		if p.Ref != nil && p.Ref.Recv {
 			owner = p.Sym.Owner.This()
 		}
-		t, provided = c.inferDelegate(d.Init, p.Sym.Type, owner, c.delegateThis(p), p.Mutable)
+		pt := p.Sym.Type
+		if p.Type == nil {
+			pt = noWant
+		}
+		t, provided = c.inferDelegate(d.Init, pt, owner, c.delegateThis(p), p.Mutable)
 	} else {
 		t = c.value(d.Init, want)
 	}

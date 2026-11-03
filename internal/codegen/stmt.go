@@ -160,11 +160,14 @@ func (g *gen) while(s *syntax.While) {
 		// The body, then the condition, which jumps back to it.
 		top, cont, exit := cf.NewLabel(), cf.NewLabel(), cf.NewLabel()
 		g.code.Place(top)
+		// A break or continue in the condition is the do-while's own.
 		g.pushLoop(s, exit, cont)
 		g.loopBody(func() { g.stmts(s.Body.Stmts) })
+		g.pushLoop(s, exit, cont)
 		g.code.Place(cont)
 		g.line(s.Cond.Pos())
 		g.cond(s.Cond, top, true)
+		g.loops = g.loops[:len(g.loops)-1]
 		g.code.Place(exit)
 		return
 	}

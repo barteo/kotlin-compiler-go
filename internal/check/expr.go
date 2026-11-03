@@ -17,7 +17,7 @@ func (c *Checker) value(x syntax.Expr, want types.Type) types.Type {
 		c.errorf(x.Pos(), "ranges are only supported in 'for' loops and 'in' checks")
 		return types.InvalidType
 	case types.Unit:
-		if want.K != types.Invalid && want.K != types.Unit {
+		if want.K != types.Unit {
 			t = c.safeUnit(x, t)
 		}
 	}
@@ -725,6 +725,7 @@ func (c *Checker) binary(x *syntax.Binary, want types.Type, allowRange bool) typ
 		if want.K != types.Invalid && want.K != types.Unit {
 			xw = want.Nullable()
 		}
+		c.sink = c.takeBranchSink()
 		xt := c.safeUnit(x.X, c.value(x.X, xw))               // x?.f() ?: y for a Unit f
 		nn, nonNull := len(c.scope.narrows), c.notNullOf(x.X) // the right side's casts may not run
 		var yt types.Type
@@ -2891,6 +2892,7 @@ func deprecatedConversion(from types.Type, b types.Builtin) string {
 }
 
 func (c *Checker) ifExpr(x *syntax.If, want types.Type, valueUsed bool) types.Type {
+	sink := c.takeBranchSink()
 	c.value(x.Cond, types.BoolType)
 	c.wantBool(x.Cond)
 	whenTrue, whenFalse := c.narrowing(x.Cond)
@@ -2950,6 +2952,9 @@ func (c *Checker) ifExpr(x *syntax.If, want types.Type, valueUsed bool) types.Ty
 	if !ok {
 		c.errorf(x.P, "type mismatch: 'if' branches have incompatible types %s and %s", thenT, elseT)
 		return types.InvalidType
+	}
+	if sink != nil {
+		return c.sinkBranches(sink, pending, t)
 	}
 	return c.completeBranches(pending, t, want, true)
 }

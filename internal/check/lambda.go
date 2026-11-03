@@ -1487,7 +1487,15 @@ func (c *Checker) lambdaResultOpen(s *system, pl pendingLambda) bool {
 // those whose parameter types are not known yet.
 func (c *Checker) runLambdas(s *system, readyOnly bool) {
 	var rest []pendingLambda
+	if !readyOnly {
+		c.readyFirst(s)
+	}
 	for _, pl := range s.lambdas {
+		if tv := s.unfixedVar(s.apply(pl.p)); tv != nil && !readyOnly {
+			if u, ok := s.funcUpper(tv); ok {
+				s.addUpper(tv, u)
+			}
+		}
 		if tv := s.unfixedVar(s.apply(pl.p)); tv != nil && slices.ContainsFunc(append(tv.lower[:len(tv.lower):len(tv.lower)], tv.upper...), s.proper) && !ownLambda(s, tv, pl.l) {
 			// A lambda passed for a variable takes its type once known:
 			// list += { a, b -> } for MutableCollection<in T>'s T.
@@ -1502,14 +1510,21 @@ func (c *Checker) runLambdas(s *system, readyOnly bool) {
 			// the call it is an argument of may give: onCancellation?.let
 			// { { cause, _, _ -> } } passed for a function type.
 			ready = ready && !(endsInLambda(pl.l) && c.lambdaResultOpen(s, pl))
+			// One passed for a variable without bounds waits for the call
+			// it is an argument of, which may give it a function type.
+			ready = ready && !((untypedParams(pl.l) || untypedResult(pl.l)) && s.openVar(pl.p))
 		}
 		if !ready {
 			rest = append(rest, pl)
 			continue
 		}
+		p := pl.p
+		if tv := s.unfixedVar(s.apply(p)); tv != nil && !readyOnly {
+			p = s.funcShape(tv, p)
+		}
 		saved := c.scope
 		c.scope = pl.scope
-		c.postponedLambda(s, pl.l, pl.p)
+		c.postponedLambda(s, pl.l, p)
 		c.scope = saved
 	}
 	s.lambdas = rest

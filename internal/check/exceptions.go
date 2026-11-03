@@ -11,6 +11,7 @@ import (
 // its type is the join of the try block's and the catch blocks'; the
 // finally block's value is discarded.
 func (c *Checker) tryExpr(x *syntax.Try, want types.Type, valueUsed bool) types.Type {
+	sink := c.takeBranchSink()
 	if valueUsed && c.ctorArgs {
 		// Its handlers would start with an empty stack, without the
 		// object under construction.
@@ -82,6 +83,7 @@ func (c *Checker) tryExpr(x *syntax.Try, want types.Type, valueUsed bool) types.
 		c.finallies = append(c.finallies, finallyCtx{loops: len(c.loops), vars: c.watchedVars(x.Finally)})
 	}
 	ends = append(ends, c.watchExit(nil))
+	c.sinkTail(x.Body, sink)
 	result := c.block(x.Body, want, valueUsed)
 	if len(x.Catches) > 0 {
 		inBody = c.tryAssigned(bodyVars, x.Body)
