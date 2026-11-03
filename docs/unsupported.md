@@ -161,10 +161,13 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   `$WhenMappings` ordinal switch.
 - Interfaces default to `-jvm-default=no-compatibility`; `kotlinc`'s
   default is `enable`.
-- A companion's properties are fields of the companion, not private
-  statics of the outer class (consts and `@JvmField` ones aside). An
-  interface companion's lambdas and local functions are static methods of
-  the interface.
+- A companion's property fields are package-private statics of the
+  outer class, which the companion's accessors read directly, rather than
+  private ones read through `access$getX$cp`. Where the outer class has a
+  property of the same name, `kotlinc` renames the outer class's field
+  (`x$1`); `kc` keeps the companion's field in the companion instead. An
+  interface companion's fields are instance fields, not static ones, and
+  its lambdas and local functions are static methods of the interface.
 - No `PermittedSubclasses` attributes, and `InnerClasses` entries only
   for the file's own nested classes, not for those a class refers to.
 - A value class's inherited members are called on the box, and `==`

@@ -372,6 +372,9 @@ func (g *gen) valueClass(cd *syntax.ClassDecl) *cf.Class {
 	for _, sc := range cd.Secondaries() {
 		g.valueSecondary(cd, sc)
 	}
+	for _, p := range companionFields(cd) {
+		g.propField(c, p, false)
+	}
 	g.staticInit(cd)
 	return c
 }
