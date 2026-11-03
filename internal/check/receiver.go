@@ -594,7 +594,16 @@ func (c *Checker) memberExtFirst(fn *syntax.Member, x *syntax.Call) bool {
 			return true
 		}
 	}
-	if _, _, local := c.scope.lookup(fn.Name); local || c.cls == nil || c.userProp(c.cls, fn.Name) == nil {
+	if v, vd := c.scope.find(fn.Name); v != nil {
+		// A local extension function as close as the local, as in
+		// Kotlin, where a level of scope's functions come before its
+		// properties' invoke: fun String.foo() over val foo: String.() ->.
+		fs, fd := c.scope.findFuns(fn.Name)
+		return fd >= vd && slices.ContainsFunc(fs, func(f *types.FunSym) bool {
+			return f.Ext && c.recvFits(rt, f.Recv) && c.mayTake(f, x)
+		})
+	}
+	if c.cls == nil || c.userProp(c.cls, fn.Name) == nil {
 		return false
 	}
 	return slices.ContainsFunc(memberExtMethods(c.cls, fn.Name), func(f *types.FunSym) bool {
