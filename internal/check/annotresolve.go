@@ -30,6 +30,11 @@ func (c *Checker) annotationClassOf(a *syntax.Annotation, owner *types.ClassSym,
 	}
 	cls := c.lookupClass(a.Name)
 	c.lookupCls = saved
+	if cls != nil {
+		// A class path class loads its members, Retention among them,
+		// only on Ensure, and files are checked in parallel.
+		cls.Ensure()
+	}
 	if (cls == nil || cls.Retention == types.NoRetention) && c.optionalAnnotations(a.Name) {
 		return nil
 	}
@@ -45,7 +50,6 @@ func (c *Checker) annotationClassOf(a *syntax.Annotation, owner *types.ClassSym,
 		}
 		return nil
 	}
-	cls.Ensure()
 	if cls.Retention == types.NoRetention {
 		c.errorf(a.P, "%s is not an annotation class", cls.DisplayName())
 		return nil
