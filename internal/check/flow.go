@@ -920,6 +920,12 @@ func (c *Checker) eitherNarrows(first, ctx, second []narrow) []narrow {
 			if !ok || j.K == types.Invalid {
 				continue
 			}
+			// x is A || x is B doesn't smart cast x to their common
+			// supertype where it can't be seen: a private interface of
+			// another file.
+			if j.K == types.Class && j.C != nil && !c.classVisible(j.C) {
+				continue
+			}
 			t = j
 		}
 		cur := c.scope.narrowedMember(n.recv, n.sym, n.sym.Type)
