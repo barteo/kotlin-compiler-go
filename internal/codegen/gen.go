@@ -189,6 +189,9 @@ type fileState struct {
 	// companions are the private companion objects that other classes
 	// than their outer class get through its access$getCompanion$p.
 	companions map[*types.ClassSym]bool
+	// outers are the inner classes whose outer instance copies of public
+	// inline functions get through their access$getThis$0$p.
+	outers map[*types.ClassSym]bool
 	// extra are classes copied from the class path for inlined calls,
 	// with the calls' type arguments.
 	extra []Output
@@ -279,7 +282,7 @@ func GenerateFile(f *syntax.File, opts Options) (out []Output, err error) {
 	}
 	g := &gen{file: f, shared: &fileState{opts: opts, slots: map[*types.VarSym]int{}, count: map[string]int{}, classes: map[string]*cf.Class{}, access: map[*types.VarSym]uint8{},
 		annotated: map[*types.VarSym][2]string{}, markers: map[*types.FunSym]bool{}, impls: map[*types.ClassSym]*cf.Class{},
-		begun: map[*types.ClassSym]*cf.Class{}, methods: map[privateMethod]bool{}, companions: map[*types.ClassSym]bool{}, stabilities: map[types.Type]stability{},
+		begun: map[*types.ClassSym]*cf.Class{}, methods: map[privateMethod]bool{}, companions: map[*types.ClassSym]bool{}, outers: map[*types.ClassSym]bool{}, stabilities: map[types.Type]stability{},
 		stableInits: map[*syntax.ClassDecl]func(){}}}
 	if fc := g.facade(); fc != nil {
 		g.shared.classes[fc.Name] = fc
@@ -309,6 +312,7 @@ func GenerateFile(f *syntax.File, opts Options) (out []Output, err error) {
 	out = g.finishSingletons(out)
 	g.privateAccessors()
 	g.companionAccessors()
+	g.outerAccessors()
 	g.markerConstructors()
 	g.innerClasses()
 	g.writeMetadata()
@@ -359,7 +363,7 @@ func (g *gen) privateAccessors() {
 			if self != "" {
 				code.Local(cf.ALOAD, code.AllocLocal(self))
 			}
-			code.FieldInsn(get, owner(p), p.Name, d)
+			code.FieldInsn(get, fieldOwner(p), p.Name, d)
 			if p.Lateinit {
 				lateinitCheck(code, p.Name, g.shared.opts.Stdlib)
 			}
@@ -374,7 +378,7 @@ func (g *gen) privateAccessors() {
 				code.Local(cf.ALOAD, code.AllocLocal(self))
 			}
 			code.Local(loadOp(ft), code.AllocLocal(d))
-			code.FieldInsn(put, owner(p), p.Name, d)
+			code.FieldInsn(put, fieldOwner(p), p.Name, d)
 			code.Op(cf.RETURN)
 			if err := code.Err(); err != nil {
 				panic(err)
@@ -1366,7 +1370,7 @@ func (g *gen) class(cd *syntax.ClassDecl) *cf.Class {
 					g.code.AllocLocal(self)
 				}
 				if p.StaticField() {
-					g.code.FieldInsn(cf.GETSTATIC, cls.Name, p.Name, d)
+					g.code.FieldInsn(cf.GETSTATIC, p.ConstOwner().Name, p.Name, d)
 				} else {
 					g.code.Local(cf.ALOAD, 0)
 					g.code.FieldInsn(cf.GETFIELD, cls.Name, p.Name, d)
@@ -1402,7 +1406,7 @@ func (g *gen) class(cd *syntax.ClassDecl) *cf.Class {
 				}
 				if p.StaticField() {
 					g.code.Local(loadOp(ft), slot)
-					g.code.FieldInsn(cf.PUTSTATIC, cls.Name, p.Name, d)
+					g.code.FieldInsn(cf.PUTSTATIC, p.ConstOwner().Name, p.Name, d)
 				} else {
 					g.code.Local(cf.ALOAD, 0)
 					g.code.Local(loadOp(ft), slot)
@@ -2039,6 +2043,18 @@ func (g *gen) staticInits(od *syntax.ClassDecl) {
 	}
 }
 
+// fieldOwner returns the internal name of the class that holds the field
+// of property p.
+func fieldOwner(p *types.VarSym) string {
+	switch {
+	case p.Kind == types.Global:
+		return p.FieldClass()
+	case p.StaticField():
+		return p.ConstOwner().Name
+	}
+	return p.Owner.Name
+}
+
 // propField adds class property p's field to class c: private, but for a
 // @JvmField's and a lateinit property's, and static for an object's, as
 // kotlinc writes them.
@@ -2054,6 +2070,11 @@ func (g *gen) propField(c *cf.Class, p *types.VarSym, inClinit bool) {
 		// As with kotlinc, a lateinit property's field has its
 		// setter's visibility.
 		acc = lateinitAccess(pd)
+	}
+	if acc == cf.AccPrivate && p.StaticField() && p.ConstOwner() != p.Owner {
+		// A companion's, in its outer class, which the companion's
+		// accessors read: package-private.
+		acc = 0
 	}
 	if inClinit && !p.StaticField() && acc == cf.AccPrivate {
 		// The outer class's static initializer sets it: package-private
@@ -2748,6 +2769,33 @@ func (g *gen) companionAccessors() {
 		}
 	}
 }
+
+// outerAccessors adds the accessors of the outer instances of the inner
+// classes that copies of public inline functions use, as kotlinc does:
+// access$getThis$0$p(inner), as this$0 isn't public.
+func (g *gen) outerAccessors() {
+	cs := make([]*types.ClassSym, 0, len(g.shared.outers))
+	for cls := range g.shared.outers {
+		cs = append(cs, cls)
+	}
+	sort.Slice(cs, func(i, j int) bool { return cs[i].Name < cs[j].Name })
+	for _, cls := range cs {
+		c := g.shared.classes[cls.Name]
+		if c == nil {
+			continue
+		}
+		self, d := "L"+cls.Name+";", desc(cls.Outer.This())
+		code := c.NewMethod(cf.AccPublic|cf.AccStatic|cf.AccFinal|cf.AccSynthetic, outerAccessor, "("+self+")"+d)
+		code.Local(cf.ALOAD, code.AllocLocal(self))
+		code.FieldInsn(cf.GETFIELD, cls.Name, "this$0", d)
+		code.Op(cf.ARETURN)
+		if err := code.Err(); err != nil {
+			panic(err)
+		}
+	}
+}
+
+const outerAccessor = "access$getThis$0$p"
 
 // bridgeParams returns the parameters of method f on the JVM: its context
 // parameters, then a member extension's receiver, then its parameters.

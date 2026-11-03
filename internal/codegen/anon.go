@@ -210,7 +210,14 @@ func (g *gen) loadCaptures(cd *syntax.ClassDecl, self int) {
 		d := storageDesc(v)
 		slot := g.code.AllocLocal(d)
 		g.code.Local(cf.ALOAD, self)
-		g.code.FieldInsn(cf.GETFIELD, cd.Sym.Name, captureField(cd, v), d)
+		if v == cd.OuterThis && cd.Sym.Inner && !cd.Sym.Local && !cd.Sym.Anonymous && (g.publicInline || g.cls.Name != cd.Sym.Name) {
+			// A copy of a public inline function, which can be in
+			// another package, reads this$0 through its accessor.
+			g.shared.outers[cd.Sym] = true
+			g.code.Invoke(cf.INVOKESTATIC, cd.Sym.Name, outerAccessor, "(L"+cd.Sym.Name+";)"+d)
+		} else {
+			g.code.FieldInsn(cf.GETFIELD, cd.Sym.Name, captureField(cd, v), d)
+		}
 		if v.Boxed() {
 			g.code.Local(cf.ASTORE, slot)
 		} else {

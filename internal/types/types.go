@@ -422,14 +422,31 @@ func (c *ClassSym) KotlinAnnotation() bool {
 
 // StaticField reports whether class property v's field is static, as
 // kotlinc writes it: a property of a named object, whose class holds it,
-// or a @JvmField property of a companion object, whose outer class does
-// (ConstOwner).
+// or of a class's companion object, whose outer class does (ConstOwner),
+// where kotlin-reflect looks for it. An interface's or an annotation
+// class's companion holds its properties' fields itself, but for an
+// interface's @JvmField ones, as does one whose outer class has a
+// property of the same name.
 func (v *VarSym) StaticField() bool {
 	o := v.Owner
 	if v.Kind != Prop || o == nil || !o.Object || o.Anonymous || o.External || v.Const {
 		return false
 	}
-	return o.CompanionOf == nil || v.JvmField
+	if o.CompanionOf == nil || v.JvmField {
+		return true
+	}
+	outer := o.CompanionOf
+	if outer.Interface || outer.Annotation {
+		return false
+	}
+	// Where the outer class has a field of the name, kotlinc renames that;
+	// kc leaves the companion's field in the companion instead.
+	for _, p := range outer.Props {
+		if p.Name == v.Name {
+			return false
+		}
+	}
+	return outer.Fields[v.Name] == nil
 }
 
 // ConstOwner returns the class whose static field holds const property p
