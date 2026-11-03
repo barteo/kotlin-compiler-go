@@ -221,6 +221,9 @@ func (t Type) String() string {
 		s = t.RangeElem().String() + "Progression"
 	case TypeParam, TypeVar:
 		s = t.Param().Name
+		if t.N && t.Param().Intersection {
+			s = "(" + s + ")"
+		}
 		if t.D {
 			s += " & Any"
 		}

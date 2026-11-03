@@ -2727,7 +2727,7 @@ func (c *Checker) checkFun(d *syntax.FunDecl, cls *types.ClassSym) {
 		t = types.InvalidType
 	}
 	if sym.Ret = t; !keepsAnon(&d.Modifiers, cls) {
-		sym.Ret = approx(t)
+		sym.Ret = approx(c.approxIntersections(t))
 	}
 }
 
@@ -2771,7 +2771,7 @@ func (c *Checker) checkPropInit(d *syntax.PropDecl, cls *types.ClassSym) {
 		t = c.provideDelegate(d, p, t, provided)
 	}
 	if sym.Type = t; !keepsAnon(&d.Modifiers, cls) {
-		sym.Type = approx(t)
+		sym.Type = approx(c.approxIntersections(t))
 	}
 }
 

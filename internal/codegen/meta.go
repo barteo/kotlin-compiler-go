@@ -225,6 +225,9 @@ func classID(c *types.ClassSym) string {
 
 // typ converts a type to metadata.
 func (s *metaScope) typ(t types.Type) *kmeta.Type {
+	if t.IsIntersection() {
+		t = types.Approx(t) // metadata has no intersection types
+	}
 	if t.P {
 		// A platform type, T!: flexible, from T to T?, with read-only
 		// collections as the upper bound.

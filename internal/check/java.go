@@ -39,6 +39,7 @@ type classTable struct {
 	// asks for again and again: supertypes with their type arguments, and
 	// the methods of a class by name.
 	supers  sync.Map // superKey -> superResult
+	inters  sync.Map // interKey -> types.Type, see intersect
 	methods sync.Map // methodsKey -> []*types.FunSym
 	// defaults has a sync.Once for each method whose inherited default
 	// values inheritExtDefaults looked for.

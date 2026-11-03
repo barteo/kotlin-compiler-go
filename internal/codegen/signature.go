@@ -141,6 +141,10 @@ func (w *sigWriter) typ(t types.Type, ref *syntax.TypeRef, m wildMode) {
 	}
 	switch t.K {
 	case types.TypeParam, types.TypeVar:
+		if t.IsIntersection() {
+			w.typ(types.Approx(t), nil, m) // no intersection on the JVM
+			return
+		}
 		w.WriteString("T" + t.Param().Name + ";")
 	case types.Any:
 		w.WriteString("Ljava/lang/Object;")

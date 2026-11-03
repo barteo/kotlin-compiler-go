@@ -65,6 +65,9 @@ func (g *gen) typeOf(t types.Type) { g.ktype(t, false) }
 // KTypeParameters too.
 func (g *gen) ktype(t types.Type, bound bool) {
 	const refl, proj = "kotlin/jvm/internal/Reflection", "kotlin/reflect/KTypeProjection"
+	if t.IsIntersection() {
+		t = types.Approx(t) // a KType is of no intersection
+	}
 	if !bound && g.reifiedParam(t) {
 		g.reifiedMarker(t, reifiedTypeOf)
 		g.code.Op(cf.ACONST_NULL)

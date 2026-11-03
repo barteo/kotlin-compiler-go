@@ -171,6 +171,10 @@ type TypeParamSym struct {
 	// variable declares for all compilations in the process, such as
 	// kotlin.Array's T: see MakeArgs.
 	Global bool
+	// Intersection is set on the parameter that stands for an
+	// intersection type, A & B, a value that is each of its Bounds: see
+	// Intersect. It has no Owner, and erases as a parameter does.
+	Intersection bool
 
 	once sync.Once
 	self *Args // what types of this parameter point to
@@ -227,6 +231,19 @@ func (p *TypeParamSym) Bound() Type {
 		return AnyType.Nullable()
 	}
 	return p.Bounds[0]
+}
+
+// IsIntersection reports whether t is an intersection type, A & B.
+func (t Type) IsIntersection() bool { return t.IsParam() && t.Param().Intersection }
+
+// Approx returns t without an intersection type at its top, for what has
+// none, as a signature or a KType: the component it erases to. The
+// checker gives declarations their common supertype instead.
+func Approx(t Type) Type {
+	if !t.IsIntersection() {
+		return t
+	}
+	return withFlags(t.Param().ErasureBound(), t)
 }
 
 // ParamType returns the type T for a type parameter T.

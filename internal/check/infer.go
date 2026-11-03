@@ -550,6 +550,22 @@ func (s *system) fix(tv *tvar) {
 				val = val.NonNull()
 			}
 		}
+		// Bounds that none of the others is below give their
+		// intersection: E <: Int and E <: String, of In<E> for an
+		// In<Int> and an In<String>, give Int & String, of which kotlinc
+		// only warns that it is empty. Where the variable has declared
+		// bounds, an empty one stays an error, as S <: Long? and S <:
+		// Double? of S : T? are (see the bounds below).
+		comps := []types.Type{val}
+		for _, u := range uppers {
+			if !c.subtype(val, u) && intersectable(u) && intersectable(val) &&
+				(len(tv.v.Bounds) == 0 || !c.emptyIntersection(val, u)) {
+				comps = append(comps, u)
+			}
+		}
+		if len(comps) > 1 {
+			val = c.intersect(comps)
+		}
 		// A non-null bound intersects a nullable upper bound: T? <: X?
 		// for T : Annotation gives T = X, and T <: A, for a type parameter
 		// A with a nullable bound and T : Any, gives T = A & Any.
