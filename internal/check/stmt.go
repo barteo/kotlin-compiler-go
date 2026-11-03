@@ -434,6 +434,9 @@ func (c *Checker) while(s *syntax.While) types.Type {
 		c.loops = append(c.loops, loop)
 		s.Body.T = c.stmts(s.Body, noWant, false)
 		c.loops = c.loops[:len(c.loops)-1]
+		if len(loop.flow.continues) > 0 {
+			c.deferred++ // the body's vals may be read before they are declared
+		}
 		if conts := loop.flow.continues; len(conts) > 0 || loop.flow.lost {
 			// The condition has the smart casts of the paths to it.
 			if s.Body.T.K != types.Nothing {

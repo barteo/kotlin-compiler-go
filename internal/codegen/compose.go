@@ -217,7 +217,7 @@ func (g *gen) composeBegin(fd *syntax.FunDecl, t *tracked, key int32, defaults b
 		g.code.Op(cf.IAND)
 		g.code.Jump(cf.IFEQ, skip)
 		g.exprAs(p.Default, p.Sym.Type)
-		g.code.Local(storeOp(p.Sym.Type), p.Sym.Slot)
+		g.code.Local(storeOp(p.Sym.Type), g.slot(p.Sym))
 		g.code.Place(skip)
 	}
 }
@@ -283,11 +283,11 @@ func (g *gen) restartLambda(fd *syntax.FunDecl) {
 			captures += "L" + g.cls.Name + ";"
 		}
 		if r := fd.RecvSym; r != nil {
-			g.code.Local(loadOp(r.Type), r.Slot)
+			g.code.Local(loadOp(r.Type), g.slot(r))
 			captures += paramDesc(r.Type)
 		}
 		for _, p := range f.Params {
-			g.code.Local(loadOp(p.Type), p.Slot)
+			g.code.Local(loadOp(p.Type), g.slot(p))
 			captures += paramDesc(p.Type)
 		}
 	}
@@ -859,12 +859,12 @@ func (g *gen) composeDefaults(fd *syntax.FunDecl) {
 	}
 	slots := make([]int, len(params))
 	for i, p := range params {
-		slots[i] = p.Slot
+		slots[i] = g.slot(p)
 	}
 	defer func() {
 		g.cls, g.code, g.self, g.prefix = cls, code, self, prefix
 		for i, p := range params {
-			p.Slot = slots[i]
+			g.setSlot(p, slots[i])
 		}
 	}()
 	d := composeDefaultsDesc(f)
@@ -874,13 +874,13 @@ func (g *gen) composeDefaults(fd *syntax.FunDecl) {
 	g.prefix = f.Name + "_default$lambda"
 	g.loops, g.tries = nil, nil
 	for _, p := range f.Params {
-		p.Slot = g.code.AllocLocal(paramDesc(p.Type))
+		g.setSlot(p, g.code.AllocLocal(paramDesc(p.Type)))
 		g.named(p)
 	}
 	g.self = g.code.AllocLocal("L" + f.Owner.Name + ";")
 	g.code.NameLocal(g.self, "$this")
 	if r := fd.RecvSym; r != nil {
-		r.Slot = g.code.AllocLocal(paramDesc(r.Type))
+		g.setSlot(r, g.code.AllocLocal(paramDesc(r.Type)))
 	}
 	ds := *f
 	ds.Defaults, ds.ComposeDefaults = types.DefaultInts(len(f.Params)), false
@@ -890,12 +890,12 @@ func (g *gen) composeDefaults(fd *syntax.FunDecl) {
 	g.compose.impl = d
 	for i, p := range f.Params {
 		if fd.Params[i].Default == nil {
-			g.checkParam(p.Slot, p.Type, p.Name)
+			g.checkParam(g.slot(p), p.Type, p.Name)
 		}
 	}
 	g.checkParam(g.self, f.Owner.This(), "$this$")
 	if r := fd.RecvSym; r != nil {
-		g.checkParam(r.Slot, r.Type, "$this$")
+		g.checkParam(g.slot(r), r.Type, "$this$")
 	}
 	// Its tracked parameters: the parameters, the object, the receiver,
 	// all used.
@@ -935,11 +935,11 @@ func (g *gen) composeDefaults(fd *syntax.FunDecl) {
 	g.loadThis()
 	var args []callArg
 	if r := fd.RecvSym; r != nil {
-		g.code.Local(loadOp(r.Type), r.Slot)
+		g.code.Local(loadOp(r.Type), g.slot(r))
 		args = append(args, callArg{x: paramIdent(r)})
 	}
 	for _, p := range f.Params {
-		g.code.Local(loadOp(p.Type), p.Slot)
+		g.code.Local(loadOp(p.Type), g.slot(p))
 		args = append(args, callArg{x: paramIdent(p)})
 	}
 	args = append(args, callArg{this: true, typ: f.Owner.This()})

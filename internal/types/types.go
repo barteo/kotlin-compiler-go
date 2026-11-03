@@ -284,7 +284,6 @@ type VarSym struct {
 	// as where the field is visible, in the private scope of x.
 	FieldT *Type
 
-	Slot int // JVM local slot, assigned by codegen (Local and Param)
 	// Deferred is set on a local or a class property declared without a
 	// value, which code assigns later: val x: Int, then x = 1. The checker
 	// checks that it is assigned before it is read, and a val only once.
