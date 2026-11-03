@@ -287,6 +287,11 @@ func classSubst(t types.Type) types.Subst {
 	for i, p := range ps {
 		if t.A != nil && i < t.A.Len() {
 			s[p] = t.A.Get(i)
+			if a := s[p]; a.V != types.Inv && a.V == p.Var {
+				// A projection the parameter's own variance makes
+				// redundant, as out T of a Holder<out T>, is no capture.
+				s[p] = types.Arg{T: a.T}
+			}
 		} else {
 			s[p] = types.Arg{V: types.Star}
 		}

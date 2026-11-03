@@ -29,7 +29,7 @@ func (a *AliasSym) Expand(args []Arg) Type {
 	for i, p := range a.TypeParams {
 		s[p] = args[i]
 	}
-	return s.Apply(a.Type)
+	return s.ApplyExact(a.Type)
 }
 
 // Class returns the class the alias expands to, if it expands to a class

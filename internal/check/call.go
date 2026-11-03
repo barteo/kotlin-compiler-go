@@ -953,7 +953,7 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 	if best.ext.K != types.Invalid {
 		recvParam := best.sub.ApplyIn(f.Recv)
 		sys.fixups = append(sys.fixups, func(s *system) {
-			want := s.final(recvParam)
+			want := s.finalArg(recvParam)
 			nothing := func(j int) bool {
 				// An argument of type Nothing, as a reference A<*>::foo
 				// passes for x: T of fun <T> A<T>.foo(x: T), fits a
@@ -989,7 +989,7 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			if lit, ok := a.(*syntax.IntLit); ok && !lit.Long && fitsLit(lit, s.final(params[i])) {
 				lit.T = s.final(params[i]).NonNull()
 			}
-			c.assignable(a.Type(), captured(a.Type(), params[i], s.final(params[i])), a.Pos())
+			c.assignable(a.Type(), captured(a.Type(), params[i], s.finalArg(params[i])), a.Pos())
 		}
 		for _, p := range f.Params {
 			if p.Vararg {
