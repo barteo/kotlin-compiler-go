@@ -919,6 +919,11 @@ func (c *Checker) kpropLambda(x *syntax.Lambda, f refForm, bound bool) ([]types.
 			this.P = p
 			x.Ref.X = this
 			return c.checkRef(x, lambdaWant{ret: noWant, prop: true})
+		case !bound && c.outerPropLabel(e) != "":
+			this := &syntax.This{Label: c.outerPropLabel(e)} // this@Outer::p in an inner class
+			this.P = p
+			x.Ref.X = this
+			return c.checkRef(x, lambdaWant{ret: noWant, prop: true})
 		}
 	}
 	if k.Prop == nil && k.Getter == nil {

@@ -26,6 +26,8 @@ class Box<T> {
 
     inner class Inner {
         fun first(): T = items.removeAt(0)
+
+        fun viaRef(): List<T> = (::items).get()
     }
 
     class Nested {
@@ -57,6 +59,7 @@ fun main() {
     println(Box.Nested().of(b))
     println(b.Inner().first())
     println(b.items)
+    println(b.Inner().viaRef())
     println(bump())
     println(total)
     println(Registry.register("b"))
