@@ -554,7 +554,7 @@ func (c *Checker) resolveImports() {
 			if n := c.nestedOf(owner, simple); n != nil {
 				c.imports[alias] = n
 				classifiers[alias] = append(classifiers[alias], imp.P)
-			} else if a := owner.Aliases[simple]; a != nil && !owner.External {
+			} else if a := owner.Aliases[simple]; a != nil {
 				c.aliasImports[alias] = a // import p.Outer.A of a nested typealias
 				classifiers[alias] = append(classifiers[alias], imp.P)
 			} else {

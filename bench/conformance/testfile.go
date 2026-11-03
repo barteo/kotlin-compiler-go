@@ -232,6 +232,7 @@ var defaultFeatures = map[string]bool{
 	"+ContextParameters":            true,
 	"+ExplicitBackingFields":        true,
 	"+MultiDollarInterpolation":     true,
+	"+NestedTypeAliases":            true,
 	"+WhenGuards":                   true,
 }
 
