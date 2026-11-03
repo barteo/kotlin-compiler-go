@@ -169,6 +169,8 @@ type refForm struct {
 func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.Type, bool) {
 	r := x.Ref
 	x.KProp, x.KFun = nil, nil
+	c.inRef++
+	defer func() { c.inRef-- }()
 	if w.recover {
 		return nil, types.InvalidType, false
 	}
