@@ -228,14 +228,16 @@ func commonSkip(t *test) string {
 // defaultFeatures are the LANGUAGE directive's values that change nothing:
 // features on by default in the Kotlin kc compiles, as in kotlinc's.
 var defaultFeatures = map[string]bool{
-	"+AllowReifiedTypeInCatchClause": true,
-	"+BreakContinueInInlineLambdas":  true,
-	"+ContextParameters":             true,
-	"+DataFlowBasedExhaustiveness":   true,
-	"+ExplicitBackingFields":         true,
-	"+MultiDollarInterpolation":      true,
-	"+NestedTypeAliases":             true,
-	"+WhenGuards":                    true,
+	"+AllowReifiedTypeInCatchClause":               true,
+	"+AllowReturnInExpressionBodyWithExplicitType": true,
+	"+BreakContinueInInlineLambdas":                true,
+	"+ContextParameters":                           true,
+	"+DataFlowBasedExhaustiveness":                 true,
+	"+ExplicitBackingFields":                       true,
+	"+MultiDollarInterpolation":                    true,
+	"+NestedTypeAliases":                           true,
+	"+ProperIeee754Comparisons":                    true,
+	"+WhenGuards":                                  true,
 }
 
 func slicesContainsFold(vs []string, s string) bool {
