@@ -101,8 +101,7 @@ func (c *Checker) localDelegate(s *syntax.VarStmt) {
 // noWant if it has none.
 func (c *Checker) inferDelegate(x syntax.Expr, pt, owner, this types.Type, mutable bool) (types.Type, types.Type) {
 	s := newSystem(c)
-	c.sink = s
-	t := c.value(x, noWant)
+	t := c.delegateValue(x, s)
 	// A constraint that can't hold is left out, for the operator calls'
 	// own checks to report.
 	try := func(a, b types.Type) {

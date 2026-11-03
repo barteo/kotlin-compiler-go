@@ -223,7 +223,10 @@ type Checker struct {
 	// tailBlock is a branch whose last statement, a call, is checked with
 	// the inference system tailSink: see branch.
 	tailBlock *syntax.Block
-	tailSink  *system
+	// branchSink is the system of the delegate an if, a try or an
+	// elvis is: see delegateValue.
+	branchSink *system
+	tailSink   *system
 	// bareRef is the type of an is or as being resolved, whose class's type
 	// arguments may be left out, and bareSubject the type checked.
 	bareRef     *syntax.TypeRef
