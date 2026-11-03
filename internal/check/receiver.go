@@ -223,6 +223,28 @@ func (c *Checker) hasFun(t types.Type, name string, x *syntax.Call) bool {
 	return false
 }
 
+// providesDelegate reports whether a delegate of type t has a
+// provideDelegate operator that call may call: hasFun's, but an
+// extension's receiver must be within its type parameter's bound, as
+// P.provideDelegate for P : MyClass isn't a String's.
+func (c *Checker) providesDelegate(t types.Type, call *syntax.Call) bool {
+	if !c.hasFun(t, "provideDelegate", call) {
+		return false
+	}
+	if cls := c.classOf(t.Flex()); cls != nil && !types.MayBeNull(t.Flex()) {
+		cls.Ensure()
+		if len(c.javaMethods(cls, "provideDelegate")) > 0 {
+			return true
+		}
+	}
+	for _, cl := range c.extCalleesFor("provideDelegate", t.Flex(), call) {
+		if c.recvTakes(t.Flex(), cl.f.Recv) && c.mayTake(cl.f, call) {
+			return true
+		}
+	}
+	return false
+}
+
 // hasFunProp reports whether a receiver of type t has a property with a
 // name, which f(x) invokes: a property of function type, as
 // transformAll(it) in a lambda in an extension of clikt's
@@ -604,7 +626,20 @@ func (c *Checker) memberExtFirst(fn *syntax.Member, x *syntax.Call) bool {
 		}
 	}
 	rt = rt.Flex()
-	if cls := c.classOf(rt.NonNull()); cls != nil && !types.MayBeNull(rt) {
+	anyArgs := 0
+	if fn.Name == "equals" {
+		anyArgs = 1
+	}
+	if !types.MayBeNull(rt) && (builtinFun(rt, fn.Name, len(x.Args)) || anyMember[fn.Name] && len(x.Args) == anyArgs) {
+		// A built-in member, as String's hashCode(): a local val
+		// hashCode = Z::hashCode doesn't shadow it.
+		return true
+	}
+	cls := c.classOf(rt.NonNull())
+	if cls == nil {
+		cls = c.jvmClass(rt.NonNull())
+	}
+	if cls != nil && !types.MayBeNull(rt) {
 		cls.Ensure()
 		if slices.ContainsFunc(c.javaMethods(cls, fn.Name), func(f *types.FunSym) bool { return c.mayTake(f, x) }) {
 			return true

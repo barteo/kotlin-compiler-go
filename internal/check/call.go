@@ -963,6 +963,8 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 		} else if trial := c.onlyRefFit(sys, l, params[i]); trial != nil {
 			// And so does one of whose callables only one fits.
 			sys = trial
+		} else if trial := c.typedLambdaParams(sys, l, params[i]); trial != nil {
+			sys = trial
 		}
 		sys.lambdas = append(sys.lambdas, pendingLambda{l, params[i], c.argScope(x.Args, i)})
 	}
@@ -1841,4 +1843,55 @@ func (c *Checker) infixExtOnly(name string, rt types.Type) bool {
 		}
 	}
 	return false
+}
+
+// typedLambdaParams returns sys with the constraints of lambda l's
+// parameters declared with types, for a parameter of function type p,
+// or nil: as with kotlinc, each of p's parameter types is a subtype of
+// the type declared, before the lambda is analysed, so A of foldl(0) {
+// e: Int, acc: Long -> acc + e } is a Long.
+func (c *Checker) typedLambdaParams(sys *system, l *syntax.Lambda, p types.Type) *system {
+	if l.Ref != nil || !l.Arrow {
+		return nil
+	}
+	t := p.NonNull()
+	if !t.IsFunc() {
+		return nil
+	}
+	off := t.Contexts()
+	n := t.A.Len() - 1 - off
+	if t.E {
+		off++
+		n--
+	}
+	if n != len(l.Params) {
+		return nil
+	}
+	var trial *system
+	for j, lp := range l.Params {
+		if lp.Type == nil {
+			continue
+		}
+		errs := len(c.errs)
+		d := c.resolveType(lp.Type)
+		if len(c.errs) > errs {
+			c.errs = c.errs[:errs]
+			continue
+		}
+		if d.K == types.Invalid {
+			continue
+		}
+		pt := t.A.Get(off + j).T
+		if !pt.HasVars() {
+			continue
+		}
+		next := sys.clone()
+		if trial != nil {
+			next = trial.clone()
+		}
+		if next.sub(pt, d); next.ok {
+			trial = next
+		}
+	}
+	return trial
 }

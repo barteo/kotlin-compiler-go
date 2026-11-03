@@ -91,6 +91,17 @@ func (c *Checker) expr1(x syntax.Expr, want types.Type, allowRange bool, sink *s
 		if ok {
 			c.checkTopVar(sym, x.P)
 		}
+		if ok && sym.Kind == types.Prop && !cast {
+			// A property of this, once a smart cast has changed this's
+			// type, is the smart-cast type's: in when (this) { is W ->
+			// value }, W's value.
+			if _, narrowed := c.narrowedThis(); narrowed {
+				if mt, ok := c.thisMember(x); ok && !c.sameType(mt, t) {
+					return mt
+				}
+				x.Member = nil
+			}
+		}
 		if !ok {
 			if t, ok := c.receiverProp(x); ok {
 				return t
@@ -1393,12 +1404,26 @@ func (c *Checker) narrowing(cond syntax.Expr) (whenTrue, whenFalse []narrow) {
 			}
 		}
 	case *syntax.Is:
-		k, ok := c.narrowKeyOf(x.X)
-		if !ok || x.Target.K == types.Invalid {
+		if x.Target.K == types.Invalid {
 			return nil, nil
 		}
+		// a?.b is T, for a T that isn't nullable, tells a isn't null.
+		var safe []narrow
+		if !types.MayBeNull(x.Target) {
+			safe = c.safeReceivers(x.X)
+		}
+		k, ok := c.narrowKeyOf(x.X)
+		if m, isSafe := x.X.(*syntax.Member); isSafe && m.Safe && !ok && safe != nil {
+			k, ok = c.memberKey(m, m.Type())
+		}
+		if !ok {
+			if x.Not {
+				return nil, safe
+			}
+			return safe, nil
+		}
 		k.t = c.isNarrowed(k.t, x.Target)
-		n := []narrow{k}
+		n := append([]narrow{k}, safe...)
 		if !types.MayBeNull(k.t) {
 			n = append(n, c.implied[c.localKey(k)]...) // as for k != null
 		}
@@ -1490,7 +1515,17 @@ func (c *Checker) contractNarrows(x *syntax.Call, returns int) []narrow {
 				}
 				is = sub.Apply(is)
 			}
-			if !is.HasParams() && !c.subtype(k.t, is) {
+			own := func(t types.Type) bool {
+				return t.Has(func(u types.Type) bool { return u.K == types.TypeParam && slices.Contains(f.TypeParams, u.Param()) })
+			}
+			if own(is) && is.K == types.Class && len(is.C.TypeParams) > 0 {
+				// this is Error, of a NetRequestStatus<T>: the arguments
+				// are the argument's, as for x is Error.
+				if t, known, _ := c.bareArgs(is.C, &syntax.TypeRef{Nullable: is.N}, k.t); known {
+					is = t
+				}
+			}
+			if !own(is) && !c.subtype(k.t, is) {
 				k.t = c.isNarrowed(k.t, is)
 				out = append(out, k)
 			}

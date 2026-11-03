@@ -295,6 +295,9 @@ type state struct {
 	// defaultParam is being checked.
 	defaultsOf   *types.FunSym
 	defaultParam int
+	// suppressLocalInline is set in a local function that suppresses
+	// NOT_YET_SUPPORTED_LOCAL_INLINE_FUNCTION, for those it declares.
+	suppressLocalInline bool
 	// staticCls is set where a class's companion members are in scope
 	// but this isn't: in the arguments of its constructors' this(...) and
 	// super(...) calls.
@@ -2077,6 +2080,11 @@ func (c *Checker) checkVariance1(whole, t types.Type, ref *syntax.TypeRef, pos t
 	if ref != nil && ref.UnsafeVariance {
 		return true
 	}
+	if r := c.aliasRef(ref); r != nil {
+		// A typealias's right side, whose @UnsafeVariance parts aren't
+		// checked either.
+		ref = r
+	}
 	ok := true
 	switch t.K {
 	case types.TypeParam:
@@ -2115,6 +2123,64 @@ func (c *Checker) checkVariance1(whole, t types.Type, ref *syntax.TypeRef, pos t
 		}
 	}
 	return ok
+}
+
+// aliasRef returns the right side of the program's typealias that ref
+// names, with ref's type arguments in place of its type parameters, or
+// nil.
+func (c *Checker) aliasRef(ref *syntax.TypeRef) *syntax.TypeRef {
+	if ref == nil || ref.Name == "" || ref.Ret != nil || ref.Known != nil {
+		return nil
+	}
+	a := c.lookupAlias(ref.Name)
+	if a == nil {
+		return nil
+	}
+	d, ok := a.Decl.(*syntax.TypeAliasDecl)
+	if !ok || d.Type == nil || len(ref.Args) != len(d.TypeParams) {
+		return nil
+	}
+	args := map[string]*syntax.TypeRef{}
+	for i, tp := range d.TypeParams {
+		args[tp.Name] = ref.Args[i].Type
+	}
+	var subst func(r *syntax.TypeRef) *syntax.TypeRef
+	subst = func(r *syntax.TypeRef) *syntax.TypeRef {
+		if r == nil {
+			return nil
+		}
+		if u, ok := args[r.Name]; ok && len(r.Args) == 0 && r.Ret == nil {
+			if u == nil {
+				return r
+			}
+			cp := *u
+			cp.UnsafeVariance = cp.UnsafeVariance || r.UnsafeVariance
+			return &cp
+		}
+		cp := *r
+		list := func(rs []*syntax.TypeRef) []*syntax.TypeRef {
+			if rs == nil {
+				return nil
+			}
+			out := make([]*syntax.TypeRef, len(rs))
+			for i, x := range rs {
+				out[i] = subst(x)
+			}
+			return out
+		}
+		cp.Params, cp.Contexts = list(r.Params), list(r.Contexts)
+		cp.Ret, cp.Recv, cp.Outer = subst(r.Ret), subst(r.Recv), subst(r.Outer)
+		if r.Args != nil {
+			cp.Args = make([]*syntax.TypeArg, len(r.Args))
+			for i, x := range r.Args {
+				y := *x
+				y.Type = subst(x.Type)
+				cp.Args[i] = &y
+			}
+		}
+		return &cp
+	}
+	return subst(d.Type)
 }
 
 // argRefs returns the type references that type ref writes its n type
@@ -2532,9 +2598,33 @@ func usesField(a *syntax.FunDecl) bool {
 		return false
 	}
 	found := false
-	f := func(n any) bool {
-		if id, ok := n.(*syntax.Ident); ok && id.Name == "field" {
-			found = true
+	var f func(n any) bool
+	f = func(n any) bool {
+		switch n := n.(type) {
+		case *syntax.Ident:
+			if n.Name == "field" {
+				found = true
+			}
+		case *syntax.ObjectExpr:
+			// An object literal's code sees the accessor's field, but its
+			// properties' accessors have their own.
+			for _, st := range n.Decl.Supers {
+				if st.Call != nil {
+					syntax.Inspect(st.Call, f)
+				}
+				syntax.Inspect(st.Delegate, f)
+			}
+			for _, m := range n.Decl.Members {
+				switch m := m.(type) {
+				case *syntax.PropDecl:
+					syntax.Inspect(m.Init, f)
+				case *syntax.FunDecl:
+					syntax.Inspect(m.Body, f)
+					syntax.Inspect(m.ExprBody, f)
+				case *syntax.InitBlock:
+					syntax.Inspect(m.Body, f)
+				}
+			}
 		}
 		return !found
 	}
@@ -2615,7 +2705,7 @@ func (c *Checker) checkFun(d *syntax.FunDecl, cls *types.ClassSym) {
 	}
 	if d.Tailrec {
 		defer c.tailCalls(d)
-		if cls != nil && !sym.Final {
+		if cls != nil && !sym.Final && !(cls.Final && cls.Entries == nil) {
 			c.errorf(d.P, "tailrec is not allowed on open members")
 		}
 	}
@@ -2706,7 +2796,7 @@ func (c *Checker) provideDelegate(d, p *syntax.PropDecl, t, want types.Type) typ
 	m.P = pos
 	call := &syntax.Call{Fun: m, Args: []syntax.Expr{this, p.Ref}, Operator: true}
 	call.P = pos
-	if !c.hasFun(t, "provideDelegate", call) {
+	if !c.providesDelegate(t, call) {
 		return t
 	}
 	d.Init = call
@@ -2751,8 +2841,18 @@ func (c *Checker) delegateThis(p *syntax.PropDecl) types.Type {
 // reference, val y by ::x, which is then a KProperty object, whose
 // getValue and setValue are the standard library's, or else noWant.
 func (c *Checker) kpropDelegateWant(x syntax.Expr) types.Type {
-	if l, ok := x.(*syntax.Lambda); !ok || l.Ref == nil {
+	l, ok := x.(*syntax.Lambda)
+	if !ok || l.Ref == nil {
 		return noWant
+	}
+	if r := l.Ref; r.X == nil && r.Type == nil {
+		// by ::f, of a function: a function value, whose provideDelegate
+		// extension supplies the delegate.
+		sym, _ := c.scope.find(r.Name)
+		prop := sym != nil || c.topVar(r.Name) != nil || c.cls != nil && c.memberProp(c.cls, r.Name) != nil
+		if !prop && len(c.topFuns(r.Name)) > 0 {
+			return noWant
+		}
 	}
 	cls := c.u.ext.class("kotlin/reflect/KProperty")
 	if cls == nil {

@@ -784,9 +784,14 @@ func (s *system) fixVarsIn(t types.Type) {
 			// only if T1 has no proper bound of its own: else T2's other
 			// bounds would give T1 its value, Nothing from TODO() in
 			// elvis(f { it.method() }, TODO()).
-			own := slices.ContainsFunc(tv.lower, s.proper) || slices.ContainsFunc(tv.upper, s.proper)
+			// But a proper upper bound gives way to T2's proper lower one,
+			// as kotlinc prefers fixing variables with lower bounds: VR of
+			// fun <T, VR : T> foo(x: T, fn: (VR?, T) -> Unit) in foo(1) {
+			// prev: Int?, new -> } is fixed after T, an Int.
+			lower := len(tv.lits) > 0 || slices.ContainsFunc(tv.lower, s.proper)
+			own := lower || slices.ContainsFunc(tv.upper, s.proper)
 			for _, b := range tv.upper {
-				if !own || !s.isVar(b) {
+				if !own || !s.isVar(b) || !lower && s.hasLower(b) {
 					visit(b, true)
 				}
 			}
@@ -800,6 +805,18 @@ func (s *system) fixVarsIn(t types.Type) {
 		})
 	}
 	visit(t, false)
+}
+
+// hasLower reports whether t is an unfixed variable with a proper lower
+// bound other than Nothing, which kotlinc deems trivial: TODO()'s.
+func (s *system) hasLower(t types.Type) bool {
+	if !s.isVar(t) {
+		return false
+	}
+	tv := s.byVar[s.apply(t).Param()]
+	return len(tv.lits) > 0 || slices.ContainsFunc(tv.lower, func(b types.Type) bool {
+		return s.proper(b) && s.apply(b).K != types.Nothing
+	})
 }
 
 // fixable reports whether fix finds a value for tv in its bounds.

@@ -116,7 +116,7 @@ func (g *gen) arrayFactory(x *syntax.Call) {
 		g.exprAs(x.Args[0], types.IntType)
 		g.newArrayOf(d, types.ArrayElem(t))
 	case types.ArrayInit:
-		if l, ok := x.Args[1].(*syntax.Lambda); ok && g.usesInlined(l) {
+		if l, ok := x.Args[1].(*syntax.Lambda); ok && (l.Inline || g.usesInlined(l)) {
 			g.arrayInitInlined(x, l, t)
 			return
 		}

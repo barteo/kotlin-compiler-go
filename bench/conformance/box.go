@@ -123,6 +123,8 @@ func prepareBox(t *test) {
 	for _, f := range t.files() {
 		// The value-class tests are templates for each backend.
 		f.text = strings.ReplaceAll(f.text, "OPTIONAL_JVM_INLINE_ANNOTATION", "@JvmInline")
+		// And so are the tests that ask which backend runs them.
+		f.text = strings.ReplaceAll(f.text, "BACKEND_UNDER_TEST", `"JVM_IR"`)
 		// The tests in diagnostics/ mark the warnings kotlinc reports.
 		f.text, _ = stripMarkup(f.text)
 	}

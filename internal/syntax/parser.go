@@ -2716,6 +2716,7 @@ func (p *parser) parseInfix() Expr {
 			m.P = name.Pos
 			c := &Call{Fun: m, Args: []Expr{p.parseRange()}, Infix: true}
 			c.P = name.Pos
+			labelLambdas(c)
 			x = c
 			continue
 		}

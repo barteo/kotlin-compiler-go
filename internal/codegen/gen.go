@@ -3299,6 +3299,19 @@ func (g *gen) backingField(p *types.VarSym, load bool) {
 	ft := types.FieldType(p)
 	d := desc(ft)
 	switch {
+	case p.Kind == types.Global && g.cls.Name != p.FieldClass():
+		// In an object expression of the accessor: the field is private
+		// to the file's class, whose access$getX$p and access$setX$p it
+		// uses, as kotlinc does.
+		if load {
+			g.shared.access[p] |= 1
+			g.code.Invoke(cf.INVOKESTATIC, p.Facade, privateGetter(p), "()"+d)
+			break
+		}
+		g.shared.access[p] |= 2
+		g.toField(p, ft)
+		g.code.Invoke(cf.INVOKESTATIC, p.Facade, privateSetter(p), "("+d+")V")
+		return
 	case p.Kind == types.Global && load:
 		g.code.FieldInsn(cf.GETSTATIC, p.FieldClass(), p.Name, d)
 	case p.Kind == types.Global:

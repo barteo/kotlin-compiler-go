@@ -1729,6 +1729,12 @@ outer:
 			if len(prev.f.Params) != len(cl.f.Params) || len(prev.tparams) != len(cl.tparams) || !generic(prev) && !generic(cl) {
 				continue
 			}
+			if prev.f.Owner != nil && prev.f.Owner == cl.f.Owner {
+				// Overloads of one class, which neither overrides, as
+				// Base<String>'s foo(x: T) and foo(y: String): named
+				// arguments tell them apart.
+				continue
+			}
 			same := true
 			for i, p := range cl.f.Params {
 				if !c.sameType(prev.recv.ApplyIn(prev.f.Params[i].Type), cl.recv.ApplyIn(p.Type)) {
@@ -2101,6 +2107,12 @@ func (c *Checker) javaProperty(x *syntax.Member, rt types.Type) (types.Type, boo
 	// Not those of an earlier check of x, an extension property's: a
 	// member setTextColor isn't the setter of TextView.textColor.
 	x.Getter, x.Setter = nil, nil
+	if (getterName == "getFirst" || getterName == "getLast") && c.isSubclassOf(cls, "java/util/List") && !c.isSubclassOf(cls, "java/util/Deque") {
+		// JDK 21's List.getFirst() and getLast(), deprecated in Kotlin's
+		// List, aren't properties: list.last is the program's or the
+		// standard library's.
+		return types.InvalidType, false
+	}
 	for _, f := range c.accessible(cls, c.javaMethods(cls, getterName)) {
 		// Only Java methods are seen as properties, and the program's
 		// overrides of them.
