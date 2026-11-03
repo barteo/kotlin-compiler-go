@@ -25,7 +25,13 @@ func (s *system) funcUpper(tv *tvar) (types.Type, bool) {
 	for len(queue) > 0 {
 		v := queue[0]
 		queue = queue[1:]
-		for _, u := range slices.Concat(v.upper, v.v.Bounds) {
+		bounds := slices.Concat(v.upper, v.v.Bounds)
+		if v != tv {
+			// Or a function type another argument is: { this } of
+			// select(id { this }, fun Int.() = this) is an Int.() -> Int.
+			bounds = append(bounds, v.lower...)
+		}
+		for _, u := range bounds {
 			u = s.apply(u)
 			if w := s.unfixedVar(u); w != nil {
 				if !seen[w] {
@@ -148,7 +154,10 @@ func (c *Checker) readyFirst(s *system) {
 	}
 	var ready, rest []pendingLambda
 	for _, pl := range s.lambdas {
-		ok := s.unfixedVar(s.apply(pl.p)) == nil
+		// An anonymous function whose parameters have types has a type
+		// of its own, which the others passed for its variable then take:
+		// select(id { this }, fun Int.() = this).
+		ok := s.unfixedVar(s.apply(pl.p)) == nil || pl.l.Anon && !untypedParams(pl.l)
 		for _, p := range c.inputs(s, pl) {
 			ok = ok && s.known(p)
 		}
@@ -159,4 +168,11 @@ func (c *Checker) readyFirst(s *system) {
 		}
 	}
 	s.lambdas = append(ready, rest...)
+}
+
+// untypedDelegate reports whether p is a property without a type whose
+// delegate's type arguments its getValue's thisRef may infer: R of
+// val a by MyProperty() for getValue(thisRef: R, ...).
+func untypedDelegate(p *syntax.PropDecl) bool {
+	return p != nil && p.Sym != nil && p.Type == nil
 }

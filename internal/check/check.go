@@ -2652,13 +2652,17 @@ func (c *Checker) checkPropInit(d *syntax.PropDecl, cls *types.ClassSym) {
 	}
 	var t types.Type
 	provided := noWant
-	if want := c.delegateWant(d); want.K == types.Invalid && delegateTyped(d.DelegateOf) {
+	if want := c.delegateWant(d); want.K == types.Invalid && (delegateTyped(d.DelegateOf) || untypedDelegate(d.DelegateOf)) {
 		p := d.DelegateOf
 		owner := types.NothingType.Nullable()
 		if p.Ref != nil && p.Ref.Recv {
 			owner = p.Sym.Owner.This()
 		}
-		t, provided = c.inferDelegate(d.Init, p.Sym.Type, owner, c.delegateThis(p), p.Mutable)
+		pt := p.Sym.Type
+		if p.Type == nil {
+			pt = noWant
+		}
+		t, provided = c.inferDelegate(d.Init, pt, owner, c.delegateThis(p), p.Mutable)
 	} else {
 		t = c.value(d.Init, want)
 	}
