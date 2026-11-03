@@ -1109,6 +1109,8 @@ func (c *Checker) checkImplemented(d *syntax.ClassDecl) {
 				if p.Abstract {
 					if q := c.implementingProp(cls, s, p.Name, p.Contexts); (q == nil || q.Abstract) && (p.Mutable || !c.javaPropImplements(cls, this, s, p.Name, p.Type, p.Contexts)) {
 						missing(p.Name)
+					} else {
+						c.inheritedPropImpl(d, cls, s, p, q)
 					}
 				}
 			}

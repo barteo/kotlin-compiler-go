@@ -169,6 +169,8 @@ type refForm struct {
 func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.Type, bool) {
 	r := x.Ref
 	x.KProp, x.KFun = nil, nil
+	c.inRef++
+	defer func() { c.inRef-- }()
 	if w.recover {
 		return nil, types.InvalidType, false
 	}
@@ -914,6 +916,11 @@ func (c *Checker) kpropLambda(x *syntax.Lambda, f refForm, bound bool) ([]types.
 			// ::p for a property of this class is this::p, also where p
 			// is a constructor's parameter, which a reference can't name.
 			this := &syntax.This{Class: true}
+			this.P = p
+			x.Ref.X = this
+			return c.checkRef(x, lambdaWant{ret: noWant, prop: true})
+		case !bound && c.outerPropLabel(e) != "":
+			this := &syntax.This{Label: c.outerPropLabel(e)} // this@Outer::p in an inner class
 			this.P = p
 			x.Ref.X = this
 			return c.checkRef(x, lambdaWant{ret: noWant, prop: true})

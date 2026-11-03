@@ -153,6 +153,7 @@ func (c *Checker) expr1(x syntax.Expr, want types.Type, allowRange bool, sink *s
 				t, cast = dt, false
 			}
 		}
+		t, cast = c.identField(sym, t, cast, x.P)
 		x.Sym, x.Cast = sym, cast
 		if sym.UnitLocal() {
 			x.Unit = true // a local of type Unit has no storage
@@ -1849,6 +1850,7 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 				t = k.t
 			}
 		}
+		t = c.memberField(x, rt, t)
 	case cls != nil && c.visibleField(instanceField(cls, x.Name)):
 		x.Prop = instanceField(cls, x.Name)
 		t = c.memberSubst(rt, x.Prop.Owner).Apply(x.Prop.Type)

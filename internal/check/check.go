@@ -192,6 +192,7 @@ type Checker struct {
 	// accessors' calls reading or assigning them are (see contextAccess).
 	accessed map[*syntax.Call]string
 	done     map[any]bool // declarations already checked during inference
+	inRef    int          // in callable references, which see properties' own types, not their fields'
 	// jumps says, for each inlined lambda, whether a non-local return,
 	// break or continue can leave it.
 	jumps map[*syntax.Lambda]inlineJumps
@@ -1602,6 +1603,7 @@ func jvmName(m *syntax.Modifiers, target string) string {
 }
 
 func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
+	c.backingFieldDecl(d, owner)
 	if d.Recv != nil {
 		c.resolveExtProp(d)
 		return
@@ -1759,6 +1761,7 @@ func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
 	default:
 		sym.Infer = func() { c.inferProp(d) }
 	}
+	c.backingFieldType(d, owner)
 }
 
 // privateMethod reports whether a function or accessor declared with
@@ -2477,6 +2480,7 @@ func funDeclaresDefaults(d *syntax.FunDecl) bool {
 // checkProp checks a property's initializer or getter, unless inference
 // already has.
 func (c *Checker) checkProp(d *syntax.PropDecl, cls *types.ClassSym) {
+	c.checkBackingField(d, cls)
 	if d.Init != nil && !c.done[d] {
 		c.checkPropInit(d, cls)
 	}

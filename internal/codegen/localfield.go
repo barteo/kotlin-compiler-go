@@ -28,7 +28,7 @@ func (g *gen) outerField(p *types.VarSym, store bool) {
 	if p.StaticField() {
 		// Its accessors have no receiver.
 		if store {
-			g.coerce(p.Type, ft)
+			g.toField(p, ft)
 			g.dropUnder(ft)
 		} else {
 			g.code.Op(cf.POP)
@@ -38,7 +38,7 @@ func (g *gen) outerField(p *types.VarSym, store bool) {
 	if store {
 		g.shared.access[p] |= 2
 		if self != "" {
-			g.coerce(p.Type, ft)
+			g.toField(p, ft)
 		}
 		g.code.Invoke(cf.INVOKESTATIC, p.Owner.Name, privateSetter(p), "("+self+d+")V")
 		return

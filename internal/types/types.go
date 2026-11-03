@@ -281,6 +281,11 @@ type VarSym struct {
 	Resolved   bool
 	InProgress bool
 
+	// FieldT is the type of a final property's explicit backing field,
+	// val x: List<T> field = mutableListOf(), if it has one: what x reads
+	// as where the field is visible, in the private scope of x.
+	FieldT *Type
+
 	// Deferred is set on a local or a class property declared without a
 	// value, which code assigns later: val x: Int, then x = 1. The checker
 	// checks that it is assigned before it is read, and a val only once.
@@ -1272,6 +1277,9 @@ func GetterType(p *VarSym) Type {
 	if p.BoxedGetter && p.Type.IsPrimitive() {
 		return p.Type.Nullable()
 	}
+	if p.FieldT != nil && p.Type.K != Unit {
+		return p.Type // not an explicit backing field's
+	}
 	return FieldType(p)
 }
 
@@ -1282,6 +1290,9 @@ var unitObject = &ClassSym{Name: "kotlin/Unit", KotlinName: "kotlin/Unit", Exter
 // parameter, on the JVM: its type, but as with kotlinc a Unit property
 // holds the kotlin.Unit object.
 func FieldType(p *VarSym) Type {
+	if p.FieldT != nil {
+		return *p.FieldT // an explicit backing field's
+	}
 	if p.Type.K == Unit {
 		return ClassType(unitObject)
 	}

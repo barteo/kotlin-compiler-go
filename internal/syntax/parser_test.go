@@ -108,6 +108,13 @@ func TestParseValid(t *testing.T) {
 		{"lateinit and tailrec", "class A { lateinit var a: String }\nlateinit var b: String\nfun f() {\n lateinit var c: String\n tailrec fun g(n: Int): Int = if (n == 0) 0 else g(n - 1)\n}\ntailrec fun h(n: Int) {}"},
 		{"local classes", "fun f() {\n class A(val x: Int)\n data class P(val a: Int)\n open class B { fun g() = 1 }\n}"},
 		{"expect and actual", "expect fun f(): Int\nactual fun f(): Int = 1\nexpect class A(x: Int) { fun g() }\nactual class A actual constructor(x: Int) {\n actual fun g() {}\n}\nactual class B\n  actual constructor()"},
+		{"redundant nullable types", "val a: Int?? = null\nval b: (Int?)? = null\nval c: Int? ? = null\nval d = String ? ? :: length\nfun f(g: (@A C)?.() -> C) {}"},
+		{"empty if branches", "fun f(a: Boolean, b: Int) {\n val x = if (a) else b\n if (true) return else return\n}"},
+		{"float literals out of range", "val a = 1e999\nval b = 1e-999f\nval c = 3.4e39f"},
+		{"labeled declarations", "fun f() {\n L@ val x = 1\n M@ fun g() { return@M }\n}"},
+		{"annotated reified type parameters", "inline fun <reified @A T, @B reified U> f() {}"},
+		{"annotation arguments before a declaration", "@A (1) typealias T = Int\n@B (\"x\") fun f() {}"},
+		{"trailing commas in lambda and catch parameters", "val g = { x: Int, -> x }\nfun f() {\n try { } catch (e: Exception,) { }\n}"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -158,6 +165,16 @@ func TestParseErrors(t *testing.T) {
 				t.Errorf("got %s: %s, want %s: %s", e.Pos, e.Msg, tt.pos, tt.msg)
 			}
 		})
+	}
+}
+
+func TestReservedAnnotationName(t *testing.T) {
+	f, errs := Parse("t.kt", "@__(\"\") class C\n@`__` class D")
+	if len(errs) > 0 {
+		t.Fatalf("unexpected error: %v", errs[0])
+	}
+	if len(f.Errors) != 1 || f.Errors[0].Pos.String() != "1:2" || !strings.Contains(f.Errors[0].Msg, "reserved") {
+		t.Fatalf("got %v, want one reserved-name error at 1:2", f.Errors)
 	}
 }
 
@@ -1102,5 +1119,60 @@ func TestRecoverAfterReceiver(t *testing.T) {
 	}
 	if n := len(f.Decls); n < 2 {
 		t.Errorf("declarations after the errors: %d", n)
+	}
+}
+
+// TestBackingFields checks explicit backing fields: on the property's line
+// or the next, with a type, an initializer, or neither, among accessors.
+func TestBackingFields(t *testing.T) {
+	src := `class A {
+    val a: List<Int> field = mutableListOf()
+    val b: Number
+        field: Int = 1
+    val c: Any
+        @Volatile internal field: String
+    init { c = "" }
+    val d: Int
+        field = 1
+        get() = 2
+}
+val e: Any field: Int = 1
+`
+	f, errs := Parse("t.kt", src)
+	if len(errs) > 0 {
+		t.Fatalf("unexpected error: %v", errs[0])
+	}
+	cd := f.Decls[0].(*ClassDecl)
+	var props []*PropDecl
+	for _, m := range cd.Members {
+		if pd, ok := m.(*PropDecl); ok {
+			props = append(props, pd)
+		}
+	}
+	props = append(props, f.Decls[1].(*PropDecl))
+	type want struct {
+		typ        string
+		init, mods bool
+	}
+	for i, w := range []want{{"", true, false}, {"Int", true, false}, {"String", false, true}, {"", true, false}, {"Int", true, false}} {
+		bf := props[i].BackingField
+		if bf == nil {
+			t.Fatalf("%s: no backing field", props[i].Name)
+		}
+		if typ := ""; bf.Type != nil && bf.Type.Name != w.typ || bf.Type == nil && w.typ != typ {
+			t.Errorf("%s: field type %+v, want %q", props[i].Name, bf.Type, w.typ)
+		}
+		if (bf.Init != nil) != w.init || (len(bf.Mods) > 0) != w.mods {
+			t.Errorf("%s: field %+v", props[i].Name, bf)
+		}
+	}
+	if props[2].Annotations[0].Target != "field" {
+		t.Errorf("annotation target: %q", props[2].Annotations[0].Target)
+	}
+	if props[3].Getter == nil {
+		t.Errorf("getter after the field")
+	}
+	if props[0].Init != nil || props[0].Type.Name != "List" {
+		t.Errorf("property a: %+v", props[0])
 	}
 }
