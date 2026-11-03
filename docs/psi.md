@@ -32,6 +32,42 @@ compiler's PSI. The tests compare trees with dumps from stock Kotlin made by
 - **Snapshots** are immutable and safe for concurrent use. A `Parser` can
   be reused per worker; snapshots don't keep its buffers.
 
+### Performance
+
+`BenchmarkFrontends` (`internal/lower/bench_test.go`) parses a corpus with
+each of the two paths the driver's parser can take: `kc`'s own parser
+(`syntax`), and `psi.Parse` followed by lowering (`psi+lower`). It also times
+`psi.Parse` alone, both with a new parser per file (`psi`) and with one reused
+`psi.Parser` (`psi-reused`). It uses only files both frontends accept.
+
+```sh
+go test ./internal/lower -run '^$' -bench Frontends -benchmem -count 6
+KC_BENCH_CORPUS=<dir> go test ./internal/lower -run '^$' -bench Frontends -benchmem -count 6
+```
+
+Medians of 6 runs, Go 1.27.2, 4-core Intel Xeon (linux/amd64), on
+`testdata` (489 of 503 `.kt` files, 0.83 MB) and on kotlinx-coroutines-core
+1.11.0 (707 of 711 files, 2.64 MB; `bench/survey.sh` clones it):
+
+| Path | testdata MB/s | testdata MB/op | testdata allocs/op | coroutines MB/s | coroutines MB/op | coroutines allocs/op |
+|---|---:|---:|---:|---:|---:|---:|
+| `syntax` | 13.6 | 64.7 | 195k | 33.1 | 99.9 | 300k |
+| `psi` | 4.1 | 212.6 | 136k | 11.1 | 323.6 | 332k |
+| `psi-reused` | 5.8 | 150.2 | 124k | 13.9 | 229.0 | 315k |
+| `psi+lower` | 3.0 | 252.8 | 469k | 8.6 | 382.9 | 823k |
+
+- **Lowering costs about what parsing does**, as planned. On coroutines it
+  takes 68 ms per pass, against 80 ms for `syntax`; on testdata 70 ms,
+  against 61 ms.
+- **`psi.Parse` itself is about 3× slower than `kc`'s parser**, and that
+  makes the whole psi path 3.8× (coroutines) to 4.5× (testdata) slower.
+  The parser builds the full lossless tree, including whitespace, comments
+  and every intermediate element. Most of its allocation is the marker list
+  (`builder.mark`, 54% of bytes) and the tree under construction
+  (`treeWriter.add`, 27%). A reused `Parser` keeps those buffers between
+  files and cuts the parse to about 2.4× `syntax`. Runs of the same
+  benchmark varied by up to 10%.
+
 ## analysis
 
 `analysis.AnalyzeArena(ctx, cfg, snapshots)` analyzes the snapshots as one

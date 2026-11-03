@@ -236,12 +236,16 @@ The lowerer has to produce the **same** AST.
 
 ## Part B: kotlin-linters-go (new repo)
 
-> **Status: imported.** [barteo/kotlin-linters-go](https://github.com/barteo/kotlin-linters-go)
+> **Status: done.** [barteo/kotlin-linters-go](https://github.com/barteo/kotlin-linters-go)
 > holds the import (one commit citing c462563) and depends on this branch by pseudo-version. Its
-> `docs/status.md` lists what passes: the syntax-only rules almost all do, and most remaining
-> failures are B3.2 fact families `analysis` does not provide yet. Not done: the version tags in
-> A6, which wait for this branch to merge, and the speed gate, whose harness still needs the
-> dropped bridge.
+> full test suite passes with no failures; its
+> [`docs/status.md`](https://github.com/barteo/kotlin-linters-go/blob/work/busy-heisenberg-xkecpi/docs/status.md)
+> has the per-package counts. Still open:
+> - 30 tests skip because their inputs came from generators that were not in the imported commit
+>   (four formatting parity families, compose oracle inputs, core audit ledgers, the full-suite
+>   workload).
+> - The speed gate: its harness, `bench/native-detekt.sh`, still needs the dropped bridge.
+> - The version tags in A6, which wait for this branch to merge.
 
 **Prerequisite:** the user creates the empty GitHub repo `barteo/kotlin-linters-go`. This session
 cannot create repositories. It is then added to the session.
@@ -327,7 +331,9 @@ The signatures were inferred from call sites.
   exhaustiveness, smart casts), cancellation, `.kts` returning `ErrUnsupported`, and deep-copy
   isolation, as in the branch's `semantic_memo_test.go`.
 - Performance check: `psi.Parse` plus lowering throughput on the kotlinx-coroutines corpus,
-  compared with `syntax.Parse`. Lowering should cost about the same as parsing.
+  compared with `syntax.Parse`. Lowering should cost about the same as parsing. Done: it does,
+  but `psi.Parse` itself is about 3× slower than `syntax.Parse`; see
+  [docs/psi.md](psi.md#performance).
 
 **kotlin-linters-go**
 - `go build ./... && go test ./...` against the local kc checkout via `go.work`.
