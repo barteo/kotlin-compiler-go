@@ -3,8 +3,8 @@
 `kc` is a Kotlin compiler for the JVM, written in Go. On real libraries
 it compiles 10x faster or more than `kotlinc` running in a warm JVM, and uses
 about a tenth of the memory. The libraries it builds pass their own test
-suites ([Survey of real code](docs/survey.md)), and it passes 99.4% of
-`kotlinc`'s box tests ([Conformance](docs/conformance.md)).
+suites ([Survey of real code](docs/survey.md)), and it passes all 6,483
+of `kotlinc`'s box tests that it runs ([Conformance](docs/conformance.md)).
 
 It is a prototype: it compiles most of Kotlin but not all of it, and it
 checks less than `kotlinc` does ([What it doesn't do](#what-it-doesnt-do)).

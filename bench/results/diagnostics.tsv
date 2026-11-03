@@ -220,7 +220,7 @@ tests/annotations/WrongAnnotationArgsOnObject.kt	rejects invalid	on an expected 
 tests/annotations/annotatedExpressionInsideAnnotation.kt	skip	LANGUAGE_FEATURE_TOGGLED	
 tests/annotations/annotatedLocalContextParameterWithAnnotatedType.kt	accepts valid		
 tests/annotations/annotatedWhenExpression.kt	rejects invalid	on an expected line	
-tests/annotations/annotationArgumentOnCompanionResolvesToInner.kt	accepts invalid	UNRESOLVED_REFERENCE; INSTANCE_ACCESS_BEFORE_SUPER_CALL	annotationArgumentOnCompanionResolvesToInner.kt:10: UNRESOLVED_REFERENCE
+tests/annotations/annotationArgumentOnCompanionResolvesToInner.kt	rejects invalid	on an expected line	
 tests/annotations/annotationArgumentOnDoWhile.kt	accepts valid		
 tests/annotations/annotationArgumentScopeForConstructorHeader.kt	skip	LANGUAGE	
 tests/annotations/annotationArgumentScopeForConstructorHeaderAfter.kt	skip	LANGUAGE	
@@ -1035,7 +1035,7 @@ tests/cast/isErasedAnyAndStarred.kt	accepts valid
 tests/cast/isErasedTAndStarred.kt	accepts valid		
 tests/cast/isErasedUnrelatedAndStarred.kt	rejects invalid	on an expected line	
 tests/cast/kt15161.kt	rejects valid	no function '_' takes n arguments	kt15161.kt:3: no function '<init>' takes 2 arguments
-tests/cast/kt47685.kt	rejects valid	unresolved reference: _	kt47685.kt:22: unresolved reference: foo
+tests/cast/kt47685.kt	accepts valid		
 tests/cast/kt56629.kt	accepts valid		
 tests/cast/kt614.kt	accepts valid		
 tests/cast/neverSucceeds/CastToNotNullSuper.kt	accepts valid		
@@ -3604,7 +3604,7 @@ tests/generics/capturedParameters/captured.kt	rejects invalid	on an expected lin
 tests/generics/capturedParameters/innerLocalClass.kt	rejects invalid	elsewhere	
 tests/generics/capturedParameters/localClass.kt	rejects invalid	elsewhere	
 tests/generics/capturedParameters/localWithTypeParameter.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	localWithTypeParameter.kt:19: type mismatch: inferred type is CheckTypeInv<E> but CheckTypeInv<CharSequence> was expected
-tests/generics/capturedParameters/objectLiteral.kt	rejects invalid	elsewhere	
+tests/generics/capturedParameters/objectLiteral.kt	rejects invalid	on an expected line	
 tests/generics/capturedParameters/uncheckedCast.kt	rejects invalid	on an expected line	
 tests/generics/commonSupertypeContravariant.kt	accepts valid		
 tests/generics/commonSupertypeContravariant2.kt	accepts valid		
@@ -3684,7 +3684,7 @@ tests/generics/nullability/expressionsBoundsViolation.kt	rejects invalid	on an e
 tests/generics/nullability/functionalBound.kt	rejects invalid	on an expected line	
 tests/generics/nullability/inferNotNullTypeFromIntersectionOfNullableTypes.kt	accepts valid		
 tests/generics/nullability/kt25182.kt	accepts valid		
-tests/generics/nullability/notNullSmartcastOnIntersectionOfNullables.kt	rejects valid	unresolved reference: _	notNullSmartcastOnIntersectionOfNullables.kt:16: unresolved reference: test
+tests/generics/nullability/notNullSmartcastOnIntersectionOfNullables.kt	accepts valid		
 tests/generics/nullability/nullToGeneric.kt	rejects invalid	on an expected line	
 tests/generics/nullability/smartCastRefinedClass.kt	rejects invalid	on an expected line	
 tests/generics/nullability/smartCasts.kt	rejects invalid	on an expected line	
@@ -3721,7 +3721,7 @@ tests/generics/projectionsScope/superClass.kt	accepts valid
 tests/generics/projectionsScope/typeMismatchConventions.kt	rejects invalid	on an expected line	
 tests/generics/projectionsScope/typeMismatchInLambda.kt	rejects invalid	on an expected line	
 tests/generics/projectionsScope/typeParameterBounds.kt	rejects invalid	elsewhere	
-tests/generics/projectionsScope/unsafeVarianceInAliasedFunctionalType.kt	rejects valid	type parameter T is declared as '_' but occurs in '_' position in type (T) -> Unit	unsafeVarianceInAliasedFunctionalType.kt:3: type parameter T is declared as 'out' but occurs in 'in' position in type (T) -> Unit
+tests/generics/projectionsScope/unsafeVarianceInAliasedFunctionalType.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	unsafeVarianceInAliasedFunctionalType.kt:9: type mismatch: inferred type is Function1<*, Unit> but (T) -> Unit was expected
 tests/generics/projectionsScope/unsafeVarianceOnInputTypeOfFunctionalType.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	unsafeVarianceOnInputTypeOfFunctionalType.kt:17: type mismatch: inferred type is Any but Nothing was expected
 tests/generics/projectionsScope/unsafeVarianceStar.kt	accepts valid		
 tests/generics/projectionsScope/unsafeVarianceWithRecursiveGenerics.kt	accepts valid		
@@ -3981,7 +3981,7 @@ tests/inference/capturedTypes/capturedTypeAndApproximation.kt	accepts valid
 tests/inference/capturedTypes/capturedTypeSubstitutedIntoOppositeProjection.kt	accepts valid		
 tests/inference/capturedTypes/capturedTypeWithInnerTypealias.kt	rejects valid	type argument is not within its bounds: type parameter '_' must be subtype of '_', but actual: _	capturedTypeWithInnerTypealias.kt:11: type argument is not within its bounds: type parameter 'T' must be subtype of 'Any', but actual: 'T'
 tests/inference/capturedTypes/capturedTypeWithTypeVariableSubtyping.kt	accepts valid		
-tests/inference/capturedTypes/capturedTypesSubstitutionIntoAbbreviation.kt	rejects valid	type parameter L is declared as '_' but occurs in '_' position in type (L) -> Unit	capturedTypesSubstitutionIntoAbbreviation.kt:13: type parameter L is declared as 'out' but occurs in 'in' position in type (L) -> Unit
+tests/inference/capturedTypes/capturedTypesSubstitutionIntoAbbreviation.kt	accepts valid		
 tests/inference/capturedTypes/capturedUpperBound.kt	skip	Java sources	
 tests/inference/capturedTypes/capturingFromArgumentOfFlexibleType.kt	skip	Java sources	
 tests/inference/capturedTypes/capturingOfDnn.kt	skip	Java sources	
@@ -4557,7 +4557,7 @@ tests/inference/pcla/issues/kt49829_noCast.kt	accepts valid
 tests/inference/pcla/issues/kt50453.kt	accepts valid		
 tests/inference/pcla/issues/kt50498.kt	rejects invalid	on an expected line	
 tests/inference/pcla/issues/kt50827.kt	rejects invalid	on an expected line	
-tests/inference/pcla/issues/kt50989.kt	accepts invalid	CANNOT_INFER_PARAMETER_TYPE	kt50989.kt:5: CANNOT_INFER_PARAMETER_TYPE
+tests/inference/pcla/issues/kt50989.kt	rejects invalid	on an expected line	
 tests/inference/pcla/issues/kt51148.kt	rejects invalid	on an expected line	
 tests/inference/pcla/issues/kt51464.kt	rejects invalid	on an expected line	
 tests/inference/pcla/issues/kt52757.kt	accepts valid		
@@ -4732,8 +4732,8 @@ tests/inference/postfixPrefixIncrementDecrement.kt	accepts valid
 tests/inference/publicApproximation/approximatedIntersectionMorePreciseThanBound.kt	accepts valid		
 tests/inference/publicApproximation/chainedLambdas.kt	rejects invalid	on an expected line	
 tests/inference/publicApproximation/declarationTypes.kt	accepts valid		
-tests/inference/publicApproximation/intersectionAfterSmartCastInLambdaReturn.kt	accepts invalid	UNRESOLVED_REFERENCE	intersectionAfterSmartCastInLambdaReturn.kt:35: UNRESOLVED_REFERENCE
-tests/inference/publicApproximation/intersectionAlternative.kt	rejects valid	type argument is not within its bounds: inferred type Boundn of type _ '_' is not a subtype of Boundn	intersectionAlternative.kt:13: type argument is not within its bounds: inferred type Bound1 of type parameter 'S' is not a subtype of Bound2
+tests/inference/publicApproximation/intersectionAfterSmartCastInLambdaReturn.kt	rejects invalid	on an expected line	
+tests/inference/publicApproximation/intersectionAlternative.kt	accepts valid		
 tests/inference/publicApproximation/intersectionLocations.kt	rejects invalid	on an expected line	
 tests/inference/publicApproximation/lambdaReturnArgumentCall.kt	accepts valid		
 tests/inference/publicApproximation/lambdaReturnTypeApproximation.kt	accepts valid		
@@ -4743,7 +4743,7 @@ tests/inference/publicApproximation/localTypeNullability_before.kt	skip	LANGUAGE
 tests/inference/publicApproximation/nonTrivialVariance.kt	accepts valid		
 tests/inference/publicApproximation/parameterInBound.kt	accepts valid		
 tests/inference/publicApproximation/projections.kt	accepts valid		
-tests/inference/publicApproximation/smartCastInLambdaReturnAfterIntersection.kt	accepts invalid	UNRESOLVED_REFERENCE	smartCastInLambdaReturnAfterIntersection.kt:20: UNRESOLVED_REFERENCE
+tests/inference/publicApproximation/smartCastInLambdaReturnAfterIntersection.kt	rejects invalid	on an expected line	
 tests/inference/publicApproximation/twoIntersections.kt	accepts invalid	UNRESOLVED_REFERENCE	twoIntersections.kt:23: UNRESOLVED_REFERENCE
 tests/inference/receiverTypeMismatch_withProper.kt	skip	Java sources	
 tests/inference/receiverWithCapturedType.kt	rejects invalid	on an expected line	
@@ -4920,7 +4920,7 @@ tests/inference/upperBounds/conflictingSubstitutionsFromUpperBound.kt	accepts va
 tests/inference/upperBounds/doNotInferFromBoundsOnly.kt	rejects invalid	on an expected line	
 tests/inference/upperBounds/flexibilityInCommonSuperTypeCalculation.kt	skip	Java sources	
 tests/inference/upperBounds/inferringVariableByMaterializeAndUpperBound.kt	rejects invalid	on an expected line	
-tests/inference/upperBounds/intersectUpperBounds.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	intersectUpperBounds.kt:18: type mismatch: inferred type is In<B> but In<A> was expected
+tests/inference/upperBounds/intersectUpperBounds.kt	accepts valid		
 tests/inference/upperBounds/kt2856.kt	accepts valid		
 tests/inference/upperBounds/nonNullUpperBound.kt	accepts valid		
 tests/inference/upperBounds/typeParameterAsUpperBound.kt	rejects invalid	elsewhere	
@@ -5862,7 +5862,7 @@ tests/labelAndReceiverForInfix.kt	rejects valid	unresolved label: _	labelAndRece
 tests/labelNameClash.kt	accepts valid		
 tests/labeledLambda.kt	accepts invalid	UNDERSCORE_IS_RESERVED	labeledLambda.kt:5: UNDERSCORE_IS_RESERVED
 tests/labeledReturnFromNotLabeledUnnamedFunction.kt	rejects valid	unresolved label: _	labeledReturnFromNotLabeledUnnamedFunction.kt:8: unresolved label: notInline
-tests/labels/automaticLabelFromInfixOperator.kt	rejects valid	unresolved label: _	automaticLabelFromInfixOperator.kt:4: unresolved label: myMap
+tests/labels/automaticLabelFromInfixOperator.kt	accepts valid		
 tests/labels/kt1703.kt	accepts valid		
 tests/labels/kt361.kt	rejects invalid	on an expected line	
 tests/labels/kt3920.kt	accepts valid		
@@ -6904,7 +6904,7 @@ tests/override/kt2052.kt	rejects invalid	on an expected line
 tests/override/kt4763.kt	accepts invalid	RETURN_TYPE_MISMATCH_ON_INHERITANCE	kt4763.kt:10: RETURN_TYPE_MISMATCH_ON_INHERITANCE
 tests/override/kt4763property.kt	rejects invalid	on an expected line	
 tests/override/kt4785.kt	accepts invalid	CANNOT_WEAKEN_ACCESS_PRIVILEGE	kt4785.kt:12: CANNOT_WEAKEN_ACCESS_PRIVILEGE
-tests/override/kt53408.kt	rejects valid	many supertypes available, please specify the one you mean in angle brackets, e.g. '_'	kt53408.kt:16: many supertypes available, please specify the one you mean in angle brackets, e.g. 'super<C>'
+tests/override/kt53408.kt	rejects valid	many supertypes available, please specify the one you mean in angle brackets, e.g. '_'	kt53408.kt:16: many supertypes available, please specify the one you mean in angle brackets, e.g. 'super<A>'
 tests/override/kt6014.kt	accepts valid		
 tests/override/kt880.kt	accepts valid		
 tests/override/kt8990.kt	accepts valid		
@@ -7678,7 +7678,7 @@ tests/resolve/functionCallExpectedWrongReceiver.kt	rejects invalid	on an expecte
 tests/resolve/functionalConstraintDuringCompletion.kt	skip	LANGUAGE	
 tests/resolve/implicitPropertyTypeThatMakesBehaviorOrderDependant.kt	rejects invalid	on an expected line	
 tests/resolve/implicitPropertyTypeThatMakesBehaviorOrderDependantComplexLoops.kt	rejects invalid	elsewhere	
-tests/resolve/implicitPropertyTypeThatMakesBehaviorOrderDependantIdeMode.kt	accepts invalid	IMPLICIT_PROPERTY_TYPE_MAKES_BEHAVIOR_ORDER_DEPENDANT_ERROR	implicitPropertyTypeThatMakesBehaviorOrderDependantIdeMode.kt:11: IMPLICIT_PROPERTY_TYPE_MAKES_BEHAVIOR_ORDER_DEPENDANT_ERROR
+tests/resolve/implicitPropertyTypeThatMakesBehaviorOrderDependantIdeMode.kt	rejects invalid	on an expected line	
 tests/resolve/implicitReceiverProperty.kt	rejects valid	unresolved reference: _	a.kt:8: unresolved reference: length
 tests/resolve/incompleteConstructorInvocation.kt	rejects invalid	on an expected line	
 tests/resolve/inferenceInLinkedLambdas.kt	accepts valid		
@@ -8281,8 +8281,8 @@ tests/smartCasts/intersectionScope/flexibleTypes.kt	skip	Java sources
 tests/smartCasts/intersectionScope/intersectReturnType.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	intersectReturnType.kt:14: type mismatch: inferred type is V but T was expected
 tests/smartCasts/intersectionScope/moreSpecificSetter.kt	accepts valid		
 tests/smartCasts/intersectionScope/moreSpecificVisibility.kt	accepts valid		
-tests/smartCasts/intersectionScope/mostSpecific.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	mostSpecific.kt:18: type mismatch: inferred type is CheckTypeInv<CharSequence> but CheckTypeInv<String> was expected
-tests/smartCasts/intersectionScope/mostSpecificIrrelevant.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	mostSpecificIrrelevant.kt:14: type mismatch: inferred type is CheckTypeInv<CharSequence?> but CheckTypeInv<String> was expected
+tests/smartCasts/intersectionScope/mostSpecific.kt	accepts valid		
+tests/smartCasts/intersectionScope/mostSpecificIrrelevant.kt	accepts valid		
 tests/smartCasts/intersectionScope/properties.kt	rejects invalid	on an expected line	
 tests/smartCasts/intersectionScope/propertiesConflict.kt	rejects valid	type of '_' doesn't match the type of the overridden var-property	propertiesConflict.kt:12: type of 'foo' doesn't match the type of the overridden var-property
 tests/smartCasts/intersectionScope/refineReturnType.kt	accepts valid		
@@ -8716,7 +8716,7 @@ tests/subtyping/suspendExtFunctionTypeAsSuperTypeRestrictionLifted.kt	skip	LANGU
 tests/subtyping/topLevelAnonymousObjects.kt	rejects invalid	on an expected line	
 tests/subtyping/unresolvedSupertype.kt	rejects invalid	on an expected line	
 tests/superCallsWithDefaultArguments.kt	accepts invalid	SUPER_CALL_WITH_DEFAULT_PARAMETERS	superCallsWithDefaultArguments.kt:18: SUPER_CALL_WITH_DEFAULT_PARAMETERS
-tests/superQualifierTypeArgsInDelegatedConstructorCall.kt	rejects valid	'_' is not an expression, it can only be used on the left-hand side of a dot ('_')	superQualifierTypeArgsInDelegatedConstructorCall.kt:9: 'super' is not an expression, it can only be used on the left-hand side of a dot ('.')
+tests/superQualifierTypeArgsInDelegatedConstructorCall.kt	accepts valid		
 tests/supertypesForAnnotationClass.kt	rejects invalid	on an expected line	
 tests/suppress/allWarnings.kt	accepts valid		
 tests/suppress/allWarnings/suppressWarningsOnAnonymousObjectInVariable.kt	accepts valid		
@@ -8848,9 +8848,9 @@ tests/tailRecBasic.kt	accepts valid
 tests/tailRecInNestedScopes.kt	accepts valid		
 tests/tailRecInTry.kt	accepts valid		
 tests/tailRecOnVirtualMemberError.kt	rejects invalid	on an expected line	
-tests/tailRecOverridden.kt	rejects valid	tailrec is not allowed on open members	tailRecOverridden.kt:10: tailrec is not allowed on open members
+tests/tailRecOverridden.kt	accepts valid		
 tests/tailRecShortCircuit.kt	accepts valid		
-tests/tailRecSingleton.kt	rejects valid	tailrec is not allowed on open members	tailRecSingleton.kt:38: tailrec is not allowed on open members
+tests/tailRecSingleton.kt	accepts valid		
 tests/tailRecWithDispatchReceiver.kt	accepts valid		
 tests/tailRecWithExtensionReceiver.kt	accepts valid		
 tests/tailRecursionComplex.kt	accepts valid		
@@ -8918,10 +8918,10 @@ tests/testsWithJava17/sealedClasses/kotlinInheritsJavaInterface.kt	skip	Java sou
 tests/testsWithJava21/changeInFirstOverloadResolution.kt	accepts valid		
 tests/testsWithJava21/globalExtensionForHiddenInDeclaringMethod.kt	rejects invalid	on an expected line	
 tests/testsWithJava21/hiddenInDeclaringMethods.kt	rejects invalid	on an expected line	
-tests/testsWithJava21/implementationsForSequencedCollection.kt	accepts invalid	UNRESOLVED_REFERENCE; FUNCTION_CALL_EXPECTED	implementationsForSequencedCollection.kt:29: UNRESOLVED_REFERENCE
+tests/testsWithJava21/implementationsForSequencedCollection.kt	rejects invalid	on an expected line	
 tests/testsWithJava21/memberExtensionForHiddenInDeclaringMethod.kt	rejects invalid	on an expected line	
 tests/testsWithJava21/newLinkedHashMapMethods.kt	rejects invalid	on an expected line	
-tests/testsWithJava21/newListMethods.kt	accepts invalid	UNRESOLVED_REFERENCE; FUNCTION_CALL_EXPECTED	newListMethods.kt:47: UNRESOLVED_REFERENCE
+tests/testsWithJava21/newListMethods.kt	rejects invalid	on an expected line	
 tests/testsWithJava21/newListMethodsImmutable20.kt	skip	API_VERSION	
 tests/testsWithJava21/newListMethodsImmutable21.kt	skip	API_VERSION	
 tests/testsWithJava21/newListMethodsImmutable22.kt	skip	API_VERSION	
@@ -8969,7 +8969,7 @@ tests/thisAndSuper/unqualifiedSuper/unqualifiedSuperWithInterfaces.kt	rejects in
 tests/thisAndSuper/unqualifiedSuper/unqualifiedSuperWithLocalClass.kt	parse/unsupported	checker: '_' is not allowed here: local interfaces are not supported	
 tests/thisAndSuper/unqualifiedSuper/unqualifiedSuperWithUnresolvedBase.kt	rejects invalid	on an expected line	
 tests/thisAndSuper/unqualifiedSuper/withMethodOfAnyOverridenInInterface.kt	accepts valid		
-tests/thisAndSuper/unqualifiedSuper/withMethodOverriddenInAnotherSupertype.kt	rejects invalid	on an expected line	
+tests/thisAndSuper/unqualifiedSuper/withMethodOverriddenInAnotherSupertype.kt	rejects invalid	elsewhere	
 tests/thisAndSuper/unqualifiedSuper/withMethodsOfAny.kt	accepts valid		
 tests/throwableSubclass.kt	rejects invalid	on an expected line	
 tests/tooLargeFunctionNThroughACallableReference.kt	parse/unsupported	checker: lambdas with more than n parameters are not supported	
