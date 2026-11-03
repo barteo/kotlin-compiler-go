@@ -56,6 +56,10 @@ type Universe struct {
 	// typeAnnots holds the annotated *syntax.TypeRefs noted, and
 	// typeAnnotsDone those checked, for typeannot.go.
 	typeAnnots, typeAnnotsDone sync.Map
+
+	// conflicted holds the declarations that conflicts reported as
+	// conflicting overloads, whose JVM signature clashes then aren't.
+	conflicted map[any]bool
 }
 
 // Package holds the top-level declarations of one package of the program.
@@ -502,6 +506,7 @@ func CheckWith(files []*syntax.File, lib *Library, jobs int) []*syntax.Error {
 	for _, c := range checkers {
 		c.boxedReturns()
 	}
+	conflicts(checkers)
 	for _, c := range checkers {
 		c.checkClashes()
 	}
@@ -525,6 +530,7 @@ func CheckWith(files []*syntax.File, lib *Library, jobs int) []*syntax.Error {
 	wg.Wait()
 
 	optInErrors(checkers)
+	localClassNames(checkers)
 	var errs []*syntax.Error
 	for _, c := range checkers {
 		c.shadowedErrors()
@@ -1780,7 +1786,7 @@ func (c *Checker) resolveClass(d *syntax.ClassDecl) {
 	}
 	addProp := func(p *types.VarSym, pos syntax.Pos) {
 		if prev := cls.Prop(p.Name); prev != nil {
-			if d, ok := p.Decl.(*syntax.PropDecl); ok && altProp(prev, d) {
+			if d, ok := p.Decl.(*syntax.PropDecl); ok && (altProp(prev, d) || hiddenFinalProp(prev, d)) {
 				addAlt(prev, p)
 			} else {
 				c.errorf(pos, "conflicting declarations: %s", p.Name)

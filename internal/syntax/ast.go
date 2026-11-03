@@ -4,9 +4,10 @@ import "github.com/barteo/kotlin-compiler-go/internal/types"
 
 // File is a parsed source file.
 type File struct {
-	Path    string
-	Package string // dotted package name; "" for the default package
-	JvmName string // the facade's simple name from @file:JvmName, if any
+	Path     string
+	Package  string // dotted package name; "" for the default package
+	PackageP Pos    // the position of the package directive's name
+	JvmName  string // the facade's simple name from @file:JvmName, if any
 	// Annotations are the file's annotations, @file:X, for its facade.
 	Annotations []Annotation
 	Facade      string // JVM internal name of the class holding top-level declarations

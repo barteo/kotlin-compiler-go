@@ -70,7 +70,7 @@ func (c *Checker) localFun(s *syntax.LocalFun) {
 		sym.Ret = types.InvalidType // inferred from the body, below
 	}
 	// Declared before its body, so that it can call itself.
-	if other := saved.scope.declareFun(sym); other != nil {
+	if other := declareLocalFun(saved.scope, sym); other != nil {
 		od := other.Decl.(*syntax.LocalFun).Decl
 		if !c.done[od] {
 			c.done[od] = true // reported once
@@ -222,4 +222,37 @@ func (c *Checker) localExts(name string) []*types.FunSym {
 		}
 	}
 	return nil
+}
+
+// declareLocalFun declares local function f in scope s, unless s has one
+// with the same signature, which it returns: the same parameters, and
+// the same receiver, as kotlinc tells local functions apart by it too.
+func declareLocalFun(s *scope, f *types.FunSym) *types.FunSym {
+	k := localKey(f)
+	for _, g := range s.funs {
+		if g.Name == f.Name && localKey(g) == k && sameReceiver(g, f) {
+			return g
+		}
+	}
+	s.funs = append(s.funs, f)
+	return nil
+}
+
+// sameReceiver reports whether functions f and g are both extensions of
+// the same type, or neither is, with their type parameters by position.
+func sameReceiver(f, g *types.FunSym) bool {
+	if f.Ext != g.Ext {
+		return false
+	}
+	if !f.Ext {
+		return true
+	}
+	if len(f.TypeParams) != len(g.TypeParams) {
+		return false
+	}
+	s := types.Subst{}
+	for i, p := range g.TypeParams {
+		s[p] = types.Arg{T: types.ParamType(f.TypeParams[i])}
+	}
+	return f.Recv == s.Apply(g.Recv)
 }

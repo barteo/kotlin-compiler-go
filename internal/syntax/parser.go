@@ -807,6 +807,7 @@ func (p *parser) parseFile() *File {
 	if p.at(PACKAGE) {
 		p.decl(func() {
 			p.next()
+			f.PackageP = p.tok().Pos
 			name := p.ident().Text
 			for p.at(DOT) {
 				p.next()
@@ -1460,14 +1461,15 @@ func (p *parser) whereClause(tps []*TypeParam) {
 // call the delegate. A class's passes this as the delegate's thisRef, and
 // an extension property its receiver. As in kotlinc, the fields of
 // extension properties with the same name, among the declarations
-// before, are x$delegate$1, x$delegate$2, ...
+// before, are x$delegate$1, x$delegate$2, ..., and so are those of
+// properties beside one declared as `x$delegate`.
 func delegated(pd *PropDecl, member bool, before []Decl) []Decl {
 	if pd.Field == nil {
 		return []Decl{pd}
 	}
 	taken := func(name string) bool {
 		for _, d := range before {
-			if d, ok := d.(*PropDecl); ok && d.DelegateOf != nil && d.Name == name {
+			if d, ok := d.(*PropDecl); ok && d.Name == name && (d.DelegateOf != nil || d.Recv == nil) {
 				return true
 			}
 		}
