@@ -388,7 +388,7 @@ func (g *gen) dirtyVararg(c *composeFn, t *tracked, i int) {
 	arr := t.params[i]
 	g.loadComposer()
 	code.Iconst(g.siteKey(syntax.Pos{}, "vararg$"+arr.Name, i))
-	code.Local(cf.ALOAD, arr.Slot)
+	code.Local(cf.ALOAD, g.slot(arr))
 	code.Op(cf.ARRAYLENGTH)
 	g.box(types.IntType)
 	code.InvokeInterface(composerClass, "startMovableGroup", "(ILjava/lang/Object;)V")
@@ -407,7 +407,7 @@ func (g *gen) dirtyVararg(c *composeFn, t *tracked, i int) {
 	}
 	orDifferent(func() {
 		g.loadComposer()
-		code.Local(cf.ALOAD, arr.Slot)
+		code.Local(cf.ALOAD, g.slot(arr))
 		code.Op(cf.ARRAYLENGTH)
 		code.InvokeInterface(composerClass, "changed", "(I)Z")
 	})
@@ -418,12 +418,12 @@ func (g *gen) dirtyVararg(c *composeFn, t *tracked, i int) {
 	top, end := cf.NewLabel(), cf.NewLabel()
 	code.Place(top)
 	code.Local(cf.ILOAD, idx)
-	code.Local(cf.ALOAD, arr.Slot)
+	code.Local(cf.ALOAD, g.slot(arr))
 	code.Op(cf.ARRAYLENGTH)
 	code.Jump(cf.IF_ICMPGE, end)
 	orDifferent(func() {
 		g.paramChanged(c, t, i, func() {
-			code.Local(cf.ALOAD, arr.Slot)
+			code.Local(cf.ALOAD, g.slot(arr))
 			code.Local(cf.ILOAD, idx)
 			g.elemLoad("[" + ed)
 		})
@@ -540,7 +540,7 @@ func (g *gen) skipDefaults(c *composeFn, t *tracked, params []*syntax.Param, sta
 			code.Jump(cf.IFEQ, skip)
 			if !uncertain {
 				g.exprAs(params[def].Default, p.Type)
-				code.Local(storeOp(p.Type), p.Slot)
+				code.Local(storeOp(p.Type), g.slot(p))
 			}
 			if !statics[i] {
 				d := c.flags[i/10]
@@ -588,7 +588,7 @@ func (g *gen) skipEpilogue(c *composeFn) {
 // loadTracked pushes tracked parameter i.
 func (g *gen) loadTracked(t *tracked, i int) {
 	if p := t.params[i]; p != nil {
-		g.code.Local(loadOp(p.Type), p.Slot)
+		g.code.Local(loadOp(p.Type), g.slot(p))
 	} else {
 		g.loadThis()
 	}

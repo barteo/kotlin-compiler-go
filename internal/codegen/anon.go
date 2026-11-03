@@ -23,10 +23,10 @@ func (g *gen) anonClasses(out []Output) []Output {
 	for _, cd := range g.file.Anon {
 		saved := map[*types.VarSym]int{}
 		for _, v := range cd.Captures {
-			saved[v] = v.Slot
+			saved[v] = g.slot(v)
 		}
 		out = g.classes(cd, out)
-		restoreSlots(saved)
+		g.restoreSlots(saved)
 	}
 	return out
 }
@@ -173,9 +173,9 @@ func (g *gen) restoreNames(n int) {
 func (g *gen) copyObject(cd *syntax.ClassDecl) bool {
 	saved := map[*types.VarSym]int{}
 	for _, v := range cd.Captures {
-		saved[v] = v.Slot
+		saved[v] = g.slot(v)
 	}
-	defer restoreSlots(saved)
+	defer g.restoreSlots(saved)
 	used := false
 	cg := &gen{file: g.file, shared: g.shared, lambdaReified: g.reifiedSubst(), reifiedUse: &used}
 	out := cg.classes(cd, nil)
@@ -196,7 +196,7 @@ func (g *gen) copyObject(cd *syntax.ClassDecl) bool {
 func (g *gen) storeCaptures(cd *syntax.ClassDecl) {
 	for _, v := range cd.Captures {
 		g.code.Local(cf.ALOAD, 0)
-		g.code.Local(storageLoadOp(v), v.Slot)
+		g.code.Local(storageLoadOp(v), g.slot(v))
 		g.code.FieldInsn(cf.PUTFIELD, cd.Sym.Name, captureField(cd, v), storageDesc(v))
 	}
 }
@@ -216,7 +216,7 @@ func (g *gen) loadCaptures(cd *syntax.ClassDecl, self int) {
 		} else {
 			g.code.Local(storeOp(v.Type), slot)
 		}
-		v.Slot = slot
+		g.setSlot(v, slot)
 	}
 	if cd.Sym.Inner {
 		g.outerCaptures(cd)
@@ -234,7 +234,7 @@ func (g *gen) outerCaptures(cd *syntax.ClassDecl) {
 	}
 	for _, v := range od.Captures {
 		d := storageDesc(v)
-		g.code.Local(cf.ALOAD, cd.OuterThis.Slot)
+		g.code.Local(cf.ALOAD, g.slot(cd.OuterThis))
 		for k := cd.Sym.Outer; k != o; k = k.Outer {
 			g.code.FieldInsn(cf.GETFIELD, k.Name, "this$0", desc(k.Outer.This()))
 		}
@@ -245,7 +245,7 @@ func (g *gen) outerCaptures(cd *syntax.ClassDecl) {
 		} else {
 			g.code.Local(storeOp(v.Type), slot)
 		}
-		v.Slot = slot
+		g.setSlot(v, slot)
 	}
 }
 
