@@ -2,19 +2,19 @@
 
 The box tests of JetBrains/kotlin v2.4.21 (`compiler/testData/codegen/box`), each compiled by kc and run: its `box()` must return `"OK"`. `bench/kotlin-tests.sh box` writes this file, and [docs/conformance.md](../../docs/conformance.md) explains it.
 
-Of 7480 test files, 997 are skipped and 6483 run. 6393 pass (98.6%).
+Of 7480 test files, 997 are skipped and 6483 run. 6421 pass (99.0%).
 
 | Result | Tests | Share |
 |:---|---:|---:|
-| pass | 6393 | 98.6% |
+| pass | 6421 | 99.0% |
 | parse/unsupported | 0 | 0.0% |
-| check error | 69 | 1.1% |
+| check error | 53 | 0.8% |
 | crash | 0 | 0.0% |
-| codegen error | 5 | 0.1% |
-| VerifyError | 3 | 0.0% |
-| linkage error | 0 | 0.0% |
-| exception | 3 | 0.0% |
-| wrong result | 10 | 0.2% |
+| codegen error | 0 | 0.0% |
+| VerifyError | 0 | 0.0% |
+| linkage error | 1 | 0.0% |
+| exception | 1 | 0.0% |
+| wrong result | 7 | 0.1% |
 | timeout | 0 | 0.0% |
 
 ## Skipped
@@ -48,57 +48,57 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 |:---|---:|---:|---:|---:|---:|---:|---:|
 | ranges | 805 | 805 | 0 | 0 | 0 | 0 | 0 |
 | inlineClasses | 784 | 782 | 0 | 2 | 0 | 0 | 0 |
-| coroutines | 497 | 493 | 0 | 0 | 3 | 0 | 1 |
+| coroutines | 497 | 496 | 0 | 0 | 0 | 0 | 1 |
 | callableReference | 297 | 295 | 0 | 2 | 0 | 0 | 0 |
-| inference | 205 | 200 | 0 | 4 | 0 | 0 | 1 |
-| delegatedProperty | 149 | 145 | 0 | 3 | 0 | 0 | 1 |
+| inference | 205 | 201 | 0 | 3 | 0 | 0 | 1 |
+| delegatedProperty | 149 | 146 | 0 | 3 | 0 | 0 | 0 |
 | controlStructures | 146 | 145 | 0 | 0 | 0 | 0 | 1 |
 | bridges | 137 | 137 | 0 | 0 | 0 | 0 | 0 |
-| inline | 132 | 129 | 0 | 3 | 0 | 0 | 0 |
+| inline | 132 | 129 | 0 | 2 | 0 | 1 | 0 |
 | classes | 120 | 120 | 0 | 0 | 0 | 0 | 0 |
 | objects | 116 | 115 | 0 | 1 | 0 | 0 | 0 |
-| properties | 109 | 106 | 0 | 2 | 0 | 1 | 0 |
+| properties | 109 | 107 | 0 | 2 | 0 | 0 | 0 |
 | closures | 107 | 104 | 0 | 2 | 0 | 0 | 1 |
 | functions | 106 | 105 | 0 | 1 | 0 | 0 | 0 |
-| enum | 101 | 100 | 0 | 1 | 0 | 0 | 0 |
-| when | 99 | 98 | 0 | 1 | 0 | 0 | 0 |
+| enum | 101 | 101 | 0 | 0 | 0 | 0 | 0 |
+| when | 99 | 99 | 0 | 0 | 0 | 0 | 0 |
 | primitiveTypes | 98 | 98 | 0 | 0 | 0 | 0 | 0 |
 | defaultArguments | 82 | 82 | 0 | 0 | 0 | 0 | 0 |
 | arrays | 78 | 77 | 0 | 1 | 0 | 0 | 0 |
-| regressions | 75 | 72 | 0 | 2 | 1 | 0 | 0 |
+| regressions | 75 | 74 | 0 | 1 | 0 | 0 | 0 |
 | contextParameters | 70 | 70 | 0 | 0 | 0 | 0 | 0 |
 | casts | 68 | 67 | 0 | 1 | 0 | 0 | 0 |
-| compileKotlinAgainstKotlin | 65 | 60 | 0 | 4 | 0 | 0 | 1 |
+| compileKotlinAgainstKotlin | 65 | 61 | 0 | 3 | 0 | 0 | 1 |
 | diagnostics | 60 | 58 | 0 | 2 | 0 | 0 | 0 |
 | dataClasses | 53 | 53 | 0 | 0 | 0 | 0 | 0 |
 | extensionFunctions | 53 | 50 | 0 | 3 | 0 | 0 | 0 |
 | inlineEvaluationOrder | 52 | 52 | 0 | 0 | 0 | 0 | 0 |
 | innerNested | 52 | 52 | 0 | 0 | 0 | 0 | 0 |
 | annotations | 51 | 49 | 0 | 1 | 0 | 0 | 1 |
-| reflection | 50 | 49 | 0 | 1 | 0 | 0 | 0 |
+| reflection | 50 | 50 | 0 | 0 | 0 | 0 | 0 |
 | funInterface | 48 | 47 | 0 | 1 | 0 | 0 | 0 |
 | unsignedTypes | 44 | 44 | 0 | 0 | 0 | 0 | 0 |
 | boxingOptimization | 41 | 41 | 0 | 0 | 0 | 0 | 0 |
-| ir | 41 | 38 | 0 | 3 | 0 | 0 | 0 |
+| ir | 41 | 39 | 0 | 2 | 0 | 0 | 0 |
 | reified | 40 | 40 | 0 | 0 | 0 | 0 | 0 |
 | localClasses | 39 | 38 | 0 | 1 | 0 | 0 | 0 |
-| strings | 39 | 36 | 0 | 2 | 0 | 0 | 1 |
+| strings | 39 | 37 | 0 | 2 | 0 | 0 | 0 |
 | super | 39 | 38 | 0 | 1 | 0 | 0 | 0 |
 | ieee754 | 38 | 38 | 0 | 0 | 0 | 0 | 0 |
 | evaluate | 37 | 37 | 0 | 0 | 0 | 0 | 0 |
 | function | 37 | 37 | 0 | 0 | 0 | 0 | 0 |
-| smartCasts | 36 | 32 | 0 | 3 | 0 | 0 | 1 |
-| operatorConventions | 34 | 33 | 0 | 0 | 0 | 0 | 1 |
+| smartCasts | 36 | 34 | 0 | 2 | 0 | 0 | 0 |
+| operatorConventions | 34 | 34 | 0 | 0 | 0 | 0 | 0 |
 | traits | 34 | 34 | 0 | 0 | 0 | 0 | 0 |
 | typeErasure | 32 | 32 | 0 | 0 | 0 | 0 | 0 |
-| extensionProperties | 31 | 30 | 0 | 0 | 1 | 0 | 0 |
-| typealias | 31 | 29 | 0 | 2 | 0 | 0 | 0 |
+| extensionProperties | 31 | 31 | 0 | 0 | 0 | 0 | 0 |
+| typealias | 31 | 31 | 0 | 0 | 0 | 0 | 0 |
 | basics | 30 | 30 | 0 | 0 | 0 | 0 | 0 |
 | secondaryConstructors | 30 | 30 | 0 | 0 | 0 | 0 | 0 |
 | syntheticAccessors | 30 | 30 | 0 | 0 | 0 | 0 | 0 |
 | initializers | 26 | 26 | 0 | 0 | 0 | 0 | 0 |
 | try | 26 | 26 | 0 | 0 | 0 | 0 | 0 |
-| fir | 25 | 20 | 0 | 3 | 0 | 2 | 0 |
+| fir | 25 | 23 | 0 | 2 | 0 | 0 | 0 |
 | fp | 25 | 25 | 0 | 0 | 0 | 0 | 0 |
 | increment | 25 | 25 | 0 | 0 | 0 | 0 | 0 |
 | specialBuiltins | 25 | 25 | 0 | 0 | 0 | 0 | 0 |
@@ -128,12 +128,12 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 | labels | 13 | 12 | 0 | 1 | 0 | 0 | 0 |
 | branching | 12 | 12 | 0 | 0 | 0 | 0 | 0 |
 | classDelegation | 12 | 12 | 0 | 0 | 0 | 0 | 0 |
-| innerClass | 12 | 10 | 0 | 2 | 0 | 0 | 0 |
+| innerClass | 12 | 12 | 0 | 0 | 0 | 0 | 0 |
 | privateConstructors | 12 | 12 | 0 | 0 | 0 | 0 | 0 |
 | arithmetic | 11 | 11 | 0 | 0 | 0 | 0 | 0 |
 | elvis | 11 | 11 | 0 | 0 | 0 | 0 | 0 |
 | inlineArgsInPlace | 11 | 11 | 0 | 0 | 0 | 0 | 0 |
-| package | 11 | 10 | 0 | 1 | 0 | 0 | 0 |
+| package | 11 | 11 | 0 | 0 | 0 | 0 | 0 |
 | lateinit | 10 | 10 | 0 | 0 | 0 | 0 | 0 |
 | localClass | 10 | 10 | 0 | 0 | 0 | 0 | 0 |
 | lower | 9 | 9 | 0 | 0 | 0 | 0 | 0 |
@@ -145,7 +145,7 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 | statics | 8 | 8 | 0 | 0 | 0 | 0 | 0 |
 | builtinStubMethods | 7 | 7 | 0 | 0 | 0 | 0 | 0 |
 | collections | 7 | 7 | 0 | 0 | 0 | 0 | 0 |
-| ktype | 7 | 6 | 0 | 1 | 0 | 0 | 0 |
+| ktype | 7 | 7 | 0 | 0 | 0 | 0 | 0 |
 | sameFileInSourceAndDependencies | 7 | 7 | 0 | 0 | 0 | 0 | 0 |
 | serialization | 7 | 6 | 0 | 1 | 0 | 0 | 0 |
 | typeMapping | 7 | 7 | 0 | 0 | 0 | 0 | 0 |
@@ -162,7 +162,7 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 | exclExcl | 4 | 4 | 0 | 0 | 0 | 0 | 0 |
 | inlineClass | 4 | 4 | 0 | 0 | 0 | 0 | 0 |
 | mixedNamedPosition | 4 | 4 | 0 | 0 | 0 | 0 | 0 |
-| nonLocalReturns | 4 | 3 | 0 | 0 | 0 | 0 | 1 |
+| nonLocalReturns | 4 | 4 | 0 | 0 | 0 | 0 | 0 |
 | objectExpression | 4 | 4 | 0 | 0 | 0 | 0 | 0 |
 | unaryOp | 4 | 4 | 0 | 0 | 0 | 0 | 0 |
 | underscoredTypeArguments | 4 | 4 | 0 | 0 | 0 | 0 | 0 |
@@ -205,9 +205,9 @@ Tests kotlinc compiles that kc's checker rejects, by its first error, with names
 
 | First error | Tests | Examples |
 |:---|---:|:---|
-| `unresolved reference: _` | 11 | `classLiteral/bound/primitives.kt`, `classLiteral/primitiveClassEquality.kt` |
 | `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 9 | `callableReference/function/nullableExtension.kt`, `casts/intersectionTypeMultipleBounds.kt` |
-| `cannot infer type for type parameter '_'. Specify it explicitly.` | 6 | `delegatedProperty/local/kt78073.kt`, `fir/localInvokeExtension.kt` |
+| `unresolved reference: _` | 6 | `classLiteral/bound/primitives.kt`, `classLiteral/primitiveClassEquality.kt` |
+| `cannot infer type for type parameter '_'. Specify it explicitly.` | 4 | `delegatedProperty/local/kt78073.kt`, `fir/localInvokeExtension.kt` |
 | `type mismatch: inferred type is _ but _ was expected` | 4 | `delegation/delegationToIntersectionType.kt`, `delegation/delegationToIntersectionType3.kt` |
 | `'_' is not an expression, it can only be used on the left-hand side of a dot ('_')` | 2 | `closures/kt11634.kt`, `closures/kt11634_2.kt` |
 | `cannot find a parameter with this name: _` | 2 | `compileKotlinAgainstKotlin/clashingFakeOverrideSignatures.kt`, `ir/serializationRegressions/signatureClash.kt` |
@@ -217,50 +217,29 @@ Tests kotlinc compiles that kc's checker rejects, by its first error, with names
 | `type mismatch: '_' branches have incompatible types Unit and Nothing?` | 2 | `inference/noCoercionToUnitWithEqualityConstraintForNullableReturnType.kt`, `unit/nullableUnitInWhen3.kt` |
 | `val cannot be reassigned` | 2 | `extensionFunctions/kt475.kt`, `fakeOverride/intersectionOverrideBetweenValAndVar.kt` |
 | `'_' hides member of supertype '_' and needs '_' modifier` | 1 | `annotations/platformDependent.kt` |
-| `'_' in '_' is final and cannot be overridden` | 1 | `fir/functionsDifferInTypeParameterBounds.kt` |
 | `'_' is not allowed here` | 1 | `arrays/nonLocalReturnArrayConstructor.kt` |
 | `'_' is not defined in this context` | 1 | `objects/thisRefToObjectInNestedClassConstructorCall.kt` |
 | `cannot create an instance of Result` | 1 | `inlineClasses/resultGeneric.kt` |
-| `class '_' cannot be used as a value` | 1 | `package/privateMembersInImportList.kt` |
-| `class A.X is not public` | 1 | `ir/serializationRegressions/innerClassInEnumEntryClass.kt` |
-| `class Foo.FOO is not public` | 1 | `enum/enumEntryMembers.kt` |
 | `expected parameter of type _` | 1 | `diagnostics/functions/tailRecursion/realIteratorFoldl.kt` |
-| `expression '_' of type _ cannot be invoked as a function` | 1 | `typealias/typeAliasObjectCallable.kt` |
 | `function invocation '_' expected; use ::right for a reference` | 1 | `delegatedProperty/functionRefDelefate.kt` |
 | `local inline functions are not yet supported` | 1 | `inline/nestedLabelsInlinedClashingAtFunctionsWithClosure.kt` |
-| `no type arguments expected for class Generic.Inner` | 1 | `reflection/classes/qualifiedName.kt` |
-| `one type argument expected for class Outer.Inner` | 1 | `ktype/ktype1_inner.kt` |
-| `one type argument expected for typealias L<T>` | 1 | `typealias/typeAliasAsBareType.kt` |
-| `one type argument expected for typealias Z<U>` | 1 | `when/inferredTypeParameters.kt` |
+| `no function '_' takes n arguments` | 1 | `serialization/deserializedMembers.kt` |
 | `operator '_' cannot be applied to T and Int` | 1 | `extensionFunctions/thisMethodInObjectLiteral.kt` |
 | `platform declaration clash: the following declarations have the same JVM signature (test()Ljava/lang/String;)` | 1 | `compileKotlinAgainstKotlin/jvm8/jvm8against6/delegation/diamond3.kt` |
 | `property must be initialized or be abstract` | 1 | `fir/initializationInLocalInnerClassWithSecondaryConstructor.kt` |
-| `reference has a nullable type '_', use explicit '_' to make a function-like call instead` | 1 | `smartCasts/NullableFunctionTypeAsMemberImmutableProperty.kt` |
 | `tailrec is not allowed on open members` | 1 | `diagnostics/functions/tailRecursion/defaultArgsOverridden.kt` |
 | `type argument is not within its bounds: inferred type String of type _ '_' is not a subtype of MyClass` | 1 | `delegatedProperty/provideDelegate/generic.kt` |
 | `type checking has run into a recursive problem: '_' needs an explicit return type` | 1 | `functions/localFunctions/overloadedLocalFunWithoutClosure.kt` |
 | `type parameter L is declared as '_' but occurs in '_' position in type (L) -> Unit` | 1 | `inference/capturedTypesSubstitutionIntoAbbreviation.kt` |
 | `unresolved label: _` | 1 | `labels/infixCallLabelling.kt` |
 
-## Code generation errors
+## Linkage errors
 
-kc checked the test but failed to generate its code.
-
-| Error | Tests | Examples |
-|:---|---:|:---|
-| `code generation: operand stack underflow at offset n` | 2 | `coroutines/simpleSuspendCallableReference.kt`, `extensionProperties/kt9897.kt` |
-| `code generation: a suspension point in the arguments of a constructor call` | 1 | `coroutines/kt15016.kt` |
-| `code generation: local n is not allocated` | 1 | `regressions/kt5953.kt` |
-| `code generation: no metadata for type <error>` | 1 | `coroutines/deserializedSuspendFunctionProperty.kt` |
-
-## VerifyError
-
-The JVM rejected a class kc wrote.
+A class kc wrote refers to a member or class that doesn't exist, or doesn't fit.
 
 | Error | Tests | Examples |
 |:---|---:|:---|
-| `java.lang.ClassFormatError: Duplicate method name "_" with signature "_" in class _ Y` | 2 | `fir/functionsDifferInTypeParameterBounds2.kt`, `fir/functionsDifferInTypeParameterBounds3.kt` |
-| `java.lang.VerifyError: Bad type on operand stack in putfield` | 1 | `properties/classFieldInsideLocalInSetter.kt` |
+| `java.lang.IllegalAccessError` | 1 | `inline/innerInlineFunCapturesOuter.kt` |
 
 ## Exceptions
 
@@ -268,7 +247,6 @@ box() threw.
 
 | Exception | Tests | Examples |
 |:---|---:|:---|
-| `java.lang.NullPointerException` | 2 | `delegatedProperty/local/localDelegatedPropertyCall.kt`, `nonLocalReturns/suspendConversion.kt` |
 | `kotlin.reflect.jvm.internal.KotlinReflectionInternalError` | 1 | `compileKotlinAgainstKotlin/inlineClasses/privateCompanionObjectValInDifferentModule.kt` |
 
 ## Wrong results
@@ -279,10 +257,7 @@ box() returned something other than `"OK"`, with numbers replaced by n.
 |:---|---:|:---|
 | `FAILn` | 2 | `controlStructures/breakContinueInExpressions/breakInLoopConditions.kt`, `finally/returnNullFromInlined.kt` |
 | `fail: _` | 2 | `coroutines/unitTypeReturn/unitSafeCall.kt`, `inference/noCoercionToUniForNullableLambdaReturnType.kt` |
-| `FAIL: implicitReceiverCast(): String.invoke(Any) FAIL: expli…` | 1 | `smartCasts/invokeRecieverSmartcastK2.kt` |
 | `Fail` | 1 | `invokedynamic/extensionFunInvoke.kt` |
 | `Fail: _` | 1 | `closures/captureInSuperConstructorCall/properValueCapturedByClosure2.kt` |
-| `OK Fail` | 1 | `strings/stringPlusOverride.kt` |
-| `fail n` | 1 | `operatorConventions/infixFunctionOverBuiltinMember.kt` |
 | `failn` | 1 | `annotations/resolveWithLowPriorityAnnotation.kt` |
 
