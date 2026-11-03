@@ -493,7 +493,45 @@ func (c *Checker) sameParams(rt types.Type, f, g *types.FunSym) bool {
 		}
 	}
 	// A member extension's receiver is a parameter too.
-	return !f.Ext || c.sameType(fs.Apply(f.Recv), gs.Apply(g.Recv))
+	if f.Ext && !c.sameType(fs.Apply(f.Recv), gs.Apply(g.Recv)) {
+		return false
+	}
+	return c.sameBounds(fs, gs, f, g)
+}
+
+// sameBounds reports whether the type parameters of methods f and g,
+// whose types sameParams maps by fs and gs, have the same upper bounds,
+// in any order: functions that differ only in them are overloads, as
+// with kotlinc, not overrides. Only the program's declarations are
+// compared, whose bounds are as written.
+func (c *Checker) sameBounds(fs, gs types.Subst, f, g *types.FunSym) bool {
+	if f.Decl == nil || g.Decl == nil {
+		return true
+	}
+	for i, p := range f.TypeParams {
+		q := g.TypeParams[i]
+		if len(p.Bounds) == 0 && len(q.Bounds) == 0 {
+			continue
+		}
+		pb, qb := boundsOf(p), boundsOf(q)
+		if len(pb) != len(qb) {
+			return false
+		}
+		for _, b := range pb {
+			if !slices.ContainsFunc(qb, func(d types.Type) bool { return c.sameType(fs.Apply(b), gs.Apply(d)) }) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// boundsOf returns a type parameter's upper bounds, Any? if it has none.
+func boundsOf(p *types.TypeParamSym) []types.Type {
+	if len(p.Bounds) == 0 {
+		return []types.Type{types.AnyType.Nullable()}
+	}
+	return p.Bounds
 }
 
 // overrideSubst returns the substitution that maps the types in method

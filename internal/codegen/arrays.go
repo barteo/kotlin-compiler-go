@@ -290,7 +290,7 @@ func (g *gen) forArray(s *syntax.For) {
 		g.code.Local(cf.ILOAD, i)
 		g.elemLoad(d)
 		g.coerce(types.StoredElem(rt), s.Sym.Type)
-		g.code.Local(storeOp(s.Sym.Type), s.Sym.Slot)
+		g.storeLoopVar(s.Sym)
 		g.loopBody(func() { g.block(s.Body, types.UnitType, false) })
 	}, func(brk, cont *cf.Label) {
 		g.pushLoop(s, brk, cont)

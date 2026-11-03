@@ -568,7 +568,7 @@ func (t *classTable) suspendType(kt *kmeta.Type, scope tscope) (types.Type, bool
 		return types.InvalidType, false
 	}
 	cont := kt.Args[n-1].Type
-	if cont == nil || cont.Class != "kotlin/coroutines/Continuation" || len(cont.Args) != 1 || cont.Args[0].Type == nil {
+	if cont == nil || cont.Class != "kotlin/coroutines/Continuation" || len(cont.Args) != 1 || cont.Args[0].Type == nil && cont.Args[0].Proj != kmeta.Star {
 		return types.InvalidType, false
 	}
 	args := make([]types.Arg, n)
@@ -583,13 +583,17 @@ func (t *classTable) suspendType(kt *kmeta.Type, scope tscope) (types.Type, bool
 		}
 		args[i].T = at
 	}
-	rt, ok := t.ktype(cont.Args[0].Type, scope)
-	if !ok {
-		return types.InvalidType, false
-	}
-	args[n-1] = types.Arg{T: rt, V: variance(cont.Args[0].Proj)}
-	if args[n-1].V == types.In {
-		args[n-1].V = types.Inv
+	if cont.Args[0].Proj == kmeta.Star {
+		args[n-1].V = types.Star // suspend () -> *, as GivenLambda<*, *>
+	} else {
+		rt, ok := t.ktype(cont.Args[0].Type, scope)
+		if !ok {
+			return types.InvalidType, false
+		}
+		args[n-1] = types.Arg{T: rt, V: variance(cont.Args[0].Proj)}
+		if args[n-1].V == types.In {
+			args[n-1].V = types.Inv
+		}
 	}
 	r := types.GenericType(t.funcs.SuspendClass(n-1), args)
 	if kt.ExtFunc && n > 1 {
