@@ -234,6 +234,15 @@ func (c *Checker) anonClass(d *syntax.ClassDecl, what, whats string, name func()
 		}
 	}
 	c.resolveSupertypes()
+	// The classes' type parameters' bounds, as resolveClassBounds
+	// resolves the file's: x.toDouble() for a local class's T : Number.
+	savedT, savedL, savedChecks := c.tparams, c.lookupCls, c.noBoundChecks
+	c.noBoundChecks = true
+	for _, d := range c.classes {
+		c.tparams, c.lookupCls = slices.Concat(d.Sym.TypeParams, savedT), d.Sym
+		c.resolveBounds(d.TypeParams)
+	}
+	c.tparams, c.lookupCls, c.noBoundChecks = savedT, savedL, savedChecks
 	c.checkSupers()
 	c.genericThrowable(sym, ctx, d.P)
 	for _, d := range c.classes {
