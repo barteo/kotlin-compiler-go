@@ -47,8 +47,8 @@ diagnostic markup, and looks for `box()` in the class `kotlinc` puts it
 in. It skips tests for other backends, tests `kotlinc`'s JVM backend
 ignores, and tests that need `LANGUAGE` features, compiler arguments,
 Java sources, or modules with friends or `dependsOn`. A `LANGUAGE` that
-only turns on `+ContextParameters`, which Kotlin 2.4 has on by default,
-doesn't count.
+only turns on `+ContextParameters` or `+ExplicitBackingFields`, which
+Kotlin 2.4 has on by default, doesn't count.
 
 | Category | What happened |
 |:---|:---|
@@ -106,7 +106,8 @@ Three things differ from the test infrastructure:
 - **Directory options.** Directories whose test classes give `kotlinc`
   options (the return value checker in `crv/`, explicit API mode, header
   mode, strict equality, `-jvm-default` modes) are skipped, as are tests
-  with `LANGUAGE` features (but `+ContextParameters`), Java sources,
+  with `LANGUAGE` features (but `+ContextParameters` and
+  `+ExplicitBackingFields`), Java sources,
   multiplatform modules or `IGNORE_FIR_DIAGNOSTICS`.
 
 ## Checking the harness

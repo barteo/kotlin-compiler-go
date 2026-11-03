@@ -13,6 +13,8 @@ func TestLanguageSkip(t *testing.T) {
 		{"// LANGUAGE: +ContextParameters +ExplicitContextArguments\n", "LANGUAGE"},
 		{"// LANGUAGE: -ContextParameters\n", "LANGUAGE"},
 		{"// LANGUAGE: +NestedTypeAliases\n", "LANGUAGE"},
+		{"// LANGUAGE: +ExplicitBackingFields\n", ""},
+		{"// LANGUAGE: -ExplicitBackingFields\n", "LANGUAGE"},
 	}
 	dir := t.TempDir()
 	for i, tt := range tests {
