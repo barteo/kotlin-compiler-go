@@ -441,7 +441,7 @@ func CheckWith(files []*syntax.File, lib *Library, jobs int) []*syntax.Error {
 			levelCache: map[funKey][][]*types.FunSym{}}
 	}
 	inheritDefaults(files)
-	dropContracts(files)
+	dropContracts(checkers)
 	if u.parcelize {
 		u.parcelSealed = parcelizeSealed(checkers)
 	}
