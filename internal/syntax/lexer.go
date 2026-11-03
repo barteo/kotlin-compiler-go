@@ -222,6 +222,9 @@ func (lx *lexer) next() {
 	case c == '"':
 		lx.str(p)
 		return
+	case c == '$' && lx.dollarPrefix() > 0:
+		lx.str(p)
+		return
 	case c == '\'':
 		lx.char(p)
 		return
@@ -423,9 +426,52 @@ func (lx *lexer) digits() {
 	}
 }
 
+// dollarPrefix returns the length of the interpolation prefix of the
+// multi-dollar string literal at the lexer's position ($$"...", $$"""..."""),
+// or 0 if there is none.
+func (lx *lexer) dollarPrefix() int {
+	n := lx.dollars(lx.off)
+	if n == 0 || lx.peekByte(n) != '"' {
+		return 0
+	}
+	return n
+}
+
+// dollars returns the length of the run of '$' at off.
+func (lx *lexer) dollars(off int) int {
+	n := 0
+	for off+n < len(lx.src) && lx.src[off+n] == '$' {
+		n++
+	}
+	return n
+}
+
+// templateName returns the length in bytes of the identifier that a short
+// template entry, $name or $`name`, has at off, or 0 if there is none.
+func (lx *lexer) templateName(off int) int {
+	if lx.identChar(off, true) > 0 {
+		n := 0
+		for k := lx.identChar(off, true); k > 0; k = lx.identChar(off+n, false) {
+			n += k
+		}
+		return n
+	}
+	if off < len(lx.src) && lx.src[off] == '`' {
+		end := strings.IndexAny(lx.src[off+1:], "`\n")
+		if end > 0 && lx.src[off+1+end] == '`' {
+			return end + 2
+		}
+	}
+	return 0
+}
+
 // str lexes a string literal, or a raw string literal ("""..."""), which
-// has no escapes and can span lines.
+// has no escapes and can span lines. Either can have an interpolation
+// prefix of n dollars ($$"..."; none is n = 1): a template entry is then n
+// dollars followed by a name or {, and dollars before those are text.
 func (lx *lexer) str(p Pos) {
+	prefix := max(1, lx.dollars(lx.off))
+	lx.advance(lx.dollars(lx.off))
 	raw := strings.HasPrefix(lx.src[lx.off:], `"""`)
 	if raw {
 		lx.advance(3)
@@ -483,18 +529,32 @@ func (lx *lexer) str(p Pos) {
 			}
 			continue
 		}
-		if c == '$' && lx.identChar(lx.off+1, true) > 0 {
+		if c == '$' {
+			n := lx.dollars(lx.off)
+			after := lx.off + n
+			name := lx.templateName(after)
+			if n < prefix || name == 0 && (after >= len(lx.src) || lx.src[after] != '{') {
+				sb.WriteString(lx.src[lx.off:after])
+				lx.advance(n)
+				continue
+			}
+			sb.WriteString(lx.src[lx.off : after-prefix])
+			lx.advance(n - prefix)
 			flush()
+			lx.advance(prefix)
+			if name > 0 {
+				sp := lx.pos()
+				start := lx.off
+				// Columns count runes, as in scanIdent.
+				for lx.off < start+name {
+					_, size := utf8.DecodeRuneInString(lx.src[lx.off:])
+					lx.off += size
+					lx.col++
+				}
+				parts = append(parts, StrPart{IsExpr: true, Src: lx.src[start:lx.off], SrcPos: sp})
+				continue
+			}
 			lx.advance(1)
-			sp := lx.pos()
-			start := lx.off
-			lx.scanIdent()
-			parts = append(parts, StrPart{IsExpr: true, Src: lx.src[start:lx.off], SrcPos: sp})
-			continue
-		}
-		if c == '$' && lx.peekByte(1) == '{' {
-			flush()
-			lx.advance(2)
 			sp := lx.pos()
 			start := lx.off
 			if !lx.skipTemplate() {
@@ -533,11 +593,14 @@ func (lx *lexer) skipTemplate() bool {
 			if depth == 0 {
 				return true
 			}
-		case '"', '\'':
+		case '"', '\'', '$':
+			if lx.src[lx.off] == '$' && lx.dollarPrefix() == 0 {
+				break
+			}
 			// Lex the literal and drop its token; the template's source is
 			// lexed again when it is parsed.
 			n := len(lx.toks)
-			if lx.src[lx.off] == '"' {
+			if lx.src[lx.off] != '\'' {
 				lx.str(lx.pos())
 			} else {
 				lx.char(lx.pos())

@@ -231,6 +231,7 @@ var defaultFeatures = map[string]bool{
 	"+BreakContinueInInlineLambdas": true,
 	"+ContextParameters":            true,
 	"+ExplicitBackingFields":        true,
+	"+MultiDollarInterpolation":     true,
 	"+WhenGuards":                   true,
 }
 

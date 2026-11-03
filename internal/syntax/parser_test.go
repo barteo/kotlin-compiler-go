@@ -240,6 +240,35 @@ func TestRawString(t *testing.T) {
 	}
 }
 
+func TestMultiDollarString(t *testing.T) {
+	tests := []struct{ src, want string }{
+		{"\"$x $`a b` $$y $ $\"", "{x}| |{`a b`}| $|{y}| $ $"},
+		{`$"$x"`, "{x}"},
+		{`$$"$x $$x $$$x ${y} $${y} $$"`, "$x |{x}| $|{x}| ${y} |{y}| $$"},
+		{`$$$$"$$$x$$$$x"`, "$$$x|{x}"},
+		{`$$"""a $$b ${"$c"}"""`, `a |{b}| ${"$c"}`},
+		{`"${$$"$$a"}"`, `{$$"$$a"}`},
+	}
+	for _, tt := range tests {
+		toks, errs := Tokenize("t.kt", tt.src)
+		if len(errs) > 0 {
+			t.Errorf("%s: %v", tt.src, errs[0])
+			continue
+		}
+		var parts []string
+		for _, p := range toks[0].Parts {
+			if p.IsExpr {
+				parts = append(parts, "{"+p.Src+"}")
+			} else {
+				parts = append(parts, p.Lit)
+			}
+		}
+		if got := strings.Join(parts, "|"); got != tt.want || toks[1].Kind != EOF {
+			t.Errorf("%s: got %q then %s, want %q", tt.src, got, toks[1].Kind, tt.want)
+		}
+	}
+}
+
 func TestNewlinesSuppressedInParens(t *testing.T) {
 	toks, _ := Tokenize("t.kt", "f(\n1\n)\n{\nx\n}")
 	var kinds []string

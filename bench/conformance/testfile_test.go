@@ -17,6 +17,7 @@ func TestLanguageSkip(t *testing.T) {
 		{"// LANGUAGE: -ExplicitBackingFields\n", "LANGUAGE"},
 		{"// LANGUAGE: +BreakContinueInInlineLambdas\n", ""},
 		{"// LANGUAGE: +WhenGuards +BreakContinueInInlineLambdas\n", ""},
+		{"// LANGUAGE: +MultiDollarInterpolation\n", ""},
 	}
 	dir := t.TempDir()
 	for i, tt := range tests {
