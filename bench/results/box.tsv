@@ -1072,7 +1072,7 @@ closures/captureInSuperConstructorCall/outerCapturedInPrimaryConstructorDefaultP
 closures/captureInSuperConstructorCall/outerCapturedInSecondaryConstructorDefaultParameter.kt	pass		
 closures/captureInSuperConstructorCall/outerEnumEntryCapturedInLambdaInInnerClass.kt	pass		
 closures/captureInSuperConstructorCall/properValueCapturedByClosure1.kt	pass		
-closures/captureInSuperConstructorCall/properValueCapturedByClosure2.kt	wrong result	Fail: _	Fail: Outer.ok
+closures/captureInSuperConstructorCall/properValueCapturedByClosure2.kt	pass		
 closures/captureInSuperConstructorCall/referenceToCapturedVariablesInMultipleLambdas.kt	pass		
 closures/captureOuterProperty/captureFunctionInProperty.kt	pass		
 closures/captureOuterProperty/inFunction.kt	pass		
@@ -1234,7 +1234,7 @@ compileKotlinAgainstKotlin/inlineClasses/inlineClassInlineFunctionCall.kt	pass
 compileKotlinAgainstKotlin/inlineClasses/inlineClassInlineProperty.kt	pass		
 compileKotlinAgainstKotlin/inlineClasses/internalWithInlineClass.kt	skip	modules with friends or dependsOn	
 compileKotlinAgainstKotlin/inlineClasses/oldMangling/useOldMangling.kt	pass		
-compileKotlinAgainstKotlin/inlineClasses/privateCompanionObjectValInDifferentModule.kt	exception	kotlin.reflect.jvm.internal.KotlinReflectionInternalError	No accessors or field is found for property val a.Host.Companion.ok: a.S at kotlin.reflect.jvm.internal.DescriptorKPropertyKt.computeCallerForAccessor
+compileKotlinAgainstKotlin/inlineClasses/privateCompanionObjectValInDifferentModule.kt	pass		
 compileKotlinAgainstKotlin/inlineClasses/privateConstructor.kt	pass		
 compileKotlinAgainstKotlin/inlineClasses/privateConstructorWithPrivateField.kt	pass		
 compileKotlinAgainstKotlin/inlineClasses/privateConstructorWithPrivateFieldUsingTypeTable.kt	pass		
@@ -1411,7 +1411,7 @@ controlStructures/bottles.kt	pass
 controlStructures/breakContinueInExpressions/breakFromOuter.kt	pass		
 controlStructures/breakContinueInExpressions/breakInDoWhile.kt	pass		
 controlStructures/breakContinueInExpressions/breakInExpr.kt	pass		
-controlStructures/breakContinueInExpressions/breakInLoopConditions.kt	wrong result	FAILn	FAIL2
+controlStructures/breakContinueInExpressions/breakInLoopConditions.kt	pass		
 controlStructures/breakContinueInExpressions/continueInDoWhile.kt	pass		
 controlStructures/breakContinueInExpressions/continueInExpr.kt	pass		
 controlStructures/breakContinueInExpressions/inlineWithStack.kt	pass		
@@ -2137,7 +2137,7 @@ coroutines/unitTypeReturn/inlineUnitFunction.kt	pass
 coroutines/unitTypeReturn/interfaceDelegation.kt	pass		
 coroutines/unitTypeReturn/suspendNonLocalReturn.kt	pass		
 coroutines/unitTypeReturn/suspendReturn.kt	pass		
-coroutines/unitTypeReturn/unitSafeCall.kt	wrong result	fail: _	fail: suspendHere(A.foo(*));suspended;resuming;Unit;Unit;suspendHere(A.foo(@));suspended;resuming;complete;
+coroutines/unitTypeReturn/unitSafeCall.kt	pass		
 coroutines/unsafeTransform.kt	pass		
 coroutines/varCaptuedInCoroutineIntrinsic.kt	pass		
 coroutines/varSpilling/fakeInlinerVariables.kt	pass		
@@ -2399,7 +2399,7 @@ delegatedProperty/local/kt16864.kt	pass
 delegatedProperty/local/kt19690.kt	pass		
 delegatedProperty/local/kt21085.kt	pass		
 delegatedProperty/local/kt23117.kt	pass		
-delegatedProperty/local/kt78073.kt	check error	cannot infer type for type parameter '_'. Specify it explicitly.	kt78073.kt:10: cannot infer type for type parameter 'T'. Specify it explicitly.
+delegatedProperty/local/kt78073.kt	pass		
 delegatedProperty/local/localDelegatedPropertyCall.kt	pass		
 delegatedProperty/local/localVal.kt	pass		
 delegatedProperty/local/localValNoExplicitType.kt	pass		
@@ -2927,10 +2927,10 @@ fir/functionsDifferInTypeParameterBounds.kt	pass
 fir/functionsDifferInTypeParameterBounds2.kt	pass		
 fir/functionsDifferInTypeParameterBounds3.kt	pass		
 fir/inferenceWithTypeAliasFromOtherModule.kt	pass		
-fir/initializationInLocalInnerClassWithSecondaryConstructor.kt	check error	property must be initialized or be abstract	initializationInLocalInnerClassWithSecondaryConstructor.kt:11: property must be initialized or be abstract
+fir/initializationInLocalInnerClassWithSecondaryConstructor.kt	pass		
 fir/kt68806.kt	pass		
 fir/listAssignmentInWhen.kt	pass		
-fir/localInvokeExtension.kt	check error	cannot infer type for type parameter '_'. Specify it explicitly.	localInvokeExtension.kt:30: cannot infer type for type parameter 'T'. Specify it explicitly.
+fir/localInvokeExtension.kt	pass		
 fir/localOverrideWithDefaultInLocalOverridden.kt	pass		
 fir/localOverrideWithDefaultInOverridden.kt	pass		
 fir/missingDependencyClassInTypeArguments.kt	pass		
@@ -3035,7 +3035,7 @@ funInterface/samConversionToGenericInterfaceInGenericFun.kt	pass
 funInterface/subtypeOfFunctionalTypeToFunInterfaceConversion.kt	pass		
 funInterface/suspendFunInterfaceConversionCodegen.kt	pass		
 funInterface/suspendFunctionAndFunInterfaceSharedClassSplit.kt	pass		
-funInterface/typealiasedFunInterface.kt	check error	cannot infer type for type parameter '_'. Specify it explicitly.	typealiasedFunInterface.kt:14: cannot infer type for type parameter 'A'. Specify it explicitly.
+funInterface/typealiasedFunInterface.kt	pass		
 function/arithmetic.kt	pass		
 function/boolean.kt	pass		
 function/defaults.kt	pass		
@@ -3594,7 +3594,7 @@ inline/inlineOrder.kt	pass
 inline/inlineSimpleAssignment.kt	pass		
 inline/inlinedLambdaWithErasedParamType.kt	pass		
 inline/inlinedObjectLiteralIsCheck.kt	skip	TARGET_BACKEND: JS_IR, JS_IR_ES6	
-inline/innerInlineFunCapturesOuter.kt	linkage error	java.lang.IllegalAccessError	class MainKt tried to access field a.E$Inner.this$0 (MainKt and a.E$Inner are in unnamed module of loader java.net.URLClassLoader ) at MainKt.box
+inline/innerInlineFunCapturesOuter.kt	pass		
 inline/innerOuterThis.kt	pass		
 inline/invokeOnField.kt	pass		
 inline/iteratorOnInlineFunctionResult.kt	pass		
