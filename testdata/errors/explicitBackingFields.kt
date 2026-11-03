@@ -50,3 +50,13 @@ val top: Any // ERROR must be initialized
     field: Int // ERROR must be initialized
 
 fun outside(a: A): Int = a.n + 1 // ERROR unresolved reference
+
+open class Holder(val s: Any)
+
+val early: Any
+    field = object : Holder(late) {} // ERROR variable 'late' must be initialized
+
+val late: Any
+    field = object : Holder(early) {
+        fun lazily(): Any = late
+    }

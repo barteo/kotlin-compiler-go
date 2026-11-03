@@ -157,7 +157,48 @@ func (c *Checker) fieldInit(d *syntax.PropDecl, cls *types.ClassSym, want types.
 	init := d.BackingField.Init
 	t := c.value(init, want)
 	c.assignable(t, want, init.Pos())
+	if cls == nil {
+		c.uninitializedTop(d, init)
+	}
 	return t
+}
+
+// uninitializedTop reports the reads of top-level properties that top-level
+// property d's backing field initializer, init, makes before they are
+// initialized: of d itself or of a property declared after it in the
+// file, where init runs them, not in its lambdas or its objects' members.
+func (c *Checker) uninitializedTop(d *syntax.PropDecl, init syntax.Expr) {
+	order := map[*syntax.PropDecl]int{}
+	for i, x := range c.file.Decls {
+		if pd, ok := x.(*syntax.PropDecl); ok {
+			order[pd] = i
+		}
+	}
+	at := order[d]
+	var visit func(n any) bool
+	visit = func(n any) bool {
+		switch n := n.(type) {
+		case *syntax.Lambda:
+			return false
+		case *syntax.ObjectExpr:
+			for _, st := range n.Decl.Supers {
+				if st.Call != nil {
+					syntax.Inspect(st.Call, visit)
+				}
+			}
+			return false
+		case *syntax.Ident:
+			if n.Sym != nil && n.Sym.Kind == types.Global {
+				if pd, ok := n.Sym.Decl.(*syntax.PropDecl); ok {
+					if i, ok := order[pd]; ok && i >= at && pd.Getter == nil && pd.Field == nil && !pd.Const {
+						c.errorf(n.P, "variable '%s' must be initialized", n.Name)
+					}
+				}
+			}
+		}
+		return true
+	}
+	syntax.Inspect(init, visit)
 }
 
 // fieldRead returns the type that reading property p on a receiver of
