@@ -1675,11 +1675,21 @@ func intLitExpr(x syntax.Expr) bool {
 // receivers take it, as String?.isNullOrEmpty() does: callReceiver
 // returns them, and the receiver's type stays nullable.
 func (c *Checker) callReceiver(fn *syntax.Member, want types.Type) (types.Type, []callee, bool) {
-	t := c.fixedStub(c.declaredIfNull(fn.X, c.value(fn.X, want)))
+	vt := c.value(fn.X, want)
+	t := c.fixedStub(c.declaredIfNull(fn.X, vt))
 	if t.K == types.Invalid {
 		return t, nil, false
 	}
 	t = c.castView(fn.X, t, fn.Name)
+	if vt.K == types.Null && t.K != types.Null && !fn.Safe && c.extCallees(fn.Name, t) == nil {
+		// A variable known to be null is a Nothing?, which any extension
+		// of a nullable receiver takes: i.foo() for a String?.foo()
+		// after i == null, of an Int? i.
+		if cands := c.extCallees(fn.Name, vt); len(cands) > 0 {
+			fn.X = checked(fn.X, vt)
+			return vt, cands, true
+		}
+	}
 	if c.extCallees(fn.Name, t) == nil {
 		fn.X, t = builtinBound(fn.X, t)
 	}
@@ -1689,6 +1699,9 @@ func (c *Checker) callReceiver(fn *syntax.Member, want types.Type) (types.Type, 
 		}
 		if fn.Name == "toString" {
 			return t, nil, true // Any?.toString(), a built-in extension
+		}
+		if fn.Name == "plus" && (t.NonNull() == types.StringType || t.K == types.Null) {
+			return t, nil, true // String?.plus(Any?), a built-in extension
 		}
 		c.errorf(fn.P, "only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type %s", t)
 		return types.InvalidType, nil, false
@@ -2234,7 +2247,7 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 			x.Fun, x.Args, x.Names = let, []syntax.Expr{lam}, nil
 			return c.call(x, want, sink)
 		}
-		if _, ok := c.extFuncVar(fn.Name); ok && !fn.Safe && !c.memberExtFirst(fn, x) {
+		if _, ok := c.extFuncVar(fn.Name); (ok || c.extRefLocal(fn.Name)) && !fn.Safe && !c.memberExtFirst(fn, x) {
 			// x.f() calls a function value with a receiver: f(x).
 			id := &syntax.Ident{Name: fn.Name}
 			id.P = fn.P
@@ -2267,6 +2280,20 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 				want = noWant
 			}
 		}
+		if types.MayBeNull(rt) && !rt.P && !fn.Safe && nullExts == nil && fn.Name == "plus" {
+			// String?.plus(Any?): "null" for null, as s + x.
+			if len(x.Args) != 1 || x.Names != nil {
+				c.errorf(x.P, "wrong number of arguments for %s", fn.Name)
+				c.args(x, nil)
+				return types.InvalidType
+			}
+			if c.value(x.Args[0], types.AnyType.Nullable()).K == types.Invalid {
+				return types.InvalidType
+			}
+			x.Builtin = types.StrPlus
+			fn.T = rt
+			return types.StringType
+		}
 		if types.MayBeNull(rt) && !rt.P && !fn.Safe && nullExts == nil {
 			// Any?.toString(): String.valueOf(x), "null" for null.
 			if len(x.Args) != 0 {
@@ -2278,9 +2305,7 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 			return types.StringType
 		}
 		var t types.Type
-		rt = c.boundWith(rt, func(cls *types.ClassSym) bool {
-			return len(c.javaMethods(cls, fn.Name)) > 0 || !cls.External && c.userProp(cls, fn.Name) != nil
-		})
+		rt = c.callBound(rt, x, fn.Name)
 		cls := c.classOf(rt)
 		if cls != nil {
 			n, alias := c.innerNamed(cls, fn.Name)

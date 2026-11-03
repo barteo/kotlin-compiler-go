@@ -478,6 +478,8 @@ func (c *Checker) peekType(a syntax.Expr) (types.Type, bool) {
 // a reference to it without an expected type.
 func builtinRefParams(t types.Type, name string) ([]types.Type, bool) {
 	switch {
+	case t == types.StringType.Nullable() && name == "plus":
+		return []types.Type{types.AnyType.Nullable()}, true // String?.plus(Any?)
 	case builtinFun(t, name, 0):
 		return nil, true
 	case !builtinFun(t, name, 1):
@@ -592,7 +594,16 @@ func (c *Checker) memberExtFirst(fn *syntax.Member, x *syntax.Call) bool {
 			return true
 		}
 	}
-	if _, _, local := c.scope.lookup(fn.Name); local || c.cls == nil || c.userProp(c.cls, fn.Name) == nil {
+	if v, vd := c.scope.find(fn.Name); v != nil {
+		// A local extension function as close as the local, as in
+		// Kotlin, where a level of scope's functions come before its
+		// properties' invoke: fun String.foo() over val foo: String.() ->.
+		fs, fd := c.scope.findFuns(fn.Name)
+		return fd >= vd && slices.ContainsFunc(fs, func(f *types.FunSym) bool {
+			return f.Ext && c.recvFits(rt, f.Recv) && c.mayTake(f, x)
+		})
+	}
+	if c.cls == nil || c.userProp(c.cls, fn.Name) == nil {
 		return false
 	}
 	return slices.ContainsFunc(memberExtMethods(c.cls, fn.Name), func(f *types.FunSym) bool {
@@ -668,4 +679,77 @@ func (c *Checker) extFuncVar(name string) (types.Type, bool) {
 		return v.Type, v.Type.Flex().IsExtFunc() // a top-level one: clikt's conversion
 	}
 	return types.InvalidType, false
+}
+
+// extRefLocal reports whether name is a local val holding an unbound
+// reference to an extension function, A?::foo, whose value Kotlin calls
+// with a receiver too, as an extension: null.a().
+func (c *Checker) extRefLocal(name string) bool {
+	if c.scope == nil {
+		return false
+	}
+	v, _, ok := c.scope.lookup(name)
+	if !ok {
+		return false
+	}
+	s, ok := v.Decl.(*syntax.VarStmt)
+	if !ok || s.Mutable || s.Type != nil {
+		return false
+	}
+	l, ok := s.Init.(*syntax.Lambda)
+	if !ok || l.Ref == nil || l.Ref.X == nil && l.Ref.Type == nil || l.Ref.Bound != nil || l.Body == nil || len(l.Body.Stmts) != 1 {
+		return false
+	}
+	es, ok := l.Body.Stmts[0].(*syntax.ExprStmt)
+	if !ok {
+		return false
+	}
+	call, ok := es.X.(*syntax.Call)
+	return ok && call.Sym != nil && call.Sym.Ext
+}
+
+// callBound returns the bound of a type parameter t with several bounds
+// whose member function name a call x calls, as boundWith does, but of
+// the bounds with one of n parameters the one whose result is the most
+// specific: B's foo(): String for T : A, T : B, of A's foo(): Any?, as
+// the intersection type's member overrides both.
+func (c *Checker) callBound(t types.Type, x *syntax.Call, name string) types.Type {
+	has := func(cls *types.ClassSym) bool {
+		return len(c.javaMethods(cls, name)) > 0 || !cls.External && c.userProp(cls, name) != nil
+	}
+	b := c.boundWith(t, has)
+	if b == t || x.Names != nil {
+		return b
+	}
+	ret := func(b types.Type) (types.Type, bool) {
+		cls := c.classOf(b)
+		if cls == nil {
+			return types.Type{}, false
+		}
+		var r types.Type
+		n := 0
+		for _, f := range c.javaMethods(cls, name) {
+			if len(f.Params) == len(x.Args) && len(f.TypeParams) == 0 {
+				r = c.memberSubst(b, f.Owner).Apply(f.Ret)
+				n++
+			}
+		}
+		return r, n == 1
+	}
+	best, bt := b, types.Type{}
+	if r, ok := ret(b); ok {
+		bt = r
+	} else {
+		return b
+	}
+	for _, o := range t.Param().Bounds {
+		o = o.NonNull()
+		if cls := c.classOf(o); cls == nil || !has(cls) {
+			continue
+		}
+		if r, ok := ret(o); ok && !c.subtype(bt, r) && c.subtype(r, bt) {
+			best, bt = o, r
+		}
+	}
+	return best
 }

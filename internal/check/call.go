@@ -122,6 +122,18 @@ func fewestSAM[C any](cs []C, args []syntax.Expr, cl func(C) *callee) ([]C, bool
 	return out, len(out) < len(cs)
 }
 
+// notLowPriority leaves out the candidates marked
+// @LowPriorityInOverloadResolution when any other fits, before the most
+// specific is chosen, as Kotlin does: foo(1) calls foo(Any) over a
+// low-priority foo(Int).
+func notLowPriority[C any](cs []C, cl func(C) *callee) []C {
+	if !slices.ContainsFunc(cs, func(c C) bool { return cl(c).f.LowPriority }) ||
+		!slices.ContainsFunc(cs, func(c C) bool { return !cl(c).f.LowPriority }) {
+		return cs
+	}
+	return slices.DeleteFunc(slices.Clone(cs), func(c C) bool { return cl(c).f.LowPriority })
+}
+
 // preferred picks among n equally specific candidates, as Kotlin does:
 // one that takes its arguments without varargs, then one that leaves
 // fewer parameters to their defaults. It returns -1 if none is preferred.
@@ -863,6 +875,7 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			match = c.applicable(cs, x, ts, partials, true)
 		}
 		match = c.notPropRefs(x, match)
+		match = notLowPriority(match, func(cd *candidate) *callee { return &cd.callee })
 		var maximal []*candidate
 		for _, cd := range match {
 			if c.mostSpecific(cd, match, x.Args) {
@@ -1382,6 +1395,7 @@ func (c *Checker) resolvePlain(x *syntax.Call, cs []callee, want types.Type) typ
 		if len(match) == 0 {
 			match = c.plainApplicable(cs, x.Args, ts, true)
 		}
+		match = notLowPriority(match, func(cl *callee) *callee { return cl })
 		var maximal []*callee
 		for _, cl := range match {
 			if c.plainMostSpecific(cl, match, x.Args) {
