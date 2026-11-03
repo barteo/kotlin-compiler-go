@@ -48,7 +48,7 @@ annotations/parameters.kt	pass
 annotations/platformDependent.kt	check error	'_' hides member of supertype '_' and needs '_' modifier	Main.kt:12: 'f' hides member of supertype 'I' and needs 'override' modifier
 annotations/recursiveAnnotationWithVarargAndDefaultValue.kt	pass		
 annotations/recursiveAnnotationWithVarargAndWithoutDefaultValue.kt	pass		
-annotations/resolveWithLowPriorityAnnotation.kt	wrong result	failn	fail1
+annotations/resolveWithLowPriorityAnnotation.kt	pass		
 annotations/selfReferentialAnnotation.kt	pass		
 annotations/spreadOperatorInAnnotationArguments.kt	pass		
 annotations/spreadOperatorInArrayOf.kt	pass		
@@ -686,7 +686,7 @@ callableReference/function/extensionFromTopLevelUnitNoArgs.kt	pass
 callableReference/function/extensionFromTopLevelUnitOneStringArg.kt	pass		
 callableReference/function/extensionFunctionAsASuperTypePassToSAMInterface.kt	skip	LANGUAGE	
 callableReference/function/extensionFunctionInSAMInterface.kt	pass		
-callableReference/function/extensionFunctionLocal.kt	check error	conflicting overloads: _	extensionFunctionLocal.kt:2: conflicting overloads: bar
+callableReference/function/extensionFunctionLocal.kt	pass		
 callableReference/function/extensionFunctionPassToSAMInterface.kt	pass		
 callableReference/function/extensionFunctionWithExtensionInSAMInterface.kt	pass		
 callableReference/function/extensionInDelegatedSam.kt	pass		
@@ -734,7 +734,7 @@ callableReference/function/nestedConstructorFromTopLevelNoArgs.kt	pass
 callableReference/function/nestedConstructorFromTopLevelOneStringArg.kt	pass		
 callableReference/function/nestedExtensionInSAMInterface.kt	pass		
 callableReference/function/newArray.kt	pass		
-callableReference/function/nullableExtension.kt	check error	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _	nullableExtension.kt:11: only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type Nothing?
+callableReference/function/nullableExtension.kt	pass		
 callableReference/function/overloadedFun.kt	pass		
 callableReference/function/overloadedFunVsVal.kt	pass		
 callableReference/function/privateClassMember.kt	pass		
@@ -841,7 +841,7 @@ casts/functions/reifiedSafeAsFunKSmall.kt	pass
 casts/functions/safeAsFunKBig.kt	pass		
 casts/functions/safeAsFunKSmall.kt	pass		
 casts/genericReturnCast.kt	pass		
-casts/intersectionTypeMultipleBounds.kt	check error	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _	intersectionTypeMultipleBounds.kt:11: only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type Any?
+casts/intersectionTypeMultipleBounds.kt	pass		
 casts/intersectionTypeMultipleBoundsImplicitReceiver.kt	pass		
 casts/intersectionTypeSmartcast.kt	pass		
 casts/intersectionTypeWithMultipleBoundsAsReceiver.kt	pass		
@@ -2800,7 +2800,7 @@ extensionFunctions/extensionFunctionInInnerClass.kt	pass
 extensionFunctions/extensionFunctionInNestedClass.kt	pass		
 extensionFunctions/extensionFunctionInSAMInterface.kt	pass		
 extensionFunctions/extensionFunctionInValueClass.kt	pass		
-extensionFunctions/extensionFunctionLocal.kt	check error	conflicting overloads: _	extensionFunctionLocal.kt:3: conflicting overloads: bar
+extensionFunctions/extensionFunctionLocal.kt	pass		
 extensionFunctions/extensionFunctionNestedInExtensionFunction.kt	pass		
 extensionFunctions/extensionFunctionOverride.kt	pass		
 extensionFunctions/extensionFunctionWithExtensionAsAReceiver.kt	pass		
@@ -2910,7 +2910,7 @@ finally/nestedFinallyAndNonFinallyTry3.kt	pass
 finally/nestedFinallyAndNonFinallyTry4.kt	pass		
 finally/notChainCatch.kt	pass		
 finally/objectInFinally.kt	pass		
-finally/returnNullFromInlined.kt	wrong result	FAILn	FAIL2
+finally/returnNullFromInlined.kt	pass		
 finally/someStuff.kt	pass		
 finally/tryFinally.kt	pass		
 finally/tryLoopTry.kt	pass		
@@ -3282,8 +3282,8 @@ inference/lambdaWithStarReturn.kt	pass
 inference/lambdasWithExtensionFunctionType.kt	pass		
 inference/lastExpressionOfLambdaWithNothingConstraint.kt	pass		
 inference/mapCollectChainWithNullResult.kt	pass		
-inference/noCoercionToUniForNullableLambdaReturnType.kt	wrong result	fail: _	fail: kotlin.Unit
-inference/noCoercionToUnitWithEqualityConstraintForNullableReturnType.kt	check error	type mismatch: '_' branches have incompatible types Unit and Nothing?	noCoercionToUnitWithEqualityConstraintForNullableReturnType.kt:11: type mismatch: 'if' branches have incompatible types Unit and Nothing?
+inference/noCoercionToUniForNullableLambdaReturnType.kt	pass		
+inference/noCoercionToUnitWithEqualityConstraintForNullableReturnType.kt	pass		
 inference/overrideDefaultMethod.kt	skip	TARGET_BACKEND: JS_IR	
 inference/overrideDefaultProperty.kt	pass		
 inference/overrideGenericDefaultMethod.kt	pass		
@@ -3517,7 +3517,7 @@ inline/callableReferenceOfLocalFun.kt	pass
 inline/callableReferenceOfLocalInline.kt	skip	IGNORE_BACKEND: JVM_IR	
 inline/callableReferenceOfLocalKT77102.kt	skip	LANGUAGE	
 inline/changingCapturedLocal.kt	pass		
-inline/classDeclarationInsideInline.kt	check error	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _	classDeclarationInsideInline.kt:11: only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type T
+inline/classDeclarationInsideInline.kt	pass		
 inline/classObject.kt	pass		
 inline/coercionToUnit.kt	pass		
 inline/coercionToUnitBoxing.kt	skip	TARGET_BACKEND: NATIVE	
@@ -3825,8 +3825,8 @@ inlineClasses/callableReferences/boundInlineClassPrimaryVal.kt	pass
 inlineClasses/callableReferences/boundInlineClassPrimaryValGeneric.kt	pass		
 inlineClasses/callableReferences/constructorWithInlineClassParameters.kt	pass		
 inlineClasses/callableReferences/constructorWithInlineClassParametersGeneric.kt	pass		
-inlineClasses/callableReferences/equalsHashCodeToString.kt	pass		
-inlineClasses/callableReferences/equalsHashCodeToStringGeneric.kt	pass		
+inlineClasses/callableReferences/equalsHashCodeToString.kt	check error	type mismatch: inferred type is _ but _ was expected	equalsHashCodeToString.kt:19: type mismatch: inferred type is String but Z was expected
+inlineClasses/callableReferences/equalsHashCodeToStringGeneric.kt	check error	type mismatch: inferred type is _ but _ was expected	equalsHashCodeToStringGeneric.kt:19: type mismatch: inferred type is String but Z<String> was expected
 inlineClasses/callableReferences/funWithInlineClassParameters.kt	pass		
 inlineClasses/callableReferences/funWithInlineClassParametersGeneric.kt	pass		
 inlineClasses/callableReferences/inlineClassExtensionFun.kt	pass		
@@ -4625,7 +4625,7 @@ intrinsics/kt12125_inc.kt	pass
 intrinsics/kt12125_inc_2.kt	pass		
 intrinsics/kt52163_boolean.kt	pass		
 intrinsics/kt52163_doubleCompareToInt.kt	pass		
-intrinsics/kt8666.kt	check error	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _	kt8666.kt:10: only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type String?
+intrinsics/kt8666.kt	pass		
 intrinsics/longRangeWithExplicitDot.kt	pass		
 intrinsics/nonShortCircuitAnd.kt	pass		
 intrinsics/nullPlusString.kt	pass		
@@ -4637,7 +4637,7 @@ intrinsics/throwableCallableReference.kt	pass
 intrinsics/throwableParamOrder.kt	pass		
 intrinsics/tostring.kt	pass		
 intrinsics/trimMarginWithBlankString.kt	pass		
-invokedynamic/extensionFunInvoke.kt	wrong result	Fail	Fail
+invokedynamic/extensionFunInvoke.kt	pass		
 invokedynamic/lambdas/kt52875.kt	pass		
 ir/anonymousClassLeak.kt	pass		
 ir/anonymousObjectInForLoopIteratorAndBody.kt	pass		
@@ -6795,7 +6795,7 @@ smartCasts/kt72391.kt	pass
 smartCasts/lambdaArgumentWithoutType.kt	pass		
 smartCasts/multipleSmartCast.kt	skip	LANGUAGE	
 smartCasts/negativesmartCastAugmentedAssignment.kt	pass		
-smartCasts/nullSmartCast.kt	check error	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _	nullSmartCast.kt:4: only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type Int?
+smartCasts/nullSmartCast.kt	pass		
 smartCasts/propertyInitializationAfterSmartCast.kt	pass		
 smartCasts/smartCastInsideIf.kt	pass		
 smartCasts/smartCastOnSuper.kt	pass		
@@ -6873,7 +6873,7 @@ strings/multilineStringsWithTemplates.kt	pass
 strings/nestedConcat.kt	pass		
 strings/rawStrings.kt	pass		
 strings/rawStringsWithManyQuotes.kt	pass		
-strings/simpleStringPlus.kt	check error	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _	simpleStringPlus.kt:2: only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type String?
+strings/simpleStringPlus.kt	pass		
 strings/singleConcatNullable.kt	pass		
 strings/stringBuilderAppend.kt	pass		
 strings/stringPlusOnlyWorksOnString.kt	pass		
@@ -6881,7 +6881,7 @@ strings/stringPlusOverride.kt	pass
 strings/surrogatePair.kt	pass		
 strings/trimOptimization.kt	pass		
 strings/twoArgumentNullableStringOperatorPlus.kt	pass		
-strings/twoArgumentNullableStringPlus.kt	check error	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _	twoArgumentNullableStringPlus.kt:1: only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type String?
+strings/twoArgumentNullableStringPlus.kt	pass		
 strings/twoArgumentStringTemplate.kt	pass		
 super/basicmethodSuperClass.kt	pass		
 super/basicmethodSuperTrait.kt	pass		
@@ -7149,7 +7149,7 @@ unit/kt56723.kt	pass
 unit/nullableUnit.kt	pass		
 unit/nullableUnitInWhen1.kt	pass		
 unit/nullableUnitInWhen2.kt	pass		
-unit/nullableUnitInWhen3.kt	check error	type mismatch: '_' branches have incompatible types Unit and Nothing?	nullableUnitInWhen3.kt:6: type mismatch: 'when' branches have incompatible types Unit and Nothing?
+unit/nullableUnitInWhen3.kt	pass		
 unit/sillyThings.kt	pass		
 unit/unitClassObject.kt	pass		
 unit/unitCoercionWithElvis.kt	pass		
