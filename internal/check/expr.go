@@ -2944,12 +2944,37 @@ func (c *Checker) ifExpr(x *syntax.If, want types.Type, valueUsed bool) types.Ty
 		}
 		return types.UnitType
 	}
-	t, ok := c.joinBranch(thenT, elseT, want, x.Else.P)
+	t, ok := c.joinBranches(thenT, elseT, want, x.Else.P)
 	if !ok {
 		c.errorf(x.P, "type mismatch: 'if' branches have incompatible types %s and %s", thenT, elseT)
 		return types.InvalidType
 	}
 	return c.completeBranches(pending, t, want, true)
+}
+
+// joinBranches joins the type of a branch of an if or when, bt, with the
+// result of the branches before it, as joinBranch. A Unit and a null give
+// a Unit?, kotlin.Unit's class: when { b -> foo() else -> null }.
+func (c *Checker) joinBranches(result, bt, want types.Type, p syntax.Pos) (types.Type, bool) {
+	if u := c.unitOrNull(result, bt); u.K != types.Invalid {
+		return u, true
+	}
+	return c.joinBranch(result, bt, want, p)
+}
+
+// unitOrNull returns Unit?, kotlin.Unit's class, if one of a and b is a
+// Unit and the other null, or Invalid.
+func (c *Checker) unitOrNull(a, b types.Type) types.Type {
+	if a.K == types.Null {
+		a, b = b, a
+	}
+	if a.K != types.Unit || a.N || b.K != types.Null {
+		return types.InvalidType
+	}
+	if u := c.u.ext.class("kotlin/Unit"); u != nil {
+		return types.ClassType(u).Nullable()
+	}
+	return types.InvalidType
 }
 
 // blockLambda returns the lambda that a branch's block is, or nil.
@@ -3409,7 +3434,7 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 				}
 				continue
 			}
-			t, ok := c.joinBranch(result, bt, want, br.Body.P)
+			t, ok := c.joinBranches(result, bt, want, br.Body.P)
 			if !ok {
 				c.errorf(br.Body.P, "type mismatch: 'when' branches have incompatible types %s and %s", result, bt)
 				return types.InvalidType
