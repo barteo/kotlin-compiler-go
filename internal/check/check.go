@@ -226,7 +226,10 @@ type Checker struct {
 	// branchSink is the system of the delegate an if, a try or an
 	// elvis is: see delegateValue.
 	branchSink *system
-	tailSink   *system
+	// inferAliasArgs are the calls of typealiases' constructors that
+	// infer the aliases' type arguments: see aliasConstruct.
+	inferAliasArgs map[*syntax.Call]bool
+	tailSink       *system
 	// bareRef is the type of an is or as being resolved, whose class's type
 	// arguments may be left out, and bareSubject the type checked.
 	bareRef     *syntax.TypeRef

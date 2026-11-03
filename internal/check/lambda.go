@@ -1487,6 +1487,9 @@ func (c *Checker) lambdaResultOpen(s *system, pl pendingLambda) bool {
 // those whose parameter types are not known yet.
 func (c *Checker) runLambdas(s *system, readyOnly bool) {
 	var rest []pendingLambda
+	if !readyOnly {
+		c.readyFirst(s)
+	}
 	for _, pl := range s.lambdas {
 		if tv := s.unfixedVar(s.apply(pl.p)); tv != nil && !readyOnly {
 			if u, ok := s.funcUpper(tv); ok {

@@ -137,3 +137,26 @@ func (c *Checker) sinkTail(b *syntax.Block, sink *system) {
 		}
 	}
 }
+
+// readyFirst moves the lambdas whose parameter types are known before
+// the others, as Kotlin analyzes them first: T of codec({ x + it },
+// { y }) for decode: ReadContext.() -> T? is the String the second
+// returns, which the first's it then has.
+func (c *Checker) readyFirst(s *system) {
+	if len(s.lambdas) < 2 {
+		return
+	}
+	var ready, rest []pendingLambda
+	for _, pl := range s.lambdas {
+		ok := s.unfixedVar(s.apply(pl.p)) == nil
+		for _, p := range c.inputs(s, pl) {
+			ok = ok && s.known(p)
+		}
+		if ok {
+			ready = append(ready, pl)
+		} else {
+			rest = append(rest, pl)
+		}
+	}
+	s.lambdas = append(ready, rest...)
+}
