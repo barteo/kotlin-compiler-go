@@ -133,6 +133,7 @@ type Checker struct {
 	// starOwners are the classes whose members and nested classes are
 	// star-imported: import E.*.
 	starOwners []*types.ClassSym
+	aliasStars []aliasStar // import p.Alias.*, resolved after the typealiases
 	// Imports of the program's own declarations.
 	userFuns map[string][]*types.FunSym
 	userVars map[string]*types.VarSym
@@ -445,6 +446,9 @@ func CheckWith(files []*syntax.File, lib *Library, jobs int) []*syntax.Error {
 	// Typealiases can stand for supertypes.
 	for _, c := range checkers {
 		c.resolveAliases()
+	}
+	for _, c := range checkers {
+		c.resolveAliasStars()
 	}
 	for _, c := range checkers {
 		c.resolveSupertypes()
