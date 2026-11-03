@@ -2,11 +2,11 @@
 
 The box tests of JetBrains/kotlin v2.4.21 (`compiler/testData/codegen/box`), each compiled by kc and run: its `box()` must return `"OK"`. `bench/kotlin-tests.sh box` writes this file, and [docs/conformance.md](../../docs/conformance.md) explains it.
 
-Of 7480 test files, 959 are skipped and 6521 run. 6521 pass (100.0%).
+Of 7480 test files, 952 are skipped and 6528 run. 6528 pass (100.0%).
 
 | Result | Tests | Share |
 |:---|---:|---:|
-| pass | 6521 | 100.0% |
+| pass | 6528 | 100.0% |
 | parse/unsupported | 0 | 0.0% |
 | check error | 0 | 0.0% |
 | crash | 0 | 0.0% |
@@ -23,7 +23,7 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 
 | Reason | Tests | Examples |
 |:---|---:|:---|
-| `LANGUAGE` | 589 | `annotations/checkReturnValue.kt`, `annotations/instances/multiplatformInstantiation.kt` |
+| `LANGUAGE` | 582 | `annotations/checkReturnValue.kt`, `annotations/instances/multiplatformInstantiation.kt` |
 | `TARGET_BACKEND: WASM` | 122 | `casts/kt73931.kt`, `casts/wasmCastMessages.kt` |
 | `IGNORE_BACKEND: JVM_IR` | 49 | `binaryOp/call.kt`, `binaryOp/callNullable.kt` |
 | `TARGET_BACKEND: JS_IR, JS_IR_ES6` | 36 | `builtins/stringTemplateWithValueOf.kt`, `casts/functions/isFunKSmallJS.kt` |
@@ -48,9 +48,9 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 |:---|---:|---:|---:|---:|---:|---:|---:|
 | ranges | 805 | 805 | 0 | 0 | 0 | 0 | 0 |
 | inlineClasses | 784 | 784 | 0 | 0 | 0 | 0 | 0 |
-| coroutines | 497 | 497 | 0 | 0 | 0 | 0 | 0 |
+| coroutines | 499 | 499 | 0 | 0 | 0 | 0 | 0 |
 | callableReference | 297 | 297 | 0 | 0 | 0 | 0 | 0 |
-| inference | 205 | 205 | 0 | 0 | 0 | 0 | 0 |
+| inference | 207 | 207 | 0 | 0 | 0 | 0 | 0 |
 | controlStructures | 158 | 158 | 0 | 0 | 0 | 0 | 0 |
 | delegatedProperty | 149 | 149 | 0 | 0 | 0 | 0 | 0 |
 | bridges | 137 | 137 | 0 | 0 | 0 | 0 | 0 |
@@ -82,9 +82,9 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 | boxingOptimization | 41 | 41 | 0 | 0 | 0 | 0 | 0 |
 | ir | 41 | 41 | 0 | 0 | 0 | 0 | 0 |
 | strings | 40 | 40 | 0 | 0 | 0 | 0 | 0 |
+| ieee754 | 39 | 39 | 0 | 0 | 0 | 0 | 0 |
 | localClasses | 39 | 39 | 0 | 0 | 0 | 0 | 0 |
 | super | 39 | 39 | 0 | 0 | 0 | 0 | 0 |
-| ieee754 | 38 | 38 | 0 | 0 | 0 | 0 | 0 |
 | evaluate | 37 | 37 | 0 | 0 | 0 | 0 | 0 |
 | function | 37 | 37 | 0 | 0 | 0 | 0 | 0 |
 | smartCasts | 36 | 36 | 0 | 0 | 0 | 0 | 0 |
@@ -106,9 +106,9 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 | delegation | 23 | 23 | 0 | 0 | 0 | 0 | 0 |
 | binaryOp | 22 | 22 | 0 | 0 | 0 | 0 | 0 |
 | intrinsics | 22 | 22 | 0 | 0 | 0 | 0 | 0 |
+| sam | 22 | 22 | 0 | 0 | 0 | 0 | 0 |
 | boxing | 21 | 21 | 0 | 0 | 0 | 0 | 0 |
 | lambda | 21 | 21 | 0 | 0 | 0 | 0 | 0 |
-| sam | 21 | 21 | 0 | 0 | 0 | 0 | 0 |
 | contracts | 20 | 20 | 0 | 0 | 0 | 0 | 0 |
 | controlflow | 20 | 20 | 0 | 0 | 0 | 0 | 0 |
 | wasmStringSwitch | 20 | 20 | 0 | 0 | 0 | 0 | 0 |
@@ -194,6 +194,7 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 | objectIntrinsics | 1 | 1 | 0 | 0 | 0 | 0 | 0 |
 | optimizations | 1 | 1 | 0 | 0 | 0 | 0 | 0 |
 | propertyAccess | 1 | 1 | 0 | 0 | 0 | 0 | 0 |
+| returnInExpressionBody | 1 | 1 | 0 | 0 | 0 | 0 | 0 |
 | rtti | 1 | 1 | 0 | 0 | 0 | 0 | 0 |
 | stringTrim | 1 | 1 | 0 | 0 | 0 | 0 | 0 |
 | suppressions | 1 | 1 | 0 | 0 | 0 | 0 | 0 |

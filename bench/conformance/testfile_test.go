@@ -24,6 +24,9 @@ func TestLanguageSkip(t *testing.T) {
 		{"// LANGUAGE: +AllowReturnInExpressionBodyWithExplicitType\n", ""},
 		{"// LANGUAGE: +ProperIeee754Comparisons\n", ""},
 		{"// LANGUAGE: -ProperIeee754Comparisons\n", "LANGUAGE"},
+		{"// LANGUAGE: +JvmNullOutSpilledCoroutineLocals\n", ""},
+		{"// LANGUAGE: +PCLAEnhancementsIn21\n", ""},
+		{"// LANGUAGE: +ResolveTopLevelLambdasAsSyntheticCallArgument\n", ""},
 	}
 	dir := t.TempDir()
 	for i, tt := range tests {

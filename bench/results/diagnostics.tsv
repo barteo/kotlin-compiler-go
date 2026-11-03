@@ -4329,11 +4329,11 @@ tests/inference/lambdaInValInitializerWithAnonymousFunctions.kt	rejects invalid	
 tests/inference/lambdaParameterTypeInElvis.kt	accepts valid		
 tests/inference/lambdaWithoutExpectedType.kt	accepts valid		
 tests/inference/lambdasReturns.kt	accepts valid		
-tests/inference/lambdasReturnsShareCS.kt	skip	LANGUAGE	
+tests/inference/lambdasReturnsShareCS.kt	accepts valid		
 tests/inference/lambdasReturnsShareCSFeatureDisabled.kt	skip	LANGUAGE	
 tests/inference/lambdasWithExplicitParametersViaReceivers.kt	rejects invalid	on an expected line	
 tests/inference/lambdasWithExplicitParametersViaReceiversFeatureDisabled.kt	skip	LANGUAGE	
-tests/inference/lambdasWithExplicitParametersViaReceiversFeatureEnabled.kt	skip	LANGUAGE	
+tests/inference/lambdasWithExplicitParametersViaReceiversFeatureEnabled.kt	rejects invalid	on an expected line	
 tests/inference/lambdasWithExplicitParametersWithContexts.kt	rejects invalid	on an expected line	
 tests/inference/listConstructor.kt	accepts valid		
 tests/inference/localFunctionInsideIfBlock.kt	accepts valid		
@@ -4653,7 +4653,7 @@ tests/inference/pcla/memberScopeOfCapturedTypeForPostponedCall.kt	accepts valid
 tests/inference/pcla/multiLambdaRestriction.kt	skip	LANGUAGE	
 tests/inference/pcla/multiLambdaRestrictionDisabled.kt	skip	LANGUAGE	
 tests/inference/pcla/namedArgumentToBeResolved.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	namedArgumentToBeResolved.kt:17: cannot infer type for type parameter 'Failure'. Specify it explicitly.
-tests/inference/pcla/namedArgumentTypeSubstitution.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	namedArgumentTypeSubstitution.kt:25: cannot infer type for type parameter 'T'. Specify it explicitly.
+tests/inference/pcla/namedArgumentTypeSubstitution.kt	accepts valid		
 tests/inference/pcla/nestedLambdaWithLastLambdaContainingCall.kt	accepts valid		
 tests/inference/pcla/nestedLambdaWithNonLastYieldStatement.kt	accepts valid		
 tests/inference/pcla/nestedLambdasWithOverloadResolutionByReturnType.kt	accepts valid		
@@ -4876,7 +4876,7 @@ tests/inference/reportingImprovements/wrongArgumentExtensionFunction.kt	rejects 
 tests/inference/reportingImprovements/wrongArgumentPassedToLocalExtensionFunction.kt	rejects invalid	on an expected line	
 tests/inference/resolveWithUnknownLambdaParameterType.kt	rejects invalid	on an expected line	
 tests/inference/returningLambdaInSuspendContext.kt	rejects invalid	on an expected line	
-tests/inference/samConversionTopLevel.kt	skip	LANGUAGE	
+tests/inference/samConversionTopLevel.kt	accepts valid		
 tests/inference/samConversionTopLevelFeatureDisabled.kt	skip	LANGUAGE	
 tests/inference/selectOfLambdaWithExtension.kt	accepts valid		
 tests/inference/selfTypeFromJava.kt	skip	Java sources	
@@ -7877,7 +7877,7 @@ tests/samConversions/samConversionToGenericWrongNullabilityForbidden.kt	skip	LAN
 tests/samConversions/samConversionToGenericWrongNullabilityForbiddenAndNoFlexible.kt	skip	LANGUAGE	
 tests/samConversions/samConversionWithCallableReference.kt	skip	LANGUAGE	
 tests/samConversions/samConversionWithCallableReferencePreciseLowerConstraints.kt	skip	LANGUAGE	
-tests/samConversions/samConversionWithCondition.kt	rejects valid	cannot infer a type for this parameter. Please specify it explicitly.	samConversionWithCondition.kt:5: cannot infer a type for this parameter. Please specify it explicitly.
+tests/samConversions/samConversionWithCondition.kt	accepts valid		
 tests/samConversions/samConversionWithConditionJava.kt	skip	Java sources	
 tests/samConversions/samConversionWithJavaFlexibleType.kt	skip	LANGUAGE	
 tests/samConversions/samConversionWithJavaFlexibleTypePreciseLowerConstraints.kt	skip	LANGUAGE	

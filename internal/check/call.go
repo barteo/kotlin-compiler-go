@@ -1034,7 +1034,10 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 		}
 		c.runLambdas(sys, false)
 	}
-	if want.K != types.Invalid && !want.HasVars() && ret.HasVars() {
+	// A builder's variable that stubInference infers counts as known: as
+	// in Kotlin, o.p = materialize() for a p of the builder's type
+	// variable infers materialize's T with it (see joinRun).
+	if want.K != types.Invalid && (!want.HasVars() || c.onlyStubs(want)) && ret.HasVars() {
 		trial := sys.clone()
 		trial.sub(ret, want)
 		if trial.ok {

@@ -52,8 +52,11 @@ only turns on features Kotlin 2.4 has on by default
 `+AllowReturnInExpressionBodyWithExplicitType`,
 `+BreakContinueInInlineLambdas`, `+ContextParameters`,
 `+DataFlowBasedExhaustiveness`, `+ExplicitBackingFields`,
-`+MultiDollarInterpolation`, `+NestedTypeAliases`,
-`+ProperIeee754Comparisons`, `+WhenGuards`) doesn't count.
+`+JvmNullOutSpilledCoroutineLocals`, `+MultiDollarInterpolation`,
+`+NestedTypeAliases`, `+PCLAEnhancementsIn21`,
+`+ProperIeee754Comparisons`,
+`+ResolveTopLevelLambdasAsSyntheticCallArgument`, `+WhenGuards`)
+doesn't count.
 
 | Category | What happened |
 |:---|:---|

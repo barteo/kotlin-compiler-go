@@ -2108,9 +2108,9 @@ coroutines/suspendWhileBreakContinueInsideElvis.kt	pass
 coroutines/suspendWhileContinueInsideElvisWithFinally.kt	pass		
 coroutines/suspensionInsideSafeCall.kt	pass		
 coroutines/suspensionInsideSafeCallWithElvis.kt	pass		
-coroutines/tailCallOptimizations/crossinline.kt	skip	LANGUAGE	
+coroutines/tailCallOptimizations/crossinline.kt	pass		
 coroutines/tailCallOptimizations/inlineWithoutStateMachine.kt	pass		
-coroutines/tailCallOptimizations/innerObjectRetransformation.kt	skip	LANGUAGE	
+coroutines/tailCallOptimizations/innerObjectRetransformation.kt	pass		
 coroutines/tailCallOptimizations/tryCatch.kt	pass		
 coroutines/tailCallOptimizations/unit/functionReference.kt	pass		
 coroutines/tailCallOptimizations/unit/kt55559.kt	pass		
@@ -3186,7 +3186,7 @@ ieee754/anyCastToPrimitiveCompareTo2.kt	pass
 ieee754/anyToReal.kt	pass		
 ieee754/asComparableToDouble.kt	pass		
 ieee754/asComparableToDouble_properIeeeComparisons.kt	pass		
-ieee754/comparableToTWithT_properIeeeComparisons.kt	skip	LANGUAGE	
+ieee754/comparableToTWithT_properIeeeComparisons.kt	pass		
 ieee754/comparableTypeCast.kt	pass		
 ieee754/dataClass.kt	pass		
 ieee754/differentTypesComparison.kt	pass		
@@ -3370,12 +3370,12 @@ inference/pcla/issues/kt66359a.kt	pass
 inference/pcla/issues/kt66359b.kt	pass		
 inference/pcla/issues/kt67993.kt	pass		
 inference/pcla/issues/kt74819e.kt	pass		
-inference/pcla/issues/kt76058.kt	skip	LANGUAGE	
+inference/pcla/issues/kt76058.kt	pass		
 inference/pcla/issues/kt76171.kt	pass		
 inference/pcla/labaledCall.kt	pass		
 inference/pcla/lackOfNullCheckOnNullableInsideBuild.kt	pass		
 inference/pcla/lambdaParameterHasTVType.kt	pass		
-inference/pcla/memberScope.kt	skip	LANGUAGE	
+inference/pcla/memberScope.kt	pass		
 inference/pcla/nestedNonExhaustiveIf.kt	pass		
 inference/pcla/nullability.kt	pass		
 inference/pcla/oneParameter/oneTypeVariable/oneTypeInfoOrigin/AnonymousFunctionArgumentAndBuildeeParameter.kt	pass		
@@ -6664,7 +6664,7 @@ reified/spreads.kt	pass
 reified/vararg.kt	pass		
 reified/varargs.kt	pass		
 reified/withInlineTurnedOff.kt	pass		
-returnInExpressionBody/returnInExpressionBody.kt	skip	LANGUAGE	
+returnInExpressionBody/returnInExpressionBody.kt	pass		
 rtti/isReifiedObject.kt	pass		
 safeCall/genericNull.kt	pass		
 safeCall/kt1572.kt	pass		
@@ -6705,7 +6705,7 @@ sam/samWithAbstractToString.kt	pass
 sam/samWithAbstractToString2.kt	pass		
 sam/samWithAbstractToString3.kt	pass		
 sam/samWithNullableUpperBound.kt	pass		
-sam/topLevelConversions.kt	skip	LANGUAGE	
+sam/topLevelConversions.kt	pass		
 sameFileInSourceAndDependencies/classDeclaration.kt	pass		
 sameFileInSourceAndDependencies/differingNumberOfGenericTypeParameters.kt	skip	IGNORE_BACKEND: JVM_IR	
 sameFileInSourceAndDependencies/functionDeclaration.kt	pass		
