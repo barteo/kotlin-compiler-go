@@ -143,10 +143,11 @@ func (c *Checker) checkAnnotations(as []syntax.Annotation, owner *types.ClassSym
 			c.annotationValues(cls, args, a.P)
 			continue
 		}
-		saved := c.state
+		saved, savedLookup := c.state, c.lookupCls
 		c.state = state{scope: &scope{}, staticCls: owner}
+		c.lookupCls = annotationScope(owner, c.lookupCls, site)
 		values, ok := c.annotationValues(cls, args, a.P)
-		c.state = saved
+		c.state, c.lookupCls = saved, savedLookup
 		if ok && !source {
 			// Class files keep it.
 			a.Class, a.Values = cls, values
