@@ -67,8 +67,12 @@ func (c *Checker) resolveSecondaries(d *syntax.ClassDecl) {
 	// The constructors by erased parameters, to report conflicts.
 	seen := map[string]syntax.Pos{}
 	reported := map[string]bool{}
+	// The keys of the hidden ones: deprecated with level HIDDEN, which
+	// don't conflict with the others, as with kotlinc, but clash on the JVM.
+	hidden := map[string]bool{}
 	if cls.Ctor != nil {
 		seen[paramKey(cls.Ctor)] = d.P
+		hidden[paramKey(cls.Ctor)] = cls.Ctor.Hidden
 	}
 	for _, sc := range secs {
 		if sc.Serial != nil {
@@ -96,13 +100,18 @@ func (c *Checker) resolveSecondaries(d *syntax.ClassDecl) {
 			c.errorf(sc.P, "constructor must be private in enum class")
 		}
 		if k := paramKey(f); seen[k] != (syntax.Pos{}) {
-			if !reported[k] {
-				reported[k] = true
-				c.errorf(seen[k], "conflicting overloads: constructor%s", k)
+			switch {
+			case hidden[k] || f.Hidden:
+				c.errorf(sc.P, "platform declaration clash: constructor%s", k)
+			default:
+				if !reported[k] {
+					reported[k] = true
+					c.errorf(seen[k], "conflicting overloads: constructor%s", k)
+				}
+				c.errorf(sc.P, "conflicting overloads: constructor%s", k)
 			}
-			c.errorf(sc.P, "conflicting overloads: constructor%s", k)
 		} else {
-			seen[k] = sc.P
+			seen[k], hidden[k] = sc.P, f.Hidden
 		}
 		cls.Ctors = append(cls.Ctors, f)
 	}
