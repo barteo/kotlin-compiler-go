@@ -49,8 +49,9 @@ ignores, and tests that need `LANGUAGE` features, compiler arguments,
 Java sources, or modules with friends or `dependsOn`. A `LANGUAGE` that
 only turns on features Kotlin 2.4 has on by default
 (`+BreakContinueInInlineLambdas`, `+ContextParameters`,
-`+ExplicitBackingFields`, `+MultiDollarInterpolation`,
-`+NestedTypeAliases`, `+WhenGuards`) doesn't count.
+`+DataFlowBasedExhaustiveness`, `+ExplicitBackingFields`,
+`+MultiDollarInterpolation`, `+NestedTypeAliases`, `+WhenGuards`)
+doesn't count.
 
 | Category | What happened |
 |:---|:---|

@@ -724,9 +724,18 @@ func (c *Checker) binary(x *syntax.Binary, want types.Type, allowRange bool) typ
 		} else {
 			c.scope.narrows = whenFalse
 		}
-		c.value(x.Y, types.BoolType)
+		yt := c.value(x.Y, types.BoolType)
 		c.pop()
 		c.wantBool(x.Y)
+		if yt.K == types.Nothing {
+			// a && throw E(), a || return: the code after it sees a false,
+			// or true.
+			if x.Op == syntax.AND {
+				c.scope.narrows = append(c.scope.narrows, whenFalse...)
+			} else {
+				c.scope.narrows = append(c.scope.narrows, whenTrue...)
+			}
+		}
 		return types.BoolType
 
 	case syntax.ELVIS:
@@ -1315,6 +1324,7 @@ func (c *Checker) narrowing(cond syntax.Expr) (whenTrue, whenFalse []narrow) {
 	case *syntax.Binary:
 		switch x.Op {
 		case syntax.EQ, syntax.NE, syntax.EQ_EQ_EQ, syntax.NOT_EQ_EQ:
+			defer func() { whenTrue, whenFalse = c.equalExclusions(x, whenTrue, whenFalse) }()
 			if t, f, ok := c.boolEquality(x); ok {
 				return t, f
 			}
@@ -1422,15 +1432,31 @@ func (c *Checker) narrowing(cond syntax.Expr) (whenTrue, whenFalse []narrow) {
 			}
 			return safe, nil
 		}
+		// Where it isn't a T, a when over it needn't cover T.
+		// Where it is one, nor the subclasses of a sealed class that T
+		// isn't.
+		var not []narrow
+		var others *coverage
+		if x.Target.K == types.Class && !types.MayBeNull(x.Target) {
+			not = c.excluding(nil, k, &coverage{classes: []*types.ClassSym{x.Target.C}})
+			if k.t.NonNull().K == types.Class {
+				others = &coverage{}
+				otherSubclasses(k.t.NonNull().C, x.Target.C, others)
+			}
+		}
+		key := k
 		k.t = c.isNarrowed(k.t, x.Target)
 		n := append([]narrow{k}, safe...)
 		if !types.MayBeNull(k.t) {
 			n = append(n, c.implied[c.localKey(k)]...) // as for k != null
 		}
-		if x.Not {
-			return nil, n
+		if others != nil && !others.empty() {
+			n = c.excluding(n, key, others)
 		}
-		return n, nil
+		if x.Not {
+			return not, n
+		}
+		return n, not
 	}
 	return nil, nil
 }
@@ -3482,6 +3508,13 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 				return types.InvalidType
 			}
 			result = t
+		}
+	}
+	if hasSubj && x.SubjVar == "" {
+		// Nor values the subject is known not to be: E.A after
+		// if (e == E.A) return.
+		if not := c.scope.excluded(subj.recv, subj.sym); not != nil {
+			cov.merge(not)
 		}
 	}
 	exhaustive := hasElse || x.Subject != nil && c.covers(st, &cov)

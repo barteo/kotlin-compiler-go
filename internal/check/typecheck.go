@@ -571,12 +571,31 @@ func (cv *coverage) entry(name string) {
 	cv.entries[name] = true
 }
 
+// merge adds what o covers.
+func (cv *coverage) merge(o *coverage) {
+	cv.null = cv.null || o.null
+	cv.isTrue = cv.isTrue || o.isTrue
+	cv.isFalse = cv.isFalse || o.isFalse
+	for e := range o.entries {
+		cv.entry(e)
+	}
+	cv.classes = append(cv.classes[:len(cv.classes):len(cv.classes)], o.classes...)
+}
+
+// empty reports whether cv covers nothing.
+func (cv *coverage) empty() bool {
+	return !cv.null && !cv.isTrue && !cv.isFalse && len(cv.entries) == 0 && len(cv.classes) == 0
+}
+
 // covers reports whether the branches cover every value of a subject of
 // type t: true and false, every enum entry, or every subclass of a sealed
 // class, and null if t is nullable.
 func (c *Checker) covers(t types.Type, cv *coverage) bool {
 	if types.MayBeNull(t) && !t.P && !cv.null {
 		return false
+	}
+	if t.K == types.Null {
+		return true // a subject known to be null, which null covers
 	}
 	t = t.NonNull()
 	switch {

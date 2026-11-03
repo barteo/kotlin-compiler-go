@@ -230,6 +230,7 @@ func commonSkip(t *test) string {
 var defaultFeatures = map[string]bool{
 	"+BreakContinueInInlineLambdas": true,
 	"+ContextParameters":            true,
+	"+DataFlowBasedExhaustiveness":  true,
 	"+ExplicitBackingFields":        true,
 	"+MultiDollarInterpolation":     true,
 	"+NestedTypeAliases":            true,

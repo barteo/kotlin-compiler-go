@@ -464,6 +464,9 @@ func (c *Checker) flowState() flowState {
 		for i := len(sc.narrows) - 1; i >= 0; i-- {
 			n := sc.narrows[i]
 			k := flowKey{n.recv, n.sym}
+			if n.onlyNot {
+				continue // no smart cast
+			}
 			if _, ok := st[k]; !ok {
 				st[k] = n.t
 			}
@@ -658,6 +661,10 @@ func (c *Checker) mayNotRun(n int, other []narrow) {
 	added := slices.Clone(ns[n:])
 	c.scope.narrows = ns[:n]
 	for _, k := range added {
+		if k.onlyNot {
+			continue
+		}
+		k.not = nil // values it isn't may not hold either
 		prev := c.scope.narrowedMember(k.recv, k.sym, k.sym.Type)
 		if k.t == prev || c.subtype(k.t, prev) {
 			// Both ways, the wider of the two.
@@ -908,23 +915,35 @@ func (c *Checker) loopHead(vars []*types.VarSym, cond syntax.Expr, pre flowState
 func (c *Checker) eitherNarrows(first, ctx, second []narrow) []narrow {
 	var out []narrow
 	for _, n := range first {
+		if n.onlyNot {
+			other := findNot(second, n)
+			if other == nil {
+				other = findNot(ctx, n)
+			}
+			if not := bothCover(n.not, other); not != nil {
+				out = append(out, narrow{recv: n.recv, sym: n.sym, t: n.t, not: not, onlyNot: true})
+			}
+			continue
+		}
+		other := second
 		u, ok := findNarrow(second, n)
 		if !ok {
 			if u, ok = findNarrow(ctx, n); !ok {
 				continue
 			}
+			other = ctx
 		}
-		t := n.t
+		// The values it isn't on both paths: C after a is A || a is B,
+		// for a sealed class of A, B and C.
+		not := bothCover(n.not, findNot(other, n))
+		t, typed := n.t, true
 		if u != t {
 			j, ok := c.join(t, u)
-			if !ok || j.K == types.Invalid {
-				continue
-			}
 			// x is A || x is B doesn't smart cast x to their common
 			// supertype where it can't be seen: a private interface of
 			// another file.
-			if j.K == types.Class && j.C != nil && !c.classVisible(j.C) {
-				continue
+			if !ok || j.K == types.Invalid || j.K == types.Class && j.C != nil && !c.classVisible(j.C) {
+				typed = false
 			}
 			t = j
 		}
@@ -932,10 +951,47 @@ func (c *Checker) eitherNarrows(first, ctx, second []narrow) []narrow {
 		if n.recv != nil {
 			cur = c.scope.narrowedMember(n.recv, n.sym, types.InvalidType)
 		}
-		if t == cur || cur.K != types.Invalid && !c.subtype(t, cur) {
+		if !typed || t == cur || cur.K != types.Invalid && !c.subtype(t, cur) {
+			if not == nil || cur.K == types.Invalid {
+				continue
+			}
+			out = append(out, narrow{recv: n.recv, sym: n.sym, t: cur, not: not, onlyNot: true})
 			continue
 		}
-		out = append(out, narrow{recv: n.recv, sym: n.sym, t: t})
+		out = append(out, narrow{recv: n.recv, sym: n.sym, t: t, not: not})
+	}
+	return out
+}
+
+// findNot returns the values that the last smart cast in ns of the value
+// n narrows says it isn't, or nil.
+func findNot(ns []narrow, n narrow) *coverage {
+	for i := len(ns) - 1; i >= 0; i-- {
+		if ns[i].sym == n.sym && ns[i].recv == n.recv {
+			return ns[i].not
+		}
+	}
+	return nil
+}
+
+// bothCover returns what both a and b cover, or nil if that is nothing.
+func bothCover(a, b *coverage) *coverage {
+	if a == nil || b == nil {
+		return nil
+	}
+	out := &coverage{null: a.null && b.null, isTrue: a.isTrue && b.isTrue, isFalse: a.isFalse && b.isFalse}
+	for e := range a.entries {
+		if b.entries[e] {
+			out.entry(e)
+		}
+	}
+	for _, k := range a.classes {
+		if slices.Contains(b.classes, k) {
+			out.classes = append(out.classes, k)
+		}
+	}
+	if out.empty() {
+		return nil
 	}
 	return out
 }
@@ -943,11 +999,103 @@ func (c *Checker) eitherNarrows(first, ctx, second []narrow) []narrow {
 // findNarrow returns the last smart cast in ns of the value n narrows.
 func findNarrow(ns []narrow, n narrow) (types.Type, bool) {
 	for i := len(ns) - 1; i >= 0; i-- {
-		if ns[i].sym == n.sym && ns[i].recv == n.recv {
+		if ns[i].sym == n.sym && ns[i].recv == n.recv && !ns[i].onlyNot {
 			return ns[i].t, true
 		}
 	}
 	return types.Type{}, false
+}
+
+// excluding returns ns with the values in out added to those that the
+// value k keys is known not to be: on its last smart cast in ns, or on one
+// of its own of its type here, k.t.
+func (c *Checker) excluding(ns []narrow, k narrow, out *coverage) []narrow {
+	not := &coverage{}
+	if prior := c.scope.excluded(k.recv, k.sym); prior != nil {
+		not.merge(prior)
+	}
+	not.merge(out)
+	ns = slices.Clone(ns)
+	for i := len(ns) - 1; i >= 0; i-- {
+		if ns[i].sym == k.sym && ns[i].recv == k.recv {
+			if ns[i].not != nil {
+				not.merge(ns[i].not)
+			}
+			ns[i].not = not
+			return ns
+		}
+	}
+	k.not, k.onlyNot = not, true
+	return append(ns, k)
+}
+
+// equalExclusions adds to the smart casts of a == b (or ===, != and !==)
+// what it tells about the values a stable value on one side isn't, when
+// the other is a constant a when can compare it with (true, an enum entry,
+// an object): where they differ, the constant, and where a Boolean equals
+// true or false, the other one and null. A when over the value needn't
+// cover those, as after if (e == E.A) return.
+func (c *Checker) equalExclusions(x *syntax.Binary, whenTrue, whenFalse []narrow) ([]narrow, []narrow) {
+	for _, side := range [2][2]syntax.Expr{{x.X, x.Y}, {x.Y, x.X}} {
+		var lit coverage
+		lit.add(side[1])
+		lit.null = false // x != null is a smart cast already
+		if lit.empty() {
+			continue
+		}
+		k, ok := c.narrowKeyOf(side[0])
+		if !ok {
+			continue
+		}
+		equal, differ := &whenTrue, &whenFalse
+		if x.Op == syntax.NE || x.Op == syntax.NOT_EQ_EQ {
+			equal, differ = differ, equal
+		}
+		*differ = c.excluding(*differ, k, &lit)
+		*equal = c.excluding(*equal, k, otherValues(k.t, &lit))
+		break
+	}
+	return whenTrue, whenFalse
+}
+
+// otherValues returns the values of type t, Boolean, an enum or a sealed
+// class, that a value equal to the constant lit covers isn't: null, the
+// other Boolean, the other entries, or the subclasses its class isn't.
+func otherValues(t types.Type, lit *coverage) *coverage {
+	out := &coverage{null: true}
+	t = t.NonNull()
+	switch {
+	case lit.isTrue != lit.isFalse:
+		out.isTrue, out.isFalse = lit.isFalse, lit.isTrue
+	case t.K != types.Class:
+	case len(lit.entries) == 1:
+		t.C.Ensure()
+		for _, e := range t.C.Entries {
+			if !lit.entries[e] {
+				out.entry(e)
+			}
+		}
+	case len(lit.classes) == 1:
+		otherSubclasses(t.C, lit.classes[0], out)
+	}
+	return out
+}
+
+// otherSubclasses adds to out the subclasses of sealed class cls that an
+// instance of k isn't.
+func otherSubclasses(cls, k *types.ClassSym, out *coverage) {
+	if !cls.Sealed || cls.IsSubclassOf(k) {
+		return
+	}
+	for _, s := range cls.Subclasses {
+		switch {
+		case s.IsSubclassOf(k):
+		case k.IsSubclassOf(s):
+			otherSubclasses(s, k, out)
+		default:
+			out.classes = append(out.classes, s)
+		}
+	}
 }
 
 // notNullCast returns the smart cast of (a as T)!! or (a as? T)!!, x
