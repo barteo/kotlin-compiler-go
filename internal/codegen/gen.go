@@ -155,7 +155,11 @@ type fileState struct {
 	inlineDepth int       // see inlineMu
 	renamed     []renamed // see nameObjects
 	copies      map[*types.ClassSym]*objectCopy
-	count       map[string]int // lambdas named with each class and prefix
+	// inlinedConvs holds the suspend conversions passed to the copies
+	// being generated whose lambdas are inlined, by their $f: see
+	// convertedArg.
+	inlinedConvs map[*syntax.Call]*types.VarSym
+	count        map[string]int // lambdas named with each class and prefix
 	// lambdasIn are the lambdas of the inline functions the file copies,
 	// by function: see declaredInCopy.
 	lambdasIn map[*syntax.FunDecl]map[*syntax.Lambda]bool
@@ -2531,13 +2535,29 @@ func (g *gen) staticInit(cd *syntax.ClassDecl) {
 				g.code.FieldInsn(cf.PUTSTATIC, cls.Name, e.Name, self)
 				continue
 			}
-			g.code.New(cls.Name)
-			g.code.Op(cf.DUP)
-			g.code.Sconst(e.Name)
-			g.code.Iconst(int32(i))
 			f := e.Call.Sym
 			d := "(Ljava/lang/String;I" + ctorJVMDesc(f)[1:]
-			if mask := g.callArgs(e.Call, f); mask.any() {
+			var mask argMask
+			if hasHandlers(e.Call.Args) {
+				// A try's handler starts with an empty stack, without the
+				// entry under construction: the arguments are evaluated
+				// first, as kotlinc does, and kept in locals.
+				depth := g.code.Depth()
+				mask = g.callArgs(e.Call, f)
+				args, _ := g.code.SpillAbove(depth)
+				g.code.New(cls.Name)
+				g.code.Op(cf.DUP)
+				g.code.Sconst(e.Name)
+				g.code.Iconst(int32(i))
+				g.code.Unspill(args)
+			} else {
+				g.code.New(cls.Name)
+				g.code.Op(cf.DUP)
+				g.code.Sconst(e.Name)
+				g.code.Iconst(int32(i))
+				mask = g.callArgs(e.Call, f)
+			}
+			if mask.any() {
 				g.pushMask(mask, len(f.Params))
 				d = defaultsDesc(d, len(f.Params), ctorMarker)
 			}

@@ -910,8 +910,10 @@ func (p *parser) parseImport() *Import {
 func (p *parser) parseType() *TypeRef {
 	unsafe, composable, noInfer := false, false, false
 	var wild Wildcards
+	var as []Annotation
 	for p.at(AT) {
 		a := p.annotation()
+		as = append(as, a)
 		if a.Target == "receiver" {
 			// receiver takes those of a receiver type.
 			p.failAt(a.P, "this annotation is not applicable to target 'type usage' and use-site target '@receiver'")
@@ -923,8 +925,9 @@ func (p *parser) parseType() *TypeRef {
 			wild = w
 		}
 	}
-	if unsafe || composable || noInfer || wild != DefaultWildcards {
+	if as != nil {
 		t := p.parseType()
+		t.Annotations = append(as, t.Annotations...)
 		t.UnsafeVariance = t.UnsafeVariance || unsafe
 		t.NoInfer = t.NoInfer || noInfer
 		t.Composable = t.Composable || composable
@@ -1126,12 +1129,12 @@ func (p *parser) parseTypeParams() []*TypeParam {
 		if p.at(GT) && ps != nil {
 			break // a trailing comma
 		}
+		var as []Annotation
 		onlyInput := false
 		for p.at(AT) {
-			// Ignored, as kc writes no type annotations, but for the
-			// inference's OnlyInputTypes.
-			a := p.annotation()
-			onlyInput = onlyInput || a.Is("internal.OnlyInputTypes")
+			a := p.annotation() // kc writes no type annotations
+			as = append(as, a)
+			onlyInput = onlyInput || a.Is("internal.OnlyInputTypes") // for the inference
 			p.skipNL()
 		}
 		reified := false
@@ -1139,7 +1142,7 @@ func (p *parser) parseTypeParams() []*TypeParam {
 			reified = true
 			p.next()
 		}
-		tp := &TypeParam{Variance: p.variance(), Reified: reified, OnlyInput: onlyInput}
+		tp := &TypeParam{Variance: p.variance(), Reified: reified, Annotations: as, OnlyInput: onlyInput}
 		name := p.ident()
 		tp.P, tp.Name = name.Pos, name.Text
 		if p.peekPastNL() == COLON {

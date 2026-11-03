@@ -414,6 +414,13 @@ func (g *gen) ident(x *syntax.Ident) {
 		}
 		g.code.FieldInsn(cf.GETSTATIC, sym.Owner.Name, sym.Name, desc(sym.Type))
 	case types.BackingField:
+		if sym.OuterOf != nil {
+			// In a local class or an object in the accessor: the
+			// accessor's this, which the class captured.
+			g.loadStorage(sym.OuterOf)
+			g.outerField(sym.Prop, false)
+			break
+		}
 		g.backingField(sym.Prop, true)
 	case types.Prop:
 		if sym.Const {
@@ -1779,6 +1786,22 @@ func (g *gen) invokeDefault(f *types.FunSym, mask argMask) {
 }
 
 func (g *gen) call(x *syntax.Call) {
+	if unconverted(x) != syntax.Expr(x) {
+		if l, _ := g.forwarded(x); l != nil {
+			g.code.Op(cf.ACONST_NULL) // see ident
+			return
+		}
+		if fv := g.shared.inlinedConvs[x]; fv != nil {
+			// The converted value goes to $f's local; the placeholder is
+			// dropped (see convertedArg).
+			ch, _, _ := conversion(x)
+			g.exprAs(ch, fv.Type)
+			fv.Slot = g.code.AllocLocal(desc(fv.Type))
+			g.code.Local(cf.ASTORE, fv.Slot)
+			g.code.Op(cf.ACONST_NULL)
+			return
+		}
+	}
 	if x.Group {
 		// An inline function's call whose lambda calls composables, in
 		// a replace group: see composeFlow.
@@ -1872,7 +1895,7 @@ func (g *gen) ungroupedCall(x *syntax.Call) {
 	case x.Builtin == types.Println || x.Builtin == types.Print:
 		// As kotlinc's inlined println, an argument that suspends comes
 		// first, so that System.out isn't saved with the locals.
-		late := g.sm != nil && hasSuspension(x.Args)
+		late := g.argsSuspend(x.Args)
 		out := func(t types.Type) {
 			if !late {
 				return
@@ -2040,7 +2063,7 @@ func (g *gen) ungroupedCall(x *syntax.Call) {
 	case x.Ctor != nil:
 		d := ctorJVMDesc(x.Sym)
 		var mask argMask
-		if g.sm != nil && hasSuspension(x.Args) || hasHandlers(x.Args) {
+		if g.argsSuspend(x.Args) || hasHandlers(x.Args) {
 			// The object under construction can't be stored while the
 			// arguments suspend, or in the locals that a try's handler
 			// needs the stack spilled to: they are evaluated first, as

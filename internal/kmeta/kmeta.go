@@ -174,6 +174,9 @@ type PackageData struct {
 	Props      []*Property
 	Aliases    []*TypeAlias
 	ModuleName string // the module, if it isn't "main"
+	// Locals are the local delegated properties of the top-level
+	// functions, <v#N>, which kotlin-reflect reads (packageLocalVariable).
+	Locals []*Property
 }
 
 // All decodes all the package's declarations, ordered by name.
