@@ -100,7 +100,7 @@ func recvThis(r *implicitRecv, p syntax.Pos) *syntax.This {
 // It reports false if none has.
 func (c *Checker) recvMember(x *syntax.Ident) (types.Type, bool) {
 	for i := len(c.recvs) - 1; i >= 0; i-- {
-		if c.recvs[i].outer && c.ownProp(x) {
+		if c.recvs[i].outer && (c.ownProp(x) || c.headerStaticProp(x.Name)) {
 			return types.InvalidType, false // the object's own
 		}
 		r := &c.recvs[i]
@@ -123,6 +123,23 @@ func (c *Checker) recvMember(x *syntax.Ident) (types.Type, bool) {
 		return t, true
 	}
 	return types.InvalidType, false
+}
+
+// headerStaticProp reports whether, in a class's header, such as its
+// call of its superclass's constructor, a property named name is in the
+// class's static scope: its companion's, or a superclass's companion's,
+// which come before an outer class's this, as in kotlinc.
+func (c *Checker) headerStaticProp(name string) bool {
+	if c.cls != nil || c.staticCls == nil {
+		return false
+	}
+	for k := c.staticCls; k != nil; k = k.Super {
+		k.Ensure()
+		if obj := k.Companion; obj != nil && !obj.External && c.userProp(obj, name) != nil {
+			return true
+		}
+	}
+	return false
 }
 
 // recvTarget returns the target of an assignment: a name that isn't a
