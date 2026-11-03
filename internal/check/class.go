@@ -39,6 +39,7 @@ func (c *Checker) resolveSupertypes() {
 			c.lookupCls = cls
 		}
 		cls.Annotations = c.classAnnotations(cd.Annotations)
+		cls.RestrictsSuspension = slices.ContainsFunc(cls.Annotations, func(a *types.ClassSym) bool { return a.Name == "kotlin/coroutines/RestrictsSuspension" })
 		cls.Supers = []types.Type{}
 		seen := map[*types.ClassSym]bool{}
 		for _, st := range cd.Supers {

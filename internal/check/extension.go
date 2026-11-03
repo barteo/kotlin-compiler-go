@@ -93,7 +93,7 @@ func (c *Checker) funModifiers(m syntax.Modifiers, p syntax.Pos, what string) {
 func (c *Checker) declareRecv(d *syntax.FunDecl) {
 	sym := d.Sym
 	sym.Ext = true
-	sym.Recv = c.resolveType(d.Recv)
+	sym.Recv = c.resolveType(d.Recv).WithMarkers(c.annotationMarkers(d.RecvAnnotations))
 	recv := types.VarSym{Name: "$this$" + d.Name, Type: sym.Recv, Kind: types.Param, Decl: d}
 	if d.RecvSym != nil {
 		*d.RecvSym = recv
@@ -193,7 +193,7 @@ func (c *Checker) resolveExtProp(d *syntax.PropDecl) {
 	c.tparams = funTypeParams(gs, gs.Owner)
 	defer func() { c.tparams = nil }()
 	c.resolveBounds(d.TypeParams)
-	gs.Recv = c.resolveType(d.Recv)
+	gs.Recv = c.resolveType(d.Recv).WithMarkers(c.annotationMarkers(d.RecvAnnotations))
 	g.RecvSym = &types.VarSym{Name: "$this$" + d.Name, Type: gs.Recv, Kind: types.Param, Decl: g}
 	sym.Getter = gs
 	if st := d.Setter; st != nil && st.Sym != nil {
