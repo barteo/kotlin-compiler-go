@@ -24,6 +24,10 @@ fun main() {
     val n: List<Int>? = null
     for (x in n) { // ERROR not nullable value required
     }
+    val r: Int = 1.rangeTo(3) // ERROR type mismatch: inferred type is IntRange but Int was expected
+    val chars: Int = 'a'.rangeUntil('c') // ERROR type mismatch: inferred type is CharRange but Int was expected
+    val s: Int = 1.rangeTo("abc")
+    println(1.rangeTo('c')) // ERROR type mismatch: inferred type is Char but String was expected
     xs[0] += 1 // ERROR unresolved reference: set
     println(Box()[0]) // ERROR 'operator' modifier is required on 'get' in 'Box'
 
@@ -39,3 +43,5 @@ fun main() {
 }
 
 fun readOnly(x: Any): Boolean = x is List<*>
+
+operator fun Int.rangeTo(s: String) = s.length

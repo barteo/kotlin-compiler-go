@@ -42,6 +42,178 @@ tailrec fun collatz(n: Long, steps: Int = 0): Int = when {
 
 fun notTail(n: Int): Int = if (n == 0) 0 else 1 + notTail(n - 1)
 
+// A call followed by a return without a value is in tail position.
+var steps = 0
+
+tailrec fun unitSteps(x: Int) {
+    steps++
+    if (x > 600000) {
+        unitSteps(x - 1)
+        return
+    } else if (x > 300000) {
+        notTail(1)
+        if (x > 1) {
+            unitSteps(x - 1)
+        }
+        return
+    } else if (x > 0) {
+        unitSteps(x - 1)
+    }
+}
+
+// The right sides of ?:, && and || are in tail position.
+fun maybe(x: Int): Int? = if (x == 1) x else null
+
+tailrec fun elvis(x: Int): Int = maybe(x) ?: elvis(x - 1)
+
+tailrec fun elvisChain(n: Int): Int? {
+    if (n < 0) return null
+    if (n == 0) return 777
+    return elvisChain(-1) ?: elvisChain(-2) ?: elvisChain(n - 1)
+}
+
+tailrec fun anyZero(x: Int): Boolean = x == 0 || anyZero(x - 1)
+
+tailrec fun allPositive(x: Int): Boolean = x > 0 && (x == 1 || allPositive(x - 1))
+
+inline fun <T> nothing(f: () -> T?): T? = f()
+
+tailrec fun whenElvis(n: Int): Int = when (n) {
+    0 -> whenElvis(1)
+    1 -> n
+    else -> nothing<Int> { null } ?: whenElvis(n - 1)
+}
+
+// Parentheses don't change tail position.
+tailrec fun parens(x: Int): Int {
+    if (x == 0) return 42
+    return (parens(x - 1))
+}
+
+tailrec fun returnInParens(x: Int) {
+    if (x == 0) return
+    (return returnInParens(x - 1))
+}
+
+// A call of a member of an object on the object, named, is on this.
+object Counter {
+    var calls = 0
+
+    tailrec fun count(i: Int): Int {
+        calls++
+        if (i <= 0) return calls
+        return Counter.count(i - 1)
+    }
+}
+
+class Outer {
+    companion object {
+        tailrec fun down(i: Int): Int {
+            if (i <= 0) return i
+            return Outer.down(i - 1)
+        }
+
+        tailrec fun downNamed(i: Int): Int {
+            if (i <= 0) return i
+            return Outer.Companion.downNamed(i - 1)
+        }
+    }
+}
+
+// Local tailrec functions: with a captured var and a default value the
+// tail call leaves out, as an extension, and in a class's method,
+// capturing this.
+fun localCount(n: Int): Int {
+    var calls = 0
+    tailrec fun go(i: Int, by: Int = 1): Int {
+        calls++
+        return if (i <= 0) calls else go(i - by)
+    }
+    return go(n, 2)
+}
+
+fun localExt(n: Int): Int {
+    tailrec fun Int.down(acc: Int): Int = if (this == 0) acc else (this - 1).down(acc + 1)
+    return n.down(0)
+}
+
+class Stepper(val step: Int) {
+    fun run(n: Int): Int {
+        tailrec fun go(i: Int, k: Int): Int = if (i <= 0) k else go(i - step, k + 1)
+        return go(n, 0)
+    }
+}
+
+// Returns of tailrec functions from lambdas passed to inline functions:
+// through a try whose finally block runs on each jump, past a value the
+// inlined code left on the stack, before a return without a value, and
+// in nested lambdas. A lambda's result isn't a tail call.
+inline fun act(f: () -> Unit) {
+    f()
+}
+
+var finallies = 0
+
+inline fun guarded(f: () -> Unit) {
+    try {
+        f()
+    } finally {
+        finallies++
+    }
+}
+
+inline fun plus(a: Int, f: () -> Int): Int = a + f()
+
+inline fun twice(f: () -> Int): Int = f() + f()
+
+tailrec fun viaAct(n: Int, acc: Long): Long {
+    act {
+        if (n == 0) return acc
+        return viaAct(n - 1, acc + n)
+    }
+    return -1
+}
+
+tailrec fun viaGuarded(n: Int): Int {
+    guarded {
+        if (n == 0) return n
+        return viaGuarded(n - 1)
+    }
+    return -1
+}
+
+tailrec fun viaPlus(n: Int): Int = plus(1) {
+    if (n == 0) return 7
+    return viaPlus(n - 1)
+}
+
+var lambdaSteps = 0
+
+tailrec fun unitInLambda(n: Int) {
+    act {
+        lambdaSteps++
+        if (n > 0) {
+            unitInLambda(n - 1)
+            return
+        }
+    }
+}
+
+tailrec fun nested(n: Int): Int {
+    act {
+        act {
+            if (n == 0) return 3
+            return nested(n - 1)
+        }
+    }
+    return -1
+}
+
+tailrec fun lambdaResult(n: Int): Int {
+    if (n == 0) return 1
+    return twice { lambdaResult(n - 1) }
+}
+
 fun main() {
     println(sum(1000000))
     println(gcd(1071, 462))
@@ -54,4 +226,27 @@ fun main() {
     println(Walker(1000000).walk(0, 0))
     println(collatz(27))
     println(notTail(100))
+    unitSteps(1000000)
+    println(steps)
+    println(elvis(1000000))
+    println(elvisChain(1000000))
+    println(anyZero(1000000))
+    println(allPositive(1000000))
+    println(whenElvis(1000000))
+    println(parens(1000000))
+    returnInParens(1000000)
+    println(Counter.count(1000000))
+    println(Outer.down(1000000))
+    println(Outer.downNamed(1000000))
+    println(localCount(1000000))
+    println(localExt(1000000))
+    println(Stepper(3).run(3000000))
+    println(viaAct(1000000, 0))
+    println(viaGuarded(1000000))
+    println(finallies)
+    println(viaPlus(1000000))
+    unitInLambda(1000000)
+    println(lambdaSteps)
+    println(nested(1000000))
+    println(lambdaResult(10))
 }

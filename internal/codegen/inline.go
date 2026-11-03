@@ -47,8 +47,8 @@ import (
 
 // invokeFun calls a top-level or extension function of the class path,
 // whose arguments are on the stack, or copies its body there if it is
-// inline. A mask other than 0 marks omitted arguments.
-func (g *gen) invokeFun(x *syntax.Call, f *types.FunSym, mask int) {
+// inline. A mask with bits set marks omitted arguments.
+func (g *gen) invokeFun(x *syntax.Call, f *types.FunSym, mask argMask) {
 	b := inlineBody(f, mask)
 	if b == nil {
 		if f.Suspend {
@@ -57,10 +57,9 @@ func (g *gen) invokeFun(x *syntax.Call, f *types.FunSym, mask int) {
 		g.invokeStatic(f.Facade, f, mask, false)
 		return
 	}
-	if mask != 0 {
-		// name$default takes the mask and a marker after the arguments.
-		g.code.Iconst(int32(mask))
-		g.code.Op(cf.ACONST_NULL)
+	if mask.any() {
+		// name$default takes the masks and a marker after the arguments.
+		g.pushMask(mask, types.DefaultBits(f))
 	}
 	g.inline(b, x)
 	if f.Suspend {
@@ -71,15 +70,15 @@ func (g *gen) invokeFun(x *syntax.Call, f *types.FunSym, mask int) {
 // inlineBody returns the body that a call of f copies, or nil if it calls
 // f: a public inline function whose body kc can't copy is called. With
 // omitted arguments, it is f's name$default method's.
-func inlineBody(f *types.FunSym, mask int) *inline.Body {
+func inlineBody(f *types.FunSym, mask argMask) *inline.Body {
 	in := f.Inline
 	if in == nil {
 		return nil
 	}
 	var b *inline.Body
 	var err error
-	if mask != 0 {
-		b, err = in.Defaults()
+	if mask.any() {
+		b, err = in.Defaults(types.DefaultBits(f))
 	} else {
 		b, err = in.Body()
 	}

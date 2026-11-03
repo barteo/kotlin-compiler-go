@@ -181,7 +181,7 @@ func argRef(ref *syntax.TypeRef, t types.Type, i int) *syntax.TypeRef {
 		return nil
 	}
 	if ref.Ret != nil {
-		var refs []*syntax.TypeRef
+		refs := ref.Contexts[:len(ref.Contexts):len(ref.Contexts)]
 		if ref.Recv != nil {
 			refs = append(refs, ref.Recv)
 		}
@@ -404,7 +404,12 @@ func (w *sigWriter) member(p sigPart, d string, m wildMode) {
 	}
 	t, ref := p.t, p.ref
 	if types.Unboxed(t) {
-		t, ref = types.Repr(t), nil // a value class's underlying value
+		var ok bool
+		if t, ok = sigRepr(t); !ok {
+			w.WriteString(d) // a type parameter's value, erased as kotlinc's
+			return
+		}
+		ref = nil // a value class's underlying value
 	}
 	if len(d) == 1 || t.K == types.Invalid || t.K == types.Unit {
 		w.WriteString(d)
@@ -545,6 +550,13 @@ func (g *gen) signParams(mr cf.MemberRef, f *types.FunSym, fd *syntax.FunDecl, d
 			tps = append(append([]*types.TypeParamSym(nil), this.C.TypeParams...), tps...)
 		}
 	}
+	for _, p := range f.Contexts {
+		var ref *syntax.TypeRef
+		if d, ok := p.Decl.(*syntax.Param); ok {
+			ref = d.Type
+		}
+		params = append(params, typedPart(p.Type, ref))
+	}
 	if f.Ext {
 		params = append(params, typedPart(f.Recv, recvRef))
 	}
@@ -579,13 +591,21 @@ func (g *gen) signField(mr cf.MemberRef, t types.Type, ref *syntax.TypeRef, d st
 // signAccessor gives mr, the default getter or setter of descriptor d of
 // a property of type t, written ref, its generic signature, as
 // signField's.
-func (g *gen) signAccessor(mr cf.MemberRef, t types.Type, ref *syntax.TypeRef, d string, as []syntax.Annotation, cls *types.ClassSym) {
+func (g *gen) signAccessor(mr cf.MemberRef, t types.Type, ref *syntax.TypeRef, d string, as []syntax.Annotation, cls *types.ClassSym, ctx ...*types.VarSym) {
 	m := g.wildcards(as, cls)
+	var parts []sigPart // the context parameters', which come first
+	for _, p := range ctx {
+		var r *syntax.TypeRef
+		if q, ok := p.Decl.(*syntax.Param); ok {
+			r = q.Type
+		}
+		parts = append(parts, typedPart(p.Type, r))
+	}
 	var s string
-	if strings.HasPrefix(d, "()") {
-		s = methodSig(nil, nil, typedPart(t, ref), d, 0, m)
+	if len(descParams(d)) == len(ctx) { // a getter's
+		s = methodSig(nil, parts, typedPart(t, ref), d, 0, m)
 	} else {
-		s = methodSig(nil, []sigPart{typedPart(t, ref)}, sigPart{t: types.UnitType}, d, 0, m)
+		s = methodSig(nil, append(parts, typedPart(t, ref)), sigPart{t: types.UnitType}, d, 0, m)
 	}
 	if s != "" {
 		mr.SetSignature(s)
@@ -688,4 +708,29 @@ func specialParams(name string, r types.Type, params []*types.VarSym) []int {
 		}
 	}
 	return out
+}
+
+// sigRepr returns the type of the underlying value of unboxed value class
+// type t, for generic signatures: the underlying type with t's type
+// arguments. It reports false if that is the class's type parameter,
+// which kotlinc erases.
+func sigRepr(t types.Type) (types.Type, bool) {
+	for types.Unboxed(t) {
+		u := t.C.Underlying.Type
+		if u.K == types.TypeParam && u.Param().Owner == t.C {
+			return t, false
+		}
+		if tps := t.C.TypeParams; len(tps) > 0 && len(tps) == t.A.Len() {
+			s := types.Subst{}
+			for i, p := range tps {
+				s[p] = t.A.Get(i)
+			}
+			u = s.Apply(u)
+		}
+		if t.N {
+			u = u.Nullable()
+		}
+		t = u
+	}
+	return t, true
 }

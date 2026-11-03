@@ -168,8 +168,9 @@ type StrPart struct {
 
 // Token is a lexical token.
 type Token struct {
-	Kind  Kind
-	Pos   Pos
-	Text  string    // identifier name or literal text
-	Parts []StrPart // STRING only
+	Kind   Kind
+	Quoted bool // a `backticked` identifier
+	Pos    Pos
+	Text   string    // identifier name or literal text
+	Parts  []StrPart // STRING only
 }

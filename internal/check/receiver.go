@@ -45,6 +45,14 @@ func (c *Checker) receiverFor(x *syntax.This) *implicitRecv {
 			return r
 		}
 	}
+	if x.Recv != nil {
+		// A context argument: a context parameter.
+		for i := range c.ctxs {
+			if r := &c.ctxs[i]; r.sym == x.Recv {
+				return r
+			}
+		}
+	}
 	return nil
 }
 
@@ -82,7 +90,7 @@ func (c *Checker) thisExpr(x *syntax.This) types.Type {
 
 // recvThis returns this, referring to an implicit receiver.
 func recvThis(r *implicitRecv, p syntax.Pos) *syntax.This {
-	this := &syntax.This{Recv: r.sym}
+	this := &syntax.This{Recv: r.sym, Implicit: true}
 	this.P = p
 	return this
 }
@@ -104,7 +112,9 @@ func (c *Checker) recvMember(x *syntax.Ident) (types.Type, bool) {
 		c.noCapture = r.sym
 		t := c.expr(m, noWant)
 		c.noCapture = saved
-		if len(c.errs) > n {
+		// A property private to this is still the receiver's, as in K2,
+		// and its use an error.
+		if len(c.errs) > n && !(len(c.errs) == n+1 && m.Prop != nil && m.Prop.PrivateToThis && strings.Contains(c.errs[n].Msg, privateToThisMsg)) {
 			c.errs = c.errs[:n]
 			continue
 		}
@@ -125,7 +135,9 @@ func (c *Checker) recvTarget(x syntax.Expr) syntax.Expr {
 	if _, _, local := c.scope.lookup(id.Name); local {
 		return x
 	}
+	n := len(c.errs)
 	if _, ok := c.recvMember(id); ok && id.Member != nil && (id.Member.Prop != nil || id.Member.Getter != nil) {
+		c.errs = c.errs[:n] // the assignment checks the target again
 		return id.Member
 	}
 	id.Member = nil
@@ -141,11 +153,11 @@ func (c *Checker) recvCall(x *syntax.Call, id *syntax.Ident) bool {
 		if r.outer && c.cls != nil && c.hasFun(c.cls.This(), id.Name, x) {
 			return false // the object's own
 		}
-		if t := c.scope.narrowed(r.sym); !c.hasFun(t, id.Name, x) && !c.hasFunProp(t, id.Name, x) {
-			continue
-		}
 		m := &syntax.Member{X: recvThis(r, id.P), Name: id.Name}
 		m.P = id.P
+		if t := c.scope.narrowed(r.sym); !c.hasFun(t, id.Name, x) && !c.hasFunProp(t, id.Name, x) && !c.extPropInvoked(m, t, c.classOf(t), x) {
+			continue
+		}
 		x.Fun = m
 		return true
 	}
@@ -174,7 +186,7 @@ func (c *Checker) hasFun(t types.Type, name string, x *syntax.Call) bool {
 		}
 		if cls := c.classOf(t); cls != nil {
 			cls.Ensure()
-			if !cls.Missing && fits(c.accessible(c.javaMethods(cls, name))) {
+			if !cls.Missing && fits(c.accessible(cls, c.javaMethods(cls, name))) {
 				return true
 			}
 			if n, _ := c.innerNamed(cls, name); n != nil {
@@ -294,13 +306,17 @@ func (c *Checker) lowPriorityGivesWay(ms []*types.FunSym, name string, rt types.
 // locals, literals) fit parameters that aren't generic. An implicit
 // receiver whose functions don't take the arguments gives way to the
 // next one, as emit(this) in buildCodeString { } calls the enclosing
-// class's emit(CodeWriter), not CodeWriter.emit(String).
+// class's emit(CodeWriter), not CodeWriter.emit(String). So does one
+// whose function has a context parameter that no implicit value fits.
 func (c *Checker) mayTake(f *types.FunSym, x *syntax.Call) bool {
 	amap, ok := mapArgs(f, x)
 	if !ok {
 		return false
 	}
-	cl := callee{f: f, amap: amap, names: x.Names}
+	cl := callee{f: f, tparams: f.TypeParams, amap: amap, names: x.Names}
+	if _, ok := c.contextArgs(&cl, x); !ok {
+		return false
+	}
 	for i, a := range x.Args {
 		p := cl.argType(i, x.Args)
 		if l, ok := a.(*syntax.Lambda); ok && !c.lambdaFits(l, p) {
@@ -462,6 +478,8 @@ func (c *Checker) peekType(a syntax.Expr) (types.Type, bool) {
 // a reference to it without an expected type.
 func builtinRefParams(t types.Type, name string) ([]types.Type, bool) {
 	switch {
+	case t == types.StringType.Nullable() && name == "plus":
+		return []types.Type{types.AnyType.Nullable()}, true // String?.plus(Any?)
 	case builtinFun(t, name, 0):
 		return nil, true
 	case !builtinFun(t, name, 1):
@@ -504,6 +522,9 @@ func builtinFun(t types.Type, name string, n int) bool {
 		if _, ok := types.CharMethods[name]; ok && t == types.CharType && n == 0 {
 			return true
 		}
+		if rangeMember(t, name, n) {
+			return true
+		}
 	case t == types.BoolType:
 		switch name {
 		case "toString", "not":
@@ -518,12 +539,15 @@ func builtinFun(t types.Type, name string, n int) bool {
 
 // implicitArg passes the implicit receiver to a call of a function value
 // with a receiver that leaves it out: block() for block: A.() -> R, in a
-// lambda whose receiver is an A, is block(this).
+// lambda whose receiver is an A, is block(this). It passes the context
+// arguments of a context function type that leaves them out too.
 func (c *Checker) implicitArg(x *syntax.Call, ft types.Type) {
-	if !ft.IsExtFunc() || len(x.Args) != ft.A.Len()-2 {
+	defer c.implicitContexts(x, ft)
+	k := ft.Contexts()
+	if !ft.IsExtFunc() || len(x.Args) != ft.A.Len()-2-k {
 		return
 	}
-	recv := ft.A.Get(0).T
+	recv := ft.A.Get(k).T
 	for i := len(c.recvs) - 1; i >= 0; i-- {
 		r := &c.recvs[i]
 		if c.subtype(c.scope.narrowed(r.sym), recv) {
@@ -570,7 +594,16 @@ func (c *Checker) memberExtFirst(fn *syntax.Member, x *syntax.Call) bool {
 			return true
 		}
 	}
-	if _, _, local := c.scope.lookup(fn.Name); local || c.cls == nil || c.userProp(c.cls, fn.Name) == nil {
+	if v, vd := c.scope.find(fn.Name); v != nil {
+		// A local extension function as close as the local, as in
+		// Kotlin, where a level of scope's functions come before its
+		// properties' invoke: fun String.foo() over val foo: String.() ->.
+		fs, fd := c.scope.findFuns(fn.Name)
+		return fd >= vd && slices.ContainsFunc(fs, func(f *types.FunSym) bool {
+			return f.Ext && c.recvFits(rt, f.Recv) && c.mayTake(f, x)
+		})
+	}
+	if c.cls == nil || c.userProp(c.cls, fn.Name) == nil {
 		return false
 	}
 	return slices.ContainsFunc(memberExtMethods(c.cls, fn.Name), func(f *types.FunSym) bool {
@@ -646,4 +679,77 @@ func (c *Checker) extFuncVar(name string) (types.Type, bool) {
 		return v.Type, v.Type.Flex().IsExtFunc() // a top-level one: clikt's conversion
 	}
 	return types.InvalidType, false
+}
+
+// extRefLocal reports whether name is a local val holding an unbound
+// reference to an extension function, A?::foo, whose value Kotlin calls
+// with a receiver too, as an extension: null.a().
+func (c *Checker) extRefLocal(name string) bool {
+	if c.scope == nil {
+		return false
+	}
+	v, _, ok := c.scope.lookup(name)
+	if !ok {
+		return false
+	}
+	s, ok := v.Decl.(*syntax.VarStmt)
+	if !ok || s.Mutable || s.Type != nil {
+		return false
+	}
+	l, ok := s.Init.(*syntax.Lambda)
+	if !ok || l.Ref == nil || l.Ref.X == nil && l.Ref.Type == nil || l.Ref.Bound != nil || l.Body == nil || len(l.Body.Stmts) != 1 {
+		return false
+	}
+	es, ok := l.Body.Stmts[0].(*syntax.ExprStmt)
+	if !ok {
+		return false
+	}
+	call, ok := es.X.(*syntax.Call)
+	return ok && call.Sym != nil && call.Sym.Ext
+}
+
+// callBound returns the bound of a type parameter t with several bounds
+// whose member function name a call x calls, as boundWith does, but of
+// the bounds with one of n parameters the one whose result is the most
+// specific: B's foo(): String for T : A, T : B, of A's foo(): Any?, as
+// the intersection type's member overrides both.
+func (c *Checker) callBound(t types.Type, x *syntax.Call, name string) types.Type {
+	has := func(cls *types.ClassSym) bool {
+		return len(c.javaMethods(cls, name)) > 0 || !cls.External && c.userProp(cls, name) != nil
+	}
+	b := c.boundWith(t, has)
+	if b == t || x.Names != nil {
+		return b
+	}
+	ret := func(b types.Type) (types.Type, bool) {
+		cls := c.classOf(b)
+		if cls == nil {
+			return types.Type{}, false
+		}
+		var r types.Type
+		n := 0
+		for _, f := range c.javaMethods(cls, name) {
+			if len(f.Params) == len(x.Args) && len(f.TypeParams) == 0 {
+				r = c.memberSubst(b, f.Owner).Apply(f.Ret)
+				n++
+			}
+		}
+		return r, n == 1
+	}
+	best, bt := b, types.Type{}
+	if r, ok := ret(b); ok {
+		bt = r
+	} else {
+		return b
+	}
+	for _, o := range t.Param().Bounds {
+		o = o.NonNull()
+		if cls := c.classOf(o); cls == nil || !has(cls) {
+			continue
+		}
+		if r, ok := ret(o); ok && !c.subtype(bt, r) && c.subtype(r, bt) {
+			best, bt = o, r
+		}
+	}
+	return best
 }

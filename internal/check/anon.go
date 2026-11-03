@@ -30,6 +30,7 @@ type anonCtx struct {
 	lambdas    []*syntax.Lambda // ending with the object's frame
 	lrets      []*lambdaResult
 	recvs      []implicitRecv
+	ctxs       []implicitRecv // the context parameters around: see context.go
 	tparams    []*types.TypeParamSym
 	localCalls *[]localCall
 	staticCls  *types.ClassSym // the class whose static scope the code is in, outside a class
@@ -60,6 +61,12 @@ func (c *Checker) inAnon(cls *types.ClassSym) {
 		own[i].depth = max(own[i].depth, n)
 	}
 	c.recvs = append(ctx.recvs[:len(ctx.recvs):len(ctx.recvs)], own...)
+	ownCtx := slices.Clone(c.ctxs)
+	for i := range ownCtx {
+		ownCtx[i].depth = max(ownCtx[i].depth, n)
+		ownCtx[i].at += len(ctx.recvs) // nearer than the receivers around
+	}
+	c.ctxs = append(ctx.ctxs[:len(ctx.ctxs):len(ctx.ctxs)], ownCtx...)
 	c.tparams = append(c.tparams[:len(c.tparams):len(c.tparams)], ctx.tparams...)
 	c.localCalls = ctx.localCalls
 }
@@ -106,6 +113,8 @@ func (c *Checker) objectExpr(x *syntax.ObjectExpr) types.Type {
 // too: a lambda in it that constructs it captures what it captures.
 func (c *Checker) localClass(s *syntax.LocalClass) {
 	d := s.Decl
+	c.localAnnotationClass(d)
+	c.localAnnotations(s.Annotations, classSite(d))
 	depth := len(c.lambdas)
 	scope := c.scope
 	c.anonClass(d, "local class", "local classes", func() string { return c.localName(d.Name) }, func(sym *types.ClassSym, frame *syntax.Lambda) {
@@ -177,6 +186,10 @@ func (c *Checker) anonClass(d *syntax.ClassDecl, what, whats string, name func()
 		r.outer = true
 		ctx.recvs = append(ctx.recvs, r)
 	}
+	ctx.ctxs = slices.Clone(c.ctxs)
+	for i := range ctx.ctxs {
+		ctx.ctxs[i].outer = true
+	}
 	var outer *types.VarSym
 	if c.cls != nil {
 		// The enclosing class's this: inside the receivers outside an
@@ -184,12 +197,17 @@ func (c *Checker) anonClass(d *syntax.ClassDecl, what, whats string, name func()
 		// outside the lambdas'.
 		outer = &types.VarSym{Name: "this$0", Kind: types.Local, Type: c.cls.This()}
 		name := c.cls.DisplayName()
-		r := implicitRecv{sym: outer, label: name[strings.LastIndexByte(name, '.')+1:], depth: depth, outer: true}
+		r := implicitRecv{sym: outer, label: name[strings.LastIndexByte(name, '.')+1:], depth: depth, outer: true, class: true}
 		n := 0
 		if cc := c.anon[c.cls]; cc != nil {
 			n = min(len(cc.recvs), len(ctx.recvs))
 		}
 		ctx.recvs = slices.Insert(ctx.recvs, n, r)
+		for i := range ctx.ctxs {
+			if ctx.ctxs[i].at >= n {
+				ctx.ctxs[i].at++
+			}
+		}
 	}
 
 	sym := c.declareClass(d, name(), c.cls)
@@ -216,7 +234,17 @@ func (c *Checker) anonClass(d *syntax.ClassDecl, what, whats string, name func()
 		}
 	}
 	c.resolveSupertypes()
+	// The classes' type parameters' bounds, as resolveClassBounds
+	// resolves the file's: x.toDouble() for a local class's T : Number.
+	savedT, savedL, savedChecks := c.tparams, c.lookupCls, c.noBoundChecks
+	c.noBoundChecks = true
+	for _, d := range c.classes {
+		c.tparams, c.lookupCls = slices.Concat(d.Sym.TypeParams, savedT), d.Sym
+		c.resolveBounds(d.TypeParams)
+	}
+	c.tparams, c.lookupCls, c.noBoundChecks = savedT, savedL, savedChecks
 	c.checkSupers()
+	c.genericThrowable(sym, ctx, d.P)
 	for _, d := range c.classes {
 		c.lookupCls = d.Sym
 		c.resolveClass(d)
@@ -243,6 +271,9 @@ func (c *Checker) anonClass(d *syntax.ClassDecl, what, whats string, name func()
 	for _, d := range c.classes {
 		c.checkClass(d)
 	}
+	for _, d := range c.classes {
+		c.classClashes(d) // as checkClashes does the file's classes'
+	}
 	c.state, c.classes, c.lookupCls = saved, savedClasses, savedLookup
 	c.propagateCaptures()
 
@@ -257,6 +288,19 @@ func (c *Checker) anonClass(d *syntax.ClassDecl, what, whats string, name func()
 	c.onUndo(func() { c.file.Anon = c.file.Anon[:n] })
 	c.file.Anon = append(c.file.Anon, d)
 	return sym
+}
+
+// genericThrowable reports a local class or an object expression's class,
+// sym, declared at p in code where type parameters are, ctx's, that
+// extends Throwable: catch couldn't tell its instances apart by their
+// type arguments.
+func (c *Checker) genericThrowable(sym *types.ClassSym, ctx *anonCtx, p syntax.Pos) {
+	if len(ctx.tparams) == 0 {
+		return
+	}
+	if thr := c.u.ext.class("java/lang/Throwable"); thr != nil && sym.IsSubclassOf(thr) {
+		c.errorf(p, "inner class of generic class extending 'Throwable' is prohibited")
+	}
 }
 
 // localMembers reports whether the classes declared in d, a local class
@@ -302,7 +346,7 @@ func (c *Checker) localInner(d *syntax.ClassDecl) {
 	for _, r := range oc.recvs {
 		if r.depth >= depth {
 			v := &types.VarSym{Name: r.sym.Name, Kind: types.Local, Type: r.sym.Type, OuterOf: d.OuterThis, OuterCls: outer}
-			r = implicitRecv{sym: v, label: r.label, depth: depth, outer: true}
+			r = implicitRecv{sym: v, label: r.label, depth: depth, outer: true, class: r.class}
 		}
 		ctx.recvs = append(ctx.recvs, r)
 	}

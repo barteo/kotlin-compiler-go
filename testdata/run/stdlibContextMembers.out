@@ -1,0 +1,20 @@
+hi you
+hello from main
+derived abab main
+derived ababab main
+<x member>
+hi safe
+from main
+hi delegated
+3 2 1 main
+main ABC!main
+item 7 of main
+[main: greet you, main: greet safe, main: greet delegated]
+6
+120 12
+boxed
+anon 1 explicit
+anon 2 implicit
+action 3 sam
+context s local captured tt local captured extension value
+4 kotlin.Unit s

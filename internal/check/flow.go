@@ -109,6 +109,17 @@ func assignedOutside1(node any, name string, frame *syntax.Lambda) bool {
 			return false
 		}
 		switch n := n.(type) {
+		case *syntax.Block:
+			if n == nil || n == node {
+				break
+			}
+			// A var name in the block shadows name after it.
+			for _, st := range n.Stmts {
+				if found = assignedOutside1(st, name, frame); found || slices.Contains(declaredNames(st), name) {
+					break
+				}
+			}
+			return false
 		case *syntax.Lambda:
 			found = n != frame && assignedNames(n)[name]
 			return false
@@ -169,12 +180,45 @@ func (c *Checker) assignedNested(v *types.VarSym, t types.Type) {
 func assignedNames(node any) map[string]bool {
 	names := map[string]bool{}
 	inspect(node, func(n any) bool {
+		if b, ok := n.(*syntax.Block); ok && n != node && b != nil {
+			for name := range assignedNames(b) {
+				names[name] = true
+			}
+			return false
+		}
+		if b, ok := n.(*syntax.Block); ok && b != nil {
+			// A block's var x shadows the outer x after it.
+			shadowed := map[string]bool{}
+			for _, st := range b.Stmts {
+				for name := range assignedNames(st) {
+					if !shadowed[name] {
+						names[name] = true
+					}
+				}
+				for _, name := range declaredNames(st) {
+					shadowed[name] = true
+				}
+			}
+			return false
+		}
 		if name, ok := assignedName(n); ok {
 			names[name] = true
 		}
 		return true
 	})
 	return names
+}
+
+// declaredNames returns the names of the locals that statement st
+// declares.
+func declaredNames(st syntax.Stmt) []string {
+	switch st := st.(type) {
+	case *syntax.VarStmt:
+		return []string{st.Name}
+	case *syntax.Destructure:
+		return st.Names
+	}
+	return nil
 }
 
 // assignedName returns the name of the local that node assigns, if it is
@@ -208,6 +252,25 @@ func (c *Checker) assigns(node any) []string {
 			}
 		}
 		names = append(names, name)
+	}
+	if b, ok := node.(*syntax.Block); ok && b != nil {
+		// A block's own var x shadows the x outside it: its assignments
+		// after the declaration aren't of the outer x.
+		var shadowed []string
+		for _, st := range b.Stmts {
+			own := c.assigns(st)
+			if name, ok := assignedName(st); ok {
+				own = append([]string{name}, own...)
+			}
+			for _, name := range own {
+				if !slices.Contains(shadowed, name) {
+					add(name)
+				}
+			}
+			shadowed = append(shadowed, declaredNames(st)...)
+		}
+		c.assignsMemo[node] = names
+		return names
 	}
 	syntax.Inspect(node, func(n any) bool {
 		if n == node {
@@ -288,6 +351,68 @@ func (c *Checker) watchedVars(nodes ...any) []*types.VarSym {
 	return out
 }
 
+// loopVars returns the vars of watchedVars(nodes...) whose narrowing a
+// loop over nodes drops, and a function to call after the loop. It keeps
+// those smart cast to a non-null number or Char that the nodes only
+// increment and decrement, or, if declared as its nullable type, also
+// assign with op=, whose results, which assign checks, keep the type.
+func (c *Checker) loopVars(nodes ...any) ([]*types.VarSym, func()) {
+	vars := c.watchedVars(nodes...)
+	out := vars[:0:0]
+	var kept []*types.VarSym
+	var old []types.Type
+	var had []bool
+	for _, v := range vars {
+		if t := c.scope.narrowed(v); t == v.Type || t.N || t.P || !t.IsNumeric() && t.K != types.Char || !onlyIncDec(v.Name, nodes, v.Type.NonNull() == t) {
+			out = append(out, v)
+		} else {
+			if c.loopKept == nil {
+				c.loopKept = map[*types.VarSym]types.Type{}
+			}
+			kept = append(kept, v)
+			prev, ok := c.loopKept[v]
+			old, had = append(old, prev), append(had, ok)
+			c.loopKept[v] = t
+		}
+	}
+	return out, func() {
+		for i, v := range kept {
+			if had[i] {
+				c.loopKept[v] = old[i]
+			} else {
+				delete(c.loopKept, v)
+			}
+		}
+	}
+}
+
+// onlyIncDec reports whether every assignment of the local name in nodes
+// is a ++, a -- or, if opAssign, an op=, outside lambdas, local functions
+// and classes, and object expressions.
+func onlyIncDec(name string, nodes []any, opAssign bool) bool {
+	ok := true
+	for _, node := range nodes {
+		if b, isBlock := node.(*syntax.Block); node == nil || isBlock && b == nil {
+			continue
+		}
+		inspect(node, func(n any) bool {
+			switch n := n.(type) {
+			case *syntax.Lambda, *syntax.ObjectExpr, *syntax.LocalFun, *syntax.LocalClass:
+				if assignedNames(n)[name] {
+					ok = false
+				}
+				return false
+			case *syntax.Assign:
+				if id, isID := n.Target.(*syntax.Ident); isID && id.Name == name && (n.Op == syntax.ASSIGN || !opAssign) {
+					ok = false
+				}
+			}
+			return ok
+		})
+	}
+	return ok
+}
+
 // hasVars reports whether a local var whose type can be narrowed is in
 // scope.
 func (c *Checker) hasVars() bool {
@@ -324,72 +449,190 @@ func (c *Checker) reset(vars []*types.VarSym) {
 	}
 }
 
-// branchExit records the types of watched vars where a branch ends.
-type branchExit struct {
-	vars   []*types.VarSym
-	types  []types.Type
-	jumped bool // the branch doesn't end normally: its types don't count
+// flowKey is a value that smart casts narrow: a variable, or a property
+// of a stable value recv.
+type flowKey struct{ recv, sym *types.VarSym }
+
+// flowState is the smart casts where the code is: the narrowed type of
+// each value that the scopes around it narrow.
+type flowState map[flowKey]types.Type
+
+// flowState returns the smart casts in the current scope.
+func (c *Checker) flowState() flowState {
+	st := flowState{}
+	for sc := c.scope; sc != nil; sc = sc.parent {
+		for i := len(sc.narrows) - 1; i >= 0; i-- {
+			n := sc.narrows[i]
+			k := flowKey{n.recv, n.sym}
+			if _, ok := st[k]; !ok {
+				st[k] = n.t
+			}
+		}
+	}
+	return st
 }
 
-// watchExit makes the next block checked record the types of vars at its
-// end in the returned exit.
-func (c *Checker) watchExit(vars []*types.VarSym) *branchExit {
-	if len(vars) == 0 {
+// joinFlows returns the smart casts that hold where the code paths that
+// end in states meet, as the narrowings to add to the current scope, the
+// one before the paths split, or one whose smart casts are those of
+// every path: a value narrowed on every path has the join of its types,
+// and a var that one assigns has its declared type if they don't join.
+func (c *Checker) joinFlows(states []flowState) []narrow {
+	if len(states) == 0 {
 		return nil
 	}
-	e := &branchExit{vars: vars}
+	var out []narrow
+	for k, t := range states[0] {
+		if k.sym == nil {
+			continue
+		}
+		v := k.recv == nil && isVar(k.sym)
+		for _, s := range states[1:] {
+			u, ok := s[k]
+			if !ok {
+				if !v {
+					t = types.InvalidType
+					break
+				}
+				u = k.sym.Type
+			}
+			if t == u {
+				continue
+			}
+			j, ok := c.join(t, u)
+			if !ok {
+				j = types.InvalidType
+			}
+			t = j
+			if t.K == types.Invalid && !v {
+				break
+			}
+		}
+		cur := c.scope.narrowedMember(k.recv, k.sym, types.InvalidType)
+		switch {
+		case v && (t.K == types.Invalid || !c.subtype(t, k.sym.Type)):
+			t = k.sym.Type
+		case t.K == types.Invalid:
+			continue
+		case !v && cur.K != types.Invalid && !c.subtype(t, cur):
+			continue // only narrower than it is before the paths
+		}
+		if t != cur {
+			out = append(out, narrow{recv: k.recv, sym: k.sym, t: t})
+		}
+	}
+	// The map's order: sort for the same narrowing each time.
+	slices.SortFunc(out, func(a, b narrow) int {
+		return cmpNarrow(a, b)
+	})
+	return out
+}
+
+// cmpNarrow orders narrowings of different values by name.
+func cmpNarrow(a, b narrow) int {
+	name := func(n narrow) string {
+		if n.recv != nil {
+			return n.recv.Name + "." + n.sym.Name
+		}
+		return n.sym.Name
+	}
+	an, bn := name(a), name(b)
+	switch {
+	case an < bn:
+		return -1
+	case an > bn:
+		return 1
+	}
+	return 0
+}
+
+// branchExit records the smart casts where a branch ends.
+type branchExit struct {
+	state  flowState
+	jumped bool // the branch doesn't end normally: its smart casts don't count
+}
+
+// watchExit makes the next block checked record its smart casts at its
+// end in the returned exit.
+func (c *Checker) watchExit(vars []*types.VarSym) *branchExit {
+	e := &branchExit{}
 	c.exitWatch = e
 	return e
 }
 
-// record records the types of e's vars in the current scope, at the end
-// of a block whose type is t.
+// record records the smart casts in the current scope, at the end of a
+// block whose type is t.
 func (e *branchExit) record(c *Checker, t types.Type) {
 	if t.K == types.Nothing {
 		e.jumped = true
 		return
 	}
-	e.types = make([]types.Type, len(e.vars))
-	for i, v := range e.vars {
-		e.types[i] = c.scope.narrowed(v)
-	}
+	e.state = c.flowState()
 }
 
-// startExit returns an exit with the types of vars in the current scope:
-// the path past an if without else, or a when without a matching branch.
+// startExit returns an exit with the smart casts of the current scope
+// and ns: the path past an if without else, or a when without a
+// matching branch.
 func (c *Checker) startExit(vars []*types.VarSym, ns []narrow) *branchExit {
 	c.push()
 	c.scope.narrows = ns
-	e := &branchExit{vars: vars}
+	e := &branchExit{}
 	e.record(c, types.UnitType)
 	c.pop()
 	return e
 }
 
-// merge narrows each var to the join of its types at the exits that
-// don't jump, for the rest of the current scope.
+// merge adds the smart casts that hold after the exits that don't jump,
+// where they meet, for the rest of the current scope.
 func (c *Checker) merge(vars []*types.VarSym, exits []*branchExit) {
-	for i, v := range vars {
-		var t types.Type
-		any := false
-		for _, e := range exits {
-			if e == nil || e.jumped || e.types == nil {
-				continue
-			}
-			if !any {
-				t, any = e.types[i], true
-				continue
-			}
-			j, ok := c.join(t, e.types[i])
-			if !ok || !c.subtype(j, v.Type) {
-				j = v.Type
-			}
-			t = j
+	var states []flowState
+	for _, e := range exits {
+		if e == nil || e.jumped || e.state == nil {
+			continue
 		}
-		if !any {
-			continue // every branch jumps: the code after is unreachable
+		states = append(states, e.state)
+	}
+	if len(states) == 0 {
+		return // every branch jumps: the code after is unreachable
+	}
+	c.scope.narrows = append(c.scope.narrows, c.joinFlows(states)...)
+}
+
+// loopFlow has the smart casts where a loop's breaks and continues jump.
+type loopFlow struct {
+	breaks, continues []flowState
+	// lost is set when a jump's smart casts are unknown: it is in a
+	// lambda.
+	lost bool
+}
+
+// finallyCtx is a finally block around the code being checked: a break
+// or a continue out of it runs it, which may assign vars.
+type finallyCtx struct {
+	loops int // len(c.loops) where the try is
+	vars  []*types.VarSym
+}
+
+// loopJump records the smart casts where a break or a continue jumps
+// out of the loop at index i of c.loops.
+func (c *Checker) loopJump(i int, brk bool) {
+	loop := c.loops[i]
+	if len(c.lambdas) != loop.lambdas {
+		loop.flow.lost = true
+		return
+	}
+	st := c.flowState()
+	for _, f := range c.finallies {
+		if f.loops > i {
+			for _, v := range f.vars {
+				st[flowKey{sym: v}] = v.Type
+			}
 		}
-		c.scope.narrows = append(c.scope.narrows, narrow{sym: v, t: t})
+	}
+	if brk {
+		loop.flow.breaks = append(loop.flow.breaks, st)
+	} else {
+		loop.flow.continues = append(loop.flow.continues, st)
 	}
 }
 
@@ -401,6 +644,113 @@ func (c *Checker) assignedVar(v *types.VarSym, vt types.Type) {
 		t = vt
 	}
 	c.scope.narrows = append(c.scope.narrows, narrow{sym: v, t: t})
+}
+
+// mayNotRun undoes the smart casts that code that may not run, as the
+// right side of ?:, added to the scope's narrows from index n on: casts
+// are dropped, unless other, those that hold where it doesn't run, has
+// them too, as x ?: x!!, and the values it assigns lose theirs.
+func (c *Checker) mayNotRun(n int, other []narrow) {
+	ns := c.scope.narrows
+	if n >= len(ns) {
+		return
+	}
+	added := slices.Clone(ns[n:])
+	c.scope.narrows = ns[:n]
+	for _, k := range added {
+		prev := c.scope.narrowedMember(k.recv, k.sym, k.sym.Type)
+		if k.t == prev || c.subtype(k.t, prev) {
+			// Both ways, the wider of the two.
+			if o, ok := findNarrow(other, k); ok && (c.subtype(k.t, o) || c.subtype(o, k.t)) {
+				if c.subtype(k.t, o) {
+					k.t = o
+				}
+				c.scope.narrows = append(c.scope.narrows, k)
+			}
+			continue
+		}
+		k.t = k.sym.Type
+		c.scope.narrows = append(c.scope.narrows, k)
+	}
+}
+
+// superArgNarrows returns the smart casts of the x!! and the casts in the
+// arguments of an object expression's superclass constructor call, which
+// run where it is: after object : A(o!!) {}, o isn't null.
+func (c *Checker) superArgNarrows(x *syntax.ObjectExpr) []narrow {
+	var out []narrow
+	for _, st := range x.Decl.Supers {
+		if st.Call == nil {
+			continue
+		}
+		for _, a := range st.Call.Args {
+			if _, ok := a.(*syntax.Lambda); ok {
+				continue
+			}
+			out = append(out, c.ranNarrows(a)...)
+		}
+	}
+	// And of those in its initializers, which also run where it is.
+	for _, m := range x.Decl.Members {
+		switch m := m.(type) {
+		case *syntax.PropDecl:
+			if m.Init != nil {
+				out = append(out, c.ranNarrows(m.Init)...)
+			}
+		case *syntax.InitBlock:
+			for _, st := range m.Body.Stmts {
+				if es, ok := st.(*syntax.ExprStmt); ok {
+					out = append(out, c.ranNarrows(es.X)...)
+				}
+			}
+		}
+	}
+	return out
+}
+
+// ranNarrows returns the smart casts of the x!! and the casts that
+// evaluating x always runs.
+func (c *Checker) ranNarrows(x syntax.Expr) []narrow {
+	out := c.asserted(x)
+	alwaysCasts(x, func(as *syntax.As) {
+		if k, ok := c.castNarrow(as); ok {
+			out = append(out, k)
+		}
+	})
+	return out
+}
+
+// chainKeyOf is narrowKeyOf that also takes a?.b, as a.b, which a?.b
+// != null smart casts.
+func (c *Checker) chainKeyOf(x syntax.Expr) (narrow, bool) {
+	if m, ok := x.(*syntax.Member); ok && m.Safe {
+		return c.memberKey(m, m.Type())
+	}
+	return c.narrowKeyOf(x)
+}
+
+// notNullOf returns the smart cast of stable value x to its type without
+// null, which holds where it isn't null.
+func (c *Checker) notNullOf(x syntax.Expr) []narrow {
+	if k, ok := c.narrowKeyOf(x); ok && k.t.K != types.Invalid {
+		k.t = k.t.NonNull()
+		return []narrow{k}
+	}
+	return nil
+}
+
+// assignedVal narrows a val property that an initializer block or a
+// constructor assigns, x = v, to v's type, as assignedVar a local var.
+func (c *Checker) assignedVal(target syntax.Expr, vt types.Type) {
+	if vt.K == types.Invalid || vt.K == types.Null || vt.K == types.Nothing {
+		return
+	}
+	k, ok := c.narrowKeyOf(target)
+	if !ok || k.sym.Kind != types.Prop || k.sym.Mutable || !c.subtype(vt, k.sym.Type) {
+		return
+	}
+	k.t = vt
+	c.scope.narrows = append(c.scope.narrows, k)
 }
 
 // narrowKeyOf returns the narrowing of a stable value x, with its current
@@ -427,11 +777,11 @@ func (c *Checker) narrowKeyOf(x syntax.Expr) (narrow, bool) {
 // memberKey returns the narrowing of a.p, where p is a stable property
 // of a stable value a, and the type of a.p is t.
 func (c *Checker) memberKey(m *syntax.Member, t types.Type) (narrow, bool) {
-	if m.Prop == nil || !c.stableMember(m.Prop) {
+	if m.Prop == nil || !c.stableOn(m.Prop, m.X.Type()) {
 		return narrow{}, false
 	}
-	if this, ok := m.X.(*syntax.This); ok && this.Recv == nil && this.Label == "" {
-		// this.p is p.
+	if this, ok := m.X.(*syntax.This); ok && this.Recv == nil {
+		// this.p is p, as this@C.p in class C.
 		return narrow{sym: m.Prop, t: c.scope.narrowedMember(nil, m.Prop, t)}, true
 	}
 	recv := c.narrowSym(m.X)
@@ -446,6 +796,290 @@ func (c *Checker) memberKey(m *syntax.Member, t types.Type) (narrow, bool) {
 // or an override of one in a final class other than an enum class, whose
 // entries may override it.
 func (c *Checker) stableMember(p *types.VarSym) bool {
-	return p.Kind == types.Prop && !p.Mutable && p.Getter == nil && p.HasField() && p.Owner != nil && !p.Owner.External &&
-		(p.Final || p.Owner.Final && p.Owner.Entries == nil)
+	return c.stableOn(p, types.InvalidType)
+}
+
+// stableOn is stableMember for p read through a value of type recv: an
+// open val is stable too if recv's class is final and inherits it, as
+// x.p for an x: B, where B doesn't override A's open val p.
+func (c *Checker) stableOn(p *types.VarSym, recv types.Type) bool {
+	if p.Kind != types.Prop || p.Mutable || p.Getter != nil || !p.HasField() || p.Owner == nil || p.Owner.External {
+		return false
+	}
+	if p.Final || p.Owner.Final && p.Owner.Entries == nil {
+		return true
+	}
+	r := recv.NonNull()
+	if r.K != types.Class || r.C == nil {
+		return false
+	}
+	r.C.Ensure()
+	return r.C.Final && r.C.Entries == nil && !r.C.Interface && r.C.IsSubclassOf(p.Owner) && c.memberProp(r.C, p.Name) == p
+}
+
+// thisType returns the type of this where the code is, or InvalidType.
+func (c *Checker) thisType() types.Type {
+	if c.this == nil {
+		return types.InvalidType
+	}
+	return c.this.Type
+}
+
+// isNull reports whether x is null: the literal, or a value of type
+// Nothing?, whose only value it is.
+func isNull(x syntax.Expr) bool {
+	if _, ok := x.(*syntax.NullLit); ok {
+		return true
+	}
+	t := x.Type()
+	return t.K == types.Null || t.K == types.Nothing && t.N
+}
+
+// boolEquality returns the smart casts of c == true and the like: those
+// of c, or of !c, when one side is a Boolean literal and the other a
+// condition.
+func (c *Checker) boolEquality(x *syntax.Binary) (whenTrue, whenFalse []narrow, ok bool) {
+	lit, cond := x.X, x.Y
+	l, isLit := lit.(*syntax.BoolLit)
+	if !isLit {
+		lit, cond = x.Y, x.X
+		if l, isLit = lit.(*syntax.BoolLit); !isLit {
+			return nil, nil, false
+		}
+	}
+	if cond.Type().Flex() != types.BoolType {
+		return nil, nil, false
+	}
+	whenTrue, whenFalse = c.narrowing(cond)
+	if l.Val != (x.Op == syntax.EQ || x.Op == syntax.EQ_EQ_EQ) {
+		whenTrue, whenFalse = whenFalse, whenTrue
+	}
+	return whenTrue, whenFalse, true
+}
+
+// loopEntry returns the smart casts before a loop that assigns vars, for
+// loopHead, or nil if there are no vars.
+func (c *Checker) loopEntry(vars []*types.VarSym) flowState {
+	if len(vars) == 0 {
+		return nil
+	}
+	return c.flowState()
+}
+
+// loopHead returns the smart casts of the vars a loop assigns where its
+// condition cond is checked, for the path out of it when cond is false:
+// as with kotlinc, which checks the loop once, its body sees them with
+// their declared types, but the paths to its condition, from before the
+// loop (pre) and from the end of its body (end) and its continues, join
+// as the branches of an if do. After
+//
+//	if (x != null) while (b()) { x = x.swap() }
+//
+// x is an Int if each swap() gives one. A var the condition assigns
+// keeps its declared type.
+func (c *Checker) loopHead(vars []*types.VarSym, cond syntax.Expr, pre flowState, end *branchExit, loop *loopCtx) []narrow {
+	if pre == nil || loop.flow.lost {
+		return nil
+	}
+	states := []flowState{pre}
+	if !end.jumped && end.state != nil {
+		states = append(states, end.state)
+	}
+	states = append(states, loop.flow.continues...)
+	var inCond []string
+	if cond != nil {
+		inCond = c.assigns(cond)
+	}
+	var out []narrow
+	for _, n := range c.joinFlows(states) {
+		if n.recv == nil && slices.Contains(vars, n.sym) && !slices.Contains(inCond, n.sym.Name) {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+// eitherNarrows returns the smart casts that hold when either of two
+// conditions' smart casts do: those of a || b being true, a's when it is
+// true (first) or b's when a is false and b true (ctx, the smart casts of
+// a being false, and second). A value narrowed on both paths has the join
+// of its types, as after a is B || a is C, where a has their common
+// supertype. a && b being false is the same with the sides' negations.
+func (c *Checker) eitherNarrows(first, ctx, second []narrow) []narrow {
+	var out []narrow
+	for _, n := range first {
+		u, ok := findNarrow(second, n)
+		if !ok {
+			if u, ok = findNarrow(ctx, n); !ok {
+				continue
+			}
+		}
+		t := n.t
+		if u != t {
+			j, ok := c.join(t, u)
+			if !ok || j.K == types.Invalid {
+				continue
+			}
+			// x is A || x is B doesn't smart cast x to their common
+			// supertype where it can't be seen: a private interface of
+			// another file.
+			if j.K == types.Class && j.C != nil && !c.classVisible(j.C) {
+				continue
+			}
+			t = j
+		}
+		cur := c.scope.narrowedMember(n.recv, n.sym, n.sym.Type)
+		if n.recv != nil {
+			cur = c.scope.narrowedMember(n.recv, n.sym, types.InvalidType)
+		}
+		if t == cur || cur.K != types.Invalid && !c.subtype(t, cur) {
+			continue
+		}
+		out = append(out, narrow{recv: n.recv, sym: n.sym, t: t})
+	}
+	return out
+}
+
+// findNarrow returns the last smart cast in ns of the value n narrows.
+func findNarrow(ns []narrow, n narrow) (types.Type, bool) {
+	for i := len(ns) - 1; i >= 0; i-- {
+		if ns[i].sym == n.sym && ns[i].recv == n.recv {
+			return ns[i].t, true
+		}
+	}
+	return types.Type{}, false
+}
+
+// notNullCast returns the smart cast of (a as T)!! or (a as? T)!!, x
+// being the cast: a is a T and not null for the code after it. Of
+// a?.b!! and a?.f()!!, it returns those of a and a.b not being null.
+func (c *Checker) notNullCast(x syntax.Expr) []narrow {
+	as, ok := x.(*syntax.As)
+	if !ok {
+		out := c.safeReceivers(x)
+		if m, ok := x.(*syntax.Member); ok && m.Safe {
+			if k, ok := c.memberKey(m, m.Type()); ok && types.MayBeNull(k.t) {
+				k.t = k.t.NonNull()
+				out = append(out, k)
+			}
+		}
+		return out
+	}
+	k, ok := c.castNarrow(as)
+	if !ok {
+		if k, ok = c.narrowKeyOf(as.X); !ok {
+			return nil
+		}
+	}
+	k.t = k.t.NonNull()
+	return []narrow{k}
+}
+
+// safeArgCasts returns the smart casts of the casts and the x!! in the
+// arguments of a safe call x, a?.f(b as T), which run if it isn't null:
+// after a?.f(b as T) != null, b is a T.
+func (c *Checker) safeArgCasts(x syntax.Expr) []narrow {
+	call, ok := x.(*syntax.Call)
+	if !ok {
+		return nil
+	}
+	var out []narrow
+	for _, a := range call.Args {
+		if _, ok := a.(*syntax.Lambda); ok {
+			continue
+		}
+		alwaysCasts(a, func(as *syntax.As) {
+			if k, ok := c.castNarrow(as); ok {
+				out = append(out, k)
+			}
+		})
+		out = append(out, c.asserted(a)...)
+	}
+	return out
+}
+
+// tryAssigned returns the smart casts of vars, which blocks of a try
+// assign, in its catch and finally blocks, which may run after any of
+// those assignments: as with kotlinc, a var has the join of its type
+// before the try and the types of the values assigned to it, String
+// after s = "" before and in the try. It is the declared type when the
+// blocks assign it other than with =, or in nested code.
+func (c *Checker) tryAssigned(vars []*types.VarSym, blocks ...*syntax.Block) []narrow {
+	var out []narrow
+	for _, v := range vars {
+		t := c.scope.narrowed(v)
+		ok := true
+		for _, b := range blocks {
+			if b == nil || !ok {
+				continue
+			}
+			inspect(b, func(n any) bool {
+				if !ok {
+					return false
+				}
+				switch n := n.(type) {
+				case *syntax.Lambda, *syntax.LocalFun, *syntax.ObjectExpr, *syntax.LocalClass:
+					if assignedNames(n)[v.Name] {
+						ok = false
+					}
+					return false
+				case *syntax.Unary:
+					if name, is := assignedName(n); is && name == v.Name {
+						ok = false
+					}
+				case *syntax.Assign:
+					id, is := n.Target.(*syntax.Ident)
+					if !is || id.Name != v.Name || id.Sym != nil && id.Sym != v {
+						break
+					}
+					vt := n.Value.Type()
+					if n.Op != syntax.ASSIGN || vt.K == types.Invalid || vt.K == types.Nothing || !c.subtype(vt, v.Type) {
+						ok = false
+						break
+					}
+					if vt.K == types.Null {
+						vt = v.Type // assignedVar's
+					}
+					j, joined := c.join(t, vt)
+					if !joined || j.K == types.Invalid {
+						ok = false
+						break
+					}
+					t = j
+				}
+				return ok
+			})
+		}
+		if ok && t != v.Type && c.subtype(t, v.Type) {
+			out = append(out, narrow{sym: v, t: t})
+		}
+	}
+	return out
+}
+
+// onlyVars returns the smart casts in ns of the vars in vars.
+func onlyVars(ns []narrow, vars []*types.VarSym) []narrow {
+	var out []narrow
+	for _, n := range ns {
+		if n.recv == nil && slices.Contains(vars, n.sym) {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+// elvisNarrowing returns the smart casts of x ?: false being true, and of
+// x ?: true being false: x is then the value, so it isn't null, nor are
+// its safe calls' receivers, and its own condition's smart casts hold.
+func (c *Checker) elvisNarrowing(x *syntax.Binary) (whenTrue, whenFalse []narrow) {
+	b, ok := x.Y.(*syntax.BoolLit)
+	if !ok {
+		return nil, nil
+	}
+	t, f := c.narrowing(x.X)
+	n := c.equalNonNull(x.X)
+	if b.Val {
+		return nil, append(f[:len(f):len(f)], n...)
+	}
+	return append(t[:len(t):len(t)], n...), nil
 }

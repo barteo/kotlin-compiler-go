@@ -2,6 +2,7 @@ package check
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
 	"github.com/barteo/kotlin-compiler-go/internal/types"
@@ -36,7 +37,7 @@ func (c *Checker) stmts(b *syntax.Block, want types.Type, valueUsed bool) types.
 			c.sink, c.tailBlock = c.tailSink, nil
 		}
 		st := c.stmt(s, valueUsed && last, want)
-		if st.K == types.Nothing {
+		if st.K == types.Nothing || stmtJumps(s) {
 			nothing = true
 		}
 		if last {
@@ -49,6 +50,125 @@ func (c *Checker) stmts(b *syntax.Block, want types.Type, valueUsed bool) types.
 	}
 	b.T = t
 	return t
+}
+
+// stmtJumps reports whether a statement always jumps, though its type
+// isn't Nothing: what it always evaluates is, as foo(x, return y),
+// val a = Array(n, return "OK") and for (i in 1u..return "OK").
+func stmtJumps(s syntax.Stmt) bool {
+	switch s := s.(type) {
+	case *syntax.ExprStmt:
+		return jumps(s.X)
+	case *syntax.VarStmt:
+		return s.Delegate == nil && jumps(s.Init)
+	case *syntax.Destructure:
+		return jumps(s.Init)
+	case *syntax.Assign:
+		switch t := s.Target.(type) {
+		case *syntax.Member:
+			if jumps(t.X) {
+				return true
+			}
+		case *syntax.Index:
+			if jumps(t.X) || !hasSafeCall(t.X) && anyJumps(t.Args) {
+				return true
+			}
+		}
+		return jumps(s.Value)
+	case *syntax.For:
+		return jumps(s.Range)
+	case *syntax.While:
+		return !s.Do && jumps(s.Cond)
+	}
+	return false
+}
+
+// jumps reports whether evaluating e always jumps: e, or an expression
+// that evaluating it always evaluates, is of type Nothing, as return y
+// in foo(x, return y), or it is a lambda that the call it is passed to
+// calls exactly once, whose body jumps out of it, as { return a.y } in
+// C().apply { return a.y }. The expressions it always evaluates are
+// those that alwaysCasts walks.
+func jumps(e syntax.Expr) bool {
+	if e == nil {
+		return false
+	}
+	if t := e.Type(); t.K == types.Nothing && !t.N {
+		return true
+	}
+	switch e := e.(type) {
+	case *syntax.Call:
+		if e.Invoke {
+			if jumps(e.Fun) {
+				return true
+			}
+		} else if m, ok := e.Fun.(*syntax.Member); ok {
+			if jumps(m.X) {
+				return true
+			}
+			if hasSafeCall(m) {
+				return false
+			}
+		}
+		for _, a := range e.Args {
+			if l, ok := a.(*syntax.Lambda); ok {
+				if l.Once && l.Body != nil && l.Body.T.K == types.Nothing && !returnsFrom(l) {
+					return true
+				}
+				continue
+			}
+			if jumps(a) {
+				return true
+			}
+		}
+	case *syntax.Member:
+		return jumps(e.X)
+	case *syntax.Index:
+		return jumps(e.X) || !hasSafeCall(e.X) && anyJumps(e.Args)
+	case *syntax.Binary:
+		return jumps(e.X) || e.Op != syntax.AND && e.Op != syntax.OR && e.Op != syntax.ELVIS && jumps(e.Y)
+	case *syntax.Unary:
+		return jumps(e.X)
+	case *syntax.As:
+		return jumps(e.X)
+	case *syntax.Is:
+		return jumps(e.X)
+	case *syntax.NotNull:
+		return jumps(e.X)
+	case *syntax.If:
+		return jumps(e.Cond)
+	case *syntax.When:
+		return jumps(e.Subject)
+	case *syntax.StringLit:
+		for _, p := range e.Parts {
+			if jumps(p.X) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func anyJumps(es []syntax.Expr) bool {
+	for _, e := range es {
+		if jumps(e) {
+			return true
+		}
+	}
+	return false
+}
+
+// returnsFrom reports whether lambda l has a return from it, return@l,
+// whose type is Nothing but which completes the call l is passed to.
+func returnsFrom(l *syntax.Lambda) bool {
+	found := false
+	inspect(l.Body, func(n any) bool {
+		if j, ok := n.(*syntax.Jump); ok && j.Kind == syntax.RETURN && j.Lambda == l {
+			found = true
+		}
+		return !found
+	})
+	return found
 }
 
 // narrowAfter applies smart casts that hold after a statement such as
@@ -224,6 +344,16 @@ func hasSafeCall(e syntax.Expr) bool {
 }
 
 func (c *Checker) stmt(s syntax.Stmt, valueUsed bool, want types.Type) types.Type {
+	if c.file.Annotated != nil {
+		switch s := s.(type) {
+		case *syntax.ExprStmt:
+			c.annotatedExpr(s.X) // also an if, when or try exprStmt checks
+		case *syntax.VarStmt, *syntax.Destructure:
+			c.annotatedNode(s, localVarSite)
+		case *syntax.Assign, *syntax.While, *syntax.For:
+			c.annotatedNode(s, exprSite)
+		}
+	}
 	switch s := s.(type) {
 	case *syntax.ExprStmt:
 		if valueUsed {
@@ -241,39 +371,7 @@ func (c *Checker) stmt(s syntax.Stmt, valueUsed bool, want types.Type) types.Typ
 	case *syntax.LocalClass:
 		c.localClass(s)
 	case *syntax.While:
-		loop := &loopCtx{node: s, label: s.Label, lambdas: len(c.lambdas)}
-		// The vars the loop assigns lose their narrowing in it and after
-		// it.
-		vars := c.watchedVars(s.Cond, s.Body)
-		if s.Do {
-			// The condition sees the body's declarations.
-			c.push()
-			c.reset(vars)
-			c.loops = append(c.loops, loop)
-			s.Body.T = c.stmts(s.Body, noWant, false)
-			c.loops = c.loops[:len(c.loops)-1]
-			c.value(s.Cond, types.BoolType)
-			c.wantBool(s.Cond)
-			c.pop()
-		} else {
-			c.push()
-			c.reset(vars)
-			c.value(s.Cond, types.BoolType)
-			c.wantBool(s.Cond)
-			whenTrue, _ := c.narrowing(s.Cond)
-			c.loops = append(c.loops, loop)
-			c.push()
-			c.scope.narrows = append(c.scope.narrows, whenTrue...)
-			c.block(s.Body, noWant, false)
-			c.pop()
-			c.loops = c.loops[:len(c.loops)-1]
-			c.pop()
-		}
-		c.reset(vars)
-		if lit, ok := s.Cond.(*syntax.BoolLit); ok && lit.Val && !loop.hasBreak {
-			s.Infinite = true
-			return types.NothingType
-		}
+		return c.while(s)
 	case *syntax.For:
 		if len(s.Names) > 0 && s.Var == "" {
 			// for ((k, v) in m) is for (e in m) { val (k, v) = e }.
@@ -303,7 +401,7 @@ func (c *Checker) stmt(s syntax.Stmt, valueUsed bool, want types.Type) types.Typ
 			}
 			s.Type = nil
 		}
-		vars := c.watchedVars(s.Body)
+		vars, unkeep := c.loopVars(s.Body)
 		c.push()
 		c.reset(vars)
 		s.Sym = &types.VarSym{Name: s.Var, Type: elem, Kind: types.Local}
@@ -312,9 +410,84 @@ func (c *Checker) stmt(s syntax.Stmt, valueUsed bool, want types.Type) types.Typ
 		c.block(s.Body, noWant, false)
 		c.loops = c.loops[:len(c.loops)-1]
 		c.pop()
+		unkeep()
 		c.reset(vars)
 	case *syntax.Block:
 		return c.block(s, want, valueUsed)
+	}
+	return types.UnitType
+}
+
+// while checks a while or a do-while loop. After it, the smart casts are
+// those where it ends: where its condition is false, unless it is true,
+// and at its breaks. A do-while's condition has those at the end of its
+// body and at its continues.
+func (c *Checker) while(s *syntax.While) types.Type {
+	loop := &loopCtx{node: s, label: s.Label, lambdas: len(c.lambdas)}
+	// The vars the loop assigns lose their narrowing in it and after it.
+	vars, unkeep := c.loopVars(s.Cond, s.Body)
+	var exits []flowState
+	if s.Do {
+		// The condition sees the body's declarations.
+		c.push()
+		c.reset(vars)
+		c.loops = append(c.loops, loop)
+		s.Body.T = c.stmts(s.Body, noWant, false)
+		c.loops = c.loops[:len(c.loops)-1]
+		if conts := loop.flow.continues; len(conts) > 0 || loop.flow.lost {
+			// The condition has the smart casts of the paths to it.
+			if s.Body.T.K != types.Nothing {
+				conts = append(conts, c.flowState())
+			}
+			body := c.scope
+			c.scope = &scope{parent: body.parent, vars: body.vars, funs: body.funs, classes: body.classes, depth: body.depth}
+			c.reset(vars)
+			if !loop.flow.lost {
+				c.scope.narrows = append(c.scope.narrows, c.joinFlows(conts)...)
+			}
+		}
+		c.value(s.Cond, types.BoolType)
+		c.wantBool(s.Cond)
+		_, whenFalse := c.narrowing(s.Cond)
+		c.push()
+		c.scope.narrows = append(c.scope.narrows, whenFalse...)
+		exits = append(exits, c.flowState())
+		c.pop()
+		c.pop()
+	} else {
+		pre := c.loopEntry(vars)
+		c.push()
+		c.reset(vars)
+		c.value(s.Cond, types.BoolType)
+		c.wantBool(s.Cond)
+		whenTrue, whenFalse := c.narrowing(s.Cond)
+		c.loops = append(c.loops, loop)
+		c.push()
+		c.scope.narrows = append(c.scope.narrows, whenTrue...)
+		end := c.watchExit(vars)
+		c.block(s.Body, noWant, false)
+		c.pop()
+		c.loops = c.loops[:len(c.loops)-1]
+		if lit, ok := s.Cond.(*syntax.BoolLit); !ok || !lit.Val {
+			c.push()
+			c.scope.narrows = append(c.scope.narrows, c.loopHead(vars, s.Cond, pre, end, loop)...)
+			c.scope.narrows = append(c.scope.narrows, whenFalse...)
+			exits = append(exits, c.flowState())
+			c.pop()
+		}
+		c.pop()
+	}
+	unkeep()
+	c.reset(vars)
+	if !loop.flow.lost {
+		c.scope.narrows = append(c.scope.narrows, c.joinFlows(append(exits, loop.flow.breaks...))...)
+	}
+	if lit, ok := s.Cond.(*syntax.BoolLit); ok && lit.Val && !loop.hasBreak {
+		s.Infinite = true
+		return types.NothingType
+	}
+	if s.Do && s.Body.T.K == types.Nothing && !loop.hasBreak && !loop.hasContinue {
+		return types.NothingType // the body runs once, and jumps
 	}
 	return types.UnitType
 }
@@ -415,9 +588,14 @@ func (c *Checker) smartCastFrom(x syntax.Expr, t types.Type) (types.Type, bool) 
 
 // implyNonNull records the smart casts that v, a val of value x, not
 // being null implies: x's receivers of safe calls aren't null either,
-// when they are vals.
+// when they are vals, nor is x when it's a stable val itself: val s = x
+// is an alias of x.
 func (c *Checker) implyNonNull(v *types.VarSym, x syntax.Expr) {
 	var ns []narrow
+	if k, ok := c.narrowKeyOf(x); ok && !k.sym.Mutable && (k.recv == nil || !k.recv.Mutable) && types.MayBeNull(k.t) {
+		k.t = k.t.NonNull()
+		ns = append(ns, k)
+	}
 	for _, k := range c.safeReceivers(x) {
 		if !k.sym.Mutable && (k.recv == nil || !k.recv.Mutable) {
 			ns = append(ns, k)
@@ -455,24 +633,97 @@ func (c *Checker) condVal(v *types.VarSym, x syntax.Expr) {
 	c.conds[v] = [2][]narrow{whenTrue, whenFalse}
 }
 
+// safeTarget splits an assignment target that a safe call's chain ends
+// in, a?.b or a?.b.f()[i][j], at its last ?.: it returns the receiver, a,
+// and a function that makes the target on a value of it that isn't null,
+// t.b or t.b.f()[i][j]. The parts are copies, not yet checked.
+func safeTarget(x syntax.Expr) (syntax.Expr, func(syntax.Expr) syntax.Expr, bool) {
+	switch x := x.(type) {
+	case *syntax.Member:
+		if !x.Safe {
+			return nil, nil, false
+		}
+		return x.X, func(t syntax.Expr) syntax.Expr {
+			n := *x
+			n.X, n.Safe = t, false
+			return &n
+		}, true
+	case *syntax.Call:
+		m, ok := x.Fun.(*syntax.Member)
+		if !ok || x.Invoke || !m.Safe {
+			return nil, nil, false
+		}
+		return m.X, func(t syntax.Expr) syntax.Expr {
+			fn := *m
+			fn.X, fn.Safe = t, false
+			n := *x
+			n.Fun = &fn
+			return &n
+		}, true
+	case *syntax.Index:
+		recv, build, ok := safeTarget(x.X)
+		if !ok {
+			return nil, nil, false
+		}
+		return recv, func(t syntax.Expr) syntax.Expr {
+			n := *x
+			n.X = build(t)
+			return &n
+		}, true
+	}
+	return nil, nil, false
+}
+
+// safeIf checks the receiver of a safe target, a?.b or a?.b[i], into a
+// temporary, val t = a, and returns it with if (t != null) and the
+// target on t, t.b or t.b[i].
+func (c *Checker) safeIf(p syntax.Pos, recv syntax.Expr, build func(syntax.Expr) syntax.Expr) (*syntax.VarStmt, *syntax.If, syntax.Expr) {
+	tmp := c.temp(p, "receiver", recv, c.value(recv, noWant))
+	target := build(tempRef(tmp, recv.Pos()))
+	null := &syntax.NullLit{}
+	null.P = recv.Pos()
+	cond := &syntax.Binary{Op: syntax.NE, X: tempRef(tmp, recv.Pos()), Y: null}
+	cond.P = recv.Pos()
+	ifs := &syntax.If{Cond: cond}
+	ifs.P = p
+	return tmp, ifs, target
+}
+
 // safeAssign checks a?.b = v, or a?.b op= v, which assigns only if a
-// isn't null: val t = a; if (t != null) t.b = v.
-func (c *Checker) safeAssign(s *syntax.Assign, m *syntax.Member) {
+// isn't null: val t = a; if (t != null) t.b = v. So does a?.b[i] = v.
+func (c *Checker) safeAssign(s *syntax.Assign, recv syntax.Expr, build func(syntax.Expr) syntax.Expr) {
 	c.push()
 	defer c.pop()
-	recv := c.temp(s.P, "receiver", m.X, c.value(m.X, noWant))
-	target := &syntax.Member{X: tempRef(recv, m.P), Name: m.Name}
-	target.P = m.P
-	null := &syntax.NullLit{}
-	null.P = m.P
-	cond := &syntax.Binary{Op: syntax.NE, X: tempRef(recv, m.P), Y: null}
-	cond.P = m.P
+	tmp, ifs, target := c.safeIf(s.P, recv, build)
 	set := &syntax.Assign{P: s.P, Op: s.Op, Target: target, Value: s.Value}
-	ifs := &syntax.If{Cond: cond, Then: &syntax.Block{P: s.P, Stmts: []syntax.Stmt{set}}}
-	ifs.P = s.P
+	ifs.Then = &syntax.Block{P: s.P, Stmts: []syntax.Stmt{set}}
 	es := &syntax.ExprStmt{X: ifs}
 	c.stmt(es, false, noWant)
-	s.Stmts = []syntax.Stmt{recv, es}
+	s.Stmts = []syntax.Stmt{tmp, es}
+}
+
+// safeIncDec checks a?.b++, a?.b--, ++a?.b or --a?.b, and a?.b[i]++,
+// which change b only if a isn't null: val t = a; if (t != null) t.b++.
+// As a value it is null when a is: if (t != null) t.b++ else null.
+func (c *Checker) safeIncDec(u *syntax.Unary, recv syntax.Expr, build func(syntax.Expr) syntax.Expr, value bool) types.Type {
+	c.push()
+	defer c.pop()
+	tmp, ifs, target := c.safeIf(u.P, recv, build)
+	inner := &syntax.Unary{Op: u.Op, X: target, Prefix: u.Prefix}
+	inner.P = u.P
+	ifs.Then = &syntax.Block{P: u.P, Stmts: []syntax.Stmt{&syntax.ExprStmt{X: inner}}}
+	if !value {
+		es := &syntax.ExprStmt{X: ifs}
+		c.stmt(es, false, noWant)
+		u.Stmts = []syntax.Stmt{tmp, es}
+		return types.UnitType
+	}
+	null := &syntax.NullLit{}
+	null.P = u.P
+	ifs.Else = &syntax.Block{P: u.P, Stmts: []syntax.Stmt{&syntax.ExprStmt{X: null}}}
+	t := c.value(ifs, noWant)
+	u.Stmts = []syntax.Stmt{tmp, &syntax.ExprStmt{X: checked(ifs, t)}}
+	return t
 }
 
 // destructure checks val (a, b) = e, as val t = e; val a =
@@ -537,6 +788,10 @@ func (c *Checker) lvalue(x syntax.Expr) (types.Type, bool) {
 			c.errorf(x.P, "val cannot be reassigned")
 			return sym.Type, false
 		}
+		if c.propVisible(sym) && !c.setterVisible(sym) {
+			c.invisibleSetter(x.P, sym)
+			return sym.Type, false
+		}
 		return sym.Type, true
 	case *syntax.Index:
 		// Compound assignment of an element: a[i] += x, a[i]++.
@@ -548,11 +803,13 @@ func (c *Checker) lvalue(x syntax.Expr) (types.Type, bool) {
 		return t, t.K != types.Invalid
 	case *syntax.Member:
 		if x.Safe {
+			// assign and incDec rewrite a?.b = v and a?.b++ first.
 			c.unsupported(x.P, "safe-call assignment", "safe-call assignment is not supported")
 			return types.InvalidType, false
 		}
 		t := c.member(x)
 		x.T = t
+		c.dslTarget(x)
 		if x.Getter != nil && x.Setter == nil {
 			x.Setter = x.Getter.ExtSetter // a var extension property's
 		}
@@ -582,6 +839,10 @@ func (c *Checker) lvalue(x syntax.Expr) (types.Type, bool) {
 			c.errorf(x.P, "val cannot be reassigned")
 			return t, false
 		}
+		if c.propVisible(x.Prop) && !c.setterVisible(x.Prop) {
+			c.invisibleSetter(x.P, x.Prop)
+			return t, false
+		}
 		// Through a projected receiver, the type that can be written
 		// differs from the one read: Nothing for Box<out T>.
 		if rt := x.X.Type(); rt.K == types.Class && rt.A != nil {
@@ -600,6 +861,10 @@ func (c *Checker) forIterator(s *syntax.For, t types.Type) types.Type {
 		return t
 	}
 	if types.MayBeNull(t) && !t.P {
+		if c.opExtension(t, "iterator") {
+			// An extension of a nullable receiver: T?.iterator().
+			return c.forCalls(s)
+		}
 		c.errorf(s.Range.Pos(), "not nullable value required to call an 'iterator()' method on for-loop range")
 		return types.InvalidType
 	}
@@ -625,15 +890,16 @@ func (c *Checker) forIterator(s *syntax.For, t types.Type) types.Type {
 		// inline-only extension that returns it. Iter stays nil.
 		it = t.NonNull()
 	} else if iter == nil {
-		c.errorf(s.Range.Pos(), "for-loop range must have an 'iterator()' method")
-		return types.InvalidType
+		return c.forCalls(s)
+	}
+	if types.MayBeNull(it) && !it.P {
+		return c.forCalls(s) // only extensions may take it
 	}
 	it = it.Flex()
 	hasNext, ht := c.operatorMember(it, "hasNext")
 	next, elem := c.operatorMember(it, "next")
 	if hasNext == nil || next == nil || ht.Flex() != types.BoolType {
-		c.errorf(s.Range.Pos(), "the iterator of the for-loop range has no 'hasNext()' or 'next()' method")
-		return types.InvalidType
+		return c.forCalls(s)
 	}
 	s.Iter, s.HasNext, s.Next, s.IterT = iter, hasNext, next, it
 	for _, f := range []*types.FunSym{iter, hasNext, next} {
@@ -641,6 +907,42 @@ func (c *Checker) forIterator(s *syntax.For, t types.Type) types.Type {
 			c.suspendCall(s.Range.Pos(), f)
 		}
 	}
+	return elem
+}
+
+// forCalls checks a loop over a range whose iterator(), or whose
+// iterator's hasNext() or next(), operatorMember doesn't find, as calls
+// resolved as any other: a member extension of an implicit receiver, a
+// generic extension, as <T> FList<T>.iterator(), or one of a nullable
+// receiver, as <T : Any> T?.iterator(), and also among several
+// extensions, whose ambiguity the calls report. It returns the element
+// type.
+func (c *Checker) forCalls(s *syntax.For) types.Type {
+	p, t := s.Range.Pos(), s.Range.Type()
+	none := &syntax.Call{}
+	if !c.hasFun(t, "iterator", none) {
+		c.errorf(p, "for-loop range must have an 'iterator()' method")
+		return types.InvalidType
+	}
+	iter, it := c.opCall(p, checked(s.Range, t), "iterator", nil, noWant)
+	if it.K == types.Invalid {
+		return it
+	}
+	iv := c.temp(p, "iterator", iter, it)
+	if !c.hasFun(it, "hasNext", none) || !c.hasFun(it, "next", none) {
+		c.errorf(p, "the iterator of the for-loop range has no 'hasNext()' or 'next()' method")
+		return types.InvalidType
+	}
+	hasNext, ht := c.opCall(p, tempRef(iv, p), "hasNext", nil, noWant)
+	next, elem := c.opCall(p, tempRef(iv, p), "next", nil, noWant)
+	if ht.K == types.Invalid || elem.K == types.Invalid {
+		return types.InvalidType
+	}
+	if ht.Flex() != types.BoolType {
+		c.errorf(p, "the iterator of the for-loop range has no 'hasNext()' or 'next()' method")
+		return types.InvalidType
+	}
+	s.IterVar, s.HasNextX, s.NextX = iv, hasNext, next
 	return elem
 }
 
@@ -683,13 +985,22 @@ func (c *Checker) operatorMember(rt types.Type, name string) (*types.FunSym, typ
 			}
 		}
 	}
-	// A top-level extension, not generic: operator fun R.iterator().
+	// A top-level extension, not generic: operator fun R.iterator(), if
+	// it's the only one; among several, the call finds the most specific
+	// or reports the ambiguity.
+	var found *types.FunSym
 	for _, cl := range c.extCallees(name, rt) {
 		f := cl.f
 		if f.Owner == nil && len(f.Params) == 0 && len(f.TypeParams) == 0 && !f.Unsupported && f.Operator && f.Inline == nil {
-			ensureFun(f)
-			return f, f.Ret
+			if found != nil {
+				return nil, types.InvalidType
+			}
+			found = f
 		}
+	}
+	if found != nil {
+		ensureFun(found)
+		return found, found.Ret
 	}
 	return nil, types.InvalidType
 }
@@ -742,8 +1053,8 @@ func (c *Checker) objectTarget(x syntax.Expr) syntax.Expr {
 }
 
 func (c *Checker) assign(s *syntax.Assign) {
-	if m, ok := s.Target.(*syntax.Member); ok && m.Safe {
-		c.safeAssign(s, m)
+	if recv, build, ok := safeTarget(s.Target); ok {
+		c.safeAssign(s, recv, build)
 		return
 	}
 	if ix, ok := s.Target.(*syntax.Index); ok && s.Op == syntax.ASSIGN {
@@ -784,6 +1095,9 @@ func (c *Checker) assign(s *syntax.Assign) {
 		// ktor's this += bytes in an extension of its Digest.
 		tt = c.expr(s.Target, noWant)
 	}
+	if mutable && c.contextWrite(s) {
+		return
+	}
 	var v *types.VarSym // a local var, whose smart casts the assignment changes
 	if id, ok := s.Target.(*syntax.Ident); ok && id.Sym != nil && isVar(id.Sym) {
 		v = id.Sym
@@ -794,6 +1108,28 @@ func (c *Checker) assign(s *syntax.Assign) {
 		if v != nil {
 			c.assignedVar(v, vt)
 			c.assignedNested(v, vt)
+		} else {
+			c.assignedVal(s.Target, vt)
+		}
+		return
+	}
+	if rt := c.targetCast(s.Target, tt); mutable && builtinOperand(rt) && !classBound(rt) &&
+		(rt != tt || s.Op == syntax.PLUS_EQ && types.MayBeNull(rt) && !rt.P && rt.NonNull() == types.StringType) {
+		// x op= v on an x that a smart cast narrows, an Int? known to be
+		// an Int, or on a String?, whose + is String?.plus: x = x op v,
+		// which reads x with its smart-cast type and narrows it to the
+		// result's.
+		op := arithOf(s.Op)
+		s.Stmts, _ = c.reassign(s.P, s.Target, tt, func(read syntax.Expr) syntax.Expr {
+			b := &syntax.Binary{Op: op, X: read, Y: s.Value}
+			b.P = s.P
+			return b
+		})
+		if kt, ok := c.loopKept[v]; v != nil && ok && len(c.errs) == n {
+			// A loop around kept v smart cast to kt for its whole body.
+			if t := c.scope.narrowed(v); t != kt {
+				c.errorf(s.P, "smart cast to '%s' is impossible, because '%s' is a local variable that the loop changes to %s", kt, v.Name, t)
+			}
 		}
 		return
 	}
@@ -802,8 +1138,9 @@ func (c *Checker) assign(s *syntax.Assign) {
 		c.assignedNested(v, v.Type)
 	}
 	if !builtinOperand(tt) || classBound(tt) {
-		// x += v may call x.plusAssign(v), also on a val.
-		if !mutable && len(c.errs) == n+1 && c.errs[n].Msg == "val cannot be reassigned" {
+		// x += v may call x.plusAssign(v), also on a val or a var whose
+		// setter the code can't see.
+		if !mutable && len(c.errs) == n+1 && (c.errs[n].Msg == "val cannot be reassigned" || strings.HasPrefix(c.errs[n].Msg, invisibleSetterMsg)) {
 			c.errs = c.errs[:n]
 		}
 		c.compoundOp(s, tt, mutable)
@@ -811,6 +1148,7 @@ func (c *Checker) assign(s *syntax.Assign) {
 	}
 	s.OpType = tt
 	vt := c.value(s.Value, noWant).Flex()
+	s.Value, vt = builtinBound(s.Value, vt) // counter += i for an i: T, T : Int
 	if tt.K == types.Invalid || vt.K == types.Invalid {
 		return
 	}
@@ -821,6 +1159,10 @@ func (c *Checker) assign(s *syntax.Assign) {
 	// x op= v is x = x op v, whose result must have x's type.
 	op, rt, ok := arith(arithOf(s.Op), tt.Flex(), vt)
 	switch {
+	case !ok && never(vt) && !never(tt.Flex()):
+		// x += todo(): the assignment is dead code. Not for a target of
+		// type Nothing, an out-projected property's setter, whose
+		// assignment is an error.
 	case !ok:
 		c.errorf(s.P, "operator '%s' cannot be applied to %s and %s", s.Op, tt, vt)
 	case rt != tt.Flex():
@@ -867,6 +1209,9 @@ func arithOf(k syntax.Kind) syntax.Kind {
 // after it.
 func (c *Checker) incDec(u *syntax.Unary, value bool) types.Type {
 	u.T = types.UnitType
+	if recv, build, ok := safeTarget(u.X); ok {
+		return c.safeIncDec(u, recv, build, value)
+	}
 	var old *syntax.VarStmt
 	keep := func(inc func(syntax.Expr) syntax.Expr) func(syntax.Expr) syntax.Expr {
 		if !value || u.Prefix {
@@ -927,8 +1272,19 @@ func (c *Checker) incDec(u *syntax.Unary, value bool) types.Type {
 		}
 	}
 	u.X = c.objectTarget(c.thisJavaTarget(c.importTarget(c.recvTarget(u.X))))
-	t, _ := c.lvalue(u.X)
-	if !builtinIncDec(t) {
+	t, mutable := c.lvalue(u.X)
+	if f, _ := contextAccessor(u.X, false); !builtinIncDec(t) || f != nil {
+		// Also a property with context parameters', whose accessors
+		// take them: x = x.inc().
+		return result(c.incDecOp(u, t, keep))
+	}
+	if rt := c.targetCast(u.X, t); mutable && rt != t && builtinIncDec(rt) && !types.MayBeNull(rt) {
+		// x++ on an x that a smart cast narrows, an Int? known to be an
+		// Int: x = x.inc() reads x as an Int, and the value of x++ is one.
+		return result(c.incDecOp(u, t, keep))
+	}
+	if rt := c.targetCast(u.X, t); nullableOperand(rt) && c.opExtension(rt, opNames[u.Op]) {
+		// An operator extension of a nullable receiver: Int?.inc().
 		return result(c.incDecOp(u, t, keep))
 	}
 	if t.K != types.Invalid && !t.Flex().IsNumeric() && t.Flex() != types.CharType {
@@ -936,6 +1292,16 @@ func (c *Checker) incDec(u *syntax.Unary, value bool) types.Type {
 		return types.InvalidType
 	}
 	return t
+}
+
+// targetCast returns the type that a smart cast gives the target x of
+// x++ or x op= v, a stable variable declared of type t, or t.
+func (c *Checker) targetCast(x syntax.Expr, t types.Type) types.Type {
+	k, ok := c.narrowKeyOf(x)
+	if !ok || k.t == t || k.t.K == types.Invalid || k.t.K == types.Null || k.t.K == types.Nothing || !c.subtype(k.t, t) {
+		return t
+	}
+	return k.t
 }
 
 // builtinIncDec reports whether x++ on a value of type t is built in, as

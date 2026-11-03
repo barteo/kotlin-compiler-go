@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"fmt"
 	"io"
+	"math"
 
 	"path/filepath"
 	"sort"
@@ -166,6 +167,10 @@ public class C extends Other {
     public static final int A = 1 << 4 | 3, B = -A * 2, C = (int) 3.9, D = BASE + 1, E = INHERITED;
     public static final long L = 0xFFFF_FFFFL + 1, M = Long.MIN_VALUE;
     public static final byte BY = (byte) 200;
+    public static final int NEG = 0xFFFF_FFFF, MIN = -2147483648, USHR = -8 >>> 28, SH = (short) 40000;
+    public static final long LBITS = 0xFFFF_FFFF_FFFF_FFFFL, LMIN = -9223372036854775808L;
+    public static final char CNEG = (char) -1;
+    public static final String CS = "" + (char) 66;
     public static final char CH = 'a' + 1, UNI = '\uD83D', OCT = '\101';
     public static final String S = "x" + A + 'c' + true + L, T = """
         two
@@ -195,6 +200,8 @@ class Other {
 		"A": int32(19), "B": int32(-38), "C": int32(3), "D": int32(42), "E": int32(7),
 		"L": int64(1 << 32), "M": nil, "BY": int32(-56), "CH": int32('b'), "UNI": int32(0xD83D), "OCT": int32('A'),
 		"S": "x19ctrue4294967296", "T": "two\n  lines joined\n", "U": "big", "Z": nil, "F": float32(0.75),
+		"NEG": int32(-1), "MIN": int32(math.MinInt32), "USHR": int32(15), "SH": int32(-25536),
+		"LBITS": int64(-1), "LMIN": int64(math.MinInt64), "CNEG": int32(0xFFFF), "CS": "B",
 		"NOT": nil, "DIV0": nil, "CYCLE": nil, "CYCLE2": nil,
 	}
 	got := map[string]any{}

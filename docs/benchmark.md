@@ -51,6 +51,8 @@ does. Gradle itself, incremental compilation and tests are left out.
 Apple M2 MacBook Air (4 performance and 4 efficiency cores, 16 GB),
 JDK 21, at `a38d4ce` on 30 October 2026.
 
+Wall time:
+
 | Input | Files | Lines | `kc -j 1` | `kc -j 8` | `kotlinc` cold | `kotlinc` warm | Warm `kotlinc` / `kc -j 1` |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | Generated | 100 | 40k | 0.61 s | 0.27 s | 17.7 s | 7.9 s | 13x |
@@ -59,8 +61,18 @@ JDK 21, at `a38d4ce` on 30 October 2026.
 | kotlinx-coroutines-core | 169 | 34k | 285 ms | 159 ms | 10.9 s | 2.50 s | 8.8x |
 | Ktor, 3 modules | 236 | 24k | 350 ms | 226 ms | 19.2 s | 2.32 s | 6.6x |
 
-- Peak memory: `kc` 1.2–1.6 GB at 1,000 files and 74–118 MB on the
-  libraries; `kotlinc` about 4.5 GB and 1 GB.
+Peak memory (resident set size):
+
+| Input | Files | Lines | `kc -j 1` | `kc -j 8` | `kotlinc` cold | Cold `kotlinc` / `kc -j 1` |
+|---|---:|---:|---:|---:|---:|---:|
+| Generated | 100 | 40k | 163 MB | 219 MB | 1.71 GB | 10x |
+| Generated | 1,000 | 404k | 1.24 GB | 1.64 GB | 4.52 GB | 3.7x |
+| kotlinpoet | 39 | 8.7k | 76 MB | 85 MB | 988 MB | 13x |
+| kotlinx-coroutines-core | 169 | 34k | 107 MB | 118 MB | 1.15 GB | 11x |
+| Ktor, 3 modules | 236 | 24k | 74 MB | 85 MB | 1.04 GB | 14x |
+
+- `kotlinc` runs with an 8 GB heap limit (`HEAP`). Warm `kotlinc`'s
+  memory isn't measured.
 - Warm `kotlinc` doesn't settle at 1,000 files on this 16 GB machine:
   its four runs took 90–108 s, slower than cold.
 - `kotlinc`'s times vary by 10–20% between sessions although it doesn't

@@ -1,0 +1,14 @@
+two
+@a.Nesting(a2=@a.Two(s=two))
+two
+true
+@a.All(i=1, l=2, u=3, big=18446744073709551615, s=s, e=Y, k=class java.lang.String, ki=int, arr=[1, 2], ks=[int, interface java.util.List], es=[X], n=[@a.Two(s=a), @a.Two(s=b)], b=true, c=c, d=1.5, f=2.5, empty=[])
+class java.lang.String
+[int, interface java.util.List]
+3
+true
+true
+false
+@a.Outer(inner=[@a.Outer.Inner(v=[1], tag=t), @a.Outer.Inner(v=[], tag=t)])
+@a.Outer.Inner(v=[], tag=t)
+@kotlin.SinceKotlin(version=1.6.0)

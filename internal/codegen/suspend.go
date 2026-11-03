@@ -774,6 +774,11 @@ func (g *gen) suspendStart(x *syntax.Call, f *types.FunSym) *suspendPoint {
 	if f == nil || !f.Suspend {
 		return nil
 	}
+	if x != nil && x.Invoke {
+		if l, _ := g.inlinedInvoke(x); l != nil {
+			return nil // the lambda's body is copied: its calls are the points
+		}
+	}
 	sm := g.sm
 	if sm == nil {
 		panic("suspend call " + f.Name + " outside suspend code")
@@ -1192,7 +1197,7 @@ func (g *gen) suspendOperator(f *types.FunSym, rt types.Type, load func()) {
 	g.passContinuation(p)
 	g.code.OnCall(func() { g.suspended(p) })
 	if f.Ext {
-		g.invokeStatic(f.Facade, f, 0, false)
+		g.invokeStatic(f.Facade, f, nil, false)
 	} else {
 		g.invokeOperatorMember(f, rt)
 	}
@@ -1332,9 +1337,12 @@ func inlinedLambdas(x *syntax.Call, d *syntax.FunDecl, ctx *tailCtx) map[*types.
 		if l := inlinedArg(x, i); l != nil {
 			ls[p] = inlinedLambda{l, ctx}
 		}
+		if _, l, _ := convertedArg(x, d, i); l != nil {
+			ls[p] = inlinedLambda{l, ctx} // unless forwarded, below
+		}
 	}
 	for k, a := range x.Args {
-		if id, ok := a.(*syntax.Ident); ok && id.Sym != nil {
+		if id, ok := unconverted(a).(*syntax.Ident); ok && id.Sym != nil {
 			if il, ok := ctx.lambdas[id.Sym]; ok {
 				i := k
 				if x.ArgMap != nil {
@@ -1470,7 +1478,7 @@ func tailInline(x *syntax.Call) bool {
 			return false
 		}
 	}
-	b := inlineBody(x.Sym, 0)
+	b := inlineBody(x.Sym, nil)
 	return b != nil && len(x.Args) == len(x.Sym.Params) && b.ReturnsSuspended()
 }
 
@@ -1488,7 +1496,8 @@ func noopCast(x *syntax.As) bool {
 // as kotlinc sees it: not suspendCoroutineUninterceptedOrReturn if its
 // lambda never returns, which leaves its suspension unreachable, or a copy
 // of the program's inline function without other suspension points, as
-// recoverAndThrow is.
+// recoverAndThrow is, or whose suspension points are only invokes of
+// function values converted to suspend ones.
 func suspends(x *syntax.Call) bool {
 	if !suspensionPoint(x) {
 		return false
@@ -1500,6 +1509,14 @@ func suspends(x *syntax.Call) bool {
 	if d == nil {
 		return true
 	}
+	// An invoke of a function value converted to a suspend one is
+	// inlined, and suspends nothing (see convertedArg).
+	plain := map[*types.VarSym]bool{}
+	for i, p := range x.Sym.Params {
+		if _, l, _ := convertedArg(x, d, i); l != nil {
+			plain[p] = true
+		}
+	}
 	found := false
 	visit := func(n any) bool {
 		switch n := n.(type) {
@@ -1508,6 +1525,9 @@ func suspends(x *syntax.Call) bool {
 		case *syntax.LocalFun:
 			return false
 		case *syntax.Call:
+			if id, ok := n.Fun.(*syntax.Ident); ok && n.Invoke && plain[id.Sym] {
+				break
+			}
 			found = found || suspends(n)
 		case *syntax.For:
 			found = found || n.HasNext != nil && (n.HasNext.Suspend || n.Next.Suspend || n.Iter != nil && n.Iter.Suspend)
@@ -1541,8 +1561,9 @@ func neverSuspends(x *syntax.Call) bool {
 	return ok && es.X.Type().K == types.Nothing && !es.X.Type().N
 }
 
-// suspensionPoint reports whether x is a call of a suspend function.
-func suspensionPoint(x *syntax.Call) bool { return x.Sym != nil && x.Sym.Suspend }
+// suspensionPoint reports whether x is a call of a suspend function, but
+// for a tailrec function's tail call of itself, a jump back to its start.
+func suspensionPoint(x *syntax.Call) bool { return x.Sym != nil && x.Sym.Suspend && !x.Tail }
 
 // returnable reports whether a suspend function can return the result of
 // call x unchanged, as its result of type ret: in a Unit function, x's is
@@ -1577,6 +1598,37 @@ func invokesCrossinline(x *syntax.Call) bool {
 	}
 	p, ok := id.Sym.Decl.(*syntax.Param)
 	return ok && p.Crossinline
+}
+
+// argsSuspend is hasSuspension for the arguments of a call in the code
+// being generated, where an invoke of an inlined lambda's parameter, in
+// the body of an inline function being copied, is the lambda's body.
+func (g *gen) argsSuspend(xs []syntax.Expr) bool {
+	if g.sm == nil {
+		return false
+	}
+	if hasSuspension(xs) {
+		return true
+	}
+	found := false
+	for _, x := range xs {
+		syntax.Inspect(x, func(n any) bool {
+			switch n := n.(type) {
+			case *syntax.Lambda:
+				return n.Inline
+			case *syntax.LocalFun:
+				return false
+			case *syntax.Call:
+				if n.Invoke {
+					if l, _ := g.inlinedInvoke(n); l != nil {
+						found = found || hasSuspension([]syntax.Expr{l})
+					}
+				}
+			}
+			return !found
+		})
+	}
+	return found
 }
 
 // hasSuspension reports whether the expressions have a suspension point

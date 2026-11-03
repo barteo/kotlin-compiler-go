@@ -64,7 +64,7 @@ func (c *Checker) checkOperatorDecl(d *syntax.FunDecl, owner *types.ClassSym) {
 		c.errorf(d.P, "'operator' modifier is inapplicable on this function: illegal function name")
 	case owner == nil && d.Recv == nil:
 		c.errorf(d.P, "'operator' modifier is inapplicable on this function: must be a member or an extension function")
-	case n >= 0 && len(d.Params) != n:
+	case n >= 0 && len(d.Params) != n && !((d.Name == "inc" || d.Name == "dec") && defaultsOnly(d.Params)):
 		c.errorf(d.P, "'operator' modifier is inapplicable on this function: must have %s", countParams(n))
 	case n < 0 && n != -0x7fff && len(d.Params) < -n:
 		c.errorf(d.P, "'operator' modifier is inapplicable on this function: must have at least %s", countParams(-n))
@@ -74,6 +74,18 @@ func (c *Checker) checkOperatorDecl(d *syntax.FunDecl, owner *types.ClassSym) {
 	case d.Name == "contains" && d.Sym.Ret.Flex() != types.BoolType:
 		c.errorf(d.P, "'operator' modifier is inapplicable on this function: must return Boolean")
 	}
+}
+
+// defaultsOnly reports whether every parameter has a default value: as
+// kotlinc, ++ calls an inc(s: String = "OK"), which other operators with
+// no value parameters may not take.
+func defaultsOnly(ps []*syntax.Param) bool {
+	for _, p := range ps {
+		if p.Default == nil || p.Vararg {
+			return false
+		}
+	}
+	return true
 }
 
 func countParams(n int) string {
@@ -119,6 +131,55 @@ func (c *Checker) opCall(p syntax.Pos, recv syntax.Expr, name string, args []syn
 	call := &syntax.Call{Fun: m, Args: args, Operator: true}
 	call.P = p
 	return call, c.expr(call, want)
+}
+
+// opExtension reports whether a receiver of type t has an operator
+// extension named name that may take the argument arg: one of a nullable
+// receiver's, as Int?.inc() or Long?.compareTo(Long?), or one of a
+// built-in type's whose built-in operator doesn't take arg's type, as
+// Int.compareTo(Char). The arguments must fit by their types.
+func (c *Checker) opExtension(t types.Type, name string, args ...syntax.Expr) bool {
+	t = t.Flex()
+	x := &syntax.Call{Args: args}
+	var ts []types.Type
+	for _, cl := range c.extCalleesFor(name, t, x) {
+		if !cl.f.Operator || !c.recvTakes(t, cl.f.Recv) || !c.mayTake(cl.f, x) {
+			continue
+		}
+		if ts == nil {
+			ts = c.argTypes(x)
+		}
+		if c.takeTypes([]*types.FunSym{cl.f}, x, ts) {
+			return true
+		}
+	}
+	return false
+}
+
+// binaryOpName returns the name of the operator function that an
+// arithmetic operator or a comparison calls, or "".
+func binaryOpName(k syntax.Kind) string {
+	switch k {
+	case syntax.LT, syntax.GT, syntax.LE, syntax.GE:
+		return "compareTo"
+	case syntax.PLUS, syntax.MINUS, syntax.STAR, syntax.SLASH, syntax.PERCENT:
+		return opNames[k]
+	}
+	return ""
+}
+
+// never reports whether t is Nothing, the type of an expression that
+// never completes.
+func never(t types.Type) bool {
+	return t.K == types.Nothing && !t.N
+}
+
+// nullableOperand reports whether t is a nullable type whose operators
+// are only extensions: not a platform type, which may be used as not
+// null, nor the type of null, nor a String?, whose plus is built in.
+func nullableOperand(t types.Type) bool {
+	t = t.Flex()
+	return types.MayBeNull(t) && !t.P && t.K != types.Null && t.NonNull() != types.StringType && t.K != types.Invalid
 }
 
 // binaryOp checks an arithmetic operator or a comparison whose left
@@ -167,7 +228,9 @@ func (c *Checker) unaryOp(x *syntax.Unary, xt types.Type, want types.Type) types
 // invokeOp checks x(args) on a value x of type ft that isn't a function:
 // x.invoke(args).
 func (c *Checker) invokeOp(x *syntax.Call, ft, want types.Type, sink *system) (types.Type, bool) {
-	if ft.K != types.Class || ft.C.Func || !c.hasFun(ft, "invoke", x) {
+	// Built-in types take invoke extensions too: "a"(12) for a
+	// String.invoke(i: Int).
+	if ft.K == types.Class && ft.C.Func || ft.K == types.Nothing || !c.hasFun(ft, "invoke", x) {
 		return types.InvalidType, false
 	}
 	m := &syntax.Member{X: checked(x.Fun, ft), Name: "invoke"}

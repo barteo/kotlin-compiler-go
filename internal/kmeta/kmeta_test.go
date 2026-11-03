@@ -472,8 +472,8 @@ func TestRoundTrip(t *testing.T) {
 			if err != nil {
 				t.Fatalf("%s: encoded: %v", name, err)
 			}
-			if slices.ContainsFunc(d.Funcs, func(f *Function) bool { return f.Contexts > 0 }) {
-				continue // context parameters, which kc doesn't encode
+			if slices.ContainsFunc(d.Funcs, func(f *Function) bool { return f.Contexts > len(f.ContextParams) }) {
+				continue // context receivers, which kc doesn't encode
 			}
 			n++
 			if !reflect.DeepEqual(d, d2) {

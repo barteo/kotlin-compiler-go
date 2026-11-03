@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"unicode/utf16"
 
 	cf "github.com/barteo/kotlin-compiler-go/internal/classfile"
@@ -43,6 +44,12 @@ type gen struct {
 	tries   []*tryCtx       // the try blocks the code is in, innermost last
 	lam     *lambdaCtx      // set in a lambda's method
 	inl     []*inlineLambda // the inlined lambdas being generated, innermost last
+	// nonNull holds the parameters and locals whose values are never
+	// null, of which a safe call doesn't check for null: see knownNonNull.
+	nonNull map[*types.VarSym]bool
+	// safeEq is set while the left side of a?.b == v is generated: see
+	// safeEquals.
+	safeEq *safeEqual
 	// publicInline is set in the body of an inline function that isn't
 	// private, which other files' copies call private members from
 	// through their accessors.
@@ -149,7 +156,11 @@ type fileState struct {
 	renamed     []renamed             // see nameObjects
 	slots       map[*types.VarSym]int // the variables' locals: see slot
 	copies      map[*types.ClassSym]*objectCopy
-	count       map[string]int // lambdas named with each class and prefix
+	// inlinedConvs holds the suspend conversions passed to the copies
+	// being generated whose lambdas are inlined, by their $f: see
+	// convertedArg.
+	inlinedConvs map[*syntax.Call]*types.VarSym
+	count        map[string]int // lambdas named with each class and prefix
 	// lambdasIn are the lambdas of the inline functions the file copies,
 	// by function: see declaredInCopy.
 	lambdasIn map[*syntax.FunDecl]map[*syntax.Lambda]bool
@@ -234,7 +245,20 @@ type Options struct {
 	// does: classes get bridges to the default methods they inherit from
 	// Kotlin interfaces. See defaultBridges.
 	JVMDefaultCompat bool
+	// Cache is shared by the files of a compilation, which compute what
+	// it holds once; if nil, each file has its own.
+	Cache *Cache
 }
+
+// Cache holds what code generation computes once for a compilation and
+// shares between its files. It belongs to one compilation: kept longer,
+// it would keep the compilation's symbols. The zero value is ready to
+// use.
+type Cache struct {
+	methods sync.Map // *types.ClassSym -> map[string]bool: see jvmMethods
+}
+
+func (g *gen) cache() *Cache { return g.shared.opts.Cache }
 
 // GenerateFile generates the facade class (if the file has top-level
 // functions or properties) and one class per class declaration.
@@ -249,6 +273,9 @@ func GenerateFile(f *syntax.File, opts Options) (out []Output, err error) {
 	}()
 	if opts.Module == "" {
 		opts.Module = "main"
+	}
+	if opts.Cache == nil {
+		opts.Cache = &Cache{}
 	}
 	g := &gen{file: f, shared: &fileState{opts: opts, slots: map[*types.VarSym]int{}, count: map[string]int{}, classes: map[string]*cf.Class{}, access: map[*types.VarSym]uint8{},
 		annotated: map[*types.VarSym][2]string{}, markers: map[*types.FunSym]bool{}, impls: map[*types.ClassSym]*cf.Class{},
@@ -377,7 +404,11 @@ func (g *gen) privateAccessors() {
 		if !m.static {
 			d, op = "(L"+m.class+";"+d[1:], cf.INVOKESPECIAL
 		}
-		const acc = cf.AccPublic | cf.AccStatic | cf.AccFinal | cf.AccSynthetic
+		acc := uint16(cf.AccPublic | cf.AccStatic | cf.AccFinal | cf.AccSynthetic)
+		inIface := c.Access&cf.AccInterface != 0
+		if inIface {
+			acc &^= cf.AccFinal // an interface's methods can't be final
+		}
 		code := c.NewMethod(acc, m.accessor(), d)
 		for _, pd := range descParams(d) {
 			code.Local(loadOpOf(pd), code.AllocLocal(pd))
@@ -385,6 +416,9 @@ func (g *gen) privateAccessors() {
 		switch {
 		case m.virtual:
 			code.Invoke(cf.INVOKEVIRTUAL, m.class, m.name, m.desc)
+		case m.iface && m.super == "":
+			// A private method of the interface.
+			code.InvokeSpecialInterface(m.class, m.name, m.desc)
 		case m.iface:
 			code.InvokeSpecialInterface(m.super, m.name, m.desc)
 		case m.super != "":
@@ -488,13 +522,27 @@ func (g *gen) annotationClass(cd *syntax.ClassDecl) *cf.Class {
 	c := cf.NewClass(cf.AccPublic|cf.AccInterface|cf.AccAbstract|cf.AccAnnotation, cls.Name, "java/lang/Object")
 	c.Interfaces = []string{"java/lang/annotation/Annotation"}
 	c.SourceFile = filepath.Base(g.file.Path)
+	c.Signature = classSignature(cls, "java/lang/Object", c.Interfaces)
 	for i, p := range cls.AnnotationParams {
-		c.AddAbstractMethod(cf.AccPublic|cf.AccAbstract, p.Name, "()"+annotationJVM(p.Type))
+		d := "()" + annotationJVM(p.Type)
+		c.AddAbstractMethod(cf.AccPublic|cf.AccAbstract, p.Name, d)
+		// A KClass's generic signature, as a Class's: ()Ljava/lang/Class<*>;
+		var w sigWriter
+		w.typ(p.Type, nil, inResult)
+		if sig := "()" + strings.ReplaceAll(w.String(), "Lkotlin/reflect/KClass<", "Ljava/lang/Class<"); strings.Contains(sig, "<") {
+			c.LastMethod().SetSignature(sig)
+		}
 		if i < len(cd.CtorParams) && cd.CtorParams[i].Default != nil {
 			if ev, ok := annotationDefault(p.Type, cd.CtorParams[i].Default); ok {
 				c.LastMethod().SetDefault(ev)
 			}
 		}
+	}
+	if cls.Companion != nil {
+		// The Companion field, which the static initializer sets, as
+		// an interface's.
+		g.cls, g.owner = c, cls
+		g.staticInit(cd)
 	}
 	return c
 }
@@ -503,6 +551,20 @@ func (g *gen) annotationClass(cd *syntax.ClassDecl) *cf.Class {
 // parameter on the JVM: a KClass is a java.lang.Class in an annotation.
 func annotationJVM(t types.Type) string {
 	return strings.ReplaceAll(desc(t), "Lkotlin/reflect/KClass;", "Ljava/lang/Class;")
+}
+
+// kotlinClasses converts the value of an annotation's method on the
+// stack, of descriptor d, to t: a java.lang.Class, or an array of them,
+// to a KClass, which the standard library's Reflection creates.
+func (g *gen) kotlinClasses(d string, t types.Type) {
+	if d == desc(t) || annotationJVM(t) != d {
+		return
+	}
+	conv, cd := "getOrCreateKotlinClass", "(Ljava/lang/Class;)Lkotlin/reflect/KClass;"
+	if d[0] == '[' {
+		conv, cd = "getOrCreateKotlinClasses", "([Ljava/lang/Class;)[Lkotlin/reflect/KClass;"
+	}
+	g.code.Invoke(cf.INVOKESTATIC, "kotlin/jvm/internal/Reflection", conv, cd)
 }
 
 // classes generates a class and the classes nested in it.
@@ -551,16 +613,30 @@ func desc(t types.Type) string {
 }
 
 // funDesc is the descriptor of a function or method: the one read from the
-// class file for Java methods. An extension function takes its receiver
-// first.
+// class file for Java methods. A function with context parameters takes
+// them first, then an extension function its receiver.
 func funDesc(f *types.FunSym) string {
 	if f.Desc != "" {
 		return f.Desc
 	}
-	if f.Ext {
-		return "(" + paramDesc(f.Recv) + sigDesc(f)[1:]
+	if f.Ext || len(f.Contexts) > 0 {
+		return "(" + leadDesc(f) + sigDesc(f)[1:]
 	}
 	return sigDesc(f)
+}
+
+// leadDesc returns the descriptors of the parameters a function takes
+// before its value parameters: its context parameters and its extension
+// receiver.
+func leadDesc(f *types.FunSym) string {
+	var sb strings.Builder
+	for _, p := range f.Contexts {
+		sb.WriteString(paramDesc(p.Type))
+	}
+	if f.Ext {
+		sb.WriteString(paramDesc(f.Recv))
+	}
+	return sb.String()
 }
 
 // sigDesc returns the descriptor of a function of the program's
@@ -885,6 +961,8 @@ func (g *gen) function(fd *syntax.FunDecl, access uint16) cf.MemberRef {
 		}
 	}
 	switch {
+	case sym.Private && g.inInterface():
+		access = access&^(cf.AccPublic|cf.AccProtected) | cf.AccPrivate // an interface's methods can't be final
 	case sym.Private:
 		access = access&^(cf.AccPublic|cf.AccProtected) | cf.AccPrivate | cf.AccFinal
 	case fd.Inline && fd.Find("", "InlineOnly") != nil && access&cf.AccStatic != 0:
@@ -1000,6 +1078,10 @@ func (g *gen) functionBody(fd *syntax.FunDecl) {
 	g.prefix = sym.Name + "$lambda"
 	g.retType = types.JVMRet(sym)
 	g.loops, g.tries = nil, nil
+	for _, p := range sym.Contexts {
+		g.setSlot(p, g.code.AllocLocal(paramDesc(p.Type)))
+		g.named(p)
+	}
 	if r := fd.RecvSym; r != nil {
 		g.setSlot(r, g.code.AllocLocal(paramDesc(r.Type)))
 		g.named(r)
@@ -1036,7 +1118,7 @@ func (g *gen) functionBody(fd *syntax.FunDecl) {
 				}
 			}
 		}
-		g.checkParams(fd.RecvSym, params)
+		g.checkParams(sym.Contexts, fd.RecvSym, g.collGuard(sym, params))
 	}
 	for _, i := range sym.BoxedParams {
 		p := sym.Params[i]
@@ -1053,7 +1135,9 @@ func (g *gen) functionBody(fd *syntax.FunDecl) {
 	saved := g.tail // of a function this one is local to
 	defer func() { g.tail = saved }()
 	g.tail = nil
-	if fd.Tailrec && !sym.Suspend {
+	if fd.Tailrec {
+		// In a suspend function, after the state machine's entry: a tail
+		// call reruns the body with the same continuation, as kotlinc's.
 		g.tail = &tailrec{fd: fd, start: cf.NewLabel()}
 		g.code.Place(g.tail.start)
 	}
@@ -1251,12 +1335,17 @@ func (g *gen) class(cd *syntax.ClassDecl) *cf.Class {
 		}
 		switch {
 		case p.Abstract:
-			c.AddAbstractMethod(acc&(cf.AccPublic|cf.AccProtected)|cf.AccAbstract, types.GetterJVM(p), "()"+desc(types.GetterType(p)))
-			g.signAccessor(c.LastMethod(), types.GetterType(p), propRef(p), "()"+desc(types.GetterType(p)), as, cls)
+			// Taking the context parameters first, if any.
+			ctx := ""
+			for _, q := range p.Contexts {
+				ctx += paramDesc(q.Type)
+			}
+			c.AddAbstractMethod(acc&(cf.AccPublic|cf.AccProtected)|cf.AccAbstract, types.GetterJVM(p), "("+ctx+")"+desc(types.GetterType(p)))
+			g.signAccessor(c.LastMethod(), types.GetterType(p), propRef(p), "("+ctx+")"+desc(types.GetterType(p)), as, cls, p.Contexts...)
 			g.defaultAccessorAnnotations(c.LastMethod(), as, "get", p.Type)
 			if p.Mutable {
-				c.AddAbstractMethod(acc&(cf.AccPublic|cf.AccProtected)|cf.AccAbstract, types.SetterJVM(p), "("+d+")V")
-				g.signAccessor(c.LastMethod(), ft, propRef(p), "("+d+")V", as, cls)
+				c.AddAbstractMethod(acc&(cf.AccPublic|cf.AccProtected)|cf.AccAbstract, types.SetterJVM(p), "("+ctx+d+")V")
+				g.signAccessor(c.LastMethod(), ft, propRef(p), "("+ctx+d+")V", as, cls, p.Contexts...)
 				g.defaultAccessorAnnotations(c.LastMethod(), as, "set", p.Type)
 			}
 		case p.Private:
@@ -1324,7 +1413,7 @@ func (g *gen) class(cd *syntax.ClassDecl) *cf.Class {
 			}
 		}
 		for _, b := range p.Bridges {
-			if !collectionBridge(cls, b) && !cls.HasDefaultImpls() {
+			if !g.cache().collectionBridge(cls, b) && !cls.HasDefaultImpls() {
 				g.bridge(b, types.GetterJVM(p), nil, types.GetterType(p), false, nil, nil)
 			}
 		}
@@ -1443,13 +1532,9 @@ func (g *gen) class(cd *syntax.ClassDecl) *cf.Class {
 				g.composeDefaultsStub(fd)
 			}
 		}
-		params := f.Params
-		if f.Ext {
-			// A member extension's receiver comes first.
-			params = append([]*types.VarSym{{Name: "<this>", Type: f.Recv, Kind: types.Param}}, params...)
-		}
+		params := bridgeParams(f)
 		for _, b := range f.Bridges {
-			if !collectionBridge(cls, b) && !cls.HasDefaultImpls() {
+			if !g.cache().collectionBridge(cls, b) && !cls.HasDefaultImpls() {
 				g.bridge(b, f.JVM(), params, types.JVMRet(f), slices.Contains(f.BoxingBridges, b), f.BridgeOf[b], f)
 				bridgeAnnotations(g.cls.LastMethod(), fd.Annotations)
 			}
@@ -1462,7 +1547,7 @@ func (g *gen) class(cd *syntax.ClassDecl) *cf.Class {
 		g.delegated(dl)
 	}
 	for _, b := range cd.InheritedBridges {
-		if i := strings.IndexByte(b.Bridge, '('); !collectionBridge(cls, b.Bridge) && !c.HasMethod(b.Bridge[:i], b.Bridge[i:]) {
+		if i := strings.IndexByte(b.Bridge, '('); !g.cache().collectionBridge(cls, b.Bridge) && !c.HasMethod(b.Bridge[:i], b.Bridge[i:]) {
 			g.bridge(b.Bridge, b.Target, b.Params, b.Ret, false, b.Over, b.Fun)
 		}
 	}
@@ -1543,11 +1628,7 @@ func (g *gen) delegated(dl *syntax.Delegated) {
 	default:
 		g.code.Local(cf.ALOAD, 0)
 	}
-	params := f.Params
-	if f.Ext {
-		// A member extension's receiver comes first.
-		params = append([]*types.VarSym{{Name: "<this>", Type: f.Recv, Kind: types.Param}}, params...)
-	}
+	params := bridgeParams(f)
 	for i, pd := range from {
 		g.code.Local(loadOpOf(pd), slots[i])
 		if i < len(params) && types.Unboxed(params[i].Type) && pd != to[i] {
@@ -1583,7 +1664,7 @@ func (g *gen) delegated(dl *syntax.Delegated) {
 		return
 	}
 	for _, b := range f.Bridges {
-		if !collectionBridge(g.owner, b) { // a collection's own bridge, as contains(Object)
+		if !g.cache().collectionBridge(g.owner, b) { // a collection's own bridge, as contains(Object)
 			g.bridge(b, f.JVM(), params, types.JVMRet(f), slices.Contains(f.BoxingBridges, b), f.BridgeOf[b], f)
 		}
 	}
@@ -1673,6 +1754,11 @@ func (g *gen) constructor(cd *syntax.ClassDecl) {
 			g.checkParam(g.slot(cp.Sym), cp.Sym.Type, cp.Name)
 		}
 	}
+	if !cls.Inner {
+		// Before the superclass's constructor, which may call the
+		// members that read them, as kotlinc stores them.
+		g.storeCaptures(cd)
+	}
 	g.code.Local(cf.ALOAD, 0)
 	if cls.Entries != nil {
 		g.code.Local(cf.ALOAD, 1)
@@ -1686,9 +1772,6 @@ func (g *gen) constructor(cd *syntax.ClassDecl) {
 			super = cls.Super.Name
 		}
 		g.code.Invoke(cf.INVOKESPECIAL, super, "<init>", "()V")
-	}
-	if !cls.Inner {
-		g.storeCaptures(cd)
 	}
 	g.initializers(cd)
 	g.line(cd.P)
@@ -1754,11 +1837,9 @@ func (g *gen) ctorCall(x *syntax.Call) {
 		g.code.Local(cf.ILOAD, 2)
 		d = "(Ljava/lang/String;I" + d[1:]
 	}
-	if mask := g.callArgs(x, f); mask != 0 {
-		g.code.Iconst(int32(mask))
-		g.code.Op(cf.ACONST_NULL)
-		i := strings.IndexByte(d, ')')
-		d = d[:i] + "ILkotlin/jvm/internal/DefaultConstructorMarker;" + d[i:]
+	if mask := g.callArgs(x, f); mask.any() {
+		g.pushMask(mask, len(f.Params))
+		d = defaultsDesc(d, len(f.Params), ctorMarker)
 	} else if enum && x.Ctor != g.owner {
 		d = g.marker(d)
 	} else if x.Ctor != g.owner && g.viaMarker(f) {
@@ -1829,7 +1910,10 @@ func (g *gen) secondary(cd *syntax.ClassDecl, sc *syntax.SecondaryCtor) {
 	}
 	g.line(sc.P)
 	if access&cf.AccPrivate == 0 {
-		g.checkParams(nil, f.Params)
+		g.checkParams(nil, nil, f.Params)
+	}
+	if !sc.ToThis && cls.Local {
+		g.storeCaptures(cd) // before the superclass's constructor
 	}
 	g.code.Local(cf.ALOAD, 0)
 	switch {
@@ -1843,9 +1927,6 @@ func (g *gen) secondary(cd *syntax.ClassDecl, sc *syntax.SecondaryCtor) {
 		g.ctorCall(sc.Delegation)
 	}
 	if !sc.ToThis {
-		if cls.Local {
-			g.storeCaptures(cd)
-		}
 		g.initializers(cd)
 		g.line(sc.P)
 	}
@@ -2029,14 +2110,14 @@ func hasDefaults(params []*syntax.Param) bool {
 
 // defaults generates the static method that supplies a function's omitted
 // arguments, as kotlinc writes it: name$default takes the receiver of a
-// method, the parameters, a mask with bit i set if parameter i was
-// omitted, and an unused marker. It computes the omitted ones' default
-// values, in order, and calls the function. A value class's member takes
-// the value instead of the object, as its static method does.
+// method, the parameters, masks with bit i set if parameter i was
+// omitted (see argMask), and an unused marker. It computes the omitted
+// ones' default values, in order, and calls the function. A value class's
+// member takes the value instead of the object, as its static method
+// does.
 func (g *gen) defaults(fd *syntax.FunDecl, owner *types.ClassSym) {
 	f := fd.Sym
 	d := sigDesc(f)
-	i := strings.IndexByte(d, ')')
 	self := "" // the method's object
 	value := owner != nil && owner.Value
 	switch {
@@ -2047,15 +2128,20 @@ func (g *gen) defaults(fd *syntax.FunDecl, owner *types.ClassSym) {
 	case owner != nil:
 		self = "L" + owner.Name + ";"
 	}
-	recv := self // and an extension's receiver
+	recv := self // and the context parameters and an extension's receiver
+	for _, p := range f.Contexts {
+		recv += paramDesc(p.Type)
+	}
 	if r := fd.RecvSym; r != nil {
 		recv += paramDesc(r.Type)
 	}
 	access := uint16(cf.AccPublic | cf.AccStatic | cf.AccSynthetic)
-	if f.Private || fd.Inline && fd.Find("", "InlineOnly") != nil {
-		access &^= cf.AccPublic // as kotlinc's: its package calls it
+	if (f.Private || fd.Inline && fd.Find("", "InlineOnly") != nil) && !g.inInterface() {
+		// As kotlinc's: its package calls it. An interface's methods
+		// are public or private.
+		access &^= cf.AccPublic
 	}
-	g.code = g.cls.NewMethod(access, f.JVM()+"$default", "("+recv+d[1:i]+"ILjava/lang/Object;"+d[i:])
+	g.code = g.cls.NewMethod(access, f.JVM()+"$default", defaultsDesc("("+recv+d[1:], types.DefaultBits(f), objMarker))
 	g.cls.Throws(f.Throws...) // as kotlinc declares them
 	copied := (fd.Inline || inlineAccessor(fd)) && !f.Private
 	if copied {
@@ -2076,11 +2162,23 @@ func (g *gen) defaults(fd *syntax.FunDecl, owner *types.ClassSym) {
 		g.objThis = true // a @JvmStatic member's
 		defer func() { g.objThis = false }()
 	}
+	for _, p := range f.Contexts {
+		g.setSlot(p, g.code.AllocLocal(paramDesc(p.Type)))
+		g.named(p)
+	}
 	if r := fd.RecvSym; r != nil {
 		g.setSlot(r, g.code.AllocLocal(paramDesc(r.Type)))
 		g.named(r)
 	}
-	k := g.fillDefaultsCont(fd.Params, f.Params, f.Suspend, nil)
+	var prologue func()
+	if o := g.owner; owner != nil && o != nil && (o.Anonymous || o.Inner || o.Local) && f.Owner == o {
+		if cd, ok := o.Decl.(*syntax.ClassDecl); ok {
+			// The default values, as the body, read the captures and an
+			// inner class's outer instance from locals.
+			prologue = func() { g.loadCaptures(cd, 0) }
+		}
+	}
+	k := g.fillDefaultsCont(fd.Params, f.Params, len(f.Contexts), f.Suspend, prologue)
 	if copied && !f.Suspend && (fd.Body != nil || fd.ExprBody != nil) {
 		// As kotlinc's, the body follows the default values, rather than
 		// a call of the function: copiers copy the function's lambda
@@ -2107,6 +2205,9 @@ func (g *gen) defaults(fd *syntax.FunDecl, owner *types.ClassSym) {
 	case owner != nil:
 		g.code.Local(cf.ALOAD, 0)
 	}
+	for _, p := range f.Contexts {
+		g.code.Local(loadOp(p.Type), g.slot(p))
+	}
 	if r := fd.RecvSym; r != nil {
 		g.code.Local(loadOp(r.Type), g.slot(r))
 	}
@@ -2129,16 +2230,18 @@ func (g *gen) defaults(fd *syntax.FunDecl, owner *types.ClassSym) {
 }
 
 // fillDefaults allocates the parameters of a $default method, followed by
-// the mask and the marker, and stores the default value of each omitted
+// the masks and the marker, and stores the default value of each omitted
 // parameter in its local.
 func (g *gen) fillDefaults(params []*syntax.Param, syms []*types.VarSym) {
-	g.fillDefaultsCont(params, syms, false, nil)
+	g.fillDefaultsCont(params, syms, 0, false, nil)
 }
 
 // fillDefaultsCont is fillDefaults for a suspend function if suspend is
-// set: its continuation comes before the mask. It returns its slot, or
-// -1. prologue, if not nil, runs before the default values.
-func (g *gen) fillDefaultsCont(params []*syntax.Param, syms []*types.VarSym, suspend bool, prologue func()) int {
+// set: its continuation comes before the masks. It returns its slot, or
+// -1. prologue, if not nil, runs before the default values. shift is the
+// mask's bit of the first parameter: as kotlinc's, a function's context
+// parameters come before it.
+func (g *gen) fillDefaultsCont(params []*syntax.Param, syms []*types.VarSym, shift int, suspend bool, prologue func()) int {
 	for _, p := range syms {
 		g.setSlot(p, g.code.AllocLocal(paramDesc(p.Type)))
 		g.named(p)
@@ -2148,8 +2251,7 @@ func (g *gen) fillDefaultsCont(params []*syntax.Param, syms []*types.VarSym, sus
 		k = g.code.AllocLocal(types.ContinuationDesc)
 		g.code.NameLocal(k, "$completion")
 	}
-	mask := g.code.AllocLocal("I")
-	g.code.AllocLocal("Ljava/lang/Object;")
+	masks := g.allocMasks(shift+len(params), objMarker)
 	if prologue != nil {
 		prologue()
 	}
@@ -2158,11 +2260,8 @@ func (g *gen) fillDefaultsCont(params []*syntax.Param, syms []*types.VarSym, sus
 			continue
 		}
 		skip := cf.NewLabel()
-		g.code.Local(cf.ILOAD, mask)
-		g.code.Iconst(int32(1) << j)
-		g.code.Op(cf.IAND)
-		g.code.Jump(cf.IFEQ, skip)
-		g.exprAs(p.Default, p.Sym.Type)
+		g.jumpIfPassed(masks, shift+j, skip)
+		g.argAs(p.Default, p.Sym.Type) // a Unit one is kotlin.Unit
 		g.code.Local(storeOp(p.Sym.Type), g.slot(p.Sym))
 		g.code.Place(skip)
 	}
@@ -2170,10 +2269,10 @@ func (g *gen) fillDefaultsCont(params []*syntax.Param, syms []*types.VarSym, sus
 }
 
 // defaultConstructor generates the constructor for calls that omit
-// arguments: it takes a mask and an unused DefaultConstructorMarker after
+// arguments: it takes masks and an unused DefaultConstructorMarker after
 // the parameters, as kotlinc writes it, and calls ctor, the primary or a
 // secondary constructor. An enum's takes the entry's name and ordinal
-// first, and passes them on.
+// first, and passes them on, and a local class's its captures.
 func (g *gen) defaultConstructor(ctor *types.FunSym, params []*syntax.Param) {
 	cls := ctor.Owner
 	d := ctorJVMDesc(ctor)
@@ -2181,12 +2280,11 @@ func (g *gen) defaultConstructor(ctor *types.FunSym, params []*syntax.Param) {
 	if enum {
 		d = "(Ljava/lang/String;I" + d[1:]
 	}
-	i := strings.IndexByte(d, ')')
 	access := uint16(cf.AccPublic | cf.AccSynthetic)
 	if ctor.Private || enum {
 		access = cf.AccSynthetic // as kotlinc's: its package calls it
 	}
-	g.code = g.cls.NewMethod(access, "<init>", d[:i]+"ILkotlin/jvm/internal/DefaultConstructorMarker;"+d[i:])
+	g.code = g.cls.NewMethod(access, "<init>", defaultsDesc(d, len(ctor.Params), ctorMarker))
 	g.prefix = "_init_$default$lambda"
 	g.retType = types.UnitType
 	g.loops, g.tries = nil, nil
@@ -2199,7 +2297,15 @@ func (g *gen) defaultConstructor(ctor *types.FunSym, params []*syntax.Param) {
 		g.code.AllocLocal("Ljava/lang/String;")
 		g.code.AllocLocal("I")
 	}
-	g.fillDefaultsCont(params, ctor.Params, false, func() {
+	var captures []*types.VarSym // a local class's, which come first
+	if cd != nil && !cls.Inner {
+		captures = cd.Captures
+	}
+	for _, v := range captures {
+		g.setSlot(v, g.code.AllocLocal(storageDesc(v)))
+		g.named(v)
+	}
+	g.fillDefaultsCont(params, ctor.Params, 0, false, func() {
 		if cls.Inner {
 			g.outerCaptures(cd)
 		}
@@ -2211,6 +2317,9 @@ func (g *gen) defaultConstructor(ctor *types.FunSym, params []*syntax.Param) {
 	if enum {
 		g.code.Local(cf.ALOAD, 1)
 		g.code.Local(cf.ILOAD, 2)
+	}
+	for _, v := range captures {
+		g.code.Local(storageLoadOp(v), g.slot(v))
 	}
 	for _, p := range ctor.Params {
 		g.code.Local(loadOp(p.Type), g.slot(p))
@@ -2427,17 +2536,31 @@ func (g *gen) staticInit(cd *syntax.ClassDecl) {
 				g.code.FieldInsn(cf.PUTSTATIC, cls.Name, e.Name, self)
 				continue
 			}
-			g.code.New(cls.Name)
-			g.code.Op(cf.DUP)
-			g.code.Sconst(e.Name)
-			g.code.Iconst(int32(i))
 			f := e.Call.Sym
 			d := "(Ljava/lang/String;I" + ctorJVMDesc(f)[1:]
-			if mask := g.callArgs(e.Call, f); mask != 0 {
-				g.code.Iconst(int32(mask))
-				g.code.Op(cf.ACONST_NULL)
-				i := strings.IndexByte(d, ')')
-				d = d[:i] + "ILkotlin/jvm/internal/DefaultConstructorMarker;" + d[i:]
+			var mask argMask
+			if hasHandlers(e.Call.Args) {
+				// A try's handler starts with an empty stack, without the
+				// entry under construction: the arguments are evaluated
+				// first, as kotlinc does, and kept in locals.
+				depth := g.code.Depth()
+				mask = g.callArgs(e.Call, f)
+				args, _ := g.code.SpillAbove(depth)
+				g.code.New(cls.Name)
+				g.code.Op(cf.DUP)
+				g.code.Sconst(e.Name)
+				g.code.Iconst(int32(i))
+				g.code.Unspill(args)
+			} else {
+				g.code.New(cls.Name)
+				g.code.Op(cf.DUP)
+				g.code.Sconst(e.Name)
+				g.code.Iconst(int32(i))
+				mask = g.callArgs(e.Call, f)
+			}
+			if mask.any() {
+				g.pushMask(mask, len(f.Params))
+				d = defaultsDesc(d, len(f.Params), ctorMarker)
 			}
 			g.code.Invoke(cf.INVOKESPECIAL, cls.Name, "<init>", d)
 			g.code.FieldInsn(cf.PUTSTATIC, cls.Name, e.Name, self)
@@ -2517,6 +2640,32 @@ func (g *gen) staticInit(cd *syntax.ClassDecl) {
 	g.stableInit(cd)
 	g.code.Op(cf.RETURN)
 	g.check()
+}
+
+// enumEntryThis pushes, for a reference to entry name of enum class enum
+// in the constructor of an inner class of that entry's class, the entry
+// being constructed, whose static field isn't set yet: the outer
+// instance, as kotlinc reads it. It reports whether it did.
+func (g *gen) enumEntryThis(enum *types.ClassSym, name string) bool {
+	o := g.owner
+	if o == nil || !o.Inner || enum.Entries == nil || g.code.Name() != "<init>" {
+		return false
+	}
+	k := o.Outer
+	for {
+		if cd, ok := k.Decl.(*syntax.ClassDecl); ok && cd.EnumEntry && k.Super == enum && k.Name == enum.Name+"$"+name {
+			break
+		}
+		if !k.Inner {
+			return false
+		}
+		k = k.Outer
+	}
+	g.loadOuterThis()
+	for c := o.Outer; c != k; c = c.Outer {
+		g.code.FieldInsn(cf.GETFIELD, c.Name, "this$0", desc(c.Outer.This()))
+	}
+	return true
 }
 
 // interfaceCompanion reports whether cls is the companion object of an
@@ -2600,6 +2749,16 @@ func (g *gen) companionAccessors() {
 	}
 }
 
+// bridgeParams returns the parameters of method f on the JVM: its context
+// parameters, then a member extension's receiver, then its parameters.
+func bridgeParams(f *types.FunSym) []*types.VarSym {
+	params := slices.Clone(f.Contexts)
+	if f.Ext {
+		params = append(params, &types.VarSym{Name: "<this>", Type: f.Recv, Kind: types.Param})
+	}
+	return append(params, f.Params...)
+}
+
 // bridge generates a bridge method: the name and erased descriptor d of
 // an overridden method, which casts its arguments and calls the override,
 // whose descriptor is target. It is what callers through the supertype
@@ -2628,6 +2787,11 @@ func (g *gen) bridge(nameDesc, targetName string, params []*types.VarSym, result
 	if (nameDesc == "length()I" || nameDesc == "charAt(I)C") && g.owner.IsSubclassOf(charSequenceClass(g.owner)) {
 		// CharSequence's methods, which call length and get: as
 		// kotlinc's, ordinary final ones.
+		access = cf.AccPublic | cf.AccFinal
+	}
+	if numberBridge[nameDesc] && numberClass(g.owner) != nil {
+		// java.lang.Number's intValue() and the others, which call toInt()
+		// and the others: as kotlinc's, ordinary final ones.
 		access = cf.AccPublic | cf.AccFinal
 	}
 	spread := d == types.VarArityDesc && len(params) > types.MaxArity
@@ -2726,6 +2890,23 @@ func charSequenceClass(cls *types.ClassSym) *types.ClassSym {
 		return out == nil
 	})
 	return out
+}
+
+// numberBridge are the methods of java.lang.Number that Kotlin names
+// toInt() and the others.
+var numberBridge = map[string]bool{
+	"byteValue()B": true, "shortValue()S": true, "intValue()I": true,
+	"longValue()J": true, "floatValue()F": true, "doubleValue()D": true,
+}
+
+// numberClass returns java.lang.Number if cls is or extends it, or nil.
+func numberClass(cls *types.ClassSym) *types.ClassSym {
+	for s := cls; s != nil; s = s.Super {
+		if s.Name == "java/lang/Number" {
+			return s
+		}
+	}
+	return nil
 }
 
 // convertDesc converts the value on the stack from one erased type to
@@ -2830,12 +3011,20 @@ func (g *gen) callMethod(f *types.FunSym, cls *types.ClassSym, name, d string) {
 		g.invokeVirtual(cls, name, d)
 	case g.inClass(f.Owner):
 		if g.publicInline {
-			g.shared.methods[privateMethod{class: f.Owner.Name, name: name, desc: d}] = true // for copies
+			g.shared.methods[privateMethod{class: f.Owner.Name, name: name, desc: d, iface: f.Owner.Interface}] = true // for copies
 		}
-		g.code.Invoke(cf.INVOKESPECIAL, f.Owner.Name, name, d)
+		if f.Owner.Interface {
+			g.code.InvokeSpecialInterface(f.Owner.Name, name, d)
+		} else {
+			g.code.Invoke(cf.INVOKESPECIAL, f.Owner.Name, name, d)
+		}
 	default:
-		g.shared.methods[privateMethod{class: f.Owner.Name, name: name, desc: d}] = true
-		g.code.Invoke(cf.INVOKESTATIC, f.Owner.Name, "access$"+name, "(L"+f.Owner.Name+";"+d[1:])
+		g.shared.methods[privateMethod{class: f.Owner.Name, name: name, desc: d, iface: f.Owner.Interface}] = true
+		if f.Owner.Interface {
+			g.code.InvokeStaticInterface(f.Owner.Name, "access$"+name, "(L"+f.Owner.Name+";"+d[1:])
+		} else {
+			g.code.Invoke(cf.INVOKESTATIC, f.Owner.Name, "access$"+name, "(L"+f.Owner.Name+";"+d[1:])
+		}
 	}
 }
 
@@ -2867,7 +3056,8 @@ func protectedFun(f *types.FunSym) bool {
 // descriptor d, on the receiver below the arguments, through a static
 // accessor of the class that may call it, if the code is in another
 // class: a lambda's, an object's or a nested class's in a subclass of
-// owner in another package, which the JVM doesn't let call it. As with
+// owner in another package, which the JVM doesn't let call it, or a
+// class's whose companion is the subclass, on the companion. As with
 // kotlinc, the body of an inline function that isn't private, which
 // classes of other packages copy, and its copies call it through an
 // accessor of the function's class too. It reports whether it did.
@@ -2876,11 +3066,13 @@ func (g *gen) protectedAccess(owner *types.ClassSym, name, d string) bool {
 	switch {
 	case owner == nil:
 	case g.publicCopy() != nil:
-		host = subclassOf(g.publicCopy().Owner, owner)
+		host = protectedHost(g.publicCopy().Owner, owner)
 	case g.publicInline:
-		host = subclassOf(g.owner, owner)
+		host = protectedHost(g.owner, owner)
 	case pkgPath(owner.Name) != pkgPath(g.cls.Name):
-		host = g.subclassHost(owner)
+		if k := protectedHost(g.owner, owner); k != nil && k.Name != g.cls.Name {
+			host = k
+		}
 	}
 	if host == nil {
 		return false
@@ -2914,6 +3106,22 @@ func (g *gen) superAccess(sup *types.ClassSym, name, d string) bool {
 func (g *gen) subclassHost(cls *types.ClassSym) *types.ClassSym {
 	if k := subclassOf(g.owner, cls); k != nil && k.Name != g.cls.Name {
 		return k
+	}
+	return nil
+}
+
+// protectedHost returns class k, or the class enclosing it, that is a
+// subclass of cls, or else the companion of one of them that is, if it
+// is of the program: B's code calls the protected members of A on B's
+// companion object : A().
+func protectedHost(k, cls *types.ClassSym) *types.ClassSym {
+	if s := subclassOf(k, cls); s != nil || k == nil {
+		return s
+	}
+	for ; k != nil; k = k.Outer {
+		if c := k.Companion; c != nil && !c.External && c.IsSubclassOf(cls) {
+			return c
+		}
 	}
 	return nil
 }
@@ -3159,20 +3367,14 @@ func (g *gen) getProp(cls *types.ClassSym, p *types.VarSym) {
 	}
 	if p.Owner != nil && p.Owner.Annotation {
 		if jd := annotationJVM(p.Type); jd != d {
-			// A KClass, or an array of them, is a java.lang.Class in an
-			// annotation, which the standard library's Reflection converts.
 			g.invokeVirtual(cls, p.JVMGetter, "()"+jd)
-			conv, cd := "getOrCreateKotlinClass", "(Ljava/lang/Class;)Lkotlin/reflect/KClass;"
-			if jd[0] == '[' {
-				conv, cd = "getOrCreateKotlinClasses", "([Ljava/lang/Class;)[Lkotlin/reflect/KClass;"
-			}
-			g.code.Invoke(cf.INVOKESTATIC, "kotlin/jvm/internal/Reflection", conv, cd)
+			g.kotlinClasses(jd, p.Type)
 			return
 		}
 	}
 	gd := composeGetterDesc(p, "()"+desc(types.GetterType(p)))
 	if p.Getter != nil {
-		g.composeArgs(p.Getter, 0, nil)
+		g.composeArgs(p.Getter, nil, nil)
 	}
 	switch {
 	case protectedProp(p, false) && g.protectedAccess(p.Owner, types.GetterJVM(p), gd):

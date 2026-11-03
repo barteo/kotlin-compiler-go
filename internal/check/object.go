@@ -11,7 +11,13 @@ import (
 // used as values.
 
 // scopeClass returns the class whose nested classes' names are in scope.
+// In the signatures of an object expression's class or a local class,
+// which are resolved in the code around it, it is that class, then the
+// classes it is in: object { inner class C : B(); open inner class B }.
 func (c *Checker) scopeClass() *types.ClassSym {
+	if k := c.lookupCls; k != nil && c.cls != nil && (k.Anonymous || k.Local || k.Inner) && k != c.supersOf {
+		return k // not in its own supertypes, which don't see its nested classes
+	}
 	if c.cls != nil {
 		return c.cls
 	}
@@ -51,6 +57,13 @@ func (c *Checker) nestedClassifier(name string) classifier {
 				found = classifier{cls: n}
 			} else if a := s.Aliases[name]; a != nil {
 				found = classifier{alias: a}
+			}
+		}
+		// And its companion's: class X { companion object { class Y };
+		// val y: Y }, but not in the companion's supertypes.
+		if found == (classifier{}) && k.Companion != nil && !k.Companion.External && k.Companion != c.supersOf {
+			if n := k.Companion.Nested[name]; n != nil {
+				found = classifier{cls: n}
 			}
 		}
 		if found != (classifier{}) {
@@ -265,19 +278,26 @@ func (c *Checker) objectMethods(name string, x *syntax.Call) *types.ClassSym {
 // an enum entry's arguments, that scope's class.
 func (c *Checker) enclosingClasses() []*types.ClassSym {
 	var out []*types.ClassSym
-	k := c.cls
-	if k == nil {
-		k = c.staticCls
-	}
-	for k != nil {
+	for k := c.firstEnclosing(); k != nil; k = c.nextEnclosing(k) {
 		out = append(out, k)
-		if k.Outer == nil && c.anon[k] != nil {
-			k = c.anon[k].staticCls
-		} else {
-			k = k.Outer
-		}
 	}
 	return out
+}
+
+// firstEnclosing and nextEnclosing walk the classes the code is in, as
+// enclosingClasses returns them, without allocating.
+func (c *Checker) firstEnclosing() *types.ClassSym {
+	if c.cls == nil {
+		return c.staticCls
+	}
+	return c.cls
+}
+
+func (c *Checker) nextEnclosing(k *types.ClassSym) *types.ClassSym {
+	if k.Outer == nil && c.anon[k] != nil {
+		return c.anon[k].staticCls
+	}
+	return k.Outer
 }
 
 // enumEntryInScope finds an entry of an enum class the code is in, which

@@ -2,7 +2,6 @@ package codegen
 
 import (
 	"strings"
-	"sync"
 
 	cf "github.com/barteo/kotlin-compiler-go/internal/classfile"
 	"github.com/barteo/kotlin-compiler-go/internal/types"
@@ -83,6 +82,7 @@ const (
 	collStub               // throws an UnsupportedOperationException
 	collToArray            // toArray() or toArray(T[])
 	collBridge             // a bridge to the Kotlin member: remove(int) to removeAt(int)
+	collGuard              // not a method: the class's override, which returns a result for null
 )
 
 // collMethod is a method that a class gets for its collection types.
@@ -163,17 +163,15 @@ func directlyMapped(cls *types.ClassSym) bool {
 	return false
 }
 
-// classMethods are the methods of a class with code, by name and
+// jvmMethods returns the methods of a class with code, by name and
 // descriptor, and whether each is final: those of the program are
 // computed from its symbols, since its own class file may not be
-// generated yet. It memoizes the result for the program's classes.
-var classMethods sync.Map // *types.ClassSym -> map[string]bool
-
-func jvmMethods(cls *types.ClassSym) map[string]bool {
+// generated yet. It memoizes the result in the compilation's cache.
+func (cc *Cache) jvmMethods(cls *types.ClassSym) map[string]bool {
 	if cls == nil {
 		return nil
 	}
-	if m, ok := classMethods.Load(cls); ok {
+	if m, ok := cc.methods.Load(cls); ok {
 		return m.(map[string]bool)
 	}
 	m := map[string]bool{}
@@ -188,23 +186,23 @@ func jvmMethods(cls *types.ClassSym) map[string]bool {
 		for nd, final := range declaredMethods(cls, false) {
 			m[nd] = final
 		}
-		for _, cm := range collectionMethods(cls) {
+		for _, cm := range cc.collectionMethods(cls) {
 			if cm.kind != collAbstract {
 				m[cm.name+cm.desc] = cm.final()
 			}
 		}
 	}
-	classMethods.Store(cls, m)
+	cc.methods.Store(cls, m)
 	return m
 }
 
 // superMethods returns the methods with code of cls's superclasses, and
 // whether each is final.
-func superMethods(cls *types.ClassSym) map[string]bool {
+func (cc *Cache) superMethods(cls *types.ClassSym) map[string]bool {
 	out := map[string]bool{}
 	for s := cls.Super; s != nil; s = s.Super {
 		s.Ensure()
-		for nd, final := range jvmMethods(s) {
+		for nd, final := range cc.jvmMethods(s) {
 			if _, ok := out[nd]; !ok {
 				out[nd] = final
 			}
@@ -281,7 +279,7 @@ func declaredMethods(cls *types.ClassSym, abstract bool) map[string]bool {
 
 // collectionMethods returns the methods that class cls of the program
 // gets for its Kotlin collection types (see the top of this file).
-func collectionMethods(cls *types.ClassSym) []collMethod {
+func (cc *Cache) collectionMethods(cls *types.ClassSym) []collMethod {
 	if cls.Interface || cls.External {
 		return nil
 	}
@@ -289,7 +287,7 @@ func collectionMethods(cls *types.ClassSym) []collMethod {
 	if len(supers) == 0 {
 		return nil
 	}
-	inherited := superMethods(cls)
+	inherited := cc.superMethods(cls)
 	own := declaredMethods(cls, true)
 	var out []collMethod
 	has := func(nd string) bool {
@@ -412,6 +410,7 @@ func collectionMethods(cls *types.ClassSym) []collMethod {
 
 	// Type-safe bridges of the members Java declares with Object
 	// parameters, where the class gives them other types.
+	guarded := map[string]bool{}
 	for _, st := range supers {
 		safe := typeSafe[st.C.KotlinName]
 		if safe == nil {
@@ -443,6 +442,16 @@ func collectionMethods(cls *types.ClassSym) []collMethod {
 					nullable[i] = types.MayBeNull(params[pi].Type)
 				}
 				view, ok := safeDesc(params, viewRet(s, f.Ret))
+				if ok {
+					// The class's override, whose checked parameters may
+					// be Objects: as with kotlinc, it returns the bridge's
+					// result for a null instead of checking it.
+					guard := collMethod{kind: collGuard, name: name, desc: view, safe: sb}
+					if !guarded[guard.name+guard.desc] {
+						guarded[guard.name+guard.desc] = true
+						out = append(out, guard)
+					}
+				}
 				if !ok || view == java {
 					continue // generic: the Object parameter is the class's too
 				}
@@ -466,6 +475,9 @@ func collectionMethods(cls *types.ClassSym) []collMethod {
 					descs = append(descs, "("+strings.Join(vps, "")+r)
 				}
 				for i, d := range descs {
+					if d == view && i > 0 {
+						continue // the class's own member: get(Object)Integer
+					}
 					if final, ok := inherited[name+d]; ok && final || own[name+d] {
 						continue
 					}
@@ -633,7 +645,7 @@ func collectionMarkers(cls *types.ClassSym) []string {
 // collectionMembers writes the methods class cls gets for its Kotlin
 // collection types.
 func (g *gen) collectionMembers(cls *types.ClassSym) {
-	for _, m := range collectionMethods(cls) {
+	for _, m := range g.cache().collectionMethods(cls) {
 		switch m.kind {
 		case collAbstract:
 			g.cls.AddAbstractMethod(cf.AccPublic|cf.AccAbstract, m.name, m.desc)
@@ -769,6 +781,67 @@ func (g *gen) collSafeBridge(m collMethod) {
 	g.check()
 }
 
+// collGuard returns params, without the parameters of function sym, which
+// is being generated, that kotlinc doesn't check: the Object parameters of
+// an override of a member with a type-safe bridge, as Map's get(Any). For
+// a null argument, as with kotlinc, the override returns the bridge's
+// result instead.
+func (g *gen) collGuard(sym *types.FunSym, params []*types.VarSym) []*types.VarSym {
+	if g.owner == nil || sym.Owner != g.owner || sym.Static {
+		return params
+	}
+	nd := g.code.Name() + g.code.Desc()
+	for _, m := range g.cache().collectionMethods(g.owner) {
+		if m.kind != collGuard || m.name+m.desc != nd {
+			continue
+		}
+		ps := descParams(m.desc)
+		var out []*types.VarSym
+		for _, p := range params {
+			guard := false
+			for _, pi := range m.safe.params {
+				if pi < len(sym.Params) && sym.Params[pi] == p && ps[pi] == "Ljava/lang/Object;" && checked(p.Type) {
+					guard = true
+				}
+			}
+			if !guard {
+				out = append(out, p)
+				continue
+			}
+			ok := cf.NewLabel()
+			g.code.Local(cf.ALOAD, g.slot(p))
+			g.code.Jump(cf.IFNONNULL, ok)
+			g.safeResult(m, ps)
+			g.code.Place(ok)
+		}
+		return out
+	}
+	return params
+}
+
+// safeResult returns what type-safe bridge m returns for an argument of
+// another type; ps are its parameters' descriptors.
+func (g *gen) safeResult(m collMethod, ps []string) {
+	ret := m.desc[strings.IndexByte(m.desc, ')')+1:]
+	switch m.safe.result {
+	case falseResult:
+		g.code.Iconst(0)
+	case minusOne:
+		g.code.Iconst(-1)
+	case nullResult:
+		g.code.Op(cf.ACONST_NULL)
+	case defaultArg:
+		last := len(ps) - 1
+		slot := 1
+		for _, pd := range ps[:last] {
+			slot += descSize(pd)
+		}
+		g.code.Local(loadOpOf(ps[last]), slot)
+		g.convertDesc(ps[last], ret)
+	}
+	g.code.Op(returnOpOf(ret))
+}
+
 // collStub writes a stub of a mutable collection's member, which throws.
 func (g *gen) collStub(m collMethod) {
 	g.collMethodStart(cf.AccPublic, m.name, m.desc)
@@ -814,12 +887,12 @@ func (g *gen) collToArray(m collMethod) {
 // collectionBridge reports whether an override's bridge nd of class cls
 // isn't written: a collection member replaces it, or a superclass has the
 // method as final.
-func collectionBridge(cls *types.ClassSym, nd string) bool {
-	if final, ok := superMethods(cls)[nd]; ok && final {
+func (cc *Cache) collectionBridge(cls *types.ClassSym, nd string) bool {
+	if final, ok := cc.superMethods(cls)[nd]; ok && final {
 		return true
 	}
-	for _, m := range collectionMethods(cls) {
-		if m.name+m.desc == nd {
+	for _, m := range cc.collectionMethods(cls) {
+		if m.kind != collGuard && m.name+m.desc == nd {
 			return true
 		}
 	}

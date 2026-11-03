@@ -118,6 +118,7 @@ func (g *gen) valueClass(cd *syntax.ClassDecl) *cf.Class {
 	g.cls, g.owner = c, cls
 	c.AddField(cf.AccPrivate|cf.AccFinal, u.Name, ud)
 	nullability(c.LastField().Annotate, u.Type)
+	g.signField(c.LastField(), u.Type, propRef(u), ud, false, nil, cls)
 
 	// The box's value: the underlying property's getter, and unbox-impl.
 	acc := uint16(cf.AccPublic)
@@ -138,6 +139,7 @@ func (g *gen) valueClass(cd *syntax.ClassDecl) *cf.Class {
 		g.code = c.NewMethod(acc, name, "()"+ud)
 		if acc&cf.AccSynthetic == 0 {
 			nullability(methodAdder(c.LastMethod()), u.Type)
+			g.signAccessor(c.LastMethod(), u.Type, propRef(u), "()"+ud, nil, cls)
 		}
 		g.code.AllocLocal(self)
 		getField()
@@ -213,7 +215,7 @@ func (g *gen) valueClass(cd *syntax.ClassDecl) *cf.Class {
 			for _, p := range f.Params {
 				g.code.Local(loadOp(p.Type), g.code.AllocLocal(desc(p.Type)))
 			}
-			g.code.InvokeSpecialInterface(s.Name, f.JVM(), funDesc(f))
+			g.code.InvokeSpecialInterface(directInterface(cls, s).Name, f.JVM(), funDesc(f))
 			g.code.Op(returnOp(f.Ret))
 			g.check()
 			g.valueInherited(f)
@@ -227,6 +229,7 @@ func (g *gen) valueClass(cd *syntax.ClassDecl) *cf.Class {
 	// methods and the instance methods that call them.
 	if !declared["toString()Ljava/lang/String;"] {
 		g.valueMethod(cf.AccPublic|cf.AccStatic, "toString-impl", "("+ud+")Ljava/lang/String;", func() {
+			g.signImpl(cls, "("+ud+")Ljava/lang/String;", nil, types.StringType, false, false)
 			g.newStringBuilder()
 			g.code.Sconst(cls.DisplayName() + "(" + u.Name + "=")
 			g.code.Invoke(cf.INVOKEVIRTUAL, "java/lang/StringBuilder", "append", appendDesc(types.StringType))
@@ -246,6 +249,7 @@ func (g *gen) valueClass(cd *syntax.ClassDecl) *cf.Class {
 	}
 	if !declared["hashCode()I"] {
 		g.valueMethod(cf.AccPublic|cf.AccStatic, "hashCode-impl", "("+ud+")I", func() {
+			g.signImpl(cls, "("+ud+")I", nil, types.IntType, false, false)
 			if types.Unboxed(u.Type) {
 				// A value class's, its hashCode.
 				g.code.Local(loadOp(u.Type), 0)
@@ -259,6 +263,7 @@ func (g *gen) valueClass(cd *syntax.ClassDecl) *cf.Class {
 	}
 	if !declared["equals(Ljava/lang/Object;)Z"] {
 		g.valueMethod(cf.AccPublic|cf.AccStatic, "equals-impl", "("+ud+"Ljava/lang/Object;)Z", func() {
+			g.signImpl(cls, "("+ud+"Ljava/lang/Object;)Z", []types.Type{types.AnyType.Nullable()}, types.BoolType, false, false)
 			other := 1
 			if size(u.Type) == 2 {
 				other = 2
@@ -303,6 +308,7 @@ func (g *gen) valueClass(cd *syntax.ClassDecl) *cf.Class {
 		g.code.Op(cf.ARETURN)
 	})
 	g.valueMethod(cf.AccPublic|cf.AccStatic|cf.AccFinal, "equals-impl0", "("+ud+ud+")Z", func() {
+		g.signImpl(cls, "("+ud+ud+")Z", nil, types.BoolType, false, true)
 		yes := cf.NewLabel()
 		g.code.Local(loadOp(u.Type), 0)
 		g.code.Local(loadOp(u.Type), size(u.Type))
@@ -327,6 +333,7 @@ func (g *gen) valueClass(cd *syntax.ClassDecl) *cf.Class {
 		nullability(methodAdder(c.LastMethod()), u.Type)
 		nullability(paramAdder(c.LastMethod(), 0), u.Type)
 	}
+	g.signImpl(cls, "("+ud+")"+ud, nil, u.Type, true, false)
 	g.prefix = "_init_$lambda"
 	g.retType = types.UnitType
 	g.loops, g.tries = nil, nil
@@ -348,16 +355,12 @@ func (g *gen) valueClass(cd *syntax.ClassDecl) *cf.Class {
 	if cp.Default != nil {
 		// constructor-impl$default, for a call that omits the value,
 		// computes its default value.
-		g.code = c.NewMethod(cf.AccPublic|cf.AccStatic|cf.AccSynthetic, "constructor-impl$default", "("+ud+"ILkotlin/jvm/internal/DefaultConstructorMarker;)"+ud)
+		g.code = c.NewMethod(cf.AccPublic|cf.AccStatic|cf.AccSynthetic, "constructor-impl$default", defaultsDesc("("+ud+")"+ud, 1, ctorMarker))
 		g.prefix = "constructor_impl$default$lambda"
 		g.code.AllocLocal(ud)
-		mask := g.code.AllocLocal("I")
-		g.code.AllocLocal("Lkotlin/jvm/internal/DefaultConstructorMarker;")
+		masks := g.allocMasks(1, ctorMarker)
 		skip := cf.NewLabel()
-		g.code.Local(cf.ILOAD, mask)
-		g.code.Iconst(1)
-		g.code.Op(cf.IAND)
-		g.code.Jump(cf.IFEQ, skip)
+		g.jumpIfPassed(masks, 0, skip)
 		g.exprAs(cp.Default, u.Type)
 		g.code.Local(storeOp(u.Type), 0)
 		g.code.Place(skip)
@@ -388,12 +391,10 @@ func (g *gen) valueCtorCall(x *syntax.Call) {
 	case !x.Ctor.External && f != x.Ctor.Ctor:
 		d = methodDesc(f.Params, x.Ctor.This()) // a secondary constructor
 	}
-	if mask != 0 {
+	if mask.any() {
 		// Arguments omitted: their default values.
-		g.code.Iconst(int32(mask))
-		g.code.Op(cf.ACONST_NULL)
-		i := strings.IndexByte(d, ')')
-		g.code.Invoke(cf.INVOKESTATIC, x.Ctor.Name, "constructor-impl$default", d[:i]+"ILkotlin/jvm/internal/DefaultConstructorMarker;"+d[i:])
+		g.pushMask(mask, len(f.Params))
+		g.code.Invoke(cf.INVOKESTATIC, x.Ctor.Name, "constructor-impl$default", defaultsDesc(d, len(f.Params), ctorMarker))
 		return
 	}
 	g.callStatic(f, x.Ctor.Name, "constructor-impl", d)
@@ -436,7 +437,7 @@ func (g *gen) valueSecondary(cd *syntax.ClassDecl, sc *syntax.SecondaryCtor) {
 	}
 	g.line(sc.P)
 	if !f.Private {
-		g.checkParams(nil, f.Params)
+		g.checkParams(nil, nil, f.Params)
 	}
 	g.valueCtorCall(sc.Delegation)
 	self := g.code.AllocLocal(desc(u))
@@ -456,12 +457,11 @@ func (g *gen) valueSecondary(cd *syntax.ClassDecl, sc *syntax.SecondaryCtor) {
 	g.check()
 	if hasDefaults(sc.Params) {
 		// constructor-impl$default computes the omitted arguments.
-		i := strings.IndexByte(d, ')')
 		access := uint16(cf.AccPublic | cf.AccStatic | cf.AccSynthetic)
 		if f.Private {
 			access &^= cf.AccPublic
 		}
-		g.code = g.cls.NewMethod(access, "constructor-impl$default", d[:i]+"ILkotlin/jvm/internal/DefaultConstructorMarker;"+d[i:])
+		g.code = g.cls.NewMethod(access, "constructor-impl$default", defaultsDesc(d, len(f.Params), ctorMarker))
 		g.prefix = "constructor_impl$default$lambda"
 		g.fillDefaults(sc.Params, f.Params)
 		for _, p := range f.Params {
@@ -551,13 +551,9 @@ func (g *gen) valueMember(fd *syntax.FunDecl) {
 func (g *gen) valueOverride(f *types.FunSym) {
 	name := types.InstanceJVM(f)
 	g.valueBridge(name, funDesc(f), f)
-	params := f.Params
-	if f.Ext {
-		// A member extension's receiver comes first.
-		params = append([]*types.VarSym{{Name: "<this>", Type: f.Recv, Kind: types.Param}}, params...)
-	}
+	params := bridgeParams(f)
 	for _, b := range f.Bridges {
-		if !collectionBridge(g.owner, b) { // a collection's own bridge, as remove(int)
+		if !g.cache().collectionBridge(g.owner, b) { // a collection's own bridge, as remove(int)
 			g.bridge(b, name, params, f.Ret, slices.Contains(f.BoxingBridges, b), f.BridgeOf[b], f)
 		}
 	}
@@ -620,5 +616,69 @@ func (g *gen) boxReceiver(rt types.Type) {
 		g.box(rt) // Any's members of a number: 1.equals(x)
 	case rt.K == types.Unit:
 		g.unitValue()
+	}
+}
+
+// directInterface returns the interface of cls's own supertypes that is
+// or extends interface s: invokespecial may only name a direct
+// superinterface, which finds the default method s declares, as kotlinc's
+// IFoo.f() for an f of IBase, interface IFoo : IBase.
+func directInterface(cls, s *types.ClassSym) *types.ClassSym {
+	for _, i := range cls.Interfaces {
+		if i == s {
+			return i
+		}
+	}
+	for _, i := range cls.Interfaces {
+		if i.IsSubclassOf(s) {
+			return i
+		}
+	}
+	return s
+}
+
+// signImpl gives the static method of value class cls that g generates,
+// of descriptor d, which takes the underlying value then the values of
+// types more and returns ret, its generic signature, as kotlinc's: it
+// uses the class's type parameters, which only constructor-impl declares
+// (tps). equals-impl0's (erased) takes two values of the class with its
+// type parameters' bounds.
+func (g *gen) signImpl(cls *types.ClassSym, d string, more []types.Type, ret types.Type, tps, erased bool) {
+	if len(cls.TypeParams) == 0 {
+		return
+	}
+	u := cls.Underlying
+	bounds := types.Subst{} // the class's type parameters' first bounds
+	for _, p := range cls.TypeParams {
+		b := types.AnyType.Nullable()
+		if len(p.Bounds) > 0 {
+			b = p.Bounds[0]
+		}
+		bounds[p] = types.Arg{T: b}
+	}
+	ps := []sigPart{typedPart(u.Type, propRef(u))}
+	r := typedPart(ret, nil)
+	if u.Type.K == types.TypeParam { // erased but in constructor-impl's parameter
+		e := typedPart(bounds.Apply(u.Type), nil)
+		if !tps {
+			ps[0] = e
+		}
+		if ret.K == types.TypeParam {
+			r = e
+		}
+	}
+	if erased {
+		t := bounds.Apply(u.Type)
+		ps = []sigPart{typedPart(t, nil), typedPart(t, nil)}
+	}
+	for _, t := range more {
+		ps = append(ps, typedPart(t, nil))
+	}
+	var declared []*types.TypeParamSym
+	if tps {
+		declared = cls.TypeParams
+	}
+	if s := methodSig(declared, ps, r, d, 0, g.wildcards(nil, cls)); s != "" {
+		g.cls.LastMethod().SetSignature(s)
 	}
 }

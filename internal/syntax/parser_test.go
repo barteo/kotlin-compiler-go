@@ -140,6 +140,12 @@ func TestParseErrors(t *testing.T) {
 		{"vararg fun f() {}", "1:1", "modifier 'vararg' is only allowed on parameters"},
 		{"val x by d\n get() = 1", "2:2", "delegated property cannot have accessors with non-default implementations"},
 		{"fun <T> f() where U : Any {}", "1:19", "'U' does not refer to a type parameter of this declaration"},
+		{"context(Int) fun f() = 1", "1:9", "context parameters must be named"},
+		{"context() fun f() = 1", "1:9", "expected a context parameter"},
+		{"fun f(g: context() () -> Unit) {}", "1:18", "expected a context parameter type"},
+		{"context(_: Any?) package p", "1:1", "context parameters are unsupported in this position"},
+		{"class C {\n  context(a: A)\n}", "2:3", "expected a declaration after the context parameters"},
+		{"context(a: A)", "1:1", "expected a declaration after the context parameters"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.msg, func(t *testing.T) {
@@ -159,8 +165,8 @@ func TestParseErrors(t *testing.T) {
 // construct is reported as, which bench/survey counts.
 func TestUnsupportedFeatures(t *testing.T) {
 	tests := []struct{ src, feature string }{
-		{"context(c: Comparator<T>)\nfun <T> T.f(o: T) = 1", "context parameters"},
-		{"fun f(b: context(Int) () -> Unit) {}", "context parameters"},
+		{"val (a, b) = p", "destructuring declaration"},
+		{"fun f() {\n  external fun g()\n}", "local external function"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.src, func(t *testing.T) {
@@ -176,7 +182,7 @@ func TestUnsupportedFeatures(t *testing.T) {
 }
 
 func TestTokens(t *testing.T) {
-	toks, errs := Tokenize("t.kt", "a as? B; !is; !isOk; x === y !== z; A::f; @Ann; loop@ for; return@f; this@A; 'c'; 1f; 2uL; is as")
+	toks, errs := Tokenize("t.kt", "a as? B; !is; !isOk; x === y !== z; A::f; @Ann; loop@ for; return@f; return@`f g`; this@A; 'c'; 1f; 2uL; is as")
 	if len(errs) > 0 {
 		t.Fatal(errs[0])
 	}
@@ -189,7 +195,7 @@ func TestTokens(t *testing.T) {
 	}
 	got := strings.Join(kinds, " ")
 	want := "identifier(a) as?(as?) identifier(B) !is(!is) !(!) identifier(isOk) identifier(x) ===(===) identifier(y) !==(!==) identifier(z) " +
-		"identifier(A) ::(::) identifier(f) @(@) identifier(Ann) label(loop) for(for) return(return@f) this(this@A) " +
+		"identifier(A) ::(::) identifier(f) @(@) identifier(Ann) label(loop) for(for) return(return@f) return(return@f g) this(this@A) " +
 		"character literal('c') float literal(1f) unsigned literal(2uL) is(is) as(as) end of file()"
 	if got != want {
 		t.Errorf("got  %s\nwant %s", got, want)
@@ -293,13 +299,34 @@ func TestGenericSyntax(t *testing.T) {
 	}
 }
 
+// A type argument _ is one the call infers; `_` names a class.
+func TestUnderscoreTypeArgs(t *testing.T) {
+	f, errs := Parse("t.kt", "fun f() {\n g<_, `_`, List<_>>()\n}")
+	if len(errs) > 0 {
+		t.Fatal(errs[0])
+	}
+	c, ok := f.Decls[0].(*FunDecl).Body.Stmts[0].(*ExprStmt).X.(*Call)
+	if !ok || len(c.TypeArgs) != 3 {
+		t.Fatalf("g<_, `_`, List<_>>() is not a call with three type arguments")
+	}
+	if a := c.TypeArgs[0]; !a.Underscore || a.Type == nil || a.Type.Name != "_" {
+		t.Errorf("_: %+v", a)
+	}
+	if a := c.TypeArgs[1]; a.Underscore || a.Type.Name != "_" {
+		t.Errorf("`_`: %+v", a)
+	}
+	if a := c.TypeArgs[2]; a.Underscore || !a.Type.Args[0].Underscore {
+		t.Errorf("List<_>: %+v", a)
+	}
+}
+
 func TestParseAllRecovers(t *testing.T) {
 	src := `@file:JvmName("X")
 package a.b
 
 import a.C
 
-context(c: Int) class D(val x: Int)
+val (a, b) = 1 to 2
 
 fun ok() = 1
 
@@ -328,7 +355,7 @@ fun ok2() {
 	for _, e := range errs {
 		got = append(got, e.Pos.String()+" "+e.Feature)
 	}
-	want := []string{"6:1 context parameters"}
+	want := []string{"6:5 destructuring declaration"}
 	if strings.Join(got, ", ") != strings.Join(want, ", ") {
 		t.Errorf("got  %s\nwant %s", strings.Join(got, ", "), strings.Join(want, ", "))
 	}
@@ -348,6 +375,49 @@ fun ok2() {
 	}
 	if got, want := strings.Join(names, " "), "ok K K.f K.g I I.f ok2"; got != want {
 		t.Errorf("parsed declarations: got %s, want %s", got, want)
+	}
+}
+
+// TestMisplacedContexts checks the errors that parsing goes on after:
+// context parameters where Kotlin doesn't allow them, and their modifiers
+// and default values.
+func TestMisplacedContexts(t *testing.T) {
+	src := "context(c: A) class C context(c: A) constructor() {\n" +
+		"  context(c: A)\n  constructor(x: Int)\n" +
+		"  context(c: A) typealias T = Int\n" +
+		"  context(c: A) init {}\n" +
+		"}\n" +
+		"enum class E {\n  context(c: A)\n  X\n}\n" +
+		"val p: Int\n  context(c: A)\n  get() = 1\n" +
+		"context(vararg a: A, b: B = b0) fun f() {}\n" +
+		"context(private _: A) fun h() {}\n" +
+		"context(noinline @Ann a: () -> Unit) fun g() {}\n"
+	f, errs := Parse("t.kt", src)
+	if len(errs) > 0 {
+		t.Fatal(errs[0])
+	}
+	var got []string
+	for _, e := range f.Errors {
+		got = append(got, e.Pos.String()+" "+e.Msg)
+	}
+	want := []string{
+		"1:1 context parameters on classes are unsupported",
+		"1:23 context parameters on primary constructors are unsupported",
+		"2:3 context parameters on constructors are unsupported",
+		"4:3 context parameters on type aliases are unsupported",
+		"5:3 context parameters on initializers are unsupported",
+		"8:3 context parameters on enum entries are unsupported",
+		"12:3 context parameters on property accessors are unsupported",
+		"14:9 modifier 'vararg' is not applicable to 'context parameter'",
+		"14:22 context parameters cannot have default values",
+		"15:9 modifier 'private' is not applicable to 'context parameter'",
+	}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Errorf("got\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+	g := f.Decls[len(f.Decls)-1].(*FunDecl)
+	if p := g.Contexts[0]; !p.Noinline || len(p.Annotations) != 1 {
+		t.Errorf("context parameter of g: noinline %v, %d annotations", p.Noinline, len(p.Annotations))
 	}
 }
 
@@ -936,6 +1006,59 @@ func TestSuspend(t *testing.T) {
 	}
 	if f.Decls[2].(*FunDecl).Suspend {
 		t.Errorf("suspend is a name")
+	}
+}
+
+func TestContextParameters(t *testing.T) {
+	src := "context(a: A, _: B<C>)\n@Ann public inline fun <T> T.f(g: context(A) () -> Unit, h: suspend context(A, B) Int.(String) -> T) {}\n" +
+		"fun context(x: Int) = context(x) { }"
+	f, errs := Parse("t.kt", src)
+	if len(errs) > 0 {
+		t.Fatal(errs[0])
+	}
+	d := f.Decls[0].(*FunDecl)
+	if len(d.Contexts) != 2 || d.Contexts[0].Name != "a" || d.Contexts[1].Name != "_" || d.Contexts[1].Type.Name != "B" {
+		t.Errorf("contexts: %+v", d.Contexts)
+	}
+	if !d.Inline || d.Visibility != Public || len(d.Annotations) != 1 || d.Recv == nil {
+		t.Errorf("f: %+v", d.Modifiers)
+	}
+	g, h := d.Params[0].Type, d.Params[1].Type
+	if len(g.Contexts) != 1 || g.Contexts[0].Name != "A" || g.Ret == nil || len(g.Params) != 0 {
+		t.Errorf("g: %+v", g)
+	}
+	if !h.Suspend || len(h.Contexts) != 2 || h.Recv == nil || h.Recv.Name != "Int" || len(h.Params) != 1 {
+		t.Errorf("h: %+v", h)
+	}
+	if d := f.Decls[1].(*FunDecl); d.Name != "context" || len(d.Contexts) != 0 {
+		t.Errorf("context is a name: %+v", d)
+	}
+
+	// Members, properties, local and anonymous functions.
+	src = "class C {\n  context(a: A)\n  fun f() = 1\n  context(a: A) var <T> p: T get() = a; set(v) {}\n}\n" +
+		"fun g() {\n  context(a: A) fun h() = 1\n  val k = context(a: A) fun (x: Int) = a\n  context(a)\n}"
+	f, errs = Parse("t.kt", src)
+	if len(errs) > 0 {
+		t.Fatal(errs[0])
+	}
+	c := f.Decls[0].(*ClassDecl)
+	if m := c.Members[0].(*FunDecl); len(m.Contexts) != 1 {
+		t.Errorf("member: %+v", m.Modifiers)
+	}
+	if p := c.Members[1].(*PropDecl); len(p.Contexts) != 1 || len(p.TypeParams) != 1 || p.Getter == nil || p.Setter == nil {
+		t.Errorf("property: %+v", p)
+	}
+	body := f.Decls[1].(*FunDecl).Body.Stmts
+	if lf, ok := body[0].(*LocalFun); !ok || len(lf.Decl.Contexts) != 1 {
+		t.Errorf("local function: %#v", body[0])
+	}
+	if vs, ok := body[1].(*VarStmt); !ok || len(vs.Init.(*Lambda).AnonCtx) != 1 {
+		t.Errorf("anonymous function: %#v", body[1])
+	}
+	if es, ok := body[2].(*ExprStmt); !ok {
+		t.Errorf("context(a) is a call: %#v", body[2])
+	} else if _, ok := es.X.(*Call); !ok {
+		t.Errorf("context(a) is a call: %#v", es.X)
 	}
 }
 

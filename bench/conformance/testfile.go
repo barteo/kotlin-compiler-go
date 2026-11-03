@@ -193,8 +193,10 @@ func commonSkip(t *test) string {
 	if vs := t.values("TARGET_PLATFORM"); len(vs) > 0 && !slicesContainsFold(vs, "JVM") {
 		return "TARGET_PLATFORM: " + strings.Join(vs, ", ")
 	}
-	if t.has("LANGUAGE") {
-		return "LANGUAGE"
+	for _, f := range t.values("LANGUAGE") {
+		if !defaultFeatures[f] {
+			return "LANGUAGE"
+		}
 	}
 	for _, d := range []string{"API_VERSION", "LANGUAGE_VERSION", "FREE_COMPILER_ARGS", "ASSERTIONS_MODE", "ALLOW_KOTLIN_PACKAGE"} {
 		if t.has(d) {
@@ -221,6 +223,12 @@ func commonSkip(t *test) string {
 		}
 	}
 	return ""
+}
+
+// defaultFeatures are the LANGUAGE directive's values that change nothing:
+// features on by default in the Kotlin kc compiles, as in kotlinc's.
+var defaultFeatures = map[string]bool{
+	"+ContextParameters": true,
 }
 
 func slicesContainsFold(vs []string, s string) bool {

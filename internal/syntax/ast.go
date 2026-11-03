@@ -4,9 +4,10 @@ import "github.com/barteo/kotlin-compiler-go/internal/types"
 
 // File is a parsed source file.
 type File struct {
-	Path    string
-	Package string // dotted package name; "" for the default package
-	JvmName string // the facade's simple name from @file:JvmName, if any
+	Path     string
+	Package  string // dotted package name; "" for the default package
+	PackageP Pos    // the position of the package directive's name
+	JvmName  string // the facade's simple name from @file:JvmName, if any
 	// Annotations are the file's annotations, @file:X, for its facade.
 	Annotations []Annotation
 	Facade      string // JVM internal name of the class holding top-level declarations
@@ -21,12 +22,28 @@ type File struct {
 	// JVM only, where the actual declarations are the ones that count, so
 	// these are only checked against them.
 	Expects []Decl
+	// Errors are the syntax errors parsing went on after, as kotlinc
+	// does: context parameters where Kotlin doesn't allow them, which the
+	// checker reports.
+	Errors []*Error
 	// SuppressInvisible is set on a file with an annotation, on any
 	// declaration or expression, that suppresses INVISIBLE_MEMBER or
 	// INVISIBLE_REFERENCE: its code may call the class path's internal
 	// top-level functions, as ktor's calls kotlinx.coroutines's
 	// recoverStackTrace.
 	SuppressInvisible bool
+	// SuppressShadowed is set on a file with an annotation that
+	// suppresses RECEIVER_SHADOWED_BY_CONTEXT_PARAMETER, an error kotlinc
+	// lets code suppress: the checker doesn't report it in the file.
+	SuppressShadowed bool
+	// SuppressDSL is set on a file with an annotation that suppresses
+	// DSL_SCOPE_VIOLATION, which the checker then doesn't report.
+	SuppressDSL bool
+	// Annotated are the annotations of statements and expressions, by
+	// node: of local variables and destructuring declarations, loops,
+	// assignments, and expressions, @A x, which the checker checks but
+	// class files don't keep.
+	Annotated map[any][]Annotation
 	// Arities is set by the checker: bit n is set if the file uses
 	// function types with n parameters.
 	Arities uint32
@@ -91,6 +108,9 @@ type TypeRef struct {
 	Recv   *TypeRef
 	// Suspend is set on a suspend function type: suspend (A) -> R.
 	Suspend bool
+	// Contexts are the context parameters' types of a context function
+	// type, context(A, B) R.(C) -> T, which on the JVM takes them first.
+	Contexts []*TypeRef
 	// Composable is set on a type annotated @Composable, as Compose's
 	// composable function types are.
 	Composable bool
@@ -101,6 +121,9 @@ type TypeRef struct {
 	// UnsafeVariance is set on a type annotated @UnsafeVariance, whose
 	// type parameters' variance isn't checked.
 	UnsafeVariance bool
+	// NoInfer is set on a type annotated @kotlin.internal.NoInfer, which
+	// doesn't infer a call's type arguments.
+	NoInfer bool
 	// Wildcards is what the type's annotations say of the wildcards of
 	// generic signatures: SuppressWildcards for @JvmSuppressWildcards,
 	// ForceWildcards for @JvmWildcard or @JvmSuppressWildcards(false).
@@ -109,6 +132,9 @@ type TypeRef struct {
 	// definitely non-nullable type: the type written before & is this
 	// TypeRef without it.
 	And *TypeRef
+	// Annotations are the type's annotations as written, @A T, which
+	// the checker checks but writes nowhere.
+	Annotations []Annotation
 }
 
 // Wildcards says whether the generic signatures of a declaration or a
@@ -142,9 +168,10 @@ func WildcardsOf(as []Annotation) Wildcards {
 
 // TypeArg is a type argument: T, out T, in T or *.
 type TypeArg struct {
-	P        Pos
-	Variance types.Variance // Inv, Out, In or Star
-	Type     *TypeRef       // nil for *
+	P          Pos
+	Variance   types.Variance // Inv, Out, In or Star
+	Type       *TypeRef       // nil for *
+	Underscore bool           // _, a call's type argument it infers
 }
 
 // TypeParam is a declared type parameter: T, out T : Bound.
@@ -157,6 +184,10 @@ type TypeParam struct {
 	Bounds  []*TypeRef
 	Sym     *types.TypeParamSym
 	Reified bool
+	// Annotations are the type parameter's annotations as written.
+	Annotations []Annotation
+	// OnlyInput is set by @kotlin.internal.OnlyInputTypes.
+	OnlyInput bool
 }
 
 type Param struct {
@@ -174,6 +205,8 @@ type Param struct {
 	// External is set on a parameter marked external, which is an error.
 	External  bool
 	ExternalP Pos
+	// Mods are its modifiers as written.
+	Mods []Mod
 }
 
 // Modifiers are the modifiers of a declaration that kc uses.
@@ -208,10 +241,35 @@ type Modifiers struct {
 	// Annotations are the declaration's annotations, with their
 	// use-site targets (@get:JvmName applies to a property's getter).
 	Annotations []Annotation
+	// Contexts are the context parameters of a function or a property,
+	// context(a: A, _: B) fun f(), whose names may be _. ContextP is the position of
+	// context, if it is written.
+	Contexts []*Param
+	ContextP Pos
+	// Written are the modifier keywords as written, in order, repeats
+	// included, which the checker checks the targets and combinations of.
+	Written []Mod
 }
 
-// Visibility is a declaration's visibility modifier. kc doesn't check
-// visibility, but the JVM flags and names it writes depend on it.
+// Mod is a modifier keyword as written, and its position.
+type Mod struct {
+	Name string
+	P    Pos
+}
+
+// Has reports whether name is among the written modifiers.
+func (m *Modifiers) Has(name string) bool {
+	for _, w := range m.Written {
+		if w.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+// Visibility is a declaration's visibility modifier, which the checker
+// checks uses of (see check/visibility.go), and the JVM flags and names
+// kc writes depend on.
 type Visibility uint8
 
 const (
@@ -228,10 +286,16 @@ type Annotation struct {
 	Target string // use-site target: file, get, set, field, param, ...; or empty
 	Name   string // as written: JvmName or kotlin.jvm.JvmName
 	Args   []AnnotationArg
+	// TypeArgs are the explicit type arguments of a generic annotation
+	// class: @A<String>(..).
+	TypeArgs []*TypeArg
 	// Implicit is set on an annotation that isn't written but that
 	// kotlinc adds, as @JvmInline to an inline class: class files keep it,
 	// but the declaration's metadata doesn't count it.
 	Implicit bool
+	// Accessor is set on an annotation written on an accessor, @A get(),
+	// which the property keeps with Target get or set.
+	Accessor bool
 
 	// Set by the checker on an annotation that class files keep (its
 	// class's retention isn't SOURCE): its class, and its arguments by
@@ -409,6 +473,8 @@ type PropDecl struct {
 	// InlineGetter and InlineSetter are set on inline get and inline set,
 	// which compile as ordinary accessors.
 	InlineGetter, InlineSetter bool
+	// AccessorMods are the modifiers written on each accessor.
+	AccessorMods [][]Mod
 	// Plugin is set by the checker on a property it declares as a
 	// compiler plugin's that metadata doesn't list: serialization's
 	// $cachedSerializer$delegate.
@@ -649,8 +715,9 @@ type Delegated struct {
 }
 
 type InitBlock struct {
-	P    Pos
-	Body *Block
+	P           Pos
+	Body        *Block
+	Annotations []Annotation // which are errors
 }
 
 // SecondaryCtor is a secondary constructor: constructor(x: Int) : this(x, 0)
@@ -746,9 +813,11 @@ type VarStmt struct {
 	// Lateinit is set on a local lateinit var, written at LateinitP.
 	Lateinit  bool
 	LateinitP Pos
-	Type      *TypeRef
-	Init      Expr // nil for a variable assigned later
-	Sym       *types.VarSym
+	// Mods are the modifiers written on a local variable.
+	Mods []Mod
+	Type *TypeRef
+	Init Expr // nil for a variable assigned later
+	Sym  *types.VarSym
 
 	// A local delegated property, val x by d, keeps d in Delegate, which
 	// the checker puts in a hidden local, DelegateSym: reading x is Get,
@@ -805,7 +874,14 @@ type For struct {
 	// an iterator, which is its own. HasNext is nil for a range.
 	Iter, HasNext, Next *types.FunSym
 	IterT               types.Type // the iterator's type
-	Group, BodyGroup    bool       // see While.Group
+	// A loop whose operators aren't found that way, as member extensions
+	// of an implicit receiver or generic extensions, calls them as the
+	// checker resolved them: IterVar holds Range's iterator(), and
+	// HasNextX and NextX call hasNext() and next() on it. Iter, HasNext
+	// and Next are nil then.
+	IterVar          *VarStmt
+	HasNextX, NextX  Expr
+	Group, BodyGroup bool // see While.Group
 }
 
 // Destructure is a destructuring declaration, val (a, b) = e. The checker
@@ -901,6 +977,10 @@ type Ident struct {
 	// Unit is set when the identifier is the Unit object, or a local of
 	// type Unit, which has no storage.
 	Unit bool
+	// Call is set on the read or the assignment of a property with
+	// context parameters: the call of its getter or setter, which the
+	// checker writes and which is evaluated instead.
+	Call *Call
 }
 
 type This struct {
@@ -913,6 +993,9 @@ type This struct {
 	// Class is set on a this the checker writes for the instance of the
 	// class the code is in, which lambdas' receivers don't hide.
 	Class bool
+	// Implicit is set on a this the checker writes for an implicit
+	// receiver or context argument.
+	Implicit bool
 }
 
 // Super is super, or super<I>, as the receiver of a member access or call,
@@ -1080,6 +1163,10 @@ type Member struct {
 	// receiver, is of type Nothing: a generic one, which may return, as
 	// x?.f() for a T := Nothing.
 	Nothing bool
+	// SafeT is set by the checker on a safe call: its type on a receiver
+	// that isn't null, before ?. makes it nullable. A safe call's index,
+	// a?.b[i], is of the chain only if it is not nullable.
+	SafeT types.Type
 
 	// Object is set when the member access names an object, or a class's
 	// companion object, used as a value: Outer.Companion, a.b.Obj.
@@ -1111,6 +1198,9 @@ type Member struct {
 	// with reified type parameters, whose getter it copies, as
 	// Call.Reified.
 	Reified []types.Type
+	// Call is set on the read or the assignment of a property with
+	// context parameters, as Ident.Call.
+	Call *Call
 }
 
 // Index is x[i]. It calls the operator get, or set when it is assigned.
@@ -1161,6 +1251,10 @@ type Call struct {
 	// "" for a positional argument. It is nil without named arguments, and
 	// may be shorter than Args.
 	Names []string
+	// Ctx is set by the checker on a call of a function with context
+	// parameters: the context arguments, implicit values the call passes
+	// first, before the receiver.
+	Ctx []Expr
 	// RefArgs is set by the checker on the call a callable reference's
 	// lambda makes: the types of its arguments, the reference's
 	// parameters, which go to the callee's as Kotlin adapts a reference
@@ -1223,6 +1317,9 @@ type Lambda struct {
 	SuspendMod bool
 
 	// Set by the checker.
+	// Ctx are the context parameters of a lambda whose expected type is
+	// a context function type: its first parameters, before a receiver.
+	Ctx      []*types.VarSym
 	Recv     *types.VarSym   // the receiver of a lambda with a receiver, its first parameter
 	It       *types.VarSym   // the implicit parameter
 	Ret      types.Type      // the body's result type, as the function type sees it
@@ -1279,6 +1376,10 @@ type Lambda struct {
 	AnonRecv *TypeRef
 	AnonRet  *TypeRef
 	AnonUnit bool
+	// AnonCtx are the context parameters of an anonymous function,
+	// context(a: A) fun () = a, whose symbols are Ctx's. The checker
+	// names a lambda's it makes too, without types: see suspendConverted.
+	AnonCtx []*Param
 	// Annotated is set on a lambda annotated @Composable, which is
 	// composable whatever its expected type, with -compose.
 	Annotated bool
@@ -1315,10 +1416,10 @@ type KProp struct {
 	Set *Lambda
 }
 
-// ParamSyms returns the lambda's parameters, including a receiver, which
-// comes first, and an implicit it.
+// ParamSyms returns the lambda's parameters, including its context
+// parameters and a receiver, which come first, and an implicit it.
 func (l *Lambda) ParamSyms() []*types.VarSym {
-	var syms []*types.VarSym
+	syms := l.Ctx[:len(l.Ctx):len(l.Ctx)]
 	if l.Recv != nil {
 		syms = append(syms, l.Recv)
 	}
@@ -1477,11 +1578,12 @@ type Try struct {
 
 // Catch is a catch block: catch (Name: Type) { Body }.
 type Catch struct {
-	P    Pos
-	Name string
-	Type *TypeRef
-	Sym  *types.VarSym
-	Body *Block
+	P           Pos
+	Name        string
+	Type        *TypeRef
+	Sym         *types.VarSym
+	Body        *Block
+	Annotations []Annotation // the parameter's
 }
 
 // Jump is return, break, continue or throw; its type is Nothing.

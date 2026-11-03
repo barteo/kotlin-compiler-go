@@ -56,3 +56,8 @@ class ImplementsUnresolved : Unresolved { override suspend fun f(x: Missing) {} 
 
 fun suspendCheck(x: Function<*>): Boolean = x is suspend () -> Unit // ERROR cannot check for instance of erased type
 fun suspendCheckKnown(x: suspend (Int) -> Int): Boolean = x is suspend (Int) -> Int
+
+context(c: kotlin.coroutines.CoroutineContext) // ERROR context parameter of type 'kotlin.coroutines.CoroutineContext' is reserved for future use
+fun reservedContext() {}
+
+fun reservedType(f: context(kotlin.coroutines.CoroutineContext) () -> Unit) {} // ERROR context parameter of type 'kotlin.coroutines.CoroutineContext' is reserved

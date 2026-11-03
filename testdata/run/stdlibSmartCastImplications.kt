@@ -28,6 +28,19 @@ fun requireBank(m: Method) {
     require(m is Method.Bank)
 }
 
+sealed class Result<out E, out A> {
+    data class Failure<E>(val e: E) : Result<E, Nothing>()
+    data class Success<A>(val a: A) : Result<Nothing, A>()
+}
+
+// The type of an is in a contract can leave out the type arguments that
+// the parameter's type gives, as Arrow's this@bind is Either.Right.
+@OptIn(ExperimentalContracts::class)
+fun <E, A> Result<E, A>.requireSuccess() {
+    contract { returns() implies (this@requireSuccess is Result.Success) }
+    require(this is Result.Success)
+}
+
 fun contracts(ms: List<Method>) {
     for (m in ms) {
         if (isBank(m)) {
@@ -42,6 +55,9 @@ fun contracts(ms: List<Method>) {
     val first = ms[0]
     requireBank(first)
     println(first.direct)
+    val r: Result<String, Int> = Result.Success(4)
+    r.requireSuccess()
+    println((r as Result.Success).a + 1)
 }
 
 class Locked(val text: String?, val icon: String)

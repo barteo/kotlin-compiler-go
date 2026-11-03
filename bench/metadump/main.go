@@ -18,6 +18,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/barteo/kotlin-compiler-go/internal/classfile"
@@ -158,16 +159,28 @@ func (p printer) alias(a *kmeta.TypeAlias) string {
 
 func (p printer) function(f *kmeta.Function) string {
 	q := p.with(f.TypeParams)
+	ctx := ""
+	if len(f.ContextParams) > 0 {
+		ctx = "context(" + q.params(f.ContextParams) + ") "
+	} else if f.Contexts > 0 {
+		ctx = "context(" + strconv.Itoa(f.Contexts) + " receivers) "
+	}
 	recv := ""
 	if f.Recv != nil {
 		recv = q.typ(f.Recv) + "."
 	}
-	return fmt.Sprintf("fun %s %s%s%s(%s): %s jvm=%s%s", flags(f.Flags, "fun"), q.typeParams(f.TypeParams), recv, f.Name,
+	return fmt.Sprintf("fun %s %s%s%s%s(%s): %s jvm=%s%s", flags(f.Flags, "fun"), ctx, q.typeParams(f.TypeParams), recv, f.Name,
 		q.params(f.Params), q.typ(f.Ret), f.JVM.Name, f.JVM.Desc)
 }
 
 func (p printer) property(pr *kmeta.Property) string {
 	q := p.with(pr.TypeParams)
+	ctx := ""
+	if len(pr.ContextParams) > 0 {
+		ctx = "context(" + q.params(pr.ContextParams) + ") "
+	} else if pr.Contexts > 0 {
+		ctx = "context(" + strconv.Itoa(pr.Contexts) + " receivers) "
+	}
 	recv := ""
 	if pr.Recv != nil {
 		recv = q.typ(pr.Recv) + "."
@@ -182,7 +195,7 @@ func (p printer) property(pr *kmeta.Property) string {
 	if pr.SetterParam != nil {
 		setterParam = " setparam=" + q.params([]*kmeta.Param{pr.SetterParam})
 	}
-	return fmt.Sprintf("prop %s %s%s%s: %s get=%s set=%s%s%s%s%s%s", flags(pr.Flags, "prop"), q.typeParams(pr.TypeParams), recv, pr.Name,
+	return fmt.Sprintf("prop %s %s%s%s%s: %s get=%s set=%s%s%s%s%s%s", flags(pr.Flags, "prop"), ctx, q.typeParams(pr.TypeParams), recv, pr.Name,
 		q.typ(pr.Type), flags(pr.GetterFlags, "accessor"), flags(pr.SetterFlags, "accessor"), setterParam,
 		sig("field", pr.Field), sig("getter", pr.Getter), sig("setter", pr.Setter), sig("annotations", pr.Synthetic))
 }
@@ -284,6 +297,9 @@ func (p printer) typ(t *kmeta.Type) string {
 	}
 	if t.ExtFunc {
 		s = "@ExtensionFunctionType " + s
+	}
+	if t.Contexts > 0 {
+		s = "@ContextFunctionTypeParams(" + strconv.Itoa(t.Contexts) + ") " + s
 	}
 	if t.Flags&kmeta.TypeSuspend != 0 {
 		s = "suspend " + s

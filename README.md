@@ -3,7 +3,7 @@
 `kc` is a Kotlin compiler for the JVM, written in Go. On real libraries
 it compiles 10x faster or more than `kotlinc` running in a warm JVM, and uses
 about a tenth of the memory. The libraries it builds pass their own test
-suites ([Survey of real code](docs/survey.md)), and it passes 95% of
+suites ([Survey of real code](docs/survey.md)), and it passes 99.2% of
 `kotlinc`'s box tests ([Conformance](docs/conformance.md)).
 
 It is a prototype: it compiles most of Kotlin but not all of it, and it
@@ -36,13 +36,13 @@ How each number is measured, and the full tables with CPU time, are in
 
 `kc` doesn't do all the work `kotlinc` does. It leaves out:
 
-- **Some of the language.** A few features aren't supported, and
-  visibility isn't checked. [Unsupported Kotlin](docs/unsupported.md)
-  lists them all.
+- **Some of the language.** A few features aren't supported.
+  [Unsupported Kotlin](docs/unsupported.md) lists them all.
 - **Most of `kotlinc`'s checks.** `kotlinc` runs 290 checkers for
-  warnings and errors after type checking. `kc` has no separate
-  checkers: it reports the errors that type checking finds, which is why
-  it agrees with `kotlinc` on only 79% of the diagnostics tests.
+  warnings and errors after type checking. `kc` reports the errors that
+  type checking finds, and only a few of those checkers' (opt-in and
+  deprecation, for example), which is why it agrees with `kotlinc` on
+  only 90% of the diagnostics tests.
 - **Anything but the JVM.** There is no Kotlin/Native, JS or Wasm, and no
   language versions.
 - **Incremental compilation, a Gradle plugin and IDE support.**
@@ -86,9 +86,14 @@ Even without its checkers, `kotlinc` would take 33 s, 13x as long as
 ## Try it
 
 Requires Go 1.27.2+ and a JDK. The tests and benchmarks also need
-`kotlinc` and `hyperfine` (`brew install go openjdk@21 kotlin hyperfine`).
+`kotlinc` and `hyperfine`. On macOS: `brew install go openjdk@21 kotlin
+hyperfine`. On Linux, get Go from [go.dev/dl](https://go.dev/dl/) and the
+rest from your package manager (for example `apt install openjdk-21-jdk
+hyperfine`, plus `kotlinc` from the
+[Kotlin releases](https://github.com/JetBrains/kotlin/releases)).
 
 ```sh
+git clone https://github.com/barteo/kotlin-compiler-go && cd kotlin-compiler-go
 go build -o bin/kc ./cmd/kc
 bin/kc -d out testdata/run/fizzBuzz.kt
 java -cp out FizzBuzzKt
@@ -116,6 +121,7 @@ Arguments can be files or directories. Flags:
 | `-no-jdk` | don't use JDK classes |
 | `-module-name` | module name, as in `kotlinc` (default `main`) |
 | `-friend-paths` | class path entries whose internal declarations are visible (`kotlinc`'s `-Xfriend-paths`) |
+| `-opt-in` | opt in to a requirement marker by qualified name, as `kotlinc`'s `-opt-in`; may be repeated |
 | `-parcelize`, `-serialization`, `-compose` | apply the parcelize, kotlinx.serialization and Compose plugins |
 | `-jvm-default` | how interface bodies compile, as in `kotlinc` (default `no-compatibility`) |
 | `-Xdebug` | keep dead variables in suspend functions for debuggers, as in `kotlinc` |
@@ -144,6 +150,7 @@ It expects `kotlinc` and the JDK where Homebrew installs them; set
 `KOTLIN_HOME` and `JAVA_HOME` otherwise. `bench/kotlinpoet-time.sh` and
 `bench/ktor-time.sh` time the other two libraries
 ([Benchmark](docs/benchmark.md#running)).
+
 ## Documentation
 
 - [Unsupported Kotlin](docs/unsupported.md): what `kc` doesn't support, and

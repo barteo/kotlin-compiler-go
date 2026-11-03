@@ -54,10 +54,10 @@ func (c *Checker) declareInner(d *syntax.ClassDecl, sym, outer *types.ClassSym) 
 			return &types.VarSym{Name: v.Name, Kind: types.Local, Type: v.Type, OuterOf: rebase(v.OuterOf), OuterCls: v.OuterCls}
 		}
 		for _, r := range ctx.recvs {
-			recvs = append(recvs, implicitRecv{sym: rebase(r.sym), label: r.label, outer: true})
+			recvs = append(recvs, implicitRecv{sym: rebase(r.sym), label: r.label, outer: true, class: r.class})
 		}
 	}
-	recvs = append(recvs, implicitRecv{sym: this, label: name[strings.LastIndexByte(name, '.')+1:], outer: true})
+	recvs = append(recvs, implicitRecv{sym: this, label: name[strings.LastIndexByte(name, '.')+1:], outer: true, class: true})
 	c.anon[sym] = &anonCtx{scope: &scope{}, recvs: recvs}
 }
 
@@ -153,12 +153,33 @@ func innerOf(cls *types.ClassSym, name string) *types.ClassSym {
 	return in
 }
 
-// innerNamed returns the inner class name of program class cls or of one
-// of its program superclasses, as innerOf does, or the one a typealias
-// name expands to: outer.Alias() for typealias Alias = Outer.Inner. It
-// returns the alias too, or nil.
+// extInnerOf returns the inner class name of a class of the class path
+// that is cls or one of its superclasses, or nil: Outer("O").Middle("K")
+// for a library's Outer, or Inner() in an extension of a library's Outer.
+func (c *Checker) extInnerOf(cls *types.ClassSym, name string) *types.ClassSym {
+	var in *types.ClassSym
+	cls.Supertypes(func(s *types.ClassSym) bool {
+		if s.External {
+			if n := c.nestedOf(s, name); n != nil {
+				if n.Ensure(); n.Inner && !n.Missing {
+					in = n
+				}
+			}
+		}
+		return in == nil
+	})
+	return in
+}
+
+// innerNamed returns the inner class name of class cls or of one of its
+// superclasses, as innerOf does but also of the class path's, or the one
+// a typealias name expands to: outer.Alias() for typealias Alias =
+// Outer.Inner. It returns the alias too, or nil.
 func (c *Checker) innerNamed(cls *types.ClassSym, name string) (*types.ClassSym, *types.AliasSym) {
 	if n := innerOf(cls, name); n != nil {
+		return n, nil
+	}
+	if n := c.extInnerOf(cls, name); n != nil {
 		return n, nil
 	}
 	a := c.lookupAlias(name)

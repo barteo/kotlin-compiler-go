@@ -457,6 +457,9 @@ func (c *Checker) delegatedFun(d *syntax.ClassDecl, st *syntax.SuperType, g *typ
 		// codegen's collection bridges call.
 		f.JVMName = ""
 	}
+	for _, p := range g.Contexts {
+		f.Contexts = append(f.Contexts, &types.VarSym{Name: p.Name, Type: sub.Apply(p.Type), Kind: types.Param, Resolved: true})
+	}
 	defaults := false
 	for _, p := range g.Params {
 		f.Params = append(f.Params, &types.VarSym{Name: p.Name, Type: sub.Apply(p.Type), Kind: types.Param, Resolved: true,

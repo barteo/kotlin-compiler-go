@@ -135,7 +135,7 @@ func (t *classTable) load(cls *types.ClassSym) {
 		cls.JVMMethods[m.Name+m.Desc] = m.Access
 	}
 	cls.StabilityInferred = info.StabilityInferred
-	for _, a := range info.Invisible {
+	for _, a := range slices.Concat(info.Invisible, info.Visible) {
 		if strings.HasPrefix(a, "L") && strings.HasSuffix(a, ";") {
 			if c := t.class(a[1 : len(a)-1]); c != nil {
 				cls.Annotations = append(cls.Annotations, c)
@@ -150,11 +150,23 @@ func (t *classTable) load(cls *types.ClassSym) {
 		if info.Repeatable != "" {
 			cls.Container = t.class(info.Repeatable)
 		}
-		if info.KotlinTargets != nil {
+		cls.Repeatable = cls.Container != nil || slices.ContainsFunc(cls.Annotations, func(a *types.ClassSym) bool {
+			return a.Name == "kotlin/annotation/Repeatable"
+		})
+		known := !t.cp.IsSource(cls.Name)
+		switch {
+		case info.KotlinTargets != nil:
 			cls.Targets = types.KotlinTargets(info.KotlinTargets)
-		} else {
+		case info.Kotlin != nil:
+			cls.Targets = types.DefaultTargets // a Kotlin annotation class without @Target
+		default:
+			// A Java annotation class: without @Target, or with
+			// TYPE_USE, which Kotlin may apply to a declaration's type,
+			// kc doesn't check where it is written.
 			cls.Targets = types.JavaTargets(info.JavaTargets)
+			known = known && info.JavaTargets != nil && cls.Targets&types.TargetType == 0
 		}
+		cls.TargetsKnown = known
 	}
 	if t.kotlin && info.Kotlin != nil && info.Kotlin.K == kmeta.KindClassFile {
 		if kc, err := kmeta.ReadClass(info.Kotlin); err == nil {
@@ -236,14 +248,21 @@ func (t *classTable) load(cls *types.ClassSym) {
 	}
 	if cls.Name == "java/lang/Number" {
 		// Kotlin's Number converts with toInt() and the others, its
-		// intValue() methods on the JVM.
+		// intValue() methods on the JVM. They are all abstract, though
+		// Java's byteValue() and shortValue() aren't: a subclass of the
+		// program implements them, and has the Java methods as bridges.
 		for _, conv := range numberConversions {
 			for _, f := range cls.Methods[conv[1]] {
 				k := *f
-				k.Name, k.JVMName = conv[0], conv[1]
+				k.Name, k.JVMName, k.Abstract = conv[0], conv[1], true
 				cls.Methods[conv[0]] = append(cls.Methods[conv[0]], &k)
 			}
 		}
+		// And toChar(), which java.lang.Number doesn't have: kotlinc
+		// compiles its calls as toInt().toChar(), and an override is an
+		// ordinary method.
+		cls.Methods["toChar"] = append(cls.Methods["toChar"], &types.FunSym{Name: "toChar", Owner: cls, Ret: types.CharType,
+			Builtin: types.ToChar, Desc: "()C", Resolved: true})
 	}
 	for _, fd := range info.Fields {
 		if fd.Access&classfile.AccStatic == 0 && fd.Access&(classfile.AccPublic|classfile.AccProtected) != 0 && fd.Access&classfile.AccSynthetic == 0 {
@@ -403,6 +422,9 @@ func (c *Checker) resolveImports() {
 	}
 	starred := map[string]bool{}
 	var memberStars []*syntax.Import
+	// The explicit imports of classes and type aliases, by the name they
+	// import: two of one name conflict, even of one class.
+	classifiers := map[string][]syntax.Pos{}
 	for _, imp := range c.file.Imports {
 		name := strings.ReplaceAll(imp.Path, ".", "/")
 		if imp.Star {
@@ -420,6 +442,8 @@ func (c *Checker) resolveImports() {
 				c.errorf(imp.P, "cannot import on demand from object '%s'", owner.DisplayName())
 			} else if user == nil && owner != nil {
 				memberStars = append(memberStars, imp)
+			} else if a := c.importedAlias(imp.Path); user == nil && a != nil {
+				c.aliasStars = append(c.aliasStars, aliasStar{alias: a, imp: imp})
 			} else if user == nil && !optionalExpectationPackages[imp.Path] {
 				c.errorf(imp.P, "unresolved import: %s.*", imp.Path)
 			}
@@ -433,15 +457,18 @@ func (c *Checker) resolveImports() {
 		if i := strings.LastIndexByte(imp.Path, '.'); i > 0 {
 			pkg, simple = imp.Path[:i], imp.Path[i+1:]
 		}
-		// The program's own declarations come first. Declarations in the
-		// default package can't be imported.
-		if user := c.u.Pkgs[pkg]; user != nil && pkg != "" {
+		// The program's own declarations come first, those of the default
+		// package too: import checkSubtype.
+		if user := c.u.Pkgs[pkg]; user != nil {
 			found := false
 			if cls, ok := user.Classes[simple]; ok {
 				c.imports[alias], found = cls, true
 			}
 			if a, ok := user.Aliases[simple]; ok {
 				c.aliasImports[alias], found = a, true
+			}
+			if found {
+				classifiers[alias] = append(classifiers[alias], imp.P)
 			}
 			if fs := user.Funs[simple]; len(fs) > 0 {
 				// Functions of one name imported from several packages
@@ -456,6 +483,10 @@ func (c *Checker) resolveImports() {
 			}
 			if v, ok := user.Vars[simple]; ok {
 				c.userVars[alias], found = v, true
+			} else if v, ok := c.fileVars[simple]; ok && user == c.pkg {
+				c.userVars[alias], found = v, true
+			} else if v, ok := user.PrivateVars[simple]; ok {
+				c.userVars[alias], found = v, true // reported below
 			}
 			if gs := user.ExtProps[simple]; len(gs) > 0 {
 				for _, g := range gs {
@@ -466,6 +497,9 @@ func (c *Checker) resolveImports() {
 				found = true
 			}
 			if found {
+				if c.importsOnlyHidden(user, simple) {
+					c.errorf(imp.P, "cannot access '%s': it is private in file", simple)
+				}
 				continue
 			}
 		}
@@ -476,6 +510,7 @@ func (c *Checker) resolveImports() {
 		fs := ext.pkgFuns(pkg, simple)
 		if cls != nil {
 			c.imports[alias] = cls
+			c.classImports = append(c.classImports, memberImport{owner: cls, name: simple, p: imp.P, path: pkg})
 		}
 		var ta *types.AliasSym
 		if cls == nil && ext.kotlin && pkg != "" {
@@ -504,6 +539,9 @@ func (c *Checker) resolveImports() {
 				}
 			}
 		}
+		if cls != nil || ta != nil {
+			classifiers[alias] = append(classifiers[alias], imp.P)
+		}
 		if cls != nil || ta != nil || len(fs) > 0 || v != nil || len(gs) > 0 {
 			continue
 		}
@@ -511,6 +549,10 @@ func (c *Checker) resolveImports() {
 		if owner := c.importOwner(pkg); owner != nil {
 			if n := c.nestedOf(owner, simple); n != nil {
 				c.imports[alias] = n
+				classifiers[alias] = append(classifiers[alias], imp.P)
+			} else if a := owner.Aliases[simple]; a != nil && !owner.External {
+				c.aliasImports[alias] = a // import p.Outer.A of a nested typealias
+				classifiers[alias] = append(classifiers[alias], imp.P)
 			} else {
 				c.memberImports[alias] = memberImport{owner: owner, name: simple, p: imp.P, path: imp.Path}
 			}
@@ -522,32 +564,25 @@ func (c *Checker) resolveImports() {
 		if pkg == "kotlin" && kotlinTypes[simple] && alias == simple {
 			continue // import kotlin.String: a built-in type, imported by default
 		}
+		if pkg == "kotlin" && builtinFuns[simple] && alias == simple {
+			continue // import kotlin.arrayOfNulls: built in, imported by default
+		}
 		c.errorf(imp.P, "unresolved import: %s", imp.Path)
+	}
+	for _, imp := range c.file.Imports {
+		alias := imp.Alias
+		if alias == "" {
+			alias = imp.Path[strings.LastIndexByte(imp.Path, '.')+1:]
+		}
+		if ps := classifiers[alias]; !imp.Star && len(ps) > 1 && slices.Contains(ps, imp.P) {
+			c.errorf(imp.P, "conflicting import: imported name '%s' is ambiguous", imp.Path[strings.LastIndexByte(imp.Path, '.')+1:])
+		}
 	}
 	// import java.nio.file.StandardOpenOption.* imports a Java class's
 	// statics, enum entries too, after the explicit imports, and import
 	// kotlinx.coroutines.CoroutineStart.* a program's enum's entries.
 	for _, imp := range memberStars {
-		owner := c.importOwner(imp.Path)
-		owner.Ensure()
-		c.starOwners = append(c.starOwners, owner)
-		add := func(name string) {
-			if _, ok := c.memberImports[name]; !ok {
-				c.memberImports[name] = memberImport{owner: owner, name: name, p: imp.P, path: imp.Path + "." + name, star: true}
-			}
-		}
-		if !owner.External {
-			for _, name := range owner.Entries {
-				add(name)
-			}
-			continue
-		}
-		for name := range owner.Fields {
-			add(name)
-		}
-		for name := range owner.Statics {
-			add(name)
-		}
+		c.importMembers(c.importOwner(imp.Path), imp)
 	}
 }
 
@@ -635,6 +670,9 @@ func (c *Checker) nestedOf(cls *types.ClassSym, name string) *types.ClassSym {
 	if !cls.External {
 		return cls.Nested[name]
 	}
+	if isEnumEntry(cls, name) {
+		return nil // Foo.FOO is the entry, not its class Foo$FOO
+	}
 	return c.u.ext.class(cls.Name + "$" + name)
 }
 
@@ -683,17 +721,30 @@ func (c *Checker) findClassifier1(name string) classifier {
 	if a, ok := c.aliasImports[name]; ok {
 		return classifier{alias: a}
 	}
-	if cls, ok := c.pkg.Classes[name]; ok {
+	// Another file's private class or typealias is found only if nothing
+	// else is: pack1's private SomeClass doesn't hide pack2's by import
+	// pack1.*, import pack2.*.
+	var hidden classifier
+	visible := func(k classifier) bool {
+		if c.privateElsewhere(k) {
+			if hidden == (classifier{}) {
+				hidden = k
+			}
+			return false
+		}
+		return true
+	}
+	if cls, ok := c.pkg.Classes[name]; ok && visible(classifier{cls: cls}) {
 		return classifier{cls: cls}
 	}
-	if a, ok := c.pkg.Aliases[name]; ok {
+	if a, ok := c.pkg.Aliases[name]; ok && visible(classifier{alias: a}) {
 		return classifier{alias: a}
 	}
 	for _, p := range c.userStars {
-		if cls, ok := p.Classes[name]; ok {
+		if cls, ok := p.Classes[name]; ok && visible(classifier{cls: cls}) {
 			return classifier{cls: cls}
 		}
-		if a, ok := p.Aliases[name]; ok {
+		if a, ok := p.Aliases[name]; ok && visible(classifier{alias: a}) {
 			return classifier{alias: a}
 		}
 	}
@@ -705,7 +756,10 @@ func (c *Checker) findClassifier1(name string) classifier {
 	if cls := c.extClass(name); cls != nil {
 		return classifier{cls: cls}
 	}
-	return classifier{alias: c.extAlias(name)}
+	if a := c.extAlias(name); a != nil {
+		return classifier{alias: a}
+	}
+	return hidden
 }
 
 // extAlias resolves a simple name of a typealias on the class path that
@@ -1324,11 +1378,11 @@ func (c *Checker) classRef(x syntax.Expr) *types.ClassSym {
 		}
 		if first := c.findClass(id.Name); first != nil && first.External {
 			// A nested class of a class on the class path: Thread.State.
-			name := first.Name
-			for i := len(parts) - 1; i >= 0; i-- {
-				name += "$" + parts[i]
+			cls := first
+			for i := len(parts) - 1; i >= 0 && cls != nil; i-- {
+				cls = c.nestedOf(cls, parts[i])
 			}
-			if cls := c.u.ext.class(name); cls != nil {
+			if cls != nil {
 				return cls
 			}
 		}
@@ -1720,7 +1774,9 @@ func (c *Checker) construct(x *syntax.Call, cls *types.ClassSym, p syntax.Pos, w
 		c.args(x, nil)
 		return types.InvalidType
 	}
-	if cls.Annotation {
+	if cls.KotlinAnnotation() {
+		// The program's annotation class, or a Kotlin one of the class
+		// path.
 		return c.annotationConstruct(x, cls, p, want, sink)
 	}
 	if cls.Inner && x.Outer == nil {
@@ -1736,6 +1792,7 @@ func (c *Checker) construct(x *syntax.Call, cls *types.ClassSym, p syntax.Pos, w
 		return c.samConstructor(x, cls, want, sink) // a fun interface of the program
 	}
 	if !cls.External {
+		c.checkClassVisible(cls, p)
 		ctors := c.visibleCtors(cls)
 		if comp := cls.Companion; comp != nil && !c.anyMayTake(ctors, x) && c.companionInvokes(comp, x) {
 			// The companion's invoke operator, as kotlinc calls it when
@@ -1765,7 +1822,11 @@ func (c *Checker) construct(x *syntax.Call, cls *types.ClassSym, p syntax.Pos, w
 		}
 		switch {
 		case len(cands) == 0 && len(userCtors(cls)) > 0:
-			c.errorf(p, "cannot access 'constructor': it is private in '%s'", cls.DisplayName())
+			what := "private"
+			if ctorVisibility(userCtors(cls)[0]) == syntax.Protected {
+				what = "protected"
+			}
+			c.errorf(p, "cannot access 'constructor': it is %s in '%s'", what, cls.DisplayName())
 			c.args(x, nil)
 			return types.InvalidType
 		case len(cands) == 0:
@@ -1886,13 +1947,22 @@ func (c *Checker) javaCall(x *syntax.Call, fn *syntax.Member, rt types.Type, wan
 		c.args(x, nil)
 		return types.InvalidType
 	}
-	ms := c.lowPriorityGivesWay(c.accessible(c.javaMethods(cls, fn.Name)), fn.Name, rt, x)
+	ms := c.lowPriorityGivesWay(c.accessible(cls, c.javaMethods(cls, fn.Name), c.declaredClass(fn.X, cls)), fn.Name, rt, x)
 	if len(ms) == 0 && fn.Name == "get" && c.isCharSequence(cls) {
 		ms = []*types.FunSym{c.charSequenceGet()} // s[i]: charAt(i)
 	}
 	if len(ms) == 0 {
 		if cands := c.extCalleesFor(fn.Name, rt, x); len(cands) > 0 {
 			return c.resolve(x, cands, want, sink)
+		}
+		if hidden := c.javaMethods(cls, fn.Name); len(hidden) > 0 {
+			// Only members the code can't see, or private members of
+			// cls's supertypes, which it doesn't inherit.
+			t := c.resolve(x, c.memberCallees(hidden, rt), want, sink)
+			if f := x.Sym; f != nil && c.funVisible(f) {
+				c.invisibleFun(fn.P, f)
+			}
+			return t
 		}
 		c.errorf(fn.P, "unresolved reference: %s", fn.Name)
 		c.args(x, nil)
@@ -1940,15 +2010,20 @@ func (c *Checker) javaCall(x *syntax.Call, fn *syntax.Member, rt types.Type, wan
 			// Resolving checks the arguments; lambdas are checked once.
 			n := len(c.errs)
 			if t := c.resolve(x, cands, want, sink); len(c.errs) == n {
-				return t
+				return c.mapGet(x, fn, cls, t)
 			}
 			c.errs = c.errs[:n]
 			return c.resolve(x, exts, want, sink)
 		}
 	}
-	t := c.resolve(x, cands, want, sink)
+	return c.mapGet(x, fn, cls, c.resolve(x, cands, want, sink))
+}
+
+// mapGet returns the type t of a call x of a member of cls, or t? for
+// get(key) of a Java Map: Kotlin's Map.get returns V?.
+func (c *Checker) mapGet(x *syntax.Call, fn *syntax.Member, cls *types.ClassSym, t types.Type) types.Type {
 	if fn.Name == "get" && len(x.Args) == 1 && t.K != types.Invalid && c.isSubclassOf(cls, "java/util/Map") {
-		t = t.Nullable() // Kotlin's Map.get returns V?
+		return t.Nullable()
 	}
 	return t
 }
@@ -1961,7 +2036,7 @@ func (c *Checker) allPlatform(ms []*types.FunSym) bool {
 		return false
 	}
 	for _, f := range ms {
-		if !f.Platform && !(f.Owner != nil && f.Owner.External && c.u.ext.platform()[f.Name+f.Desc]) {
+		if !(f.Platform || f.Owner != nil && f.Owner.External) || !c.u.ext.platform()[f.Name+f.Desc] {
 			return false
 		}
 	}
@@ -2001,7 +2076,7 @@ func (c *Checker) javaProperty(x *syntax.Member, rt types.Type) (types.Type, boo
 		kp = s.KProps[x.Name]
 		return kp == nil
 	})
-	if kp != nil {
+	if kp = c.kpropAlt(kp); kp != nil {
 		x.Getter, x.Setter = kp.Getter, kp.Setter
 		return c.memberSubst(rt, kp.Getter.Owner).Apply(kp.Getter.Ret), true
 	}
@@ -2026,7 +2101,7 @@ func (c *Checker) javaProperty(x *syntax.Member, rt types.Type) (types.Type, boo
 	// Not those of an earlier check of x, an extension property's: a
 	// member setTextColor isn't the setter of TextView.textColor.
 	x.Getter, x.Setter = nil, nil
-	for _, f := range c.accessible(c.javaMethods(cls, getterName)) {
+	for _, f := range c.accessible(cls, c.javaMethods(cls, getterName)) {
 		// Only Java methods are seen as properties, and the program's
 		// overrides of them.
 		if c.javaAccessor(f) && len(f.Params) == 0 && !f.Unsupported && f.Ret.K != types.Unit &&
@@ -2035,7 +2110,7 @@ func (c *Checker) javaProperty(x *syntax.Member, rt types.Type) (types.Type, boo
 		}
 	}
 	if g := acronymAccessor("get", x.Name); x.Getter == nil && !special && g != "" {
-		for _, f := range c.accessible(c.javaMethods(cls, g)) {
+		for _, f := range c.accessible(cls, c.javaMethods(cls, g)) {
 			if f.Owner.External && len(f.Params) == 0 && !f.Unsupported && f.Ret.K != types.Unit {
 				x.Getter, setterName = f, acronymAccessor("set", x.Name)
 			}
@@ -2047,7 +2122,7 @@ func (c *Checker) javaProperty(x *syntax.Member, rt types.Type) (types.Type, boo
 	sub := c.memberSubst(rt, x.Getter.Owner)
 	// A setter may return a value, which an assignment drops: Android's
 	// Intent.setFlags returns the Intent.
-	for _, f := range c.accessible(c.javaMethods(cls, setterName)) {
+	for _, f := range c.accessible(cls, c.javaMethods(cls, setterName)) {
 		if c.javaAccessor(f) && len(f.Params) == 1 && !f.Unsupported && sameJavaType(f, x.Getter) {
 			x.Setter = f
 		}

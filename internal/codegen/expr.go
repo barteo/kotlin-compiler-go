@@ -186,9 +186,30 @@ func (g *gen) exprAs(x syntax.Expr, t types.Type) {
 			return
 		}
 	}
+	if c, ok := x.(*syntax.Call); ok && boxedResult(c, t) {
+		// The boxed value of a generic call, used as a boxed value, isn't
+		// unboxed: it may be null after an unchecked cast, as kotlinc.
+		xt := c.T
+		c.T = xt.Nullable()
+		defer func() { c.T = xt }()
+	}
 	g.expr(x)
 	g.checkPlatform(x, t)
 	g.coerce(x.Type(), t)
+}
+
+// boxedResult reports whether call x returns a primitive, as the value of
+// its function's type parameter, which is boxed on the JVM, used as t, a
+// reference: uncheckedCastNull<Int>() as an Int?.
+func boxedResult(x *syntax.Call, t types.Type) bool {
+	f := x.Sym
+	if f == nil || x.Ctor != nil || x.Builtin != 0 || x.Invoke || x.SAM || !x.T.IsPrimitive() || t.IsPrimitive() || size(t) == 0 {
+		return false
+	}
+	if m, ok := x.Fun.(*syntax.Member); ok && m.Safe {
+		return false
+	}
+	return f.Ret.IsParam() && !f.Ret.Param().Reified && desc(types.JVMRet(f))[0] == 'L'
 }
 
 // coerceRecv is coerce for the receiver of an extension: an extension of
@@ -220,6 +241,9 @@ func (g *gen) expr(x syntax.Expr) {
 		g.ident(x)
 	case *syntax.This:
 		if x.Recv != nil {
+			if x.Recv.Type.K == types.Unit && !x.Recv.Type.N && !x.Cast {
+				return // a Unit value is nothing on the stack
+			}
 			// A lambda's receiver, its first parameter.
 			g.loadStorage(x.Recv)
 			if x.Cast {
@@ -253,11 +277,7 @@ func (g *gen) expr(x syntax.Expr) {
 		}
 		g.lambda(x)
 	case *syntax.IntLit:
-		if r := types.Repr(x.T); r.K == types.Long {
-			g.code.Lconst(x.Val) // also a ULong's bits
-		} else {
-			g.code.Iconst(int32(x.Val))
-		}
+		g.intLit(x)
 	case *syntax.DoubleLit:
 		g.code.Dconst(x.Val)
 	case *syntax.FloatLit:
@@ -336,6 +356,10 @@ func (g *gen) ident(x *syntax.Ident) {
 	if x.Unit {
 		return // a Unit value is nothing on the stack
 	}
+	if x.Call != nil {
+		g.call(x.Call) // a property with context parameters: getP()
+		return
+	}
 	if l, _ := g.forwarded(x); l != nil {
 		// An inlined lambda passed on to an inline function, which
 		// inlines it: the argument is unused.
@@ -385,8 +409,18 @@ func (g *gen) ident(x *syntax.Ident) {
 			g.pushConst(sym.Constant, sym.Type)
 			break
 		}
+		if g.enumEntryThis(sym.Owner, sym.Name) {
+			break
+		}
 		g.code.FieldInsn(cf.GETSTATIC, sym.Owner.Name, sym.Name, desc(sym.Type))
 	case types.BackingField:
+		if sym.OuterOf != nil {
+			// In a local class or an object in the accessor: the
+			// accessor's this, which the class captured.
+			g.loadStorage(sym.OuterOf)
+			g.outerField(sym.Prop, false)
+			break
+		}
 		g.backingField(sym.Prop, true)
 	case types.Prop:
 		if sym.Const {
@@ -572,6 +606,10 @@ func (g *gen) as(x *syntax.As) {
 		g.coerce(from, types.AnyType) // kotlin.Unit
 		from = types.AnyType
 	}
+	if g.castChecks(x, from, to) {
+		g.checkCastNotNull(to)
+		from = from.NonNull()
+	}
 	if from.IsPrimitive() {
 		if from == to {
 			g.coerce(from, x.T) // boxed for as?
@@ -629,7 +667,12 @@ func (g *gen) as(x *syntax.As) {
 	}
 	cls := instanceClass(to) // as? T checks T's erasure, as kotlinc
 	if x.Safe {
+		// The box or null, which an unboxed value class's value unboxes
+		// after.
 		ok, end := cf.NewLabel(), join(x.T)
+		if types.Unboxed(x.T) {
+			end = join(types.Boxed(x.T))
+		}
 		g.code.Op(cf.DUP)
 		g.isInstance(to, cls)
 		g.code.Jump(cf.IFNE, ok)
@@ -643,17 +686,6 @@ func (g *gen) as(x *syntax.As) {
 			g.unboxValue(x.T)
 		}
 		return
-	}
-	if types.MayBeNull(from) && !types.MayBeNull(to) {
-		ok := cf.NewLabel()
-		g.code.Op(cf.DUP)
-		g.code.Jump(cf.IFNONNULL, ok)
-		g.code.New("java/lang/NullPointerException")
-		g.code.Op(cf.DUP)
-		g.code.Sconst("null cannot be cast to non-null type " + kotlinName(to))
-		g.code.Invoke(cf.INVOKESPECIAL, "java/lang/NullPointerException", "<init>", "(Ljava/lang/String;)V")
-		g.code.Op(cf.ATHROW)
-		g.code.Place(ok)
 	}
 	if m := mutableIntrinsic(to); m != "" {
 		g.code.Invoke(cf.INVOKESTATIC, "kotlin/jvm/internal/TypeIntrinsics", "as"+m, "(Ljava/lang/Object;)L"+cls+";")
@@ -731,7 +763,7 @@ func (g *gen) global(p *types.VarSym) {
 	case p.Suspend:
 		g.coroutineContext()
 	case p.Getter != nil:
-		g.composeArgs(p.Getter, 0, nil)
+		g.composeArgs(p.Getter, nil, nil)
 		g.callStatic(p.Getter, p.Facade, p.Getter.JVM(), composeGetterDesc(p, "()"+d))
 	case p.Const:
 		g.constProp(p)
@@ -838,6 +870,10 @@ func (g *gen) stringLit(x *syntax.StringLit) {
 		g.code.Sconst(x.Parts[0].Lit)
 		return
 	}
+	if s, ok := constStringValue(x); ok {
+		g.code.Sconst(s) // "1234$a" of a const a, folded as kotlinc does
+		return
+	}
 	g.newStringBuilder()
 	for _, p := range x.Parts {
 		if p.X == nil {
@@ -902,16 +938,33 @@ func (g *gen) binary(x *syntax.Binary) {
 			g.call(x.Call) // an operator function
 			return
 		}
+		if x.OpType.K == types.Nothing {
+			// An operand never completes: the code after it is dead.
+			g.expr(x.X)
+			g.expr(x.Y)
+			return
+		}
 		if x.OpType == types.StringType {
+			if s, ok := constStringValue(x); ok {
+				g.code.Sconst(s)
+				return
+			}
 			g.newStringBuilder()
 			g.appendExpr(x.X)
 			g.appendExpr(x.Y)
 			g.code.Invoke(cf.INVOKEVIRTUAL, "java/lang/StringBuilder", "toString", "()Ljava/lang/String;")
 			return
 		}
+		if v, ok := literalArithLong(x); ok {
+			g.code.Lconst(v) // val n: Long = 2147483647 + 1, computed as Ints
+			return
+		}
 		g.exprAs(x.X, x.OpType)
 		g.exprAs(x.Y, x.OpType)
 		g.code.Op(arithOp(x.OpType, x.Op))
+		if x.T.K == types.Char && x.OpType.K == types.Int {
+			g.code.Op(cf.I2C) // a Char plus or minus an Int wraps to 16 bits
+		}
 	case syntax.ELVIS:
 		g.elvis(x)
 	default:
@@ -1014,7 +1067,7 @@ func (g *gen) safeCall(m *syntax.Member, memberType, result types.Type, body fun
 	recv, safe := m.X, m.Safe
 	rt := recv.Type()
 	g.expr(recv)
-	if !safe || !types.MayBeNull(rt) {
+	if !safe || !types.MayBeNull(rt) && !g.safeCallChecks(recv, rt) {
 		switch nn := rt.NonNull(); {
 		case rt.P && nn.IsPrimitive():
 			g.unbox(rt) // a boxed platform value used as a primitive
@@ -1043,6 +1096,19 @@ func (g *gen) safeCall(m *syntax.Member, memberType, result types.Type, body fun
 			p = top
 			p.late = true
 		}
+	}
+	if c := g.safeEq; c != nil && c.m == m && p == nil && !m.Groups && !m.Nothing && memberType.IsPrimitive() && !types.MayBeNull(memberType) {
+		// In a?.b == v: b's value, or a jump for null.
+		c.used = true
+		ok := cf.NewLabel()
+		g.code.Op(cf.DUP)
+		g.code.Jump(cf.IFNONNULL, ok)
+		g.code.Op(cf.POP)
+		g.code.Jump(cf.GOTO, c.null)
+		g.code.Place(ok)
+		body()
+		g.coerce(memberType, c.t)
+		return
 	}
 	isNull, end := cf.NewLabel(), join(result)
 	g.code.Op(cf.DUP)
@@ -1136,6 +1202,10 @@ func (g *gen) invokeJava(f *types.FunSym, rt types.Type) {
 }
 
 func (g *gen) member(x *syntax.Member) {
+	if x.Call != nil {
+		g.call(x.Call) // a property with context parameters: x.getP()
+		return
+	}
 	if cl, ok := x.X.(*syntax.ClassLit); ok && cl.Java {
 		g.classLit(cl) // X::class.java
 		return
@@ -1175,7 +1245,7 @@ func (g *gen) member(x *syntax.Member) {
 		}
 		if f.Constant != nil {
 			g.pushConst(f.Constant, f.Type) // a Java constant, inlined
-		} else {
+		} else if !g.enumEntryThis(x.Static, f.Name) {
 			g.code.FieldInsn(cf.GETSTATIC, x.Static.Name, f.Name, desc(f.Type))
 		}
 		g.coerce(f.Type, x.T)
@@ -1208,11 +1278,11 @@ func (g *gen) member(x *syntax.Member) {
 				g.swapUnder(rt)
 			}
 			g.coerceRecv(rt, f.Recv)
-			if b := inlineBody(f, 0); b != nil {
+			if b := inlineBody(f, nil); b != nil {
 				g.inline(b, nil) // inline-only, of the class path
 				return
 			}
-			g.composeArgs(f, 0, nil)
+			g.composeArgs(f, nil, nil)
 			g.callMethod(f, f.Owner, f.JVM(), funDesc(f))
 		})
 		return
@@ -1226,10 +1296,10 @@ func (g *gen) member(x *syntax.Member) {
 		}
 		g.safeCall(x, types.JVMRet(f), x.T, func() {
 			g.coerceRecv(rt, f.Recv)
-			if inlineBody(f, 0) == nil {
-				g.composeArgs(f, 0, nil) // a composable getter's Composer
+			if inlineBody(f, nil) == nil {
+				g.composeArgs(f, nil, nil) // a composable getter's Composer
 			}
-			g.invokeFun(nil, f, 0) // copied if inline-only
+			g.invokeFun(nil, f, nil) // copied if inline-only
 		})
 		return
 	case x.Getter != nil && x.Getter.Builtin == types.ArraySize:
@@ -1239,13 +1309,16 @@ func (g *gen) member(x *syntax.Member) {
 		rt := x.X.Type().NonNull()
 		g.safeCall(x, types.JVMRet(x.Getter), x.T, func() {
 			if x.Getter.Impl {
-				g.invokeFun(nil, x.Getter, 0)
+				g.invokeFun(nil, x.Getter, nil)
 				return
 			}
 			g.boxReceiver(rt)
 			rt := g.boundReceiver(rt, x.Getter)
-			g.composeArgs(x.Getter, 0, nil)
+			g.composeArgs(x.Getter, nil, nil)
 			g.invokeJava(x.Getter, rt)
+			if o := x.Getter.Owner; o != nil && o.KotlinAnnotation() {
+				g.kotlinClasses(x.Getter.Desc[strings.IndexByte(x.Getter.Desc, ')')+1:], x.Getter.Ret)
+			}
 		})
 		return
 	}
@@ -1292,6 +1365,13 @@ func (g *gen) member(x *syntax.Member) {
 	if p.Kind == types.Global {
 		// A top-level property by its qualified name: a.b.x.
 		g.global(p)
+		g.coerce(p.Type, x.T)
+		return
+	}
+	if p.Const && !x.Safe && objectQualifier(x.X) {
+		// O.x, a const of an object named: inlined, without O's
+		// initialization.
+		g.constProp(p)
 		g.coerce(p.Type, x.T)
 		return
 	}
@@ -1381,6 +1461,12 @@ func (g *gen) boxThis() {
 // super@Outer, through the outer class's accessor, as kotlinc does.
 func (g *gen) invokeSuper(s *syntax.Super, name, d string) {
 	if s.Outer == nil {
+		if s.Cls.Name == "java/lang/Cloneable" && name == "clone" {
+			// Cloneable declares no clone method on the JVM: its body
+			// is Object's, as kotlinc calls it.
+			g.code.Invoke(cf.INVOKESPECIAL, "java/lang/Object", name, d)
+			return
+		}
 		g.invokeSpecial(s.Cls, name, d)
 		return
 	}
@@ -1455,7 +1541,7 @@ func passedArg(x *syntax.Call, i int, vararg bool) syntax.Expr {
 // parameters: those for a vararg parameter in an array, and zeros for
 // omitted ones, whose bits it sets in the returned mask. A composable
 // function takes the mask itself, after its Composer: see composeArgs.
-func (g *gen) callArgs(x *syntax.Call, f *types.FunSym) int {
+func (g *gen) callArgs(x *syntax.Call, f *types.FunSym) argMask {
 	if df := composeDefaultsOf(f); df != nil && !superCall(x) {
 		g.composeDefaultsArgs(x, f, df)
 		return composeDefaultsMask
@@ -1463,17 +1549,17 @@ func (g *gen) callArgs(x *syntax.Call, f *types.FunSym) int {
 	mask := g.valueArgs(x, f)
 	if f.Composable {
 		g.composeArgs(f, mask, g.composeCallArgs(x, f, mask))
-		return 0
+		return nil
 	}
 	return mask
 }
 
 // valueArgs pushes the arguments of a call of f that its parameters
 // declare, as callArgs does, and returns the mask of the omitted ones.
-func (g *gen) valueArgs(x *syntax.Call, f *types.FunSym) int {
+func (g *gen) valueArgs(x *syntax.Call, f *types.FunSym) argMask {
 	if x.ArgMap == nil {
 		g.args(x, f)
-		return 0
+		return nil
 	}
 	if o := f.DefaultsOf; o != nil && omits(x, f) && !f.Impl {
 		// The $default of the function whose default values f inherits
@@ -1484,6 +1570,7 @@ func (g *gen) valueArgs(x *syntax.Call, f *types.FunSym) int {
 	if f.Impl {
 		jvm = jvm[1:] // a class-path value class's member takes the value first
 	}
+	jvm = jvm[len(f.Contexts):]
 	if f.Ext {
 		jvm = jvm[1:]
 	}
@@ -1516,7 +1603,7 @@ func (g *gen) valueArgs(x *syntax.Call, f *types.FunSym) int {
 			g.code.Local(storeOp(p.Type), stored[i])
 		}
 	}
-	mask := 0
+	var mask argMask
 	for j, p := range f.Params {
 		var args []syntax.Expr
 		arg := -1
@@ -1537,7 +1624,7 @@ func (g *gen) valueArgs(x *syntax.Call, f *types.FunSym) int {
 			// Omitted, or a vararg parameter with a default value that
 			// gets no arguments.
 			g.zero(jvm[j])
-			mask |= 1 << j
+			mask.set(len(f.Contexts) + j) // as kotlinc's, the contexts count
 		default:
 			if slot, ok := stored[arg]; ok {
 				g.code.Local(loadOp(p.Type), slot)
@@ -1623,22 +1710,20 @@ func descParams(d string) []string {
 }
 
 // invokeStatic calls a static method of owner: f itself, or with omitted
-// arguments (a mask other than 0), its $default variant, which takes the
-// mask and an unused marker after the arguments. A member function's
+// arguments (a mask with bits set), its $default variant, which takes the
+// masks and an unused marker after the arguments. A member function's
 // $default takes the receiver first.
-func (g *gen) invokeStatic(owner string, f *types.FunSym, mask int, iface bool) {
+func (g *gen) invokeStatic(owner string, f *types.FunSym, mask argMask, iface bool) {
 	name, d := f.JVM(), funDesc(f)
-	if mask != 0 {
-		g.code.Iconst(int32(mask))
-		g.code.Op(cf.ACONST_NULL)
-		i := strings.IndexByte(d, ')')
-		d = d[:i] + "ILjava/lang/Object;" + d[i:]
+	if mask.any() {
+		g.pushMask(mask, types.DefaultBits(f))
+		d = defaultsDesc(d, types.DefaultBits(f), objMarker)
 		name += "$default"
 	}
 	switch {
 	case iface:
 		g.code.InvokeStaticInterface(owner, name, d)
-	case mask == 0:
+	case !mask.any():
 		g.callStatic(f, owner, name, d)
 	default:
 		g.code.Invoke(cf.INVOKESTATIC, owner, name, d)
@@ -1648,8 +1733,8 @@ func (g *gen) invokeStatic(owner string, f *types.FunSym, mask int, iface bool) 
 // invokeMember calls a Java method or a member of a Kotlin class on a
 // receiver of type rt, below the arguments. With omitted arguments, it
 // calls the static $default variant.
-func (g *gen) invokeMember(f *types.FunSym, rt types.Type, mask int) {
-	if mask == 0 {
+func (g *gen) invokeMember(f *types.FunSym, rt types.Type, mask argMask) {
+	if !mask.any() {
 		g.invokeJava(f, rt)
 		return
 	}
@@ -1657,10 +1742,10 @@ func (g *gen) invokeMember(f *types.FunSym, rt types.Type, mask int) {
 }
 
 // invokeDefault calls the static name$default method of a method, which
-// takes the receiver first, then the arguments, the mask of the omitted
+// takes the receiver first, then the arguments, the masks of the omitted
 // ones and an unused marker: a value class's takes the value. An override
 // calls the one of the method whose default values it inherits.
-func (g *gen) invokeDefault(f *types.FunSym, mask int) {
+func (g *gen) invokeDefault(f *types.FunSym, mask argMask) {
 	if o := f.DefaultsOf; o != nil {
 		// The overridden function's $default, whose result may be of a
 		// class the override's narrows, as T's erasure.
@@ -1682,15 +1767,12 @@ func (g *gen) invokeDefault(f *types.FunSym, mask int) {
 		g.code.Invoke(cf.INVOKESTATIC, f.Owner.Name+"$ComposeDefaultImpls", f.JVM()+"$default", composeDefaultsDesc(f))
 		return
 	}
-	g.code.Iconst(int32(mask))
-	g.code.Op(cf.ACONST_NULL)
-	fd := funDesc(f)
-	i := strings.IndexByte(fd, ')')
+	g.pushMask(mask, types.DefaultBits(f))
 	self := "L" + f.Owner.Name + ";"
 	if f.Owner.Value {
 		self = desc(f.Owner.Underlying.Type)
 	}
-	d := "(" + self + fd[1:i] + "ILjava/lang/Object;" + fd[i:]
+	d := defaultsDesc("("+self+funDesc(f)[1:], types.DefaultBits(f), objMarker)
 	switch {
 	case f.Owner.HasDefaultImpls():
 		// A Kotlin interface compiled without default methods: the
@@ -1704,6 +1786,22 @@ func (g *gen) invokeDefault(f *types.FunSym, mask int) {
 }
 
 func (g *gen) call(x *syntax.Call) {
+	if unconverted(x) != syntax.Expr(x) {
+		if l, _ := g.forwarded(x); l != nil {
+			g.code.Op(cf.ACONST_NULL) // see ident
+			return
+		}
+		if fv := g.shared.inlinedConvs[x]; fv != nil {
+			// The converted value goes to $f's local; the placeholder is
+			// dropped (see convertedArg).
+			ch, _, _ := conversion(x)
+			g.exprAs(ch, fv.Type)
+			g.setSlot(fv, g.code.AllocLocal(desc(fv.Type)))
+			g.code.Local(cf.ASTORE, g.slot(fv))
+			g.code.Op(cf.ACONST_NULL)
+			return
+		}
+	}
 	if x.Group {
 		// An inline function's call whose lambda calls composables, in
 		// a replace group: see composeFlow.
@@ -1720,9 +1818,13 @@ func (g *gen) ungroupedCall(x *syntax.Call) {
 		g.code.Sconst(s) // as kotlinc's, a constant
 		return
 	}
-	if t := g.tail; x.Tail && t != nil && x.Sym == t.fd.Sym && len(g.inl) == 0 && len(g.srcInl) == 0 && g.lam == nil {
+	if t := g.tail; x.Tail && t != nil && x.Sym == t.fd.Sym && len(g.srcInl) == 0 && (len(g.inl) == 0 || g.compose == nil) {
 		g.tailCall(x, t)
 		return
+	}
+	if x.Tail && x.Sym.Suspend {
+		// Not a suspension point of the state machine: see suspensionPoint.
+		panic("tail call of suspend function " + x.Sym.Name + " not generated as a jump")
 	}
 	if x.Builtin == types.SuspendIntrinsic {
 		g.suspendIntrinsic(x)
@@ -1777,6 +1879,7 @@ func (g *gen) ungroupedCall(x *syntax.Call) {
 		if s, ok := m.X.(*syntax.Super); ok {
 			f := x.Sym
 			g.superThis(s)
+			g.contextArgs(x, f)
 			g.callArgs(x, f)
 			if s.Cls.HasDefaultImpls() && !f.Abstract {
 				// The body in the interface's DefaultImpls class.
@@ -1792,7 +1895,7 @@ func (g *gen) ungroupedCall(x *syntax.Call) {
 	case x.Builtin == types.Println || x.Builtin == types.Print:
 		// As kotlinc's inlined println, an argument that suspends comes
 		// first, so that System.out isn't saved with the locals.
-		late := g.sm != nil && hasSuspension(x.Args)
+		late := g.argsSuspend(x.Args)
 		out := func(t types.Type) {
 			if !late {
 				return
@@ -1863,15 +1966,17 @@ func (g *gen) ungroupedCall(x *syntax.Call) {
 		rt := m.T
 		if !m.Safe {
 			g.dispatch(m, f.Owner)
+			g.contextArgs(x, f)
 		}
 		g.safeCall(m, types.JVMRet(f), x.T, func() {
 			if m.Safe {
 				// This goes below the receiver, unboxed if primitive.
 				g.dispatch(m, f.Owner)
 				g.swapUnder(m.X.Type().NonNull())
+				g.contextsUnder(x, f, m.X.Type().NonNull())
 			}
 			g.coerceRecv(rt, f.Recv)
-			if mask := g.callArgs(x, f); mask != 0 {
+			if mask := g.callArgs(x, f); mask.any() {
 				g.invokeDefault(f, mask)
 			} else {
 				g.callMethod(f, f.Owner, f.JVM(), funDesc(f))
@@ -1887,7 +1992,13 @@ func (g *gen) ungroupedCall(x *syntax.Call) {
 		f := x.Sym
 		m := x.Fun.(*syntax.Member)
 		rt := m.T
+		if !m.Safe {
+			g.contextArgs(x, f)
+		}
 		g.safeCall(m, types.JVMRet(f), x.T, func() {
+			if m.Safe {
+				g.contextsUnder(x, f, m.X.Type().NonNull())
+			}
 			g.coerceRecv(rt, f.Recv)
 			mask := g.callArgs(x, f)
 			switch f.Builtin {
@@ -1928,7 +2039,7 @@ func (g *gen) ungroupedCall(x *syntax.Call) {
 			return
 		}
 		g.args(x, f)
-		g.composeArgs(f, 0, g.invokeArgs(x))
+		g.composeArgs(f, nil, g.invokeArgs(x))
 		g.code.InvokeInterface(f.Owner.Name, f.Name, funDesc(f))
 		g.coerce(types.JVMRet(f), x.T)
 
@@ -1943,7 +2054,7 @@ func (g *gen) ungroupedCall(x *syntax.Call) {
 		ret := builtinRet(x)
 		g.safeCall(m, ret, x.T, func() { g.builtinMember(x, rt) })
 
-	case x.Ctor != nil && x.Ctor.Annotation:
+	case x.Ctor != nil && x.Ctor.KotlinAnnotation():
 		g.annotationNew(x)
 
 	case x.Ctor != nil && x.Ctor.Value:
@@ -1951,8 +2062,8 @@ func (g *gen) ungroupedCall(x *syntax.Call) {
 
 	case x.Ctor != nil:
 		d := ctorJVMDesc(x.Sym)
-		var mask int
-		if g.sm != nil && hasSuspension(x.Args) || hasHandlers(x.Args) {
+		var mask argMask
+		if g.argsSuspend(x.Args) || hasHandlers(x.Args) {
 			// The object under construction can't be stored while the
 			// arguments suspend, or in the locals that a try's handler
 			// needs the stack spilled to: they are evaluated first, as
@@ -1970,12 +2081,10 @@ func (g *gen) ungroupedCall(x *syntax.Call) {
 			g.outerArg(x)
 			mask = g.callArgs(x, x.Sym)
 		}
-		if mask != 0 {
-			// The constructor for omitted arguments takes a mask and a marker.
-			g.code.Iconst(int32(mask))
-			g.code.Op(cf.ACONST_NULL)
-			i := strings.IndexByte(d, ')')
-			d = d[:i] + "ILkotlin/jvm/internal/DefaultConstructorMarker;" + d[i:]
+		if mask.any() {
+			// The constructor for omitted arguments takes masks and a marker.
+			g.pushMask(mask, len(x.Sym.Params))
+			d = defaultsDesc(d, len(x.Sym.Params), ctorMarker)
 		} else if g.viaMarker(x.Sym) {
 			g.useMarker(x.Sym)
 			d = g.marker(d)
@@ -1991,6 +2100,7 @@ func (g *gen) ungroupedCall(x *syntax.Call) {
 		if m, ok := x.Fun.(*syntax.Member); ok && m.Static != nil {
 			owner = m.Static
 		}
+		g.contextArgs(x, f)
 		g.invokeStatic(owner.Name, f, g.callArgs(x, f), owner.Interface)
 		g.coerce(types.JVMRet(f), x.T)
 
@@ -2001,6 +2111,7 @@ func (g *gen) ungroupedCall(x *syntax.Call) {
 			// An inherited method, called on the implicit this.
 			g.loadThis()
 			g.boxReceiver(g.thisClass().This())
+			g.contextArgs(x, f)
 			if f.Inline != nil {
 				g.invokeFun(x, f, g.callArgs(x, f)) // copied: a reified one
 			} else {
@@ -2013,22 +2124,30 @@ func (g *gen) ungroupedCall(x *syntax.Call) {
 			if f.Impl || f.Inline != nil {
 				// A class-path value class's member: a static method; or
 				// an inline member with reified type parameters, copied.
+				g.contextArgs(x, f)
 				g.invokeFun(x, f, g.callArgs(x, f))
 				return
 			}
 			g.boxReceiver(m.T)
 			rt := g.boundReceiver(m.T, f)
+			g.contextArgs(x, f)
 			g.invokeMember(f, rt, g.callArgs(x, f))
 		})
 
 	case x.Sym.Owner != nil:
 		f := x.Sym
-		d := sigDesc(f)
+		d := "(" + leadDesc(f) + sigDesc(f)[1:]
 		invoke := func(cls *types.ClassSym, rt types.Type) {
 			if f.Owner.Value {
 				// A value class's member: a static method that takes the
-				// value first, or with omitted arguments its $default.
-				if mask := g.callArgs(x, f); mask != 0 {
+				// value first, or with omitted arguments its $default; an
+				// override's is the overridden function's, of an
+				// interface, which takes the box.
+				if o := f.DefaultsOf; o != nil && !o.Owner.Value && omits(x, f) {
+					g.boxValue(f.Owner.This())
+				}
+				g.contextArgs(x, f)
+				if mask := g.callArgs(x, f); mask.any() {
 					g.invokeDefault(f, mask)
 					return
 				}
@@ -2041,6 +2160,7 @@ func (g *gen) ungroupedCall(x *syntax.Call) {
 				g.code.InvokeInterface(f.Owner.Name, f.Name, f.Desc)
 				return
 			}
+			g.contextArgs(x, f)
 			mask := g.callArgs(x, f)
 			switch {
 			case f.Owner.Func && f.Suspend:
@@ -2053,7 +2173,7 @@ func (g *gen) ungroupedCall(x *syntax.Call) {
 				g.code.InvokeInterface(f.Owner.Name, f.Name, f.Desc)
 			case f.Owner.Func:
 				g.code.InvokeInterface(f.Owner.Name, f.Name, d)
-			case mask != 0:
+			case mask.any():
 				g.invokeDefault(f, mask)
 			default:
 				g.callMethod(f, cls, f.JVM(), d)
@@ -2070,10 +2190,32 @@ func (g *gen) ungroupedCall(x *syntax.Call) {
 
 	default:
 		f := x.Sym
+		g.contextArgs(x, f)
 		g.invokeFun(x, f, g.callArgs(x, f))
 		g.returned(f)
 		g.coerce(types.JVMRet(f), x.T)
 	}
+}
+
+// contextArgs pushes the context arguments of call x of f, which takes
+// them first.
+func (g *gen) contextArgs(x *syntax.Call, f *types.FunSym) {
+	for i, a := range x.Ctx {
+		g.argAs(a, f.Contexts[i].Type)
+	}
+}
+
+// contextsUnder pushes the context arguments of call x of f below its
+// receiver on the stack, of type t: that of a safe call, evaluated first.
+func (g *gen) contextsUnder(x *syntax.Call, f *types.FunSym, t types.Type) {
+	if len(x.Ctx) == 0 {
+		return
+	}
+	slot := g.code.AllocLocal(desc(t))
+	g.code.Local(storeOp(t), slot)
+	g.contextArgs(x, f)
+	g.code.Local(loadOp(t), slot)
+	g.code.Retire(slot)
 }
 
 // returned handles the result of a call of a function that returns
@@ -2188,6 +2330,11 @@ func (g *gen) builtinMember(x *syntax.Call, rt types.Type) {
 		if rt == types.StringType {
 			g.code.Invoke(cf.INVOKESTATIC, "java/lang/Integer", "parseInt", "(Ljava/lang/String;)I")
 			return
+		}
+		if numberClass(rt.C) != nil {
+			// Number.toChar(), which is toInt().toChar().
+			g.code.Invoke(cf.INVOKEVIRTUAL, "java/lang/Number", "intValue", "()I")
+			rt = types.IntType
 		}
 		g.convert(rt, builtinRet(x))
 	case types.StrGet:
@@ -2530,6 +2677,7 @@ func (g *gen) tailCall(x *syntax.Call, t *tailrec) {
 			recv = false
 		}
 	}
+	g.contextArgs(x, f)
 	if recv {
 		g.exprAs(m.X, f.Recv)
 	}
@@ -2541,11 +2689,19 @@ func (g *gen) tailCall(x *syntax.Call, t *tailrec) {
 	if recv {
 		g.code.Local(storeOp(fd.RecvSym.Type), g.slot(fd.RecvSym))
 	}
+	for i := len(f.Contexts) - 1; i >= 0; i-- {
+		p := f.Contexts[i]
+		g.code.Local(storeOp(p.Type), g.slot(p))
+	}
 	for i, p := range f.Params {
-		if mask&(1<<i) != 0 && fd.Params[i].Default != nil {
-			g.exprAs(fd.Params[i].Default, p.Type)
+		if mask.has(i) && fd.Params[i].Default != nil {
+			g.argAs(fd.Params[i].Default, p.Type)
 			g.code.Local(storeOp(p.Type), g.slot(p))
 		}
 	}
+	// From an inlined lambda's return: the finally blocks of the inlined
+	// bodies' trys run, and the values their code left are dropped.
+	g.leaveTries(0)
+	g.code.PopTo(0)
 	g.code.Jump(cf.GOTO, t.start)
 }

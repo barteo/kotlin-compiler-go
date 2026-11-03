@@ -104,7 +104,7 @@ func inlineBody(f *types.FunSym, omitted bool) (*inline.Body, error) {
 	var b *inline.Body
 	var err error
 	if omitted {
-		b, err = in.Defaults()
+		b, err = in.Defaults(types.DefaultBits(f))
 	} else {
 		b, err = in.Body()
 	}

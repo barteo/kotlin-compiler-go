@@ -92,7 +92,7 @@ func newFunctionClass(pkg string, n int, suspend, composable bool) *ClassSym {
 	if jvm > MaxArity {
 		name = pkg + "FunctionN"
 	}
-	c := &ClassSym{Name: name, Func: true, Suspend: suspend, Composable: composable, Interface: true, Methods: map[string][]*FunSym{}}
+	c := &ClassSym{Name: name, Func: true, Suspend: suspend, Composable: composable, Interface: true, Methods: map[string][]*FunSym{}, Global: true}
 	invoke := &FunSym{Name: "invoke", Owner: c, Resolved: true, Suspend: suspend, Composable: composable, Changed: changed, Abstract: true, Operator: true}
 	if suspend || composable {
 		// The JVM method of the larger FunctionN, which takes the
@@ -104,7 +104,7 @@ func newFunctionClass(pkg string, n int, suspend, composable bool) *ClassSym {
 		invoke.Desc = VarArityDesc
 	}
 	for i := range n + 1 {
-		p := &TypeParamSym{Name: "P" + strconv.Itoa(i+1), Var: In, Index: i, Owner: c}
+		p := &TypeParamSym{Name: "P" + strconv.Itoa(i+1), Var: In, Index: i, Owner: c, Global: true}
 		if i == n {
 			p.Name, p.Var = "R", Out
 			invoke.Ret = ParamType(p)
@@ -220,6 +220,21 @@ func (t Type) WithReceiver() Type {
 	return t
 }
 
+// WithContexts returns the function type t marked as having n context
+// parameters: its first parameters, before a receiver.
+func (t Type) WithContexts(n int) Type {
+	t.X = uint8(n)
+	return t
+}
+
+// Contexts returns the number of context parameters of function type t.
+func (t Type) Contexts() int {
+	if !t.IsFunc() {
+		return 0
+	}
+	return int(t.X)
+}
+
 // funcString formats a function type as (A, B) -> R, or reports false if
 // its arguments are projected against their declared variance.
 func funcString(t Type) (string, bool) {
@@ -233,15 +248,20 @@ func funcString(t Type) (string, bool) {
 			ps[i] = a.T.String()
 		}
 	}
+	ctx := ""
+	if x := int(t.X); x > 0 && x <= len(ps) {
+		ctx = "context(" + strings.Join(ps[:x], ", ") + ") "
+		ps = ps[x:]
+	}
 	recv := ""
-	if t.E && n > 0 {
+	if t.E && len(ps) > 0 {
 		recv = ps[0] + "."
-		if a := t.A.Get(0).T; a.N || a.IsFunc() {
+		if a := t.A.Get(int(t.X)).T; a.N || a.IsFunc() {
 			recv = "(" + ps[0] + ")."
 		}
 		ps = ps[1:]
 	}
-	s := recv + "(" + strings.Join(ps, ", ") + ") -> " + t.A.Get(n).T.String()
+	s := ctx + recv + "(" + strings.Join(ps, ", ") + ") -> " + t.A.Get(n).T.String()
 	if t.C.Suspend {
 		s = "suspend " + s
 	}

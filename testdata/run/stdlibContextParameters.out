@@ -1,0 +1,35 @@
+shout HI HOHO
+int 3 from main
+long 4 from main
+MAYBE
+null
+[main: hello, main: again, main: again, main: HI, main: HOHO, main: MAYBE, main: debug both]
+Right(a=3)
+Left(e=not a number: x)
+Left(e=ensured)
+Left(e=raised)
+Right(a=right)
+2
+b
+1
+(1, [inline: one])
+(2, [not inline: two, not inline: two])
+(5, [section: begin title, section: length 5, section: end title])
+[recv: context to receiver]
+[recv: from a property]
+[recv: from a property]
+[explicit: from a property]
+[service: service]
+s!
+null
+[safe: tag s]
+(recv3, [both: in 3])
+named widget
+[captured: local 1, captured: lambda, captured: anonymous, captured: object]
+named inner
+[ext: via the extension receiver]
+item 1
+[suspend: fetched item 1]
+(item 2, [suspend lambda: fetched item 2])
+(item 1;item 2;item 1;, [defaults: fetched item 1, defaults: fetched item 2, defaults: fetched item 1])
+item 3 [later: fetched item 3]

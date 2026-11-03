@@ -1,0 +1,8 @@
+plain
+xy
+3
+3 w plain
+set w ctx q
+set w ctx w ctx 2!
+w ctx 2
+O ctx 2

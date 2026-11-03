@@ -10,12 +10,8 @@ own tests.
 
 ## The language
 
-- Secondary constructors of enum classes. They compile, but to a
-  constructor the JVM verifier rejects.
-- A `try` as an argument of an enum entry's constructor call.
-- Visibility isn't checked, but for private constructors: private,
-  protected and internal declarations can be used where Kotlin doesn't
-  allow it. It still shapes the class files as with `kotlinc`.
+- `@DslMarker` markers are those of classes: markers on types, as in
+  `(@M A).() -> Unit`, are ignored, so code they forbid compiles.
 - Reified type parameters of members of interfaces and value classes
   (those of final members and member extensions of classes work).
 - Properties of a `@file:JvmMultifileClass` class that are neither
@@ -23,8 +19,10 @@ own tests.
 - `@JvmStatic` on extensions of objects and on delegated properties,
   which is reported as unsupported.
 - Local `external` functions, which are reported as unsupported.
-- Omitted arguments of a library's annotation class, and annotation
-  parameters of unsigned integer types.
+- Opt-in requirements (`@RequiresOptIn`, `@SubclassOptInRequired`) and
+  `@Deprecated` with level `ERROR` or `HIDDEN` are checked only for the
+  program's own declarations: the markers and deprecations of the class
+  path, the standard library's included, aren't read from class files.
 - Builder inference that can't check a lambda's body with the type
   variables open, as a member of a value of one of them whose type
   nothing gives yet: it needs a type argument or an expected type.
@@ -122,12 +120,26 @@ yet done. [Design](design.md) describes how `kc` compiles it.
 - A lambda's parameter types are fixed from the constraints known when
   the lambda is reached; K2 picks the order from the whole system, so it
   infers some combinations of lambdas `kc` can't.
+- `@OnlyInputTypes` (`contains`, `get`, `assertEquals`) is checked only
+  when the types a call's variable is constrained by have no platform
+  types, projections or captured types, and aren't literals.
 - Java module exports aren't checked, and the Java members Kotlin
   replaces (`Number.intValue()`) aren't hidden.
-- A `return@label` without a value makes a lambda return `Unit`, even if
-  its last expression has a value.
-- Without an expected type, a reference to a generic or vararg function
-  is an error.
+- Without an expected type, a reference to a vararg function, or to a
+  generic function whose type parameters its receiver's type doesn't
+  give (`Box<Int>::first` for `fun <T> Box<T>.first()` is fine), is an
+  error.
+- A value of function type `(A, B) -> R` is accepted for a context
+  function type `context(A) (B) -> R`, and the other way round, as it is
+  for an extension function type `A.(B) -> R`; `kotlinc` accepts only
+  references and lambdas there.
+- Where annotations are written, and whether they repeat, isn't checked
+  for Java annotations without `@Target` or from Java sources, nor for
+  use-site targets on local declarations and expressions (`@field:` on a
+  local variable), nor across a typealias's expansion (`@A T` where
+  `typealias T = @A Int`) or in `where` clauses. The arguments of a
+  library's `SOURCE` annotation aren't checked, so they need not be
+  constants, nor are annotations on setter parameters, `set(@A v)`.
 
 **Classes and members**
 
@@ -220,7 +232,9 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   abbreviations.
 - A private property initialized with an object expression has the
   object's supertype, not its anonymous type.
-- A class-path generic value class whose underlying type is its type
-  parameter isn't known as one until it is loaded.
+- A generic value class whose underlying type is a type parameter
+  bounded by a primitive type (`value class W<T : Int>(val s: T)`) is
+  unboxed as the boxed primitive (`Integer`); `kotlinc` passes the
+  primitive (`int`) to its `-impl` methods.
 - Annotations on local variables, type parameters, types and
   expressions aren't written, nor are `@[A B]` lists.

@@ -1,0 +1,114 @@
+name: PR checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# An explicit shell runs steps with -eo pipefail, so `go test | tee` fails
+# when go test does. The default shell doesn't set pipefail.
+defaults:
+  run:
+    shell: bash
+
+# A new push to a pull request cancels the run for the push before it.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The kotlinc that testdata/**/*.out were generated with (see README).
+  KOTLIN_VERSION: 2.4.21
+  KOTLIN_SHA256: 7cc140e76daf416a0424a5557f99afd7ca89ebd463ea1101261e3e01c33e75cd
+  # Programs under test print non-ASCII text; in the POSIX locale the JVM
+  # writes it as '?' and the comparison with the .out files fails.
+  LANG: C.UTF-8
+  LC_ALL: C.UTF-8
+
+jobs:
+  lint:
+    name: Format, vet and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.mod
+
+      - name: gofmt
+        run: |
+          files=$(gofmt -l .)
+          if [ -n "$files" ]; then
+            echo "::error::These files need gofmt -w:"
+            echo "$files"
+            gofmt -d $files
+            exit 1
+          fi
+
+      - name: go mod tidy
+        run: go mod tidy -diff
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go build
+        run: go build ./...
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.mod
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install kotlinc ${{ env.KOTLIN_VERSION }}
+        run: |
+          zip=kotlin-compiler-$KOTLIN_VERSION.zip
+          curl -sSfLo "$RUNNER_TEMP/$zip" \
+            "https://github.com/JetBrains/kotlin/releases/download/v$KOTLIN_VERSION/$zip"
+          echo "$KOTLIN_SHA256  $RUNNER_TEMP/$zip" | sha256sum -c -
+          unzip -q "$RUNNER_TEMP/$zip" -d "$RUNNER_TEMP"
+          echo "KOTLIN_HOME=$RUNNER_TEMP/kotlinc" >> "$GITHUB_ENV"
+          echo "$RUNNER_TEMP/kotlinc/bin" >> "$GITHUB_PATH"
+
+      - name: Tool versions
+        run: |
+          go version
+          java -version
+          kotlinc -version
+
+      - name: go test
+        run: go test -race -v ./... 2>&1 | tee "$RUNNER_TEMP/test.log"
+
+      # The tests skip themselves when java, javac, javap, kotlinc, the
+      # standard library or the JDK's sources are missing, so a broken setup
+      # would otherwise pass while running almost nothing. Skips for inputs
+      # CI doesn't provide (Gradle's cache for the serialization and Compose
+      # runtimes, KMETA_DUMP) are allowed.
+      - name: Check that no test skipped for a missing tool
+        if: ${{ !cancelled() }}
+        run: |
+          pattern='^ +[A-Za-z0-9_]+_test\.go:[0-9]+: (java|javac|javap|kotlinc) not found on PATH$'
+          pattern+='|^ +[A-Za-z0-9_]+_test\.go:[0-9]+: .*KOTLIN_HOME'
+          pattern+='|^ +[A-Za-z0-9_]+_test\.go:[0-9]+: (no JDK|the JDK has no lib/src\.zip)$'
+          skipped=$(grep -E "$pattern" "$RUNNER_TEMP/test.log" | sed -E 's/^ +//' | sort | uniq -c || true)
+          if [ -n "$skipped" ]; then
+            echo "::error::Tests skipped because a tool is missing from the runner:"
+            echo "$skipped"
+            exit 1
+          fi
+          echo "No tests skipped for a missing tool."

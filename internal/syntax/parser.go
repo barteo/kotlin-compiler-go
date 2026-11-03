@@ -10,6 +10,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/barteo/kotlin-compiler-go/internal/intbits"
 	"github.com/barteo/kotlin-compiler-go/internal/types"
 )
 
@@ -31,6 +32,29 @@ type parser struct {
 	// suppressInvisible is set once an annotation suppresses
 	// INVISIBLE_MEMBER or INVISIBLE_REFERENCE (see File.SuppressInvisible).
 	suppressInvisible bool
+	// suppressShadowed is set once an annotation suppresses
+	// RECEIVER_SHADOWED_BY_CONTEXT_PARAMETER (see File.SuppressShadowed).
+	suppressShadowed bool
+	// suppressDSL is set once an annotation suppresses
+	// DSL_SCOPE_VIOLATION (see File.SuppressDSL).
+	suppressDSL bool
+	// later are the errors parsing goes on after (see File.Errors).
+	later []*Error
+	// annotated are the annotations of statements and expressions (see
+	// File.Annotated).
+	annotated map[any][]Annotation
+}
+
+// annotate records annotations as of statement or expression n, before
+// those it has.
+func (p *parser) annotate(n any, as []Annotation) {
+	if len(as) == 0 {
+		return
+	}
+	if p.annotated == nil {
+		p.annotated = map[any][]Annotation{}
+	}
+	p.annotated[n] = append(slices.Clip(as), p.annotated[n]...)
 }
 
 type bailout struct{}
@@ -52,7 +76,11 @@ func Parse(path, src string) (f *File, errs []*Error) {
 	}()
 	f = p.parseFile()
 	f.Path = path
+	f.Errors = p.later
 	f.SuppressInvisible = p.suppressInvisible
+	f.SuppressShadowed = p.suppressShadowed
+	f.SuppressDSL = p.suppressDSL
+	f.Annotated = p.annotated
 	f.Facade = facade(f, path)
 	f.Part = part(f, path)
 	return f, nil
@@ -98,7 +126,11 @@ func ParseAll(path, src string) (*File, []*Error) {
 	p := &parser{file: path, toks: toks, recover: true}
 	f := p.parseFile()
 	f.Path = path
+	f.Errors = p.later
 	f.SuppressInvisible = p.suppressInvisible
+	f.SuppressShadowed = p.suppressShadowed
+	f.SuppressDSL = p.suppressDSL
+	f.Annotated = p.annotated
 	f.Facade = facade(f, path)
 	f.Part = part(f, path)
 	return f, p.errs
@@ -259,6 +291,11 @@ func (p *parser) failAt(pos Pos, format string, args ...any) {
 	panic(bailout{})
 }
 
+// errorLater records an error that parsing goes on after.
+func (p *parser) errorLater(pos Pos, format string, args ...any) {
+	p.later = append(p.later, &Error{File: p.file, Pos: pos, Msg: fmt.Sprintf(format, args...)})
+}
+
 // unsupported reports the use of a Kotlin feature kc doesn't support.
 // feature is a stable name for it, for tools that count them.
 func (p *parser) unsupported(pos Pos, feature, format string, args ...any) {
@@ -363,9 +400,14 @@ func (p *parser) modifiers() Modifiers {
 		case t.Kind != IDENT:
 			return m
 		case t.Text == "context" && p.toks[p.i+1].Kind == LPAREN:
-			p.unsupported(t.Pos, "context parameters", "context parameters are not supported")
+			if m.Contexts != nil {
+				p.failAt(t.Pos, "repeated context parameter lists")
+			}
+			m.Contexts, m.ContextP = p.contextParams(), t.Pos
+			p.skipNL()
 		case !declStart(p.toks[p.i+1].Kind):
 			return m
+		case isModifier(t.Text) && p.recordMod(&m, t):
 		case t.Text == "private" || t.Text == "public" || t.Text == "internal" || t.Text == "protected":
 			m.Visibility, m.Explicit = visibilities[t.Text], true
 			p.next()
@@ -444,6 +486,111 @@ func (p *parser) modifiers() Modifiers {
 		default:
 			return m
 		}
+	}
+}
+
+// contextParams parses a declaration's context parameters, context(a: A,
+// _: B). The context receivers that came before them, context(A), are an
+// error in Kotlin 2.4.
+func (p *parser) contextParams() []*Param {
+	p.next()
+	p.expect(LPAREN)
+	ps := []*Param{}
+	if p.skipNL(); p.at(RPAREN) {
+		p.failAt(p.tok().Pos, "expected a context parameter")
+	}
+	for p.skipNL(); !p.at(RPAREN); p.skipNL() {
+		for j := p.i; ; j++ {
+			if t := p.toks[j]; t.Kind == AT {
+				j = p.annotationEnd(j) - 1
+			} else if t.Kind != IDENT || !isModifier(t.Text) || p.toks[j+1].Kind == COLON {
+				break
+			} else if t.Text != "noinline" && t.Text != "crossinline" {
+				p.errorLater(t.Pos, "modifier '%s' is not applicable to 'context parameter'", t.Text)
+			}
+		}
+		m := p.modifiers()
+		if !p.at(IDENT) || p.toks[p.i+1].Kind != COLON {
+			p.failAt(p.tok().Pos, "context parameters must be named: use '_' for an anonymous one, context(_: Type)")
+		}
+		name := p.next()
+		p.next()
+		ps = append(ps, &Param{P: name.Pos, Name: name.Text, Type: p.parseType(), Noinline: m.Noinline, Crossinline: m.Crossinline,
+			Annotations: m.Annotations})
+		if p.skipNL(); p.at(ASSIGN) {
+			p.errorLater(name.Pos, "context parameters cannot have default values")
+			p.next()
+			p.skipNL()
+			p.parseExpr()
+			p.skipNL()
+		}
+		if !p.at(COMMA) {
+			break
+		}
+		p.next()
+	}
+	p.expect(RPAREN)
+	return ps
+}
+
+// contextDecl reports whether a statement is a local declaration with
+// context parameters, context(a: A) fun f(), rather than a call.
+func (p *parser) contextDecl() bool {
+	if p.toks[p.i+1].Kind != LPAREN {
+		return false
+	}
+	depth, j := 0, p.i+1
+	for ; p.toks[j].Kind != EOF; j++ {
+		if k := p.toks[j].Kind; k == LPAREN {
+			depth++
+		} else if k == RPAREN {
+			if depth--; depth == 0 {
+				break
+			}
+		}
+	}
+	for j++; p.toks[j].Kind == NL; j++ {
+	}
+	k := p.toks[j]
+	return k.Kind == FUN && !p.anonFunAt(j) || k.Kind == AT || k.Kind == IDENT && isModifier(k.Text) && declStart(p.toks[j+1].Kind)
+}
+
+// contextAnonFun reports whether the context at the parser's position
+// starts the context parameters of an anonymous function, context(a: A)
+// fun () = a, rather than a call.
+func (p *parser) contextAnonFun() bool {
+	if p.toks[p.i+1].Kind != LPAREN {
+		return false
+	}
+	depth, j := 0, p.i+1
+	for ; p.toks[j].Kind != EOF; j++ {
+		if k := p.toks[j].Kind; k == LPAREN {
+			depth++
+		} else if k == RPAREN {
+			if depth--; depth == 0 {
+				break
+			}
+		}
+	}
+	for j++; p.toks[j].Kind == NL; j++ {
+	}
+	return p.toks[j].Kind == FUN && p.anonFunAt(j)
+}
+
+// noContexts reports context parameters on a declaration that Kotlin
+// doesn't allow them on, what, as kotlinc does, and drops them.
+func (p *parser) noContexts(m *Modifiers, what string) {
+	if m.Contexts != nil {
+		p.errorLater(m.ContextP, "context parameters on %s are unsupported", what)
+		m.Contexts = nil
+	}
+}
+
+// danglingContexts reports context parameters that no declaration
+// follows.
+func (p *parser) danglingContexts(m Modifiers) {
+	if m.Contexts != nil {
+		p.failAt(m.ContextP, "expected a declaration after the context parameters")
 	}
 }
 
@@ -572,6 +719,7 @@ func (p *parser) anonFunAt(i int) bool {
 // localClass parses a local class, after its modifiers. Kotlin has no
 // local interfaces, objects or enum classes.
 func (p *parser) localClass(m Modifiers) *LocalClass {
+	p.noContexts(&m, "classes")
 	t := p.tok()
 	switch {
 	case t.Kind == INTERFACE:
@@ -599,6 +747,13 @@ func (p *parser) localFun(m Modifiers) *LocalFun {
 		p.failAt(pos, "a local function must have a body")
 	}
 	return &LocalFun{Decl: fd}
+}
+
+// recordMod appends the modifier t to m.Written. It returns false so that
+// modifiers goes on to the case that sets the modifier's flag.
+func (p *parser) recordMod(m *Modifiers, t *Token) bool {
+	m.Written = append(m.Written, Mod{Name: t.Text, P: t.Pos})
+	return false
 }
 
 // isModifier reports whether s is a modifier keyword.
@@ -652,6 +807,7 @@ func (p *parser) parseFile() *File {
 	if p.at(PACKAGE) {
 		p.decl(func() {
 			p.next()
+			f.PackageP = p.tok().Pos
 			name := p.ident().Text
 			for p.at(DOT) {
 				p.next()
@@ -679,6 +835,23 @@ func (p *parser) parseFile() *File {
 				} else {
 					f.Decls = append(f.Decls, d)
 				}
+			}
+			switch p.tok().Kind {
+			case VAL, VAR:
+			case FUN:
+				if p.toks[p.i+1].Kind == INTERFACE {
+					p.noContexts(&m, "classes")
+				}
+			case TYPEALIAS:
+				p.noContexts(&m, "type aliases")
+			case CLASS, INTERFACE, OBJECT:
+				p.noContexts(&m, "classes")
+			case PACKAGE:
+				if m.Contexts != nil {
+					p.failAt(m.ContextP, "context parameters are unsupported in this position")
+				}
+			default:
+				p.danglingContexts(m)
 			}
 			switch t := p.tok(); t.Kind {
 			case FUN:
@@ -736,23 +909,28 @@ func (p *parser) parseImport() *Import {
 }
 
 func (p *parser) parseType() *TypeRef {
-	unsafe, composable := false, false
+	unsafe, composable, noInfer := false, false, false
 	var wild Wildcards
+	var as []Annotation
 	for p.at(AT) {
 		a := p.annotation()
+		as = append(as, a)
 		if a.Target == "receiver" {
 			// receiver takes those of a receiver type.
 			p.failAt(a.P, "this annotation is not applicable to target 'type usage' and use-site target '@receiver'")
 		}
 		unsafe = unsafe || a.Is("UnsafeVariance")
+		noInfer = noInfer || a.Name == "NoInfer" || a.Is("internal.NoInfer")
 		composable = composable || composableAnno(a)
 		if w := WildcardsOf([]Annotation{a}); w != DefaultWildcards {
 			wild = w
 		}
 	}
-	if unsafe || composable || wild != DefaultWildcards {
+	if as != nil {
 		t := p.parseType()
+		t.Annotations = append(as, t.Annotations...)
 		t.UnsafeVariance = t.UnsafeVariance || unsafe
+		t.NoInfer = t.NoInfer || noInfer
 		t.Composable = t.Composable || composable
 		if wild != DefaultWildcards {
 			t.Wildcards = wild
@@ -762,6 +940,9 @@ func (p *parser) parseType() *TypeRef {
 	if t := p.tok(); t.Kind == IDENT && t.Text == "suspend" && (p.toks[p.i+1].Kind == LPAREN || p.toks[p.i+1].Kind == IDENT) {
 		// A suspend function type: suspend (A) -> R, suspend R.(A) -> T.
 		p.next()
+		if n := p.tok(); n.Kind == IDENT && n.Text == "suspend" {
+			p.errorLater(t.Pos, "repeated 'suspend'")
+		}
 		ft := p.parseType()
 		if ft.Ret == nil {
 			p.failAt(t.Pos, "expected a function type after 'suspend'")
@@ -770,7 +951,28 @@ func (p *parser) parseType() *TypeRef {
 		return ft
 	}
 	if t := p.tok(); t.Kind == IDENT && t.Text == "context" && p.toks[p.i+1].Kind == LPAREN {
-		p.unsupported(t.Pos, "context parameters", "context parameters are not supported")
+		// A context function type: context(A, B) R.(C) -> T.
+		p.next()
+		p.next()
+		var ctx []*TypeRef
+		if p.skipNL(); p.at(RPAREN) {
+			p.failAt(p.tok().Pos, "expected a context parameter type")
+		}
+		for p.skipNL(); !p.at(RPAREN); p.skipNL() {
+			ctx = append(ctx, p.parseType())
+			p.skipNL()
+			if !p.at(COMMA) {
+				break
+			}
+			p.next()
+		}
+		p.expect(RPAREN)
+		ft := p.parseType()
+		if ft.Ret == nil || ft.Nullable || len(ft.Contexts) > 0 {
+			p.failAt(t.Pos, "expected a function type after the context parameters")
+		}
+		ft.P, ft.Contexts = t.Pos, ctx
+		return ft
 	}
 	if p.at(LPAREN) {
 		return p.parseParenType()
@@ -889,6 +1091,9 @@ func (p *parser) parseTypeArgs() []*TypeArg {
 			a.Variance = types.Star
 		default:
 			a.Variance = p.variance()
+			if t := p.tok(); t.Kind == IDENT && t.Text == "_" && !t.Quoted && a.Variance == types.Inv {
+				a.Underscore = true
+			}
 			a.Type = p.parseType()
 		}
 		args = append(args, a)
@@ -925,8 +1130,12 @@ func (p *parser) parseTypeParams() []*TypeParam {
 		if p.at(GT) && ps != nil {
 			break // a trailing comma
 		}
+		var as []Annotation
+		onlyInput := false
 		for p.at(AT) {
-			p.annotation() // ignored: kc writes no type annotations
+			a := p.annotation() // kc writes no type annotations
+			as = append(as, a)
+			onlyInput = onlyInput || a.Is("internal.OnlyInputTypes") // for the inference
 			p.skipNL()
 		}
 		reified := false
@@ -934,7 +1143,7 @@ func (p *parser) parseTypeParams() []*TypeParam {
 			reified = true
 			p.next()
 		}
-		tp := &TypeParam{Variance: p.variance(), Reified: reified}
+		tp := &TypeParam{Variance: p.variance(), Reified: reified, Annotations: as, OnlyInput: onlyInput}
 		name := p.ident()
 		tp.P, tp.Name = name.Pos, name.Text
 		if p.peekPastNL() == COLON {
@@ -1080,6 +1289,7 @@ func (p *parser) params() []*Param {
 		param := &Param{P: pn.Pos, Name: pn.Text, Type: p.parseType(), Vararg: m.Vararg, Noinline: m.Noinline, Crossinline: m.Crossinline,
 			Annotations: m.Annotations}
 		param.External, param.ExternalP = m.External, m.ExternalP
+		param.Mods = m.Written
 		if p.at(ASSIGN) {
 			p.next()
 			p.skipNL()
@@ -1251,14 +1461,15 @@ func (p *parser) whereClause(tps []*TypeParam) {
 // call the delegate. A class's passes this as the delegate's thisRef, and
 // an extension property its receiver. As in kotlinc, the fields of
 // extension properties with the same name, among the declarations
-// before, are x$delegate$1, x$delegate$2, ...
+// before, are x$delegate$1, x$delegate$2, ..., and so are those of
+// properties beside one declared as `x$delegate`.
 func delegated(pd *PropDecl, member bool, before []Decl) []Decl {
 	if pd.Field == nil {
 		return []Decl{pd}
 	}
 	taken := func(name string) bool {
 		for _, d := range before {
-			if d, ok := d.(*PropDecl); ok && d.DelegateOf != nil && d.Name == name {
+			if d, ok := d.(*PropDecl); ok && d.Name == name && (d.DelegateOf != nil || d.Recv == nil) {
 				return true
 			}
 		}
@@ -1320,7 +1531,7 @@ func (p *parser) parseProp(m Modifiers) *PropDecl {
 		p.unsupported(p.tok().Pos, "destructuring declaration", "destructuring declarations are not supported")
 	}
 	recv, recvAs := p.receiver(false)
-	if tps != nil && recv == nil {
+	if tps != nil && recv == nil && m.Contexts == nil {
 		p.failAt(kw.Pos, "type parameters of a property must be used in its receiver type")
 	}
 	name := p.ident()
@@ -1344,6 +1555,9 @@ func (p *parser) parseProp(m Modifiers) *PropDecl {
 		}
 	}
 	if t := p.tok(); t.Kind == IDENT && t.Text == "by" {
+		if m.Contexts != nil {
+			p.failAt(t.Pos, "delegated property cannot have context parameters")
+		}
 		p.next()
 		p.skipNL()
 		pd.Field = &PropDecl{P: t.Pos, Name: pd.Name + "$delegate", Init: p.parseExpr(), DelegateOf: pd}
@@ -1389,6 +1603,9 @@ func (p *parser) accessors(pd *PropDecl) {
 				j++
 			} else if t.Kind == IDENT && (t.Text == "inline" || t.Text == "external") && p.toks[j+1].Kind == IDENT {
 				j++
+			} else if t.Kind == IDENT && t.Text == "context" && p.toks[j+1].Kind == LPAREN {
+				for j = p.matching(j+1) + 1; p.toks[j].Kind == NL; j++ {
+				}
 			} else {
 				break
 			}
@@ -1404,9 +1621,13 @@ func (p *parser) accessors(pd *PropDecl) {
 		}
 		p.i = start
 		m := p.modifiers()
+		p.noContexts(&m, "property accessors")
+		if len(m.Written) > 0 {
+			pd.AccessorMods = append(pd.AccessorMods, m.Written)
+		}
 		for _, a := range m.Annotations {
 			if a.Target == "" {
-				a.Target = t.Text
+				a.Target, a.Accessor = t.Text, true
 			}
 			pd.Annotations = append(pd.Annotations, a)
 		}
@@ -1592,6 +1813,7 @@ func (p *parser) parseClass(m Modifiers) *ClassDecl {
 	// class A private constructor(...).
 	if t := p.tok(); t.Kind == AT || t.Kind == IDENT && t.Text != "where" {
 		cd.CtorMods = p.modifiers()
+		p.noContexts(&cd.CtorMods, "primary constructors")
 		if t := p.tok(); t.Kind == IDENT && t.Text == "constructor" {
 			p.next()
 		}
@@ -1695,6 +1917,17 @@ func (p *parser) enumEntries(cd *ClassDecl) {
 		for p.at(AT) {
 			anns = append(anns, p.annotation())
 			p.skipNL()
+		}
+		if t := p.tok(); t.Kind == IDENT && t.Text == "context" && p.toks[p.i+1].Kind == LPAREN {
+			j := p.matching(p.i+1) + 1
+			for p.toks[j].Kind == NL {
+				j++
+			}
+			if p.toks[j].Kind == IDENT && enumEntryEnd(p.toks[j+1].Kind) {
+				p.contextParams()
+				p.errorLater(t.Pos, "context parameters on enum entries are unsupported")
+				p.skipNL()
+			}
 		}
 		if !p.at(IDENT) {
 			break
@@ -1806,6 +2039,7 @@ func (p *parser) member(cd *ClassDecl) {
 	switch t := p.tok(); t.Kind {
 	case FUN:
 		if p.toks[p.i+1].Kind == INTERFACE {
+			p.noContexts(&m, "classes")
 			cd.Members = append(cd.Members, p.funInterface(m))
 			break
 		}
@@ -1816,23 +2050,29 @@ func (p *parser) member(cd *ClassDecl) {
 		pd := p.parseProp(m)
 		cd.Members = append(cd.Members, delegated(pd, true, cd.Members)...)
 	case CLASS, INTERFACE, OBJECT:
+		p.noContexts(&m, "classes")
 		cd.Members = append(cd.Members, p.parseClass(m))
 	case TYPEALIAS:
+		p.noContexts(&m, "type aliases")
 		cd.Members = append(cd.Members, p.parseTypeAlias(m))
 	case IDENT:
 		if t.Text == "constructor" && p.toks[p.i+1].Kind == LPAREN {
+			p.noContexts(&m, "constructors")
 			cd.Members = append(cd.Members, p.secondaryCtor(m))
 			break
 		}
 		if t.Text == "init" && p.peekAfterNL(p.i+1) == LBRACE {
 			// init is a soft keyword: elsewhere, it is a name.
+			p.noContexts(&m, "initializers")
 			p.next()
 			p.skipNL()
-			cd.Members = append(cd.Members, &InitBlock{P: t.Pos, Body: p.parseBlock()})
+			cd.Members = append(cd.Members, &InitBlock{P: t.Pos, Body: p.parseBlock(), Annotations: m.Annotations})
 			break
 		}
+		p.danglingContexts(m)
 		p.unexpected("member declaration")
 	default:
+		p.danglingContexts(m)
 		p.unexpected("member declaration")
 	}
 	p.endOfStatement()
@@ -1881,7 +2121,7 @@ func (p *parser) annotation() Annotation {
 		a.Name += "." + last.Text
 	}
 	if p.at(LT) {
-		p.parseTypeArgs()
+		a.TypeArgs = p.parseTypeArgs()
 		last = p.toks[p.i-1]
 	}
 	// Arguments follow the name with no space between: @A(x), not @A (x).
@@ -1894,8 +2134,13 @@ func (p *parser) annotation() Annotation {
 		for _, arg := range a.Args {
 			for _, t := range arg.Toks {
 				for _, part := range t.Parts {
-					if part.Lit == "INVISIBLE_MEMBER" || part.Lit == "INVISIBLE_REFERENCE" {
+					switch part.Lit {
+					case "INVISIBLE_MEMBER", "INVISIBLE_REFERENCE":
 						p.suppressInvisible = true
+					case "RECEIVER_SHADOWED_BY_CONTEXT_PARAMETER":
+						p.suppressShadowed = true
+					case "DSL_SCOPE_VIOLATION":
+						p.suppressDSL = true
 					}
 				}
 			}
@@ -1968,6 +2213,12 @@ func ParseAnnotationArg(path string, arg *AnnotationArg) (elems []Expr, array bo
 			p.next()
 		}
 		p.expect(RBRACK)
+	} else if p.at(STAR) {
+		// *arrayOf(a, b), a vararg parameter's elements
+		pos := p.next().Pos
+		sp := &Spread{X: p.parseExpr()}
+		sp.P = pos
+		elems = []Expr{sp}
 	} else {
 		elems = []Expr{p.parseExpr()}
 	}
@@ -2044,9 +2295,10 @@ func (p *parser) parseBody() *Block {
 }
 
 func (p *parser) parseStmt() Stmt {
-	// Annotations on local declarations and expressions are ignored, but
-	// for a local class's, which LocalClass keeps, and a local function's
-	// and a lambda's, which the checker and codegen look at for Compose's.
+	// A local class keeps its annotations, and a local function its, as
+	// declarations do; those of other statements are recorded for the
+	// checker (see File.Annotated). Codegen looks at a lambda's for
+	// Compose's.
 	var as []Annotation
 	for p.at(AT) {
 		as = append(as, p.annotation())
@@ -2064,6 +2316,9 @@ func (p *parser) parseStmt() Stmt {
 				annotateLambda(l, a)
 			}
 		}
+		p.annotate(s.X, as)
+	default:
+		p.annotate(s, as)
 	}
 	return s
 }
@@ -2179,6 +2434,9 @@ func (p *parser) parseStmtAfterAnnotations() Stmt {
 			return p.localFun(Modifiers{})
 		}
 	case IDENT:
+		if t.Text == "context" && p.contextDecl() {
+			return p.localFun(p.modifiers())
+		}
 		// Modifiers of a local function: infix fun, private fun.
 		j := p.i
 		for p.toks[j].Kind == IDENT && isModifier(p.toks[j].Text) {
@@ -2198,7 +2456,9 @@ func (p *parser) parseStmtAfterAnnotations() Stmt {
 				s := p.parseStmt()
 				if vs, ok := s.(*VarStmt); ok {
 					vs.Lateinit, vs.LateinitP = m.Lateinit, t.Pos
+					vs.Mods = m.Written
 				}
+				p.annotate(s, m.Annotations)
 				return s
 			}
 		}
@@ -2532,6 +2792,7 @@ func (p *parser) parsePostfix() Expr {
 			for _, a := range as {
 				annotateLambda(l, a)
 			}
+			p.annotate(l, as)
 			if !ok {
 				fn = &Call{Fun: x}
 				fn.P = t.Pos
@@ -2740,6 +3001,15 @@ func (p *parser) parsePrimary() Expr {
 		th.P = t.Pos
 		return th
 	case IDENT:
+		if t.Text == "context" && p.contextAnonFun() {
+			// context(a: A) fun () = a: an anonymous function with
+			// context parameters.
+			ctx := p.contextParams()
+			p.skipNL()
+			l := p.anonFun("")
+			l.P, l.AnonCtx = t.Pos, ctx
+			return l
+		}
 		if t.Text == "suspend" && p.toks[p.i+1].Kind == LBRACE {
 			// suspend { x: Int -> x }, a lambda with the suspend modifier,
 			// as kotlinc's ParseLambdaWithSuspendModifier parses it, rather
@@ -2837,14 +3107,14 @@ func (p *parser) parsePrimary() Expr {
 		return p.callableRef(t.Pos, &CallableRef{Name: p.ident().Text})
 	case AT:
 		// An annotated expression, whose annotation can be on the line
-		// before it: the annotation is ignored, but for Compose's on a
-		// lambda (see annotateLambda).
+		// before it (see File.Annotated, and annotateLambda).
 		a := p.annotation()
 		p.skipNL()
 		x := p.parsePrefix()
 		if l, ok := x.(*Lambda); ok {
 			annotateLambda(l, a)
 		}
+		p.annotate(x, []Annotation{a})
 		return x
 	case LABEL:
 		// lit@{ ... }: the label replaces the function's name.
@@ -2932,7 +3202,7 @@ func (p *parser) intLit(t Token) Expr {
 	if err != nil || v > math.MaxInt64 && !unsigned {
 		p.failAt(t.Pos, "the value is out of range")
 	}
-	lit := &IntLit{Val: int64(v), Unsigned: unsigned}
+	lit := &IntLit{Val: intbits.FromBits(v), Unsigned: unsigned}
 	lit.P = t.Pos
 	lit.Long = long || v > math.MaxInt32 && !unsigned || v > math.MaxUint32
 	return lit
@@ -3061,13 +3331,14 @@ func (p *parser) parseTry() Expr {
 			continue
 		}
 		p.expect(LPAREN)
+		var as []Annotation
 		for p.at(AT) {
-			p.annotation() // ignored, as on locals
+			as = append(as, p.annotation())
 			p.skipNL()
 		}
 		name := p.ident()
 		p.expect(COLON)
-		c := &Catch{P: t.Pos, Name: name.Text, Type: p.parseType()}
+		c := &Catch{P: t.Pos, Name: name.Text, Type: p.parseType(), Annotations: as}
 		p.expect(RPAREN)
 		p.skipNL()
 		c.Body = p.parseBlock()

@@ -17,7 +17,7 @@ var arrayFuns = map[string]*types.FunSym{}
 func init() {
 	generic := func(name string, b types.Builtin, params func(t types.Type) []*types.VarSym, ret func(t types.Type) types.Type) {
 		f := &types.FunSym{Name: name, Builtin: b, Resolved: true}
-		tp := &types.TypeParamSym{Name: "T", Owner: f}
+		tp := &types.TypeParamSym{Name: "T", Owner: f, Global: true}
 		t := types.ParamType(tp)
 		f.TypeParams, f.Params, f.Ret = []*types.TypeParamSym{tp}, params(t), ret(t)
 		arrayFuns[name] = f

@@ -128,6 +128,9 @@ func (g *gen) stmt(s syntax.Stmt) {
 			break // assigned later
 		}
 		g.exprAs(s.Init, s.Sym.Type)
+		if !s.Mutable && g.knownNonNull(s.Init) {
+			g.markNonNull(s.Sym)
+		}
 		if size(s.Sym.Type) > 0 {
 			g.code.Local(storeOp(s.Sym.Type), g.slot(s.Sym))
 		}
@@ -253,7 +256,34 @@ func (g *gen) forEach(s *syntax.For) {
 	g.code.Jump(cf.IFEQ, exit)
 	g.suspendOperator(s.Next, s.IterT, func() { g.code.Local(cf.ALOAD, it) })
 	g.coerce(types.JVMRet(s.Next), s.Sym.Type)
-	g.code.Local(storeOp(s.Sym.Type), g.slot(s.Sym))
+	g.storeLoopVar(s.Sym)
+	g.pushLoop(s, exit, top)
+	g.loopBody(func() { g.block(s.Body, types.UnitType, false) })
+	g.code.Jump(cf.GOTO, top)
+	g.code.Place(exit)
+}
+
+// storeLoopVar stores the element on the stack in loop variable v. A
+// Unit one, as a List<Unit>'s, has no local: its reads are Unit.
+func (g *gen) storeLoopVar(v *types.VarSym) {
+	if size(v.Type) > 0 {
+		g.code.Local(storeOp(v.Type), g.slot(v))
+	}
+}
+
+// forCalls generates a loop over a collection whose iterator(), hasNext()
+// and next() the checker resolved as calls: IterVar holds the iterator.
+func (g *gen) forCalls(s *syntax.For) {
+	g.stmt(s.IterVar)
+	g.setSlot(s.Sym, g.code.AllocLocal(desc(s.Sym.Type)))
+	g.named(s.Sym)
+	top, exit := cf.NewLabel(), cf.NewLabel()
+	g.code.Place(top)
+	g.line(s.P)
+	g.exprAs(s.HasNextX, types.BoolType)
+	g.code.Jump(cf.IFEQ, exit)
+	g.exprAs(s.NextX, s.Sym.Type)
+	g.storeLoopVar(s.Sym)
 	g.pushLoop(s, exit, top)
 	g.loopBody(func() { g.block(s.Body, types.UnitType, false) })
 	g.code.Jump(cf.GOTO, top)
@@ -265,7 +295,7 @@ func (g *gen) forEach(s *syntax.For) {
 func (g *gen) invokeOperator(f *types.FunSym, rt types.Type) {
 	if f.Ext {
 		g.coerce(rt, f.Recv)
-		g.invokeStatic(f.Facade, f, 0, false)
+		g.invokeStatic(f.Facade, f, nil, false)
 		return
 	}
 	g.invokeOperatorMember(f, rt)
@@ -278,11 +308,11 @@ func (g *gen) invokeOperatorMember(f *types.FunSym, rt types.Type) {
 	if f.Impl && f.Inline == nil {
 		// A class-path value class's: a static method, also taking the
 		// value first, as UIntArray's iterator-impl.
-		g.invokeStatic(f.Facade, f, 0, false)
+		g.invokeStatic(f.Facade, f, nil, false)
 		return
 	}
 	if o := f.Owner; o != nil && o.Value && f.Desc == "" && o.Underlying != nil && types.Unboxed(rt) {
-		g.code.Invoke(cf.INVOKESTATIC, o.Name, f.JVM(), "("+desc(o.Underlying.Type)+sigDesc(f)[1:])
+		g.code.Invoke(cf.INVOKESTATIC, o.Name, f.JVM(), "("+desc(o.Underlying.Type)+funDesc(f)[1:])
 		return
 	}
 	g.invokeJava(f, rt)
@@ -318,6 +348,10 @@ func (g *gen) stmts(ss []syntax.Stmt) {
 }
 
 func (g *gen) forLoop(s *syntax.For) {
+	if s.IterVar != nil {
+		g.forCalls(s)
+		return
+	}
 	if s.HasNext != nil {
 		g.forEach(s)
 		return
@@ -684,6 +718,10 @@ type lvalue struct {
 	// reread is set when reading calls an accessor, which ++x and --x
 	// call again for their value after storing, as kotlinc does.
 	reread bool
+	// wide is set with recv 3: the two-word receiver on top of the
+	// dispatch receiver, a member extension's of Long or Double, which
+	// no instruction duplicates (see dup3).
+	wide types.Type
 }
 
 // dupRecv duplicates what prepare pushed, for compound assignment.
@@ -693,6 +731,8 @@ func (g *gen) dupRecv(lv lvalue) {
 		g.code.Op(cf.DUP)
 	case 2:
 		g.code.Op(cf.DUP2)
+	case 3:
+		g.dup3(lv.wide, types.Type{})
 	}
 }
 
@@ -750,6 +790,12 @@ func (g *gen) lvalue(x syntax.Expr) lvalue {
 						g.code.FieldInsn(cf.PUTSTATIC, owner, p.Name, desc(ft))
 					}}
 			}
+			if sym.OuterOf != nil {
+				// The accessor's this, as in ident.
+				return lvalue{t: t, prepare: func() { g.loadStorage(sym.OuterOf) }, recv: 1,
+					load:  func() { g.outerField(p, false) },
+					store: func() { g.outerField(p, true) }}
+			}
 			return lvalue{t: t, prepare: g.loadThis, recv: 1,
 				load:  func() { g.getField(p) },
 				store: func() { g.putField(p) }}
@@ -783,12 +829,12 @@ func (g *gen) lvalue(x syntax.Expr) lvalue {
 			}
 			lv := lvalue{t: t, prepare: prepare, recv: size(f.Recv), reread: true,
 				load: func() {
-					g.invokeFun(nil, f, 0)
+					g.invokeFun(nil, f, nil)
 					g.coerce(types.JVMRet(f), t)
 				},
 				store: func() {
 					g.coerce(t, s.Params[0].Type)
-					g.invokeFun(nil, s, 0)
+					g.invokeFun(nil, s, nil)
 				}}
 			if gd := syntax.SourceInline(f); gd != nil {
 				// Accessors with reified type parameters: copies of their
@@ -818,7 +864,10 @@ func (g *gen) lvalue(x syntax.Expr) lvalue {
 				lv.prepare, lv.recv = func() {
 					g.dispatch(x, f.Owner)
 					prepare()
-				}, 2
+				}, 1+size(f.Recv)
+				if lv.recv == 3 {
+					lv.wide = f.Recv
+				}
 				lv.load = func() {
 					g.callMethod(f, f.Owner, f.JVM(), funDesc(f))
 					g.coerce(types.JVMRet(f), t)
@@ -970,6 +1019,18 @@ func (g *gen) propLvalue(p *types.VarSym, t types.Type, recv func(), cls *types.
 	return lv
 }
 
+// accessCall returns the call of an accessor that x, the read or the
+// assignment of a property with context parameters, is, or nil.
+func accessCall(x syntax.Expr) *syntax.Call {
+	switch x := x.(type) {
+	case *syntax.Ident:
+		return x.Call
+	case *syntax.Member:
+		return x.Call
+	}
+	return nil
+}
+
 func (g *gen) assign(s *syntax.Assign) {
 	if s.Stmts != nil {
 		g.stmts(s.Stmts) // operator calls
@@ -978,6 +1039,11 @@ func (g *gen) assign(s *syntax.Assign) {
 	if ix, ok := s.Target.(*syntax.Index); ok && s.Op == syntax.ASSIGN {
 		g.call(ix.Call) // x[i] = v is x.set(i, v)
 		g.pop(ix.Call.T)
+		return
+	}
+	if call := accessCall(s.Target); call != nil {
+		g.call(call) // a property with context parameters: x.setP(v)
+		g.pop(call.T)
 		return
 	}
 	if id, ok := s.Target.(*syntax.Ident); ok && id.Sym != nil && id.Sym.UnitLocal() {
@@ -1049,6 +1115,8 @@ func (g *gen) dupBelow(lv lvalue, t types.Type) {
 		g.code.Op(cf.DUP_X1)
 	case lv.recv == 1:
 		g.code.Op(cf.DUP2_X1)
+	case lv.recv == 3:
+		g.dup3(lv.wide, t)
 	case !wide:
 		g.code.Op(cf.DUP_X2)
 	default:
@@ -1116,4 +1184,31 @@ func (g *gen) incDec(u *syntax.Unary) {
 func isPositive(v any) bool {
 	n, ok := v.(int64)
 	return ok && n > 0
+}
+
+// dup3 duplicates the receivers of an lvalue of three words, an object
+// under a value of two-word type wide, through locals. With a value of
+// type t above them, it instead copies that value below them, as
+// dupBelow does.
+func (g *gen) dup3(wide, t types.Type) {
+	var v int
+	if t.K != types.Invalid {
+		v = g.code.AllocLocal(desc(t))
+		g.code.Local(storeOp(t), v)
+	}
+	w := g.code.AllocLocal(desc(wide))
+	g.code.Local(storeOp(wide), w)
+	o := g.code.AllocLocal(objectDesc)
+	g.code.Local(cf.ASTORE, o)
+	if t.K != types.Invalid {
+		g.code.Local(loadOp(t), v)
+	} else {
+		g.code.Local(cf.ALOAD, o)
+		g.code.Local(loadOp(wide), w)
+	}
+	g.code.Local(cf.ALOAD, o)
+	g.code.Local(loadOp(wide), w)
+	if t.K != types.Invalid {
+		g.code.Local(loadOp(t), v)
+	}
 }

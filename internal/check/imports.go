@@ -1,6 +1,7 @@
 package check
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
@@ -32,6 +33,9 @@ type memberImport struct {
 // checkMemberImports reports the member imports that name nothing. They
 // are checked once the members of the program's classes are declared.
 func (c *Checker) checkMemberImports() {
+	for _, ci := range c.classImports {
+		c.checkClassImport(ci)
+	}
 	for _, mi := range c.memberImports {
 		if !c.usable(mi.owner, mi.p) {
 			continue
@@ -177,4 +181,140 @@ func (c *Checker) importTarget(x syntax.Expr) syntax.Expr {
 		return x
 	}
 	return c.importedRef(c.memberImports[id.Name], id.P)
+}
+
+// importsOnlyHidden reports whether everything an import of a package's
+// name finds is another file's private declaration: kotlinc reports the
+// import. Nested declarations and typealiases are checked where they are
+// used.
+func (c *Checker) importsOnlyHidden(user *Package, name string) bool {
+	if cls, ok := user.Classes[name]; ok && !c.privateElsewhere(classifier{cls: cls}) {
+		return false
+	}
+	if _, ok := user.Aliases[name]; ok {
+		return false
+	}
+	if slices.ContainsFunc(user.Funs[name], c.funVisible) || slices.ContainsFunc(user.ExtProps[name], c.funVisible) {
+		return false
+	}
+	if _, ok := user.Vars[name]; ok {
+		return false
+	}
+	if _, ok := c.fileVars[name]; ok && user == c.pkg {
+		return false
+	}
+	return true
+}
+
+// checkClassImport reports an import of a class of the class path that
+// the file can't see: another module's private or internal class, or a
+// Java class that isn't public, of another package.
+func (c *Checker) checkClassImport(ci memberImport) {
+	cls := ci.owner
+	if !cls.External || c.file.SuppressInvisible {
+		return
+	}
+	cls.Ensure()
+	switch {
+	case cls.Missing || !cls.Private:
+	case cls.Internal:
+		c.errorf(ci.p, "cannot access '%s': it is internal in module", ci.name)
+	case ci.path != c.file.Package:
+		c.errorf(ci.p, "cannot access '%s': it is private in file", ci.name)
+	}
+}
+
+// builtinFuns are the functions of package kotlin that are built into the
+// compiler, with no class file of the standard library to find them in,
+// which an import may still name: import kotlin.arrayOfNulls.
+var builtinFuns = map[string]bool{
+	"arrayOf": true, "arrayOfNulls": true, "emptyArray": true,
+	"booleanArrayOf": true, "byteArrayOf": true, "charArrayOf": true, "shortArrayOf": true,
+	"intArrayOf": true, "longArrayOf": true, "floatArrayOf": true, "doubleArrayOf": true,
+	"enumValues": true, "enumValueOf": true,
+}
+
+// importMembers imports the members of owner that import X.* imports: a
+// Java class's statics, enum entries too, after the explicit imports, or
+// a program's enum's entries, and the nested classes of either.
+func (c *Checker) importMembers(owner *types.ClassSym, imp *syntax.Import) {
+	owner.Ensure()
+	c.starOwners = append(c.starOwners, owner)
+	add := func(name string) {
+		if _, ok := c.memberImports[name]; !ok {
+			c.memberImports[name] = memberImport{owner: owner, name: name, p: imp.P, path: imp.Path + "." + name, star: true}
+		}
+	}
+	if !owner.External {
+		for _, name := range owner.Entries {
+			add(name)
+		}
+		if owner.Entries != nil { // declared with the class's members, later
+			add("values")
+			add("valueOf")
+		}
+		return
+	}
+	for name := range owner.Fields {
+		add(name)
+	}
+	for name := range owner.Statics {
+		add(name)
+	}
+}
+
+// aliasStar is an import of the members of the class a typealias stands
+// for: import p.Alias.*.
+type aliasStar struct {
+	alias *types.AliasSym
+	imp   *syntax.Import
+}
+
+// importedAlias returns the program's typealias a qualified name names,
+// at the top level of a package or nested in a class, or nil.
+func (c *Checker) importedAlias(path string) *types.AliasSym {
+	pkg, simple := "", path
+	if i := strings.LastIndexByte(path, '.'); i > 0 {
+		pkg, simple = path[:i], path[i+1:]
+	}
+	if user := c.u.Pkgs[pkg]; user != nil {
+		if a := user.Aliases[simple]; a != nil {
+			return a
+		}
+	}
+	if owner := c.importOwner(pkg); owner != nil && !owner.External {
+		return owner.Aliases[simple]
+	}
+	return nil
+}
+
+// resolveAliasStars imports the members of the classes that star imports
+// of typealiases name, once the typealiases are resolved: import
+// p.Targets.* for typealias Targets = AnnotationTarget imports its
+// entries.
+func (c *Checker) resolveAliasStars() {
+	for _, s := range c.aliasStars {
+		if owner := c.aliasClass(s.alias); owner != nil && owner.Object && !owner.External {
+			c.errorf(s.imp.P, "cannot import on demand from object '%s'", owner.DisplayName())
+		} else if owner != nil {
+			c.importMembers(owner, s.imp)
+		} else {
+			c.errorf(s.imp.P, "unresolved import: %s.*", s.imp.Path)
+		}
+	}
+}
+
+// starObject returns the object a class's star import brings in under a
+// name that names cls, a class that isn't a value, in a nearer scope:
+// kotlinc looks further for a value, so C is object A.B.C under import
+// A.B.* though a class C without a companion is in the file's package.
+func (c *Checker) starObject(name string, cls *types.ClassSym) *types.ClassSym {
+	for _, owner := range c.starOwners {
+		if n := c.nestedOf(owner, name); n != nil && n != cls {
+			if obj := objectOf(n); obj != nil {
+				return obj
+			}
+		}
+	}
+	return nil
 }

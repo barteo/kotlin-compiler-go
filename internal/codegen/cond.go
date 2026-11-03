@@ -54,6 +54,9 @@ func (g *gen) cond(x syntax.Expr, l *cf.Label, jumpIf bool) {
 			}
 			return
 		case syntax.EQ, syntax.NE, syntax.EQ_EQ_EQ, syntax.NOT_EQ_EQ:
+			if g.safeEquals(x, l, jumpIf) {
+				return
+			}
 			g.equals(func() { g.expr(x.X) }, x.X.Type(), x.Y, x.OpType, x.Op, l, jumpIf)
 			return
 		case syntax.LT, syntax.GT, syntax.LE, syntax.GE:
@@ -205,6 +208,11 @@ func (g *gen) equals(left func(), lt types.Type, right syntax.Expr, opType types
 		if rt.K == types.Null {
 			left()
 			other = lt
+			if _, ok := right.(*syntax.NullLit); !ok {
+				// A call whose result is Nothing?, which may have effects.
+				g.expr(right)
+				g.pop(rt)
+			}
 		} else {
 			g.expr(right)
 			other = rt
@@ -221,6 +229,19 @@ func (g *gen) equals(left func(), lt types.Type, right syntax.Expr, opType types
 			g.code.Jump(cf.IFNULL, l)
 		} else {
 			g.code.Jump(cf.IFNONNULL, l)
+		}
+	case opType.N && mixedNumbers(lt, rt):
+		// Numbers of two types, smart casts of which one may be null, as
+		// numbers of the wider type: x is Double? && y is Int? && x == y.
+		a, b := lt.Flex().NonNull(), rt.Flex().NonNull()
+		left()
+		g.coerce(lt, a.Nullable())
+		g.exprAs(right, b.Nullable())
+		g.areEqualAs(a, b, opType.NonNull())
+		if wantEqual {
+			g.code.Jump(cf.IFNE, l)
+		} else {
+			g.code.Jump(cf.IFEQ, l)
 		}
 	case opType.IsPrimitive():
 		left()
@@ -256,6 +277,84 @@ func (g *gen) equals(left func(), lt types.Type, right syntax.Expr, opType types
 			g.code.Jump(cf.IFEQ, l)
 		}
 	}
+}
+
+// safeEqual is the left side of a?.b == v, whose safe call leaves b's
+// value, of type t, or jumps to null if a is null.
+type safeEqual struct {
+	m    *syntax.Member
+	t    types.Type
+	null *cf.Label
+	used bool // set by safeCall, which generated m so
+}
+
+// safeEquals generates a?.b == v or a?.b != v, with b and v of one
+// primitive type other than Float and Double, as kotlinc: if a is null,
+// v isn't evaluated and the result is false for ==, true for !=. A
+// constant v may come first: 0 == a?.b. It reports whether x is one.
+func (g *gen) safeEquals(x *syntax.Binary, l *cf.Label, jumpIf bool) bool {
+	if x.Op != syntax.EQ && x.Op != syntax.NE {
+		return false
+	}
+	left, right := x.X, x.Y
+	if safeMember(left) == nil && primitiveLit(left) {
+		left, right = right, left
+	}
+	m, t, lt := safeMember(left), right.Type(), left.Type()
+	if m == nil || !t.IsPrimitive() || t.K == types.Float || t.K == types.Double || lt.P || !lt.N || lt.NonNull() != t {
+		return false
+	}
+	done := cf.NewLabel()
+	ifNull := done
+	if (x.Op == syntax.NE) == jumpIf {
+		ifNull = l
+	}
+	c := &safeEqual{m: m, t: t, null: ifNull}
+	saved := g.safeEq
+	g.safeEq = c
+	g.expr(left)
+	g.safeEq = saved
+	if !c.used {
+		// Another kind of safe call: its value, null or boxed.
+		ok := cf.NewLabel()
+		g.code.Op(cf.DUP)
+		g.code.Jump(cf.IFNONNULL, ok)
+		g.code.Op(cf.POP)
+		g.code.Jump(cf.GOTO, ifNull)
+		g.code.Place(ok)
+		g.coerce(lt, t)
+	}
+	g.exprAs(right, t)
+	g.branchCompare(t, x.Op, l, jumpIf)
+	g.code.Place(done)
+	return true
+}
+
+// safeMember returns the member access or call of safe call x, or nil.
+func safeMember(x syntax.Expr) *syntax.Member {
+	switch x := x.(type) {
+	case *syntax.Member:
+		if x.Safe {
+			return x
+		}
+	case *syntax.Call:
+		if m, ok := x.Fun.(*syntax.Member); ok && m.Safe && !x.Invoke {
+			return m
+		}
+	}
+	return nil
+}
+
+// primitiveLit reports whether x is a literal of a primitive type.
+func primitiveLit(x syntax.Expr) bool {
+	switch x := x.(type) {
+	case *syntax.IntLit, *syntax.CharLit, *syntax.BoolLit:
+		return true
+	case *syntax.Unary:
+		_, ok := x.X.(*syntax.IntLit)
+		return ok && x.Op == syntax.MINUS && x.Call == nil
+	}
+	return false
 }
 
 // inRange tests whether the value of type vt, Int or Long, pushed by load
@@ -327,6 +426,13 @@ func (g *gen) bound(e syntax.Expr, t types.Type) func() {
 	return func() { g.code.Local(loadOp(t), slot) }
 }
 
+// mixedNumbers reports whether x and y are number types, nullable or
+// not, of two kinds: Double? and Int.
+func mixedNumbers(x, y types.Type) bool {
+	x, y = x.Flex().NonNull(), y.Flex().NonNull()
+	return x.IsNumeric() && y.IsNumeric() && x != y
+}
+
 // areEqual replaces two nullable Doubles or Floats, as f says, with
 // whether they are equal as IEEE 754 says, or both null, 1 or 0, as
 // Intrinsics.areEqual does.
@@ -336,7 +442,13 @@ func (g *gen) areEqual(f types.Type) {
 		g.code.Invoke(cf.INVOKESTATIC, "kotlin/jvm/internal/Intrinsics", "areEqual", "("+ref+ref+")Z")
 		return
 	}
-	a, b := g.code.AllocLocal(ref), g.code.AllocLocal(ref)
+	g.areEqualAs(f, f, f)
+}
+
+// areEqualAs is areEqual for boxed numbers of types x and y, compared as
+// numbers of type f.
+func (g *gen) areEqualAs(x, y, f types.Type) {
+	a, b := g.code.AllocLocal(desc(x.Nullable())), g.code.AllocLocal(desc(y.Nullable()))
 	g.code.Local(cf.ASTORE, b)
 	g.code.Local(cf.ASTORE, a)
 	aSet, yes, no, end := cf.NewLabel(), cf.NewLabel(), cf.NewLabel(), cf.NewLabel()
@@ -349,9 +461,11 @@ func (g *gen) areEqual(f types.Type) {
 	g.code.Local(cf.ALOAD, b)
 	g.code.Jump(cf.IFNULL, no)
 	g.code.Local(cf.ALOAD, a)
-	g.unbox(f)
+	g.unbox(x)
+	g.convert(x, f)
 	g.code.Local(cf.ALOAD, b)
-	g.unbox(f)
+	g.unbox(y)
+	g.convert(y, f)
 	g.branchCompare(f, syntax.EQ, no, false)
 	g.code.Place(yes)
 	g.code.Iconst(1)

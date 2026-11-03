@@ -89,7 +89,7 @@ func annotationOf(a *syntax.Annotation) cf.Annotation {
 		var ev cf.ElementValue
 		if v.Array {
 			ev = cf.ElementValue{Tag: '['}
-			elem := types.ArrayElem(v.Type)
+			elem := types.VarargElem(v.Type)
 			for _, e := range v.Elems {
 				ev.Elems = append(ev.Elems, elementOf(elem, e))
 			}
@@ -124,6 +124,23 @@ func elementOf(t types.Type, e syntax.AnnotationElem) cf.ElementValue {
 			}
 		}
 		return cf.ElementValue{Tag: 'e', Enum: [2]string{"L" + t.C.Name + ";", name}}
+	}
+	if t.K == types.Class && types.IsValue(t) {
+		// An unsigned integer, as its signed bits: UInt is an int.
+		v, ok := unsignedConst(x, 0)
+		if !ok {
+			panic(fmt.Sprintf("%d:%d: kc can't compute this annotation argument", x.Pos().Line, x.Pos().Col))
+		}
+		switch t.C.Name {
+		case "kotlin/UByte":
+			return cf.ElementValue{Tag: 'B', Const: int64(int8(v))}
+		case "kotlin/UShort":
+			return cf.ElementValue{Tag: 'S', Const: int64(int16(v))}
+		case "kotlin/UInt":
+			return cf.ElementValue{Tag: 'I', Const: int64(int32(v))}
+		case "kotlin/ULong":
+			return cf.ElementValue{Tag: 'J', Const: v}
+		}
 	}
 	v, ok := constOf(x, 0)
 	if !ok {
@@ -378,21 +395,73 @@ func annotationClassMeta(c *cf.Class, cd *syntax.ClassDecl) {
 // parameter with a default value: its value as an element.
 func annotationDefault(t types.Type, x syntax.Expr) (cf.ElementValue, bool) {
 	defer func() { recover() }()
-	if t.IsArray() {
+	if t.IsArray() || t.K == types.Class && types.IsUnsignedArray(t.C) {
 		ev := cf.ElementValue{Tag: '['}
-		elems := []syntax.Expr{x}
-		if call, ok := x.(*syntax.Call); ok && call.Builtin == types.ArrayLiteral {
-			elems = call.Args
+		elems, ok := syntax.ArrayElems(x)
+		if !ok {
+			elems = []syntax.Expr{x}
 		}
-		for _, e := range elems {
-			ev.Elems = append(ev.Elems, elementOf(types.ArrayElem(t), syntax.AnnotationElem{X: e}))
+		for _, e := range syntax.FlattenSpreads(elems) {
+			v, ok := annotationDefault(types.VarargElem(t), e)
+			if !ok {
+				return cf.ElementValue{}, false
+			}
+			ev.Elems = append(ev.Elems, v)
 		}
 		return ev, true
 	}
 	if call, ok := x.(*syntax.Call); ok && call.Ctor != nil && call.Ctor.Retention != types.NoRetention {
-		return cf.ElementValue{}, false
+		a, ok := nestedDefault(call)
+		return cf.ElementValue{Tag: '@', Ann: &a}, ok
 	}
 	return elementOf(t, syntax.AnnotationElem{X: x}), true
+}
+
+// nestedDefault returns the annotation that call, an annotation class's
+// instantiation in a default value, creates: its arguments, as kotlinc
+// writes them, without the omitted ones.
+func nestedDefault(call *syntax.Call) (cf.Annotation, bool) {
+	a := cf.Annotation{Type: "L" + call.Ctor.Name + ";"}
+	if call.Sym == nil {
+		return a, false
+	}
+	params := call.Sym.Params
+	args := make([][]syntax.Expr, len(params))
+	for i, arg := range call.Args {
+		j := i
+		if call.ArgMap != nil {
+			j = call.ArgMap[i]
+		}
+		if j < 0 || j >= len(params) {
+			return a, false
+		}
+		if sp, ok := arg.(*syntax.Spread); ok && params[j].Vararg {
+			elems, ok := syntax.ArrayElems(sp.X)
+			if !ok {
+				return a, false
+			}
+			args[j] = append(args[j], elems...)
+			continue
+		}
+		args[j] = append(args[j], arg)
+	}
+	for j, p := range params {
+		if args[j] == nil {
+			continue
+		}
+		var v cf.ElementValue
+		ok := true
+		if p.Vararg {
+			v, ok = annotationDefault(p.Type, &syntax.Call{Literal: true, Args: args[j]})
+		} else {
+			v, ok = annotationDefault(p.Type, args[j][0])
+		}
+		if !ok {
+			return a, false
+		}
+		a.Values = append(a.Values, cf.ElementPair{Name: p.Name, Value: v})
+	}
+	return a, true
 }
 
 // propAnnotations writes the $annotations method of property p of class
@@ -581,4 +650,39 @@ func bridgeAnnotations(m cf.MemberRef, as []syntax.Annotation) {
 	if deprecated(as) {
 		m.Deprecate()
 	}
+}
+
+// unsignedConst returns the bits of a constant of an unsigned integer
+// type: an unsigned literal, or a const val of one.
+func unsignedConst(e syntax.Expr, depth int) (int64, bool) {
+	if depth > 32 {
+		return 0, false
+	}
+	ref := func(p *types.VarSym) (int64, bool) {
+		if p == nil {
+			return 0, false
+		}
+		if v, ok := p.Constant.(int64); ok {
+			return v, true // a compiled Kotlin const val
+		}
+		if pd, ok := p.Decl.(*syntax.PropDecl); ok && p.Const {
+			return unsignedConst(pd.Init, depth+1)
+		}
+		return 0, false
+	}
+	switch e := e.(type) {
+	case *syntax.IntLit:
+		return e.Val, e.Unsigned
+	case *syntax.Ident:
+		if e.Sym == nil && e.Member != nil {
+			return unsignedConst(e.Member, depth+1)
+		}
+		return ref(e.Sym)
+	case *syntax.Member:
+		if e.Static != nil && e.Field != nil {
+			return ref(e.Field)
+		}
+		return ref(e.Prop)
+	}
+	return 0, false
 }

@@ -5,32 +5,54 @@ import (
 	"github.com/barteo/kotlin-compiler-go/internal/types"
 )
 
-// checkClashes reports the program's functions that would have the same
-// JVM signature in one class or file facade, as f(List<A>) and
-// f(List<B>) without @JvmName.
+// checkClashes reports the program's declarations that would have the
+// same JVM signature in one class or file facade, as f(List<A>) and
+// f(List<B>) without @JvmName, or val x and fun getX(), and those that
+// accidentally override an inherited method on the JVM.
 func (c *Checker) checkClashes() {
-	var top []*syntax.FunDecl
+	var top []jvmMember
 	for _, d := range c.file.Decls {
-		if fd, ok := d.(*syntax.FunDecl); ok {
-			top = append(top, fd)
+		switch d := d.(type) {
+		case *syntax.FunDecl:
+			if d.Sym != nil && !d.Expect {
+				top = c.funMembers(top, d, nil)
+			}
+		case *syntax.PropDecl:
+			if d.Sym == nil || d.Expect {
+				continue
+			}
+			if d.Recv != nil {
+				if d.Getter != nil && d.Getter.Sym != nil {
+					top = extPropMembers(top, d)
+				}
+				continue
+			}
+			gp, sp := d.P, d.P
+			if d.Getter != nil {
+				gp = d.Getter.P
+			}
+			if d.Setter != nil {
+				sp = d.Setter.P
+			}
+			top = c.propMembers(top, d.Sym, d.Visibility == syntax.Private, d.P, gp, sp)
 		}
 	}
-	c.clashes(top, nil)
-	for _, d := range c.classes {
-		var fs []*syntax.FunDecl
-		for _, m := range d.Members {
-			if fd, ok := m.(*syntax.FunDecl); ok {
-				fs = append(fs, fd)
-			}
+	c.sameContainer(top)
+	for _, m := range top {
+		if !m.private && objectFinals[m.sig] {
+			c.errorf(m.pos, "accidental override: the following declarations have the same JVM signature (%s)", m.sig)
 		}
-		c.clashes(fs, c.getterSigs(d))
+	}
+	for _, d := range c.classes {
+		c.javaGetterClashes(d)
+		c.classClashes(d)
 	}
 }
 
-// getterSigs returns the JVM names and descriptors of the getters of a
-// class's properties, and reports those that a Java supertype's method
-// has: a Kotlin property doesn't override a Java getter, as with kotlinc.
-func (c *Checker) getterSigs(d *syntax.ClassDecl) map[string]bool {
+// javaGetterClashes reports the getters of a class's properties that a
+// Java supertype's method has: a Kotlin property doesn't override a Java
+// getter, as with kotlinc.
+func (c *Checker) javaGetterClashes(d *syntax.ClassDecl) {
 	var props []*types.VarSym
 	var pos []syntax.Pos
 	var override []bool
@@ -44,7 +66,6 @@ func (c *Checker) getterSigs(d *syntax.ClassDecl) map[string]bool {
 			props, pos, override = append(props, pd.Sym), append(pos, pd.P), append(override, pd.Override)
 		}
 	}
-	sigs := map[string]bool{}
 	for i, p := range props {
 		if p.Private || p.JvmField || p.Const {
 			continue
@@ -56,7 +77,6 @@ func (c *Checker) getterSigs(d *syntax.ClassDecl) map[string]bool {
 		}
 		name := types.GetterJVM(p)
 		sig := name + "()" + desc
-		sigs[sig] = true
 		if override[i] {
 			continue // it overrides a Kotlin property, or nothing
 		}
@@ -73,57 +93,4 @@ func (c *Checker) getterSigs(d *syntax.ClassDecl) map[string]bool {
 			return true
 		})
 	}
-	return sigs
-}
-
-// clashes reports the functions fs whose JVM signatures are the same, or
-// one of the signatures seen, a class's getters.
-func (c *Checker) clashes(fs []*syntax.FunDecl, seen map[string]bool) {
-	if len(fs)+len(seen) < 2 {
-		return
-	}
-	if seen == nil {
-		seen = map[string]bool{}
-	}
-	for _, d := range fs {
-		sig, ok := jvmSig(d.Sym)
-		if !ok {
-			continue
-		}
-		if seen[sig] {
-			c.errorf(d.P, "platform declaration clash: the following declarations have the same JVM signature (%s)", sig)
-			continue
-		}
-		seen[sig] = true
-	}
-}
-
-// jvmSig returns the JVM name and descriptor of one of the program's
-// functions, if its types have descriptors.
-func jvmSig(f *types.FunSym) (string, bool) {
-	if f == nil {
-		return "", false
-	}
-	params, ok := types.ParamsDesc(f.Params)
-	if !ok {
-		return "", false
-	}
-	ret, ok := types.Desc(f.Ret)
-	if !ok {
-		return "", false
-	}
-	if f.Ext {
-		recv, ok := types.ParamDesc(f.Recv)
-		if !ok {
-			return "", false
-		}
-		params = "(" + recv + params[1:]
-	}
-	if f.Suspend {
-		// With its continuation: @JvmName("next") suspend fun next0() is
-		// next(Continuation), which next() doesn't clash with.
-		params = params[:len(params)-1] + "Lkotlin/coroutines/Continuation;)"
-		ret = "Ljava/lang/Object;"
-	}
-	return f.JVM() + params + ret, true
 }

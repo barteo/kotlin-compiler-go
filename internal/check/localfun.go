@@ -23,6 +23,11 @@ type localCall struct {
 // it.
 func (c *Checker) localFun(s *syntax.LocalFun) {
 	d := s.Decl
+	c.localAnnotations(d.Annotations, localFunSite)
+	c.localTypeParamAnnotations(d.TypeParams)
+	for _, p := range d.Params {
+		c.localAnnotations(p.Annotations, paramSite)
+	}
 	sym := &types.FunSym{Name: d.Name, Decl: s, Operator: d.Operator, Infix: d.Infix}
 	sym.Suspend = d.Suspend && c.coroutines(d.P)
 	d.Sym = sym
@@ -44,6 +49,7 @@ func (c *Checker) localFun(s *syntax.LocalFun) {
 	if d.Recv != nil {
 		c.declareRecv(d) // a local extension function
 	}
+	c.declareContexts(d, sym)
 	names := map[string]bool{}
 	for _, p := range d.Params {
 		if names[p.Name] {
@@ -53,6 +59,7 @@ func (c *Checker) localFun(s *syntax.LocalFun) {
 		p.Sym = c.paramSym(p, c.resolveType(p.Type), p)
 		sym.Params = append(sym.Params, p.Sym)
 	}
+	c.inlineDecl(d, true)
 	c.checkVarargs(d.Params)
 	switch {
 	case d.Ret != nil:
@@ -63,7 +70,7 @@ func (c *Checker) localFun(s *syntax.LocalFun) {
 		sym.Ret = types.InvalidType // inferred from the body, below
 	}
 	// Declared before its body, so that it can call itself.
-	if other := saved.scope.declareFun(sym); other != nil {
+	if other := declareLocalFun(saved.scope, sym); other != nil {
 		od := other.Decl.(*syntax.LocalFun).Decl
 		if !c.done[od] {
 			c.done[od] = true // reported once
@@ -89,8 +96,10 @@ func (c *Checker) localFun(s *syntax.LocalFun) {
 	}
 	c.fn, c.retType, c.retAllowed = sym, sym.Ret, sym.Resolved
 	c.declName = ""
+	declareNamedContexts(c.scope, d)
+	c.pushContexts(sym.Contexts, d) // the receiver is nearer
 	if d.RecvSym != nil {
-		c.recvs = append(c.recvs[:len(c.recvs):len(c.recvs)], implicitRecv{sym: d.RecvSym, label: d.Name, depth: len(c.lambdas)})
+		c.recvs = append(c.recvs[:len(c.recvs):len(c.recvs)], implicitRecv{sym: d.RecvSym, label: d.Name, depth: len(c.lambdas), owner: d})
 	}
 	if sym.Suspend {
 		d.Continuation = c.anonName()
@@ -121,6 +130,9 @@ func (c *Checker) localFun(s *syntax.LocalFun) {
 			t = types.InvalidType
 		}
 		sym.Ret, sym.Resolved, sym.InProgress = t, true, false
+	}
+	if d.Tailrec {
+		c.tailCalls(d)
 	}
 	c.state = saved
 	c.propagateCaptures()
@@ -210,4 +222,37 @@ func (c *Checker) localExts(name string) []*types.FunSym {
 		}
 	}
 	return nil
+}
+
+// declareLocalFun declares local function f in scope s, unless s has one
+// with the same signature, which it returns: the same parameters, and
+// the same receiver, as kotlinc tells local functions apart by it too.
+func declareLocalFun(s *scope, f *types.FunSym) *types.FunSym {
+	k := localKey(f)
+	for _, g := range s.funs {
+		if g.Name == f.Name && localKey(g) == k && sameReceiver(g, f) {
+			return g
+		}
+	}
+	s.funs = append(s.funs, f)
+	return nil
+}
+
+// sameReceiver reports whether functions f and g are both extensions of
+// the same type, or neither is, with their type parameters by position.
+func sameReceiver(f, g *types.FunSym) bool {
+	if f.Ext != g.Ext {
+		return false
+	}
+	if !f.Ext {
+		return true
+	}
+	if len(f.TypeParams) != len(g.TypeParams) {
+		return false
+	}
+	s := types.Subst{}
+	for i, p := range g.TypeParams {
+		s[p] = types.Arg{T: types.ParamType(f.TypeParams[i])}
+	}
+	return f.Recv == s.Apply(g.Recv)
 }

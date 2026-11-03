@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/barteo/kotlin-compiler-go/internal/classfile"
 	"github.com/barteo/kotlin-compiler-go/internal/inline"
 )
 
@@ -42,6 +43,11 @@ type Type struct {
 	// E marks a function type with a receiver, A.(B) -> R, which is the
 	// function type (A, B) -> R. Each is assignable to the other.
 	E bool
+	// X is the number of context parameters of a context function type,
+	// context(A) B.(C) -> R, which is the function type (A, B, C) -> R
+	// with its first X parameters, before the receiver, marked as
+	// contexts. Each is assignable to the other too.
+	X uint8
 	// B marks the boxed form of a value class type, its instances, which
 	// only codegen uses: the elements of an array of a value class.
 	B bool
@@ -277,9 +283,18 @@ type VarSym struct {
 	// value, which code assigns later: val x: Int, then x = 1. The checker
 	// checks that it is assigned before it is read, and a val only once.
 	Deferred bool
+	// InitInLambda is set on a Deferred local val that a lambda which
+	// isn't inlined assigns, one called in place exactly once: the lambda
+	// shares it, as it does a captured var.
+	InitInLambda bool
 	// Delegate is set on a local delegated property: the hidden local
 	// that holds its delegate, which reading it calls getValue on.
 	Delegate *VarSym
+
+	// NoInfer is set on a context parameter whose type, or one of its
+	// type arguments, is annotated @NoInfer: its argument is chosen by the
+	// call's type arguments, not used to infer them.
+	NoInfer bool
 
 	// Parameters of Kotlin and Java functions read from class files.
 	Vararg  bool // takes any number of arguments of Type, passed in an array
@@ -295,6 +310,13 @@ type VarSym struct {
 	Final    bool    // can't be overridden: not open, abstract or override
 	Getter   *FunSym // a custom getter
 	Setter   *FunSym // a custom setter, or a delegated property's
+	// Contexts are the context parameters of a property, which its
+	// accessors take first, as their Contexts.
+	Contexts []*VarSym
+	// Alt links the properties of the same name and owner, which Kotlin
+	// allows if their context parameters differ, in a ring: the next one,
+	// or nil if there is no other. Lookups find the first declared.
+	Alt *VarSym
 	// FieldUsed is set on a property whose accessors use field, which
 	// then has a backing field though both accessors are custom.
 	FieldUsed bool
@@ -329,6 +351,10 @@ type VarSym struct {
 	// InheritsProtected is set on an override declared without a
 	// visibility of a protected property: its accessors are protected.
 	InheritsProtected bool
+	// PrivateToThis is set on a private property of a class with in or
+	// out type parameters whose type breaks their variance: only the
+	// class's own this may use it.
+	PrivateToThis bool
 	// Const is set on a const val, and JvmField on a class or top-level
 	// property annotated @JvmField: on the JVM, either is only its field,
 	// without accessors. A const of an object is a static field of its
@@ -381,6 +407,19 @@ func (c *ClassSym) HasDefaultImpls() bool {
 	return c.Interface && !c.JVMDefault && !c.Annotation && c.Java == nil && (!c.External || c.KotlinName != "")
 }
 
+// KotlinAnnotation reports whether c is a Kotlin annotation class, the
+// program's or the class path's, whose instances A(x) create.
+func (c *ClassSym) KotlinAnnotation() bool {
+	if c.Annotation {
+		return true
+	}
+	if !c.External {
+		return false
+	}
+	c.Ensure()
+	return c.AnnotationParams != nil
+}
+
 // StaticField reports whether class property v's field is static, as
 // kotlinc writes it: a property of a named object, whose class holds it,
 // or a @JvmField property of a companion object, whose outer class does
@@ -420,9 +459,9 @@ func (v *VarSym) FieldClass() string {
 	return v.Facade
 }
 
-// Boxed reports whether v is a var captured by a lambda, which is kept in a
-// one-element array.
-func (v *VarSym) Boxed() bool { return v.Captured && v.Mutable && v.Kind == Local }
+// Boxed reports whether v is a var captured by a lambda, or a val a
+// lambda assigns, which is kept in a one-element array.
+func (v *VarSym) Boxed() bool { return v.Captured && (v.Mutable || v.InitInLambda) && v.Kind == Local }
 
 // UnitLocal reports whether v is a local of type Unit, which has no
 // storage: its value is the Unit object, and an assignment to it only
@@ -459,6 +498,10 @@ type FunSym struct {
 	Infix    bool   // can be called as an infix operator: a to b
 	Ext      bool   // an extension function, called on a receiver of type Recv
 	Recv     Type   // Invalid if kc doesn't support the receiver's type
+	// Contexts are the context parameters of a function of the program,
+	// context(a: A) fun f(), which calls pass implicitly. On the JVM,
+	// it takes them first, before the extension receiver.
+	Contexts []*VarSym
 	// BoxedRet is set on an override whose result is a primitive where
 	// a member it overrides has a type parameter or a nullable type: as
 	// with kotlinc, its JVM method returns the box, Integer for Int. On a
@@ -515,6 +558,10 @@ type FunSym struct {
 	// synthetic one that takes an unused marker last. Desc leaves the
 	// marker out, as the constructor for omitted arguments adds its own.
 	Marker bool
+	// PrivateToThis is set on a private function of a class with in or
+	// out type parameters whose signature breaks their variance, as on a
+	// VarSym.
+	PrivateToThis bool
 	// Throws are the classes of the checked exceptions that a function of
 	// the program declares with @Throws, by internal name.
 	Throws []string
@@ -627,11 +674,12 @@ func (i *InlineInfo) Body() (*inline.Body, error) {
 }
 
 // Defaults returns the body of the function's name$default method, which
-// takes a mask of the omitted arguments and a marker after the
-// parameters, and computes their default values first.
-func (i *InlineInfo) Defaults() (*inline.Body, error) {
+// takes the masks of the omitted arguments of its n parameters (see
+// MaskInts) and a marker after the parameters, and computes their default
+// values first.
+func (i *InlineInfo) Defaults(n int) (*inline.Body, error) {
 	k := strings.IndexByte(i.Desc, ')')
-	desc := i.Desc[:k] + "ILjava/lang/Object;" + i.Desc[k:]
+	desc := i.Desc[:k] + strings.Repeat("I", MaskInts(n)) + "Ljava/lang/Object;" + i.Desc[k:]
 	if i.Owner == "" {
 		return i.defaults.get(i.Load, i.Name+"$default", desc)
 	}
@@ -665,6 +713,7 @@ func (f *FunSym) JVM() string {
 type KProp struct {
 	Getter *FunSym // Ret is the property's type
 	Setter *FunSym // nil for a val
+	Alt    *KProp  // as VarSym.Alt
 }
 
 // ClassSym is a user class or a Java class from the class path. Name is the
@@ -746,6 +795,10 @@ type ClassSym struct {
 	// whose AnnotationParams are their abstract methods.
 	Annotation       bool
 	AnnotationParams []*VarSym
+	// AnnotationDefaults are the default values of a class-path Kotlin
+	// annotation class's parameters, by name: their methods'
+	// AnnotationDefault.
+	AnnotationDefaults map[string]*classfile.ElementValue
 	// Retention and Targets are set on annotation classes, the program's
 	// and the class path's.
 	Retention Retention
@@ -753,6 +806,15 @@ type ClassSym struct {
 	// Container is set on a repeatable annotation class of the class
 	// path: the annotation class that holds several of its annotations.
 	Container *ClassSym
+	// TargetsKnown is set on an annotation class whose Targets, and
+	// whether it is Repeatable, kc knows for sure: the program's, and the
+	// class path's that are Kotlin or have a @Target, but not a Java
+	// source's, whose class info is only what javasrc reads.
+	TargetsKnown bool
+	// Repeatable is set on an annotation class annotated @Repeatable,
+	// @JvmRepeatable or Java's @Repeatable: an element can have several
+	// of its annotations.
+	Repeatable bool
 
 	// Kotlin classes read from metadata.
 	KotlinName string // class id, e.g. kotlin/collections/Map.Entry; "" for Java classes
@@ -776,6 +838,10 @@ type ClassSym struct {
 	// Local is set on a class declared in a block, whose instances hold
 	// what its code captures, as an object expression's do.
 	Local bool
+	// File is set on the program's classes: the class of the file that
+	// declares them (see syntax.File.Class), in which a private
+	// top-level class is visible.
+	File string
 	// Inner is set on an inner class, whose instances hold their outer
 	// class's in this$0. Its TypeParams are its own and then its outer
 	// class's, the last OuterParams of them.
@@ -790,17 +856,22 @@ type ClassSym struct {
 	// metadata doesn't declare, such as kotlinc's collection stubs.
 	JVMMethods map[string]uint16
 	// Annotations are the classes of the annotations of a class on the
-	// class path that its class file keeps, but not for reflection, such
-	// as Compose's @Stable, and StabilityInferred is the parameters of its
+	// class path that its class file keeps, such as Compose's @Stable, or
+	// of the program's that are classes, and StabilityInferred is the parameters of its
 	// @StabilityInferred, which Compose's compiler plugin writes, or -1:
 	// see codegen/stability.go.
 	Annotations       []*ClassSym
 	StabilityInferred int
 
+	// Global is set on a class that a package-level variable declares for
+	// all compilations in the process, such as kotlin.Array: see MakeArgs.
+	Global bool
+
 	load    func(*ClassSym)
 	once    sync.Once
 	samOnce sync.Once
 	sam     *FunSym
+	lists   argsTable // the interned lists whose table is the class's: see MakeArgs
 }
 
 // SAM returns the single abstract method of a Java interface, which
@@ -1186,7 +1257,7 @@ func GetterType(p *VarSym) Type {
 }
 
 // unitObject is kotlin.Unit's class, the type of Unit as an object.
-var unitObject = &ClassSym{Name: "kotlin/Unit", KotlinName: "kotlin/Unit", External: true, Final: true}
+var unitObject = &ClassSym{Name: "kotlin/Unit", KotlinName: "kotlin/Unit", External: true, Final: true, Global: true}
 
 // FieldType returns the type of property p's field, and of its setter's
 // parameter, on the JVM: its type, but as with kotlinc a Unit property
@@ -1252,6 +1323,16 @@ func ChangedInts(slots int) int { return max(1, (slots+9)/10) }
 // composable function with n parameters takes, if any has a default
 // value: each holds the bits of 31.
 func DefaultInts(n int) int { return (n + 30) / 31 }
+
+// MaskInts returns how many ints of masks of the omitted arguments a
+// name$default method or a constructor for omitted arguments takes for a
+// function with n parameters, as kotlinc writes them: one for every 32.
+func MaskInts(n int) int { return max(1, (n+31)/32) }
+
+// DefaultBits returns the number of bits of f's masks of omitted
+// arguments: as kotlinc's, its context parameters come before its
+// parameters, but not its receivers.
+func DefaultBits(f *FunSym) int { return len(f.Contexts) + len(f.Params) }
 
 // KotlinParamsDesc returns the parameters part of descriptor d, "(...)",
 // without a composable function's Composer and ints, if f is one.

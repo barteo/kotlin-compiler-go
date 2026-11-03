@@ -259,7 +259,7 @@ func (s *metaScope) typ(t types.Type) *kmeta.Type {
 		// suspend (A) -> R is Function2<A, Continuation<R>, Any?>.
 		n := t.A.Len() - 1
 		kt.Class = "kotlin/Function" + strconv.Itoa(n+1)
-		kt.ExtFunc = t.E
+		kt.ExtFunc, kt.Contexts = t.E, int(t.X)
 		kt.Flags |= kmeta.TypeSuspend
 		for _, a := range t.A.List[:n] {
 			if a.V == types.Star {
@@ -268,14 +268,18 @@ func (s *metaScope) typ(t types.Type) *kmeta.Type {
 			}
 			kt.Args = append(kt.Args, kmeta.Arg{Proj: variance(a.V), Type: s.typ(a.T)})
 		}
-		cont := &kmeta.Type{Param: -1, Class: "kotlin/coroutines/Continuation", Args: []kmeta.Arg{{Proj: kmeta.Inv, Type: s.typ(t.A.Get(n).T)}}}
+		ret := kmeta.Arg{Proj: kmeta.Star} // of a star projection, GivenLambda<*, *>
+		if r := t.A.Get(n); r.V != types.Star {
+			ret = kmeta.Arg{Proj: kmeta.Inv, Type: s.typ(r.T)}
+		}
+		cont := &kmeta.Type{Param: -1, Class: "kotlin/coroutines/Continuation", Args: []kmeta.Arg{ret}}
 		kt.Args = append(kt.Args, kmeta.Arg{Proj: kmeta.Inv, Type: cont}, kmeta.Arg{Proj: kmeta.Inv, Type: &kmeta.Type{Param: -1, Class: "kotlin/Any", Nullable: true}})
 	case t.K == types.Class && t.C.Composable:
 		// A composable function type is the function type of its
 		// parameters, annotated @Composable.
 		n := t.A.Len() - 1
 		kt.Class = "kotlin/Function" + strconv.Itoa(n)
-		kt.ExtFunc, kt.Composable = t.E, true
+		kt.ExtFunc, kt.Composable, kt.Contexts = t.E, true, int(t.X)
 		for _, a := range t.A.List {
 			if a.V == types.Star {
 				kt.Args = append(kt.Args, kmeta.Arg{Proj: kmeta.Star})
@@ -286,6 +290,9 @@ func (s *metaScope) typ(t types.Type) *kmeta.Type {
 	case t.K == types.Class:
 		kt.Class = classID(t.C)
 		kt.ExtFunc = t.E && t.C.Func
+		if t.C.Func {
+			kt.Contexts = int(t.X)
+		}
 		if t.C.Inner {
 			// Its own arguments, and the outer class's in the outer type.
 			n := len(t.C.TypeParams) - t.C.OuterParams
@@ -357,7 +364,7 @@ func (g *gen) lambdaMeta(x *syntax.Lambda) *kmeta.Function {
 		TypeParams: tps,
 		Ret:        s.typ(x.Ret),
 	}
-	params := x.ParamSyms()
+	params := x.ParamSyms()[len(x.Ctx):] // as kotlinc's, without its context parameters
 	if x.Recv != nil {
 		f.Recv = s.typ(x.Recv.Type)
 		params = params[1:]
@@ -463,6 +470,13 @@ func (g *gen) funMeta(s *metaScope, fd *syntax.FunDecl, owner *types.ClassSym) *
 	if sym.Ext {
 		f.Recv = s.typ(sym.Recv)
 	}
+	for _, p := range sym.Contexts {
+		name := p.Name
+		if d, ok := p.Decl.(*syntax.Param); ok && d.Name == "_" {
+			name = "<unused var>" // as kotlinc names it
+		}
+		f.ContextParams = append(f.ContextParams, &kmeta.Param{Name: name, Type: s.typ(p.Type)})
+	}
 	if fd.Operator || sym.KotlinOperator {
 		f.Flags |= kmeta.FunOperator // overrides of operators are operators
 	}
@@ -553,7 +567,7 @@ func (g *gen) propMeta(s *metaScope, p *types.VarSym, pd *syntax.PropDecl, cp *s
 		mods, as = &cp.Modifiers, cp.Modifiers.Annotations
 	}
 	var tps []*kmeta.TypeParam
-	if pd != nil && pd.Getter != nil && pd.Getter.Sym != nil && pd.Recv != nil {
+	if pd != nil && pd.Getter != nil && pd.Getter.Sym != nil && (pd.Recv != nil || len(pd.TypeParams) > 0) {
 		s, tps = s.with(pd.Getter.Sym.TypeParams)
 	}
 	mod := kmeta.Final
@@ -608,11 +622,22 @@ func (g *gen) propMeta(s *metaScope, p *types.VarSym, pd *syntax.PropDecl, cp *s
 		}
 	}
 	d := desc(types.FieldType(p))
-	getterDesc := "()" + desc(types.GetterType(p))
+	ctx := "" // the context parameters, which the accessors take first
+	for _, q := range p.Contexts {
+		ctx += paramDesc(q.Type)
+		name := q.Name
+		if d, ok := q.Decl.(*syntax.Param); ok && d.Name == "_" {
+			name = "<unused var>" // as kotlinc names it
+		}
+		kp.ContextParams = append(kp.ContextParams, &kmeta.Param{Name: name, Type: s.typ(q.Type)})
+	}
+	getterDesc := "(" + ctx + ")" + desc(types.GetterType(p))
 	var recv *types.Type
 	if pd != nil && pd.Getter != nil && pd.Getter.Sym != nil && pd.Getter.Sym.Ext {
 		recv = &pd.Getter.Sym.Recv
 		kp.Recv = s.typ(*recv)
+	}
+	if pd != nil && pd.Getter != nil && pd.Getter.Sym != nil && (pd.Getter.Sym.Ext || ctx != "") {
 		getterDesc = funDesc(pd.Getter.Sym)
 	}
 	getterDesc = composeGetterDesc(p, getterDesc)
@@ -678,7 +703,8 @@ func (g *gen) propMeta(s *metaScope, p *types.VarSym, pd *syntax.PropDecl, cp *s
 		kp.SetterParam = &kmeta.Param{Name: name, Type: s.typ(p.Type)}
 	}
 	if owner != nil && owner.Annotation {
-		kp.Getter = &kmeta.JVMSig{Name: p.Name, Desc: getterDesc}
+		// The annotation's method, which returns a KClass as a Class.
+		kp.Getter = &kmeta.JVMSig{Name: p.Name, Desc: "()" + annotationJVM(p.Type)}
 		kp.Flags = flags
 		return kp
 	}
@@ -692,14 +718,14 @@ func (g *gen) propMeta(s *metaScope, p *types.VarSym, pd *syntax.PropDecl, cp *s
 			kp.Getter = &kmeta.JVMSig{Name: pd.Getter.Sym.JVM(), Desc: getterDesc}
 		}
 		if p.Mutable && !p.SetterPrivate {
-			sd := "(" + d + ")V"
+			sd := "(" + ctx + d + ")V"
 			if owner != nil && owner.Value && p != owner.Underlying {
 				sd = "(" + desc(owner.Underlying.Type) + d + ")V"
 			}
 			kp.Setter = &kmeta.JVMSig{Name: types.SetterJVM(p), Desc: sd}
 			if pd != nil && pd.Setter != nil && pd.Setter.Sym != nil {
 				kp.Setter.Name = pd.Setter.Sym.JVM()
-				if pd.Setter.Sym.Ext {
+				if pd.Setter.Sym.Ext || ctx != "" {
 					kp.Setter.Desc = funDesc(pd.Setter.Sym)
 					if owner != nil && owner.Value {
 						kp.Setter.Desc = "(" + desc(owner.Underlying.Type) + kp.Setter.Desc[1:]
@@ -718,6 +744,7 @@ func (g *gen) propMeta(s *metaScope, p *types.VarSym, pd *syntax.PropDecl, cp *s
 // packageMeta converts the file's top-level declarations.
 func (g *gen) packageMeta() *kmeta.PackageData {
 	out := &kmeta.PackageData{ModuleName: g.module()}
+	out.Locals = localsMeta(nil, g.file.Decls)
 	for _, d := range g.file.Decls {
 		switch d := d.(type) {
 		case *syntax.FunDecl:
@@ -873,6 +900,7 @@ func (g *gen) classMeta(cd *syntax.ClassDecl) *kmeta.Class {
 		Name:       classID(cls),
 		TypeParams: tps,
 		ModuleName: g.module(),
+		Locals:     localsMeta(s, cd.Members),
 	}
 	switch {
 	case cls.Anonymous:
@@ -1273,4 +1301,78 @@ func delegatedPropMeta(s *metaScope, cd *syntax.ClassDecl, name string, getter, 
 		}
 	}
 	return kp
+}
+
+// localsMeta returns the metadata of the local delegated properties in
+// decls, numbered <v#N> by the checker, which kotlin-reflect looks up to
+// make their KProperty objects: kotlinc writes them as local properties
+// with no JVM signatures.
+func localsMeta(s *metaScope, decls []syntax.Decl) []*kmeta.Property {
+	byN := map[int]*kmeta.Property{}
+	// The bodies the checker numbers them in, with the type parameters
+	// their types may use.
+	type body struct {
+		n any
+		s *metaScope
+	}
+	var nodes []body
+	s, _ = s.with(nil)
+	for _, d := range decls {
+		switch d := d.(type) {
+		case *syntax.PropDecl:
+			nodes = append(nodes, body{d.Init, s})
+			if d.Getter != nil && d.Ref == nil {
+				nodes = append(nodes, body{d.Getter.Body, s}, body{d.Getter.ExprBody, s})
+			}
+		case *syntax.FunDecl:
+			fs := s
+			if d.Sym != nil {
+				fs, _ = s.with(d.Sym.TypeParams)
+			}
+			for _, p := range d.Params {
+				nodes = append(nodes, body{p.Default, fs})
+			}
+			nodes = append(nodes, body{d.Body, fs}, body{d.ExprBody, fs})
+		case *syntax.InitBlock:
+			nodes = append(nodes, body{d.Body, s})
+		case *syntax.SecondaryCtor:
+			nodes = append(nodes, body{d.Body, s})
+		}
+	}
+	for _, b := range nodes {
+		s := b.s
+		syntax.Inspect(b.n, func(n any) bool {
+			vs, ok := n.(*syntax.VarStmt)
+			if !ok || vs.Get == nil || vs.Sym == nil || len(vs.Get.Args) < 2 {
+				return true
+			}
+			r, ok := vs.Get.Args[1].(*syntax.PropRef)
+			if !ok || !strings.HasPrefix(r.Sig, "<v#") {
+				return true
+			}
+			i, err := strconv.Atoi(strings.TrimSuffix(r.Sig[3:], ">"))
+			if err != nil {
+				return true
+			}
+			// Local visibility, hasGetter and isDelegated, and isVar and
+			// hasSetter for a var.
+			f := kmeta.Flags(kmeta.Local)<<1 | 1<<9 | 1<<15
+			if vs.Mutable {
+				f |= 1<<8 | 1<<10
+			}
+			byN[i] = &kmeta.Property{Flags: f, Name: vs.Name, Type: s.typ(vs.Sym.Type),
+				GetterFlags: f & 0x3f, SetterFlags: f & 0x3f}
+			return true
+		})
+	}
+	ns := make([]int, 0, len(byN))
+	for n := range byN {
+		ns = append(ns, n)
+	}
+	slices.Sort(ns)
+	var out []*kmeta.Property
+	for _, n := range ns {
+		out = append(out, byN[n])
+	}
+	return out
 }

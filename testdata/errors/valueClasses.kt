@@ -53,3 +53,6 @@ fun same(a: Generic<Int>, b: Generic<Int>) = a === b // ERROR identity equality 
 inline class Deprecated(val x: Int)
 
 inline class DeprecatedTwo(val x: Int, val y: Int) // ERROR value class must have exactly one primary constructor parameter
+
+fun values(vararg vs: Extends) {} // ERROR prohibited vararg parameter type 'Extends'
+fun nullableValues(vararg vs: Extends?) {} // ERROR prohibited vararg parameter type 'Extends?'

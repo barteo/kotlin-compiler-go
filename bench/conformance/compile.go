@@ -46,7 +46,7 @@ type compiler struct {
 type libraries struct {
 	stdlib  bool // the standard library and kotlin-test
 	reflect bool
-	optIns  []string // for kotlinc: the opt-ins the test infrastructure gives it
+	optIns  []string // the opt-ins the test infrastructure gives it
 }
 
 // compile writes the test's files and extra into dir and compiles them.
@@ -91,11 +91,11 @@ func (c *compiler) compile(t *test, dir string, extra []*srcFile, libs libraries
 		if c.kotlinc != "" {
 			name = c.kotlinc
 			args = append(args, "-no-stdlib", "-no-reflect", "-nowarn")
-			for _, o := range libs.optIns {
-				args = append(args, "-opt-in="+o)
-			}
 		} else {
 			args = append(args, "-features", "-j", "1")
+		}
+		for _, o := range libs.optIns {
+			args = append(args, "-opt-in="+o)
 		}
 		if t.anyOf("JVM_DEFAULT_MODE", "disable") {
 			args = append(args, "-jvm-default=disable")
