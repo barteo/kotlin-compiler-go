@@ -51,6 +51,8 @@ type Type struct {
 	// B marks the boxed form of a value class type, its instances, which
 	// only codegen uses: the elements of an array of a value class.
 	B bool
+	// M is the type's DSL markers, from its annotations: see Markers.
+	M uint8
 	C *ClassSym // Class
 	// A is a Class's interned type arguments (nil if it has none). For
 	// TypeParam and TypeVar it holds the parameter: see Param.

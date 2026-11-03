@@ -603,6 +603,11 @@ func (c *Checker) hidesBuiltin(name string) bool {
 }
 
 func (c *Checker) resolveType(ref *syntax.TypeRef) types.Type {
+	return c.typeMarkers(ref, c.resolveTypeRef(ref))
+}
+
+// resolveTypeRef is resolveType without the type's DSL markers.
+func (c *Checker) resolveTypeRef(ref *syntax.TypeRef) types.Type {
 	if ref.Known != nil {
 		return *ref.Known
 	}

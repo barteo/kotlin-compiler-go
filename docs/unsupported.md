@@ -10,8 +10,6 @@ own tests.
 
 ## The language
 
-- `@DslMarker` markers are those of classes: markers on types, as in
-  `(@M A).() -> Unit`, are ignored, so code they forbid compiles.
 - Reified type parameters of members of interfaces and value classes
   (those of final members and member extensions of classes work).
 - Properties of a `@file:JvmMultifileClass` class that are neither

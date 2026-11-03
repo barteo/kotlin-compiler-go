@@ -607,8 +607,12 @@ func starred(t Type, ps map[*TypeParamSym]bool) Type {
 }
 
 // withFlags applies the nullability written on a type parameter's
-// occurrence (T?, T & Any, or a Java T!) to the type that replaces it.
+// occurrence (T?, T & Any, or a Java T!), and its DSL markers, to the
+// type that replaces it.
 func withFlags(r, occ Type) Type {
+	if occ.M != 0 {
+		r = r.WithMarkers(occ.Markers())
+	}
 	switch {
 	case r.K == Invalid:
 		return r
