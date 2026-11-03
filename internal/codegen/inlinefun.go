@@ -771,11 +771,21 @@ func (g *gen) reifiedParam(t types.Type) bool {
 	return t.IsParam() && t.Param().Reified && g.shared.opts.Stdlib
 }
 
+// memberParam reports whether type parameter t is one of the member
+// function of the class being generated whose own code is being
+// generated, as an object's inline method's: the method's copiers reify
+// it, not those of the class. A lambda's class in it is a template of the
+// method's copiers, which its markers make them copy.
+func (g *gen) memberParam(t types.Type) bool {
+	f, ok := t.Param().Owner.(*types.FunSym)
+	return ok && g.lam == nil && f.Owner != nil && f.Owner == g.owner
+}
+
 // reifiedMarker writes kotlinc's marker of an operation on reified type
 // parameter t, which comes just before the operation's instruction:
 // Intrinsics.reifiedOperationMarker(kind, "T").
 func (g *gen) reifiedMarker(t types.Type, kind int) {
-	if g.reifiedUse != nil {
+	if g.reifiedUse != nil && !g.memberParam(t) {
 		*g.reifiedUse = true
 	}
 	name := t.Param().Name

@@ -444,7 +444,11 @@ func (in *inliner) copy() {
 	}
 	in.pos[len(b.Code)] = c.Pos()
 	for _, h := range b.Handlers {
-		c.Catch(in.snap, in.gaps.ranges(in.pos[h.Start], in.pos[h.End]), in.label(h.Handler), h.Catch)
+		class := h.Catch
+		if r, ok := b.CatchReified(h); ok && !strings.HasPrefix(in.reified[r.Param], "?") {
+			class = in.reified[r.Param] // catch (e: E) catches E's type argument
+		}
+		c.Catch(in.snap, in.gaps.ranges(in.pos[h.Start], in.pos[h.End]), in.label(h.Handler), class)
 	}
 }
 
@@ -471,7 +475,19 @@ func (in *inliner) insn(i int) {
 		// it creates: they must be this module's, as kotlinc's copy is.
 		in.instantiate(t)
 	}
-	if r, ok := b.Reified[i]; ok {
+	if r, ok := b.Reified[i]; ok && r.Kind == inline.Catch {
+		// The astore of a catch block of a reified type, whose handler
+		// copy catches the type argument: still a reified type parameter,
+		// the marker for the copies of this copy.
+		if name, ok := strings.CutPrefix(in.reified[r.Param], "?"); ok {
+			if r.Nullable && !strings.HasSuffix(name, "?") {
+				name += "?"
+			}
+			c.Iconst(int32(r.Kind))
+			c.Sconst(name)
+			c.Invoke(cf.INVOKESTATIC, intrinsics, "reifiedOperationMarker", "(ILjava/lang/String;)V")
+		}
+	} else if ok {
 		cls, ok := in.reified[r.Param]
 		if !ok {
 			panic("no type argument for reified type parameter " + r.Param)
