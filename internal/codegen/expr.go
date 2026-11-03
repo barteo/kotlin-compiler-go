@@ -1791,6 +1791,16 @@ func (g *gen) call(x *syntax.Call) {
 			g.code.Op(cf.ACONST_NULL) // see ident
 			return
 		}
+		if fv := g.shared.inlinedConvs[x]; fv != nil {
+			// The converted value goes to $f's local; the placeholder is
+			// dropped (see convertedArg).
+			ch, _, _ := conversion(x)
+			g.exprAs(ch, fv.Type)
+			fv.Slot = g.code.AllocLocal(desc(fv.Type))
+			g.code.Local(cf.ASTORE, fv.Slot)
+			g.code.Op(cf.ACONST_NULL)
+			return
+		}
 	}
 	if x.Group {
 		// An inline function's call whose lambda calls composables, in

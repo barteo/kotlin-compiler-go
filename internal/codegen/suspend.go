@@ -1337,6 +1337,9 @@ func inlinedLambdas(x *syntax.Call, d *syntax.FunDecl, ctx *tailCtx) map[*types.
 		if l := inlinedArg(x, i); l != nil {
 			ls[p] = inlinedLambda{l, ctx}
 		}
+		if _, l, _ := convertedArg(x, d, i); l != nil {
+			ls[p] = inlinedLambda{l, ctx} // unless forwarded, below
+		}
 	}
 	for k, a := range x.Args {
 		if id, ok := unconverted(a).(*syntax.Ident); ok && id.Sym != nil {
@@ -1493,7 +1496,8 @@ func noopCast(x *syntax.As) bool {
 // as kotlinc sees it: not suspendCoroutineUninterceptedOrReturn if its
 // lambda never returns, which leaves its suspension unreachable, or a copy
 // of the program's inline function without other suspension points, as
-// recoverAndThrow is.
+// recoverAndThrow is, or whose suspension points are only invokes of
+// function values converted to suspend ones.
 func suspends(x *syntax.Call) bool {
 	if !suspensionPoint(x) {
 		return false
@@ -1505,6 +1509,14 @@ func suspends(x *syntax.Call) bool {
 	if d == nil {
 		return true
 	}
+	// An invoke of a function value converted to a suspend one is
+	// inlined, and suspends nothing (see convertedArg).
+	plain := map[*types.VarSym]bool{}
+	for i, p := range x.Sym.Params {
+		if _, l, _ := convertedArg(x, d, i); l != nil {
+			plain[p] = true
+		}
+	}
 	found := false
 	visit := func(n any) bool {
 		switch n := n.(type) {
@@ -1513,6 +1525,9 @@ func suspends(x *syntax.Call) bool {
 		case *syntax.LocalFun:
 			return false
 		case *syntax.Call:
+			if id, ok := n.Fun.(*syntax.Ident); ok && n.Invoke && plain[id.Sym] {
+				break
+			}
 			found = found || suspends(n)
 		case *syntax.For:
 			found = found || n.HasNext != nil && (n.HasNext.Suspend || n.Next.Suspend || n.Iter != nil && n.Iter.Suspend)

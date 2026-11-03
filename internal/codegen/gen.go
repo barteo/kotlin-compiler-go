@@ -155,7 +155,11 @@ type fileState struct {
 	inlineDepth int       // see inlineMu
 	renamed     []renamed // see nameObjects
 	copies      map[*types.ClassSym]*objectCopy
-	count       map[string]int // lambdas named with each class and prefix
+	// inlinedConvs holds the suspend conversions passed to the copies
+	// being generated whose lambdas are inlined, by their $f: see
+	// convertedArg.
+	inlinedConvs map[*syntax.Call]*types.VarSym
+	count        map[string]int // lambdas named with each class and prefix
 	// lambdasIn are the lambdas of the inline functions the file copies,
 	// by function: see declaredInCopy.
 	lambdasIn map[*syntax.FunDecl]map[*syntax.Lambda]bool

@@ -206,6 +206,22 @@ func (g *gen) inlineBody(x *syntax.Call, d *syntax.FunDecl) {
 			g.loadCaptures(cd, self)
 		}
 	}
+	// A function value converted to a suspend one is inlined as the
+	// conversion's lambda, as kotlinc's: see convertedArg.
+	convs := map[int]*syntax.Lambda{}
+	for i := range f.Params {
+		if l, _ := g.forwardedArg(x, i); l != nil {
+			continue
+		}
+		if conv, l, fv := convertedArg(x, d, i); l != nil {
+			convs[i] = l
+			if g.shared.inlinedConvs == nil {
+				g.shared.inlinedConvs = map[*syntax.Call]*types.VarSym{}
+			}
+			g.shared.inlinedConvs[conv] = fv
+			defer delete(g.shared.inlinedConvs, conv)
+		}
+	}
 	// The arguments, in the parameters' order, go to the parameters'
 	// locals; an inlined lambda's placeholder is dropped. A composable's
 	// copy calls composables with the caller's Composer.
@@ -222,6 +238,11 @@ func (g *gen) inlineBody(x *syntax.Call, d *syntax.FunDecl) {
 		if l, owner := g.forwardedArg(x, i); l != nil {
 			c.Op(cf.POP)
 			lambdas[p], owners[l] = l, owner
+			continue
+		}
+		if l := convs[i]; l != nil {
+			c.Op(cf.POP)
+			lambdas[p] = l
 			continue
 		}
 		p.Slot = c.AllocLocal(desc(p.Type))
@@ -466,6 +487,56 @@ func unconverted(x syntax.Expr) syntax.Expr {
 		return x
 	}
 	return ch.X
+}
+
+// conversion returns, for suspend conversion x of a function value that
+// isn't nullable, f.let { $f -> { $f() } } (see check's suspendConverted),
+// the converted value, the lambda the conversion makes and its $f.
+func conversion(x syntax.Expr) (*syntax.Checked, *syntax.Lambda, *types.VarSym) {
+	if unconverted(x) == x {
+		return nil, nil, nil
+	}
+	call := x.(*syntax.Call)
+	m := call.Fun.(*syntax.Member)
+	outer := call.Args[0].(*syntax.Lambda)
+	if m.Safe || len(outer.Body.Stmts) != 1 {
+		return nil, nil, nil
+	}
+	s, ok := outer.Body.Stmts[0].(*syntax.ExprStmt)
+	if !ok {
+		return nil, nil, nil
+	}
+	l, ok := s.X.(*syntax.Lambda)
+	ps := outer.ParamSyms()
+	if !ok || len(ps) != 1 || ps[0] == nil {
+		return nil, nil, nil
+	}
+	return m.X.(*syntax.Checked), l, ps[0]
+}
+
+// convertedArg returns, if call x of the program's inline function d
+// passes for its parameter i a function value converted to a suspend
+// one, the conversion, its lambda and its $f: unless the value is one of
+// the inlined lambdas being forwarded, the lambda is inlined, as kotlinc
+// inlines it, and its invoke of the value is no suspension point. The
+// argument is the value, in $f's local.
+func convertedArg(x *syntax.Call, d *syntax.FunDecl, i int) (*syntax.Call, *syntax.Lambda, *types.VarSym) {
+	if i >= len(d.Inlinable) || !d.Inlinable[i] || d.Params[i].Crossinline {
+		return nil, nil, nil
+	}
+	for k, a := range x.Args {
+		j := k
+		if x.ArgMap != nil {
+			j = x.ArgMap[k]
+		}
+		if j != i {
+			continue
+		}
+		if _, l, fv := conversion(a); l != nil {
+			return a.(*syntax.Call), l, fv
+		}
+	}
+	return nil, nil, nil
 }
 
 // forwardedArg returns the lambda that call x passes on for parameter i,
