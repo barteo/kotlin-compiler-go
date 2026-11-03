@@ -152,8 +152,9 @@ type resumeCall struct {
 // fileState is shared by the generators of a file's classes.
 type fileState struct {
 	opts        Options
-	inlineDepth int       // see inlineMu
-	renamed     []renamed // see nameObjects
+	inlineDepth int                   // see inlineMu
+	renamed     []renamed             // see nameObjects
+	slots       map[*types.VarSym]int // the variables' locals: see slot
 	copies      map[*types.ClassSym]*objectCopy
 	// inlinedConvs holds the suspend conversions passed to the copies
 	// being generated whose lambdas are inlined, by their $f: see
@@ -279,7 +280,7 @@ func GenerateFile(f *syntax.File, opts Options) (out []Output, err error) {
 	if opts.Cache == nil {
 		opts.Cache = &Cache{}
 	}
-	g := &gen{file: f, shared: &fileState{opts: opts, count: map[string]int{}, classes: map[string]*cf.Class{}, access: map[*types.VarSym]uint8{},
+	g := &gen{file: f, shared: &fileState{opts: opts, slots: map[*types.VarSym]int{}, count: map[string]int{}, classes: map[string]*cf.Class{}, access: map[*types.VarSym]uint8{},
 		annotated: map[*types.VarSym][2]string{}, markers: map[*types.FunSym]bool{}, impls: map[*types.ClassSym]*cf.Class{},
 		begun: map[*types.ClassSym]*cf.Class{}, methods: map[privateMethod]bool{}, companions: map[*types.ClassSym]bool{}, outers: map[*types.ClassSym]bool{}, stabilities: map[types.Type]stability{},
 		stableInits: map[*syntax.ClassDecl]func(){}}}
@@ -976,7 +977,7 @@ func (g *gen) function(fd *syntax.FunDecl, access uint16) cf.MemberRef {
 		access = access&^cf.AccPublic | cf.AccProtected
 	}
 	if fd.Inline {
-		// Its variables' locals are shared with its copies: see inlineMu.
+		// Its object expressions' classes are renamed by its copies: see inlineMu.
 		g.lockInline()
 		defer g.unlockInline()
 	}
@@ -1082,15 +1083,15 @@ func (g *gen) functionBody(fd *syntax.FunDecl) {
 	g.retType = types.JVMRet(sym)
 	g.loops, g.tries = nil, nil
 	for _, p := range sym.Contexts {
-		p.Slot = g.code.AllocLocal(paramDesc(p.Type))
+		g.setSlot(p, g.code.AllocLocal(paramDesc(p.Type)))
 		g.named(p)
 	}
 	if r := fd.RecvSym; r != nil {
-		r.Slot = g.code.AllocLocal(paramDesc(r.Type))
+		g.setSlot(r, g.code.AllocLocal(paramDesc(r.Type)))
 		g.named(r)
 	}
 	for _, p := range sym.Params {
-		p.Slot = g.code.AllocLocal(paramDesc(p.Type))
+		g.setSlot(p, g.code.AllocLocal(paramDesc(p.Type)))
 		g.named(p)
 	}
 	outer := g.compose // of a function this one's class is local to
@@ -1125,10 +1126,10 @@ func (g *gen) functionBody(fd *syntax.FunDecl) {
 	}
 	for _, i := range sym.BoxedParams {
 		p := sym.Params[i]
-		g.code.Local(cf.ALOAD, p.Slot)
+		g.code.Local(cf.ALOAD, g.slot(p))
 		g.castBox(types.AnyType.Nullable(), p.Type)
 		g.unboxValue(p.Type)
-		g.code.Local(cf.ASTORE, p.Slot)
+		g.code.Local(cf.ASTORE, g.slot(p))
 	}
 	if g.owner != nil && (g.owner.Anonymous || g.owner.Inner || g.owner.Local) && sym.Owner == g.owner {
 		if cd, ok := g.owner.Decl.(*syntax.ClassDecl); ok {
@@ -1740,12 +1741,12 @@ func (g *gen) constructor(cd *syntax.ClassDecl) {
 	if !cls.Inner {
 		// The captures come first, as kotlinc's local classes take them.
 		for _, v := range cd.Captures {
-			v.Slot = g.code.AllocLocal(storageDesc(v))
+			g.setSlot(v, g.code.AllocLocal(storageDesc(v)))
 			g.named(v)
 		}
 	}
 	for _, cp := range cd.CtorParams {
-		cp.Sym.Slot = g.code.AllocLocal(paramDesc(cp.Sym.Type))
+		g.setSlot(cp.Sym, g.code.AllocLocal(paramDesc(cp.Sym.Type)))
 		g.named(cp.Sym)
 	}
 	if cls.Inner {
@@ -1754,7 +1755,7 @@ func (g *gen) constructor(cd *syntax.ClassDecl) {
 	g.line(cd.P)
 	if access&cf.AccPrivate == 0 && !cls.Anonymous {
 		for _, cp := range cd.CtorParams {
-			g.checkParam(cp.Sym.Slot, cp.Sym.Type, cp.Name)
+			g.checkParam(g.slot(cp.Sym), cp.Sym.Type, cp.Name)
 		}
 	}
 	if !cls.Inner {
@@ -1900,12 +1901,12 @@ func (g *gen) secondary(cd *syntax.ClassDecl, sc *syntax.SecondaryCtor) {
 	}
 	if cls.Local {
 		for _, v := range cd.Captures {
-			v.Slot = g.code.AllocLocal(storageDesc(v))
+			g.setSlot(v, g.code.AllocLocal(storageDesc(v)))
 			g.named(v)
 		}
 	}
 	for _, p := range f.Params {
-		p.Slot = g.code.AllocLocal(paramDesc(p.Type))
+		g.setSlot(p, g.code.AllocLocal(paramDesc(p.Type)))
 		g.named(p)
 	}
 	if cls.Inner {
@@ -1961,7 +1962,7 @@ func (g *gen) initializers(cd *syntax.ClassDecl) {
 	for _, cp := range cd.CtorParams {
 		if cp.IsProp {
 			g.code.Local(cf.ALOAD, 0)
-			g.code.Local(loadOp(cp.Sym.Type), cp.Sym.Slot) // a Unit one's, kotlin.Unit
+			g.code.Local(loadOp(cp.Sym.Type), g.slot(cp.Sym)) // a Unit one's, kotlin.Unit
 			g.code.FieldInsn(cf.PUTFIELD, cls.Name, cp.Name, desc(types.FieldType(cp.Sym)))
 		}
 	}
@@ -2170,7 +2171,7 @@ func (g *gen) defaults(fd *syntax.FunDecl, owner *types.ClassSym) {
 		saved := g.publicInline
 		g.publicInline = true
 		defer func() { g.publicInline = saved }()
-		g.lockInline() // the body's variables' locals: see inlineMu
+		g.lockInline() // the names of the body's objects' classes: see inlineMu
 		defer g.unlockInline()
 	}
 	g.prefix = f.Name + "$default$lambda"
@@ -2183,11 +2184,11 @@ func (g *gen) defaults(fd *syntax.FunDecl, owner *types.ClassSym) {
 		defer func() { g.objThis = false }()
 	}
 	for _, p := range f.Contexts {
-		p.Slot = g.code.AllocLocal(paramDesc(p.Type))
+		g.setSlot(p, g.code.AllocLocal(paramDesc(p.Type)))
 		g.named(p)
 	}
 	if r := fd.RecvSym; r != nil {
-		r.Slot = g.code.AllocLocal(paramDesc(r.Type))
+		g.setSlot(r, g.code.AllocLocal(paramDesc(r.Type)))
 		g.named(r)
 	}
 	var prologue func()
@@ -2226,13 +2227,13 @@ func (g *gen) defaults(fd *syntax.FunDecl, owner *types.ClassSym) {
 		g.code.Local(cf.ALOAD, 0)
 	}
 	for _, p := range f.Contexts {
-		g.code.Local(loadOp(p.Type), p.Slot)
+		g.code.Local(loadOp(p.Type), g.slot(p))
 	}
 	if r := fd.RecvSym; r != nil {
-		g.code.Local(loadOp(r.Type), r.Slot)
+		g.code.Local(loadOp(r.Type), g.slot(r))
 	}
 	for _, p := range f.Params {
-		g.code.Local(loadOp(p.Type), p.Slot)
+		g.code.Local(loadOp(p.Type), g.slot(p))
 	}
 	if k >= 0 {
 		g.code.Local(cf.ALOAD, k)
@@ -2263,7 +2264,7 @@ func (g *gen) fillDefaults(params []*syntax.Param, syms []*types.VarSym) {
 // parameters come before it.
 func (g *gen) fillDefaultsCont(params []*syntax.Param, syms []*types.VarSym, shift int, suspend bool, prologue func()) int {
 	for _, p := range syms {
-		p.Slot = g.code.AllocLocal(paramDesc(p.Type))
+		g.setSlot(p, g.code.AllocLocal(paramDesc(p.Type)))
 		g.named(p)
 	}
 	k := -1
@@ -2282,7 +2283,7 @@ func (g *gen) fillDefaultsCont(params []*syntax.Param, syms []*types.VarSym, shi
 		skip := cf.NewLabel()
 		g.jumpIfPassed(masks, shift+j, skip)
 		g.argAs(p.Default, p.Sym.Type) // a Unit one is kotlin.Unit
-		g.code.Local(storeOp(p.Sym.Type), p.Sym.Slot)
+		g.code.Local(storeOp(p.Sym.Type), g.slot(p.Sym))
 		g.code.Place(skip)
 	}
 	return k
@@ -2322,7 +2323,7 @@ func (g *gen) defaultConstructor(ctor *types.FunSym, params []*syntax.Param) {
 		captures = cd.Captures
 	}
 	for _, v := range captures {
-		v.Slot = g.code.AllocLocal(storageDesc(v))
+		g.setSlot(v, g.code.AllocLocal(storageDesc(v)))
 		g.named(v)
 	}
 	g.fillDefaultsCont(params, ctor.Params, 0, false, func() {
@@ -2332,17 +2333,17 @@ func (g *gen) defaultConstructor(ctor *types.FunSym, params []*syntax.Param) {
 	})
 	g.code.Local(cf.ALOAD, 0)
 	if cls.Inner {
-		g.code.Local(storageLoadOp(cd.OuterThis), cd.OuterThis.Slot)
+		g.code.Local(storageLoadOp(cd.OuterThis), g.slot(cd.OuterThis))
 	}
 	if enum {
 		g.code.Local(cf.ALOAD, 1)
 		g.code.Local(cf.ILOAD, 2)
 	}
 	for _, v := range captures {
-		g.code.Local(storageLoadOp(v), v.Slot)
+		g.code.Local(storageLoadOp(v), g.slot(v))
 	}
 	for _, p := range ctor.Params {
-		g.code.Local(loadOp(p.Type), p.Slot)
+		g.code.Local(loadOp(p.Type), g.slot(p))
 	}
 	g.code.Invoke(cf.INVOKESPECIAL, cls.Name, "<init>", d)
 	g.code.Op(cf.RETURN)
@@ -2499,11 +2500,11 @@ func (g *gen) outerParam(cd *syntax.ClassDecl, store bool) {
 		return
 	}
 	v := cd.OuterThis
-	v.Slot = g.code.AllocLocal(storageDesc(v))
+	g.setSlot(v, g.code.AllocLocal(storageDesc(v)))
 	g.named(v)
 	if store {
 		g.code.Local(cf.ALOAD, 0)
-		g.code.Local(storageLoadOp(v), v.Slot)
+		g.code.Local(storageLoadOp(v), g.slot(v))
 		g.code.FieldInsn(cf.PUTFIELD, cd.Sym.Name, "this$0", storageDesc(v))
 	}
 }
@@ -2512,7 +2513,7 @@ func (g *gen) outerParam(cd *syntax.ClassDecl, store bool) {
 // constructor: its parameter.
 func (g *gen) loadOuterThis() {
 	cd := g.owner.Decl.(*syntax.ClassDecl)
-	g.code.Local(storageLoadOp(cd.OuterThis), cd.OuterThis.Slot)
+	g.code.Local(storageLoadOp(cd.OuterThis), g.slot(cd.OuterThis))
 }
 
 // staticInit generates a class's static initializer, if it needs one: it

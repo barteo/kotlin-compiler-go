@@ -251,7 +251,7 @@ func (g *gen) refReceiver(l *syntax.Lambda) {
 		return
 	}
 	v := r.Bound
-	v.Slot = g.code.AllocLocal(desc(v.Type))
+	g.setSlot(v, g.code.AllocLocal(desc(v.Type)))
 	g.exprAs(r.BoundExpr, v.Type)
-	g.code.Local(storeOp(v.Type), v.Slot)
+	g.code.Local(storeOp(v.Type), g.slot(v))
 }

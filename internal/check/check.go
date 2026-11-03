@@ -1634,7 +1634,7 @@ func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
 	sym.Abstract = d.Abstract || owner != nil && owner.Interface && d.Init == nil && d.Getter == nil && d.Setter == nil
 	sym.Final = owner == nil || isFinal(d.Modifiers, owner)
 	if d.Field == nil {
-		sym.FieldUsed = usesField(d.Getter) || usesField(d.Setter)
+		sym.FieldUsed = getterField(d) || usesField(d.Setter)
 		// private set: no setter method, as with kotlinc.
 		sym.SetterPrivate = d.Mutable && d.Setter == nil && d.SetterVis == syntax.Private && !sym.Private && !sym.JvmField
 	}
@@ -2237,6 +2237,7 @@ func (c *Checker) checkBodies() {
 			c.checkProp(d, nil)
 		}
 	}
+	c.fileAssignment(c.file.Decls)
 	for _, d := range c.classes {
 		c.checkClass(d)
 	}

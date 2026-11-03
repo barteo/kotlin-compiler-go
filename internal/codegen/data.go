@@ -102,7 +102,7 @@ func (g *gen) dataMembers(cd *syntax.ClassDecl) {
 		}
 		nullability(methodAdder(m), f.Ret)
 		for i, p := range f.Params {
-			p.Slot = g.code.AllocLocal(paramDesc(p.Type))
+			g.setSlot(p, g.code.AllocLocal(paramDesc(p.Type)))
 			g.named(p)
 			nullability(paramAdder(m, i), p.Type)
 		}
@@ -117,7 +117,7 @@ func (g *gen) dataMembers(cd *syntax.ClassDecl) {
 			}
 		}
 		for _, p := range f.Params {
-			g.code.Local(loadOp(p.Type), p.Slot)
+			g.code.Local(loadOp(p.Type), g.slot(p))
 		}
 		g.code.Invoke(cf.INVOKESPECIAL, cls.Name, "<init>", ctor)
 		g.code.Op(cf.ARETURN)
@@ -127,7 +127,7 @@ func (g *gen) dataMembers(cd *syntax.ClassDecl) {
 		g.code = g.cls.NewMethod(cf.AccPublic|cf.AccStatic|cf.AccSynthetic, f.JVM()+"$default", defaultsDesc("("+self+d[1:], len(f.Params), objMarker))
 		g.code.AllocLocal(self)
 		for _, p := range f.Params {
-			p.Slot = g.code.AllocLocal(paramDesc(p.Type))
+			g.setSlot(p, g.code.AllocLocal(paramDesc(p.Type)))
 			g.named(p)
 		}
 		masks := g.allocMasks(len(f.Params), objMarker)
@@ -135,12 +135,12 @@ func (g *gen) dataMembers(cd *syntax.ClassDecl) {
 			skip := cf.NewLabel()
 			g.jumpIfPassed(masks, j, skip)
 			field(0, props[j])
-			g.code.Local(storeOp(p.Type), p.Slot)
+			g.code.Local(storeOp(p.Type), g.slot(p))
 			g.code.Place(skip)
 		}
 		g.code.Local(cf.ALOAD, 0)
 		for _, p := range f.Params {
-			g.code.Local(loadOp(p.Type), p.Slot)
+			g.code.Local(loadOp(p.Type), g.slot(p))
 		}
 		g.code.Invoke(cf.INVOKEVIRTUAL, cls.Name, f.JVM(), d)
 		g.code.Op(cf.ARETURN)
