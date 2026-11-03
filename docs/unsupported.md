@@ -125,8 +125,6 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   types, projections or captured types, and aren't literals.
 - Java module exports aren't checked, and the Java members Kotlin
   replaces (`Number.intValue()`) aren't hidden.
-- A `return@label` without a value makes a lambda return `Unit`, even if
-  its last expression has a value.
 - Without an expected type, a reference to a vararg function, or to a
   generic function whose type parameters its receiver's type doesn't
   give (`Box<Int>::first` for `fun <T> Box<T>.first()` is fine), is an

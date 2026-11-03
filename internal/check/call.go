@@ -795,6 +795,9 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			} else {
 				cd.params[j] = cd.sub.ApplyIn(cl.argType(j, x.Args))
 			}
+			if targs != nil {
+				cd.params[j] = c.nullableUnitResult(cl.argType(j, x.Args), cd.params[j], cd.sub)
+			}
 		}
 		cs[i] = cd
 	}

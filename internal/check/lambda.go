@@ -44,7 +44,8 @@ type lambdaResult struct {
 	want  types.Type // noWant if unknown
 	check bool       // the values must have type want
 	types []types.Type
-	bare  bool // a return@label without a value: the result is Unit
+	vals  []syntax.Expr // the values of types, nil for a bare return's Unit
+	bare  bool          // a return@label without a value: the result is Unit
 	// postponed are the values whose type arguments only the lambda's
 	// result can give: return@flatMap emptyList(), with the state where
 	// they are.
@@ -466,13 +467,28 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 				tail.sub(c.value(p.x, noWant), bt)
 				continue
 			}
+			if tail := c.tailSink; tail != nil && bt.K == types.Nothing && returnsCall(x) && p.x == lastReturned(x) {
+				// So is the call it ends returning: see returnsCall.
+				c.sink = tail
+				lr.types = append(lr.types, c.value(p.x, noWant))
+				lr.vals = append(lr.vals, p.x)
+				continue
+			}
 			lr.types = append(lr.types, c.value(p.x, want))
+			lr.vals = append(lr.vals, p.x)
 		}
 	}
 	c.state = saved
 	if lr.bare && !(w.check && w.ret.K != types.Invalid) {
-		// As kotlinc infers it, the last expression's value is dropped.
+		// As kotlinc infers it, the last expression's value is dropped,
+		// and the lambda's other results must be Units:
+		// run { if (b) return@run; return@run 1 } is an error.
 		unit = true
+		for i, t := range lr.types {
+			if v := lr.vals[i]; v != nil && t.K != types.Invalid && !c.subtype(t, types.UnitType) {
+				c.errorf(v.Pos(), "type mismatch: inferred type is %s but Unit was expected", t)
+			}
+		}
 	}
 	if !unit && !(w.check && w.ret.K != types.Invalid) {
 		for _, t := range lr.types {
@@ -607,7 +623,10 @@ func (c *Checker) unitTail(b *syntax.Block) types.Type {
 			target = noWant
 		}
 	}
-	c.completeBranches(pending, target, noWant, false)
+	// Unit is the expected type too, which a builder's call, whose
+	// variables only its lambdas would otherwise give, takes:
+	// coerceToUnit { builder {} } infers builder's K as Unit.
+	c.completeBranches(pending, target, target, false)
 	if t.K == types.Nothing {
 		return t
 	}
@@ -628,10 +647,27 @@ func (c *Checker) bareTail(b *syntax.Block) types.Type {
 	}
 	for _, p := range pending {
 		if p.sys != nil && p.sys.boundExcludes(p.t, types.UnitType) {
-			return c.completeBranches(pending, types.NothingType, noWant, true)
+			// K2 infers an intersection with Unit, which it warns may
+			// be empty; kc, without intersection types, the bound:
+			// I of run { if (b) return@run; materializeI() }, whose
+			// value is dropped.
+			return c.completeBranches(pending, unitExcludingBound(p.sys, p.t), noWant, true)
 		}
 	}
 	return c.completeBranches(pending, types.UnitType, noWant, true)
+}
+
+// unitExcludingBound returns a proper declared bound of t, a variable of
+// s, that Unit is not within, or Nothing.
+func unitExcludingBound(s *system, t types.Type) types.Type {
+	if tv := s.unfixedVar(t); tv != nil {
+		for _, b := range tv.v.Bounds {
+			if b = s.apply(b); !b.HasVars() && !s.c.subtype(types.UnitType, b) {
+				return b
+			}
+		}
+	}
+	return types.NothingType
 }
 
 // endsInCall reports whether b's last statement is a call.
@@ -779,7 +815,18 @@ func (c *Checker) labeledReturn(x *syntax.Jump) bool {
 	case lr.want.K == types.Unit:
 		if x.X != nil {
 			// A builder's variable is Unit then: return@build materialize().
-			if t := c.value(x.X, noWant); t.K != types.Invalid && !c.subtype(t, types.UnitType) {
+			// Otherwise a call that can't be inferred on its own expects
+			// the Unit: return@outer materialize().
+			n := len(c.errs)
+			t := c.value(x.X, noWant)
+			// So does one whose lambda is coerced to it then:
+			// return@process processNested { proceed() }.
+			if _, call := x.X.(*syntax.Call); len(c.errs) > n && simpleExpr(x.X) ||
+				call && len(c.errs) == n && t.K != types.Invalid && !c.subtype(t, types.UnitType) {
+				c.errs = c.errs[:n]
+				t = c.value(x.X, types.UnitType)
+			}
+			if t.K != types.Invalid && !c.subtype(t, types.UnitType) {
 				c.errorf(x.X.Pos(), "type mismatch: inferred type is %s but Unit was expected", t)
 			}
 		}
@@ -788,6 +835,7 @@ func (c *Checker) labeledReturn(x *syntax.Jump) bool {
 			c.errorf(x.P, "this lambda must return a value of type %s", lr.want)
 		}
 		lr.types = append(lr.types, types.UnitType)
+		lr.vals = append(lr.vals, nil)
 		lr.bare = true
 	default:
 		n := len(c.errs)
@@ -802,6 +850,7 @@ func (c *Checker) labeledReturn(x *syntax.Jump) bool {
 			lr.postponed = append(lr.postponed, postponedRet{x.X, c.state})
 		default:
 			lr.types = append(lr.types, t)
+			lr.vals = append(lr.vals, x.X)
 		}
 	}
 	return true
@@ -2056,7 +2105,12 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type) {
 		params[i] = s.final(params[i])
 	}
 	w := lambdaWant{params: params, known: true, recv: ft.Flex().E, ctx: ft.Flex().Contexts(), suspend: isSuspendFunc(ft), composable: isComposableFunc(ft), ret: noWant}
-	r := s.apply(ret)
+	if sam == nil {
+		if _, pr, ok := funcParts(p); ok {
+			ret = pr
+		}
+	}
+	r := c.nullableUnit(ret, s.apply(ret))
 	switch {
 	case !r.HasVars():
 		w.ret, w.check = r, true
@@ -2086,7 +2140,7 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type) {
 		s.sub(bt, r) // a lambda ending in a statement gives R := Unit
 	}
 	s.fixups = append(s.fixups, func(s *system) {
-		rr := s.final(ret)
+		rr := c.nullableUnit(ret, s.final(ret))
 		if r.HasVars() && rr.K != types.Unit && rr.K != types.Invalid {
 			bt := s.final(bt) // the call it ends with may have been inferred with s
 			c.assignable(bt, captured(bt, ret, rr), resultPos(l))
@@ -2099,6 +2153,46 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type) {
 		l.T = c.lambdaType(l, params, rr)
 		c.funRef(l, l.T, len(params))
 	})
+}
+
+// nullableUnit returns t, what s gives a lambda's result type decl, but
+// as Unit?, kotlin.Unit's class, if decl is a nullable T? that is Unit,
+// which T? of the substituted type loses: nullableK<Unit> { null } for
+// fun <T> nullableK(m: () -> T?) returns null, as the lambda's result
+// isn't coerced to Unit.
+func (c *Checker) nullableUnit(decl, t types.Type) types.Type {
+	if t.K != types.Unit || t.N || !decl.N || decl.P || decl.K != types.TypeVar && !decl.IsParam() {
+		return t
+	}
+	if u := c.u.ext.class("kotlin/Unit"); u != nil {
+		return types.ClassType(u).Nullable()
+	}
+	return t
+}
+
+// nullableUnitResult returns t, parameter type raw substituted with sub,
+// but if raw is a function type whose result is a T? that sub makes
+// Unit, with the result Unit?, which the substitution loses: the lambda
+// of nullableK<Unit> { null } returns null.
+func (c *Checker) nullableUnitResult(raw, t types.Type, sub types.Subst) types.Type {
+	if raw.K != types.Class || !raw.C.Func || raw.A == nil || t.K != types.Class || t.A == nil || len(raw.A.List) == 0 || len(t.A.List) != len(raw.A.List) {
+		return t
+	}
+	n := len(raw.A.List) - 1
+	r := raw.A.List[n].T
+	if !r.IsParam() {
+		return t
+	}
+	a, ok := sub[r.Param()]
+	if !ok {
+		return t
+	}
+	if u := c.nullableUnit(r, a.T); u != a.T {
+		args := slices.Clone(t.A.List)
+		args[n].T = u
+		t.A = types.MakeArgs(args)
+	}
+	return t
 }
 
 // outerBounds gives each variable in a lambda's parameter types that has
@@ -2136,7 +2230,7 @@ func outerBounds(s *system, params []types.Type) {
 // result with the call it is passed to: xs + ys.flatMap { y -> all(y) },
 // whose all<T> gets its T from xs's elements, through flatMap's R.
 func (c *Checker) checkTail(s *system, l *syntax.Lambda, w lambdaWant, r types.Type) types.Type {
-	if !r.HasVars() || w.ret.K != types.Invalid || l.Ref == nil && !endsWithCall(l.Body) {
+	if !r.HasVars() || w.ret.K != types.Invalid || l.Ref == nil && !endsWithCall(l.Body) && !returnsCall(l) {
 		_, bt, _ := c.checkLambda(l, w)
 		return bt
 	}
@@ -2171,6 +2265,29 @@ func endsWithCall(b *syntax.Block) bool {
 		}
 	}
 	return false
+}
+
+// returnsCall reports whether lambda l ends with a return@label of a
+// call that takes no lambda, which, as the call it would otherwise end
+// with, is inferred with the call l is passed to: T of materialize() in
+// run inner@{ return@inner materialize() } for an expected Unit.
+func returnsCall(l *syntax.Lambda) bool {
+	if n := len(l.Body.Stmts); n > 0 && l.Label != "" {
+		es, ok := l.Body.Stmts[n-1].(*syntax.ExprStmt)
+		if !ok {
+			return false
+		}
+		if j, ok := es.X.(*syntax.Jump); ok && j.Kind == syntax.RETURN && j.Label == l.Label {
+			call, ok := j.X.(*syntax.Call)
+			return ok && !hasLambda(call.Args)
+		}
+	}
+	return false
+}
+
+// lastReturned returns the value of the return@label lambda l ends with.
+func lastReturned(l *syntax.Lambda) syntax.Expr {
+	return l.Body.Stmts[len(l.Body.Stmts)-1].(*syntax.ExprStmt).X.(*syntax.Jump).X
 }
 
 // implicitRecv is the receiver of a lambda with a receiver: this in its
