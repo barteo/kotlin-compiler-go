@@ -38,6 +38,14 @@ type tvar struct {
 	// T in Array<T> for an Array<out Enum<*>>: the capture is within T's
 	// bounds, even where its approximation isn't.
 	proj bool
+	// captBound is set if the variable's bound is a captured type, of out
+	// X or *, only Nothing is a subtype of.
+	captBound bool
+	// capt is the projection the variable is equal to, as T of Array<T>
+	// is the capture of an Array<out Int>'s argument: the variable is
+	// fixed to it, which Subst approximates as Kotlin does, out Int in
+	// an invariant argument and Int at the top level (V is Inv if none).
+	capt types.Arg
 }
 
 type inferError struct {
@@ -58,6 +66,9 @@ type system struct {
 	lambdas []pendingLambda
 	ok      bool // false once a constraint cannot hold
 	depth   int
+	// nest counts the type arguments that sub is inside of: only a top-level
+	// argument's projection is captured.
+	nest int
 }
 
 func newSystem(c *Checker) *system {
@@ -80,10 +91,15 @@ func (s *system) fresh(ps []*types.TypeParamSym, base types.Subst, pos syntax.Po
 		sub[p] = types.Arg{T: types.VarType(vs[i])}
 	}
 	for i, p := range ps {
+		tv := &tvar{v: vs[i], pos: pos}
 		for _, b := range p.Bounds {
+			if b.IsParam() && !b.N && (base[b.Param()].V == types.Out || base[b.Param()].V == types.Star) {
+				// Below a capture of out X or *, as T : B of a Foo<*>'s
+				// fun <T : B> bar(t: T), is only Nothing: no argument is.
+				tv.captBound = true
+			}
 			vs[i].Bounds = append(vs[i].Bounds, sub.Apply(b))
 		}
-		tv := &tvar{v: vs[i], pos: pos}
 		s.vars = append(s.vars, tv)
 		s.byVar[vs[i]] = tv
 	}
@@ -258,17 +274,21 @@ func (s *system) subArgs(sup, b types.Type) {
 		ta := sup.A.List[i]
 		switch v {
 		case types.Out:
+			s.nest++
 			if ta.V == types.Star || ta.V == types.In {
 				s.sub(types.AnyType.Nullable(), ba.T)
 			} else {
 				s.sub(ta.T, ba.T)
 			}
+			s.nest--
 		case types.In:
+			s.nest++
 			if ta.V == types.Star || ta.V == types.Out {
 				s.sub(ba.T, types.NothingType)
 			} else {
 				s.sub(ba.T, ta.T)
 			}
+			s.nest--
 		default:
 			if ta.V != types.Inv {
 				// A projection captured by a variable: T in Array<T> for
@@ -278,6 +298,9 @@ func (s *system) subArgs(sup, b types.Type) {
 				if tv == nil {
 					s.ok = false
 					return
+				}
+				if s.nest == 0 && !ba.T.D && ta.V != types.Star && !ta.T.HasVars() {
+					tv.capt = ta
 				}
 				switch ta.V {
 				case types.Out:
@@ -291,8 +314,10 @@ func (s *system) subArgs(sup, b types.Type) {
 				}
 				continue
 			}
+			s.nest++
 			s.sub(ta.T, ba.T)
 			s.sub(ba.T, ta.T)
+			s.nest--
 		}
 	}
 }
@@ -497,6 +522,9 @@ func (s *system) fix(tv *tvar) {
 		if len(tv.lits) > 0 && !litsFit(tv.lits, val) {
 			val = c.lub(val, s.litType(tv, nil))
 		}
+		if len(lowers) > 1 && len(tv.lits) == 0 {
+			val = s.withinUppers(val, lowers, uppers)
+		}
 		if isUnsigned(val) && val.NonNull().C.Name == "kotlin/UInt" {
 			// A UInt from unsigned literals is the variable's ULong,
 			// UByte or UShort bound, as T of f<T : UByte>(1u): the call
@@ -587,11 +615,18 @@ func (s *system) fix(tv *tvar) {
 	if val.K == types.Invalid {
 		return
 	}
+	if tv.capt.V != types.Inv {
+		defer func() { s.vals[tv.v] = tv.capt }()
+	}
 	for _, l := range tv.lower {
 		s.sub(l, val)
 	}
 	for _, u := range tv.upper {
 		s.sub(val, u)
+	}
+	if tv.captBound && len(lowers) > 0 && !captured && !tv.proj && val.K != types.Nothing {
+		s.errs = append(s.errs, inferError{tv.pos, "type argument is not within its bounds: inferred type " +
+			val.String() + " of type parameter '" + tv.v.Name + "' is not a subtype of its bound's captured type"})
 	}
 	for i, b := range tv.v.Bounds {
 		if b = s.apply(b); !captured && !tv.proj && !inBounds[i] && !b.HasVars() && !c.subtype(val, b) {
@@ -655,6 +690,71 @@ func (s *system) finish() {
 // types being inferred stay: see stubInference.
 func (s *system) final(t types.Type) types.Type {
 	t = s.apply(t)
+	if t.HasVars() && !s.c.onlyStubs(t) {
+		return types.InvalidType
+	}
+	return t
+}
+
+// withinUppers returns the least upper bound val of lowers, or, if it is not
+// within uppers, an upper bound that all lowers are within, which stands
+// for kotlinc's more precise common supertype: MyClass<out A & D> of
+// MyClass<B> and MyClass<C>, for B and C both A and D, which kc's is
+// MyClass<out A>, for an expected Set<MyClass<out D>>.
+func (s *system) withinUppers(val types.Type, lowers, uppers []types.Type) types.Type {
+	c := s.c
+	fits := func(t types.Type) bool {
+		for _, u := range uppers {
+			if !c.subtype(t, u) {
+				return false
+			}
+		}
+		return true
+	}
+	if len(uppers) == 0 || fits(val) {
+		return val
+	}
+	// Only where kc's is a less precise one: an intersection kc lacks,
+	// at the top or as the type of a projection.
+	shaped := func(u types.Type) bool {
+		if val.A == nil || val.A.Len() == 0 {
+			return true
+		}
+		if u.K != types.Class || u.C != val.C || u.A == nil || u.A.Len() != val.A.Len() {
+			return false
+		}
+		for i, a := range val.A.List {
+			if b := u.A.Get(i); a.V != b.V || a.V == types.Inv && !c.subtype(a.T, b.T) {
+				return false
+			}
+		}
+		return true
+	}
+	for _, u := range uppers {
+		if !fits(u) || !shaped(u) {
+			continue
+		}
+		ok := true
+		for _, l := range lowers {
+			if !c.subtype(l, u) {
+				ok = false
+				break
+			}
+		}
+		if ok {
+			return u
+		}
+	}
+	return val
+}
+
+// finalArg is final for the type of a parameter that an argument is
+// passed for: a variable fixed to a captured projection takes what can be
+// written to the capture (see types.Subst.ApplyArg).
+func (s *system) finalArg(t types.Type) types.Type {
+	if t.HasVars() {
+		t = s.vals.ApplyArg(t)
+	}
 	if t.HasVars() && !s.c.onlyStubs(t) {
 		return types.InvalidType
 	}
