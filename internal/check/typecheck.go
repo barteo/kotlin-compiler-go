@@ -163,6 +163,10 @@ func (c *Checker) asExpr(x *syntax.As) types.Type {
 	if x.Safe {
 		return t.Nullable()
 	}
+	if k, ok := c.castNarrow(x); ok {
+		// x is a T from here on: in (x as T).f(x), (x as T) + x.
+		c.scope.narrows = append(c.scope.narrows, k)
+	}
 	if t.K == types.Class && t.C.Name == "kotlin/Unit" && !t.N {
 		return types.UnitType // x as Unit, a cast to kotlin.Unit
 	}
@@ -369,7 +373,7 @@ func (c *Checker) stable(v *types.VarSym) bool {
 	case types.Local, types.Param, types.BackingField:
 		return true
 	case types.Prop:
-		return v.Final && v.Getter == nil && v.HasField() && v.Owner != nil && !v.Owner.External
+		return c.stableOn(v, c.thisType())
 	case types.Global:
 		return v.Getter == nil
 	}
@@ -384,15 +388,24 @@ func (c *Checker) narrowSym(x syntax.Expr) *types.VarSym {
 		if x.Sym != nil && x.Member == nil && c.stable(x.Sym) {
 			return x.Sym
 		}
+		if x.Member != nil {
+			return c.narrowSym(x.Member) // p of an implicit receiver, this.p
+		}
 	case *syntax.This:
 		if x.Recv != nil {
 			return x.Recv // a lambda's receiver, a parameter
 		}
 		return c.this
+	case *syntax.NotNull:
+		return c.narrowSym(x.X) // a!!.b is a.b
 	case *syntax.Member:
-		// a.b.c is stable if a.b is: a stable property of a val.
-		if x.Safe || x.Prop == nil || !c.stableMember(x.Prop) {
+		// a.b.c is stable if a.b is: a stable property of a val. So is
+		// a?.b.c, which is a.b.c where a isn't null.
+		if x.Prop == nil || !c.stableOn(x.Prop, x.X.Type()) {
 			return nil
+		}
+		if this, ok := x.X.(*syntax.This); ok && this.Recv == nil {
+			return x.Prop // this.p is p, as in memberKey
 		}
 		if r := c.narrowSym(x.X); r != nil && !r.Mutable {
 			k := [2]*types.VarSym{r, x.Prop}
