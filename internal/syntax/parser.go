@@ -860,7 +860,7 @@ func (p *parser) parseFile() *File {
 					break
 				}
 				fd := p.parseFun()
-				fd.Modifiers = m
+				fd.Modifiers, fd.End = m, p.toks[p.i-1].Pos
 				add(fd)
 			case VAL, VAR:
 				pd := p.parseProp(m)
@@ -1593,6 +1593,7 @@ func (p *parser) accessors(pd *PropDecl) {
 			j++
 		}
 		start := j
+		other := false // a modifier only a backing field is written with
 		for {
 			if t := p.toks[j]; t.Kind == AT {
 				j = p.annotationEnd(j)
@@ -1606,18 +1607,28 @@ func (p *parser) accessors(pd *PropDecl) {
 			} else if t.Kind == IDENT && t.Text == "context" && p.toks[j+1].Kind == LPAREN {
 				for j = p.matching(j+1) + 1; p.toks[j].Kind == NL; j++ {
 				}
+			} else if t.Kind == IDENT && isModifier(t.Text) && p.toks[j+1].Kind == IDENT {
+				j, other = j+1, true
 			} else {
 				break
 			}
 		}
 		t := &p.toks[j]
-		if t.Kind != IDENT || t.Text != "get" && t.Text != "set" {
+		if p.backingFieldAt(j) {
+			p.i = start
+			p.backingField(pd)
+			continue
+		}
+		if other || t.Kind != IDENT || t.Text != "get" && t.Text != "set" {
 			return
 		}
 		switch p.toks[j+1].Kind {
 		case LPAREN, NL, SEMI, RBRACE, EOF:
 		default:
 			return
+		}
+		if pd.AccessorP.Line == 0 {
+			pd.AccessorP = t.Pos
 		}
 		p.i = start
 		m := p.modifiers()
@@ -1647,6 +1658,7 @@ func (p *parser) accessors(pd *PropDecl) {
 		if t.Text == "set" {
 			p.i = j + 1
 			pd.Setter = p.setter(pd, t.Pos, m)
+			pd.Setter.End = p.toks[p.i-1].Pos
 			continue
 		}
 		if pd.Getter != nil {
@@ -1676,8 +1688,52 @@ func (p *parser) accessors(pd *PropDecl) {
 		default:
 			p.unexpected("getter body")
 		}
+		g.End = p.toks[p.i-1].Pos
 		pd.Getter = g
 	}
+}
+
+// backingFieldAt reports whether an explicit backing field starts at j:
+// field, field: T or field = init.
+func (p *parser) backingFieldAt(j int) bool {
+	if t := p.toks[j]; t.Kind != IDENT || t.Text != "field" {
+		return false
+	}
+	switch p.toks[j+1].Kind {
+	case COLON, ASSIGN, NL, SEMI, RBRACE, EOF:
+		return true
+	}
+	return false
+}
+
+// backingField parses a property's explicit backing field, with the
+// modifiers and annotations before it: field: T = init.
+func (p *parser) backingField(pd *PropDecl) {
+	m := p.modifiers()
+	p.noContexts(&m, "backing fields")
+	t := p.next()
+	if pd.BackingField != nil {
+		p.failAt(t.Pos, "property has two backing fields")
+	}
+	f := &BackingField{P: t.Pos, Mods: m.Written}
+	for _, a := range m.Annotations {
+		if a.Target == "" {
+			a.Target = "field"
+		}
+		pd.Annotations = append(pd.Annotations, a)
+	}
+	if p.at(COLON) {
+		p.next()
+		p.skipNL()
+		f.Type = p.parseType()
+	}
+	if p.peekPastNL() == ASSIGN {
+		p.skipNL()
+		p.next()
+		p.skipNL()
+		f.Init = p.parseExpr()
+	}
+	pd.BackingField = f
 }
 
 // externalAccessor declares an external accessor without a body,
@@ -1866,7 +1922,7 @@ func (p *parser) parseClass(m Modifiers) *ClassDecl {
 		p.decl(func() { p.member(cd) })
 		p.skipSemis()
 	}
-	p.expect(RBRACE)
+	cd.End = p.expect(RBRACE).Pos
 	return cd
 }
 
@@ -1891,7 +1947,7 @@ func (p *parser) objectExpr() *ObjectExpr {
 			p.decl(func() { p.member(cd) })
 			p.skipSemis()
 		}
-		p.expect(RBRACE)
+		cd.End = p.expect(RBRACE).Pos
 	}
 	x := &ObjectExpr{Decl: cd}
 	x.P = kw.Pos
@@ -1976,7 +2032,7 @@ func (p *parser) enumEntryBody(cd *ClassDecl, e *EnumEntry) *ClassDecl {
 		p.decl(func() { p.member(body) })
 		p.skipSemis()
 	}
-	p.expect(RBRACE)
+	body.End = p.expect(RBRACE).Pos
 	return body
 }
 
@@ -2044,7 +2100,7 @@ func (p *parser) member(cd *ClassDecl) {
 			break
 		}
 		fd := p.parseFun()
-		fd.Modifiers = m
+		fd.Modifiers, fd.End = m, p.toks[p.i-1].Pos
 		cd.Members = append(cd.Members, fd)
 	case VAL, VAR:
 		pd := p.parseProp(m)

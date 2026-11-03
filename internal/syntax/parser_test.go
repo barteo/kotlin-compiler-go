@@ -1104,3 +1104,58 @@ func TestRecoverAfterReceiver(t *testing.T) {
 		t.Errorf("declarations after the errors: %d", n)
 	}
 }
+
+// TestBackingFields checks explicit backing fields: on the property's line
+// or the next, with a type, an initializer, or neither, among accessors.
+func TestBackingFields(t *testing.T) {
+	src := `class A {
+    val a: List<Int> field = mutableListOf()
+    val b: Number
+        field: Int = 1
+    val c: Any
+        @Volatile internal field: String
+    init { c = "" }
+    val d: Int
+        field = 1
+        get() = 2
+}
+val e: Any field: Int = 1
+`
+	f, errs := Parse("t.kt", src)
+	if len(errs) > 0 {
+		t.Fatalf("unexpected error: %v", errs[0])
+	}
+	cd := f.Decls[0].(*ClassDecl)
+	var props []*PropDecl
+	for _, m := range cd.Members {
+		if pd, ok := m.(*PropDecl); ok {
+			props = append(props, pd)
+		}
+	}
+	props = append(props, f.Decls[1].(*PropDecl))
+	type want struct {
+		typ        string
+		init, mods bool
+	}
+	for i, w := range []want{{"", true, false}, {"Int", true, false}, {"String", false, true}, {"", true, false}, {"Int", true, false}} {
+		bf := props[i].BackingField
+		if bf == nil {
+			t.Fatalf("%s: no backing field", props[i].Name)
+		}
+		if typ := ""; bf.Type != nil && bf.Type.Name != w.typ || bf.Type == nil && w.typ != typ {
+			t.Errorf("%s: field type %+v, want %q", props[i].Name, bf.Type, w.typ)
+		}
+		if (bf.Init != nil) != w.init || (len(bf.Mods) > 0) != w.mods {
+			t.Errorf("%s: field %+v", props[i].Name, bf)
+		}
+	}
+	if props[2].Annotations[0].Target != "field" {
+		t.Errorf("annotation target: %q", props[2].Annotations[0].Target)
+	}
+	if props[3].Getter == nil {
+		t.Errorf("getter after the field")
+	}
+	if props[0].Init != nil || props[0].Type.Name != "List" {
+		t.Errorf("property a: %+v", props[0])
+	}
+}

@@ -400,6 +400,7 @@ func (m *Modifiers) Hidden() bool {
 type FunDecl struct {
 	Modifiers
 	P          Pos
+	End        Pos // the last token's, of a function declared in a file or a class, or an accessor
 	Name       string
 	TypeParams []*TypeParam
 	Recv       *TypeRef // an extension function's receiver type, or nil
@@ -494,6 +495,24 @@ type PropDecl struct {
 	// RecvAnnotations are the annotations on the receiver type with the
 	// use-site target receiver: val @receiver:A T.x.
 	RecvAnnotations []Annotation
+
+	// BackingField is the explicit backing field, field: T = init, or nil.
+	BackingField *BackingField
+	// AccessorP is the first accessor's position, with or without a body.
+	AccessorP Pos
+}
+
+// BackingField is a property's explicit backing field: val x: List<T>
+// field = mutableListOf(), whose type is visible in the private scope of
+// the property. Its annotations are the property's, with the target field.
+type BackingField struct {
+	P    Pos
+	Type *TypeRef // nil: the initializer's
+	Init Expr     // nil: initialized in an init block or a constructor
+	Mods []Mod    // the modifiers written on it, which it can't take
+	// Checked is set by the checker, and Allowed on a field that the
+	// property can have.
+	Checked, Allowed bool
 }
 
 // TypeAliasDecl is a typealias, typealias Name<T> = Type, at the top
@@ -519,6 +538,7 @@ type CtorParam struct {
 type ClassDecl struct {
 	Modifiers
 	P          Pos
+	End        Pos // the closing brace's, of a class with a body
 	Name       string
 	Interface  bool
 	Fun        bool // a fun interface
