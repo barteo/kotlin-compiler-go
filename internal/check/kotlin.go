@@ -431,7 +431,7 @@ type tscope map[int]*types.TypeParamSym
 func (t *classTable) ktypeParams(ps []*kmeta.TypeParam, owner any, scope tscope) ([]*types.TypeParamSym, bool) {
 	syms := make([]*types.TypeParamSym, len(ps))
 	for i, p := range ps {
-		syms[i] = &types.TypeParamSym{Name: p.Name, Var: variance(p.Variance), Index: i, Owner: owner, Reified: p.Reified}
+		syms[i] = &types.TypeParamSym{Name: p.Name, Var: variance(p.Variance), Index: i, Owner: owner, Reified: p.Reified, OnlyInput: p.OnlyInput}
 		scope[p.ID] = syms[i]
 	}
 	ok := true

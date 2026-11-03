@@ -741,14 +741,9 @@ func (c *Checker) binary(x *syntax.Binary, want types.Type, allowRange bool) typ
 					yw = sup
 				}
 			}
-			n := len(c.errs)
-			yt = c.value(x.Y, yw)
-			if len(c.errs) > n && simpleExpr(x.Y) {
-				c.errs = c.errs[:n]
-				yt = c.value(x.Y, noWant)
-			}
+			yt = c.elvisRight(x.Y, yw, xt, true) // see expected.go
 		} else {
-			yt = c.value(x.Y, want)
+			yt = c.elvisRight(x.Y, want, xt, false)
 		}
 		c.mayNotRun(nn, nonNull)
 		t, ok := c.join(xt.NonNull(), yt)
@@ -963,6 +958,9 @@ func (c *Checker) binary(x *syntax.Binary, want types.Type, allowRange bool) typ
 	}
 	switch x.Op {
 	case syntax.PLUS:
+		if xt.Flex() == types.StringType.Nullable() && c.opExtension(xt, "plus", x.Y) {
+			return c.binaryOp(x, xt, want) // a String?.plus extension
+		}
 		if xt.NonNull() == types.StringType || xt.K == types.Null {
 			// null + x is the built-in String?.plus(Any?), as s + x for
 			// a String? s: "null" and x's string.
@@ -2672,6 +2670,9 @@ func (c *Checker) extShadows(name string, rt types.Type, x *syntax.Call) bool {
 // extensions. A unary one always does: this.inc() in an Int?.inc() for a
 // this known not to be null, compareTo(c.code) in an Int.compareTo(Char).
 func (c *Checker) builtinShadowed(name string, rt types.Type, x *syntax.Call) bool {
+	if x.Infix && c.infixExtOnly(name, rt) { // see call.go
+		return true
+	}
 	if len(x.Args) == 0 || !c.extShadows(name, rt, x) {
 		return false
 	}
@@ -2891,7 +2892,7 @@ func (c *Checker) ifExpr(x *syntax.If, want types.Type, valueUsed bool) types.Ty
 		exits = append(exits, c.startExit(vars, whenFalse))
 	}
 	if x.Else == nil {
-		if valueUsed {
+		if valueUsed && !c.tailIfs[x] {
 			c.errorf(x.P, "'if' must have both main and 'else' branches if used as an expression")
 			return types.InvalidType
 		}
@@ -3044,9 +3045,7 @@ func (c *Checker) completeBranches(pending []pendingBranch, result, want types.T
 			target = want
 		}
 		if target.K != types.Invalid && !target.HasVars() && (valueUsed || p.open) {
-			trial := p.sys.clone()
-			trial.sub(p.t, target)
-			if trial.ok {
+			if trial := c.branchTrial(p.sys, p.t, target); trial != nil { // see expected.go
 				p.sys = trial
 			}
 		}

@@ -154,7 +154,7 @@ func (c *Checker) erasedSub(ts, us []types.Type) bool {
 }
 
 func (c *Checker) asExpr(x *syntax.As) types.Type {
-	st := c.value(x.X, noWant)
+	st := c.castOperand(x) // see expected.go
 	t := c.checkTarget(x.Ref, st, types.InvalidType, false)
 	x.Target = t
 	if t.K == types.Invalid || st.K == types.Invalid {

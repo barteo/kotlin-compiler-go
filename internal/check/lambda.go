@@ -442,6 +442,8 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 		}
 		bt = c.unitBody(x.Body)
 		c.stubTail(lr)
+	} else if w.ret.K == types.Invalid && len(c.stubs) == 0 && endsInCall(x.Body) && leftBare(x) {
+		bt = c.bareTail(x.Body)
 	} else {
 		bt = c.lambdaBody(x.Body, w.ret)
 	}
@@ -546,7 +548,9 @@ func (c *Checker) lambdaBody(b *syntax.Block, want types.Type) types.Type {
 			valueUsed = true
 			switch e := es.X.(type) {
 			case *syntax.If:
-				valueUsed = hasFinalElse(e)
+				if valueUsed = hasFinalElse(e); valueUsed {
+					c.markTailIfs(e)
+				}
 			case *syntax.When:
 				valueUsed = len(e.Branches) > 0 && e.Branches[len(e.Branches)-1].Else
 				if !valueUsed && e.Subject != nil && want.K != types.Unit {
@@ -580,9 +584,86 @@ func (c *Checker) unitBody(b *syntax.Block) types.Type {
 				}
 				return types.UnitType
 			}
+			if _, ok := es.X.(*syntax.Call); ok && len(c.stubs) == 0 {
+				return c.unitTail(b)
+			}
 		}
 	}
 	return c.block(b, noWant, false)
+}
+
+// unitTail checks the body of a lambda that returns Unit and ends with a
+// call. As in K2, the call expects a Unit, if it can return one: a
+// generic call that can't be inferred on its own infers Unit, as
+// materialize() in run { materialize() } where a Unit is expected.
+func (c *Checker) unitTail(b *syntax.Block) types.Type {
+	var pending []pendingBranch
+	t := c.branch(b, noWant, false, &pending)
+	target := types.UnitType
+	for _, p := range pending {
+		// Not a variable whose bound a Unit isn't within: T of
+		// materializeNumber<T : Number>() isn't inferred.
+		if p.sys != nil && p.sys.boundExcludes(p.t, types.UnitType) {
+			target = noWant
+		}
+	}
+	c.completeBranches(pending, target, noWant, false)
+	if t.K == types.Nothing {
+		return t
+	}
+	return types.UnitType
+}
+
+// bareTail checks the body of a lambda without an expected result type
+// that ends with a call, and that a return@label without a value leaves:
+// one of its results is a Unit, which a generic call that can't be
+// inferred on its own infers, as materialize() in
+// n.let { if (b) return@let; materialize() }, as in K2, which infers the
+// lambda's results together.
+func (c *Checker) bareTail(b *syntax.Block) types.Type {
+	var pending []pendingBranch
+	t := c.branch(b, noWant, true, &pending)
+	if len(pending) == 0 {
+		return t
+	}
+	for _, p := range pending {
+		if p.sys != nil && p.sys.boundExcludes(p.t, types.UnitType) {
+			return c.completeBranches(pending, types.NothingType, noWant, true)
+		}
+	}
+	return c.completeBranches(pending, types.UnitType, noWant, true)
+}
+
+// endsInCall reports whether b's last statement is a call.
+func endsInCall(b *syntax.Block) bool {
+	if n := len(b.Stmts); n > 0 {
+		if es, ok := b.Stmts[n-1].(*syntax.ExprStmt); ok {
+			_, ok := es.X.(*syntax.Call)
+			return ok
+		}
+	}
+	return false
+}
+
+// leftBare reports whether x's body has a return@label without a value
+// that leaves x.
+func leftBare(x *syntax.Lambda) bool {
+	if x.Label == "" {
+		return false
+	}
+	found := false
+	syntax.Inspect(x.Body, func(n any) bool {
+		switch n := n.(type) {
+		case *syntax.Lambda:
+			return n.Label != x.Label
+		case *syntax.Jump:
+			if n.Kind == syntax.RETURN && n.X == nil && n.Label == x.Label {
+				found = true
+			}
+		}
+		return !found
+	})
+	return found
 }
 
 // valueBranches reports whether each branch of an if ends in a value:
@@ -625,6 +706,32 @@ func hasFinalElse(e *syntax.If) bool {
 		}
 	}
 	return false
+}
+
+// markTailIfs records the ifs without else that end the branches of e,
+// the if a lambda ends with, and of the ifs with else they end with: as
+// in Kotlin, they are statements, of type Unit, though e is a value:
+// run { if (a) { if (b) f() } else 1 }.
+func (c *Checker) markTailIfs(e *syntax.If) {
+	for _, b := range []*syntax.Block{e.Then, e.Else} {
+		if b == nil || len(b.Stmts) == 0 {
+			continue
+		}
+		es, ok := b.Stmts[len(b.Stmts)-1].(*syntax.ExprStmt)
+		if !ok {
+			continue
+		}
+		if x, ok := es.X.(*syntax.If); ok {
+			if x.Else == nil {
+				if c.tailIfs == nil {
+					c.tailIfs = map[*syntax.If]bool{}
+				}
+				c.tailIfs[x] = true
+			} else {
+				c.markTailIfs(x)
+			}
+		}
+	}
 }
 
 // resultPos is where a lambda's result is reported: its last expression.

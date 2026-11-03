@@ -876,6 +876,11 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 				}
 			}
 		}
+		if len(maximal) != 1 {
+			if ng := c.nonGenericMaximal(match, x.Args); len(ng) == 1 {
+				maximal = ng
+			}
+		}
 		if i := preferred(len(maximal), x.Args, func(i int) *callee { return &maximal[i].callee }); i >= 0 {
 			best = maximal[i]
 		}
@@ -939,6 +944,9 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			if trial.sub(ft, params[i]); trial.ok {
 				sys = trial
 			}
+		} else if trial := c.onlyRefFit(sys, l, params[i]); trial != nil {
+			// And so does one of whose callables only one fits.
+			sys = trial
 		}
 		sys.lambdas = append(sys.lambdas, pendingLambda{l, params[i], c.argScope(x.Args, i)})
 	}
@@ -1055,16 +1063,17 @@ func (c *Checker) notPropRefs(x *syntax.Call, match []*candidate) []*candidate {
 }
 
 // byRefShape chooses among candidates the only one whose parameters take
-// the types of the arguments that are references ::f to the only function
-// of their name (see eagerRefType), nil if none or several do: bar(::f)
-// for fun f(i: Int) is bar(f: (Int) -> Unit), not bar(f: () -> Unit). A
-// function's result fits a parameter whose result is Unit.
+// the types of the arguments that are callable references, one of the
+// types each may have (see refShapes), nil if none or several do:
+// bar(::f) for fun f(i: Int) is bar(f: (Int) -> Unit), not
+// bar(f: () -> Unit). A function's result fits a parameter whose result
+// is Unit.
 func (c *Checker) byRefShape(x *syntax.Call, match []*candidate) *candidate {
-	refs := map[int]types.Type{}
+	refs := map[int][]types.Type{}
 	for i, a := range x.Args {
 		if l, ok := a.(*syntax.Lambda); ok {
-			if ft, ok := c.eagerRefType(l); ok {
-				refs[i] = ft
+			if ts := c.refShapes(l); len(ts) > 0 {
+				refs[i] = ts
 			}
 		}
 	}
@@ -1073,17 +1082,20 @@ func (c *Checker) byRefShape(x *syntax.Call, match []*candidate) *candidate {
 	}
 	var best *candidate
 	for _, cd := range match {
-		trial := cd.sys.clone()
-		for i, ft := range refs {
-			pt := trial.apply(cd.params[i])
-			if _, r, ok := funcParts(pt); ok && r.K == types.Unit && !r.N {
-				if ps, _, ok := funcParts(ft); ok {
-					ft = c.u.ext.funcs.Type(ps, r)
+		trial := cd.sys
+		for i, ts := range refs {
+			var fit *system
+			for _, ft := range ts {
+				if s, ok := c.refFits(trial, ft, cd.params[i]); ok {
+					fit = s
+					break
 				}
 			}
-			trial.sub(ft, pt)
+			if trial = fit; trial == nil {
+				break
+			}
 		}
-		if !trial.ok {
+		if trial == nil {
 			continue
 		}
 		if best != nil {
@@ -1726,6 +1738,37 @@ func (c *Checker) mostSpecific(f *candidate, cs []*candidate, args []syntax.Expr
 	return true
 }
 
+// nonGenericMaximal returns the most specific of the candidates without
+// type parameters of their own, when none of cs is the most specific: as
+// K2 discriminates generics then, a candidate that isn't generic is more
+// specific than one that is, B.foo() than T.foo() for T : A, T : C on a
+// D : B, C, though neither receiver is a subtype of the other.
+func (c *Checker) nonGenericMaximal(cs []*candidate, args []syntax.Expr) []*candidate {
+	var plain []*candidate
+	for _, cd := range cs {
+		if len(cd.f.TypeParams) == 0 {
+			plain = append(plain, cd)
+		}
+	}
+	if len(plain) == 0 || len(plain) == len(cs) {
+		return nil
+	}
+	for _, a := range args {
+		if l, ok := a.(*syntax.Lambda); ok && l.Ref != nil {
+			// A reference whose result a Runnable would drop is a
+			// Callable<V>'s: schedule(this::flush, ...) (see byRefShape).
+			return nil
+		}
+	}
+	var out []*candidate
+	for _, cd := range plain {
+		if c.mostSpecific(cd, plain, args) {
+			out = append(out, cd)
+		}
+	}
+	return overriddenGiveWay(out)
+}
+
 // overriddenGiveWay drops the candidates among equally specific ones
 // that another one, declared in a subclass of theirs with the same
 // parameters, overrides: Kotlin sees only the override, as value class
@@ -1769,4 +1812,16 @@ func (c *Checker) setDispatch(x *syntax.Call, cl *callee) {
 			m.DispatchThis = th
 		}
 	}
+}
+
+// infixExtOnly reports whether an infix call a name b of a number's or a
+// Char's operator function, which isn't infix, is an extension's: the
+// member isn't a candidate, and 5 rem 2 calls infix fun Int.rem.
+func (c *Checker) infixExtOnly(name string, rt types.Type) bool {
+	for _, f := range c.extCallees(name, rt) {
+		if f.f.Infix {
+			return true
+		}
+	}
+	return false
 }

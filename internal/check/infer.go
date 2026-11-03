@@ -575,6 +575,10 @@ func (s *system) fix(tv *tvar) {
 			}
 		}
 	}
+	if !s.onlyInputOK(tv, val) {
+		s.errs = append(s.errs, inferError{tv.pos, "type inference failed. The value of the type parameter '" + tv.v.Name +
+			"' must be mentioned in input types (argument types, receiver type, or expected type). Try to specify it explicitly."})
+	}
 	tv.fixed = true
 	if s.vals == nil {
 		s.vals = types.Subst{}
@@ -786,4 +790,40 @@ func (s *system) upperHint(v types.Type) types.Type {
 		}
 	}
 	return noWant
+}
+
+// boundExcludes reports whether t is an unfixed variable whose declared
+// bounds u can't be within.
+func (s *system) boundExcludes(t, u types.Type) bool {
+	tv := s.unfixedVar(t)
+	if tv == nil {
+		return false
+	}
+	for _, b := range tv.v.Bounds {
+		if b = s.apply(b); !b.HasVars() && !s.c.subtype(u, b) {
+			return true
+		}
+	}
+	return false
+}
+
+// withinBounds reports whether the proper lower constraints of each
+// unfixed variable are within its declared bounds that are proper.
+func (s *system) withinBounds() bool {
+	for _, tv := range s.vars {
+		if tv.fixed {
+			continue
+		}
+		for _, l := range tv.lower {
+			if l = s.apply(l); l.HasVars() || l.K == types.Invalid {
+				continue
+			}
+			for _, b := range tv.v.Bounds {
+				if b = s.apply(b); !b.HasVars() && !s.c.subtype(l, b) {
+					return false
+				}
+			}
+		}
+	}
+	return true
 }

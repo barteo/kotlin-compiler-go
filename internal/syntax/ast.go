@@ -185,6 +185,8 @@ type TypeParam struct {
 	Reified bool
 	// Annotations are the type parameter's annotations as written.
 	Annotations []Annotation
+	// OnlyInput is set by @kotlin.internal.OnlyInputTypes.
+	OnlyInput bool
 }
 
 type Param struct {

@@ -173,6 +173,9 @@ type Checker struct {
 	funCache   map[funKey][]*types.FunSym
 	levelCache map[funKey][][]*types.FunSym // see kotlinFunLevels
 	errs       []*syntax.Error
+	// tailIfs are ifs without else that end a branch of the if a lambda
+	// ends with: statements, not values (see markTailIfs).
+	tailIfs map[*syntax.If]bool
 	// shadowed are the calls whose implicit receiver a context parameter
 	// shadows, reported once checked (see receiverShadowed).
 	shadowed map[syntax.Expr]shadowedUse
@@ -876,7 +879,7 @@ func (c *Checker) declareTypeParams(decls []*syntax.TypeParam, owner any, allowV
 		if d.Variance != types.Inv && !allowVariance {
 			c.errorf(d.P, "variance annotations are only allowed for type parameters of classes")
 		}
-		d.Sym = &types.TypeParamSym{Name: d.Name, Var: d.Variance, Index: i, Owner: owner, Reified: d.Reified}
+		d.Sym = &types.TypeParamSym{Name: d.Name, Var: d.Variance, Index: i, Owner: owner, Reified: d.Reified, OnlyInput: d.OnlyInput}
 		if d.Reified {
 			if _, fn := owner.(*types.FunSym); !fn {
 				c.errorf(d.P, "only type parameters of inline functions can be reified")
