@@ -231,6 +231,7 @@ var defaultFeatures = map[string]bool{
 	"+BreakContinueInInlineLambdas": true,
 	"+ContextParameters":            true,
 	"+ExplicitBackingFields":        true,
+	"+WhenGuards":                   true,
 }
 
 func slicesContainsFold(vs []string, s string) bool {
