@@ -442,6 +442,8 @@ func (c *Checker) resolveImports() {
 				c.errorf(imp.P, "cannot import on demand from object '%s'", owner.DisplayName())
 			} else if user == nil && owner != nil {
 				memberStars = append(memberStars, imp)
+			} else if a := c.importedAlias(imp.Path); user == nil && a != nil {
+				c.aliasStars = append(c.aliasStars, aliasStar{alias: a, imp: imp})
 			} else if user == nil && !optionalExpectationPackages[imp.Path] {
 				c.errorf(imp.P, "unresolved import: %s.*", imp.Path)
 			}
@@ -455,9 +457,9 @@ func (c *Checker) resolveImports() {
 		if i := strings.LastIndexByte(imp.Path, '.'); i > 0 {
 			pkg, simple = imp.Path[:i], imp.Path[i+1:]
 		}
-		// The program's own declarations come first. Declarations in the
-		// default package can't be imported.
-		if user := c.u.Pkgs[pkg]; user != nil && pkg != "" {
+		// The program's own declarations come first, those of the default
+		// package too: import checkSubtype.
+		if user := c.u.Pkgs[pkg]; user != nil {
 			found := false
 			if cls, ok := user.Classes[simple]; ok {
 				c.imports[alias], found = cls, true
@@ -548,6 +550,9 @@ func (c *Checker) resolveImports() {
 			if n := c.nestedOf(owner, simple); n != nil {
 				c.imports[alias] = n
 				classifiers[alias] = append(classifiers[alias], imp.P)
+			} else if a := owner.Aliases[simple]; a != nil && !owner.External {
+				c.aliasImports[alias] = a // import p.Outer.A of a nested typealias
+				classifiers[alias] = append(classifiers[alias], imp.P)
 			} else {
 				c.memberImports[alias] = memberImport{owner: owner, name: simple, p: imp.P, path: imp.Path}
 			}
@@ -558,6 +563,9 @@ func (c *Checker) resolveImports() {
 		}
 		if pkg == "kotlin" && kotlinTypes[simple] && alias == simple {
 			continue // import kotlin.String: a built-in type, imported by default
+		}
+		if pkg == "kotlin" && builtinFuns[simple] && alias == simple {
+			continue // import kotlin.arrayOfNulls: built in, imported by default
 		}
 		c.errorf(imp.P, "unresolved import: %s", imp.Path)
 	}
@@ -574,26 +582,7 @@ func (c *Checker) resolveImports() {
 	// statics, enum entries too, after the explicit imports, and import
 	// kotlinx.coroutines.CoroutineStart.* a program's enum's entries.
 	for _, imp := range memberStars {
-		owner := c.importOwner(imp.Path)
-		owner.Ensure()
-		c.starOwners = append(c.starOwners, owner)
-		add := func(name string) {
-			if _, ok := c.memberImports[name]; !ok {
-				c.memberImports[name] = memberImport{owner: owner, name: name, p: imp.P, path: imp.Path + "." + name, star: true}
-			}
-		}
-		if !owner.External {
-			for _, name := range owner.Entries {
-				add(name)
-			}
-			continue
-		}
-		for name := range owner.Fields {
-			add(name)
-		}
-		for name := range owner.Statics {
-			add(name)
-		}
+		c.importMembers(c.importOwner(imp.Path), imp)
 	}
 }
 
@@ -680,6 +669,9 @@ func (c *Checker) importOwner(name string) *types.ClassSym {
 func (c *Checker) nestedOf(cls *types.ClassSym, name string) *types.ClassSym {
 	if !cls.External {
 		return cls.Nested[name]
+	}
+	if isEnumEntry(cls, name) {
+		return nil // Foo.FOO is the entry, not its class Foo$FOO
 	}
 	return c.u.ext.class(cls.Name + "$" + name)
 }
@@ -1386,11 +1378,11 @@ func (c *Checker) classRef(x syntax.Expr) *types.ClassSym {
 		}
 		if first := c.findClass(id.Name); first != nil && first.External {
 			// A nested class of a class on the class path: Thread.State.
-			name := first.Name
-			for i := len(parts) - 1; i >= 0; i-- {
-				name += "$" + parts[i]
+			cls := first
+			for i := len(parts) - 1; i >= 0 && cls != nil; i-- {
+				cls = c.nestedOf(cls, parts[i])
 			}
-			if cls := c.u.ext.class(name); cls != nil {
+			if cls != nil {
 				return cls
 			}
 		}
