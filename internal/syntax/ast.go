@@ -432,8 +432,7 @@ type FunDecl struct {
 	// Once names the parameters that the function's contract, which the
 	// checker drops, says it calls exactly once.
 	Once map[string]bool
-	// Implies are the contract's returns(value) implies (p != null) and
-	// (p is T) effects.
+	// Implies are the contract's effects with conditions.
 	Implies []Implies
 	// Plugin is set on a function that kc declares as a compiler plugin
 	// of kotlinc's would: serialization's serializer().
@@ -1063,15 +1062,15 @@ type CharLit struct {
 	Val rune // a UTF-16 code unit
 }
 
-// Implies is a contract's returns(value) implies (p != null) or (p is T)
-// effect: Returns is 1 for returns(true), 0 for returns(false) and -1 for
-// returns(); Param names the parameter, "this" the extension receiver;
-// Is is T, or nil for p != null.
+// Implies is an effect of a contract that the checker reads: Kind
+// returns(value) implies Cond, where Returns is 1 for returns(true), 0
+// for returns(false) and -1 for returns(); Cond implies returnsNotNull();
+// or Cond holdsIn Lambda, a parameter.
 type Implies struct {
+	Kind    types.EffectKind
 	Returns int
-	Param   string
-	Is      *TypeRef
-	Holds   bool // implies (p): p, a Boolean, is true
+	Cond    Expr
+	Lambda  string
 }
 
 type BoolLit struct {
@@ -1269,6 +1268,10 @@ type Call struct {
 	// Reified are the type arguments of a call of the program's inline
 	// function with reified type parameters, set by the checker.
 	Reified []types.Type
+	// Inferred are the type arguments of a call of a function whose
+	// contract implies its argument is of a type with the function's
+	// type parameters, value is T, set by the checker.
+	Inferred []types.Type
 	// Vararg is the type of the array a vararg parameter's arguments are
 	// passed in, with the call's type arguments: Array<out Int> for
 	// listOf(1, 2), whose parameter is vararg elements: T.

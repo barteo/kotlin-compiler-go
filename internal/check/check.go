@@ -1764,6 +1764,7 @@ func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
 	default:
 		sym.Infer = func() { c.inferProp(d) }
 	}
+	c.accessorContracts(d)
 	c.backingFieldType(d, owner)
 }
 

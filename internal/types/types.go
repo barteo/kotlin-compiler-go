@@ -504,7 +504,60 @@ type Effect struct {
 	Returns, Param int
 	Is             *Type
 	Holds          bool // the parameter, a Boolean, is true: its argument's smart casts
+	// Cond is set for a condition other than one of the above: then
+	// Param and Is aren't used.
+	Cond *Cond
+	Kind EffectKind
+	// Lambda is the parameter, of function type, that a HoldsIn effect's
+	// condition holds in.
+	Lambda int
 }
+
+// EffectKind is the kind of a contract's effect.
+type EffectKind int
+
+const (
+	ReturnsImplies EffectKind = iota // returns(value) implies cond
+	ImpliesNotNull                   // cond implies returnsNotNull()
+	HoldsIn                          // cond holdsIn lambda
+)
+
+// Condition returns the effect's condition.
+func (e Effect) Condition() *Cond {
+	if e.Cond != nil {
+		return e.Cond
+	}
+	switch {
+	case e.Holds:
+		return &Cond{Op: CondHolds, Param: e.Param}
+	case e.Is != nil:
+		return &Cond{Op: CondIs, Param: e.Param, Is: e.Is}
+	}
+	return &Cond{Op: CondNotNull, Param: e.Param}
+}
+
+// Cond is the condition of a contract's effect, made of its parameters:
+// Param is the parameter's index, as Effect's.
+type Cond struct {
+	Op    CondOp
+	Param int
+	Is    *Type
+	X, Y  *Cond
+}
+
+// CondOp is the operator of a Cond.
+type CondOp int
+
+const (
+	CondNotNull CondOp = iota // p != null
+	CondIs                    // p is Is
+	CondHolds                 // p, a Boolean
+	CondNot                   // !X
+	CondAnd                   // X && Y
+	CondOr                    // X || Y
+	CondTrue
+	CondFalse
+)
 
 type FunSym struct {
 	Name       string

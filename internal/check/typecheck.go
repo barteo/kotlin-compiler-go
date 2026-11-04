@@ -44,21 +44,7 @@ func (c *Checker) whenIsCheck(x *syntax.When, cond *syntax.WhenCond, st types.Ty
 // classes rather than interfaces. smart is the smart-cast type of x: if
 // both it and T may be null, the check holds for null alone.
 func (c *Checker) impossibleIs(p syntax.Pos, orig, smart, t types.Type, not bool) {
-	if orig.K == types.Invalid || t.K == types.Invalid || c.subtype(orig, t) {
-		return // a useless check, if anything
-	}
-	l, ok1 := c.castInfo(orig, 0)
-	r, ok2 := c.castInfo(t, 0)
-	if !ok1 || !ok2 {
-		return
-	}
-	switch {
-	case l.final || r.final:
-	case l.concrete && r.concrete && l.class && r.class:
-	default:
-		return
-	}
-	if c.erasedSub(l.parts, r.parts) || c.erasedSub(r.parts, l.parts) {
+	if !c.unrelated(orig, t) {
 		return
 	}
 	null := types.MayBeNull(smart) && types.MayBeNull(t)
@@ -74,6 +60,26 @@ func (c *Checker) impossibleIs(p syntax.Pos, orig, smart, t types.Type, not bool
 		return
 	}
 	c.errorf(p, "check for instance is always '%v': %s and %s are incompatible", not, orig, t)
+}
+
+// unrelated reports whether types orig and t, with their type arguments
+// erased, have no common instances but null, as impossibleIs judges.
+func (c *Checker) unrelated(orig, t types.Type) bool {
+	if orig.K == types.Invalid || t.K == types.Invalid || c.subtype(orig, t) {
+		return false // a useless check, if anything
+	}
+	l, ok1 := c.castInfo(orig, 0)
+	r, ok2 := c.castInfo(t, 0)
+	if !ok1 || !ok2 {
+		return false
+	}
+	switch {
+	case l.final || r.final:
+	case l.concrete && r.concrete && l.class && r.class:
+	default:
+		return false
+	}
+	return !c.erasedSub(l.parts, r.parts) && !c.erasedSub(r.parts, l.parts)
 }
 
 // castTypeInfo describes a type, as impossibleIs compares it: the

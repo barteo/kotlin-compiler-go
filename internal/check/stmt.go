@@ -187,6 +187,15 @@ func (c *Checker) narrowAfter(s syntax.Stmt) {
 	case *syntax.Assign:
 		alwaysCasts(s.Value, cast)
 	}
+	c.scope.narrows = append(c.scope.narrows, c.accessorNarrows(s)...)
+	switch s := s.(type) {
+	case *syntax.VarStmt:
+		c.scope.narrows = append(c.scope.narrows, c.returnsNarrows(s.Init)...)
+	case *syntax.Assign:
+		c.scope.narrows = append(c.scope.narrows, c.returnsNarrows(s.Value)...)
+	case *syntax.ExprStmt:
+		c.scope.narrows = append(c.scope.narrows, c.returnsNarrows(s.X)...)
+	}
 	es, ok := s.(*syntax.ExprStmt)
 	if !ok {
 		return
@@ -194,9 +203,6 @@ func (c *Checker) narrowAfter(s syntax.Stmt) {
 	alwaysCasts(es.X, cast)
 	if _, ok := es.X.(*syntax.As); ok {
 		return
-	}
-	if call, ok := es.X.(*syntax.Call); ok {
-		c.scope.narrows = append(c.scope.narrows, c.contractNarrows(call, -1)...)
 	}
 	if call, ok := es.X.(*syntax.Call); ok && len(call.Args) > 0 {
 		// The contracts of require(cond) and check(cond): cond holds
@@ -385,6 +391,22 @@ func (c *Checker) stmt(s syntax.Stmt, valueUsed bool, want types.Type) types.Typ
 		elem := types.IntType
 		if t := c.rangeExpr(s.Range); t.K != types.Range {
 			elem = c.forIterator(s, t)
+			if s.Iter != nil && len(s.Iter.Implies) > 0 {
+				// The contract of the range's iterator(): its returns()
+				// implies cond holds in the loop and after it.
+				site := contractSite{f: s.Iter, arg: func(p int) syntax.Expr {
+					if p == -1 {
+						return s.Range
+					}
+					return nil
+				}}
+				for _, e := range s.Iter.Implies {
+					if e.Kind == types.ReturnsImplies && e.Returns == -1 {
+						t, _ := c.condNarrows(site, e.Condition())
+						c.scope.narrows = append(c.scope.narrows, t...)
+					}
+				}
+			}
 		} else {
 			elem = t.RangeElem()
 		}

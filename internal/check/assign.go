@@ -548,6 +548,12 @@ func (a *assignment) expr(x syntax.Expr, s *daState) {
 			a.expr(x.Y, y)
 			s.mergeMaybe(y)
 		default:
+			if l, ok := x.Y.(*syntax.Lambda); ok && x.Call != nil && len(x.Call.Args) == 1 && x.Call.Args[0] == x.Y && calledOnce(x.Call, 0) {
+				// An operator's lambda operand that its contract says it
+				// calls exactly once: a..{ v = 1; b }.
+				a.inPlace(x.Call, l, s)
+				break
+			}
 			a.expr(x.Y, s)
 		}
 	case *syntax.ClassLit:

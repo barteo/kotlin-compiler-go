@@ -220,6 +220,7 @@ func (c *Checker) resolveExtProp(d *syntax.PropDecl) {
 		sym.Infer = func() { c.inferProp(d) }
 		gs.Infer = func() { ensureVar(sym) }
 	}
+	c.accessorContracts(d)
 	if g.Inline {
 		c.inlineFun(g, nil)
 		if st := d.Setter; st != nil && st.Sym != nil {

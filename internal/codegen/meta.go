@@ -543,7 +543,7 @@ func (g *gen) funMeta(s *metaScope, fd *syntax.FunDecl, owner *types.ClassSym) *
 	for _, e := range sym.Implies {
 		// returns(value) implies (p != null) or (p is T); not (p), which
 		// metadata isn't written for.
-		if e.Holds {
+		if e.Holds || e.Cond != nil || e.Kind != types.ReturnsImplies {
 			continue
 		}
 		im := kmeta.Implies{Returns: kmeta.ReturnsAny, Param: e.Param}

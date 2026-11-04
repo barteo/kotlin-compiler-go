@@ -247,7 +247,16 @@ func (c *Checker) expr1(x syntax.Expr, want types.Type, allowRange bool, sink *s
 			name := strings.TrimPrefix(w.C.Name, "kotlin/")
 			x.Fun.(*syntax.Ident).Name = strings.ToLower(name[:2]) + name[2:] + "Of"
 		}
-		return c.call(x, want, sink)
+		t := c.call(x, want, sink)
+		if x.Sym != nil && len(x.Sym.Implies) > 0 {
+			t = c.returnsNotNull(c.callSite(x), t)
+			if !safeCallOf(x) {
+				// returns() implies cond: cond holds for the code after
+				// the call, as after x!!.
+				c.scope.narrows = append(c.scope.narrows, c.contractNarrows(x, -1)...)
+			}
+		}
+		return t
 	case *syntax.Index:
 		return c.index(x, "get", x.Args, want)
 	case *syntax.NotNull:
@@ -1401,6 +1410,17 @@ func (c *Checker) narrowing(cond syntax.Expr) (whenTrue, whenFalse []narrow) {
 			return append(append(t1[:len(t1):len(t1)], t2...), c.asserted(x.Y)...), c.eitherNarrows(f1, t1, f2)
 		case syntax.ELVIS:
 			return c.elvisNarrowing(x)
+		case syntax.IN, syntax.NOT_IN:
+			if x.Call == nil {
+				break
+			}
+			// x in y, y.contains(x): its contract's returns(true)
+			// implies cond.
+			t, f := c.narrowing(x.Call)
+			if x.Op == syntax.NOT_IN {
+				return f, t
+			}
+			return t, f
 		case syntax.OR:
 			t1, f1 := c.narrowing(x.X)
 			c.push()
@@ -1410,6 +1430,11 @@ func (c *Checker) narrowing(cond syntax.Expr) (whenTrue, whenFalse []narrow) {
 			return c.eitherNarrows(t1, f1, t2), append(append(f1[:len(f1):len(f1)], f2...), c.asserted(x.Y)...)
 		}
 	case *syntax.Unary:
+		if x.Call != nil {
+			// -x, +x or !x, x.unaryMinus(), x.unaryPlus() or x.not():
+			// its contract's returns(true) implies cond.
+			return c.narrowing(x.Call)
+		}
 		if x.Op == syntax.NOT {
 			t, f := c.narrowing(x.X)
 			return f, t
@@ -1422,6 +1447,12 @@ func (c *Checker) narrowing(cond syntax.Expr) (whenTrue, whenFalse []narrow) {
 		}
 		// A contract's returns(true) implies (p != null), and false.
 		return c.contractNarrows(x, 1), c.contractNarrows(x, 0)
+	case *syntax.Member:
+		// A getter's contract: val Any?.isStr: Boolean, returns(true)
+		// implies (this is String).
+		if t, f := c.getterNarrows(x, 1), c.getterNarrows(x, 0); len(t) > 0 || len(f) > 0 {
+			return t, f
+		}
 	case *syntax.Ident:
 		if x.Member == nil && x.Sym != nil {
 			if n, ok := c.conds[x.Sym]; ok {
@@ -1510,72 +1541,259 @@ func (c *Checker) contractNarrows(x *syntax.Call, returns int) []narrow {
 	}
 	var out []narrow
 	for _, e := range f.Implies {
-		if e.Returns != returns {
-			continue
-		}
-		var arg syntax.Expr
-		if e.Param < 0 {
-			m, ok := x.Fun.(*syntax.Member)
-			if !ok || m.Safe {
-				continue
-			}
-			arg = m.X
-		} else if i := e.Param - len(f.Params); i >= 0 {
-			if i < len(x.Ctx) {
-				arg = x.Ctx[i]
-			}
-		} else {
-			for k, a := range x.Args {
-				i := k
-				if k < len(x.ArgMap) {
-					i = x.ArgMap[k]
-				}
-				if i == e.Param {
-					arg = a
-				}
-			}
-		}
-		if arg == nil {
-			continue
-		}
-		if e.Holds {
-			whenTrue, _ := c.narrowing(arg) // check(x is T)
-			out = append(out, whenTrue...)
-			continue
-		}
-		k, ok := c.narrowKeyOf(arg)
-		switch {
-		case !ok:
-		case e.Is != nil:
-			is := *e.Is
-			if is.HasParams() && len(x.Reified) == len(f.TypeParams) {
-				// The call's type arguments: value is R for its R.
-				sub := types.Subst{}
-				for i, tp := range f.TypeParams {
-					sub[tp] = types.Arg{T: x.Reified[i]}
-				}
-				is = sub.Apply(is)
-			}
-			own := func(t types.Type) bool {
-				return t.Has(func(u types.Type) bool { return u.K == types.TypeParam && slices.Contains(f.TypeParams, u.Param()) })
-			}
-			if own(is) && is.K == types.Class && len(is.C.TypeParams) > 0 {
-				// this is Error, of a NetRequestStatus<T>: the arguments
-				// are the argument's, as for x is Error.
-				if t, known, _ := c.bareArgs(is.C, &syntax.TypeRef{Nullable: is.N}, k.t); known {
-					is = t
-				}
-			}
-			if !own(is) && !c.subtype(k.t, is) {
-				k.t = c.isNarrowed(k.t, is)
-				out = append(out, k)
-			}
-		case types.MayBeNull(k.t):
-			k.t = k.t.NonNull()
-			out = append(out, k)
+		if e.Kind == types.ReturnsImplies && e.Returns == returns {
+			t, _ := c.condNarrows(c.callSite(x), e.Condition())
+			out = append(out, t...)
 		}
 	}
 	return out
+}
+
+// contractArg returns the argument of call x for the parameter of its
+// function at index param, as in types.Effect, or nil.
+func contractArg(x *syntax.Call, param int) syntax.Expr {
+	return contractArgOf(x, x.Sym, x.ArgMap, param)
+}
+
+// contractArgOf is contractArg for a call x of f, whose arguments go to
+// the parameters amap gives, before x's Sym and ArgMap are set.
+func contractArgOf(x *syntax.Call, f *types.FunSym, amap []int, param int) syntax.Expr {
+	arg := contractArg1(x, f, amap, param)
+	if ch, ok := arg.(*syntax.Checked); ok && ch.SAM == nil {
+		return ch.X // an operator's operand, checked before its call
+	}
+	return arg
+}
+
+func contractArg1(x *syntax.Call, f *types.FunSym, amap []int, param int) syntax.Expr {
+	if param < 0 {
+		m, ok := x.Fun.(*syntax.Member)
+		if !ok || m.Safe {
+			return nil
+		}
+		return m.X
+	}
+	if i := param - len(f.Params); i >= 0 {
+		if i < len(x.Ctx) {
+			return x.Ctx[i]
+		}
+		return nil
+	}
+	var arg syntax.Expr
+	for k, a := range x.Args {
+		i := k
+		if k < len(amap) {
+			i = amap[k]
+		}
+		if i == param {
+			arg = a
+		}
+	}
+	return arg
+}
+
+// contractSite is a call of a function with a contract: its function,
+// its arguments by parameter, as in types.Effect, and its type
+// arguments.
+type contractSite struct {
+	f     *types.FunSym
+	arg   func(param int) syntax.Expr
+	targs []types.Type
+}
+
+func (c *Checker) callSite(x *syntax.Call) contractSite {
+	targs := x.Reified
+	if targs == nil {
+		targs = x.Inferred
+	}
+	return contractSite{x.Sym, func(p int) syntax.Expr { return contractArg(x, p) }, targs}
+}
+
+// holdsInScope returns sc, the scope that the argument of call x of f
+// for its parameter param, a lambda, is checked in, with the smart casts
+// of the condition that f's contract says holds in it: cond holdsIn
+// block. amap gives the parameter each argument is passed to, if not the
+// one at its position, and targs the call's type arguments, if known.
+func (c *Checker) holdsInScope(x *syntax.Call, f *types.FunSym, amap []int, param int, targs []types.Type, sc *scope) *scope {
+	if f == nil || len(f.Implies) == 0 {
+		return sc
+	}
+	site := contractSite{f, func(p int) syntax.Expr { return contractArgOf(x, f, amap, p) }, targs}
+	var ns []narrow
+	for _, e := range f.Implies {
+		if e.Kind == types.HoldsIn && e.Lambda == param {
+			saved := c.scope
+			c.scope = sc
+			t, _ := c.condNarrows(site, e.Condition())
+			c.scope = saved
+			ns = append(ns, t...)
+		}
+	}
+	if ns == nil {
+		return sc
+	}
+	return &scope{parent: sc, narrows: ns, depth: sc.depth}
+}
+
+// condNarrows returns the smart casts of the arguments of call x that
+// its function's contract's condition cond implies when it holds, and
+// when it doesn't.
+func (c *Checker) condNarrows(x contractSite, cond *types.Cond) (whenTrue, whenFalse []narrow) {
+	f := x.f
+	switch cond.Op {
+	case types.CondNot:
+		t, fl := c.condNarrows(x, cond.X)
+		return fl, t
+	case types.CondAnd:
+		t1, f1 := c.condNarrows(x, cond.X)
+		c.push()
+		c.scope.narrows = t1
+		t2, f2 := c.condNarrows(x, cond.Y)
+		c.pop()
+		return append(t1[:len(t1):len(t1)], t2...), c.eitherNarrows(f1, t1, f2)
+	case types.CondOr:
+		t1, f1 := c.condNarrows(x, cond.X)
+		c.push()
+		c.scope.narrows = f1
+		t2, f2 := c.condNarrows(x, cond.Y)
+		c.pop()
+		return c.eitherNarrows(t1, f1, t2), append(f1[:len(f1):len(f1)], f2...)
+	case types.CondTrue, types.CondFalse:
+		return nil, nil
+	}
+	arg := x.arg(cond.Param)
+	if arg == nil {
+		return nil, nil
+	}
+	if cond.Op == types.CondHolds {
+		return c.narrowing(arg) // check(x is T)
+	}
+	k, ok := c.narrowKeyOf(arg)
+	if !ok {
+		return nil, nil
+	}
+	if cond.Op == types.CondNotNull {
+		if !types.MayBeNull(k.t) {
+			return nil, nil
+		}
+		null := k
+		null.t = types.NullType
+		k.t = k.t.NonNull()
+		return []narrow{k}, []narrow{null}
+	}
+	is := *cond.Is
+	targs := x.targs
+	if is.HasParams() && len(targs) == len(f.TypeParams) {
+		// The call's type arguments: value is R for its R.
+		sub := types.Subst{}
+		for i, tp := range f.TypeParams {
+			sub[tp] = types.Arg{T: targs[i]}
+		}
+		is = sub.Apply(is)
+	}
+	own := func(t types.Type) bool {
+		return t.Has(func(u types.Type) bool { return u.K == types.TypeParam && slices.Contains(f.TypeParams, u.Param()) })
+	}
+	if own(is) && is.K == types.Class && len(is.C.TypeParams) > 0 {
+		// this is Error, of a NetRequestStatus<T>: the arguments
+		// are the argument's, as for x is Error.
+		if t, known, _ := c.bareArgs(is.C, &syntax.TypeRef{Nullable: is.N}, k.t); known {
+			is = t
+		}
+	}
+	if !own(is) && !c.subtype(k.t, is) {
+		k.t = c.isNarrowed(k.t, is)
+		return []narrow{k}, nil
+	}
+	return nil, nil
+}
+
+// returnsNotNull returns t, the type of call x, made non-null if the
+// contract of its function says it returns non-null when a condition
+// holds that the types of x's arguments show does: cond implies
+// returnsNotNull().
+func (c *Checker) returnsNotNull(x contractSite, t types.Type) types.Type {
+	if x.f == nil || !types.MayBeNull(t) {
+		return t
+	}
+	for _, e := range x.f.Implies {
+		if e.Kind == types.ImpliesNotNull {
+			if v, known := c.condHolds(x, e.Condition()); known && v {
+				return t.NonNull()
+			}
+		}
+	}
+	return t
+}
+
+// condHolds evaluates cond for the arguments of a call x by their types:
+// whether it holds, and whether that is known.
+func (c *Checker) condHolds(x contractSite, cond *types.Cond) (v, known bool) {
+	switch cond.Op {
+	case types.CondTrue:
+		return true, true
+	case types.CondFalse:
+		return false, true
+	case types.CondNot:
+		v, known := c.condHolds(x, cond.X)
+		return !v, known
+	case types.CondAnd, types.CondOr:
+		and := cond.Op == types.CondAnd
+		v1, k1 := c.condHolds(x, cond.X)
+		if k1 && v1 != and {
+			return v1, true // false && y, true || y
+		}
+		v2, k2 := c.condHolds(x, cond.Y)
+		if k2 && v2 != and {
+			return v2, true
+		}
+		return and, k1 && k2
+	}
+	arg := x.arg(cond.Param)
+	if arg == nil {
+		return false, false
+	}
+	t := arg.Type()
+	if k, ok := c.narrowKeyOf(arg); ok {
+		t = k.t
+	}
+	if t.K == types.Invalid {
+		return false, false
+	}
+	switch cond.Op {
+	case types.CondHolds:
+		if b, ok := arg.(*syntax.BoolLit); ok {
+			return b.Val, true
+		}
+		return false, false
+	case types.CondNotNull:
+		if !types.MayBeNull(t) {
+			return true, true
+		}
+		if t.NonNull().K == types.Nothing {
+			return false, true // null
+		}
+		return false, false
+	}
+	is := *cond.Is
+	if is.HasParams() && len(x.targs) == len(x.f.TypeParams) {
+		// The call's type arguments: value is T for its T.
+		sub := types.Subst{}
+		for i, tp := range x.f.TypeParams {
+			sub[tp] = types.Arg{T: x.targs[i]}
+		}
+		is = sub.Apply(is)
+	}
+	if is.HasParams() || is.HasVars() {
+		return false, false
+	}
+	if c.subtype(t, is) {
+		return true, true
+	}
+	if c.unrelated(t, is) && !(types.MayBeNull(t) && types.MayBeNull(is)) {
+		return false, true
+	}
+	return false, false
 }
 
 // asserted returns the smart casts of the x!! that evaluating x runs

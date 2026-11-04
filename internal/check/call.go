@@ -397,10 +397,37 @@ func (c *Checker) args(x *syntax.Call, cl *callee) []types.Type {
 		var f *types.FunSym
 		if cl != nil {
 			want, f = cl.argType(i, x.Args), cl.f
+			if _, ok := x.Args[i].(*syntax.Lambda); ok {
+				// One with the smart casts of a condition that holds in
+				// it, as f's contract says: cond holdsIn block.
+				saved := c.scope
+				c.scope = c.holdsInScope(x, f, cl.amap, cl.paramIndex(i), nil, saved)
+				ts[i] = c.argValue(&x.Args[i], want, f)
+				c.scope = saved
+				continue
+			}
 		}
 		ts[i] = c.argValue(&x.Args[i], want, f)
 	}
 	return ts
+}
+
+// typeArgsSoFar returns the type arguments of a call of f that sub and
+// s give before the call's variables are fixed, or nil if any is not yet
+// known: those given explicitly, as String of runIfIs<String>(x) { }.
+func (c *Checker) typeArgsSoFar(f *types.FunSym, sub types.Subst, s *system) []types.Type {
+	if len(f.TypeParams) == 0 {
+		return nil
+	}
+	targs := make([]types.Type, len(f.TypeParams))
+	for i, tp := range f.TypeParams {
+		t := s.apply(sub.Apply(types.ParamType(tp)))
+		if t.HasVars() {
+			return nil
+		}
+		targs[i] = t
+	}
+	return targs
 }
 
 // captured returns the type final that a generic parameter param was
@@ -966,7 +993,7 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 		} else if trial := c.typedLambdaParams(sys, l, params[i]); trial != nil {
 			sys = trial
 		}
-		sys.lambdas = append(sys.lambdas, pendingLambda{l, params[i], c.argScope(x.Args, i)})
+		sys.lambdas = append(sys.lambdas, pendingLambda{l, params[i], c.holdsInScope(x, f, best.amap, best.paramIndex(i), c.typeArgsSoFar(f, best.sub, sys), c.argScope(x.Args, i))})
 	}
 	if best.ext.K != types.Invalid {
 		recvParam := best.sub.ApplyIn(f.Recv)
@@ -991,6 +1018,13 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 	}
 	if hasReified(f) {
 		sys.fixups = append(sys.fixups, func(s *system) { c.reifiedArgs(x, f, best.sub, s) })
+	} else if impliesOwnType(f) {
+		sys.fixups = append(sys.fixups, func(s *system) {
+			x.Inferred = make([]types.Type, len(f.TypeParams))
+			for i, tp := range f.TypeParams {
+				x.Inferred[i] = s.final(best.sub.Apply(types.ParamType(tp)))
+			}
+		})
 	}
 	if targs != nil {
 		sys.fixups = append(sys.fixups, func(s *system) { c.typeArgBounds(x, best, targs, s) })
