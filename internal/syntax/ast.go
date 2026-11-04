@@ -971,6 +971,10 @@ type Expr interface {
 type exprBase struct {
 	P Pos
 	T types.Type
+	// Paren is set on a safe call, or an index of one, written in
+	// parentheses, which end its chain: (a?.b)[i] indexes a nullable
+	// value, where a?.b[i] is a?.b?.get(i). See Parenthesized.
+	Paren bool
 }
 
 func (e *exprBase) Pos() Pos             { return e.P }
@@ -1190,7 +1194,6 @@ type Member struct {
 	// that isn't null, before ?. makes it nullable. A safe call's index,
 	// a?.b[i], is of the chain only if it is not nullable.
 	SafeT types.Type
-
 	// Object is set when the member access names an object, or a class's
 	// companion object, used as a value: Outer.Companion, a.b.Obj.
 	Object *types.ClassSym

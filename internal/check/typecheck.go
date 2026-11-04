@@ -398,6 +398,8 @@ func (c *Checker) narrowSym(x syntax.Expr) *types.VarSym {
 		return c.this
 	case *syntax.NotNull:
 		return c.narrowSym(x.X) // a!!.b is a.b
+	case *syntax.Checked:
+		return c.narrowSym(x.X) // a temporary's value: val t = a in a?.b = v
 	case *syntax.Member:
 		// a.b.c is stable if a.b is: a stable property of a val. So is
 		// a?.b.c, which is a.b.c where a isn't null.

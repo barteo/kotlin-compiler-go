@@ -436,16 +436,25 @@ func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.
 
 	if n := len(forms); w.known && n > 0 {
 		// An array parameter may be a vararg's, the last one's first:
-		// f(*a), f(*a, b = c).
+		// f(*a), f(*a, b = c). As in Kotlin, one in the vararg's place
+		// is, before it is one of its elements: an Array<out Any> for a
+		// vararg of Any; one in another place is an element.
 		last := forms[n-1]
+		pos, known := c.refVarargPos(r)
+		var spreads []refForm
 		for i := len(w.params) - 1; i >= 0; i-- {
-			if w.params[i].NonNull().IsArray() {
-				forms = append(forms, refForm{params: last.params, suspend: last.suspend, body: func() syntax.Expr {
+			if w.params[i].NonNull().IsArray() && (!known || i == pos) {
+				spreads = append(spreads, refForm{params: last.params, suspend: last.suspend, body: func() syntax.Expr {
 					spread = i
 					defer func() { spread = -1 }()
 					return last.body()
 				}})
 			}
+		}
+		if known {
+			forms = append(append(forms[:n-1:n-1], spreads...), last)
+		} else {
+			forms = append(forms, spreads...)
 		}
 	}
 

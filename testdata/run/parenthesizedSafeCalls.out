@@ -1,0 +1,28 @@
+arg?.alias[42] = arg => set: member
+arg?.alias[42] += "" => plusAssign: member
+arg?.alias[42]++ => set: member
+++arg?.alias[42] => get: member
+(arg?.alias)[42] => get: extension
+(arg?.alias)[42] = arg => set: extension
+(arg?.alias) += "" => plusAssign: extension
+(arg?.alias)("") => invoke: extension
+(arg?.alias)[42] += "" => plusAssign: extension
+(arg?.alias[42]) += "" => plusAssign: extension
+(arg?.alias[42])++ => set: extension
+++(arg?.alias[42]) => get: extension
+++foo[1] => get: member
+(foo.alias) += "" => plusAssign: member
+arg?.alias[42] = arg => none
+arg?.alias[42] += "" => none
+arg?.alias[42]++ => none
+++arg?.alias[42] => none
+(arg?.alias)[42] => get: extension
+(arg?.alias)[42] = arg => set: extension
+(arg?.alias) += "" => plusAssign: extension
+(arg?.alias)("") => invoke: extension
+(arg?.alias)[42] += "" => plusAssign: extension
+(arg?.alias[42]) += "" => plusAssign: extension
+(arg?.alias[42])++ => set: extension
+++(arg?.alias[42]) => get: extension
+++foo[1] => get: member
+(foo.alias) += "" => plusAssign: member

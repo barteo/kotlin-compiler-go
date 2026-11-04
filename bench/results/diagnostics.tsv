@@ -2977,36 +2977,36 @@ tests/enum/constructorWithDefaultParametersOnly.kt	rejects invalid	on an expecte
 tests/enum/dontCreatePackageTypeForEnumEntry.kt	rejects invalid	on an expected line	
 tests/enum/emptyConstructor.kt	accepts valid		
 tests/enum/entries/conflictingPropertyEntriesAndReferenceOn.kt	skip	LANGUAGE	
-tests/enum/entries/conflictingPropertyEntriesAndReferencePrioritized.kt	skip	LANGUAGE	
+tests/enum/entries/conflictingPropertyEntriesAndReferencePrioritized.kt	accepts valid		
 tests/enum/entries/entriesPropertyAsExtensionClashOn.kt	skip	LANGUAGE	
-tests/enum/entries/entriesPropertyAsExtensionClashPrioritized.kt	skip	LANGUAGE	
+tests/enum/entries/entriesPropertyAsExtensionClashPrioritized.kt	accepts valid		
 tests/enum/entries/entriesPropertyImport.kt	skip	LANGUAGE	
-tests/enum/entries/entriesPropertyImportPrioritized.kt	skip	LANGUAGE	
+tests/enum/entries/entriesPropertyImportPrioritized.kt	rejects invalid	on an expected line	
 tests/enum/entries/entriesPropertyImportedClashOn.kt	skip	LANGUAGE	
-tests/enum/entries/entriesPropertyImportedClashPrioritized.kt	skip	LANGUAGE	
+tests/enum/entries/entriesPropertyImportedClashPrioritized.kt	accepts valid		
 tests/enum/entries/entriesPropertyInCompanionClashOn.kt	skip	LANGUAGE	
-tests/enum/entries/entriesPropertyInCompanionClashPrioritized.kt	skip	LANGUAGE	
+tests/enum/entries/entriesPropertyInCompanionClashPrioritized.kt	rejects invalid	on an expected line	
 tests/enum/entries/entriesPropertyWithJvmStaticClashOn.kt	skip	LANGUAGE	
-tests/enum/entries/entriesPropertyWithJvmStaticClashPrioritized.kt	skip	LANGUAGE	
+tests/enum/entries/entriesPropertyWithJvmStaticClashPrioritized.kt	accepts valid		
 tests/enum/entries/enumEntriesAmbiguity.kt	skip	LANGUAGE	
 tests/enum/entries/enumEntriesAmbiguityForbidden.kt	skip	LANGUAGE	
 tests/enum/entries/enumEntriesAmbiguityPrioritized.kt	skip	LANGUAGE	
 tests/enum/entries/genericEntriesPropertyClashOn.kt	skip	LANGUAGE	
-tests/enum/entries/genericEntriesPropertyClashPrioritized.kt	skip	LANGUAGE	
-tests/enum/entries/javaEnumAdditionalCases.kt	skip	LANGUAGE	
+tests/enum/entries/genericEntriesPropertyClashPrioritized.kt	rejects invalid	on an expected line	
+tests/enum/entries/javaEnumAdditionalCases.kt	skip	Java sources	
 tests/enum/entries/javaEnumEntriesAmbiguityForbidden.kt	skip	LANGUAGE	
 tests/enum/entries/javaEnumEntriesAmbiguityOn.kt	skip	LANGUAGE	
 tests/enum/entries/javaEnumEntriesAmbiguityPrioritized.kt	skip	LANGUAGE	
 tests/enum/entries/javaFakeEnumEntries.kt	skip	Java sources	
 tests/enum/entries/nameShadowingOfExternallyDefinedEntriesOn.kt	skip	LANGUAGE	
-tests/enum/entries/nameShadowingOfExternallyDefinedEntriesPrioritized.kt	skip	LANGUAGE	
+tests/enum/entries/nameShadowingOfExternallyDefinedEntriesPrioritized.kt	rejects invalid	on an expected line	
 tests/enum/entries/primitiveReference.kt	rejects valid	unresolved reference: _	primitiveReference.kt:6: unresolved reference: entries
 tests/enum/entries/redeclarationOfEnumEntriesNameWithIntrinsicOn.kt	skip	LANGUAGE	
 tests/enum/entries/redeclarationOfEnumEntriesNameWithIntrinsicPrioritized.kt	skip	LANGUAGE	
 tests/enum/entries/referenceFalsePositiveWarnings.kt	skip	LANGUAGE	
-tests/enum/entries/referenceFalsePositiveWarningsPrioritized.kt	skip	LANGUAGE	
+tests/enum/entries/referenceFalsePositiveWarningsPrioritized.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	referenceFalsePositiveWarningsPrioritized.kt:17: type mismatch: inferred type is KProperty1<E, Int> but KProperty0<EnumEntries<E>> was expected
 tests/enum/entries/toBeShadowed.kt	skip	LANGUAGE	
-tests/enum/entries/toBeShadowedPrioritized.kt	skip	LANGUAGE	
+tests/enum/entries/toBeShadowedPrioritized.kt	accepts valid		
 tests/enum/entryShouldBeOfEnumType.kt	accepts valid		
 tests/enum/enumEntryCannotHaveClassObject.kt	rejects invalid	on an expected line	
 tests/enum/enumEntryInAbstractEnum.kt	rejects invalid	on an expected line	
@@ -4329,11 +4329,11 @@ tests/inference/lambdaInValInitializerWithAnonymousFunctions.kt	rejects invalid	
 tests/inference/lambdaParameterTypeInElvis.kt	accepts valid		
 tests/inference/lambdaWithoutExpectedType.kt	accepts valid		
 tests/inference/lambdasReturns.kt	accepts valid		
-tests/inference/lambdasReturnsShareCS.kt	skip	LANGUAGE	
+tests/inference/lambdasReturnsShareCS.kt	accepts valid		
 tests/inference/lambdasReturnsShareCSFeatureDisabled.kt	skip	LANGUAGE	
 tests/inference/lambdasWithExplicitParametersViaReceivers.kt	rejects invalid	on an expected line	
 tests/inference/lambdasWithExplicitParametersViaReceiversFeatureDisabled.kt	skip	LANGUAGE	
-tests/inference/lambdasWithExplicitParametersViaReceiversFeatureEnabled.kt	skip	LANGUAGE	
+tests/inference/lambdasWithExplicitParametersViaReceiversFeatureEnabled.kt	rejects invalid	on an expected line	
 tests/inference/lambdasWithExplicitParametersWithContexts.kt	rejects invalid	on an expected line	
 tests/inference/listConstructor.kt	accepts valid		
 tests/inference/localFunctionInsideIfBlock.kt	accepts valid		
@@ -4653,7 +4653,7 @@ tests/inference/pcla/memberScopeOfCapturedTypeForPostponedCall.kt	accepts valid
 tests/inference/pcla/multiLambdaRestriction.kt	skip	LANGUAGE	
 tests/inference/pcla/multiLambdaRestrictionDisabled.kt	skip	LANGUAGE	
 tests/inference/pcla/namedArgumentToBeResolved.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	namedArgumentToBeResolved.kt:17: cannot infer type for type parameter 'Failure'. Specify it explicitly.
-tests/inference/pcla/namedArgumentTypeSubstitution.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	namedArgumentTypeSubstitution.kt:25: cannot infer type for type parameter 'T'. Specify it explicitly.
+tests/inference/pcla/namedArgumentTypeSubstitution.kt	accepts valid		
 tests/inference/pcla/nestedLambdaWithLastLambdaContainingCall.kt	accepts valid		
 tests/inference/pcla/nestedLambdaWithNonLastYieldStatement.kt	accepts valid		
 tests/inference/pcla/nestedLambdasWithOverloadResolutionByReturnType.kt	accepts valid		
@@ -4876,7 +4876,7 @@ tests/inference/reportingImprovements/wrongArgumentExtensionFunction.kt	rejects 
 tests/inference/reportingImprovements/wrongArgumentPassedToLocalExtensionFunction.kt	rejects invalid	on an expected line	
 tests/inference/resolveWithUnknownLambdaParameterType.kt	rejects invalid	on an expected line	
 tests/inference/returningLambdaInSuspendContext.kt	rejects invalid	on an expected line	
-tests/inference/samConversionTopLevel.kt	skip	LANGUAGE	
+tests/inference/samConversionTopLevel.kt	accepts valid		
 tests/inference/samConversionTopLevelFeatureDisabled.kt	skip	LANGUAGE	
 tests/inference/selectOfLambdaWithExtension.kt	accepts valid		
 tests/inference/selfTypeFromJava.kt	skip	Java sources	
@@ -6211,7 +6211,7 @@ tests/multiplatform/ambiguousActualsJavaPrimitiveIntTypeVsIntegerObject.kt	skip	
 tests/multiplatform/annotationArgArrayVsOutArray.kt	skip	modules with friends or dependsOn	
 tests/multiplatform/annotationArgArrayVsVararg.kt	skip	modules with friends or dependsOn	
 tests/multiplatform/annotationArgTypeAliasWithArray.kt	skip	Java sources	
-tests/multiplatform/arrayLimitationsInJvm.kt	skip	LANGUAGE	
+tests/multiplatform/arrayLimitationsInJvm.kt	skip	modules with friends or dependsOn	
 tests/multiplatform/arraySort.kt	skip	modules with friends or dependsOn	
 tests/multiplatform/arraySortFixed.kt	skip	modules with friends or dependsOn	
 tests/multiplatform/callConflictsOnExpectAndActualWeaklyCompatible.kt	skip	modules with friends or dependsOn	
@@ -7877,7 +7877,7 @@ tests/samConversions/samConversionToGenericWrongNullabilityForbidden.kt	skip	LAN
 tests/samConversions/samConversionToGenericWrongNullabilityForbiddenAndNoFlexible.kt	skip	LANGUAGE	
 tests/samConversions/samConversionWithCallableReference.kt	skip	LANGUAGE	
 tests/samConversions/samConversionWithCallableReferencePreciseLowerConstraints.kt	skip	LANGUAGE	
-tests/samConversions/samConversionWithCondition.kt	rejects valid	cannot infer a type for this parameter. Please specify it explicitly.	samConversionWithCondition.kt:5: cannot infer a type for this parameter. Please specify it explicitly.
+tests/samConversions/samConversionWithCondition.kt	accepts valid		
 tests/samConversions/samConversionWithConditionJava.kt	skip	Java sources	
 tests/samConversions/samConversionWithJavaFlexibleType.kt	skip	LANGUAGE	
 tests/samConversions/samConversionWithJavaFlexibleTypePreciseLowerConstraints.kt	skip	LANGUAGE	
@@ -9076,7 +9076,7 @@ tests/typealias/functionTypeInTypeAlias.kt	accepts valid
 tests/typealias/functionalTypeWithParameterNameVisibility.kt	rejects invalid	on an expected line	
 tests/typealias/genericTypeAliasConstructor.kt	accepts valid		
 tests/typealias/genericTypeAliasObject.kt	accepts valid		
-tests/typealias/illegalTypeInTypeAliasExpansion.kt	skip	LANGUAGE	
+tests/typealias/illegalTypeInTypeAliasExpansion.kt	accepts invalid	TYPEALIAS_EXPANDS_TO_ARRAY_OF_NOTHINGS; UNSUPPORTED	illegalTypeInTypeAliasExpansion.kt:7: TYPEALIAS_EXPANDS_TO_ARRAY_OF_NOTHINGS
 tests/typealias/illegalTypeInTypeAliasExpansionDisabled.kt	skip	LANGUAGE	
 tests/typealias/import.kt	accepts valid		
 tests/typealias/importForTypealiasObject.kt	accepts valid		
@@ -9559,7 +9559,7 @@ testsWithAnyBackend/recursionCycleWithStdlibCall.kt	rejects invalid	on an expect
 testsWithAnyBackend/suspendInlineCycle.kt	rejects invalid	on an expected line	
 testsWithAnyBackend/transitiveInlineCycle.kt	rejects invalid	on an expected line	
 testsWithJvmBackend/companionBlocksAndExtensions/conflictsStatic.kt	skip	LANGUAGE	
-testsWithStdLib/ArrayOfNothing.kt	skip	LANGUAGE	
+testsWithStdLib/ArrayOfNothing.kt	accepts invalid	UNSUPPORTED; REIFIED_TYPE_FORBIDDEN_SUBSTITUTION; TYPE_PARAMETER_AS_REIFIED_ARRAY_ERROR	ArrayOfNothing.kt:12: UNSUPPORTED
 testsWithStdLib/ArrayOfNothingDisabled.kt	skip	LANGUAGE	
 testsWithStdLib/CallCompanionProtectedNonStatic.kt	rejects invalid	on an expected line	
 testsWithStdLib/CallToMainRedeclaredInMultiFile.kt	rejects invalid	on an expected line	
@@ -10705,7 +10705,7 @@ testsWithStdLib/reified/arrayConstruction.kt	rejects invalid	on an expected line
 testsWithStdLib/reified/arrayOfNullsReified.kt	rejects invalid	on an expected line	
 testsWithStdLib/reified/kt11881.kt	rejects invalid	on an expected line	
 testsWithStdLib/reified/nonCallableReiefied.kt	accepts valid		
-testsWithStdLib/reified/reifiedNothingSubstitution.kt	skip	LANGUAGE	
+testsWithStdLib/reified/reifiedNothingSubstitution.kt	accepts invalid	REIFIED_TYPE_FORBIDDEN_SUBSTITUTION; UNSUPPORTED	reifiedNothingSubstitution.kt:10: REIFIED_TYPE_FORBIDDEN_SUBSTITUTION
 testsWithStdLib/reified/reifiedNothingSubstitutionDisabled.kt	skip	LANGUAGE	
 testsWithStdLib/reinitializations/constructorVarWrite.kt	rejects valid	val cannot be reassigned	constructorVarWrite.kt:5: val cannot be reassigned
 testsWithStdLib/removeIf.kt	accepts valid		
@@ -10719,7 +10719,7 @@ testsWithStdLib/resolve/ambiguousTypeReferences/constructorCase.kt	skip	Java sou
 testsWithStdLib/resolve/ambiguousTypeReferences/constructorCaseSpace.kt	skip	Java sources	
 testsWithStdLib/resolve/ambiguousTypeReferences/constructorVsCompanionMember.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	constructorVsCompanionMember.kt:24: type mismatch: inferred type is Unit but Owner.Companion.Foo was expected
 testsWithStdLib/resolve/ambiguousTypeReferences/constructorVsSyntheticValues.kt	skip	LANGUAGE	
-testsWithStdLib/resolve/ambiguousTypeReferences/constructorVsSyntheticValuesPrioritized.kt	skip	LANGUAGE	
+testsWithStdLib/resolve/ambiguousTypeReferences/constructorVsSyntheticValuesPrioritized.kt	accepts invalid	OVERLOAD_RESOLUTION_AMBIGUITY	constructorVsSyntheticValuesPrioritized.kt:15: OVERLOAD_RESOLUTION_AMBIGUITY
 testsWithStdLib/resolve/ambiguousTypeReferences/constructorVsTopLevel.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	Foo.kt:9: type mismatch: inferred type is Unit but Foo was expected
 testsWithStdLib/resolve/ambiguousTypeReferences/qualifierEnumEntryOrCompanionMemberCase.kt	skip	Java sources	
 testsWithStdLib/resolve/ambiguousTypeReferences/qualifierEnumEntryOrCompanionMemberCase2.kt	skip	Java sources	
