@@ -13,6 +13,7 @@ libraries. Earlier runs are in this file's git history.
 | `bench/ktor-time.sh` | Ktor 3.6.0: `ktor-io`, `ktor-utils`, `ktor-http` | `time-ktor.md` |
 | `bench/profile.sh [N]` | generated project, profiling `kotlinc` | `phases-N.md` |
 | `bench/runtime.sh` | `bench/runtime/Bench.kt`, run after compiling | `runtime.md` |
+| `bench/ring.sh` | JetBrains' ring micro-benchmarks, run under JMH | `ring.md` |
 
 ```sh
 bench/run.sh                                                  # 200 files, about 1 minute
@@ -20,6 +21,7 @@ COOLDOWN=30 SIZES="100 1000" RUNS=1 WARM_RUNS=4 bench/run.sh  # the results belo
 COOLDOWN=10 RUNS=5 WARM_RUNS=20 bench/kotlinpoet-time.sh      # also coroutines-time.sh, ktor-time.sh
 ITERS=10 BACKEND_THREADS=1 bench/profile.sh 500               # about 12 minutes
 bench/runtime.sh                                              # speed of the generated code, about 30 s
+bench/ring.sh                                                 # the same, JetBrains' benchmarks, about 15 minutes
 ```
 
 Each script times four commands with hyperfine:
@@ -104,6 +106,41 @@ the speed of `kotlinc`'s on most workloads (0.7–1.03x its time) but takes
 lambdas take and return boxed values
 ([Differences from kotlinc](unsupported.md#differences-from-kotlinc)),
 which the JIT doesn't remove. The geometric mean is 1.12x.
+
+`bench/ring.sh` runs a suite that isn't ours: the "ring" micro-benchmarks
+of Kotlin's own performance suite (`kotlin-native/performance/ring` in
+JetBrains/kotlin), 200 benchmarks of calls, lambdas, loops, collections,
+strings, `when` and small programs (DeltaBlue, Richards). They are
+written for Kotlin/Native and kotlinx-benchmark, whose annotations on the
+JVM are JMH's. The script leaves out the 7 files that need
+Kotlin/Native, compiles the other 45 with both compilers, opens the
+`@State` classes as kotlinx-benchmark's all-open plugin would, generates
+JMH's harness from each build's class files, and runs both under JMH
+(`FILTER` picks benchmarks by regexp; `FORKS`, `WARMUP`, `ITERS` and
+`TIME` set the JMH runs).
+
+On the same machine ([ring.md](../bench/results/ring.md)), with one fork
+of 5 warmup and 5 measured iterations of 200 ms, `kc`'s code is within
+10% of `kotlinc`'s on 149 of the 200, more than 10% slower on 39 and more
+than 10% faster on 12; the geometric mean is 1.24x. The large ratios come
+from a few things `kc` writes differently:
+
+- A call to a generic interface method on a class that implements it
+  with a primitive type calls the boxing bridge, `get(I)Ljava/lang/Integer;`
+  instead of `get(I)I` (`GenericArrayView`, 36–161x).
+- `for (i in array.indices)` builds an `IntRange` and calls the boxing
+  `IntIterator.next()`, where `kotlinc` writes a counted loop
+  (`ForLoops.intArrayIndicesLoop` 8.9x, `uIntArrayIndicesLoop` 6.5x).
+- Inlined lambdas box their arguments (`IntArray.countFilteredSome`
+  6.6x, `ClassList.countWithLambda` 12x, `Euler`).
+- A `when` over an enum calls `equals` rather than switching on the
+  ordinal (`Switch.testEnumsSwitch` 5.8x). On the other hand, `kc`'s
+  `when` over `Int` constants is 2–4x faster than `kotlinc`'s here
+  (`testDenseIntSwitch`, `testConstSwitch`).
+
+Not all of it is explained yet: in `Iterator.abstractIterable` (21x)
+both compilers write the same calls in the loop, so the difference is
+elsewhere in the method or in how the JIT treats it.
 
 ## Where kotlinc's time goes
 

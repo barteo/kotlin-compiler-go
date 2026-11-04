@@ -132,7 +132,7 @@ while [ "$i" -le "$forks" ]; do
 		java -cp "$work/harness-$c:$work/out-$c:$jmh_cp:$stdlib" org.openjdk.jmh.Main \
 			-f 1 -wi "$warmup" -w "$time" -i "$iters" -r "$time" -bm avgt -tu ns \
 			-jvmArgs "$jvm_opts" -rf json -rff "$work/runs/$c-$i.json" $filter 2>/dev/null |
-			grep '^# Benchmark:' || true
+			grep --line-buffered '^# Benchmark:' || true
 	done
 	i=$((i + 1))
 done
