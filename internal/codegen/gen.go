@@ -2560,10 +2560,11 @@ func (g *gen) staticInit(cd *syntax.ClassDecl) {
 			f := e.Call.Sym
 			d := "(Ljava/lang/String;I" + ctorJVMDesc(f)[1:]
 			var mask argMask
-			if hasHandlers(e.Call.Args) {
-				// A try's handler starts with an empty stack, without the
-				// entry under construction: the arguments are evaluated
-				// first, as kotlinc does, and kept in locals.
+			if inlinesCode(e.Call.Args) {
+				// Inlined code starts with the stack in locals (see
+				// spillStack), which can't hold the entry under
+				// construction: the arguments are evaluated first, as
+				// kotlinc does, and kept in locals.
 				depth := g.code.Depth()
 				mask = g.callArgs(e.Call, f)
 				args, _ := g.code.SpillAbove(depth)

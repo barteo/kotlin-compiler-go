@@ -507,8 +507,8 @@ builtinStubMethods/extendJavaClasses/hashSet.kt	pass
 builtinStubMethods/extendJavaClasses/overrideAbstractSetMethod.kt	pass		
 builtins/stringTemplateWithValueOf.kt	skip	TARGET_BACKEND: JS_IR, JS_IR_ES6	
 callableReference/adaptedReferences/adaptedArrayOf.kt	pass		
-callableReference/adaptedReferences/adaptedSecondArgArray.kt	skip	LANGUAGE	
-callableReference/adaptedReferences/adaptedSecondArgTypeVariable.kt	skip	LANGUAGE	
+callableReference/adaptedReferences/adaptedSecondArgArray.kt	pass		
+callableReference/adaptedReferences/adaptedSecondArgTypeVariable.kt	pass		
 callableReference/adaptedReferences/adaptedVarargFunImportedFromObject.kt	pass		
 callableReference/adaptedReferences/bothWithCoercionToUnit.kt	pass		
 callableReference/adaptedReferences/boundReferences.kt	pass		
@@ -1167,7 +1167,7 @@ collections/removeClash.kt	pass
 companion/delegatedPropertyOnCompanion.kt	pass		
 companion/genericLambdaOnStringCompanion.kt	pass		
 companion/inlineFunctionCompanionPropertyAccess.kt	pass		
-companion/protectedConstValFromSuperCompanion.kt	skip	LANGUAGE	
+companion/protectedConstValFromSuperCompanion.kt	pass		
 companionBlocksAndExtensions/abstractClasses.kt	skip	LANGUAGE	
 companionBlocksAndExtensions/basicBlockAndExtension.kt	skip	LANGUAGE	
 companionBlocksAndExtensions/callableReferences_block.kt	skip	LANGUAGE	
@@ -2108,9 +2108,9 @@ coroutines/suspendWhileBreakContinueInsideElvis.kt	pass
 coroutines/suspendWhileContinueInsideElvisWithFinally.kt	pass		
 coroutines/suspensionInsideSafeCall.kt	pass		
 coroutines/suspensionInsideSafeCallWithElvis.kt	pass		
-coroutines/tailCallOptimizations/crossinline.kt	skip	LANGUAGE	
+coroutines/tailCallOptimizations/crossinline.kt	pass		
 coroutines/tailCallOptimizations/inlineWithoutStateMachine.kt	pass		
-coroutines/tailCallOptimizations/innerObjectRetransformation.kt	skip	LANGUAGE	
+coroutines/tailCallOptimizations/innerObjectRetransformation.kt	pass		
 coroutines/tailCallOptimizations/tryCatch.kt	pass		
 coroutines/tailCallOptimizations/unit/functionReference.kt	pass		
 coroutines/tailCallOptimizations/unit/kt55559.kt	pass		
@@ -2611,7 +2611,7 @@ enum/enumCompanionInitJs.kt	skip	DONT_TARGET_EXACT_BACKEND: JVM_IR
 enum/enumConstructorParameterClashWithDefaults.kt	pass		
 enum/enumEntries.kt	pass		
 enum/enumEntriesCompatibilityCheck.kt	skip	LANGUAGE	
-enum/enumEntriesCompatibilityCheckPrioritized.kt	skip	LANGUAGE	
+enum/enumEntriesCompatibilityCheckPrioritized.kt	pass		
 enum/enumEntriesInCompanion.kt	pass		
 enum/enumEntriesMultimoduleNoMappings.kt	pass		
 enum/enumEntriesNameClashes.kt	skip	LANGUAGE	
@@ -3186,7 +3186,7 @@ ieee754/anyCastToPrimitiveCompareTo2.kt	pass
 ieee754/anyToReal.kt	pass		
 ieee754/asComparableToDouble.kt	pass		
 ieee754/asComparableToDouble_properIeeeComparisons.kt	pass		
-ieee754/comparableToTWithT_properIeeeComparisons.kt	skip	LANGUAGE	
+ieee754/comparableToTWithT_properIeeeComparisons.kt	pass		
 ieee754/comparableTypeCast.kt	pass		
 ieee754/dataClass.kt	pass		
 ieee754/differentTypesComparison.kt	pass		
@@ -3230,7 +3230,7 @@ increment/classVarargGetSetEvaluationOrder.kt	pass
 increment/classWithGetSet.kt	pass		
 increment/extOnLong.kt	pass		
 increment/genericClassWithGetSet.kt	pass		
-increment/kt36956.kt	skip	LANGUAGE	
+increment/kt36956.kt	pass		
 increment/memberExtOnLong.kt	pass		
 increment/mutableListElement.kt	pass		
 increment/nullable.kt	pass		
@@ -3370,12 +3370,12 @@ inference/pcla/issues/kt66359a.kt	pass
 inference/pcla/issues/kt66359b.kt	pass		
 inference/pcla/issues/kt67993.kt	pass		
 inference/pcla/issues/kt74819e.kt	pass		
-inference/pcla/issues/kt76058.kt	skip	LANGUAGE	
+inference/pcla/issues/kt76058.kt	pass		
 inference/pcla/issues/kt76171.kt	pass		
 inference/pcla/labaledCall.kt	pass		
 inference/pcla/lackOfNullCheckOnNullableInsideBuild.kt	pass		
 inference/pcla/lambdaParameterHasTVType.kt	pass		
-inference/pcla/memberScope.kt	skip	LANGUAGE	
+inference/pcla/memberScope.kt	pass		
 inference/pcla/nestedNonExhaustiveIf.kt	pass		
 inference/pcla/nullability.kt	pass		
 inference/pcla/oneParameter/oneTypeVariable/oneTypeInfoOrigin/AnonymousFunctionArgumentAndBuildeeParameter.kt	pass		
@@ -4462,9 +4462,9 @@ inlineClasses/useInlineFunctionInsideInlineClassGeneric.kt	pass
 inlineClasses/useThisInsideInlineClass.kt	pass		
 inlineClasses/useThisInsideInlineClassGeneric.kt	pass		
 inlineClasses/valueClassInValueClass.kt	skip	LANGUAGE	
-inlineClasses/valueClassInstanceOfNumberAndComparable.kt	skip	LANGUAGE	
-inlineClasses/valueClassInstanceOfNumberAndComparableInFunction.kt	skip	LANGUAGE	
-inlineClasses/valueClassInstanceOfNumberAndComparableInInlineFunction.kt	skip	LANGUAGE	
+inlineClasses/valueClassInstanceOfNumberAndComparable.kt	pass		
+inlineClasses/valueClassInstanceOfNumberAndComparableInFunction.kt	pass		
+inlineClasses/valueClassInstanceOfNumberAndComparableInInlineFunction.kt	pass		
 inlineClasses/whenWithSubject.kt	pass		
 inlineClasses/whenWithSubjectGeneric.kt	pass		
 inlineClasses/withReturnTypeMangling.kt	pass		
@@ -4616,7 +4616,7 @@ interfaceCallsNCasts/interface0.kt	pass
 interfaceCallsNCasts/kt83308.kt	pass		
 intrinsics/charToInt.kt	pass		
 intrinsics/ea35953.kt	pass		
-intrinsics/incWithLabel.kt	skip	LANGUAGE	
+intrinsics/incWithLabel.kt	pass		
 intrinsics/kt10131.kt	pass		
 intrinsics/kt10131a.kt	pass		
 intrinsics/kt12125.kt	pass		
@@ -4774,7 +4774,7 @@ lateinit/localNotInitialized.kt	pass
 lateinit/notInitialized.kt	pass		
 lazyCodegen/exceptionInFieldInitializer.kt	pass		
 lazyCodegen/ifElse.kt	pass		
-lazyCodegen/increment.kt	skip	LANGUAGE	
+lazyCodegen/increment.kt	pass		
 lazyCodegen/optimizations/negateConstantCompare.kt	pass		
 lazyCodegen/optimizations/negateFalse.kt	pass		
 lazyCodegen/optimizations/negateFalseVar.kt	pass		
@@ -5302,7 +5302,7 @@ objects/useAnonymousObjectFunction.kt	pass
 objects/useImportedMember.kt	pass		
 objects/useImportedMemberFromCompanion.kt	pass		
 operatorConventions/BoundedGenericValueInRangeCheck.kt	pass		
-operatorConventions/annotatedAssignment.kt	skip	LANGUAGE	
+operatorConventions/annotatedAssignment.kt	pass		
 operatorConventions/assignToDotQualifiedWithSideEffect.kt	pass		
 operatorConventions/assignmentOperations.kt	pass		
 operatorConventions/augmentedAssignmentInInitializer.kt	skip	LANGUAGE	
@@ -5573,7 +5573,7 @@ properties/kt4373.kt	pass
 properties/kt4383.kt	pass		
 properties/kt49203_lateinit.kt	pass		
 properties/kt49203_var.kt	pass		
-properties/kt613.kt	skip	LANGUAGE	
+properties/kt613.kt	pass		
 properties/kt78962.kt	skip	DONT_TARGET_EXACT_BACKEND: JVM_IR	
 properties/kt8928.kt	pass		
 properties/kt9603.kt	pass		
@@ -6643,7 +6643,7 @@ reified/method.kt	pass
 reified/multipleTypeParameters.kt	pass		
 reified/newArrayInt.kt	pass		
 reified/noValueParameters.kt	pass		
-reified/nullableNothingArrayAsStringArray.kt	skip	LANGUAGE	
+reified/nullableNothingArrayAsStringArray.kt	skip	IGNORE_BACKEND: JVM_IR	
 reified/overrideResolution.kt	skip	LANGUAGE	
 reified/overrideResolutionWithInlinedFunInKlib.kt	skip	LANGUAGE	
 reified/parameterSwap.kt	pass		
@@ -6652,10 +6652,10 @@ reified/reifiedChain.kt	pass
 reified/reifiedIntersectionType.kt	skip	LANGUAGE	
 reified/reifiedIntersectionTypeArgument.kt	skip	LANGUAGE	
 reified/reifiedIntersectionTypeArgumentCrossModule.kt	skip	LANGUAGE	
-reified/reifiedNullableNothing1.kt	skip	LANGUAGE	
-reified/reifiedNullableNothing2.kt	skip	LANGUAGE	
-reified/reifiedNullableNothing3.kt	skip	LANGUAGE	
-reified/reifiedNullableNothing4.kt	skip	LANGUAGE	
+reified/reifiedNullableNothing1.kt	pass		
+reified/reifiedNullableNothing2.kt	pass		
+reified/reifiedNullableNothing3.kt	skip	IGNORE_BACKEND: JVM_IR	
+reified/reifiedNullableNothing4.kt	skip	IGNORE_BACKEND: JVM_IR	
 reified/reifiedTypeArgumentWithIntersectionTypeAsTypeArgument.kt	pass		
 reified/reifiedTypeArgumentWithRecursion.kt	pass		
 reified/safecast.kt	pass		
@@ -6664,7 +6664,7 @@ reified/spreads.kt	pass
 reified/vararg.kt	pass		
 reified/varargs.kt	pass		
 reified/withInlineTurnedOff.kt	pass		
-returnInExpressionBody/returnInExpressionBody.kt	skip	LANGUAGE	
+returnInExpressionBody/returnInExpressionBody.kt	pass		
 rtti/isReifiedObject.kt	pass		
 safeCall/genericNull.kt	pass		
 safeCall/kt1572.kt	pass		
@@ -6674,7 +6674,7 @@ safeCall/kt3430.kt	pass
 safeCall/kt4733.kt	pass		
 safeCall/kt52580.kt	pass		
 safeCall/kt52743.kt	pass		
-safeCall/parenthesizedSafeCallsAndOperators.kt	skip	LANGUAGE	
+safeCall/parenthesizedSafeCallsAndOperators.kt	pass		
 safeCall/primitive.kt	pass		
 safeCall/primitiveEqSafeCall.kt	pass		
 safeCall/primitiveNotEqSafeCall.kt	pass		
@@ -6705,7 +6705,7 @@ sam/samWithAbstractToString.kt	pass
 sam/samWithAbstractToString2.kt	pass		
 sam/samWithAbstractToString3.kt	pass		
 sam/samWithNullableUpperBound.kt	pass		
-sam/topLevelConversions.kt	skip	LANGUAGE	
+sam/topLevelConversions.kt	pass		
 sameFileInSourceAndDependencies/classDeclaration.kt	pass		
 sameFileInSourceAndDependencies/differingNumberOfGenericTypeParameters.kt	skip	IGNORE_BACKEND: JVM_IR	
 sameFileInSourceAndDependencies/functionDeclaration.kt	pass		

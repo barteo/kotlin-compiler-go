@@ -644,7 +644,7 @@ func (c *Checker) condVal(v *types.VarSym, x syntax.Expr) {
 func safeTarget(x syntax.Expr) (syntax.Expr, func(syntax.Expr) syntax.Expr, bool) {
 	switch x := x.(type) {
 	case *syntax.Member:
-		if !x.Safe {
+		if !x.Safe || x.Paren {
 			return nil, nil, false
 		}
 		return x.X, func(t syntax.Expr) syntax.Expr {
@@ -654,7 +654,7 @@ func safeTarget(x syntax.Expr) (syntax.Expr, func(syntax.Expr) syntax.Expr, bool
 		}, true
 	case *syntax.Call:
 		m, ok := x.Fun.(*syntax.Member)
-		if !ok || x.Invoke || !m.Safe {
+		if !ok || x.Invoke || !m.Safe || x.Paren {
 			return nil, nil, false
 		}
 		return m.X, func(t syntax.Expr) syntax.Expr {
@@ -666,7 +666,7 @@ func safeTarget(x syntax.Expr) (syntax.Expr, func(syntax.Expr) syntax.Expr, bool
 		}, true
 	case *syntax.Index:
 		recv, build, ok := safeTarget(x.X)
-		if !ok {
+		if !ok || x.Paren {
 			return nil, nil, false
 		}
 		return recv, func(t syntax.Expr) syntax.Expr {
@@ -1083,8 +1083,16 @@ func (c *Checker) assign(s *syntax.Assign) {
 	n := len(c.errs)
 	var tt types.Type
 	var mutable bool
-	switch s.Target.(type) {
-	case *syntax.Ident, *syntax.Index, *syntax.Member:
+	switch t := s.Target.(type) {
+	case *syntax.Member:
+		if t.Paren && s.Op != syntax.ASSIGN {
+			// (a?.b) += v: the parentheses end the chain, so this is
+			// plusAssign on the value, which may be null.
+			tt = c.expr(s.Target, noWant)
+			break
+		}
+		tt, mutable = c.lvalue(s.Target)
+	case *syntax.Ident, *syntax.Index:
 		if c.namesObject(s.Target) && s.Op != syntax.ASSIGN {
 			tt = c.expr(s.Target, noWant) // Obj += v: Obj.plusAssign(v)
 			break
@@ -1272,6 +1280,12 @@ func (c *Checker) incDec(u *syntax.Unary, value bool) types.Type {
 			return call
 		}
 		if stmts, reread, ok := c.indexCompound(u.P, ix, "", nil, keep(inc)); ok {
+			if !value && u.Prefix && len(stmts) > 0 {
+				// As kotlinc does, ++a[i] reads a[i] again after the
+				// set, also where its value isn't used.
+				x := reread()
+				stmts = append(stmts, &syntax.ExprStmt{X: checked(x, c.value(x, noWant))})
+			}
 			return result(stmts, reread)
 		}
 	}

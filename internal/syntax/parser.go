@@ -3173,6 +3173,7 @@ func (p *parser) parsePrimary() Expr {
 		p.next()
 		x := p.parseExpr()
 		p.expect(RPAREN)
+		parenthesized(x)
 		return x
 	case IF:
 		return p.parseIf()
@@ -3599,4 +3600,17 @@ func (p *parser) parseWhen() Expr {
 	}
 	p.expect(RBRACE)
 	return n
+}
+
+// parenthesized marks x, a safe call a?.b or a?.f() or an index of one,
+// a?.b[i], as written in parentheses (see exprBase.Paren).
+func parenthesized(x Expr) {
+	switch x := x.(type) {
+	case *Member:
+		x.Paren = x.Safe
+	case *Call:
+		x.Paren = true
+	case *Index:
+		x.Paren = true
+	}
 }

@@ -125,6 +125,21 @@ func (c *Checker) lambda(x *syntax.Lambda, want types.Type) types.Type {
 			return c.kfunRef(x, want, k)
 		}
 	}
+	if x.Ref == nil && !x.Anon && proper && samInterface(want.Flex().NonNull()) {
+		// As in Kotlin 2.4 (ResolveTopLevelLambdasAsSyntheticCallArgument),
+		// a lambda converts to the fun interface or Java interface it is
+		// expected to be anywhere, not only as an argument: val f: MyFun
+		// = { it.length }, or return { ... } from a fun f(): Runnable.
+		if m, ft := c.samTarget(want.Flex()); m != nil && !m.Composable {
+			ps, r, _ := funcParts(ft)
+			if _, r, ok := c.checkLambda(x, lambdaWant{params: ps, known: true, recv: ft.E, ctx: ft.Contexts(), suspend: m.Suspend, ret: r, check: true}); ok {
+				p := want.Flex().NonNull()
+				x.SAM, x.Ret, x.T = m, r, p
+				return p
+			}
+			return types.InvalidType
+		}
+	}
 	w := lambdaWant{ret: noWant, kprop: c.u.ext.kotlin}
 	if ps, r, ok := funcParts(want); ok && proper {
 		w = lambdaWant{params: ps, known: true, recv: want.Flex().E, ctx: want.Flex().Contexts(), suspend: isSuspendFunc(want), composable: isComposableFunc(want), ret: r, check: true}
@@ -959,6 +974,12 @@ func (c *Checker) invokeValue(x *syntax.Call, ft, want types.Type, sink *system)
 	if !ft.IsFunc() {
 		if !types.MayBeNull(ft) || ft.P {
 			if t, ok := c.invokeOp(x, ft.NonNull(), want, sink); ok {
+				return t
+			}
+		} else if m, ok := x.Fun.(*syntax.Member); ok && m.Paren {
+			// (a?.b)(v): invoke on a value that may be null, an
+			// extension of a nullable receiver's.
+			if t, ok := c.invokeOp(x, ft, want, sink); ok {
 				return t
 			}
 		}
@@ -1968,8 +1989,11 @@ func (c *Checker) fixedStub(t types.Type) types.Type {
 		return t
 	}
 	r.cons = append(r.cons, [2]types.Type{val, v}, [2]types.Type{v, val})
-	if t.N {
+	switch {
+	case t.N:
 		val = val.Nullable()
+	case t.D:
+		val = val.NonNull() // x!!, or x after x != null, of a T & Any
 	}
 	return val
 }

@@ -274,15 +274,12 @@ func (g *gen) inlineBody(x *syntax.Call, d *syntax.FunDecl) {
 		}
 	}
 	g.srcInl = defaults.outer
-	// A try in the body moves the values on the stack to locals, which a
-	// return from it would then leave behind: they are moved first, and
-	// put back below the result.
-	var spilled []int
-	if hasTry(d) {
-		var ok bool
-		if spilled, ok = c.Spill(); !ok {
-			panic("an inline function with a try can't be an argument of a constructor call")
-		}
+	// The values on the stack go to locals meanwhile, and are put back
+	// below the result (see spillStack). A try in the body would move
+	// them anyway, and a return from it would then leave them behind.
+	spilled, ok := g.spillStack()
+	if !ok && hasTry(d) {
+		panic("an inline function with a try can't be an argument of a constructor call")
 	}
 	ctx := &srcInline{d: d, end: join(f.Ret), depth: c.Depth(), tries: len(g.tries), lambdas: lambdas, owners: owners, outer: g.srcInl,
 		reified: g.reifiedArgs(x, f), noLines: g.noLines, self: self, groups: g.groupDepth(), inl: len(g.inl), scope: scope}
@@ -302,17 +299,7 @@ func (g *gen) inlineBody(x *syntax.Call, d *syntax.FunDecl) {
 	g.srcInl = ctx.outer
 	c.Place(ctx.end)
 	g.line(x.Pos())
-	if len(spilled) > 0 && c.Reachable() {
-		tmp := -1
-		if size(f.Ret) > 0 {
-			tmp = c.AllocLocal(desc(f.Ret))
-			c.Local(storeOp(f.Ret), tmp)
-		}
-		c.Unspill(spilled)
-		if tmp >= 0 {
-			c.Local(loadOp(f.Ret), tmp)
-		}
-	}
+	g.unspill(spilled, retDesc(f.Ret))
 }
 
 // copyScope returns the flag scope of the copy of composable inline
@@ -335,49 +322,37 @@ func (g *gen) copyScope(x *syntax.Call, d *syntax.FunDecl, mask argMask) *flagSc
 	return &flagScope{tracked: t, typeParams: f.TypeParams, flags: flags}
 }
 
-// hasHandlers reports whether the expressions have a try outside lambdas
-// that aren't inlined, or call an inline function whose copy has one: ktor's
-// AttributeKey(name, typeInfo<T>()), whose typeInfo calls typeOfOrNull, a
-// try.
-func hasHandlers(xs []syntax.Expr) bool {
-	ns := make([]any, len(xs))
-	for i, x := range xs {
-		ns[i] = x
-	}
-	return handlersIn(ns, map[*syntax.FunDecl]bool{})
-}
-
-func handlersIn(xs []any, seen map[*syntax.FunDecl]bool) bool {
+// inlinesCode reports whether the expressions, outside lambdas that
+// aren't inlined, have a try or a loop, Array(n) { ... }'s included, or
+// call an inline function: code that starts with the stack in locals (see
+// spillStack), which an object that new created and isn't constructed
+// yet can't be stored in. A constructor call with such arguments
+// evaluates them first, as kotlinc does: Foo(list.sumOf { it }), and
+// ktor's AttributeKey(name, typeInfo<T>()), whose typeInfo calls
+// typeOfOrNull, a try.
+func inlinesCode(xs []syntax.Expr) bool {
 	found := false
+	inline := func(f *types.FunSym) bool {
+		return syntax.SourceInline(f) != nil || f != nil && f.Inline != nil && inlineBody(f, nil) != nil
+	}
 	visit := func(n any) bool {
 		switch n := n.(type) {
 		case *syntax.Lambda:
 			return n.Inline
 		case *syntax.LocalFun:
 			return false
-		case *syntax.Try:
+		case *syntax.Try, *syntax.While, *syntax.For:
 			found = true
 		case *syntax.Call:
-			if d := syntax.SourceInline(n.Sym); d != nil && !seen[d] {
-				seen[d] = true
-				found = found || handlersIn([]any{d.Body, d.ExprBody}, seen)
-			} else if n.Sym != nil && n.Sym.Inline != nil {
-				b := inlineBody(n.Sym, nil)
-				found = found || b != nil && b.HasHandlers()
-			}
+			found = found || n.Builtin == types.ArrayInit || inline(n.Sym)
+		case *syntax.Member:
+			found = found || inline(n.Getter) || inline(n.Setter)
 		}
 		return !found
 	}
 	for _, x := range xs {
-		switch x := x.(type) {
-		case *syntax.Block:
-			if x != nil {
-				syntax.Inspect(x, visit)
-			}
-		case syntax.Expr:
-			if x != nil {
-				syntax.Inspect(x, visit)
-			}
+		if x != nil {
+			syntax.Inspect(x, visit)
 		}
 	}
 	return found
@@ -638,6 +613,9 @@ func (g *gen) invokeInlined(x *syntax.Call, l *syntax.Lambda, ctx *srcInline) {
 	}
 	saved := g.srcInl
 	g.srcInl = ctx.outer
+	// The copy's values on the stack, as s in s += f(i), go to locals
+	// meanwhile: see spillStack.
+	spilled, _ := g.spillStack()
 	lc := &inlineLambda{l: l, end: join(l.Ret), depth: c.Depth(), tries: len(g.tries), direct: true}
 	g.inl = append(g.inl, lc)
 	back := g.inScope(ctx.scope)
@@ -653,6 +631,7 @@ func (g *gen) invokeInlined(x *syntax.Call, l *syntax.Lambda, ctx *srcInline) {
 	g.inl = g.inl[:len(g.inl)-1]
 	g.srcInl = saved
 	c.Place(lc.end)
+	g.unspill(spilled, retDesc(l.Ret))
 	g.coerce(l.Ret, x.T)
 }
 

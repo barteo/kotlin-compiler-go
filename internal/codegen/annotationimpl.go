@@ -316,6 +316,7 @@ func (g *gen) javaClasses(t types.Type) {
 		dst := g.code.AllocLocal("[Ljava/lang/Class;")
 		i := g.code.AllocLocal("I")
 		g.code.Local(cf.ASTORE, src)
+		spilled, _ := g.spillStack()
 		g.code.Local(cf.ALOAD, src)
 		g.code.Op(cf.ARRAYLENGTH)
 		g.code.ANewArray("java/lang/Class")
@@ -338,6 +339,7 @@ func (g *gen) javaClasses(t types.Type) {
 		g.code.Iinc(i, 1)
 		g.code.Jump(cf.GOTO, loop)
 		g.code.Place(end)
+		g.unspill(spilled, "V")
 		g.code.Local(cf.ALOAD, dst)
 	}
 }
