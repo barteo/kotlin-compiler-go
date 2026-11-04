@@ -65,6 +65,10 @@ func main() {
 			os.Exit(1)
 		}
 	}
+	if len(paths) == 0 {
+		fmt.Fprintf(os.Stderr, "kc: no .kt files in %s\n", strings.Join(flag.Args(), " "))
+		os.Exit(1)
+	}
 
 	if *jvmDefault != "no-compatibility" && *jvmDefault != "enable" && *jvmDefault != "disable" {
 		fmt.Fprintf(os.Stderr, "kc: unsupported -jvm-default=%s: no-compatibility, enable or disable\n", *jvmDefault)
