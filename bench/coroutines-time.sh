@@ -5,9 +5,9 @@
 #   bench/coroutines-time.sh                       # about 2 minutes
 #   RUNS=5 WARM_RUNS=20 bench/coroutines-time.sh
 #
-# Both compilers get the build's options: the module name and
-# -jvm-default=enable, and kotlinc also the others (explicit API mode,
-# opt-ins, -progressive, no assertions, -jvm-target 1.8); kotlinc compiles
+# Both compilers get the build's options: the module name,
+# -jvm-default=enable and the opt-ins, and kotlinc also the others
+# (explicit API mode, -progressive, no assertions, -jvm-target 1.8); kotlinc compiles
 # the three source sets as fragments of a multiplatform module, as Gradle
 # does. RUNS: cold kotlinc runs (kc always gets 10). WARM_RUNS: kotlinc
 # runs in one JVM, of which the median of the second half is reported.
@@ -62,12 +62,14 @@ kotlinc_args="-nowarn -Xmulti-platform -Xexpect-actual-classes -Xfragments=commo
 	-Xfragment-refines=concurrent:common,jvm:concurrent -Xfragment-sources=$fragments
 	-progressive -Xexplicit-api=strict -Xdont-warn-on-error-suppression -Xno-param-assertions -Xno-call-assertions
 	-Xno-receiver-assertions -jvm-target 1.8 -opt-in=$optins -cp $cp $opts"
+# kc takes one -opt-in per marker.
+kc_optins=$(echo "$optins" | tr , '\n' | sed 's/^/-opt-in=/' | paste -sd' ' -)
 
 # shellcheck disable=SC2086 # the arguments are words
 hyperfine --warmup 1 --runs 10 --style basic --export-json "$work/kc.json" \
 	--prepare "rm -rf $work/out-kc && sleep $cooldown" \
-	-n "kc -j 1" "$work/kc -j 1 $opts -cp $cp -d $work/out-kc $(echo $dirs)" \
-	-n "kc -j $cpus" "$work/kc -j $cpus $opts -cp $cp -d $work/out-kc $(echo $dirs)"
+	-n "kc -j 1" "$work/kc -j 1 $opts $kc_optins -cp $cp -d $work/out-kc $(echo $dirs)" \
+	-n "kc -j $cpus" "$work/kc -j $cpus $opts $kc_optins -cp $cp -d $work/out-kc $(echo $dirs)"
 # shellcheck disable=SC2086
 hyperfine --runs "$runs" --style basic --export-json "$work/kotlinc.json" \
 	--prepare "rm -rf $work/out-kotlinc && sleep $cooldown" \
