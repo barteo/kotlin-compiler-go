@@ -50,12 +50,15 @@ Java sources, or modules with friends or `dependsOn`. A `LANGUAGE` that
 only sets features as Kotlin 2.4 has them by default, or as kc
 follows them
 (`+AllowAccessToProtectedFieldFromSuperCompanion`,
+`+AllowCheckForErasedTypesInContracts`,
+`+AllowContractsOnPropertyAccessors`, `+AllowContractsOnSomeOperators`,
 `+AllowReifiedTypeInCatchClause`,
 `+AllowReturnInExpressionBodyWithExplicitType`,
 `+AvoidWrongOptimizationOfTypeOperatorsOnValueClasses`,
-`+BreakContinueInInlineLambdas`, `+ContextParameters`,
-`+DataFlowBasedExhaustiveness`, `+ExplicitBackingFields`,
-`-ForbidParenthesizedLhsInAssignments`,
+`+BreakContinueInInlineLambdas`, `+ConditionImpliesReturnsContracts`,
+`+ContextParameters`, `+DataFlowBasedExhaustiveness`,
+`+ExplicitBackingFields`, `-ForbidParenthesizedLhsInAssignments`,
+`+HoldsInContracts`,
 `+JvmNullOutSpilledCoroutineLocals`, `+MultiDollarInterpolation`,
 `+NestedTypeAliases`, `+NullableNothingInReifiedPosition`,
 `+PCLAEnhancementsIn21`, `+PrioritizedEnumEntries`,

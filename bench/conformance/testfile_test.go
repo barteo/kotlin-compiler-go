@@ -34,6 +34,11 @@ func TestLanguageSkip(t *testing.T) {
 		{"// LANGUAGE: +PrioritizedEnumEntries\n", ""},
 		{"// LANGUAGE: -ForbidParenthesizedLhsInAssignments\n", ""},
 		{"// LANGUAGE: +ForbidParenthesizedLhsInAssignments\n", "LANGUAGE"},
+		{"// LANGUAGE: +AllowContractsOnPropertyAccessors\n", ""},
+		{"// LANGUAGE: +AllowCheckForErasedTypesInContracts, +ConditionImpliesReturnsContracts\n", ""},
+		{"// LANGUAGE: +HoldsInContracts,+AllowContractsOnSomeOperators +ContextParameters\n", ""},
+		{"// LANGUAGE: +HoldsInContracts, +ExplicitContextArguments\n", "LANGUAGE"},
+		{"// LANGUAGE: -AllowContractsOnSomeOperators\n", "LANGUAGE"},
 	}
 	dir := t.TempDir()
 	for i, tt := range tests {
