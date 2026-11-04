@@ -12,12 +12,14 @@ libraries. Earlier runs are in this file's git history.
 | `bench/coroutines-time.sh` | kotlinx-coroutines-core 1.11.0, JVM | `time-coroutines.md` |
 | `bench/ktor-time.sh` | Ktor 3.6.0: `ktor-io`, `ktor-utils`, `ktor-http` | `time-ktor.md` |
 | `bench/profile.sh [N]` | generated project, profiling `kotlinc` | `phases-N.md` |
+| `bench/runtime.sh` | `bench/runtime/Bench.kt`, run after compiling | `runtime.md` |
 
 ```sh
 bench/run.sh                                                  # 200 files, about 1 minute
 COOLDOWN=30 SIZES="100 1000" RUNS=1 WARM_RUNS=4 bench/run.sh  # the results below
 COOLDOWN=10 RUNS=5 WARM_RUNS=20 bench/kotlinpoet-time.sh      # also coroutines-time.sh, ktor-time.sh
 ITERS=10 BACKEND_THREADS=1 bench/profile.sh 500               # about 12 minutes
+bench/runtime.sh                                              # speed of the generated code, about 30 s
 ```
 
 Each script times four commands with hyperfine:
@@ -80,6 +82,28 @@ Peak memory (resident set size):
 - Full tables, with CPU time, are in [bench/results](../bench/results/).
   Whether `kc`'s library builds are correct (API, `-Xverify:all`, the
   libraries' own tests) is checked in [Survey of real code](survey.md).
+
+## Speed of the generated code
+
+The other scripts time compiling. `bench/runtime.sh` times the programs
+instead: it compiles `bench/runtime/Bench.kt` with both compilers and runs
+each build in `FORKS` JVMs (5 by default, alternating between the
+builds), each running every workload for `WARMUP` untimed and `ROUNDS`
+timed rounds (10 and 20). A workload's time is the median over the JVMs
+of each JVM's median round, and both builds must compute the same
+checksums. The workloads are loops over ranges, the standard library's
+inline functions over an `IntArray`, collection pipelines, data-class and
+string map keys, string building, interface calls and a `when` over a
+sealed type, a `when` over an enum, function values with a captured
+`var`, and `sequence { }`.
+
+On a 4-CPU Linux x86_64 machine with JDK 21
+([runtime.md](../bench/results/runtime.md)), `kc`'s code runs at about
+the speed of `kotlinc`'s on most workloads (0.7–1.03x its time) but takes
+4.9x as long on the inline functions over an `IntArray`: `kc`'s inlined
+lambdas take and return boxed values
+([Differences from kotlinc](unsupported.md#differences-from-kotlinc)),
+which the JIT doesn't remove. The geometric mean is 1.12x.
 
 ## Where kotlinc's time goes
 
