@@ -53,6 +53,37 @@ enum class Level(val n: Int) {
 
 fun three(a: Long, b: Double, c: Int) = "$a $b $c"
 
+// Array(n) { ... } is a loop: in a field's initializer, under this, and
+// as a constructor's argument.
+class Grid(val w: Int) {
+    val cells = Array(w) { IntArray(w) { i -> i * it } }
+    override fun toString(): String {
+        var s = ""
+        for (row in cells) for (c in row) s += c
+        return s
+    }
+}
+
+class Wrap(val xs: IntArray, val tag: String) {
+    override fun toString(): String {
+        var s = tag + ":"
+        for (x in xs) s += x
+        return s
+    }
+}
+
+open class Base {
+    open fun total(xs: IntArray): Int {
+        var t = 0
+        for (x in xs) t += x
+        return t
+    }
+}
+
+class Derived : Base() {
+    override fun total(xs: IntArray) = 1 + super.total(IntArray(xs.size) { xs[it] * 2 })
+}
+
 fun main() {
     val sb = StringBuilder()
     // A receiver.
@@ -100,4 +131,8 @@ fun main() {
         }
     }
     println(total)
+    println(Grid(3))
+    println(Wrap(IntArray(4) { it * it }, "sq"))
+    println(Derived().total(intArrayOf(1, 2, 3)))
+    println("n=" + Array(3) { "x$it" }.size)
 }

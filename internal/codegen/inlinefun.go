@@ -323,12 +323,13 @@ func (g *gen) copyScope(x *syntax.Call, d *syntax.FunDecl, mask argMask) *flagSc
 }
 
 // inlinesCode reports whether the expressions, outside lambdas that
-// aren't inlined, have a try or a loop or call an inline function: code
-// that starts with the stack in locals (see spillStack), which an object
-// that new created and isn't constructed yet can't be stored in. A
-// constructor call with such arguments evaluates them first, as kotlinc
-// does: Foo(list.sumOf { it }), and ktor's AttributeKey(name,
-// typeInfo<T>()), whose typeInfo calls typeOfOrNull, a try.
+// aren't inlined, have a try or a loop, Array(n) { ... }'s included, or
+// call an inline function: code that starts with the stack in locals (see
+// spillStack), which an object that new created and isn't constructed
+// yet can't be stored in. A constructor call with such arguments
+// evaluates them first, as kotlinc does: Foo(list.sumOf { it }), and
+// ktor's AttributeKey(name, typeInfo<T>()), whose typeInfo calls
+// typeOfOrNull, a try.
 func inlinesCode(xs []syntax.Expr) bool {
 	found := false
 	inline := func(f *types.FunSym) bool {
@@ -343,7 +344,7 @@ func inlinesCode(xs []syntax.Expr) bool {
 		case *syntax.Try, *syntax.While, *syntax.For:
 			found = true
 		case *syntax.Call:
-			found = found || inline(n.Sym)
+			found = found || n.Builtin == types.ArrayInit || inline(n.Sym)
 		case *syntax.Member:
 			found = found || inline(n.Getter) || inline(n.Setter)
 		}
