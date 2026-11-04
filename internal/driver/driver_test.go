@@ -109,6 +109,7 @@ func runProgram(t *testing.T, java, f, lib string, withLib bool) {
 		t.Fatalf("compile: %v", err)
 	}
 	checkLines(t, out)
+	checkLoopStacks(t, out)
 	cmd := exec.Command(java, "-Xverify:all", "-cp", cp, mainClass(t, main))
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
@@ -160,6 +161,66 @@ func checkLines(t *testing.T, dir string) {
 	if err != nil {
 		t.Fatal(err)
 	}
+}
+
+// checkLoopStacks checks that no backward branch in the classes in dir
+// has values on the operand stack: HotSpot doesn't compile such a loop
+// on stack replacement, so a method that runs it once stays in the
+// interpreter. Inlined code starts with the stack in locals, as
+// kotlinc's (see codegen's spillStack).
+func checkLoopStacks(t *testing.T, dir string) {
+	t.Helper()
+	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || !strings.HasSuffix(path, ".class") {
+			return err
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		ms, err := classfile.ReadMethods(data)
+		if err != nil {
+			return err
+		}
+		for _, m := range ms {
+			if m.Code == nil {
+				continue
+			}
+			for _, off := range loopStacks(t, m) {
+				t.Errorf("%s.%s%s: backward branch to offset %d with %d values on the stack", m.Class, m.Name, m.Desc, off, len(m.Frames[off].Stack))
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// loopStacks returns the targets of m's backward branches whose frames
+// have values on the operand stack.
+func loopStacks(t *testing.T, m *classfile.Method) []int {
+	t.Helper()
+	insns, err := m.Decode()
+	if err != nil {
+		t.Fatalf("%s.%s%s: %v", m.Class, m.Name, m.Desc, err)
+	}
+	var bad []int
+	for _, in := range insns {
+		var targets []int
+		switch op := in.Op; {
+		case classfile.IFEQ <= op && op <= classfile.GOTO, op == classfile.IFNULL, op == classfile.IFNONNULL:
+			targets = []int{in.Target}
+		case op == classfile.TABLESWITCH, op == classfile.LOOKUPSWITCH:
+			targets = append([]int{in.Target}, in.Targets...)
+		}
+		for _, to := range targets {
+			if f := m.Frames[to]; to <= in.Off && f != nil && len(f.Stack) > 0 && !slices.Contains(bad, to) {
+				bad = append(bad, to)
+			}
+		}
+	}
+	return bad
 }
 
 // sources returns the .kt files in a directory and its subdirectories.
