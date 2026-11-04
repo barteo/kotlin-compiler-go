@@ -906,12 +906,26 @@ func (c *Checker) forIterator(s *syntax.For, t types.Type) types.Type {
 		return c.forCalls(s)
 	}
 	s.Iter, s.HasNext, s.Next, s.IterT = iter, hasNext, next, it
+	if cls := c.classOf(it); cls != nil && elem.P && primitiveIterators[cls.Name] && elem.NonNull().IsPrimitive() {
+		// IntIterator's next(), a bridge of Iterator<Int>'s, returns an
+		// Int: as kotlinc's nextInt(), the element is no platform type.
+		elem = elem.Flex()
+	}
 	for _, f := range []*types.FunSym{iter, hasNext, next} {
 		if f != nil {
 			c.suspendCall(s.Range.Pos(), f)
 		}
 	}
 	return elem
+}
+
+// primitiveIterators are the standard library's iterators of primitive
+// values.
+var primitiveIterators = map[string]bool{
+	"kotlin/collections/IntIterator": true, "kotlin/collections/LongIterator": true,
+	"kotlin/collections/CharIterator": true, "kotlin/collections/ByteIterator": true,
+	"kotlin/collections/ShortIterator": true, "kotlin/collections/FloatIterator": true,
+	"kotlin/collections/DoubleIterator": true, "kotlin/collections/BooleanIterator": true,
 }
 
 // forCalls checks a loop over a range whose iterator(), or whose

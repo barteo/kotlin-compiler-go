@@ -361,6 +361,14 @@ func (g *gen) forLoop(s *syntax.For) {
 		g.forCalls(s)
 		return
 	}
+	if p := g.progression(s.Range); p != nil && s.Sym.Type == types.IntType {
+		if p.step != nil {
+			g.forStepped(s, p.first, p.last, p.op, p.step, false)
+		} else {
+			g.forIntRange(s, p.first, p.last, p.op)
+		}
+		return
+	}
 	if s.HasNext != nil {
 		g.forEach(s)
 		return
@@ -381,28 +389,37 @@ func (g *gen) forLoop(s *syntax.For) {
 		op = r.Op
 	}
 	if step != nil {
-		g.forStepped(s, r, op, step, s.Sym.Type.K == types.Long)
+		g.forStepped(s, operand{x: r.X}, operand{x: r.Y}, op, step, s.Sym.Type.K == types.Long)
 		return
 	}
 	if s.Sym.Type.K == types.Long {
 		g.forLongRange(s, r, op)
 		return
 	}
+	g.forIntRange(s, operand{x: r.X}, operand{x: r.Y}, op)
+}
+
+// forIntRange generates a for loop over the Int range from first to last
+// of op, which is RANGE, RANGE_LT, UNTIL or DOWN_TO.
+func (g *gen) forIntRange(s *syntax.For, first, last operand, op syntax.Kind) {
 	i := g.code.AllocLocal("I")
 	g.setSlot(s.Sym, i)
 	g.named(s.Sym)
-	g.exprAs(r.X, types.IntType)
+	g.operand(first, types.IntType)
 	g.code.Local(cf.ISTORE, i)
 	// As kotlinc does, a constant or a val's value is the bound itself;
 	// anything else is computed once, into a local.
 	var loadEnd func()
-	if v, ok := constOf(r.Y, 0); ok && r.Y.Type().K == types.Int {
+	if v, ok := constOf(last.x, 0); ok && last.x.Type().K == types.Int {
 		loadEnd = func() { g.code.Iconst(int32(v.(int64))) }
-	} else if p := stableLocal(r.Y); p != nil {
+	} else if p := stableLocal(last.x); p != nil {
 		loadEnd = func() { g.loadStorage(p) }
+	} else if last.x == nil && last.konst != nil {
+		v := *last.konst
+		loadEnd = func() { g.code.Iconst(v) }
 	} else {
 		end := g.code.AllocLocal("I")
-		g.exprAs(r.Y, types.IntType)
+		g.operand(last, types.IntType)
 		g.code.Local(cf.ISTORE, end)
 		loadEnd = func() { g.code.Local(cf.ILOAD, end) }
 	}
@@ -509,21 +526,21 @@ func (g *gen) forLongRange(s *syntax.For, r *syntax.Binary, op syntax.Kind) {
 // becomes an inclusive one, and the loop ends at the progression's last
 // element, which getProgressionLastElement computes, so that it does not
 // overflow.
-func (g *gen) forStepped(s *syntax.For, r *syntax.Binary, op syntax.Kind, step syntax.Expr, long bool) {
+func (g *gen) forStepped(s *syntax.For, first, lastBound operand, op syntax.Kind, step syntax.Expr, long bool) {
 	t, d, load, store, add, sub, neg, rem := types.IntType, "I", byte(cf.ILOAD), byte(cf.ISTORE), byte(cf.IADD), byte(cf.ISUB), byte(cf.INEG), byte(cf.IREM)
 	if long {
 		t, d, load, store, add, sub, neg, rem = types.LongType, "J", cf.LLOAD, cf.LSTORE, cf.LADD, cf.LSUB, cf.LNEG, cf.LREM
 	}
-	local := func(e syntax.Expr) int {
+	local := func(o operand) int {
 		slot := g.code.AllocLocal(d)
-		g.exprAs(e, t)
+		g.operand(o, t)
 		g.code.Local(store, slot)
 		return slot
 	}
-	i := local(r.X)
+	i := local(first)
 	g.setSlot(s.Sym, i)
 	g.named(s.Sym)
-	last, st := local(r.Y), local(step)
+	last, st := local(lastBound), local(operand{x: step})
 	exit := cf.NewLabel()
 	// cmpJump compares the values pushed and jumps to l on op, one of
 	// IF_ICMPxx.
