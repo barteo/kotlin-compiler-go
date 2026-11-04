@@ -359,7 +359,10 @@ func classDeprecation(cls *types.ClassSym) string {
 	if cls == nil {
 		return ""
 	}
-	if d, ok := cls.Decl.(*syntax.ClassDecl); ok {
+	// A compiler plugin's synthetic class, serialization's $serializer, is
+	// deprecated with level HIDDEN so that only the plugin's own members,
+	// such as serializer(), use it.
+	if d, ok := cls.Decl.(*syntax.ClassDecl); ok && !d.Synthetic {
 		return deprecation(d.Annotations)
 	}
 	return ""
