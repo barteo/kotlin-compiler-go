@@ -263,3 +263,36 @@ func (c *Checker) varargShape(l *syntax.Lambda, n int) (types.Type, bool) {
 	}
 	return c.u.ext.funcs.Type(ps, f.Ret), true
 }
+
+// refVarargPos returns the parameter that takes the vararg of the
+// function a reference ::f names, if it is the only top-level function
+// of the name and has a vararg.
+func (c *Checker) refVarargPos(r *syntax.CallableRef) (int, bool) {
+	if r == nil || r.X != nil || r.Type != nil || r.Bound != nil {
+		return 0, false
+	}
+	name := r.Name
+	if c.lookupClass(name) != nil || c.cls != nil && c.hasCallable(c.cls, name) || c.topVar(name) != nil {
+		return 0, false
+	}
+	if _, _, ok := c.scope.lookup(name); ok {
+		return 0, false
+	}
+	fs, _ := c.scope.findFuns(name)
+	if len(fs) == 0 {
+		fs = c.topFuns(name)
+	}
+	if len(fs) != 1 {
+		return 0, false
+	}
+	ensureFun(fs[0])
+	if fs[0].Ext {
+		return 0, false
+	}
+	for i, q := range fs[0].Params {
+		if q.Vararg {
+			return i, true
+		}
+	}
+	return 0, false
+}
