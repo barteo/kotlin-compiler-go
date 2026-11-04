@@ -2,11 +2,11 @@
 
 The box tests of JetBrains/kotlin v2.4.21 (`compiler/testData/codegen/box`), each compiled by kc and run: its `box()` must return `"OK"`. `bench/kotlin-tests.sh box` writes this file, and [docs/conformance.md](../../docs/conformance.md) explains it.
 
-Of 7480 test files, 952 are skipped and 6528 run. 6528 pass (100.0%).
+Of 7480 test files, 937 are skipped and 6543 run. 6543 pass (100.0%).
 
 | Result | Tests | Share |
 |:---|---:|---:|
-| pass | 6528 | 100.0% |
+| pass | 6543 | 100.0% |
 | parse/unsupported | 0 | 0.0% |
 | check error | 0 | 0.0% |
 | crash | 0 | 0.0% |
@@ -23,9 +23,9 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 
 | Reason | Tests | Examples |
 |:---|---:|:---|
-| `LANGUAGE` | 582 | `annotations/checkReturnValue.kt`, `annotations/instances/multiplatformInstantiation.kt` |
+| `LANGUAGE` | 564 | `annotations/checkReturnValue.kt`, `annotations/instances/multiplatformInstantiation.kt` |
 | `TARGET_BACKEND: WASM` | 122 | `casts/kt73931.kt`, `casts/wasmCastMessages.kt` |
-| `IGNORE_BACKEND: JVM_IR` | 49 | `binaryOp/call.kt`, `binaryOp/callNullable.kt` |
+| `IGNORE_BACKEND: JVM_IR` | 52 | `binaryOp/call.kt`, `binaryOp/callNullable.kt` |
 | `TARGET_BACKEND: JS_IR, JS_IR_ES6` | 36 | `builtins/stringTemplateWithValueOf.kt`, `casts/functions/isFunKSmallJS.kt` |
 | `TARGET_BACKEND: JS_IR` | 34 | `bridges/jsName.kt`, `bridges/jsNative.kt` |
 | `TARGET_BACKEND: NATIVE` | 27 | `annotations/nativeThrows.kt`, `argumentOrder/varargAndDefaultParameters_ForNative.kt` |
@@ -47,21 +47,21 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 | Directory | Run | Pass | Unsupported | Check error | Crash | Bad bytecode | Wrong |
 |:---|---:|---:|---:|---:|---:|---:|---:|
 | ranges | 805 | 805 | 0 | 0 | 0 | 0 | 0 |
-| inlineClasses | 784 | 784 | 0 | 0 | 0 | 0 | 0 |
+| inlineClasses | 787 | 787 | 0 | 0 | 0 | 0 | 0 |
 | coroutines | 499 | 499 | 0 | 0 | 0 | 0 | 0 |
-| callableReference | 297 | 297 | 0 | 0 | 0 | 0 | 0 |
+| callableReference | 299 | 299 | 0 | 0 | 0 | 0 | 0 |
 | inference | 207 | 207 | 0 | 0 | 0 | 0 | 0 |
 | controlStructures | 158 | 158 | 0 | 0 | 0 | 0 | 0 |
 | delegatedProperty | 149 | 149 | 0 | 0 | 0 | 0 | 0 |
 | bridges | 137 | 137 | 0 | 0 | 0 | 0 | 0 |
 | inline | 132 | 132 | 0 | 0 | 0 | 0 | 0 |
-| properties | 123 | 123 | 0 | 0 | 0 | 0 | 0 |
+| properties | 124 | 124 | 0 | 0 | 0 | 0 | 0 |
 | classes | 120 | 120 | 0 | 0 | 0 | 0 | 0 |
 | objects | 116 | 116 | 0 | 0 | 0 | 0 | 0 |
 | closures | 107 | 107 | 0 | 0 | 0 | 0 | 0 |
 | functions | 106 | 106 | 0 | 0 | 0 | 0 | 0 |
 | when | 103 | 103 | 0 | 0 | 0 | 0 | 0 |
-| enum | 101 | 101 | 0 | 0 | 0 | 0 | 0 |
+| enum | 102 | 102 | 0 | 0 | 0 | 0 | 0 |
 | primitiveTypes | 98 | 98 | 0 | 0 | 0 | 0 | 0 |
 | defaultArguments | 82 | 82 | 0 | 0 | 0 | 0 | 0 |
 | arrays | 78 | 78 | 0 | 0 | 0 | 0 | 0 |
@@ -77,7 +77,7 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 | annotations | 51 | 51 | 0 | 0 | 0 | 0 | 0 |
 | reflection | 50 | 50 | 0 | 0 | 0 | 0 | 0 |
 | funInterface | 48 | 48 | 0 | 0 | 0 | 0 | 0 |
-| reified | 44 | 44 | 0 | 0 | 0 | 0 | 0 |
+| reified | 46 | 46 | 0 | 0 | 0 | 0 | 0 |
 | unsignedTypes | 44 | 44 | 0 | 0 | 0 | 0 | 0 |
 | boxingOptimization | 41 | 41 | 0 | 0 | 0 | 0 | 0 |
 | ir | 41 | 41 | 0 | 0 | 0 | 0 | 0 |
@@ -88,7 +88,7 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 | evaluate | 37 | 37 | 0 | 0 | 0 | 0 | 0 |
 | function | 37 | 37 | 0 | 0 | 0 | 0 | 0 |
 | smartCasts | 36 | 36 | 0 | 0 | 0 | 0 | 0 |
-| operatorConventions | 34 | 34 | 0 | 0 | 0 | 0 | 0 |
+| operatorConventions | 35 | 35 | 0 | 0 | 0 | 0 | 0 |
 | traits | 34 | 34 | 0 | 0 | 0 | 0 | 0 |
 | typealias | 34 | 34 | 0 | 0 | 0 | 0 | 0 |
 | typeErasure | 32 | 32 | 0 | 0 | 0 | 0 | 0 |
@@ -96,16 +96,16 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 | basics | 30 | 30 | 0 | 0 | 0 | 0 | 0 |
 | secondaryConstructors | 30 | 30 | 0 | 0 | 0 | 0 | 0 |
 | syntheticAccessors | 30 | 30 | 0 | 0 | 0 | 0 | 0 |
+| increment | 26 | 26 | 0 | 0 | 0 | 0 | 0 |
 | initializers | 26 | 26 | 0 | 0 | 0 | 0 | 0 |
 | try | 26 | 26 | 0 | 0 | 0 | 0 | 0 |
 | fir | 25 | 25 | 0 | 0 | 0 | 0 | 0 |
 | fp | 25 | 25 | 0 | 0 | 0 | 0 | 0 |
-| increment | 25 | 25 | 0 | 0 | 0 | 0 | 0 |
 | specialBuiltins | 25 | 25 | 0 | 0 | 0 | 0 | 0 |
 | finally | 24 | 24 | 0 | 0 | 0 | 0 | 0 |
 | delegation | 23 | 23 | 0 | 0 | 0 | 0 | 0 |
+| intrinsics | 23 | 23 | 0 | 0 | 0 | 0 | 0 |
 | binaryOp | 22 | 22 | 0 | 0 | 0 | 0 | 0 |
-| intrinsics | 22 | 22 | 0 | 0 | 0 | 0 | 0 |
 | sam | 22 | 22 | 0 | 0 | 0 | 0 | 0 |
 | boxing | 21 | 21 | 0 | 0 | 0 | 0 | 0 |
 | lambda | 21 | 21 | 0 | 0 | 0 | 0 | 0 |
@@ -114,12 +114,12 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 | wasmStringSwitch | 20 | 20 | 0 | 0 | 0 | 0 | 0 |
 | platformTypes | 19 | 19 | 0 | 0 | 0 | 0 | 0 |
 | bce | 18 | 18 | 0 | 0 | 0 | 0 | 0 |
+| lazyCodegen | 18 | 18 | 0 | 0 | 0 | 0 | 0 |
 | vararg | 18 | 18 | 0 | 0 | 0 | 0 | 0 |
 | inlineSizeReduction | 17 | 17 | 0 | 0 | 0 | 0 | 0 |
-| lazyCodegen | 17 | 17 | 0 | 0 | 0 | 0 | 0 |
+| safeCall | 17 | 17 | 0 | 0 | 0 | 0 | 0 |
 | directInvokeOptimization | 16 | 16 | 0 | 0 | 0 | 0 | 0 |
 | escapeAnalysis | 16 | 16 | 0 | 0 | 0 | 0 | 0 |
-| safeCall | 16 | 16 | 0 | 0 | 0 | 0 | 0 |
 | argumentOrder | 15 | 15 | 0 | 0 | 0 | 0 | 0 |
 | unit | 15 | 15 | 0 | 0 | 0 | 0 | 0 |
 | fakeOverride | 14 | 14 | 0 | 0 | 0 | 0 | 0 |
@@ -158,6 +158,7 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 | jdk | 5 | 5 | 0 | 0 | 0 | 0 | 0 |
 | mangling | 5 | 5 | 0 | 0 | 0 | 0 | 0 |
 | storeStackBeforeInline | 5 | 5 | 0 | 0 | 0 | 0 | 0 |
+| companion | 4 | 4 | 0 | 0 | 0 | 0 | 0 |
 | deadCodeElimination | 4 | 4 | 0 | 0 | 0 | 0 | 0 |
 | exclExcl | 4 | 4 | 0 | 0 | 0 | 0 | 0 |
 | inlineClass | 4 | 4 | 0 | 0 | 0 | 0 | 0 |
@@ -167,7 +168,6 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 | unaryOp | 4 | 4 | 0 | 0 | 0 | 0 | 0 |
 | underscoredTypeArguments | 4 | 4 | 0 | 0 | 0 | 0 | 0 |
 | checkcastOptimization | 3 | 3 | 0 | 0 | 0 | 0 | 0 |
-| companion | 3 | 3 | 0 | 0 | 0 | 0 | 0 |
 | cycles | 3 | 3 | 0 | 0 | 0 | 0 | 0 |
 | dataObjects | 3 | 3 | 0 | 0 | 0 | 0 | 0 |
 | fieldRename | 3 | 3 | 0 | 0 | 0 | 0 | 0 |
