@@ -33,88 +33,174 @@ func (g *gen) operand(o operand, t types.Type) {
 }
 
 // progression is a loop's range that is not a range expression but that
-// kotlinc compiles as one, a counted loop: the Int progression from first
-// to last of op, RANGE, UNTIL or DOWN_TO, with step if it isn't nil.
+// kotlinc compiles as one, a counted loop: the progression of elements of
+// type t, Int, Char or Long, from first to last of op, RANGE, UNTIL or
+// DOWN_TO, with step if it isn't nil. If reverse is set, the loop counts
+// the stepped progression backwards, from its last element to first.
 type progression struct {
 	op          syntax.Kind
 	first, last operand
 	step        syntax.Expr
+	t           types.Type
+	reverse     bool
 }
 
 // progression returns the counted loop of range e, or nil if it has
 // none. They are those of the standard library's functions that kotlinc
 // compiles as counted loops: x.indices of an array, a CharSequence or a
-// Collection, which is 0 until x's size; x.indices step n; and
-// reversed() of x.indices, of a..b and of a downTo b.
+// Collection, which is 0 until x's size; x.indices step n; reversed() of
+// x.indices, of a..b and of a downTo b, and that step n; and reversed()
+// of a..b step n and of a downTo b step n.
 func (g *gen) progression(e syntax.Expr) *progression {
 	switch e := unwrapChecked(e).(type) {
 	case *syntax.Member:
 		if size := g.indicesSize(e); size != nil {
-			return &progression{op: syntax.UNTIL, first: intConst(0), last: operand{push: size}}
+			return &progression{op: syntax.UNTIL, first: intConst(0), last: operand{push: size}, t: types.IntType}
 		}
 	case *syntax.Binary:
-		// x.indices step n, which the checker made x.indices.step(n).
-		if e.Op != syntax.STEP || !rangesFun(e.Call, "step", "(Lkotlin/ranges/IntProgression;I)Lkotlin/ranges/IntProgression;") {
+		// p step n, which the checker made p.step(n).
+		if e.Op != syntax.STEP || e.Call == nil || len(e.Call.Args) != 1 {
 			return nil
 		}
 		m, ok := e.Call.Fun.(*syntax.Member)
-		if !ok || m.Safe || len(e.Call.Args) != 1 {
-			return nil
-		}
-		if size := g.indicesSize(m.X); size != nil {
-			return &progression{op: syntax.RANGE, first: intConst(0), last: operand{push: g.lastIndex(size)}, step: e.Call.Args[0]}
-		}
-	case *syntax.Call:
-		if !rangesFun(e, "reversed", "(Lkotlin/ranges/IntProgression;)Lkotlin/ranges/IntProgression;") || len(e.Args) != 0 {
-			return nil
-		}
-		m, ok := e.Fun.(*syntax.Member)
 		if !ok || m.Safe {
 			return nil
 		}
-		if size := g.indicesSize(m.X); size != nil {
-			return &progression{op: syntax.DOWN_TO, first: operand{push: g.lastIndex(size)}, last: intConst(0)}
-		}
-		r, ok := unwrapChecked(m.X).(*syntax.Binary)
-		if !ok || r.Call == nil {
-			return nil
-		}
-		var a, b syntax.Expr
-		op := syntax.DOWN_TO
-		switch {
-		case r.Op == syntax.RANGE && r.Call.Ctor != nil && r.Call.Ctor.Name == "kotlin/ranges/IntRange" && len(r.Call.Args) == 2:
-			// a..b, an IntRange(a, b): b downTo a.
-			a, b = r.Call.Args[0], r.Call.Args[1]
-		case r.Op == syntax.DOWN_TO && rangesFun(r.Call, "downTo", "(II)Lkotlin/ranges/IntProgression;") && len(r.Call.Args) == 1:
-			// a downTo b: b..a.
-			dm, ok := r.Call.Fun.(*syntax.Member)
-			if !ok || dm.Safe {
-				return nil
+		if rangesFun(e.Call, "step", stepDesc(types.IntType)) {
+			if size := g.indicesSize(m.X); size != nil {
+				return &progression{op: syntax.RANGE, first: intConst(0), last: operand{push: g.lastIndex(size)}, step: e.Call.Args[0], t: types.IntType}
 			}
-			a, b, op = dm.X, r.Call.Args[0], syntax.RANGE
-		default:
-			return nil
 		}
-		if a.Type().Flex() != types.IntType || b.Type().Flex() != types.IntType {
-			return nil
+		if r, ok := unwrapChecked(m.X).(*syntax.Call); ok {
+			if p := g.reversed(r); p != nil && p.step == nil && rangesFun(e.Call, "step", stepDesc(p.t)) {
+				p.step = e.Call.Args[0]
+				return p
+			}
 		}
-		// The loop starts at b, but a is evaluated first: into a local,
-		// unless it is a constant or a val, whose value b can't change.
-		last := operand{x: a}
-		if _, ok := constOf(a, 0); !ok && stableLocal(a) == nil {
-			tmp := -1
-			last = operand{push: func() { g.code.Local(cf.ILOAD, tmp) }}
-			first := operand{push: func() {
-				tmp = g.code.AllocLocal("I")
-				g.exprAs(a, types.IntType)
-				g.code.Local(cf.ISTORE, tmp)
-				g.exprAs(b, types.IntType)
-			}}
-			return &progression{op: op, first: first, last: last}
-		}
-		return &progression{op: op, first: operand{x: b}, last: last}
+	case *syntax.Call:
+		return g.reversed(e)
 	}
 	return nil
+}
+
+// progressionTypes maps the element types of the progressions to the
+// name of their class, less Range or Progression.
+var progressionTypes = map[types.Kind]string{types.Int: "Int", types.Char: "Char", types.Long: "Long"}
+
+// stepDesc returns the descriptor of the standard library's step of the
+// progressions of elements of type t.
+func stepDesc(t types.Type) string {
+	c, s := progressionTypes[t.K], "I"
+	if t.K == types.Long {
+		s = "J"
+	}
+	return "(Lkotlin/ranges/" + c + "Progression;" + s + ")Lkotlin/ranges/" + c + "Progression;"
+}
+
+// reversed returns the counted loop of e if it is reversed() of
+// x.indices, of a..b, of a downTo b, or of either with a step, or nil.
+func (g *gen) reversed(e *syntax.Call) *progression {
+	m, ok := e.Fun.(*syntax.Member)
+	if !ok || m.Safe || len(e.Args) != 0 || e.Sym == nil || e.Sym.Name != "reversed" {
+		return nil
+	}
+	var t types.Type
+	for k, c := range progressionTypes {
+		if rangesFun(e, "reversed", "(Lkotlin/ranges/"+c+"Progression;)Lkotlin/ranges/"+c+"Progression;") {
+			t = types.Type{K: k}
+		}
+	}
+	if t.K == types.Invalid {
+		return nil
+	}
+	if t.K == types.Int {
+		if size := g.indicesSize(m.X); size != nil {
+			return &progression{op: syntax.DOWN_TO, first: operand{push: g.lastIndex(size)}, last: intConst(0), t: t}
+		}
+	}
+	r, ok := unwrapChecked(m.X).(*syntax.Binary)
+	if !ok {
+		return nil
+	}
+	if r.Op == syntax.STEP {
+		// (a..b step n).reversed() and (a downTo b step n).reversed():
+		// counted from the last element, which kotlinc computes as for
+		// a..b step n, down to a.
+		if r.Call == nil || len(r.Call.Args) != 1 || !rangesFun(r.Call, "step", stepDesc(t)) {
+			return nil
+		}
+		sm, ok := r.Call.Fun.(*syntax.Member)
+		if !ok || sm.Safe {
+			return nil
+		}
+		inner, ok := unwrapChecked(sm.X).(*syntax.Binary)
+		if !ok {
+			return nil
+		}
+		op, a, b := g.bounds(inner, t)
+		if op == 0 {
+			return nil
+		}
+		return &progression{op: op, first: operand{x: a}, last: operand{x: b}, step: r.Call.Args[0], t: t, reverse: true}
+	}
+	op, a, b := g.bounds(r, t)
+	if op == 0 {
+		return nil
+	}
+	// a..b reversed is b downTo a, and a downTo b reversed is b..a.
+	if op == syntax.RANGE {
+		op = syntax.DOWN_TO
+	} else {
+		op = syntax.RANGE
+	}
+	// The loop starts at b, but a is evaluated first: into a local,
+	// unless it is a constant or a val, whose value b can't change.
+	if _, ok := constOf(a, 0); ok || stableLocal(a) != nil {
+		return &progression{op: op, first: operand{x: b}, last: operand{x: a}, t: t}
+	}
+	d, load, store := "I", byte(cf.ILOAD), byte(cf.ISTORE)
+	if t.K == types.Long {
+		d, load, store = "J", cf.LLOAD, cf.LSTORE
+	}
+	tmp := -1
+	first := operand{push: func() {
+		tmp = g.code.AllocLocal(d)
+		g.exprAs(a, t)
+		g.code.Local(store, tmp)
+		g.exprAs(b, t)
+	}}
+	last := operand{push: func() { g.code.Local(load, tmp) }}
+	return &progression{op: op, first: first, last: last, t: t}
+}
+
+// bounds returns, if r is a..b, a constructor call of the standard
+// library's range of elements of type t, or a downTo b, its op, RANGE or
+// DOWN_TO, and a and b. It returns 0 otherwise.
+func (g *gen) bounds(r *syntax.Binary, t types.Type) (op syntax.Kind, a, b syntax.Expr) {
+	if r.Call == nil {
+		return 0, nil, nil
+	}
+	c := progressionTypes[t.K]
+	switch {
+	case r.Op == syntax.RANGE && r.Call.Ctor != nil && r.Call.Ctor.Name == "kotlin/ranges/"+c+"Range" && len(r.Call.Args) == 2:
+		op, a, b = syntax.RANGE, r.Call.Args[0], r.Call.Args[1]
+	case r.Op == syntax.DOWN_TO && len(r.Call.Args) == 1:
+		d, _ := types.Desc(t)
+		if !rangesFun(r.Call, "downTo", "("+d+d+")Lkotlin/ranges/"+c+"Progression;") {
+			return 0, nil, nil
+		}
+		m, ok := r.Call.Fun.(*syntax.Member)
+		if !ok || m.Safe {
+			return 0, nil, nil
+		}
+		op, a, b = syntax.DOWN_TO, m.X, r.Call.Args[0]
+	default:
+		return 0, nil, nil
+	}
+	if a.Type().Flex() != t || b.Type().Flex() != t {
+		return 0, nil, nil
+	}
+	return op, a, b
 }
 
 // lastIndex returns the code that pushes the last index of a receiver

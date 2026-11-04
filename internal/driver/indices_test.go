@@ -22,6 +22,19 @@ func TestIndicesLoops(t *testing.T) {
 	}, 30)
 }
 
+// TestReversedLoops checks that loops over reversed() of a stepped
+// progression, and over a reversed progression with a step, are counted
+// loops with the bounds computed in place, as kotlinc's: the functions
+// named counted* of testdata/run/stdlibReversedLoops.kt call no reversed
+// or step, nothing else of kotlin.ranges but checkStepIsPositive, and no
+// iterator.
+func TestReversedLoops(t *testing.T) {
+	loopCalls(t, "stdlibReversedLoops", "counted", func(in *classfile.Insn) bool {
+		return in.Name == "iterator" || in.Name == "reversed" || in.Name == "step" ||
+			strings.HasPrefix(in.Owner, "kotlin/ranges/") && in.Name != "checkStepIsPositive" || strings.HasSuffix(in.Owner, "Iterator")
+	}, 20)
+}
+
 // TestProgressionLoops checks that loops over values of the standard
 // library's progression classes are counted loops over their first, last
 // and step, as kotlinc's: the functions named looped* of
