@@ -27,12 +27,17 @@ func dropContracts(checkers []*Checker) {
 					if cls != nil {
 						o.class = cls.Name
 					}
+					o.notAllowed = contractNotAllowed(d.Modifiers, cls)
+					if o.notAllowed == "" && (d.Operator || d.Override && d.Name == "equals") && !contractOperators[d.Name] {
+						o.notAllowed = "contracts are not allowed for operator " + d.Name
+					}
 					d.Once, d.Implies = c.dropContract(d.Body, imported, o)
 				case *syntax.PropDecl:
 					o := contractOwner{name: d.Name, recv: d.Recv != nil, contexts: d.Contexts}
 					if cls != nil {
 						o.class = cls.Name
 					}
+					o.notAllowed = contractNotAllowed(d.Modifiers, cls)
 					if d.Getter != nil {
 						_, d.Getter.Implies = c.dropContract(d.Getter.Body, imported, o)
 					}
@@ -47,7 +52,66 @@ func dropContracts(checkers []*Checker) {
 			}
 		}
 		decls(f.Decls, nil)
+		// kotlinc doesn't allow anonymous and local functions contracts.
+		inspectClass(&syntax.ClassDecl{Members: f.Decls}, func(n any) bool {
+			var b *syntax.Block
+			what := ""
+			switch n := n.(type) {
+			case *syntax.Lambda:
+				if n.Anon {
+					b, what = n.Body, "anonymous"
+				}
+			case *syntax.LocalFun:
+				b, what = n.Decl.Body, "local"
+			}
+			if call := leadingContract(b, imported); call != nil {
+				c.errorf(call.Fun.Pos(), "contract is not allowed here: contracts are not allowed for %s functions", what)
+			}
+			return true
+		})
 	}
+}
+
+// leadingContract returns the contract { } call that starts block b, or
+// nil.
+func leadingContract(b *syntax.Block, imported bool) *syntax.Call {
+	if b == nil || len(b.Stmts) == 0 {
+		return nil
+	}
+	var x syntax.Expr
+	switch s := b.Stmts[0].(type) {
+	case *syntax.ExprStmt:
+		x = s.X
+	case syntax.Expr:
+		x = s
+	}
+	call, ok := x.(*syntax.Call)
+	if !ok || len(call.Args) != 1 || !isContractFun(call.Fun, imported) {
+		return nil
+	}
+	if _, ok := call.Args[0].(*syntax.Lambda); !ok {
+		return nil
+	}
+	return call
+}
+
+// contractOperators are the operators that kotlinc allows contracts.
+var contractOperators = map[string]bool{
+	"unaryPlus": true, "unaryMinus": true, "not": true, "inc": true, "dec": true,
+	"invoke": true, "contains": true, "iterator": true, "next": true, "hasNext": true,
+	"rangeTo": true, "rangeUntil": true,
+}
+
+// contractNotAllowed returns why kotlinc doesn't allow a contract on a
+// member of cls with modifiers m, or its accessors, or "".
+func contractNotAllowed(m syntax.Modifiers, cls *syntax.ClassDecl) string {
+	switch {
+	case cls == nil:
+		return ""
+	case m.Override || m.Open || m.Abstract || cls.Interface:
+		return "contracts are not allowed for open or override functions"
+	}
+	return ""
 }
 
 func importsContract(f *syntax.File) bool {
@@ -110,7 +174,25 @@ func (c *Checker) dropContract(b *syntax.Block, imported bool, o contractOwner) 
 		c.errorf(call.P, "contract is not allowed here: its argument must be a lambda")
 		return nil, nil
 	}
+	if o.notAllowed != "" {
+		// kotlinc still reads the contract.
+		c.errorf(call.Fun.Pos(), "contract is not allowed here: %s", o.notAllowed)
+	}
 	c.contractDescription(call, l, o)
+	for _, s := range l.Body.Stmts {
+		x, _ := s.(syntax.Expr)
+		if es, ok := s.(*syntax.ExprStmt); ok {
+			x = es.X
+		}
+		if call, ok := x.(*syntax.Call); ok {
+			if m, ok := call.Fun.(*syntax.Member); ok && (m.Name == "holdsIn" || m.Name == "implies" && !o.simpleEffect(m.X)) {
+				if c.extContracts == nil {
+					c.extContracts = map[*syntax.Block][]syntax.Pos{}
+				}
+				c.extContracts[b] = append(c.extContracts[b], m.P)
+			}
+		}
+	}
 	b.Stmts = b.Stmts[1:]
 	var once map[string]bool
 	var implies []syntax.Implies
@@ -327,11 +409,14 @@ func (c *Checker) contractCond(x syntax.Expr, d *syntax.FunDecl, sym *types.FunS
 // contractOwner is the function, or property accessor, a contract
 // describes.
 type contractOwner struct {
-	name     string // the function's, or the property's
-	class    string // the name of the class it is a member of, or ""
-	recv     bool   // it is an extension
-	params   []*syntax.Param
-	contexts []*syntax.Param
+	// notAllowed is why kotlinc doesn't allow the function a contract,
+	// or "".
+	notAllowed string
+	name       string // the function's, or the property's
+	class      string // the name of the class it is a member of, or ""
+	recv       bool   // it is an extension
+	params     []*syntax.Param
+	contexts   []*syntax.Param
 }
 
 // contractDescription reports the statements of the lambda of contract
@@ -353,6 +438,13 @@ func (c *Checker) contractDescription(call *syntax.Call, l *syntax.Lambda, o con
 		case syntax.Expr:
 			x = s
 		}
+		if as := c.file.Annotated[s]; len(as) > 0 {
+			c.errorf(as[0].P, "annotations are not allowed in contract descriptions")
+			continue
+		} else if as := c.file.Annotated[x]; x != nil && len(as) > 0 {
+			c.errorf(as[0].P, "annotations are not allowed in contract descriptions")
+			continue
+		}
 		if x == nil || !o.effect(x) {
 			p := l.P
 			switch s := s.(type) {
@@ -372,7 +464,7 @@ func (c *Checker) contractDescription(call *syntax.Call, l *syntax.Lambda, o con
 			}
 			c.errorf(p, "error in contract description: not an effect that a contract can declare")
 		} else if !o.returnsNotNullCond(x) {
-			c.errorf(call.Fun.Pos(), "error in contract description: arbitrary expressions are not supported in this contract, only 'null' and 'is' checks are")
+			c.errorf(call.Fun.Pos(), "error in contract description: only a 'null' or 'is' check can imply returnsNotNull(), not an arbitrary expression")
 		}
 	}
 }

@@ -898,8 +898,18 @@ func (w *optWalker) prop(d *syntax.PropDecl, owner *types.ClassSym) {
 
 // node walks code.
 func (w *optWalker) node(n any) {
+	if b, ok := n.(*syntax.Block); ok {
+		for _, p := range w.c.extContracts[b] {
+			w.require(p, []*optMarker{extendedContracts})
+		}
+	}
 	syntax.Inspect(n, w.visit)
 }
+
+// extendedContracts is the marker of the contract DSL's cond implies
+// returnsNotNull() and cond holdsIn lambda, whose statements the
+// checker drops with their contract { }.
+var extendedContracts = &optMarker{simple: "ExperimentalExtendedContracts", qual: "kotlin.contracts.ExperimentalExtendedContracts", err: true}
 
 func (w *optWalker) visit(n any) bool {
 	if as := w.c.file.Annotated[n]; len(as) > 0 && w.entered != n {

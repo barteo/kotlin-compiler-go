@@ -248,7 +248,12 @@ type Checker struct {
 	varSites      map[*types.VarSym]varSite
 	concurrent    map[varFrame]bool
 	nestedAssigns map[*types.VarSym][]types.Type
-	assignsMemo   map[any][]string
+	// extContracts are the positions of the contract statements that
+	// need opt-in to kotlin.contracts.ExperimentalExtendedContracts, cond
+	// implies returnsNotNull() and cond holdsIn lambda, by the body whose
+	// contract they are in.
+	extContracts map[*syntax.Block][]syntax.Pos
+	assignsMemo  map[any][]string
 	// loopKept has the vars that the loops being checked keep smart cast
 	// to their types, as loopVars has them.
 	loopKept map[*types.VarSym]types.Type

@@ -1454,6 +1454,10 @@ func (c *Checker) narrowing(cond syntax.Expr) (whenTrue, whenFalse []narrow) {
 			return t, f
 		}
 	case *syntax.Ident:
+		if x.Call != nil {
+			// A property with context parameters: its getter's contract.
+			return c.narrowing(x.Call)
+		}
 		if x.Member == nil && x.Sym != nil {
 			if n, ok := c.conds[x.Sym]; ok {
 				return n[0], n[1]
@@ -1751,6 +1755,11 @@ func (c *Checker) condHolds(x contractSite, cond *types.Cond) (v, known bool) {
 	}
 	arg := x.arg(cond.Param)
 	if arg == nil {
+		return false, false
+	}
+	if id, ok := arg.(*syntax.Ident); ok && id.Sym != nil && id.Sym.Mutable && len(c.nestedAssigns[id.Sym]) > 0 {
+		// A var that lambdas assign isn't stable, whatever they assign:
+		// kotlinc doesn't evaluate a condition on it.
 		return false, false
 	}
 	t := arg.Type()

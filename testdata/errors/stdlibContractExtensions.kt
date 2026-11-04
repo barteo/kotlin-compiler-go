@@ -3,7 +3,7 @@
 import kotlin.contracts.*
 
 fun both(a: String?, b: Boolean): String? {
-    contract { // ERROR arbitrary expressions are not supported in this contract
+    contract { // ERROR only a 'null' or 'is' check can imply returnsNotNull()
         (a != null && b) implies returnsNotNull()
     }
     return if (a != null && b) a else null
