@@ -27,6 +27,13 @@ func TestLanguageSkip(t *testing.T) {
 		{"// LANGUAGE: +JvmNullOutSpilledCoroutineLocals\n", ""},
 		{"// LANGUAGE: +PCLAEnhancementsIn21\n", ""},
 		{"// LANGUAGE: +ResolveTopLevelLambdasAsSyntheticCallArgument\n", ""},
+		{"// LANGUAGE: +AvoidWrongOptimizationOfTypeOperatorsOnValueClasses\n", ""},
+		{"// LANGUAGE: +RefinedVarargConversionRulesForCallableReferences\n", ""},
+		{"// LANGUAGE: +AllowAccessToProtectedFieldFromSuperCompanion\n", ""},
+		{"// LANGUAGE: +NullableNothingInReifiedPosition\n", ""},
+		{"// LANGUAGE: +PrioritizedEnumEntries\n", ""},
+		{"// LANGUAGE: -ForbidParenthesizedLhsInAssignments\n", ""},
+		{"// LANGUAGE: +ForbidParenthesizedLhsInAssignments\n", "LANGUAGE"},
 	}
 	dir := t.TempDir()
 	for i, tt := range tests {

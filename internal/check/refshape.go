@@ -1,6 +1,8 @@
 package check
 
 import (
+	"slices"
+
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
 	"github.com/barteo/kotlin-compiler-go/internal/types"
 )
@@ -180,6 +182,15 @@ func (c *Checker) refFits(s *system, ft, p types.Type) (*system, bool) {
 // foo(x: Int): Inv<Int> gives an R within its bound Number.
 func (c *Checker) onlyRefFit(s *system, l *syntax.Lambda, p types.Type) *system {
 	ts := c.refShapes(l)
+	if len(ts) == 0 {
+		// As in Kotlin, only with a parameter of a known type: not for
+		// (T, T) -> R, whose variables may as well be an array's.
+		if ps, _, ok := funcParts(s.apply(p)); ok && slices.ContainsFunc(ps, func(t types.Type) bool { return !t.HasVars() }) {
+			if ft, ok := c.varargShape(l, len(ps)); ok {
+				ts = []types.Type{ft}
+			}
+		}
+	}
 	if len(ts) == 0 || !s.apply(p).HasVars() {
 		return nil
 	}
@@ -193,4 +204,62 @@ func (c *Checker) onlyRefFit(s *system, l *syntax.Lambda, p types.Type) *system 
 		}
 	}
 	return fit
+}
+
+// varargShape returns the type of ::f, a reference to the only function
+// f, which has a vararg, adapted to a function type of n parameters: each
+// one past f's others is an element of the vararg, as T of
+// foo(b: (Any, T) -> String) is Any for foo(::of), fun of(vararg args: Any),
+// unless there is one for it, which takes its array.
+func (c *Checker) varargShape(l *syntax.Lambda, n int) (types.Type, bool) {
+	r := l.Ref
+	if r == nil || r.X != nil || r.Type != nil || r.Bound != nil {
+		return types.InvalidType, false
+	}
+	name := r.Name
+	if c.lookupClass(name) != nil || c.cls != nil && c.hasCallable(c.cls, name) || c.topVar(name) != nil {
+		return types.InvalidType, false
+	}
+	if _, _, ok := c.scope.lookup(name); ok {
+		return types.InvalidType, false
+	}
+	fs, _ := c.scope.findFuns(name)
+	if len(fs) == 0 {
+		fs = c.topFuns(name)
+	}
+	if len(fs) != 1 {
+		return types.InvalidType, false
+	}
+	f := fs[0]
+	ensureFun(f)
+	if f.Ext || len(f.TypeParams) > 0 || f.Ret.K == types.Invalid || f.Ret.HasParams() || len(f.Contexts) > 0 || f.Hidden || f.Unsupported || n < len(f.Params)-1 {
+		return types.InvalidType, false
+	}
+	var ps []types.Type
+	varargs := 0
+	for _, q := range f.Params {
+		if q.Type.HasParams() || q.Default {
+			return types.InvalidType, false
+		}
+		if !q.Vararg {
+			ps = append(ps, q.Type)
+			continue
+		}
+		varargs++
+		if n == len(f.Params) {
+			// One parameter for the vararg takes its array.
+			ps = append(ps, q.Type)
+			continue
+		}
+		for range n - (len(f.Params) - 1) {
+			ps = append(ps, types.VarargElem(q.Type))
+		}
+	}
+	if varargs != 1 {
+		return types.InvalidType, false
+	}
+	if f.Suspend {
+		return c.u.ext.funcs.SuspendType(ps, f.Ret), true
+	}
+	return c.u.ext.funcs.Type(ps, f.Ret), true
 }

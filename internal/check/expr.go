@@ -72,6 +72,21 @@ func (c *Checker) expr1(x syntax.Expr, want types.Type, allowRange bool, sink *s
 		if x.Object != nil {
 			return types.ClassType(x.Object) // an object, already resolved
 		}
+		if x.Name == "entries" && c.u.ext.kotlin {
+			// As in Kotlin, an enum's entries in its own code come before
+			// the scopes around it, as an outer object's entries, but
+			// not its own members, nor a local or a parameter.
+			if cls := c.firstEnclosing(); cls != nil && cls.Entries != nil && !cls.External && !c.hasCallable(cls, x.Name) {
+				if sym, _, _, ok := c.lookupVar(x.Name); !ok || sym.Kind != types.Local && sym.Kind != types.Param {
+					m := &syntax.Member{X: &syntax.Ident{Name: cls.Name}, Name: x.Name}
+					m.P = x.P
+					t := c.enumEntries(m, cls)
+					m.T = t
+					x.Member = m
+					return t
+				}
+			}
+		}
 		if len(c.recvs) > 0 {
 			if _, _, local := c.scope.lookup(x.Name); !local {
 				if t, ok := c.recvMember(x); ok {
@@ -1738,6 +1753,7 @@ func intLitExpr(x syntax.Expr) bool {
 // receivers take it, as String?.isNullOrEmpty() does: callReceiver
 // returns them, and the receiver's type stays nullable.
 func (c *Checker) callReceiver(fn *syntax.Member, want types.Type) (types.Type, []callee, bool) {
+	c.entriesQualifier(fn.X)
 	vt := c.value(fn.X, want)
 	t := c.fixedStub(c.declaredIfNull(fn.X, vt))
 	if t.K == types.Invalid {
@@ -1782,6 +1798,7 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 	if x.Object != nil {
 		return types.ClassType(x.Object) // an object, already resolved
 	}
+	c.entriesQualifier(x.X)
 	if cls := c.classRef(x); cls != nil && !c.hasStatic(c.classRef(x.X), x.Name) {
 		if obj := objectOf(cls); obj != nil {
 			c.checkClassVisible(cls, x.P)
@@ -1972,7 +1989,9 @@ func (c *Checker) invokable(t types.Type) bool {
 }
 
 func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type {
-	if x.Recv {
+	if m, ok := x.Fun.(*syntax.Member); x.Recv || ok && m.Paren {
+		// (a?.b)(v) invokes the value of a?.b: the parentheses end
+		// its chain.
 		return c.invoke(x, want, sink)
 	}
 	switch fn := x.Fun.(type) {
@@ -2695,15 +2714,16 @@ func (c *Checker) index(x *syntax.Index, name string, args []syntax.Expr, want t
 
 // safeChain reports whether x ends a chain of safe calls that an index
 // of it, x[i], continues: a?.b, a?.f(), or an index of one, a?.b[i].
+// Parentheses end the chain: (a?.b)[i] indexes a nullable value.
 func safeChain(x syntax.Expr) bool {
 	switch x := x.(type) {
 	case *syntax.Member:
-		return x.Safe
+		return x.Safe && !x.Paren
 	case *syntax.Call:
 		m, ok := x.Fun.(*syntax.Member)
-		return ok && !x.Invoke && m.Safe
+		return ok && !x.Invoke && m.Safe && !x.Paren
 	case *syntax.Index:
-		return safeChain(x.X)
+		return !x.Paren && safeChain(x.X)
 	}
 	return false
 }
@@ -3650,6 +3670,27 @@ func (c *Checker) jump(x *syntax.Jump) {
 			loop.hasBreak = true
 		} else {
 			loop.hasContinue = true
+		}
+	}
+}
+
+// entriesQualifier resolves x, the receiver of a member, to an enum's
+// nested object named entries, if it is E.entries and E has one: as in
+// Kotlin, a qualifier names a class before the enum's entries, which
+// E.entries alone is. E.entries.toString() calls the object's.
+func (c *Checker) entriesQualifier(x syntax.Expr) {
+	m, ok := x.(*syntax.Member)
+	if !ok || m.Name != "entries" || m.Object != nil || m.Safe {
+		return
+	}
+	enum := c.classRef(m.X)
+	if enum == nil || enum.Entries == nil || c.staticFieldOf(enum, m.Name) != nil {
+		return
+	}
+	if cls := c.classRef(m); cls != nil {
+		if obj := objectOf(cls); obj != nil && obj == cls {
+			c.checkClassVisible(cls, m.P)
+			objectValue(m, obj)
 		}
 	}
 }

@@ -976,6 +976,12 @@ func (c *Checker) invokeValue(x *syntax.Call, ft, want types.Type, sink *system)
 			if t, ok := c.invokeOp(x, ft.NonNull(), want, sink); ok {
 				return t
 			}
+		} else if m, ok := x.Fun.(*syntax.Member); ok && m.Paren {
+			// (a?.b)(v): invoke on a value that may be null, an
+			// extension of a nullable receiver's.
+			if t, ok := c.invokeOp(x, ft, want, sink); ok {
+				return t
+			}
 		}
 		if id, ok := x.Fun.(*syntax.Ident); ok {
 			c.errorf(x.Fun.Pos(), "expression '%s' of type %s cannot be invoked as a function", id.Name, ft)

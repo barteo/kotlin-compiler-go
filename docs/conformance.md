@@ -47,14 +47,20 @@ diagnostic markup, and looks for `box()` in the class `kotlinc` puts it
 in. It skips tests for other backends, tests `kotlinc`'s JVM backend
 ignores, and tests that need `LANGUAGE` features, compiler arguments,
 Java sources, or modules with friends or `dependsOn`. A `LANGUAGE` that
-only turns on features Kotlin 2.4 has on by default
-(`+AllowReifiedTypeInCatchClause`,
+only sets features as Kotlin 2.4 has them by default, or as kc
+follows them
+(`+AllowAccessToProtectedFieldFromSuperCompanion`,
+`+AllowReifiedTypeInCatchClause`,
 `+AllowReturnInExpressionBodyWithExplicitType`,
+`+AvoidWrongOptimizationOfTypeOperatorsOnValueClasses`,
 `+BreakContinueInInlineLambdas`, `+ContextParameters`,
 `+DataFlowBasedExhaustiveness`, `+ExplicitBackingFields`,
+`-ForbidParenthesizedLhsInAssignments`,
 `+JvmNullOutSpilledCoroutineLocals`, `+MultiDollarInterpolation`,
-`+NestedTypeAliases`, `+PCLAEnhancementsIn21`,
+`+NestedTypeAliases`, `+NullableNothingInReifiedPosition`,
+`+PCLAEnhancementsIn21`, `+PrioritizedEnumEntries`,
 `+ProperIeee754Comparisons`,
+`+RefinedVarargConversionRulesForCallableReferences`,
 `+ResolveTopLevelLambdasAsSyntheticCallArgument`, `+WhenGuards`)
 doesn't count.
 
