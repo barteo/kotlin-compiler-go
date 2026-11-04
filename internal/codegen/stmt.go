@@ -361,7 +361,21 @@ func (g *gen) forLoop(s *syntax.For) {
 		g.forCalls(s)
 		return
 	}
+	if p := g.progression(s.Range); p != nil && s.Sym.Type == p.t {
+		switch {
+		case p.step != nil:
+			g.forStepped(s, p.first, p.last, p.op, p.step, p.t.K == types.Long, p.reverse)
+		case p.t.K == types.Long:
+			g.forLongRange(s, p.first, p.last, p.op)
+		default:
+			g.forIntRange(s, p.first, p.last, p.op)
+		}
+		return
+	}
 	if s.HasNext != nil {
+		if g.forProgression(s) {
+			return
+		}
 		g.forEach(s)
 		return
 	}
@@ -381,28 +395,37 @@ func (g *gen) forLoop(s *syntax.For) {
 		op = r.Op
 	}
 	if step != nil {
-		g.forStepped(s, r, op, step, s.Sym.Type.K == types.Long)
+		g.forStepped(s, operand{x: r.X}, operand{x: r.Y}, op, step, s.Sym.Type.K == types.Long, false)
 		return
 	}
 	if s.Sym.Type.K == types.Long {
-		g.forLongRange(s, r, op)
+		g.forLongRange(s, operand{x: r.X}, operand{x: r.Y}, op)
 		return
 	}
+	g.forIntRange(s, operand{x: r.X}, operand{x: r.Y}, op)
+}
+
+// forIntRange generates a for loop over the Int range from first to last
+// of op, which is RANGE, RANGE_LT, UNTIL or DOWN_TO.
+func (g *gen) forIntRange(s *syntax.For, first, last operand, op syntax.Kind) {
 	i := g.code.AllocLocal("I")
 	g.setSlot(s.Sym, i)
 	g.named(s.Sym)
-	g.exprAs(r.X, types.IntType)
+	g.operand(first, types.IntType)
 	g.code.Local(cf.ISTORE, i)
 	// As kotlinc does, a constant or a val's value is the bound itself;
 	// anything else is computed once, into a local.
 	var loadEnd func()
-	if v, ok := constOf(r.Y, 0); ok && r.Y.Type().K == types.Int {
+	if v, ok := constOf(last.x, 0); ok && last.x.Type().K == types.Int {
 		loadEnd = func() { g.code.Iconst(int32(v.(int64))) }
-	} else if p := stableLocal(r.Y); p != nil {
+	} else if p := stableLocal(last.x); p != nil {
 		loadEnd = func() { g.loadStorage(p) }
+	} else if last.x == nil && last.konst != nil {
+		v := *last.konst
+		loadEnd = func() { g.code.Iconst(v) }
 	} else {
 		end := g.code.AllocLocal("I")
-		g.exprAs(r.Y, types.IntType)
+		g.operand(last, types.IntType)
 		g.code.Local(cf.ISTORE, end)
 		loadEnd = func() { g.code.Local(cf.ILOAD, end) }
 	}
@@ -451,14 +474,14 @@ func (g *gen) forLoop(s *syntax.For) {
 
 // forLongRange generates a for loop over a Long range, as forLoop does
 // over an Int range, with the bound in a local.
-func (g *gen) forLongRange(s *syntax.For, r *syntax.Binary, op syntax.Kind) {
+func (g *gen) forLongRange(s *syntax.For, first, last operand, op syntax.Kind) {
 	i := g.code.AllocLocal("J")
 	g.setSlot(s.Sym, i)
 	g.named(s.Sym)
-	g.exprAs(r.X, types.LongType)
+	g.operand(first, types.LongType)
 	g.code.Local(cf.LSTORE, i)
 	end := g.code.AllocLocal("J")
-	g.exprAs(r.Y, types.LongType)
+	g.operand(last, types.LongType)
 	g.code.Local(cf.LSTORE, end)
 	top, cont, exit := cf.NewLabel(), cf.NewLabel(), cf.NewLabel()
 	// i compared with end: exitOp leaves the loop.
@@ -508,22 +531,21 @@ func (g *gen) forLongRange(s *syntax.For, r *syntax.Binary, op syntax.Kind) {
 // Long one, as kotlinc does: the step must be positive, an exclusive bound
 // becomes an inclusive one, and the loop ends at the progression's last
 // element, which getProgressionLastElement computes, so that it does not
-// overflow.
-func (g *gen) forStepped(s *syntax.For, r *syntax.Binary, op syntax.Kind, step syntax.Expr, long bool) {
+// overflow. If reverse is set, the loop counts from that last element
+// back to first, with the opposite step, as kotlinc does for reversed().
+func (g *gen) forStepped(s *syntax.For, first, lastBound operand, op syntax.Kind, step syntax.Expr, long, reverse bool) {
 	t, d, load, store, add, sub, neg, rem := types.IntType, "I", byte(cf.ILOAD), byte(cf.ISTORE), byte(cf.IADD), byte(cf.ISUB), byte(cf.INEG), byte(cf.IREM)
 	if long {
 		t, d, load, store, add, sub, neg, rem = types.LongType, "J", cf.LLOAD, cf.LSTORE, cf.LADD, cf.LSUB, cf.LNEG, cf.LREM
 	}
-	local := func(e syntax.Expr) int {
+	local := func(o operand) int {
 		slot := g.code.AllocLocal(d)
-		g.exprAs(e, t)
+		g.operand(o, t)
 		g.code.Local(store, slot)
 		return slot
 	}
-	i := local(r.X)
-	g.setSlot(s.Sym, i)
-	g.named(s.Sym)
-	last, st := local(r.Y), local(step)
+	i := local(first)
+	last, st := local(lastBound), local(operand{x: step})
 	exit := cf.NewLabel()
 	// cmpJump compares the values pushed and jumps to l on op, one of
 	// IF_ICMPxx.
@@ -644,6 +666,13 @@ func (g *gen) forStepped(s *syntax.For, r *syntax.Binary, op syntax.Kind, step s
 	} else {
 		cmpJump(cf.IF_ICMPGT, exit)
 	}
+	// Reversed, the loop runs from last back to i, the first element.
+	down := op == syntax.DOWN_TO
+	if reverse {
+		i, last, down = last, i, !down
+	}
+	g.setSlot(s.Sym, i)
+	g.named(s.Sym)
 	top, cont := cf.NewLabel(), cf.NewLabel()
 	g.code.Place(top)
 	g.pushLoop(s, exit, cont)
@@ -655,7 +684,7 @@ func (g *gen) forStepped(s *syntax.For, r *syntax.Binary, op syntax.Kind, step s
 	cmpJump(cf.IF_ICMPEQ, exit)
 	g.code.Local(load, i)
 	g.code.Local(load, st)
-	if op == syntax.DOWN_TO {
+	if down {
 		g.code.Op(sub)
 	} else {
 		g.code.Op(add)
@@ -666,14 +695,15 @@ func (g *gen) forStepped(s *syntax.For, r *syntax.Binary, op syntax.Kind, step s
 }
 
 // stableLocal returns the local or parameter that x reads if it is an
-// Int val of the function being generated: its value can't change.
+// Int, Char or Long val of the function being generated: its value
+// can't change.
 func stableLocal(x syntax.Expr) *types.VarSym {
 	id, ok := x.(*syntax.Ident)
 	if !ok || id.Sym == nil || id.Cast {
 		return nil
 	}
 	v := id.Sym
-	if (v.Kind != types.Local && v.Kind != types.Param) || v.Mutable || v.Delegate != nil || v.Type != types.IntType {
+	if (v.Kind != types.Local && v.Kind != types.Param) || v.Mutable || v.Delegate != nil || (v.Type != types.IntType && v.Type != types.CharType && v.Type != types.LongType) {
 		return nil
 	}
 	return v
