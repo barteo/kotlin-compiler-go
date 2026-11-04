@@ -257,7 +257,8 @@ come back below the result. A handler needs that anyway, and HotSpot
 compiles a loop on stack replacement only if its backward branch has an
 empty stack, so a method that runs one long loop would otherwise stay in
 the interpreter. A loop statement inside an expression (a `when` branch
-that is an argument) does the same. Values below the start of an
+that is an argument), `Array(n) { ... }`'s loop and an annotation
+implementation's copy of a `KClass` array do the same. Values below the start of an
 enclosing loop, inlined body or lambda stay, for jumps out of it, but
 those spilled theirs too. An object that `new` created and isn't
 constructed yet can't be stored: a constructor call whose arguments
