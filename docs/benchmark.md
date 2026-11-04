@@ -125,9 +125,13 @@ of 5 warmup and 5 measured iterations of 200 ms, `kc`'s code is within
 than 10% faster on 12; the geometric mean is 1.24x. The large ratios come
 from a few things `kc` writes differently:
 
-- A call to a generic interface method on a class that implements it
-  with a primitive type calls the boxing bridge, `get(I)Ljava/lang/Integer;`
-  instead of `get(I)I` (`GenericArrayView`, 36–161x).
+- Values pushed before an inlined call (a receiver, earlier arguments)
+  stay on the operand stack while the inlined body runs. HotSpot can't
+  compile a loop on the fly (OSR) while the stack isn't empty ("OSR
+  starts with non-empty stack" in `-XX:+PrintCompilation`), so a method
+  that runs one long inlined loop, like `bh.consume(bench(arr) { ... })`,
+  stays interpreted. `kotlinc` spills the stack to locals before inlining
+  (`GenericArrayView` 36–161x, `Iterator` 19–21x).
 - `for (i in array.indices)` builds an `IntRange` and calls the boxing
   `IntIterator.next()`, where `kotlinc` writes a counted loop
   (`ForLoops.intArrayIndicesLoop` 8.9x, `uIntArrayIndicesLoop` 6.5x).
@@ -137,10 +141,6 @@ from a few things `kc` writes differently:
   ordinal (`Switch.testEnumsSwitch` 5.8x). On the other hand, `kc`'s
   `when` over `Int` constants is 2–4x faster than `kotlinc`'s here
   (`testDenseIntSwitch`, `testConstSwitch`).
-
-Not all of it is explained yet: in `Iterator.abstractIterable` (21x)
-both compilers write the same calls in the loop, so the difference is
-elsewhere in the method or in how the JIT treats it.
 
 ## Where kotlinc's time goes
 
