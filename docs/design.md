@@ -35,7 +35,7 @@ differ is listed in [Unsupported Kotlin](unsupported.md#differences-from-kotlinc
 **Class path.** `internal/classpath` indexes class names at startup: the
 JDK's `lib/modules` image (about 28,000 classes), then each `-cp` entry,
 earlier entries winning. Indexing reads only the image's tables and the
-jars' central directories, takes about 5 ms, and runs while the sources
+jars' central directories, takes about 15 ms, and runs while the sources
 are parsed. A class file is parsed when the checker first needs the
 class, and then only its supertypes and member signatures.
 
