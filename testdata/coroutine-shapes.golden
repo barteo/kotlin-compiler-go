@@ -504,7 +504,7 @@
 + StdlibSuspendInlineKt$inlineSuspend$1 debug s=L$0,I$0,L$0,I$0,L$0,I$0,I$3
 + StdlibSuspendInlineKt$lambdas$1 debug i=0,0,1,1,2,3,3,4,4,5,5,5,5,5
 + StdlibSuspendInlineKt$lambdas$1 debug n=sum,it,sum,it,sum,sum,it,sum,x,k,sum,x,y,v
-+ StdlibSuspendInlineKt$lambdas$1 debug s=I$0,I$3,I$0,I$2,I$0,I$0,I$1,I$0,I$1,L$7,I$0,I$1,I$2,I$5
++ StdlibSuspendInlineKt$lambdas$1 debug s=I$0,I$3,I$0,I$2,I$0,I$0,I$1,I$0,I$1,L$8,I$0,I$1,I$2,I$5
 + StdlibSuspendInlineKt$lambdas$1 field I$4 I 0x0
 + StdlibSuspendInlineKt$lambdas$1 field I$5 I 0x0
 + StdlibSuspendInlineKt$lambdas$1 field L$9 Ljava/lang/Object; 0x0

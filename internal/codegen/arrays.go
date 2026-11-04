@@ -250,8 +250,11 @@ func (g *gen) enumIntrinsic(x *syntax.Call) {
 
 // indexLoop generates a loop of index i from 0 to the int in local n,
 // exclusive, with body. If labels isn't nil, the body may break and
-// continue: labels receives the loop's labels.
+// continue: labels receives the loop's labels. The stack is moved to
+// locals around it, as for a loop statement (see spillStack).
 func (g *gen) indexLoop(n int, body func(i int), labels func(brk, cont *cf.Label)) {
+	spilled, _ := g.spillStack()
+	defer g.unspill(spilled, "V")
 	i := g.code.AllocLocal("I")
 	g.code.Iconst(0)
 	g.code.Local(cf.ISTORE, i)

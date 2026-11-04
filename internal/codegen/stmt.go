@@ -143,12 +143,18 @@ func (g *gen) stmt(s syntax.Stmt) {
 	case *syntax.LocalFun:
 		g.localFun(s)
 	case *syntax.While:
+		// A loop in an expression, a when's branch that is an argument,
+		// starts with the stack in locals: see spillStack.
+		spilled, _ := g.spillStack()
 		// In a replace group if the checker says so: see composeFlow.
 		g.grouped(s.Group, g.siteKey(s.P, "loop", 0), func() { g.while(s) })
+		g.unspill(spilled, "V")
 	case *syntax.For:
+		spilled, _ := g.spillStack()
 		scope := g.code.Scope()
 		g.grouped(s.Group, g.siteKey(s.P, "loop", 0), func() { g.forLoop(s) })
 		g.code.EndScope(scope)
+		g.unspill(spilled, "V")
 	case *syntax.Block:
 		g.block(s, types.UnitType, false)
 	}

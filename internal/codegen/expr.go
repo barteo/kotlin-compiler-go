@@ -2067,11 +2067,11 @@ func (g *gen) ungroupedCall(x *syntax.Call) {
 	case x.Ctor != nil:
 		d := ctorJVMDesc(x.Sym)
 		var mask argMask
-		if g.argsSuspend(x.Args) || hasHandlers(x.Args) {
+		if g.argsSuspend(x.Args) || inlinesCode(x.Args) {
 			// The object under construction can't be stored while the
-			// arguments suspend, or in the locals that a try's handler
-			// needs the stack spilled to: they are evaluated first, as
-			// kotlinc does.
+			// arguments suspend, or in the locals that inlined code
+			// moves the stack to (see spillStack): they are evaluated
+			// first, as kotlinc does.
 			depth := g.code.Depth()
 			g.outerArg(x)
 			mask = g.callArgs(x, x.Sym)
