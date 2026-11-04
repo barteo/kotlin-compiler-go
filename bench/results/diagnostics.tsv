@@ -1856,7 +1856,7 @@ tests/contextSensitiveResolutionUsingExpectedType/typePosition/typeCast.kt	skip	
 tests/contextSensitiveResolutionUsingExpectedType/typePosition/typeParameter.kt	skip	LANGUAGE	
 tests/contextSensitiveResolutionUsingExpectedType/typePosition/typeParametersComplex.kt	skip	LANGUAGE	
 tests/contextSensitiveResolutionUsingExpectedType/typePosition/unsupportedTypePosition.kt	skip	LANGUAGE	
-tests/contracts/checkForErased.kt	skip	LANGUAGE	
+tests/contracts/checkForErased.kt	accepts valid		
 tests/contracts/contractFromOtherModule.kt	skip	LANGUAGE	
 tests/contracts/contractFromOtherModule_samePackage.kt	skip	LANGUAGE	
 tests/contracts/contractInDiagnosticRendering.kt	rejects invalid	on an expected line	
@@ -1872,7 +1872,7 @@ tests/contracts/pos/1.kt	accepts valid
 tests/contracts/pos/14UserDefined.kt	rejects invalid	on an expected line	
 tests/contracts/substitutedFunctionWithContract.kt	accepts valid		
 tests/contracts/substitutedPropertyAccessorWithContract.kt	accepts valid		
-tests/contracts/suppressContractWarning.kt	accepts invalid	ANNOTATION_IN_CONTRACT_ERROR	suppressContractWarning.kt:27: ANNOTATION_IN_CONTRACT_ERROR
+tests/contracts/suppressContractWarning.kt	rejects invalid	on an expected line	
 tests/contracts/varCapturing/allowlistedDispatchers.kt	skip	LANGUAGE	
 tests/contracts/varCapturing/callsInPlaceExclusions.kt	skip	LANGUAGE	
 tests/contracts/varCapturing/crossReassignments.kt	skip	LANGUAGE	
@@ -8203,7 +8203,7 @@ tests/smartCasts/comparisonOfClassTypesUnderOr.kt	rejects invalid	on an expected
 tests/smartCasts/comparisonUnderAnd.kt	rejects invalid	on an expected line	
 tests/smartCasts/complexComparison.kt	rejects invalid	on an expected line	
 tests/smartCasts/complexConditionsWithExcl.kt	rejects invalid	on an expected line	
-tests/smartCasts/complexSealedContracts.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	complexSealedContracts.kt:73: type mismatch: inferred type is String? but String was expected
+tests/smartCasts/complexSealedContracts.kt	accepts valid		
 tests/smartCasts/contractSafeCall.kt	rejects invalid	on an expected line	
 tests/smartCasts/controlStructures/earlyReturnInNonExhaustiveWhen.kt	accepts valid		
 tests/smartCasts/controlStructures/elvis.kt	accepts valid		
@@ -8617,7 +8617,7 @@ tests/smartCasts/varnotnull/classDelegationDeprecated.kt	skip	LANGUAGE
 tests/smartCasts/varnotnull/classDelegationError.kt	skip	LANGUAGE	
 tests/smartCasts/varnotnull/doWhileWithBreak.kt	rejects invalid	on an expected line	
 tests/smartCasts/varnotnull/doWhileWithMiddleBreak.kt	rejects invalid	on an expected line	
-tests/smartCasts/varnotnull/equalityAndIdentity.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	equalityAndIdentity.kt:22: type mismatch: inferred type is String? but String was expected
+tests/smartCasts/varnotnull/equalityAndIdentity.kt	accepts valid		
 tests/smartCasts/varnotnull/forEach.kt	rejects invalid	on an expected line	
 tests/smartCasts/varnotnull/forEachWithBreak.kt	rejects invalid	on an expected line	
 tests/smartCasts/varnotnull/forEachWithContinue.kt	rejects invalid	on an expected line	
@@ -9808,13 +9808,13 @@ testsWithStdLib/contracts/controlflow/initialization/exactlyOnce/varDefiniteInit
 testsWithStdLib/contracts/controlflow/initialization/exactlyOnce/varIndefiniteInitialization.kt	rejects invalid	on an expected line	
 testsWithStdLib/contracts/controlflow/initialization/exactlyOnce/withReceiver.kt	rejects invalid	on an expected line	
 testsWithStdLib/contracts/controlflow/initialization/unknown/unknownInvocations.kt	rejects invalid	on an expected line	
-testsWithStdLib/contracts/dsl/accessorsAllowedInK2.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/dsl/accessorsAllowedInK2MultiModule.kt	skip	LANGUAGE	
+testsWithStdLib/contracts/dsl/accessorsAllowedInK2.kt	accepts valid		
+testsWithStdLib/contracts/dsl/accessorsAllowedInK2MultiModule.kt	rejects valid	unresolved import: _	usageDifferentModule.kt:2: unresolved import: isError
 testsWithStdLib/contracts/dsl/callUsualContractFunction.kt	accepts valid		
 testsWithStdLib/contracts/dsl/contractInDestructuringDeclaration.kt	skip	LANGUAGE	
 testsWithStdLib/contracts/dsl/contractInDestructuringDeclarationOld.kt	skip	LANGUAGE	
 testsWithStdLib/contracts/dsl/errors/accessToOuterThis.kt	rejects invalid	on an expected line	
-testsWithStdLib/contracts/dsl/errors/accessorsErrorsInK2.kt	skip	LANGUAGE	
+testsWithStdLib/contracts/dsl/errors/accessorsErrorsInK2.kt	rejects invalid	on an expected line	
 testsWithStdLib/contracts/dsl/errors/booleanComparisons.kt	rejects invalid	on an expected line	
 testsWithStdLib/contracts/dsl/errors/callInContractDescription.kt	rejects invalid	on an expected line	
 testsWithStdLib/contracts/dsl/errors/contractWithWrongBody.kt	rejects invalid	on an expected line	
@@ -9822,65 +9822,65 @@ testsWithStdLib/contracts/dsl/errors/emptyContract.kt	rejects invalid	on an expe
 testsWithStdLib/contracts/dsl/errors/illegalConstructionInContractBlock.kt	rejects invalid	on an expected line	
 testsWithStdLib/contracts/dsl/errors/illegalEqualsCondition.kt	rejects invalid	on an expected line	
 testsWithStdLib/contracts/dsl/errors/missingArgumentsInEffectDeclarations.kt	rejects invalid	on an expected line	
-testsWithStdLib/contracts/dsl/errors/missingImport.kt	skip	LANGUAGE	
+testsWithStdLib/contracts/dsl/errors/missingImport.kt	rejects invalid	on an expected line	
 testsWithStdLib/contracts/dsl/errors/nestedConditionalEffects.kt	rejects invalid	on an expected line	
 testsWithStdLib/contracts/dsl/errors/nonLambdaLiteralAsArgument.kt	rejects invalid	on an expected line	
 testsWithStdLib/contracts/dsl/errors/notFirstStatement.kt	rejects invalid	on an expected line	
-testsWithStdLib/contracts/dsl/errors/operatorsErrorsInK2.kt	skip	LANGUAGE	
+testsWithStdLib/contracts/dsl/errors/operatorsErrorsInK2.kt	rejects invalid	on an expected line	
 testsWithStdLib/contracts/dsl/errors/recursiveContract.kt	rejects invalid	on an expected line	
 testsWithStdLib/contracts/dsl/errors/recursiveContractCustomContractFunction.kt	accepts valid		
 testsWithStdLib/contracts/dsl/errors/recursiveLocalContract.kt	rejects invalid	on an expected line	
 testsWithStdLib/contracts/dsl/errors/reverseImpliesReturnsDisabled.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/dsl/errors/reverseImpliesReturnsDslDisabled.kt	skip	LANGUAGE	
+testsWithStdLib/contracts/dsl/errors/reverseImpliesReturnsDslDisabled.kt	rejects invalid	on an expected line	
 testsWithStdLib/contracts/dsl/errors/unlabeledReceiver.kt	rejects invalid	on an expected line	
 testsWithStdLib/contracts/dsl/fqnContractFunction.kt	accepts valid		
-testsWithStdLib/contracts/dsl/holdsIn/combinedContractWithCallInPlace.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/dsl/holdsIn/combinedContractWithImpliesReturn.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/dsl/holdsIn/combinedContractWithReturnImplies.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/dsl/holdsIn/conditionWithDefaultValue.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/dsl/holdsIn/differentConditionsOnCallSite.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/dsl/holdsIn/differentConditionsOnDeclarationSite.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/dsl/holdsIn/holdsInBaseCases.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/dsl/holdsIn/lambdaWithDefaultValue.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/dsl/holdsIn/withErasedType.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/dsl/holdsIn/withExtensionReceiver.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/dsl/holdsIn/withInfixFunction.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/dsl/holdsIn/withOperatorFunction.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/dsl/holdsIn/withReturnsImplies.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/dsl/impliesReturn/baseConditionsOnDeclarationSite.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/dsl/impliesReturn/complexConditionsOnDeclarationSite.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/dsl/impliesReturn/impliesReturnsInArgumentPosition.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/dsl/impliesReturn/impliesReturnsOnSavedInMemberPropertyValue.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/dsl/impliesReturn/impliesReturnsOnSavedInPropertyValue.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/dsl/impliesReturn/impliesReturnsOnSmartcastedValue.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/dsl/impliesReturn/impliesReturnsOnVar.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/dsl/impliesReturn/impliesReturnsSmartcastNegativeCases.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/dsl/impliesReturn/impliesReturnsWithIncrement.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/dsl/impliesReturn/nestedCallOfImpliesReturnsContract.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/dsl/impliesReturn/withDataFlowBasedExhaustivenes.kt	skip	LANGUAGE	
+testsWithStdLib/contracts/dsl/holdsIn/combinedContractWithCallInPlace.kt	rejects invalid	on an expected line	
+testsWithStdLib/contracts/dsl/holdsIn/combinedContractWithImpliesReturn.kt	rejects invalid	on an expected line	
+testsWithStdLib/contracts/dsl/holdsIn/combinedContractWithReturnImplies.kt	accepts valid		
+testsWithStdLib/contracts/dsl/holdsIn/conditionWithDefaultValue.kt	rejects invalid	on an expected line	
+testsWithStdLib/contracts/dsl/holdsIn/differentConditionsOnCallSite.kt	rejects invalid	on an expected line	
+testsWithStdLib/contracts/dsl/holdsIn/differentConditionsOnDeclarationSite.kt	rejects invalid	on an expected line	
+testsWithStdLib/contracts/dsl/holdsIn/holdsInBaseCases.kt	rejects invalid	on an expected line	
+testsWithStdLib/contracts/dsl/holdsIn/lambdaWithDefaultValue.kt	rejects invalid	on an expected line	
+testsWithStdLib/contracts/dsl/holdsIn/withErasedType.kt	accepts valid		
+testsWithStdLib/contracts/dsl/holdsIn/withExtensionReceiver.kt	rejects invalid	on an expected line	
+testsWithStdLib/contracts/dsl/holdsIn/withInfixFunction.kt	accepts valid		
+testsWithStdLib/contracts/dsl/holdsIn/withOperatorFunction.kt	accepts valid		
+testsWithStdLib/contracts/dsl/holdsIn/withReturnsImplies.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	withReturnsImplies.kt:23: cannot infer type for type parameter 'R'. Specify it explicitly.
+testsWithStdLib/contracts/dsl/impliesReturn/baseConditionsOnDeclarationSite.kt	rejects valid	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _	baseConditionsOnDeclarationSite.kt:62: only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type String?
+testsWithStdLib/contracts/dsl/impliesReturn/complexConditionsOnDeclarationSite.kt	rejects invalid	on an expected line	
+testsWithStdLib/contracts/dsl/impliesReturn/impliesReturnsInArgumentPosition.kt	rejects invalid	on an expected line	
+testsWithStdLib/contracts/dsl/impliesReturn/impliesReturnsOnSavedInMemberPropertyValue.kt	rejects invalid	on an expected line	
+testsWithStdLib/contracts/dsl/impliesReturn/impliesReturnsOnSavedInPropertyValue.kt	rejects invalid	on an expected line	
+testsWithStdLib/contracts/dsl/impliesReturn/impliesReturnsOnSmartcastedValue.kt	accepts valid		
+testsWithStdLib/contracts/dsl/impliesReturn/impliesReturnsOnVar.kt	rejects invalid	on an expected line	
+testsWithStdLib/contracts/dsl/impliesReturn/impliesReturnsSmartcastNegativeCases.kt	rejects invalid	on an expected line	
+testsWithStdLib/contracts/dsl/impliesReturn/impliesReturnsWithIncrement.kt	rejects valid	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _	impliesReturnsWithIncrement.kt:19: only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type Int?
+testsWithStdLib/contracts/dsl/impliesReturn/nestedCallOfImpliesReturnsContract.kt	rejects invalid	on an expected line	
+testsWithStdLib/contracts/dsl/impliesReturn/withDataFlowBasedExhaustivenes.kt	accepts valid		
 testsWithStdLib/contracts/dsl/impliesReturn/withDestructuringDeclaration.kt	skip	LANGUAGE	
 testsWithStdLib/contracts/dsl/impliesReturn/withDestructuringDeclarationOld.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/dsl/impliesReturn/withErasedType.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/dsl/impliesReturn/withInfixFunction.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/dsl/impliesReturn/withOperatorFunction.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/dsl/operatorsAllowedInK2.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/dsl/operatorsForAugmentedAssignsK2.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/dsl/operatorsForbiddenInK2.kt	skip	LANGUAGE	
+testsWithStdLib/contracts/dsl/impliesReturn/withErasedType.kt	accepts valid		
+testsWithStdLib/contracts/dsl/impliesReturn/withInfixFunction.kt	accepts valid		
+testsWithStdLib/contracts/dsl/impliesReturn/withOperatorFunction.kt	accepts valid		
+testsWithStdLib/contracts/dsl/operatorsAllowedInK2.kt	accepts valid		
+testsWithStdLib/contracts/dsl/operatorsForAugmentedAssignsK2.kt	rejects invalid	on an expected line	
+testsWithStdLib/contracts/dsl/operatorsForbiddenInK2.kt	rejects invalid	on an expected line	
 testsWithStdLib/contracts/dsl/rewriteAtSliceFunctor.kt	accepts valid		
 testsWithStdLib/contracts/dsl/useBeforeDeclaration.kt	accepts valid		
-testsWithStdLib/contracts/dsl/withContext/callInPlaceContractWithContextFun.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/dsl/withContext/callInPlaceContractWithContextProperty.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/dsl/withContext/contractUsingContextFromOuterFun.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/dsl/withContext/erasedTypeWithContextFun.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/dsl/withContext/erasedTypeWithContextProperty.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/dsl/withContext/holdsInContractOnContextProperty.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/dsl/withContext/holdsInContractWithContextFun.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/dsl/withContext/impliesContractWithContextFun.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/dsl/withContext/impliesContractWithContextProperty.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/dsl/withContext/impliesReturnContractExhaustiveness.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/dsl/withContext/impliesReturnContractOnContextProperty.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/dsl/withContext/impliesReturnContractOnOperatorWithContext.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/dsl/withContext/impliesReturnContractWithContextFun.kt	skip	LANGUAGE	
+testsWithStdLib/contracts/dsl/withContext/callInPlaceContractWithContextFun.kt	rejects invalid	on an expected line	
+testsWithStdLib/contracts/dsl/withContext/callInPlaceContractWithContextProperty.kt	rejects invalid	on an expected line	
+testsWithStdLib/contracts/dsl/withContext/contractUsingContextFromOuterFun.kt	rejects invalid	on an expected line	
+testsWithStdLib/contracts/dsl/withContext/erasedTypeWithContextFun.kt	accepts valid		
+testsWithStdLib/contracts/dsl/withContext/erasedTypeWithContextProperty.kt	rejects invalid	on an expected line	
+testsWithStdLib/contracts/dsl/withContext/holdsInContractOnContextProperty.kt	rejects invalid	on an expected line	
+testsWithStdLib/contracts/dsl/withContext/holdsInContractWithContextFun.kt	rejects invalid	on an expected line	
+testsWithStdLib/contracts/dsl/withContext/impliesContractWithContextFun.kt	rejects invalid	on an expected line	
+testsWithStdLib/contracts/dsl/withContext/impliesContractWithContextProperty.kt	rejects invalid	on an expected line	
+testsWithStdLib/contracts/dsl/withContext/impliesReturnContractExhaustiveness.kt	accepts valid		
+testsWithStdLib/contracts/dsl/withContext/impliesReturnContractOnContextProperty.kt	rejects invalid	on an expected line	
+testsWithStdLib/contracts/dsl/withContext/impliesReturnContractOnOperatorWithContext.kt	accepts valid		
+testsWithStdLib/contracts/dsl/withContext/impliesReturnContractWithContextFun.kt	rejects invalid	on an expected line	
 testsWithStdLib/contracts/fromLibrary/callsInPlace.kt	accepts valid		
 testsWithStdLib/contracts/fromLibrary/conditionalEffects.kt	rejects invalid	on an expected line	
 testsWithStdLib/contracts/fromLibrary/notIsNullOrEmpty.kt	rejects invalid	on an expected line	
@@ -9912,7 +9912,7 @@ testsWithStdLib/contracts/fromSource/good/returnsImplies/booleanOperators.kt	rej
 testsWithStdLib/contracts/fromSource/good/returnsImplies/conditionLogic.kt	accepts valid		
 testsWithStdLib/contracts/fromSource/good/returnsImplies/eqNotEq.kt	rejects invalid	on an expected line	
 testsWithStdLib/contracts/fromSource/good/returnsImplies/inapplicable.kt	accepts valid		
-testsWithStdLib/contracts/fromSource/good/returnsImplies/namedArguments.kt	rejects valid	unresolved reference: _	namedArguments.kt:16: unresolved reference: inc
+testsWithStdLib/contracts/fromSource/good/returnsImplies/namedArguments.kt	accepts valid		
 testsWithStdLib/contracts/fromSource/good/returnsImplies/notNull.kt	accepts valid		
 testsWithStdLib/contracts/fromSource/good/returnsImplies/propertyAccessors.kt	skip	LANGUAGE	
 testsWithStdLib/contracts/fromSource/good/returnsImplies/receivers.kt	rejects invalid	on an expected line	
@@ -9928,48 +9928,48 @@ testsWithStdLib/contracts/fromStdlib/isNullOrEmpty.kt	rejects invalid	on an expe
 testsWithStdLib/contracts/fromStdlib/kt45243.kt	accepts valid		
 testsWithStdLib/contracts/fromStdlib/require.kt	accepts valid		
 testsWithStdLib/contracts/fromStdlib/synchronize.kt	accepts valid		
-testsWithStdLib/contracts/genericsInContractTypeAssertions/classTypeParam.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/genericsInContractTypeAssertions/extensionOnInterface.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/genericsInContractTypeAssertions/finalMemberFunction.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/genericsInContractTypeAssertions/intersectionBounds.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/genericsInContractTypeAssertions/nullableBound.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/genericsInContractTypeAssertions/override.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/genericsInContractTypeAssertions/samConversion.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/genericsInContractTypeAssertions/simple.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/genericsInContractTypeAssertions/starProjection.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/genericsInContractTypeAssertions/valueClassAndListTypeArg.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/genericsInContractTypeAssertions/variance.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/genericsInContractTypeAssertions/withGenericListTypeArg.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/genericsInContractTypeAssertions/withReturnsNotNull.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/genericsInContractTypeAssertions/withTypealias.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/genericsInContractTypeAssertions/withСallsinplace.kt	skip	LANGUAGE	
+testsWithStdLib/contracts/genericsInContractTypeAssertions/classTypeParam.kt	rejects invalid	on an expected line	
+testsWithStdLib/contracts/genericsInContractTypeAssertions/extensionOnInterface.kt	accepts valid		
+testsWithStdLib/contracts/genericsInContractTypeAssertions/finalMemberFunction.kt	accepts valid		
+testsWithStdLib/contracts/genericsInContractTypeAssertions/intersectionBounds.kt	accepts valid		
+testsWithStdLib/contracts/genericsInContractTypeAssertions/nullableBound.kt	accepts valid		
+testsWithStdLib/contracts/genericsInContractTypeAssertions/override.kt	rejects invalid	on an expected line	
+testsWithStdLib/contracts/genericsInContractTypeAssertions/samConversion.kt	rejects invalid	on an expected line	
+testsWithStdLib/contracts/genericsInContractTypeAssertions/simple.kt	rejects invalid	on an expected line	
+testsWithStdLib/contracts/genericsInContractTypeAssertions/starProjection.kt	accepts valid		
+testsWithStdLib/contracts/genericsInContractTypeAssertions/valueClassAndListTypeArg.kt	rejects invalid	on an expected line	
+testsWithStdLib/contracts/genericsInContractTypeAssertions/variance.kt	rejects invalid	on an expected line	
+testsWithStdLib/contracts/genericsInContractTypeAssertions/withGenericListTypeArg.kt	accepts valid		
+testsWithStdLib/contracts/genericsInContractTypeAssertions/withReturnsNotNull.kt	accepts valid		
+testsWithStdLib/contracts/genericsInContractTypeAssertions/withTypealias.kt	rejects invalid	on an expected line	
+testsWithStdLib/contracts/genericsInContractTypeAssertions/withСallsinplace.kt	rejects invalid	on an expected line	
 testsWithStdLib/contracts/newSyntax/complexContractDescription.kt	skip	LANGUAGE	
 testsWithStdLib/contracts/newSyntax/onelineFunctionsContractDescription.kt	skip	LANGUAGE	
 testsWithStdLib/contracts/newSyntax/propertyAccessorsContractDescription.kt	skip	LANGUAGE	
 testsWithStdLib/contracts/newSyntax/simpleFunctionsContractDescription.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/propertyAccessors/annotationInContract.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/propertyAccessors/callsInPlace.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/propertyAccessors/callsInPlaceMember.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/propertyAccessors/collectionsIllegalDescription.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/propertyAccessors/combinedImplications.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/propertyAccessors/erasure.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/propertyAccessors/erasureMember.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/propertyAccessors/fullImplication.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/propertyAccessors/impliesReversed.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/propertyAccessors/impliesReversedMember.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/propertyAccessors/inline.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/propertyAccessors/inlineMember.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/propertyAccessors/javaInterop.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/propertyAccessors/javaInteropMember.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/propertyAccessors/kt84960.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/propertyAccessors/miscPatterns.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/propertyAccessors/miscPatternsMember.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/propertyAccessors/notAllowedInsideAnonymous.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/propertyAccessors/openSetterNotAllowed.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/propertyAccessors/override.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/propertyAccessors/samInterface.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/propertyAccessors/setterReceiverNullability.kt	skip	LANGUAGE	
-testsWithStdLib/contracts/propertyAccessors/simple.kt	skip	LANGUAGE	
+testsWithStdLib/contracts/propertyAccessors/annotationInContract.kt	rejects invalid	on an expected line	
+testsWithStdLib/contracts/propertyAccessors/callsInPlace.kt	rejects invalid	on an expected line	
+testsWithStdLib/contracts/propertyAccessors/callsInPlaceMember.kt	rejects invalid	on an expected line	
+testsWithStdLib/contracts/propertyAccessors/collectionsIllegalDescription.kt	rejects invalid	on an expected line	
+testsWithStdLib/contracts/propertyAccessors/combinedImplications.kt	rejects invalid	on an expected line	
+testsWithStdLib/contracts/propertyAccessors/erasure.kt	rejects invalid	on an expected line	
+testsWithStdLib/contracts/propertyAccessors/erasureMember.kt	rejects invalid	on an expected line	
+testsWithStdLib/contracts/propertyAccessors/fullImplication.kt	rejects invalid	on an expected line	
+testsWithStdLib/contracts/propertyAccessors/impliesReversed.kt	rejects invalid	on an expected line	
+testsWithStdLib/contracts/propertyAccessors/impliesReversedMember.kt	rejects invalid	on an expected line	
+testsWithStdLib/contracts/propertyAccessors/inline.kt	rejects invalid	on an expected line	
+testsWithStdLib/contracts/propertyAccessors/inlineMember.kt	rejects invalid	on an expected line	
+testsWithStdLib/contracts/propertyAccessors/javaInterop.kt	skip	Java sources	
+testsWithStdLib/contracts/propertyAccessors/javaInteropMember.kt	skip	Java sources	
+testsWithStdLib/contracts/propertyAccessors/kt84960.kt	accepts valid		
+testsWithStdLib/contracts/propertyAccessors/miscPatterns.kt	rejects invalid	on an expected line	
+testsWithStdLib/contracts/propertyAccessors/miscPatternsMember.kt	rejects invalid	on an expected line	
+testsWithStdLib/contracts/propertyAccessors/notAllowedInsideAnonymous.kt	rejects invalid	on an expected line	
+testsWithStdLib/contracts/propertyAccessors/openSetterNotAllowed.kt	rejects invalid	on an expected line	
+testsWithStdLib/contracts/propertyAccessors/override.kt	rejects invalid	on an expected line	
+testsWithStdLib/contracts/propertyAccessors/samInterface.kt	rejects invalid	on an expected line	
+testsWithStdLib/contracts/propertyAccessors/setterReceiverNullability.kt	rejects invalid	on an expected line	
+testsWithStdLib/contracts/propertyAccessors/simple.kt	accepts valid		
 testsWithStdLib/contracts/smartcasts/callWithDefaultValue.kt	accepts valid		
 testsWithStdLib/contracts/smartcasts/catchExceptionSpilling.kt	rejects invalid	on an expected line	
 testsWithStdLib/contracts/smartcasts/compositions.kt	rejects invalid	on an expected line	
@@ -9996,7 +9996,7 @@ testsWithStdLib/contracts/smartcasts/operatorsTests/orOperatorWithConstant.kt	re
 testsWithStdLib/contracts/smartcasts/operatorsTests/orOperatorWithUnknown.kt	rejects invalid	on an expected line	
 testsWithStdLib/contracts/smartcasts/partiallyIncorrect.kt	rejects invalid	on an expected line	
 testsWithStdLib/contracts/smartcasts/receiver.kt	rejects invalid	on an expected line	
-testsWithStdLib/contracts/smartcasts/reifiedGeneric.kt	rejects valid	unresolved reference: _	reifiedGeneric.kt:30: unresolved reference: length
+testsWithStdLib/contracts/smartcasts/reifiedGeneric.kt	accepts valid		
 testsWithStdLib/contracts/smartcasts/returnsImpliesAndSafeCalls.kt	rejects invalid	on an expected line	
 testsWithStdLib/contracts/smartcasts/safecallAndReturnsNull.kt	rejects invalid	on an expected line	
 testsWithStdLib/contracts/smartcasts/smartcastOnReceiverInComplexCondition.kt	accepts valid		

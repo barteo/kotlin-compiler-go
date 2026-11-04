@@ -2,20 +2,20 @@
 
 The diagnostics tests of JetBrains/kotlin v2.4.21 for the JVM (`compiler/testData/diagnostics/`: tests/, testsWithStdLib/, testsWithJvmBackend/, testsWithAnyBackend/), each compiled by kc. A test's markup marks the diagnostics kotlinc reports, and its `RUN_PIPELINE_TILL` says whether kotlinc stops with errors in the frontend (`FRONTEND`, `FIR2IR`) or goes on to the backend (`BACKEND`). `bench/kotlin-tests.sh diagnostics` writes this file, and [docs/conformance.md](../../docs/conformance.md) explains it.
 
-Of 10827 test files, 3541 are skipped and 7286 run.
+Of 10827 test files, 3455 are skipped and 7372 run.
 
 | Result | Tests | Share |
 |:---|---:|---:|
-| rejects invalid | 3616 | 49.6% |
-| accepts valid | 3129 | 42.9% |
-| accepts invalid | 263 | 3.6% |
-| rejects valid | 260 | 3.6% |
+| rejects invalid | 3675 | 49.9% |
+| accepts valid | 3157 | 42.8% |
+| accepts invalid | 262 | 3.6% |
+| rejects valid | 260 | 3.5% |
 | parse/unsupported | 18 | 0.2% |
 | crash | 0 | 0.0% |
 
 *Rejects invalid* and *accepts valid* agree with kotlinc. *Accepts invalid* is code kotlinc rejects that kc compiles; *rejects valid*, code kotlinc compiles that kc's checker rejects. Both are bugs. A *parse/unsupported* test uses a feature kc doesn't support, which says nothing about its checks.
 
-Of the 3616 tests both reject, kc reports an error on the line of an expected one in 3402.
+Of the 3675 tests both reject, kc reports an error on the line of an expected one in 3461.
 
 A test is invalid if it stops before the backend or marks an error: one that runs to it (`BACKEND`) can mark the JVM backend's errors, such as `CONFLICTING_JVM_DECLARATIONS`. Of the tests run, 177 stop at `FRONTEND` but mark no error: most add the `CHECK_TYPE` helpers, whose names (`_`) kotlinc reports outside the test infrastructure, and count as valid; the others leave their errors out with the `DIAGNOSTICS` directive. 101 run to the backend and mark one. 5 marked names have no declared severity (debug information, for one), and count as neither.
 
@@ -27,8 +27,8 @@ Tests for other platforms, that need language features off by default or compile
 
 | Reason | Tests | Examples |
 |:---|---:|:---|
-| `LANGUAGE` | 1579 | `tests/BacktickNames.kt`, `tests/BacktickNamesOld.kt` |
-| `Java sources` | 1304 | `tests/IsExpressions.kt`, `tests/SafeCallOnFakePackage.kt` |
+| `LANGUAGE` | 1491 | `tests/BacktickNames.kt`, `tests/BacktickNamesOld.kt` |
+| `Java sources` | 1306 | `tests/IsExpressions.kt`, `tests/SafeCallOnFakePackage.kt` |
 | `modules with friends or dependsOn` | 322 | `tests/jvm/internal/internalFromFriendModule.kt`, `tests/multimodule/friendModule.kt` |
 | `LANGUAGE_FEATURE_TOGGLED` | 87 | `tests/annotatedPackageQualifiers.kt`, `tests/annotationUsedAsAnnotationArgument.kt` |
 | `return value checker (crv/, crvFull/)` | 72 | `tests/crv/assignments.kt`, `tests/crv/booleanShortcut.kt` |
@@ -110,8 +110,8 @@ Tests kotlinc rejects that kc compiles, by the errors their markup expects. A te
 | `ABSTRACT_MEMBER_NOT_IMPLEMENTED` | 1 | 1 | `tests/override/ProtectedAndPrivateFromSupertypes.kt` |
 | `ADAPTED_CALLABLE_REFERENCE_AGAINST_REFLECTION_TYPE` | 1 | 0 | `tests/callableReference/adapted/noKFunctionForAdaptation.kt` |
 | `AMBIGUOUS_SUPER` | 1 | 1 | `tests/thisAndSuper/unqualifiedSuper/unqualifiedSuperWithCallableProperty.kt` |
-| `ANNOTATION_IN_CONTRACT_ERROR` | 1 | 1 | `tests/contracts/suppressContractWarning.kt` |
-| *71 more* | 71 | |
+| `ANNOTATION_IN_WHERE_CLAUSE_ERROR` | 1 | 1 | `tests/kt46483.kt` |
+| *70 more* | 70 | |
 
 ## Rejects valid
 
@@ -119,16 +119,16 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 | First error | Tests | Examples |
 |:---|---:|:---|
-| `type mismatch: inferred type is _ but _ was expected` | 66 | `tests/annotations/parameters/expressions/unaryPlus.kt`, `tests/callableReference/function/localConstructor.kt` |
-| `cannot infer type for type parameter '_'. Specify it explicitly.` | 51 | `tests/callableReference/generic/kt35896.kt`, `tests/callableReference/genericCallWithReferenceAgainstVararg.kt` |
-| `unresolved reference: _` | 28 | `tests/callResolution/suspendCOnversionForReceiver.kt`, `tests/callableReference/bound/controlFlow.kt` |
+| `type mismatch: inferred type is _ but _ was expected` | 64 | `tests/annotations/parameters/expressions/unaryPlus.kt`, `tests/callableReference/function/localConstructor.kt` |
+| `cannot infer type for type parameter '_'. Specify it explicitly.` | 52 | `tests/callableReference/generic/kt35896.kt`, `tests/callableReference/genericCallWithReferenceAgainstVararg.kt` |
+| `unresolved reference: _` | 26 | `tests/callResolution/suspendCOnversionForReceiver.kt`, `tests/callableReference/bound/controlFlow.kt` |
 | `ambiguous call: n candidates for '_' take (_)` | 14 | `tests/callableReference/resolve/kt35887.kt`, `tests/contextSensitiveResolutionUsingExpectedType/ideHint/forExpressions/multipleOverloads.kt` |
+| `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 8 | `tests/regressions/Jet169.kt`, `tests/secondaryConstructors/dataFlowInDelegationCall.kt` |
 | `'_' expression must be exhaustive, add necessary '_' branch` | 7 | `tests/controlStructures/whenWithNothingTypedSubject.kt`, `tests/exhaustiveness/positive/smartcastToExhaustiveInterface.kt` |
 | `no function '_' takes n arguments` | 6 | `tests/cast/kt15161.kt`, `tests/errorProneAtomicArrayArguments.kt` |
-| `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 6 | `tests/regressions/Jet169.kt`, `tests/secondaryConstructors/dataFlowInDelegationCall.kt` |
 | `expression '_' of type _ cannot be invoked as a function` | 5 | `tests/companionObjectCall.kt`, `tests/expresssions/invoke/incorrectInvokeReceiver.kt` |
+| `unresolved import: _` | 5 | `tests/errorProneAtomicArraySuggestions.kt`, `tests/errorProneAtomicReferenceArguments.kt` |
 | `none of the n candidates for '_' take (_)` | 4 | `tests/callableReference/noAmbiguityWhenAllReferencesAreInapplicable.kt`, `tests/problems/kt52219.kt` |
-| `unresolved import: _` | 4 | `tests/errorProneAtomicArraySuggestions.kt`, `tests/errorProneAtomicReferenceArguments.kt` |
 | `'_' overrides nothing` | 3 | `tests/genericReceiverPropertyOverride.kt`, `tests/generics/finalUpperBoundWithOverride.kt` |
 | `overload resolution ambiguity for B::foo: specify the expected function type` | 3 | `tests/callableReference/callableReferenceWithMostSpecificGenericTypeParameter.kt`, `tests/callableReference/resolve/kt9601.kt` |
 | `platform declaration clash: _` | 3 | `tests/overload/noConflictingOverloadsWithDeprecatedHidden/ConstructorsInMemberScope.kt`, `tests/overload/noConflictingOverloadsWithDeprecatedHidden/ConstructorsInPackage.kt` |
@@ -165,14 +165,14 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 13381 of 19696 expected errors (67.9%) on their lines.
+kc reports 13597 of 19920 expected errors (68.3%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
 | `SYNTAX` | 872 | 223 | 649 |
-| `UNRESOLVED_REFERENCE` | 2154 | 1658 | 496 |
+| `UNRESOLVED_REFERENCE` | 2183 | 1687 | 496 |
 | `CONFLICTING_JVM_DECLARATIONS` | 996 | 518 | 478 |
-| `ARGUMENT_TYPE_MISMATCH` | 1263 | 837 | 426 |
+| `ARGUMENT_TYPE_MISMATCH` | 1268 | 842 | 426 |
 | `UNSUPPORTED` | 230 | 34 | 196 |
 | `WRONG_MODIFIER_TARGET` | 299 | 169 | 130 |
 | `CONFLICTING_OVERLOADS` | 719 | 596 | 123 |
@@ -187,14 +187,14 @@ kc reports 13381 of 19696 expected errors (67.9%) on their lines.
 | `WRONG_NUMBER_OF_TYPE_ARGUMENTS` | 158 | 93 | 65 |
 | `NULL_FOR_NONNULL_TYPE` | 102 | 39 | 63 |
 | `MISSING_DEPENDENCY_CLASS` | 61 | 0 | 61 |
+| `UNSAFE_CALL` | 567 | 507 | 60 |
 | `CANNOT_WEAKEN_ACCESS_PRIVILEGE` | 59 | 1 | 58 |
-| `UNSAFE_CALL` | 473 | 415 | 58 |
 | `NO_RETURN_IN_FUNCTION_WITH_BLOCK_BODY` | 147 | 90 | 57 |
 | `MIXING_SUSPEND_AND_NON_SUSPEND_SUPERTYPES` | 83 | 28 | 55 |
 | `INITIALIZER_TYPE_MISMATCH` | 388 | 338 | 50 |
 | `NO_VALUE_FOR_PARAMETER` | 167 | 120 | 47 |
 | `INVISIBLE_REFERENCE` | 361 | 315 | 46 |
-| `SMARTCAST_IMPOSSIBLE` | 176 | 130 | 46 |
+| `SMARTCAST_IMPOSSIBLE` | 179 | 133 | 46 |
 | `UNINITIALIZED_VARIABLE` | 208 | 162 | 46 |
 | `UPPER_BOUND_VIOLATED` | 112 | 70 | 42 |
 | `NON_PUBLIC_CALL_FROM_PUBLIC_INLINE` | 59 | 19 | 40 |
@@ -207,7 +207,7 @@ kc reports 13381 of 19696 expected errors (67.9%) on their lines.
 | `OVERLOAD_RESOLUTION_AMBIGUITY` | 121 | 89 | 32 |
 | `EXPLICIT_TYPE_ARGUMENTS_IN_PROPERTY_ACCESS` | 36 | 5 | 31 |
 | `INAPPLICABLE_JVM_FIELD` | 33 | 2 | 31 |
-| `OPT_IN_USAGE_ERROR` | 96 | 66 | 30 |
+| `OPT_IN_USAGE_ERROR` | 97 | 67 | 30 |
 | `ASSIGNMENT_IN_EXPRESSION_CONTEXT` | 32 | 3 | 29 |
 | `REPEATED_MODIFIER` | 39 | 10 | 29 |
 | `WRONG_ANNOTATION_TARGET` | 337 | 308 | 29 |
@@ -237,10 +237,10 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 
 | Error | Count |
 |:---|---:|
-| `cannot infer type for type parameter '_'. Specify it explicitly.` | 533 |
-| `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 319 |
-| `type mismatch: inferred type is _ but _ was expected` | 303 |
-| `unresolved reference: _` | 266 |
+| `cannot infer type for type parameter '_'. Specify it explicitly.` | 557 |
+| `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 330 |
+| `type mismatch: inferred type is _ but _ was expected` | 302 |
+| `unresolved reference: _` | 261 |
 | `platform declaration clash: _` | 150 |
 | `class '_' is not abstract and does not implement abstract member '_'` | 55 |
 | `suspend function '_' cannot override non-suspend function '_' defined in '_'` | 50 |
@@ -258,16 +258,16 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | `expected expression, found '_'` | 14 |
 | `expected n parameter of type _ but n were declared` | 14 |
 | `not enough information to infer type arguments of ::foon: specify the expected function type` | 14 |
+| `unresolved import: _` | 13 |
 | `assignment operators ambiguity: '_' and '_' both apply` | 12 |
 | `expected no parameters, but n were declared` | 12 |
 | `overload resolution ambiguity for ::foo: specify the expected function type` | 12 |
 | `private setters are not allowed for open properties` | 12 |
-| `unresolved import: _` | 12 |
 | `'_' modifier is required on '_'` | 11 |
 | `not enough information to infer type arguments of ::barn: specify the expected function type` | 11 |
 | `expected parameter of type _` | 10 |
 | `expression '_' of type _ cannot be invoked as a function` | 10 |
-| *190 more* | |
+| *191 more* | |
 
 ## Unsupported features
 
@@ -318,19 +318,19 @@ kc reports no warnings. The warnings the tests run expect, as a backlog.
 | `UNNECESSARY_NOT_NULL_ASSERTION` | 86 |
 | `OPT_IN_USAGE` | 83 |
 | `USELESS_CAST` | 83 |
+| `NOTHING_TO_INLINE` | 78 |
+| `SENSELESS_COMPARISON` | 76 |
 | `CONTEXTUAL_OVERLOAD_SHADOWED` | 75 |
-| `NOTHING_TO_INLINE` | 75 |
-| `SENSELESS_COMPARISON` | 75 |
 | `ATOMIC_REF_CALL_ARGUMENT_WITHOUT_CONSISTENT_IDENTITY` | 70 |
 | `UNCHECKED_CAST` | 70 |
 | `UNNECESSARY_SAFE_CALL` | 68 |
 | `FINAL_UPPER_BOUND` | 66 |
 | `EXTENSION_SHADOWED_BY_MEMBER` | 63 |
+| `IMPOSSIBLE_IS_CHECK_WARNING` | 59 |
 | `NUMERIC_CAST_NEVER_SUCCEEDS_BUT_CAN_BE_REPLACED_WITH_TO_CALL` | 59 |
 | `PLATFORM_CLASS_MAPPED_TO_KOTLIN` | 58 |
-| `IMPOSSIBLE_IS_CHECK_WARNING` | 57 |
 | `REDUNDANT_PROJECTION` | 49 |
-| `NO_REFLECTION_IN_CLASS_PATH` | 36 |
+| `NO_REFLECTION_IN_CLASS_PATH` | 37 |
 | `UNUSED_VARIABLE` | 35 |
 | `USELESS_ELVIS` | 34 |
 | `ATOMIC_REF_WITHOUT_CONSISTENT_IDENTITY` | 33 |

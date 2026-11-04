@@ -1985,7 +1985,7 @@ coroutines/kt45377.kt	pass
 coroutines/kt46813.kt	pass		
 coroutines/kt49168.kt	pass		
 coroutines/kt49317.kt	pass		
-coroutines/kt51530.kt	pass		
+coroutines/kt51530.kt	codegen error	code generation: method too large: branch offset n	/tmp/claude-0/-home-user-kotlin-compiler-go/76dc9faf-1e40-5109-8419-bae9581aa3c6/scratchpad/kc-conformance/1986/m0/src/main.kt: code generation failed: MainKt$aggregate$1.invokeSuspend: method too large: branch offset 48012
 coroutines/kt51718.kt	pass		
 coroutines/kt52311_nullOnLeft.kt	pass		
 coroutines/kt52311_nullOnRight.kt	pass		
