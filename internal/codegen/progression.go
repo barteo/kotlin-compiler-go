@@ -186,3 +186,130 @@ func unwrapChecked(x syntax.Expr) syntax.Expr {
 		x = c.X
 	}
 }
+
+// progressionClasses maps the standard library's progression classes to
+// the descriptor of their elements and of their step.
+var progressionClasses = map[string][2]string{
+	"kotlin/ranges/IntRange":        {"I", "I"},
+	"kotlin/ranges/IntProgression":  {"I", "I"},
+	"kotlin/ranges/CharRange":       {"C", "I"},
+	"kotlin/ranges/CharProgression": {"C", "I"},
+	"kotlin/ranges/LongRange":       {"J", "J"},
+	"kotlin/ranges/LongProgression": {"J", "J"},
+}
+
+// forProgression generates, if the range of loop s is a value of the
+// standard library's progression classes, and its variable of their
+// element type, a counted loop over its first, last and step, as kotlinc
+// does, and reports whether it did. A progression's last element is one
+// that the steps from its first reach, so the loop ends at it, testing
+// before the step, which can't overflow. A range's step is 1.
+func (g *gen) forProgression(s *syntax.For) bool {
+	rt := s.Range.Type().NonNull()
+	if rt.K != types.Class || rt.C == nil {
+		return false
+	}
+	ds, ok := progressionClasses[rt.C.Name]
+	if !ok {
+		return false
+	}
+	elem, owner := ds[0], rt.C.Name
+	var et types.Type
+	switch elem {
+	case "I":
+		et = types.IntType
+	case "C":
+		et = types.CharType
+	default:
+		et = types.LongType
+	}
+	if s.Sym.Type != et {
+		return false
+	}
+	long := elem == "J"
+	load, store, add := byte(cf.ILOAD), byte(cf.ISTORE), byte(cf.IADD)
+	if long {
+		load, store, add = cf.LLOAD, cf.LSTORE, cf.LADD
+	}
+	ranged := strings.HasSuffix(owner, "Range")
+	g.exprAs(s.Range, rt)
+	p := g.code.AllocLocal("L" + owner + ";")
+	g.code.Local(cf.ASTORE, p)
+	get := func(name, t string) int {
+		slot := g.code.AllocLocal(t)
+		g.code.Local(cf.ALOAD, p)
+		g.code.Invoke(cf.INVOKEVIRTUAL, owner, name, "()"+t)
+		if t == "C" {
+			t = "I"
+		}
+		if t == "J" {
+			g.code.Local(cf.LSTORE, slot)
+		} else {
+			g.code.Local(cf.ISTORE, slot)
+		}
+		return slot
+	}
+	i := get("getFirst", elem)
+	g.setSlot(s.Sym, i)
+	g.named(s.Sym)
+	last := get("getLast", elem)
+	st := -1
+	if !ranged {
+		st = get("getStep", ds[1])
+	}
+	// cmpJump compares i and last, or last and i, and jumps to l on op,
+	// one of IF_ICMPxx.
+	cmpJump := func(a, b int, op byte, l *cf.Label) {
+		g.code.Local(load, a)
+		g.code.Local(load, b)
+		if long {
+			g.code.Op(cf.LCMP)
+			op -= cf.IF_ICMPEQ - cf.IFEQ
+		}
+		g.code.Jump(op, l)
+	}
+	// signJump jumps to l on op, one of IFxx, of the step's sign.
+	signJump := func(op byte, l *cf.Label) {
+		g.code.Local(load, st)
+		if long {
+			g.code.Lconst(0)
+			g.code.Op(cf.LCMP)
+		}
+		g.code.Jump(op, l)
+	}
+	top, cont, exit := cf.NewLabel(), cf.NewLabel(), cf.NewLabel()
+	if ranged {
+		cmpJump(i, last, cf.IF_ICMPGT, exit)
+	} else {
+		// Empty unless the step is positive and first <= last, or
+		// negative and last <= first.
+		down := cf.NewLabel()
+		signJump(cf.IFLE, down)
+		cmpJump(i, last, cf.IF_ICMPLE, top)
+		g.code.Place(down)
+		signJump(cf.IFGE, exit)
+		cmpJump(last, i, cf.IF_ICMPGT, exit)
+	}
+	g.code.Place(top)
+	g.pushLoop(s, exit, cont)
+	g.loopBody(func() { g.block(s.Body, types.UnitType, false) })
+	g.code.Place(cont)
+	g.line(s.P)
+	cmpJump(i, last, cf.IF_ICMPEQ, exit)
+	switch {
+	case ranged && !long:
+		g.code.Iinc(i, 1)
+	default:
+		g.code.Local(load, i)
+		if ranged {
+			g.code.Lconst(1)
+		} else {
+			g.code.Local(load, st)
+		}
+		g.code.Op(add)
+		g.code.Local(store, i)
+	}
+	g.code.Jump(cf.GOTO, top)
+	g.code.Place(exit)
+	return true
+}

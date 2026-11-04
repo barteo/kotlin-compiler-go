@@ -181,12 +181,12 @@ yet done. [Design](design.md) describes how `kc` compiles it.
 - The spread operator copies with `clone()` and `System.arraycopy`, not
   `Arrays.copyOf` and `SpreadBuilder`. `Array(n) { }` calls its init
   function as an object; `kotlinc` inlines it.
-- `for` loops are counted loops over a range expression, over the
-  standard library's `indices` of an array, a `CharSequence` or a
-  `Collection` (and its `reversed()` and `step`) and over `reversed()` of
-  `a..b` and `a downTo b`. Other progressions, such as an `IntRange`
-  value, `(a until b).reversed()` or a stepped progression's
-  `reversed()`, are iterated with an iterator, which `kotlinc` counts.
+- A `for` loop over a progression is a counted loop, as `kotlinc`'s, but
+  some of the progressions whose bounds `kotlinc` computes in place are
+  made first, by calling the standard library, and then counted over
+  their `first`, `last` and `step`: `reversed()` of a stepped
+  progression, `x.indices.reversed() step n`, and `reversed()` of a Long
+  or Char range.
 
 **Inlining**
 

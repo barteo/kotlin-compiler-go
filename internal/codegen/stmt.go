@@ -370,6 +370,9 @@ func (g *gen) forLoop(s *syntax.For) {
 		return
 	}
 	if s.HasNext != nil {
+		if g.forProgression(s) {
+			return
+		}
 		g.forEach(s)
 		return
 	}

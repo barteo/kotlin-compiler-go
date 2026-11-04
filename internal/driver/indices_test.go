@@ -16,16 +16,38 @@ import (
 // TestRun runs, call no getIndices, reversed or step, and no iterator.
 // A non-constant step's check calls checkStepIsPositive, if it fails.
 func TestIndicesLoops(t *testing.T) {
+	loopCalls(t, "stdlibIndicesLoops", "counted", func(in *classfile.Insn) bool {
+		return strings.HasPrefix(in.Name, "getIndices") || in.Name == "iterator" || in.Name == "reversed" || in.Name == "step" ||
+			strings.HasPrefix(in.Owner, "kotlin/ranges/") && in.Name != "checkStepIsPositive" || strings.HasSuffix(in.Owner, "Iterator")
+	}, 30)
+}
+
+// TestProgressionLoops checks that loops over values of the standard
+// library's progression classes are counted loops over their first, last
+// and step, as kotlinc's: the functions named looped* of
+// testdata/run/stdlibProgressionLoops.kt call no iterator.
+func TestProgressionLoops(t *testing.T) {
+	loopCalls(t, "stdlibProgressionLoops", "looped", func(in *classfile.Insn) bool {
+		return in.Name == "iterator" || in.Name == "hasNext" || strings.HasSuffix(in.Owner, "Iterator")
+	}, 15)
+}
+
+// loopCalls compiles testdata/run/name.kt with the standard library and
+// fails on each call in its file class's methods named prefix* that bad
+// reports, and if there are fewer than min of those methods.
+func loopCalls(t *testing.T, name, prefix string, bad func(*classfile.Insn) bool, min int) {
+	t.Helper()
 	lib := stdlib()
 	if lib == "" {
 		t.Skip("kotlin-stdlib.jar not found: set KOTLIN_HOME")
 	}
 	out := t.TempDir()
 	opts := Options{OutDir: out, Jobs: runtime.NumCPU(), ClassPath: []string{lib}}
-	if err := Compile([]string{"../../testdata/run/stdlibIndicesLoops.kt"}, opts); err != nil {
+	if err := Compile([]string{"../../testdata/run/" + name + ".kt"}, opts); err != nil {
 		t.Fatalf("compile: %v", err)
 	}
-	data, err := os.ReadFile(filepath.Join(out, "StdlibIndicesLoopsKt.class"))
+	class := strings.ToUpper(name[:1]) + name[1:] + "Kt.class"
+	data, err := os.ReadFile(filepath.Join(out, class))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,7 +57,7 @@ func TestIndicesLoops(t *testing.T) {
 	}
 	n := 0
 	for _, m := range ms {
-		if !strings.HasPrefix(m.Name, "counted") || m.Code == nil {
+		if !strings.HasPrefix(m.Name, prefix) || m.Code == nil {
 			continue
 		}
 		n++
@@ -43,17 +65,17 @@ func TestIndicesLoops(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s%s: %v", m.Name, m.Desc, err)
 		}
-		for _, in := range insns {
+		for i := range insns {
+			in := &insns[i]
 			if in.Op < classfile.INVOKEVIRTUAL || in.Op > classfile.INVOKEINTERFACE {
 				continue
 			}
-			if strings.HasPrefix(in.Name, "getIndices") || in.Name == "iterator" || in.Name == "reversed" || in.Name == "step" ||
-				strings.HasPrefix(in.Owner, "kotlin/ranges/") && in.Name != "checkStepIsPositive" || strings.HasSuffix(in.Owner, "Iterator") {
+			if bad(in) {
 				t.Errorf("%s%s calls %s.%s%s", m.Name, m.Desc, in.Owner, in.Name, in.Desc)
 			}
 		}
 	}
-	if n < 30 {
-		t.Errorf("found %d counted* methods, want at least 30", n)
+	if n < min {
+		t.Errorf("found %d %s* methods, want at least %d", n, prefix, min)
 	}
 }
