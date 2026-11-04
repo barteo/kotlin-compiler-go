@@ -121,26 +121,31 @@ JMH's harness from each build's class files, and runs both under JMH
 
 On the same machine ([ring.md](../bench/results/ring.md)), with one fork
 of 5 warmup and 5 measured iterations of 200 ms, `kc`'s code is within
-10% of `kotlinc`'s on 149 of the 200, more than 10% slower on 39 and more
-than 10% faster on 12; the geometric mean is 1.24x. The large ratios come
-from a few things `kc` writes differently:
+10% of `kotlinc`'s on 164 of the 200, more than 10% slower on 26 and more
+than 10% faster on 10; the geometric mean is 1.05x. The large ratios
+left come from a few things `kc` writes differently:
 
-- Values pushed before an inlined call (a receiver, earlier arguments)
-  stay on the operand stack while the inlined body runs. HotSpot can't
-  compile a loop on the fly (OSR) while the stack isn't empty ("OSR
-  starts with non-empty stack" in `-XX:+PrintCompilation`), so a method
-  that runs one long inlined loop, like `bh.consume(bench(arr) { ... })`,
-  stays interpreted. `kotlinc` spills the stack to locals before inlining
-  (`GenericArrayView` 36–161x, `Iterator` 19–21x).
 - `for (i in array.indices)` builds an `IntRange` and calls the boxing
   `IntIterator.next()`, where `kotlinc` writes a counted loop
-  (`ForLoops.intArrayIndicesLoop` 8.9x, `uIntArrayIndicesLoop` 6.5x).
-- Inlined lambdas box their arguments (`IntArray.countFilteredSome`
-  6.6x, `ClassList.countWithLambda` 12x, `Euler`).
+  (`ForLoops.intArrayIndicesLoop` 7.8x, `uIntArrayIndicesLoop` 6.6x, and
+  1.2–1.7x for the other array types and `String`).
 - A `when` over an enum calls `equals` rather than switching on the
-  ordinal (`Switch.testEnumsSwitch` 5.8x). On the other hand, `kc`'s
-  `when` over `Int` constants is 2–4x faster than `kotlinc`'s here
-  (`testDenseIntSwitch`, `testConstSwitch`).
+  ordinal (`Switch.testEnumsSwitch` 5.6x, `testDenseEnumsSwitch` 2.4x).
+  On the other hand, `kc`'s `when` over `Int` constants is 2–3x faster
+  than `kotlinc`'s here (`testDenseIntSwitch`, `testConstSwitch`,
+  `testObjConstSwitch`).
+- `Elvis.testElvis` (3.0x), `Switch.testStringsSwitch` (2.3x) and
+  `ClassBaseline.consumeField` (1.4–1.6x) aren't explained yet.
+
+Before #57, `kc` left the values pushed before an inlined call (a
+receiver, earlier arguments) on the operand stack while the inlined body
+ran. HotSpot can't compile a loop on the fly (OSR) while the stack isn't
+empty ("OSR starts with non-empty stack" in `-XX:+PrintCompilation`), so
+a method running one long inlined loop, like `bh.consume(bench(arr) {
+... })`, stayed interpreted: the geometric mean was 1.24x, with
+`GenericArrayView` 36–161x, `Iterator` 19–21x, `ClassList.countWithLambda`
+12x and `Euler.problem1` 7.9x. `kc` now spills the stack to locals before
+inlined code, as `kotlinc` does, and all of these are within 12%.
 
 ## Where kotlinc's time goes
 
