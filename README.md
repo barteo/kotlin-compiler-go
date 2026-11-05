@@ -192,8 +192,7 @@ if d := r.Diagnostics(); len(d) > 0 { ... } // kc can't compile it: no facts
 f, ok := r.Fact(analysis.ElementID{Snapshot: s.ID(), Node: n.ID()})
 ```
 
-See [docs/psi.md](docs/psi.md) for how both work, and
-[docs/psi-plan.md](docs/psi-plan.md) for the plan they came from.
+See [docs/psi.md](docs/psi.md) for how both work.
 
 ## Tests
 
