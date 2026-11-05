@@ -9,11 +9,13 @@
 # that prints the annotated symbols (test/PrintAnnotated.kt), and compares
 # the output with test/slice/want.txt; then it runs Moshi's KSP codegen over
 # test/moshi/src (test/RunKsp.kt) and compares what it generates with
-# test/moshi/want, and Dagger's over test/dagger/src with test/dagger/want.
-# "stock" does what "test" does, and then runs the slice, Moshi and Dagger
-# on stock KSP 2.3.6 (its embeddable Analysis API, Kotlin 2.3) over the
-# same sources: Moshi's and Dagger's output must match the same want
+# test/moshi/want, and Dagger's, Room's and Hilt's the same way, over
+# test/{dagger,room,hilt}/src. "stock" does what "test" does, and then runs
+# each on stock KSP 2.3.6 (its embeddable Analysis API, Kotlin 2.3) over
+# the same sources: the processors' output must match the same want
 # directories, and the slice's want.txt but for test/slice/stock.diff.
+# Room's jars come from Google's Maven repository (GOOGLE_MAVEN_REPO), the
+# rest from Maven Central (MAVEN_REPO).
 #
 # The symbol classes extend generated stubs (build/Stubs.kt, made by
 # gen/GenStubs.kt) whose members throw UnsupportedOperationException("kc:
@@ -54,7 +56,7 @@ stubbed=(
 	symbols.KaKotlinPropertySymbol symbols.KaConstructorSymbol symbols.KaValueParameterSymbol
 	symbols.KaTypeParameterSymbol symbols.KaEnumEntrySymbol symbols.KaTypeAliasSymbol
 	symbols.KaPropertyGetterSymbol symbols.KaPropertySetterSymbol symbols.KaReceiverParameterSymbol
-	symbols.KaJavaFieldSymbol symbols.KaPackageSymbol
+	symbols.KaJavaFieldSymbol symbols.KaPackageSymbol symbols.KaBackingFieldSymbol
 	types.KaUsualClassType types.KaClassErrorType types.KaFunctionType types.KaTypeParameterType
 	types.KaFlexibleType types.KaDefinitelyNotNullType
 	annotations.KaAnnotation projectStructure.KaSourceModule projectStructure.KaLibraryModule
@@ -86,7 +88,7 @@ slice=(a.Marker a.Other kotlin.Suppress e.Args e.Inner kotlin.Deprecated java.be
 	decls:f.Strings members:f.Strings members:f.Base members:f.Bag:get,size,toString assign:f.Assign sealed:f.Shape
 	overrides:f.Strings#get:f.Named#get overrides:f.Strings#get:f.Source#get overrides:f.Strings#name:f.Source#get
 	package:g package:kotlin.collections:listOf,lastIndex,ArrayList,List,emptyList,AbstractList package:java.util.function:Supplier
-	fun:kotlin.collections.listOf fun:g.top prop:kotlin.collections.lastIndex prop:kotlin.coroutines.intrinsics.COROUTINE_SUSPENDED prop:g.topProp alias:g.Holder jvm:h.Sigs)
+	fun:kotlin.collections.listOf fun:g.top prop:kotlin.collections.lastIndex prop:kotlin.coroutines.intrinsics.COROUTINE_SUSPENDED prop:g.topProp alias:g.Holder jvm:h.Sigs annots:a.Targets a.OnField a.FieldOrFun a.Anywhere)
 rm -rf "$out/test-classes" "$out/slice"
 kotlinc -cp "$deps:$out/kc-aa.jar" -d "$out/test-classes" -jvm-target 17 -nowarn "$here/test/PrintAnnotated.kt"
 LD_PRELOAD=$java_home/lib/libjsig.so java -Dksp.backend=kc -Dkc.lib="$out/libkc.so" \
@@ -98,16 +100,32 @@ echo "slice: ok"
 
 # Moshi's codegen, a real processor, from Maven Central.
 MAVEN=${MAVEN_REPO:-https://repo1.maven.org/maven2}
+GMAVEN=${GOOGLE_MAVEN_REPO:-https://dl.google.com/dl/android/maven2}
 mkdir -p "$out/m2"
+# fetch PATH [REPO] downloads PATH from REPO (Maven Central by default)
+# into build/m2.
 fetch() {
-	local path=$1 dst=$out/m2/$(basename "$1")
+	local path=$1 repo=${2:-$MAVEN} dst=$out/m2/$(basename "$1")
 	[ -s "$dst" ] && return
 	for i in 1 2 3 4 5 6 7 8; do
-		curl -sSfL -o "$dst.tmp" "$MAVEN/$path" && mv "$dst.tmp" "$dst" && return
+		curl -sSfL -o "$dst.tmp" "$repo/$path" && mv "$dst.tmp" "$dst" && return
 		sleep $((i * 3))
 	done
-	echo "build.sh: can't download $MAVEN/$path" >&2
+	echo "build.sh: can't download $repo/$path" >&2
 	exit 1
+}
+# jars GROUP:ARTIFACT:VERSION... fetches those jars, androidx's from
+# Google's Maven repository, and prints their class path, ":"-prefixed.
+jars() {
+	local c g a v repo cp=
+	for c; do
+		IFS=: read -r g a v <<< "$c"
+		repo=$MAVEN
+		[[ $g == androidx.* ]] && repo=$GMAVEN
+		fetch "${g//.//}/$a/$v/$a-$v.jar" "$repo"
+		cp=$cp:$out/m2/$a-$v.jar
+	done
+	echo "$cp"
 }
 
 # Stock KSP and RunKsp built against it.
@@ -142,7 +160,7 @@ stock() {
 	[ "$mode" = stock ] || return 0
 	rm -rf "$out/stock-$1"
 	java -Dksp.languageVersion=2.3 -cp "$out/runksp-stock$4$stockcp" RunKspKt "$2" "$out/stock-$1" "$3" > "$out/stock-$1.txt"
-	rm -rf "$out/stock-$1/caches"
+	rm -rf "$out/stock-$1/caches" "$out/stock-$1/classes"
 	diff -ru "$here/test/$1/want" "$out/stock-$1"
 	echo "$1: stock KSP ok"
 }
@@ -200,3 +218,48 @@ diff -ru "$here/test/dagger/want" "$out/dagger"
 echo "dagger: ok"
 stock dagger "$here/test/dagger/src" \
 	"$lib/kotlin-stdlib-2.4.21.jar:$out/m2/dagger-2.59.2.jar:$out/m2/javax.inject-1.jar:$out/m2/jakarta.inject-api-2.0.1.jar" "$procs"
+
+# Room's processor (XProcessing, KotlinPoet output) over test/room/src,
+# and Hilt's with Dagger's over test/hilt/src: the class paths Gradle
+# resolves for room-compiler 2.8.4 and hilt-compiler 2.59.2, but for KSP's
+# API and the Kotlin standard library, which KSP provides. On kc, Room's
+# kotlinx-serialization is the one KSP's fork already has.
+roomlibs=$lib/kotlin-stdlib-2.4.21.jar$(jars androidx.room:room-runtime-jvm:2.8.4 androidx.room:room-common-jvm:2.8.4 \
+	androidx.collection:collection-jvm:1.5.0 androidx.sqlite:sqlite-jvm:2.6.2 androidx.annotation:annotation-jvm:1.9.1 \
+	org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.8.1 org.jetbrains:annotations:23.0.0)
+procs=$(jars androidx.room:room-migration-jvm:2.8.4 androidx.room:room-common-jvm:2.8.4 androidx.room:room-external-antlr:2.8.4 \
+	androidx.room:room-compiler-processing:2.8.4 androidx.room:room-compiler:2.8.4 com.google.auto:auto-common:1.2.1 \
+	com.google.auto.value:auto-value-annotations:1.6.3 com.intellij:annotations:12.0 com.squareup:kotlinpoet-javapoet:2.0.0 \
+	com.squareup:javapoet:1.13.0 commons-codec:commons-codec:1.15 org.jetbrains.kotlin:kotlin-metadata-jvm:2.2.0 \
+	com.squareup:kotlinpoet-jvm:2.0.0 org.jetbrains.kotlin:kotlin-reflect:2.0.10 androidx.annotation:annotation-jvm:1.9.1 \
+	org.xerial:sqlite-jdbc:3.41.2.2 com.google.guava:guava:33.2.1-jre org.jspecify:jspecify:1.0.0 org.jetbrains:annotations:13.0 \
+	com.google.guava:failureaccess:1.0.2 com.google.code.findbugs:jsr305:3.0.2 org.checkerframework:checker-qual:3.42.0 \
+	com.google.errorprone:error_prone_annotations:2.26.1)
+serialization=$(jars org.jetbrains.kotlinx:kotlinx-serialization-core-jvm:1.8.1 org.jetbrains.kotlinx:kotlinx-serialization-json-jvm:1.8.1)
+rm -rf "$out/room"
+LD_PRELOAD=$java_home/lib/libjsig.so java -Dksp.backend=kc -Dkc.lib="$out/libkc.so" -Didea.home.path="$out" \
+	-cp "$out/runksp-classes$procs:$out/kc-aa.jar:$deps" RunKspKt "$here/test/room/src" "$out/room" "$roomlibs" \
+	> "$out/room.txt"
+rm -rf "$out/room/caches" "$out/room/classes"
+diff -ru "$here/test/room/want" "$out/room"
+echo "room: ok"
+stock room "$here/test/room/src" "$roomlibs" "$procs$serialization"
+
+hiltlibs=$lib/kotlin-stdlib-2.4.21.jar$(jars com.google.dagger:hilt-core:2.59.2 com.google.dagger:dagger:2.59.2 \
+	com.google.code.findbugs:jsr305:3.0.2 jakarta.inject:jakarta.inject-api:2.0.1 javax.inject:javax.inject:1 org.jspecify:jspecify:1.0.0)
+procs=$(jars com.google.dagger:hilt-compiler:2.59.2 com.google.dagger:dagger-compiler:2.59.2 com.google.dagger:dagger-spi:2.59.2 \
+	com.google.dagger:dagger:2.59.2 com.google.googlejavaformat:google-java-format:1.33.0 com.google.guava:guava:33.0.0-jre \
+	com.google.code.findbugs:jsr305:3.0.2 com.google.guava:failureaccess:1.0.2 com.squareup:javapoet:1.13.0 \
+	javax.inject:javax.inject:1 net.ltgt.gradle.incap:incap:0.2 org.jetbrains.kotlin:kotlin-metadata-jvm:2.2.20 \
+	com.squareup:kotlinpoet:1.11.0 org.jetbrains.kotlin:kotlin-reflect:1.6.10 org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.0 \
+	org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.8.0 jakarta.inject:jakarta.inject-api:2.0.1 org.jspecify:jspecify:1.0.0 \
+	org.checkerframework:checker-compat-qual:2.5.3 org.checkerframework:checker-qual:3.41.0 \
+	com.google.errorprone:error_prone_annotations:2.23.0 org.jetbrains:annotations:13.0)
+rm -rf "$out/hilt"
+LD_PRELOAD=$java_home/lib/libjsig.so java -Dksp.backend=kc -Dkc.lib="$out/libkc.so" -Didea.home.path="$out" \
+	-cp "$out/runksp-classes$procs:$out/kc-aa.jar:$deps" RunKspKt "$here/test/hilt/src" "$out/hilt" "$hiltlibs" \
+	> "$out/hilt.txt"
+rm -rf "$out/hilt/caches" "$out/hilt/classes"
+diff -ru "$here/test/hilt/want" "$out/hilt"
+echo "hilt: ok"
+stock hilt "$here/test/hilt/src" "$hiltlibs" "$procs"

@@ -69,7 +69,7 @@ mapping.
 | M0.4 | Vertical slice: list annotated source classes through a `kc` KspBackend: `jvm/kc-aa/build.sh test` | done, see gaps |
 | M1 | `psi` on Kotlin 2.4.21 | done before this work |
 | M2 | Error tolerance, `types.Invalid` payload, extension-vs-top-level overload bug, `@Contextual`/`@EncodeDefault` | done (two items moved, see M2) |
-| M3 | Richer symbol model: visibility and modality enums, flags, origins, library annotation arguments, Java parameter names | in progress: source types, flags, modality; KaTypes on the JVM; annotation arguments; library classes; inherited members, overrides, subtyping; packages, library top-level declarations, alias abbreviations; JVM type mapping, Moshi codegen end to end; backing fields, Dagger end to end; Dagger on octi-server byte-identical to stock KSP 2.3.6; the slice checked against stock KSP |
+| M3 | Richer symbol model: visibility and modality enums, flags, origins, library annotation arguments, Java parameter names | in progress: source types, flags, modality; KaTypes on the JVM; annotation arguments; library classes; inherited members, overrides, subtyping; packages, library top-level declarations, alias abbreviations; JVM type mapping, Moshi codegen end to end; backing fields, Dagger end to end; Dagger on octi-server byte-identical to stock KSP 2.3.6; the slice checked against stock KSP; Room and Hilt byte-identical to stock KSP (step 14) |
 | M4 | Queryable session `analysis/ka`: lookups, scopes, relations, overrides | |
 | M5 | Bridge: `cmd/libkc` operations, `tools/kagen` wire format, `jvm/kc-aa` KaSession | |
 | M6 | KSP fork integration: the `kc` backend, IC lookups, hot paths | |
@@ -759,7 +759,7 @@ same sources. The first run differed from `want.txt` in 42 lines; fixed:
   on the property too; if it may be on a field and not a property, on the
   field (Kotlin 2.4's PropertyParamAnnotationDefaultTargetMode, which AA
   2.3 already shows). `ka` gives the property those annotations
-  (`ctorPropAnnotations`); `KcRound.property` no longer drops them.
+  (`propAnnotations`, step 14); `KcRound.property` no longer drops them.
 - **Platform types of inferred declarations.** `fun f() =
   System.getProperty("x")` returns `String!`: a checker type with `P` set
   (and `N`, which platform types also have) is flexible, not nullable.
@@ -921,8 +921,8 @@ Next steps:
 
 `.github/workflows/analysis-api.yml` runs the JVM half on every pull
 request: `jvm/libkc/test.sh` (the JNI stress test, with and without
-libjsig) and `jvm/kc-aa/build.sh stock` (the slice, Moshi and Dagger on
-the kc backend, compared with their recorded output, and on stock KSP
+libjsig) and `jvm/kc-aa/build.sh stock` (the slice, Moshi and Dagger, and
+since step 14 Room and Hilt, on the kc backend, compared with their recorded output, and on stock KSP
 2.3.6). The Analysis API jar and the KSP fork are cached, keyed by their
 build scripts and the patches; the processors' and stock KSP's jars too.
 From nothing, on 4 CPUs, both take under 3 minutes. The Go half's tests
@@ -930,11 +930,59 @@ From nothing, on 4 CPUs, both take under 3 minutes. The Go half's tests
 with the rest. The benchmark isn't run in CI: octi-server isn't vendored,
 and shared runners' timings vary too much to gate on.
 
+#### Step 14: Room and Hilt
+
+With `dl.google.com` reachable, Room 2.8.4 and Hilt 2.59.2 run on the kc
+backend over `test/room/src` (entities with an embedded class, a foreign
+key, indices and type converters; a DAO interface with `Flow`, `suspend`,
+vararg and `@Transaction` queries; an abstract DAO class; a database) and
+`test/hilt/src` (an injected singleton, `@InstallIn` modules with
+`@Provides`, `@IntoSet` and `@Binds`, entry points, and a
+`@DefineComponent` with its builder and scope). Their output is
+byte-identical to stock KSP 2.3.6's: Room's three `_Impl` files, Hilt's
+twelve Java files (factories, `hilt_aggregated_deps` and the
+`definecomponent` metadata classes). `build.sh test` runs both
+("room: ok", "hilt: ok"), `build.sh stock` both on stock KSP as well.
+The class paths are what Gradle resolves for `room-compiler` and
+`hilt-compiler`, but for KSP's API and the standard library; Room's
+androidx jars come from Google's Maven repository (`GOOGLE_MAVEN_REPO`).
+
+One fix was needed, found by Room ("An entity must have at least 1
+property annotated with @PrimaryKey"): where Kotlin puts an annotation
+written without a use-site target. Room reads `@PrimaryKey`,
+`@ColumnInfo`, `@Embedded` and `@Relation`, whose targets are `FIELD`
+and `METHOD`, from the backing field, which kc had no symbol for. Now,
+as FIR does (stock KSP too, in Kotlin 2.4's param-property mode):
+- An untargeted annotation on a constructor `val` is the parameter's if
+  it may be on a parameter (`ctorParamAnnotations`), the property's if it
+  may be on a property, and otherwise the backing field's if it may be on
+  a field. The same goes for a property declared in the body, but that
+  an annotation that may be on neither stays on the property
+  (`propAnnotations`).
+- The model marks an annotation placed on the field this way `Implied`
+  (on the wire, a flag after the target): it is the field's but has no
+  use-site target, as in FIR.
+- `KaPropertySymbol.backingFieldSymbol` is a `KcBackingFieldSymbol` for
+  every property with a backing field, holding the annotations with
+  target `field` or `delegate`, written or implied. KSP adds them to the
+  property's annotations.
+
+`test/slice/src/a/Targets.kt` checks the rules (`PrintAnnotated`'s
+`annots:` mode lists the annotations of a class's parameters,
+properties, accessors and setter parameters with their targets). It
+matches stock KSP but for one difference, two lines of `stock.diff` (27
+lines now): stock KSP also lists `@param:Other` of a constructor `var`
+among the property's annotations, which kc doesn't.
+
+Gap: fake overrides (substituted and intersection properties) have no
+backing field symbol.
+
 ## Gaps and open questions
 
 - **Slice simplifications (M0.4).** These go when M3/M4 bring the facts in:
   - Accessors read their flags from PSI modifiers, not from `kc`.
-  - There are no backing-field symbols, so `@field:` annotations are dropped.
+  - ~~There are no backing-field symbols, so `@field:` annotations are dropped.~~
+    Fixed in step 14.
   - ~~Library type aliases and top-level callables aren't known.~~ Fixed in
     step 6.
   - Java sources are ignored.

@@ -314,7 +314,7 @@ internal class KcRound(
         fun application(a: KcAnnotation, psi: KtCallElement?): KcAnnotationApplication {
             val id = a.classId.takeIf { it.isNotEmpty() }?.let(ClassId::fromString)
             val args = a.args.map { (name, v) -> KcNamedValue(Name.identifier(name), value(v), token) }
-            return KcAnnotationApplication(this@KcRound, id, psi, useSiteTarget(a.target), args)
+            return KcAnnotationApplication(this@KcRound, id, psi, useSiteTarget(if (a.implied) "" else a.target), args)
         }
 
         /** The KaAnnotationValue of [v], recorded as its expression's value. */
@@ -480,6 +480,12 @@ internal class KcRound(
                         d.annotations.filter { it.target == "setparam" }, types, p.info.origin),
                 ).also { register(it, "$key/set/value", setterPsi?.parameter) }
                 p.setterSymbol = s
+            }
+            if (p.hasBackingField) {
+                val field = d.annotations.filter { it.target == "field" || it.target == "delegate" }
+                p.backingField = KcBackingFieldSymbol(
+                    KcInfo(this@KcRound, d, null, p, "$key/field", field, types, p.info.origin), p,
+                ).also { register(it, "$key/field", null) }
             }
             return p
         }

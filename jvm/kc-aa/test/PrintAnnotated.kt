@@ -20,6 +20,8 @@
 //	                       getPropertyDeclarationByName(includeTopLevel)
 //	alias:a.b.C            C's properties' types: the declaration each names,
 //	                       a type alias's type, and the declaration it expands to
+//	annots:a.b.C           the annotations, with use-site targets, of C's
+//	                       constructor parameters, properties and accessors
 import com.google.devtools.ksp.KspExperimental
 import com.google.devtools.ksp.getDeclaredFunctions
 import com.google.devtools.ksp.isConstructor
@@ -41,7 +43,7 @@ class PrintAnnotatedProvider(private val names: List<String>, private val out: M
         override fun process(resolver: Resolver): List<KSAnnotated> {
             for (name in names) {
                 val mode = name.substringBefore(':', "")
-                if (mode in setOf("members", "assign", "sealed", "overrides", "package", "fun", "prop", "alias", "jvm")) {
+                if (mode in setOf("members", "assign", "sealed", "overrides", "package", "fun", "prop", "alias", "jvm", "annots")) {
                     mode(resolver, mode, name.removePrefix("$mode:"), name)
                     continue
                 }
@@ -134,6 +136,23 @@ class PrintAnnotatedProvider(private val names: List<String>, private val out: M
                     for (d in c.declarations) {
                         val name = if (d is KSFunctionDeclaration && d.isConstructor()) "<init>" else d.simpleName.asString()
                         out += "$tag: - $name ${resolver.mapToJvmSignature(d)}"
+                    }
+                }
+                "annots" -> {
+                    val c = cls(resolver, arg)
+                    fun line(what: String, a: KSAnnotated?) {
+                        val names = a?.annotations?.map {
+                            (it.useSiteTarget?.let { t -> "$t:" } ?: "") + it.shortName.asString()
+                        }?.toList().orEmpty()
+                        if (names.isNotEmpty()) out += "$tag: $what ${names.joinToString(" ")}"
+                    }
+                    c.primaryConstructor?.parameters?.forEach { line("param ${it.name?.asString()}", it) }
+                    for (p in c.getDeclaredProperties()) {
+                        val n = p.simpleName.asString()
+                        line("property $n", p)
+                        line("getter $n", p.getter)
+                        line("setter $n", p.setter)
+                        line("setparam $n", p.setter?.parameter)
                     }
                 }
                 "sealed" -> cls(resolver, arg).getSealedSubclasses().forEach { out += "$tag: ${it.qualifiedName?.asString()}" }

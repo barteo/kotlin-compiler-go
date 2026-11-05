@@ -118,7 +118,7 @@ func readValue(r *wire.Reader) *ka.Value {
 }
 
 func readAnnotation(r *wire.Reader) *ka.Annotation {
-	a := &ka.Annotation{ClassID: r.String(), Node: psi.NodeID(r.Uint()), Target: r.String()}
+	a := &ka.Annotation{ClassID: r.String(), Node: psi.NodeID(r.Uint()), Target: r.String(), Implied: r.Uint() == 1}
 	for n := r.Uint(); n > 0 && r.Err() == nil; n-- {
 		a.Args = append(a.Args, ka.NamedValue{Name: r.String(), Value: readValue(r)})
 	}
@@ -126,7 +126,7 @@ func readAnnotation(r *wire.Reader) *ka.Annotation {
 }
 
 func TestValues(t *testing.T) {
-	in := &ka.Annotation{ClassID: "p/A", Node: 3, Target: "field", Args: []ka.NamedValue{
+	in := &ka.Annotation{ClassID: "p/A", Node: 3, Target: "field", Implied: true, Args: []ka.NamedValue{
 		{Name: "s", Value: &ka.Value{Kind: ka.ValueConst, Node: 4, Const: ka.ConstString, Str: "x"}},
 		{Name: "i", Value: &ka.Value{Kind: ka.ValueConst, Const: ka.ConstInt, Bits: -4}},
 		{Name: "u", Value: &ka.Value{Kind: ka.ValueConst, Const: ka.ConstULong, Bits: -1}},

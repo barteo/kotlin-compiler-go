@@ -252,6 +252,10 @@ type Annotation struct {
 	ClassID string
 	Node    psi.NodeID // the ANNOTATION_ENTRY
 	Target  string     // the use-site target as written: get, field, file...; or ""
+	// Implied is set when Target isn't written but Kotlin's default rule
+	// chose it: "field", for an annotation of a property that may be on
+	// its backing field and not on the property.
+	Implied bool
 	// Args are its arguments as written, in its parameters' order, as
 	// the checker evaluated them; none if it couldn't.
 	Args []NamedValue

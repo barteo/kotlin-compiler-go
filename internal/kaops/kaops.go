@@ -21,7 +21,7 @@
 //	type    = kind:Uint [classID:String tflags:Uint param:Uint name:String
 //	          contexts:Uint n:Uint (variance:Uint type)*n abbrev:type]
 //	annots  = n:Uint annot*n
-//	annot   = classID:String node:Uint target:String n:Uint (name:String value)*n
+//	annot   = classID:String node:Uint target:String implied:Uint n:Uint (name:String value)*n
 //	value   = kind:Uint [node:Uint
 //	          const: ckind:Uint [bits:Int | float:Uint | str:String]
 //	          | enum: classID:String entry:String | class: type
@@ -261,6 +261,11 @@ func writeAnnotation(w *wire.Writer, a *ka.Annotation) {
 	w.String(a.ClassID)
 	w.Uint(uint64(a.Node))
 	w.String(a.Target)
+	implied := uint64(0)
+	if a.Implied {
+		implied = 1
+	}
+	w.Uint(implied)
 	w.Uint(uint64(len(a.Args)))
 	for _, arg := range a.Args {
 		w.String(arg.Name)

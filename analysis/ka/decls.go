@@ -39,7 +39,7 @@ func (b *fileBuilder) decl(d syntax.Decl, owner *syntax.ClassDecl, prefix string
 			return nil
 		}
 		md := &Decl{Kind: KindProperty, Name: d.Name, Node: b.prov.Node(d),
-			Visibility: visibility(d.Visibility), Annotations: b.annotations(d.Annotations),
+			Visibility: visibility(d.Visibility), Annotations: b.propAnnotations(d.Annotations, false),
 			Flags: propFlags(&d.Modifiers, d.Mutable)}
 		md.Modality = memberModality(&d.Modifiers, owner, d.Init == nil && d.Getter == nil)
 		if d.Sym != nil && d.Field == nil && !d.Expect && (d.Sym.HasField() || d.BackingField != nil) {
@@ -103,6 +103,9 @@ func (b *fileBuilder) class(d *syntax.ClassDecl, prefix string) *Decl {
 				Flags: commonFlags(&d.CtorMods) | FlagPrimary}
 			for _, p := range d.CtorParams {
 				mp := b.param(&p.Param, b.prov.Node(p), p.Modifiers.Annotations)
+				if p.IsProp {
+					mp.Annotations = b.ctorParamAnnotations(p.Modifiers.Annotations)
+				}
 				if d.Annotation && p.Default != nil && p.Sym != nil {
 					mp.Default = b.defaultValue(p.Sym.Type, p.Default, 0)
 				}
@@ -115,7 +118,7 @@ func (b *fileBuilder) class(d *syntax.ClassDecl, prefix string) *Decl {
 				continue
 			}
 			mp := &Decl{Kind: KindProperty, Name: p.Name, Node: b.prov.Node(p),
-				Visibility: visibility(p.Visibility), Annotations: b.ctorPropAnnotations(p.Modifiers.Annotations),
+				Visibility: visibility(p.Visibility), Annotations: b.propAnnotations(p.Modifiers.Annotations, true),
 				Flags: propFlags(&p.Modifiers, p.Mutable) | FlagBackingField}
 			mp.Modality = memberModality(&p.Modifiers, d, false)
 			if p.PropSym != nil {
@@ -217,12 +220,16 @@ func (b *fileBuilder) typeParams(tps []*syntax.TypeParam) []*Decl {
 	return out
 }
 
-// ctorPropAnnotations returns the annotations of a constructor's val or
-// var parameter that are its property's, as Kotlin 2.4 (and the Analysis
-// API before it) has them: those with a use-site target, and those
-// without one that may be on a property, as well as on the parameter;
-// one that may be on a field and not on a property is the field's.
-func (b *fileBuilder) ctorPropAnnotations(as []syntax.Annotation) []Annotation {
+// propAnnotations returns the annotations of a property, written on it or,
+// for a constructor's val or var, on its parameter (ctor), as Kotlin 2.4's
+// default rule (param-property) places those without a use-site target:
+// one that may be on a property is the property's (and, for a constructor
+// property, the parameter's as well, if it may be on one); one that may be
+// on a field and not on a property is the backing field's, with Target
+// "field" and Implied set; one that may be on neither is the parameter's
+// only, or, written on a property, stays there. Those with a target keep
+// it: the JVM side splits them between the property and its accessors.
+func (b *fileBuilder) propAnnotations(as []syntax.Annotation, ctor bool) []Annotation {
 	var out []Annotation
 	for i := range as {
 		a := &as[i]
@@ -234,12 +241,32 @@ func (b *fileBuilder) ctorPropAnnotations(as []syntax.Annotation) []Annotation {
 			switch {
 			case cls.Targets&types.TargetProperty != 0:
 			case cls.Targets&types.TargetField != 0:
-				m.Target = "field"
-			default:
+				m.Target, m.Implied = "field", true
+			case ctor:
 				continue
 			}
 		}
 		out = append(out, m)
+	}
+	return out
+}
+
+// ctorParamAnnotations returns the annotations of a constructor's val or
+// var parameter that are the parameter's: as for any parameter, but
+// without those written without a use-site target that may not be on a
+// parameter (they are the property's or its field's).
+func (b *fileBuilder) ctorParamAnnotations(as []syntax.Annotation) []Annotation {
+	var out []Annotation
+	for i := range as {
+		a := &as[i]
+		if a.Implicit {
+			continue
+		}
+		if cls := b.annotationClass(a); a.Target == "" && cls != nil && cls.TargetsKnown &&
+			cls.Targets&types.TargetValueParameter == 0 {
+			continue
+		}
+		out = append(out, b.annotation(a))
 	}
 	return out
 }

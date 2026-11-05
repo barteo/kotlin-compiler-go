@@ -85,7 +85,8 @@ internal object KcOps {
         val classId = readString()
         val node = readUint().toInt()
         val target = readString()
-        return KcAnnotation(classId, node, target, List(readUint().toInt()) { readString() to value()!! })
+        val implied = readUint() == 1L
+        return KcAnnotation(classId, node, target, implied, List(readUint().toInt()) { readString() to value()!! })
     }
 
     private fun Wire.Reader.value(): KcValue? {
@@ -302,7 +303,9 @@ internal class KcTypeArg(val variance: Int, val type: KcType?)
  * annotation's CALL_EXPRESSION), [classId] is "" if kc didn't resolve it,
  * and [args] are its arguments as written, by parameter name.
  */
-internal class KcAnnotation(val classId: String, val node: Int, val target: String, val args: List<Pair<String, KcValue>>)
+// target is the use-site target as written, or "" for none; implied is set
+// when Kotlin's default rule chose it ("field") for one written without.
+internal class KcAnnotation(val classId: String, val node: Int, val target: String, val implied: Boolean, val args: List<Pair<String, KcValue>>)
 
 /**
  * An annotation argument's value; Go's ka.Value. [node] is the expression

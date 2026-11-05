@@ -325,13 +325,13 @@ internal class KcPropertySymbol(val info: KcInfo) : StubKaKotlinPropertySymbol()
     override val hasGetter get() = true
     override val hasSetter get() = !isVal
     override val hasBackingField get() = info.decl.has(KcDecl.BACKING_FIELD)
-    // kc doesn't report backing fields yet, so @field: annotations are dropped.
-    override val backingFieldSymbol: KaBackingFieldSymbol? get() = null
+    override val backingFieldSymbol: KaBackingFieldSymbol? get() = backingField
     override fun createPointer(): KaSymbolPointer<KaKotlinPropertySymbol> = info.pointer()
 
     lateinit var typeParams: List<KaTypeParameterSymbol>
     lateinit var getterSymbol: KcGetterSymbol
     var setterSymbol: KcSetterSymbol? = null
+    var backingField: KcBackingFieldSymbol? = null
     override val getter get() = getterSymbol
     override val setter get() = setterSymbol
 }
@@ -429,6 +429,22 @@ internal class KcJavaFieldSymbol(val info: KcInfo) : StubKaJavaFieldSymbol() {
 }
 
 /** The receiver of an extension callable, [owner]; [returnType] is the receiver's type. */
+/**
+ * The backing field of a property: the property's annotations with use-site
+ * target field or delegate, written or implied.
+ */
+internal class KcBackingFieldSymbol(val info: KcInfo, override val owningProperty: KcPropertySymbol) : StubKaBackingFieldSymbol() {
+    override val token get() = info.round.token
+    override val psi: PsiElement? get() = null
+    override val annotations get() = info.annotations
+    override val returnType: KaType get() = owningProperty.returnType
+    override val isVal get() = owningProperty.isVal
+    override val isNotDefault get() = false
+    override fun createPointer(): KaSymbolPointer<KaBackingFieldSymbol> = info.pointer()
+    override fun equals(other: Any?) = other is KcBackingFieldSymbol && other.owningProperty == owningProperty
+    override fun hashCode() = owningProperty.hashCode() + 11
+}
+
 internal class KcReceiverParameterSymbol(
     val info: KcInfo,
     override val owningCallableSymbol: KaCallableSymbol,

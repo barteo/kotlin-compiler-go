@@ -1,3 +1,8 @@
+a.Anywhere: parameter a: kotlin.Int
+a.Anywhere: parameter c: kotlin.Long
+a.Anywhere: property a.Targets.a: kotlin.Int
+a.Anywhere: property a.Targets.d: kotlin.Long
+a.FieldOrFun: property a.Targets.a: kotlin.Int
 a.Marker: class a.User.Nested : kotlin.Any
 a.Marker: class a.User<T : kotlin.Any?> : kotlin.Any
 a.Marker: class b.E.B
@@ -14,14 +19,22 @@ a.Marker: function d.broken(): <ERROR <ERROR TYPE: Missing>>
 a.Marker: function d.nn<T : kotlin.Any?>(t: T & Any): T
 a.Marker: function d.platform(): kotlin.String
 a.Marker: function e.spread(): kotlin.Unit
+a.Marker: getter e: kotlin.Int
 a.Marker: getter q: kotlin.Int
 a.Marker: parameter p: kotlin.Int
+a.Marker: parameter value: kotlin.Int
+a.Marker: property a.Targets.b: kotlin.String (var)
 a.Marker: property c.Unresolved.p: <ERROR <ERROR TYPE: Missing>>
 a.Marker: property d.Repo.size: kotlin.Int
 a.Marker: property d.Repo.twice: kotlin.String on kotlin.String
 a.Marker: property d.inferred: kotlin.collections.List<kotlin.Pair<kotlin.Int, kotlin.String>>
+a.Marker: setter e
 a.Marker: type parameter T : kotlin.Any?
+a.OnField: property a.Targets.a: kotlin.Int
+a.OnField: property a.Targets.d: kotlin.Long
+a.OnField: property a.Targets.e: kotlin.Int (var)
 a.Other: class b.Plain : kotlin.Any (s = "y")
+a.Other: parameter b: kotlin.String (s = "p")
 a.Other: parameter id: kotlin.Int (s = "x")
 a.Other: property a.User.id: kotlin.Int (s = "x")
 alias:g.Holder: again: g.Again names typealias g.Again = g.Names; expands to kotlin.collections.List
@@ -31,6 +44,18 @@ alias:g.Holder: names: g.Names names typealias g.Names = kotlin.collections.List
 alias:g.Holder: nested: kotlin.collections.ArrayList<g.Names> names typealias kotlin.collections.ArrayList = java.util.ArrayList<E>; expands to java.util.ArrayList
 alias:g.Holder: pairs: g.Pairs<kotlin.String>? names typealias g.Pairs = kotlin.collections.Map<K, kotlin.collections.List<K>>; expands to kotlin.collections.Map
 alias:g.Holder: plain: kotlin.collections.List<kotlin.String> names class kotlin.collections.List<out E : kotlin.Any?> : kotlin.collections.Collection<E>
+annots:a.Targets: getter e GET:Marker
+annots:a.Targets: param a OnParam Anywhere
+annots:a.Targets: param b PARAM:Other
+annots:a.Targets: param c OnParam Anywhere
+annots:a.Targets: property a OnProp Anywhere OnField FieldOrFun
+annots:a.Targets: property b FIELD:Marker
+annots:a.Targets: property d OnProp Anywhere OnField
+annots:a.Targets: property e FIELD:OnField
+annots:a.Targets: property f Transient
+annots:a.Targets: property g JvmField Volatile
+annots:a.Targets: setparam e SETPARAM:Marker
+annots:a.Targets: setter e SET:Marker
 assign:f.Assign: f.Named <- f.Base<kotlin.String>: false
 assign:f.Assign: f.Source<kotlin.Any> <- f.Strings: false
 assign:f.Assign: f.Source<kotlin.String> <- f.Strings: true

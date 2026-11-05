@@ -1,3 +1,6 @@
+> a.Other: property a.Targets.b: kotlin.String (var) (s = "p")
+< annots:a.Targets: property b FIELD:Marker
+> annots:a.Targets: property b PARAM:Other FIELD:Marker
 > decls:java.lang.Thread.State: - function <init>(): java.lang.Thread.State
 < decls:java.util.AbstractMap.SimpleEntry: - function java.util.AbstractMap.SimpleEntry.equals(p0: kotlin.Any): kotlin.Boolean
 < decls:java.util.AbstractMap.SimpleEntry: - function java.util.AbstractMap.SimpleEntry.getKey(): K
