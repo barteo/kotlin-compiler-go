@@ -18,10 +18,12 @@ import org.jetbrains.kotlin.analysis.api.types.KaClassType
 import org.jetbrains.kotlin.analysis.api.types.KaSubstitutor
 import org.jetbrains.kotlin.analysis.api.components.KaSubtypingErrorTypePolicy
 import org.jetbrains.kotlin.analysis.api.types.KaType
+import org.jetbrains.kotlin.load.kotlin.TypeMappingMode
 import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.psi.*
+import org.jetbrains.org.objectweb.asm.Type
 import java.lang.reflect.InvocationHandler
 import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Method
@@ -180,6 +182,12 @@ class KcAnalysis internal constructor(internal val round: KcRound, private val m
      * types.
      */
     fun getFullyExpandedType(type: KaType): KaType = round.expand(type)
+
+    // KaJavaInteroperabilityComponent.
+    private val jvmTypes by lazy { KcJvmTypes(round) }
+    fun mapToJvmTypeDescriptor(type: KaType): String = jvmTypes.descriptor(type)
+    fun mapToJvmType(type: KaType, mode: TypeMappingMode): Type = Type.getType(jvmTypes.descriptor(type))
+    fun isPrimitiveBacked(type: KaType): Boolean = jvmTypes.descriptor(type).length == 1
     fun getExpandedSymbol(type: KaType): KaClassSymbol? = when (val type = round.expand(type)) {
         is KaClassType -> type.symbol as? KaClassSymbol
         is KcFlexibleType -> getExpandedSymbol(type.lowerBound)

@@ -69,7 +69,7 @@ mapping.
 | M0.4 | Vertical slice: list annotated source classes through a `kc` KspBackend: `jvm/kc-aa/build.sh test` | done, see gaps |
 | M1 | `psi` on Kotlin 2.4.21 | done before this work |
 | M2 | Error tolerance, `types.Invalid` payload, extension-vs-top-level overload bug, `@Contextual`/`@EncodeDefault` | done (two items moved, see M2) |
-| M3 | Richer symbol model: visibility and modality enums, flags, origins, library annotation arguments, Java parameter names | in progress: source types, flags, modality; KaTypes on the JVM; annotation arguments; library classes; inherited members, overrides, subtyping; packages, library top-level declarations, alias abbreviations |
+| M3 | Richer symbol model: visibility and modality enums, flags, origins, library annotation arguments, Java parameter names | in progress: source types, flags, modality; KaTypes on the JVM; annotation arguments; library classes; inherited members, overrides, subtyping; packages, library top-level declarations, alias abbreviations; JVM type mapping, Moshi codegen end to end |
 | M4 | Queryable session `analysis/ka`: lookups, scopes, relations, overrides | |
 | M5 | Bridge: `cmd/libkc` operations, `tools/kagen` wire format, `jvm/kc-aa` KaSession | |
 | M6 | KSP fork integration: the `kc` backend, IC lookups, hot paths | |
@@ -556,6 +556,80 @@ Known gaps:
 - Expanding an alias turns a star argument into the parameter's bound.
 - Package scopes don't list subpackages.
 - A library package's classes are all loaded when its scope is first built.
+
+#### Step 7: JVM type mapping; Moshi codegen end to end
+
+The first real processor on the `kc` backend: Moshi's KSP codegen
+(`moshi-kotlin-codegen` 1.15.2, with kotlinpoet 1.13.2) runs over a small
+model module and generates the same adapters kotlinc+KSP would.
+
+- **JVM type mapping (`KcJvmTypes.kt`).** `mapToJvmTypeDescriptor`,
+  `mapToJvmType(type, mode)` and `isPrimitiveBacked` give the descriptor
+  of a type's erasure, as FIR's type mapper does in
+  `TypeMappingMode.DEFAULT`:
+  - typealiases are expanded first;
+  - flexible types use their lower bound, and `T & Any` uses `T`;
+  - a type parameter is its first bound's erasure, boxed (`Any?` if it has
+    none);
+  - `Int` is `I`, `Int?` and `Array<Int>`'s element are `Ljava/lang/Integer;`,
+    and `IntArray` is `[I`;
+  - `Array<in T>` and `Array<*>` are `[Ljava/lang/Object;`;
+  - `Nothing` is `Ljava/lang/Void;`, and an error type is
+    `Lerror/NonExistentClass;`;
+  - Kotlin classes that are Java classes are mapped through
+    `JavaToKotlinClassMap` (`kotlin.collections.MutableMap` is
+    `java/util/Map`, `Map.Entry` is `java/util/Map$Entry`), and
+    `SuspendFunctionN` is `kotlin/jvm/functions/Function(N+1)`;
+  - a value class is its primary constructor parameter's type, unless the
+    type is nullable and the underlying type is nullable, a primitive or a
+    type parameter: `Id?` for a `Long` stays `Lh/Id;`, while `Name?` for a
+    `String` is `Ljava/lang/String;`. Library value classes (`UInt`,
+    `Duration`) work the same way.
+
+  `Unit` stays `kotlin/Unit`; KSP turns it into `V` itself. `mapToJvmType`
+  ignores the mode.
+- **`test/RunKsp.kt`.** A general harness: KSP's processing loop on a
+  chosen backend (`-Dksp.backend=kc|aa`), with the processors on its class
+  path found through `ServiceLoader`. Processor options come from
+  `-Dksp.arg.NAME=VALUE`. It prints the generated files and fails on any
+  error the processors log.
+- **`build.sh test`** now also downloads Moshi's codegen and its
+  dependencies into `build/m2`, retrying on Maven Central's 429s. It runs
+  them over `test/moshi/src` (a `@JsonClass` data class with defaults, a
+  `@Json(name)` property, an enum, a generic class, a class with a body
+  `var` and a `@Transient` property, and nested generic and `IntArray`
+  properties). It compares the four adapters and four ProGuard files with
+  `test/moshi/want` and prints "moshi: ok".
+- **Checks of the output.**
+  - kotlinc 2.4.21 compiles the models with the generated adapters, and so
+    does kc. A round trip through Moshi gives the same output with either
+    compiler: defaults filled through the synthetic constructor (the mask
+    and `DefaultConstructorMarker` signature match kotlinc's), `e_mail`
+    renamed, null `email` omitted, `Page<User>` through `types[0]`, the
+    `theme` default kept, and the `IntArray` written.
+  - The ProGuard rules name the defaults constructor
+    `<init>(long,java.lang.String,java.lang.String,java.util.List,m.Role,int,kotlin.jvm.internal.DefaultConstructorMarker)`,
+    which is what the mapping above gives.
+- **Slice.** `test/slice/src/h/Jvm.kt` and the `jvm:` mode print
+  `Resolver.mapToJvmSignature` for a class, its constructor, functions and
+  properties. They cover primitives, boxing, every kind of array, bounded
+  and unbounded type parameters, mapped built-ins, function and suspend
+  function types, `Nothing`, nested classes, and source and library value
+  classes.
+- **Fix.** A class kc doesn't know (`KcLibraryClassSymbol`) has no flags,
+  so the mapping asks only `KcClassSymbol`s whether they're value classes.
+
+Known gaps:
+- `KcExtras.optimalModeForReturnType`/`optimalModeForValueParameter`
+  (`Resolver.getJavaWildcard`, which Room uses), `libraryModuleName` and
+  `kotlinBinaryClass` are still unsupported.
+- `mapToJvmType` ignores the mode: there are no generic signatures, no
+  wildcards, and no value-class wrapping modes.
+- A value class whose underlying type is a type parameter or another value
+  class is mapped one level at a time, without FIR's special cases.
+- `hasBackingField` is still unanswered. Moshi doesn't ask for it.
+- Moshi's reflective (`moshi-kotlin`) path and the `generateAdapter =
+  false`/`generator` options aren't exercised.
 
 ## Gaps and open questions
 

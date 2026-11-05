@@ -7,7 +7,9 @@
 # It writes build/kc-aa.jar and build/libkc.so. With "test" it then runs
 # KSP's processing loop on the kc backend over test/slice, with a processor
 # that prints the annotated symbols (test/PrintAnnotated.kt), and compares
-# the output with test/slice/want.txt.
+# the output with test/slice/want.txt; then it runs Moshi's KSP codegen over
+# test/moshi/src (test/RunKsp.kt) and compares what it generates with
+# test/moshi/want.
 #
 # The symbol classes extend generated stubs (build/Stubs.kt, made by
 # gen/GenStubs.kt) whose members throw UnsupportedOperationException("kc:
@@ -82,7 +84,41 @@ LD_PRELOAD=$java_home/lib/libjsig.so java -Dksp.backend=kc -Dkc.lib="$out/libkc.
 	decls:f.Strings members:f.Strings members:f.Base members:f.Bag:get,size,toString assign:f.Assign sealed:f.Shape \
 	overrides:f.Strings#get:f.Named#get overrides:f.Strings#get:f.Source#get overrides:f.Strings#name:f.Source#get \
 	package:g package:kotlin.collections:listOf,lastIndex,ArrayList,List,emptyList,AbstractList package:java.util.function:Supplier \
-	fun:kotlin.collections.listOf fun:g.top prop:kotlin.collections.lastIndex prop:kotlin.coroutines.intrinsics.COROUTINE_SUSPENDED prop:g.topProp alias:g.Holder \
+	fun:kotlin.collections.listOf fun:g.top prop:kotlin.collections.lastIndex prop:kotlin.coroutines.intrinsics.COROUTINE_SUSPENDED prop:g.topProp alias:g.Holder jvm:h.Sigs \
 	> "$out/slice.txt"
 diff -u "$here/test/slice/want.txt" "$out/slice.txt"
 echo "slice: ok"
+
+# Moshi's codegen, a real processor, from Maven Central.
+MAVEN=${MAVEN_REPO:-https://repo1.maven.org/maven2}
+mkdir -p "$out/m2"
+fetch() {
+	local path=$1 dst=$out/m2/$(basename "$1")
+	[ -s "$dst" ] && return
+	for i in 1 2 3 4 5 6 7 8; do
+		curl -sSfL -o "$dst.tmp" "$MAVEN/$path" && mv "$dst.tmp" "$dst" && return
+		sleep $((i * 3))
+	done
+	echo "build.sh: can't download $MAVEN/$path" >&2
+	exit 1
+}
+procs=
+for jar in com/squareup/moshi/moshi-kotlin-codegen/1.15.2/moshi-kotlin-codegen-1.15.2.jar \
+	com/squareup/moshi/moshi/1.15.2/moshi-1.15.2.jar \
+	com/squareup/okio/okio-jvm/3.7.0/okio-jvm-3.7.0.jar \
+	com/squareup/kotlinpoet/1.13.2/kotlinpoet-1.13.2.jar \
+	com/squareup/kotlinpoet-ksp/1.13.2/kotlinpoet-ksp-1.13.2.jar \
+	com/google/guava/guava/30.1.1-jre/guava-30.1.1-jre.jar \
+	org/ow2/asm/asm/9.3/asm-9.3.jar; do
+	fetch "$jar"
+	procs=$procs:$out/m2/$(basename "$jar")
+done
+
+rm -rf "$out/runksp-classes" "$out/moshi"
+kotlinc -cp "$deps:$out/kc-aa.jar" -d "$out/runksp-classes" -jvm-target 17 -nowarn "$here/test/RunKsp.kt"
+LD_PRELOAD=$java_home/lib/libjsig.so java -Dksp.backend=kc -Dkc.lib="$out/libkc.so" -Didea.home.path="$out" \
+	-cp "$out/runksp-classes:$out/kc-aa.jar:$deps$procs" RunKspKt \
+	"$here/test/moshi/src" "$out/moshi" "$lib/kotlin-stdlib-2.4.21.jar:$out/m2/moshi-1.15.2.jar:$out/m2/okio-jvm-3.7.0.jar" \
+	> "$out/moshi.txt"
+diff -ru "$here/test/moshi/want" "$out/moshi"
+echo "moshi: ok"

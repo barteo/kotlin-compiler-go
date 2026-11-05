@@ -22,6 +22,7 @@
 //	                       a type alias's type, and the declaration it expands to
 import com.google.devtools.ksp.KspExperimental
 import com.google.devtools.ksp.getDeclaredFunctions
+import com.google.devtools.ksp.isConstructor
 import com.google.devtools.ksp.getDeclaredProperties
 import com.google.devtools.ksp.impl.KotlinSymbolProcessing
 import com.google.devtools.ksp.processing.KSPJvmConfig
@@ -40,7 +41,7 @@ class PrintAnnotatedProvider(private val names: List<String>, private val out: M
         override fun process(resolver: Resolver): List<KSAnnotated> {
             for (name in names) {
                 val mode = name.substringBefore(':', "")
-                if (mode in setOf("members", "assign", "sealed", "overrides", "package", "fun", "prop", "alias")) {
+                if (mode in setOf("members", "assign", "sealed", "overrides", "package", "fun", "prop", "alias", "jvm")) {
                     mode(resolver, mode, name.removePrefix("$mode:"), name)
                     continue
                 }
@@ -125,6 +126,14 @@ class PrintAnnotatedProvider(private val names: List<String>, private val out: M
                         val to = ps[2 * i].type.resolve()
                         val from = ps[2 * i + 1].type.resolve()
                         out += "$tag: ${render(to)} <- ${render(from)}: ${to.isAssignableFrom(from)}"
+                    }
+                }
+                "jvm" -> {
+                    val c = cls(resolver, arg)
+                    out += "$tag: ${resolver.mapToJvmSignature(c)}"
+                    for (d in c.declarations) {
+                        val name = if (d is KSFunctionDeclaration && d.isConstructor()) "<init>" else d.simpleName.asString()
+                        out += "$tag: - $name ${resolver.mapToJvmSignature(d)}"
                     }
                 }
                 "sealed" -> cls(resolver, arg).getSealedSubclasses().forEach { out += "$tag: ${it.qualifiedName?.asString()}" }

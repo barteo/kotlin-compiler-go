@@ -78,6 +78,19 @@ fun:kotlin.collections.listOf: KOTLIN_LIB function kotlin.collections.listOf<T :
 fun:kotlin.collections.listOf: KOTLIN_LIB function kotlin.collections.listOf<T : kotlin.Any?>(element: T): kotlin.collections.List<T> [kotlin.collections.CollectionsKt__CollectionsJVMKt]
 fun:kotlin.collections.listOf: KOTLIN_LIB function kotlin.collections.listOf<T : kotlin.Any?>(vararg elements: T): kotlin.collections.List<T> [kotlin.collections.CollectionsKt__CollectionsKt]
 java.beans.JavaBean: class e.Bean : kotlin.Any (description = "bean", defaultProperty = "", defaultEventSet = "")
+jvm:h.Sigs: - <init> (JLjava/lang/String;)V
+jvm:h.Sigs: - Inner Lh/Sigs$Inner;
+jvm:h.Sigs: - arrays ([I[Ljava/lang/Integer;[Ljava/lang/String;[Ljava/lang/Object;[Ljava/lang/Number;[[I)[[Ljava/lang/CharSequence;
+jvm:h.Sigs: - builtins (Ljava/lang/Object;Ljava/lang/String;Ljava/lang/Comparable;Ljava/lang/Number;Ljava/lang/Throwable;Ljava/lang/CharSequence;Lh/Sigs$Inner;)V
+jvm:h.Sigs: - functions (Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function2;Lkotlin/jvm/functions/Function1;)Ljava/lang/Void;
+jvm:h.Sigs: - generics (Ljava/lang/CharSequence;Ljava/lang/Object;Ljava/util/List;Ljava/util/Map;Ljava/util/Map$Entry;)Ljava/lang/CharSequence;
+jvm:h.Sigs: - id J
+jvm:h.Sigs: - name Ljava/lang/String;
+jvm:h.Sigs: - nothing Ljava/lang/Void;
+jvm:h.Sigs: - prims (ILjava/lang/Integer;ZCD)J
+jvm:h.Sigs: - star Ljava/util/List;
+jvm:h.Sigs: - values (JLh/Id;Ljava/lang/String;Ljava/util/List;ILkotlin/time/Duration;J)J
+jvm:h.Sigs: Lh/Sigs;
 kotlin.Deprecated: class e.Old : kotlin.Any (message = "old", replaceWith = @kotlin.ReplaceWith(expression = "", imports = []), level = kotlin.DeprecationLevel.WARNING)
 kotlin.Suppress: file Model.kt (names = ["unused"])
 members:f.Bag:get,size,toString: JAVA_LIB size in java.util.AbstractCollection; as member (): kotlin.Int
