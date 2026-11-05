@@ -102,8 +102,9 @@ var milestones = []struct {
 	{"qualified super", []string{"qualified super"}},
 	{"context parameters of top-level functions", []string{"context function", "context function type"}},
 	{"context parameters of members, properties and local functions", []string{"context member", "context property", "context local function", "context anonymous function"}},
+	{"safe-call assignments", []string{"safe-call assignment"}},
 	// Supported all along, but counted by an earlier detector.
-	{"also supported", []string{"prefix increment"}},
+	{"also supported", []string{"prefix increment", "member extension property", "labeled expression"}},
 }
 
 // intrinsics are the inline-only functions that milestone 4 builds in.
@@ -537,7 +538,8 @@ func (d *detector) run() {
 				if strings.Contains(t.Text, "@") {
 					d.add("labels")
 				}
-			case next == syntax.FOR || next == syntax.WHILE || next == syntax.DO || next == syntax.LBRACE:
+			case loopOrLambda(d.kind(d.skipNL(i + 1))):
+				// A label of a loop or a lambda, also on a line of its own.
 				d.add("labels")
 			default:
 				d.add("labeled expression")
@@ -602,6 +604,12 @@ func (d *detector) run() {
 			}
 		}
 	}
+}
+
+// loopOrLambda reports whether a token of kind k starts what a label
+// usually labels: a loop or a lambda.
+func loopOrLambda(k syntax.Kind) bool {
+	return k == syntax.FOR || k == syntax.WHILE || k == syntax.DO || k == syntax.LBRACE
 }
 
 // templates looks for features in a string's template expressions.

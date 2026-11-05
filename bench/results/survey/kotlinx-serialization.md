@@ -8,11 +8,10 @@ Directories: `core/commonMain/src`, `core/jvmMain/src`, `formats/json/commonMain
 
 ### Features left, by files blocked
 
-98 of 99 files use no feature that kc doesn't support.
+99 of 99 files use no feature that kc doesn't support.
 
 | Feature | Files | Only blocker | Uses |
 |:---|---:|---:|---:|
-| member extension property | 1 | 1 | 6 |
 
 ### Greedy order of the features left
 
@@ -20,7 +19,6 @@ At each step, the feature that unblocks the most files given the ones before it,
 
 | Step | Feature | Files unblocked |
 |---:|:---|---:|
-| 1 | member extension property | 99 |
 
 ### Inline-only functions called
 
@@ -112,7 +110,7 @@ The features each file still needs.
 | core/commonMain/src/kotlinx/serialization/internal/Primitives.kt | 132 |  |
 | core/commonMain/src/kotlinx/serialization/internal/SerializationConstructorMarker.kt | 9 |  |
 | core/commonMain/src/kotlinx/serialization/internal/Tagged.kt | 343 |  |
-| core/commonMain/src/kotlinx/serialization/internal/Tuples.kt | 167 | member extension property |
+| core/commonMain/src/kotlinx/serialization/internal/Tuples.kt | 167 |  |
 | core/commonMain/src/kotlinx/serialization/internal/ValueClasses.kt | 62 |  |
 | core/commonMain/src/kotlinx/serialization/modules/PolymorphicModuleBuilder.kt | 198 |  |
 | core/commonMain/src/kotlinx/serialization/modules/SerializersModule.kt | 244 |  |

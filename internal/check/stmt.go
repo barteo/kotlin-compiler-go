@@ -377,43 +377,7 @@ func (c *Checker) stmt(s syntax.Stmt, valueUsed bool, want types.Type) types.Typ
 	case *syntax.LocalClass:
 		c.localClass(s)
 	case *syntax.While:
-		loop := &loopCtx{node: s, label: s.Label, lambdas: len(c.lambdas)}
-		// The vars the loop assigns lose their narrowing in it and after
-		// it.
-		vars, unkeep := c.loopVars(s.Cond, s.Body)
-		if s.Do {
-			// The condition sees the body's declarations.
-			c.push()
-			c.reset(vars)
-			c.loops = append(c.loops, loop)
-			s.Body.T = c.stmts(s.Body, noWant, false)
-			c.loops = c.loops[:len(c.loops)-1]
-			c.value(s.Cond, types.BoolType)
-			c.wantBool(s.Cond)
-			c.pop()
-		} else {
-			c.push()
-			c.reset(vars)
-			c.value(s.Cond, types.BoolType)
-			c.wantBool(s.Cond)
-			whenTrue, _ := c.narrowing(s.Cond)
-			c.loops = append(c.loops, loop)
-			c.push()
-			c.scope.narrows = append(c.scope.narrows, whenTrue...)
-			c.block(s.Body, noWant, false)
-			c.pop()
-			c.loops = c.loops[:len(c.loops)-1]
-			c.pop()
-		}
-		unkeep()
-		c.reset(vars)
-		if lit, ok := s.Cond.(*syntax.BoolLit); ok && lit.Val && !loop.hasBreak {
-			s.Infinite = true
-			return types.NothingType
-		}
-		if s.Do && s.Body.T.K == types.Nothing && !loop.hasBreak && !loop.hasContinue {
-			return types.NothingType // the body runs once, and jumps
-		}
+		return c.while(s)
 	case *syntax.For:
 		if len(s.Names) > 0 && s.Var == "" {
 			// for ((k, v) in m) is for (e in m) { val (k, v) = e }.
@@ -457,6 +421,84 @@ func (c *Checker) stmt(s syntax.Stmt, valueUsed bool, want types.Type) types.Typ
 		c.reset(vars)
 	case *syntax.Block:
 		return c.block(s, want, valueUsed)
+	}
+	return types.UnitType
+}
+
+// while checks a while or a do-while loop. After it, the smart casts are
+// those where it ends: where its condition is false, unless it is true,
+// and at its breaks. A do-while's condition has those at the end of its
+// body and at its continues.
+func (c *Checker) while(s *syntax.While) types.Type {
+	loop := &loopCtx{node: s, label: s.Label, lambdas: len(c.lambdas)}
+	// The vars the loop assigns lose their narrowing in it and after it.
+	vars, unkeep := c.loopVars(s.Cond, s.Body)
+	var exits []flowState
+	if s.Do {
+		// The condition sees the body's declarations.
+		c.push()
+		c.reset(vars)
+		c.loops = append(c.loops, loop)
+		s.Body.T = c.stmts(s.Body, noWant, false)
+		if len(loop.flow.continues) > 0 {
+			c.deferred++ // the body's vals may be read before they are declared
+		}
+		if conts := loop.flow.continues; len(conts) > 0 || loop.flow.lost {
+			// The condition has the smart casts of the paths to it.
+			if s.Body.T.K != types.Nothing {
+				conts = append(conts, c.flowState())
+			}
+			body := c.scope
+			c.scope = &scope{parent: body.parent, vars: body.vars, funs: body.funs, classes: body.classes, depth: body.depth}
+			c.reset(vars)
+			if !loop.flow.lost {
+				c.scope.narrows = append(c.scope.narrows, c.joinFlows(conts)...)
+			}
+		}
+		// A break or continue in the condition is the do-while's own.
+		c.value(s.Cond, types.BoolType)
+		c.wantBool(s.Cond)
+		c.loops = c.loops[:len(c.loops)-1]
+		_, whenFalse := c.narrowing(s.Cond)
+		c.push()
+		c.scope.narrows = append(c.scope.narrows, whenFalse...)
+		exits = append(exits, c.flowState())
+		c.pop()
+		c.pop()
+	} else {
+		pre := c.loopEntry(vars)
+		c.push()
+		c.reset(vars)
+		c.value(s.Cond, types.BoolType)
+		c.wantBool(s.Cond)
+		whenTrue, whenFalse := c.narrowing(s.Cond)
+		c.loops = append(c.loops, loop)
+		c.push()
+		c.scope.narrows = append(c.scope.narrows, whenTrue...)
+		end := c.watchExit(vars)
+		c.block(s.Body, noWant, false)
+		c.pop()
+		c.loops = c.loops[:len(c.loops)-1]
+		if lit, ok := s.Cond.(*syntax.BoolLit); !ok || !lit.Val {
+			c.push()
+			c.scope.narrows = append(c.scope.narrows, c.loopHead(vars, s.Cond, pre, end, loop)...)
+			c.scope.narrows = append(c.scope.narrows, whenFalse...)
+			exits = append(exits, c.flowState())
+			c.pop()
+		}
+		c.pop()
+	}
+	unkeep()
+	c.reset(vars)
+	if !loop.flow.lost {
+		c.scope.narrows = append(c.scope.narrows, c.joinFlows(append(exits, loop.flow.breaks...))...)
+	}
+	if lit, ok := s.Cond.(*syntax.BoolLit); ok && lit.Val && !loop.hasBreak {
+		s.Infinite = true
+		return types.NothingType
+	}
+	if s.Do && s.Body.T.K == types.Nothing && !loop.hasBreak && !loop.hasContinue {
+		return types.NothingType // the body runs once, and jumps
 	}
 	return types.UnitType
 }
@@ -564,9 +606,14 @@ func (c *Checker) smartCastFrom(x syntax.Expr, t types.Type) (types.Type, bool) 
 
 // implyNonNull records the smart casts that v, a val of value x, not
 // being null implies: x's receivers of safe calls aren't null either,
-// when they are vals.
+// when they are vals, nor is x when it's a stable val itself: val s = x
+// is an alias of x.
 func (c *Checker) implyNonNull(v *types.VarSym, x syntax.Expr) {
 	var ns []narrow
+	if k, ok := c.narrowKeyOf(x); ok && !k.sym.Mutable && (k.recv == nil || !k.recv.Mutable) && types.MayBeNull(k.t) {
+		k.t = k.t.NonNull()
+		ns = append(ns, k)
+	}
 	for _, k := range c.safeReceivers(x) {
 		if !k.sym.Mutable && (k.recv == nil || !k.recv.Mutable) {
 			ns = append(ns, k)
@@ -604,24 +651,97 @@ func (c *Checker) condVal(v *types.VarSym, x syntax.Expr) {
 	c.conds[v] = [2][]narrow{whenTrue, whenFalse}
 }
 
+// safeTarget splits an assignment target that a safe call's chain ends
+// in, a?.b or a?.b.f()[i][j], at its last ?.: it returns the receiver, a,
+// and a function that makes the target on a value of it that isn't null,
+// t.b or t.b.f()[i][j]. The parts are copies, not yet checked.
+func safeTarget(x syntax.Expr) (syntax.Expr, func(syntax.Expr) syntax.Expr, bool) {
+	switch x := x.(type) {
+	case *syntax.Member:
+		if !x.Safe || x.Paren {
+			return nil, nil, false
+		}
+		return x.X, func(t syntax.Expr) syntax.Expr {
+			n := *x
+			n.X, n.Safe = t, false
+			return &n
+		}, true
+	case *syntax.Call:
+		m, ok := x.Fun.(*syntax.Member)
+		if !ok || x.Invoke || !m.Safe || x.Paren {
+			return nil, nil, false
+		}
+		return m.X, func(t syntax.Expr) syntax.Expr {
+			fn := *m
+			fn.X, fn.Safe = t, false
+			n := *x
+			n.Fun = &fn
+			return &n
+		}, true
+	case *syntax.Index:
+		recv, build, ok := safeTarget(x.X)
+		if !ok || x.Paren {
+			return nil, nil, false
+		}
+		return recv, func(t syntax.Expr) syntax.Expr {
+			n := *x
+			n.X = build(t)
+			return &n
+		}, true
+	}
+	return nil, nil, false
+}
+
+// safeIf checks the receiver of a safe target, a?.b or a?.b[i], into a
+// temporary, val t = a, and returns it with if (t != null) and the
+// target on t, t.b or t.b[i].
+func (c *Checker) safeIf(p syntax.Pos, recv syntax.Expr, build func(syntax.Expr) syntax.Expr) (*syntax.VarStmt, *syntax.If, syntax.Expr) {
+	tmp := c.temp(p, "receiver", recv, c.value(recv, noWant))
+	target := build(tempRef(tmp, recv.Pos()))
+	null := &syntax.NullLit{}
+	null.P = recv.Pos()
+	cond := &syntax.Binary{Op: syntax.NE, X: tempRef(tmp, recv.Pos()), Y: null}
+	cond.P = recv.Pos()
+	ifs := &syntax.If{Cond: cond}
+	ifs.P = p
+	return tmp, ifs, target
+}
+
 // safeAssign checks a?.b = v, or a?.b op= v, which assigns only if a
-// isn't null: val t = a; if (t != null) t.b = v.
-func (c *Checker) safeAssign(s *syntax.Assign, m *syntax.Member) {
+// isn't null: val t = a; if (t != null) t.b = v. So does a?.b[i] = v.
+func (c *Checker) safeAssign(s *syntax.Assign, recv syntax.Expr, build func(syntax.Expr) syntax.Expr) {
 	c.push()
 	defer c.pop()
-	recv := c.temp(s.P, "receiver", m.X, c.value(m.X, noWant))
-	target := &syntax.Member{X: tempRef(recv, m.P), Name: m.Name}
-	target.P = m.P
-	null := &syntax.NullLit{}
-	null.P = m.P
-	cond := &syntax.Binary{Op: syntax.NE, X: tempRef(recv, m.P), Y: null}
-	cond.P = m.P
+	tmp, ifs, target := c.safeIf(s.P, recv, build)
 	set := &syntax.Assign{P: s.P, Op: s.Op, Target: target, Value: s.Value}
-	ifs := &syntax.If{Cond: cond, Then: &syntax.Block{P: s.P, Stmts: []syntax.Stmt{set}}}
-	ifs.P = s.P
+	ifs.Then = &syntax.Block{P: s.P, Stmts: []syntax.Stmt{set}}
 	es := &syntax.ExprStmt{X: ifs}
 	c.stmt(es, false, noWant)
-	s.Stmts = []syntax.Stmt{recv, es}
+	s.Stmts = []syntax.Stmt{tmp, es}
+}
+
+// safeIncDec checks a?.b++, a?.b--, ++a?.b or --a?.b, and a?.b[i]++,
+// which change b only if a isn't null: val t = a; if (t != null) t.b++.
+// As a value it is null when a is: if (t != null) t.b++ else null.
+func (c *Checker) safeIncDec(u *syntax.Unary, recv syntax.Expr, build func(syntax.Expr) syntax.Expr, value bool) types.Type {
+	c.push()
+	defer c.pop()
+	tmp, ifs, target := c.safeIf(u.P, recv, build)
+	inner := &syntax.Unary{Op: u.Op, X: target, Prefix: u.Prefix}
+	inner.P = u.P
+	ifs.Then = &syntax.Block{P: u.P, Stmts: []syntax.Stmt{&syntax.ExprStmt{X: inner}}}
+	if !value {
+		es := &syntax.ExprStmt{X: ifs}
+		c.stmt(es, false, noWant)
+		u.Stmts = []syntax.Stmt{tmp, es}
+		return types.UnitType
+	}
+	null := &syntax.NullLit{}
+	null.P = u.P
+	ifs.Else = &syntax.Block{P: u.P, Stmts: []syntax.Stmt{&syntax.ExprStmt{X: null}}}
+	t := c.value(ifs, noWant)
+	u.Stmts = []syntax.Stmt{tmp, &syntax.ExprStmt{X: checked(ifs, t)}}
+	return t
 }
 
 // destructure checks val (a, b) = e, as val t = e; val a =
@@ -706,6 +826,7 @@ func (c *Checker) lvalue(x syntax.Expr) (types.Type, bool) {
 		return t, t.K != types.Invalid
 	case *syntax.Member:
 		if x.Safe {
+			// assign and incDec rewrite a?.b = v and a?.b++ first.
 			c.unsupported(x.P, "safe-call assignment", "safe-call assignment is not supported")
 			return types.InvalidType, false
 		}
@@ -804,12 +925,26 @@ func (c *Checker) forIterator(s *syntax.For, t types.Type) types.Type {
 		return c.forCalls(s)
 	}
 	s.Iter, s.HasNext, s.Next, s.IterT = iter, hasNext, next, it
+	if cls := c.classOf(it); cls != nil && elem.P && primitiveIterators[cls.Name] && elem.NonNull().IsPrimitive() {
+		// IntIterator's next(), a bridge of Iterator<Int>'s, returns an
+		// Int: as kotlinc's nextInt(), the element is no platform type.
+		elem = elem.Flex()
+	}
 	for _, f := range []*types.FunSym{iter, hasNext, next} {
 		if f != nil {
 			c.suspendCall(s.Range.Pos(), f)
 		}
 	}
 	return elem
+}
+
+// primitiveIterators are the standard library's iterators of primitive
+// values.
+var primitiveIterators = map[string]bool{
+	"kotlin/collections/IntIterator": true, "kotlin/collections/LongIterator": true,
+	"kotlin/collections/CharIterator": true, "kotlin/collections/ByteIterator": true,
+	"kotlin/collections/ShortIterator": true, "kotlin/collections/FloatIterator": true,
+	"kotlin/collections/DoubleIterator": true, "kotlin/collections/BooleanIterator": true,
 }
 
 // forCalls checks a loop over a range whose iterator(), or whose
@@ -955,8 +1090,8 @@ func (c *Checker) objectTarget(x syntax.Expr) syntax.Expr {
 }
 
 func (c *Checker) assign(s *syntax.Assign) {
-	if m, ok := s.Target.(*syntax.Member); ok && m.Safe {
-		c.safeAssign(s, m)
+	if recv, build, ok := safeTarget(s.Target); ok {
+		c.safeAssign(s, recv, build)
 		return
 	}
 	if ix, ok := s.Target.(*syntax.Index); ok && s.Op == syntax.ASSIGN {
@@ -981,8 +1116,16 @@ func (c *Checker) assign(s *syntax.Assign) {
 	n := len(c.errs)
 	var tt types.Type
 	var mutable bool
-	switch s.Target.(type) {
-	case *syntax.Ident, *syntax.Index, *syntax.Member:
+	switch t := s.Target.(type) {
+	case *syntax.Member:
+		if t.Paren && s.Op != syntax.ASSIGN {
+			// (a?.b) += v: the parentheses end the chain, so this is
+			// plusAssign on the value, which may be null.
+			tt = c.expr(s.Target, noWant)
+			break
+		}
+		tt, mutable = c.lvalue(s.Target)
+	case *syntax.Ident, *syntax.Index:
 		if c.namesObject(s.Target) && s.Op != syntax.ASSIGN {
 			tt = c.expr(s.Target, noWant) // Obj += v: Obj.plusAssign(v)
 			break
@@ -1010,6 +1153,8 @@ func (c *Checker) assign(s *syntax.Assign) {
 		if v != nil {
 			c.assignedVar(v, vt)
 			c.assignedNested(v, vt)
+		} else {
+			c.assignedVal(s.Target, vt)
 		}
 		return
 	}
@@ -1109,6 +1254,9 @@ func arithOf(k syntax.Kind) syntax.Kind {
 // after it.
 func (c *Checker) incDec(u *syntax.Unary, value bool) types.Type {
 	u.T = types.UnitType
+	if recv, build, ok := safeTarget(u.X); ok {
+		return c.safeIncDec(u, recv, build, value)
+	}
 	var old *syntax.VarStmt
 	keep := func(inc func(syntax.Expr) syntax.Expr) func(syntax.Expr) syntax.Expr {
 		if !value || u.Prefix {
@@ -1165,6 +1313,12 @@ func (c *Checker) incDec(u *syntax.Unary, value bool) types.Type {
 			return call
 		}
 		if stmts, reread, ok := c.indexCompound(u.P, ix, "", nil, keep(inc)); ok {
+			if !value && u.Prefix && len(stmts) > 0 {
+				// As kotlinc does, ++a[i] reads a[i] again after the
+				// set, also where its value isn't used.
+				x := reread()
+				stmts = append(stmts, &syntax.ExprStmt{X: checked(x, c.value(x, noWant))})
+			}
 			return result(stmts, reread)
 		}
 	}

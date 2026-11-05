@@ -108,6 +108,13 @@ func TestParseValid(t *testing.T) {
 		{"lateinit and tailrec", "class A { lateinit var a: String }\nlateinit var b: String\nfun f() {\n lateinit var c: String\n tailrec fun g(n: Int): Int = if (n == 0) 0 else g(n - 1)\n}\ntailrec fun h(n: Int) {}"},
 		{"local classes", "fun f() {\n class A(val x: Int)\n data class P(val a: Int)\n open class B { fun g() = 1 }\n}"},
 		{"expect and actual", "expect fun f(): Int\nactual fun f(): Int = 1\nexpect class A(x: Int) { fun g() }\nactual class A actual constructor(x: Int) {\n actual fun g() {}\n}\nactual class B\n  actual constructor()"},
+		{"redundant nullable types", "val a: Int?? = null\nval b: (Int?)? = null\nval c: Int? ? = null\nval d = String ? ? :: length\nfun f(g: (@A C)?.() -> C) {}"},
+		{"empty if branches", "fun f(a: Boolean, b: Int) {\n val x = if (a) else b\n if (true) return else return\n}"},
+		{"float literals out of range", "val a = 1e999\nval b = 1e-999f\nval c = 3.4e39f"},
+		{"labeled declarations", "fun f() {\n L@ val x = 1\n M@ fun g() { return@M }\n}"},
+		{"annotated reified type parameters", "inline fun <reified @A T, @B reified U> f() {}"},
+		{"annotation arguments before a declaration", "@A (1) typealias T = Int\n@B (\"x\") fun f() {}"},
+		{"trailing commas in lambda and catch parameters", "val g = { x: Int, -> x }\nfun f() {\n try { } catch (e: Exception,) { }\n}"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -161,6 +168,16 @@ func TestParseErrors(t *testing.T) {
 	}
 }
 
+func TestReservedAnnotationName(t *testing.T) {
+	f, errs := Parse("t.kt", "@__(\"\") class C\n@`__` class D")
+	if len(errs) > 0 {
+		t.Fatalf("unexpected error: %v", errs[0])
+	}
+	if len(f.Errors) != 1 || f.Errors[0].Pos.String() != "1:2" || !strings.Contains(f.Errors[0].Msg, "reserved") {
+		t.Fatalf("got %v, want one reserved-name error at 1:2", f.Errors)
+	}
+}
+
 // TestUnsupportedFeatures checks the feature that each unsupported
 // construct is reported as, which bench/survey counts.
 func TestUnsupportedFeatures(t *testing.T) {
@@ -182,7 +199,7 @@ func TestUnsupportedFeatures(t *testing.T) {
 }
 
 func TestTokens(t *testing.T) {
-	toks, errs := Tokenize("t.kt", "a as? B; !is; !isOk; x === y !== z; A::f; @Ann; loop@ for; return@f; this@A; 'c'; 1f; 2uL; is as")
+	toks, errs := Tokenize("t.kt", "a as? B; !is; !isOk; x === y !== z; A::f; @Ann; loop@ for; return@f; return@`f g`; this@A; 'c'; 1f; 2uL; is as")
 	if len(errs) > 0 {
 		t.Fatal(errs[0])
 	}
@@ -195,7 +212,7 @@ func TestTokens(t *testing.T) {
 	}
 	got := strings.Join(kinds, " ")
 	want := "identifier(a) as?(as?) identifier(B) !is(!is) !(!) identifier(isOk) identifier(x) ===(===) identifier(y) !==(!==) identifier(z) " +
-		"identifier(A) ::(::) identifier(f) @(@) identifier(Ann) label(loop) for(for) return(return@f) this(this@A) " +
+		"identifier(A) ::(::) identifier(f) @(@) identifier(Ann) label(loop) for(for) return(return@f) return(return@f g) this(this@A) " +
 		"character literal('c') float literal(1f) unsigned literal(2uL) is(is) as(as) end of file()"
 	if got != want {
 		t.Errorf("got  %s\nwant %s", got, want)
@@ -220,6 +237,35 @@ func TestRawString(t *testing.T) {
 	}
 	if toks[1].Kind != EOF {
 		t.Errorf("got %s after the string, want end of file", toks[1].Kind)
+	}
+}
+
+func TestMultiDollarString(t *testing.T) {
+	tests := []struct{ src, want string }{
+		{"\"$x $`a b` $$y $ $\"", "{x}| |{`a b`}| $|{y}| $ $"},
+		{`$"$x"`, "{x}"},
+		{`$$"$x $$x $$$x ${y} $${y} $$"`, "$x |{x}| $|{x}| ${y} |{y}| $$"},
+		{`$$$$"$$$x$$$$x"`, "$$$x|{x}"},
+		{`$$"""a $$b ${"$c"}"""`, `a |{b}| ${"$c"}`},
+		{`"${$$"$$a"}"`, `{$$"$$a"}`},
+	}
+	for _, tt := range tests {
+		toks, errs := Tokenize("t.kt", tt.src)
+		if len(errs) > 0 {
+			t.Errorf("%s: %v", tt.src, errs[0])
+			continue
+		}
+		var parts []string
+		for _, p := range toks[0].Parts {
+			if p.IsExpr {
+				parts = append(parts, "{"+p.Src+"}")
+			} else {
+				parts = append(parts, p.Lit)
+			}
+		}
+		if got := strings.Join(parts, "|"); got != tt.want || toks[1].Kind != EOF {
+			t.Errorf("%s: got %q then %s, want %q", tt.src, got, toks[1].Kind, tt.want)
+		}
 	}
 }
 
@@ -1102,5 +1148,60 @@ func TestRecoverAfterReceiver(t *testing.T) {
 	}
 	if n := len(f.Decls); n < 2 {
 		t.Errorf("declarations after the errors: %d", n)
+	}
+}
+
+// TestBackingFields checks explicit backing fields: on the property's line
+// or the next, with a type, an initializer, or neither, among accessors.
+func TestBackingFields(t *testing.T) {
+	src := `class A {
+    val a: List<Int> field = mutableListOf()
+    val b: Number
+        field: Int = 1
+    val c: Any
+        @Volatile internal field: String
+    init { c = "" }
+    val d: Int
+        field = 1
+        get() = 2
+}
+val e: Any field: Int = 1
+`
+	f, errs := Parse("t.kt", src)
+	if len(errs) > 0 {
+		t.Fatalf("unexpected error: %v", errs[0])
+	}
+	cd := f.Decls[0].(*ClassDecl)
+	var props []*PropDecl
+	for _, m := range cd.Members {
+		if pd, ok := m.(*PropDecl); ok {
+			props = append(props, pd)
+		}
+	}
+	props = append(props, f.Decls[1].(*PropDecl))
+	type want struct {
+		typ        string
+		init, mods bool
+	}
+	for i, w := range []want{{"", true, false}, {"Int", true, false}, {"String", false, true}, {"", true, false}, {"Int", true, false}} {
+		bf := props[i].BackingField
+		if bf == nil {
+			t.Fatalf("%s: no backing field", props[i].Name)
+		}
+		if typ := ""; bf.Type != nil && bf.Type.Name != w.typ || bf.Type == nil && w.typ != typ {
+			t.Errorf("%s: field type %+v, want %q", props[i].Name, bf.Type, w.typ)
+		}
+		if (bf.Init != nil) != w.init || (len(bf.Mods) > 0) != w.mods {
+			t.Errorf("%s: field %+v", props[i].Name, bf)
+		}
+	}
+	if props[2].Annotations[0].Target != "field" {
+		t.Errorf("annotation target: %q", props[2].Annotations[0].Target)
+	}
+	if props[3].Getter == nil {
+		t.Errorf("getter after the field")
+	}
+	if props[0].Init != nil || props[0].Type.Name != "List" {
+		t.Errorf("property a: %+v", props[0])
 	}
 }

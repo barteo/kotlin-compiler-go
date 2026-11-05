@@ -122,6 +122,18 @@ func fewestSAM[C any](cs []C, args []syntax.Expr, cl func(C) *callee) ([]C, bool
 	return out, len(out) < len(cs)
 }
 
+// notLowPriority leaves out the candidates marked
+// @LowPriorityInOverloadResolution when any other fits, before the most
+// specific is chosen, as Kotlin does: foo(1) calls foo(Any) over a
+// low-priority foo(Int).
+func notLowPriority[C any](cs []C, cl func(C) *callee) []C {
+	if !slices.ContainsFunc(cs, func(c C) bool { return cl(c).f.LowPriority }) ||
+		!slices.ContainsFunc(cs, func(c C) bool { return !cl(c).f.LowPriority }) {
+		return cs
+	}
+	return slices.DeleteFunc(slices.Clone(cs), func(c C) bool { return cl(c).f.LowPriority })
+}
+
 // preferred picks among n equally specific candidates, as Kotlin does:
 // one that takes its arguments without varargs, then one that leaves
 // fewer parameters to their defaults. It returns -1 if none is preferred.
@@ -795,6 +807,9 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			} else {
 				cd.params[j] = cd.sub.ApplyIn(cl.argType(j, x.Args))
 			}
+			if targs != nil {
+				cd.params[j] = c.nullableUnitResult(cl.argType(j, x.Args), cd.params[j], cd.sub)
+			}
 		}
 		cs[i] = cd
 	}
@@ -860,6 +875,7 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			match = c.applicable(cs, x, ts, partials, true)
 		}
 		match = c.notPropRefs(x, match)
+		match = notLowPriority(match, func(cd *candidate) *callee { return &cd.callee })
 		var maximal []*candidate
 		for _, cd := range match {
 			if c.mostSpecific(cd, match, x.Args) {
@@ -874,6 +890,11 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 						maximal = append(maximal, cd)
 					}
 				}
+			}
+		}
+		if len(maximal) != 1 {
+			if ng := c.nonGenericMaximal(match, x.Args); len(ng) == 1 {
+				maximal = ng
 			}
 		}
 		if i := preferred(len(maximal), x.Args, func(i int) *callee { return &maximal[i].callee }); i >= 0 {
@@ -920,7 +941,7 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 	c.dslCall(x, &best.callee)
 	c.setContexts(x, &best.callee, best.sys, best.sub)
 	ensureFun(f)
-	c.suspendCall(x.P, f)
+	c.suspendFunCall(x, f)
 	c.composeFunCall(x.P, f)
 	c.inlineCall(x, &best.callee)
 	ret := best.sub.Apply(f.Ret)
@@ -939,13 +960,18 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			if trial.sub(ft, params[i]); trial.ok {
 				sys = trial
 			}
+		} else if trial := c.onlyRefFit(sys, l, params[i]); trial != nil {
+			// And so does one of whose callables only one fits.
+			sys = trial
+		} else if trial := c.typedLambdaParams(sys, l, params[i]); trial != nil {
+			sys = trial
 		}
 		sys.lambdas = append(sys.lambdas, pendingLambda{l, params[i], c.argScope(x.Args, i)})
 	}
 	if best.ext.K != types.Invalid {
 		recvParam := best.sub.ApplyIn(f.Recv)
 		sys.fixups = append(sys.fixups, func(s *system) {
-			want := s.final(recvParam)
+			want := s.finalArg(recvParam)
 			nothing := func(j int) bool {
 				// An argument of type Nothing, as a reference A<*>::foo
 				// passes for x: T of fun <T> A<T>.foo(x: T), fits a
@@ -981,7 +1007,7 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			if lit, ok := a.(*syntax.IntLit); ok && !lit.Long && fitsLit(lit, s.final(params[i])) {
 				lit.T = s.final(params[i]).NonNull()
 			}
-			c.assignable(a.Type(), captured(a.Type(), params[i], s.final(params[i])), a.Pos())
+			c.assignable(a.Type(), captured(a.Type(), params[i], s.finalArg(params[i])), a.Pos())
 		}
 		for _, p := range f.Params {
 			if p.Vararg {
@@ -1008,7 +1034,10 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 		}
 		c.runLambdas(sys, false)
 	}
-	if want.K != types.Invalid && !want.HasVars() && ret.HasVars() {
+	// A builder's variable that stubInference infers counts as known: as
+	// in Kotlin, o.p = materialize() for a p of the builder's type
+	// variable infers materialize's T with it (see joinRun).
+	if want.K != types.Invalid && (!want.HasVars() || c.onlyStubs(want)) && ret.HasVars() {
 		trial := sys.clone()
 		trial.sub(ret, want)
 		if trial.ok {
@@ -1055,16 +1084,17 @@ func (c *Checker) notPropRefs(x *syntax.Call, match []*candidate) []*candidate {
 }
 
 // byRefShape chooses among candidates the only one whose parameters take
-// the types of the arguments that are references ::f to the only function
-// of their name (see eagerRefType), nil if none or several do: bar(::f)
-// for fun f(i: Int) is bar(f: (Int) -> Unit), not bar(f: () -> Unit). A
-// function's result fits a parameter whose result is Unit.
+// the types of the arguments that are callable references, one of the
+// types each may have (see refShapes), nil if none or several do:
+// bar(::f) for fun f(i: Int) is bar(f: (Int) -> Unit), not
+// bar(f: () -> Unit). A function's result fits a parameter whose result
+// is Unit.
 func (c *Checker) byRefShape(x *syntax.Call, match []*candidate) *candidate {
-	refs := map[int]types.Type{}
+	refs := map[int][]types.Type{}
 	for i, a := range x.Args {
 		if l, ok := a.(*syntax.Lambda); ok {
-			if ft, ok := c.eagerRefType(l); ok {
-				refs[i] = ft
+			if ts := c.refShapes(l); len(ts) > 0 {
+				refs[i] = ts
 			}
 		}
 	}
@@ -1073,17 +1103,20 @@ func (c *Checker) byRefShape(x *syntax.Call, match []*candidate) *candidate {
 	}
 	var best *candidate
 	for _, cd := range match {
-		trial := cd.sys.clone()
-		for i, ft := range refs {
-			pt := trial.apply(cd.params[i])
-			if _, r, ok := funcParts(pt); ok && r.K == types.Unit && !r.N {
-				if ps, _, ok := funcParts(ft); ok {
-					ft = c.u.ext.funcs.Type(ps, r)
+		trial := cd.sys
+		for i, ts := range refs {
+			var fit *system
+			for _, ft := range ts {
+				if s, ok := c.refFits(trial, ft, cd.params[i]); ok {
+					fit = s
+					break
 				}
 			}
-			trial.sub(ft, pt)
+			if trial = fit; trial == nil {
+				break
+			}
 		}
-		if !trial.ok {
+		if trial == nil {
 			continue
 		}
 		if best != nil {
@@ -1367,6 +1400,7 @@ func (c *Checker) resolvePlain(x *syntax.Call, cs []callee, want types.Type) typ
 		if len(match) == 0 {
 			match = c.plainApplicable(cs, x.Args, ts, true)
 		}
+		match = notLowPriority(match, func(cl *callee) *callee { return cl })
 		var maximal []*callee
 		for _, cl := range match {
 			if c.plainMostSpecific(cl, match, x.Args) {
@@ -1411,7 +1445,7 @@ func (c *Checker) resolvePlain(x *syntax.Call, cs []callee, want types.Type) typ
 	c.dslCall(x, best)
 	c.setContexts(x, best, nil, nil)
 	ensureFun(f)
-	c.suspendCall(x.P, f)
+	c.suspendFunCall(x, f)
 	c.composeFunCall(x.P, f)
 	if len(cs) > 1 {
 		c.inlineCall(x, best)
@@ -1726,6 +1760,37 @@ func (c *Checker) mostSpecific(f *candidate, cs []*candidate, args []syntax.Expr
 	return true
 }
 
+// nonGenericMaximal returns the most specific of the candidates without
+// type parameters of their own, when none of cs is the most specific: as
+// K2 discriminates generics then, a candidate that isn't generic is more
+// specific than one that is, B.foo() than T.foo() for T : A, T : C on a
+// D : B, C, though neither receiver is a subtype of the other.
+func (c *Checker) nonGenericMaximal(cs []*candidate, args []syntax.Expr) []*candidate {
+	var plain []*candidate
+	for _, cd := range cs {
+		if len(cd.f.TypeParams) == 0 {
+			plain = append(plain, cd)
+		}
+	}
+	if len(plain) == 0 || len(plain) == len(cs) {
+		return nil
+	}
+	for _, a := range args {
+		if l, ok := a.(*syntax.Lambda); ok && l.Ref != nil {
+			// A reference whose result a Runnable would drop is a
+			// Callable<V>'s: schedule(this::flush, ...) (see byRefShape).
+			return nil
+		}
+	}
+	var out []*candidate
+	for _, cd := range plain {
+		if c.mostSpecific(cd, plain, args) {
+			out = append(out, cd)
+		}
+	}
+	return overriddenGiveWay(out)
+}
+
 // overriddenGiveWay drops the candidates among equally specific ones
 // that another one, declared in a subclass of theirs with the same
 // parameters, overrides: Kotlin sees only the override, as value class
@@ -1769,4 +1834,67 @@ func (c *Checker) setDispatch(x *syntax.Call, cl *callee) {
 			m.DispatchThis = th
 		}
 	}
+}
+
+// infixExtOnly reports whether an infix call a name b of a number's or a
+// Char's operator function, which isn't infix, is an extension's: the
+// member isn't a candidate, and 5 rem 2 calls infix fun Int.rem.
+func (c *Checker) infixExtOnly(name string, rt types.Type) bool {
+	for _, f := range c.extCallees(name, rt) {
+		if f.f.Infix {
+			return true
+		}
+	}
+	return false
+}
+
+// typedLambdaParams returns sys with the constraints of lambda l's
+// parameters declared with types, for a parameter of function type p,
+// or nil: as with kotlinc, each of p's parameter types is a subtype of
+// the type declared, before the lambda is analysed, so A of foldl(0) {
+// e: Int, acc: Long -> acc + e } is a Long.
+func (c *Checker) typedLambdaParams(sys *system, l *syntax.Lambda, p types.Type) *system {
+	if l.Ref != nil || !l.Arrow {
+		return nil
+	}
+	t := p.NonNull()
+	if !t.IsFunc() {
+		return nil
+	}
+	off := t.Contexts()
+	n := t.A.Len() - 1 - off
+	if t.E {
+		off++
+		n--
+	}
+	if n != len(l.Params) {
+		return nil
+	}
+	var trial *system
+	for j, lp := range l.Params {
+		if lp.Type == nil {
+			continue
+		}
+		errs := len(c.errs)
+		d := c.resolveType(lp.Type)
+		if len(c.errs) > errs {
+			c.errs = c.errs[:errs]
+			continue
+		}
+		if d.K == types.Invalid {
+			continue
+		}
+		pt := t.A.Get(off + j).T
+		if !pt.HasVars() {
+			continue
+		}
+		next := sys.clone()
+		if trial != nil {
+			next = trial.clone()
+		}
+		if next.sub(pt, d); next.ok {
+			trial = next
+		}
+	}
+	return trial
 }

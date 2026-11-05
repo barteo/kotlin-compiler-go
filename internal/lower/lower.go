@@ -111,6 +111,10 @@ type lowerer struct {
 	// lowered as their statement's.
 	hoisted map[psi.NodeID]bool
 
+	// carry is the companion object name detachName left as a modifier
+	// of the next member.
+	carry psi.NodeRef
+
 	suppressInvisible, suppressShadowed, suppressDSL bool
 
 	// noTrailing is set while lowering where a brace after an expression
@@ -177,6 +181,40 @@ func (l *lowerer) tokenStartFrom(from psi.NodeID) int {
 		}
 	}
 	return len(l.src)
+}
+
+// labeledKeywords are the expressions whose keyword kc scans together
+// with the label after it.
+var labeledKeywords = map[psi.Kind]bool{
+	psi.KindTHIS_EXPRESSION: true, psi.KindSUPER_EXPRESSION: true, psi.KindRETURN: true,
+	psi.KindBREAK: true, psi.KindCONTINUE: true,
+}
+
+// lastTok returns the position of n's last token: its last leaf that
+// isn't trivia or a semicolon. kc scans a string template as one token,
+// and a keyword with its label, this@L, as another, so a leaf inside
+// one stands for the whole.
+func (l *lowerer) lastTok(n psi.NodeRef) syntax.Pos {
+	for id := n.SubtreeEnd() - 1; id >= n.ID(); id-- {
+		c := l.s.Node(id)
+		if !c.IsLeaf() || c.IsTrivia() || c.Range().Start == c.Range().End || c.NumericKind() == psi.KindSEMICOLON {
+			continue
+		}
+		for p := c.Parent(); p.Valid() && p.ID() >= n.ID(); p = p.Parent() {
+			switch p.NumericKind() {
+			case psi.KindSTRING_TEMPLATE:
+				c = p
+			case psi.KindLABEL_QUALIFIER:
+				// this@L, return@L: kc scans the keyword and its label
+				// as one token.
+				if q := p.Parent(); labeledKeywords[q.NumericKind()] && q.ID() >= n.ID() {
+					c = q
+				}
+			}
+		}
+		return l.pos(c)
+	}
+	return l.pos(n)
 }
 
 // end returns the position just after n's text.

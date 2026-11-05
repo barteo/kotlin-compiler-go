@@ -433,7 +433,7 @@ type tscope map[int]*types.TypeParamSym
 func (t *classTable) ktypeParams(ps []*kmeta.TypeParam, owner any, scope tscope) ([]*types.TypeParamSym, bool) {
 	syms := make([]*types.TypeParamSym, len(ps))
 	for i, p := range ps {
-		syms[i] = &types.TypeParamSym{Name: p.Name, Var: variance(p.Variance), Index: i, Owner: owner, Reified: p.Reified}
+		syms[i] = &types.TypeParamSym{Name: p.Name, Var: variance(p.Variance), Index: i, Owner: owner, Reified: p.Reified, OnlyInput: p.OnlyInput}
 		scope[p.ID] = syms[i]
 	}
 	ok := true
@@ -551,6 +551,21 @@ func (t *classTable) ktype(kt *kmeta.Type, scope tscope) (types.Type, bool) {
 		}
 		args[i].T = at
 	}
+	for o := kt.Outer; o != nil; o = o.Outer {
+		// An inner class's type has its outer class's arguments after
+		// its own, as its type parameters are.
+		for _, a := range o.Args {
+			arg := types.Arg{V: variance(a.Proj)}
+			if arg.V != types.Star {
+				at, ok := t.ktype(a.Type, scope)
+				if !ok {
+					return types.InvalidType, false
+				}
+				arg.T = at
+			}
+			args = append(args, arg)
+		}
+	}
 	r = types.GenericType(cls, args)
 	if kt.ExtFunc && cls.Func && len(args) > 1 {
 		r = r.WithReceiver()
@@ -570,7 +585,7 @@ func (t *classTable) suspendType(kt *kmeta.Type, scope tscope) (types.Type, bool
 		return types.InvalidType, false
 	}
 	cont := kt.Args[n-1].Type
-	if cont == nil || cont.Class != "kotlin/coroutines/Continuation" || len(cont.Args) != 1 || cont.Args[0].Type == nil {
+	if cont == nil || cont.Class != "kotlin/coroutines/Continuation" || len(cont.Args) != 1 || cont.Args[0].Type == nil && cont.Args[0].Proj != kmeta.Star {
 		return types.InvalidType, false
 	}
 	args := make([]types.Arg, n)
@@ -585,13 +600,17 @@ func (t *classTable) suspendType(kt *kmeta.Type, scope tscope) (types.Type, bool
 		}
 		args[i].T = at
 	}
-	rt, ok := t.ktype(cont.Args[0].Type, scope)
-	if !ok {
-		return types.InvalidType, false
-	}
-	args[n-1] = types.Arg{T: rt, V: variance(cont.Args[0].Proj)}
-	if args[n-1].V == types.In {
-		args[n-1].V = types.Inv
+	if cont.Args[0].Proj == kmeta.Star {
+		args[n-1].V = types.Star // suspend () -> *, as GivenLambda<*, *>
+	} else {
+		rt, ok := t.ktype(cont.Args[0].Type, scope)
+		if !ok {
+			return types.InvalidType, false
+		}
+		args[n-1] = types.Arg{T: rt, V: variance(cont.Args[0].Proj)}
+		if args[n-1].V == types.In {
+			args[n-1].V = types.Inv
+		}
 	}
 	r := types.GenericType(t.funcs.SuspendClass(n-1), args)
 	if kt.ExtFunc && n > 1 {
@@ -655,10 +674,61 @@ func (t *classTable) valueOf(cls *types.ClassSym, kc *kmeta.Class) {
 	if u == nil {
 		return
 	}
-	if ut, ok := t.ktype(u, tscope{}); ok && ut.K != types.Invalid {
+	// A generic value class's underlying type may use its type
+	// parameters, value class A<T>(val x: T & Any), so they are created
+	// here, before the class is loaded, which keeps them.
+	scope := tscope{}
+	var tps []*types.TypeParamSym
+	if len(kc.TypeParams) > 0 && cls.TypeParams == nil {
+		tps = t.valueTypeParams(cls, kc, scope)
+	}
+	if ut, ok := t.ktype(u, scope); ok && ut.K != types.Invalid {
 		cls.Value = true
 		cls.Underlying = &types.VarSym{Name: kc.UnderlyingProp, Type: ut, Kind: types.Prop, Owner: cls, Resolved: true, Final: true}
+		if tps != nil {
+			cls.TypeParams = tps
+		}
 	}
+}
+
+// valueTypeParams creates the type parameters of value class kc for
+// valueOf, and adds them to scope. Bounds that use the class itself, as
+// T : Comparable<A<T>>, are left out: they would load it again while it is
+// being created, and the underlying value's type erases to the first
+// bound's class, which is another.
+func (t *classTable) valueTypeParams(cls *types.ClassSym, kc *kmeta.Class, scope tscope) []*types.TypeParamSym {
+	syms := make([]*types.TypeParamSym, len(kc.TypeParams))
+	for i, p := range kc.TypeParams {
+		syms[i] = &types.TypeParamSym{Name: p.Name, Var: variance(p.Variance), Index: i, Owner: cls, Reified: p.Reified}
+		scope[p.ID] = syms[i]
+	}
+	for i, p := range kc.TypeParams {
+		for _, b := range p.Bounds {
+			if mentionsClass(b, kc.Name) {
+				continue
+			}
+			if bt, ok := t.ktype(b, scope); ok {
+				syms[i].Bounds = append(syms[i].Bounds, bt)
+			}
+		}
+	}
+	return syms
+}
+
+// mentionsClass reports whether type kt uses the class named name.
+func mentionsClass(kt *kmeta.Type, name string) bool {
+	if kt == nil {
+		return false
+	}
+	if kt.Class == name || mentionsClass(kt.Upper, name) {
+		return true
+	}
+	for _, a := range kt.Args {
+		if mentionsClass(a.Type, name) {
+			return true
+		}
+	}
+	return false
 }
 
 // kfun creates the symbol of a Kotlin function. scope holds the type
@@ -1211,7 +1281,7 @@ func annotate(f *types.FunSym, m *classfile.Member) {
 		f.Annotations = nil
 	}
 	if m.Deprecated != nil && !m.Deprecated.Java {
-		f.Deprecated = deprecation(m.Deprecated)
+		f.Deprecated = classFileDeprecation(m.Deprecated)
 	}
 }
 
@@ -1284,8 +1354,8 @@ func (t *classTable) loadKotlin(cls *types.ClassSym, info *classfile.Info, kc *k
 	if kc.IsInner() && info.Inner != nil && info.Inner.Outer != "" {
 		// An inner class: its constructors take the outer class's
 		// instance first, which a subclass's call of one passes, as the
-		// program's inner classes' do. Its own type parameters are all it
-		// has: OuterParams stays 0.
+		// program's inner classes' do. It sees the outer class's type
+		// parameters, which it has after its own (see the scope below).
 		if o := t.class(info.Inner.Outer); o != nil {
 			cls.Inner, cls.Outer = true, o
 		}
@@ -1303,8 +1373,50 @@ func (t *classTable) loadKotlin(cls *types.ClassSym, info *classfile.Info, kc *k
 	cls.Private = info.Access&classfile.AccPublic == 0 || !visibleOutside(kc.Flags.Visibility(), friend) && !builtinCompanions[cls.Name]
 	cls.Internal = info.Access&classfile.AccPublic != 0 && kc.Flags.Visibility() == kmeta.Internal
 	scope := tscope{}
-	tps, ok := t.ktypeParams(kc.TypeParams, cls, scope)
+	var outerParams []*types.TypeParamSym
+	if cls.Inner && cls.Outer != nil {
+		// The outer class's, by the ids of its metadata, which the inner
+		// class's numbers its own after.
+		os, found := t.scopes.Load(cls.Outer)
+		if !found {
+			cls.Outer.Ensure()
+			os, found = t.scopes.Load(cls.Outer)
+		}
+		if found {
+			maps.Copy(scope, os.(tscope))
+			outerParams = cls.Outer.TypeParams
+		}
+	}
+	var tps []*types.TypeParamSym
+	ok := true
+	if early := cls.TypeParams; cls.Value && len(early) == len(kc.TypeParams) && len(early) > 0 {
+		// valueOf's, which the underlying value's type uses, with their
+		// complete bounds now.
+		for i, p := range kc.TypeParams {
+			scope[p.ID] = early[i]
+		}
+		for i, p := range kc.TypeParams {
+			var bounds []types.Type
+			for _, b := range p.Bounds {
+				bt, bok := t.ktype(b, scope)
+				if !bok {
+					ok = false
+					continue
+				}
+				bounds = append(bounds, bt)
+			}
+			early[i].Bounds = bounds
+		}
+		tps = early
+	} else {
+		tps, ok = t.ktypeParams(kc.TypeParams, cls, scope)
+	}
+	if len(outerParams) > 0 {
+		tps = append(tps[:len(tps):len(tps)], outerParams...)
+		cls.OuterParams = len(outerParams)
+	}
 	cls.TypeParams = tps
+	t.scopes.Store(cls, maps.Clone(scope))
 	if kc.IsValue() && cls.Underlying == nil && kc.Underlying != nil {
 		if ut, uok := t.ktype(kc.Underlying, scope); uok {
 			cls.Value = true
@@ -1547,11 +1659,14 @@ func (t *classTable) loadKotlin(cls *types.ClassSym, info *classfile.Info, kc *k
 	if kc.Kind() == kmeta.KindClass {
 		// An abstract class's constructors are for its subclasses.
 		for _, k := range kc.Ctors {
-			if !visibleOutside(k.Flags.Visibility(), friend) {
+			internal := !visibleOutside(k.Flags.Visibility(), friend) && k.Flags.Visibility() == kmeta.Internal
+			if !visibleOutside(k.Flags.Visibility(), friend) && !internal {
 				continue
 			}
 			d, marker := k.JVM.Desc, false
-			if !methods[k.JVM.Name+d] {
+			if internal && cls.Value {
+				// Its constructor-impl, which is public.
+			} else if !methods[k.JVM.Name+d] {
 				// One that takes a value class, as Compose's
 				// SolidColor(Color), is the synthetic one that takes a
 				// marker: the metadata names it.
@@ -1566,6 +1681,10 @@ func (t *classTable) loadKotlin(cls *types.ClassSym, info *classfile.Info, kc *k
 			f.Params, ok = t.kparams(k.Params, scope, true)
 			f.Unsupported = !ok
 			matchJVM(f)
+			if internal {
+				cls.InternalCtors = append(cls.InternalCtors, f)
+				continue
+			}
 			cls.Ctors = append(cls.Ctors, f)
 		}
 	}

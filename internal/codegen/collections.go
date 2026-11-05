@@ -809,7 +809,7 @@ func (g *gen) collGuard(sym *types.FunSym, params []*types.VarSym) []*types.VarS
 				continue
 			}
 			ok := cf.NewLabel()
-			g.code.Local(cf.ALOAD, p.Slot)
+			g.code.Local(cf.ALOAD, g.slot(p))
 			g.code.Jump(cf.IFNONNULL, ok)
 			g.safeResult(m, ps)
 			g.code.Place(ok)

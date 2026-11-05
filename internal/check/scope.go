@@ -15,6 +15,12 @@ type narrow struct {
 	recv *types.VarSym
 	sym  *types.VarSym
 	t    types.Type
+	// not, if set, holds the values it is known not to be, which a when
+	// over it needn't cover: after if (e == E.A) return, E.A.
+	not *coverage
+	// onlyNot is set when that is all it says: t is the type it had, not
+	// a smart cast, which the joins of types where paths meet leave out.
+	onlyNot bool
 }
 
 type scope struct {
@@ -164,10 +170,24 @@ func (s *scope) narrowed(v *types.VarSym) types.Type {
 func (s *scope) narrowedMember(recv, v *types.VarSym, declared types.Type) types.Type {
 	for sc := s; sc != nil; sc = sc.parent {
 		for i := len(sc.narrows) - 1; i >= 0; i-- {
-			if n := sc.narrows[i]; n.sym == v && n.recv == recv {
+			if n := sc.narrows[i]; n.sym == v && n.recv == recv && !n.onlyNot {
 				return n.t
 			}
 		}
 	}
 	return declared
+}
+
+// excluded returns the values that property v of recv, or variable v, is
+// known not to be, or nil. The last smart cast of it says: one that
+// doesn't, as after an assignment, forgets them.
+func (s *scope) excluded(recv, v *types.VarSym) *coverage {
+	for sc := s; sc != nil; sc = sc.parent {
+		for i := len(sc.narrows) - 1; i >= 0; i-- {
+			if n := sc.narrows[i]; n.sym == v && n.recv == recv {
+				return n.not
+			}
+		}
+	}
+	return nil
 }

@@ -60,6 +60,9 @@ type TypeParam struct {
 	Reified  bool
 	Variance Projection // In, Out or Inv
 	Bounds   []*Type
+	// OnlyInput is set by @kotlin.internal.OnlyInputTypes, which the JVM
+	// extension typeParameterAnnotation keeps.
+	OnlyInput bool
 }
 
 // Param is a value parameter.
@@ -390,6 +393,9 @@ type Class struct {
 	SealedSubclasses []string
 	// ModuleName is the module the class is in, if it isn't "main".
 	ModuleName string
+	// Locals are the local delegated properties of the class's
+	// functions, <v#N>, which kotlin-reflect reads (classLocalVariable).
+	Locals []*Property
 	// JVMFlags are an interface's jvm_class_flags: JVMDefaultMode if its
 	// members' bodies are default methods, with JVMCompatibilityMode if
 	// it also has a DefaultImpls class.
@@ -592,6 +598,8 @@ func (s scope) typeParam(msg []byte) *TypeParam {
 			for _, id := range d.ints(w, nil) {
 				p.Bounds = append(p.Bounds, s.typeID(id))
 			}
+		case 100:
+			p.OnlyInput = p.OnlyInput || s.annotationClass(d.bytes()) == "kotlin/internal/OnlyInputTypes"
 		default:
 			d.skip(w)
 		}

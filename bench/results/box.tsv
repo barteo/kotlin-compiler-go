@@ -45,10 +45,10 @@ annotations/nativeThrows.kt	skip	TARGET_BACKEND: NATIVE
 annotations/nestedAnnotation.kt	pass		
 annotations/nestedClassesInAnnotations.kt	pass		
 annotations/parameters.kt	pass		
-annotations/platformDependent.kt	check error	'_' hides member of supertype '_' and needs '_' modifier	Main.kt:12: 'f' hides member of supertype 'I' and needs 'override' modifier
+annotations/platformDependent.kt	pass		
 annotations/recursiveAnnotationWithVarargAndDefaultValue.kt	pass		
 annotations/recursiveAnnotationWithVarargAndWithoutDefaultValue.kt	pass		
-annotations/resolveWithLowPriorityAnnotation.kt	wrong result	failn	fail1
+annotations/resolveWithLowPriorityAnnotation.kt	pass		
 annotations/selfReferentialAnnotation.kt	pass		
 annotations/spreadOperatorInAnnotationArguments.kt	pass		
 annotations/spreadOperatorInArrayOf.kt	pass		
@@ -172,7 +172,7 @@ arrays/multiDecl/long/MultiDeclForComponentExtensions.kt	skip	LANGUAGE
 arrays/multiDecl/long/MultiDeclForComponentExtensionsValCaptured.kt	skip	LANGUAGE	
 arrays/multiDecl/long/MultiDeclForComponentMemberExtensions.kt	skip	LANGUAGE	
 arrays/multiDecl/long/MultiDeclForComponentMemberExtensionsInExtensionFunction.kt	skip	LANGUAGE	
-arrays/nonLocalReturnArrayConstructor.kt	check error	'_' is not allowed here	nonLocalReturnArrayConstructor.kt:5: 'return' is not allowed here
+arrays/nonLocalReturnArrayConstructor.kt	pass		
 arrays/nonNullArray.kt	pass		
 arrays/primitiveArrays.kt	pass		
 arrays/stdlib.kt	pass		
@@ -270,9 +270,9 @@ binaryOp/kt11163_properIeee754comparisons.kt	pass
 binaryOp/kt23030_properIeee754comparisons.kt	pass		
 binaryOp/kt44402.kt	pass		
 binaryOp/kt6747_identityEquals.kt	pass		
-binaryOp/overflowChar.kt	wrong result	fail: Char.MIN_VALUE - n should overflow to positive.	fail: Char.MIN_VALUE - 1 should overflow to positive.
+binaryOp/overflowChar.kt	pass		
 binaryOp/overflowInt.kt	pass		
-binaryOp/overflowLong.kt	wrong result	fail: in this case we should add to ints and than cast the r…	fail: in this case we should add to ints and than cast the result to long - overflow expected
+binaryOp/overflowLong.kt	pass		
 binaryOp/primitiveEqualsSafeCall.kt	pass		
 boxing/boxBoolean.kt	pass		
 boxing/box_cache0.kt	pass		
@@ -507,8 +507,8 @@ builtinStubMethods/extendJavaClasses/hashSet.kt	pass
 builtinStubMethods/extendJavaClasses/overrideAbstractSetMethod.kt	pass		
 builtins/stringTemplateWithValueOf.kt	skip	TARGET_BACKEND: JS_IR, JS_IR_ES6	
 callableReference/adaptedReferences/adaptedArrayOf.kt	pass		
-callableReference/adaptedReferences/adaptedSecondArgArray.kt	skip	LANGUAGE	
-callableReference/adaptedReferences/adaptedSecondArgTypeVariable.kt	skip	LANGUAGE	
+callableReference/adaptedReferences/adaptedSecondArgArray.kt	pass		
+callableReference/adaptedReferences/adaptedSecondArgTypeVariable.kt	pass		
 callableReference/adaptedReferences/adaptedVarargFunImportedFromObject.kt	pass		
 callableReference/adaptedReferences/bothWithCoercionToUnit.kt	pass		
 callableReference/adaptedReferences/boundReferences.kt	pass		
@@ -686,7 +686,7 @@ callableReference/function/extensionFromTopLevelUnitNoArgs.kt	pass
 callableReference/function/extensionFromTopLevelUnitOneStringArg.kt	pass		
 callableReference/function/extensionFunctionAsASuperTypePassToSAMInterface.kt	skip	LANGUAGE	
 callableReference/function/extensionFunctionInSAMInterface.kt	pass		
-callableReference/function/extensionFunctionLocal.kt	check error	conflicting overloads: _	extensionFunctionLocal.kt:2: conflicting overloads: bar
+callableReference/function/extensionFunctionLocal.kt	pass		
 callableReference/function/extensionFunctionPassToSAMInterface.kt	pass		
 callableReference/function/extensionFunctionWithExtensionInSAMInterface.kt	pass		
 callableReference/function/extensionInDelegatedSam.kt	pass		
@@ -734,7 +734,7 @@ callableReference/function/nestedConstructorFromTopLevelNoArgs.kt	pass
 callableReference/function/nestedConstructorFromTopLevelOneStringArg.kt	pass		
 callableReference/function/nestedExtensionInSAMInterface.kt	pass		
 callableReference/function/newArray.kt	pass		
-callableReference/function/nullableExtension.kt	check error	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _	nullableExtension.kt:11: only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type Nothing?
+callableReference/function/nullableExtension.kt	pass		
 callableReference/function/overloadedFun.kt	pass		
 callableReference/function/overloadedFunVsVal.kt	pass		
 callableReference/function/privateClassMember.kt	pass		
@@ -841,7 +841,7 @@ casts/functions/reifiedSafeAsFunKSmall.kt	pass
 casts/functions/safeAsFunKBig.kt	pass		
 casts/functions/safeAsFunKSmall.kt	pass		
 casts/genericReturnCast.kt	pass		
-casts/intersectionTypeMultipleBounds.kt	check error	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _	intersectionTypeMultipleBounds.kt:11: only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type Any?
+casts/intersectionTypeMultipleBounds.kt	pass		
 casts/intersectionTypeMultipleBoundsImplicitReceiver.kt	pass		
 casts/intersectionTypeSmartcast.kt	pass		
 casts/intersectionTypeWithMultipleBoundsAsReceiver.kt	pass		
@@ -911,13 +911,13 @@ classDelegation/multipleModules.kt	pass
 classDelegation/property.kt	pass		
 classDelegation/withBridge.kt	pass		
 classLiteral/bareArray.kt	pass		
-classLiteral/bound/primitives.kt	check error	unresolved reference: _	primitives.kt:7: unresolved reference: BACKEND_UNDER_TEST
+classLiteral/bound/primitives.kt	pass		
 classLiteral/bound/sideEffect.kt	pass		
 classLiteral/bound/simple.kt	pass		
 classLiteral/bound/smartCast.kt	pass		
 classLiteral/classEquality.kt	pass		
 classLiteral/java/kt11943.kt	pass		
-classLiteral/primitiveClassEquality.kt	check error	unresolved reference: _	main.kt:1: unresolved reference: BACKEND_UNDER_TEST
+classLiteral/primitiveClassEquality.kt	pass		
 classes/boxPrimitiveTypeInClinitOfClassObject.kt	pass		
 classes/classNamedAsOldPackageFacade.kt	pass		
 classes/classObject.kt	pass		
@@ -1009,7 +1009,7 @@ classes/kt500.kt	pass
 classes/kt501.kt	pass		
 classes/kt504.kt	pass		
 classes/kt508.kt	pass		
-classes/kt5347.kt	linkage error	java.lang.NoSuchMethodError	'void Kt5347Kt$test1$A.<init>(int)' at Kt5347Kt$test1$A.copy
+classes/kt5347.kt	pass		
 classes/kt6136.kt	pass		
 classes/kt633.kt	pass		
 classes/kt6816.kt	pass		
@@ -1072,7 +1072,7 @@ closures/captureInSuperConstructorCall/outerCapturedInPrimaryConstructorDefaultP
 closures/captureInSuperConstructorCall/outerCapturedInSecondaryConstructorDefaultParameter.kt	pass		
 closures/captureInSuperConstructorCall/outerEnumEntryCapturedInLambdaInInnerClass.kt	pass		
 closures/captureInSuperConstructorCall/properValueCapturedByClosure1.kt	pass		
-closures/captureInSuperConstructorCall/properValueCapturedByClosure2.kt	wrong result	Fail: _	Fail: Outer.ok
+closures/captureInSuperConstructorCall/properValueCapturedByClosure2.kt	pass		
 closures/captureInSuperConstructorCall/referenceToCapturedVariablesInMultipleLambdas.kt	pass		
 closures/captureOuterProperty/captureFunctionInProperty.kt	pass		
 closures/captureOuterProperty/inFunction.kt	pass		
@@ -1117,8 +1117,8 @@ closures/enclosingLocalVariable.kt	pass
 closures/enclosingThis.kt	pass		
 closures/extensionClosure.kt	pass		
 closures/kt10044.kt	pass		
-closures/kt11634.kt	check error	'_' is not an expression, it can only be used on the left-hand side of a dot ('_')	kt11634.kt:20: 'super' is not an expression, it can only be used on the left-hand side of a dot ('.')
-closures/kt11634_2.kt	check error	'_' is not an expression, it can only be used on the left-hand side of a dot ('_')	kt11634_2.kt:21: 'super' is not an expression, it can only be used on the left-hand side of a dot ('.')
+closures/kt11634.kt	pass		
+closures/kt11634_2.kt	pass		
 closures/kt11634_3.kt	pass		
 closures/kt11634_4.kt	pass		
 closures/kt19389.kt	pass		
@@ -1167,7 +1167,7 @@ collections/removeClash.kt	pass
 companion/delegatedPropertyOnCompanion.kt	pass		
 companion/genericLambdaOnStringCompanion.kt	pass		
 companion/inlineFunctionCompanionPropertyAccess.kt	pass		
-companion/protectedConstValFromSuperCompanion.kt	skip	LANGUAGE	
+companion/protectedConstValFromSuperCompanion.kt	pass		
 companionBlocksAndExtensions/abstractClasses.kt	skip	LANGUAGE	
 companionBlocksAndExtensions/basicBlockAndExtension.kt	skip	LANGUAGE	
 companionBlocksAndExtensions/callableReferences_block.kt	skip	LANGUAGE	
@@ -1212,7 +1212,7 @@ companionBlocksAndExtensions/typeAlias.kt	skip	LANGUAGE
 companionBlocksAndExtensions/visibility.kt	skip	LANGUAGE	
 compatibility/privateCompanionObject.kt	pass		
 compileKotlinAgainstKotlin/adaptedSuspendFunctionReference.kt	pass		
-compileKotlinAgainstKotlin/clashingFakeOverrideSignatures.kt	check error	cannot find a parameter with this name: _	b.kt:7: cannot find a parameter with this name: y
+compileKotlinAgainstKotlin/clashingFakeOverrideSignatures.kt	pass		
 compileKotlinAgainstKotlin/classInObject.kt	pass		
 compileKotlinAgainstKotlin/companionObjectInEnum.kt	pass		
 compileKotlinAgainstKotlin/companionObjectMember.kt	pass		
@@ -1234,13 +1234,13 @@ compileKotlinAgainstKotlin/inlineClasses/inlineClassInlineFunctionCall.kt	pass
 compileKotlinAgainstKotlin/inlineClasses/inlineClassInlineProperty.kt	pass		
 compileKotlinAgainstKotlin/inlineClasses/internalWithInlineClass.kt	skip	modules with friends or dependsOn	
 compileKotlinAgainstKotlin/inlineClasses/oldMangling/useOldMangling.kt	pass		
-compileKotlinAgainstKotlin/inlineClasses/privateCompanionObjectValInDifferentModule.kt	exception	kotlin.reflect.jvm.internal.KotlinReflectionInternalError	Property 'ok' (JVM signature: getOk-leHrvj8()Ljava/lang/String;) not resolved in class a.Host$Companion at kotlin.reflect.jvm.internal.KDeclarationContainerImpl.findPropertyDescriptor
+compileKotlinAgainstKotlin/inlineClasses/privateCompanionObjectValInDifferentModule.kt	pass		
 compileKotlinAgainstKotlin/inlineClasses/privateConstructor.kt	pass		
 compileKotlinAgainstKotlin/inlineClasses/privateConstructorWithPrivateField.kt	pass		
 compileKotlinAgainstKotlin/inlineClasses/privateConstructorWithPrivateFieldUsingTypeTable.kt	pass		
 compileKotlinAgainstKotlin/inlineClasses/privateTopLevelValInDifferentModule.kt	pass		
 compileKotlinAgainstKotlin/inlineClasses/suspendFunWithDefaultMangling.kt	pass		
-compileKotlinAgainstKotlin/innerClassConstructor.kt	check error	unresolved reference: _	B.kt:6: unresolved reference: Inner
+compileKotlinAgainstKotlin/innerClassConstructor.kt	pass		
 compileKotlinAgainstKotlin/interfaceDelegationAndBridgesProcessing.kt	pass		
 compileKotlinAgainstKotlin/internalSetterOverridden.kt	skip	modules with friends or dependsOn	
 compileKotlinAgainstKotlin/internalWithDefaultArgs.kt	skip	modules with friends or dependsOn	
@@ -1261,9 +1261,9 @@ compileKotlinAgainstKotlin/jvm8/defaults/superCall.kt	pass
 compileKotlinAgainstKotlin/jvm8/defaults/superCallFromInterface.kt	pass		
 compileKotlinAgainstKotlin/jvm8/defaults/superPropAccess.kt	pass		
 compileKotlinAgainstKotlin/jvm8/defaults/superPropAccessFromInterface.kt	pass		
-compileKotlinAgainstKotlin/jvm8/jvm8against6/delegation/diamond.kt	check error	many supertypes available, please specify the one you mean in angle brackets, e.g. '_'	2.kt:14: many supertypes available, please specify the one you mean in angle brackets, e.g. 'super<Test2>'
+compileKotlinAgainstKotlin/jvm8/jvm8against6/delegation/diamond.kt	pass		
 compileKotlinAgainstKotlin/jvm8/jvm8against6/delegation/diamond2.kt	pass		
-compileKotlinAgainstKotlin/jvm8/jvm8against6/delegation/diamond3.kt	check error	many supertypes available, please specify the one you mean in angle brackets, e.g. '_'	2.kt:14: many supertypes available, please specify the one you mean in angle brackets, e.g. 'super<TestClass>'
+compileKotlinAgainstKotlin/jvm8/jvm8against6/delegation/diamond3.kt	pass		
 compileKotlinAgainstKotlin/jvm8/jvm8against6/simpleCall.kt	pass		
 compileKotlinAgainstKotlin/jvm8/jvm8against6/simpleCallWithBigHierarchy.kt	pass		
 compileKotlinAgainstKotlin/jvm8/jvm8against6/simpleCallWithHierarchy.kt	pass		
@@ -1297,11 +1297,11 @@ constants/comparisonTrue.kt	pass
 constants/constValFromAnotherModuleInConsVal.kt	pass		
 constants/constantsInWhen.kt	pass		
 constants/divisionByZero.kt	pass		
-constants/doNotTriggerInit.kt	wrong result	FAIL n	FAIL 2
+constants/doNotTriggerInit.kt	pass		
 constants/float.kt	pass		
 constants/foldingBinaryOpsUnsigned.kt	pass		
 constants/foldingBinaryOpsUnsignedConst.kt	pass		
-constants/kt9532.kt	wrong result	Fail n: A.bNonConst !== B.bNonConst	Fail 4: A.bNonConst !== B.bNonConst
+constants/kt9532.kt	pass		
 constants/literalToLongConversion.kt	pass		
 constants/long.kt	pass		
 constants/numberLiteralCoercionToInferredType.kt	skip	Java sources	
@@ -1396,7 +1396,7 @@ contracts/forLoop.kt	skip	LANGUAGE
 contracts/functionParameter.kt	pass		
 contracts/isNullString.kt	pass		
 contracts/kt39374.kt	pass		
-contracts/kt45236.kt	check error	unresolved reference: _	kt45236.kt:23: unresolved reference: error
+contracts/kt45236.kt	pass		
 contracts/kt47168.kt	pass		
 contracts/kt47300.kt	pass		
 contracts/lambdaParameter.kt	skip	LANGUAGE	
@@ -1411,22 +1411,22 @@ controlStructures/bottles.kt	pass
 controlStructures/breakContinueInExpressions/breakFromOuter.kt	pass		
 controlStructures/breakContinueInExpressions/breakInDoWhile.kt	pass		
 controlStructures/breakContinueInExpressions/breakInExpr.kt	pass		
-controlStructures/breakContinueInExpressions/breakInLoopConditions.kt	wrong result	FAILn	FAIL2
+controlStructures/breakContinueInExpressions/breakInLoopConditions.kt	pass		
 controlStructures/breakContinueInExpressions/continueInDoWhile.kt	pass		
 controlStructures/breakContinueInExpressions/continueInExpr.kt	pass		
 controlStructures/breakContinueInExpressions/inlineWithStack.kt	pass		
-controlStructures/breakContinueInExpressions/inlinedBreakContinue/continueInTryBlock.kt	skip	LANGUAGE	
-controlStructures/breakContinueInExpressions/inlinedBreakContinue/initializerBlock.kt	skip	LANGUAGE	
-controlStructures/breakContinueInExpressions/inlinedBreakContinue/inlineConstructor.kt	skip	LANGUAGE	
-controlStructures/breakContinueInExpressions/inlinedBreakContinue/inlineFunctionWithMultipleParameters.kt	skip	LANGUAGE	
-controlStructures/breakContinueInExpressions/inlinedBreakContinue/lambdaPassedToInlineFunction.kt	skip	LANGUAGE	
-controlStructures/breakContinueInExpressions/inlinedBreakContinue/loopWithinInlineFunction.kt	skip	LANGUAGE	
-controlStructures/breakContinueInExpressions/inlinedBreakContinue/simple.kt	skip	LANGUAGE	
-controlStructures/breakContinueInExpressions/inlinedBreakContinue/simpleDoWhile.kt	skip	LANGUAGE	
-controlStructures/breakContinueInExpressions/inlinedBreakContinue/stdlibFunctions.kt	skip	LANGUAGE	
-controlStructures/breakContinueInExpressions/inlinedBreakContinue/withReturnValue.kt	skip	LANGUAGE	
-controlStructures/breakContinueInExpressions/inlinedBreakContinue/withReturnValueDoWhileContinue.kt	skip	LANGUAGE	
-controlStructures/breakContinueInExpressions/inlinedBreakContinue/withReturnValueNested.kt	skip	LANGUAGE	
+controlStructures/breakContinueInExpressions/inlinedBreakContinue/continueInTryBlock.kt	pass		
+controlStructures/breakContinueInExpressions/inlinedBreakContinue/initializerBlock.kt	pass		
+controlStructures/breakContinueInExpressions/inlinedBreakContinue/inlineConstructor.kt	pass		
+controlStructures/breakContinueInExpressions/inlinedBreakContinue/inlineFunctionWithMultipleParameters.kt	pass		
+controlStructures/breakContinueInExpressions/inlinedBreakContinue/lambdaPassedToInlineFunction.kt	pass		
+controlStructures/breakContinueInExpressions/inlinedBreakContinue/loopWithinInlineFunction.kt	pass		
+controlStructures/breakContinueInExpressions/inlinedBreakContinue/simple.kt	pass		
+controlStructures/breakContinueInExpressions/inlinedBreakContinue/simpleDoWhile.kt	pass		
+controlStructures/breakContinueInExpressions/inlinedBreakContinue/stdlibFunctions.kt	pass		
+controlStructures/breakContinueInExpressions/inlinedBreakContinue/withReturnValue.kt	pass		
+controlStructures/breakContinueInExpressions/inlinedBreakContinue/withReturnValueDoWhileContinue.kt	pass		
+controlStructures/breakContinueInExpressions/inlinedBreakContinue/withReturnValueNested.kt	pass		
 controlStructures/breakContinueInExpressions/innerLoopWithStack.kt	pass		
 controlStructures/breakContinueInExpressions/kt14581.kt	pass		
 controlStructures/breakContinueInExpressions/kt16713.kt	pass		
@@ -1728,7 +1728,7 @@ coroutines/defaultParametersInSuspend.kt	pass
 coroutines/degenerate1.kt	pass		
 coroutines/degenerate2.kt	pass		
 coroutines/delegatedSuspendMember.kt	pass		
-coroutines/deserializedSuspendFunctionProperty.kt	codegen error	code generation: no metadata for type <error>	/tmp/claude-0/-home-user-kotlin-compiler-go/b71051c8-74d7-5a07-99bd-cc747f944a00/scratchpad/kc-conformance/1729/m0/src/m1.kt: code generation failed: no metadata for type <error>
+coroutines/deserializedSuspendFunctionProperty.kt	pass		
 coroutines/dispatchResume.kt	pass		
 coroutines/doubleColonExpressionsGenerationInBuilderInference.kt	pass		
 coroutines/emptyClosure.kt	pass		
@@ -1843,7 +1843,7 @@ coroutines/inlineClasses/direct/returnResult.kt	pass
 coroutines/inlineClasses/direct/syntheticAccessor.kt	pass		
 coroutines/inlineClasses/genericParameterResult.kt	pass		
 coroutines/inlineClasses/kt47129.kt	pass		
-coroutines/inlineClasses/kt84305.kt	linkage error	java.lang.AbstractMethodError	Receiver class MainKt$run$2 does not define or inherit an implementation of the resolved method 'abstract java.lang.Object getResult-IoAF18A(kotlin.coroutines.Continuation)' of interface ResultProvide... at MainKt.handleResult
+coroutines/inlineClasses/kt84305.kt	pass		
 coroutines/inlineClasses/nonLocalReturn.kt	pass		
 coroutines/inlineClasses/resume/boxReturnValueOfSuspendFunctionReference.kt	pass		
 coroutines/inlineClasses/resume/boxReturnValueOfSuspendLambda.kt	pass		
@@ -1964,7 +1964,7 @@ coroutines/intrinsicSemantics/startCoroutineUninterceptedOrReturnInterception.kt
 coroutines/intrinsicSemantics/suspendCoroutineUninterceptedOrReturn.kt	pass		
 coroutines/iterateOverArray.kt	pass		
 coroutines/kt12958.kt	pass		
-coroutines/kt15016.kt	codegen error	code generation: a suspension point in the arguments of a constructor call	/tmp/claude-0/-home-user-kotlin-compiler-go/b71051c8-74d7-5a07-99bd-cc747f944a00/scratchpad/kc-conformance/1965/m0/src/main.kt: code generation failed: a suspension point in the arguments of a constructor call
+coroutines/kt15016.kt	pass		
 coroutines/kt15017.kt	pass		
 coroutines/kt15930.kt	pass		
 coroutines/kt21080.kt	pass		
@@ -2043,7 +2043,7 @@ coroutines/returnsUnit1.kt	pass
 coroutines/simple.kt	pass		
 coroutines/simple2.kt	pass		
 coroutines/simpleException.kt	pass		
-coroutines/simpleSuspendCallableReference.kt	codegen error	code generation: operand stack underflow at offset n	/tmp/claude-0/-home-user-kotlin-compiler-go/b71051c8-74d7-5a07-99bd-cc747f944a00/scratchpad/kc-conformance/2044/m0/src/simpleSuspendCallableReference.kt: code generation failed: SimpleSuspendCallableReferenceKt$box$1.invokeSuspend: operand stack underflow at offset 262
+coroutines/simpleSuspendCallableReference.kt	pass		
 coroutines/simpleWithDefaultValue.kt	pass		
 coroutines/simpleWithHandleResult.kt	pass		
 coroutines/stackUnwinding/exception.kt	pass		
@@ -2108,9 +2108,9 @@ coroutines/suspendWhileBreakContinueInsideElvis.kt	pass
 coroutines/suspendWhileContinueInsideElvisWithFinally.kt	pass		
 coroutines/suspensionInsideSafeCall.kt	pass		
 coroutines/suspensionInsideSafeCallWithElvis.kt	pass		
-coroutines/tailCallOptimizations/crossinline.kt	skip	LANGUAGE	
+coroutines/tailCallOptimizations/crossinline.kt	pass		
 coroutines/tailCallOptimizations/inlineWithoutStateMachine.kt	pass		
-coroutines/tailCallOptimizations/innerObjectRetransformation.kt	skip	LANGUAGE	
+coroutines/tailCallOptimizations/innerObjectRetransformation.kt	pass		
 coroutines/tailCallOptimizations/tryCatch.kt	pass		
 coroutines/tailCallOptimizations/unit/functionReference.kt	pass		
 coroutines/tailCallOptimizations/unit/kt55559.kt	pass		
@@ -2137,7 +2137,7 @@ coroutines/unitTypeReturn/inlineUnitFunction.kt	pass
 coroutines/unitTypeReturn/interfaceDelegation.kt	pass		
 coroutines/unitTypeReturn/suspendNonLocalReturn.kt	pass		
 coroutines/unitTypeReturn/suspendReturn.kt	pass		
-coroutines/unitTypeReturn/unitSafeCall.kt	wrong result	fail: _	fail: suspendHere(A.foo(*));suspended;resuming;Unit;Unit;suspendHere(A.foo(@));suspended;resuming;complete;
+coroutines/unitTypeReturn/unitSafeCall.kt	pass		
 coroutines/unsafeTransform.kt	pass		
 coroutines/varCaptuedInCoroutineIntrinsic.kt	pass		
 coroutines/varSpilling/fakeInlinerVariables.kt	pass		
@@ -2202,7 +2202,7 @@ dataClasses/kt49715_behaviorChange.kt	pass
 dataClasses/mixedParams.kt	pass		
 dataClasses/multiDeclaration.kt	pass		
 dataClasses/multiDeclarationFor.kt	pass		
-dataClasses/nonTrivialFinalMemberInSuperClass.kt	linkage error	java.lang.IncompatibleClassChangeError	class DataClass overrides final method Base.equals(Ljava/lang/Object;)Z at java.lang.ClassLoader.defineClass1
+dataClasses/nonTrivialFinalMemberInSuperClass.kt	pass		
 dataClasses/nonTrivialMemberInSuperClass.kt	pass		
 dataClasses/privateValParams.kt	pass		
 dataClasses/propertyOfDnnType.kt	pass		
@@ -2218,7 +2218,7 @@ dataClasses/twoVarParams.kt	pass
 dataClasses/unitComponent.kt	pass		
 dataObjects/equals.kt	pass		
 dataObjects/hashCode.kt	pass		
-dataObjects/toString.kt	linkage error	java.lang.IncompatibleClassChangeError	class com.example.InheritedFromClassWithFinalToString overrides final method com.example.WithFinalToString.toString()Ljava/lang/String; at java.lang.ClassLoader.defineClass1
+dataObjects/toString.kt	pass		
 dataflow/scope1.kt	pass		
 dataflow/uninitialized_val.kt	pass		
 deadCodeElimination/emptyVariableRange.kt	pass		
@@ -2365,7 +2365,7 @@ delegatedProperty/delegatedOverride.kt	pass
 delegatedProperty/delegatedPropertyInEnum.kt	pass		
 delegatedProperty/extensionDelegatesWithSameNames.kt	pass		
 delegatedProperty/extensionPropertyAndExtensionGetValue.kt	pass		
-delegatedProperty/functionRefDelefate.kt	check error	function invocation '_' expected; use ::right for a reference	lib.kt:13: function invocation 'right()' expected; use ::right for a reference
+delegatedProperty/functionRefDelefate.kt	pass		
 delegatedProperty/genericDelegate.kt	pass		
 delegatedProperty/genericDelegateUncheckedCast1.kt	skip	FREE_COMPILER_ARGS	
 delegatedProperty/genericDelegateUncheckedCast2.kt	skip	IGNORE_BACKEND: JVM_IR	
@@ -2399,8 +2399,8 @@ delegatedProperty/local/kt16864.kt	pass
 delegatedProperty/local/kt19690.kt	pass		
 delegatedProperty/local/kt21085.kt	pass		
 delegatedProperty/local/kt23117.kt	pass		
-delegatedProperty/local/kt78073.kt	check error	cannot infer type for type parameter '_'. Specify it explicitly.	kt78073.kt:10: cannot infer type for type parameter 'T'. Specify it explicitly.
-delegatedProperty/local/localDelegatedPropertyCall.kt	exception	java.lang.NullPointerException	Cannot invoke "kotlin.reflect.KProperty0.getGetter()" because the return value of "kotlin.reflect.jvm.internal.LazyKProperty0.getDelegate()" is null at kotlin.reflect.jvm.internal.LazyKProperty0.getGetter
+delegatedProperty/local/kt78073.kt	pass		
+delegatedProperty/local/localDelegatedPropertyCall.kt	pass		
 delegatedProperty/local/localVal.kt	pass		
 delegatedProperty/local/localValNoExplicitType.kt	pass		
 delegatedProperty/local/localVar.kt	pass		
@@ -2429,7 +2429,7 @@ delegatedProperty/provideDelegate/differentReceivers.kt	pass
 delegatedProperty/provideDelegate/evaluationOrder.kt	pass		
 delegatedProperty/provideDelegate/evaluationOrderVar.kt	pass		
 delegatedProperty/provideDelegate/extensionDelegated.kt	pass		
-delegatedProperty/provideDelegate/generic.kt	check error	type argument is not within its bounds: inferred type String of type _ '_' is not a subtype of MyClass	main.kt:16: type argument is not within its bounds: inferred type String of type parameter 'P' is not a subtype of MyClass
+delegatedProperty/provideDelegate/generic.kt	pass		
 delegatedProperty/provideDelegate/genericDelegateWithNoAdditionalInfo.kt	pass		
 delegatedProperty/provideDelegate/genericProvideDelegateOnNumberLiteral.kt	pass		
 delegatedProperty/provideDelegate/hostCheck.kt	pass		
@@ -2468,8 +2468,8 @@ delegation/delegatedAnonymousObject_someParametersOnDelegate.kt	pass
 delegation/delegationDifferentModule.kt	pass		
 delegation/delegationDifferentModule2.kt	pass		
 delegation/delegationToInnerClassOfGenericClass.kt	pass		
-delegation/delegationToIntersectionType.kt	check error	type mismatch: inferred type is _ but _ was expected	delegationToIntersectionType.kt:18: type mismatch: inferred type is A but B was expected
-delegation/delegationToIntersectionType3.kt	check error	type mismatch: inferred type is _ but _ was expected	delegationToIntersectionType3.kt:22: type mismatch: inferred type is A but B<CharSequence> was expected
+delegation/delegationToIntersectionType.kt	pass		
+delegation/delegationToIntersectionType3.kt	pass		
 delegation/delegationToVar.kt	pass		
 delegation/delegationWithPrivateConstructor.kt	pass		
 delegation/genericFunctionInGenericInterface.kt	pass		
@@ -2515,7 +2515,7 @@ diagnostics/functions/invoke/onObjects/invokeOnObject2.kt	pass
 diagnostics/functions/tailRecursion/checkStackDepth.kt	pass		
 diagnostics/functions/tailRecursion/defaultArgs.kt	pass		
 diagnostics/functions/tailRecursion/defaultArgs2.kt	pass		
-diagnostics/functions/tailRecursion/defaultArgsOverridden.kt	check error	tailrec is not allowed on open members	defaultArgsOverridden.kt:8: tailrec is not allowed on open members
+diagnostics/functions/tailRecursion/defaultArgsOverridden.kt	pass		
 diagnostics/functions/tailRecursion/defaultArgsWithSideEffects.kt	pass		
 diagnostics/functions/tailRecursion/defaultArgsWithSideEffects2.kt	pass		
 diagnostics/functions/tailRecursion/extensionTailCall.kt	pass		
@@ -2529,7 +2529,7 @@ diagnostics/functions/tailRecursion/kt47084_lambdaInDefaultArgument.kt	pass
 diagnostics/functions/tailRecursion/labeledThisReferences.kt	pass		
 diagnostics/functions/tailRecursion/loops.kt	pass		
 diagnostics/functions/tailRecursion/multilevelBlocks.kt	pass		
-diagnostics/functions/tailRecursion/realIteratorFoldl.kt	check error	expected parameter of type _	realIteratorFoldl.kt:9: expected parameter of type Int
+diagnostics/functions/tailRecursion/realIteratorFoldl.kt	pass		
 diagnostics/functions/tailRecursion/realStringEscape.kt	pass		
 diagnostics/functions/tailRecursion/realStringRepeat.kt	pass		
 diagnostics/functions/tailRecursion/recursiveCallInInlineLambda.kt	pass		
@@ -2611,15 +2611,15 @@ enum/enumCompanionInitJs.kt	skip	DONT_TARGET_EXACT_BACKEND: JVM_IR
 enum/enumConstructorParameterClashWithDefaults.kt	pass		
 enum/enumEntries.kt	pass		
 enum/enumEntriesCompatibilityCheck.kt	skip	LANGUAGE	
-enum/enumEntriesCompatibilityCheckPrioritized.kt	skip	LANGUAGE	
+enum/enumEntriesCompatibilityCheckPrioritized.kt	pass		
 enum/enumEntriesInCompanion.kt	pass		
 enum/enumEntriesMultimoduleNoMappings.kt	pass		
 enum/enumEntriesNameClashes.kt	skip	LANGUAGE	
 enum/enumEntryHashCode.kt	pass		
-enum/enumEntryMembers.kt	check error	class Foo.FOO is not public	main.kt:4: class Foo.FOO is not public
-enum/enumEntryReferenceFromInnerClassConstructor1.kt	exception	java.lang.NullPointerException	Parameter specified as non-null is null: method Base.<init>, parameter x at Base.<init> (in an initializer)
-enum/enumEntryReferenceFromInnerClassConstructor2.kt	exception	java.lang.NullPointerException	Cannot invoke "Test.foo()" because "Test.FOO" is null at Test$FOO$Inner.<init> (in an initializer)
-enum/enumEntryReferenceFromInnerClassConstructor3.kt	exception	java.lang.NullPointerException	Cannot invoke "IFoo.foo()" because "this.$$delegate_0" is null at Test$FOO$Inner.foo
+enum/enumEntryMembers.kt	pass		
+enum/enumEntryReferenceFromInnerClassConstructor1.kt	pass		
+enum/enumEntryReferenceFromInnerClassConstructor2.kt	pass		
+enum/enumEntryReferenceFromInnerClassConstructor3.kt	pass		
 enum/enumInheritedFromTrait.kt	pass		
 enum/enumMultiModule.kt	pass		
 enum/enumNestedObjectInit.kt	pass		
@@ -2780,8 +2780,8 @@ exclExcl/kt48440.kt	pass
 exclExcl/kt48440_2.kt	pass		
 exclExcl/primitive.kt	pass		
 expression/evaluationOrder/dangerousInline.kt	pass		
-extensionFunctions/classMethodCallExtensionSuper.kt	check error	platform declaration clash: the following declarations have the same JVM signature (getData()I)	classMethodCallExtensionSuper.kt:14: platform declaration clash: the following declarations have the same JVM signature (getData()I)
-extensionFunctions/defaultMethodInterfaceCallExtensionSuper.kt	check error	platform declaration clash: the following declarations have the same JVM signature (getData()I)	defaultMethodInterfaceCallExtensionSuper.kt:14: platform declaration clash: the following declarations have the same JVM signature (getData()I)
+extensionFunctions/classMethodCallExtensionSuper.kt	pass		
+extensionFunctions/defaultMethodInterfaceCallExtensionSuper.kt	pass		
 extensionFunctions/delegatedPropertyWithExtensionType.kt	pass		
 extensionFunctions/executionOrder.kt	pass		
 extensionFunctions/extensionFunctionAndSpreadOperator.kt	pass		
@@ -2800,7 +2800,7 @@ extensionFunctions/extensionFunctionInInnerClass.kt	pass
 extensionFunctions/extensionFunctionInNestedClass.kt	pass		
 extensionFunctions/extensionFunctionInSAMInterface.kt	pass		
 extensionFunctions/extensionFunctionInValueClass.kt	pass		
-extensionFunctions/extensionFunctionLocal.kt	check error	conflicting overloads: _	extensionFunctionLocal.kt:3: conflicting overloads: bar
+extensionFunctions/extensionFunctionLocal.kt	pass		
 extensionFunctions/extensionFunctionNestedInExtensionFunction.kt	pass		
 extensionFunctions/extensionFunctionOverride.kt	pass		
 extensionFunctions/extensionFunctionWithExtensionAsAReceiver.kt	pass		
@@ -2824,7 +2824,7 @@ extensionFunctions/kt3298.kt	pass
 extensionFunctions/kt3646.kt	pass		
 extensionFunctions/kt3969.kt	pass		
 extensionFunctions/kt4228.kt	pass		
-extensionFunctions/kt475.kt	check error	val cannot be reassigned	kt475.kt:8: val cannot be reassigned
+extensionFunctions/kt475.kt	pass		
 extensionFunctions/kt5467.kt	pass		
 extensionFunctions/kt606.kt	pass		
 extensionFunctions/kt865.kt	pass		
@@ -2836,7 +2836,7 @@ extensionFunctions/simple.kt	pass
 extensionFunctions/suspendConversionForExtensionFunAsAFunType.kt	pass		
 extensionFunctions/suspendConversionForExtensionFunAsAPropertyType.kt	pass		
 extensionFunctions/suspendConversionForExtensionFunAsASuperType.kt	skip	LANGUAGE	
-extensionFunctions/thisMethodInObjectLiteral.kt	check error	operator '_' cannot be applied to T and Int	thisMethodInObjectLiteral.kt:9: operator '+' cannot be applied to T and Int
+extensionFunctions/thisMethodInObjectLiteral.kt	pass		
 extensionFunctions/virtual.kt	pass		
 extensionProperties/accessorForPrivateSetter.kt	pass		
 extensionProperties/contextPropertyInInterface.kt	pass		
@@ -2863,7 +2863,7 @@ extensionProperties/inClassWithPrivateGetter.kt	pass
 extensionProperties/inClassWithPrivateSetter.kt	pass		
 extensionProperties/inClassWithSetter.kt	pass		
 extensionProperties/kt46952.kt	pass		
-extensionProperties/kt9897.kt	codegen error	code generation: operand stack underflow at offset n	/tmp/claude-0/-home-user-kotlin-compiler-go/b71051c8-74d7-5a07-99bd-cc747f944a00/scratchpad/kc-conformance/2864/m0/src/kt9897.kt: code generation failed: Test.changeLong: operand stack underflow at offset 15
+extensionProperties/kt9897.kt	pass		
 extensionProperties/kt9897_topLevel.kt	pass		
 extensionProperties/nonAbstractInInterface.kt	pass		
 extensionProperties/propertyWithExtensionNestedType.kt	pass		
@@ -2875,7 +2875,7 @@ fakeOverride/fakeOverrideWithMissingClassInSignature.kt	pass
 fakeOverride/function.kt	pass		
 fakeOverride/internalFromFriendModule.kt	skip	modules with friends or dependsOn	
 fakeOverride/intersectionInLocal.kt	pass		
-fakeOverride/intersectionOverrideBetweenValAndVar.kt	check error	val cannot be reassigned	intersectionOverrideBetweenValAndVar.kt:16: val cannot be reassigned
+fakeOverride/intersectionOverrideBetweenValAndVar.kt	pass		
 fakeOverride/kt40180.kt	skip	Java sources	
 fakeOverride/kt40180_2.kt	skip	Java sources	
 fakeOverride/kt40180_3.kt	skip	Java sources	
@@ -2910,7 +2910,7 @@ finally/nestedFinallyAndNonFinallyTry3.kt	pass
 finally/nestedFinallyAndNonFinallyTry4.kt	pass		
 finally/notChainCatch.kt	pass		
 finally/objectInFinally.kt	pass		
-finally/returnNullFromInlined.kt	wrong result	FAILn	FAIL2
+finally/returnNullFromInlined.kt	pass		
 finally/someStuff.kt	pass		
 finally/tryFinally.kt	pass		
 finally/tryLoopTry.kt	pass		
@@ -2923,14 +2923,14 @@ fir/contextSensitiveResolution/otherExpressionKindsPosition.kt	skip	LANGUAGE
 fir/copyOnObject.kt	pass		
 fir/deserializedOptInDeprecated.kt	pass		
 fir/falsePositiveBoundSmartcast.kt	pass		
-fir/functionsDifferInTypeParameterBounds.kt	check error	'_' in '_' is final and cannot be overridden	functionsDifferInTypeParameterBounds.kt:22: 'foo' in 'X' is final and cannot be overridden
-fir/functionsDifferInTypeParameterBounds2.kt	VerifyError	java.lang.ClassFormatError: Duplicate method name "_" with signature "_" in class _ Y	Duplicate method name "foo" with signature "(Ljava.lang.Object;LB;Ljava.lang.Object;)Ljava.lang.String;" in class file Y at java.lang.ClassLoader.defineClass1
-fir/functionsDifferInTypeParameterBounds3.kt	VerifyError	java.lang.ClassFormatError: Duplicate method name "_" with signature "_" in class _ Y	Duplicate method name "foo" with signature "(LK;)Ljava.lang.String;" in class file Y at java.lang.ClassLoader.defineClass1
+fir/functionsDifferInTypeParameterBounds.kt	pass		
+fir/functionsDifferInTypeParameterBounds2.kt	pass		
+fir/functionsDifferInTypeParameterBounds3.kt	pass		
 fir/inferenceWithTypeAliasFromOtherModule.kt	pass		
-fir/initializationInLocalInnerClassWithSecondaryConstructor.kt	check error	property must be initialized or be abstract	initializationInLocalInnerClassWithSecondaryConstructor.kt:11: property must be initialized or be abstract
+fir/initializationInLocalInnerClassWithSecondaryConstructor.kt	pass		
 fir/kt68806.kt	pass		
 fir/listAssignmentInWhen.kt	pass		
-fir/localInvokeExtension.kt	check error	cannot infer type for type parameter '_'. Specify it explicitly.	localInvokeExtension.kt:30: cannot infer type for type parameter 'T'. Specify it explicitly.
+fir/localInvokeExtension.kt	pass		
 fir/localOverrideWithDefaultInLocalOverridden.kt	pass		
 fir/localOverrideWithDefaultInOverridden.kt	pass		
 fir/missingDependencyClassInTypeArguments.kt	pass		
@@ -3035,7 +3035,7 @@ funInterface/samConversionToGenericInterfaceInGenericFun.kt	pass
 funInterface/subtypeOfFunctionalTypeToFunInterfaceConversion.kt	pass		
 funInterface/suspendFunInterfaceConversionCodegen.kt	pass		
 funInterface/suspendFunctionAndFunInterfaceSharedClassSplit.kt	pass		
-funInterface/typealiasedFunInterface.kt	check error	cannot infer type for type parameter '_'. Specify it explicitly.	typealiasedFunInterface.kt:14: cannot infer type for type parameter 'A'. Specify it explicitly.
+funInterface/typealiasedFunInterface.kt	pass		
 function/arithmetic.kt	pass		
 function/boolean.kt	pass		
 function/defaults.kt	pass		
@@ -3166,7 +3166,7 @@ functions/localFunctions/localFunctionInConstructor.kt	pass
 functions/localFunctions/localFunctionVsLocalVariable.kt	pass		
 functions/localFunctions/nameClash.kt	pass		
 functions/localFunctions/nameClashAcrossDifferentContainers.kt	pass		
-functions/localFunctions/overloadedLocalFunWithoutClosure.kt	check error	type checking has run into a recursive problem: '_' needs an explicit return type	overloadedLocalFunWithoutClosure.kt:3: type checking has run into a recursive problem: 'foo' needs an explicit return type
+functions/localFunctions/overloadedLocalFunWithoutClosure.kt	pass		
 functions/localFunctions/overloadedLocalFunction.kt	pass		
 functions/localFunctions/overloadedLocalFunction1.kt	pass		
 functions/localFunctions/overloadedLocalFunction2.kt	pass		
@@ -3186,7 +3186,7 @@ ieee754/anyCastToPrimitiveCompareTo2.kt	pass
 ieee754/anyToReal.kt	pass		
 ieee754/asComparableToDouble.kt	pass		
 ieee754/asComparableToDouble_properIeeeComparisons.kt	pass		
-ieee754/comparableToTWithT_properIeeeComparisons.kt	skip	LANGUAGE	
+ieee754/comparableToTWithT_properIeeeComparisons.kt	pass		
 ieee754/comparableTypeCast.kt	pass		
 ieee754/dataClass.kt	pass		
 ieee754/differentTypesComparison.kt	pass		
@@ -3230,7 +3230,7 @@ increment/classVarargGetSetEvaluationOrder.kt	pass
 increment/classWithGetSet.kt	pass		
 increment/extOnLong.kt	pass		
 increment/genericClassWithGetSet.kt	pass		
-increment/kt36956.kt	skip	LANGUAGE	
+increment/kt36956.kt	pass		
 increment/memberExtOnLong.kt	pass		
 increment/mutableListElement.kt	pass		
 increment/nullable.kt	pass		
@@ -3248,14 +3248,14 @@ increment/prefixNullableClassIncrement.kt	pass
 increment/prefixNullableIncrement.kt	pass		
 inference/approximateNonTopLevelCapturedTypes.kt	pass		
 inference/builderInferenceLeakingVariable.kt	pass		
-inference/capturedSelfInsideIntersection.kt	check error	cannot infer type for type parameter '_'. Specify it explicitly.	lib.kt:18: cannot infer type for type parameter 'T'. Specify it explicitly.
-inference/capturedSelfInsideIntersection2.kt	check error	type argument is not within its bounds: inferred type Path of type _ '_' is not a subtype of Entity<out Entity<*>>	capturedSelfInsideIntersection2.kt:18: type argument is not within its bounds: inferred type Path of type parameter 'T' is not a subtype of Entity<out Entity<*>>
-inference/capturedSelfInsideIntersection3.kt	check error	cannot infer type for type parameter '_'. Specify it explicitly.	capturedSelfInsideIntersection3.kt:18: cannot infer type for type parameter 'T'. Specify it explicitly.
+inference/capturedSelfInsideIntersection.kt	pass		
+inference/capturedSelfInsideIntersection2.kt	pass		
+inference/capturedSelfInsideIntersection3.kt	pass		
 inference/capturedStarProjection.kt	pass		
 inference/capturedTypeAsLambdaInputType.kt	pass		
 inference/capturedTypeWhenSubject.kt	pass		
-inference/capturedTypesSubstitutionIntoAbbreviation.kt	check error	type parameter L is declared as '_' but occurs in '_' position in type (L) -> Unit	capturedTypesSubstitutionIntoAbbreviation.kt:9: type parameter L is declared as 'out' but occurs in 'in' position in type (L) -> Unit
-inference/coercionToUnitWithLastLambdaExpression.kt	check error	cannot infer type for type parameter '_'. Specify it explicitly.	coercionToUnitWithLastLambdaExpression.kt:28: cannot infer type for type parameter 'K'. Specify it explicitly.
+inference/capturedTypesSubstitutionIntoAbbreviation.kt	pass		
+inference/coercionToUnitWithLastLambdaExpression.kt	pass		
 inference/coerctionToUnitForLastExpressionWithStarProjection.kt	pass		
 inference/eagerLambdaAnalysisOnConstructorCall.kt	skip	LANGUAGE	
 inference/eagerLambdaAnalysisSamAndLambda.kt	skip	LANGUAGE	
@@ -3277,13 +3277,13 @@ inference/kt42130.kt	pass
 inference/kt45118.kt	pass		
 inference/kt49838.kt	pass		
 inference/kt65882.kt	pass		
-inference/kt67609.kt	check error	type mismatch: inferred type is _ but _ was expected	kt67609.kt:8: type mismatch: inferred type is In<String> but In<Int> was expected
+inference/kt67609.kt	pass		
 inference/lambdaWithStarReturn.kt	pass		
 inference/lambdasWithExtensionFunctionType.kt	pass		
 inference/lastExpressionOfLambdaWithNothingConstraint.kt	pass		
 inference/mapCollectChainWithNullResult.kt	pass		
-inference/noCoercionToUniForNullableLambdaReturnType.kt	wrong result	fail: _	fail: kotlin.Unit
-inference/noCoercionToUnitWithEqualityConstraintForNullableReturnType.kt	check error	type mismatch: '_' branches have incompatible types Unit and Nothing?	noCoercionToUnitWithEqualityConstraintForNullableReturnType.kt:11: type mismatch: 'if' branches have incompatible types Unit and Nothing?
+inference/noCoercionToUniForNullableLambdaReturnType.kt	pass		
+inference/noCoercionToUnitWithEqualityConstraintForNullableReturnType.kt	pass		
 inference/overrideDefaultMethod.kt	skip	TARGET_BACKEND: JS_IR	
 inference/overrideDefaultProperty.kt	pass		
 inference/overrideGenericDefaultMethod.kt	pass		
@@ -3370,12 +3370,12 @@ inference/pcla/issues/kt66359a.kt	pass
 inference/pcla/issues/kt66359b.kt	pass		
 inference/pcla/issues/kt67993.kt	pass		
 inference/pcla/issues/kt74819e.kt	pass		
-inference/pcla/issues/kt76058.kt	skip	LANGUAGE	
+inference/pcla/issues/kt76058.kt	pass		
 inference/pcla/issues/kt76171.kt	pass		
 inference/pcla/labaledCall.kt	pass		
 inference/pcla/lackOfNullCheckOnNullableInsideBuild.kt	pass		
 inference/pcla/lambdaParameterHasTVType.kt	pass		
-inference/pcla/memberScope.kt	skip	LANGUAGE	
+inference/pcla/memberScope.kt	pass		
 inference/pcla/nestedNonExhaustiveIf.kt	pass		
 inference/pcla/nullability.kt	pass		
 inference/pcla/oneParameter/oneTypeVariable/oneTypeInfoOrigin/AnonymousFunctionArgumentAndBuildeeParameter.kt	pass		
@@ -3469,12 +3469,12 @@ inference/substituteIntersectionTypeInsideCapType.kt	pass
 inference/sumOfOverloads.kt	pass		
 inference/suspendExtensionRecevierFromConstraint.kt	pass		
 inference/tryCatchAtAssignment.kt	pass		
-inference/tryCatchAtAssignmentWithSmartCast.kt	check error	type argument is not within its bounds: inferred type I of type _ '_' is not a subtype of In	tryCatchAtAssignmentWithSmartCast.kt:29: type argument is not within its bounds: inferred type I of type parameter 'T' is not a subtype of I2
+inference/tryCatchAtAssignmentWithSmartCast.kt	pass		
 inference/tryWithAssignmentAndNothingTypedCatch.kt	pass		
 inference/unsafeVarianceCodegen.kt	pass		
 inference/whenAtAssignment.kt	pass		
-inference/whenAtAssignmentWithSmartCast.kt	check error	type argument is not within its bounds: inferred type I of type _ '_' is not a subtype of In	whenAtAssignmentWithSmartCast.kt:29: type argument is not within its bounds: inferred type I of type parameter 'T' is not a subtype of I2
-inference/whenAtAssignmentWithSmartCastInsideCapturedLambda.kt	check error	type argument is not within its bounds: inferred type I of type _ '_' is not a subtype of In	whenAtAssignmentWithSmartCastInsideCapturedLambda.kt:33: type argument is not within its bounds: inferred type I of type parameter 'T' is not a subtype of I2
+inference/whenAtAssignmentWithSmartCast.kt	pass		
+inference/whenAtAssignmentWithSmartCastInsideCapturedLambda.kt	pass		
 inheritance/overrideAnyMethods.kt	skip	TARGET_BACKEND: JS_IR, JS_IR_ES6	
 initializers/correctOrder1.kt	pass		
 initializers/correctOrder2.kt	pass		
@@ -3517,7 +3517,7 @@ inline/callableReferenceOfLocalFun.kt	pass
 inline/callableReferenceOfLocalInline.kt	skip	IGNORE_BACKEND: JVM_IR	
 inline/callableReferenceOfLocalKT77102.kt	skip	LANGUAGE	
 inline/changingCapturedLocal.kt	pass		
-inline/classDeclarationInsideInline.kt	check error	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _	classDeclarationInsideInline.kt:11: only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type T
+inline/classDeclarationInsideInline.kt	pass		
 inline/classObject.kt	pass		
 inline/coercionToUnit.kt	pass		
 inline/coercionToUnitBoxing.kt	skip	TARGET_BACKEND: NATIVE	
@@ -3594,7 +3594,7 @@ inline/inlineOrder.kt	pass
 inline/inlineSimpleAssignment.kt	pass		
 inline/inlinedLambdaWithErasedParamType.kt	pass		
 inline/inlinedObjectLiteralIsCheck.kt	skip	TARGET_BACKEND: JS_IR, JS_IR_ES6	
-inline/innerInlineFunCapturesOuter.kt	check error	unresolved reference: _	main.kt:5: unresolved reference: Inner
+inline/innerInlineFunCapturesOuter.kt	pass		
 inline/innerOuterThis.kt	pass		
 inline/invokeOnField.kt	pass		
 inline/iteratorOnInlineFunctionResult.kt	pass		
@@ -3631,7 +3631,7 @@ inline/metadataForPublicFunction.kt	pass
 inline/multiDeclaration.kt	pass		
 inline/multipleInheritanceClash.kt	skip	LANGUAGE	
 inline/nameBasedDestructuring.kt	skip	LANGUAGE	
-inline/nestedLabelsInlinedClashingAtFunctionsWithClosure.kt	check error	local inline functions are not yet supported	nestedLabelsInlinedClashingAtFunctionsWithClosure.kt:12: local inline functions are not yet supported
+inline/nestedLabelsInlinedClashingAtFunctionsWithClosure.kt	pass		
 inline/noInlineLambda.kt	pass		
 inline/operators.kt	pass		
 inline/params.kt	pass		
@@ -3895,7 +3895,7 @@ inlineClasses/checkBoxingUnboxingForInheritedTypeSpecializedFunctionsGeneric.kt	
 inlineClasses/checkCallingMembersInsideInlineClass.kt	pass		
 inlineClasses/checkCallingMembersInsideInlineClassGeneric.kt	pass		
 inlineClasses/checkCastToInlineClass.kt	pass		
-inlineClasses/checkCastToInlineClassGeneric.kt	VerifyError	java.lang.VerifyError: Instruction type does not match stack map	Instruction type does not match stack map at java.lang.Class.getDeclaredMethods0
+inlineClasses/checkCastToInlineClassGeneric.kt	pass		
 inlineClasses/checkForInstanceOfInlineClass.kt	pass		
 inlineClasses/checkForInstanceOfInlineClassGeneric.kt	pass		
 inlineClasses/checkLambdaWithInlineClassesInFunctionalType.kt	pass		
@@ -3996,7 +3996,7 @@ inlineClasses/delegationByUnderlyingType/defaultArgumentGeneric.kt	pass
 inlineClasses/delegationByUnderlyingType/defaultGeneric.kt	pass		
 inlineClasses/delegationByUnderlyingType/simple.kt	pass		
 inlineClasses/delegationByUnderlyingType/simpleGeneric.kt	pass		
-inlineClasses/dnnInValue.kt	VerifyError	java.lang.ClassFormatError: Method "_" in class _ has illegal signature "_"	Method "<init>" in class TestKt has illegal signature "(Ljava/lang/Object;)Ljava/lang/Object;" at java.lang.ClassLoader.defineClass1
+inlineClasses/dnnInValue.kt	pass		
 inlineClasses/elvisWithInlineClassAndNullConstant.kt	pass		
 inlineClasses/elvisWithInlineClassAndNullConstantGeneric.kt	pass		
 inlineClasses/emptyConstructorForInlineClass.kt	pass		
@@ -4091,7 +4091,7 @@ inlineClasses/functionNameMangling/syntheticAccessorForFunctionWithMangledName.k
 inlineClasses/functionNameMangling/syntheticAccessorForFunctionWithMangledNameGeneric.kt	pass		
 inlineClasses/functionNameMangling/syntheticAccessorsForPropertyOfInlineClassType.kt	pass		
 inlineClasses/functionNameMangling/syntheticAccessorsForPropertyOfInlineClassTypeGeneric.kt	pass		
-inlineClasses/genericInlineClassSynthMembers.kt	VerifyError	java.lang.ClassFormatError: Method "_" in class _ has illegal signature "_"	Method "<init>" in class MainKt has illegal signature "(LC;)LC;" at java.lang.ClassLoader.defineClass1
+inlineClasses/genericInlineClassSynthMembers.kt	pass		
 inlineClasses/genericUnderlyingValue/array.kt	pass		
 inlineClasses/genericUnderlyingValue/arrayIC.kt	pass		
 inlineClasses/genericUnderlyingValue/primitive.kt	pass		
@@ -4284,8 +4284,8 @@ inlineClasses/kt51157.kt	pass
 inlineClasses/kt51254.kt	pass		
 inlineClasses/kt52913.kt	pass		
 inlineClasses/kt54455.kt	pass		
-inlineClasses/kt57973.kt	VerifyError	java.lang.VerifyError: Bad type on operand stack	Bad type on operand stack at java.lang.Class.getDeclaredMethods0
-inlineClasses/kt70461.kt	check error	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _	kt70461.kt:11: only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type T
+inlineClasses/kt57973.kt	pass		
+inlineClasses/kt70461.kt	pass		
 inlineClasses/kt71649.kt	pass		
 inlineClasses/mangledDefaultParameterFunction.kt	pass		
 inlineClasses/mangledDefaultParameterFunctionGeneric.kt	pass		
@@ -4349,7 +4349,7 @@ inlineClasses/result/inlineMethodOnResult.kt	pass
 inlineClasses/result/lambdaTakesResultThroughBridge.kt	pass		
 inlineClasses/result/returnGenericMultiModule.kt	pass		
 inlineClasses/result/returnGenericSingleModule.kt	pass		
-inlineClasses/resultGeneric.kt	check error	cannot create an instance of Result	resultGeneric.kt:5: cannot create an instance of Result
+inlineClasses/resultGeneric.kt	pass		
 inlineClasses/resultInlining.kt	pass		
 inlineClasses/resultRunCatchingOrElse.kt	pass		
 inlineClasses/returnResult/class.kt	pass		
@@ -4361,7 +4361,7 @@ inlineClasses/returnResult/topLevel.kt	pass
 inlineClasses/safeAsOfTypeParameterWithInlineClassBound.kt	pass		
 inlineClasses/safeAsOfTypeParameterWithInlineClassBoundGeneric.kt	pass		
 inlineClasses/samWrapperDifferentModule.kt	pass		
-inlineClasses/samWrapperDifferentModuleGeneric.kt	VerifyError	java.lang.ClassFormatError: Method "_" in class _ has illegal signature "_"	Method "<init>" in class TestKt has illegal signature "(Ljava/lang/String;)Ljava/lang/String;" at java.lang.ClassLoader.defineClass1
+inlineClasses/samWrapperDifferentModuleGeneric.kt	pass		
 inlineClasses/secondaryConstructorVisibilies.kt	pass		
 inlineClasses/secondaryConstructorWithVararg.kt	pass		
 inlineClasses/secondaryConstructorWithVarargGeneric.kt	pass		
@@ -4372,8 +4372,8 @@ inlineClasses/secondaryConstructorsInsideInlineClassWithPrimitiveCarrierTypeGene
 inlineClasses/secondaryConstructorsWithBody.kt	pass		
 inlineClasses/simpleSecondaryConstructor.kt	pass		
 inlineClasses/simpleSecondaryConstructorGeneric.kt	pass		
-inlineClasses/smartCastOnThisOfInlineClassType.kt	VerifyError	java.lang.VerifyError: Bad invokespecial instruction: interface method reference is in an indirect superinterface.	Bad invokespecial instruction: interface method reference is in an indirect superinterface. at SmartCastOnThisOfInlineClassTypeKt.box
-inlineClasses/smartCastOnThisOfInlineClassTypeGeneric.kt	VerifyError	java.lang.VerifyError: Bad invokespecial instruction: interface method reference is in an indirect superinterface.	Bad invokespecial instruction: interface method reference is in an indirect superinterface. at SmartCastOnThisOfInlineClassTypeGenericKt.box
+inlineClasses/smartCastOnThisOfInlineClassType.kt	pass		
+inlineClasses/smartCastOnThisOfInlineClassTypeGeneric.kt	pass		
 inlineClasses/stringPlus.kt	pass		
 inlineClasses/stringPlusGeneric.kt	pass		
 inlineClasses/toStringCallingPrivateFun.kt	pass		
@@ -4462,9 +4462,9 @@ inlineClasses/useInlineFunctionInsideInlineClassGeneric.kt	pass
 inlineClasses/useThisInsideInlineClass.kt	pass		
 inlineClasses/useThisInsideInlineClassGeneric.kt	pass		
 inlineClasses/valueClassInValueClass.kt	skip	LANGUAGE	
-inlineClasses/valueClassInstanceOfNumberAndComparable.kt	skip	LANGUAGE	
-inlineClasses/valueClassInstanceOfNumberAndComparableInFunction.kt	skip	LANGUAGE	
-inlineClasses/valueClassInstanceOfNumberAndComparableInInlineFunction.kt	skip	LANGUAGE	
+inlineClasses/valueClassInstanceOfNumberAndComparable.kt	pass		
+inlineClasses/valueClassInstanceOfNumberAndComparableInFunction.kt	pass		
+inlineClasses/valueClassInstanceOfNumberAndComparableInInlineFunction.kt	pass		
 inlineClasses/whenWithSubject.kt	pass		
 inlineClasses/whenWithSubjectGeneric.kt	pass		
 inlineClasses/withReturnTypeMangling.kt	pass		
@@ -4547,8 +4547,8 @@ innerClass/inCallableReferenceLHS.kt	skip	LANGUAGE
 innerClass/inCallableReferenceLHSclassReference.kt	skip	LANGUAGE	
 innerClass/inCallableReferenceLHSwithGenericFun.kt	skip	LANGUAGE	
 innerClass/inheritanceMultipleModules1.kt	pass		
-innerClass/inheritanceMultipleModules2.kt	check error	unresolved reference: _	main.kt:2: unresolved reference: Middle
-innerClass/inheritanceMultipleModules3.kt	check error	unresolved reference: _	main.kt:5: unresolved reference: Middle
+innerClass/inheritanceMultipleModules2.kt	pass		
+innerClass/inheritanceMultipleModules3.kt	pass		
 innerClass/multipleModules.kt	pass		
 innerClass/noPrimaryConstructor.kt	pass		
 innerClass/qualifiedThis.kt	pass		
@@ -4616,7 +4616,7 @@ interfaceCallsNCasts/interface0.kt	pass
 interfaceCallsNCasts/kt83308.kt	pass		
 intrinsics/charToInt.kt	pass		
 intrinsics/ea35953.kt	pass		
-intrinsics/incWithLabel.kt	skip	LANGUAGE	
+intrinsics/incWithLabel.kt	pass		
 intrinsics/kt10131.kt	pass		
 intrinsics/kt10131a.kt	pass		
 intrinsics/kt12125.kt	pass		
@@ -4625,7 +4625,7 @@ intrinsics/kt12125_inc.kt	pass
 intrinsics/kt12125_inc_2.kt	pass		
 intrinsics/kt52163_boolean.kt	pass		
 intrinsics/kt52163_doubleCompareToInt.kt	pass		
-intrinsics/kt8666.kt	check error	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _	kt8666.kt:10: only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type String?
+intrinsics/kt8666.kt	pass		
 intrinsics/longRangeWithExplicitDot.kt	pass		
 intrinsics/nonShortCircuitAnd.kt	pass		
 intrinsics/nullPlusString.kt	pass		
@@ -4637,7 +4637,7 @@ intrinsics/throwableCallableReference.kt	pass
 intrinsics/throwableParamOrder.kt	pass		
 intrinsics/tostring.kt	pass		
 intrinsics/trimMarginWithBlankString.kt	pass		
-invokedynamic/extensionFunInvoke.kt	wrong result	Fail	Fail
+invokedynamic/extensionFunInvoke.kt	pass		
 invokedynamic/lambdas/kt52875.kt	pass		
 ir/anonymousClassLeak.kt	pass		
 ir/anonymousObjectInForLoopIteratorAndBody.kt	pass		
@@ -4679,18 +4679,18 @@ ir/privateSignatures/privateLeakThroughInline.kt	pass
 ir/privateSignatures/topLevelPrivateDelegate.kt	skip	TARGET_BACKEND: JS_IR	
 ir/recursiveGeneric.kt	pass		
 ir/recursiveGeneric2.kt	pass		
-ir/serializationRegressions/anonFakeOverride.kt	check error	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _	l1.kt:13: only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type Program.Stm?
+ir/serializationRegressions/anonFakeOverride.kt	pass		
 ir/serializationRegressions/dispatchReceiverValue.kt	skip	LANGUAGE	
-ir/serializationRegressions/innerClassInEnumEntryClass.kt	check error	class A.X is not public	main.kt:1: class A.X is not public
-ir/serializationRegressions/signatureClash.kt	check error	cannot find a parameter with this name: _	main.kt:6: cannot find a parameter with this name: p2
+ir/serializationRegressions/innerClassInEnumEntryClass.kt	pass		
+ir/serializationRegressions/signatureClash.kt	pass		
 ir/serializationRegressions/transitiveClash.kt	pass		
 ir/serializationRegressions/useImportedMember.kt	pass		
 ir/serializationRegressions/varAsFunctionCall.kt	pass		
 ir/simple.kt	pass		
 javaInterop/notNullAssertions/mapPut.kt	pass		
 javaInterop/objectMethods/cloneCallsConstructor.kt	pass		
-javaInterop/objectMethods/cloneCallsSuper.kt	linkage error	java.lang.NoSuchMethodError	'java.lang.Object java.lang.Cloneable.clone()' at A.clone
-javaInterop/objectMethods/cloneCallsSuperAndModifies.kt	linkage error	java.lang.NoSuchMethodError	'java.lang.Object java.lang.Cloneable.clone()' at A.clone
+javaInterop/objectMethods/cloneCallsSuper.kt	pass		
+javaInterop/objectMethods/cloneCallsSuperAndModifies.kt	pass		
 javaInterop/objectMethods/cloneableClassWithoutClone.kt	pass		
 jdk/arrayList.kt	pass		
 jdk/hashMap.kt	pass		
@@ -4720,14 +4720,14 @@ kclass/kClassEnumArgument.kt	pass
 kclass/kclass1.kt	pass		
 klib/kt33411.kt	skip	modules with friends or dependsOn	
 ktype/ktype1_basics1.kt	pass		
-ktype/ktype1_inner.kt	check error	one type argument expected for class Outer.Inner	main.kt:13: one type argument expected for class Outer.Inner
+ktype/ktype1_inner.kt	pass		
 ktype/nonReified_class.kt	pass		
 ktype/nonReified_equality.kt	pass		
 ktype/nonReified_fun.kt	pass		
 ktype/nonReified_recursionInReified.kt	pass		
 ktype/nonReified_reifiedUpperBound.kt	pass		
 labels/controlLabelClashesWithFuncitonName.kt	pass		
-labels/infixCallLabelling.kt	check error	unresolved label: _	infixCallLabelling.kt:3: unresolved label: myMap
+labels/infixCallLabelling.kt	pass		
 labels/labelOnExpression.kt	pass		
 labels/labeledDeclarations.kt	skip	LANGUAGE	
 labels/nestedInlineLabels.kt	pass		
@@ -4774,7 +4774,7 @@ lateinit/localNotInitialized.kt	pass
 lateinit/notInitialized.kt	pass		
 lazyCodegen/exceptionInFieldInitializer.kt	pass		
 lazyCodegen/ifElse.kt	pass		
-lazyCodegen/increment.kt	skip	LANGUAGE	
+lazyCodegen/increment.kt	pass		
 lazyCodegen/optimizations/negateConstantCompare.kt	pass		
 lazyCodegen/optimizations/negateFalse.kt	pass		
 lazyCodegen/optimizations/negateFalseVar.kt	pass		
@@ -4803,7 +4803,7 @@ localClass/objectExpressionInProperty.kt	pass
 localClass/signatureConflictHiddenByTypeParameter.kt	skip	IGNORE_BACKEND: JVM_IR	
 localClass/tryCatch.kt	pass		
 localClass/virtualCallFromConstructor.kt	pass		
-localClasses/anonymousObjectInExtension.kt	check error	type mismatch: inferred type is _ but _ was expected	anonymousObjectInExtension.kt:2: type mismatch: inferred type is WithCompanion but WithCompanion.Companion was expected
+localClasses/anonymousObjectInExtension.kt	pass		
 localClasses/anonymousObjectInInitializer.kt	pass		
 localClasses/anonymousObjectInParameterInitializer.kt	pass		
 localClasses/capturingInDefaultConstructorParameter.kt	pass		
@@ -4832,7 +4832,7 @@ localClasses/localClassCaptureExtensionReceiver.kt	pass
 localClasses/localClassInInitializer.kt	pass		
 localClasses/localClassInParameterInitializer.kt	pass		
 localClasses/localClassUsedBeforeDeclaration.kt	pass		
-localClasses/localDataClass.kt	linkage error	java.lang.NoSuchMethodError	'void LocalDataClassKt$box$A.<init>(int)' at LocalDataClassKt$box$A.copy
+localClasses/localDataClass.kt	pass		
 localClasses/localExtendsInnerAndReferencesOuterMember.kt	pass		
 localClasses/localGenericWithTypeParameters.kt	pass		
 localClasses/nameWithWhitespace.kt	skip	LANGUAGE	
@@ -5161,7 +5161,7 @@ nameClashes/constructorLocalVar.kt	pass
 nonLocalReturns/kt9644let.kt	pass		
 nonLocalReturns/localReturnInsideProperty.kt	pass		
 nonLocalReturns/returnInsideTwoLambdas.kt	pass		
-nonLocalReturns/suspendConversion.kt	exception	java.lang.NullPointerException	Cannot invoke "kotlin.jvm.functions.Function0.invoke()" because "<local2>" is null at LibKt$bar$2.invokeSuspend
+nonLocalReturns/suspendConversion.kt	pass		
 nothingValue/inNestedCall.kt	pass		
 nothingValue/nothingValueException.kt	pass		
 nothingValue/toStringOnNothing.kt	pass		
@@ -5239,7 +5239,7 @@ objects/initializationOrderConsts.kt	pass
 objects/initializerBlockResetToDefault.kt	pass		
 objects/innerClassInsideAnonymousObject.kt	pass		
 objects/interfaceCompanion.kt	pass		
-objects/interfaceCompanionObjectReference.kt	linkage error	java.lang.NoSuchFieldError	Class Anno does not have member field 'Anno$Companion Companion' at InterfaceCompanionObjectReferenceKt.box
+objects/interfaceCompanionObjectReference.kt	pass		
 objects/kt1047.kt	pass		
 objects/kt1047a.kt	pass		
 objects/kt11117.kt	pass		
@@ -5296,13 +5296,13 @@ objects/selfReferenceToObjectInLambdaInSuperConstructorCall.kt	pass
 objects/simpleObject.kt	pass		
 objects/substitutionFunctionFromSuper.kt	pass		
 objects/thisInConstructor.kt	pass		
-objects/thisRefToObjectInNestedClassConstructorCall.kt	check error	'_' is not defined in this context	thisRefToObjectInNestedClassConstructorCall.kt:4: 'this' is not defined in this context
+objects/thisRefToObjectInNestedClassConstructorCall.kt	pass		
 objects/useAnonymousObjectAsIterator.kt	pass		
 objects/useAnonymousObjectFunction.kt	pass		
 objects/useImportedMember.kt	pass		
 objects/useImportedMemberFromCompanion.kt	pass		
 operatorConventions/BoundedGenericValueInRangeCheck.kt	pass		
-operatorConventions/annotatedAssignment.kt	skip	LANGUAGE	
+operatorConventions/annotatedAssignment.kt	pass		
 operatorConventions/assignToDotQualifiedWithSideEffect.kt	pass		
 operatorConventions/assignmentOperations.kt	pass		
 operatorConventions/augmentedAssignmentInInitializer.kt	skip	LANGUAGE	
@@ -5320,7 +5320,7 @@ operatorConventions/compareTo/longDouble.kt	pass
 operatorConventions/compareTo/longInt.kt	pass		
 operatorConventions/genericArrayAccessCall.kt	pass		
 operatorConventions/incDecOnObject.kt	pass		
-operatorConventions/infixFunctionOverBuiltinMember.kt	wrong result	fail n	fail 1
+operatorConventions/infixFunctionOverBuiltinMember.kt	pass		
 operatorConventions/kt14201.kt	pass		
 operatorConventions/kt14201_2.kt	pass		
 operatorConventions/kt14227.kt	pass		
@@ -5349,7 +5349,7 @@ package/kt57353.kt	pass
 package/nullablePrimitiveNoFieldInitializer.kt	pass		
 package/packageLocalClassNotImportedWithDefaultImport.kt	skip	ALLOW_KOTLIN_PACKAGE	
 package/packageQualifiedMethod.kt	pass		
-package/privateMembersInImportList.kt	check error	class '_' cannot be used as a value	privateMembersInImportList.kt:19: class 'C' cannot be used as a value
+package/privateMembersInImportList.kt	pass		
 package/privateTopLevelPropAndVarInInner.kt	pass		
 package/referenceWithTheSameNameAsPackage.kt	pass		
 platformTypes/primitives/assign.kt	pass		
@@ -5495,24 +5495,24 @@ properties/accessorForProtectedPropertyWithPrivateSetterInObjectLiteral.kt	pass
 properties/accessorForProtectedPropertyWithPrivateSetterViaSuper.kt	pass		
 properties/accessorForProtectedPropertyWithPrivateSetterWithIntermediateClass.kt	pass		
 properties/augmentedAssignmentsAndIncrements.kt	pass		
-properties/backingField/anyPropertyWithValueClassExplicitBackingField.kt	skip	LANGUAGE	
-properties/backingField/anySupertypeValueClassAnyMethodsWithExplicitBackingField.kt	skip	LANGUAGE	
-properties/backingField/backingFieldAndPropertyWithTheSameName.kt	skip	LANGUAGE	
-properties/backingField/backingFieldInitializedInInit.kt	skip	LANGUAGE	
-properties/backingField/backingFieldWithSmartTypeParameters.kt	skip	LANGUAGE	
-properties/backingField/equalsHashCodeWithValueClassExplicitBackingFieldAndSupertype.kt	skip	LANGUAGE	
-properties/backingField/explicitFieldCallableReference.kt	skip	LANGUAGE	
-properties/backingField/genericSupertypeWithValueClassExplicitBackingField.kt	skip	LANGUAGE	
-properties/backingField/multipleInterfacesExplicitBackingField.kt	skip	LANGUAGE	
-properties/backingField/nullableAnySupertypeWithValueClassExplicitBackingField.kt	skip	LANGUAGE	
-properties/backingField/nullableSupertypeWithValueClassExplicitBackingField.kt	skip	LANGUAGE	
-properties/backingField/overrideWithExplicitBackingField.kt	skip	LANGUAGE	
-properties/backingField/supertypePropertyWithValueClassExplicitBackingField.kt	skip	LANGUAGE	
-properties/backingField/typeCheckSupertypeWithValueClassExplicitBackingField.kt	skip	LANGUAGE	
+properties/backingField/anyPropertyWithValueClassExplicitBackingField.kt	pass		
+properties/backingField/anySupertypeValueClassAnyMethodsWithExplicitBackingField.kt	pass		
+properties/backingField/backingFieldAndPropertyWithTheSameName.kt	pass		
+properties/backingField/backingFieldInitializedInInit.kt	pass		
+properties/backingField/backingFieldWithSmartTypeParameters.kt	pass		
+properties/backingField/equalsHashCodeWithValueClassExplicitBackingFieldAndSupertype.kt	pass		
+properties/backingField/explicitFieldCallableReference.kt	pass		
+properties/backingField/genericSupertypeWithValueClassExplicitBackingField.kt	pass		
+properties/backingField/multipleInterfacesExplicitBackingField.kt	pass		
+properties/backingField/nullableAnySupertypeWithValueClassExplicitBackingField.kt	pass		
+properties/backingField/nullableSupertypeWithValueClassExplicitBackingField.kt	pass		
+properties/backingField/overrideWithExplicitBackingField.kt	pass		
+properties/backingField/supertypePropertyWithValueClassExplicitBackingField.kt	pass		
+properties/backingField/typeCheckSupertypeWithValueClassExplicitBackingField.kt	pass		
 properties/classArtificialFieldInsideNested.kt	pass		
 properties/classFieldInsideLambda.kt	pass		
-properties/classFieldInsideLocalInSetter.kt	VerifyError	java.lang.VerifyError: Bad type on operand stack in putfield	Bad type on operand stack in putfield at My.setMy
-properties/classFieldInsideNested.kt	check error	initializer is not allowed here because this property has no backing field	classFieldInsideNested.kt:8: initializer is not allowed here because this property has no backing field
+properties/classFieldInsideLocalInSetter.kt	pass		
+properties/classFieldInsideNested.kt	pass		
 properties/classFieldInsideNestedLambda.kt	pass		
 properties/classFieldInsideNestedNestedLambda.kt	pass		
 properties/classObjectProperties.kt	pass		
@@ -5534,7 +5534,7 @@ properties/field.kt	pass
 properties/fieldInClass.kt	pass		
 properties/fieldInsideField.kt	pass		
 properties/fieldInsideLambda.kt	pass		
-properties/fieldInsideNested.kt	check error	initializer is not allowed here because this property has no backing field	fieldInsideNested.kt:7: initializer is not allowed here because this property has no backing field
+properties/fieldInsideNested.kt	pass		
 properties/fieldSimple.kt	pass		
 properties/generalAccess.kt	pass		
 properties/genericPropertyMultiModule.kt	pass		
@@ -5573,7 +5573,7 @@ properties/kt4373.kt	pass
 properties/kt4383.kt	pass		
 properties/kt49203_lateinit.kt	pass		
 properties/kt49203_var.kt	pass		
-properties/kt613.kt	skip	LANGUAGE	
+properties/kt613.kt	pass		
 properties/kt78962.kt	skip	DONT_TARGET_EXACT_BACKEND: JVM_IR	
 properties/kt8928.kt	pass		
 properties/kt9603.kt	pass		
@@ -6462,7 +6462,7 @@ reflection/classLiterals/nativeWithoutPackagePatching.kt	skip	TARGET_BACKEND: NA
 reflection/classLiterals/simpleClassLiteral.kt	pass		
 reflection/classes/localClassSimpleName.kt	pass		
 reflection/classes/multiplatformKClassCreation.kt	pass		
-reflection/classes/qualifiedName.kt	check error	no type arguments expected for class Generic.Inner	qualifiedName.kt:50: no type arguments expected for class Generic.Inner
+reflection/classes/qualifiedName.kt	pass		
 reflection/classes/qualifiedNameOfStandardClasses.kt	pass		
 reflection/classes/qualifiedNameOfStandardClassesOther.kt	skip	DONT_TARGET_EXACT_BACKEND: JVM_IR	
 reflection/classes/qualifiedNameWasm.kt	skip	TARGET_BACKEND: WASM	
@@ -6549,7 +6549,7 @@ regressions/hashCodeNPE.kt	pass
 regressions/internalTopLevelOtherPackage.kt	pass		
 regressions/intersectionOfEqualTypes.kt	pass		
 regressions/kt10143.kt	pass		
-regressions/kt10934.kt	check error	cannot infer type for type parameter '_'. Specify it explicitly.	kt10934.kt:19: cannot infer type for type parameter 'TValue'. Specify it explicitly.
+regressions/kt10934.kt	pass		
 regressions/kt1172.kt	pass		
 regressions/kt13381.kt	pass		
 regressions/kt14447.kt	pass		
@@ -6574,7 +6574,7 @@ regressions/kt344.kt	pass
 regressions/kt3442.kt	pass		
 regressions/kt344Runnable.kt	pass		
 regressions/kt3587.kt	pass		
-regressions/kt35914.kt	check error	cannot infer type for type parameter '_'. Specify it explicitly.	kt35914.kt:9: cannot infer type for type parameter 'T'. Specify it explicitly.
+regressions/kt35914.kt	pass		
 regressions/kt3903.kt	pass		
 regressions/kt39088.kt	pass		
 regressions/kt4142.kt	pass		
@@ -6585,7 +6585,7 @@ regressions/kt51927.kt	skip	TARGET_BACKEND: NATIVE
 regressions/kt5395.kt	pass		
 regressions/kt57487.kt	pass		
 regressions/kt5786_privateWithDefault.kt	pass		
-regressions/kt5953.kt	codegen error	code generation: local n is not allocated	/tmp/claude-0/-home-user-kotlin-compiler-go/b71051c8-74d7-5a07-99bd-cc747f944a00/scratchpad/kc-conformance/6586/m0/src/kt5953.kt: code generation failed: Kt5953Kt.box: local 12 is not allocated
+regressions/kt5953.kt	pass		
 regressions/kt6153.kt	pass		
 regressions/kt6434.kt	skip	LANGUAGE	
 regressions/kt6434_2.kt	skip	LANGUAGE	
@@ -6615,11 +6615,11 @@ reified/callChain.kt	pass
 reified/callableReferenceInlinedFun.kt	pass		
 reified/callableReferenceInlinedFunFromOtherModule.kt	pass		
 reified/capture.kt	pass		
-reified/catchParameter/nestedReifiedCatch.kt	skip	LANGUAGE	
-reified/catchParameter/nullableExceptionType.kt	skip	LANGUAGE	
-reified/catchParameter/nullableNothing.kt	skip	LANGUAGE	
-reified/catchParameter/reificationClash.kt	skip	LANGUAGE	
-reified/catchParameter/tryCatchReifiedType.kt	skip	LANGUAGE	
+reified/catchParameter/nestedReifiedCatch.kt	pass		
+reified/catchParameter/nullableExceptionType.kt	pass		
+reified/catchParameter/nullableNothing.kt	skip	IGNORE_BACKEND: JVM_IR	
+reified/catchParameter/reificationClash.kt	pass		
+reified/catchParameter/tryCatchReifiedType.kt	pass		
 reified/checkcast.kt	pass		
 reified/copyToArray.kt	pass		
 reified/extensionFun.kt	pass		
@@ -6643,7 +6643,7 @@ reified/method.kt	pass
 reified/multipleTypeParameters.kt	pass		
 reified/newArrayInt.kt	pass		
 reified/noValueParameters.kt	pass		
-reified/nullableNothingArrayAsStringArray.kt	skip	LANGUAGE	
+reified/nullableNothingArrayAsStringArray.kt	skip	IGNORE_BACKEND: JVM_IR	
 reified/overrideResolution.kt	skip	LANGUAGE	
 reified/overrideResolutionWithInlinedFunInKlib.kt	skip	LANGUAGE	
 reified/parameterSwap.kt	pass		
@@ -6652,10 +6652,10 @@ reified/reifiedChain.kt	pass
 reified/reifiedIntersectionType.kt	skip	LANGUAGE	
 reified/reifiedIntersectionTypeArgument.kt	skip	LANGUAGE	
 reified/reifiedIntersectionTypeArgumentCrossModule.kt	skip	LANGUAGE	
-reified/reifiedNullableNothing1.kt	skip	LANGUAGE	
-reified/reifiedNullableNothing2.kt	skip	LANGUAGE	
-reified/reifiedNullableNothing3.kt	skip	LANGUAGE	
-reified/reifiedNullableNothing4.kt	skip	LANGUAGE	
+reified/reifiedNullableNothing1.kt	pass		
+reified/reifiedNullableNothing2.kt	pass		
+reified/reifiedNullableNothing3.kt	skip	IGNORE_BACKEND: JVM_IR	
+reified/reifiedNullableNothing4.kt	skip	IGNORE_BACKEND: JVM_IR	
 reified/reifiedTypeArgumentWithIntersectionTypeAsTypeArgument.kt	pass		
 reified/reifiedTypeArgumentWithRecursion.kt	pass		
 reified/safecast.kt	pass		
@@ -6664,7 +6664,7 @@ reified/spreads.kt	pass
 reified/vararg.kt	pass		
 reified/varargs.kt	pass		
 reified/withInlineTurnedOff.kt	pass		
-returnInExpressionBody/returnInExpressionBody.kt	skip	LANGUAGE	
+returnInExpressionBody/returnInExpressionBody.kt	pass		
 rtti/isReifiedObject.kt	pass		
 safeCall/genericNull.kt	pass		
 safeCall/kt1572.kt	pass		
@@ -6674,7 +6674,7 @@ safeCall/kt3430.kt	pass
 safeCall/kt4733.kt	pass		
 safeCall/kt52580.kt	pass		
 safeCall/kt52743.kt	pass		
-safeCall/parenthesizedSafeCallsAndOperators.kt	skip	LANGUAGE	
+safeCall/parenthesizedSafeCallsAndOperators.kt	pass		
 safeCall/primitive.kt	pass		
 safeCall/primitiveEqSafeCall.kt	pass		
 safeCall/primitiveNotEqSafeCall.kt	pass		
@@ -6684,8 +6684,8 @@ safeCall/safeCallNotEqPrimitive.kt	pass
 safeCall/safeCallOnLong.kt	pass		
 safeCall/safeCallWithElvisFolding.kt	pass		
 sam/approximation/approxToIntermediateType.kt	pass		
-sam/approximation/approxToSingleUpperBound.kt	check error	unresolved reference: _	approxToSingleUpperBound.kt:29: unresolved reference: bar
-sam/approximation/impossibleToApproxToRepresentable.kt	check error	unresolved reference: _	impossibleToApproxToRepresentable.kt:28: unresolved reference: bar
+sam/approximation/approxToSingleUpperBound.kt	pass		
+sam/approximation/impossibleToApproxToRepresentable.kt	pass		
 sam/approximation/impossibleToApproxToRepresentable2.kt	pass		
 sam/constructors/comparator.kt	pass		
 sam/constructors/nonLiteralComparator.kt	pass		
@@ -6705,7 +6705,7 @@ sam/samWithAbstractToString.kt	pass
 sam/samWithAbstractToString2.kt	pass		
 sam/samWithAbstractToString3.kt	pass		
 sam/samWithNullableUpperBound.kt	pass		
-sam/topLevelConversions.kt	skip	LANGUAGE	
+sam/topLevelConversions.kt	pass		
 sameFileInSourceAndDependencies/classDeclaration.kt	pass		
 sameFileInSourceAndDependencies/differingNumberOfGenericTypeParameters.kt	skip	IGNORE_BACKEND: JVM_IR	
 sameFileInSourceAndDependencies/functionDeclaration.kt	pass		
@@ -6715,7 +6715,7 @@ sameFileInSourceAndDependencies/memberFunctionWithDefaultArgumentsDeclaration.kt
 sameFileInSourceAndDependencies/memberPropertyDeclaration.kt	pass		
 sameFileInSourceAndDependencies/nestedClassDeclaration.kt	pass		
 sealed/delegatingConstructor.kt	pass		
-sealed/kt49752.kt	check error	type argument is not within its bounds: type parameter '_' must be subtype of '_', but actual: _	kt49752.kt:14: type argument is not within its bounds: type parameter 'INTERPRETER' must be subtype of 'Interpreter<out Interpreter.Intermediary<I>, out Interpreter.Terminal<I>, I>', but actual: 'I'
+sealed/kt49752.kt	pass		
 sealed/kt54028.kt	pass		
 sealed/kt54028_cursed.kt	pass		
 sealed/multipleFiles_enabled.kt	pass		
@@ -6752,7 +6752,7 @@ secondaryConstructors/withNonLocalReturn.kt	pass
 secondaryConstructors/withReturn.kt	pass		
 secondaryConstructors/withReturnUnit.kt	pass		
 secondaryConstructors/withoutPrimarySimple.kt	pass		
-serialization/deserializedMembers.kt	check error	unresolved reference: _	main.kt:14: unresolved reference: D2
+serialization/deserializedMembers.kt	pass		
 serialization/serializedCatch.kt	pass		
 serialization/serializedCharConstant.kt	pass		
 serialization/serializedDefaultArgs.kt	pass		
@@ -6765,12 +6765,12 @@ size/helloWorldPromise.kt	skip	DONT_TARGET_EXACT_BACKEND: JVM_IR
 size/objectsOptimization.kt	skip	DONT_TARGET_EXACT_BACKEND: JVM_IR	
 size/ok.kt	skip	DONT_TARGET_EXACT_BACKEND: JVM_IR	
 size/removeUnusedOverride.kt	skip	DONT_TARGET_EXACT_BACKEND: JVM_IR	
-smartCasts/NullableFunctionTypeAsMemberImmutableProperty.kt	check error	reference has a nullable type '_', use explicit '_' to make a function-like call instead	NullableFunctionTypeAsMemberImmutableProperty.kt:23: reference has a nullable type '(() -> Unit)?', use explicit '?.invoke()' to make a function-like call instead
+smartCasts/NullableFunctionTypeAsMemberImmutableProperty.kt	pass		
 smartCasts/NullableFunctionTypeAsMemberImmutablePropertyFromConstructor.kt	pass		
 smartCasts/NullableFunctionTypeAsPrimaryConstructorParameter.kt	pass		
 smartCasts/NullableFunctionTypeAsSecondaryConstructorParameter.kt	pass		
 smartCasts/avoidSmartCastToDerivedForPrivate.kt	pass		
-smartCasts/complexExplicitReceiver.kt	check error	unresolved reference: _	complexExplicitReceiver.kt:13: unresolved reference: o
+smartCasts/complexExplicitReceiver.kt	pass		
 smartCasts/complexImplicitReceiver.kt	pass		
 smartCasts/falseSmartCast.kt	pass		
 smartCasts/genericInheritanceWithNonGenericNoAmbiguity.kt	pass		
@@ -6783,7 +6783,7 @@ smartCasts/implicitReceiver.kt	pass
 smartCasts/implicitReceiverInWhen.kt	pass		
 smartCasts/implicitToGrandSon.kt	pass		
 smartCasts/invokeRecieverSmartcastK1.kt	skip	IGNORE_BACKEND: JVM_IR	
-smartCasts/invokeRecieverSmartcastK2.kt	wrong result	FAIL: implicitReceiverCast(): String.invoke(Any) FAIL: expli…	FAIL: implicitReceiverCast(): String.invoke(Any) FAIL: explicitReceiverCast(): String.invoke(Any) 
+smartCasts/invokeRecieverSmartcastK2.kt	pass		
 smartCasts/kt17725.kt	pass		
 smartCasts/kt19100.kt	pass		
 smartCasts/kt44804.kt	pass		
@@ -6795,7 +6795,7 @@ smartCasts/kt72391.kt	pass
 smartCasts/lambdaArgumentWithoutType.kt	pass		
 smartCasts/multipleSmartCast.kt	skip	LANGUAGE	
 smartCasts/negativesmartCastAugmentedAssignment.kt	pass		
-smartCasts/nullSmartCast.kt	check error	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _	nullSmartCast.kt:4: only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type Int?
+smartCasts/nullSmartCast.kt	pass		
 smartCasts/propertyInitializationAfterSmartCast.kt	pass		
 smartCasts/smartCastInsideIf.kt	pass		
 smartCasts/smartCastOnSuper.kt	pass		
@@ -6843,7 +6843,7 @@ storeStackBeforeInline/simple.kt	pass
 storeStackBeforeInline/unreachableMarker.kt	pass		
 storeStackBeforeInline/withLambda.kt	pass		
 stringTrim/stringTrim.kt	pass		
-strings/MultiDollarInterpolation.kt	skip	LANGUAGE	
+strings/MultiDollarInterpolation.kt	pass		
 strings/charSequenceGet.kt	pass		
 strings/charSequenceSubSequence.kt	pass		
 strings/concatDynamicWithConstants.kt	pass		
@@ -6856,12 +6856,12 @@ strings/constInStringTemplate.kt	pass
 strings/ea35743.kt	pass		
 strings/forInString.kt	pass		
 strings/interpolation.kt	pass		
-strings/kt13213.kt	codegen error	code generation: string constant too long	/tmp/claude-0/-home-user-kotlin-compiler-go/b71051c8-74d7-5a07-99bd-cc747f944a00/scratchpad/kc-conformance/6857/m0/src/kt13213.kt: code generation failed: string constant too long
+strings/kt13213.kt	pass		
 strings/kt13213a.kt	pass		
 strings/kt2592.kt	pass		
 strings/kt3571.kt	pass		
 strings/kt3652.kt	pass		
-strings/kt47917.kt	codegen error	code generation: string constant too long	/tmp/claude-0/-home-user-kotlin-compiler-go/b71051c8-74d7-5a07-99bd-cc747f944a00/scratchpad/kc-conformance/6862/m0/src/kt47917.kt: code generation failed: string constant too long
+strings/kt47917.kt	pass		
 strings/kt50140.kt	pass		
 strings/kt5389_stringBuilderGet.kt	pass		
 strings/kt5956.kt	pass		
@@ -6873,15 +6873,15 @@ strings/multilineStringsWithTemplates.kt	pass
 strings/nestedConcat.kt	pass		
 strings/rawStrings.kt	pass		
 strings/rawStringsWithManyQuotes.kt	pass		
-strings/simpleStringPlus.kt	check error	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _	simpleStringPlus.kt:2: only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type String?
+strings/simpleStringPlus.kt	pass		
 strings/singleConcatNullable.kt	pass		
 strings/stringBuilderAppend.kt	pass		
 strings/stringPlusOnlyWorksOnString.kt	pass		
-strings/stringPlusOverride.kt	wrong result	OK Fail	OK Fail
+strings/stringPlusOverride.kt	pass		
 strings/surrogatePair.kt	pass		
 strings/trimOptimization.kt	pass		
 strings/twoArgumentNullableStringOperatorPlus.kt	pass		
-strings/twoArgumentNullableStringPlus.kt	check error	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _	twoArgumentNullableStringPlus.kt:1: only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type String?
+strings/twoArgumentNullableStringPlus.kt	pass		
 strings/twoArgumentStringTemplate.kt	pass		
 super/basicmethodSuperClass.kt	pass		
 super/basicmethodSuperTrait.kt	pass		
@@ -6922,7 +6922,7 @@ super/superConstructor/objectExtendsLocalInner.kt	pass
 super/traitproperty.kt	pass		
 super/unqualifiedSuper.kt	pass		
 super/unqualifiedSuperWithDeeperHierarchies.kt	pass		
-super/unqualifiedSuperWithMethodsOfAny.kt	check error	many supertypes available, please specify the one you mean in angle brackets, e.g. '_'	unqualifiedSuperWithMethodsOfAny.kt:16: many supertypes available, please specify the one you mean in angle brackets, e.g. 'super<ClassWithToString>'
+super/unqualifiedSuperWithMethodsOfAny.kt	pass		
 suppressions/suppressInvisible.kt	pass		
 suspendConversion/basicSuspendConversion.kt	pass		
 suspendConversion/basicSuspendConversionDefault.kt	pass		
@@ -7101,7 +7101,7 @@ typealias/extensionFunction.kt	pass
 typealias/genericTypeAliasConstructor.kt	pass		
 typealias/genericTypeAliasConstructor2.kt	pass		
 typealias/genericTypeAliasConstructor_implicitTypeArguments.kt	pass		
-typealias/importNestedTypealiasFromAnotherModule.kt	skip	LANGUAGE	
+typealias/importNestedTypealiasFromAnotherModule.kt	pass		
 typealias/incorrectTypeOfTypealiasForSuspendFTMM.kt	pass		
 typealias/incorrectTypeOfTypealiasForSuspendFunctionalType.kt	pass		
 typealias/innerClassTypeAliasConstructor.kt	pass		
@@ -7109,12 +7109,12 @@ typealias/innerClassTypeAliasConstructorInSupertypes.kt	pass
 typealias/kt15109.kt	pass		
 typealias/kt45308.kt	pass		
 typealias/localTypeAliases.kt	skip	LANGUAGE	
-typealias/nestedTypeAliasesAndStaticScope.kt	skip	LANGUAGE	
-typealias/nestedTypeAliasesAndTypeArguments.kt	skip	LANGUAGE	
+typealias/nestedTypeAliasesAndStaticScope.kt	pass		
+typealias/nestedTypeAliasesAndTypeArguments.kt	pass		
 typealias/objectLiteralConstructor.kt	pass		
 typealias/privateInKlib.kt	pass		
 typealias/simple.kt	pass		
-typealias/typeAliasAsBareType.kt	check error	one type argument expected for typealias L<T>	typeAliasAsBareType.kt:7: one type argument expected for typealias L<T>
+typealias/typeAliasAsBareType.kt	pass		
 typealias/typeAliasCompanion.kt	pass		
 typealias/typeAliasConstructor.kt	pass		
 typealias/typeAliasConstructorAccessor.kt	pass		
@@ -7123,7 +7123,7 @@ typealias/typeAliasConstructorInSuperCall.kt	pass
 typealias/typeAliasFunction.kt	pass		
 typealias/typeAliasInAnonymousObjectType.kt	pass		
 typealias/typeAliasObject.kt	pass		
-typealias/typeAliasObjectCallable.kt	check error	expression '_' of type _ cannot be invoked as a function	typeAliasObjectCallable.kt:9: expression 'O' of type 'O' cannot be invoked as a function
+typealias/typeAliasObjectCallable.kt	pass		
 typealias/typeAliasOnTypeAlias.kt	pass		
 typealias/typeAliasSecondaryConstructor.kt	pass		
 typealias/typeAliasUsedAcrossModules.kt	pass		
@@ -7149,7 +7149,7 @@ unit/kt56723.kt	pass
 unit/nullableUnit.kt	pass		
 unit/nullableUnitInWhen1.kt	pass		
 unit/nullableUnitInWhen2.kt	pass		
-unit/nullableUnitInWhen3.kt	check error	type mismatch: '_' branches have incompatible types Unit and Nothing?	nullableUnitInWhen3.kt:6: type mismatch: 'when' branches have incompatible types Unit and Nothing?
+unit/nullableUnitInWhen3.kt	pass		
 unit/sillyThings.kt	pass		
 unit/unitClassObject.kt	pass		
 unit/unitCoercionWithElvis.kt	pass		
@@ -7195,7 +7195,7 @@ unsignedTypes/unsignedIntDivide.kt	pass
 unsignedTypes/unsignedIntRemainder.kt	pass		
 unsignedTypes/unsignedIntToString.kt	pass		
 unsignedTypes/unsignedLiteralsForMaxLongValue.kt	pass		
-unsignedTypes/unsignedLiteralsWithSignedOverflow.kt	wrong result	fail	fail
+unsignedTypes/unsignedLiteralsWithSignedOverflow.kt	pass		
 unsignedTypes/unsignedLongCompare.kt	pass		
 unsignedTypes/unsignedLongDivide.kt	pass		
 unsignedTypes/unsignedLongRemainder.kt	pass		
@@ -7402,12 +7402,12 @@ when/exhaustiveBreakContinue.kt	pass
 when/exhaustiveCheckException.kt	skip	TARGET_BACKEND: JS_IR, JS_IR_ES6	
 when/exhaustiveWhenInitialization.kt	pass		
 when/exhaustiveWhenReturn.kt	pass		
-when/exhaustiveness/exhaustiveWithNegativeBoolean.kt	skip	LANGUAGE	
-when/exhaustiveness/exhaustiveWithNegativeEnum.kt	skip	LANGUAGE	
-when/exhaustiveness/exhaustiveWithNegativeSealed.kt	skip	LANGUAGE	
-when/guard/whenWithGuard.kt	skip	LANGUAGE	
+when/exhaustiveness/exhaustiveWithNegativeBoolean.kt	pass		
+when/exhaustiveness/exhaustiveWithNegativeEnum.kt	pass		
+when/exhaustiveness/exhaustiveWithNegativeSealed.kt	pass		
+when/guard/whenWithGuard.kt	pass		
 when/implicitExhaustiveAndReturn.kt	pass		
-when/inferredTypeParameters.kt	check error	one type argument expected for typealias Z<U>	inferredTypeParameters.kt:17: one type argument expected for typealias Z<U>
+when/inferredTypeParameters.kt	pass		
 when/integralWhenWithNoInlinedConstants.kt	pass		
 when/integralWhenWithNoInlinedConstants2.kt	pass		
 when/is.kt	pass		

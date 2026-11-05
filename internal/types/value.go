@@ -16,6 +16,25 @@ func IsValue(t Type) bool {
 	return t.K == Class && t.C.Value && t.C.Underlying != nil
 }
 
+// RecursiveValue reports whether the underlying value of value class c
+// is, through value classes of value classes, of value class c, which
+// kotlinc rejects: c's representation would have no end.
+func RecursiveValue(c *ClassSym) bool {
+	seen := map[*ClassSym]bool{}
+	for d := c; d != nil && d.Value && d.Underlying != nil && !seen[d]; {
+		seen[d] = true
+		t := d.Underlying.Type
+		if t.K != Class {
+			return false
+		}
+		if t.C == c {
+			return true
+		}
+		d = t.C
+	}
+	return false
+}
+
 // Unboxed reports whether values of type t are held unboxed, as their
 // underlying values: those of a value class type, and of the nullable
 // type too if the underlying value is a reference that can't be null, so
