@@ -37,19 +37,29 @@ func stdlib() string {
 // follows, doesn't: context parameters, context(x: T), for one.
 func skipPSIGrammar(t *testing.T, srcs ...string) {
 	t.Helper()
-	if f, _ := frontendOf(Options{}); f != "psi" {
-		return
-	}
 	for _, path := range srcs {
-		b, err := os.ReadFile(path)
-		if err != nil {
-			continue
-		}
-		ds := psi.Parse(path, string(b)).Diagnostics()
-		if _, errs := syntax.ParseAll(path, string(b)); len(ds) > 0 && len(errs) == 0 {
-			t.Skipf("psi frontend: %s: %s, which kc's parser accepts", path, ds[0].Message)
+		if gap := psiGrammarGap(path); gap != "" {
+			t.Skipf("psi frontend: %s: %s, which kc's parser accepts", path, gap)
 		}
 	}
+}
+
+// psiGrammarGap returns, under the psi frontend, the first psi syntax
+// error in the file at path if kc's parser accepts the file, and ""
+// otherwise.
+func psiGrammarGap(path string) string {
+	if f, _ := frontendOf(Options{}); f != "psi" {
+		return ""
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	ds := psi.Parse(path, string(b)).Diagnostics()
+	if _, errs := syntax.ParseAll(path, string(b)); len(ds) > 0 && len(errs) == 0 {
+		return ds[0].Message
+	}
+	return ""
 }
 
 // usesStdlib reports whether a test program or error test needs the Kotlin
@@ -814,7 +824,16 @@ func TestSignatures(t *testing.T) {
 	if err != nil {
 		t.Skip("kotlinc not found on PATH")
 	}
-	srcs := sources(t, "../../testdata/signatures")
+	var srcs []string
+	for _, src := range sources(t, "../../testdata/signatures") {
+		// Under the psi frontend, both compilers leave out the files
+		// psi's grammar rejects, which no other file uses.
+		if gap := psiGrammarGap(src); gap != "" {
+			t.Logf("psi frontend: leaving out %s: %s, which kc's parser accepts", src, gap)
+			continue
+		}
+		srcs = append(srcs, src)
+	}
 	kotlincOut, kcOut := t.TempDir(), t.TempDir()
 	args := append([]string{"-nowarn", "-jvm-default=disable", "-d", kotlincOut}, srcs...)
 	if out, err := exec.Command(kotlinc, args...).CombinedOutput(); err != nil {
