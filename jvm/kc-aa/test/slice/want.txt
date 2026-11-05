@@ -23,6 +23,13 @@ a.Marker: property d.inferred: kotlin.collections.List<kotlin.Pair<kotlin.Int, k
 a.Marker: type parameter T : kotlin.Any?
 a.Other: class b.Plain : kotlin.Any (s = "y")
 a.Other: parameter id: kotlin.Int (s = "x")
+alias:g.Holder: again: g.Again names typealias g.Again = g.Names; expands to kotlin.collections.List
+alias:g.Holder: list: kotlin.collections.ArrayList<kotlin.Int> names typealias kotlin.collections.ArrayList = java.util.ArrayList<E>; expands to java.util.ArrayList
+alias:g.Holder: mapper: g.Mapper<kotlin.Int> names typealias g.Mapper = fun kotlin.Function1<T, kotlin.String>; expands to kotlin.Function1
+alias:g.Holder: names: g.Names names typealias g.Names = kotlin.collections.List<kotlin.String>; expands to kotlin.collections.List
+alias:g.Holder: nested: kotlin.collections.ArrayList<g.Names> names typealias kotlin.collections.ArrayList = java.util.ArrayList<E>; expands to java.util.ArrayList
+alias:g.Holder: pairs: g.Pairs<kotlin.String>? names typealias g.Pairs = kotlin.collections.Map<K, kotlin.collections.List<K>>; expands to kotlin.collections.Map
+alias:g.Holder: plain: kotlin.collections.List<kotlin.String> names class kotlin.collections.List<out E : kotlin.Any?> : kotlin.collections.Collection<E>
 assign:f.Assign: f.Named <- f.Base<kotlin.String>: false
 assign:f.Assign: f.Source<kotlin.Any> <- f.Strings: false
 assign:f.Assign: f.Source<kotlin.String> <- f.Strings: true
@@ -66,6 +73,10 @@ e.Args: class e.Full : kotlin.Any (s = "const!", i = -4, l = 1099511627776L, c =
 e.Args: class e.Positional : kotlin.Any (s = "pos", i = 9, v = ["p", "q"], l = 7L, c = 'c', z = false, f = 1.5f, d = 2.0, u = 3u, e = e.Color.GREEN, k = kotlin.Any::class, arr = ["x", "y"], inner = @e.Inner(s = "d", xs = [1, 2]))
 e.Args: function e.spread(): kotlin.Unit (v = ["s1"], s = "dflt", i = 3, l = 7L, c = 'c', z = false, f = 1.5f, d = 2.0, u = 3u, e = e.Color.GREEN, k = kotlin.Any::class, arr = ["x", "y"], inner = @e.Inner(s = "d", xs = [1, 2]))
 e.Inner: class e.Defaults : kotlin.Any (s = "in")
+fun:g.top: KOTLIN function g.top(x: kotlin.Int): kotlin.Int [g.AliasKt]
+fun:kotlin.collections.listOf: KOTLIN_LIB function kotlin.collections.listOf<T : kotlin.Any?>(): kotlin.collections.List<T> [kotlin.collections.CollectionsKt__CollectionsKt]
+fun:kotlin.collections.listOf: KOTLIN_LIB function kotlin.collections.listOf<T : kotlin.Any?>(element: T): kotlin.collections.List<T> [kotlin.collections.CollectionsKt__CollectionsJVMKt]
+fun:kotlin.collections.listOf: KOTLIN_LIB function kotlin.collections.listOf<T : kotlin.Any?>(vararg elements: T): kotlin.collections.List<T> [kotlin.collections.CollectionsKt__CollectionsKt]
 java.beans.JavaBean: class e.Bean : kotlin.Any (description = "bean", defaultProperty = "", defaultEventSet = "")
 kotlin.Deprecated: class e.Old : kotlin.Any (message = "old", replaceWith = @kotlin.ReplaceWith(expression = "", imports = []), level = kotlin.DeprecationLevel.WARNING)
 kotlin.Suppress: file Model.kt (names = ["unused"])
@@ -98,5 +109,37 @@ members:f.Strings: KOTLIN_LIB toString in kotlin.Any; as member (): kotlin.Strin
 overrides:f.Strings#get:f.Named#get: true
 overrides:f.Strings#get:f.Source#get: true
 overrides:f.Strings#name:f.Source#get: false
+package:g: KOTLIN class g.Holder : kotlin.Any
+package:g: KOTLIN function g.top(x: kotlin.Int): kotlin.Int [g.AliasKt]
+package:g: KOTLIN property g.topProp: kotlin.Int [g.AliasKt]
+package:g: KOTLIN typealias g.Again
+package:g: KOTLIN typealias g.Mapper
+package:g: KOTLIN typealias g.Names
+package:g: KOTLIN typealias g.Pairs
+package:java.util.function:Supplier: JAVA_LIB class java.util.function.Supplier<T : kotlin.Any?> : kotlin.Any
+package:kotlin.collections:listOf,lastIndex,ArrayList,List,emptyList,AbstractList: KOTLIN_LIB class kotlin.collections.AbstractList<out E : kotlin.Any?> : kotlin.collections.AbstractCollection<E>, kotlin.collections.List<E>
+package:kotlin.collections:listOf,lastIndex,ArrayList,List,emptyList,AbstractList: KOTLIN_LIB function kotlin.collections.List<T : kotlin.Any?>(size: kotlin.Int, init: fun kotlin.Function1<kotlin.Int, T>): kotlin.collections.List<T> [kotlin.collections.CollectionsKt__CollectionsKt]
+package:kotlin.collections:listOf,lastIndex,ArrayList,List,emptyList,AbstractList: KOTLIN_LIB function kotlin.collections.emptyList<T : kotlin.Any?>(): kotlin.collections.List<T> [kotlin.collections.CollectionsKt__CollectionsKt]
+package:kotlin.collections:listOf,lastIndex,ArrayList,List,emptyList,AbstractList: KOTLIN_LIB function kotlin.collections.listOf<T : kotlin.Any?>(): kotlin.collections.List<T> [kotlin.collections.CollectionsKt__CollectionsKt]
+package:kotlin.collections:listOf,lastIndex,ArrayList,List,emptyList,AbstractList: KOTLIN_LIB function kotlin.collections.listOf<T : kotlin.Any?>(element: T): kotlin.collections.List<T> [kotlin.collections.CollectionsKt__CollectionsJVMKt]
+package:kotlin.collections:listOf,lastIndex,ArrayList,List,emptyList,AbstractList: KOTLIN_LIB function kotlin.collections.listOf<T : kotlin.Any?>(vararg elements: T): kotlin.collections.List<T> [kotlin.collections.CollectionsKt__CollectionsKt]
+package:kotlin.collections:listOf,lastIndex,ArrayList,List,emptyList,AbstractList: KOTLIN_LIB property kotlin.collections.lastIndex: kotlin.Int on kotlin.Array<out T> [kotlin.collections.ArraysKt___ArraysKt]
+package:kotlin.collections:listOf,lastIndex,ArrayList,List,emptyList,AbstractList: KOTLIN_LIB property kotlin.collections.lastIndex: kotlin.Int on kotlin.BooleanArray [kotlin.collections.ArraysKt___ArraysKt]
+package:kotlin.collections:listOf,lastIndex,ArrayList,List,emptyList,AbstractList: KOTLIN_LIB property kotlin.collections.lastIndex: kotlin.Int on kotlin.ByteArray [kotlin.collections.ArraysKt___ArraysKt]
+package:kotlin.collections:listOf,lastIndex,ArrayList,List,emptyList,AbstractList: KOTLIN_LIB property kotlin.collections.lastIndex: kotlin.Int on kotlin.CharArray [kotlin.collections.ArraysKt___ArraysKt]
+package:kotlin.collections:listOf,lastIndex,ArrayList,List,emptyList,AbstractList: KOTLIN_LIB property kotlin.collections.lastIndex: kotlin.Int on kotlin.DoubleArray [kotlin.collections.ArraysKt___ArraysKt]
+package:kotlin.collections:listOf,lastIndex,ArrayList,List,emptyList,AbstractList: KOTLIN_LIB property kotlin.collections.lastIndex: kotlin.Int on kotlin.FloatArray [kotlin.collections.ArraysKt___ArraysKt]
+package:kotlin.collections:listOf,lastIndex,ArrayList,List,emptyList,AbstractList: KOTLIN_LIB property kotlin.collections.lastIndex: kotlin.Int on kotlin.IntArray [kotlin.collections.ArraysKt___ArraysKt]
+package:kotlin.collections:listOf,lastIndex,ArrayList,List,emptyList,AbstractList: KOTLIN_LIB property kotlin.collections.lastIndex: kotlin.Int on kotlin.LongArray [kotlin.collections.ArraysKt___ArraysKt]
+package:kotlin.collections:listOf,lastIndex,ArrayList,List,emptyList,AbstractList: KOTLIN_LIB property kotlin.collections.lastIndex: kotlin.Int on kotlin.ShortArray [kotlin.collections.ArraysKt___ArraysKt]
+package:kotlin.collections:listOf,lastIndex,ArrayList,List,emptyList,AbstractList: KOTLIN_LIB property kotlin.collections.lastIndex: kotlin.Int on kotlin.UByteArray [kotlin.collections.unsigned.UArraysKt___UArraysKt]
+package:kotlin.collections:listOf,lastIndex,ArrayList,List,emptyList,AbstractList: KOTLIN_LIB property kotlin.collections.lastIndex: kotlin.Int on kotlin.UIntArray [kotlin.collections.unsigned.UArraysKt___UArraysKt]
+package:kotlin.collections:listOf,lastIndex,ArrayList,List,emptyList,AbstractList: KOTLIN_LIB property kotlin.collections.lastIndex: kotlin.Int on kotlin.ULongArray [kotlin.collections.unsigned.UArraysKt___UArraysKt]
+package:kotlin.collections:listOf,lastIndex,ArrayList,List,emptyList,AbstractList: KOTLIN_LIB property kotlin.collections.lastIndex: kotlin.Int on kotlin.UShortArray [kotlin.collections.unsigned.UArraysKt___UArraysKt]
+package:kotlin.collections:listOf,lastIndex,ArrayList,List,emptyList,AbstractList: KOTLIN_LIB property kotlin.collections.lastIndex: kotlin.Int on kotlin.collections.List<T> [kotlin.collections.CollectionsKt__CollectionsKt]
+package:kotlin.collections:listOf,lastIndex,ArrayList,List,emptyList,AbstractList: KOTLIN_LIB typealias kotlin.collections.ArrayList
+prop:g.topProp: KOTLIN property g.topProp: kotlin.Int [g.AliasKt]
+prop:kotlin.collections.lastIndex: not found
+prop:kotlin.coroutines.intrinsics.COROUTINE_SUSPENDED: KOTLIN_LIB property kotlin.coroutines.intrinsics.COROUTINE_SUSPENDED: kotlin.Any [kotlin.coroutines.intrinsics.IntrinsicsKt__IntrinsicsKt]
 sealed:f.Shape: f.Circle
 sealed:f.Shape: f.Square

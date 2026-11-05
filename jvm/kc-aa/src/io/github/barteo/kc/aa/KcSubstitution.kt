@@ -19,9 +19,18 @@ internal class KcSubstitutor(private val round: KcRound, val map: Map<KaTypePara
 
     override fun substituteOrNull(type: KaType): KaType? = when (type) {
         is KcTypeParameterType -> map[type.symbol]?.let { if (type.marked) nullable(it) else it }
-        is KcClassType -> args(type.typeArguments)?.let { KcClassType(round, type.classId, it, type.marked) }
-        is KcFunctionType -> args(type.typeArguments)?.let {
-            KcFunctionType(round, type.classId, it, type.marked, type.hasReceiver, type.contexts)
+        is KcClassType -> {
+            val args = args(type.typeArguments)
+            val abbrev = abbrev(type.abbrev)
+            if (args == null && abbrev == null) null
+            else KcClassType(round, type.classId, args ?: type.typeArguments, type.marked, abbrev ?: type.abbrev, type.isAlias)
+        }
+        is KcFunctionType -> {
+            val args = args(type.typeArguments)
+            val abbrev = abbrev(type.abbrev)
+            if (args == null && abbrev == null) null
+            else KcFunctionType(round, type.classId, args ?: type.typeArguments, type.marked, type.hasReceiver, type.contexts,
+                abbrev ?: type.abbrev)
         }
         is KcFlexibleType -> {
             val lo = substituteOrNull(type.lowerBound)
@@ -32,6 +41,9 @@ internal class KcSubstitutor(private val round: KcRound, val map: Map<KaTypePara
         is KcDefinitelyNotNullType -> substituteOrNull(type.original)?.let { notNull(it) }
         else -> null
     }
+
+    /** A type's abbreviation, substituted, or null if it has none or it doesn't change. */
+    private fun abbrev(t: KcClassType?): KcClassType? = t?.let { substituteOrNull(it) as? KcClassType }
 
     private fun args(args: List<KaTypeProjection>): List<KaTypeProjection>? {
         var changed = false
@@ -117,7 +129,8 @@ internal class KcTypeRelations(private val round: KcRound) {
      * The substitutor of the class type [t]'s class's type parameters by
      * its arguments; a star becomes the parameter's first bound.
      */
-    fun typeSubstitutor(t: KaClassType): KaSubstitutor {
+    fun typeSubstitutor(t0: KaClassType): KaSubstitutor {
+        val t = round.expand(t0) as? KaClassType ?: return empty
         val params = (t.symbol as? KaClassSymbol)?.typeParameters.orEmpty()
         if (params.isEmpty() || params.size != t.typeArguments.size) return empty
         return substitutor(params.zip(t.typeArguments).associate { (p, a) ->
@@ -130,7 +143,7 @@ internal class KcTypeRelations(private val round: KcRound) {
     /** The class type a type stands for in supertype walks: a flexible type's lower bound. */
     fun classType(t: KaType): KaClassType? = when (t) {
         is KcFlexibleType -> classType(t.lowerBound)
-        is KaClassType -> t
+        is KaClassType -> round.expand(t) as? KaClassType
         else -> null
     }
 
@@ -160,7 +173,7 @@ internal class KcTypeRelations(private val round: KcRound) {
         return null
     }
 
-    fun isNullable(t: KaType): Boolean = when (t) {
+    fun isNullable(t: KaType): Boolean = when (val t = round.expand(t)) {
         is KcFlexibleType -> isNullable(t.upperBound)
         is KcDefinitelyNotNullType -> false
         is KcTypeParameterType -> t.marked || t.symbol.upperBounds.all(::isNullable)
@@ -168,7 +181,9 @@ internal class KcTypeRelations(private val round: KcRound) {
         else -> false
     }
 
-    fun isSubtype(a: KaType, b: KaType, lenient: Boolean): Boolean {
+    fun isSubtype(a0: KaType, b0: KaType, lenient: Boolean): Boolean {
+        val a = round.expand(a0)
+        val b = round.expand(b0)
         if (a is KaErrorType || b is KaErrorType) return lenient
         if (a is KcFlexibleType) return isSubtype(a.lowerBound, b, lenient)
         if (b is KcFlexibleType) return isSubtype(a, b.upperBound, lenient)
@@ -218,7 +233,7 @@ internal class KcTypeRelations(private val round: KcRound) {
         a == b || isSubtype(a, b, lenient) && isSubtype(b, a, lenient)
 
     /** Whether a supertype of [t], or [t], is of class [id]. */
-    fun isSubtype(t: KaType, id: ClassId, lenient: Boolean): Boolean = when (t) {
+    fun isSubtype(t0: KaType, id: ClassId, lenient: Boolean): Boolean = when (val t = round.expand(t0)) {
         is KaErrorType -> lenient
         is KcFlexibleType -> isSubtype(t.lowerBound, id, lenient)
         is KcDefinitelyNotNullType -> isSubtype(t.original, id, lenient)

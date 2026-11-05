@@ -106,6 +106,7 @@ func readValue(r *wire.Reader) *ka.Value {
 		_ = r.String() // name
 		r.Uint()       // contexts
 		r.Uint()       // no arguments
+		r.Uint()       // no abbreviation
 	case ka.ValueAnnotation:
 		v.Annotation = readAnnotation(r)
 	case ka.ValueArray:
@@ -208,6 +209,49 @@ func TestClass(t *testing.T) {
 			t.Errorf("%s: kind %d, name %s", tc.id, k, name)
 		}
 	}
+	for _, tc := range []struct {
+		name   string
+		exists bool
+	}{{"kotlin.collections", true}, {"kotlin.no.such", false}} {
+		w = wire.Writer{}
+		w.Int(model)
+		w.String(tc.name)
+		resp, err = kcabi.Call(OpKaPackage, w.Message())
+		if err != nil {
+			t.Fatal(err)
+		}
+		r := wire.NewReader(resp)
+		if exists := r.Bool(); exists != tc.exists {
+			t.Errorf("%s: exists %v", tc.name, exists)
+		}
+		var classes []string
+		for n := r.Uint(); n > 0 && r.Err() == nil; n-- {
+			classes = append(classes, r.String())
+		}
+		decls := readDecls(r)
+		if err := r.Err(); err != nil || r.Len() != 0 {
+			t.Fatalf("%s: %v, %d bytes left", tc.name, err, r.Len())
+		}
+		if !tc.exists {
+			if len(classes) != 0 || len(decls) != 0 {
+				t.Errorf("%s: %d classes, %d decls", tc.name, len(classes), len(decls))
+			}
+			continue
+		}
+		var found bool
+		for _, d := range decls {
+			if d.Name == "arrayListOf" && len(d.Params) == 0 {
+				found = true
+				if d.ClassID != "kotlin/collections/CollectionsKt__CollectionsKt" || d.Type == nil || d.Type.ClassID != "java/util/ArrayList" ||
+					d.Type.Abbrev == nil || d.Type.Abbrev.ClassID != "kotlin/collections/ArrayList" || len(d.Type.Abbrev.Args) != 1 {
+					t.Errorf("arrayListOf: %+v, type %+v", d, d.Type)
+				}
+			}
+		}
+		if !found || len(classes) == 0 {
+			t.Errorf("%s: arrayListOf %v, %d classes", tc.name, found, len(classes))
+		}
+	}
 	for _, h := range []int64{model, session} {
 		w = wire.Writer{}
 		w.Int(h)
@@ -215,4 +259,53 @@ func TestClass(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+}
+
+// readDecls reads declarations as jvm/kc-aa's KcModel does.
+func readDecls(r *wire.Reader) []*ka.Decl {
+	var out []*ka.Decl
+	for n := r.Uint(); n > 0 && r.Err() == nil; n-- {
+		d := &ka.Decl{Kind: ka.Kind(r.Uint()), Name: r.String(), Node: psi.NodeID(r.Uint()), ClassID: r.String(),
+			Visibility: ka.Visibility(r.Uint()), Modality: ka.Modality(r.Uint()), Flags: ka.Flags(r.Uint()),
+			Variance: ka.Variance(r.Uint())}
+		d.Type = readType(r)
+		d.Receiver = readType(r)
+		d.Supertypes = readTypes(r)
+		d.Bounds = readTypes(r)
+		for n := r.Uint(); n > 0 && r.Err() == nil; n-- {
+			d.Annotations = append(d.Annotations, *readAnnotation(r))
+		}
+		d.TypeParams = readDecls(r)
+		d.Params = readDecls(r)
+		d.Members = readDecls(r)
+		d.Default = readValue(r)
+		out = append(out, d)
+	}
+	return out
+}
+
+func readTypes(r *wire.Reader) []*ka.Type {
+	var out []*ka.Type
+	for n := r.Uint(); n > 0 && r.Err() == nil; n-- {
+		out = append(out, readType(r))
+	}
+	return out
+}
+
+func readType(r *wire.Reader) *ka.Type {
+	kind := ka.TypeKind(r.Uint())
+	if kind == 0 {
+		return nil
+	}
+	t := &ka.Type{Kind: kind, ClassID: r.String()}
+	flags := r.Uint()
+	t.Nullable, t.Flexible, t.DefinitelyNonNull, t.Extension = flags&1 != 0, flags&2 != 0, flags&4 != 0, flags&8 != 0
+	t.Param = psi.NodeID(r.Uint())
+	t.Name = r.String()
+	t.Contexts = int(r.Uint())
+	for n := r.Uint(); n > 0 && r.Err() == nil; n-- {
+		t.Args = append(t.Args, ka.TypeArg{Variance: ka.Variance(r.Uint()), Type: readType(r)})
+	}
+	t.Abbrev = readType(r)
+	return t
 }

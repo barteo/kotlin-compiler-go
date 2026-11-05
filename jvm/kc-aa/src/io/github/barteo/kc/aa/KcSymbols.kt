@@ -97,7 +97,7 @@ internal class KcInfo(
     val location: KaSymbolLocation
         get() = when (parent) {
             is KaClassSymbol -> KaSymbolLocation.CLASS
-            is KaFileSymbol, null -> KaSymbolLocation.TOP_LEVEL
+            is KaFileSymbol, is KaPackageSymbol, null -> KaSymbolLocation.TOP_LEVEL
             else -> KaSymbolLocation.LOCAL
         }
 
@@ -115,6 +115,7 @@ internal class KcInfo(
     fun callableId(name: Name): CallableId? = when (parent) {
         is KcClassSymbol -> parent.classId?.let { CallableId(it, name) }
         is KcFileSymbol -> CallableId(FqName(parent.file.packageName), name)
+        is KcPackageSymbol -> CallableId(parent.fqName, name)
         else -> null
     }
 
@@ -125,6 +126,17 @@ internal class KcInfo(
 internal class KcPointer<S : KaSymbol>(private val key: String) : StubKaSymbolPointer<S>() {
     @Suppress("UNCHECKED_CAST")
     override fun restoreSymbol(analysisSession: KaSession): S? = KcAnalysis.of(analysisSession).round.restore(key) as S?
+}
+
+/** A package, of the sources or of the class path; library top-level declarations' parent. */
+internal class KcPackageSymbol(val round: KcRound, override val fqName: FqName) : StubKaPackageSymbol() {
+    override val token get() = round.token
+    override val psi: PsiElement? get() = null
+    override val origin get() = KaSymbolOrigin.SOURCE
+    override fun createPointer(): KaSymbolPointer<KaPackageSymbol> = KcPointer("pkgsym:" + fqName.asString())
+    override fun equals(other: Any?) = other is KcPackageSymbol && other.fqName == fqName
+    override fun hashCode() = fqName.hashCode()
+    override fun toString() = "KcPackageSymbol($fqName)"
 }
 
 internal class KcFileSymbol(val round: KcRound, val file: KcFile, override val psi: KtFile) : StubKaFileSymbol() {

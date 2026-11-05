@@ -59,6 +59,9 @@ func NewReader(b []byte) *Reader { return &Reader{buf: b} }
 // Err returns ErrShort if a read failed.
 func (r *Reader) Err() error { return r.err }
 
+// Len returns the number of bytes left to read.
+func (r *Reader) Len() int { return len(r.buf) }
+
 func (r *Reader) fail() { r.err, r.buf = ErrShort, nil }
 
 func (r *Reader) Uint() uint64 {

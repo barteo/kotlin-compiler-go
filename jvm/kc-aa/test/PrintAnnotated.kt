@@ -14,6 +14,13 @@
 //	                       target.isAssignableFrom(source)
 //	sealed:a.b.C           getSealedSubclasses
 //	overrides:a.b.C#f:x.Y#g  Resolver.overrides(C.f, Y.g)
+//	package:a.b[:n1,n2]    getDeclarationsFromPackage (named n1, n2 if given),
+//	                       with the owner JVM class of functions and properties
+//	fun:a.b.f, prop:a.b.p  getFunctionDeclarationsByName(includeTopLevel),
+//	                       getPropertyDeclarationByName(includeTopLevel)
+//	alias:a.b.C            C's properties' types: the declaration each names,
+//	                       a type alias's type, and the declaration it expands to
+import com.google.devtools.ksp.KspExperimental
 import com.google.devtools.ksp.getDeclaredFunctions
 import com.google.devtools.ksp.getDeclaredProperties
 import com.google.devtools.ksp.impl.KotlinSymbolProcessing
@@ -33,7 +40,7 @@ class PrintAnnotatedProvider(private val names: List<String>, private val out: M
         override fun process(resolver: Resolver): List<KSAnnotated> {
             for (name in names) {
                 val mode = name.substringBefore(':', "")
-                if (mode in setOf("members", "assign", "sealed", "overrides")) {
+                if (mode in setOf("members", "assign", "sealed", "overrides", "package", "fun", "prop", "alias")) {
                     mode(resolver, mode, name.removePrefix("$mode:"), name)
                     continue
                 }
@@ -55,8 +62,37 @@ class PrintAnnotatedProvider(private val names: List<String>, private val out: M
         private fun cls(resolver: Resolver, name: String) =
             resolver.getClassDeclarationByName(resolver.getKSNameFromString(name)) ?: error("$name: not found")
 
+        @OptIn(KspExperimental::class)
+        private fun owner(resolver: Resolver, d: KSDeclaration): String = when (d) {
+            is KSFunctionDeclaration -> " [" + resolver.getOwnerJvmClassName(d) + "]"
+            is KSPropertyDeclaration -> " [" + resolver.getOwnerJvmClassName(d) + "]"
+            else -> ""
+        }
+
+        @OptIn(KspExperimental::class)
         private fun mode(resolver: Resolver, mode: String, arg: String, tag: String) {
             when (mode) {
+                "package" -> {
+                    val only = arg.substringAfter(':', "").split(',').filter { it.isNotEmpty() }.toSet()
+                    resolver.getDeclarationsFromPackage(arg.substringBefore(':'))
+                        .filter { only.isEmpty() || it.simpleName.asString() in only }
+                        .map { "$tag: ${it.origin} ${describe(it)}" + owner(resolver, it) }
+                        .sorted().forEach { out += it }
+                }
+                "fun" -> resolver.getFunctionDeclarationsByName(resolver.getKSNameFromString(arg), includeTopLevel = true)
+                    .forEach { out += "$tag: ${it.origin} ${describe(it)}" + owner(resolver, it) }
+                "prop" -> resolver.getPropertyDeclarationByName(resolver.getKSNameFromString(arg), includeTopLevel = true)
+                    .let { out += if (it == null) "$tag: not found" else "$tag: ${it.origin} ${describe(it)}" + owner(resolver, it) }
+                "alias" -> for (p in cls(resolver, arg).getDeclaredProperties()) {
+                    val t = p.type.resolve()
+                    val d = t.declaration
+                    val expanded = if (d is KSTypeAlias) {
+                        var e: KSDeclaration = d
+                        while (e is KSTypeAlias) e = e.type.resolve().declaration
+                        " = ${render(d.type)}; expands to ${e.qualifiedName?.asString()}"
+                    } else ""
+                    out += "$tag: ${p.simpleName.asString()}: ${render(t)} names ${describe(d)}$expanded"
+                }
                 "members" -> {
                     val c = cls(resolver, arg.substringBefore(':'))
                     val only = arg.substringAfter(':', "").split(',').filter { it.isNotEmpty() }.toSet()

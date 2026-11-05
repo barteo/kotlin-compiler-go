@@ -69,7 +69,7 @@ mapping.
 | M0.4 | Vertical slice: list annotated source classes through a `kc` KspBackend: `jvm/kc-aa/build.sh test` | done, see gaps |
 | M1 | `psi` on Kotlin 2.4.21 | done before this work |
 | M2 | Error tolerance, `types.Invalid` payload, extension-vs-top-level overload bug, `@Contextual`/`@EncodeDefault` | done (two items moved, see M2) |
-| M3 | Richer symbol model: visibility and modality enums, flags, origins, library annotation arguments, Java parameter names | in progress: source types, flags, modality; KaTypes on the JVM; annotation arguments; library classes; inherited members, overrides, subtyping |
+| M3 | Richer symbol model: visibility and modality enums, flags, origins, library annotation arguments, Java parameter names | in progress: source types, flags, modality; KaTypes on the JVM; annotation arguments; library classes; inherited members, overrides, subtyping; packages, library top-level declarations, alias abbreviations |
 | M4 | Queryable session `analysis/ka`: lookups, scopes, relations, overrides | |
 | M5 | Bridge: `cmd/libkc` operations, `tools/kagen` wire format, `jvm/kc-aa` KaSession | |
 | M6 | KSP fork integration: the `kc` backend, IC lookups, hot paths | |
@@ -124,6 +124,10 @@ The patches:
 3. **Put session creation behind `KspBackend`.** The processing loop works on
    a `KspBackendSession`. `backend/fir/StandaloneBackend` (`aa`) is the old
    session code, moved, and is found with `ServiceLoader`.
+4. **Find source file facades through `KcExtras`.** `getOwnerJvmClassName`
+   asked `KtFile.findFacadeClass()`, which needs light classes. Backends
+   that don't have them answer `KcExtras.fileFacadeClass` instead; FIR's
+   still asks the light class.
 
 ### M0.4 – Vertical slice
 
@@ -287,9 +291,9 @@ through KSP. Known differences from kotlinc and things still missing:
 - An inferred Java return type is `String?` in kc and `String!` in kotlinc.
 - ~~`directSupertypes` doesn't substitute the type's arguments.~~ Fixed in
   step 5.
-- `getFullyExpandedType` returns its argument, and
+- ~~`getFullyExpandedType` returns its argument, and
   `KcExtras.abbreviatedTypeAlias` returns null: there is no alias
-  abbreviation yet.
+  abbreviation yet.~~ Fixed in step 6.
 - ~~`buildClassType` ignores its builder's arguments and nullability.~~
   Fixed in step 4.
 - ~~Library class types know only their class ID.~~ Fixed in step 4, except
@@ -469,12 +473,97 @@ here, so `want.txt` was checked by hand against FIR's behaviour. Known gaps:
 - Pointer restore of fake overrides isn't exercised by the slice: KSP
   doesn't create such pointers on these paths.
 
+**Step 6: packages, library top-level declarations and type aliases.**
+
+- **Package listing (Go).** `classpath` lists the classes of a package,
+  from a per-package index built once with the class path's index.
+  `ka.Model.Package(pkg)` (cached, thread-safe) returns:
+  - the package's top-level classes, Kotlin's and Java's, without file
+    facades, multi-file classes and their parts, synthetic classes and
+    classes the sources declare;
+  - its top-level Kotlin functions, properties and type aliases, read from
+    the parts that the class path's `.kotlin_module` files list (every copy:
+    module names repeat across jars), decoded the way library class members
+    are (`kfunction`/`kproperty`, now shared).
+
+  A function's or property's `ClassID` is the class that declares it on the
+  JVM: the file facade, or the multi-file class's part
+  (`kotlin/collections/CollectionsKt__CollectionsKt`), as FIR's
+  `JvmPackagePartSource.classId` has it. It's on the wire as op 14,
+  `pkg(model, fqName) → exists, classes, decls`. `exists` is also true for
+  a package that has only subpackages.
+- **Alias abbreviations (Go).** A type written as a typealias carries the
+  typealias type as `Type.Abbrev`: the alias's class ID, its type arguments
+  as written, and the type's nullability. The type itself is the expansion.
+  - In sources, the checker's `AliasRecorder` names the typealias a type
+    reference resolved through. Typealiases written as the alias's
+    arguments are carried into the expansion's arguments (`L<S>` gives
+    `List<String as S>`).
+  - The checker resolves the default imports' class typealiases
+    (`ArrayList`, `HashMap`, …) straight to their classes, without telling
+    the recorder. `defaultAlias` gets them back from the reference's name:
+    an unqualified or `kotlin.collections.`-qualified name of a default
+    import's typealias that stands for that very class, unless an explicit
+    import or a non-default star import that has the name says otherwise.
+  - In libraries, `kmeta` decodes `Type.abbreviatedType` and the alias
+    class id of an abbreviation, and the encoder writes them back.
+    A library typealias's `Type` is its expanded type, falling back on the
+    underlying type, and keeps the underlying type's abbreviation
+    (`typealias A = B`).
+  - On the wire, a type ends with its abbreviation: an optional type.
+- **JVM.**
+  - `KcPackageSymbol` (pointer `pkgsym:<fq>`) is the parent of library
+    top-level declarations; their pointers are
+    `pkg:<fq>/<kind>:<name>:<i>`.
+  - `findPackage`: a package of the sources (or a parent of one) or of the
+    class path.
+  - `getPackageScope`: the sources' top-level declarations, then the
+    library's callables and type aliases, then the library's classes.
+  - `findTopLevelCallables(package, name)`: sources first, then the class
+    path.
+  - `findTypeAlias` and `findClassLike` load library type aliases.
+  - Typealias types are `KcClassType`s with `isAlias` set, whose symbol is
+    the `KaTypeAliasSymbol`. A type written as an alias is its expansion
+    with that alias type as its `abbreviation`, which is what KSP shows
+    through `abbreviationOrSelf`. Function types keep theirs too, and
+    `KcExtras.abbreviatedTypeAlias` returns it.
+  - `KcRound.expand` expands an alias type: it substitutes the alias's
+    parameters into its expanded type and keeps the alias as the result's
+    abbreviation. `getFullyExpandedType`, `buildClassType` on a type alias
+    symbol, substitution, subtyping and `isNullable` expand first. Type
+    equality ignores the abbreviation, as FIR's does.
+  - `KcExtras.packagePartClass`: the declaration's `ClassID` for a library
+    callable; the file facade (`JvmFileClassUtil`) for a source one.
+    `fileFacadeClass` (KSP patch 4) is the same file facade.
+
+The slice adds `test/slice/src/g/Alias.kt` and prints, through KSP:
+`getDeclarationsFromPackage` for a source package and filtered for
+`kotlin.collections` and `java.util.function`;
+`getFunctionDeclarationsByName` and `getPropertyDeclarationByName` with
+`includeTopLevel`, with `getOwnerJvmClassName`; and, for properties typed
+with typealiases, the declaration their type names, the alias's type and
+what it expands to. `want.txt` was checked by hand against FIR's behaviour.
+Known gaps:
+- `defaultAlias` is a heuristic on the reference's name. A source typealias
+  the checker resolves without the recorder (a nested typealias, or one of
+  a non-default package) isn't recorded.
+- Annotations on library typealiases aren't decoded.
+- Private library top-level declarations are listed; FIR lists them too, but
+  KSP filters them only by visibility checks it doesn't always run.
+- `KcExtras.binaryContainerClass` returns null, so KSP's
+  `hasBackingField` asks the symbol's `hasBackingField`, which kc doesn't
+  answer yet for any property.
+- Expanding an alias turns a star argument into the parameter's bound.
+- Package scopes don't list subpackages.
+- A library package's classes are all loaded when its scope is first built.
+
 ## Gaps and open questions
 
 - **Slice simplifications (M0.4).** These go when M3/M4 bring the facts in:
   - Accessors read their flags from PSI modifiers, not from `kc`.
   - There are no backing-field symbols, so `@field:` annotations are dropped.
-  - Library type aliases and top-level callables aren't known.
+  - ~~Library type aliases and top-level callables aren't known.~~ Fixed in
+    step 6.
   - Java sources are ignored.
   - The PSI join checks each node's PSI class, not yet the whole kind
     sequence.

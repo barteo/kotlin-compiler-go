@@ -5,9 +5,11 @@ import com.intellij.psi.PsiElement
 import org.jetbrains.kotlin.analysis.api.annotations.KaAnnotation
 import org.jetbrains.kotlin.analysis.api.annotations.KaAnnotationValue
 import org.jetbrains.kotlin.analysis.api.symbols.*
+import org.jetbrains.kotlin.analysis.api.symbols.markers.KaNamedSymbol
 import org.jetbrains.kotlin.analysis.api.types.KaType
 import org.jetbrains.kotlin.name.CallableId
 import org.jetbrains.kotlin.name.ClassId
+import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.kdoc.lexer.KDocTokens
 import org.jetbrains.kotlin.psi.*
@@ -16,11 +18,16 @@ import java.util.IdentityHashMap
 /**
  * The symbols of one KSP round: the Go model of the module's sources joined
  * with their PSI, and the class-path classes the round asks for, which
- * [library] loads (the model's `KcOps.cls`). A round is immutable but for
- * the library classes it loads; the next update replaces it and invalidates
- * its [token].
+ * [library] loads (the model's `KcOps.cls`), and the class-path packages
+ * it asks for, which [packages] loads (`KcOps.pkg`). A round is immutable
+ * but for the library declarations it loads; the next update replaces it
+ * and invalidates its [token].
  */
-internal class KcRound(files: List<Pair<KcFile, KtFile>>, private val library: (String) -> KcDecl? = { null }) {
+internal class KcRound(
+    files: List<Pair<KcFile, KtFile>>,
+    private val library: (String) -> KcDecl? = { null },
+    private val packages: (String) -> KcPackage? = { null },
+) {
     val token = KcToken()
 
     /** Every source symbol by its pointer key. */
@@ -60,8 +67,103 @@ internal class KcRound(files: List<Pair<KcFile, KtFile>>, private val library: (
 
     val fileSymbols: List<KcFileSymbol>
 
+    /** The sources' packages and the packages they are in. */
+    private val sourcePackages = HashSet<FqName>()
+
     init {
         fileSymbols = files.map { (f, kt) -> Builder(f.path, preorder(kt.node), KaSymbolOrigin.SOURCE).file(f, kt) }
+        for ((f, _) in files) {
+            var fq = FqName(f.packageName)
+            while (sourcePackages.add(fq) && !fq.isRoot) fq = fq.parent()
+        }
+    }
+
+    /** A class-path package: its classes' IDs and its top-level functions, properties and type aliases. */
+    class LibraryPackage(val classes: List<ClassId>, val decls: List<KaDeclarationSymbol>)
+
+    private val libraryPackages = HashMap<FqName, LibraryPackage?>()
+    private val packageSymbols = HashMap<FqName, KcPackageSymbol>()
+    private val packageScopes = HashMap<FqName, List<KaDeclarationSymbol>>()
+
+    @Synchronized
+    fun packageSymbol(fq: FqName): KcPackageSymbol = packageSymbols.getOrPut(fq) { KcPackageSymbol(this, fq) }
+
+    /** Whether package [fq], or a package in it, has a source file or a class-path class. */
+    fun packageExists(fq: FqName) = fq in sourcePackages || libraryPackage(fq) != null
+
+    /** The class-path package [fq], loading its top-level declarations, or null if there is none. */
+    @Synchronized
+    fun libraryPackage(fq: FqName): LibraryPackage? {
+        if (libraryPackages.containsKey(fq)) return libraryPackages[fq]
+        val p = packages(fq.asString())?.let { kp ->
+            val key = "pkg:" + fq.asString()
+            val decls = Builder(key, noNodes, KaSymbolOrigin.LIBRARY).decls(kp.decls, packageSymbol(fq), key)
+            LibraryPackage(kp.classes.map(ClassId::fromString), decls)
+        }
+        libraryPackages[fq] = p
+        return p
+    }
+
+    /**
+     * The declarations of package [fq]: the sources' top-level ones, then
+     * the class path's top-level functions, properties and type aliases,
+     * then its classes.
+     */
+    fun packageDeclarations(fq: FqName): List<KaDeclarationSymbol> {
+        synchronized(this) { packageScopes[fq]?.let { return it } }
+        val name = fq.asString()
+        val out = ArrayList<KaDeclarationSymbol>()
+        for (f in fileSymbols) if (f.file.packageName == name) out += f.declarations
+        libraryPackage(fq)?.let { p ->
+            out += p.decls
+            p.classes.mapNotNullTo(out) { if (it in classes) null else libraryClass(it) }
+        }
+        return synchronized(this) { packageScopes.getOrPut(fq) { out } }
+    }
+
+    /** The top-level functions and properties named [name] in package [fq], the sources' first. */
+    fun topLevelCallables(fq: FqName, name: Name): List<KaCallableSymbol> {
+        val pkg = fq.asString()
+        val out = ArrayList<KaCallableSymbol>()
+        for (f in fileSymbols) if (f.file.packageName == pkg) {
+            f.declarations.filterIsInstanceTo<KaCallableSymbol, _>(out)
+        }
+        libraryPackage(fq)?.decls?.filterIsInstanceTo<KaCallableSymbol, _>(out)
+        return out.filter { (it as? KaNamedSymbol)?.name == name }
+    }
+
+    /** The type alias [id], of the sources or of the class path, or null if there is none. */
+    fun typeAlias(id: ClassId): KaTypeAliasSymbol? {
+        typeAliases[id]?.let { return it }
+        if (id.isLocal || id.isNestedClass) return null
+        libraryPackage(id.packageFqName)
+        return synchronized(this) { typeAliases[id] }
+    }
+
+    /**
+     * [t] with its typealias types expanded: a type with [KcClassType.isAlias]
+     * becomes its typealias's expansion of its arguments, abbreviated by it.
+     */
+    fun expand(t: KaType): KaType {
+        var cur = t
+        var depth = 0
+        while (cur is KcClassType && cur.isAlias && depth++ < 16) {
+            val alias = typeAlias(cur.classId) ?: return cur
+            val params = alias.typeParameters
+            val sub = if (params.isEmpty() || params.size != cur.typeArguments.size) relations.empty
+            else relations.substitutor(params.zip(cur.typeArguments).associate { (p, a) ->
+                p to (a.type ?: p.upperBounds.firstOrNull() ?: relations.anyType(true))
+            })
+            val e = sub.substitute(alias.expandedType)
+            val nullable = cur.marked || (e as? KcTypeBase)?.marked == true
+            cur = when (e) {
+                is KcClassType -> KcClassType(this, e.classId, e.typeArguments, nullable, cur.withNullability(nullable), e.isAlias)
+                is KcFunctionType ->
+                    KcFunctionType(this, e.classId, e.typeArguments, nullable, e.hasReceiver, e.contexts, cur.withNullability(nullable))
+                else -> return (e as? KcTypeBase)?.withNullability(nullable) ?: e
+            }
+        }
+        return cur
     }
 
     /** The class [id], or a symbol that knows only its ID if kc doesn't have it. */
@@ -142,6 +244,11 @@ internal class KcRound(files: List<Pair<KcFile, KtFile>>, private val library: (
                 rest.startsWith("/(") -> (s as? KaFunctionSymbol)?.valueParameters?.getOrNull(rest.drop(2).toInt())
                 else -> null
             }
+        }
+        if (key.startsWith("pkgsym:")) return packageSymbol(FqName(key.removePrefix("pkgsym:")))
+        if (key.startsWith("pkg:")) {
+            libraryPackage(FqName(key.removePrefix("pkg:").split(memberKey, 2)[0]))
+            return synchronized(this) { byKey[key] }
         }
         if (!key.startsWith("lib:")) return null
         // The class's ID comes first; its members' keys add /kind:…, /<i or /(i.
@@ -317,7 +424,7 @@ internal class KcRound(files: List<Pair<KcFile, KtFile>>, private val library: (
             KcDecl.TYPE_ALIAS -> scoped { ctx ->
                 val psi = psiOf<KtTypeAlias>(d)
                 val t = register(KcTypeAliasSymbol(info(d, psi, parent, key)), key, psi)
-                t.classId?.let { typeAliases[it] = t }
+                t.classId?.let { typeAliases.putIfAbsent(it, t) }
                 t.typeParams = typeParams(d, t, key)
                 ctx.typeParams = t.typeParams
                 t

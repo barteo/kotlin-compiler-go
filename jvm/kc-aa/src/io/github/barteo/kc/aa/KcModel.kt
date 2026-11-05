@@ -12,6 +12,7 @@ internal object KcOps {
     const val UPDATE = 11
     const val CLOSE = 12
     const val CLASS = 13
+    const val PACKAGE = 14
 
     class Config(
         val jdkHome: String?,
@@ -59,6 +60,15 @@ internal object KcOps {
     fun cls(model: Long, classId: String): KcDecl? {
         val r = Wire.Reader(KcNative.call(CLASS, Wire.Writer().writeInt(model).writeString(classId).message()))
         return r.decls().singleOrNull()
+    }
+
+    /** The class-path package [fqName] (dotted) as model [model] has it, or null if there is none. */
+    fun pkg(model: Long, fqName: String): KcPackage? {
+        val r = Wire.Reader(KcNative.call(PACKAGE, Wire.Writer().writeInt(model).writeString(fqName).message()))
+        val exists = r.readBool()
+        val classes = List(r.readUint().toInt()) { r.readString() }
+        val decls = r.decls()
+        return if (exists) KcPackage(fqName, classes, decls) else null
     }
 
     fun close(handle: Long) {
@@ -128,6 +138,7 @@ internal object KcOps {
             name = readString(),
             contexts = readUint().toInt(),
             args = List(readUint().toInt()) { KcTypeArg(readUint().toInt(), type()) },
+            abbrev = type(),
         )
     }
 }
@@ -139,6 +150,13 @@ internal class KcModel(val handle: Long, val files: List<KcFile>, val diagnostic
 internal class KcDiagnostic(val path: String, val line: Int, val col: Int, val message: String, val feature: String) {
     override fun toString() = "$path:$line:$col: " + (if (feature.isEmpty()) "" else "unsupported: $feature: ") + message
 }
+
+/**
+ * A class-path package; Go's ka.Package: its top-level classes' class IDs,
+ * and its top-level functions, properties (whose classId is their JVM
+ * facade's) and type aliases.
+ */
+internal class KcPackage(val fqName: String, val classes: List<String>, val decls: List<KcDecl>)
 
 /** A source file's declarations; Go's ka.File. */
 internal class KcFile(
@@ -255,6 +273,8 @@ internal class KcType(
     val name: String,
     val contexts: Int,
     val args: List<KcTypeArg>,
+    /** The typealias type this type was written as: a class type of the typealias's class ID. */
+    val abbrev: KcType? = null,
 ) {
     val isNullable get() = flags and 1 != 0
     val isFlexible get() = flags and 2 != 0

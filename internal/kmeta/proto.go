@@ -30,6 +30,12 @@ type Type struct {
 	// contextOf's context parameter's, which doesn't infer a call's type
 	// arguments.
 	NoInfer bool
+	// Abbrev is the typealias type the type was written as, if it was:
+	// a type whose Alias is the typealias's class id, with the alias's
+	// type arguments; the type itself is the alias's expansion.
+	Abbrev *Type
+	// Alias is the typealias of an Abbrev, whose Class is "".
+	Alias string
 }
 
 // Type flags.
@@ -496,6 +502,12 @@ func (s scope) typ(msg []byte) *Type {
 			t.Outer = s.typ(d.bytes())
 		case 11:
 			t.Outer = s.typeID(d.int())
+		case 12:
+			t.Alias = s.names.class(d.int())
+		case 13:
+			t.Abbrev = s.typ(d.bytes())
+		case 14:
+			t.Abbrev = s.typeID(d.int())
 		case 100: // JvmProtoBuf.typeAnnotation
 			a := d.bytes()
 			switch s.annotationClass(a) {
@@ -508,7 +520,7 @@ func (s scope) typ(msg []byte) *Type {
 			case "kotlin/internal/NoInfer":
 				t.NoInfer = true
 			}
-		default: // abbreviations, other extensions
+		default: // other extensions
 			d.skip(w)
 		}
 	}
@@ -673,6 +685,7 @@ func bindNames(params []*TypeParam, ts ...*Type) {
 			bind(a.Type)
 		}
 		bind(t.Upper)
+		bind(t.Abbrev)
 		bind(t.Outer)
 	}
 	for _, t := range ts {

@@ -195,6 +195,9 @@ func libType(t *Type) string {
 	if t.Flexible {
 		sb.WriteString("!")
 	}
+	if t.Abbrev != nil {
+		sb.WriteString(" (as " + libType(t.Abbrev) + ")")
+	}
 	return sb.String()
 }
 

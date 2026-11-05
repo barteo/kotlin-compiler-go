@@ -19,6 +19,8 @@ import org.jetbrains.kotlin.analysis.api.types.KaSubstitutor
 import org.jetbrains.kotlin.analysis.api.components.KaSubtypingErrorTypePolicy
 import org.jetbrains.kotlin.analysis.api.types.KaType
 import org.jetbrains.kotlin.name.ClassId
+import org.jetbrains.kotlin.name.FqName
+import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.psi.*
 import java.lang.reflect.InvocationHandler
 import java.lang.reflect.InvocationTargetException
@@ -49,12 +51,16 @@ class KcAnalysis internal constructor(internal val round: KcRound, private val m
     fun getNamedClassSymbol(c: KtClassOrObject): KaNamedClassSymbol? = round.byPsi[c] as? KaNamedClassSymbol
     fun findClass(classId: ClassId): KaClassSymbol? = round.classes[classId] ?: round.libraryClass(classId)
     fun findClassLike(classId: ClassId): KaClassLikeSymbol? =
-        round.classes[classId] ?: round.typeAliases[classId] ?: round.libraryClass(classId)
-    /** A source type alias; library aliases aren't known yet. */
-    fun findTypeAlias(classId: ClassId): KaTypeAliasSymbol? = round.typeAliases[classId]
+        round.classes[classId] ?: round.typeAliases[classId] ?: round.libraryClass(classId) ?: round.typeAlias(classId)
+    fun findTypeAlias(classId: ClassId): KaTypeAliasSymbol? = round.typeAlias(classId)
+    fun findPackage(fqName: FqName): KaPackageSymbol? = if (round.packageExists(fqName)) round.packageSymbol(fqName) else null
+    fun findTopLevelCallables(packageFqName: FqName, name: Name): Sequence<KaCallableSymbol> =
+        round.topLevelCallables(packageFqName, name).asSequence()
 
     // KaScopeProvider
     fun getFileScope(file: KaFileSymbol): KaScope = KcScope((file as KcFileSymbol).declarations, round.token)
+    /** The package's declarations; no subpackages (`getPackageSymbols` is empty). */
+    fun getPackageScope(p: KaPackageSymbol): KaScope = KcScope(round.packageDeclarations(p.fqName), round.token)
     fun getDeclaredMemberScope(s: KaDeclarationContainerSymbol): KaScope =
         KcScope(members(s).filterNot { isStatic(it) }, round.token)
     fun getStaticDeclaredMemberScope(s: KaDeclarationContainerSymbol): KaScope =
@@ -87,10 +93,10 @@ class KcAnalysis internal constructor(internal val round: KcRound, private val m
         is KcFakeSetterSymbol -> s.property
         is KcFakeValueParameterSymbol -> s.owner
         is KcFakeReceiverParameterSymbol -> s.owningCallableSymbol
-        is KcClassSymbol -> s.info.parent.takeUnless { it is KaFileSymbol }
-        is KcFunctionSymbol -> s.info.parent.takeUnless { it is KaFileSymbol }
-        is KcPropertySymbol -> s.info.parent.takeUnless { it is KaFileSymbol }
-        is KcTypeAliasSymbol -> s.info.parent.takeUnless { it is KaFileSymbol }
+        is KcClassSymbol -> s.info.parent.takeUnless { it is KaFileSymbol || it is KaPackageSymbol }
+        is KcFunctionSymbol -> s.info.parent.takeUnless { it is KaFileSymbol || it is KaPackageSymbol }
+        is KcPropertySymbol -> s.info.parent.takeUnless { it is KaFileSymbol || it is KaPackageSymbol }
+        is KcTypeAliasSymbol -> s.info.parent.takeUnless { it is KaFileSymbol || it is KaPackageSymbol }
         is KcConstructorSymbol -> s.info.parent
         is KcEnumEntrySymbol -> s.info.parent
         is KcValueParameterSymbol -> s.info.parent
@@ -99,6 +105,7 @@ class KcAnalysis internal constructor(internal val round: KcRound, private val m
         is KcGetterSymbol -> s.property
         is KcSetterSymbol -> s.property
         is KcLibraryClassSymbol -> null
+        is KcPackageSymbol -> null
         is KcReceiverParameterSymbol -> s.owningCallableSymbol
         else -> unsupported("containingSymbol of $s")
     }
@@ -167,9 +174,13 @@ class KcAnalysis internal constructor(internal val round: KcRound, private val m
     }
 
     // KaTypeInformationProvider
-    /** kc expands type aliases in every type it reports. */
-    fun getFullyExpandedType(type: KaType): KaType = type
-    fun getExpandedSymbol(type: KaType): KaClassSymbol? = when (type) {
+    /**
+     * kc expands type aliases in every type it reports, but the
+     * abbreviations KSP takes of them (`abbreviationOrSelf`) are typealias
+     * types.
+     */
+    fun getFullyExpandedType(type: KaType): KaType = round.expand(type)
+    fun getExpandedSymbol(type: KaType): KaClassSymbol? = when (val type = round.expand(type)) {
         is KaClassType -> type.symbol as? KaClassSymbol
         is KcFlexibleType -> getExpandedSymbol(type.lowerBound)
         else -> null
@@ -178,7 +189,7 @@ class KcAnalysis internal constructor(internal val round: KcRound, private val m
     fun isNullable(type: KaType): Boolean = round.relations.isNullable(type)
     fun hasFlexibleNullability(type: KaType): Boolean =
         type is KcFlexibleType && isMarkedNullable(type.upperBound) && !isMarkedNullable(type.lowerBound)
-    fun isAnyType(type: KaType): Boolean = type is KcClassType && !type.marked && type.classId == ANY
+    fun isAnyType(type: KaType): Boolean = round.expand(type).let { it is KcClassType && !it.marked && it.classId == ANY }
 
     // KaBuiltinTypesProvider
     fun getBuiltinTypes(): org.jetbrains.kotlin.analysis.api.components.KaBuiltinTypes = builtins
@@ -190,8 +201,11 @@ class KcAnalysis internal constructor(internal val round: KcRound, private val m
     fun upperBoundIfFlexible(type: KaType): KaType = (type as? KcFlexibleType)?.upperBound ?: type
     fun buildClassType(classId: ClassId, init: Function1<Any?, Unit>): KaType =
         KcClassTypeBuilder(round.token).also { init(it) }.build(round, classId)
-    fun buildClassType(symbol: KaClassLikeSymbol, init: Function1<Any?, Unit>): KaType =
-        KcClassTypeBuilder(round.token).also { init(it) }.build(round, symbol.classId ?: unsupported("class type of local $symbol"))
+    fun buildClassType(symbol: KaClassLikeSymbol, init: Function1<Any?, Unit>): KaType {
+        val b = KcClassTypeBuilder(round.token).also { init(it) }
+        return if (symbol is KaTypeAliasSymbol && symbol.classId != null) b.build(round, symbol)
+        else b.build(round, symbol.classId ?: unsupported("class type of local $symbol"))
+    }
 
     // KaTypeRelationChecker
     fun getDirectSupertypes(type: KaType): Sequence<KaType> = directSupertypes(type, true)

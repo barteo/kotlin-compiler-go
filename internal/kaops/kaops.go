@@ -19,7 +19,7 @@
 //	          default:value
 //	types   = n:Uint type*n
 //	type    = kind:Uint [classID:String tflags:Uint param:Uint name:String
-//	          contexts:Uint n:Uint (variance:Uint type)*n]
+//	          contexts:Uint n:Uint (variance:Uint type)*n abbrev:type]
 //	annots  = n:Uint annot*n
 //	annot   = classID:String node:Uint target:String n:Uint (name:String value)*n
 //	value   = kind:Uint [node:Uint
@@ -41,7 +41,8 @@
 // and has nothing after its kind: a declaration without a type or
 // receiver, or a star projection's argument. Otherwise kind is a ka
 // TypeKind, and tflags a bit set: 1 nullable, 2 flexible, 4 definitely
-// non-null, 8 extension function type.
+// non-null, 8 extension function type. abbrev is the typealias type the
+// type was written as, or none.
 //
 // OpKaClose: handle:Int → nothing. It releases a session or a model, and
 // the class path a model reads.
@@ -51,6 +52,13 @@
 // It returns the model of a class of the class path (ka's Model.Class),
 // its nested classes among its members; n is 0 if there is no such class
 // and 1 otherwise. A library declaration's nodes are 0.
+//
+// OpKaPackage: model:Int package:String → exists:Bool n:Uint classID:String*n decls
+//
+// It returns the model of a package of the class path (ka's
+// Model.Package): its top-level classes' class IDs, and its top-level
+// functions, properties and type aliases. exists is false, and the rest
+// empty, if the class path has no such package.
 package kaops
 
 import (
@@ -65,10 +73,11 @@ import (
 
 // The operations. The numbers are part of the ABI: append only.
 const (
-	OpKaOpen   kcabi.Op = 10
-	OpKaUpdate kcabi.Op = 11
-	OpKaClose  kcabi.Op = 12
-	OpKaClass  kcabi.Op = 13
+	OpKaOpen    kcabi.Op = 10
+	OpKaUpdate  kcabi.Op = 11
+	OpKaClose   kcabi.Op = 12
+	OpKaClass   kcabi.Op = 13
+	OpKaPackage kcabi.Op = 14
 )
 
 // handles are the sessions and models the JVM holds.
@@ -79,6 +88,32 @@ func init() {
 	kcabi.Register(OpKaUpdate, update)
 	kcabi.Register(OpKaClose, closeHandle)
 	kcabi.Register(OpKaClass, class)
+	kcabi.Register(OpKaPackage, pkg)
+}
+
+func pkg(req []byte) ([]byte, error) {
+	r := wire.NewReader(req)
+	h := kcabi.Handle(r.Int())
+	name := r.String()
+	if err := r.Err(); err != nil {
+		return nil, err
+	}
+	m, err := kcabi.Get[*ka.Model](&handles, h)
+	if err != nil {
+		return nil, err
+	}
+	var w wire.Writer
+	p := m.Package(name)
+	w.Bool(p != nil)
+	if p == nil {
+		p = &ka.Package{}
+	}
+	w.Uint(uint64(len(p.Classes)))
+	for _, id := range p.Classes {
+		w.String(id)
+	}
+	writeDecls(&w, p.Decls)
+	return w.Message(), nil
 }
 
 func class(req []byte) ([]byte, error) {
@@ -209,6 +244,7 @@ func writeType(w *wire.Writer, t *ka.Type) {
 		w.Uint(uint64(a.Variance))
 		writeType(w, a.Type)
 	}
+	writeType(w, t.Abbrev)
 }
 
 func writeAnnotations(w *wire.Writer, as []ka.Annotation) {

@@ -268,7 +268,7 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 			cmp.Compare(a.Line, b.Line), cmp.Compare(a.Col, b.Col))
 	})
 	for i, f := range files {
-		b := &fileBuilder{f: f, snap: snaps[i], prov: provs[i], annots: rec.annots[f], values: rec.values[f], refs: rec.refs,
+		b := &fileBuilder{f: f, snap: snaps[i], prov: provs[i], annots: rec.annots[f], values: rec.values[f], refs: rec.refs, aliases: rec.aliases, lib: m.lib,
 			tparams: map[*types.TypeParamSym]psi.NodeID{}}
 		mf := &File{Path: snaps[i].Path(), Package: f.Package, Snapshot: snaps[i]}
 		mf.Annotations = b.annotations(f.Annotations)
@@ -313,7 +313,8 @@ func (p checkPanic) Error() string { return fmt.Sprintf("ka: checker panic: %v",
 
 func checkFiles(ctx context.Context, files []*syntax.File, lib *check.Library, jobs int) (rec *recorder, errs []*syntax.Error, err error) {
 	rec = &recorder{annots: map[*syntax.File]map[syntax.Pos]*types.ClassSym{},
-		values: map[*syntax.File]map[syntax.Pos][]syntax.AnnotationValue{}, refs: map[*syntax.TypeRef]types.Type{}}
+		values: map[*syntax.File]map[syntax.Pos][]syntax.AnnotationValue{}, refs: map[*syntax.TypeRef]types.Type{},
+		aliases: map[*syntax.TypeRef]*types.AliasSym{}}
 	defer func() {
 		if v := recover(); v != nil {
 			err = checkPanic{v}
@@ -343,6 +344,16 @@ type recorder struct {
 	values map[*syntax.File]map[syntax.Pos][]syntax.AnnotationValue
 	mu     sync.Mutex
 	refs   map[*syntax.TypeRef]types.Type // the types written, as resolved
+	// aliases are the typealiases the types written name.
+	aliases map[*syntax.TypeRef]*types.AliasSym
+}
+
+func (r *recorder) Alias(x any, a *types.AliasSym) {
+	if ref, ok := x.(*syntax.TypeRef); ok {
+		r.mu.Lock()
+		r.aliases[ref] = a
+		r.mu.Unlock()
+	}
 }
 
 func (r *recorder) TypeRef(ref *syntax.TypeRef, t types.Type) {
@@ -385,6 +396,9 @@ type fileBuilder struct {
 	annots map[syntax.Pos]*types.ClassSym
 	values map[syntax.Pos][]syntax.AnnotationValue
 	refs   map[*syntax.TypeRef]types.Type
+	// aliases are the typealiases the types written name.
+	aliases map[*syntax.TypeRef]*types.AliasSym
+	lib     *library // the class path's classes, for defaultAlias
 	// tparams are the TYPE_PARAMETER nodes of the file's type
 	// parameters, which their types point to.
 	tparams map[*types.TypeParamSym]psi.NodeID

@@ -1,6 +1,7 @@
 package ka
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 
@@ -59,6 +60,11 @@ type Type struct {
 	// and Contexts is its number of context parameters, which come first.
 	Extension bool
 	Contexts  int
+	// Abbrev is the typealias type the type was written as, if it was:
+	// a TypeClass whose ClassID is the typealias's, with the typealias's
+	// type arguments and the type's nullability. The type is the
+	// typealias's expansion.
+	Abbrev *Type
 }
 
 // TypeArg is a type argument.
@@ -141,7 +147,7 @@ func (b *fileBuilder) typeAt(t types.Type, ref *syntax.TypeRef, depth int) *Type
 		}
 		if t.A != nil {
 			var argRefs []*syntax.TypeArg
-			if ref != nil && ref.Name != "" && len(ref.Args) == len(t.A.List) {
+			if ref != nil && ref.Name != "" && len(ref.Args) == len(t.A.List) && b.aliases[ref] == nil {
 				argRefs = ref.Args
 			}
 			for i, a := range t.A.List {
@@ -194,7 +200,113 @@ func (b *fileBuilder) typeAt(t types.Type, ref *syntax.TypeRef, depth int) *Type
 	case t.P:
 		out.Flexible = true
 	}
+	if ref != nil {
+		if a := b.aliases[ref]; a != nil {
+			out.Abbrev = b.abbrev(a, ref, out.Nullable, depth)
+			substAbbrevs(out, a.Type, a.TypeParams, out.Abbrev.Args, 0)
+		} else if out.Kind == TypeClass {
+			out.Abbrev = b.defaultAlias(out, ref)
+		}
+	}
 	return out
+}
+
+// defaultImports are the packages a Kotlin/JVM file imports by default
+// that have typealiases.
+var defaultImports = []string{"kotlin", "kotlin.collections", "kotlin.text", "kotlin.io", "kotlin.jvm",
+	"kotlin.annotation", "kotlin.ranges", "kotlin.sequences", "kotlin.comparisons"}
+
+// defaultAlias returns the typealias type that ref, which names class
+// type t, writes, if it names one of the typealiases of a class that the
+// checker resolves to the class: ArrayList<Int>, which is
+// kotlin.collections.ArrayList<Int>; nil if it doesn't.
+func (b *fileBuilder) defaultAlias(t *Type, ref *syntax.TypeRef) *Type {
+	if b.lib == nil || ref.Name == "" {
+		return nil
+	}
+	name, qualified := ref.Name, strings.Contains(ref.Name, ".")
+	if qualified {
+		name = ref.Name[strings.LastIndexByte(ref.Name, '.')+1:]
+	}
+	a := b.lib.defaultAliases()[name]
+	if a == nil || a.Type.ClassID != t.ClassID || len(t.Args) != len(a.TypeParams) {
+		return nil
+	}
+	if qualified {
+		if strings.ReplaceAll(a.ClassID, "/", ".") != ref.Name {
+			return nil
+		}
+	} else {
+		for _, imp := range b.f.Imports {
+			switch {
+			case imp.Alias == name || imp.Alias == "" && !imp.Star && strings.HasSuffix("."+imp.Path, "."+name):
+				// An explicit import names it: the typealias itself, or
+				// the class.
+				if strings.ReplaceAll(a.ClassID, "/", ".") != imp.Path {
+					return nil
+				}
+			case imp.Star && !slices.Contains(defaultImports, imp.Path) &&
+				b.lib.cp.Has(strings.ReplaceAll(imp.Path, ".", "/")+"/"+name):
+				return nil // import java.util.*: the class, which star imports win
+			}
+		}
+	}
+	return &Type{Kind: TypeClass, ClassID: a.ClassID, Args: slices.Clone(t.Args), Nullable: t.Nullable}
+}
+
+// abbrev returns the typealias type that ref writes, a type of typealias
+// a.
+func (b *fileBuilder) abbrev(a *types.AliasSym, ref *syntax.TypeRef, nullable bool, depth int) *Type {
+	out := &Type{Kind: TypeClass, ClassID: aliasID(a), Nullable: nullable}
+	for _, r := range ref.Args {
+		ta := TypeArg{Variance: variance(r.Variance)}
+		if r.Variance != types.Star {
+			t, ok := b.refs[r.Type]
+			if !ok {
+				t = types.InvalidType
+			}
+			ta.Type = b.typeAt(t, r.Type, depth+1)
+		}
+		out.Args = append(out.Args, ta)
+	}
+	return out
+}
+
+// substAbbrevs puts the typealias types written as the typealias's type
+// arguments args into expansion t, where its right side at, whose
+// typealias's type parameters are tps, has the type parameters: L<S> is
+// List<String as S> for typealias L<T> = List<T>.
+func substAbbrevs(t *Type, at types.Type, tps []*types.TypeParamSym, args []TypeArg, depth int) {
+	if t == nil || depth > 16 {
+		return
+	}
+	for i, a := range t.Args {
+		if a.Type == nil || at.A == nil || len(at.A.List) != len(t.Args) {
+			continue
+		}
+		ra := at.A.List[i].T
+		if ra.K != types.TypeParam {
+			substAbbrevs(a.Type, ra, tps, args, depth+1)
+			continue
+		}
+		j := slices.Index(tps, ra.Param())
+		if j < 0 || j >= len(args) || args[j].Type == nil || args[j].Type.Abbrev == nil {
+			continue
+		}
+		cp := *a.Type
+		cp.Abbrev = &Type{}
+		*cp.Abbrev = *args[j].Type.Abbrev
+		cp.Abbrev.Nullable = cp.Nullable
+		t.Args[i].Type = &cp
+	}
+}
+
+// aliasID returns the class ID of typealias a.
+func aliasID(a *types.AliasSym) string {
+	if a.Outer != nil {
+		return classID(a.Outer) + "." + a.Name
+	}
+	return strings.ReplaceAll(a.Pkg, ".", "/") + "/" + a.Name
 }
 
 // refText returns the text of type ref as written, or "" for nil.

@@ -9,6 +9,7 @@ import org.jetbrains.kotlin.analysis.api.lifetime.KaLifetimeToken
 import org.jetbrains.kotlin.analysis.api.symbols.KaClassLikeSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaSymbolLocation
 import org.jetbrains.kotlin.analysis.api.symbols.KaSymbolOrigin
+import org.jetbrains.kotlin.analysis.api.symbols.KaTypeAliasSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaTypeParameterSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.pointers.KaSymbolPointer
 import org.jetbrains.kotlin.analysis.api.symbols.KaClassifierSymbol
@@ -22,6 +23,7 @@ import org.jetbrains.kotlin.analysis.api.components.KaClassTypeBuilder
 import org.jetbrains.kotlin.analysis.api.types.KaTypeArgumentWithVariance
 import org.jetbrains.kotlin.analysis.api.types.KaTypeNullability
 import org.jetbrains.kotlin.analysis.api.types.KaTypeProjection
+import org.jetbrains.kotlin.analysis.api.types.KaUsualClassType
 import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.types.Variance
@@ -65,16 +67,20 @@ internal class KcTypeContext(
 
     private fun classType(t: KcType, nullable: Boolean): KcBaseClassType {
         val id = ClassId.fromString(t.classId)
-        val args = t.args.map { a ->
-            val at = a.type
-            if (a.variance == KcDecl.STAR || at == null) KcStarProjection(round.token)
-            else KcTypeArgument(type(at), variance(a.variance), round.token)
+        val abbrev = t.abbrev?.takeIf { it.kind == KcType.CLASS }?.let {
+            KcClassType(round, ClassId.fromString(it.classId), args(it), nullable, isAlias = true)
         }
         return if (isFunctionClass(t.classId)) {
-            KcFunctionType(round, id, args, nullable, t.isExtension, t.contexts)
+            KcFunctionType(round, id, args(t), nullable, t.isExtension, t.contexts, abbrev)
         } else {
-            KcClassType(round, id, args, nullable)
+            KcClassType(round, id, args(t), nullable, abbrev = abbrev)
         }
+    }
+
+    private fun args(t: KcType): List<KaTypeProjection> = t.args.map { a ->
+        val at = a.type
+        if (a.variance == KcDecl.STAR || at == null) KcStarProjection(round.token)
+        else KcTypeArgument(type(at), variance(a.variance), round.token)
     }
 
     private fun parameter(t: KcType): KaTypeParameterSymbol =
@@ -106,23 +112,33 @@ internal sealed interface KcBaseClassType : KcTypeBase {
 
 private fun KaType.text(marked: Boolean, s: String) = if (marked) "$s?" else s
 
-/** A class type, with its arguments. */
+/**
+ * A class type, with its arguments. [abbrev] is the typealias type it was
+ * written as. A type with [isAlias] set is such a typealias type, whose
+ * [classId] is the typealias's and whose symbol is the typealias; the type
+ * relations expand it first (see [KcRound.expand]).
+ */
 internal class KcClassType(
     private val round: KcRound,
     override val classId: ClassId,
     override val typeArguments: List<KaTypeProjection> = emptyList(),
     override val marked: Boolean = false,
+    val abbrev: KcClassType? = null,
+    val isAlias: Boolean = false,
 ) : StubKaUsualClassType(), KcBaseClassType {
     override val token get() = round.token
-    override val symbol: KaClassLikeSymbol get() = round.classSymbol(classId)
+    override val symbol: KaClassLikeSymbol
+        get() = if (isAlias) round.typeAlias(classId) ?: round.classSymbol(classId) else round.classSymbol(classId)
     override val nullability get() = KaTypeNullability.create(marked)
-    override val abbreviation get() = null
+    override val abbreviation: KaUsualClassType? get() = abbrev
     override val annotations: KaAnnotationList get() = KcAnnotationList(emptyList(), round.token)
     override val qualifiers: List<KaResolvedClassTypeQualifier> get() = qualifiers(round, classId, typeArguments)
-    override fun withNullability(nullable: Boolean) =
-        if (nullable == marked) this else KcClassType(round, classId, typeArguments, nullable)
+    override fun withNullability(nullable: Boolean): KcClassType =
+        if (nullable == marked) this
+        else KcClassType(round, classId, typeArguments, nullable, abbrev?.withNullability(nullable), isAlias)
+    // The abbreviation isn't part of the type's identity, as in FIR.
     override fun equals(other: Any?) = other is KcClassType && other.classId == classId &&
-        other.marked == marked && other.typeArguments == typeArguments
+        other.marked == marked && other.isAlias == isAlias && other.typeArguments == typeArguments
     override fun hashCode() = classId.hashCode() * 31 + typeArguments.hashCode()
     override fun toString() = text(marked, classId.asFqNameString() +
         if (typeArguments.isEmpty()) "" else typeArguments.joinToString(", ", "<", ">"))
@@ -140,11 +156,13 @@ internal class KcFunctionType(
     override val marked: Boolean,
     override val hasReceiver: Boolean,
     internal val contexts: Int,
+    /** The typealias type the function type was written as. */
+    val abbrev: KcClassType? = null,
 ) : StubKaFunctionType(), KcBaseClassType {
     override val token get() = round.token
     override val symbol: KaClassLikeSymbol get() = round.classSymbol(classId)
     override val nullability get() = KaTypeNullability.create(marked)
-    override val abbreviation get() = null
+    override val abbreviation: KaUsualClassType? get() = abbrev
     override val annotations: KaAnnotationList get() = KcAnnotationList(emptyList(), round.token)
     override val qualifiers: List<KaResolvedClassTypeQualifier> get() = qualifiers(round, classId, typeArguments)
     private fun arg(i: Int) = typeArguments[i].type ?: KcClassType(round, ClassId.fromString("kotlin/Any"), marked = true)
@@ -158,7 +176,8 @@ internal class KcFunctionType(
     override val hasContextReceivers get() = contexts > 0
     override val contextReceivers: List<KaContextReceiver> get() = emptyList()
     override fun withNullability(nullable: Boolean) =
-        if (nullable == marked) this else KcFunctionType(round, classId, typeArguments, nullable, hasReceiver, contexts)
+        if (nullable == marked) this
+        else KcFunctionType(round, classId, typeArguments, nullable, hasReceiver, contexts, abbrev?.withNullability(nullable))
     override fun equals(other: Any?) = other is KcFunctionType && other.classId == classId &&
         other.marked == marked && other.hasReceiver == hasReceiver && other.typeArguments == typeArguments
     override fun hashCode() = classId.hashCode() * 31 + typeArguments.hashCode()
@@ -328,4 +347,8 @@ internal class KcClassTypeBuilder(override val token: KaLifetimeToken) : KaClass
     }
 
     fun build(round: KcRound, id: ClassId): KaType = KcClassType(round, id, arguments.toList(), isMarkedNullable)
+
+    /** The type of typealias [alias] with the builder's arguments: its expansion, abbreviated by it. */
+    fun build(round: KcRound, alias: KaTypeAliasSymbol): KaType =
+        round.expand(KcClassType(round, alias.classId!!, arguments.toList(), isMarkedNullable, isAlias = true))
 }

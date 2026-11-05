@@ -1,6 +1,7 @@
 package ka
 
 import (
+	"cmp"
 	"slices"
 	"strings"
 	"sync"
@@ -18,10 +19,17 @@ type library struct {
 	cp  *classpath.Path
 	lib *check.Library
 
-	mu      sync.Mutex
-	decls   map[string]*Decl             // by class ID; nil: no such class
-	params  map[string]map[string]string // annotation classes' parameters' types, see paramTypes
-	closeMu sync.Once
+	mu     sync.Mutex
+	decls  map[string]*Decl             // by class ID; nil: no such class
+	params map[string]map[string]string // annotation classes' parameters' types, see paramTypes
+	pkgs   map[string]*Package          // by name; nil: no such package
+
+	partsOnce  sync.Once
+	partsByPkg map[string][]kmeta.Part // see parts
+
+	defaultOnce sync.Once
+	defaults    map[string]*Decl // see defaultAliases
+	closeMu     sync.Once
 }
 
 // maxNesting bounds how deep Class models nested classes.
@@ -324,57 +332,14 @@ func (l *library) kotlinClass(id, name string, outer kscope, depth int) *Decl {
 		d.Members = append(d.Members, md)
 	}
 	for _, p := range kc.Props {
-		if p.Flags.MemberKind() == 1 {
-			continue
+		if p.Flags.MemberKind() != 1 {
+			d.Members = append(d.Members, l.kproperty(p, scope, bySig))
 		}
-		md := &Decl{Kind: KindProperty, Name: p.Name, Visibility: kvisibility(p.Flags.Visibility()),
-			Modality: Modality(p.Flags.Modality())}
-		pf := int(p.Flags)
-		for bit, f := range map[int]Flags{kmeta.PropVar: FlagMutable, kmeta.PropConst: FlagConst,
-			kmeta.PropLateinit: FlagLateinit, propExpect: FlagExpect, propExternal: FlagExternal} {
-			if pf&bit != 0 {
-				md.Flags |= f
-			}
-		}
-		ps := scope.with(p.TypeParams)
-		md.TypeParams = l.ktypeParams(p.TypeParams, ps)
-		if p.Recv != nil {
-			md.Receiver = l.ktype(p.Recv, ps, 0)
-		}
-		md.Type = l.ktype(p.Type, ps, 0)
-		if p.Flags&hasAnnotations != 0 && p.Synthetic != nil {
-			if m := bySig[p.Synthetic.Name+p.Synthetic.Desc]; m != nil {
-				md.Annotations = l.annotations(m.Annotations, true)
-			}
-		}
-		d.Members = append(d.Members, md)
 	}
 	for _, f := range kc.Funcs {
-		if f.Flags.MemberKind() == 1 {
-			continue
+		if f.Flags.MemberKind() != 1 {
+			d.Members = append(d.Members, l.kfunction(f, scope, bySig))
 		}
-		md := &Decl{Kind: KindFunction, Name: f.Name, Visibility: kvisibility(f.Flags.Visibility()),
-			Modality: Modality(f.Flags.Modality())}
-		ff := int(f.Flags)
-		for bit, fl := range map[int]Flags{kmeta.FunOperator: FlagOperator, kmeta.FunInfix: FlagInfix,
-			kmeta.FunInline: FlagInline, kmeta.FunTailrec: FlagTailrec, kmeta.FunExternal: FlagExternal,
-			kmeta.FunSuspend: FlagSuspend, kmeta.FunExpect: FlagExpect} {
-			if ff&bit != 0 {
-				md.Flags |= fl
-			}
-		}
-		fs := scope.with(f.TypeParams)
-		md.TypeParams = l.ktypeParams(f.TypeParams, fs)
-		if f.Recv != nil {
-			md.Receiver = l.ktype(f.Recv, fs, 0)
-		}
-		m := bySig[f.JVM.Name+f.JVM.Desc]
-		md.Params = l.kparams(f.Params, fs, m)
-		md.Type = l.ktype(f.Ret, fs, 0)
-		if f.Flags&hasAnnotations != 0 && m != nil {
-			md.Annotations = l.annotations(m.Annotations, true)
-		}
-		d.Members = append(d.Members, md)
 	}
 	for _, e := range kc.EnumEntries {
 		d.Members = append(d.Members, &Decl{Kind: KindEnumEntry, Name: e, ClassID: id + "." + e,
@@ -388,6 +353,59 @@ func (l *library) kotlinClass(id, name string, outer kscope, depth int) *Decl {
 		}
 	}
 	return d
+}
+
+// kproperty returns the model of property p from metadata, whose class
+// file's methods are bySig.
+func (l *library) kproperty(p *kmeta.Property, scope kscope, bySig map[string]*classfile.MemberDetails) *Decl {
+	md := &Decl{Kind: KindProperty, Name: p.Name, Visibility: kvisibility(p.Flags.Visibility()),
+		Modality: Modality(p.Flags.Modality())}
+	pf := int(p.Flags)
+	for bit, f := range map[int]Flags{kmeta.PropVar: FlagMutable, kmeta.PropConst: FlagConst,
+		kmeta.PropLateinit: FlagLateinit, propExpect: FlagExpect, propExternal: FlagExternal} {
+		if pf&bit != 0 {
+			md.Flags |= f
+		}
+	}
+	ps := scope.with(p.TypeParams)
+	md.TypeParams = l.ktypeParams(p.TypeParams, ps)
+	if p.Recv != nil {
+		md.Receiver = l.ktype(p.Recv, ps, 0)
+	}
+	md.Type = l.ktype(p.Type, ps, 0)
+	if p.Flags&hasAnnotations != 0 && p.Synthetic != nil {
+		if m := bySig[p.Synthetic.Name+p.Synthetic.Desc]; m != nil {
+			md.Annotations = l.annotations(m.Annotations, true)
+		}
+	}
+	return md
+}
+
+// kfunction returns the model of function f from metadata, whose class
+// file's methods are bySig.
+func (l *library) kfunction(f *kmeta.Function, scope kscope, bySig map[string]*classfile.MemberDetails) *Decl {
+	md := &Decl{Kind: KindFunction, Name: f.Name, Visibility: kvisibility(f.Flags.Visibility()),
+		Modality: Modality(f.Flags.Modality())}
+	ff := int(f.Flags)
+	for bit, fl := range map[int]Flags{kmeta.FunOperator: FlagOperator, kmeta.FunInfix: FlagInfix,
+		kmeta.FunInline: FlagInline, kmeta.FunTailrec: FlagTailrec, kmeta.FunExternal: FlagExternal,
+		kmeta.FunSuspend: FlagSuspend, kmeta.FunExpect: FlagExpect} {
+		if ff&bit != 0 {
+			md.Flags |= fl
+		}
+	}
+	fs := scope.with(f.TypeParams)
+	md.TypeParams = l.ktypeParams(f.TypeParams, fs)
+	if f.Recv != nil {
+		md.Receiver = l.ktype(f.Recv, fs, 0)
+	}
+	m := bySig[f.JVM.Name+f.JVM.Desc]
+	md.Params = l.kparams(f.Params, fs, m)
+	md.Type = l.ktype(f.Ret, fs, 0)
+	if f.Flags&hasAnnotations != 0 && m != nil {
+		md.Annotations = l.annotations(m.Annotations, true)
+	}
+	return md
 }
 
 // Bits of kmeta's Flags that it has no names for.
@@ -509,7 +527,11 @@ func (l *library) ktype(t *kmeta.Type, scope kscope, depth int) *Type {
 	if t.Upper != nil {
 		out.Nullable, out.Flexible = false, true
 	}
-	if t.Class == "" {
+	if t.Abbrev != nil && t.Abbrev.Alias != "" {
+		out.Abbrev = l.ktype(t.Abbrev, scope, depth+1)
+		out.Abbrev.Nullable = out.Nullable
+	}
+	if t.Class == "" && t.Alias == "" {
 		out.Kind = TypeParameter
 		out.Name = t.ParamName
 		if out.Name == "" {
@@ -522,7 +544,7 @@ func (l *library) ktype(t *kmeta.Type, scope kscope, depth int) *Type {
 		return out
 	}
 	out.Kind = TypeClass
-	out.ClassID = t.Class
+	out.ClassID = cmp.Or(t.Class, t.Alias)
 	out.Extension, out.Contexts = t.ExtFunc, t.Contexts
 	args := t.Args
 	if t.Flags&kmeta.TypeSuspend != 0 {

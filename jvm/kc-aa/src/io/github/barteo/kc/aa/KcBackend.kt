@@ -31,12 +31,14 @@ import org.jetbrains.kotlin.config.CompilerConfiguration
 import org.jetbrains.kotlin.config.JvmTarget
 import org.jetbrains.kotlin.config.LanguageVersionSettings
 import org.jetbrains.kotlin.config.LanguageVersionSettingsImpl
+import org.jetbrains.kotlin.fileClasses.JvmFileClassUtil
 import org.jetbrains.kotlin.load.java.structure.JavaAnnotationArgument
 import org.jetbrains.kotlin.load.kotlin.KotlinJvmBinaryClass
 import org.jetbrains.kotlin.load.kotlin.TypeMappingMode
 import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.platform.TargetPlatform
 import org.jetbrains.kotlin.platform.jvm.JvmPlatforms
+import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.psi.KtFile
 import java.io.File
 
@@ -99,7 +101,7 @@ private class KcSession(private val config: KSPConfig, disposable: Disposable) :
             KcOps.close(modelHandle)
         }
         modelHandle = model.handle
-        round = KcRound(joined) { id -> KcOps.cls(model.handle, id) }
+        round = KcRound(joined, { id -> KcOps.cls(model.handle, id) }, { fq -> KcOps.pkg(model.handle, fq) })
         provider.session = KcAnalysis.session(KcAnalysis(round, module))
     }
 
@@ -149,11 +151,32 @@ private object KcExtrasImpl : KcExtras {
     override fun optimalModeForValueParameter(type: KaType): TypeMappingMode =
         KcAnalysis.unsupported("KcExtras.optimalModeForValueParameter")
     override fun isRawType(type: KaType): Boolean = false
-    // TODO(M4): the model doesn't keep alias abbreviations yet.
-    override fun abbreviatedTypeAlias(type: KaFunctionType): ClassId? = null
-    override fun packagePartClass(symbol: KaCallableSymbol): ClassId? = KcAnalysis.unsupported("KcExtras.packagePartClass")
-    override fun binaryContainerClass(symbol: KaKotlinPropertySymbol): ClassId? =
-        KcAnalysis.unsupported("KcExtras.binaryContainerClass")
+    override fun abbreviatedTypeAlias(type: KaFunctionType): ClassId? = (type as? KcFunctionType)?.abbrev?.classId
+
+    /**
+     * The class that declares a top-level callable on the JVM: a library
+     * one's file facade or multi-file part, as FIR's JvmPackagePartSource
+     * has it; a source one's file facade (FIR has no part source for
+     * sources, and KSP asks only when the light facade class is missing).
+     */
+    override fun packagePartClass(symbol: KaCallableSymbol): ClassId? {
+        val info = when (val s = fakeOverrideOriginal(symbol)) {
+            is KcFunctionSymbol -> s.info
+            is KcPropertySymbol -> s.info
+            is KcGetterSymbol -> s.property.info
+            is KcSetterSymbol -> s.property.info
+            else -> return null
+        }
+        return when (val parent = info.parent) {
+            is KcPackageSymbol -> info.decl.classId.takeIf { it.isNotEmpty() }?.let(ClassId::fromString)
+            is KcFileSymbol -> ClassId.topLevel(fileFacadeClass(parent.psi))
+            else -> null
+        }
+    }
+    override fun fileFacadeClass(file: KtFile): FqName = JvmFileClassUtil.getFileClassInfoNoResolve(file).facadeClassFqName
+    // Null: KSP then asks the symbol's hasBackingField, which the model is
+    // to answer from the property's JVM field, not KSP's class file cache.
+    override fun binaryContainerClass(symbol: KaKotlinPropertySymbol): ClassId? = null
     /**
      * A library annotation parameter's default, from the model rather than
      * from [default] (kc gives KSP no Java class finder). Like FIR, it makes
