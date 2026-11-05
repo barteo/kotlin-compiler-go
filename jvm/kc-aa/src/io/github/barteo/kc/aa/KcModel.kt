@@ -252,6 +252,7 @@ internal class KcDecl(
         const val JAVA = 1L shl 22
         const val STATIC = 1L shl 23
         const val PRIMARY = 1L shl 24
+        const val BACKING_FIELD = 1L shl 25
 
         // Go's ka.Variance values.
         const val INVARIANT = 0

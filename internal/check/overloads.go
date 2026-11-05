@@ -48,6 +48,9 @@ type overload struct {
 // conflicts reports the conflicting declarations of the program's
 // packages and classes.
 func conflicts(checkers []*Checker) {
+	if len(checkers) == 0 {
+		return
+	}
 	u := checkers[0].u
 	if u.conflicted == nil {
 		u.conflicted = map[any]bool{}

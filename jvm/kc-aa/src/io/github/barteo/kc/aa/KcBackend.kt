@@ -174,8 +174,8 @@ private object KcExtrasImpl : KcExtras {
         }
     }
     override fun fileFacadeClass(file: KtFile): FqName = JvmFileClassUtil.getFileClassInfoNoResolve(file).facadeClassFqName
-    // Null: KSP then asks the symbol's hasBackingField, which the model is
-    // to answer from the property's JVM field, not KSP's class file cache.
+    // Null: KSP then asks the symbol's hasBackingField, which the model
+    // answers (FlagBackingField), not KSP's class file cache.
     override fun binaryContainerClass(symbol: KaKotlinPropertySymbol): ClassId? = null
     /**
      * A library annotation parameter's default, from the model rather than

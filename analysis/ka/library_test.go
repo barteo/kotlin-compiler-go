@@ -109,8 +109,8 @@ func TestLibraryClass(t *testing.T) {
   7 get v0 m2 f0x200 (index: kotlin/Int): E
 1 AbstractCoroutineContextKey [kotlin/coroutines/AbstractCoroutineContextKey] v0 m2 f0x0 @kotlin/SinceKotlin(version = "1.3") @kotlin/ExperimentalStdlibApi() @kotlin/Deprecated(message = "Polymorphic coroutine context keys are error-prone, difficult to implement correctly, and can encourage depending on implementation details. Prefer retrieving the element by its base key and casting it explicitly when needed or introducing a dedicated extension property.") @kotlin/DeprecatedSinceKotlin(warningSince = "2.4") <B : kotlin/coroutines/CoroutineContext.Element> <E : B> : kotlin/coroutines/CoroutineContext.Key<E>
   10 <init> v0 m0 f0x1000000 (baseKey: kotlin/coroutines/CoroutineContext.Key<B>, safeCast: kotlin/Function1<kotlin/coroutines/CoroutineContext.Element, E?>)
-  8 safeCast v1 m0 f0x0: kotlin/Function1<kotlin/coroutines/CoroutineContext.Element, E?>
-  8 topmostKey v1 m0 f0x0: kotlin/coroutines/CoroutineContext.Key<*>
+  8 safeCast v1 m0 f0x2000000: kotlin/Function1<kotlin/coroutines/CoroutineContext.Element, E?>
+  8 topmostKey v1 m0 f0x2000000: kotlin/coroutines/CoroutineContext.Key<*>
   7 tryCast v3 m0 f0x0 (element: kotlin/coroutines/CoroutineContext.Element): E?
   7 isSubKey v3 m0 f0x0 (key: kotlin/coroutines/CoroutineContext.Key<*>): kotlin/Boolean
 `

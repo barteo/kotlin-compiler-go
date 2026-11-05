@@ -274,6 +274,8 @@ internal class KcFakePropertySymbol(
     override val isExpect get() = original.isExpect
     override val isActual get() = original.isActual
     override val isDelegated get() = original.isDelegated
+    // FIR's substitution and intersection overrides have no backing field.
+    override val hasBackingField get() = false
     override val isExtension get() = original.isExtension
     override val isStatic get() = false
     override val returnType: KaType by lazy { sub.substitute(original.returnType) }

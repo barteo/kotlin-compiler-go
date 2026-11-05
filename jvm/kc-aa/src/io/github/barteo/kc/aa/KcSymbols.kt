@@ -324,6 +324,7 @@ internal class KcPropertySymbol(val info: KcInfo) : StubKaKotlinPropertySymbol()
     override val typeParameters: List<KaTypeParameterSymbol> get() = typeParams
     override val hasGetter get() = true
     override val hasSetter get() = !isVal
+    override val hasBackingField get() = info.decl.has(KcDecl.BACKING_FIELD)
     // kc doesn't report backing fields yet, so @field: annotations are dropped.
     override val backingFieldSymbol: KaBackingFieldSymbol? get() = null
     override fun createPointer(): KaSymbolPointer<KaKotlinPropertySymbol> = info.pointer()

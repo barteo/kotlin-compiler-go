@@ -367,6 +367,9 @@ func (l *library) kproperty(p *kmeta.Property, scope kscope, bySig map[string]*c
 			md.Flags |= f
 		}
 	}
+	if p.Field != nil {
+		md.Flags |= FlagBackingField
+	}
 	ps := scope.with(p.TypeParams)
 	md.TypeParams = l.ktypeParams(p.TypeParams, ps)
 	if p.Recv != nil {

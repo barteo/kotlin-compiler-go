@@ -15,6 +15,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"runtime/debug"
 	"slices"
 	"strings"
 	"sync"
@@ -123,6 +124,10 @@ const (
 	FlagJava    // a declaration of a Java class
 	FlagStatic  // a Java class's static member or nested class, or a library Kotlin class's nested class that isn't inner
 	FlagPrimary // a class's primary constructor
+	// FlagBackingField is set on a property that has a backing field: one
+	// with a default accessor or one that uses field, not abstract and not
+	// delegated; in a library, one whose metadata names its field.
+	FlagBackingField
 )
 
 // Model is the declarations of a module's sources as they were when Update
@@ -307,9 +312,32 @@ func lowerAll(snaps []*psi.Snapshot, m *Model) ([]*syntax.File, []*lower.Provena
 
 // checkPanic is a checker crash, which only sources with syntax errors are
 // expected to cause.
-type checkPanic struct{ v any }
+// Its message ends with the stack from where the checker panicked.
+type checkPanic struct {
+	v     any
+	stack string
+}
 
-func (p checkPanic) Error() string { return fmt.Sprintf("ka: checker panic: %v", p.v) }
+func (p checkPanic) Error() string { return fmt.Sprintf("ka: checker panic: %v\n%s", p.v, p.stack) }
+
+// panicStack returns the frames of the goroutine's stack below the
+// panic call, at most 16 of them.
+func panicStack() string {
+	s := string(debug.Stack())
+	if i := strings.Index(s, "\npanic("); i >= 0 {
+		s = s[i+1:]
+		if j := strings.Index(s, "\n\t"); j >= 0 {
+			if k := strings.IndexByte(s[j+2:], '\n'); k >= 0 {
+				s = s[j+2+k+1:] // drop panic's own frame
+			}
+		}
+	}
+	lines := strings.Split(strings.TrimRight(s, "\n"), "\n")
+	if len(lines) > 32 {
+		lines = lines[:32]
+	}
+	return strings.Join(lines, "\n")
+}
 
 func checkFiles(ctx context.Context, files []*syntax.File, lib *check.Library, jobs int) (rec *recorder, errs []*syntax.Error, err error) {
 	rec = &recorder{annots: map[*syntax.File]map[syntax.Pos]*types.ClassSym{},
@@ -317,7 +345,7 @@ func checkFiles(ctx context.Context, files []*syntax.File, lib *check.Library, j
 		aliases: map[*syntax.TypeRef]*types.AliasSym{}}
 	defer func() {
 		if v := recover(); v != nil {
-			err = checkPanic{v}
+			err = checkPanic{v, panicStack()}
 		}
 	}()
 	errs, err = check.CheckContext(ctx, files, lib, jobs, rec)

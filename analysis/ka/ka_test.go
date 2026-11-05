@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
 	"testing"
 
@@ -313,7 +314,7 @@ typealias Names = List<String>
   <T m0 f0x0 v2 <: kotlin/Comparable<T>
   <init> m0 f0x1000000
     (items m0 f0x0 : kotlin/collections/List<T>
-  items m0 f0x0 : kotlin/collections/List<T>
+  items m0 f0x2000000 : kotlin/collections/List<T>
   first m2 f0x0 : T
   size m1 f0x0 : kotlin/Int
   iterator m1 f0x100000 : kotlin/collections/Iterator<T>
@@ -328,15 +329,15 @@ Point m0 f0x2 <: kotlin/Comparable<p/Point>
   <init> m0 f0x1000000
     (x m0 f0x0 : kotlin/Int
     (y m0 f0x80000 : kotlin/Double
-  x m0 f0x0 : kotlin/Int
-  y m0 f0x8000 : kotlin/Double
+  x m0 f0x2000000 : kotlin/Int
+  y m0 f0x2008000 : kotlin/Double
   compareTo m1 f0x100000 : kotlin/Int
     (other m0 f0x0 : p/Point
   cast m0 f0x80 : R
     <R m0 f0x200000
     (f m0 f0x0 : kotlin/Function1<p/Point, R>
     (g m0 f0x0 : ext kotlin/Function2<kotlin/String, kotlin/Int, kotlin/Unit>
-  label m0 f0xc000 : kotlin/String
+  label m0 f0x200c000 : kotlin/String
 Shape m3 f0x0 <: kotlin/Any
 Color m0 f0x0 <: kotlin/Enum<p/Color>
   <init> m0 f0x1000000
@@ -345,7 +346,7 @@ Color m0 f0x0 <: kotlin/Enum<p/Color>
 Tag m0 f0x0 <: kotlin/Annotation
   <init> m0 f0x1000000
     (value m0 f0x0 : kotlin/String
-  value m0 f0x0 : kotlin/String
+  value m0 f0x2000000 : kotlin/String
 orNull m0 f0x0 recv=T : T?
   <T m0 f0x0
 nn m0 f0x0 : T
@@ -353,8 +354,8 @@ nn m0 f0x0 : T
   (t m0 f0x0 : T & Any
 ranges m0 f0x0 : kotlin/ranges/IntRange
   (n m0 f0x0 : kotlin/Int
-inferred m0 f0x0 : kotlin/collections/List<kotlin/Pair<kotlin/Int, kotlin/String>>
-K m0 f0x2000 : kotlin/Int
+inferred m0 f0x2000000 : kotlin/collections/List<kotlin/Pair<kotlin/Int, kotlin/String>>
+K m0 f0x2002000 : kotlin/Int
 broken m0 f0x0 : !Missing!
 java m0 f0x0 : java/lang/StringBuilder
 props m0 f0x0 : kotlin/String?
@@ -362,5 +363,88 @@ Names m0 f0x0 : kotlin/collections/List<kotlin/String>
 `
 	if got := sb.String(); got != want {
 		t.Errorf("got\n%s\nwant\n%s", got, want)
+	}
+}
+
+// TestEmpty checks a module without Kotlin sources, as a KSP module with
+// only Java sources is.
+func TestEmpty(t *testing.T) {
+	m := updateWith(t, withStdlib(t))
+	defer m.Close()
+	if len(m.Files) != 0 {
+		t.Errorf("files: %d, want 0", len(m.Files))
+	}
+	if p := m.Package("kotlin"); p == nil {
+		t.Error("package kotlin: nil")
+	}
+}
+
+// TestBackingField checks which properties have a backing field.
+func TestBackingField(t *testing.T) {
+	m := update(t, `package p
+import kotlin.properties.Delegates
+abstract class C(val ctor: Int, plain: Int) {
+	val init = 1
+	val getter get() = 1
+	var usesField = 1
+		get() = field + 1
+	var customSetter: Int = 0
+		set(v) {}
+	var customBoth: Int
+		get() = 0
+		set(v) {}
+	val delegated by lazy { 1 }
+	var observed: Int by Delegates.notNull()
+	abstract val abs: Int
+	lateinit var late: String
+	val Int.ext get() = this
+	val explicit: List<Int>
+		field = mutableListOf()
+}
+interface I {
+	val inInterface: Int
+	val withGetter get() = 1
+}
+val topLevel = 1
+const val constant = "c"
+`)
+	defer m.Close()
+	var got []string
+	var walk func(ds []*Decl)
+	walk = func(ds []*Decl) {
+		for _, d := range ds {
+			if d.Kind == KindProperty {
+				got = append(got, fmt.Sprintf("%s=%v", d.Name, d.Flags&FlagBackingField != 0))
+			}
+			walk(d.Members)
+		}
+	}
+	walk(m.Files[0].Decls)
+	for _, id := range []string{"kotlin/Pair", "kotlin/text/Regex", "kotlin/collections/AbstractList"} {
+		c := m.Class(id)
+		if c == nil {
+			t.Fatalf("%s: nil", id)
+		}
+		for _, d := range c.Members {
+			if d.Kind == KindProperty && slices.Contains([]string{"first", "pattern", "options", "size", "modCount"}, d.Name) {
+				got = append(got, fmt.Sprintf("%s.%s=%v", id, d.Name, d.Flags&FlagBackingField != 0))
+			}
+		}
+	}
+	for _, d := range m.Package("kotlin.collections").Decls {
+		if d.Name == "lastIndex" && d.Kind == KindProperty {
+			got = append(got, fmt.Sprintf("kotlin.collections.%s=%v", d.Name, d.Flags&FlagBackingField != 0))
+			break
+		}
+	}
+	want := []string{
+		"ctor=true", "init=true", "getter=false", "usesField=true", "customSetter=true", "customBoth=false",
+		"delegated=false", "observed=false", "abs=false", "late=true", "ext=false", "explicit=true",
+		"inInterface=false", "withGetter=false", "topLevel=true", "constant=true",
+		"kotlin/Pair.first=true", "kotlin/text/Regex.pattern=false", "kotlin/text/Regex.options=false",
+		"kotlin/collections/AbstractList.size=false", "kotlin.collections.lastIndex=false",
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("got\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
 	}
 }

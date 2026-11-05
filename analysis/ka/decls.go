@@ -39,6 +39,9 @@ func (b *fileBuilder) decl(d syntax.Decl, owner *syntax.ClassDecl, prefix string
 			Visibility: visibility(d.Visibility), Annotations: b.annotations(d.Annotations),
 			Flags: propFlags(&d.Modifiers, d.Mutable)}
 		md.Modality = memberModality(&d.Modifiers, owner, d.Init == nil && d.Getter == nil)
+		if d.Sym != nil && d.Field == nil && !d.Expect && (d.Sym.HasField() || d.BackingField != nil) {
+			md.Flags |= FlagBackingField
+		}
 		md.TypeParams = b.typeParams(d.TypeParams)
 		md.Receiver = b.written(d.Recv)
 		if d.Sym != nil {
@@ -103,7 +106,7 @@ func (b *fileBuilder) class(d *syntax.ClassDecl, prefix string) *Decl {
 			}
 			mp := &Decl{Kind: KindProperty, Name: p.Name, Node: b.prov.Node(p),
 				Visibility: visibility(p.Visibility), Annotations: b.annotations(p.Modifiers.Annotations),
-				Flags: propFlags(&p.Modifiers, p.Mutable)}
+				Flags: propFlags(&p.Modifiers, p.Mutable) | FlagBackingField}
 			mp.Modality = memberModality(&p.Modifiers, d, false)
 			if p.PropSym != nil {
 				mp.Type = b.typ(p.PropSym.Type, p.Type)
