@@ -10,11 +10,13 @@ import com.google.devtools.ksp.processing.KSPJvmConfig
 import com.google.devtools.ksp.symbol.KSFile
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.util.ModificationTracker
 import com.intellij.openapi.vfs.StandardFileSystems
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.vfs.VirtualFileManager
 import com.intellij.psi.PsiManager
 import org.jetbrains.kotlin.analysis.api.annotations.KaAnnotationValue
+import org.jetbrains.kotlin.analysis.api.platform.modification.KotlinModificationTrackerFactory
 import org.jetbrains.kotlin.analysis.api.projectStructure.KaModule
 import org.jetbrains.kotlin.analysis.api.session.KaSessionProvider
 import org.jetbrains.kotlin.analysis.api.symbols.KaCallableSymbol
@@ -79,8 +81,9 @@ private class KcSession(private val config: KSPConfig, disposable: Disposable) :
     init {
         // MockProject.registerService, called reflectively: kotlinc can't see
         // MockProject's supertypes in kotlin-compiler's IntelliJ core.
-        project.javaClass.getMethod("registerService", Class::class.java, Any::class.java)
-            .invoke(project, KaSessionProvider::class.java, provider)
+        val register = project.javaClass.getMethod("registerService", Class::class.java, Any::class.java)
+        register.invoke(project, KaSessionProvider::class.java, provider)
+        register.invoke(project, KotlinModificationTrackerFactory::class.java, KcModificationTrackers)
         (config.sourceRoots + config.commonSourceRoots).distinct().forEach { root ->
             root.walkTopDown().filter { it.isFile && it.extension == "kt" }.sortedBy { it.path }
                 .forEach { paths += it.canonicalPath }
@@ -128,6 +131,16 @@ private class KcSession(private val config: KSPConfig, disposable: Disposable) :
         }
         KcOps.close(handle)
     }
+}
+
+/**
+ * Trackers that never change: KSP's KotlinAlwaysAccessibleLifetimeTokens
+ * (type projections it builds, synthetic annotations) watch the source
+ * tracker. kc's own lifetime token ends with the round instead.
+ */
+private object KcModificationTrackers : KotlinModificationTrackerFactory {
+    override fun createProjectWideSourceModificationTracker(): ModificationTracker = ModificationTracker.NEVER_CHANGED
+    override fun createProjectWideLibraryModificationTracker(): ModificationTracker = ModificationTracker.NEVER_CHANGED
 }
 
 /** The module KSP processes. */

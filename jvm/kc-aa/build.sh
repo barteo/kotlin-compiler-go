@@ -9,7 +9,7 @@
 # that prints the annotated symbols (test/PrintAnnotated.kt), and compares
 # the output with test/slice/want.txt; then it runs Moshi's KSP codegen over
 # test/moshi/src (test/RunKsp.kt) and compares what it generates with
-# test/moshi/want.
+# test/moshi/want, and Dagger's over test/dagger/src with test/dagger/want.
 #
 # The symbol classes extend generated stubs (build/Stubs.kt, made by
 # gen/GenStubs.kt) whose members throw UnsupportedOperationException("kc:
@@ -120,5 +120,35 @@ LD_PRELOAD=$java_home/lib/libjsig.so java -Dksp.backend=kc -Dkc.lib="$out/libkc.
 	-cp "$out/runksp-classes:$out/kc-aa.jar:$deps$procs" RunKspKt \
 	"$here/test/moshi/src" "$out/moshi" "$lib/kotlin-stdlib-2.4.21.jar:$out/m2/moshi-1.15.2.jar:$out/m2/okio-jvm-3.7.0.jar" \
 	> "$out/moshi.txt"
+rm -rf "$out/moshi/caches"
 diff -ru "$here/test/moshi/want" "$out/moshi"
 echo "moshi: ok"
+
+# Dagger's KSP processor (XProcessing) over test/dagger/src. Its jars come
+# first: kotlin-compiler bundles an older Guava, and KSP proper would load
+# processors in a class loader of their own.
+procs=
+for jar in com/google/dagger/dagger-compiler/2.59.2/dagger-compiler-2.59.2.jar \
+	com/google/dagger/dagger-spi/2.59.2/dagger-spi-2.59.2.jar \
+	com/google/dagger/dagger/2.59.2/dagger-2.59.2.jar \
+	javax/inject/javax.inject/1/javax.inject-1.jar \
+	jakarta/inject/jakarta.inject-api/2.0.1/jakarta.inject-api-2.0.1.jar \
+	com/google/code/findbugs/jsr305/3.0.2/jsr305-3.0.2.jar \
+	com/google/guava/guava/33.0.0-jre/guava-33.0.0-jre.jar \
+	com/google/guava/failureaccess/1.0.2/failureaccess-1.0.2.jar \
+	com/squareup/javapoet/1.13.0/javapoet-1.13.0.jar \
+	com/squareup/kotlinpoet/1.11.0/kotlinpoet-1.11.0.jar \
+	com/google/googlejavaformat/google-java-format/1.33.0/google-java-format-1.33.0.jar \
+	org/jetbrains/kotlin/kotlin-metadata-jvm/2.2.20/kotlin-metadata-jvm-2.2.20.jar; do
+	fetch "$jar"
+	procs=$procs:$out/m2/$(basename "$jar")
+done
+rm -rf "$out/dagger"
+LD_PRELOAD=$java_home/lib/libjsig.so java -Dksp.backend=kc -Dkc.lib="$out/libkc.so" -Didea.home.path="$out" \
+	-cp "$out/runksp-classes$procs:$out/kc-aa.jar:$deps" RunKspKt \
+	"$here/test/dagger/src" "$out/dagger" \
+	"$lib/kotlin-stdlib-2.4.21.jar:$out/m2/dagger-2.59.2.jar:$out/m2/javax.inject-1.jar:$out/m2/jakarta.inject-api-2.0.1.jar" \
+	> "$out/dagger.txt"
+rm -rf "$out/dagger/caches"
+diff -ru "$here/test/dagger/want" "$out/dagger"
+echo "dagger: ok"

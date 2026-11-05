@@ -215,6 +215,11 @@ class KcAnalysis internal constructor(internal val round: KcRound, private val m
         else b.build(round, symbol.classId ?: unsupported("class type of local $symbol"))
     }
 
+    fun buildTypeParameterType(symbol: KaTypeParameterSymbol, init: Function1<Any?, Unit>): KaType {
+        val b = KcTypeParameterTypeBuilder(round.token).also { init(it) }
+        return KcTypeParameterType(round, symbol.name, symbol, b.isMarkedNullable)
+    }
+
     // KaTypeRelationChecker
     fun getDirectSupertypes(type: KaType): Sequence<KaType> = directSupertypes(type, true)
     fun directSupertypes(type: KaType, shouldApproximate: Boolean): Sequence<KaType> =

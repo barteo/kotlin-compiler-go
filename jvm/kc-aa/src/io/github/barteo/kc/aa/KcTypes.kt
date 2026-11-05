@@ -20,6 +20,7 @@ import org.jetbrains.kotlin.analysis.api.types.KaStarTypeProjection
 import org.jetbrains.kotlin.analysis.api.types.KaType
 import org.jetbrains.kotlin.analysis.api.components.KaBuiltinTypes
 import org.jetbrains.kotlin.analysis.api.components.KaClassTypeBuilder
+import org.jetbrains.kotlin.analysis.api.components.KaTypeParameterTypeBuilder
 import org.jetbrains.kotlin.analysis.api.types.KaTypeArgumentWithVariance
 import org.jetbrains.kotlin.analysis.api.types.KaTypeNullability
 import org.jetbrains.kotlin.analysis.api.types.KaTypeProjection
@@ -351,4 +352,13 @@ internal class KcClassTypeBuilder(override val token: KaLifetimeToken) : KaClass
     /** The type of typealias [alias] with the builder's arguments: its expansion, abbreviated by it. */
     fun build(round: KcRound, alias: KaTypeAliasSymbol): KaType =
         round.expand(KcClassType(round, alias.classId!!, arguments.toList(), isMarkedNullable, isAlias = true))
+}
+
+internal class KcTypeParameterTypeBuilder(override val token: KaLifetimeToken) : KaTypeParameterTypeBuilder {
+    override var isMarkedNullable = false
+    override var nullability: KaTypeNullability
+        get() = KaTypeNullability.create(isMarkedNullable)
+        set(value) {
+            isMarkedNullable = value == KaTypeNullability.NULLABLE
+        }
 }

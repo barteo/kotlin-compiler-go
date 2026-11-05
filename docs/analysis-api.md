@@ -69,7 +69,7 @@ mapping.
 | M0.4 | Vertical slice: list annotated source classes through a `kc` KspBackend: `jvm/kc-aa/build.sh test` | done, see gaps |
 | M1 | `psi` on Kotlin 2.4.21 | done before this work |
 | M2 | Error tolerance, `types.Invalid` payload, extension-vs-top-level overload bug, `@Contextual`/`@EncodeDefault` | done (two items moved, see M2) |
-| M3 | Richer symbol model: visibility and modality enums, flags, origins, library annotation arguments, Java parameter names | in progress: source types, flags, modality; KaTypes on the JVM; annotation arguments; library classes; inherited members, overrides, subtyping; packages, library top-level declarations, alias abbreviations; JVM type mapping, Moshi codegen end to end |
+| M3 | Richer symbol model: visibility and modality enums, flags, origins, library annotation arguments, Java parameter names | in progress: source types, flags, modality; KaTypes on the JVM; annotation arguments; library classes; inherited members, overrides, subtyping; packages, library top-level declarations, alias abbreviations; JVM type mapping, Moshi codegen end to end; backing fields, Dagger end to end |
 | M4 | Queryable session `analysis/ka`: lookups, scopes, relations, overrides | |
 | M5 | Bridge: `cmd/libkc` operations, `tools/kagen` wire format, `jvm/kc-aa` KaSession | |
 | M6 | KSP fork integration: the `kc` backend, IC lookups, hot paths | |
@@ -550,9 +550,9 @@ Known gaps:
 - Annotations on library typealiases aren't decoded.
 - Private library top-level declarations are listed; FIR lists them too, but
   KSP filters them only by visibility checks it doesn't always run.
-- `KcExtras.binaryContainerClass` returns null, so KSP's
+- ~~`KcExtras.binaryContainerClass` returns null, so KSP's
   `hasBackingField` asks the symbol's `hasBackingField`, which kc doesn't
-  answer yet for any property.
+  answer yet for any property.~~ Answered in step 8.
 - Expanding an alias turns a star argument into the parameter's bound.
 - Package scopes don't list subpackages.
 - A library package's classes are all loaded when its scope is first built.
@@ -627,9 +627,77 @@ Known gaps:
   wildcards, and no value-class wrapping modes.
 - A value class whose underlying type is a type parameter or another value
   class is mapped one level at a time, without FIR's special cases.
-- `hasBackingField` is still unanswered. Moshi doesn't ask for it.
+- ~~`hasBackingField` is still unanswered. Moshi doesn't ask for it.~~
+  Answered in step 8.
 - Moshi's reflective (`moshi-kotlin`) path and the `generateAdapter =
   false`/`generator` options aren't exercised.
+
+#### Step 8: backing fields; Dagger end to end
+
+The second real processor: Dagger's KSP processor (`dagger-compiler`
+2.59.2, built on XProcessing) runs over a small component module on the
+`kc` backend and generates a working component.
+
+- **Backing fields.** XProcessing lists a class's fields through KSP's
+  `hasBackingField`, so the model now has `FlagBackingField` (`ka.go`,
+  mirrored as `KcDecl.BACKING_FIELD`), with FIR's meaning:
+  - a source property has one if it has a default accessor, uses `field`,
+    or declares an explicit backing field, and isn't abstract, `expect` or
+    delegated (`lateinit`, `const` and constructor properties have one; an
+    interface property and an extension property don't);
+  - a library property has one if its metadata names a JVM field
+    (`Pair.first` does; `Regex.options`, a getter over a private
+    `_options`, doesn't);
+  - substitution and intersection overrides have none.
+
+  `TestBackingField` covers these cases.
+- **Empty modules.** `check.conflicts` indexed the first file of a module
+  with none and panicked. A KSP module with only Java sources has none.
+  It now returns early, and `TestEmpty` checks such a module.
+- **Panic stacks.** A checker panic that `ka` turns into an error now
+  carries the panicking goroutine's frames, so a crash inside libkc can
+  be found from the JVM's exception message.
+- **`buildTypeParameterType`** (`KSClassDeclaration.asType` with type
+  arguments) and **a `KotlinModificationTrackerFactory`** registered in the
+  project. KSP builds `KotlinAlwaysAccessibleLifetimeToken`s for type
+  projections and synthetic annotations, and they watch the source
+  tracker. kc's trackers never change: its own token ends with the round.
+- **`build.sh test`** downloads Dagger and its dependencies into
+  `build/m2` and runs the processor over `test/dagger/src`:
+  - an `@Inject` class and a `@Singleton` one with a `@Named` dependency;
+  - `Lazy` and `Provider` requests;
+  - a `@Module object` with `@Provides` and `@IntoSet`;
+  - a `@Module interface` with `@Binds`;
+  - members injection of `lateinit` properties;
+  - a `@Component` with a `@Component.Factory` taking a `@BindsInstance Int`.
+
+  It compares the seven Java files with `test/dagger/want` and prints
+  "dagger: ok".
+
+  The processor jars come first on the class path, because
+  `kotlin-compiler` bundles an older Guava that breaks Dagger's
+  `common.graph` use. Real KSP loads processors in a class loader of their
+  own. The Moshi and Dagger steps now drop KSP's `caches` directory before
+  comparing. A stray, untracked `test/moshi/want/caches` had made the Moshi
+  comparison pass only locally.
+- **Checks of the output.**
+  - Scopes and qualifiers are right: `@ScopeMetadata("javax.inject.Singleton")`
+    and `@QualifierMetadata("javax.inject.Named")`.
+  - `Repo_Factory.newInstance` takes `int port`.
+  - javac compiles the generated sources against the models compiled by
+    kotlinc 2.4.21, and against the models compiled by kc.
+  - A driver gives the same results with both: the singleton is shared,
+    the binding resolves, the set holds the plugin, and members injection
+    sets both properties.
+
+Known gaps:
+- No stock-KSP reference output: the AA standalone jars are blocked here,
+  so `test/dagger/want` is kc's output, checked by compiling and running
+  it rather than by a diff against kotlinc+KSP.
+- Hilt, assisted injection, subcomponents, map multibindings, and Java
+  sources in the module aren't exercised.
+- Source annotation-class properties report a backing field (as FIR's
+  source properties do); library ones don't.
 
 ## Gaps and open questions
 
