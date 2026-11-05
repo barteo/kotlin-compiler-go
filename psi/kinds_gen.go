@@ -3,7 +3,7 @@
 package psi
 
 // KindsHash is the SHA-256 of psi/kinds.txt.
-const KindsHash = "a98ea9e2884d4eb66d2028f56d0430f51a67743aecc698ccab96156baff3d756"
+const KindsHash = "a9896a0d1af249df30b27ce7975461930ec5b95bd8f92491044609bab1338316"
 
 // Kind identifies a node's element type. Numbers are stable across releases.
 type Kind uint16
@@ -270,7 +270,7 @@ const (
 	KindLABELED_EXPRESSION
 	KindCONTEXT_KEYWORD
 	KindCONTEXT_RECEIVER
-	KindCONTEXT_RECEIVER_LIST
+	KindCONTEXT_PARAMETER_LIST
 	KindANNOTATION
 	KindBACKING_FIELD
 	KindCONTRACT_EFFECT
@@ -286,6 +286,9 @@ const (
 	KindCONTRACT_KEYWORD
 	KindHEADER_KEYWORD
 	KindIMPL_KEYWORD
+	KindCOMPANION_BLOCK
+	KindSTRING_INTERPOLATION_PREFIX
+	KindALL_KEYWORD
 )
 
 var kindNames = [...]string{"",
@@ -548,7 +551,7 @@ var kindNames = [...]string{"",
 	"LABELED_EXPRESSION",
 	"CONTEXT_KEYWORD",
 	"CONTEXT_RECEIVER",
-	"CONTEXT_RECEIVER_LIST",
+	"CONTEXT_PARAMETER_LIST",
 	"ANNOTATION",
 	"BACKING_FIELD",
 	"CONTRACT_EFFECT",
@@ -564,6 +567,9 @@ var kindNames = [...]string{"",
 	"CONTRACT_KEYWORD",
 	"HEADER_KEYWORD",
 	"IMPL_KEYWORD",
+	"COMPANION_BLOCK",
+	"STRING_INTERPOLATION_PREFIX",
+	"ALL_KEYWORD",
 }
 
 // KindCount is one more than the largest Kind.

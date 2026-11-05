@@ -1,6 +1,6 @@
 # psidump
 
-`PsiDump.java` writes the PSI tree that stock Kotlin 2.0.21 builds for a
+`PsiDump.java` writes the PSI tree that stock Kotlin 2.4.21 builds for a
 source file. The psi package's tree-shape goldens in `psi/testdata/trees`
 come from it. CI never runs it, so the Go tests need no JVM.
 
@@ -12,11 +12,11 @@ Fetch these from Maven Central (`repo.maven.apache.org/maven2` or
 | Artifact | SHA-256 |
 |---|---|
 | `annotations-13.0.jar` | `ace2a10dc8e2d5fd34925ecac03e4988b2c0f851650c94b8cef49ba1bd111478` |
-| `kotlin-compiler-embeddable-2.0.21.jar` | `9fa8cdd1de0dccffe154c997d423ec6b5f53cd6d9177e3a77a9b0de03fb1bc81` |
+| `kotlin-compiler-embeddable-2.4.21.jar` | `ef19419c765e7ac8404465fa026ca8fc4dbb8a822de0fc79aa53c8dce29f1d02` |
 | `kotlin-reflect-1.6.10.jar` | `3277ac102ae17aad10a55abec75ff5696c8d109790396434b496e75087854203` |
-| `kotlin-script-runtime-2.0.21.jar` | `9c111f8d08ade455566272d561921adc2b2cb6b7a4ccee38d9829c5e3a1ca6a3` |
-| `kotlin-stdlib-2.0.21.jar` | `f31cc53f105a7e48c093683bbd5437561d1233920513774b470805641bedbc09` |
-| `kotlinx-coroutines-core-jvm-1.6.4.jar` | `c24c8bb27bb320c4a93871501a7e5e0c61607638907b197aef675513d4c820be` |
+| `kotlin-script-runtime-2.4.21.jar` | `a658cf5902a1525a06c264a5e42b437e97a6679ddeef8ca641246f270cf6a013` |
+| `kotlin-stdlib-2.4.21.jar` | `bd8250210584cb659847dce9cda660f8e9906e5def7fbebcea93dc6dcb6a88a3` |
+| `kotlinx-coroutines-core-jvm-1.8.0.jar` | `9860906a1937490bf5f3b06d2f0e10ef451e65b95b269f22daf68a3d1f5065c5` |
 | `trove4j-1.0.20200330.jar` | `c5fd725bffab51846bf3c77db1383c60aaaebfe1b7fe2f00d23fe1b7df0a439d` |
 
 ## Run

@@ -221,8 +221,10 @@ func (m Marker) Done(k Kind) {
 	d.typ = k
 	d.done = true
 	// PsiBuilderImpl.processDone: an empty left-bound element binds to the
-	// previous token. Only these two Kotlin types are KtLeftBoundNodeType.
-	if (k == KindCONSTRUCTOR_DELEGATION_CALL || k == KindCONSTRUCTOR_DELEGATION_REFERENCE) && m.b.isEmpty(int(d.start), m.b.cur) {
+	// previous token. The left-bound types are the two Kotlin
+	// KtLeftBoundNodeTypes and, since the IntelliJ platform bundled with
+	// Kotlin 2.4, TokenType.ERROR_ELEMENT.
+	if (k == KindCONSTRUCTOR_DELEGATION_CALL || k == KindCONSTRUCTOR_DELEGATION_REFERENCE || k == KindERROR_ELEMENT) && m.b.isEmpty(int(d.start), m.b.cur) {
 		d.left = defaultRightBinder
 	}
 	m.b.prods = append(m.b.prods, prod{m: m.i, lex: int32(m.b.cur), kind: prodDone})

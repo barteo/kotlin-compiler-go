@@ -33,8 +33,8 @@ func stdlib() string {
 }
 
 // skipPSIGrammar skips a test of srcs under the psi frontend if one of
-// them is Kotlin kc parses but stock Kotlin 2.0.21's grammar, which psi
-// follows, doesn't: context parameters, context(x: T), for one.
+// them is Kotlin kc parses but stock Kotlin 2.4.21's grammar, which psi
+// follows, doesn't.
 func skipPSIGrammar(t *testing.T, srcs ...string) {
 	t.Helper()
 	for _, path := range srcs {

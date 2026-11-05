@@ -1,7 +1,7 @@
 package psi
 
 // Port of AbstractKotlinParsing and the token-stream pattern helpers from
-// Kotlin 2.0.21 (see THIRD_PARTY_NOTICES.md). Java's overloads become
+// Kotlin 2.4.21 (see THIRD_PARTY_NOTICES.md). Java's overloads become
 // separate methods: expect(k), expectMsg(k, msg), expectRS(k, msg, rs).
 
 type abstractParsing struct {

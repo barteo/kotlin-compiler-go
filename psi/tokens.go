@@ -71,11 +71,12 @@ var (
 		"constructor": KindCONSTRUCTOR_KEYWORD, "init": KindINIT_KEYWORD, "sealed": KindSEALED_KEYWORD,
 		"field": KindFIELD_KEYWORD, "property": KindPROPERTY_KEYWORD, "receiver": KindRECEIVER_KEYWORD,
 		"param": KindPARAM_KEYWORD, "setparam": KindSETPARAM_KEYWORD, "delegate": KindDELEGATE_KEYWORD,
+		"all":      KindALL_KEYWORD,
 		"lateinit": KindLATEINIT_KEYWORD, "data": KindDATA_KEYWORD, "inline": KindINLINE_KEYWORD,
 		"noinline": KindNOINLINE_KEYWORD, "tailrec": KindTAILREC_KEYWORD, "external": KindEXTERNAL_KEYWORD,
 		"annotation": KindANNOTATION_KEYWORD, "crossinline": KindCROSSINLINE_KEYWORD, "const": KindCONST_KEYWORD,
 		"operator": KindOPERATOR_KEYWORD, "infix": KindINFIX_KEYWORD, "suspend": KindSUSPEND_KEYWORD,
-		"header": KindHEADER_KEYWORD, "impl": KindIMPL_KEYWORD, "expect": KindEXPECT_KEYWORD,
+		"expect": KindEXPECT_KEYWORD,
 		"actual": KindACTUAL_KEYWORD, "value": KindVALUE_KEYWORD, "context": KindCONTEXT_KEYWORD,
 	}
 
@@ -118,14 +119,18 @@ var (
 		return s
 	}()
 
-	modifierKeywords = newSet(KindABSTRACT_KEYWORD, KindENUM_KEYWORD, KindCONTRACT_KEYWORD, KindOPEN_KEYWORD,
+	// modifierKeywords is KtTokens.MODIFIER_KEYWORDS. Kotlin 2.4 dropped
+	// header, impl and contract from it.
+	modifierKeywords = newSet(KindABSTRACT_KEYWORD, KindENUM_KEYWORD, KindOPEN_KEYWORD,
 		KindINNER_KEYWORD, KindOVERRIDE_KEYWORD, KindPRIVATE_KEYWORD, KindPUBLIC_KEYWORD, KindINTERNAL_KEYWORD,
 		KindPROTECTED_KEYWORD, KindOUT_KEYWORD, KindIN_KEYWORD, KindFINAL_KEYWORD, KindVARARG_KEYWORD,
 		KindREIFIED_KEYWORD, KindCOMPANION_KEYWORD, KindSEALED_KEYWORD, KindLATEINIT_KEYWORD, KindDATA_KEYWORD,
 		KindINLINE_KEYWORD, KindNOINLINE_KEYWORD, KindTAILREC_KEYWORD, KindEXTERNAL_KEYWORD,
 		KindANNOTATION_KEYWORD, KindCROSSINLINE_KEYWORD, KindCONST_KEYWORD, KindOPERATOR_KEYWORD,
-		KindINFIX_KEYWORD, KindSUSPEND_KEYWORD, KindHEADER_KEYWORD, KindIMPL_KEYWORD, KindEXPECT_KEYWORD,
+		KindINFIX_KEYWORD, KindSUSPEND_KEYWORD, KindEXPECT_KEYWORD,
 		KindACTUAL_KEYWORD, KindFUN_KEYWORD, KindVALUE_KEYWORD)
+
+	valVar = newSet(KindVAL_KEYWORD, KindVAR_KEYWORD)
 
 	typeModifierKeywords                   = newSet(KindSUSPEND_KEYWORD)
 	typeArgumentModifierKeywords           = newSet(KindIN_KEYWORD, KindOUT_KEYWORD)

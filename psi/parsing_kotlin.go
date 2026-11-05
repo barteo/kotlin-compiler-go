@@ -1,6 +1,6 @@
 package psi
 
-// Port of KotlinParsing from Kotlin 2.0.21 (see THIRD_PARTY_NOTICES.md).
+// Port of KotlinParsing from Kotlin 2.4.21 (see THIRD_PARTY_NOTICES.md).
 // Methods keep the Java order, control flow and error messages so that
 // trees match stock Kotlin. Java null element types are kNone; Java
 // overloads get suffixed names (see parsing_shared.go).
@@ -8,7 +8,7 @@ package psi
 var (
 	kpGtCommaColonSet          = newSet(KindGT, KindCOMMA, KindCOLON)
 	kpTopLevelDeclarationFirst = newSet(KindTYPE_ALIAS_KEYWORD, KindINTERFACE_KEYWORD, KindCLASS_KEYWORD,
-		KindOBJECT_KEYWORD, KindFUN_KEYWORD, KindVAL_KEYWORD, KindPACKAGE_KEYWORD)
+		KindOBJECT_KEYWORD, KindFUN_KEYWORD, KindVAL_KEYWORD, KindVAR_KEYWORD, KindPACKAGE_KEYWORD)
 	kpTopLevelDeclarationFirstSemicolonSet     = orSet(kpTopLevelDeclarationFirst, newSet(KindSEMICOLON))
 	kpLtEqSemicolonTopLevelDeclarationFirstSet = orSet(newSet(KindLT, KindEQ, KindSEMICOLON),
 		kpTopLevelDeclarationFirst)
@@ -33,11 +33,9 @@ var (
 		newSet(KindIDENTIFIER, KindLBRACKET),
 		modifierKeywords.minus(newSet(KindFUN_KEYWORD)))
 	kpSoftKeywordsAtMemberStart = newSet(KindCONSTRUCTOR_KEYWORD, KindINIT_KEYWORD)
-	kpAnnotationTargets         = newSet(KindFILE_KEYWORD, KindFIELD_KEYWORD, KindGET_KEYWORD, KindSET_KEYWORD,
-		KindPROPERTY_KEYWORD, KindRECEIVER_KEYWORD, KindPARAM_KEYWORD, KindSETPARAM_KEYWORD, KindDELEGATE_KEYWORD)
-	// kpAnnotationTargetList is ANNOTATION_TARGETS.getTypes() order.
-	kpAnnotationTargetList = []Kind{KindFILE_KEYWORD, KindFIELD_KEYWORD, KindGET_KEYWORD, KindSET_KEYWORD,
-		KindPROPERTY_KEYWORD, KindRECEIVER_KEYWORD, KindPARAM_KEYWORD, KindSETPARAM_KEYWORD, KindDELEGATE_KEYWORD}
+	kpAnnotationTargets         = newSet(KindALL_KEYWORD, KindFILE_KEYWORD, KindFIELD_KEYWORD, KindGET_KEYWORD,
+		KindSET_KEYWORD, KindPROPERTY_KEYWORD, KindRECEIVER_KEYWORD, KindPARAM_KEYWORD, KindSETPARAM_KEYWORD,
+		KindDELEGATE_KEYWORD)
 	kpBlockDocCommentSet            = newSet(KindBLOCK_COMMENT, kDocComment)
 	kpSemicolonSet                  = newSet(KindSEMICOLON)
 	kpCommaColonGtSet               = newSet(KindCOMMA, KindCOLON, KindGT)
@@ -47,11 +45,12 @@ var (
 	kpValueArgsRecoverySet          = newSet(KindLBRACE, KindSEMICOLON, KindRPAR, kEOLOrSemicolon, KindRBRACE)
 	kpPropertyNameFollowSet         = newSet(KindCOLON, KindEQ, KindLBRACE, KindRBRACE, KindSEMICOLON,
 		KindVAL_KEYWORD, KindVAR_KEYWORD, KindFUN_KEYWORD, KindCLASS_KEYWORD)
+	kpDestructuringPropertyNameFollowSet              = kpPropertyNameFollowSet.minus(valVar)
 	kpPropertyNameFollowMultiDeclarationRecoverySet   = orSet(kpPropertyNameFollowSet, kpParameterNameRecoverySet)
 	kpPropertyNameFollowFunctionOrPropertyRecoverySet = orSet(kpPropertyNameFollowSet, kpLbraceRbraceSet,
 		kpTopLevelDeclarationFirst)
 	kpIdentifierEqColonSemicolonSet = newSet(KindIDENTIFIER, KindEQ, KindCOLON, KindSEMICOLON)
-	kpCommaRparColonEqSet           = newSet(KindCOMMA, KindRPAR, KindCOLON, KindEQ)
+	kpCommaRparRbracketColonEqSet   = newSet(KindCOMMA, KindRPAR, KindRBRACKET, KindCOLON, KindEQ)
 	kpAccessorFirstOrPropertyEnd    = orSet(modifierKeywords, newSet(KindAT, KindGET_KEYWORD, KindSET_KEYWORD,
 		KindFIELD_KEYWORD, kEOLOrSemicolon, KindRBRACE))
 	kpRparIdentifierColonLbraceEqSet = newSet(KindRPAR, KindIDENTIFIER, KindCOLON, KindLBRACE, KindEQ)
@@ -61,7 +60,9 @@ var (
 	kpFunctionNameFollowSet          = newSet(KindLT, KindLPAR, KindRPAR, KindCOLON, KindEQ)
 	kpFunctionNameRecoverySet        = orSet(newSet(KindLT, KindLPAR, KindRPAR, KindCOLON, KindEQ),
 		kpLbraceRbraceSet, kpTopLevelDeclarationFirst)
-	kpValueParametersFollowSet             = newSet(KindEQ, KindLBRACE, KindRBRACE, KindSEMICOLON, KindRPAR)
+	kpValueParametersFollowSet   = newSet(KindEQ, KindLBRACE, KindRBRACE, KindSEMICOLON, KindRPAR)
+	kpContextParametersFollowSet = newSet(KindCLASS_KEYWORD, KindOBJECT_KEYWORD, KindFUN_KEYWORD,
+		KindVAL_KEYWORD, KindVAR_KEYWORD)
 	kpLparValueParametersFollowSet         = orSet(newSet(KindLPAR), kpValueParametersFollowSet)
 	kpLparLbraceColonConstructorKeywordSet = newSet(KindLPAR, KindLBRACE, KindCOLON, KindCONSTRUCTOR_KEYWORD)
 	kpDefinitelyOutOfReceiverSet           = orSet(
@@ -71,6 +72,13 @@ var (
 	kpClassInterfaceSet       = newSet(KindCLASS_KEYWORD, KindINTERFACE_KEYWORD)
 
 	kpNoModifierBeforeForValueParameter = newSet(KindCOMMA, KindCOLON, KindEQ, KindRPAR)
+
+	// kpExpressionFirst and kpExpressionFollow are KotlinParsing.EXPRESSION_FIRST
+	// and EXPRESSION_FOLLOW (moved from KotlinExpressionParsing in 2.4).
+	kpExpressionFirst  = epExpressionFirst
+	kpExpressionFollow = epExpressionFollow
+
+	kpUserTypeNameRecoverySet = orSet(kpExpressionFirst, kpExpressionFollow, kpDeclarationFirst)
 
 	// kpEmpty is TokenSet.EMPTY.
 	kpEmpty tokenSet
@@ -432,12 +440,8 @@ func (p *kotlinParsing) parseTopLevelDeclaration() {
 	}
 	decl := p.mark()
 
-	if p.at(KindCONTEXT_KEYWORD) {
-		p.parseContextReceiverList()
-	}
-
 	detector := &modifierDetector{}
-	p.parseModifierListC(detector.consume, kpEmpty)
+	p.parseModifierListC(detector.consume, kpEmpty, false)
 
 	declType := p.parseCommonDeclaration(detector, nameRequired, declMemberOrTopLevel)
 
@@ -468,6 +472,11 @@ func (p *kotlinParsing) parseCommonDeclaration(detector *modifierDetector, nameP
 		return p.parseFunction()
 	case KindVAL_KEYWORD, KindVAR_KEYWORD:
 		return p.parseProperty(declarationParsingMode)
+	case KindLPAR, KindLBRACKET:
+		if lookahead := p.lookahead(1); lookahead == KindVAL_KEYWORD || lookahead == KindVAR_KEYWORD {
+			return p.parseProperty(declarationParsingMode)
+		}
+		return kNone
 	case KindTYPE_ALIAS_KEYWORD:
 		return p.parseTypeAlias()
 	case KindOBJECT_KEYWORD:
@@ -486,36 +495,37 @@ func (p *kotlinParsing) parseCommonDeclaration(detector *modifierDetector, nameP
  * (modifier | annotation)*
  */
 func (p *kotlinParsing) parseModifierList(noModifiersBefore tokenSet) bool {
-	return p.parseModifierListC(nil, noModifiersBefore)
+	return p.parseModifierListC(nil, noModifiersBefore, false)
 }
 
 func (p *kotlinParsing) parseAnnotationsList(noModifiersBefore tokenSet) {
-	p.doParseModifierList(nil, kpEmpty, annDefault, noModifiersBefore)
+	p.doParseModifierList(nil, kpEmpty, annDefault, noModifiersBefore, false)
 }
 
-// parseModifierListC is parseModifierList(Consumer, TokenSet).
+// parseModifierListC is parseModifierList(Consumer, TokenSet, boolean).
 //
 // (modifier | annotation)*
 //
 // Feeds modifiers (not annotations) into the passed consumer, if it is not nil.
-func (p *kotlinParsing) parseModifierListC(tokenConsumer func(Kind), noModifiersBefore tokenSet) bool {
-	return p.doParseModifierList(tokenConsumer, modifierKeywords, annDefault, noModifiersBefore)
+// localDeclaration is true if we are trying to parse a local declaration.
+func (p *kotlinParsing) parseModifierListC(tokenConsumer func(Kind), noModifiersBefore tokenSet, localDeclaration bool) bool {
+	return p.doParseModifierList(tokenConsumer, modifierKeywords, annDefault, noModifiersBefore, localDeclaration)
 }
 
 func (p *kotlinParsing) parseFunctionTypeValueParameterModifierList() {
-	p.doParseModifierList(nil, reservedValueParameterModifierKeywords, annNoAnnotations, kpNoModifierBeforeForValueParameter)
+	p.doParseModifierList(nil, reservedValueParameterModifierKeywords, annNoAnnotationsNoContext, kpNoModifierBeforeForValueParameter, false)
 }
 
 func (p *kotlinParsing) parseTypeModifierList() {
-	p.doParseModifierList(nil, typeModifierKeywords, annTypeContext, kpEmpty)
+	p.doParseModifierList(nil, typeModifierKeywords, annTypeContext, kpEmpty, false)
 }
 
 func (p *kotlinParsing) parseTypeArgumentModifierList() {
-	p.doParseModifierList(nil, typeArgumentModifierKeywords, annNoAnnotations, kpCommaColonGtSet)
+	p.doParseModifierList(nil, typeArgumentModifierKeywords, annNoAnnotationsNoContext, kpCommaColonGtSet, false)
 }
 
 func (p *kotlinParsing) doParseModifierListBody(tokenConsumer func(Kind), modifierKeywords tokenSet,
-	annotationParsingMode annotationParsingMode, noModifiersBefore tokenSet) bool {
+	annotationParsingMode annotationParsingMode, noModifiersBefore tokenSet, localDeclaration bool) bool {
 	empty := true
 	for !p.eof() {
 		if p.at(KindAT) && annotationParsingMode.allowAnnotations() {
@@ -526,11 +536,25 @@ func (p *kotlinParsing) doParseModifierListBody(tokenConsumer func(Kind), modifi
 			if !isAnnotationParsed && !annotationParsingMode.withSignificantWhitespaceBeforeArguments() {
 				beforeAnnotationMarker.RollbackTo()
 				// try parse again, but with significant whitespace
-				p.doParseModifierListBody(tokenConsumer, modifierKeywords, annWithSignificantWhitespaceBeforeArguments, noModifiersBefore)
+				newMode := annWithSignificantWhitespaceBeforeArgumentsNoContext
+				if annotationParsingMode.allowContextList() {
+					newMode = annWithSignificantWhitespaceBeforeArguments
+				}
+				p.doParseModifierListBody(tokenConsumer, modifierKeywords, newMode, noModifiersBefore, localDeclaration)
 				empty = false
 				break
 			} else {
 				beforeAnnotationMarker.Drop()
+			}
+		} else if p.at(KindCONTEXT_KEYWORD) && annotationParsingMode.allowContextList() && p.lookahead(1) == KindLPAR {
+			contextMarker := p.mark()
+			if !p.parseContextParameterOrReceiverList(false) && localDeclaration {
+				// Rollback the entire context declaration to make it possible to prevent parsing of potential local declarations
+				// that in fact are not declarations (we are trying to parse declarations at first and statements as second).
+				contextMarker.RollbackTo()
+				break
+			} else {
+				contextMarker.Drop()
 			}
 		} else if p.tryParseModifier(tokenConsumer, noModifiersBefore, modifierKeywords) {
 			// modifier advanced
@@ -544,10 +568,10 @@ func (p *kotlinParsing) doParseModifierListBody(tokenConsumer func(Kind), modifi
 }
 
 func (p *kotlinParsing) doParseModifierList(tokenConsumer func(Kind), modifierKeywords tokenSet,
-	annotationParsingMode annotationParsingMode, noModifiersBefore tokenSet) bool {
+	annotationParsingMode annotationParsingMode, noModifiersBefore tokenSet, localDeclaration bool) bool {
 	list := p.mark()
 
-	empty := p.doParseModifierListBody(tokenConsumer, modifierKeywords, annotationParsingMode, noModifiersBefore)
+	empty := p.doParseModifierListBody(tokenConsumer, modifierKeywords, annotationParsingMode, noModifiersBefore, localDeclaration)
 
 	if empty {
 		list.Drop()
@@ -586,48 +610,54 @@ func (p *kotlinParsing) tryParseModifier(tokenConsumer func(Kind), noModifiersBe
 /*
  * contextReceiverList
  *   : "context" "(" (contextReceiver{","})+ ")"
+ *
+ * Returns true if it parsed a context with value parameters. Otherwise
+ * returns false if it parsed a context with type refs (that work as
+ * receivers) or encountered a syntax error during parsing.
  */
-func (p *kotlinParsing) parseContextReceiverList() {
-	contextReceiverList := p.mark()
+func (p *kotlinParsing) parseContextParameterOrReceiverList(inFunctionType bool) bool {
+	valueParameterOrTypeRefList := p.mark()
 	p.advance() // CONTEXT_KEYWORD
-	if p.at(KindLPAR) {
+
+	var noError bool
+
+	if p.lookahead(1) == KindRPAR {
 		p.advance() // LPAR
-		for {
-			if p.at(KindCOMMA) {
-				p.errorAndAdvance("Expecting a type reference")
-			}
-			p.parseContextReceiver()
-			if p.at(KindRPAR) {
-				p.advance()
-				break
-			}
-			if p.at(KindCOMMA) {
-				p.advance()
-			} else {
-				if !p.at(KindRPAR) {
-					p.error("Expecting comma or ')'")
-					break
-				}
-			}
-		}
-		contextReceiverList.Done(KindCONTEXT_RECEIVER_LIST)
+		p.error("Empty context parameter list")
+		p.advance() // RPAR
+		noError = false
 	} else {
-		p.errorWithRecovery("Expecting context receivers", &kpEmpty)
-		contextReceiverList.Drop()
+		// Treat parsing of context receivers (deprecated syntax) as an error,
+		// But an outer caller decides if the entire list should be dropped:
+		// If we're trying to parse a local declaration, we should drop it to prevent unexpected parsing of ahead declarations
+		noError = p.valueParameterLoop(inFunctionType, kpContextParametersFollowSet, func() bool {
+			return p.parseValueParameterOrTypeRef(inFunctionType)
+		})
 	}
+
+	valueParameterOrTypeRefList.Done(KindCONTEXT_PARAMETER_LIST)
+	return noError
 }
 
 /*
  * contextReceiver
  *   : label? typeReference
+ *
+ * Returns true if it parsed a value parameter or type ref in the correct
+ * position (in function type) and false otherwise.
  */
-func (p *kotlinParsing) parseContextReceiver() {
+func (p *kotlinParsing) parseValueParameterOrTypeRef(inFunctionType bool) bool {
+	if p.tryParseValueParameter(true) {
+		return true
+	}
+
 	contextReceiver := p.mark()
-	if p.expr.isAtLabelDefinitionOrMissingIdentifier() {
+	if !inFunctionType && p.expr.isAtLabelDefinitionOrMissingIdentifier() {
 		p.expr.parseLabelDefinition()
 	}
 	p.parseTypeRef()
 	contextReceiver.Done(KindCONTEXT_RECEIVER)
+	return inFunctionType
 }
 
 /*
@@ -755,7 +785,10 @@ func (p *kotlinParsing) parseAnnotationTargetIfNeeded(mode annotationParsingMode
 		return true
 	}
 
-	targetKeyword := p.atTargetKeyword()
+	targetKeyword := kNone
+	if p.atSet(kpAnnotationTargets) {
+		targetKeyword = p.tt()
+	}
 	if mode == annFileAnnotationsWhenPackageOmitted && !(targetKeyword == KindFILE_KEYWORD && p.lookahead(1) == KindCOLON) {
 		return false
 	}
@@ -777,26 +810,22 @@ func (p *kotlinParsing) parseAnnotationTargetIfNeeded(mode annotationParsingMode
 }
 
 func (p *kotlinParsing) parseAnnotationTarget(keyword Kind) {
-	message := "Expecting \"" + keywordValue[keyword] + ":" + "\" prefix for " + keywordValue[keyword] + " annotations"
-
 	marker := p.mark()
 
-	if !p.expectMsg(keyword, message) {
+	if !p.expect(keyword) {
+		p.error(generateAnnotationTargetErrorMessage(keyword))
 		marker.Drop()
 	} else {
 		marker.Done(KindANNOTATION_TARGET)
 	}
 
-	p.expectRS(KindCOLON, message, &kpIdentifierRbracketLbracketSet)
+	if !p.expect(KindCOLON) {
+		p.errorWithRecovery(generateAnnotationTargetErrorMessage(keyword), &kpIdentifierRbracketLbracketSet)
+	}
 }
 
-func (p *kotlinParsing) atTargetKeyword() Kind {
-	for _, target := range kpAnnotationTargetList {
-		if p.at(target) {
-			return target
-		}
-	}
-	return kNone
+func generateAnnotationTargetErrorMessage(keyword Kind) string {
+	return "Expecting \"" + keywordValue[keyword] + ":" + "\" prefix for " + keywordValue[keyword] + " annotations"
 }
 
 /*
@@ -829,10 +858,9 @@ func (p *kotlinParsing) parseAnnotation(mode annotationParsingMode) bool {
 
 	p.parseTypeArgumentList()
 
-	whitespaceAfterAnnotation := whiteSpaceOrCommentSet.has(p.b.rawLookup(-1))
-	shouldBeParsedNextAsFunctionalType := p.at(KindLPAR) && whitespaceAfterAnnotation && mode.withSignificantWhitespaceBeforeArguments()
-
-	if p.at(KindLPAR) && !shouldBeParsedNextAsFunctionalType {
+	if p.at(KindLPAR) &&
+		!valVar.has(p.lookahead(1)) &&
+		!(whiteSpaceOrCommentSet.has(p.b.rawLookup(-1)) && mode.withSignificantWhitespaceBeforeArguments()) {
 		p.expr.parseValueArgumentList()
 
 		/*
@@ -1136,14 +1164,17 @@ func (p *kotlinParsing) parseMemberDeclaration() {
 	}
 	decl := p.mark()
 
-	if p.at(KindCONTEXT_KEYWORD) {
-		p.parseContextReceiverList()
-	}
+	isCompanionBlock := p.at(KindCOMPANION_KEYWORD) && p.lookahead(1) == KindLBRACE
 
 	detector := &modifierDetector{}
-	p.parseModifierListC(detector.consume, kpEmpty)
+	p.parseModifierListC(detector.consume, kpEmpty, false)
 
-	declType := p.parseMemberDeclarationRest(detector)
+	var declType Kind
+	if isCompanionBlock {
+		declType = p.parseCompanionBlock()
+	} else {
+		declType = p.parseMemberDeclarationRest(detector)
+	}
 
 	if declType == kNone {
 		p.errorWithRecovery("Expecting member declaration", &kpEmpty)
@@ -1181,6 +1212,11 @@ func (p *kotlinParsing) parseMemberDeclarationRest(modifierDetector *modifierDet
 		declType = KindFUN
 	}
 	return declType
+}
+
+func (p *kotlinParsing) parseCompanionBlock() Kind {
+	p.parseClassBody()
+	return KindCOMPANION_BLOCK
 }
 
 /*
@@ -1287,7 +1323,10 @@ func (p *kotlinParsing) parseTypeAlias() Kind {
  *   ;
  */
 func (p *kotlinParsing) parseProperty(mode declarationParsingMode) Kind {
-	p.advance()
+	isShortForm := p.at(KindVAL_KEYWORD) || p.at(KindVAR_KEYWORD)
+	if isShortForm {
+		p.advance()
+	}
 
 	typeParametersDeclared := p.at(KindLT) && p.parseTypeParameterList(kpIdentifierEqColonSemicolonSet)
 
@@ -1296,7 +1335,7 @@ func (p *kotlinParsing) parseProperty(mode declarationParsingMode) Kind {
 	receiver := p.mark()
 	receiverTypeDeclared := p.parseReceiverType("property", kpPropertyNameFollowSet)
 
-	multiDeclaration := p.at(KindLPAR)
+	multiDeclaration := p.at(KindLPAR) || p.at(KindLBRACKET)
 
 	errorIf(receiver, multiDeclaration && receiverTypeDeclared, "Receiver type is not allowed on a destructuring declaration")
 
@@ -1305,7 +1344,11 @@ func (p *kotlinParsing) parseProperty(mode declarationParsingMode) Kind {
 
 	if multiDeclaration {
 		multiDecl := p.mark()
-		p.parseMultiDeclarationName(kpPropertyNameFollowSet, kpPropertyNameFollowMultiDeclarationRecoverySet)
+		follow, mdMode := kpDestructuringPropertyNameFollowSet, multiDeclFull
+		if isShortForm {
+			follow, mdMode = kpPropertyNameFollowSet, multiDeclShort
+		}
+		p.parseMultiDeclarationEntry(follow, kpPropertyNameFollowMultiDeclarationRecoverySet, mdMode)
 		errorIf(multiDecl, !mode.destructuringAllowed(), "Destructuring declarations are only allowed for local variables/values")
 	} else {
 		p.parseFunctionOrPropertyName(receiverTypeDeclared, "property", kpPropertyNameFollowSet,
@@ -1328,8 +1371,16 @@ func (p *kotlinParsing) parseProperty(mode declarationParsingMode) Kind {
 	if !p.parsePropertyDelegateOrAssignment() && isNameOnTheNextLine && noTypeReference && !receiverTypeDeclared {
 		// Do not parse property identifier on the next line if declaration is invalid
 		// In most cases this identifier relates to next statement/declaration
-		beforeName.RollbackTo()
-		p.error("Expecting property name or receiver type")
+		if !multiDeclaration || isShortForm {
+			beforeName.RollbackTo()
+			p.error("Expecting property name or receiver type")
+		} else {
+			beforeName.Drop()
+		}
+
+		if multiDeclaration {
+			return KindDESTRUCTURING_DECLARATION
+		}
 		return KindPROPERTY
 	}
 
@@ -1398,23 +1449,48 @@ func (p *kotlinParsing) parsePropertyDelegate() {
 /*
  * (SimpleName (":" type){","})
  */
-func (p *kotlinParsing) parseMultiDeclarationName(follow, recoverySet tokenSet) {
+func (p *kotlinParsing) parseMultiDeclarationEntry(follow, recoverySet tokenSet, mode multiDeclarationMode) {
 	// Parsing multi-name, e.g.
 	//   val (a, b) = foo()
+	//   (val a: X = aa, var b) = foo()
+	//   val [a, b] = foo()
+	//   [val a: X, var b] = foo()
 	p.b.disableNewlines()
-	p.advance() // LPAR
+
+	isParentheses := p.at(KindLPAR)
+	closingBrace := KindRBRACKET
+	if isParentheses {
+		closingBrace = KindRPAR
+	}
+
+	p.advance() // LPAR | LBRACKET
 
 	if !p.atSet(follow) {
 		for {
 			if p.at(KindCOMMA) {
 				p.errorAndAdvance("Expecting a name")
-			} else if p.at(KindRPAR) { // For declaration similar to `val () = somethingCall()`
+			} else if p.at(closingBrace) { // For declaration similar to `val () = somethingCall()`
 				p.error("Expecting a name")
 				break
 			}
 			property := p.mark()
 
-			p.parseModifierList(kpCommaRparColonEqSet)
+			switch mode {
+			case multiDeclFull:
+				if p.at(KindVAL_KEYWORD) || p.at(KindVAR_KEYWORD) {
+					p.advance()
+				} else {
+					p.errorWithRecovery("Expecting val or var keyword", &recoverySet)
+				}
+			case multiDeclFullValOnly:
+				if p.at(KindVAL_KEYWORD) {
+					p.advance()
+				} else {
+					p.errorWithRecovery("Expecting val keyword", &recoverySet)
+				}
+			default:
+				p.parseModifierList(kpCommaRparRbracketColonEqSet)
+			}
 
 			p.expectRS(KindIDENTIFIER, "Expecting a name", &recoverySet)
 
@@ -1422,19 +1498,30 @@ func (p *kotlinParsing) parseMultiDeclarationName(follow, recoverySet tokenSet) 
 				p.advance() // COLON
 				p.parseTypeRefRS(follow)
 			}
+
+			// Renaming is only allowed in name-based destructuring
+			if p.at(KindEQ) && closingBrace == KindRPAR {
+				p.advance()
+				p.expr.parseSimpleNameExpression()
+			}
+
 			property.Done(KindDESTRUCTURING_DECLARATION_ENTRY)
 
 			if !p.at(KindCOMMA) {
 				break
 			}
 			p.advance() // COMMA
-			if p.at(KindRPAR) {
+			if p.at(closingBrace) {
 				break
 			}
 		}
 	}
 
-	p.expectRS(KindRPAR, "Expecting ')'", &follow)
+	msg := "Expecting ']'"
+	if isParentheses {
+		msg = "Expecting ')'"
+	}
+	p.expectRS(closingBrace, msg, &follow)
 	p.b.restoreNewlinesState()
 }
 
@@ -1500,9 +1587,9 @@ func (p *kotlinParsing) parsePropertyComponent(notAllowedKind *kpPropertyCompone
 	p.b.disableNewlines()
 
 	if propertyComponentKind != kpComponentField {
+		parameterList := p.mark()
 		p.expectRS(KindLPAR, "Expecting '('", &kpRparIdentifierColonLbraceEqSet)
 		if propertyComponentKind == kpComponentSet {
-			parameterList := p.mark()
 			setterParameter := p.mark()
 			p.parseModifierList(kpCommaColonRparSet)
 			p.expectRS(KindIDENTIFIER, "Expecting parameter name", &kpRparColonLbraceEqSet)
@@ -1515,7 +1602,6 @@ func (p *kotlinParsing) parsePropertyComponent(notAllowedKind *kpPropertyCompone
 			if p.at(KindCOMMA) {
 				p.advance() // COMMA
 			}
-			parameterList.Done(KindVALUE_PARAMETER_LIST)
 		}
 		if !p.at(KindRPAR) {
 			p.errorUntil("Expecting ')'", newSet(KindRPAR, KindCOLON, KindLBRACE, KindRBRACE, KindEQ, kEOLOrSemicolon))
@@ -1523,6 +1609,7 @@ func (p *kotlinParsing) parsePropertyComponent(notAllowedKind *kpPropertyCompone
 		if p.at(KindRPAR) {
 			p.advance()
 		}
+		parameterList.Done(KindVALUE_PARAMETER_LIST)
 	}
 	p.b.restoreNewlinesState()
 
@@ -2008,7 +2095,7 @@ func (p *kotlinParsing) parseTypeRefContents(extraRecoverySet tokenSet, allowSim
 	contextReceiversStart := p.mark()
 
 	if withContextReceiver {
-		p.parseContextReceiverList()
+		p.parseContextParameterOrReceiverList(true)
 	}
 
 	typeElementMarker := p.mark()
@@ -2148,7 +2235,7 @@ func (p *kotlinParsing) parseUserType() {
 		p.recoverOnParenthesizedWordForPlatformTypes(0, "Mutable", true)
 
 		if p.expectRS(KindIDENTIFIER, "Expecting type name",
-			kpRS(orSet(epExpressionFirst, epExpressionFollow, kpDeclarationFirst))) {
+			&kpUserTypeNameRecoverySet) {
 			reference.Done(KindREFERENCE_EXPRESSION)
 		} else {
 			reference.Drop()
@@ -2308,26 +2395,42 @@ func (p *kotlinParsing) parseValueParameterList(isFunctionTypeContents, typeRequ
 	parameters := p.mark()
 
 	p.b.disableNewlines()
+
+	p.valueParameterLoop(isFunctionTypeContents, recoverySet, func() bool {
+		if isFunctionTypeContents {
+			if !p.tryParseValueParameter(typeRequired) {
+				valueParameter := p.mark()
+				p.parseFunctionTypeValueParameterModifierList()
+				p.parseTypeRef()
+				closeDeclarationWithCommentBinders(valueParameter, KindVALUE_PARAMETER, false)
+			}
+		} else {
+			p.parseValueParameter(typeRequired)
+		}
+		return true
+	})
+
+	p.b.restoreNewlinesState()
+
+	parameters.Done(KindVALUE_PARAMETER_LIST)
+}
+
+// valueParameterLoop parses "(" parameter{","} ")". parseParameter returns
+// true if internal parsing is correct; the result is true if the parsing of
+// the entire parameter loop is correct.
+func (p *kotlinParsing) valueParameterLoop(inFunctionTypeContext bool, recoverySet tokenSet, parseParameter func() bool) bool {
 	p.advance() // LPAR
+
+	noError := true
 
 	if !p.at(KindRPAR) && !p.atSet(recoverySet) {
 		for {
-			if p.at(KindCOMMA) {
-				p.errorAndAdvance("Expecting a parameter declaration")
-			} else if p.at(KindRPAR) {
+			offsetBefore := p.b.currentOffset()
+			if p.at(KindRPAR) {
 				break
 			}
 
-			if isFunctionTypeContents {
-				if !p.tryParseValueParameter(typeRequired) {
-					valueParameter := p.mark()
-					p.parseFunctionTypeValueParameterModifierList()
-					p.parseTypeRef()
-					closeDeclarationWithCommentBinders(valueParameter, KindVALUE_PARAMETER, false)
-				}
-			} else {
-				p.parseValueParameter(typeRequired)
-			}
+			noError = parseParameter() && noError
 
 			if p.at(KindCOMMA) {
 				p.advance() // COMMA
@@ -2338,22 +2441,23 @@ func (p *kotlinParsing) parseValueParameterList(isFunctionTypeContents, typeRequ
 			} else {
 				if !p.at(KindRPAR) {
 					p.error("Expecting comma or ')'")
+					noError = false
 				}
 				first := kpValueParameterFirst
-				if isFunctionTypeContents {
+				if inFunctionTypeContext {
 					first = kpLambdaValueParameterFirst
 				}
 				if !p.atSet(first) {
+					break
+				}
+				if offsetBefore == p.b.currentOffset() {
 					break
 				}
 			}
 		}
 	}
 
-	p.expectRS(KindRPAR, "Expecting ')'", &recoverySet)
-	p.b.restoreNewlinesState()
-
-	parameters.Done(KindVALUE_PARAMETER_LIST)
+	return p.expectRS(KindRPAR, "Expecting ')'", &recoverySet) && noError
 }
 
 /*
@@ -2396,16 +2500,19 @@ func (p *kotlinParsing) parseValueParameterRB(rollbackOnFailure, typeRequired bo
 func (p *kotlinParsing) parseFunctionParameterRest(typeRequired bool) bool {
 	noErrors := true
 
-	// Recovery for the case 'fun foo(Array<String>) {}'
-	// Recovery for the case 'fun foo(: Int) {}'
-	if (p.at(KindIDENTIFIER) && p.lookahead(1) == KindLT) || p.at(KindCOLON) {
+	if p.at(KindCOMMA) || p.at(KindRPAR) {
+		p.error("Expecting a parameter declaration")
+		noErrors = false
+	} else if p.at(KindIDENTIFIER) && p.lookahead(1) == KindLT {
+		// Recovery for the case 'fun foo(Array<String>) {}'
 		p.error("Parameter name expected")
-		if p.at(KindCOLON) {
-			// We keep noErrors == true so that unnamed parameters starting with ":" are not rolled back during parsing of functional types
-			p.advance() // COLON
-		} else {
-			noErrors = false
-		}
+		noErrors = false
+		p.parseTypeRef()
+	} else if p.at(KindCOLON) {
+		// Recovery for the case 'fun foo(: Int) {}'
+		p.error("Parameter name expected")
+		// We keep noErrors == true so that unnamed parameters starting with ":" are not rolled back during parsing of functional types
+		p.advance() // COLON
 		p.parseTypeRef()
 	} else {
 		p.expectRS(KindIDENTIFIER, "Parameter name expected", &kpParameterNameRecoverySet)

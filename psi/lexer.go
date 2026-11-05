@@ -6,7 +6,7 @@ import (
 )
 
 // The lexer is a hand-written port of Kotlin's Kotlin.flex (Kotlin
-// 2.0.21; see THIRD_PARTY_NOTICES.md). It follows JFlex semantics: the
+// 2.4.21; see THIRD_PARTY_NOTICES.md). It follows JFlex semantics: the
 // longest match wins, and among equal lengths the rule listed first in the
 // grammar wins. Offsets are UTF-8 byte offsets.
 
@@ -269,7 +269,7 @@ func (lx *lexer) lexString() (Kind, bool) {
 				lx.push(stShortTemplate)
 				return KindSHORT_TEMPLATE_ENTRY_START, true
 			case dollars < lx.interpReq:
-				lx.pos = e
+				lx.pos = j
 			default:
 				lx.pos = p + dollars - lx.interpReq
 			}
@@ -282,13 +282,13 @@ func (lx *lexer) lexString() (Kind, bool) {
 				lx.push(stLongTemplate)
 				return KindLONG_TEMPLATE_ENTRY_START, true
 			case dollars < lx.interpReq:
-				lx.pos = j + 1
+				lx.pos = j
 			default:
 				lx.pos = p + dollars - lx.interpReq
 			}
 			return KindREGULAR_STRING_PART, true
 		}
-		lx.pos = p + 1 // LONELY_DOLLAR
+		lx.pos = j // LONELY_DOLLAR (\$+)
 		return KindREGULAR_STRING_PART, true
 	}
 	j := p
@@ -570,8 +570,10 @@ func (lx *lexer) lexNumber(p int) Kind {
 	// Longest INTEGER_LITERAL.
 	intEnd := -1
 	if isDigit(lx.at(p)) {
+		// DECIMAL_INTEGER_LITERAL is {DIGIT}{DIGIT_OR_UNDERSCORE}*, so a
+		// leading zero no longer ends the literal (0123 is one token).
+		intEnd = lx.intSuffix(lx.digitsEnd(p))
 		if lx.at(p) == '0' {
-			intEnd = lx.intSuffix(p + 1)
 			if c := lx.at(p + 1); c == 'x' || c == 'X' {
 				j := p + 2
 				for isHex(lx.at(j)) || lx.at(j) == '_' {
@@ -585,8 +587,6 @@ func (lx *lexer) lexNumber(p int) Kind {
 				}
 				intEnd = max(intEnd, lx.intSuffix(j))
 			}
-		} else {
-			intEnd = lx.intSuffix(lx.digitsEnd(p))
 		}
 	}
 	// Longest DOUBLE_LITERAL.

@@ -32,7 +32,6 @@ func (l *lowerer) typeWith(n psi.NodeRef, recv bool) (*syntax.TypeRef, []syntax.
 		recvAs    []syntax.Annotation
 		leading   = true // still before the type's other annotations
 		suspendAt psi.NodeRef
-		ctx       psi.NodeRef
 	)
 	for _, c := range kids(n) {
 		switch c.NumericKind() {
@@ -76,8 +75,6 @@ func (l *lowerer) typeWith(n psi.NodeRef, recv bool) (*syntax.TypeRef, []syntax.
 				as = append(as, l.bracketAnnotation(c))
 			case psi.KindSUSPEND_KEYWORD:
 				suspendAt = c
-			case psi.KindCONTEXT_RECEIVER_LIST:
-				ctx = c
 			default:
 				l.unexpected(c)
 			}
@@ -89,21 +86,6 @@ func (l *lowerer) typeWith(n psi.NodeRef, recv bool) (*syntax.TypeRef, []syntax.
 	t := l.typeElem(elem, recv)
 	if quest {
 		t.Nullable = true
-	}
-	if ctx.Valid() {
-		var cs []*syntax.TypeRef
-		for _, c := range kids(ctx) {
-			if c.NumericKind() == psi.KindCONTEXT_RECEIVER {
-				cs = append(cs, l.typeRef(child(c, psi.KindTYPE_REFERENCE)))
-			}
-		}
-		if len(cs) == 0 {
-			l.fail(ctx, "expected a context parameter type")
-		}
-		if t.Ret == nil || t.Nullable || len(t.Contexts) > 0 {
-			l.fail(ctx, "expected a function type after the context parameters")
-		}
-		t.P, t.Contexts = l.pos(ctx), cs
 	}
 	if suspendAt.Valid() {
 		if t.Ret == nil {
@@ -155,6 +137,22 @@ func (l *lowerer) typeElem(n psi.NodeRef, recv bool) *syntax.TypeRef {
 		var recvNode psi.NodeRef
 		for _, c := range kids(n) {
 			switch c.NumericKind() {
+			case psi.KindCONTEXT_PARAMETER_LIST:
+				// A context function type: context(A, B) R.(C) -> T.
+				ft.Contexts = []*syntax.TypeRef{}
+				for _, k := range kids(c) {
+					switch k.NumericKind() {
+					case psi.KindCONTEXT_RECEIVER:
+						ft.Contexts = append(ft.Contexts, l.typeRef(child(k, psi.KindTYPE_REFERENCE)))
+					case psi.KindVALUE_PARAMETER:
+						// kc reads only types here: context(a: A) () -> R
+						// fails at the colon.
+						l.fail(child(k, psi.KindCOLON), "expected ')', found ':'")
+					}
+				}
+				if len(ft.Contexts) == 0 {
+					l.fail(child(c, psi.KindRPAR), "expected a context parameter type")
+				}
 			case psi.KindFUNCTION_TYPE_RECEIVER:
 				recvNode = c
 			case psi.KindVALUE_PARAMETER_LIST:
@@ -313,6 +311,8 @@ func (l *lowerer) typeParams(n psi.NodeRef) []*syntax.TypeParam {
 					tp.OnlyInput = tp.OnlyInput || a.Is("internal.OnlyInputTypes") // for the inference
 				case psi.KindANNOTATION:
 					tp.Annotations = append(tp.Annotations, l.bracketAnnotation(k))
+				case psi.KindCONTEXT_PARAMETER_LIST:
+					l.fail(child(k, psi.KindLPAR), "expected '>', found '('")
 				}
 			}
 		}
@@ -467,8 +467,11 @@ func (l *lowerer) modifiersOf(cs []psi.NodeRef) syntax.Modifiers {
 			m.Annotations = append(m.Annotations, a)
 		case psi.KindANNOTATION:
 			// @[A B]: kc skips the annotations in brackets.
-		case psi.KindCONTEXT_RECEIVER_LIST:
-			l.fail(c, "context parameters must be named: use '_' for an anonymous one, context(_: Type)")
+		case psi.KindCONTEXT_PARAMETER_LIST:
+			if m.Contexts != nil {
+				l.fail(c, "repeated context parameter lists")
+			}
+			m.Contexts, m.ContextP = l.contextParams(c), l.pos(c)
 		case psi.KindFUN_KEYWORD:
 			// fun interface: the class sets Fun.
 		case psi.KindPRIVATE_KEYWORD:
@@ -539,5 +542,65 @@ func (l *lowerer) modifiersOf(cs []psi.NodeRef) syntax.Modifiers {
 func (l *lowerer) paramOnly(m syntax.Modifiers) {
 	if m.Vararg {
 		l.failAt(m.VarargP, "modifier 'vararg' is only allowed on parameters")
+	}
+}
+
+// contextParams lowers a CONTEXT_PARAMETER_LIST of a declaration, as kc's
+// parser reads context(a: A, _: B): every entry must be named.
+func (l *lowerer) contextParams(n psi.NodeRef) []*syntax.Param {
+	ps := []*syntax.Param{}
+	for _, c := range kids(n) {
+		switch c.NumericKind() {
+		case psi.KindCONTEXT_RECEIVER:
+			l.fail(c, "context parameters must be named: use '_' for an anonymous one, context(_: Type)")
+		case psi.KindVALUE_PARAMETER:
+		default:
+			continue
+		}
+		p := &syntax.Param{}
+		if mods := child(c, psi.KindMODIFIER_LIST); mods.Valid() {
+			for _, k := range kids(mods) {
+				switch k.NumericKind() {
+				case psi.KindANNOTATION_ENTRY:
+					p.Annotations = append(p.Annotations, l.annotation(k))
+				case psi.KindANNOTATION:
+				case psi.KindNOINLINE_KEYWORD:
+					p.Noinline = true
+				case psi.KindCROSSINLINE_KEYWORD:
+					p.Crossinline = true
+				case psi.KindCONTEXT_PARAMETER_LIST:
+					l.unexpected(k)
+				default: // a modifier keyword
+					l.errorLater(l.pos(k), "modifier '%s' is not applicable to 'context parameter'", k.Text())
+				}
+			}
+		}
+		name := child(c, psi.KindIDENTIFIER)
+		if !name.Valid() || prev(name).NumericKind() == psi.KindVAL_KEYWORD || prev(name).NumericKind() == psi.KindVAR_KEYWORD {
+			l.fail(c, "context parameters must be named: use '_' for an anonymous one, context(_: Type)")
+		}
+		tr := child(c, psi.KindTYPE_REFERENCE)
+		if !tr.Valid() {
+			l.failAt(l.end(name), "expected ':'")
+		}
+		p.P, p.Name, p.Type = l.pos(name), ident(name), l.typeRef(tr)
+		if eq := child(c, psi.KindEQ); eq.Valid() {
+			l.errorLater(p.P, "context parameters cannot have default values")
+			l.expr(exprAfter(c, psi.KindEQ))
+		}
+		ps = append(ps, record(l, p, c))
+	}
+	if len(ps) == 0 {
+		l.fail(child(n, psi.KindRPAR), "expected a context parameter")
+	}
+	return ps
+}
+
+// noContexts reports context parameters on a declaration that Kotlin
+// doesn't allow them on, what, as kc's parser does, and drops them.
+func (l *lowerer) noContexts(m *syntax.Modifiers, what string) {
+	if m.Contexts != nil {
+		l.errorLater(m.ContextP, "context parameters on %s are unsupported", what)
+		m.Contexts = nil
 	}
 }

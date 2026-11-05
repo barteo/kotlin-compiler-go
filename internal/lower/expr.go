@@ -683,6 +683,7 @@ func (l *lowerer) newlineIn(from, to int) bool {
 
 // destructuringNames lowers the entries of a DESTRUCTURING_DECLARATION.
 func (l *lowerer) destructuringNames(d psi.NodeRef) ([]string, []*syntax.TypeRef) {
+	l.newDestructuring(d)
 	var names []string
 	var types []*syntax.TypeRef
 	for _, e := range kids(d) {
@@ -714,7 +715,13 @@ func (l *lowerer) anonFun(n psi.NodeRef, label string) *syntax.Lambda {
 		lam.Label = "fun$" + strconv.Itoa(l.anonFuns)
 	}
 	if m := child(n, psi.KindMODIFIER_LIST); m.Valid() {
-		l.unexpected(m)
+		// context(a: A) fun () = a: an anonymous function with context
+		// parameters.
+		cs := kids(m)
+		if label != "" || len(cs) != 1 || cs[0].NumericKind() != psi.KindCONTEXT_PARAMETER_LIST {
+			l.unexpected(m)
+		}
+		lam.P, lam.AnonCtx = l.pos(m), l.contextParams(cs[0])
 	}
 	ps := child(n, psi.KindVALUE_PARAMETER_LIST)
 	if !ps.Valid() {
@@ -729,7 +736,8 @@ func (l *lowerer) anonFun(n psi.NodeRef, label string) *syntax.Lambda {
 		if p.NumericKind() != psi.KindVALUE_PARAMETER {
 			continue
 		}
-		l.modifiers(child(p, psi.KindMODIFIER_LIST))
+		m := l.modifiers(child(p, psi.KindMODIFIER_LIST))
+		l.noContexts(&m, "value parameters")
 		name := child(p, psi.KindIDENTIFIER)
 		lp := &syntax.LambdaParam{P: l.pos(name), Name: ident(name)}
 		if t := child(p, psi.KindTYPE_REFERENCE); t.Valid() {
@@ -875,4 +883,22 @@ func (l *lowerer) try(n psi.NodeRef) syntax.Expr {
 		l.failAt(t.P, "'try' must have at least one 'catch' or 'finally' block")
 	}
 	return t
+}
+
+// newDestructuring reports the destructuring forms of Kotlin 2.4 that kc
+// doesn't support: positional destructuring in square brackets, [a, b],
+// and name-based destructuring, whose entries are declared with val or
+// var or rename a property: (val a, val b = second).
+func (l *lowerer) newDestructuring(d psi.NodeRef) {
+	if lb := child(d, psi.KindLBRACKET); lb.Valid() {
+		l.unsupported(l.pos(lb), "positional destructuring", "positional destructuring with square brackets is not supported")
+	}
+	for _, e := range kids(d) {
+		if e.NumericKind() != psi.KindDESTRUCTURING_DECLARATION_ENTRY {
+			continue
+		}
+		if has(e, psi.KindVAL_KEYWORD) || has(e, psi.KindVAR_KEYWORD) || has(e, psi.KindEQ) {
+			l.unsupported(l.pos(e), "name-based destructuring", "name-based destructuring is not supported")
+		}
+	}
 }

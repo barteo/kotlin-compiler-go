@@ -1,6 +1,6 @@
 package psi
 
-// Port of KotlinExpressionParsing from Kotlin 2.0.21 (see
+// Port of KotlinExpressionParsing from Kotlin 2.4.21 (see
 // THIRD_PARTY_NOTICES.md). Methods keep the Java order, control flow and
 // messages. Java asserts are omitted: the reference parser runs with
 // assertions disabled.
@@ -105,16 +105,10 @@ var (
 		KindOROR,
 	)
 
-	epAllOperations = func() tokenSet {
-		var s tokenSet
-		for _, ops := range epPrecedenceOperations {
-			s = orSet(s, ops)
-		}
-		return s
-	}()
-
 	// Java: TokenSet.create(ARROW, LBRACE, RBRACE, EOL_OR_SEMICOLON) in parseWhenEntry.
 	epWhenElseArrowRecoverySet = newSet(KindARROW, KindLBRACE, KindRBRACE, kEOLOrSemicolon)
+	// Java: TokenSet.create(LBRACE, RBRACE, ARROW) in parseWhenEntryGuardOrSuggest.
+	epLbraceRbraceArrowSet = newSet(KindLBRACE, KindRBRACE, KindARROW)
 	// Java: TokenSet.create(EOL_OR_SEMICOLON, LBRACE, RBRACE) in parseStatements.
 	epSeveralStatementsRecoverySet = newSet(kEOLOrSemicolon, KindLBRACE, KindRBRACE)
 )
@@ -126,18 +120,18 @@ func epAndSet(a, b tokenSet) tokenSet {
 	return a
 }
 
-// epPrecedence is KotlinExpressionParsing.Precedence; the ordinal order
-// matters, since higher is the previous value.
-type epPrecedence int
+// binaryOperationPrecedence is org.jetbrains.kotlin.lang.BinaryOperationPrecedence
+// (psi-api). Ordinals matter: higherPriority is the previous value, and AS
+// has none.
+type binaryOperationPrecedence int8
 
 const (
-	precPostfix epPrecedence = iota
-	precPrefix
+	precNone binaryOperationPrecedence = iota - 1
 	precAs
 	precMultiplicative
 	precAdditive
 	precRange
-	precSimpleName
+	precInfix
 	precElvis
 	precInOrIs
 	precComparison
@@ -147,52 +141,50 @@ const (
 	precAssignment
 )
 
-var epPrecedenceOperations = [...]tokenSet{
-	precPostfix:        newSet(KindPLUSPLUS, KindMINUSMINUS, KindEXCLEXCL, KindDOT, KindSAFE_ACCESS),
-	precPrefix:         newSet(KindMINUS, KindPLUS, KindMINUSMINUS, KindPLUSPLUS, KindEXCL),
-	precAs:             newSet(KindAS_KEYWORD, KindAS_SAFE),
-	precMultiplicative: newSet(KindMUL, KindDIV, KindPERC),
-	precAdditive:       newSet(KindPLUS, KindMINUS),
-	precRange:          newSet(KindRANGE, KindRANGE_UNTIL),
-	precSimpleName:     newSet(KindIDENTIFIER),
-	precElvis:          newSet(KindELVIS),
-	precInOrIs:         newSet(KindIN_KEYWORD, KindNOT_IN, KindIS_KEYWORD, KindNOT_IS),
-	precComparison:     newSet(KindLT, KindGT, KindLTEQ, KindGTEQ),
-	precEquality:       newSet(KindEQEQ, KindEXCLEQ, KindEQEQEQ, kExclEqEqEq),
-	precConjunction:    newSet(KindANDAND),
-	precDisjunction:    newSet(KindOROR),
-	precAssignment:     newSet(KindEQ, KindPLUSEQ, KindMINUSEQ, KindMULTEQ, KindDIVEQ, KindPERCEQ),
-}
+const (
+	minBinaryOperationPrecedence = precAs
+	maxBinaryOperationPrecedence = precAssignment
+)
 
-func (p epPrecedence) operations() tokenSet { return epPrecedenceOperations[p] }
+func (p binaryOperationPrecedence) higherPriority() binaryOperationPrecedence { return p - 1 }
 
-// parseHigherPrecedence is Precedence.parseHigherPrecedence.
-func (p epPrecedence) parseHigherPrecedence(e *exprParsing) {
-	switch p {
-	case precPrefix:
-		panic("Don't call this method")
-	case precAs:
-		e.parsePrefixExpression()
-	default:
-		e.parseBinaryExpression(p - 1)
-	}
-}
-
-// parseRightHandSide is Precedence.parseRightHandSide.
-func (p epPrecedence) parseRightHandSide(operation Kind, e *exprParsing) Kind {
-	switch p {
-	case precAs:
-		e.kp.parseTypeRefWithoutIntersections()
-		return KindBINARY_WITH_TYPE
-	case precInOrIs:
-		if operation == KindIS_KEYWORD || operation == KindNOT_IS {
-			e.kp.parseTypeRefWithoutIntersections()
-			return KindIS_EXPRESSION
+// tokenToBinaryPrecedenceMapWithSoftIdentifiers is
+// TOKEN_TO_BINARY_PRECEDENCE_MAP_WITH_SOFT_IDENTIFIERS: every binary
+// operation token, plus the soft keywords at INFIX (they are remapped to
+// IDENTIFIER when used as infix function names).
+var tokenToBinaryPrecedenceMapWithSoftIdentifiers = func() map[Kind]binaryOperationPrecedence {
+	m := map[Kind]binaryOperationPrecedence{}
+	register := func(p binaryOperationPrecedence, ks ...Kind) {
+		for _, k := range ks {
+			if _, dup := m[k]; dup {
+				panic("duplicate binary precedence token")
+			}
+			m[k] = p
 		}
 	}
-	p.parseHigherPrecedence(e)
-	return KindBINARY_EXPRESSION
-}
+	register(precAs, KindAS_KEYWORD, KindAS_SAFE)
+	register(precMultiplicative, KindMUL, KindDIV, KindPERC)
+	register(precAdditive, KindPLUS, KindMINUS)
+	register(precRange, KindRANGE, KindRANGE_UNTIL)
+	register(precInfix, KindIDENTIFIER)
+	for _, k := range softKeywordTexts {
+		register(precInfix, k)
+	}
+	register(precElvis, KindELVIS)
+	register(precInOrIs, KindIN_KEYWORD, KindNOT_IN, KindIS_KEYWORD, KindNOT_IS)
+	register(precComparison, KindLT, KindGT, KindLTEQ, KindGTEQ)
+	register(precEquality, KindEQEQ, KindEXCLEQ, KindEQEQEQ, kExclEqEqEq)
+	register(precConjunction, KindANDAND)
+	register(precDisjunction, KindOROR)
+	register(precAssignment, KindEQ, KindPLUSEQ, KindMINUSEQ, KindMULTEQ, KindDIVEQ, KindPERCEQ)
+	return m
+}()
+
+// KtTokenSets.POSTFIX_OPERATIONS and PREFIX_OPERATIONS.
+var (
+	epPostfixOperations = newSet(KindPLUSPLUS, KindMINUSMINUS, KindEXCLEXCL, KindDOT, KindSAFE_ACCESS)
+	epPrefixOperations  = newSet(KindMINUS, KindPLUS, KindMINUSMINUS, KindPLUSPLUS, KindEXCL)
+)
 
 /*
  * element
@@ -216,34 +208,85 @@ func (p epPrecedence) parseRightHandSide(operation Kind, e *exprParsing) Kind {
  *   ;
  */
 func (e *exprParsing) parseExpression() {
-	if !e.atSet(epExpressionFirst) {
-		e.error("Expecting an expression")
+	e.parseExpressionMsg("Expecting an expression")
+}
+
+// parseExpressionMsg is parseExpression(String messageIfNotExpressionFirst).
+func (e *exprParsing) parseExpressionMsg(messageIfNotExpressionFirst string) {
+	if !e.atSet(kpExpressionFirst) {
+		e.error(messageIfNotExpressionFirst)
 		return
 	}
-	e.parseBinaryExpression(precAssignment)
+
+	e.parseBinaryExpression(maxBinaryOperationPrecedence)
 }
 
 /*
  * element (operation element)*
  *
- * see the precedence table
+ * Returns the minPrecedence that should be considered during further
+ * parsing. It matters for IS, which is handled in a special way since it
+ * doesn't use recursive parsing on its RHS.
  */
-func (e *exprParsing) parseBinaryExpression(precedence epPrecedence) {
+func (e *exprParsing) parseBinaryExpression(maxPrecedence binaryOperationPrecedence) binaryOperationPrecedence {
+	if maxPrecedence == precNone {
+		panic("Shouldn't be here")
+	}
+
 	expression := e.mark()
 
-	precedence.parseHigherPrecedence(e)
+	e.parsePrefixExpression()
 
-	for !e.interruptedWithNewLine() && e.atSet(precedence.operations()) {
+	minPrecedence := minBinaryOperationPrecedence
+
+	for !e.interruptedWithNewLine() {
 		operation := e.tt()
+		if operation == kNone {
+			break
+		}
+
+		// Match all allowed operations with the current or higher priority
+		// (lower precedence) at once. All Kotlin binary operations are
+		// syntactically left-associative, so the recursive call always
+		// uses the higher priority.
+		nextPrecedence, ok := tokenToBinaryPrecedenceMapWithSoftIdentifiers[operation]
+		if !ok || nextPrecedence > maxPrecedence || nextPrecedence < minPrecedence {
+			break
+		}
+
+		if nextPrecedence == precInfix && isSoftKeyword(operation) {
+			// Remap soft keywords and modifiers that are treated as infix functions since there is no mutating `atSetWithRemap` call
+			e.b.remapCurrentToken(KindIDENTIFIER)
+		}
 
 		e.parseOperationReference()
 
-		resultType := precedence.parseRightHandSide(operation, e)
+		var resultType Kind
+		switch operation {
+		case KindAS_KEYWORD, KindAS_SAFE:
+			e.kp.parseTypeRefWithoutIntersections()
+			minPrecedence = precAs
+			resultType = KindBINARY_WITH_TYPE
+		case KindIS_KEYWORD, KindNOT_IS:
+			e.kp.parseTypeRefWithoutIntersections()
+			// The handling of `is`, it doesn't parse RHS recursively and greedily.
+			// To prevent parsing of more prioritized operations next to `is` (for instance, INFIX, RANGE, and others),
+			// use the `minPrecedence` in addition to `maxPrecedence`.
+			minPrecedence = precInOrIs
+			resultType = KindIS_EXPRESSION
+		default:
+			// Parse operations with higher priorities greedily.
+			minPrecedence = e.parseBinaryExpression(nextPrecedence.higherPriority())
+			resultType = KindBINARY_EXPRESSION
+		}
+
 		expression.Done(resultType)
 		expression = expression.Precede()
 	}
 
 	expression.Drop()
+
+	return minPrecedence
 }
 
 /*
@@ -272,7 +315,7 @@ func (e *exprParsing) parsePrefixExpression() {
 		if e.isAtLabelDefinitionOrMissingIdentifier() {
 			e.b.restoreJoiningComplexTokensState()
 			e.parseLabeledExpression()
-		} else if e.atSet(precPrefix.operations()) {
+		} else if e.atSet(epPrefixOperations) {
 			expression := e.mark()
 
 			e.parseOperationReference()
@@ -391,7 +434,7 @@ func (e *exprParsing) parsePostfixExpression() {
 			e.parseSelectorCallExpression()
 
 			expression.Done(expressionType)
-		} else if e.atSet(precPostfix.operations()) {
+		} else if e.atSet(epPostfixOperations) {
 			e.parseOperationReference()
 			expression.Done(KindPOSTFIX_EXPRESSION)
 		} else {
@@ -576,6 +619,15 @@ func (e *exprParsing) parseAtomicExpression() bool {
 	case KindDO_KEYWORD:
 		e.parseDoWhile()
 	case KindIDENTIFIER:
+		// Try to parse anonymous function with context parameters
+		if e.at(KindCONTEXT_KEYWORD) && e.lookahead(1) == KindLPAR {
+			if e.parseLocalDeclaration(true, false) {
+				break
+			} else {
+				e.at(KindIDENTIFIER)
+			}
+		}
+
 		e.parseSimpleNameExpression()
 	case KindLBRACE:
 		e.parseFunctionLiteral()
@@ -628,7 +680,9 @@ func (e *exprParsing) parseStringTemplate() {
 	template := e.mark()
 
 	if e.at(KindINTERPOLATION_PREFIX) {
+		mark := e.mark()
 		e.advance() // INTERPOLATION_PREFIX
+		mark.Done(KindSTRING_INTERPOLATION_PREFIX)
 	}
 
 	e.advance() // OPEN_QUOTE
@@ -748,7 +802,7 @@ func (e *exprParsing) parseWhen() {
 			atWhenStart.Done(declType)
 			atWhenStart.SetCustomEdgeTokenBinders(precedingDocCommentsBinder, trailingCommentsBinder)
 		} else {
-			atWhenStart.Drop()
+			atWhenStart.RollbackTo()
 			e.parseExpression()
 		}
 
@@ -783,9 +837,7 @@ func (e *exprParsing) parseWhenEntry() {
 	if e.at(KindELSE_KEYWORD) {
 		e.advance() // ELSE_KEYWORD
 
-		if e.at(KindIF_KEYWORD) {
-			e.parseWhenEntryGuard()
-		}
+		e.parseWhenEntryGuardOrSuggest()
 
 		if !e.at(KindARROW) {
 			e.errorUntil("Expecting '->'", epWhenElseArrowRecoverySet)
@@ -830,9 +882,7 @@ func (e *exprParsing) parseWhenEntryNotElse() {
 		}
 	}
 
-	if e.at(KindIF_KEYWORD) {
-		e.parseWhenEntryGuard()
-	}
+	e.parseWhenEntryGuardOrSuggest()
 
 	e.expectRS(KindARROW, "Expecting '->'", &epWhenConditionRecoverySet)
 	if e.atSet(epWhenConditionRecoverySet) {
@@ -882,6 +932,14 @@ func (e *exprParsing) parseWhenCondition() {
 		condition.Done(KindWHEN_CONDITION_EXPRESSION)
 	}
 	e.b.restoreNewlinesState()
+}
+
+func (e *exprParsing) parseWhenEntryGuardOrSuggest() {
+	if e.at(KindANDAND) {
+		e.errorUntil("Unexpected '&&', use 'if' to introduce additional conditions; see https://kotl.in/guards-in-when", epLbraceRbraceArrowSet)
+	} else if e.at(KindIF_KEYWORD) {
+		e.parseWhenEntryGuard()
+	}
 }
 
 /*
@@ -934,13 +992,10 @@ func (e *exprParsing) parseAsCollectionLiteralExpression(nodeType Kind, canBeEmp
 
 func (e *exprParsing) parseInnerExpressions(missingElementErrorMessage string) {
 	for {
-		if e.at(KindCOMMA) {
-			e.errorAndAdvance(missingElementErrorMessage)
-		}
 		if e.at(KindRBRACKET) {
 			break
 		}
-		e.parseExpression()
+		e.parseExpressionMsg(missingElementErrorMessage)
 
 		if !e.at(KindCOMMA) {
 			break
@@ -1003,7 +1058,7 @@ func (e *exprParsing) parseSimpleNameExpression() {
 func (e *exprParsing) parseLocalDeclaration(rollbackIfDefinitelyNotExpression, isScriptTopLevel bool) bool {
 	decl := e.mark()
 	detector := &modifierDetector{}
-	e.kp.parseModifierListC(detector.consume, tokenSet{})
+	e.kp.parseModifierListC(detector.consume, tokenSet{}, true)
 
 	declType := e.parseLocalDeclarationRest(detector, rollbackIfDefinitelyNotExpression, isScriptTopLevel)
 
@@ -1045,7 +1100,7 @@ func (e *exprParsing) parseFunctionLiteralWith(preferBlock, collapse bool) {
 		e.mark().Done(KindVALUE_PARAMETER_LIST)
 		e.advance() // ARROW
 		paramsFound = true
-	} else if token == KindIDENTIFIER || token == KindCOLON || token == KindLPAR {
+	} else if token == KindIDENTIFIER || token == KindCOLON || token == KindLPAR || token == KindLBRACKET {
 		// Try to parse a simple name list followed by an ARROW
 		//   {a -> ...}
 		//   {a, b -> ...}
@@ -1134,10 +1189,12 @@ func (e *exprParsing) parseFunctionLiteralParameterList() {
 
 		if e.at(KindCOLON) {
 			e.error("Expecting parameter name")
-		} else if e.at(KindLPAR) {
+		} else if e.at(KindLPAR) || e.at(KindLBRACKET) {
 			destructuringDeclaration := e.mark()
-			e.kp.parseMultiDeclarationName(epTokenSetToFollowAfterDestructuringDeclarationInLambda,
-				epTokenSetToFollowAfterDestructuringDeclarationInLambdaRecovery)
+			e.kp.parseMultiDeclarationEntry(epTokenSetToFollowAfterDestructuringDeclarationInLambda,
+				epTokenSetToFollowAfterDestructuringDeclarationInLambdaRecovery,
+				// No var in lambda parameter destructuring
+				e.destructuringMode())
 			destructuringDeclaration.Done(KindDESTRUCTURING_DECLARATION)
 		} else {
 			e.expectRS(KindIDENTIFIER, "Expecting parameter name", &epArrowSet)
@@ -1351,9 +1408,11 @@ func (e *exprParsing) parseFor() {
 				e.advance() // VAL_KEYWORD or VAR_KEYWORD
 			}
 
-			if e.at(KindLPAR) {
+			if e.at(KindLPAR) || e.at(KindLBRACKET) {
 				destructuringDeclaration := e.mark()
-				e.kp.parseMultiDeclarationName(epInKeywordLBraceSet, epInKeywordLBraceRecoverySet)
+				e.kp.parseMultiDeclarationEntry(epInKeywordLBraceSet, epInKeywordLBraceRecoverySet,
+					// No var in destructured loop parameter
+					e.destructuringMode())
 				destructuringDeclaration.Done(KindDESTRUCTURING_DECLARATION)
 			} else {
 				e.expectRS(KindIDENTIFIER, "Expecting a variable name", &epColonInKeywordSet)
@@ -1700,15 +1759,12 @@ func (e *exprParsing) parseValueArgumentList() {
 	if e.expectRS(KindLPAR, "Expecting an argument list", &epExpressionFollow) {
 		if !e.at(KindRPAR) {
 			for {
-				for e.at(KindCOMMA) {
-					e.errorAndAdvance("Expecting an argument")
-				}
 				e.parseValueArgument()
 				if e.at(KindCOLON) && e.lookahead(1) == KindIDENTIFIER {
 					e.errorAndAdvanceN("Unexpected type specification", 2)
 				}
 				if !e.at(KindCOMMA) {
-					if e.atSet(epExpressionFirst) {
+					if e.atSet(kpExpressionFirst) {
 						e.error("Expecting ','")
 						continue
 					} else {
@@ -1746,7 +1802,7 @@ func (e *exprParsing) parseValueArgument() {
 	if e.at(KindMUL) {
 		e.advance() // MUL
 	}
-	e.parseExpression()
+	e.parseExpressionMsg("Expecting an argument")
 	argument.Done(KindVALUE_ARGUMENT)
 }
 
@@ -1769,4 +1825,13 @@ func (e *exprParsing) parseOneTokenExpression(typ Kind) {
 
 func (e *exprParsing) interruptedWithNewLine() bool {
 	return !epAllowNewlineOperations.has(e.tt()) && e.b.newlineBeforeCurrentToken()
+}
+
+// destructuringMode is `lookahead(1) == VAL_KEYWORD ? FULL_VAL_ONLY : SHORT`,
+// used for lambda parameters and for-loop variables.
+func (e *exprParsing) destructuringMode() multiDeclarationMode {
+	if e.lookahead(1) == KindVAL_KEYWORD {
+		return multiDeclFullValOnly
+	}
+	return multiDeclShort
 }

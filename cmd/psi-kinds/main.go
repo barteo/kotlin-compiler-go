@@ -2,6 +2,8 @@
 //
 // psi/kinds.txt is append-only: a kind's number is its line position, and
 // linters may persist kind numbers, so names are never removed or reordered.
+// A kind Kotlin renames is renamed in place, keeping its number; a kind
+// Kotlin drops stays, never produced, so no later kind reuses its number.
 //
 // Usage, from the repository root:
 //

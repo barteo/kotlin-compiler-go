@@ -13,7 +13,7 @@ runs `kc`'s checker on what `psi` parsed and reports what it resolved.
 
 `psi.Parse(path, text)` never fails: syntax errors are diagnostics on the
 snapshot, and the tree stays lossless (its leaves' texts concatenate to the
-source). The parser and lexer are ports of Kotlin 2.0.21's, so element
+source). The parser and lexer are ports of Kotlin 2.4.21's, so element
 kinds, nesting, whitespace and comment placement match the Kotlin
 compiler's PSI. The tests compare trees with dumps from stock Kotlin made by
 [`tools/psidump`](../tools/psidump/README.md) and committed under
@@ -24,7 +24,10 @@ compiler's PSI. The tests compare trees with dumps from stock Kotlin made by
   subtree is exactly `[ID, SubtreeEnd)`. A `NodeRef` is a small comparable
   value; the zero `NodeRef` is invalid and every method is safe on it.
 - **Kinds** are numbered by `psi/kinds.txt`, which is append-only, so kind
-  numbers can be persisted. `go generate ./psi` regenerates
+  numbers can be persisted. A kind Kotlin renames is renamed in place and
+  keeps its number (`CONTEXT_RECEIVER_LIST` became `CONTEXT_PARAMETER_LIST`
+  in Kotlin 2.4); a kind Kotlin drops (`HEADER_KEYWORD`, `IMPL_KEYWORD`)
+  stays in the file and is never produced. `go generate ./psi` regenerates
   `kinds_gen.go`; CI runs `go run ./cmd/psi-kinds -check`.
 - **Offsets** are UTF-8 byte offsets. A snapshot converts them to UTF-16
   offsets and to 1-based lines and columns. `psi` doesn't normalize line

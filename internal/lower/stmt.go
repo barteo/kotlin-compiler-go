@@ -120,6 +120,9 @@ func (l *lowerer) stmt(n psi.NodeRef) syntax.Stmt {
 		return l.localVar(n)
 	case psi.KindDESTRUCTURING_DECLARATION:
 		as, m, _, hasKw := l.stmtModifiers(n)
+		if m.Contexts != nil {
+			l.failAt(m.ContextP, "context parameters are unsupported in this position")
+		}
 		kw := child(n, psi.KindVAL_KEYWORD)
 		if !kw.Valid() {
 			kw = child(n, psi.KindVAR_KEYWORD)
@@ -244,6 +247,9 @@ func (l *lowerer) loopBody(n psi.NodeRef) *syntax.Block {
 // localVar lowers a local PROPERTY.
 func (l *lowerer) localVar(n psi.NodeRef) *syntax.VarStmt {
 	as, m, kwPos, hasKw := l.stmtModifiers(n)
+	if m.Contexts != nil {
+		l.failAt(m.ContextP, "context parameters are unsupported in this position")
+	}
 	kw := child(n, psi.KindVAL_KEYWORD)
 	if !kw.Valid() {
 		kw = child(n, psi.KindVAR_KEYWORD)

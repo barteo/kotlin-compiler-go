@@ -1,4 +1,4 @@
-// PsiDump prints the PSI tree that stock Kotlin 2.0.21 builds for each
+// PsiDump prints the PSI tree that stock Kotlin 2.4.21 builds for each
 // input file, as golden data for the psi package's tree-shape tests.
 //
 // It is a reference tool, run by hand; CI never needs a JVM. See
@@ -25,8 +25,7 @@ import java.util.Map;
 import java.util.Set;
 
 import org.jetbrains.kotlin.KtNodeTypes;
-import org.jetbrains.kotlin.cli.common.CLIConfigurationKeys;
-import org.jetbrains.kotlin.cli.common.messages.MessageCollector;
+import org.jetbrains.kotlin.cli.FrontendConfigurationKeysKt;
 import org.jetbrains.kotlin.cli.jvm.compiler.EnvironmentConfigFiles;
 import org.jetbrains.kotlin.cli.jvm.compiler.KotlinCoreEnvironment;
 import org.jetbrains.kotlin.com.intellij.lang.ASTNode;
@@ -34,6 +33,7 @@ import org.jetbrains.kotlin.com.intellij.openapi.Disposable;
 import org.jetbrains.kotlin.com.intellij.openapi.util.Disposer;
 import org.jetbrains.kotlin.com.intellij.psi.TokenType;
 import org.jetbrains.kotlin.com.intellij.psi.tree.IElementType;
+import org.jetbrains.kotlin.compiler.plugin.CompilerPluginRegistrar;
 import org.jetbrains.kotlin.config.CompilerConfiguration;
 import org.jetbrains.kotlin.kdoc.lexer.KDocTokens;
 import org.jetbrains.kotlin.lexer.KtTokens;
@@ -86,7 +86,7 @@ public final class PsiDump {
         Disposable root = Disposer.newDisposable();
         try {
             CompilerConfiguration conf = new CompilerConfiguration();
-            conf.put(CLIConfigurationKeys.MESSAGE_COLLECTOR_KEY, MessageCollector.Companion.getNONE());
+            FrontendConfigurationKeysKt.setExtensionsStorage(conf, new CompilerPluginRegistrar.ExtensionStorage());
             KotlinCoreEnvironment env = KotlinCoreEnvironment.createForProduction(root, conf, EnvironmentConfigFiles.JVM_CONFIG_FILES);
             KtPsiFactory factory = new KtPsiFactory(env.getProject(), false);
             for (Path in : inputs) {

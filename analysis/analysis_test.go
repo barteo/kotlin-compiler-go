@@ -1250,3 +1250,50 @@ fun test(foo: Foo, foos: List<Foo>, j: Int) {
 		t.Errorf("c: Int: %+v", f.Type)
 	}
 }
+
+// TestKotlin24Syntax covers trees that changed with the Kotlin 2.4 parser:
+// context parameters, a getter's parameter list and multi-dollar strings.
+func TestKotlin24Syntax(t *testing.T) {
+	src := "class Logger { fun log(s: String) = s }\n" +
+		"context(logger: Logger) fun info(s: String) = logger.log(s)\n" +
+		"class Box(val n: Int) { val twice: Int get() = n * 2 }\n" +
+		"fun price(x: Int) = $$\"$x costs $$x\"\n"
+	r, s := analyzed(t, Config{NoJDK: true}, src)
+	param := fact(t, r, at(t, s, "VALUE_PARAMETER", "logger: Logger", 0))
+	if ps := symbol(t, r, param.Symbol); ps.Kind != "parameter" || ps.Name != "logger" {
+		t.Errorf("context parameter: %+v", ps)
+	}
+	if ref := fact(t, r, at(t, s, "REFERENCE_EXPRESSION", "logger", 0)); ref.Symbol != param.Symbol {
+		t.Errorf("logger refers to %d, the context parameter is %d", ref.Symbol, param.Symbol)
+	}
+	n := fact(t, r, at(t, s, "VALUE_PARAMETER", "val n: Int", 0))
+	if ref := fact(t, r, at(t, s, "REFERENCE_EXPRESSION", "n", 0)); ref.Symbol != n.Symbol {
+		t.Errorf("n in the getter refers to %d, the property is %d", ref.Symbol, n.Symbol)
+	}
+	x := fact(t, r, at(t, s, "VALUE_PARAMETER", "x: Int", 0))
+	if ref := fact(t, r, at(t, s, "REFERENCE_EXPRESSION", "x", 0)); ref.Symbol != x.Symbol {
+		t.Errorf("$$x refers to %d, the parameter is %d", ref.Symbol, x.Symbol)
+	}
+}
+
+// TestUnsupportedSyntax checks that Kotlin 2.4 syntax kc can't compile is
+// reported as a diagnostic, with no facts.
+func TestUnsupportedSyntax(t *testing.T) {
+	for _, src := range []string{
+		"class A { companion { val x = 1 } }\n",
+		"fun f(p: Pair<Int, Int>) { val [a, b] = p }\n",
+		"fun f(p: Pair<Int, Int>) { (val a, val b) = p }\n",
+	} {
+		s := psi.Parse("a.kt", src)
+		r, err := AnalyzeArena(context.Background(), Config{NoJDK: true}, []*psi.Snapshot{s})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if d := r.Diagnostics(); len(d) == 0 {
+			t.Errorf("%q: no diagnostics", src)
+		}
+		if data := r.Data(); len(data.Facts) != 0 {
+			t.Errorf("%q: facts reported with diagnostics: %d", src, len(data.Facts))
+		}
+	}
+}

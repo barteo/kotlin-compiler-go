@@ -8,7 +8,7 @@ package psi
 //   - Overloads get suffixed names; cross-file calls use these signatures:
 //
 //     expr: isAtLabelDefinitionOrMissingIdentifier() bool,
-//     parseContractDescriptionBlock(), parseExpression(),
+//     parseContractDescriptionBlock(), parseExpression(), parseSimpleNameExpression(),
 //     parseFunctionLiteral(), parseFunctionLiteralWith(preferBlock, collapse bool),
 //     parseLabelDefinition(), parseStatements(),
 //     parseStatementsScript(isScriptTopLevel bool), parseValueArgumentList()
@@ -17,11 +17,11 @@ package psi
 //     parseTypeRefFull(extraRecoverySet tokenSet, allowSimpleIntersectionTypes bool),
 //     parseTypeRefWithoutIntersections(),
 //     parseModifierList(noModifiersBefore tokenSet) bool,
-//     parseModifierListC(tokenConsumer func(Kind), noModifiersBefore tokenSet) bool,
+//     parseModifierListC(tokenConsumer func(Kind), noModifiersBefore tokenSet, localDeclaration bool) bool,
 //     parseAnnotationsList(noModifiersBefore tokenSet),
 //     parseAnnotations(mode annotationParsingMode) bool,
 //     advanceBalancedBlock(),
-//     parseMultiDeclarationName(follow, recoverySet tokenSet),
+//     parseMultiDeclarationEntry(follow, recoverySet tokenSet, mode multiDeclarationMode),
 //     parseFunction() Kind, parseFunctionFail(failIfIdentifierExists bool) Kind,
 //     parseCommonDeclaration(d *modifierDetector, nameMode nameParsingMode, mode declarationParsingMode) Kind,
 //     parseBlock(), parseBlockCollapse(collapse bool),
@@ -122,19 +122,32 @@ const (
 	annFileAnnotationsWhenPackageOmitted
 	annTypeContext
 	annWithSignificantWhitespaceBeforeArguments
-	annNoAnnotations
+	annWithSignificantWhitespaceBeforeArgumentsNoContext
+	annNoAnnotationsNoContext
 )
 
 func (m annotationParsingMode) isFileAnnotationParsingMode() bool {
 	return m == annFileAnnotationsBeforePackage || m == annFileAnnotationsWhenPackageOmitted
 }
-func (m annotationParsingMode) allowAnnotations() bool { return m != annNoAnnotations }
+func (m annotationParsingMode) allowAnnotations() bool { return m != annNoAnnotationsNoContext }
+func (m annotationParsingMode) allowContextList() bool {
+	return m == annDefault || m == annWithSignificantWhitespaceBeforeArguments
+}
 func (m annotationParsingMode) typeContext() bool {
-	return m == annTypeContext || m == annWithSignificantWhitespaceBeforeArguments
+	return m == annTypeContext || m.withSignificantWhitespaceBeforeArguments()
 }
 func (m annotationParsingMode) withSignificantWhitespaceBeforeArguments() bool {
-	return m == annWithSignificantWhitespaceBeforeArguments
+	return m == annWithSignificantWhitespaceBeforeArguments || m == annWithSignificantWhitespaceBeforeArgumentsNoContext
 }
+
+// multiDeclarationMode is KotlinParsing.MultiDeclarationMode.
+type multiDeclarationMode uint8
+
+const (
+	multiDeclShort multiDeclarationMode = iota
+	multiDeclFull
+	multiDeclFullValOnly
+)
 
 // modifierDetector is KotlinParsing.ModifierDetector.
 type modifierDetector struct {

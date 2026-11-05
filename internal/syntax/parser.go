@@ -594,7 +594,8 @@ func (p *parser) anonFun(label string) *Lambda {
 	// The parameters, whose types the expected type can give.
 	p.expect(LPAREN)
 	for !p.at(RPAREN) {
-		p.modifiers()
+		m := p.modifiers()
+		p.noContexts(&m, "value parameters")
 		name := p.ident()
 		lp := &LambdaParam{P: name.Pos, Name: name.Text}
 		if p.at(COLON) {
@@ -1269,6 +1270,7 @@ func (p *parser) params() []*Param {
 	p.expect(LPAREN)
 	for !p.at(RPAREN) {
 		m := p.modifiers()
+		p.noContexts(&m, "value parameters")
 		pn := p.ident()
 		p.expect(COLON)
 		param := &Param{P: pn.Pos, Name: pn.Text, Type: p.parseType(), Vararg: m.Vararg, Noinline: m.Noinline, Crossinline: m.Crossinline,
@@ -1798,6 +1800,7 @@ func (p *parser) parseClass(m Modifiers) *ClassDecl {
 		p.next()
 		for !p.at(RPAREN) {
 			m := p.modifiers()
+			p.noContexts(&m, "value parameters")
 			cp := &CtorParam{Modifiers: m}
 			if p.at(VAL) || p.at(VAR) {
 				cp.IsProp = true
