@@ -3,9 +3,12 @@ package io.github.barteo.kc.aa
 import com.intellij.lang.ASTNode
 import com.intellij.psi.PsiElement
 import org.jetbrains.kotlin.analysis.api.annotations.KaAnnotation
+import org.jetbrains.kotlin.analysis.api.annotations.KaAnnotationValue
 import org.jetbrains.kotlin.analysis.api.symbols.*
 import org.jetbrains.kotlin.analysis.api.types.KaType
+import org.jetbrains.kotlin.name.CallableId
 import org.jetbrains.kotlin.name.ClassId
+import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.psi.*
 import java.util.IdentityHashMap
 
@@ -31,6 +34,12 @@ internal class KcRound(files: List<Pair<KcFile, KtFile>>) {
     val annotationClasses = IdentityHashMap<KtAnnotationEntry, ClassId>()
 
     private val annotations = IdentityHashMap<KcAnnotation, KaAnnotation>()
+
+    /**
+     * The values of the expressions kc evaluated as annotation arguments
+     * or as annotation parameters' defaults, for `evaluateAsAnnotationValue`.
+     */
+    val values = IdentityHashMap<KtExpression, KaAnnotationValue>()
 
     /** The types of the type references in declarations, for `KtTypeReference.type`. */
     private val typeRefs = IdentityHashMap<KtTypeReference, Pair<KcType, KcTypeContext>>()
@@ -71,9 +80,33 @@ internal class KcRound(files: List<Pair<KcFile, KtFile>>) {
         fun annotation(a: KcAnnotation) {
             val entry = psi(a.node) as? KtAnnotationEntry
                 ?: error("kc: annotation node ${a.node} of ${file.path} is ${nodes[a.node].elementType}")
+            val app = application(a, entry)
+            app.classId?.let { annotationClasses[entry] = it }
+            annotations[a] = app
+        }
+
+        fun application(a: KcAnnotation, psi: KtCallElement?): KcAnnotationApplication {
             val id = a.classId.takeIf { it.isNotEmpty() }?.let(ClassId::fromString)
-            if (id != null) annotationClasses[entry] = id
-            annotations[a] = KcAnnotationApplication(this@KcRound, id, entry, useSiteTarget(a.target))
+            val args = a.args.map { (name, v) -> KcNamedValue(Name.identifier(name), value(v), token) }
+            return KcAnnotationApplication(this@KcRound, id, psi, useSiteTarget(a.target), args)
+        }
+
+        /** The KaAnnotationValue of [v], recorded as its expression's value. */
+        fun value(v: KcValue): KaAnnotationValue {
+            val psi = psi(v.node) as? KtElement
+            val out = when (v) {
+                is KcValue.Const -> KcConstantAnnotationValue(KcConstant.of(v, psi), token)
+                is KcValue.Enum -> KcEnumEntryValue(
+                    CallableId(ClassId.fromString(v.classId), Name.identifier(v.entry)), psi, token)
+                is KcValue.ClassLit -> KcClassLiteralValue(types.type(v.type),
+                    v.type.classId.takeIf { v.type.kind == KcType.CLASS && it.isNotEmpty() }?.let(ClassId::fromString),
+                    psi, token)
+                is KcValue.Nested -> KcNestedAnnotationValue(application(v.annotation, psi as? KtCallElement), psi, token)
+                is KcValue.Array -> KcArrayValue(v.elems.map(::value), psi, token)
+                is KcValue.Unsupported -> KcUnsupportedValue(psi, token)
+            }
+            if (psi is KtExpression) values.putIfAbsent(psi, out)
+            return out
         }
 
         fun decls(ds: List<KcDecl>, parent: KaSymbol, parentKey: String): List<KaDeclarationSymbol> =
@@ -228,6 +261,7 @@ internal class KcRound(files: List<Pair<KcFile, KtFile>>) {
                 val k = "$key/($i"
                 val psi = psiOf<KtParameter>(v)
                 val own = v.annotations.filter { it.target == "" || it.target == "param" }
+                v.default?.let(::value)
                 register(KcValueParameterSymbol(info(v, psi, parent, k, own)), k, psi)
             }
     }

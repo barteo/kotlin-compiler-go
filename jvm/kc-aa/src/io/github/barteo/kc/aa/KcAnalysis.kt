@@ -3,6 +3,7 @@ package io.github.barteo.kc.aa
 import com.intellij.openapi.project.Project
 import com.intellij.psi.PsiElement
 import org.jetbrains.kotlin.analysis.api.KaSession
+import org.jetbrains.kotlin.analysis.api.annotations.KaAnnotationValue
 import org.jetbrains.kotlin.analysis.api.lifetime.KaLifetimeToken
 import org.jetbrains.kotlin.analysis.api.projectStructure.KaModule
 import org.jetbrains.kotlin.analysis.api.scopes.KaScope
@@ -50,6 +51,17 @@ class KcAnalysis internal constructor(internal val round: KcRound, private val m
     fun getStaticDeclaredMemberScope(s: KaDeclarationContainerSymbol): KaScope =
         KcScope(members(s).filter { isStatic(it) }, round.token)
     fun getCombinedDeclaredMemberScope(s: KaDeclarationContainerSymbol): KaScope = KcScope(members(s), round.token)
+
+    // TODO(M4): inherited members and fake overrides; a library class's members.
+    fun getMemberScope(s: KaDeclarationContainerSymbol): KaScope = when (s) {
+        is KcClassSymbol -> getDeclaredMemberScope(s)
+        is KcLibraryClassSymbol -> KcScope(emptyList(), round.token)
+        else -> unsupported("member scope of $s")
+    }
+
+    // KaEvaluator: only the expressions kc evaluated, annotation arguments
+    // and annotation parameters' defaults.
+    fun evaluateAsAnnotationValue(expr: KtExpression): KaAnnotationValue? = round.values[expr]
 
     // KaSymbolRelationProvider
     fun getContainingSymbol(s: KaSymbol): KaSymbol? = when (s) {

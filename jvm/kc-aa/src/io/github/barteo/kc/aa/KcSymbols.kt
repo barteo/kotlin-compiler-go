@@ -6,6 +6,7 @@ import com.intellij.psi.PsiElement
 import org.jetbrains.kotlin.analysis.api.KaSession
 import org.jetbrains.kotlin.analysis.api.annotations.KaAnnotation
 import org.jetbrains.kotlin.analysis.api.annotations.KaAnnotationList
+import org.jetbrains.kotlin.analysis.api.annotations.KaNamedAnnotationValue
 import org.jetbrains.kotlin.analysis.api.base.KaContextReceiver
 import org.jetbrains.kotlin.analysis.api.lifetime.KaLifetimeToken
 import org.jetbrains.kotlin.analysis.api.scopes.KaScope
@@ -416,11 +417,12 @@ internal class KcLibraryClassSymbol(val round: KcRound, override val classId: Cl
 internal class KcAnnotationApplication(
     private val round: KcRound,
     override val classId: ClassId?,
-    override val psi: KtAnnotationEntry?,
+    override val psi: KtCallElement?,
     override val useSiteTarget: AnnotationUseSiteTarget?,
+    override val arguments: List<KaNamedAnnotationValue>,
 ) : StubKaAnnotation() {
     override val token get() = round.token
-    override fun toString() = "@$classId"
+    override fun toString() = "@$classId" + arguments.joinToString(", ", "(", ")")
 }
 
 internal class KcAnnotationList(

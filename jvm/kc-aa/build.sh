@@ -76,6 +76,6 @@ kotlinc -cp "$deps:$out/kc-aa.jar" -d "$out/test-classes" -jvm-target 17 -nowarn
 LD_PRELOAD=$java_home/lib/libjsig.so java -Dksp.backend=kc -Dkc.lib="$out/libkc.so" \
 	-Dkc.stdlib="$lib/kotlin-stdlib-2.4.21.jar" -Didea.home.path="$out" \
 	-cp "$out/test-classes:$out/kc-aa.jar:$deps" PrintAnnotatedKt \
-	"$here/test/slice/src" "$out/slice" a.Marker a.Other kotlin.Suppress > "$out/slice.txt"
+	"$here/test/slice/src" "$out/slice" a.Marker a.Other kotlin.Suppress e.Args e.Inner > "$out/slice.txt"
 diff -u "$here/test/slice/want.txt" "$out/slice.txt"
 echo "slice: ok"

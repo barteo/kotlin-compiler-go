@@ -3,7 +3,8 @@
 //
 //	PrintAnnotated SRC_DIR OUT_DIR ANNOTATION... (-Dksp.backend=kc|aa)
 //
-// Each line is "annotation: kind name", sorted.
+// Each line is "annotation: kind name", sorted, followed by the
+// annotation's arguments, defaults included, if it has any.
 import com.google.devtools.ksp.impl.KotlinSymbolProcessing
 import com.google.devtools.ksp.processing.KSPJvmConfig
 import com.google.devtools.ksp.processing.KSPLogger
@@ -20,7 +21,7 @@ class PrintAnnotatedProvider(private val names: List<String>, private val out: M
     override fun create(environment: SymbolProcessorEnvironment) = object : SymbolProcessor {
         override fun process(resolver: Resolver): List<KSAnnotated> {
             for (name in names) {
-                resolver.getSymbolsWithAnnotation(name).forEach { out += "$name: ${describe(it)}" }
+                resolver.getSymbolsWithAnnotation(name).forEach { out += "$name: ${describe(it)}" + arguments(it, name) }
             }
             return emptyList()
         }
@@ -43,6 +44,31 @@ fun describe(a: KSAnnotated): String = when (a) {
     is KSTypeParameter -> "type parameter ${a.name.asString()}" + a.bounds.joinToString(", ", " : ") { render(it) }
     is KSTypeAlias -> "typealias ${a.qualifiedName?.asString()}"
     else -> "${a.javaClass.simpleName} $a"
+}
+
+/** The arguments of [a]'s annotations of class [name]: " (x = 1, ...)". */
+fun arguments(a: KSAnnotated, name: String): String =
+    a.annotations.filter { it.annotationType.resolve().declaration.qualifiedName?.asString() == name }
+        .filter { it.arguments.isNotEmpty() }
+        .joinToString("") { an -> an.arguments.joinToString(", ", " (", ")") { "${it.name?.asString()} = ${value(it.value)}" } }
+
+/** An annotation argument's value as Kotlin writes it. */
+fun value(v: Any?): String = when (v) {
+    null -> "null"
+    is String -> "\"$v\""
+    is Char -> "'$v'"
+    is Long -> "${v}L"
+    is Float -> "${v}f"
+    is Byte -> "$v.toByte()"
+    is Short -> "$v.toShort()"
+    is UByte, is UShort, is UInt -> "${v}u"
+    is ULong -> "${v}uL"
+    is KSType -> render(v) + "::class"
+    is KSClassDeclaration -> v.qualifiedName?.asString() ?: v.simpleName.asString()
+    is KSAnnotation -> "@" + (v.annotationType.resolve().declaration.qualifiedName?.asString() ?: v.shortName.asString()) +
+        v.arguments.joinToString(", ", "(", ")") { "${it.name?.asString()} = ${value(it.value)}" }
+    is List<*> -> v.joinToString(", ", "[", "]") { value(it) }
+    else -> v.toString()
 }
 
 fun typeParams(tps: List<KSTypeParameter>) =

@@ -115,7 +115,7 @@ func (c *Checker) checkAnnotations(as []syntax.Annotation, owner *types.ClassSym
 		if source && !local {
 			a.Source = cls
 		}
-		if cls.Retention == types.NoRetention || source && !cls.Annotation {
+		if cls.Retention == types.NoRetention {
 			continue
 		}
 		if !c.u.ext.kotlin && !cls.Annotation {
@@ -123,6 +123,15 @@ func (c *Checker) checkAnnotations(as []syntax.Annotation, owner *types.ClassSym
 			// java.lang.Deprecated: only the program's are written.
 			continue
 		}
+		// A library's SOURCE-retention annotation, @Suppress, isn't
+		// checked; its values are evaluated, without errors, only for a
+		// ValueRecorder.
+		vrec, _ := c.u.rec.(ValueRecorder)
+		quiet := source && !cls.Annotation
+		if quiet && (vrec == nil || local) {
+			continue
+		}
+		before := len(c.errs)
 		args := make([]annotArg, 0, len(a.Args))
 		ok := true
 		for j := range a.Args {
@@ -140,6 +149,9 @@ func (c *Checker) checkAnnotations(as []syntax.Annotation, owner *types.ClassSym
 			args = append(args, annotArg{name: arg.Name, elems: elems, array: array, pos: p})
 		}
 		if !ok {
+			if quiet {
+				c.errs = c.errs[:before]
+			}
 			continue
 		}
 		if local {
@@ -151,6 +163,13 @@ func (c *Checker) checkAnnotations(as []syntax.Annotation, owner *types.ClassSym
 		c.lookupCls = annotationScope(owner, c.lookupCls, site)
 		values, ok := c.annotationValues(cls, args, a.P)
 		c.state, c.lookupCls = saved, savedLookup
+		if vrec != nil {
+			vrec.AnnotationValues(c.file, a, values)
+		}
+		if quiet {
+			c.errs = c.errs[:before]
+			continue
+		}
 		if ok && !source {
 			// Class files keep it.
 			a.Class, a.Values = cls, values

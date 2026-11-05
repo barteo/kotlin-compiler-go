@@ -16,13 +16,25 @@
 //	          modality:Uint flags:Uint variance:Uint type receiver:type
 //	          supertypes:types bounds:types
 //	          annots typeParams:decls params:decls members:decls
+//	          default:value
 //	types   = n:Uint type*n
 //	type    = kind:Uint [classID:String tflags:Uint param:Uint name:String
 //	          contexts:Uint n:Uint (variance:Uint type)*n]
-//	annots  = n:Uint (classID:String node:Uint target:String)*n
+//	annots  = n:Uint annot*n
+//	annot   = classID:String node:Uint target:String n:Uint (name:String value)*n
+//	value   = kind:Uint [node:Uint
+//	          const: ckind:Uint [bits:Int | float:Uint | str:String]
+//	          | enum: classID:String entry:String | class: type
+//	          | annotation: annot | array: n:Uint value*n]
 //	diag    = path:String line:Uint col:Uint message:String feature:String
 //
 // An unresolved annotation has classID "".
+//
+// A value of kind 0 is none, and has nothing after its kind: a
+// declaration without a default. Otherwise kind is a ka ValueKind, and
+// an unsupported value has only its node. ckind is a ka ConstKind: a
+// Null has nothing after it, a Float or a Double has the bits of its
+// float64, a String its str, and the others their bits.
 //
 // kind, visibility, modality, flags and variance are ka's Kind,
 // Visibility, Modality, Flags and Variance. A type of kind 0 is none,
@@ -36,6 +48,7 @@ package kaops
 
 import (
 	"context"
+	"math"
 
 	"github.com/barteo/kotlin-compiler-go/analysis/ka"
 	"github.com/barteo/kotlin-compiler-go/internal/kcabi"
@@ -133,6 +146,7 @@ func writeDecls(w *wire.Writer, ds []*ka.Decl) {
 		writeDecls(w, d.TypeParams)
 		writeDecls(w, d.Params)
 		writeDecls(w, d.Members)
+		writeValue(w, d.Default)
 	}
 }
 
@@ -169,10 +183,57 @@ func writeType(w *wire.Writer, t *ka.Type) {
 
 func writeAnnotations(w *wire.Writer, as []ka.Annotation) {
 	w.Uint(uint64(len(as)))
-	for _, a := range as {
-		w.String(a.ClassID)
-		w.Uint(uint64(a.Node))
-		w.String(a.Target)
+	for i := range as {
+		writeAnnotation(w, &as[i])
+	}
+}
+
+func writeAnnotation(w *wire.Writer, a *ka.Annotation) {
+	w.String(a.ClassID)
+	w.Uint(uint64(a.Node))
+	w.String(a.Target)
+	w.Uint(uint64(len(a.Args)))
+	for _, arg := range a.Args {
+		w.String(arg.Name)
+		writeValue(w, arg.Value)
+	}
+}
+
+func writeValue(w *wire.Writer, v *ka.Value) {
+	if v == nil {
+		w.Uint(0)
+		return
+	}
+	w.Uint(uint64(v.Kind))
+	w.Uint(uint64(v.Node))
+	switch v.Kind {
+	case ka.ValueConst:
+		w.Uint(uint64(v.Const))
+		switch v.Const {
+		case ka.ConstNull:
+		case ka.ConstFloat, ka.ConstDouble:
+			w.Uint(math.Float64bits(v.Float))
+		case ka.ConstString:
+			w.String(v.Str)
+		default:
+			w.Int(v.Bits)
+		}
+	case ka.ValueEnum:
+		w.String(v.ClassID)
+		w.String(v.Entry)
+	case ka.ValueClass:
+		writeType(w, v.Type)
+	case ka.ValueAnnotation:
+		if v.Annotation == nil {
+			writeAnnotation(w, &ka.Annotation{})
+		} else {
+			writeAnnotation(w, v.Annotation)
+		}
+	case ka.ValueArray:
+		w.Uint(uint64(len(v.Elems)))
+		for _, e := range v.Elems {
+			writeValue(w, e)
+		}
 	}
 }
 

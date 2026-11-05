@@ -184,6 +184,9 @@ type Decl struct {
 	// functions, nested classes and enum entries, in source order with
 	// the primary constructor first.
 	Members []*Decl
+	// Default is the default value of an annotation class's
+	// constructor's parameter, if it has one.
+	Default *Value
 }
 
 // Annotation is an annotation in the sources.
@@ -193,6 +196,9 @@ type Annotation struct {
 	ClassID string
 	Node    psi.NodeID // the ANNOTATION_ENTRY
 	Target  string     // the use-site target as written: get, field, file...; or ""
+	// Args are its arguments as written, in its parameters' order, as
+	// the checker evaluated them; none if it couldn't.
+	Args []NamedValue
 }
 
 // Update checks the module's sources and returns their model. Errors in
@@ -248,7 +254,7 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 			cmp.Compare(a.Line, b.Line), cmp.Compare(a.Col, b.Col))
 	})
 	for i, f := range files {
-		b := &fileBuilder{f: f, snap: snaps[i], prov: provs[i], annots: rec.annots[f], refs: rec.refs,
+		b := &fileBuilder{f: f, snap: snaps[i], prov: provs[i], annots: rec.annots[f], values: rec.values[f], refs: rec.refs,
 			tparams: map[*types.TypeParamSym]psi.NodeID{}}
 		mf := &File{Path: snaps[i].Path(), Package: f.Package, Snapshot: snaps[i]}
 		mf.Annotations = b.annotations(f.Annotations)
@@ -291,7 +297,8 @@ type checkPanic struct{ v any }
 func (p checkPanic) Error() string { return fmt.Sprintf("ka: checker panic: %v", p.v) }
 
 func checkFiles(ctx context.Context, files []*syntax.File, lib *check.Library, jobs int) (rec *recorder, errs []*syntax.Error, err error) {
-	rec = &recorder{annots: map[*syntax.File]map[syntax.Pos]*types.ClassSym{}, refs: map[*syntax.TypeRef]types.Type{}}
+	rec = &recorder{annots: map[*syntax.File]map[syntax.Pos]*types.ClassSym{},
+		values: map[*syntax.File]map[syntax.Pos][]syntax.AnnotationValue{}, refs: map[*syntax.TypeRef]types.Type{}}
 	defer func() {
 		if v := recover(); v != nil {
 			err = checkPanic{v}
@@ -316,6 +323,9 @@ func diagnostic(path string, e *syntax.Error) Diagnostic {
 // other reports aren't needed yet.
 type recorder struct {
 	annots map[*syntax.File]map[syntax.Pos]*types.ClassSym
+	// values are the arguments of the annotations, as the checker
+	// evaluated them.
+	values map[*syntax.File]map[syntax.Pos][]syntax.AnnotationValue
 	mu     sync.Mutex
 	refs   map[*syntax.TypeRef]types.Type // the types written, as resolved
 }
@@ -336,6 +346,17 @@ func (r *recorder) Annotation(f *syntax.File, a *syntax.Annotation, cls *types.C
 	}
 	m[a.P] = cls
 }
+func (r *recorder) AnnotationValues(f *syntax.File, a *syntax.Annotation, values []syntax.AnnotationValue) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	m := r.values[f]
+	if m == nil {
+		m = map[syntax.Pos][]syntax.AnnotationValue{}
+		r.values[f] = m
+	}
+	m[a.P] = values
+}
+
 func (*recorder) When(*syntax.When, bool, bool)    {}
 func (*recorder) Stmt(syntax.Stmt, bool)           {}
 func (*recorder) Unreachable(syntax.Stmt)          {}
@@ -347,10 +368,12 @@ type fileBuilder struct {
 	snap   *psi.Snapshot
 	prov   *lower.Provenance
 	annots map[syntax.Pos]*types.ClassSym
+	values map[syntax.Pos][]syntax.AnnotationValue
 	refs   map[*syntax.TypeRef]types.Type
 	// tparams are the TYPE_PARAMETER nodes of the file's type
 	// parameters, which their types point to.
 	tparams map[*types.TypeParamSym]psi.NodeID
+	lines   []int // the byte offsets the source's lines start at, once needed
 }
 
 func (b *fileBuilder) annotations(as []syntax.Annotation) []Annotation {
@@ -367,7 +390,12 @@ func (b *fileBuilder) annotations(as []syntax.Annotation) []Annotation {
 		if cls == nil {
 			cls = b.annots[a.P]
 		}
-		out = append(out, Annotation{ClassID: classID(cls), Node: b.prov.Annotation(a.P), Target: a.Target})
+		values, ok := b.values[a.P]
+		if !ok {
+			values = a.Values
+		}
+		out = append(out, Annotation{ClassID: classID(cls), Node: b.prov.Annotation(a.P), Target: a.Target,
+			Args: b.args(a, values)})
 	}
 	return out
 }

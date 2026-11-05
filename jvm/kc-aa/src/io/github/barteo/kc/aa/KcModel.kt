@@ -53,8 +53,34 @@ internal object KcOps {
         KcNative.call(CLOSE, Wire.Writer().writeInt(handle).message())
     }
 
-    private fun Wire.Reader.annotations(): List<KcAnnotation> =
-        List(readUint().toInt()) { KcAnnotation(readString(), readUint().toInt(), readString()) }
+    private fun Wire.Reader.annotations(): List<KcAnnotation> = List(readUint().toInt()) { annotation() }
+
+    private fun Wire.Reader.annotation(): KcAnnotation {
+        val classId = readString()
+        val node = readUint().toInt()
+        val target = readString()
+        return KcAnnotation(classId, node, target, List(readUint().toInt()) { readString() to value()!! })
+    }
+
+    private fun Wire.Reader.value(): KcValue? {
+        val kind = readUint().toInt()
+        if (kind == 0) return null
+        val node = readUint().toInt()
+        return when (kind) {
+            KcValue.CONST -> when (val c = readUint().toInt()) {
+                KcValue.Const.NULL -> KcValue.Const(node, c, 0, 0.0, "")
+                KcValue.Const.FLOAT, KcValue.Const.DOUBLE ->
+                    KcValue.Const(node, c, 0, java.lang.Double.longBitsToDouble(readUint()), "")
+                KcValue.Const.STRING -> KcValue.Const(node, c, 0, 0.0, readString())
+                else -> KcValue.Const(node, c, readInt(), 0.0, "")
+            }
+            KcValue.ENUM -> KcValue.Enum(node, readString(), readString())
+            KcValue.CLASS -> KcValue.ClassLit(node, type()!!)
+            KcValue.ANNOTATION -> KcValue.Nested(node, annotation())
+            KcValue.ARRAY -> KcValue.Array(node, List(readUint().toInt()) { value()!! })
+            else -> KcValue.Unsupported(node)
+        }
+    }
 
     private fun Wire.Reader.decls(): List<KcDecl> =
         List(readUint().toInt()) {
@@ -75,6 +101,7 @@ internal object KcOps {
                 typeParams = decls(),
                 params = decls(),
                 members = decls(),
+                default = value(),
             )
         }
 
@@ -133,6 +160,8 @@ internal class KcDecl(
     val typeParams: List<KcDecl>,
     val params: List<KcDecl>,
     val members: List<KcDecl>,
+    /** An annotation class's constructor parameter's default value. */
+    val default: KcValue? = null,
 ) {
     fun has(flag: Long) = flags and flag != 0L
     val isCompanion get() = has(COMPANION)
@@ -226,5 +255,51 @@ internal class KcType(
 /** A type argument; [type] is null for a star projection. */
 internal class KcTypeArg(val variance: Int, val type: KcType?)
 
-/** An annotation application; [node] is its ANNOTATION_ENTRY, and [classId] is "" if kc didn't resolve it. */
-internal class KcAnnotation(val classId: String, val node: Int, val target: String)
+/**
+ * An annotation application; [node] is its ANNOTATION_ENTRY (a nested
+ * annotation's CALL_EXPRESSION), [classId] is "" if kc didn't resolve it,
+ * and [args] are its arguments as written, by parameter name.
+ */
+internal class KcAnnotation(val classId: String, val node: Int, val target: String, val args: List<Pair<String, KcValue>>)
+
+/**
+ * An annotation argument's value; Go's ka.Value. [node] is the expression
+ * it is written as, 0 if it isn't (a vararg parameter's arguments).
+ */
+internal sealed class KcValue(val node: Int) {
+    /** A constant of Go's ka.ConstKind [kind]: [bits] for integers, Boolean and Char, [float] for Float and Double. */
+    class Const(node: Int, val kind: Int, val bits: Long, val float: Double, val str: String) : KcValue(node) {
+        companion object {
+            const val NULL = 0
+            const val BOOLEAN = 1
+            const val CHAR = 2
+            const val BYTE = 3
+            const val UBYTE = 4
+            const val SHORT = 5
+            const val USHORT = 6
+            const val INT = 7
+            const val UINT = 8
+            const val LONG = 9
+            const val ULONG = 10
+            const val FLOAT = 11
+            const val DOUBLE = 12
+            const val STRING = 13
+        }
+    }
+
+    class Enum(node: Int, val classId: String, val entry: String) : KcValue(node)
+    class ClassLit(node: Int, val type: KcType) : KcValue(node)
+    class Nested(node: Int, val annotation: KcAnnotation) : KcValue(node)
+    class Array(node: Int, val elems: List<KcValue>) : KcValue(node)
+    class Unsupported(node: Int) : KcValue(node)
+
+    companion object {
+        // Go's ka.ValueKind values.
+        const val CONST = 1
+        const val ENUM = 2
+        const val CLASS = 3
+        const val ANNOTATION = 4
+        const val ARRAY = 5
+        const val UNSUPPORTED = 6
+    }
+}

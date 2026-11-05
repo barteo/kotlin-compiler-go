@@ -294,6 +294,46 @@ through KSP. Known differences from kotlinc and things still missing:
   library class is a placeholder symbol.
 - `isSubtypeOf` and `semanticallyEquals` aren't implemented.
 
+**Step 3: annotation arguments.** The checker hands the values it evaluates
+for each annotation to an optional `check.ValueRecorder`. That includes
+SOURCE-retention classes: the program's are checked as usual, and a
+library's (`@Suppress`) are evaluated with their errors dropped, since kc
+doesn't otherwise check them. `analysis/ka/values.go` turns those values
+into `ka.Value`s:
+- the kinds are constants of every Kotlin constant type (unsigned too),
+  enum entries, class literals, nested annotations, arrays, and
+  "unsupported" for values kc didn't compute;
+- `Annotation.Args` holds the arguments as written, in parameter order. A
+  vararg parameter without arguments is left out, as in the Analysis API.
+- `Decl.Default` is the default of an annotation class's constructor
+  parameter, nested-annotation defaults included.
+- Each value points at its expression's psi node. Argument expressions are
+  re-parsed from tokens, so they are found by position: the leftmost
+  operand's line and column, mapped to the outermost expression that starts
+  there.
+
+On the JVM (`KcAnnotationValues.kt`), the values become `KaAnnotationValue`s
+and `KaConstantValue`s with their `sourcePsi`. They back:
+- `KaAnnotation.arguments` (nested annotations too);
+- `evaluateAsAnnotationValue`, which KSP uses for defaults;
+- `memberScope`, which KSP uses to find the constructor that carries those
+  defaults.
+
+The slice (`test/slice/src/e/Args.kt`) prints every argument through KSP's
+`KSAnnotation.arguments`, defaults included. Known gaps:
+- Library annotation classes have no defaults: `memberScope` is empty for a
+  library class until library symbols land.
+- `evaluateAsAnnotationValue` answers only the expressions kc evaluated as
+  annotation arguments or defaults; for any other expression it returns
+  null.
+- `memberScope` of a source class is its declared members, with no
+  inherited members or fake overrides.
+- Arguments are ordered by parameter. That may differ from kotlinc's order
+  when named arguments are written out of order.
+- A position that doesn't line up with the psi (non-ASCII text earlier on
+  the line) leaves the value without `sourcePsi`.
+- Arguments of annotations on local declarations aren't in the model.
+
 ## Gaps and open questions
 
 - **Slice simplifications (M0.4).** These go when M3/M4 bring the facts in:

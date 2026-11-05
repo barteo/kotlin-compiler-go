@@ -13,6 +13,7 @@ a.Marker: function d.Repo.star(xs: kotlin.collections.List<*>, ys: kotlin.Array<
 a.Marker: function d.broken(): <ERROR <ERROR TYPE: Missing>>
 a.Marker: function d.nn<T : kotlin.Any?>(t: T & Any): T
 a.Marker: function d.platform(): kotlin.String?
+a.Marker: function e.spread(): kotlin.Unit
 a.Marker: getter q: kotlin.Int
 a.Marker: parameter p: kotlin.Int
 a.Marker: property c.Unresolved.p: <ERROR <ERROR TYPE: Missing>>
@@ -20,6 +21,11 @@ a.Marker: property d.Repo.size: kotlin.Int
 a.Marker: property d.Repo.twice: kotlin.String on kotlin.String
 a.Marker: property d.inferred: kotlin.collections.List<kotlin.Pair<kotlin.Int, kotlin.String>>
 a.Marker: type parameter T : kotlin.Any?
-a.Other: class b.Plain : kotlin.Any
-a.Other: parameter id: kotlin.Int
-kotlin.Suppress: file Model.kt
+a.Other: class b.Plain : kotlin.Any (s = "y")
+a.Other: parameter id: kotlin.Int (s = "x")
+e.Args: class e.Defaults : kotlin.Any (s = "dflt", i = 3, l = 7L, c = 'c', z = false, f = 1.5f, d = 2.0, u = 3u, e = e.Color.GREEN, k = kotlin.Any::class, arr = ["x", "y"], inner = @e.Inner(s = "d", xs = [1, 2]))
+e.Args: class e.Full : kotlin.Any (s = "const!", i = -4, l = 1099511627776L, c = 'q', z = true, f = 0.25f, d = 1000.0, u = 4294967295u, e = e.Color.RED, k = kotlin.String::class, arr = ["a", "const"], inner = @e.Inner(xs = [5], s = "in"))
+e.Args: class e.Positional : kotlin.Any (s = "pos", i = 9, v = ["p", "q"], l = 7L, c = 'c', z = false, f = 1.5f, d = 2.0, u = 3u, e = e.Color.GREEN, k = kotlin.Any::class, arr = ["x", "y"], inner = @e.Inner(s = "d", xs = [1, 2]))
+e.Args: function e.spread(): kotlin.Unit (v = ["s1"], s = "dflt", i = 3, l = 7L, c = 'c', z = false, f = 1.5f, d = 2.0, u = 3u, e = e.Color.GREEN, k = kotlin.Any::class, arr = ["x", "y"], inner = @e.Inner(s = "d", xs = [1, 2]))
+e.Inner: class e.Defaults : kotlin.Any (s = "in")
+kotlin.Suppress: file Model.kt (names = ["unused"])

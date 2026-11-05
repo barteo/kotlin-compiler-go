@@ -90,7 +90,11 @@ func (b *fileBuilder) class(d *syntax.ClassDecl, prefix string) *Decl {
 			Visibility: visibility(d.CtorMods.Visibility), Annotations: b.annotations(d.CtorMods.Annotations),
 			Flags: commonFlags(&d.CtorMods)}
 		for _, p := range d.CtorParams {
-			ctor.Params = append(ctor.Params, b.param(&p.Param, b.prov.Node(p), p.Modifiers.Annotations))
+			mp := b.param(&p.Param, b.prov.Node(p), p.Modifiers.Annotations)
+			if d.Annotation && p.Default != nil && p.Sym != nil {
+				mp.Default = b.defaultValue(p.Sym.Type, p.Default, 0)
+			}
+			ctor.Params = append(ctor.Params, mp)
 		}
 		md.Members = append(md.Members, ctor)
 		for _, p := range d.CtorParams {
