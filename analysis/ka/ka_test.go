@@ -69,11 +69,13 @@ func TestDecls(t *testing.T) {
 	m := update(t, `@file:Suppress("x")
 package a.b
 
+@Target(AnnotationTarget.CLASS, AnnotationTarget.FUNCTION, AnnotationTarget.PROPERTY_GETTER, AnnotationTarget.FIELD,
+    AnnotationTarget.VALUE_PARAMETER, AnnotationTarget.TYPE_PARAMETER)
 annotation class Marker
 annotation class Other(val s: String)
 
 @Marker
-class C<T>(@Other("p") val x: Int, y: String) {
+class C<@Marker T>(@Other("p") val x: Int, y: String) {
     @Marker fun f(@Marker z: Int) {}
     @get:Marker val p: Int get() = 1
     constructor() : this(1, "")
@@ -94,14 +96,14 @@ typealias S = String
 	}
 	dump(&sb, f.Snapshot, f.Decls, "")
 	want := `file @kotlin/Suppress(file)
-annotation Marker [a/b/Marker] CLASS
+annotation Marker [a/b/Marker] CLASS @kotlin/annotation/Target
   ctor <init> -
 annotation Other [a/b/Other] CLASS
   ctor <init> PRIMARY_CONSTRUCTOR
     (param s VALUE_PARAMETER
   val s VALUE_PARAMETER
 class C [a/b/C] CLASS @a/b/Marker
-  <tparam T TYPE_PARAMETER
+  <tparam T TYPE_PARAMETER @a/b/Marker
   ctor <init> PRIMARY_CONSTRUCTOR
     (param x VALUE_PARAMETER @a/b/Other
     (param y VALUE_PARAMETER

@@ -1,0 +1,170 @@
+package io.github.barteo.kc.aa
+
+import com.intellij.openapi.project.Project
+import com.intellij.psi.PsiElement
+import org.jetbrains.kotlin.analysis.api.KaSession
+import org.jetbrains.kotlin.analysis.api.lifetime.KaLifetimeToken
+import org.jetbrains.kotlin.analysis.api.projectStructure.KaModule
+import org.jetbrains.kotlin.analysis.api.scopes.KaScope
+import org.jetbrains.kotlin.analysis.api.session.KaSessionProvider
+import org.jetbrains.kotlin.analysis.api.symbols.*
+import org.jetbrains.kotlin.analysis.api.symbols.markers.KaDeclarationContainerSymbol
+import org.jetbrains.kotlin.analysis.api.types.KaType
+import org.jetbrains.kotlin.name.ClassId
+import org.jetbrains.kotlin.psi.*
+import java.lang.reflect.InvocationHandler
+import java.lang.reflect.InvocationTargetException
+import java.lang.reflect.Method
+import java.lang.reflect.Proxy
+import java.util.concurrent.ConcurrentHashMap
+
+/**
+ * The `KaSession` members kc implements. A [KaSession] is a proxy (see
+ * [session]) that calls the method of this class with the interface
+ * method's name and parameter types; extension members take their receiver
+ * first, as they compile. Any other abstract member throws
+ * `UnsupportedOperationException("kc: KaSession.name(...)")`, and default
+ * members run their default body.
+ */
+@Suppress("unused") // called reflectively
+class KcAnalysis internal constructor(internal val round: KcRound, private val module: KaModule) {
+    fun getToken(): KaLifetimeToken = round.token
+    fun getUseSiteModule(): KaModule = module
+
+    // KaSymbolProvider
+    fun getSymbol(file: KtFile): KaFileSymbol = round.byPsi[file] as? KaFileSymbol ?: noSymbol(file)
+    fun getSymbol(declaration: KtDeclaration): KaDeclarationSymbol =
+        round.byPsi[declaration] as? KaDeclarationSymbol ?: noSymbol(declaration)
+    fun getSymbol(c: KtClassOrObject): KaClassSymbol? = round.byPsi[c] as? KaClassSymbol
+    fun getNamedClassSymbol(c: KtClassOrObject): KaNamedClassSymbol? = round.byPsi[c] as? KaNamedClassSymbol
+    fun findClass(classId: ClassId): KaClassSymbol? = round.classes[classId]
+    fun findClassLike(classId: ClassId): KaClassLikeSymbol? = round.classes[classId] ?: round.typeAliases[classId]
+    /** A source type alias; library aliases aren't known yet. */
+    fun findTypeAlias(classId: ClassId): KaTypeAliasSymbol? = round.typeAliases[classId]
+
+    // KaScopeProvider
+    fun getFileScope(file: KaFileSymbol): KaScope = KcScope((file as KcFileSymbol).declarations, round.token)
+    fun getDeclaredMemberScope(s: KaDeclarationContainerSymbol): KaScope =
+        KcScope(members(s).filterNot { isStatic(it) }, round.token)
+    fun getStaticDeclaredMemberScope(s: KaDeclarationContainerSymbol): KaScope =
+        KcScope(members(s).filter { isStatic(it) }, round.token)
+    fun getCombinedDeclaredMemberScope(s: KaDeclarationContainerSymbol): KaScope = KcScope(members(s), round.token)
+
+    // KaSymbolRelationProvider
+    fun getContainingSymbol(s: KaSymbol): KaSymbol? = when (s) {
+        is KcClassSymbol -> s.info.parent.takeUnless { it is KaFileSymbol }
+        is KcFunctionSymbol -> s.info.parent.takeUnless { it is KaFileSymbol }
+        is KcPropertySymbol -> s.info.parent.takeUnless { it is KaFileSymbol }
+        is KcTypeAliasSymbol -> s.info.parent.takeUnless { it is KaFileSymbol }
+        is KcConstructorSymbol -> s.info.parent
+        is KcEnumEntrySymbol -> s.info.parent
+        is KcValueParameterSymbol -> s.info.parent
+        is KcTypeParameterSymbol -> s.info.parent
+        is KcGetterSymbol -> s.property
+        is KcSetterSymbol -> s.property
+        else -> unsupported("containingSymbol of $s")
+    }
+    fun getContainingFile(s: KaSymbol): KaFileSymbol? {
+        var cur: KaSymbol? = s
+        while (cur != null && cur !is KaFileSymbol) {
+            cur = when (cur) {
+                is KcClassSymbol -> cur.info.parent
+                is KcFunctionSymbol -> cur.info.parent
+                is KcPropertySymbol -> cur.info.parent
+                is KcTypeAliasSymbol -> cur.info.parent
+                else -> getContainingSymbol(cur)
+            }
+        }
+        return cur as KaFileSymbol?
+    }
+
+    // KaTypeProvider
+    fun getType(ref: KtTypeReference): KaType {
+        val entry = (ref.parent as? KtConstructorCalleeExpression)?.parent as? KtAnnotationEntry
+        val id = entry?.let { round.annotationClasses[it] } ?: unsupported("type of ${ref.text}: only annotation types")
+        return KcClassType(round, id)
+    }
+    fun getFullyExpandedType(type: KaType): KaType = when (type) {
+        is KcClassType -> type // kc expands aliases before reporting annotation classes
+        else -> unsupported("fullyExpandedType of $type")
+    }
+
+
+    // KaTypeCreator
+    /** A class type with no arguments; the builder isn't run, so arguments it adds are lost. */
+    fun buildClassType(classId: ClassId, init: Function1<Any?, Unit>): KaType = KcClassType(round, classId)
+
+    // KaTypeInformationProvider
+    fun isMarkedNullable(type: KaType): Boolean = when (type) {
+        is KcClassType -> false
+        else -> unsupported("isMarkedNullable of $type")
+    }
+
+    private fun members(s: KaDeclarationContainerSymbol): List<KaDeclarationSymbol> =
+        (s as? KcClassSymbol)?.members ?: unsupported("members of $s")
+
+    /** Whether a member belongs in the static scope: a nested class that isn't inner. */
+    private fun isStatic(s: KaDeclarationSymbol) = s is KcClassSymbol && !s.isInner
+
+    private fun noSymbol(e: PsiElement): Nothing = unsupported("no symbol for ${e.javaClass.simpleName} ${e.text.take(40)}")
+
+    companion object {
+        private val dispatch = ConcurrentHashMap<Method, Method?>()
+
+        internal fun unsupported(what: String): Nothing = throw UnsupportedOperationException("kc: $what")
+
+        /** The implementation behind a session made by [session]. */
+        internal fun of(session: KaSession): KcAnalysis =
+            (Proxy.getInvocationHandler(session) as Handler).analysis
+
+        internal fun session(analysis: KcAnalysis): KaSession =
+            Proxy.newProxyInstance(KaSession::class.java.classLoader, arrayOf(KaSession::class.java), Handler(analysis)) as KaSession
+
+        private class Handler(val analysis: KcAnalysis) : InvocationHandler {
+            override fun invoke(proxy: Any, method: Method, args: Array<out Any?>?): Any? {
+                val a = args ?: emptyArray()
+                when (method.name) {
+                    "equals" -> if (a.size == 1 && method.parameterTypes[0] == Any::class.java) return proxy === a[0]
+                    "hashCode" -> if (a.isEmpty()) return System.identityHashCode(proxy)
+                    "toString" -> if (a.isEmpty()) return "KcSession"
+                }
+                val impl = dispatch.computeIfAbsent(method) {
+                    try {
+                        KcAnalysis::class.java.getMethod(it.name, *it.parameterTypes)
+                    } catch (_: NoSuchMethodException) {
+                        null
+                    }
+                }
+                try {
+                    return when {
+                        impl != null -> impl.invoke(analysis, *a)
+                        method.isDefault -> InvocationHandler.invokeDefault(proxy, method, *a)
+                        else -> unsupported(
+                            "KaSession.${method.name}(${method.parameterTypes.joinToString { it.simpleName }})",
+                        )
+                    }
+                } catch (e: InvocationTargetException) {
+                    throw e.targetException
+                }
+            }
+        }
+    }
+}
+
+/** Hands out the current round's session for every `analyze` call. */
+internal class KcSessionProvider(project: Project) : KaSessionProvider(project) {
+    @Volatile
+    lateinit var session: KaSession
+
+    override fun getAnalysisSession(useSiteElement: PsiElement): KaSession = session
+    override fun getAnalysisSession(useSiteModule: KaModule): KaSession = session
+    override fun beforeEnteringAnalysis(session: KaSession, useSiteElement: PsiElement) {}
+    override fun beforeEnteringAnalysis(session: KaSession, useSiteModule: KaModule) {}
+    override fun afterLeavingAnalysis(session: KaSession, useSiteElement: PsiElement) {}
+    override fun afterLeavingAnalysis(session: KaSession, useSiteModule: KaModule) {}
+    override fun handleAnalysisException(throwable: Throwable, session: KaSession, useSiteElement: PsiElement): Nothing =
+        throw throwable
+    override fun handleAnalysisException(throwable: Throwable, session: KaSession, useSiteModule: KaModule): Nothing =
+        throw throwable
+    override fun clearCaches() {}
+}

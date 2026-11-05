@@ -1,0 +1,12 @@
+a.Marker: class a.User
+a.Marker: class a.User.Nested
+a.Marker: class b.E.B
+a.Marker: class b.Registry
+a.Marker: function a.User.f
+a.Marker: function b.top
+a.Marker: getter q
+a.Marker: parameter p
+a.Marker: type parameter T
+a.Other: class b.Plain
+a.Other: parameter id
+kotlin.Suppress: file Model.kt

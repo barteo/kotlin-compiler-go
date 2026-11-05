@@ -351,7 +351,8 @@ func (b *fileBuilder) class(d *syntax.ClassDecl, prefix string) *Decl {
 func (b *fileBuilder) typeParams(tps []*syntax.TypeParam) []*Decl {
 	var out []*Decl
 	for _, tp := range tps {
-		out = append(out, &Decl{Kind: KindTypeParameter, Name: tp.Name, Node: b.prov.Node(tp)})
+		out = append(out, &Decl{Kind: KindTypeParameter, Name: tp.Name, Node: b.prov.Node(tp),
+			Annotations: b.annotations(tp.Annotations)})
 	}
 	return out
 }

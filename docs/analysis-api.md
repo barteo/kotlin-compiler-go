@@ -66,7 +66,7 @@ mapping.
 | M0.1 | JNI and Go runtime spike: `cmd/libkc`, `internal/kcabi`, `jvm/libkc/test.sh` | done |
 | M0.2 | AA 2.4.21 API jar from the Kotlin sources: `jvm/aa-api/build.sh` | done |
 | M0.3 | KSP fork compiles against the unshaded AA 2.4.21 API: `jvm/ksp` | done, see gaps |
-| M0.4 | Vertical slice: list annotated source classes through a `kc` KspBackend | next |
+| M0.4 | Vertical slice: list annotated source classes through a `kc` KspBackend: `jvm/kc-aa/build.sh test` | done, see gaps |
 | M1 | `psi` on Kotlin 2.4.21 | done before this work |
 | M2 | Error tolerance, `types.Invalid` payload, extension-vs-top-level overload bug, `@Contextual`/`@EncodeDefault` | |
 | M3 | Richer symbol model: visibility and modality enums, flags, origins, library annotation arguments, Java parameter names | |
@@ -125,7 +125,65 @@ The patches:
    a `KspBackendSession`. `backend/fir/StandaloneBackend` (`aa`) is the old
    session code, moved, and is found with `ServiceLoader`.
 
+### M0.4 – Vertical slice
+
+`jvm/kc-aa/build.sh test` runs KSP's processing loop on the `kc` backend over
+a 3-file project (`jvm/kc-aa/test/slice`). The processor
+(`test/PrintAnnotated.kt`) prints every symbol that `getSymbolsWithAnnotation`
+returns, and the output must match `want.txt`: classes, nested classes, an
+object, an enum entry, functions, a getter (`@get:`), value and type
+parameters, a constructor `val`, and a file annotation.
+
+**Go.**
+- `analysis/ka` checks the module and builds a declaration `Model`. A
+  declaration has its kind, name, class ID, visibility, flags, annotations
+  (class ID, use-site target, psi node), type and value parameters, and
+  members.
+- `internal/kaops` serves it over the bridge: open, update and close,
+  operations 10–12.
+- A declaration's psi node is its preorder index in `kc`'s lossless tree,
+  counted over every node, leaves included.
+
+**JVM (`jvm/kc-aa`).**
+- `KcBackend` is a `KspBackend` found with `ServiceLoader`. Its session:
+  - creates a `KotlinCoreEnvironment`, which also gives `ResolverAAImpl` the
+    `KotlinCliJavaFileManagerImpl` it casts to;
+  - registers a `KaSessionProvider`;
+  - opens a `kc` session on the module's Kotlin sources and libraries.
+- Each update decodes the model and joins it with kotlin-compiler's PSI of
+  the same files, through the preorder index, into a `KcRound`. A round is the
+  symbols, an index by PSI, and an index by pointer key. The next update
+  replaces the round and invalidates its lifetime token.
+- `KaSession` is a `java.lang.reflect.Proxy`. A call goes to the `KcAnalysis`
+  method with the same name and parameter types; an extension member takes
+  its receiver first.
+  - Implemented: `getSymbol` for files, declarations and classes;
+    `findClass`, `findClassLike`, `findTypeAlias`; the file, declared-member,
+    static-declared-member and combined scopes; `containingSymbol` and
+    `containingFile`; `KtTypeReference.type` for annotation types;
+    `fullyExpandedType`; `isMarkedNullable`; and `buildClassType`.
+  - Any other abstract member throws
+    `UnsupportedOperationException("kc: KaSession.name(types)")`.
+- The symbol classes (`KcSymbols.kt`) extend stubs that `gen/GenStubs.kt`
+  generates from the API jar. A stub member throws
+  `UnsupportedOperationException("kc: Class.member")`, so a run names the
+  first missing member.
+
 ## Gaps and open questions
+
+- **Slice simplifications (M0.4).** These go when M3/M4 bring the facts in:
+  - Modality and most flags are read from PSI modifiers, not from `kc`.
+  - There are no backing-field symbols, so `@field:` annotations are dropped.
+  - Library classes are known by class ID only.
+  - Types are argument-free class types: `KtTypeReference.type` answers only
+    annotation types, `buildClassType` doesn't run its builder, and library
+    type aliases aren't known.
+  - Java sources are ignored.
+  - The PSI join checks each node's PSI class, not yet the whole kind
+    sequence.
+  - `dropCaches` does nothing. Dropping PsiManager's caches needs IntelliJ
+    extension points that the core environment doesn't register, and sources
+    don't change between rounds.
 
 - **Stock backend not built here.** The jar leaves out `backend/fir/`,
   `standalone/` and the Java stubs in `src/main/java`, because they need the
@@ -140,9 +198,10 @@ The patches:
   (incremental-compilation caches) have no serializers yet. M6 fixes this, or
   turns IC off for the first `kc` runs.
 - **Java file manager.** `ResolverAAImpl.javaFileManager` casts the project's
-  `JavaFileManager` service to `KotlinCliJavaFileManagerImpl`, so the `kc`
-  backend must register one (M6) or the cast must move behind `KcExtras`.
+  `JavaFileManager` service to `KotlinCliJavaFileManagerImpl`. The `kc`
+  backend gets one from `KotlinCoreEnvironment`, whose setup is part of the
+  cold-start cost that M7 measures.
 - **KSP member coverage.** KSP2 uses about 308 AA members: `KaSession` 43,
   symbols 157, types 32, components 22, annotations 14, project structure
-  10, signatures 6, scopes 4. None are implemented on `kc` yet. M5 tracks
-  coverage through a generated `members.txt`.
+  10, signatures 6, scopes 4. M0.4 implements the slice's subset (see above).
+  M5 tracks coverage through a generated `members.txt`.
