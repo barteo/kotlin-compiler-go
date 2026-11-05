@@ -3,6 +3,8 @@ package ka
 import (
 	"context"
 	"fmt"
+	"os"
+	"os/exec"
 	"strings"
 	"testing"
 
@@ -21,11 +23,28 @@ func withStdlib(t *testing.T) Config {
 
 func update(t *testing.T, srcs ...string) *Model {
 	t.Helper()
+	return updateWith(t, withStdlib(t), srcs...)
+}
+
+// withJDK is withStdlib's configuration with the JDK that driver finds,
+// as kc finds it by default.
+func withJDK(t *testing.T) Config {
+	t.Helper()
+	cfg := withStdlib(t)
+	cfg.NoJDK = false
+	if _, err := exec.LookPath("java"); err != nil && os.Getenv("JAVA_HOME") == "" {
+		t.Skip("no JDK")
+	}
+	return cfg
+}
+
+func updateWith(t *testing.T, cfg Config, srcs ...string) *Model {
+	t.Helper()
 	var sources []Source
 	for i, s := range srcs {
 		sources = append(sources, Source{Path: fmt.Sprintf("f%d.kt", i), Text: &s})
 	}
-	m, err := Open(withStdlib(t)).Update(context.Background(), sources)
+	m, err := Open(cfg).Update(context.Background(), sources)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -174,6 +193,172 @@ f2.kt:2:4: unresolved reference: Gone
 f2.kt:2:29: unresolved or unsupported type: Missing
 f2.kt:3:13: unresolved reference: undefined
 f2.kt:4:14: unresolved or unsupported type: Nope
+`
+	if got := sb.String(); got != want {
+		t.Errorf("got\n%s\nwant\n%s", got, want)
+	}
+}
+
+// typeString writes t as Kotlin writes types, with class IDs, T#node for
+// a type parameter and !text! for an error type.
+func typeString(snap *psi.Snapshot, t *Type) string {
+	if t == nil {
+		return "nil"
+	}
+	var sb strings.Builder
+	switch t.Kind {
+	case TypeClass:
+		if t.Extension {
+			sb.WriteString("ext ")
+		}
+		sb.WriteString(t.ClassID)
+		if len(t.Args) > 0 {
+			sb.WriteString("<")
+			for i, a := range t.Args {
+				if i > 0 {
+					sb.WriteString(", ")
+				}
+				sb.WriteString([...]string{"", "in ", "out ", "*"}[a.Variance])
+				if a.Type != nil {
+					sb.WriteString(typeString(snap, a.Type))
+				}
+			}
+			sb.WriteString(">")
+		}
+	case TypeParameter:
+		sb.WriteString(t.Name)
+		if t.Param == 0 || snap.Node(t.Param).Kind() != "TYPE_PARAMETER" {
+			sb.WriteString("#?")
+		}
+		if t.DefinitelyNonNull {
+			sb.WriteString(" & Any")
+		}
+	case TypeError:
+		sb.WriteString("!" + t.Name + "!")
+	}
+	switch {
+	case t.Nullable:
+		sb.WriteString("?")
+	case t.Flexible:
+		sb.WriteString("!")
+	}
+	return sb.String()
+}
+
+func dumpTypes(sb *strings.Builder, snap *psi.Snapshot, ds []*Decl, indent string) {
+	for _, d := range ds {
+		fmt.Fprintf(sb, "%s%s m%d f%#x", indent, d.Name, d.Modality, d.Flags)
+		if d.Variance != Invariant {
+			fmt.Fprintf(sb, " v%d", d.Variance)
+		}
+		if d.Receiver != nil {
+			fmt.Fprintf(sb, " recv=%s", typeString(snap, d.Receiver))
+		}
+		if d.Type != nil {
+			fmt.Fprintf(sb, " : %s", typeString(snap, d.Type))
+		}
+		for _, s := range d.Supertypes {
+			fmt.Fprintf(sb, " <: %s", typeString(snap, s))
+		}
+		for _, s := range d.Bounds {
+			fmt.Fprintf(sb, " <: %s", typeString(snap, s))
+		}
+		sb.WriteString("\n")
+		dumpTypes(sb, snap, d.TypeParams, indent+"  <")
+		dumpTypes(sb, snap, d.Params, indent+"  (")
+		dumpTypes(sb, snap, d.Members, indent+"  ")
+	}
+}
+
+func TestTypes(t *testing.T) {
+	m := updateWith(t, withJDK(t), `package p
+
+abstract class Base<out T : Comparable<T>>(val items: List<T>) : Iterable<T> {
+    abstract val first: T
+    open fun size(): Int = items.size
+    override fun iterator(): Iterator<T> = items.iterator()
+    private fun hidden() {}
+}
+
+interface Api {
+    suspend fun load(id: Long, vararg tags: String): Map<String, Any?>?
+    val name: String
+    fun greet() = "hi " + name
+}
+
+data class Point(val x: Int, var y: Double = 0.0) : Comparable<Point> {
+    override fun compareTo(other: Point) = x - other.x
+    inline fun <reified R> cast(f: (Point) -> R, g: String.(Int) -> Unit): R = f(this)
+    lateinit var label: String
+}
+
+sealed interface Shape
+enum class Color { RED, GREEN }
+annotation class Tag(val value: String)
+fun <T> T.orNull(): T? = this
+fun <T> nn(t: T & Any): T = t
+fun ranges(n: Int) = 1..n
+val inferred = listOf(1 to "a")
+const val K = 1
+fun broken(): Missing = TODO()
+fun java(): java.lang.StringBuilder = StringBuilder()
+fun props() = System.getProperty("x")
+typealias Names = List<String>
+`)
+	f := m.Files[0]
+	var sb strings.Builder
+	dumpTypes(&sb, f.Snapshot, f.Decls, "")
+	// TODO: props is String!, a flexible type, in kotlinc.
+	want := `Base m2 f0x0 <: kotlin/collections/Iterable<T>
+  <T m0 f0x0 v2 <: kotlin/Comparable<T>
+  <init> m0 f0x0
+    (items m0 f0x0 : kotlin/collections/List<T>
+  items m0 f0x0 : kotlin/collections/List<T>
+  first m2 f0x0 : T
+  size m1 f0x0 : kotlin/Int
+  iterator m1 f0x100000 : kotlin/collections/Iterator<T>
+  hidden m0 f0x0 : kotlin/Unit
+Api m2 f0x0 <: kotlin/Any
+  load m2 f0x100 : kotlin/collections/Map<kotlin/String, kotlin/Any?>?
+    (id m0 f0x0 : kotlin/Long
+    (tags m0 f0x10000 : kotlin/String
+  name m2 f0x0 : kotlin/String
+  greet m1 f0x0 : kotlin/String
+Point m0 f0x2 <: kotlin/Comparable<p/Point>
+  <init> m0 f0x0
+    (x m0 f0x0 : kotlin/Int
+    (y m0 f0x80000 : kotlin/Double
+  x m0 f0x0 : kotlin/Int
+  y m0 f0x8000 : kotlin/Double
+  compareTo m1 f0x100000 : kotlin/Int
+    (other m0 f0x0 : p/Point
+  cast m0 f0x80 : R
+    <R m0 f0x200000
+    (f m0 f0x0 : kotlin/Function1<p/Point, R>
+    (g m0 f0x0 : ext kotlin/Function2<kotlin/String, kotlin/Int, kotlin/Unit>
+  label m0 f0xc000 : kotlin/String
+Shape m3 f0x0 <: kotlin/Any
+Color m0 f0x0 <: kotlin/Enum<p/Color>
+  <init> m0 f0x0
+  RED m0 f0x0 : p/Color
+  GREEN m0 f0x0 : p/Color
+Tag m0 f0x0 <: kotlin/Annotation
+  <init> m0 f0x0
+    (value m0 f0x0 : kotlin/String
+  value m0 f0x0 : kotlin/String
+orNull m0 f0x0 recv=T : T?
+  <T m0 f0x0
+nn m0 f0x0 : T
+  <T m0 f0x0
+  (t m0 f0x0 : T & Any
+ranges m0 f0x0 : kotlin/ranges/IntRange
+  (n m0 f0x0 : kotlin/Int
+inferred m0 f0x0 : kotlin/collections/List<kotlin/Pair<kotlin/Int, kotlin/String>>
+K m0 f0x2000 : kotlin/Int
+broken m0 f0x0 : !Missing!
+java m0 f0x0 : java/lang/StringBuilder
+props m0 f0x0 : kotlin/String?
+Names m0 f0x0 : kotlin/collections/List<kotlin/String>
 `
 	if got := sb.String(); got != want {
 		t.Errorf("got\n%s\nwant\n%s", got, want)

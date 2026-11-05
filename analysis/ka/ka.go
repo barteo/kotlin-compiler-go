@@ -16,6 +16,7 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"sync"
 
 	"github.com/barteo/kotlin-compiler-go/analysis"
 	"github.com/barteo/kotlin-compiler-go/internal/check"
@@ -76,6 +77,46 @@ const (
 	Internal
 )
 
+// Modality is a declaration's modality. The numbers are part of libkc's
+// ABI.
+type Modality uint8
+
+const (
+	ModalityFinal Modality = iota
+	ModalityOpen
+	ModalityAbstract
+	ModalitySealed
+)
+
+// Flags are a declaration's modifiers, as a bit set. The bits are part of
+// libkc's ABI: append only.
+type Flags uint32
+
+const (
+	FlagCompanion Flags = 1 << iota
+	FlagData
+	FlagInner
+	FlagValue
+	FlagFun // a fun interface
+	FlagExpect
+	FlagActual
+	FlagInline
+	FlagSuspend
+	FlagOperator
+	FlagInfix
+	FlagTailrec
+	FlagExternal
+	FlagConst
+	FlagLateinit
+	FlagMutable // a var, or a val or var constructor parameter's property
+	FlagVararg
+	FlagNoinline
+	FlagCrossinline
+	FlagHasDefault // a value parameter with a default value
+	FlagOverride
+	FlagReified
+)
+
 // Model is the declarations of a module's sources as they were when Update
 // made it.
 type Model struct {
@@ -117,12 +158,25 @@ type Decl struct {
 	Node psi.NodeID
 	// ClassID is a class's class ID, as Kotlin's ClassId.asString():
 	// a/b/Outer.Inner.
-	ClassID     string
-	Visibility  Visibility
-	Companion   bool
-	Data        bool
+	ClassID    string
+	Visibility Visibility
+	Modality   Modality
+	Flags      Flags
+	// Variance is a type parameter's declaration-site variance.
+	Variance    Variance
 	Annotations []Annotation
-	TypeParams  []*Decl
+	// Type is a property's, a value parameter's (a vararg's element
+	// type), a function's return type, or a type alias's expansion; nil
+	// for the others, and where the checker didn't get to it.
+	Type *Type
+	// Receiver is an extension's receiver type.
+	Receiver *Type
+	// Supertypes are a class's direct supertypes, as written (kotlin/Any
+	// if none is), and Bounds a type parameter's upper bounds (none for
+	// Any?).
+	Supertypes []*Type
+	Bounds     []*Type
+	TypeParams []*Decl
 	// Params are a function's or constructor's value parameters.
 	Params []*Decl
 	// Members are a class's declared members: constructors, properties
@@ -194,12 +248,13 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 			cmp.Compare(a.Line, b.Line), cmp.Compare(a.Col, b.Col))
 	})
 	for i, f := range files {
-		b := &fileBuilder{f: f, snap: snaps[i], prov: provs[i], annots: rec.annots[f]}
+		b := &fileBuilder{f: f, snap: snaps[i], prov: provs[i], annots: rec.annots[f], refs: rec.refs,
+			tparams: map[*types.TypeParamSym]psi.NodeID{}}
 		mf := &File{Path: snaps[i].Path(), Package: f.Package, Snapshot: snaps[i]}
 		mf.Annotations = b.annotations(f.Annotations)
 		pkg := strings.ReplaceAll(f.Package, ".", "/")
 		for _, d := range f.Decls {
-			if md := b.decl(d, pkg+"/"); md != nil {
+			if md := b.decl(d, nil, pkg+"/"); md != nil {
 				mf.Decls = append(mf.Decls, md)
 			}
 		}
@@ -236,7 +291,7 @@ type checkPanic struct{ v any }
 func (p checkPanic) Error() string { return fmt.Sprintf("ka: checker panic: %v", p.v) }
 
 func checkFiles(ctx context.Context, files []*syntax.File, lib *check.Library, jobs int) (rec *recorder, errs []*syntax.Error, err error) {
-	rec = &recorder{annots: map[*syntax.File]map[syntax.Pos]*types.ClassSym{}}
+	rec = &recorder{annots: map[*syntax.File]map[syntax.Pos]*types.ClassSym{}, refs: map[*syntax.TypeRef]types.Type{}}
 	defer func() {
 		if v := recover(); v != nil {
 			err = checkPanic{v}
@@ -261,9 +316,19 @@ func diagnostic(path string, e *syntax.Error) Diagnostic {
 // other reports aren't needed yet.
 type recorder struct {
 	annots map[*syntax.File]map[syntax.Pos]*types.ClassSym
+	mu     sync.Mutex
+	refs   map[*syntax.TypeRef]types.Type // the types written, as resolved
+}
+
+func (r *recorder) TypeRef(ref *syntax.TypeRef, t types.Type) {
+	r.mu.Lock()
+	r.refs[ref] = t
+	r.mu.Unlock()
 }
 
 func (r *recorder) Annotation(f *syntax.File, a *syntax.Annotation, cls *types.ClassSym) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	m := r.annots[f]
 	if m == nil {
 		m = map[syntax.Pos]*types.ClassSym{}
@@ -271,18 +336,21 @@ func (r *recorder) Annotation(f *syntax.File, a *syntax.Annotation, cls *types.C
 	}
 	m[a.P] = cls
 }
-func (*recorder) When(*syntax.When, bool, bool)       {}
-func (*recorder) Stmt(syntax.Stmt, bool)              {}
-func (*recorder) Unreachable(syntax.Stmt)             {}
-func (*recorder) Elvis(*syntax.Binary, bool)          {}
-func (*recorder) TypeRef(*syntax.TypeRef, types.Type) {}
-func (*recorder) StmtType(syntax.Expr, types.Type)    {}
+func (*recorder) When(*syntax.When, bool, bool)    {}
+func (*recorder) Stmt(syntax.Stmt, bool)           {}
+func (*recorder) Unreachable(syntax.Stmt)          {}
+func (*recorder) Elvis(*syntax.Binary, bool)       {}
+func (*recorder) StmtType(syntax.Expr, types.Type) {}
 
 type fileBuilder struct {
 	f      *syntax.File
 	snap   *psi.Snapshot
 	prov   *lower.Provenance
 	annots map[syntax.Pos]*types.ClassSym
+	refs   map[*syntax.TypeRef]types.Type
+	// tparams are the TYPE_PARAMETER nodes of the file's type
+	// parameters, which their types point to.
+	tparams map[*types.TypeParamSym]psi.NodeID
 }
 
 func (b *fileBuilder) annotations(as []syntax.Annotation) []Annotation {
@@ -304,21 +372,6 @@ func (b *fileBuilder) annotations(as []syntax.Annotation) []Annotation {
 	return out
 }
 
-// classID returns the class ID of c, or "" for nil.
-func classID(c *types.ClassSym) string {
-	if c == nil {
-		return ""
-	}
-	if c.KotlinName != "" {
-		return c.KotlinName
-	}
-	pkg, rel := "", c.Name
-	if i := strings.LastIndexByte(c.Name, '/'); i >= 0 {
-		pkg, rel = c.Name[:i+1], c.Name[i+1:]
-	}
-	return pkg + strings.ReplaceAll(rel, "$", ".")
-}
-
 func visibility(v syntax.Visibility) Visibility {
 	switch v {
 	case syntax.Private:
@@ -329,103 +382,4 @@ func visibility(v syntax.Visibility) Visibility {
 		return Internal
 	}
 	return Public
-}
-
-// decl returns the model of declaration d, whose class ID, if it is a
-// class, starts with prefix: a/b/ or a/b/Outer.; nil for a declaration the
-// model doesn't have yet.
-func (b *fileBuilder) decl(d syntax.Decl, prefix string) *Decl {
-	switch d := d.(type) {
-	case *syntax.ClassDecl:
-		return b.class(d, prefix)
-	case *syntax.FunDecl:
-		md := &Decl{Kind: KindFunction, Name: d.Name, Node: b.prov.Node(d),
-			Visibility: visibility(d.Visibility), Annotations: b.annotations(d.Annotations)}
-		md.TypeParams = b.typeParams(d.TypeParams)
-		md.Params = b.params(d.Params)
-		return md
-	case *syntax.PropDecl:
-		md := &Decl{Kind: KindProperty, Name: d.Name, Node: b.prov.Node(d),
-			Visibility: visibility(d.Visibility), Annotations: b.annotations(d.Annotations)}
-		md.TypeParams = b.typeParams(d.TypeParams)
-		return md
-	case *syntax.TypeAliasDecl:
-		md := &Decl{Kind: KindTypeAlias, Name: d.Name, Node: b.prov.Node(d),
-			ClassID: prefix + d.Name, Visibility: visibility(d.Visibility),
-			Annotations: b.annotations(d.Annotations)}
-		md.TypeParams = b.typeParams(d.TypeParams)
-		return md
-	case *syntax.SecondaryCtor:
-		md := &Decl{Kind: KindConstructor, Name: "<init>", Node: b.prov.Node(d),
-			Visibility: visibility(d.Visibility), Annotations: b.annotations(d.Annotations)}
-		md.Params = b.params(d.Params)
-		return md
-	}
-	return nil
-}
-
-func (b *fileBuilder) class(d *syntax.ClassDecl, prefix string) *Decl {
-	md := &Decl{Kind: KindClass, Name: d.Name, Node: b.prov.Node(d), ClassID: prefix + d.Name,
-		Visibility: visibility(d.Visibility), Companion: d.Companion, Data: d.Data,
-		Annotations: b.annotations(d.Annotations)}
-	switch {
-	case d.Annotation:
-		md.Kind = KindAnnotationClass
-	case d.Interface:
-		md.Kind = KindInterface
-	case d.Object:
-		md.Kind = KindObject
-	case d.Enum:
-		md.Kind = KindEnumClass
-	}
-	md.TypeParams = b.typeParams(d.TypeParams)
-	if !d.Interface && !d.Object {
-		// The PRIMARY_CONSTRUCTOR, if written.
-		pc := b.snap.Node(md.Node).ChildKind(psi.KindPRIMARY_CONSTRUCTOR).ID()
-		ctor := &Decl{Kind: KindConstructor, Name: "<init>", Node: pc,
-			Visibility: visibility(d.CtorMods.Visibility), Annotations: b.annotations(d.CtorMods.Annotations)}
-		for _, p := range d.CtorParams {
-			ctor.Params = append(ctor.Params, &Decl{Kind: KindValueParameter, Name: p.Name,
-				Node: b.prov.Node(p), Annotations: b.annotations(p.Modifiers.Annotations)})
-		}
-		md.Members = append(md.Members, ctor)
-		for _, p := range d.CtorParams {
-			if p.IsProp {
-				md.Members = append(md.Members, &Decl{Kind: KindProperty, Name: p.Name,
-					Node: b.prov.Node(p), Visibility: visibility(p.Visibility),
-					Annotations: b.annotations(p.Modifiers.Annotations)})
-			}
-		}
-	}
-	for _, e := range d.Entries {
-		md.Members = append(md.Members, &Decl{Kind: KindEnumEntry, Name: e.Name, Node: b.prov.Node(e),
-			ClassID: md.ClassID + "." + e.Name, Annotations: b.annotations(e.Annotations)})
-	}
-	for _, m := range d.Members {
-		if c, ok := m.(*syntax.ClassDecl); ok && c.EnumEntry {
-			continue // the body of an enum entry, which is among Entries
-		}
-		if mm := b.decl(m, md.ClassID+"."); mm != nil {
-			md.Members = append(md.Members, mm)
-		}
-	}
-	return md
-}
-
-func (b *fileBuilder) typeParams(tps []*syntax.TypeParam) []*Decl {
-	var out []*Decl
-	for _, tp := range tps {
-		out = append(out, &Decl{Kind: KindTypeParameter, Name: tp.Name, Node: b.prov.Node(tp),
-			Annotations: b.annotations(tp.Annotations)})
-	}
-	return out
-}
-
-func (b *fileBuilder) params(ps []*syntax.Param) []*Decl {
-	var out []*Decl
-	for _, p := range ps {
-		out = append(out, &Decl{Kind: KindValueParameter, Name: p.Name, Node: b.prov.Node(p),
-			Annotations: b.annotations(p.Annotations)})
-	}
-	return out
 }

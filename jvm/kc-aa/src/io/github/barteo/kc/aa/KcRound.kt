@@ -156,8 +156,10 @@ internal class KcRound(files: List<Pair<KcFile, KtFile>>) {
                     p,
                 )
                 register(s, "$key/set", setterPsi)
-                val paramDecl = KcDecl(KcDecl.VALUE_PARAMETER, setterPsi?.parameter?.name ?: "value", 0, "", 0, 0,
-                    emptyList(), emptyList(), emptyList(), emptyList())
+                val paramDecl = KcDecl(KcDecl.VALUE_PARAMETER, setterPsi?.parameter?.name ?: "value", 0, "",
+                    visibility = 0, modality = KcDecl.FINAL, flags = 0, variance = KcDecl.INVARIANT,
+                    type = d.type, receiver = null, supertypes = emptyList(), bounds = emptyList(),
+                    annotations = emptyList(), typeParams = emptyList(), params = emptyList(), members = emptyList())
                 s.parameterSymbol = KcValueParameterSymbol(
                     KcInfo(this@KcRound, paramDecl, setterPsi?.parameter, s, "$key/set/value",
                         d.annotations.filter { it.target == "setparam" }),

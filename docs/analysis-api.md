@@ -69,7 +69,7 @@ mapping.
 | M0.4 | Vertical slice: list annotated source classes through a `kc` KspBackend: `jvm/kc-aa/build.sh test` | done, see gaps |
 | M1 | `psi` on Kotlin 2.4.21 | done before this work |
 | M2 | Error tolerance, `types.Invalid` payload, extension-vs-top-level overload bug, `@Contextual`/`@EncodeDefault` | done (two items moved, see M2) |
-| M3 | Richer symbol model: visibility and modality enums, flags, origins, library annotation arguments, Java parameter names | |
+| M3 | Richer symbol model: visibility and modality enums, flags, origins, library annotation arguments, Java parameter names | in progress: source types, flags, modality |
 | M4 | Queryable session `analysis/ka`: lookups, scopes, relations, overrides | |
 | M5 | Bridge: `cmd/libkc` operations, `tools/kagen` wire format, `jvm/kc-aa` KaSession | |
 | M6 | KSP fork integration: the `kc` backend, IC lookups, hot paths | |
@@ -220,10 +220,58 @@ them with `-Dkc.diagnostics`.
   kotlinc and the kotlinx.serialization jars, which this container doesn't
   have.
 
+### M3/M4 – Symbol model (in progress)
+
+**Step 1: source types, flags and modality.** `ka.Decl` now carries:
+- `Modality`: final, open, abstract or sealed. It is the modality Kotlin
+  implies, not only the one written: an interface member without a body is
+  abstract, an override or interface member with one is open, and a private
+  or top-level one is final.
+- `Flags`: companion, data, inner, value, fun, expect, actual, inline,
+  suspend, operator, infix, tailrec, external, const, lateinit, mutable,
+  vararg, noinline, crossinline, has-default, override and reified.
+- `Variance`: a type parameter's declaration-site variance.
+- `Type`: a callable's return type, a property's or parameter's type (a
+  vararg's element type), a type alias's expansion, or an enum entry's class.
+  Omitted return and property types are the inferred ones.
+- `Receiver`, `Supertypes` (with the implied `kotlin/Enum<E>`,
+  `kotlin/Annotation` or `kotlin/Any`) and `Bounds`.
+
+A `ka.Type` (`analysis/ka/types.go`) is a class type with arguments and
+projections, a type parameter type, or an error type:
+- Class types use Kotlin class IDs. Primitives, ranges and the Java classes
+  that are Kotlin classes (`java/lang/Object` and so on) are mapped. A
+  function type is `kotlin/FunctionN` or `kotlin/coroutines/SuspendFunctionN`,
+  with the extension flag and the number of context parameters.
+- A type parameter type points at its `TYPE_PARAMETER` node, following kc's
+  substitution origins back to the declared parameter. It may be definitely
+  non-null (`T & Any`).
+- An error type's text is the type as written, taken from its psi node. This
+  is what M2 deferred for the `types.Invalid` payload.
+- Nullable and flexible (platform) are flags.
+
+`ka` records the type of every written type reference through the
+checker's `TypeRef` recorder hook, so receivers and bounds that have no symbol field
+still resolve. The wire format (`internal/kaops`) and `KcModel.kt` carry all
+of this. `KcSymbols.kt` now reads modality, flags and variance from kc instead
+of PSI modifiers; property accessors still read theirs from PSI.
+
+Test: `TestTypes` in `analysis/ka`, run with the JDK.
+
+Known gaps in this step:
+- Types are expanded: a use of a type alias has no abbreviation.
+- An intersection type other than `T & Any` (from smart casts or inference)
+  is an error type.
+- An inferred platform type is nullable (`String?`), not flexible
+  (`String!`), because kc picks one when it infers a declaration's type.
+- Accessor flags and modality aren't in the model.
+- Library declarations aren't in the model yet.
+- The JVM side doesn't build `KaType`s from the model yet.
+
 ## Gaps and open questions
 
 - **Slice simplifications (M0.4).** These go when M3/M4 bring the facts in:
-  - Modality and most flags are read from PSI modifiers, not from `kc`.
+  - Accessors read their flags from PSI modifiers, not from `kc`.
   - There are no backing-field symbols, so `@field:` annotations are dropped.
   - Library classes are known by class ID only.
   - Types are argument-free class types: `KtTypeReference.type` answers only

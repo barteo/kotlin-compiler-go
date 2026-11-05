@@ -13,13 +13,23 @@
 //	file    = path:String package:String annots decls
 //	decls   = n:Uint decl*n
 //	decl    = kind:Uint name:String node:Uint classID:String visibility:Uint
-//	          flags:Uint annots typeParams:decls params:decls members:decls
+//	          modality:Uint flags:Uint variance:Uint type receiver:type
+//	          supertypes:types bounds:types
+//	          annots typeParams:decls params:decls members:decls
+//	types   = n:Uint type*n
+//	type    = kind:Uint [classID:String tflags:Uint param:Uint name:String
+//	          contexts:Uint n:Uint (variance:Uint type)*n]
 //	annots  = n:Uint (classID:String node:Uint target:String)*n
 //	diag    = path:String line:Uint col:Uint message:String feature:String
 //
 // An unresolved annotation has classID "".
 //
-// flags is a bit set: 1 companion, 2 data.
+// kind, visibility, modality, flags and variance are ka's Kind,
+// Visibility, Modality, Flags and Variance. A type of kind 0 is none,
+// and has nothing after its kind: a declaration without a type or
+// receiver, or a star projection's argument. Otherwise kind is a ka
+// TypeKind, and tflags a bit set: 1 nullable, 2 flexible, 4 definitely
+// non-null, 8 extension function type.
 //
 // OpKaClose: handle:Int → nothing. It releases a session or a model.
 package kaops
@@ -112,18 +122,48 @@ func writeDecls(w *wire.Writer, ds []*ka.Decl) {
 		w.Uint(uint64(d.Node))
 		w.String(d.ClassID)
 		w.Uint(uint64(d.Visibility))
-		var flags uint64
-		if d.Companion {
-			flags |= 1
-		}
-		if d.Data {
-			flags |= 2
-		}
-		w.Uint(flags)
+		w.Uint(uint64(d.Modality))
+		w.Uint(uint64(d.Flags))
+		w.Uint(uint64(d.Variance))
+		writeType(w, d.Type)
+		writeType(w, d.Receiver)
+		writeTypes(w, d.Supertypes)
+		writeTypes(w, d.Bounds)
 		writeAnnotations(w, d.Annotations)
 		writeDecls(w, d.TypeParams)
 		writeDecls(w, d.Params)
 		writeDecls(w, d.Members)
+	}
+}
+
+func writeTypes(w *wire.Writer, ts []*ka.Type) {
+	w.Uint(uint64(len(ts)))
+	for _, t := range ts {
+		writeType(w, t)
+	}
+}
+
+func writeType(w *wire.Writer, t *ka.Type) {
+	if t == nil {
+		w.Uint(0)
+		return
+	}
+	w.Uint(uint64(t.Kind))
+	w.String(t.ClassID)
+	var flags uint64
+	for i, on := range [...]bool{t.Nullable, t.Flexible, t.DefinitelyNonNull, t.Extension} {
+		if on {
+			flags |= 1 << i
+		}
+	}
+	w.Uint(flags)
+	w.Uint(uint64(t.Param))
+	w.String(t.Name)
+	w.Uint(uint64(t.Contexts))
+	w.Uint(uint64(len(t.Args)))
+	for _, a := range t.Args {
+		w.Uint(uint64(a.Variance))
+		writeType(w, a.Type)
 	}
 }
 

@@ -81,14 +81,11 @@ internal class KcInfo(
 
     fun has(token: KtModifierKeywordToken) = (psi as? KtModifierListOwner)?.hasModifier(token) == true
 
-    /** The modality written in the source; kc doesn't report the implied one yet. */
     val modality: KaSymbolModality
-        get() = when {
-            has(KtTokens.SEALED_KEYWORD) -> KaSymbolModality.SEALED
-            has(KtTokens.ABSTRACT_KEYWORD) || decl.kind == KcDecl.INTERFACE -> KaSymbolModality.ABSTRACT
-            has(KtTokens.OPEN_KEYWORD) || has(KtTokens.OVERRIDE_KEYWORD) -> KaSymbolModality.OPEN
-            parent is KcClassSymbol && parent.info.decl.kind == KcDecl.INTERFACE ->
-                if ((psi as? KtDeclarationWithBody)?.hasBody() == true) KaSymbolModality.OPEN else KaSymbolModality.ABSTRACT
+        get() = when (decl.modality) {
+            KcDecl.SEALED -> KaSymbolModality.SEALED
+            KcDecl.ABSTRACT -> KaSymbolModality.ABSTRACT
+            KcDecl.OPEN -> KaSymbolModality.OPEN
             else -> KaSymbolModality.FINAL
         }
 
@@ -140,12 +137,12 @@ internal class KcClassSymbol(val info: KcInfo) : StubKaNamedClassSymbol() {
             else -> KaClassKind.CLASS
         }
     override val isData get() = info.decl.isData
-    override val isInner get() = info.has(KtTokens.INNER_KEYWORD)
-    override val isInline get() = info.has(KtTokens.VALUE_KEYWORD) || info.has(KtTokens.INLINE_KEYWORD)
-    override val isFun get() = info.has(KtTokens.FUN_KEYWORD)
-    override val isExternal get() = info.has(KtTokens.EXTERNAL_KEYWORD)
-    override val isExpect get() = info.has(KtTokens.EXPECT_KEYWORD)
-    override val isActual get() = info.has(KtTokens.ACTUAL_KEYWORD)
+    override val isInner get() = info.decl.has(KcDecl.INNER)
+    override val isInline get() = info.decl.has(KcDecl.VALUE)
+    override val isFun get() = info.decl.has(KcDecl.FUN)
+    override val isExternal get() = info.decl.has(KcDecl.EXTERNAL)
+    override val isExpect get() = info.decl.has(KcDecl.EXPECT)
+    override val isActual get() = info.decl.has(KcDecl.ACTUAL)
     override val contextReceivers: List<KaContextReceiver> get() = emptyList()
     override fun createPointer(): KaSymbolPointer<KaNamedClassSymbol> = info.pointer()
 
@@ -169,16 +166,16 @@ internal class KcFunctionSymbol(val info: KcInfo) : StubKaNamedFunctionSymbol() 
     override val compilerVisibility get() = info.compilerVisibility
     override val location get() = info.location
     override val modality get() = info.modality
-    override val isSuspend get() = info.has(KtTokens.SUSPEND_KEYWORD)
-    override val isInline get() = info.has(KtTokens.INLINE_KEYWORD)
-    override val isOperator get() = info.has(KtTokens.OPERATOR_KEYWORD)
-    override val isInfix get() = info.has(KtTokens.INFIX_KEYWORD)
-    override val isTailRec get() = info.has(KtTokens.TAILREC_KEYWORD)
-    override val isExternal get() = info.has(KtTokens.EXTERNAL_KEYWORD)
-    override val isOverride get() = info.has(KtTokens.OVERRIDE_KEYWORD)
-    override val isExpect get() = info.has(KtTokens.EXPECT_KEYWORD)
-    override val isActual get() = info.has(KtTokens.ACTUAL_KEYWORD)
-    override val isExtension get() = (info.psi as? KtCallableDeclaration)?.receiverTypeReference != null
+    override val isSuspend get() = info.decl.has(KcDecl.SUSPEND)
+    override val isInline get() = info.decl.has(KcDecl.INLINE)
+    override val isOperator get() = info.decl.has(KcDecl.OPERATOR)
+    override val isInfix get() = info.decl.has(KcDecl.INFIX)
+    override val isTailRec get() = info.decl.has(KcDecl.TAILREC)
+    override val isExternal get() = info.decl.has(KcDecl.EXTERNAL)
+    override val isOverride get() = info.decl.has(KcDecl.OVERRIDE)
+    override val isExpect get() = info.decl.has(KcDecl.EXPECT)
+    override val isActual get() = info.decl.has(KcDecl.ACTUAL)
+    override val isExtension get() = info.decl.receiver != null
     override val isStatic get() = false
     override val isBuiltinFunctionInvoke get() = false
     override val hasStableParameterNames get() = true
@@ -202,8 +199,8 @@ internal class KcConstructorSymbol(val info: KcInfo) : StubKaConstructorSymbol()
     override val containingClassId get() = (info.parent as? KcClassSymbol)?.classId
     override val isPrimary get() = info.psi == null || info.psi is KtPrimaryConstructor
     override val isExpect get() = (info.parent as? KcClassSymbol)?.isExpect == true
-    override val isActual get() = info.has(KtTokens.ACTUAL_KEYWORD)
-    override val isExternal get() = info.has(KtTokens.EXTERNAL_KEYWORD)
+    override val isActual get() = info.decl.has(KcDecl.ACTUAL)
+    override val isExternal get() = info.decl.has(KcDecl.EXTERNAL)
     override val hasStableParameterNames get() = true
     override fun createPointer(): KaSymbolPointer<KaConstructorSymbol> = info.pointer()
     override val typeParameters: List<KaTypeParameterSymbol> get() = (info.parent as? KcClassSymbol)?.typeParameters.orEmpty()
@@ -220,11 +217,10 @@ internal class KcValueParameterSymbol(val info: KcInfo) : StubKaValueParameterSy
     override val name get() = info.name
     override val visibility get() = KaSymbolVisibility.LOCAL
     override val compilerVisibility get() = Visibilities.Local
-    private val param get() = info.psi as? KtParameter
-    override val isVararg get() = param?.isVarArg == true
-    override val isCrossinline get() = info.has(KtTokens.CROSSINLINE_KEYWORD)
-    override val isNoinline get() = info.has(KtTokens.NOINLINE_KEYWORD)
-    override val hasDeclaredDefaultValue get() = param?.hasDefaultValue() == true
+    override val isVararg get() = info.decl.has(KcDecl.VARARG)
+    override val isCrossinline get() = info.decl.has(KcDecl.CROSSINLINE)
+    override val isNoinline get() = info.decl.has(KcDecl.NOINLINE)
+    override val hasDeclaredDefaultValue get() = info.decl.has(KcDecl.HAS_DEFAULT)
     override val hasDefaultValue get() = hasDeclaredDefaultValue
     override val isImplicitLambdaParameter get() = false
     override fun createPointer(): KaSymbolPointer<KaValueParameterSymbol> = info.pointer()
@@ -237,11 +233,11 @@ internal class KcTypeParameterSymbol(val info: KcInfo) : StubKaTypeParameterSymb
     override val annotations get() = info.annotations
     override val name get() = info.name
     override val location get() = KaSymbolLocation.LOCAL
-    override val isReified get() = info.has(KtTokens.REIFIED_KEYWORD)
+    override val isReified get() = info.decl.has(KcDecl.REIFIED)
     override val variance: Variance
-        get() = when {
-            info.has(KtTokens.IN_KEYWORD) -> Variance.IN_VARIANCE
-            info.has(KtTokens.OUT_KEYWORD) -> Variance.OUT_VARIANCE
+        get() = when (info.decl.variance) {
+            KcDecl.IN -> Variance.IN_VARIANCE
+            KcDecl.OUT -> Variance.OUT_VARIANCE
             else -> Variance.INVARIANT
         }
     override fun createPointer(): KaSymbolPointer<KaTypeParameterSymbol> = info.pointer()
@@ -258,21 +254,16 @@ internal class KcPropertySymbol(val info: KcInfo) : StubKaKotlinPropertySymbol()
     override val compilerVisibility get() = info.compilerVisibility
     override val location get() = info.location
     override val modality get() = info.modality
-    override val isVal: Boolean
-        get() = when (val p = info.psi) {
-            is KtProperty -> !p.isVar
-            is KtParameter -> !p.isMutable
-            else -> true
-        }
+    override val isVal get() = !info.decl.has(KcDecl.MUTABLE)
     override val isFromPrimaryConstructor get() = info.psi is KtParameter
-    override val isConst get() = info.has(KtTokens.CONST_KEYWORD)
-    override val isLateInit get() = info.has(KtTokens.LATEINIT_KEYWORD)
-    override val isOverride get() = info.has(KtTokens.OVERRIDE_KEYWORD)
-    override val isExternal get() = info.has(KtTokens.EXTERNAL_KEYWORD)
-    override val isExpect get() = info.has(KtTokens.EXPECT_KEYWORD)
-    override val isActual get() = info.has(KtTokens.ACTUAL_KEYWORD)
+    override val isConst get() = info.decl.has(KcDecl.CONST)
+    override val isLateInit get() = info.decl.has(KcDecl.LATEINIT)
+    override val isOverride get() = info.decl.has(KcDecl.OVERRIDE)
+    override val isExternal get() = info.decl.has(KcDecl.EXTERNAL)
+    override val isExpect get() = info.decl.has(KcDecl.EXPECT)
+    override val isActual get() = info.decl.has(KcDecl.ACTUAL)
     override val isDelegated get() = (info.psi as? KtProperty)?.hasDelegate() == true
-    override val isExtension get() = (info.psi as? KtCallableDeclaration)?.receiverTypeReference != null
+    override val isExtension get() = info.decl.receiver != null
     override val isStatic get() = false
     override val receiverParameter: KaReceiverParameterSymbol?
         get() = if (isExtension) super.receiverParameter else null
@@ -356,8 +347,8 @@ internal class KcTypeAliasSymbol(val info: KcInfo) : StubKaTypeAliasSymbol() {
     override val visibility get() = info.visibility
     override val compilerVisibility get() = info.compilerVisibility
     override val location get() = info.location
-    override val isExpect get() = info.has(KtTokens.EXPECT_KEYWORD)
-    override val isActual get() = info.has(KtTokens.ACTUAL_KEYWORD)
+    override val isExpect get() = info.decl.has(KcDecl.EXPECT)
+    override val isActual get() = info.decl.has(KcDecl.ACTUAL)
     override fun createPointer(): KaSymbolPointer<KaTypeAliasSymbol> = info.pointer()
 
     lateinit var typeParams: List<KaTypeParameterSymbol>
