@@ -692,8 +692,8 @@ The second real processor: Dagger's KSP processor (`dagger-compiler`
 
 Known gaps:
 - ~~No stock-KSP reference output.~~ Stock KSP 2.3.6's embeddable jar
-  runs here (only the AA 2.4.21 standalone jars are blocked); step 9
-  diffs against it.
+  runs here (only the AA 2.4.21 standalone jars are blocked):
+  `build.sh stock` diffs `test/dagger/want` against it (step 9).
 - Hilt, assisted injection, subcomponents, map multibindings, and Java
   sources in the module aren't exercised.
 - Source annotation-class properties report a backing field (as FIR's
@@ -714,8 +714,16 @@ the AA 2.4.21 standalone jars are blocked).
   and delegated overrides take their class's module; the rest are the
   source module's. `KcExtras.libraryModuleName` returns null, so KSP
   names library modules "main".
+- **`build.sh stock`** does what `build.sh test` does, then runs Moshi
+  and Dagger on stock KSP 2.3.6 from Maven Central (aa-embeddable, with
+  its intellij coroutines build) over the same fixtures, and compares the
+  output with the same `want` directories ("moshi: stock KSP ok", "dagger:
+  stock KSP ok"). Both match, so the fixtures' expected output is now
+  checked against stock KSP, not only against kc. Stock KSP runs with
+  language version 2.3, its compiler's.
 - **`RunKsp`** takes several source roots (`SRC_DIR[:SRC_DIR...]`) and
-  `-Dksp.languageVersion`.
+  `-Dksp.languageVersion`, and exits explicitly, since stock KSP leaves
+  non-daemon threads running.
 - **Checker: octi-server checks with no errors** but the unresolved
   `DaggerAppComponent`, which Dagger generates. Before this step kc
   reported 304 errors there, which KSP ignores but a kc compile wouldn't:

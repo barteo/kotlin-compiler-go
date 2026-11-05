@@ -2,7 +2,7 @@
 # build.sh builds the kc KSP backend: the Analysis API answered by kc
 # through libkc (jvm/kc-aa/src), and the libkc.so it loads.
 #
-#	jvm/kc-aa/build.sh [test]
+#	jvm/kc-aa/build.sh [test|stock]
 #
 # It writes build/kc-aa.jar and build/libkc.so. With "test" it then runs
 # KSP's processing loop on the kc backend over test/slice, with a processor
@@ -10,6 +10,9 @@
 # the output with test/slice/want.txt; then it runs Moshi's KSP codegen over
 # test/moshi/src (test/RunKsp.kt) and compares what it generates with
 # test/moshi/want, and Dagger's over test/dagger/src with test/dagger/want.
+# "stock" does what "test" does, and then runs Moshi and Dagger on stock
+# KSP 2.3.6 (its embeddable Analysis API, Kotlin 2.3) over the same
+# sources, whose output must match the same want directories.
 #
 # The symbol classes extend generated stubs (build/Stubs.kt, made by
 # gen/GenStubs.kt) whose members throw UnsupportedOperationException("kc:
@@ -73,7 +76,8 @@ rm -f "$out/kc-aa.jar"
 (cd "$classes" && jar cf "$out/kc-aa.jar" .)
 echo "$out/kc-aa.jar"
 
-[ "${1:-}" = test ] || exit 0
+mode=${1:-}
+[ "$mode" = test ] || [ "$mode" = stock ] || exit 0
 
 rm -rf "$out/test-classes" "$out/slice"
 kotlinc -cp "$deps:$out/kc-aa.jar" -d "$out/test-classes" -jvm-target 17 -nowarn "$here/test/PrintAnnotated.kt"
@@ -103,6 +107,33 @@ fetch() {
 	echo "build.sh: can't download $MAVEN/$path" >&2
 	exit 1
 }
+
+# Stock KSP and RunKsp built against it.
+if [ "$mode" = stock ]; then
+	stockcp=
+	for jar in com/google/devtools/ksp/symbol-processing-aa-embeddable/2.3.6/symbol-processing-aa-embeddable-2.3.6.jar \
+		com/google/devtools/ksp/symbol-processing-api/2.3.6/symbol-processing-api-2.3.6.jar \
+		com/google/devtools/ksp/symbol-processing-common-deps/2.3.6/symbol-processing-common-deps-2.3.6.jar \
+		org/jetbrains/kotlin/kotlin-stdlib/2.3.0/kotlin-stdlib-2.3.0.jar \
+		org/jetbrains/intellij/deps/kotlinx/kotlinx-coroutines-core-jvm/1.8.0-intellij-14/kotlinx-coroutines-core-jvm-1.8.0-intellij-14.jar; do
+		fetch "$jar"
+		stockcp=$stockcp:$out/m2/$(basename "$jar")
+	done
+	rm -rf "$out/runksp-stock"
+	kotlinc -cp "${stockcp#:}" -language-version 2.3 -api-version 2.3 -d "$out/runksp-stock" -jvm-target 17 -nowarn \
+		"$here/test/RunKsp.kt"
+fi
+# stock NAME SRC LIBS PROCS runs PROCS on stock KSP over SRC, with
+# libraries LIBS, and compares the output with test/NAME/want.
+stock() {
+	[ "$mode" = stock ] || return 0
+	rm -rf "$out/stock-$1"
+	java -Dksp.languageVersion=2.3 -cp "$out/runksp-stock$4$stockcp" RunKspKt "$2" "$out/stock-$1" "$3" > "$out/stock-$1.txt"
+	rm -rf "$out/stock-$1/caches"
+	diff -ru "$here/test/$1/want" "$out/stock-$1"
+	echo "$1: stock KSP ok"
+}
+
 procs=
 for jar in com/squareup/moshi/moshi-kotlin-codegen/1.15.2/moshi-kotlin-codegen-1.15.2.jar \
 	com/squareup/moshi/moshi/1.15.2/moshi-1.15.2.jar \
@@ -124,6 +155,7 @@ LD_PRELOAD=$java_home/lib/libjsig.so java -Dksp.backend=kc -Dkc.lib="$out/libkc.
 rm -rf "$out/moshi/caches"
 diff -ru "$here/test/moshi/want" "$out/moshi"
 echo "moshi: ok"
+stock moshi "$here/test/moshi/src" "$lib/kotlin-stdlib-2.4.21.jar:$out/m2/moshi-1.15.2.jar:$out/m2/okio-jvm-3.7.0.jar" "$procs"
 
 # Dagger's KSP processor (XProcessing) over test/dagger/src. Its jars come
 # first: kotlin-compiler bundles an older Guava, and KSP proper would load
@@ -153,3 +185,5 @@ LD_PRELOAD=$java_home/lib/libjsig.so java -Dksp.backend=kc -Dkc.lib="$out/libkc.
 rm -rf "$out/dagger/caches"
 diff -ru "$here/test/dagger/want" "$out/dagger"
 echo "dagger: ok"
+stock dagger "$here/test/dagger/src" \
+	"$lib/kotlin-stdlib-2.4.21.jar:$out/m2/dagger-2.59.2.jar:$out/m2/javax.inject-1.jar:$out/m2/jakarta.inject-api-2.0.1.jar" "$procs"

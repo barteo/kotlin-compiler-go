@@ -75,4 +75,6 @@ fun main(args: Array<String>) {
         System.err.println("KSP exited with $code")
         exitProcess(1)
     }
+    // Stock KSP leaves non-daemon threads behind.
+    exitProcess(0)
 }
