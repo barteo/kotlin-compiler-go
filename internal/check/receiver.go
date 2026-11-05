@@ -375,12 +375,21 @@ func (c *Checker) thisExtension(name string, x *syntax.Call) bool {
 	if n, ok := c.narrowedThis(); ok {
 		t = n
 	}
+	var fs []*types.FunSym
 	for _, cl := range c.extCalleesFor(name, t, x) {
 		if c.mayTake(cl.f, x) {
-			return true
+			fs = append(fs, cl.f)
 		}
 	}
-	return false
+	if len(fs) == 0 || !hasLambda(x.Args) {
+		return len(fs) > 0
+	}
+	// A call with a lambda is checked once, so onReceiver can't try the
+	// extension and fall back: the arguments' types decide, those of
+	// properties too, which mayTake doesn't know. Any.log(priority,
+	// message) gives way to the top-level log(tag: String, priority,
+	// message) in log(TAG, INFO) { }.
+	return c.takeTypes(fs, x, c.argTypes(x))
 }
 
 // lowPriorityGivesWay drops the members marked

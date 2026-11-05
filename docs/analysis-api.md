@@ -68,7 +68,7 @@ mapping.
 | M0.3 | KSP fork compiles against the unshaded AA 2.4.21 API: `jvm/ksp` | done, see gaps |
 | M0.4 | Vertical slice: list annotated source classes through a `kc` KspBackend: `jvm/kc-aa/build.sh test` | done, see gaps |
 | M1 | `psi` on Kotlin 2.4.21 | done before this work |
-| M2 | Error tolerance, `types.Invalid` payload, extension-vs-top-level overload bug, `@Contextual`/`@EncodeDefault` | in progress: error tolerance done |
+| M2 | Error tolerance, `types.Invalid` payload, extension-vs-top-level overload bug, `@Contextual`/`@EncodeDefault` | in progress: error tolerance, overload bug done |
 | M3 | Richer symbol model: visibility and modality enums, flags, origins, library annotation arguments, Java parameter names | |
 | M4 | Queryable session `analysis/ka`: lookups, scopes, relations, overrides | |
 | M5 | Bridge: `cmd/libkc` operations, `tools/kagen` wire format, `jvm/kc-aa` KaSession | |
@@ -192,6 +192,21 @@ them with `-Dkc.diagnostics`.
 - **Tests.** The slice has a file with a syntax error and an unresolved
   annotation (`test/slice/src/c/Broken.kt`), and `analysis/ka` has
   `TestErrors`.
+- **Extension vs. top-level overload.** In a class, `log(TAG, INFO) { }`
+  called `this.log(priority, ...)`, an `Any` extension, instead of the
+  imported top-level `log(tag: String, priority, ...)`. Inside a class,
+  `call` tries an extension of `this` before top-level functions, and
+  `onReceiver` can't try the extension first and fall back afterwards,
+  because a lambda is checked only once. The guard, `thisExtension`, used
+  `mayTake`, which knows only the types of literals, locals and `this`, so a
+  property argument like `TAG` fitted any parameter. Now, when the call has a
+  lambda, the arguments' types decide (`takeTypes` over `argTypes`), as they
+  already did for members.
+  - kotlinc picks the top-level function as well.
+  - This bug caused 369 of the 393 errors on octi-server. That project isn't
+    in this container, so the zero-error exit hasn't been rechecked on it.
+  - Test: `testdata/run/extensionVsTopLevel`, which also has the cases
+    where the extension must still win.
 
 ## Gaps and open questions
 
