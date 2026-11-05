@@ -71,7 +71,10 @@ internal class KcRound(
     private val sourcePackages = HashSet<FqName>()
 
     init {
-        fileSymbols = files.map { (f, kt) -> Builder(f.path, preorder(kt.node), KaSymbolOrigin.SOURCE).file(f, kt) }
+        // Walking a file's tree has IntelliJ parse it, the first time:
+        // most of a session's first round. Files parse independently.
+        val trees = files.parallelStream().map { (_, kt) -> preorder(kt.node) }.toList()
+        fileSymbols = files.mapIndexed { i, (f, kt) -> Builder(f.path, trees[i], KaSymbolOrigin.SOURCE).file(f, kt) }
         for ((f, _) in files) {
             var fq = FqName(f.packageName)
             while (sourcePackages.add(fq) && !fq.isRoot) fq = fq.parent()

@@ -73,7 +73,7 @@ mapping.
 | M4 | Queryable session `analysis/ka`: lookups, scopes, relations, overrides | |
 | M5 | Bridge: `cmd/libkc` operations, `tools/kagen` wire format, `jvm/kc-aa` KaSession | |
 | M6 | KSP fork integration: the `kc` backend, IC lookups, hot paths | |
-| M7 | Differential conformance against stock KSP, benchmark, CI | in progress: `bench/ksp` timing of stock KSP and kc on octi-server (step 11) |
+| M7 | Differential conformance against stock KSP, benchmark, CI | in progress: `bench/ksp` (step 11): warm 990 ms on stock KSP, 284 ms on kc; cold 8.1–8.7 s and 2.9–3.2 s; CI to do |
 
 ### M0.1 – JNI spike
 
@@ -819,6 +819,7 @@ octi-server, Dagger, 61 Kotlin files, 31 generated files; 4 CPUs, JDK 21,
 | kc (baseline) | 3780–3960 | 976 | 442 | 156 | 375 |
 | kc, shared library, signatures only | 3190–3510 | 412 | 181 | 130 | 86 |
 | kc, second round kept | 3030–3120 | 304 | 159 | 150 | 0 |
+| kc, PSI parsed in parallel | 2850–3190 | 284 | 125 | 146 | 0 |
 
 Processing is 5x faster on kc, and cold runs 2x, but kc's warm total is no
 better: each run checks the module twice, once per round, and each check
@@ -867,6 +868,32 @@ libraries (Java sources don't reach it), and KSP doesn't edit sources
 between rounds, so a round that generated no Kotlin, as Dagger's don't,
 keeps the round before: `KcSession.addFiles` updates only when a Kotlin
 file was added.
+
+**PSI parsed in parallel.** Each KSP run has a new IntelliJ environment,
+whose PSI parses the sources again when `KcRound` first walks them. The
+files are walked in parallel now: the first round's `KcRound` went from
+77–111 ms to 30–44 ms.
+
+**Where the warm time goes now** (JFR from run 11, main thread): setup is
+three quarters Go (the one update, about 55–65 ms a run) and the rest
+IntelliJ and `KcRound`; of processing, Dagger, XProcessing and
+JavaPoet/google-java-format take 62%, KSP's symbol layer 20%, and kc
+(Go, the kc-aa layer and IntelliJ) 18%. The warm target (under 0.3 s) is
+met; processing alone is 5.7x faster than stock KSP's.
+
+The cold target (under 2 s) isn't: a fresh JVM takes about 3 s, of which
+setup is 1.6 s (the first update reads the class path's classes,
+280–310 ms; the first `KcRound` loads and JIT-compiles IntelliJ's PSI,
+500–660 ms) and processing 1.3 s, mostly the processors' own class
+loading and JIT. Next steps, in order of the numbers:
+
+- Keep the parsed PSI across KSP runs of a daemon (an environment per
+  configuration, owning its own disposable; files reparsed only when
+  their text changes), and parse only the files KSP touches.
+- Check only the files whose text changed, reusing the declarations of
+  the rest: the update is whole-module today.
+- For cold runs, a class-data-sharing archive for kc-aa and IntelliJ
+  core, and reading the library's classes in parallel.
 
 ## Gaps and open questions
 
