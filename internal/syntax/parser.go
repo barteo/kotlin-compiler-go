@@ -1,7 +1,6 @@
 package syntax
 
 import (
-	"errors"
 	"fmt"
 	"path/filepath"
 	"slices"
@@ -366,7 +365,6 @@ func (p *parser) modifiers() Modifiers {
 			p.skipNL()
 		case !declStart(p.toks[p.i+1].Kind):
 			return m
-		case isModifier(t.Text) && p.recordMod(&m, t):
 		case t.Text == "private" || t.Text == "public" || t.Text == "internal" || t.Text == "protected":
 			m.Visibility, m.Explicit = visibilities[t.Text], true
 			p.next()
@@ -677,29 +675,6 @@ func (p *parser) localClass(m Modifiers) *LocalClass {
 	return &LocalClass{Decl: cd}
 }
 
-// relabel makes return@label in function fd's body return@fd, but in
-// lambdas and functions in it labeled the same.
-func relabel(fd *FunDecl, label string) {
-	if label == fd.Name {
-		return
-	}
-	f := func(n any) bool {
-		switch n := n.(type) {
-		case *Lambda:
-			return n.Label != label
-		case *LocalFun:
-			return n.Decl.Name != label
-		case *Jump:
-			if n.Kind == RETURN && n.Label == label {
-				n.Label = fd.Name
-			}
-		}
-		return true
-	}
-	Inspect(fd.Body, f)
-	Inspect(fd.ExprBody, f)
-}
-
 // localFun parses a local function, after its modifiers.
 func (p *parser) localFun(m Modifiers) *LocalFun {
 	p.paramOnly(m)
@@ -713,13 +688,6 @@ func (p *parser) localFun(m Modifiers) *LocalFun {
 		p.failAt(pos, "a local function must have a body")
 	}
 	return &LocalFun{Decl: fd}
-}
-
-// recordMod appends the modifier t to m.Written. It returns false so that
-// modifiers goes on to the case that sets the modifier's flag.
-func (p *parser) recordMod(m *Modifiers, t *Token) bool {
-	m.Written = append(m.Written, Mod{Name: t.Text, P: t.Pos})
-	return false
 }
 
 // isModifier reports whether s is a modifier keyword.
@@ -773,7 +741,6 @@ func (p *parser) parseFile() *File {
 	if p.at(PACKAGE) {
 		p.decl(func() {
 			p.next()
-			f.PackageP = p.tok().Pos
 			name := p.ident().Text
 			for p.at(DOT) {
 				p.next()
@@ -826,7 +793,7 @@ func (p *parser) parseFile() *File {
 					break
 				}
 				fd := p.parseFun()
-				fd.Modifiers, fd.End = m, p.toks[p.i-1].Pos
+				fd.Modifiers = m
 				add(fd)
 			case VAL, VAR:
 				pd := p.parseProp(m)
@@ -877,10 +844,8 @@ func (p *parser) parseImport() *Import {
 func (p *parser) parseType() *TypeRef {
 	unsafe, composable, noInfer := false, false, false
 	var wild Wildcards
-	var as []Annotation
 	for p.at(AT) {
 		a := p.annotation()
-		as = append(as, a)
 		if a.Target == "receiver" {
 			// receiver takes those of a receiver type.
 			p.failAt(a.P, "this annotation is not applicable to target 'type usage' and use-site target '@receiver'")
@@ -892,9 +857,8 @@ func (p *parser) parseType() *TypeRef {
 			wild = w
 		}
 	}
-	if as != nil {
+	if unsafe || composable || noInfer || wild != DefaultWildcards {
 		t := p.parseType()
-		t.Annotations = append(as, t.Annotations...)
 		t.UnsafeVariance = t.UnsafeVariance || unsafe
 		t.NoInfer = t.NoInfer || noInfer
 		t.Composable = t.Composable || composable
@@ -906,9 +870,6 @@ func (p *parser) parseType() *TypeRef {
 	if t := p.tok(); t.Kind == IDENT && t.Text == "suspend" && (p.toks[p.i+1].Kind == LPAREN || p.toks[p.i+1].Kind == IDENT) {
 		// A suspend function type: suspend (A) -> R, suspend R.(A) -> T.
 		p.next()
-		if n := p.tok(); n.Kind == IDENT && n.Text == "suspend" {
-			p.errorLater(t.Pos, "repeated 'suspend'")
-		}
 		ft := p.parseType()
 		if ft.Ret == nil {
 			p.failAt(t.Pos, "expected a function type after 'suspend'")
@@ -965,7 +926,8 @@ func (p *parser) parseType() *TypeRef {
 			ref.Args = p.parseTypeArgs()
 		}
 	}
-	if p.quests() {
+	if p.at(QUEST) {
+		p.next()
 		ref.Nullable = true
 	}
 	if p.at(AMP) {
@@ -990,18 +952,6 @@ func (p *parser) parseType() *TypeRef {
 		return ft
 	}
 	return ref
-}
-
-// quests skips the ? after a type, reporting whether there was one. A
-// type can have more, T??, which kotlinc warns are redundant.
-func (p *parser) quests() bool {
-	if !p.at(QUEST) {
-		return false
-	}
-	for p.at(QUEST) {
-		p.next()
-	}
-	return true
 }
 
 // parseParenType parses a function type, (A, B) -> R, or a type in
@@ -1035,13 +985,9 @@ func (p *parser) parseParenType() *TypeRef {
 		p.unexpected("'->'")
 	}
 	t := params[0]
-	if p.quests() {
+	if p.at(QUEST) {
+		p.next()
 		t.Nullable = true
-	}
-	if p.at(SAFE_DOT) && p.toks[p.i+1].Kind == LPAREN {
-		// A nullable receiver in parentheses, (A)?.(B) -> R.
-		t.Nullable = true
-		p.toks[p.i].Kind = DOT
 	}
 	if p.at(DOT) && p.toks[p.i+1].Kind == LPAREN {
 		// A receiver in parentheses: (A).(B) -> R.
@@ -1111,25 +1057,16 @@ func (p *parser) parseTypeParams() []*TypeParam {
 		if p.at(GT) && ps != nil {
 			break // a trailing comma
 		}
-		var as []Annotation
-		onlyInput, reified := false, false
-		// Annotations can go before and after reified.
-		for {
-			if t := p.tok(); t.Kind == IDENT && t.Text == "reified" && !reified && p.toks[p.i+1].Kind != COMMA && p.toks[p.i+1].Kind != GT && p.toks[p.i+1].Kind != COLON {
-				reified = true
-				p.next()
-				p.skipNL()
-				continue
-			}
-			if !p.at(AT) {
-				break
-			}
-			a := p.annotation() // kc writes no type annotations
-			as = append(as, a)
-			onlyInput = onlyInput || a.Is("internal.OnlyInputTypes") // for the inference
+		for p.at(AT) {
+			p.annotation() // ignored: kc writes no type annotations
 			p.skipNL()
 		}
-		tp := &TypeParam{Variance: p.variance(), Reified: reified, Annotations: as, OnlyInput: onlyInput}
+		reified := false
+		if t := p.tok(); t.Kind == IDENT && t.Text == "reified" {
+			reified = true
+			p.next()
+		}
+		tp := &TypeParam{Variance: p.variance(), Reified: reified}
 		name := p.ident()
 		tp.P, tp.Name = name.Pos, name.Text
 		if p.peekPastNL() == COLON {
@@ -1276,7 +1213,6 @@ func (p *parser) params() []*Param {
 		param := &Param{P: pn.Pos, Name: pn.Text, Type: p.parseType(), Vararg: m.Vararg, Noinline: m.Noinline, Crossinline: m.Crossinline,
 			Annotations: m.Annotations}
 		param.External, param.ExternalP = m.External, m.ExternalP
-		param.Mods = m.Written
 		if p.at(ASSIGN) {
 			p.next()
 			p.skipNL()
@@ -1515,7 +1451,6 @@ func (p *parser) accessors(pd *PropDecl) {
 			j++
 		}
 		start := j
-		other := false // a modifier only a backing field is written with
 		for {
 			if t := p.toks[j]; t.Kind == AT {
 				j = p.annotationEnd(j)
@@ -1529,19 +1464,12 @@ func (p *parser) accessors(pd *PropDecl) {
 			} else if t.Kind == IDENT && t.Text == "context" && p.toks[j+1].Kind == LPAREN {
 				for j = p.matching(j+1) + 1; p.toks[j].Kind == NL; j++ {
 				}
-			} else if t.Kind == IDENT && isModifier(t.Text) && p.toks[j+1].Kind == IDENT {
-				j, other = j+1, true
 			} else {
 				break
 			}
 		}
 		t := &p.toks[j]
-		if p.backingFieldAt(j) {
-			p.i = start
-			p.backingField(pd)
-			continue
-		}
-		if other || t.Kind != IDENT || t.Text != "get" && t.Text != "set" {
+		if t.Kind != IDENT || t.Text != "get" && t.Text != "set" {
 			return
 		}
 		switch p.toks[j+1].Kind {
@@ -1549,15 +1477,9 @@ func (p *parser) accessors(pd *PropDecl) {
 		default:
 			return
 		}
-		if pd.AccessorP.Line == 0 {
-			pd.AccessorP = t.Pos
-		}
 		p.i = start
 		m := p.modifiers()
 		p.noContexts(&m, "property accessors")
-		if len(m.Written) > 0 {
-			pd.AccessorMods = append(pd.AccessorMods, m.Written)
-		}
 		for _, a := range m.Annotations {
 			if a.Target == "" {
 				a.Target, a.Accessor = t.Text, true
@@ -1580,7 +1502,6 @@ func (p *parser) accessors(pd *PropDecl) {
 		if t.Text == "set" {
 			p.i = j + 1
 			pd.Setter = p.setter(pd, t.Pos, m)
-			pd.Setter.End = p.toks[p.i-1].Pos
 			continue
 		}
 		if pd.Getter != nil {
@@ -1610,52 +1531,8 @@ func (p *parser) accessors(pd *PropDecl) {
 		default:
 			p.unexpected("getter body")
 		}
-		g.End = p.toks[p.i-1].Pos
 		pd.Getter = g
 	}
-}
-
-// backingFieldAt reports whether an explicit backing field starts at j:
-// field, field: T or field = init.
-func (p *parser) backingFieldAt(j int) bool {
-	if t := p.toks[j]; t.Kind != IDENT || t.Text != "field" {
-		return false
-	}
-	switch p.toks[j+1].Kind {
-	case COLON, ASSIGN, NL, SEMI, RBRACE, EOF:
-		return true
-	}
-	return false
-}
-
-// backingField parses a property's explicit backing field, with the
-// modifiers and annotations before it: field: T = init.
-func (p *parser) backingField(pd *PropDecl) {
-	m := p.modifiers()
-	p.noContexts(&m, "backing fields")
-	t := p.next()
-	if pd.BackingField != nil {
-		p.failAt(t.Pos, "property has two backing fields")
-	}
-	f := &BackingField{P: t.Pos, Mods: m.Written}
-	for _, a := range m.Annotations {
-		if a.Target == "" {
-			a.Target = "field"
-		}
-		pd.Annotations = append(pd.Annotations, a)
-	}
-	if p.at(COLON) {
-		p.next()
-		p.skipNL()
-		f.Type = p.parseType()
-	}
-	if p.peekPastNL() == ASSIGN {
-		p.skipNL()
-		p.next()
-		p.skipNL()
-		f.Init = p.parseExpr()
-	}
-	pd.BackingField = f
 }
 
 // externalAccessor declares an external accessor without a body,
@@ -1844,7 +1721,7 @@ func (p *parser) parseClass(m Modifiers) *ClassDecl {
 		p.decl(func() { p.member(cd) })
 		p.skipSemis()
 	}
-	cd.End = p.expect(RBRACE).Pos
+	p.expect(RBRACE)
 	return cd
 }
 
@@ -1869,7 +1746,7 @@ func (p *parser) objectExpr() *ObjectExpr {
 			p.decl(func() { p.member(cd) })
 			p.skipSemis()
 		}
-		cd.End = p.expect(RBRACE).Pos
+		p.expect(RBRACE)
 	}
 	x := &ObjectExpr{Decl: cd}
 	x.P = kw.Pos
@@ -1953,7 +1830,7 @@ func (p *parser) enumEntryBody(cd *ClassDecl, e *EnumEntry) *ClassDecl {
 		p.decl(func() { p.member(body) })
 		p.skipSemis()
 	}
-	body.End = p.expect(RBRACE).Pos
+	p.expect(RBRACE)
 	return body
 }
 
@@ -2006,7 +1883,7 @@ func (p *parser) member(cd *ClassDecl) {
 			break
 		}
 		fd := p.parseFun()
-		fd.Modifiers, fd.End = m, p.toks[p.i-1].Pos
+		fd.Modifiers = m
 		cd.Members = append(cd.Members, fd)
 	case VAL, VAR:
 		pd := p.parseProp(m)
@@ -2082,16 +1959,12 @@ func (p *parser) annotation() Annotation {
 		last = p.ident()
 		a.Name += "." + last.Text
 	}
-	if strings.Trim(last.Text, "_") == "" && !last.Quoted {
-		p.errorLater(last.Pos, "names _, __, ___, ... are reserved in Kotlin")
-	}
 	if p.at(LT) {
 		a.TypeArgs = p.parseTypeArgs()
 		last = p.toks[p.i-1]
 	}
-	// Arguments follow the name with no space between: @A(x), not @A (x),
-	// but for one on a declaration, on its line: @A (x) fun f().
-	if t := p.tok(); t.Kind == LPAREN && t.Pos.Line == last.Pos.Line && (t.Pos.Col == last.Pos.Col+utf8.RuneCountInString(last.Text) || p.declAfter(p.matching(p.i)+1)) {
+	// Arguments follow the name with no space between: @A(x), not @A (x).
+	if t := p.tok(); t.Kind == LPAREN && t.Pos.Line == last.Pos.Line && t.Pos.Col == last.Pos.Col+utf8.RuneCountInString(last.Text) {
 		end := p.matching(p.i)
 		a.Args = p.annotationArgs(p.i+1, end)
 		p.i = end + 1
@@ -2101,22 +1974,6 @@ func (p *parser) annotation() Annotation {
 	p.suppressShadowed = p.suppressShadowed || sh
 	p.suppressDSL = p.suppressDSL || dsl
 	return a
-}
-
-// declAfter reports whether the token at i, after an annotation, starts
-// a declaration other than a local variable's: its modifiers,
-// annotations or keyword, on this line or the next.
-func (p *parser) declAfter(i int) bool {
-	for p.toks[i].Kind == NL {
-		i++
-	}
-	switch t := p.toks[i]; t.Kind {
-	case FUN, CLASS, INTERFACE, OBJECT, TYPEALIAS, AT:
-		return true
-	case IDENT:
-		return isModifier(t.Text) && p.toks[i+1].Kind == IDENT || t.Text == "constructor" && p.toks[i+1].Kind == LPAREN
-	}
-	return false
 }
 
 // annotationArgs splits the tokens from i to end, an annotation's
@@ -2382,24 +2239,6 @@ func (p *parser) parseStmtAfterAnnotations() Stmt {
 				s.Label = t.Text
 				return s
 			}
-		case VAL, VAR:
-			// A label on a declaration has no effect: L@ val x = e.
-			p.next()
-			p.skipNL()
-			return p.parseStmt()
-		case FUN:
-			// A labeled local function, L@ fun f() { ... }, whose body can
-			// return@L, as return@f.
-			j := p.i + 1
-			for p.toks[j].Kind == NL {
-				j++
-			}
-			if k := p.toks[j+1].Kind; (k == IDENT || k == LT) && !p.anonFunAt(j) {
-				p.i = j
-				lf := p.localFun(Modifiers{})
-				relabel(lf.Decl, strings.TrimSuffix(t.Text, "@"))
-				return lf
-			}
 		}
 	case FUN:
 		if k := p.toks[p.i+1].Kind; (k == IDENT || k == LT) && !p.anonFunAt(p.i) {
@@ -2428,7 +2267,6 @@ func (p *parser) parseStmtAfterAnnotations() Stmt {
 				s := p.parseStmt()
 				if vs, ok := s.(*VarStmt); ok {
 					vs.Lateinit, vs.LateinitP = m.Lateinit, t.Pos
-					vs.Mods = m.Written
 				}
 				p.annotate(s, m.Annotations)
 				return s
@@ -2550,7 +2388,6 @@ func (p *parser) parseInfix() Expr {
 			m.P = name.Pos
 			c := &Call{Fun: m, Args: []Expr{p.parseRange()}, Infix: true}
 			c.P = name.Pos
-			LabelLambdas(c)
 			x = c
 			continue
 		}
@@ -2718,16 +2555,11 @@ func (p *parser) parsePostfix() Expr {
 			x = p.parseColonColon(x, nil)
 		case QUEST:
 			// A callable reference on a nullable type: String?::plus.
-			// The ? can repeat: String??::plus.
 			name, ok := dottedName(x)
-			j := p.i
-			for p.toks[j].Kind == QUEST {
-				j++
-			}
-			if !ok || p.toks[j].Kind != COLON_COLON {
+			if !ok || p.toks[p.i+1].Kind != COLON_COLON {
 				return x
 			}
-			p.i = j
+			p.next()
 			x = p.parseColonColon(x, &TypeRef{P: x.Pos(), Name: name, Nullable: true})
 		case NOT_NULL:
 			p.next()
@@ -2900,10 +2732,8 @@ func (p *parser) parsePrimary() Expr {
 		return p.intLit(*t)
 	case DOUBLE:
 		p.next()
-		// Out of range, 1e400 is infinity and 1e-400 zero, as in kotlinc,
-		// which warns.
 		v, err := strconv.ParseFloat(strings.ReplaceAll(t.Text, "_", ""), 64)
-		if err != nil && !errors.Is(err, strconv.ErrRange) {
+		if err != nil {
 			p.failAt(t.Pos, "invalid double literal")
 		}
 		d := &DoubleLit{Val: v}
@@ -2977,7 +2807,6 @@ func (p *parser) parsePrimary() Expr {
 		p.next()
 		x := p.parseExpr()
 		p.expect(RPAREN)
-		Parenthesized(x)
 		return x
 	case IF:
 		return p.parseIf()
@@ -2992,7 +2821,7 @@ func (p *parser) parsePrimary() Expr {
 		}
 		if t.Kind == RETURN {
 			switch p.tok().Kind {
-			case NL, SEMI, RBRACE, RPAREN, COMMA, ELSE, EOF:
+			case NL, SEMI, RBRACE, RPAREN, COMMA, EOF:
 			default:
 				j.X = p.parseExpr()
 			}
@@ -3013,7 +2842,7 @@ func (p *parser) parsePrimary() Expr {
 		p.next()
 		text := strings.TrimRight(strings.ReplaceAll(t.Text, "_", ""), "fF")
 		v, err := strconv.ParseFloat(text, 32)
-		if err != nil && !errors.Is(err, strconv.ErrRange) {
+		if err != nil {
 			p.failAt(t.Pos, "invalid float literal")
 		}
 		f := &FloatLit{Val: float32(v)}
@@ -3119,10 +2948,6 @@ func (p *parser) parseLambda() *Lambda {
 				break
 			}
 			p.next()
-			if p.peekPastNL() == ARROW {
-				p.skipNL() // a trailing comma
-				break
-			}
 		}
 		p.expect(ARROW)
 		l.Arrow = true
@@ -3277,10 +3102,6 @@ func (p *parser) parseTry() Expr {
 		name := p.ident()
 		p.expect(COLON)
 		c := &Catch{P: t.Pos, Name: name.Text, Type: p.parseType(), Annotations: as}
-		if p.skipNL(); p.at(COMMA) {
-			p.next() // a trailing comma
-			p.skipNL()
-		}
 		p.expect(RPAREN)
 		p.skipNL()
 		c.Body = p.parseBlock()
@@ -3299,11 +3120,7 @@ func (p *parser) parseIf() Expr {
 	p.expect(LPAREN)
 	n.Cond = p.parseExpr()
 	p.expect(RPAREN)
-	if p.at(ELSE) {
-		n.Then = &Block{P: p.tok().Pos} // an empty branch: if (c) else x
-	} else {
-		n.Then = p.parseBody()
-	}
+	n.Then = p.parseBody()
 	j := p.i
 	for p.toks[j].Kind == NL || p.toks[j].Kind == SEMI {
 		j++
@@ -3387,17 +3204,4 @@ func (p *parser) parseWhen() Expr {
 	}
 	p.expect(RBRACE)
 	return n
-}
-
-// Parenthesized marks x, a safe call a?.b or a?.f() or an index of one,
-// a?.b[i], as written in parentheses (see exprBase.Paren).
-func Parenthesized(x Expr) {
-	switch x := x.(type) {
-	case *Member:
-		x.Paren = x.Safe
-	case *Call:
-		x.Paren = true
-	case *Index:
-		x.Paren = true
-	}
 }

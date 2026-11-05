@@ -63,15 +63,14 @@ func LabelReturns(b *Block, label string) {
 // call the delegate. A class's passes this as the delegate's thisRef, and
 // an extension property its receiver. As in kotlinc, the fields of
 // extension properties with the same name, among the declarations
-// before, are x$delegate$1, x$delegate$2, ..., and so are those of
-// properties beside one declared as `x$delegate`.
+// before, are x$delegate$1, x$delegate$2, ...
 func DelegatedProp(pd *PropDecl, member bool, before []Decl) []Decl {
 	if pd.Field == nil {
 		return []Decl{pd}
 	}
 	taken := func(name string) bool {
 		for _, d := range before {
-			if d, ok := d.(*PropDecl); ok && d.Name == name && (d.DelegateOf != nil || d.Recv == nil) {
+			if d, ok := d.(*PropDecl); ok && d.DelegateOf != nil && d.Name == name {
 				return true
 			}
 		}
@@ -153,9 +152,6 @@ func AnnotateLambda(l *Lambda, a Annotation) {
 func IsComposable(a Annotation) bool {
 	return a.Name == "Composable" || a.Name == "androidx.compose.runtime.Composable"
 }
-
-// IsModifier reports whether s is a modifier keyword.
-func IsModifier(s string) bool { return isModifier(s) }
 
 // LabelLambdas gives the lambdas passed to a call the function's name as
 // their label, for return@name.

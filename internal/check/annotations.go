@@ -90,17 +90,17 @@ func (c *Checker) checkAnnotations(as []syntax.Annotation, owner *types.ClassSym
 		if a.Name == "" {
 			continue // @[A B]
 		}
-		cls := c.annotationClassOf(a, owner, site, local)
+		cls := c.lookupClass(a.Name)
 		if cls == nil {
 			continue
 		}
 		if rec := c.u.rec; rec != nil {
 			rec.Annotation(c.file, a, cls)
 		}
+		cls.Ensure()
 		if cls.Retention != types.NoRetention {
 			c.annotationTarget(a, cls, site)
 			c.repeated(a, cls, site, seen)
-			c.jvmAnnotation(a, cls, site)
 		}
 		if ps := cls.TypeParams; cls.Annotation && len(a.TypeArgs) != len(ps) && c.lookupAlias(a.Name) == nil {
 			// Unlike a call, an annotation entry doesn't infer its
@@ -146,11 +146,10 @@ func (c *Checker) checkAnnotations(as []syntax.Annotation, owner *types.ClassSym
 			c.annotationValues(cls, args, a.P)
 			continue
 		}
-		saved, savedLookup := c.state, c.lookupCls
+		saved := c.state
 		c.state = state{scope: &scope{}, staticCls: owner}
-		c.lookupCls = annotationScope(owner, c.lookupCls, site)
 		values, ok := c.annotationValues(cls, args, a.P)
-		c.state, c.lookupCls = saved, savedLookup
+		c.state = saved
 		if ok && !source {
 			// Class files keep it.
 			a.Class, a.Values = cls, values
@@ -343,61 +342,33 @@ func (c *Checker) declAnnotations(d syntax.Decl, owner *types.ClassSym) {
 		}
 		c.annotations(f.Annotations, owner, site)
 		c.annotations(f.RecvAnnotations, owner, annotSite{})
-		c.signatureTypeAnnotations(owner, f.Recv, f.Ret)
-		c.paramTypeAnnotations(owner, f.Params)
 		if f.Property == "" {
 			params(f.Contexts) // an accessor's are its property's
 		}
 		params(f.Params)
 	}
-	c.jvmMemberAnnotations(d, owner)
 	switch d := d.(type) {
 	case *syntax.FunDecl:
 		c.noReceiver(d.Annotations)
 		fun(d, funSite(owner))
-		c.typeParamAnnotations(d.TypeParams, owner)
 	case *syntax.PropDecl:
 		c.noReceiver(d.Annotations)
 		c.annotations(d.Annotations, owner, propSite(owner))
-		if !d.Mutable {
-			c.setOnImmutable(d.Annotations)
-		}
 		c.annotations(d.RecvAnnotations, owner, annotSite{})
-		c.typeParamAnnotations(d.TypeParams, owner)
-		c.signatureTypeAnnotations(owner, d.Recv, d.Type)
 		params(d.Contexts)
 		fun(d.Getter, annotSite{siteUnchecked, types.TargetGetter, "getter"})
 		fun(d.Setter, annotSite{siteUnchecked, types.TargetSetter, "setter"})
 	case *syntax.TypeAliasDecl:
 		c.annotations(d.Annotations, owner, typealiasSite)
-		c.typeParamAnnotations(d.TypeParams, owner)
-		c.signatureTypeAnnotations(owner, d.Type)
 	case *syntax.ClassDecl:
 		cls := d.Sym
-		if d.Annotation {
-			c.annotationCycles(d)
-			c.projectedAnnotationParams(d)
-		}
 		c.noReceiver(d.Annotations)
 		c.noReceiver(d.CtorMods.Annotations)
 		c.annotations(d.Annotations, cls, classSite(d))
-		if d.Annotation {
-			c.repeatableContainer(d)
-		}
 		c.annotations(d.CtorMods.Annotations, cls, ctorSite)
-		c.typeParamAnnotations(d.TypeParams, cls)
-		for _, s := range d.Supers {
-			c.signatureTypeAnnotations(cls.Outer, s.Type) // outside it, as its annotations
-		}
-		for _, cp := range d.CtorParams {
-			c.signatureTypeAnnotations(cls, cp.Type)
-		}
 		for _, cp := range d.CtorParams {
 			c.noReceiver(cp.Modifiers.Annotations)
 			c.annotations(cp.Modifiers.Annotations, cls, ctorParamSite(cls, cp))
-			if cp.IsProp && !cp.Mutable {
-				c.setOnImmutable(cp.Modifiers.Annotations)
-			}
 		}
 		for _, e := range d.Entries {
 			c.annotations(e.Annotations, cls, enumEntrySite)
@@ -416,16 +387,6 @@ func (c *Checker) declAnnotations(d syntax.Decl, owner *types.ClassSym) {
 					c.annotations(p.Annotations, cls, paramSite)
 				}
 			}
-		}
-	}
-}
-
-// setOnImmutable reports the annotations among as of a val with the
-// use-site targets of a setter.
-func (c *Checker) setOnImmutable(as []syntax.Annotation) {
-	for _, a := range as {
-		if a.Target == "set" || a.Target == "setparam" {
-			c.errorf(a.P, "'@%s:' annotations could be applied only to mutable properties", a.Target)
 		}
 	}
 }

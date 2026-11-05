@@ -1,7 +1,6 @@
 package types
 
 import (
-	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -163,18 +162,10 @@ type TypeParamSym struct {
 	// Reified is set on a reified type parameter of an inline function,
 	// which a copy of its body knows.
 	Reified bool
-	// OnlyInput is set on a parameter annotated @kotlin.internal.OnlyInputTypes,
-	// as T of contains(element: T): what a call infers for it must be the
-	// type of one of its inputs.
-	OnlyInput bool
 	// Global is set on a parameter of a symbol that a package-level
 	// variable declares for all compilations in the process, such as
 	// kotlin.Array's T: see MakeArgs.
 	Global bool
-	// Intersection is set on the parameter that stands for an
-	// intersection type, A & B, a value that is each of its Bounds: see
-	// Intersect. It has no Owner, and erases as a parameter does.
-	Intersection bool
 
 	once sync.Once
 	self *Args // what types of this parameter point to
@@ -184,7 +175,6 @@ type TypeParamSym struct {
 // types of p refer to: see check.trial.
 func (p *TypeParamSym) Redeclare(q *TypeParamSym) {
 	p.Name, p.Var, p.Bounds, p.Index, p.Owner, p.Origin, p.Reified = q.Name, q.Var, q.Bounds, q.Index, q.Owner, q.Origin, q.Reified
-	p.OnlyInput = q.OnlyInput
 }
 
 // Param returns the parameter or variable of a TypeParam or TypeVar type.
@@ -211,9 +201,6 @@ func (p *TypeParamSym) NullableBound() bool {
 func (p *TypeParamSym) ErasureBound() Type {
 	if len(p.Bounds) > 1 {
 		for _, b := range p.Bounds {
-			if b.K == Any {
-				return b // kotlin.Any is a class
-			}
 			if b.K == Class {
 				b.C.Ensure()
 				if !b.C.Interface {
@@ -231,19 +218,6 @@ func (p *TypeParamSym) Bound() Type {
 		return AnyType.Nullable()
 	}
 	return p.Bounds[0]
-}
-
-// IsIntersection reports whether t is an intersection type, A & B.
-func (t Type) IsIntersection() bool { return t.IsParam() && t.Param().Intersection }
-
-// Approx returns t without an intersection type at its top, for what has
-// none, as a signature or a KType: the component it erases to. The
-// checker gives declarations their common supertype instead.
-func Approx(t Type) Type {
-	if !t.IsIntersection() {
-		return t
-	}
-	return withFlags(t.Param().ErasureBound(), t)
 }
 
 // ParamType returns the type T for a type parameter T.
@@ -346,65 +320,15 @@ func (s Subst) Apply(t Type) Type { return s.apply(t, Out) }
 // to Box<out T>.set(T).
 func (s Subst) ApplyIn(t Type) Type { return s.apply(t, In) }
 
-// ApplyArg substitutes s in the type of a parameter that an argument is
-// passed for, which takes a value written to it as ApplyIn does, except
-// where a parameter is an invariant argument of the type itself: there
-// the projection replacing it is the argument's own captured type, so
-// Array<T> with T := out Int takes the Array<out Int> it was captured
-// from, but Array<Array<T>> no Array<Array<out Int>>.
-func (s Subst) ApplyArg(t Type) Type {
-	if len(s) == 0 || t.K != Class || t.A == nil {
-		return s.apply(t, In)
-	}
-	r := s.apply(t, In)
-	if r.K != Class || r.A == nil || r.A.Len() != t.A.Len() {
-		return r
-	}
-	var args []Arg
-	for i, a := range t.A.List {
-		if a.V != Inv || !a.T.IsParam() {
-			continue
-		}
-		if c, ok := s[a.T.Param()]; ok && (c.V == Out || c.V == In) {
-			if args == nil {
-				args = slices.Clone(r.A.List)
-			}
-			args[i] = Arg{c.V, withFlags(c.T, a.T)}
-		}
-	}
-	if args != nil {
-		r.A = MakeArgs(args)
-	}
-	return r
-}
-
 func (s Subst) apply(t Type, pos Variance) Type {
-	t, _ = s.applyA(t, pos, false)
-	return t
-}
-
-// ApplyExact substitutes without approximating projections, as a type
-// alias's arguments are: Array2D<out Number> for Array<Array<T>> is
-// Array<Array<out Number>>.
-func (s Subst) ApplyExact(t Type) Type {
-	t, _ = s.applyA(t, Out, true)
-	return t
-}
-
-// applyA is apply, also reporting whether it approximated a captured
-// projection, a parameter replaced by an out or in argument: in a type
-// read, an invariant argument that holds one is then out projected, as
-// Kotlin approximates Array<Array<C>> for C, the capture of out Int, by
-// Array<out Array<out Int>>.
-func (s Subst) applyA(t Type, pos Variance, exact bool) (Type, bool) {
 	if len(s) == 0 {
-		return t, false
+		return t
 	}
 	switch t.K {
 	case TypeParam, TypeVar:
 		a, ok := s[t.Param()]
 		if !ok {
-			return t, false
+			return t
 		}
 		var r Type
 		switch {
@@ -415,40 +339,23 @@ func (s Subst) applyA(t Type, pos Variance, exact bool) (Type, bool) {
 		case pos == In && a.V == In:
 			r = a.T
 		case pos == In:
-			return withFlags(NothingType, t), true // T? takes null
-		case a.V == Star && pos == Out && recursiveStar(t.Param()):
-			// A recursive bound is approximated with a star for the
-			// parameter, as kotlinc does: T of A<*> for A<T : A<T?>?> is
-			// read as A<*>?, and of A<*, Int> for A<T : B<T, U>, U> as
-			// B<*, Int>.
-			p := t.Param()
-			r = s.apply(starred(p.Bounds[0], map[*TypeParamSym]bool{p: true}), Out)
+			return withFlags(NothingType, t) // T? takes null
 		default: // reading through in or *: the parameter's bound
 			r = s.apply(t.Param().Bound(), Out)
 		}
-		return withFlags(r, t), a.V == Out || a.V == In
+		return withFlags(r, t)
 	case Class:
 		if t.A == nil {
-			return t, false
+			return t
 		}
 		args := make([]Arg, len(t.A.List))
-		changed, approx := false, false
+		changed := false
 		for i, a := range t.A.List {
 			v := a.V
-			if v == Inv && (pos == In || !a.T.IsParam() && a.T.A != nil || s.projected(a.T)) {
+			if v == Inv && (pos == In || !a.T.IsParam() && a.T.A != nil) {
 				v = declaredVar(t.C, i)
 			}
-			var ax bool
-			args[i], ax = s.applyArgA(a, pos, v, exact)
-			if ax && a.V == Inv && !exact {
-				switch dv := declaredVar(t.C, i); {
-				case args[i].V == Inv && dv == Inv && pos == Out:
-					args[i].V = Out
-				case args[i].V == dv:
-					args[i].V = Inv // List<out X> is List<X>
-				}
-			}
-			approx = approx || ax
+			args[i] = s.applyArg(a, pos, v)
 			if pos == In && args[i].V == Star && v == Out {
 				// Written to through a star projection, a covariant
 				// argument is Kotlin's captured type, which only Nothing
@@ -459,22 +366,11 @@ func (s Subst) applyA(t Type, pos Variance, exact bool) (Type, bool) {
 			changed = changed || args[i] != a
 		}
 		if !changed {
-			return t, approx
+			return t
 		}
 		t.A = MakeArgs(args)
-		return t, approx
 	}
-	return t, false
-}
-
-// projected reports whether t is a parameter that s replaces by an out or
-// in projection.
-func (s Subst) projected(t Type) bool {
-	if !t.IsParam() {
-		return false
-	}
-	r, ok := s[t.Param()]
-	return ok && (r.V == Out || r.V == In)
+	return t
 }
 
 // declaredVar returns the declaration-site variance of class c's i-th type
@@ -496,24 +392,12 @@ func declaredVar(c *ClassSym, i int) Variance {
 // In a type written to, as a parameter's, an out projection is a type
 // only Nothing is a subtype of, as Kotlin's captured type is: nothing but
 // Box<Nothing> can be passed for a Box<T> or a Box<out T> then.
-func (s Subst) applyArgA(a Arg, pos, v Variance, exact bool) (Arg, bool) {
+func (s Subst) applyArg(a Arg, pos, v Variance) Arg {
 	if a.V == Star {
-		return a, false
+		return a
 	}
 	if a.T.IsParam() {
 		if r, ok := s[a.T.Param()]; ok {
-			if a.V == Inv && v != Inv && pos == In && (r.V == Out || r.V == In) {
-				// A capture in an argument of declared variance of a type
-				// written to is approximated as a type: for C, the capture
-				// of out Number, a parameter (C) -> Unit takes a
-				// (Number) -> Unit, as a lambda sees it. Read, the
-				// argument stays a projection.
-				if v == In {
-					pos = Out + In - pos
-				}
-				t, _ := s.applyA(a.T, pos, exact)
-				return Arg{T: t}, true
-			}
 			switch {
 			case r.V == Star && pos == Out && a.V != In:
 				// Read through a star projection, the capture is within
@@ -521,69 +405,37 @@ func (s Subst) applyArgA(a Arg, pos, v Variance, exact bool) (Arg, bool) {
 				// through a Base<*> of Base<T : Base<T>>, a List<T> is a
 				// List<out Base<*>>.
 				if b, ok := starBound(a.T.Param()); ok {
-					return Arg{Out, withFlags(b, a.T)}, r.V == Out || r.V == In
-				}
-				if p := a.T.Param(); a.T.D && len(p.Bounds) <= 1 {
-					// T & Any is within the bound made not null.
-					b := AnyType
-					if len(p.Bounds) == 1 {
-						b = p.Bounds[0].NonNull()
-					}
-					return Arg{Out, b}, true
+					return Arg{Out, withFlags(b, a.T)}
 				}
 				if p := a.T.Param(); len(p.Bounds) > 1 {
 					// Kotlin's is the intersection of its bounds, as
 					// is the parameter itself: E of Exp<*> for an
 					// Exp<E> where E : Enum<E>, E : Variant.
-					return Arg{Out, a.T}, r.V == Out || r.V == In
+					return Arg{Out, a.T}
 				}
-				return r, true
+				return r
 			case r.V == Star:
-				// Read, a star in an invariant argument is a capture
-				// approximated, which makes the argument out: T of
-				// B<*, *> for B<R, T : B<List<R>, T>> is B<out List<*>, *>.
-				return r, pos == Out
+				return r
 			case r.V == Inv:
-				return Arg{a.V, withFlags(r.T, a.T)}, r.V == Out || r.V == In
+				return Arg{a.V, withFlags(r.T, a.T)}
 			case pos == In && r.V == Out && a.V != In:
-				return Arg{Out, withFlags(NothingType, a.T)}, r.V == Out || r.V == In
+				return Arg{Out, withFlags(NothingType, a.T)}
 			case a.V == Inv || a.V == r.V:
-				return Arg{r.V, withFlags(r.T, a.T)}, r.V == Out || r.V == In
+				return Arg{r.V, withFlags(r.T, a.T)}
 			case pos == In:
 				// Written to, an argument projected the other way than
 				// its capture is within the projection's type: Optional<out
 				// E>.map takes a Function<in E, …>.
-				return Arg{a.V, withFlags(r.T, a.T)}, r.V == Out || r.V == In
+				return Arg{a.V, withFlags(r.T, a.T)}
 			}
-			return Arg{V: Star}, false
+			return Arg{V: Star}
 		}
-		return a, false
+		return a
 	}
 	if v == In {
 		pos = Out + In - pos
 	}
-	t, approx := s.applyA(a.T, pos, exact)
-	return Arg{a.V, t}, approx
-}
-
-// recursiveStar reports whether p has a single class bound that p occurs in.
-func recursiveStar(p *TypeParamSym) bool {
-	return len(p.Bounds) == 1 && p.Bounds[0].K == Class && hasParam(p.Bounds[0], p)
-}
-
-// hasParam reports whether p occurs in t.
-func hasParam(t Type, p *TypeParamSym) bool {
-	if t.IsParam() {
-		return t.Param() == p
-	}
-	if t.A != nil {
-		for _, a := range t.A.List {
-			if a.V != Star && hasParam(a.T, p) {
-				return true
-			}
-		}
-	}
-	return false
+	return Arg{a.V, s.apply(a.T, pos)}
 }
 
 // starBound returns the bound of type parameter p that a star projection
@@ -624,12 +476,8 @@ func starred(t Type, ps map[*TypeParamSym]bool) Type {
 }
 
 // withFlags applies the nullability written on a type parameter's
-// occurrence (T?, T & Any, or a Java T!), and its DSL markers, to the
-// type that replaces it.
+// occurrence (T?, T & Any, or a Java T!) to the type that replaces it.
 func withFlags(r, occ Type) Type {
-	if occ.M != 0 {
-		r = r.WithMarkers(occ.Markers())
-	}
 	switch {
 	case r.K == Invalid:
 		return r

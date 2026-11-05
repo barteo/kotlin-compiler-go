@@ -167,7 +167,7 @@ same pass that emits code:
   a compile error rather than a `VerifyError`.
 - A handler's frame has the locals assigned when its `try` began, which is
   sound because slots aren't reused. A `try` used as a value first spills
-  the stack to locals, as inlined code does (see Inlining).
+  the stack to locals.
 
 ### The JVM ABI
 
@@ -249,7 +249,8 @@ Copying a body (`codegen/inline.go`):
   keeping the assembler's one-type-per-local rule.
 - **Frames.** Each of the body's frames becomes a label with that frame,
   the caller's values below the body's on the stack.
-- **Handlers** are copied with mapped ranges.
+- **Handlers** are copied with mapped ranges, after the caller's stack is
+  spilled.
 - **Reified operations** that markers flag use the call's type argument.
   An object using the type parameters (`filterIsInstance`'s
   `{ it is R }`) is a template class (`inline.Template`) that each copy
@@ -259,22 +260,6 @@ Copying a body (`codegen/inline.go`):
 An inlined lambda's body is generated at each invoke, with no capture
 boundary; `return@label` jumps to its end, and a plain `return`, `break`
 or `continue` leaves the enclosing function's code.
-
-**The operand stack is empty** where an inlined body or inlined lambda
-starts, as with `kotlinc` (`codegen/spill.go`): the values on it (a
-receiver, earlier arguments, `s` in `s += f(i)`) go to new locals and
-come back below the result. A handler needs that anyway, and HotSpot
-compiles a loop on stack replacement only if its backward branch has an
-empty stack, so a method that runs one long loop would otherwise stay in
-the interpreter. A loop statement inside an expression (a `when` branch
-that is an argument), `Array(n) { ... }`'s loop and an annotation
-implementation's copy of a `KClass` array do the same. Values below the start of an
-enclosing loop, inlined body or lambda stay, for jumps out of it, but
-those spilled theirs too. An object that `new` created and isn't
-constructed yet can't be stored: a constructor call whose arguments
-inline code, loop or `try` evaluates them first, into locals, and then
-creates the object, as `kotlinc` does. `TestRun` checks that no backward
-branch in the test programs has values on the stack.
 
 ## Coroutines
 

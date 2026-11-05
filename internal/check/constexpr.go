@@ -21,74 +21,6 @@ func (c *Checker) nonConst(x syntax.Expr) syntax.Expr {
 	return nonConst(x, 0)
 }
 
-// constInit reports the initializer of const property d if it isn't a
-// compile-time constant, as kotlinc's CONST_VAL_WITH_NON_CONST_INITIALIZER
-// and NON_CONST_VAL_USED_IN_CONSTANT_EXPRESSION.
-func (c *Checker) constInit(d *syntax.PropDecl) {
-	if !d.Const || d.Init == nil || d.Sym == nil || d.DelegateOf != nil || d.Init.Type().K == types.Invalid {
-		return
-	}
-	bad := nonConst(d.Init, 0)
-	if bad == nil && constCycle(d.Sym, d.Init, map[*types.VarSym]bool{d.Sym: true}, 0) {
-		bad = d.Init // const val a = b + 1 with const val b = a + 1
-	}
-	switch {
-	case bad == nil:
-	case nonConstRef(bad):
-		c.errorf(bad.Pos(), "only 'const val' can be used in constant expressions")
-	default:
-		c.errorf(d.Init.Pos(), "const 'val' initializer should be a constant value")
-	}
-}
-
-// nonConstRef reports whether x, not a constant, reads a variable or
-// property that isn't a const val.
-func nonConstRef(x syntax.Expr) bool {
-	switch x := x.(type) {
-	case *syntax.Ident:
-		return x.Sym != nil && !constVar(x.Sym)
-	case *syntax.Member:
-		return x.Prop != nil && !constVar(x.Prop)
-	}
-	return false
-}
-
-// constCycle reports whether the const vals that x reads, and those
-// their initializers read, read the one being checked, in seen.
-func constCycle(self *types.VarSym, x syntax.Expr, seen map[*types.VarSym]bool, depth int) bool {
-	found := false
-	syntax.Inspect(x, func(n any) bool {
-		if found || depth > 64 {
-			return false
-		}
-		var v *types.VarSym
-		switch n := n.(type) {
-		case *syntax.Ident:
-			v = n.Sym
-		case *syntax.Member:
-			v = n.Prop
-		case *syntax.Lambda, *syntax.ObjectExpr:
-			return false
-		}
-		if v == nil || !v.Const {
-			return true
-		}
-		if v == self {
-			found = true
-			return false
-		}
-		if seen[v] {
-			return true
-		}
-		seen[v] = true
-		if pd, ok := v.Decl.(*syntax.PropDecl); ok && pd.Init != nil && pd.Init.Type().K != types.Invalid {
-			found = constCycle(self, pd.Init, seen, depth+1)
-		}
-		return !found
-	})
-	return found
-}
-
 func nonConst(x syntax.Expr, depth int) syntax.Expr {
 	if x == nil || depth > 64 {
 		return nil
@@ -153,34 +85,15 @@ func nonConst(x syntax.Expr, depth int) syntax.Expr {
 			return x
 		}
 		// "1" + MyEnum.A, A::class == B::class
-		if !constType(x.X.Type()) || !constType(x.Y.Type()) {
+		if !constType(x.X.Type()) || !constType(x.Y.Type()) || nonConst(x.X, depth+1) != nil || nonConst(x.Y, depth+1) != nil {
 			return x
-		}
-		if r := nonConst(x.X, depth+1); r != nil {
-			return r
-		}
-		if r := nonConst(x.Y, depth+1); r != nil {
-			return r
-		}
-		xt, yt := x.X.Type(), x.Y.Type()
-		if x.Op == syntax.PLUS && xt.K == types.String && !xt.N {
-			if yt.K == types.Null || yt.K == types.Nothing {
-				return x // "1" + null
-			}
-			return nil // "1" + 2u
-		}
-		if isUnsigned(xt) || isUnsigned(yt) || xt.K == types.Null || yt.K == types.Null || xt.K == types.Nothing || yt.K == types.Nothing {
-			return x // 1u + 2u, which kotlinc doesn't evaluate
-		}
-		if x.Call != nil && x.Call.Sym != nil && x.Call.Sym.Decl != nil {
-			return x // an operator function of the program's
 		}
 		return nil
 	case *syntax.Call:
 		return nonConstCall(x, depth)
 	case *syntax.ClassLit:
-		if x.Bound || x.Class.IsParam() {
-			return x // v::class, T::class
+		if x.Bound {
+			return x // v::class
 		}
 		return nil
 	case *syntax.Spread:
@@ -226,9 +139,6 @@ func nonConstCall(x *syntax.Call, depth int) syntax.Expr {
 	}
 	if !constType(m.X.Type()) || x.Sym != nil && x.Sym.Decl != nil {
 		return x // B::class.toString(), or a function of the program
-	}
-	if isUnsigned(m.X.Type()) {
-		return x // 1u.toInt(), which kotlinc doesn't evaluate
 	}
 	if r := nonConst(m.X, depth+1); r != nil {
 		return x
@@ -292,8 +202,6 @@ func constVar(v *types.VarSym) bool {
 func constType(t types.Type) bool {
 	switch t.K {
 	case types.Bool, types.Int, types.Long, types.Double, types.Char, types.Float, types.Byte, types.Short, types.String:
-		return true
-	case types.Null:
 		return true
 	case types.Nothing:
 		return t.N // null

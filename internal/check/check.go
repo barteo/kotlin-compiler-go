@@ -42,11 +42,6 @@ type Universe struct {
 	// serialInterfaces are the sealed interfaces annotated @Serializable,
 	// with serialization.
 	serialInterfaces map[*syntax.ClassDecl]bool
-	// typeUses holds the classifier, *types.ClassSym or *types.AliasSym,
-	// that each resolved *syntax.TypeRef names, and optIns are
-	// Library.OptIns, for the checks of optin.go.
-	typeUses sync.Map
-	optIns   []string
 	// module ends the JVM names of internal members: $ and the module's
 	// name.
 	module string
@@ -56,14 +51,6 @@ type Universe struct {
 	// ctx cancels checking, and rec, if set, receives its facts.
 	ctx context.Context
 	rec Recorder
-
-	// typeAnnots holds the annotated *syntax.TypeRefs noted, and
-	// typeAnnotsDone those checked, for typeannot.go.
-	typeAnnots, typeAnnotsDone sync.Map
-
-	// conflicted holds the declarations that conflicts reported as
-	// conflicting overloads, whose JVM signature clashes then aren't.
-	conflicted map[any]bool
 }
 
 // Package holds the top-level declarations of one package of the program.
@@ -122,7 +109,6 @@ type loopCtx struct {
 	// body jumps completes if it continues it.
 	hasContinue bool
 	lambdas     int // len(c.lambdas) where the loop is
-	flow        loopFlow
 }
 
 // Checker checks one file. Only one goroutine uses a Checker at a time.
@@ -145,7 +131,6 @@ type Checker struct {
 	// starOwners are the classes whose members and nested classes are
 	// star-imported: import E.*.
 	starOwners []*types.ClassSym
-	aliasStars []aliasStar // import p.Alias.*, resolved after the typealiases
 	// Imports of the program's own declarations.
 	userFuns map[string][]*types.FunSym
 	userVars map[string]*types.VarSym
@@ -181,9 +166,6 @@ type Checker struct {
 	funCache   map[funKey][]*types.FunSym
 	levelCache map[funKey][][]*types.FunSym // see kotlinFunLevels
 	errs       []*syntax.Error
-	// tailIfs are ifs without else that end a branch of the if a lambda
-	// ends with: statements, not values (see markTailIfs).
-	tailIfs map[*syntax.If]bool
 	// shadowed are the calls whose implicit receiver a context parameter
 	// shadows, reported once checked (see receiverShadowed).
 	shadowed map[syntax.Expr]shadowedUse
@@ -196,7 +178,6 @@ type Checker struct {
 	// accessors' calls reading or assigning them are (see contextAccess).
 	accessed map[*syntax.Call]string
 	done     map[any]bool // declarations already checked during inference
-	inRef    int          // in callable references, which see properties' own types, not their fields'
 	// jumps says, for each inlined lambda, whether a non-local return,
 	// break or continue can leave it.
 	jumps map[*syntax.Lambda]inlineJumps
@@ -228,13 +209,7 @@ type Checker struct {
 	// tailBlock is a branch whose last statement, a call, is checked with
 	// the inference system tailSink: see branch.
 	tailBlock *syntax.Block
-	// branchSink is the system of the delegate an if, a try or an
-	// elvis is: see delegateValue.
-	branchSink *system
-	// inferAliasArgs are the calls of typealiases' constructors that
-	// infer the aliases' type arguments: see aliasConstruct.
-	inferAliasArgs map[*syntax.Call]bool
-	tailSink       *system
+	tailSink  *system
 	// bareRef is the type of an is or as being resolved, whose class's type
 	// arguments may be left out, and bareSubject the type checked.
 	bareRef     *syntax.TypeRef
@@ -275,9 +250,6 @@ type Checker struct {
 	// serials are the file's classes annotated @Serializable, which the
 	// serialization plugin adds members to: see serialization.go.
 	serials []*serialInfo
-
-	// typeAnnots are the annotated types to check (typeannot.go).
-	typeAnnots []typeAnnot
 }
 
 type state struct {
@@ -288,7 +260,6 @@ type state struct {
 	retType    types.Type
 	retAllowed bool
 	loops      []*loopCtx
-	finallies  []finallyCtx // the finally blocks around the code
 	allowRange bool
 	tparams    []*types.TypeParamSym // type parameters in scope, innermost first
 	lambdas    []*syntax.Lambda      // lambdas being checked, outermost first
@@ -299,18 +270,15 @@ type state struct {
 	// defaultParam is being checked.
 	defaultsOf   *types.FunSym
 	defaultParam int
-	// suppressLocalInline is set in a local function that suppresses
-	// NOT_YET_SUPPORTED_LOCAL_INLINE_FUNCTION, for those it declares.
-	suppressLocalInline bool
 	// staticCls is set where a class's companion members are in scope
 	// but this isn't: in the arguments of its constructors' this(...) and
 	// super(...) calls.
 	staticCls *types.ClassSym
-	// ctorArgs is set while the arguments of an annotation's
-	// constructor call are checked: on the JVM, the object is already on
-	// the stack, uninitialized. It isn't set for those of this(...) and
-	// super(...), whose receiver, this, can be kept in a local meanwhile,
-	// nor for other constructor calls and enum entries, whose arguments
+	// ctorArgs is set while the arguments of an enum entry's or an
+	// annotation's constructor call are checked: on the JVM, the object
+	// is already on the stack, uninitialized. It isn't set for those of
+	// this(...) and super(...), whose receiver, this, can be kept in a
+	// local meanwhile, nor for other constructor calls, whose arguments
 	// codegen evaluates first if they have a try.
 	ctorArgs bool
 	// base is the number of lambdas outside the function being checked:
@@ -379,9 +347,6 @@ type Library struct {
 	// Compose is set to compile as kotlinc does with the Compose compiler
 	// plugin: see compose.go.
 	Compose bool
-	// OptIns are the qualified names of the requirement markers the
-	// module opts in to, as kotlinc's -opt-in: see optin.go.
-	OptIns []string
 }
 
 // EnableSerialization sets Serialization. The code that kc writes for the
@@ -455,7 +420,7 @@ func CheckContext(ctx context.Context, files []*syntax.File, lib *Library, jobs 
 	}
 	u := &Universe{ctx: ctx, rec: rec, Pkgs: map[string]*Package{}, prefixes: map[string]bool{}, ext: lib.t, module: moduleSuffix(lib.Module),
 		aliasFile: map[*types.AliasSym]*Checker{}, noJVMDefault: lib.NoJVMDefault, jvmDefaultCompat: lib.JVMDefaultCompat, parcelize: lib.Parcelize, serialization: lib.Serialization,
-		compose: lib.Compose, serialInterfaces: map[*syntax.ClassDecl]bool{}, optIns: lib.OptIns}
+		compose: lib.Compose, serialInterfaces: map[*syntax.ClassDecl]bool{}}
 	checkers := make([]*Checker, len(files))
 	for i, f := range files {
 		checkers[i] = &Checker{u: u, file: f, done: map[any]bool{}, checked: map[*syntax.Lambda]types.Type{},
@@ -465,7 +430,7 @@ func CheckContext(ctx context.Context, files []*syntax.File, lib *Library, jobs 
 			levelCache: map[funKey][][]*types.FunSym{}}
 	}
 	inheritDefaults(files)
-	dropContracts(checkers)
+	dropContracts(files)
 	if u.parcelize {
 		u.parcelSealed = parcelizeSealed(checkers)
 	}
@@ -487,9 +452,6 @@ func CheckContext(ctx context.Context, files []*syntax.File, lib *Library, jobs 
 	// Typealiases can stand for supertypes.
 	for _, c := range checkers {
 		c.resolveAliases()
-	}
-	for _, c := range checkers {
-		c.resolveAliasStars()
 	}
 	for _, c := range checkers {
 		c.resolveSupertypes()
@@ -539,7 +501,6 @@ func CheckContext(ctx context.Context, files []*syntax.File, lib *Library, jobs 
 	for _, c := range checkers {
 		c.boxedReturns()
 	}
-	conflicts(checkers)
 	for _, c := range checkers {
 		c.checkClashes()
 	}
@@ -577,14 +538,10 @@ func CheckContext(ctx context.Context, files []*syntax.File, lib *Library, jobs 
 		})
 	}
 
-	optInErrors(checkers)
-	localClassNames(checkers)
 	var errs []*syntax.Error
 	for _, c := range checkers {
 		c.shadowedErrors()
 		c.dslErrors()
-		c.versionOverloads()
-		c.checkModifiers()
 		sort.SliceStable(c.errs, func(i, j int) bool {
 			a, b := c.errs[i].Pos, c.errs[j].Pos
 			return a.Line < b.Line || a.Line == b.Line && a.Col < b.Col
@@ -651,19 +608,17 @@ func (c *Checker) hidesBuiltin(name string) bool {
 }
 
 func (c *Checker) resolveType(ref *syntax.TypeRef) types.Type {
-	t := c.typeMarkers(ref, c.resolveTypeRef(ref))
+	t := c.resolveType1(ref)
 	if c.u.rec != nil && t.K != types.Invalid {
 		c.u.rec.TypeRef(ref, t)
 	}
 	return t
 }
 
-// resolveTypeRef is resolveType without the type's DSL markers.
-func (c *Checker) resolveTypeRef(ref *syntax.TypeRef) types.Type {
+func (c *Checker) resolveType1(ref *syntax.TypeRef) types.Type {
 	if ref.Known != nil {
 		return *ref.Known
 	}
-	c.noteTypeAnnotations(ref)
 	if ref.And != nil {
 		return c.defNotNull(ref)
 	}
@@ -674,7 +629,6 @@ func (c *Checker) resolveTypeRef(ref *syntax.TypeRef) types.Type {
 		return c.innerType(ref)
 	}
 	if a := c.lookupAlias(ref.Name); a != nil && c.lookupTypeParam(ref.Name) == nil {
-		c.u.typeUses.Store(ref, a)
 		c.checkAliasVisible(a, ref.P)
 		c.recordAlias(ref, a)
 		return c.expandAlias(a, ref)
@@ -732,7 +686,6 @@ func (c *Checker) resolveTypeRef(ref *syntax.TypeRef) types.Type {
 				return types.InvalidType
 			}
 			c.checkClassVisible(cls, ref.P)
-			c.u.typeUses.Store(ref, cls)
 			return c.applyTypeArgs(cls, ref)
 		}
 		if ref.Args != nil {
@@ -944,7 +897,7 @@ func (c *Checker) declareTypeParams(decls []*syntax.TypeParam, owner any, allowV
 		if d.Variance != types.Inv && !allowVariance {
 			c.errorf(d.P, "variance annotations are only allowed for type parameters of classes")
 		}
-		d.Sym = &types.TypeParamSym{Name: d.Name, Var: d.Variance, Index: i, Owner: owner, Reified: d.Reified, OnlyInput: d.OnlyInput}
+		d.Sym = &types.TypeParamSym{Name: d.Name, Var: d.Variance, Index: i, Owner: owner, Reified: d.Reified}
 		if d.Reified {
 			if _, fn := owner.(*types.FunSym); !fn {
 				c.errorf(d.P, "only type parameters of inline functions can be reified")
@@ -1523,7 +1476,6 @@ func (c *Checker) resolveFun(d *syntax.FunDecl, owner *types.ClassSym) {
 	if d.Inline {
 		c.inlineFun(d, owner)
 	}
-	c.inlineDecl(d, false)
 	for _, tp := range d.TypeParams {
 		switch {
 		case !tp.Reified:
@@ -1649,7 +1601,6 @@ func jvmName(m *syntax.Modifiers, target string) string {
 }
 
 func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
-	c.backingFieldDecl(d, owner)
 	if d.Recv != nil {
 		c.resolveExtProp(d)
 		return
@@ -1665,7 +1616,6 @@ func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
 		defer func() { c.tparams = nil }()
 	}
 	c.memberModifiers(d.Modifiers, owner, d.P, "property '"+d.Name+"'")
-	c.inlineProp(d, owner)
 	c.funModifiers(d.Modifiers, d.P, "property")
 	if d.Find("", "JvmStatic") != nil {
 		switch {
@@ -1694,7 +1644,7 @@ func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
 	sym.Abstract = d.Abstract || owner != nil && owner.Interface && d.Init == nil && d.Getter == nil && d.Setter == nil
 	sym.Final = owner == nil || isFinal(d.Modifiers, owner)
 	if d.Field == nil {
-		sym.FieldUsed = getterField(d) || usesField(d.Setter)
+		sym.FieldUsed = usesField(d.Getter) || usesField(d.Setter)
 		// private set: no setter method, as with kotlinc.
 		sym.SetterPrivate = d.Mutable && d.Setter == nil && d.SetterVis == syntax.Private && !sym.Private && !sym.JvmField
 	}
@@ -1807,7 +1757,6 @@ func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
 	default:
 		sym.Infer = func() { c.inferProp(d) }
 	}
-	c.backingFieldType(d, owner)
 }
 
 // privateMethod reports whether a function or accessor declared with
@@ -1847,7 +1796,7 @@ func (c *Checker) resolveClass(d *syntax.ClassDecl) {
 	}
 	addProp := func(p *types.VarSym, pos syntax.Pos) {
 		if prev := cls.Prop(p.Name); prev != nil {
-			if d, ok := p.Decl.(*syntax.PropDecl); ok && (altProp(prev, d) || hiddenFinalProp(prev, d)) {
+			if d, ok := p.Decl.(*syntax.PropDecl); ok && altProp(prev, d) {
 				addAlt(prev, p)
 			} else {
 				c.errorf(pos, "conflicting declarations: %s", p.Name)
@@ -2123,11 +2072,6 @@ func (c *Checker) checkVariance1(whole, t types.Type, ref *syntax.TypeRef, pos t
 	if ref != nil && ref.UnsafeVariance {
 		return true
 	}
-	if r := c.aliasRef(ref); r != nil {
-		// A typealias's right side, whose @UnsafeVariance parts aren't
-		// checked either.
-		ref = r
-	}
 	ok := true
 	switch t.K {
 	case types.TypeParam:
@@ -2166,64 +2110,6 @@ func (c *Checker) checkVariance1(whole, t types.Type, ref *syntax.TypeRef, pos t
 		}
 	}
 	return ok
-}
-
-// aliasRef returns the right side of the program's typealias that ref
-// names, with ref's type arguments in place of its type parameters, or
-// nil.
-func (c *Checker) aliasRef(ref *syntax.TypeRef) *syntax.TypeRef {
-	if ref == nil || ref.Name == "" || ref.Ret != nil || ref.Known != nil {
-		return nil
-	}
-	a := c.lookupAlias(ref.Name)
-	if a == nil {
-		return nil
-	}
-	d, ok := a.Decl.(*syntax.TypeAliasDecl)
-	if !ok || d.Type == nil || len(ref.Args) != len(d.TypeParams) {
-		return nil
-	}
-	args := map[string]*syntax.TypeRef{}
-	for i, tp := range d.TypeParams {
-		args[tp.Name] = ref.Args[i].Type
-	}
-	var subst func(r *syntax.TypeRef) *syntax.TypeRef
-	subst = func(r *syntax.TypeRef) *syntax.TypeRef {
-		if r == nil {
-			return nil
-		}
-		if u, ok := args[r.Name]; ok && len(r.Args) == 0 && r.Ret == nil {
-			if u == nil {
-				return r
-			}
-			cp := *u
-			cp.UnsafeVariance = cp.UnsafeVariance || r.UnsafeVariance
-			return &cp
-		}
-		cp := *r
-		list := func(rs []*syntax.TypeRef) []*syntax.TypeRef {
-			if rs == nil {
-				return nil
-			}
-			out := make([]*syntax.TypeRef, len(rs))
-			for i, x := range rs {
-				out[i] = subst(x)
-			}
-			return out
-		}
-		cp.Params, cp.Contexts = list(r.Params), list(r.Contexts)
-		cp.Ret, cp.Recv, cp.Outer = subst(r.Ret), subst(r.Recv), subst(r.Outer)
-		if r.Args != nil {
-			cp.Args = make([]*syntax.TypeArg, len(r.Args))
-			for i, x := range r.Args {
-				y := *x
-				y.Type = subst(x.Type)
-				cp.Args[i] = &y
-			}
-		}
-		return &cp
-	}
-	return subst(d.Type)
 }
 
 // argRefs returns the type references that type ref writes its n type
@@ -2365,7 +2251,6 @@ func (c *Checker) checkBodies() {
 			c.checkProp(d, nil)
 		}
 	}
-	c.fileAssignment(c.file.Decls)
 	for _, d := range c.classes {
 		if cancelled(done) {
 			return
@@ -2373,8 +2258,7 @@ func (c *Checker) checkBodies() {
 		c.checkClass(d)
 	}
 	c.propRefs()
-	c.inlineFileChecks()
-	c.typeAnnotations()
+	c.inlineCycles()
 }
 
 // checkClass checks a class's code: its constructors' calls, property
@@ -2390,9 +2274,8 @@ func (c *Checker) checkClass(d *syntax.ClassDecl) {
 				continue // its class's superclass constructor call
 			}
 			// An entry calls the enum's constructor. Its arguments see the
-			// enum's nested classes and entries, but not this. Codegen
-			// evaluates them first if they have a try.
-			c.state = state{scope: &scope{}, tparams: d.Sym.TypeParams, staticCls: d.Sym}
+			// enum's nested classes and entries, but not this.
+			c.state = state{scope: &scope{}, tparams: d.Sym.TypeParams, ctorArgs: true, staticCls: d.Sym}
 			c.lookupCls = d.Sym
 			e.Call.Ctor = d.Sym
 			var cands []callee
@@ -2596,11 +2479,9 @@ func funDeclaresDefaults(d *syntax.FunDecl) bool {
 // checkProp checks a property's initializer or getter, unless inference
 // already has.
 func (c *Checker) checkProp(d *syntax.PropDecl, cls *types.ClassSym) {
-	c.checkBackingField(d, cls)
 	if d.Init != nil && !c.done[d] {
 		c.checkPropInit(d, cls)
 	}
-	c.constInit(d)
 	if d.Getter != nil && !c.done[d.Getter] && hasBody(d.Getter) {
 		c.checkFun(d.Getter, cls)
 	}
@@ -2648,33 +2529,9 @@ func usesField(a *syntax.FunDecl) bool {
 		return false
 	}
 	found := false
-	var f func(n any) bool
-	f = func(n any) bool {
-		switch n := n.(type) {
-		case *syntax.Ident:
-			if n.Name == "field" {
-				found = true
-			}
-		case *syntax.ObjectExpr:
-			// An object literal's code sees the accessor's field, but its
-			// properties' accessors have their own.
-			for _, st := range n.Decl.Supers {
-				if st.Call != nil {
-					syntax.Inspect(st.Call, f)
-				}
-				syntax.Inspect(st.Delegate, f)
-			}
-			for _, m := range n.Decl.Members {
-				switch m := m.(type) {
-				case *syntax.PropDecl:
-					syntax.Inspect(m.Init, f)
-				case *syntax.FunDecl:
-					syntax.Inspect(m.Body, f)
-					syntax.Inspect(m.ExprBody, f)
-				case *syntax.InitBlock:
-					syntax.Inspect(m.Body, f)
-				}
-			}
+	f := func(n any) bool {
+		if id, ok := n.(*syntax.Ident); ok && id.Name == "field" {
+			found = true
 		}
 		return !found
 	}
@@ -2723,7 +2580,7 @@ func (c *Checker) checkFun(d *syntax.FunDecl, cls *types.ClassSym) {
 	c.pluginSerializer(d)
 	c.parcelBody(d, cls)
 	if d.Inline {
-		defer c.inlineBodyChecks(d, cls)
+		defer c.publicInline(d, cls)
 	}
 	sym := d.Sym
 	s := &scope{}
@@ -2755,7 +2612,7 @@ func (c *Checker) checkFun(d *syntax.FunDecl, cls *types.ClassSym) {
 	}
 	if d.Tailrec {
 		defer c.tailCalls(d)
-		if cls != nil && !sym.Final && !(cls.Final && cls.Entries == nil) {
+		if cls != nil && !sym.Final {
 			c.errorf(d.P, "tailrec is not allowed on open members")
 		}
 	}
@@ -2777,7 +2634,7 @@ func (c *Checker) checkFun(d *syntax.FunDecl, cls *types.ClassSym) {
 		t = types.InvalidType
 	}
 	if sym.Ret = t; !keepsAnon(&d.Modifiers, cls) {
-		sym.Ret = approx(c.approxIntersections(t))
+		sym.Ret = approx(t)
 	}
 }
 
@@ -2803,17 +2660,13 @@ func (c *Checker) checkPropInit(d *syntax.PropDecl, cls *types.ClassSym) {
 	}
 	var t types.Type
 	provided := noWant
-	if want := c.delegateWant(d); want.K == types.Invalid && (delegateTyped(d.DelegateOf) || untypedDelegate(d.DelegateOf)) {
+	if want := c.delegateWant(d); want.K == types.Invalid && delegateTyped(d.DelegateOf) {
 		p := d.DelegateOf
 		owner := types.NothingType.Nullable()
 		if p.Ref != nil && p.Ref.Recv {
 			owner = p.Sym.Owner.This()
 		}
-		pt := p.Sym.Type
-		if p.Type == nil {
-			pt = noWant
-		}
-		t, provided = c.inferDelegate(d.Init, pt, owner, c.delegateThis(p), p.Mutable)
+		t, provided = c.inferDelegate(d.Init, p.Sym.Type, owner, c.delegateThis(p), p.Mutable)
 	} else {
 		t = c.value(d.Init, want)
 	}
@@ -2821,7 +2674,7 @@ func (c *Checker) checkPropInit(d *syntax.PropDecl, cls *types.ClassSym) {
 		t = c.provideDelegate(d, p, t, provided)
 	}
 	if sym.Type = t; !keepsAnon(&d.Modifiers, cls) {
-		sym.Type = approx(c.approxIntersections(t))
+		sym.Type = approx(t)
 	}
 }
 
@@ -2846,7 +2699,7 @@ func (c *Checker) provideDelegate(d, p *syntax.PropDecl, t, want types.Type) typ
 	m.P = pos
 	call := &syntax.Call{Fun: m, Args: []syntax.Expr{this, p.Ref}, Operator: true}
 	call.P = pos
-	if !c.providesDelegate(t, call) {
+	if !c.hasFun(t, "provideDelegate", call) {
 		return t
 	}
 	d.Init = call
@@ -2891,18 +2744,8 @@ func (c *Checker) delegateThis(p *syntax.PropDecl) types.Type {
 // reference, val y by ::x, which is then a KProperty object, whose
 // getValue and setValue are the standard library's, or else noWant.
 func (c *Checker) kpropDelegateWant(x syntax.Expr) types.Type {
-	l, ok := x.(*syntax.Lambda)
-	if !ok || l.Ref == nil {
+	if l, ok := x.(*syntax.Lambda); !ok || l.Ref == nil {
 		return noWant
-	}
-	if r := l.Ref; r.X == nil && r.Type == nil {
-		// by ::f, of a function: a function value, whose provideDelegate
-		// extension supplies the delegate.
-		sym, _ := c.scope.find(r.Name)
-		prop := sym != nil || c.topVar(r.Name) != nil || c.cls != nil && c.memberProp(c.cls, r.Name) != nil
-		if !prop && len(c.topFuns(r.Name)) > 0 {
-			return noWant
-		}
 	}
 	cls := c.u.ext.class("kotlin/reflect/KProperty")
 	if cls == nil {

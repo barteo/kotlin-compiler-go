@@ -49,9 +49,6 @@ func (g *gen) kprops(refs []*syntax.PropRef) {
 			impl = "kotlin/jvm/internal/MutablePropertyReference"
 		}
 		flags := int32(1) // top level or local: no receiver
-		if r.Owner != g.file.Class() {
-			flags = 0 // a class's: its local's metadata is the class's
-		}
 		recvs := 0
 		if r.Recv {
 			recvs++
@@ -109,9 +106,9 @@ func (g *gen) kpropInit(c *cf.Code, x *syntax.Lambda, super string, bound int) {
 	case k.Getter != nil:
 		owner, sig = k.Getter.Facade, k.Getter.JVM()+funDesc(k.Getter)
 	case k.Prop.Kind == types.Global:
-		owner, sig = k.Prop.Facade, propRefGetter(k.Prop)
+		owner, sig = k.Prop.Facade, types.GetterJVM(k.Prop)+"()"+desc(types.GetterType(k.Prop))
 	default:
-		owner, sig, flags = refOwner(x, k.Prop.Owner), propRefGetter(k.Prop), 0
+		owner, sig, flags = refOwner(x, k.Prop.Owner), types.GetterJVM(k.Prop)+"()"+desc(types.GetterType(k.Prop)), 0
 	}
 	d := "(Ljava/lang/Class;Ljava/lang/String;Ljava/lang/String;I)V"
 	if k.Bound {
@@ -123,20 +120,6 @@ func (g *gen) kpropInit(c *cf.Code, x *syntax.Lambda, super string, bound int) {
 	c.Sconst(sig)
 	c.Iconst(flags)
 	c.Invoke(cf.INVOKESPECIAL, super, "<init>", d)
-}
-
-// propRefGetter returns the getter's JVM name and descriptor that a
-// reference to property p passes. A property without accessors (a
-// private one with default ones, a const or a @JvmField) has none in its
-// metadata, so kotlin-reflect looks for the getter its field would have,
-// getX()T, without the mangling of a value class type: kotlinc passes
-// that.
-func propRefGetter(p *types.VarSym) string {
-	name := types.GetterJVM(p)
-	if p.Private || p.Const || p.JvmField {
-		name = types.GetterName(p.Name)
-	}
-	return name + "()" + desc(types.GetterType(p))
 }
 
 // loadBound loads the receiver of reference x::p, in slot bound, boxed if

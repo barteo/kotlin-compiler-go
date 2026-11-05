@@ -29,12 +29,6 @@ value class OfUnit(val x: Unit) // ERROR value class cannot have value parameter
 value class Recursive(val x: Recursive) // ERROR value class cannot be recursive
 
 @JvmInline
-value class Mutual1(val x: Mutual2)
-
-@JvmInline
-value class Mutual2(val x: Mutual1) // ERROR value class cannot be recursive
-
-@JvmInline
 value class Ok(val x: Int) {
     fun withDefault(y: Int = 1): Int = x + y
 }

@@ -24,13 +24,13 @@ func (g *gen) serialCtor(cd *syntax.ClassDecl, sc *syntax.SecondaryCtor) {
 	g.loops, g.tries = nil, nil
 	g.code.AllocLocal("L" + cls.Name + ";")
 	for _, p := range f.Params {
-		g.setSlot(p, g.code.AllocLocal(paramDesc(p.Type)))
+		p.Slot = g.code.AllocLocal(paramDesc(p.Type))
 		g.named(p)
 	}
 	g.line(cd.P)
-	seen := g.slot(f.Params[0])
+	seen := f.Params[0].Slot
 	props := f.Params[1 : len(f.Params)-1] // those of all, in order
-	marker := g.slot(f.Params[len(f.Params)-1])
+	marker := f.Params[len(f.Params)-1].Slot
 	all := serial.All()
 	if s := cls.Nested["$serializer"]; s != nil {
 		var mask int32
@@ -60,7 +60,7 @@ func (g *gen) serialCtor(cd *syntax.ClassDecl, sc *syntax.SecondaryCtor) {
 		sf := sd.Serial.Ctor.Sym
 		g.code.Local(cf.ILOAD, seen)
 		for _, p := range props[:len(sf.Params)-2] {
-			g.code.Local(loadOp(p.Type), g.slot(p))
+			g.code.Local(loadOp(p.Type), p.Slot)
 		}
 		g.code.Local(cf.ALOAD, marker)
 		g.code.Invoke(cf.INVOKESPECIAL, sd.Sym.Name, "<init>", ctorJVMDesc(sf))
@@ -99,7 +99,7 @@ func (g *gen) serialCtor(cd *syntax.ClassDecl, sc *syntax.SecondaryCtor) {
 		param := props[i]
 		if !all[i].Optional {
 			g.code.Local(cf.ALOAD, 0)
-			g.code.Local(loadOp(param.Type), g.slot(param))
+			g.code.Local(loadOp(param.Type), param.Slot)
 			put()
 			return
 		}
@@ -114,7 +114,7 @@ func (g *gen) serialCtor(cd *syntax.ClassDecl, sc *syntax.SecondaryCtor) {
 		g.code.Jump(cf.GOTO, done)
 		g.code.Place(read)
 		g.code.Local(cf.ALOAD, 0)
-		g.code.Local(loadOp(param.Type), g.slot(param))
+		g.code.Local(loadOp(param.Type), param.Slot)
 		put()
 		g.code.Place(done)
 	}

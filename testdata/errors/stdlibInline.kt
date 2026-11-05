@@ -1,8 +1,15 @@
 // Errors of inlined functions of the standard library.
 
+import java.io.StringReader
 import kotlin.reflect.typeOf
 
 class Holder(val n: Int)
+
+// use's body has a finally block, whose handler would lose an enum
+// entry's new object on the operand stack.
+enum class Read(val n: Int) {
+    X(StringReader("x").use { it.read() }) // ERROR 'use' can't be an argument of a constructor call
+}
 
 fun main() {
     println(Holder(if ("a".isNotEmpty()) 1 else 2).n)

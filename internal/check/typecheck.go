@@ -17,144 +17,11 @@ func (c *Checker) isExpr(x *syntax.Is) types.Type {
 		declared = v.Type
 	}
 	x.Target = c.checkTarget(x.Ref, st, declared, true)
-	orig := st
-	if declared.K != types.Invalid {
-		orig = declared // kotlinc checks the type before smart casts
-	}
-	c.impossibleIs(x.P, orig, st, x.Target, x.Not)
 	return types.BoolType
 }
 
-// whenIsCheck checks the is or !is condition cond of when x, whose
-// subject has type st, as isExpr checks x is T.
-func (c *Checker) whenIsCheck(x *syntax.When, cond *syntax.WhenCond, st types.Type) {
-	orig := st
-	if x.SubjVar == "" {
-		if v := c.narrowSym(x.Subject); v != nil {
-			orig = v.Type
-		}
-	}
-	c.impossibleIs(cond.P, orig, st, cond.Target, cond.NotIs)
-}
-
-// impossibleIs reports x is T, or x !is T, that can never be true, or
-// never false, as kotlinc's IMPOSSIBLE_IS_CHECK does (its RULES1): the
-// type orig of x before smart casts, and T, with their type arguments
-// erased, are unrelated, and one of them is a final class, or both are
-// classes rather than interfaces. smart is the smart-cast type of x: if
-// both it and T may be null, the check holds for null alone.
-func (c *Checker) impossibleIs(p syntax.Pos, orig, smart, t types.Type, not bool) {
-	if orig.K == types.Invalid || t.K == types.Invalid || c.subtype(orig, t) {
-		return // a useless check, if anything
-	}
-	l, ok1 := c.castInfo(orig, 0)
-	r, ok2 := c.castInfo(t, 0)
-	if !ok1 || !ok2 {
-		return
-	}
-	switch {
-	case l.final || r.final:
-	case l.concrete && r.concrete && l.class && r.class:
-	default:
-		return
-	}
-	if c.erasedSub(l.parts, r.parts) || c.erasedSub(r.parts, l.parts) {
-		return
-	}
-	null := types.MayBeNull(smart) && types.MayBeNull(t)
-	diag := "IMPOSSIBLE_IS_CHECK_ERROR"
-	if null {
-		diag = "IMPOSSIBLE_IS_CHECK_RELYING_ON_NULL_ERROR"
-	}
-	if c.file != nil && suppresses(c.file.Annotations, diag) {
-		return
-	}
-	if null {
-		c.errorf(p, "check for instance is always '%v': %s and %s have no common instances but null", !not, orig, t)
-		return
-	}
-	c.errorf(p, "check for instance is always '%v': %s and %s are incompatible", not, orig, t)
-}
-
-// castTypeInfo describes a type, as impossibleIs compares it: the
-// intersection of parts, non-null types with their type arguments
-// star-projected, and whether one of them is a final class, one is a
-// class rather than an interface, and there is only one.
-type castTypeInfo struct {
-	parts                  []types.Type
-	final, class, concrete bool
-}
-
-// mappedClasses are Java classes that kotlinc maps to Kotlin ones, whose
-// relation to them kc's types may not show.
-var mappedClasses = map[string]bool{
-	"java/lang/Object": true, "java/lang/String": true, "java/lang/Integer": true, "java/lang/Long": true,
-	"java/lang/Short": true, "java/lang/Byte": true, "java/lang/Character": true, "java/lang/Boolean": true,
-	"java/lang/Float": true, "java/lang/Double": true, "java/lang/Void": true, "java/lang/Number": true,
-	"kotlin/Unit": true, "kotlin/Nothing": true,
-}
-
-// castInfo returns t's castTypeInfo. It reports false for a type that
-// impossibleIs doesn't judge.
-func (c *Checker) castInfo(t types.Type, depth int) (castTypeInfo, bool) {
-	t = t.NonNull()
-	t.P = false
-	switch t.K {
-	case types.Bool, types.Int, types.Long, types.Double, types.Char, types.Float, types.Byte, types.Short, types.String:
-		return castTypeInfo{parts: []types.Type{t}, final: true, class: true, concrete: true}, true
-	case types.Any:
-		return castTypeInfo{parts: []types.Type{t}, class: true, concrete: true}, true
-	case types.Class:
-		cls := t.C
-		cls.Ensure()
-		if cls.Missing || mappedClasses[cls.Name] || cls.Anonymous {
-			return castTypeInfo{}, false
-		}
-		if t.A != nil {
-			args := make([]types.Arg, t.A.Len())
-			for i := range args {
-				args[i] = types.Arg{V: types.Star}
-			}
-			t = types.GenericType(cls, args)
-		}
-		return castTypeInfo{parts: []types.Type{t}, final: cls.Final && !cls.Interface, class: !cls.Interface, concrete: true}, true
-	case types.TypeParam:
-		p := t.Param()
-		if depth > 10 {
-			return castTypeInfo{}, false
-		}
-		if len(p.Bounds) == 0 {
-			return c.castInfo(types.AnyType, depth+1)
-		}
-		var info castTypeInfo
-		for _, b := range p.Bounds {
-			bi, ok := c.castInfo(b, depth+1)
-			if !ok {
-				return castTypeInfo{}, false
-			}
-			info.parts = append(info.parts, bi.parts...)
-			info.final = info.final || bi.final
-			info.class = info.class || bi.class
-		}
-		info.concrete = len(info.parts) == 1
-		return info, true
-	}
-	return castTypeInfo{}, false
-}
-
-// erasedSub reports whether the intersection of types ts is a subtype of
-// the intersection of us.
-func (c *Checker) erasedSub(ts, us []types.Type) bool {
-	for _, u := range us {
-		if !slices.ContainsFunc(ts, func(t types.Type) bool { return c.subtype(t, u) }) {
-			return false
-		}
-	}
-	return true
-}
-
 func (c *Checker) asExpr(x *syntax.As) types.Type {
-	st := c.castOperand(x) // see expected.go
+	st := c.value(x.X, noWant)
 	t := c.checkTarget(x.Ref, st, types.InvalidType, false)
 	x.Target = t
 	if t.K == types.Invalid || st.K == types.Invalid {
@@ -162,10 +29,6 @@ func (c *Checker) asExpr(x *syntax.As) types.Type {
 	}
 	if x.Safe {
 		return t.Nullable()
-	}
-	if k, ok := c.castNarrow(x); ok {
-		// x is a T from here on: in (x as T).f(x), (x as T) + x.
-		c.scope.narrows = append(c.scope.narrows, k)
 	}
 	if t.K == types.Class && t.C.Name == "kotlin/Unit" && !t.N {
 		return types.UnitType // x as Unit, a cast to kotlin.Unit
@@ -196,7 +59,7 @@ func (c *Checker) checkTarget(ref *syntax.TypeRef, subject, declared types.Type,
 		c.errorf(ref.P, "cannot check for an instance of %s", t)
 		return types.InvalidType
 	case t.IsParam():
-		if is && !t.Param().Reified && !c.paramKnown(t, subject) && (declared.K == types.Invalid || !c.paramKnown(t, declared)) {
+		if is && !t.Param().Reified {
 			c.errorf(ref.P, "cannot check for instance of erased type: %s", t)
 			return types.InvalidType
 		}
@@ -217,21 +80,11 @@ func (c *Checker) checkTarget(ref *syntax.TypeRef, subject, declared types.Type,
 		// CancellableFlow<*> is a CancellableFlow<T>. Not if they are
 		// outside C's bounds, as a DeserializationStrategy<T> that is an
 		// AbstractPolymorphicSerializer<*>, whose T : Any.
-		if d, _, _ := c.bareArgs(t.C, ref, subject); c.argsInBounds(d) {
+		if d := c.bareType(t.C, ref, subject); c.argsInBounds(d) {
 			return d
 		}
 	}
 	return t
-}
-
-// paramKnown reports whether x is T, for a type parameter T that isn't
-// reified, can be checked where x has type subject: as in kotlinc, if it
-// is an upcast, or checks that a T? is a T that can't be null.
-func (c *Checker) paramKnown(t, subject types.Type) bool {
-	if subject.K == types.Invalid {
-		return false
-	}
-	return c.subtype(subject, t) || !types.MayBeNull(t) && subject.NonNull() == t.NonNull()
 }
 
 // argsInBounds reports whether the type arguments of class type t are
@@ -260,69 +113,28 @@ func (c *Checker) argsInBounds(t types.Type) bool {
 // with the arguments that follow from the subject's type, x is List for
 // an x: Collection<String> giving List<String>, and * for the others.
 func (c *Checker) bareType(cls *types.ClassSym, ref *syntax.TypeRef, subject types.Type) types.Type {
-	t, known, _ := c.bareArgs(cls, ref, subject)
-	if !known && ref == c.bareRef && ref != nil && subject.K != types.Invalid && !subject.IsParam() {
-		c.errorf(ref.P, "%s expected for %s: its type arguments don't follow from %s; use %s",
-			countArgs(len(cls.TypeParams)), types.ClassType(cls), subject, t.NonNull())
-	}
-	return t
-}
-
-// bareArgs returns bareType's type, and whether the subject's type gives
-// each of its arguments, and whether it gives one two different ones, as
-// in Derived<S> : Base<S, S> for a Base<A, B>.
-func (c *Checker) bareArgs(cls *types.ClassSym, ref *syntax.TypeRef, subject types.Type) (t types.Type, known, conflict bool) {
 	args := make([]types.Arg, len(cls.TypeParams))
-	set := make([]bool, len(args))
 	for i := range args {
 		args[i] = types.Arg{V: types.Star}
 	}
 	if s := subject.NonNull(); s.K == types.Class {
 		if sup, ok := c.asSuper(s, cls); ok {
-			return c.nullable(sup, ref), true, false // a supertype of the subject's
+			return c.nullable(sup, ref) // a supertype of the subject's
 		}
-		if sup, ok := c.asSuper(cls.This(), s.C); ok {
-			conflict = c.unify(cls, sup, s, args, set, 0)
+		if sup, ok := c.asSuper(cls.This(), s.C); ok && sup.A != nil && s.A != nil {
+			for i, a := range sup.A.List {
+				if a.V != types.Inv || !a.T.IsParam() || i >= s.A.Len() {
+					continue
+				}
+				for j, p := range cls.TypeParams {
+					if a.T.Param() == p {
+						args[j] = s.A.Get(i)
+					}
+				}
+			}
 		}
 	}
-	known = !slices.Contains(set, false)
-	return c.nullable(types.GenericType(cls, args), ref), known, conflict
-}
-
-// unify matches type sup, written with the type parameters of cls, with
-// type s, as kotlinc does to find what x is C tells of C's arguments:
-// Base<D, String> and Base<T, U> give D = T. It sets args and set, and
-// reports whether a parameter matches two different arguments. Other
-// mismatches are not conflicts.
-func (c *Checker) unify(cls *types.ClassSym, sup, s types.Type, args []types.Arg, set []bool, depth int) bool {
-	if depth > 10 || sup.K != types.Class || s.K != types.Class || sup.C != s.C || sup.A == nil || s.A == nil {
-		return false
-	}
-	conflict := false
-	for i, a := range sup.A.List {
-		if i >= s.A.Len() || a.V == types.Star {
-			continue
-		}
-		v := s.A.Get(i)
-		if a.T.IsParam() && a.V == types.Inv {
-			j := slices.Index(cls.TypeParams, a.T.Param())
-			if j < 0 {
-				continue
-			}
-			if a.T.N && v.V != types.Star {
-				v.T = v.T.NonNull() // T? and String? give T = String
-			}
-			if set[j] && (args[j].V != v.V || v.V != types.Star && !c.sameType(args[j].T, v.T)) {
-				conflict = true
-			}
-			args[j], set[j] = v, true
-			continue
-		}
-		if v.V != types.Star && c.unify(cls, a.T.NonNull(), v.T.NonNull(), args, set, depth+1) {
-			conflict = true
-		}
-	}
-	return conflict
+	return c.nullable(types.GenericType(cls, args), ref)
 }
 
 func allStar(t types.Type) bool {
@@ -351,10 +163,12 @@ func (c *Checker) argsKnown(t, subject types.Type, ref *syntax.TypeRef) bool {
 	if sup, ok := c.asSuper(t, s.C); ok && c.sameType(sup, s) {
 		return true
 	}
-	// Not if the subject's arguments conflict, as Base<D, B> for a
-	// Derived<S> : Base<S, S>.
-	d, _, conflict := c.bareArgs(t.C, ref, subject)
-	return !conflict && !hasStar(d) && c.subtype(d, t)
+	d := c.bareType(t.C, ref, subject)
+	if hasStar(d) || !c.subtype(d, t) {
+		return false
+	}
+	sup, ok := c.asSuper(d, s.C) // not if the subject's arguments conflict, as Base<D, B> for a Derived<S> : Base<S, S>
+	return ok && c.subtype(sup, s)
 }
 
 func hasStar(t types.Type) bool {
@@ -373,7 +187,7 @@ func (c *Checker) stable(v *types.VarSym) bool {
 	case types.Local, types.Param, types.BackingField:
 		return true
 	case types.Prop:
-		return c.stableOn(v, c.thisType())
+		return v.Final && v.Getter == nil && v.HasField() && v.Owner != nil && !v.Owner.External
 	case types.Global:
 		return v.Getter == nil
 	}
@@ -388,26 +202,15 @@ func (c *Checker) narrowSym(x syntax.Expr) *types.VarSym {
 		if x.Sym != nil && x.Member == nil && c.stable(x.Sym) {
 			return x.Sym
 		}
-		if x.Member != nil {
-			return c.narrowSym(x.Member) // p of an implicit receiver, this.p
-		}
 	case *syntax.This:
 		if x.Recv != nil {
 			return x.Recv // a lambda's receiver, a parameter
 		}
 		return c.this
-	case *syntax.NotNull:
-		return c.narrowSym(x.X) // a!!.b is a.b
-	case *syntax.Checked:
-		return c.narrowSym(x.X) // a temporary's value: val t = a in a?.b = v
 	case *syntax.Member:
-		// a.b.c is stable if a.b is: a stable property of a val. So is
-		// a?.b.c, which is a.b.c where a isn't null.
-		if x.Prop == nil || !c.stableOn(x.Prop, x.X.Type()) {
+		// a.b.c is stable if a.b is: a stable property of a val.
+		if x.Safe || x.Prop == nil || !c.stableMember(x.Prop) {
 			return nil
-		}
-		if this, ok := x.X.(*syntax.This); ok && this.Recv == nil {
-			return x.Prop // this.p is p, as in memberKey
 		}
 		if r := c.narrowSym(x.X); r != nil && !r.Mutable {
 			k := [2]*types.VarSym{r, x.Prop}
@@ -426,11 +229,9 @@ func (c *Checker) narrowSym(x syntax.Expr) *types.VarSym {
 }
 
 // isNarrowed returns the type that a value of type cur has once it is
-// known to be a T. If cur isn't a subtype of T, the value is seen as a T,
-// non-null if cur is: ktor's first !is T for a first: Node and a reified
-// T leaves a T & Any (see declaredIfNull). An interface unrelated to a
-// class type gives their intersection, as in Kotlin: an a: A? that is a B
-// is an A & B, whatever expression it is passed through.
+// known to be a T. kc has no intersection types: if cur isn't a subtype
+// of T, the value is seen as a T, non-null if cur is: ktor's first !is T
+// for a first: Node and a reified T leaves a T & Any (see declaredIfNull).
 func (c *Checker) isNarrowed(cur, t types.Type) types.Type {
 	if c.subtype(cur.NonNull(), t) {
 		if types.MayBeNull(t) {
@@ -441,34 +242,7 @@ func (c *Checker) isNarrowed(cur, t types.Type) types.Type {
 	if t.IsParam() && !types.MayBeNull(cur) {
 		return t.NonNull()
 	}
-	if i, ok := c.narrowedIntersection(cur, t); ok {
-		return i
-	}
 	return t
-}
-
-// narrowedIntersection returns cur & t for a smart cast of a value of
-// type cur to an unrelated t, where one of them is an interface, both are
-// Kotlin or Java class types without type parameters, and t is no
-// subclass of cur's class: t & cur.
-func (c *Checker) narrowedIntersection(cur, t types.Type) (types.Type, bool) {
-	a, b := cur.Flex().NonNull(), t.NonNull()
-	if a.K != types.Class || b.K != types.Class || !intersectable(a) || !intersectable(b) ||
-		a.C.Func || b.C.Func || c.subtype(b, a) {
-		return types.InvalidType, false
-	}
-	a.C.Ensure()
-	b.C.Ensure()
-	if !a.C.Interface && !b.C.Interface {
-		return types.InvalidType, false
-	}
-	// The target first, whose members win, as they did when the value
-	// was seen as a T alone; the class erases it either way.
-	i := c.intersect([]types.Type{b, a})
-	if types.MayBeNull(t) && types.MayBeNull(cur) {
-		i = i.Nullable()
-	}
-	return i, true
 }
 
 // needsCast reports whether a value read as type from needs a cast to be
@@ -573,31 +347,12 @@ func (cv *coverage) entry(name string) {
 	cv.entries[name] = true
 }
 
-// merge adds what o covers.
-func (cv *coverage) merge(o *coverage) {
-	cv.null = cv.null || o.null
-	cv.isTrue = cv.isTrue || o.isTrue
-	cv.isFalse = cv.isFalse || o.isFalse
-	for e := range o.entries {
-		cv.entry(e)
-	}
-	cv.classes = append(cv.classes[:len(cv.classes):len(cv.classes)], o.classes...)
-}
-
-// empty reports whether cv covers nothing.
-func (cv *coverage) empty() bool {
-	return !cv.null && !cv.isTrue && !cv.isFalse && len(cv.entries) == 0 && len(cv.classes) == 0
-}
-
 // covers reports whether the branches cover every value of a subject of
 // type t: true and false, every enum entry, or every subclass of a sealed
 // class, and null if t is nullable.
 func (c *Checker) covers(t types.Type, cv *coverage) bool {
 	if types.MayBeNull(t) && !t.P && !cv.null {
 		return false
-	}
-	if t.K == types.Null {
-		return true // a subject known to be null, which null covers
 	}
 	t = t.NonNull()
 	switch {

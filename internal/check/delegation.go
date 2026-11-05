@@ -98,22 +98,6 @@ func (c *Checker) defaultImpls() {
 		abstract := map[string]bool{} // overridden without a body
 		cls.Supertypes(func(s *types.ClassSym) bool {
 			program := !s.External && s.HasDefaultImpls()
-			if !s.External && !s.Interface {
-				// The class's or a superclass's abstract override of a
-				// member has no body to call: abstract class C : I {
-				// abstract override fun f() }.
-				for _, g := range delegable(s) {
-					if g.Abstract {
-						abstract[g.Name+paramKey(g)] = true
-					}
-				}
-				for _, p := range memberProps(s) {
-					if p.getter.Abstract {
-						abstract["prop "+p.name] = true
-					}
-				}
-				return true
-			}
 			if !program && (!s.External || !s.Interface || s.KotlinName == "" || s.Java != nil || s.JVMDefault) {
 				// A JVMDefault interface's bodies are default methods,
 				// which classes inherit, also if it has a DefaultImpls

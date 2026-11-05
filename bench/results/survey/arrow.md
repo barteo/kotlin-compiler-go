@@ -8,10 +8,11 @@ Directories: `arrow-libs/core/arrow-annotations/src/commonMain`, `arrow-libs/cor
 
 ### Features left, by files blocked
 
-107 of 107 files use no feature that kc doesn't support.
+106 of 107 files use no feature that kc doesn't support.
 
 | Feature | Files | Only blocker | Uses |
 |:---|---:|---:|---:|
+| member extension property | 1 | 1 | 1 |
 
 ### Greedy order of the features left
 
@@ -19,6 +20,7 @@ At each step, the feature that unblocks the most files given the ones before it,
 
 | Step | Feature | Files unblocked |
 |---:|:---|---:|
+| 1 | member extension property | 107 |
 
 ### Inline-only functions called
 
@@ -156,7 +158,7 @@ The features each file still needs.
 | arrow-libs/fx/arrow-fx-coroutines/src/commonMain/kotlin/arrow/fx/coroutines/flow.kt | 283 |  |
 | arrow-libs/fx/arrow-fx-coroutines/src/commonMain/kotlin/arrow/fx/coroutines/resource/context/Resource.kt | 47 |  |
 | arrow-libs/fx/arrow-fx-stm/src/androidAndJvmMain/kotlin/arrow/fx/stm/internal/RetryException.kt | 6 |  |
-| arrow-libs/fx/arrow-fx-stm/src/commonMain/kotlin/arrow/fx/stm/STM.kt | 1705 |  |
+| arrow-libs/fx/arrow-fx-stm/src/commonMain/kotlin/arrow/fx/stm/STM.kt | 1705 | member extension property |
 | arrow-libs/fx/arrow-fx-stm/src/commonMain/kotlin/arrow/fx/stm/TArray.kt | 129 |  |
 | arrow-libs/fx/arrow-fx-stm/src/commonMain/kotlin/arrow/fx/stm/TMVar.kt | 198 |  |
 | arrow-libs/fx/arrow-fx-stm/src/commonMain/kotlin/arrow/fx/stm/TMap.kt | 166 |  |

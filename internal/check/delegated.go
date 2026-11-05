@@ -43,9 +43,7 @@ func (c *Checker) localDelegate(s *syntax.VarStmt) {
 	}
 	var dt types.Type
 	provided := noWant
-	if want.K == types.Invalid && (s.Type == nil || t.K != types.Invalid) {
-		// Without a type, getValue's thisRef, a Nothing?, still infers
-		// the delegate's: T of a ReadOnlyProperty { _, p -> p }.
+	if s.Type != nil && want.K == types.Invalid && t.K != types.Invalid {
 		null := types.NothingType.Nullable()
 		dt, provided = c.inferDelegate(s.Delegate, t, null, null, s.Mutable)
 	} else {
@@ -58,7 +56,7 @@ func (c *Checker) localDelegate(s *syntax.VarStmt) {
 		m := &syntax.Member{X: checked(s.Delegate, dt), Name: "provideDelegate"}
 		call := &syntax.Call{Fun: m, Args: []syntax.Expr{null, ref}, Operator: true}
 		null.P, m.P, call.P = s.P, s.P, s.P
-		if c.providesDelegate(dt, call) {
+		if c.hasFun(dt, "provideDelegate", call) {
 			s.Delegate = call
 			dt = c.value(call, provided)
 		}
@@ -104,7 +102,8 @@ func (c *Checker) localDelegate(s *syntax.VarStmt) {
 // noWant if it has none.
 func (c *Checker) inferDelegate(x syntax.Expr, pt, owner, this types.Type, mutable bool) (types.Type, types.Type) {
 	s := newSystem(c)
-	t := c.delegateValue(x, s)
+	c.sink = s
+	t := c.value(x, noWant)
 	// A constraint that can't hold is left out, for the operator calls'
 	// own checks to report.
 	try := func(a, b types.Type) {
@@ -122,16 +121,12 @@ func (c *Checker) inferDelegate(x syntax.Expr, pt, owner, this types.Type, mutab
 	}
 	if ps, r, ok := c.delegateOp(s, rt, "getValue", pos); ok {
 		try(this, ps[0])
-		if pt.K != types.Invalid {
-			try(r, pt)
-		}
+		try(r, pt)
 	}
 	if mutable {
 		if ps, _, ok := c.delegateOp(s, rt, "setValue", pos); ok {
 			try(this, ps[0])
-			if pt.K != types.Invalid {
-				try(pt, ps[2])
-			}
+			try(pt, ps[2])
 		}
 	}
 	c.runLambdas(s, false)

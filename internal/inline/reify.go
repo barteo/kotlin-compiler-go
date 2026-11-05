@@ -66,14 +66,12 @@ type Instance struct {
 // reifiedOp is a marked operation in a template's code: the marker,
 // three instructions from start, and the operation, which takes a class
 // constant at classAt (a class ldc's one-byte index at classAt-1 if
-// ldc). A Catch operation's astore takes none: the exception table
-// entries of its handler do, at catches.
+// ldc).
 type reifiedOp struct {
 	start, op int // file offsets
 	kind      int
 	param     string
-	ldc       bool  // a class ldc, whose index is one byte
-	catches   []int // a Catch's catch_type fields, as file offsets
+	ldc       bool // a class ldc, whose index is one byte
 }
 
 // LoadTemplates reads the templates of the classes that the body, and
@@ -236,24 +234,12 @@ func readTemplate(name string, data []byte) (*Template, []nestedRef, error) {
 				return nil, nil, fail("class %s marks a reified operation kc doesn't read", name)
 			}
 			kind, op := constInt(&insns[i-2]), insns[i+1]
-			var catches []int
-			if kind == Catch && op.Op == cf.ASTORE {
-				// The handlers that start at the marker.
-				table := m.CodeOff + len(m.Code) + 2
-				for k, h := range m.Handlers {
-					if h.Handler == insns[i-2].Off {
-						catches = append(catches, table+8*k+6)
-					}
-				}
-				if catches == nil {
-					return nil, nil, fail("class %s marks a catch block that no handler starts", name)
-				}
-			} else if want, ok := reifiedOps[kind]; !ok || op.Op != want && !(want == cf.LDC && op.Op == cf.LDC_W) {
+			if want, ok := reifiedOps[kind]; !ok || op.Op != want && !(want == cf.LDC && op.Op == cf.LDC_W) {
 				return nil, nil, fail("class %s has a reified operation kc doesn't support (%d)", name, kind)
 			}
 			t.ops = append(t.ops, reifiedOp{
 				start: m.CodeOff + insns[i-2].Off, op: m.CodeOff + op.Off, kind: kind,
-				param: trimNullable(insns[i-1].Str), ldc: op.Op == cf.LDC, catches: catches,
+				param: trimNullable(insns[i-1].Str), ldc: op.Op == cf.LDC,
 			})
 		}
 	}
@@ -468,12 +454,6 @@ func (t *Template) instantiate1(name string, classes map[string]string, renames 
 		start, at := op.start+shift, op.op+shift
 		for k := start; k < at; k++ {
 			out[k] = cf.NOP
-		}
-		if op.kind == Catch {
-			for _, c := range op.catches {
-				binary.BigEndian.PutUint16(out[c+shift:], uint16(idx))
-			}
-			continue
 		}
 		if op.ldc {
 			// ldc's index is one byte: an ldc_w in its place takes the

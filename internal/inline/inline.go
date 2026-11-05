@@ -72,17 +72,6 @@ type Body struct {
 	copy  map[int]string
 }
 
-// CatchReified returns the reified operation of handler h, which catches a
-// reified type parameter: the marker of the astore that starts it.
-func (b *Body) CatchReified(h cf.Handler) (Reified, bool) {
-	i, ok := b.Index[h.Handler]
-	for ok && i < len(b.Insns) && b.Drop[i] {
-		i++
-	}
-	r, ok := b.Reified[i]
-	return r, ok && r.Kind == Catch
-}
-
 // The markers of suspension points, of a placeholder for the
 // continuation, and around the creation of a continuation that a suspend
 // method's copy for inliners makes, which tells them its class.
@@ -108,9 +97,7 @@ type Reified struct {
 // them: SafeAs marks the checkcast of an as?, Enum the iconst_0 of
 // enumValues' empty array placeholder (whose anewarray is dropped) or the
 // aconst_null of enumValueOf's Enum.valueOf(null, name), and TypeOf the
-// aconst_null that stands for typeOf<T>()'s KType. Catch marks the astore
-// that starts a catch block of the parameter's type, catch (e: E), whose
-// exception handler catches its erasure.
+// aconst_null that stands for typeOf<T>()'s KType.
 const (
 	NewArray  = 0
 	As        = 1
@@ -119,7 +106,6 @@ const (
 	JavaClass = 4
 	Enum      = 5
 	TypeOf    = 6
-	Catch     = 7
 )
 
 // reifiedOps are the instructions that each kind marks; Enum's are either.
@@ -598,7 +584,6 @@ func (b *Body) markers() error {
 			switch op, ok := reifiedOps[k]; {
 			case k == TypeOf && next == cf.ACONST_NULL:
 			case k == Enum && next == cf.ACONST_NULL:
-			case k == Catch && next == cf.ASTORE:
 			case k == Enum && next == cf.ICONST_0:
 				if i+2 >= len(b.Insns) || b.Insns[i+2].Op != cf.ANEWARRAY {
 					return fail("its enumValues placeholder isn't an empty array")

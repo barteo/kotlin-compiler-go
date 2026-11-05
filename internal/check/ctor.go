@@ -67,12 +67,8 @@ func (c *Checker) resolveSecondaries(d *syntax.ClassDecl) {
 	// The constructors by erased parameters, to report conflicts.
 	seen := map[string]syntax.Pos{}
 	reported := map[string]bool{}
-	// The keys of the hidden ones: deprecated with level HIDDEN, which
-	// don't conflict with the others, as with kotlinc, but clash on the JVM.
-	hidden := map[string]bool{}
 	if cls.Ctor != nil {
 		seen[paramKey(cls.Ctor)] = d.P
-		hidden[paramKey(cls.Ctor)] = cls.Ctor.Hidden
 	}
 	for _, sc := range secs {
 		if sc.Serial != nil {
@@ -100,18 +96,13 @@ func (c *Checker) resolveSecondaries(d *syntax.ClassDecl) {
 			c.errorf(sc.P, "constructor must be private in enum class")
 		}
 		if k := paramKey(f); seen[k] != (syntax.Pos{}) {
-			switch {
-			case hidden[k] || f.Hidden:
-				c.errorf(sc.P, "platform declaration clash: constructor%s", k)
-			default:
-				if !reported[k] {
-					reported[k] = true
-					c.errorf(seen[k], "conflicting overloads: constructor%s", k)
-				}
-				c.errorf(sc.P, "conflicting overloads: constructor%s", k)
+			if !reported[k] {
+				reported[k] = true
+				c.errorf(seen[k], "conflicting overloads: constructor%s", k)
 			}
+			c.errorf(sc.P, "conflicting overloads: constructor%s", k)
 		} else {
-			seen[k], hidden[k] = sc.P, f.Hidden
+			seen[k] = sc.P
 		}
 		cls.Ctors = append(cls.Ctors, f)
 	}
@@ -131,22 +122,8 @@ func superCands(cls *types.ClassSym) []callee {
 		}
 		return cands
 	}
-	tps, recv := sc.TypeParams, types.Subst(nil)
-	if own := len(sc.TypeParams) - sc.OuterParams; sc.OuterParams > 0 {
-		// An inner class's outer type parameters are those of the
-		// supertype, which the subclass's outer class extends: T of
-		// GI() in inner class HI : GI() of H : G<String>.
-		for _, t := range cls.Supers {
-			if t.K == types.Class && t.C == sc && t.A.Len() == len(sc.TypeParams) {
-				tps, recv = sc.TypeParams[:own], types.Subst{}
-				for i, tp := range sc.TypeParams[own:] {
-					recv[tp] = t.A.Get(own + i)
-				}
-			}
-		}
-	}
 	for _, f := range sc.Ctors {
-		cands = append(cands, callee{f: f, tparams: append(tps[:len(tps):len(tps)], f.TypeParams...), recv: recv})
+		cands = append(cands, callee{f: f, tparams: append(sc.TypeParams[:len(sc.TypeParams):len(sc.TypeParams)], f.TypeParams...)})
 	}
 	return cands
 }

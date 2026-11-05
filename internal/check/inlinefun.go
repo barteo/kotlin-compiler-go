@@ -17,9 +17,6 @@ import (
 // its parameters take inlined lambdas: those of a function type, not
 // noinline, that its body only invokes.
 func (c *Checker) inlineFun(d *syntax.FunDecl, owner *types.ClassSym) {
-	if virtualMember(d.Modifiers, owner) {
-		c.errorf(d.P, "'inline' modifier is not allowed on virtual members: only private or final members can be inlined")
-	}
 	if owner != nil && (owner.Interface || owner.Value || !isFinal(d.Modifiers, owner)) {
 		return // an ordinary method
 	}
@@ -460,27 +457,19 @@ func (c *Checker) publicInline(d *syntax.FunDecl, cls *types.ClassSym) {
 			c.errorf(p, "public-API inline function cannot access non-public-API %s '%s'", what, name)
 		}
 	}
-	var visit func(n any) bool
-	visit = func(n any) bool {
+	visit := func(n any) bool {
 		switch n := n.(type) {
-		case *syntax.ObjectExpr:
-			inspectClass(n.Decl, visit) // its class is copied too
-			return false
 		case *syntax.Ident:
 			if v := n.Sym; v != nil && (v.Kind == types.Prop || v.Kind == types.Global) {
-				if v.Owner == nil || !localType(types.ClassType(v.Owner)) {
-					report(n.P, "property", v.Name, varModifiers(v))
-				}
+				report(n.P, "property", v.Name, varModifiers(v))
 			}
 		case *syntax.Member:
 			if v := n.Prop; v != nil && (v.Kind == types.Prop || v.Kind == types.Global) {
-				if v.Owner == nil || !localType(types.ClassType(v.Owner)) {
-					report(n.P, "property", v.Name, varModifiers(v))
-				}
+				report(n.P, "property", v.Name, varModifiers(v))
 			}
 		case *syntax.Call:
 			if f := n.Sym; f != nil {
-				if fd, ok := f.Decl.(*syntax.FunDecl); ok && fd != d && (f.Owner == nil || !localType(types.ClassType(f.Owner))) {
+				if fd, ok := f.Decl.(*syntax.FunDecl); ok && fd != d {
 					report(n.P, "function", f.Name, &fd.Modifiers)
 				}
 			}
@@ -528,9 +517,6 @@ func (c *Checker) forwardedArgs(x *syntax.Call, cl *callee) {
 		}
 		if j < 0 {
 			continue
-		}
-		if inlineArg(x, k) == argNotInline {
-			continue // inlineUsage reports it
 		}
 		i := cl.paramIndex(k)
 		if sd := syntax.SourceInline(cl.f); sd != nil {

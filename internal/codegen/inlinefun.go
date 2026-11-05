@@ -170,56 +170,40 @@ func (g *gen) inlineBody(x *syntax.Call, d *syntax.FunDecl) {
 		g.nameObjects(d)
 	}
 	c := g.code
-	saved := g.saveSlots(d)
-	defer g.restoreSlots(saved)
+	saved := saveSlots(d)
+	defer restoreSlots(saved)
 	self := -1
 	switch {
 	case f.Ext && f.Owner != nil:
 		self = c.AllocLocal("L" + f.Owner.Name + ";")
 		c.Local(cf.ASTORE, self)
-		g.setSlot(d.RecvSym, c.AllocLocal(desc(f.Recv)))
-		c.Local(storeOp(f.Recv), g.slot(d.RecvSym))
+		d.RecvSym.Slot = c.AllocLocal(desc(f.Recv))
+		c.Local(storeOp(f.Recv), d.RecvSym.Slot)
 	case f.Ext:
-		g.setSlot(d.RecvSym, c.AllocLocal(desc(f.Recv)))
-		c.Local(storeOp(f.Recv), g.slot(d.RecvSym))
+		d.RecvSym.Slot = c.AllocLocal(desc(f.Recv))
+		c.Local(storeOp(f.Recv), d.RecvSym.Slot)
 	case f.Owner != nil:
 		self = c.AllocLocal("L" + f.Owner.Name + ";")
 		c.Local(cf.ASTORE, self)
 	}
 	for i := len(f.Contexts) - 1; i >= 0; i-- {
 		p := f.Contexts[i]
-		g.setSlot(p, c.AllocLocal(desc(p.Type)))
-		c.Local(storeOp(p.Type), g.slot(p))
+		p.Slot = c.AllocLocal(desc(p.Type))
+		c.Local(storeOp(p.Type), p.Slot)
 	}
 	// The body of a member of an inner, local or anonymous class reads
 	// what the class captures, its outer instance among them, from self.
 	if o := f.Owner; self >= 0 && (o.Anonymous || o.Inner || o.Local) {
 		if cd, ok := o.Decl.(*syntax.ClassDecl); ok {
 			for _, v := range cd.Captures {
-				saved[v] = g.slot(v)
+				saved[v] = v.Slot
 			}
 			if _, od := outerLocal(cd); od != nil {
 				for _, v := range od.Captures {
-					saved[v] = g.slot(v)
+					saved[v] = v.Slot
 				}
 			}
 			g.loadCaptures(cd, self)
-		}
-	}
-	// A function value converted to a suspend one is inlined as the
-	// conversion's lambda, as kotlinc's: see convertedArg.
-	convs := map[int]*syntax.Lambda{}
-	for i := range f.Params {
-		if l, _ := g.forwardedArg(x, i); l != nil {
-			continue
-		}
-		if conv, l, fv := convertedArg(x, d, i); l != nil {
-			convs[i] = l
-			if g.shared.inlinedConvs == nil {
-				g.shared.inlinedConvs = map[*syntax.Call]*types.VarSym{}
-			}
-			g.shared.inlinedConvs[conv] = fv
-			defer delete(g.shared.inlinedConvs, conv)
 		}
 	}
 	// The arguments, in the parameters' order, go to the parameters'
@@ -240,15 +224,10 @@ func (g *gen) inlineBody(x *syntax.Call, d *syntax.FunDecl) {
 			lambdas[p], owners[l] = l, owner
 			continue
 		}
-		if l := convs[i]; l != nil {
-			c.Op(cf.POP)
-			lambdas[p] = l
-			continue
-		}
-		g.setSlot(p, c.AllocLocal(desc(p.Type)))
+		p.Slot = c.AllocLocal(desc(p.Type))
 		switch {
 		case size(p.Type) > 0:
-			c.Local(storeOp(p.Type), g.slot(p))
+			c.Local(storeOp(p.Type), p.Slot)
 		case p.Type.K == types.Unit && !p.Type.N:
 			// A Unit argument is a kotlin.Unit, or null if omitted, which
 			// the copy doesn't read.
@@ -269,17 +248,20 @@ func (g *gen) inlineBody(x *syntax.Call, d *syntax.FunDecl) {
 		if mask.has(len(f.Contexts)+i) && d.Params[i].Default != nil {
 			g.exprAs(d.Params[i].Default, p.Type)
 			if size(p.Type) > 0 {
-				c.Local(storeOp(p.Type), g.slot(p))
+				c.Local(storeOp(p.Type), p.Slot)
 			}
 		}
 	}
 	g.srcInl = defaults.outer
-	// The values on the stack go to locals meanwhile, and are put back
-	// below the result (see spillStack). A try in the body would move
-	// them anyway, and a return from it would then leave them behind.
-	spilled, ok := g.spillStack()
-	if !ok && hasTry(d) {
-		panic("an inline function with a try can't be an argument of a constructor call")
+	// A try in the body moves the values on the stack to locals, which a
+	// return from it would then leave behind: they are moved first, and
+	// put back below the result.
+	var spilled []int
+	if hasTry(d) {
+		var ok bool
+		if spilled, ok = c.Spill(); !ok {
+			panic("an inline function with a try can't be an argument of a constructor call")
+		}
 	}
 	ctx := &srcInline{d: d, end: join(f.Ret), depth: c.Depth(), tries: len(g.tries), lambdas: lambdas, owners: owners, outer: g.srcInl,
 		reified: g.reifiedArgs(x, f), noLines: g.noLines, self: self, groups: g.groupDepth(), inl: len(g.inl), scope: scope}
@@ -299,7 +281,17 @@ func (g *gen) inlineBody(x *syntax.Call, d *syntax.FunDecl) {
 	g.srcInl = ctx.outer
 	c.Place(ctx.end)
 	g.line(x.Pos())
-	g.unspill(spilled, retDesc(f.Ret))
+	if len(spilled) > 0 && c.Reachable() {
+		tmp := -1
+		if size(f.Ret) > 0 {
+			tmp = c.AllocLocal(desc(f.Ret))
+			c.Local(storeOp(f.Ret), tmp)
+		}
+		c.Unspill(spilled)
+		if tmp >= 0 {
+			c.Local(loadOp(f.Ret), tmp)
+		}
+	}
 }
 
 // copyScope returns the flag scope of the copy of composable inline
@@ -322,37 +314,49 @@ func (g *gen) copyScope(x *syntax.Call, d *syntax.FunDecl, mask argMask) *flagSc
 	return &flagScope{tracked: t, typeParams: f.TypeParams, flags: flags}
 }
 
-// inlinesCode reports whether the expressions, outside lambdas that
-// aren't inlined, have a try or a loop, Array(n) { ... }'s included, or
-// call an inline function: code that starts with the stack in locals (see
-// spillStack), which an object that new created and isn't constructed
-// yet can't be stored in. A constructor call with such arguments
-// evaluates them first, as kotlinc does: Foo(list.sumOf { it }), and
-// ktor's AttributeKey(name, typeInfo<T>()), whose typeInfo calls
-// typeOfOrNull, a try.
-func inlinesCode(xs []syntax.Expr) bool {
-	found := false
-	inline := func(f *types.FunSym) bool {
-		return syntax.SourceInline(f) != nil || f != nil && f.Inline != nil && inlineBody(f, nil) != nil
+// hasHandlers reports whether the expressions have a try outside lambdas
+// that aren't inlined, or call an inline function whose copy has one: ktor's
+// AttributeKey(name, typeInfo<T>()), whose typeInfo calls typeOfOrNull, a
+// try.
+func hasHandlers(xs []syntax.Expr) bool {
+	ns := make([]any, len(xs))
+	for i, x := range xs {
+		ns[i] = x
 	}
+	return handlersIn(ns, map[*syntax.FunDecl]bool{})
+}
+
+func handlersIn(xs []any, seen map[*syntax.FunDecl]bool) bool {
+	found := false
 	visit := func(n any) bool {
 		switch n := n.(type) {
 		case *syntax.Lambda:
 			return n.Inline
 		case *syntax.LocalFun:
 			return false
-		case *syntax.Try, *syntax.While, *syntax.For:
+		case *syntax.Try:
 			found = true
 		case *syntax.Call:
-			found = found || n.Builtin == types.ArrayInit || inline(n.Sym)
-		case *syntax.Member:
-			found = found || inline(n.Getter) || inline(n.Setter)
+			if d := syntax.SourceInline(n.Sym); d != nil && !seen[d] {
+				seen[d] = true
+				found = found || handlersIn([]any{d.Body, d.ExprBody}, seen)
+			} else if n.Sym != nil && n.Sym.Inline != nil {
+				b := inlineBody(n.Sym, nil)
+				found = found || b != nil && b.HasHandlers()
+			}
 		}
 		return !found
 	}
 	for _, x := range xs {
-		if x != nil {
-			syntax.Inspect(x, visit)
+		switch x := x.(type) {
+		case *syntax.Block:
+			if x != nil {
+				syntax.Inspect(x, visit)
+			}
+		case syntax.Expr:
+			if x != nil {
+				syntax.Inspect(x, visit)
+			}
 		}
 	}
 	return found
@@ -428,7 +432,7 @@ func inlinedArg(x *syntax.Call, i int) *syntax.Lambda {
 // an inline function, is if it is one of the copy's lambda parameters,
 // and the copy whose caller's code the lambda is.
 func (g *gen) forwarded(x syntax.Expr) (*syntax.Lambda, *srcInline) {
-	id, ok := unconverted(x).(*syntax.Ident)
+	id, ok := x.(*syntax.Ident)
 	if !ok || id.Sym == nil || len(g.srcInl) == 0 {
 		return nil, nil
 	}
@@ -441,77 +445,6 @@ func (g *gen) forwarded(x syntax.Expr) (*syntax.Lambda, *srcInline) {
 		return l, owner // forwarded to this copy in turn
 	}
 	return l, ctx
-}
-
-// unconverted returns the function value that the suspend conversion x
-// converts, f.let { $f -> { $f() } } (see check's suspendConverted), or
-// x: an inlined lambda converted to a suspend one for an inline function
-// is forwarded to it as it is, as kotlinc does.
-func unconverted(x syntax.Expr) syntax.Expr {
-	call, ok := x.(*syntax.Call)
-	if !ok || len(call.Args) != 1 {
-		return x
-	}
-	m, ok := call.Fun.(*syntax.Member)
-	if !ok || m.Name != "let" {
-		return x
-	}
-	ch, ok := m.X.(*syntax.Checked)
-	l, ok2 := call.Args[0].(*syntax.Lambda)
-	if !ok || !ok2 || len(l.Params) != 1 || l.Params[0].Name != "$f" {
-		return x
-	}
-	return ch.X
-}
-
-// conversion returns, for suspend conversion x of a function value that
-// isn't nullable, f.let { $f -> { $f() } } (see check's suspendConverted),
-// the converted value, the lambda the conversion makes and its $f.
-func conversion(x syntax.Expr) (*syntax.Checked, *syntax.Lambda, *types.VarSym) {
-	if unconverted(x) == x {
-		return nil, nil, nil
-	}
-	call := x.(*syntax.Call)
-	m := call.Fun.(*syntax.Member)
-	outer := call.Args[0].(*syntax.Lambda)
-	if m.Safe || len(outer.Body.Stmts) != 1 {
-		return nil, nil, nil
-	}
-	s, ok := outer.Body.Stmts[0].(*syntax.ExprStmt)
-	if !ok {
-		return nil, nil, nil
-	}
-	l, ok := s.X.(*syntax.Lambda)
-	ps := outer.ParamSyms()
-	if !ok || len(ps) != 1 || ps[0] == nil {
-		return nil, nil, nil
-	}
-	return m.X.(*syntax.Checked), l, ps[0]
-}
-
-// convertedArg returns, if call x of the program's inline function d
-// passes for its parameter i a function value converted to a suspend
-// one, the conversion, its lambda and its $f: unless the value is one of
-// the inlined lambdas being forwarded, the lambda is inlined, as kotlinc
-// inlines it, and its invoke of the value is no suspension point. The
-// argument is the value, in $f's local.
-func convertedArg(x *syntax.Call, d *syntax.FunDecl, i int) (*syntax.Call, *syntax.Lambda, *types.VarSym) {
-	if i >= len(d.Inlinable) || !d.Inlinable[i] || d.Params[i].Crossinline {
-		return nil, nil, nil
-	}
-	for k, a := range x.Args {
-		j := k
-		if x.ArgMap != nil {
-			j = x.ArgMap[k]
-		}
-		if j != i {
-			continue
-		}
-		if _, l, fv := conversion(a); l != nil {
-			return a.(*syntax.Call), l, fv
-		}
-	}
-	return nil, nil, nil
 }
 
 // forwardedArg returns the lambda that call x passes on for parameter i,
@@ -597,9 +530,9 @@ func (g *gen) invokeInlined(x *syntax.Call, l *syntax.Lambda, ctx *srcInline) {
 	for i, a := range x.Args {
 		p := params[i]
 		g.exprAs(a, p.Type)
-		g.setSlot(p, c.AllocLocal(desc(p.Type)))
+		p.Slot = c.AllocLocal(desc(p.Type))
 		if size(p.Type) > 0 {
-			c.Local(storeOp(p.Type), g.slot(p))
+			c.Local(storeOp(p.Type), p.Slot)
 		}
 	}
 	if owner := ctx.owners[l]; owner != nil {
@@ -613,9 +546,6 @@ func (g *gen) invokeInlined(x *syntax.Call, l *syntax.Lambda, ctx *srcInline) {
 	}
 	saved := g.srcInl
 	g.srcInl = ctx.outer
-	// The copy's values on the stack, as s in s += f(i), go to locals
-	// meanwhile: see spillStack.
-	spilled, _ := g.spillStack()
 	lc := &inlineLambda{l: l, end: join(l.Ret), depth: c.Depth(), tries: len(g.tries), direct: true}
 	g.inl = append(g.inl, lc)
 	back := g.inScope(ctx.scope)
@@ -631,19 +561,16 @@ func (g *gen) invokeInlined(x *syntax.Call, l *syntax.Lambda, ctx *srcInline) {
 	g.inl = g.inl[:len(g.inl)-1]
 	g.srcInl = saved
 	c.Place(lc.end)
-	g.unspill(spilled, retDesc(l.Ret))
 	g.coerce(l.Ret, x.T)
 }
 
-// inlineMu guards the names of the classes of the object expressions in
-// the program's inline functions, which are in their shared syntax trees:
-// files are generated in parallel, and a copy of a function in one file
-// renames them (see nameObjects) while its own file generates its method,
-// or another file another copy. It is held while a file generates an
-// inline function's method or the outermost copy of one, and taken again
-// by the copies and methods within those only in name: one goroutine
-// generates a file. The variables' locals aren't in the trees but in each
-// file's fileState (see slot), so no lock guards them.
+// inlineMu guards the locals of the program's inline functions' variables,
+// which are in their shared syntax trees: files are generated in parallel,
+// and a copy of a function in one file assigns them while its own file
+// generates its method, or another file another copy. It is held while a
+// file generates an inline function's method or the outermost copy of one,
+// and taken again by the copies and methods within those only in name:
+// one goroutine generates a file.
 var inlineMu sync.Mutex
 
 func (g *gen) lockInline() {
@@ -664,11 +591,11 @@ func (g *gen) unlockInline() {
 // saveSlots records the locals of d's parameters and of the variables
 // declared in its body, which a copy reassigns: a lambda passed to a copy
 // may contain another copy.
-func (g *gen) saveSlots(d *syntax.FunDecl) map[*types.VarSym]int {
+func saveSlots(d *syntax.FunDecl) map[*types.VarSym]int {
 	saved := map[*types.VarSym]int{}
 	add := func(v *types.VarSym) {
 		if v != nil {
-			saved[v] = g.slot(v)
+			saved[v] = v.Slot
 		}
 	}
 	add(d.RecvSym)
@@ -708,27 +635,10 @@ func (g *gen) saveSlots(d *syntax.FunDecl) map[*types.VarSym]int {
 	return saved
 }
 
-// restoreSlots gives the variables back the locals saveSlots recorded.
-func (g *gen) restoreSlots(saved map[*types.VarSym]int) {
+func restoreSlots(saved map[*types.VarSym]int) {
 	for v, slot := range saved {
-		g.setSlot(v, slot)
+		v.Slot = slot
 	}
-}
-
-// slot returns the local that holds variable v, a local or a parameter,
-// in the code being generated.
-//
-// The locals are kept by file, not on the VarSyms: those of the program's
-// inline functions, and the captures of their object expressions, are
-// shared by every file that copies them, and files are generated in
-// parallel. One goroutine generates a file, so its map needs no lock.
-func (g *gen) slot(v *types.VarSym) int {
-	return g.shared.slots[v]
-}
-
-// setSlot records that local slot holds variable v: see slot.
-func (g *gen) setSlot(v *types.VarSym, slot int) {
-	g.shared.slots[v] = slot
 }
 
 // Kinds of operations on reified type parameters, as kotlinc numbers them
@@ -750,21 +660,11 @@ func (g *gen) reifiedParam(t types.Type) bool {
 	return t.IsParam() && t.Param().Reified && g.shared.opts.Stdlib
 }
 
-// memberParam reports whether type parameter t is one of the member
-// function of the class being generated whose own code is being
-// generated, as an object's inline method's: the method's copiers reify
-// it, not those of the class. A lambda's class in it is a template of the
-// method's copiers, which its markers make them copy.
-func (g *gen) memberParam(t types.Type) bool {
-	f, ok := t.Param().Owner.(*types.FunSym)
-	return ok && g.lam == nil && f.Owner != nil && f.Owner == g.owner
-}
-
 // reifiedMarker writes kotlinc's marker of an operation on reified type
 // parameter t, which comes just before the operation's instruction:
 // Intrinsics.reifiedOperationMarker(kind, "T").
 func (g *gen) reifiedMarker(t types.Type, kind int) {
-	if g.reifiedUse != nil && !g.memberParam(t) {
+	if g.reifiedUse != nil {
 		*g.reifiedUse = true
 	}
 	name := t.Param().Name

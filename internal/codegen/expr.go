@@ -240,10 +240,6 @@ func (g *gen) expr(x syntax.Expr) {
 	case *syntax.Ident:
 		g.ident(x)
 	case *syntax.This:
-		if x.Obj != nil {
-			g.objectRef(x.Obj) // in a class's header
-			return
-		}
 		if x.Recv != nil {
 			if x.Recv.Type.K == types.Unit && !x.Recv.Type.N && !x.Cast {
 				return // a Unit value is nothing on the stack
@@ -281,7 +277,11 @@ func (g *gen) expr(x syntax.Expr) {
 		}
 		g.lambda(x)
 	case *syntax.IntLit:
-		g.intLit(x)
+		if r := types.Repr(x.T); r.K == types.Long {
+			g.code.Lconst(x.Val) // also a ULong's bits
+		} else {
+			g.code.Iconst(int32(x.Val))
+		}
 	case *syntax.DoubleLit:
 		g.code.Dconst(x.Val)
 	case *syntax.FloatLit:
@@ -413,18 +413,8 @@ func (g *gen) ident(x *syntax.Ident) {
 			g.pushConst(sym.Constant, sym.Type)
 			break
 		}
-		if g.enumEntryThis(sym.Owner, sym.Name) {
-			break
-		}
 		g.code.FieldInsn(cf.GETSTATIC, sym.Owner.Name, sym.Name, desc(sym.Type))
 	case types.BackingField:
-		if sym.OuterOf != nil {
-			// In a local class or an object in the accessor: the
-			// accessor's this, which the class captured.
-			g.loadStorage(sym.OuterOf)
-			g.outerField(sym.Prop, false)
-			break
-		}
 		g.backingField(sym.Prop, true)
 	case types.Prop:
 		if sym.Const {
@@ -671,12 +661,7 @@ func (g *gen) as(x *syntax.As) {
 	}
 	cls := instanceClass(to) // as? T checks T's erasure, as kotlinc
 	if x.Safe {
-		// The box or null, which an unboxed value class's value unboxes
-		// after.
 		ok, end := cf.NewLabel(), join(x.T)
-		if types.Unboxed(x.T) {
-			end = join(types.Boxed(x.T))
-		}
 		g.code.Op(cf.DUP)
 		g.isInstance(to, cls)
 		g.code.Jump(cf.IFNE, ok)
@@ -874,10 +859,6 @@ func (g *gen) stringLit(x *syntax.StringLit) {
 		g.code.Sconst(x.Parts[0].Lit)
 		return
 	}
-	if s, ok := constStringValue(x); ok {
-		g.code.Sconst(s) // "1234$a" of a const a, folded as kotlinc does
-		return
-	}
 	g.newStringBuilder()
 	for _, p := range x.Parts {
 		if p.X == nil {
@@ -949,26 +930,15 @@ func (g *gen) binary(x *syntax.Binary) {
 			return
 		}
 		if x.OpType == types.StringType {
-			if s, ok := constStringValue(x); ok {
-				g.code.Sconst(s)
-				return
-			}
 			g.newStringBuilder()
 			g.appendExpr(x.X)
 			g.appendExpr(x.Y)
 			g.code.Invoke(cf.INVOKEVIRTUAL, "java/lang/StringBuilder", "toString", "()Ljava/lang/String;")
 			return
 		}
-		if v, ok := literalArithLong(x); ok {
-			g.code.Lconst(v) // val n: Long = 2147483647 + 1, computed as Ints
-			return
-		}
 		g.exprAs(x.X, x.OpType)
 		g.exprAs(x.Y, x.OpType)
 		g.code.Op(arithOp(x.OpType, x.Op))
-		if x.T.K == types.Char && x.OpType.K == types.Int {
-			g.code.Op(cf.I2C) // a Char plus or minus an Int wraps to 16 bits
-		}
 	case syntax.ELVIS:
 		g.elvis(x)
 	default:
@@ -1249,7 +1219,7 @@ func (g *gen) member(x *syntax.Member) {
 		}
 		if f.Constant != nil {
 			g.pushConst(f.Constant, f.Type) // a Java constant, inlined
-		} else if !g.enumEntryThis(x.Static, f.Name) {
+		} else {
 			g.code.FieldInsn(cf.GETSTATIC, x.Static.Name, f.Name, desc(f.Type))
 		}
 		g.coerce(f.Type, x.T)
@@ -1372,14 +1342,7 @@ func (g *gen) member(x *syntax.Member) {
 		g.coerce(p.Type, x.T)
 		return
 	}
-	if p.Const && !x.Safe && objectQualifier(x.X) {
-		// O.x, a const of an object named: inlined, without O's
-		// initialization.
-		g.constProp(p)
-		g.coerce(p.Type, x.T)
-		return
-	}
-	this := isThis(x.X)
+	_, this := x.X.(*syntax.This)
 	direct := this && g.directGet(p)
 	cls := recvClass(x.X.Type())
 	result := x.T
@@ -1465,12 +1428,6 @@ func (g *gen) boxThis() {
 // super@Outer, through the outer class's accessor, as kotlinc does.
 func (g *gen) invokeSuper(s *syntax.Super, name, d string) {
 	if s.Outer == nil {
-		if s.Cls.Name == "java/lang/Cloneable" && name == "clone" {
-			// Cloneable declares no clone method on the JVM: its body
-			// is Object's, as kotlinc calls it.
-			g.code.Invoke(cf.INVOKESPECIAL, "java/lang/Object", name, d)
-			return
-		}
 		g.invokeSpecial(s.Cls, name, d)
 		return
 	}
@@ -1790,22 +1747,6 @@ func (g *gen) invokeDefault(f *types.FunSym, mask argMask) {
 }
 
 func (g *gen) call(x *syntax.Call) {
-	if unconverted(x) != syntax.Expr(x) {
-		if l, _ := g.forwarded(x); l != nil {
-			g.code.Op(cf.ACONST_NULL) // see ident
-			return
-		}
-		if fv := g.shared.inlinedConvs[x]; fv != nil {
-			// The converted value goes to $f's local; the placeholder is
-			// dropped (see convertedArg).
-			ch, _, _ := conversion(x)
-			g.exprAs(ch, fv.Type)
-			g.setSlot(fv, g.code.AllocLocal(desc(fv.Type)))
-			g.code.Local(cf.ASTORE, g.slot(fv))
-			g.code.Op(cf.ACONST_NULL)
-			return
-		}
-	}
 	if x.Group {
 		// An inline function's call whose lambda calls composables, in
 		// a replace group: see composeFlow.
@@ -1899,7 +1840,7 @@ func (g *gen) ungroupedCall(x *syntax.Call) {
 	case x.Builtin == types.Println || x.Builtin == types.Print:
 		// As kotlinc's inlined println, an argument that suspends comes
 		// first, so that System.out isn't saved with the locals.
-		late := g.argsSuspend(x.Args)
+		late := g.sm != nil && hasSuspension(x.Args)
 		out := func(t types.Type) {
 			if !late {
 				return
@@ -2067,11 +2008,11 @@ func (g *gen) ungroupedCall(x *syntax.Call) {
 	case x.Ctor != nil:
 		d := ctorJVMDesc(x.Sym)
 		var mask argMask
-		if g.argsSuspend(x.Args) || inlinesCode(x.Args) {
+		if g.sm != nil && hasSuspension(x.Args) || hasHandlers(x.Args) {
 			// The object under construction can't be stored while the
-			// arguments suspend, or in the locals that inlined code
-			// moves the stack to (see spillStack): they are evaluated
-			// first, as kotlinc does.
+			// arguments suspend, or in the locals that a try's handler
+			// needs the stack spilled to: they are evaluated first, as
+			// kotlinc does.
 			depth := g.code.Depth()
 			g.outerArg(x)
 			mask = g.callArgs(x, x.Sym)
@@ -2144,12 +2085,7 @@ func (g *gen) ungroupedCall(x *syntax.Call) {
 		invoke := func(cls *types.ClassSym, rt types.Type) {
 			if f.Owner.Value {
 				// A value class's member: a static method that takes the
-				// value first, or with omitted arguments its $default; an
-				// override's is the overridden function's, of an
-				// interface, which takes the box.
-				if o := f.DefaultsOf; o != nil && !o.Owner.Value && omits(x, f) {
-					g.boxValue(f.Owner.This())
-				}
+				// value first, or with omitted arguments its $default.
 				g.contextArgs(x, f)
 				if mask := g.callArgs(x, f); mask.any() {
 					g.invokeDefault(f, mask)
@@ -2504,9 +2440,9 @@ func (g *gen) whenBody(subj *types.VarSym, b *syntax.Block, t types.Type, value 
 		g.block(b, t, value)
 		return
 	}
-	if name, _ := g.code.Named(g.slot(subj)); name == "" && !g.code.Retired(g.slot(subj)) {
-		g.code.Retire(g.slot(subj))
-		defer g.code.Unretire(g.slot(subj))
+	if name, _ := g.code.Named(subj.Slot); name == "" && !g.code.Retired(subj.Slot) {
+		g.code.Retire(subj.Slot)
+		defer g.code.Unretire(subj.Slot)
 	}
 	g.block(b, t, value)
 }
@@ -2515,10 +2451,10 @@ func (g *gen) when(x *syntax.When, t types.Type, value bool) {
 	var subj *types.VarSym
 	if x.Subject != nil {
 		subj = x.SubjSym
-		g.setSlot(subj, g.code.AllocLocal(desc(subj.Type)))
+		subj.Slot = g.code.AllocLocal(desc(subj.Type))
 		g.named(subj)
 		g.exprAs(x.Subject, subj.Type)
-		g.code.Local(storeOp(subj.Type), g.slot(subj))
+		g.code.Local(storeOp(subj.Type), subj.Slot)
 	}
 	end := cf.NewLabel()
 	if value {
@@ -2548,7 +2484,7 @@ func (g *gen) when(x *syntax.When, t types.Type, value bool) {
 			}
 			switch {
 			case c.Is || c.NotIs:
-				g.code.Local(loadOp(subj.Type), g.slot(subj))
+				g.code.Local(loadOp(subj.Type), subj.Slot)
 				g.instanceOf(subj.Type, c.Target)
 				if c.Is == jumpIf {
 					g.code.Jump(cf.IFNE, target)
@@ -2565,14 +2501,14 @@ func (g *gen) when(x *syntax.When, t types.Type, value bool) {
 				}
 			case c.In || c.NotIn:
 				r := c.X.(*syntax.Binary)
-				g.inRange(nil, func() { g.code.Local(loadOp(subj.Type), g.slot(subj)) }, subj.Type, r, c.In, target, jumpIf)
+				g.inRange(nil, func() { g.code.Local(loadOp(subj.Type), subj.Slot) }, subj.Type, r, c.In, target, jumpIf)
 			case subj != nil:
-				load := func() { g.code.Local(loadOp(subj.Type), g.slot(subj)) }
+				load := func() { g.code.Local(loadOp(subj.Type), subj.Slot) }
 				lt := subj.Type
 				if c.SubjType.K != types.Invalid {
 					lt = c.SubjType
 					load = func() {
-						g.code.Local(loadOp(subj.Type), g.slot(subj))
+						g.code.Local(loadOp(subj.Type), subj.Slot)
 						g.castErased(subj.Type, lt)
 					}
 				}
@@ -2677,7 +2613,7 @@ func (g *gen) tailCall(x *syntax.Call, t *tailrec) {
 	f, fd := x.Sym, t.fd
 	m, recv := x.Fun.(*syntax.Member)
 	if recv {
-		if isThis(m.X) || fd.RecvSym == nil {
+		if _, this := m.X.(*syntax.This); this || fd.RecvSym == nil {
 			recv = false
 		}
 	}
@@ -2688,19 +2624,19 @@ func (g *gen) tailCall(x *syntax.Call, t *tailrec) {
 	mask := g.callArgs(x, f)
 	for i := len(f.Params) - 1; i >= 0; i-- {
 		p := f.Params[i]
-		g.code.Local(storeOp(p.Type), g.slot(p))
+		g.code.Local(storeOp(p.Type), p.Slot)
 	}
 	if recv {
-		g.code.Local(storeOp(fd.RecvSym.Type), g.slot(fd.RecvSym))
+		g.code.Local(storeOp(fd.RecvSym.Type), fd.RecvSym.Slot)
 	}
 	for i := len(f.Contexts) - 1; i >= 0; i-- {
 		p := f.Contexts[i]
-		g.code.Local(storeOp(p.Type), g.slot(p))
+		g.code.Local(storeOp(p.Type), p.Slot)
 	}
 	for i, p := range f.Params {
 		if mask.has(i) && fd.Params[i].Default != nil {
 			g.argAs(fd.Params[i].Default, p.Type)
-			g.code.Local(storeOp(p.Type), g.slot(p))
+			g.code.Local(storeOp(p.Type), p.Slot)
 		}
 	}
 	// From an inlined lambda's return: the finally blocks of the inlined
@@ -2708,11 +2644,4 @@ func (g *gen) tailCall(x *syntax.Call, t *tailrec) {
 	g.leaveTries(0)
 	g.code.PopTo(0)
 	g.code.Jump(cf.GOTO, t.start)
-}
-
-// isThis reports whether x is this, of the class or a receiver, rather
-// than an object a class's header names this.
-func isThis(x syntax.Expr) bool {
-	t, ok := x.(*syntax.This)
-	return ok && t.Obj == nil
 }

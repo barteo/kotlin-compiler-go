@@ -1,5 +1,4 @@
 import defs.Box
-import defs.Box.Mapper
 import defs.Handler
 import defs.IntBox
 import defs.Pairs
@@ -29,6 +28,4 @@ fun main() {
     println(b.map { it * 2 }.v)
     val inc: Box.Mapper = { it + 1 }
     println(twice(inc, 1))
-    val dbl: Mapper = { it * 2 }
-    println(twice(dbl, 3))
 }

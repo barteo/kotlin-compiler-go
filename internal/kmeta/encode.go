@@ -230,9 +230,6 @@ func WritePackage(p *PackageData) Header {
 	if p.ModuleName != "" {
 		e.int(101, w.st.str(p.ModuleName))
 	}
-	for _, l := range p.Locals {
-		e.msg(102, w.property(l))
-	}
 	return w.header(KindFileFacade, e.b)
 }
 
@@ -329,9 +326,6 @@ func (w *writer) class(c *Class) []byte {
 	}
 	if c.ModuleName != "" {
 		e.int(101, w.st.str(c.ModuleName))
-	}
-	for _, l := range c.Locals {
-		e.msg(102, w.property(l))
 	}
 	if c.JVMFlags != 0 {
 		e.int(104, c.JVMFlags)
@@ -594,9 +588,6 @@ func (w *writer) typeParam(p *TypeParam) []byte {
 	}
 	for _, b := range p.Bounds {
 		e.msg(5, w.typ(b))
-	}
-	if p.OnlyInput {
-		e.msg(100, w.annotation(&Annotation{Class: "kotlin/internal/OnlyInputTypes"}))
 	}
 	return e.b
 }

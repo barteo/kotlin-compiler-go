@@ -12,5 +12,4 @@ fun main() {
     println("${o.x} ${o.foo()}")
     println(H().HI().get())
     println(H().HJ().get())
-    println(Box("box").View().show { it.uppercase() })
 }

@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"math"
 	"unicode/utf16"
-	"unicode/utf8"
 )
 
 const (
@@ -93,56 +92,6 @@ func u4(b []byte, v uint32) []byte { return binary.BigEndian.AppendUint32(b, v) 
 // supplementary characters as surrogate pairs.
 func modifiedUTF8(s string) []byte {
 	return appendModifiedUTF8(make([]byte, 0, len(s)), s)
-}
-
-// MaxStringConstant is the most bytes of modified UTF-8 a constant pool
-// entry can hold, and so a String constant.
-const MaxStringConstant = math.MaxUint16
-
-// ModifiedUTF8Len returns the length of s in modified UTF-8.
-func ModifiedUTF8Len(s string) int {
-	n := 0
-	for i := 0; i < len(s); {
-		c := s[i]
-		if c != 0 && c < 0x80 {
-			n++
-			i++
-			continue
-		}
-		r, w := utf8.DecodeRuneInString(s[i:])
-		n += runeLen(r)
-		i += w
-	}
-	return n
-}
-
-// runeLen returns the length of r in modified UTF-8.
-func runeLen(r rune) int {
-	switch {
-	case r != 0 && r < 0x80:
-		return 1
-	case r < 0x800:
-		return 2
-	case r < 0x10000:
-		return 3
-	}
-	return 6 // a surrogate pair
-}
-
-// SplitString splits s into parts whose modified UTF-8 fits a constant
-// pool entry, without splitting a character or a surrogate pair.
-func SplitString(s string) []string {
-	var parts []string
-	start, n := 0, 0
-	for i, r := range s {
-		l := runeLen(r)
-		if n+l > MaxStringConstant {
-			parts = append(parts, s[start:i])
-			start, n = i, 0
-		}
-		n += l
-	}
-	return append(parts, s[start:])
 }
 
 func appendModifiedUTF8(out []byte, s string) []byte {

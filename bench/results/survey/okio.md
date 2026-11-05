@@ -8,10 +8,11 @@ Directories: `okio/src/commonMain`, `okio/src/zlibMain`, `okio/src/systemFileSys
 
 ### Features left, by files blocked
 
-96 of 96 files use no feature that kc doesn't support.
+95 of 96 files use no feature that kc doesn't support.
 
 | Feature | Files | Only blocker | Uses |
 |:---|---:|---:|---:|
+| labeled expression | 1 | 1 | 1 |
 
 ### Greedy order of the features left
 
@@ -19,6 +20,7 @@ At each step, the feature that unblocks the most files given the ones before it,
 
 | Step | Feature | Files unblocked |
 |---:|:---|---:|
+| 1 | labeled expression | 96 |
 
 ### Inline-only functions called
 
@@ -85,7 +87,7 @@ The features each file still needs.
 | okio/src/commonMain/kotlin/okio/Util.kt | 164 |  |
 | okio/src/commonMain/kotlin/okio/internal/-Utf16.kt | 35 |  |
 | okio/src/commonMain/kotlin/okio/internal/-Utf8.kt | 59 |  |
-| okio/src/commonMain/kotlin/okio/internal/Buffer.kt | 1710 |  |
+| okio/src/commonMain/kotlin/okio/internal/Buffer.kt | 1710 | labeled expression |
 | okio/src/commonMain/kotlin/okio/internal/BufferedSource.kt | 31 |  |
 | okio/src/commonMain/kotlin/okio/internal/ByteString.kt | 384 |  |
 | okio/src/commonMain/kotlin/okio/internal/FileSystem.kt | 154 |  |

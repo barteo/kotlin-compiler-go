@@ -100,13 +100,6 @@ func (c *Checker) objectExpr(x *syntax.ObjectExpr) types.Type {
 	}
 	sym := c.anonClass(d, "object expression", "object expressions", func() string { return c.anonName() }, func(sym *types.ClassSym, _ *syntax.Lambda) {
 		sym.Anonymous, sym.Final = true, true
-		// It sees the type parameters around it, as an inner class sees
-		// its outer class's: 1.self().calc() is an Int for a
-		// <T> T.self() = object { fun calc(): T }.
-		if tps := c.tparams; len(tps) > 0 {
-			sym.TypeParams = append(sym.TypeParams[:len(sym.TypeParams):len(sym.TypeParams)], tps...)
-			sym.OuterParams = len(tps)
-		}
 	})
 	if sym == nil {
 		return types.InvalidType
@@ -120,7 +113,6 @@ func (c *Checker) objectExpr(x *syntax.ObjectExpr) types.Type {
 // too: a lambda in it that constructs it captures what it captures.
 func (c *Checker) localClass(s *syntax.LocalClass) {
 	d := s.Decl
-	c.localAnnotationClass(d)
 	c.localAnnotations(s.Annotations, classSite(d))
 	depth := len(c.lambdas)
 	scope := c.scope
@@ -241,15 +233,6 @@ func (c *Checker) anonClass(d *syntax.ClassDecl, what, whats string, name func()
 		}
 	}
 	c.resolveSupertypes()
-	// The classes' type parameters' bounds, as resolveClassBounds
-	// resolves the file's: x.toDouble() for a local class's T : Number.
-	savedT, savedL, savedChecks := c.tparams, c.lookupCls, c.noBoundChecks
-	c.noBoundChecks = true
-	for _, d := range c.classes {
-		c.tparams, c.lookupCls = slices.Concat(d.Sym.TypeParams, savedT), d.Sym
-		c.resolveBounds(d.TypeParams)
-	}
-	c.tparams, c.lookupCls, c.noBoundChecks = savedT, savedL, savedChecks
 	c.checkSupers()
 	c.genericThrowable(sym, ctx, d.P)
 	for _, d := range c.classes {
@@ -277,9 +260,6 @@ func (c *Checker) anonClass(d *syntax.ClassDecl, what, whats string, name func()
 	}
 	for _, d := range c.classes {
 		c.checkClass(d)
-	}
-	for _, d := range c.classes {
-		c.classClashes(d) // as checkClashes does the file's classes'
 	}
 	c.state, c.classes, c.lookupCls = saved, savedClasses, savedLookup
 	c.propagateCaptures()

@@ -110,16 +110,6 @@ func (c *Checker) arrayConstruct(x *syntax.Call, cls *types.ClassSym, want types
 			{f: &types.FunSym{Name: name, Builtin: types.ArrayInit, Resolved: true, Params: []*types.VarSym{size, init(cls.Elem)}, Ret: t}},
 		}
 	}
-	if len(x.Args) == 2 {
-		// The init lambda is inlined, as kotlinc's constructors are
-		// inline functions: it may return from the code around it.
-		if l, ok := x.Args[1].(*syntax.Lambda); ok && l.Ref == nil {
-			l.Inline = true
-			j := c.jumps[l]
-			j.callee = name
-			c.jumps[l] = j
-		}
-	}
 	t := c.resolve(x, cands, want, sink)
 	if x.Sym != nil {
 		x.Builtin = x.Sym.Builtin

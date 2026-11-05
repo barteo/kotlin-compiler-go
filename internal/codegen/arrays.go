@@ -116,7 +116,7 @@ func (g *gen) arrayFactory(x *syntax.Call) {
 		g.exprAs(x.Args[0], types.IntType)
 		g.newArrayOf(d, types.ArrayElem(t))
 	case types.ArrayInit:
-		if l, ok := x.Args[1].(*syntax.Lambda); ok && (l.Inline || g.usesInlined(l)) {
+		if l, ok := x.Args[1].(*syntax.Lambda); ok && g.usesInlined(l) {
 			g.arrayInitInlined(x, l, t)
 			return
 		}
@@ -250,11 +250,8 @@ func (g *gen) enumIntrinsic(x *syntax.Call) {
 
 // indexLoop generates a loop of index i from 0 to the int in local n,
 // exclusive, with body. If labels isn't nil, the body may break and
-// continue: labels receives the loop's labels. The stack is moved to
-// locals around it, as for a loop statement (see spillStack).
+// continue: labels receives the loop's labels.
 func (g *gen) indexLoop(n int, body func(i int), labels func(brk, cont *cf.Label)) {
-	spilled, _ := g.spillStack()
-	defer g.unspill(spilled, "V")
 	i := g.code.AllocLocal("I")
 	g.code.Iconst(0)
 	g.code.Local(cf.ISTORE, i)
@@ -285,7 +282,7 @@ func (g *gen) forArray(s *syntax.For) {
 	g.code.Local(cf.ALOAD, arr)
 	g.code.Op(cf.ARRAYLENGTH)
 	g.code.Local(cf.ISTORE, n)
-	g.setSlot(s.Sym, g.code.AllocLocal(desc(s.Sym.Type)))
+	s.Sym.Slot = g.code.AllocLocal(desc(s.Sym.Type))
 	g.named(s.Sym)
 	g.indexLoop(n, func(i int) {
 		g.line(s.P)
@@ -293,7 +290,7 @@ func (g *gen) forArray(s *syntax.For) {
 		g.code.Local(cf.ILOAD, i)
 		g.elemLoad(d)
 		g.coerce(types.StoredElem(rt), s.Sym.Type)
-		g.storeLoopVar(s.Sym)
+		g.code.Local(storeOp(s.Sym.Type), s.Sym.Slot)
 		g.loopBody(func() { g.block(s.Body, types.UnitType, false) })
 	}, func(brk, cont *cf.Label) {
 		g.pushLoop(s, brk, cont)
@@ -310,14 +307,14 @@ func (g *gen) forString(s *syntax.For) {
 	g.code.Local(cf.ALOAD, str)
 	g.code.Invoke(cf.INVOKEVIRTUAL, "java/lang/String", "length", "()I")
 	g.code.Local(cf.ISTORE, n)
-	g.setSlot(s.Sym, g.code.AllocLocal(desc(s.Sym.Type)))
+	s.Sym.Slot = g.code.AllocLocal(desc(s.Sym.Type))
 	g.named(s.Sym)
 	g.indexLoop(n, func(i int) {
 		g.line(s.P)
 		g.code.Local(cf.ALOAD, str)
 		g.code.Local(cf.ILOAD, i)
 		g.code.Invoke(cf.INVOKEVIRTUAL, "java/lang/String", "charAt", "(I)C")
-		g.code.Local(storeOp(s.Sym.Type), g.slot(s.Sym))
+		g.code.Local(storeOp(s.Sym.Type), s.Sym.Slot)
 		g.loopBody(func() { g.block(s.Body, types.UnitType, false) })
 	}, func(brk, cont *cf.Label) {
 		g.pushLoop(s, brk, cont)

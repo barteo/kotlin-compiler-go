@@ -65,9 +65,6 @@ func (g *gen) typeOf(t types.Type) { g.ktype(t, false) }
 // KTypeParameters too.
 func (g *gen) ktype(t types.Type, bound bool) {
 	const refl, proj = "kotlin/jvm/internal/Reflection", "kotlin/reflect/KTypeProjection"
-	if t.IsIntersection() {
-		t = types.Approx(t) // a KType is of no intersection
-	}
 	if !bound && g.reifiedParam(t) {
 		g.reifiedMarker(t, reifiedTypeOf)
 		g.code.Op(cf.ACONST_NULL)
@@ -254,7 +251,7 @@ func (g *gen) refReceiver(l *syntax.Lambda) {
 		return
 	}
 	v := r.Bound
-	g.setSlot(v, g.code.AllocLocal(desc(v.Type)))
+	v.Slot = g.code.AllocLocal(desc(v.Type))
 	g.exprAs(r.BoundExpr, v.Type)
-	g.code.Local(storeOp(v.Type), g.slot(v))
+	g.code.Local(storeOp(v.Type), v.Slot)
 }

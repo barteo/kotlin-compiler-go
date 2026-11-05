@@ -20,9 +20,7 @@ func (g *gen) dataMembers(cd *syntax.ClassDecl) {
 				return true
 			}
 		}
-		// A superclass's final toString, hashCode or equals is
-		// inherited instead.
-		return finalInSuperclass(cls, name, params)
+		return false
 	}
 	self := "L" + cls.Name + ";"
 	name := cls.Name[strings.LastIndexAny(cls.Name, "/$")+1:]
@@ -89,7 +87,7 @@ func (g *gen) dataMembers(cd *syntax.ClassDecl) {
 		g.check()
 	}
 	if f := synthesized(cls, "copy"); f != nil {
-		ctor := ctorJVMDesc(cd.Ctor) // with a local class's captures
+		ctor := methodDesc(cd.Ctor.Params, types.UnitType)
 		d := methodDesc(f.Params, f.Ret)
 		newMethod(f.JVM(), d)
 		m := g.cls.LastMethod()
@@ -102,22 +100,15 @@ func (g *gen) dataMembers(cd *syntax.ClassDecl) {
 		}
 		nullability(methodAdder(m), f.Ret)
 		for i, p := range f.Params {
-			g.setSlot(p, g.code.AllocLocal(paramDesc(p.Type)))
+			p.Slot = g.code.AllocLocal(paramDesc(p.Type))
 			g.named(p)
 			nullability(paramAdder(m, i), p.Type)
 		}
 		g.checkParams(nil, nil, f.Params)
 		g.code.New(cls.Name)
 		g.code.Op(cf.DUP)
-		if cls.Local {
-			// The copy captures what this instance captured.
-			for _, v := range cd.Captures {
-				g.code.Local(cf.ALOAD, 0)
-				g.code.FieldInsn(cf.GETFIELD, cls.Name, captureField(cd, v), storageDesc(v))
-			}
-		}
 		for _, p := range f.Params {
-			g.code.Local(loadOp(p.Type), g.slot(p))
+			g.code.Local(loadOp(p.Type), p.Slot)
 		}
 		g.code.Invoke(cf.INVOKESPECIAL, cls.Name, "<init>", ctor)
 		g.code.Op(cf.ARETURN)
@@ -127,7 +118,7 @@ func (g *gen) dataMembers(cd *syntax.ClassDecl) {
 		g.code = g.cls.NewMethod(cf.AccPublic|cf.AccStatic|cf.AccSynthetic, f.JVM()+"$default", defaultsDesc("("+self+d[1:], len(f.Params), objMarker))
 		g.code.AllocLocal(self)
 		for _, p := range f.Params {
-			g.setSlot(p, g.code.AllocLocal(paramDesc(p.Type)))
+			p.Slot = g.code.AllocLocal(paramDesc(p.Type))
 			g.named(p)
 		}
 		masks := g.allocMasks(len(f.Params), objMarker)
@@ -135,12 +126,12 @@ func (g *gen) dataMembers(cd *syntax.ClassDecl) {
 			skip := cf.NewLabel()
 			g.jumpIfPassed(masks, j, skip)
 			field(0, props[j])
-			g.code.Local(storeOp(p.Type), g.slot(p))
+			g.code.Local(storeOp(p.Type), p.Slot)
 			g.code.Place(skip)
 		}
 		g.code.Local(cf.ALOAD, 0)
 		for _, p := range f.Params {
-			g.code.Local(loadOp(p.Type), g.slot(p))
+			g.code.Local(loadOp(p.Type), p.Slot)
 		}
 		g.code.Invoke(cf.INVOKEVIRTUAL, cls.Name, f.JVM(), d)
 		g.code.Op(cf.ARETURN)
@@ -303,20 +294,6 @@ func arraysParam(t types.Type) string {
 		return d
 	}
 	return "[Ljava/lang/Object;"
-}
-
-// finalInSuperclass reports whether the nearest superclass of cls that
-// declares method name with params parameters declares it final.
-func finalInSuperclass(cls *types.ClassSym, name string, params int) bool {
-	for s := cls.Super; s != nil; s = s.Super {
-		s.Ensure()
-		for _, f := range s.Methods[name] {
-			if !f.Ext && !f.Static && len(f.Params) == params {
-				return f.Final && !f.Abstract
-			}
-		}
-	}
-	return false
 }
 
 func componentName(i int) string { return "component" + itoa(i+1) }

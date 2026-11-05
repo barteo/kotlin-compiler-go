@@ -38,14 +38,6 @@ type tvar struct {
 	// T in Array<T> for an Array<out Enum<*>>: the capture is within T's
 	// bounds, even where its approximation isn't.
 	proj bool
-	// captBound is set if the variable's bound is a captured type, of out
-	// X or *, only Nothing is a subtype of.
-	captBound bool
-	// capt is the projection the variable is equal to, as T of Array<T>
-	// is the capture of an Array<out Int>'s argument: the variable is
-	// fixed to it, which Subst approximates as Kotlin does, out Int in
-	// an invariant argument and Int at the top level (V is Inv if none).
-	capt types.Arg
 }
 
 type inferError struct {
@@ -66,9 +58,6 @@ type system struct {
 	lambdas []pendingLambda
 	ok      bool // false once a constraint cannot hold
 	depth   int
-	// nest counts the type arguments that sub is inside of: only a top-level
-	// argument's projection is captured.
-	nest int
 }
 
 func newSystem(c *Checker) *system {
@@ -91,15 +80,10 @@ func (s *system) fresh(ps []*types.TypeParamSym, base types.Subst, pos syntax.Po
 		sub[p] = types.Arg{T: types.VarType(vs[i])}
 	}
 	for i, p := range ps {
-		tv := &tvar{v: vs[i], pos: pos}
 		for _, b := range p.Bounds {
-			if b.IsParam() && !b.N && (base[b.Param()].V == types.Out || base[b.Param()].V == types.Star) {
-				// Below a capture of out X or *, as T : B of a Foo<*>'s
-				// fun <T : B> bar(t: T), is only Nothing: no argument is.
-				tv.captBound = true
-			}
 			vs[i].Bounds = append(vs[i].Bounds, sub.Apply(b))
 		}
+		tv := &tvar{v: vs[i], pos: pos}
 		s.vars = append(s.vars, tv)
 		s.byVar[vs[i]] = tv
 	}
@@ -274,21 +258,17 @@ func (s *system) subArgs(sup, b types.Type) {
 		ta := sup.A.List[i]
 		switch v {
 		case types.Out:
-			s.nest++
 			if ta.V == types.Star || ta.V == types.In {
 				s.sub(types.AnyType.Nullable(), ba.T)
 			} else {
 				s.sub(ta.T, ba.T)
 			}
-			s.nest--
 		case types.In:
-			s.nest++
 			if ta.V == types.Star || ta.V == types.Out {
 				s.sub(ba.T, types.NothingType)
 			} else {
 				s.sub(ba.T, ta.T)
 			}
-			s.nest--
 		default:
 			if ta.V != types.Inv {
 				// A projection captured by a variable: T in Array<T> for
@@ -298,9 +278,6 @@ func (s *system) subArgs(sup, b types.Type) {
 				if tv == nil {
 					s.ok = false
 					return
-				}
-				if s.nest == 0 && !ba.T.D && ta.V != types.Star && !ta.T.HasVars() {
-					tv.capt = ta
 				}
 				switch ta.V {
 				case types.Out:
@@ -314,10 +291,8 @@ func (s *system) subArgs(sup, b types.Type) {
 				}
 				continue
 			}
-			s.nest++
 			s.sub(ta.T, ba.T)
 			s.sub(ba.T, ta.T)
-			s.nest--
 		}
 	}
 }
@@ -522,9 +497,6 @@ func (s *system) fix(tv *tvar) {
 		if len(tv.lits) > 0 && !litsFit(tv.lits, val) {
 			val = c.lub(val, s.litType(tv, nil))
 		}
-		if len(lowers) > 1 && len(tv.lits) == 0 {
-			val = s.withinUppers(val, lowers, uppers)
-		}
 		if isUnsigned(val) && val.NonNull().C.Name == "kotlin/UInt" {
 			// A UInt from unsigned literals is the variable's ULong,
 			// UByte or UShort bound, as T of f<T : UByte>(1u): the call
@@ -550,22 +522,6 @@ func (s *system) fix(tv *tvar) {
 				val = val.NonNull()
 			}
 		}
-		// Bounds that none of the others is below give their
-		// intersection: E <: Int and E <: String, of In<E> for an
-		// In<Int> and an In<String>, give Int & String, of which kotlinc
-		// only warns that it is empty. Where the variable has declared
-		// bounds, an empty one stays an error, as S <: Long? and S <:
-		// Double? of S : T? are (see the bounds below).
-		comps := []types.Type{val}
-		for _, u := range uppers {
-			if !c.subtype(val, u) && intersectable(u) && intersectable(val) &&
-				(len(tv.v.Bounds) == 0 || !c.emptyIntersection(val, u)) {
-				comps = append(comps, u)
-			}
-		}
-		if len(comps) > 1 {
-			val = c.intersect(comps)
-		}
 		// A non-null bound intersects a nullable upper bound: T? <: X?
 		// for T : Annotation gives T = X, and T <: A, for a type parameter
 		// A with a nullable bound and T : Any, gives T = A & Any.
@@ -590,39 +546,6 @@ func (s *system) fix(tv *tvar) {
 	default:
 		s.errs = append(s.errs, inferError{tv.pos, "cannot infer type for type parameter '" + tv.v.Name + "'. Specify it explicitly."})
 	}
-	// A variable with only upper constraints is their intersection with
-	// its declared bounds, as K2 infers it. kc has no intersection types:
-	// it takes a bound below the constraints, and otherwise keeps them,
-	// unless the intersection is empty: S of fun <S : Out<B>> for
-	// Foo<in S> and a Foo<K> of K : Out<L> is K & Out<B>.
-	upperOnly := len(lowers) == 0 && len(tv.lits) == 0 && len(uppers) > 0
-	inBounds := map[int]bool{}
-	if upperOnly {
-		for i, b := range tv.v.Bounds {
-			if b = s.apply(b); b.HasVars() || c.subtype(val, b) {
-				continue
-			}
-			switch {
-			case c.subtype(b, val):
-				val = b
-				inBounds[i] = true
-			case !types.MayBeNull(val) && c.subtype(b.NonNull(), val):
-				val = b.NonNull()
-				inBounds[i] = true
-			case tv.v.Origin != nil && tv.v.Origin.Reified:
-				// An intersection is no reified type argument.
-				s.errs = append(s.errs, inferError{tv.pos, "type argument for reified type parameter '" + tv.v.Name +
-					"' was inferred to the intersection of ['" + b.String() + "' & '" + val.String() + "']"})
-				inBounds[i] = true
-			case !c.emptyIntersection(val, b):
-				inBounds[i] = true
-			}
-		}
-	}
-	if !s.onlyInputOK(tv, val) {
-		s.errs = append(s.errs, inferError{tv.pos, "type inference failed. The value of the type parameter '" + tv.v.Name +
-			"' must be mentioned in input types (argument types, receiver type, or expected type). Try to specify it explicitly."})
-	}
 	tv.fixed = true
 	if s.vals == nil {
 		s.vals = types.Subst{}
@@ -631,21 +554,14 @@ func (s *system) fix(tv *tvar) {
 	if val.K == types.Invalid {
 		return
 	}
-	if tv.capt.V != types.Inv {
-		defer func() { s.vals[tv.v] = tv.capt }()
-	}
 	for _, l := range tv.lower {
 		s.sub(l, val)
 	}
 	for _, u := range tv.upper {
 		s.sub(val, u)
 	}
-	if tv.captBound && len(lowers) > 0 && !captured && !tv.proj && val.K != types.Nothing {
-		s.errs = append(s.errs, inferError{tv.pos, "type argument is not within its bounds: inferred type " +
-			val.String() + " of type parameter '" + tv.v.Name + "' is not a subtype of its bound's captured type"})
-	}
-	for i, b := range tv.v.Bounds {
-		if b = s.apply(b); !captured && !tv.proj && !inBounds[i] && !b.HasVars() && !c.subtype(val, b) {
+	for _, b := range tv.v.Bounds {
+		if b = s.apply(b); !captured && !tv.proj && !b.HasVars() && !c.subtype(val, b) {
 			s.errs = append(s.errs, inferError{tv.pos, "type argument is not within its bounds: inferred type " +
 				val.String() + " of type parameter '" + tv.v.Name + "' is not a subtype of " + b.String()})
 		}
@@ -712,71 +628,6 @@ func (s *system) final(t types.Type) types.Type {
 	return t
 }
 
-// withinUppers returns the least upper bound val of lowers, or, if it is not
-// within uppers, an upper bound that all lowers are within, which stands
-// for kotlinc's more precise common supertype: MyClass<out A & D> of
-// MyClass<B> and MyClass<C>, for B and C both A and D, which kc's is
-// MyClass<out A>, for an expected Set<MyClass<out D>>.
-func (s *system) withinUppers(val types.Type, lowers, uppers []types.Type) types.Type {
-	c := s.c
-	fits := func(t types.Type) bool {
-		for _, u := range uppers {
-			if !c.subtype(t, u) {
-				return false
-			}
-		}
-		return true
-	}
-	if len(uppers) == 0 || fits(val) {
-		return val
-	}
-	// Only where kc's is a less precise one: an intersection kc lacks,
-	// at the top or as the type of a projection.
-	shaped := func(u types.Type) bool {
-		if val.A == nil || val.A.Len() == 0 {
-			return true
-		}
-		if u.K != types.Class || u.C != val.C || u.A == nil || u.A.Len() != val.A.Len() {
-			return false
-		}
-		for i, a := range val.A.List {
-			if b := u.A.Get(i); a.V != b.V || a.V == types.Inv && !c.subtype(a.T, b.T) {
-				return false
-			}
-		}
-		return true
-	}
-	for _, u := range uppers {
-		if !fits(u) || !shaped(u) {
-			continue
-		}
-		ok := true
-		for _, l := range lowers {
-			if !c.subtype(l, u) {
-				ok = false
-				break
-			}
-		}
-		if ok {
-			return u
-		}
-	}
-	return val
-}
-
-// finalArg is final for the type of a parameter that an argument is
-// passed for: a variable fixed to a captured projection takes what can be
-// written to the capture (see types.Subst.ApplyArg).
-func (s *system) finalArg(t types.Type) types.Type {
-	if t.HasVars() {
-		t = s.vals.ApplyArg(t)
-	}
-	if t.HasVars() && !s.c.onlyStubs(t) {
-		return types.InvalidType
-	}
-	return t
-}
-
 // fixVarsIn fixes the variables that t mentions, as a lambda needs before
 // its parameter types are known. The variables their bounds mention are
 // fixed first.
@@ -800,14 +651,9 @@ func (s *system) fixVarsIn(t types.Type) {
 			// only if T1 has no proper bound of its own: else T2's other
 			// bounds would give T1 its value, Nothing from TODO() in
 			// elvis(f { it.method() }, TODO()).
-			// But a proper upper bound gives way to T2's proper lower one,
-			// as kotlinc prefers fixing variables with lower bounds: VR of
-			// fun <T, VR : T> foo(x: T, fn: (VR?, T) -> Unit) in foo(1) {
-			// prev: Int?, new -> } is fixed after T, an Int.
-			lower := len(tv.lits) > 0 || slices.ContainsFunc(tv.lower, s.proper)
-			own := lower || slices.ContainsFunc(tv.upper, s.proper)
+			own := slices.ContainsFunc(tv.lower, s.proper) || slices.ContainsFunc(tv.upper, s.proper)
 			for _, b := range tv.upper {
-				if !own || !s.isVar(b) || !lower && s.hasLower(b) {
+				if !own || !s.isVar(b) {
 					visit(b, true)
 				}
 			}
@@ -821,18 +667,6 @@ func (s *system) fixVarsIn(t types.Type) {
 		})
 	}
 	visit(t, false)
-}
-
-// hasLower reports whether t is an unfixed variable with a proper lower
-// bound other than Nothing, which kotlinc deems trivial: TODO()'s.
-func (s *system) hasLower(t types.Type) bool {
-	if !s.isVar(t) {
-		return false
-	}
-	tv := s.byVar[s.apply(t).Param()]
-	return len(tv.lits) > 0 || slices.ContainsFunc(tv.lower, func(b types.Type) bool {
-		return s.proper(b) && s.apply(b).K != types.Nothing
-	})
 }
 
 // fixable reports whether fix finds a value for tv in its bounds.
@@ -923,40 +757,4 @@ func (s *system) upperHint(v types.Type) types.Type {
 		}
 	}
 	return noWant
-}
-
-// boundExcludes reports whether t is an unfixed variable whose declared
-// bounds u can't be within.
-func (s *system) boundExcludes(t, u types.Type) bool {
-	tv := s.unfixedVar(t)
-	if tv == nil {
-		return false
-	}
-	for _, b := range tv.v.Bounds {
-		if b = s.apply(b); !b.HasVars() && !s.c.subtype(u, b) {
-			return true
-		}
-	}
-	return false
-}
-
-// withinBounds reports whether the proper lower constraints of each
-// unfixed variable are within its declared bounds that are proper.
-func (s *system) withinBounds() bool {
-	for _, tv := range s.vars {
-		if tv.fixed {
-			continue
-		}
-		for _, l := range tv.lower {
-			if l = s.apply(l); l.HasVars() || l.K == types.Invalid {
-				continue
-			}
-			for _, b := range tv.v.Bounds {
-				if b = s.apply(b); !b.HasVars() && !s.c.subtype(l, b) {
-					return false
-				}
-			}
-		}
-	}
-	return true
 }

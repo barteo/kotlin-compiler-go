@@ -8,10 +8,11 @@ Directories: `exposed-core/src/main`, `exposed-dao/src/main`, `exposed-jdbc/src/
 
 ### Features left, by files blocked
 
-169 of 169 files use no feature that kc doesn't support.
+168 of 169 files use no feature that kc doesn't support.
 
 | Feature | Files | Only blocker | Uses |
 |:---|---:|---:|---:|
+| safe-call assignment | 1 | 1 | 1 |
 
 ### Greedy order of the features left
 
@@ -19,6 +20,7 @@ At each step, the feature that unblocks the most files given the ones before it,
 
 | Step | Feature | Files unblocked |
 |---:|:---|---:|
+| 1 | safe-call assignment | 169 |
 
 ### Inline-only functions called
 
@@ -193,7 +195,7 @@ The features each file still needs.
 | exposed-dao/src/main/kotlin/org/jetbrains/exposed/v1/dao/IntEntity.kt | 29 |  |
 | exposed-dao/src/main/kotlin/org/jetbrains/exposed/v1/dao/LinkedIdentityHashSet.kt | 75 |  |
 | exposed-dao/src/main/kotlin/org/jetbrains/exposed/v1/dao/LongEntity.kt | 29 |  |
-| exposed-dao/src/main/kotlin/org/jetbrains/exposed/v1/dao/References.kt | 432 |  |
+| exposed-dao/src/main/kotlin/org/jetbrains/exposed/v1/dao/References.kt | 432 | safe-call assignment |
 | exposed-dao/src/main/kotlin/org/jetbrains/exposed/v1/dao/UIntEntity.kt | 29 |  |
 | exposed-dao/src/main/kotlin/org/jetbrains/exposed/v1/dao/ULongEntity.kt | 29 |  |
 | exposed-dao/src/main/kotlin/org/jetbrains/exposed/v1/dao/UuidEntity.kt | 31 |  |

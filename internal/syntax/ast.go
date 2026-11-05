@@ -4,10 +4,9 @@ import "github.com/barteo/kotlin-compiler-go/internal/types"
 
 // File is a parsed source file.
 type File struct {
-	Path     string
-	Package  string // dotted package name; "" for the default package
-	PackageP Pos    // the position of the package directive's name
-	JvmName  string // the facade's simple name from @file:JvmName, if any
+	Path    string
+	Package string // dotted package name; "" for the default package
+	JvmName string // the facade's simple name from @file:JvmName, if any
 	// Annotations are the file's annotations, @file:X, for its facade.
 	Annotations []Annotation
 	Facade      string // JVM internal name of the class holding top-level declarations
@@ -132,9 +131,6 @@ type TypeRef struct {
 	// definitely non-nullable type: the type written before & is this
 	// TypeRef without it.
 	And *TypeRef
-	// Annotations are the type's annotations as written, @A T, which
-	// the checker checks but writes nowhere.
-	Annotations []Annotation
 }
 
 // Wildcards says whether the generic signatures of a declaration or a
@@ -184,10 +180,6 @@ type TypeParam struct {
 	Bounds  []*TypeRef
 	Sym     *types.TypeParamSym
 	Reified bool
-	// Annotations are the type parameter's annotations as written.
-	Annotations []Annotation
-	// OnlyInput is set by @kotlin.internal.OnlyInputTypes.
-	OnlyInput bool
 }
 
 type Param struct {
@@ -205,8 +197,6 @@ type Param struct {
 	// External is set on a parameter marked external, which is an error.
 	External  bool
 	ExternalP Pos
-	// Mods are its modifiers as written.
-	Mods []Mod
 }
 
 // Modifiers are the modifiers of a declaration that kc uses.
@@ -246,25 +236,6 @@ type Modifiers struct {
 	// context, if it is written.
 	Contexts []*Param
 	ContextP Pos
-	// Written are the modifier keywords as written, in order, repeats
-	// included, which the checker checks the targets and combinations of.
-	Written []Mod
-}
-
-// Mod is a modifier keyword as written, and its position.
-type Mod struct {
-	Name string
-	P    Pos
-}
-
-// Has reports whether name is among the written modifiers.
-func (m *Modifiers) Has(name string) bool {
-	for _, w := range m.Written {
-		if w.Name == name {
-			return true
-		}
-	}
-	return false
 }
 
 // Visibility is a declaration's visibility modifier, which the checker
@@ -400,7 +371,6 @@ func (m *Modifiers) Hidden() bool {
 type FunDecl struct {
 	Modifiers
 	P          Pos
-	End        Pos // the last token's, of a function declared in a file or a class, or an accessor
 	Name       string
 	TypeParams []*TypeParam
 	Recv       *TypeRef // an extension function's receiver type, or nil
@@ -474,8 +444,6 @@ type PropDecl struct {
 	// InlineGetter and InlineSetter are set on inline get and inline set,
 	// which compile as ordinary accessors.
 	InlineGetter, InlineSetter bool
-	// AccessorMods are the modifiers written on each accessor.
-	AccessorMods [][]Mod
 	// Plugin is set by the checker on a property it declares as a
 	// compiler plugin's that metadata doesn't list: serialization's
 	// $cachedSerializer$delegate.
@@ -495,24 +463,6 @@ type PropDecl struct {
 	// RecvAnnotations are the annotations on the receiver type with the
 	// use-site target receiver: val @receiver:A T.x.
 	RecvAnnotations []Annotation
-
-	// BackingField is the explicit backing field, field: T = init, or nil.
-	BackingField *BackingField
-	// AccessorP is the first accessor's position, with or without a body.
-	AccessorP Pos
-}
-
-// BackingField is a property's explicit backing field: val x: List<T>
-// field = mutableListOf(), whose type is visible in the private scope of
-// the property. Its annotations are the property's, with the target field.
-type BackingField struct {
-	P    Pos
-	Type *TypeRef // nil: the initializer's
-	Init Expr     // nil: initialized in an init block or a constructor
-	Mods []Mod    // the modifiers written on it, which it can't take
-	// Checked is set by the checker, and Allowed on a field that the
-	// property can have.
-	Checked, Allowed bool
 }
 
 // TypeAliasDecl is a typealias, typealias Name<T> = Type, at the top
@@ -538,7 +488,6 @@ type CtorParam struct {
 type ClassDecl struct {
 	Modifiers
 	P          Pos
-	End        Pos // the closing brace's, of a class with a body
 	Name       string
 	Interface  bool
 	Fun        bool // a fun interface
@@ -833,11 +782,9 @@ type VarStmt struct {
 	// Lateinit is set on a local lateinit var, written at LateinitP.
 	Lateinit  bool
 	LateinitP Pos
-	// Mods are the modifiers written on a local variable.
-	Mods []Mod
-	Type *TypeRef
-	Init Expr // nil for a variable assigned later
-	Sym  *types.VarSym
+	Type      *TypeRef
+	Init      Expr // nil for a variable assigned later
+	Sym       *types.VarSym
 
 	// A local delegated property, val x by d, keeps d in Delegate, which
 	// the checker puts in a hidden local, DelegateSym: reading x is Get,
@@ -971,10 +918,6 @@ type Expr interface {
 type exprBase struct {
 	P Pos
 	T types.Type
-	// Paren is set on a safe call, or an index of one, written in
-	// parentheses, which end its chain: (a?.b)[i] indexes a nullable
-	// value, where a?.b[i] is a?.b?.get(i). See Parenthesized.
-	Paren bool
 }
 
 func (e *exprBase) Pos() Pos             { return e.P }
@@ -1020,9 +963,6 @@ type This struct {
 	// Implicit is set on a this the checker writes for an implicit
 	// receiver or context argument.
 	Implicit bool
-	// Obj is set by the checker on a this in a class's header that is
-	// an object: a companion's, or an enclosing object's.
-	Obj *types.ClassSym
 }
 
 // Super is super, or super<I>, as the receiver of a member access or call,
@@ -1193,10 +1133,7 @@ type Member struct {
 	// receiver, is of type Nothing: a generic one, which may return, as
 	// x?.f() for a T := Nothing.
 	Nothing bool
-	// SafeT is set by the checker on a safe call: its type on a receiver
-	// that isn't null, before ?. makes it nullable. A safe call's index,
-	// a?.b[i], is of the chain only if it is not nullable.
-	SafeT types.Type
+
 	// Object is set when the member access names an object, or a class's
 	// companion object, used as a value: Outer.Companion, a.b.Obj.
 	Object *types.ClassSym

@@ -29,9 +29,6 @@ const (
 	siteLocal // a local variable, or a catch block's parameter
 	siteExpr  // an expression or another statement
 	siteInit  // an init block
-
-	siteType      // a type: @A T
-	siteTypeParam // a type parameter
 )
 
 // annotSite is an element annotations are written on: its kind, the
@@ -158,22 +155,13 @@ func (c *Checker) useSiteApplies(u string, site annotSite) bool {
 		return u != "file"
 	case siteFile:
 		return u == "file"
-	case siteClass:
-		return u != "file"
-	case siteCtor:
+	case siteClass, siteCtor:
 		return u != "file" && u != "set"
-	case siteFun:
-		switch u {
-		case "field", "delegate", "property", "get", "set":
-			return true
-		}
-	case siteParam:
+	case siteFun, siteParam:
 		switch u {
 		case "field", "delegate", "property", "get":
 			return true
 		}
-	case siteType:
-		return true // kotlinc reports any use-site target on a type
 	}
 	return false
 }
@@ -202,32 +190,13 @@ type repeatKey struct {
 // another annotation among seen has the same class and target, and
 // records it.
 func (c *Checker) repeated(a *syntax.Annotation, cls *types.ClassSym, site annotSite, seen map[repeatKey]bool) {
-	if site.kind == siteUnchecked || !cls.TargetsKnown || cls.Repeatable {
+	if site.kind == siteUnchecked || !cls.TargetsKnown || cls.Repeatable || a.Target == "all" {
 		return
 	}
 	for _, m := range cls.Annotations {
 		if m.Name == "kotlin/annotation/Repeatable" || m.Name == "java/lang/annotation/Repeatable" {
 			return
 		}
-	}
-	if a.Target == "all" {
-		// @all: is on each of the property's elements it applies to.
-		if site.kind != siteProp && site.kind != siteCtorProp {
-			return
-		}
-		reported := false
-		for _, t := range [...]string{"param", "property", "field", "get", "setparam"} {
-			if t == "param" && site.kind != siteCtorProp || cls.Targets&useSiteTargets[t] == 0 {
-				continue
-			}
-			k := repeatKey{cls, t}
-			if seen[k] && !reported {
-				c.errorf(a.P, "this annotation is not repeatable")
-				reported = true
-			}
-			seen[k] = true
-		}
-		return
 	}
 	target := a.Target
 	if target == "" {

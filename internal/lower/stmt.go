@@ -281,7 +281,6 @@ func (l *lowerer) localVar(n psi.NodeRef) *syntax.VarStmt {
 	}
 	if hasKw {
 		vs.Lateinit, vs.LateinitP = m.Lateinit, kwPos
-		vs.Mods = m.Written
 		syntax.Annotate(&l.annotated, vs, m.Annotations)
 	}
 	syntax.Annotate(&l.annotated, vs, as)

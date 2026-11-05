@@ -89,16 +89,6 @@ func (c *Checker) annotationClass(d *syntax.ClassDecl) {
 	if len(d.Supers) > 0 {
 		c.errorf(d.Supers[0].Type.P, "annotation class cannot have supertypes")
 	}
-	if ret, targets := declaredAnnotation(&d.Modifiers); ret != types.RetentionSource && targets&types.TargetExpression != 0 {
-		// Class files don't keep an expression's annotations.
-		p := d.P
-		if a := d.Find("", "Retention"); a != nil {
-			p = a.P
-		} else if a := d.Find("", "Target"); a != nil {
-			p = a.P
-		}
-		c.errorf(p, "expression annotations with retention other than SOURCE are prohibited")
-	}
 	for _, m := range d.Members {
 		var p syntax.Pos
 		switch m := m.(type) {
@@ -134,37 +124,6 @@ func (c *Checker) annotationParam(cls *types.ClassSym, cp *syntax.CtorParam) {
 		c.errorf(cp.Type.P, "invalid type of annotation member")
 	}
 	cls.AnnotationParams = append(cls.AnnotationParams, cp.Sym)
-}
-
-// annotationCycles reports the parameters of annotation class d whose
-// types lead back to it. It runs once all classes' parameters are
-// resolved.
-func (c *Checker) annotationCycles(d *syntax.ClassDecl) {
-	for _, cp := range d.CtorParams {
-		if t := cp.Sym.Type; t.K == types.Class && !t.N && annotationCycle(t.C, d.Sym, map[*types.ClassSym]bool{}) {
-			c.errorf(cp.P, "type of this annotation parameter refers back to its annotation class")
-		}
-	}
-}
-
-// annotationCycle reports whether annotation class k, the type of an
-// annotation parameter, has parameters of annotation classes, not arrays
-// of them, that lead to annotation class cls: an annotation with it
-// couldn't be written.
-func annotationCycle(k, cls *types.ClassSym, seen map[*types.ClassSym]bool) bool {
-	if k == cls {
-		return true
-	}
-	if !k.Annotation || seen[k] {
-		return false
-	}
-	seen[k] = true
-	for _, p := range k.AnnotationParams {
-		if t := p.Type; t.K == types.Class && !t.N && annotationCycle(t.C, cls, seen) {
-			return true
-		}
-	}
-	return false
 }
 
 // annotationType reports whether an annotation parameter can have type
@@ -267,12 +226,4 @@ func completeDefault(v *classfile.ElementValue, t types.Type) bool {
 		}
 	}
 	return true
-}
-
-// localAnnotationClass reports a local class d that is an annotation
-// class, which Kotlin doesn't allow.
-func (c *Checker) localAnnotationClass(d *syntax.ClassDecl) {
-	if d.Annotation {
-		c.errorf(d.P, "annotation class cannot be local")
-	}
 }

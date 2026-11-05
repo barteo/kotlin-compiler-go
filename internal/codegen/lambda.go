@@ -183,7 +183,7 @@ func (g *gen) loadStorage(v *types.VarSym) {
 		g.code.FieldInsn(cf.GETFIELD, p.Owner.Name, p.Name, desc(p.Type))
 		return
 	}
-	slot := g.slot(v)
+	slot := v.Slot
 	if g.lam != nil {
 		if s, ok := g.lam.slots[v]; ok {
 			slot = s
@@ -427,7 +427,7 @@ func (g *gen) lambdaMethod(x *syntax.Lambda, name string) (method, samDesc, impl
 		// projection's type argument, is null, which needs no cast.
 		unit := p.Type.K == types.Unit && !p.Type.N || p.Type.K == types.Null || p.Type.K == types.Nothing
 		if desc(in[i]) == desc(p.Type) && !boxed || unit {
-			g.setSlot(p, slots[i])
+			p.Slot = slots[i]
 			lg.named(p)
 			continue
 		}
@@ -437,9 +437,9 @@ func (g *gen) lambdaMethod(x *syntax.Lambda, name string) (method, samDesc, impl
 		} else {
 			lg.castErased(in[i], p.Type)
 		}
-		g.setSlot(p, lg.code.AllocLocal(desc(p.Type)))
+		p.Slot = lg.code.AllocLocal(desc(p.Type))
 		lg.named(p)
-		lg.code.Local(storeOp(p.Type), g.slot(p))
+		lg.code.Local(storeOp(p.Type), p.Slot)
 	}
 	if x.Composable {
 		lg.composeLambdaStart(x, slots[len(syms):])
@@ -765,7 +765,7 @@ func (g *gen) classMethod(c *cf.Class, l *syntax.Lambda, method, samDesc string,
 		// projection's type argument, is null, which needs no cast.
 		unit := p.Type.K == types.Unit && !p.Type.N || p.Type.K == types.Null || p.Type.K == types.Nothing
 		if desc(in[i]) == desc(p.Type) && !boxed || unit {
-			g.setSlot(p, slots[i])
+			p.Slot = slots[i]
 			lg.named(p)
 			continue
 		}
@@ -775,9 +775,9 @@ func (g *gen) classMethod(c *cf.Class, l *syntax.Lambda, method, samDesc string,
 		} else {
 			lg.castErased(in[i], p.Type)
 		}
-		g.setSlot(p, code.AllocLocal(desc(p.Type)))
+		p.Slot = code.AllocLocal(desc(p.Type))
 		lg.named(p)
-		code.Local(storeOp(p.Type), g.slot(p))
+		code.Local(storeOp(p.Type), p.Slot)
 	}
 	if l.Composable {
 		lg.composeLambdaStart(l, slots[len(syms):])

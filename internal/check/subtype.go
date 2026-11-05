@@ -49,18 +49,6 @@ func (c *Checker) subtype1(t, u types.Type) bool {
 	if t.P {
 		t = t.Flex()
 	}
-	if u.IsIntersection() {
-		// A & B takes what each of A and B takes; (A & B)? takes null too.
-		for _, b := range u.Param().Bounds {
-			if u.N {
-				b = b.Nullable()
-			}
-			if !c.subtype(t, b) {
-				return false
-			}
-		}
-		return true
-	}
 	// Nullability first; then t and u are compared as non-null types.
 	switch {
 	case !u.IsParam():
@@ -147,11 +135,6 @@ func (c *Checker) argsFit(sup, u types.Type) bool {
 			declared = tp.Var
 			if len(tp.Bounds) == 1 && !tp.Bounds[0].HasParams() {
 				bound = tp.Bounds[0]
-			} else if len(tp.Bounds) == 1 && sup.A.List[i].V == types.Star && !tp.Bounds[0].Has(func(u types.Type) bool { return u.K == types.TypeParam && u.Param() == tp }) {
-				// A star's bound in sup's arguments: IS of
-				// Interpreter<IS : Intermediary<SELF>, TS, SELF> in
-				// Interpreter<*, T, I> is an Intermediary<I>.
-				bound = classSubst(sup).Apply(tp.Bounds[0])
 			}
 		}
 		if !c.argFits(sup.A.List[i], ua, declared, bound) {
@@ -299,11 +282,6 @@ func classSubst(t types.Type) types.Subst {
 	for i, p := range ps {
 		if t.A != nil && i < t.A.Len() {
 			s[p] = t.A.Get(i)
-			if a := s[p]; a.V != types.Inv && a.V == p.Var {
-				// A projection the parameter's own variance makes
-				// redundant, as out T of a Holder<out T>, is no capture.
-				s[p] = types.Arg{T: a.T}
-			}
 		} else {
 			s[p] = types.Arg{V: types.Star}
 		}
@@ -453,7 +431,6 @@ func (c *Checker) commonSuper(a, b types.Type, depth int) types.Type {
 	// kc takes one: not Parcelable for objects of a sealed class some of
 	// which are Parcelable too.
 	var weak types.Type
-	var shared []types.Type
 	for _, s := range c.supertypes(a) {
 		sb, ok := c.asSuper(b, s.C)
 		if !ok {
@@ -462,47 +439,16 @@ func (c *Checker) commonSuper(a, b types.Type, depth int) types.Type {
 		r := c.joinArgs(s, sb, depth)
 		javaIface := s.C.External && s.C.Interface && s.C.KProps == nil && s.C.KotlinName == ""
 		if !markerInterfaces[s.C.Name] && !javaIface {
-			shared = append(shared, r)
-			continue
+			return r
 		}
 		if weak.K == types.Invalid {
 			weak = r
 		}
 	}
-	if len(shared) > 0 {
-		return c.minimalSupers(shared)
-	}
 	if weak.K != types.Invalid {
 		return weak
 	}
 	return types.AnyType
-}
-
-// minimalSupers returns the intersection of the shared supertypes of
-// commonSuper, in breadth-first order, that are not supertypes of others:
-// A & B for a C and a D that are both an A and a B. Only Kotlin classes
-// give one, and only from classes that are no supertype of the other.
-func (c *Checker) minimalSupers(shared []types.Type) types.Type {
-	var min []types.Type
-	for _, s := range shared {
-		if s.C.External && s.C.KProps == nil && s.C.KotlinName == "" {
-			continue // a Java class's supertypes keep the first
-		}
-		below := false
-		for _, o := range shared {
-			if o.C != s.C && o.C.IsSubclassOf(s.C) {
-				below = true
-				break
-			}
-		}
-		if !below && intersectable(s) {
-			min = append(min, s)
-		}
-	}
-	if len(min) < 2 || min[0] != shared[0] {
-		return shared[0]
-	}
-	return c.intersect(min)
 }
 
 var markerInterfaces = map[string]bool{
@@ -538,9 +484,6 @@ func (c *Checker) joinArgs(a, b types.Type, depth int) types.Type {
 				args[i] = x
 			case x.V == types.Inv && y.V == types.Inv && c.subtype(y.T, x.T):
 				args[i] = y
-			case x.V == types.Inv && y.V == types.Inv && intersectable(x.T) && intersectable(y.T):
-				// Or their intersection: In<A> and In<B> give In<A & B>.
-				args[i] = types.Arg{T: c.intersect([]types.Type{x.T, y.T})}
 			default:
 				args[i] = types.Arg{V: types.Star}
 			}
@@ -617,53 +560,4 @@ func (c *Checker) stubConstraint(t, u types.Type) *stubRun {
 		return r
 	}
 	return c.stub(u.Flex())
-}
-
-// emptyIntersection reports whether no value can be both a t and a u, as
-// kotlinc's INFERRED_TYPE_VARIABLE_INTO_EMPTY_INTERSECTION finds it: when
-// two classes, neither an interface, are not one a subclass of the
-// other. A type parameter stands for the classes of its bounds. kotlinc
-// makes a candidate with one inapplicable, as Long & Int? of S in
-// greaterEq(n) with overloads, and warns, to be an error, for a single
-// candidate. A final class and an interface it doesn't implement only
-// make it warn that the intersection may be empty, and differing type
-// arguments, Inv<Int> & Inv<Number>, don't count.
-func (c *Checker) emptyIntersection(t, u types.Type) bool {
-	ts, us := c.boundClasses(t, nil, 0), c.boundClasses(u, nil, 0)
-	for _, a := range ts {
-		for _, b := range us {
-			if a.Interface || b.Interface {
-				continue
-			}
-			if _, ok := c.asSuper(rawType(a), b); ok {
-				continue
-			}
-			if _, ok := c.asSuper(rawType(b), a); ok {
-				continue
-			}
-			return true
-		}
-	}
-	return false
-}
-
-// boundClasses appends the classes t is: its own, or those of a type
-// parameter's bounds. Any is none.
-func (c *Checker) boundClasses(t types.Type, out []*types.ClassSym, depth int) []*types.ClassSym {
-	if depth > 20 {
-		return out
-	}
-	switch {
-	case t.IsParam():
-		for _, b := range t.Param().Bounds {
-			out = c.boundClasses(b, out, depth+1)
-		}
-	case t.K == types.Class:
-		out = append(out, t.C)
-	case isBuiltin(t) && t.K != types.Unit && t.K != types.Range:
-		if jc := c.jvmClass(t.NonNull()); jc != nil {
-			out = append(out, jc)
-		}
-	}
-	return out
 }
