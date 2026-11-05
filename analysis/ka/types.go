@@ -216,12 +216,18 @@ func classID(c *types.ClassSym) string {
 	if c.KotlinName != "" {
 		return c.KotlinName
 	}
-	if k, ok := kotlinClasses[c.Name]; ok {
+	return internalClassID(c.Name)
+}
+
+// internalClassID returns the class ID of the class with JVM internal name
+// name: a/b/Outer.Inner for a/b/Outer$Inner.
+func internalClassID(name string) string {
+	if k, ok := kotlinClasses[name]; ok {
 		return k
 	}
-	pkg, rel := "", c.Name
-	if i := strings.LastIndexByte(c.Name, '/'); i >= 0 {
-		pkg, rel = c.Name[:i+1], c.Name[i+1:]
+	pkg, rel := "", name
+	if i := strings.LastIndexByte(name, '/'); i >= 0 {
+		pkg, rel = name[:i+1], name[i+1:]
 	}
 	return pkg + strings.ReplaceAll(rel, "$", ".")
 }

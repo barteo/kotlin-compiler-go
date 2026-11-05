@@ -2,6 +2,7 @@ package io.github.barteo.kc.aa
 
 import com.intellij.openapi.project.Project
 import com.intellij.psi.PsiElement
+import com.intellij.psi.search.GlobalSearchScope
 import org.jetbrains.kotlin.analysis.api.KaSession
 import org.jetbrains.kotlin.analysis.api.annotations.KaAnnotationValue
 import org.jetbrains.kotlin.analysis.api.lifetime.KaLifetimeToken
@@ -32,6 +33,8 @@ import java.util.concurrent.ConcurrentHashMap
 class KcAnalysis internal constructor(internal val round: KcRound, private val module: KaModule) {
     fun getToken(): KaLifetimeToken = round.token
     fun getUseSiteModule(): KaModule = module
+    /** kc has no IntelliJ search scope: KSP's Java class lookups find nothing and fall back to [KcExtras]. */
+    fun getAnalysisScope(): GlobalSearchScope = GlobalSearchScope.EMPTY_SCOPE
 
     // KaSymbolProvider
     fun getSymbol(file: KtFile): KaFileSymbol = round.byPsi[file] as? KaFileSymbol ?: noSymbol(file)
@@ -39,8 +42,9 @@ class KcAnalysis internal constructor(internal val round: KcRound, private val m
         round.byPsi[declaration] as? KaDeclarationSymbol ?: noSymbol(declaration)
     fun getSymbol(c: KtClassOrObject): KaClassSymbol? = round.byPsi[c] as? KaClassSymbol
     fun getNamedClassSymbol(c: KtClassOrObject): KaNamedClassSymbol? = round.byPsi[c] as? KaNamedClassSymbol
-    fun findClass(classId: ClassId): KaClassSymbol? = round.classes[classId]
-    fun findClassLike(classId: ClassId): KaClassLikeSymbol? = round.classes[classId] ?: round.typeAliases[classId]
+    fun findClass(classId: ClassId): KaClassSymbol? = round.classes[classId] ?: round.libraryClass(classId)
+    fun findClassLike(classId: ClassId): KaClassLikeSymbol? =
+        round.classes[classId] ?: round.typeAliases[classId] ?: round.libraryClass(classId)
     /** A source type alias; library aliases aren't known yet. */
     fun findTypeAlias(classId: ClassId): KaTypeAliasSymbol? = round.typeAliases[classId]
 
@@ -51,8 +55,10 @@ class KcAnalysis internal constructor(internal val round: KcRound, private val m
     fun getStaticDeclaredMemberScope(s: KaDeclarationContainerSymbol): KaScope =
         KcScope(members(s).filter { isStatic(it) }, round.token)
     fun getCombinedDeclaredMemberScope(s: KaDeclarationContainerSymbol): KaScope = KcScope(members(s), round.token)
+    // TODO(M4): inherited Java statics.
+    fun getStaticMemberScope(s: KaDeclarationContainerSymbol): KaScope = getStaticDeclaredMemberScope(s)
 
-    // TODO(M4): inherited members and fake overrides; a library class's members.
+    // TODO(M4): inherited members and fake overrides.
     fun getMemberScope(s: KaDeclarationContainerSymbol): KaScope = when (s) {
         is KcClassSymbol -> getDeclaredMemberScope(s)
         is KcLibraryClassSymbol -> KcScope(emptyList(), round.token)
@@ -73,8 +79,10 @@ class KcAnalysis internal constructor(internal val round: KcRound, private val m
         is KcEnumEntrySymbol -> s.info.parent
         is KcValueParameterSymbol -> s.info.parent
         is KcTypeParameterSymbol -> s.info.parent
+        is KcJavaFieldSymbol -> s.info.parent
         is KcGetterSymbol -> s.property
         is KcSetterSymbol -> s.property
+        is KcLibraryClassSymbol -> null
         else -> unsupported("containingSymbol of $s")
     }
     fun getContainingFile(s: KaSymbol): KaFileSymbol? {
@@ -128,8 +136,10 @@ class KcAnalysis internal constructor(internal val round: KcRound, private val m
     fun withNullability(type: KaType, isMarkedNullable: Boolean): KaType = base(type).withNullability(isMarkedNullable)
     fun lowerBoundIfFlexible(type: KaType): KaType = (type as? KcFlexibleType)?.lowerBound ?: type
     fun upperBoundIfFlexible(type: KaType): KaType = (type as? KcFlexibleType)?.upperBound ?: type
-    /** A class type with no arguments; the builder isn't run, so arguments it adds are lost. */
-    fun buildClassType(classId: ClassId, init: Function1<Any?, Unit>): KaType = KcClassType(round, classId)
+    fun buildClassType(classId: ClassId, init: Function1<Any?, Unit>): KaType =
+        KcClassTypeBuilder(round.token).also { init(it) }.build(round, classId)
+    fun buildClassType(symbol: KaClassLikeSymbol, init: Function1<Any?, Unit>): KaType =
+        KcClassTypeBuilder(round.token).also { init(it) }.build(round, symbol.classId ?: unsupported("class type of local $symbol"))
 
     // KaTypeRelationChecker
     fun getDirectSupertypes(type: KaType): Sequence<KaType> = directSupertypes(type, true)
@@ -144,8 +154,18 @@ class KcAnalysis internal constructor(internal val round: KcRound, private val m
     private fun members(s: KaDeclarationContainerSymbol): List<KaDeclarationSymbol> =
         (s as? KcClassSymbol)?.members ?: unsupported("members of $s")
 
-    /** Whether a member belongs in the static scope: a nested class that isn't inner. */
-    private fun isStatic(s: KaDeclarationSymbol) = s is KcClassSymbol && !s.isInner
+    /**
+     * Whether a member belongs in the static scope: a nested class that
+     * isn't inner, an enum entry, or a Java class's static member.
+     */
+    private fun isStatic(s: KaDeclarationSymbol) = when (s) {
+        is KcClassSymbol -> !s.isInner
+        is KcEnumEntrySymbol -> true
+        is KcFunctionSymbol -> s.isStatic
+        is KcPropertySymbol -> s.isStatic
+        is KcJavaFieldSymbol -> s.isStatic
+        else -> false
+    }
 
     private fun noSymbol(e: PsiElement): Nothing = unsupported("no symbol for ${e.javaClass.simpleName} ${e.text.take(40)}")
 

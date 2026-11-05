@@ -43,11 +43,19 @@
 // TypeKind, and tflags a bit set: 1 nullable, 2 flexible, 4 definitely
 // non-null, 8 extension function type.
 //
-// OpKaClose: handle:Int → nothing. It releases a session or a model.
+// OpKaClose: handle:Int → nothing. It releases a session or a model, and
+// the class path a model reads.
+//
+// OpKaClass: model:Int classID:String → n:Uint decl*n
+//
+// It returns the model of a class of the class path (ka's Model.Class),
+// its nested classes among its members; n is 0 if there is no such class
+// and 1 otherwise. A library declaration's nodes are 0.
 package kaops
 
 import (
 	"context"
+	"io"
 	"math"
 
 	"github.com/barteo/kotlin-compiler-go/analysis/ka"
@@ -60,6 +68,7 @@ const (
 	OpKaOpen   kcabi.Op = 10
 	OpKaUpdate kcabi.Op = 11
 	OpKaClose  kcabi.Op = 12
+	OpKaClass  kcabi.Op = 13
 )
 
 // handles are the sessions and models the JVM holds.
@@ -69,6 +78,27 @@ func init() {
 	kcabi.Register(OpKaOpen, open)
 	kcabi.Register(OpKaUpdate, update)
 	kcabi.Register(OpKaClose, closeHandle)
+	kcabi.Register(OpKaClass, class)
+}
+
+func class(req []byte) ([]byte, error) {
+	r := wire.NewReader(req)
+	h := kcabi.Handle(r.Int())
+	id := r.String()
+	if err := r.Err(); err != nil {
+		return nil, err
+	}
+	m, err := kcabi.Get[*ka.Model](&handles, h)
+	if err != nil {
+		return nil, err
+	}
+	var w wire.Writer
+	if d := m.Class(id); d != nil {
+		writeDecls(&w, []*ka.Decl{d})
+	} else {
+		writeDecls(&w, nil)
+	}
+	return w.Message(), nil
 }
 
 func open(req []byte) ([]byte, error) {
@@ -243,6 +273,13 @@ func closeHandle(req []byte) ([]byte, error) {
 	if err := r.Err(); err != nil {
 		return nil, err
 	}
+	x, err := handles.Get(h)
+	if err != nil {
+		return nil, err
+	}
 	handles.Delete(h)
+	if c, ok := x.(io.Closer); ok {
+		return nil, c.Close()
+	}
 	return nil, nil
 }

@@ -69,7 +69,7 @@ mapping.
 | M0.4 | Vertical slice: list annotated source classes through a `kc` KspBackend: `jvm/kc-aa/build.sh test` | done, see gaps |
 | M1 | `psi` on Kotlin 2.4.21 | done before this work |
 | M2 | Error tolerance, `types.Invalid` payload, extension-vs-top-level overload bug, `@Contextual`/`@EncodeDefault` | done (two items moved, see M2) |
-| M3 | Richer symbol model: visibility and modality enums, flags, origins, library annotation arguments, Java parameter names | in progress: source types, flags, modality; KaTypes on the JVM |
+| M3 | Richer symbol model: visibility and modality enums, flags, origins, library annotation arguments, Java parameter names | in progress: source types, flags, modality; KaTypes on the JVM; annotation arguments; library classes |
 | M4 | Queryable session `analysis/ka`: lookups, scopes, relations, overrides | |
 | M5 | Bridge: `cmd/libkc` operations, `tools/kagen` wire format, `jvm/kc-aa` KaSession | |
 | M6 | KSP fork integration: the `kc` backend, IC lookups, hot paths | |
@@ -289,9 +289,10 @@ through KSP. Known differences from kotlinc and things still missing:
 - `getFullyExpandedType` returns its argument, and
   `KcExtras.abbreviatedTypeAlias` returns null: there is no alias
   abbreviation yet.
-- `buildClassType` ignores its builder's arguments and nullability.
-- Library class types know only their class ID, and a type parameter of a
-  library class is a placeholder symbol.
+- ~~`buildClassType` ignores its builder's arguments and nullability.~~
+  Fixed in step 4.
+- ~~Library class types know only their class ID.~~ Fixed in step 4, except
+  for the Kotlin built-ins that are Java classes (see step 4).
 - `isSubtypeOf` and `semanticallyEquals` aren't implemented.
 
 **Step 3: annotation arguments.** The checker hands the values it evaluates
@@ -321,8 +322,7 @@ and `KaConstantValue`s with their `sourcePsi`. They back:
 
 The slice (`test/slice/src/e/Args.kt`) prints every argument through KSP's
 `KSAnnotation.arguments`, defaults included. Known gaps:
-- Library annotation classes have no defaults: `memberScope` is empty for a
-  library class until library symbols land.
+- ~~Library annotation classes have no defaults.~~ Fixed in step 4.
 - `evaluateAsAnnotationValue` answers only the expressions kc evaluated as
   annotation arguments or defaults; for any other expression it returns
   null.
@@ -334,14 +334,70 @@ The slice (`test/slice/src/e/Args.kt`) prints every argument through KSP's
   the line) leaves the value without `sourcePsi`.
 - Arguments of annotations on local declarations aren't in the model.
 
+**Step 4: library classes.** A `Model` now keeps its class path open, and
+`Model.Class(id)` (`analysis/ka/library.go`) builds a class-path class's
+`Decl` on demand, with its members and nested classes, and caches it.
+`Model.Close` closes the class path.
+- **Kotlin classes** come from their `kotlin.Metadata`: constructors
+  (primary flagged), properties, functions, enum entries and nested classes,
+  with the flags, visibility, modality and types the metadata gives. Fake
+  overrides are left out. Suspend function types become
+  `SuspendFunctionN`.
+- **Java classes** come from the checker's class symbol plus the class
+  file's details (`classfile.ParseDetails`: annotations with their
+  arguments, parameter annotations, `MethodParameters` names, annotation
+  defaults, nested classes). Java types are flexible. Members are flagged
+  Java, statics static, and fields are `KindJavaField`. Package visibility
+  is its own value. A Java annotation class gets a primary constructor whose
+  parameters are its methods, with their `AnnotationDefault`s.
+- **Annotations** are read with their arguments. Unsigned values are found
+  from the annotation class's parameter types. Compiler-internal ones
+  (`kotlin.Metadata`, the JetBrains nullability annotations, the Java
+  meta-annotations Kotlin maps) are left out of Kotlin declarations.
+- **Wire:** operation 13 (`class`: model, class ID → 0 or 1 decls). The
+  model handle now lives until the next update or the session's close.
+
+On the JVM, `KcRound.libraryClass` loads a class with its outermost class
+through `KcOps.cls`, and builds its symbols with the same builder as source
+files, minus the psi:
+- origins are `LIBRARY` or `JAVA_LIBRARY`;
+- a type parameter type without a node resolves by name through the
+  enclosing declarations' type parameters;
+- pointers to library symbols restore by reloading the class.
+
+They back `findClass`/`findClassLike`, class types' `symbol`, the member
+and static scopes, `getContainingSymbol`, `isStatic`, Java visibilities,
+and `KcExtras.javaAnnotationDefault`, which KSP asks for a library
+annotation parameter's default. That fills in `KSAnnotation.arguments`
+defaults for library annotations. `buildClassType` now runs its builder,
+which KSP needs for a constructor's return type.
+
+The slice prints `@Deprecated` and `@java.beans.JavaBean` arguments with
+their library defaults, and the declarations of four library classes
+through `Resolver.getClassDeclarationByName`: a Kotlin annotation, a generic
+Kotlin class, a generic nested Java class and a Java enum. Known gaps:
+- The Kotlin built-ins that are Java classes in the class path
+  (`kotlin/String`, `kotlin/collections/List`) have no members: kc doesn't
+  read `.kotlin_builtins`.
+- Private members of Java classes, and Java enums' `values`/`valueOf`, are
+  left out.
+- Annotations on Kotlin properties' fields and accessors, and on
+  extension receivers, aren't read.
+- A `Class<?>` parameter of a Java annotation stays `java/lang/Class`, not
+  `KClass`.
+- Java parameter names without `MethodParameters` are `p0`, `p1`, … (FIR
+  does the same for class files).
+- Library top-level callables and type aliases aren't loaded yet.
+- Scopes have no inherited members or fake overrides; the static scope has
+  no inherited Java statics.
+- A constructor's `typeParameters` are its class's; FIR may differ.
+
 ## Gaps and open questions
 
 - **Slice simplifications (M0.4).** These go when M3/M4 bring the facts in:
   - Accessors read their flags from PSI modifiers, not from `kc`.
   - There are no backing-field symbols, so `@field:` annotations are dropped.
-  - Library classes are known by class ID only.
-  - `buildClassType` doesn't run its builder, and library type aliases
-    aren't known.
+  - Library type aliases and top-level callables aren't known.
   - Java sources are ignored.
   - The PSI join checks each node's PSI class, not yet the whole kind
     sequence.

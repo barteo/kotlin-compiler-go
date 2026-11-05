@@ -399,6 +399,22 @@ func (l *Library) EnableSerialization() {
 // NewLibrary returns the library of the classes in cp, which may be nil.
 func NewLibrary(cp *classpath.Path) *Library { return &Library{t: newClassTable(cp)} }
 
+// Class returns the class of the class path with Kotlin class ID id
+// (a/b/Outer.Inner), as Kotlin sees it: kotlin/String is java/lang/String,
+// kotlin/collections/List java/util/List; nil if there is none. The
+// program's classes aren't among them.
+func (l *Library) Class(id string) *types.ClassSym {
+	t := l.t
+	if t.kotlin {
+		return t.kclass(id)
+	}
+	name := strings.ReplaceAll(id, ".", "$")
+	if t.cp == nil || !t.cp.Has(name) {
+		return nil
+	}
+	return t.class(name)
+}
+
 // moduleSuffix returns what the JVM names of a module's internal members
 // end with: $ and its name, with the characters that can't be in a Java
 // identifier replaced by _, as kotlinc writes them.

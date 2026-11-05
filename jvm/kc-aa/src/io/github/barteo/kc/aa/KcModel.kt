@@ -11,6 +11,7 @@ internal object KcOps {
     const val OPEN = 10
     const val UPDATE = 11
     const val CLOSE = 12
+    const val CLASS = 13
 
     class Config(
         val jdkHome: String?,
@@ -30,7 +31,11 @@ internal object KcOps {
         return Wire.Reader(KcNative.call(OPEN, w.message())).readInt()
     }
 
-    /** Checks [paths] in session [session] and returns their declarations. */
+    /**
+     * Checks [paths] in session [session] and returns their declarations.
+     * The model's handle, which [cls] reads library classes through, is
+     * the caller's to [close].
+     */
     fun update(session: Long, paths: List<String>): KcModel {
         val w = Wire.Writer().writeInt(session).writeUint(paths.size.toLong())
         paths.forEach { w.writeString(it) }
@@ -43,10 +48,17 @@ internal object KcOps {
             val diagnostics = List(r.readUint().toInt()) {
                 KcDiagnostic(r.readString(), r.readUint().toInt(), r.readUint().toInt(), r.readString(), r.readString())
             }
-            return KcModel(files, diagnostics)
-        } finally {
+            return KcModel(model, files, diagnostics)
+        } catch (e: Throwable) {
             close(model)
+            throw e
         }
+    }
+
+    /** The class-path class [classId] (a/b/Outer.Inner) as model [model] has it, or null. */
+    fun cls(model: Long, classId: String): KcDecl? {
+        val r = Wire.Reader(KcNative.call(CLASS, Wire.Writer().writeInt(model).writeString(classId).message()))
+        return r.decls().singleOrNull()
     }
 
     fun close(handle: Long) {
@@ -121,7 +133,7 @@ internal object KcOps {
 }
 
 /** The module's sources as one update saw them; Go's ka.Model. */
-internal class KcModel(val files: List<KcFile>, val diagnostics: List<KcDiagnostic>)
+internal class KcModel(val handle: Long, val files: List<KcFile>, val diagnostics: List<KcDiagnostic>)
 
 /** An error in the sources; Go's ka.Diagnostic. */
 internal class KcDiagnostic(val path: String, val line: Int, val col: Int, val message: String, val feature: String) {
@@ -181,12 +193,14 @@ internal class KcDecl(
         const val CONSTRUCTOR = 10
         const val VALUE_PARAMETER = 11
         const val TYPE_PARAMETER = 12
+        const val JAVA_FIELD = 13
 
         // Go's ka.Visibility values.
         const val PUBLIC = 0
         const val PRIVATE = 1
         const val PROTECTED = 2
         const val INTERNAL = 3
+        const val PACKAGE_PRIVATE = 4
 
         // Go's ka.Modality values.
         const val FINAL = 0
@@ -217,6 +231,9 @@ internal class KcDecl(
         const val HAS_DEFAULT = 1L shl 19
         const val OVERRIDE = 1L shl 20
         const val REIFIED = 1L shl 21
+        const val JAVA = 1L shl 22
+        const val STATIC = 1L shl 23
+        const val PRIMARY = 1L shl 24
 
         // Go's ka.Variance values.
         const val INVARIANT = 0

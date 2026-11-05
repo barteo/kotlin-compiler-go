@@ -1,7 +1,8 @@
 // Package ka is the Go half of kc's implementation of the Kotlin Analysis
 // API (docs/analysis-api.md): a session over a module's sources whose
 // snapshots, one per KSP round, answer the queries the JVM half (jvm/kc-aa)
-// makes through libkc.
+// makes through libkc. A Model reads the class path's classes on demand
+// (Model.Class) until it is closed.
 //
 // A Session holds a module's configuration. Update checks the module's
 // sources as they are now and returns a Model, which is immutable and safe
@@ -64,6 +65,8 @@ const (
 	KindConstructor
 	KindValueParameter
 	KindTypeParameter
+	// KindJavaField is a Java class's field.
+	KindJavaField
 )
 
 // Visibility is a declaration's visibility. The numbers are part of
@@ -75,6 +78,8 @@ const (
 	Private
 	Protected
 	Internal
+	// PackagePrivate is a Java declaration's package visibility.
+	PackagePrivate
 )
 
 // Modality is a declaration's modality. The numbers are part of libkc's
@@ -115,6 +120,9 @@ const (
 	FlagHasDefault // a value parameter with a default value
 	FlagOverride
 	FlagReified
+	FlagJava    // a declaration of a Java class
+	FlagStatic  // a Java class's static member or nested class, or a library Kotlin class's nested class that isn't inner
+	FlagPrimary // a class's primary constructor
 )
 
 // Model is the declarations of a module's sources as they were when Update
@@ -126,6 +134,8 @@ type Model struct {
 	// syntax error is left out (a class keeps its other members), and an
 	// unresolved annotation has no class ID.
 	Diagnostics []Diagnostic
+
+	lib *library // the class path's classes; see Class
 }
 
 // Diagnostic is an error in the sources.
@@ -226,9 +236,13 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 	if err != nil {
 		return nil, fmt.Errorf("ka: %w", err)
 	}
-	defer cp.Close()
-
-	m := &Model{}
+	m := &Model{lib: &library{cp: cp, lib: lib, decls: map[string]*Decl{}, params: map[string]map[string]string{}}}
+	ok := false
+	defer func() {
+		if !ok {
+			m.Close()
+		}
+	}()
 	files, provs, broken := lowerAll(snaps, m)
 	rec, checkErrs, err := checkFiles(ctx, files, lib, jobs)
 	if _, crashed := err.(checkPanic); crashed && len(broken) > 0 {
@@ -266,6 +280,7 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 		}
 		m.Files = append(m.Files, mf)
 	}
+	ok = true
 	return m, nil
 }
 

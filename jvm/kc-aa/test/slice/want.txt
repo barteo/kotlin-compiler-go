@@ -23,9 +23,37 @@ a.Marker: property d.inferred: kotlin.collections.List<kotlin.Pair<kotlin.Int, k
 a.Marker: type parameter T : kotlin.Any?
 a.Other: class b.Plain : kotlin.Any (s = "y")
 a.Other: parameter id: kotlin.Int (s = "x")
+decls:java.lang.Thread.State: - class java.lang.Thread.State.BLOCKED
+decls:java.lang.Thread.State: - class java.lang.Thread.State.NEW
+decls:java.lang.Thread.State: - class java.lang.Thread.State.RUNNABLE
+decls:java.lang.Thread.State: - class java.lang.Thread.State.TERMINATED
+decls:java.lang.Thread.State: - class java.lang.Thread.State.TIMED_WAITING
+decls:java.lang.Thread.State: - class java.lang.Thread.State.WAITING
+decls:java.lang.Thread.State: JAVA_LIB ENUM_CLASS class java.lang.Thread.State : kotlin.Enum<java.lang.Thread.State>
+decls:java.util.AbstractMap.SimpleEntry: - function <init><K : kotlin.Any?, V : kotlin.Any?>(p0: K, p1: V): java.util.AbstractMap.SimpleEntry<*, *>
+decls:java.util.AbstractMap.SimpleEntry: - function <init><K : kotlin.Any?, V : kotlin.Any?>(p0: kotlin.collections.MutableMap.MutableEntry<out K, out V>): java.util.AbstractMap.SimpleEntry<*, *>
+decls:java.util.AbstractMap.SimpleEntry: - function java.util.AbstractMap.SimpleEntry.equals(p0: kotlin.Any): kotlin.Boolean
+decls:java.util.AbstractMap.SimpleEntry: - function java.util.AbstractMap.SimpleEntry.getKey(): K
+decls:java.util.AbstractMap.SimpleEntry: - function java.util.AbstractMap.SimpleEntry.getValue(): V
+decls:java.util.AbstractMap.SimpleEntry: - function java.util.AbstractMap.SimpleEntry.hashCode(): kotlin.Int
+decls:java.util.AbstractMap.SimpleEntry: - function java.util.AbstractMap.SimpleEntry.setValue(p0: V): V
+decls:java.util.AbstractMap.SimpleEntry: - function java.util.AbstractMap.SimpleEntry.toString(): kotlin.String
+decls:java.util.AbstractMap.SimpleEntry: JAVA_LIB CLASS class java.util.AbstractMap.SimpleEntry<K : kotlin.Any?, V : kotlin.Any?> : kotlin.collections.MutableMap.MutableEntry<K, V>, java.io.Serializable
+decls:kotlin.ReplaceWith: - function <init>(expression: kotlin.String, vararg imports: kotlin.String): kotlin.ReplaceWith
+decls:kotlin.ReplaceWith: - property kotlin.ReplaceWith.expression: kotlin.String
+decls:kotlin.ReplaceWith: - property kotlin.ReplaceWith.imports: kotlin.Array<out kotlin.String>
+decls:kotlin.ReplaceWith: KOTLIN_LIB ANNOTATION_CLASS class kotlin.ReplaceWith : kotlin.Annotation
+decls:kotlin.coroutines.AbstractCoroutineContextKey: - function <init><B : kotlin.coroutines.CoroutineContext.Element, E : B>(baseKey: kotlin.coroutines.CoroutineContext.Key<B>, safeCast: fun kotlin.Function1<kotlin.coroutines.CoroutineContext.Element, E?>): kotlin.coroutines.AbstractCoroutineContextKey<*, *>
+decls:kotlin.coroutines.AbstractCoroutineContextKey: - function kotlin.coroutines.AbstractCoroutineContextKey.isSubKey(key: kotlin.coroutines.CoroutineContext.Key<*>): kotlin.Boolean
+decls:kotlin.coroutines.AbstractCoroutineContextKey: - function kotlin.coroutines.AbstractCoroutineContextKey.tryCast(element: kotlin.coroutines.CoroutineContext.Element): E?
+decls:kotlin.coroutines.AbstractCoroutineContextKey: - property kotlin.coroutines.AbstractCoroutineContextKey.safeCast: fun kotlin.Function1<kotlin.coroutines.CoroutineContext.Element, E?>
+decls:kotlin.coroutines.AbstractCoroutineContextKey: - property kotlin.coroutines.AbstractCoroutineContextKey.topmostKey: kotlin.coroutines.CoroutineContext.Key<*>
+decls:kotlin.coroutines.AbstractCoroutineContextKey: KOTLIN_LIB CLASS class kotlin.coroutines.AbstractCoroutineContextKey<B : kotlin.coroutines.CoroutineContext.Element, E : B> : kotlin.coroutines.CoroutineContext.Key<E>
 e.Args: class e.Defaults : kotlin.Any (s = "dflt", i = 3, l = 7L, c = 'c', z = false, f = 1.5f, d = 2.0, u = 3u, e = e.Color.GREEN, k = kotlin.Any::class, arr = ["x", "y"], inner = @e.Inner(s = "d", xs = [1, 2]))
 e.Args: class e.Full : kotlin.Any (s = "const!", i = -4, l = 1099511627776L, c = 'q', z = true, f = 0.25f, d = 1000.0, u = 4294967295u, e = e.Color.RED, k = kotlin.String::class, arr = ["a", "const"], inner = @e.Inner(xs = [5], s = "in"))
 e.Args: class e.Positional : kotlin.Any (s = "pos", i = 9, v = ["p", "q"], l = 7L, c = 'c', z = false, f = 1.5f, d = 2.0, u = 3u, e = e.Color.GREEN, k = kotlin.Any::class, arr = ["x", "y"], inner = @e.Inner(s = "d", xs = [1, 2]))
 e.Args: function e.spread(): kotlin.Unit (v = ["s1"], s = "dflt", i = 3, l = 7L, c = 'c', z = false, f = 1.5f, d = 2.0, u = 3u, e = e.Color.GREEN, k = kotlin.Any::class, arr = ["x", "y"], inner = @e.Inner(s = "d", xs = [1, 2]))
 e.Inner: class e.Defaults : kotlin.Any (s = "in")
+java.beans.JavaBean: class e.Bean : kotlin.Any (description = "bean", defaultProperty = "", defaultEventSet = "")
+kotlin.Deprecated: class e.Old : kotlin.Any (message = "old", replaceWith = @kotlin.ReplaceWith(expression = "", imports = []), level = kotlin.DeprecationLevel.WARNING)
 kotlin.Suppress: file Model.kt (names = ["unused"])

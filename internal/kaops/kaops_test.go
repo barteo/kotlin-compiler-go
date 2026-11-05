@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/barteo/kotlin-compiler-go/analysis/ka"
+	"github.com/barteo/kotlin-compiler-go/internal/classpath"
 	"github.com/barteo/kotlin-compiler-go/internal/kcabi"
 	"github.com/barteo/kotlin-compiler-go/internal/kcabi/wire"
 	"github.com/barteo/kotlin-compiler-go/psi"
@@ -150,5 +151,68 @@ func TestValues(t *testing.T) {
 	}
 	if !reflect.DeepEqual(in, out) {
 		t.Errorf("read %s, want %s", out, in)
+	}
+}
+
+func TestClass(t *testing.T) {
+	jar, err := classpath.FindStdlib()
+	if err != nil {
+		t.Skipf("no kotlin-stdlib.jar (set KOTLIN_HOME): %v", err)
+	}
+	path := filepath.Join(t.TempDir(), "a.kt")
+	if err := os.WriteFile(path, []byte("package p\n"), 0o666); err != nil {
+		t.Fatal(err)
+	}
+	var w wire.Writer
+	w.String("")
+	w.Bool(true)
+	w.String("m")
+	w.Uint(1)
+	w.Uint(1)
+	w.String(jar)
+	resp, err := kcabi.Call(OpKaOpen, w.Message())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session := wire.NewReader(resp).Int()
+	w = wire.Writer{}
+	w.Int(session)
+	w.Uint(1)
+	w.String(path)
+	resp, err = kcabi.Call(OpKaUpdate, w.Message())
+	if err != nil {
+		t.Fatal(err)
+	}
+	model := wire.NewReader(resp).Int()
+
+	for _, tc := range []struct {
+		id   string
+		n    uint64
+		kind ka.Kind
+	}{{"kotlin/Deprecated", 1, ka.KindAnnotationClass}, {"no/Such", 0, 0}} {
+		w = wire.Writer{}
+		w.Int(model)
+		w.String(tc.id)
+		resp, err = kcabi.Call(OpKaClass, w.Message())
+		if err != nil {
+			t.Fatal(err)
+		}
+		r := wire.NewReader(resp)
+		if n := r.Uint(); n != tc.n {
+			t.Fatalf("%s: %d decls", tc.id, n)
+		}
+		if tc.n == 0 {
+			continue
+		}
+		if k, name := ka.Kind(r.Uint()), r.String(); k != tc.kind || name != "Deprecated" {
+			t.Errorf("%s: kind %d, name %s", tc.id, k, name)
+		}
+	}
+	for _, h := range []int64{model, session} {
+		w = wire.Writer{}
+		w.Int(h)
+		if _, err := kcabi.Call(OpKaClose, w.Message()); err != nil {
+			t.Fatal(err)
+		}
 	}
 }

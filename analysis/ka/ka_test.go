@@ -311,7 +311,7 @@ typealias Names = List<String>
 	// TODO: props is String!, a flexible type, in kotlinc.
 	want := `Base m2 f0x0 <: kotlin/collections/Iterable<T>
   <T m0 f0x0 v2 <: kotlin/Comparable<T>
-  <init> m0 f0x0
+  <init> m0 f0x1000000
     (items m0 f0x0 : kotlin/collections/List<T>
   items m0 f0x0 : kotlin/collections/List<T>
   first m2 f0x0 : T
@@ -325,7 +325,7 @@ Api m2 f0x0 <: kotlin/Any
   name m2 f0x0 : kotlin/String
   greet m1 f0x0 : kotlin/String
 Point m0 f0x2 <: kotlin/Comparable<p/Point>
-  <init> m0 f0x0
+  <init> m0 f0x1000000
     (x m0 f0x0 : kotlin/Int
     (y m0 f0x80000 : kotlin/Double
   x m0 f0x0 : kotlin/Int
@@ -339,11 +339,11 @@ Point m0 f0x2 <: kotlin/Comparable<p/Point>
   label m0 f0xc000 : kotlin/String
 Shape m3 f0x0 <: kotlin/Any
 Color m0 f0x0 <: kotlin/Enum<p/Color>
-  <init> m0 f0x0
+  <init> m0 f0x1000000
   RED m0 f0x0 : p/Color
   GREEN m0 f0x0 : p/Color
 Tag m0 f0x0 <: kotlin/Annotation
-  <init> m0 f0x0
+  <init> m0 f0x1000000
     (value m0 f0x0 : kotlin/String
   value m0 f0x0 : kotlin/String
 orNull m0 f0x0 recv=T : T?

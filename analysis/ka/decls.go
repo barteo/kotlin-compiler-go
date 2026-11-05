@@ -88,7 +88,7 @@ func (b *fileBuilder) class(d *syntax.ClassDecl, prefix string) *Decl {
 		pc := b.snap.Node(md.Node).ChildKind(psi.KindPRIMARY_CONSTRUCTOR).ID()
 		ctor := &Decl{Kind: KindConstructor, Name: "<init>", Node: pc,
 			Visibility: visibility(d.CtorMods.Visibility), Annotations: b.annotations(d.CtorMods.Annotations),
-			Flags: commonFlags(&d.CtorMods)}
+			Flags: commonFlags(&d.CtorMods) | FlagPrimary}
 		for _, p := range d.CtorParams {
 			mp := b.param(&p.Param, b.prov.Node(p), p.Modifiers.Annotations)
 			if d.Annotation && p.Default != nil && p.Sym != nil {

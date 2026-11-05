@@ -4,7 +4,9 @@
 //	PrintAnnotated SRC_DIR OUT_DIR ANNOTATION... (-Dksp.backend=kc|aa)
 //
 // Each line is "annotation: kind name", sorted, followed by the
-// annotation's arguments, defaults included, if it has any.
+// annotation's arguments, defaults included, if it has any. An argument
+// decls:a.b.C names a class whose origin and declarations it prints
+// instead, as "decls:a.b.C: - kind name".
 import com.google.devtools.ksp.impl.KotlinSymbolProcessing
 import com.google.devtools.ksp.processing.KSPJvmConfig
 import com.google.devtools.ksp.processing.KSPLogger
@@ -21,6 +23,16 @@ class PrintAnnotatedProvider(private val names: List<String>, private val out: M
     override fun create(environment: SymbolProcessorEnvironment) = object : SymbolProcessor {
         override fun process(resolver: Resolver): List<KSAnnotated> {
             for (name in names) {
+                if (name.startsWith("decls:")) {
+                    val c = resolver.getClassDeclarationByName(resolver.getKSNameFromString(name.removePrefix("decls:")))
+                    if (c == null) {
+                        out += "$name: not found"
+                        continue
+                    }
+                    out += "$name: ${c.origin} ${c.classKind} ${describe(c)}"
+                    c.declarations.forEach { out += "$name: - ${describe(it)}" }
+                    continue
+                }
                 resolver.getSymbolsWithAnnotation(name).forEach { out += "$name: ${describe(it)}" + arguments(it, name) }
             }
             return emptyList()
@@ -32,7 +44,7 @@ fun describe(a: KSAnnotated): String = when (a) {
     is KSFile -> "file ${a.fileName}"
     is KSClassDeclaration -> "class ${a.qualifiedName?.asString()}" + typeParams(a.typeParameters) +
         a.superTypes.toList().let { st -> if (st.isEmpty()) "" else st.joinToString(", ", " : ") { render(it) } }
-    is KSFunctionDeclaration -> "function ${a.qualifiedName?.asString()}" + typeParams(a.typeParameters) +
+    is KSFunctionDeclaration -> "function ${a.qualifiedName?.asString() ?: a.simpleName.asString()}" + typeParams(a.typeParameters) +
         a.parameters.joinToString(", ", "(", ")") { (if (it.isVararg) "vararg " else "") + "${it.name?.asString()}: ${render(it.type)}" } +
         (a.returnType?.let { ": " + render(it) } ?: "") + (a.extensionReceiver?.let { " on " + render(it) } ?: "")
     is KSPropertyGetter -> "getter ${a.receiver.simpleName.asString()}" + (a.returnType?.let { ": " + render(it) } ?: "")

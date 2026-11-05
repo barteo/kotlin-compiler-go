@@ -18,6 +18,7 @@ import org.jetbrains.kotlin.analysis.api.types.KaUnresolvedClassTypeQualifier
 import org.jetbrains.kotlin.analysis.api.types.KaStarTypeProjection
 import org.jetbrains.kotlin.analysis.api.types.KaType
 import org.jetbrains.kotlin.analysis.api.components.KaBuiltinTypes
+import org.jetbrains.kotlin.analysis.api.components.KaClassTypeBuilder
 import org.jetbrains.kotlin.analysis.api.types.KaTypeArgumentWithVariance
 import org.jetbrains.kotlin.analysis.api.types.KaTypeNullability
 import org.jetbrains.kotlin.analysis.api.types.KaTypeProjection
@@ -26,10 +27,24 @@ import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.types.Variance
 
 /**
- * Where a type from the Go model is read: its round, and the file whose psi
- * nodes its type parameter types name.
+ * Where a type from the Go model is read: its round, the file whose psi
+ * nodes its type parameter types name, and, for a type parameter type
+ * without a node (a library declaration's), the type parameters in scope.
  */
-internal class KcTypeContext(val round: KcRound, private val psi: (Int) -> PsiElement?) {
+internal class KcTypeContext(
+    val round: KcRound,
+    private val psi: (Int) -> PsiElement?,
+    private val outer: KcTypeContext? = null,
+) {
+    /** The type parameters the declaration this context is for declares. */
+    var typeParams: List<KaTypeParameterSymbol> = emptyList()
+
+    /** A context for a declaration nested in this one's. */
+    fun nested() = KcTypeContext(round, psi, this)
+
+    private fun byName(name: Name): KaTypeParameterSymbol? =
+        typeParams.firstOrNull { it.name == name } ?: outer?.byName(name)
+
     /** The KaType of [t]. */
     fun type(t: KcType): KaType = when (t.kind) {
         KcType.CLASS -> if (t.isFlexible) {
@@ -64,6 +79,7 @@ internal class KcTypeContext(val round: KcRound, private val psi: (Int) -> PsiEl
 
     private fun parameter(t: KcType): KaTypeParameterSymbol =
         psi(t.param)?.let { round.byPsi[it] as? KaTypeParameterSymbol }
+            ?: byName(Name.identifier(t.name))
             ?: KcLibraryTypeParameterSymbol(round, Name.identifier(t.name))
 
     companion object {
@@ -292,4 +308,24 @@ internal class KcBuiltinTypes(private val round: KcRound) : KaBuiltinTypes() {
     override val nullableAny by lazy { t("kotlin/Any", true) }
     override val nullableNothing by lazy { t("kotlin/Nothing", true) }
     override val annotationType by lazy { t("kotlin/Annotation") }
+}
+
+/** The builder `buildClassType` runs its block on. */
+@Suppress("DEPRECATION_ERROR")
+internal class KcClassTypeBuilder(override val token: KaLifetimeToken) : KaClassTypeBuilder {
+    override var isMarkedNullable = false
+    override var nullability: KaTypeNullability
+        get() = KaTypeNullability.create(isMarkedNullable)
+        set(value) {
+            isMarkedNullable = value == KaTypeNullability.NULLABLE
+        }
+    override val arguments = ArrayList<KaTypeProjection>()
+    override fun argument(argument: KaTypeProjection) {
+        arguments += argument
+    }
+    override fun argument(type: KaType, variance: Variance) {
+        arguments += KcTypeArgument(type, variance, token)
+    }
+
+    fun build(round: KcRound, id: ClassId): KaType = KcClassType(round, id, arguments.toList(), isMarkedNullable)
 }

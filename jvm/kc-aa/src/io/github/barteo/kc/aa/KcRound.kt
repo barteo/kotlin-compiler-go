@@ -14,10 +14,12 @@ import java.util.IdentityHashMap
 
 /**
  * The symbols of one KSP round: the Go model of the module's sources joined
- * with their PSI. A round is immutable; the next update replaces it and
- * invalidates its [token].
+ * with their PSI, and the class-path classes the round asks for, which
+ * [library] loads (the model's `KcOps.cls`). A round is immutable but for
+ * the library classes it loads; the next update replaces it and invalidates
+ * its [token].
  */
-internal class KcRound(files: List<Pair<KcFile, KtFile>>) {
+internal class KcRound(files: List<Pair<KcFile, KtFile>>, private val library: (String) -> KcDecl? = { null }) {
     val token = KcToken()
 
     /** Every source symbol by its pointer key. */
@@ -28,7 +30,15 @@ internal class KcRound(files: List<Pair<KcFile, KtFile>>) {
 
     val classes = HashMap<ClassId, KaNamedClassSymbol>()
     val typeAliases = HashMap<ClassId, KaTypeAliasSymbol>()
+
+    /** The library classes loaded so far, nested ones included. */
     private val libraryClasses = HashMap<ClassId, KaNamedClassSymbol>()
+
+    /** The outermost classes asked of [library], found or not. */
+    private val loaded = HashSet<ClassId>()
+
+    /** The classes kc doesn't know, by ID. */
+    private val unknownClasses = HashMap<ClassId, KaNamedClassSymbol>()
 
     /** The class of each annotation entry, for `KtTypeReference.type`. */
     val annotationClasses = IdentityHashMap<KtAnnotationEntry, ClassId>()
@@ -50,19 +60,52 @@ internal class KcRound(files: List<Pair<KcFile, KtFile>>) {
     val fileSymbols: List<KcFileSymbol>
 
     init {
-        fileSymbols = files.map { (f, kt) -> FileBuilder(f, kt).build() }
+        fileSymbols = files.map { (f, kt) -> Builder(f.path, preorder(kt.node), KaSymbolOrigin.SOURCE).file(f, kt) }
     }
 
+    /** The class [id], or a symbol that knows only its ID if kc doesn't have it. */
     fun classSymbol(id: ClassId): KaNamedClassSymbol =
-        classes[id] ?: libraryClasses.getOrPut(id) { KcLibraryClassSymbol(this, id) }
+        classes[id] ?: libraryClass(id) ?: synchronized(this) { unknownClasses.getOrPut(id) { KcLibraryClassSymbol(this, id) } }
+
+    /** The class-path class [id], loading it with its outermost class, or null if there is none. */
+    @Synchronized
+    fun libraryClass(id: ClassId): KaNamedClassSymbol? {
+        libraryClasses[id]?.let { return it }
+        if (id.isLocal) return null
+        val outer = id.outermostClassId
+        if (loaded.add(outer)) {
+            library(outer.asString())?.let { d ->
+                val origin = if (d.has(KcDecl.JAVA)) KaSymbolOrigin.JAVA_LIBRARY else KaSymbolOrigin.LIBRARY
+                Builder(outer.asString(), noNodes, origin).decl(d, null, "lib:" + outer.asString())
+            }
+        }
+        return libraryClasses[id]
+    }
+
+    /** The symbol of pointer key [key], loading the library class it is in. */
+    fun restore(key: String): KaSymbol? {
+        byKey[key]?.let { return it }
+        if (!key.startsWith("lib:")) return null
+        // The class's ID comes first; its members' keys add /kind:…, /<i or /(i.
+        libraryClass(ClassId.fromString(key.removePrefix("lib:").split(memberKey, 2)[0]))
+        return synchronized(this) { byKey[key] }
+    }
 
     fun annotation(a: KcAnnotation): KaAnnotation = annotations.getValue(a)
 
-    private inner class FileBuilder(val file: KcFile, val kt: KtFile) {
-        val nodes = preorder(kt.node)
-        val types = KcTypeContext(this@KcRound, ::psi)
+    /**
+     * Builds the symbols of the declarations of a source file, whose psi
+     * nodes are [nodes], or of a library class, which has none; [where]
+     * names them in errors.
+     */
+    private inner class Builder(val where: String, val nodes: Array<ASTNode>, val origin: KaSymbolOrigin) {
+        /**
+         * Where the types of the declarations being built are read; each
+         * declaration with type parameters gets its own (see [scoped]).
+         */
+        var types = KcTypeContext(this@KcRound, ::psi)
 
-        fun build(): KcFileSymbol {
+        fun file(file: KcFile, kt: KtFile): KcFileSymbol {
             val fs = KcFileSymbol(this@KcRound, file, kt)
             byKey[fs.key] = fs
             byPsi[kt] = fs
@@ -71,17 +114,32 @@ internal class KcRound(files: List<Pair<KcFile, KtFile>>) {
             return fs
         }
 
+        /**
+         * Runs [build] with a type context for a declaration's type
+         * parameters, which [build] declares by setting its typeParams.
+         */
+        inline fun <T> scoped(build: (KcTypeContext) -> T): T {
+            val outer = types
+            types = outer.nested()
+            try {
+                return build(types)
+            } finally {
+                types = outer
+            }
+        }
+
         fun psi(node: Int): PsiElement? {
             if (node == 0) return null
-            check(node < nodes.size) { "kc: node $node outside ${file.path} (${nodes.size - 1} nodes)" }
+            check(node < nodes.size) { "kc: node $node outside $where (${nodes.size - 1} nodes)" }
             return nodes[node].psi
         }
 
         fun annotation(a: KcAnnotation) {
-            val entry = psi(a.node) as? KtAnnotationEntry
-                ?: error("kc: annotation node ${a.node} of ${file.path} is ${nodes[a.node].elementType}")
+            val entry = psi(a.node)?.let {
+                it as? KtAnnotationEntry ?: error("kc: annotation node ${a.node} of $where is ${nodes[a.node].elementType}")
+            }
             val app = application(a, entry)
-            app.classId?.let { annotationClasses[entry] = it }
+            if (entry != null) app.classId?.let { annotationClasses[entry] = it }
             annotations[a] = app
         }
 
@@ -114,13 +172,13 @@ internal class KcRound(files: List<Pair<KcFile, KtFile>>) {
 
         inline fun <reified T : PsiElement> psiOf(d: KcDecl): T? {
             val p = psi(d.node) ?: return null
-            return p as? T ?: error("kc: ${d.name} in ${file.path} is ${p.javaClass.simpleName}, want ${T::class.simpleName}")
+            return p as? T ?: error("kc: ${d.name} in $where is ${p.javaClass.simpleName}, want ${T::class.simpleName}")
         }
 
-        fun info(d: KcDecl, psi: PsiElement?, parent: KaSymbol, key: String, annots: List<KcAnnotation> = d.annotations): KcInfo {
+        fun info(d: KcDecl, psi: PsiElement?, parent: KaSymbol?, key: String, annots: List<KcAnnotation> = d.annotations): KcInfo {
             d.annotations.forEach(::annotation)
             if (psi != null) typeRefs(d, psi)
-            return KcInfo(this@KcRound, d, psi, parent, key, annots, types)
+            return KcInfo(this@KcRound, d, psi, parent, key, annots, types, origin)
         }
 
         /** Records the types of the type references that declaration [d], at [psi], writes. */
@@ -167,12 +225,14 @@ internal class KcRound(files: List<Pair<KcFile, KtFile>>) {
             return s
         }
 
-        fun decl(d: KcDecl, parent: KaSymbol, key: String): KaDeclarationSymbol = when (d.kind) {
-            KcDecl.CLASS, KcDecl.INTERFACE, KcDecl.OBJECT, KcDecl.ENUM_CLASS, KcDecl.ANNOTATION_CLASS -> {
+        /** The symbol of [d]; [parent] is null for a top-level library class. */
+        fun decl(d: KcDecl, parent: KaSymbol?, key: String): KaDeclarationSymbol = when (d.kind) {
+            KcDecl.CLASS, KcDecl.INTERFACE, KcDecl.OBJECT, KcDecl.ENUM_CLASS, KcDecl.ANNOTATION_CLASS -> scoped { ctx ->
                 val psi = psiOf<KtClassOrObject>(d)
                 val c = register(KcClassSymbol(info(d, psi, parent, key)), key, psi)
-                c.classId?.let { classes[it] = c }
+                c.classId?.let { (if (origin == KaSymbolOrigin.SOURCE) classes else libraryClasses)[it] = c }
                 c.typeParams = typeParams(d, c, key)
+                ctx.typeParams = c.typeParams
                 c.members = decls(d.members, c, key)
                 c
             }
@@ -180,10 +240,11 @@ internal class KcRound(files: List<Pair<KcFile, KtFile>>) {
                 val psi = psiOf<KtEnumEntry>(d)
                 register(KcEnumEntrySymbol(info(d, psi, parent, key)), key, psi)
             }
-            KcDecl.FUNCTION -> {
+            KcDecl.FUNCTION -> scoped { ctx ->
                 val psi = psiOf<KtNamedFunction>(d)
                 val f = register(KcFunctionSymbol(info(d, psi, parent, key)), key, psi)
                 f.typeParams = typeParams(d, f, key)
+                ctx.typeParams = f.typeParams
                 f.params = params(d, f, key)
                 f
             }
@@ -193,15 +254,17 @@ internal class KcRound(files: List<Pair<KcFile, KtFile>>) {
                 c.params = params(d, c, key)
                 c
             }
-            KcDecl.PROPERTY -> property(d, parent, key)
-            KcDecl.TYPE_ALIAS -> {
+            KcDecl.PROPERTY -> scoped { ctx -> property(d, parent!!, key, ctx) }
+            KcDecl.JAVA_FIELD -> register(KcJavaFieldSymbol(info(d, null, parent, key)), key, null)
+            KcDecl.TYPE_ALIAS -> scoped { ctx ->
                 val psi = psiOf<KtTypeAlias>(d)
                 val t = register(KcTypeAliasSymbol(info(d, psi, parent, key)), key, psi)
                 t.classId?.let { typeAliases[it] = t }
                 t.typeParams = typeParams(d, t, key)
+                ctx.typeParams = t.typeParams
                 t
             }
-            else -> error("kc: unexpected declaration kind ${d.kind} for ${d.name} in ${file.path}")
+            else -> error("kc: unexpected declaration kind ${d.kind} for ${d.name} in $where")
         }
 
         /**
@@ -210,9 +273,11 @@ internal class KcRound(files: List<Pair<KcFile, KtFile>>) {
          * parameter (which gets the untargeted ones, as kotlinc does when
          * the annotation may apply to parameters).
          */
-        fun property(d: KcDecl, parent: KaSymbol, key: String): KcPropertySymbol {
+        fun property(d: KcDecl, parent: KaSymbol, key: String, ctx: KcTypeContext): KcPropertySymbol {
             val psi = psi(d.node)
-            check(psi is KtProperty || psi is KtParameter) { "kc: property ${d.name} in ${file.path} is $psi" }
+            check(psi == null && origin != KaSymbolOrigin.SOURCE || psi is KtProperty || psi is KtParameter) {
+                "kc: property ${d.name} in $where is $psi"
+            }
             val fromCtor = psi is KtParameter
             val own = d.annotations.filter {
                 when (it.target) {
@@ -224,15 +289,16 @@ internal class KcRound(files: List<Pair<KcFile, KtFile>>) {
             val p = KcPropertySymbol(info(d, psi, parent, key, own))
             register(p, key, psi)
             p.typeParams = typeParams(d, p, key)
+            ctx.typeParams = p.typeParams
             val accessors = (psi as? KtProperty)?.accessors.orEmpty()
             p.getterSymbol = KcGetterSymbol(
-                KcInfo(this@KcRound, d, accessors.firstOrNull { it.isGetter }, p, "$key/get", d.annotations.filter { it.target == "get" }, types),
+                KcInfo(this@KcRound, d, accessors.firstOrNull { it.isGetter }, p, "$key/get", d.annotations.filter { it.target == "get" }, types, origin),
                 p,
             ).also { register(it, "$key/get", it.info.psi) }
             if (!p.isVal) {
                 val setterPsi = accessors.firstOrNull { it.isSetter }
                 val s = KcSetterSymbol(
-                    KcInfo(this@KcRound, d, setterPsi, p, "$key/set", d.annotations.filter { it.target == "set" }, types),
+                    KcInfo(this@KcRound, d, setterPsi, p, "$key/set", d.annotations.filter { it.target == "set" }, types, origin),
                     p,
                 )
                 register(s, "$key/set", setterPsi)
@@ -242,7 +308,7 @@ internal class KcRound(files: List<Pair<KcFile, KtFile>>) {
                     annotations = emptyList(), typeParams = emptyList(), params = emptyList(), members = emptyList())
                 s.parameterSymbol = KcValueParameterSymbol(
                     KcInfo(this@KcRound, paramDecl, setterPsi?.parameter, s, "$key/set/value",
-                        d.annotations.filter { it.target == "setparam" }, types),
+                        d.annotations.filter { it.target == "setparam" }, types, origin),
                 ).also { register(it, "$key/set/value", setterPsi?.parameter) }
                 p.setterSymbol = s
             }
@@ -261,12 +327,18 @@ internal class KcRound(files: List<Pair<KcFile, KtFile>>) {
                 val k = "$key/($i"
                 val psi = psiOf<KtParameter>(v)
                 val own = v.annotations.filter { it.target == "" || it.target == "param" }
-                v.default?.let(::value)
-                register(KcValueParameterSymbol(info(v, psi, parent, k, own)), k, psi)
+                val default = v.default?.let(::value)
+                register(KcValueParameterSymbol(info(v, psi, parent, k, own), default), k, psi)
             }
     }
 
     companion object {
+        /** The nodes of a library class: none. */
+        @Suppress("UNCHECKED_CAST")
+        private val noNodes = arrayOfNulls<ASTNode>(1) as Array<ASTNode>
+
+        private val memberKey = Regex("/(?=[0-9<(])")
+
         /**
          * The nodes of a tree in preorder, from 1; index 0 is null. This is
          * the numbering of kc's psi node IDs.

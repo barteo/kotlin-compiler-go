@@ -71,6 +71,9 @@ private class KcSession(private val config: KSPConfig, disposable: Disposable) :
     private val paths = LinkedHashSet<String>()
     private lateinit var round: KcRound
 
+    /** The model [round] loads library classes from; the next update closes it. */
+    private var modelHandle = 0L
+
     init {
         // MockProject.registerService, called reflectively: kotlinc can't see
         // MockProject's supertypes in kotlin-compiler's IntelliJ core.
@@ -91,8 +94,12 @@ private class KcSession(private val config: KSPConfig, disposable: Disposable) :
             val vf: VirtualFile = fs.refreshAndFindFileByPath(f.path) ?: error("kc: no virtual file for ${f.path}")
             f to (psiManager.findFile(vf) as? KtFile ?: error("kc: ${f.path} is not a Kotlin file"))
         }
-        if (this::round.isInitialized) round.token.invalidation = "replaced by the next round"
-        round = KcRound(joined)
+        if (this::round.isInitialized) {
+            round.token.invalidation = "replaced by the next round"
+            KcOps.close(modelHandle)
+        }
+        modelHandle = model.handle
+        round = KcRound(joined) { id -> KcOps.cls(model.handle, id) }
         provider.session = KcAnalysis.session(KcAnalysis(round, module))
     }
 
@@ -113,6 +120,10 @@ private class KcSession(private val config: KSPConfig, disposable: Disposable) :
     }
 
     override fun close() {
+        if (this::round.isInitialized) {
+            round.token.invalidation = "session closed"
+            KcOps.close(modelHandle)
+        }
         KcOps.close(handle)
     }
 }
@@ -143,8 +154,24 @@ private object KcExtrasImpl : KcExtras {
     override fun packagePartClass(symbol: KaCallableSymbol): ClassId? = KcAnalysis.unsupported("KcExtras.packagePartClass")
     override fun binaryContainerClass(symbol: KaKotlinPropertySymbol): ClassId? =
         KcAnalysis.unsupported("KcExtras.binaryContainerClass")
-    override fun javaAnnotationDefault(symbol: KaValueParameterSymbol, default: JavaAnnotationArgument?): KaAnnotationValue? =
-        KcAnalysis.unsupported("KcExtras.javaAnnotationDefault")
+    /**
+     * A library annotation parameter's default, from the model rather than
+     * from [default] (kc gives KSP no Java class finder). Like FIR, it makes
+     * up an empty array or null for a parameter without one.
+     */
+    override fun javaAnnotationDefault(symbol: KaValueParameterSymbol, default: JavaAnnotationArgument?): KaAnnotationValue? {
+        val p = symbol as? KcValueParameterSymbol ?: KcAnalysis.unsupported("KcExtras.javaAnnotationDefault of $symbol")
+        p.default?.let { return it }
+        val token = p.info.round.token
+        val t = p.info.decl.type
+        return if (t != null && t.kind == KcType.CLASS && arrayClass.matches(t.classId)) {
+            KcArrayValue(emptyList(), null, token)
+        } else {
+            KcConstantAnnotationValue(KcConstant.Null(null), token)
+        }
+    }
+
+    private val arrayClass = Regex("kotlin/(Array|[A-Z][a-z]+Array|U[A-Z][a-z]+Array)")
     override fun resolveTypes(symbol: KaSymbol) {}
     override fun libraryModuleName(symbol: KaSymbol): String? = KcAnalysis.unsupported("KcExtras.libraryModuleName")
     override fun kotlinBinaryClass(file: VirtualFile): KotlinJvmBinaryClass? = KcAnalysis.unsupported("KcExtras.kotlinBinaryClass")

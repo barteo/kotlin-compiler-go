@@ -48,6 +48,7 @@ stubbed=(
 	symbols.KaKotlinPropertySymbol symbols.KaConstructorSymbol symbols.KaValueParameterSymbol
 	symbols.KaTypeParameterSymbol symbols.KaEnumEntrySymbol symbols.KaTypeAliasSymbol
 	symbols.KaPropertyGetterSymbol symbols.KaPropertySetterSymbol symbols.KaReceiverParameterSymbol
+	symbols.KaJavaFieldSymbol
 	types.KaUsualClassType types.KaClassErrorType types.KaFunctionType types.KaTypeParameterType
 	types.KaFlexibleType types.KaDefinitelyNotNullType
 	annotations.KaAnnotation projectStructure.KaSourceModule symbols.pointers.KaSymbolPointer
@@ -76,6 +77,7 @@ kotlinc -cp "$deps:$out/kc-aa.jar" -d "$out/test-classes" -jvm-target 17 -nowarn
 LD_PRELOAD=$java_home/lib/libjsig.so java -Dksp.backend=kc -Dkc.lib="$out/libkc.so" \
 	-Dkc.stdlib="$lib/kotlin-stdlib-2.4.21.jar" -Didea.home.path="$out" \
 	-cp "$out/test-classes:$out/kc-aa.jar:$deps" PrintAnnotatedKt \
-	"$here/test/slice/src" "$out/slice" a.Marker a.Other kotlin.Suppress e.Args e.Inner > "$out/slice.txt"
+	"$here/test/slice/src" "$out/slice" a.Marker a.Other kotlin.Suppress e.Args e.Inner kotlin.Deprecated java.beans.JavaBean \
+	decls:kotlin.ReplaceWith decls:kotlin.coroutines.AbstractCoroutineContextKey decls:java.util.AbstractMap.SimpleEntry decls:java.lang.Thread.State > "$out/slice.txt"
 diff -u "$here/test/slice/want.txt" "$out/slice.txt"
 echo "slice: ok"
