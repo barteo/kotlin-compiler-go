@@ -132,6 +132,10 @@ private class KcSession(private val config: KSPConfig, disposable: Disposable) :
 
     override fun addFiles(kotlinFiles: List<File>, javaFiles: List<File>): List<KSFile> {
         val added = kotlinFiles.map { it.canonicalPath }.filter { paths.add(it) }.toSet()
+        // The model is of the Kotlin sources and the libraries only (Java
+        // sources don't reach it), and KSP doesn't edit sources between
+        // rounds, so a round that generated no Kotlin keeps this one.
+        if (added.isEmpty()) return emptyList()
         update()
         return round.fileSymbols.filter { it.file.path in added }.map { KSFileImpl.getCached(it) }
     }

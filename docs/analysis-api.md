@@ -818,6 +818,7 @@ octi-server, Dagger, 61 Kotlin files, 31 generated files; 4 CPUs, JDK 21,
 | stock KSP 2.3.6 | 8100–8700 | 990 | 128 | 829 | 6 |
 | kc (baseline) | 3780–3960 | 976 | 442 | 156 | 375 |
 | kc, shared library, signatures only | 3190–3510 | 412 | 181 | 130 | 86 |
+| kc, second round kept | 3030–3120 | 304 | 159 | 150 | 0 |
 
 Processing is 5x faster on kc, and cold runs 2x, but kc's warm total is no
 better: each run checks the module twice, once per round, and each check
@@ -859,10 +860,13 @@ therefore lists only the errors found that far: errors inside bodies
 whose types are declared aren't reported. Parsing and lowering run in
 parallel too.
 
-With these the Go update costs about 55 ms. What is left of the warm
-total is the second round's update (about 56 ms, for the same files),
-the first round's `KcRound` (70–110 ms, PSI parsed again in each
-session's new environment), and KSP itself.
+With these the Go update costs about 55 ms.
+
+**Second round kept.** The model is of the Kotlin sources and the
+libraries (Java sources don't reach it), and KSP doesn't edit sources
+between rounds, so a round that generated no Kotlin, as Dagger's don't,
+keeps the round before: `KcSession.addFiles` updates only when a Kotlin
+file was added.
 
 ## Gaps and open questions
 
