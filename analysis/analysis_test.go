@@ -608,7 +608,6 @@ fun fresh() = 1
 
 class Sub : Old()
 
-@Suppress("DEPRECATION_ERROR")
 fun f(a: A, l: List<Old>) {
     old()
     oldProp
