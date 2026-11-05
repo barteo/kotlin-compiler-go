@@ -29,15 +29,45 @@ class PrintAnnotatedProvider(private val names: List<String>, private val out: M
 
 fun describe(a: KSAnnotated): String = when (a) {
     is KSFile -> "file ${a.fileName}"
-    is KSClassDeclaration -> "class ${a.qualifiedName?.asString()}"
-    is KSFunctionDeclaration -> "function ${a.qualifiedName?.asString()}"
-    is KSPropertyGetter -> "getter ${a.receiver.simpleName.asString()}"
+    is KSClassDeclaration -> "class ${a.qualifiedName?.asString()}" + typeParams(a.typeParameters) +
+        a.superTypes.toList().let { st -> if (st.isEmpty()) "" else st.joinToString(", ", " : ") { render(it) } }
+    is KSFunctionDeclaration -> "function ${a.qualifiedName?.asString()}" + typeParams(a.typeParameters) +
+        a.parameters.joinToString(", ", "(", ")") { (if (it.isVararg) "vararg " else "") + "${it.name?.asString()}: ${render(it.type)}" } +
+        (a.returnType?.let { ": " + render(it) } ?: "") + (a.extensionReceiver?.let { " on " + render(it) } ?: "")
+    is KSPropertyGetter -> "getter ${a.receiver.simpleName.asString()}" + (a.returnType?.let { ": " + render(it) } ?: "")
     is KSPropertySetter -> "setter ${a.receiver.simpleName.asString()}"
-    is KSPropertyDeclaration -> "property ${a.qualifiedName?.asString()}"
-    is KSValueParameter -> "parameter ${a.name?.asString()}"
-    is KSTypeParameter -> "type parameter ${a.name.asString()}"
+    is KSPropertyDeclaration -> "property ${a.qualifiedName?.asString()}" +
+        ": " + render(a.type) + (a.extensionReceiver?.let { " on " + render(it) } ?: "") +
+        (if (a.isMutable) " (var)" else "")
+    is KSValueParameter -> "parameter ${a.name?.asString()}: ${render(a.type)}"
+    is KSTypeParameter -> "type parameter ${a.name.asString()}" + a.bounds.joinToString(", ", " : ") { render(it) }
     is KSTypeAlias -> "typealias ${a.qualifiedName?.asString()}"
     else -> "${a.javaClass.simpleName} $a"
+}
+
+fun typeParams(tps: List<KSTypeParameter>) =
+    if (tps.isEmpty()) "" else tps.joinToString(", ", "<", ">") {
+        (if (it.variance == Variance.INVARIANT) "" else it.variance.label + " ") + it.name.asString() +
+            it.bounds.joinToString("") { b -> " : " + render(b) }
+    }
+
+/** A resolved type as Kotlin writes it, with qualified names. */
+fun render(ref: KSTypeReference): String =
+    render(ref.resolve()) + (if (ref.element is KSDefNonNullReference) " & Any" else "")
+
+fun render(t: KSType): String {
+    if (t.isError) return "<ERROR ${t.declaration.simpleName.asString()}>"
+    val d = t.declaration
+    val name = if (d is KSTypeParameter) d.name.asString() else d.qualifiedName?.asString() ?: d.simpleName.asString()
+    val args = if (t.arguments.isEmpty()) "" else t.arguments.joinToString(", ", "<", ">") { a ->
+        when (a.variance) {
+            Variance.STAR -> "*"
+            Variance.INVARIANT -> render(a.type!!)
+            else -> a.variance.label + " " + render(a.type!!)
+        }
+    }
+    val fn = if (t.isFunctionType || t.isSuspendFunctionType) "fun " else ""
+    return fn + name + args + (if (t.isMarkedNullable) "?" else "")
 }
 
 object StderrLogger : KSPLogger {

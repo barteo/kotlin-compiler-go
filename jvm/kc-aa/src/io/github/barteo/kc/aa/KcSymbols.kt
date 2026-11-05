@@ -12,7 +12,7 @@ import org.jetbrains.kotlin.analysis.api.scopes.KaScope
 import org.jetbrains.kotlin.analysis.api.symbols.*
 import org.jetbrains.kotlin.analysis.api.symbols.markers.KaNamedSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.pointers.KaSymbolPointer
-import org.jetbrains.kotlin.analysis.api.types.KaTypeNullability
+import org.jetbrains.kotlin.analysis.api.types.KaType
 import org.jetbrains.kotlin.analysis.api.types.KaTypeProjection
 import org.jetbrains.kotlin.analysis.api.types.KaResolvedClassTypeQualifier
 import org.jetbrains.kotlin.descriptors.Visibilities
@@ -51,7 +51,18 @@ internal class KcInfo(
     val key: String,
     /** The annotations of the declaration that apply to this symbol. */
     annotations: List<KcAnnotation>,
+    /** Where the declaration's types are read. */
+    val types: KcTypeContext,
 ) {
+    /** The KaType of [t], or [orElse] if it is null. */
+    fun type(t: KcType?, orElse: () -> KaType = { KcErrorType(round, "") }): KaType = t?.let(types::type) ?: orElse()
+
+    val unit: KaType get() = KcClassType(round, ClassId.fromString("kotlin/Unit"))
+
+    /** The receiver parameter of [owner], an extension callable, or null if it isn't one. */
+    fun receiver(owner: KaCallableSymbol): KaReceiverParameterSymbol? =
+        decl.receiver?.let { KcReceiverParameterSymbol(this, owner, type(it)) }
+
     val annotations: KaAnnotationList by lazy { KcAnnotationList(annotations.map { round.annotation(it) }, round.token) }
 
     val name: Name get() = Name.identifier(decl.name)
@@ -128,6 +139,12 @@ internal class KcClassSymbol(val info: KcInfo) : StubKaNamedClassSymbol() {
     override val compilerVisibility get() = info.compilerVisibility
     override val location get() = info.location
     override val modality get() = info.modality
+    override val superTypes: List<KaType> by lazy { info.decl.supertypes.map { info.type(it) } }
+    /** The type of this class with its own type parameters as arguments, C<T>. */
+    val selfType: KaType
+        get() = KcClassType(info.round, classId ?: ClassId.fromString("kotlin/Any"), typeParams.map {
+            KcTypeArgument(KcTypeParameterType(info.round, it.name, it, false), Variance.INVARIANT, info.round.token)
+        })
     override val classKind: KaClassKind
         get() = when (info.decl.kind) {
             KcDecl.INTERFACE -> KaClassKind.INTERFACE
@@ -166,6 +183,8 @@ internal class KcFunctionSymbol(val info: KcInfo) : StubKaNamedFunctionSymbol() 
     override val compilerVisibility get() = info.compilerVisibility
     override val location get() = info.location
     override val modality get() = info.modality
+    override val returnType: KaType by lazy { info.type(info.decl.type) { info.unit } }
+    override val receiverParameter: KaReceiverParameterSymbol? by lazy { info.receiver(this) }
     override val isSuspend get() = info.decl.has(KcDecl.SUSPEND)
     override val isInline get() = info.decl.has(KcDecl.INLINE)
     override val isOperator get() = info.decl.has(KcDecl.OPERATOR)
@@ -196,6 +215,8 @@ internal class KcConstructorSymbol(val info: KcInfo) : StubKaConstructorSymbol()
     override val annotations get() = info.annotations
     override val visibility get() = info.visibility
     override val compilerVisibility get() = info.compilerVisibility
+    override val returnType: KaType
+        get() = (info.parent as? KcClassSymbol)?.selfType ?: KcErrorType(info.round, "")
     override val containingClassId get() = (info.parent as? KcClassSymbol)?.classId
     override val isPrimary get() = info.psi == null || info.psi is KtPrimaryConstructor
     override val isExpect get() = (info.parent as? KcClassSymbol)?.isExpect == true
@@ -217,6 +238,7 @@ internal class KcValueParameterSymbol(val info: KcInfo) : StubKaValueParameterSy
     override val name get() = info.name
     override val visibility get() = KaSymbolVisibility.LOCAL
     override val compilerVisibility get() = Visibilities.Local
+    override val returnType: KaType by lazy { info.type(info.decl.type) }
     override val isVararg get() = info.decl.has(KcDecl.VARARG)
     override val isCrossinline get() = info.decl.has(KcDecl.CROSSINLINE)
     override val isNoinline get() = info.decl.has(KcDecl.NOINLINE)
@@ -233,6 +255,9 @@ internal class KcTypeParameterSymbol(val info: KcInfo) : StubKaTypeParameterSymb
     override val annotations get() = info.annotations
     override val name get() = info.name
     override val location get() = KaSymbolLocation.LOCAL
+    override val upperBounds: List<KaType> by lazy {
+        info.decl.bounds.map { info.type(it) }.ifEmpty { listOf(KcClassType(info.round, ClassId.fromString("kotlin/Any"), marked = true)) }
+    }
     override val isReified get() = info.decl.has(KcDecl.REIFIED)
     override val variance: Variance
         get() = when (info.decl.variance) {
@@ -265,8 +290,8 @@ internal class KcPropertySymbol(val info: KcInfo) : StubKaKotlinPropertySymbol()
     override val isDelegated get() = (info.psi as? KtProperty)?.hasDelegate() == true
     override val isExtension get() = info.decl.receiver != null
     override val isStatic get() = false
-    override val receiverParameter: KaReceiverParameterSymbol?
-        get() = if (isExtension) super.receiverParameter else null
+    override val receiverParameter: KaReceiverParameterSymbol? by lazy { info.receiver(this) }
+    override val returnType: KaType by lazy { info.type(info.decl.type) }
     override val contextReceivers: List<KaContextReceiver> get() = emptyList()
     override val contextParameters: List<KaContextParameterSymbol> get() = emptyList()
     override val typeParameters: List<KaTypeParameterSymbol> get() = typeParams
@@ -292,6 +317,7 @@ internal class KcGetterSymbol(val info: KcInfo, val property: KcPropertySymbol) 
     override val visibility get() = property.visibility
     override val compilerVisibility get() = property.compilerVisibility
     override val modality get() = property.modality
+    override val returnType get() = property.returnType
     override val isDefault get() = info.psi == null
     override val isNotDefault get() = !isDefault
     override val hasBody get() = (info.psi as? KtPropertyAccessor)?.hasBody() == true
@@ -311,6 +337,7 @@ internal class KcSetterSymbol(val info: KcInfo, val property: KcPropertySymbol) 
     override val visibility get() = property.visibility
     override val compilerVisibility get() = property.compilerVisibility
     override val modality get() = property.modality
+    override val returnType get() = info.unit
     override val isDefault get() = info.psi == null
     override val isNotDefault get() = !isDefault
     override val hasBody get() = (info.psi as? KtPropertyAccessor)?.hasBody() == true
@@ -332,6 +359,7 @@ internal class KcEnumEntrySymbol(val info: KcInfo) : StubKaEnumEntrySymbol() {
     override val annotations get() = info.annotations
     override val name get() = info.name
     override val callableId get() = info.callableId(name)
+    override val returnType: KaType by lazy { info.type(info.decl.type) }
     override val isExpect get() = (info.parent as? KcClassSymbol)?.isExpect == true
     override val isExternal get() = false
     override fun createPointer(): KaSymbolPointer<KaEnumEntrySymbol> = info.pointer()
@@ -347,6 +375,7 @@ internal class KcTypeAliasSymbol(val info: KcInfo) : StubKaTypeAliasSymbol() {
     override val visibility get() = info.visibility
     override val compilerVisibility get() = info.compilerVisibility
     override val location get() = info.location
+    override val expandedType: KaType by lazy { info.type(info.decl.type) }
     override val isExpect get() = info.decl.has(KcDecl.EXPECT)
     override val isActual get() = info.decl.has(KcDecl.ACTUAL)
     override fun createPointer(): KaSymbolPointer<KaTypeAliasSymbol> = info.pointer()
@@ -359,6 +388,21 @@ internal class KcTypeAliasSymbol(val info: KcInfo) : StubKaTypeAliasSymbol() {
  * A class kc knows only by its ID: a library class, until the model
  * carries library symbols (M3).
  */
+/** The receiver of an extension callable, [owner]; [returnType] is the receiver's type. */
+internal class KcReceiverParameterSymbol(
+    val info: KcInfo,
+    override val owningCallableSymbol: KaCallableSymbol,
+    override val returnType: KaType,
+) : StubKaReceiverParameterSymbol() {
+    override val token get() = info.round.token
+    override val psi: PsiElement? get() = (info.psi as? KtCallableDeclaration)?.receiverTypeReference
+    override val origin get() = KaSymbolOrigin.SOURCE
+    override val annotations: KaAnnotationList get() = KcAnnotationList(emptyList(), info.round.token)
+    override fun createPointer(): KaSymbolPointer<KaReceiverParameterSymbol> = info.pointer()
+    override fun equals(other: Any?) = other is KcReceiverParameterSymbol && other.owningCallableSymbol == owningCallableSymbol
+    override fun hashCode() = owningCallableSymbol.hashCode() + 7
+}
+
 internal class KcLibraryClassSymbol(val round: KcRound, override val classId: ClassId) : StubKaNamedClassSymbol() {
     override val token get() = round.token
     override val psi: PsiElement? get() = null
@@ -367,33 +411,6 @@ internal class KcLibraryClassSymbol(val round: KcRound, override val classId: Cl
     override val location get() = KaSymbolLocation.TOP_LEVEL
     override fun createPointer(): KaSymbolPointer<KaNamedClassSymbol> = KcPointer("class:" + classId.asString())
     override fun toString() = "KcLibraryClassSymbol($classId)"
-}
-
-/** A class type with no type arguments; enough to name an annotation's class. */
-internal class KcClassType(private val round: KcRound, override val classId: ClassId) : StubKaUsualClassType() {
-    override val token get() = round.token
-    override val symbol: KaClassLikeSymbol get() = round.classSymbol(classId)
-    override val typeArguments: List<KaTypeProjection> get() = emptyList()
-    @Suppress("DEPRECATION", "DEPRECATION_ERROR")
-    override val nullability get() = KaTypeNullability.NON_NULLABLE
-    override val abbreviation get() = null
-    override val annotations: KaAnnotationList get() = KcAnnotationList(emptyList(), round.token)
-    override val qualifiers: List<KaResolvedClassTypeQualifier> get() = super.qualifiers
-    override fun equals(other: Any?) = other is KcClassType && other.classId == classId
-    override fun hashCode() = classId.hashCode()
-    override fun toString() = classId.asFqNameString()
-}
-
-/** The type of an annotation whose class kc didn't resolve. */
-internal class KcErrorType(private val round: KcRound, override val presentableText: String?) : StubKaClassErrorType() {
-    override val token get() = round.token
-    @Suppress("DEPRECATION", "DEPRECATION_ERROR")
-    override val nullability get() = KaTypeNullability.NON_NULLABLE
-    override val abbreviation get() = null
-    override val annotations: KaAnnotationList get() = KcAnnotationList(emptyList(), round.token)
-    override val errorMessage: String get() = "unresolved: $presentableText"
-    override val candidateSymbols: Collection<KaClassLikeSymbol> get() = emptyList()
-    override fun toString() = "ERROR($presentableText)"
 }
 
 internal class KcAnnotationApplication(

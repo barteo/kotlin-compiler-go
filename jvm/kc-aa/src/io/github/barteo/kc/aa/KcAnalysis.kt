@@ -9,6 +9,7 @@ import org.jetbrains.kotlin.analysis.api.scopes.KaScope
 import org.jetbrains.kotlin.analysis.api.session.KaSessionProvider
 import org.jetbrains.kotlin.analysis.api.symbols.*
 import org.jetbrains.kotlin.analysis.api.symbols.markers.KaDeclarationContainerSymbol
+import org.jetbrains.kotlin.analysis.api.types.KaClassType
 import org.jetbrains.kotlin.analysis.api.types.KaType
 import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.psi.*
@@ -81,25 +82,52 @@ class KcAnalysis internal constructor(internal val round: KcRound, private val m
     // KaTypeProvider
     fun getType(ref: KtTypeReference): KaType {
         val entry = (ref.parent as? KtConstructorCalleeExpression)?.parent as? KtAnnotationEntry
-            ?: unsupported("type of ${ref.text}: only annotation types")
-        val id = round.annotationClasses[entry] ?: return KcErrorType(round, ref.text)
-        return KcClassType(round, id)
-    }
-    fun getFullyExpandedType(type: KaType): KaType = when (type) {
-        is KcClassType, is KcErrorType -> type // kc expands aliases before reporting annotation classes
-        else -> unsupported("fullyExpandedType of $type")
+        if (entry != null) {
+            val id = round.annotationClasses[entry] ?: return KcErrorType(round, ref.text)
+            return KcClassType(round, id)
+        }
+        return round.typeOf(ref) ?: unsupported("type of ${ref.text}: not a declaration's type")
     }
 
+    // KaTypeInformationProvider
+    /** kc expands type aliases in every type it reports. */
+    fun getFullyExpandedType(type: KaType): KaType = type
+    fun getExpandedSymbol(type: KaType): KaClassSymbol? = when (type) {
+        is KaClassType -> type.symbol as? KaClassSymbol
+        is KcFlexibleType -> getExpandedSymbol(type.lowerBound)
+        else -> null
+    }
+    fun isMarkedNullable(type: KaType): Boolean = base(type).marked
+    fun isNullable(type: KaType): Boolean = when (type) {
+        is KcFlexibleType -> isNullable(type.upperBound)
+        is KcDefinitelyNotNullType -> false
+        is KcTypeParameterType -> type.marked || type.symbol.upperBounds.all(::isNullable)
+        else -> base(type).marked
+    }
+    fun hasFlexibleNullability(type: KaType): Boolean =
+        type is KcFlexibleType && isMarkedNullable(type.upperBound) && !isMarkedNullable(type.lowerBound)
+    fun isAnyType(type: KaType): Boolean = type is KcClassType && !type.marked && type.classId == ANY
+
+    // KaBuiltinTypesProvider
+    fun getBuiltinTypes(): org.jetbrains.kotlin.analysis.api.components.KaBuiltinTypes = builtins
+    private val builtins by lazy { KcBuiltinTypes(round) }
 
     // KaTypeCreator
+    fun withNullability(type: KaType, isMarkedNullable: Boolean): KaType = base(type).withNullability(isMarkedNullable)
+    fun lowerBoundIfFlexible(type: KaType): KaType = (type as? KcFlexibleType)?.lowerBound ?: type
+    fun upperBoundIfFlexible(type: KaType): KaType = (type as? KcFlexibleType)?.upperBound ?: type
     /** A class type with no arguments; the builder isn't run, so arguments it adds are lost. */
     fun buildClassType(classId: ClassId, init: Function1<Any?, Unit>): KaType = KcClassType(round, classId)
 
-    // KaTypeInformationProvider
-    fun isMarkedNullable(type: KaType): Boolean = when (type) {
-        is KcClassType, is KcErrorType -> false
-        else -> unsupported("isMarkedNullable of $type")
+    // KaTypeRelationChecker
+    fun getDirectSupertypes(type: KaType): Sequence<KaType> = directSupertypes(type, true)
+    fun directSupertypes(type: KaType, shouldApproximate: Boolean): Sequence<KaType> {
+        // TODO(M4): substitute the class's type parameters with the type's arguments.
+        val s = getExpandedSymbol(type) ?: return emptySequence()
+        return s.superTypes.asSequence()
     }
+
+    private fun base(type: KaType): KcTypeBase = type as? KcTypeBase ?: unsupported("type $type isn't kc's")
 
     private fun members(s: KaDeclarationContainerSymbol): List<KaDeclarationSymbol> =
         (s as? KcClassSymbol)?.members ?: unsupported("members of $s")
@@ -111,6 +139,8 @@ class KcAnalysis internal constructor(internal val round: KcRound, private val m
 
     companion object {
         private val dispatch = ConcurrentHashMap<Method, Method?>()
+
+        private val ANY = ClassId.fromString("kotlin/Any")
 
         internal fun unsupported(what: String): Nothing = throw UnsupportedOperationException("kc: $what")
 

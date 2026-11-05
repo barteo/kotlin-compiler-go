@@ -138,7 +138,8 @@ private object KcExtrasImpl : KcExtras {
     override fun optimalModeForValueParameter(type: KaType): TypeMappingMode =
         KcAnalysis.unsupported("KcExtras.optimalModeForValueParameter")
     override fun isRawType(type: KaType): Boolean = false
-    override fun abbreviatedTypeAlias(type: KaFunctionType): ClassId? = KcAnalysis.unsupported("KcExtras.abbreviatedTypeAlias")
+    // TODO(M4): the model doesn't keep alias abbreviations yet.
+    override fun abbreviatedTypeAlias(type: KaFunctionType): ClassId? = null
     override fun packagePartClass(symbol: KaCallableSymbol): ClassId? = KcAnalysis.unsupported("KcExtras.packagePartClass")
     override fun binaryContainerClass(symbol: KaKotlinPropertySymbol): ClassId? =
         KcAnalysis.unsupported("KcExtras.binaryContainerClass")

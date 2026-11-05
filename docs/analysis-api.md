@@ -69,7 +69,7 @@ mapping.
 | M0.4 | Vertical slice: list annotated source classes through a `kc` KspBackend: `jvm/kc-aa/build.sh test` | done, see gaps |
 | M1 | `psi` on Kotlin 2.4.21 | done before this work |
 | M2 | Error tolerance, `types.Invalid` payload, extension-vs-top-level overload bug, `@Contextual`/`@EncodeDefault` | done (two items moved, see M2) |
-| M3 | Richer symbol model: visibility and modality enums, flags, origins, library annotation arguments, Java parameter names | in progress: source types, flags, modality |
+| M3 | Richer symbol model: visibility and modality enums, flags, origins, library annotation arguments, Java parameter names | in progress: source types, flags, modality; KaTypes on the JVM |
 | M4 | Queryable session `analysis/ka`: lookups, scopes, relations, overrides | |
 | M5 | Bridge: `cmd/libkc` operations, `tools/kagen` wire format, `jvm/kc-aa` KaSession | |
 | M6 | KSP fork integration: the `kc` backend, IC lookups, hot paths | |
@@ -266,7 +266,33 @@ Known gaps in this step:
   (`String!`), because kc picks one when it infers a declaration's type.
 - Accessor flags and modality aren't in the model.
 - Library declarations aren't in the model yet.
-- The JVM side doesn't build `KaType`s from the model yet.
+
+**Step 2: KaTypes on the JVM.** `jvm/kc-aa/.../KcTypes.kt` turns the model's
+types into `KaType`s: class types (with qualifiers for nested classes),
+function types (receiver, context parameters, suspend), type parameter types
+(linked to the source `KaTypeParameterSymbol`), flexible, definitely non-null
+and error types, with star and variance projections. They back:
+- `returnType` on functions, constructors, properties, accessors, parameters
+  and enum entries (a constructor's is its class's type); `receiverParameter`;
+  `superTypes` on classes; `upperBounds` on type parameters; and
+  `expandedType` on type aliases.
+- `KtTypeReference.type` for any reference in a declaration's signature,
+  mapped by walking the written type alongside the model's type.
+- `getBuiltinTypes`, `isMarkedNullable`, `isNullable`, `withNullability`,
+  `lowerBoundIfFlexible`/`upperBoundIfFlexible`, `getExpandedSymbol`,
+  `isAnyType` and `directSupertypes`.
+
+The slice (`test/slice/src/d/Types.kt`) prints each declaration's types
+through KSP. Known differences from kotlinc and things still missing:
+- An inferred Java return type is `String?` in kc and `String!` in kotlinc.
+- `directSupertypes` doesn't substitute the type's arguments.
+- `getFullyExpandedType` returns its argument, and
+  `KcExtras.abbreviatedTypeAlias` returns null: there is no alias
+  abbreviation yet.
+- `buildClassType` ignores its builder's arguments and nullability.
+- Library class types know only their class ID, and a type parameter of a
+  library class is a placeholder symbol.
+- `isSubtypeOf` and `semanticallyEquals` aren't implemented.
 
 ## Gaps and open questions
 
@@ -274,9 +300,8 @@ Known gaps in this step:
   - Accessors read their flags from PSI modifiers, not from `kc`.
   - There are no backing-field symbols, so `@field:` annotations are dropped.
   - Library classes are known by class ID only.
-  - Types are argument-free class types: `KtTypeReference.type` answers only
-    annotation types, `buildClassType` doesn't run its builder, and library
-    type aliases aren't known.
+  - `buildClassType` doesn't run its builder, and library type aliases
+    aren't known.
   - Java sources are ignored.
   - The PSI join checks each node's PSI class, not yet the whole kind
     sequence.
