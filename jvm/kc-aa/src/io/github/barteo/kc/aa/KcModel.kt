@@ -40,7 +40,9 @@ internal object KcOps {
     fun update(session: Long, paths: List<String>): KcModel {
         val w = Wire.Writer().writeInt(session).writeUint(paths.size.toLong())
         paths.forEach { w.writeString(it) }
+        val t = KcTimer()
         val r = Wire.Reader(KcNative.call(UPDATE, w.message()))
+        t.mark("native")
         val model = r.readInt()
         try {
             val files = List(r.readUint().toInt()) {
@@ -49,6 +51,8 @@ internal object KcOps {
             val diagnostics = List(r.readUint().toInt()) {
                 KcDiagnostic(r.readString(), r.readUint().toInt(), r.readUint().toInt(), r.readString(), r.readString())
             }
+            t.mark("decode")
+            t.print("update")
             return KcModel(model, files, diagnostics)
         } catch (e: Throwable) {
             close(model)
@@ -339,5 +343,30 @@ internal sealed class KcValue(val node: Int) {
         const val ANNOTATION = 4
         const val ARRAY = 5
         const val UNSUPPORTED = 6
+    }
+}
+
+/**
+ * KcTimer measures consecutive phases when the environment has KC_TIMING,
+ * and writes them, in ms, to standard error on a line that starts with
+ * "kc-jvm:" (bench/ksp).
+ */
+internal class KcTimer {
+    private var last = System.nanoTime()
+    private val parts = StringBuilder()
+
+    fun mark(name: String) {
+        if (!ON) return
+        val now = System.nanoTime()
+        parts.append(' ').append(name).append('=').append("%.1f".format((now - last) / 1e6))
+        last = now
+    }
+
+    fun print(what: String) {
+        if (ON) System.err.println("kc-jvm: $what$parts")
+    }
+
+    companion object {
+        val ON = System.getenv("KC_TIMING") != null
     }
 }

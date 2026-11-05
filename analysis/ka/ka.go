@@ -19,6 +19,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/barteo/kotlin-compiler-go/analysis"
 	"github.com/barteo/kotlin-compiler-go/internal/check"
@@ -219,6 +220,8 @@ type Annotation struct {
 // Update checks the module's sources and returns their model. Errors in
 // the sources don't stop it: they are the Model's Diagnostics.
 func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) {
+	tm := NewTimer()
+	defer tm.Print(fmt.Sprintf("update files=%d", len(sources)))
 	snaps := make([]*psi.Snapshot, len(sources))
 	for i, src := range sources {
 		var text string
@@ -233,6 +236,7 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 		}
 		snaps[i] = psi.Parse(src.Path, text)
 	}
+	tm.Mark("parse")
 	jobs := max(s.cfg.Jobs, 1)
 	cp, lib, err := driver.OpenLibrary(driver.Options{
 		JDKHome: s.cfg.JDKHome, NoJDK: s.cfg.NoJDK, ClassPath: s.cfg.ClassPath,
@@ -248,8 +252,14 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 			m.Close()
 		}
 	}()
+	tm.Mark("open")
 	files, provs, broken := lowerAll(snaps, m)
+	tm.Mark("lower")
 	rec, checkErrs, err := checkFiles(ctx, files, lib, jobs)
+	if !rec.bodies.IsZero() {
+		tm.MarkAt("signatures", rec.bodies)
+	}
+	tm.Mark("bodies")
 	if _, crashed := err.(checkPanic); crashed && len(broken) > 0 {
 		// The checker can't take a file with syntax errors: check the
 		// others, and model the broken ones from syntax alone.
@@ -285,6 +295,7 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 		}
 		m.Files = append(m.Files, mf)
 	}
+	tm.Mark("model")
 	ok = true
 	return m, nil
 }
@@ -374,7 +385,11 @@ type recorder struct {
 	refs   map[*syntax.TypeRef]types.Type // the types written, as resolved
 	// aliases are the typealiases the types written name.
 	aliases map[*syntax.TypeRef]*types.AliasSym
+	// bodies is when the checker started the bodies.
+	bodies time.Time
 }
+
+func (r *recorder) Bodies() { r.bodies = time.Now() }
 
 func (r *recorder) Alias(x any, a *types.AliasSym) {
 	if ref, ok := x.(*syntax.TypeRef); ok {

@@ -73,7 +73,7 @@ mapping.
 | M4 | Queryable session `analysis/ka`: lookups, scopes, relations, overrides | |
 | M5 | Bridge: `cmd/libkc` operations, `tools/kagen` wire format, `jvm/kc-aa` KaSession | |
 | M6 | KSP fork integration: the `kc` backend, IC lookups, hot paths | |
-| M7 | Differential conformance against stock KSP, benchmark, CI | |
+| M7 | Differential conformance against stock KSP, benchmark, CI | in progress: `bench/ksp` timing of stock KSP and kc on octi-server (step 11) |
 
 ### M0.1 – JNI spike
 
@@ -794,6 +794,45 @@ are the gaps left, 25 lines:
   `Bag`'s `size` doesn't override `AbstractCollection.size`.
 - `asMemberOf` of a star-projected type (`f.Base<*>`) substitutes `Any?`
   where FIR has the captured type, which KSP prints as `Any`.
+
+#### Step 11: benchmark
+
+`bench/ksp/run.sh` times KSP's processing loop on a project with stock
+KSP 2.3.6 and with the fork on kc, each in a JVM of its own and run after
+run, as a Gradle daemon runs `kspKotlin` (`KspBench.kt`), then cold in
+fresh JVMs. Each run prints session setup (until the provider's `create`),
+processing (the processors' `process` calls), the time between rounds,
+finish and teardown. `KC_TIMING=1` adds kc's own split on stderr:
+`kc-go:` lines for `ka.Session.Update` (parse, class-path open, lower,
+signature checking, body checking, model) and `kc-jvm:` lines for
+`KcSession` (environment, `KcOps.open`, the native update and its decoding,
+PSI lookup, `KcRound`). `JFR=N` records samples from run N on;
+`bench/ksp/Classify.java` splits them by phase and by code. octi-server
+isn't vendored: its sources and Gradle class paths are inputs.
+
+octi-server, Dagger, 61 Kotlin files, 31 generated files; 8 CPUs, JDK 21,
+20 runs in one JVM (warm is the median of the last 10), and 3 cold JVMs:
+
+| ms | cold JVM | warm total | warm setup | warm process | between rounds |
+|---|---|---|---|---|---|
+| stock KSP 2.3.6 | 8100–8700 | 990 | 128 | 829 | 6 |
+| kc (baseline) | 3780–3960 | 976 | 442 | 156 | 375 |
+
+Processing is 5x faster on kc, and cold runs 2x, but kc's warm total is no
+better: each run checks the module twice, once per round, and each check
+costs about 350 ms in Go:
+
+| ms per update | parse | open | lower | signatures | bodies | model |
+|---|---|---|---|---|---|---|
+| kc (baseline) | 30–65 | 20–60 | 12–15 | 105–150 | 70–90 | 55–120 |
+
+On the JVM, the first round's `KcRound` takes about 155 ms (IntelliJ
+parsing the files' PSI on first use); the second's 12–40 ms. The
+environment, `KcOps.open` and decoding take under 15 ms together.
+
+Dagger generates only Java, so the second round checks the same Kotlin
+sources again. The rest of step 11 makes the warm path cheaper in order
+of these numbers.
 
 ## Gaps and open questions
 

@@ -54,6 +54,12 @@ type ValueRecorder interface {
 	AnnotationValues(f *syntax.File, a *syntax.Annotation, values []syntax.AnnotationValue)
 }
 
+// A PhaseRecorder is a Recorder that is told when checking starts the
+// bodies of the files, after the signatures: for timing.
+type PhaseRecorder interface {
+	Bodies()
+}
+
 // An AliasRecorder is a Recorder that is also told the typealias a type
 // reference or a constructor call names: Alias in x: Alias and Alias(1).
 type AliasRecorder interface {

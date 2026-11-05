@@ -52,10 +52,14 @@ class KcBackend : KspBackend {
 }
 
 private class KcSession(private val config: KSPConfig, disposable: Disposable) : KspBackendSession {
+    private val timer = KcTimer()
     private val env: KotlinCoreEnvironment = run {
         val conf = CompilerConfiguration()
         conf.extensionsStorage = CompilerPluginRegistrar.ExtensionStorage()
         KotlinCoreEnvironment.createForProduction(disposable, conf, EnvironmentConfigFiles.JVM_CONFIG_FILES)
+    }
+    init {
+        timer.mark("environment")
     }
     override val project: Project = env.project
     override val module = KcModule(project, config)
@@ -89,17 +93,22 @@ private class KcSession(private val config: KSPConfig, disposable: Disposable) :
             root.walkTopDown().filter { it.isFile && it.extension == "kt" }.sortedBy { it.path }
                 .forEach { paths += it.canonicalPath }
         }
+        timer.mark("open")
+        timer.print("session")
         update()
     }
 
     private fun update() {
+        val t = KcTimer()
         val model = KcOps.update(handle, paths.toList())
+        t.mark("update")
         if (System.getProperty("kc.diagnostics") != null) model.diagnostics.forEach { System.err.println("kc: $it") }
         val fs = VirtualFileManager.getInstance().getFileSystem(StandardFileSystems.FILE_PROTOCOL)
         val joined = model.files.map { f ->
             val vf: VirtualFile = fs.refreshAndFindFileByPath(f.path) ?: error("kc: no virtual file for ${f.path}")
             f to (psiManager.findFile(vf) as? KtFile ?: error("kc: ${f.path} is not a Kotlin file"))
         }
+        t.mark("psi")
         if (this::round.isInitialized) {
             round.token.invalidation = "replaced by the next round"
             KcOps.close(modelHandle)
@@ -107,6 +116,8 @@ private class KcSession(private val config: KSPConfig, disposable: Disposable) :
         modelHandle = model.handle
         round = KcRound(joined, { id -> KcOps.cls(model.handle, id) }, { fq -> KcOps.pkg(model.handle, fq) })
         provider.session = KcAnalysis.session(KcAnalysis(round, module, libraryModule))
+        t.mark("round")
+        t.print("round files=${paths.size}")
     }
 
     override fun sourceFiles(): List<KSFile> = round.fileSymbols.map { KSFileImpl.getCached(it) }

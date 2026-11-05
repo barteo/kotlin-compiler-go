@@ -172,6 +172,9 @@ func update(req []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	tm := ka.NewTimer()
+	defer tm.Print("update")
+	defer tm.Mark("encode")
 	var w wire.Writer
 	w.Int(int64(handles.Put(m)))
 	w.Uint(uint64(len(m.Files)))

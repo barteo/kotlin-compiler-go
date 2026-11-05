@@ -562,6 +562,9 @@ func CheckContext(ctx context.Context, files []*syntax.File, lib *Library, jobs 
 		c.checkClashes()
 	}
 
+	if r, ok := rec.(PhaseRecorder); ok {
+		r.Bodies()
+	}
 	if jobs < 1 {
 		jobs = 1
 	}
