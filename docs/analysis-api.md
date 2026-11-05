@@ -73,7 +73,7 @@ mapping.
 | M4 | Queryable session `analysis/ka`: lookups, scopes, relations, overrides | |
 | M5 | Bridge: `cmd/libkc` operations, `tools/kagen` wire format, `jvm/kc-aa` KaSession | |
 | M6 | KSP fork integration: the `kc` backend, IC lookups, hot paths | |
-| M7 | Differential conformance against stock KSP, benchmark, CI | in progress: `bench/ksp` (step 11): warm 990 ms on stock KSP, 284 ms on kc; cold 8.1–8.7 s and 2.9–3.2 s; CI to do |
+| M7 | Differential conformance against stock KSP, benchmark, CI | in progress: `bench/ksp` (step 11): warm 990 ms on stock KSP, 284 ms on kc; cold 8.1–8.7 s and 2.9–3.2 s; CI: `.github/workflows/analysis-api.yml` (step 12) |
 
 ### M0.1 – JNI spike
 
@@ -894,6 +894,19 @@ loading and JIT. Next steps, in order of the numbers:
   the rest: the update is whole-module today.
 - For cold runs, a class-data-sharing archive for kc-aa and IntelliJ
   core, and reading the library's classes in parallel.
+
+#### Step 12: CI
+
+`.github/workflows/analysis-api.yml` runs the JVM half on every pull
+request: `jvm/libkc/test.sh` (the JNI stress test, with and without
+libjsig) and `jvm/kc-aa/build.sh stock` (the slice, Moshi and Dagger on
+the kc backend, compared with their recorded output, and on stock KSP
+2.3.6). The Analysis API jar and the KSP fork are cached, keyed by their
+build scripts and the patches; the processors' and stock KSP's jars too.
+From nothing, on 4 CPUs, both take under 3 minutes. The Go half's tests
+(`analysis/...`, `internal/kaops`, `internal/check`) run in PR checks
+with the rest. The benchmark isn't run in CI: octi-server isn't vendored,
+and shared runners' timings vary too much to gate on.
 
 ## Gaps and open questions
 
