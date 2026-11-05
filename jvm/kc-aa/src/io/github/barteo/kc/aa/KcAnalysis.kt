@@ -39,7 +39,11 @@ import java.util.concurrent.ConcurrentHashMap
  * members run their default body.
  */
 @Suppress("unused") // called reflectively
-class KcAnalysis internal constructor(internal val round: KcRound, private val module: KaModule) {
+class KcAnalysis internal constructor(
+    internal val round: KcRound,
+    private val module: KaModule,
+    private val libraryModule: KaModule,
+) {
     fun getToken(): KaLifetimeToken = round.token
     fun getUseSiteModule(): KaModule = module
     /** kc has no IntelliJ search scope: KSP's Java class lookups find nothing and fall back to [KcExtras]. */
@@ -110,6 +114,17 @@ class KcAnalysis internal constructor(internal val round: KcRound, private val m
         is KcPackageSymbol -> null
         is KcReceiverParameterSymbol -> s.owningCallableSymbol
         else -> unsupported("containingSymbol of $s")
+    }
+
+    /** The declaration [s] is in: its containing symbol, unless that's a file or package. */
+    fun getContainingDeclaration(s: KaSymbol): KaDeclarationSymbol? = getContainingSymbol(s) as? KaDeclarationSymbol
+
+    /** The source module for source symbols, the library module for library ones. */
+    fun getContainingModule(s: KaSymbol): KaModule = when (s.origin) {
+        KaSymbolOrigin.LIBRARY, KaSymbolOrigin.JAVA_LIBRARY -> libraryModule
+        KaSymbolOrigin.SUBSTITUTION_OVERRIDE, KaSymbolOrigin.INTERSECTION_OVERRIDE, KaSymbolOrigin.DELEGATED ->
+            getContainingSymbol(s)?.let(::getContainingModule) ?: module
+        else -> module
     }
 
     fun getDirectlyOverriddenSymbols(s: KaCallableSymbol): Sequence<KaCallableSymbol> = round.directlyOverridden(s).asSequence()

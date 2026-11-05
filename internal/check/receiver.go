@@ -229,19 +229,55 @@ func (c *Checker) recvCall(x *syntax.Call, id *syntax.Ident) bool {
 		}
 		m := &syntax.Member{X: recvThis(r, id.P), Name: id.Name}
 		m.P = id.P
-		if t := c.scope.narrowed(r.sym); !c.hasFun(t, id.Name, x) && !c.hasFunProp(t, id.Name, x) && !c.extPropInvoked(m, t, c.classOf(t), x) {
+		t := c.scope.narrowed(r.sym)
+		if !c.hasFun(t, id.Name, x) && !c.hasFunProp(t, id.Name, x) && !c.extPropInvoked(m, t, c.classOf(t), x) {
 			continue
 		}
-		x.Fun = m
-		return true
+		if !c.extensionsGiveWay(t, id.Name, x) {
+			x.Fun = m
+			return true
+		}
 	}
 	return false
+}
+
+// extensionsGiveWay reports whether a lambda receiver of type t, whose
+// only functions that may take a call are extensions, gives way to a
+// top-level function: as thisExtension does for the class's this, a call
+// with a lambda is checked once, so the arguments' types decide. In
+// embeddedServer { log(TAG, INFO) { } }, Application's Any.log(priority,
+// metaData, message) gives way to log(tag: String, priority, ...).
+func (c *Checker) extensionsGiveWay(t types.Type, name string, x *syntax.Call) bool {
+	if !hasLambda(x.Args) || c.memberFun(t, name, x) || c.hasFunProp(t, name, x) || !c.anyMayTake(c.topFuns(name), x) {
+		return false
+	}
+	var fs []*types.FunSym
+	for _, cl := range c.extCalleesFor(name, t.Flex(), x) {
+		if c.mayTake(cl.f, x) {
+			fs = append(fs, cl.f)
+		}
+	}
+	return len(fs) > 0 && !c.takeTypes(fs, x, c.argTypes(x))
 }
 
 // hasFun reports whether a receiver of type t has a member or extension
 // function with a name that may take a call's arguments, judging by their
 // number and names, and whether lambdas go to function-typed parameters.
 func (c *Checker) hasFun(t types.Type, name string, x *syntax.Call) bool {
+	if c.memberFun(t, name, x) {
+		return true
+	}
+	for _, cl := range c.extCalleesFor(name, t.Flex(), x) {
+		if c.mayTake(cl.f, x) {
+			return true
+		}
+	}
+	return false
+}
+
+// memberFun is hasFun without extensions: a member, built-in or inner
+// class constructor that may take the call.
+func (c *Checker) memberFun(t types.Type, name string, x *syntax.Call) bool {
 	t = t.Flex()
 	fits := func(fs []*types.FunSym) bool {
 		for _, f := range fs {
@@ -270,11 +306,6 @@ func (c *Checker) hasFun(t types.Type, name string, x *syntax.Call) bool {
 					return true
 				}
 			}
-		}
-	}
-	for _, cl := range c.extCalleesFor(name, t, x) {
-		if c.mayTake(cl.f, x) {
-			return true
 		}
 	}
 	return false

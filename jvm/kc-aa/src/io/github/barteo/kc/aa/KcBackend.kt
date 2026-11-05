@@ -60,6 +60,7 @@ private class KcSession(private val config: KSPConfig, disposable: Disposable) :
     override val project: Project = env.project
     override val module = KcModule(project, config)
     override val extras: KcExtras = KcExtrasImpl
+    private val libraryModule = KcLibraryModule(project, config)
     private val provider = KcSessionProvider(project)
     private val psiManager = PsiManager.getInstance(project)
     private val handle: Long = KcOps.open(
@@ -105,7 +106,7 @@ private class KcSession(private val config: KSPConfig, disposable: Disposable) :
         }
         modelHandle = model.handle
         round = KcRound(joined, { id -> KcOps.cls(model.handle, id) }, { fq -> KcOps.pkg(model.handle, fq) })
-        provider.session = KcAnalysis.session(KcAnalysis(round, module))
+        provider.session = KcAnalysis.session(KcAnalysis(round, module, libraryModule))
     }
 
     override fun sourceFiles(): List<KSFile> = round.fileSymbols.map { KSFileImpl.getCached(it) }
@@ -155,6 +156,23 @@ internal class KcModule(override val project: Project, private val config: KSPCo
     override val directFriendDependencies: List<KaModule> get() = emptyList()
     override val transitiveDependsOnDependencies: List<KaModule> get() = emptyList()
     override fun toString() = "KcModule($name)"
+}
+
+/**
+ * The module of every library symbol: kc puts the whole class path, JDK
+ * included, in one.
+ */
+internal class KcLibraryModule(override val project: Project, private val config: KSPConfig) : StubKaLibraryModule() {
+    override val libraryName: String get() = "kc-libraries"
+    override val binaryRoots: Collection<java.nio.file.Path> get() = config.libraries.map { it.toPath() }
+    override val isSdk: Boolean get() = false
+    override val librarySources get() = null
+    override val targetPlatform: TargetPlatform get() = JvmPlatforms.defaultJvmPlatform
+    override val directRegularDependencies: List<KaModule> get() = emptyList()
+    override val directDependsOnDependencies: List<KaModule> get() = emptyList()
+    override val directFriendDependencies: List<KaModule> get() = emptyList()
+    override val transitiveDependsOnDependencies: List<KaModule> get() = emptyList()
+    override fun toString() = "KcLibraryModule"
 }
 
 /** The FIR-only facts; kc answers none yet. */
@@ -209,6 +227,7 @@ private object KcExtrasImpl : KcExtras {
 
     private val arrayClass = Regex("kotlin/(Array|[A-Z][a-z]+Array|U[A-Z][a-z]+Array)")
     override fun resolveTypes(symbol: KaSymbol) {}
-    override fun libraryModuleName(symbol: KaSymbol): String? = KcAnalysis.unsupported("KcExtras.libraryModuleName")
+    // KSP then uses "main". (kc doesn't decode class metadata's module name.)
+    override fun libraryModuleName(symbol: KaSymbol): String? = null
     override fun kotlinBinaryClass(file: VirtualFile): KotlinJvmBinaryClass? = KcAnalysis.unsupported("KcExtras.kotlinBinaryClass")
 }

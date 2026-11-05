@@ -53,7 +53,8 @@ stubbed=(
 	symbols.KaJavaFieldSymbol symbols.KaPackageSymbol
 	types.KaUsualClassType types.KaClassErrorType types.KaFunctionType types.KaTypeParameterType
 	types.KaFlexibleType types.KaDefinitelyNotNullType
-	annotations.KaAnnotation projectStructure.KaSourceModule symbols.pointers.KaSymbolPointer
+	annotations.KaAnnotation projectStructure.KaSourceModule projectStructure.KaLibraryModule
+	symbols.pointers.KaSymbolPointer
 )
 rm -rf "$out/gen"
 kotlinc -cp "$runtime" -d "$out/gen" "$here/gen/GenStubs.kt" 2>&1 | grep -v '^warning' || true

@@ -69,7 +69,7 @@ mapping.
 | M0.4 | Vertical slice: list annotated source classes through a `kc` KspBackend: `jvm/kc-aa/build.sh test` | done, see gaps |
 | M1 | `psi` on Kotlin 2.4.21 | done before this work |
 | M2 | Error tolerance, `types.Invalid` payload, extension-vs-top-level overload bug, `@Contextual`/`@EncodeDefault` | done (two items moved, see M2) |
-| M3 | Richer symbol model: visibility and modality enums, flags, origins, library annotation arguments, Java parameter names | in progress: source types, flags, modality; KaTypes on the JVM; annotation arguments; library classes; inherited members, overrides, subtyping; packages, library top-level declarations, alias abbreviations; JVM type mapping, Moshi codegen end to end; backing fields, Dagger end to end |
+| M3 | Richer symbol model: visibility and modality enums, flags, origins, library annotation arguments, Java parameter names | in progress: source types, flags, modality; KaTypes on the JVM; annotation arguments; library classes; inherited members, overrides, subtyping; packages, library top-level declarations, alias abbreviations; JVM type mapping, Moshi codegen end to end; backing fields, Dagger end to end; Dagger on octi-server byte-identical to stock KSP 2.3.6 |
 | M4 | Queryable session `analysis/ka`: lookups, scopes, relations, overrides | |
 | M5 | Bridge: `cmd/libkc` operations, `tools/kagen` wire format, `jvm/kc-aa` KaSession | |
 | M6 | KSP fork integration: the `kc` backend, IC lookups, hot paths | |
@@ -691,13 +691,54 @@ The second real processor: Dagger's KSP processor (`dagger-compiler`
     sets both properties.
 
 Known gaps:
-- No stock-KSP reference output: the AA standalone jars are blocked here,
-  so `test/dagger/want` is kc's output, checked by compiling and running
-  it rather than by a diff against kotlinc+KSP.
+- ~~No stock-KSP reference output.~~ Stock KSP 2.3.6's embeddable jar
+  runs here (only the AA 2.4.21 standalone jars are blocked); step 9
+  diffs against it.
 - Hilt, assisted injection, subcomponents, map multibindings, and Java
   sources in the module aren't exercised.
 - Source annotation-class properties report a backing field (as FIR's
   source properties do); library ones don't.
+
+#### Step 9: Dagger on octi-server, matched against stock KSP
+
+The plan's end-to-end target: Dagger over octi-server (60 files, 7.7k
+lines, ktor and kotlinx-serialization), through the `kc` backend, against
+stock KSP 2.3.6 (`symbol-processing-aa-embeddable`, which runs here; only
+the AA 2.4.21 standalone jars are blocked).
+
+- **Output.** The 31 generated Java files (the `_Factory` classes,
+  `DaggerAppComponent`) are byte-identical to stock KSP 2.3.6's.
+- **`getContainingDeclaration` and `getContainingModule`.** A library
+  symbol's module is a `KcLibraryModule` (a `KaLibraryModule` over the
+  configured libraries, one for all of them); substitution, intersection
+  and delegated overrides take their class's module; the rest are the
+  source module's. `KcExtras.libraryModuleName` returns null, so KSP
+  names library modules "main".
+- **`RunKsp`** takes several source roots (`SRC_DIR[:SRC_DIR...]`) and
+  `-Dksp.languageVersion`.
+- **Checker: octi-server checks with no errors** but the unresolved
+  `DaggerAppComponent`, which Dagger generates. Before this step kc
+  reported 304 errors there, which KSP ignores but a kc compile wouldn't:
+  - **Extensions of a lambda's receiver give way** to a top-level function
+    that takes the arguments, as those of `this` already did (M2):
+    `embeddedServer(Netty) { log(TAG, INFO) { "…" } }` calls
+    `log(tag: String, …)`, not `Application.log(priority, …)` (298
+    errors). In `recvCall`, when only extensions of the receiver fit and
+    the call has a lambda, they must take the argument types if a
+    top-level function may take the call (`extensionsGiveWay`).
+    `testdata/run/extensionVsTopLevel` covers it.
+  - **Ifs without else at the end of a try** that ends a lambda are
+    statements, like those at the end of an if that ends one, and so are
+    those ending such an if's branches: `Mutex.withLock { try { if (a)
+    return@withLock; if (b) { f(); if (c) g() } } catch (e: E) { … } }`
+    (4 errors). `testdata/run/lambdaTailTry.kt` covers it.
+
+Known gaps:
+- One library module for all libraries, so symbols from different jars
+  share a module, and `libraryModuleName` is null (kc doesn't decode the
+  module name from class metadata).
+- The octi-server check isn't in `build.sh`: it needs octi-server's
+  Gradle class path. It ran from the profiling session's checkout.
 
 ## Gaps and open questions
 

@@ -4,3 +4,6 @@ top lit INFO null c
 ext INFO null d
 ext DEBUG null e
 ext INFO null f
+top T INFO null g
+top T DEBUG null h
+ext INFO null i

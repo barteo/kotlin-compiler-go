@@ -590,6 +590,8 @@ func (c *Checker) lambdaBody(b *syntax.Block, want types.Type) types.Type {
 				if valueUsed = hasFinalElse(e); valueUsed {
 					c.markTailIfs(e)
 				}
+			case *syntax.Try:
+				c.markTailIfs(e)
 			case *syntax.When:
 				valueUsed = len(e.Branches) > 0 && e.Branches[len(e.Branches)-1].Else
 				if !valueUsed && e.Subject != nil && want.K != types.Unit {
@@ -768,11 +770,23 @@ func hasFinalElse(e *syntax.If) bool {
 }
 
 // markTailIfs records the ifs without else that end the branches of e,
-// the if a lambda ends with, and of the ifs with else they end with: as
-// in Kotlin, they are statements, of type Unit, though e is a value:
-// run { if (a) { if (b) f() } else 1 }.
-func (c *Checker) markTailIfs(e *syntax.If) {
-	for _, b := range []*syntax.Block{e.Then, e.Else} {
+// the if or try a lambda ends with, and of the ifs and trys they end
+// with: as in Kotlin, they are statements, of type Unit, though
+// e is a value: run { if (a) { if (b) f() } else 1 }, and Mutex.withLock
+// { try { if (a) return@withLock; if (b) f() } catch (e: E) { g() } },
+// whose T is Unit.
+func (c *Checker) markTailIfs(e syntax.Expr) {
+	var blocks []*syntax.Block
+	switch e := e.(type) {
+	case *syntax.If:
+		blocks = []*syntax.Block{e.Then, e.Else}
+	case *syntax.Try:
+		blocks = []*syntax.Block{e.Body}
+		for _, k := range e.Catches {
+			blocks = append(blocks, k.Body)
+		}
+	}
+	for _, b := range blocks {
 		if b == nil || len(b.Stmts) == 0 {
 			continue
 		}
@@ -780,15 +794,17 @@ func (c *Checker) markTailIfs(e *syntax.If) {
 		if !ok {
 			continue
 		}
-		if x, ok := es.X.(*syntax.If); ok {
+		switch x := es.X.(type) {
+		case *syntax.If:
 			if x.Else == nil {
 				if c.tailIfs == nil {
 					c.tailIfs = map[*syntax.If]bool{}
 				}
 				c.tailIfs[x] = true
-			} else {
-				c.markTailIfs(x)
 			}
+			c.markTailIfs(x)
+		case *syntax.Try:
+			c.markTailIfs(x)
 		}
 	}
 }

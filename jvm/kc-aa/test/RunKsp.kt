@@ -2,10 +2,11 @@
 // processors on its class path (found with ServiceLoader), and prints the
 // files they generate, relative to OUT_DIR.
 //
-//	RunKsp SRC_DIR OUT_DIR [LIB[:LIB...]] (-Dksp.backend=kc|aa)
+//	RunKsp SRC_DIR[:SRC_DIR...] OUT_DIR [LIB[:LIB...]] (-Dksp.backend=kc|aa)
 //
 // LIBs are the module's libraries; system properties ksp.arg.NAME=VALUE
-// are processor options.
+// are processor options, and ksp.languageVersion (default 2.4) is the
+// language and API version: stock KSP 2.3.x's needs 2.3.
 import com.google.devtools.ksp.impl.KotlinSymbolProcessing
 import com.google.devtools.ksp.processing.KSPJvmConfig
 import com.google.devtools.ksp.processing.KSPLogger
@@ -32,30 +33,30 @@ object RunLogger : KSPLogger {
 
 fun main(args: Array<String>) {
     if (args.size < 2) {
-        System.err.println("usage: RunKsp SRC_DIR OUT_DIR [LIB[:LIB...]]")
+        System.err.println("usage: RunKsp SRC_DIR[:SRC_DIR...] OUT_DIR [LIB[:LIB...]]")
         exitProcess(2)
     }
-    val src = File(args[0]).absoluteFile
+    val srcs = args[0].split(File.pathSeparator).filter { it.isNotEmpty() }.map { File(it).absoluteFile }
     val out = File(args[1]).absoluteFile
     val libs = args.getOrNull(2)?.split(File.pathSeparator)?.filter { it.isNotEmpty() }?.map(::File) ?: emptyList()
     val options = System.getProperties().stringPropertyNames().filter { it.startsWith("ksp.arg.") }
         .associate { it.removePrefix("ksp.arg.") to System.getProperty(it) }
     val config = KSPJvmConfig.Builder().apply {
         moduleName = "main"
-        sourceRoots = listOf(src)
+        sourceRoots = srcs
         javaSourceRoots = emptyList()
         commonSourceRoots = emptyList()
         libraries = libs
         jdkHome = File(System.getProperty("java.home"))
-        projectBaseDir = src
+        projectBaseDir = srcs.first()
         outputBaseDir = out
         cachesDir = File(out, "caches")
         classOutputDir = File(out, "classes")
         kotlinOutputDir = File(out, "kotlin")
         javaOutputDir = File(out, "java")
         resourceOutputDir = File(out, "resources")
-        languageVersion = "2.4"
-        apiVersion = "2.4"
+        languageVersion = System.getProperty("ksp.languageVersion", "2.4")
+        apiVersion = languageVersion
         jvmTarget = "17"
         jvmDefaultMode = "enable"
         incremental = false
