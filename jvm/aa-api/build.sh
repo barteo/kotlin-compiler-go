@@ -7,7 +7,9 @@
 #
 # It writes $workdir/kc-aa-api-2.4.21.jar (default workdir: jvm/aa-api/build)
 # holding the analysis-api, analysis-internal-utils and
-# analysis-api-platform-interface modules, compiled against the unshaded
+# analysis-api-platform-interface modules, plus the few plain value classes of
+# analysis-api-impl-base that clients such as KSP construct directly
+# ($implbase below), compiled against the unshaded
 # org.jetbrains.kotlin:kotlin-compiler:2.4.21 from Maven Central, which also
 # bundles IntelliJ core, Guava, ASM and kotlinx-collections-immutable.
 set -euo pipefail
@@ -49,11 +51,13 @@ fetch io/opentelemetry/opentelemetry-context/1.41.0/opentelemetry-context-1.41.0
 # A sparse, blobless, shallow checkout of the three modules' sources.
 src=$work/kotlin
 modules="analysis/analysis-api analysis/analysis-internal-utils analysis/analysis-api-platform-interface"
-if [ "$(git -C "$src" rev-parse HEAD 2>/dev/null)" != $KOTLIN_COMMIT ]; then
+implbase_dir=analysis/analysis-api-impl-base/src/org/jetbrains/kotlin/analysis/api/impl/base
+implbase="annotations/KaAnnotationImpl.kt annotations/KaBaseNamedAnnotationValue.kt types/KaBaseTypeProjection.kt"
+if [ "$(git -C "$src" rev-parse HEAD 2>/dev/null)" != $KOTLIN_COMMIT ] || [ ! -d "$src/$implbase_dir" ]; then
 	rm -rf "$src"
 	git init -q "$src"
 	git -C "$src" remote add origin https://github.com/JetBrains/kotlin.git
-	git -C "$src" sparse-checkout set $modules
+	git -C "$src" sparse-checkout set $modules $implbase_dir/annotations $implbase_dir/types
 	git -C "$src" fetch -q --depth 1 --filter=blob:none origin $KOTLIN_COMMIT
 	git -C "$src" checkout -q FETCH_HEAD
 fi
@@ -67,6 +71,10 @@ rm -rf "$patched"
 for m in $modules; do
 	mkdir -p "$patched/$m"
 	cp -R "$src/$m/src" "$patched/$m/"
+done
+for f in $implbase; do
+	mkdir -p "$(dirname "$patched/$implbase_dir/$f")"
+	cp "$src/$implbase_dir/$f" "$patched/$implbase_dir/$f"
 done
 find "$patched" -name '*.kt' -print0 | xargs -0 perl -0777 -pi -e '
 	s/(\):\s*([\w.]+)(?:<[^=\n]*>)?\??\s*=[^\n]*?(?:\n\s*)?[\w.()]+?)\.(?:service|serviceOrNull)\(\)/$1.getService(${2}::class.java)/g;
