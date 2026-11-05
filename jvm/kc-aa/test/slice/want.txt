@@ -2,10 +2,13 @@ a.Marker: class a.User
 a.Marker: class a.User.Nested
 a.Marker: class b.E.B
 a.Marker: class b.Registry
+a.Marker: class c.Broken
 a.Marker: function a.User.f
 a.Marker: function b.top
+a.Marker: function c.Broken.kept
 a.Marker: getter q
 a.Marker: parameter p
+a.Marker: property c.Unresolved.p
 a.Marker: type parameter T
 a.Other: class b.Plain
 a.Other: parameter id

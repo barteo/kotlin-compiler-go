@@ -68,7 +68,7 @@ mapping.
 | M0.3 | KSP fork compiles against the unshaded AA 2.4.21 API: `jvm/ksp` | done, see gaps |
 | M0.4 | Vertical slice: list annotated source classes through a `kc` KspBackend: `jvm/kc-aa/build.sh test` | done, see gaps |
 | M1 | `psi` on Kotlin 2.4.21 | done before this work |
-| M2 | Error tolerance, `types.Invalid` payload, extension-vs-top-level overload bug, `@Contextual`/`@EncodeDefault` | |
+| M2 | Error tolerance, `types.Invalid` payload, extension-vs-top-level overload bug, `@Contextual`/`@EncodeDefault` | in progress: error tolerance done |
 | M3 | Richer symbol model: visibility and modality enums, flags, origins, library annotation arguments, Java parameter names | |
 | M4 | Queryable session `analysis/ka`: lookups, scopes, relations, overrides | |
 | M5 | Bridge: `cmd/libkc` operations, `tools/kagen` wire format, `jvm/kc-aa` KaSession | |
@@ -168,6 +168,30 @@ parameters, a constructor `val`, and a file annotation.
   generates from the API jar. A stub member throws
   `UnsupportedOperationException("kc: Class.member")`, so a run names the
   first missing member.
+
+### M2 – Error tolerance
+
+`ka.Update` no longer stops at the first error. The errors become the
+model's `Diagnostics`, which travel over the bridge, and the JVM side prints
+them with `-Dkc.diagnostics`.
+
+- **Lowering.** A syntax error used to drop the whole top-level declaration
+  around it. Now a class keeps its members and loses only the one with the
+  error, as the stock PSI does. Every class body already lowers each member
+  on its own and reports that member's errors. A file with a psi error
+  element still always gets at least one diagnostic, so the compiler can
+  never accept broken code.
+- **Checking.** The checker already went on after resolution errors.
+  Unresolved names leave the rest of the module resolved, and an unresolved
+  annotation reaches the JVM as a `KaClassErrorType`, which KSP skips.
+- **Checker crashes.** A panic in a `checkBodies` worker is now raised again
+  on `CheckContext`'s caller, with the worker's stack, instead of killing the
+  process. If the checker crashes on a module with syntax errors, `ka`
+  checks the files without errors and models the broken ones from syntax
+  alone.
+- **Tests.** The slice has a file with a syntax error and an unresolved
+  annotation (`test/slice/src/c/Broken.kt`), and `analysis/ka` has
+  `TestErrors`.
 
 ## Gaps and open questions
 

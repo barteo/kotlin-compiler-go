@@ -47,7 +47,7 @@ stubbed=(
 	symbols.KaFileSymbol symbols.KaNamedClassSymbol symbols.KaNamedFunctionSymbol
 	symbols.KaKotlinPropertySymbol symbols.KaConstructorSymbol symbols.KaValueParameterSymbol
 	symbols.KaTypeParameterSymbol symbols.KaEnumEntrySymbol symbols.KaTypeAliasSymbol
-	symbols.KaPropertyGetterSymbol symbols.KaPropertySetterSymbol types.KaUsualClassType
+	symbols.KaPropertyGetterSymbol symbols.KaPropertySetterSymbol types.KaUsualClassType types.KaClassErrorType
 	annotations.KaAnnotation projectStructure.KaSourceModule symbols.pointers.KaSymbolPointer
 )
 rm -rf "$out/gen"

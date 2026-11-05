@@ -31,15 +31,19 @@ internal object KcOps {
     }
 
     /** Checks [paths] in session [session] and returns their declarations. */
-    fun update(session: Long, paths: List<String>): List<KcFile> {
+    fun update(session: Long, paths: List<String>): KcModel {
         val w = Wire.Writer().writeInt(session).writeUint(paths.size.toLong())
         paths.forEach { w.writeString(it) }
         val r = Wire.Reader(KcNative.call(UPDATE, w.message()))
         val model = r.readInt()
         try {
-            return List(r.readUint().toInt()) {
+            val files = List(r.readUint().toInt()) {
                 KcFile(r.readString(), r.readString(), r.annotations(), r.decls())
             }
+            val diagnostics = List(r.readUint().toInt()) {
+                KcDiagnostic(r.readString(), r.readUint().toInt(), r.readUint().toInt(), r.readString(), r.readString())
+            }
+            return KcModel(files, diagnostics)
         } finally {
             close(model)
         }
@@ -67,6 +71,14 @@ internal object KcOps {
                 members = decls(),
             )
         }
+}
+
+/** The module's sources as one update saw them; Go's ka.Model. */
+internal class KcModel(val files: List<KcFile>, val diagnostics: List<KcDiagnostic>)
+
+/** An error in the sources; Go's ka.Diagnostic. */
+internal class KcDiagnostic(val path: String, val line: Int, val col: Int, val message: String, val feature: String) {
+    override fun toString() = "$path:$line:$col: " + (if (feature.isEmpty()) "" else "unsupported: $feature: ") + message
 }
 
 /** A source file's declarations; Go's ka.File. */
@@ -120,5 +132,5 @@ internal class KcDecl(
     }
 }
 
-/** An annotation application; [node] is its ANNOTATION_ENTRY. */
+/** An annotation application; [node] is its ANNOTATION_ENTRY, and [classId] is "" if kc didn't resolve it. */
 internal class KcAnnotation(val classId: String, val node: Int, val target: String)

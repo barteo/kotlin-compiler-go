@@ -139,6 +139,11 @@ func File(s *psi.Snapshot) (*syntax.File, *Provenance, []*syntax.Error) {
 		}
 	}
 	f := l.file(s.RootNode())
+	if len(l.errs) == 0 && len(l.errorIDs) > 0 {
+		// Every error element is under a declaration that reports it;
+		// this keeps a file with one from ever lowering cleanly.
+		l.decl(s.RootNode(), func() { l.failSyntax(s.Node(l.errorIDs[0])) })
+	}
 	f.Errors = l.later
 	f.SuppressInvisible = l.suppressInvisible
 	f.SuppressShadowed = l.suppressShadowed
@@ -249,13 +254,31 @@ func (l *lowerer) unexpected(n psi.NodeRef) {
 }
 
 // syntaxError fails if n contains a psi syntax error, with its message.
+// Errors inside a class body under n don't count: each member of a body
+// is lowered with decl, which reports them, so the class keeps its other
+// members.
 func (l *lowerer) syntaxError(n psi.NodeRef) {
 	lo, hi := n.ID(), n.SubtreeEnd()
 	i := sort.Search(len(l.errorIDs), func(i int) bool { return l.errorIDs[i] >= lo })
-	if i == len(l.errorIDs) || l.errorIDs[i] >= hi {
-		return
+	for ; i < len(l.errorIDs) && l.errorIDs[i] < hi; i++ {
+		if !l.inBody(l.s.Node(l.errorIDs[i]), n) {
+			l.failSyntax(l.s.Node(l.errorIDs[i]))
+		}
 	}
-	e := l.s.Node(l.errorIDs[i])
+}
+
+// inBody reports whether e is inside a CLASS_BODY strictly under n.
+func (l *lowerer) inBody(e, n psi.NodeRef) bool {
+	for p := e.Parent(); p.Valid() && p.ID() > n.ID(); p = p.Parent() {
+		if p.NumericKind() == psi.KindCLASS_BODY {
+			return true
+		}
+	}
+	return false
+}
+
+// failSyntax fails on the psi error element e, with its message.
+func (l *lowerer) failSyntax(e psi.NodeRef) {
 	msg := "syntax error"
 	r := e.Range()
 	for _, d := range l.s.Diagnostics() {

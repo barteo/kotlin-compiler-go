@@ -84,9 +84,10 @@ private class KcSession(private val config: KSPConfig, disposable: Disposable) :
     }
 
     private fun update() {
-        val files = KcOps.update(handle, paths.toList())
+        val model = KcOps.update(handle, paths.toList())
+        if (System.getProperty("kc.diagnostics") != null) model.diagnostics.forEach { System.err.println("kc: $it") }
         val fs = VirtualFileManager.getInstance().getFileSystem(StandardFileSystems.FILE_PROTOCOL)
-        val joined = files.map { f ->
+        val joined = model.files.map { f ->
             val vf: VirtualFile = fs.refreshAndFindFileByPath(f.path) ?: error("kc: no virtual file for ${f.path}")
             f to (psiManager.findFile(vf) as? KtFile ?: error("kc: ${f.path} is not a Kotlin file"))
         }

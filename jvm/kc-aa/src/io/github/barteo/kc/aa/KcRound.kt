@@ -63,8 +63,8 @@ internal class KcRound(files: List<Pair<KcFile, KtFile>>) {
         fun annotation(a: KcAnnotation) {
             val entry = psi(a.node) as? KtAnnotationEntry
                 ?: error("kc: annotation node ${a.node} of ${file.path} is ${nodes[a.node].elementType}")
-            val id = ClassId.fromString(a.classId)
-            annotationClasses[entry] = id
+            val id = a.classId.takeIf { it.isNotEmpty() }?.let(ClassId::fromString)
+            if (id != null) annotationClasses[entry] = id
             annotations[a] = KcAnnotationApplication(this@KcRound, id, entry, useSiteTarget(a.target))
         }
 

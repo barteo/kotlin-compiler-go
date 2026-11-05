@@ -10,9 +10,11 @@
 package ka
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/barteo/kotlin-compiler-go/analysis"
@@ -78,6 +80,21 @@ const (
 // made it.
 type Model struct {
 	Files []*File
+	// Diagnostics are the errors in the sources, in file order. A Model
+	// has the facts of sources with errors too: a declaration with a
+	// syntax error is left out (a class keeps its other members), and an
+	// unresolved annotation has no class ID.
+	Diagnostics []Diagnostic
+}
+
+// Diagnostic is an error in the sources.
+type Diagnostic struct {
+	Path      string
+	Line, Col int
+	Message   string
+	// Feature names the Kotlin feature kc doesn't support, if that is
+	// the error.
+	Feature string
 }
 
 // File is a source file.
@@ -124,8 +141,8 @@ type Annotation struct {
 	Target  string     // the use-site target as written: get, field, file...; or ""
 }
 
-// Update checks the module's sources and returns their model. It fails if
-// the sources have errors: tolerating them is milestone M2's work.
+// Update checks the module's sources and returns their model. Errors in
+// the sources don't stop it: they are the Model's Diagnostics.
 func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) {
 	snaps := make([]*psi.Snapshot, len(sources))
 	for i, src := range sources {
@@ -141,15 +158,6 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 		}
 		snaps[i] = psi.Parse(src.Path, text)
 	}
-	files := make([]*syntax.File, len(snaps))
-	provs := make([]*lower.Provenance, len(snaps))
-	for i, snap := range snaps {
-		var errs []*syntax.Error
-		files[i], provs[i], errs = lower.File(snap)
-		if len(errs) > 0 {
-			return nil, sourceError(snap.Path(), errs[0])
-		}
-	}
 	jobs := max(s.cfg.Jobs, 1)
 	cp, lib, err := driver.OpenLibrary(driver.Options{
 		JDKHome: s.cfg.JDKHome, NoJDK: s.cfg.NoJDK, ClassPath: s.cfg.ClassPath,
@@ -159,15 +167,32 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 		return nil, fmt.Errorf("ka: %w", err)
 	}
 	defer cp.Close()
-	rec := &recorder{annots: map[*syntax.File]map[syntax.Pos]*types.ClassSym{}}
-	errs, err := check.CheckContext(ctx, files, lib, jobs, rec)
+
+	m := &Model{}
+	files, provs, broken := lowerAll(snaps, m)
+	rec, checkErrs, err := checkFiles(ctx, files, lib, jobs)
+	if _, crashed := err.(checkPanic); crashed && len(broken) > 0 {
+		// The checker can't take a file with syntax errors: check the
+		// others, and model the broken ones from syntax alone.
+		files, provs, _ = lowerAll(snaps, nil)
+		var clean []*syntax.File
+		for i, f := range files {
+			if !broken[i] {
+				clean = append(clean, f)
+			}
+		}
+		rec, checkErrs, err = checkFiles(ctx, clean, lib, jobs)
+	}
 	if err != nil {
 		return nil, err
 	}
-	if len(errs) > 0 {
-		return nil, sourceError(errs[0].File, errs[0])
+	for _, e := range checkErrs {
+		m.Diagnostics = append(m.Diagnostics, diagnostic(e.File, e))
 	}
-	m := &Model{}
+	slices.SortStableFunc(m.Diagnostics, func(a, b Diagnostic) int {
+		return cmp.Or(cmp.Compare(index(snaps, a.Path), index(snaps, b.Path)),
+			cmp.Compare(a.Line, b.Line), cmp.Compare(a.Col, b.Col))
+	})
 	for i, f := range files {
 		b := &fileBuilder{f: f, snap: snaps[i], prov: provs[i], annots: rec.annots[f]}
 		mf := &File{Path: snaps[i].Path(), Package: f.Package, Snapshot: snaps[i]}
@@ -183,14 +208,53 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 	return m, nil
 }
 
-func sourceError(path string, e *syntax.Error) error {
+// lowerAll lowers snaps, adding their errors to m if it isn't nil, and
+// reports which have errors.
+func lowerAll(snaps []*psi.Snapshot, m *Model) ([]*syntax.File, []*lower.Provenance, map[int]bool) {
+	files := make([]*syntax.File, len(snaps))
+	provs := make([]*lower.Provenance, len(snaps))
+	broken := map[int]bool{}
+	for i, snap := range snaps {
+		var errs []*syntax.Error
+		files[i], provs[i], errs = lower.File(snap)
+		if len(errs) > 0 {
+			broken[i] = true
+		}
+		if m != nil {
+			for _, e := range errs {
+				m.Diagnostics = append(m.Diagnostics, diagnostic(snap.Path(), e))
+			}
+		}
+	}
+	return files, provs, broken
+}
+
+// checkPanic is a checker crash, which only sources with syntax errors are
+// expected to cause.
+type checkPanic struct{ v any }
+
+func (p checkPanic) Error() string { return fmt.Sprintf("ka: checker panic: %v", p.v) }
+
+func checkFiles(ctx context.Context, files []*syntax.File, lib *check.Library, jobs int) (rec *recorder, errs []*syntax.Error, err error) {
+	rec = &recorder{annots: map[*syntax.File]map[syntax.Pos]*types.ClassSym{}}
+	defer func() {
+		if v := recover(); v != nil {
+			err = checkPanic{v}
+		}
+	}()
+	errs, err = check.CheckContext(ctx, files, lib, jobs, rec)
+	return rec, errs, err
+}
+
+func index(snaps []*psi.Snapshot, path string) int {
+	return slices.IndexFunc(snaps, func(s *psi.Snapshot) bool { return s.Path() == path })
+}
+
+func diagnostic(path string, e *syntax.Error) Diagnostic {
 	if e.File != "" {
 		path = e.File
 	}
-	if e.Feature != "" {
-		return fmt.Errorf("ka: %s:%d:%d: unsupported: %s: %s", path, e.Pos.Line, e.Pos.Col, e.Feature, e.Msg)
-	}
-	return fmt.Errorf("ka: %s:%d:%d: %s", path, e.Pos.Line, e.Pos.Col, e.Msg)
+	return Diagnostic{Path: path, Line: e.Pos.Line, Col: e.Pos.Col, Message: e.Msg, Feature: e.Feature}
 }
 
 // recorder keeps the classes the checker resolves annotations to; the

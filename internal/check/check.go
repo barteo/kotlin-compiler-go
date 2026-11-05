@@ -5,10 +5,12 @@ package check
 import (
 	"context"
 	"fmt"
+	"runtime/debug"
 	"slices"
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/barteo/kotlin-compiler-go/internal/classfile"
 	"github.com/barteo/kotlin-compiler-go/internal/classpath"
@@ -549,10 +551,20 @@ func CheckContext(ctx context.Context, files []*syntax.File, lib *Library, jobs 
 	}
 	var wg sync.WaitGroup
 	work := make(chan *Checker)
+	// A panic in a worker is re-raised here, on the caller's goroutine,
+	// where the caller can recover it.
+	var crash atomic.Pointer[workerPanic]
 	for range jobs {
 		wg.Go(func() {
+			defer func() {
+				if v := recover(); v != nil {
+					crash.CompareAndSwap(nil, &workerPanic{v, debug.Stack()})
+					for range work {
+					}
+				}
+			}()
 			for c := range work {
-				if ctx.Err() == nil {
+				if ctx.Err() == nil && crash.Load() == nil {
 					c.checkBodies()
 				}
 			}
@@ -563,6 +575,9 @@ func CheckContext(ctx context.Context, files []*syntax.File, lib *Library, jobs 
 	}
 	close(work)
 	wg.Wait()
+	if p := crash.Load(); p != nil {
+		panic(p)
+	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -3093,3 +3108,12 @@ func cancelled(done <-chan struct{}) bool {
 		return false
 	}
 }
+
+// workerPanic is a panic in one of CheckContext's workers, with the
+// worker's stack.
+type workerPanic struct {
+	v     any
+	stack []byte
+}
+
+func (p *workerPanic) String() string { return fmt.Sprintf("%v\n\nworker stack:\n%s", p.v, p.stack) }

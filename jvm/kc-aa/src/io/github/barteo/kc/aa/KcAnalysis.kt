@@ -81,11 +81,12 @@ class KcAnalysis internal constructor(internal val round: KcRound, private val m
     // KaTypeProvider
     fun getType(ref: KtTypeReference): KaType {
         val entry = (ref.parent as? KtConstructorCalleeExpression)?.parent as? KtAnnotationEntry
-        val id = entry?.let { round.annotationClasses[it] } ?: unsupported("type of ${ref.text}: only annotation types")
+            ?: unsupported("type of ${ref.text}: only annotation types")
+        val id = round.annotationClasses[entry] ?: return KcErrorType(round, ref.text)
         return KcClassType(round, id)
     }
     fun getFullyExpandedType(type: KaType): KaType = when (type) {
-        is KcClassType -> type // kc expands aliases before reporting annotation classes
+        is KcClassType, is KcErrorType -> type // kc expands aliases before reporting annotation classes
         else -> unsupported("fullyExpandedType of $type")
     }
 
@@ -96,7 +97,7 @@ class KcAnalysis internal constructor(internal val round: KcRound, private val m
 
     // KaTypeInformationProvider
     fun isMarkedNullable(type: KaType): Boolean = when (type) {
-        is KcClassType -> false
+        is KcClassType, is KcErrorType -> false
         else -> unsupported("isMarkedNullable of $type")
     }
 

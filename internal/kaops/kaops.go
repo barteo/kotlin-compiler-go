@@ -9,12 +9,15 @@
 //
 // OpKaUpdate: session:Int n:Uint path:String*n → model
 //
-//	model   = handle:Int n:Uint file*n
+//	model   = handle:Int n:Uint file*n m:Uint diag*m
 //	file    = path:String package:String annots decls
 //	decls   = n:Uint decl*n
 //	decl    = kind:Uint name:String node:Uint classID:String visibility:Uint
 //	          flags:Uint annots typeParams:decls params:decls members:decls
 //	annots  = n:Uint (classID:String node:Uint target:String)*n
+//	diag    = path:String line:Uint col:Uint message:String feature:String
+//
+// An unresolved annotation has classID "".
 //
 // flags is a bit set: 1 companion, 2 data.
 //
@@ -89,6 +92,14 @@ func update(req []byte) ([]byte, error) {
 		w.String(f.Package)
 		writeAnnotations(&w, f.Annotations)
 		writeDecls(&w, f.Decls)
+	}
+	w.Uint(uint64(len(m.Diagnostics)))
+	for _, d := range m.Diagnostics {
+		w.String(d.Path)
+		w.Uint(uint64(d.Line))
+		w.Uint(uint64(d.Col))
+		w.String(d.Message)
+		w.String(d.Feature)
 	}
 	return w.Message(), nil
 }

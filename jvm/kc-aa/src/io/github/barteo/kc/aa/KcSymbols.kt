@@ -393,9 +393,21 @@ internal class KcClassType(private val round: KcRound, override val classId: Cla
     override fun toString() = classId.asFqNameString()
 }
 
+/** The type of an annotation whose class kc didn't resolve. */
+internal class KcErrorType(private val round: KcRound, override val presentableText: String?) : StubKaClassErrorType() {
+    override val token get() = round.token
+    @Suppress("DEPRECATION", "DEPRECATION_ERROR")
+    override val nullability get() = KaTypeNullability.NON_NULLABLE
+    override val abbreviation get() = null
+    override val annotations: KaAnnotationList get() = KcAnnotationList(emptyList(), round.token)
+    override val errorMessage: String get() = "unresolved: $presentableText"
+    override val candidateSymbols: Collection<KaClassLikeSymbol> get() = emptyList()
+    override fun toString() = "ERROR($presentableText)"
+}
+
 internal class KcAnnotationApplication(
     private val round: KcRound,
-    override val classId: ClassId,
+    override val classId: ClassId?,
     override val psi: KtAnnotationEntry?,
     override val useSiteTarget: AnnotationUseSiteTarget?,
 ) : StubKaAnnotation() {
