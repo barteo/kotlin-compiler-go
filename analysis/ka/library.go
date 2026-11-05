@@ -29,7 +29,6 @@ type library struct {
 
 	defaultOnce sync.Once
 	defaults    map[string]*Decl // see defaultAliases
-	closeMu     sync.Once
 }
 
 // maxNesting bounds how deep Class models nested classes.
@@ -63,11 +62,11 @@ func (m *Model) Class(id string) *Decl {
 
 // Close releases the class path the Model reads library classes from.
 func (m *Model) Close() error {
-	if m.lib == nil {
+	if m.shared == nil {
 		return nil
 	}
 	var err error
-	m.lib.closeMu.Do(func() { err = m.lib.cp.Close() })
+	m.closeOnce.Do(func() { err = m.shared.release() })
 	return err
 }
 

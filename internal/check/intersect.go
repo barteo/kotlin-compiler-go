@@ -72,7 +72,8 @@ func (c *Checker) internIntersection(comps []types.Type) types.Type {
 		tail = c.internIntersection(comps[1:])
 	}
 	k := interKey{comps[0], tail}
-	if v, ok := c.u.ext.inters.Load(k); ok {
+	cache := c.u.cache(comps...)
+	if v, ok := cache.inters.Load(k); ok {
 		return v.(types.Type)
 	}
 	names := make([]string, len(comps))
@@ -80,7 +81,7 @@ func (c *Checker) internIntersection(comps []types.Type) types.Type {
 		names[i] = t.String()
 	}
 	p := &types.TypeParamSym{Name: strings.Join(names, " & "), Bounds: comps, Intersection: true}
-	v, _ := c.u.ext.inters.LoadOrStore(k, types.ParamType(p))
+	v, _ := cache.inters.LoadOrStore(k, types.ParamType(p))
 	return v.(types.Type)
 }
 

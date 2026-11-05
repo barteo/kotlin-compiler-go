@@ -25,6 +25,10 @@ type Universe struct {
 	Pkgs     map[string]*Package // by dotted name; "" is the default package
 	prefixes map[string]bool     // the packages and their prefixes: a and a.b for a.b
 	ext      *classTable
+	// local holds what ext's caches would but for the program's symbols,
+	// which the library, shared by checks one after another, mustn't
+	// keep: see caches.
+	local caches
 	// memberExts is set if a class of the program declares extension
 	// functions, which calls with lambdas' implicit receivers then look
 	// for in their classes.
@@ -468,6 +472,24 @@ func CheckWith(files []*syntax.File, lib *Library, jobs int) []*syntax.Error {
 // CheckContext is CheckWith, which stops early, with ctx's error, once
 // ctx is done, and reports what it finds to rec, if it isn't nil.
 func CheckContext(ctx context.Context, files []*syntax.File, lib *Library, jobs int, rec Recorder) ([]*syntax.Error, error) {
+	return CheckOptions(ctx, files, lib, jobs, rec, Options{})
+}
+
+// Options are what CheckOptions checks.
+type Options struct {
+	// Signatures is set to check what the declarations are, and not what
+	// their code does: the files' declarations and their types, inferred
+	// ones included, and their annotations, as an analysis of the
+	// program's declarations (analysis/ka) needs them, but not the bodies
+	// of functions, of property accessors and initializers, of class
+	// initializers, or the default values of parameters, but for those of
+	// annotation classes. The errors in what isn't checked aren't found,
+	// and the program can't be compiled.
+	Signatures bool
+}
+
+// CheckOptions is CheckContext, which checks what opts says.
+func CheckOptions(ctx context.Context, files []*syntax.File, lib *Library, jobs int, rec Recorder, opts Options) ([]*syntax.Error, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -584,7 +606,11 @@ func CheckContext(ctx context.Context, files []*syntax.File, lib *Library, jobs 
 			}()
 			for c := range work {
 				if ctx.Err() == nil && crash.Load() == nil {
-					c.checkBodies()
+					if opts.Signatures {
+						c.checkSignatures()
+					} else {
+						c.checkBodies()
+					}
 				}
 			}
 		})
@@ -2408,6 +2434,29 @@ func (c *Checker) checkBodies() {
 	}
 	c.propRefs()
 	c.inlineFileChecks()
+	c.typeAnnotations()
+}
+
+// checkSignatures is checkBodies for Options.Signatures: the annotations
+// of the file, its declarations and the types they name, and the
+// annotation classes, whose parameters' default values are part of what
+// they declare.
+func (c *Checker) checkSignatures() {
+	c.annotations(c.file.Annotations, nil, fileSite)
+	for _, d := range c.file.Decls {
+		c.declAnnotations(d, nil)
+	}
+	for _, d := range c.classes {
+		if d.Sym != nil && d.Sym.Outer == nil {
+			continue
+		}
+		c.declAnnotations(d, d.Sym.Outer)
+	}
+	for _, d := range c.classes {
+		if d.Annotation {
+			c.checkClass(d)
+		}
+	}
 	c.typeAnnotations()
 }
 

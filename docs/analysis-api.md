@@ -810,13 +810,14 @@ PSI lookup, `KcRound`). `JFR=N` records samples from run N on;
 `bench/ksp/Classify.java` splits them by phase and by code. octi-server
 isn't vendored: its sources and Gradle class paths are inputs.
 
-octi-server, Dagger, 61 Kotlin files, 31 generated files; 8 CPUs, JDK 21,
+octi-server, Dagger, 61 Kotlin files, 31 generated files; 4 CPUs, JDK 21,
 20 runs in one JVM (warm is the median of the last 10), and 3 cold JVMs:
 
 | ms | cold JVM | warm total | warm setup | warm process | between rounds |
 |---|---|---|---|---|---|
 | stock KSP 2.3.6 | 8100–8700 | 990 | 128 | 829 | 6 |
 | kc (baseline) | 3780–3960 | 976 | 442 | 156 | 375 |
+| kc, shared library, signatures only | 3190–3510 | 412 | 181 | 130 | 86 |
 
 Processing is 5x faster on kc, and cold runs 2x, but kc's warm total is no
 better: each run checks the module twice, once per round, and each check
@@ -825,6 +826,7 @@ costs about 350 ms in Go:
 | ms per update | parse | open | lower | signatures | bodies | model |
 |---|---|---|---|---|---|---|
 | kc (baseline) | 30–65 | 20–60 | 12–15 | 105–150 | 70–90 | 55–120 |
+| kc, shared library, signatures only | 17–31 | 0–0.4 | 7–12 | 18–26 | 5 | 2 |
 
 On the JVM, the first round's `KcRound` takes about 155 ms (IntelliJ
 parsing the files' PSI on first use); the second's 12–40 ms. The
@@ -833,6 +835,34 @@ environment, `KcOps.open` and decoding take under 15 ms together.
 Dagger generates only Java, so the second round checks the same Kotlin
 sources again. The rest of step 11 makes the warm path cheaper in order
 of these numbers.
+
+**Shared library.** Most of the check was reading class-path classes:
+each update opened the class path anew, and the checker read every class
+the sources use from the jars again. Now a `ka.Session`'s updates share
+one library, and so do the sessions of a process whose configuration is
+the same and whose jars haven't changed (size and modification time of
+each jar and of the JDK's `lib/modules`; `analysis/ka/libcache.go`). The
+two libraries no session uses that were used last are kept for the next
+KSP run. The checker keeps what it learns of the class path's classes
+(supertypes, intersections, Java members) in the library and what it
+learns of the program's in each check's own `Universe`
+(`check.Universe.cache`), so checks one after another or at the same time
+can share a library. A class path with a directory (whose classes can
+change without its time changing) or with Java sources isn't shared
+across sessions.
+
+**Signatures only.** `ka.Update` checks with
+`check.Options{Signatures: true}`: declarations, supertypes, signatures
+and the bodies whose types are inferred, annotations and their arguments,
+annotation classes, but not the other bodies. A model's `Diagnostics`
+therefore lists only the errors found that far: errors inside bodies
+whose types are declared aren't reported. Parsing and lowering run in
+parallel too.
+
+With these the Go update costs about 55 ms. What is left of the warm
+total is the second round's update (about 56 ms, for the same files),
+the first round's `KcRound` (70–110 ms, PSI parsed again in each
+session's new environment), and KSP itself.
 
 ## Gaps and open questions
 

@@ -35,12 +35,9 @@ type classTable struct {
 	// the program's classes are declared.
 	sources atomic.Pointer[func(string) *types.ClassSym]
 
-	// Caches of results that depend only on loaded classes, which checking
-	// asks for again and again: supertypes with their type arguments, and
-	// the methods of a class by name.
-	supers  sync.Map // superKey -> superResult
-	inters  sync.Map // interKey -> types.Type, see intersect
-	methods sync.Map // methodsKey -> []*types.FunSym
+	// Results that depend only on loaded classes; those of the program's
+	// classes are in Universe.local.
+	caches
 	// defaults has a sync.Once for each method whose inherited default
 	// values inheritExtDefaults looked for.
 	defaults     sync.Map // *types.FunSym -> *sync.Once
@@ -48,6 +45,38 @@ type classTable struct {
 	// scopes are the type parameters of the Kotlin classes loaded, by
 	// their metadata's ids, which their inner classes' metadata uses.
 	scopes sync.Map // *types.ClassSym -> tscope
+}
+
+// caches hold results that checking asks for again and again: supertypes
+// with their type arguments, and the methods of a class by name.
+type caches struct {
+	supers  sync.Map // superKey -> superResult
+	inters  sync.Map // interKey -> types.Type, see intersect
+	methods sync.Map // methodsKey -> []*types.FunSym
+}
+
+// cache returns the caches for a result computed from ts: the library's
+// if they name only the class path's classes (or those every check
+// shares), and no type parameters; the universe's otherwise. A library
+// can serve check after check (see analysis/ka), and so mustn't keep the
+// symbols of any one program.
+func (u *Universe) cache(ts ...types.Type) *caches {
+	for _, t := range ts {
+		if t.Has(programType) {
+			return &u.local
+		}
+	}
+	return &u.ext.caches
+}
+
+func programType(t types.Type) bool {
+	switch t.K {
+	case types.Class:
+		return t.C == nil || !t.C.External && !t.C.Global
+	case types.TypeParam, types.TypeVar:
+		return true
+	}
+	return false
 }
 
 type superKey struct {
@@ -1483,7 +1512,11 @@ func (c *Checker) jvmClass(t types.Type) *types.ClassSym {
 // supertypes. An override hides the methods it overrides.
 func (c *Checker) javaMethods(cls *types.ClassSym, name string) []*types.FunSym {
 	k := methodsKey{cls, name}
-	if ms, ok := c.u.ext.methods.Load(k); ok {
+	cache := &c.u.ext.caches
+	if !cls.External && !cls.Global {
+		cache = &c.u.local
+	}
+	if ms, ok := cache.methods.Load(k); ok {
 		return ms.([]*types.FunSym)
 	}
 	ms := javaMethods(cls, name)
@@ -1499,7 +1532,7 @@ func (c *Checker) javaMethods(cls *types.ClassSym, name string) []*types.FunSym 
 		c.inheritExtDefaults(f)
 	}
 	ms = c.intersectionDefaults(cls, ms)
-	c.u.ext.methods.Store(k, ms)
+	cache.methods.Store(k, ms)
 	return ms
 }
 

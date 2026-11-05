@@ -13,6 +13,7 @@ package ka
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"runtime/debug"
@@ -23,7 +24,6 @@ import (
 
 	"github.com/barteo/kotlin-compiler-go/analysis"
 	"github.com/barteo/kotlin-compiler-go/internal/check"
-	"github.com/barteo/kotlin-compiler-go/internal/driver"
 	"github.com/barteo/kotlin-compiler-go/internal/lower"
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
 	"github.com/barteo/kotlin-compiler-go/internal/types"
@@ -34,9 +34,47 @@ import (
 // analysis.
 type Config = analysis.Config
 
-// Session is a module whose sources Update checks.
+// Session is a module whose sources Update checks. Its updates share the
+// class path's classes that they read, as do the sessions of a process
+// whose configurations and jars are the same; Close releases them.
 type Session struct {
 	cfg Config
+
+	mu  sync.Mutex
+	lib *shared // the library of the last Update, unless it has Java sources
+}
+
+// Close releases the class path the session's updates read. The models
+// it returned can still be used until they are closed.
+func (s *Session) Close() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.lib == nil {
+		return nil
+	}
+	err := s.lib.release()
+	s.lib = nil
+	return err
+}
+
+// library returns the library for an update, which the caller must
+// release.
+func (s *Session) library() (*shared, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.lib != nil {
+		s.lib.retain()
+		return s.lib, nil
+	}
+	l, err := acquire(s.cfg)
+	if err != nil {
+		return nil, err
+	}
+	if !l.lib.cp.HasSources() {
+		l.retain()
+		s.lib = l
+	}
+	return l, nil
 }
 
 // Open returns a session for the module cfg describes.
@@ -141,7 +179,9 @@ type Model struct {
 	// unresolved annotation has no class ID.
 	Diagnostics []Diagnostic
 
-	lib *library // the class path's classes; see Class
+	lib       *library // the class path's classes; see Class
+	shared    *shared  // lib, which Close releases
+	closeOnce sync.Once
 }
 
 // Diagnostic is an error in the sources.
@@ -222,30 +262,34 @@ type Annotation struct {
 func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) {
 	tm := NewTimer()
 	defer tm.Print(fmt.Sprintf("update files=%d", len(sources)))
+	jobs := max(s.cfg.Jobs, 1)
 	snaps := make([]*psi.Snapshot, len(sources))
-	for i, src := range sources {
+	readErrs := make([]error, len(sources))
+	parallel(len(sources), jobs, func(i int) {
+		src := sources[i]
 		var text string
 		if src.Text != nil {
 			text = *src.Text
 		} else {
 			b, err := os.ReadFile(src.Path)
 			if err != nil {
-				return nil, fmt.Errorf("ka: %w", err)
+				readErrs[i] = fmt.Errorf("ka: %w", err)
+				return
 			}
 			text = string(b)
 		}
 		snaps[i] = psi.Parse(src.Path, text)
+	})
+	if err := errors.Join(readErrs...); err != nil {
+		return nil, err
 	}
 	tm.Mark("parse")
-	jobs := max(s.cfg.Jobs, 1)
-	cp, lib, err := driver.OpenLibrary(driver.Options{
-		JDKHome: s.cfg.JDKHome, NoJDK: s.cfg.NoJDK, ClassPath: s.cfg.ClassPath,
-		ModuleName: s.cfg.ModuleName, Jobs: jobs,
-	})
+	sl, err := s.library()
 	if err != nil {
-		return nil, fmt.Errorf("ka: %w", err)
+		return nil, err
 	}
-	m := &Model{lib: &library{cp: cp, lib: lib, decls: map[string]*Decl{}, params: map[string]map[string]string{}}}
+	lib := sl.lib.lib
+	m := &Model{lib: sl.lib, shared: sl}
 	ok := false
 	defer func() {
 		if !ok {
@@ -253,7 +297,7 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 		}
 	}()
 	tm.Mark("open")
-	files, provs, broken := lowerAll(snaps, m)
+	files, provs, broken := lowerAll(snaps, m, jobs)
 	tm.Mark("lower")
 	rec, checkErrs, err := checkFiles(ctx, files, lib, jobs)
 	if !rec.bodies.IsZero() {
@@ -263,7 +307,7 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 	if _, crashed := err.(checkPanic); crashed && len(broken) > 0 {
 		// The checker can't take a file with syntax errors: check the
 		// others, and model the broken ones from syntax alone.
-		files, provs, _ = lowerAll(snaps, nil)
+		files, provs, _ = lowerAll(snaps, nil, jobs)
 		var clean []*syntax.File
 		for i, f := range files {
 			if !broken[i] {
@@ -302,13 +346,16 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 
 // lowerAll lowers snaps, adding their errors to m if it isn't nil, and
 // reports which have errors.
-func lowerAll(snaps []*psi.Snapshot, m *Model) ([]*syntax.File, []*lower.Provenance, map[int]bool) {
+func lowerAll(snaps []*psi.Snapshot, m *Model, jobs int) ([]*syntax.File, []*lower.Provenance, map[int]bool) {
 	files := make([]*syntax.File, len(snaps))
 	provs := make([]*lower.Provenance, len(snaps))
+	errLists := make([][]*syntax.Error, len(snaps))
+	parallel(len(snaps), jobs, func(i int) {
+		files[i], provs[i], errLists[i] = lower.File(snaps[i])
+	})
 	broken := map[int]bool{}
 	for i, snap := range snaps {
-		var errs []*syntax.Error
-		files[i], provs[i], errs = lower.File(snap)
+		errs := errLists[i]
 		if len(errs) > 0 {
 			broken[i] = true
 		}
@@ -319,6 +366,24 @@ func lowerAll(snaps []*psi.Snapshot, m *Model) ([]*syntax.File, []*lower.Provena
 		}
 	}
 	return files, provs, broken
+}
+
+// parallel runs fn(i) for i in [0, n) on up to jobs goroutines.
+func parallel(n, jobs int, fn func(i int)) {
+	var wg sync.WaitGroup
+	next := make(chan int)
+	for range min(max(jobs, 1), n) {
+		wg.Go(func() {
+			for i := range next {
+				fn(i)
+			}
+		})
+	}
+	for i := range n {
+		next <- i
+	}
+	close(next)
+	wg.Wait()
 }
 
 // checkPanic is a checker crash, which only sources with syntax errors are
@@ -359,7 +424,7 @@ func checkFiles(ctx context.Context, files []*syntax.File, lib *check.Library, j
 			err = checkPanic{v, panicStack()}
 		}
 	}()
-	errs, err = check.CheckContext(ctx, files, lib, jobs, rec)
+	errs, err = check.CheckOptions(ctx, files, lib, jobs, rec, check.Options{Signatures: true})
 	return rec, errs, err
 }
 
