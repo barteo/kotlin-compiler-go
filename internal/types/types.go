@@ -51,6 +51,8 @@ type Type struct {
 	// B marks the boxed form of a value class type, its instances, which
 	// only codegen uses: the elements of an array of a value class.
 	B bool
+	// M is the type's DSL markers, from its annotations: see Markers.
+	M uint8
 	C *ClassSym // Class
 	// A is a Class's interned type arguments (nil if it has none). For
 	// TypeParam and TypeVar it holds the parameter: see Param.
@@ -219,6 +221,9 @@ func (t Type) String() string {
 		s = t.RangeElem().String() + "Progression"
 	case TypeParam, TypeVar:
 		s = t.Param().Name
+		if t.N && t.Param().Intersection {
+			s = "(" + s + ")"
+		}
 		if t.D {
 			s += " & Any"
 		}
@@ -279,7 +284,11 @@ type VarSym struct {
 	Resolved   bool
 	InProgress bool
 
-	Slot int // JVM local slot, assigned by codegen (Local and Param)
+	// FieldT is the type of a final property's explicit backing field,
+	// val x: List<T> field = mutableListOf(), if it has one: what x reads
+	// as where the field is visible, in the private scope of x.
+	FieldT *Type
+
 	// Deferred is set on a local or a class property declared without a
 	// value, which code assigns later: val x: Int, then x = 1. The checker
 	// checks that it is assigned before it is read, and a val only once.
@@ -428,14 +437,31 @@ func (c *ClassSym) KotlinAnnotation() bool {
 
 // StaticField reports whether class property v's field is static, as
 // kotlinc writes it: a property of a named object, whose class holds it,
-// or a @JvmField property of a companion object, whose outer class does
-// (ConstOwner).
+// or of a class's companion object, whose outer class does (ConstOwner),
+// where kotlin-reflect looks for it. An interface's or an annotation
+// class's companion holds its properties' fields itself, but for an
+// interface's @JvmField ones, as does one whose outer class has a
+// property of the same name.
 func (v *VarSym) StaticField() bool {
 	o := v.Owner
 	if v.Kind != Prop || o == nil || !o.Object || o.Anonymous || o.External || v.Const {
 		return false
 	}
-	return o.CompanionOf == nil || v.JvmField
+	if o.CompanionOf == nil || v.JvmField {
+		return true
+	}
+	outer := o.CompanionOf
+	if outer.Interface || outer.Annotation {
+		return false
+	}
+	// Where the outer class has a field of the name, kotlinc renames that;
+	// kc leaves the companion's field in the companion instead.
+	for _, p := range outer.Props {
+		if p.Name == v.Name {
+			return false
+		}
+	}
+	return outer.Fields[v.Name] == nil
 }
 
 // ConstOwner returns the class whose static field holds const property p
@@ -778,8 +804,12 @@ type ClassSym struct {
 	Interfaces []*ClassSym
 	Supers     []Type // generic supertypes from the class's signature, if it has one
 	Ctors      []*FunSym
-	Statics    map[string][]*FunSym
-	Fields     map[string]*VarSym // static fields
+	// InternalCtors are a class-path Kotlin class's internal
+	// constructors, which only code under @Suppress("INVISIBLE_MEMBER")
+	// may call: Result<String>("OK").
+	InternalCtors []*FunSym
+	Statics       map[string][]*FunSym
+	Fields        map[string]*VarSym // static fields
 
 	// Objects and nested classes. Object is set on object declarations
 	// and companion objects, whose one instance is in a static field: see
@@ -1269,6 +1299,9 @@ func GetterType(p *VarSym) Type {
 	if p.BoxedGetter && p.Type.IsPrimitive() {
 		return p.Type.Nullable()
 	}
+	if p.FieldT != nil && p.Type.K != Unit {
+		return p.Type // not an explicit backing field's
+	}
 	return FieldType(p)
 }
 
@@ -1279,6 +1312,9 @@ var unitObject = &ClassSym{Name: "kotlin/Unit", KotlinName: "kotlin/Unit", Exter
 // parameter, on the JVM: its type, but as with kotlinc a Unit property
 // holds the kotlin.Unit object.
 func FieldType(p *VarSym) Type {
+	if p.FieldT != nil {
+		return *p.FieldT // an explicit backing field's
+	}
 	if p.Type.K == Unit {
 		return ClassType(unitObject)
 	}

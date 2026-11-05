@@ -225,6 +225,9 @@ func classID(c *types.ClassSym) string {
 
 // typ converts a type to metadata.
 func (s *metaScope) typ(t types.Type) *kmeta.Type {
+	if t.IsIntersection() {
+		t = types.Approx(t) // metadata has no intersection types
+	}
 	if t.P {
 		// A platform type, T!: flexible, from T to T?, with read-only
 		// collections as the upper bound.
@@ -268,7 +271,11 @@ func (s *metaScope) typ(t types.Type) *kmeta.Type {
 			}
 			kt.Args = append(kt.Args, kmeta.Arg{Proj: variance(a.V), Type: s.typ(a.T)})
 		}
-		cont := &kmeta.Type{Param: -1, Class: "kotlin/coroutines/Continuation", Args: []kmeta.Arg{{Proj: kmeta.Inv, Type: s.typ(t.A.Get(n).T)}}}
+		ret := kmeta.Arg{Proj: kmeta.Star} // of a star projection, GivenLambda<*, *>
+		if r := t.A.Get(n); r.V != types.Star {
+			ret = kmeta.Arg{Proj: kmeta.Inv, Type: s.typ(r.T)}
+		}
+		cont := &kmeta.Type{Param: -1, Class: "kotlin/coroutines/Continuation", Args: []kmeta.Arg{ret}}
 		kt.Args = append(kt.Args, kmeta.Arg{Proj: kmeta.Inv, Type: cont}, kmeta.Arg{Proj: kmeta.Inv, Type: &kmeta.Type{Param: -1, Class: "kotlin/Any", Nullable: true}})
 	case t.K == types.Class && t.C.Composable:
 		// A composable function type is the function type of its
@@ -300,6 +307,9 @@ func (s *metaScope) typ(t types.Type) *kmeta.Type {
 			if t.A != nil {
 				t.A = types.MakeArgs(t.A.List[:n])
 			}
+		} else if t.C.OuterParams > 0 && t.A != nil {
+			// An object expression's, of the code around it.
+			t.A = types.MakeArgs(t.A.List[:len(t.C.TypeParams)-t.C.OuterParams])
 		}
 		if t.A != nil {
 			for _, a := range t.A.List {
@@ -740,6 +750,7 @@ func (g *gen) propMeta(s *metaScope, p *types.VarSym, pd *syntax.PropDecl, cp *s
 // packageMeta converts the file's top-level declarations.
 func (g *gen) packageMeta() *kmeta.PackageData {
 	out := &kmeta.PackageData{ModuleName: g.module()}
+	out.Locals = localsMeta(nil, g.file.Decls)
 	for _, d := range g.file.Decls {
 		switch d := d.(type) {
 		case *syntax.FunDecl:
@@ -855,17 +866,30 @@ func inEnumEntry(cls *types.ClassSym) bool {
 	return false
 }
 
+// outerScope returns the scope of an inner class's outer classes' type
+// parameters, numbered as kotlinc does, the outermost class's first: X 0
+// and Y 1 for inner class E4<Z> of inner class D4<Y> of C4<X>, whose own Z
+// is 2. It is nil for other classes.
+func outerScope(cls *types.ClassSym) *metaScope {
+	if cls.OuterParams == 0 || !cls.Inner || cls.Outer == nil || len(cls.Outer.TypeParams) != cls.OuterParams {
+		if cls.OuterParams == 0 {
+			return nil
+		}
+		s, _ := (*metaScope)(nil).with(cls.TypeParams[len(cls.TypeParams)-cls.OuterParams:])
+		return s
+	}
+	o := cls.Outer
+	s, _ := outerScope(o).with(o.TypeParams[:len(o.TypeParams)-o.OuterParams])
+	return s
+}
+
 // classMeta converts a class.
 func (g *gen) classMeta(cd *syntax.ClassDecl) *kmeta.Class {
 	cls := cd.Sym
 	// An inner class sees its outer class's type parameters, as numbered
 	// in the outer class's metadata, and declares its own after them.
 	own := cls.TypeParams[:len(cls.TypeParams)-cls.OuterParams]
-	outer, _ := (*metaScope)(nil).with(cls.TypeParams[len(own):])
-	if cls.OuterParams == 0 {
-		outer = nil
-	}
-	s, tps := outer.with(own)
+	s, tps := outerScope(cls).with(own)
 	mod := kmeta.Final
 	kind := kmeta.KindClass
 	switch {
@@ -895,6 +919,7 @@ func (g *gen) classMeta(cd *syntax.ClassDecl) *kmeta.Class {
 		Name:       classID(cls),
 		TypeParams: tps,
 		ModuleName: g.module(),
+		Locals:     localsMeta(s, cd.Members),
 	}
 	switch {
 	case cls.Anonymous:
@@ -1295,4 +1320,78 @@ func delegatedPropMeta(s *metaScope, cd *syntax.ClassDecl, name string, getter, 
 		}
 	}
 	return kp
+}
+
+// localsMeta returns the metadata of the local delegated properties in
+// decls, numbered <v#N> by the checker, which kotlin-reflect looks up to
+// make their KProperty objects: kotlinc writes them as local properties
+// with no JVM signatures.
+func localsMeta(s *metaScope, decls []syntax.Decl) []*kmeta.Property {
+	byN := map[int]*kmeta.Property{}
+	// The bodies the checker numbers them in, with the type parameters
+	// their types may use.
+	type body struct {
+		n any
+		s *metaScope
+	}
+	var nodes []body
+	s, _ = s.with(nil)
+	for _, d := range decls {
+		switch d := d.(type) {
+		case *syntax.PropDecl:
+			nodes = append(nodes, body{d.Init, s})
+			if d.Getter != nil && d.Ref == nil {
+				nodes = append(nodes, body{d.Getter.Body, s}, body{d.Getter.ExprBody, s})
+			}
+		case *syntax.FunDecl:
+			fs := s
+			if d.Sym != nil {
+				fs, _ = s.with(d.Sym.TypeParams)
+			}
+			for _, p := range d.Params {
+				nodes = append(nodes, body{p.Default, fs})
+			}
+			nodes = append(nodes, body{d.Body, fs}, body{d.ExprBody, fs})
+		case *syntax.InitBlock:
+			nodes = append(nodes, body{d.Body, s})
+		case *syntax.SecondaryCtor:
+			nodes = append(nodes, body{d.Body, s})
+		}
+	}
+	for _, b := range nodes {
+		s := b.s
+		syntax.Inspect(b.n, func(n any) bool {
+			vs, ok := n.(*syntax.VarStmt)
+			if !ok || vs.Get == nil || vs.Sym == nil || len(vs.Get.Args) < 2 {
+				return true
+			}
+			r, ok := vs.Get.Args[1].(*syntax.PropRef)
+			if !ok || !strings.HasPrefix(r.Sig, "<v#") {
+				return true
+			}
+			i, err := strconv.Atoi(strings.TrimSuffix(r.Sig[3:], ">"))
+			if err != nil {
+				return true
+			}
+			// Local visibility, hasGetter and isDelegated, and isVar and
+			// hasSetter for a var.
+			f := kmeta.Flags(kmeta.Local)<<1 | 1<<9 | 1<<15
+			if vs.Mutable {
+				f |= 1<<8 | 1<<10
+			}
+			byN[i] = &kmeta.Property{Flags: f, Name: vs.Name, Type: s.typ(vs.Sym.Type),
+				GetterFlags: f & 0x3f, SetterFlags: f & 0x3f}
+			return true
+		})
+	}
+	ns := make([]int, 0, len(byN))
+	for n := range byN {
+		ns = append(ns, n)
+	}
+	slices.Sort(ns)
+	var out []*kmeta.Property
+	for _, n := range ns {
+		out = append(out, byN[n])
+	}
+	return out
 }

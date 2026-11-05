@@ -141,6 +141,10 @@ func (w *sigWriter) typ(t types.Type, ref *syntax.TypeRef, m wildMode) {
 	}
 	switch t.K {
 	case types.TypeParam, types.TypeVar:
+		if t.IsIntersection() {
+			w.typ(types.Approx(t), nil, m) // no intersection on the JVM
+			return
+		}
 		w.WriteString("T" + t.Param().Name + ";")
 	case types.Any:
 		w.WriteString("Ljava/lang/Object;")
@@ -215,6 +219,9 @@ func (w *sigWriter) classRef(t types.Type, ref *syntax.TypeRef, m wildMode) {
 		w.WriteString("." + c.Name[len(c.Outer.Name)+1:])
 	} else {
 		w.WriteString(c.Name)
+		if c.OuterParams > 0 && n == len(c.TypeParams) {
+			own = n - c.OuterParams // an object expression's, of the code around it
+		}
 	}
 	if own == 0 {
 		return
@@ -404,7 +411,12 @@ func (w *sigWriter) member(p sigPart, d string, m wildMode) {
 	}
 	t, ref := p.t, p.ref
 	if types.Unboxed(t) {
-		t, ref = types.Repr(t), nil // a value class's underlying value
+		var ok bool
+		if t, ok = sigRepr(t); !ok {
+			w.WriteString(d) // a type parameter's value, erased as kotlinc's
+			return
+		}
+		ref = nil // a value class's underlying value
 	}
 	if len(d) == 1 || t.K == types.Invalid || t.K == types.Unit {
 		w.WriteString(d)
@@ -703,4 +715,29 @@ func specialParams(name string, r types.Type, params []*types.VarSym) []int {
 		}
 	}
 	return out
+}
+
+// sigRepr returns the type of the underlying value of unboxed value class
+// type t, for generic signatures: the underlying type with t's type
+// arguments. It reports false if that is the class's type parameter,
+// which kotlinc erases.
+func sigRepr(t types.Type) (types.Type, bool) {
+	for types.Unboxed(t) {
+		u := t.C.Underlying.Type
+		if u.K == types.TypeParam && u.Param().Owner == t.C {
+			return t, false
+		}
+		if tps := t.C.TypeParams; len(tps) > 0 && len(tps) == t.A.Len() {
+			s := types.Subst{}
+			for i, p := range tps {
+				s[p] = t.A.Get(i)
+			}
+			u = s.Apply(u)
+		}
+		if t.N {
+			u = u.Nullable()
+		}
+		t = u
+	}
+	return t, true
 }

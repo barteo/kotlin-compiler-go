@@ -1,6 +1,8 @@
 package check
 
 import (
+	"slices"
+
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
 	"github.com/barteo/kotlin-compiler-go/internal/types"
 )
@@ -9,6 +11,7 @@ import (
 // its type is the join of the try block's and the catch blocks'; the
 // finally block's value is discarded.
 func (c *Checker) tryExpr(x *syntax.Try, want types.Type, valueUsed bool) types.Type {
+	sink := c.takeBranchSink()
 	if valueUsed && c.ctorArgs {
 		// Its handlers would start with an empty stack, without the
 		// object under construction.
@@ -17,9 +20,74 @@ func (c *Checker) tryExpr(x *syntax.Try, want types.Type, valueUsed bool) types.
 	// The catch and finally blocks don't know how far the body got: its
 	// assignments drop the vars' narrowing there, and after the try.
 	bodyVars := c.watchedVars(x.Body)
-	defer c.reset(c.watchedVars(x))
+	allVars := c.watchedVars(x)
+	var inBody []narrow
+	blocks := []*syntax.Block{x.Body}
+	for _, cb := range x.Catches {
+		blocks = append(blocks, cb.Body)
+	}
+	var handlerVars []*types.VarSym
+	var inFinally []narrow
+	if x.Finally != nil {
+		handlerVars = c.watchedVars(x.Body)
+		for _, cb := range x.Catches {
+			for _, v := range c.watchedVars(cb.Body) {
+				if !slices.Contains(handlerVars, v) {
+					handlerVars = append(handlerVars, v)
+				}
+			}
+		}
+	}
+	// After the try, the smart casts are those where its body and its
+	// catch blocks end, past its finally block, whose vars have its.
+	var ends []*branchExit
+	var finallyEnd *branchExit
+	defer func() {
+		c.reset(allVars)
+		var states []flowState
+		for _, e := range ends {
+			if e != nil && !e.jumped && e.state != nil {
+				states = append(states, e.state)
+			}
+		}
+		if len(states) == 0 {
+			return
+		}
+		after := onlyVars(c.joinFlows(states), allVars)
+		if finallyEnd != nil {
+			var fvars []*types.VarSym
+			if x.Finally != nil {
+				fvars = c.watchedVars(x.Finally)
+			}
+			kept := after[:0:0]
+			for _, n := range after {
+				if !slices.Contains(fvars, n.sym) {
+					kept = append(kept, n)
+				}
+			}
+			after = kept
+			if !finallyEnd.jumped && finallyEnd.state != nil {
+				for _, v := range fvars {
+					if t, ok := finallyEnd.state[flowKey{sym: v}]; ok && t != v.Type {
+						after = append(after, narrow{sym: v, t: t})
+					}
+				}
+			}
+		}
+		c.scope.narrows = append(c.scope.narrows, after...)
+	}()
 	exits := c.loopExits()
+	if x.Finally != nil {
+		// A break or a continue in the body or a catch block runs the
+		// finally block, which may assign vars, before it jumps.
+		c.finallies = append(c.finallies, finallyCtx{loops: len(c.loops), vars: c.watchedVars(x.Finally)})
+	}
+	ends = append(ends, c.watchExit(nil))
+	c.sinkTail(x.Body, sink)
 	result := c.block(x.Body, want, valueUsed)
+	if len(x.Catches) > 0 {
+		inBody = c.tryAssigned(bodyVars, x.Body)
+	}
 	allJump := result.K == types.Nothing
 	for _, cb := range x.Catches {
 		c.localAnnotations(cb.Annotations, catchSite)
@@ -34,7 +102,9 @@ func (c *Checker) tryExpr(x *syntax.Try, want types.Type, valueUsed bool) types.
 		cb.Sym = &types.VarSym{Name: cb.Name, Type: t.NonNull(), Kind: types.Local, Decl: cb}
 		c.push()
 		c.reset(bodyVars)
+		c.scope.narrows = append(c.scope.narrows, inBody...)
 		c.scope.declare(cb.Sym)
+		ends = append(ends, c.watchExit(nil))
 		bt := c.block(cb.Body, want, valueUsed)
 		c.pop()
 		allJump = allJump && bt.K == types.Nothing
@@ -42,14 +112,21 @@ func (c *Checker) tryExpr(x *syntax.Try, want types.Type, valueUsed bool) types.
 			j, ok := c.joinBranch(result, bt, want, cb.Body.P)
 			if !ok {
 				c.errorf(cb.Body.P, "type mismatch: 'try' and 'catch' blocks have incompatible types %s and %s", result, bt)
+				if x.Finally != nil {
+					c.finallies = c.finallies[:len(c.finallies)-1]
+				}
 				return types.InvalidType
 			}
 			result = j
 		}
 	}
 	if x.Finally != nil {
+		c.finallies = c.finallies[:len(c.finallies)-1]
+		inFinally = c.tryAssigned(handlerVars, blocks...)
 		c.push()
-		c.reset(bodyVars)
+		c.reset(handlerVars)
+		c.scope.narrows = append(c.scope.narrows, inFinally...)
+		finallyEnd = c.watchExit(nil)
 		ft := c.block(x.Finally, noWant, false)
 		c.pop()
 		if ft.K == types.Nothing {
@@ -69,21 +146,29 @@ func (c *Checker) tryExpr(x *syntax.Try, want types.Type, valueUsed bool) types.
 	return result
 }
 
-// loopExits returns whether each of the loops the code is in has a break
-// and a continue so far.
-func (c *Checker) loopExits() [][2]bool {
-	exits := make([][2]bool, len(c.loops))
+// loopExit is what a loop knows of its breaks and continues.
+type loopExit struct {
+	hasBreak, hasContinue bool
+	breaks, continues     int // the number of their smart casts
+}
+
+// loopExits returns the breaks and continues each of the loops the code
+// is in has so far.
+func (c *Checker) loopExits() []loopExit {
+	exits := make([]loopExit, len(c.loops))
 	for i, l := range c.loops {
-		exits[i] = [2]bool{l.hasBreak, l.hasContinue}
+		exits[i] = loopExit{l.hasBreak, l.hasContinue, len(l.flow.breaks), len(l.flow.continues)}
 	}
 	return exits
 }
 
 // restoreLoopExits forgets the breaks and continues of the loops that
 // loopExits returned found after it.
-func (c *Checker) restoreLoopExits(exits [][2]bool) {
+func (c *Checker) restoreLoopExits(exits []loopExit) {
 	for i, e := range exits {
-		c.loops[i].hasBreak, c.loops[i].hasContinue = e[0], e[1]
+		l := c.loops[i]
+		l.hasBreak, l.hasContinue = e.hasBreak, e.hasContinue
+		l.flow.breaks, l.flow.continues = l.flow.breaks[:e.breaks], l.flow.continues[:e.continues]
 	}
 }
 
@@ -99,7 +184,13 @@ func (c *Checker) throwable(t types.Type) bool {
 
 // throw checks throw e.
 func (c *Checker) throw(x *syntax.Jump) {
+	n := len(c.errs)
 	t := c.value(x.X, noWant)
+	if th := c.u.ext.class("java/lang/Throwable"); th != nil && c.cannotInferSince(n) && retryableCall(x.X) {
+		// throw a() for fun <T> a(): T is a's T Throwable.
+		c.errs = c.errs[:n]
+		t = c.value(x.X, types.ClassType(th))
+	}
 	if t.K != types.Invalid && t.K != types.Nothing && !c.throwable(t.NonNull()) {
 		c.errorf(x.X.Pos(), "type mismatch: inferred type is %s but Throwable was expected", t)
 	}

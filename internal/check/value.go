@@ -74,5 +74,9 @@ func (c *Checker) valueParam(d *syntax.ClassDecl) {
 		cls.Value = false
 	case cp.PropSym != nil:
 		cls.Underlying = cp.PropSym
+		if types.RecursiveValue(cls) { // through other value classes
+			c.errorf(cp.Type.P, "value class cannot be recursive")
+			cls.Value, cls.Underlying = false, nil
+		}
 	}
 }

@@ -3,6 +3,7 @@ package lower
 import (
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
 	"github.com/barteo/kotlin-compiler-go/psi"
+	"strings"
 )
 
 // file lowers the FILE node, as parseFile parses a file.
@@ -29,7 +30,10 @@ func (l *lowerer) file(root psi.NodeRef) *syntax.File {
 			}
 		case psi.KindPACKAGE_DIRECTIVE:
 			if c.FirstChild().Valid() {
-				l.decl(c, func() { f.Package = l.dotted(c) })
+				l.decl(c, func() {
+					f.Package = l.dotted(c)
+					f.PackageP = l.pos(next(child(c, psi.KindPACKAGE_KEYWORD)))
+				})
 			}
 		case psi.KindIMPORT_LIST:
 			for _, d := range kids(c) {
@@ -89,7 +93,7 @@ func (l *lowerer) topLevel(f *syntax.File, n psi.NodeRef) {
 	switch n.NumericKind() {
 	case psi.KindFUN:
 		fd := l.fun(n)
-		fd.Modifiers = m
+		fd.Modifiers, fd.End = m, l.lastTok(n)
 		add(fd)
 	case psi.KindPROPERTY:
 		pd := l.prop(n, m)
@@ -180,6 +184,7 @@ func (l *lowerer) params(n psi.NodeRef) []*syntax.Param {
 		p := record(l, &syntax.Param{P: l.pos(name), Name: ident(name), Type: l.typeRef(tr), Vararg: m.Vararg,
 			Noinline: m.Noinline, Crossinline: m.Crossinline, Annotations: m.Annotations}, c)
 		p.External, p.ExternalP = m.External, m.ExternalP
+		p.Mods = m.Written
 		if d := exprAfter(c, psi.KindEQ); d.Valid() {
 			p.Default = l.expr(d)
 		}
@@ -223,7 +228,7 @@ func (l *lowerer) prop(n psi.NodeRef, m syntax.Modifiers) *syntax.PropDecl {
 			pd.Init = l.expr(exprAfter(n, psi.KindEQ))
 		case psi.KindPROPERTY_DELEGATE:
 			delegate = c
-		case psi.KindPROPERTY_ACCESSOR:
+		case psi.KindPROPERTY_ACCESSOR, psi.KindBACKING_FIELD:
 			accessors = append(accessors, c)
 		}
 		if c.NumericKind() == psi.KindPROPERTY_DELEGATE {
@@ -239,7 +244,11 @@ func (l *lowerer) prop(n psi.NodeRef, m syntax.Modifiers) *syntax.PropDecl {
 		l.fail(n, "expected a name")
 	}
 	for _, a := range accessors {
-		l.accessor(pd, a)
+		if a.NumericKind() == psi.KindBACKING_FIELD {
+			l.backingField(pd, a)
+		} else {
+			l.accessor(pd, a)
+		}
 	}
 	if delegate.Valid() {
 		for _, a := range []*syntax.FunDecl{pd.Getter, pd.Setter} {
@@ -249,6 +258,30 @@ func (l *lowerer) prop(n psi.NodeRef, m syntax.Modifiers) *syntax.PropDecl {
 		}
 	}
 	return pd
+}
+
+// backingField lowers the BACKING_FIELD of property pd, field: T = init.
+// Its annotations without a target are the field's.
+func (l *lowerer) backingField(pd *syntax.PropDecl, n psi.NodeRef) {
+	m := l.modifiers(child(n, psi.KindMODIFIER_LIST))
+	kw := child(n, psi.KindFIELD_KEYWORD)
+	if pd.BackingField != nil {
+		l.fail(kw, "property has two backing fields")
+	}
+	f := &syntax.BackingField{P: l.pos(kw), Mods: m.Written}
+	for _, a := range m.Annotations {
+		if a.Target == "" {
+			a.Target = "field"
+		}
+		pd.Annotations = append(pd.Annotations, a)
+	}
+	if t := child(n, psi.KindTYPE_REFERENCE); t.Valid() {
+		f.Type = l.typeRef(t)
+	}
+	if has(n, psi.KindEQ) {
+		f.Init = l.expr(exprAfter(n, psi.KindEQ))
+	}
+	pd.BackingField = f
 }
 
 // accessor lowers a PROPERTY_ACCESSOR of property pd.
@@ -261,6 +294,12 @@ func (l *lowerer) accessor(pd *syntax.PropDecl, n psi.NodeRef) {
 		kw, name = child(n, psi.KindSET_KEYWORD), "set"
 	}
 	pos := l.pos(kw)
+	if pd.AccessorP.Line == 0 {
+		pd.AccessorP = pos
+	}
+	if len(m.Written) > 0 {
+		pd.AccessorMods = append(pd.AccessorMods, m.Written)
+	}
 	for _, a := range m.Annotations {
 		if a.Target == "" {
 			a.Target, a.Accessor = name, true
@@ -355,6 +394,7 @@ func (l *lowerer) accessor(pd *syntax.PropDecl, n psi.NodeRef) {
 	default:
 		l.failAt(l.end(n), "unexpected %s body", name+"ter")
 	}
+	fd.End = l.lastTok(n)
 	if name == "get" {
 		pd.Getter = fd
 	} else {
@@ -402,6 +442,11 @@ func (l *lowerer) class(n psi.NodeRef, m syntax.Modifiers) *syntax.ClassDecl {
 		l.failAt(kpos, "modifier 'companion' is only allowed on objects")
 	case m.Companion && !name.Valid():
 		cd.Name = "Companion"
+	case m.Companion && strings.Contains(l.src[kw.Range().End:name.Range().Start], "\n"):
+		// companion object, then a name on the next line: kc ends the
+		// header at the newline, where psi reads on.
+		cd.Name = "Companion"
+		l.detachName(n, name)
 	case !name.Valid():
 		l.failAt(l.end(kw), "expected a name")
 	default:
@@ -422,11 +467,22 @@ func (l *lowerer) class(n psi.NodeRef, m syntax.Modifiers) *syntax.ClassDecl {
 	l.whereClause(child(n, psi.KindTYPE_CONSTRAINT_LIST), cd.TypeParams)
 	if body := child(n, psi.KindCLASS_BODY); body.Valid() {
 		l.classBody(cd, body)
+		cd.End = l.pos(child(body, psi.KindRBRACE))
 	}
 	if !cd.HasPrimary && cd.Secondaries() == nil {
 		cd.HasPrimary = true
 	}
 	return cd
+}
+
+// detachName lowers the name psi gives companion object n from the line
+// after it as kc reads it: a modifier of the next member, which member
+// takes from carry.
+func (l *lowerer) detachName(n, name psi.NodeRef) {
+	if next(name).Valid() || !syntax.IsModifier(name.Text()) || n.Parent().NumericKind() != psi.KindCLASS_BODY {
+		l.fail(name, "expected member declaration, found '%s'", name.Text())
+	}
+	l.carry = name
 }
 
 // ctorParams lowers a primary constructor's VALUE_PARAMETER_LIST.
@@ -503,6 +559,16 @@ func (l *lowerer) classBody(cd *syntax.ClassDecl, n psi.NodeRef) {
 			l.decl(c, func() { l.member(cd, c) })
 		}
 	}
+	l.noCarry()
+}
+
+// noCarry reports a modifier detachName left for a member that doesn't
+// follow.
+func (l *lowerer) noCarry() {
+	if c := l.carry; c.Valid() {
+		l.carry = psi.NodeRef{}
+		l.failAt(l.end(c), "expected member declaration, found newline")
+	}
 }
 
 // enumEntry lowers an ENUM_ENTRY of enum class cd.
@@ -545,6 +611,8 @@ func (l *lowerer) enumEntry(cd *syntax.ClassDecl, n psi.NodeRef) {
 				l.decl(c, func() { l.member(e.Body, c) })
 			}
 		}
+		l.noCarry()
+		e.Body.End = l.pos(child(body, psi.KindRBRACE))
 		cd.Members = append(cd.Members, e.Body)
 	}
 	cd.Entries = append(cd.Entries, e)
@@ -562,12 +630,17 @@ func (l *lowerer) bracketAnnotation(n psi.NodeRef) syntax.Annotation {
 
 // member lowers a member of class cd.
 func (l *lowerer) member(cd *syntax.ClassDecl, n psi.NodeRef) {
-	m := l.modifiers(child(n, psi.KindMODIFIER_LIST))
+	ms := kids(child(n, psi.KindMODIFIER_LIST))
+	if c := l.carry; c.Valid() {
+		l.carry = psi.NodeRef{}
+		ms = append([]psi.NodeRef{c}, ms...)
+	}
+	m := l.modifiersOf(ms)
 	l.paramOnly(m)
 	switch n.NumericKind() {
 	case psi.KindFUN:
 		fd := l.fun(n)
-		fd.Modifiers = m
+		fd.Modifiers, fd.End = m, l.lastTok(n)
 		cd.Members = append(cd.Members, fd)
 	case psi.KindPROPERTY:
 		pd := l.prop(n, m)
@@ -673,6 +746,7 @@ func (l *lowerer) objectExpr(n psi.NodeRef) *syntax.ObjectExpr {
 				l.decl(c, func() { l.member(cd, c) })
 			}
 		}
+		cd.End = l.pos(child(body, psi.KindRBRACE))
 	}
 	x := &syntax.ObjectExpr{Decl: cd}
 	x.P = cd.P

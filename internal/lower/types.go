@@ -4,6 +4,7 @@ import (
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
 	"github.com/barteo/kotlin-compiler-go/internal/types"
 	"github.com/barteo/kotlin-compiler-go/psi"
+	"strings"
 )
 
 // typeRef lowers a TYPE_REFERENCE, or any node holding a type with its
@@ -48,6 +49,7 @@ func (l *lowerer) typeWith(n psi.NodeRef, recv bool) (*syntax.TypeRef, []syntax.
 	}
 	unsafe, composable, noInfer := false, false, false
 	var wild syntax.Wildcards
+	var as []syntax.Annotation
 	for _, m := range mods {
 		for _, c := range kids(m) {
 			switch c.NumericKind() {
@@ -61,6 +63,7 @@ func (l *lowerer) typeWith(n psi.NodeRef, recv bool) (*syntax.TypeRef, []syntax.
 					continue
 				}
 				leading = false
+				as = append(as, a)
 				unsafe = unsafe || a.Is("UnsafeVariance")
 				noInfer = noInfer || a.Name == "NoInfer" || a.Is("internal.NoInfer")
 				composable = composable || syntax.IsComposable(a)
@@ -69,6 +72,7 @@ func (l *lowerer) typeWith(n psi.NodeRef, recv bool) (*syntax.TypeRef, []syntax.
 				}
 			case psi.KindANNOTATION:
 				leading = false
+				as = append(as, l.bracketAnnotation(c))
 			case psi.KindSUSPEND_KEYWORD:
 				suspendAt = c
 			default:
@@ -88,6 +92,9 @@ func (l *lowerer) typeWith(n psi.NodeRef, recv bool) (*syntax.TypeRef, []syntax.
 			l.fail(suspendAt, "expected a function type after 'suspend'")
 		}
 		t.P, t.Suspend = l.pos(suspendAt), true
+	}
+	if as != nil {
+		t.Annotations = append(as, t.Annotations...)
 	}
 	t.UnsafeVariance = t.UnsafeVariance || unsafe
 	t.NoInfer = t.NoInfer || noInfer
@@ -299,7 +306,11 @@ func (l *lowerer) typeParams(n psi.NodeRef) []*syntax.TypeParam {
 				case psi.KindOUT_KEYWORD:
 					tp.Variance = types.Out
 				case psi.KindANNOTATION_ENTRY:
-					l.annotation(k) // ignored: kc writes no type annotations
+					a := l.annotation(k) // kc writes no type annotations
+					tp.Annotations = append(tp.Annotations, a)
+					tp.OnlyInput = tp.OnlyInput || a.Is("internal.OnlyInputTypes") // for the inference
+				case psi.KindANNOTATION:
+					tp.Annotations = append(tp.Annotations, l.bracketAnnotation(k))
 				case psi.KindCONTEXT_PARAMETER_LIST:
 					l.fail(child(k, psi.KindLPAR), "expected '>', found '('")
 				}
@@ -439,7 +450,15 @@ func (l *lowerer) modifiers(n psi.NodeRef) syntax.Modifiers {
 func (l *lowerer) modifiersOf(cs []psi.NodeRef) syntax.Modifiers {
 	var m syntax.Modifiers
 	for _, c := range cs {
-		switch c.NumericKind() {
+		if c.IsLeaf() && syntax.IsModifier(c.Text()) {
+			m.Written = append(m.Written, syntax.Mod{Name: c.Text(), P: l.pos(c)})
+		}
+		k := c.NumericKind()
+		if k == psi.KindIDENTIFIER {
+			// A companion object's detached name: see detachName.
+			k = psi.KindForName(strings.ToUpper(c.Text()) + "_KEYWORD")
+		}
+		switch k {
 		case psi.KindANNOTATION_ENTRY:
 			a := l.annotation(c)
 			if a.Target == "" && a.Is("JvmInline") {

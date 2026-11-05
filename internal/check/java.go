@@ -39,11 +39,15 @@ type classTable struct {
 	// asks for again and again: supertypes with their type arguments, and
 	// the methods of a class by name.
 	supers  sync.Map // superKey -> superResult
+	inters  sync.Map // interKey -> types.Type, see intersect
 	methods sync.Map // methodsKey -> []*types.FunSym
 	// defaults has a sync.Once for each method whose inherited default
 	// values inheritExtDefaults looked for.
 	defaults     sync.Map // *types.FunSym -> *sync.Once
 	inlineBodies sync.Map // inlineKey -> func() (*inline.Body, error)
+	// scopes are the type parameters of the Kotlin classes loaded, by
+	// their metadata's ids, which their inner classes' metadata uses.
+	scopes sync.Map // *types.ClassSym -> tscope
 }
 
 type superKey struct {
@@ -135,7 +139,7 @@ func (t *classTable) load(cls *types.ClassSym) {
 		cls.JVMMethods[m.Name+m.Desc] = m.Access
 	}
 	cls.StabilityInferred = info.StabilityInferred
-	cls.Deprecated = deprecation(info.Deprecated)
+	cls.Deprecated = classFileDeprecation(info.Deprecated)
 	for _, a := range slices.Concat(info.Invisible, info.Visible) {
 		if strings.HasPrefix(a, "L") && strings.HasSuffix(a, ";") {
 			if c := t.class(a[1 : len(a)-1]); c != nil {
@@ -225,7 +229,7 @@ func (t *classTable) load(cls *types.ClassSym) {
 		}
 		f.Unsupported = !ok || !vok
 		f.Abstract = m.Access&classfile.AccAbstract != 0
-		f.Annotations, f.Deprecated = m.Annotations, deprecation(m.Deprecated)
+		f.Annotations, f.Deprecated = m.Annotations, classFileDeprecation(m.Deprecated)
 		if m.Name == "toString" && len(f.Params) == 0 && kotlinMapped[cls.Name] {
 			// Kotlin sees these classes as Kotlin types, whose toString is
 			// Any's: a String, not a platform String!.
@@ -444,6 +448,8 @@ func (c *Checker) resolveImports() {
 				c.errorf(imp.P, "cannot import on demand from object '%s'", owner.DisplayName())
 			} else if user == nil && owner != nil {
 				memberStars = append(memberStars, imp)
+			} else if a := c.importedAlias(imp.Path); user == nil && a != nil {
+				c.aliasStars = append(c.aliasStars, aliasStar{alias: a, imp: imp})
 			} else if user == nil && !optionalExpectationPackages[imp.Path] {
 				c.errorf(imp.P, "unresolved import: %s.*", imp.Path)
 			}
@@ -457,9 +463,9 @@ func (c *Checker) resolveImports() {
 		if i := strings.LastIndexByte(imp.Path, '.'); i > 0 {
 			pkg, simple = imp.Path[:i], imp.Path[i+1:]
 		}
-		// The program's own declarations come first. Declarations in the
-		// default package can't be imported.
-		if user := c.u.Pkgs[pkg]; user != nil && pkg != "" {
+		// The program's own declarations come first, those of the default
+		// package too: import checkSubtype.
+		if user := c.u.Pkgs[pkg]; user != nil {
 			found := false
 			if cls, ok := user.Classes[simple]; ok {
 				c.imports[alias], found = cls, true
@@ -550,6 +556,9 @@ func (c *Checker) resolveImports() {
 			if n := c.nestedOf(owner, simple); n != nil {
 				c.imports[alias] = n
 				classifiers[alias] = append(classifiers[alias], imp.P)
+			} else if a := owner.Aliases[simple]; a != nil {
+				c.aliasImports[alias] = a // import p.Outer.A of a nested typealias
+				classifiers[alias] = append(classifiers[alias], imp.P)
 			} else {
 				c.memberImports[alias] = memberImport{owner: owner, name: simple, p: imp.P, path: imp.Path}
 			}
@@ -560,6 +569,9 @@ func (c *Checker) resolveImports() {
 		}
 		if pkg == "kotlin" && kotlinTypes[simple] && alias == simple {
 			continue // import kotlin.String: a built-in type, imported by default
+		}
+		if pkg == "kotlin" && builtinFuns[simple] && alias == simple {
+			continue // import kotlin.arrayOfNulls: built in, imported by default
 		}
 		c.errorf(imp.P, "unresolved import: %s", imp.Path)
 	}
@@ -576,26 +588,7 @@ func (c *Checker) resolveImports() {
 	// statics, enum entries too, after the explicit imports, and import
 	// kotlinx.coroutines.CoroutineStart.* a program's enum's entries.
 	for _, imp := range memberStars {
-		owner := c.importOwner(imp.Path)
-		owner.Ensure()
-		c.starOwners = append(c.starOwners, owner)
-		add := func(name string) {
-			if _, ok := c.memberImports[name]; !ok {
-				c.memberImports[name] = memberImport{owner: owner, name: name, p: imp.P, path: imp.Path + "." + name, star: true}
-			}
-		}
-		if !owner.External {
-			for _, name := range owner.Entries {
-				add(name)
-			}
-			continue
-		}
-		for name := range owner.Fields {
-			add(name)
-		}
-		for name := range owner.Statics {
-			add(name)
-		}
+		c.importMembers(c.importOwner(imp.Path), imp)
 	}
 }
 
@@ -682,6 +675,9 @@ func (c *Checker) importOwner(name string) *types.ClassSym {
 func (c *Checker) nestedOf(cls *types.ClassSym, name string) *types.ClassSym {
 	if !cls.External {
 		return cls.Nested[name]
+	}
+	if isEnumEntry(cls, name) {
+		return nil // Foo.FOO is the entry, not its class Foo$FOO
 	}
 	return c.u.ext.class(cls.Name + "$" + name)
 }
@@ -1388,11 +1384,11 @@ func (c *Checker) classRef(x syntax.Expr) *types.ClassSym {
 		}
 		if first := c.findClass(id.Name); first != nil && first.External {
 			// A nested class of a class on the class path: Thread.State.
-			name := first.Name
-			for i := len(parts) - 1; i >= 0; i-- {
-				name += "$" + parts[i]
+			cls := first
+			for i := len(parts) - 1; i >= 0 && cls != nil; i-- {
+				cls = c.nestedOf(cls, parts[i])
 			}
-			if cls := c.u.ext.class(name); cls != nil {
+			if cls != nil {
 				return cls
 			}
 		}
@@ -1739,6 +1735,12 @@ outer:
 			if len(prev.f.Params) != len(cl.f.Params) || len(prev.tparams) != len(cl.tparams) || !generic(prev) && !generic(cl) {
 				continue
 			}
+			if prev.f.Owner != nil && prev.f.Owner == cl.f.Owner {
+				// Overloads of one class, which neither overrides, as
+				// Base<String>'s foo(x: T) and foo(y: String): named
+				// arguments tell them apart.
+				continue
+			}
 			same := true
 			for i, p := range cl.f.Params {
 				if !c.sameType(prev.recv.ApplyIn(prev.f.Params[i].Type), cl.recv.ApplyIn(p.Type)) {
@@ -1859,10 +1861,15 @@ func (c *Checker) construct(x *syntax.Call, cls *types.ClassSym, p syntax.Pos, w
 	var cands []callee
 	var ctors []*types.FunSym
 	if !cls.Abstract {
-		for _, f := range cls.Ctors {
+		all := cls.Ctors
+		if c.file.SuppressInvisible {
+			all = slices.Concat(all, cls.InternalCtors)
+		}
+		own := cls.TypeParams[:len(cls.TypeParams)-cls.OuterParams] // an inner class's outer ones are the receiver's
+		for _, f := range all {
 			if !f.Protected {
 				ctors = append(ctors, f)
-				cands = append(cands, callee{f: f, tparams: append(cls.TypeParams[:len(cls.TypeParams):len(cls.TypeParams)], f.TypeParams...)})
+				cands = append(cands, callee{f: f, tparams: append(own[:len(own):len(own)], f.TypeParams...), recv: c.outerSubst})
 			}
 		}
 	}
@@ -2111,6 +2118,12 @@ func (c *Checker) javaProperty(x *syntax.Member, rt types.Type) (types.Type, boo
 	// Not those of an earlier check of x, an extension property's: a
 	// member setTextColor isn't the setter of TextView.textColor.
 	x.Getter, x.Setter = nil, nil
+	if (getterName == "getFirst" || getterName == "getLast") && c.isSubclassOf(cls, "java/util/List") && !c.isSubclassOf(cls, "java/util/Deque") {
+		// JDK 21's List.getFirst() and getLast(), deprecated in Kotlin's
+		// List, aren't properties: list.last is the program's or the
+		// standard library's.
+		return types.InvalidType, false
+	}
 	for _, f := range c.accessible(cls, c.javaMethods(cls, getterName)) {
 		// Only Java methods are seen as properties, and the program's
 		// overrides of them.
@@ -2228,8 +2241,8 @@ func (c *Checker) arrayIterator(t types.Type) *types.FunSym {
 	return f
 }
 
-// deprecation is the deprecation a class file gives a class or member.
-func deprecation(d *classfile.Deprecation) *types.Deprecation {
+// classFileDeprecation is the deprecation a class file gives a class or member.
+func classFileDeprecation(d *classfile.Deprecation) *types.Deprecation {
 	if d == nil {
 		return nil
 	}

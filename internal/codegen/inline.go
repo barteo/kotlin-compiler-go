@@ -252,12 +252,12 @@ func (g *gen) inline(b *inline.Body, x *syntax.Call) {
 			g.continuationAlias(in.local(p.Slot, k))
 		}
 	}
-	var spilled []int
-	if b.HasHandlers() {
-		var ok bool
-		if spilled, ok = c.Spill(); !ok {
-			panic("an inlined function with exception handlers can't be an argument of a constructor call")
-		}
+	// The caller's values go to locals meanwhile (see spillStack): a
+	// handler starts with an empty stack, and HotSpot compiles a loop
+	// on stack replacement only with one.
+	spilled, ok := g.spillStack()
+	if !ok && b.HasHandlers() {
+		panic("an inlined function with exception handlers can't be an argument of a constructor call")
 	}
 	in.prefix, in.start, in.snap = c.Stack(), c.Assigned(), c.Snapshot()
 	ret := b.Ret()
@@ -272,18 +272,7 @@ func (g *gen) inline(b *inline.Body, x *syntax.Call) {
 	g.tries = g.tries[:len(g.tries)-1]
 	c.Place(in.end)
 	c.Line(line) // after the lines of inlined lambdas, the call's again
-	if len(spilled) > 0 && c.Reachable() {
-		tmp := -1
-		if ret != "V" {
-			tmp = c.AllocLocal(ret)
-			c.Local(storeOpOf(ret), tmp)
-		}
-		c.Unspill(spilled)
-		if tmp >= 0 {
-			c.Local(loadOpOf(ret), tmp)
-			c.Retire(tmp)
-		}
-	}
+	g.unspill(spilled, ret)
 }
 
 // inlineLambdas finds the call's lambdas that are inlined, and the
@@ -444,7 +433,11 @@ func (in *inliner) copy() {
 	}
 	in.pos[len(b.Code)] = c.Pos()
 	for _, h := range b.Handlers {
-		c.Catch(in.snap, in.gaps.ranges(in.pos[h.Start], in.pos[h.End]), in.label(h.Handler), h.Catch)
+		class := h.Catch
+		if r, ok := b.CatchReified(h); ok && !strings.HasPrefix(in.reified[r.Param], "?") {
+			class = in.reified[r.Param] // catch (e: E) catches E's type argument
+		}
+		c.Catch(in.snap, in.gaps.ranges(in.pos[h.Start], in.pos[h.End]), in.label(h.Handler), class)
 	}
 }
 
@@ -471,7 +464,19 @@ func (in *inliner) insn(i int) {
 		// it creates: they must be this module's, as kotlinc's copy is.
 		in.instantiate(t)
 	}
-	if r, ok := b.Reified[i]; ok {
+	if r, ok := b.Reified[i]; ok && r.Kind == inline.Catch {
+		// The astore of a catch block of a reified type, whose handler
+		// copy catches the type argument: still a reified type parameter,
+		// the marker for the copies of this copy.
+		if name, ok := strings.CutPrefix(in.reified[r.Param], "?"); ok {
+			if r.Nullable && !strings.HasSuffix(name, "?") {
+				name += "?"
+			}
+			c.Iconst(int32(r.Kind))
+			c.Sconst(name)
+			c.Invoke(cf.INVOKESTATIC, intrinsics, "reifiedOperationMarker", "(ILjava/lang/String;)V")
+		}
+	} else if ok {
 		cls, ok := in.reified[r.Param]
 		if !ok {
 			panic("no type argument for reified type parameter " + r.Param)
@@ -849,10 +854,13 @@ func (g *gen) inlineLambda(l *syntax.Lambda) {
 		}
 		c.Local(cf.ALOAD, args[k])
 		g.castErased(types.AnyType.Nullable(), p.Type)
-		p.Slot = c.AllocLocal(desc(p.Type))
+		g.setSlot(p, c.AllocLocal(desc(p.Type)))
 		g.named(p)
-		c.Local(storeOp(p.Type), p.Slot)
+		c.Local(storeOp(p.Type), g.slot(p))
 	}
+	// The function's values on the stack, as sum in sum += f(x), go to
+	// locals meanwhile: see spillStack.
+	spilled, _ := g.spillStack()
 	ctx := &inlineLambda{l: l, end: cf.NewJoin("Ljava/lang/Object;"), depth: c.Depth(), tries: len(g.tries)}
 	g.inl = append(g.inl, ctx)
 	restore := g.composeInlineStart(ctx, composer, flags, g.scope())
@@ -866,6 +874,7 @@ func (g *gen) inlineLambda(l *syntax.Lambda) {
 	restore()
 	g.inl = g.inl[:len(g.inl)-1]
 	c.Place(ctx.end)
+	g.unspill(spilled, "Ljava/lang/Object;")
 }
 
 // inlineResult boxes the result of an inlined lambda, of its result type

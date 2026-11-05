@@ -165,7 +165,7 @@ func (g *gen) suspendSAM(x *syntax.Lambda) bool {
 	// The interface's method, if its erasure differs.
 	if desc := samMethodDesc(m); typed != desc {
 		mg := &gen{file: g.file, cls: c, owner: g.thisClass(), shared: g.shared, noLines: g.noLines}
-		mg.code = c.NewMethod(cf.AccPublic|cf.AccBridge|cf.AccSynthetic, m.Name, desc)
+		mg.code = c.NewMethod(cf.AccPublic|cf.AccBridge|cf.AccSynthetic, m.JVM(), desc)
 		code = mg.code
 		code.AllocLocal(self)
 		code.Local(cf.ALOAD, 0)
@@ -179,7 +179,7 @@ func (g *gen) suspendSAM(x *syntax.Lambda) bool {
 			}
 		}
 		code.Local(cf.ALOAD, code.AllocLocal(types.ContinuationDesc))
-		code.Invoke(cf.INVOKEVIRTUAL, name, m.Name, typed)
+		code.Invoke(cf.INVOKEVIRTUAL, name, m.JVM(), typed)
 		code.Op(cf.ARETURN)
 		finishCode(code)
 	}
@@ -221,9 +221,9 @@ func (g *gen) suspendLambdaBody(c *cf.Class, x *syntax.Lambda, ps []lambdaParam,
 		if !sm.forInline {
 			sm.useField(p.field)
 		}
-		p.sym.Slot = code.AllocLocal(d)
+		g.setSlot(p.sym, code.AllocLocal(d))
 		if p.sym == x.Recv {
-			code.NameLocal(p.sym.Slot, p.sym.Name) // $this$sequence
+			code.NameLocal(g.slot(p.sym), p.sym.Name) // $this$sequence
 		} else {
 			lg.named(p.sym)
 		}
@@ -232,7 +232,7 @@ func (g *gen) suspendLambdaBody(c *cf.Class, x *syntax.Lambda, ps []lambdaParam,
 		if fieldKind(d) == 'L' && d != objectDesc {
 			code.Checkcast(className(d))
 		}
-		code.Local(storeOpOf(d), p.sym.Slot)
+		code.Local(storeOpOf(d), g.slot(p.sym))
 	}
 	for _, v := range x.Captures {
 		slot := code.AllocLocal(storageDesc(v))
@@ -301,9 +301,12 @@ func (g *gen) suspendSAMMethod(c *cf.Class, x *syntax.Lambda, typed, cont string
 	}
 	params := x.ParamSyms()
 	lc := &lambdaCtx{slots: map[*types.VarSym]int{}, out: types.AnyType.Nullable(), unit: true}
+	if rawSuspendRet(x.Ret) {
+		lc.out = x.Ret // unboxed, as kotlinc returns a value class over a reference, as Result
+	}
 	lg := &gen{file: g.file, cls: c, owner: g.thisClass(), shared: g.shared, prefix: m.Name + "$lambda", lam: lc, noLines: g.noLines,
 		publicInline: g.publicInline, reifiedUse: reified, lambdaReified: g.reifiedSubst()}
-	method := m.Name
+	method := m.JVM() // with a hash if it returns a value class, as Result
 	if forInline {
 		method += "$$forInline"
 	}
@@ -312,9 +315,9 @@ func (g *gen) suspendSAMMethod(c *cf.Class, x *syntax.Lambda, typed, cont string
 	code := lg.code
 	code.AllocLocal("L" + name + ";")
 	for _, p := range params {
-		p.Slot = code.AllocLocal(paramDesc(p.Type))
+		g.setSlot(p, code.AllocLocal(paramDesc(p.Type)))
 		if x.Ref != nil && g.noLines == 0 {
-			code.NameLocal(p.Slot, strings.TrimPrefix(p.Name, "$")) // a reference's $p0, p0 as kotlinc's
+			code.NameLocal(g.slot(p), strings.TrimPrefix(p.Name, "$")) // a reference's $p0, p0 as kotlinc's
 			continue
 		}
 		lg.named(p)
@@ -343,7 +346,7 @@ func (g *gen) suspendSAMMethod(c *cf.Class, x *syntax.Lambda, typed, cont string
 	fd := &syntax.FunDecl{P: x.P, Name: m.Name, Body: x.Body, Continuation: name + "$" + m.Name + "$1",
 		Sym: &types.FunSym{Name: m.Name, Ret: x.Ret, Suspend: true}}
 	lg.suspendFun(fd, m.Name, typed, k, &resumeCall{this: true, forInline: forInline, lambda: x, call: func(g *gen) {
-		g.code.Invoke(cf.INVOKEVIRTUAL, name, m.Name, typed)
+		g.code.Invoke(cf.INVOKEVIRTUAL, name, m.JVM(), typed)
 	}})
 	if lg.sm.cls != "" {
 		for s := range skip {

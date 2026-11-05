@@ -62,7 +62,9 @@ func (l *lowerer) expr1(n psi.NodeRef) syntax.Expr {
 	case psi.KindREFERENCE_EXPRESSION:
 		return l.ident(n)
 	case psi.KindPARENTHESIZED:
-		return l.expr(exprChild(n))
+		x := l.expr(exprChild(n))
+		syntax.Parenthesized(x)
+		return x
 	case psi.KindBINARY_EXPRESSION:
 		return l.binary(n)
 	case psi.KindIS_EXPRESSION:
@@ -306,6 +308,7 @@ func (l *lowerer) binary(n psi.NodeRef) syntax.Expr {
 			m.P = opPos
 			c := &syntax.Call{Fun: m, Args: []syntax.Expr{l.expr(ops[1])}, Infix: true}
 			c.P = opPos
+			syntax.LabelLambdas(c)
 			return c
 		}
 		b := &syntax.Binary{Op: k, X: l.expr(ops[0]), Y: l.expr(ops[1])}

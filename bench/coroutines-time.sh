@@ -56,12 +56,14 @@ files=$(echo "$all" | wc -l | tr -d ' ')
 lines=$(cat $all | wc -l | tr -d ' ')
 fragments=$(for s in $sets; do find "$src/$s/src" -name '*.kt' | sort | sed "s|^|$s:|"; done | paste -sd, -)
 module=kotlinx-coroutines-core
-opts="-module-name $module -jvm-default=enable"
-optins=kotlin.ExperimentalMultiplatform,kotlin.experimental.ExperimentalTypeInference,kotlinx.coroutines.DelicateCoroutinesApi,kotlinx.coroutines.ExperimentalCoroutinesApi,kotlinx.coroutines.ObsoleteCoroutinesApi,kotlinx.coroutines.InternalCoroutinesApi,kotlinx.coroutines.FlowPreview
+optins=$(for o in kotlin.ExperimentalMultiplatform kotlin.experimental.ExperimentalTypeInference kotlinx.coroutines.DelicateCoroutinesApi \
+	kotlinx.coroutines.ExperimentalCoroutinesApi kotlinx.coroutines.ObsoleteCoroutinesApi kotlinx.coroutines.InternalCoroutinesApi \
+	kotlinx.coroutines.FlowPreview; do printf ' -opt-in=%s' "$o"; done)
+opts="-module-name $module -jvm-default=enable$optins"
 kotlinc_args="-nowarn -Xmulti-platform -Xexpect-actual-classes -Xfragments=common,concurrent,jvm
 	-Xfragment-refines=concurrent:common,jvm:concurrent -Xfragment-sources=$fragments
 	-progressive -Xexplicit-api=strict -Xdont-warn-on-error-suppression -Xno-param-assertions -Xno-call-assertions
-	-Xno-receiver-assertions -jvm-target 1.8 -opt-in=$optins -cp $cp $opts"
+	-Xno-receiver-assertions -jvm-target 1.8 -cp $cp $opts"
 
 # shellcheck disable=SC2086 # the arguments are words
 hyperfine --warmup 1 --runs 10 --style basic --export-json "$work/kc.json" \

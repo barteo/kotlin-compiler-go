@@ -58,7 +58,12 @@ func (c *Checker) receiverFor(x *syntax.This) *implicitRecv {
 
 // thisExpr checks this, or this@label.
 func (c *Checker) thisExpr(x *syntax.This) types.Type {
-	if r := c.receiverFor(x); r != nil {
+	r := c.receiverFor(x)
+	if obj := c.headerThis(x, r); obj != nil {
+		x.Obj = obj
+		return obj.This()
+	}
+	if r != nil {
 		x.Recv = r.sym
 		if r.sym != c.noCapture {
 			c.capture(r.sym, r.depth)
@@ -88,6 +93,44 @@ func (c *Checker) thisExpr(x *syntax.This) types.Type {
 	return t
 }
 
+// headerThis returns the object this refers to in a class's header, the
+// arguments of its superclass's constructor and its delegates, where the
+// class's instance isn't one yet: as in kotlinc, its own and its
+// superclasses' companions come first, before the receivers of the code
+// around (but not of lambdas in the header, r), then the objects in the
+// static scope around (see scopeObjects). It returns nil if this is
+// another's.
+func (c *Checker) headerThis(x *syntax.This, r *implicitRecv) *types.ClassSym {
+	if x.Label != "" || x.Recv != nil || x.Class || c.cls != nil || c.staticCls == nil {
+		return nil
+	}
+	outside := 0 // the receivers of the code around
+	if ctx := c.anon[c.staticCls]; ctx != nil {
+		outside = len(ctx.recvs)
+	}
+	if r != nil {
+		for i := range c.recvs {
+			if &c.recvs[i] == r && i >= outside {
+				return nil // a lambda's in the header
+			}
+		}
+	}
+	for k := c.staticCls; k != nil; k = k.Super {
+		if k.Ensure(); k.Companion != nil {
+			return k.Companion
+		}
+	}
+	if r != nil || c.anon[c.staticCls] != nil {
+		return nil
+	}
+	// Then the objects in the static scope around: the enclosing
+	// classes' companions, their superclasses', and enclosing objects.
+	if objs := c.scopeObjects(); len(objs) > 0 {
+		return objs[0]
+	}
+	return nil
+}
+
 // recvThis returns this, referring to an implicit receiver.
 func recvThis(r *implicitRecv, p syntax.Pos) *syntax.This {
 	this := &syntax.This{Recv: r.sym, Implicit: true}
@@ -100,7 +143,7 @@ func recvThis(r *implicitRecv, p syntax.Pos) *syntax.This {
 // It reports false if none has.
 func (c *Checker) recvMember(x *syntax.Ident) (types.Type, bool) {
 	for i := len(c.recvs) - 1; i >= 0; i-- {
-		if c.recvs[i].outer && c.ownProp(x) {
+		if c.recvs[i].outer && (c.ownProp(x) || c.headerStaticProp(x.Name)) {
 			return types.InvalidType, false // the object's own
 		}
 		r := &c.recvs[i]
@@ -123,6 +166,23 @@ func (c *Checker) recvMember(x *syntax.Ident) (types.Type, bool) {
 		return t, true
 	}
 	return types.InvalidType, false
+}
+
+// headerStaticProp reports whether, in a class's header, such as its
+// call of its superclass's constructor, a property named name is in the
+// class's static scope: its companion's, or a superclass's companion's,
+// which come before an outer class's this, as in kotlinc.
+func (c *Checker) headerStaticProp(name string) bool {
+	if c.cls != nil || c.staticCls == nil {
+		return false
+	}
+	for k := c.staticCls; k != nil; k = k.Super {
+		k.Ensure()
+		if obj := k.Companion; obj != nil && !obj.External && c.userProp(obj, name) != nil {
+			return true
+		}
+	}
+	return false
 }
 
 // recvTarget returns the target of an assignment: a name that isn't a
@@ -214,6 +274,28 @@ func (c *Checker) hasFun(t types.Type, name string, x *syntax.Call) bool {
 	}
 	for _, cl := range c.extCalleesFor(name, t, x) {
 		if c.mayTake(cl.f, x) {
+			return true
+		}
+	}
+	return false
+}
+
+// providesDelegate reports whether a delegate of type t has a
+// provideDelegate operator that call may call: hasFun's, but an
+// extension's receiver must be within its type parameter's bound, as
+// P.provideDelegate for P : MyClass isn't a String's.
+func (c *Checker) providesDelegate(t types.Type, call *syntax.Call) bool {
+	if !c.hasFun(t, "provideDelegate", call) {
+		return false
+	}
+	if cls := c.classOf(t.Flex()); cls != nil && !types.MayBeNull(t.Flex()) {
+		cls.Ensure()
+		if len(c.javaMethods(cls, "provideDelegate")) > 0 {
+			return true
+		}
+	}
+	for _, cl := range c.extCalleesFor("provideDelegate", t.Flex(), call) {
+		if c.recvTakes(t.Flex(), cl.f.Recv) && c.mayTake(cl.f, call) {
 			return true
 		}
 	}
@@ -492,6 +574,8 @@ func (c *Checker) peekType(a syntax.Expr) (types.Type, bool) {
 // a reference to it without an expected type.
 func builtinRefParams(t types.Type, name string) ([]types.Type, bool) {
 	switch {
+	case t == types.StringType.Nullable() && name == "plus":
+		return []types.Type{types.AnyType.Nullable()}, true // String?.plus(Any?)
 	case builtinFun(t, name, 0):
 		return nil, true
 	case !builtinFun(t, name, 1):
@@ -564,6 +648,7 @@ func (c *Checker) implicitArg(x *syntax.Call, ft types.Type) {
 		r := &c.recvs[i]
 		if c.subtype(c.scope.narrowed(r.sym), recv) {
 			x.Args = append([]syntax.Expr{recvThis(r, x.P)}, x.Args...)
+			c.dslInvoke(x, r.sym)
 			return
 		}
 	}
@@ -571,6 +656,7 @@ func (c *Checker) implicitArg(x *syntax.Call, ft types.Type) {
 		this := &syntax.This{}
 		this.P = x.P
 		x.Args = append([]syntax.Expr{this}, x.Args...)
+		c.dslInvoke(x, nil)
 	}
 }
 
@@ -597,7 +683,20 @@ func (c *Checker) memberExtFirst(fn *syntax.Member, x *syntax.Call) bool {
 		}
 	}
 	rt = rt.Flex()
-	if cls := c.classOf(rt.NonNull()); cls != nil && !types.MayBeNull(rt) {
+	anyArgs := 0
+	if fn.Name == "equals" {
+		anyArgs = 1
+	}
+	if !types.MayBeNull(rt) && (builtinFun(rt, fn.Name, len(x.Args)) || anyMember[fn.Name] && len(x.Args) == anyArgs) {
+		// A built-in member, as String's hashCode(): a local val
+		// hashCode = Z::hashCode doesn't shadow it.
+		return true
+	}
+	cls := c.classOf(rt.NonNull())
+	if cls == nil {
+		cls = c.jvmClass(rt.NonNull())
+	}
+	if cls != nil && !types.MayBeNull(rt) {
 		cls.Ensure()
 		if slices.ContainsFunc(c.javaMethods(cls, fn.Name), func(f *types.FunSym) bool { return c.mayTake(f, x) }) {
 			return true
@@ -606,7 +705,16 @@ func (c *Checker) memberExtFirst(fn *syntax.Member, x *syntax.Call) bool {
 			return true
 		}
 	}
-	if _, _, local := c.scope.lookup(fn.Name); local || c.cls == nil || c.userProp(c.cls, fn.Name) == nil {
+	if v, vd := c.scope.find(fn.Name); v != nil {
+		// A local extension function as close as the local, as in
+		// Kotlin, where a level of scope's functions come before its
+		// properties' invoke: fun String.foo() over val foo: String.() ->.
+		fs, fd := c.scope.findFuns(fn.Name)
+		return fd >= vd && slices.ContainsFunc(fs, func(f *types.FunSym) bool {
+			return f.Ext && c.recvFits(rt, f.Recv) && c.mayTake(f, x)
+		})
+	}
+	if c.cls == nil || c.userProp(c.cls, fn.Name) == nil {
 		return false
 	}
 	return slices.ContainsFunc(memberExtMethods(c.cls, fn.Name), func(f *types.FunSym) bool {
@@ -682,4 +790,77 @@ func (c *Checker) extFuncVar(name string) (types.Type, bool) {
 		return v.Type, v.Type.Flex().IsExtFunc() // a top-level one: clikt's conversion
 	}
 	return types.InvalidType, false
+}
+
+// extRefLocal reports whether name is a local val holding an unbound
+// reference to an extension function, A?::foo, whose value Kotlin calls
+// with a receiver too, as an extension: null.a().
+func (c *Checker) extRefLocal(name string) bool {
+	if c.scope == nil {
+		return false
+	}
+	v, _, ok := c.scope.lookup(name)
+	if !ok {
+		return false
+	}
+	s, ok := v.Decl.(*syntax.VarStmt)
+	if !ok || s.Mutable || s.Type != nil {
+		return false
+	}
+	l, ok := s.Init.(*syntax.Lambda)
+	if !ok || l.Ref == nil || l.Ref.X == nil && l.Ref.Type == nil || l.Ref.Bound != nil || l.Body == nil || len(l.Body.Stmts) != 1 {
+		return false
+	}
+	es, ok := l.Body.Stmts[0].(*syntax.ExprStmt)
+	if !ok {
+		return false
+	}
+	call, ok := es.X.(*syntax.Call)
+	return ok && call.Sym != nil && call.Sym.Ext
+}
+
+// callBound returns the bound of a type parameter t with several bounds
+// whose member function name a call x calls, as boundWith does, but of
+// the bounds with one of n parameters the one whose result is the most
+// specific: B's foo(): String for T : A, T : B, of A's foo(): Any?, as
+// the intersection type's member overrides both.
+func (c *Checker) callBound(t types.Type, x *syntax.Call, name string) types.Type {
+	has := func(cls *types.ClassSym) bool {
+		return len(c.javaMethods(cls, name)) > 0 || !cls.External && c.userProp(cls, name) != nil
+	}
+	b := c.boundWith(t, has)
+	if b == t || x.Names != nil {
+		return b
+	}
+	ret := func(b types.Type) (types.Type, bool) {
+		cls := c.classOf(b)
+		if cls == nil {
+			return types.Type{}, false
+		}
+		var r types.Type
+		n := 0
+		for _, f := range c.javaMethods(cls, name) {
+			if len(f.Params) == len(x.Args) && len(f.TypeParams) == 0 {
+				r = c.memberSubst(b, f.Owner).Apply(f.Ret)
+				n++
+			}
+		}
+		return r, n == 1
+	}
+	best, bt := b, types.Type{}
+	if r, ok := ret(b); ok {
+		bt = r
+	} else {
+		return b
+	}
+	for _, o := range t.Param().Bounds {
+		o = o.NonNull()
+		if cls := c.classOf(o); cls == nil || !has(cls) {
+			continue
+		}
+		if r, ok := ret(o); ok && !c.subtype(bt, r) && c.subtype(r, bt) {
+			best, bt = o, r
+		}
+	}
+	return best
 }

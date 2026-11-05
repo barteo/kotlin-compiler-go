@@ -52,7 +52,7 @@ func statementOnly(x syntax.Expr) bool {
 // temporaries.
 func (g *gen) named(v *types.VarSym) {
 	if g.noLines == 0 && v.Name != "" && v.Name != "_" && !strings.HasPrefix(v.Name, "$") && !strings.HasPrefix(v.Name, "<") {
-		g.code.NameLocal(v.Slot, v.Name)
+		g.code.NameLocal(g.slot(v), v.Name)
 	}
 }
 
@@ -76,8 +76,8 @@ func (g *gen) stmt(s syntax.Stmt) {
 			g.code.RetireTemps(from)
 			if v, ok := s.(*syntax.VarStmt); ok {
 				for _, sym := range []*types.VarSym{v.Sym, v.DelegateSym} {
-					if sym != nil && sym.Slot >= from {
-						g.code.Unretire(sym.Slot)
+					if sym != nil && g.slot(sym) >= from {
+						g.code.Unretire(g.slot(sym))
 					}
 				}
 			}
@@ -90,12 +90,12 @@ func (g *gen) stmt(s syntax.Stmt) {
 		if s.Delegate != nil {
 			// A local delegated property: only its delegate is stored.
 			d := s.DelegateSym
-			d.Slot = g.code.AllocLocal(desc(d.Type))
+			g.setSlot(d, g.code.AllocLocal(desc(d.Type)))
 			if g.noLines == 0 {
-				g.code.NameLocal(d.Slot, s.Sym.Name+"$delegate")
+				g.code.NameLocal(g.slot(d), s.Sym.Name+"$delegate")
 			}
 			g.exprAs(s.Delegate, d.Type)
-			g.code.Local(storeOp(d.Type), d.Slot)
+			g.code.Local(storeOp(d.Type), g.slot(d))
 			break
 		}
 		if s.Sym.UnitLocal() {
@@ -105,7 +105,7 @@ func (g *gen) stmt(s syntax.Stmt) {
 			break
 		}
 		if t := s.Sym.Type; s.Sym.Boxed() {
-			s.Sym.Slot = g.code.AllocLocal(storageDesc(s.Sym))
+			g.setSlot(s.Sym, g.code.AllocLocal(storageDesc(s.Sym)))
 			g.named(s.Sym)
 			g.newBox(t)
 			if s.Init != nil {
@@ -114,14 +114,14 @@ func (g *gen) stmt(s syntax.Stmt) {
 				g.exprAs(s.Init, t)
 				g.arrayStore(t)
 			}
-			g.code.Local(cf.ASTORE, s.Sym.Slot)
+			g.code.Local(cf.ASTORE, g.slot(s.Sym))
 			break
 		}
-		s.Sym.Slot = g.code.AllocLocal(desc(s.Sym.Type))
+		g.setSlot(s.Sym, g.code.AllocLocal(desc(s.Sym.Type)))
 		g.named(s.Sym)
 		if s.Lateinit {
 			g.code.Op(cf.ACONST_NULL) // null until assigned, as with kotlinc
-			g.code.Local(cf.ASTORE, s.Sym.Slot)
+			g.code.Local(cf.ASTORE, g.slot(s.Sym))
 			break
 		}
 		if s.Init == nil {
@@ -132,7 +132,7 @@ func (g *gen) stmt(s syntax.Stmt) {
 			g.markNonNull(s.Sym)
 		}
 		if size(s.Sym.Type) > 0 {
-			g.code.Local(storeOp(s.Sym.Type), s.Sym.Slot)
+			g.code.Local(storeOp(s.Sym.Type), g.slot(s.Sym))
 		}
 	case *syntax.Destructure:
 		for _, vs := range s.Stmts {
@@ -143,12 +143,18 @@ func (g *gen) stmt(s syntax.Stmt) {
 	case *syntax.LocalFun:
 		g.localFun(s)
 	case *syntax.While:
+		// A loop in an expression, a when's branch that is an argument,
+		// starts with the stack in locals: see spillStack.
+		spilled, _ := g.spillStack()
 		// In a replace group if the checker says so: see composeFlow.
 		g.grouped(s.Group, g.siteKey(s.P, "loop", 0), func() { g.while(s) })
+		g.unspill(spilled, "V")
 	case *syntax.For:
+		spilled, _ := g.spillStack()
 		scope := g.code.Scope()
 		g.grouped(s.Group, g.siteKey(s.P, "loop", 0), func() { g.forLoop(s) })
 		g.code.EndScope(scope)
+		g.unspill(spilled, "V")
 	case *syntax.Block:
 		g.block(s, types.UnitType, false)
 	}
@@ -160,11 +166,14 @@ func (g *gen) while(s *syntax.While) {
 		// The body, then the condition, which jumps back to it.
 		top, cont, exit := cf.NewLabel(), cf.NewLabel(), cf.NewLabel()
 		g.code.Place(top)
+		// A break or continue in the condition is the do-while's own.
 		g.pushLoop(s, exit, cont)
 		g.loopBody(func() { g.stmts(s.Body.Stmts) })
+		g.pushLoop(s, exit, cont)
 		g.code.Place(cont)
 		g.line(s.Cond.Pos())
 		g.cond(s.Cond, top, true)
+		g.loops = g.loops[:len(g.loops)-1]
 		g.code.Place(exit)
 		return
 	}
@@ -246,7 +255,7 @@ func (g *gen) forEach(s *syntax.For) {
 	}
 	it := g.code.AllocLocal(desc(s.IterT))
 	g.code.Local(cf.ASTORE, it)
-	s.Sym.Slot = g.code.AllocLocal(desc(s.Sym.Type))
+	g.setSlot(s.Sym, g.code.AllocLocal(desc(s.Sym.Type)))
 	g.named(s.Sym)
 	top, exit := cf.NewLabel(), cf.NewLabel()
 	g.code.Place(top)
@@ -256,18 +265,26 @@ func (g *gen) forEach(s *syntax.For) {
 	g.code.Jump(cf.IFEQ, exit)
 	g.suspendOperator(s.Next, s.IterT, func() { g.code.Local(cf.ALOAD, it) })
 	g.coerce(types.JVMRet(s.Next), s.Sym.Type)
-	g.code.Local(storeOp(s.Sym.Type), s.Sym.Slot)
+	g.storeLoopVar(s.Sym)
 	g.pushLoop(s, exit, top)
 	g.loopBody(func() { g.block(s.Body, types.UnitType, false) })
 	g.code.Jump(cf.GOTO, top)
 	g.code.Place(exit)
 }
 
+// storeLoopVar stores the element on the stack in loop variable v. A
+// Unit one, as a List<Unit>'s, has no local: its reads are Unit.
+func (g *gen) storeLoopVar(v *types.VarSym) {
+	if size(v.Type) > 0 {
+		g.code.Local(storeOp(v.Type), g.slot(v))
+	}
+}
+
 // forCalls generates a loop over a collection whose iterator(), hasNext()
 // and next() the checker resolved as calls: IterVar holds the iterator.
 func (g *gen) forCalls(s *syntax.For) {
 	g.stmt(s.IterVar)
-	s.Sym.Slot = g.code.AllocLocal(desc(s.Sym.Type))
+	g.setSlot(s.Sym, g.code.AllocLocal(desc(s.Sym.Type)))
 	g.named(s.Sym)
 	top, exit := cf.NewLabel(), cf.NewLabel()
 	g.code.Place(top)
@@ -275,7 +292,7 @@ func (g *gen) forCalls(s *syntax.For) {
 	g.exprAs(s.HasNextX, types.BoolType)
 	g.code.Jump(cf.IFEQ, exit)
 	g.exprAs(s.NextX, s.Sym.Type)
-	g.code.Local(storeOp(s.Sym.Type), s.Sym.Slot)
+	g.storeLoopVar(s.Sym)
 	g.pushLoop(s, exit, top)
 	g.loopBody(func() { g.block(s.Body, types.UnitType, false) })
 	g.code.Jump(cf.GOTO, top)
@@ -344,7 +361,21 @@ func (g *gen) forLoop(s *syntax.For) {
 		g.forCalls(s)
 		return
 	}
+	if p := g.progression(s.Range); p != nil && s.Sym.Type == p.t {
+		switch {
+		case p.step != nil:
+			g.forStepped(s, p.first, p.last, p.op, p.step, p.t.K == types.Long, p.reverse)
+		case p.t.K == types.Long:
+			g.forLongRange(s, p.first, p.last, p.op)
+		default:
+			g.forIntRange(s, p.first, p.last, p.op)
+		}
+		return
+	}
 	if s.HasNext != nil {
+		if g.forProgression(s) {
+			return
+		}
 		g.forEach(s)
 		return
 	}
@@ -364,28 +395,37 @@ func (g *gen) forLoop(s *syntax.For) {
 		op = r.Op
 	}
 	if step != nil {
-		g.forStepped(s, r, op, step, s.Sym.Type.K == types.Long)
+		g.forStepped(s, operand{x: r.X}, operand{x: r.Y}, op, step, s.Sym.Type.K == types.Long, false)
 		return
 	}
 	if s.Sym.Type.K == types.Long {
-		g.forLongRange(s, r, op)
+		g.forLongRange(s, operand{x: r.X}, operand{x: r.Y}, op)
 		return
 	}
+	g.forIntRange(s, operand{x: r.X}, operand{x: r.Y}, op)
+}
+
+// forIntRange generates a for loop over the Int range from first to last
+// of op, which is RANGE, RANGE_LT, UNTIL or DOWN_TO.
+func (g *gen) forIntRange(s *syntax.For, first, last operand, op syntax.Kind) {
 	i := g.code.AllocLocal("I")
-	s.Sym.Slot = i
+	g.setSlot(s.Sym, i)
 	g.named(s.Sym)
-	g.exprAs(r.X, types.IntType)
+	g.operand(first, types.IntType)
 	g.code.Local(cf.ISTORE, i)
 	// As kotlinc does, a constant or a val's value is the bound itself;
 	// anything else is computed once, into a local.
 	var loadEnd func()
-	if v, ok := constOf(r.Y, 0); ok && r.Y.Type().K == types.Int {
+	if v, ok := constOf(last.x, 0); ok && last.x.Type().K == types.Int {
 		loadEnd = func() { g.code.Iconst(int32(v.(int64))) }
-	} else if p := stableLocal(r.Y); p != nil {
+	} else if p := stableLocal(last.x); p != nil {
 		loadEnd = func() { g.loadStorage(p) }
+	} else if last.x == nil && last.konst != nil {
+		v := *last.konst
+		loadEnd = func() { g.code.Iconst(v) }
 	} else {
 		end := g.code.AllocLocal("I")
-		g.exprAs(r.Y, types.IntType)
+		g.operand(last, types.IntType)
 		g.code.Local(cf.ISTORE, end)
 		loadEnd = func() { g.code.Local(cf.ILOAD, end) }
 	}
@@ -434,14 +474,14 @@ func (g *gen) forLoop(s *syntax.For) {
 
 // forLongRange generates a for loop over a Long range, as forLoop does
 // over an Int range, with the bound in a local.
-func (g *gen) forLongRange(s *syntax.For, r *syntax.Binary, op syntax.Kind) {
+func (g *gen) forLongRange(s *syntax.For, first, last operand, op syntax.Kind) {
 	i := g.code.AllocLocal("J")
-	s.Sym.Slot = i
+	g.setSlot(s.Sym, i)
 	g.named(s.Sym)
-	g.exprAs(r.X, types.LongType)
+	g.operand(first, types.LongType)
 	g.code.Local(cf.LSTORE, i)
 	end := g.code.AllocLocal("J")
-	g.exprAs(r.Y, types.LongType)
+	g.operand(last, types.LongType)
 	g.code.Local(cf.LSTORE, end)
 	top, cont, exit := cf.NewLabel(), cf.NewLabel(), cf.NewLabel()
 	// i compared with end: exitOp leaves the loop.
@@ -491,22 +531,21 @@ func (g *gen) forLongRange(s *syntax.For, r *syntax.Binary, op syntax.Kind) {
 // Long one, as kotlinc does: the step must be positive, an exclusive bound
 // becomes an inclusive one, and the loop ends at the progression's last
 // element, which getProgressionLastElement computes, so that it does not
-// overflow.
-func (g *gen) forStepped(s *syntax.For, r *syntax.Binary, op syntax.Kind, step syntax.Expr, long bool) {
+// overflow. If reverse is set, the loop counts from that last element
+// back to first, with the opposite step, as kotlinc does for reversed().
+func (g *gen) forStepped(s *syntax.For, first, lastBound operand, op syntax.Kind, step syntax.Expr, long, reverse bool) {
 	t, d, load, store, add, sub, neg, rem := types.IntType, "I", byte(cf.ILOAD), byte(cf.ISTORE), byte(cf.IADD), byte(cf.ISUB), byte(cf.INEG), byte(cf.IREM)
 	if long {
 		t, d, load, store, add, sub, neg, rem = types.LongType, "J", cf.LLOAD, cf.LSTORE, cf.LADD, cf.LSUB, cf.LNEG, cf.LREM
 	}
-	local := func(e syntax.Expr) int {
+	local := func(o operand) int {
 		slot := g.code.AllocLocal(d)
-		g.exprAs(e, t)
+		g.operand(o, t)
 		g.code.Local(store, slot)
 		return slot
 	}
-	i := local(r.X)
-	s.Sym.Slot = i
-	g.named(s.Sym)
-	last, st := local(r.Y), local(step)
+	i := local(first)
+	last, st := local(lastBound), local(operand{x: step})
 	exit := cf.NewLabel()
 	// cmpJump compares the values pushed and jumps to l on op, one of
 	// IF_ICMPxx.
@@ -627,6 +666,13 @@ func (g *gen) forStepped(s *syntax.For, r *syntax.Binary, op syntax.Kind, step s
 	} else {
 		cmpJump(cf.IF_ICMPGT, exit)
 	}
+	// Reversed, the loop runs from last back to i, the first element.
+	down := op == syntax.DOWN_TO
+	if reverse {
+		i, last, down = last, i, !down
+	}
+	g.setSlot(s.Sym, i)
+	g.named(s.Sym)
 	top, cont := cf.NewLabel(), cf.NewLabel()
 	g.code.Place(top)
 	g.pushLoop(s, exit, cont)
@@ -638,7 +684,7 @@ func (g *gen) forStepped(s *syntax.For, r *syntax.Binary, op syntax.Kind, step s
 	cmpJump(cf.IF_ICMPEQ, exit)
 	g.code.Local(load, i)
 	g.code.Local(load, st)
-	if op == syntax.DOWN_TO {
+	if down {
 		g.code.Op(sub)
 	} else {
 		g.code.Op(add)
@@ -649,14 +695,15 @@ func (g *gen) forStepped(s *syntax.For, r *syntax.Binary, op syntax.Kind, step s
 }
 
 // stableLocal returns the local or parameter that x reads if it is an
-// Int val of the function being generated: its value can't change.
+// Int, Char or Long val of the function being generated: its value
+// can't change.
 func stableLocal(x syntax.Expr) *types.VarSym {
 	id, ok := x.(*syntax.Ident)
 	if !ok || id.Sym == nil || id.Cast {
 		return nil
 	}
 	v := id.Sym
-	if (v.Kind != types.Local && v.Kind != types.Param) || v.Mutable || v.Delegate != nil || v.Type != types.IntType {
+	if (v.Kind != types.Local && v.Kind != types.Param) || v.Mutable || v.Delegate != nil || (v.Type != types.IntType && v.Type != types.CharType && v.Type != types.LongType) {
 		return nil
 	}
 	return v
@@ -710,6 +757,10 @@ type lvalue struct {
 	// reread is set when reading calls an accessor, which ++x and --x
 	// call again for their value after storing, as kotlinc does.
 	reread bool
+	// wide is set with recv 3: the two-word receiver on top of the
+	// dispatch receiver, a member extension's of Long or Double, which
+	// no instruction duplicates (see dup3).
+	wide types.Type
 }
 
 // dupRecv duplicates what prepare pushed, for compound assignment.
@@ -719,6 +770,8 @@ func (g *gen) dupRecv(lv lvalue) {
 		g.code.Op(cf.DUP)
 	case 2:
 		g.code.Op(cf.DUP2)
+	case 3:
+		g.dup3(lv.wide, types.Type{})
 	}
 }
 
@@ -741,11 +794,11 @@ func (g *gen) lvalue(x syntax.Expr) lvalue {
 					},
 					store: func() {
 						v := vs.ValueSym
-						v.Slot = g.code.AllocLocal(desc(t))
-						g.code.Local(storeOp(t), v.Slot)
+						g.setSlot(v, g.code.AllocLocal(desc(t)))
+						g.code.Local(storeOp(t), g.slot(v))
 						g.expr(vs.Set)
 						g.pop(vs.Set.T)
-						g.code.Retire(v.Slot)
+						g.code.Retire(g.slot(v))
 					}}
 			}
 			if sym.Boxed() {
@@ -758,8 +811,8 @@ func (g *gen) lvalue(x syntax.Expr) lvalue {
 					store: func() { g.arrayStore(t) }}
 			}
 			return lvalue{t: t, prepare: func() {},
-				load:  func() { g.code.Local(loadOp(t), sym.Slot) },
-				store: func() { g.code.Local(storeOp(t), sym.Slot) }}
+				load:  func() { g.code.Local(loadOp(t), g.slot(sym)) },
+				store: func() { g.code.Local(storeOp(t), g.slot(sym)) }}
 		case types.BackingField:
 			p := sym.Prop
 			if p.Kind == types.Global {
@@ -772,9 +825,15 @@ func (g *gen) lvalue(x syntax.Expr) lvalue {
 				return lvalue{t: t, prepare: func() {},
 					load: func() { g.backingField(p, true) },
 					store: func() {
-						g.coerce(p.Type, ft)
+						g.toField(p, ft)
 						g.code.FieldInsn(cf.PUTSTATIC, owner, p.Name, desc(ft))
 					}}
+			}
+			if sym.OuterOf != nil {
+				// The accessor's this, as in ident.
+				return lvalue{t: t, prepare: func() { g.loadStorage(sym.OuterOf) }, recv: 1,
+					load:  func() { g.outerField(p, false) },
+					store: func() { g.outerField(p, true) }}
 			}
 			return lvalue{t: t, prepare: g.loadThis, recv: 1,
 				load:  func() { g.getField(p) },
@@ -829,8 +888,9 @@ func (g *gen) lvalue(x syntax.Expr) lvalue {
 				lv.store = func() {
 					pt := s.Params[0].Type
 					g.coerce(t, pt)
-					v := &types.VarSym{Name: s.Params[0].Name, Type: pt, Kind: types.Local, Slot: g.code.AllocLocal(desc(pt))}
-					g.code.Local(storeOp(pt), v.Slot)
+					v := &types.VarSym{Name: s.Params[0].Name, Type: pt, Kind: types.Local}
+					g.setSlot(v, g.code.AllocLocal(desc(pt)))
+					g.code.Local(storeOp(pt), g.slot(v))
 					arg := &syntax.Ident{Name: v.Name, Sym: v}
 					arg.P, arg.T = x.P, pt
 					set := &syntax.Call{Fun: x, Sym: s, Args: []syntax.Expr{arg}, Reified: x.Reified}
@@ -843,7 +903,10 @@ func (g *gen) lvalue(x syntax.Expr) lvalue {
 				lv.prepare, lv.recv = func() {
 					g.dispatch(x, f.Owner)
 					prepare()
-				}, 2
+				}, 1+size(f.Recv)
+				if lv.recv == 3 {
+					lv.wide = f.Recv
+				}
 				lv.load = func() {
 					g.callMethod(f, f.Owner, f.JVM(), funDesc(f))
 					g.coerce(types.JVMRet(f), t)
@@ -902,7 +965,7 @@ func (g *gen) lvalue(x syntax.Expr) lvalue {
 		if p := x.Prop; p.Kind == types.Global {
 			return g.globalLvalue(p)
 		}
-		_, this := x.X.(*syntax.This)
+		this := isThis(x.X)
 		return g.propLvalue(x.Prop, x.T, func() { g.expr(x.X) }, recvClass(x.X.Type()), this)
 	}
 	panic("bad assignment target")
@@ -917,7 +980,7 @@ func (g *gen) globalLvalue(p *types.VarSym) lvalue {
 		return lvalue{t: p.Type, prepare: func() {}, reread: true,
 			load: func() { g.global(p) },
 			store: func() {
-				g.coerce(p.Type, ft)
+				g.toField(p, ft)
 				g.code.Invoke(cf.INVOKESTATIC, p.Facade, p.Setter.JVM(), "("+d+")V")
 			}}
 	}
@@ -928,7 +991,7 @@ func (g *gen) globalLvalue(p *types.VarSym) lvalue {
 				g.coerce(ft, p.Type)
 			},
 			store: func() {
-				g.coerce(p.Type, ft)
+				g.toField(p, ft)
 				g.code.FieldInsn(cf.PUTSTATIC, p.FieldClass(), p.Name, d)
 			}}
 	}
@@ -940,7 +1003,7 @@ func (g *gen) globalLvalue(p *types.VarSym) lvalue {
 	return lvalue{t: p.Type, prepare: func() {}, reread: true,
 		load: func() { g.global(p) },
 		store: func() {
-			g.coerce(p.Type, ft)
+			g.toField(p, ft)
 			g.code.Invoke(cf.INVOKESTATIC, p.Facade, set, "("+d+")V")
 		}}
 }
@@ -964,7 +1027,7 @@ func (g *gen) propLvalue(p *types.VarSym, t types.Type, recv func(), cls *types.
 			g.coerce(ft, p.Type)
 		}
 		lv.store = func() {
-			g.coerce(p.Type, ft)
+			g.toField(p, ft)
 			g.code.FieldInsn(cf.PUTSTATIC, owner, p.Name, d)
 		}
 	case this && g.directGet(p):
@@ -1091,6 +1154,8 @@ func (g *gen) dupBelow(lv lvalue, t types.Type) {
 		g.code.Op(cf.DUP_X1)
 	case lv.recv == 1:
 		g.code.Op(cf.DUP2_X1)
+	case lv.recv == 3:
+		g.dup3(lv.wide, t)
 	case !wide:
 		g.code.Op(cf.DUP_X2)
 	default:
@@ -1121,7 +1186,7 @@ func (g *gen) incDec(u *syntax.Unary) {
 		if u.Op == syntax.DEC {
 			inc = -1
 		}
-		g.code.Iinc(id.Sym.Slot, inc)
+		g.code.Iinc(g.slot(id.Sym), inc)
 		return
 	}
 	lv := g.lvalue(u.X)
@@ -1158,4 +1223,31 @@ func (g *gen) incDec(u *syntax.Unary) {
 func isPositive(v any) bool {
 	n, ok := v.(int64)
 	return ok && n > 0
+}
+
+// dup3 duplicates the receivers of an lvalue of three words, an object
+// under a value of two-word type wide, through locals. With a value of
+// type t above them, it instead copies that value below them, as
+// dupBelow does.
+func (g *gen) dup3(wide, t types.Type) {
+	var v int
+	if t.K != types.Invalid {
+		v = g.code.AllocLocal(desc(t))
+		g.code.Local(storeOp(t), v)
+	}
+	w := g.code.AllocLocal(desc(wide))
+	g.code.Local(storeOp(wide), w)
+	o := g.code.AllocLocal(objectDesc)
+	g.code.Local(cf.ASTORE, o)
+	if t.K != types.Invalid {
+		g.code.Local(loadOp(t), v)
+	} else {
+		g.code.Local(cf.ALOAD, o)
+		g.code.Local(loadOp(wide), w)
+	}
+	g.code.Local(cf.ALOAD, o)
+	g.code.Local(loadOp(wide), w)
+	if t.K != types.Invalid {
+		g.code.Local(loadOp(t), v)
+	}
 }

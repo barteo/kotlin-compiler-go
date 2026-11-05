@@ -12,8 +12,8 @@ import (
 // value, as its receiver or a context argument, is an error when another
 // implicit value with the same marker is nearer, or of the same level, as
 // in kotlinc: the outer receiver of nested builders has to be explicit.
-// Markers on types, (@M A).() -> Unit, aren't seen: kc's types don't keep
-// annotations.
+// A type's own markers count too, those annotating it where it's
+// written, (@M A).() -> Unit, or the typealias it's written with.
 
 // dslKey is a use for dslUse: a call or a property read, and which value
 // it takes, -1 its receiver, -2 a member extension's dispatch receiver, or
@@ -39,9 +39,71 @@ func (c *Checker) classAnnotations(as []syntax.Annotation) []*types.ClassSym {
 	return out
 }
 
-// dslMarkers returns the DSL markers of values of type t: those of its
-// class and of the class's supertypes, or of a type parameter's bounds.
+// typeMarkers returns t, the type ref is resolved to, with the DSL
+// markers of ref's annotations and of the typealias it's written with.
+// Those of a function type with a receiver, @M A.() -> Unit, are its
+// receiver's too.
+func (c *Checker) typeMarkers(ref *syntax.TypeRef, t types.Type) types.Type {
+	if ref.Known != nil {
+		return t
+	}
+	ms := c.annotationMarkers(ref.Annotations)
+	if ref.Ret == nil && ref.Outer == nil && ref.And == nil {
+		if a, ok := c.u.typeUses.Load(ref); ok {
+			if a, _ := a.(*types.AliasSym); a != nil {
+				if d, _ := a.Decl.(*syntax.TypeAliasDecl); d != nil {
+					ms = append(ms, c.annotationMarkers(d.Annotations)...)
+				}
+			}
+		}
+	}
+	if len(ms) == 0 {
+		return t
+	}
+	if i := len(ref.Contexts); ref.Recv != nil && t.IsExtFunc() && t.A != nil && i < t.A.Len() {
+		args := slices.Clone(t.A.List)
+		args[i].T = args[i].T.WithMarkers(ms)
+		t.A = types.MakeArgs(args)
+	}
+	return t.WithMarkers(ms)
+}
+
+// annotationMarkers returns the DSL markers among annotations as.
+func (c *Checker) annotationMarkers(as []syntax.Annotation) []*types.ClassSym {
+	if len(as) == 0 {
+		return nil
+	}
+	var ms []*types.ClassSym
+	for _, a := range c.classAnnotations(as) {
+		if isDslMarker(a) || declaredDslMarker(a) {
+			ms = append(ms, a)
+		}
+	}
+	return ms
+}
+
+// declaredDslMarker reports whether annotation class a of the program is
+// declared @DslMarker, as a typealias may be resolved before a's own
+// annotations are.
+func declaredDslMarker(a *types.ClassSym) bool {
+	d, _ := a.Decl.(*syntax.ClassDecl)
+	return d != nil && slices.ContainsFunc(d.Annotations, func(m syntax.Annotation) bool { return m.Is("DslMarker") })
+}
+
+// dslMarkers returns the DSL markers of values of type t: its own, and
+// those of its class and of the class's supertypes, or of a type
+// parameter's bounds.
 func (c *Checker) dslMarkers(t types.Type) []*types.ClassSym {
+	if own := t.Markers(); len(own) > 0 {
+		t.M = 0
+		out := slices.Clone(own)
+		for _, m := range c.dslMarkers(t) {
+			if !slices.Contains(out, m) {
+				out = append(out, m)
+			}
+		}
+		return out
+	}
 	switch t.K {
 	case types.TypeParam, types.TypeVar:
 		var out []*types.ClassSym
@@ -189,6 +251,18 @@ func (c *Checker) dslCall(x *syntax.Call, cl *callee) {
 			c.dslUse(dslKey{x, -1}, nil, f.Name, fn.P, still)
 		}
 	}
+}
+
+// dslInvoke checks implicit value v, nil for the class's this, that
+// call x passes as the receiver of a function value, block() for block:
+// A.() -> Unit.
+func (c *Checker) dslInvoke(x *syntax.Call, v *types.VarSym) {
+	id, ok := x.Fun.(*syntax.Ident)
+	if !ok || len(x.Args) == 0 {
+		return
+	}
+	this := x.Args[0]
+	c.dslUse(dslKey{x, -1}, v, id.Name, id.P, func() bool { return len(x.Args) > 0 && x.Args[0] == this })
 }
 
 // dslProp checks the implicit receiver of x, a property read.
