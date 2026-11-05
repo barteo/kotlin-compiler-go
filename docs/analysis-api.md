@@ -73,7 +73,7 @@ mapping.
 | M4 | Queryable session `analysis/ka`: lookups, scopes, relations, overrides | |
 | M5 | Bridge: `cmd/libkc` operations, `tools/kagen` wire format, `jvm/kc-aa` KaSession | |
 | M6 | KSP fork integration: the `kc` backend, IC lookups, hot paths | |
-| M7 | Differential conformance against stock KSP, benchmark, CI | in progress: `bench/ksp` (step 11): warm 990 ms on stock KSP, 284 ms on kc; cold 8.1–8.7 s and 2.9–3.2 s; CI: `.github/workflows/analysis-api.yml` (step 12) |
+| M7 | Differential conformance against stock KSP, benchmark, CI | in progress: `bench/ksp` (step 11): warm 990 ms on stock KSP, 284 ms on kc; cold 8.1–8.7 s and 2.9–3.2 s, with a CDS archive 5.8–6.1 s and 1.9–2.1 s; CI: `.github/workflows/analysis-api.yml` (step 12) |
 
 ### M0.1 – JNI spike
 
@@ -881,19 +881,41 @@ JavaPoet/google-java-format take 62%, KSP's symbol layer 20%, and kc
 (Go, the kc-aa layer and IntelliJ) 18%. The warm target (under 0.3 s) is
 met; processing alone is 5.7x faster than stock KSP's.
 
-The cold target (under 2 s) isn't: a fresh JVM takes about 3 s, of which
-setup is 1.6 s (the first update reads the class path's classes,
-280–310 ms; the first `KcRound` loads and JIT-compiles IntelliJ's PSI,
-500–660 ms) and processing 1.3 s, mostly the processors' own class
-loading and JIT. Next steps, in order of the numbers:
+Without help the cold target (under 2 s) isn't met: a fresh JVM takes
+about 3 s, of which setup is 1.6 s (the IntelliJ environment, about
+500 ms; the first update, which reads the class path's classes, 280–310
+ms; the first `KcRound`, whose PSI IntelliJ parses with code not yet
+compiled, 500–660 ms) and processing 1.3 s. A cold JFR recording puts
+64% of processing in Dagger, XProcessing and JavaPoet and 16% in kc: the
+processors' own class loading and warm-up.
+
+Running the first update while the environment is made hides it (the
+session waited 0.2 ms for it) but saved only about 60 ms of cold setup:
+on 4 CPUs a cold JVM is busy compiling, and the environment took 690 ms
+and the update 435 ms side by side. It was dropped.
+
+What helps is class-data sharing: with an archive of the classes a run
+loads (`-XX:+AutoCreateSharedArchive -XX:SharedArchiveFile=…`, JDK 19
+and later; `JVM_OPTS` in `run.sh`, whose classes are jars for it), cold
+runs take
+
+| ms, cold JVM | no archive | archive |
+|---|---|---|
+| stock KSP 2.3.6 | 8100–8700 | 5810–6130 |
+| kc | 2850–3190 | 1870–2110 |
+
+so kc meets the cold target with an archive, and is 3x faster than stock
+KSP with one. In Gradle the archive is the daemon's (`org.gradle.jvmargs`
+in `gradle.properties`), and cold is the first `kspKotlin` of a daemon:
+later runs are warm.
+
+Next steps:
 
 - Keep the parsed PSI across KSP runs of a daemon (an environment per
   configuration, owning its own disposable; files reparsed only when
   their text changes), and parse only the files KSP touches.
 - Check only the files whose text changed, reusing the declarations of
   the rest: the update is whole-module today.
-- For cold runs, a class-data-sharing archive for kc-aa and IntelliJ
-  core, and reading the library's classes in parallel.
 
 #### Step 12: CI
 

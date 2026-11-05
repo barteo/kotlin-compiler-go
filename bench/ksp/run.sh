@@ -13,6 +13,8 @@
 #	COLD      fresh-JVM runs per backend (default 3)
 #	JFR       record bench-BACKEND.jfr from this run on (see Classify.java)
 #	KC_TIMING set to 1 for kc's own phase split, on stderr
+#	JVM_OPTS  more options for the benchmark's JVMs; @B@ stands for the
+#	          backend, as in -XX:SharedArchiveFile=cds-@B@.jsa
 set -euo pipefail
 
 [ $# -ge 3 ] || { sed -n '2,15p' "$0" >&2; exit 2; }
@@ -44,18 +46,20 @@ kotlinc() { java -Xmx3g -cp "$runtime" org.jetbrains.kotlin.cli.jvm.K2JVMCompile
 procs=$(grep -v 'symbol-processing-api\|kotlin-stdlib\|kotlin-reflect' "$procsfile" | paste -sd:)
 
 for b in ${BACKENDS:-stock kc}; do
+	jvmopts=${JVM_OPTS:-}
+	jvmopts=${jvmopts//@B@/$b}
 	case $b in
 	stock)
-		[ -d "$out/bench-stock" ] && [ "$out/bench-stock" -nt "$here/KspBench.kt" ] ||
-			kotlinc -cp "${stockcp#:}" -language-version 2.3 -api-version 2.3 -d "$out/bench-stock" -jvm-target 17 -nowarn "$here/KspBench.kt"
-		cmd=(java -Dksp.languageVersion=2.3 -cp "$out/bench-stock$stockcp:$procs")
+		[ -s "$out/bench-stock.jar" ] && [ "$out/bench-stock.jar" -nt "$here/KspBench.kt" ] ||
+			kotlinc -cp "${stockcp#:}" -language-version 2.3 -api-version 2.3 -d "$out/bench-stock.jar" -jvm-target 17 -nowarn "$here/KspBench.kt"
+		cmd=(java $jvmopts -Dksp.languageVersion=2.3 -cp "$out/bench-stock.jar$stockcp:$procs")
 		;;
 	kc)
-		[ -d "$out/bench-kc" ] && [ "$out/bench-kc" -nt "$here/KspBench.kt" ] ||
-			kotlinc -cp "$deps" -d "$out/bench-kc" -jvm-target 17 -nowarn "$here/KspBench.kt"
+		[ -s "$out/bench-kc.jar" ] && [ "$out/bench-kc.jar" -nt "$here/KspBench.kt" ] ||
+			kotlinc -cp "$deps" -d "$out/bench-kc.jar" -jvm-target 17 -nowarn "$here/KspBench.kt"
 		# The processors come first: kotlin-compiler bundles an older Guava.
-		cmd=(env LD_PRELOAD="$java_home/lib/libjsig.so" java -Dksp.backend=kc -Dkc.lib="$out/libkc.so" -Didea.home.path="$out"
-			-cp "$out/bench-kc:$procs:$out/kc-aa.jar:$deps")
+		cmd=(env LD_PRELOAD="$java_home/lib/libjsig.so" java $jvmopts -Dksp.backend=kc -Dkc.lib="$out/libkc.so" -Didea.home.path="$out"
+			-cp "$out/bench-kc.jar:$procs:$out/kc-aa.jar:$deps")
 		;;
 	*) echo "run.sh: unknown backend $b" >&2; exit 2 ;;
 	esac
