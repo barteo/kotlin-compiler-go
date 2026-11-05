@@ -68,7 +68,7 @@ mapping.
 | M0.3 | KSP fork compiles against the unshaded AA 2.4.21 API: `jvm/ksp` | done, see gaps |
 | M0.4 | Vertical slice: list annotated source classes through a `kc` KspBackend: `jvm/kc-aa/build.sh test` | done, see gaps |
 | M1 | `psi` on Kotlin 2.4.21 | done before this work |
-| M2 | Error tolerance, `types.Invalid` payload, extension-vs-top-level overload bug, `@Contextual`/`@EncodeDefault` | in progress: error tolerance, overload bug done |
+| M2 | Error tolerance, `types.Invalid` payload, extension-vs-top-level overload bug, `@Contextual`/`@EncodeDefault` | done (two items moved, see M2) |
 | M3 | Richer symbol model: visibility and modality enums, flags, origins, library annotation arguments, Java parameter names | |
 | M4 | Queryable session `analysis/ka`: lookups, scopes, relations, overrides | |
 | M5 | Bridge: `cmd/libkc` operations, `tools/kagen` wire format, `jvm/kc-aa` KaSession | |
@@ -207,6 +207,18 @@ them with `-Dkc.diagnostics`.
     in this container, so the zero-error exit hasn't been rechecked on it.
   - Test: `testdata/run/extensionVsTopLevel`, which also has the cases
     where the extension must still win.
+- **Moved: the `types.Invalid` payload.** The model doesn't export types
+  yet. When M3/M4 do, an error type's presentable text, which is what KSP
+  shows for a `KaClassErrorType`, comes from the declaration's psi
+  `TYPE_REFERENCE` node. That node is already in the model. `types.Type`,
+  which is copied by value throughout the checker, then doesn't need to
+  grow.
+- **Moved: `@Contextual` and `@EncodeDefault`.** These are gaps in kc's
+  serialization plugin codegen, and they don't touch the Analysis API path:
+  `ka` runs no compiler plugins, and KSP2 sees no plugin-generated members
+  either. They stay on the compiler backlog. `TestSerialization` needs
+  kotlinc and the kotlinx.serialization jars, which this container doesn't
+  have.
 
 ## Gaps and open questions
 
