@@ -9,6 +9,7 @@ import org.jetbrains.kotlin.analysis.api.types.KaType
 import org.jetbrains.kotlin.name.CallableId
 import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.name.Name
+import org.jetbrains.kotlin.kdoc.lexer.KDocTokens
 import org.jetbrains.kotlin.psi.*
 import java.util.IdentityHashMap
 
@@ -82,9 +83,66 @@ internal class KcRound(files: List<Pair<KcFile, KtFile>>, private val library: (
         return libraryClasses[id]
     }
 
+    val relations = KcTypeRelations(this)
+
+    private val memberCache = IdentityHashMap<KcClassSymbol, KcClassMembers>()
+    private val building = IdentityHashMap<KcClassSymbol, Boolean>()
+
+    /** The member scope of class [c]; empty for a class among its own supertypes. */
+    @Synchronized
+    fun members(c: KcClassSymbol): KcClassMembers {
+        memberCache[c]?.let { return it }
+        if (building.put(c, true) != null) return KcClassMembers.EMPTY
+        try {
+            return KcMemberBuilder(this, c).build().also { memberCache[c] = it }
+        } finally {
+            building.remove(c)
+        }
+    }
+
+    /** The declarations [s] directly overrides (see `KaSession.directlyOverriddenSymbols`). */
+    fun directlyOverridden(s: KaCallableSymbol): List<KaCallableSymbol> = when (s) {
+        is KcFakeOverride -> declaredOriginals(s)
+        is KcGetterSymbol -> directlyOverridden(s.property)
+        is KcSetterSymbol -> directlyOverridden(s.property)
+        is KcFakeGetterSymbol -> directlyOverridden(s.property)
+        is KcFakeSetterSymbol -> directlyOverridden(s.property)
+        is KcFunctionSymbol -> (s.info.parent as? KcClassSymbol)?.let { members(it).overridden[s] }.orEmpty()
+        is KcPropertySymbol -> (s.info.parent as? KcClassSymbol)?.let { members(it).overridden[s] }.orEmpty()
+        else -> emptyList()
+    }
+
+    /** The declarations [s] overrides at any depth, nearest first. */
+    fun allOverridden(s: KaCallableSymbol): List<KaCallableSymbol> {
+        val out = ArrayList<KaCallableSymbol>()
+        val seen = IdentityHashMap<KaCallableSymbol, Boolean>()
+        val queue = ArrayDeque(directlyOverridden(s))
+        while (queue.isNotEmpty()) {
+            val o = queue.removeFirst()
+            if (seen.put(o, true) != null) continue
+            out += o
+            queue.addAll(directlyOverridden(o))
+        }
+        return out
+    }
+
     /** The symbol of pointer key [key], loading the library class it is in. */
     fun restore(key: String): KaSymbol? {
         byKey[key]?.let { return it }
+        fakeKey.matchEntire(key)?.let { m ->
+            val owner = restore(m.groupValues[1]) as? KcClassSymbol ?: return null
+            val s = members(owner).callables.getOrNull(m.groupValues[2].toInt()) ?: return null
+            val rest = m.groupValues[3]
+            return when {
+                rest.isEmpty() -> s
+                rest == "/get" -> (s as? KaPropertySymbol)?.getter
+                rest == "/set" -> (s as? KaPropertySymbol)?.setter
+                rest == "/set/value" -> (s as? KaPropertySymbol)?.setter?.parameter
+                rest == "/rcv" -> s.receiverParameter
+                rest.startsWith("/(") -> (s as? KaFunctionSymbol)?.valueParameters?.getOrNull(rest.drop(2).toInt())
+                else -> null
+            }
+        }
         if (!key.startsWith("lib:")) return null
         // The class's ID comes first; its members' keys add /kind:…, /<i or /(i.
         libraryClass(ClassId.fromString(key.removePrefix("lib:").split(memberKey, 2)[0]))
@@ -339,9 +397,13 @@ internal class KcRound(files: List<Pair<KcFile, KtFile>>, private val library: (
 
         private val memberKey = Regex("/(?=[0-9<(])")
 
+        /** A fake override's key: its class's key, /~, its index in the member scope, and a member's suffix. */
+        private val fakeKey = Regex("^(.*)/~(\\d+)(.*)$")
+
         /**
          * The nodes of a tree in preorder, from 1; index 0 is null. This is
-         * the numbering of kc's psi node IDs.
+         * the numbering of kc's psi node IDs, in which a KDoc comment is a
+         * single leaf.
          */
         fun preorder(root: ASTNode): Array<ASTNode> {
             val out = ArrayList<ASTNode?>()
@@ -351,6 +413,7 @@ internal class KcRound(files: List<Pair<KcFile, KtFile>>, private val library: (
             while (stack.isNotEmpty()) {
                 val n = stack.removeLast()
                 out.add(n)
+                if (n.elementType == KDocTokens.KDOC) continue
                 var c = n.lastChildNode
                 while (c != null) {
                     stack.addLast(c)

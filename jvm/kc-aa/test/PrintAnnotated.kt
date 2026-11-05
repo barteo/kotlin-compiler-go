@@ -6,7 +6,16 @@
 // Each line is "annotation: kind name", sorted, followed by the
 // annotation's arguments, defaults included, if it has any. An argument
 // decls:a.b.C names a class whose origin and declarations it prints
-// instead, as "decls:a.b.C: - kind name".
+// instead, as "decls:a.b.C: - kind name". Other modes:
+//
+//	members:a.b.C[:n1,n2]  getAllFunctions and getAllProperties (named n1,
+//	                       n2 if given): origin, parent, overridee, asMemberOf C
+//	assign:a.b.C           C's properties' types paired, target then source:
+//	                       target.isAssignableFrom(source)
+//	sealed:a.b.C           getSealedSubclasses
+//	overrides:a.b.C#f:x.Y#g  Resolver.overrides(C.f, Y.g)
+import com.google.devtools.ksp.getDeclaredFunctions
+import com.google.devtools.ksp.getDeclaredProperties
 import com.google.devtools.ksp.impl.KotlinSymbolProcessing
 import com.google.devtools.ksp.processing.KSPJvmConfig
 import com.google.devtools.ksp.processing.KSPLogger
@@ -23,6 +32,11 @@ class PrintAnnotatedProvider(private val names: List<String>, private val out: M
     override fun create(environment: SymbolProcessorEnvironment) = object : SymbolProcessor {
         override fun process(resolver: Resolver): List<KSAnnotated> {
             for (name in names) {
+                val mode = name.substringBefore(':', "")
+                if (mode in setOf("members", "assign", "sealed", "overrides")) {
+                    mode(resolver, mode, name.removePrefix("$mode:"), name)
+                    continue
+                }
                 if (name.startsWith("decls:")) {
                     val c = resolver.getClassDeclarationByName(resolver.getKSNameFromString(name.removePrefix("decls:")))
                     if (c == null) {
@@ -36,6 +50,56 @@ class PrintAnnotatedProvider(private val names: List<String>, private val out: M
                 resolver.getSymbolsWithAnnotation(name).forEach { out += "$name: ${describe(it)}" + arguments(it, name) }
             }
             return emptyList()
+        }
+
+        private fun cls(resolver: Resolver, name: String) =
+            resolver.getClassDeclarationByName(resolver.getKSNameFromString(name)) ?: error("$name: not found")
+
+        private fun mode(resolver: Resolver, mode: String, arg: String, tag: String) {
+            when (mode) {
+                "members" -> {
+                    val c = cls(resolver, arg.substringBefore(':'))
+                    val only = arg.substringAfter(':', "").split(',').filter { it.isNotEmpty() }.toSet()
+                    val self = c.asStarProjectedType()
+                    val members = c.getAllFunctions() + c.getAllProperties()
+                    for (m in members) {
+                        if (only.isNotEmpty() && m.simpleName.asString() !in only) continue
+                        val overridee = when (m) {
+                            is KSFunctionDeclaration -> m.findOverridee()
+                            is KSPropertyDeclaration -> m.findOverridee()
+                            else -> null
+                        }?.let {
+                            " overrides ${it.parentDeclaration?.qualifiedName?.asString()}.${it.simpleName.asString()}"
+                        } ?: ""
+                        val asMember = when (m) {
+                            is KSFunctionDeclaration -> m.asMemberOf(self).let { f ->
+                                f.parameterTypes.joinToString(", ", "(", ")") { it?.let(::render) ?: "?" } +
+                                    ": " + (f.returnType?.let(::render) ?: "?")
+                            }
+                            is KSPropertyDeclaration -> ": " + render(m.asMemberOf(self))
+                            else -> ""
+                        }
+                        out += "$tag: ${m.origin} ${m.simpleName.asString()} in " +
+                            "${m.parentDeclaration?.qualifiedName?.asString()}$overridee; as member $asMember"
+                    }
+                }
+                "assign" -> {
+                    val ps = cls(resolver, arg).getDeclaredProperties().toList()
+                    for (i in 0 until ps.size / 2) {
+                        val to = ps[2 * i].type.resolve()
+                        val from = ps[2 * i + 1].type.resolve()
+                        out += "$tag: ${render(to)} <- ${render(from)}: ${to.isAssignableFrom(from)}"
+                    }
+                }
+                "sealed" -> cls(resolver, arg).getSealedSubclasses().forEach { out += "$tag: ${it.qualifiedName?.asString()}" }
+                "overrides" -> {
+                    val (a, b) = arg.split(':').map { s ->
+                        val c = cls(resolver, s.substringBefore('#'))
+                        c.getDeclaredFunctions().first { it.simpleName.asString() == s.substringAfter('#') }
+                    }
+                    out += "$tag: ${resolver.overrides(a, b)}"
+                }
+            }
         }
     }
 }

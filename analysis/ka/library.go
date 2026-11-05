@@ -79,10 +79,19 @@ func simpleName(id string) string {
 }
 
 func (l *library) class(id string) *Decl {
+	if id == "kotlin/Any" {
+		// The root of every class's supertypes, JDK or not.
+		return &Decl{Kind: KindClass, Name: "Any", ClassID: id, Modality: ModalityOpen, Members: anyMembers()}
+	}
 	if d := l.kotlinClass(id, internalName(id), nil, 0); d != nil {
 		return d
 	}
 	cls := l.lib.Class(id)
+	if cls == nil {
+		if jid, ok := javaPrimitiveClasses[id]; ok {
+			cls = l.lib.Class(jid)
+		}
+	}
 	if cls == nil {
 		return nil
 	}
@@ -93,7 +102,7 @@ func (l *library) class(id string) *Decl {
 	if cls.Missing {
 		return nil
 	}
-	if cls.KotlinName == "" && classID(cls) == id && l.cp.Has(cls.Name) {
+	if cls.KotlinName == "" && classID(cls) == id && l.cp.Has(cls.Name) && !strings.HasPrefix(id, "kotlin/") {
 		return l.javaClass(cls, 0)
 	}
 	// A built-in class: a function type's interface, an array, or a
@@ -104,7 +113,115 @@ func (l *library) class(id string) *Decl {
 	} else if !cls.Final {
 		d.Modality = ModalityOpen
 	}
+	// Its supertypes are its Java class's, which kc maps to Kotlin's, as
+	// kotlin/String : kotlin/Comparable<kotlin/String>.
+	b := &fileBuilder{}
+	d.TypeParams = l.javaTypeParams(b, cls.TypeParams)
+	for i, tp := range d.TypeParams {
+		tp.Bounds = slices.DeleteFunc(tp.Bounds, func(t *Type) bool { return t.ClassID == "kotlin/Any" })
+		for _, t := range tp.Bounds {
+			nonNull(t)
+		}
+		tp.Variance = builtinVariance(id, i, len(d.TypeParams))
+	}
+	if isFunctionClass(id) {
+		// kotlin/Function<R>, which kc's function interfaces leave out.
+		r := d.TypeParams[len(d.TypeParams)-1].Name
+		d.Supertypes = []*Type{{Kind: TypeClass, ClassID: "kotlin/Function",
+			Args: []TypeArg{{Type: &Type{Kind: TypeParameter, Name: r}}}}}
+		return d
+	}
+	// The Kotlin ones, and java/io/Serializable, which Kotlin adds to the
+	// classes it maps; not the JDK's others, as java/lang/constant/Constable.
+	d.Supertypes = slices.DeleteFunc(javaSupertypes(b, cls, d.Kind, nonNull), func(t *Type) bool {
+		return !strings.HasPrefix(t.ClassID, "kotlin/") && t.ClassID != "java/io/Serializable"
+	})
+	if len(d.Supertypes) == 0 {
+		d.Supertypes = []*Type{{Kind: TypeClass, ClassID: "kotlin/Any"}}
+	}
 	return d
+}
+
+// isFunctionClass reports whether id is a function type's class:
+// kotlin/FunctionN or kotlin/coroutines/SuspendFunctionN.
+func isFunctionClass(id string) bool {
+	n, ok := strings.CutPrefix(id, "kotlin/Function")
+	if !ok {
+		n, ok = strings.CutPrefix(id, "kotlin/coroutines/SuspendFunction")
+	}
+	if !ok || n == "" {
+		return false
+	}
+	for _, r := range n {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// javaPrimitiveClasses maps the Kotlin classes that kc treats as types,
+// not classes, to the Java classes whose supertypes they have.
+var javaPrimitiveClasses = map[string]string{
+	"kotlin/String":  "java/lang/String",
+	"kotlin/Int":     "java/lang/Integer",
+	"kotlin/Long":    "java/lang/Long",
+	"kotlin/Short":   "java/lang/Short",
+	"kotlin/Byte":    "java/lang/Byte",
+	"kotlin/Char":    "java/lang/Character",
+	"kotlin/Boolean": "java/lang/Boolean",
+	"kotlin/Float":   "java/lang/Float",
+	"kotlin/Double":  "java/lang/Double",
+}
+
+// builtinVariance returns the declared variance of type parameter i of n
+// of built-in class id, which its Java class doesn't have.
+func builtinVariance(id string, i, n int) Variance {
+	switch id {
+	case "kotlin/collections/Iterable", "kotlin/collections/Collection", "kotlin/collections/List",
+		"kotlin/collections/Set", "kotlin/collections/Iterator", "kotlin/collections/ListIterator",
+		"kotlin/collections/Map.Entry", "kotlin/Function":
+		return Out
+	case "kotlin/collections/Map":
+		if i == 1 {
+			return Out
+		}
+	case "kotlin/Comparable":
+		return In
+	}
+	if isFunctionClass(id) {
+		if i == n-1 {
+			return Out
+		}
+		return In
+	}
+	return Invariant
+}
+
+// anyMembers returns the members of kotlin/Any.
+func anyMembers() []*Decl {
+	class := func(id string, nullable bool) *Type { return &Type{Kind: TypeClass, ClassID: id, Nullable: nullable} }
+	return []*Decl{
+		{Kind: KindConstructor, Name: "<init>", Visibility: Public, Modality: ModalityFinal, Flags: FlagPrimary},
+		{Kind: KindFunction, Name: "equals", Visibility: Public, Modality: ModalityOpen, Flags: FlagOperator,
+			Type:   class("kotlin/Boolean", false),
+			Params: []*Decl{{Kind: KindValueParameter, Name: "other", Type: class("kotlin/Any", true)}}},
+		{Kind: KindFunction, Name: "hashCode", Visibility: Public, Modality: ModalityOpen, Type: class("kotlin/Int", false)},
+		{Kind: KindFunction, Name: "toString", Visibility: Public, Modality: ModalityOpen, Type: class("kotlin/String", false)},
+	}
+}
+
+// nonNull makes type t and its arguments not null, as a built-in class's
+// supertypes are.
+func nonNull(t *Type) *Type {
+	if t == nil {
+		return nil
+	}
+	t.Nullable, t.Flexible = false, false
+	for _, a := range t.Args {
+		nonNull(a.Type)
+	}
+	return t
 }
 
 // load reads the Kotlin metadata and the details of class file name;
@@ -483,29 +600,7 @@ func (l *library) javaClass(cls *types.ClassSym, depth int) *Decl {
 	}
 	b := &fileBuilder{}
 	d.TypeParams = l.javaTypeParams(b, cls.TypeParams)
-	switch {
-	case cls.Supers != nil:
-		for _, st := range cls.Supers {
-			d.Supertypes = append(d.Supertypes, platform(b.typ(st, nil)))
-		}
-	default:
-		if cls.Super != nil {
-			d.Supertypes = append(d.Supertypes, &Type{Kind: TypeClass, ClassID: classID(cls.Super)})
-		}
-		for _, i := range cls.Interfaces {
-			d.Supertypes = append(d.Supertypes, &Type{Kind: TypeClass, ClassID: classID(i)})
-		}
-	}
-	if d.Kind == KindInterface || d.Kind == KindAnnotationClass {
-		// An interface's java/lang/Object superclass isn't a supertype in
-		// Kotlin, unless it is the only one.
-		d.Supertypes = slices.DeleteFunc(d.Supertypes, func(t *Type) bool {
-			return t.ClassID == "kotlin/Any" && len(d.Supertypes) > 1
-		})
-	}
-	if len(d.Supertypes) == 0 {
-		d.Supertypes = []*Type{{Kind: TypeClass, ClassID: "kotlin/Any"}}
-	}
+	d.Supertypes = javaSupertypes(b, cls, d.Kind, platform)
 	d.Annotations = l.annotations(det.Annotations, false)
 	_, bySig := methods(det)
 	if d.Kind == KindAnnotationClass {
@@ -607,6 +702,39 @@ func (l *library) javaClass(cls *types.ClassSym, depth int) *Decl {
 		}
 	}
 	return d
+}
+
+// javaSupertypes returns the supertypes of Java class cls, of kind k, each
+// passed through conv: its generic ones if it has a signature, and
+// kotlin/Any if it has none.
+func javaSupertypes(b *fileBuilder, cls *types.ClassSym, k Kind, conv func(*Type) *Type) []*Type {
+	var out []*Type
+	switch {
+	case cls.Supers != nil:
+		for _, st := range cls.Supers {
+			if t := b.typ(st, nil); t != nil {
+				out = append(out, conv(t))
+			}
+		}
+	default:
+		if cls.Super != nil {
+			out = append(out, &Type{Kind: TypeClass, ClassID: classID(cls.Super)})
+		}
+		for _, i := range cls.Interfaces {
+			out = append(out, &Type{Kind: TypeClass, ClassID: classID(i)})
+		}
+	}
+	if k == KindInterface || k == KindAnnotationClass {
+		// An interface's java/lang/Object superclass isn't a supertype in
+		// Kotlin, unless it is the only one.
+		out = slices.DeleteFunc(out, func(t *Type) bool {
+			return t.ClassID == "kotlin/Any" && len(out) > 1
+		})
+	}
+	if len(out) == 0 {
+		out = []*Type{{Kind: TypeClass, ClassID: "kotlin/Any"}}
+	}
+	return out
 }
 
 func sortedKeys[V any](m map[string]V) []string {

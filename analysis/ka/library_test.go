@@ -18,7 +18,7 @@ func dumpLibrary(sb *strings.Builder, d *Decl, indent string, filter func(*Decl)
 		sb.WriteString(" " + a.String())
 	}
 	for _, tp := range d.TypeParams {
-		fmt.Fprintf(sb, " <%s", tp.Name)
+		fmt.Fprintf(sb, " <%s%s", [...]string{"", "in ", "out ", "*"}[tp.Variance], tp.Name)
 		for _, b := range tp.Bounds {
 			sb.WriteString(" : " + libType(b))
 		}
@@ -103,7 +103,7 @@ func TestLibraryClass(t *testing.T) {
   10 <init> v0 m0 f0x1000000 (expression: kotlin/String, imports: kotlin/String)
   8 expression v0 m0 f0x0: kotlin/String
   8 imports v0 m0 f0x0: kotlin/Array<out kotlin/String>
-1 AbstractList [kotlin/collections/AbstractList] v0 m2 f0x0 @kotlin/SinceKotlin(version = "1.1") <E> : kotlin/collections/AbstractCollection<E> kotlin/collections/List<E>
+1 AbstractList [kotlin/collections/AbstractList] v0 m2 f0x0 @kotlin/SinceKotlin(version = "1.1") <out E> : kotlin/collections/AbstractCollection<E> kotlin/collections/List<E>
   10 <init> v2 m0 f0x1000000
   8 size v0 m2 f0x0: kotlin/Int
   7 get v0 m2 f0x200 (index: kotlin/Int): E
@@ -196,4 +196,33 @@ func libType(t *Type) string {
 		sb.WriteString("!")
 	}
 	return sb.String()
+}
+
+func TestLibraryBuiltins(t *testing.T) {
+	m := updateWith(t, withJDK(t), "package p\nclass A")
+	defer m.Close()
+	var sb strings.Builder
+	for _, id := range []string{"kotlin/Any", "kotlin/String", "kotlin/Int", "kotlin/collections/List",
+		"kotlin/collections/Map", "kotlin/Comparable", "kotlin/Function1"} {
+		d := m.Class(id)
+		if d == nil {
+			t.Fatalf("%s: nil", id)
+		}
+		dumpLibrary(&sb, d, "", nil)
+	}
+	want := `1 Any [kotlin/Any] v0 m1 f0x0
+  10 <init> v0 m0 f0x1000000
+  7 equals v0 m1 f0x200 (other: kotlin/Any?): kotlin/Boolean
+  7 hashCode v0 m1 f0x0: kotlin/Int
+  7 toString v0 m1 f0x0: kotlin/String
+1 String [kotlin/String] v0 m0 f0x0 : java/io/Serializable kotlin/Comparable<kotlin/String> kotlin/CharSequence
+1 Int [kotlin/Int] v0 m0 f0x0 : kotlin/Number kotlin/Comparable<kotlin/Int>
+2 List [kotlin/collections/List] v0 m2 f0x0 <out E> : kotlin/collections/Collection<E>
+2 Map [kotlin/collections/Map] v0 m2 f0x0 <K> <out V> : kotlin/Any
+2 Comparable [kotlin/Comparable] v0 m2 f0x0 <in T> : kotlin/Any
+2 Function1 [kotlin/Function1] v0 m2 f0x0 <in P1> <out R> : kotlin/Function<R>
+`
+	if got := sb.String(); got != want {
+		t.Errorf("got:\n%s\nwant:\n%s", got, want)
+	}
 }

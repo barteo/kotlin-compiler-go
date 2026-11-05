@@ -139,7 +139,7 @@ internal class KcFunctionType(
     override val typeArguments: List<KaTypeProjection>,
     override val marked: Boolean,
     override val hasReceiver: Boolean,
-    private val contexts: Int,
+    internal val contexts: Int,
 ) : StubKaFunctionType(), KcBaseClassType {
     override val token get() = round.token
     override val symbol: KaClassLikeSymbol get() = round.classSymbol(classId)

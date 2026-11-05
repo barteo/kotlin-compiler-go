@@ -11,7 +11,12 @@ import org.jetbrains.kotlin.analysis.api.scopes.KaScope
 import org.jetbrains.kotlin.analysis.api.session.KaSessionProvider
 import org.jetbrains.kotlin.analysis.api.symbols.*
 import org.jetbrains.kotlin.analysis.api.symbols.markers.KaDeclarationContainerSymbol
+import org.jetbrains.kotlin.analysis.api.signatures.KaCallableSignature
+import org.jetbrains.kotlin.analysis.api.signatures.KaFunctionSignature
+import org.jetbrains.kotlin.analysis.api.signatures.KaVariableSignature
 import org.jetbrains.kotlin.analysis.api.types.KaClassType
+import org.jetbrains.kotlin.analysis.api.types.KaSubstitutor
+import org.jetbrains.kotlin.analysis.api.components.KaSubtypingErrorTypePolicy
 import org.jetbrains.kotlin.analysis.api.types.KaType
 import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.psi.*
@@ -55,12 +60,18 @@ class KcAnalysis internal constructor(internal val round: KcRound, private val m
     fun getStaticDeclaredMemberScope(s: KaDeclarationContainerSymbol): KaScope =
         KcScope(members(s).filter { isStatic(it) }, round.token)
     fun getCombinedDeclaredMemberScope(s: KaDeclarationContainerSymbol): KaScope = KcScope(members(s), round.token)
-    // TODO(M4): inherited Java statics.
-    fun getStaticMemberScope(s: KaDeclarationContainerSymbol): KaScope = getStaticDeclaredMemberScope(s)
+    fun getStaticMemberScope(s: KaDeclarationContainerSymbol): KaScope = when (s) {
+        is KcClassSymbol -> KcScope(round.members(s).statics, round.token)
+        is KcLibraryClassSymbol -> KcScope(emptyList(), round.token)
+        else -> unsupported("static member scope of $s")
+    }
 
-    // TODO(M4): inherited members and fake overrides.
+    /** Declared and inherited non-static callables, non-static nested classes and constructors. */
     fun getMemberScope(s: KaDeclarationContainerSymbol): KaScope = when (s) {
-        is KcClassSymbol -> getDeclaredMemberScope(s)
+        is KcClassSymbol -> KcScope(
+            round.members(s).callables + s.members.filter { it is KaConstructorSymbol || it is KaClassSymbol && !isStatic(it) },
+            round.token,
+        )
         is KcLibraryClassSymbol -> KcScope(emptyList(), round.token)
         else -> unsupported("member scope of $s")
     }
@@ -71,6 +82,11 @@ class KcAnalysis internal constructor(internal val round: KcRound, private val m
 
     // KaSymbolRelationProvider
     fun getContainingSymbol(s: KaSymbol): KaSymbol? = when (s) {
+        is KcFakeOverride -> s.owner
+        is KcFakeGetterSymbol -> s.property
+        is KcFakeSetterSymbol -> s.property
+        is KcFakeValueParameterSymbol -> s.owner
+        is KcFakeReceiverParameterSymbol -> s.owningCallableSymbol
         is KcClassSymbol -> s.info.parent.takeUnless { it is KaFileSymbol }
         is KcFunctionSymbol -> s.info.parent.takeUnless { it is KaFileSymbol }
         is KcPropertySymbol -> s.info.parent.takeUnless { it is KaFileSymbol }
@@ -83,8 +99,49 @@ class KcAnalysis internal constructor(internal val round: KcRound, private val m
         is KcGetterSymbol -> s.property
         is KcSetterSymbol -> s.property
         is KcLibraryClassSymbol -> null
+        is KcReceiverParameterSymbol -> s.owningCallableSymbol
         else -> unsupported("containingSymbol of $s")
     }
+
+    fun getDirectlyOverriddenSymbols(s: KaCallableSymbol): Sequence<KaCallableSymbol> = round.directlyOverridden(s).asSequence()
+    fun getAllOverriddenSymbols(s: KaCallableSymbol): Sequence<KaCallableSymbol> = round.allOverridden(s).asSequence()
+    fun getIntersectionOverriddenSymbols(s: KaCallableSymbol): List<KaCallableSymbol> =
+        (s as? KcFakeOverride)?.intersected.orEmpty()
+    fun getFakeOverrideOriginal(s: KaCallableSymbol): KaCallableSymbol = fakeOverrideOriginal(s)
+    fun isSubClassOf(sub: KaClassSymbol, sup: KaClassSymbol): Boolean = round.relations.isSubClass(sub, sup)
+    fun isDirectSubClassOf(sub: KaClassSymbol, sup: KaClassSymbol): Boolean = round.relations.isDirectSubClass(sub, sup)
+
+    /** The source classes that directly extend sealed class [s], in source order. */
+    fun getSealedClassInheritors(s: KaNamedClassSymbol): List<KaNamedClassSymbol> {
+        val out = ArrayList<KaNamedClassSymbol>()
+        fun walk(ds: List<KaDeclarationSymbol>) {
+            for (d in ds) if (d is KcClassSymbol) {
+                if (d !== s && round.relations.isDirectSubClass(d, s)) out += d
+                walk(d.members)
+            }
+        }
+        for (f in round.fileSymbols) walk(f.declarations)
+        return out
+    }
+
+    // KaVisibilityChecker
+    /** Whether [s] is visible in [cls]: a private member only in its own class. */
+    fun isVisibleInClass(s: KaCallableSymbol, cls: KaClassSymbol): Boolean =
+        s.visibility != KaSymbolVisibility.PRIVATE || getContainingSymbol(fakeOverrideOriginal(s)) == cls
+
+    // KaSubstitutorProvider and KaSignatureSubstitutor
+    fun createSubstitutor(map: Map<KaTypeParameterSymbol, KaType>): KaSubstitutor = round.relations.substitutor(map)
+    fun createInheritanceTypeSubstitutor(sub: KaClassSymbol, sup: KaClassSymbol): KaSubstitutor? =
+        round.relations.inheritanceSubstitutor(sub, sup)
+    fun substitute(s: KaCallableSymbol, sub: KaSubstitutor): KaCallableSignature<KaCallableSymbol> =
+        round.relations.signature(s).substitute(sub)
+    fun substitute(s: KaFunctionSymbol, sub: KaSubstitutor): KaFunctionSignature<KaFunctionSymbol> =
+        round.relations.functionSignature(s).substitute(sub)
+    fun substitute(s: KaVariableSymbol, sub: KaSubstitutor): KaVariableSignature<KaVariableSymbol> =
+        round.relations.variableSignature(s).substitute(sub)
+    fun asSignature(s: KaCallableSymbol): KaCallableSignature<KaCallableSymbol> = round.relations.signature(s)
+    fun asSignature(s: KaFunctionSymbol): KaFunctionSignature<KaFunctionSymbol> = round.relations.functionSignature(s)
+    fun asSignature(s: KaVariableSymbol): KaVariableSignature<KaVariableSymbol> = round.relations.variableSignature(s)
     fun getContainingFile(s: KaSymbol): KaFileSymbol? {
         var cur: KaSymbol? = s
         while (cur != null && cur !is KaFileSymbol) {
@@ -118,12 +175,7 @@ class KcAnalysis internal constructor(internal val round: KcRound, private val m
         else -> null
     }
     fun isMarkedNullable(type: KaType): Boolean = base(type).marked
-    fun isNullable(type: KaType): Boolean = when (type) {
-        is KcFlexibleType -> isNullable(type.upperBound)
-        is KcDefinitelyNotNullType -> false
-        is KcTypeParameterType -> type.marked || type.symbol.upperBounds.all(::isNullable)
-        else -> base(type).marked
-    }
+    fun isNullable(type: KaType): Boolean = round.relations.isNullable(type)
     fun hasFlexibleNullability(type: KaType): Boolean =
         type is KcFlexibleType && isMarkedNullable(type.upperBound) && !isMarkedNullable(type.lowerBound)
     fun isAnyType(type: KaType): Boolean = type is KcClassType && !type.marked && type.classId == ANY
@@ -143,11 +195,16 @@ class KcAnalysis internal constructor(internal val round: KcRound, private val m
 
     // KaTypeRelationChecker
     fun getDirectSupertypes(type: KaType): Sequence<KaType> = directSupertypes(type, true)
-    fun directSupertypes(type: KaType, shouldApproximate: Boolean): Sequence<KaType> {
-        // TODO(M4): substitute the class's type parameters with the type's arguments.
-        val s = getExpandedSymbol(type) ?: return emptySequence()
-        return s.superTypes.asSequence()
-    }
+    fun directSupertypes(type: KaType, shouldApproximate: Boolean): Sequence<KaType> =
+        round.relations.directSupertypes(type).asSequence()
+    fun semanticallyEquals(a: KaType, b: KaType, policy: KaSubtypingErrorTypePolicy): Boolean =
+        round.relations.equal(a, b, policy == KaSubtypingErrorTypePolicy.LENIENT)
+    fun isSubtypeOf(a: KaType, b: KaType, policy: KaSubtypingErrorTypePolicy): Boolean =
+        round.relations.isSubtype(a, b, policy == KaSubtypingErrorTypePolicy.LENIENT)
+    fun isSubtypeOf(a: KaType, id: ClassId, policy: KaSubtypingErrorTypePolicy): Boolean =
+        round.relations.isSubtype(a, id, policy == KaSubtypingErrorTypePolicy.LENIENT)
+    fun isSubtypeOf(a: KaType, s: KaClassLikeSymbol, policy: KaSubtypingErrorTypePolicy): Boolean =
+        s.classId?.let { round.relations.isSubtype(a, it, policy == KaSubtypingErrorTypePolicy.LENIENT) } ?: false
 
     private fun base(type: KaType): KcTypeBase = type as? KcTypeBase ?: unsupported("type $type isn't kc's")
 
@@ -158,14 +215,7 @@ class KcAnalysis internal constructor(internal val round: KcRound, private val m
      * Whether a member belongs in the static scope: a nested class that
      * isn't inner, an enum entry, or a Java class's static member.
      */
-    private fun isStatic(s: KaDeclarationSymbol) = when (s) {
-        is KcClassSymbol -> !s.isInner
-        is KcEnumEntrySymbol -> true
-        is KcFunctionSymbol -> s.isStatic
-        is KcPropertySymbol -> s.isStatic
-        is KcJavaFieldSymbol -> s.isStatic
-        else -> false
-    }
+    private fun isStatic(s: KaDeclarationSymbol) = isStaticMember(s)
 
     private fun noSymbol(e: PsiElement): Nothing = unsupported("no symbol for ${e.javaClass.simpleName} ${e.text.take(40)}")
 

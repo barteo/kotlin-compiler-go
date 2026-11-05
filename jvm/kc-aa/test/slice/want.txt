@@ -23,6 +23,18 @@ a.Marker: property d.inferred: kotlin.collections.List<kotlin.Pair<kotlin.Int, k
 a.Marker: type parameter T : kotlin.Any?
 a.Other: class b.Plain : kotlin.Any (s = "y")
 a.Other: parameter id: kotlin.Int (s = "x")
+assign:f.Assign: f.Named <- f.Base<kotlin.String>: false
+assign:f.Assign: f.Source<kotlin.Any> <- f.Strings: false
+assign:f.Assign: f.Source<kotlin.String> <- f.Strings: true
+assign:f.Assign: kotlin.Any <- kotlin.String?: false
+assign:f.Assign: kotlin.Comparable<kotlin.String> <- kotlin.String: true
+assign:f.Assign: kotlin.collections.Collection<kotlin.String> <- kotlin.collections.List<kotlin.String>: true
+assign:f.Assign: kotlin.collections.List<kotlin.Any> <- kotlin.collections.List<kotlin.String>: true
+decls:f.Strings: - function <init>(): f.Strings
+decls:f.Strings: - function f.Strings.get(): kotlin.String
+decls:f.Strings: - function f.Strings.hook(): kotlin.Unit
+decls:f.Strings: - function f.Strings.name(): kotlin.String
+decls:f.Strings: KOTLIN CLASS class f.Strings : f.Base<kotlin.String>, f.Named
 decls:java.lang.Thread.State: - class java.lang.Thread.State.BLOCKED
 decls:java.lang.Thread.State: - class java.lang.Thread.State.NEW
 decls:java.lang.Thread.State: - class java.lang.Thread.State.RUNNABLE
@@ -57,3 +69,34 @@ e.Inner: class e.Defaults : kotlin.Any (s = "in")
 java.beans.JavaBean: class e.Bean : kotlin.Any (description = "bean", defaultProperty = "", defaultEventSet = "")
 kotlin.Deprecated: class e.Old : kotlin.Any (message = "old", replaceWith = @kotlin.ReplaceWith(expression = "", imports = []), level = kotlin.DeprecationLevel.WARNING)
 kotlin.Suppress: file Model.kt (names = ["unused"])
+members:f.Bag:get,size,toString: JAVA_LIB size in java.util.AbstractCollection; as member (): kotlin.Int
+members:f.Bag:get,size,toString: JAVA_LIB toString in java.util.AbstractCollection overrides kotlin.Any.toString; as member (): kotlin.String
+members:f.Bag:get,size,toString: KOTLIN get in f.Bag overrides java.util.AbstractList.get; as member (kotlin.Int): kotlin.String
+members:f.Bag:get,size,toString: KOTLIN size in f.Bag; as member : kotlin.Int
+members:f.Base: JAVA_LIB get in f.Base overrides f.Source.get; as member (): kotlin.Any?
+members:f.Base: JAVA_LIB map in f.Base overrides f.Source.map; as member (fun kotlin.Function1<kotlin.Any?, R>): f.Source<R>
+members:f.Base: KOTLIN <init> in f.Base; as member (kotlin.collections.List<kotlin.Any?>): f.Base<kotlin.Any?>
+members:f.Base: KOTLIN first in f.Base; as member (): kotlin.Any?
+members:f.Base: KOTLIN hook in f.Base; as member (): kotlin.Unit
+members:f.Base: KOTLIN items in f.Base; as member : kotlin.collections.List<kotlin.Any?>
+members:f.Base: KOTLIN secret in f.Base; as member (): kotlin.Unit
+members:f.Base: KOTLIN size in f.Base overrides f.Source.size; as member : kotlin.Int
+members:f.Base: KOTLIN_LIB equals in kotlin.Any; as member (kotlin.Any?): kotlin.Boolean
+members:f.Base: KOTLIN_LIB hashCode in kotlin.Any; as member (): kotlin.Int
+members:f.Base: KOTLIN_LIB toString in kotlin.Any; as member (): kotlin.String
+members:f.Strings: JAVA_LIB first in f.Strings overrides f.Base.first; as member (): kotlin.String
+members:f.Strings: JAVA_LIB items in f.Strings overrides f.Base.items; as member : kotlin.collections.List<kotlin.String>
+members:f.Strings: JAVA_LIB map in f.Strings overrides f.Source.map; as member (fun kotlin.Function1<kotlin.String, R>): f.Source<R>
+members:f.Strings: KOTLIN <init> in f.Strings; as member (): f.Strings
+members:f.Strings: KOTLIN get in f.Strings overrides f.Source.get; as member (): kotlin.String
+members:f.Strings: KOTLIN hook in f.Strings overrides f.Base.hook; as member (): kotlin.Unit
+members:f.Strings: KOTLIN name in f.Strings overrides f.Named.name; as member (): kotlin.String
+members:f.Strings: KOTLIN size in f.Base overrides f.Source.size; as member : kotlin.Int
+members:f.Strings: KOTLIN_LIB equals in kotlin.Any; as member (kotlin.Any?): kotlin.Boolean
+members:f.Strings: KOTLIN_LIB hashCode in kotlin.Any; as member (): kotlin.Int
+members:f.Strings: KOTLIN_LIB toString in kotlin.Any; as member (): kotlin.String
+overrides:f.Strings#get:f.Named#get: true
+overrides:f.Strings#get:f.Source#get: true
+overrides:f.Strings#name:f.Source#get: false
+sealed:f.Shape: f.Circle
+sealed:f.Shape: f.Square

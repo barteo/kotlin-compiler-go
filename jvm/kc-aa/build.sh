@@ -78,6 +78,9 @@ LD_PRELOAD=$java_home/lib/libjsig.so java -Dksp.backend=kc -Dkc.lib="$out/libkc.
 	-Dkc.stdlib="$lib/kotlin-stdlib-2.4.21.jar" -Didea.home.path="$out" \
 	-cp "$out/test-classes:$out/kc-aa.jar:$deps" PrintAnnotatedKt \
 	"$here/test/slice/src" "$out/slice" a.Marker a.Other kotlin.Suppress e.Args e.Inner kotlin.Deprecated java.beans.JavaBean \
-	decls:kotlin.ReplaceWith decls:kotlin.coroutines.AbstractCoroutineContextKey decls:java.util.AbstractMap.SimpleEntry decls:java.lang.Thread.State > "$out/slice.txt"
+	decls:kotlin.ReplaceWith decls:kotlin.coroutines.AbstractCoroutineContextKey decls:java.util.AbstractMap.SimpleEntry decls:java.lang.Thread.State \
+	decls:f.Strings members:f.Strings members:f.Base members:f.Bag:get,size,toString assign:f.Assign sealed:f.Shape \
+	overrides:f.Strings#get:f.Named#get overrides:f.Strings#get:f.Source#get overrides:f.Strings#name:f.Source#get \
+	> "$out/slice.txt"
 diff -u "$here/test/slice/want.txt" "$out/slice.txt"
 echo "slice: ok"

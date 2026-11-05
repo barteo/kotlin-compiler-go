@@ -69,7 +69,7 @@ mapping.
 | M0.4 | Vertical slice: list annotated source classes through a `kc` KspBackend: `jvm/kc-aa/build.sh test` | done, see gaps |
 | M1 | `psi` on Kotlin 2.4.21 | done before this work |
 | M2 | Error tolerance, `types.Invalid` payload, extension-vs-top-level overload bug, `@Contextual`/`@EncodeDefault` | done (two items moved, see M2) |
-| M3 | Richer symbol model: visibility and modality enums, flags, origins, library annotation arguments, Java parameter names | in progress: source types, flags, modality; KaTypes on the JVM; annotation arguments; library classes |
+| M3 | Richer symbol model: visibility and modality enums, flags, origins, library annotation arguments, Java parameter names | in progress: source types, flags, modality; KaTypes on the JVM; annotation arguments; library classes; inherited members, overrides, subtyping |
 | M4 | Queryable session `analysis/ka`: lookups, scopes, relations, overrides | |
 | M5 | Bridge: `cmd/libkc` operations, `tools/kagen` wire format, `jvm/kc-aa` KaSession | |
 | M6 | KSP fork integration: the `kc` backend, IC lookups, hot paths | |
@@ -285,7 +285,8 @@ and error types, with star and variance projections. They back:
 The slice (`test/slice/src/d/Types.kt`) prints each declaration's types
 through KSP. Known differences from kotlinc and things still missing:
 - An inferred Java return type is `String?` in kc and `String!` in kotlinc.
-- `directSupertypes` doesn't substitute the type's arguments.
+- ~~`directSupertypes` doesn't substitute the type's arguments.~~ Fixed in
+  step 5.
 - `getFullyExpandedType` returns its argument, and
   `KcExtras.abbreviatedTypeAlias` returns null: there is no alias
   abbreviation yet.
@@ -293,7 +294,8 @@ through KSP. Known differences from kotlinc and things still missing:
   Fixed in step 4.
 - ~~Library class types know only their class ID.~~ Fixed in step 4, except
   for the Kotlin built-ins that are Java classes (see step 4).
-- `isSubtypeOf` and `semanticallyEquals` aren't implemented.
+- ~~`isSubtypeOf` and `semanticallyEquals` aren't implemented.~~ Fixed in
+  step 5.
 
 **Step 3: annotation arguments.** The checker hands the values it evaluates
 for each annotation to an optional `check.ValueRecorder`. That includes
@@ -326,8 +328,8 @@ The slice (`test/slice/src/e/Args.kt`) prints every argument through KSP's
 - `evaluateAsAnnotationValue` answers only the expressions kc evaluated as
   annotation arguments or defaults; for any other expression it returns
   null.
-- `memberScope` of a source class is its declared members, with no
-  inherited members or fake overrides.
+- ~~`memberScope` of a source class is its declared members, with no
+  inherited members or fake overrides.~~ Fixed in step 5.
 - Arguments are ordered by parameter. That may differ from kotlinc's order
   when named arguments are written out of order.
 - A position that doesn't line up with the psi (non-ASCII text earlier on
@@ -388,9 +390,84 @@ Kotlin class, a generic nested Java class and a Java enum. Known gaps:
 - Java parameter names without `MethodParameters` are `p0`, `p1`, … (FIR
   does the same for class files).
 - Library top-level callables and type aliases aren't loaded yet.
-- Scopes have no inherited members or fake overrides; the static scope has
-  no inherited Java statics.
+- ~~Scopes have no inherited members or fake overrides; the static scope
+  has no inherited Java statics.~~ Fixed in step 5.
 - A constructor's `typeParameters` are its class's; FIR may differ.
+
+**Step 5: inherited members, overrides and subtyping.** All of it runs on
+the JVM, over the declarations and KaTypes `KcRound` already holds, so
+source and library classes share one mechanism and the wire is unchanged.
+The one Go change is to the built-ins (`analysis/ka/library.go`):
+`kotlin/Any` is synthesized with its constructor and `equals`, `hashCode`
+and `toString`; the built-ins that are Java classes get the mapped class's
+supertypes, kept to `kotlin/*` ones (`String : Comparable<String>,
+CharSequence`, `Int : Number, Comparable<Int>`, `List<E> : Collection<E>`);
+and `FunctionN` extends `Function<R>`.
+
+- **Substitution** (`KcSubstitution.kt`): `KcSubstitutor` replaces type
+  parameters in one pass, through class and function type arguments,
+  flexible bounds and definitely-non-null types; a replaced `T?` becomes
+  nullable. A class type's substitutor maps its class's parameters to its
+  arguments, a star to the first bound (or `Any?`). They back
+  `createSubstitutor`, `createInheritanceTypeSubstitutor`,
+  `substitute`/`asSignature` on callables (with `KcFunctionSignature` and
+  `KcVariableSignature`), and `directSupertypes`, which now substitutes.
+- **Subtyping** (`KcTypeRelations`): error types follow the policy, then
+  flexible bounds, nullability, `Any`/`Nothing`, type parameters through
+  their bounds, and class types through a breadth-first walk of substituted
+  supertypes, comparing arguments by declaration-site and use-site
+  variance. It backs `isSubtypeOf` (types, class IDs, symbols),
+  `semanticallyEquals` (subtype both ways, so `String!` equals `String`),
+  `isSubClassOf` and `isDirectSubClassOf`.
+- **Member scopes** (`KcMembers.kt`, `KcRound.members`, cached per class):
+  the class's own non-static callables, then what it inherits, one member
+  per signature. Each supertype's scope comes in with that supertype's
+  substitutor, minus private members. A declared member that matches an
+  inherited one (same kind, name, receiver presence and parameter counts,
+  equal receiver and parameter types once substituted, type parameters
+  matched by position) overrides it. Unmatched inherited members are
+  grouped by the same test and deduplicated by their original declaration:
+  - one left whose types don't change is kept as it is, as FIR keeps it;
+  - one left whose types change becomes a substitution override
+    (`SUBSTITUTION_OVERRIDE`);
+  - several left become an intersection override
+    (`INTERSECTION_OVERRIDE`), typed from the first non-abstract one.
+  
+  Fake overrides delegate to their original for psi, annotations, name,
+  flags and type parameters. Their pointers are `<class key>/~<index>` and
+  restore by rebuilding the class's scope. The static scope adds the
+  statics of Java superclasses that aren't hidden.
+- **Overrides:** `directlyOverriddenSymbols` (declared originals, unwrapping
+  fake overrides; accessors answer for their property),
+  `allOverriddenSymbols`, `intersectionOverriddenSymbols` and
+  `fakeOverrideOriginal`. Also `sealedClassInheritors` (source classes in
+  source order) and `isVisibleInClass` (a private member only in its own
+  class).
+- **PSI join:** the preorder numbering now skips KDoc's inner nodes, which
+  kc's psi folds into one leaf. Before this, any KDoc comment shifted every
+  later node of its file.
+
+The slice (`test/slice/src/f/Inherit.kt`) prints, through KSP,
+`getAllFunctions`/`getAllProperties` of a generic hierarchy with origins,
+parents, `findOverridee` and `asMemberOf`; `isAssignableFrom` for seven
+pairs; `getSealedSubclasses`; and `Resolver.overrides`. Stock KSP can't run
+here, so `want.txt` was checked by hand against FIR's behaviour. Known gaps:
+- Java collection methods aren't mapped to Kotlin's: in
+  `class Bag : AbstractList<String>`, `override val size` doesn't override
+  Java's `size()`, and both appear. Java collection supertypes are
+  read-only Kotlin types, not `(Mutable)List<E>!`.
+- The built-ins have only `Any`'s members.
+- Fake overrides keep their originals' type parameters; FIR makes fresh
+  ones.
+- Subtyping has no captured or intersection types.
+- Data class members (`componentN`, `copy`) and enum
+  `values`/`valueOf`/`entries` aren't in scopes.
+- An inner class's outer type arguments aren't substituted.
+- Override matching approximates the checker's: no erasure-based Java
+  overrides, and no special cases such as `CharSequence.get`/`charAt`.
+- Package-private members of other packages stay in scopes.
+- Pointer restore of fake overrides isn't exercised by the slice: KSP
+  doesn't create such pointers on these paths.
 
 ## Gaps and open questions
 
