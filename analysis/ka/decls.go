@@ -1,7 +1,10 @@
 package ka
 
 import (
+	"slices"
+
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
+	"github.com/barteo/kotlin-compiler-go/internal/types"
 	"github.com/barteo/kotlin-compiler-go/psi"
 )
 
@@ -89,23 +92,30 @@ func (b *fileBuilder) class(d *syntax.ClassDecl, prefix string) *Decl {
 	if !d.Interface && !d.Object {
 		// The PRIMARY_CONSTRUCTOR, if written.
 		pc := b.snap.Node(md.Node).ChildKind(psi.KindPRIMARY_CONSTRUCTOR).ID()
-		ctor := &Decl{Kind: KindConstructor, Name: "<init>", Node: pc,
-			Visibility: visibility(d.CtorMods.Visibility), Annotations: b.annotations(d.CtorMods.Annotations),
-			Flags: commonFlags(&d.CtorMods) | FlagPrimary}
-		for _, p := range d.CtorParams {
-			mp := b.param(&p.Param, b.prov.Node(p), p.Modifiers.Annotations)
-			if d.Annotation && p.Default != nil && p.Sym != nil {
-				mp.Default = b.defaultValue(p.Sym.Type, p.Default, 0)
+		// Without one, a class that declares no constructor has an
+		// implicit, empty one, and a class that does has none.
+		if pc != 0 || !slices.ContainsFunc(d.Members, func(m syntax.Decl) bool {
+			_, ok := m.(*syntax.SecondaryCtor)
+			return ok
+		}) {
+			ctor := &Decl{Kind: KindConstructor, Name: "<init>", Node: pc,
+				Visibility: visibility(d.CtorMods.Visibility), Annotations: b.annotations(d.CtorMods.Annotations),
+				Flags: commonFlags(&d.CtorMods) | FlagPrimary}
+			for _, p := range d.CtorParams {
+				mp := b.param(&p.Param, b.prov.Node(p), p.Modifiers.Annotations)
+				if d.Annotation && p.Default != nil && p.Sym != nil {
+					mp.Default = b.defaultValue(p.Sym.Type, p.Default, 0)
+				}
+				ctor.Params = append(ctor.Params, mp)
 			}
-			ctor.Params = append(ctor.Params, mp)
+			md.Members = append(md.Members, ctor)
 		}
-		md.Members = append(md.Members, ctor)
 		for _, p := range d.CtorParams {
 			if !p.IsProp {
 				continue
 			}
 			mp := &Decl{Kind: KindProperty, Name: p.Name, Node: b.prov.Node(p),
-				Visibility: visibility(p.Visibility), Annotations: b.annotations(p.Modifiers.Annotations),
+				Visibility: visibility(p.Visibility), Annotations: b.ctorPropAnnotations(p.Modifiers.Annotations),
 				Flags: propFlags(&p.Modifiers, p.Mutable) | FlagBackingField}
 			mp.Modality = memberModality(&p.Modifiers, d, false)
 			if p.PropSym != nil {
@@ -120,6 +130,9 @@ func (b *fileBuilder) class(d *syntax.ClassDecl, prefix string) *Decl {
 		md.Members = append(md.Members, &Decl{Kind: KindEnumEntry, Name: e.Name, Node: b.prov.Node(e),
 			ClassID: md.ClassID + "." + e.Name, Annotations: b.annotations(e.Annotations),
 			Type: &Type{Kind: TypeClass, ClassID: md.ClassID}})
+	}
+	if md.Kind == KindEnumClass {
+		md.Members = append(md.Members, enumMembers(md.ClassID, d.EntriesList, FlagStatic)...)
 	}
 	for _, m := range d.Members {
 		if c, ok := m.(*syntax.ClassDecl); ok && c.EnumEntry {
@@ -200,6 +213,33 @@ func (b *fileBuilder) typeParams(tps []*syntax.TypeParam) []*Decl {
 		for _, ref := range tp.Bounds {
 			out[i].Bounds = append(out[i].Bounds, b.written(ref))
 		}
+	}
+	return out
+}
+
+// ctorPropAnnotations returns the annotations of a constructor's val or
+// var parameter that are its property's, as Kotlin 2.4 (and the Analysis
+// API before it) has them: those with a use-site target, and those
+// without one that may be on a property, as well as on the parameter;
+// one that may be on a field and not on a property is the field's.
+func (b *fileBuilder) ctorPropAnnotations(as []syntax.Annotation) []Annotation {
+	var out []Annotation
+	for i := range as {
+		a := &as[i]
+		if a.Implicit {
+			continue
+		}
+		m := b.annotation(a)
+		if cls := b.annotationClass(a); m.Target == "" && cls != nil && cls.TargetsKnown {
+			switch {
+			case cls.Targets&types.TargetProperty != 0:
+			case cls.Targets&types.TargetField != 0:
+				m.Target = "field"
+			default:
+				continue
+			}
+		}
+		out = append(out, m)
 	}
 	return out
 }

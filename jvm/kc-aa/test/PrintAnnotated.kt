@@ -248,8 +248,8 @@ fun main(args: Array<String>) {
         kotlinOutputDir = File(out, "kotlin")
         javaOutputDir = File(out, "java")
         resourceOutputDir = File(out, "resources")
-        languageVersion = "2.4"
-        apiVersion = "2.4"
+        languageVersion = System.getProperty("ksp.languageVersion", "2.4")
+        apiVersion = languageVersion
         jvmTarget = "17"
         jvmDefaultMode = "enable"
         incremental = false
@@ -261,4 +261,6 @@ fun main(args: Array<String>) {
         System.err.println("KSP exited with $code")
         exitProcess(1)
     }
+    // Stock KSP leaves non-daemon threads behind.
+    exitProcess(0)
 }

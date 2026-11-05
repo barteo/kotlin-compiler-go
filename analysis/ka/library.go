@@ -345,6 +345,9 @@ func (l *library) kotlinClass(id, name string, outer kscope, depth int) *Decl {
 		d.Members = append(d.Members, &Decl{Kind: KindEnumEntry, Name: e, ClassID: id + "." + e,
 			Visibility: Public, Type: &Type{Kind: TypeClass, ClassID: id}})
 	}
+	if d.Kind == KindEnumClass {
+		d.Members = append(d.Members, enumMembers(id, l.cp.Has("kotlin/enums/EnumEntries"), FlagStatic)...)
+	}
 	if depth < maxNesting {
 		for _, n := range kc.Nested {
 			if nd := l.kotlinClass(id+"."+n, name+"$"+n, scope, depth+1); nd != nil {
@@ -675,7 +678,7 @@ func (l *library) javaClass(cls *types.ClassSym, depth int) *Decl {
 	for _, name := range sortedKeys(cls.Statics) {
 		for _, f := range cls.Statics[name] {
 			if d.Kind == KindEnumClass && (f.Name == "values" || f.Name == "valueOf") {
-				continue
+				continue // see enumMembers
 			}
 			md := l.javaMethod(b, f, bySig, d, KindFunction)
 			md.Flags |= FlagStatic
@@ -689,6 +692,9 @@ func (l *library) javaClass(cls *types.ClassSym, depth int) *Decl {
 	for _, name := range cls.Entries {
 		d.Members = append(d.Members, &Decl{Kind: KindEnumEntry, Name: name, ClassID: id + "." + name,
 			Visibility: Public, Type: &Type{Kind: TypeClass, ClassID: id}})
+	}
+	if d.Kind == KindEnumClass {
+		d.Members = append(d.Members, enumMembers(id, l.cp.Has("kotlin/enums/EnumEntries"), FlagStatic|FlagJava)...)
 	}
 	addField := func(v *types.VarSym, static bool) {
 		if slices.Contains(cls.Entries, v.Name) {
@@ -789,6 +795,9 @@ func (l *library) javaTypeParams(b *fileBuilder, tps []*types.TypeParamSym) []*D
 		md := &Decl{Kind: KindTypeParameter, Name: tp.Name}
 		for _, bt := range tp.Bounds {
 			md.Bounds = append(md.Bounds, platform(b.typ(bt, nil)))
+		}
+		if len(md.Bounds) == 0 { // Object, which is kotlin/Any!
+			md.Bounds = []*Type{{Kind: TypeClass, ClassID: "kotlin/Any", Flexible: true}}
 		}
 		out = append(out, md)
 	}
@@ -1104,4 +1113,22 @@ func descType(desc string) *Type {
 		return &Type{Kind: TypeClass, ClassID: descClassID(desc)}
 	}
 	return &Type{Kind: TypeError, Name: desc}
+}
+
+// enumMembers returns the static members Kotlin gives enum class id:
+// values(), valueOf(value) and, if withEntries, the entries property, as
+// FIR has them, with flags.
+func enumMembers(id string, withEntries bool, flags Flags) []*Decl {
+	e := func() *Type { return &Type{Kind: TypeClass, ClassID: id} }
+	out := []*Decl{
+		{Kind: KindFunction, Name: "values", Visibility: Public, Modality: ModalityFinal, Flags: flags,
+			Type: &Type{Kind: TypeClass, ClassID: "kotlin/Array", Args: []TypeArg{{Type: e()}}}},
+		{Kind: KindFunction, Name: "valueOf", Visibility: Public, Modality: ModalityFinal, Flags: flags, Type: e(),
+			Params: []*Decl{{Kind: KindValueParameter, Name: "value", Type: &Type{Kind: TypeClass, ClassID: "kotlin/String"}}}},
+	}
+	if withEntries {
+		out = append(out, &Decl{Kind: KindProperty, Name: "entries", Visibility: Public, Modality: ModalityFinal, Flags: flags,
+			Type: &Type{Kind: TypeClass, ClassID: "kotlin/enums/EnumEntries", Args: []TypeArg{{Type: e()}}}})
+	}
+	return out
 }

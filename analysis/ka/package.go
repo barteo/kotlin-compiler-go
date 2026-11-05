@@ -11,8 +11,9 @@ import (
 // Package is a package of the class path: Model.Package.
 type Package struct {
 	Name string // dotted; "" for the root package
-	// Classes are the class IDs of its top-level classes, Kotlin's and
-	// Java's, sorted; not Kotlin's file facades and synthetic classes.
+	// Classes are the class IDs of its top-level classes, Kotlin's (the
+	// built-in ones too) and Java's, sorted; not Kotlin's file facades and
+	// synthetic classes.
 	Classes []string
 	// Decls are its top-level Kotlin functions, properties and type
 	// aliases, by kind, then by name. A function's or property's ClassID
@@ -68,6 +69,21 @@ func (l *library) pkg(pkg string) *Package {
 			continue // a file facade, a multi-file class or its part, a lambda's class
 		}
 		p.Classes = append(p.Classes, internalClassID(name))
+	}
+	// The built-in classes, as kotlin/collections/List, have no class files.
+	if pkg != "" {
+		dir := strings.ReplaceAll(pkg, ".", "/")
+		if data, err := l.cp.Resource(dir + "/" + pkg[strings.LastIndexByte(pkg, '.')+1:] + ".kotlin_builtins"); err == nil {
+			if bs, err := kmeta.ReadBuiltins(data); err == nil {
+				for _, c := range bs.Classes {
+					if !strings.Contains(c.Name[len(dir)+1:], ".") {
+						p.Classes = append(p.Classes, c.Name)
+					}
+				}
+			}
+		}
+		slices.Sort(p.Classes)
+		p.Classes = slices.Compact(p.Classes)
 	}
 	var funcs, props, aliases []*Decl
 	for _, part := range l.parts()[pkg] {

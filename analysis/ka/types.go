@@ -195,10 +195,10 @@ func (b *fileBuilder) typeAt(t types.Type, ref *syntax.TypeRef, depth int) *Type
 		out.ClassID = primitives[t.K]
 	}
 	switch {
+	case t.P: // platform types are also N
+		out.Flexible = true
 	case t.K == types.Null || t.N:
 		out.Nullable = true
-	case t.P:
-		out.Flexible = true
 	}
 	if ref != nil {
 		if a := b.aliases[ref]; a != nil {

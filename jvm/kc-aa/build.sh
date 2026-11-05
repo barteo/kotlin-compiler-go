@@ -10,9 +10,10 @@
 # the output with test/slice/want.txt; then it runs Moshi's KSP codegen over
 # test/moshi/src (test/RunKsp.kt) and compares what it generates with
 # test/moshi/want, and Dagger's over test/dagger/src with test/dagger/want.
-# "stock" does what "test" does, and then runs Moshi and Dagger on stock
-# KSP 2.3.6 (its embeddable Analysis API, Kotlin 2.3) over the same
-# sources, whose output must match the same want directories.
+# "stock" does what "test" does, and then runs the slice, Moshi and Dagger
+# on stock KSP 2.3.6 (its embeddable Analysis API, Kotlin 2.3) over the
+# same sources: Moshi's and Dagger's output must match the same want
+# directories, and the slice's want.txt but for test/slice/stock.diff.
 #
 # The symbol classes extend generated stubs (build/Stubs.kt, made by
 # gen/GenStubs.kt) whose members throw UnsupportedOperationException("kc:
@@ -79,17 +80,18 @@ echo "$out/kc-aa.jar"
 mode=${1:-}
 [ "$mode" = test ] || [ "$mode" = stock ] || exit 0
 
+# The symbols PrintAnnotated prints (see its doc comment).
+slice=(a.Marker a.Other kotlin.Suppress e.Args e.Inner kotlin.Deprecated java.beans.JavaBean
+	decls:kotlin.ReplaceWith decls:kotlin.coroutines.AbstractCoroutineContextKey decls:java.util.AbstractMap.SimpleEntry decls:java.lang.Thread.State decls:b.E decls:kotlin.DeprecationLevel
+	decls:f.Strings members:f.Strings members:f.Base members:f.Bag:get,size,toString assign:f.Assign sealed:f.Shape
+	overrides:f.Strings#get:f.Named#get overrides:f.Strings#get:f.Source#get overrides:f.Strings#name:f.Source#get
+	package:g package:kotlin.collections:listOf,lastIndex,ArrayList,List,emptyList,AbstractList package:java.util.function:Supplier
+	fun:kotlin.collections.listOf fun:g.top prop:kotlin.collections.lastIndex prop:kotlin.coroutines.intrinsics.COROUTINE_SUSPENDED prop:g.topProp alias:g.Holder jvm:h.Sigs)
 rm -rf "$out/test-classes" "$out/slice"
 kotlinc -cp "$deps:$out/kc-aa.jar" -d "$out/test-classes" -jvm-target 17 -nowarn "$here/test/PrintAnnotated.kt"
 LD_PRELOAD=$java_home/lib/libjsig.so java -Dksp.backend=kc -Dkc.lib="$out/libkc.so" \
 	-Dkc.stdlib="$lib/kotlin-stdlib-2.4.21.jar" -Didea.home.path="$out" \
-	-cp "$out/test-classes:$out/kc-aa.jar:$deps" PrintAnnotatedKt \
-	"$here/test/slice/src" "$out/slice" a.Marker a.Other kotlin.Suppress e.Args e.Inner kotlin.Deprecated java.beans.JavaBean \
-	decls:kotlin.ReplaceWith decls:kotlin.coroutines.AbstractCoroutineContextKey decls:java.util.AbstractMap.SimpleEntry decls:java.lang.Thread.State \
-	decls:f.Strings members:f.Strings members:f.Base members:f.Bag:get,size,toString assign:f.Assign sealed:f.Shape \
-	overrides:f.Strings#get:f.Named#get overrides:f.Strings#get:f.Source#get overrides:f.Strings#name:f.Source#get \
-	package:g package:kotlin.collections:listOf,lastIndex,ArrayList,List,emptyList,AbstractList package:java.util.function:Supplier \
-	fun:kotlin.collections.listOf fun:g.top prop:kotlin.collections.lastIndex prop:kotlin.coroutines.intrinsics.COROUTINE_SUSPENDED prop:g.topProp alias:g.Holder jvm:h.Sigs \
+	-cp "$out/test-classes:$out/kc-aa.jar:$deps" PrintAnnotatedKt "$here/test/slice/src" "$out/slice" "${slice[@]}" \
 	> "$out/slice.txt"
 diff -u "$here/test/slice/want.txt" "$out/slice.txt"
 echo "slice: ok"
@@ -122,6 +124,17 @@ if [ "$mode" = stock ]; then
 	rm -rf "$out/runksp-stock"
 	kotlinc -cp "${stockcp#:}" -language-version 2.3 -api-version 2.3 -d "$out/runksp-stock" -jvm-target 17 -nowarn \
 		"$here/test/RunKsp.kt"
+	# The slice on stock KSP differs from want.txt only as recorded in
+	# test/slice/stock.diff: what kc doesn't model yet (see
+	# docs/analysis-api.md, step 10).
+	rm -rf "$out/test-classes-stock" "$out/stock-slice"
+	kotlinc -cp "${stockcp#:}" -language-version 2.3 -api-version 2.3 -d "$out/test-classes-stock" -jvm-target 17 -nowarn \
+		"$here/test/PrintAnnotated.kt"
+	java -Dksp.languageVersion=2.3 -Dkc.stdlib="$lib/kotlin-stdlib-2.4.21.jar" -cp "$out/test-classes-stock$stockcp" \
+		PrintAnnotatedKt "$here/test/slice/src" "$out/stock-slice" "${slice[@]}" > "$out/stock-slice.txt"
+	{ diff "$here/test/slice/want.txt" "$out/stock-slice.txt" || true; } | grep '^[<>]' > "$out/stock-slice.diff" || true
+	diff -u "$here/test/slice/stock.diff" "$out/stock-slice.diff"
+	echo "slice: stock KSP differs as recorded"
 fi
 # stock NAME SRC LIBS PROCS runs PROCS on stock KSP over SRC, with
 # libraries LIBS, and compares the output with test/NAME/want.

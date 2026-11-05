@@ -436,25 +436,32 @@ type fileBuilder struct {
 func (b *fileBuilder) annotations(as []syntax.Annotation) []Annotation {
 	var out []Annotation
 	for i := range as {
-		a := &as[i]
-		if a.Implicit {
-			continue
+		if a := &as[i]; !a.Implicit {
+			out = append(out, b.annotation(a))
 		}
-		cls := a.Class
-		if cls == nil {
-			cls = a.Source
-		}
-		if cls == nil {
-			cls = b.annots[a.P]
-		}
-		values, ok := b.values[a.P]
-		if !ok {
-			values = a.Values
-		}
-		out = append(out, Annotation{ClassID: classID(cls), Node: b.prov.Annotation(a.P), Target: a.Target,
-			Args: b.args(a, values)})
 	}
 	return out
+}
+
+// annotation returns the model of annotation a.
+func (b *fileBuilder) annotation(a *syntax.Annotation) Annotation {
+	values, ok := b.values[a.P]
+	if !ok {
+		values = a.Values
+	}
+	return Annotation{ClassID: classID(b.annotationClass(a)), Node: b.prov.Annotation(a.P), Target: a.Target,
+		Args: b.args(a, values)}
+}
+
+// annotationClass returns the class of annotation a, or nil.
+func (b *fileBuilder) annotationClass(a *syntax.Annotation) *types.ClassSym {
+	if a.Class != nil {
+		return a.Class
+	}
+	if a.Source != nil {
+		return a.Source
+	}
+	return b.annots[a.P]
 }
 
 func visibility(v syntax.Visibility) Visibility {

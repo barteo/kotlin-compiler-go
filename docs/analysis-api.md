@@ -69,7 +69,7 @@ mapping.
 | M0.4 | Vertical slice: list annotated source classes through a `kc` KspBackend: `jvm/kc-aa/build.sh test` | done, see gaps |
 | M1 | `psi` on Kotlin 2.4.21 | done before this work |
 | M2 | Error tolerance, `types.Invalid` payload, extension-vs-top-level overload bug, `@Contextual`/`@EncodeDefault` | done (two items moved, see M2) |
-| M3 | Richer symbol model: visibility and modality enums, flags, origins, library annotation arguments, Java parameter names | in progress: source types, flags, modality; KaTypes on the JVM; annotation arguments; library classes; inherited members, overrides, subtyping; packages, library top-level declarations, alias abbreviations; JVM type mapping, Moshi codegen end to end; backing fields, Dagger end to end; Dagger on octi-server byte-identical to stock KSP 2.3.6 |
+| M3 | Richer symbol model: visibility and modality enums, flags, origins, library annotation arguments, Java parameter names | in progress: source types, flags, modality; KaTypes on the JVM; annotation arguments; library classes; inherited members, overrides, subtyping; packages, library top-level declarations, alias abbreviations; JVM type mapping, Moshi codegen end to end; backing fields, Dagger end to end; Dagger on octi-server byte-identical to stock KSP 2.3.6; the slice checked against stock KSP |
 | M4 | Queryable session `analysis/ka`: lookups, scopes, relations, overrides | |
 | M5 | Bridge: `cmd/libkc` operations, `tools/kagen` wire format, `jvm/kc-aa` KaSession | |
 | M6 | KSP fork integration: the `kc` backend, IC lookups, hot paths | |
@@ -454,8 +454,9 @@ and `FunctionN` extends `Function<R>`.
 The slice (`test/slice/src/f/Inherit.kt`) prints, through KSP,
 `getAllFunctions`/`getAllProperties` of a generic hierarchy with origins,
 parents, `findOverridee` and `asMemberOf`; `isAssignableFrom` for seven
-pairs; `getSealedSubclasses`; and `Resolver.overrides`. Stock KSP can't run
-here, so `want.txt` was checked by hand against FIR's behaviour. Known gaps:
+pairs; `getSealedSubclasses`; and `Resolver.overrides`. `want.txt` was
+checked by hand against FIR's behaviour (and, since step 10, against stock
+KSP). Known gaps:
 - Java collection methods aren't mapped to Kotlin's: in
   `class Bag : AbstractList<String>`, `override val size` doesn't override
   Java's `size()`, and both appear. Java collection supertypes are
@@ -464,8 +465,8 @@ here, so `want.txt` was checked by hand against FIR's behaviour. Known gaps:
 - Fake overrides keep their originals' type parameters; FIR makes fresh
   ones.
 - Subtyping has no captured or intersection types.
-- Data class members (`componentN`, `copy`) and enum
-  `values`/`valueOf`/`entries` aren't in scopes.
+- Data class members (`componentN`, `copy`) aren't in scopes. (Enum
+  `values`/`valueOf`/`entries` are since step 10.)
 - An inner class's outer type arguments aren't substituted.
 - Override matching approximates the checker's: no erasure-based Java
   overrides, and no special cases such as `CharSequence.get`/`charAt`.
@@ -542,8 +543,8 @@ The slice adds `test/slice/src/g/Alias.kt` and prints, through KSP:
 `getFunctionDeclarationsByName` and `getPropertyDeclarationByName` with
 `includeTopLevel`, with `getOwnerJvmClassName`; and, for properties typed
 with typealiases, the declaration their type names, the alias's type and
-what it expands to. `want.txt` was checked by hand against FIR's behaviour.
-Known gaps:
+what it expands to. `want.txt` was checked by hand against FIR's behaviour
+(and, since step 10, against stock KSP). Known gaps:
 - `defaultAlias` is a heuristic on the reference's name. A source typealias
   the checker resolves without the recorder (a nested typealias, or one of
   a non-default package) isn't recorded.
@@ -747,6 +748,52 @@ Known gaps:
   module name from class metadata).
 - The octi-server check isn't in `build.sh`: it needs octi-server's
   Gradle class path. It ran from the profiling session's checkout.
+
+#### Step 10: the slice against stock KSP
+
+Stock KSP 2.3.6 runs here (step 9), so it is now the oracle for the slice
+too: `PrintAnnotated` built against it prints the same symbols over the
+same sources. The first run differed from `want.txt` in 42 lines; fixed:
+- **Constructor properties' annotations.** An untargeted annotation on a
+  constructor `val` is on the parameter and, if it may be on a property,
+  on the property too; if it may be on a field and not a property, on the
+  field (Kotlin 2.4's PropertyParamAnnotationDefaultTargetMode, which AA
+  2.3 already shows). `ka` gives the property those annotations
+  (`ctorPropAnnotations`); `KcRound.property` no longer drops them.
+- **Platform types of inferred declarations.** `fun f() =
+  System.getProperty("x")` returns `String!`: a checker type with `P` set
+  (and `N`, which platform types also have) is flexible, not nullable.
+- **Java type parameters without bounds** are bounded by `Any!`, not
+  `Any?`.
+- **Implicit constructors.** A source class that declares none has an
+  implicit primary constructor whose origin is `SOURCE_MEMBER_GENERATED`
+  (KSP: `SYNTHETIC`), as is every source declaration without a node. A
+  class with only secondary constructors has no primary one; the model
+  added one before.
+- **Enum members.** Every enum class, source, Kotlin library or Java, has
+  static `values()`, `valueOf(value: String)` and, with the standard
+  library, `entries: EnumEntries<E>`, as FIR synthesizes them; a Java
+  enum's own `values`/`valueOf` methods are replaced by them.
+- **Built-in classes in packages.** `Model.Package` lists the classes of
+  the package's `.kotlin_builtins` (`kotlin/collections/List`,
+  `kotlin/Int`), which have no class files.
+
+`build.sh stock` now runs the slice on stock KSP too and compares the
+difference from `want.txt` (its `<`/`>` lines) with
+`test/slice/stock.diff` ("slice: stock KSP differs as recorded"). Those
+are the gaps left, 25 lines:
+- A Java enum's private constructor (`<init>()`), and private members of
+  Java classes generally (`SimpleEntry.serialVersionUID`), aren't in
+  `declarations`.
+- Java getters that implement Kotlin properties: FIR adds properties
+  `key`/`value` to `AbstractMap.SimpleEntry` (from `getKey`/`getValue`,
+  which implement `Map.Entry.key`/`value`) and drops the getters.
+- Java signatures aren't enhanced from the Kotlin members they override:
+  `SimpleEntry.equals` takes `Any?` (from `Any.equals`), not `Any!`.
+- Java collection methods aren't mapped to Kotlin's (step 5's gap):
+  `Bag`'s `size` doesn't override `AbstractCollection.size`.
+- `asMemberOf` of a star-projected type (`f.Base<*>`) substitutes `Any?`
+  where FIR has the captured type, which KSP prints as `Any`.
 
 ## Gaps and open questions
 

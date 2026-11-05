@@ -12,7 +12,7 @@ func TestPackage(t *testing.T) {
 	if p := m.Package("kotlin.no.such"); p != nil {
 		t.Errorf("kotlin.no.such: %+v", p)
 	}
-	if p := m.Package("kotlin"); p == nil || !slices.Contains(p.Classes, "kotlin/Deprecated") {
+	if p := m.Package("kotlin"); p == nil || !slices.Contains(p.Classes, "kotlin/Deprecated") || !slices.Contains(p.Classes, "kotlin/Int") {
 		t.Errorf("kotlin: %+v", p)
 	}
 	if p := m.Package("kotlin.collections"); p != m.Package("kotlin.collections") {
@@ -30,7 +30,7 @@ func TestPackage(t *testing.T) {
 	if p == nil {
 		t.Fatal("kotlin.collections: nil")
 	}
-	for _, id := range []string{"kotlin/collections/AbstractList", "kotlin/collections/ArrayDeque"} {
+	for _, id := range []string{"kotlin/collections/AbstractList", "kotlin/collections/ArrayDeque", "kotlin/collections/List", "kotlin/collections/MutableMap"} {
 		if !slices.Contains(p.Classes, id) {
 			t.Errorf("no class %s", id)
 		}

@@ -343,7 +343,10 @@ internal class KcRound(
         fun info(d: KcDecl, psi: PsiElement?, parent: KaSymbol?, key: String, annots: List<KcAnnotation> = d.annotations): KcInfo {
             d.annotations.forEach(::annotation)
             if (psi != null) typeRefs(d, psi)
-            return KcInfo(this@KcRound, d, psi, parent, key, annots, types, origin)
+            // A source declaration without a node is one Kotlin generates:
+            // an implicit constructor, an enum class's values().
+            val o = if (origin == KaSymbolOrigin.SOURCE && d.node == 0) KaSymbolOrigin.SOURCE_MEMBER_GENERATED else origin
+            return KcInfo(this@KcRound, d, psi, parent, key, annots, types, o)
         }
 
         /** Records the types of the type references that declaration [d], at [psi], writes. */
@@ -434,20 +437,18 @@ internal class KcRound(
 
         /**
          * A property, splitting its annotations by use-site target between
-         * the property, its accessors and, for a constructor `val`, the
-         * parameter (which gets the untargeted ones, as kotlinc does when
-         * the annotation may apply to parameters).
+         * the property and its accessors. For a constructor `val`, the model
+         * already has only the property's: the untargeted ones that may be
+         * on a property are on both it and the parameter, as in Kotlin 2.4.
          */
         fun property(d: KcDecl, parent: KaSymbol, key: String, ctx: KcTypeContext): KcPropertySymbol {
             val psi = psi(d.node)
-            check(psi == null && origin != KaSymbolOrigin.SOURCE || psi is KtProperty || psi is KtParameter) {
+            check(psi == null && (origin != KaSymbolOrigin.SOURCE || d.node == 0) || psi is KtProperty || psi is KtParameter) {
                 "kc: property ${d.name} in $where is $psi"
             }
-            val fromCtor = psi is KtParameter
             val own = d.annotations.filter {
                 when (it.target) {
                     "get", "set", "setparam", "field", "param" -> false
-                    "" -> !fromCtor
                     else -> true
                 }
             }
@@ -457,13 +458,13 @@ internal class KcRound(
             ctx.typeParams = p.typeParams
             val accessors = (psi as? KtProperty)?.accessors.orEmpty()
             p.getterSymbol = KcGetterSymbol(
-                KcInfo(this@KcRound, d, accessors.firstOrNull { it.isGetter }, p, "$key/get", d.annotations.filter { it.target == "get" }, types, origin),
+                KcInfo(this@KcRound, d, accessors.firstOrNull { it.isGetter }, p, "$key/get", d.annotations.filter { it.target == "get" }, types, p.info.origin),
                 p,
             ).also { register(it, "$key/get", it.info.psi) }
             if (!p.isVal) {
                 val setterPsi = accessors.firstOrNull { it.isSetter }
                 val s = KcSetterSymbol(
-                    KcInfo(this@KcRound, d, setterPsi, p, "$key/set", d.annotations.filter { it.target == "set" }, types, origin),
+                    KcInfo(this@KcRound, d, setterPsi, p, "$key/set", d.annotations.filter { it.target == "set" }, types, p.info.origin),
                     p,
                 )
                 register(s, "$key/set", setterPsi)
@@ -473,7 +474,7 @@ internal class KcRound(
                     annotations = emptyList(), typeParams = emptyList(), params = emptyList(), members = emptyList())
                 s.parameterSymbol = KcValueParameterSymbol(
                     KcInfo(this@KcRound, paramDecl, setterPsi?.parameter, s, "$key/set/value",
-                        d.annotations.filter { it.target == "setparam" }, types, origin),
+                        d.annotations.filter { it.target == "setparam" }, types, p.info.origin),
                 ).also { register(it, "$key/set/value", setterPsi?.parameter) }
                 p.setterSymbol = s
             }

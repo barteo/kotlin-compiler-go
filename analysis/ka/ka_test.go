@@ -140,6 +140,10 @@ enum E [a/b/E] CLASS
   ctor <init> -
   entry A [a/b/E.A] ENUM_ENTRY
   entry B [a/b/E.B] ENUM_ENTRY @a/b/Marker
+  fun values -
+  fun valueOf -
+    (param value -
+  val entries -
 object O [a/b/O] OBJECT_DECLARATION
 fun top FUN @a/b/Marker
 typealias S [a/b/S] TYPEALIAS
@@ -309,7 +313,6 @@ typealias Names = List<String>
 	f := m.Files[0]
 	var sb strings.Builder
 	dumpTypes(&sb, f.Snapshot, f.Decls, "")
-	// TODO: props is String!, a flexible type, in kotlinc.
 	want := `Base m2 f0x0 <: kotlin/collections/Iterable<T>
   <T m0 f0x0 v2 <: kotlin/Comparable<T>
   <init> m0 f0x1000000
@@ -343,6 +346,10 @@ Color m0 f0x0 <: kotlin/Enum<p/Color>
   <init> m0 f0x1000000
   RED m0 f0x0 : p/Color
   GREEN m0 f0x0 : p/Color
+  values m0 f0x800000 : kotlin/Array<p/Color>
+  valueOf m0 f0x800000 : p/Color
+    (value m0 f0x0 : kotlin/String
+  entries m0 f0x800000 : kotlin/enums/EnumEntries<p/Color>
 Tag m0 f0x0 <: kotlin/Annotation
   <init> m0 f0x1000000
     (value m0 f0x0 : kotlin/String
@@ -358,7 +365,7 @@ inferred m0 f0x2000000 : kotlin/collections/List<kotlin/Pair<kotlin/Int, kotlin/
 K m0 f0x2002000 : kotlin/Int
 broken m0 f0x0 : !Missing!
 java m0 f0x0 : java/lang/StringBuilder
-props m0 f0x0 : kotlin/String?
+props m0 f0x0 : kotlin/String!
 Names m0 f0x0 : kotlin/collections/List<kotlin/String>
 `
 	if got := sb.String(); got != want {
