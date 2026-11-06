@@ -625,3 +625,30 @@ fun f FUN
 		t.Errorf("z: visibility %d, flags %x", z.Visibility, z.Flags)
 	}
 }
+
+// TestPartialTypes checks that a class type with an unresolved argument,
+// and a generic call with too many type arguments, keep their class, as
+// FIR has them, and only the unresolved parts are error types.
+func TestPartialTypes(t *testing.T) {
+	m := update(t, `package p
+class C {
+    val inArg: Map<String, Missing> = TODO()
+    val nested: List<Map<Missing, Int>?> = TODO()
+    val tooMany = mutableMapOf<String, Missing, Int>()
+    val whole: Missing = TODO()
+}
+`)
+	f := m.Files[0]
+	var sb strings.Builder
+	dumpTypes(&sb, f.Snapshot, f.Decls, "")
+	want := `C m0 f0x0 <: kotlin/Any
+  <init> m0 f0x1000000
+  inArg m0 f0x2000000 : kotlin/collections/Map<kotlin/String, !Missing!>
+  nested m0 f0x2000000 : kotlin/collections/List<kotlin/collections/Map<!Missing!, kotlin/Int>?>
+  tooMany m0 f0x2000000 : kotlin/collections/MutableMap<!!, !!>
+  whole m0 f0x2000000 : !Missing!
+`
+	if got := sb.String(); got != want {
+		t.Errorf("got\n%s\nwant\n%s", got, want)
+	}
+}

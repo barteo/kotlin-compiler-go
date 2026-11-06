@@ -37,6 +37,10 @@ type Universe struct {
 	// built-in type, as TextValue.String, which hides it where it is
 	// in scope.
 	builtinNames bool
+	// partial is Options.Signatures: a class type with an argument that
+	// doesn't resolve keeps its class, Map<String, Unresolved>, as FIR
+	// has it, rather than being an error type as a whole.
+	partial bool
 	// noJVMDefault is Library.NoJVMDefault, and jvmDefaultCompat
 	// Library.JVMDefaultCompat.
 	noJVMDefault, jvmDefaultCompat bool
@@ -493,7 +497,8 @@ type Options struct {
 	// of functions, of property accessors and initializers, of class
 	// initializers, or the default values of parameters, but for those of
 	// annotation classes. The errors in what isn't checked aren't found,
-	// and the program can't be compiled.
+	// and the program can't be compiled. A class type with an argument
+	// that doesn't resolve keeps its class, with an error type argument.
 	Signatures bool
 }
 
@@ -504,7 +509,7 @@ func CheckOptions(ctx context.Context, files []*syntax.File, lib *Library, jobs 
 	}
 	u := &Universe{ctx: ctx, rec: rec, Pkgs: map[string]*Package{}, prefixes: map[string]bool{}, ext: lib.t, module: moduleSuffix(lib.Module),
 		aliasFile: map[*types.AliasSym]*Checker{}, noJVMDefault: lib.NoJVMDefault, jvmDefaultCompat: lib.JVMDefaultCompat, parcelize: lib.Parcelize, serialization: lib.Serialization,
-		compose: lib.Compose, serialInterfaces: map[*syntax.ClassDecl]bool{}, optIns: lib.OptIns}
+		compose: lib.Compose, serialInterfaces: map[*syntax.ClassDecl]bool{}, optIns: lib.OptIns, partial: opts.Signatures}
 	checkers := make([]*Checker, len(files))
 	for i, f := range files {
 		checkers[i] = &Checker{u: u, file: f, done: map[any]bool{}, checked: map[*syntax.Lambda]types.Type{},
@@ -949,7 +954,7 @@ func (c *Checker) applyTypeArgs(cls *types.ClassSym, ref *syntax.TypeRef) types.
 			continue
 		}
 		args[i].T = c.resolveType(a.Type)
-		if args[i].T.K == types.Invalid {
+		if args[i].T.K == types.Invalid && !c.u.partial {
 			return types.InvalidType
 		}
 		if a.Variance != types.Inv && ps[i].Var != types.Inv && a.Variance != ps[i].Var {
