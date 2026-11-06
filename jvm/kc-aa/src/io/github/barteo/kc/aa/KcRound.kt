@@ -285,6 +285,9 @@ internal class KcRound(
         }
     }
 
+    /** The declarations of class [c]: as FIR has them for a Java class (see `KcMemberBuilder.javaDeclared`). */
+    fun declared(c: KcClassSymbol): List<KaDeclarationSymbol> = members(c).declared ?: c.members
+
     /** The declarations [s] directly overrides (see `KaSession.directlyOverriddenSymbols`). */
     fun directlyOverridden(s: KaCallableSymbol): List<KaCallableSymbol> = when (s) {
         is KcFakeOverride -> declaredOriginals(s)
@@ -292,6 +295,10 @@ internal class KcRound(
         is KcSetterSymbol -> directlyOverridden(s.property)
         is KcFakeGetterSymbol -> directlyOverridden(s.property)
         is KcFakeSetterSymbol -> directlyOverridden(s.property)
+        is KcSyntheticGetterSymbol -> directlyOverridden(s.property)
+        is KcSyntheticSetterSymbol -> directlyOverridden(s.property)
+        is KcSyntheticPropertySymbol -> members(s.owner).overridden[s].orEmpty()
+        is KcRenamedFunctionSymbol -> members(s.owner).overridden[s].orEmpty()
         is KcFunctionSymbol -> (s.info.parent as? KcClassSymbol)?.let { members(it).overridden[s] }.orEmpty()
         is KcPropertySymbol -> (s.info.parent as? KcClassSymbol)?.let { members(it).overridden[s] }.orEmpty()
         else -> emptyList()
@@ -314,9 +321,10 @@ internal class KcRound(
     /** The symbol of pointer key [key], loading the library class it is in. */
     fun restore(key: String): KaSymbol? {
         byKey[key]?.let { return it }
-        fakeKey.matchEntire(key)?.let { m ->
+        (declaredKey.matchEntire(key) ?: fakeKey.matchEntire(key))?.let { m ->
             val owner = restore(m.groupValues[1]) as? KcClassSymbol ?: return null
-            val s = members(owner).callables.getOrNull(m.groupValues[2].toInt()) ?: return null
+            val list = if (declaredKey.matches(key)) declared(owner) else members(owner).callables
+            val s = list.getOrNull(m.groupValues[2].toInt()) as? KaCallableSymbol ?: return null
             val rest = m.groupValues[3]
             return when {
                 rest.isEmpty() -> s
@@ -698,6 +706,7 @@ internal class KcRound(
 
         /** A fake override's key: its class's key, /~, its index in the member scope, and a member's suffix. */
         private val fakeKey = Regex("^(.*)/~(\\d+)(.*)$")
+        private val declaredKey = Regex("^(.*)/~d(\\d+)(.*)$")
 
         /**
          * The nodes of a tree in preorder, from 1; index 0 is null. This is

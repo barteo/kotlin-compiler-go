@@ -416,6 +416,7 @@ func (s *Set) Info(name string) (*classfile.Info, error) {
 		}
 		if len(c.Extends) > 0 {
 			info.Super, _ = r.superType(c.Extends[0])
+			r.unresolved(info, c.Extends[0])
 		}
 		supers = c.Implements
 	case KindInterface:
@@ -450,6 +451,7 @@ func (s *Set) Info(name string) (*classfile.Info, error) {
 	for _, t := range supers {
 		n, _ := r.superType(t)
 		info.Interfaces = append(info.Interfaces, n)
+		r.unresolved(info, t)
 	}
 	if c.Outer != nil {
 		// As javac writes it: the class's own kind flags too.
@@ -633,6 +635,16 @@ func (r *resolver) superType(t *Type) (string, *TypeParam) {
 		return "java/lang/Object", nil
 	}
 	return n, tp
+}
+
+// unresolved records supertype t in info.Unresolved if it doesn't resolve.
+func (r *resolver) unresolved(info *classfile.Info, t *Type) {
+	if r.s.Outside == nil || len(t.Segs) == 0 {
+		return
+	}
+	if n, tp := superResolver(r.s, r.c).classType(t); tp == nil && (n == "" || !r.s.known(n)) {
+		info.Unresolved = append(info.Unresolved, t.Segs[len(t.Segs)-1].Name)
+	}
 }
 
 // outerParam returns the type of the outer instance an inner class's

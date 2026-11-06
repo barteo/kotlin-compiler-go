@@ -108,6 +108,10 @@ class KcAnalysis internal constructor(
     // KaSymbolRelationProvider
     fun getContainingSymbol(s: KaSymbol): KaSymbol? = when (s) {
         is KcFakeOverride -> s.owner
+        is KcSyntheticPropertySymbol -> s.owner
+        is KcSyntheticGetterSymbol -> s.property
+        is KcSyntheticSetterSymbol -> s.property
+        is KcRenamedFunctionSymbol -> s.owner
         is KcFakeGetterSymbol -> s.property
         is KcFakeSetterSymbol -> s.property
         is KcFakeValueParameterSymbol -> s.owner
@@ -305,7 +309,7 @@ class KcAnalysis internal constructor(
     private fun base(type: KaType): KcTypeBase = type as? KcTypeBase ?: unsupported("type $type isn't kc's")
 
     private fun members(s: KaDeclarationContainerSymbol): List<KaDeclarationSymbol> =
-        (s as? KcClassSymbol)?.members ?: unsupported("members of $s")
+        (s as? KcClassSymbol)?.let(round::declared) ?: unsupported("members of $s")
 
     /**
      * Whether a member belongs in the static scope: a nested class that

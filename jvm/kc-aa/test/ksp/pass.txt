@@ -13,6 +13,7 @@ testAnnotationsRepeatable
 testAsMemberOf
 testBackingFields
 testBuiltInTypes
+testCheckOverride
 testClassKinds
 testCompanion
 testConflictingOverride
@@ -25,6 +26,7 @@ testDeclarationOrder
 testDeclarationPackageName
 testDeclarationUtil
 testDeclarationsInAccessor
+testDeclarationsInClass
 testDeclared
 testDeferredSymbols
 testEnumModifiers
@@ -48,8 +50,10 @@ testInheritedTypeAlias
 testInnerTypes
 testInternalOfFriends
 testIsMutable
+testJavaAccessor
 testJavaAnno
 testJavaOverrideInSource
+testJavaSubtypeOfKotlinInterface
 testJavaToKotlinMapper
 testJavaTypes
 testJavaTypes2
@@ -79,6 +83,7 @@ testParameterTypes
 testPrimaryConstructorOverride
 testRecordJavaAnnotationTypes
 testRecordJavaAsMemberOf
+testRecordJavaOverrides
 testRecordJavaResolutions
 testRecordJavaSupertypes
 testRepeatedNonRepeatableAnnotations

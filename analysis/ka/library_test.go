@@ -291,6 +291,7 @@ public class JavaSrc<T> extends Base implements Runnable {
 }
 
 class Base {}
+class Orphan extends Gone implements Runnable { public void run() {} }
 `
 	kotlin := "package j\nclass UsesJava(val j: JavaSrc<String>) : Base()\nfun f() = JavaSrc.MAX\n"
 	sources := []Source{{Path: "j/Uses.kt", Text: &kotlin}, {Path: "j/JavaSrc.java", Text: &java}}
@@ -336,6 +337,10 @@ class Base {}
 	}
 	if d := m.Class("j/Base"); d == nil || d.Flags&FlagJavaSource == 0 {
 		t.Errorf("j/Base: want a Java source class, got %+v", d)
+	}
+	if d := m.Class("j/Orphan"); d == nil || len(d.Supertypes) != 2 || d.Supertypes[0].Kind != TypeError || d.Supertypes[0].Name != "Gone" ||
+		d.Supertypes[1].ClassID != "java/lang/Runnable" {
+		t.Errorf("j/Orphan: want supertypes <error Gone>, Runnable, got %+v", d)
 	}
 	if d := m.Class("java/lang/Thread"); d == nil || d.Flags&FlagJavaSource != 0 {
 		t.Errorf("java/lang/Thread: want a JDK class, got %+v", d)

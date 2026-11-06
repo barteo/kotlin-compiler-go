@@ -59,6 +59,10 @@ type Info struct {
 	DebugMetadata map[string][]string
 	// Deprecated is the class's deprecation, or nil.
 	Deprecated *Deprecation
+	// Unresolved are the simple names of the supertypes a Java source
+	// class wrote that don't resolve, in order; Super and Interfaces have
+	// java/lang/Object in their place.
+	Unresolved []string
 }
 
 // InnerClass is an entry of the InnerClasses attribute.

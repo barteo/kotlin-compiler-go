@@ -7,20 +7,16 @@ testAnnotationValue_kt: checker-gap: Java annotation instance in a Kotlin annota
 testAnnotationWithDefault: java-source: Java PSI can't evaluate a Kotlin facade constant, ConstKt.DebugKt, without light classes
 testAnnotationWithNestedClassValue: class-literal: Kotlin-mapped nested classes (MutableMap.MutableEntry) not mapped to Java
 testAnnotationsInDependencies: java-source: line 6: want getter of property prop 189 : annotations.AllTarget{[value = all: : 188]} : <no  got ge
-testCheckOverride: java-source: line 13: want JavaImpl.getX overrides MyInterface.x: true got JavaImpl.getX overrides MyInterface.x:
-testDeclarationsInClass: java-members: Java collection members (remove/removeAt) mapping
 testDeferredJavaSymbols: java-source: line 1: want K got
 testDeferredTypeRefs: disabled: @Disabled in KSPUnitTestSuite
 testDocString: java-source: line 12: want j1: \n field\n got j1: null
 testErrorTypes: java-source: line 1: want kotlin.collections.MutableMap got ERROR TYPE
 testGetPackage: java-source: the order of a package's Java source classes (stock lists D, L, C for C.java {C, D} and L.java)
 testInterfaceWithDefault: java-source: NullPointerException: null cannot be cast to non-null type com.google.devtools.ksp.symbol.KSClassDec
-testJavaAccessor: java-source: line 2: want JavaAccessorImpl.getX() -> KtInterfaceWithProperty.x got JavaAccessorImpl.getX() -> nul
 testJavaAnnotatedUtil: java-source: line 1: want Test: OnlyTestAnnotation got
 testJavaModifiers: java-source: InternalKSPException: >>> Internal KSP Error
 testJavaNonNullTypes: checker-gap: the checker ignores Java @NotNull/@Nullable, so Java types stay platform types
 testJavaSubtype: java-source: line 1: want true got false
-testJavaSubtypeOfKotlinInterface: java-source: line 5: want Declaration simpleName: getFoo got Declaration simpleName: <init>
 testLocalClasses: local-declarations: anonymous objects
 testLocations: java-source: line 3: want K:J.java:81 got K:K.kt:60
 testMultipleround: java-source: line 3: want J : <ERROR TYPE: I0>, <ERROR TYPE: I1>, <ERROR TYPE: I2>, <ERROR TYPE: I3>, <ERR got J
@@ -28,7 +24,6 @@ testParent: java-source: line 28: want parent of Any: (Any..Any?) got parent of 
 testPlatformDeclaration: disabled: @Disabled in KSPUnitTestSuite
 testRawTypes: java-source: line 1: want barRaw got
 testRecordJavaGetAllMembers: java-source: IndexOutOfBoundsException: Index 0 out of bounds for length 0
-testRecordJavaOverrides: java-source: line 1: want p1.B: main/p1/A.java got kotlin.Any: main/p1/C.java
 testReferenceElement: java-source: line 1: want KSClassifierReferenceImpl: Qualifier of B is A got KSClassifierReferenceImpl: Qualifier
 testReplaceWithErrorTypeArgs: error-types: argument-count mismatch error types
 testResolveJavaType: java-source: Java array flexible upper bounds (Array<out T?>), Java inner classes' outer type arguments, Java enum synthetic members

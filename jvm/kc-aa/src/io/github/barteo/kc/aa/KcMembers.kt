@@ -12,6 +12,7 @@ import org.jetbrains.kotlin.descriptors.Visibilities
 import org.jetbrains.kotlin.descriptors.Visibility
 import org.jetbrains.kotlin.descriptors.java.JavaVisibilities
 import org.jetbrains.kotlin.name.CallableId
+import org.jetbrains.kotlin.name.Name
 import java.util.IdentityHashMap
 
 /**
@@ -26,6 +27,8 @@ internal class KcClassMembers(
     val callables: List<KaCallableSymbol>,
     val overridden: IdentityHashMap<KaCallableSymbol, List<KaCallableSymbol>>,
     val statics: List<KaDeclarationSymbol>,
+    /** A Java class's declarations as FIR has them (see [KcMemberBuilder.javaDeclared]), or null. */
+    val declared: List<KaDeclarationSymbol>? = null,
 ) {
     companion object {
         val EMPTY = KcClassMembers(emptyList(), IdentityHashMap(), emptyList())
@@ -80,8 +83,6 @@ internal class KcMemberBuilder(private val round: KcRound, private val c: KcClas
     private class Candidate(val symbol: KaCallableSymbol, val sub: KaSubstitutor)
 
     fun build(): KcClassMembers {
-        var declared = c.members.filterIsInstance<KaCallableSymbol>()
-            .filter { it !is KaConstructorSymbol && !isStaticMember(it as KaDeclarationSymbol) }
         val candidates = ArrayList<Candidate>()
         val statics = c.members.filter(::isStaticMember).toMutableList()
         for (st in c.superTypes) {
@@ -101,20 +102,41 @@ internal class KcMemberBuilder(private val round: KcRound, private val c: KcClas
             }
         }
 
+        val java = (c.origin == KaSymbolOrigin.JAVA_SOURCE || c.origin == KaSymbolOrigin.JAVA_LIBRARY) &&
+            c.classKind != KaClassKind.ANNOTATION_CLASS
+        val all = if (java) javaDeclared(candidates) else null
+        val declared = (all ?: c.members).filterIsInstance<KaCallableSymbol>()
+            .filter { it !is KaConstructorSymbol && !isStaticMember(it as KaDeclarationSymbol) }
+
         val overridden = IdentityHashMap<KaCallableSymbol, List<KaCallableSymbol>>()
         val pending = candidates.toMutableList()
-        if (c.origin == KaSymbolOrigin.JAVA_SOURCE || c.origin == KaSymbolOrigin.JAVA_LIBRARY) {
-            // A Java method that implements an inherited Kotlin property's
-            // accessor isn't a function of the class: FIR folds it into
-            // the property, which stays a member.
-            declared = declared.filterNot { d -> candidates.any { isAccessorOf(d, it.symbol) } }
-        }
         for (d in declared) {
             val dc = Candidate(d, rel.empty)
-            val hits = candidates.filter { matches(dc, it) }
+            val hits = candidates.filter { matches(dc, it) && (!java || returnCompatible(d, it)) }
             if (hits.isEmpty()) continue
             overridden[d] = hits.flatMap { declaredOriginals(it.symbol) }.distinct()
             pending.removeAll { p -> hits.any { it === p } }
+        }
+
+        val callables = ArrayList<KaCallableSymbol>(declared)
+        if (java) {
+            // An inherited Java getter that implements an inherited Kotlin
+            // property: FIR folds them into a property of this class.
+            for (f in pending.toList()) {
+                val fs = f.symbol as? KaNamedFunctionSymbol ?: continue
+                if (fs.valueParameters.isNotEmpty() || f !in pending) continue
+                val props = pending.filter { isProperty(it.symbol) && getterName(it.symbol as KaPropertySymbol) == fs.name.asString() }
+                if (props.isEmpty()) continue
+                val setter = pending.firstOrNull { s ->
+                    val ss = s.symbol as? KaNamedFunctionSymbol ?: return@firstOrNull false
+                    ss.valueParameters.size == 1 && props.any { !(it.symbol as KaPropertySymbol).isVal && setterName(it.symbol as KaPropertySymbol) == ss.name.asString() }
+                }
+                val key = c.info.key + "/~" + callables.size
+                val synth = KcSyntheticPropertySymbol(c, (props[0].symbol as KaPropertySymbol).name, fs, setter?.symbol as KaNamedFunctionSymbol?, f.sub, key)
+                overridden[synth] = props.flatMap { declaredOriginals(it.symbol) }.distinct()
+                pending.removeAll { p -> p === f || p === setter || props.any { it === p } }
+                callables += synth
+            }
         }
 
         val groups = ArrayList<MutableList<Candidate>>()
@@ -122,7 +144,6 @@ internal class KcMemberBuilder(private val round: KcRound, private val c: KcClas
             groups.firstOrNull { matches(it[0], p) }?.add(p) ?: groups.add(mutableListOf(p))
         }
 
-        val callables = ArrayList<KaCallableSymbol>(declared)
         for (g in groups) {
             val members = mostSpecific(g)
             val key = c.info.key + "/~" + callables.size
@@ -140,7 +161,7 @@ internal class KcMemberBuilder(private val round: KcRound, private val c: KcClas
                 fake(chosen, KaSymbolOrigin.INTERSECTION_OVERRIDE, members.map { it.symbol }, key)
             }
         }
-        return KcClassMembers(callables, overridden, statics)
+        return KcClassMembers(callables, overridden, statics, all)
     }
 
     /**
@@ -159,21 +180,116 @@ internal class KcMemberBuilder(private val round: KcRound, private val c: KcClas
     }
 
     /**
-     * Whether Java method [d] is the JVM getter or setter of Kotlin
-     * property [p]: `getX()`/`isX()` or `setX(v)` of a var.
+     * The declarations of Java class [c] as FIR has them: Object's methods
+     * dropped from an interface; a getter (and setter) implementing an
+     * inherited Kotlin property, from [candidates], folded into a
+     * [KcSyntheticPropertySymbol]; and a method implementing a built-in
+     * member with another JVM name renamed ([KcRenamedFunctionSymbol]).
      */
-    private fun isAccessorOf(d: KaCallableSymbol, p: KaCallableSymbol): Boolean {
-        if (d !is KaNamedFunctionSymbol || p !is KaKotlinPropertySymbol || p.receiverParameter != null) return false
-        if (p.origin == KaSymbolOrigin.JAVA_SOURCE || p.origin == KaSymbolOrigin.JAVA_LIBRARY || p.origin == KaSymbolOrigin.JAVA_SYNTHETIC_PROPERTY) return false
-        val n = p.name.asString()
-        val cap = n.replaceFirstChar { it.uppercaseChar() }
-        val isName = n.startsWith("is") && n.length > 2 && !n[2].isLowerCase()
-        return when (d.valueParameters.size) {
-            0 -> d.name.asString() == if (isName) n else "get$cap"
-            1 -> !p.isVal && d.name.asString() == "set" + if (isName) n.substring(2) else cap
-            else -> false
+    private fun javaDeclared(candidates: List<Candidate>): List<KaDeclarationSymbol> {
+        val props = candidates.filter { isProperty(it.symbol) }
+        val interfaceKind = c.classKind == KaClassKind.INTERFACE
+        val funs = c.members.filterIsInstance<KaNamedFunctionSymbol>().filter { !it.isStatic }
+        val setters = IdentityHashMap<KaNamedFunctionSymbol, Boolean>()
+        // Each folded getter: the property's name and the setter.
+        val folded = IdentityHashMap<KaNamedFunctionSymbol, Pair<Name, KaNamedFunctionSymbol?>>()
+        for (d in funs) {
+            if (d.valueParameters.isNotEmpty() || d.typeParameters.isNotEmpty()) continue
+            val ps = props.firstOrNull { getterName(it.symbol as KaPropertySymbol) == d.name.asString() }?.symbol as KaPropertySymbol? ?: continue
+            val setter = if (ps.isVal) null else funs.firstOrNull {
+                it.valueParameters.size == 1 && it.typeParameters.isEmpty() && it.name.asString() == setterName(ps)
+            }
+            // FIR hides the Java methods only if their name gives back the
+            // property's: getFoo implements val Foo, but stays a function too.
+            if (setter != null && hides(d, ps)) setters[setter] = true
+            folded[d] = ps.name to setter
         }
+        // Keys of folded and renamed members index the declarations.
+        val out = ArrayList<KaDeclarationSymbol>()
+        for (m in c.members) {
+            val key = c.info.key + "/~d" + out.size
+            if (m !is KaNamedFunctionSymbol || m.isStatic) {
+                out += m
+                continue
+            }
+            if (interfaceKind && isObjectMethod(m) || setters.containsKey(m)) continue
+            val f = folded[m]
+            val renamed = renames[m.name.asString()]
+            if (f != null && !hides(m, f.first)) {
+                out += m
+                out += KcSyntheticPropertySymbol(c, f.first, m, f.second, rel.empty, c.info.key + "/~d" + out.size)
+                continue
+            }
+            out += when {
+                f != null -> KcSyntheticPropertySymbol(c, f.first, m, f.second, rel.empty, key)
+                renamed != null && candidates.any { sameParams(m, it, renamed) } ->
+                    KcRenamedFunctionSymbol(c, m, Name.identifier(renamed), key)
+                else -> m
+            }
+        }
+        return out
     }
+
+    private fun hides(getter: KaNamedFunctionSymbol, p: KaPropertySymbol): Boolean =
+        isBuiltin(p) && builtinGetters.containsKey(p.name.asString()) || hides(getter, p.name)
+
+    /** Whether getter's name gives back property name [p], as FIR's propertyNameByGetMethodName. */
+    private fun hides(getter: KaNamedFunctionSymbol, p: Name): Boolean {
+        val n = getter.name.asString()
+        if (n.startsWith("is") && n.length > 2 && !n[2].isLowerCase()) return n == p.asString()
+        if (!n.startsWith("get") || n.length == 3 || n[3].isLowerCase()) return builtinGetters[p.asString()] == n
+        return decapitalizeSmart(n.substring(3)) == p.asString()
+    }
+
+    /** Whether [s] is a property a Java method can implement: a Kotlin member property, or a synthetic one. */
+    private fun isProperty(s: KaCallableSymbol): Boolean = when (s) {
+        is KcSyntheticPropertySymbol -> true
+        is KaKotlinPropertySymbol -> s.receiverParameter == null && s.origin != KaSymbolOrigin.JAVA_SOURCE &&
+            s.origin != KaSymbolOrigin.JAVA_LIBRARY && s.origin != KaSymbolOrigin.JAVA_SYNTHETIC_PROPERTY
+        else -> false
+    }
+
+    /** The JVM name of [p]'s getter: `getX`, `isX`, or a built-in's own (`size`, `keySet`, `entrySet`, …). */
+    private fun getterName(p: KaPropertySymbol): String {
+        if (p is KcSyntheticPropertySymbol) return p.javaGetterSymbol.name.asString()
+        val n = p.name.asString()
+        if (isBuiltin(p)) builtinGetters[n]?.let { return it }
+        val isName = n.startsWith("is") && n.length > 2 && !n[2].isLowerCase()
+        return if (isName) n else "get" + n.replaceFirstChar { it.uppercaseChar() }
+    }
+
+    /** The JVM name of [p]'s setter. */
+    private fun setterName(p: KaPropertySymbol): String {
+        if (p is KcSyntheticPropertySymbol) return p.javaSetterSymbol?.name?.asString() ?: ""
+        val n = p.name.asString()
+        val isName = n.startsWith("is") && n.length > 2 && !n[2].isLowerCase()
+        return "set" + if (isName) n.substring(2) else n.replaceFirstChar { it.uppercaseChar() }
+    }
+
+    /** Whether [p] is declared by a built-in class (`kotlin.collections.*`, `kotlin.CharSequence`). */
+    private fun isBuiltin(p: KaCallableSymbol): Boolean {
+        val id = fakeOverrideOriginal(p).callableId?.classId ?: return false
+        return id.packageFqName.asString() == "kotlin.collections" || id.asString() == "kotlin/CharSequence"
+    }
+
+    /** Whether [m] is `equals(Object)`, `hashCode()` or `toString()`. */
+    private fun isObjectMethod(m: KaNamedFunctionSymbol): Boolean = when (m.name.asString()) {
+        "hashCode", "toString" -> m.valueParameters.isEmpty()
+        "equals" -> m.valueParameters.size == 1 &&
+            (rel.classType(m.valueParameters[0].returnType)?.classId?.asString() == "kotlin/Any")
+        else -> false
+    }
+
+    /** Whether candidate [c] is a built-in function named [name] with [m]'s parameter types. */
+    private fun sameParams(m: KaNamedFunctionSymbol, c: Candidate, name: String): Boolean {
+        val f = c.symbol as? KaNamedFunctionSymbol ?: return false
+        if (f.name.asString() != name || f.valueParameters.size != m.valueParameters.size || !isBuiltinMember(f)) return false
+        return m.valueParameters.indices.all { sameType(m.valueParameters[it].returnType, rel.empty, f.valueParameters[it].returnType, c.sub) }
+    }
+
+    /** Whether [f] is declared by a built-in class. */
+    private fun isBuiltinMember(f: KaCallableSymbol): Boolean = f is KcRenamedFunctionSymbol ||
+        fakeOverrideOriginal(f).callableId?.classId?.packageFqName?.asString()?.let { it == "kotlin" || it == "kotlin.collections" } == true
 
     /** Whether [m]'s substitutor changes none of its types. */
     private fun unchanged(m: Candidate): Boolean {
@@ -187,6 +303,7 @@ internal class KcMemberBuilder(private val round: KcRound, private val c: KcClas
         when (val s = m.symbol) {
             is KaNamedFunctionSymbol -> KcFakeFunctionSymbol(c, s, m.sub, origin, intersected, key)
             is KaKotlinPropertySymbol -> KcFakePropertySymbol(c, s, m.sub, origin, intersected, key)
+            is KcSyntheticPropertySymbol -> KcFakeSyntheticPropertySymbol(c, s, m.sub, origin, intersected, key)
             else -> s // Java fields keep their declared types.
         }
 
@@ -218,6 +335,14 @@ internal class KcMemberBuilder(private val round: KcRound, private val c: KcClas
         }
     }
 
+    /** A Java method overrides only with a covariant return type; FIR drops the rest. */
+    private fun returnCompatible(d: KaCallableSymbol, m: Candidate): Boolean {
+        val a = d as? KaNamedFunctionSymbol ?: return true
+        val b = m.symbol as? KaNamedFunctionSymbol ?: return true
+        val sb = positional(m.sub, b.typeParameters, a.typeParameters)
+        return rel.isSubtype(a.returnType, sb.substitute(b.returnType), lenient = true)
+    }
+
     /** [sub] followed by the substitution of type parameters [from] by [to]'s types, position by position. */
     private fun positional(sub: KaSubstitutor, from: List<KaTypeParameterSymbol>, to: List<KaTypeParameterSymbol>): KaSubstitutor {
         if (from.isEmpty() || from.size != to.size) return sub
@@ -230,6 +355,15 @@ internal class KcMemberBuilder(private val round: KcRound, private val c: KcClas
         return rel.equal(sa.substitute(a), sb.substitute(b), lenient = true)
     }
 }
+
+/** The JVM getter names of built-in properties that don't follow `getX`. */
+private val builtinGetters = mapOf("size" to "size", "keys" to "keySet", "values" to "values", "entries" to "entrySet", "length" to "length")
+
+/** The Kotlin names of Java methods that implement built-in members with other JVM names. */
+private val renames = mapOf(
+    "remove" to "removeAt", "charAt" to "get", "byteValue" to "toByte", "shortValue" to "toShort",
+    "intValue" to "toInt", "longValue" to "toLong", "floatValue" to "toFloat", "doubleValue" to "toDouble",
+)
 
 /** A function a class inherits under a new signature: a substitution or intersection override. */
 internal class KcFakeFunctionSymbol(
@@ -409,4 +543,157 @@ internal class KcFakeReceiverParameterSymbol(
     override val origin get() = owningCallableSymbol.origin
     override val annotations: KaAnnotationList get() = original.annotations
     override fun createPointer(): KaSymbolPointer<KaReceiverParameterSymbol> = KcPointer(key)
+}
+
+/**
+ * A Java class's getter, and setter if any, that implement a Kotlin
+ * property it inherits, folded into a property of [owner] as FIR does:
+ * the functions leave the class's scopes and this property overrides the
+ * Kotlin one.
+ */
+internal open class KcSyntheticPropertySymbol(
+    val owner: KcClassSymbol,
+    override val name: Name,
+    override val javaGetterSymbol: KaNamedFunctionSymbol,
+    override val javaSetterSymbol: KaNamedFunctionSymbol?,
+    val subst: KaSubstitutor,
+    private val key: String,
+) : StubKaSyntheticJavaPropertySymbol() {
+    override val token get() = owner.token
+    override val psi get() = javaGetterSymbol.psi
+    override val annotations: KaAnnotationList get() = javaGetterSymbol.annotations
+    override val callableId get() = owner.classId?.let { CallableId(it, name) }
+    override val visibility get() = javaGetterSymbol.visibility
+    override val compilerVisibility get() = compilerVisibilityOf(visibility)
+    override val modality get() = javaGetterSymbol.modality
+    override val isVal get() = javaSetterSymbol == null
+    override val isOverride get() = true
+    override val isExtension get() = false
+    override val isStatic get() = false
+    override val isExpect get() = false
+    override val isActual get() = false
+    override val isExternal get() = false
+    override val hasSetter get() = javaSetterSymbol != null
+    override val receiverParameter: KaReceiverParameterSymbol? get() = null
+    override val typeParameters: List<KaTypeParameterSymbol> get() = emptyList()
+    override val returnType: KaType by lazy { subst.substitute(javaGetterSymbol.returnType) }
+    override val getter: KaPropertyGetterSymbol by lazy { KcSyntheticGetterSymbol(this, "$key/get") }
+    override val setter: KaPropertySetterSymbol? by lazy { javaSetterSymbol?.let { KcSyntheticSetterSymbol(this, it, "$key/set") } }
+    override fun createPointer(): KaSymbolPointer<KaSyntheticJavaPropertySymbol> = KcPointer(key)
+    override fun toString() = "$origin ${owner.classId}.$name"
+}
+
+/** A synthetic property a class inherits under a new signature. */
+internal class KcFakeSyntheticPropertySymbol(
+    owner: KcClassSymbol,
+    override val original: KcSyntheticPropertySymbol,
+    sub: KaSubstitutor,
+    override val origin: KaSymbolOrigin,
+    override val intersected: List<KaCallableSymbol>,
+    key: String,
+) : KcSyntheticPropertySymbol(owner, original.name, original.javaGetterSymbol, original.javaSetterSymbol, KcChainedSubstitutor(original.subst, sub), key),
+    KcFakeOverride
+
+/** The getter of synthetic property [property]: its Java getter method. */
+internal class KcSyntheticGetterSymbol(
+    val property: KcSyntheticPropertySymbol,
+    private val key: String,
+) : StubKaPropertyGetterSymbol() {
+    private val java get() = property.javaGetterSymbol
+    override val token get() = property.token
+    override val psi get() = java.psi
+    override val origin get() = KaSymbolOrigin.JAVA_SYNTHETIC_PROPERTY
+    override val annotations: KaAnnotationList get() = java.annotations
+    override val callableId: CallableId? get() = property.owner.classId?.let { CallableId(it, java.name) }
+    override val visibility get() = java.visibility
+    override val compilerVisibility get() = compilerVisibilityOf(java.visibility)
+    override val modality get() = java.modality
+    override val returnType get() = property.returnType
+    override val isDefault get() = false
+    override val isNotDefault get() = true
+    override val hasBody get() = java.modality != KaSymbolModality.ABSTRACT
+    override val isInline get() = false
+    override val isExternal get() = false
+    override val isOverride get() = true
+    override val receiverParameter: KaReceiverParameterSymbol? get() = null
+    override fun createPointer(): KaSymbolPointer<KaPropertyGetterSymbol> = KcPointer(key)
+}
+
+/** The setter of synthetic property [property]: Java setter method [java]. */
+internal class KcSyntheticSetterSymbol(
+    val property: KcSyntheticPropertySymbol,
+    private val java: KaNamedFunctionSymbol,
+    private val key: String,
+) : StubKaPropertySetterSymbol() {
+    override val token get() = property.token
+    override val psi get() = java.psi
+    override val origin get() = KaSymbolOrigin.JAVA_SYNTHETIC_PROPERTY
+    override val annotations: KaAnnotationList get() = java.annotations
+    override val callableId: CallableId? get() = property.owner.classId?.let { CallableId(it, java.name) }
+    override val visibility get() = java.visibility
+    override val compilerVisibility get() = compilerVisibilityOf(java.visibility)
+    override val modality get() = java.modality
+    override val returnType get() = java.returnType
+    override val isDefault get() = false
+    override val isNotDefault get() = true
+    override val hasBody get() = java.modality != KaSymbolModality.ABSTRACT
+    override val hasStableParameterNames get() = false
+    override val isInline get() = false
+    override val isExternal get() = false
+    override val isOverride get() = true
+    override val receiverParameter: KaReceiverParameterSymbol? get() = null
+    override val parameter: KaValueParameterSymbol get() = java.valueParameters[0]
+    override fun createPointer(): KaSymbolPointer<KaPropertySetterSymbol> = KcPointer(key)
+}
+
+/**
+ * A Java method FIR gives a Kotlin name, [name], because it implements a
+ * built-in member that has a different JVM name: `remove(int)` is
+ * `removeAt`, `charAt` is `get`, `intValue` is `toInt`, ….
+ */
+internal class KcRenamedFunctionSymbol(
+    val owner: KcClassSymbol,
+    val java: KaNamedFunctionSymbol,
+    override val name: Name,
+    private val key: String,
+) : StubKaNamedFunctionSymbol() {
+    override val token get() = owner.token
+    override val psi get() = java.psi
+    override val origin get() = java.origin
+    override val annotations: KaAnnotationList get() = java.annotations
+    override val callableId get() = owner.classId?.let { CallableId(it, name) }
+    override val visibility get() = java.visibility
+    override val compilerVisibility get() = compilerVisibilityOf(java.visibility)
+    override val location get() = KaSymbolLocation.CLASS
+    override val modality get() = java.modality
+    override val returnType get() = java.returnType
+    override val receiverParameter: KaReceiverParameterSymbol? get() = null
+    override val isSuspend get() = false
+    override val isInline get() = false
+    override val isOperator get() = java.isOperator
+    override val isInfix get() = false
+    override val isTailRec get() = false
+    override val isExternal get() = java.isExternal
+    override val isOverride get() = true
+    override val isExpect get() = false
+    override val isActual get() = false
+    override val isExtension get() = false
+    override val isStatic get() = false
+    override val isBuiltinFunctionInvoke get() = false
+    override val hasStableParameterNames get() = false
+    override val contextReceivers: List<KaContextReceiver> get() = emptyList()
+    override val contextParameters: List<KaContextParameterSymbol> get() = emptyList()
+    override val typeParameters get() = java.typeParameters
+    override val valueParameters get() = java.valueParameters
+    override fun createPointer(): KaSymbolPointer<KaNamedFunctionSymbol> = KcPointer(key)
+    override fun toString() = "$origin ${owner.classId}.$name"
+}
+
+/** Kotlin's decapitalizeSmart(asciiOnly = true): URLs → urLs, URL → url, Foo → foo. */
+internal fun decapitalizeSmart(s: String): String {
+    fun up(i: Int) = s[i] in 'A'..'Z'
+    if (s.isEmpty() || !up(0)) return s
+    if (s.length == 1 || !up(1)) return s[0].lowercaseChar() + s.substring(1)
+    val second = (0 until s.length).firstOrNull { !up(it) }?.let { it - 1 } ?: return s.lowercase()
+    return s.substring(0, second).lowercase() + s.substring(second)
 }

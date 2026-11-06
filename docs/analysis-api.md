@@ -72,7 +72,7 @@ mapping.
 | M3 | Richer symbol model: visibility and modality enums, flags, origins, library annotation arguments, Java parameter names | in progress: source types, flags, modality; KaTypes on the JVM; annotation arguments; library classes; inherited members, overrides, subtyping; packages, library top-level declarations, alias abbreviations; JVM type mapping, Moshi codegen end to end; backing fields, Dagger end to end; Dagger on octi-server byte-identical to stock KSP 2.3.6; the slice checked against stock KSP; Room and Hilt byte-identical to stock KSP (step 14) |
 | M4 | Queryable session `analysis/ka`: lookups, scopes, relations, overrides | |
 | M5 | Bridge: `cmd/libkc` operations, `tools/kagen` wire format, `jvm/kc-aa` KaSession | |
-| M6 | KSP fork integration: the `kc` backend, IC lookups, hot paths | in progress: KSP's own test suite on the kc backend, `build.sh ksp` (step 15): 98 of 136 pass, Java sources in the main module included |
+| M6 | KSP fork integration: the `kc` backend, IC lookups, hot paths | in progress: KSP's own test suite on the kc backend, `build.sh ksp` (step 15): 103 of 136 pass, Java sources in the main module included |
 | M7 | Differential conformance against stock KSP, benchmark, CI | in progress: `bench/ksp` (step 11): warm 990 ms on stock KSP, 284 ms on kc; cold 8.1–8.7 s and 2.9–3.2 s, with a CDS archive 5.8–6.1 s and 1.9–2.1 s; CI: `.github/workflows/analysis-api.yml` (step 12) |
 
 ### M0.1 – JNI spike
@@ -459,8 +459,8 @@ checked by hand against FIR's behaviour (and, since step 10, against stock
 KSP). Known gaps:
 - Java collection methods aren't mapped to Kotlin's: in
   `class Bag : AbstractList<String>`, `override val size` doesn't override
-  Java's `size()`, and both appear. Java collection supertypes are
-  read-only Kotlin types, not `(Mutable)List<E>!`.
+  Java's `size()`, and both appear (fixed in step 15). Java collection
+  supertypes are read-only Kotlin types, not `(Mutable)List<E>!`.
 - The built-ins have only `Any`'s members.
 - Fake overrides keep their originals' type parameters; FIR makes fresh
   ones.
@@ -469,7 +469,8 @@ KSP). Known gaps:
   `values`/`valueOf`/`entries` are since step 10.)
 - An inner class's outer type arguments aren't substituted.
 - Override matching approximates the checker's: no erasure-based Java
-  overrides, and no special cases such as `CharSequence.get`/`charAt`.
+  overrides, and no special cases such as `CharSequence.get`/`charAt`
+  (the renames are mapped since step 15).
 - Package-private members of other packages stay in scopes.
 - Pointer restore of fake overrides isn't exercised by the slice: KSP
   doesn't create such pointers on these paths.
@@ -791,7 +792,8 @@ are the gaps left, 25 lines:
 - Java signatures aren't enhanced from the Kotlin members they override:
   `SimpleEntry.equals` takes `Any?` (from `Any.equals`), not `Any!`.
 - Java collection methods aren't mapped to Kotlin's (step 5's gap):
-  `Bag`'s `size` doesn't override `AbstractCollection.size`.
+  `Bag`'s `size` doesn't override `AbstractCollection.size`. Fixed in
+  step 15.
 - `asMemberOf` of a star-projected type (`f.Base<*>`) substitutes `Any?`
   where FIR has the captured type, which KSP prints as `Any`.
 
@@ -1216,6 +1218,25 @@ Each fix below keeps `build.sh stock` and the slice unchanged.
   class file. An extension property whose type can't be inferred still
   resolves its written receiver and type, which `asMemberOf` reads.
   +1 (→ 98).
+- **FIR's Java-to-Kotlin member mapping.** A Java class's declared scope
+  is built as FIR's Java use-site scope builds it:
+  - a getter (and setter) implementing an inherited Kotlin property
+    becomes a `KaSyntheticJavaPropertySymbol` of that name that overrides
+    the property, with accessors of origin `JAVA_SYNTHETIC_PROPERTY`. The
+    method stays a function too when its name doesn't give the property's
+    back (`getFoo` for `val Foo`);
+  - built-in getters map by their JVM names (`size`, `keySet`, `values`,
+    `entrySet`, `length`), and `remove(int)`, `charAt` and `xxxValue`
+    are renamed to `removeAt`, `get` and `toXxx` when they implement them;
+  - `equals`/`hashCode`/`toString` aren't members of Java interfaces;
+  - an inherited Java getter and an inherited Kotlin property fold into a
+    synthetic property of the class;
+  - a Java method overrides only with a covariant return type;
+  - a Java source supertype that doesn't resolve is an error type, not
+    `kotlin.Any` (javasrc records it in `classfile.Info.Unresolved`).
+
+  The slice's `Bag.size` now overrides `AbstractCollection.size` as in
+  stock KSP (stock.diff: 14 → 11 lines). +5 (→ 103).
 
 ## Gaps and open questions
 
