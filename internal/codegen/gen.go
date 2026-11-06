@@ -746,7 +746,7 @@ func (g *gen) facade() *cf.Class {
 		if ad, ok := d.(*syntax.TypeAliasDecl); ok {
 			// A type alias's annotations, on its synthetic method
 			// name$annotations, as kotlinc writes them.
-			g.propertyAnnotations(c, ad.Name, nil, ad.Annotations, all, ad.Visibility == syntax.Private)
+			g.propertyAnnotations(c, ad.Name, nil, ad.Annotations, all, ad.Visibility == syntax.Private, false)
 		}
 	}
 	// The fields that the static initializer assigns: all but those
@@ -1289,7 +1289,7 @@ func (g *gen) class(cd *syntax.ClassDecl) *cf.Class {
 			continue // with the delegated members, below
 		}
 		as, _, propSite := classPropAnnotations(p)
-		if name, md := g.propertyAnnotations(g.annotationsHolder(c, cls), types.GetterJVM(p), nil, as, propSite, p.Private); name != "" {
+		if name, md := g.propertyAnnotations(g.annotationsHolder(c, cls), types.GetterJVM(p), nil, as, propSite, p.Private, p.Composable); name != "" {
 			g.shared.annotated[p] = [2]string{name, md}
 		}
 		if isDelegateField(p.Decl) || p.Const || p.JvmField {

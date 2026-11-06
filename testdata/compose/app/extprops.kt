@@ -7,7 +7,9 @@ import lib.Text
 import lib.visible
 
 // Composable extension properties: their getters take the receiver, then
-// a Composer and change flags.
+// a Composer and change flags, as do the synthetic methods that hold the
+// annotations of composable properties.
+@OptIn(ExperimentalStdlibApi::class)
 val Insets.Companion.shown: String
     @Composable get() = if (visible) "shown" else "hidden"
 
@@ -31,6 +33,7 @@ val Int.described: String
 // A class whose composable extension property reads the object and the
 // receiver: its composable uses the object.
 class Scale(val k: Int) {
+    @OptIn(ExperimentalStdlibApi::class)
     val Int.scaled: Int
         @Composable get() = this * k
 
@@ -40,9 +43,13 @@ class Scale(val k: Int) {
     }
 }
 
+@OptIn(ExperimentalStdlibApi::class)
+val greeting: String
+    @Composable get() = "greeting"
+
 @Composable
 fun ExtProps(label: String, n: Int) {
-    Text(Insets.shownTwice)
+    Text(Insets.shownTwice + " " + greeting)
     Text(label.boxed)
     Text("second ${listOf(label, "b").second}")
     Text(n.described)
