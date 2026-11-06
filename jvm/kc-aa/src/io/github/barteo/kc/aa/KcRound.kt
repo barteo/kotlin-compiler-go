@@ -41,6 +41,8 @@ internal class KcRound(
     private val packages: (String) -> KcPackage? = { null },
     /** The module's Java sources, whose classes the model has as library classes. */
     val javaFiles: List<PsiJavaFile> = emptyList(),
+    /** Where Java library classes' class-file PSI is found; none without it. */
+    private val project: com.intellij.openapi.project.Project? = null,
 ) {
     val token = KcToken()
 
@@ -359,6 +361,23 @@ internal class KcRound(
     fun classSymbol(id: ClassId): KaNamedClassSymbol =
         classes[id] ?: libraryClass(id) ?: synchronized(this) { unknownClasses.getOrPut(id) { KcLibraryClassSymbol(this, id) } }
 
+    private val classFiles = HashMap<String, PsiClass?>()
+
+    /**
+     * The class-file PSI of Java library class [id] (a model class ID), as
+     * FIR has it: KSP gives such a class its .class file as containing file.
+     */
+    @Synchronized
+    fun classFilePsi(id: String): PsiClass? {
+        if (id in classFiles) return classFiles[id]
+        val p = project ?: return null
+        val fq = ClassId.fromString(id).asSingleFqName().asString()
+        val c = com.intellij.psi.JavaPsiFacade.getInstance(p).findClass(fq, com.intellij.psi.search.GlobalSearchScope.allScope(p))
+            ?.takeIf { it is com.intellij.psi.PsiCompiledElement }
+        classFiles[id] = c
+        return c
+    }
+
     /** The class-path class [id], loading it with its outermost class, or null if there is none. */
     @Synchronized
     fun libraryClass(id: ClassId): KaNamedClassSymbol? {
@@ -614,13 +633,14 @@ internal class KcRound(
         }
 
         fun info(d: KcDecl, psi: PsiElement?, parent: KaSymbol?, key: String,
-                 annots: List<KcAnnotation> = d.annotations.filter { !onReceiverType(it, psi) }): KcInfo {
+                 annots: List<KcAnnotation> = d.annotations.filter { !onReceiverType(it, psi) },
+                 findPsi: (() -> PsiElement?)? = null): KcInfo {
             d.annotations.forEach(::annotation)
             if (psi != null) typeRefs(d, psi)
             // A source declaration without a node is one Kotlin generates:
             // an implicit constructor, an enum class's values().
             val o = if (origin == KaSymbolOrigin.SOURCE && d.node == 0 || javaEnumGenerated(d, parent)) KaSymbolOrigin.SOURCE_MEMBER_GENERATED else origin
-            return KcInfo(this@KcRound, d, psi, parent, key, annots, types, o)
+            return KcInfo(this@KcRound, d, psi, parent, key, annots, types, o, findPsi)
         }
 
         /**
@@ -689,7 +709,9 @@ internal class KcRound(
         fun decl(d: KcDecl, parent: KaSymbol?, key: String): KaDeclarationSymbol = when (d.kind) {
             KcDecl.CLASS, KcDecl.INTERFACE, KcDecl.OBJECT, KcDecl.ENUM_CLASS, KcDecl.ANNOTATION_CLASS -> scoped { ctx ->
                 val psi = psiOf<KtClassOrObject>(d) ?: javaPsi(d, parent)
-                val c = register(KcClassSymbol(info(d, psi, parent, key)), key, psi)
+                val id = d.classId
+                val classFile = if (origin == KaSymbolOrigin.JAVA_LIBRARY && id.isNotEmpty()) { { classFilePsi(id) } } else null
+                val c = register(KcClassSymbol(info(d, psi, parent, key, findPsi = classFile)), key, psi)
                 c.classId?.let { (if (origin == KaSymbolOrigin.SOURCE) classes else libraryClasses)[it] = c }
                 c.typeParams = typeParams(d, c, key)
                 ctx.typeParams = c.typeParams
@@ -764,7 +786,10 @@ internal class KcRound(
                 (parent as? KcClassSymbol)?.info?.decl?.kind == KcDecl.ANNOTATION_CLASS
             val owner = javaOwnerPsi(parent)
             val src = psi ?: if (javaAnnotation) (owner as? PsiClass)?.findMethodsByName(d.name, false)?.firstOrNull() ?: owner else owner
-            val p = KcPropertySymbol(info(d, src, parent, key, own).let {
+            // A Java library enum's entries is its class too, once that has PSI.
+            val classFile = if (origin == KaSymbolOrigin.JAVA_LIBRARY && d.name == "entries" && d.has(KcDecl.STATIC) &&
+                (parent as? KcClassSymbol)?.classKind == KaClassKind.ENUM_CLASS) { { parent.psi } } else null
+            val p = KcPropertySymbol(info(d, src, parent, key, own, classFile).let {
                 if (javaAnnotation) KcInfo(this@KcRound, d, src, parent, key, own, types, KaSymbolOrigin.JAVA_SYNTHETIC_PROPERTY) else it
             })
             register(p, key, src)

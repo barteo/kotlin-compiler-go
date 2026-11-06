@@ -150,7 +150,7 @@ private class KcSession(private val config: KSPConfig, disposable: Disposable) :
             KcOps.close(modelHandle)
         }
         modelHandle = model.handle
-        round = KcRound(joined, { id -> KcOps.cls(model.handle, id) }, { fq -> KcOps.pkg(model.handle, fq) }, java)
+        round = KcRound(joined, { id -> KcOps.cls(model.handle, id) }, { fq -> KcOps.pkg(model.handle, fq) }, java, project)
         provider.session = KcAnalysis.session(KcAnalysis(round, module, libraryModule))
         t.mark("round")
         t.print("round files=${paths.size}")

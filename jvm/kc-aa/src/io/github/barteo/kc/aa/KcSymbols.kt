@@ -55,7 +55,7 @@ internal class KcToken : KaLifetimeToken() {
 internal class KcInfo(
     val round: KcRound,
     val decl: KcDecl,
-    val psi: PsiElement?,
+    psi: PsiElement?,
     val parent: KaSymbol?,
     val key: String,
     /** The annotations of the declaration that apply to this symbol. */
@@ -64,7 +64,13 @@ internal class KcInfo(
     val types: KcTypeContext,
     /** SOURCE, LIBRARY, JAVA_LIBRARY or JAVA_SOURCE, or JAVA_SYNTHETIC_PROPERTY for a Java annotation's method. */
     val origin: KaSymbolOrigin,
+    /** Finds the PSI, when it isn't given: a Java library class's class-file PSI, read only if asked for. */
+    private val findPsi: (() -> PsiElement?)? = null,
 ) {
+    private val givenPsi = psi
+
+    val psi: PsiElement? get() = givenPsi ?: findPsi?.invoke()
+
     /** The KaType of [t], or [orElse] if it is null. */
     fun type(t: KcType?, orElse: () -> KaType = { errorType(round, null) }): KaType = t?.let(types::type) ?: orElse()
 

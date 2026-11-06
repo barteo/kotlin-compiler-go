@@ -72,7 +72,7 @@ mapping.
 | M3 | Richer symbol model: visibility and modality enums, flags, origins, library annotation arguments, Java parameter names | in progress: source types, flags, modality; KaTypes on the JVM; annotation arguments; library classes; inherited members, overrides, subtyping; packages, library top-level declarations, alias abbreviations; JVM type mapping, Moshi codegen end to end; backing fields, Dagger end to end; Dagger on octi-server byte-identical to stock KSP 2.3.6; the slice checked against stock KSP; Room and Hilt byte-identical to stock KSP (step 14) |
 | M4 | Queryable session `analysis/ka`: lookups, scopes, relations, overrides | |
 | M5 | Bridge: `cmd/libkc` operations, `tools/kagen` wire format, `jvm/kc-aa` KaSession | |
-| M6 | KSP fork integration: the `kc` backend, IC lookups, hot paths | in progress: KSP's own test suite on the kc backend, `build.sh ksp` (step 15): 132 of 136 pass, Java sources in the main module included; KSP rebuilds on every run on kc until lookups are recorded |
+| M6 | KSP fork integration: the `kc` backend, IC lookups, hot paths | in progress: KSP's own test suite on the kc backend, `build.sh ksp` (step 15): 133 of 136 pass, Java sources in the main module included; KSP rebuilds on every run on kc until lookups are recorded |
 | M7 | Differential conformance against stock KSP, benchmark, CI | in progress: `bench/ksp` (step 11): warm 990 ms on stock KSP, 284 ms on kc; cold 8.1–8.7 s and 2.9–3.2 s, with a CDS archive 5.8–6.1 s and 1.9–2.1 s; CI: `.github/workflows/analysis-api.yml` (step 12) |
 
 ### M0.1 – JNI spike
@@ -1353,7 +1353,7 @@ Each fix below keeps `build.sh stock` and the slice unchanged.
   reference, and the library ones, are the receiver parameter's; a
   `@receiver:` annotation on the declaration stays the declaration's, as in
   FIR. +1 (→ 121).
-- Constructors and synthetic enum members of Java classes (122 pass, testLocations): a Java source class's constructors return their own copies of the class's type parameters, as AA has them — it builds the class's from PSI and the constructor's from FIR, two unequal symbols, so KSP reports an annotated one once for each. A Java enum's values(), valueOf() with its parameter, and a source enum's entries have origin SOURCE_MEMBER_GENERATED (KSP's SYNTHETIC, so their types have no reference elements), as in FIR; a library enum's entries keeps JAVA_LIBRARY. testParent now differs only where stock gives a Java library class its class-file PSI (a parent `File: HSV.class`), which kc doesn't have.
+- Constructors and synthetic enum members of Java classes (122 pass, testLocations): a Java source class's constructors return their own copies of the class's type parameters, as AA has them — it builds the class's from PSI and the constructor's from FIR, two unequal symbols, so KSP reports an annotated one once for each. A Java enum's values(), valueOf() with its parameter, and a source enum's entries have origin SOURCE_MEMBER_GENERATED (KSP's SYNTHETIC, so their types have no reference elements), as in FIR; a library enum's entries keeps JAVA_LIBRARY. testParent then differed only where stock gives a Java library class its class-file PSI (a parent `File: HSV.class`), fixed below.
 - Library types keep their annotations (`@A T` in a library signature):
   kmeta decodes the JvmProtoBuf `typeAnnotation` extension's other
   annotations, with their arguments, into `Type.Annotations` (and encodes
@@ -1433,12 +1433,21 @@ Each fix below keeps `build.sh stock` and the slice unchanged.
   `buildSet` keep it), D, L, C for C.java {C, D} and L.java.
   `packageDeclarations` collects them in the same set (fastutil is in
   kotlin-compiler) instead of file order.
+- Class-file PSI for Java library classes (133 pass, testParent): AA
+  gives a Java class from the class path its `ClsClassImpl`, so KSP's
+  `parent` and `containingFile` of such a class are its .class file
+  (`File: HSV.class`), and a Java library enum's synthetic `entries` is
+  that class too, so KSP gives it no getter. `KcRound.classFilePsi` finds
+  it with `JavaPsiFacade.findClass` in the core environment, which has the
+  class path, only when asked (`KcInfo.findPsi`), and caches it per round
+  so it stays the same object. Members keep no PSI; FIR gives them their
+  Cls elements, which nothing in the suite or the processors reads yet.
 
-Result: 132 of 136 pass. The remaining 4, by class:
+Result: 133 of 136 pass. The remaining 3, by class:
 
 | Class | Tests |
 |---|---|
-| `java-source`: PSI error recovery in a malformed Java file (testJavaAnnotatedUtil); class-file PSI for Java library classes (testParent) | 2 |
+| `java-source`: PSI error recovery in a malformed Java file (testJavaAnnotatedUtil) | 1 |
 | `disabled`: `@Disabled` in `KSPUnitTestSuite` | 2 |
 
 #### Incremental processing
