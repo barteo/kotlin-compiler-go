@@ -141,24 +141,38 @@ func (c *Checker) argsFit(sup, u types.Type) bool {
 	}
 	u.C.Ensure() // its type parameters' variance
 	for i, ua := range u.A.List {
-		declared, bound := types.Inv, types.AnyType.Nullable()
+		declared := types.Inv
 		if i < len(u.C.TypeParams) {
-			tp := u.C.TypeParams[i]
-			declared = tp.Var
-			if len(tp.Bounds) == 1 && !tp.Bounds[0].HasParams() {
-				bound = tp.Bounds[0]
-			} else if len(tp.Bounds) == 1 && sup.A.List[i].V == types.Star && !tp.Bounds[0].Has(func(u types.Type) bool { return u.K == types.TypeParam && u.Param() == tp }) {
-				// A star's bound in sup's arguments: IS of
-				// Interpreter<IS : Intermediary<SELF>, TS, SELF> in
-				// Interpreter<*, T, I> is an Intermediary<I>.
-				bound = classSubst(sup).Apply(tp.Bounds[0])
-			}
+			declared = u.C.TypeParams[i].Var
 		}
-		if !c.argFits(sup.A.List[i], ua, declared, bound) {
+		if !c.argFits(sup.A.List[i], ua, declared, starArgBound(sup, i)) {
 			return false
 		}
 	}
 	return true
+}
+
+// starArgBound returns what the i-th type argument of sup, a class type,
+// reads as when it is a star: its type parameter's bound, or Any? if it
+// has none or more than one. Saver<T, *>, for Saver<Original, Saveable :
+// Any>, is a Saver<T, out Any>.
+func starArgBound(sup types.Type, i int) types.Type {
+	sup.C.Ensure()
+	if i >= len(sup.C.TypeParams) {
+		return types.AnyType.Nullable()
+	}
+	tp := sup.C.TypeParams[i]
+	switch {
+	case len(tp.Bounds) != 1:
+	case !tp.Bounds[0].HasParams():
+		return tp.Bounds[0]
+	case sup.A.List[i].V == types.Star && !tp.Bounds[0].Has(func(u types.Type) bool { return u.K == types.TypeParam && u.Param() == tp }):
+		// A star's bound in sup's arguments: IS of
+		// Interpreter<IS : Intermediary<SELF>, TS, SELF> in
+		// Interpreter<*, T, I> is an Intermediary<I>.
+		return classSubst(sup).Apply(tp.Bounds[0])
+	}
+	return types.AnyType.Nullable()
 }
 
 // argFits reports whether type argument ta fits ua, of a type parameter
