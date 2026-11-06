@@ -251,8 +251,12 @@ class KcAnalysis internal constructor(
     fun withNullability(type: KaType, isMarkedNullable: Boolean): KaType = base(type).withNullability(isMarkedNullable)
     fun lowerBoundIfFlexible(type: KaType): KaType = (type as? KcFlexibleType)?.lowerBound ?: type
     fun upperBoundIfFlexible(type: KaType): KaType = (type as? KcFlexibleType)?.upperBound ?: type
-    fun buildClassType(classId: ClassId, init: Function1<Any?, Unit>): KaType =
-        KcClassTypeBuilder(round.token).also { init(it) }.build(round, classId)
+    /** An error type for a class that doesn't exist, as in FIR: KSP's unresolved Java annotations. */
+    fun buildClassType(classId: ClassId, init: Function1<Any?, Unit>): KaType {
+        val b = KcClassTypeBuilder(round.token).also { init(it) }
+        if (!classId.isLocal && findClassLike(classId) == null) return KcErrorType(round, classId.relativeClassName.asString())
+        return b.build(round, classId)
+    }
     fun buildClassType(symbol: KaClassLikeSymbol, init: Function1<Any?, Unit>): KaType {
         val b = KcClassTypeBuilder(round.token).also { init(it) }
         return if (symbol is KaTypeAliasSymbol && symbol.classId != null) b.build(round, symbol)

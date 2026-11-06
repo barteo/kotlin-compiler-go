@@ -2,6 +2,7 @@ testAbstractFunctions
 testAllFunctions_java_inherits_kt
 testAllFunctions_kotlin
 testAllUseSiteTargetAppliedToAnnotationList
+testAnnotatedUtil
 testAnnotationOnConstructorParameter
 testAnnotationTargets
 testAnnotationValue_defaultKClassValue
@@ -9,6 +10,7 @@ testAnnotationWithArbitraryClassValue
 testAnnotationWithArrayValue
 testAnnotationWithDefaultValues
 testAnnotationWithJavaTypeValue
+testAnnotationWithNestedClassValue
 testAnnotationsRepeatable
 testAsMemberOf
 testBackingFields

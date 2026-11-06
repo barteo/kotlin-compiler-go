@@ -256,6 +256,11 @@ func (c *Checker) annotationValues(cls *types.ClassSym, args []annotArg, p synta
 				ok = false
 				continue
 			}
+			if j == next && !params[j].Vararg {
+				// Named in its own place: a positional argument may
+				// follow, @A(x = 1, 2).
+				next++
+			}
 		case next < len(params):
 			j = next
 			if !params[j].Vararg {

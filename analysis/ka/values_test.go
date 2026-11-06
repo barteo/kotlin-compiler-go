@@ -88,6 +88,11 @@ class Z
 @Missing(1)
 @A(i = "wrong")
 class W
+
+annotation class N(val b: Byte = -2, val s: Short = -3, val i: Int = -6, val l: Long = -7L, val d: Double = -4.0)
+
+@N(b = 1, s = 2, -9, l = 5)
+class V
 `)
 	if len(m.Files) == 0 {
 		t.Fatal("no files")
@@ -101,14 +106,14 @@ class W
 	}
 	for _, d := range f.Decls {
 		switch d.Name {
-		case "X", "Y", "Z", "W":
+		case "X", "Y", "Z", "W", "V":
 			fmt.Fprintf(&sb, "%s:", d.Name)
 			for _, a := range d.Annotations {
 				sb.WriteString(" ")
 				dumpAnnotation(&sb, f.Snapshot, &a)
 			}
 			sb.WriteString("\n")
-		case "A", "Inner":
+		case "A", "Inner", "N":
 			for _, mem := range d.Members {
 				if mem.Kind != KindConstructor {
 					continue
@@ -141,8 +146,42 @@ X: @p/A(s="const!"{C + "!"}, i=-4{-4}, l=1099511627776L{1L shl 40}, c='q'{'q'}, 
 Y: @p/A(s="pos"{"pos"}, i=9{9}, v=["p"{"p"}, "q"{"q"}]{["p", "q"]})
 Z: @p/A(v=["s1"{"s1"}]{arrayOf("s1")}) @p/Inner()
 W: @() @p/A(i=<unsupported>{"wrong"})
+N.b = b-2{-2}
+N.s = s-3{-3}
+N.i = -6{-6}
+N.l = -7L{-7L}
+N.d = -4.0{-4.0}
+V: @p/N(b=b1{1}, s=s2{2}, i=-9{-9}, l=5L{5})
 `
 	if got := sb.String(); got != want {
 		t.Errorf("got:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+// TestJavaClassLiteral checks that a class literal that names a Java class
+// kc knows by a Kotlin name keeps the Java name where the file writes
+// it, as FIR does: KSP loads the class by that name.
+func TestJavaClassLiteral(t *testing.T) {
+	m := updateWith(t, withJDK(t), `package p
+
+import kotlin.reflect.KClass
+import java.lang.Throwable as JT
+
+annotation class K(vararg val ks: KClass<*>)
+
+@K(JT::class, kotlin.Throwable::class, java.util.Map.Entry::class, Map.Entry::class, java.lang.String::class, String::class)
+class C
+`)
+	var sb strings.Builder
+	for _, d := range m.Files[0].Decls {
+		if d.Name == "C" {
+			for _, a := range d.Annotations {
+				dumpAnnotation(&sb, m.Files[0].Snapshot, &a)
+			}
+		}
+	}
+	want := `@p/K(ks=[java/lang/Throwable::class{JT::class}, kotlin/Throwable::class{kotlin.Throwable::class}, java/util/Map.Entry::class{java.util.Map.Entry::class}, kotlin/collections/Map.Entry::class{Map.Entry::class}, java/lang/String::class{java.lang.String::class}, kotlin/String::class{String::class}])`
+	if got := sb.String(); got != want {
+		t.Errorf("got:\n%s\nwant:\n%s\ndiagnostics: %v", got, want, m.Diagnostics)
 	}
 }

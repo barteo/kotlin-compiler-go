@@ -204,7 +204,13 @@ func (b *fileBuilder) constant(t types.Type, x syntax.Expr) (out *Value) {
 		if cl.Class.K == types.Invalid {
 			return unsupported
 		}
-		return &Value{Kind: ValueClass, Type: b.typ(cl.Class, nil)}
+		t := b.typ(cl.Class, nil)
+		if t.Kind == TypeClass && cl.Class.K == types.Class {
+			if id := b.javaWritten(cl.Class.C, classLitName(cl)); id != "" {
+				t.ClassID = id
+			}
+		}
+		return &Value{Kind: ValueClass, Type: t}
 	}
 	if t.K == types.Class && t.C != nil && isEnumClass(t.C) {
 		name := ""
@@ -329,6 +335,16 @@ func (b *fileBuilder) defaultValue(t types.Type, x syntax.Expr, depth int) *Valu
 	node := b.qualified(b.prov.Node(x))
 	if node == 0 {
 		node = b.exprNode(x)
+	}
+	if node != 0 && b.snap != nil {
+		// A negative number the checker folded into a literal: -2, whose
+		// node is the PREFIX_EXPRESSION.
+		if p := b.snap.Node(node).Parent(); p.NumericKind() == psi.KindPREFIX_EXPRESSION && p.Range().End == b.snap.Node(node).Range().End {
+			switch b.snap.Node(node).NumericKind() {
+			case psi.KindINTEGER_CONSTANT, psi.KindFLOAT_CONSTANT:
+				node = p.ID()
+			}
+		}
 	}
 	if t.IsArray() || t.K == types.Class && types.IsUnsignedArray(t.C) {
 		out := &Value{Kind: ValueArray, Node: node}
@@ -579,3 +595,60 @@ func trimFloat(f float64) string {
 
 func itoa(n int64) string  { return strconv.FormatInt(n, 10) }
 func utoa(n uint64) string { return strconv.FormatUint(n, 10) }
+
+// classLitName returns the class a class literal names as written,
+// a.b.C for a.b.C::class; "" for the class of a value.
+func classLitName(cl *syntax.ClassLit) string {
+	if cl.Ref != nil {
+		return cl.Ref.Name
+	}
+	var parts []string
+	for x := cl.X; ; {
+		switch e := x.(type) {
+		case *syntax.Member:
+			parts = append([]string{e.Name}, parts...)
+			x = e.X
+			continue
+		case *syntax.Ident:
+			return strings.Join(append([]string{e.Name}, parts...), ".")
+		}
+		return ""
+	}
+}
+
+// javaWritten returns the class ID of Java class c by its own name,
+// java/lang/Throwable, if name, as written in the file, names it so
+// (import java.lang.Throwable, or java.util.Map.Entry spelled out) and
+// kc knows it by a Kotlin name; else "". FIR keeps such a class as the
+// Java class, which KSP loads by that name.
+func (b *fileBuilder) javaWritten(c *types.ClassSym, name string) string {
+	if c == nil || name == "" {
+		return ""
+	}
+	pkg, rel := "", c.Name
+	if i := strings.LastIndexByte(c.Name, '/'); i >= 0 {
+		pkg, rel = c.Name[:i+1], c.Name[i+1:]
+	}
+	java := pkg + strings.ReplaceAll(rel, "$", ".")
+	if java == classID(c) {
+		return ""
+	}
+	fq := name
+	first, rest, _ := strings.Cut(name, ".")
+	for _, im := range b.f.Imports {
+		n := im.Alias
+		if n == "" {
+			n = im.Path[strings.LastIndexByte(im.Path, '.')+1:]
+		}
+		if !im.Star && n == first {
+			fq = im.Path
+			if rest != "" {
+				fq += "." + rest
+			}
+		}
+	}
+	if fq != strings.ReplaceAll(java, "/", ".") {
+		return ""
+	}
+	return java
+}
