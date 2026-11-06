@@ -668,5 +668,8 @@ func (w *writer) typ(t *Type) []byte {
 		a.msg(2, arg.b)
 		e.msg(100, a.b)
 	}
+	for _, an := range t.Annotations {
+		e.msg(100, w.annotation(an))
+	}
 	return e.b
 }

@@ -707,6 +707,9 @@ func (l *library) ktype(t *kmeta.Type, scope kscope, depth int) *Type {
 	for o := t.Outer; o != nil; o = o.Outer {
 		args = append(slices.Clone(args), o.Args...)
 	}
+	for _, a := range t.Annotations {
+		out.Annotations = append(out.Annotations, *l.metaAnnotation(a, depth))
+	}
 	for _, a := range args {
 		ta := TypeArg{}
 		switch a.Proj {
@@ -1219,6 +1222,83 @@ func (l *library) annotation(a *classfile.Annotation, depth int) *Annotation {
 		out.Args = append(out.Args, NamedValue{Name: p.Name, Value: l.value(&p.Value, hints[p.Name], depth+1)})
 	}
 	return out
+}
+
+// metaAnnotation returns the model of annotation a that metadata keeps,
+// a type's.
+func (l *library) metaAnnotation(a *kmeta.Annotation, depth int) *Annotation {
+	out := &Annotation{ClassID: a.Class}
+	hints := l.paramTypes(a.Class)
+	for _, p := range a.Args {
+		out.Args = append(out.Args, NamedValue{Name: p.Name, Value: l.metaValue(&p.Value, hints[p.Name], depth+1)})
+	}
+	return out
+}
+
+// metaValue returns the model of metadata annotation argument v, of a
+// parameter whose type (its element type, for an array) is the class
+// hint.
+func (l *library) metaValue(v *kmeta.AnnotationValue, hint string, depth int) *Value {
+	if depth > 16 {
+		return &Value{Kind: ValueUnsupported}
+	}
+	c := func(k ConstKind) *Value {
+		return &Value{Kind: ValueConst, Const: k, Bits: v.Int, Float: v.Float, Str: v.Str}
+	}
+	switch v.Kind {
+	case kmeta.ValueBoolean:
+		return c(ConstBoolean)
+	case kmeta.ValueChar:
+		return c(ConstChar)
+	case kmeta.ValueByte:
+		if hint == "kotlin/UByte" {
+			out := c(ConstUByte)
+			out.Bits = int64(uint8(out.Bits))
+			return out
+		}
+		return c(ConstByte)
+	case kmeta.ValueShort:
+		if hint == "kotlin/UShort" {
+			out := c(ConstUShort)
+			out.Bits = int64(uint16(out.Bits))
+			return out
+		}
+		return c(ConstShort)
+	case kmeta.ValueInt:
+		if hint == "kotlin/UInt" {
+			out := c(ConstUInt)
+			out.Bits = int64(uint32(out.Bits))
+			return out
+		}
+		return c(ConstInt)
+	case kmeta.ValueLong:
+		if hint == "kotlin/ULong" {
+			return c(ConstULong)
+		}
+		return c(ConstLong)
+	case kmeta.ValueFloat:
+		return c(ConstFloat)
+	case kmeta.ValueDouble:
+		return c(ConstDouble)
+	case kmeta.ValueString:
+		return c(ConstString)
+	case kmeta.ValueEnum:
+		return &Value{Kind: ValueEnum, ClassID: v.Class, Entry: v.Str}
+	case kmeta.ValueClass:
+		return &Value{Kind: ValueClass, Type: &Type{Kind: TypeClass, ClassID: v.Class}}
+	case kmeta.ValueAnnotation:
+		if v.Ann == nil {
+			return &Value{Kind: ValueUnsupported}
+		}
+		return &Value{Kind: ValueAnnotation, Annotation: l.metaAnnotation(v.Ann, depth+1)}
+	case kmeta.ValueArray:
+		out := &Value{Kind: ValueArray}
+		for i := range v.Elems {
+			out.Elems = append(out.Elems, l.metaValue(&v.Elems[i], hint, depth+1))
+		}
+		return out
+	}
+	return &Value{Kind: ValueUnsupported}
 }
 
 // descClassID returns the class ID of the class a field descriptor

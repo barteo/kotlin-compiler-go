@@ -109,6 +109,7 @@ testSignatureMapper
 testSuperTypes
 testThrowList
 testTopLevelMembers
+testTypeAlias
 testTypeAliasComparison
 testTypeComparison2
 testTypeComposure
