@@ -88,7 +88,7 @@ var nullabilityNames = map[string]bool{"NotNull": true, "Nullable": true, "NonNu
 // nullability returns the descriptors of those of as that may be
 // nullability annotations, such as @org.jetbrains.annotations.NotNull,
 // resolved where r is, as a class file's member lists them; nil if there
-// are none. The checker reads them (check.Library.JavaNullability).
+// are none. The checker reads them (check.Library.JavaTypes).
 func (r *resolver) nullability(as []*Annotation) []string {
 	var out []string
 	for _, a := range as {

@@ -416,12 +416,15 @@ func NewLibrary(cp *classpath.Path) *Library { return &Library{t: newClassTable(
 // doesn't see them. Call it before the library loads a class.
 func (l *Library) KeepHidden() { l.t.hidden = true }
 
-// JavaNullability has Java declarations annotated with a nullability
-// annotation kotlinc reads, such as @org.jetbrains.annotations.NotNull or
-// @androidx.annotation.Nullable, have non-null or nullable types instead
-// of platform types, as kotlinc sees them. Call it before the library
-// loads a class.
-func (l *Library) JavaNullability() { l.t.nullability = true }
+// JavaTypes has Java declarations' types read as kotlinc reads them,
+// where kc's checking approximates them: those annotated with a
+// nullability annotation kotlinc reads, such as
+// @org.jetbrains.annotations.NotNull or @androidx.annotation.Nullable,
+// are non-null or nullable types instead of platform types, and an inner
+// class (a nested class that isn't static) has its outer classes' type
+// parameters after its own, as a Kotlin inner class has. Call it before
+// the library loads a class.
+func (l *Library) JavaTypes() { l.t.javaTypes = true }
 
 // Class returns the class of the class path with Kotlin class ID id
 // (a/b/Outer.Inner), as Kotlin sees it: kotlin/String is java/lang/String,

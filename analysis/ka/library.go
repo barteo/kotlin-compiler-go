@@ -791,7 +791,7 @@ func (l *library) javaClass(cls *types.ClassSym, depth int) *Decl {
 		}
 	}
 	b := &fileBuilder{}
-	d.TypeParams = l.javaTypeParams(b, cls.TypeParams)
+	d.TypeParams = l.javaTypeParams(b, cls.TypeParams[:len(cls.TypeParams)-cls.OuterParams]) // an inner class's outer ones are its outer class's
 	d.Supertypes = javaSupertypes(b, cls, d.Kind, platform)
 	if source && len(info.Unresolved) > 0 {
 		// Supertypes the source wrote that don't resolve are error types,
@@ -1131,6 +1131,13 @@ func (l *library) javaMethod(b *fileBuilder, f *types.FunSym, bySig map[string]*
 		}
 		md.Params = append(md.Params, pd)
 	}
+	if kind == KindConstructor && d.Flags&FlagInner != 0 && len(md.Params) > 0 {
+		// javac's inner class constructor takes the outer instance first,
+		// which FIR's, the source's, doesn't declare.
+		if t := md.Params[0].Type; t != nil && t.Kind == TypeClass && strings.HasPrefix(d.ClassID, t.ClassID+".") && !strings.Contains(d.ClassID[len(t.ClassID)+1:], ".") {
+			md.Params = md.Params[1:]
+		}
+	}
 	if kind == KindFunction {
 		md.Type = unresolved(b.javaType(f.Ret), retDesc)
 	}
@@ -1182,7 +1189,7 @@ func unresolved(t *Type, desc string) *Type {
 // javaType returns the model of t, a type of a Java class's member, with
 // its nullable types made platform types (see platform), except for t
 // itself when a nullability annotation made it nullable
-// (check.Library.JavaNullability).
+// (check.Library.JavaTypes).
 func (b *fileBuilder) javaType(t types.Type) *Type {
 	out := b.typ(t, nil)
 	if out == nil || !t.N || t.P || t.K == types.Null {

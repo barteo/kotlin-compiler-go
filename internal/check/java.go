@@ -31,10 +31,11 @@ type classTable struct {
 	// hidden is set by Library.KeepHidden: every Java class keeps the
 	// members Kotlin can't use, as Java source classes do.
 	hidden bool
-	// nullability is set by Library.JavaNullability: Java declarations
-	// annotated @NotNull or @Nullable have non-null or nullable types.
-	nullability bool
-	funcs       *types.Functions // the interfaces of function types
+	// javaTypes is set by Library.JavaTypes: Java declarations
+	// annotated @NotNull or @Nullable have non-null or nullable types,
+	// and inner classes have their outer classes' type parameters.
+	javaTypes bool
+	funcs     *types.Functions // the interfaces of function types
 	kotlinTable
 	// sources finds the program's classes by internal name, which the
 	// class path's classes of Java sources name. Checking sets it once
@@ -227,8 +228,17 @@ func (t *classTable) load(cls *types.ClassSym) {
 			cls.Interfaces = append(cls.Interfaces, i)
 		}
 	}
-	if info.Sig != "" {
-		t.classSignature(cls, info.Sig)
+	// An inner class sees its outer classes' type parameters, after its
+	// own, under Library.JavaTypes.
+	var outer []*types.TypeParamSym
+	if t.javaTypes && info.Inner != nil && info.Inner.Outer != "" && info.Inner.Access&classfile.AccStatic == 0 &&
+		info.Access&(classfile.AccInterface|classfile.AccEnum|classfile.AccAnnotation) == 0 {
+		if o := t.class(info.Inner.Outer); o != nil {
+			outer = ensured(o).TypeParams
+		}
+	}
+	if info.Sig != "" || len(outer) > 0 {
+		t.classSignature(cls, info.Sig, outer)
 	}
 	cls.Methods = map[string][]*types.FunSym{}
 	cls.Statics = map[string][]*types.FunSym{}
@@ -275,7 +285,7 @@ func (t *classTable) load(cls *types.ClassSym) {
 		for _, p := range f.Params {
 			p.Type = javaParam(p.Type)
 		}
-		if t.nullability {
+		if t.javaTypes {
 			f.Ret = enhance(m.Annotations, f.Ret)
 			// javac leaves out synthetic parameters, which come first.
 			off := len(f.Params) - len(m.ParamAnnotations)
@@ -399,9 +409,9 @@ func (t *classTable) load(cls *types.ClassSym) {
 }
 
 // fieldNullability returns the type ft of field fd as its annotations
-// make it, under Library.JavaNullability.
+// make it, under Library.JavaTypes.
 func (t *classTable) fieldNullability(fd classfile.Member, ft types.Type) types.Type {
-	if !t.nullability {
+	if !t.javaTypes {
 		return ft
 	}
 	return enhance(fd.Annotations, ft)

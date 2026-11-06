@@ -105,6 +105,7 @@ testRecordJavaGetAllMembers
 testRecordJavaOverrides
 testRecordJavaResolutions
 testRecordJavaSupertypes
+testReferenceElement
 testRepeatedNonRepeatableAnnotations
 testSealedClass
 testShadowingAnnotations

@@ -484,3 +484,73 @@ d m0 f0x2000000 : kotlin/String
 		t.Errorf("got:\n%s\nwant:\n%s", got, want)
 	}
 }
+
+// TestJavaInnerClass checks that a Java inner class reads its outer class's
+// type parameters, and that a J<String>.H type keeps its outer arguments.
+func TestJavaInnerClass(t *testing.T) {
+	java := `package j;
+
+import java.util.List;
+
+public class Base<T, P> {
+    public class Inner<P> {
+        public T t;
+        public List<T> list;
+        public Base<T, P> base;
+        public T get(P p) { return null; }
+    }
+    public static class Nested<Q> {
+        public Q q;
+    }
+}
+`
+	k := `package j;
+
+public class K {
+    public Base<String, Integer>.Inner<Long> x;
+    public Base.Nested<String> y;
+}
+`
+	kotlin := "package j\nval a = K().x.t\nval b = K().x.get(1L)\nval c = K().y.q\n"
+	sources := []Source{{Path: "j/a.kt", Text: &kotlin}, {Path: "j/Base.java", Text: &java}, {Path: "j/K.java", Text: &k}}
+	s := Open(withJDK(t))
+	defer s.Close()
+	m, err := s.Update(context.Background(), sources)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close()
+	for _, d := range m.Diagnostics {
+		t.Errorf("diagnostic: %+v", d)
+	}
+	var sb strings.Builder
+	for _, name := range []string{"j/Base.Inner", "j/K"} {
+		d := m.Class(name)
+		if d == nil {
+			t.Fatalf("%s: nil", name)
+		}
+		dumpLibrary(&sb, d, "", func(m *Decl) bool { return m.Kind != KindFunction || !strings.HasPrefix(m.Name, "<") })
+	}
+	sb.WriteString("--\n")
+	dumpTypes(&sb, m.Files[0].Snapshot, m.Files[0].Decls, "")
+	// x's arguments are kc's, the inner class's own first, then its outer
+	// class's; the JVM side splits them per qualifier.
+	want := `1 Inner [j/Base.Inner] v0 m1 f0x4400004 <P : kotlin/Any!> : kotlin/Any
+  13 t v0 m0 f0x408000: T!
+  13 list v0 m0 f0x408000: kotlin/collections/MutableList<T!>!
+  13 base v0 m0 f0x408000: j/Base<T!, P!>!
+  7 get v0 m1 f0x400000 (p: P!): T!
+  10 <init> v0 m0 f0x400000
+1 K [j/K] v0 m1 f0x4400000 : kotlin/Any
+  13 x v0 m0 f0x408000: j/Base.Inner<kotlin/Long!, kotlin/String!, kotlin/Int!>!
+  13 y v0 m0 f0x408000: j/Base.Nested<kotlin/String!>!
+  10 <init> v0 m0 f0x400000
+--
+a m0 f0x2000000 : kotlin/String!
+b m0 f0x2000000 : kotlin/String!
+c m0 f0x2000000 : kotlin/String!
+`
+	if got := sb.String(); got != want {
+		t.Errorf("got:\n%s\nwant:\n%s", got, want)
+	}
+}
