@@ -89,13 +89,18 @@ fun modules(test: File): List<Module> {
     val lines = test.readLines()
     val mods = mutableListOf<Module>()
     var file: String? = null
+    var implicit = false
     var start = 0
     fun flush(end: Int) {
         val f = file ?: return
-        if (mods.isEmpty()) mods += Module("main", emptyList(), emptyList())
-        val text = "\n".repeat(start) + lines.subList(start, end).joinToString("\n") + "\n"
-        mods.last().files += SrcFile(f, text)
         file = null
+        val body = lines.subList(start, end)
+        // A module's code before its first "// FILE:", or without one, is
+        // a file named after the test, as in Kotlin's test framework.
+        if (implicit && body.all { it.isBlank() }) return
+        if (mods.isEmpty()) mods += Module("main", emptyList(), emptyList())
+        val text = "\n".repeat(start) + body.joinToString("\n") + "\n"
+        mods.last().files += SrcFile(f, text)
     }
     val module = Regex("""^//\s*MODULE:\s*([^(\s]+)(?:\(([^)]*)\))?(?:\(([^)]*)\))?""")
     for ((i, line) in lines.withIndex()) {
@@ -104,6 +109,9 @@ fun modules(test: File): List<Module> {
             flush(i)
             fun list(s: String) = s.split(',').map { it.trim() }.filter { it.isNotEmpty() }
             mods += Module(m.groupValues[1], list(m.groupValues[2]), list(m.groupValues[3]))
+            file = test.name
+            implicit = true
+            start = i + 1
             continue
         }
         // Kotlin's test framework accepts "//FILE:" as well.
@@ -111,6 +119,7 @@ fun modules(test: File): List<Module> {
         if (fileDirective != null) {
             flush(i)
             file = fileDirective.groupValues[1].trim()
+            implicit = false
             start = i + 1
         }
     }

@@ -7,6 +7,7 @@ testAnnotationValue_defaultKClassValue
 testAnnotationWithArbitraryClassValue
 testAnnotationWithJavaTypeValue
 testBuiltInTypes
+testCompanion
 testConflictingOverride
 testConstProperties
 testContextParameters
@@ -32,6 +33,7 @@ testInnerTypes
 testJavaAnno
 testJavaOverrideInSource
 testJavaToKotlinMapper
+testJvmName
 testLateinitProperties
 testLocalAnnotationClass
 testMakeNullable
@@ -47,6 +49,7 @@ testOverrideInLib
 testOverrideInSource
 testOverrideOrder
 testPackageAnnotation
+testParameterTypes
 testPrimaryConstructorOverride
 testRecordJavaAsMemberOf
 testRecordJavaResolutions
@@ -57,4 +60,5 @@ testSignatureMapper
 testSuperTypes
 testTypeComparison2
 testTypeParameterVariance
+testValueParameter
 testVarianceTypeCheck

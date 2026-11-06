@@ -401,6 +401,23 @@ func (l *library) kproperty(p *kmeta.Property, scope kscope, bySig map[string]*c
 			md.Annotations = l.annotations(m.Annotations, true)
 		}
 	}
+	// The accessors' own annotations are on their methods, with the
+	// use-site target that puts them on the accessor.
+	for _, acc := range []struct {
+		flags  kmeta.Flags
+		sig    *kmeta.JVMSig
+		target string
+	}{{p.GetterFlags, p.Getter, "get"}, {p.SetterFlags, p.Setter, "set"}} {
+		if acc.flags&hasAnnotations == 0 || acc.sig == nil {
+			continue
+		}
+		if m := bySig[acc.sig.Name+acc.sig.Desc]; m != nil {
+			for _, a := range l.annotations(m.Annotations, true) {
+				a.Target = acc.target
+				md.Annotations = append(md.Annotations, a)
+			}
+		}
+	}
 	return md
 }
 

@@ -65,7 +65,7 @@ internal class KcInfo(
     val origin: KaSymbolOrigin,
 ) {
     /** The KaType of [t], or [orElse] if it is null. */
-    fun type(t: KcType?, orElse: () -> KaType = { KcErrorType(round, "") }): KaType = t?.let(types::type) ?: orElse()
+    fun type(t: KcType?, orElse: () -> KaType = { errorType(round, null) }): KaType = t?.let(types::type) ?: orElse()
 
     val unit: KaType get() = KcClassType(round, ClassId.fromString("kotlin/Unit"))
 
@@ -245,7 +245,7 @@ internal class KcConstructorSymbol(val info: KcInfo) : StubKaConstructorSymbol()
     override val visibility get() = info.visibility
     override val compilerVisibility get() = info.compilerVisibility
     override val returnType: KaType
-        get() = (info.parent as? KcClassSymbol)?.selfType ?: KcErrorType(info.round, "")
+        get() = (info.parent as? KcClassSymbol)?.selfType ?: errorType(info.round, null)
     override val containingClassId get() = (info.parent as? KcClassSymbol)?.classId
     override val isPrimary get() = info.decl.has(KcDecl.PRIMARY)
     override val isExpect get() = (info.parent as? KcClassSymbol)?.isExpect == true
@@ -278,6 +278,13 @@ internal class KcValueParameterSymbol(val info: KcInfo, val default: KaAnnotatio
     override val hasDeclaredDefaultValue get() = info.decl.has(KcDecl.HAS_DEFAULT)
     override val hasDefaultValue get() = hasDeclaredDefaultValue
     override val isImplicitLambdaParameter get() = false
+    /** The property a primary constructor's `val`/`var` parameter declares: the class's property with the same PSI. */
+    override val generatedPrimaryConstructorProperty: KaKotlinPropertySymbol? by lazy {
+        val p = info.psi as? KtParameter
+        if (p == null || !p.hasValOrVar()) return@lazy null
+        val c = (info.parent as? KcConstructorSymbol)?.info?.parent as? KcClassSymbol ?: return@lazy null
+        c.members.firstOrNull { it is KcPropertySymbol && it.psi === p } as? KaKotlinPropertySymbol
+    }
     override fun createPointer(): KaSymbolPointer<KaValueParameterSymbol> = info.pointer()
 }
 

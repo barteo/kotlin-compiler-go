@@ -63,7 +63,7 @@ internal class KcTypeContext(
                 else -> p
             }
         }
-        else -> KcErrorType(round, t.name, t.isNullable)
+        else -> errorType(round, t.name, t.isNullable)
     }
 
     private fun classType(t: KcType, nullable: Boolean): KcBaseClassType {
@@ -248,6 +248,29 @@ internal class KcErrorType(
         get() = listOf(KcUnresolvedQualifier(Name.guessByFirstCharacter(presentableText?.substringBefore('<')?.trim().orEmpty()), round.token))
     override fun withNullability(nullable: Boolean) = if (nullable == marked) this else KcErrorType(round, presentableText, nullable)
     override fun toString() = "ERROR($presentableText)"
+}
+
+/**
+ * A type kc couldn't resolve: an unresolved class named [name], or, where
+ * there is no name (a parameter written without a type), a plain error
+ * type without text, as FIR gives.
+ */
+internal fun errorType(round: KcRound, name: String?, marked: Boolean = false): KaType =
+    if (name.isNullOrEmpty()) KcMissingType(round, marked) else KcErrorType(round, name, marked)
+
+/** An error type that names no class; see [errorType]. */
+internal class KcMissingType(
+    private val round: KcRound,
+    override val marked: Boolean = false,
+) : StubKaErrorType(), KcTypeBase {
+    override val token get() = round.token
+    override val nullability get() = KaTypeNullability.create(marked)
+    override val abbreviation get() = null
+    override val annotations: KaAnnotationList get() = KcAnnotationList(emptyList(), round.token)
+    override val errorMessage: String get() = "no type"
+    override val presentableText: String? get() = null
+    override fun withNullability(nullable: Boolean) = if (nullable == marked) this else KcMissingType(round, nullable)
+    override fun toString() = "ERROR"
 }
 
 /**

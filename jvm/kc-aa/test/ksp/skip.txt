@@ -15,7 +15,6 @@ testAsMemberOf: java-source: NoSuchElementException: Sequence contains no elemen
 testBackingFields: java-source: line 20: want lib.JavaClass.javaField: true got lib.MyInterface.interfaceProp_willBeBacked: false
 testCheckOverride: java-source: line 13: want JavaImpl.getX overrides MyInterface.x: true got JavaImpl.getX overrides MyInterface.x:
 testClassKinds: java-source: NullPointerException: null
-testCompanion: companion: companion object naming/order
 testConstructorDeclarations: java-source: line 4: want <init>(kotlin.Int): lib.AbstractJavaClassWithExplicitConstructor got class: AbstractJav
 testCrossModuleTypeAlias: type-alias: library type aliases in other modules
 testDeclarationOrder: java-source: line 23: want b:Ljava/lang/String; got KotlinClass
@@ -44,7 +43,6 @@ testJavaTypes2: java-source: line 1: want (Array<(C..C?)>..Array<out (C..C?)>?) 
 testJavaTypes: flexible-types: Java flexible types in Kotlin
 testJavaWildcards2: unsupported: KcExtras.optimalModeForReturnType
 testJavaWildcardsSelfReferencing: unsupported: KcExtras.optimalModeForValueParameter
-testJvmName: java-source: line 7: want JvmName: stringParameter got JvmName: stringParam
 testLibOrigins: java-source: line 10: want Exception: [KotlinLibClass, T1, Any?]: SYNTHETIC got Validating kotlinLibFuntion
 testLocalClasses: local-declarations: anonymous objects
 testLocations: java-source: line 3: want K:J.java:81 got K:K.kt:60
@@ -52,7 +50,6 @@ testMangledNames: java-source: line 4: want valueOf -> valueOf got get-entries -
 testMultipleround: java-source: line 3: want J : <ERROR TYPE: I0>, <ERROR TYPE: I1>, <ERROR TYPE: I2>, <ERROR TYPE: I3>, <ERR got J
 testNestedClassType: type-annotations: type argument annotations
 testPackageProviderForGenerated: generated-java: generated Java sources not in the model
-testParameterTypes: error-types: error type rendering
 testParent: java-source: line 28: want parent of Any: (Any..Any?) got parent of synthetic constructor for B: B
 testPlatformDeclaration: disabled: @Disabled in KSPUnitTestSuite
 testRawTypes: java-source: line 1: want barRaw got
@@ -71,6 +68,5 @@ testTypeComposure: star-projections: star projection replacement
 testTypeParameterReference: java-source: line 1: want kotlin.Int: false got kotlin.Any: true
 testUseSiteTargets: annotation-target: @all use-site target
 testValidateTypes: java-source: line 12: want BadJavaClass invalid got BadJavaClass valid
-testValueParameter: value-parameters: isVal/isVar of constructor properties
 testVararg: java-source: NoSuchElementException: Sequence contains no element matching the predicate.
 testVisibilities: java-source: InternalKSPException: >>> Internal KSP Error
