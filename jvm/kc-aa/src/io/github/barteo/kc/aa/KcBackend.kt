@@ -19,6 +19,8 @@ import com.intellij.psi.PsiAnnotation
 import com.intellij.psi.PsiJavaFile
 import com.intellij.psi.PsiManager
 import org.jetbrains.kotlin.analysis.api.types.KaClassType
+import org.jetbrains.kotlin.incremental.components.Position
+import org.jetbrains.kotlin.incremental.components.ScopeKind
 import org.jetbrains.kotlin.analysis.api.types.KaFlexibleType
 import org.jetbrains.kotlin.analysis.api.annotations.KaAnnotationValue
 import org.jetbrains.kotlin.analysis.api.platform.modification.KotlinModificationTrackerFactory
@@ -159,12 +161,25 @@ private class KcSession(private val config: KSPConfig, disposable: Disposable) :
     override fun sourceFiles(): List<KSFile> =
         round.fileSymbols.map { KSFileImpl.getCached(it) } + round.javaFiles.map { KSFileJavaImpl.getCached(it) }
 
-    // kc's checker doesn't record its name lookups yet, so KSP rebuilds on
-    // every run on this backend (docs/analysis-api.md, "Incremental
-    // processing").
-    override val recordsLookups: Boolean get() = false
+    // kc's checker records the names each file looks up (KcFile.lookups);
+    // they are replayed into KSP's tracker for the files it hasn't seen yet,
+    // under the paths KSFile.filePath gives. All are recorded as PACKAGE
+    // lookups, class scopes too, as FIR's lookup tracker component does: KSP
+    // finds the files a changed class member dirties in its symbol lookups,
+    // and its class tracker, for CLASSIFIER lookups, stays empty on FIR
+    // (docs/analysis-api.md, "Step 16: incremental lookups").
+    override val recordsLookups: Boolean get() = true
 
-    override fun beginRound(lookupTracker: DualLookupTracker) {}
+    private val replayed = HashSet<String>()
+
+    override fun beginRound(lookupTracker: DualLookupTracker) {
+        for (s in round.fileSymbols) {
+            if (!replayed.add(s.file.path)) continue
+            val path = s.psi.virtualFile.path
+            for (l in s.file.lookups)
+                lookupTracker.record(path, Position.NO_POSITION, l.scope, ScopeKind.PACKAGE, l.name)
+        }
+    }
 
     // Sources aren't edited between rounds (KSP only adds files), and the
     // next update replaces the round, so there is nothing to drop. (Dropping
