@@ -14,10 +14,15 @@
 //              from scratch, and the build log says so.
 //   KC_SKIP    comma-separated task paths to leave to kotlinc, such as :app:compileDebugKotlin
 //   KC_JDK_HOME  JDK for modules without android.jar, in place of the task's Java toolchain
+//   KC_IGNORE_PLUGINS  comma-separated compiler plugins, as artifact or group:artifact, that kc
+//              may leave out because the program works without them (default:
+//              compose-stability-compiler, which adds recomposition tracing and stability reports).
+//              Kotlin's scripting plugin, which only compiles .kts scripts, is always left out.
 //
-// kc compiles whole modules, so the tasks are not incremental. Compiler plugins other than Compose,
-// kotlinx.serialization and Parcelize are not applied; the log names any it leaves out. Included
-// builds (build-logic) keep kotlinc. The script reads the tasks through reflection, as their types
+// kc applies the Compose, kotlinx.serialization and Parcelize plugins. A module that uses any other
+// compiler plugin, such as one that generates code its program needs, is left to kotlinc, with a
+// warning that names the plugin, or fails the build under KC_STRICT=1. kc compiles whole modules,
+// so the tasks are not incremental. Included builds (build-logic) keep kotlinc. The script reads the tasks through reflection, as their types
 // are not on an init script's class path, so it depends on the Kotlin Gradle plugin's getters
 // (checked with 2.4.21).
 if (gradle.parent == null) {
@@ -56,7 +61,38 @@ if (gradle.parent == null) {
         val libraries = (call(task, "getLibraries") as org.gradle.api.file.FileCollection).files
           .filter { it.exists() }.map { it.path }
         val friends = (call(task, "getFriendPaths") as org.gradle.api.file.FileCollection).files.map { it.path }
-        val plugins = (call(task, "getPluginClasspath") as org.gradle.api.file.FileCollection).files.map { it.name }
+        // The plugins themselves, not their dependencies: the jars that register one.
+        val registrars = listOf("CompilerPluginRegistrar", "ComponentRegistrar")
+          .map { "META-INF/services/org.jetbrains.kotlin.compiler.plugin.$it" }
+        val pluginJars = (call(task, "getPluginClasspath") as org.gradle.api.file.FileCollection).files
+          .filter { f ->
+            f.isFile && runCatching {
+              java.util.zip.ZipFile(f).use { z -> registrars.any { z.getEntry(it) != null } }
+            }.getOrDefault(false)
+          }
+        // group:artifact, for a jar in Gradle's cache (files-2.1/group/artifact/version/hash/jar).
+        fun coordinates(jar: File): String {
+          val parts = jar.path.split(File.separatorChar)
+          val i = parts.indexOf("files-2.1")
+          return if (i >= 0 && parts.size > i + 2) "${parts[i + 1]}:${parts[i + 2]}" else jar.nameWithoutExtension
+        }
+        val plugins = pluginJars.map { it.name }
+        val known = mapOf(
+          "compose-compiler-plugin" to "-compose",
+          "serialization-compiler-plugin" to "-serialization",
+          "parcelize-compiler" to "-parcelize",
+        )
+        val ignored = (System.getenv("KC_IGNORE_PLUGINS") ?: "compose-stability-compiler")
+          .split(',').map { it.trim() }.filter { it.isNotEmpty() } + "kotlin-scripting-compiler-embeddable"
+        val unsupported = pluginJars.map { coordinates(it) }.filter { c ->
+          known.keys.none { c.contains(it) } && ignored.none { c == it || c.substringAfter(':') == it }
+        }
+        if (unsupported.isNotEmpty()) {
+          val why = "${task.path} uses compiler plugins kc does not apply: ${unsupported.joinToString()}"
+          if (strict) throw GradleException("kc: $why (KC_IGNORE_PLUGINS names plugins to leave out)")
+          logger.warn("kc: $why, so kotlinc compiles it")
+          return@doFirst
+        }
 
         val args = mutableListOf(kc, "-d", dest.path)
         (option("getModuleName") as String?)?.let { args += listOf("-module-name", it) }
@@ -80,19 +116,11 @@ if (gradle.parent == null) {
         args += listOf("-jvm-default", jvmDefault)
         if (libraries.isNotEmpty()) args += listOf("-cp", libraries.joinToString(File.pathSeparator))
         if (friends.isNotEmpty()) args += listOf("-friend-paths", friends.joinToString(File.pathSeparator))
-        val known = mapOf(
-          "compose-compiler-plugin" to "-compose",
-          "serialization-compiler-plugin" to "-serialization",
-          "parcelize-compiler" to "-parcelize",
-        )
-        val left = mutableListOf<String>()
         for (jar in plugins) {
           val flag = known.entries.firstOrNull { jar.contains(it.key) }?.value
-          when {
-            flag != null -> if (flag !in args) args += flag
-            jar.contains("compiler-plugin") || jar.contains("-plugin-") -> left += jar
-          }
+          if (flag != null && flag !in args) args += flag
         }
+        val left = plugins.filter { jar -> known.keys.none { jar.contains(it) } }
         if (left.isNotEmpty()) logger.info("kc: ${task.path} leaves out compiler plugins $left")
         logger.info("kc: ${task.path}: ${args.joinToString(" ")} <${sources.size} files>")
         args += sources
