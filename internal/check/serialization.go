@@ -39,7 +39,9 @@ import (
 // SealedClassSerializer of its subclasses. A sealed interface has only
 // the companion's serializer(), which makes a new SealedClassSerializer
 // each time. An enum's and an object's serializer() return serializers
-// made when first asked for.
+// made when first asked for. A value class has only the $serializer and
+// the companion's serializer(): its $serializer writes and reads its
+// property inline.
 //
 // kc declares these as source, before the file is checked, and fills
 // in the bodies that depend on the properties' types once those are
@@ -82,6 +84,7 @@ const (
 	serialInterface                   // a sealed interface's, made each time
 	serialEnum
 	serialObject
+	serialValue // a value class, whose $serializer writes its value inline
 )
 
 // serialDenied are the annotations of classes and properties that change
@@ -258,9 +261,6 @@ func (c *Checker) serialClass(cd *syntax.ClassDecl, fq string) {
 	case cd.Inner:
 		fail("@Serializable inner classes are not supported")
 		return
-	case cd.Value:
-		fail("@Serializable value classes are not supported")
-		return
 	case cd.Companion:
 		fail("@Serializable companion objects are not supported")
 		return
@@ -289,6 +289,10 @@ func (c *Checker) serialClass(cd *syntax.ClassDecl, fq string) {
 	case cd.Object:
 		in.kind = serialObject
 		c.serialLazy(in, cd, fmt.Sprintf("kotlinx.serialization.internal.ObjectSerializer(%q, %s)", name, fq))
+		return
+	case cd.Value:
+		in.kind = serialValue
+		c.serialValueClass(in)
 		return
 	case cd.Sealed:
 		in.kind = serialSealed
@@ -376,19 +380,10 @@ func (c *Checker) serialClass(cd *syntax.ClassDecl, fq string) {
 	}
 	fmt.Fprintf(&src, "%sfun `write$Self`(output: kotlinx.serialization.encoding.CompositeEncoder, serialDesc: kotlinx.serialization.descriptors.SerialDescriptor) {}\n", vis)
 	if in.kind == serialPlain {
-		fmt.Fprintf(&src, "@kotlin.Deprecated(message = \"This synthesized declaration should not be used directly\", level = kotlin.DeprecationLevel.HIDDEN)\n"+
-			"object `$serializer` : kotlinx.serialization.internal.GeneratedSerializer<%[1]s> {\n"+
-			"final override val descriptor: kotlinx.serialization.descriptors.SerialDescriptor\n"+
-			"init { descriptor = kotlinx.serialization.internal.PluginGeneratedSerialDescriptor(\"\", this, 0) }\n"+
-			"final override fun childSerializers(): Array<kotlinx.serialization.KSerializer<*>> = arrayOf<kotlinx.serialization.KSerializer<*>>()\n"+
-			"final override fun serialize(encoder: kotlinx.serialization.encoding.Encoder, value: %[1]s) {\n"+
-			"val `$d` = descriptor\n"+
+		src.WriteString(serializerObjectSrc(fq, "val `$d` = descriptor\n"+
 			"val `$c` = encoder.beginStructure(`$d`)\n"+
 			"value.`write$Self`(`$c`, `$d`)\n"+
-			"`$c`.endStructure(`$d`)\n"+
-			"}\n"+
-			"final override fun deserialize(decoder: kotlinx.serialization.encoding.Decoder): %[1]s { throw java.lang.IllegalStateException() }\n"+
-			"}\n", fq)
+			"`$c`.endStructure(`$d`)\n"))
 	}
 	members, err := parseMembers(c.file.Path, cd.P, src.String())
 	if err != nil {
@@ -415,6 +410,102 @@ func (c *Checker) serialClass(cd *syntax.ClassDecl, fq string) {
 	case serialSealed:
 		// serialBodies writes the subclasses' serializers.
 		c.serialLazy(in, nil, "throw java.lang.IllegalStateException()")
+	}
+}
+
+// serializerObjectSrc returns the source of the $serializer object of
+// class fq, whose serialize has the statements serialize. serialFill
+// writes its other bodies.
+func serializerObjectSrc(fq, serialize string) string {
+	return fmt.Sprintf("@kotlin.Deprecated(message = \"This synthesized declaration should not be used directly\", level = kotlin.DeprecationLevel.HIDDEN)\n"+
+		"object `$serializer` : kotlinx.serialization.internal.GeneratedSerializer<%[1]s> {\n"+
+		"final override val descriptor: kotlinx.serialization.descriptors.SerialDescriptor\n"+
+		"init { descriptor = kotlinx.serialization.internal.PluginGeneratedSerialDescriptor(\"\", this, 0) }\n"+
+		"final override fun childSerializers(): Array<kotlinx.serialization.KSerializer<*>> = arrayOf<kotlinx.serialization.KSerializer<*>>()\n"+
+		"final override fun serialize(encoder: kotlinx.serialization.encoding.Encoder, value: %[1]s) {\n%[2]s}\n"+
+		"final override fun deserialize(decoder: kotlinx.serialization.encoding.Decoder): %[1]s { throw java.lang.IllegalStateException() }\n"+
+		"}\n", fq, serialize)
+}
+
+// serialValueClass declares the $serializer of a value class, and its
+// companion's serializer(), which returns it. The serializer writes the
+// value class's property inline, as the format writes it alone, unless the
+// format writes the value class otherwise.
+func (c *Checker) serialValueClass(in *serialInfo) {
+	cd := in.cd
+	if len(cd.CtorParams) != 1 || !cd.CtorParams[0].IsProp {
+		return // an error the checker reports
+	}
+	cp := cd.CtorParams[0]
+	if a := deniedAnnotation(cp.Modifiers.Annotations); a != nil {
+		c.unsupported(a.P, "serialization", "@%s is not supported", a.Name)
+		return
+	}
+	members, err := parseMembers(c.file.Path, cd.P, serializerObjectSrc(in.fq, ""))
+	if err != nil {
+		c.errorf(cd.P, "serialization: %v", err)
+		return
+	}
+	in.ser = members[0].(*syntax.ClassDecl)
+	in.ser.Synthetic = true
+	cd.Members = append(cd.Members, members...)
+	cd.Serial = &syntax.Serial{Name: in.name, Props: []*syntax.SerialProp{{Name: c.serialName(cp.Modifiers.Annotations, cp.Name), Param: cp,
+		Optional: cp.Default != nil && c.findSerial(cp.Modifiers.Annotations, "Required") == nil}}}
+	c.serials = append(c.serials, in)
+	c.serialCompanion(cd, fmt.Sprintf("fun serializer(): kotlinx.serialization.KSerializer<%[1]s> = %[1]s.`$serializer`\n", in.fq))
+}
+
+// valueSerializerBodies writes the members of a value class's $serializer
+// that depend on the type of its property: they write and read it with
+// the encoder and decoder of the value class's descriptor, which the
+// format returns.
+func (c *Checker) valueSerializerBodies(in *serialInfo) {
+	cd := in.cd
+	p := cd.Serial.Props[0]
+	t := p.Sym().Type
+	ser := c.serialSerializer(t.NonNull())
+	if ser == "" {
+		c.unsupported(p.Param.P, "serialization", "serialization can't write a property of type %s", t)
+		return
+	}
+	initBody := c.serialParse(cd, fmt.Sprintf("fun f() {\n"+
+		"val `$d` = kotlinx.serialization.internal.InlineClassDescriptor(%q, this)\n"+
+		"`$d`.addElement(%q, %t)\n"+
+		"descriptor = `$d`\n}\n", cd.Serial.Name, p.Name, p.Optional))
+	children := c.serialParse(cd, fmt.Sprintf("fun f() = arrayOf<kotlinx.serialization.KSerializer<*>>(%s)\n", serialNullable(t, ser)))
+	v := "value.`" + p.Sym().Name + "`"
+	typ, _ := kotlinType(t)
+	var enc, dec string
+	switch m := serialPrimitives[t.K]; {
+	case m != "" && !t.N:
+		enc = fmt.Sprintf("encode%s(%s)", m, v)
+		dec = fmt.Sprintf("decode%s()", m)
+	case t.N:
+		enc = fmt.Sprintf("encodeNullableSerializableValue(%s, %s)", ser, v)
+		dec = fmt.Sprintf("decodeNullableSerializableValue(%s) as %s", ser, typ)
+	default:
+		enc = fmt.Sprintf("encodeSerializableValue(%s, %s)", ser, v)
+		dec = fmt.Sprintf("decodeSerializableValue(%s) as %s", ser, typ)
+	}
+	serialize := c.serialParse(cd, "fun f() {\nencoder.encodeInline(descriptor)?."+enc+"\n}\n")
+	deserialize := c.serialParse(cd, fmt.Sprintf("fun f() {\nreturn %s(decoder.decodeInline(descriptor).%s)\n}\n", in.fq, dec))
+	if initBody == nil || children == nil || serialize == nil || deserialize == nil {
+		return
+	}
+	for _, m := range in.ser.Members {
+		switch m := m.(type) {
+		case *syntax.InitBlock:
+			m.Body = initBody.Body
+		case *syntax.FunDecl:
+			switch m.Name {
+			case "childSerializers":
+				m.ExprBody = children.ExprBody
+			case "serialize":
+				m.Body = serialize.Body
+			case "deserialize":
+				m.Body = deserialize.Body
+			}
+		}
 	}
 }
 
@@ -611,6 +702,9 @@ func (c *Checker) serialFill(in *serialInfo) {
 		return
 	case serialSealed:
 		c.sealedSerializer(in)
+	case serialValue:
+		c.valueSerializerBodies(in)
+		return
 	}
 	serial := cd.Serial
 	// The superclass's properties come first, if it is @Serializable.
@@ -950,7 +1044,20 @@ func (c *Checker) serialSerializer(t types.Type) string {
 	}
 	cls := t.C
 	cls.Ensure()
-	if cls.Value || t.IsFunc() {
+	if t.IsFunc() {
+		return ""
+	}
+	if cls.Value {
+		switch cls.Name {
+		case "kotlin/UInt", "kotlin/ULong", "kotlin/UShort", "kotlin/UByte":
+			return "kotlinx.serialization.internal." + cls.Name[len("kotlin/"):] + "Serializer"
+		}
+		if s := c.serializerObject(cls); s != nil {
+			return fqName(s.Outer) + ".`$serializer`"
+		}
+		if c.hasSerializerFun(cls) {
+			return fqName(cls) + ".serializer()"
+		}
 		return ""
 	}
 	// The serializers of the type arguments.

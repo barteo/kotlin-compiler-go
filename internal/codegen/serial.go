@@ -18,7 +18,14 @@ import (
 // constructor's parameters from their fields.
 func (g *gen) serialCtor(cd *syntax.ClassDecl, sc *syntax.SecondaryCtor) {
 	cls, serial, f := cd.Sym, sc.Serial, sc.Sym
-	g.code = g.cls.NewMethod(cf.AccPublic|cf.AccSynthetic, "<init>", ctorJVMDesc(f))
+	access := uint16(cf.AccPublic | cf.AccSynthetic)
+	if hasValueParam(f) {
+		// As other constructors that take a value class: callers call
+		// the one that takes a marker.
+		access = cf.AccPrivate
+		defer g.markerConstructor(f)
+	}
+	g.code = g.cls.NewMethod(access, "<init>", ctorJVMDesc(f))
 	g.prefix = "_init_$lambda"
 	g.retType = types.UnitType
 	g.loops, g.tries = nil, nil
@@ -63,7 +70,11 @@ func (g *gen) serialCtor(cd *syntax.ClassDecl, sc *syntax.SecondaryCtor) {
 			g.code.Local(loadOp(p.Type), g.slot(p))
 		}
 		g.code.Local(cf.ALOAD, marker)
-		g.code.Invoke(cf.INVOKESPECIAL, sd.Sym.Name, "<init>", ctorJVMDesc(sf))
+		d := ctorJVMDesc(sf)
+		if hasValueParam(sf) {
+			d = g.marker(d)
+		}
+		g.code.Invoke(cf.INVOKESPECIAL, sd.Sym.Name, "<init>", d)
 	} else {
 		super := "java/lang/Object"
 		if cls.Super != nil {
@@ -97,9 +108,13 @@ func (g *gen) serialCtor(cd *syntax.ClassDecl, sc *syntax.SecondaryCtor) {
 			return
 		}
 		param := props[i]
+		load := func() {
+			g.code.Local(loadOp(param.Type), g.slot(param))
+			g.coerce(param.Type, p.Type) // a value class's box to its value
+		}
 		if !all[i].Optional {
 			g.code.Local(cf.ALOAD, 0)
-			g.code.Local(loadOp(param.Type), g.slot(param))
+			load()
 			put()
 			return
 		}
@@ -114,7 +129,7 @@ func (g *gen) serialCtor(cd *syntax.ClassDecl, sc *syntax.SecondaryCtor) {
 		g.code.Jump(cf.GOTO, done)
 		g.code.Place(read)
 		g.code.Local(cf.ALOAD, 0)
-		g.code.Local(loadOp(param.Type), g.slot(param))
+		load()
 		put()
 		g.code.Place(done)
 	}

@@ -1,6 +1,9 @@
 import app.Base
 import app.Color
 import app.Event
+import app.Framed
+import app.Label
+import app.Margin
 import app.Outer
 import app.Page
 import app.Prims
@@ -30,5 +33,20 @@ fun main() {
     val sub = Json.encodeToString(Sub.serializer(), Sub(3))
     println("sub: $sub -> ${Json.decodeFromString(Sub.serializer(), sub)}")
     println("sub: ${Json.decodeFromString(Sub.serializer(), """{"id":4,"more":5}""")}")
+    val m = Json.encodeToString(Measured.serializer(), Measured(Margin(4), Label("m")))
+    println("measured: $m -> ${Json.decodeFromString(Measured.serializer(), m)}")
+    val mat = Json.encodeToString(Matted.serializer(), Matted(6))
+    println("matted: $mat -> ${Json.decodeFromString(Matted.serializer(), mat)}")
+    println("matted: ${Json.decodeFromString(Matted.serializer(), """{"w":7}""")}")
     println(serializer<Prims>().descriptor.serialName)
+}
+
+// kc's value classes' serializers, and the synthetic constructor of a
+// class with a property of a value class type, through its marker.
+@Serializable
+data class Measured(val m: Margin, val l: Label?)
+
+@Serializable
+class Matted(val w: Int) : Framed() {
+    override fun toString() = "Matted($frame, $w)"
 }

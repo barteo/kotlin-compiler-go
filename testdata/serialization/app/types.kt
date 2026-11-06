@@ -190,3 +190,49 @@ data class Page(val n: Int) : Route.Nested
 
 @Serializable
 data class Trip(val from: Route, val to: Route.Nested?)
+
+// A value class's serializer writes its property inline: a property of a
+// value class type is written as the value class's property is.
+@Serializable
+@JvmInline
+value class Margin(val percent: Int) {
+    companion object {
+        val Off = Margin(0)
+    }
+}
+
+@Serializable
+@JvmInline
+@SerialName("Label")
+value class Label(@SerialName("text") val s: String)
+
+@Serializable
+@JvmInline
+value class MaybeLabel(val s: String?)
+
+@Serializable
+@JvmInline
+value class BoxedPoint(val p: LibPoint)
+
+@Serializable
+data class Layout(
+    val m: Margin,
+    val d: Margin = Margin.Off,
+    val n: Margin? = null,
+    val l: Label = Label("x"),
+    val ml: MaybeLabel = MaybeLabel(null),
+    val bp: BoxedPoint,
+    val ms: List<Margin> = listOf(),
+    val u: UInt = 1u,
+    val ul: ULong? = null,
+)
+
+@Serializable
+open class Framed(val frame: Margin = Margin(1)) {
+    override fun toString() = "Framed($frame)"
+}
+
+@Serializable
+class Picture(val title: String) : Framed(Margin(2)) {
+    override fun toString() = "Picture($frame, $title)"
+}

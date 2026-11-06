@@ -68,8 +68,9 @@ more than 32 properties; custom serializers of properties
 `@UseSerializers`); `@EncodeDefault`; the annotations that formats read
 (`@JsonNames`, `@ProtoNumber`...); arrays and the other types with
 built-in serializers (`Duration`, `Uuid`...). Properties can be of the
-primitive types, `String`, enums, `@Serializable` classes and objects,
-interfaces (polymorphically), and `List`, `Set`, `Map`, `HashSet`,
+primitive types, `String`, enums, `@Serializable` classes, objects and
+value classes, `UInt`, `ULong`, `UShort`, `UByte`, interfaces
+(polymorphically), and `List`, `Set`, `Map`, `HashSet`,
 `HashMap`, `Pair` and `Triple` of these, each nullable too.
 
 Without `-serialization`, only classes annotated `@Serializable(with =

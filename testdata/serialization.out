@@ -112,6 +112,42 @@ stamp2: {"seconds":1,"color":"BLUE","ts":2}
   back: Stamp(seconds=1, color=BLUE, ts=2) true
   defaults: {"seconds":1,"color":"BLUE","ts":2}
   list: [1, 2, 2] -> Stamp(seconds=1, color=BLUE, ts=2)
+margin: 5
+  back: Margin(percent=5) true
+  defaults: 5
+  list: [5] -> Margin(percent=5)
+label: "l"
+  back: Label(s=l) true
+  defaults: "l"
+  list: [l] -> Label(s=l)
+maybeLabel: null
+  back: MaybeLabel(s=null) true
+  defaults: null
+  list: [null] -> MaybeLabel(s=null)
+boxedPoint: {"x":1,"y":2}
+  back: BoxedPoint(p=LibPoint(x=1, y=2)) true
+  defaults: {"x":1,"y":2}
+  list: [1, 2] -> BoxedPoint(p=LibPoint(x=1, y=2))
+layout: {"m":3,"bp":{"x":4}}
+  back: Layout(m=Margin(percent=3), d=Margin(percent=0), n=null, l=Label(s=x), ml=MaybeLabel(s=null), bp=BoxedPoint(p=LibPoint(x=4, y=0)), ms=[], u=1, ul=null) true
+  defaults: {"m":3,"d":0,"n":null,"l":"x","ml":null,"bp":{"x":4,"y":0},"ms":[],"u":1,"ul":null}
+  list: [3, 0, null, x, null, 4, 0, 0, 1, null] -> Layout(m=Margin(percent=3), d=Margin(percent=0), n=null, l=Label(s=x), ml=MaybeLabel(s=null), bp=BoxedPoint(p=LibPoint(x=4, y=0)), ms=[], u=1, ul=null)
+layout2: {"m":3,"d":4,"n":5,"l":"y","ml":"z","bp":{"x":6},"ms":[7],"u":8,"ul":9}
+  back: Layout(m=Margin(percent=3), d=Margin(percent=4), n=Margin(percent=5), l=Label(s=y), ml=MaybeLabel(s=z), bp=BoxedPoint(p=LibPoint(x=6, y=0)), ms=[Margin(percent=7)], u=8, ul=9) true
+  defaults: {"m":3,"d":4,"n":5,"l":"y","ml":"z","bp":{"x":6,"y":0},"ms":[7],"u":8,"ul":9}
+  list: [3, 4, !, 5, y, !, z, 6, 0, 1, 7, 8, !, 9] -> Layout(m=Margin(percent=3), d=Margin(percent=4), n=Margin(percent=5), l=Label(s=y), ml=MaybeLabel(s=z), bp=BoxedPoint(p=LibPoint(x=6, y=0)), ms=[Margin(percent=7)], u=8, ul=9)
+Layout(m=Margin(percent=1), d=Margin(percent=0), n=null, l=Label(s=x), ml=MaybeLabel(s=null), bp=BoxedPoint(p=LibPoint(x=2, y=0)), ms=[], u=1, ul=null)
+framed: {}
+  back: Framed(Margin(percent=1)) false
+  defaults: {"frame":1}
+  list: [1] -> Framed(Margin(percent=1))
+picture: {"frame":2,"title":"p"}
+  back: Picture(Margin(percent=2), p) false
+  defaults: {"frame":2,"title":"p"}
+  list: [2, p] -> Picture(Margin(percent=2), p)
+app.Margin(percent: kotlin.Int)
+Label(text: kotlin.String) true text
+app.Layout(m: app.Margin, d: app.Margin, n: app.Margin?, l: Label, ml: app.MaybeLabel, bp: app.BoxedPoint, ms: kotlin.collections.ArrayList, u: kotlin.UInt, ul: kotlin.ULong?)
 app.Prims
 app.Prims?
 app.Prims(i: kotlin.Int, l: kotlin.Long, s: kotlin.Short, b: kotlin.Byte, c: kotlin.Char, f: kotlin.Float, d: kotlin.Double, z: kotlin.Boolean, str: kotlin.String)
@@ -132,4 +168,7 @@ use: {"p":{"i":1,"l":2,"s":3,"b":4,"c":"c","f":1.5,"d":2.5,"z":true,"str":"s"},"
   back: false
 sub: {"id":2,"more":3} -> Sub(2, t, 3)
 sub: Sub(4, t, 5)
+measured: {"m":4,"l":"m"} -> Measured(m=Margin(percent=4), l=Label(s=m))
+matted: {"w":6} -> Matted(Margin(percent=1), 6)
+matted: Matted(Margin(percent=1), 7)
 app.Prims

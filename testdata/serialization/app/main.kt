@@ -78,6 +78,21 @@ fun main() {
     check("color", Color.serializer(), Color.GREEN)
     check("stamp", Stamp.serializer(), Stamp(5L))
     check("stamp2", Stamp.serializer(), Stamp(1, 2L))
+    check("margin", Margin.serializer(), Margin(5))
+    check("label", Label.serializer(), Label("l"))
+    check("maybeLabel", MaybeLabel.serializer(), MaybeLabel(null))
+    check("boxedPoint", BoxedPoint.serializer(), BoxedPoint(LibPoint(1, 2)))
+    check("layout", Layout.serializer(), Layout(Margin(3), bp = BoxedPoint(LibPoint(4))))
+    check(
+        "layout2", Layout.serializer(),
+        Layout(Margin(3), Margin(4), Margin(5), Label("y"), MaybeLabel("z"), BoxedPoint(LibPoint(6)), listOf(Margin(7)), 8u, 9uL),
+    )
+    println(Json.Default.decodeFromString(Layout.serializer(), """{"m":1,"bp":{"x":2}}"""))
+    check("framed", Framed.serializer(), Framed())
+    check("picture", Picture.serializer(), Picture("p"))
+    println(Margin.serializer().descriptor)
+    println("${Label.serializer().descriptor} ${Label.serializer().descriptor.isInline} ${Label.serializer().descriptor.getElementName(0)}")
+    println(Layout.serializer().descriptor)
     println(serializerOf(Prims::class, null).descriptor.serialName)
     println(serializerOf(Prims::class, typeOf<Prims?>()).descriptor.serialName)
 
