@@ -341,6 +341,11 @@ Point m0 f0x2 <: kotlin/Comparable<p/Point>
     (f m0 f0x0 : kotlin/Function1<p/Point, R>
     (g m0 f0x0 : ext kotlin/Function2<kotlin/String, kotlin/Int, kotlin/Unit>
   label m0 f0x200c000 : kotlin/String
+  component1 m0 f0x200 : kotlin/Int
+  component2 m0 f0x200 : kotlin/Double
+  copy m0 f0x0 : p/Point
+    (x m0 f0x80000 : kotlin/Int
+    (y m0 f0x80000 : kotlin/Double
 Shape m3 f0x0 <: kotlin/Any
 Color m0 f0x0 <: kotlin/Enum<p/Color>
   <init> m0 f0x1000000

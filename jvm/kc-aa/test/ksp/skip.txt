@@ -1,12 +1,11 @@
 testAllFunctions_java_inherits_kt: java-source: line 5: want hashCode(): kotlin.Int got getX(): kotlin.Int
-testAllFunctions_kotlin: synthetic-members: no data-class componentN/copy
 testAllFunctions_kt_inherits_java: java-source: line 15: want size got <init>(): Foo
 testAllUseSiteTargetAppliedToAnnotationList: ka-differs-from-aa: kc gives the expected output, which this runFailingTest records AA as not giving (KEEP-402)
 testAnnotatedUtil: class-literal: kotlin.Throwable::class reaches getAnnotationsByType as kotlin.Throwable, not java.lang.Throwable
 testAnnotationOnReceiver: annotation-target: receiver annotations missing
 testAnnotationValue_java2: java-source: NoSuchElementException: Sequence is empty.
 testAnnotationValue_java: java-source: NoSuchElementException: Sequence is empty.
-testAnnotationValue_kt: java-source: NoSuchElementException: Sequence contains no element matching the predicate.
+testAnnotationValue_kt: java-source: UnsupportedOperationException: kc: no symbol for KtClass @Foo.Nested
 testAnnotationWithArrayValue: java-source: line 4: want classArray = [Any, List<*>] got classArray = Any
 testAnnotationWithDefault: java-source: line 3: want JavaAnnotation2 -> y:y-kotlin:false,x:x-kotlin:false,z:z-default:true got JavaAnnotatio
 testAnnotationWithDefaultValues: java-source: line 5: want KotlinAnnotationLib -> b:defaultInLib,kClassValue:OtherKotlinAnnotation,topLevel got Ko
@@ -14,18 +13,17 @@ testAnnotationWithNestedClassValue: class-literal: Kotlin-mapped nested classes 
 testAnnotationsInDependencies: java-source: line 6: want getter of property prop 189 : annotations.AllTarget{[value = all: : 188]} : <no  got ge
 testAnnotationsRepeatable: java-source: line 13: want lib.Test, KA, [value:1]} got lib.Test, A, [value:1]}
 testAsMemberOf: java-source: NoSuchElementException: Sequence contains no element matching the predicate.
-testBackingFields: java-source: kc: KaKotlinPropertySymbol.initializer
+testBackingFields: java-source: line 20: want lib.JavaClass.javaField: true got lib.MyInterface.interfaceProp_willBeBacked: false
 testCheckOverride: java-source: line 13: want JavaImpl.getX overrides MyInterface.x: true got JavaImpl.getX overrides MyInterface.x:
 testClassKinds: java-source: NullPointerException: null
 testCompanion: companion: companion object naming/order
 testConstructorDeclarations: java-source: line 4: want <init>(kotlin.Int): lib.AbstractJavaClassWithExplicitConstructor got class: AbstractJav
 testCrossModuleTypeAlias: type-alias: library type aliases in other modules
 testDeclarationOrder: java-source: line 23: want b:Ljava/lang/String; got KotlinClass
-testDeclarationPackageName: java-source: kc: no symbol for KtClass class InnerLocal
+testDeclarationPackageName: java-source: UnsupportedOperationException: kc: no symbol for KtClass class InnerLocal
 testDeclarationUtil: local-declarations: no symbols for local declarations
 testDeclarationsInAccessor: local-declarations: no symbols for local declarations
 testDeclarationsInClass: java-members: Java collection members (remove/removeAt) mapping
-testDeclared: java-source: line 2: want subFun got synthetic constructor for Sub
 testDeferredJavaSymbols: java-source: line 1: want K got
 testDeferredTypeRefs: disabled: @Disabled in KSPUnitTestSuite
 testDocString: java-source: line 12: want j1: \n field\n got j1: null
@@ -34,7 +32,7 @@ testErrorTypes: java-source: line 1: want kotlin.collections.MutableMap got ERRO
 testFunctionTypeAlias: type-alias: alias abbreviation equality
 testFunctionTypeAnnotation: type-annotations: function type annotations
 testFunctionTypes: function-types: KFunction/suspend function kinds
-testGetPackage: java-source: line 2: want lib1.propInSource KOTLIN got lib1.FooInSource KOTLIN
+testGetPackage: java-source: line 9: want lib2.Foo KOTLIN_LIB got lib2.FooTypeAlias KOTLIN_LIB
 testGetSymbolsFromAnnotation: java-source: line 2: want <init>:KSFunctionDeclaration got ==== Anno inDepth = true ====
 testGetSymbolsFromAnnotationInLib: local-declarations: no symbols for local declarations
 testGroupedAnnotations: annotation-target: file annotations in groups
@@ -59,10 +57,8 @@ testLibOrigins: java-source: line 10: want Exception: [KotlinLibClass, T1, Any?]
 testLocalClasses: local-declarations: anonymous objects
 testLocations: java-source: line 3: want K:J.java:81 got K:K.kt:60
 testMangledNames: java-source: line 4: want valueOf -> valueOf got get-entries -> getEntries
-testMultipleround: java-source: line 3: want J : <ERROR TYPE: I0>, <ERROR TYPE: I1>, <ERROR TYPE: I2>, <ERROR TYPE: I3>, <ERR got J 
+testMultipleround: java-source: line 3: want J : <ERROR TYPE: I0>, <ERROR TYPE: I1>, <ERROR TYPE: I2>, <ERROR TYPE: I3>, <ERR got J
 testNestedClassType: type-annotations: type argument annotations
-testObjCacheA: unsupported: KaKotlinPropertySymbol.initializer
-testObjCacheB: unsupported: KaKotlinPropertySymbol.initializer
 testPackageProviderForGenerated: generated-java: generated Java sources not in the model
 testParameterTypes: error-types: error type rendering
 testParent: java-source: line 28: want parent of Any: (Any..Any?) got parent of synthetic constructor for B: B
@@ -72,18 +68,17 @@ testRecordJavaAnnotationTypes: java-source: line 3: want kotlin.collections.List
 testRecordJavaGetAllMembers: java-source: IndexOutOfBoundsException: Index 0 out of bounds for length 0
 testRecordJavaOverrides: java-source: line 1: want p1.B: main/p1/A.java got kotlin.Any: main/p1/C.java
 testReferenceElement: java-source: line 1: want KSClassifierReferenceImpl: Qualifier of B is A got KSClassifierReferenceImpl: Qualifier
-testReplaceWithErrorTypeArgs: java-source: kc: type of NotExist1: not a declaration's type
-testResolveJavaType: java-source: kc: containingSymbol of KcLibraryTypeParameterSymbol(X)
+testReplaceWithErrorTypeArgs: java-source: UnsupportedOperationException: kc: type of NotExist1: not a declaration's type
+testResolveJavaType: java-source: UnsupportedOperationException: kc: containingSymbol of KcLibraryTypeParameterSymbol(X)
 testSealedClass: sealed: library sealed inheritors
-testSignatureMapper: java-source: line 2: want a: I got <init>: ()V
-testThrowList: java-source: kc: KaSession.asKaType(PsiType, PsiElement)
+testThrowList: java-source: UnsupportedOperationException: kc: KaSession.asKaType(PsiType, PsiElement)
 testTopLevelMembers: java-source: line 8: want lib : javaFieldInLib -> lib.LibJavaClass got lib : jvmStaticFunctionInLibCompanion -> l
 testTypeAlias: type-annotations: annotations on alias type arguments
 testTypeAliasComparison: type-alias: alias comparison
 testTypeComposure: star-projections: star projection replacement
 testTypeParameterReference: java-source: line 1: want kotlin.Int: false got kotlin.Any: true
 testUseSiteTargets: annotation-target: @all use-site target
-testValidateTypes: java-source: line 2: want goodProp valid got <init> valid
+testValidateTypes: java-source: line 12: want BadJavaClass invalid got BadJavaClass valid
 testValueParameter: value-parameters: isVal/isVar of constructor properties
 testVararg: java-source: NoSuchElementException: Sequence contains no element matching the predicate.
 testVisibilities: java-source: InternalKSPException: >>> Internal KSP Error

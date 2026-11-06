@@ -3,6 +3,10 @@
 package io.github.barteo.kc.aa
 
 import com.intellij.psi.PsiElement
+import org.jetbrains.kotlin.analysis.api.KaConstantInitializerValue
+import org.jetbrains.kotlin.analysis.api.KaExperimentalApi
+import org.jetbrains.kotlin.analysis.api.KaInitializerValue
+import org.jetbrains.kotlin.analysis.api.KaNonConstantInitializerValue
 import org.jetbrains.kotlin.analysis.api.KaSession
 import org.jetbrains.kotlin.analysis.api.annotations.KaAnnotation
 import org.jetbrains.kotlin.analysis.api.annotations.KaAnnotationList
@@ -326,6 +330,16 @@ internal class KcPropertySymbol(val info: KcInfo) : StubKaKotlinPropertySymbol()
     override val hasSetter get() = !isVal
     override val hasBackingField get() = info.decl.has(KcDecl.BACKING_FIELD)
     override val backingFieldSymbol: KaBackingFieldSymbol? get() = backingField
+
+    /** A const val's value; any other property's initializer, if it is in the sources. */
+    @OptIn(KaExperimentalApi::class)
+    override val initializer: KaInitializerValue? by lazy {
+        val init = (info.psi as? KtProperty)?.initializer
+        when (val c = info.decl.default) {
+            is KcValue.Const -> KaConstantInitializerValue(KcConstant.of(c, init), init)
+            else -> init?.let(::KaNonConstantInitializerValue)
+        }
+    }
     override fun createPointer(): KaSymbolPointer<KaKotlinPropertySymbol> = info.pointer()
 
     lateinit var typeParams: List<KaTypeParameterSymbol>
@@ -495,7 +509,17 @@ internal class KcScope(
     private val decls: List<KaDeclarationSymbol>,
     override val token: KaLifetimeToken,
 ) : KaScope {
-    override val declarations get() = decls.asSequence()
+    /**
+     * As FIR's scopes give them: the callables, grouped by name in order of
+     * first appearance with functions before properties, then the
+     * classifiers, then the constructors.
+     */
+    override val declarations: Sequence<KaDeclarationSymbol> get() {
+        val byName = LinkedHashMap<Name?, MutableList<KaCallableSymbol>>()
+        for (c in callables) byName.getOrPut(nameOf(c)) { ArrayList() } += c
+        val grouped = byName.values.flatMap { g -> g.filterIsInstance<KaFunctionSymbol>() + g.filterNot { it is KaFunctionSymbol } }
+        return grouped.asSequence() + classifiers + constructors
+    }
     override fun declarations(nameFilter: (Name) -> Boolean) = decls.asSequence().filter { nameOf(it)?.let(nameFilter) == true }
     override fun declarations(names: Collection<Name>) = declarations { it in names }
     override fun declarations(vararg names: Name) = declarations(names.toList())

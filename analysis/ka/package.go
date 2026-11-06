@@ -96,9 +96,13 @@ func (l *library) pkg(pkg string) *Package {
 			continue
 		}
 		bySig := map[string]*classfile.MemberDetails{}
+		consts := map[string]any{}
 		if data, err := l.cp.Bytes(part.Class); err == nil {
 			if det, err := classfile.ParseDetails(data); err == nil {
 				_, bySig = methods(det)
+			}
+			if info, err := classfile.Parse(data); err == nil {
+				consts = fieldConstants(info)
 			}
 		}
 		owner := internalClassID(part.Class)
@@ -117,7 +121,7 @@ func (l *library) pkg(pkg string) *Package {
 			all, _ := meta.Properties(n)
 			for _, pr := range all {
 				if pr.Flags.MemberKind() == 0 {
-					d := l.kproperty(pr, kscope{}, bySig)
+					d := l.kproperty(pr, kscope{}, bySig, consts)
 					d.ClassID = owner
 					props = append(props, d)
 				}

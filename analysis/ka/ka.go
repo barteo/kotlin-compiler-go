@@ -257,7 +257,7 @@ type Decl struct {
 	// the primary constructor first.
 	Members []*Decl
 	// Default is the default value of an annotation class's
-	// constructor's parameter, if it has one.
+	// constructor's parameter, if it has one, and a const val's value.
 	Default *Value
 }
 

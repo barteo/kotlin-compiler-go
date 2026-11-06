@@ -1,4 +1,5 @@
 testAbstractFunctions
+testAllFunctions_kotlin
 testAnnotationOnConstructorParameter
 testAnnotationTargets
 testAnnotationValue_defaultKClassValue
@@ -9,6 +10,7 @@ testConflictingOverride
 testConstProperties
 testContextParameters
 testDeclarationInconsistency
+testDeclared
 testDeferredSymbols
 testEnumModifiers
 testEquals
@@ -31,6 +33,8 @@ testNestedAnnotations
 testNestedTypeAlias
 testNoOverride
 testNullableTypes
+testObjCacheA
+testObjCacheB
 testOverrideInLib
 testOverrideInSource
 testOverrideOrder
@@ -41,6 +45,7 @@ testRecordJavaResolutions
 testRecordJavaSupertypes
 testRepeatedNonRepeatableAnnotations
 testShadowingAnnotations
+testSignatureMapper
 testSuperTypes
 testTypeComparison2
 testTypeParameterVariance

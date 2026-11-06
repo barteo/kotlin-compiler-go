@@ -332,9 +332,18 @@ func (l *library) kotlinClass(id, name string, outer kscope, depth int) *Decl {
 		}
 		d.Members = append(d.Members, md)
 	}
+	consts := fieldConstants(info)
+	if kc.Kind() == kmeta.KindCompanion {
+		// A companion's const vals have their fields in the outer class.
+		if i := strings.LastIndexByte(name, '$'); i > 0 {
+			if _, oi, _ := l.load(name[:i]); oi != nil {
+				consts = fieldConstants(oi)
+			}
+		}
+	}
 	for _, p := range kc.Props {
 		if p.Flags.MemberKind() != 1 {
-			d.Members = append(d.Members, l.kproperty(p, scope, bySig))
+			d.Members = append(d.Members, l.kproperty(p, scope, bySig, consts))
 		}
 	}
 	for _, f := range kc.Funcs {
@@ -361,7 +370,9 @@ func (l *library) kotlinClass(id, name string, outer kscope, depth int) *Decl {
 
 // kproperty returns the model of property p from metadata, whose class
 // file's methods are bySig.
-func (l *library) kproperty(p *kmeta.Property, scope kscope, bySig map[string]*classfile.MemberDetails) *Decl {
+// consts are the ConstantValues of the fields of the class file that
+// holds p's backing field, by name.
+func (l *library) kproperty(p *kmeta.Property, scope kscope, bySig map[string]*classfile.MemberDetails, consts map[string]any) *Decl {
 	md := &Decl{Kind: KindProperty, Name: p.Name, Visibility: kvisibility(p.Flags.Visibility()),
 		Modality: Modality(p.Flags.Modality())}
 	pf := int(p.Flags)
@@ -380,6 +391,11 @@ func (l *library) kproperty(p *kmeta.Property, scope kscope, bySig map[string]*c
 		md.Receiver = l.ktype(p.Recv, ps, 0)
 	}
 	md.Type = l.ktype(p.Type, ps, 0)
+	if md.Flags&FlagConst != 0 && p.Field != nil {
+		if c, ok := consts[p.Field.Name]; ok {
+			md.Default = l.constValue(c, md.Type)
+		}
+	}
 	if p.Flags&hasAnnotations != 0 && p.Synthetic != nil {
 		if m := bySig[p.Synthetic.Name+p.Synthetic.Desc]; m != nil {
 			md.Annotations = l.annotations(m.Annotations, true)
@@ -1212,4 +1228,42 @@ func enumMembers(id string, withEntries bool, flags Flags) []*Decl {
 			Type: &Type{Kind: TypeClass, ClassID: "kotlin/enums/EnumEntries", Args: []TypeArg{{Type: e()}}}})
 	}
 	return out
+}
+
+// fieldConstants returns the ConstantValues of info's fields, by name.
+func fieldConstants(info *classfile.Info) map[string]any {
+	out := map[string]any{}
+	if info == nil {
+		return out
+	}
+	for _, f := range info.Fields {
+		if f.Constant != nil {
+			out[f.Name] = f.Constant
+		}
+	}
+	return out
+}
+
+// constTags are the element value tags of the types of const vals.
+var constTags = map[string]byte{
+	"kotlin/Boolean": 'Z', "kotlin/Char": 'C', "kotlin/Byte": 'B', "kotlin/Short": 'S',
+	"kotlin/Int": 'I', "kotlin/Long": 'J', "kotlin/Float": 'F', "kotlin/Double": 'D',
+	"kotlin/String": 's', "kotlin/UByte": 'B', "kotlin/UShort": 'S', "kotlin/UInt": 'I',
+	"kotlin/ULong": 'J',
+}
+
+// constValue returns the model of ConstantValue c of a const val of
+// type t, or nil if t can't be one.
+func (l *library) constValue(c any, t *Type) *Value {
+	if t == nil || t.Kind != TypeClass {
+		return nil
+	}
+	tag, ok := constTags[t.ClassID]
+	if !ok {
+		return nil
+	}
+	if i, ok := c.(int32); ok {
+		c = int64(i)
+	}
+	return l.value(&classfile.ElementValue{Tag: tag, Const: c}, t.ClassID, 0)
 }

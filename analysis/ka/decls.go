@@ -1,6 +1,7 @@
 package ka
 
 import (
+	"fmt"
 	"slices"
 
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
@@ -51,6 +52,9 @@ func (b *fileBuilder) decl(d syntax.Decl, owner *syntax.ClassDecl, prefix string
 			md.Type = b.typ(d.Sym.Type, d.Type)
 		} else {
 			md.Type = b.written(d.Type)
+		}
+		if md.Flags&FlagConst != 0 && d.Init != nil && d.Sym != nil {
+			md.Default = b.defaultValue(d.Sym.Type, d.Init, 0)
 		}
 		return md
 	case *syntax.TypeAliasDecl:
@@ -113,6 +117,7 @@ func (b *fileBuilder) class(d *syntax.ClassDecl, prefix string) *Decl {
 			}
 			md.Members = append(md.Members, ctor)
 		}
+		var props []*Decl // the properties of the primary constructor
 		for _, p := range d.CtorParams {
 			if !p.IsProp {
 				continue
@@ -127,7 +132,13 @@ func (b *fileBuilder) class(d *syntax.ClassDecl, prefix string) *Decl {
 				mp.Type = b.written(p.Type)
 			}
 			md.Members = append(md.Members, mp)
+			props = append(props, mp)
 		}
+		defer func() {
+			if d.Data {
+				md.Members = append(md.Members, dataMembers(md, props)...)
+			}
+		}()
 	}
 	for _, e := range d.Entries {
 		md.Members = append(md.Members, &Decl{Kind: KindEnumEntry, Name: e.Name, Node: b.prov.Node(e),
@@ -391,4 +402,32 @@ func memberModality(m *syntax.Modifiers, owner *syntax.ClassDecl, noBody bool) M
 		return ModalityOpen
 	}
 	return ModalityFinal
+}
+
+// dataMembers returns the members Kotlin generates for data class md
+// with primary constructor properties props, as FIR has them after the
+// class's own members: componentN for each property, then copy.
+// equals, hashCode and toString are generated later, so FIR's
+// declarations don't have them.
+func dataMembers(md *Decl, props []*Decl) []*Decl {
+	var out []*Decl
+	for i, p := range props {
+		out = append(out, &Decl{Kind: KindFunction, Name: fmt.Sprintf("component%d", i+1),
+			Visibility: p.Visibility, Modality: ModalityFinal, Flags: FlagOperator, Type: p.Type})
+	}
+	cp := &Decl{Kind: KindFunction, Name: "copy", Visibility: Public, Modality: ModalityFinal}
+	for _, m := range md.Members {
+		if m.Kind == KindConstructor && m.Flags&FlagPrimary != 0 {
+			cp.Visibility = m.Visibility
+		}
+	}
+	self := &Type{Kind: TypeClass, ClassID: md.ClassID}
+	for _, tp := range md.TypeParams {
+		self.Args = append(self.Args, TypeArg{Type: &Type{Kind: TypeParameter, Name: tp.Name, Param: tp.Node}})
+	}
+	cp.Type = self
+	for _, p := range props {
+		cp.Params = append(cp.Params, &Decl{Kind: KindValueParameter, Name: p.Name, Type: p.Type, Flags: FlagHasDefault})
+	}
+	return append(out, cp)
 }

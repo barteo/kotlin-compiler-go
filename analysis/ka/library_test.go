@@ -299,3 +299,43 @@ class Base {}
 		t.Errorf("java/lang/Thread: want a JDK class, got %+v", d)
 	}
 }
+
+func TestLibraryConstants(t *testing.T) {
+	m := update(t, "package p\nconst val K = 1 + 2\nconst val S = \"a\" + K\nval notConst = 3\n")
+	defer m.Close()
+	find := func(ds []*Decl, name string) *Decl {
+		for _, d := range ds {
+			if d.Name == name {
+				return d
+			}
+		}
+		t.Fatalf("no %s", name)
+		return nil
+	}
+	for _, c := range []struct {
+		d    *Decl
+		want string
+	}{
+		{find(m.Package("kotlin.io").Decls, "DEFAULT_BUFFER_SIZE"), "Int 8192"},
+		{find(m.Class("kotlin/KotlinVersion.Companion").Members, "MAX_COMPONENT_VALUE"), "Int 255"},
+		{find(m.Class("kotlin/text/Typography").Members, "quote"), "Char 34"},
+		{find(m.Files[0].Decls, "K"), "Int 3"},
+		{find(m.Files[0].Decls, "S"), "String a3"},
+	} {
+		v := c.d.Default
+		if v == nil || v.Kind != ValueConst {
+			t.Errorf("%s: %+v, want a constant", c.d.Name, v)
+			continue
+		}
+		got := fmt.Sprintf("%v %d", map[ConstKind]string{ConstInt: "Int", ConstChar: "Char"}[v.Const], v.Bits)
+		if v.Const == ConstString {
+			got = "String " + v.Str
+		}
+		if got != c.want {
+			t.Errorf("%s: %s, want %s", c.d.Name, got, c.want)
+		}
+	}
+	if d := find(m.Files[0].Decls, "notConst"); d.Default != nil {
+		t.Errorf("notConst: %+v, want no value", d.Default)
+	}
+}
