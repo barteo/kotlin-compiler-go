@@ -63,8 +63,8 @@ and `TODO`. Use the Java classes directly for the rest. Also:
 
 Not supported: generic classes; interfaces annotated `@Serializable`
 that aren't sealed; local classes; superclasses from other modules;
-more than 32 properties; custom serializers of properties
-(`@Serializable(with = ...)` on a property, `@Contextual`,
+more than 32 properties; some ways of naming serializers of properties
+(a generic class in `@Serializable(with = ...)` on a property, `@Contextual`,
 `@UseSerializers`); `@EncodeDefault`; the annotations that formats read
 (`@JsonNames`, `@ProtoNumber`...); arrays and the other types with
 built-in serializers (`Duration`, `Uuid`...). Properties can be of the

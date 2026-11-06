@@ -61,8 +61,15 @@ func (c *Checker) importsSerialization() bool {
 // customSerializer returns the tokens of the class literal S::class of a
 // class's @Serializable(with = S::class) annotation, without ::class, or nil.
 func customSerializer(cd *syntax.ClassDecl) []syntax.Token {
-	for i := range cd.Annotations {
-		a := &cd.Annotations[i]
+	return withSerializer(cd.Annotations)
+}
+
+// withSerializer returns the tokens of the class literal S::class of an
+// annotation @Serializable(with = S::class) among as, without ::class, or
+// nil.
+func withSerializer(as []syntax.Annotation) []syntax.Token {
+	for i := range as {
+		a := &as[i]
 		if a.Name != "Serializable" && a.Name != "kotlinx.serialization.Serializable" || len(a.Args) != 1 {
 			continue
 		}

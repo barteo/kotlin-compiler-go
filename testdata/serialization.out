@@ -148,6 +148,21 @@ picture: {"frame":2,"title":"p"}
 app.Margin(percent: kotlin.Int)
 Label(text: kotlin.String) true text
 app.Layout(m: app.Margin, d: app.Margin, n: app.Margin?, l: Label, ml: app.MaybeLabel, bp: app.BoxedPoint, ms: kotlin.collections.ArrayList, u: kotlin.UInt, ul: kotlin.ULong?)
+painted: {"fg":"#abc","name":"X"}
+  back: Painted(fg=Rgb(packed=2748), bg=Rgb(packed=255), accent=null, rating=3, bonus=null, name=x) true
+  defaults: {"fg":"#abc","bg":"#ff","accent":null,"rating":"***","bonus":null,"name":"X","note":"N"}
+  list: [#abc, #ff, null, ***, null, X, N] -> Painted(fg=Rgb(packed=2748), bg=Rgb(packed=255), accent=null, rating=3, bonus=null, name=x)
+painted2: {"fg":"#1","bg":"#2","accent":"#3","rating":"****","bonus":"*****","name":"Y","note":"Z"}
+  back: Painted(fg=Rgb(packed=1), bg=Rgb(packed=2), accent=Rgb(packed=3), rating=4, bonus=5, name=y) true
+  defaults: {"fg":"#1","bg":"#2","accent":"#3","rating":"****","bonus":"*****","name":"Y","note":"Z"}
+  list: [#1, #2, !, #3, ****, !, *****, Y, Z] -> Painted(fg=Rgb(packed=1), bg=Rgb(packed=2), accent=Rgb(packed=3), rating=4, bonus=5, name=y)
+Painted(fg=Rgb(packed=16), bg=Rgb(packed=255), accent=null, rating=3, bonus=2, name=name) note
+app.Painted(fg: app.Rgb, bg: app.Rgb, accent: app.Rgb?, rating: app.Stars, bonus: app.Stars?, name: lib.Upper, note: lib.Upper)
+rating: "**"
+  back: Rating(n=2) true
+  defaults: "**"
+  list: [**] -> Rating(n=2)
+PrimitiveDescriptor(app.Stars)
 app.Prims
 app.Prims?
 app.Prims(i: kotlin.Int, l: kotlin.Long, s: kotlin.Short, b: kotlin.Byte, c: kotlin.Char, f: kotlin.Float, d: kotlin.Double, z: kotlin.Boolean, str: kotlin.String)
@@ -171,4 +186,5 @@ sub: Sub(4, t, 5)
 measured: {"m":4,"l":"m"} -> Measured(m=Margin(percent=4), l=Label(s=m))
 matted: {"w":6} -> Matted(Margin(percent=1), 6)
 matted: Matted(Margin(percent=1), 7)
+gallery: {"items":[{"fg":"#7","name":"G"}]} -> Gallery(items=[Painted(fg=Rgb(packed=7), bg=Rgb(packed=255), accent=null, rating=3, bonus=null, name=g)])
 app.Prims

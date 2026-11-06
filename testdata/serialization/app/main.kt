@@ -93,6 +93,15 @@ fun main() {
     println(Margin.serializer().descriptor)
     println("${Label.serializer().descriptor} ${Label.serializer().descriptor.isInline} ${Label.serializer().descriptor.getElementName(0)}")
     println(Layout.serializer().descriptor)
+    check("painted", Painted.serializer(), Painted(Rgb(0xABCuL), name = "x"))
+    check(
+        "painted2", Painted.serializer(),
+        Painted(Rgb(1uL), Rgb(2uL), Rgb(3uL), 4, 5, "y").apply { note = "z" },
+    )
+    println(Json.Default.decodeFromString(Painted.serializer(), """{"fg":"#10","name":"NAME","bonus":"**","note":"NOTE"}""").let { "$it ${it.note}" })
+    println(Painted.serializer().descriptor)
+    check("rating", Rating.serializer(), Rating(2))
+    println(Rating.serializer().descriptor.getElementDescriptor(0))
     println(serializerOf(Prims::class, null).descriptor.serialName)
     println(serializerOf(Prims::class, typeOf<Prims?>()).descriptor.serialName)
 

@@ -49,8 +49,12 @@ import (
 // runtime as the plugin's code does. Codegen writes the synthetic
 // constructor (syntax.Serial) and write$Self (FunDecl.SelfStatic).
 //
-// Generic classes, interfaces that aren't sealed, custom serializers of properties
-// (@Serializable(with = ...), @Contextual), annotations that formats read
+// A property annotated @Serializable(with = S::class) is written with S,
+// an object, or a new S each time, where kotlinc's plugin keeps one in the
+// class's $childSerializers.
+//
+// Generic classes, interfaces that aren't sealed, generic serializers of
+// properties, @Contextual, annotations that formats read
 // (@JsonNames, @ProtoNumber...) and the types kc knows no serializer for
 // are unsupported.
 
@@ -463,7 +467,14 @@ func (c *Checker) valueSerializerBodies(in *serialInfo) {
 	cd := in.cd
 	p := cd.Serial.Props[0]
 	t := p.Sym().Type
-	ser := c.serialSerializer(t.NonNull())
+	ser, ok := c.propSerializer(p.Annotations(), p.Param.P, true)
+	if !ok {
+		return
+	}
+	custom := ser != ""
+	if !custom {
+		ser = c.serialSerializer(t.NonNull())
+	}
 	if ser == "" {
 		c.unsupported(p.Param.P, "serialization", "serialization can't write a property of type %s", t)
 		return
@@ -477,7 +488,7 @@ func (c *Checker) valueSerializerBodies(in *serialInfo) {
 	typ, _ := kotlinType(t)
 	var enc, dec string
 	switch m := serialPrimitives[t.K]; {
-	case m != "" && !t.N:
+	case m != "" && !t.N && !custom:
 		enc = fmt.Sprintf("encode%s(%s)", m, v)
 		dec = fmt.Sprintf("decode%s()", m)
 	case t.N:
@@ -731,18 +742,28 @@ func (c *Checker) serialFill(in *serialInfo) {
 	}
 	inherited := len(all) - len(serial.Props)
 	sers := make([]string, len(all))
+	custom := make([]bool, len(all))
 	for i, p := range all {
 		t := p.Sym().Type
+		report := i >= inherited // the superclass's are reported with it
+		var pos syntax.Pos
+		if p.Param != nil {
+			pos = p.Param.P
+		} else {
+			pos = p.Prop.P
+		}
+		s, ok := c.propSerializer(p.Annotations(), pos, report)
+		if !ok {
+			return
+		}
+		if s != "" {
+			sers[i], custom[i] = s, true
+			continue
+		}
 		if sers[i] = c.serialSerializer(t.NonNull()); sers[i] != "" {
 			continue
 		}
-		if i >= inherited { // the superclass's are reported with it
-			var pos syntax.Pos
-			if p.Param != nil {
-				pos = p.Param.P
-			} else {
-				pos = p.Prop.P
-			}
+		if report {
 			c.unsupported(pos, "serialization", "serialization can't write a property of type %s", t)
 		}
 		return
@@ -784,7 +805,7 @@ func (c *Checker) serialFill(in *serialInfo) {
 	for i, p := range serial.Props {
 		j := inherited + i
 		v := "this.`" + p.Sym().Name + "`"
-		enc := serialEncode(p.Sym().Type, j, sers[j], v)
+		enc := serialEncode(p.Sym().Type, j, sers[j], v, custom[j])
 		if in.defaults[i] == nil {
 			b.WriteString(enc)
 			continue
@@ -803,12 +824,13 @@ func (c *Checker) serialFill(in *serialInfo) {
 	if in.ser == nil {
 		return // abstract
 	}
-	c.serializerBodies(in, all, sers)
+	c.serializerBodies(in, all, sers, custom)
 }
 
 // serializerBodies writes the members of a class's $serializer that
-// depend on its properties, all, whose serializers are sers.
-func (c *Checker) serializerBodies(in *serialInfo, all []*syntax.SerialProp, sers []string) {
+// depend on its properties, all, whose serializers are sers, custom where
+// the property names its own.
+func (c *Checker) serializerBodies(in *serialInfo, all []*syntax.SerialProp, sers []string, custom []bool) {
 	cd := in.cd
 	// The descriptor names the properties.
 	var b strings.Builder
@@ -869,7 +891,7 @@ func (c *Checker) serializerBodies(in *serialInfo, all []*syntax.SerialProp, ser
 	b.WriteString("val `$c` = decoder.beginStructure(`$d`)\n" +
 		"if (`$c`.decodeSequentially()) {\n")
 	for i, p := range all {
-		b.WriteString(serialDecode(p.Sym().Type, i, sers[i]))
+		b.WriteString(serialDecode(p.Sym().Type, i, sers[i], custom[i]))
 	}
 	b.WriteString("} else {\n" +
 		"while (`$flag`) {\n" +
@@ -877,7 +899,7 @@ func (c *Checker) serializerBodies(in *serialInfo, all []*syntax.SerialProp, ser
 		"when (`$index`) {\n" +
 		"-1 -> `$flag` = false\n")
 	for i, p := range all {
-		fmt.Fprintf(&b, "%d -> {\n%s}\n", i, serialDecode(p.Sym().Type, i, sers[i]))
+		fmt.Fprintf(&b, "%d -> {\n%s}\n", i, serialDecode(p.Sym().Type, i, sers[i], custom[i]))
 	}
 	b.WriteString("else -> throw kotlinx.serialization.UnknownFieldException(`$index`)\n" +
 		"}\n" +
@@ -991,9 +1013,9 @@ var serialPrimitives = map[types.Kind]string{
 }
 
 // serialEncode returns the statement of write$Self that writes element i,
-// v, of type t, whose serializer is ser.
-func serialEncode(t types.Type, i int, ser, v string) string {
-	if m := serialPrimitives[t.K]; m != "" && !t.N {
+// v, of type t, whose serializer is ser, custom if the property names it.
+func serialEncode(t types.Type, i int, ser, v string, custom bool) string {
+	if m := serialPrimitives[t.K]; m != "" && !t.N && !custom {
 		return fmt.Sprintf("output.encode%sElement(serialDesc, %d, %s)\n", m, i, v)
 	}
 	if t.N {
@@ -1003,14 +1025,14 @@ func serialEncode(t types.Type, i int, ser, v string) string {
 }
 
 // serialDecode returns the statements of deserialize that read element i,
-// of type t, whose serializer is ser, into its local. A collection's
-// serializer reads a List, Set or Map: the value is cast to t, as
-// kotlinc's code does.
-func serialDecode(t types.Type, i int, ser string) string {
+// of type t, whose serializer is ser, custom if the property names it,
+// into its local. A collection's serializer reads a List, Set or Map: the
+// value is cast to t, as kotlinc's code does.
+func serialDecode(t types.Type, i int, ser string, custom bool) string {
 	var x string
 	typ, _ := kotlinType(t)
 	switch m := serialPrimitives[t.K]; {
-	case m != "" && !t.N:
+	case m != "" && !t.N && !custom:
 		x = fmt.Sprintf("`$c`.decode%sElement(`$d`, %d)", m, i)
 	case t.N:
 		x = fmt.Sprintf("(`$c`.decodeNullableSerializableElement(`$d`, %d, %s, `$v%d`) as %s)", i, ser, i, typ)
@@ -1018,6 +1040,39 @@ func serialDecode(t types.Type, i int, ser string) string {
 		x = fmt.Sprintf("(`$c`.decodeSerializableElement(`$d`, %d, %s, `$v%d`) as %s)", i, ser, i, typ)
 	}
 	return fmt.Sprintf("`$v%d` = %s\n`$seen0` = `$seen0` or %d\n", i, x, 1<<i)
+}
+
+// propSerializer returns the Kotlin of the serializer that a property's
+// @Serializable(with = S::class), among its annotations as, names: S, an
+// object, or else a new S. It returns "" if the property names none, and
+// false, after it reports it if report is set, if kc can't make S.
+func (c *Checker) propSerializer(as []syntax.Annotation, pos syntax.Pos, report bool) (string, bool) {
+	toks := withSerializer(as)
+	if toks == nil {
+		return "", true
+	}
+	var name strings.Builder
+	for _, t := range toks {
+		name.WriteString(t.Text)
+	}
+	cls := c.classRef(qualifiedExpr(name.String(), pos))
+	if cls == nil {
+		if report {
+			c.errorf(pos, "unresolved reference '%s'", name.String())
+		}
+		return "", false
+	}
+	cls.Ensure()
+	switch {
+	case len(cls.TypeParams) > 0:
+		if report {
+			c.unsupported(pos, "serialization", "generic serializers of properties are not supported")
+		}
+		return "", false
+	case cls.Object:
+		return fqName(cls), true
+	}
+	return fqName(cls) + "()", true
 }
 
 // serialNullable returns the serializer of a nullable type t, from ser,

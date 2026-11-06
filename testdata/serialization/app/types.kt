@@ -1,14 +1,21 @@
 package app
 
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Required
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
+import kotlinx.serialization.descriptors.PrimitiveKind
+import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
+import kotlinx.serialization.descriptors.SerialDescriptor
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
 import lib.LibColor
 import lib.LibObj
 import lib.LibPlain
 import lib.LibPoint
 import lib.LibShape
+import lib.LibUpper
 
 val log = mutableListOf<String>()
 
@@ -236,3 +243,38 @@ open class Framed(val frame: Margin = Margin(1)) {
 class Picture(val title: String) : Framed(Margin(2)) {
     override fun toString() = "Picture($frame, $title)"
 }
+
+// Properties that name their serializers: an object's, of a value class
+// that isn't @Serializable, as Compose's Color, a class's, and another
+// module's.
+@JvmInline
+value class Rgb(val packed: ULong)
+
+object RgbSerializer : KSerializer<Rgb> {
+    override val descriptor: SerialDescriptor = PrimitiveSerialDescriptor("app.Rgb", PrimitiveKind.STRING)
+    override fun serialize(encoder: Encoder, value: Rgb) = encoder.encodeString("#" + value.packed.toString(16))
+    override fun deserialize(decoder: Decoder): Rgb = Rgb(decoder.decodeString().drop(1).toULong(16))
+}
+
+class Stars : KSerializer<Int> {
+    override val descriptor: SerialDescriptor = PrimitiveSerialDescriptor("app.Stars", PrimitiveKind.STRING)
+    override fun serialize(encoder: Encoder, value: Int) = encoder.encodeString("*".repeat(value))
+    override fun deserialize(decoder: Decoder): Int = decoder.decodeString().length
+}
+
+@Serializable
+data class Painted(
+    @Serializable(with = RgbSerializer::class) val fg: Rgb,
+    @Serializable(with = RgbSerializer::class) val bg: Rgb = Rgb(0xFFuL),
+    @Serializable(with = RgbSerializer::class) val accent: Rgb? = null,
+    @Serializable(with = Stars::class) val rating: Int = 3,
+    @Serializable(with = Stars::class) val bonus: Int? = null,
+    @Serializable(with = LibUpper::class) val name: String,
+) {
+    @Serializable(with = LibUpper::class)
+    var note: String = "n"
+}
+
+@Serializable
+@JvmInline
+value class Rating(@Serializable(with = Stars::class) val n: Int)
