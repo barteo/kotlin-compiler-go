@@ -293,3 +293,41 @@ data class Encoded(
     @EncodeDefault(EncodeDefault.Mode.NEVER)
     var body: Int = 3
 }
+
+// A sealed class's serializer has those of its subclasses that have one,
+// in the order of their names, through sealed subclasses that aren't
+// @Serializable too. It can't write the others.
+@Serializable
+sealed class Pet {
+    @Serializable
+    data class Zebra(val stripes: Int) : Pet()
+
+    data class Plain(val n: Int) : Pet()
+
+    data object Stray : Pet()
+
+    sealed class Wild : Pet() {
+        @Serializable
+        data class Fox(val tail: Int) : Wild()
+
+        class Wolf : Wild()
+    }
+
+    @Serializable
+    data class Cat(val lives: Int = 9) : Pet()
+
+    @Serializable
+    abstract class Robot : Pet()
+}
+
+@Serializable
+sealed interface Shelter {
+    @Serializable
+    data class Kennel(val size: Int) : Shelter
+
+    class Box : Shelter
+
+    enum class Kind : Shelter { DOG, CAT }
+
+    interface Other : Shelter
+}

@@ -76,11 +76,20 @@ func (g *gen) serialCtor(cd *syntax.ClassDecl, sc *syntax.SecondaryCtor) {
 		}
 		g.code.Invoke(cf.INVOKESPECIAL, sd.Sym.Name, "<init>", d)
 	} else {
-		super := "java/lang/Object"
-		if cls.Super != nil {
-			super = cls.Super.Name
+		super, d := "java/lang/Object", "()V"
+		if s := cls.Super; s != nil {
+			super = s.Name
+			// A sealed class's constructor is private: it is called
+			// through the constructor that takes a marker.
+			for _, f := range append([]*types.FunSym{s.Ctor}, s.Ctors...) {
+				if f != nil && len(f.Params) == 0 && g.viaMarker(f) {
+					g.useMarker(f)
+					d = g.marker(d)
+					break
+				}
+			}
 		}
-		g.code.Invoke(cf.INVOKESPECIAL, super, "<init>", "()V")
+		g.code.Invoke(cf.INVOKESPECIAL, super, "<init>", d)
 	}
 
 	g.fieldParams = map[*types.VarSym]*types.VarSym{}

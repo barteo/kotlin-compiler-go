@@ -3,6 +3,7 @@ package check
 import (
 	"fmt"
 	"reflect"
+	"slices"
 	"strings"
 
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
@@ -988,39 +989,36 @@ func serialProps(cd *syntax.ClassDecl) []*syntax.SerialProp {
 
 // sealedSerializer writes the serializer of a sealed class or interface:
 // a SealedClassSerializer of its subclasses, the classes and objects that
-// inherit from it, directly or through sealed classes and interfaces.
+// inherit from it, directly or through sealed classes and interfaces, in
+// the order of their names. As the plugin's, it leaves out those it finds
+// no serializer for, as a class that isn't @Serializable, which it then
+// fails to write at run time.
 func (c *Checker) sealedSerializer(in *serialInfo) {
 	if in.lazy == nil && in.serializer == nil {
 		return
 	}
 	var classes, sers []string
-	var visit func(cls *types.ClassSym) bool
-	visit = func(cls *types.ClassSym) bool {
-		for _, sub := range cls.Subclasses {
-			sd, ok := sub.Decl.(*syntax.ClassDecl)
-			switch {
-			case !ok:
-				return false
-			case sd.Sealed && (sd.Serial != nil || c.u.serialInterfaces[sd]):
-				if !visit(sub) {
-					return false
-				}
+	var visit func(cls *types.ClassSym)
+	visit = func(cls *types.ClassSym) {
+		subs := slices.Clone(cls.Subclasses)
+		slices.SortFunc(subs, func(a, b *types.ClassSym) int { return strings.Compare(fqName(a), fqName(b)) })
+		for _, sub := range subs {
+			sub.Ensure()
+			if sub.Sealed {
+				visit(sub)
 				continue
-			case sd.Serial != nil && !sd.Abstract:
-				sers = append(sers, fqName(sub)+".`$serializer`")
-			case sd.Object && c.hasSerializerFun(sub):
-				sers = append(sers, fqName(sub)+".serializer()")
-			default:
-				c.unsupported(sd.P, "serialization", "subclasses of @Serializable sealed classes that aren't @Serializable are not supported")
-				return false
+			}
+			var ser string
+			if sd, ok := sub.Decl.(*syntax.ClassDecl); ok && sd.Serial != nil && sd.Abstract {
+				ser = "kotlinx.serialization.PolymorphicSerializer(" + fqName(sub) + "::class)"
+			} else if ser = c.serialSerializer(sub.This()); ser == "" {
+				continue
 			}
 			classes = append(classes, fqName(sub)+"::class")
+			sers = append(sers, ser)
 		}
-		return true
 	}
-	if !visit(in.cd.Sym) {
-		return
-	}
+	visit(in.cd.Sym)
 	x := fmt.Sprintf("kotlinx.serialization.SealedClassSerializer(%q, %[2]s::class, arrayOf<kotlin.reflect.KClass<out %[2]s>>(%[3]s), arrayOf<kotlinx.serialization.KSerializer<out %[2]s>>(%[4]s))",
 		in.name, in.fq, strings.Join(classes, ", "), strings.Join(sers, ", "))
 	if in.serializer != nil {

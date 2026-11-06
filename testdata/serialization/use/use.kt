@@ -8,11 +8,13 @@ import app.Outer
 import app.Page
 import app.Painted
 import app.Rgb
+import app.Pet
 import app.Prims
 import app.Route
 import app.Shape
 import app.WithCompanion
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.serializer
 
@@ -42,6 +44,8 @@ fun main() {
     println("matted: ${Json.decodeFromString(Matted.serializer(), """{"w":7}""")}")
     val g = Json.encodeToString(Gallery.serializer(), Gallery(listOf(Painted(Rgb(7uL), name = "g"))))
     println("gallery: $g -> ${Json.decodeFromString(Gallery.serializer(), g)}")
+    val pets = Json.encodeToString(ListSerializer(Pet.serializer()), listOf(Pet.Cat(1), Pet.Wild.Fox(2)))
+    println("pets: $pets -> ${Json.decodeFromString(ListSerializer(Pet.serializer()), pets)}")
     println(serializer<Prims>().descriptor.serialName)
 }
 

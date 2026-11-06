@@ -170,6 +170,29 @@ encoded2: {"plain":2,"always":"b","alwaysMode":3,"never":["x"],"neverNamed":true
   back: Encoded(plain=2, always=b, alwaysMode=3, never=[x], neverNamed=true) true
   defaults: {"plain":2,"always":"b","alwaysMode":3,"never":["x"],"neverNamed":true,"body":4}
 Encoded(plain=1, always=a, alwaysMode=2, never=[y], neverNamed=false) 5
+pet: {"type":"app.Pet.Zebra","stripes":3}
+  back: Zebra(stripes=3) true
+  defaults: {"type":"app.Pet.Zebra","stripes":3}
+  list: [app.Pet.Zebra, 3] -> Zebra(stripes=3)
+pet nested: {"type":"app.Pet.Wild.Fox","tail":1}
+  back: Fox(tail=1) true
+  defaults: {"type":"app.Pet.Wild.Fox","tail":1}
+  list: [app.Pet.Wild.Fox, 1] -> Fox(tail=1)
+pet cat: {"type":"app.Pet.Cat"}
+  back: Cat(lives=9) true
+  defaults: {"type":"app.Pet.Cat","lives":9}
+  list: [app.Pet.Cat, 9] -> Cat(lives=9)
+SerializationException: Serializer for subclass 'Plain' is not found in the polymorphic scope of 'Pet'.
+SerializationException: Serializer for subclass 'Stray' is not found in the polymorphic scope of 'Pet'.
+SerializationException: Serializer for subclass 'Wolf' is not found in the polymorphic scope of 'Pet'.
+kotlinx.serialization.Sealed<Pet>(app.Pet.Cat: app.Pet.Cat, kotlinx.serialization.Polymorphic<Robot>: kotlinx.serialization.Polymorphic<Robot>, app.Pet.Wild.Fox: app.Pet.Wild.Fox, app.Pet.Zebra: app.Pet.Zebra)
+shelter: {"type":"app.Shelter.Kennel","size":2}
+  back: Kennel(size=2) true
+  defaults: {"type":"app.Shelter.Kennel","size":2}
+  list: [app.Shelter.Kennel, 2] -> Kennel(size=2)
+SerializationException: Serializer for subclass 'Box' is not found in the polymorphic scope of 'Shelter'.
+IllegalStateException: Enums cannot be serialized polymorphically with 'type' parameter. You can use 'JsonBuilder.useArrayPolymorphism' instead
+kotlinx.serialization.Sealed<Shelter>(app.Shelter.Kennel: app.Shelter.Kennel, app.Shelter.Kind: app.Shelter.Kind, kotlinx.serialization.Polymorphic<Other>: kotlinx.serialization.Polymorphic<Other>)
 app.Prims
 app.Prims?
 app.Prims(i: kotlin.Int, l: kotlin.Long, s: kotlin.Short, b: kotlin.Byte, c: kotlin.Char, f: kotlin.Float, d: kotlin.Double, z: kotlin.Boolean, str: kotlin.String)
@@ -194,4 +217,5 @@ measured: {"m":4,"l":"m"} -> Measured(m=Margin(percent=4), l=Label(s=m))
 matted: {"w":6} -> Matted(Margin(percent=1), 6)
 matted: Matted(Margin(percent=1), 7)
 gallery: {"items":[{"fg":"#7","name":"G"}]} -> Gallery(items=[Painted(fg=Rgb(packed=7), bg=Rgb(packed=255), accent=null, rating=3, bonus=null, name=g)])
+pets: [{"type":"app.Pet.Cat","lives":1},{"type":"app.Pet.Wild.Fox","tail":2}] -> [Cat(lives=1), Fox(tail=2)]
 app.Prims
