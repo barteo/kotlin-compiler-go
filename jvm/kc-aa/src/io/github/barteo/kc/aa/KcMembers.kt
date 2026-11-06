@@ -130,7 +130,13 @@ internal class KcMemberBuilder(private val round: KcRound, private val c: KcClas
                 val m = members[0]
                 if (unchanged(m)) m.symbol else fake(m, KaSymbolOrigin.SUBSTITUTION_OVERRIDE, emptyList(), key)
             } else {
-                val chosen = members.firstOrNull { it.symbol.modality != KaSymbolModality.ABSTRACT } ?: members[0]
+                // FIR's most specific member: one whose return type is a
+                // subtype of all the others', a non-abstract one first.
+                val ret = members.associateWith { it.sub.substitute(it.symbol.returnType) }
+                val specific = members.filter { m ->
+                    members.all { o -> o === m || round.relations.isSubtype(ret.getValue(m), ret.getValue(o), true) }
+                }.ifEmpty { members }
+                val chosen = specific.firstOrNull { it.symbol.modality != KaSymbolModality.ABSTRACT } ?: specific[0]
                 fake(chosen, KaSymbolOrigin.INTERSECTION_OVERRIDE, members.map { it.symbol }, key)
             }
         }

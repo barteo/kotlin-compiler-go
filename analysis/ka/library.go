@@ -31,6 +31,34 @@ type library struct {
 
 	defaultOnce sync.Once
 	defaults    map[string]*Decl // see defaultAliases
+
+	builtinsOnce sync.Once
+	builtins     map[string]*kmeta.Class // see builtinClasses
+}
+
+// builtinClasses returns the classes of the class path's .kotlin_builtins
+// files, by class ID: the built-in classes, as kotlin/String and
+// kotlin/collections/List, that have no class files of their own.
+func (l *library) builtinClasses() map[string]*kmeta.Class {
+	l.builtinsOnce.Do(func() {
+		l.builtins = map[string]*kmeta.Class{}
+		for _, name := range l.cp.Resources(".kotlin_builtins") {
+			data, err := l.cp.Resource(name)
+			if err != nil {
+				continue
+			}
+			b, err := kmeta.ReadBuiltins(data)
+			if err != nil {
+				continue
+			}
+			for _, c := range b.Classes {
+				if _, dup := l.builtins[c.Name]; !dup {
+					l.builtins[c.Name] = c
+				}
+			}
+		}
+	})
+	return l.builtins
 }
 
 // maxNesting bounds how deep Class models nested classes.
@@ -101,14 +129,22 @@ func (l *library) class(id string) *Decl {
 			cls = l.lib.Class(jid)
 		}
 	}
-	if cls == nil {
-		return nil
-	}
-	if cls.Decl != nil {
+	if cls != nil && cls.Decl != nil {
 		return nil // a class of the program
 	}
-	cls.Ensure()
-	if cls.Missing {
+	if cls != nil {
+		cls.Ensure()
+	}
+	if d := l.builtinClass(id, nil, 0); d != nil {
+		// Kotlin adds java/io/Serializable to the classes it maps whose
+		// Java classes are.
+		if cls != nil && !cls.Missing && d.Kind != KindInterface &&
+			slices.ContainsFunc(javaSupertypes(&fileBuilder{}, cls, d.Kind, nonNull), func(t *Type) bool { return t.ClassID == "java/io/Serializable" }) {
+			d.Supertypes = append([]*Type{{Kind: TypeClass, ClassID: "java/io/Serializable"}}, d.Supertypes...)
+		}
+		return d
+	}
+	if cls == nil || cls.Missing {
 		return nil
 	}
 	if cls.KotlinName == "" && classID(cls) == id && l.cp.Has(cls.Name) && !strings.HasPrefix(id, "kotlin/") {
@@ -269,6 +305,23 @@ func (l *library) kotlinClass(id, name string, outer kscope, depth int) *Decl {
 	if kc == nil || kc.Name != id {
 		return nil
 	}
+	return l.kotlinDecl(kc, info, det, id, name, outer, depth)
+}
+
+// builtinClass returns the model of built-in class id from
+// .kotlin_builtins, nested in a class whose type parameters are outer;
+// nil if there's no such class.
+func (l *library) builtinClass(id string, outer kscope, depth int) *Decl {
+	kc := l.builtinClasses()[id]
+	if kc == nil {
+		return nil
+	}
+	return l.kotlinDecl(kc, nil, &classfile.Details{}, id, "", outer, depth)
+}
+
+// kotlinDecl returns the model of Kotlin class kc, whose class file is
+// name, with info and det, or "" for a built-in class.
+func (l *library) kotlinDecl(kc *kmeta.Class, info *classfile.Info, det *classfile.Details, id, name string, outer kscope, depth int) *Decl {
 	d := &Decl{Kind: KindClass, Name: simpleName(id), ClassID: id,
 		Visibility: kvisibility(kc.Flags.Visibility()), Modality: Modality(kc.Flags.Modality()),
 		Module: kc.ModuleName, Inheritors: kc.SealedSubclasses}
@@ -296,7 +349,7 @@ func (l *library) kotlinClass(id, name string, outer kscope, depth int) *Decl {
 	set(kmeta.ClassExpect, FlagExpect)
 	set(kmeta.ClassValue, FlagValue)
 	set(kmeta.ClassFun, FlagFun)
-	if info.Inner != nil && kc.Flags&kmeta.ClassInner == 0 && depth > 0 {
+	if (info == nil || info.Inner != nil) && kc.Flags&kmeta.ClassInner == 0 && depth > 0 {
 		d.Flags |= FlagStatic
 	}
 	scope := kscope{}
@@ -334,7 +387,7 @@ func (l *library) kotlinClass(id, name string, outer kscope, depth int) *Decl {
 		d.Members = append(d.Members, md)
 	}
 	consts := fieldConstants(info)
-	if kc.Kind() == kmeta.KindCompanion {
+	if kc.Kind() == kmeta.KindCompanion && name != "" {
 		// A companion's const vals have their fields in the outer class.
 		if i := strings.LastIndexByte(name, '$'); i > 0 {
 			if _, oi, _ := l.load(name[:i]); oi != nil {
@@ -361,7 +414,13 @@ func (l *library) kotlinClass(id, name string, outer kscope, depth int) *Decl {
 	}
 	if depth < maxNesting {
 		for _, n := range kc.Nested {
-			if nd := l.kotlinClass(id+"."+n, name+"$"+n, scope, depth+1); nd != nil {
+			var nd *Decl
+			if name == "" {
+				nd = l.builtinClass(id+"."+n, scope, depth+1)
+			} else {
+				nd = l.kotlinClass(id+"."+n, name+"$"+n, scope, depth+1)
+			}
+			if nd != nil {
 				d.Members = append(d.Members, nd)
 			}
 		}

@@ -12,6 +12,7 @@ testAnnotationWithJavaTypeValue
 testAnnotationsRepeatable
 testBackingFields
 testBuiltInTypes
+testClassKinds
 testCompanion
 testConflictingOverride
 testConstProperties

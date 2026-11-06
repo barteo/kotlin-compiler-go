@@ -9,7 +9,6 @@ testAnnotationWithNestedClassValue: class-literal: Kotlin-mapped nested classes 
 testAnnotationsInDependencies: java-source: line 6: want getter of property prop 189 : annotations.AllTarget{[value = all: : 188]} : <no  got ge
 testAsMemberOf: java-source: NoSuchElementException: Sequence contains no element matching the predicate.
 testCheckOverride: java-source: line 13: want JavaImpl.getX overrides MyInterface.x: true got JavaImpl.getX overrides MyInterface.x:
-testClassKinds: java-source: NullPointerException: null
 testDeclarationsInClass: java-members: Java collection members (remove/removeAt) mapping
 testDeferredJavaSymbols: java-source: line 1: want K got
 testDeferredTypeRefs: disabled: @Disabled in KSPUnitTestSuite

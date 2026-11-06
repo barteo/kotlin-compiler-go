@@ -220,7 +220,10 @@ func TestLibraryBuiltins(t *testing.T) {
 		if d == nil {
 			t.Fatalf("%s: nil", id)
 		}
-		dumpLibrary(&sb, d, "", nil)
+		// Their members come from .kotlin_builtins; a few of String's and Int's.
+		some := map[string]bool{"length": true, "get": true, "toLong": true, "inc": true, "Companion": true, "MAX_VALUE": true}
+		filter := func(m *Decl) bool { return id != "kotlin/String" && id != "kotlin/Int" || some[m.Name] }
+		dumpLibrary(&sb, d, "", filter)
 	}
 	want := `1 Any [kotlin/Any] v0 m1 f0x0
   10 <init> v0 m0 f0x1000000
@@ -228,10 +231,41 @@ func TestLibraryBuiltins(t *testing.T) {
   7 hashCode v0 m1 f0x0: kotlin/Int
   7 toString v0 m1 f0x0: kotlin/String
 1 String [kotlin/String] v0 m0 f0x0 : java/io/Serializable kotlin/Comparable<kotlin/String> kotlin/CharSequence
+  8 length v0 m1 f0x0: kotlin/Int
+  7 get v0 m1 f0x200 (index: kotlin/Int): kotlin/Char
+  3 Companion [kotlin/String.Companion] v0 m0 f0x800001 : kotlin/Any
 1 Int [kotlin/Int] v0 m0 f0x0 : kotlin/Number kotlin/Comparable<kotlin/Int>
+  7 inc v0 m0 f0x200: kotlin/Int
+  7 toLong v0 m1 f0x0: kotlin/Long
+  3 Companion [kotlin/Int.Companion] v0 m0 f0x800001 : kotlin/Any
+    8 MAX_VALUE v0 m0 f0x2000: kotlin/Int
 2 List [kotlin/collections/List] v0 m2 f0x0 <out E> : kotlin/collections/Collection<E>
+  8 size v0 m2 f0x0: kotlin/Int
+  7 isEmpty v0 m2 f0x0: kotlin/Boolean
+  7 contains v0 m2 f0x200 (element: E): kotlin/Boolean
+  7 iterator v0 m2 f0x200: kotlin/collections/Iterator<E>
+  7 containsAll v0 m2 f0x0 (elements: kotlin/collections/Collection<E>): kotlin/Boolean
+  7 get v0 m2 f0x200 (index: kotlin/Int): E
+  7 indexOf v0 m2 f0x0 (element: E): kotlin/Int
+  7 lastIndexOf v0 m2 f0x0 (element: E): kotlin/Int
+  7 listIterator v0 m2 f0x0: kotlin/collections/ListIterator<E>
+  7 listIterator v0 m2 f0x0 (index: kotlin/Int): kotlin/collections/ListIterator<E>
+  7 subList v0 m2 f0x0 (fromIndex: kotlin/Int, toIndex: kotlin/Int): kotlin/collections/List<E>
 2 Map [kotlin/collections/Map] v0 m2 f0x0 <K> <out V> : kotlin/Any
+  8 size v0 m2 f0x0: kotlin/Int
+  8 keys v0 m2 f0x0: kotlin/collections/Set<K>
+  8 values v0 m2 f0x0: kotlin/collections/Collection<V>
+  8 entries v0 m2 f0x0: kotlin/collections/Set<kotlin/collections/Map.Entry<K, V>>
+  7 isEmpty v0 m2 f0x0: kotlin/Boolean
+  7 containsKey v0 m2 f0x0 (key: K): kotlin/Boolean
+  7 containsValue v0 m2 f0x0 (value: V): kotlin/Boolean
+  7 get v0 m2 f0x200 (key: K): V?
+  7 getOrDefault v0 m1 f0x0 (key: K, defaultValue: V): V
+  2 Entry [kotlin/collections/Map.Entry] v0 m2 f0x800000 <out K> <out V> : kotlin/Any
+    8 key v0 m2 f0x0: K
+    8 value v0 m2 f0x0: V
 2 Comparable [kotlin/Comparable] v0 m2 f0x0 <in T> : kotlin/Any
+  7 compareTo v0 m2 f0x200 (other: T): kotlin/Int
 2 Function1 [kotlin/Function1] v0 m2 f0x0 <in P1> <out R> : kotlin/Function<R>
 `
 	if got := sb.String(); got != want {
