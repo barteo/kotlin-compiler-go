@@ -61,7 +61,7 @@ func acquire(cfg Config) (*shared, error) {
 	// Opening reads the jars' indexes: not under the lock. Two sessions
 	// opening the same library at once share the first one listed.
 	cp, lib, err := driver.OpenLibrary(driver.Options{
-		JDKHome: cfg.JDKHome, NoJDK: cfg.NoJDK, ClassPath: cfg.ClassPath,
+		JDKHome: cfg.JDKHome, NoJDK: cfg.NoJDK, ClassPath: cfg.ClassPath, FriendPaths: cfg.FriendPaths,
 		ModuleName: cfg.ModuleName, Jobs: max(cfg.Jobs, 1),
 	})
 	if err != nil {
@@ -92,7 +92,7 @@ func acquire(cfg Config) (*shared, error) {
 // Java sources files, which isn't shared, and their set.
 func acquireJava(cfg Config, files []*javasrc.File) (*shared, *driver.JavaSources, error) {
 	cp, lib, err := driver.OpenLibrary(driver.Options{
-		JDKHome: cfg.JDKHome, NoJDK: cfg.NoJDK, ClassPath: cfg.ClassPath,
+		JDKHome: cfg.JDKHome, NoJDK: cfg.NoJDK, ClassPath: cfg.ClassPath, FriendPaths: cfg.FriendPaths,
 		ModuleName: cfg.ModuleName, Jobs: max(cfg.Jobs, 1),
 	})
 	if err != nil {
@@ -158,7 +158,7 @@ func libraryKey(cfg Config) string {
 		jdk, _ = classpath.FindJDK()
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "module=%q nojdk=%t\n", cfg.ModuleName, cfg.NoJDK)
+	fmt.Fprintf(&b, "module=%q nojdk=%t friends=%q\n", cfg.ModuleName, cfg.NoJDK, cfg.FriendPaths)
 	stamp := func(path string) bool {
 		fi, err := os.Stat(path)
 		if err != nil || fi.IsDir() {

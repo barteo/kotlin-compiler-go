@@ -19,6 +19,8 @@ internal object KcOps {
         val moduleName: String,
         val jobs: Int,
         val classPath: List<String>,
+        /** The entries of [classPath] whose internal declarations the module sees. */
+        val friendPaths: List<String> = emptyList(),
     )
 
     fun open(cfg: Config): Long {
@@ -29,6 +31,8 @@ internal object KcOps {
             .writeUint(cfg.jobs.toLong())
             .writeUint(cfg.classPath.size.toLong())
         cfg.classPath.forEach { w.writeString(it) }
+        w.writeUint(cfg.friendPaths.size.toLong())
+        cfg.friendPaths.forEach { w.writeString(it) }
         return Wire.Reader(KcNative.call(OPEN, w.message())).readInt()
     }
 

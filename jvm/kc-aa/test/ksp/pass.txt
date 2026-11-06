@@ -36,6 +36,7 @@ testHello
 testImplicitPropertyAccessors
 testInheritedTypeAlias
 testInnerTypes
+testInternalOfFriends
 testJavaAnno
 testJavaOverrideInSource
 testJavaToKotlinMapper

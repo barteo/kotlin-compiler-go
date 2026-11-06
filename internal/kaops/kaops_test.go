@@ -25,6 +25,7 @@ func TestOpenUpdateClose(t *testing.T) {
 	w.String("m")
 	w.Uint(1)
 	w.Uint(0) // no class path
+	w.Uint(0) // no friend paths
 	resp, err := kcabi.Call(OpKaOpen, w.Message())
 	if err != nil {
 		t.Fatal(err)
@@ -172,6 +173,7 @@ func TestClass(t *testing.T) {
 	w.Uint(1)
 	w.Uint(1)
 	w.String(jar)
+	w.Uint(0) // no friend paths
 	resp, err := kcabi.Call(OpKaOpen, w.Message())
 	if err != nil {
 		t.Fatal(err)

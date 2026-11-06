@@ -25,7 +25,6 @@ testErrorTypes: java-source: line 1: want kotlin.collections.MutableMap got ERRO
 testGetPackage: java-source: the order of a package's Java source classes (stock lists D, L, C for C.java {C, D} and L.java)
 testImplicitElements: java-source: line 17: want lib.Test, p: [MyKotlinAnnotation: null, MyJavaAnnotation: null] got lib.Test, p: [MyKo
 testInterfaceWithDefault: java-source: NullPointerException: null cannot be cast to non-null type com.google.devtools.ksp.symbol.KSClassDec
-testInternalOfFriends: friends: internal visibility across friend modules
 testIsMutable: java-source: line 20: want lib.JavaClass.javaField: true got lib.JavaClass.publicJavaField: true
 testJavaAccessor: java-source: line 2: want JavaAccessorImpl.getX() -> KtInterfaceWithProperty.x got JavaAccessorImpl.getX() -> nul
 testJavaAnnotatedUtil: java-source: line 1: want Test: OnlyTestAnnotation got

@@ -72,7 +72,7 @@ private class KcSession(private val config: KSPConfig, disposable: Disposable) :
             // KSP reads Java sources through Java PSI, which resolves their
             // names (annotation classes, constants) against the class path
             // and the other Java sources.
-            conf.addJvmClasspathRoots(config.libraries)
+            conf.addJvmClasspathRoots((config.libraries + config.friends).distinct())
             jvm.jdkHome?.let { conf.put(JVMConfigurationKeys.JDK_HOME, it) }
             conf.addJavaSourceRoots(jvm.javaSourceRoots)
         }
@@ -92,7 +92,8 @@ private class KcSession(private val config: KSPConfig, disposable: Disposable) :
             jdkHome = (config as? KSPJvmConfig)?.jdkHome?.path,
             moduleName = config.moduleName,
             jobs = Runtime.getRuntime().availableProcessors(),
-            classPath = config.libraries.map { it.path },
+            classPath = (config.libraries + config.friends).map { it.path }.distinct(),
+            friendPaths = config.friends.map { it.path },
         ),
     )
 

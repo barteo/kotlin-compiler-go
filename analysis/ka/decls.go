@@ -33,6 +33,9 @@ func (b *fileBuilder) decl(d syntax.Decl, owner *syntax.ClassDecl, prefix string
 		md.Params = b.params(d.Params)
 		if d.Sym != nil {
 			md.Type = b.typ(d.Sym.Ret, d.Ret)
+			if md.Type != nil && md.Type.Kind == TypeError && md.Type.Name == "" {
+				md.Type.Name = calleeName(d.ExprBody)
+			}
 		}
 		md.Locals = b.locals(d.Body)
 		return md
@@ -532,4 +535,15 @@ func dataMembers(md *Decl, props []*Decl) []*Decl {
 		cp.Params = append(cp.Params, &Decl{Kind: KindValueParameter, Name: p.Name, Type: p.Type, Flags: FlagHasDefault})
 	}
 	return append(out, cp)
+}
+
+// calleeName returns the name an unresolved call e calls, which FIR
+// names the error type of an omitted return type after, or "".
+func calleeName(e syntax.Expr) string {
+	if c, ok := e.(*syntax.Call); ok {
+		if id, ok := c.Fun.(*syntax.Ident); ok && c.Sym == nil && c.Ctor == nil {
+			return id.Name
+		}
+	}
+	return ""
 }
