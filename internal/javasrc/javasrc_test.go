@@ -266,6 +266,23 @@ interface B {
 	}
 }
 
+// A package or import declaration without its ; is kept, as are the
+// classes after it.
+func TestParseMissingSemicolon(t *testing.T) {
+	src := "package p\n\nimport kotlin.reflect.KClass\nimport java.util.*\n\npublic class A {}\npublic @interface T {}\n"
+	f, err := Parse("A.java", src)
+	if err == nil || f == nil {
+		t.Fatalf("got %v, %v; want the file and an error", f, err)
+	}
+	var names []string
+	for _, c := range f.Classes {
+		names = append(names, c.Name)
+	}
+	if f.Package != "p" || len(f.Imports) != 2 || !f.Imports[1].Star || strings.Join(names, " ") != "A T" {
+		t.Errorf("got package %q, imports %v, classes %v", f.Package, f.Imports, names)
+	}
+}
+
 // TestParamAnnotations checks that Details gives the annotations of a
 // method's parameters, by parameter, and nil when none has any.
 func TestParamAnnotations(t *testing.T) {

@@ -66,6 +66,7 @@ testInternalOfFriends
 testIsMutable
 testJavaAccessor
 testJavaAnno
+testJavaAnnotatedUtil
 testJavaModifiers
 testJavaNonNullTypes
 testJavaOverrideInSource

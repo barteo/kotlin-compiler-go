@@ -193,6 +193,14 @@ func (p *parser) expect(s string) {
 	p.next()
 }
 
+// semi accepts the ; that ends a package or import declaration. A missing
+// one Java PSI reports and keeps the declaration, as Parse does.
+func (p *parser) semi() {
+	if !p.accept(";") && p.skipped == nil {
+		p.skipped = &parseError{p.tok(), "expected ;"}
+	}
+}
+
 func (p *parser) describe() string {
 	t := p.tok()
 	if t.kind == tEOF {
@@ -233,7 +241,7 @@ func (p *parser) compilationUnit() {
 	if p.isWord("package") {
 		p.next()
 		p.file.Package = p.qualified()
-		p.expect(";")
+		p.semi()
 		mods = p.modifiers()
 	}
 	for p.isWord("import") {
@@ -248,7 +256,7 @@ func (p *parser) compilationUnit() {
 			p.expect("*")
 			imp.Star = true
 		}
-		p.expect(";")
+		p.semi()
 		p.file.Imports = append(p.file.Imports, imp)
 		mods = p.modifiers()
 	}

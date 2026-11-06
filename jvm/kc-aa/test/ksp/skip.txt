@@ -1,3 +1,2 @@
 testDeferredTypeRefs: disabled: @Disabled in KSPUnitTestSuite
-testJavaAnnotatedUtil: java-source: a malformed Java file (a Kotlin import without semicolon, many public classes) whose PSI error recovery FIR keeps one class of
 testPlatformDeclaration: disabled: @Disabled in KSPUnitTestSuite

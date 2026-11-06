@@ -72,7 +72,7 @@ mapping.
 | M3 | Richer symbol model: visibility and modality enums, flags, origins, library annotation arguments, Java parameter names | in progress: source types, flags, modality; KaTypes on the JVM; annotation arguments; library classes; inherited members, overrides, subtyping; packages, library top-level declarations, alias abbreviations; JVM type mapping, Moshi codegen end to end; backing fields, Dagger end to end; Dagger on octi-server byte-identical to stock KSP 2.3.6; the slice checked against stock KSP; Room and Hilt byte-identical to stock KSP (step 14) |
 | M4 | Queryable session `analysis/ka`: lookups, scopes, relations, overrides | |
 | M5 | Bridge: `cmd/libkc` operations, `tools/kagen` wire format, `jvm/kc-aa` KaSession | |
-| M6 | KSP fork integration: the `kc` backend, IC lookups, hot paths | in progress: KSP's own test suite on the kc backend, `build.sh ksp` (step 15): 133 of 136 pass, Java sources in the main module included; KSP rebuilds on every run on kc until lookups are recorded |
+| M6 | KSP fork integration: the `kc` backend, IC lookups, hot paths | in progress: KSP's own test suite on the kc backend, `build.sh ksp` (step 15): 134 of 136 pass, the other 2 disabled in KSP, Java sources in the main module included; KSP rebuilds on every run on kc until lookups are recorded |
 | M7 | Differential conformance against stock KSP, benchmark, CI | in progress: `bench/ksp` (step 11): warm 990 ms on stock KSP, 284 ms on kc; cold 8.1–8.7 s and 2.9–3.2 s, with a CDS archive 5.8–6.1 s and 1.9–2.1 s; CI: `.github/workflows/analysis-api.yml` (step 12) |
 
 ### M0.1 – JNI spike
@@ -1442,12 +1442,17 @@ Each fix below keeps `build.sh stock` and the slice unchanged.
   class path, only when asked (`KcInfo.findPsi`), and caches it per round
   so it stays the same object. Members keep no PSI; FIR gives them their
   Cls elements, which nothing in the suite or the processors reads yet.
+- A Java import without its `;` (134 pass, testJavaAnnotatedUtil): Java
+  PSI reports the missing `;` of a package or import declaration and
+  parses on, and AA builds a Java source class's symbol from its PSI, so
+  stock KSP sees every class of such a file. kc's `javasrc` parser
+  dropped the whole file; it now keeps the declaration and the classes
+  after it, returning the error with the file as for a malformed member.
 
-Result: 133 of 136 pass. The remaining 3, by class:
+Result: 134 of 136 pass. The remaining 2 are the tests KSP itself disables:
 
 | Class | Tests |
 |---|---|
-| `java-source`: PSI error recovery in a malformed Java file (testJavaAnnotatedUtil) | 1 |
 | `disabled`: `@Disabled` in `KSPUnitTestSuite` | 2 |
 
 #### Incremental processing
