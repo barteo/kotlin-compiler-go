@@ -498,6 +498,16 @@ func (l *library) kproperty(p *kmeta.Property, scope kscope, bySig map[string]*c
 			}
 		}
 	}
+	// The setter's parameter's are on its last parameter, whatever the
+	// setter's own flags say.
+	if p.Setter != nil {
+		if m := bySig[p.Setter.Name+p.Setter.Desc]; m != nil && len(m.Params) > 0 {
+			for _, a := range l.annotations(m.Params[len(m.Params)-1], true) {
+				a.Target = "setparam"
+				md.Annotations = append(md.Annotations, a)
+			}
+		}
+	}
 	return md
 }
 

@@ -135,6 +135,31 @@ class C {
 	}
 }
 
+// TestAllTarget checks that an annotation with the use-site target all is
+// the property's, its field's, getter's and setter parameter's, and a
+// constructor property's parameter's, each where its class may be.
+func TestAllTarget(t *testing.T) {
+	m := update(t, `annotation class A
+@Target(AnnotationTarget.PROPERTY, AnnotationTarget.PROPERTY_GETTER) annotation class G
+class C(@all:A var p: Int) {
+    @all:A @all:G var q: Int = 0
+}
+`)
+	var sb strings.Builder
+	f := m.Files[0]
+	dump(&sb, f.Snapshot, f.Decls[2:], "")
+	got := sb.String()
+	want := `class C [/C] CLASS
+  ctor <init> PRIMARY_CONSTRUCTOR
+    (param p VALUE_PARAMETER @A(all)
+  val p VALUE_PARAMETER @A(all) @A(field) @A(get) @A(setparam)
+  val q PROPERTY @A(all) @A(field) @A(get) @A(setparam) @G(all) @G(get)
+`
+	if got != want {
+		t.Errorf("got\n%s\nwant\n%s", got, want)
+	}
+}
+
 // TestReceiverAnnotations checks that the annotations on an extension's
 // receiver type are the declaration's, with the use-site target receiver.
 func TestReceiverAnnotations(t *testing.T) {

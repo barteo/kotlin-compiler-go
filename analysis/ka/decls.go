@@ -361,6 +361,10 @@ func (b *fileBuilder) propAnnotations(as []syntax.Annotation, ctor bool) []Annot
 			continue
 		}
 		m := b.annotation(a)
+		if m.Target == "all" {
+			out = append(out, b.allTargets(m, b.annotationClass(a))...)
+			continue
+		}
 		if cls := b.annotationClass(a); m.Target == "" && cls != nil && cls.TargetsKnown {
 			switch {
 			case cls.Targets&types.TargetProperty != 0:
@@ -371,6 +375,32 @@ func (b *fileBuilder) propAnnotations(as []syntax.Annotation, ctor bool) []Annot
 			}
 		}
 		out = append(out, m)
+	}
+	return out
+}
+
+// allTargets returns the copies of m, written with the use-site target
+// all, that are the property's (with target all) and its backing
+// field's, getter's and setter parameter's (with theirs): each where its
+// class, cls, may be, or all of them if its targets aren't known. The JVM
+// side drops those for a field or setter the property doesn't have; a
+// constructor property's parameter has its own.
+func (b *fileBuilder) allTargets(m Annotation, cls *types.ClassSym) []Annotation {
+	targets := types.DefaultTargets
+	if cls != nil && cls.TargetsKnown {
+		targets = cls.Targets
+	}
+	var out []Annotation
+	for _, t := range []struct {
+		target  types.Targets
+		useSite string
+	}{{types.TargetProperty, "all"}, {types.TargetField, "field"}, {types.TargetGetter, "get"},
+		{types.TargetValueParameter, "setparam"}} {
+		if targets&t.target != 0 {
+			c := m
+			c.Target = t.useSite
+			out = append(out, c)
+		}
 	}
 	return out
 }
@@ -386,7 +416,7 @@ func (b *fileBuilder) ctorParamAnnotations(as []syntax.Annotation) []Annotation 
 		if a.Implicit {
 			continue
 		}
-		if cls := b.annotationClass(a); a.Target == "" && cls != nil && cls.TargetsKnown &&
+		if cls := b.annotationClass(a); (a.Target == "" || a.Target == "all") && cls != nil && cls.TargetsKnown &&
 			cls.Targets&types.TargetValueParameter == 0 {
 			continue
 		}

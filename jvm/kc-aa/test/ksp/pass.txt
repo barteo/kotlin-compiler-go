@@ -15,6 +15,7 @@ testAnnotationWithArrayValue
 testAnnotationWithDefaultValues
 testAnnotationWithJavaTypeValue
 testAnnotationWithNestedClassValue
+testAnnotationsInDependencies
 testAnnotationsRepeatable
 testAsMemberOf
 testBackingFields
