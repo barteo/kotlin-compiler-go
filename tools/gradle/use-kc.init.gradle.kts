@@ -66,6 +66,12 @@ if (gradle.parent == null) {
           System.getenv("KC_JDK_HOME") != null -> args += listOf("-jdk-home", System.getenv("KC_JDK_HOME"))
           toolchainJdk != null -> args += listOf("-jdk-home", toolchainJdk)
         }
+        // kotlinc's default is enable: interface default methods plus DefaultImpls classes.
+        val jvmDefault = option("getJvmDefault")?.let { call(it, "getCompilerArgument") as String }
+          ?: (option("getFreeCompilerArgs") as List<*>?).orEmpty()
+            .firstNotNullOfOrNull { (it as? String)?.removePrefix("-jvm-default=")?.takeIf { v -> v != it } }
+          ?: "enable"
+        args += listOf("-jvm-default", jvmDefault)
         if (libraries.isNotEmpty()) args += listOf("-cp", libraries.joinToString(File.pathSeparator))
         if (friends.isNotEmpty()) args += listOf("-friend-paths", friends.joinToString(File.pathSeparator))
         val known = mapOf(
