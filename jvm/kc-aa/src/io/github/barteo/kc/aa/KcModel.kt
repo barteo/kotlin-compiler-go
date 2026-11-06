@@ -258,6 +258,8 @@ internal class KcDecl(
         const val STATIC = 1L shl 23
         const val PRIMARY = 1L shl 24
         const val BACKING_FIELD = 1L shl 25
+        /** A class of the module's Java sources (with [JAVA]). */
+        const val JAVA_SOURCE = 1L shl 26
 
         // Go's ka.Variance values.
         const val INVARIANT = 0

@@ -797,6 +797,9 @@ type ClassSym struct {
 	Abstract  bool // an abstract class or an interface: it can't be instantiated
 	Final     bool // can't be subclassed
 	Private   bool // not public
+	// PackagePrivate is set, with Private, on a Java class of package
+	// visibility, which the classes of its package can use.
+	PackagePrivate bool
 	// Internal is set on a Kotlin class that is internal to its module,
 	// with Private: code under @Suppress("INVISIBLE_REFERENCE") may use it.
 	Internal   bool
@@ -895,6 +898,9 @@ type ClassSym struct {
 	// class, which Kotlin sees as properties: JvmField ones, read and
 	// written as fields.
 	JavaFields map[string]*VarSym
+	// JavaHidden is set on a class of the program's Java sources: the
+	// members Kotlin can't use, which the Analysis API lists all the same.
+	JavaHidden *JavaHidden
 	// JVMMethods are the methods of a class on the class path, by name
 	// and descriptor, with their access flags: also those its Kotlin
 	// metadata doesn't declare, such as kotlinc's collection stubs.
@@ -1408,4 +1414,13 @@ type Deprecation struct {
 // parameter of an inline function.
 type InlineFlags struct {
 	Crossinline, Noinline []bool
+}
+
+// JavaHidden are the members of a Java source class that Kotlin can't use:
+// its package-private and private methods and constructors (named
+// "<init>"), in class order, and its fields of those visibilities, and
+// protected static ones.
+type JavaHidden struct {
+	Methods []*FunSym
+	Fields  []*VarSym
 }

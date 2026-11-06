@@ -1,7 +1,9 @@
 package io.github.barteo.kc.aa
 
 import com.intellij.openapi.project.Project
+import com.intellij.psi.PsiClass
 import com.intellij.psi.PsiElement
+import com.intellij.psi.PsiMember
 import com.intellij.psi.search.GlobalSearchScope
 import org.jetbrains.kotlin.analysis.api.KaSession
 import org.jetbrains.kotlin.analysis.api.annotations.KaAnnotationValue
@@ -55,6 +57,17 @@ class KcAnalysis internal constructor(
         round.byPsi[declaration] as? KaDeclarationSymbol ?: noSymbol(declaration)
     fun getSymbol(c: KtClassOrObject): KaClassSymbol? = round.byPsi[c] as? KaClassSymbol
     fun getNamedClassSymbol(c: KtClassOrObject): KaNamedClassSymbol? = round.byPsi[c] as? KaNamedClassSymbol
+    // KaJavaInteroperabilityComponent: the Java sources' classes and members.
+    fun getNamedClassSymbol(c: PsiClass): KaNamedClassSymbol? {
+        synchronized(round) { round.byPsi[c] }?.let { return it as? KaNamedClassSymbol }
+        round.libraryClass(round.javaClassId(c) ?: return null)
+        return synchronized(round) { round.byPsi[c] } as? KaNamedClassSymbol
+    }
+    fun getCallableSymbol(m: PsiMember): KaCallableSymbol? {
+        m.containingClass?.let(::getNamedClassSymbol)
+        return synchronized(round) { round.byPsi[m] } as? KaCallableSymbol
+    }
+
     fun findClass(classId: ClassId): KaClassSymbol? = round.classes[classId] ?: round.libraryClass(classId)
     fun findClassLike(classId: ClassId): KaClassLikeSymbol? =
         round.classes[classId] ?: round.typeAliases[classId] ?: round.libraryClass(classId) ?: round.typeAlias(classId)

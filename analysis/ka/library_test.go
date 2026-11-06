@@ -1,6 +1,7 @@
 package ka
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -150,10 +151,10 @@ func TestLibraryJavaClass(t *testing.T) {
   6 TERMINATED [java/lang/Thread.State.TERMINATED] v0 m0 f0x0: java/lang/Thread.State
   8 entries v0 m0 f0xc00000: kotlin/enums/EnumEntries<java/lang/Thread.State>
 1 SimpleEntry [java/util/AbstractMap.SimpleEntry] v0 m1 f0xc00000 <K : kotlin/Any!> <V : kotlin/Any!> : kotlin/collections/MutableMap.MutableEntry<K!, V!> java/io/Serializable
-  10 <init> v0 m0 f0x400000 (p0: K!, p1: V!)
-  10 <init> v0 m0 f0x400000 (p0: kotlin/collections/MutableMap.MutableEntry<out K!, out V!>!)
   7 getKey v0 m1 f0x400000: K!
   7 setValue v0 m1 f0x400000 (p0: V!): V!
+  10 <init> v0 m0 f0x400000 (p0: K!, p1: V!)
+  10 <init> v0 m0 f0x400000 (p0: kotlin/collections/MutableMap.MutableEntry<out K!, out V!>!)
 `
 	if got := sb.String(); got != want {
 		t.Errorf("got:\n%s\nwant:\n%s", got, want)
@@ -231,5 +232,70 @@ func TestLibraryBuiltins(t *testing.T) {
 `
 	if got := sb.String(); got != want {
 		t.Errorf("got:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func TestJavaSources(t *testing.T) {
+	java := `package j;
+
+import java.util.List;
+
+public class JavaSrc<T> extends Base implements Runnable {
+    public static final int MAX = 3;
+    protected List<String> names;
+    @Deprecated public JavaSrc(String first, int count) {}
+    public void run() {}
+    public <R> R map(T value, R fallback) { return fallback; }
+    static class Nested { void inside(long l) {} }
+    public enum Mode { ON, OFF }
+}
+
+class Base {}
+`
+	kotlin := "package j\nclass UsesJava(val j: JavaSrc<String>) : Base()\nfun f() = JavaSrc.MAX\n"
+	sources := []Source{{Path: "j/Uses.kt", Text: &kotlin}, {Path: "j/JavaSrc.java", Text: &java}}
+	s := Open(withJDK(t))
+	defer s.Close()
+	m, err := s.Update(context.Background(), sources)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close()
+	for _, d := range m.Diagnostics {
+		t.Errorf("diagnostic: %+v", d)
+	}
+	if len(m.Files) != 1 || m.Files[0].Path != "j/Uses.kt" {
+		t.Errorf("files: want the Kotlin one, got %d", len(m.Files))
+	}
+	d := m.Class("j/JavaSrc")
+	if d == nil {
+		t.Fatal("j/JavaSrc: nil")
+	}
+	var sb strings.Builder
+	dumpLibrary(&sb, d, "", func(m *Decl) bool { return m.Kind != KindFunction || !strings.HasPrefix(m.Name, "<") })
+	want := `1 JavaSrc [j/JavaSrc] v0 m1 f0x4400000 <T : kotlin/Any!> : j/Base java/lang/Runnable
+  13 names v2 m0 f0x408000: kotlin/collections/MutableList<kotlin/String!>!
+  7 run v0 m1 f0x400000: kotlin/Unit
+  7 map v0 m1 f0x400000 <R : kotlin/Any!> (value: T!, fallback: R!): R!
+  10 <init> v0 m0 f0x400000 @java/lang/Deprecated() (first: kotlin/String!, count: kotlin/Int)
+  13 MAX v0 m0 f0xc00000: kotlin/Int
+  1 Nested [j/JavaSrc.Nested] v4 m1 f0x4c00000 : kotlin/Any
+    7 inside v4 m1 f0x400000 (l: kotlin/Long): kotlin/Unit
+    10 <init> v4 m0 f0x400000
+  4 Mode [j/JavaSrc.Mode] v0 m0 f0x4c00000 : kotlin/Enum<j/JavaSrc.Mode!>
+    6 ON [j/JavaSrc.Mode.ON] v0 m0 f0x0: j/JavaSrc.Mode
+    6 OFF [j/JavaSrc.Mode.OFF] v0 m0 f0x0: j/JavaSrc.Mode
+    7 values v0 m0 f0xc00000: kotlin/Array<j/JavaSrc.Mode>
+    7 valueOf v0 m0 f0xc00000 (value: kotlin/String): j/JavaSrc.Mode
+    8 entries v0 m0 f0xc00000: kotlin/enums/EnumEntries<j/JavaSrc.Mode>
+`
+	if got := sb.String(); got != want {
+		t.Errorf("j/JavaSrc:\n%s\nwant:\n%s", got, want)
+	}
+	if d := m.Class("j/Base"); d == nil || d.Flags&FlagJavaSource == 0 {
+		t.Errorf("j/Base: want a Java source class, got %+v", d)
+	}
+	if d := m.Class("java/lang/Thread"); d == nil || d.Flags&FlagJavaSource != 0 {
+		t.Errorf("java/lang/Thread: want a JDK class, got %+v", d)
 	}
 }

@@ -195,7 +195,7 @@ class Suite(val work: File, compilerCp: List<File>) {
             else cls.getDeclaredConstructor(List::class.java).newInstance(input)) as AbstractTestProcessor
         val root = root(test, main.name)
         val kotlinSrc = File(root, "kotlinSrc").apply { mkdirs() }
-        val javaSrc = File(root, "javaSrc")
+        val javaSrc = File(root, "java-sources/${main.name}")
         write(kotlinSrc, main.files.filter { !it.isJava })
         val javaFiles = main.files.filter { it.isJava }
         write(javaSrc, javaFiles)

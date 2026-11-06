@@ -57,7 +57,7 @@ internal class KcInfo(
     annotations: List<KcAnnotation>,
     /** Where the declaration's types are read. */
     val types: KcTypeContext,
-    /** SOURCE, LIBRARY or JAVA_LIBRARY. */
+    /** SOURCE, LIBRARY, JAVA_LIBRARY or JAVA_SOURCE. */
     val origin: KaSymbolOrigin,
 ) {
     /** The KaType of [t], or [orElse] if it is null. */
@@ -92,7 +92,7 @@ internal class KcInfo(
         }
 
     /** Whether the declaration is a Java class's. */
-    val isJava get() = origin == KaSymbolOrigin.JAVA_LIBRARY
+    val isJava get() = origin == KaSymbolOrigin.JAVA_LIBRARY || origin == KaSymbolOrigin.JAVA_SOURCE
 
     val location: KaSymbolLocation
         get() = when (parent) {

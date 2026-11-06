@@ -10,6 +10,7 @@ import (
 
 	"github.com/barteo/kotlin-compiler-go/internal/classpath"
 	"github.com/barteo/kotlin-compiler-go/internal/driver"
+	"github.com/barteo/kotlin-compiler-go/internal/javasrc"
 )
 
 // Libraries. Opening the class path is cheap, but reading its classes is
@@ -85,6 +86,21 @@ func acquire(cfg Config) (*shared, error) {
 	libraries.list = append(libraries.list, s)
 	trimLocked()
 	return s, nil
+}
+
+// acquireJava returns a library for cfg with the classes of the module's
+// Java sources files, which isn't shared, and their set.
+func acquireJava(cfg Config, files []*javasrc.File) (*shared, *driver.JavaSources, error) {
+	cp, lib, err := driver.OpenLibrary(driver.Options{
+		JDKHome: cfg.JDKHome, NoJDK: cfg.NoJDK, ClassPath: cfg.ClassPath,
+		ModuleName: cfg.ModuleName, Jobs: max(cfg.Jobs, 1),
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("ka: %w", err)
+	}
+	java := driver.AddJavaSources(cp, files)
+	l := &library{cp: cp, lib: lib, java: java, decls: map[string]*Decl{}, params: map[string]map[string]string{}}
+	return &shared{refs: 1, lib: l}, java, nil
 }
 
 // retain adds a user to s.

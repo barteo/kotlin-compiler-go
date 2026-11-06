@@ -212,6 +212,7 @@ func (t *classTable) load(cls *types.ClassSym) {
 	cls.Abstract = info.Access&(classfile.AccAbstract|classfile.AccInterface) != 0
 	cls.Final = info.Access&classfile.AccFinal != 0
 	cls.Private = info.Access&classfile.AccPublic == 0
+	cls.PackagePrivate = cls.Private && (info.Inner == nil || info.Inner.Access&classfile.AccPrivate == 0)
 	if info.Super != "" {
 		cls.Super = t.class(info.Super)
 	}
@@ -226,9 +227,19 @@ func (t *classTable) load(cls *types.ClassSym) {
 	cls.Methods = map[string][]*types.FunSym{}
 	cls.Statics = map[string][]*types.FunSym{}
 	cls.Fields = map[string]*types.VarSym{}
+	// A class of the program's Java sources keeps the members Kotlin
+	// can't use too, apart, for the Analysis API, which lists them.
+	source := t.cp.IsSource(cls.Name)
+	if source {
+		cls.JavaHidden = &types.JavaHidden{}
+	}
 	for _, m := range info.Methods {
+		if m.Access&(classfile.AccSynthetic|classfile.AccBridge) != 0 {
+			continue
+		}
 		// Protected members are for subclasses, which can be Kotlin classes.
-		if m.Access&(classfile.AccPublic|classfile.AccProtected) == 0 || m.Access&(classfile.AccSynthetic|classfile.AccBridge) != 0 {
+		hidden := m.Access&(classfile.AccPublic|classfile.AccProtected) == 0
+		if hidden && !source {
 			continue
 		}
 		f := &types.FunSym{Name: m.Name, Owner: cls, Desc: m.Desc, Static: m.Access&classfile.AccStatic != 0, Operator: true, Resolved: true,
@@ -266,6 +277,11 @@ func (t *classTable) load(cls *types.ClassSym) {
 		}
 		switch {
 		case m.Name == "<clinit>":
+		case hidden:
+			if m.Name == "<init>" {
+				f.Ret = types.ClassType(cls)
+			}
+			cls.JavaHidden.Methods = append(cls.JavaHidden.Methods, f)
 		case m.Name == "<init>":
 			// An abstract class's constructors are for its subclasses.
 			f.Ret = types.ClassType(cls)
@@ -318,6 +334,27 @@ func (t *classTable) load(cls *types.ClassSym) {
 			continue
 		}
 		if fd.Access&classfile.AccPublic == 0 || fd.Access&classfile.AccStatic == 0 {
+			static := fd.Access&classfile.AccStatic != 0
+			if source && fd.Access&classfile.AccSynthetic == 0 && (static || fd.Access&classfile.AccProtected == 0) {
+				var tps []*types.TypeParamSym
+				if !static {
+					tps = cls.TypeParams
+				}
+				if ft, ok := t.fieldType(fd.Desc); ok && ft.K != types.Unit {
+					if fd.Sig != "" {
+						if st, sok := t.fieldSignature(fd.Sig, tps); sok {
+							ft = st
+						}
+					}
+					kind := types.Prop
+					if static {
+						kind = types.Static
+					}
+					cls.JavaHidden.Fields = append(cls.JavaHidden.Fields, &types.VarSym{Name: fd.Name, Type: ft.Platform(), Kind: kind,
+						Owner: cls, Resolved: true, Final: true, JvmField: true, Mutable: fd.Access&classfile.AccFinal == 0,
+						Constant: fieldConstant(fd)})
+				}
+			}
 			continue
 		}
 		ft, ok := t.fieldType(fd.Desc)
@@ -1453,7 +1490,8 @@ func (c *Checker) usable(cls *types.ClassSym, p syntax.Pos) bool {
 	switch {
 	case cls.Missing:
 		c.errorf(p, "cannot read class %s", cls.Name)
-	case cls.Private && !(cls.Internal && c.file.SuppressInvisible):
+	case cls.Private && !(cls.Internal && c.file.SuppressInvisible) &&
+		!(cls.PackagePrivate && packageOf(cls) == strings.ReplaceAll(c.file.Package, ".", "/")):
 		// SafeCollector : ContinuationImpl under @Suppress("INVISIBLE_REFERENCE").
 		c.errorf(p, "class %s is not public", cls.DisplayName())
 	default:

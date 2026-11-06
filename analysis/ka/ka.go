@@ -24,6 +24,8 @@ import (
 
 	"github.com/barteo/kotlin-compiler-go/analysis"
 	"github.com/barteo/kotlin-compiler-go/internal/check"
+	"github.com/barteo/kotlin-compiler-go/internal/driver"
+	"github.com/barteo/kotlin-compiler-go/internal/javasrc"
 	"github.com/barteo/kotlin-compiler-go/internal/lower"
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
 	"github.com/barteo/kotlin-compiler-go/internal/types"
@@ -85,6 +87,18 @@ func Open(cfg Config) *Session { return &Session{cfg: cfg} }
 type Source struct {
 	Path string
 	Text *string
+}
+
+// text returns the source's text.
+func (src Source) text() (string, error) {
+	if src.Text != nil {
+		return *src.Text, nil
+	}
+	b, err := os.ReadFile(src.Path)
+	if err != nil {
+		return "", fmt.Errorf("ka: %w", err)
+	}
+	return string(b), nil
 }
 
 // Kind is the kind of a declaration.
@@ -167,6 +181,8 @@ const (
 	// with a default accessor or one that uses field, not abstract and not
 	// delegated; in a library, one whose metadata names its field.
 	FlagBackingField
+	// FlagJavaSource is set on a class of the module's Java sources.
+	FlagJavaSource
 )
 
 // Model is the declarations of a module's sources as they were when Update
@@ -267,33 +283,62 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 	tm := NewTimer()
 	defer tm.Print(fmt.Sprintf("update files=%d", len(sources)))
 	jobs := max(s.cfg.Jobs, 1)
+	var javaSources []Source
+	sources = slices.DeleteFunc(slices.Clone(sources), func(src Source) bool {
+		if strings.HasSuffix(src.Path, ".java") {
+			javaSources = append(javaSources, src)
+			return true
+		}
+		return false
+	})
 	snaps := make([]*psi.Snapshot, len(sources))
 	readErrs := make([]error, len(sources))
 	parallel(len(sources), jobs, func(i int) {
-		src := sources[i]
-		var text string
-		if src.Text != nil {
-			text = *src.Text
-		} else {
-			b, err := os.ReadFile(src.Path)
-			if err != nil {
-				readErrs[i] = fmt.Errorf("ka: %w", err)
-				return
-			}
-			text = string(b)
+		text, err := sources[i].text()
+		if err != nil {
+			readErrs[i] = err
+			return
 		}
-		snaps[i] = psi.Parse(src.Path, text)
+		snaps[i] = psi.Parse(sources[i].Path, text)
 	})
-	if err := errors.Join(readErrs...); err != nil {
+	javaFiles := make([]*javasrc.File, len(javaSources))
+	javaErrs := make([]error, len(javaSources))
+	javaReadErrs := make([]error, len(javaSources))
+	parallel(len(javaSources), jobs, func(i int) {
+		text, err := javaSources[i].text()
+		if err != nil {
+			javaReadErrs[i] = err
+			return
+		}
+		javaFiles[i], javaErrs[i] = javasrc.Parse(javaSources[i].Path, text)
+	})
+	if err := errors.Join(append(readErrs, javaReadErrs...)...); err != nil {
 		return nil, err
 	}
 	tm.Mark("parse")
-	sl, err := s.library()
+	var sl *shared
+	var java *driver.JavaSources
+	var err error
+	var javaDiags []Diagnostic
+	if len(javaSources) > 0 {
+		// A file kc can't parse is left out: its classes aren't the model's.
+		var parsed []*javasrc.File
+		for i, f := range javaFiles {
+			if f != nil {
+				parsed = append(parsed, f)
+			} else if javaErrs[i] != nil {
+				javaDiags = append(javaDiags, Diagnostic{Path: javaSources[i].Path, Line: 1, Col: 1, Message: javaErrs[i].Error()})
+			}
+		}
+		sl, java, err = acquireJava(s.cfg, parsed)
+	} else {
+		sl, err = s.library()
+	}
 	if err != nil {
 		return nil, err
 	}
 	lib := sl.lib.lib
-	m := &Model{lib: sl.lib, shared: sl}
+	m := &Model{lib: sl.lib, shared: sl, Diagnostics: javaDiags}
 	ok := false
 	defer func() {
 		if !ok {
@@ -302,6 +347,9 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 	}()
 	tm.Mark("open")
 	files, provs, broken := lowerAll(snaps, m, jobs)
+	if java != nil {
+		java.SetKotlin(files)
+	}
 	tm.Mark("lower")
 	rec, checkErrs, err := checkFiles(ctx, files, lib, jobs)
 	if !rec.bodies.IsZero() {
@@ -312,6 +360,9 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 		// The checker can't take a file with syntax errors: check the
 		// others, and model the broken ones from syntax alone.
 		files, provs, _ = lowerAll(snaps, nil, jobs)
+		if java != nil {
+			java.SetKotlin(files)
+		}
 		var clean []*syntax.File
 		for i, f := range files {
 			if !broken[i] {

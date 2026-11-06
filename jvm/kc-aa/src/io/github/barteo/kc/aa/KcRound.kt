@@ -1,7 +1,14 @@
 package io.github.barteo.kc.aa
 
 import com.intellij.lang.ASTNode
+import com.intellij.psi.PsiAnnotation
+import com.intellij.psi.PsiClass
 import com.intellij.psi.PsiElement
+import com.intellij.psi.PsiJavaFile
+import com.intellij.psi.PsiMethod
+import com.intellij.psi.PsiModifier
+import com.intellij.psi.PsiModifierListOwner
+import com.intellij.psi.PsiTypeParameterListOwner
 import org.jetbrains.kotlin.analysis.api.annotations.KaAnnotation
 import org.jetbrains.kotlin.analysis.api.annotations.KaAnnotationValue
 import org.jetbrains.kotlin.analysis.api.symbols.*
@@ -27,6 +34,8 @@ internal class KcRound(
     files: List<Pair<KcFile, KtFile>>,
     private val library: (String) -> KcDecl? = { null },
     private val packages: (String) -> KcPackage? = { null },
+    /** The module's Java sources, whose classes the model has as library classes. */
+    val javaFiles: List<PsiJavaFile> = emptyList(),
 ) {
     val token = KcToken()
 
@@ -66,6 +75,66 @@ internal class KcRound(
     fun typeOf(ref: KtTypeReference): KaType? = typeRefs[ref]?.let { (t, ctx) -> ctx.type(t) }
 
     val fileSymbols: List<KcFileSymbol>
+
+    /** The classes of [javaFiles] by their model class IDs. */
+    private val javaClasses = HashMap<String, PsiClass>().also { m ->
+        fun walk(c: PsiClass, id: String) {
+            m[id] = c
+            for (n in c.innerClasses) n.name?.let { walk(n, "$id.$it") }
+        }
+        for (f in javaFiles) {
+            val pkg = f.packageName.replace('.', '/')
+            for (c in f.classes) c.name?.let { walk(c, if (pkg.isEmpty()) it else "$pkg/$it") }
+        }
+    }
+
+    /** The class ID of [c], a class of [javaFiles], or null if it isn't one. */
+    fun javaClassId(c: PsiClass): ClassId? {
+        val name = c.name ?: return null
+        val outer = c.containingClass
+        if (outer != null) return javaClassId(outer)?.createNestedClassId(Name.identifier(name))
+        val file = c.containingFile as? PsiJavaFile ?: return null
+        return ClassId(FqName(file.packageName), Name.identifier(name))
+    }
+
+    /**
+     * The class of Java annotation [a], found as javac finds a type name:
+     * among the classes nested in the classes around it, then the file's
+     * single-type imports, its package, its on-demand imports, `java.lang`,
+     * and last as a qualified name. Java PSI resolves only Java classes, so
+     * KSP asks for the Kotlin ones here.
+     */
+    fun javaAnnotationClass(a: PsiAnnotation): ClassId? {
+        val name = a.nameReferenceElement?.text?.filterNot { it.isWhitespace() } ?: return null
+        val file = a.containingFile as? PsiJavaFile ?: return null
+        val first = name.substringBefore('.')
+        val rest = name.substring(first.length)
+        val candidates = ArrayList<String>()
+        var c = generateSequence(a.parent) { it.parent }.firstOrNull { it is PsiClass } as PsiClass?
+        while (c != null) {
+            javaClassId(c)?.let { candidates += it.asFqNameString() + "." + name }
+            c = c.containingClass
+        }
+        val imports = file.importList?.importStatements.orEmpty()
+        imports.filter { !it.isOnDemand }.mapNotNull { it.qualifiedName }
+            .filter { it == first || it.endsWith(".$first") }.forEach { candidates += it + rest }
+        candidates += if (file.packageName.isEmpty()) name else file.packageName + "." + name
+        imports.filter { it.isOnDemand }.mapNotNull { it.qualifiedName }.forEach { candidates += "$it.$name" }
+        candidates += "java.lang.$name"
+        candidates += name
+        for (fq in candidates) classIdOf(fq)?.let { return it }
+        return null
+    }
+
+    /** The class qualified name [fq] names, trying each split into package and classes. */
+    private fun classIdOf(fq: String): ClassId? {
+        val segs = fq.split('.')
+        for (i in segs.indices.reversed()) {
+            val id = ClassId(FqName.fromSegments(segs.subList(0, i)), FqName.fromSegments(segs.subList(i, segs.size)), false)
+            if (classes[id] != null || libraryClass(id) != null) return id
+        }
+        return null
+    }
 
     /** The sources' packages and the packages they are in. */
     private val sourcePackages = HashSet<FqName>()
@@ -181,7 +250,11 @@ internal class KcRound(
         val outer = id.outermostClassId
         if (loaded.add(outer)) {
             library(outer.asString())?.let { d ->
-                val origin = if (d.has(KcDecl.JAVA)) KaSymbolOrigin.JAVA_LIBRARY else KaSymbolOrigin.LIBRARY
+                val origin = when {
+                    d.has(KcDecl.JAVA_SOURCE) -> KaSymbolOrigin.JAVA_SOURCE
+                    d.has(KcDecl.JAVA) -> KaSymbolOrigin.JAVA_LIBRARY
+                    else -> KaSymbolOrigin.LIBRARY
+                }
                 Builder(outer.asString(), noNodes, origin).decl(d, null, "lib:" + outer.asString())
             }
         }
@@ -338,6 +411,50 @@ internal class KcRound(
         fun decls(ds: List<KcDecl>, parent: KaSymbol, parentKey: String): List<KaDeclarationSymbol> =
             ds.mapIndexed { i, d -> decl(d, parent, "$parentKey/${d.kind}:${d.name}:$i") }
 
+        /** The members of each Java class matched to symbols so far. */
+        val javaUsed = IdentityHashMap<PsiElement, Boolean>()
+
+        /**
+         * The Java PSI of [d], a declaration of the Java sources in [parent]:
+         * a class by its ID, a method or constructor by name, parameter
+         * count and visibility, a field or enum constant by name. A
+         * constructor Java doesn't write is its class, as in FIR.
+         */
+        fun javaPsi(d: KcDecl, parent: KaSymbol?): PsiElement? {
+            if (origin != KaSymbolOrigin.JAVA_SOURCE) return null
+            val owner = (parent as? KcClassSymbol)?.info?.psi as? PsiClass
+            return when (d.kind) {
+                KcDecl.CLASS, KcDecl.INTERFACE, KcDecl.OBJECT, KcDecl.ENUM_CLASS, KcDecl.ANNOTATION_CLASS ->
+                    javaClasses[d.classId]
+                KcDecl.FUNCTION, KcDecl.CONSTRUCTOR -> {
+                    owner ?: return null
+                    val ctor = d.kind == KcDecl.CONSTRUCTOR
+                    val ms = if (ctor) owner.constructors else owner.findMethodsByName(d.name, false)
+                    ms.firstOrNull { it !in javaUsed && it.parameterList.parametersCount == d.params.size && javaVisibility(it) == d.visibility }
+                        ?.also { javaUsed[it] = true }
+                        ?: if (ctor) owner else null
+                }
+                KcDecl.JAVA_FIELD, KcDecl.ENUM_ENTRY -> owner?.findFieldByName(d.name, false)
+                else -> null
+            }
+        }
+
+        /** The Java PSI of [parent], a Java source declaration, or null. */
+        fun javaOwnerPsi(parent: KaSymbol): PsiElement? = if (origin != KaSymbolOrigin.JAVA_SOURCE) null else when (parent) {
+            is KcClassSymbol -> parent.info.psi
+            is KcFunctionSymbol -> parent.info.psi
+            is KcConstructorSymbol -> parent.info.psi
+            else -> null
+        }
+
+        fun javaVisibility(m: PsiModifierListOwner): Int = when {
+            m.hasModifierProperty(PsiModifier.PUBLIC) -> KcDecl.PUBLIC
+            m.hasModifierProperty(PsiModifier.PROTECTED) -> KcDecl.PROTECTED
+            m.hasModifierProperty(PsiModifier.PRIVATE) -> KcDecl.PRIVATE
+            m is PsiMethod && m.containingClass?.isInterface == true -> KcDecl.PUBLIC
+            else -> KcDecl.PACKAGE_PRIVATE
+        }
+
         inline fun <reified T : PsiElement> psiOf(d: KcDecl): T? {
             val p = psi(d.node) ?: return null
             return p as? T ?: error("kc: ${d.name} in $where is ${p.javaClass.simpleName}, want ${T::class.simpleName}")
@@ -399,7 +516,7 @@ internal class KcRound(
         /** The symbol of [d]; [parent] is null for a top-level library class. */
         fun decl(d: KcDecl, parent: KaSymbol?, key: String): KaDeclarationSymbol = when (d.kind) {
             KcDecl.CLASS, KcDecl.INTERFACE, KcDecl.OBJECT, KcDecl.ENUM_CLASS, KcDecl.ANNOTATION_CLASS -> scoped { ctx ->
-                val psi = psiOf<KtClassOrObject>(d)
+                val psi = psiOf<KtClassOrObject>(d) ?: javaPsi(d, parent)
                 val c = register(KcClassSymbol(info(d, psi, parent, key)), key, psi)
                 c.classId?.let { (if (origin == KaSymbolOrigin.SOURCE) classes else libraryClasses)[it] = c }
                 c.typeParams = typeParams(d, c, key)
@@ -408,11 +525,11 @@ internal class KcRound(
                 c
             }
             KcDecl.ENUM_ENTRY -> {
-                val psi = psiOf<KtEnumEntry>(d)
+                val psi = psiOf<KtEnumEntry>(d) ?: javaPsi(d, parent)
                 register(KcEnumEntrySymbol(info(d, psi, parent, key)), key, psi)
             }
             KcDecl.FUNCTION -> scoped { ctx ->
-                val psi = psiOf<KtNamedFunction>(d)
+                val psi = psiOf<KtNamedFunction>(d) ?: javaPsi(d, parent)
                 val f = register(KcFunctionSymbol(info(d, psi, parent, key)), key, psi)
                 f.typeParams = typeParams(d, f, key)
                 ctx.typeParams = f.typeParams
@@ -420,13 +537,16 @@ internal class KcRound(
                 f
             }
             KcDecl.CONSTRUCTOR -> {
-                val psi = psiOf<KtConstructor<*>>(d)
+                val psi = psiOf<KtConstructor<*>>(d) ?: javaPsi(d, parent)
                 val c = register(KcConstructorSymbol(info(d, psi, parent, key)), key, psi)
                 c.params = params(d, c, key)
                 c
             }
             KcDecl.PROPERTY -> scoped { ctx -> property(d, parent!!, key, ctx) }
-            KcDecl.JAVA_FIELD -> register(KcJavaFieldSymbol(info(d, null, parent, key)), key, null)
+            KcDecl.JAVA_FIELD -> {
+                val psi = javaPsi(d, parent)
+                register(KcJavaFieldSymbol(info(d, psi, parent, key)), key, psi)
+            }
             KcDecl.TYPE_ALIAS -> scoped { ctx ->
                 val psi = psiOf<KtTypeAlias>(d)
                 val t = register(KcTypeAliasSymbol(info(d, psi, parent, key)), key, psi)
@@ -494,6 +614,7 @@ internal class KcRound(
             d.typeParams.mapIndexed { i, t ->
                 val k = "$key/<$i"
                 val psi = psiOf<KtTypeParameter>(t)
+                    ?: (javaOwnerPsi(parent) as? PsiTypeParameterListOwner)?.typeParameters?.getOrNull(i)
                 register(KcTypeParameterSymbol(info(t, psi, parent, k)), k, psi)
             }
 
@@ -501,6 +622,7 @@ internal class KcRound(
             d.params.mapIndexed { i, v ->
                 val k = "$key/($i"
                 val psi = psiOf<KtParameter>(v)
+                    ?: (javaOwnerPsi(parent) as? PsiMethod)?.parameterList?.parameters?.getOrNull(i)
                 val own = v.annotations.filter { it.target == "" || it.target == "param" }
                 val default = v.default?.let(::value)
                 register(KcValueParameterSymbol(info(v, psi, parent, k, own), default), k, psi)

@@ -5,6 +5,7 @@ import com.google.devtools.ksp.impl.backend.KcExtras
 import com.google.devtools.ksp.impl.backend.KspBackend
 import com.google.devtools.ksp.impl.backend.KspBackendSession
 import com.google.devtools.ksp.impl.symbol.kotlin.KSFileImpl
+import com.google.devtools.ksp.impl.symbol.kotlin.KSFileJavaImpl
 import com.google.devtools.ksp.processing.KSPConfig
 import com.google.devtools.ksp.processing.KSPJvmConfig
 import com.google.devtools.ksp.symbol.KSFile
@@ -14,6 +15,8 @@ import com.intellij.openapi.util.ModificationTracker
 import com.intellij.openapi.vfs.StandardFileSystems
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.vfs.VirtualFileManager
+import com.intellij.psi.PsiAnnotation
+import com.intellij.psi.PsiJavaFile
 import com.intellij.psi.PsiManager
 import org.jetbrains.kotlin.analysis.api.annotations.KaAnnotationValue
 import org.jetbrains.kotlin.analysis.api.platform.modification.KotlinModificationTrackerFactory
@@ -27,6 +30,9 @@ import org.jetbrains.kotlin.analysis.api.types.KaFunctionType
 import org.jetbrains.kotlin.analysis.api.types.KaType
 import org.jetbrains.kotlin.cli.jvm.compiler.EnvironmentConfigFiles
 import org.jetbrains.kotlin.cli.jvm.compiler.KotlinCoreEnvironment
+import org.jetbrains.kotlin.cli.jvm.config.addJavaSourceRoots
+import org.jetbrains.kotlin.cli.jvm.config.addJvmClasspathRoots
+import org.jetbrains.kotlin.config.JVMConfigurationKeys
 import org.jetbrains.kotlin.cli.extensionsStorage
 import org.jetbrains.kotlin.compiler.plugin.CompilerPluginRegistrar
 import org.jetbrains.kotlin.config.CompilerConfiguration
@@ -53,9 +59,23 @@ class KcBackend : KspBackend {
 
 private class KcSession(private val config: KSPConfig, disposable: Disposable) : KspBackendSession {
     private val timer = KcTimer()
+
+    /** The Java sources the module starts with. */
+    private val javaSources: List<String> = ((config as? KSPJvmConfig)?.javaSourceRoots.orEmpty()).distinct().flatMap { root ->
+        root.walkTopDown().filter { it.isFile && it.extension == "java" }.sortedBy { it.path }.map { it.canonicalPath }.toList()
+    }
     private val env: KotlinCoreEnvironment = run {
         val conf = CompilerConfiguration()
         conf.extensionsStorage = CompilerPluginRegistrar.ExtensionStorage()
+        val jvm = config as? KSPJvmConfig
+        if (jvm != null && jvm.javaSourceRoots.isNotEmpty()) {
+            // KSP reads Java sources through Java PSI, which resolves their
+            // names (annotation classes, constants) against the class path
+            // and the other Java sources.
+            conf.addJvmClasspathRoots(config.libraries)
+            jvm.jdkHome?.let { conf.put(JVMConfigurationKeys.JDK_HOME, it) }
+            conf.addJavaSourceRoots(jvm.javaSourceRoots)
+        }
         KotlinCoreEnvironment.createForProduction(disposable, conf, EnvironmentConfigFiles.JVM_CONFIG_FILES)
     }
     init {
@@ -63,7 +83,7 @@ private class KcSession(private val config: KSPConfig, disposable: Disposable) :
     }
     override val project: Project = env.project
     override val module = KcModule(project, config)
-    override val extras: KcExtras = KcExtrasImpl
+    override val extras: KcExtras = KcExtrasImpl { round }
     private val libraryModule = KcLibraryModule(project, config)
     private val provider = KcSessionProvider(project)
     private val psiManager = PsiManager.getInstance(project)
@@ -76,7 +96,7 @@ private class KcSession(private val config: KSPConfig, disposable: Disposable) :
         ),
     )
 
-    /** The Kotlin sources the module has, generated ones included. */
+    /** The Kotlin and Java sources the module has, generated ones included. */
     private val paths = LinkedHashSet<String>()
     private lateinit var round: KcRound
 
@@ -93,6 +113,7 @@ private class KcSession(private val config: KSPConfig, disposable: Disposable) :
             root.walkTopDown().filter { it.isFile && it.extension == "kt" }.sortedBy { it.path }
                 .forEach { paths += it.canonicalPath }
         }
+        paths += javaSources
         timer.mark("open")
         timer.print("session")
         update()
@@ -108,19 +129,23 @@ private class KcSession(private val config: KSPConfig, disposable: Disposable) :
             val vf: VirtualFile = fs.refreshAndFindFileByPath(f.path) ?: error("kc: no virtual file for ${f.path}")
             f to (psiManager.findFile(vf) as? KtFile ?: error("kc: ${f.path} is not a Kotlin file"))
         }
+        val java = paths.filter { it.endsWith(".java") }.mapNotNull { p ->
+            fs.refreshAndFindFileByPath(p)?.let { psiManager.findFile(it) as? PsiJavaFile }
+        }
         t.mark("psi")
         if (this::round.isInitialized) {
             round.token.invalidation = "replaced by the next round"
             KcOps.close(modelHandle)
         }
         modelHandle = model.handle
-        round = KcRound(joined, { id -> KcOps.cls(model.handle, id) }, { fq -> KcOps.pkg(model.handle, fq) })
+        round = KcRound(joined, { id -> KcOps.cls(model.handle, id) }, { fq -> KcOps.pkg(model.handle, fq) }, java)
         provider.session = KcAnalysis.session(KcAnalysis(round, module, libraryModule))
         t.mark("round")
         t.print("round files=${paths.size}")
     }
 
-    override fun sourceFiles(): List<KSFile> = round.fileSymbols.map { KSFileImpl.getCached(it) }
+    override fun sourceFiles(): List<KSFile> =
+        round.fileSymbols.map { KSFileImpl.getCached(it) } + round.javaFiles.map { KSFileJavaImpl.getCached(it) }
 
     override fun beginRound(lookupTracker: DualLookupTracker) {}
 
@@ -131,13 +156,13 @@ private class KcSession(private val config: KSPConfig, disposable: Disposable) :
     override fun dropCaches() {}
 
     override fun addFiles(kotlinFiles: List<File>, javaFiles: List<File>): List<KSFile> {
-        val added = kotlinFiles.map { it.canonicalPath }.filter { paths.add(it) }.toSet()
-        // The model is of the Kotlin sources and the libraries only (Java
-        // sources don't reach it), and KSP doesn't edit sources between
-        // rounds, so a round that generated no Kotlin keeps this one.
+        val added = (kotlinFiles + javaFiles).map { it.canonicalPath }.filter { paths.add(it) }.toSet()
+        // KSP doesn't edit sources between rounds, so a round that
+        // generated no sources keeps this one.
         if (added.isEmpty()) return emptyList()
         update()
-        return round.fileSymbols.filter { it.file.path in added }.map { KSFileImpl.getCached(it) }
+        return round.fileSymbols.filter { it.file.path in added }.map { KSFileImpl.getCached(it) } +
+            round.javaFiles.filter { it.virtualFile.canonicalPath in added }.map { KSFileJavaImpl.getCached(it) }
     }
 
     override fun close() {
@@ -190,8 +215,10 @@ internal class KcLibraryModule(override val project: Project, private val config
     override fun toString() = "KcLibraryModule"
 }
 
-/** The FIR-only facts; kc answers none yet. */
-private object KcExtrasImpl : KcExtras {
+/** The FIR-only facts, as kc has them. */
+private class KcExtrasImpl(private val round: () -> KcRound) : KcExtras {
+    override fun javaAnnotationClass(annotation: PsiAnnotation): ClassId? = round().javaAnnotationClass(annotation)
+
     override fun optimalModeForReturnType(type: KaType, isAnnotationMethod: Boolean): TypeMappingMode =
         KcAnalysis.unsupported("KcExtras.optimalModeForReturnType")
     override fun optimalModeForValueParameter(type: KaType): TypeMappingMode =

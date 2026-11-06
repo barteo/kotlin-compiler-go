@@ -93,7 +93,7 @@ internal class KcMemberBuilder(private val round: KcRound, private val c: KcClas
                 if (m.visibility == KaSymbolVisibility.PRIVATE) continue
                 candidates += Candidate(m, sub)
             }
-            if (sc.origin == KaSymbolOrigin.JAVA_LIBRARY && sc.classKind == KaClassKind.CLASS) {
+            if ((sc.origin == KaSymbolOrigin.JAVA_LIBRARY || sc.origin == KaSymbolOrigin.JAVA_SOURCE) && sc.classKind == KaClassKind.CLASS) {
                 for (s in inherited.statics) {
                     if (s !is KaCallableSymbol || s.visibility == KaSymbolVisibility.PRIVATE) continue
                     if (statics.none { it is KaCallableSymbol && matches(Candidate(it, rel.empty), Candidate(s, rel.empty)) }) statics += s

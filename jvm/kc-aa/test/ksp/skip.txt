@@ -1,101 +1,89 @@
-testAbstractFunctions: java-source: Java sources in the main module don't reach the model
-testAllFunctions_java_inherits_kt: java-source: Java sources in the main module don't reach the model
+testAllFunctions_java_inherits_kt: java-source: line 5: want hashCode(): kotlin.Int got getX(): kotlin.Int
 testAllFunctions_kotlin: synthetic-members: no data-class componentN/copy
-testAllFunctions_kt_inherits_java: java-source: Java sources in the main module don't reach the model
+testAllFunctions_kt_inherits_java: java-source: line 15: want size got <init>(): Foo
 testAllUseSiteTargetAppliedToAnnotationList: ka-differs-from-aa: kc gives the expected output, which this runFailingTest records AA as not giving (KEEP-402)
 testAnnotatedUtil: class-literal: kotlin.Throwable::class reaches getAnnotationsByType as kotlin.Throwable, not java.lang.Throwable
 testAnnotationOnReceiver: annotation-target: receiver annotations missing
-testAnnotationValue_java2: java-source: Java sources in the main module don't reach the model
-testAnnotationValue_java: java-source: Java sources in the main module don't reach the model
-testAnnotationValue_kt: java-source: Java sources in the main module don't reach the model
-testAnnotationWithArrayValue: java-source: Java sources in the main module don't reach the model
-testAnnotationWithDefault: java-source: Java sources in the main module don't reach the model
-testAnnotationWithDefaultValues: java-source: Java sources in the main module don't reach the model
-testAnnotationWithJavaTypeValue: java-source: Java sources in the main module don't reach the model
+testAnnotationValue_java2: java-source: NoSuchElementException: Sequence is empty.
+testAnnotationValue_java: java-source: NoSuchElementException: Sequence is empty.
+testAnnotationValue_kt: java-source: NoSuchElementException: Sequence contains no element matching the predicate.
+testAnnotationWithArrayValue: java-source: line 4: want classArray = [Any, List<*>] got classArray = Any
+testAnnotationWithDefault: java-source: line 3: want JavaAnnotation2 -> y:y-kotlin:false,x:x-kotlin:false,z:z-default:true got JavaAnnotatio
+testAnnotationWithDefaultValues: java-source: line 5: want KotlinAnnotationLib -> b:defaultInLib,kClassValue:OtherKotlinAnnotation,topLevel got Ko
 testAnnotationWithNestedClassValue: class-literal: Kotlin-mapped nested classes (MutableMap.MutableEntry) not mapped to Java
-testAnnotationsInDependencies: java-source: Java sources in the main module don't reach the model
-testAnnotationsRepeatable: java-source: Java sources in the main module don't reach the model
-testAsMemberOf: java-source: Java sources in the main module don't reach the model
-testBackingFields: java-source: Java sources in the main module don't reach the model
-testCheckOverride: java-source: Java sources in the main module don't reach the model
-testClassKinds: java-source: Java sources in the main module don't reach the model
+testAnnotationsInDependencies: java-source: line 6: want getter of property prop 189 : annotations.AllTarget{[value = all: : 188]} : <no  got ge
+testAnnotationsRepeatable: java-source: line 13: want lib.Test, KA, [value:1]} got lib.Test, A, [value:1]}
+testAsMemberOf: java-source: NoSuchElementException: Sequence contains no element matching the predicate.
+testBackingFields: java-source: kc: KaKotlinPropertySymbol.initializer
+testCheckOverride: java-source: line 13: want JavaImpl.getX overrides MyInterface.x: true got JavaImpl.getX overrides MyInterface.x:
+testClassKinds: java-source: NullPointerException: null
 testCompanion: companion: companion object naming/order
-testConstructorDeclarations: java-source: Java sources in the main module don't reach the model
+testConstructorDeclarations: java-source: line 4: want <init>(kotlin.Int): lib.AbstractJavaClassWithExplicitConstructor got class: AbstractJav
 testCrossModuleTypeAlias: type-alias: library type aliases in other modules
-testDeclarationOrder: java-source: Java sources in the main module don't reach the model
-testDeclarationPackageName: java-source: Java sources in the main module don't reach the model
+testDeclarationOrder: java-source: line 23: want b:Ljava/lang/String; got KotlinClass
+testDeclarationPackageName: java-source: kc: no symbol for KtClass class InnerLocal
 testDeclarationUtil: local-declarations: no symbols for local declarations
 testDeclarationsInAccessor: local-declarations: no symbols for local declarations
 testDeclarationsInClass: java-members: Java collection members (remove/removeAt) mapping
-testDeclared: java-source: Java sources in the main module don't reach the model
-testDeferredJavaSymbols: java-source: Java sources in the main module don't reach the model
+testDeclared: java-source: line 2: want subFun got synthetic constructor for Sub
+testDeferredJavaSymbols: java-source: line 1: want K got
 testDeferredTypeRefs: disabled: @Disabled in KSPUnitTestSuite
-testDocString: java-source: Java sources in the main module don't reach the model
-testEquals: java-source: Java sources in the main module don't reach the model
+testDocString: java-source: line 12: want j1: \n field\n got j1: null
 testEquivalentJavaWildcards: unsupported: KcExtras.optimalModeForReturnType
-testErrorTypes: java-source: Java sources in the main module don't reach the model
-testFunctionKinds: java-source: Java sources in the main module don't reach the model
+testErrorTypes: java-source: line 1: want kotlin.collections.MutableMap got ERROR TYPE
 testFunctionTypeAlias: type-alias: alias abbreviation equality
 testFunctionTypeAnnotation: type-annotations: function type annotations
 testFunctionTypes: function-types: KFunction/suspend function kinds
-testGetPackage: java-source: Java sources in the main module don't reach the model
-testGetSymbolsFromAnnotation: java-source: Java sources in the main module don't reach the model
+testGetPackage: java-source: line 2: want lib1.propInSource KOTLIN got lib1.FooInSource KOTLIN
+testGetSymbolsFromAnnotation: java-source: line 2: want <init>:KSFunctionDeclaration got ==== Anno inDepth = true ====
 testGetSymbolsFromAnnotationInLib: local-declarations: no symbols for local declarations
 testGroupedAnnotations: annotation-target: file annotations in groups
 testGroupedAnnotationsWithUseSiteTargets: annotation-target: file annotations in groups
-testHello: java-source: Java sources in the main module don't reach the model
-testImplicitElements: java-source: Java sources in the main module don't reach the model
-testInterfaceWithDefault: java-source: Java sources in the main module don't reach the model
+testHello: java-source: line 1: want 8 got 0
+testImplicitElements: java-source: line 17: want lib.Test, p: [MyKotlinAnnotation: null, MyJavaAnnotation: null] got lib.Test, p: [MyKo
+testInterfaceWithDefault: java-source: NullPointerException: null cannot be cast to non-null type com.google.devtools.ksp.symbol.KSClassDec
 testInternalOfFriends: friends: internal visibility across friend modules
-testIsMutable: java-source: Java sources in the main module don't reach the model
-testJavaAccessor: java-source: Java sources in the main module don't reach the model
-testJavaAnno: java-source: Java sources in the main module don't reach the model
-testJavaAnnotatedUtil: java-source: Java sources in the main module don't reach the model
-testJavaModifiers: java-source: Java sources in the main module don't reach the model
-testJavaNonNullTypes: java-source: Java sources in the main module don't reach the model
-testJavaOverrideInSource: java-source: Java sources in the main module don't reach the model
-testJavaSubtype: java-source: Java sources in the main module don't reach the model
-testJavaSubtypeOfKotlinInterface: java-source: Java sources in the main module don't reach the model
-testJavaTypes2: java-source: Java sources in the main module don't reach the model
+testIsMutable: java-source: line 20: want lib.JavaClass.javaField: true got lib.JavaClass.publicJavaField: true
+testJavaAccessor: java-source: line 2: want JavaAccessorImpl.getX() -> KtInterfaceWithProperty.x got JavaAccessorImpl.getX() -> nul
+testJavaAnnotatedUtil: java-source: line 1: want Test: OnlyTestAnnotation got
+testJavaModifiers: java-source: InternalKSPException: >>> Internal KSP Error
+testJavaNonNullTypes: checker-gap: the checker ignores Java @NotNull/@Nullable, so Java types stay platform types
+testJavaSubtype: java-source: line 1: want true got false
+testJavaSubtypeOfKotlinInterface: java-source: line 5: want Declaration simpleName: getFoo got Declaration simpleName: <init>
+testJavaTypes2: java-source: line 1: want (Array<(C..C?)>..Array<out (C..C?)>?) ?= (Array<(C..C?)>..Array<out (C..C?)>?) : got (A
 testJavaTypes: flexible-types: Java flexible types in Kotlin
 testJavaWildcards2: unsupported: KcExtras.optimalModeForReturnType
 testJavaWildcardsSelfReferencing: unsupported: KcExtras.optimalModeForValueParameter
-testJvmName: java-source: Java sources in the main module don't reach the model
-testLibOrigins: java-source: Java sources in the main module don't reach the model
+testJvmName: java-source: line 7: want JvmName: stringParameter got JvmName: stringParam
+testLibOrigins: java-source: line 10: want Exception: [KotlinLibClass, T1, Any?]: SYNTHETIC got Validating kotlinLibFuntion
 testLocalClasses: local-declarations: anonymous objects
-testLocations: java-source: Java sources in the main module don't reach the model
-testMangledNames: java-source: Java sources in the main module don't reach the model
-testMultipleModules: java-source: Java sources in the main module don't reach the model
-testMultipleround: java-source: Java sources in the main module don't reach the model
+testLocations: java-source: line 3: want K:J.java:81 got K:K.kt:60
+testMangledNames: java-source: line 4: want valueOf -> valueOf got get-entries -> getEntries
+testMultipleround: java-source: line 3: want J : <ERROR TYPE: I0>, <ERROR TYPE: I1>, <ERROR TYPE: I2>, <ERROR TYPE: I3>, <ERR got J 
 testNestedClassType: type-annotations: type argument annotations
 testObjCacheA: unsupported: KaKotlinPropertySymbol.initializer
 testObjCacheB: unsupported: KaKotlinPropertySymbol.initializer
-testPackageAnnotation: java-source: Java sources in the main module don't reach the model
 testPackageProviderForGenerated: generated-java: generated Java sources not in the model
 testParameterTypes: error-types: error type rendering
-testParent: java-source: Java sources in the main module don't reach the model
+testParent: java-source: line 28: want parent of Any: (Any..Any?) got parent of synthetic constructor for B: B
 testPlatformDeclaration: disabled: @Disabled in KSPUnitTestSuite
-testRawTypes: java-source: Java sources in the main module don't reach the model
-testRecordJavaAnnotationTypes: java-source: Java sources in the main module don't reach the model
-testRecordJavaAsMemberOf: java-source: Java sources in the main module don't reach the model
-testRecordJavaGetAllMembers: java-source: Java sources in the main module don't reach the model
-testRecordJavaOverrides: java-source: Java sources in the main module don't reach the model
-testRecordJavaResolutions: java-source: Java sources in the main module don't reach the model
-testRecordJavaSupertypes: java-source: Java sources in the main module don't reach the model
-testReferenceElement: java-source: Java sources in the main module don't reach the model
-testReplaceWithErrorTypeArgs: java-source: Java sources in the main module don't reach the model
-testResolveJavaType: java-source: Java sources in the main module don't reach the model
+testRawTypes: java-source: line 1: want barRaw got
+testRecordJavaAnnotationTypes: java-source: line 3: want kotlin.collections.List: main/p1/J.java got kotlin.collections.MutableList: main/p1/J.j
+testRecordJavaGetAllMembers: java-source: IndexOutOfBoundsException: Index 0 out of bounds for length 0
+testRecordJavaOverrides: java-source: line 1: want p1.B: main/p1/A.java got kotlin.Any: main/p1/C.java
+testReferenceElement: java-source: line 1: want KSClassifierReferenceImpl: Qualifier of B is A got KSClassifierReferenceImpl: Qualifier
+testReplaceWithErrorTypeArgs: java-source: kc: type of NotExist1: not a declaration's type
+testResolveJavaType: java-source: kc: containingSymbol of KcLibraryTypeParameterSymbol(X)
 testSealedClass: sealed: library sealed inheritors
-testSignatureMapper: java-source: Java sources in the main module don't reach the model
-testSuperTypes: java-source: Java sources in the main module don't reach the model
-testThrowList: java-source: Java sources in the main module don't reach the model
-testTopLevelMembers: java-source: Java sources in the main module don't reach the model
+testSignatureMapper: java-source: line 2: want a: I got <init>: ()V
+testThrowList: java-source: kc: KaSession.asKaType(PsiType, PsiElement)
+testTopLevelMembers: java-source: line 8: want lib : javaFieldInLib -> lib.LibJavaClass got lib : jvmStaticFunctionInLibCompanion -> l
 testTypeAlias: type-annotations: annotations on alias type arguments
 testTypeAliasComparison: type-alias: alias comparison
 testTypeComposure: star-projections: star projection replacement
-testTypeParameterReference: java-source: Java sources in the main module don't reach the model
+testTypeParameterReference: java-source: line 1: want kotlin.Int: false got kotlin.Any: true
 testUseSiteTargets: annotation-target: @all use-site target
-testValidateTypes: java-source: Java sources in the main module don't reach the model
+testValidateTypes: java-source: line 2: want goodProp valid got <init> valid
 testValueParameter: value-parameters: isVal/isVar of constructor properties
-testVararg: java-source: Java sources in the main module don't reach the model
-testVisibilities: java-source: Java sources in the main module don't reach the model
+testVararg: java-source: NoSuchElementException: Sequence contains no element matching the predicate.
+testVisibilities: java-source: InternalKSPException: >>> Internal KSP Error

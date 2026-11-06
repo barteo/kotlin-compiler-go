@@ -452,7 +452,8 @@ func (s *Set) Info(name string) (*classfile.Info, error) {
 		info.Interfaces = append(info.Interfaces, n)
 	}
 	if c.Outer != nil {
-		access := c.Flags
+		// As javac writes it: the class's own kind flags too.
+		access := c.Flags | flags&(classfile.AccInterface|classfile.AccAbstract|classfile.AccAnnotation|classfile.AccEnum|classfile.AccFinal)
 		if static(c) {
 			access |= classfile.AccStatic
 		}

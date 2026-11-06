@@ -72,7 +72,7 @@ mapping.
 | M3 | Richer symbol model: visibility and modality enums, flags, origins, library annotation arguments, Java parameter names | in progress: source types, flags, modality; KaTypes on the JVM; annotation arguments; library classes; inherited members, overrides, subtyping; packages, library top-level declarations, alias abbreviations; JVM type mapping, Moshi codegen end to end; backing fields, Dagger end to end; Dagger on octi-server byte-identical to stock KSP 2.3.6; the slice checked against stock KSP; Room and Hilt byte-identical to stock KSP (step 14) |
 | M4 | Queryable session `analysis/ka`: lookups, scopes, relations, overrides | |
 | M5 | Bridge: `cmd/libkc` operations, `tools/kagen` wire format, `jvm/kc-aa` KaSession | |
-| M6 | KSP fork integration: the `kc` backend, IC lookups, hot paths | in progress: KSP's own test suite on the kc backend, `build.sh ksp` (step 15): 35 of 136 pass |
+| M6 | KSP fork integration: the `kc` backend, IC lookups, hot paths | in progress: KSP's own test suite on the kc backend, `build.sh ksp` (step 15): 47 of 136 pass, Java sources in the main module included |
 | M7 | Differential conformance against stock KSP, benchmark, CI | in progress: `bench/ksp` (step 11): warm 990 ms on stock KSP, 284 ms on kc; cold 8.1–8.7 s and 2.9–3.2 s, with a CDS archive 5.8–6.1 s and 1.9–2.1 s; CI: `.github/workflows/analysis-api.yml` (step 12) |
 
 ### M0.1 – JNI spike
@@ -1023,6 +1023,45 @@ Baseline: 35 of 136 pass, 2 are disabled. The other 99, by class:
 | one each: data-class `componentN`/`copy`, star projections, library sealed inheritors, Java collection members, generated Java, `KFunction` kinds, friends' `internal`, flexible types, error types, companion naming, constructor `val` `isVal` | 12 |
 | `ka-differs-from-aa`: kc gives the expected output, which a `runFailingTest` records AA as not giving | 1 |
 
+##### Java sources in the module
+
+The main module's Java files now reach the model, as they reach a kc
+build:
+- `ka.Config.JavaSources` goes through `driver.AddJavaSources`, the code
+  `kc` builds use, so the checker sees Java source classes and Kotlin
+  calls into them type-check. The library cache from step 11 is bypassed
+  when there are Java sources.
+- Java source classes come into the model as library classes, built from
+  the class-file view that `javasrc` gives (`Set.Details` adds annotations,
+  access and parameter names in source order). They carry origin
+  `JAVA_SOURCE` and their file's path on the wire.
+- On the JVM, `KcBackend` parses the Java files with the core environment's
+  `PsiManager`. `KcRound` maps each `PsiClass` to its class symbol and each
+  `PsiMethod`/`PsiField` to its member, so `psi`, `getNamedClassSymbol` and
+  `getCallableSymbol` work both ways.
+- Members of a Java class are in FIR's order: instance fields, instance
+  methods and inner classes, then constructors, then static fields, static
+  methods and nested classes. Each group keeps source order, or class-file
+  order for a library class.
+- Fork patch 0005: `KSAnnotationJavaImpl` resolves a Java annotation whose
+  class is Kotlin through `KcExtras.javaAnnotationClass`, since without
+  light classes `PsiAnnotation.resolveAnnotationType()` finds only Java
+  classes. kc resolves the name against the file's imports, package and
+  outer classes.
+- The runner writes Java files under `java-sources/<module>/`, as Kotlin's
+  test framework does, so `RecordJava*` processors print the same paths.
+
+Result: 47 of 136 pass. The remaining 87, by class:
+
+| Class | Tests |
+|---|---|
+| `java-source`: Java sources reach the model, but the test fails further on (data-class and enum members, Java collection types as `MutableList`, accessor overrides, docs of package-private fields, error types for unresolved Java supertypes, ...) | 53 |
+| `unsupported`, `local-declarations`, `annotation-target` | 5, 4, 4 |
+| `type-annotations`, `type-alias` | 3 each |
+| `class-literal` | 2 |
+| one each: as in the baseline, plus `checker-gap` (Java `@NotNull`/`@Nullable` are ignored) | 12 |
+| `ka-differs-from-aa` | 1 |
+
 ## Gaps and open questions
 
 - **Slice simplifications (M0.4).** These go when M3/M4 bring the facts in:
@@ -1031,7 +1070,7 @@ Baseline: 35 of 136 pass, 2 are disabled. The other 99, by class:
     Fixed in step 14.
   - ~~Library type aliases and top-level callables aren't known.~~ Fixed in
     step 6.
-  - Java sources are ignored.
+  - ~~Java sources are ignored.~~ Fixed in step 15.
   - The PSI join checks each node's PSI class, not yet the whole kind
     sequence.
   - `dropCaches` does nothing. Dropping PsiManager's caches needs IntelliJ

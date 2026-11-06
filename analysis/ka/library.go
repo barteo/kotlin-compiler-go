@@ -9,6 +9,7 @@ import (
 	"github.com/barteo/kotlin-compiler-go/internal/check"
 	"github.com/barteo/kotlin-compiler-go/internal/classfile"
 	"github.com/barteo/kotlin-compiler-go/internal/classpath"
+	"github.com/barteo/kotlin-compiler-go/internal/driver"
 	"github.com/barteo/kotlin-compiler-go/internal/kmeta"
 	"github.com/barteo/kotlin-compiler-go/internal/types"
 )
@@ -16,8 +17,9 @@ import (
 // library answers a Model's questions about the classes of the class path:
 // Model.Class. Its models are built on demand and kept.
 type library struct {
-	cp  *classpath.Path
-	lib *check.Library
+	cp   *classpath.Path
+	lib  *check.Library
+	java *driver.JavaSources // the module's Java sources' classes, or nil
 
 	mu     sync.Mutex
 	decls  map[string]*Decl             // by class ID; nil: no such class
@@ -590,7 +592,14 @@ func (l *library) javaClass(cls *types.ClassSym, depth int) *Decl {
 		return nil
 	}
 	det := &classfile.Details{}
-	if data, err := l.cp.Bytes(cls.Name); err == nil {
+	source := l.cp.IsSource(cls.Name)
+	if source {
+		if l.java != nil {
+			if dd := l.java.Details(cls.Name); dd != nil {
+				det = dd
+			}
+		}
+	} else if data, err := l.cp.Bytes(cls.Name); err == nil {
 		if dd, err := classfile.ParseDetails(data); err == nil {
 			det = dd
 		}
@@ -602,6 +611,9 @@ func (l *library) javaClass(cls *types.ClassSym, depth int) *Decl {
 	}
 	d := &Decl{Kind: KindClass, Name: simpleName(id), ClassID: id, Visibility: javaVisibility(access),
 		Flags: FlagJava}
+	if source {
+		d.Flags |= FlagJavaSource
+	}
 	switch {
 	case access&classfile.AccAnnotation != 0:
 		d.Kind = KindAnnotationClass
@@ -630,6 +642,27 @@ func (l *library) javaClass(cls *types.ClassSym, depth int) *Decl {
 	d.Supertypes = javaSupertypes(b, cls, d.Kind, platform)
 	d.Annotations = l.annotations(det.Annotations, false)
 	_, bySig := methods(det)
+	// pos is each member's index among the class's methods, fields or
+	// nested classes, in class-file (or source) order.
+	pos := map[*Decl]int{}
+	sigIndex := map[string]int{}
+	for i, m := range det.Methods {
+		sigIndex[m.Name+m.Desc] = i
+	}
+	method := func(f *types.FunSym, kind Kind) *Decl {
+		md := l.javaMethod(b, f, bySig, d, kind)
+		name := f.JVMName
+		switch {
+		case kind == KindConstructor:
+			name = "<init>"
+		case name == "":
+			name = f.Name
+		}
+		if i, ok := sigIndex[name+f.Desc]; ok {
+			pos[md] = i
+		}
+		return md
+	}
 	if d.Kind == KindAnnotationClass {
 		// Its parameters are its methods, in class-file order, as the
 		// parameters of a constructor.
@@ -656,7 +689,7 @@ func (l *library) javaClass(cls *types.ClassSym, depth int) *Decl {
 		d.Members = append(d.Members, ctor)
 	} else {
 		for _, f := range cls.Ctors {
-			d.Members = append(d.Members, l.javaMethod(b, f, bySig, d, KindConstructor))
+			d.Members = append(d.Members, method(f, KindConstructor))
 		}
 	}
 	for _, name := range sortedKeys(cls.Methods) {
@@ -671,7 +704,7 @@ func (l *library) javaClass(cls *types.ClassSym, depth int) *Decl {
 				}
 				continue
 			}
-			d.Members = append(d.Members, l.javaMethod(b, f, bySig, d, KindFunction))
+			d.Members = append(d.Members, method(f, KindFunction))
 		}
 	}
 	for _, name := range sortedKeys(cls.Statics) {
@@ -679,14 +712,16 @@ func (l *library) javaClass(cls *types.ClassSym, depth int) *Decl {
 			if d.Kind == KindEnumClass && (f.Name == "values" || f.Name == "valueOf") {
 				continue // see enumMembers
 			}
-			md := l.javaMethod(b, f, bySig, d, KindFunction)
+			md := method(f, KindFunction)
 			md.Flags |= FlagStatic
 			d.Members = append(d.Members, md)
 		}
 	}
 	fieldAccess := map[string]*classfile.MemberDetails{}
+	fieldIndex := map[string]int{}
 	for i := range det.Fields {
 		fieldAccess[det.Fields[i].Name] = &det.Fields[i]
+		fieldIndex[det.Fields[i].Name] = i
 	}
 	for _, name := range cls.Entries {
 		d.Members = append(d.Members, &Decl{Kind: KindEnumEntry, Name: name, ClassID: id + "." + name,
@@ -710,6 +745,7 @@ func (l *library) javaClass(cls *types.ClassSym, depth int) *Decl {
 				md.Flags |= FlagMutable
 			}
 			md.Annotations = l.annotations(fd.Annotations, false)
+			pos[md] = fieldIndex[v.Name]
 		}
 		d.Members = append(d.Members, md)
 	}
@@ -719,19 +755,65 @@ func (l *library) javaClass(cls *types.ClassSym, depth int) *Decl {
 	for _, name := range sortedKeys(cls.JavaFields) {
 		addField(cls.JavaFields[name], false)
 	}
+	if h := cls.JavaHidden; h != nil {
+		for _, f := range h.Methods {
+			kind := KindFunction
+			if f.Name == "<init>" {
+				kind = KindConstructor
+			}
+			md := method(f, kind)
+			if f.Static {
+				md.Flags |= FlagStatic
+			}
+			d.Members = append(d.Members, md)
+		}
+		for _, v := range h.Fields {
+			addField(v, v.Kind == types.Static)
+		}
+	}
 	if depth < maxNesting {
-		for _, n := range det.Nested {
+		for i, n := range det.Nested {
 			if nc := l.lib.Class(internalClassID(n)); nc != nil {
 				nc.Ensure()
 				if !nc.Missing && nc.KotlinName == "" {
-					if nd := l.javaClass(nc, depth+1); nd != nil && nd.Visibility != Private {
+					if nd := l.javaClass(nc, depth+1); nd != nil && (nd.Visibility != Private || source) {
+						pos[nd] = i
 						d.Members = append(d.Members, nd)
 					}
 				}
 			}
 		}
 	}
+	if d.Kind == KindClass || d.Kind == KindInterface {
+		slices.SortStableFunc(d.Members, func(a, b *Decl) int {
+			if c := cmp.Compare(javaMemberGroup(a), javaMemberGroup(b)); c != 0 {
+				return c
+			}
+			return cmp.Compare(pos[a], pos[b])
+		})
+	}
 	return d
+}
+
+// javaMemberGroup orders a Java class's members as FIR's declared scopes
+// list them: instance fields, methods and inner classes, then
+// constructors, then static fields, methods and nested classes, each in
+// class-file order.
+func javaMemberGroup(d *Decl) int {
+	g := 0
+	switch d.Kind {
+	case KindJavaField:
+	case KindConstructor:
+		return 3
+	case KindClass, KindInterface, KindEnumClass, KindAnnotationClass, KindObject:
+		g = 2
+	default:
+		g = 1
+	}
+	if d.Flags&FlagStatic != 0 {
+		g += 4
+	}
+	return g
 }
 
 // javaSupertypes returns the supertypes of Java class cls, of kind k, each

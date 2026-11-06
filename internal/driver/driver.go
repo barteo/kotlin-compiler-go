@@ -443,12 +443,40 @@ func addJava(cp *classpath.Path, paths []string, jobs int, outside *javaOutside)
 	if err := errors.Join(errs...); err != nil {
 		return err
 	}
+	addJavaSet(cp, files, outside)
+	return nil
+}
+
+// addJavaSet adds the classes of parsed Java sources files to the class
+// path, ahead of its own, and returns them.
+func addJavaSet(cp *classpath.Path, files []*javasrc.File, outside *javaOutside) *javasrc.Set {
 	set := javasrc.NewSet(files)
 	set.Outside = outside
 	for _, name := range set.Names() {
 		cp.AddSource(name, func() (*cf.Info, error) { return set.Info(name) })
 	}
-	return nil
+	return set
+}
+
+// JavaSources are a module's Java sources, whose classes AddJavaSources
+// added to a class path.
+type JavaSources struct {
+	*javasrc.Set
+	outside *javaOutside
+}
+
+// AddJavaSources adds the classes of a module's parsed Java sources to
+// class path cp, ahead of its own. The classes they name may be the
+// module's Kotlin classes, which SetKotlin tells them of before any of
+// their classes is read.
+func AddJavaSources(cp *classpath.Path, files []*javasrc.File) *JavaSources {
+	outside := &javaOutside{cp: cp}
+	return &JavaSources{Set: addJavaSet(cp, files, outside), outside: outside}
+}
+
+// SetKotlin sets the module's Kotlin sources.
+func (j *JavaSources) SetKotlin(files []*syntax.File) {
+	j.outside.kotlin = kotlinClasses(files)
 }
 
 // javaOutside looks up the classes the Java sources name that aren't

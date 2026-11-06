@@ -1,0 +1,68 @@
+package javasrc
+
+import (
+	"strings"
+
+	"github.com/barteo/kotlin-compiler-go/internal/classfile"
+)
+
+// Details returns what a class file's classfile.Details would say of
+// class name: its and its members' annotations (their classes only, not
+// their arguments), its members' access and parameter names, in source
+// order, and its nested classes. It returns nil if the sources have no
+// such class.
+func (s *Set) Details(name string) *classfile.Details {
+	c := s.classes[name]
+	if c == nil {
+		return nil
+	}
+	info, err := s.Info(name)
+	if err != nil {
+		return nil
+	}
+	r := &resolver{s: s, c: c}
+	d := &classfile.Details{Annotations: r.annotations(c.Annotations)}
+	// Info lists the declared fields and methods first, in source order.
+	for i, m := range info.Fields {
+		md := classfile.MemberDetails{Access: m.Access, Name: m.Name, Desc: m.Desc}
+		if i < len(c.Fields) {
+			md.Annotations = r.annotations(c.Fields[i].Annotations)
+		}
+		d.Fields = append(d.Fields, md)
+	}
+	for i, m := range info.Methods {
+		md := classfile.MemberDetails{Access: m.Access, Name: m.Name, Desc: m.Desc}
+		if i < len(c.Methods) {
+			sm := c.Methods[i]
+			mr := &resolver{s: s, c: c, mparams: sm.TypeParams}
+			md.Annotations = mr.annotations(sm.Annotations)
+			for _, p := range sm.Params {
+				md.ParamNames = append(md.ParamNames, p.Name)
+			}
+		} else if c.Kind == KindRecord && m.Name == "<init>" {
+			for _, p := range c.Components {
+				md.ParamNames = append(md.ParamNames, p.Name)
+			}
+		}
+		d.Methods = append(d.Methods, md)
+	}
+	for _, n := range c.Nested {
+		d.Nested = append(d.Nested, internalName(n))
+	}
+	return d
+}
+
+// annotations returns the classes of as, resolved where r is.
+func (r *resolver) annotations(as []*Annotation) []classfile.Annotation {
+	var out []classfile.Annotation
+	for _, a := range as {
+		t := &Type{}
+		for _, seg := range strings.Split(a.Name, ".") {
+			t.Segs = append(t.Segs, Seg{Name: seg})
+		}
+		if n, _ := r.classType(t); n != "" {
+			out = append(out, classfile.Annotation{Type: "L" + n + ";"})
+		}
+	}
+	return out
+}
