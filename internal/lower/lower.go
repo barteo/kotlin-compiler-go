@@ -276,10 +276,15 @@ func (l *lowerer) syntaxError(n psi.NodeRef) {
 
 // recoverable reports whether the psi error element e leaves its
 // declaration whole: a value parameter written without its type, which
-// paramType gives an invalid type and reports, or an object declaration
-// without its name, which class names as FIR does and reports.
+// paramType gives an invalid type and reports, an object declaration
+// without its name, which class names as FIR does and reports, or a
+// property type's unclosed type argument list, which prop keeps as far as
+// it parsed, as FIR does, and reports.
 func (l *lowerer) recoverable(e psi.NodeRef) bool {
 	p := e.Parent()
+	if unclosedPropType(e) {
+		return true
+	}
 	if p.NumericKind() == psi.KindOBJECT_DECLARATION && !first(e).Valid() && !has(p, psi.KindIDENTIFIER) {
 		return true
 	}
@@ -288,6 +293,53 @@ func (l *lowerer) recoverable(e psi.NodeRef) bool {
 		(p.Parent().Parent().NumericKind() == psi.KindPRIMARY_CONSTRUCTOR ||
 			p.Parent().Parent().NumericKind() == psi.KindFUN ||
 			p.Parent().Parent().NumericKind() == psi.KindSECONDARY_CONSTRUCTOR)
+}
+
+// unclosedPropType reports whether the psi error element e is a property
+// type's unclosed type argument list, Bar<out P in val x: Bar<out P!!>, or
+// the rest of the property after that type, which psi leaves in one error
+// element.
+func unclosedPropType(e psi.NodeRef) bool {
+	p := e.Parent()
+	if p.NumericKind() == psi.KindPROPERTY {
+		t := prev(e)
+		return t.NumericKind() == psi.KindTYPE_REFERENCE && unclosedTypeArgs(t).Valid()
+	}
+	if p.NumericKind() != psi.KindTYPE_ARGUMENT_LIST || first(e).Valid() || next(e).Valid() {
+		return false
+	}
+	for n := p.Parent(); ; n = n.Parent() {
+		switch n.NumericKind() {
+		case psi.KindUSER_TYPE, psi.KindNULLABLE_TYPE, psi.KindTYPE_PROJECTION, psi.KindTYPE_ARGUMENT_LIST:
+		case psi.KindTYPE_REFERENCE:
+			if n.Parent().NumericKind() == psi.KindPROPERTY && prev(n).NumericKind() == psi.KindCOLON {
+				return true
+			}
+		default:
+			return false
+		}
+	}
+}
+
+// unclosedTypeArgs returns the error element that ends an unclosed type
+// argument list in type reference t, or an invalid NodeRef.
+func unclosedTypeArgs(t psi.NodeRef) psi.NodeRef {
+	var found psi.NodeRef
+	var walk func(n psi.NodeRef)
+	walk = func(n psi.NodeRef) {
+		for _, c := range kids(n) {
+			if found.Valid() {
+				return
+			}
+			if c.NumericKind() == psi.KindERROR_ELEMENT && n.NumericKind() == psi.KindTYPE_ARGUMENT_LIST && unclosedPropType(c) {
+				found = c
+				return
+			}
+			walk(c)
+		}
+	}
+	walk(t)
+	return found
 }
 
 // inBody reports whether e is inside a CLASS_BODY strictly under n.

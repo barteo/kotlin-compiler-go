@@ -217,6 +217,10 @@ func (l *lowerer) prop(n psi.NodeRef, m syntax.Modifiers) *syntax.PropDecl {
 				pd.Recv, pd.RecvAnnotations = l.recvType(c)
 			case seenColon:
 				pd.Type = l.typeRef(c)
+				if e := unclosedTypeArgs(c); e.Valid() {
+					pos, msg := l.syntaxMessage(e)
+					l.errorLater(pos, "%s", msg)
+				}
 			}
 		case psi.KindIDENTIFIER:
 			seenName = true

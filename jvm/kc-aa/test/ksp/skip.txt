@@ -4,4 +4,3 @@ testGetPackage: java-source: the order of a package's Java source classes (stock
 testJavaAnnotatedUtil: java-source: a malformed Java file (a Kotlin import without semicolon, many public classes) whose PSI error recovery FIR keeps one class of
 testParent: java-source: Java library classes have no class-file PSI (stock: parent of HSV is File: HSV.class, and its entries property, whose psi is that class, has no getter)
 testPlatformDeclaration: disabled: @Disabled in KSPUnitTestSuite
-testReplaceWithErrorTypeArgs: syntax-errors: kc drops a declaration with a syntax error, val barFoo: Bar<out P!!>, where FIR keeps what parsed, Bar<out P>

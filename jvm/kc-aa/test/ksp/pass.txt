@@ -108,6 +108,7 @@ testRecordJavaResolutions
 testRecordJavaSupertypes
 testReferenceElement
 testRepeatedNonRepeatableAnnotations
+testReplaceWithErrorTypeArgs
 testResolveJavaType
 testSealedClass
 testShadowingAnnotations
