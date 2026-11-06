@@ -12,8 +12,7 @@
 //   KC_STRICT  1: a kc failure fails the build. Otherwise kotlinc compiles that module instead,
 //              from scratch, and the build log says so.
 //   KC_SKIP    comma-separated task paths to leave to kotlinc, such as :app:compileDebugKotlin
-//   KC_JDK_HOME  JDK for modules without android.jar (default: kc's own default, $JAVA_HOME).
-//              kc cannot read a JDK whose lib/modules image is compressed, such as Android Studio's JBR.
+//   KC_JDK_HOME  JDK for modules without android.jar, in place of the task's Java toolchain
 //
 // kc compiles whole modules, so the tasks are not incremental. Compiler plugins other than Compose,
 // kotlinx.serialization and Parcelize are not applied; the log names any it leaves out. Included
@@ -55,10 +54,17 @@ if (gradle.parent == null) {
 
         val args = mutableListOf(kc, "-d", dest.path)
         (option("getModuleName") as String?)?.let { args += listOf("-module-name", it) }
-        // An Android module's class path holds android.jar, which stands in for the JDK.
+        // An Android module's class path holds android.jar, which stands in for the JDK. Other
+        // modules compile against the JDK of the task's Java toolchain, as kotlinc does.
+        val toolchainJdk = runCatching {
+          val toolchain = call(task, "getKotlinJavaToolchain")!!
+          val java = callPrefixed(toolchain, "getJavaExecutable") as org.gradle.api.file.RegularFileProperty
+          java.get().asFile.canonicalFile.parentFile.parentFile.path
+        }.getOrNull()
         when {
           option("getNoJdk") == true || libraries.any { File(it).name == "android.jar" } -> args += "-no-jdk"
           System.getenv("KC_JDK_HOME") != null -> args += listOf("-jdk-home", System.getenv("KC_JDK_HOME"))
+          toolchainJdk != null -> args += listOf("-jdk-home", toolchainJdk)
         }
         if (libraries.isNotEmpty()) args += listOf("-cp", libraries.joinToString(File.pathSeparator))
         if (friends.isNotEmpty()) args += listOf("-friend-paths", friends.joinToString(File.pathSeparator))
@@ -76,6 +82,7 @@ if (gradle.parent == null) {
           }
         }
         if (left.isNotEmpty()) logger.info("kc: ${task.path} leaves out compiler plugins $left")
+        logger.info("kc: ${task.path}: ${args.joinToString(" ")} <${sources.size} files>")
         args += sources
 
         dest.deleteRecursively()
