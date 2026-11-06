@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: kc <barteo@gmail.com>
 Date: Thu, 5 Nov 2026 15:43:32 +0000
-Subject: [PATCH 4/5] Find source file facades through KcExtras
+Subject: [PATCH 4/6] Find source file facades through KcExtras
 
 KtFile.findFacadeClass needs light classes, which a backend other than
 FIR's may not have.

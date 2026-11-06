@@ -222,6 +222,9 @@ internal class KcLibraryModule(override val project: Project, private val config
 private class KcExtrasImpl(private val round: () -> KcRound) : KcExtras {
     override fun javaAnnotationClass(annotation: PsiAnnotation): ClassId? = round().javaAnnotationClass(annotation)
 
+    override fun javaEnumEntry(reference: com.intellij.psi.PsiReferenceExpression): org.jetbrains.kotlin.name.CallableId? =
+        round().javaEnumEntry(reference)
+
     override fun optimalModeForReturnType(type: KaType, isAnnotationMethod: Boolean): TypeMappingMode =
         if (isAnnotationMethod) TypeMappingMode.VALUE_FOR_ANNOTATION else optimalMode(type, false)
     override fun optimalModeForValueParameter(type: KaType): TypeMappingMode = optimalMode(type, true)

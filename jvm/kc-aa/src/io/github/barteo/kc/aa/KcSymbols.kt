@@ -168,7 +168,10 @@ internal class KcClassSymbol(val info: KcInfo) : StubKaNamedClassSymbol() {
     override val compilerVisibility get() = info.compilerVisibility
     override val location get() = info.location
     override val modality get() = info.modality
-    override val superTypes: List<KaType> by lazy { info.decl.supertypes.map { info.type(it) } }
+    override val superTypes: List<KaType> by lazy {
+        val java = (info.psi as? com.intellij.psi.PsiClass)?.takeIf { info.origin == KaSymbolOrigin.JAVA_SOURCE }
+        info.decl.supertypes.map { info.type(if (java != null) info.round.javaSupertype(java, it) else it) }
+    }
     /** The type of this class with its own type parameters as arguments, C<T>. */
     val selfType: KaType
         get() = KcClassType(info.round, classId ?: ClassId.fromString("kotlin/Any"), typeParams.map {

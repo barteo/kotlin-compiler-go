@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: kc <barteo@gmail.com>
 Date: Thu, 5 Nov 2026 11:56:19 +0000
-Subject: [PATCH 3/5] Put session creation behind KspBackend
+Subject: [PATCH 3/6] Put session creation behind KspBackend
 
 KotlinSymbolProcessing.execute() is the processing loop plus the
 creation of a standalone Analysis API session. Split the two: the loop

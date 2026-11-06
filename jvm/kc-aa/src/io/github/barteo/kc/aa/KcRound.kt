@@ -8,6 +8,7 @@ import com.intellij.psi.PsiJavaFile
 import com.intellij.psi.PsiMethod
 import com.intellij.psi.PsiModifier
 import com.intellij.psi.PsiModifierListOwner
+import com.intellij.psi.PsiReferenceExpression
 import com.intellij.psi.PsiTypeParameterListOwner
 import com.intellij.psi.util.PsiTreeUtil
 import org.jetbrains.kotlin.analysis.api.annotations.KaAnnotation
@@ -105,13 +106,27 @@ internal class KcRound(
      * and last as a qualified name. Java PSI resolves only Java classes, so
      * KSP asks for the Kotlin ones here.
      */
-    fun javaAnnotationClass(a: PsiAnnotation): ClassId? {
-        val name = a.nameReferenceElement?.text?.filterNot { it.isWhitespace() } ?: return null
-        val file = a.containingFile as? PsiJavaFile ?: return null
+    fun javaAnnotationClass(a: PsiAnnotation): ClassId? =
+        javaClassNamed(a.nameReferenceElement?.text ?: return null, a)
+
+    /**
+     * The Kotlin enum entry a Java reference `E.X` names, which Java PSI
+     * doesn't resolve: an annotation argument's, as KSP reads it.
+     */
+    fun javaEnumEntry(ref: PsiReferenceExpression): CallableId? {
+        val q = ref.qualifierExpression ?: return null
+        val cls = javaClassNamed(q.text, ref) ?: return null
+        return CallableId(cls, Name.identifier(ref.referenceName ?: return null))
+    }
+
+    /** The class Java type name [text] in [context] names; see [javaAnnotationClass]. */
+    fun javaClassNamed(text: String, context: PsiElement): ClassId? {
+        val name = text.filterNot { it.isWhitespace() }
+        val file = context.containingFile as? PsiJavaFile ?: return null
         val first = name.substringBefore('.')
         val rest = name.substring(first.length)
         val candidates = ArrayList<String>()
-        var c = generateSequence(a.parent) { it.parent }.firstOrNull { it is PsiClass } as PsiClass?
+        var c = generateSequence(context.parent) { it.parent }.firstOrNull { it is PsiClass } as PsiClass?
         while (c != null) {
             javaClassId(c)?.let { candidates += it.asFqNameString() + "." + name }
             c = c.containingClass
@@ -135,6 +150,58 @@ internal class KcRound(
             if (classes[id] != null || libraryClass(id) != null) return id
         }
         return null
+    }
+
+    /**
+     * [t], a supertype of Java source class [c], with the type annotations
+     * its extends or implements clause writes, `implements @A Parent`.
+     * The Go model keeps a Java source's annotation names only, so they
+     * are read from the PSI, with node 0.
+     */
+    fun javaSupertype(c: PsiClass, t: KcType): KcType {
+        if (t.kind != KcType.CLASS || t.annotations.isNotEmpty()) return t
+        val simple = t.classId.substringAfterLast('/').substringAfterLast('.')
+        val refs = listOfNotNull(c.extendsList, c.implementsList).flatMap { it.referenceElements.asList() }
+        val ref = refs.firstOrNull { it.referenceName == simple } ?: return t
+        val annots = PsiTreeUtil.getChildrenOfTypeAsList(ref, PsiAnnotation::class.java)
+        if (annots.isEmpty()) return t
+        return KcType(t.kind, t.classId, t.flags, t.param, t.name, t.contexts, t.args, t.abbrev, annots.map(::javaAnnotation))
+    }
+
+    /** The model's form of Java annotation [a], with node 0. */
+    fun javaAnnotation(a: PsiAnnotation): KcAnnotation = KcAnnotation(
+        javaAnnotationClass(a)?.asString() ?: "", 0, "", false,
+        a.parameterList.attributes.mapNotNull { at -> at.value?.let { (at.name ?: "value") to javaValue(it) } })
+
+    private fun javaValue(v: com.intellij.psi.PsiAnnotationMemberValue): KcValue = when (v) {
+        is PsiAnnotation -> KcValue.Nested(0, javaAnnotation(v))
+        is com.intellij.psi.PsiArrayInitializerMemberValue -> KcValue.Array(0, v.initializers.map(::javaValue))
+        is PsiReferenceExpression -> when (val r = v.resolve()) {
+            is com.intellij.psi.PsiEnumConstant -> r.containingClass?.let(::javaClassId)
+                ?.let { KcValue.Enum(0, it.asString(), r.name) } ?: KcValue.Unsupported(0)
+            null -> javaEnumEntry(v)?.let { KcValue.Enum(0, it.classId!!.asString(), it.callableName.asString()) }
+                ?: KcValue.Unsupported(0)
+            else -> javaConstant(v)
+        }
+        is com.intellij.psi.PsiExpression -> javaConstant(v)
+        else -> KcValue.Unsupported(0)
+    }
+
+    private fun javaConstant(e: com.intellij.psi.PsiExpression): KcValue {
+        val c = com.intellij.psi.JavaPsiFacade.getInstance(e.project).constantEvaluationHelper.computeConstantExpression(e)
+        fun k(kind: Int, bits: Long = 0, float: Double = 0.0, str: String = "") = KcValue.Const(0, kind, bits, float, str)
+        return when (c) {
+            is Boolean -> k(KcValue.Const.BOOLEAN, if (c) 1 else 0)
+            is Char -> k(KcValue.Const.CHAR, c.code.toLong())
+            is Byte -> k(KcValue.Const.BYTE, c.toLong())
+            is Short -> k(KcValue.Const.SHORT, c.toLong())
+            is Int -> k(KcValue.Const.INT, c.toLong())
+            is Long -> k(KcValue.Const.LONG, c)
+            is Float -> k(KcValue.Const.FLOAT, float = c.toDouble())
+            is Double -> k(KcValue.Const.DOUBLE, float = c)
+            is String -> k(KcValue.Const.STRING, str = c)
+            else -> KcValue.Unsupported(0)
+        }
     }
 
     /** The sources' packages and the packages they are in. */

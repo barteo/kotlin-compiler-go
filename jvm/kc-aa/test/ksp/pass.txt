@@ -6,6 +6,8 @@ testAnnotatedUtil
 testAnnotationOnConstructorParameter
 testAnnotationTargets
 testAnnotationValue_defaultKClassValue
+testAnnotationValue_java
+testAnnotationValue_java2
 testAnnotationValue_kt
 testAnnotationWithArbitraryClassValue
 testAnnotationWithArrayValue
