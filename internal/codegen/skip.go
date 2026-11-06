@@ -219,10 +219,19 @@ func usedParams(params []*types.VarSym, roots ...any) []bool {
 				if this >= 0 && n.Outer == nil {
 					used[this] = true
 				}
+			case *syntax.Member:
+				if this >= 0 && memberExtOfThis(n, n.Getter) {
+					used[this] = true
+				}
 			case *syntax.Call:
 				if f := n.Sym; this >= 0 && f != nil && f.Owner != nil && !f.Owner.Object && !f.Static && !n.Invoke && n.Ctor == nil {
-					if _, ok := n.Fun.(*syntax.Ident); ok {
+					switch m := n.Fun.(type) {
+					case *syntax.Ident:
 						used[this] = true // a member called on this
+					case *syntax.Member:
+						if memberExtOfThis(m, f) {
+							used[this] = true
+						}
 					}
 				}
 			case *syntax.Lambda:
@@ -239,6 +248,12 @@ func usedParams(params []*types.VarSym, roots ...any) []bool {
 		})
 	}
 	return used
+}
+
+// memberExtOfThis reports whether m calls f, a member extension of a
+// class whose object is this, which m doesn't name.
+func memberExtOfThis(m *syntax.Member, f *types.FunSym) bool {
+	return f != nil && f.Ext && f.Owner != nil && !f.Owner.Object && !f.Static && m.DispatchThis == nil && m.Dispatch == nil
 }
 
 // implicitThis reports whether x reads a member of this.
