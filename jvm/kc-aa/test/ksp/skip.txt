@@ -19,7 +19,6 @@ testJavaNonNullTypes: checker-gap: the checker ignores Java @NotNull/@Nullable, 
 testJavaSubtype: java-source: line 1: want true got false
 testLocalClasses: local-declarations: anonymous objects
 testLocations: java-source: line 3: want K:J.java:81 got K:K.kt:60
-testMultipleround: java-source: line 3: want J : <ERROR TYPE: I0>, <ERROR TYPE: I1>, <ERROR TYPE: I2>, <ERROR TYPE: I3>, <ERR got J
 testParent: java-source: line 28: want parent of Any: (Any..Any?) got parent of synthetic constructor for B: B
 testPlatformDeclaration: disabled: @Disabled in KSPUnitTestSuite
 testRawTypes: java-source: line 1: want barRaw got

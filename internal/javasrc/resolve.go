@@ -1,6 +1,7 @@
 package javasrc
 
 import (
+	"slices"
 	"sort"
 	"strings"
 	"unicode"
@@ -453,6 +454,9 @@ func (s *Set) Info(name string) (*classfile.Info, error) {
 		info.Interfaces = append(info.Interfaces, n)
 		r.unresolved(info, t)
 	}
+	if !slices.ContainsFunc(info.Unresolved, func(n string) bool { return n != "" }) {
+		info.Unresolved = nil
+	}
 	if c.Outer != nil {
 		// As javac writes it: the class's own kind flags too.
 		access := c.Flags | flags&(classfile.AccInterface|classfile.AccAbstract|classfile.AccAnnotation|classfile.AccEnum|classfile.AccFinal)
@@ -637,14 +641,16 @@ func (r *resolver) superType(t *Type) (string, *TypeParam) {
 	return n, tp
 }
 
-// unresolved records supertype t in info.Unresolved if it doesn't resolve.
+// unresolved adds written supertype t to info.Unresolved: its simple name
+// if it doesn't resolve, else "".
 func (r *resolver) unresolved(info *classfile.Info, t *Type) {
-	if r.s.Outside == nil || len(t.Segs) == 0 {
-		return
+	name := ""
+	if r.s.Outside != nil && len(t.Segs) > 0 {
+		if n, tp := superResolver(r.s, r.c).classType(t); tp == nil && (n == "" || !r.s.known(n)) {
+			name = t.Segs[len(t.Segs)-1].Name
+		}
 	}
-	if n, tp := superResolver(r.s, r.c).classType(t); tp == nil && (n == "" || !r.s.known(n)) {
-		info.Unresolved = append(info.Unresolved, t.Segs[len(t.Segs)-1].Name)
-	}
+	info.Unresolved = append(info.Unresolved, name)
 }
 
 // outerParam returns the type of the outer instance an inner class's

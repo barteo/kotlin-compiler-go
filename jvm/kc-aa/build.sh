@@ -22,7 +22,7 @@
 # writes build/ksptest/results.txt, and fails if a test test/ksp/pass.txt
 # lists doesn't pass; KSP_UPDATE=1 rewrites pass.txt. KSP_TESTS=REGEX runs
 # only the tests whose names match. test/ksp/skip.txt says why each other
-# test fails.
+# test fails. KSP_JAVA_OPTS adds JVM options (-Dkc.diagnostics prints kc's).
 #
 # The symbol classes extend generated stubs (build/Stubs.kt, made by
 # gen/GenStubs.kt) whose members throw UnsupportedOperationException("kc:
@@ -99,7 +99,7 @@ if [ "$mode" = ksp ]; then
 	kotlinc -cp "$deps" -d "$kt/classes" -jvm-target 17 -jvm-default=enable $optins -nowarn \
 		$(find "$ksp/test-utils/src/main/kotlin" "$ksp/kotlin-analysis-api/src/test/kotlin/com/google/devtools/ksp/processor" -name '*.kt') \
 		"$here/ksptest/KspSuite.kt"
-	LD_PRELOAD=$java_home/lib/libjsig.so java -Xss8m -Dksp.backend=kc -Dkc.lib="$out/libkc.so" -Didea.home.path="$out" \
+	LD_PRELOAD=$java_home/lib/libjsig.so java -Xss8m ${KSP_JAVA_OPTS:-} -Dksp.backend=kc -Dkc.lib="$out/libkc.so" -Didea.home.path="$out" \
 		-Dksptest.stdlib="$lib/kotlin-stdlib-2.4.21.jar" -Dksptest.annotations="$lib/annotations-23.0.0.jar" \
 		-cp "$kt/classes:$out/kc-aa.jar:$deps" KspSuiteKt "$ksp" "$kt/work" "$kt/results.txt" \
 		"$lib/kotlin-compiler-2.4.21.jar:$lib/kotlin-stdlib-2.4.21.jar:$lib/kotlinx-coroutines-core-jvm-1.8.0.jar:$lib/annotations-23.0.0.jar" \

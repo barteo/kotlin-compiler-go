@@ -795,9 +795,14 @@ func (c *Checker) resolveTypeRef(ref *syntax.TypeRef) types.Type {
 				return types.InvalidType
 			}
 			if !c.usable(cls, ref.P) {
-				return types.InvalidType
+				if cls.Missing || !cls.PackagePrivate {
+					return types.InvalidType
+				}
+				// A package-private Java class: reported, but its type
+				// stays, as in FIR.
+			} else {
+				c.checkClassVisible(cls, ref.P)
 			}
-			c.checkClassVisible(cls, ref.P)
 			c.u.typeUses.Store(ref, cls)
 			return c.applyTypeArgs(cls, ref)
 		}

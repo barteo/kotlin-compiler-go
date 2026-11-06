@@ -292,6 +292,7 @@ public class JavaSrc<T> extends Base implements Runnable {
 
 class Base {}
 class Orphan extends Gone implements Runnable { public void run() {} }
+abstract class Mixed implements Runnable, Lost, Comparable<String> {}
 `
 	kotlin := "package j\nclass UsesJava(val j: JavaSrc<String>) : Base()\nfun f() = JavaSrc.MAX\n"
 	sources := []Source{{Path: "j/Uses.kt", Text: &kotlin}, {Path: "j/JavaSrc.java", Text: &java}}
@@ -342,6 +343,10 @@ class Orphan extends Gone implements Runnable { public void run() {} }
 		d.Supertypes[1].ClassID != "java/lang/Runnable" {
 		t.Errorf("j/Orphan: want supertypes <error Gone>, Runnable, got %+v", d)
 	}
+	if d := m.Class("j/Mixed"); d == nil || len(d.Supertypes) != 3 || d.Supertypes[0].ClassID != "java/lang/Runnable" ||
+		d.Supertypes[1].Kind != TypeError || d.Supertypes[1].Name != "Lost" || d.Supertypes[2].ClassID != "kotlin/Comparable" {
+		t.Errorf("j/Mixed: want supertypes Runnable, <error Lost>, Comparable, got %+v", d)
+	}
 	if d := m.Class("java/lang/Thread"); d == nil || d.Flags&FlagJavaSource != 0 {
 		t.Errorf("java/lang/Thread: want a JDK class, got %+v", d)
 	}
@@ -384,5 +389,41 @@ func TestLibraryConstants(t *testing.T) {
 	}
 	if d := find(m.Files[0].Decls, "notConst"); d.Default != nil {
 		t.Errorf("notConst: %+v, want no value", d.Default)
+	}
+}
+
+// TestInvisibleJavaClass checks that a Kotlin class keeps the type of a
+// package-private Java class of another package, reported as invisible, as
+// FIR does, and that a Java class keeps unresolved supertypes in place.
+func TestInvisibleJavaClass(t *testing.T) {
+	i0 := "package com.example\ninterface I0\n"
+	i1 := "package com.example;\ninterface I1 {}\n"
+	k := "import com.example.*\nclass K : I0, I1, I2\n"
+	j := "import com.example.*;\nclass J implements I0, I1, I2 {}\n"
+	s := Open(withJDK(t))
+	defer s.Close()
+	m, err := s.Update(context.Background(), []Source{{Path: "K.kt", Text: &k}, {Path: "J.java", Text: &j},
+		{Path: "com/example/I0.kt", Text: &i0}, {Path: "com/example/I1.java", Text: &i1}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close()
+	str := func(ts []*Type) string {
+		var out []string
+		for _, t := range ts {
+			if t.Kind == TypeError {
+				out = append(out, "<error "+t.Name+">")
+			} else {
+				out = append(out, t.ClassID)
+			}
+		}
+		return strings.Join(out, ", ")
+	}
+	want := "com/example/I0, com/example/I1, <error I2>"
+	if d := m.Files[0].Decls[0]; d.Name != "K" || str(d.Supertypes) != want {
+		t.Errorf("K: want %s, got %s %s", want, d.Name, str(d.Supertypes))
+	}
+	if d := m.Class("J"); d == nil || str(d.Supertypes) != want {
+		t.Errorf("J: want %s, got %+v", want, d)
 	}
 }

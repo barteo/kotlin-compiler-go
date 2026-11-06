@@ -750,11 +750,18 @@ func (l *library) javaClass(cls *types.ClassSym, depth int) *Decl {
 	if source && len(info.Unresolved) > 0 {
 		// Supertypes the source wrote that don't resolve are error types,
 		// as in FIR, not the java/lang/Object kc reads in their place.
-		var errs []*Type
+		// The resolved ones keep their places among them.
+		rest := slices.DeleteFunc(d.Supertypes, func(t *Type) bool { return t.ClassID == "kotlin/Any" })
+		var out []*Type
 		for _, n := range info.Unresolved {
-			errs = append(errs, &Type{Kind: TypeError, Name: n})
+			switch {
+			case n != "":
+				out = append(out, &Type{Kind: TypeError, Name: n})
+			case len(rest) > 0:
+				out, rest = append(out, rest[0]), rest[1:]
+			}
 		}
-		d.Supertypes = append(errs, slices.DeleteFunc(d.Supertypes, func(t *Type) bool { return t.ClassID == "kotlin/Any" })...)
+		d.Supertypes = append(out, rest...)
 	}
 	// FIR lists a Java class's run-time visible annotations first.
 	d.Annotations = l.annotations(slices.Concat(det.Annotations[det.Invisible:], det.Annotations[:det.Invisible]), false)
