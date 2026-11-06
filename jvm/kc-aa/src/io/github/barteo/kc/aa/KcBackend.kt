@@ -37,6 +37,9 @@ import org.jetbrains.kotlin.cli.jvm.compiler.KotlinCoreEnvironment
 import org.jetbrains.kotlin.cli.jvm.config.addJavaSourceRoots
 import org.jetbrains.kotlin.cli.jvm.config.addJvmClasspathRoots
 import org.jetbrains.kotlin.config.JVMConfigurationKeys
+import org.jetbrains.kotlin.load.kotlin.KotlinBinaryClassCache
+import org.jetbrains.kotlin.load.kotlin.KotlinClassFinder
+import org.jetbrains.kotlin.metadata.deserialization.MetadataVersion
 import org.jetbrains.kotlin.cli.extensionsStorage
 import org.jetbrains.kotlin.compiler.plugin.CompilerPluginRegistrar
 import org.jetbrains.kotlin.config.CompilerConfiguration
@@ -72,13 +75,17 @@ private class KcSession(private val config: KSPConfig, disposable: Disposable) :
         val conf = CompilerConfiguration()
         conf.extensionsStorage = CompilerPluginRegistrar.ExtensionStorage()
         val jvm = config as? KSPJvmConfig
-        if (jvm != null && jvm.javaSourceRoots.isNotEmpty()) {
+        if (jvm != null) {
             // KSP reads Java sources through Java PSI, which resolves their
             // names (annotation classes, constants) against the class path
-            // and the other Java sources.
+            // and the other Java sources, and it reads library class files
+            // (checked exceptions, member order, backing fields, Java
+            // annotation defaults) through the Java file manager, which
+            // must give PSI-backed classes (JavaClassImpl).
             conf.addJvmClasspathRoots((config.libraries + config.friends).distinct())
             jvm.jdkHome?.let { conf.put(JVMConfigurationKeys.JDK_HOME, it) }
             conf.addJavaSourceRoots(jvm.javaSourceRoots)
+            conf.put(JVMConfigurationKeys.USE_PSI_CLASS_FILES_READING, true)
         }
         KotlinCoreEnvironment.createForProduction(disposable, conf, EnvironmentConfigFiles.JVM_CONFIG_FILES)
     }
@@ -332,5 +339,8 @@ private class KcExtrasImpl(private val round: () -> KcRound) : KcExtras {
         }
         return null
     }
-    override fun kotlinBinaryClass(file: VirtualFile): KotlinJvmBinaryClass? = KcAnalysis.unsupported("KcExtras.kotlinBinaryClass")
+    /** The Kotlin view of a library class file, which KSP reads for its members' order. */
+    override fun kotlinBinaryClass(file: VirtualFile): KotlinJvmBinaryClass? =
+        (KotlinBinaryClassCache.getKotlinBinaryClassOrClassFileContent(file, MetadataVersion.INSTANCE)
+            as? KotlinClassFinder.Result.KotlinClass)?.kotlinJvmBinaryClass
 }

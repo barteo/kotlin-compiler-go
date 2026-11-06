@@ -48,8 +48,12 @@ class KcAnalysis internal constructor(
 ) {
     fun getToken(): KaLifetimeToken = round.token
     fun getUseSiteModule(): KaModule = module
-    /** kc has no IntelliJ search scope: KSP's Java class lookups find nothing and fall back to [KcExtras]. */
-    fun getAnalysisScope(): GlobalSearchScope = GlobalSearchScope.EMPTY_SCOPE
+    /**
+     * The whole project: KSP reads library class files through the core
+     * environment's Java file manager in this scope (checked exceptions,
+     * declaration order, backing fields, Java annotation defaults).
+     */
+    fun getAnalysisScope(): GlobalSearchScope = GlobalSearchScope.allScope(module.project)
 
     // KaSymbolProvider
     fun getSymbol(file: KtFile): KaFileSymbol = round.byPsi[file] as? KaFileSymbol ?: noSymbol(file)

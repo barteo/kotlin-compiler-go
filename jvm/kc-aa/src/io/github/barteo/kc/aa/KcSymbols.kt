@@ -438,10 +438,10 @@ internal class KcTypeAliasSymbol(val info: KcInfo) : StubKaTypeAliasSymbol() {
     override val typeParameters get() = typeParams
 }
 
-/** A field of a Java library class. */
+/** A field of a Java class: a library's, or a Java source's with its `PsiField`. */
 internal class KcJavaFieldSymbol(val info: KcInfo) : StubKaJavaFieldSymbol() {
     override val token get() = info.round.token
-    override val psi: PsiElement? get() = null
+    override val psi: PsiElement? get() = info.psi
     override val origin get() = info.origin
     override val annotations get() = info.annotations
     override val name get() = info.name
