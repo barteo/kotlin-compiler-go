@@ -59,7 +59,7 @@ fun main(args: Array<String>) {
         apiVersion = languageVersion
         jvmTarget = "17"
         jvmDefaultMode = "enable"
-        incremental = false
+        incremental = System.getProperty("ksp.incremental") == "true"
         processorOptions = options
     }.build()
     val providers = ServiceLoader.load(SymbolProcessorProvider::class.java).toList()

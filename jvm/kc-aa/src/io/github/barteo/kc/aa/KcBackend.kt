@@ -159,6 +159,11 @@ private class KcSession(private val config: KSPConfig, disposable: Disposable) :
     override fun sourceFiles(): List<KSFile> =
         round.fileSymbols.map { KSFileImpl.getCached(it) } + round.javaFiles.map { KSFileJavaImpl.getCached(it) }
 
+    // kc's checker doesn't record its name lookups yet, so KSP rebuilds on
+    // every run on this backend (docs/analysis-api.md, "Incremental
+    // processing").
+    override val recordsLookups: Boolean get() = false
+
     override fun beginRound(lookupTracker: DualLookupTracker) {}
 
     // Sources aren't edited between rounds (KSP only adds files), and the

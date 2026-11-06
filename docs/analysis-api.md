@@ -72,7 +72,7 @@ mapping.
 | M3 | Richer symbol model: visibility and modality enums, flags, origins, library annotation arguments, Java parameter names | in progress: source types, flags, modality; KaTypes on the JVM; annotation arguments; library classes; inherited members, overrides, subtyping; packages, library top-level declarations, alias abbreviations; JVM type mapping, Moshi codegen end to end; backing fields, Dagger end to end; Dagger on octi-server byte-identical to stock KSP 2.3.6; the slice checked against stock KSP; Room and Hilt byte-identical to stock KSP (step 14) |
 | M4 | Queryable session `analysis/ka`: lookups, scopes, relations, overrides | |
 | M5 | Bridge: `cmd/libkc` operations, `tools/kagen` wire format, `jvm/kc-aa` KaSession | |
-| M6 | KSP fork integration: the `kc` backend, IC lookups, hot paths | in progress: KSP's own test suite on the kc backend, `build.sh ksp` (step 15): 130 of 136 pass, Java sources in the main module included |
+| M6 | KSP fork integration: the `kc` backend, IC lookups, hot paths | in progress: KSP's own test suite on the kc backend, `build.sh ksp` (step 15): 130 of 136 pass, Java sources in the main module included; KSP rebuilds on every run on kc until lookups are recorded |
 | M7 | Differential conformance against stock KSP, benchmark, CI | in progress: `bench/ksp` (step 11): warm 990 ms on stock KSP, 284 ms on kc; cold 8.1–8.7 s and 2.9–3.2 s, with a CDS archive 5.8–6.1 s and 1.9–2.1 s; CI: `.github/workflows/analysis-api.yml` (step 12) |
 
 ### M0.1 – JNI spike
@@ -1424,6 +1424,44 @@ Result: 130 of 136 pass. The remaining 6, by class:
 | `java-source`: Java PSI evaluating a Kotlin facade constant without light classes (testAnnotationWithDefault); the hash order of a package's Java source classes (testGetPackage); PSI error recovery in a malformed Java file (testJavaAnnotatedUtil); class-file PSI for Java library classes (testParent) | 4 |
 | `disabled`: `@Disabled` in `KSPUnitTestSuite` | 2 |
 
+#### Incremental processing
+
+In incremental mode (`incremental = true`, Gradle's default), KSP keeps a
+record of lookups: which (scope, name) pairs each source file's processing
+resolved. On the next build it reprocesses only the files whose lookups hit
+a changed declaration. For Java sources, KSP records the lookups itself
+(`IncrementalContextAA.recordLookup*`). For Kotlin sources, the front end
+records them: the stock backend's `beginRound` registers KSP's
+`DualLookupTracker` with FIR, which records every name it resolves.
+
+kc's checker doesn't record its lookups yet, so on kc an incremental run
+rebuilds, every time. Patch 0007 adds `KspBackendSession.recordsLookups`,
+which the kc backend sets to false. When a run is asked to be incremental on
+a backend that doesn't record lookups, KSP deletes `caches.uptodate` from
+the caches directory before processing and again after it:
+- **Before:** `IncrementalContextBase` sees no marker and rebuilds. Every
+  file is dirty, so every build processes every file. That is cheap at kc's
+  warm times (step 11).
+- **After:** the next run, on kc or on a backend that records lookups
+  (`aa`), rebuilds too, rather than trusting caches that miss the Kotlin
+  sources' dependencies.
+- The incremental context itself stays on, so KSP's own lookups for Java
+  sources are still recorded. KSP's `testRecordJava*` tests check them;
+  turning incremental off outright failed those 6.
+- Gradle's KSP worker deletes the output directory on each run. A rebuild
+  regenerates every output, so no stale outputs are left behind.
+
+`build.sh test` checks this: Moshi with `-Dksp.incremental=true` produces the
+same files, and the marker is gone.
+
+Next step, porting the lookups:
+- kc's checker records (file, scope FQ name, scope kind, name) where FIR
+  does: type references, calls, supertypes and imports.
+- `ka.Update` sends them over the wire.
+- `beginRound` replays them into the tracker, and `recordsLookups` becomes
+  true.
+- They are checked against stock KSP's lookup caches on a fixture.
+
 ## Gaps and open questions
 
 - **Slice simplifications (M0.4).** These go when M3/M4 bring the facts in:
@@ -1449,8 +1487,8 @@ Result: 130 of 136 pass. The remaining 6, by class:
     Building the patched tree with Gradle needs the 2.4.21 AA artifacts.
 - **No serialization plugin.** The fork is compiled without the
   kotlinx-serialization compiler plugin, so its `@Serializable` classes
-  (incremental-compilation caches) have no serializers yet. M6 fixes this, or
-  turns IC off for the first `kc` runs.
+  (incremental-compilation caches) have no serializers yet. On `kc`, KSP
+  rebuilds on every run (M6, "Incremental processing").
 - **Java file manager.** `ResolverAAImpl.javaFileManager` casts the project's
   `JavaFileManager` service to `KotlinCliJavaFileManagerImpl`. The `kc`
   backend gets one from `KotlinCoreEnvironment`, whose setup is part of the

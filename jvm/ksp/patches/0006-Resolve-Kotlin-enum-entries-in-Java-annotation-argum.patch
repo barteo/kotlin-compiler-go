@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: kc <barteo@gmail.com>
 Date: Fri, 6 Nov 2026 11:38:54 +0000
-Subject: [PATCH 6/6] Resolve Kotlin enum entries in Java annotation arguments
+Subject: [PATCH 6/7] Resolve Kotlin enum entries in Java annotation arguments
  through KcExtras
 
 ---

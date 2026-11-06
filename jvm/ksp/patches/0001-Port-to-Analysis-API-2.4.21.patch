@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: kc <barteo@gmail.com>
 Date: Thu, 5 Nov 2026 11:54:48 +0000
-Subject: [PATCH 1/6] Port to Analysis API 2.4.21
+Subject: [PATCH 1/7] Port to Analysis API 2.4.21
 
 - KaType.mapToJvmType() is hidden; use mapToJvmTypeDescriptor().
 - KaAnnotationImpl lost its useSiteTarget parameter.
