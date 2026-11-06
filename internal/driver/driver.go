@@ -41,8 +41,12 @@ type Options struct {
 	// KeepHidden keeps Java classes' members that Kotlin can't use, for
 	// the Analysis API: see check.Library.KeepHidden.
 	KeepHidden bool
-	JDKHome    string // JDK whose classes are used; found automatically if empty
-	NoJDK      bool   // don't use JDK classes
+	// JavaNullability gives Java declarations with nullability
+	// annotations non-null or nullable types, for the Analysis API: see
+	// check.Library.JavaNullability.
+	JavaNullability bool
+	JDKHome         string // JDK whose classes are used; found automatically if empty
+	NoJDK           bool   // don't use JDK classes
 	// ModuleName is the module's name, which the JVM names of internal
 	// members end with, as with kotlinc's -module-name; "main" if empty.
 	ModuleName string
@@ -126,6 +130,9 @@ func newLibrary(cp *classpath.Path, opts Options) *check.Library {
 	lib.OptIns = opts.OptIns
 	if opts.KeepHidden {
 		lib.KeepHidden()
+	}
+	if opts.JavaNullability {
+		lib.JavaNullability()
 	}
 	if opts.Serialization {
 		lib.EnableSerialization()

@@ -78,3 +78,26 @@ func (r *resolver) annotations(as []*Annotation) []classfile.Annotation {
 	}
 	return out
 }
+
+// nullabilityNames are the simple names of the annotations that
+// nullability returns.
+var nullabilityNames = map[string]bool{"NotNull": true, "Nullable": true, "NonNull": true, "Nonnull": true,
+	"CheckForNull": true, "PossiblyNull": true, "NullableDecl": true, "NonNullDecl": true,
+	"RecentlyNullable": true, "RecentlyNonNull": true}
+
+// nullability returns the descriptors of those of as that may be
+// nullability annotations, such as @org.jetbrains.annotations.NotNull,
+// resolved where r is, as a class file's member lists them; nil if there
+// are none. The checker reads them (check.Library.JavaNullability).
+func (r *resolver) nullability(as []*Annotation) []string {
+	var out []string
+	for _, a := range as {
+		if !nullabilityNames[a.Name[strings.LastIndexByte(a.Name, '.')+1:]] {
+			continue
+		}
+		for _, c := range r.annotations([]*Annotation{a}) {
+			out = append(out, c.Type)
+		}
+	}
+	return out
+}

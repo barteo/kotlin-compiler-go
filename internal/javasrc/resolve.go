@@ -517,7 +517,7 @@ func (s *Set) Info(name string) (*classfile.Info, error) {
 		if iface {
 			access |= classfile.AccPublic | classfile.AccStatic | classfile.AccFinal
 		}
-		m := classfile.Member{Access: access, Name: f.Name, Desc: r.desc(f.Type)}
+		m := classfile.Member{Access: access, Name: f.Name, Desc: r.desc(f.Type), Annotations: r.nullability(f.Annotations)}
 		if r.generic(f.Type) {
 			m.Sig = r.sig(f.Type)
 		}
@@ -572,7 +572,16 @@ func (s *Set) Info(name string) (*classfile.Info, error) {
 		}
 		desc, sig := mr.methodDesc(m.TypeParams, outer, params, ret, m.Throws)
 		declared[m.Name+desc] = true
-		info.Methods = append(info.Methods, classfile.Member{Access: access, Name: m.Name, Desc: desc, Sig: sig})
+		mm := classfile.Member{Access: access, Name: m.Name, Desc: desc, Sig: sig, Annotations: mr.nullability(m.Annotations)}
+		for i, p := range m.Params {
+			if as := mr.nullability(p.Annotations); as != nil {
+				if mm.ParamAnnotations == nil {
+					mm.ParamAnnotations = make([][]string, len(m.Params))
+				}
+				mm.ParamAnnotations[i] = as
+			}
+		}
+		info.Methods = append(info.Methods, mm)
 	}
 	var canonical []*Type // a record's canonical constructor's parameters
 	for _, p := range c.Components {

@@ -31,7 +31,10 @@ type classTable struct {
 	// hidden is set by Library.KeepHidden: every Java class keeps the
 	// members Kotlin can't use, as Java source classes do.
 	hidden bool
-	funcs  *types.Functions // the interfaces of function types
+	// nullability is set by Library.JavaNullability: Java declarations
+	// annotated @NotNull or @Nullable have non-null or nullable types.
+	nullability bool
+	funcs       *types.Functions // the interfaces of function types
 	kotlinTable
 	// sources finds the program's classes by internal name, which the
 	// class path's classes of Java sources name. Checking sets it once
@@ -272,6 +275,16 @@ func (t *classTable) load(cls *types.ClassSym) {
 		for _, p := range f.Params {
 			p.Type = javaParam(p.Type)
 		}
+		if t.nullability {
+			f.Ret = enhance(m.Annotations, f.Ret)
+			// javac leaves out synthetic parameters, which come first.
+			off := len(f.Params) - len(m.ParamAnnotations)
+			for i, as := range m.ParamAnnotations {
+				if off+i >= 0 {
+					f.Params[off+i].Type = enhance(as, f.Params[off+i].Type)
+				}
+			}
+		}
 		if varargs && len(f.Params) > 0 {
 			p := f.Params[len(f.Params)-1]
 			p.Vararg, p.Type = true, types.VarargArray(p.Type)
@@ -342,7 +355,7 @@ func (t *classTable) load(cls *types.ClassSym) {
 				if cls.JavaFields == nil {
 					cls.JavaFields = map[string]*types.VarSym{}
 				}
-				cls.JavaFields[fd.Name] = &types.VarSym{Name: fd.Name, Type: ft.Platform(), Kind: types.Prop, Owner: cls, Resolved: true, Final: true,
+				cls.JavaFields[fd.Name] = &types.VarSym{Name: fd.Name, Type: t.fieldNullability(fd, ft.Platform()), Kind: types.Prop, Owner: cls, Resolved: true, Final: true,
 					JvmField: true, Mutable: fd.Access&classfile.AccFinal == 0, Protected: fd.Access&classfile.AccProtected != 0}
 			}
 			continue
@@ -364,7 +377,7 @@ func (t *classTable) load(cls *types.ClassSym) {
 					if static {
 						kind = types.Static
 					}
-					cls.JavaHidden.Fields = append(cls.JavaHidden.Fields, &types.VarSym{Name: fd.Name, Type: ft.Platform(), Kind: kind,
+					cls.JavaHidden.Fields = append(cls.JavaHidden.Fields, &types.VarSym{Name: fd.Name, Type: t.fieldNullability(fd, ft.Platform()), Kind: kind,
 						Owner: cls, Resolved: true, Final: true, JvmField: true, Mutable: fd.Access&classfile.AccFinal == 0,
 						Constant: fieldConstant(fd)})
 				}
@@ -376,13 +389,67 @@ func (t *classTable) load(cls *types.ClassSym) {
 			ft, ok = t.fieldSignature(fd.Sig, nil)
 		}
 		if ok && ft.K != types.Unit {
-			cls.Fields[fd.Name] = &types.VarSym{Name: fd.Name, Type: ft, Kind: types.Static, Owner: cls, Resolved: true,
+			cls.Fields[fd.Name] = &types.VarSym{Name: fd.Name, Type: t.fieldNullability(fd, ft), Kind: types.Static, Owner: cls, Resolved: true,
 				Constant: fieldConstant(fd), Mutable: fd.Access&classfile.AccFinal == 0}
 		}
 		if fd.Access&classfile.AccEnum != 0 {
 			cls.Entries = append(cls.Entries, fd.Name)
 		}
 	}
+}
+
+// fieldNullability returns the type ft of field fd as its annotations
+// make it, under Library.JavaNullability.
+func (t *classTable) fieldNullability(fd classfile.Member, ft types.Type) types.Type {
+	if !t.nullability {
+		return ft
+	}
+	return enhance(fd.Annotations, ft)
+}
+
+// Nullability annotations kotlinc reads on Java declarations, by
+// descriptor: true for those that make a type non-null, false for
+// nullable. JSR-305's javax.annotation ones only warn by default, and
+// leave platform types as they are.
+var javaNullability = func() map[string]bool {
+	m := map[string]bool{}
+	for _, n := range []string{"org/jetbrains/annotations/NotNull", "androidx/annotation/NonNull", "androidx/annotation/RecentlyNonNull",
+		"android/support/annotation/NonNull", "android/annotation/NonNull", "com/android/annotations/NonNull",
+		"org/eclipse/jdt/annotation/NonNull", "org/checkerframework/checker/nullness/qual/NonNull",
+		"org/checkerframework/checker/nullness/compatqual/NonNullDecl", "edu/umd/cs/findbugs/annotations/NonNull",
+		"lombok/NonNull", "io/reactivex/annotations/NonNull", "io/reactivex/rxjava3/annotations/NonNull"} {
+		m["L"+n+";"] = true
+	}
+	for _, n := range []string{"org/jetbrains/annotations/Nullable", "androidx/annotation/Nullable", "androidx/annotation/RecentlyNullable",
+		"android/support/annotation/Nullable", "android/annotation/Nullable", "com/android/annotations/Nullable",
+		"org/eclipse/jdt/annotation/Nullable", "org/checkerframework/checker/nullness/qual/Nullable",
+		"org/checkerframework/checker/nullness/compatqual/NullableDecl", "edu/umd/cs/findbugs/annotations/Nullable",
+		"edu/umd/cs/findbugs/annotations/CheckForNull", "edu/umd/cs/findbugs/annotations/PossiblyNull",
+		"io/reactivex/annotations/Nullable", "io/reactivex/rxjava3/annotations/Nullable"} {
+		m["L"+n+";"] = false
+	}
+	return m
+}()
+
+// enhance returns platform type t as the nullability annotations among
+// as make it: non-null or nullable, or t itself with neither or both.
+func enhance(as []string, t types.Type) types.Type {
+	if !t.P {
+		return t
+	}
+	notNull, nullable := false, false
+	for _, a := range as {
+		if nn, ok := javaNullability[a]; ok {
+			notNull, nullable = notNull || nn, nullable || !nn
+		}
+	}
+	switch {
+	case notNull == nullable:
+		return t
+	case notNull:
+		return t.NonNull()
+	}
+	return t.Nullable()
 }
 
 // kotlinMapped are the Java classes that are Kotlin types, with Kotlin's

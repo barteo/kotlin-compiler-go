@@ -897,7 +897,7 @@ func (l *library) javaClass(cls *types.ClassSym, depth int) *Decl {
 		}
 		added[v.Name] = true
 		md := &Decl{Kind: KindJavaField, Name: v.Name, Visibility: Public, Modality: ModalityFinal,
-			Flags: FlagJava, Type: platform(b.typ(v.Type, nil))}
+			Flags: FlagJava, Type: b.javaType(v.Type)}
 		if static {
 			md.Flags |= FlagStatic
 		}
@@ -1113,7 +1113,7 @@ func (l *library) javaMethod(b *fileBuilder, f *types.FunSym, bySig map[string]*
 			pd.Flags |= FlagVararg
 			t = types.VarargElem(t)
 		}
-		pd.Type = unresolved(platform(b.typ(t, nil)), paramDescs[i])
+		pd.Type = unresolved(b.javaType(t), paramDescs[i])
 		if m != nil {
 			if j := len(m.Params) - len(f.Params) + i; j >= 0 && j < len(m.Params) {
 				pd.Annotations = l.annotations(m.Params[j], false)
@@ -1122,7 +1122,7 @@ func (l *library) javaMethod(b *fileBuilder, f *types.FunSym, bySig map[string]*
 		md.Params = append(md.Params, pd)
 	}
 	if kind == KindFunction {
-		md.Type = unresolved(platform(b.typ(f.Ret, nil)), retDesc)
+		md.Type = unresolved(b.javaType(f.Ret), retDesc)
 	}
 	return md
 }
@@ -1167,6 +1167,21 @@ func unresolved(t *Type, desc string) *Type {
 	t.Name = n[strings.LastIndexAny(n, "/$")+1:]
 	t.Flexible = true
 	return t
+}
+
+// javaType returns the model of t, a type of a Java class's member, with
+// its nullable types made platform types (see platform), except for t
+// itself when a nullability annotation made it nullable
+// (check.Library.JavaNullability).
+func (b *fileBuilder) javaType(t types.Type) *Type {
+	out := b.typ(t, nil)
+	if out == nil || !t.N || t.P || t.K == types.Null {
+		return platform(out)
+	}
+	for _, a := range out.Args {
+		platform(a.Type)
+	}
+	return out
 }
 
 // platform returns t, a type from a Java class, with its nullable types

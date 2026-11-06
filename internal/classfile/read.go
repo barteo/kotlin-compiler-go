@@ -106,6 +106,11 @@ type Member struct {
 	// Annotations are the descriptors of the member's annotations, kept
 	// in its class file or visible at run time.
 	Annotations []string
+	// ParamAnnotations are the descriptors of a method's parameters'
+	// annotations, by parameter, or nil if it has none. javac leaves
+	// out synthetic parameters, so there may be fewer than its
+	// descriptor has.
+	ParamAnnotations [][]string
 	// Deprecated is the member's deprecation, or nil.
 	Deprecated *Deprecation
 }
@@ -321,6 +326,23 @@ func Parse(data []byte) (*Info, error) {
 					size = 0
 				case name == "Deprecated":
 					m.Deprecated = javaDeprecation(m.Deprecated)
+				case name == "RuntimeInvisibleParameterAnnotations", name == "RuntimeVisibleParameterAnnotations":
+					end := r.pos + size
+					n := int(r.u1())
+					if len(m.ParamAnnotations) < n {
+						m.ParamAnnotations = append(m.ParamAnnotations, make([][]string, n-len(m.ParamAnnotations))...)
+					}
+					for j := range n {
+						for range r.u2() {
+							typ, e := p.utf8(r.u2())
+							if e != nil {
+								break
+							}
+							m.ParamAnnotations[j] = append(m.ParamAnnotations[j], typ)
+							skipPairs(r)
+						}
+					}
+					size = end - r.pos
 				case name == "RuntimeInvisibleAnnotations":
 					end := r.pos + size
 					for range r.u2() {

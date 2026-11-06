@@ -63,6 +63,7 @@ testIsMutable
 testJavaAccessor
 testJavaAnno
 testJavaModifiers
+testJavaNonNullTypes
 testJavaOverrideInSource
 testJavaSubtype
 testJavaSubtypeOfKotlinInterface

@@ -174,6 +174,10 @@ internal class KcTypeRelations(private val round: KcRound) {
     }
 
     fun isNullable(t: KaType): Boolean = when (val t = round.expand(t)) {
+        // FIR's error types that name no class, such as an unresolved
+        // call's, can be null; unresolved classes, class error types,
+        // only if marked.
+        is KcMissingType -> true
         is KcFlexibleType -> isNullable(t.upperBound)
         is KcDefinitelyNotNullType -> false
         is KcTypeParameterType -> t.marked || t.symbol.upperBounds.all(::isNullable)

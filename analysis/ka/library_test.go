@@ -427,3 +427,60 @@ func TestInvisibleJavaClass(t *testing.T) {
 		t.Errorf("J: want %s, got %+v", want, d)
 	}
 }
+
+func TestJavaNullability(t *testing.T) {
+	notNull := "package org.jetbrains.annotations;\npublic @interface NotNull {}\n"
+	nullable := "package org.jetbrains.annotations;\npublic @interface Nullable {}\n"
+	java := `package j;
+
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+
+public class NN {
+    @Nullable @NotNull public String both;
+    @Nullable public String nullable;
+    @NotNull public String notNull;
+    public String none;
+    public int prim;
+    @NotNull public String get(@Nullable String p, String q) { return ""; }
+}
+`
+	kotlin := "package j\nval a = NN().notNull\nval b = NN().nullable\nval c = NN().none\nval d = NN().get(null, null)\n"
+	sources := []Source{{Path: "j/a.kt", Text: &kotlin}, {Path: "j/NN.java", Text: &java},
+		{Path: "org/jetbrains/annotations/NotNull.java", Text: &notNull}, {Path: "org/jetbrains/annotations/Nullable.java", Text: &nullable}}
+	s := Open(withJDK(t))
+	defer s.Close()
+	m, err := s.Update(context.Background(), sources)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close()
+	for _, d := range m.Diagnostics {
+		t.Errorf("diagnostic: %+v", d)
+	}
+	d := m.Class("j/NN")
+	if d == nil {
+		t.Fatal("j/NN: nil")
+	}
+	var sb strings.Builder
+	dumpLibrary(&sb, d, "", func(m *Decl) bool { return m.Kind != KindFunction || !strings.HasPrefix(m.Name, "<") })
+	sb.WriteString("--\n")
+	dumpTypes(&sb, m.Files[0].Snapshot, m.Files[0].Decls, "")
+	want := `1 NN [j/NN] v0 m1 f0x4400000 : kotlin/Any
+  13 both v0 m0 f0x408000 @org/jetbrains/annotations/Nullable() @org/jetbrains/annotations/NotNull(): kotlin/String!
+  13 nullable v0 m0 f0x408000 @org/jetbrains/annotations/Nullable(): kotlin/String?
+  13 notNull v0 m0 f0x408000 @org/jetbrains/annotations/NotNull(): kotlin/String
+  13 none v0 m0 f0x408000: kotlin/String!
+  13 prim v0 m0 f0x408000: kotlin/Int
+  7 get v0 m1 f0x400000 @org/jetbrains/annotations/NotNull() (p: kotlin/String? @org/jetbrains/annotations/Nullable(), q: kotlin/String!): kotlin/String
+  10 <init> v0 m0 f0x400000
+--
+a m0 f0x2000000 : kotlin/String
+b m0 f0x2000000 : kotlin/String?
+c m0 f0x2000000 : kotlin/String!
+d m0 f0x2000000 : kotlin/String
+`
+	if got := sb.String(); got != want {
+		t.Errorf("got:\n%s\nwant:\n%s", got, want)
+	}
+}
