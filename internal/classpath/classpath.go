@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -59,6 +60,9 @@ type Path struct {
 	bytes   sync.Map // string -> func() ([]byte, error)
 	infos   sync.Map // string -> func() (*classfile.Info, error)
 	methods sync.Map // string -> func() (*classfile.MethodReader, error)
+
+	byPackage  sync.Once
+	pkgClasses map[string][]string // see Package
 
 	IndexTime time.Duration
 	loaded    atomic.Int64
@@ -260,6 +264,27 @@ func (p *Path) Has(name string) bool {
 // HasPackage reports whether any class is in the package, by internal name
 // (java/util).
 func (p *Path) HasPackage(pkg string) bool { return p.packages[pkg] }
+
+// Package returns the internal names of the classes in a package, by
+// internal name (java/util), sorted. Classes of nested packages aren't in
+// it.
+func (p *Path) Package(pkg string) []string {
+	p.byPackage.Do(func() {
+		p.pkgClasses = map[string][]string{}
+		for name := range p.classes {
+			i := strings.LastIndexByte(name, '/')
+			pk := ""
+			if i >= 0 {
+				pk = name[:i]
+			}
+			p.pkgClasses[pk] = append(p.pkgClasses[pk], name)
+		}
+		for _, names := range p.pkgClasses {
+			slices.Sort(names)
+		}
+	})
+	return p.pkgClasses[pkg]
+}
 
 // Bytes reads a class file by internal name. The returned bytes are shared
 // for the lifetime of Path and must not be modified.

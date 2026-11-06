@@ -42,6 +42,12 @@
 # 1.5.0 and kotlinx.coroutines 1.8.1, or $KC_COMPOSE_CP. The argument
 # compose selects it.
 #
+# And testdata/metro.out (TestMetro): kotlinc, with the Metro compiler
+# plugin 1.5.2, compiles metro/lib/, then metro/mid/ against it and
+# metro/app/ against both, and the program runs. The runtime is Metro's
+# runtime-jvm 1.5.2 and the plugin its compiler jar, from Gradle's cache,
+# or $KC_METRO_CP and $KC_METRO_PLUGIN. The argument metro selects it.
+#
 # And testdata/javasrc.out (TestJavaSources): kotlinc compiles javasrc/,
 # Kotlin and Java sources that use each other, and javac then its Java
 # against kotlinc's classes. The argument javasrc selects it.
@@ -64,11 +70,13 @@ klibs=""
 parcelize=""
 serialization=""
 compose=""
+metro=""
 javasrc=""
 if [ $# -eq 0 ]; then
 	parcelize=1
 	serialization=1
 	compose=1
+	metro=1
 	javasrc=1
 	libs=$(cd "$root/lib" 2>/dev/null && ls -d */ | sed 's|/$||' || true)
 	klibs=$(cd "$root/klib" 2>/dev/null && ls -d */ | sed 's|/$||' || true)
@@ -87,6 +95,7 @@ for f in "$@"; do
 	parcelize) parcelize=1 ;;
 	serialization) serialization=1 ;;
 	compose) compose=1 ;;
+	metro) metro=1 ;;
 	javasrc) javasrc=1 ;;
 	*) runs="$runs $f" ;;
 	esac
@@ -226,6 +235,29 @@ if [ -n "$serialization" ]; then
 	kotlin -cp "$out/app:$out/lib:$rt" app.MainKt >"$root/serialization.out" 2>/dev/null
 	kotlin -cp "$out/use:$out/app:$out/lib:$rt" UseKt >>"$root/serialization.out" 2>/dev/null
 	echo "wrote serialization.out"
+fi
+
+# The Metro test.
+if [ -n "$metro" ]; then
+	cd "$root/metro"
+	cache=$HOME/.gradle/caches/modules-2/files-2.1/dev.zacsweers.metro
+	rt=${KC_METRO_CP:-$(find "$cache/runtime-jvm/1.5.2" -name runtime-jvm-1.5.2.jar 2>/dev/null | head -1)}
+	mp=${KC_METRO_PLUGIN:-$(find "$cache/compiler/1.5.2" -name compiler-1.5.2.jar 2>/dev/null | head -1)}
+	if [ -z "$rt" ] || [ -z "$mp" ]; then
+		echo "Metro 1.5.2 not found: set KC_METRO_CP and KC_METRO_PLUGIN" >&2
+		exit 1
+	fi
+	out="$work/metro"
+	mkdir -p "$out/lib" "$out/mid" "$out/app"
+	k="kotlinc -nowarn -jvm-target 17 -Xplugin=$mp"
+	# shellcheck disable=SC2046 # file names are words
+	$k -module-name lib -cp "$rt" $(find lib -name '*.kt' | sort) -d "$out/lib" 2>"$work/err" || { cat "$work/err"; exit 1; }
+	# shellcheck disable=SC2046
+	$k -module-name mid -cp "$rt:$out/lib" $(find mid -name '*.kt' | sort) -d "$out/mid" 2>"$work/err" || { cat "$work/err"; exit 1; }
+	# shellcheck disable=SC2046
+	$k -module-name app -cp "$rt:$out/lib:$out/mid" $(find app -name '*.kt' | sort) -d "$out/app" 2>"$work/err" || { cat "$work/err"; exit 1; }
+	kotlin -cp "$out/app:$out/mid:$out/lib:$rt" app.MainKt >"$root/metro.out" 2>/dev/null
+	echo "wrote metro.out"
 fi
 
 # The compose test.

@@ -1139,6 +1139,115 @@ func TestSerialization(t *testing.T) {
 	}
 }
 
+// metroJars returns Metro's runtime jar and its compiler plugin jar:
+// $KC_METRO_CP and $KC_METRO_PLUGIN, or the version that
+// testdata/metro.out was generated with, 1.5.2, in Gradle's cache. It
+// returns "" for either if it isn't found.
+func metroJars() (runtimeJar, plugin string) {
+	runtimeJar, plugin = os.Getenv("KC_METRO_CP"), os.Getenv("KC_METRO_PLUGIN")
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return runtimeJar, plugin
+	}
+	cache := filepath.Join(home, ".gradle/caches/modules-2/files-2.1/dev.zacsweers.metro")
+	if runtimeJar == "" {
+		if jars, _ := filepath.Glob(filepath.Join(cache, "runtime-jvm/1.5.2/*/runtime-jvm-1.5.2.jar")); len(jars) > 0 {
+			runtimeJar = jars[0]
+		}
+	}
+	if plugin == "" {
+		if jars, _ := filepath.Glob(filepath.Join(cache, "compiler/1.5.2/*/compiler-1.5.2.jar")); len(jars) > 0 {
+			plugin = jars[0]
+		}
+	}
+	return runtimeJar, plugin
+}
+
+// TestMetro compiles testdata/metro/mid, contributions to a scope, and
+// testdata/metro/app, graphs, with kc's Metro plugin, against a library,
+// testdata/metro/lib, that kotlinc compiles with Metro's. It runs the
+// program and compares its output with kotlinc's, testdata/metro.out.
+func TestMetro(t *testing.T) {
+	java, err := exec.LookPath("java")
+	if err != nil {
+		t.Skip("java not found on PATH")
+	}
+	lib := stdlib()
+	if lib == "" {
+		t.Skip("kotlin-stdlib.jar not found: set KOTLIN_HOME")
+	}
+	kotlinc, err := exec.LookPath("kotlinc")
+	if err != nil {
+		t.Skip("kotlinc not found on PATH")
+	}
+	rt, plugin := metroJars()
+	if rt == "" || plugin == "" {
+		t.Skip("Metro 1.5.2 not found in Gradle's cache: set KC_METRO_CP to its runtime jar and KC_METRO_PLUGIN to its compiler jar")
+	}
+	const dir = "../../testdata/metro"
+	want, err := os.ReadFile(dir + ".out")
+	if err != nil {
+		t.Fatalf("missing expected output (run testdata/gen_expected.sh): %v", err)
+	}
+	path := func(elems ...string) string { return strings.Join(elems, string(os.PathListSeparator)) }
+	libOut, midOut, appOut := t.TempDir(), t.TempDir(), t.TempDir()
+	args := append([]string{"-nowarn", "-jvm-target", "17", "-Xplugin=" + plugin, "-module-name", "lib", "-cp", rt, "-d", libOut}, sources(t, filepath.Join(dir, "lib"))...)
+	if out, err := exec.Command(kotlinc, args...).CombinedOutput(); err != nil {
+		t.Fatalf("kotlinc lib: %v\n%s", err, out)
+	}
+	cp := []string{lib, rt, libOut}
+	opts := Options{OutDir: midOut, Jobs: runtime.NumCPU(), ClassPath: cp, ModuleName: "mid", Metro: true}
+	if err := Compile(sources(t, filepath.Join(dir, "mid")), opts); err != nil {
+		t.Fatalf("compile mid: %v", err)
+	}
+	opts = Options{OutDir: appOut, Jobs: runtime.NumCPU(), ClassPath: append(cp, midOut), ModuleName: "app", Metro: true}
+	if err := Compile(sources(t, filepath.Join(dir, "app")), opts); err != nil {
+		t.Fatalf("compile app: %v", err)
+	}
+	cmd := exec.Command(java, "-Xverify:all", "-cp", path(appOut, midOut, libOut, rt, lib), "app.MainKt")
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("java: %v\n%s", err, stderr.String())
+	}
+	if got := stdout.String(); got != string(want) {
+		t.Errorf("output mismatch\n%s", diff(string(want), got))
+	}
+
+	const header = "import dev.zacsweers.metro.*\n\n"
+	for name, tc := range map[string]struct {
+		src, msg string
+		feature  bool
+		options  map[string]string
+	}{
+		"missing binding": {src: "class A\n@DependencyGraph interface G { val a: A }", msg: "[Metro/MissingBinding]"},
+		"cycle": {src: "@Inject class A(val b: B)\n@Inject class B(val a: A)\n@DependencyGraph interface G { val a: A }",
+			msg: "[Metro/DependencyCycle]"},
+		"duplicate": {src: "@DependencyGraph interface G { val s: String\n@Provides fun a(): String = \"a\"\n@Provides fun b(): String = \"b\" }",
+			msg: "[Metro/DuplicateBinding]"},
+		"unscoped graph": {src: "@Inject @SingleIn(AppScope::class) class A\n@DependencyGraph interface G { val a: A }",
+			msg: "[Metro/IncompatiblyScopedBindings]"},
+		"graph extension": {src: "@GraphExtension interface E\n@DependencyGraph interface G", feature: true},
+		"custom annotations": {src: "@DependencyGraph interface G", feature: true,
+			options: map[string]string{"custom-inject": "a/MyInject"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			file := filepath.Join(t.TempDir(), "a.kt")
+			os.WriteFile(file, []byte(header+tc.src+"\n"), 0o644)
+			err := Compile([]string{file}, Options{OutDir: t.TempDir(), Jobs: 1, ClassPath: cp, Metro: true, MetroOptions: tc.options})
+			var se *syntax.Error
+			switch {
+			case err == nil:
+				t.Errorf("compiled; want an error")
+			case tc.feature && (!errors.As(err, &se) || se.Feature != "metro"):
+				t.Errorf("got %v, want an unsupported Metro feature", err)
+			case !tc.feature && !strings.Contains(err.Error(), tc.msg):
+				t.Errorf("got %v, want %s", err, tc.msg)
+			}
+		})
+	}
+}
+
 // composeJars returns the class path of Compose's runtime: $KC_COMPOSE_CP,
 // or the version that testdata/compose.out was generated with in Gradle's
 // cache, runtime-android 1.9.2 and runtime-annotation-android 1.9.2, whose

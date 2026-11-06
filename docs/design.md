@@ -315,10 +315,7 @@ differences are listed in `testdata/coroutine-shapes.golden`.
 
 ## Compiler plugins
 
-With `-compose`, `-serialization` and `-parcelize`, `kc` compiles as
-`kotlinc` does with those plugins. Each declares the members its plugin
-adds as source before the file is checked, and fills in bodies that
-depend on property types once those are known:
+With `-compose`, `-serialization`, `-parcelize` and `-metro`, `kc` compiles as `kotlinc` does with those plugins. Each declares the members its plugin adds as source before the file is checked, and fills in bodies that depend on property types once those are known:
 
 - **Compose** (`codegen/compose.go`, `skip.go`, `stability.go`,
   `singletons.go`): `$composer`, `$changed` and `$default` parameters,
@@ -329,3 +326,4 @@ depend on property types once those are known:
   deserialization constructor.
 - **Parcelize** (`check/parcelize.go`): `writeToParcel`, a `C$Creator`
   class and `CREATOR`.
+- **Metro** (`check/metro.go`, `metroplan.go`, `metrograph.go`, `metroannot.go`): what a dependency graph returns depends on the resolved types of every binding, so a module that uses Metro is checked twice. `PlanMetro` first resolves the program's signatures and annotations, and the bindings of each `@DependencyGraph`, and writes what Metro adds as Kotlin: a graph's `Impl` class, whose private functions call `@Inject` constructors and `@Provides` members directly and hold scoped values in `kotlin.Lazy`, its companion object, which `createGraph` and `createGraphFactory` calls become, a contributing class's nested `MetroContributionTo...` interface of `@Binds` functions, and its hint in package `metro.hints`. The files, parsed again, are then checked and compiled with those members added. A graph finds the class path's contributions as Metro's does, by their hints and nested contribution interfaces, so it merges modules compiled by `kotlinc` with Metro and modules compiled by `kc`. `kc` writes no `$MetroFactory` classes, so a graph that `kotlinc` compiles can't use a module that `kc` compiles. Graph extensions, custom annotations, `@Provides` extensions, Dagger, Guice and javax interop and the options that change Metro's output are not supported, and say so.
