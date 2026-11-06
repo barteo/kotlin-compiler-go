@@ -55,7 +55,7 @@ internal class KcTypeContext(
     /** The KaType of [t]. */
     fun type(t: KcType): KaType = when (t.kind) {
         KcType.CLASS -> if (t.isFlexible) {
-            KcFlexibleType(round, classType(t, false), classType(t, true))
+            KcFlexibleType(round, classType(t, false), classType(t, true, readOnly[t.classId], t.classId == "kotlin/Array"))
         } else {
             classType(t, t.isNullable)
         }
@@ -73,8 +73,11 @@ internal class KcTypeContext(
     private fun annotations(t: KcType): List<KaAnnotation> =
         if (t.annotations.isEmpty() || annotate == null) emptyList() else t.annotations.map(annotate)
 
-    private fun classType(t: KcType, nullable: Boolean): KcBaseClassType {
-        val id = ClassId.fromString(t.classId)
+    /** [t] as a class type; [as] replaces its class, for a Java collection's read-only upper bound. */
+    private fun classType(t: KcType, nullable: Boolean, `as`: String? = null, out: Boolean = false): KcBaseClassType {
+        val id = ClassId.fromString(`as` ?: t.classId)
+        // A Java array's upper bound is Array<out T>?.
+        val args = if (out) args(t).map { if (it is KcTypeArgument && it.variance == Variance.INVARIANT) KcTypeArgument(it.type, Variance.OUT_VARIANCE, round.token) else it } else args(t)
         val annots = annotations(t)
         val abbrev = t.abbrev?.takeIf { it.kind == KcType.CLASS }?.let {
             KcClassType(round, ClassId.fromString(it.classId), args(it), nullable, isAlias = true, annots = annots)
@@ -82,7 +85,7 @@ internal class KcTypeContext(
         return if (isFunctionClass(t.classId)) {
             KcFunctionType(round, id, args(t), nullable, t.isExtension, t.contexts, abbrev, annots)
         } else {
-            KcClassType(round, id, args(t), nullable, abbrev = abbrev, annots = annots)
+            KcClassType(round, id, args, nullable, abbrev = abbrev, annots = annots)
         }
     }
 
@@ -103,6 +106,15 @@ internal class KcTypeContext(
             KcDecl.OUT -> Variance.OUT_VARIANCE
             else -> Variance.INVARIANT
         }
+
+        /**
+         * The read-only collection classes of the mutable ones: a Java collection's flexible
+         * type is `(MutableList<T>..List<T>?)`, as in FIR.
+         */
+        private val readOnly = listOf(
+            "Iterable", "Collection", "List", "Set", "Map", "Iterator", "ListIterator",
+        ).associate { "kotlin/collections/Mutable$it" to "kotlin/collections/$it" } +
+            ("kotlin/collections/MutableMap.MutableEntry" to "kotlin/collections/Map.Entry")
 
         private val functionClass = Regex("""kotlin/((coroutines/Suspend)?|reflect/K(Suspend)?)Function\d+""")
         fun isFunctionClass(id: String) = functionClass.matches(id)
@@ -151,7 +163,7 @@ internal class KcClassType(
     // The abbreviation isn't part of the type's identity, as in FIR.
     override fun equals(other: Any?) = other is KcClassType && other.classId == classId && other.local == local &&
         other.marked == marked && other.isAlias == isAlias && other.typeArguments == typeArguments
-    override fun hashCode() = classId.hashCode() * 31 + typeArguments.hashCode()
+    override fun hashCode() = (classId.hashCode() * 31 + typeArguments.hashCode()) * 2 + if (marked) 1 else 0
     override fun toString() = text(marked, classId.asFqNameString() +
         if (typeArguments.isEmpty()) "" else typeArguments.joinToString(", ", "<", ">"))
 }
@@ -194,7 +206,7 @@ internal class KcFunctionType(
         else KcFunctionType(round, classId, typeArguments, nullable, hasReceiver, contexts, abbrev?.withNullability(nullable), annots)
     override fun equals(other: Any?) = other is KcFunctionType && other.classId == classId &&
         other.marked == marked && other.hasReceiver == hasReceiver && other.typeArguments == typeArguments
-    override fun hashCode() = classId.hashCode() * 31 + typeArguments.hashCode()
+    override fun hashCode() = (classId.hashCode() * 31 + typeArguments.hashCode()) * 2 + if (marked) 1 else 0
     override fun toString() = text(marked, classId.asFqNameString() + typeArguments.joinToString(", ", "<", ">"))
 }
 
@@ -212,7 +224,7 @@ internal class KcTypeParameterType(
     override fun withNullability(nullable: Boolean) =
         if (nullable == marked) this else KcTypeParameterType(round, name, symbol, nullable, annots)
     override fun equals(other: Any?) = other is KcTypeParameterType && other.symbol == symbol && other.marked == marked
-    override fun hashCode() = symbol.hashCode()
+    override fun hashCode() = symbol.hashCode() * 2 + if (marked) 1 else 0
     override fun toString() = text(marked, name.asString())
 }
 
@@ -229,7 +241,7 @@ internal class KcFlexibleType(
     override val annotations: KaAnnotationList get() = KcAnnotationList(emptyList(), round.token)
     override fun withNullability(nullable: Boolean) = (if (nullable) upperBound else lowerBound)
     override fun equals(other: Any?) = other is KcFlexibleType && other.lowerBound == lowerBound && other.upperBound == upperBound
-    override fun hashCode() = lowerBound.hashCode()
+    override fun hashCode() = lowerBound.hashCode() * 31 + upperBound.hashCode()
     override fun toString() = "$lowerBound!"
 }
 

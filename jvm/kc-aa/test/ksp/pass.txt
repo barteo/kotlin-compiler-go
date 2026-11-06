@@ -27,6 +27,7 @@ testDeclared
 testDeferredSymbols
 testEnumModifiers
 testEquals
+testEquivalentJavaWildcards
 testExitCode
 testFunctionKinds
 testFunctionTypeAlias
@@ -48,6 +49,10 @@ testIsMutable
 testJavaAnno
 testJavaOverrideInSource
 testJavaToKotlinMapper
+testJavaTypes
+testJavaTypes2
+testJavaWildcards2
+testJavaWildcardsSelfReferencing
 testJvmName
 testLateinitProperties
 testLibOrigins
@@ -70,6 +75,7 @@ testPackageAnnotation
 testPackageProviderForGenerated
 testParameterTypes
 testPrimaryConstructorOverride
+testRecordJavaAnnotationTypes
 testRecordJavaAsMemberOf
 testRecordJavaResolutions
 testRecordJavaSupertypes
@@ -82,6 +88,7 @@ testTopLevelMembers
 testTypeAliasComparison
 testTypeComparison2
 testTypeComposure
+testTypeParameterReference
 testTypeParameterVariance
 testValueParameter
 testVararg

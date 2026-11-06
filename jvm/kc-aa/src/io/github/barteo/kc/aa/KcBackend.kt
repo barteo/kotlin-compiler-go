@@ -18,6 +18,8 @@ import com.intellij.openapi.vfs.VirtualFileManager
 import com.intellij.psi.PsiAnnotation
 import com.intellij.psi.PsiJavaFile
 import com.intellij.psi.PsiManager
+import org.jetbrains.kotlin.analysis.api.types.KaClassType
+import org.jetbrains.kotlin.analysis.api.types.KaFlexibleType
 import org.jetbrains.kotlin.analysis.api.annotations.KaAnnotationValue
 import org.jetbrains.kotlin.analysis.api.platform.modification.KotlinModificationTrackerFactory
 import org.jetbrains.kotlin.analysis.api.projectStructure.KaModule
@@ -221,9 +223,27 @@ private class KcExtrasImpl(private val round: () -> KcRound) : KcExtras {
     override fun javaAnnotationClass(annotation: PsiAnnotation): ClassId? = round().javaAnnotationClass(annotation)
 
     override fun optimalModeForReturnType(type: KaType, isAnnotationMethod: Boolean): TypeMappingMode =
-        KcAnalysis.unsupported("KcExtras.optimalModeForReturnType")
-    override fun optimalModeForValueParameter(type: KaType): TypeMappingMode =
-        KcAnalysis.unsupported("KcExtras.optimalModeForValueParameter")
+        if (isAnnotationMethod) TypeMappingMode.VALUE_FOR_ANNOTATION else optimalMode(type, false)
+    override fun optimalModeForValueParameter(type: KaType): TypeMappingMode = optimalMode(type, true)
+
+    /**
+     * Kotlin's getOptimalModeForSignaturePart (TypeMappingModeExtensions.kt). A generic value
+     * class's underlying type isn't looked through, unlike there.
+     */
+    @OptIn(org.jetbrains.kotlin.load.kotlin.TypeMappingModeInternals::class)
+    private fun optimalMode(type: KaType, canBeUsedInSupertypePosition: Boolean): TypeMappingMode {
+        val t = (type as? KaFlexibleType)?.lowerBound ?: type
+        if (t !is KaClassType || t.typeArguments.isEmpty()) return TypeMappingMode.DEFAULT
+        val isInline = (round().classSymbol(t.classId) as? KcClassSymbol)?.isInline == true
+        return TypeMappingMode(
+            needInlineClassWrapping = !isInline,
+            skipDeclarationSiteWildcards = !canBeUsedInSupertypePosition,
+            skipDeclarationSiteWildcardsIfPossible = true,
+            genericContravariantArgumentMode =
+                if (canBeUsedInSupertypePosition) null else TypeMappingMode(skipDeclarationSiteWildcardsIfPossible = true),
+            genericInvariantArgumentMode = if (canBeUsedInSupertypePosition) optimalMode(type, false) else null,
+        )
+    }
     override fun isRawType(type: KaType): Boolean = false
     override fun abbreviatedTypeAlias(type: KaFunctionType): ClassId? = (type as? KcFunctionType)?.abbrev?.classId
 
