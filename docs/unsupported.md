@@ -106,6 +106,21 @@ Not supported yet:
 
 Without `-compose`, calls of libraries' composables aren't supported.
 
+## Metro (`-metro`)
+
+`kc` implements Metro 1.5.2's dependency graphs: `@DependencyGraph` and its factory, with `@Provides` and `@Includes` parameters; `@Inject` constructors and objects, `@Provides`, `@Binds`, qualifiers and `@SingleIn` scopes; requests as `() -> T`, `Provider<T>` and `Lazy<T>`; set and map multibindings, including `@ElementsIntoSet`, `@Multibinds` and wrapped map values; `@BindingContainer`; assisted injection; member injection; `@ContributesTo`, `@ContributesBinding`, `@ContributesIntoSet` and `@ContributesIntoMap` with `replaces` and `excludes`, from this module or the class path; and `@GraphExtension`s with their factories.
+
+Not supported, and reported as such:
+
+- custom annotations (the `custom-*` options), and options that change Metro's output, other than `enabled`, `contributes-as-inject` and `enable-function-providers`;
+- `@Provides` extension functions;
+- graphs with type parameters, and graph factories that are abstract classes;
+- javax, Jakarta, Dagger and Guice interop;
+- member injection into classes from the class path;
+- graph functions that create a graph extension from parameters, other than its factory's.
+
+`kc` writes no `$MetroFactory` classes, so a graph that `kotlinc` compiles can't use a module that `kc` compiles. A graph that `kc` compiles can use modules that either compiler compiled.
+
 ## Differences from kotlinc
 
 Code that compiles, but not to what `kotlinc` writes, by design or not
