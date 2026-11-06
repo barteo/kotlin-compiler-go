@@ -147,6 +147,7 @@ internal object KcOps {
             contexts = readUint().toInt(),
             args = List(readUint().toInt()) { KcTypeArg(readUint().toInt(), type()) },
             abbrev = type(),
+            annotations = annotations(),
         )
     }
 }
@@ -294,6 +295,8 @@ internal class KcType(
     val args: List<KcTypeArg>,
     /** The typealias type this type was written as: a class type of the typealias's class ID. */
     val abbrev: KcType? = null,
+    /** The type's annotations as written, @A T; [abbrev]'s too. */
+    val annotations: List<KcAnnotation> = emptyList(),
 ) {
     val isNullable get() = flags and 1 != 0
     val isFlexible get() = flags and 2 != 0

@@ -2,9 +2,9 @@ testAllFunctions_java_inherits_kt: java-source: line 5: want hashCode(): kotlin.
 testAllFunctions_kt_inherits_java: java-source: line 15: want size got <init>(): Foo
 testAnnotatedUtil: class-literal: kotlin.Throwable::class reaches getAnnotationsByType as kotlin.Throwable, not java.lang.Throwable
 testAnnotationOnReceiver: annotation-target: receiver annotations missing
-testAnnotationValue_java2: java-source: NoSuchElementException: Sequence is empty.
-testAnnotationValue_java: java-source: NoSuchElementException: Sequence is empty.
-testAnnotationValue_kt: java-source: UnsupportedOperationException: kc: no symbol for KtClass @Foo.Nested
+testAnnotationValue_java2: java-source: type annotations on Java supertypes
+testAnnotationValue_java: java-source: type annotations on Java supertypes
+testAnnotationValue_kt: checker-gap: Java annotation instance in a Kotlin annotation default
 testAnnotationWithDefault: java-source: Java PSI can't evaluate a Kotlin facade constant, ConstKt.DebugKt, without light classes
 testAnnotationWithNestedClassValue: class-literal: Kotlin-mapped nested classes (MutableMap.MutableEntry) not mapped to Java
 testAnnotationsInDependencies: java-source: line 6: want getter of property prop 189 : annotations.AllTarget{[value = all: : 188]} : <no  got ge
@@ -23,7 +23,6 @@ testDocString: java-source: line 12: want j1: \n field\n got j1: null
 testEquivalentJavaWildcards: unsupported: KcExtras.optimalModeForReturnType
 testErrorTypes: java-source: line 1: want kotlin.collections.MutableMap got ERROR TYPE
 testFunctionTypeAlias: type-alias: alias abbreviation equality
-testFunctionTypeAnnotation: type-annotations: function type annotations
 testFunctionTypes: function-types: KFunction/suspend function kinds
 testGetPackage: java-source: the order of a package's Java source classes (stock lists D, L, C for C.java {C, D} and L.java)
 testImplicitElements: java-source: line 17: want lib.Test, p: [MyKotlinAnnotation: null, MyJavaAnnotation: null] got lib.Test, p: [MyKo

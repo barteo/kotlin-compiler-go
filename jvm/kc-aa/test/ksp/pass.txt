@@ -23,6 +23,7 @@ testEnumModifiers
 testEquals
 testExitCode
 testFunctionKinds
+testFunctionTypeAnnotation
 testGetAnnotationByTypeWithInnerDefault
 testGetByName
 testGetSymbolsFromAnnotation

@@ -72,7 +72,7 @@ mapping.
 | M3 | Richer symbol model: visibility and modality enums, flags, origins, library annotation arguments, Java parameter names | in progress: source types, flags, modality; KaTypes on the JVM; annotation arguments; library classes; inherited members, overrides, subtyping; packages, library top-level declarations, alias abbreviations; JVM type mapping, Moshi codegen end to end; backing fields, Dagger end to end; Dagger on octi-server byte-identical to stock KSP 2.3.6; the slice checked against stock KSP; Room and Hilt byte-identical to stock KSP (step 14) |
 | M4 | Queryable session `analysis/ka`: lookups, scopes, relations, overrides | |
 | M5 | Bridge: `cmd/libkc` operations, `tools/kagen` wire format, `jvm/kc-aa` KaSession | |
-| M6 | KSP fork integration: the `kc` backend, IC lookups, hot paths | in progress: KSP's own test suite on the kc backend, `build.sh ksp` (step 15): 70 of 136 pass, Java sources in the main module included |
+| M6 | KSP fork integration: the `kc` backend, IC lookups, hot paths | in progress: KSP's own test suite on the kc backend, `build.sh ksp` (step 15): 71 of 136 pass, Java sources in the main module included |
 | M7 | Differential conformance against stock KSP, benchmark, CI | in progress: `bench/ksp` (step 11): warm 990 ms on stock KSP, 284 ms on kc; cold 8.1–8.7 s and 2.9–3.2 s, with a CDS archive 5.8–6.1 s and 1.9–2.1 s; CI: `.github/workflows/analysis-api.yml` (step 12) |
 
 ### M0.1 – JNI spike
@@ -1138,6 +1138,12 @@ Each fix below keeps `build.sh stock` and the slice unchanged.
   parameter whose type didn't resolve is still an array. A library
   parameter without a default gives KSP no default value unless it is an
   array (an empty one), as FIR's converter does. +2 (→ 70).
+- **Type annotations.** `@A T` on a declared type, a supertype, a type
+  argument or a function type reaches `KaType.annotations`, the
+  abbreviation's too. The checker takes a Java annotation class as an
+  annotation parameter's type. Still missing: type annotations on Java
+  source supertypes, and creating a Java annotation in a Kotlin
+  annotation's default (kc can't compile it either). +1 (→ 71).
 
 ## Gaps and open questions
 

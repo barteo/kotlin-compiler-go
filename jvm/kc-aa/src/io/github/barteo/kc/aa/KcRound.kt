@@ -351,7 +351,15 @@ internal class KcRound(
          * Where the types of the declarations being built are read; each
          * declaration with type parameters gets its own (see [scoped]).
          */
-        var types = KcTypeContext(this@KcRound, ::psi)
+        var types = KcTypeContext(this@KcRound, ::psi, annotate = ::typeAnnotation)
+
+        /**
+         * The KaAnnotation of a type's annotation [a], built the first time
+         * the type is, which may be after this builder's declarations.
+         */
+        fun typeAnnotation(a: KcAnnotation): KaAnnotation = synchronized(this@KcRound) {
+            annotations[a] ?: run { annotation(a); annotations.getValue(a) }
+        }
 
         fun file(file: KcFile, kt: KtFile): KcFileSymbol {
             val fs = KcFileSymbol(this@KcRound, file, kt)
@@ -506,6 +514,8 @@ internal class KcRound(
         fun typeRef(ref: KtTypeReference?, t: KcType?) {
             if (ref == null || t == null) return
             typeRefs[ref] = t to types
+            // Registered now, so the entries' classes are known before the types are built.
+            t.annotations.forEach(::typeAnnotation)
             var e = ref.typeElement
             while (e is KtNullableType) e = e.innerType
             val args = t.args.map { it.type }

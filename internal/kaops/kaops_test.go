@@ -107,6 +107,7 @@ func readValue(r *wire.Reader) *ka.Value {
 		r.Uint()       // contexts
 		r.Uint()       // no arguments
 		r.Uint()       // no abbreviation
+		r.Uint()       // no annotations
 	case ka.ValueAnnotation:
 		v.Annotation = readAnnotation(r)
 	case ka.ValueArray:
@@ -312,5 +313,14 @@ func readType(r *wire.Reader) *ka.Type {
 		t.Args = append(t.Args, ka.TypeArg{Variance: ka.Variance(r.Uint()), Type: readType(r)})
 	}
 	t.Abbrev = readType(r)
+	t.Annotations = readAnnotations(r)
 	return t
+}
+
+func readAnnotations(r *wire.Reader) []ka.Annotation {
+	var out []ka.Annotation
+	for n := r.Uint(); n > 0 && r.Err() == nil; n-- {
+		out = append(out, *readAnnotation(r))
+	}
+	return out
 }

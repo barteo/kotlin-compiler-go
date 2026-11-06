@@ -3,6 +3,7 @@
 package io.github.barteo.kc.aa
 
 import com.intellij.psi.PsiElement
+import org.jetbrains.kotlin.analysis.api.annotations.KaAnnotation
 import org.jetbrains.kotlin.analysis.api.annotations.KaAnnotationList
 import org.jetbrains.kotlin.analysis.api.base.KaContextReceiver
 import org.jetbrains.kotlin.analysis.api.lifetime.KaLifetimeToken
@@ -38,12 +39,14 @@ internal class KcTypeContext(
     val round: KcRound,
     private val psi: (Int) -> PsiElement?,
     private val outer: KcTypeContext? = null,
+    /** The KaAnnotation of a type's annotation; null where types have none. */
+    private val annotate: ((KcAnnotation) -> KaAnnotation)? = null,
 ) {
     /** The type parameters the declaration this context is for declares. */
     var typeParams: List<KaTypeParameterSymbol> = emptyList()
 
     /** A context for a declaration nested in this one's. */
-    fun nested() = KcTypeContext(round, psi, this)
+    fun nested() = KcTypeContext(round, psi, this, annotate)
 
     private fun byName(name: Name): KaTypeParameterSymbol? =
         typeParams.firstOrNull { it.name == name } ?: outer?.byName(name)
@@ -56,7 +59,7 @@ internal class KcTypeContext(
             classType(t, t.isNullable)
         }
         KcType.PARAMETER -> {
-            val p = KcTypeParameterType(round, Name.identifier(t.name), parameter(t), t.isNullable)
+            val p = KcTypeParameterType(round, Name.identifier(t.name), parameter(t), t.isNullable, annotations(t))
             when {
                 t.isDefinitelyNonNull -> KcDefinitelyNotNullType(round, p)
                 t.isFlexible -> KcFlexibleType(round, p.withNullability(false), p.withNullability(true))
@@ -66,15 +69,19 @@ internal class KcTypeContext(
         else -> errorType(round, t.name, t.isNullable)
     }
 
+    private fun annotations(t: KcType): List<KaAnnotation> =
+        if (t.annotations.isEmpty() || annotate == null) emptyList() else t.annotations.map(annotate)
+
     private fun classType(t: KcType, nullable: Boolean): KcBaseClassType {
         val id = ClassId.fromString(t.classId)
+        val annots = annotations(t)
         val abbrev = t.abbrev?.takeIf { it.kind == KcType.CLASS }?.let {
-            KcClassType(round, ClassId.fromString(it.classId), args(it), nullable, isAlias = true)
+            KcClassType(round, ClassId.fromString(it.classId), args(it), nullable, isAlias = true, annots = annots)
         }
         return if (isFunctionClass(t.classId)) {
-            KcFunctionType(round, id, args(t), nullable, t.isExtension, t.contexts, abbrev)
+            KcFunctionType(round, id, args(t), nullable, t.isExtension, t.contexts, abbrev, annots)
         } else {
-            KcClassType(round, id, args(t), nullable, abbrev = abbrev)
+            KcClassType(round, id, args(t), nullable, abbrev = abbrev, annots = annots)
         }
     }
 
@@ -126,17 +133,18 @@ internal class KcClassType(
     override val marked: Boolean = false,
     val abbrev: KcClassType? = null,
     val isAlias: Boolean = false,
+    private val annots: List<KaAnnotation> = emptyList(),
 ) : StubKaUsualClassType(), KcBaseClassType {
     override val token get() = round.token
     override val symbol: KaClassLikeSymbol
         get() = if (isAlias) round.typeAlias(classId) ?: round.classSymbol(classId) else round.classSymbol(classId)
     override val nullability get() = KaTypeNullability.create(marked)
     override val abbreviation: KaUsualClassType? get() = abbrev
-    override val annotations: KaAnnotationList get() = KcAnnotationList(emptyList(), round.token)
+    override val annotations: KaAnnotationList get() = KcAnnotationList(annots, round.token)
     override val qualifiers: List<KaResolvedClassTypeQualifier> get() = qualifiers(round, classId, typeArguments)
     override fun withNullability(nullable: Boolean): KcClassType =
         if (nullable == marked) this
-        else KcClassType(round, classId, typeArguments, nullable, abbrev?.withNullability(nullable), isAlias)
+        else KcClassType(round, classId, typeArguments, nullable, abbrev?.withNullability(nullable), isAlias, annots)
     // The abbreviation isn't part of the type's identity, as in FIR.
     override fun equals(other: Any?) = other is KcClassType && other.classId == classId &&
         other.marked == marked && other.isAlias == isAlias && other.typeArguments == typeArguments
@@ -159,12 +167,13 @@ internal class KcFunctionType(
     internal val contexts: Int,
     /** The typealias type the function type was written as. */
     val abbrev: KcClassType? = null,
+    private val annots: List<KaAnnotation> = emptyList(),
 ) : StubKaFunctionType(), KcBaseClassType {
     override val token get() = round.token
     override val symbol: KaClassLikeSymbol get() = round.classSymbol(classId)
     override val nullability get() = KaTypeNullability.create(marked)
     override val abbreviation: KaUsualClassType? get() = abbrev
-    override val annotations: KaAnnotationList get() = KcAnnotationList(emptyList(), round.token)
+    override val annotations: KaAnnotationList get() = KcAnnotationList(annots, round.token)
     override val qualifiers: List<KaResolvedClassTypeQualifier> get() = qualifiers(round, classId, typeArguments)
     private fun arg(i: Int) = typeArguments[i].type ?: KcClassType(round, ClassId.fromString("kotlin/Any"), marked = true)
     override val receiverType get() = if (hasReceiver) arg(contexts) else null
@@ -178,7 +187,7 @@ internal class KcFunctionType(
     override val contextReceivers: List<KaContextReceiver> get() = emptyList()
     override fun withNullability(nullable: Boolean) =
         if (nullable == marked) this
-        else KcFunctionType(round, classId, typeArguments, nullable, hasReceiver, contexts, abbrev?.withNullability(nullable))
+        else KcFunctionType(round, classId, typeArguments, nullable, hasReceiver, contexts, abbrev?.withNullability(nullable), annots)
     override fun equals(other: Any?) = other is KcFunctionType && other.classId == classId &&
         other.marked == marked && other.hasReceiver == hasReceiver && other.typeArguments == typeArguments
     override fun hashCode() = classId.hashCode() * 31 + typeArguments.hashCode()
@@ -190,13 +199,14 @@ internal class KcTypeParameterType(
     override val name: Name,
     override val symbol: KaTypeParameterSymbol,
     override val marked: Boolean,
+    private val annots: List<KaAnnotation> = emptyList(),
 ) : StubKaTypeParameterType(), KcTypeBase {
     override val token get() = round.token
     override val nullability get() = KaTypeNullability.create(marked)
     override val abbreviation get() = null
-    override val annotations: KaAnnotationList get() = KcAnnotationList(emptyList(), round.token)
+    override val annotations: KaAnnotationList get() = KcAnnotationList(annots, round.token)
     override fun withNullability(nullable: Boolean) =
-        if (nullable == marked) this else KcTypeParameterType(round, name, symbol, nullable)
+        if (nullable == marked) this else KcTypeParameterType(round, name, symbol, nullable, annots)
     override fun equals(other: Any?) = other is KcTypeParameterType && other.symbol == symbol && other.marked == marked
     override fun hashCode() = symbol.hashCode()
     override fun toString() = text(marked, name.asString())

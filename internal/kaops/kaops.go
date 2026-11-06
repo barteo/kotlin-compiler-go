@@ -20,7 +20,7 @@
 //	          n:Uint inheritor:String*n
 //	types   = n:Uint type*n
 //	type    = kind:Uint [classID:String tflags:Uint param:Uint name:String
-//	          contexts:Uint n:Uint (variance:Uint type)*n abbrev:type]
+//	          contexts:Uint n:Uint (variance:Uint type)*n abbrev:type annots]
 //	annots  = n:Uint annot*n
 //	annot   = classID:String node:Uint target:String implied:Uint n:Uint (name:String value)*n
 //	value   = kind:Uint [node:Uint
@@ -43,7 +43,8 @@
 // receiver, or a star projection's argument. Otherwise kind is a ka
 // TypeKind, and tflags a bit set: 1 nullable, 2 flexible, 4 definitely
 // non-null, 8 extension function type. abbrev is the typealias type the
-// type was written as, or none.
+// type was written as, or none, and annots the type's annotations as
+// written, @A T.
 //
 // OpKaClose: handle:Int → nothing. It releases a session or a model, and
 // the class path a model reads.
@@ -255,6 +256,7 @@ func writeType(w *wire.Writer, t *ka.Type) {
 		writeType(w, a.Type)
 	}
 	writeType(w, t.Abbrev)
+	writeAnnotations(w, t.Annotations)
 }
 
 func writeAnnotations(w *wire.Writer, as []ka.Annotation) {

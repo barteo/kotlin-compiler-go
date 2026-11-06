@@ -65,6 +65,9 @@ type Type struct {
 	// type arguments and the type's nullability. The type is the
 	// typealias's expansion.
 	Abbrev *Type
+	// Annotations are the type's annotations as written, @A T; they are
+	// its Abbrev's too, which doesn't repeat them.
+	Annotations []Annotation
 }
 
 // TypeArg is a type argument.
@@ -201,6 +204,7 @@ func (b *fileBuilder) typeAt(t types.Type, ref *syntax.TypeRef, depth int) *Type
 		out.Nullable = true
 	}
 	if ref != nil {
+		out.Annotations = b.annotations(ref.Annotations)
 		if a := b.aliases[ref]; a != nil {
 			out.Abbrev = b.abbrev(a, ref, out.Nullable, depth)
 			substAbbrevs(out, a.Type, a.TypeParams, out.Abbrev.Args, 0)

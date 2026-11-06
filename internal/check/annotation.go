@@ -191,7 +191,8 @@ func annotationType(t types.Type, arrays bool) bool {
 			return true
 		}
 		cls.Ensure()
-		return cls.Super != nil && cls.Super.Name == "java/lang/Enum"
+		// A Java annotation interface has a retention once loaded.
+		return cls.Retention != types.NoRetention || cls.Super != nil && cls.Super.Name == "java/lang/Enum"
 	}
 	return false
 }
