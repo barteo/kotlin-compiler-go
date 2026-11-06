@@ -10,12 +10,9 @@ testAnnotationWithNestedClassValue: class-literal: Kotlin-mapped nested classes 
 testAnnotationsInDependencies: java-source: line 6: want getter of property prop 189 : annotations.AllTarget{[value = all: : 188]} : <no  got ge
 testAnnotationsRepeatable: java-source: line 13: want lib.Test, KA, [value:1]} got lib.Test, A, [value:1]}
 testAsMemberOf: java-source: NoSuchElementException: Sequence contains no element matching the predicate.
-testBackingFields: java-source: line 20: want lib.JavaClass.javaField: true got lib.MyInterface.interfaceProp_willBeBacked: false
 testCheckOverride: java-source: line 13: want JavaImpl.getX overrides MyInterface.x: true got JavaImpl.getX overrides MyInterface.x:
 testClassKinds: java-source: NullPointerException: null
 testConstructorDeclarations: java-source: line 4: want <init>(kotlin.Int): lib.AbstractJavaClassWithExplicitConstructor got class: AbstractJav
-testDeclarationOrder: java-source: line 23: want b:Ljava/lang/String; got KotlinClass
-testDeclarationPackageName: local-class-type: buildClassType of a local class (a local constructor's return type)
 testDeclarationsInClass: java-members: Java collection members (remove/removeAt) mapping
 testDeferredJavaSymbols: java-source: line 1: want K got
 testDeferredTypeRefs: disabled: @Disabled in KSPUnitTestSuite
@@ -25,7 +22,6 @@ testErrorTypes: java-source: line 1: want kotlin.collections.MutableMap got ERRO
 testGetPackage: java-source: the order of a package's Java source classes (stock lists D, L, C for C.java {C, D} and L.java)
 testImplicitElements: java-source: line 17: want lib.Test, p: [MyKotlinAnnotation: null, MyJavaAnnotation: null] got lib.Test, p: [MyKo
 testInterfaceWithDefault: java-source: NullPointerException: null cannot be cast to non-null type com.google.devtools.ksp.symbol.KSClassDec
-testIsMutable: java-source: line 20: want lib.JavaClass.javaField: true got lib.JavaClass.publicJavaField: true
 testJavaAccessor: java-source: line 2: want JavaAccessorImpl.getX() -> KtInterfaceWithProperty.x got JavaAccessorImpl.getX() -> nul
 testJavaAnnotatedUtil: java-source: line 1: want Test: OnlyTestAnnotation got
 testJavaModifiers: java-source: InternalKSPException: >>> Internal KSP Error
@@ -35,7 +31,7 @@ testJavaSubtypeOfKotlinInterface: java-source: line 5: want Declaration simpleNa
 testJavaTypes2: java-source: line 1: want (Array<(C..C?)>..Array<out (C..C?)>?) ?= (Array<(C..C?)>..Array<out (C..C?)>?) : got (A
 testJavaTypes: flexible-types: Java flexible types in Kotlin
 testJavaWildcards2: unsupported: KcExtras.optimalModeForReturnType
-testJavaWildcardsSelfReferencing: unsupported: KcExtras.optimalModeForValueParameter
+testJavaWildcardsSelfReferencing: unsupported: KcExtras.optimalModeForReturnType
 testLibOrigins: java-source: line 10: want Exception: [KotlinLibClass, T1, Any?]: SYNTHETIC got Validating kotlinLibFuntion
 testLocalClasses: local-declarations: anonymous objects
 testLocations: java-source: line 3: want K:J.java:81 got K:K.kt:60
@@ -48,12 +44,10 @@ testRecordJavaGetAllMembers: java-source: IndexOutOfBoundsException: Index 0 out
 testRecordJavaOverrides: java-source: line 1: want p1.B: main/p1/A.java got kotlin.Any: main/p1/C.java
 testReferenceElement: java-source: line 1: want KSClassifierReferenceImpl: Qualifier of B is A got KSClassifierReferenceImpl: Qualifier
 testReplaceWithErrorTypeArgs: error-types: argument-count mismatch error types
-testResolveJavaType: java-source: UnsupportedOperationException: kc: containingSymbol of KcLibraryTypeParameterSymbol(X)
-testThrowList: java-source: UnsupportedOperationException: kc: KaSession.asKaType(PsiType, PsiElement)
+testResolveJavaType: java-source: Java array flexible upper bounds (Array<out T?>), Java inner classes' outer type arguments, Java enum synthetic members
+testThrowList: class-files: library throws lists need class-file bytes (KSP reads them through getFileContent)
 testTopLevelMembers: java-source: line 8: want lib : javaFieldInLib -> lib.LibJavaClass got lib : jvmStaticFunctionInLibCompanion -> l
 testTypeAlias: type-annotations: annotations on alias type arguments
 testTypeParameterReference: java-source: line 1: want kotlin.Int: false got kotlin.Any: true
 testUseSiteTargets: annotation-target: @all use-site target
 testValidateTypes: java-source: line 12: want BadJavaClass invalid got BadJavaClass valid
-testVararg: java-source: NoSuchElementException: Sequence contains no element matching the predicate.
-testVisibilities: java-source: InternalKSPException: >>> Internal KSP Error

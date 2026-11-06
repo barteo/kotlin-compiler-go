@@ -1,16 +1,12 @@
 > a.Other: property a.Targets.b: kotlin.String (var) (s = "p")
 < annots:a.Targets: property b FIELD:Marker
 > annots:a.Targets: property b PARAM:Other FIELD:Marker
-> decls:java.lang.Thread.State: - function <init>(): java.lang.Thread.State
 < decls:java.util.AbstractMap.SimpleEntry: - function java.util.AbstractMap.SimpleEntry.equals(p0: kotlin.Any): kotlin.Boolean
 < decls:java.util.AbstractMap.SimpleEntry: - function java.util.AbstractMap.SimpleEntry.getKey(): K
 < decls:java.util.AbstractMap.SimpleEntry: - function java.util.AbstractMap.SimpleEntry.getValue(): V
 > decls:java.util.AbstractMap.SimpleEntry: - function java.util.AbstractMap.SimpleEntry.equals(p0: kotlin.Any?): kotlin.Boolean
 > decls:java.util.AbstractMap.SimpleEntry: - property java.util.AbstractMap.SimpleEntry.key: K
-> decls:java.util.AbstractMap.SimpleEntry: - property java.util.AbstractMap.SimpleEntry.key: K
-> decls:java.util.AbstractMap.SimpleEntry: - property java.util.AbstractMap.SimpleEntry.serialVersionUID: kotlin.Long
 > decls:java.util.AbstractMap.SimpleEntry: - property java.util.AbstractMap.SimpleEntry.value: V
-> decls:java.util.AbstractMap.SimpleEntry: - property java.util.AbstractMap.SimpleEntry.value: V (var)
 < members:f.Bag:get,size,toString: JAVA_LIB size in java.util.AbstractCollection; as member (): kotlin.Int
 < members:f.Bag:get,size,toString: JAVA_LIB toString in java.util.AbstractCollection overrides kotlin.Any.toString; as member (): kotlin.String
 < members:f.Bag:get,size,toString: KOTLIN size in f.Bag; as member : kotlin.Int

@@ -81,6 +81,7 @@ decls:java.lang.Thread.State: - class java.lang.Thread.State.RUNNABLE
 decls:java.lang.Thread.State: - class java.lang.Thread.State.TERMINATED
 decls:java.lang.Thread.State: - class java.lang.Thread.State.TIMED_WAITING
 decls:java.lang.Thread.State: - class java.lang.Thread.State.WAITING
+decls:java.lang.Thread.State: - function <init>(): java.lang.Thread.State
 decls:java.lang.Thread.State: - function java.lang.Thread.State.valueOf(value: kotlin.String): java.lang.Thread.State
 decls:java.lang.Thread.State: - function java.lang.Thread.State.values(): kotlin.Array<java.lang.Thread.State>
 decls:java.lang.Thread.State: - property java.lang.Thread.State.entries: kotlin.enums.EnumEntries<java.lang.Thread.State>
@@ -93,6 +94,9 @@ decls:java.util.AbstractMap.SimpleEntry: - function java.util.AbstractMap.Simple
 decls:java.util.AbstractMap.SimpleEntry: - function java.util.AbstractMap.SimpleEntry.hashCode(): kotlin.Int
 decls:java.util.AbstractMap.SimpleEntry: - function java.util.AbstractMap.SimpleEntry.setValue(p0: V): V
 decls:java.util.AbstractMap.SimpleEntry: - function java.util.AbstractMap.SimpleEntry.toString(): kotlin.String
+decls:java.util.AbstractMap.SimpleEntry: - property java.util.AbstractMap.SimpleEntry.key: K
+decls:java.util.AbstractMap.SimpleEntry: - property java.util.AbstractMap.SimpleEntry.serialVersionUID: kotlin.Long
+decls:java.util.AbstractMap.SimpleEntry: - property java.util.AbstractMap.SimpleEntry.value: V (var)
 decls:java.util.AbstractMap.SimpleEntry: JAVA_LIB CLASS class java.util.AbstractMap.SimpleEntry<K : kotlin.Any, V : kotlin.Any> : kotlin.collections.MutableMap.MutableEntry<K, V>, java.io.Serializable
 decls:kotlin.DeprecationLevel: - class kotlin.DeprecationLevel.ERROR
 decls:kotlin.DeprecationLevel: - class kotlin.DeprecationLevel.HIDDEN

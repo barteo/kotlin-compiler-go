@@ -124,6 +124,8 @@ class KcAnalysis internal constructor(
         is KcGetterSymbol -> s.property
         is KcSetterSymbol -> s.property
         is KcLibraryClassSymbol -> null
+        // A type parameter the model has no owner for: a Java constructor's, which FIR drops too.
+        is KcLibraryTypeParameterSymbol -> null
         is KcPackageSymbol -> null
         is KcReceiverParameterSymbol -> s.owningCallableSymbol
         else -> unsupported("containingSymbol of $s")
@@ -182,6 +184,8 @@ class KcAnalysis internal constructor(
     fun asSignature(s: KaCallableSymbol): KaCallableSignature<KaCallableSymbol> = round.relations.signature(s)
     fun asSignature(s: KaFunctionSymbol): KaFunctionSignature<KaFunctionSymbol> = round.relations.functionSignature(s)
     fun asSignature(s: KaVariableSymbol): KaVariableSignature<KaVariableSymbol> = round.relations.variableSignature(s)
+    private fun packageOf(s: KaSymbol): FqName =
+        (s.psi?.containingFile as? org.jetbrains.kotlin.psi.KtFile)?.packageFqName ?: FqName.ROOT
     fun getContainingFile(s: KaSymbol): KaFileSymbol? {
         var cur: KaSymbol? = s
         while (cur != null && cur !is KaFileSymbol) {
@@ -247,12 +251,41 @@ class KcAnalysis internal constructor(
     fun buildClassType(symbol: KaClassLikeSymbol, init: Function1<Any?, Unit>): KaType {
         val b = KcClassTypeBuilder(round.token).also { init(it) }
         return if (symbol is KaTypeAliasSymbol && symbol.classId != null) b.build(round, symbol)
-        else b.build(round, symbol.classId ?: unsupported("class type of local $symbol"))
+        else symbol.classId?.let { b.build(round, it) } ?: b.build(round, symbol, packageOf(symbol))
     }
 
     fun buildTypeParameterType(symbol: KaTypeParameterSymbol, init: Function1<Any?, Unit>): KaType {
         val b = KcTypeParameterTypeBuilder(round.token).also { init(it) }
         return KcTypeParameterType(round, symbol.name, symbol, b.isMarkedNullable)
+    }
+
+    // KaJavaInteroperabilityComponent: a Java class or type parameter type,
+    // as a platform type; arrays and primitives aren't asked for yet.
+    fun asKaType(type: com.intellij.psi.PsiType, useSitePosition: PsiElement): KaType? {
+        val ct = type as? com.intellij.psi.PsiClassType ?: return null
+        val lower: KaType = when (val target = ct.resolve()) {
+            null -> return KcErrorType(round, ct.className)
+            is com.intellij.psi.PsiTypeParameter -> {
+                val sym = round.byPsi[target] as? KaTypeParameterSymbol ?: return null
+                KcTypeParameterType(round, sym.name, sym, false)
+            }
+            else -> KcClassType(round, javaClassId(target) ?: return null)
+        }
+        return KcFlexibleType(round, lower, base(lower).withNullability(true))
+    }
+
+    private fun javaClassId(c: com.intellij.psi.PsiClass): ClassId? {
+        val names = ArrayList<String>()
+        var cur: com.intellij.psi.PsiClass? = c
+        var top = c
+        while (cur != null) {
+            names += cur.name ?: return null
+            top = cur
+            cur = cur.containingClass
+        }
+        val pkg = (top.containingFile as? com.intellij.psi.PsiJavaFile)?.packageName
+            ?: top.qualifiedName?.substringBeforeLast('.', "") ?: ""
+        return ClassId(FqName(pkg), FqName.fromSegments(names.reversed()), false)
     }
 
     // KaTypeRelationChecker

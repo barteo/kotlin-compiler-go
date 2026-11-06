@@ -38,8 +38,11 @@ type Options struct {
 	// the module sees, as with kotlinc's -Xfriend-paths: a unit test's main
 	// code.
 	FriendPaths []string
-	JDKHome     string // JDK whose classes are used; found automatically if empty
-	NoJDK       bool   // don't use JDK classes
+	// KeepHidden keeps Java classes' members that Kotlin can't use, for
+	// the Analysis API: see check.Library.KeepHidden.
+	KeepHidden bool
+	JDKHome    string // JDK whose classes are used; found automatically if empty
+	NoJDK      bool   // don't use JDK classes
 	// ModuleName is the module's name, which the JVM names of internal
 	// members end with, as with kotlinc's -module-name; "main" if empty.
 	ModuleName string
@@ -121,6 +124,9 @@ func newLibrary(cp *classpath.Path, opts Options) *check.Library {
 	lib.Parcelize = opts.Parcelize
 	lib.Compose = opts.Compose
 	lib.OptIns = opts.OptIns
+	if opts.KeepHidden {
+		lib.KeepHidden()
+	}
 	if opts.Serialization {
 		lib.EnableSerialization()
 	}

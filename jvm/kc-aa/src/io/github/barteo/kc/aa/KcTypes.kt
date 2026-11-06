@@ -27,6 +27,7 @@ import org.jetbrains.kotlin.analysis.api.types.KaTypeNullability
 import org.jetbrains.kotlin.analysis.api.types.KaTypeProjection
 import org.jetbrains.kotlin.analysis.api.types.KaUsualClassType
 import org.jetbrains.kotlin.name.ClassId
+import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.types.Variance
 
@@ -134,19 +135,21 @@ internal class KcClassType(
     val abbrev: KcClassType? = null,
     val isAlias: Boolean = false,
     private val annots: List<KaAnnotation> = emptyList(),
+    /** The local class this is the type of, whose [classId] is local and names no class. */
+    val local: KaClassLikeSymbol? = null,
 ) : StubKaUsualClassType(), KcBaseClassType {
     override val token get() = round.token
     override val symbol: KaClassLikeSymbol
-        get() = if (isAlias) round.typeAlias(classId) ?: round.classSymbol(classId) else round.classSymbol(classId)
+        get() = local ?: if (isAlias) round.typeAlias(classId) ?: round.classSymbol(classId) else round.classSymbol(classId)
     override val nullability get() = KaTypeNullability.create(marked)
     override val abbreviation: KaUsualClassType? get() = abbrev
     override val annotations: KaAnnotationList get() = KcAnnotationList(annots, round.token)
     override val qualifiers: List<KaResolvedClassTypeQualifier> get() = qualifiers(round, classId, typeArguments)
     override fun withNullability(nullable: Boolean): KcClassType =
         if (nullable == marked) this
-        else KcClassType(round, classId, typeArguments, nullable, abbrev?.withNullability(nullable), isAlias, annots)
+        else KcClassType(round, classId, typeArguments, nullable, abbrev?.withNullability(nullable), isAlias, annots, local)
     // The abbreviation isn't part of the type's identity, as in FIR.
-    override fun equals(other: Any?) = other is KcClassType && other.classId == classId &&
+    override fun equals(other: Any?) = other is KcClassType && other.classId == classId && other.local == local &&
         other.marked == marked && other.isAlias == isAlias && other.typeArguments == typeArguments
     override fun hashCode() = classId.hashCode() * 31 + typeArguments.hashCode()
     override fun toString() = text(marked, classId.asFqNameString() +
@@ -387,6 +390,11 @@ internal class KcClassTypeBuilder(override val token: KaLifetimeToken) : KaClass
     }
 
     fun build(round: KcRound, id: ClassId): KaType = KcClassType(round, id, arguments.toList(), isMarkedNullable)
+
+    /** The type of local class [c]: its class ID is local, as in FIR. */
+    fun build(round: KcRound, c: KaClassLikeSymbol, pkg: FqName): KaType =
+        KcClassType(round, ClassId(pkg, FqName(c.name?.asString() ?: "<anonymous>"), true),
+            arguments.toList(), isMarkedNullable, local = c)
 
     /** The type of typealias [alias] with the builder's arguments: its expansion, abbreviated by it. */
     fun build(round: KcRound, alias: KaTypeAliasSymbol): KaType =

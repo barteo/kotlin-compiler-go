@@ -28,7 +28,10 @@ type classTable struct {
 	kotlin bool
 	// serialization is Library.Serialization: see friend.
 	serialization bool
-	funcs         *types.Functions // the interfaces of function types
+	// hidden is set by Library.KeepHidden: every Java class keeps the
+	// members Kotlin can't use, as Java source classes do.
+	hidden bool
+	funcs  *types.Functions // the interfaces of function types
 	kotlinTable
 	// sources finds the program's classes by internal name, which the
 	// class path's classes of Java sources name. Checking sets it once
@@ -229,7 +232,7 @@ func (t *classTable) load(cls *types.ClassSym) {
 	cls.Fields = map[string]*types.VarSym{}
 	// A class of the program's Java sources keeps the members Kotlin
 	// can't use too, apart, for the Analysis API, which lists them.
-	source := t.cp.IsSource(cls.Name)
+	source := t.hidden || t.cp.IsSource(cls.Name)
 	if source {
 		cls.JavaHidden = &types.JavaHidden{}
 	}
@@ -280,6 +283,11 @@ func (t *classTable) load(cls *types.ClassSym) {
 		case hidden:
 			if m.Name == "<init>" {
 				f.Ret = types.ClassType(cls)
+				if info.Access&classfile.AccEnum != 0 && strings.HasPrefix(m.Desc, "(Ljava/lang/String;I") && len(f.Params) >= 2 && !strings.HasPrefix(m.Sig, "(Ljava/lang/String;I") {
+					// javac's enum constructor takes the entry's name and
+					// ordinal first, which the source doesn't declare.
+					f.Params = f.Params[2:]
+				}
 			}
 			cls.JavaHidden.Methods = append(cls.JavaHidden.Methods, f)
 		case m.Name == "<init>":

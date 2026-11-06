@@ -403,6 +403,12 @@ func (l *Library) EnableSerialization() {
 // NewLibrary returns the library of the classes in cp, which may be nil.
 func NewLibrary(cp *classpath.Path) *Library { return &Library{t: newClassTable(cp)} }
 
+// KeepHidden has every Java class keep the members Kotlin can't use, the
+// package-private and private ones, in types.ClassSym.JavaHidden, as the
+// classes of Java sources do: the Analysis API lists them. Checking
+// doesn't see them. Call it before the library loads a class.
+func (l *Library) KeepHidden() { l.t.hidden = true }
+
 // Class returns the class of the class path with Kotlin class ID id
 // (a/b/Outer.Inner), as Kotlin sees it: kotlin/String is java/lang/String,
 // kotlin/collections/List java/util/List; nil if there is none. The

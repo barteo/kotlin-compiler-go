@@ -8,6 +8,7 @@ testAnnotationWithArbitraryClassValue
 testAnnotationWithArrayValue
 testAnnotationWithDefaultValues
 testAnnotationWithJavaTypeValue
+testBackingFields
 testBuiltInTypes
 testCompanion
 testConflictingOverride
@@ -15,6 +16,8 @@ testConstProperties
 testContextParameters
 testCrossModuleTypeAlias
 testDeclarationInconsistency
+testDeclarationOrder
+testDeclarationPackageName
 testDeclarationUtil
 testDeclarationsInAccessor
 testDeclared
@@ -37,6 +40,7 @@ testImplicitPropertyAccessors
 testInheritedTypeAlias
 testInnerTypes
 testInternalOfFriends
+testIsMutable
 testJavaAnno
 testJavaOverrideInSource
 testJavaToKotlinMapper
@@ -74,4 +78,6 @@ testTypeComparison2
 testTypeComposure
 testTypeParameterVariance
 testValueParameter
+testVararg
 testVarianceTypeCheck
+testVisibilities
