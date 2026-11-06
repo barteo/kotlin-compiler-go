@@ -50,7 +50,7 @@ internal object KcOps {
         val model = r.readInt()
         try {
             val files = List(r.readUint().toInt()) {
-                KcFile(r.readString(), r.readString(), r.annotations(), r.decls())
+                KcFile(r.readString(), r.readString(), r.annotations(), r.decls(), r.lookups())
             }
             val diagnostics = List(r.readUint().toInt()) {
                 KcDiagnostic(r.readString(), r.readUint().toInt(), r.readUint().toInt(), r.readString(), r.readString())
@@ -84,6 +84,9 @@ internal object KcOps {
     }
 
     private fun Wire.Reader.annotations(): List<KcAnnotation> = List(readUint().toInt()) { annotation() }
+
+    private fun Wire.Reader.lookups(): List<KcLookup> =
+        List(readUint().toInt()) { KcLookup(readString(), readUint().toInt(), readString()) }
 
     private fun Wire.Reader.annotation(): KcAnnotation {
         val classId = readString()
@@ -177,7 +180,20 @@ internal class KcFile(
     val packageName: String,
     val annotations: List<KcAnnotation>,
     val decls: List<KcDecl>,
+    /** The names the file looks up, for incremental processing; Go's ka.File.Lookups. */
+    val lookups: List<KcLookup>,
 )
+
+/**
+ * A name looked up in a package or a class, [scope] its qualified name;
+ * Go's ka.Lookup. [kind] is [PACKAGE] or [CLASS].
+ */
+internal class KcLookup(val scope: String, val kind: Int, val name: String) {
+    companion object {
+        const val PACKAGE = 0
+        const val CLASS = 1
+    }
+}
 
 /**
  * A declaration; Go's ka.Decl. [node] is the declaration's psi node, a
