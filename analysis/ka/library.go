@@ -838,10 +838,12 @@ func (l *library) javaClass(cls *types.ClassSym, depth int) *Decl {
 	if d.Kind == KindEnumClass {
 		d.Members = append(d.Members, enumMembers(id, l.cp.Has("kotlin/enums/EnumEntries"), FlagStatic|FlagJava)...)
 	}
+	added := map[string]bool{}
 	addField := func(v *types.VarSym, static bool) {
 		if slices.Contains(cls.Entries, v.Name) {
 			return
 		}
+		added[v.Name] = true
 		md := &Decl{Kind: KindJavaField, Name: v.Name, Visibility: Public, Modality: ModalityFinal,
 			Flags: FlagJava, Type: platform(b.typ(v.Type, nil))}
 		if static {
@@ -877,6 +879,26 @@ func (l *library) javaClass(cls *types.ClassSym, depth int) *Decl {
 		}
 		for _, v := range h.Fields {
 			addField(v, v.Kind == types.Static)
+		}
+	}
+	if source {
+		// The fields whose types kc couldn't resolve, which FIR keeps
+		// with error types.
+		for i := range det.Fields {
+			fd := &det.Fields[i]
+			if added[fd.Name] || fd.Access&classfile.AccSynthetic != 0 || slices.Contains(cls.Entries, fd.Name) {
+				continue
+			}
+			md := &Decl{Kind: KindJavaField, Name: fd.Name, Visibility: javaVisibility(fd.Access), Modality: ModalityFinal,
+				Flags: FlagJava, Type: unresolved(&Type{Kind: TypeError}, fd.Desc), Annotations: l.annotations(fd.Annotations, false)}
+			if fd.Access&classfile.AccStatic != 0 {
+				md.Flags |= FlagStatic
+			}
+			if fd.Access&classfile.AccFinal == 0 {
+				md.Flags |= FlagMutable
+			}
+			pos[md] = fieldIndex[fd.Name]
+			d.Members = append(d.Members, md)
 		}
 	}
 	if depth < maxNesting {
@@ -1025,6 +1047,10 @@ func (l *library) javaMethod(b *fileBuilder, f *types.FunSym, bySig map[string]*
 		md.Modality = ModalityOpen
 	}
 	md.TypeParams = l.javaTypeParams(b, f.TypeParams)
+	paramDescs, retDesc := descParts(f.Desc)
+	if len(paramDescs) != len(f.Params) {
+		paramDescs = make([]string, len(f.Params))
+	}
 	for i, p := range f.Params {
 		pd := &Decl{Kind: KindValueParameter, Name: "p" + itoa(int64(i))}
 		if m != nil && len(m.ParamNames) == len(f.Params) && m.ParamNames[i] != "" {
@@ -1035,7 +1061,7 @@ func (l *library) javaMethod(b *fileBuilder, f *types.FunSym, bySig map[string]*
 			pd.Flags |= FlagVararg
 			t = types.VarargElem(t)
 		}
-		pd.Type = platform(b.typ(t, nil))
+		pd.Type = unresolved(platform(b.typ(t, nil)), paramDescs[i])
 		if m != nil {
 			if j := len(m.Params) - len(f.Params) + i; j >= 0 && j < len(m.Params) {
 				pd.Annotations = l.annotations(m.Params[j], false)
@@ -1044,9 +1070,51 @@ func (l *library) javaMethod(b *fileBuilder, f *types.FunSym, bySig map[string]*
 		md.Params = append(md.Params, pd)
 	}
 	if kind == KindFunction {
-		md.Type = platform(b.typ(f.Ret, nil))
+		md.Type = unresolved(platform(b.typ(f.Ret, nil)), retDesc)
 	}
 	return md
+}
+
+// descParts splits method descriptor d into its parameter and return
+// type descriptors.
+func descParts(d string) ([]string, string) {
+	if !strings.HasPrefix(d, "(") {
+		return nil, ""
+	}
+	var ps []string
+	i := 1
+	for i < len(d) && d[i] != ')' {
+		j := i
+		for j < len(d) && d[j] == '[' {
+			j++
+		}
+		if j < len(d) && d[j] == 'L' {
+			k := strings.IndexByte(d[j:], ';')
+			if k < 0 {
+				return nil, ""
+			}
+			j += k
+		}
+		if j >= len(d) {
+			return nil, ""
+		}
+		ps = append(ps, d[i:j+1])
+		i = j + 1
+	}
+	return ps, d[min(i+1, len(d)):]
+}
+
+// unresolved names t, if it is an error type without a name, after
+// descriptor desc: the class Java code wrote that kc couldn't find. As in
+// FIR, it is a flexible error type.
+func unresolved(t *Type, desc string) *Type {
+	if t == nil || t.Kind != TypeError || t.Name != "" || !strings.HasSuffix(desc, ";") {
+		return t
+	}
+	n := strings.TrimPrefix(strings.TrimSuffix(strings.TrimLeft(desc, "["), ";"), "L")
+	t.Name = n[strings.LastIndexAny(n, "/$")+1:]
+	t.Flexible = true
+	return t
 }
 
 // platform returns t, a type from a Java class, with its nullable types

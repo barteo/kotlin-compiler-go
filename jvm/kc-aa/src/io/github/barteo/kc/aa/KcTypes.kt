@@ -67,7 +67,11 @@ internal class KcTypeContext(
                 else -> p
             }
         }
-        else -> errorType(round, t.name, t.isNullable)
+        else -> if (t.isFlexible) {
+            KcFlexibleType(round, errorType(round, t.name, false), errorType(round, t.name, true))
+        } else {
+            errorType(round, t.name, t.isNullable)
+        }
     }
 
     private fun annotations(t: KcType): List<KaAnnotation> =

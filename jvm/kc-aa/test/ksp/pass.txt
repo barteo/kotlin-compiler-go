@@ -10,6 +10,7 @@ testAnnotationWithArrayValue
 testAnnotationWithDefaultValues
 testAnnotationWithJavaTypeValue
 testAnnotationsRepeatable
+testAsMemberOf
 testBackingFields
 testBuiltInTypes
 testClassKinds

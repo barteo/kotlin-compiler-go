@@ -281,6 +281,8 @@ import java.util.List;
 public class JavaSrc<T> extends Base implements Runnable {
     public static final int MAX = 3;
     protected List<String> names;
+    NonExist broken;
+    Missing gone(Missing m) { return m; }
     @Deprecated public JavaSrc(String first, int count) {}
     public void run() {}
     public <R> R map(T value, R fallback) { return fallback; }
@@ -313,6 +315,8 @@ class Base {}
 	dumpLibrary(&sb, d, "", func(m *Decl) bool { return m.Kind != KindFunction || !strings.HasPrefix(m.Name, "<") })
 	want := `1 JavaSrc [j/JavaSrc] v0 m1 f0x4400000 <T : kotlin/Any!> : j/Base java/lang/Runnable
   13 names v2 m0 f0x408000: kotlin/collections/MutableList<kotlin/String!>!
+  13 broken v4 m0 f0x408000: <error NonExist>!
+  7 gone v4 m1 f0x400000 (m: <error Missing>!): <error Missing>!
   7 run v0 m1 f0x400000: kotlin/Unit
   7 map v0 m1 f0x400000 <R : kotlin/Any!> (value: T!, fallback: R!): R!
   10 <init> v0 m0 f0x400000 @java/lang/Deprecated() (first: kotlin/String!, count: kotlin/Int)
