@@ -102,6 +102,7 @@ testTypeComparison2
 testTypeComposure
 testTypeParameterReference
 testTypeParameterVariance
+testValidateTypes
 testValueParameter
 testVararg
 testVarianceTypeCheck

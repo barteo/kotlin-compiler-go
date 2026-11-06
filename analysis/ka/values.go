@@ -201,8 +201,8 @@ func (b *fileBuilder) constant(t types.Type, x syntax.Expr) (out *Value) {
 	}()
 	t = t.NonNull()
 	if cl, ok := x.(*syntax.ClassLit); ok {
-		if cl.Class.K == types.Invalid {
-			return unsupported
+		if cl.Class.K == types.Invalid { // an error type, as FIR keeps it
+			return &Value{Kind: ValueClass, Type: &Type{Kind: TypeError, Name: classLitName(cl)}}
 		}
 		t := b.typ(cl.Class, nil)
 		if t.Kind == TypeClass && cl.Class.K == types.Class {

@@ -25,4 +25,3 @@ testResolveJavaType: java-source: Java array flexible upper bounds (Array<out T?
 testThrowList: class-files: library throws lists need class-file bytes (KSP reads them through getFileContent)
 testTypeAlias: type-annotations: annotations on alias type arguments
 testUseSiteTargets: annotation-target: @all use-site target
-testValidateTypes: java-source: line 12: want BadJavaClass invalid got BadJavaClass valid

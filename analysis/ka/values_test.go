@@ -86,7 +86,7 @@ class Y
 class Z
 
 @Missing(1)
-@A(i = "wrong")
+@A(i = "wrong", k = Nope::class)
 class W
 
 annotation class N(val b: Byte = -2, val s: Short = -3, val i: Int = -6, val l: Long = -7L, val d: Double = -4.0)
@@ -145,7 +145,7 @@ A.inner = @p/Inner(s="d"{"d"}, xs=[1{1}, 2{2}]){Inner("d", 1, 2)}
 X: @p/A(s="const!"{C + "!"}, i=-4{-4}, l=1099511627776L{1L shl 40}, c='q'{'q'}, z=true{true}, f=0.25f{0.25f}, d=1000.0{1e3}, u=4294967295u{0xFFFFFFFFu}, e=p/Color.RED{Color.RED}, k=kotlin/String::class{String::class}, arr=["a"{"a"}, "const"{C}]{arrayOf("a", C)}, inner=@p/Inner(xs=[5{5}]{[5]}){Inner(xs = [5])})
 Y: @p/A(s="pos"{"pos"}, i=9{9}, v=["p"{"p"}, "q"{"q"}]{["p", "q"]})
 Z: @p/A(v=["s1"{"s1"}]{arrayOf("s1")}) @p/Inner()
-W: @() @p/A(i=<unsupported>{"wrong"})
+W: @() @p/A(i=<unsupported>{"wrong"}, k=Nope::class{Nope::class})
 N.b = b-2{-2}
 N.s = s-3{-3}
 N.i = -6{-6}
