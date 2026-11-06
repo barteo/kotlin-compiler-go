@@ -55,6 +55,7 @@ testImplicitElements
 testImplicitPropertyAccessors
 testInheritedTypeAlias
 testInnerTypes
+testInterfaceWithDefault
 testInternalOfFriends
 testIsMutable
 testJavaAccessor

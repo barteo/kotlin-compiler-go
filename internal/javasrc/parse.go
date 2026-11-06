@@ -705,6 +705,14 @@ func (p *parser) methodRest(m *Method) {
 	if p.accept(";") {
 		return
 	}
+	if p.is("}") {
+		// A missing ; before the class's closing brace, which Java PSI
+		// reports and keeps the method.
+		if p.skipped == nil {
+			p.skipped = &parseError{p.tok(), "expected ;"}
+		}
+		return
+	}
 	if !p.is("{") {
 		p.fail("expected a method body or ;, found %s", p.describe())
 	}

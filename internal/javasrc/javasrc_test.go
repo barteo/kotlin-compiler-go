@@ -241,7 +241,9 @@ func TestParseRecovery(t *testing.T) {
 	void h() {}
 	List<Double> last = List<double>()
 }
-interface B {}
+interface B {
+	int c()
+}
 `
 	f, err := Parse("A.java", src)
 	if err == nil || f == nil {
@@ -257,7 +259,7 @@ interface B {}
 			names = append(names, m.Name)
 		}
 	}
-	if got, want := strings.Join(names, " "), "A a last h B"; got != want {
+	if got, want := strings.Join(names, " "), "A a last h B c"; got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
 }
