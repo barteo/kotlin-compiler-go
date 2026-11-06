@@ -1367,9 +1367,9 @@ func (c *Checker) narrowing(cond syntax.Expr) (whenTrue, whenFalse []narrow) {
 				n = append(n, c.safeReceivers(x.X)...)
 			case xnull:
 				n = append(n, c.safeReceivers(x.Y)...)
-			case nonNull(x.Y.Type()):
+			case equalsNonNull(x.Y.Type()):
 				n, eq = c.equalNonNull(x.X), !eq
-			case nonNull(x.X.Type()):
+			case equalsNonNull(x.X.Type()):
 				n, eq = c.equalNonNull(x.Y), !eq
 			}
 			whenTrue, whenFalse = null, n
@@ -1680,6 +1680,14 @@ func (c *Checker) localKey(k narrow) *types.VarSym {
 // nonNull reports whether a checked expression's type has no null.
 func nonNull(t types.Type) bool {
 	return t.K != types.Invalid && !types.MayBeNull(t)
+}
+
+// equalsNonNull reports whether being equal to a value of type t makes the
+// other side of the equality non-null. kotlinc counts a platform type, such
+// as that of a Java static field, as non-null here, so when (r?.action)
+// { File.separator -> } smart casts r.
+func equalsNonNull(t types.Type) bool {
+	return nonNull(t) || t.P
 }
 
 // receiver checks the receiver of a member access or member call.
@@ -3437,7 +3445,7 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 						whenTrue, later = append(whenTrue, t...), append(later, f...)
 					}
 				}
-				if single && nonNull(ct) {
+				if single && equalsNonNull(ct) {
 					// Equal to a value that isn't null: neither the
 					// subject nor the receivers of its safe calls are.
 					if hasSubj && types.MayBeNull(subjType()) {
