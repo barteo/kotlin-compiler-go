@@ -1283,19 +1283,18 @@ func TestCompose(t *testing.T) {
 
 	// What kc doesn't compile as the plugin does is left to kotlinc.
 	for name, src := range map[string]string{
-		"wide lambda":        "val f: @Composable (Int, Int, Int, Int, Int, Int, Int, Int, Int, Int) -> Unit = { _, _, _, _, _, _, _, _, _, _ -> }",
-		"reference":          "@Composable fun B() {}\nval f: @Composable () -> Unit = ::B",
-		"suspend type":       "fun f(g: @Composable suspend () -> Unit) {}",
-		"implemented type":   "abstract class C : @Composable () -> Unit",
-		"type check":         "fun f(x: Any) = x is @Composable () -> Unit",
-		"non-local return":   "@Composable fun A() { lib.Row { return } }",
-		"return from key":    "@Composable fun A() { androidx.compose.runtime.key(1) { return } }",
-		"spread key":         "@Composable fun A(ks: Array<Any>) { androidx.compose.runtime.key(*ks) {} }",
-		"local":              "fun f() { @Composable fun A() {} }",
-		"interface body":     "interface I { @Composable fun A() {} }",
-		"extension property": "val String.p: String @Composable get() = this",
-		"catch":              "@Composable fun A() { try { println() } catch (e: Exception) { lib.Text(\"t\") } }",
-		"finally":            "@Composable fun A() { try { println() } finally { lib.Text(\"t\") } }",
+		"wide lambda":      "val f: @Composable (Int, Int, Int, Int, Int, Int, Int, Int, Int, Int) -> Unit = { _, _, _, _, _, _, _, _, _, _ -> }",
+		"reference":        "@Composable fun B() {}\nval f: @Composable () -> Unit = ::B",
+		"suspend type":     "fun f(g: @Composable suspend () -> Unit) {}",
+		"implemented type": "abstract class C : @Composable () -> Unit",
+		"type check":       "fun f(x: Any) = x is @Composable () -> Unit",
+		"non-local return": "@Composable fun A() { lib.Row { return } }",
+		"return from key":  "@Composable fun A() { androidx.compose.runtime.key(1) { return } }",
+		"spread key":       "@Composable fun A(ks: Array<Any>) { androidx.compose.runtime.key(*ks) {} }",
+		"local":            "fun f() { @Composable fun A() {} }",
+		"interface body":   "interface I { @Composable fun A() {} }",
+		"catch":            "@Composable fun A() { try { println() } catch (e: Exception) { lib.Text(\"t\") } }",
+		"finally":          "@Composable fun A() { try { println() } finally { lib.Text(\"t\") } }",
 	} {
 		t.Run("unsupported "+name, func(t *testing.T) {
 			file := filepath.Join(t.TempDir(), "a.kt")

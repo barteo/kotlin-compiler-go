@@ -115,8 +115,6 @@ func (c *Checker) composeGetter(d *syntax.PropDecl, p *types.VarSym, owner *type
 	switch {
 	case d.Getter == nil || d.Getter.Body == nil && d.Getter.ExprBody == nil:
 		why = "composable properties without a getter's body"
-	case d.Recv != nil:
-		why = "composable extension properties"
 	case d.InlineGetter:
 		why = "inline composable getters"
 	case owner != nil && (owner.Interface || owner.Value):
@@ -131,6 +129,9 @@ func (c *Checker) composeGetter(d *syntax.PropDecl, p *types.VarSym, owner *type
 	g := d.Getter.Sym
 	g.Composable, p.Composable = true, true
 	slots := 0
+	if d.Recv != nil {
+		slots++
+	}
 	if owner != nil {
 		slots++
 	}

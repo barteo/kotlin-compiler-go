@@ -100,8 +100,7 @@ Not supported yet:
   function types, and `is` and `as` with them;
 - lambdas converted to fun interfaces whose composable method returns a
   value or that use `this`;
-- composables with bodies in interfaces, and composable extension
-  properties;
+- composables with bodies in interfaces;
 - `@ExplicitGroupsComposable`.
 
 Without `-compose`, calls of libraries' composables aren't supported.
