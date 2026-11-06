@@ -519,6 +519,7 @@ internal class KcLibraryClassSymbol(val round: KcRound, override val classId: Cl
     override val name get() = classId.shortClassName
     override val location get() = KaSymbolLocation.TOP_LEVEL
     override val typeParameters: List<KaTypeParameterSymbol> get() = emptyList()
+    override val isInner get() = false
     override fun createPointer(): KaSymbolPointer<KaNamedClassSymbol> = KcPointer("class:" + classId.asString())
     override fun toString() = "KcLibraryClassSymbol($classId)"
 }

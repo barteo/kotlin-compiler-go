@@ -312,16 +312,19 @@ internal class KcMissingType(
 
 /**
  * The qualifiers of a class type: one per class from the outermost to
- * [classId]'s, the last with all of [args]. kc keeps an inner class's
- * outer arguments with its own.
+ * [classId]'s. kc keeps an inner class's arguments first and then its
+ * outer classes', Outer<A>.Inner<B> as [B, A], so each inner class takes
+ * as many as it has type parameters and the first non-inner one the rest.
  */
 internal fun qualifiers(round: KcRound, classId: ClassId, args: List<KaTypeProjection>): List<KaResolvedClassTypeQualifier> {
     val out = ArrayList<KaResolvedClassTypeQualifier>()
     var id: ClassId? = classId
-    var own = args
+    var rest = args
     while (id != null) {
+        val c = if (id.outerClassId != null) round.classSymbol(id) else null
+        val own = if (c != null && c.isInner) rest.take(c.typeParameters.size) else rest
         out += KcQualifier(round, id, own)
-        own = emptyList()
+        rest = rest.drop(own.size)
         id = id.outerClassId
     }
     return out.asReversed()
