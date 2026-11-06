@@ -23,7 +23,9 @@ testEnumModifiers
 testEquals
 testExitCode
 testFunctionKinds
+testFunctionTypeAlias
 testFunctionTypeAnnotation
+testFunctionTypes
 testGetAnnotationByTypeWithInnerDefault
 testGetByName
 testGetSymbolsFromAnnotation
@@ -45,6 +47,7 @@ testMangledNames
 testMetaAnnotations
 testMultipleModules
 testNestedAnnotations
+testNestedClassType
 testNestedTypeAlias
 testNoOverride
 testNullableTypes
@@ -65,7 +68,9 @@ testSealedClass
 testShadowingAnnotations
 testSignatureMapper
 testSuperTypes
+testTypeAliasComparison
 testTypeComparison2
+testTypeComposure
 testTypeParameterVariance
 testValueParameter
 testVarianceTypeCheck

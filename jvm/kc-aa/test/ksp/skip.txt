@@ -22,8 +22,6 @@ testDeferredTypeRefs: disabled: @Disabled in KSPUnitTestSuite
 testDocString: java-source: line 12: want j1: \n field\n got j1: null
 testEquivalentJavaWildcards: unsupported: KcExtras.optimalModeForReturnType
 testErrorTypes: java-source: line 1: want kotlin.collections.MutableMap got ERROR TYPE
-testFunctionTypeAlias: type-alias: alias abbreviation equality
-testFunctionTypes: function-types: KFunction/suspend function kinds
 testGetPackage: java-source: the order of a package's Java source classes (stock lists D, L, C for C.java {C, D} and L.java)
 testImplicitElements: java-source: line 17: want lib.Test, p: [MyKotlinAnnotation: null, MyJavaAnnotation: null] got lib.Test, p: [MyKo
 testInterfaceWithDefault: java-source: NullPointerException: null cannot be cast to non-null type com.google.devtools.ksp.symbol.KSClassDec
@@ -43,7 +41,6 @@ testLibOrigins: java-source: line 10: want Exception: [KotlinLibClass, T1, Any?]
 testLocalClasses: local-declarations: anonymous objects
 testLocations: java-source: line 3: want K:J.java:81 got K:K.kt:60
 testMultipleround: java-source: line 3: want J : <ERROR TYPE: I0>, <ERROR TYPE: I1>, <ERROR TYPE: I2>, <ERROR TYPE: I3>, <ERR got J
-testNestedClassType: type-annotations: type argument annotations
 testParent: java-source: line 28: want parent of Any: (Any..Any?) got parent of synthetic constructor for B: B
 testPlatformDeclaration: disabled: @Disabled in KSPUnitTestSuite
 testRawTypes: java-source: line 1: want barRaw got
@@ -51,13 +48,11 @@ testRecordJavaAnnotationTypes: java-source: line 3: want kotlin.collections.List
 testRecordJavaGetAllMembers: java-source: IndexOutOfBoundsException: Index 0 out of bounds for length 0
 testRecordJavaOverrides: java-source: line 1: want p1.B: main/p1/A.java got kotlin.Any: main/p1/C.java
 testReferenceElement: java-source: line 1: want KSClassifierReferenceImpl: Qualifier of B is A got KSClassifierReferenceImpl: Qualifier
-testReplaceWithErrorTypeArgs: java-source: UnsupportedOperationException: kc: type of NotExist1: not a declaration's type
+testReplaceWithErrorTypeArgs: error-types: argument-count mismatch error types
 testResolveJavaType: java-source: UnsupportedOperationException: kc: containingSymbol of KcLibraryTypeParameterSymbol(X)
 testThrowList: java-source: UnsupportedOperationException: kc: KaSession.asKaType(PsiType, PsiElement)
 testTopLevelMembers: java-source: line 8: want lib : javaFieldInLib -> lib.LibJavaClass got lib : jvmStaticFunctionInLibCompanion -> l
 testTypeAlias: type-annotations: annotations on alias type arguments
-testTypeAliasComparison: type-alias: alias comparison
-testTypeComposure: star-projections: star projection replacement
 testTypeParameterReference: java-source: line 1: want kotlin.Int: false got kotlin.Any: true
 testUseSiteTargets: annotation-target: @all use-site target
 testValidateTypes: java-source: line 12: want BadJavaClass invalid got BadJavaClass valid

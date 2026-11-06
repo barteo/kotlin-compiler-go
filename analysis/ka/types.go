@@ -149,16 +149,36 @@ func (b *fileBuilder) typeAt(t types.Type, ref *syntax.TypeRef, depth int) *Type
 			out.ClassID = classID(t.C)
 		}
 		if t.A != nil {
-			var argRefs []*syntax.TypeArg
-			if ref != nil && ref.Name != "" && len(ref.Args) == len(t.A.List) && b.aliases[ref] == nil {
-				argRefs = ref.Args
+			// The arguments' type references: an inner class's own,
+			// then its outer classes', Outer<A>.Inner<B>; a function
+			// type's context parameters, receiver, parameters and
+			// return type.
+			var argRefs []*syntax.TypeRef
+			switch {
+			case ref == nil || b.aliases[ref] != nil:
+			case ref.Name != "":
+				for r := ref; r != nil; r = r.Outer {
+					for _, a := range r.Args {
+						argRefs = append(argRefs, a.Type)
+					}
+				}
+			case ref.Ret != nil:
+				argRefs = append(argRefs, ref.Contexts...)
+				if ref.Recv != nil {
+					argRefs = append(argRefs, ref.Recv)
+				}
+				argRefs = append(argRefs, ref.Params...)
+				argRefs = append(argRefs, ref.Ret)
+			}
+			if len(argRefs) != len(t.A.List) {
+				argRefs = nil
 			}
 			for i, a := range t.A.List {
 				ta := TypeArg{Variance: variance(a.V)}
 				if a.V != types.Star {
 					var r *syntax.TypeRef
 					if argRefs != nil {
-						r = argRefs[i].Type
+						r = argRefs[i]
 					}
 					ta.Type = b.typeAt(a.T, r, depth+1)
 				}

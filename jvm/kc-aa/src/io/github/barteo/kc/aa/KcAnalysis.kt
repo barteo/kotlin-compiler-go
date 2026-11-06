@@ -203,7 +203,11 @@ class KcAnalysis internal constructor(
             val id = round.annotationClasses[entry] ?: return KcErrorType(round, ref.text)
             return KcClassType(round, id)
         }
-        return round.typeOf(ref) ?: unsupported("type of ${ref.text}: not a declaration's type")
+        round.typeOf(ref)?.let { return it }
+        // An argument of a type kc couldn't resolve, which has no arguments: KS<NotExist>.
+        val outer = com.intellij.psi.util.PsiTreeUtil.getParentOfType(ref, KtTypeReference::class.java)
+        if (outer != null && round.typeOf(outer) is KcErrorType) return KcErrorType(round, ref.text)
+        unsupported("type of ${ref.text}: not a declaration's type")
     }
 
     // KaTypeInformationProvider

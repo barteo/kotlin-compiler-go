@@ -103,7 +103,7 @@ internal class KcTypeContext(
             else -> Variance.INVARIANT
         }
 
-        private val functionClass = Regex("""kotlin/(coroutines/Suspend)?Function\d+""")
+        private val functionClass = Regex("""kotlin/((coroutines/Suspend)?|reflect/K(Suspend)?)Function\d+""")
         fun isFunctionClass(id: String) = functionClass.matches(id)
     }
 }
@@ -155,6 +155,7 @@ internal class KcClassType(
 
 /**
  * A function type, kotlin/FunctionN or kotlin/coroutines/SuspendFunctionN,
+ * or a reflection one, kotlin/reflect/KFunctionN or KSuspendFunctionN,
  * whose arguments are its context parameters' types, its receiver's, its
  * parameters' and its return type.
  */
@@ -181,8 +182,8 @@ internal class KcFunctionType(
     override val parameterTypes get() = (firstParam until typeArguments.size - 1).map(::arg)
     override val arity get() = typeArguments.size - 1 - firstParam
     override val returnType get() = arg(typeArguments.size - 1)
-    override val isSuspend get() = classId.relativeClassName.asString().startsWith("Suspend")
-    override val isReflectType get() = false
+    override val isSuspend get() = "Suspend" in classId.relativeClassName.asString()
+    override val isReflectType get() = classId.packageFqName.asString() == "kotlin.reflect"
     override val hasContextReceivers get() = contexts > 0
     override val contextReceivers: List<KaContextReceiver> get() = emptyList()
     override fun withNullability(nullable: Boolean) =
@@ -374,7 +375,12 @@ internal class KcClassTypeBuilder(override val token: KaLifetimeToken) : KaClass
         }
     override val arguments = ArrayList<KaTypeProjection>()
     override fun argument(argument: KaTypeProjection) {
-        arguments += argument
+        // KSP's own projections compare by identity; kc's are structural.
+        arguments += when (argument) {
+            is KaStarTypeProjection -> KcStarProjection(token)
+            is KaTypeArgumentWithVariance -> KcTypeArgument(argument.type, argument.variance, token)
+            else -> argument
+        }
     }
     override fun argument(type: KaType, variance: Variance) {
         arguments += KcTypeArgument(type, variance, token)
