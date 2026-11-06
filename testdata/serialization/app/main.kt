@@ -27,6 +27,16 @@ fun <T> check(name: String, s: KSerializer<T>, v: T) {
     println("  list: ${listRoundTrip(s, v)}")
 }
 
+// checkJson is check without the list, whose format reads every element
+// in order, and so can't read what leaves elements out whatever it asks.
+fun <T> checkJson(name: String, s: KSerializer<T>, v: T) {
+    val text = Json.Default.encodeToString(s, v)
+    val back = Json.Default.decodeFromString(s, text)
+    println("$name: $text")
+    println("  back: $back ${back == v}")
+    println("  defaults: ${withDefaults.encodeToString(s, v)}")
+}
+
 fun <T> fails(name: String, s: KSerializer<T>, text: String) {
     try {
         println("$name: ${Json.Default.decodeFromString(s, text)}")
@@ -102,6 +112,9 @@ fun main() {
     println(Painted.serializer().descriptor)
     check("rating", Rating.serializer(), Rating(2))
     println(Rating.serializer().descriptor.getElementDescriptor(0))
+    checkJson("encoded", Encoded.serializer(), Encoded())
+    checkJson("encoded2", Encoded.serializer(), Encoded(2, "b", 3, listOf("x"), true).apply { body = 4 })
+    println(Json.Default.decodeFromString(Encoded.serializer(), """{"never":["y"],"body":5}""").let { "$it ${it.body}" })
     println(serializerOf(Prims::class, null).descriptor.serialName)
     println(serializerOf(Prims::class, typeOf<Prims?>()).descriptor.serialName)
 

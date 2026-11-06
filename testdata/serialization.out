@@ -163,6 +163,13 @@ rating: "**"
   defaults: "**"
   list: [**] -> Rating(n=2)
 PrimitiveDescriptor(app.Stars)
+encoded: {"always":"a","alwaysMode":2}
+  back: Encoded(plain=1, always=a, alwaysMode=2, never=[], neverNamed=false) true
+  defaults: {"plain":1,"always":"a","alwaysMode":2}
+encoded2: {"plain":2,"always":"b","alwaysMode":3,"never":["x"],"neverNamed":true,"body":4}
+  back: Encoded(plain=2, always=b, alwaysMode=3, never=[x], neverNamed=true) true
+  defaults: {"plain":2,"always":"b","alwaysMode":3,"never":["x"],"neverNamed":true,"body":4}
+Encoded(plain=1, always=a, alwaysMode=2, never=[y], neverNamed=false) 5
 app.Prims
 app.Prims?
 app.Prims(i: kotlin.Int, l: kotlin.Long, s: kotlin.Short, b: kotlin.Byte, c: kotlin.Char, f: kotlin.Float, d: kotlin.Double, z: kotlin.Boolean, str: kotlin.String)

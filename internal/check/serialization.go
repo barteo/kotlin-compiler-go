@@ -77,7 +77,19 @@ type serialInfo struct {
 	// defaults are copies of the Props' default values, nil for those
 	// without one, which write$Self compares the properties with.
 	defaults []syntax.Expr
+	// encode is each of the Props' @EncodeDefault mode.
+	encode []encodeMode
 }
+
+// encodeMode is when write$Self writes a property that has a default
+// value, as its @EncodeDefault says.
+type encodeMode uint8
+
+const (
+	encodeIfFormat encodeMode = iota // if it isn't the default, or the format asks to
+	encodeAlways                     // @EncodeDefault, or @EncodeDefault(ALWAYS)
+	encodeNever                      // @EncodeDefault(NEVER): if it isn't the default
+)
 
 type serialKind uint8
 
@@ -95,7 +107,7 @@ const (
 // how the plugin serializes them, or that formats read from descriptors,
 // which kc doesn't support.
 var serialDenied = map[string]bool{
-	"Contextual": true, "Polymorphic": true, "EncodeDefault": true, "KeepGeneratedSerializer": true, "MetaSerializable": true,
+	"Contextual": true, "Polymorphic": true, "KeepGeneratedSerializer": true, "MetaSerializable": true,
 	"JsonNames": true, "JsonClassDiscriminator": true, "JsonIgnoreUnknownKeys": true,
 	"ProtoNumber": true, "ProtoType": true, "ProtoPacked": true, "ProtoOneOf": true,
 }
@@ -374,6 +386,7 @@ func (c *Checker) serialClass(cd *syntax.ClassDecl, fq string) {
 			x = cloneTree(p.Default())
 		}
 		in.defaults = append(in.defaults, x)
+		in.encode = append(in.encode, c.encodeDefault(p.Annotations()))
 	}
 
 	// write$Self, internal in a final class, and the $serializer.
@@ -518,6 +531,19 @@ func (c *Checker) valueSerializerBodies(in *serialInfo) {
 			}
 		}
 	}
+}
+
+// encodeDefault returns the mode of a property's @EncodeDefault, among
+// its annotations as.
+func (c *Checker) encodeDefault(as []syntax.Annotation) encodeMode {
+	a := c.findSerial(as, "EncodeDefault")
+	if a == nil {
+		return encodeIfFormat
+	}
+	if arg := a.Arg(0, "mode"); arg != nil && len(arg.Toks) > 0 && arg.Toks[len(arg.Toks)-1].Text == "NEVER" {
+		return encodeNever
+	}
+	return encodeAlways
 }
 
 // serialEnum declares an enum's serializer(), which returns the serializer
@@ -796,7 +822,8 @@ func (c *Checker) serialFill(in *serialInfo) {
 	cls.Ctors = append(cls.Ctors, f)
 
 	// write$Self writes the superclass's properties, then its own: those
-	// with default values only if they differ, or if the format asks to.
+	// with default values only if they differ, or if the format asks to,
+	// unless their @EncodeDefault says always or never.
 	var b strings.Builder
 	if sd := serial.Super; sd != nil {
 		fmt.Fprintf(&b, "(this as %s).`write$Self`(output, serialDesc)\n", fqName(sd.Sym))
@@ -812,7 +839,14 @@ func (c *Checker) serialFill(in *serialInfo) {
 		}
 		def := fmt.Sprintf("$default%d", i)
 		repl[def] = in.defaults[i]
-		fmt.Fprintf(&b, "if (output.shouldEncodeElementDefault(serialDesc, %d) || %s != `%s`) {\n%s}\n", j, v, def, enc)
+		switch in.encode[i] {
+		case encodeAlways:
+			b.WriteString(enc)
+		case encodeNever:
+			fmt.Fprintf(&b, "if (%s != `%s`) {\n%s}\n", v, def, enc)
+		default:
+			fmt.Fprintf(&b, "if (output.shouldEncodeElementDefault(serialDesc, %d) || %s != `%s`) {\n%s}\n", j, v, def, enc)
+		}
 	}
 	body := c.serialParse(cd, "fun f() {\n"+b.String()+"}\n")
 	if body == nil {
