@@ -129,10 +129,15 @@ Arguments can be files or directories. Flags:
 | `-time` | print per-phase timings |
 | `-features` | print each error with its unsupported feature, tab-separated |
 
-There is no Gradle plugin. To try `kc` in a Gradle build, a Gradle init
-script can replace a module's Kotlin compile task with a call to `kc`.
-[bench/kotlinpoet/kc.init.gradle.kts](bench/kotlinpoet/kc.init.gradle.kts)
-does this for kotlinpoet.
+### Use it in a Gradle build
+
+There is no Gradle plugin. [tools/gradle/use-kc.init.gradle.kts](tools/gradle/use-kc.init.gradle.kts) is an init script that makes every Kotlin/JVM compile task of a build (`compileKotlin`, Android's `compile<Variant>Kotlin`) run `kc` instead of `kotlinc`, with the task's own sources, Java sources, class path, friend paths, module name and Compose, kotlinx.serialization and Parcelize plugins. Dexing, R8, javac and packaging then use `kc`'s classes. It is meant for fast local builds, not for release builds.
+
+```sh
+KC=$PWD/bin/kc ./gradlew assembleDebug --init-script /path/to/kotlin-compiler-go/tools/gradle/use-kc.init.gradle.kts
+```
+
+If `kc` fails on a module, `kotlinc` compiles that module and the build log says so; `KC_STRICT=1` fails the build instead. `KC_SKIP` lists task paths to leave to `kotlinc`. `kc` compiles whole modules, so the tasks are not incremental, and other compiler plugins are not applied. A build without the init script recompiles with `kotlinc`. [bench/kotlinpoet/kc.init.gradle.kts](bench/kotlinpoet/kc.init.gradle.kts) is a narrower version that the kotlinpoet benchmark uses.
 
 ### Repeat the benchmark
 
