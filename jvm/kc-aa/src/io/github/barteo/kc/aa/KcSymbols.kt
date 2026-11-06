@@ -3,6 +3,7 @@
 package io.github.barteo.kc.aa
 
 import com.intellij.psi.PsiElement
+import com.intellij.psi.util.PsiTreeUtil
 import org.jetbrains.kotlin.analysis.api.KaConstantInitializerValue
 import org.jetbrains.kotlin.analysis.api.KaExperimentalApi
 import org.jetbrains.kotlin.analysis.api.KaInitializerValue
@@ -489,7 +490,14 @@ internal class KcReceiverParameterSymbol(
     override val token get() = info.round.token
     override val psi: PsiElement? get() = (info.psi as? KtCallableDeclaration)?.receiverTypeReference
     override val origin get() = info.origin
-    override val annotations: KaAnnotationList get() = KcAnnotationList(emptyList(), info.round.token)
+    // The annotations written on the receiver type: a library method's
+    // receiver parameter's, or those inside the receiver type reference.
+    override val annotations: KaAnnotationList by lazy {
+        val r = (info.psi as? KtCallableDeclaration)?.receiverTypeReference
+        val own = info.decl.annotations.filter { it.target == "receiver" }.map { info.round.annotation(it) }
+            .filter { a -> a.psi.let { it == null || PsiTreeUtil.isAncestor(r, it, false) } }
+        KcAnnotationList(own, info.round.token)
+    }
     override fun createPointer(): KaSymbolPointer<KaReceiverParameterSymbol> = info.pointer()
     override fun equals(other: Any?) = other is KcReceiverParameterSymbol && other.owningCallableSymbol == owningCallableSymbol
     override fun hashCode() = owningCallableSymbol.hashCode() + 7

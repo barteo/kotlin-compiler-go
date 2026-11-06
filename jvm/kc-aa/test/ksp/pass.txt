@@ -4,6 +4,7 @@ testAllFunctions_kotlin
 testAllUseSiteTargetAppliedToAnnotationList
 testAnnotatedUtil
 testAnnotationOnConstructorParameter
+testAnnotationOnReceiver
 testAnnotationTargets
 testAnnotationValue_defaultKClassValue
 testAnnotationValue_java

@@ -475,6 +475,12 @@ func (l *library) kproperty(p *kmeta.Property, scope kscope, bySig map[string]*c
 			}
 		}
 	}
+	// The receiver's annotations are on the getter's first parameter.
+	if p.Recv != nil && p.Getter != nil {
+		if m := bySig[p.Getter.Name+p.Getter.Desc]; m != nil {
+			md.Annotations = append(md.Annotations, l.receiverAnnotations(m, 0)...)
+		}
+	}
 	// The accessors' own annotations are on their methods, with the
 	// use-site target that puts them on the accessor.
 	for _, acc := range []struct {
@@ -519,7 +525,29 @@ func (l *library) kfunction(f *kmeta.Function, scope kscope, bySig map[string]*c
 	if f.Flags&hasAnnotations != 0 && m != nil {
 		md.Annotations = l.annotations(m.Annotations, true)
 	}
+	// The receiver's annotations are on its parameter, just before the
+	// value parameters; a suspend function's continuation comes last.
+	if f.Recv != nil && m != nil {
+		j := len(m.Params) - len(f.Params) - 1
+		if f.Flags&kmeta.FunSuspend != 0 {
+			j--
+		}
+		md.Annotations = append(md.Annotations, l.receiverAnnotations(m, j)...)
+	}
 	return md
+}
+
+// receiverAnnotations returns the annotations of method m's parameter j,
+// an extension receiver's, with the use-site target receiver.
+func (l *library) receiverAnnotations(m *classfile.MemberDetails, j int) []Annotation {
+	if j < 0 || j >= len(m.Params) {
+		return nil
+	}
+	as := l.annotations(m.Params[j], true)
+	for i := range as {
+		as[i].Target = "receiver"
+	}
+	return as
 }
 
 // Bits of kmeta's Flags that it has no names for.

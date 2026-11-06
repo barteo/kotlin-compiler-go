@@ -465,6 +465,18 @@ internal class KcRound(
             return nodes[node].psi
         }
 
+        /**
+         * Whether [a] is written on the receiver type of declaration [decl],
+         * which makes it the receiver parameter's: a library one, or a
+         * source one inside the receiver type reference. A `@receiver:`
+         * annotation on the declaration stays the declaration's, as in FIR.
+         */
+        fun onReceiverType(a: KcAnnotation, decl: PsiElement?): Boolean {
+            if (a.target != "receiver") return false
+            val e = psi(a.node) ?: return true
+            return PsiTreeUtil.isAncestor((decl as? KtCallableDeclaration)?.receiverTypeReference, e, false)
+        }
+
         fun annotation(a: KcAnnotation) {
             val entry = psi(a.node)?.let {
                 it as? KtAnnotationEntry ?: error("kc: annotation node ${a.node} of $where is ${nodes[a.node].elementType}")
@@ -558,7 +570,8 @@ internal class KcRound(
             return p as? T ?: error("kc: ${d.name} in $where is ${p.javaClass.simpleName}, want ${T::class.simpleName}")
         }
 
-        fun info(d: KcDecl, psi: PsiElement?, parent: KaSymbol?, key: String, annots: List<KcAnnotation> = d.annotations): KcInfo {
+        fun info(d: KcDecl, psi: PsiElement?, parent: KaSymbol?, key: String,
+                 annots: List<KcAnnotation> = d.annotations.filter { !onReceiverType(it, psi) }): KcInfo {
             d.annotations.forEach(::annotation)
             if (psi != null) typeRefs(d, psi)
             // A source declaration without a node is one Kotlin generates:
@@ -682,7 +695,7 @@ internal class KcRound(
             val own = d.annotations.filter {
                 when (it.target) {
                     "get", "set", "setparam", "field", "param" -> false
-                    else -> true
+                    else -> !onReceiverType(it, psi)
                 }
             }
             // A Java annotation class's method is a synthetic property, at

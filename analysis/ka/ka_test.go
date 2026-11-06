@@ -135,6 +135,26 @@ class C {
 	}
 }
 
+// TestReceiverAnnotations checks that the annotations on an extension's
+// receiver type are the declaration's, with the use-site target receiver.
+func TestReceiverAnnotations(t *testing.T) {
+	m := update(t, `annotation class A
+annotation class B
+@receiver:B fun @receiver:A String.f() {}
+val @receiver:A String.p: Int get() = 0
+`)
+	var sb strings.Builder
+	f := m.Files[0]
+	dump(&sb, f.Snapshot, f.Decls[2:], "")
+	got := sb.String()
+	want := `fun f FUN @B(receiver) @A(receiver)
+val p PROPERTY @A(receiver)
+`
+	if got != want {
+		t.Errorf("got\n%s\nwant\n%s", got, want)
+	}
+}
+
 func TestLocals(t *testing.T) {
 	m := update(t, `package a
 annotation class Anno

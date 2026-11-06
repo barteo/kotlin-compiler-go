@@ -30,6 +30,9 @@ func (b *fileBuilder) decl(d syntax.Decl, owner *syntax.ClassDecl, prefix string
 		md.Modality = memberModality(&d.Modifiers, owner, d.Body == nil && d.ExprBody == nil)
 		md.TypeParams = b.typeParams(d.TypeParams)
 		md.Receiver = b.written(d.Recv)
+		// The receiver type's @receiver: annotations, the receiver
+		// parameter's.
+		md.Annotations = append(md.Annotations, b.annotations(d.RecvAnnotations)...)
 		md.Params = b.params(d.Params)
 		if d.Sym != nil {
 			md.Type = b.typ(d.Sym.Ret, d.Ret)
@@ -60,6 +63,7 @@ func (b *fileBuilder) decl(d syntax.Decl, owner *syntax.ClassDecl, prefix string
 		}
 		md.TypeParams = b.typeParams(d.TypeParams)
 		md.Receiver = b.written(d.Recv)
+		md.Annotations = append(md.Annotations, b.annotations(d.RecvAnnotations)...)
 		if d.Sym != nil {
 			md.Type = b.typ(d.Sym.Type, d.Type)
 		} else {

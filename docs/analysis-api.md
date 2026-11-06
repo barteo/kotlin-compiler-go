@@ -72,7 +72,7 @@ mapping.
 | M3 | Richer symbol model: visibility and modality enums, flags, origins, library annotation arguments, Java parameter names | in progress: source types, flags, modality; KaTypes on the JVM; annotation arguments; library classes; inherited members, overrides, subtyping; packages, library top-level declarations, alias abbreviations; JVM type mapping, Moshi codegen end to end; backing fields, Dagger end to end; Dagger on octi-server byte-identical to stock KSP 2.3.6; the slice checked against stock KSP; Room and Hilt byte-identical to stock KSP (step 14) |
 | M4 | Queryable session `analysis/ka`: lookups, scopes, relations, overrides | |
 | M5 | Bridge: `cmd/libkc` operations, `tools/kagen` wire format, `jvm/kc-aa` KaSession | |
-| M6 | KSP fork integration: the `kc` backend, IC lookups, hot paths | in progress: KSP's own test suite on the kc backend, `build.sh ksp` (step 15): 120 of 136 pass, Java sources in the main module included |
+| M6 | KSP fork integration: the `kc` backend, IC lookups, hot paths | in progress: KSP's own test suite on the kc backend, `build.sh ksp` (step 15): 121 of 136 pass, Java sources in the main module included |
 | M7 | Differential conformance against stock KSP, benchmark, CI | in progress: `bench/ksp` (step 11): warm 990 ms on stock KSP, 284 ms on kc; cold 8.1–8.7 s and 2.9–3.2 s, with a CDS archive 5.8–6.1 s and 1.9–2.1 s; CI: `.github/workflows/analysis-api.yml` (step 12) |
 
 ### M0.1 – JNI spike
@@ -1343,6 +1343,16 @@ Each fix below keeps `build.sh stock` and the slice unchanged.
 - *`@all:` on constructor parameters.* An `@all:` annotation on a
   constructor property applies to its parameter too, as it does to the
   property, its accessors and its field. +1 (→ 120).
+- *Annotations on an extension's receiver type.* `fun @receiver:A
+  String.f()` puts `A` on the receiver type, which AA models as the
+  receiver parameter's annotation; KSP matches the type reference's entries
+  against it by PSI. The model now carries them as the declaration's
+  annotations with target `receiver`, from the AST's receiver annotations
+  and, for libraries, from the method's receiver parameter (a property's
+  getter's first). On the JVM those written inside the receiver type
+  reference, and the library ones, are the receiver parameter's; a
+  `@receiver:` annotation on the declaration stays the declaration's, as in
+  FIR. +1 (→ 121).
 
 ## Gaps and open questions
 
