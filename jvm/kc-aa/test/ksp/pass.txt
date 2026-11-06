@@ -39,6 +39,7 @@ testGetSymbolsFromAnnotationInLib
 testGroupedAnnotations
 testGroupedAnnotationsWithUseSiteTargets
 testHello
+testImplicitElements
 testImplicitPropertyAccessors
 testInheritedTypeAlias
 testInnerTypes

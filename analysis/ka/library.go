@@ -402,6 +402,15 @@ func (l *library) kproperty(p *kmeta.Property, scope kscope, bySig map[string]*c
 			md.Annotations = l.annotations(m.Annotations, true)
 		}
 	}
+	// The backing field's are on the field.
+	if p.Field != nil {
+		if f := bySig["field "+p.Field.Name]; f != nil {
+			for _, a := range l.annotations(f.Annotations, true) {
+				a.Target = "field"
+				md.Annotations = append(md.Annotations, a)
+			}
+		}
+	}
 	// The accessors' own annotations are on their methods, with the
 	// use-site target that puts them on the accessor.
 	for _, acc := range []struct {
@@ -467,6 +476,11 @@ func methods(det *classfile.Details) (byName, bySig map[string]*classfile.Member
 			byName[m.Name] = m
 		}
 		bySig[m.Name+m.Desc] = m
+	}
+	// Fields too, by name: a method's key has its descriptor's "(".
+	for i := range det.Fields {
+		f := &det.Fields[i]
+		bySig["field "+f.Name] = f
 	}
 	return byName, bySig
 }

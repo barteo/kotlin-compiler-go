@@ -17,7 +17,6 @@ testDocString: java-source: line 12: want j1: \n field\n got j1: null
 testEquivalentJavaWildcards: unsupported: KcExtras.optimalModeForReturnType
 testErrorTypes: java-source: line 1: want kotlin.collections.MutableMap got ERROR TYPE
 testGetPackage: java-source: the order of a package's Java source classes (stock lists D, L, C for C.java {C, D} and L.java)
-testImplicitElements: java-source: line 17: want lib.Test, p: [MyKotlinAnnotation: null, MyJavaAnnotation: null] got lib.Test, p: [MyKo
 testInterfaceWithDefault: java-source: NullPointerException: null cannot be cast to non-null type com.google.devtools.ksp.symbol.KSClassDec
 testJavaAccessor: java-source: line 2: want JavaAccessorImpl.getX() -> KtInterfaceWithProperty.x got JavaAccessorImpl.getX() -> nul
 testJavaAnnotatedUtil: java-source: line 1: want Test: OnlyTestAnnotation got
