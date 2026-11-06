@@ -137,7 +137,8 @@ class KcAnalysis internal constructor(
     /** The source module for source symbols, the library module for library ones. */
     fun getContainingModule(s: KaSymbol): KaModule = when (s.origin) {
         KaSymbolOrigin.LIBRARY, KaSymbolOrigin.JAVA_LIBRARY -> libraryModule
-        KaSymbolOrigin.SUBSTITUTION_OVERRIDE, KaSymbolOrigin.INTERSECTION_OVERRIDE, KaSymbolOrigin.DELEGATED ->
+        KaSymbolOrigin.SUBSTITUTION_OVERRIDE, KaSymbolOrigin.INTERSECTION_OVERRIDE, KaSymbolOrigin.DELEGATED,
+        KaSymbolOrigin.JAVA_SYNTHETIC_PROPERTY ->
             getContainingSymbol(s)?.let(::getContainingModule) ?: module
         else -> module
     }

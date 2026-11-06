@@ -610,10 +610,16 @@ internal class KcRound(
                     else -> true
                 }
             }
-            // A Java source enum's synthetic entries property is its class,
-            // as in FIR; KSP then gives it no accessors.
-            val src = psi ?: javaOwnerPsi(parent)
-            val p = KcPropertySymbol(info(d, src, parent, key, own))
+            // A Java annotation class's method is a synthetic property, at
+            // the method. A Java source enum's synthetic entries property is
+            // its class, as in FIR; KSP then gives it no accessors.
+            val javaAnnotation = (origin == KaSymbolOrigin.JAVA_SOURCE || origin == KaSymbolOrigin.JAVA_LIBRARY) &&
+                (parent as? KcClassSymbol)?.info?.decl?.kind == KcDecl.ANNOTATION_CLASS
+            val owner = javaOwnerPsi(parent)
+            val src = psi ?: if (javaAnnotation) (owner as? PsiClass)?.findMethodsByName(d.name, false)?.firstOrNull() ?: owner else owner
+            val p = KcPropertySymbol(info(d, src, parent, key, own).let {
+                if (javaAnnotation) KcInfo(this@KcRound, d, src, parent, key, own, types, KaSymbolOrigin.JAVA_SYNTHETIC_PROPERTY) else it
+            })
             register(p, key, src)
             p.typeParams = typeParams(d, p, key)
             ctx.typeParams = p.typeParams

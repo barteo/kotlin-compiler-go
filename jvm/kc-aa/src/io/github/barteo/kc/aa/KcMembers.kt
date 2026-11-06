@@ -158,7 +158,7 @@ internal class KcMemberBuilder(private val round: KcRound, private val c: KcClas
      */
     private fun isAccessorOf(d: KaCallableSymbol, p: KaCallableSymbol): Boolean {
         if (d !is KaNamedFunctionSymbol || p !is KaKotlinPropertySymbol || p.receiverParameter != null) return false
-        if (p.origin == KaSymbolOrigin.JAVA_SOURCE || p.origin == KaSymbolOrigin.JAVA_LIBRARY) return false
+        if (p.origin == KaSymbolOrigin.JAVA_SOURCE || p.origin == KaSymbolOrigin.JAVA_LIBRARY || p.origin == KaSymbolOrigin.JAVA_SYNTHETIC_PROPERTY) return false
         val n = p.name.asString()
         val cap = n.replaceFirstChar { it.uppercaseChar() }
         val isName = n.startsWith("is") && n.length > 2 && !n[2].isLowerCase()

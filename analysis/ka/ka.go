@@ -341,11 +341,13 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 	var javaDiags []Diagnostic
 	if len(javaSources) > 0 {
 		// A file kc can't parse is left out: its classes aren't the model's.
+		// One with malformed members keeps the rest of them.
 		var parsed []*javasrc.File
 		for i, f := range javaFiles {
 			if f != nil {
 				parsed = append(parsed, f)
-			} else if javaErrs[i] != nil {
+			}
+			if javaErrs[i] != nil {
 				javaDiags = append(javaDiags, Diagnostic{Path: javaSources[i].Path, Line: 1, Col: 1, Message: javaErrs[i].Error()})
 			}
 		}

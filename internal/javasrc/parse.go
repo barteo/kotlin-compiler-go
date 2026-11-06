@@ -128,23 +128,31 @@ type Param struct {
 	Name string
 }
 
-// Parse parses a Java source file's declarations.
+// Parse parses a Java source file's declarations. A member it can't parse
+// is left out, as IntelliJ's Java PSI keeps the rest of its class: Parse
+// then returns the file without it and the first such error.
 func Parse(path, src string) (f *File, err error) {
 	toks, err := scan(src)
 	if err != nil {
 		return nil, fmt.Errorf("%s:%w", path, err)
 	}
 	p := &parser{toks: toks, file: &File{Path: path}}
+	posErr := func(e parseError) error {
+		return fmt.Errorf("%s:%d:%d: %s", path, e.tok.line, e.tok.col, e.msg)
+	}
 	defer func() {
 		if r := recover(); r != nil {
 			e, ok := r.(parseError)
 			if !ok {
 				panic(r)
 			}
-			f, err = nil, fmt.Errorf("%s:%d:%d: %s", path, e.tok.line, e.tok.col, e.msg)
+			f, err = nil, posErr(e)
 		}
 	}()
 	p.compilationUnit()
+	if p.skipped != nil {
+		return p.file, posErr(*p.skipped)
+	}
 	return p.file, nil
 }
 
@@ -154,9 +162,10 @@ type parseError struct {
 }
 
 type parser struct {
-	toks []token
-	pos  int
-	file *File
+	toks    []token
+	pos     int
+	file    *File
+	skipped *parseError // the first error of a member left out
 }
 
 func (p *parser) tok() token           { return p.toks[p.pos] }
@@ -539,8 +548,51 @@ func (p *parser) classBody(c *Class) {
 		if p.tok().kind == tEOF {
 			p.fail("expected }")
 		}
-		p.member(c)
+		p.memberOrSkip(c)
 	}
+}
+
+// memberOrSkip parses a member declaration of class c or, if it is
+// malformed, skips it: up to its `;` or its body's closing brace, or to
+// the class's closing brace.
+func (p *parser) memberOrSkip(c *Class) {
+	nf, nm, nn := len(c.Fields), len(c.Methods), len(c.Nested)
+	defer func() {
+		r := recover()
+		if r == nil {
+			return
+		}
+		e, ok := r.(parseError)
+		if !ok || e.tok.kind == tEOF {
+			panic(r)
+		}
+		c.Fields, c.Methods, c.Nested = c.Fields[:nf], c.Methods[:nm], c.Nested[:nn]
+		if p.skipped == nil {
+			p.skipped = &e
+		}
+		for {
+			t := p.tok()
+			switch {
+			case t.kind == tEOF:
+				panic(r)
+			case t.kind != tPunct:
+				p.next()
+			case t.text == ";":
+				p.next()
+				return
+			case t.text == "}":
+				return
+			case t.text == "{":
+				p.skipBalanced()
+				return
+			case t.text == "(" || t.text == "[":
+				p.skipBalanced()
+			default:
+				p.next()
+			}
+		}
+	}()
+	p.member(c)
 }
 
 // member parses a member declaration of class c.

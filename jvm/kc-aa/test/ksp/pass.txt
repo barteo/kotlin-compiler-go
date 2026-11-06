@@ -49,6 +49,7 @@ testJavaOverrideInSource
 testJavaToKotlinMapper
 testJvmName
 testLateinitProperties
+testLibOrigins
 testLocalAnnotationClass
 testMakeNullable
 testMangledNames

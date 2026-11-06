@@ -231,3 +231,32 @@ func TestParseErrors(t *testing.T) {
 		}
 	}
 }
+
+// A malformed member is left out, and the rest of its class kept.
+func TestParseRecovery(t *testing.T) {
+	src := `class A {
+	Long a = 0;
+	Long f<T>(T p) { return 0; }
+	int g( ;
+	void h() {}
+}
+interface B {}
+`
+	f, err := Parse("A.java", src)
+	if err == nil || f == nil {
+		t.Fatalf("got %v, %v; want the file and an error", f, err)
+	}
+	var names []string
+	for _, c := range f.Classes {
+		names = append(names, c.Name)
+		for _, fd := range c.Fields {
+			names = append(names, fd.Name)
+		}
+		for _, m := range c.Methods {
+			names = append(names, m.Name)
+		}
+	}
+	if got, want := strings.Join(names, " "), "A a h B"; got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}

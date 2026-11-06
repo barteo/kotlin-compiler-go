@@ -10,15 +10,5 @@
 < members:f.Bag:get,size,toString: JAVA_LIB size in java.util.AbstractCollection; as member (): kotlin.Int
 < members:f.Bag:get,size,toString: JAVA_LIB toString in java.util.AbstractCollection overrides kotlin.Any.toString; as member (): kotlin.String
 < members:f.Bag:get,size,toString: KOTLIN size in f.Bag; as member : kotlin.Int
-< members:f.Base: JAVA_LIB get in f.Base overrides f.Source.get; as member (): kotlin.Any?
-< members:f.Base: JAVA_LIB map in f.Base overrides f.Source.map; as member (fun kotlin.Function1<kotlin.Any?, R>): f.Source<R>
-< members:f.Base: KOTLIN <init> in f.Base; as member (kotlin.collections.List<kotlin.Any?>): f.Base<kotlin.Any?>
-< members:f.Base: KOTLIN first in f.Base; as member (): kotlin.Any?
 > members:f.Bag:get,size,toString: KOTLIN size in f.Bag overrides java.util.AbstractCollection.size; as member : kotlin.Int
 > members:f.Bag:get,size,toString: SYNTHETIC toString in java.util.AbstractList overrides java.util.AbstractCollection.toString; as member (): kotlin.String
-> members:f.Base: JAVA_LIB get in f.Base overrides f.Source.get; as member (): kotlin.Any
-> members:f.Base: JAVA_LIB map in f.Base overrides f.Source.map; as member (fun kotlin.Function1<kotlin.Any, R>): f.Source<R>
-> members:f.Base: KOTLIN <init> in f.Base; as member (kotlin.collections.List<kotlin.Any>): f.Base<kotlin.Any>
-> members:f.Base: KOTLIN first in f.Base; as member (): kotlin.Any
-< members:f.Base: KOTLIN items in f.Base; as member : kotlin.collections.List<kotlin.Any?>
-> members:f.Base: KOTLIN items in f.Base; as member : kotlin.collections.List<kotlin.Any>

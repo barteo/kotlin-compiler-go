@@ -61,7 +61,7 @@ internal class KcInfo(
     annotations: List<KcAnnotation>,
     /** Where the declaration's types are read. */
     val types: KcTypeContext,
-    /** SOURCE, LIBRARY, JAVA_LIBRARY or JAVA_SOURCE. */
+    /** SOURCE, LIBRARY, JAVA_LIBRARY or JAVA_SOURCE, or JAVA_SYNTHETIC_PROPERTY for a Java annotation's method. */
     val origin: KaSymbolOrigin,
 ) {
     /** The KaType of [t], or [orElse] if it is null. */
@@ -98,7 +98,7 @@ internal class KcInfo(
         }
 
     /** Whether the declaration is a Java class's. */
-    val isJava get() = origin == KaSymbolOrigin.JAVA_LIBRARY || origin == KaSymbolOrigin.JAVA_SOURCE
+    val isJava get() = origin == KaSymbolOrigin.JAVA_LIBRARY || origin == KaSymbolOrigin.JAVA_SOURCE || origin == KaSymbolOrigin.JAVA_SYNTHETIC_PROPERTY
 
     val location: KaSymbolLocation
         get() = when (parent) {
@@ -295,9 +295,9 @@ internal class KcTypeParameterSymbol(val info: KcInfo) : StubKaTypeParameterSymb
     override val annotations get() = info.annotations
     override val name get() = info.name
     override val location get() = KaSymbolLocation.LOCAL
-    override val upperBounds: List<KaType> by lazy {
-        info.decl.bounds.map { info.type(it) }.ifEmpty { listOf(KcClassType(info.round, ClassId.fromString("kotlin/Any"), marked = true)) }
-    }
+    // Empty for an implicit `Any?` bound, as FIR has it (KSP then makes a
+    // synthetic `Any?` reference).
+    override val upperBounds: List<KaType> by lazy { info.decl.bounds.map { info.type(it) } }
     override val isReified get() = info.decl.has(KcDecl.REIFIED)
     override val variance: Variance
         get() = when (info.decl.variance) {

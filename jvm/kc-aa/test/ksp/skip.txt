@@ -29,7 +29,6 @@ testJavaTypes2: java-source: line 1: want (Array<(C..C?)>..Array<out (C..C?)>?) 
 testJavaTypes: flexible-types: Java flexible types in Kotlin
 testJavaWildcards2: unsupported: KcExtras.optimalModeForReturnType
 testJavaWildcardsSelfReferencing: unsupported: KcExtras.optimalModeForReturnType
-testLibOrigins: java-source: line 10: want Exception: [KotlinLibClass, T1, Any?]: SYNTHETIC got Validating kotlinLibFuntion
 testLocalClasses: local-declarations: anonymous objects
 testLocations: java-source: line 3: want K:J.java:81 got K:K.kt:60
 testMultipleround: java-source: line 3: want J : <ERROR TYPE: I0>, <ERROR TYPE: I1>, <ERROR TYPE: I2>, <ERROR TYPE: I3>, <ERR got J

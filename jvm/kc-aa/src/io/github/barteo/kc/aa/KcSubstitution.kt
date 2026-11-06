@@ -237,7 +237,7 @@ internal class KcTypeRelations(private val round: KcRound) {
         is KaErrorType -> lenient
         is KcFlexibleType -> isSubtype(t.lowerBound, id, lenient)
         is KcDefinitelyNotNullType -> isSubtype(t.original, id, lenient)
-        is KcTypeParameterType -> t.symbol.upperBounds.any { isSubtype(it, id, lenient) }
+        is KcTypeParameterType -> id == ANY || t.symbol.upperBounds.any { isSubtype(it, id, lenient) }
         is KaClassType -> t.classId == NOTHING || id == ANY || asSuper(t, id) != null
         else -> false
     }
