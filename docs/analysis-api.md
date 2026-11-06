@@ -72,7 +72,7 @@ mapping.
 | M3 | Richer symbol model: visibility and modality enums, flags, origins, library annotation arguments, Java parameter names | in progress: source types, flags, modality; KaTypes on the JVM; annotation arguments; library classes; inherited members, overrides, subtyping; packages, library top-level declarations, alias abbreviations; JVM type mapping, Moshi codegen end to end; backing fields, Dagger end to end; Dagger on octi-server byte-identical to stock KSP 2.3.6; the slice checked against stock KSP; Room and Hilt byte-identical to stock KSP (step 14) |
 | M4 | Queryable session `analysis/ka`: lookups, scopes, relations, overrides | |
 | M5 | Bridge: `cmd/libkc` operations, `tools/kagen` wire format, `jvm/kc-aa` KaSession | |
-| M6 | KSP fork integration: the `kc` backend, IC lookups, hot paths | in progress: KSP's own test suite on the kc backend, `build.sh ksp` (step 15): 134 of 136 pass, the other 2 disabled in KSP, Java sources in the main module included; KSP rebuilds on every run on kc until lookups are recorded |
+| M6 | KSP fork integration: the `kc` backend, IC lookups, hot paths | in progress: KSP's own test suite on the kc backend, `build.sh ksp` (step 15): 134 of 136 pass, the other 2 disabled in KSP, Java sources in the main module included; IC lookups recorded by kc's checker and replayed into KSP's tracker, checked against stock KSP on a fixture (step 16) |
 | M7 | Differential conformance against stock KSP, benchmark, CI | in progress: `bench/ksp` (step 11): warm 990 ms on stock KSP, 284 ms on kc; cold 8.1–8.7 s and 2.9–3.2 s, with a CDS archive 5.8–6.1 s and 1.9–2.1 s; CI: `.github/workflows/analysis-api.yml` (step 12) |
 
 ### M0.1 – JNI spike
@@ -1465,33 +1465,104 @@ a changed declaration. For Java sources, KSP records the lookups itself
 records them: the stock backend's `beginRound` registers KSP's
 `DualLookupTracker` with FIR, which records every name it resolves.
 
-kc's checker doesn't record its lookups yet, so on kc an incremental run
-rebuilds, every time. Patch 0007 adds `KspBackendSession.recordsLookups`,
-which the kc backend sets to false. When a run is asked to be incremental on
-a backend that doesn't record lookups, KSP deletes `caches.uptodate` from
-the caches directory before processing and again after it:
+On kc, the checker records them instead, and the backend replays them
+into the tracker (step 16): `recordsLookups` is true, and incremental
+runs reprocess only the dirty files, as on stock KSP.
+
+Patch 0007 added `KspBackendSession.recordsLookups` for a backend that
+records no lookups. When a run is asked to be incremental on such a
+backend, KSP deletes `caches.uptodate` from the caches directory before
+processing and again after it:
 - **Before:** `IncrementalContextBase` sees no marker and rebuilds. Every
-  file is dirty, so every build processes every file. That is cheap at kc's
-  warm times (step 11).
-- **After:** the next run, on kc or on a backend that records lookups
-  (`aa`), rebuilds too, rather than trusting caches that miss the Kotlin
-  sources' dependencies.
+  file is dirty, so every build processes every file.
+- **After:** the next run, on any backend, rebuilds too, rather than
+  trusting caches that miss the Kotlin sources' dependencies.
 - The incremental context itself stays on, so KSP's own lookups for Java
   sources are still recorded. KSP's `testRecordJava*` tests check them;
   turning incremental off outright failed those 6.
-- Gradle's KSP worker deletes the output directory on each run. A rebuild
-  regenerates every output, so no stale outputs are left behind.
 
-`build.sh test` checks this: Moshi with `-Dksp.incremental=true` produces the
-same files, and the marker is gone.
+No backend takes that path now. It stays as the fallback for one that
+doesn't record lookups.
 
-Next step, porting the lookups:
-- kc's checker records (file, scope FQ name, scope kind, name) where FIR
-  does: type references, calls, supertypes and imports.
-- `ka.Update` sends them over the wire.
-- `beginRound` replays them into the tracker, and `recordsLookups` becomes
-  true.
-- They are checked against stock KSP's lookup caches on a fixture.
+#### Step 16: incremental lookups
+
+kc's checker records the names it looks up, and KSP's incremental caches
+on kc get the Kotlin sources' dependencies the way FIR gives them on stock
+KSP.
+
+The pieces:
+- **Checker** (`internal/check/lookups.go`): a `Recorder` that also
+  implements `LookupRecorder` is told each (file, scope, kind, name) once
+  per file. They are recorded where FIR records them
+  (`FirLookupTrackerComponent`'s callers):
+  - each simple name in the package and class scopes it is searched in:
+    the enclosing classes, their supertypes and companions, the file's
+    package and the star imports;
+  - a resolved class in its package or outer class;
+  - a member's name in its receiver's class and supertypes;
+  - a callable or property in its owner, or in the package of its facade;
+  - the classes of resolved types, type arguments included;
+  - explicit imports in their package or class.
+
+  Locals and parameters are found before any scope FIR records, so they
+  aren't recorded. Neither are explicit and default imports as scopes:
+  FIR's scopes for them have no owners. `TestLookups` checks a two-file
+  fixture.
+- **Wire** (`analysis/ka`, `internal/kaops`): `Session.Update` collects
+  them per file, sorted and deduplicated, into `File.Lookups`. kaops
+  writes them after the file's declarations (`lookups = n:Uint (scope
+  kind name)*n`), and `KcModel` decodes them as `KcFile.lookups`.
+- **Replay** (`KcBackend.beginRound`): KSP calls `beginRound` at the
+  start of each round. The backend records each file's lookups into
+  `DualLookupTracker` the first time it sees the file: first the
+  sources, then, in later rounds, the generated files. It records them
+  under the file's virtual-file path, which is what `KSFile.filePath`
+  gives. `recordsLookups` is true.
+
+All lookups are replayed as `ScopeKind.PACKAGE`, class scopes too. FIR does
+the same: `IncrementalPassThroughLookupTrackerComponent` records every
+lookup with `PACKAGE`, so on stock KSP `DualLookupTracker.classTracker`
+(fed only by `CLASSIFIER` lookups) stays empty. KSP finds the files that
+a changed class member dirties through its symbol lookups,
+(`a.B`, `member`) included. The Go side and the wire keep the real kind.
+
+The checker resolves every declaration and body of every file, eagerly.
+FIR, on stock KSP, resolves only what processing asks for, lazily. So kc
+records a superset of stock KSP's lookups. Extra lookups only dirty more
+files, never fewer, so the outputs stay correct. One known source of
+extras: the checker's probes for inner classes and type aliases
+(`innerNamed`) look a member's name up as a classifier in the enclosing
+scopes too.
+
+`build.sh test` checks it on `test/ic`, six files with Moshi's codegen:
+- `m/Address.kt` (`@JsonClass` `Address`);
+- `m/User.kt` (uses `Address`);
+- `m/Order.kt` (uses `User`);
+- `m/Settings.kt` (declares a `street` of its own);
+- `n/Label.kt` (reads `Address.street`, unannotated);
+- `n/Util.kt` (a top-level `street()`).
+
+`RunKsp` takes `-Dksp.modified`, `-Dksp.removed` and
+`-Dksp.incrementalLog`, as Gradle's KSP task passes them. The check runs
+three times:
+1. An incremental run, with every file dirty.
+2. `test/ic/edit/m/Address.kt` (adds a property) copied over the source,
+   then an incremental run told that `Address.kt` was modified. Its dirty
+   set, read from `caches/logs/kspDirtySet.log`, must be
+   `test/ic/dirty.txt`: `Address`, `User`, `Order` (it uses `User`,
+   whose file is dirty, and KSP propagates dirtiness), `Label`.
+   `Settings` and `Util` stay clean.
+3. A clean, non-incremental run over the edited sources. Its outputs must
+   be the second run's: the clean files' adapters are kept, and the dirty
+   ones are regenerated.
+
+`build.sh stock` runs the same test on stock KSP 2.3.6. Its outputs match
+too, and its dirty set differs only as recorded in `test/ic/stock.diff`.
+Stock KSP leaves `n/Label.kt` clean: it has no annotations, and no
+processor asks for its declarations, so FIR never resolves its signature
+or body and records nothing for it. kc's checker resolved
+`a.street` and recorded (`m.Address`, `street`), so on kc `Label.kt`
+is reprocessed. That is the superset above: more work, the same outputs.
 
 ## Gaps and open questions
 
@@ -1517,9 +1588,10 @@ Next step, porting the lookups:
   - Upstream's Gradle build still pins `aaKotlinBaseVersion=2.4.20-dev-2407`.
     Building the patched tree with Gradle needs the 2.4.21 AA artifacts.
 - **No serialization plugin.** The fork is compiled without the
-  kotlinx-serialization compiler plugin, so its `@Serializable` classes
-  (incremental-compilation caches) have no serializers yet. On `kc`, KSP
-  rebuilds on every run (M6, "Incremental processing").
+  kotlinx-serialization compiler plugin. Nothing needs it: the
+  incremental caches (`PersistentMap`) use hand-written `KSerializer`s
+  for their keys and values (`FileSerializer`, `SymbolSerializer`), and
+  step 16 runs them on kc.
 - **Java file manager.** `ResolverAAImpl.javaFileManager` casts the project's
   `JavaFileManager` service to `KotlinCliJavaFileManagerImpl`. The `kc`
   backend gets one from `KotlinCoreEnvironment`, whose setup is part of the
