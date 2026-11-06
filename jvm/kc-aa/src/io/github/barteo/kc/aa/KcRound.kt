@@ -19,6 +19,9 @@ import org.jetbrains.kotlin.analysis.api.types.KaType
 import org.jetbrains.kotlin.name.CallableId
 import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.name.FqName
+import org.jetbrains.kotlin.analysis.api.KaConstantInitializerValue
+import org.jetbrains.kotlin.analysis.api.KaExperimentalApi
+import org.jetbrains.kotlin.fileClasses.JvmFileClassUtil
 import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.kdoc.lexer.KDocTokens
 import org.jetbrains.kotlin.psi.*
@@ -119,10 +122,45 @@ internal class KcRound(
         return CallableId(cls, Name.identifier(ref.referenceName ?: return null))
     }
 
+    /**
+     * The value of the Kotlin `const val` a Java reference `C.X` names,
+     * which Java PSI doesn't resolve: one in a source file's facade class
+     * (`ConstKt.X`), or in a source class or its companion. An annotation
+     * argument's, as KSP reads it.
+     */
+    @OptIn(KaExperimentalApi::class)
+    fun javaConstant(ref: PsiReferenceExpression): Any? {
+        val q = ref.qualifierExpression ?: return null
+        val name = ref.referenceName ?: return null
+        for (fq in javaNameCandidates(q.text, ref)) {
+            val members = facades[FqName(fq)]?.declarations
+                ?: classIdOf(fq)?.let { id ->
+                    val c = classSymbol(id) as? KcClassSymbol ?: return null
+                    declared(c) + (c.companionObject as? KcClassSymbol)?.let(::declared).orEmpty()
+                }
+                ?: continue
+            val p = members.firstOrNull { it is KcPropertySymbol && it.isConst && it.name.asString() == name }
+                as? KcPropertySymbol ?: return null
+            return (p.initializer as? KaConstantInitializerValue)?.constant?.value
+        }
+        return null
+    }
+
+    /** The source files by their facade classes' names. */
+    private val facades: Map<FqName, KcFileSymbol> by lazy {
+        fileSymbols.associateBy { JvmFileClassUtil.getFileClassInfoNoResolve(it.psi).facadeClassFqName }
+    }
+
     /** The class Java type name [text] in [context] names; see [javaAnnotationClass]. */
     fun javaClassNamed(text: String, context: PsiElement): ClassId? {
+        for (fq in javaNameCandidates(text, context)) classIdOf(fq)?.let { return it }
+        return null
+    }
+
+    /** The qualified names Java type name [text] in [context] may stand for, in javac's order. */
+    private fun javaNameCandidates(text: String, context: PsiElement): List<String> {
         val name = text.filterNot { it.isWhitespace() }
-        val file = context.containingFile as? PsiJavaFile ?: return null
+        val file = context.containingFile as? PsiJavaFile ?: return emptyList()
         val first = name.substringBefore('.')
         val rest = name.substring(first.length)
         val candidates = ArrayList<String>()
@@ -138,8 +176,7 @@ internal class KcRound(
         imports.filter { it.isOnDemand }.mapNotNull { it.qualifiedName }.forEach { candidates += "$it.$name" }
         candidates += "java.lang.$name"
         candidates += name
-        for (fq in candidates) classIdOf(fq)?.let { return it }
-        return null
+        return candidates
     }
 
     /** The class qualified name [fq] names, trying each split into package and classes. */
@@ -180,15 +217,18 @@ internal class KcRound(
             is com.intellij.psi.PsiEnumConstant -> r.containingClass?.let(::javaClassId)
                 ?.let { KcValue.Enum(0, it.asString(), r.name) } ?: KcValue.Unsupported(0)
             null -> javaEnumEntry(v)?.let { KcValue.Enum(0, it.classId!!.asString(), it.callableName.asString()) }
+                ?: javaConstant(v)?.let(::constValue)
                 ?: KcValue.Unsupported(0)
-            else -> javaConstant(v)
+            else -> evaluate(v)
         }
-        is com.intellij.psi.PsiExpression -> javaConstant(v)
+        is com.intellij.psi.PsiExpression -> evaluate(v)
         else -> KcValue.Unsupported(0)
     }
 
-    private fun javaConstant(e: com.intellij.psi.PsiExpression): KcValue {
-        val c = com.intellij.psi.JavaPsiFacade.getInstance(e.project).constantEvaluationHelper.computeConstantExpression(e)
+    private fun evaluate(e: com.intellij.psi.PsiExpression): KcValue =
+        constValue(com.intellij.psi.JavaPsiFacade.getInstance(e.project).constantEvaluationHelper.computeConstantExpression(e))
+
+    private fun constValue(c: Any?): KcValue {
         fun k(kind: Int, bits: Long = 0, float: Double = 0.0, str: String = "") = KcValue.Const(0, kind, bits, float, str)
         return when (c) {
             is Boolean -> k(KcValue.Const.BOOLEAN, if (c) 1 else 0)

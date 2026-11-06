@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: kc <barteo@gmail.com>
 Date: Fri, 6 Nov 2026 06:53:42 +0000
-Subject: [PATCH 5/7] Resolve Kotlin annotations on Java declarations through
+Subject: [PATCH 5/8] Resolve Kotlin annotations on Java declarations through
  KcExtras
 
 ---

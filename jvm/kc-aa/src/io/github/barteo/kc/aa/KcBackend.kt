@@ -239,6 +239,8 @@ private class KcExtrasImpl(private val round: () -> KcRound) : KcExtras {
     override fun javaEnumEntry(reference: com.intellij.psi.PsiReferenceExpression): org.jetbrains.kotlin.name.CallableId? =
         round().javaEnumEntry(reference)
 
+    override fun javaConstant(reference: com.intellij.psi.PsiReferenceExpression): Any? = round().javaConstant(reference)
+
     override fun optimalModeForReturnType(type: KaType, isAnnotationMethod: Boolean): TypeMappingMode =
         if (isAnnotationMethod) TypeMappingMode.VALUE_FOR_ANNOTATION else optimalMode(type, false)
     override fun optimalModeForValueParameter(type: KaType): TypeMappingMode = optimalMode(type, true)

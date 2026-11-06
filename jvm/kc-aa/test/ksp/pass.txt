@@ -13,6 +13,7 @@ testAnnotationValue_java2
 testAnnotationValue_kt
 testAnnotationWithArbitraryClassValue
 testAnnotationWithArrayValue
+testAnnotationWithDefault
 testAnnotationWithDefaultValues
 testAnnotationWithJavaTypeValue
 testAnnotationWithNestedClassValue

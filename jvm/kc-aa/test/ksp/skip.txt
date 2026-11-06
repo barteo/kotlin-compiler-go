@@ -1,4 +1,3 @@
-testAnnotationWithDefault: java-source: Java PSI can't evaluate a Kotlin facade constant, ConstKt.DebugKt, without light classes
 testDeferredTypeRefs: disabled: @Disabled in KSPUnitTestSuite
 testGetPackage: java-source: the order of a package's Java source classes (stock lists D, L, C for C.java {C, D} and L.java)
 testJavaAnnotatedUtil: java-source: a malformed Java file (a Kotlin import without semicolon, many public classes) whose PSI error recovery FIR keeps one class of
