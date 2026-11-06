@@ -2,7 +2,6 @@ testAllFunctions_kt_inherits_java: java-source: line 15: want size got <init>():
 testAnnotationOnReceiver: annotation-target: receiver annotations missing
 testAnnotationWithDefault: java-source: Java PSI can't evaluate a Kotlin facade constant, ConstKt.DebugKt, without light classes
 testAnnotationsInDependencies: java-source: line 6: want getter of property prop 189 : annotations.AllTarget{[value = all: : 188]} : <no  got ge
-testDeferredJavaSymbols: java-source: line 1: want K got
 testDeferredTypeRefs: disabled: @Disabled in KSPUnitTestSuite
 testDocString: java-source: line 12: want j1: \n field\n got j1: null
 testErrorTypes: java-source: line 1: want kotlin.collections.MutableMap got ERROR TYPE

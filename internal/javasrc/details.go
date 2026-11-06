@@ -7,10 +7,10 @@ import (
 )
 
 // Details returns what a class file's classfile.Details would say of
-// class name: its and its members' annotations (their classes only, not
-// their arguments), its members' access and parameter names, in source
-// order, and its nested classes. It returns nil if the sources have no
-// such class.
+// class name: its, its members' and its parameters' annotations (their
+// classes only, not their arguments), its members' access and parameter
+// names, in source order, and its nested classes. It returns nil if the
+// sources have no such class.
 func (s *Set) Details(name string) *classfile.Details {
 	c := s.classes[name]
 	if c == nil {
@@ -41,8 +41,15 @@ func (s *Set) Details(name string) *classfile.Details {
 				// kind says that there is one.
 				md.Default = &classfile.ElementValue{}
 			}
+			annotated := false
 			for _, p := range sm.Params {
 				md.ParamNames = append(md.ParamNames, p.Name)
+				as := mr.annotations(p.Annotations)
+				md.Params = append(md.Params, as)
+				annotated = annotated || len(as) > 0
+			}
+			if !annotated {
+				md.Params = nil
 			}
 		} else if c.Kind == KindRecord && m.Name == "<init>" {
 			for _, p := range c.Components {

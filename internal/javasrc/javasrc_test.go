@@ -239,6 +239,7 @@ func TestParseRecovery(t *testing.T) {
 	Long f<T>(T p) { return 0; }
 	int g( ;
 	void h() {}
+	List<Double> last = List<double>()
 }
 interface B {}
 `
@@ -256,7 +257,34 @@ interface B {}
 			names = append(names, m.Name)
 		}
 	}
-	if got, want := strings.Join(names, " "), "A a h B"; got != want {
+	if got, want := strings.Join(names, " "), "A a last h B"; got != want {
 		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+// TestParamAnnotations checks that Details gives the annotations of a
+// method's parameters, by parameter, and nil when none has any.
+func TestParamAnnotations(t *testing.T) {
+	src := `package p;
+@interface Defer {}
+class K {
+	void f(@Defer int a, final int b) {}
+	void g(int c) {}
+}
+`
+	f, err := Parse("p/K.java", src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := NewSet([]*File{f}).Details("p/K")
+	if d == nil {
+		t.Fatal("p/K: no details")
+	}
+	got := map[string]string{}
+	for _, m := range d.Methods {
+		got[m.Name] = fmt.Sprint(m.Params)
+	}
+	if got["f"] != "[[{Lp/Defer; []}] []]" || got["g"] != "[]" {
+		t.Errorf("got %v", got)
 	}
 }

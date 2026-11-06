@@ -124,8 +124,9 @@ type Method struct {
 
 // Param is a method's parameter or a record's component.
 type Param struct {
-	Type *Type
-	Name string
+	Type        *Type
+	Name        string
+	Annotations []*Annotation
 }
 
 // Parse parses a Java source file's declarations. A member it can't parse
@@ -647,6 +648,14 @@ func (p *parser) member(c *Class) {
 		if p.accept(";") {
 			return
 		}
+		if p.is("}") {
+			// A missing ; before the class's closing brace, which Java
+			// PSI reports and keeps the field.
+			if p.skipped == nil {
+				p.skipped = &parseError{p.tok(), "expected ;"}
+			}
+			return
+		}
 		p.expect(",")
 		name = p.ident()
 	}
@@ -656,7 +665,7 @@ func (p *parser) member(c *Class) {
 func (p *parser) params(m *Method) {
 	p.expect("(")
 	for !p.is(")") {
-		p.modifiers()
+		mods := p.modifiers()
 		t := p.typ()
 		if p.accept("...") {
 			t.Dims++
@@ -670,7 +679,7 @@ func (p *parser) params(m *Method) {
 		} else {
 			name := p.ident()
 			t.Dims += p.dims()
-			m.Params = append(m.Params, &Param{Type: t, Name: name})
+			m.Params = append(m.Params, &Param{Type: t, Name: name, Annotations: mods.Annotations})
 		}
 		if !p.accept(",") {
 			break
@@ -703,8 +712,8 @@ func (p *parser) methodRest(m *Method) {
 	m.Body = true
 }
 
-// initializer skips a field's initializer, up to the , or ; that ends it,
-// and returns its tokens.
+// initializer skips a field's initializer, up to the , or ; that ends it
+// or an unmatched closing bracket, and returns its tokens.
 func (p *parser) initializer() []token {
 	start := p.pos
 	depth := 0
@@ -718,6 +727,10 @@ func (p *parser) initializer() []token {
 			case "(", "[", "{":
 				depth++
 			case ")", "]", "}":
+				if depth == 0 {
+					// The class's closing brace: a missing ;.
+					return p.toks[start:p.pos]
+				}
 				depth--
 			case ";":
 				if depth == 0 {

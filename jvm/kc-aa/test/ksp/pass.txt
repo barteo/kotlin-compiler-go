@@ -33,6 +33,7 @@ testDeclarationUtil
 testDeclarationsInAccessor
 testDeclarationsInClass
 testDeclared
+testDeferredJavaSymbols
 testDeferredSymbols
 testEnumModifiers
 testEquals
