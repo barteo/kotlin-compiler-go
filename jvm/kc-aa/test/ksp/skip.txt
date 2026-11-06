@@ -19,7 +19,7 @@ testCompanion: companion: companion object naming/order
 testConstructorDeclarations: java-source: line 4: want <init>(kotlin.Int): lib.AbstractJavaClassWithExplicitConstructor got class: AbstractJav
 testCrossModuleTypeAlias: type-alias: library type aliases in other modules
 testDeclarationOrder: java-source: line 23: want b:Ljava/lang/String; got KotlinClass
-testDeclarationPackageName: java-source: UnsupportedOperationException: kc: no symbol for KtClass class InnerLocal
+testDeclarationPackageName: local-class-type: buildClassType of a local class (a local constructor's return type)
 testDeclarationsInClass: java-members: Java collection members (remove/removeAt) mapping
 testDeferredJavaSymbols: java-source: line 1: want K got
 testDeferredTypeRefs: disabled: @Disabled in KSPUnitTestSuite
@@ -30,9 +30,7 @@ testFunctionTypeAlias: type-alias: alias abbreviation equality
 testFunctionTypeAnnotation: type-annotations: function type annotations
 testFunctionTypes: function-types: KFunction/suspend function kinds
 testGetPackage: java-source: line 9: want lib2.Foo KOTLIN_LIB got lib2.FooTypeAlias KOTLIN_LIB
-testGetSymbolsFromAnnotation: java-source: line 2: want <init>:KSFunctionDeclaration got ==== Anno inDepth = true ====
-testGetSymbolsFromAnnotationInLib: file-annotations: @file: annotations of a library annotation class are missing
-testHello: java-source: line 1: want 8 got 0
+testGetSymbolsFromAnnotation: destructuring: annotations on destructuring entries are rejected, and destructuring declarations have no symbols
 testImplicitElements: java-source: line 17: want lib.Test, p: [MyKotlinAnnotation: null, MyJavaAnnotation: null] got lib.Test, p: [MyKo
 testInterfaceWithDefault: java-source: NullPointerException: null cannot be cast to non-null type com.google.devtools.ksp.symbol.KSClassDec
 testInternalOfFriends: friends: internal visibility across friend modules

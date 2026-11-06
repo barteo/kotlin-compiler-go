@@ -97,7 +97,7 @@ fun modules(test: File): List<Module> {
         mods.last().files += SrcFile(f, text)
         file = null
     }
-    val module = Regex("""^// MODULE:\s*([^(\s]+)(?:\(([^)]*)\))?(?:\(([^)]*)\))?""")
+    val module = Regex("""^//\s*MODULE:\s*([^(\s]+)(?:\(([^)]*)\))?(?:\(([^)]*)\))?""")
     for ((i, line) in lines.withIndex()) {
         val m = module.find(line)
         if (m != null) {
@@ -106,9 +106,11 @@ fun modules(test: File): List<Module> {
             mods += Module(m.groupValues[1], list(m.groupValues[2]), list(m.groupValues[3]))
             continue
         }
-        if (line.startsWith("// FILE:")) {
+        // Kotlin's test framework accepts "//FILE:" as well.
+        val fileDirective = Regex("""^//\s*FILE:(.*)""").find(line)
+        if (fileDirective != null) {
             flush(i)
-            file = line.substringAfter("// FILE:").trim()
+            file = fileDirective.groupValues[1].trim()
             start = i + 1
         }
     }
