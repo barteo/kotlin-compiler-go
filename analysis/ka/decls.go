@@ -43,6 +43,14 @@ func (b *fileBuilder) decl(d syntax.Decl, owner *syntax.ClassDecl, prefix string
 		md := &Decl{Kind: KindProperty, Name: d.Name, Node: b.prov.Node(d),
 			Visibility: visibility(d.Visibility), Annotations: b.propAnnotations(d.Annotations, false),
 			Flags: propFlags(&d.Modifiers, d.Mutable)}
+		if d.Setter != nil && len(d.Setter.Params) == 1 {
+			// The setter's parameter's annotations are the property's
+			// setparam ones.
+			for _, a := range b.annotations(d.Setter.Params[0].Annotations) {
+				a.Target = "setparam"
+				md.Annotations = append(md.Annotations, a)
+			}
+		}
 		md.Modality = memberModality(&d.Modifiers, owner, d.Init == nil && d.Getter == nil)
 		if d.Sym != nil && d.Field == nil && !d.Expect && (d.Sym.HasField() || d.BackingField != nil) {
 			md.Flags |= FlagBackingField

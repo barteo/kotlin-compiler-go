@@ -2,6 +2,7 @@ package lower
 
 import (
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
+	"github.com/barteo/kotlin-compiler-go/internal/types"
 	"github.com/barteo/kotlin-compiler-go/psi"
 	"strings"
 )
@@ -14,17 +15,24 @@ func (l *lowerer) file(root psi.NodeRef) *syntax.File {
 		case psi.KindFILE_ANNOTATION_LIST:
 			for _, e := range kids(c) {
 				l.decl(e, func() {
-					if e.NumericKind() != psi.KindANNOTATION_ENTRY {
+					var as []syntax.Annotation
+					switch e.NumericKind() {
+					case psi.KindANNOTATION_ENTRY:
+						as = []syntax.Annotation{l.annotation(e)}
+					case psi.KindANNOTATION:
+						as = l.bracketAnnotations(e)
+					default:
 						l.unexpected(e)
 					}
-					a := l.annotation(e)
-					if a.Target == "file" && a.Is("JvmName") {
-						if s, ok := a.Str(""); ok {
-							f.JvmName = s
+					for _, a := range as {
+						if a.Target == "file" && a.Is("JvmName") {
+							if s, ok := a.Str(""); ok {
+								f.JvmName = s
+							}
 						}
-					}
-					if a.Target == "file" {
-						f.Annotations = append(f.Annotations, a)
+						if a.Target == "file" && a.Name != "" {
+							f.Annotations = append(f.Annotations, a)
+						}
 					}
 				})
 			}
@@ -177,11 +185,7 @@ func (l *lowerer) params(n psi.NodeRef) []*syntax.Param {
 		if !name.Valid() {
 			l.fail(c, "expected a name")
 		}
-		tr := child(c, psi.KindTYPE_REFERENCE)
-		if !tr.Valid() {
-			l.failAt(l.end(name), "expected ':'")
-		}
-		p := record(l, &syntax.Param{P: l.pos(name), Name: ident(name), Type: l.typeRef(tr), Vararg: m.Vararg,
+		p := record(l, &syntax.Param{P: l.pos(name), Name: ident(name), Type: l.paramType(c, name), Vararg: m.Vararg,
 			Noinline: m.Noinline, Crossinline: m.Crossinline, Annotations: m.Annotations}, c)
 		p.External, p.ExternalP = m.External, m.ExternalP
 		p.Mods = m.Written
@@ -373,8 +377,10 @@ func (l *lowerer) accessor(pd *syntax.PropDecl, n psi.NodeRef) {
 		if mods := child(vp, psi.KindMODIFIER_LIST); mods.Valid() {
 			for _, k := range kids(mods) {
 				if k.NumericKind() == psi.KindANNOTATION_ENTRY {
-					l.annotation(k) // ignored, as on locals
-				} else if k.NumericKind() != psi.KindANNOTATION {
+					param.Annotations = append(param.Annotations, l.annotation(k))
+				} else if k.NumericKind() == psi.KindANNOTATION {
+					param.Annotations = append(param.Annotations, l.bracketAnnotations(k)...)
+				} else {
 					l.unexpected(k)
 				}
 			}
@@ -503,11 +509,7 @@ func (l *lowerer) ctorParams(n psi.NodeRef) []*syntax.CtorParam {
 		if !name.Valid() {
 			l.fail(c, "expected a name")
 		}
-		tr := child(c, psi.KindTYPE_REFERENCE)
-		if !tr.Valid() {
-			l.failAt(l.end(name), "expected ':'")
-		}
-		cp.P, cp.Name, cp.Type, cp.Param.Vararg = l.pos(name), ident(name), l.typeRef(tr), m.Vararg
+		cp.P, cp.Name, cp.Type, cp.Param.Vararg = l.pos(name), ident(name), l.paramType(c, name), m.Vararg
 		if !cp.IsProp {
 			cp.Param.External, cp.Param.ExternalP = m.External, m.ExternalP
 		}
@@ -581,7 +583,7 @@ func (l *lowerer) enumEntry(cd *syntax.ClassDecl, n psi.NodeRef) {
 			case psi.KindANNOTATION_ENTRY:
 				anns = append(anns, l.annotation(c))
 			case psi.KindANNOTATION:
-				anns = append(anns, l.bracketAnnotation(c))
+				anns = append(anns, l.bracketAnnotations(c)...)
 			case psi.KindEXTERNAL_KEYWORD:
 			case psi.KindCONTEXT_PARAMETER_LIST:
 				l.contextParams(c)
@@ -618,14 +620,44 @@ func (l *lowerer) enumEntry(cd *syntax.ClassDecl, n psi.NodeRef) {
 	cd.Entries = append(cd.Entries, e)
 }
 
-// bracketAnnotation lowers an ANNOTATION, @[A B], to what kc keeps of
-// it: an annotation without a name.
-func (l *lowerer) bracketAnnotation(n psi.NodeRef) syntax.Annotation {
-	a := syntax.Annotation{P: l.pos(n)}
-	if t := child(n, psi.KindANNOTATION_TARGET); t.Valid() {
-		a.Target = t.Text()
+// paramType lowers the type of VALUE_PARAMETER c named name. A parameter
+// written without one is an error, reported with the checker's, and has
+// an invalid type, so the declaration it is in is kept.
+func (l *lowerer) paramType(c, name psi.NodeRef) *syntax.TypeRef {
+	tr := child(c, psi.KindTYPE_REFERENCE)
+	if !tr.Valid() {
+		pos, msg := l.end(name), "a type annotation is required on a value parameter"
+		if e := child(c, psi.KindERROR_ELEMENT); e.Valid() {
+			pos, msg = l.syntaxMessage(e)
+		}
+		l.errorLater(pos, "%s", msg)
+		return &syntax.TypeRef{P: pos, Known: &types.InvalidType}
 	}
-	return a
+	return l.typeRef(tr)
+}
+
+// bracketAnnotations lowers an ANNOTATION, @[A B] or @t:[A B], to its
+// entries, each with the ANNOTATION's target. Without entries it is an
+// annotation without a name, which kc skips.
+func (l *lowerer) bracketAnnotations(n psi.NodeRef) []syntax.Annotation {
+	target := ""
+	if t := child(n, psi.KindANNOTATION_TARGET); t.Valid() {
+		target = t.Text()
+	}
+	var out []syntax.Annotation
+	for _, e := range kids(n) {
+		if e.NumericKind() == psi.KindANNOTATION_ENTRY {
+			a := l.annotation(e)
+			if a.Target == "" {
+				a.Target = target
+			}
+			out = append(out, a)
+		}
+	}
+	if out == nil {
+		out = []syntax.Annotation{{P: l.pos(n), Target: target}}
+	}
+	return out
 }
 
 // member lowers a member of class cd.

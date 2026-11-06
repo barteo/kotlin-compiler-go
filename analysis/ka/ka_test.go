@@ -86,6 +86,55 @@ func dump(sb *strings.Builder, snap *psi.Snapshot, ds []*Decl, indent string) {
 	}
 }
 
+func TestGroupedAnnotations(t *testing.T) {
+	m := update(t, `annotation class A1
+annotation class A2
+@file:[A1 A2]
+@[A1 A2]
+class C(@param:[A1 A2] val p, @[A1] @A2 val q: Int)
+`)
+	var sb strings.Builder
+	f := m.Files[0]
+	dump(&sb, f.Snapshot, f.Decls[2:], "")
+	got := sb.String()
+	want := `class C [/C] CLASS @A1(file) @A2(file) @A1 @A2
+  ctor <init> PRIMARY_CONSTRUCTOR
+    (param p VALUE_PARAMETER @A1(param) @A2(param)
+    (param q VALUE_PARAMETER @A1 @A2
+  val p VALUE_PARAMETER @A1(param) @A2(param)
+  val q VALUE_PARAMETER @A1 @A2
+`
+	if got != want {
+		t.Errorf("got\n%s\nwant\n%s", got, want)
+	}
+	if len(m.Diagnostics) != 1 || m.Diagnostics[0].Message != "Parameters must have type annotation" {
+		t.Errorf("diagnostics: %+v", m.Diagnostics)
+	}
+}
+
+func TestSetterParamAnnotations(t *testing.T) {
+	m := update(t, `annotation class A
+class C {
+    var e: Int = 0
+        set(@setparam:[A] v) { field = v }
+    var g: Int = 0
+        set(@A v) { field = v }
+}
+`)
+	var sb strings.Builder
+	f := m.Files[0]
+	dump(&sb, f.Snapshot, f.Decls[1:], "")
+	got := sb.String()
+	want := `class C [/C] CLASS
+  ctor <init> -
+  val e PROPERTY @A(setparam)
+  val g PROPERTY @A(setparam)
+`
+	if got != want {
+		t.Errorf("got\n%s\nwant\n%s", got, want)
+	}
+}
+
 func TestLocals(t *testing.T) {
 	m := update(t, `package a
 annotation class Anno

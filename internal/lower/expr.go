@@ -281,7 +281,7 @@ func (l *lowerer) annotationsOf(n psi.NodeRef) []syntax.Annotation {
 		case psi.KindANNOTATION_ENTRY:
 			as = append(as, l.annotation(c))
 		case psi.KindANNOTATION:
-			as = append(as, l.bracketAnnotation(c))
+			as = append(as, l.bracketAnnotations(c)...)
 		}
 	}
 	return as
@@ -866,7 +866,7 @@ func (l *lowerer) try(n psi.NodeRef) syntax.Expr {
 					case psi.KindANNOTATION_ENTRY:
 						ct.Annotations = append(ct.Annotations, l.annotation(a))
 					case psi.KindANNOTATION:
-						ct.Annotations = append(ct.Annotations, l.bracketAnnotation(a))
+						ct.Annotations = append(ct.Annotations, l.bracketAnnotations(a)...)
 					default:
 						l.unexpected(a)
 					}

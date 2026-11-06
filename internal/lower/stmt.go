@@ -74,7 +74,7 @@ func (l *lowerer) stmtModifiers(n psi.NodeRef) (as []syntax.Annotation, m syntax
 			as = append(as, l.annotation(cs[i]))
 			continue
 		case psi.KindANNOTATION:
-			as = append(as, l.bracketAnnotation(cs[i]))
+			as = append(as, l.bracketAnnotations(cs[i])...)
 			continue
 		}
 		break

@@ -1,6 +1,5 @@
 testAllFunctions_java_inherits_kt: java-source: line 5: want hashCode(): kotlin.Int got getX(): kotlin.Int
 testAllFunctions_kt_inherits_java: java-source: line 15: want size got <init>(): Foo
-testAllUseSiteTargetAppliedToAnnotationList: ka-differs-from-aa: kc gives the expected output, which this runFailingTest records AA as not giving (KEEP-402)
 testAnnotatedUtil: class-literal: kotlin.Throwable::class reaches getAnnotationsByType as kotlin.Throwable, not java.lang.Throwable
 testAnnotationOnReceiver: annotation-target: receiver annotations missing
 testAnnotationValue_java2: java-source: NoSuchElementException: Sequence is empty.
@@ -33,8 +32,6 @@ testFunctionTypes: function-types: KFunction/suspend function kinds
 testGetPackage: java-source: line 9: want lib2.Foo KOTLIN_LIB got lib2.FooTypeAlias KOTLIN_LIB
 testGetSymbolsFromAnnotation: java-source: line 2: want <init>:KSFunctionDeclaration got ==== Anno inDepth = true ====
 testGetSymbolsFromAnnotationInLib: file-annotations: @file: annotations of a library annotation class are missing
-testGroupedAnnotations: annotation-target: file annotations in groups
-testGroupedAnnotationsWithUseSiteTargets: annotation-target: file annotations in groups
 testHello: java-source: line 1: want 8 got 0
 testImplicitElements: java-source: line 17: want lib.Test, p: [MyKotlinAnnotation: null, MyJavaAnnotation: null] got lib.Test, p: [MyKo
 testInterfaceWithDefault: java-source: NullPointerException: null cannot be cast to non-null type com.google.devtools.ksp.symbol.KSClassDec

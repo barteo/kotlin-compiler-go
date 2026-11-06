@@ -1,5 +1,6 @@
 testAbstractFunctions
 testAllFunctions_kotlin
+testAllUseSiteTargetAppliedToAnnotationList
 testAnnotationOnConstructorParameter
 testAnnotationTargets
 testAnnotationValue_defaultKClassValue
@@ -20,6 +21,8 @@ testExitCode
 testFunctionKinds
 testGetAnnotationByTypeWithInnerDefault
 testGetByName
+testGroupedAnnotations
+testGroupedAnnotationsWithUseSiteTargets
 testImplicitPropertyAccessors
 testInheritedTypeAlias
 testInnerTypes
