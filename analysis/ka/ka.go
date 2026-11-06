@@ -291,7 +291,7 @@ type Annotation struct {
 	// chose it: "field", for an annotation of a property that may be on
 	// its backing field and not on the property.
 	Implied bool
-	// Args are its arguments as written, in its parameters' order, as
+	// Args are its arguments as written, in the order written, as
 	// the checker evaluated them; none if it couldn't.
 	Args []NamedValue
 }

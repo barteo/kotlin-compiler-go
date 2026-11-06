@@ -2,6 +2,7 @@ package ka
 
 import (
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -77,18 +78,38 @@ type NamedValue struct {
 }
 
 // args returns the arguments of annotation a, whose checked values are
-// values: those written, in the parameters' order, as the Analysis API
-// has them. A vararg parameter without arguments, whose value is an empty
-// array, isn't written.
+// values: those written, in the order they are written, as FIR's
+// argument mapping has them. A vararg parameter without arguments, whose
+// value is an empty array, isn't written.
 func (b *fileBuilder) args(a *syntax.Annotation, values []syntax.AnnotationValue) []NamedValue {
 	var out []NamedValue
+	var at []int
+	next := 0 // the next positional argument
 	for _, v := range values {
 		if v.Array && len(v.Elems) == 0 && !named(a, v.Name) {
 			continue
 		}
 		out = append(out, NamedValue{Name: v.Name, Value: b.checked(v)})
+		pos := slices.IndexFunc(a.Args, func(arg syntax.AnnotationArg) bool { return arg.Name == v.Name })
+		if pos < 0 {
+			for next < len(a.Args) && a.Args[next].Name != "" {
+				next++
+			}
+			pos = next
+			next++
+		}
+		at = append(at, pos)
 	}
-	return out
+	idx := make([]int, len(out))
+	for i := range idx {
+		idx[i] = i
+	}
+	slices.SortStableFunc(idx, func(x, y int) int { return at[x] - at[y] })
+	sorted := make([]NamedValue, len(out))
+	for i, j := range idx {
+		sorted[i] = out[j]
+	}
+	return sorted
 }
 
 // named reports whether annotation a has an argument named name; false
@@ -329,7 +350,7 @@ func (b *fileBuilder) defaultValue(t types.Type, x syntax.Expr, depth int) *Valu
 }
 
 // nestedDefault returns the annotation call creates in a default value:
-// its arguments as written, by parameter.
+// its arguments, in the order written.
 func (b *fileBuilder) nestedDefault(call *syntax.Call, node psi.NodeID, depth int) *Annotation {
 	a := &Annotation{ClassID: classID(call.Ctor), Node: node}
 	if call.Sym == nil {
@@ -337,6 +358,7 @@ func (b *fileBuilder) nestedDefault(call *syntax.Call, node psi.NodeID, depth in
 	}
 	params := call.Sym.Params
 	args := make([][]syntax.Expr, len(params))
+	var order []int // parameters by their first argument
 	for i, arg := range call.Args {
 		j := i
 		if call.ArgMap != nil {
@@ -344,6 +366,9 @@ func (b *fileBuilder) nestedDefault(call *syntax.Call, node psi.NodeID, depth in
 		}
 		if j < 0 || j >= len(params) {
 			return a
+		}
+		if args[j] == nil {
+			order = append(order, j)
 		}
 		if sp, ok := arg.(*syntax.Spread); ok && params[j].Vararg {
 			if elems, ok := syntax.ArrayElems(sp.X); ok {
@@ -353,9 +378,9 @@ func (b *fileBuilder) nestedDefault(call *syntax.Call, node psi.NodeID, depth in
 		}
 		args[j] = append(args[j], arg)
 	}
-	for j, p := range params {
+	for _, j := range order {
+		p := params[j]
 		switch {
-		case args[j] == nil:
 		case p.Vararg:
 			v := &Value{Kind: ValueArray}
 			for _, x := range args[j] {

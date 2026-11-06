@@ -72,7 +72,7 @@ mapping.
 | M3 | Richer symbol model: visibility and modality enums, flags, origins, library annotation arguments, Java parameter names | in progress: source types, flags, modality; KaTypes on the JVM; annotation arguments; library classes; inherited members, overrides, subtyping; packages, library top-level declarations, alias abbreviations; JVM type mapping, Moshi codegen end to end; backing fields, Dagger end to end; Dagger on octi-server byte-identical to stock KSP 2.3.6; the slice checked against stock KSP; Room and Hilt byte-identical to stock KSP (step 14) |
 | M4 | Queryable session `analysis/ka`: lookups, scopes, relations, overrides | |
 | M5 | Bridge: `cmd/libkc` operations, `tools/kagen` wire format, `jvm/kc-aa` KaSession | |
-| M6 | KSP fork integration: the `kc` backend, IC lookups, hot paths | in progress: KSP's own test suite on the kc backend, `build.sh ksp` (step 15): 68 of 136 pass, Java sources in the main module included |
+| M6 | KSP fork integration: the `kc` backend, IC lookups, hot paths | in progress: KSP's own test suite on the kc backend, `build.sh ksp` (step 15): 70 of 136 pass, Java sources in the main module included |
 | M7 | Differential conformance against stock KSP, benchmark, CI | in progress: `bench/ksp` (step 11): warm 990 ms on stock KSP, 284 ms on kc; cold 8.1–8.7 s and 2.9–3.2 s, with a CDS archive 5.8–6.1 s and 1.9–2.1 s; CI: `.github/workflows/analysis-api.yml` (step 12) |
 
 ### M0.1 – JNI spike
@@ -1129,6 +1129,15 @@ Each fix below keeps `build.sh stock` and the slice unchanged.
   as with `kotlin.collections.ArrayList`. The Java source parser reads a
   method with no return type as a misnamed constructor, as IntelliJ's Java
   PSI does, instead of failing the file. +4 (→ 68).
+- **Annotation arguments as written.** An annotation's arguments come in
+  the order they were written, named ones included, as FIR gives them,
+  and so do a nested annotation's defaults after them. A class literal
+  of a generic class written without arguments, `HashMap::class`, has
+  star arguments. A Java source annotation method's `default` marks its
+  parameter as having a default. A collection literal argument of a
+  parameter whose type didn't resolve is still an array. A library
+  parameter without a default gives KSP no default value unless it is an
+  array (an empty one), as FIR's converter does. +2 (→ 70).
 
 ## Gaps and open questions
 

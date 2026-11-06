@@ -263,7 +263,9 @@ private class KcExtrasImpl(private val round: () -> KcRound) : KcExtras {
         return if (t != null && t.kind == KcType.CLASS && arrayClass.matches(t.classId)) {
             KcArrayValue(emptyList(), null, token)
         } else {
-            KcConstantAnnotationValue(KcConstant.Null(null), token)
+            // FIR's converter gives no value for a non-array parameter
+            // without a default, so KSP lists no argument for it.
+            null
         }
     }
 

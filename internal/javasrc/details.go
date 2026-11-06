@@ -36,6 +36,11 @@ func (s *Set) Details(name string) *classfile.Details {
 			sm := c.Methods[i]
 			mr := &resolver{s: s, c: c, mparams: sm.TypeParams}
 			md.Annotations = mr.annotations(sm.Annotations)
+			if sm.HasDefault {
+				// The value isn't evaluated: an element value of no
+				// kind says that there is one.
+				md.Default = &classfile.ElementValue{}
+			}
 			for _, p := range sm.Params {
 				md.ParamNames = append(md.ParamNames, p.Name)
 			}

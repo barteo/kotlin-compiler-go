@@ -283,6 +283,16 @@ func (c *Checker) annotationValues(cls *types.ClassSym, args []annotArg, p synta
 		}
 		t := star.Apply(v.Type)
 		val := syntax.AnnotationValue{Name: v.Name, Type: t, Array: t.IsArray() || t.K == types.Class && types.IsUnsignedArray(t.C)}
+		if t.K == types.Invalid && len(byParam[j]) == 1 {
+			// An unresolved parameter type, as Array<KClass<*>> without
+			// its import: [a, b] is still an array, as in FIR.
+			a := byParam[j][0]
+			val.Array = a.array
+			if len(a.elems) == 1 {
+				_, isArr := syntax.ArrayElems(a.elems[0])
+				val.Array = val.Array || isArr
+			}
+		}
 		elem := t
 		if val.Array {
 			elem = types.VarargElem(t)

@@ -117,6 +117,9 @@ type Method struct {
 	Varargs    bool
 	Throws     []*Type
 	Body       bool // it has a body, which isn't kept
+	// HasDefault reports whether an annotation method declares a default
+	// value, which isn't kept.
+	HasDefault bool
 }
 
 // Param is a method's parameter or a record's component.
@@ -633,6 +636,7 @@ func (p *parser) methodRest(m *Method) {
 	}
 	if p.isWord("default") {
 		p.next()
+		m.HasDefault = true
 		p.initializer()
 		p.expect(";")
 		return

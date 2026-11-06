@@ -397,6 +397,14 @@ internal class KcRound(
             return KcAnnotationApplication(this@KcRound, id, psi, useSiteTarget(if (a.implied) "" else a.target), args)
         }
 
+        /** The type of a class literal of type [t]: a generic class's
+         *  without arguments, as `HashMap::class`, has star arguments. */
+        fun classLiteralType(t: KaType): KaType {
+            if (t !is KcClassType || t.typeArguments.isNotEmpty() || t.isAlias) return t
+            val n = (t.symbol as? KaClassSymbol)?.typeParameters?.size ?: 0
+            return if (n == 0) t else KcClassType(this@KcRound, t.classId, List(n) { KcStarProjection(token) }, t.marked)
+        }
+
         /** The KaAnnotationValue of [v], recorded as its expression's value. */
         fun value(v: KcValue): KaAnnotationValue {
             val psi = psi(v.node) as? KtElement
@@ -404,7 +412,7 @@ internal class KcRound(
                 is KcValue.Const -> KcConstantAnnotationValue(KcConstant.of(v, psi), token)
                 is KcValue.Enum -> KcEnumEntryValue(
                     CallableId(ClassId.fromString(v.classId), Name.identifier(v.entry)), psi, token)
-                is KcValue.ClassLit -> KcClassLiteralValue(types.type(v.type),
+                is KcValue.ClassLit -> KcClassLiteralValue(classLiteralType(types.type(v.type)),
                     v.type.classId.takeIf { v.type.kind == KcType.CLASS && it.isNotEmpty() }?.let(ClassId::fromString),
                     psi, token)
                 is KcValue.Nested -> KcNestedAnnotationValue(application(v.annotation, psi as? KtCallElement), psi, token)

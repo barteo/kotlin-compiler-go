@@ -5,9 +5,7 @@ testAnnotationOnReceiver: annotation-target: receiver annotations missing
 testAnnotationValue_java2: java-source: NoSuchElementException: Sequence is empty.
 testAnnotationValue_java: java-source: NoSuchElementException: Sequence is empty.
 testAnnotationValue_kt: java-source: UnsupportedOperationException: kc: no symbol for KtClass @Foo.Nested
-testAnnotationWithArrayValue: java-source: line 4: want classArray = [Any, List<*>] got classArray = Any
-testAnnotationWithDefault: java-source: line 3: want JavaAnnotation2 -> y:y-kotlin:false,x:x-kotlin:false,z:z-default:true got JavaAnnotatio
-testAnnotationWithDefaultValues: java-source: line 5: want KotlinAnnotationLib -> b:defaultInLib,kClassValue:OtherKotlinAnnotation,topLevel got Ko
+testAnnotationWithDefault: java-source: Java PSI can't evaluate a Kotlin facade constant, ConstKt.DebugKt, without light classes
 testAnnotationWithNestedClassValue: class-literal: Kotlin-mapped nested classes (MutableMap.MutableEntry) not mapped to Java
 testAnnotationsInDependencies: java-source: line 6: want getter of property prop 189 : annotations.AllTarget{[value = all: : 188]} : <no  got ge
 testAnnotationsRepeatable: java-source: line 13: want lib.Test, KA, [value:1]} got lib.Test, A, [value:1]}

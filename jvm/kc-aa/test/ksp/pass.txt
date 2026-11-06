@@ -5,6 +5,8 @@ testAnnotationOnConstructorParameter
 testAnnotationTargets
 testAnnotationValue_defaultKClassValue
 testAnnotationWithArbitraryClassValue
+testAnnotationWithArrayValue
+testAnnotationWithDefaultValues
 testAnnotationWithJavaTypeValue
 testBuiltInTypes
 testCompanion
