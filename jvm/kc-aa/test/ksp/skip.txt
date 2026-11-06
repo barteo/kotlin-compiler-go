@@ -16,7 +16,6 @@ testBackingFields: java-source: line 20: want lib.JavaClass.javaField: true got 
 testCheckOverride: java-source: line 13: want JavaImpl.getX overrides MyInterface.x: true got JavaImpl.getX overrides MyInterface.x:
 testClassKinds: java-source: NullPointerException: null
 testConstructorDeclarations: java-source: line 4: want <init>(kotlin.Int): lib.AbstractJavaClassWithExplicitConstructor got class: AbstractJav
-testCrossModuleTypeAlias: type-alias: library type aliases in other modules
 testDeclarationOrder: java-source: line 23: want b:Ljava/lang/String; got KotlinClass
 testDeclarationPackageName: local-class-type: buildClassType of a local class (a local constructor's return type)
 testDeclarationsInClass: java-members: Java collection members (remove/removeAt) mapping
@@ -28,7 +27,7 @@ testErrorTypes: java-source: line 1: want kotlin.collections.MutableMap got ERRO
 testFunctionTypeAlias: type-alias: alias abbreviation equality
 testFunctionTypeAnnotation: type-annotations: function type annotations
 testFunctionTypes: function-types: KFunction/suspend function kinds
-testGetPackage: java-source: line 9: want lib2.Foo KOTLIN_LIB got lib2.FooTypeAlias KOTLIN_LIB
+testGetPackage: java-source: the order of a package's Java source classes (stock lists D, L, C for C.java {C, D} and L.java)
 testImplicitElements: java-source: line 17: want lib.Test, p: [MyKotlinAnnotation: null, MyJavaAnnotation: null] got lib.Test, p: [MyKo
 testInterfaceWithDefault: java-source: NullPointerException: null cannot be cast to non-null type com.google.devtools.ksp.symbol.KSClassDec
 testInternalOfFriends: friends: internal visibility across friend modules
@@ -46,10 +45,8 @@ testJavaWildcardsSelfReferencing: unsupported: KcExtras.optimalModeForValueParam
 testLibOrigins: java-source: line 10: want Exception: [KotlinLibClass, T1, Any?]: SYNTHETIC got Validating kotlinLibFuntion
 testLocalClasses: local-declarations: anonymous objects
 testLocations: java-source: line 3: want K:J.java:81 got K:K.kt:60
-testMangledNames: java-source: line 4: want valueOf -> valueOf got get-entries -> getEntries
 testMultipleround: java-source: line 3: want J : <ERROR TYPE: I0>, <ERROR TYPE: I1>, <ERROR TYPE: I2>, <ERROR TYPE: I3>, <ERR got J
 testNestedClassType: type-annotations: type argument annotations
-testPackageProviderForGenerated: generated-java: generated Java sources not in the model
 testParent: java-source: line 28: want parent of Any: (Any..Any?) got parent of synthetic constructor for B: B
 testPlatformDeclaration: disabled: @Disabled in KSPUnitTestSuite
 testRawTypes: java-source: line 1: want barRaw got
@@ -59,7 +56,6 @@ testRecordJavaOverrides: java-source: line 1: want p1.B: main/p1/A.java got kotl
 testReferenceElement: java-source: line 1: want KSClassifierReferenceImpl: Qualifier of B is A got KSClassifierReferenceImpl: Qualifier
 testReplaceWithErrorTypeArgs: java-source: UnsupportedOperationException: kc: type of NotExist1: not a declaration's type
 testResolveJavaType: java-source: UnsupportedOperationException: kc: containingSymbol of KcLibraryTypeParameterSymbol(X)
-testSealedClass: sealed: library sealed inheritors
 testThrowList: java-source: UnsupportedOperationException: kc: KaSession.asKaType(PsiType, PsiElement)
 testTopLevelMembers: java-source: line 8: want lib : javaFieldInLib -> lib.LibJavaClass got lib : jvmStaticFunctionInLibCompanion -> l
 testTypeAlias: type-annotations: annotations on alias type arguments

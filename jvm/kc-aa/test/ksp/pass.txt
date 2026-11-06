@@ -11,6 +11,7 @@ testCompanion
 testConflictingOverride
 testConstProperties
 testContextParameters
+testCrossModuleTypeAlias
 testDeclarationInconsistency
 testDeclarationUtil
 testDeclarationsInAccessor
@@ -37,6 +38,7 @@ testJvmName
 testLateinitProperties
 testLocalAnnotationClass
 testMakeNullable
+testMangledNames
 testMetaAnnotations
 testMultipleModules
 testNestedAnnotations
@@ -49,12 +51,14 @@ testOverrideInLib
 testOverrideInSource
 testOverrideOrder
 testPackageAnnotation
+testPackageProviderForGenerated
 testParameterTypes
 testPrimaryConstructorOverride
 testRecordJavaAsMemberOf
 testRecordJavaResolutions
 testRecordJavaSupertypes
 testRepeatedNonRepeatableAnnotations
+testSealedClass
 testShadowingAnnotations
 testSignatureMapper
 testSuperTypes

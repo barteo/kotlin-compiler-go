@@ -228,6 +228,9 @@ func (b *fileBuilder) defaultAlias(t *Type, ref *syntax.TypeRef) *Type {
 	if qualified {
 		name = ref.Name[strings.LastIndexByte(ref.Name, '.')+1:]
 	}
+	if a := b.classPathAlias(t, ref.Name, name, qualified); a != nil {
+		return &Type{Kind: TypeClass, ClassID: a.ClassID, Args: slices.Clone(t.Args), Nullable: t.Nullable}
+	}
 	a := b.lib.defaultAliases()[name]
 	if a == nil || a.Type.ClassID != t.ClassID || len(t.Args) != len(a.TypeParams) {
 		return nil
@@ -252,6 +255,49 @@ func (b *fileBuilder) defaultAlias(t *Type, ref *syntax.TypeRef) *Type {
 		}
 	}
 	return &Type{Kind: TypeClass, ClassID: a.ClassID, Args: slices.Clone(t.Args), Nullable: t.Nullable}
+}
+
+// classPathAlias returns the class-path typealias of class type t that
+// written, whose last name is name, names other than through the default
+// imports, as the checker finds it: a qualified name's package, then an
+// explicit import, the file's package and the star imports.
+func (b *fileBuilder) classPathAlias(t *Type, written, name string, qualified bool) *Decl {
+	match := func(pkg, name string) *Decl {
+		if a := b.lib.packageClassAlias(pkg, name); a != nil && a.Type.ClassID == t.ClassID && len(t.Args) == len(a.TypeParams) {
+			return a
+		}
+		return nil
+	}
+	split := func(path string) (string, string) {
+		if i := strings.LastIndexByte(path, '.'); i >= 0 {
+			return path[:i], path[i+1:]
+		}
+		return "", path
+	}
+	if qualified {
+		pkg, _ := split(written)
+		return match(pkg, name)
+	}
+	for _, imp := range b.f.Imports {
+		if imp.Star {
+			continue
+		}
+		pkg, last := split(imp.Path)
+		if imp.Alias == name || imp.Alias == "" && last == name {
+			return match(pkg, last)
+		}
+	}
+	if a := match(b.f.Package, name); a != nil {
+		return a
+	}
+	for _, imp := range b.f.Imports {
+		if imp.Star && !slices.Contains(defaultImports, imp.Path) {
+			if a := match(imp.Path, name); a != nil {
+				return a
+			}
+		}
+	}
+	return nil
 }
 
 // abbrev returns the typealias type that ref writes, a type of typealias

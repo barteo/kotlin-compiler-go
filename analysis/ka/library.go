@@ -270,7 +270,8 @@ func (l *library) kotlinClass(id, name string, outer kscope, depth int) *Decl {
 		return nil
 	}
 	d := &Decl{Kind: KindClass, Name: simpleName(id), ClassID: id,
-		Visibility: kvisibility(kc.Flags.Visibility()), Modality: Modality(kc.Flags.Modality())}
+		Visibility: kvisibility(kc.Flags.Visibility()), Modality: Modality(kc.Flags.Modality()),
+		Module: kc.ModuleName, Inheritors: kc.SealedSubclasses}
 	switch kc.Kind() {
 	case kmeta.KindInterface:
 		d.Kind = KindInterface

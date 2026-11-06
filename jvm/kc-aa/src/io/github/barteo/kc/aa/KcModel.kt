@@ -130,6 +130,8 @@ internal object KcOps {
                 members = decls(),
                 default = value(),
                 locals = decls(),
+                module = readString(),
+                inheritors = List(readUint().toInt()) { readString() },
             )
         }
 
@@ -200,6 +202,10 @@ internal class KcDecl(
     val default: KcValue? = null,
     /** The local declarations written directly in a function's, a constructor's or a property's accessors' bodies. */
     val locals: List<KcDecl> = emptyList(),
+    /** A library Kotlin class's or top-level callable's module name; "" for "main". */
+    val module: String = "",
+    /** A library sealed class's direct subclasses' class IDs, from its metadata. */
+    val inheritors: List<String> = emptyList(),
 ) {
     fun has(flag: Long) = flags and flag != 0L
     val isCompanion get() = has(COMPANION)

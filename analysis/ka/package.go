@@ -113,6 +113,7 @@ func (l *library) pkg(pkg string) *Package {
 				if f.Flags.MemberKind() == 0 {
 					d := l.kfunction(f, kscope{}, bySig)
 					d.ClassID = owner
+					d.Module = meta.ModuleName()
 					funcs = append(funcs, d)
 				}
 			}
@@ -123,6 +124,7 @@ func (l *library) pkg(pkg string) *Package {
 				if pr.Flags.MemberKind() == 0 {
 					d := l.kproperty(pr, kscope{}, bySig, consts)
 					d.ClassID = owner
+					d.Module = meta.ModuleName()
 					props = append(props, d)
 				}
 			}
@@ -216,21 +218,42 @@ func (l *library) defaultAliases() map[string]*Decl {
 				continue
 			}
 			for _, d := range p.Decls {
-				if d.Kind != KindTypeAlias || d.Visibility != Public || d.Type == nil || d.Type.Kind != TypeClass ||
-					d.Type.Nullable || len(d.Type.Args) != len(d.TypeParams) {
-					continue
-				}
-				simple := true
-				for i, a := range d.Type.Args {
-					if a.Variance != Invariant || a.Type == nil || a.Type.Kind != TypeParameter || a.Type.Name != d.TypeParams[i].Name {
-						simple = false
-					}
-				}
-				if _, dup := l.defaults[d.Name]; simple && !dup {
+				if _, dup := l.defaults[d.Name]; classAlias(d) && !dup {
 					l.defaults[d.Name] = d
 				}
 			}
 		}
 	})
 	return l.defaults
+}
+
+// classAlias reports whether d is a public typealias that the checker
+// resolves to the class it expands to: one of a class with its type
+// parameters as its arguments, as typealias L<T> = java.util.List<T>.
+func classAlias(d *Decl) bool {
+	if d.Kind != KindTypeAlias || d.Visibility != Public || d.Type == nil || d.Type.Kind != TypeClass ||
+		d.Type.Nullable || len(d.Type.Args) != len(d.TypeParams) {
+		return false
+	}
+	for i, a := range d.Type.Args {
+		if a.Variance != Invariant || a.Type == nil || a.Type.Kind != TypeParameter || a.Type.Name != d.TypeParams[i].Name {
+			return false
+		}
+	}
+	return true
+}
+
+// packageClassAlias returns the class-path typealias name of package pkg
+// if classAlias holds for it, or nil.
+func (l *library) packageClassAlias(pkg, name string) *Decl {
+	p := (&Model{lib: l}).Package(pkg)
+	if p == nil {
+		return nil
+	}
+	for _, d := range p.Decls {
+		if d.Name == name && classAlias(d) {
+			return d
+		}
+	}
+	return nil
 }

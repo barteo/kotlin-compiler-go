@@ -558,8 +558,10 @@ func (p *parser) member(c *Class) {
 		return
 	}
 	tps := p.typeParams()
-	// A constructor, or a record's compact canonical constructor.
-	if p.tok().kind == tIdent && p.tok().text == c.Name && (p.peek(1).text == "(" || p.peek(1).text == "{" && c.Kind == KindRecord) {
+	// A constructor, or a record's compact canonical constructor. A
+	// method without a return type is a misnamed constructor, as
+	// IntelliJ's Java PSI reads it.
+	if p.tok().kind == tIdent && (p.peek(1).text == "(" || p.tok().text == c.Name && p.peek(1).text == "{" && c.Kind == KindRecord) {
 		p.next()
 		m := &Method{Modifiers: mods, TypeParams: tps, Name: "<init>"}
 		if p.is("{") {

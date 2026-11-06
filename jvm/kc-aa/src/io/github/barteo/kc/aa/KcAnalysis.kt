@@ -150,6 +150,9 @@ class KcAnalysis internal constructor(
 
     /** The source classes that directly extend sealed class [s], in source order. */
     fun getSealedClassInheritors(s: KaNamedClassSymbol): List<KaNamedClassSymbol> {
+        if (s is KcClassSymbol && s.info.origin == KaSymbolOrigin.LIBRARY) {
+            return s.info.decl.inheritors.mapNotNull { round.libraryClass(ClassId.fromString(it)) }
+        }
         val out = ArrayList<KaNamedClassSymbol>()
         fun walk(ds: List<KaDeclarationSymbol>) {
             for (d in ds) if (d is KcClassSymbol) {

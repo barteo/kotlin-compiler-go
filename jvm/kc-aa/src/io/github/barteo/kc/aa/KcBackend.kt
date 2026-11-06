@@ -269,7 +269,33 @@ private class KcExtrasImpl(private val round: () -> KcRound) : KcExtras {
 
     private val arrayClass = Regex("kotlin/(Array|[A-Z][a-z]+Array|U[A-Z][a-z]+Array)")
     override fun resolveTypes(symbol: KaSymbol) {}
-    // KSP then uses "main". (kc doesn't decode class metadata's module name.)
-    override fun libraryModuleName(symbol: KaSymbol): String? = null
+    /**
+     * The module name in the metadata of [symbol]'s library class or file
+     * facade, found by walking out from it; null for "main", where KSP
+     * then uses "main".
+     */
+    override fun libraryModuleName(symbol: KaSymbol): String? {
+        var s: KaSymbol? = symbol
+        while (s != null) {
+            val info = when (s) {
+                is KcFakeOverride -> { s = s.owner; continue }
+                is KcGetterSymbol -> s.property.info
+                is KcSetterSymbol -> s.property.info
+                is KcClassSymbol -> s.info
+                is KcFunctionSymbol -> s.info
+                is KcConstructorSymbol -> s.info
+                is KcValueParameterSymbol -> s.info
+                is KcTypeParameterSymbol -> s.info
+                is KcPropertySymbol -> s.info
+                is KcEnumEntrySymbol -> s.info
+                is KcTypeAliasSymbol -> s.info
+                is KcBackingFieldSymbol -> s.info
+                else -> return null
+            }
+            if (info.decl.module.isNotEmpty()) return info.decl.module
+            s = info.parent
+        }
+        return null
+    }
     override fun kotlinBinaryClass(file: VirtualFile): KotlinJvmBinaryClass? = KcAnalysis.unsupported("KcExtras.kotlinBinaryClass")
 }

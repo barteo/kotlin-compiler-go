@@ -271,6 +271,13 @@ type Decl struct {
 	// order: what an Analysis API client lists as its declarations. Their
 	// visibility is Local, and a local class has no ClassID.
 	Locals []*Decl
+	// Module is a library Kotlin class's or top-level callable's module
+	// name, from its metadata; "" for "main" and for the others.
+	Module string
+	// Inheritors are a library sealed class's direct subclasses, as its
+	// metadata lists them; nil for the others (a source sealed class's
+	// are found from the sources).
+	Inheritors []string
 }
 
 // Annotation is an annotation in the sources.

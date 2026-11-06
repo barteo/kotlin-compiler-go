@@ -145,8 +145,8 @@ internal class KcRound(
         // most of a session's first round. Files parse independently.
         val trees = files.parallelStream().map { (_, kt) -> preorder(kt.node) }.toList()
         fileSymbols = files.mapIndexed { i, (f, kt) -> Builder(f.path, trees[i], KaSymbolOrigin.SOURCE).file(f, kt) }
-        for ((f, _) in files) {
-            var fq = FqName(f.packageName)
+        for (name in files.map { it.first.packageName } + javaFiles.map { it.packageName }) {
+            var fq = FqName(name)
             while (sourcePackages.add(fq) && !fq.isRoot) fq = fq.parent()
         }
     }
@@ -178,19 +178,25 @@ internal class KcRound(
     }
 
     /**
-     * The declarations of package [fq]: the sources' top-level ones, then
-     * the class path's top-level functions, properties and type aliases,
-     * then its classes.
+     * The declarations of package [fq], callables first, as in FIR: the
+     * sources' top-level functions and properties, the class path's, then
+     * the Kotlin sources' classes and type aliases, the Java sources'
+     * classes, and the class path's classes and type aliases.
      */
     fun packageDeclarations(fq: FqName): List<KaDeclarationSymbol> {
         synchronized(this) { packageScopes[fq]?.let { return it } }
         val name = fq.asString()
+        val sources = fileSymbols.filter { it.file.packageName == name }.flatMap { it.declarations }
+        val lib = libraryPackage(fq)
         val out = ArrayList<KaDeclarationSymbol>()
-        for (f in fileSymbols) if (f.file.packageName == name) out += f.declarations
-        libraryPackage(fq)?.let { p ->
-            out += p.decls
-            p.classes.mapNotNullTo(out) { if (it in classes) null else libraryClass(it) }
+        sources.filterTo(out) { it is KaCallableSymbol }
+        lib?.decls?.filterTo(out) { it is KaCallableSymbol }
+        sources.filterTo(out) { it !is KaCallableSymbol }
+        for (f in javaFiles) if (f.packageName == name) {
+            for (c in f.classes) javaClassId(c)?.let { id -> libraryClass(id)?.let { out += it } }
         }
+        lib?.let { p -> p.classes.mapNotNullTo(out) { if (it in classes) null else libraryClass(it) } }
+        lib?.decls?.filterTo(out) { it !is KaCallableSymbol }
         return synchronized(this) { packageScopes.getOrPut(fq) { out } }
     }
 
@@ -586,8 +592,11 @@ internal class KcRound(
                     else -> true
                 }
             }
-            val p = KcPropertySymbol(info(d, psi, parent, key, own))
-            register(p, key, psi)
+            // A Java source enum's synthetic entries property is its class,
+            // as in FIR; KSP then gives it no accessors.
+            val src = psi ?: javaOwnerPsi(parent)
+            val p = KcPropertySymbol(info(d, src, parent, key, own))
+            register(p, key, src)
             p.typeParams = typeParams(d, p, key)
             ctx.typeParams = p.typeParams
             val accessors = (psi as? KtProperty)?.accessors.orEmpty()
