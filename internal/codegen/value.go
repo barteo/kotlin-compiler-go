@@ -375,6 +375,7 @@ func (g *gen) valueClass(cd *syntax.ClassDecl) *cf.Class {
 	for _, p := range companionFields(cd) {
 		g.propField(c, p, false)
 	}
+	g.constFields(c, cd)
 	g.staticInit(cd)
 	return c
 }
