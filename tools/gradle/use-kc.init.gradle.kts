@@ -25,6 +25,10 @@ if (gradle.parent == null) {
       Regex("compile\\w*Kotlin").matches(it.name) &&
         it.javaClass.name.startsWith("org.jetbrains.kotlin.gradle.tasks.KotlinCompile")
     }.configureEach {
+      // A new kc binary recompiles the module.
+      System.getenv("KC")?.let { kc ->
+        inputs.file(kc).withPropertyName("kcBinary").withPathSensitivity(PathSensitivity.NONE)
+      }
       doFirst {
         val task = this
         fun call(target: Any, name: String): Any? =
