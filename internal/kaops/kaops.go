@@ -10,7 +10,7 @@
 // OpKaUpdate: session:Int n:Uint path:String*n → model
 //
 //	model   = handle:Int n:Uint file*n m:Uint diag*m
-//	file    = path:String package:String annots decls
+//	file    = path:String package:String annots decls lookups
 //	decls   = n:Uint decl*n
 //	decl    = kind:Uint name:String node:Uint classID:String visibility:Uint
 //	          modality:Uint flags:Uint variance:Uint type receiver:type
@@ -28,6 +28,10 @@
 //	          | enum: classID:String entry:String | class: type
 //	          | annotation: annot | array: n:Uint value*n]
 //	diag    = path:String line:Uint col:Uint message:String feature:String
+//	lookups = n:Uint (scope:String kind:Uint name:String)*n
+//
+// lookups are the names a file looks up (ka's File.Lookups), for
+// incremental processing; kind is a ka LookupKind.
 //
 // An unresolved annotation has classID "".
 //
@@ -188,6 +192,12 @@ func update(req []byte) ([]byte, error) {
 		w.String(f.Package)
 		writeAnnotations(&w, f.Annotations)
 		writeDecls(&w, f.Decls)
+		w.Uint(uint64(len(f.Lookups)))
+		for _, l := range f.Lookups {
+			w.String(l.Scope)
+			w.Uint(uint64(l.Kind))
+			w.String(l.Name)
+		}
 	}
 	w.Uint(uint64(len(m.Diagnostics)))
 	for _, d := range m.Diagnostics {

@@ -224,7 +224,28 @@ type File struct {
 	Snapshot    *psi.Snapshot
 	Annotations []Annotation // @file: annotations
 	Decls       []*Decl      // top-level declarations, in source order
+	// Lookups are the names the file's code looks up in packages and
+	// classes, for incremental processing, sorted: what Kotlin's lookup
+	// tracker records for it, and more. A file with syntax errors has
+	// none.
+	Lookups []Lookup
 }
+
+// Lookup is a name looked up in a scope: a package, a.b ("" for the
+// default package), or a class, a.b.Outer.Inner.
+type Lookup struct {
+	Scope string
+	Kind  LookupKind
+	Name  string
+}
+
+// LookupKind is the kind of scope a Lookup searched.
+type LookupKind uint8
+
+const (
+	PackageLookup LookupKind = iota // a package
+	ClassLookup                     // a class: its members and nested classes
+)
 
 // Decl is a declaration in the sources.
 type Decl struct {
@@ -405,7 +426,7 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 	for i, f := range files {
 		b := &fileBuilder{f: f, snap: snaps[i], prov: provs[i], annots: rec.annots[f], values: rec.values[f], refs: rec.refs, aliases: rec.aliases, lib: m.lib,
 			tparams: map[*types.TypeParamSym]psi.NodeID{}}
-		mf := &File{Path: snaps[i].Path(), Package: f.Package, Snapshot: snaps[i]}
+		mf := &File{Path: snaps[i].Path(), Package: f.Package, Snapshot: snaps[i], Lookups: rec.fileLookups(f)}
 		mf.Annotations = b.annotations(f.Annotations)
 		pkg := strings.ReplaceAll(f.Package, ".", "/")
 		for _, d := range f.Decls {
@@ -494,7 +515,7 @@ func panicStack() string {
 func checkFiles(ctx context.Context, files []*syntax.File, lib *check.Library, jobs int) (rec *recorder, errs []*syntax.Error, err error) {
 	rec = &recorder{annots: map[*syntax.File]map[syntax.Pos]*types.ClassSym{},
 		values: map[*syntax.File]map[syntax.Pos][]syntax.AnnotationValue{}, refs: map[*syntax.TypeRef]types.Type{},
-		aliases: map[*syntax.TypeRef]*types.AliasSym{}}
+		aliases: map[*syntax.TypeRef]*types.AliasSym{}, lookups: map[*syntax.File][]Lookup{}}
 	defer func() {
 		if v := recover(); v != nil {
 			err = checkPanic{v, panicStack()}
@@ -528,6 +549,27 @@ type recorder struct {
 	aliases map[*syntax.TypeRef]*types.AliasSym
 	// bodies is when the checker started the bodies.
 	bodies time.Time
+	// lookups are the files' lookups, as the checker reports them.
+	lookups map[*syntax.File][]Lookup
+}
+
+func (r *recorder) Lookup(f *syntax.File, scope string, kind check.LookupKind, name string) {
+	k := PackageLookup
+	if kind == check.ClassLookup {
+		k = ClassLookup
+	}
+	r.mu.Lock()
+	r.lookups[f] = append(r.lookups[f], Lookup{Scope: scope, Kind: k, Name: name})
+	r.mu.Unlock()
+}
+
+// fileLookups returns f's lookups, sorted and without duplicates.
+func (r *recorder) fileLookups(f *syntax.File) []Lookup {
+	ls := r.lookups[f]
+	slices.SortFunc(ls, func(a, b Lookup) int {
+		return cmp.Or(cmp.Compare(a.Scope, b.Scope), cmp.Compare(a.Kind, b.Kind), cmp.Compare(a.Name, b.Name))
+	})
+	return slices.Compact(ls)
 }
 
 func (r *recorder) Bodies() { r.bodies = time.Now() }

@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"testing"
 
 	"github.com/barteo/kotlin-compiler-go/analysis/ka"
@@ -51,11 +52,25 @@ func TestOpenUpdateClose(t *testing.T) {
 	if n := r.Uint(); n != 0 {
 		t.Fatalf("%d file annotations", n)
 	}
-	if n := r.Uint(); n != 2 {
-		t.Fatalf("%d declarations", n)
+	if decls := readDecls(r); len(decls) != 2 {
+		t.Fatalf("%d declarations", len(decls))
+	}
+	var lookups []ka.Lookup
+	for n := r.Uint(); n > 0 && r.Err() == nil; n-- {
+		lookups = append(lookups, ka.Lookup{Scope: r.String(), Kind: ka.LookupKind(r.Uint()), Name: r.String()})
+	}
+	// @A: the annotation class, by its simple name in the file's package.
+	if !slices.Contains(lookups, ka.Lookup{Scope: "p", Kind: ka.PackageLookup, Name: "A"}) {
+		t.Errorf("lookups %v: no A in p", lookups)
+	}
+	if n := r.Uint(); n != 0 {
+		t.Errorf("%d diagnostics", n)
 	}
 	if err := r.Err(); err != nil {
 		t.Fatal(err)
+	}
+	if r.Len() != 0 {
+		t.Error("bytes left after the model")
 	}
 
 	for _, h := range []int64{model, session} {
