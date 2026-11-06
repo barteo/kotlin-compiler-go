@@ -53,6 +53,7 @@ testIsMutable
 testJavaAccessor
 testJavaAnno
 testJavaOverrideInSource
+testJavaSubtype
 testJavaSubtypeOfKotlinInterface
 testJavaToKotlinMapper
 testJavaTypes

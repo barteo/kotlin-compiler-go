@@ -153,6 +153,11 @@ func (l *library) class(id string) *Decl {
 	// A built-in class: a function type's interface, an array, or a
 	// Java class that Kotlin maps.
 	d := &Decl{Kind: KindClass, Name: simpleName(id), ClassID: id, Modality: ModalityFinal}
+	if !strings.HasPrefix(id, "kotlin/") {
+		// A Java class by its own name, as java/util/Collection: FIR's
+		// is a Java class, which KSP maps to Kotlin's to compare types.
+		d.Flags |= FlagJava
+	}
 	if cls.Interface {
 		d.Kind, d.Modality = KindInterface, ModalityAbstract
 	} else if !cls.Final {

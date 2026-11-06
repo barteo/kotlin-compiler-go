@@ -16,7 +16,6 @@ testInterfaceWithDefault: java-source: NullPointerException: null cannot be cast
 testJavaAnnotatedUtil: java-source: line 1: want Test: OnlyTestAnnotation got
 testJavaModifiers: java-source: InternalKSPException: >>> Internal KSP Error
 testJavaNonNullTypes: checker-gap: the checker ignores Java @NotNull/@Nullable, so Java types stay platform types
-testJavaSubtype: java-source: line 1: want true got false
 testLocalClasses: local-declarations: anonymous objects
 testLocations: java-source: line 3: want K:J.java:81 got K:K.kt:60
 testParent: java-source: line 28: want parent of Any: (Any..Any?) got parent of synthetic constructor for B: B
