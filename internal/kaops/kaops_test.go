@@ -279,6 +279,7 @@ func readDecls(r *wire.Reader) []*ka.Decl {
 		d.Params = readDecls(r)
 		d.Members = readDecls(r)
 		d.Default = readValue(r)
+		d.Locals = readDecls(r)
 		out = append(out, d)
 	}
 	return out

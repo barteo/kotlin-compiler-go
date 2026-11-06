@@ -16,7 +16,7 @@
 //	          modality:Uint flags:Uint variance:Uint type receiver:type
 //	          supertypes:types bounds:types
 //	          annots typeParams:decls params:decls members:decls
-//	          default:value
+//	          default:value locals:decls
 //	types   = n:Uint type*n
 //	type    = kind:Uint [classID:String tflags:Uint param:Uint name:String
 //	          contexts:Uint n:Uint (variance:Uint type)*n abbrev:type]
@@ -215,6 +215,7 @@ func writeDecls(w *wire.Writer, ds []*ka.Decl) {
 		writeDecls(w, d.Params)
 		writeDecls(w, d.Members)
 		writeValue(w, d.Default)
+		writeDecls(w, d.Locals)
 	}
 }
 

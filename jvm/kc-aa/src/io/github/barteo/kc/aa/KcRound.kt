@@ -9,6 +9,7 @@ import com.intellij.psi.PsiMethod
 import com.intellij.psi.PsiModifier
 import com.intellij.psi.PsiModifierListOwner
 import com.intellij.psi.PsiTypeParameterListOwner
+import com.intellij.psi.util.PsiTreeUtil
 import org.jetbrains.kotlin.analysis.api.annotations.KaAnnotation
 import org.jetbrains.kotlin.analysis.api.annotations.KaAnnotationValue
 import org.jetbrains.kotlin.analysis.api.symbols.*
@@ -534,12 +535,14 @@ internal class KcRound(
                 f.typeParams = typeParams(d, f, key)
                 ctx.typeParams = f.typeParams
                 f.params = params(d, f, key)
+                locals(d, key) { f }
                 f
             }
             KcDecl.CONSTRUCTOR -> {
                 val psi = psiOf<KtConstructor<*>>(d) ?: javaPsi(d, parent)
                 val c = register(KcConstructorSymbol(info(d, psi, parent, key)), key, psi)
                 c.params = params(d, c, key)
+                locals(d, key) { c }
                 c
             }
             KcDecl.PROPERTY -> scoped { ctx -> property(d, parent!!, key, ctx) }
@@ -607,7 +610,23 @@ internal class KcRound(
                     KcInfo(this@KcRound, d, null, p, "$key/field", field, types, p.info.origin), p,
                 ).also { register(it, "$key/field", null) }
             }
+            // An accessor's locals are its; the model has them on the property.
+            locals(d, key) { psi ->
+                listOfNotNull(p.getterSymbol, p.setterSymbol).firstOrNull { a ->
+                    val ap = (a as? KcGetterSymbol)?.info?.psi ?: (a as? KcSetterSymbol)?.info?.psi
+                    ap != null && psi != null && PsiTreeUtil.isAncestor(ap, psi, true)
+                } ?: p
+            }
             return p
+        }
+
+        /**
+         * The symbols of [d]'s local declarations, whose keys extend
+         * [key]; [parent] gives the symbol that contains the one at a psi
+         * element.
+         */
+        fun locals(d: KcDecl, key: String, parent: (PsiElement?) -> KaSymbol) {
+            d.locals.forEachIndexed { i, l -> decl(l, parent(psi(l.node)), "$key/!${l.kind}:${l.name}:$i") }
         }
 
         fun typeParams(d: KcDecl, parent: KaSymbol, key: String): List<KaTypeParameterSymbol> =

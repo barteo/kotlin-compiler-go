@@ -21,8 +21,6 @@ testConstructorDeclarations: java-source: line 4: want <init>(kotlin.Int): lib.A
 testCrossModuleTypeAlias: type-alias: library type aliases in other modules
 testDeclarationOrder: java-source: line 23: want b:Ljava/lang/String; got KotlinClass
 testDeclarationPackageName: java-source: UnsupportedOperationException: kc: no symbol for KtClass class InnerLocal
-testDeclarationUtil: local-declarations: no symbols for local declarations
-testDeclarationsInAccessor: local-declarations: no symbols for local declarations
 testDeclarationsInClass: java-members: Java collection members (remove/removeAt) mapping
 testDeferredJavaSymbols: java-source: line 1: want K got
 testDeferredTypeRefs: disabled: @Disabled in KSPUnitTestSuite
@@ -34,7 +32,7 @@ testFunctionTypeAnnotation: type-annotations: function type annotations
 testFunctionTypes: function-types: KFunction/suspend function kinds
 testGetPackage: java-source: line 9: want lib2.Foo KOTLIN_LIB got lib2.FooTypeAlias KOTLIN_LIB
 testGetSymbolsFromAnnotation: java-source: line 2: want <init>:KSFunctionDeclaration got ==== Anno inDepth = true ====
-testGetSymbolsFromAnnotationInLib: local-declarations: no symbols for local declarations
+testGetSymbolsFromAnnotationInLib: file-annotations: @file: annotations of a library annotation class are missing
 testGroupedAnnotations: annotation-target: file annotations in groups
 testGroupedAnnotationsWithUseSiteTargets: annotation-target: file annotations in groups
 testHello: java-source: line 1: want 8 got 0

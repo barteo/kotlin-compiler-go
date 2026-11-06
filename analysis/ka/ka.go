@@ -134,6 +134,8 @@ const (
 	Internal
 	// PackagePrivate is a Java declaration's package visibility.
 	PackagePrivate
+	// Local is a local declaration's.
+	Local
 )
 
 // Modality is a declaration's modality. The numbers are part of libkc's
@@ -259,6 +261,12 @@ type Decl struct {
 	// Default is the default value of an annotation class's
 	// constructor's parameter, if it has one, and a const val's value.
 	Default *Value
+	// Locals are the local variables, functions and classes written
+	// directly in a function's or a constructor's body, or in a
+	// property's accessors' bodies, in source order: what an Analysis
+	// API client lists as its declarations. Their visibility is Local,
+	// and a local class has no ClassID.
+	Locals []*Decl
 }
 
 // Annotation is an annotation in the sources.

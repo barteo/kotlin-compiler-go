@@ -82,6 +82,60 @@ func dump(sb *strings.Builder, snap *psi.Snapshot, ds []*Decl, indent string) {
 		dump(sb, snap, d.TypeParams, indent+"  <")
 		dump(sb, snap, d.Params, indent+"  (")
 		dump(sb, snap, d.Members, indent+"  ")
+		dump(sb, snap, d.Locals, indent+"  !")
+	}
+}
+
+func TestLocals(t *testing.T) {
+	m := update(t, `package a
+annotation class Anno
+
+class C {
+    constructor(x: Int) {
+        @Anno val aaa = 2
+        println(aaa)
+    }
+    fun f(): Int {
+        var v: String = ""
+        @Anno fun g() {}
+        @Anno class L
+        if (true) { val nested = 1 }
+        return 1
+    }
+    var p: Int
+        get() { val inGet = 1; return inGet }
+        set(value) { val inSet = value }
+}
+`)
+	var sb strings.Builder
+	f := m.Files[0]
+	dump(&sb, f.Snapshot, f.Decls, "")
+	got := sb.String()
+	want := `annotation Anno [a/Anno] CLASS
+  ctor <init> -
+class C [a/C] CLASS
+  ctor <init> SECONDARY_CONSTRUCTOR
+    (param x VALUE_PARAMETER
+    !val aaa PROPERTY @a/Anno
+  fun f FUN
+    !val v PROPERTY
+    !fun g FUN @a/Anno
+    !class L CLASS @a/Anno
+    !  ctor <init> -
+  val p PROPERTY
+    !val inGet PROPERTY
+    !val inSet PROPERTY
+`
+	if got != want {
+		t.Errorf("got:\n%s\nwant:\n%s", got, want)
+	}
+	for _, l := range f.Decls[1].Members[1].Locals {
+		if l.Visibility != Local || l.ClassID != "" {
+			t.Errorf("%s: visibility %d, class ID %q", l.Name, l.Visibility, l.ClassID)
+		}
+	}
+	if v := f.Decls[1].Members[1].Locals[0]; v.Flags&FlagMutable == 0 || v.Type == nil || v.Type.ClassID != "kotlin/String" {
+		t.Errorf("v: flags %x, type %+v", v.Flags, v.Type)
 	}
 }
 

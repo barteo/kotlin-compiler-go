@@ -34,6 +34,7 @@ func (b *fileBuilder) decl(d syntax.Decl, owner *syntax.ClassDecl, prefix string
 		if d.Sym != nil {
 			md.Type = b.typ(d.Sym.Ret, d.Ret)
 		}
+		md.Locals = b.locals(d.Body)
 		return md
 	case *syntax.PropDecl:
 		if d.Plugin || d.DelegateOf != nil || b.prov.Node(d) == 0 {
@@ -56,6 +57,11 @@ func (b *fileBuilder) decl(d syntax.Decl, owner *syntax.ClassDecl, prefix string
 		if md.Flags&FlagConst != 0 && d.Init != nil && d.Sym != nil {
 			md.Default = b.defaultValue(d.Sym.Type, d.Init, 0)
 		}
+		for _, a := range []*syntax.FunDecl{d.Getter, d.Setter} {
+			if a != nil {
+				md.Locals = append(md.Locals, b.locals(a.Body)...)
+			}
+		}
 		return md
 	case *syntax.TypeAliasDecl:
 		md := &Decl{Kind: KindTypeAlias, Name: d.Name, Node: b.prov.Node(d),
@@ -71,9 +77,56 @@ func (b *fileBuilder) decl(d syntax.Decl, owner *syntax.ClassDecl, prefix string
 			Visibility: visibility(d.Visibility), Annotations: b.annotations(d.Annotations),
 			Flags: commonFlags(&d.Modifiers)}
 		md.Params = b.params(d.Params)
+		md.Locals = b.locals(d.Body)
 		return md
 	}
 	return nil
+}
+
+// locals returns the models of the local declarations written directly
+// in body: Decl.Locals. A destructuring declaration's entries aren't
+// among them.
+func (b *fileBuilder) locals(body *syntax.Block) []*Decl {
+	if body == nil {
+		return nil
+	}
+	var out []*Decl
+	for _, s := range body.Stmts {
+		var md *Decl
+		switch s := s.(type) {
+		case *syntax.VarStmt:
+			node := b.prov.Node(s)
+			if node == 0 {
+				continue
+			}
+			md = &Decl{Kind: KindProperty, Name: s.Name, Node: node,
+				Annotations: b.annotations(b.f.Annotated[s])}
+			if s.Mutable {
+				md.Flags |= FlagMutable
+			}
+			if s.Lateinit {
+				md.Flags |= FlagLateinit
+			}
+			if s.Sym != nil {
+				md.Type = b.typ(s.Sym.Type, s.Type)
+			} else {
+				md.Type = b.written(s.Type)
+			}
+		case *syntax.LocalFun:
+			md = b.decl(s.Decl, nil, "")
+		case *syntax.LocalClass:
+			// Its annotations are the statement's.
+			if md = b.decl(s.Decl, nil, ""); md != nil {
+				md.ClassID = ""
+				md.Annotations = append(b.annotations(s.Annotations), md.Annotations...)
+			}
+		}
+		if md != nil {
+			md.Visibility = Local
+			out = append(out, md)
+		}
+	}
+	return out
 }
 
 func (b *fileBuilder) class(d *syntax.ClassDecl, prefix string) *Decl {

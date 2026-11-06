@@ -2457,7 +2457,66 @@ func (c *Checker) checkSignatures() {
 			c.checkClass(d)
 		}
 	}
+	for _, d := range c.file.Decls {
+		c.localDeclAnnotations(d, nil)
+	}
+	for _, d := range c.classes {
+		for _, m := range d.Members {
+			c.localDeclAnnotations(m, d.Sym)
+		}
+	}
 	c.typeAnnotations()
+}
+
+// localDeclAnnotations checks, for checkSignatures, the annotations of
+// the local declarations written directly in the body of function,
+// constructor or property d, a member of class owner (nil at top level),
+// and resolves the local variables' written types: what an Analysis API
+// client lists as its declarations.
+func (c *Checker) localDeclAnnotations(d syntax.Decl, owner *types.ClassSym) {
+	switch d := d.(type) {
+	case *syntax.FunDecl:
+		c.localStmtAnnotations(d.Body, d.Sym, owner)
+	case *syntax.SecondaryCtor:
+		c.localStmtAnnotations(d.Body, d.Sym, owner)
+	case *syntax.PropDecl:
+		for _, a := range []*syntax.FunDecl{d.Getter, d.Setter} {
+			if a != nil {
+				c.localStmtAnnotations(a.Body, a.Sym, owner)
+			}
+		}
+	}
+}
+
+// localStmtAnnotations checks the annotations of the local variables,
+// functions and classes among the statements of body, function f's (if
+// known) of class owner, and resolves the variables' written types where
+// the body wasn't checked. They are resolved where the function is: a
+// local class, which they could name, isn't in scope.
+func (c *Checker) localStmtAnnotations(body *syntax.Block, f *types.FunSym, owner *types.ClassSym) {
+	if body == nil {
+		return
+	}
+	var tparams []*types.TypeParamSym
+	if f != nil {
+		tparams = funTypeParams(f, owner)
+	} else if owner != nil {
+		tparams = owner.TypeParams
+	}
+	for _, s := range body.Stmts {
+		c.state = state{scope: &scope{}, cls: owner, tparams: tparams}
+		switch s := s.(type) {
+		case *syntax.VarStmt:
+			c.annotatedNode(s, localVarSite)
+			if s.Sym == nil && s.Type != nil {
+				c.resolveType(s.Type)
+			}
+		case *syntax.LocalFun:
+			c.localAnnotations(s.Decl.Annotations, localFunSite)
+		case *syntax.LocalClass:
+			c.localAnnotations(s.Annotations, classSite(s.Decl))
+		}
+	}
 }
 
 // checkClass checks a class's code: its constructors' calls, property

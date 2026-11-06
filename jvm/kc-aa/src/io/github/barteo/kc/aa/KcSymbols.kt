@@ -83,6 +83,7 @@ internal class KcInfo(
             KcDecl.PROTECTED -> KaSymbolVisibility.PROTECTED
             KcDecl.INTERNAL -> KaSymbolVisibility.INTERNAL
             KcDecl.PACKAGE_PRIVATE -> KaSymbolVisibility.PACKAGE_PRIVATE
+            KcDecl.LOCAL -> KaSymbolVisibility.LOCAL
             else -> KaSymbolVisibility.PUBLIC
         }
 
@@ -92,6 +93,7 @@ internal class KcInfo(
             KcDecl.PROTECTED -> if (isJava) JavaVisibilities.ProtectedAndPackage else Visibilities.Protected
             KcDecl.INTERNAL -> Visibilities.Internal
             KcDecl.PACKAGE_PRIVATE -> JavaVisibilities.PackageVisibility
+            KcDecl.LOCAL -> Visibilities.Local
             else -> Visibilities.Public
         }
 
@@ -161,7 +163,7 @@ internal class KcClassSymbol(val info: KcInfo) : StubKaNamedClassSymbol() {
     override val origin get() = info.origin
     override val annotations get() = info.annotations
     override val name get() = info.name
-    override val classId: ClassId? = ClassId.fromString(info.decl.classId)
+    override val classId: ClassId? = info.decl.classId.takeIf { it.isNotEmpty() }?.let(ClassId::fromString)
     override val visibility get() = info.visibility
     override val compilerVisibility get() = info.compilerVisibility
     override val location get() = info.location
@@ -413,7 +415,7 @@ internal class KcTypeAliasSymbol(val info: KcInfo) : StubKaTypeAliasSymbol() {
     override val origin get() = info.origin
     override val annotations get() = info.annotations
     override val name get() = info.name
-    override val classId: ClassId? = ClassId.fromString(info.decl.classId)
+    override val classId: ClassId? = info.decl.classId.takeIf { it.isNotEmpty() }?.let(ClassId::fromString)
     override val visibility get() = info.visibility
     override val compilerVisibility get() = info.compilerVisibility
     override val location get() = info.location

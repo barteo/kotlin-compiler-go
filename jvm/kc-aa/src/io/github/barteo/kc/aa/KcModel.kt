@@ -129,6 +129,7 @@ internal object KcOps {
                 params = decls(),
                 members = decls(),
                 default = value(),
+                locals = decls(),
             )
         }
 
@@ -197,6 +198,8 @@ internal class KcDecl(
     val members: List<KcDecl>,
     /** An annotation class's constructor parameter's default value. */
     val default: KcValue? = null,
+    /** The local declarations written directly in a function's, a constructor's or a property's accessors' bodies. */
+    val locals: List<KcDecl> = emptyList(),
 ) {
     fun has(flag: Long) = flags and flag != 0L
     val isCompanion get() = has(COMPANION)
@@ -224,6 +227,7 @@ internal class KcDecl(
         const val PROTECTED = 2
         const val INTERNAL = 3
         const val PACKAGE_PRIVATE = 4
+        const val LOCAL = 5
 
         // Go's ka.Modality values.
         const val FINAL = 0
