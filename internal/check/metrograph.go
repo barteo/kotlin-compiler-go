@@ -3,6 +3,7 @@ package check
 import (
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
@@ -41,6 +42,18 @@ type mGraph struct {
 	containers map[*types.ClassSym]string // binding containers' instances
 	failed     bool
 	excluded   map[string]bool
+
+	// A graph extension's graph is an inner class of its parent's, whose
+	// bindings it uses. The names of each graph's members start with its
+	// prefix, so a child's never hide its parent's.
+	parent   *mGraph
+	prefix   string
+	children map[*types.ClassSym]*mGraph
+	impl     string // the name of the graph's class
+
+	factory   *types.ClassSym
+	create    *mMember
+	accessors []*mMember
 }
 
 // mBinding is how a graph gets the value of a key.
@@ -58,6 +71,8 @@ type mBinding struct {
 	multi    *mMulti
 	// from is the class that contributes the binding, if any.
 	from string
+	// owner is the graph whose class has the binding's function.
+	owner *mGraph
 }
 
 // mMulti is a set or map multibinding.
@@ -92,10 +107,17 @@ type mReq struct {
 	name     string
 }
 
-func (m *metroAnalysis) newGraph(c *Checker, cls *types.ClassSym, pos syntax.Pos) *mGraph {
+func (m *metroAnalysis) newGraph(c *Checker, cls *types.ClassSym, pos syntax.Pos, parent *mGraph) *mGraph {
 	return &mGraph{m: m, c: c, g: cls, pos: pos, scopes: map[string]bool{}, bindings: map[string][]*mBinding{},
 		multis: map[string]*mMulti{}, implicit: map[string]*mBinding{}, wrappers: map[string]string{},
-		containers: map[*types.ClassSym]string{}, excluded: map[string]bool{}}
+		containers: map[*types.ClassSym]string{}, excluded: map[string]bool{}, parent: parent,
+		children: map[*types.ClassSym]*mGraph{}, impl: "Impl"}
+}
+
+// name returns the name of a member of the graph's class: $, the graph's
+// prefix, kind and n.
+func (gr *mGraph) name(kind byte, n int) string {
+	return fmt.Sprintf("`$%s%c%d`", gr.prefix, kind, n)
 }
 
 func (gr *mGraph) errorf(format string, args ...any) {
@@ -180,7 +202,14 @@ func isSetType(t types.Type) bool {
 
 // add adds a binding.
 func (gr *mGraph) add(b *mBinding) {
+	b.owner = gr
 	gr.bindings[b.key] = append(gr.bindings[b.key], b)
+}
+
+// addElem adds an element to a multibinding of the graph.
+func (gr *mGraph) addElem(mu *mMulti, e *mElem) {
+	e.b.owner = gr
+	mu.elems = append(mu.elems, e)
 }
 
 // multi returns the multibinding of a key, which it creates.
@@ -197,15 +226,28 @@ func (gr *mGraph) multi(t types.Type, q string) *mMulti {
 // graph resolves the bindings of graph class d, annotated a, and writes
 // its Impl class and companion.
 func (m *metroAnalysis) graph(c *Checker, d *syntax.ClassDecl, a *mAnn) {
-	cls := d.Sym
-	gr := m.newGraph(c, cls, d.P)
-	if len(cls.TypeParams) > 0 {
-		gr.unsupported("Metro graphs with type parameters are not supported")
+	gr := m.newGraph(c, d.Sym, d.P, nil)
+	if !gr.setup(a, mGraphFactory, "@DependencyGraph.Factory") || !gr.resolveAccessors() {
 		return
 	}
-	if !d.Interface && !d.Abstract {
-		gr.errorf("@DependencyGraph classes must be interfaces or abstract classes")
-		return
+	gr.write()
+}
+
+// setup reads the graph's annotation a, its factory, annotated
+// factoryAnn, and its members and contributions, and adds their bindings.
+func (gr *mGraph) setup(a *mAnn, factoryAnn, factoryName string) bool {
+	m, cls := gr.m, gr.g
+	if len(cls.TypeParams) > 0 {
+		gr.unsupported("Metro graphs with type parameters are not supported")
+		return false
+	}
+	if !cls.Interface && !cls.Abstract {
+		gr.errorf("%s must be an interface or an abstract class", cls.DisplayName())
+		return false
+	}
+	// The graph itself.
+	if k, ok := keyOf(cls.This(), ""); ok {
+		gr.add(&mBinding{key: k, t: cls.This(), what: cls.DisplayName(), expr: func([]string) string { return "this" }})
 	}
 	var scopeClasses []string
 	if s := a.args["scope"]; s.tag == 'c' && s.class != mNothing {
@@ -222,16 +264,11 @@ func (m *metroAnalysis) graph(c *Checker, d *syntax.ClassDecl, a *mAnn) {
 		gr.excluded[e] = true
 	}
 
-	// The graph itself.
-	if k, ok := keyOf(cls.This(), ""); ok {
-		gr.add(&mBinding{key: k, t: cls.This(), what: cls.DisplayName(), expr: func([]string) string { return "this" }})
-	}
-
 	// The factory and its parameters.
 	var factory *types.ClassSym
 	var create *mMember
 	for _, n := range cls.Nested {
-		if find(m.annsOf(n), mGraphFactory) != nil {
+		if find(m.annsOf(n), factoryAnn) != nil {
 			factory = n
 		}
 	}
@@ -239,19 +276,19 @@ func (m *metroAnalysis) graph(c *Checker, d *syntax.ClassDecl, a *mAnn) {
 		for _, mm := range m.inherited(factory) {
 			if mm.abstract {
 				if create != nil {
-					gr.errorf("@DependencyGraph.Factory %s must have a single abstract function", factory.DisplayName())
-					return
+					gr.errorf("%s %s must have a single abstract function", factoryName, factory.DisplayName())
+					return false
 				}
 				create = mm
 			}
 		}
 		if create == nil || create.prop {
-			gr.errorf("@DependencyGraph.Factory %s must have a single abstract function", factory.DisplayName())
-			return
+			gr.errorf("%s %s must have a single abstract function", factoryName, factory.DisplayName())
+			return false
 		}
 		if !factory.Interface {
 			gr.unsupported("Metro graph factories that are abstract classes are not supported")
-			return
+			return false
 		}
 	}
 	var containers []*types.ClassSym
@@ -269,11 +306,11 @@ func (m *metroAnalysis) graph(c *Checker, d *syntax.ClassDecl, a *mAnn) {
 	if create != nil {
 		for i, p := range create.params {
 			pa := create.paramAnns[i]
-			field := fmt.Sprintf("`$p%d`", i)
+			field := gr.name('p', i)
 			ts, ok := kotlinTypeSrc(p.Type)
 			if !ok {
 				gr.unsupported("kc can't name the type %s of a graph factory parameter", p.Type)
-				return
+				return false
 			}
 			gr.ctorParams = append(gr.ctorParams, fmt.Sprintf("private val %s: %s", field, ts))
 			switch {
@@ -283,7 +320,7 @@ func (m *metroAnalysis) graph(c *Checker, d *syntax.ClassDecl, a *mAnn) {
 			case find(pa, mIncludes) != nil:
 				if p.Type.K != types.Class {
 					gr.unsupported("kc can't include %s in a graph", p.Type)
-					return
+					return false
 				}
 				inc := p.Type.C
 				k, _ := keyOf(p.Type, "")
@@ -295,7 +332,7 @@ func (m *metroAnalysis) graph(c *Checker, d *syntax.ClassDecl, a *mAnn) {
 				gr.includeAccessors(inc, field)
 			default:
 				gr.errorf("graph factory parameters must be annotated @Provides or @Includes: %s", p.Name)
-				return
+				return false
 			}
 		}
 	}
@@ -344,7 +381,7 @@ func (m *metroAnalysis) graph(c *Checker, d *syntax.ClassDecl, a *mAnn) {
 		default:
 			if err := gr.contributedBinding(ct.cls, ct.ann); err != nil {
 				gr.unsupported("%v", err)
-				return
+				return false
 			}
 		}
 	}
@@ -352,7 +389,7 @@ func (m *metroAnalysis) graph(c *Checker, d *syntax.ClassDecl, a *mAnn) {
 		ts, ok := kotlinTypeSrc(s.This())
 		if !ok || len(s.TypeParams) > 0 {
 			gr.unsupported("kc can't implement contributed interface %s", s.DisplayName())
-			return
+			return false
 		}
 		gr.supers = append(gr.supers, ts)
 	}
@@ -391,16 +428,16 @@ func (m *metroAnalysis) graph(c *Checker, d *syntax.ClassDecl, a *mAnn) {
 		}
 		gr.container(k)
 	}
-	if gr.failed {
-		return
-	}
-	for _, mm := range accessors {
+	gr.factory, gr.create, gr.accessors = factory, create, accessors
+	return !gr.failed
+}
+
+// resolveAccessors implements the graph's abstract members.
+func (gr *mGraph) resolveAccessors() bool {
+	for _, mm := range gr.accessors {
 		gr.accessor(mm)
 	}
-	if gr.failed {
-		return
-	}
-	gr.write(d, factory, create)
+	return !gr.failed
 }
 
 func (a *mAnn) argClasses(name string) []string {
@@ -541,7 +578,7 @@ func (gr *mGraph) contributedBinding(cls *types.ClassSym, a *mAnn) error {
 	case mContributesIntoSet:
 		st := gr.setOf(bound)
 		mu := gr.multi(st, q)
-		mu.elems = append(mu.elems, &mElem{b: alias("")})
+		gr.addElem(mu, &mElem{b: alias("")})
 	case mContributesIntoMap:
 		key := m.mapKeyAnn(anns)
 		if key == nil {
@@ -601,7 +638,7 @@ func (gr *mGraph) mapElem(key *mAnn, v types.Type, q string, b *mBinding) error 
 		return fmt.Errorf("kc can't name %s", mt)
 	}
 	mu := gr.multi(mt, q)
-	mu.elems = append(mu.elems, &mElem{b: b, mapKey: src, mapKeyID: val.key()})
+	gr.addElem(mu, &mElem{b: b, mapKey: src, mapKeyID: val.key()})
 	return nil
 }
 
@@ -674,7 +711,7 @@ func (gr *mGraph) instance(k *types.ClassSym) string {
 	if s, ok := gr.containers[k]; ok && s != "" {
 		return s
 	}
-	name := fmt.Sprintf("`$c%d`", len(gr.containers))
+	name := gr.name('c', len(gr.containers))
 	gr.containers[k] = name
 	gr.fields = append(gr.fields, fmt.Sprintf("private val %s: %s = %s()", name, metroClassName(k), metroClassName(k)))
 	return name
@@ -762,7 +799,7 @@ func (gr *mGraph) bind(b *mBinding, anns []*mAnn, t types.Type) {
 	case find(anns, mIntoSet) != nil:
 		st := gr.setOf(t)
 		mu := gr.multi(st, q)
-		mu.elems = append(mu.elems, &mElem{b: b})
+		gr.addElem(mu, &mElem{b: b})
 	case find(anns, mElementsIntoSet) != nil:
 		if t.K != types.Class || t.A == nil || len(t.A.List) != 1 {
 			gr.unsupported("kc can't read the element type of @ElementsIntoSet %s", b.what)
@@ -770,7 +807,7 @@ func (gr *mGraph) bind(b *mBinding, anns []*mAnn, t types.Type) {
 		}
 		st := gr.setOf(t.A.List[0].T)
 		mu := gr.multi(st, q)
-		mu.elems = append(mu.elems, &mElem{b: b, elements: true})
+		gr.addElem(mu, &mElem{b: b, elements: true})
 	case find(anns, mIntoMap) != nil:
 		key := m.mapKeyAnn(anns)
 		if key == nil {
@@ -860,8 +897,12 @@ func (gr *mGraph) accessor(mm *mMember) {
 		gr.injector(mm)
 		return
 	}
+	if len(mm.params) > 0 && mm.ret.K == types.Class && find(m.annsOf(mm.ret.C), mGraphExtension) != nil {
+		gr.extensionCreator(mm)
+		return
+	}
 	if len(mm.params) > 0 {
-		gr.unsupported("kc can't implement graph member %s, a function with parameters (graph extension factories are not supported)", mm.name)
+		gr.unsupported("kc can't implement graph member %s, a function with parameters", mm.name)
 		return
 	}
 	if mm.mutable {
@@ -884,6 +925,22 @@ func (gr *mGraph) accessor(mm *mMember) {
 	} else {
 		gr.overrides = append(gr.overrides, fmt.Sprintf("override fun %s(): %s = %s", backtick(mm.name), ret, x))
 	}
+}
+
+// extensionCreator implements a graph function that creates a graph
+// extension from its parameters: the extension's contributed factory's.
+func (gr *mGraph) extensionCreator(mm *mMember) {
+	child := gr.extension(mm.ret.C)
+	if child == nil {
+		return
+	}
+	if child.create == nil || len(child.create.params) != len(mm.params) {
+		gr.unsupported("kc can't implement graph member %s: only a graph extension factory's function may create %s from parameters", mm.name, mm.ret.C.DisplayName())
+		return
+	}
+	params, args := createParams(mm)
+	ret, _ := kotlinTypeSrc(mm.ret)
+	gr.overrides = append(gr.overrides, fmt.Sprintf("override fun %s(%s): %s = %s(%s)", backtick(mm.name), params, ret, child.impl, args))
 }
 
 // injector implements a graph function that injects the members of its
@@ -1021,8 +1078,15 @@ func (gr *mGraph) resolve(r *mReq) *mBinding {
 		}
 		return bs[0]
 	}
-	if mu := gr.multis[gr.multiKey(r.t, r.q)]; mu != nil && (isMapType(r.t) || isSetType(r.t)) {
-		return gr.multiBinding(mu)
+	if isMapType(r.t) || isSetType(r.t) {
+		if mu := gr.inheritedMulti(gr.multiKey(r.t, r.q)); mu != nil {
+			return gr.multiBinding(mu)
+		}
+	}
+	for anc := gr.parent; anc != nil; anc = anc.parent {
+		if len(anc.bindings[r.key]) > 0 {
+			return anc.resolve(r)
+		}
 	}
 	if b := gr.implicit[r.key]; b != nil {
 		return b
@@ -1031,20 +1095,32 @@ func (gr *mGraph) resolve(r *mReq) *mBinding {
 		return nil
 	}
 	cls := r.t.C
-	if anns := m.annsOf(cls); find(anns, mAssistedFactory) != nil {
-		b := gr.assistedFactory(r, cls)
+	keep := func(b *mBinding) *mBinding {
 		if b != nil {
+			b.owner = gr
 			gr.implicit[r.key] = b
 		}
 		return b
 	}
+	anns := m.annsOf(cls)
+	if find(anns, mAssistedFactory) != nil {
+		return keep(gr.assistedFactory(r, cls))
+	}
+	if b := gr.extensionBinding(r, cls); b != nil || gr.failed {
+		return keep(b)
+	}
+	if scopes := m.scopesOf(anns); len(scopes) > 0 && !gr.scopes[scopes[0]] {
+		for anc := gr.parent; anc != nil; anc = anc.parent {
+			if anc.scopes[scopes[0]] {
+				return anc.resolve(r)
+			}
+		}
+	}
 	ctor, pa, defs, assisted := m.ctorOf(cls)
 	if ctor == nil {
-		if cls.Object && find(m.annsOf(cls), mInject) != nil {
+		if cls.Object && find(anns, mInject) != nil {
 			name := metroClassName(cls)
-			b := &mBinding{key: r.key, t: r.t, what: cls.DisplayName(), expr: func([]string) string { return name }}
-			gr.implicit[r.key] = b
-			return b
+			return keep(&mBinding{key: r.key, t: r.t, what: cls.DisplayName(), expr: func([]string) string { return name }})
 		}
 		return nil
 	}
@@ -1060,8 +1136,35 @@ func (gr *mGraph) resolve(r *mReq) *mBinding {
 	if !ok {
 		return nil
 	}
-	gr.implicit[r.key] = b
-	return b
+	return keep(b)
+}
+
+// inheritedMulti returns the multibinding of a key, with the elements
+// that the graph's ancestors add to it, or nil.
+func (gr *mGraph) inheritedMulti(key string) *mMulti {
+	if gr.parent == nil {
+		return gr.multis[key]
+	}
+	if prev := gr.multis["inherited "+key]; prev != nil {
+		return prev
+	}
+	merged := &mMulti{key: key}
+	found := false
+	for g := gr; g != nil; g = g.parent {
+		if mu := g.multis[key]; mu != nil {
+			if !found {
+				merged.t, merged.isMap = mu.t, mu.isMap
+			}
+			found = true
+			merged.declared = merged.declared || mu.declared
+			merged.elems = append(slices.Clone(mu.elems), merged.elems...)
+		}
+	}
+	if !found {
+		return nil
+	}
+	gr.multis["inherited "+key] = merged
+	return merged
 }
 
 // ctorBinding returns the binding that calls an injected constructor.
@@ -1207,8 +1310,7 @@ func (gr *mGraph) assistedFactory(r *mReq, f *types.ClassSym) *mBinding {
 // multiBinding returns the binding of a multibinding, which collects
 // its elements.
 func (gr *mGraph) multiBinding(mu *mMulti) *mBinding {
-	b := &mBinding{key: mu.key, t: mu.t, what: "multibinding " + mu.key, multi: mu}
-	return b
+	return &mBinding{key: mu.key, t: mu.t, what: "multibinding " + mu.key, multi: mu, owner: gr}
 }
 
 // expr returns the Kotlin expression of a request's value, writing the
@@ -1267,7 +1369,7 @@ func (gr *mGraph) wrapped(r *mReq, x string) string {
 		inner = wrapSrc(layers[i], inner, gr.innerType(r.full, i))
 	}
 	gr.nfun++
-	fn := fmt.Sprintf("`$w%d`", gr.nfun)
+	fn := gr.name('w', gr.nfun)
 	gr.wrappers[key] = fn
 	gr.fields = append(gr.fields, fmt.Sprintf("private fun %s(): %s = %s", fn, ts, inner))
 	return fn + "()"
@@ -1296,6 +1398,9 @@ func wrapSrc(w byte, x, t string) string {
 // fun returns the function of Impl that returns a binding's value,
 // writing it and those it calls, or "".
 func (gr *mGraph) fun(b *mBinding, vwrap []byte) string {
+	if b.owner != nil && b.owner != gr {
+		return b.owner.fun(b, vwrap)
+	}
 	if b.multi != nil {
 		return gr.multiFun(b.multi, vwrap)
 	}
@@ -1304,7 +1409,7 @@ func (gr *mGraph) fun(b *mBinding, vwrap []byte) string {
 	}
 	gr.nfun++
 	n := gr.nfun
-	b.fn = fmt.Sprintf("`$b%d`", n)
+	b.fn = gr.name('b', n)
 	gr.stack = append(gr.stack, b)
 	args := make([]string, len(b.deps))
 	for i, d := range b.deps {
@@ -1322,7 +1427,7 @@ func (gr *mGraph) fun(b *mBinding, vwrap []byte) string {
 	}
 	x := b.expr(args)
 	if b.scoped {
-		holder := fmt.Sprintf("`$s%d`", n)
+		holder := gr.name('s', n)
 		gr.fields = append(gr.fields, fmt.Sprintf("private val %s: kotlin.Lazy<%s> = kotlin.lazy<%s> {\n%s\n}", holder, ts, ts, x))
 		gr.fields = append(gr.fields, fmt.Sprintf("private fun %s(): %s = %s.value", b.fn, ts, holder))
 	} else {
@@ -1343,7 +1448,7 @@ func (gr *mGraph) multiFun(mu *mMulti, vwrap []byte) string {
 		return ""
 	}
 	gr.nfun++
-	fn := fmt.Sprintf("`$m%d`", gr.nfun)
+	fn := gr.name('m', gr.nfun)
 	gr.wrappers[key] = fn
 	if mu.isMap {
 		kt, ok1 := kotlinTypeSrc(mu.t.A.List[0].T)
@@ -1432,17 +1537,15 @@ func (gr *mGraph) elemExpr(b *mBinding, vwrap []byte, v types.Type) string {
 	return x
 }
 
-// write writes the graph's Impl class and its companion object.
-func (gr *mGraph) write(d *syntax.ClassDecl, factory *types.ClassSym, create *mMember) {
-	cls := gr.g
-	gname := metroClassName(cls)
-	var b strings.Builder
-	supers := []string{gname}
-	if !cls.Interface {
+// class writes the graph's class, which starts with head.
+func (gr *mGraph) class(head string) string {
+	supers := []string{metroClassName(gr.g)}
+	if !gr.g.Interface {
 		supers[0] += "()"
 	}
 	supers = append(supers, gr.supers...)
-	fmt.Fprintf(&b, "class Impl internal constructor(%s) : %s {\n", strings.Join(gr.ctorParams, ", "), strings.Join(supers, ", "))
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s(%s) : %s {\n", head, strings.Join(gr.ctorParams, ", "), strings.Join(supers, ", "))
 	for _, f := range gr.fields {
 		b.WriteString(f)
 		b.WriteByte('\n')
@@ -1452,20 +1555,21 @@ func (gr *mGraph) write(d *syntax.ClassDecl, factory *types.ClassSym, create *mM
 		b.WriteByte('\n')
 	}
 	b.WriteString("}\n")
-	members := []string{b.String()}
+	return b.String()
+}
 
+// write writes the graph's Impl class and its companion object.
+func (gr *mGraph) write() {
+	cls, factory, create := gr.g, gr.factory, gr.create
+	gname := metroClassName(cls)
+	members := []string{gr.class("class Impl internal constructor")}
 	var compMembers []string
 	var compSuper string
 	if create != nil {
-		var params, args []string
-		for i, p := range create.params {
-			ts, _ := kotlinTypeSrc(p.Type)
-			params = append(params, fmt.Sprintf("%s: %s", backtick(p.Name), ts))
-			args = append(args, backtick(create.params[i].Name))
-		}
+		params, args := createParams(create)
 		ret, _ := kotlinTypeSrc(create.ret)
 		compSuper = metroClassName(factory)
-		compMembers = append(compMembers, fmt.Sprintf("override fun %s(%s): %s = %s.Impl(%s)", backtick(create.name), strings.Join(params, ", "), ret, gname, strings.Join(args, ", ")))
+		compMembers = append(compMembers, fmt.Sprintf("override fun %s(%s): %s = %s.Impl(%s)", backtick(create.name), params, ret, gname, args))
 	} else {
 		compMembers = append(compMembers, fmt.Sprintf("operator fun invoke(): %s = %s.Impl()", gname, gname))
 	}
@@ -1482,4 +1586,86 @@ func (gr *mGraph) write(d *syntax.ClassDecl, factory *types.ClassSym, create *mM
 		members = append(members, head+" {\n"+strings.Join(compMembers, "\n")+"\n}\n")
 	}
 	gr.m.plan.members[cls.Name] = append(gr.m.plan.members[cls.Name], members...)
+}
+
+// createParams writes the parameters of a factory function that
+// overrides create, and the arguments that pass them on.
+func createParams(create *mMember) (params, args string) {
+	var ps, as []string
+	for _, p := range create.params {
+		ts, _ := kotlinTypeSrc(p.Type)
+		ps = append(ps, fmt.Sprintf("%s: %s", backtick(p.Name), ts))
+		as = append(as, backtick(p.Name))
+	}
+	return strings.Join(ps, ", "), strings.Join(as, ", ")
+}
+
+// extension returns the graph of a graph extension, class ext, which the
+// graph creates: an inner class of the graph's, which it writes once
+// resolved, or nil after reporting why it can't.
+func (gr *mGraph) extension(ext *types.ClassSym) *mGraph {
+	if child, ok := gr.children[ext]; ok {
+		return child
+	}
+	a := find(gr.m.annsOf(ext), mGraphExtension)
+	if a == nil {
+		return nil
+	}
+	child := gr.m.newGraph(gr.c, ext, gr.pos, gr)
+	child.prefix = fmt.Sprintf("%se%d_", gr.prefix, len(gr.children))
+	child.impl = strings.ReplaceAll(ext.DisplayName(), ".", "") + "Impl"
+	for g := gr; g != nil; g = g.parent {
+		if g.impl == child.impl {
+			child.impl += strconv.Itoa(len(gr.children))
+		}
+	}
+	gr.children[ext] = child
+	for g := gr; g != nil; g = g.parent {
+		if g.g == ext {
+			gr.errorf("graph extension %s extends itself", ext.DisplayName())
+			gr.children[ext] = nil
+			return nil
+		}
+	}
+	if !child.setup(a, mGraphExtensionFactory, "@GraphExtension.Factory") || !child.resolveAccessors() {
+		gr.failed = true
+		gr.children[ext] = nil
+		return nil
+	}
+	gr.fields = append(gr.fields, child.class("inner class "+child.impl))
+	return child
+}
+
+// extensionBinding returns the binding of a graph extension, or of the
+// factory of one, which the graph creates, or nil if cls is neither.
+func (gr *mGraph) extensionBinding(r *mReq, cls *types.ClassSym) *mBinding {
+	anns := gr.m.annsOf(cls)
+	switch {
+	case find(anns, mGraphExtension) != nil:
+		child := gr.extension(cls)
+		if child == nil {
+			return nil
+		}
+		if child.create != nil && len(child.create.params) > 0 {
+			gr.errorf("graph extension %s takes parameters: request its @GraphExtension.Factory", cls.DisplayName())
+			return nil
+		}
+		impl := child.impl
+		return &mBinding{key: r.key, t: r.t, what: cls.DisplayName(), expr: func([]string) string { return impl + "()" }}
+	case find(anns, mGraphExtensionFactory) != nil && cls.Outer != nil && find(gr.m.annsOf(cls.Outer), mGraphExtension) != nil:
+		child := gr.extension(cls.Outer)
+		if child == nil {
+			return nil
+		}
+		if child.factory != cls {
+			gr.errorf("%s is not the factory of graph extension %s", cls.DisplayName(), cls.Outer.DisplayName())
+			return nil
+		}
+		params, args := createParams(child.create)
+		ret, _ := kotlinTypeSrc(child.create.ret)
+		fs, _ := kotlinTypeSrc(r.t)
+		src := fmt.Sprintf("object : %s {\noverride fun %s(%s): %s = %s(%s)\n}", fs, backtick(child.create.name), params, ret, child.impl, args)
+		return &mBinding{key: r.key, t: r.t, what: cls.DisplayName(), expr: func([]string) string { return src }}
+	}
+	return nil
 }

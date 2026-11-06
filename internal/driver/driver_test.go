@@ -1227,7 +1227,7 @@ func TestMetro(t *testing.T) {
 			msg: "[Metro/DuplicateBinding]"},
 		"unscoped graph": {src: "@Inject @SingleIn(AppScope::class) class A\n@DependencyGraph interface G { val a: A }",
 			msg: "[Metro/IncompatiblyScopedBindings]"},
-		"graph extension": {src: "@GraphExtension interface E\n@DependencyGraph interface G", feature: true},
+		"extension with parameters": {src: "@GraphExtension interface E {\n@GraphExtension.Factory interface F { fun create(@Provides s: String): E }\n}\n@DependencyGraph interface G { val e: E }", msg: "takes parameters"},
 		"custom annotations": {src: "@DependencyGraph interface G", feature: true,
 			options: map[string]string{"custom-inject": "a/MyInject"}},
 	} {

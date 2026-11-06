@@ -43,6 +43,8 @@ interface AppGraph {
 
     fun inject(screen: Screen)
 
+    val sessions: SessionGraph.Factory
+
     @DependencyGraph.Factory
     fun interface Factory {
         fun create(
@@ -97,4 +99,11 @@ fun main() {
     graph.inject(screen)
     println(screen.show())
     println(createGraph<SmallGraph>().message)
+    val session = (graph as SessionGraph.Factory).createSession(7)
+    println(session.auth.token())
+    println(session.auth === session.auth)
+    println(session.plugins.map { it.name }.sorted())
+    println(session.tasks.task.run())
+    println(session.newTask().task.run())
+    println(graph.sessions.createSession(8).auth.token())
 }

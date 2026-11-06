@@ -13,32 +13,33 @@ import (
 
 // Metro's annotations, by internal name.
 const (
-	mInject             = "dev/zacsweers/metro/Inject"
-	mAssistedInject     = "dev/zacsweers/metro/AssistedInject"
-	mAssisted           = "dev/zacsweers/metro/Assisted"
-	mAssistedFactory    = "dev/zacsweers/metro/AssistedFactory"
-	mProvides           = "dev/zacsweers/metro/Provides"
-	mBinds              = "dev/zacsweers/metro/Binds"
-	mIncludes           = "dev/zacsweers/metro/Includes"
-	mIntoSet            = "dev/zacsweers/metro/IntoSet"
-	mIntoMap            = "dev/zacsweers/metro/IntoMap"
-	mElementsIntoSet    = "dev/zacsweers/metro/ElementsIntoSet"
-	mMultibinds         = "dev/zacsweers/metro/Multibinds"
-	mBindingContainer   = "dev/zacsweers/metro/BindingContainer"
-	mDependencyGraph    = "dev/zacsweers/metro/DependencyGraph"
-	mGraphFactory       = "dev/zacsweers/metro/DependencyGraph$Factory"
-	mGraphExtension     = "dev/zacsweers/metro/GraphExtension"
-	mContributesTo      = "dev/zacsweers/metro/ContributesTo"
-	mContributesBinding = "dev/zacsweers/metro/ContributesBinding"
-	mContributesIntoSet = "dev/zacsweers/metro/ContributesIntoSet"
-	mContributesIntoMap = "dev/zacsweers/metro/ContributesIntoMap"
-	mContribution       = "dev/zacsweers/metro/internal/MetroContribution"
-	mQualifier          = "dev/zacsweers/metro/Qualifier"
-	mScope              = "dev/zacsweers/metro/Scope"
-	mMapKey             = "dev/zacsweers/metro/MapKey"
-	mSingleIn           = "dev/zacsweers/metro/SingleIn"
-	mProvider           = "dev/zacsweers/metro/Provider"
-	mNothing            = "kotlin/Nothing"
+	mInject                = "dev/zacsweers/metro/Inject"
+	mAssistedInject        = "dev/zacsweers/metro/AssistedInject"
+	mAssisted              = "dev/zacsweers/metro/Assisted"
+	mAssistedFactory       = "dev/zacsweers/metro/AssistedFactory"
+	mProvides              = "dev/zacsweers/metro/Provides"
+	mBinds                 = "dev/zacsweers/metro/Binds"
+	mIncludes              = "dev/zacsweers/metro/Includes"
+	mIntoSet               = "dev/zacsweers/metro/IntoSet"
+	mIntoMap               = "dev/zacsweers/metro/IntoMap"
+	mElementsIntoSet       = "dev/zacsweers/metro/ElementsIntoSet"
+	mMultibinds            = "dev/zacsweers/metro/Multibinds"
+	mBindingContainer      = "dev/zacsweers/metro/BindingContainer"
+	mDependencyGraph       = "dev/zacsweers/metro/DependencyGraph"
+	mGraphFactory          = "dev/zacsweers/metro/DependencyGraph$Factory"
+	mGraphExtension        = "dev/zacsweers/metro/GraphExtension"
+	mGraphExtensionFactory = "dev/zacsweers/metro/GraphExtension$Factory"
+	mContributesTo         = "dev/zacsweers/metro/ContributesTo"
+	mContributesBinding    = "dev/zacsweers/metro/ContributesBinding"
+	mContributesIntoSet    = "dev/zacsweers/metro/ContributesIntoSet"
+	mContributesIntoMap    = "dev/zacsweers/metro/ContributesIntoMap"
+	mContribution          = "dev/zacsweers/metro/internal/MetroContribution"
+	mQualifier             = "dev/zacsweers/metro/Qualifier"
+	mScope                 = "dev/zacsweers/metro/Scope"
+	mMapKey                = "dev/zacsweers/metro/MapKey"
+	mSingleIn              = "dev/zacsweers/metro/SingleIn"
+	mProvider              = "dev/zacsweers/metro/Provider"
+	mNothing               = "kotlin/Nothing"
 )
 
 // metroAnalysis computes the plan of PlanMetro.
@@ -101,13 +102,8 @@ func (m *metroAnalysis) run() {
 			if d.Sym == nil || d.Sym.Local || d.Sym.Anonymous {
 				continue
 			}
-			for _, a := range m.annsOf(d.Sym) {
-				switch a.cls {
-				case mDependencyGraph:
-					m.graph(c, d, a)
-				case mGraphExtension:
-					m.unsupported(c, d.P, "Metro graph extensions (@GraphExtension) are not supported")
-				}
+			if a := find(m.annsOf(d.Sym), mDependencyGraph); a != nil {
+				m.graph(c, d, a)
 			}
 		}
 	}

@@ -24,3 +24,11 @@ dark
 [42] contributed accessor
 [42] screen with null
 message x3
+SessionAuth created
+token-7 (hello on port 8080)
+true
+[app, lib, lib-extra, mid, session]
+task with token-7 (hello on port 8080)
+task with token-7 (hello on port 8080)
+SessionAuth created
+token-8 (hello on port 8080)
