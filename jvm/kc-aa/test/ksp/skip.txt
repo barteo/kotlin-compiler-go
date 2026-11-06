@@ -14,7 +14,6 @@ testLocalClasses: error-recovery: a member `object : Any {}` without a name, whi
 testLocations: java-source: line 3: want K:J.java:81 got K:K.kt:60
 testParent: java-source: line 28: want parent of Any: (Any..Any?) got parent of synthetic constructor for B: B
 testPlatformDeclaration: disabled: @Disabled in KSPUnitTestSuite
-testRawTypes: java-source: line 1: want barRaw got
 testReferenceElement: java-source: line 1: want KSClassifierReferenceImpl: Qualifier of B is A got KSClassifierReferenceImpl: Qualifier
 testReplaceWithErrorTypeArgs: error-types: argument-count mismatch error types
 testResolveJavaType: java-source: Java array flexible upper bounds (Array<out T?>), Java inner classes' outer type arguments, Java enum synthetic members

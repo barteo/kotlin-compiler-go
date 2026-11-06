@@ -25,9 +25,11 @@ import org.jetbrains.kotlin.analysis.api.platform.modification.KotlinModificatio
 import org.jetbrains.kotlin.analysis.api.projectStructure.KaModule
 import org.jetbrains.kotlin.analysis.api.session.KaSessionProvider
 import org.jetbrains.kotlin.analysis.api.symbols.KaCallableSymbol
+import org.jetbrains.kotlin.analysis.api.symbols.KaClassSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaKotlinPropertySymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaValueParameterSymbol
+import org.jetbrains.kotlin.analysis.api.symbols.typeParameters
 import org.jetbrains.kotlin.analysis.api.types.KaFunctionType
 import org.jetbrains.kotlin.analysis.api.types.KaType
 import org.jetbrains.kotlin.cli.jvm.compiler.EnvironmentConfigFiles
@@ -247,7 +249,14 @@ private class KcExtrasImpl(private val round: () -> KcRound) : KcExtras {
             genericInvariantArgumentMode = if (canBeUsedInSupertypePosition) optimalMode(type, false) else null,
         )
     }
-    override fun isRawType(type: KaType): Boolean = false
+    /**
+     * Whether [type] is a Java raw type, `List` for `List<E>`: the model
+     * writes it as a platform class type without arguments.
+     */
+    override fun isRawType(type: KaType): Boolean {
+        val t = (type as? KcFlexibleType)?.lowerBound as? KcClassType ?: return false
+        return t.typeArguments.isEmpty() && (t.symbol as? KaClassSymbol)?.typeParameters?.isNotEmpty() == true
+    }
     override fun abbreviatedTypeAlias(type: KaFunctionType): ClassId? = (type as? KcFunctionType)?.abbrev?.classId
 
     /**

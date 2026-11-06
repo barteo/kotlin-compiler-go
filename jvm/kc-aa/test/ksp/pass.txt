@@ -89,6 +89,7 @@ testPackageAnnotation
 testPackageProviderForGenerated
 testParameterTypes
 testPrimaryConstructorOverride
+testRawTypes
 testRecordJavaAnnotationTypes
 testRecordJavaAsMemberOf
 testRecordJavaGetAllMembers
