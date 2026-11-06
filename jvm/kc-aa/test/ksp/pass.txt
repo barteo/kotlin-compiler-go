@@ -1,6 +1,7 @@
 testAbstractFunctions
 testAllFunctions_java_inherits_kt
 testAllFunctions_kotlin
+testAllFunctions_kt_inherits_java
 testAllUseSiteTargetAppliedToAnnotationList
 testAnnotatedUtil
 testAnnotationOnConstructorParameter

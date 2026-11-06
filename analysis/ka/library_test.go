@@ -220,7 +220,8 @@ func TestLibraryBuiltins(t *testing.T) {
 		if d == nil {
 			t.Fatalf("%s: nil", id)
 		}
-		// Their members come from .kotlin_builtins; a few of String's and Int's.
+		// Their members come from .kotlin_builtins, and the collections'
+		// JDK ones from their Java classes; a few of String's and Int's.
 		some := map[string]bool{"length": true, "get": true, "toLong": true, "inc": true, "Companion": true, "MAX_VALUE": true}
 		filter := func(m *Decl) bool { return id != "kotlin/String" && id != "kotlin/Int" || some[m.Name] }
 		dumpLibrary(&sb, d, "", filter)
@@ -251,6 +252,9 @@ func TestLibraryBuiltins(t *testing.T) {
   7 listIterator v0 m2 f0x0: kotlin/collections/ListIterator<E>
   7 listIterator v0 m2 f0x0 (index: kotlin/Int): kotlin/collections/ListIterator<E>
   7 subList v0 m2 f0x0 (fromIndex: kotlin/Int, toIndex: kotlin/Int): kotlin/collections/List<E>
+  7 spliterator v0 m1 f0x400000: java/util/Spliterator<E!>!
+  7 getFirst v0 m1 f0x400000: E!
+  7 getLast v0 m1 f0x400000: E!
 2 Map [kotlin/collections/Map] v0 m2 f0x0 <K> <out V> : kotlin/Any
   8 size v0 m2 f0x0: kotlin/Int
   8 keys v0 m2 f0x0: kotlin/collections/Set<K>
@@ -261,6 +265,7 @@ func TestLibraryBuiltins(t *testing.T) {
   7 containsValue v0 m2 f0x0 (value: V): kotlin/Boolean
   7 get v0 m2 f0x200 (key: K): V?
   7 getOrDefault v0 m1 f0x0 (key: K, defaultValue: V): V
+  7 forEach v0 m1 f0x400000 (p0: java/util/function/BiConsumer<in K!, in V!>!): kotlin/Unit
   2 Entry [kotlin/collections/Map.Entry] v0 m2 f0x800000 <out K> <out V> : kotlin/Any
     8 key v0 m2 f0x0: K
     8 value v0 m2 f0x0: V

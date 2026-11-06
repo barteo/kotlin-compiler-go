@@ -136,6 +136,9 @@ func (l *library) class(id string) *Decl {
 		cls.Ensure()
 	}
 	if d := l.builtinClass(id, nil, 0); d != nil {
+		if j, ok := jvmMapped[id]; ok {
+			l.jvmMappedMembers(d, j)
+		}
 		// Kotlin adds java/io/Serializable to the classes it maps whose
 		// Java classes are.
 		if cls != nil && !cls.Missing && d.Kind != KindInterface &&
@@ -1589,4 +1592,117 @@ func (l *library) constValue(c any, t *Type) *Value {
 		c = int64(i)
 	}
 	return l.value(&classfile.ElementValue{Tag: tag, Const: c}, t.ClassID, 0)
+}
+
+// jvmMapped maps the Kotlin collection interfaces to the JDK classes they
+// are on the JVM, whose other members FIR's JVM mapped scope adds to
+// theirs, and whether each is read-only.
+var jvmMapped = map[string]struct {
+	java     string
+	readOnly bool
+}{
+	"kotlin/collections/Iterable":          {"java/lang/Iterable", true},
+	"kotlin/collections/MutableIterable":   {"java/lang/Iterable", false},
+	"kotlin/collections/Collection":        {"java/util/Collection", true},
+	"kotlin/collections/MutableCollection": {"java/util/Collection", false},
+	"kotlin/collections/List":              {"java/util/List", true},
+	"kotlin/collections/MutableList":       {"java/util/List", false},
+	"kotlin/collections/Set":               {"java/util/Set", true},
+	"kotlin/collections/MutableSet":        {"java/util/Set", false},
+	"kotlin/collections/Map":               {"java/util/Map", true},
+	"kotlin/collections/MutableMap":        {"java/util/Map", false},
+}
+
+// jdkHidden are the JDK members FIR's JVM mapped scope leaves out of every
+// Kotlin class mapped to their class (JvmBuiltInsSignatures' hidden and
+// drop lists), by name and descriptor.
+var jdkHidden = map[string]bool{
+	"toArray()[Ljava/lang/Object;":                    true,
+	"toArray([Ljava/lang/Object;)[Ljava/lang/Object;": true,
+	"reversed()Ljava/util/List;":                      true,
+	"reversed()Ljava/util/SequencedCollection;":       true,
+	"reversed()Ljava/util/SequencedSet;":              true,
+	"reversed()Ljava/util/SequencedMap;":              true,
+	"equals(Ljava/lang/Object;)Z":                     true,
+	"hashCode()I":                                     true,
+}
+
+// jdkMutating are the JDK members that change their collection, which
+// only the mutable Kotlin classes have.
+var jdkMutating = map[string]bool{
+	"removeIf": true, "replaceAll": true, "sort": true, "addFirst": true, "addLast": true,
+	"removeFirst": true, "removeLast": true, "compute": true, "computeIfAbsent": true,
+	"computeIfPresent": true, "merge": true, "putIfAbsent": true, "replace": true,
+	"putFirst": true, "putLast": true, "pollFirstEntry": true, "pollLastEntry": true,
+	"remove": true, // Map.remove(key, value); the others are Kotlin members
+}
+
+// jvmMappedMembers adds to Kotlin collection interface d the members of
+// its JDK class m.java that Kotlin's classes don't have, as FIR's JVM
+// mapped scope does: List's getFirst() and stream(), Iterable's
+// forEach(Consumer). A read-only class doesn't get the ones that mutate.
+func (l *library) jvmMappedMembers(d *Decl, m struct {
+	java     string
+	readOnly bool
+}) {
+	owner := l.lib.Class(d.ClassID)
+	if owner == nil {
+		return
+	}
+	owner.Ensure()
+	// The members Kotlin has, by JVM name and parameter count: those of
+	// the read-only and mutable classes the JDK class is mapped to.
+	have := map[string]bool{}
+	key := func(name string, n int) string { return name + "/" + itoa(int64(n)) }
+	mid := strings.Replace(d.ClassID, "collections/Mutable", "collections/", 1)
+	for _, id := range []string{mid, strings.Replace(mid, "collections/", "collections/Mutable", 1)} {
+		kd := d
+		if id != d.ClassID {
+			if kd = l.builtinClass(id, nil, 0); kd == nil {
+				continue
+			}
+		}
+		for _, md := range kd.Members {
+			switch md.Kind {
+			case KindFunction:
+				name := md.Name
+				if name == "removeAt" {
+					name = "remove" // its JVM name
+				}
+				have[key(name, len(md.Params))] = true
+			case KindProperty:
+				have[key(jvmMappedGetters[md.Name], 0)] = true
+				have[key(md.Name, 0)] = true
+			}
+		}
+	}
+	var det *classfile.Details
+	if data, err := l.cp.Bytes(m.java); err == nil {
+		det, _ = classfile.ParseDetails(data)
+	}
+	if det == nil {
+		det = &classfile.Details{}
+	}
+	_, bySig := methods(det)
+	b := &fileBuilder{}
+	var extra []*Decl
+	for _, f := range l.lib.JavaMethods(m.java, owner) {
+		if have[key(f.Name, len(f.Params))] || jdkHidden[f.Name+f.Desc] || m.readOnly && jdkMutating[f.Name] {
+			continue
+		}
+		have[key(f.Name, len(f.Params))] = true
+		extra = append(extra, l.javaMethod(b, f, bySig, d, KindFunction))
+	}
+	// After the functions, before the nested classes.
+	i := len(d.Members)
+	for i > 0 && d.Members[i-1].ClassID != "" {
+		i--
+	}
+	d.Members = slices.Insert(d.Members, i, extra...)
+}
+
+// jvmMappedGetters are the JDK getters of the Kotlin collection
+// interfaces' properties.
+var jvmMappedGetters = map[string]string{
+	"size": "size", "keys": "keySet", "values": "values", "entries": "entrySet",
 }

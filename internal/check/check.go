@@ -442,6 +442,44 @@ func (l *Library) Class(id string) *types.ClassSym {
 	return t.class(name)
 }
 
+// JavaMethods returns the public instance methods that JVM class name
+// declares, typed as members of owner, a Kotlin class whose type
+// parameters stand for name's by name: the JDK members of a class Kotlin
+// maps, as java/util/List's getFirst() for kotlin/collections/List, which
+// Class doesn't have. Synthetic and bridge methods are left out, and so
+// are those whose types kc doesn't support.
+func (l *Library) JavaMethods(name string, owner *types.ClassSym) []*types.FunSym {
+	t := l.t
+	if t.cp == nil || !t.cp.Has(name) {
+		return nil
+	}
+	info, err := t.cp.Load(name)
+	if err != nil {
+		return nil
+	}
+	var out []*types.FunSym
+	for _, m := range info.Methods {
+		if m.Access&(classfile.AccSynthetic|classfile.AccBridge|classfile.AccStatic) != 0 || m.Access&classfile.AccPublic == 0 ||
+			m.Access&classfile.AccVarargs != 0 || strings.HasPrefix(m.Name, "<") {
+			continue
+		}
+		f := &types.FunSym{Name: m.Name, Owner: owner, Desc: m.Desc, Operator: true, Resolved: true,
+			Abstract: m.Access&classfile.AccAbstract != 0}
+		ok := t.signature(f, m.Desc)
+		if m.Sig != "" {
+			ok = t.methodSignature(f, owner, m.Sig, len(f.Params))
+		}
+		if !ok {
+			continue
+		}
+		for _, p := range f.Params {
+			p.Type = javaParam(p.Type)
+		}
+		out = append(out, f)
+	}
+	return out
+}
+
 // moduleSuffix returns what the JVM names of a module's internal members
 // end with: $ and its name, with the characters that can't be in a Java
 // identifier replaced by _, as kotlinc writes them.
