@@ -8,6 +8,8 @@ type Details struct {
 	// Annotations are the class's annotations, those kept in the class
 	// file first, then those visible at run time.
 	Annotations []Annotation
+	// Invisible is the number of Annotations kept in the class file only.
+	Invisible int
 	Fields      []MemberDetails
 	Methods     []MemberDetails
 	// Nested are the internal names of the class's named nested classes,
@@ -117,6 +119,7 @@ func ParseDetails(data []byte) (*Details, error) {
 		}
 		r.pos = end
 	}
+	d.Invisible = len(d.Annotations)
 	d.Annotations = append(d.Annotations, visible...)
 	if r.err != nil {
 		return nil, r.err

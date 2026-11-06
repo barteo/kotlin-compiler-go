@@ -1,4 +1,3 @@
-testAllFunctions_java_inherits_kt: java-source: line 5: want hashCode(): kotlin.Int got getX(): kotlin.Int
 testAllFunctions_kt_inherits_java: java-source: line 15: want size got <init>(): Foo
 testAnnotatedUtil: class-literal: kotlin.Throwable::class reaches getAnnotationsByType as kotlin.Throwable, not java.lang.Throwable
 testAnnotationOnReceiver: annotation-target: receiver annotations missing
@@ -8,7 +7,6 @@ testAnnotationValue_kt: checker-gap: Java annotation instance in a Kotlin annota
 testAnnotationWithDefault: java-source: Java PSI can't evaluate a Kotlin facade constant, ConstKt.DebugKt, without light classes
 testAnnotationWithNestedClassValue: class-literal: Kotlin-mapped nested classes (MutableMap.MutableEntry) not mapped to Java
 testAnnotationsInDependencies: java-source: line 6: want getter of property prop 189 : annotations.AllTarget{[value = all: : 188]} : <no  got ge
-testAnnotationsRepeatable: java-source: line 13: want lib.Test, KA, [value:1]} got lib.Test, A, [value:1]}
 testAsMemberOf: java-source: NoSuchElementException: Sequence contains no element matching the predicate.
 testCheckOverride: java-source: line 13: want JavaImpl.getX overrides MyInterface.x: true got JavaImpl.getX overrides MyInterface.x:
 testClassKinds: java-source: NullPointerException: null

@@ -80,7 +80,7 @@ internal class KcMemberBuilder(private val round: KcRound, private val c: KcClas
     private class Candidate(val symbol: KaCallableSymbol, val sub: KaSubstitutor)
 
     fun build(): KcClassMembers {
-        val declared = c.members.filterIsInstance<KaCallableSymbol>()
+        var declared = c.members.filterIsInstance<KaCallableSymbol>()
             .filter { it !is KaConstructorSymbol && !isStaticMember(it as KaDeclarationSymbol) }
         val candidates = ArrayList<Candidate>()
         val statics = c.members.filter(::isStaticMember).toMutableList()
@@ -103,6 +103,12 @@ internal class KcMemberBuilder(private val round: KcRound, private val c: KcClas
 
         val overridden = IdentityHashMap<KaCallableSymbol, List<KaCallableSymbol>>()
         val pending = candidates.toMutableList()
+        if (c.origin == KaSymbolOrigin.JAVA_SOURCE || c.origin == KaSymbolOrigin.JAVA_LIBRARY) {
+            // A Java method that implements an inherited Kotlin property's
+            // accessor isn't a function of the class: FIR folds it into
+            // the property, which stays a member.
+            declared = declared.filterNot { d -> candidates.any { isAccessorOf(d, it.symbol) } }
+        }
         for (d in declared) {
             val dc = Candidate(d, rel.empty)
             val hits = candidates.filter { matches(dc, it) }
@@ -144,6 +150,23 @@ internal class KcMemberBuilder(private val round: KcRound, private val c: KcClas
             val ys = declaredOriginals(y.symbol)
             distinct.none { x -> x !== y && round.allOverridden(x.symbol).any { o -> ys.any { it === o } } }
         }.ifEmpty { distinct }
+    }
+
+    /**
+     * Whether Java method [d] is the JVM getter or setter of Kotlin
+     * property [p]: `getX()`/`isX()` or `setX(v)` of a var.
+     */
+    private fun isAccessorOf(d: KaCallableSymbol, p: KaCallableSymbol): Boolean {
+        if (d !is KaNamedFunctionSymbol || p !is KaKotlinPropertySymbol || p.receiverParameter != null) return false
+        if (p.origin == KaSymbolOrigin.JAVA_SOURCE || p.origin == KaSymbolOrigin.JAVA_LIBRARY) return false
+        val n = p.name.asString()
+        val cap = n.replaceFirstChar { it.uppercaseChar() }
+        val isName = n.startsWith("is") && n.length > 2 && !n[2].isLowerCase()
+        return when (d.valueParameters.size) {
+            0 -> d.name.asString() == if (isName) n else "get$cap"
+            1 -> !p.isVal && d.name.asString() == "set" + if (isName) n.substring(2) else cap
+            else -> false
+        }
     }
 
     /** Whether [m]'s substitutor changes none of its types. */

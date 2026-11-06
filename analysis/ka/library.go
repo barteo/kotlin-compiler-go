@@ -674,7 +674,8 @@ func (l *library) javaClass(cls *types.ClassSym, depth int) *Decl {
 	b := &fileBuilder{}
 	d.TypeParams = l.javaTypeParams(b, cls.TypeParams)
 	d.Supertypes = javaSupertypes(b, cls, d.Kind, platform)
-	d.Annotations = l.annotations(det.Annotations, false)
+	// FIR lists a Java class's run-time visible annotations first.
+	d.Annotations = l.annotations(slices.Concat(det.Annotations[det.Invisible:], det.Annotations[:det.Invisible]), false)
 	_, bySig := methods(det)
 	// pos is each member's index among the class's methods, fields or
 	// nested classes, in class-file (or source) order.
