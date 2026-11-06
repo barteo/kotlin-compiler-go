@@ -240,6 +240,8 @@ func TestParseRecovery(t *testing.T) {
 	int g( ;
 	void h() {}
 	List<Double> last = List<double>()
+	private String str = "str"
+	final transient String s1;
 }
 interface B {
 	int c()
@@ -259,7 +261,7 @@ interface B {
 			names = append(names, m.Name)
 		}
 	}
-	if got, want := strings.Join(names, " "), "A a last h B c"; got != want {
+	if got, want := strings.Join(names, " "), "A a last str s1 h B c"; got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
 }

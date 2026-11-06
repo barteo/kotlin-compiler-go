@@ -648,9 +648,10 @@ func (p *parser) member(c *Class) {
 		if p.accept(";") {
 			return
 		}
-		if p.is("}") {
-			// A missing ; before the class's closing brace, which Java
-			// PSI reports and keeps the field.
+		if _, mod := modifierFlags[p.tok().text]; p.is("}") || mod && p.tok().kind == tIdent {
+			// A missing ; before the class's closing brace or the next
+			// member's modifiers, which Java PSI reports and keeps the
+			// field.
 			if p.skipped == nil {
 				p.skipped = &parseError{p.tok(), "expected ;"}
 			}
@@ -729,6 +730,11 @@ func (p *parser) initializer() []token {
 		t := p.tok()
 		if t.kind == tEOF {
 			p.fail("unterminated initializer")
+		}
+		if _, ok := modifierFlags[t.text]; ok && t.kind == tIdent && depth == 0 && p.pos > start {
+			// The next member's modifier: a missing ;, which Java PSI
+			// reports at the end of the expression.
+			return p.toks[start:p.pos]
 		}
 		if t.kind == tPunct {
 			switch t.text {

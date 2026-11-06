@@ -60,6 +60,7 @@ testInternalOfFriends
 testIsMutable
 testJavaAccessor
 testJavaAnno
+testJavaModifiers
 testJavaOverrideInSource
 testJavaSubtype
 testJavaSubtypeOfKotlinInterface
