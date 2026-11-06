@@ -11,7 +11,7 @@ testDocString: java-source: line 12: want j1: \n field\n got j1: null
 testErrorTypes: java-source: line 1: want kotlin.collections.MutableMap got ERROR TYPE
 testGetPackage: java-source: the order of a package's Java source classes (stock lists D, L, C for C.java {C, D} and L.java)
 testInterfaceWithDefault: java-source: NullPointerException: null cannot be cast to non-null type com.google.devtools.ksp.symbol.KSClassDec
-testJavaAnnotatedUtil: java-source: line 1: want Test: OnlyTestAnnotation got
+testJavaAnnotatedUtil: java-source: a malformed Java file (a Kotlin import without semicolon, many public classes) whose PSI error recovery FIR keeps one class of
 testJavaModifiers: java-source: InternalKSPException: >>> Internal KSP Error
 testJavaNonNullTypes: checker-gap: the checker ignores Java @NotNull/@Nullable, so Java types stay platform types
 testLocalClasses: local-declarations: anonymous objects
