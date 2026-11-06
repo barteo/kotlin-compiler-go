@@ -2,7 +2,8 @@
 //
 //   KC=/path/to/kc ./gradlew assembleDebug --init-script tools/gradle/use-kc.init.gradle.kts
 //
-// Each KotlinCompile task (compileKotlin, compile<Variant>Kotlin) first runs kc with the task's own
+// Each KotlinCompile task (compileKotlin, compile<Variant>Kotlin, a multiplatform module's
+// compileAndroidMain or compileKotlinJvm) first runs kc with the task's own
 // sources, Java sources, class path, friend paths, module name and compiler plugins, writing into the
 // task's output directory, and then skips kotlinc. Dexing, R8, packaging and javac consume kc's
 // classes as they would kotlinc's.
@@ -21,9 +22,10 @@
 // (checked with 2.4.21).
 if (gradle.parent == null) {
   allprojects {
+    // Kotlin/JVM compilations, Android's and a multiplatform module's JVM and Android targets'
+    // included; not the multiplatform metadata (KotlinCompileCommon) or native ones.
     tasks.matching {
-      Regex("compile\\w*Kotlin").matches(it.name) &&
-        it.javaClass.name.startsWith("org.jetbrains.kotlin.gradle.tasks.KotlinCompile")
+      it.javaClass.name.removeSuffix("_Decorated") == "org.jetbrains.kotlin.gradle.tasks.KotlinCompile"
     }.configureEach {
       // A new kc binary recompiles the module.
       System.getenv("KC")?.let { kc ->
