@@ -280,7 +280,16 @@ root
     text "boxed"
   text "twice"
   text "twice"
-runs: Always=1 Anything forwarded=1 Anything label=1 Anything mutable=1 Anything point=1 Bags=1 Bases=1 Board=1 Calls copied=1 Calls dont=1 Calls remembered=1 Card=2 Card plain=1 Card2=2 Card2 show=2 Clicks bound=1 Clicks card2=2 Clicks card2 this=2 Clicks computes=1 Clicks copy=1 Clicks each x=1 Clicks each y=1 Clicks in try=1 Clicks label=1 Clicks local=1 Clicks mutable=1 Clicks none=1 Clicks receiver=1 Clicks ref=1 Clicks tick=1 Clicks upper=1 Computes=1 Content inner=1 Content label=1 Content nested=1 Content tick=1 Content use=1 Defaulted=2 Eleven=2 Forward=1 ForwardT=1 Holders=1 Holds state=2 InlineItems L=1 Items items=1 Locals=1 Marks=1 Modes=1 Mutables=3 Nodes=1 Panels kept=1 Panels new=1 Points=2 Reads=2 Shapes circle=1 Shapes forwarded=1 Shapes square=1 Shows inline label=1 Shows inline mutable=1 Shows mutable=1 Shows via inline=1 ShowsVia=1 Skips=1 Skips2=1 Strings=8 Suffixed=3 Twice2=1 Unused=1 Varargs=3 badge B=4 badge U=2 box content=2 content label=2 content tick=2 item items=1 item one=1 launched L=1 lib forward=1 lib label=1 lib tick=1 nested inner=2 nested outer=2 scoped scope=2 twice=1 use content=2
+  text "app p0=0 p30=30 p31=31 p32=32 sum=528 end"
+  text "app n p0=1 p30=30 p31=1 p32=32 sum=499 !"
+  text "app all p0=0 p30=60 p31=62 p32=64 sum=1056 all"
+  text "panel p p0=0 p31=31 p32=1 sum=497 p"
+  text "LOUD p1=1 p32=32 loud"
+  text "lib from app p0=0 p31=31 p32=1 sum=497 end"
+  text "use p0=0 p30=30 p31=31 p32=7 sum=503 end"
+  text "use none p0=0 p30=30 p31=31 p32=32 sum=528 end"
+  text "panel u p0=1 p31=31 p32=32 sum=529 ?"
+runs: Always=1 Anything forwarded=1 Anything label=1 Anything mutable=1 Anything point=1 Bags=1 Bases=1 Board=1 Calls copied=1 Calls dont=1 Calls remembered=1 Card=2 Card plain=1 Card2=2 Card2 show=2 Clicks bound=1 Clicks card2=2 Clicks card2 this=2 Clicks computes=1 Clicks copy=1 Clicks each x=1 Clicks each y=1 Clicks in try=1 Clicks label=1 Clicks local=1 Clicks mutable=1 Clicks none=1 Clicks receiver=1 Clicks ref=1 Clicks tick=1 Clicks upper=1 Computes=1 Content inner=1 Content label=1 Content nested=1 Content tick=1 Content use=1 Defaulted=2 Eleven=2 Forward=1 ForwardT=1 Holders=1 Holds state=2 InlineItems L=1 Items items=1 Locals=1 Marks=1 Modes=1 Mutables=3 Nodes=1 Panels kept=1 Panels new=1 Points=2 Reads=2 Shapes circle=1 Shapes forwarded=1 Shapes square=1 Shows inline label=1 Shows inline mutable=1 Shows mutable=1 Shows via inline=1 ShowsVia=1 Skips=1 Skips2=1 Strings=8 Suffixed=3 Twice2=1 Unused=1 Varargs=3 badge B=4 badge U=2 box content=2 content label=2 content tick=2 item items=1 item one=1 launched L=1 lib forward=1 lib label=1 lib tick=1 lib wide lib from app=1 nested inner=2 nested outer=2 scoped scope=2 twice=1 use content=2 wide app=1 wide app all=1 wide app n=1 wide use=1 wide use none=1
 -- rename
 root
   text "Hello, kc"
@@ -558,6 +567,15 @@ root
     text "boxed"
   text "twice"
   text "twice"
+  text "app p0=0 p30=30 p31=31 p32=32 sum=528 end"
+  text "app n p0=1 p30=30 p31=1 p32=32 sum=499 !"
+  text "app all p0=0 p30=60 p31=62 p32=64 sum=1056 all"
+  text "panel p p0=0 p31=31 p32=1 sum=497 p"
+  text "LOUD p1=1 p32=32 loud"
+  text "lib from app p0=0 p31=31 p32=1 sum=497 end"
+  text "use p0=0 p30=30 p31=31 p32=7 sum=503 end"
+  text "use none p0=0 p30=30 p31=31 p32=32 sum=528 end"
+  text "panel u p0=1 p31=31 p32=32 sum=529 ?"
 runs: badge B=2 badge U=1 use content=1
 -- count
 root
@@ -836,6 +854,15 @@ root
     text "boxed"
   text "twice"
   text "twice"
+  text "app p0=0 p30=30 p31=31 p32=32 sum=528 end"
+  text "app n p0=1 p30=30 p31=1 p32=32 sum=499 !"
+  text "app all p0=0 p30=60 p31=62 p32=64 sum=1056 all"
+  text "panel p p0=0 p31=31 p32=1 sum=497 p"
+  text "LOUD p1=1 p32=32 loud"
+  text "lib from app p0=0 p31=31 p32=1 sum=497 end"
+  text "use p0=0 p30=30 p31=31 p32=7 sum=503 end"
+  text "use none p0=0 p30=30 p31=31 p32=32 sum=528 end"
+  text "panel u p0=1 p31=31 p32=32 sum=529 ?"
 runs: 
 -- n
 leave r after
@@ -1126,7 +1153,16 @@ root
     text "boxed"
   text "twice"
   text "twice"
-runs: badge B=2 badge U=1 use content=1
+  text "app p0=0 p30=30 p31=31 p32=32 sum=528 end"
+  text "app n p0=5 p30=30 p31=5 p32=32 sum=507 !"
+  text "app all p0=0 p30=60 p31=62 p32=64 sum=1056 all"
+  text "panel p p0=0 p31=31 p32=5 sum=501 p"
+  text "LOUD p1=5 p32=32 loud"
+  text "lib from app p0=0 p31=31 p32=5 sum=501 end"
+  text "use p0=0 p30=30 p31=31 p32=7 sum=507 end"
+  text "use none p0=0 p30=30 p31=31 p32=32 sum=528 end"
+  text "panel u p0=5 p31=31 p32=32 sum=533 ?"
+runs: badge B=2 badge U=1 lib wide lib from app=1 use content=1 wide app n=1 wide use=1
 -- hide
 leave shown
 root
@@ -1409,6 +1445,15 @@ root
     text "boxed"
   text "twice"
   text "twice"
+  text "app p0=0 p30=30 p31=31 p32=32 sum=528 end"
+  text "app n p0=5 p30=30 p31=5 p32=32 sum=507 !"
+  text "app all p0=0 p30=60 p31=62 p32=64 sum=1056 all"
+  text "panel p p0=0 p31=31 p32=5 sum=501 p"
+  text "LOUD p1=5 p32=32 loud"
+  text "lib from app p0=0 p31=31 p32=5 sum=501 end"
+  text "use p0=0 p30=30 p31=31 p32=7 sum=507 end"
+  text "use none p0=0 p30=30 p31=31 p32=32 sum=528 end"
+  text "panel u p0=5 p31=31 p32=32 sum=533 ?"
 runs: badge B=2 badge U=1 use content=1
 -- tick
 root
@@ -1691,6 +1736,15 @@ root
     text "boxed"
   text "twice"
   text "twice"
+  text "app p0=0 p30=30 p31=31 p32=32 sum=528 end"
+  text "app n p0=5 p30=30 p31=5 p32=32 sum=507 !"
+  text "app all p0=0 p30=60 p31=62 p32=64 sum=1056 all"
+  text "panel p p0=0 p31=31 p32=5 sum=501 p"
+  text "LOUD p1=5 p32=32 loud"
+  text "lib from app p0=0 p31=31 p32=5 sum=501 end"
+  text "use p0=0 p30=30 p31=31 p32=7 sum=507 end"
+  text "use none p0=0 p30=30 p31=31 p32=32 sum=528 end"
+  text "panel u p0=5 p31=31 p32=32 sum=533 ?"
 runs: Always=1 Bases=1 Calls copied=1 Calls dont=1 Card=1 Card2=1 Card2 show=1 Computes=1 Eleven=1 Holders=1 InlineItems L=1 Marks=1 Mutables=1 Panels new=1 Shapes circle=1 Shows via inline=1 ShowsVia=1 Skips=1 Skips2=1 Strings=1 badge B=2 badge U=1 box content=1 content label=1 content tick=1 lib tick=1 nested inner=1 nested outer=1 scoped scope=1 use content=1
 -- label
 root
@@ -1973,6 +2027,15 @@ root
     text "boxed"
   text "twice"
   text "twice"
+  text "app p0=0 p30=30 p31=31 p32=32 sum=528 end"
+  text "app n p0=5 p30=30 p31=5 p32=32 sum=507 !"
+  text "app all p0=0 p30=60 p31=62 p32=64 sum=1056 all"
+  text "panel p p0=0 p31=31 p32=5 sum=501 p"
+  text "LOUD p1=5 p32=32 loud"
+  text "lib from app p0=0 p31=31 p32=5 sum=501 end"
+  text "use p0=0 p30=30 p31=31 p32=7 sum=507 end"
+  text "use none p0=0 p30=30 p31=31 p32=32 sum=528 end"
+  text "panel u p0=5 p31=31 p32=32 sum=533 ?"
 runs: Always=1 Bases=1 Calls copied=1 Calls dont=1 Calls remembered=1 Card=1 Card2=1 Card2 show=1 Computes=1 Eleven=1 Forward=1 ForwardT=1 Holders=1 InlineItems M=1 Locals=1 Marks=1 Mutables=1 Panels new=1 Shapes circle=1 Shows inline label=1 Shows via inline=1 ShowsVia=1 Skips=1 Skips2=1 Strings=7 Suffixed=3 Twice2=1 Unused=1 Varargs=2 badge B=2 badge U=1 box content=1 content label=1 content tick=1 launched M=1 lib forward=1 lib label=1 nested inner=1 nested outer=1 scoped scope=1 use content=1
 -- text
 root
@@ -2255,6 +2318,15 @@ root
     text "boxed"
   text "twice"
   text "twice"
+  text "app p0=0 p30=30 p31=31 p32=32 sum=528 end"
+  text "app n p0=5 p30=30 p31=5 p32=32 sum=507 !"
+  text "app all p0=0 p30=60 p31=62 p32=64 sum=1056 all"
+  text "panel p p0=0 p31=31 p32=5 sum=501 p"
+  text "LOUD p1=5 p32=32 loud"
+  text "lib from app p0=0 p31=31 p32=5 sum=501 end"
+  text "use p0=0 p30=30 p31=31 p32=7 sum=507 end"
+  text "use none p0=0 p30=30 p31=31 p32=32 sum=528 end"
+  text "panel u p0=5 p31=31 p32=32 sum=533 ?"
 runs: Holds state=1
 -- counter
 root
@@ -2537,6 +2609,15 @@ root
     text "boxed"
   text "twice"
   text "twice"
+  text "app p0=0 p30=30 p31=31 p32=32 sum=528 end"
+  text "app n p0=5 p30=30 p31=5 p32=32 sum=507 !"
+  text "app all p0=0 p30=60 p31=62 p32=64 sum=1056 all"
+  text "panel p p0=0 p31=31 p32=5 sum=501 p"
+  text "LOUD p1=5 p32=32 loud"
+  text "lib from app p0=0 p31=31 p32=5 sum=501 end"
+  text "use p0=0 p30=30 p31=31 p32=7 sum=507 end"
+  text "use none p0=0 p30=30 p31=31 p32=32 sum=528 end"
+  text "panel u p0=5 p31=31 p32=32 sum=533 ?"
 runs: Reads=1
 -- nothing
 root
@@ -2819,6 +2900,15 @@ root
     text "boxed"
   text "twice"
   text "twice"
+  text "app p0=0 p30=30 p31=31 p32=32 sum=528 end"
+  text "app n p0=5 p30=30 p31=5 p32=32 sum=507 !"
+  text "app all p0=0 p30=60 p31=62 p32=64 sum=1056 all"
+  text "panel p p0=0 p31=31 p32=5 sum=501 p"
+  text "LOUD p1=5 p32=32 loud"
+  text "lib from app p0=0 p31=31 p32=5 sum=501 end"
+  text "use p0=0 p30=30 p31=31 p32=7 sum=507 end"
+  text "use none p0=0 p30=30 p31=31 p32=32 sum=528 end"
+  text "panel u p0=5 p31=31 p32=32 sum=533 ?"
 runs: 
 leave five
 leave if on

@@ -96,8 +96,6 @@ func (c *Checker) composeFun(d *syntax.FunDecl, owner *types.ClassSym) {
 		why = "composable functions of value classes"
 	case owner != nil && owner.Interface && (d.Body != nil || d.ExprBody != nil):
 		why = "composable functions with bodies in interfaces"
-	case defaults && len(d.Params) > 31:
-		why = "composable functions with default values and more than 31 parameters"
 	case c.composeAnno(d.Annotations, "", "ExplicitGroupsComposable"):
 		why = "@ExplicitGroupsComposable functions"
 	}
