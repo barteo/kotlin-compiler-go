@@ -107,6 +107,7 @@ testRecordJavaResolutions
 testRecordJavaSupertypes
 testReferenceElement
 testRepeatedNonRepeatableAnnotations
+testResolveJavaType
 testSealedClass
 testShadowingAnnotations
 testSignatureMapper

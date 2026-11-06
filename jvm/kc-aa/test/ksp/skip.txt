@@ -6,4 +6,3 @@ testJavaAnnotatedUtil: java-source: a malformed Java file (a Kotlin import witho
 testParent: java-source: Java library classes have no class-file PSI (stock: parent of HSV is File: HSV.class, and its entries property, whose psi is that class, has no getter)
 testPlatformDeclaration: disabled: @Disabled in KSPUnitTestSuite
 testReplaceWithErrorTypeArgs: syntax-errors: kc drops a declaration with a syntax error, val barFoo: Bar<out P!!>, where FIR keeps what parsed, Bar<out P>
-testResolveJavaType: java-source: a Java enum's members are not in FIR's order (its field x after its methods)

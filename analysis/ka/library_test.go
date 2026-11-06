@@ -149,8 +149,8 @@ func TestLibraryJavaClass(t *testing.T) {
   6 WAITING [java/lang/Thread.State.WAITING] v0 m0 f0x0: java/lang/Thread.State
   6 TIMED_WAITING [java/lang/Thread.State.TIMED_WAITING] v0 m0 f0x0: java/lang/Thread.State
   6 TERMINATED [java/lang/Thread.State.TERMINATED] v0 m0 f0x0: java/lang/Thread.State
-  8 entries v0 m0 f0xc00000: kotlin/enums/EnumEntries<java/lang/Thread.State>
   10 <init> v1 m0 f0x400000
+  8 entries v0 m0 f0xc00000: kotlin/enums/EnumEntries<java/lang/Thread.State>
 1 SimpleEntry [java/util/AbstractMap.SimpleEntry] v0 m1 f0xc00000 <K : kotlin/Any!> <V : kotlin/Any!> : kotlin/collections/MutableMap.MutableEntry<K!, V!> java/io/Serializable
   13 key v1 m0 f0x400000: K!
   13 value v1 m0 f0x408000: V!

@@ -894,8 +894,10 @@ func (l *library) javaClass(cls *types.ClassSym, depth int) *Decl {
 		fieldIndex[det.Fields[i].Name] = i
 	}
 	for _, name := range cls.Entries {
-		d.Members = append(d.Members, &Decl{Kind: KindEnumEntry, Name: name, ClassID: id + "." + name,
-			Visibility: Public, Type: &Type{Kind: TypeClass, ClassID: id}})
+		e := &Decl{Kind: KindEnumEntry, Name: name, ClassID: id + "." + name,
+			Visibility: Public, Type: &Type{Kind: TypeClass, ClassID: id}}
+		pos[e] = fieldIndex[name]
+		d.Members = append(d.Members, e)
 	}
 	if d.Kind == KindEnumClass {
 		d.Members = append(d.Members, enumMembers(id, l.cp.Has("kotlin/enums/EnumEntries"), FlagStatic|FlagJava)...)
@@ -976,7 +978,7 @@ func (l *library) javaClass(cls *types.ClassSym, depth int) *Decl {
 			}
 		}
 	}
-	if d.Kind == KindClass || d.Kind == KindInterface {
+	if d.Kind == KindClass || d.Kind == KindInterface || d.Kind == KindEnumClass {
 		slices.SortStableFunc(d.Members, func(a, b *Decl) int {
 			if c := cmp.Compare(javaMemberGroup(a), javaMemberGroup(b)); c != 0 {
 				return c
@@ -994,7 +996,7 @@ func (l *library) javaClass(cls *types.ClassSym, depth int) *Decl {
 func javaMemberGroup(d *Decl) int {
 	g := 0
 	switch d.Kind {
-	case KindJavaField:
+	case KindJavaField, KindEnumEntry: // an enum's entries are its fields
 	case KindConstructor:
 		return 3
 	case KindClass, KindInterface, KindEnumClass, KindAnnotationClass, KindObject:
