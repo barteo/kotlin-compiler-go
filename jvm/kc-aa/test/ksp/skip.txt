@@ -1,5 +1,4 @@
 testDeferredTypeRefs: disabled: @Disabled in KSPUnitTestSuite
-testGetPackage: java-source: the order of a package's Java source classes (stock lists D, L, C for C.java {C, D} and L.java)
 testJavaAnnotatedUtil: java-source: a malformed Java file (a Kotlin import without semicolon, many public classes) whose PSI error recovery FIR keeps one class of
 testParent: java-source: Java library classes have no class-file PSI (stock: parent of HSV is File: HSV.class, and its entries property, whose psi is that class, has no getter)
 testPlatformDeclaration: disabled: @Disabled in KSPUnitTestSuite

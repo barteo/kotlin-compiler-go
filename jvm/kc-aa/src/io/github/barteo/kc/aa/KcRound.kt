@@ -288,7 +288,8 @@ internal class KcRound(
      * The declarations of package [fq], callables first, as in FIR: the
      * sources' top-level functions and properties, the class path's, then
      * the Kotlin sources' classes and type aliases, the Java sources'
-     * classes, and the class path's classes and type aliases.
+     * classes (in hash order, as in FIR), and the class path's classes and
+     * type aliases.
      */
     fun packageDeclarations(fq: FqName): List<KaDeclarationSymbol> {
         synchronized(this) { packageScopes[fq]?.let { return it } }
@@ -299,9 +300,11 @@ internal class KcRound(
         sources.filterTo(out) { it is KaCallableSymbol }
         lib?.decls?.filterTo(out) { it is KaCallableSymbol }
         sources.filterTo(out) { it !is KaCallableSymbol }
-        for (f in javaFiles) if (f.packageName == name) {
-            for (c in f.classes) javaClassId(c)?.let { id -> libraryClass(id)?.let { out += it } }
-        }
+        // FIR lists them in the order of the fastutil set the CLI Java file
+        // manager collects their names in (knownClassNamesInPackage).
+        val javaNames = it.unimi.dsi.fastutil.objects.ObjectOpenHashSet<String>()
+        for (f in javaFiles) if (f.packageName == name) f.classes.mapNotNullTo(javaNames) { it.name }
+        for (n in javaNames) libraryClass(ClassId(fq, Name.identifier(n)))?.let { out += it }
         lib?.let { p -> p.classes.mapNotNullTo(out) { if (it in classes) null else libraryClass(it) } }
         lib?.decls?.filterTo(out) { it !is KaCallableSymbol }
         return synchronized(this) { packageScopes.getOrPut(fq) { out } }

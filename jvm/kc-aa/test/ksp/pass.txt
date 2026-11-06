@@ -51,6 +51,7 @@ testFunctionTypeAnnotation
 testFunctionTypes
 testGetAnnotationByTypeWithInnerDefault
 testGetByName
+testGetPackage
 testGetSymbolsFromAnnotation
 testGetSymbolsFromAnnotationInLib
 testGroupedAnnotations
