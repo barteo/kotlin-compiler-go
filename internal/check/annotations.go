@@ -128,7 +128,7 @@ func (c *Checker) checkAnnotations(as []syntax.Annotation, owner *types.ClassSym
 		// ValueRecorder.
 		vrec, _ := c.u.rec.(ValueRecorder)
 		quiet := source && !cls.Annotation
-		if quiet && (vrec == nil || local) {
+		if quiet && vrec == nil {
 			continue
 		}
 		before := len(c.errs)
@@ -155,7 +155,13 @@ func (c *Checker) checkAnnotations(as []syntax.Annotation, owner *types.ClassSym
 			continue
 		}
 		if local {
-			c.annotationValues(cls, args, a.P)
+			values, _ := c.annotationValues(cls, args, a.P)
+			if vrec != nil {
+				vrec.AnnotationValues(c.file, a, values)
+			}
+			if quiet {
+				c.errs = c.errs[:before]
+			}
 			continue
 		}
 		saved, savedLookup := c.state, c.lookupCls

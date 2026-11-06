@@ -185,3 +185,33 @@ class C
 		t.Errorf("got:\n%s\nwant:\n%s\ndiagnostics: %v", got, want, m.Diagnostics)
 	}
 }
+
+func TestJavaNestedDefault(t *testing.T) {
+	m := updateWith(t, withJDK(t), `package p
+
+import java.lang.annotation.Retention
+import java.lang.annotation.RetentionPolicy
+import java.lang.annotation.Target
+import java.lang.annotation.ElementType
+
+annotation class K(val r: Retention = Retention(RetentionPolicy.SOURCE), val t: Target = Target(ElementType.FIELD, ElementType.TYPE))
+`)
+	var sb strings.Builder
+	for _, d := range m.Files[0].Decls {
+		for _, mem := range d.Members {
+			for _, p := range mem.Params {
+				if p.Default != nil {
+					fmt.Fprintf(&sb, "%s.%s = ", d.Name, p.Name)
+					dumpValue(&sb, m.Files[0].Snapshot, p.Default)
+					sb.WriteString("\n")
+				}
+			}
+		}
+	}
+	want := `K.r = @java/lang/annotation/Retention(value=java/lang/annotation/RetentionPolicy.SOURCE{RetentionPolicy.SOURCE}){Retention(RetentionPolicy.SOURCE)}
+K.t = @java/lang/annotation/Target(value=[java/lang/annotation/ElementType.FIELD{ElementType.FIELD}, java/lang/annotation/ElementType.TYPE{ElementType.TYPE}]){Target(ElementType.FIELD, ElementType.TYPE)}
+`
+	if got := sb.String(); got != want {
+		t.Errorf("got:\n%s\nwant:\n%s\ndiagnostics: %v", got, want, m.Diagnostics)
+	}
+}

@@ -305,6 +305,9 @@ type state struct {
 	// defaultParam is being checked.
 	defaultsOf   *types.FunSym
 	defaultParam int
+	// annotDefault is set while an annotation class's parameter default
+	// is checked, where a Java annotation can be created: Retention(..).
+	annotDefault bool
 	// suppressLocalInline is set in a local function that suppresses
 	// NOT_YET_SUPPORTED_LOCAL_INLINE_FUNCTION, for those it declares.
 	suppressLocalInline bool
@@ -2622,7 +2625,9 @@ func (c *Checker) checkDefaults(params []*syntax.Param, cls *types.ClassSym, f *
 		if p.Default != nil {
 			c.defaultParam = i
 			before := len(c.errs)
+			c.annotDefault = ctor && cls != nil && cls.Annotation
 			c.assignable(c.value(p.Default, p.Sym.Type), p.Sym.Type, p.Default.Pos())
+			c.annotDefault = false
 			if ctor && cls != nil && cls.Annotation && len(c.errs) == before && c.nonConst(p.Default) != nil {
 				c.errorf(p.Default.Pos(), "default value of annotation parameter must be a compile-time constant")
 			}

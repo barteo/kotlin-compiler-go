@@ -237,6 +237,12 @@ func (t *classTable) load(cls *types.ClassSym) {
 		cls.JavaHidden = &types.JavaHidden{}
 	}
 	for _, m := range info.Methods {
+		if m.Default != nil && info.Access&classfile.AccAnnotation != 0 {
+			if cls.AnnotationDefaults == nil {
+				cls.AnnotationDefaults = map[string]*classfile.ElementValue{}
+			}
+			cls.AnnotationDefaults[m.Name] = m.Default
+		}
 		if m.Access&(classfile.AccSynthetic|classfile.AccBridge) != 0 {
 			continue
 		}
@@ -1869,6 +1875,11 @@ func (c *Checker) construct(x *syntax.Call, cls *types.ClassSym, p syntax.Pos, w
 		// The program's annotation class, or a Kotlin one of the class
 		// path.
 		return c.annotationConstruct(x, cls, p, want, sink)
+	}
+	if c.annotDefault && cls.External && cls.Java == nil {
+		if cls.Ensure(); cls.Retention != types.NoRetention {
+			return c.javaAnnotationDefault(x, cls, want, sink)
+		}
 	}
 	if cls.Inner && x.Outer == nil {
 		outer, ot := c.implicitOuter(cls.Outer, p)

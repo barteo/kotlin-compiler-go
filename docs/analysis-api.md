@@ -1270,6 +1270,16 @@ Each fix below keeps `build.sh stock` and the slice unchanged.
   `@A(type = Missing::class)` gave an unsupported value, which KSP's
   `validate()` accepts; FIR keeps a class literal of an error type, and so
   does the model, so the annotated class is invalid. +1 (→ 109).
+- **Java annotations in Kotlin annotation defaults; local annotation values.**
+  `val r: Retention = Retention(RetentionPolicy.SOURCE)` in an annotation
+  class was a checker error: a Java annotation class has no constructor. In
+  an annotation parameter's default the checker now calls one made from the
+  annotation's methods (`value` a vararg when it is an array, a parameter
+  optional when the method has a default), as kotlinc does. Annotations on
+  local declarations now record their arguments too, which
+  `getSymbolsWithAnnotation(.., inDepth = true)` reaches. No count change:
+  testAnnotationValue_kt still differs on a backticked class with `$` in
+  its name and on a local class's class literal.
 
 ## Gaps and open questions
 

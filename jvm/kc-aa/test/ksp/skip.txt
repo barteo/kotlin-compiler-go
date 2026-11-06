@@ -2,7 +2,7 @@ testAllFunctions_kt_inherits_java: java-source: line 15: want size got <init>():
 testAnnotationOnReceiver: annotation-target: receiver annotations missing
 testAnnotationValue_java2: java-source: type annotations on Java supertypes
 testAnnotationValue_java: java-source: type annotations on Java supertypes
-testAnnotationValue_kt: checker-gap: Java annotation instance in a Kotlin annotation default
+testAnnotationValue_kt: model-gap: class literal of a `$`-named class and of a local class
 testAnnotationWithDefault: java-source: Java PSI can't evaluate a Kotlin facade constant, ConstKt.DebugKt, without light classes
 testAnnotationsInDependencies: java-source: line 6: want getter of property prop 189 : annotations.AllTarget{[value = all: : 188]} : <no  got ge
 testDeferredJavaSymbols: java-source: line 1: want K got
