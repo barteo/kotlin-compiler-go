@@ -444,6 +444,16 @@ internal class KcJavaFieldSymbol(val info: KcInfo) : StubKaJavaFieldSymbol() {
     override fun createPointer(): KaSymbolPointer<KaJavaFieldSymbol> = info.pointer()
 }
 
+/** A local destructuring declaration, val (a, b) = e; [entries] are its local properties. */
+internal class KcDestructuringSymbol(val info: KcInfo) : StubKaDestructuringDeclarationSymbol() {
+    override val token get() = info.round.token
+    override val psi get() = info.psi
+    override val origin get() = info.origin
+    override val annotations get() = info.annotations
+    override var entries: List<KaVariableSymbol> = emptyList()
+    override fun createPointer(): KaSymbolPointer<KaDestructuringDeclarationSymbol> = info.pointer()
+}
+
 /** The receiver of an extension callable, [owner]; [returnType] is the receiver's type. */
 /**
  * The backing field of a property: the property's annotations with use-site

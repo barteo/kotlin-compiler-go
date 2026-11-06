@@ -220,6 +220,7 @@ internal class KcDecl(
         const val VALUE_PARAMETER = 11
         const val TYPE_PARAMETER = 12
         const val JAVA_FIELD = 13
+        const val DESTRUCTURING = 14
 
         // Go's ka.Visibility values.
         const val PUBLIC = 0

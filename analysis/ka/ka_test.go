@@ -58,7 +58,7 @@ func dump(sb *strings.Builder, snap *psi.Snapshot, ds []*Decl, indent string) {
 	kinds := map[Kind]string{KindClass: "class", KindInterface: "interface", KindObject: "object",
 		KindEnumClass: "enum", KindAnnotationClass: "annotation", KindEnumEntry: "entry",
 		KindFunction: "fun", KindProperty: "val", KindTypeAlias: "typealias", KindConstructor: "ctor",
-		KindValueParameter: "param", KindTypeParameter: "tparam"}
+		KindValueParameter: "param", KindTypeParameter: "tparam", KindDestructuring: "destruct"}
 	for _, d := range ds {
 		node := "-"
 		if d.Node != 0 {
@@ -561,5 +561,45 @@ const val constant = "c"
 	}
 	if !slices.Equal(got, want) {
 		t.Errorf("got\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+}
+
+func TestDestructuring(t *testing.T) {
+	m := update(t, `package a
+annotation class Anno
+
+fun f() {
+    @Anno val (@Anno x, y: Int) = Pair<String, Int>("", 1)
+    var (_, @[Anno] z) = 1 to 2L
+}
+`)
+	var sb strings.Builder
+	f := m.Files[0]
+	dump(&sb, f.Snapshot, f.Decls, "")
+	got := sb.String()
+	want := `annotation Anno [a/Anno] CLASS
+  ctor <init> -
+fun f FUN
+  !destruct <destruct> DESTRUCTURING_DECLARATION @a/Anno
+  !  (val x DESTRUCTURING_DECLARATION_ENTRY @a/Anno
+  !  (val y DESTRUCTURING_DECLARATION_ENTRY
+  !destruct <destruct> DESTRUCTURING_DECLARATION
+  !  (val _ DESTRUCTURING_DECLARATION_ENTRY
+  !  (val z DESTRUCTURING_DECLARATION_ENTRY @a/Anno
+`
+	if got != want {
+		t.Errorf("got:\n%s\nwant:\n%s", got, want)
+	}
+	ds := f.Decls[1].Locals
+	if len(ds) != 2 || ds[0].Kind != KindDestructuring || ds[0].Visibility != Local {
+		t.Fatalf("locals %+v", ds)
+	}
+	// Bodies aren't checked, so only written entry types are known.
+	y, z := ds[0].Params[1], ds[1].Params[1]
+	if y.Visibility != Local || y.Type == nil || y.Type.ClassID != "kotlin/Int" || y.Flags&FlagMutable != 0 {
+		t.Errorf("y: visibility %d, flags %x, type %+v", y.Visibility, y.Flags, y.Type)
+	}
+	if z.Visibility != Local || z.Flags&FlagMutable == 0 {
+		t.Errorf("z: visibility %d, flags %x", z.Visibility, z.Flags)
 	}
 }

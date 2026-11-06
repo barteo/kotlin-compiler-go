@@ -2511,6 +2511,18 @@ func (c *Checker) localStmtAnnotations(body *syntax.Block, f *types.FunSym, owne
 			if s.Sym == nil && s.Type != nil {
 				c.resolveType(s.Type)
 			}
+		case *syntax.Destructure:
+			c.annotatedNode(s, localVarSite)
+			for _, as := range s.Annotations {
+				c.localAnnotations(as, localVarSite)
+			}
+			if s.Stmts == nil {
+				for _, t := range s.Types {
+					if t != nil {
+						c.resolveType(t)
+					}
+				}
+			}
 		case *syntax.LocalFun:
 			c.localAnnotations(s.Decl.Annotations, localFunSite)
 		case *syntax.LocalClass:

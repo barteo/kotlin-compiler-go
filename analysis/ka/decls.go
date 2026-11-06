@@ -92,8 +92,7 @@ func (b *fileBuilder) decl(d syntax.Decl, owner *syntax.ClassDecl, prefix string
 }
 
 // locals returns the models of the local declarations written directly
-// in body: Decl.Locals. A destructuring declaration's entries aren't
-// among them.
+// in body: Decl.Locals.
 func (b *fileBuilder) locals(body *syntax.Block) []*Decl {
 	if body == nil {
 		return nil
@@ -120,6 +119,8 @@ func (b *fileBuilder) locals(body *syntax.Block) []*Decl {
 			} else {
 				md.Type = b.written(s.Type)
 			}
+		case *syntax.Destructure:
+			md = b.destructuring(s)
 		case *syntax.LocalFun:
 			md = b.decl(s.Decl, nil, "")
 		case *syntax.LocalClass:
@@ -135,6 +136,46 @@ func (b *fileBuilder) locals(body *syntax.Block) []*Decl {
 		}
 	}
 	return out
+}
+
+// destructuring returns the model of a local destructuring declaration,
+// or nil if it has no psi node. Its entries' types are the checker's
+// where it checked the body, else the written ones.
+func (b *fileBuilder) destructuring(s *syntax.Destructure) *Decl {
+	node := b.prov.Node(s)
+	if node == 0 {
+		return nil
+	}
+	md := &Decl{Kind: KindDestructuring, Name: "<destruct>", Node: node,
+		Annotations: b.annotations(b.f.Annotated[s])}
+	var entries []psi.NodeID
+	for c := b.snap.Node(node).FirstChild(); c.Valid(); c = c.NextSibling() {
+		if c.NumericKind() == psi.KindDESTRUCTURING_DECLARATION_ENTRY {
+			entries = append(entries, c.ID())
+		}
+	}
+	for i, name := range s.Names {
+		e := &Decl{Kind: KindProperty, Name: name, Visibility: Local}
+		if i < len(entries) {
+			e.Node = entries[i]
+		}
+		if i < len(s.Annotations) {
+			e.Annotations = b.annotations(s.Annotations[i])
+		}
+		if s.Mutable {
+			e.Flags |= FlagMutable
+		}
+		for _, vs := range s.Stmts {
+			if vs.Name == name && vs.Sym != nil {
+				e.Type = b.typ(vs.Sym.Type, s.Types[i])
+			}
+		}
+		if e.Type == nil {
+			e.Type = b.written(s.Types[i])
+		}
+		md.Params = append(md.Params, e)
+	}
+	return md
 }
 
 func (b *fileBuilder) class(d *syntax.ClassDecl, prefix string) *Decl {

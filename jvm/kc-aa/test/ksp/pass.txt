@@ -21,6 +21,7 @@ testExitCode
 testFunctionKinds
 testGetAnnotationByTypeWithInnerDefault
 testGetByName
+testGetSymbolsFromAnnotation
 testGetSymbolsFromAnnotationInLib
 testGroupedAnnotations
 testGroupedAnnotationsWithUseSiteTargets

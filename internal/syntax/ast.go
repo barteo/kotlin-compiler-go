@@ -908,12 +908,16 @@ type For struct {
 // turns it into Stmts: a temporary holding e, then val a =
 // temp.component1(), and so on. _ declares nothing.
 type Destructure struct {
-	P       Pos
-	Names   []string
-	Types   []*TypeRef // val (a: A, b) = e: the names' types, nil where omitted
-	Mutable bool
-	Init    Expr
-	Stmts   []*VarStmt
+	P     Pos
+	Names []string
+	Types []*TypeRef // val (a: A, b) = e: the names' types, nil where omitted
+	// Annotations are the names' own annotations, val (@A a, b) = e; nil
+	// where there are none. The checker checks them, and class files
+	// don't keep them.
+	Annotations [][]Annotation
+	Mutable     bool
+	Init        Expr
+	Stmts       []*VarStmt
 }
 
 func (*Destructure) stmtNode() {}

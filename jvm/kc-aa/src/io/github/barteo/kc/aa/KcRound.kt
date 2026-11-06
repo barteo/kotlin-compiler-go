@@ -550,6 +550,14 @@ internal class KcRound(
                 val psi = javaPsi(d, parent)
                 register(KcJavaFieldSymbol(info(d, psi, parent, key)), key, psi)
             }
+            KcDecl.DESTRUCTURING -> {
+                val psi = psiOf<KtDestructuringDeclaration>(d)
+                val s = register(KcDestructuringSymbol(info(d, psi, parent, key)), key, psi)
+                // The entries' containing symbol is the enclosing callable,
+                // as for any other local property.
+                s.entries = d.params.mapIndexed { i, e -> scoped { ctx -> property(e, parent!!, "$key/$i", ctx) } }
+                s
+            }
             KcDecl.TYPE_ALIAS -> scoped { ctx ->
                 val psi = psiOf<KtTypeAlias>(d)
                 val t = register(KcTypeAliasSymbol(info(d, psi, parent, key)), key, psi)
@@ -569,7 +577,7 @@ internal class KcRound(
          */
         fun property(d: KcDecl, parent: KaSymbol, key: String, ctx: KcTypeContext): KcPropertySymbol {
             val psi = psi(d.node)
-            check(psi == null && (origin != KaSymbolOrigin.SOURCE || d.node == 0) || psi is KtProperty || psi is KtParameter) {
+            check(psi == null && (origin != KaSymbolOrigin.SOURCE || d.node == 0) || psi is KtProperty || psi is KtParameter || psi is KtDestructuringDeclarationEntry) {
                 "kc: property ${d.name} in $where is $psi"
             }
             val own = d.annotations.filter {

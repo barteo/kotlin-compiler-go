@@ -128,7 +128,7 @@ func (l *lowerer) stmt(n psi.NodeRef) syntax.Stmt {
 			kw = child(n, psi.KindVAR_KEYWORD)
 		}
 		d := &syntax.Destructure{P: l.pos(kw), Mutable: kw.NumericKind() == psi.KindVAR_KEYWORD}
-		d.Names, d.Types = l.destructuringNames(n)
+		d.Names, d.Types, d.Annotations = l.destructuringEntries(n)
 		if !has(n, psi.KindEQ) {
 			l.failAt(l.end(n), "expected '='")
 		}
