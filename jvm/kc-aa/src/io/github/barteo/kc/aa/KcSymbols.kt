@@ -257,7 +257,15 @@ internal class KcConstructorSymbol(val info: KcInfo) : StubKaConstructorSymbol()
     override val isExternal get() = info.decl.has(KcDecl.EXTERNAL)
     override val hasStableParameterNames get() = !info.isJava
     override fun createPointer(): KaSymbolPointer<KaConstructorSymbol> = info.pointer()
-    override val typeParameters: List<KaTypeParameterSymbol> get() = (info.parent as? KcClassSymbol)?.typeParameters.orEmpty()
+    // The containing class's type parameters, as FIR has them. A Java
+    // source class's own come from PSI in AA while its constructors' are
+    // FIR symbols, so there they are separate, unequal symbols (KSP reports
+    // an annotated one twice); copies give that identity.
+    override val typeParameters: List<KaTypeParameterSymbol> by lazy {
+        val c = info.parent as? KcClassSymbol ?: return@lazy emptyList()
+        if (c.origin != KaSymbolOrigin.JAVA_SOURCE) c.typeParameters
+        else c.typeParameters.map { if (it is KcTypeParameterSymbol) KcTypeParameterSymbol(it.info) else it }
+    }
 
     lateinit var params: List<KaValueParameterSymbol>
     override val valueParameters get() = params

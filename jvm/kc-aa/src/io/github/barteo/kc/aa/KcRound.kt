@@ -576,8 +576,24 @@ internal class KcRound(
             if (psi != null) typeRefs(d, psi)
             // A source declaration without a node is one Kotlin generates:
             // an implicit constructor, an enum class's values().
-            val o = if (origin == KaSymbolOrigin.SOURCE && d.node == 0) KaSymbolOrigin.SOURCE_MEMBER_GENERATED else origin
+            val o = if (origin == KaSymbolOrigin.SOURCE && d.node == 0 || javaEnumGenerated(d, parent)) KaSymbolOrigin.SOURCE_MEMBER_GENERATED else origin
             return KcInfo(this@KcRound, d, psi, parent, key, annots, types, o)
+        }
+
+        /**
+         * Whether [d] is a member FIR generates for a Java enum: values()
+         * and valueOf() with its parameter, and a source enum's entries (a library one's keeps
+         * the class's origin, as in FIR). A Java enum can't declare these.
+         */
+        fun javaEnumGenerated(d: KcDecl, parent: KaSymbol?): Boolean {
+            if (origin != KaSymbolOrigin.JAVA_SOURCE && origin != KaSymbolOrigin.JAVA_LIBRARY) return false
+            if (d.kind == KcDecl.VALUE_PARAMETER) return parent is KcFunctionSymbol && parent.origin == KaSymbolOrigin.SOURCE_MEMBER_GENERATED
+            if ((parent as? KcClassSymbol)?.classKind != KaClassKind.ENUM_CLASS || !d.has(KcDecl.STATIC)) return false
+            return when (d.kind) {
+                KcDecl.FUNCTION -> d.name == "values" && d.params.isEmpty() || d.name == "valueOf" && d.params.size == 1
+                KcDecl.PROPERTY -> d.name == "entries" && origin == KaSymbolOrigin.JAVA_SOURCE
+                else -> false
+            }
         }
 
         /** Records the types of the type references that declaration [d], at [psi], writes. */

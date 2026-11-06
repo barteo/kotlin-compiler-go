@@ -6,8 +6,7 @@ testErrorTypes: java-source: line 1: want kotlin.collections.MutableMap got ERRO
 testGetPackage: java-source: the order of a package's Java source classes (stock lists D, L, C for C.java {C, D} and L.java)
 testJavaAnnotatedUtil: java-source: a malformed Java file (a Kotlin import without semicolon, many public classes) whose PSI error recovery FIR keeps one class of
 testJavaNonNullTypes: checker-gap: the checker ignores Java @NotNull/@Nullable, so Java types stay platform types
-testLocations: java-source: line 3: want K:J.java:81 got K:K.kt:60
-testParent: java-source: line 28: want parent of Any: (Any..Any?) got parent of synthetic constructor for B: B
+testParent: java-source: Java library classes have no class-file PSI (stock: parent of HSV is File: HSV.class, and its entries property, whose psi is that class, has no getter)
 testPlatformDeclaration: disabled: @Disabled in KSPUnitTestSuite
 testReferenceElement: java-source: line 1: want KSClassifierReferenceImpl: Qualifier of B is A got KSClassifierReferenceImpl: Qualifier
 testReplaceWithErrorTypeArgs: error-types: argument-count mismatch error types

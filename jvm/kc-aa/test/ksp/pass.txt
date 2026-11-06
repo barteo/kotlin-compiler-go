@@ -75,6 +75,7 @@ testLateinitProperties
 testLibOrigins
 testLocalAnnotationClass
 testLocalClasses
+testLocations
 testMakeNullable
 testMangledNames
 testMetaAnnotations
