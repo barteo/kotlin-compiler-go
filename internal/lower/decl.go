@@ -421,6 +421,10 @@ func (l *lowerer) typeAlias(n psi.NodeRef, m syntax.Modifiers) *syntax.TypeAlias
 	return d
 }
 
+// NoNameProvided names an object declaration written without a name, as
+// FIR's SpecialNames.NO_NAME_PROVIDED does.
+const NoNameProvided = "<no name provided>"
+
 // class lowers a CLASS or an OBJECT_DECLARATION with modifiers m.
 func (l *lowerer) class(n psi.NodeRef, m syntax.Modifiers) *syntax.ClassDecl {
 	var kw psi.NodeRef
@@ -453,6 +457,15 @@ func (l *lowerer) class(n psi.NodeRef, m syntax.Modifiers) *syntax.ClassDecl {
 		// header at the newline, where psi reads on.
 		cd.Name = "Companion"
 		l.detachName(n, name)
+	case !name.Valid() && isObject && kw.Valid():
+		// An object declaration without its name: FIR keeps it, named
+		// <no name provided>, and KSP lists it.
+		pos, msg := l.end(kw), "expected a name"
+		if e := child(n, psi.KindERROR_ELEMENT); e.Valid() {
+			pos, msg = l.syntaxMessage(e)
+		}
+		l.errorLater(pos, "%s", msg)
+		cd.Name = NoNameProvided
 	case !name.Valid():
 		l.failAt(l.end(kw), "expected a name")
 	default:

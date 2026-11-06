@@ -276,9 +276,13 @@ func (l *lowerer) syntaxError(n psi.NodeRef) {
 
 // recoverable reports whether the psi error element e leaves its
 // declaration whole: a value parameter written without its type, which
-// paramType gives an invalid type and reports.
+// paramType gives an invalid type and reports, or an object declaration
+// without its name, which class names as FIR does and reports.
 func (l *lowerer) recoverable(e psi.NodeRef) bool {
 	p := e.Parent()
+	if p.NumericKind() == psi.KindOBJECT_DECLARATION && !first(e).Valid() && !has(p, psi.KindIDENTIFIER) {
+		return true
+	}
 	return p.NumericKind() == psi.KindVALUE_PARAMETER && !has(p, psi.KindTYPE_REFERENCE) &&
 		has(p, psi.KindIDENTIFIER) && p.Parent().NumericKind() == psi.KindVALUE_PARAMETER_LIST &&
 		(p.Parent().Parent().NumericKind() == psi.KindPRIMARY_CONSTRUCTOR ||

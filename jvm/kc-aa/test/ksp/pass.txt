@@ -72,6 +72,7 @@ testJvmName
 testLateinitProperties
 testLibOrigins
 testLocalAnnotationClass
+testLocalClasses
 testMakeNullable
 testMangledNames
 testMetaAnnotations

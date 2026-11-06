@@ -8,7 +8,6 @@ testGetPackage: java-source: the order of a package's Java source classes (stock
 testJavaAnnotatedUtil: java-source: a malformed Java file (a Kotlin import without semicolon, many public classes) whose PSI error recovery FIR keeps one class of
 testJavaModifiers: java-source: InternalKSPException: >>> Internal KSP Error
 testJavaNonNullTypes: checker-gap: the checker ignores Java @NotNull/@Nullable, so Java types stay platform types
-testLocalClasses: error-recovery: a member `object : Any {}` without a name, which FIR keeps as <no name provided>
 testLocations: java-source: line 3: want K:J.java:81 got K:K.kt:60
 testParent: java-source: line 28: want parent of Any: (Any..Any?) got parent of synthetic constructor for B: B
 testPlatformDeclaration: disabled: @Disabled in KSPUnitTestSuite

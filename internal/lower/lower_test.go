@@ -60,3 +60,28 @@ func isASCII(s string) bool {
 	}
 	return true
 }
+
+// TestNamelessObject checks that an object declaration without its name
+// is kept, named as FIR names it, with the error reported in the file.
+func TestNamelessObject(t *testing.T) {
+	src := "class Outer {\n    @Anno\n    object : Any {\n    }\n    fun f() {}\n}\n"
+	f, _, errs := File(psi.Parse("A.kt", src))
+	if len(errs) > 0 {
+		t.Fatalf("lowering failed: %v", errs[0])
+	}
+	if len(f.Errors) != 1 || f.Errors[0].Msg != "Name expected" || f.Errors[0].Pos.String() != "3:11" {
+		t.Errorf("got errors %v, want Name expected at 3:11", f.Errors)
+	}
+	var names []string
+	for _, m := range f.Decls[0].(*syntax.ClassDecl).Members {
+		switch m := m.(type) {
+		case *syntax.ClassDecl:
+			names = append(names, m.Name)
+		case *syntax.FunDecl:
+			names = append(names, m.Name)
+		}
+	}
+	if got, want := strings.Join(names, " "), NoNameProvided+" f"; got != want {
+		t.Errorf("got members %q, want %q", got, want)
+	}
+}
