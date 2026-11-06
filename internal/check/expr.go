@@ -1543,35 +1543,37 @@ func (c *Checker) contractNarrows(x *syntax.Call, returns int) []narrow {
 			out = append(out, whenTrue...)
 			continue
 		}
+		if e.Is == nil {
+			// The argument isn't null, nor are the receivers of its safe
+			// calls: !x?.y.isNullOrEmpty() means x isn't null either.
+			out = append(out, c.equalNonNull(arg)...)
+			continue
+		}
 		k, ok := c.narrowKeyOf(arg)
-		switch {
-		case !ok:
-		case e.Is != nil:
-			is := *e.Is
-			if is.HasParams() && len(x.Reified) == len(f.TypeParams) {
-				// The call's type arguments: value is R for its R.
-				sub := types.Subst{}
-				for i, tp := range f.TypeParams {
-					sub[tp] = types.Arg{T: x.Reified[i]}
-				}
-				is = sub.Apply(is)
+		if !ok {
+			continue
+		}
+		is := *e.Is
+		if is.HasParams() && len(x.Reified) == len(f.TypeParams) {
+			// The call's type arguments: value is R for its R.
+			sub := types.Subst{}
+			for i, tp := range f.TypeParams {
+				sub[tp] = types.Arg{T: x.Reified[i]}
 			}
-			own := func(t types.Type) bool {
-				return t.Has(func(u types.Type) bool { return u.K == types.TypeParam && slices.Contains(f.TypeParams, u.Param()) })
+			is = sub.Apply(is)
+		}
+		own := func(t types.Type) bool {
+			return t.Has(func(u types.Type) bool { return u.K == types.TypeParam && slices.Contains(f.TypeParams, u.Param()) })
+		}
+		if own(is) && is.K == types.Class && len(is.C.TypeParams) > 0 {
+			// this is Error, of a NetRequestStatus<T>: the arguments
+			// are the argument's, as for x is Error.
+			if t, known, _ := c.bareArgs(is.C, &syntax.TypeRef{Nullable: is.N}, k.t); known {
+				is = t
 			}
-			if own(is) && is.K == types.Class && len(is.C.TypeParams) > 0 {
-				// this is Error, of a NetRequestStatus<T>: the arguments
-				// are the argument's, as for x is Error.
-				if t, known, _ := c.bareArgs(is.C, &syntax.TypeRef{Nullable: is.N}, k.t); known {
-					is = t
-				}
-			}
-			if !own(is) && !c.subtype(k.t, is) {
-				k.t = c.isNarrowed(k.t, is)
-				out = append(out, k)
-			}
-		case types.MayBeNull(k.t):
-			k.t = k.t.NonNull()
+		}
+		if !own(is) && !c.subtype(k.t, is) {
+			k.t = c.isNarrowed(k.t, is)
 			out = append(out, k)
 		}
 	}
