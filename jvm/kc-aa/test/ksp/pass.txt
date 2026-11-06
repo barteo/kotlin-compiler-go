@@ -13,6 +13,7 @@ testBuiltInTypes
 testCompanion
 testConflictingOverride
 testConstProperties
+testConstructorDeclarations
 testContextParameters
 testCrossModuleTypeAlias
 testDeclarationInconsistency
@@ -73,6 +74,7 @@ testSealedClass
 testShadowingAnnotations
 testSignatureMapper
 testSuperTypes
+testTopLevelMembers
 testTypeAliasComparison
 testTypeComparison2
 testTypeComposure

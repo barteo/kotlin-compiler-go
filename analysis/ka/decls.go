@@ -198,8 +198,9 @@ func (b *fileBuilder) class(d *syntax.ClassDecl, prefix string) *Decl {
 	md.Modality = classModality(d)
 	md.TypeParams = b.typeParams(d.TypeParams)
 	md.Supertypes = b.supertypes(d)
-	if !d.Interface && !d.Object {
-		// The PRIMARY_CONSTRUCTOR, if written.
+	if !d.Interface {
+		// The PRIMARY_CONSTRUCTOR, if written. An object has an implicit,
+		// private one, as FIR gives it.
 		pc := b.snap.Node(md.Node).ChildKind(psi.KindPRIMARY_CONSTRUCTOR).ID()
 		// Without one, a class that declares no constructor has an
 		// implicit, empty one, and a class that does has none.
@@ -210,6 +211,9 @@ func (b *fileBuilder) class(d *syntax.ClassDecl, prefix string) *Decl {
 			ctor := &Decl{Kind: KindConstructor, Name: "<init>", Node: pc,
 				Visibility: visibility(d.CtorMods.Visibility), Annotations: b.annotations(d.CtorMods.Annotations),
 				Flags: commonFlags(&d.CtorMods) | FlagPrimary}
+			if d.Object || d.Enum {
+				ctor.Visibility = Private // always private (enum) or implicit (object)
+			}
 			for _, p := range d.CtorParams {
 				mp := b.param(&p.Param, b.prov.Node(p), p.Modifiers.Annotations)
 				if p.IsProp {

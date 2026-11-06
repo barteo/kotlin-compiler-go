@@ -238,6 +238,7 @@ class C [a/b/C] CLASS @a/b/Marker
   class Nested [a/b/C.Nested] CLASS
     ctor <init> -
   object Companion [a/b/C.Companion] OBJECT_DECLARATION
+    ctor <init> -
 interface I [a/b/I] CLASS @a/b/Marker
 enum E [a/b/E] CLASS
   ctor <init> -
@@ -248,6 +249,7 @@ enum E [a/b/E] CLASS
     (param value -
   val entries -
 object O [a/b/O] OBJECT_DECLARATION
+  ctor <init> -
 fun top FUN @a/b/Marker
 typealias S [a/b/S] TYPEALIAS
 `

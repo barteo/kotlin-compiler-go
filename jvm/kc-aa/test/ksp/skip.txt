@@ -12,7 +12,6 @@ testAnnotationsRepeatable: java-source: line 13: want lib.Test, KA, [value:1]} g
 testAsMemberOf: java-source: NoSuchElementException: Sequence contains no element matching the predicate.
 testCheckOverride: java-source: line 13: want JavaImpl.getX overrides MyInterface.x: true got JavaImpl.getX overrides MyInterface.x:
 testClassKinds: java-source: NullPointerException: null
-testConstructorDeclarations: java-source: line 4: want <init>(kotlin.Int): lib.AbstractJavaClassWithExplicitConstructor got class: AbstractJav
 testDeclarationsInClass: java-members: Java collection members (remove/removeAt) mapping
 testDeferredJavaSymbols: java-source: line 1: want K got
 testDeferredTypeRefs: disabled: @Disabled in KSPUnitTestSuite
@@ -46,7 +45,6 @@ testReferenceElement: java-source: line 1: want KSClassifierReferenceImpl: Quali
 testReplaceWithErrorTypeArgs: error-types: argument-count mismatch error types
 testResolveJavaType: java-source: Java array flexible upper bounds (Array<out T?>), Java inner classes' outer type arguments, Java enum synthetic members
 testThrowList: class-files: library throws lists need class-file bytes (KSP reads them through getFileContent)
-testTopLevelMembers: java-source: line 8: want lib : javaFieldInLib -> lib.LibJavaClass got lib : jvmStaticFunctionInLibCompanion -> l
 testTypeAlias: type-annotations: annotations on alias type arguments
 testTypeParameterReference: java-source: line 1: want kotlin.Int: false got kotlin.Any: true
 testUseSiteTargets: annotation-target: @all use-site target
