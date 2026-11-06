@@ -589,6 +589,7 @@ func (c *Checker) resolveImports() {
 	// import: two of one name conflict, even of one class.
 	classifiers := map[string][]syntax.Pos{}
 	for _, imp := range c.file.Imports {
+		c.noteImport(imp)
 		name := strings.ReplaceAll(imp.Path, ".", "/")
 		if imp.Star {
 			if starred[imp.Path] {
@@ -865,6 +866,9 @@ func (c *Checker) findClassifier(name string) classifier {
 		if k := c.scope.findClass(name); k != nil {
 			return classifier{cls: k} // a local class
 		}
+	}
+	if c.u.lookups != nil {
+		defer c.noteClassifier(name)
 	}
 	if k := c.nestedClassifier(name); k != (classifier{}) {
 		return k

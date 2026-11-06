@@ -66,6 +66,8 @@ type Universe struct {
 	// ctx cancels checking, and rec, if set, receives its facts.
 	ctx context.Context
 	rec Recorder
+	// lookups is rec if it records lookups (see lookups.go).
+	lookups LookupRecorder
 
 	// typeAnnots holds the annotated *syntax.TypeRefs noted, and
 	// typeAnnotsDone those checked, for typeannot.go.
@@ -190,6 +192,7 @@ type Checker struct {
 	classCache map[string]classifier
 	funCache   map[funKey][]*types.FunSym
 	levelCache map[funKey][][]*types.FunSym // see kotlinFunLevels
+	looked     lookups                      // the lookups recorded (see lookups.go)
 	errs       []*syntax.Error
 	// tailIfs are ifs without else that end a branch of the if a lambda
 	// ends with: statements, not values (see markTailIfs).
@@ -558,6 +561,7 @@ func CheckOptions(ctx context.Context, files []*syntax.File, lib *Library, jobs 
 	u := &Universe{ctx: ctx, rec: rec, Pkgs: map[string]*Package{}, prefixes: map[string]bool{}, ext: lib.t, module: moduleSuffix(lib.Module),
 		aliasFile: map[*types.AliasSym]*Checker{}, noJVMDefault: lib.NoJVMDefault, jvmDefaultCompat: lib.JVMDefaultCompat, parcelize: lib.Parcelize, serialization: lib.Serialization,
 		compose: lib.Compose, serialInterfaces: map[*syntax.ClassDecl]bool{}, optIns: lib.OptIns, partial: opts.Signatures}
+	u.lookups, _ = rec.(LookupRecorder)
 	checkers := make([]*Checker, len(files))
 	for i, f := range files {
 		checkers[i] = &Checker{u: u, file: f, done: map[any]bool{}, checked: map[*syntax.Lambda]types.Type{},
@@ -776,6 +780,7 @@ func (c *Checker) resolveType(ref *syntax.TypeRef) types.Type {
 	t := c.typeMarkers(ref, c.resolveTypeRef(ref))
 	if c.u.rec != nil && t.K != types.Invalid {
 		c.u.rec.TypeRef(ref, t)
+		c.noteType(t)
 	}
 	return t
 }
