@@ -758,7 +758,8 @@ internal class KcRound(
                 val k = "$key/($i"
                 val psi = psiOf<KtParameter>(v)
                     ?: (javaOwnerPsi(parent) as? PsiMethod)?.parameterList?.parameters?.getOrNull(i)
-                val own = v.annotations.filter { it.target == "" || it.target == "param" }
+                // @all: on a constructor property is its parameter's too.
+                val own = v.annotations.filter { it.target == "" || it.target == "param" || it.target == "all" }
                 val default = v.default?.let(::value)
                 register(KcValueParameterSymbol(info(v, psi, parent, k, own), default), k, psi)
             }

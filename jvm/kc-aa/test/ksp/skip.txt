@@ -14,4 +14,3 @@ testReferenceElement: java-source: line 1: want KSClassifierReferenceImpl: Quali
 testReplaceWithErrorTypeArgs: error-types: argument-count mismatch error types
 testResolveJavaType: java-source: Java array flexible upper bounds (Array<out T?>), Java inner classes' outer type arguments, Java enum synthetic members
 testTypeAlias: type-annotations: annotations on alias type arguments
-testUseSiteTargets: annotation-target: @all use-site target
