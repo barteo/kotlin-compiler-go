@@ -79,7 +79,11 @@ internal class KcTypeContext(
 
     /** [t] as a class type; [as] replaces its class, for a Java collection's read-only upper bound. */
     private fun classType(t: KcType, nullable: Boolean, `as`: String? = null, out: Boolean = false): KcBaseClassType {
-        val id = ClassId.fromString(`as` ?: t.classId)
+        // A local class's type names its declaration.
+        val localPsi = if (t.param != 0 && `as` == null) psi(t.param) else null
+        val id = if (localPsi == null) ClassId.fromString(`as` ?: t.classId) else t.classId.lastIndexOf('/').let { i ->
+            ClassId(FqName(if (i < 0) "" else t.classId.substring(0, i).replace('/', '.')), FqName(t.classId.substring(i + 1)), true)
+        }
         // A Java array's upper bound is Array<out T>?.
         val args = if (out) args(t).map { if (it is KcTypeArgument && it.variance == Variance.INVARIANT) KcTypeArgument(it.type, Variance.OUT_VARIANCE, round.token) else it } else args(t)
         val annots = annotations(t)
@@ -89,7 +93,7 @@ internal class KcTypeContext(
         return if (isFunctionClass(t.classId)) {
             KcFunctionType(round, id, args(t), nullable, t.isExtension, t.contexts, abbrev, annots)
         } else {
-            KcClassType(round, id, args, nullable, abbrev = abbrev, annots = annots)
+            KcClassType(round, id, args, nullable, abbrev = abbrev, annots = annots, localPsi = localPsi)
         }
     }
 
@@ -152,20 +156,23 @@ internal class KcClassType(
     val isAlias: Boolean = false,
     private val annots: List<KaAnnotation> = emptyList(),
     /** The local class this is the type of, whose [classId] is local and names no class. */
-    val local: KaClassLikeSymbol? = null,
+    private val local: KaClassLikeSymbol? = null,
+    /** The declaration of the local class this is the type of, if [local] isn't known yet. */
+    private val localPsi: PsiElement? = null,
 ) : StubKaUsualClassType(), KcBaseClassType {
     override val token get() = round.token
+    private val localSymbol: KaClassLikeSymbol? get() = local ?: localPsi?.let { round.byPsi[it] as? KaClassLikeSymbol }
     override val symbol: KaClassLikeSymbol
-        get() = local ?: if (isAlias) round.typeAlias(classId) ?: round.classSymbol(classId) else round.classSymbol(classId)
+        get() = localSymbol ?: if (isAlias) round.typeAlias(classId) ?: round.classSymbol(classId) else round.classSymbol(classId)
     override val nullability get() = KaTypeNullability.create(marked)
     override val abbreviation: KaUsualClassType? get() = abbrev
     override val annotations: KaAnnotationList get() = KcAnnotationList(annots, round.token)
     override val qualifiers: List<KaResolvedClassTypeQualifier> get() = qualifiers(round, classId, typeArguments)
     override fun withNullability(nullable: Boolean): KcClassType =
         if (nullable == marked) this
-        else KcClassType(round, classId, typeArguments, nullable, abbrev?.withNullability(nullable), isAlias, annots, local)
+        else KcClassType(round, classId, typeArguments, nullable, abbrev?.withNullability(nullable), isAlias, annots, local, localPsi)
     // The abbreviation isn't part of the type's identity, as in FIR.
-    override fun equals(other: Any?) = other is KcClassType && other.classId == classId && other.local == local &&
+    override fun equals(other: Any?) = other is KcClassType && other.classId == classId && other.localSymbol == localSymbol &&
         other.marked == marked && other.isAlias == isAlias && other.typeArguments == typeArguments
     override fun hashCode() = (classId.hashCode() * 31 + typeArguments.hashCode()) * 2 + if (marked) 1 else 0
     override fun toString() = text(marked, classId.asFqNameString() +

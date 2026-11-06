@@ -215,3 +215,42 @@ K.t = @java/lang/annotation/Target(value=[java/lang/annotation/ElementType.FIELD
 		t.Errorf("got:\n%s\nwant:\n%s\ndiagnostics: %v", got, want, m.Diagnostics)
 	}
 }
+
+func TestClassLiteralNames(t *testing.T) {
+	m := updateWith(t, withStdlib(t), `package p
+import kotlin.reflect.KClass
+annotation class A(val k: KClass<*>)
+class `+"`S$D` { class `N$M`"+` }
+@A(`+"`S$D`"+`::class) class X
+@A(`+"`S$D`.`N$M`"+`::class) class Y
+fun f() {
+    @A(L::class) class L
+    val l: L? = null
+}
+`)
+	var sb strings.Builder
+	typ := func(t *Type) {
+		fmt.Fprintf(&sb, "%d %s %s param=%v\n", t.Kind, t.ClassID, t.Name, t.Param != 0)
+	}
+	for _, d := range m.Files[0].Decls {
+		for _, a := range d.Annotations {
+			typ(a.Args[0].Value.Type)
+		}
+		for _, l := range d.Locals {
+			for _, a := range l.Annotations {
+				typ(a.Args[0].Value.Type)
+			}
+			if l.Type != nil {
+				typ(l.Type)
+			}
+		}
+	}
+	want := `1 p/S$D  param=false
+1 p/S$D.N$M  param=false
+1 p/L  param=true
+1 p/L  param=true
+`
+	if got := sb.String(); got != want {
+		t.Errorf("got:\n%s\nwant:\n%s\ndiagnostics: %v", got, want, m.Diagnostics)
+	}
+}

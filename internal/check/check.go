@@ -2505,8 +2505,10 @@ func (c *Checker) localDeclAnnotations(d syntax.Decl, owner *types.ClassSym) {
 // localStmtAnnotations checks the annotations of the local variables,
 // functions and classes among the statements of body, function f's (if
 // known) of class owner, and resolves the variables' written types where
-// the body wasn't checked. They are resolved where the function is: a
-// local class, which they could name, isn't in scope.
+// the body wasn't checked. They are resolved where the function is, with
+// the local classes declared before them, and a class's own annotations
+// with it, in scope: each a symbol with only its name, which is what a
+// class literal or a type needs of it.
 func (c *Checker) localStmtAnnotations(body *syntax.Block, f *types.FunSym, owner *types.ClassSym) {
 	if body == nil {
 		return
@@ -2517,8 +2519,14 @@ func (c *Checker) localStmtAnnotations(body *syntax.Block, f *types.FunSym, owne
 	} else if owner != nil {
 		tparams = owner.TypeParams
 	}
+	var classes []*types.ClassSym
 	for _, s := range body.Stmts {
-		c.state = state{scope: &scope{}, cls: owner, tparams: tparams}
+		if lc, ok := s.(*syntax.LocalClass); ok && lc.Decl.Sym == nil {
+			d := lc.Decl
+			classes = append(classes, &types.ClassSym{Name: d.Name, Decl: d, Local: true, Final: true,
+				Interface: d.Interface, Object: d.Object, Annotation: d.Annotation, File: c.file.Class()})
+		}
+		c.state = state{scope: &scope{classes: slices.Clip(classes)}, cls: owner, tparams: tparams}
 		switch s := s.(type) {
 		case *syntax.VarStmt:
 			c.annotatedNode(s, localVarSite)

@@ -6,6 +6,7 @@ testAnnotatedUtil
 testAnnotationOnConstructorParameter
 testAnnotationTargets
 testAnnotationValue_defaultKClassValue
+testAnnotationValue_kt
 testAnnotationWithArbitraryClassValue
 testAnnotationWithArrayValue
 testAnnotationWithDefaultValues

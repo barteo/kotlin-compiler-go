@@ -53,7 +53,9 @@ type Type struct {
 	DefinitelyNonNull bool
 	// Param is a TypeParameter's TYPE_PARAMETER node, in the file of the
 	// declaration the type belongs to; 0 if the parameter isn't in the
-	// sources. Name is the parameter's name.
+	// sources. Name is the parameter's name. On a local class's type, a
+	// TypeClass with a local ClassID (its package's and its name), Param
+	// is the class's declaration node.
 	Param psi.NodeID
 	Name  string
 	// Extension is set on a function type with a receiver, A.(B) -> R,
@@ -145,6 +147,23 @@ func (b *fileBuilder) typeAt(t types.Type, ref *syntax.TypeRef, depth int) *Type
 				out.ClassID = "kotlin/coroutines/SuspendFunction" + n
 			}
 			out.Extension, out.Contexts = t.E, int(t.X)
+		} else if c := t.C; c.Local && !c.Anonymous {
+			// A local class's type: its ID is local, its package's and
+			// its name, and Param is its declaration's node.
+			d, _ := c.Decl.(*syntax.ClassDecl)
+			if d == nil || b.prov.Node(d) == 0 {
+				out.Kind, out.Name = TypeError, b.refText(ref)
+				if out.Name == "" && d != nil {
+					out.Name = d.Name
+				}
+				return out
+			}
+			out.ClassID = b.f.Package
+			if out.ClassID != "" {
+				out.ClassID = strings.ReplaceAll(out.ClassID, ".", "/") + "/"
+			}
+			out.ClassID += d.Name
+			out.Param = b.prov.Node(d)
 		} else {
 			out.ClassID = classID(t.C)
 		}
@@ -397,6 +416,15 @@ func classID(c *types.ClassSym) string {
 	}
 	if c.KotlinName != "" {
 		return c.KotlinName
+	}
+	if !c.External {
+		// A source class's simple name may hold a $: `A$B`.
+		if o := c.Outer; o != nil && strings.HasPrefix(c.Name, o.Name+"$") {
+			return classID(o) + "." + c.Name[len(o.Name)+1:]
+		}
+		if c.Outer == nil && !c.Local && !c.Anonymous {
+			return c.Name
+		}
 	}
 	return internalClassID(c.Name)
 }

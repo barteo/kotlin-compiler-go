@@ -2,7 +2,6 @@ testAllFunctions_kt_inherits_java: java-source: line 15: want size got <init>():
 testAnnotationOnReceiver: annotation-target: receiver annotations missing
 testAnnotationValue_java2: java-source: type annotations on Java supertypes
 testAnnotationValue_java: java-source: type annotations on Java supertypes
-testAnnotationValue_kt: model-gap: class literal of a `$`-named class and of a local class
 testAnnotationWithDefault: java-source: Java PSI can't evaluate a Kotlin facade constant, ConstKt.DebugKt, without light classes
 testAnnotationsInDependencies: java-source: line 6: want getter of property prop 189 : annotations.AllTarget{[value = all: : 188]} : <no  got ge
 testDeferredJavaSymbols: java-source: line 1: want K got
@@ -14,7 +13,7 @@ testInterfaceWithDefault: java-source: NullPointerException: null cannot be cast
 testJavaAnnotatedUtil: java-source: a malformed Java file (a Kotlin import without semicolon, many public classes) whose PSI error recovery FIR keeps one class of
 testJavaModifiers: java-source: InternalKSPException: >>> Internal KSP Error
 testJavaNonNullTypes: checker-gap: the checker ignores Java @NotNull/@Nullable, so Java types stay platform types
-testLocalClasses: local-declarations: anonymous objects
+testLocalClasses: error-recovery: a member `object : Any {}` without a name, which FIR keeps as <no name provided>
 testLocations: java-source: line 3: want K:J.java:81 got K:K.kt:60
 testParent: java-source: line 28: want parent of Any: (Any..Any?) got parent of synthetic constructor for B: B
 testPlatformDeclaration: disabled: @Disabled in KSPUnitTestSuite
