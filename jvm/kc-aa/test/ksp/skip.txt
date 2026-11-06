@@ -1,0 +1,101 @@
+testAbstractFunctions: java-source: Java sources in the main module don't reach the model
+testAllFunctions_java_inherits_kt: java-source: Java sources in the main module don't reach the model
+testAllFunctions_kotlin: synthetic-members: no data-class componentN/copy
+testAllFunctions_kt_inherits_java: java-source: Java sources in the main module don't reach the model
+testAllUseSiteTargetAppliedToAnnotationList: ka-differs-from-aa: kc gives the expected output, which this runFailingTest records AA as not giving (KEEP-402)
+testAnnotatedUtil: class-literal: kotlin.Throwable::class reaches getAnnotationsByType as kotlin.Throwable, not java.lang.Throwable
+testAnnotationOnReceiver: annotation-target: receiver annotations missing
+testAnnotationValue_java2: java-source: Java sources in the main module don't reach the model
+testAnnotationValue_java: java-source: Java sources in the main module don't reach the model
+testAnnotationValue_kt: java-source: Java sources in the main module don't reach the model
+testAnnotationWithArrayValue: java-source: Java sources in the main module don't reach the model
+testAnnotationWithDefault: java-source: Java sources in the main module don't reach the model
+testAnnotationWithDefaultValues: java-source: Java sources in the main module don't reach the model
+testAnnotationWithJavaTypeValue: java-source: Java sources in the main module don't reach the model
+testAnnotationWithNestedClassValue: class-literal: Kotlin-mapped nested classes (MutableMap.MutableEntry) not mapped to Java
+testAnnotationsInDependencies: java-source: Java sources in the main module don't reach the model
+testAnnotationsRepeatable: java-source: Java sources in the main module don't reach the model
+testAsMemberOf: java-source: Java sources in the main module don't reach the model
+testBackingFields: java-source: Java sources in the main module don't reach the model
+testCheckOverride: java-source: Java sources in the main module don't reach the model
+testClassKinds: java-source: Java sources in the main module don't reach the model
+testCompanion: companion: companion object naming/order
+testConstructorDeclarations: java-source: Java sources in the main module don't reach the model
+testCrossModuleTypeAlias: type-alias: library type aliases in other modules
+testDeclarationOrder: java-source: Java sources in the main module don't reach the model
+testDeclarationPackageName: java-source: Java sources in the main module don't reach the model
+testDeclarationUtil: local-declarations: no symbols for local declarations
+testDeclarationsInAccessor: local-declarations: no symbols for local declarations
+testDeclarationsInClass: java-members: Java collection members (remove/removeAt) mapping
+testDeclared: java-source: Java sources in the main module don't reach the model
+testDeferredJavaSymbols: java-source: Java sources in the main module don't reach the model
+testDeferredTypeRefs: disabled: @Disabled in KSPUnitTestSuite
+testDocString: java-source: Java sources in the main module don't reach the model
+testEquals: java-source: Java sources in the main module don't reach the model
+testEquivalentJavaWildcards: unsupported: KcExtras.optimalModeForReturnType
+testErrorTypes: java-source: Java sources in the main module don't reach the model
+testFunctionKinds: java-source: Java sources in the main module don't reach the model
+testFunctionTypeAlias: type-alias: alias abbreviation equality
+testFunctionTypeAnnotation: type-annotations: function type annotations
+testFunctionTypes: function-types: KFunction/suspend function kinds
+testGetPackage: java-source: Java sources in the main module don't reach the model
+testGetSymbolsFromAnnotation: java-source: Java sources in the main module don't reach the model
+testGetSymbolsFromAnnotationInLib: local-declarations: no symbols for local declarations
+testGroupedAnnotations: annotation-target: file annotations in groups
+testGroupedAnnotationsWithUseSiteTargets: annotation-target: file annotations in groups
+testHello: java-source: Java sources in the main module don't reach the model
+testImplicitElements: java-source: Java sources in the main module don't reach the model
+testInterfaceWithDefault: java-source: Java sources in the main module don't reach the model
+testInternalOfFriends: friends: internal visibility across friend modules
+testIsMutable: java-source: Java sources in the main module don't reach the model
+testJavaAccessor: java-source: Java sources in the main module don't reach the model
+testJavaAnno: java-source: Java sources in the main module don't reach the model
+testJavaAnnotatedUtil: java-source: Java sources in the main module don't reach the model
+testJavaModifiers: java-source: Java sources in the main module don't reach the model
+testJavaNonNullTypes: java-source: Java sources in the main module don't reach the model
+testJavaOverrideInSource: java-source: Java sources in the main module don't reach the model
+testJavaSubtype: java-source: Java sources in the main module don't reach the model
+testJavaSubtypeOfKotlinInterface: java-source: Java sources in the main module don't reach the model
+testJavaTypes2: java-source: Java sources in the main module don't reach the model
+testJavaTypes: flexible-types: Java flexible types in Kotlin
+testJavaWildcards2: unsupported: KcExtras.optimalModeForReturnType
+testJavaWildcardsSelfReferencing: unsupported: KcExtras.optimalModeForValueParameter
+testJvmName: java-source: Java sources in the main module don't reach the model
+testLibOrigins: java-source: Java sources in the main module don't reach the model
+testLocalClasses: local-declarations: anonymous objects
+testLocations: java-source: Java sources in the main module don't reach the model
+testMangledNames: java-source: Java sources in the main module don't reach the model
+testMultipleModules: java-source: Java sources in the main module don't reach the model
+testMultipleround: java-source: Java sources in the main module don't reach the model
+testNestedClassType: type-annotations: type argument annotations
+testObjCacheA: unsupported: KaKotlinPropertySymbol.initializer
+testObjCacheB: unsupported: KaKotlinPropertySymbol.initializer
+testPackageAnnotation: java-source: Java sources in the main module don't reach the model
+testPackageProviderForGenerated: generated-java: generated Java sources not in the model
+testParameterTypes: error-types: error type rendering
+testParent: java-source: Java sources in the main module don't reach the model
+testPlatformDeclaration: disabled: @Disabled in KSPUnitTestSuite
+testRawTypes: java-source: Java sources in the main module don't reach the model
+testRecordJavaAnnotationTypes: java-source: Java sources in the main module don't reach the model
+testRecordJavaAsMemberOf: java-source: Java sources in the main module don't reach the model
+testRecordJavaGetAllMembers: java-source: Java sources in the main module don't reach the model
+testRecordJavaOverrides: java-source: Java sources in the main module don't reach the model
+testRecordJavaResolutions: java-source: Java sources in the main module don't reach the model
+testRecordJavaSupertypes: java-source: Java sources in the main module don't reach the model
+testReferenceElement: java-source: Java sources in the main module don't reach the model
+testReplaceWithErrorTypeArgs: java-source: Java sources in the main module don't reach the model
+testResolveJavaType: java-source: Java sources in the main module don't reach the model
+testSealedClass: sealed: library sealed inheritors
+testSignatureMapper: java-source: Java sources in the main module don't reach the model
+testSuperTypes: java-source: Java sources in the main module don't reach the model
+testThrowList: java-source: Java sources in the main module don't reach the model
+testTopLevelMembers: java-source: Java sources in the main module don't reach the model
+testTypeAlias: type-annotations: annotations on alias type arguments
+testTypeAliasComparison: type-alias: alias comparison
+testTypeComposure: star-projections: star projection replacement
+testTypeParameterReference: java-source: Java sources in the main module don't reach the model
+testUseSiteTargets: annotation-target: @all use-site target
+testValidateTypes: java-source: Java sources in the main module don't reach the model
+testValueParameter: value-parameters: isVal/isVar of constructor properties
+testVararg: java-source: Java sources in the main module don't reach the model
+testVisibilities: java-source: Java sources in the main module don't reach the model

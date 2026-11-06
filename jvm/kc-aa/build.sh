@@ -2,7 +2,7 @@
 # build.sh builds the kc KSP backend: the Analysis API answered by kc
 # through libkc (jvm/kc-aa/src), and the libkc.so it loads.
 #
-#	jvm/kc-aa/build.sh [test|stock]
+#	jvm/kc-aa/build.sh [test|stock|ksp]
 #
 # It writes build/kc-aa.jar and build/libkc.so. With "test" it then runs
 # KSP's processing loop on the kc backend over test/slice, with a processor
@@ -16,6 +16,13 @@
 # directories, and the slice's want.txt but for test/slice/stock.diff.
 # Room's jars come from Google's Maven repository (GOOGLE_MAVEN_REPO), the
 # rest from Maven Central (MAVEN_REPO).
+#
+# "ksp" runs KSP's own unit tests (its kotlin-analysis-api test suite, with
+# the processors of its test-utils) on the kc backend with ksptest/KspSuite.kt,
+# writes build/ksptest/results.txt, and fails if a test test/ksp/pass.txt
+# lists doesn't pass; KSP_UPDATE=1 rewrites pass.txt. KSP_TESTS=REGEX runs
+# only the tests whose names match. test/ksp/skip.txt says why each other
+# test fails.
 #
 # The symbol classes extend generated stubs (build/Stubs.kt, made by
 # gen/GenStubs.kt) whose members throw UnsupportedOperationException("kc:
@@ -80,6 +87,38 @@ rm -f "$out/kc-aa.jar"
 echo "$out/kc-aa.jar"
 
 mode=${1:-}
+if [ "$mode" = ksp ]; then
+	ksp=$kspwork/ksp
+	kt=$out/ksptest
+	rm -rf "$kt/classes"
+	mkdir -p "$kt/classes"
+	# The test processors: test-utils' and kotlin-analysis-api's own.
+	kotlinc -cp "$deps" -d "$kt/classes" -jvm-target 17 -jvm-default=enable $optins -nowarn \
+		$(find "$ksp/test-utils/src/main/kotlin" "$ksp/kotlin-analysis-api/src/test/kotlin/com/google/devtools/ksp/processor" -name '*.kt') \
+		"$here/ksptest/KspSuite.kt"
+	LD_PRELOAD=$java_home/lib/libjsig.so java -Xss8m -Dksp.backend=kc -Dkc.lib="$out/libkc.so" -Didea.home.path="$out" \
+		-Dksptest.stdlib="$lib/kotlin-stdlib-2.4.21.jar" -Dksptest.annotations="$lib/annotations-23.0.0.jar" \
+		-cp "$kt/classes:$out/kc-aa.jar:$deps" KspSuiteKt "$ksp" "$kt/work" "$kt/results.txt" \
+		"$lib/kotlin-compiler-2.4.21.jar:$lib/kotlin-stdlib-2.4.21.jar:$lib/kotlinx-coroutines-core-jvm-1.8.0.jar:$lib/annotations-23.0.0.jar" \
+		${KSP_TESTS:-} 2> "$kt/suite.log"
+	[ -n "${KSP_TESTS:-}" ] && exit 0
+	awk '$1 == "PASS" { print $2 }' "$kt/results.txt" | sort > "$kt/pass.txt"
+	if [ "${KSP_UPDATE:-}" = 1 ]; then
+		cp "$kt/pass.txt" "$here/test/ksp/pass.txt"
+	fi
+	lost=$(comm -23 "$here/test/ksp/pass.txt" "$kt/pass.txt")
+	new=$(comm -13 "$here/test/ksp/pass.txt" "$kt/pass.txt")
+	[ -z "$new" ] || echo "ksp: newly passing (KSP_UPDATE=1 records them):" $new
+	if [ -n "$lost" ]; then
+		echo "ksp: no longer passing:" $lost >&2
+		exit 1
+	fi
+	# Every test that doesn't pass has a reason in skip.txt.
+	missing=$(awk '$1 != "PASS" { print $2 }' "$kt/results.txt" | sort | comm -23 - <(cut -d: -f1 "$here/test/ksp/skip.txt" | sort))
+	[ -z "$missing" ] || echo "ksp: failing without a reason in test/ksp/skip.txt:" $missing
+	echo "ksp: ok ($(wc -l < "$kt/pass.txt") pass)"
+	exit 0
+fi
 [ "$mode" = test ] || [ "$mode" = stock ] || exit 0
 
 # The symbols PrintAnnotated prints (see its doc comment).

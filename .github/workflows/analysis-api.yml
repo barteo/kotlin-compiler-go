@@ -64,3 +64,6 @@ jobs:
 
       - name: kc backend against recorded output and stock KSP
         run: jvm/kc-aa/build.sh stock
+
+      - name: KSP's own test suite on the kc backend
+        run: jvm/kc-aa/build.sh ksp
