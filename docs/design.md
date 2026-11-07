@@ -78,6 +78,16 @@ files in order:
    give overrides their inherited default values, declare the members
    class delegation implements, and infer omitted types.
 
+`-time` reports these passes, and what follows them, as parts of
+`check`: `headers` (steps 1 to 3 and hierarchy cycles), `sigs`
+(signatures, inherited defaults, delegation), `infer` (omitted types),
+`declchk` (exposure, clashes and other declaration checks), `bodies` (the
+parallel phase, with its time summed over workers and its slowest file)
+and `post` (opt-in, deprecation and the other checks of resolved code).
+Each line also gives the class files loaded and Kotlin declarations
+decoded meanwhile, which include the default imports' prefetch while it
+runs.
+
 The program's classes get the same symbols as the class path's
 (`types.ClassSym`), so the checker treats them alike. Member lookup walks
 supertypes, superclasses first; an override hides what it overrides by

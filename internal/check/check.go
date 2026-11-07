@@ -4,10 +4,12 @@ package check
 
 import (
 	"fmt"
+	"io"
 	"slices"
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/barteo/kotlin-compiler-go/internal/classfile"
 	"github.com/barteo/kotlin-compiler-go/internal/classpath"
@@ -378,6 +380,8 @@ type Library struct {
 	// OptIns are the qualified names of the requirement markers the
 	// module opts in to, as kotlinc's -opt-in: see optin.go.
 	OptIns []string
+	// Timing, if set, gets the times of the checker's phases, for -time.
+	Timing io.Writer
 }
 
 // EnableSerialization sets Serialization. The code that kc writes for the
@@ -439,6 +443,7 @@ func (l *Library) Prefetch() {
 
 // CheckWith is Check with a library that may have been prefetched.
 func CheckWith(files []*syntax.File, lib *Library, jobs int) []*syntax.Error {
+	timer := newPhaseTimer(lib.Timing, lib.t.cp)
 	u := &Universe{Pkgs: map[string]*Package{}, prefixes: map[string]bool{}, ext: lib.t, module: moduleSuffix(lib.Module),
 		aliasFile: map[*types.AliasSym]*Checker{}, noJVMDefault: lib.NoJVMDefault, jvmDefaultCompat: lib.JVMDefaultCompat, parcelize: lib.Parcelize, serialization: lib.Serialization,
 		compose: lib.Compose, serialInterfaces: map[*syntax.ClassDecl]bool{}, optIns: lib.OptIns}
@@ -486,6 +491,7 @@ func CheckWith(files []*syntax.File, lib *Library, jobs int) []*syntax.Error {
 	for _, c := range checkers {
 		c.checkSupers()
 	}
+	timer.mark("headers", "declarations, imports, typealiases, supertypes; sequential")
 	for _, c := range checkers {
 		c.resolveSignatures()
 	}
@@ -502,11 +508,19 @@ func CheckWith(files []*syntax.File, lib *Library, jobs int) []*syntax.Error {
 	for _, c := range checkers {
 		c.defaultImpls()
 	}
+	timer.mark("sigs", "signatures, overrides' defaults, delegation; sequential")
+	pending := 0
+	if lib.Timing != nil {
+		for _, c := range checkers {
+			pending += c.pendingInfer()
+		}
+	}
 	// Omitted return and property types are inferred up front, in order, so
 	// the parallel phase only reads signatures.
 	for _, c := range checkers {
 		c.inferAll()
 	}
+	timer.mark("infer", "%d omitted types and their bodies; sequential", pending)
 	for _, c := range checkers {
 		c.checkExposure()
 	}
@@ -520,16 +534,28 @@ func CheckWith(files []*syntax.File, lib *Library, jobs int) []*syntax.Error {
 	for _, c := range checkers {
 		c.checkClashes()
 	}
+	timer.mark("declchk", "exposure, serialization bodies, conflicts, JVM clashes; sequential")
 
 	if jobs < 1 {
 		jobs = 1
 	}
 	var wg sync.WaitGroup
+	var bodiesMu sync.Mutex
+	var bodies bodyTimes
 	work := make(chan *Checker)
 	for range jobs {
 		wg.Go(func() {
 			for c := range work {
+				if lib.Timing == nil {
+					c.checkBodies()
+					continue
+				}
+				start := time.Now()
 				c.checkBodies()
+				d := time.Since(start)
+				bodiesMu.Lock()
+				bodies.add(c, d)
+				bodiesMu.Unlock()
 			}
 		})
 	}
@@ -538,6 +564,8 @@ func CheckWith(files []*syntax.File, lib *Library, jobs int) []*syntax.Error {
 	}
 	close(work)
 	wg.Wait()
+	timer.mark("bodies", "parallel on %d workers; %v summed over them, slowest file %v (%s)", jobs,
+		bodies.total.Round(time.Microsecond), bodies.slowest.Round(time.Microsecond), bodies.slowFile)
 
 	optInErrors(checkers)
 	localClassNames(checkers)
@@ -553,6 +581,7 @@ func CheckWith(files []*syntax.File, lib *Library, jobs int) []*syntax.Error {
 		})
 		errs = append(errs, c.errs...)
 	}
+	timer.mark("post", "opt-in, deprecation, shadowing, DSL markers, modifiers; sequential")
 	return errs
 }
 

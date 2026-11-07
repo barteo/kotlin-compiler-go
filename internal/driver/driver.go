@@ -140,6 +140,7 @@ func Compile(paths []string, opts Options) error {
 			lib.Parcelize = opts.Parcelize
 			lib.Compose = opts.Compose
 			lib.OptIns = opts.OptIns
+			lib.Timing = opts.Timing
 			if opts.Serialization {
 				lib.EnableSerialization()
 			}
