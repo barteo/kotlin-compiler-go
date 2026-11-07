@@ -1,0 +1,69 @@
+name: Analysis API checks
+
+# The JVM half of kc's Analysis API (jvm/, docs/analysis-api.md): the JNI
+# bridge's stress test, and the kc KSP backend run over the slice, Moshi,
+# Dagger, Room and Hilt projects, its output compared with the recorded
+# output and with stock KSP's. The Go half's tests run in PR checks.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  LANG: C.UTF-8
+  LC_ALL: C.UTF-8
+
+jobs:
+  kc-aa:
+    name: kc KSP backend
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.mod
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      # The Analysis API jar (compiled from the Kotlin sources), the KSP
+      # fork and the jars they need from Maven Central (and Google's Maven
+      # repository, for Room): what the build
+      # scripts and the patches pin, so they key the cache. Maven Central
+      # answers busy clients with 429s, which the scripts retry.
+      - name: Cache the Analysis API jar and the KSP fork
+        uses: actions/cache@v5
+        with:
+          path: jvm/ksp/build
+          key: kc-ksp-${{ hashFiles('jvm/aa-api/build.sh', 'jvm/ksp/build.sh', 'jvm/ksp/patches/*') }}
+      - name: Cache the processors and stock KSP
+        uses: actions/cache@v5
+        with:
+          path: jvm/kc-aa/build/m2
+          key: kc-aa-m2-${{ hashFiles('jvm/kc-aa/build.sh') }}
+          restore-keys: kc-aa-m2-
+
+      - name: JNI stress test
+        run: jvm/libkc/test.sh
+
+      - name: kc backend against recorded output and stock KSP
+        run: jvm/kc-aa/build.sh stock
+
+      - name: KSP's own test suite on the kc backend
+        run: jvm/kc-aa/build.sh ksp

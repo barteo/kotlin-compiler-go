@@ -94,6 +94,9 @@ func (c *Checker) checkAnnotations(as []syntax.Annotation, owner *types.ClassSym
 		if cls == nil {
 			continue
 		}
+		if rec := c.u.rec; rec != nil {
+			rec.Annotation(c.file, a, cls)
+		}
 		if cls.Retention != types.NoRetention {
 			c.annotationTarget(a, cls, site)
 			c.repeated(a, cls, site, seen)
@@ -107,12 +110,20 @@ func (c *Checker) checkAnnotations(as []syntax.Annotation, owner *types.ClassSym
 			} else {
 				c.errorf(a.P, "%s expected for annotation class %s%s", countArgs(len(ps)), cls.DisplayName(), types.TypeParamsString(ps))
 			}
+		} else if c.u.rec != nil {
+			// The type arguments, @A<String>, are only reported: a
+			// generic annotation's arguments don't use them.
+			for _, ta := range a.TypeArgs {
+				if ta.Type != nil {
+					c.resolveType(ta.Type)
+				}
+			}
 		}
 		source := cls.Retention == types.RetentionSource
 		if source && !local {
 			a.Source = cls
 		}
-		if cls.Retention == types.NoRetention || source && !cls.Annotation {
+		if cls.Retention == types.NoRetention {
 			continue
 		}
 		if !c.u.ext.kotlin && !cls.Annotation {
@@ -120,6 +131,15 @@ func (c *Checker) checkAnnotations(as []syntax.Annotation, owner *types.ClassSym
 			// java.lang.Deprecated: only the program's are written.
 			continue
 		}
+		// A library's SOURCE-retention annotation, @Suppress, isn't
+		// checked; its values are evaluated, without errors, only for a
+		// ValueRecorder.
+		vrec, _ := c.u.rec.(ValueRecorder)
+		quiet := source && !cls.Annotation
+		if quiet && vrec == nil {
+			continue
+		}
+		before := len(c.errs)
 		args := make([]annotArg, 0, len(a.Args))
 		ok := true
 		for j := range a.Args {
@@ -137,10 +157,19 @@ func (c *Checker) checkAnnotations(as []syntax.Annotation, owner *types.ClassSym
 			args = append(args, annotArg{name: arg.Name, elems: elems, array: array, pos: p})
 		}
 		if !ok {
+			if quiet {
+				c.errs = c.errs[:before]
+			}
 			continue
 		}
 		if local {
-			c.annotationValues(cls, args, a.P)
+			values, _ := c.annotationValues(cls, args, a.P)
+			if vrec != nil {
+				vrec.AnnotationValues(c.file, a, values)
+			}
+			if quiet {
+				c.errs = c.errs[:before]
+			}
 			continue
 		}
 		saved, savedLookup := c.state, c.lookupCls
@@ -148,6 +177,13 @@ func (c *Checker) checkAnnotations(as []syntax.Annotation, owner *types.ClassSym
 		c.lookupCls = annotationScope(owner, c.lookupCls, site)
 		values, ok := c.annotationValues(cls, args, a.P)
 		c.state, c.lookupCls = saved, savedLookup
+		if vrec != nil {
+			vrec.AnnotationValues(c.file, a, values)
+		}
+		if quiet {
+			c.errs = c.errs[:before]
+			continue
+		}
 		if ok && !source {
 			// Class files keep it.
 			a.Class, a.Values = cls, values
@@ -234,6 +270,11 @@ func (c *Checker) annotationValues(cls *types.ClassSym, args []annotArg, p synta
 				ok = false
 				continue
 			}
+			if j == next && !params[j].Vararg {
+				// Named in its own place: a positional argument may
+				// follow, @A(x = 1, 2).
+				next++
+			}
 		case next < len(params):
 			j = next
 			if !params[j].Vararg {
@@ -261,6 +302,16 @@ func (c *Checker) annotationValues(cls *types.ClassSym, args []annotArg, p synta
 		}
 		t := star.Apply(v.Type)
 		val := syntax.AnnotationValue{Name: v.Name, Type: t, Array: t.IsArray() || t.K == types.Class && types.IsUnsignedArray(t.C)}
+		if t.K == types.Invalid && len(byParam[j]) == 1 {
+			// An unresolved parameter type, as Array<KClass<*>> without
+			// its import: [a, b] is still an array, as in FIR.
+			a := byParam[j][0]
+			val.Array = a.array
+			if len(a.elems) == 1 {
+				_, isArr := syntax.ArrayElems(a.elems[0])
+				val.Array = val.Array || isArr
+			}
+		}
 		elem := t
 		if val.Array {
 			elem = types.VarargElem(t)
@@ -308,7 +359,11 @@ func (c *Checker) annotationElem(x syntax.Expr, t types.Type) (syntax.Annotation
 				}
 			}
 			values, ok := c.annotationValues(t.C, args, call.Pos())
-			return syntax.AnnotationElem{Nested: &syntax.Annotation{P: call.Pos(), Class: t.C, Values: values}}, ok
+			nested := &syntax.Annotation{P: call.Pos(), Class: t.C, Values: values}
+			if rec := c.u.rec; rec != nil {
+				rec.Annotation(c.file, nested, t.C)
+			}
+			return syntax.AnnotationElem{Nested: nested}, ok
 		}
 	}
 	before := len(c.errs)

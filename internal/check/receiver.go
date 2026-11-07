@@ -192,7 +192,7 @@ func (c *Checker) recvTarget(x syntax.Expr) syntax.Expr {
 	if !ok || len(c.recvs) == 0 {
 		return x
 	}
-	if _, _, local := c.scope.lookup(id.Name); local {
+	if v, _, local := c.scope.lookup(id.Name); local && propParam(v) == nil {
 		return x
 	}
 	n := len(c.errs)
@@ -202,6 +202,20 @@ func (c *Checker) recvTarget(x syntax.Expr) syntax.Expr {
 	}
 	id.Member = nil
 	return x
+}
+
+// propParam returns the property that a primary constructor parameter
+// declares, val x or var x, and nil for other variables. In property
+// initializers and init blocks, as in Kotlin, its name is the property's
+// for implicit receivers, whose members come first, and for assignments.
+func propParam(v *types.VarSym) *types.VarSym {
+	if v == nil || v.Kind != types.Param {
+		return nil
+	}
+	if cp, ok := v.Decl.(*syntax.CtorParam); ok && cp.IsProp {
+		return cp.PropSym
+	}
+	return nil
 }
 
 // recvCall rewrites an unqualified call f(args) to a call on the innermost
@@ -215,19 +229,55 @@ func (c *Checker) recvCall(x *syntax.Call, id *syntax.Ident) bool {
 		}
 		m := &syntax.Member{X: recvThis(r, id.P), Name: id.Name}
 		m.P = id.P
-		if t := c.scope.narrowed(r.sym); !c.hasFun(t, id.Name, x) && !c.hasFunProp(t, id.Name, x) && !c.extPropInvoked(m, t, c.classOf(t), x) {
+		t := c.scope.narrowed(r.sym)
+		if !c.hasFun(t, id.Name, x) && !c.hasFunProp(t, id.Name, x) && !c.extPropInvoked(m, t, c.classOf(t), x) {
 			continue
 		}
-		x.Fun = m
-		return true
+		if !c.extensionsGiveWay(t, id.Name, x) {
+			x.Fun = m
+			return true
+		}
 	}
 	return false
+}
+
+// extensionsGiveWay reports whether a lambda receiver of type t, whose
+// only functions that may take a call are extensions, gives way to a
+// top-level function: as thisExtension does for the class's this, a call
+// with a lambda is checked once, so the arguments' types decide. In
+// embeddedServer { log(TAG, INFO) { } }, Application's Any.log(priority,
+// metaData, message) gives way to log(tag: String, priority, ...).
+func (c *Checker) extensionsGiveWay(t types.Type, name string, x *syntax.Call) bool {
+	if !hasLambda(x.Args) || c.memberFun(t, name, x) || c.hasFunProp(t, name, x) || !c.anyMayTake(c.topFuns(name), x) {
+		return false
+	}
+	var fs []*types.FunSym
+	for _, cl := range c.extCalleesFor(name, t.Flex(), x) {
+		if c.mayTake(cl.f, x) {
+			fs = append(fs, cl.f)
+		}
+	}
+	return len(fs) > 0 && !c.takeTypes(fs, x, c.argTypes(x))
 }
 
 // hasFun reports whether a receiver of type t has a member or extension
 // function with a name that may take a call's arguments, judging by their
 // number and names, and whether lambdas go to function-typed parameters.
 func (c *Checker) hasFun(t types.Type, name string, x *syntax.Call) bool {
+	if c.memberFun(t, name, x) {
+		return true
+	}
+	for _, cl := range c.extCalleesFor(name, t.Flex(), x) {
+		if c.mayTake(cl.f, x) {
+			return true
+		}
+	}
+	return false
+}
+
+// memberFun is hasFun without extensions: a member, built-in or inner
+// class constructor that may take the call.
+func (c *Checker) memberFun(t types.Type, name string, x *syntax.Call) bool {
 	t = t.Flex()
 	fits := func(fs []*types.FunSym) bool {
 		for _, f := range fs {
@@ -256,11 +306,6 @@ func (c *Checker) hasFun(t types.Type, name string, x *syntax.Call) bool {
 					return true
 				}
 			}
-		}
-	}
-	for _, cl := range c.extCalleesFor(name, t, x) {
-		if c.mayTake(cl.f, x) {
-			return true
 		}
 	}
 	return false
@@ -361,12 +406,21 @@ func (c *Checker) thisExtension(name string, x *syntax.Call) bool {
 	if n, ok := c.narrowedThis(); ok {
 		t = n
 	}
+	var fs []*types.FunSym
 	for _, cl := range c.extCalleesFor(name, t, x) {
 		if c.mayTake(cl.f, x) {
-			return true
+			fs = append(fs, cl.f)
 		}
 	}
-	return false
+	if len(fs) == 0 || !hasLambda(x.Args) {
+		return len(fs) > 0
+	}
+	// A call with a lambda is checked once, so onReceiver can't try the
+	// extension and fall back: the arguments' types decide, those of
+	// properties too, which mayTake doesn't know. Any.log(priority,
+	// message) gives way to the top-level log(tag: String, priority,
+	// message) in log(TAG, INFO) { }.
+	return c.takeTypes(fs, x, c.argTypes(x))
 }
 
 // lowPriorityGivesWay drops the members marked

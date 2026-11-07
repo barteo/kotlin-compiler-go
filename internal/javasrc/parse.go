@@ -117,31 +117,43 @@ type Method struct {
 	Varargs    bool
 	Throws     []*Type
 	Body       bool // it has a body, which isn't kept
+	// HasDefault reports whether an annotation method declares a default
+	// value, which isn't kept.
+	HasDefault bool
 }
 
 // Param is a method's parameter or a record's component.
 type Param struct {
-	Type *Type
-	Name string
+	Type        *Type
+	Name        string
+	Annotations []*Annotation
 }
 
-// Parse parses a Java source file's declarations.
+// Parse parses a Java source file's declarations. A member it can't parse
+// is left out, as IntelliJ's Java PSI keeps the rest of its class: Parse
+// then returns the file without it and the first such error.
 func Parse(path, src string) (f *File, err error) {
 	toks, err := scan(src)
 	if err != nil {
 		return nil, fmt.Errorf("%s:%w", path, err)
 	}
 	p := &parser{toks: toks, file: &File{Path: path}}
+	posErr := func(e parseError) error {
+		return fmt.Errorf("%s:%d:%d: %s", path, e.tok.line, e.tok.col, e.msg)
+	}
 	defer func() {
 		if r := recover(); r != nil {
 			e, ok := r.(parseError)
 			if !ok {
 				panic(r)
 			}
-			f, err = nil, fmt.Errorf("%s:%d:%d: %s", path, e.tok.line, e.tok.col, e.msg)
+			f, err = nil, posErr(e)
 		}
 	}()
 	p.compilationUnit()
+	if p.skipped != nil {
+		return p.file, posErr(*p.skipped)
+	}
 	return p.file, nil
 }
 
@@ -151,9 +163,10 @@ type parseError struct {
 }
 
 type parser struct {
-	toks []token
-	pos  int
-	file *File
+	toks    []token
+	pos     int
+	file    *File
+	skipped *parseError // the first error of a member left out
 }
 
 func (p *parser) tok() token           { return p.toks[p.pos] }
@@ -178,6 +191,14 @@ func (p *parser) expect(s string) {
 		p.fail("expected %s, found %s", s, p.describe())
 	}
 	p.next()
+}
+
+// semi accepts the ; that ends a package or import declaration. A missing
+// one Java PSI reports and keeps the declaration, as Parse does.
+func (p *parser) semi() {
+	if !p.accept(";") && p.skipped == nil {
+		p.skipped = &parseError{p.tok(), "expected ;"}
+	}
 }
 
 func (p *parser) describe() string {
@@ -220,7 +241,7 @@ func (p *parser) compilationUnit() {
 	if p.isWord("package") {
 		p.next()
 		p.file.Package = p.qualified()
-		p.expect(";")
+		p.semi()
 		mods = p.modifiers()
 	}
 	for p.isWord("import") {
@@ -235,7 +256,7 @@ func (p *parser) compilationUnit() {
 			p.expect("*")
 			imp.Star = true
 		}
-		p.expect(";")
+		p.semi()
 		p.file.Imports = append(p.file.Imports, imp)
 		mods = p.modifiers()
 	}
@@ -536,8 +557,51 @@ func (p *parser) classBody(c *Class) {
 		if p.tok().kind == tEOF {
 			p.fail("expected }")
 		}
-		p.member(c)
+		p.memberOrSkip(c)
 	}
+}
+
+// memberOrSkip parses a member declaration of class c or, if it is
+// malformed, skips it: up to its `;` or its body's closing brace, or to
+// the class's closing brace.
+func (p *parser) memberOrSkip(c *Class) {
+	nf, nm, nn := len(c.Fields), len(c.Methods), len(c.Nested)
+	defer func() {
+		r := recover()
+		if r == nil {
+			return
+		}
+		e, ok := r.(parseError)
+		if !ok || e.tok.kind == tEOF {
+			panic(r)
+		}
+		c.Fields, c.Methods, c.Nested = c.Fields[:nf], c.Methods[:nm], c.Nested[:nn]
+		if p.skipped == nil {
+			p.skipped = &e
+		}
+		for {
+			t := p.tok()
+			switch {
+			case t.kind == tEOF:
+				panic(r)
+			case t.kind != tPunct:
+				p.next()
+			case t.text == ";":
+				p.next()
+				return
+			case t.text == "}":
+				return
+			case t.text == "{":
+				p.skipBalanced()
+				return
+			case t.text == "(" || t.text == "[":
+				p.skipBalanced()
+			default:
+				p.next()
+			}
+		}
+	}()
+	p.member(c)
 }
 
 // member parses a member declaration of class c.
@@ -558,8 +622,10 @@ func (p *parser) member(c *Class) {
 		return
 	}
 	tps := p.typeParams()
-	// A constructor, or a record's compact canonical constructor.
-	if p.tok().kind == tIdent && p.tok().text == c.Name && (p.peek(1).text == "(" || p.peek(1).text == "{" && c.Kind == KindRecord) {
+	// A constructor, or a record's compact canonical constructor. A
+	// method without a return type is a misnamed constructor, as
+	// IntelliJ's Java PSI reads it.
+	if p.tok().kind == tIdent && (p.peek(1).text == "(" || p.tok().text == c.Name && p.peek(1).text == "{" && c.Kind == KindRecord) {
 		p.next()
 		m := &Method{Modifiers: mods, TypeParams: tps, Name: "<init>"}
 		if p.is("{") {
@@ -590,6 +656,15 @@ func (p *parser) member(c *Class) {
 		if p.accept(";") {
 			return
 		}
+		if _, mod := modifierFlags[p.tok().text]; p.is("}") || mod && p.tok().kind == tIdent {
+			// A missing ; before the class's closing brace or the next
+			// member's modifiers, which Java PSI reports and keeps the
+			// field.
+			if p.skipped == nil {
+				p.skipped = &parseError{p.tok(), "expected ;"}
+			}
+			return
+		}
 		p.expect(",")
 		name = p.ident()
 	}
@@ -599,7 +674,7 @@ func (p *parser) member(c *Class) {
 func (p *parser) params(m *Method) {
 	p.expect("(")
 	for !p.is(")") {
-		p.modifiers()
+		mods := p.modifiers()
 		t := p.typ()
 		if p.accept("...") {
 			t.Dims++
@@ -613,7 +688,7 @@ func (p *parser) params(m *Method) {
 		} else {
 			name := p.ident()
 			t.Dims += p.dims()
-			m.Params = append(m.Params, &Param{Type: t, Name: name})
+			m.Params = append(m.Params, &Param{Type: t, Name: name, Annotations: mods.Annotations})
 		}
 		if !p.accept(",") {
 			break
@@ -631,11 +706,20 @@ func (p *parser) methodRest(m *Method) {
 	}
 	if p.isWord("default") {
 		p.next()
+		m.HasDefault = true
 		p.initializer()
 		p.expect(";")
 		return
 	}
 	if p.accept(";") {
+		return
+	}
+	if p.is("}") {
+		// A missing ; before the class's closing brace, which Java PSI
+		// reports and keeps the method.
+		if p.skipped == nil {
+			p.skipped = &parseError{p.tok(), "expected ;"}
+		}
 		return
 	}
 	if !p.is("{") {
@@ -645,8 +729,8 @@ func (p *parser) methodRest(m *Method) {
 	m.Body = true
 }
 
-// initializer skips a field's initializer, up to the , or ; that ends it,
-// and returns its tokens.
+// initializer skips a field's initializer, up to the , or ; that ends it
+// or an unmatched closing bracket, and returns its tokens.
 func (p *parser) initializer() []token {
 	start := p.pos
 	depth := 0
@@ -655,11 +739,20 @@ func (p *parser) initializer() []token {
 		if t.kind == tEOF {
 			p.fail("unterminated initializer")
 		}
+		if _, ok := modifierFlags[t.text]; ok && t.kind == tIdent && depth == 0 && p.pos > start {
+			// The next member's modifier: a missing ;, which Java PSI
+			// reports at the end of the expression.
+			return p.toks[start:p.pos]
+		}
 		if t.kind == tPunct {
 			switch t.text {
 			case "(", "[", "{":
 				depth++
 			case ")", "]", "}":
+				if depth == 0 {
+					// The class's closing brace: a missing ;.
+					return p.toks[start:p.pos]
+				}
 				depth--
 			case ";":
 				if depth == 0 {

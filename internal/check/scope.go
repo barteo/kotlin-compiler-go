@@ -110,6 +110,23 @@ func (s *scope) declare(v *types.VarSym) bool {
 	return true
 }
 
+// shadow sets v.Shadowed when an enclosing scope has a local or
+// parameter of its name, an outer lambda's it among them. s is the scope
+// v is declared in: one of its own is a conflict, not shadowing.
+func (s *scope) shadow(v *types.VarSym) {
+	if v.Name == "_" || v.Name == "" || strings.ContainsAny(v.Name, "<$") {
+		return
+	}
+	for sc := s.parent; sc != nil; sc = sc.parent {
+		for _, w := range sc.vars {
+			if w.Name == v.Name && (w.Kind == types.Local || w.Kind == types.Param) {
+				v.Shadowed = true
+				return
+			}
+		}
+	}
+}
+
 // lookup finds a local by name and returns it with its smart-cast type.
 func (s *scope) lookup(name string) (*types.VarSym, types.Type, bool) {
 	v, _ := s.find(name)

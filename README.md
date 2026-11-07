@@ -163,6 +163,39 @@ It expects `kotlinc` and the JDK where Homebrew installs them; set
   and libraries built with `kc` and tested end to end
 - [Conformance](docs/conformance.md): `kotlinc`'s own box and diagnostics
   tests run against `kc`
+- [PSI and analysis](docs/psi.md): the public parser and analysis API for
+  linters and other tools
+
+## PSI API
+
+Package [`psi`](psi/doc.go) is a public, lossless Kotlin parser whose trees
+have the shape of the Kotlin compiler's PSI: the same element kinds, nesting,
+whitespace and comment placement, and syntax error messages. Linters and
+other tools use it without a JVM:
+
+```go
+s := psi.Parse("A.kt", text)
+for _, d := range s.DeclarationNodes() {
+    fmt.Println(d.Kind(), d.Name())
+}
+```
+
+Its tests compare every tree with stock Kotlin's, from dumps made by
+[`tools/psidump`](tools/psidump/README.md).
+
+Package [`analysis`](analysis/analysis.go) runs `kc`'s checker on psi
+snapshots and reports what it resolved, keyed by psi node: expression
+types, symbols, calls, `when` coverage, smart casts, unreachable code and
+more:
+
+```go
+r, err := analysis.AnalyzeArena(ctx, analysis.Config{ClassPath: cp}, snapshots)
+if err != nil { ... }
+if d := r.Diagnostics(); len(d) > 0 { ... } // kc can't compile it: no facts
+f, ok := r.Fact(analysis.ElementID{Snapshot: s.ID(), Node: n.ID()})
+```
+
+See [docs/psi.md](docs/psi.md) for how both work.
 
 ## Tests
 
@@ -197,4 +230,6 @@ skipped without them.
 
 ## License
 
-Apache License 2.0, the same as `kotlinc`. See [LICENSE](LICENSE).
+Apache License 2.0, the same as `kotlinc`. See [LICENSE](LICENSE). Package
+`psi` translates parts of Kotlin's and IntelliJ's parser; see
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

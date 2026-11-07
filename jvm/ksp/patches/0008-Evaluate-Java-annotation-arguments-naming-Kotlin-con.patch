@@ -1,0 +1,59 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kc <barteo@gmail.com>
+Date: Fri, 6 Nov 2026 22:28:45 +0000
+Subject: [PATCH 8/8] Evaluate Java annotation arguments naming Kotlin consts
+ on kc
+
+Java PSI doesn't resolve Kotlin source classes on a backend without light
+classes, so a reference like ConstKt.X evaluated to null. KcExtras gains
+javaConstant, which the backend answers from its model.
+---
+ .../com/google/devtools/ksp/impl/backend/KcExtras.kt      | 8 ++++++++
+ .../com/google/devtools/ksp/impl/backend/fir/FirExtras.kt | 2 ++
+ .../devtools/ksp/impl/symbol/java/KSAnnotationJavaImpl.kt | 3 ++-
+ 3 files changed, 12 insertions(+), 1 deletion(-)
+
+diff --git a/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/backend/KcExtras.kt b/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/backend/KcExtras.kt
+index 209f35d..1dd5ffe 100644
+--- a/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/backend/KcExtras.kt
++++ b/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/backend/KcExtras.kt
+@@ -109,6 +109,14 @@ interface KcExtras {
+      */
+     fun javaEnumEntry(reference: PsiReferenceExpression): CallableId?
+ 
++    /**
++     * The value of the Kotlin `const val` that Java reference `C.X`, an
++     * annotation argument, names when Java PSI doesn't resolve it, as
++     * `computeConstantExpression` would give it, else null. Always null
++     * with FIR, as [javaAnnotationClass] is.
++     */
++    fun javaConstant(reference: PsiReferenceExpression): Any?
++
+     companion object {
+         private val current: ThreadLocal<KcExtras> = ThreadLocal()
+ 
+diff --git a/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/backend/fir/FirExtras.kt b/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/backend/fir/FirExtras.kt
+index 3add834..1c03708 100644
+--- a/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/backend/fir/FirExtras.kt
++++ b/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/backend/fir/FirExtras.kt
+@@ -136,4 +136,6 @@ class FirExtras : KcExtras {
+     override fun javaAnnotationClass(annotation: PsiAnnotation): ClassId? = null
+ 
+     override fun javaEnumEntry(reference: PsiReferenceExpression): CallableId? = null
++
++    override fun javaConstant(reference: PsiReferenceExpression): Any? = null
+ }
+diff --git a/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/symbol/java/KSAnnotationJavaImpl.kt b/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/symbol/java/KSAnnotationJavaImpl.kt
+index 95da019..09008f2 100644
+--- a/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/symbol/java/KSAnnotationJavaImpl.kt
++++ b/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/symbol/java/KSAnnotationJavaImpl.kt
+@@ -186,7 +186,8 @@ fun calcValue(value: PsiAnnotationMemberValue?): Any? {
+         is PsiReference -> value.resolve()?.let { resolved ->
+             JavaPsiFacade.getInstance(value.project).constantEvaluationHelper.computeConstantExpression(value)
+                 ?: resolved
+-        } ?: (value as? PsiReferenceExpression)?.let { KcExtras.instance.javaEnumEntry(it) }?.let { entry ->
++        } ?: (value as? PsiReferenceExpression)?.let { KcExtras.instance.javaConstant(it) }
++            ?: (value as? PsiReferenceExpression)?.let { KcExtras.instance.javaEnumEntry(it) }?.let { entry ->
+             return ResolverAAImpl.instance.getClassDeclarationByName(entry.classId!!.asFqNameString())
+                 ?.declarations?.find {
+                     it is KSClassDeclaration && it.classKind == ClassKind.ENUM_ENTRY &&

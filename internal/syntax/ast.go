@@ -908,12 +908,16 @@ type For struct {
 // turns it into Stmts: a temporary holding e, then val a =
 // temp.component1(), and so on. _ declares nothing.
 type Destructure struct {
-	P       Pos
-	Names   []string
-	Types   []*TypeRef // val (a: A, b) = e: the names' types, nil where omitted
-	Mutable bool
-	Init    Expr
-	Stmts   []*VarStmt
+	P     Pos
+	Names []string
+	Types []*TypeRef // val (a: A, b) = e: the names' types, nil where omitted
+	// Annotations are the names' own annotations, val (@A a, b) = e; nil
+	// where there are none. The checker checks them, and class files
+	// don't keep them.
+	Annotations [][]Annotation
+	Mutable     bool
+	Init        Expr
+	Stmts       []*VarStmt
 }
 
 func (*Destructure) stmtNode() {}
@@ -1186,6 +1190,9 @@ type Member struct {
 	// calls composables: the call runs in a replace group, and a null
 	// receiver's path in an empty one.
 	Groups bool
+	// SelNonNull is set by the checker on a safe access whose selector's
+	// own type, before the safe access makes it nullable, isn't.
+	SelNonNull bool
 	// Nothing is set by the checker on a safe call that, on a non-null
 	// receiver, is of type Nothing: a generic one, which may return, as
 	// x?.f() for a T := Nothing.

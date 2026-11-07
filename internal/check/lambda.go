@@ -299,6 +299,11 @@ func paramsString(ps []types.Type) string {
 // returns the parameter types and the result type, and false if the
 // parameters don't match the expected ones.
 func (c *Checker) checkLambda(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.Type, bool) {
+	if c.file.Annotated != nil {
+		// A lambda argument is checked here, not by expr, which checks
+		// the annotations of the others: list.map @A { }.
+		c.annotatedExpr(x)
+	}
 	if x.Ref != nil {
 		return c.checkRef(x, w)
 	}
@@ -421,6 +426,9 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 	c.lambdas = append(c.lambdas[:len(c.lambdas):len(c.lambdas)], x)
 	c.scope = &scope{parent: saved.scope, depth: len(c.lambdas)}
 	for _, s := range syms {
+		if s != x.It {
+			c.scope.shadow(s)
+		}
 		if s.Name != "_" && !c.scope.declare(s) {
 			c.errorf(s.Decl.(*syntax.LambdaParam).P, "conflicting declarations: %s", s.Name)
 		}
@@ -582,6 +590,8 @@ func (c *Checker) lambdaBody(b *syntax.Block, want types.Type) types.Type {
 				if valueUsed = hasFinalElse(e); valueUsed {
 					c.markTailIfs(e)
 				}
+			case *syntax.Try:
+				c.markTailIfs(e)
 			case *syntax.When:
 				valueUsed = len(e.Branches) > 0 && e.Branches[len(e.Branches)-1].Else
 				if !valueUsed && e.Subject != nil && want.K != types.Unit {
@@ -760,11 +770,23 @@ func hasFinalElse(e *syntax.If) bool {
 }
 
 // markTailIfs records the ifs without else that end the branches of e,
-// the if a lambda ends with, and of the ifs with else they end with: as
-// in Kotlin, they are statements, of type Unit, though e is a value:
-// run { if (a) { if (b) f() } else 1 }.
-func (c *Checker) markTailIfs(e *syntax.If) {
-	for _, b := range []*syntax.Block{e.Then, e.Else} {
+// the if or try a lambda ends with, and of the ifs and trys they end
+// with: as in Kotlin, they are statements, of type Unit, though
+// e is a value: run { if (a) { if (b) f() } else 1 }, and Mutex.withLock
+// { try { if (a) return@withLock; if (b) f() } catch (e: E) { g() } },
+// whose T is Unit.
+func (c *Checker) markTailIfs(e syntax.Expr) {
+	var blocks []*syntax.Block
+	switch e := e.(type) {
+	case *syntax.If:
+		blocks = []*syntax.Block{e.Then, e.Else}
+	case *syntax.Try:
+		blocks = []*syntax.Block{e.Body}
+		for _, k := range e.Catches {
+			blocks = append(blocks, k.Body)
+		}
+	}
+	for _, b := range blocks {
 		if b == nil || len(b.Stmts) == 0 {
 			continue
 		}
@@ -772,15 +794,17 @@ func (c *Checker) markTailIfs(e *syntax.If) {
 		if !ok {
 			continue
 		}
-		if x, ok := es.X.(*syntax.If); ok {
+		switch x := es.X.(type) {
+		case *syntax.If:
 			if x.Else == nil {
 				if c.tailIfs == nil {
 					c.tailIfs = map[*syntax.If]bool{}
 				}
 				c.tailIfs[x] = true
-			} else {
-				c.markTailIfs(x)
 			}
+			c.markTailIfs(x)
+		case *syntax.Try:
+			c.markTailIfs(x)
 		}
 	}
 }
@@ -1023,6 +1047,16 @@ func (c *Checker) sam(cls *types.ClassSym) *types.FunSym {
 		return nil
 	}
 	return cls.SAM(findSAM)
+}
+
+// JavaSAM reports whether cls is a Java interface with a single abstract
+// method, which a lambda converts to as to a fun interface.
+func JavaSAM(cls *types.ClassSym) bool {
+	if !cls.External || cls.KotlinName != "" {
+		return false
+	}
+	cls.Ensure()
+	return cls.Interface && !cls.Missing && cls.SAM(findSAM) != nil
 }
 
 // The methods of Object that interfaces may redeclare as abstract.

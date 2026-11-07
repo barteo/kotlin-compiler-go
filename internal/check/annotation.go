@@ -191,7 +191,8 @@ func annotationType(t types.Type, arrays bool) bool {
 			return true
 		}
 		cls.Ensure()
-		return cls.Super != nil && cls.Super.Name == "java/lang/Enum"
+		// A Java annotation interface has a retention once loaded.
+		return cls.Retention != types.NoRetention || cls.Super != nil && cls.Super.Name == "java/lang/Enum"
 	}
 	return false
 }
@@ -233,6 +234,23 @@ func (c *Checker) annotationConstruct(x *syntax.Call, cls *types.ClassSym, p syn
 		}
 	}
 	return t
+}
+
+// javaAnnotationDefault checks a Java annotation created in an annotation
+// class's parameter default, = Retention(SOURCE), which kotlinc writes as
+// an AnnotationDefault: its constructor takes the annotation's methods,
+// the value method's array as a vararg, as in FIR.
+func (c *Checker) javaAnnotationDefault(x *syntax.Call, cls *types.ClassSym, want types.Type, sink *system) types.Type {
+	var params []*types.VarSym
+	for _, q := range c.annotationParams(cls) {
+		v := *q
+		_, v.Default = cls.AnnotationDefaults[q.Name]
+		v.Vararg = q.Name == "value" && q.Type.IsArray()
+		params = append(params, &v)
+	}
+	f := &types.FunSym{Name: "<init>", Owner: cls, Params: params, Ret: types.ClassType(cls), Resolved: true}
+	x.Ctor = cls
+	return c.resolve(x, []callee{{f: f}}, want, sink)
 }
 
 // completeDefault reports whether v, the AnnotationDefault of a class-path

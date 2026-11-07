@@ -211,6 +211,8 @@ type kpart struct {
 	// with level HIDDEN, as the standard library's old Iterable<T>.maxBy,
 	// which returned T?.
 	hidden map[string]bool
+	// annots are the methods with annotations or a deprecation.
+	annots map[string]*classfile.Member
 }
 
 // fieldConstant returns the value of a final static field's ConstantValue,
@@ -816,6 +818,10 @@ func (t *classTable) kfun(f *kmeta.Function, owner *types.ClassSym, scope tscope
 			sym.Inline = inlineInfo(f, true)
 		}
 	}
+	if f.IsInline() {
+		in := inlineInfo(f, false)
+		sym.Declared = &types.InlineFlags{Crossinline: in.Crossinline, Noinline: in.Noinline}
+	}
 	return sym
 }
 
@@ -1244,6 +1250,41 @@ func lowPriority(info *classfile.Info) map[string]bool {
 	return m
 }
 
+// annotatedMethods returns a class file's methods with annotations or a
+// deprecation, by name+desc, or nil.
+func annotatedMethods(info *classfile.Info) map[string]*classfile.Member {
+	var m map[string]*classfile.Member
+	for i := range info.Methods {
+		f := &info.Methods[i]
+		if len(f.Annotations) > 0 || f.Deprecated != nil {
+			if m == nil {
+				m = map[string]*classfile.Member{}
+			}
+			m[f.Name+f.Desc] = f
+		}
+	}
+	return m
+}
+
+// annotate gives a Kotlin function of the class path its method's
+// annotations and @Deprecated, if m isn't nil.
+func annotate(f *types.FunSym, m *classfile.Member) {
+	if m == nil {
+		return
+	}
+	// kotlinc writes nullability annotations for Java, which Kotlin
+	// doesn't see on its own declarations.
+	f.Annotations = slices.DeleteFunc(slices.Clone(m.Annotations), func(a string) bool {
+		return a == "Lorg/jetbrains/annotations/NotNull;" || a == "Lorg/jetbrains/annotations/Nullable;"
+	})
+	if len(f.Annotations) == 0 {
+		f.Annotations = nil
+	}
+	if m.Deprecated != nil && !m.Deprecated.Java {
+		f.Deprecated = classFileDeprecation(m.Deprecated)
+	}
+}
+
 // publicMethods returns the name+desc of a class file's public and
 // protected methods.
 // hiddenMethods returns the name+desc of a class's methods deprecated
@@ -1496,6 +1537,7 @@ func (t *classTable) loadKotlin(cls *types.ClassSym, info *classfile.Info, kc *k
 			}
 		}
 	}
+	annots := annotatedMethods(info)
 	hidden := map[string]bool{}
 	for _, m := range info.Methods {
 		if m.Access&classfile.AccPublic != 0 && m.Access&classfile.AccSynthetic != 0 {
@@ -1507,6 +1549,7 @@ func (t *classTable) loadKotlin(cls *types.ClassSym, info *classfile.Info, kc *k
 			continue
 		}
 		sym := t.kfun(f, cls, scope, methods)
+		annotate(sym, annots[f.JVM.Name+f.JVM.Desc])
 		if sym.Unsupported && sym.Inline == nil && hidden[f.JVM.Name+f.JVM.Desc] {
 			// @Deprecated(level = HIDDEN): a synthetic method, which
 			// calls can't choose but delegation implements.
@@ -1894,7 +1937,7 @@ func (t *classTable) pkg(name string) *kpkg {
 				if facade == "" {
 					facade = part.Class
 				}
-				read[i] = &kpart{meta: meta, facade: facade, class: part.Class, methods: publicMethods(info), friend: t.friend(part.Class), low: lowPriority(info), hidden: hiddenMethods(info)}
+				read[i] = &kpart{meta: meta, facade: facade, class: part.Class, methods: publicMethods(info), friend: t.friend(part.Class), low: lowPriority(info), hidden: hiddenMethods(info), annots: annotatedMethods(info)}
 			})
 		}
 		wg.Wait()
@@ -1959,6 +2002,7 @@ func (t *classTable) pkgFunsOf(pkg, name string, internal bool) []*types.FunSym 
 			sym := t.kfun(f, nil, nil, part.methods)
 			sym.Facade = part.facade
 			sym.LowPriority = part.low[f.JVM.Name+f.JVM.Desc]
+			annotate(sym, part.annots[f.JVM.Name+f.JVM.Desc])
 			if sym.Why != "" && typesOK(sym) {
 				intrinsic(sym, part.facade, f.JVM)
 			}

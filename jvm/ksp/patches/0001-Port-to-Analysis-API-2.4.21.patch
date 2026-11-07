@@ -1,0 +1,87 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kc <barteo@gmail.com>
+Date: Thu, 5 Nov 2026 11:54:48 +0000
+Subject: [PATCH 1/8] Port to Analysis API 2.4.21
+
+- KaType.mapToJvmType() is hidden; use mapToJvmTypeDescriptor().
+- KaAnnotationImpl lost its useSiteTarget parameter.
+- getEffectiveVariance moved to org.jetbrains.kotlin.types.typeUtil.
+- The IntelliJ core bundled in kotlin-compiler has no EDT.updateEdt();
+  call it reflectively, falling back to the field it sets.
+---
+ .../devtools/ksp/impl/KotlinSymbolProcessing.kt    | 14 +++++++++++++-
+ .../com/google/devtools/ksp/impl/ResolverAAImpl.kt |  2 +-
+ .../kotlin/synthetic/KSSyntheticAnnotations.kt     |  1 -
+ .../google/devtools/ksp/impl/symbol/kotlin/util.kt |  2 +-
+ 4 files changed, 15 insertions(+), 4 deletions(-)
+
+diff --git a/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/KotlinSymbolProcessing.kt b/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/KotlinSymbolProcessing.kt
+index 25e974e..82c68e8 100644
+--- a/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/KotlinSymbolProcessing.kt
++++ b/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/KotlinSymbolProcessing.kt
+@@ -708,7 +708,7 @@ fun TargetPlatform.getPlatformInfo(kspConfig: KSPConfig): List<PlatformInfo> =
+ private fun <R> maybeRunInWriteAction(f: () -> R) {
+     synchronized(EDT::class.java) {
+         if (!EDT.isCurrentThreadEdt())
+-            EDT.updateEdt()
++            updateEdt()
+         if (ApplicationManager.getApplication() != null) {
+             runWriteAction {
+                 f()
+@@ -719,6 +719,18 @@ private fun <R> maybeRunInWriteAction(f: () -> R) {
+     }
+ }
+ 
++// EDT.updateEdt() makes the current thread the EDT. It is internal, and the
++// IntelliJ core bundled in kotlin-compiler lacks it, so it is called
++// reflectively, falling back to setting the field it sets.
++private fun updateEdt() {
++    val edt = EDT::class.java
++    try {
++        edt.getDeclaredMethod("updateEdt").apply { isAccessible = true }.invoke(null)
++    } catch (_: NoSuchMethodException) {
++        edt.getDeclaredField("myEventDispatchThread").apply { isAccessible = true }.set(null, Thread.currentThread())
++    }
++}
++
+ /*
+ * NoOp implementation of the KaFirCacheCleaner
+ *
+diff --git a/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/ResolverAAImpl.kt b/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/ResolverAAImpl.kt
+index 0abd773..51044e6 100644
+--- a/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/ResolverAAImpl.kt
++++ b/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/ResolverAAImpl.kt
+@@ -817,7 +817,7 @@ class ResolverAAImpl(
+     internal fun mapToJvmSignatureInternal(ksAnnotated: KSAnnotated): String? {
+         fun KaType.toSignature(): String {
+             return analyze {
+-                this@toSignature.mapToJvmType().descriptor.let {
++                this@toSignature.mapToJvmTypeDescriptor().let {
+                     when (it) {
+                         "Ljava.lang.Void;" -> "Ljava/lang/Void;"
+                         "Lkotlin/Unit;" -> "V"
+diff --git a/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/symbol/kotlin/synthetic/KSSyntheticAnnotations.kt b/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/symbol/kotlin/synthetic/KSSyntheticAnnotations.kt
+index 299f40b..f9cb6e5 100644
+--- a/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/symbol/kotlin/synthetic/KSSyntheticAnnotations.kt
++++ b/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/symbol/kotlin/synthetic/KSSyntheticAnnotations.kt
+@@ -11,7 +11,6 @@ import org.jetbrains.kotlin.name.ClassId
+ fun getExtensionFunctionTypeAnnotation() = KaAnnotationImpl(
+     ClassId.fromString(ExtensionFunctionType::class.qualifiedName!!),
+     null,
+-    null,
+     lazyOf(emptyList()),
+     null,
+     KotlinAlwaysAccessibleLifetimeToken(ResolverAAImpl.ktModule.project)
+diff --git a/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/symbol/kotlin/util.kt b/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/symbol/kotlin/util.kt
+index b595a02..6e4d11c 100644
+--- a/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/symbol/kotlin/util.kt
++++ b/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/symbol/kotlin/util.kt
+@@ -146,7 +146,7 @@ import org.jetbrains.kotlin.psi.KtAnnotated
+ import org.jetbrains.kotlin.psi.KtElement
+ import org.jetbrains.kotlin.psi.KtParameter
+ import org.jetbrains.kotlin.types.Variance
+-import org.jetbrains.kotlin.types.getEffectiveVariance
++import org.jetbrains.kotlin.types.typeUtil.getEffectiveVariance
+ import org.jetbrains.kotlin.utils.KotlinExceptionWithAttachments
+ import org.jetbrains.kotlin.descriptors.annotations.AnnotationUseSiteTarget as AnnotationUseSiteTargetAA
+ 

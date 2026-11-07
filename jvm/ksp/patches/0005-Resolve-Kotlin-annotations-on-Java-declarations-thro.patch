@@ -1,0 +1,79 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kc <barteo@gmail.com>
+Date: Fri, 6 Nov 2026 06:53:42 +0000
+Subject: [PATCH 5/8] Resolve Kotlin annotations on Java declarations through
+ KcExtras
+
+---
+ .../com/google/devtools/ksp/impl/backend/KcExtras.kt      | 8 ++++++++
+ .../com/google/devtools/ksp/impl/backend/fir/FirExtras.kt | 3 +++
+ .../devtools/ksp/impl/symbol/java/KSAnnotationJavaImpl.kt | 4 +++-
+ 3 files changed, 14 insertions(+), 1 deletion(-)
+
+diff --git a/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/backend/KcExtras.kt b/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/backend/KcExtras.kt
+index e4ec05c..b2625ca 100644
+--- a/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/backend/KcExtras.kt
++++ b/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/backend/KcExtras.kt
+@@ -17,6 +17,7 @@
+ package com.google.devtools.ksp.impl.backend
+ 
+ import com.intellij.openapi.vfs.VirtualFile
++import com.intellij.psi.PsiAnnotation
+ import org.jetbrains.kotlin.analysis.api.annotations.KaAnnotationValue
+ import org.jetbrains.kotlin.analysis.api.symbols.KaCallableSymbol
+ import org.jetbrains.kotlin.analysis.api.symbols.KaKotlinPropertySymbol
+@@ -92,6 +93,13 @@ interface KcExtras {
+     /** Reads the Kotlin class in a class file: `ClsKotlinBinaryClassCache.getKotlinBinaryClass`. */
+     fun kotlinBinaryClass(file: VirtualFile): KotlinJvmBinaryClass?
+ 
++    /**
++     * The class of a Java annotation that `resolveAnnotationType()` doesn't
++     * resolve, else null. With FIR, light classes make every Kotlin class
++     * resolvable from Java, so this is always null there.
++     */
++    fun javaAnnotationClass(annotation: PsiAnnotation): ClassId?
++
+     companion object {
+         private val current: ThreadLocal<KcExtras> = ThreadLocal()
+ 
+diff --git a/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/backend/fir/FirExtras.kt b/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/backend/fir/FirExtras.kt
+index bf5f158..6b300eb 100644
+--- a/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/backend/fir/FirExtras.kt
++++ b/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/backend/fir/FirExtras.kt
+@@ -22,6 +22,7 @@ import com.google.devtools.ksp.impl.ResolverAAImpl
+ import com.google.devtools.ksp.impl.backend.KcExtras
+ import com.google.devtools.ksp.impl.symbol.kotlin.analyze
+ import com.intellij.openapi.vfs.VirtualFile
++import com.intellij.psi.PsiAnnotation
+ import org.jetbrains.kotlin.analysis.api.annotations.KaAnnotationValue
+ import org.jetbrains.kotlin.analysis.api.fir.evaluate.FirAnnotationValueConverter
+ import org.jetbrains.kotlin.analysis.api.fir.symbols.KaFirKotlinPropertySymbol
+@@ -129,4 +130,6 @@ class FirExtras : KcExtras {
+ 
+     override fun kotlinBinaryClass(file: VirtualFile): KotlinJvmBinaryClass? =
+         classBinaryCache.getKotlinBinaryClass(file)
++
++    override fun javaAnnotationClass(annotation: PsiAnnotation): ClassId? = null
+ }
+diff --git a/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/symbol/java/KSAnnotationJavaImpl.kt b/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/symbol/java/KSAnnotationJavaImpl.kt
+index f3defe0..14895aa 100644
+--- a/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/symbol/java/KSAnnotationJavaImpl.kt
++++ b/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/symbol/java/KSAnnotationJavaImpl.kt
+@@ -4,6 +4,7 @@ import com.google.devtools.ksp.common.KSObjectCache
+ import com.google.devtools.ksp.common.impl.KSNameImpl
+ import com.google.devtools.ksp.getClassDeclarationByName
+ import com.google.devtools.ksp.impl.ResolverAAImpl
++import com.google.devtools.ksp.impl.backend.KcExtras
+ import com.google.devtools.ksp.impl.symbol.kotlin.KSClassDeclarationEnumEntryImpl
+ import com.google.devtools.ksp.impl.symbol.kotlin.KSErrorType
+ import com.google.devtools.ksp.impl.symbol.kotlin.KSValueArgumentImpl
+@@ -62,7 +63,8 @@ class KSAnnotationJavaImpl private constructor(private val psi: PsiAnnotation, o
+         }
+         analyze {
+             val resolved = psi.resolveAnnotationType()
+-            val fqn = resolved?.fqn() ?: "__KSP_unresolved_${psi.qualifiedName}"
++            val fqn = resolved?.fqn() ?: KcExtras.instance.javaAnnotationClass(psi)?.asString()
++                ?: "__KSP_unresolved_${psi.qualifiedName}"
+             val classId = ClassId.fromString(fqn)
+             buildClassType(classId)
+         }

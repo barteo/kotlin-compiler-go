@@ -19,11 +19,17 @@ import (
 	"github.com/barteo/kotlin-compiler-go/internal/codegen"
 	"github.com/barteo/kotlin-compiler-go/internal/javasrc"
 	"github.com/barteo/kotlin-compiler-go/internal/kmeta"
+	"github.com/barteo/kotlin-compiler-go/internal/lower"
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
 	"github.com/barteo/kotlin-compiler-go/internal/types"
+	"github.com/barteo/kotlin-compiler-go/psi"
 )
 
 type Options struct {
+	// Frontend picks the parser: "syntax", kc's token parser, the
+	// default, or "psi", which parses a lossless psi tree and lowers it.
+	// If empty, $KC_FRONTEND picks it.
+	Frontend  string
 	OutDir    string
 	Jobs      int
 	Timing    io.Writer // if set, per-phase timings are written here
@@ -32,8 +38,15 @@ type Options struct {
 	// the module sees, as with kotlinc's -Xfriend-paths: a unit test's main
 	// code.
 	FriendPaths []string
-	JDKHome     string // JDK whose classes are used; found automatically if empty
-	NoJDK       bool   // don't use JDK classes
+	// KeepHidden keeps Java classes' members that Kotlin can't use, for
+	// the Analysis API: see check.Library.KeepHidden.
+	KeepHidden bool
+	// JavaTypes reads Java declarations' types as kotlinc does where
+	// checking approximates them, for the Analysis API: see
+	// check.Library.JavaTypes.
+	JavaTypes bool
+	JDKHome   string // JDK whose classes are used; found automatically if empty
+	NoJDK     bool   // don't use JDK classes
 	// ModuleName is the module's name, which the JVM names of internal
 	// members end with, as with kotlinc's -module-name; "main" if empty.
 	ModuleName string
@@ -84,6 +97,49 @@ func parallel(n, jobs int, fn func(i int)) {
 	wg.Wait()
 }
 
+// OpenLibrary opens the class path opts names (the JDK, unless NoJDK, and
+// ClassPath and FriendPaths) and returns the library the checker reads it
+// through, set up as opts says. The caller closes the class path when it
+// is done with the library. Java sources are not read.
+func OpenLibrary(opts Options) (*classpath.Path, *check.Library, error) {
+	cp, err := openClassPath(opts)
+	if err != nil {
+		return nil, nil, err
+	}
+	return cp, newLibrary(cp, opts), nil
+}
+
+// openClassPath opens the class path opts names.
+func openClassPath(opts Options) (*classpath.Path, error) {
+	jdk := opts.JDKHome
+	if jdk == "" && !opts.NoJDK {
+		// Without a JDK, programs can use everything but Java classes.
+		jdk, _ = classpath.FindJDK()
+	}
+	return classpath.Open(jdk, opts.ClassPath, opts.FriendPaths...)
+}
+
+// newLibrary returns the library over cp, set up as opts says.
+func newLibrary(cp *classpath.Path, opts Options) *check.Library {
+	lib := check.NewLibrary(cp)
+	lib.Module = opts.ModuleName
+	lib.NoJVMDefault = opts.NoJVMDefault
+	lib.JVMDefaultCompat = opts.JVMDefaultCompat
+	lib.Parcelize = opts.Parcelize
+	lib.Compose = opts.Compose
+	lib.OptIns = opts.OptIns
+	if opts.KeepHidden {
+		lib.KeepHidden()
+	}
+	if opts.JavaTypes {
+		lib.JavaTypes()
+	}
+	if opts.Serialization {
+		lib.EnableSerialization()
+	}
+	return lib
+}
+
 // Compile compiles the given .kt files into class files in opts.OutDir.
 // The .java files among them are the module's Java sources, whose
 // declarations the Kotlin code sees, as kotlinc's; javac compiles them.
@@ -122,27 +178,13 @@ func Compile(paths []string, opts Options) error {
 	var prefetch time.Duration
 	prefetched := make(chan struct{})
 	go func() {
-		jdk := opts.JDKHome
-		if jdk == "" && !opts.NoJDK {
-			// Without a JDK, programs can use everything but Java classes.
-			jdk, _ = classpath.FindJDK()
-		}
-		cp, err := classpath.Open(jdk, opts.ClassPath, opts.FriendPaths...)
+		cp, err := openClassPath(opts)
 		if err == nil && len(javaPaths) > 0 {
 			err = addJava(cp, javaPaths, opts.Jobs, java)
 		}
 		var lib *check.Library
 		if err == nil {
-			lib = check.NewLibrary(cp)
-			lib.Module = opts.ModuleName
-			lib.NoJVMDefault = opts.NoJVMDefault
-			lib.JVMDefaultCompat = opts.JVMDefaultCompat
-			lib.Parcelize = opts.Parcelize
-			lib.Compose = opts.Compose
-			lib.OptIns = opts.OptIns
-			if opts.Serialization {
-				lib.EnableSerialization()
-			}
+			lib = newLibrary(cp, opts)
 		}
 		cpDone <- cpResult{cp, lib, err}
 		if lib != nil {
@@ -160,6 +202,10 @@ func Compile(paths []string, opts Options) error {
 		}
 	}()
 
+	frontend, err := frontendOf(opts)
+	if err != nil {
+		return err
+	}
 	files := make([]*syntax.File, len(paths))
 	errLists := make([][]*syntax.Error, len(paths))
 	ioErrs := make([]error, len(paths))
@@ -169,7 +215,7 @@ func Compile(paths []string, opts Options) error {
 			ioErrs[i] = err
 			return
 		}
-		files[i], errLists[i] = syntax.Parse(paths[i], string(src))
+		files[i], errLists[i] = parse(frontend, paths[i], string(src))
 	})
 	if err := errors.Join(ioErrs...); err != nil {
 		return err
@@ -410,12 +456,40 @@ func addJava(cp *classpath.Path, paths []string, jobs int, outside *javaOutside)
 	if err := errors.Join(errs...); err != nil {
 		return err
 	}
+	addJavaSet(cp, files, outside)
+	return nil
+}
+
+// addJavaSet adds the classes of parsed Java sources files to the class
+// path, ahead of its own, and returns them.
+func addJavaSet(cp *classpath.Path, files []*javasrc.File, outside *javaOutside) *javasrc.Set {
 	set := javasrc.NewSet(files)
 	set.Outside = outside
 	for _, name := range set.Names() {
 		cp.AddSource(name, func() (*cf.Info, error) { return set.Info(name) })
 	}
-	return nil
+	return set
+}
+
+// JavaSources are a module's Java sources, whose classes AddJavaSources
+// added to a class path.
+type JavaSources struct {
+	*javasrc.Set
+	outside *javaOutside
+}
+
+// AddJavaSources adds the classes of a module's parsed Java sources to
+// class path cp, ahead of its own. The classes they name may be the
+// module's Kotlin classes, which SetKotlin tells them of before any of
+// their classes is read.
+func AddJavaSources(cp *classpath.Path, files []*javasrc.File) *JavaSources {
+	outside := &javaOutside{cp: cp}
+	return &JavaSources{Set: addJavaSet(cp, files, outside), outside: outside}
+}
+
+// SetKotlin sets the module's Kotlin sources.
+func (j *JavaSources) SetKotlin(files []*syntax.File) {
+	j.outside.kotlin = kotlinClasses(files)
 }
 
 // javaOutside looks up the classes the Java sources name that aren't
@@ -489,4 +563,32 @@ func kotlinClasses(files []*syntax.File) map[string]*syntax.ClassDecl {
 		}
 	}
 	return m
+}
+
+// frontendOf returns the parser opts pick.
+func frontendOf(opts Options) (string, error) {
+	f := opts.Frontend
+	if f == "" {
+		f = os.Getenv("KC_FRONTEND")
+	}
+	switch f {
+	case "", "syntax":
+		return "syntax", nil
+	case "psi":
+		return "psi", nil
+	}
+	return "", fmt.Errorf("unknown frontend %q: want syntax or psi", f)
+}
+
+// parse parses a source file with frontend. Like syntax.Parse, it returns
+// only the first error.
+func parse(frontend, path, src string) (*syntax.File, []*syntax.Error) {
+	if frontend != "psi" {
+		return syntax.Parse(path, src)
+	}
+	f, _, errs := lower.File(psi.Parse(path, src))
+	if len(errs) > 0 {
+		return nil, errs[:1]
+	}
+	return f, nil
 }

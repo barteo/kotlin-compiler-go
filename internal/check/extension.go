@@ -169,6 +169,17 @@ func (c *Checker) resolveExtProp(d *syntax.PropDecl) {
 	g := d.Getter
 	if g == nil {
 		sym.Type, sym.Resolved = types.InvalidType, true
+		if d.Init != nil && len(d.TypeParams) == 0 {
+			// Still resolve the written types, which tools read.
+			if sym.Owner != nil {
+				c.tparams = sym.Owner.TypeParams
+				defer func() { c.tparams = nil }()
+			}
+			c.resolveType(d.Recv)
+			if d.Type != nil {
+				sym.Type = c.resolveType(d.Type)
+			}
+		}
 		return
 	}
 	gs := g.Sym

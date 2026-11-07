@@ -3,11 +3,14 @@
 package check
 
 import (
+	"context"
 	"fmt"
+	"runtime/debug"
 	"slices"
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/barteo/kotlin-compiler-go/internal/classfile"
 	"github.com/barteo/kotlin-compiler-go/internal/classpath"
@@ -22,6 +25,10 @@ type Universe struct {
 	Pkgs     map[string]*Package // by dotted name; "" is the default package
 	prefixes map[string]bool     // the packages and their prefixes: a and a.b for a.b
 	ext      *classTable
+	// local holds what ext's caches would but for the program's symbols,
+	// which the library, shared by checks one after another, mustn't
+	// keep: see caches.
+	local caches
 	// memberExts is set if a class of the program declares extension
 	// functions, which calls with lambdas' implicit receivers then look
 	// for in their classes.
@@ -30,6 +37,10 @@ type Universe struct {
 	// built-in type, as TextValue.String, which hides it where it is
 	// in scope.
 	builtinNames bool
+	// partial is Options.Signatures: a class type with an argument that
+	// doesn't resolve keeps its class, Map<String, Unresolved>, as FIR
+	// has it, rather than being an error type as a whole.
+	partial bool
 	// noJVMDefault is Library.NoJVMDefault, and jvmDefaultCompat
 	// Library.JVMDefaultCompat.
 	noJVMDefault, jvmDefaultCompat bool
@@ -52,6 +63,11 @@ type Universe struct {
 	// aliasFile is the checker of the file that declares each typealias,
 	// which resolves its right side in the file's scope.
 	aliasFile map[*types.AliasSym]*Checker
+	// ctx cancels checking, and rec, if set, receives its facts.
+	ctx context.Context
+	rec Recorder
+	// lookups is rec if it records lookups (see lookups.go).
+	lookups LookupRecorder
 
 	// typeAnnots holds the annotated *syntax.TypeRefs noted, and
 	// typeAnnotsDone those checked, for typeannot.go.
@@ -176,6 +192,7 @@ type Checker struct {
 	classCache map[string]classifier
 	funCache   map[funKey][]*types.FunSym
 	levelCache map[funKey][][]*types.FunSym // see kotlinFunLevels
+	looked     lookups                      // the lookups recorded (see lookups.go)
 	errs       []*syntax.Error
 	// tailIfs are ifs without else that end a branch of the if a lambda
 	// ends with: statements, not values (see markTailIfs).
@@ -295,6 +312,9 @@ type state struct {
 	// defaultParam is being checked.
 	defaultsOf   *types.FunSym
 	defaultParam int
+	// annotDefault is set while an annotation class's parameter default
+	// is checked, where a Java annotation can be created: Retention(..).
+	annotDefault bool
 	// suppressLocalInline is set in a local function that suppresses
 	// NOT_YET_SUPPORTED_LOCAL_INLINE_FUNCTION, for those it declares.
 	suppressLocalInline bool
@@ -393,6 +413,76 @@ func (l *Library) EnableSerialization() {
 // NewLibrary returns the library of the classes in cp, which may be nil.
 func NewLibrary(cp *classpath.Path) *Library { return &Library{t: newClassTable(cp)} }
 
+// KeepHidden has every Java class keep the members Kotlin can't use, the
+// package-private and private ones, in types.ClassSym.JavaHidden, as the
+// classes of Java sources do: the Analysis API lists them. Checking
+// doesn't see them. Call it before the library loads a class.
+func (l *Library) KeepHidden() { l.t.hidden = true }
+
+// JavaTypes has Java declarations' types read as kotlinc reads them,
+// where kc's checking approximates them: those annotated with a
+// nullability annotation kotlinc reads, such as
+// @org.jetbrains.annotations.NotNull or @androidx.annotation.Nullable,
+// are non-null or nullable types instead of platform types, and an inner
+// class (a nested class that isn't static) has its outer classes' type
+// parameters after its own, as a Kotlin inner class has. Call it before
+// the library loads a class.
+func (l *Library) JavaTypes() { l.t.javaTypes = true }
+
+// Class returns the class of the class path with Kotlin class ID id
+// (a/b/Outer.Inner), as Kotlin sees it: kotlin/String is java/lang/String,
+// kotlin/collections/List java/util/List; nil if there is none. The
+// program's classes aren't among them.
+func (l *Library) Class(id string) *types.ClassSym {
+	t := l.t
+	if t.kotlin {
+		return t.kclass(id)
+	}
+	name := strings.ReplaceAll(id, ".", "$")
+	if t.cp == nil || !t.cp.Has(name) {
+		return nil
+	}
+	return t.class(name)
+}
+
+// JavaMethods returns the public instance methods that JVM class name
+// declares, typed as members of owner, a Kotlin class whose type
+// parameters stand for name's by name: the JDK members of a class Kotlin
+// maps, as java/util/List's getFirst() for kotlin/collections/List, which
+// Class doesn't have. Synthetic and bridge methods are left out, and so
+// are those whose types kc doesn't support.
+func (l *Library) JavaMethods(name string, owner *types.ClassSym) []*types.FunSym {
+	t := l.t
+	if t.cp == nil || !t.cp.Has(name) {
+		return nil
+	}
+	info, err := t.cp.Load(name)
+	if err != nil {
+		return nil
+	}
+	var out []*types.FunSym
+	for _, m := range info.Methods {
+		if m.Access&(classfile.AccSynthetic|classfile.AccBridge|classfile.AccStatic) != 0 || m.Access&classfile.AccPublic == 0 ||
+			m.Access&classfile.AccVarargs != 0 || strings.HasPrefix(m.Name, "<") {
+			continue
+		}
+		f := &types.FunSym{Name: m.Name, Owner: owner, Desc: m.Desc, Operator: true, Resolved: true,
+			Abstract: m.Access&classfile.AccAbstract != 0}
+		ok := t.signature(f, m.Desc)
+		if m.Sig != "" {
+			ok = t.methodSignature(f, owner, m.Sig, len(f.Params))
+		}
+		if !ok {
+			continue
+		}
+		for _, p := range f.Params {
+			p.Type = javaParam(p.Type)
+		}
+		out = append(out, f)
+	}
+	return out
+}
+
 // moduleSuffix returns what the JVM names of a module's internal members
 // end with: $ and its name, with the characters that can't be in a Java
 // identifier replaced by _, as kotlinc writes them.
@@ -439,9 +529,47 @@ func (l *Library) Prefetch() {
 
 // CheckWith is Check with a library that may have been prefetched.
 func CheckWith(files []*syntax.File, lib *Library, jobs int) []*syntax.Error {
-	u := &Universe{Pkgs: map[string]*Package{}, prefixes: map[string]bool{}, ext: lib.t, module: moduleSuffix(lib.Module),
+	errs, _ := CheckContext(context.Background(), files, lib, jobs, nil)
+	return errs
+}
+
+// CheckContext is CheckWith, which stops early, with ctx's error, once
+// ctx is done, and reports what it finds to rec, if it isn't nil.
+func CheckContext(ctx context.Context, files []*syntax.File, lib *Library, jobs int, rec Recorder) ([]*syntax.Error, error) {
+	return CheckOptions(ctx, files, lib, jobs, rec, Options{})
+}
+
+// Options are what CheckOptions checks.
+type Options struct {
+	// Signatures is set to check what the declarations are, and not what
+	// their code does: the files' declarations and their types, inferred
+	// ones included, and their annotations, as an analysis of the
+	// program's declarations (analysis/ka) needs them, but not the bodies
+	// of functions, of property accessors and initializers, of class
+	// initializers, or the default values of parameters, but for those of
+	// annotation classes. The errors in what isn't checked aren't found,
+	// and the program can't be compiled. A class type with an argument
+	// that doesn't resolve keeps its class, with an error type argument.
+	Signatures bool
+	// Only, if it isn't nil, is the files to check: the others are
+	// declared, and their declarations' written types resolved, as the
+	// checked files' need them, but their omitted types are inferred only
+	// if a checked file needs them, and they aren't checked further. Their
+	// errors aren't reported and a Recorder hears of them only in part.
+	// An analysis that keeps the earlier results of the others
+	// (analysis/ka) checks only the files that changed.
+	Only map[*syntax.File]bool
+}
+
+// CheckOptions is CheckContext, which checks what opts says.
+func CheckOptions(ctx context.Context, files []*syntax.File, lib *Library, jobs int, rec Recorder, opts Options) ([]*syntax.Error, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	u := &Universe{ctx: ctx, rec: rec, Pkgs: map[string]*Package{}, prefixes: map[string]bool{}, ext: lib.t, module: moduleSuffix(lib.Module),
 		aliasFile: map[*types.AliasSym]*Checker{}, noJVMDefault: lib.NoJVMDefault, jvmDefaultCompat: lib.JVMDefaultCompat, parcelize: lib.Parcelize, serialization: lib.Serialization,
-		compose: lib.Compose, serialInterfaces: map[*syntax.ClassDecl]bool{}, optIns: lib.OptIns}
+		compose: lib.Compose, serialInterfaces: map[*syntax.ClassDecl]bool{}, optIns: lib.OptIns, partial: opts.Signatures}
+	u.lookups, _ = rec.(LookupRecorder)
 	checkers := make([]*Checker, len(files))
 	for i, f := range files {
 		checkers[i] = &Checker{u: u, file: f, done: map[any]bool{}, checked: map[*syntax.Lambda]types.Type{},
@@ -449,6 +577,16 @@ func CheckWith(files []*syntax.File, lib *Library, jobs int) []*syntax.Error {
 			varSites: map[*types.VarSym]varSite{}, concurrent: map[varFrame]bool{}, nestedAssigns: map[*types.VarSym][]types.Type{}, assignsMemo: map[any][]string{},
 			classCache: map[string]classifier{}, funCache: map[funKey][]*types.FunSym{},
 			levelCache: map[funKey][][]*types.FunSym{}}
+	}
+	// checked are the checkers of the files to check (opts.Only).
+	checked := checkers
+	if opts.Only != nil {
+		checked = nil
+		for _, c := range checkers {
+			if opts.Only[c.file] {
+				checked = append(checked, c)
+			}
+		}
 	}
 	inheritDefaults(files)
 	dropContracts(checkers)
@@ -461,6 +599,9 @@ func CheckWith(files []*syntax.File, lib *Library, jobs int) []*syntax.Error {
 	if lib.t.cp != nil && lib.t.cp.HasSources() {
 		find := u.sourceClass
 		lib.t.sources.Store(&find)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 	expectActual(checkers)
 	// Imports can name declarations of any file.
@@ -489,6 +630,9 @@ func CheckWith(files []*syntax.File, lib *Library, jobs int) []*syntax.Error {
 	for _, c := range checkers {
 		c.resolveSignatures()
 	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	forwardInlinable(checkers)
 	for _, c := range checkers {
 		c.checkMemberImports()
@@ -499,50 +643,88 @@ func CheckWith(files []*syntax.File, lib *Library, jobs int) []*syntax.Error {
 	for _, c := range checkers {
 		c.delegations()
 	}
-	for _, c := range checkers {
+	for _, c := range checked {
 		c.defaultImpls()
 	}
 	// Omitted return and property types are inferred up front, in order, so
 	// the parallel phase only reads signatures.
-	for _, c := range checkers {
+	for _, c := range checked {
 		c.inferAll()
 	}
-	for _, c := range checkers {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	for _, c := range checked {
 		c.checkExposure()
 	}
-	for _, c := range checkers {
+	for _, c := range checked {
 		c.serialBodies()
 	}
-	for _, c := range checkers {
+	for _, c := range checked {
 		c.boxedReturns()
 	}
 	conflicts(checkers)
-	for _, c := range checkers {
+	for _, c := range checked {
 		c.checkClashes()
 	}
 
+	if r, ok := rec.(PhaseRecorder); ok {
+		r.Bodies()
+	}
 	if jobs < 1 {
 		jobs = 1
 	}
 	var wg sync.WaitGroup
 	work := make(chan *Checker)
+	// A panic in a worker is re-raised here, on the caller's goroutine,
+	// where the caller can recover it.
+	var crash atomic.Pointer[workerPanic]
 	for range jobs {
 		wg.Go(func() {
+			defer func() {
+				if v := recover(); v != nil {
+					crash.CompareAndSwap(nil, &workerPanic{v, debug.Stack()})
+					for range work {
+					}
+				}
+			}()
 			for c := range work {
-				c.checkBodies()
+				if ctx.Err() == nil && crash.Load() == nil {
+					if opts.Signatures {
+						c.checkSignatures()
+					} else {
+						c.checkBodies()
+					}
+				}
 			}
 		})
 	}
-	for _, c := range checkers {
+	for _, c := range checked {
 		work <- c
 	}
 	close(work)
 	wg.Wait()
+	if p := crash.Load(); p != nil {
+		panic(p)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	if r, ok := rec.(OverrideRecorder); ok && len(checkers) > 0 {
+		c := checkers[0]
+		r.Overridden(func(f *types.FunSym) []*types.FunSym {
+			if f == nil || f.Owner == nil || f.Static || f.Name == "<init>" {
+				return nil
+			}
+			return c.overridden(f.Owner, f)
+		})
+	}
 
 	optInErrors(checkers)
 	localClassNames(checkers)
 	var errs []*syntax.Error
-	for _, c := range checkers {
+	for _, c := range checked {
 		c.shadowedErrors()
 		c.dslErrors()
 		c.versionOverloads()
@@ -553,7 +735,7 @@ func CheckWith(files []*syntax.File, lib *Library, jobs int) []*syntax.Error {
 		})
 		errs = append(errs, c.errs...)
 	}
-	return errs
+	return errs, nil
 }
 
 // sourceClass returns the program's class with an internal name, as
@@ -613,7 +795,12 @@ func (c *Checker) hidesBuiltin(name string) bool {
 }
 
 func (c *Checker) resolveType(ref *syntax.TypeRef) types.Type {
-	return c.typeMarkers(ref, c.resolveTypeRef(ref))
+	t := c.typeMarkers(ref, c.resolveTypeRef(ref))
+	if c.u.rec != nil && t.K != types.Invalid {
+		c.u.rec.TypeRef(ref, t)
+		c.noteType(t)
+	}
+	return t
 }
 
 // resolveTypeRef is resolveType without the type's DSL markers.
@@ -634,6 +821,7 @@ func (c *Checker) resolveTypeRef(ref *syntax.TypeRef) types.Type {
 	if a := c.lookupAlias(ref.Name); a != nil && c.lookupTypeParam(ref.Name) == nil {
 		c.u.typeUses.Store(ref, a)
 		c.checkAliasVisible(a, ref.P)
+		c.recordAlias(ref, a)
 		return c.expandAlias(a, ref)
 	}
 	var t types.Type
@@ -686,9 +874,14 @@ func (c *Checker) resolveTypeRef(ref *syntax.TypeRef) types.Type {
 				return types.InvalidType
 			}
 			if !c.usable(cls, ref.P) {
-				return types.InvalidType
+				if cls.Missing || !cls.PackagePrivate {
+					return types.InvalidType
+				}
+				// A package-private Java class: reported, but its type
+				// stays, as in FIR.
+			} else {
+				c.checkClassVisible(cls, ref.P)
 			}
-			c.checkClassVisible(cls, ref.P)
 			c.u.typeUses.Store(ref, cls)
 			return c.applyTypeArgs(cls, ref)
 		}
@@ -832,7 +1025,7 @@ func (c *Checker) applyTypeArgs(cls *types.ClassSym, ref *syntax.TypeRef) types.
 			continue
 		}
 		args[i].T = c.resolveType(a.Type)
-		if args[i].T.K == types.Invalid {
+		if args[i].T.K == types.Invalid && !c.u.partial {
 			return types.InvalidType
 		}
 		if a.Variance != types.Inv && ps[i].Var != types.Inv && a.Variance != ps[i].Var {
@@ -2301,6 +2494,7 @@ func (c *Checker) checkBodies() {
 	for _, d := range c.file.Decls {
 		c.declAnnotations(d, nil)
 	}
+	done := c.u.ctx.Done()
 	for _, d := range c.classes {
 		if d.Sym != nil && d.Sym.Outer == nil {
 			continue // a top-level class, checked above
@@ -2308,6 +2502,9 @@ func (c *Checker) checkBodies() {
 		c.declAnnotations(d, d.Sym.Outer)
 	}
 	for _, d := range c.file.Decls {
+		if cancelled(done) {
+			return
+		}
 		switch d := d.(type) {
 		case *syntax.FunDecl:
 			c.checkDefaults(d.Params, nil, d.Sym)
@@ -2320,11 +2517,116 @@ func (c *Checker) checkBodies() {
 	}
 	c.fileAssignment(c.file.Decls)
 	for _, d := range c.classes {
+		if cancelled(done) {
+			return
+		}
 		c.checkClass(d)
 	}
 	c.propRefs()
 	c.inlineFileChecks()
 	c.typeAnnotations()
+}
+
+// checkSignatures is checkBodies for Options.Signatures: the annotations
+// of the file, its declarations and the types they name, and the
+// annotation classes, whose parameters' default values are part of what
+// they declare.
+func (c *Checker) checkSignatures() {
+	c.annotations(c.file.Annotations, nil, fileSite)
+	for _, d := range c.file.Decls {
+		c.declAnnotations(d, nil)
+	}
+	for _, d := range c.classes {
+		if d.Sym != nil && d.Sym.Outer == nil {
+			continue
+		}
+		c.declAnnotations(d, d.Sym.Outer)
+	}
+	for _, d := range c.classes {
+		if d.Annotation {
+			c.checkClass(d)
+		}
+	}
+	for _, d := range c.file.Decls {
+		c.localDeclAnnotations(d, nil)
+	}
+	for _, d := range c.classes {
+		for _, m := range d.Members {
+			c.localDeclAnnotations(m, d.Sym)
+		}
+	}
+	c.typeAnnotations()
+}
+
+// localDeclAnnotations checks, for checkSignatures, the annotations of
+// the local declarations written directly in the body of function,
+// constructor or property d, a member of class owner (nil at top level),
+// and resolves the local variables' written types: what an Analysis API
+// client lists as its declarations.
+func (c *Checker) localDeclAnnotations(d syntax.Decl, owner *types.ClassSym) {
+	switch d := d.(type) {
+	case *syntax.FunDecl:
+		c.localStmtAnnotations(d.Body, d.Sym, owner)
+	case *syntax.SecondaryCtor:
+		c.localStmtAnnotations(d.Body, d.Sym, owner)
+	case *syntax.PropDecl:
+		for _, a := range []*syntax.FunDecl{d.Getter, d.Setter} {
+			if a != nil {
+				c.localStmtAnnotations(a.Body, a.Sym, owner)
+			}
+		}
+	}
+}
+
+// localStmtAnnotations checks the annotations of the local variables,
+// functions and classes among the statements of body, function f's (if
+// known) of class owner, and resolves the variables' written types where
+// the body wasn't checked. They are resolved where the function is, with
+// the local classes declared before them, and a class's own annotations
+// with it, in scope: each a symbol with only its name, which is what a
+// class literal or a type needs of it.
+func (c *Checker) localStmtAnnotations(body *syntax.Block, f *types.FunSym, owner *types.ClassSym) {
+	if body == nil {
+		return
+	}
+	var tparams []*types.TypeParamSym
+	if f != nil {
+		tparams = funTypeParams(f, owner)
+	} else if owner != nil {
+		tparams = owner.TypeParams
+	}
+	var classes []*types.ClassSym
+	for _, s := range body.Stmts {
+		if lc, ok := s.(*syntax.LocalClass); ok && lc.Decl.Sym == nil {
+			d := lc.Decl
+			classes = append(classes, &types.ClassSym{Name: d.Name, Decl: d, Local: true, Final: true,
+				Interface: d.Interface, Object: d.Object, Annotation: d.Annotation, File: c.file.Class()})
+		}
+		c.state = state{scope: &scope{classes: slices.Clip(classes)}, cls: owner, tparams: tparams}
+		switch s := s.(type) {
+		case *syntax.VarStmt:
+			c.annotatedNode(s, localVarSite)
+			if s.Sym == nil && s.Type != nil {
+				c.resolveType(s.Type)
+			}
+		case *syntax.Destructure:
+			c.annotatedNode(s, localVarSite)
+			for _, as := range s.Annotations {
+				c.localAnnotations(as, localVarSite)
+			}
+			if s.Stmts == nil {
+				for _, t := range s.Types {
+					if t != nil {
+						c.resolveType(t)
+					}
+				}
+			}
+		case *syntax.LocalFun:
+			c.localAnnotations(s.Decl.Annotations, localFunSite)
+		case *syntax.LocalClass:
+			c.localAnnotations(s.Annotations, classSite(s.Decl))
+		}
+	}
 }
 
 // checkClass checks a class's code: its constructors' calls, property
@@ -2407,7 +2709,9 @@ func (c *Checker) checkDefaults(params []*syntax.Param, cls *types.ClassSym, f *
 		if p.Default != nil {
 			c.defaultParam = i
 			before := len(c.errs)
+			c.annotDefault = ctor && cls != nil && cls.Annotation
 			c.assignable(c.value(p.Default, p.Sym.Type), p.Sym.Type, p.Default.Pos())
+			c.annotDefault = false
 			if ctor && cls != nil && cls.Annotation && len(c.errs) == before && c.nonConst(p.Default) != nil {
 				c.errorf(p.Default.Pos(), "default value of annotation parameter must be a compile-time constant")
 			}
@@ -3033,3 +3337,22 @@ func (c *Checker) assignable(from, to types.Type, p syntax.Pos) {
 		c.errorf(p, "type mismatch: inferred type is %s but %s was expected", from, to)
 	}
 }
+
+// cancelled reports whether done, a context's Done channel, is closed.
+func cancelled(done <-chan struct{}) bool {
+	select {
+	case <-done:
+		return true
+	default:
+		return false
+	}
+}
+
+// workerPanic is a panic in one of CheckContext's workers, with the
+// worker's stack.
+type workerPanic struct {
+	v     any
+	stack []byte
+}
+
+func (p *workerPanic) String() string { return fmt.Sprintf("%v\n\nworker stack:\n%s", p.v, p.stack) }

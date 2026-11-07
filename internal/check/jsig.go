@@ -203,11 +203,17 @@ func (p *sigParser) refType() types.Type {
 		}
 		for p.ok && p.peek() == '.' { // an inner class of a generic class
 			p.i++
-			p.ident("<;.")
+			name += "$" + p.ident("<;.")
+			var own []types.Arg
 			if p.peek() == '<' {
-				p.typeArgs()
+				own = p.typeArgs()
 			}
-			p.ok = false
+			// Its own arguments, then its outer classes', as its type
+			// parameters are under Library.JavaTypes.
+			args = append(own, args...)
+			if !p.t.javaTypes {
+				p.ok = false
+			}
 		}
 		p.expect(';')
 		if !p.ok {
@@ -262,8 +268,10 @@ func (t *classTable) classType(name string, args []types.Arg) types.Type {
 }
 
 // classSignature reads a class's type parameters and generic supertypes.
-func (t *classTable) classSignature(cls *types.ClassSym, sig string) {
-	p := &sigParser{t: t, s: sig, ok: true}
+// An inner class's outer type parameters, outer, are in scope and are its
+// last ones.
+func (t *classTable) classSignature(cls *types.ClassSym, sig string, outer []*types.TypeParamSym) {
+	p := &sigParser{t: t, s: sig, ok: true, scope: outer}
 	ps := p.typeParams(cls)
 	var supers []types.Type
 	for p.ok && p.i < len(p.s) {
@@ -278,8 +286,14 @@ func (t *classTable) classSignature(cls *types.ClassSym, sig string) {
 	if v, ok := declaredVariance[cls.Name]; ok && len(ps) == 1 {
 		ps[0].Var = v
 	}
+	if len(outer) > 0 {
+		ps = append(ps[:len(ps):len(ps)], outer...)
+		cls.OuterParams = len(outer)
+	}
 	cls.TypeParams = ps
-	cls.Supers = supers
+	if sig != "" {
+		cls.Supers = supers
+	}
 }
 
 // methodSignature fills in a method's type parameters, parameter types

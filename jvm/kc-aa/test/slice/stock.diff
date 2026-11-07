@@ -1,0 +1,11 @@
+> a.Other: property a.Targets.b: kotlin.String (var) (s = "p")
+< annots:a.Targets: property b FIELD:Marker
+> annots:a.Targets: property b PARAM:Other FIELD:Marker
+< decls:java.util.AbstractMap.SimpleEntry: - function java.util.AbstractMap.SimpleEntry.equals(p0: kotlin.Any): kotlin.Boolean
+< decls:java.util.AbstractMap.SimpleEntry: - function java.util.AbstractMap.SimpleEntry.getKey(): K
+< decls:java.util.AbstractMap.SimpleEntry: - function java.util.AbstractMap.SimpleEntry.getValue(): V
+> decls:java.util.AbstractMap.SimpleEntry: - function java.util.AbstractMap.SimpleEntry.equals(p0: kotlin.Any?): kotlin.Boolean
+> decls:java.util.AbstractMap.SimpleEntry: - property java.util.AbstractMap.SimpleEntry.key: K
+> decls:java.util.AbstractMap.SimpleEntry: - property java.util.AbstractMap.SimpleEntry.value: V
+< members:f.Bag:get,size,toString: JAVA_LIB toString in java.util.AbstractCollection overrides kotlin.Any.toString; as member (): kotlin.String
+> members:f.Bag:get,size,toString: SYNTHETIC toString in java.util.AbstractList overrides java.util.AbstractCollection.toString; as member (): kotlin.String

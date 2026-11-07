@@ -63,6 +63,9 @@ func (c *Checker) expr(x syntax.Expr, want types.Type) types.Type {
 	}
 	x.SetType(t)
 	c.composeRead(x)
+	if c.u.lookups != nil {
+		c.noteExpr(x, t)
+	}
 	return t
 }
 
@@ -88,7 +91,7 @@ func (c *Checker) expr1(x syntax.Expr, want types.Type, allowRange bool, sink *s
 			}
 		}
 		if len(c.recvs) > 0 {
-			if _, _, local := c.scope.lookup(x.Name); !local {
+			if v, _, local := c.scope.lookup(x.Name); !local || propParam(v) != nil {
 				if t, ok := c.recvMember(x); ok {
 					return t
 				}
@@ -787,6 +790,9 @@ func (c *Checker) binary(x *syntax.Binary, want types.Type, allowRange bool) typ
 		if !ok {
 			c.errorf(x.P, "type mismatch: incompatible types %s and %s", xt.NonNull(), yt)
 			return types.InvalidType
+		}
+		if c.u.rec != nil {
+			c.u.rec.Elvis(x, c.subtype(xt.NonNull(), yt))
 		}
 		if yt.K == types.Nothing {
 			// x ?: return: the code after it sees x not null.
@@ -1944,6 +1950,7 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 		return t
 	}
 	if x.Safe {
+		x.SelNonNull = !types.MayBeNull(t)
 		x.SafeT = t
 		t = t.Nullable()
 	}
@@ -2204,6 +2211,7 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 			}
 		}
 		if a := c.findClassifier(name).alias; a != nil && cls != nil && !cls.Object && len(fs) == 0 {
+			c.recordAlias(x, a)
 			return c.aliasConstruct(x, a, cls, fn.P, want, sink)
 		}
 		if cls != nil && cls.Object && len(fs) == 0 && c.hasFun(types.ClassType(cls), "invoke", x) {
@@ -2293,6 +2301,7 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 		if cls := c.classRef(fn); cls != nil {
 			if name := c.qualifiedName(fn); name != "" {
 				if a := c.lookupAlias(name); a != nil {
+					c.recordAlias(x, a)
 					return c.aliasConstruct(x, a, cls, fn.P, want, sink) // a.b.Alias(1)
 				}
 			}
@@ -2483,6 +2492,7 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 		}
 		if fn.Safe && t.K != types.Unit {
 			fn.Nothing = t.K == types.Nothing && !t.N
+			fn.SelNonNull = !types.MayBeNull(t)
 			t = t.Nullable()
 		}
 		fn.T = rt
@@ -3537,7 +3547,8 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 			cov.merge(not)
 		}
 	}
-	exhaustive := hasElse || x.Subject != nil && c.covers(st, &cov)
+	covered := x.Subject != nil && c.covers(st, &cov)
+	exhaustive := hasElse || covered
 	if !exhaustive {
 		exits = append(exits, c.startExit(vars, later)) // no branch matched
 	}
@@ -3548,6 +3559,9 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 		valueUsed = false
 		c.completeBranches(pending, result, want, true)
 		pending = nil
+	}
+	if c.u.rec != nil {
+		c.u.rec.When(x, covered, valueUsed)
 	}
 	if !exhaustive {
 		// As of Kotlin 1.7, a when statement over a Boolean, an enum or a

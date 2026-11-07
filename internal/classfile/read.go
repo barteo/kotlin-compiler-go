@@ -57,6 +57,13 @@ type Info struct {
 	// DebugMetadata holds the arguments of the @DebugMetadata of a
 	// coroutine's continuation class, as strings, by name.
 	DebugMetadata map[string][]string
+	// Deprecated is the class's deprecation, or nil.
+	Deprecated *Deprecation
+	// Unresolved has, if a supertype a Java source class wrote doesn't
+	// resolve, an entry per written supertype in order: the simple name of
+	// one that doesn't, "" for one that does. Super and Interfaces have
+	// java/lang/Object in place of the unresolved ones.
+	Unresolved []string
 }
 
 // InnerClass is an entry of the InnerClasses attribute.
@@ -96,6 +103,35 @@ type Member struct {
 	Constant any
 	// Default is an annotation method's AnnotationDefault, or nil.
 	Default *ElementValue
+	// Annotations are the descriptors of the member's annotations, kept
+	// in its class file or visible at run time.
+	Annotations []string
+	// ParamAnnotations are the descriptors of a method's parameters'
+	// annotations, by parameter, or nil if it has none. javac leaves
+	// out synthetic parameters, so there may be fewer than its
+	// descriptor has.
+	ParamAnnotations [][]string
+	// Deprecated is the member's deprecation, or nil.
+	Deprecated *Deprecation
+}
+
+// Deprecation is the deprecation of a class or member: the message and
+// level of its @kotlin.Deprecated, or Java's, by its @java.lang.Deprecated
+// or Deprecated attribute, which kotlinc reports as "Deprecated in Java".
+type Deprecation struct {
+	Message string
+	Level   string // WARNING, ERROR or HIDDEN
+	// Java is set on Java's deprecation: kotlinc also marks a deprecated
+	// Kotlin property's accessors so, whose @Deprecated is elsewhere.
+	Java bool
+}
+
+// javaDeprecation is the deprecation of a Java class or member.
+func javaDeprecation(d *Deprecation) *Deprecation {
+	if d != nil {
+		return d
+	}
+	return &Deprecation{Message: "Deprecated in Java", Level: "WARNING", Java: true}
 }
 
 var errTruncated = errors.New("truncated class file")
@@ -288,6 +324,25 @@ func Parse(data []byte) (*Info, error) {
 					}
 					r.pos = min(end, len(r.b))
 					size = 0
+				case name == "Deprecated":
+					m.Deprecated = javaDeprecation(m.Deprecated)
+				case name == "RuntimeInvisibleParameterAnnotations", name == "RuntimeVisibleParameterAnnotations":
+					end := r.pos + size
+					n := int(r.u1())
+					if len(m.ParamAnnotations) < n {
+						m.ParamAnnotations = append(m.ParamAnnotations, make([][]string, n-len(m.ParamAnnotations))...)
+					}
+					for j := range n {
+						for range r.u2() {
+							typ, e := p.utf8(r.u2())
+							if e != nil {
+								break
+							}
+							m.ParamAnnotations[j] = append(m.ParamAnnotations[j], typ)
+							skipPairs(r)
+						}
+					}
+					size = end - r.pos
 				case name == "RuntimeInvisibleAnnotations":
 					end := r.pos + size
 					for range r.u2() {
@@ -295,6 +350,7 @@ func Parse(data []byte) (*Info, error) {
 						if e != nil {
 							break
 						}
+						m.Annotations = append(m.Annotations, typ)
 						m.LowPriority = m.LowPriority || typ == "Lkotlin/internal/LowPriorityInOverloadResolution;"
 						skipPairs(r)
 					}
@@ -306,10 +362,15 @@ func Parse(data []byte) (*Info, error) {
 						if e != nil {
 							break
 						}
+						m.Annotations = append(m.Annotations, typ)
+						if typ == "Ljava/lang/Deprecated;" {
+							m.Deprecated = javaDeprecation(m.Deprecated)
+						}
 						if typ != "Lkotlin/Deprecated;" && typ != "Lkotlin/DeprecatedSinceKotlin;" {
 							skipPairs(r)
 							continue
 						}
+						d := &Deprecation{Level: "WARNING"}
 						for range r.u2() {
 							elem, e := p.utf8(r.u2())
 							if e != nil {
@@ -320,14 +381,23 @@ func Parse(data []byte) (*Info, error) {
 								// of a version before kc's standard library.
 								m.Hidden = true
 							}
-							if r.u1() != 'e' || elem != "level" {
+							tag := r.u1()
+							if tag == 's' && elem == "message" {
+								d.Message, _ = p.utf8(r.u2())
+								continue
+							}
+							if tag != 'e' || elem != "level" {
 								r.pos--
 								skipValue(r)
 								continue
 							}
 							r.skip(2) // the enum's type
 							level, _ := p.utf8(r.u2())
+							d.Level = level
 							m.Hidden = m.Hidden || level == "HIDDEN"
+						}
+						if typ == "Lkotlin/Deprecated;" {
+							m.Deprecated = d
 						}
 					}
 					size = end - r.pos
@@ -361,6 +431,8 @@ func Parse(data []byte) (*Info, error) {
 				info.Inner = ic
 			}
 			size = 0
+		case name == "Deprecated":
+			info.Deprecated = javaDeprecation(info.Deprecated)
 		case name == "RuntimeVisibleAnnotations":
 			end := r.pos + size
 			k, e := kotlinMeta(r, p, info)
@@ -458,7 +530,32 @@ func kotlinMeta(r *reader, p *pool, info *Info) (*KotlinMeta, error) {
 			}
 			continue
 		}
+		if typ == "Lkotlin/Deprecated;" {
+			info.Visible = append(info.Visible, typ)
+			d := &Deprecation{Level: "WARNING"}
+			for range r.u2() {
+				name, err := p.utf8(r.u2())
+				if err != nil {
+					return nil, err
+				}
+				switch tag := r.u1(); {
+				case tag == 's' && name == "message":
+					d.Message, _ = p.utf8(r.u2())
+				case tag == 'e' && name == "level":
+					r.skip(2) // the enum's type
+					d.Level, _ = p.utf8(r.u2())
+				default:
+					r.pos--
+					skipValue(r)
+				}
+			}
+			info.Deprecated = d
+			continue
+		}
 		if typ != "Lkotlin/Metadata;" {
+			if typ == "Ljava/lang/Deprecated;" {
+				info.Deprecated = javaDeprecation(info.Deprecated)
+			}
 			info.Visible = append(info.Visible, typ)
 			skipPairs(r)
 			continue

@@ -628,6 +628,8 @@ func (w *writer) typ(t *Type) []byte {
 	switch {
 	case t.Class != "":
 		e.int(6, w.st.class(t.Class))
+	case t.Alias != "":
+		e.int(12, w.st.class(t.Alias))
 	case t.ParamName != "":
 		e.int(9, w.st.str(t.ParamName))
 	default:
@@ -635,6 +637,9 @@ func (w *writer) typ(t *Type) []byte {
 	}
 	if t.Outer != nil {
 		e.msg(10, w.typ(t.Outer))
+	}
+	if t.Abbrev != nil {
+		e.msg(13, w.typ(t.Abbrev))
 	}
 	if t.Composable {
 		var a enc
@@ -662,6 +667,9 @@ func (w *writer) typ(t *Type) []byte {
 		arg.msg(2, v.b)
 		a.msg(2, arg.b)
 		e.msg(100, a.b)
+	}
+	for _, an := range t.Annotations {
+		e.msg(100, w.annotation(an))
 	}
 	return e.b
 }

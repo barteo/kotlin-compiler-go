@@ -132,13 +132,16 @@ func (c *Checker) supertype(cd *syntax.ClassDecl, st *syntax.SuperType, seen map
 	case cls.Super != nil:
 		c.errorf(st.Type.P, "only one class may appear in a supertype list")
 	case sc.Final:
+		// As in FIR, the class still inherits from it.
 		c.errorf(st.Type.P, "this type is final, so it cannot be inherited from")
+		return t
 	case !cd.HasPrimary && st.Call != nil:
 		c.errorf(st.Type.P, "supertype initialization is impossible without a primary constructor")
 		st.Call = nil
 		return t
 	case st.Call == nil && cd.HasPrimary:
 		c.errorf(st.Type.P, "this type has a constructor, and thus must be initialized here")
+		return t
 	default:
 		return t
 	}

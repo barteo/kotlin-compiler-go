@@ -88,6 +88,7 @@ func (c *Checker) localDelegate(s *syntax.VarStmt) {
 		id.P, null.P, v.P, m.P, s.Set.P = s.P, s.P, s.P, s.P, s.P
 		c.value(s.Set, noWant)
 	}
+	c.scope.shadow(s.Sym)
 	if !c.scope.declare(s.Sym) {
 		c.errorf(s.P, "conflicting declarations: %s", s.Name)
 	}
