@@ -551,6 +551,14 @@ type Options struct {
 	// and the program can't be compiled. A class type with an argument
 	// that doesn't resolve keeps its class, with an error type argument.
 	Signatures bool
+	// Only, if it isn't nil, is the files to check: the others are
+	// declared, and their declarations' written types resolved, as the
+	// checked files' need them, but their omitted types are inferred only
+	// if a checked file needs them, and they aren't checked further. Their
+	// errors aren't reported and a Recorder hears of them only in part.
+	// An analysis that keeps the earlier results of the others
+	// (analysis/ka) checks only the files that changed.
+	Only map[*syntax.File]bool
 }
 
 // CheckOptions is CheckContext, which checks what opts says.
@@ -569,6 +577,16 @@ func CheckOptions(ctx context.Context, files []*syntax.File, lib *Library, jobs 
 			varSites: map[*types.VarSym]varSite{}, concurrent: map[varFrame]bool{}, nestedAssigns: map[*types.VarSym][]types.Type{}, assignsMemo: map[any][]string{},
 			classCache: map[string]classifier{}, funCache: map[funKey][]*types.FunSym{},
 			levelCache: map[funKey][][]*types.FunSym{}}
+	}
+	// checked are the checkers of the files to check (opts.Only).
+	checked := checkers
+	if opts.Only != nil {
+		checked = nil
+		for _, c := range checkers {
+			if opts.Only[c.file] {
+				checked = append(checked, c)
+			}
+		}
 	}
 	inheritDefaults(files)
 	dropContracts(checkers)
@@ -625,28 +643,28 @@ func CheckOptions(ctx context.Context, files []*syntax.File, lib *Library, jobs 
 	for _, c := range checkers {
 		c.delegations()
 	}
-	for _, c := range checkers {
+	for _, c := range checked {
 		c.defaultImpls()
 	}
 	// Omitted return and property types are inferred up front, in order, so
 	// the parallel phase only reads signatures.
-	for _, c := range checkers {
+	for _, c := range checked {
 		c.inferAll()
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	for _, c := range checkers {
+	for _, c := range checked {
 		c.checkExposure()
 	}
-	for _, c := range checkers {
+	for _, c := range checked {
 		c.serialBodies()
 	}
-	for _, c := range checkers {
+	for _, c := range checked {
 		c.boxedReturns()
 	}
 	conflicts(checkers)
-	for _, c := range checkers {
+	for _, c := range checked {
 		c.checkClashes()
 	}
 
@@ -681,7 +699,7 @@ func CheckOptions(ctx context.Context, files []*syntax.File, lib *Library, jobs 
 			}
 		})
 	}
-	for _, c := range checkers {
+	for _, c := range checked {
 		work <- c
 	}
 	close(work)
@@ -706,7 +724,7 @@ func CheckOptions(ctx context.Context, files []*syntax.File, lib *Library, jobs 
 	optInErrors(checkers)
 	localClassNames(checkers)
 	var errs []*syntax.Error
-	for _, c := range checkers {
+	for _, c := range checked {
 		c.shadowedErrors()
 		c.dslErrors()
 		c.versionOverloads()

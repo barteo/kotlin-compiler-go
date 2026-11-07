@@ -3,6 +3,7 @@ package ka
 import (
 	"slices"
 	"sync"
+	"sync/atomic"
 
 	"github.com/barteo/kotlin-compiler-go/psi"
 )
@@ -20,12 +21,24 @@ import (
 // a library of its own, made with those sources; javaChecks keeps such
 // checks, with their libraries, by the class path's key (libraryKey).
 //
-// Everything else is checked again whole: the checker resolves a file's
-// declarations against the whole module's (an inferred type, an
-// overload, a supertype may come from any file), and a module's
-// declarations aren't kept from one check to the next. A model's files
-// and declarations aren't changed once Update returns, so models can
-// share them.
+// An update that only changes bodies, whose changed files declare what
+// they did (signatureHash), with the other files and the Java texts the
+// same, checks only the changed files (check.Options.Only) and keeps the
+// others' models and diagnostics: what a file declares depends on the
+// other files' declarations, not on their bodies. Every other update is
+// checked again whole: the checker resolves a file's declarations
+// against the whole module's (an inferred type, an overload, a supertype
+// may come from any file), and a module's declarations aren't kept from
+// one check to the next. A model's files and declarations aren't changed
+// once Update returns, so models can share them.
+
+// incrementalUpdates counts the updates that check only some files, for
+// tests.
+var incrementalUpdates atomic.Int64
+
+// noReuse turns the caches off, for tests that compare an update with a
+// whole check.
+var noReuse bool
 
 // maxChecks is how many checks' results a cache keeps.
 const maxChecks = 2
@@ -47,6 +60,9 @@ type checked struct {
 	files        []*File
 	diags        []Diagnostic
 	sl           *shared // the library the check made, for javaChecks
+	// clean is set if no file had syntax errors, so that the check's
+	// files can be kept by an update that checks only some (bodyEdits).
+	clean bool
 }
 
 type checkedSnap struct {
@@ -58,7 +74,7 @@ type checkedSnap struct {
 // whether it is of the same texts; or, if none is, the last check with
 // key, whose parses an update may reuse, or nil. A nil c keeps none.
 func (c *checkCache) find(key string, paths, texts []string) (*checked, bool) {
-	if c == nil {
+	if c == nil || noReuse {
 		return nil, false
 	}
 	c.mu.Lock()
@@ -89,6 +105,32 @@ func (e *checked) snapshot(path, text string) *psi.Snapshot {
 		return p.snap
 	}
 	return nil
+}
+
+// bodyEdits returns the indexes of the Kotlin sources whose texts differ
+// from e's, if e is a clean check of the same files, with the same Java
+// texts, and the changed files declare what they did in e
+// (signatureHash): an update that only changes bodies. It returns nil
+// otherwise, and if no text changed.
+func (e *checked) bodyEdits(paths []string, sources []Source, texts, javaTexts []string, snaps []*psi.Snapshot) []int {
+	if e == nil || !e.clean || !slices.Equal(e.paths, paths) || !slices.Equal(e.texts[len(sources):], javaTexts) {
+		return nil
+	}
+	var changed []int
+	for i, src := range sources {
+		p, ok := e.snaps[src.Path]
+		if !ok {
+			return nil
+		}
+		if p.text == texts[i] {
+			continue
+		}
+		if len(snaps[i].Diagnostics()) > 0 || signatureHash(p.snap) != signatureHash(snaps[i]) {
+			return nil
+		}
+		changed = append(changed, i)
+	}
+	return changed
 }
 
 // keep adds e to c, releasing the libraries of the checks it drops.

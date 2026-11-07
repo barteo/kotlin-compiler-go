@@ -55,7 +55,7 @@ func BenchmarkUpdateEdit(b *testing.B) {
 	}
 }
 
-func benchModule(b *testing.B) (*Session, []Source) {
+func benchModule(b testing.TB) (*Session, []Source) {
 	spec := os.Getenv("KA_BENCH")
 	if spec == "" {
 		b.Skip("KA_BENCH is not set")

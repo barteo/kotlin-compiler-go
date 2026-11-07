@@ -1856,8 +1856,65 @@ Making it per file needs more than a cache:
   kept with the symbols.
 
 This is a change to the checker's design, not to ka, and for octi it
-would save about 40 ms of a 176 ms warm run. It is not done; the gap
-below has the numbers.
+would save about 40 ms of a 176 ms warm run. Step 25 takes a narrower
+route to most of it.
+
+#### Step 25: body-only edits check only the edited files
+
+Step 24's route, moving the checker's results out of the syntax trees,
+turned out to be a rewrite of codegen too: `internal/codegen` reads
+them from the trees (about 400 uses of `.Sym` alone). This step gets
+most of the gain without it, from what the checker already does lazily:
+it infers an omitted type when something needs it (`FunSym.Infer`,
+`VarSym.Infer`), and `inferAll` only forces that up front.
+
+- **`check.Options.Only`** is the files to check. Every file is still
+  declared and has its written signature types resolved, but inference
+  (`inferAll`), `defaultImpls` (which forces the inferred types of
+  supertypes' properties), exposure, serialization, boxing and clash
+  checks, the parallel signature check and the per-file errors run only
+  for those files. The others' omitted types are inferred only if a
+  checked file needs them. `Only` nil is the whole check, unchanged.
+- **ka** (`analysis/ka/reuse.go`, `signature.go`) checks only the
+  changed files when an update has the files and Java texts of the last
+  check, that check had no syntax errors, and each changed file declares
+  what it did. `signatureHash` hashes a parse's tokens and the tree's
+  shape, but leaves out whitespace, comments and the block bodies of
+  functions, accessors, initializers and secondary constructors. A
+  block body doesn't make a declaration's type: without a written
+  return type, a function with one returns Unit. The other files' model
+  files and diagnostics are kept from that check. Any other update is
+  checked whole, as before.
+
+**Tests.** `TestIncremental` makes body edits (statements, a local
+class, a comment, an initializer, a secondary constructor, a body with an
+error) and compares each incremental model, declarations, lookups and
+diagnostics included, with a whole check of the same texts (made with
+the caches off). `TestIncrementalSignature` checks that changing an
+inferred type, a written return type or adding a declaration checks the
+module whole. `TestIncrementalModule` does the same on a real module
+(`KA_BENCH`): it adds a statement to the first function body of each
+file in turn. On octi-server all 42 files with a function body give the
+whole check's model, and so do all 78 when the main and test sources
+are one module. A mutation that keeps the edited file's old model fails
+every case.
+
+**Numbers.** `BenchmarkUpdateEdit` on octi-server, median of 40 warm
+edits, in ms:
+
+| | read | parse | lower | signatures | bodies | model | total |
+|---|---|---|---|---|---|---|---|
+| whole check (step 24) | 0.5 | 1.4 | 4.2 | 26.0 | 4.2 | 5.0 | 45.5 |
+| edited file only | 0.5 | 1.5 | 5.0 | 15.3 | 2.3 | 0.2 | 25.5 |
+
+What is left runs for every file: lowering (5 ms) and resolving the
+written signature types (`resolveSignatures`, 7–9 ms). Making those per
+file needs the checker to resolve written types lazily, as it does
+omitted ones, and to keep lowered trees, which it can't while it writes
+its results into them.
+
+`build.sh ksp` passes 134, `build.sh stock` is unchanged, and kotlinpoet
+still passes 18 of 19.
 
 ## Gaps and open questions
 
@@ -1907,8 +1964,8 @@ below has the numbers.
   copy of the library from another path would load a second Go runtime
   into the process, which is untested; failing over to the `aa` backend
   needs the stock backend (below).
-- **Incremental checking.** A changed Kotlin file re-checks the whole
-  module in Go (step 17); only parsing is per file. On octi-server a
-  warm one-file edit costs about 45 ms, 26 of it signatures; making it per
-  file means the checker keeping its results apart from the syntax trees
-  it now writes them into (step 24).
+- **Incremental checking.** An edit that changes only bodies checks
+  only the edited files (step 25): 25 ms for a one-file edit on
+  octi-server, down from 45. Every file is still lowered and has its
+  written signatures resolved. An edit that changes declarations checks
+  the whole module.
