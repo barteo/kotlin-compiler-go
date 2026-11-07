@@ -54,4 +54,5 @@ fun main() {
     println("${flags.isEvent} ${flags.isReady}")
     println(Panels(text.Panel(listOf("a", "b"), "t")).build())
     println(Defaults.describe())
+    println(util.LookupUser.count())
 }

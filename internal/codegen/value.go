@@ -521,7 +521,7 @@ func (g *gen) valueMember(fd *syntax.FunDecl) {
 	if !fd.Override {
 		access |= cf.AccFinal
 	}
-	if hasVararg(f.Params) {
+	if varargs(f) {
 		access |= cf.AccVarargs
 	}
 	ud := desc(g.owner.Underlying.Type)

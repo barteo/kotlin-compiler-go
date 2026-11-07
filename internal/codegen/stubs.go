@@ -177,7 +177,7 @@ func (g *gen) overloads(fd *syntax.FunDecl, owner *types.ClassSym, access uint16
 	}
 	for _, o := range overloadsOf(fd) {
 		acc := access &^ cf.AccVarargs
-		if hasVararg(taken(f.Params, o.omitted)) {
+		if hasVararg(taken(f.Params, o.omitted)) && !f.Suspend && !f.Composable {
 			acc |= cf.AccVarargs
 		}
 		if owner == nil || !owner.Interface {
@@ -265,7 +265,7 @@ func (g *gen) staticStubs(cd *syntax.ClassDecl) {
 			g.staticStub(fd, comp, funDesc(fd.Sym), varargs(fd.Sym), fd.Sym.Params)
 			for _, o := range overloadsOf(fd) {
 				params := taken(fd.Sym.Params, o.omitted)
-				g.staticStub(fd, comp, o.desc, hasVararg(params), params)
+				g.staticStub(fd, comp, o.desc, hasVararg(params) && !fd.Sym.Suspend && !fd.Sym.Composable, params)
 			}
 		}
 	}

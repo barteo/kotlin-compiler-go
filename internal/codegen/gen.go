@@ -937,9 +937,10 @@ func hasVararg(ps []*types.VarSym) bool {
 
 // varargs reports whether f's method is a variable arity method, as Java
 // sees it: its last parameter is a vararg, but for a composable's, which
-// the Composer and change flags follow.
+// the Composer and change flags follow, and a suspend function's, which
+// its Continuation follows.
 func varargs(f *types.FunSym) bool {
-	return hasVararg(f.Params) && !f.Composable
+	return hasVararg(f.Params) && !f.Composable && !f.Suspend
 }
 
 func (g *gen) check() {
