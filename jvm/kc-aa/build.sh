@@ -2,7 +2,7 @@
 # build.sh builds the kc KSP backend: the Analysis API answered by kc
 # through libkc (jvm/kc-aa/src), and the libkc.so it loads.
 #
-#	jvm/kc-aa/build.sh [test|stock|ksp]
+#	jvm/kc-aa/build.sh [test|stock|ksp|members]
 #
 # It writes build/kc-aa.jar and build/libkc.so. With "test" it then runs
 # KSP's processing loop on the kc backend over test/slice, with a processor
@@ -24,6 +24,9 @@
 # lists doesn't pass; KSP_UPDATE=1 rewrites pass.txt. KSP_TESTS=REGEX runs
 # only the tests whose names match. test/ksp/skip.txt says why each other
 # test fails. KSP_JAVA_OPTS adds JVM options (-Dkc.diagnostics prints kc's).
+#
+# "members" writes members.txt: each Analysis API member the KSP fork's
+# bytecode uses, and whether kc answers it (gen/Members.kt).
 #
 # The symbol classes extend generated stubs (build/Stubs.kt, made by
 # gen/GenStubs.kt) whose members throw UnsupportedOperationException("kc:
@@ -92,6 +95,14 @@ rm -f "$out/kc-aa.jar"
 echo "$out/kc-aa.jar"
 
 mode=${1:-}
+if [ "$mode" = members ]; then
+	# members.txt: the Analysis API members the KSP fork uses, and which kc answers.
+	rm -rf "$out/members"
+	kotlinc -cp "$runtime" -d "$out/members" "$here/gen/Members.kt" 2>&1 | grep -v '^warning' || true
+	java -cp "$out/members:$out/kc-aa.jar:$deps" MembersKt "$here/members.txt" "$kspwork/ksp-aa-kc.jar" "$out/kc-aa.jar"
+	grep '^# total' "$here/members.txt"
+	exit 0
+fi
 if [ "$mode" = ksp ]; then
 	ksp=$kspwork/ksp
 	kt=$out/ksptest
