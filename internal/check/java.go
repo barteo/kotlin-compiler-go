@@ -176,6 +176,13 @@ func (t *classTable) load(cls *types.ClassSym) {
 		}
 		cls.TargetsKnown = known
 	}
+	cls.MethodAnnotations = func(name, desc string) (*classfile.MethodAnnotations, error) {
+		b, err := t.cp.Bytes(cls.Name)
+		if err != nil {
+			return nil, err
+		}
+		return classfile.ReadMethodAnnotations(b, name, desc)
+	}
 	if t.kotlin && info.Kotlin != nil && info.Kotlin.K == kmeta.KindClassFile {
 		if kc, err := kmeta.ReadClass(info.Kotlin); err == nil {
 			t.loadKotlin(cls, info, kc)

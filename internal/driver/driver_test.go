@@ -787,6 +787,7 @@ func TestKotlincLibrary(t *testing.T) {
 			}
 			cp := []string{lib, libOut}
 			opts := Options{OutDir: appOut, Jobs: runtime.NumCPU(), ClassPath: cp}
+			flagOptions(&opts, strings.Fields(flags)) // as gen_expected.sh compiles the app
 			appSrcs := sources(t, filepath.Join(dir, "app"))
 			slices.Sort(appSrcs)
 			if src, err := os.ReadFile(appSrcs[0]); err == nil && strings.HasPrefix(string(src), "// friend\n") {

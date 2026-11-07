@@ -1,0 +1,4 @@
+getHolder bridge=true [Marked] []
+plus bridge=true [] [[], [Arg]]
+twice bridge=true [Marked] [[Arg]]
+6
