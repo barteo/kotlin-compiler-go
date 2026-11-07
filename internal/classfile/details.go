@@ -10,8 +10,8 @@ type Details struct {
 	Annotations []Annotation
 	// Invisible is the number of Annotations kept in the class file only.
 	Invisible int
-	Fields      []MemberDetails
-	Methods     []MemberDetails
+	Fields    []MemberDetails
+	Methods   []MemberDetails
 	// Nested are the internal names of the class's named nested classes,
 	// in InnerClasses order.
 	Nested []string
