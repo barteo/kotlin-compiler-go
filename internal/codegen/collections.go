@@ -605,14 +605,22 @@ func safeDesc(params []*types.VarSym, ret types.Type) (string, bool) {
 }
 
 // viewRet returns a member's result type as a class sees it: boxed if
-// the member declares it with a type parameter, as kotlinc boxes it.
+// the member declares it with a type parameter, as kotlinc boxes it. A
+// V? that is Unit is kotlin.Unit, as Map<K, Unit>'s get returns, and a V
+// that is Unit is void, as its getOrDefault.
 func viewRet(s types.Subst, ret types.Type) types.Type {
 	r := s.Apply(ret)
 	if ret.IsParam() && r.IsPrimitive() {
 		r = r.Nullable()
 	}
+	if ret.IsParam() && ret.N && r.K == types.Unit {
+		r = types.ClassType(unitClass).Nullable()
+	}
 	return r
 }
+
+// unitClass is kotlin.Unit's class, for descriptors.
+var unitClass = &types.ClassSym{Name: "kotlin/Unit", Object: true}
 
 // allParams reports whether f's parameters' types are type parameters.
 func allParams(f *types.FunSym) bool {

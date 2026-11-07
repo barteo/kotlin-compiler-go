@@ -313,7 +313,7 @@ func (in *inliner) inlineLambdas() {
 			panic("a lambda is inlined for a parameter its function doesn't only invoke")
 		}
 		in.lambdas[first+i] = l
-		for _, ld := range p.Loads {
+		for _, ld := range slices.Concat(p.Loads, p.Swaps) {
 			in.skip[ld] = true
 		}
 		for _, inv := range p.Invokes {
