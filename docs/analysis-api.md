@@ -1782,6 +1782,20 @@ code is KSP's; every assertion on generated text is kotlinpoet's own.
   `(List<Z>) -> List<Q>`: kc keeps the abbreviation of the alias written
   (`Alias41`) but not those inside its expansion.
 
+#### Step 22: the AA implementation's repository, checked again
+
+The stock `aa` backend and the whole-run fallback from kc to it need the
+Analysis API implementation 2.4.21 (FIR, low-level API, standalone),
+published only in JetBrains' repositories. On 2026-11-07 every one of
+them was still refused by this build host's network proxy (CONNECT 403):
+`redirector.kotlinlang.org/maven/kotlin-ide-plugin-dependencies`,
+`maven.pkg.jetbrains.space/kotlin/p/kotlin/kotlin-ide-plugin-dependencies`,
+`packages.jetbrains.team/maven/p/kt/...` and
+`cache-redirector.jetbrains.com`. Maven Central has no
+`analysis-api-standalone-for-ide`. So the `aa` backend is still not
+built on 2.4.21 and there is no fallback; nothing in the network
+settings was changed.
+
 ## Gaps and open questions
 
 - **Slice simplifications (M0.4).** These go when M3/M4 bring the facts in:
@@ -1800,7 +1814,7 @@ code is KSP's; every assertion on generated text is kotlinpoet's own.
 - **Stock backend not built here.** The jar leaves out `backend/fir/`,
   `standalone/` and the Java stubs in `src/main/java`, because they need the
   AA implementation (FIR, low-level API, standalone), whose artifacts are not
-  reachable from this build host.
+  reachable from this build host (checked again in step 22).
   - The stock `aa` backend therefore has not been compiled or run against
     2.4.21.
   - Upstream's Gradle build still pins `aaKotlinBaseVersion=2.4.20-dev-2407`.
