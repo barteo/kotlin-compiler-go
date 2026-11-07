@@ -72,7 +72,7 @@ internal class KcTypeContext(
         else -> if (t.isFlexible) {
             KcFlexibleType(round, errorType(round, t.name, false), errorType(round, t.name, true))
         } else {
-            errorType(round, t.name, t.isNullable)
+            if (t.isInferred) KcMissingType(round, t.isNullable, t.name) else errorType(round, t.name, t.isNullable)
         }
     }
 
@@ -306,19 +306,23 @@ internal class KcErrorType(
 internal fun errorType(round: KcRound, name: String?, marked: Boolean = false): KaType =
     if (name.isNullOrEmpty()) KcMissingType(round, marked) else KcErrorType(round, name, marked)
 
-/** An error type that names no class; see [errorType]. */
+/**
+ * An error type that names no class (see [errorType]), or an inferred
+ * type's, which FIR gives the presentable [text] of what didn't resolve.
+ */
 internal class KcMissingType(
     private val round: KcRound,
     override val marked: Boolean = false,
+    private val text: String? = null,
 ) : StubKaErrorType(), KcTypeBase {
     override val token get() = round.token
     override val nullability get() = KaTypeNullability.create(marked)
     override val abbreviation get() = null
     override val annotations: KaAnnotationList get() = KcAnnotationList(emptyList(), round.token)
-    override val errorMessage: String get() = "no type"
-    override val presentableText: String? get() = null
-    override fun withNullability(nullable: Boolean) = if (nullable == marked) this else KcMissingType(round, nullable)
-    override fun toString() = "ERROR"
+    override val errorMessage: String get() = if (text == null) "no type" else "unresolved: $text"
+    override val presentableText: String? get() = text
+    override fun withNullability(nullable: Boolean) = if (nullable == marked) this else KcMissingType(round, nullable, text)
+    override fun toString() = if (text == null) "ERROR" else "ERROR($text)"
 }
 
 /**

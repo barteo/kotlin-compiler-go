@@ -328,7 +328,7 @@ func readType(r *wire.Reader) *ka.Type {
 	}
 	t := &ka.Type{Kind: kind, ClassID: r.String()}
 	flags := r.Uint()
-	t.Nullable, t.Flexible, t.DefinitelyNonNull, t.Extension = flags&1 != 0, flags&2 != 0, flags&4 != 0, flags&8 != 0
+	t.Nullable, t.Flexible, t.DefinitelyNonNull, t.Extension, t.Inferred = flags&1 != 0, flags&2 != 0, flags&4 != 0, flags&8 != 0, flags&16 != 0
 	t.Param = psi.NodeID(r.Uint())
 	t.Name = r.String()
 	t.Contexts = int(r.Uint())

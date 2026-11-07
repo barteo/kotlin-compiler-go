@@ -13,6 +13,7 @@ import com.intellij.psi.PsiTypeParameterListOwner
 import com.intellij.psi.util.PsiTreeUtil
 import org.jetbrains.kotlin.analysis.api.annotations.KaAnnotation
 import org.jetbrains.kotlin.analysis.api.annotations.KaAnnotationValue
+import org.jetbrains.kotlin.analysis.api.symbols.KaSymbolOrigin
 import org.jetbrains.kotlin.analysis.api.symbols.*
 import org.jetbrains.kotlin.analysis.api.symbols.markers.KaNamedSymbol
 import org.jetbrains.kotlin.analysis.api.types.KaType
@@ -578,10 +579,15 @@ internal class KcRound(
         /** The type of a library annotation parameter's default class
          *  literal of type [t]: a generic class's without arguments has its
          *  type parameters' upper bounds, as FIR's deserializer gives them
-         *  (`KSerializer::class` is `KSerializer<Any?>`). */
+         *  (`KSerializer::class` is `KSerializer<Any?>`); a Java class's
+         *  has star projections. */
         fun defaultClassLiteralType(t: KaType): KaType {
             if (t !is KcClassType || t.typeArguments.isNotEmpty() || t.isAlias) return t
-            val ps = (t.symbol as? KaClassSymbol)?.typeParameters.orEmpty()
+            val c = t.symbol as? KaClassSymbol ?: return t
+            // A Java class's has star projections, as in the sources:
+            // HashMap::class is HashMap<*, *>.
+            if (c.origin == KaSymbolOrigin.JAVA_LIBRARY || c.origin == KaSymbolOrigin.JAVA_SOURCE) return classLiteralType(t)
+            val ps = c.typeParameters
             if (ps.isEmpty()) return t
             val anyN by lazy { KcBuiltinTypes(this@KcRound).nullableAny }
             return KcClassType(this@KcRound, t.classId,
@@ -906,7 +912,10 @@ internal class KcRound(
                     ?: (javaOwnerPsi(parent) as? PsiMethod)?.parameterList?.parameters?.getOrNull(i)
                 // @all: on a constructor property is its parameter's too.
                 val own = v.annotations.filter { it.target == "" || it.target == "param" || it.target == "all" }
-                val default = v.default?.let { value(it, library = psi == null) }
+                // A class file's, not the sources' (a Java annotation's
+                // parameters have no psi of their own, but their class has).
+                val library = psi == null && javaOwnerPsi(parent) == null
+                val default = v.default?.let { value(it, library = library) }
                 register(KcValueParameterSymbol(info(v, psi, parent, k, own), default), k, psi)
             }
     }

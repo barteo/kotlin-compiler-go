@@ -67,6 +67,11 @@ type Type struct {
 	// and Contexts is its number of context parameters, which come first.
 	Extension bool
 	Contexts  int
+	// Inferred is set on a TypeError that is an inferred type's, not an
+	// unresolved class's: FIR's KaErrorType rather than a
+	// KaClassErrorType, which may be null, and whose Name is its
+	// presentable text (see calleeName).
+	Inferred bool
 	// Abbrev is the typealias type the type was written as, if it was:
 	// a TypeClass whose ClassID is the typealias's, with the typealias's
 	// type arguments and the type's nullability. The type is the

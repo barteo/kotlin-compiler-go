@@ -687,6 +687,7 @@ func qualifiedName(m *syntax.Member) string {
 func nameError(t *Type, e syntax.Expr) {
 	if t != nil && t.Kind == TypeError && t.Name == "" && e != nil {
 		t.Name = calleeName(e)
+		t.Inferred = t.Name != ""
 	}
 }
 
