@@ -184,7 +184,11 @@ func (c *Checker) propagateCaptures() {
 	for changed := true; changed; {
 		changed = false
 		for _, lc := range *c.localCalls {
+			var outer *types.VarSym // the innermost object expression's, in its code
 			for _, l := range lc.chain {
+				if l.Outer != nil {
+					outer = l.Outer
+				}
 				if l.Inline || l == lc.frame {
 					continue
 				}
@@ -196,6 +200,12 @@ func (c *Checker) propagateCaptures() {
 				}
 				if lc.frame.This && !l.This {
 					c.setThis(l)
+					changed = true
+				}
+				if lc.frame.This && outer != nil && !slices.Contains(l.Captures, outer) {
+					// From an object expression's code: the enclosing
+					// class's this is its capture, and its lambdas'.
+					c.addCapture(l, outer)
 					changed = true
 				}
 			}

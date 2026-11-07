@@ -830,8 +830,10 @@ type LocalFun struct {
 	// calls, and whether it uses the enclosing class's this.
 	Frame *Lambda
 	// Method is set by codegen: the name of the static method the function
-	// is, such as main$g, of class Owner, and Desc its descriptor.
+	// is, such as main$g, of class Owner, and Desc its descriptor. This is
+	// the class whose this the frame captures.
 	Method, Owner, Desc string
+	This                *types.ClassSym
 }
 
 type VarStmt struct {
@@ -1371,9 +1373,12 @@ type Lambda struct {
 	Ret      types.Type      // the body's result type, as the function type sees it
 	Captures []*types.VarSym // locals and parameters of enclosing functions it uses
 	This     bool            // it uses the enclosing class's this
-	SAM      *types.FunSym   // the Java interface method it implements, if converted; T is then the interface
-	Suspend  bool            // a suspend lambda: its expected type is a suspend function type
-	Class    string          // the class of a suspend lambda that isn't inlined
+	// Outer is set on the frame of an object expression's class: the
+	// capture that stands for the enclosing class's this.
+	Outer   *types.VarSym
+	SAM     *types.FunSym // the Java interface method it implements, if converted; T is then the interface
+	Suspend bool          // a suspend lambda: its expected type is a suspend function type
+	Class   string        // the class of a suspend lambda that isn't inlined
 	// Inline is set on a lambda passed to an inline function that
 	// invokes it: its body is generated where the function's inlined body
 	// invokes it, and it has no object, method or captures.
