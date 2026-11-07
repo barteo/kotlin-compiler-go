@@ -200,6 +200,12 @@ type Model struct {
 	// syntax error is left out (a class keeps its other members), and an
 	// unresolved annotation has no class ID.
 	Diagnostics []Diagnostic
+	// Check identifies the check the model's files and diagnostics come
+	// from: an update that reuses a check whole returns a model with the
+	// same Check, and the same Files and Diagnostics, as the update that
+	// made it. A client that kept what it built from that model may keep
+	// using it.
+	Check uint64
 
 	lib       *library // the class path's classes; see Class
 	shared    *shared  // lib, which Close releases
@@ -377,7 +383,7 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 			l = prev.sl
 			l.retain()
 		}
-		return &Model{lib: l.lib, shared: l, Files: prev.files, Diagnostics: prev.diags}, nil
+		return &Model{lib: l.lib, shared: l, Files: prev.files, Diagnostics: prev.diags, Check: prev.check}, nil
 	}
 	if prev == nil && kept == nil {
 		// The first update with Java sources: the parses of the update
@@ -428,7 +434,7 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 		return nil, err
 	}
 	lib := sl.lib.lib
-	m := &Model{lib: sl.lib, shared: sl, Diagnostics: javaDiags}
+	m := &Model{lib: sl.lib, shared: sl, Diagnostics: javaDiags, Check: checkIDs.Add(1)}
 	ok := false
 	defer func() {
 		if !ok {
@@ -518,7 +524,7 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 	}
 	tm.Mark("model")
 	if cache != nil {
-		c := &checked{key: key, paths: paths, texts: slices.Concat(texts, javaTexts), files: m.Files, diags: m.Diagnostics,
+		c := &checked{check: m.Check, key: key, paths: paths, texts: slices.Concat(texts, javaTexts), files: m.Files, diags: m.Diagnostics,
 			clean: len(broken) == 0,
 			snaps: make(map[string]checkedSnap, len(sources))}
 		for i, src := range sources {

@@ -124,17 +124,23 @@ internal class KcMemberBuilder(private val round: KcRound, private val c: KcClas
             .filter { it !is KaConstructorSymbol && !isStaticMember(it as KaDeclarationSymbol) }
 
         val overridden = IdentityHashMap<KaCallableSymbol, List<KaCallableSymbol>>()
+        // Only candidates of the same signature key can match (an erased
+        // match too: same name and counts, no type parameters or receiver).
+        val byKey = HashMap<SignatureKey, MutableList<Candidate>>()
+        for (cd in candidates) signatureKey(cd.symbol)?.let { byKey.getOrPut(it) { ArrayList() } += cd }
+        val overriding = IdentityHashMap<Candidate, Boolean>()
         val enhanced = IdentityHashMap<KaCallableSymbol, KcEnhancement>()
-        val pending = candidates.toMutableList()
         for (d in declared) {
             val dc = Candidate(d, rel.empty)
-            val erased = if (java && d is KaNamedFunctionSymbol) candidates.firstOrNull { erasedMatch(d, it) } else null
-            val hits = candidates.filter { (matches(dc, it) || it === erased) && (!java || returnCompatible(d, it)) }
+            val bucket = signatureKey(d)?.let(byKey::get) ?: continue
+            val erased = if (java && d is KaNamedFunctionSymbol) bucket.firstOrNull { erasedMatch(d, it) } else null
+            val hits = bucket.filter { (matches(dc, it) || it === erased) && (!java || returnCompatible(d, it)) }
             if (hits.isEmpty()) continue
             overridden[d] = hits.flatMap { declaredOriginals(it.symbol) }.distinct()
             if (d is KcFunctionSymbol && d.info.isJava) enhance(d, overridden.getValue(d), erased)?.let { enhanced[d] = it }
-            pending.removeAll { p -> hits.any { it === p } }
+            for (h in hits) overriding[h] = true
         }
+        val pending = candidates.filterTo(ArrayList()) { !overriding.containsKey(it) }
 
         val callables = ArrayList<KaCallableSymbol>(declared)
         if (java) {
@@ -158,8 +164,15 @@ internal class KcMemberBuilder(private val round: KcRound, private val c: KcClas
         }
 
         val groups = ArrayList<MutableList<Candidate>>()
+        val groupsByKey = HashMap<SignatureKey, MutableList<MutableList<Candidate>>>()
         for (p in pending) {
-            groups.firstOrNull { matches(it[0], p) }?.add(p) ?: groups.add(mutableListOf(p))
+            val k = signatureKey(p.symbol)
+            if (k == null) {
+                groups.add(mutableListOf(p))
+                continue
+            }
+            val same = groupsByKey.getOrPut(k) { ArrayList() }
+            same.firstOrNull { matches(it[0], p) }?.add(p) ?: mutableListOf(p).also { groups.add(it); same.add(it) }
         }
 
         for (g in groups) {
@@ -418,6 +431,17 @@ internal class KcMemberBuilder(private val round: KcRound, private val c: KcClas
             is KcSyntheticPropertySymbol -> KcFakeSyntheticPropertySymbol(c, s, m.sub, origin, intersected, key)
             else -> s // Java fields keep their declared types.
         }
+
+    /** What two members [matches] must share: kind, name, and the counts it compares. */
+    private data class SignatureKey(val kind: Int, val name: Name, val params: Int, val typeParams: Int, val receiver: Boolean)
+
+    /** [s]'s [SignatureKey], or null if [matches] never holds for it. */
+    private fun signatureKey(s: KaCallableSymbol): SignatureKey? = when (s) {
+        is KaNamedFunctionSymbol -> SignatureKey(0, s.name, s.valueParameters.size, s.typeParameters.size, s.receiverParameter != null)
+        is KaPropertySymbol -> SignatureKey(1, s.name, 0, 0, s.receiverParameter != null)
+        is KaJavaFieldSymbol -> SignatureKey(2, s.name, 0, 0, false)
+        else -> null
+    }
 
     /**
      * Whether candidates [x] and [y] have the same signature: functions of
