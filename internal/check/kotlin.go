@@ -323,7 +323,7 @@ func (t *classTable) loadKFunction(cls *types.ClassSym) {
 	cls.Super = t.class("java/lang/Object")
 	var args []types.Arg
 	for i := range n + 1 {
-		p := &types.TypeParamSym{Name: "P" + strconv.Itoa(i+1), Var: types.In, Index: i, Owner: cls}
+		p := &types.TypeParamSym{Name: "P" + strconv.Itoa(i+1), Var: types.In, Index: i, Owner: cls, Library: true}
 		if i == n {
 			p.Name, p.Var = "R", types.Out
 		}
@@ -433,7 +433,7 @@ type tscope map[int]*types.TypeParamSym
 func (t *classTable) ktypeParams(ps []*kmeta.TypeParam, owner any, scope tscope) ([]*types.TypeParamSym, bool) {
 	syms := make([]*types.TypeParamSym, len(ps))
 	for i, p := range ps {
-		syms[i] = &types.TypeParamSym{Name: p.Name, Var: variance(p.Variance), Index: i, Owner: owner, Reified: p.Reified, OnlyInput: p.OnlyInput}
+		syms[i] = &types.TypeParamSym{Name: p.Name, Var: variance(p.Variance), Index: i, Owner: owner, Reified: p.Reified, OnlyInput: p.OnlyInput, Library: true}
 		scope[p.ID] = syms[i]
 	}
 	ok := true
@@ -701,7 +701,7 @@ func (t *classTable) valueOf(cls *types.ClassSym, kc *kmeta.Class) {
 func (t *classTable) valueTypeParams(cls *types.ClassSym, kc *kmeta.Class, scope tscope) []*types.TypeParamSym {
 	syms := make([]*types.TypeParamSym, len(kc.TypeParams))
 	for i, p := range kc.TypeParams {
-		syms[i] = &types.TypeParamSym{Name: p.Name, Var: variance(p.Variance), Index: i, Owner: cls, Reified: p.Reified}
+		syms[i] = &types.TypeParamSym{Name: p.Name, Var: variance(p.Variance), Index: i, Owner: cls, Reified: p.Reified, Library: true}
 		scope[p.ID] = syms[i]
 	}
 	for i, p := range kc.TypeParams {
