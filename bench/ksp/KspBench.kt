@@ -330,6 +330,8 @@ fun main(args: Array<String>) {
             jvmTarget = "17"
             jvmDefaultMode = "enable"
             incremental = edit
+            // As Gradle passes them: KSP doesn't look for changes itself.
+            modifiedSources = listOfNotNull(editFile?.takeIf { run > 1 })
             processorOptions = emptyMap()
         }.build()
         val t = Times()

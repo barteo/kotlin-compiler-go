@@ -173,15 +173,20 @@ private class KcSession(private val config: KSPConfig, @Suppress("UNUSED_PARAMET
     // lookups, class scopes too, as FIR's lookup tracker component does: KSP
     // finds the files a changed class member dirties in its symbol lookups,
     // and its class tracker, for CLASSIFIER lookups, stays empty on FIR
-    // (docs/analysis-api.md, "Step 16: incremental lookups").
+    // (docs/analysis-api.md, "Step 16: incremental lookups"). Only the
+    // dirty files' are: KSP's caches keep the others' lookups, and replace
+    // only the dirty files' with what the tracker has. Without incremental
+    // processing KSP keeps none.
     override val recordsLookups: Boolean get() = true
 
     private val replayed = HashSet<String>()
 
-    override fun beginRound(lookupTracker: DualLookupTracker) {
+    override fun beginRound(lookupTracker: DualLookupTracker, dirtyFiles: List<KSFile>) {
+        if (!config.incremental) return
+        val dirty = dirtyFiles.mapTo(HashSet()) { it.filePath }
         for (s in round.fileSymbols) {
-            if (!replayed.add(s.file.path)) continue
             val path = s.psi.virtualFile.path
+            if (path !in dirty || !replayed.add(s.file.path)) continue
             for (l in s.file.lookups)
                 lookupTracker.record(path, Position.NO_POSITION, l.scope, ScopeKind.PACKAGE, l.name)
         }
