@@ -1198,12 +1198,31 @@ func unresolved(t *Type, desc string) *Type {
 func (b *fileBuilder) javaType(t types.Type) *Type {
 	out := b.typ(t, nil)
 	if out == nil || !t.N || t.P || t.K == types.Null {
-		return platform(out)
+		out = platform(out)
+	} else {
+		for _, a := range out.Args {
+			platform(a.Type)
+		}
 	}
-	for _, a := range out.Args {
-		platform(a.Type)
+	// An annotated collection is still mutable or not: (Mutable)List<T>?.
+	if out != nil && out.Kind == TypeClass && !out.Flexible && mutableCollections[out.ClassID] && t.K != types.Null {
+		out.Flexible = true
+		out.DefinitelyNonNull = !out.Nullable
 	}
 	return out
+}
+
+// mutableCollections are the mutable collection types, which a Java
+// collection type is the flexible type of, up to the read-only one.
+var mutableCollections = map[string]bool{
+	"kotlin/collections/MutableIterable":         true,
+	"kotlin/collections/MutableCollection":       true,
+	"kotlin/collections/MutableList":             true,
+	"kotlin/collections/MutableSet":              true,
+	"kotlin/collections/MutableMap":              true,
+	"kotlin/collections/MutableMap.MutableEntry": true,
+	"kotlin/collections/MutableIterator":         true,
+	"kotlin/collections/MutableListIterator":     true,
 }
 
 // platform returns t, a type from a Java class, with its nullable types

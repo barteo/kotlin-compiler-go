@@ -20,14 +20,44 @@ import (
 // For the same reason, the bounds of the supertypes' type arguments are
 // checked later, by checkSuperBounds.
 func (c *Checker) resolveSupertypes() {
-	c.noBoundChecks = true
 	defer func() {
 		c.noBoundChecks = false
-		c.tparams = nil
-		c.supersOf = nil
+		c.tparams, c.lookupCls, c.supersOf = nil, nil, nil
+	}()
+	for _, cd := range c.classes {
+		if _, ok := c.u.pendingSupers[cd.Sym]; ok || c.u.pendingSupers == nil {
+			c.resolveClassSupers(cd)
+		}
+	}
+}
+
+// pendingSuper is a class whose supertypes are yet to be resolved, and the
+// checker of its file.
+type pendingSuper struct {
+	c  *Checker
+	cd *syntax.ClassDecl
+}
+
+// ensureSupers resolves the supertypes of a class of the program if
+// resolveSupertypes hasn't yet: a nested class can be inherited through a
+// class declared later, class Outer { inner class Sort : Settings() {
+// inner class G : Group }; open inner class Settings : Base() }.
+func (c *Checker) ensureSupers(cls *types.ClassSym) {
+	if p, ok := c.u.pendingSupers[cls]; ok {
+		p.c.resolveClassSupers(p.cd)
+	}
+}
+
+// resolveClassSupers resolves one class's supertypes.
+func (c *Checker) resolveClassSupers(cd *syntax.ClassDecl) {
+	delete(c.u.pendingSupers, cd.Sym)
+	savedT, savedL, savedS, savedB := c.tparams, c.lookupCls, c.supersOf, c.noBoundChecks
+	c.noBoundChecks = true
+	defer func() {
+		c.tparams, c.lookupCls, c.supersOf, c.noBoundChecks = savedT, savedL, savedS, savedB
 	}()
 	object := c.u.ext.class("java/lang/Object")
-	for _, cd := range c.classes {
+	{
 		cls := cd.Sym
 		// The supertypes don't see the class's own nested classes: a
 		// data class Reply(val page: Page) : Page, with a nested Page,
@@ -90,7 +120,6 @@ func (c *Checker) resolveSupertypes() {
 			cls.Super = object
 		}
 	}
-	c.lookupCls = nil
 }
 
 // supertype resolves and checks one supertype of a class.

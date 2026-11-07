@@ -71,6 +71,31 @@ internal class KcInfo(
 
     val psi: PsiElement? get() = givenPsi ?: findPsi?.invoke()
 
+    /**
+     * The symbol's `psi`: [psi], or for a member Kotlin generates in a
+     * source class (an implicit constructor, values(), a data class's
+     * copy, and their parameters), which has none, its owner's, as FIR's
+     * fake source elements have it. A data class's componentN and copy's
+     * parameters are at the primary constructor's parameter instead. kc's
+     * own logic reads [psi].
+     */
+    val symbolPsi: PsiElement?
+        get() = psi ?: if (origin == KaSymbolOrigin.SOURCE_MEMBER_GENERATED && decl.node == 0) {
+            when (val p = parent) {
+                is KcClassSymbol -> decl.name.removePrefix("component").toIntOrNull()
+                    ?.takeIf { decl.kind == KcDecl.FUNCTION && decl.name.startsWith("component") }
+                    ?.let { n -> (p.psi as? KtClass)?.primaryConstructorParameters?.filter { it.hasValOrVar() }?.getOrNull(n - 1) }
+                    ?: p.psi
+                is KcFunctionSymbol -> (p.info.parent as? KcClassSymbol)
+                    ?.takeIf { decl.kind == KcDecl.VALUE_PARAMETER && p.info.decl.name == "copy" }
+                    ?.let { c -> (c.psi as? KtClass)?.primaryConstructorParameters?.firstOrNull { it.name == decl.name } }
+                    ?: p.info.symbolPsi
+                is KcConstructorSymbol -> p.info.symbolPsi
+                is KcPropertySymbol -> p.info.symbolPsi
+                else -> null
+            }
+        } else null
+
     /** The KaType of [t], or [orElse] if it is null. */
     fun type(t: KcType?, orElse: () -> KaType = { errorType(round, null) }): KaType = t?.let(types::type) ?: orElse()
 
@@ -166,7 +191,7 @@ internal class KcFileSymbol(val round: KcRound, val file: KcFile, override val p
 
 internal class KcClassSymbol(val info: KcInfo) : StubKaNamedClassSymbol() {
     override val token get() = info.round.token
-    override val psi get() = info.psi
+    override val psi get() = info.symbolPsi
     override val origin get() = info.origin
     override val annotations get() = info.annotations
     override val name get() = info.name
@@ -213,7 +238,7 @@ internal class KcClassSymbol(val info: KcInfo) : StubKaNamedClassSymbol() {
 
 internal class KcFunctionSymbol(val info: KcInfo) : StubKaNamedFunctionSymbol() {
     override val token get() = info.round.token
-    override val psi get() = info.psi
+    override val psi get() = info.symbolPsi
     override val origin get() = info.origin
     override val annotations get() = info.annotations
     override val name get() = info.name
@@ -249,7 +274,7 @@ internal class KcFunctionSymbol(val info: KcInfo) : StubKaNamedFunctionSymbol() 
 
 internal class KcConstructorSymbol(val info: KcInfo) : StubKaConstructorSymbol() {
     override val token get() = info.round.token
-    override val psi get() = info.psi
+    override val psi get() = info.symbolPsi
     override val origin get() = info.origin
     override val annotations get() = info.annotations
     override val visibility get() = info.visibility
@@ -283,7 +308,7 @@ internal class KcConstructorSymbol(val info: KcInfo) : StubKaConstructorSymbol()
  */
 internal class KcValueParameterSymbol(val info: KcInfo, val default: KaAnnotationValue? = null) : StubKaValueParameterSymbol() {
     override val token get() = info.round.token
-    override val psi get() = info.psi
+    override val psi get() = info.symbolPsi
     override val origin get() = info.origin
     override val annotations get() = info.annotations
     override val name get() = info.name
@@ -294,7 +319,15 @@ internal class KcValueParameterSymbol(val info: KcInfo, val default: KaAnnotatio
     override val isCrossinline get() = info.decl.has(KcDecl.CROSSINLINE)
     override val isNoinline get() = info.decl.has(KcDecl.NOINLINE)
     override val hasDeclaredDefaultValue get() = info.decl.has(KcDecl.HAS_DEFAULT)
-    override val hasDefaultValue get() = hasDeclaredDefaultValue
+    /** Declared, or inherited: an override's parameter has the overridden one's default, as in FIR. */
+    override val hasDefaultValue: Boolean by lazy {
+        hasDeclaredDefaultValue || run {
+            val f = info.parent as? KcFunctionSymbol ?: return@run false
+            if (!f.isOverride) return@run false
+            val i = f.valueParameters.indexOf(this)
+            i >= 0 && info.round.directlyOverridden(f).any { (it as? KaFunctionSymbol)?.valueParameters?.getOrNull(i)?.hasDefaultValue == true }
+        }
+    }
     override val isImplicitLambdaParameter get() = false
     /** The property a primary constructor's `val`/`var` parameter declares: the class's property with the same PSI. */
     override val generatedPrimaryConstructorProperty: KaKotlinPropertySymbol? by lazy {
@@ -308,7 +341,7 @@ internal class KcValueParameterSymbol(val info: KcInfo, val default: KaAnnotatio
 
 internal class KcTypeParameterSymbol(val info: KcInfo) : StubKaTypeParameterSymbol() {
     override val token get() = info.round.token
-    override val psi get() = info.psi
+    override val psi get() = info.symbolPsi
     override val origin get() = info.origin
     override val annotations get() = info.annotations
     override val name get() = info.name
@@ -328,7 +361,7 @@ internal class KcTypeParameterSymbol(val info: KcInfo) : StubKaTypeParameterSymb
 
 internal class KcPropertySymbol(val info: KcInfo) : StubKaKotlinPropertySymbol() {
     override val token get() = info.round.token
-    override val psi get() = info.psi
+    override val psi get() = info.symbolPsi
     override val origin get() = info.origin
     override val annotations get() = info.annotations
     override val name get() = info.name
@@ -379,7 +412,7 @@ internal class KcPropertySymbol(val info: KcInfo) : StubKaKotlinPropertySymbol()
 
 internal class KcGetterSymbol(val info: KcInfo, val property: KcPropertySymbol) : StubKaPropertyGetterSymbol() {
     override val token get() = info.round.token
-    override val psi get() = info.psi
+    override val psi get() = info.symbolPsi
     override val origin get() = info.origin
     override val annotations get() = info.annotations
     override val callableId: CallableId? get() = null
@@ -399,7 +432,7 @@ internal class KcGetterSymbol(val info: KcInfo, val property: KcPropertySymbol) 
 
 internal class KcSetterSymbol(val info: KcInfo, val property: KcPropertySymbol) : StubKaPropertySetterSymbol() {
     override val token get() = info.round.token
-    override val psi get() = info.psi
+    override val psi get() = info.symbolPsi
     override val origin get() = info.origin
     override val annotations get() = info.annotations
     override val callableId: CallableId? get() = null
@@ -423,7 +456,7 @@ internal class KcSetterSymbol(val info: KcInfo, val property: KcPropertySymbol) 
 
 internal class KcEnumEntrySymbol(val info: KcInfo) : StubKaEnumEntrySymbol() {
     override val token get() = info.round.token
-    override val psi get() = info.psi
+    override val psi get() = info.symbolPsi
     override val origin get() = info.origin
     override val annotations get() = info.annotations
     override val name get() = info.name
@@ -432,11 +465,38 @@ internal class KcEnumEntrySymbol(val info: KcInfo) : StubKaEnumEntrySymbol() {
     override val isExpect get() = (info.parent as? KcClassSymbol)?.isExpect == true
     override val isExternal get() = false
     override fun createPointer(): KaSymbolPointer<KaEnumEntrySymbol> = info.pointer()
+
+    /** The entry's body, or null if it has none. */
+    var initializerSymbol: KcEnumEntryInitializerSymbol? = null
+    override val enumEntryInitializer: KaEnumEntryInitializerSymbol? get() = initializerSymbol
+    override val initializer: KaAnonymousObjectSymbol? get() = initializerSymbol
+}
+
+/**
+ * The body of enum entry [entry]: the anonymous object that initializes
+ * it, a subclass of the enum, whose members are the body's declarations.
+ * FIR's is the same symbol, both a KaAnonymousObjectSymbol and a
+ * KaEnumEntryInitializerSymbol.
+ */
+internal class KcEnumEntryInitializerSymbol(val entry: KcEnumEntrySymbol) :
+    StubKaAnonymousObjectSymbol(), KaEnumEntryInitializerSymbol {
+    override val token get() = entry.token
+    override val psi: PsiElement? get() = entry.psi
+    override val origin get() = entry.origin
+    override val annotations: KaAnnotationList get() = KcAnnotationList(emptyList(), token)
+    override val superTypes: List<KaType> get() = listOf(entry.returnType)
+    lateinit var members: List<KaDeclarationSymbol>
+    override fun createPointer(): KaSymbolPointer<KcEnumEntryInitializerSymbol> = entry.info.pointer<KaSymbol>().let { p ->
+        object : StubKaSymbolPointer<KcEnumEntryInitializerSymbol>() {
+            override fun restoreSymbol(analysisSession: org.jetbrains.kotlin.analysis.api.KaSession) =
+                (p.restoreSymbol(analysisSession) as? KcEnumEntrySymbol)?.initializerSymbol
+        }
+    }
 }
 
 internal class KcTypeAliasSymbol(val info: KcInfo) : StubKaTypeAliasSymbol() {
     override val token get() = info.round.token
-    override val psi get() = info.psi
+    override val psi get() = info.symbolPsi
     override val origin get() = info.origin
     override val annotations get() = info.annotations
     override val name get() = info.name
@@ -456,7 +516,7 @@ internal class KcTypeAliasSymbol(val info: KcInfo) : StubKaTypeAliasSymbol() {
 /** A field of a Java class: a library's, or a Java source's with its `PsiField`. */
 internal class KcJavaFieldSymbol(val info: KcInfo) : StubKaJavaFieldSymbol() {
     override val token get() = info.round.token
-    override val psi: PsiElement? get() = info.psi
+    override val psi: PsiElement? get() = info.symbolPsi
     override val origin get() = info.origin
     override val annotations get() = info.annotations
     override val name get() = info.name
@@ -470,9 +530,25 @@ internal class KcJavaFieldSymbol(val info: KcInfo) : StubKaJavaFieldSymbol() {
 }
 
 /** A local destructuring declaration, val (a, b) = e; [entries] are its local properties. */
+/**
+ * A local variable: a `val` or `var` in a body, or a destructuring entry.
+ * FIR's are KaLocalVariableSymbols, not properties, so KSP gives them no
+ * accessors.
+ */
+internal class KcLocalVariableSymbol(val info: KcInfo) : StubKaLocalVariableSymbol() {
+    override val token get() = info.round.token
+    override val psi get() = info.symbolPsi
+    override val origin get() = info.origin
+    override val annotations get() = info.annotations
+    override val name get() = info.name
+    override val isVal get() = !info.decl.has(KcDecl.MUTABLE)
+    override val returnType: KaType by lazy { info.type(info.decl.type) }
+    override fun createPointer(): KaSymbolPointer<KaLocalVariableSymbol> = info.pointer()
+}
+
 internal class KcDestructuringSymbol(val info: KcInfo) : StubKaDestructuringDeclarationSymbol() {
     override val token get() = info.round.token
-    override val psi get() = info.psi
+    override val psi get() = info.symbolPsi
     override val origin get() = info.origin
     override val annotations get() = info.annotations
     override var entries: List<KaVariableSymbol> = emptyList()
@@ -524,8 +600,8 @@ internal class KcLibraryClassSymbol(val round: KcRound, override val classId: Cl
     override val origin get() = KaSymbolOrigin.LIBRARY
     override val name get() = classId.shortClassName
     override val location get() = KaSymbolLocation.TOP_LEVEL
-    override val typeParameters: List<KaTypeParameterSymbol> get() = emptyList()
     override val isInner get() = false
+    override val typeParameters: List<KaTypeParameterSymbol> get() = emptyList()
     override fun createPointer(): KaSymbolPointer<KaNamedClassSymbol> = KcPointer("class:" + classId.asString())
     override fun toString() = "KcLibraryClassSymbol($classId)"
 }

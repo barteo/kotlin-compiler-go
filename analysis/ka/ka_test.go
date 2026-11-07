@@ -135,6 +135,33 @@ class C {
 	}
 }
 
+// TestParamFieldAnnotation checks that an annotation without a use-site
+// target that may be on a parameter and a field, and not on a property, is
+// a constructor property's parameter's only, and a property's field's.
+func TestParamFieldAnnotation(t *testing.T) {
+	m := update(t, `@Target(AnnotationTarget.VALUE_PARAMETER, AnnotationTarget.FIELD) annotation class R
+@Target(AnnotationTarget.FIELD) annotation class F
+class C(@R val p: Int, @F val f: Int) {
+    @R val q: Int = 0
+}
+`)
+	var sb strings.Builder
+	f := m.Files[0]
+	dump(&sb, f.Snapshot, f.Decls[2:], "")
+	got := sb.String()
+	want := `class C [/C] CLASS
+  ctor <init> PRIMARY_CONSTRUCTOR
+    (param p VALUE_PARAMETER @R
+    (param f VALUE_PARAMETER
+  val p VALUE_PARAMETER
+  val f VALUE_PARAMETER @F(field)
+  val q PROPERTY @R(field)
+`
+	if got != want {
+		t.Errorf("got\n%s\nwant\n%s", got, want)
+	}
+}
+
 // TestAllTarget checks that an annotation with the use-site target all is
 // the property's, its field's, getter's and setter parameter's, and a
 // constructor property's parameter's, each where its class may be.
@@ -631,7 +658,7 @@ fun f FUN
   !  (val x DESTRUCTURING_DECLARATION_ENTRY @a/Anno
   !  (val y DESTRUCTURING_DECLARATION_ENTRY
   !destruct <destruct> DESTRUCTURING_DECLARATION
-  !  (val _ DESTRUCTURING_DECLARATION_ENTRY
+  !  (val <unused var> DESTRUCTURING_DECLARATION_ENTRY
   !  (val z DESTRUCTURING_DECLARATION_ENTRY @a/Anno
 `
 	if got != want {
@@ -675,5 +702,181 @@ class C {
 `
 	if got := sb.String(); got != want {
 		t.Errorf("got\n%s\nwant\n%s", got, want)
+	}
+}
+
+// TestLocalFunReturnType checks that a local function in a body the
+// signature check doesn't check has its written return type, as a local
+// property has, instead of none (Tachiyomi's AndroidCookieJar.remove,
+// whose missing type the kc backend couldn't answer). The checker doesn't
+// resolve the types written in such a body, so they are error types named
+// by their text.
+func TestLocalFunReturnType(t *testing.T) {
+	m := update(t, `package a
+class C {
+    fun f(names: List<String>) {
+        fun List<String>.filterNames(): List<String> = this
+        fun noType() {}
+    }
+}
+`)
+	defer m.Close()
+	ls := m.Files[0].Decls[0].Members[1].Locals
+	if len(ls) != 2 {
+		t.Fatalf("locals: %d", len(ls))
+	}
+	if r := ls[0].Type; r == nil || r.Kind != TypeError || r.Name != "List<String>" {
+		t.Errorf("filterNames: return type %+v", r)
+	}
+	if r := ls[1].Type; r != nil {
+		t.Errorf("noType: return type %+v, want none written", r)
+	}
+}
+
+// TestEnumEntryBody checks that an enum entry with a body has its
+// declarations as members, and FlagEntryBody, and one without has
+// neither.
+func TestEnumEntryBody(t *testing.T) {
+	m := update(t, `package a
+enum class Op {
+    PLUS {
+        override fun apply(a: Int): Int = a
+        val extra: String = ""
+    },
+    MINUS;
+    open fun apply(a: Int): Int = -a
+}
+`)
+	defer m.Close()
+	var plus, minus *Decl
+	for _, d := range m.Files[0].Decls[0].Members {
+		if d.Kind == KindEnumEntry {
+			switch d.Name {
+			case "PLUS":
+				plus = d
+			case "MINUS":
+				minus = d
+			}
+		}
+	}
+	if plus == nil || minus == nil {
+		t.Fatal("entries missing")
+	}
+	if plus.Flags&FlagEntryBody == 0 || len(plus.Members) != 2 ||
+		plus.Members[0].Name != "apply" || plus.Members[0].Kind != KindFunction || plus.Members[0].Flags&FlagOverride == 0 ||
+		plus.Members[1].Name != "extra" || plus.Members[1].Kind != KindProperty {
+		t.Errorf("PLUS: flags %x, members %d", plus.Flags, len(plus.Members))
+		for _, mm := range plus.Members {
+			t.Logf("  %s %d %x", mm.Name, mm.Kind, mm.Flags)
+		}
+	}
+	if minus.Flags&FlagEntryBody != 0 || len(minus.Members) != 0 {
+		t.Errorf("MINUS: flags %x, members %d", minus.Flags, len(minus.Members))
+	}
+}
+
+// TestNullableErrorType checks that an unresolved type written nullable is
+// a nullable error type, as in FIR.
+func TestNullableErrorType(t *testing.T) {
+	m := update(t, `package a
+class C {
+    fun f(b: Bundle?, c: Bundle) {}
+}
+`)
+	defer m.Close()
+	var ps []*Decl
+	for _, d := range m.Files[0].Decls[0].Members {
+		if d.Name == "f" {
+			ps = d.Params
+		}
+	}
+	if len(ps) != 2 {
+		t.Fatalf("params: %d", len(ps))
+	}
+	if b := ps[0].Type; b == nil || b.Kind != TypeError || b.Name != "Bundle" || !b.Nullable {
+		t.Errorf("b: %+v", b)
+	}
+	if c := ps[1].Type; c == nil || c.Kind != TypeError || c.Name != "Bundle" || c.Nullable {
+		t.Errorf("c: %+v", c)
+	}
+}
+
+// TestParameterName checks that a function type's parameter written with
+// a name has the annotation @ParameterName with it, as in FIR, and one
+// without a name has none.
+func TestParameterName(t *testing.T) {
+	m := update(t, `package a
+var onScale: ((newScale: Float, Int) -> Unit)? = null
+`)
+	defer m.Close()
+	ty := m.Files[0].Decls[0].Type
+	if ty == nil || len(ty.Args) != 3 {
+		t.Fatalf("type: %+v", ty)
+	}
+	as := ty.Args[0].Type.Annotations
+	if len(as) != 1 || as[0].ClassID != "kotlin/ParameterName" || len(as[0].Args) != 1 ||
+		as[0].Args[0].Name != "name" || as[0].Args[0].Value.Str != "newScale" || as[0].Args[0].Value.Node == 0 {
+		t.Errorf("newScale: annotations %+v", as)
+	}
+	if as := ty.Args[1].Type.Annotations; len(as) != 0 {
+		t.Errorf("Int: annotations %+v", as)
+	}
+	if as := ty.Args[2].Type.Annotations; len(as) != 0 {
+		t.Errorf("Unit: annotations %+v", as)
+	}
+}
+
+// TestInvalidFuncType checks that a function type with an unresolved part
+// is a function type whose unresolved parts are error types, as in FIR,
+// and not an error type.
+func TestInvalidFuncType(t *testing.T) {
+	m := update(t, `package a
+class C {
+    var tap: ((MotionEvent) -> Unit)? = null
+    fun f(g: Event.(Int) -> Boolean) {}
+}
+`)
+	defer m.Close()
+	var tap, g *Type
+	for _, d := range m.Files[0].Decls[0].Members {
+		switch d.Name {
+		case "tap":
+			tap = d.Type
+		case "f":
+			g = d.Params[0].Type
+		}
+	}
+	if tap == nil || tap.Kind != TypeClass || tap.ClassID != "kotlin/Function1" || !tap.Nullable || len(tap.Args) != 2 ||
+		tap.Args[0].Type.Kind != TypeError || tap.Args[0].Type.Name != "MotionEvent" ||
+		tap.Args[1].Type.Kind != TypeClass || tap.Args[1].Type.ClassID != "kotlin/Unit" {
+		t.Errorf("tap: %+v", tap)
+	}
+	if g == nil || g.Kind != TypeClass || g.ClassID != "kotlin/Function2" || !g.Extension || len(g.Args) != 3 ||
+		g.Args[0].Type.Kind != TypeError || g.Args[1].Type.ClassID != "kotlin/Int" || g.Args[2].Type.ClassID != "kotlin/Boolean" {
+		t.Errorf("g: %+v", g)
+	}
+}
+
+// TestErrorTypeArgs checks that, as in FIR, a call whose parameter or
+// extension receiver has an unresolved type takes an argument or receiver
+// of an unresolved type, so that an initializer's type is still inferred.
+func TestErrorTypeArgs(t *testing.T) {
+	m := update(t, `package a
+class P(c: Context)
+fun Context.color(i: Int): Int = i
+class D(val context: Context) {
+    val p = P(context)
+    val q = context.color(1)
+}
+`)
+	defer m.Close()
+	got := map[string]string{}
+	for _, d := range m.Files[0].Decls[2].Members {
+		if d.Type != nil {
+			got[d.Name] = d.Type.ClassID
+		}
+	}
+	if got["p"] != "a/P" || got["q"] != "kotlin/Int" {
+		t.Errorf("types: %v", got)
 	}
 }

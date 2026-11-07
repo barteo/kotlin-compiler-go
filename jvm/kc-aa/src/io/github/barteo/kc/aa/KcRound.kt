@@ -23,6 +23,7 @@ import org.jetbrains.kotlin.analysis.api.KaConstantInitializerValue
 import org.jetbrains.kotlin.analysis.api.KaExperimentalApi
 import org.jetbrains.kotlin.fileClasses.JvmFileClassUtil
 import org.jetbrains.kotlin.name.Name
+import org.jetbrains.kotlin.types.Variance
 import org.jetbrains.kotlin.kdoc.lexer.KDocTokens
 import org.jetbrains.kotlin.psi.*
 import java.util.IdentityHashMap
@@ -559,7 +560,10 @@ internal class KcRound(
 
         fun application(a: KcAnnotation, psi: KtCallElement?): KcAnnotationApplication {
             val id = a.classId.takeIf { it.isNotEmpty() }?.let(ClassId::fromString)
-            val args = a.args.map { (name, v) -> KcNamedValue(Name.identifier(name), value(v), token) }
+            // FIR resolves @Target early (COMPILER_REQUIRED_ANNOTATIONS),
+            // and the vararg array it builds there has no source.
+            val early = a.classId == "kotlin/annotation/Target"
+            val args = a.args.map { (name, v) -> KcNamedValue(Name.identifier(name), value(v, early), token) }
             return KcAnnotationApplication(this@KcRound, id, psi, useSiteTarget(if (a.implied) "" else a.target), args)
         }
 
@@ -571,18 +575,36 @@ internal class KcRound(
             return if (n == 0) t else KcClassType(this@KcRound, t.classId, List(n) { KcStarProjection(token) }, t.marked)
         }
 
-        /** The KaAnnotationValue of [v], recorded as its expression's value. */
-        fun value(v: KcValue): KaAnnotationValue {
+        /** The type of a library annotation parameter's default class
+         *  literal of type [t]: a generic class's without arguments has its
+         *  type parameters' upper bounds, as FIR's deserializer gives them
+         *  (`KSerializer::class` is `KSerializer<Any?>`). */
+        fun defaultClassLiteralType(t: KaType): KaType {
+            if (t !is KcClassType || t.typeArguments.isNotEmpty() || t.isAlias) return t
+            val ps = (t.symbol as? KaClassSymbol)?.typeParameters.orEmpty()
+            if (ps.isEmpty()) return t
+            val anyN by lazy { KcBuiltinTypes(this@KcRound).nullableAny }
+            return KcClassType(this@KcRound, t.classId,
+                ps.map { KcTypeArgument(it.upperBounds.firstOrNull() ?: anyN, Variance.INVARIANT, token) }, t.marked)
+        }
+
+        /** The KaAnnotationValue of [v], recorded as its expression's value;
+         *  a vararg's array has no psi if [early]; a class literal is a
+         *  library parameter's default if [library]. */
+        fun value(v: KcValue, early: Boolean = false, library: Boolean = false): KaAnnotationValue {
             val psi = psi(v.node) as? KtElement
             val out = when (v) {
                 is KcValue.Const -> KcConstantAnnotationValue(KcConstant.of(v, psi), token)
                 is KcValue.Enum -> KcEnumEntryValue(
                     CallableId(ClassId.fromString(v.classId), Name.identifier(v.entry)), psi, token)
-                is KcValue.ClassLit -> KcClassLiteralValue(classLiteralType(types.type(v.type)),
+                is KcValue.ClassLit -> KcClassLiteralValue(types.type(v.type).let { if (library) defaultClassLiteralType(it) else classLiteralType(it) },
                     v.type.classId.takeIf { v.type.kind == KcType.CLASS && it.isNotEmpty() }?.let(ClassId::fromString),
                     psi, token)
                 is KcValue.Nested -> KcNestedAnnotationValue(application(v.annotation, psi as? KtCallElement), psi, token)
-                is KcValue.Array -> KcArrayValue(v.elems.map(::value), psi, token)
+                // A vararg's array, which has no node, is at its first
+                // element, as FIR's is: @Suppress("A", "B").
+                is KcValue.Array -> KcArrayValue(v.elems.map { value(it, library = library) },
+                    psi ?: v.elems.firstOrNull()?.takeIf { !early }?.let { psi(it.node) as? KtElement }, token)
                 is KcValue.Unsupported -> KcUnsupportedValue(psi, token)
             }
             if (psi is KtExpression) values.putIfAbsent(psi, out)
@@ -729,7 +751,13 @@ internal class KcRound(
             }
             KcDecl.ENUM_ENTRY -> {
                 val psi = psiOf<KtEnumEntry>(d) ?: javaPsi(d, parent)
-                register(KcEnumEntrySymbol(info(d, psi, parent, key)), key, psi)
+                val e = register(KcEnumEntrySymbol(info(d, psi, parent, key)), key, psi)
+                if (d.has(KcDecl.ENTRY_BODY)) {
+                    val init = KcEnumEntryInitializerSymbol(e)
+                    e.initializerSymbol = init
+                    init.members = decls(d.members, init, "$key/body")
+                }
+                e
             }
             KcDecl.FUNCTION -> scoped { ctx ->
                 val psi = psiOf<KtNamedFunction>(d) ?: javaPsi(d, parent)
@@ -747,7 +775,7 @@ internal class KcRound(
                 locals(d, key) { c }
                 c
             }
-            KcDecl.PROPERTY -> scoped { ctx -> property(d, parent!!, key, ctx) }
+            KcDecl.PROPERTY -> if (isLocal(parent)) localVariable(d, parent!!, key) else scoped { ctx -> property(d, parent!!, key, ctx) }
             KcDecl.JAVA_FIELD -> {
                 val psi = javaPsi(d, parent)
                 register(KcJavaFieldSymbol(info(d, psi, parent, key)), key, psi)
@@ -757,7 +785,7 @@ internal class KcRound(
                 val s = register(KcDestructuringSymbol(info(d, psi, parent, key)), key, psi)
                 // The entries' containing symbol is the enclosing callable,
                 // as for any other local property.
-                s.entries = d.params.mapIndexed { i, e -> scoped { ctx -> property(e, parent!!, "$key/$i", ctx) } }
+                s.entries = d.params.mapIndexed { i, e -> localVariable(e, parent!!, "$key/$i") }
                 s
             }
             KcDecl.TYPE_ALIAS -> scoped { ctx ->
@@ -769,6 +797,18 @@ internal class KcRound(
                 t
             }
             else -> error("kc: unexpected declaration kind ${d.kind} for ${d.name} in $where")
+        }
+
+        /** Whether a declaration in [parent] is local: in a body, not a class's member. */
+        fun isLocal(parent: KaSymbol?) = parent != null && parent !is KaClassSymbol && parent !is KaFileSymbol && parent !is KaPackageSymbol
+
+        /** A local `val` or `var`, or a destructuring entry: FIR's KaLocalVariableSymbol. */
+        fun localVariable(d: KcDecl, parent: KaSymbol, key: String): KcLocalVariableSymbol {
+            val psi = psi(d.node)
+            check(psi == null || psi is KtProperty || psi is KtDestructuringDeclarationEntry) { "kc: local ${d.name} in $where is $psi" }
+            val v = register(KcLocalVariableSymbol(info(d, psi, parent, key)), key, psi)
+            locals(d, key) { v }
+            return v
         }
 
         /**
@@ -866,7 +906,7 @@ internal class KcRound(
                     ?: (javaOwnerPsi(parent) as? PsiMethod)?.parameterList?.parameters?.getOrNull(i)
                 // @all: on a constructor property is its parameter's too.
                 val own = v.annotations.filter { it.target == "" || it.target == "param" || it.target == "all" }
-                val default = v.default?.let(::value)
+                val default = v.default?.let { value(it, library = psi == null) }
                 register(KcValueParameterSymbol(info(v, psi, parent, k, own), default), k, psi)
             }
     }

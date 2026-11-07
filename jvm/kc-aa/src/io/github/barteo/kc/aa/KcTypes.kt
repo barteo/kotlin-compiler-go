@@ -54,8 +54,10 @@ internal class KcTypeContext(
 
     /** The KaType of [t]. */
     fun type(t: KcType): KaType = when (t.kind) {
+        // An annotated Java collection's bounds are both nullable, or
+        // neither: (Mutable)List<T>?.
         KcType.CLASS -> if (t.isFlexible) {
-            KcFlexibleType(round, classType(t, false), classType(t, true, readOnly[t.classId], t.classId == "kotlin/Array"))
+            KcFlexibleType(round, classType(t, t.isNullable), classType(t, !t.isDefinitelyNonNull, readOnly[t.classId], t.classId == "kotlin/Array"))
         } else {
             classType(t, t.isNullable)
         }
@@ -247,10 +249,19 @@ internal class KcFlexibleType(
 ) : StubKaFlexibleType(), KcTypeBase {
     override val token get() = round.token
     override val marked get() = false
-    override val nullability get() = KaTypeNullability.UNKNOWN
+    // An annotated Java collection's bounds are both nullable, or neither.
+    override val nullability
+        get() = when {
+            lowerBound.nullability == KaTypeNullability.NULLABLE -> KaTypeNullability.NULLABLE
+            upperBound.nullability == KaTypeNullability.NON_NULLABLE -> KaTypeNullability.NON_NULLABLE
+            else -> KaTypeNullability.UNKNOWN
+        }
     override val abbreviation get() = null
     override val annotations: KaAnnotationList get() = KcAnnotationList(emptyList(), round.token)
-    override fun withNullability(nullable: Boolean) = (if (nullable) upperBound else lowerBound)
+    override fun withNullability(nullable: Boolean): KaType {
+        val b = if (nullable) upperBound else lowerBound
+        return (b as? KcTypeBase)?.withNullability(nullable) ?: b
+    }
     override fun equals(other: Any?) = other is KcFlexibleType && other.lowerBound == lowerBound && other.upperBound == upperBound
     override fun hashCode() = lowerBound.hashCode() * 31 + upperBound.hashCode()
     override fun toString() = "$lowerBound!"

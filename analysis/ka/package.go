@@ -76,7 +76,7 @@ func (l *library) pkg(pkg string) *Package {
 		if data, err := l.cp.Resource(dir + "/" + pkg[strings.LastIndexByte(pkg, '.')+1:] + ".kotlin_builtins"); err == nil {
 			if bs, err := kmeta.ReadBuiltins(data); err == nil {
 				for _, c := range bs.Classes {
-					if !strings.Contains(c.Name[len(dir)+1:], ".") {
+					if builtinInPackage(c.Name, dir) {
 						p.Classes = append(p.Classes, c.Name)
 					}
 				}
@@ -256,4 +256,13 @@ func (l *library) packageClassAlias(pkg, name string) *Decl {
 		}
 	}
 	return nil
+}
+
+// builtinInPackage reports whether name, a class of a .kotlin_builtins
+// file, is a top-level class of the package whose directory is dir. A
+// file can list classes of other packages: Kotlin 1.6's
+// kotlin/collections/collections.kotlin_builtins lists kotlin/Cloneable.
+func builtinInPackage(name, dir string) bool {
+	rest, ok := strings.CutPrefix(name, dir+"/")
+	return ok && !strings.ContainsAny(rest, "./")
 }

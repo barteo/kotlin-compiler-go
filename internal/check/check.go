@@ -29,6 +29,10 @@ type Universe struct {
 	// which the library, shared by checks one after another, mustn't
 	// keep: see caches.
 	local caches
+	// pendingSupers holds the classes whose supertypes resolveSupertypes
+	// hasn't resolved yet, while it runs, so that looking up a nested
+	// class through one resolves its supertypes first.
+	pendingSupers map[*types.ClassSym]pendingSuper
 	// memberExts is set if a class of the program declares extension
 	// functions, which calls with lambdas' implicit receivers then look
 	// for in their classes.
@@ -615,9 +619,16 @@ func CheckOptions(ctx context.Context, files []*syntax.File, lib *Library, jobs 
 	for _, c := range checkers {
 		c.resolveAliasStars()
 	}
+	u.pendingSupers = map[*types.ClassSym]pendingSuper{}
+	for _, c := range checkers {
+		for _, cd := range c.classes {
+			u.pendingSupers[cd.Sym] = pendingSuper{c, cd}
+		}
+	}
 	for _, c := range checkers {
 		c.resolveSupertypes()
 	}
+	u.pendingSupers = nil
 	for _, c := range checkers {
 		c.resolveClassBounds()
 	}
@@ -903,22 +914,25 @@ func (c *Checker) resolveFuncType(ref *syntax.TypeRef) types.Type {
 		c.errorf(ref.P, "function types with more than %d parameters are not supported", types.MaxVarArity)
 		return types.InvalidType
 	}
+	// Every part is resolved, and recorded, even if one isn't valid: the
+	// model has the parts of an invalid function type, as FIR has.
+	invalid := false
 	ps := make([]types.Type, len(ref.Params))
 	for i, p := range ref.Params {
 		if ps[i] = c.resolveType(p); ps[i].K == types.Invalid {
-			return types.InvalidType
+			invalid = true
 		}
 	}
 	r := c.resolveType(ref.Ret)
-	if r.K == types.Invalid {
+	var recv types.Type
+	if ref.Recv != nil {
+		recv = c.resolveType(ref.Recv)
+	}
+	if invalid || r.K == types.Invalid || ref.Recv != nil && recv.K == types.Invalid {
 		return types.InvalidType
 	}
 	if ref.Recv != nil {
 		// R.(A) -> T is (R, A) -> T, marked as having a receiver.
-		recv := c.resolveType(ref.Recv)
-		if recv.K == types.Invalid {
-			return types.InvalidType
-		}
 		ps = append([]types.Type{recv}, ps...)
 	}
 	if len(ref.Contexts) > 0 {

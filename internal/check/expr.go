@@ -1763,6 +1763,11 @@ func (c *Checker) callReceiver(fn *syntax.Member, want types.Type) (types.Type, 
 	vt := c.value(fn.X, want)
 	t := c.fixedStub(c.declaredIfNull(fn.X, vt))
 	if t.K == types.Invalid {
+		if c.u.partial {
+			if cands := c.extCallees(fn.Name, t); len(cands) > 0 {
+				return t, cands, true // see recvFits
+			}
+		}
 		return t, nil, false
 	}
 	t = c.castView(fn.X, t, fn.Name)

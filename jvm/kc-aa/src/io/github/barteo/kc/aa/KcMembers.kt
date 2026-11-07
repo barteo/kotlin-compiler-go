@@ -7,6 +7,8 @@ import org.jetbrains.kotlin.analysis.api.base.KaContextReceiver
 import org.jetbrains.kotlin.analysis.api.symbols.*
 import org.jetbrains.kotlin.analysis.api.symbols.pointers.KaSymbolPointer
 import org.jetbrains.kotlin.analysis.api.types.KaSubstitutor
+import org.jetbrains.kotlin.analysis.api.types.KaClassType
+import org.jetbrains.kotlin.analysis.api.types.KaErrorType
 import org.jetbrains.kotlin.analysis.api.types.KaType
 import org.jetbrains.kotlin.descriptors.Visibilities
 import org.jetbrains.kotlin.descriptors.Visibility
@@ -324,8 +326,9 @@ internal class KcMemberBuilder(private val round: KcRound, private val c: KcClas
                     (a.receiverParameter == null) != (b.receiverParameter == null)
                 ) return false
                 val sb = positional(y.sub, b.typeParameters, a.typeParameters)
-                sameType(a.receiverType, x.sub, b.receiverType, sb) &&
-                    a.valueParameters.indices.all { sameType(a.valueParameters[it].returnType, x.sub, b.valueParameters[it].returnType, sb) }
+                val strict = isSource(a) != isSource(b)
+                sameType(a.receiverType, x.sub, b.receiverType, sb, strict) &&
+                    a.valueParameters.indices.all { sameType(a.valueParameters[it].returnType, x.sub, b.valueParameters[it].returnType, sb, strict) }
             }
             a is KaPropertySymbol && b is KaPropertySymbol ->
                 a.name == b.name && (a.receiverParameter == null) == (b.receiverParameter == null) &&
@@ -350,9 +353,32 @@ internal class KcMemberBuilder(private val round: KcRound, private val c: KcClas
         return KcChainedSubstitutor(sub, rel.substitutor(map))
     }
 
-    private fun sameType(a: KaType?, sa: KaSubstitutor, b: KaType?, sb: KaSubstitutor): Boolean {
+    /**
+     * Whether [a] and [b] are the same type once substituted. With
+     * [strict], for a source member and a library one, neither may have an
+     * error type: in FIR a library's type naming a class missing from the
+     * class path is still that class's, which a source error type isn't,
+     * so an override of a method taking an Android type, without
+     * android.jar, overrides nothing.
+     */
+    private fun sameType(a: KaType?, sa: KaSubstitutor, b: KaType?, sb: KaSubstitutor, strict: Boolean = false): Boolean {
         if (a == null || b == null) return a == null && b == null
-        return rel.equal(sa.substitute(a), sb.substitute(b), lenient = true)
+        val x = sa.substitute(a)
+        val y = sb.substitute(b)
+        if (strict && (hasError(x) || hasError(y))) return false
+        return rel.equal(x, y, lenient = true)
+    }
+
+    private fun isSource(s: KaCallableSymbol) = fakeOverrideOriginal(s).origin.let {
+        it == KaSymbolOrigin.SOURCE || it == KaSymbolOrigin.SOURCE_MEMBER_GENERATED || it == KaSymbolOrigin.JAVA_SOURCE
+    }
+
+    private fun hasError(t: KaType): Boolean = when (t) {
+        is KaErrorType -> true
+        is KcFlexibleType -> hasError(t.lowerBound)
+        is KcDefinitelyNotNullType -> hasError(t.original)
+        is KaClassType -> t.typeArguments.any { a -> a.type?.let(::hasError) == true }
+        else -> false
     }
 }
 

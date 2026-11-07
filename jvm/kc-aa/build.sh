@@ -73,7 +73,7 @@ stubbed=(
 	symbols.KaTypeParameterSymbol symbols.KaEnumEntrySymbol symbols.KaTypeAliasSymbol
 	symbols.KaPropertyGetterSymbol symbols.KaPropertySetterSymbol symbols.KaReceiverParameterSymbol
 	symbols.KaJavaFieldSymbol symbols.KaPackageSymbol symbols.KaBackingFieldSymbol
-	symbols.KaDestructuringDeclarationSymbol symbols.KaSyntheticJavaPropertySymbol
+	symbols.KaDestructuringDeclarationSymbol symbols.KaSyntheticJavaPropertySymbol symbols.KaAnonymousObjectSymbol symbols.KaLocalVariableSymbol
 	types.KaUsualClassType types.KaClassErrorType types.KaFunctionType types.KaTypeParameterType
 	types.KaFlexibleType types.KaDefinitelyNotNullType types.KaErrorType
 	annotations.KaAnnotation projectStructure.KaSourceModule projectStructure.KaLibraryModule

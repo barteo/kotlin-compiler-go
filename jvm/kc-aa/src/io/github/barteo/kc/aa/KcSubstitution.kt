@@ -211,7 +211,9 @@ internal class KcTypeRelations(private val round: KcRound) {
         if (b is KcTypeParameterType) return false
         if (b !is KaClassType || a !is KaClassType) return false
         val sup = asSuper(a, b.classId) ?: return false
-        if (b.typeArguments.isEmpty()) return true
+        // A raw Java type, IFlexible, is FIR's flexible type from the
+        // erased one to IFlexible<*>?: it fits either way.
+        if (b.typeArguments.isEmpty() || sup.typeArguments.isEmpty()) return true
         if (sup.typeArguments.size != b.typeArguments.size) return false
         val params = (b.symbol as? KaClassSymbol)?.typeParameters.orEmpty()
         return sup.typeArguments.indices.all { i ->

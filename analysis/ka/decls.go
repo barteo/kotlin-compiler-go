@@ -39,6 +39,10 @@ func (b *fileBuilder) decl(d syntax.Decl, owner *syntax.ClassDecl, prefix string
 			if md.Type != nil && md.Type.Kind == TypeError && md.Type.Name == "" {
 				md.Type.Name = calleeName(d.ExprBody)
 			}
+		} else {
+			// A local function of a body that wasn't checked (signatures
+			// only): its written return type, as for a local property.
+			md.Type = b.written(d.Ret)
 		}
 		md.Locals = b.locals(d.Body)
 		return md
@@ -162,6 +166,9 @@ func (b *fileBuilder) destructuring(s *syntax.Destructure) *Decl {
 		}
 	}
 	for i, name := range s.Names {
+		if name == "_" {
+			name = "<unused var>" // FIR's name for an underscore entry
+		}
 		e := &Decl{Kind: KindProperty, Name: name, Visibility: Local}
 		if i < len(entries) {
 			e.Node = entries[i]
@@ -254,9 +261,23 @@ func (b *fileBuilder) class(d *syntax.ClassDecl, prefix string) *Decl {
 		}()
 	}
 	for _, e := range d.Entries {
-		md.Members = append(md.Members, &Decl{Kind: KindEnumEntry, Name: e.Name, Node: b.prov.Node(e),
+		ed := &Decl{Kind: KindEnumEntry, Name: e.Name, Node: b.prov.Node(e),
 			ClassID: md.ClassID + "." + e.Name, Annotations: b.annotations(e.Annotations),
-			Type: &Type{Kind: TypeClass, ClassID: md.ClassID}})
+			Type: &Type{Kind: TypeClass, ClassID: md.ClassID}}
+		// An entry with a body has its members: the declarations of its
+		// initializer, an anonymous object (KaEnumEntrySymbol.enumEntryInitializer).
+		for _, m := range d.Members {
+			if c, ok := m.(*syntax.ClassDecl); ok && c.EnumEntry && c.Name == e.Name {
+				ed.Flags |= FlagEntryBody
+				for _, bm := range c.Members {
+					if mm := b.decl(bm, c, ed.ClassID+"."); mm != nil {
+						ed.Members = append(ed.Members, mm)
+					}
+				}
+				break
+			}
+		}
+		md.Members = append(md.Members, ed)
 	}
 	if md.Kind == KindEnumClass {
 		md.Members = append(md.Members, enumMembers(md.ClassID, d.EntriesList, FlagStatic)...)
@@ -313,7 +334,7 @@ func (b *fileBuilder) written(ref *syntax.TypeRef) *Type {
 	if ref.Known != nil {
 		return b.typ(*ref.Known, ref)
 	}
-	return &Type{Kind: TypeError, Name: b.refText(ref)}
+	return b.typ(types.InvalidType, ref) // an error type, or a function type with error parts
 }
 
 func (b *fileBuilder) typeParams(tps []*syntax.TypeParam) []*Decl {
@@ -350,9 +371,11 @@ func (b *fileBuilder) typeParams(tps []*syntax.TypeParam) []*Decl {
 // one that may be on a property is the property's (and, for a constructor
 // property, the parameter's as well, if it may be on one); one that may be
 // on a field and not on a property is the backing field's, with Target
-// "field" and Implied set; one that may be on neither is the parameter's
-// only, or, written on a property, stays there. Those with a target keep
-// it: the JVM side splits them between the property and its accessors.
+// "field" and Implied set, unless it is a constructor property's and may be
+// on its parameter (then it is the parameter's only); one that may be on
+// neither is the parameter's only, or, written on a property, stays there.
+// Those with a target keep it: the JVM side splits them between the
+// property and its accessors.
 func (b *fileBuilder) propAnnotations(as []syntax.Annotation, ctor bool) []Annotation {
 	var out []Annotation
 	for i := range as {
@@ -368,6 +391,8 @@ func (b *fileBuilder) propAnnotations(as []syntax.Annotation, ctor bool) []Annot
 		if cls := b.annotationClass(a); m.Target == "" && cls != nil && cls.TargetsKnown {
 			switch {
 			case cls.Targets&types.TargetProperty != 0:
+			case ctor && cls.Targets&types.TargetValueParameter != 0:
+				continue
 			case cls.Targets&types.TargetField != 0:
 				m.Target, m.Implied = "field", true
 			case ctor:

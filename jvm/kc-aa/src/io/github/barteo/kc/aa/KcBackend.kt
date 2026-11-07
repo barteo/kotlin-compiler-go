@@ -334,6 +334,7 @@ private class KcExtrasImpl(private val round: () -> KcRound) : KcExtras {
                 is KcEnumEntrySymbol -> s.info
                 is KcTypeAliasSymbol -> s.info
                 is KcBackingFieldSymbol -> s.info
+                is KcLocalVariableSymbol -> s.info
                 else -> return null
             }
             if (info.decl.module.isNotEmpty()) return info.decl.module

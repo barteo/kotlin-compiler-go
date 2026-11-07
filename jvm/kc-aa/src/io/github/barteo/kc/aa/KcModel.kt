@@ -296,6 +296,8 @@ internal class KcDecl(
         const val BACKING_FIELD = 1L shl 25
         /** A class of the module's Java sources (with [JAVA]). */
         const val JAVA_SOURCE = 1L shl 26
+        /** A source enum entry with a body, whose [members] are the body's. */
+        const val ENTRY_BODY = 1L shl 27
 
         // Go's ka.Variance values.
         const val INVARIANT = 0

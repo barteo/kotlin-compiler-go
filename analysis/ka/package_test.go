@@ -105,3 +105,23 @@ k: java/util/HashMap<kotlin/String, kotlin/Int> (as kotlin/collections/HashMap<k
 		t.Errorf("got:\n%s\nwant:\n%s", got, want)
 	}
 }
+
+func TestBuiltinInPackage(t *testing.T) {
+	for _, c := range []struct {
+		name, dir string
+		want      bool
+	}{
+		{"kotlin/collections/List", "kotlin/collections", true},
+		{"kotlin/collections/Map.Entry", "kotlin/collections", false},
+		// Kotlin 1.6's collections.kotlin_builtins lists kotlin/Cloneable,
+		// shorter than the package's directory.
+		{"kotlin/Cloneable", "kotlin/collections", false},
+		{"kotlin/collections/x/Y", "kotlin/collections", false},
+		{"kotlin/collectionsX", "kotlin/collections", false},
+		{"kotlin/Any", "kotlin", true},
+	} {
+		if got := builtinInPackage(c.name, c.dir); got != c.want {
+			t.Errorf("builtinInPackage(%q, %q) = %v, want %v", c.name, c.dir, got, c.want)
+		}
+	}
+}

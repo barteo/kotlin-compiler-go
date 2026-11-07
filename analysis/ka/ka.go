@@ -189,6 +189,9 @@ const (
 	FlagBackingField
 	// FlagJavaSource is set on a class of the module's Java sources.
 	FlagJavaSource
+	// FlagEntryBody is set on a source enum entry with a body; its
+	// Members are the body's declarations.
+	FlagEntryBody
 )
 
 // Model is the declarations of a module's sources as they were when Update
