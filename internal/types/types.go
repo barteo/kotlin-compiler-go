@@ -574,6 +574,9 @@ type FunSym struct {
 	Composable bool
 	Changed    int
 	Defaults   int
+	// ComposableGetter is set on a composable property's getter, whose
+	// name has no hash for a value class it returns, as kotlinc's.
+	ComposableGetter bool
 	// ComposeDefaults is set on an open composable member with default
 	// values: its method takes no masks, and callers call the static
 	// name$default method of its owner's ComposeDefaultImpls class, a
