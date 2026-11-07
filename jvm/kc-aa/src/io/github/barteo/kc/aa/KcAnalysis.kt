@@ -374,11 +374,17 @@ class KcAnalysis internal constructor(
 
 /** Hands out the current round's session for every `analyze` call. */
 internal class KcSessionProvider(project: Project) : KaSessionProvider(project) {
+    /** The session of the KSP run using the environment; none between runs. */
     @Volatile
-    lateinit var session: KaSession
+    var session: KaSession? = null
 
-    override fun getAnalysisSession(useSiteElement: PsiElement): KaSession = session
-    override fun getAnalysisSession(useSiteModule: KaModule): KaSession = session
+    fun clear() {
+        session = null
+    }
+
+    private fun current(): KaSession = session ?: error("kc: no KSP run is using this environment")
+    override fun getAnalysisSession(useSiteElement: PsiElement): KaSession = current()
+    override fun getAnalysisSession(useSiteModule: KaModule): KaSession = current()
     override fun beforeEnteringAnalysis(session: KaSession, useSiteElement: PsiElement) {}
     override fun beforeEnteringAnalysis(session: KaSession, useSiteModule: KaModule) {}
     override fun afterLeavingAnalysis(session: KaSession, useSiteElement: PsiElement) {}

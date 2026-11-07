@@ -331,30 +331,67 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 		}
 		return false
 	})
-	snaps := make([]*psi.Snapshot, len(sources))
-	readErrs := make([]error, len(sources))
-	parallel(len(sources), jobs, func(i int) {
-		text, err := sources[i].text()
+	texts := make([]string, len(sources)+len(javaSources))
+	readErrs := make([]error, len(texts))
+	all := slices.Concat(sources, javaSources)
+	parallel(len(all), jobs, func(i int) { texts[i], readErrs[i] = all[i].text() })
+	if err := errors.Join(readErrs...); err != nil {
+		return nil, err
+	}
+	tm.Mark("read")
+	// The results of the last checks are kept: an update of the same
+	// files with the same texts reuses one whole, and the others reuse
+	// the parses of the files whose texts are the same (reuse.go).
+	paths := make([]string, len(all))
+	for i, src := range all {
+		paths[i] = src.Path
+	}
+	var kept *shared // the library of a module without Java sources
+	var cache *checkCache
+	var key string
+	if len(javaSources) == 0 {
+		l, err := s.library()
 		if err != nil {
-			readErrs[i] = err
+			return nil, err
+		}
+		kept, cache = l, &l.checks
+	} else if key = libraryKey(s.cfg); key != "" {
+		cache = &javaChecks
+	}
+	prev, whole := cache.find(key, paths, texts)
+	if whole {
+		tm.Mark("reused")
+		l := kept
+		if l == nil {
+			l = prev.sl
+			l.retain()
+		}
+		return &Model{lib: l.lib, shared: l, Files: prev.files, Diagnostics: prev.diags}, nil
+	}
+	if prev == nil && kept == nil {
+		// The first update with Java sources: the parses of the update
+		// before, without them.
+		s.mu.Lock()
+		if s.lib != nil {
+			prev, _ = s.lib.checks.find("", nil, nil)
+		}
+		s.mu.Unlock()
+	}
+	javaTexts := texts[len(sources):]
+	texts = texts[:len(sources)]
+	snaps := make([]*psi.Snapshot, len(sources))
+	parallel(len(sources), jobs, func(i int) {
+		if snap := prev.snapshot(sources[i].Path, texts[i]); snap != nil {
+			snaps[i] = snap
 			return
 		}
-		snaps[i] = psi.Parse(sources[i].Path, text)
+		snaps[i] = psi.Parse(sources[i].Path, texts[i])
 	})
 	javaFiles := make([]*javasrc.File, len(javaSources))
 	javaErrs := make([]error, len(javaSources))
-	javaReadErrs := make([]error, len(javaSources))
 	parallel(len(javaSources), jobs, func(i int) {
-		text, err := javaSources[i].text()
-		if err != nil {
-			javaReadErrs[i] = err
-			return
-		}
-		javaFiles[i], javaErrs[i] = javasrc.Parse(javaSources[i].Path, text)
+		javaFiles[i], javaErrs[i] = javasrc.Parse(javaSources[i].Path, javaTexts[i])
 	})
-	if err := errors.Join(append(readErrs, javaReadErrs...)...); err != nil {
-		return nil, err
-	}
 	tm.Mark("parse")
 	var sl *shared
 	var java *driver.JavaSources
@@ -374,7 +411,7 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 		}
 		sl, java, err = acquireJava(s.cfg, parsed)
 	} else {
-		sl, err = s.library()
+		sl = kept
 	}
 	if err != nil {
 		return nil, err
@@ -437,6 +474,19 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 		m.Files = append(m.Files, mf)
 	}
 	tm.Mark("model")
+	if cache != nil {
+		c := &checked{key: key, paths: paths, texts: slices.Concat(texts, javaTexts), files: m.Files, diags: m.Diagnostics,
+			snaps: make(map[string]checkedSnap, len(sources))}
+		for i, src := range sources {
+			c.snaps[src.Path] = checkedSnap{texts[i], snaps[i]}
+		}
+		if kept == nil {
+			// The entry keeps the module's own library.
+			sl.retain()
+			c.sl = sl
+		}
+		cache.keep(c)
+	}
 	ok = true
 	return m, nil
 }

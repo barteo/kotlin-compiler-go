@@ -66,31 +66,15 @@ class KcBackend : KspBackend {
     override fun open(config: KSPConfig, disposable: Disposable): KspBackendSession = KcSession(config, disposable)
 }
 
-private class KcSession(private val config: KSPConfig, disposable: Disposable) : KspBackendSession {
+private class KcSession(private val config: KSPConfig, @Suppress("UNUSED_PARAMETER") disposable: Disposable) : KspBackendSession {
     private val timer = KcTimer()
 
     /** The Java sources the module starts with. */
     private val javaSources: List<String> = ((config as? KSPJvmConfig)?.javaSourceRoots.orEmpty()).distinct().flatMap { root ->
         root.walkTopDown().filter { it.isFile && it.extension == "java" }.sortedBy { it.path }.map { it.canonicalPath }.toList()
     }
-    private val env: KotlinCoreEnvironment = run {
-        val conf = CompilerConfiguration()
-        conf.extensionsStorage = CompilerPluginRegistrar.ExtensionStorage()
-        val jvm = config as? KSPJvmConfig
-        if (jvm != null) {
-            // KSP reads Java sources through Java PSI, which resolves their
-            // names (annotation classes, constants) against the class path
-            // and the other Java sources, and it reads library class files
-            // (checked exceptions, member order, backing fields, Java
-            // annotation defaults) through the Java file manager, which
-            // must give PSI-backed classes (JavaClassImpl).
-            conf.addJvmClasspathRoots((config.libraries + config.friends).distinct())
-            jvm.jdkHome?.let { conf.put(JVMConfigurationKeys.JDK_HOME, it) }
-            conf.addJavaSourceRoots(jvm.javaSourceRoots)
-            conf.put(JVMConfigurationKeys.USE_PSI_CLASS_FILES_READING, true)
-        }
-        KotlinCoreEnvironment.createForProduction(disposable, conf, EnvironmentConfigFiles.JVM_CONFIG_FILES)
-    }
+    private val environment = KcEnvironments.acquire(config, javaSources)
+    private val env: KotlinCoreEnvironment = environment.env
     init {
         timer.mark("environment")
     }
@@ -98,8 +82,7 @@ private class KcSession(private val config: KSPConfig, disposable: Disposable) :
     override val module = KcModule(project, config)
     override val extras: KcExtras = KcExtrasImpl { round }
     private val libraryModule = KcLibraryModule(project, config)
-    private val provider = KcSessionProvider(project)
-    private val psiManager = PsiManager.getInstance(project)
+    private val provider = environment.provider
     private val handle: Long = KcOps.open(
         KcOps.Config(
             jdkHome = (config as? KSPJvmConfig)?.jdkHome?.path,
@@ -118,11 +101,6 @@ private class KcSession(private val config: KSPConfig, disposable: Disposable) :
     private var modelHandle = 0L
 
     init {
-        // MockProject.registerService, called reflectively: kotlinc can't see
-        // MockProject's supertypes in kotlin-compiler's IntelliJ core.
-        val register = project.javaClass.getMethod("registerService", Class::class.java, Any::class.java)
-        register.invoke(project, KaSessionProvider::class.java, provider)
-        register.invoke(project, KotlinModificationTrackerFactory::class.java, KcModificationTrackers)
         (config.sourceRoots + config.commonSourceRoots).distinct().forEach { root ->
             root.walkTopDown().filter { it.isFile && it.extension == "kt" }.sortedBy { it.path }
                 .forEach { paths += it.canonicalPath }
@@ -139,12 +117,13 @@ private class KcSession(private val config: KSPConfig, disposable: Disposable) :
         t.mark("update")
         if (System.getProperty("kc.diagnostics") != null) model.diagnostics.forEach { System.err.println("kc: $it") }
         val fs = VirtualFileManager.getInstance().getFileSystem(StandardFileSystems.FILE_PROTOCOL)
+        val (reused, reparsed) = environment.reused to environment.reparsed
         val joined = model.files.map { f ->
             val vf: VirtualFile = fs.refreshAndFindFileByPath(f.path) ?: error("kc: no virtual file for ${f.path}")
-            f to (psiManager.findFile(vf) as? KtFile ?: error("kc: ${f.path} is not a Kotlin file"))
+            f to (environment.psiFile(vf) as? KtFile ?: error("kc: ${f.path} is not a Kotlin file"))
         }
         val java = paths.filter { it.endsWith(".java") }.mapNotNull { p ->
-            fs.refreshAndFindFileByPath(p)?.let { psiManager.findFile(it) as? PsiJavaFile }
+            fs.refreshAndFindFileByPath(p)?.let { environment.psiFile(it) as? PsiJavaFile }
         }
         t.mark("psi")
         if (this::round.isInitialized) {
@@ -155,7 +134,7 @@ private class KcSession(private val config: KSPConfig, disposable: Disposable) :
         round = KcRound(joined, { id -> KcOps.cls(model.handle, id) }, { fq -> KcOps.pkg(model.handle, fq) }, java, project)
         provider.session = KcAnalysis.session(KcAnalysis(round, module, libraryModule))
         t.mark("round")
-        t.print("round files=${paths.size}")
+        t.print("round files=${paths.size} psi-reused=${environment.reused - reused} psi-reparsed=${environment.reparsed - reparsed}")
     }
 
     override fun sourceFiles(): List<KSFile> =
@@ -203,6 +182,7 @@ private class KcSession(private val config: KSPConfig, disposable: Disposable) :
             KcOps.close(modelHandle)
         }
         KcOps.close(handle)
+        KcEnvironments.release(environment)
     }
 }
 
@@ -211,7 +191,7 @@ private class KcSession(private val config: KSPConfig, disposable: Disposable) :
  * (type projections it builds, synthetic annotations) watch the source
  * tracker. kc's own lifetime token ends with the round instead.
  */
-private object KcModificationTrackers : KotlinModificationTrackerFactory {
+internal object KcModificationTrackers : KotlinModificationTrackerFactory {
     override fun createProjectWideSourceModificationTracker(): ModificationTracker = ModificationTracker.NEVER_CHANGED
     override fun createProjectWideLibraryModificationTracker(): ModificationTracker = ModificationTracker.NEVER_CHANGED
 }

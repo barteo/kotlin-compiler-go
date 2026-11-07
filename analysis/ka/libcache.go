@@ -35,6 +35,8 @@ type shared struct {
 	key  string // "" if the library isn't shared across sessions
 	lib  *library
 	refs int // guarded by libraries.mu
+
+	checks checkCache // the last checks against lib; see reuse.go
 }
 
 var libraries struct {
