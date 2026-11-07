@@ -26,8 +26,8 @@ import (
 // body-checking phase, except for Java classes, which are loaded on demand.
 type Universe struct {
 	Pkgs map[string]*Package // by dotted name; "" is the default package
-	// only is Options.Only, and late is set for the parallel phase of a
-	// check of only some files (lazily).
+	// only is Options.Only; late is set for the parallel phase of a check
+	// of only some files (lazily).
 	only     map[*syntax.File]bool
 	late     *lateInfer
 	prefixes map[string]bool // the packages and their prefixes: a and a.b for a.b
@@ -591,7 +591,7 @@ func CheckOptions(ctx context.Context, files []*syntax.File, lib *Library, jobs 
 	}
 	u := &Universe{ctx: ctx, rec: rec, Pkgs: map[string]*Package{}, prefixes: map[string]bool{}, ext: lib.t, module: moduleSuffix(lib.Module),
 		aliasFile: map[*types.AliasSym]*Checker{}, noJVMDefault: lib.NoJVMDefault, jvmDefaultCompat: lib.JVMDefaultCompat, parcelize: lib.Parcelize, serialization: lib.Serialization,
-		compose: lib.Compose, serialInterfaces: map[*syntax.ClassDecl]bool{}, optIns: lib.OptIns, partial: opts.Signatures}
+		compose: lib.Compose, serialInterfaces: map[*syntax.ClassDecl]bool{}, optIns: lib.OptIns, partial: opts.Signatures, only: opts.Only}
 	u.lookups, _ = rec.(LookupRecorder)
 	checkers := make([]*Checker, len(files))
 	for i, f := range files {
@@ -710,7 +710,7 @@ func CheckOptions(ctx context.Context, files []*syntax.File, lib *Library, jobs 
 		r.Bodies()
 	}
 	if opts.Only != nil {
-		u.only, u.late = opts.Only, &lateInfer{}
+		u.late = &lateInfer{}
 		defer func() { LateInferences.Add(u.late.count.Load()) }()
 	}
 	if jobs < 1 {

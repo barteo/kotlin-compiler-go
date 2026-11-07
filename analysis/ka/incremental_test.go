@@ -81,8 +81,15 @@ class A(val n: Int) {
 }
 fun top() = A(1).twice()
 fun unit() { println("a") }
+fun len(x: Any?) = if (isStr(x)) x.length else 0
 `
 	b := `package p
+import kotlin.contracts.contract
+@OptIn(kotlin.contracts.ExperimentalContracts::class)
+fun isStr(x: Any?): Boolean {
+    contract { returns(true) implies (x is String) }
+    return x is String
+}
 open class B {
     fun scale(n: Int) = n * 3
     fun use(): Long { return top().toLong() }
@@ -137,6 +144,7 @@ func TestIncrementalSignature(t *testing.T) {
 		"package p\nfun f() = 1L\nfun g(): Int { return 1 }\n",
 		"package p\nfun f() = 1\nfun g(): Long { return 1 }\n",
 		"package p\nfun f() = 1\nfun g(): Int { return 1 }\nfun k() {}\n",
+		"package p\nfun f() = 1\nfun g(): Int { kotlin.contracts.contract { returns() }; return 1 }\n",
 	} {
 		s := Open(withStdlib(t))
 		if _, err := s.Update(context.Background(), sources(a, b)); err != nil {

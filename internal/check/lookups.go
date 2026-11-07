@@ -56,7 +56,7 @@ type lookups struct {
 // noteLookup reports name looked up in scope, once per file.
 func (c *Checker) noteLookup(scope string, kind LookupKind, name string) {
 	r := c.u.lookups
-	if r == nil || name == "" || strings.HasPrefix(name, "<") {
+	if !c.recordsLookups() || name == "" || strings.HasPrefix(name, "<") {
 		return
 	}
 	k := lookupKey{scope, name, kind}
@@ -73,8 +73,12 @@ func (c *Checker) noteLookup(scope string, kind LookupKind, name string) {
 	r.Lookup(c.file, scope, kind, name)
 }
 
-// recordsLookups reports whether lookups are being recorded.
-func (c *Checker) recordsLookups() bool { return c.u.lookups != nil }
+// recordsLookups reports whether c's lookups are being recorded: not in
+// a file that a check of only some files doesn't check (Options.Only),
+// whose lookups are those of its last check.
+func (c *Checker) recordsLookups() bool {
+	return c.u.lookups != nil && (c.u.only == nil || c.u.only[c.file])
+}
 
 // classScope returns the qualified name of cls as a scope, or "" and false
 // for a class that other files can't see: a local or anonymous one.

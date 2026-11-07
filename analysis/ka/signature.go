@@ -4,13 +4,15 @@ import (
 	"hash/fnv"
 	"strconv"
 
+	"github.com/barteo/kotlin-compiler-go/internal/lower"
 	"github.com/barteo/kotlin-compiler-go/psi"
 )
 
 // signatureHash returns a hash of what s declares: its tokens but for
 // whitespace, comments and the block bodies of functions, accessors,
 // initializers and secondary constructors, which a check of the
-// declarations (check.Options.Signatures) doesn't need. A block body
+// declarations (check.Options.Signatures) doesn't need, but for a leading
+// contract { } call (lower.Contract), whose effects callers see. A block body
 // doesn't make a declaration's type: a function with one and no written
 // return type returns Unit. Two parses with the same hash declare the
 // same, so the other files of a module don't need checking again when
@@ -30,6 +32,13 @@ func signatureHash(s *psi.Snapshot) uint64 {
 			buf = strconv.AppendUint(buf[:0], uint64(depth[id]), 10)
 			buf = append(buf, "{}"...)
 			h.Write(buf)
+			if c := lower.Contract(n); c.Valid() {
+				for cid, end := c.ID(), c.SubtreeEnd(); cid < end; cid++ {
+					if l := s.Node(cid); l.IsLeaf() && !l.IsTrivia() {
+						h.Write(append(append(buf[:0], l.Text()...), 0))
+					}
+				}
+			}
 			id = n.SubtreeEnd()
 			continue
 		}

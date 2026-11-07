@@ -118,6 +118,21 @@ func (e *checked) snapshot(path, text string) *psi.Snapshot {
 	return nil
 }
 
+// changedFiles returns a test of which sources' texts differ from e's, if
+// e is a clean check of the same files, whose update may then check only
+// some of them; nil otherwise.
+func (e *checked) changedFiles(paths []string, sources []Source, texts []string) func(i int) bool {
+	if e == nil || !e.clean || !slices.Equal(e.paths, paths) {
+		return nil
+	}
+	for _, src := range sources {
+		if _, ok := e.snaps[src.Path]; !ok {
+			return nil
+		}
+	}
+	return func(i int) bool { return e.snaps[sources[i].Path].text != texts[i] }
+}
+
 // bodyEdits returns the indexes of the Kotlin sources whose texts differ
 // from e's, if e is a clean check of the same files, with the same Java
 // texts, and the changed files declare what they did in e

@@ -15,6 +15,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"runtime/debug"
 	"slices"
@@ -437,11 +438,17 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 		}
 	}()
 	tm.Mark("open")
-	files, provs, broken := lowerAll(snaps, m, jobs)
-	if java != nil {
-		java.SetKotlin(files)
+	// An update that may check only some files lowers the changed ones
+	// first, then the others, those it won't check as declarations only
+	// (lower.Declarations).
+	files := make([]*syntax.File, len(snaps))
+	provs := make([]*lower.Provenance, len(snaps))
+	changed := prev.changedFiles(paths, sources, texts)
+	broken := map[int]bool{}
+	if changed != nil {
+		broken = lowerFiles(snaps, files, provs, m, jobs, changed, nil)
 	}
-	tm.Mark("lower")
+	rest := func(i int) bool { return files[i] == nil }
 	// An update whose changed files declare what they did, and whose
 	// other files are those of the check before, checks only the changed
 	// files and keeps the others' models (reuse.go).
@@ -450,18 +457,31 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 	// models of the files it checks besides the changed ones are as they
 	// were, or it would check too many (declEdits, dependents).
 	var only map[*syntax.File]bool
+	// dirty is the files a partial check checks; declEdit is set if they
+	// are declEdits', which may reach more as they're checked.
 	var dirty map[int]bool
-	if len(broken) == 0 {
-		if changed := prev.bodyEdits(paths, sources, texts, javaTexts, snaps); changed != nil {
+	declEdit := false
+	if changed != nil && len(broken) == 0 {
+		if edits := prev.bodyEdits(paths, sources, texts, javaTexts, snaps); edits != nil {
 			incrementalUpdates.Add(1)
-			only = map[*syntax.File]bool{}
-			for _, i := range changed {
-				only[files[i]] = true
+			dirty = map[int]bool{}
+			for _, i := range edits {
+				dirty[i] = true
 			}
 		} else if dirty = prev.declEdits(paths, sources, texts, javaTexts, snaps, files); dirty != nil {
 			declUpdates.Add(1)
+			declEdit = true
 		}
 	}
+	notDirty := func(i int) bool { return !dirty[i] }
+	if dirty == nil {
+		notDirty = nil
+	}
+	maps.Copy(broken, lowerFiles(snaps, files, provs, m, jobs, rest, notDirty))
+	if java != nil {
+		java.SetKotlin(files)
+	}
+	tm.Mark("lower")
 	for {
 		if dirty != nil {
 			only = map[*syntax.File]bool{}
@@ -532,7 +552,7 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 			m.Files = append(m.Files, mf)
 		}
 		tm.Mark("model")
-		if dirty == nil {
+		if !declEdit {
 			break
 		}
 		more := prev.dependents(dirty, m.Files, texts)
@@ -544,9 +564,10 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 			dirty[i] = true
 		}
 		if len(dirty)*maxDirtyShare > len(sources) {
-			dirty, only = nil, nil
+			dirty, only, notDirty = nil, nil, nil
 		}
-		files, provs, _ = lowerAll(snaps, nil, jobs)
+		clear(files)
+		lowerFiles(snaps, files, provs, nil, jobs, rest, notDirty)
 		m.Diagnostics, m.Files = javaDiags, nil
 		tm.Mark("lower")
 	}
@@ -591,27 +612,47 @@ func namesIn(snaps []*psi.Snapshot, files []*syntax.File, only map[*syntax.File]
 }
 
 // lowerAll lowers snaps, adding their errors to m if it isn't nil, and
-// reports which have errors.
+// returns the indexes of those with errors.
 func lowerAll(snaps []*psi.Snapshot, m *Model, jobs int) ([]*syntax.File, []*lower.Provenance, map[int]bool) {
 	files := make([]*syntax.File, len(snaps))
 	provs := make([]*lower.Provenance, len(snaps))
+	broken := lowerFiles(snaps, files, provs, m, jobs, nil, nil)
+	return files, provs, broken
+}
+
+// lowerFiles lowers the snaps for which need is true (every one if need
+// is nil) into files and provs, as declarations only those for which
+// declsOnly is true (lower.Declarations), adding their errors to m if it
+// isn't nil, and returns the indexes of those with errors.
+func lowerFiles(snaps []*psi.Snapshot, files []*syntax.File, provs []*lower.Provenance, m *Model, jobs int, need, declsOnly func(i int) bool) map[int]bool {
+	var todo []int
+	for i := range snaps {
+		if need == nil || need(i) {
+			todo = append(todo, i)
+		}
+	}
 	errLists := make([][]*syntax.Error, len(snaps))
-	parallel(len(snaps), jobs, func(i int) {
-		files[i], provs[i], errLists[i] = lower.File(snaps[i])
+	parallel(len(todo), jobs, func(k int) {
+		i := todo[k]
+		if declsOnly != nil && declsOnly(i) {
+			files[i], provs[i], errLists[i] = lower.Declarations(snaps[i])
+		} else {
+			files[i], provs[i], errLists[i] = lower.File(snaps[i])
+		}
 	})
 	broken := map[int]bool{}
-	for i, snap := range snaps {
+	for _, i := range todo {
 		errs := errLists[i]
 		if len(errs) > 0 {
 			broken[i] = true
 		}
 		if m != nil {
 			for _, e := range errs {
-				m.Diagnostics = append(m.Diagnostics, diagnostic(snap.Path(), e))
+				m.Diagnostics = append(m.Diagnostics, diagnostic(snaps[i].Path(), e))
 			}
 		}
 	}
-	return files, provs, broken
+	return broken
 }
 
 // parallel runs fn(i) for i in [0, n) on up to jobs goroutines.
