@@ -2326,7 +2326,7 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 			if fs := nonExt(pkg.Funs[fn.Name]); len(fs) > 0 && !c.ctorsTakeOnly(c.classRef(fn), fs, x) {
 				return c.resolve(x, methodCallees(fs, nil), want, sink)
 			}
-		} else if fs := c.libraryPackageFuns(fn); len(fs) > 0 {
+		} else if fs := c.libraryPackageFuns(fn); len(fs) > 0 && !c.ctorsTakeOnly(c.classRef(fn), fs, x) {
 			return c.resolve(x, methodCallees(fs, nil), want, sink) // kotlin.runCatching { }
 		} else if c.kotlinIntrinsic(fn) {
 			// kotlin.arrayOf(x), which arrayCall checks by its simple name.

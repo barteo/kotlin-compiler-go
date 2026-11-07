@@ -1200,6 +1200,13 @@ func (c *Checker) serialSerializer(t types.Type) string {
 	if c.hasSerializerFun(cls) {
 		return fqName(cls) + ".serializer()"
 	}
+	if s := cls.SerialWith; s != nil {
+		s.Ensure()
+		if s.Object {
+			return fqName(s)
+		}
+		return fqName(s) + "()"
+	}
 	if cls.Entries != nil {
 		return fmt.Sprintf("kotlinx.serialization.internal.createSimpleEnumSerializer(%q, %s.values())", fqName(cls), fqName(cls))
 	}

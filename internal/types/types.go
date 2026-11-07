@@ -868,6 +868,9 @@ type ClassSym struct {
 	// @JvmRepeatable or Java's @Repeatable: an element can have several
 	// of its annotations.
 	Repeatable bool
+	// SerialWith is the serializer of a Java class annotated
+	// @Serializable(with = S::class), which properties of its type use.
+	SerialWith *ClassSym
 
 	// Kotlin classes read from metadata.
 	KotlinName string // class id, e.g. kotlin/collections/Map.Entry; "" for Java classes

@@ -66,6 +66,14 @@ fun main() {
     )
     println("tone: ${Tone.LOUD.shout()} ${Tone.LOUD.code}")
 
+    roundTrip(
+        "persistent",
+        Persistent(
+            kotlinx.collections.immutable.persistentListOf("a", "b"), kotlinx.collections.immutable.persistentListOf(1, 2),
+            kotlinx.collections.immutable.persistentSetOf("t"), kotlinx.collections.immutable.persistentMapOf("k" to 3L),
+            kotlinx.collections.immutable.persistentListOf(Inner(4, "four")),
+        ),
+    )
     // newArray makes an array of the class.
     val creator = Inner::class.java.getField("CREATOR").get(null) as Parcelable.Creator<*>
     val array = creator.newArray(2)

@@ -1,6 +1,7 @@
 import app.Named
 import app.Square
 import text.StaticCalls
+import util.Defaults
 import util.Events
 import util.Flags
 import util.Registry
@@ -52,4 +53,5 @@ fun main() {
     flags.isReady = false
     println("${flags.isEvent} ${flags.isReady}")
     println(Panels(text.Panel(listOf("a", "b"), "t")).build())
+    println(Defaults.describe())
 }

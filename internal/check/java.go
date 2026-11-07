@@ -147,6 +147,9 @@ func (t *classTable) load(cls *types.ClassSym) {
 			}
 		}
 	}
+	if info.SerialWith != "" {
+		cls.SerialWith = t.class(info.SerialWith)
+	}
 	if info.Access&classfile.AccAnnotation != 0 {
 		cls.Retention = types.RetentionOf(info.Retention)
 		if cls.Retention == types.NoRetention {
@@ -2033,7 +2036,7 @@ func (c *Checker) javaCall(x *syntax.Call, fn *syntax.Member, rt types.Type, wan
 		// xs.forEach { } is Iterable.forEach's, if the lambda fits.
 		var fit []callee
 		for _, cl := range c.extCallees(fn.Name, rt) {
-			if c.mayTake(cl.f, x) {
+			if c.mayTake(cl.f, x) && !c.objectForFunction(cl.f, x) {
 				fit = append(fit, cl)
 			}
 		}
@@ -2080,12 +2083,37 @@ func (c *Checker) javaCall(x *syntax.Call, fn *syntax.Member, rt types.Type, wan
 }
 
 // mapGet returns the type t of a call x of a member of cls, or t? for
-// get(key) of a Java Map: Kotlin's Map.get returns V?.
+// get(key) of a Java Map: Kotlin's Map.get returns V?, unless the Java
+// class's get is annotated not to return null.
 func (c *Checker) mapGet(x *syntax.Call, fn *syntax.Member, cls *types.ClassSym, t types.Type) types.Type {
-	if fn.Name == "get" && len(x.Args) == 1 && t.K != types.Invalid && c.isSubclassOf(cls, "java/util/Map") {
+	if fn.Name == "get" && len(x.Args) == 1 && t.K != types.Invalid && c.isSubclassOf(cls, "java/util/Map") && !(x.Sym != nil && nonNullAnnotated(x.Sym.Annotations)) {
 		return t.Nullable()
 	}
 	return t
+}
+
+// nonNullAnnotations are the annotations that, as kotlinc reads them,
+// mark a Java method's result as never null.
+var nonNullAnnotations = map[string]bool{
+	"Landroidx/annotation/NonNull;":                        true,
+	"Landroid/annotation/NonNull;":                         true,
+	"Landroid/support/annotation/NonNull;":                 true,
+	"Lcom/android/annotations/NonNull;":                    true,
+	"Lorg/jetbrains/annotations/NotNull;":                  true,
+	"Ljavax/annotation/Nonnull;":                           true,
+	"Ledu/umd/cs/findbugs/annotations/NonNull;":            true,
+	"Llombok/NonNull;":                                     true,
+	"Lio/reactivex/annotations/NonNull;":                   true,
+	"Lio/reactivex/rxjava3/annotations/NonNull;":           true,
+	"Lorg/checkerframework/checker/nullness/qual/NonNull;": true,
+	"Lorg/eclipse/jdt/annotation/NonNull;":                 true,
+	"Lorg/jspecify/annotations/NonNull;":                   true,
+}
+
+// nonNullAnnotated reports whether annotations, a Java method's, mark its
+// result as never null.
+func nonNullAnnotated(annotations []string) bool {
+	return slices.ContainsFunc(annotations, func(a string) bool { return nonNullAnnotations[a] })
 }
 
 // allPlatform reports whether methods are all members that only the Java
@@ -2101,6 +2129,50 @@ func (c *Checker) allPlatform(ms []*types.FunSym) bool {
 		}
 	}
 	return true
+}
+
+// objectForFunction reports whether call x passes f an object that is no
+// function where f takes a function: a Consumer for Iterable<T>.forEach's
+// (T) -> Unit, in xs.forEach(Consumer { }) or xs.forEach(consumer).
+func (c *Checker) objectForFunction(f *types.FunSym, x *syntax.Call) bool {
+	amap, ok := mapArgs(f, x)
+	if !ok {
+		return false
+	}
+	cl := callee{f: f, amap: amap, names: x.Names}
+	var ts []types.Type
+	for i, a := range x.Args {
+		if !cl.argType(i, x.Args).Flex().IsFunc() {
+			continue
+		}
+		t := types.InvalidType
+		if k, ok := a.(*syntax.Call); ok && len(k.Args) == 1 && len(k.TypeArgs) == 0 {
+			// A SAM constructor: Consumer { }, or with its package.
+			if _, isLambda := k.Args[0].(*syntax.Lambda); isLambda {
+				var cls *types.ClassSym
+				if id, ok := k.Fun.(*syntax.Ident); ok {
+					cls = c.findClass(id.Name)
+				} else if q := c.qualifiedName(k.Fun); q != "" {
+					cls = c.u.ext.class(strings.ReplaceAll(q, ".", "/"))
+				}
+				if cls != nil {
+					cls.Ensure()
+				}
+				if cls != nil && cls.Interface {
+					t = types.ClassType(cls)
+				}
+			}
+		} else if _, isLambda := a.(*syntax.Lambda); !isLambda {
+			if ts == nil {
+				ts = c.argTypes(x)
+			}
+			t = ts[i]
+		}
+		if t = t.Flex(); t.K == types.Class && !t.IsFunc() && !c.isSubclassOf(t.C, "kotlin/Function") {
+			return true
+		}
+	}
+	return false
 }
 
 // staticField checks an access such as Integer.MAX_VALUE.

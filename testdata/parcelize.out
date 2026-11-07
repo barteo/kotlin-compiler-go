@@ -56,6 +56,9 @@ modes: parcelable(p.Modes) string(LOW) int(0) parcelable(p.Tone) string(SOFT) pa
   read: Modes(level=LOW, nlevel=null, tone=SOFT, ntone=LOUD, step=Jump(to=5), go=Go(steps=6, level=HIGH), stop=Stop, mode=Edit(f, [], [c]), edit=null)
   equal: true, describeContents: 0
 tone: ! 2
+persistent: parcelable(p.Persistent) stringList([a, b]) int(2) int(1) int(2) int(1) string(t) int(1) string(k) long(3) int(1) int(1) int(4) string(four)
+  read: Persistent(names=persistent[a, b], ids=persistent[1, 2], tags=persistent[t], counts=persistent{k=3}, more=persistent[Inner(x=4, name=four)])
+  equal: true, describeContents: 0
 newArray: 2 Inner[]
 use: parcelable(Holder) parcelable(p.Inner) int(7) string(seven) parcelable(p.Empty) int(1) parcelable(p.Outer$Deep) long(8) parcelable(p.Shape$Circle) double(9.0) parcelable(p.Base) string(ten) string(RED) parcelable(p.Level) string(HIGH) parcelable(p.Step$Go) int(1) string(LOW)
   read: Holder(inner=Inner(x=7, name=seven), empty=Empty, deep=Deep(id=8), shape=Circle(r=9.0), base=Base(ten), color=RED, level=HIGH, step=Go(steps=1, level=LOW))
