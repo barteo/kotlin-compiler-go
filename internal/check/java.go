@@ -35,7 +35,10 @@ type classTable struct {
 	// annotated @NotNull or @Nullable have non-null or nullable types,
 	// and inner classes have their outer classes' type parameters.
 	javaTypes bool
-	funcs     *types.Functions // the interfaces of function types
+	// errorTypes is set by Library.ErrorTypes: a missing class in a
+	// signature is an error type (Invalid).
+	errorTypes bool
+	funcs      *types.Functions // the interfaces of function types
 	kotlinTable
 	// sources finds the program's classes by internal name, which the
 	// class path's classes of Java sources name. Checking sets it once
@@ -520,7 +523,7 @@ func (t *classTable) fieldType(d string) (types.Type, bool) {
 	if c := t.class(name); c != nil {
 		return types.ClassType(c).Platform(), true
 	}
-	return types.InvalidType, false
+	return types.InvalidType, t.errorTypes
 }
 
 // signature fills in f's parameters and return type from a method

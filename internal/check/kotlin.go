@@ -444,7 +444,9 @@ func (t *classTable) ktypeParams(ps []*kmeta.TypeParam, owner any, scope tscope)
 				ok = false
 				continue
 			}
-			syms[i].Bounds = append(syms[i].Bounds, bt)
+			if bt.K != types.Invalid { // a missing class's, under errorTypes
+				syms[i].Bounds = append(syms[i].Bounds, bt)
+			}
 		}
 	}
 	return syms, ok
@@ -534,7 +536,7 @@ func (t *classTable) ktype(kt *kmeta.Type, scope tscope) (types.Type, bool) {
 		cls = t.funcs.ComposableClass(n)
 	}
 	if cls == nil {
-		return types.InvalidType, false
+		return types.InvalidType, t.errorTypes && kt.Flags&kmeta.TypeSuspend == 0
 	}
 	if len(kt.Args) == 0 {
 		return nullable(types.ClassType(cls)), true
@@ -707,7 +709,7 @@ func (t *classTable) valueTypeParams(cls *types.ClassSym, kc *kmeta.Class, scope
 			if mentionsClass(b, kc.Name) {
 				continue
 			}
-			if bt, ok := t.ktype(b, scope); ok {
+			if bt, ok := t.ktype(b, scope); ok && bt.K != types.Invalid {
 				syms[i].Bounds = append(syms[i].Bounds, bt)
 			}
 		}

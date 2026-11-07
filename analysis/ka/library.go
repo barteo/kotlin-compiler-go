@@ -917,6 +917,7 @@ func (l *library) javaClass(cls *types.ClassSym, depth int) *Decl {
 			md.Flags |= FlagStatic
 		}
 		if fd := fieldAccess[v.Name]; fd != nil {
+			md.Type = unresolved(md.Type, fd.Desc) // a missing class's (check.Library.ErrorTypes)
 			md.Visibility = javaVisibility(fd.Access)
 			if fd.Access&classfile.AccFinal == 0 {
 				md.Flags |= FlagMutable

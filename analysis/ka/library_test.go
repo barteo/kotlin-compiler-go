@@ -619,3 +619,45 @@ public class Coll {
 		t.Errorf("%s: missing", n)
 	}
 }
+
+// TestMissingClassParam checks that a Java constructor or method whose
+// signature names a class not on the class path (as android.jar's are
+// in KSP's Tachiyomi benchmark) can still be called, with an error type
+// for that class, as FIR calls it: the types of declarations that call
+// it are inferred.
+func TestMissingClassParam(t *testing.T) {
+	java := `package j;
+
+public class Prefs {
+    public Prefs(Missing m) {}
+    public static Prefs of(Missing m) { return null; }
+    public Gone gone() { return null; }
+}
+`
+	kotlin := `package j
+class Uses(m: Missing) {
+    val a = Prefs(m)
+    val b = Prefs.of(m)
+    val c = a.gone()
+}
+`
+	sources := []Source{{Path: "j/Uses.kt", Text: &kotlin}, {Path: "j/Prefs.java", Text: &java}}
+	s := Open(withJDK(t))
+	defer s.Close()
+	m, err := s.Update(context.Background(), sources)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, d := range m.Files[0].Decls[0].Members {
+		if d.Type != nil {
+			got[d.Name] = d.Type.ClassID
+			if d.Type.Kind == TypeError {
+				got[d.Name] = "error"
+			}
+		}
+	}
+	if got["a"] != "j/Prefs" || got["b"] != "j/Prefs" || got["c"] != "error" {
+		t.Errorf("types: %v", got)
+	}
+}

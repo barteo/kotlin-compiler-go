@@ -45,8 +45,11 @@ type Options struct {
 	// checking approximates them, for the Analysis API: see
 	// check.Library.JavaTypes.
 	JavaTypes bool
-	JDKHome   string // JDK whose classes are used; found automatically if empty
-	NoJDK     bool   // don't use JDK classes
+	// ErrorTypes reads missing classes in library signatures as error
+	// types, for the Analysis API: see check.Library.ErrorTypes.
+	ErrorTypes bool
+	JDKHome    string // JDK whose classes are used; found automatically if empty
+	NoJDK      bool   // don't use JDK classes
 	// ModuleName is the module's name, which the JVM names of internal
 	// members end with, as with kotlinc's -module-name; "main" if empty.
 	ModuleName string
@@ -133,6 +136,9 @@ func newLibrary(cp *classpath.Path, opts Options) *check.Library {
 	}
 	if opts.JavaTypes {
 		lib.JavaTypes()
+	}
+	if opts.ErrorTypes {
+		lib.ErrorTypes()
 	}
 	if opts.Serialization {
 		lib.EnableSerialization()

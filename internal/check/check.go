@@ -433,6 +433,13 @@ func (l *Library) KeepHidden() { l.t.hidden = true }
 // the library loads a class.
 func (l *Library) JavaTypes() { l.t.javaTypes = true }
 
+// ErrorTypes has a type in a library declaration's signature that names
+// a class not on the class path read as an error type, as FIR reads it,
+// instead of making the declaration one kc doesn't support: for the
+// Analysis API, whose class path may lack android.jar. Call it before
+// the library loads a class.
+func (l *Library) ErrorTypes() { l.t.errorTypes = true }
+
 // Class returns the class of the class path with Kotlin class ID id
 // (a/b/Outer.Inner), as Kotlin sees it: kotlin/String is java/lang/String,
 // kotlin/collections/List java/util/List; nil if there is none. The
