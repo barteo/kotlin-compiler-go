@@ -986,7 +986,7 @@ func (g *gen) suspended(p *suspendPoint) {
 	c.Jump(cf.IF_ACMPNE, done)
 	c.Op(cf.ARETURN)
 	c.Place(done)
-	g.fromDirect(types.JVMRet(p.f))
+	g.resultOf(p)
 }
 
 // suspendCheck follows the call of a suspension point of a state machine,
@@ -1055,6 +1055,16 @@ func (g *gen) suspendFinish(p *suspendPoint) {
 		c.Unspill(p.stack)
 		c.Local(cf.ALOAD, tmp)
 		c.Retire(tmp)
+	}
+	g.resultOf(p)
+}
+
+// resultOf converts the Object result of suspension point p to its value,
+// unless a statement drops it.
+func (g *gen) resultOf(p *suspendPoint) {
+	if p.call != nil && p.call == g.unusedSuspend {
+		g.leftObject = true
+		return
 	}
 	g.fromDirect(types.JVMRet(p.f))
 }

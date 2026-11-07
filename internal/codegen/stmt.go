@@ -209,7 +209,19 @@ func (g *gen) exprStmt(x syntax.Expr) {
 			return
 		}
 	}
-	g.expr(x)
+	if call, ok := x.(*syntax.Call); ok && call.Sym != nil && call.Sym.Suspend && call.T.K != types.Unit && call.T.K != types.Nothing {
+		saved := g.unusedSuspend
+		g.unusedSuspend, g.leftObject = call, false
+		g.expr(x)
+		g.unusedSuspend = saved
+		if g.leftObject {
+			g.leftObject = false
+			g.code.Op(cf.POP)
+			return
+		}
+	} else {
+		g.expr(x)
+	}
 	g.uncastErased()
 	g.pop(x.Type())
 }

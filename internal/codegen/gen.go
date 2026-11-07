@@ -118,6 +118,11 @@ type gen struct {
 	// erasedCast is the last checkcast of a value read as a type
 	// parameter's erasure, which uncastErased takes back.
 	erasedCast erasedCast
+	// unusedSuspend is a suspend call whose value a statement drops, as
+	// the Object it returns: kotlinc doesn't cast it. leftObject is set
+	// once its suspension point leaves the Object.
+	unusedSuspend *syntax.Call
+	leftObject    bool
 }
 
 // tailrec is the state of a tailrec function: tail calls of fd store
