@@ -247,6 +247,7 @@ func (b *fileBuilder) typeAt(t types.Type, ref *syntax.TypeRef, depth int) *Type
 		if a := b.aliases[ref]; a != nil {
 			out.Abbrev = b.abbrev(a, ref, out.Nullable, depth)
 			substAbbrevs(out, a.Type, a.TypeParams, out.Abbrev.Args, 0)
+			b.rightAbbrevs(out, a, depth)
 		} else if out.Kind == TypeClass {
 			out.Abbrev = b.defaultAlias(out, ref)
 		}
@@ -388,6 +389,85 @@ func substAbbrevs(t *Type, at types.Type, tps []*types.TypeParamSym, args []Type
 		cp.Abbrev.Nullable = cp.Nullable
 		t.Args[i].Type = &cp
 	}
+}
+
+// rightAbbrevs puts the typealias types that source typealias a's right
+// side writes into t, its expansion: Alias43<String> for
+// typealias L<T> = (Alias43<T>) -> T. The right side's own typealias,
+// typealias M = Alias43<Int>, isn't: t's Abbrev is M.
+func (b *fileBuilder) rightAbbrevs(t *Type, a *types.AliasSym, depth int) {
+	d, ok := a.Decl.(*syntax.TypeAliasDecl)
+	if !ok || d.Type == nil || depth > 8 {
+		return
+	}
+	rt, ok := b.refs[d.Type]
+	if !ok {
+		return
+	}
+	names := make([]string, len(a.TypeParams))
+	for i, p := range a.TypeParams {
+		names[i] = p.Name
+	}
+	innerAbbrevs(t, b.typeAt(rt, d.Type, depth+1), names, t.Abbrev.Args, 0)
+}
+
+// innerAbbrevs puts the Abbrevs of the type arguments of r, the right
+// side of a typealias whose type parameters are named names, into those
+// of t, its expansion with type arguments args.
+func innerAbbrevs(t, r *Type, names []string, args []TypeArg, depth int) {
+	if t == nil || r == nil || len(t.Args) != len(r.Args) || depth > 16 {
+		return
+	}
+	for i, ra := range r.Args {
+		rt, tt := ra.Type, t.Args[i].Type
+		if rt == nil || tt == nil || rt.Kind == TypeParameter && slices.Contains(names, rt.Name) {
+			continue // the type argument's own, which substAbbrevs puts
+		}
+		cp := *tt
+		cp.Args = slices.Clone(tt.Args)
+		if cp.Abbrev == nil && rt.Abbrev != nil {
+			cp.Abbrev = substParams(rt.Abbrev, names, args, 0)
+			cp.Abbrev.Nullable = cp.Nullable
+		}
+		innerAbbrevs(&cp, rt, names, args, depth+1)
+		t.Args[i].Type = &cp
+	}
+}
+
+// substParams returns a copy of t with the type parameters named names
+// replaced by args.
+func substParams(t *Type, names []string, args []TypeArg, depth int) *Type {
+	if t == nil || depth > 16 {
+		return t
+	}
+	if j := slices.Index(names, t.Name); t.Kind == TypeParameter && j >= 0 && j < len(args) && args[j].Type != nil {
+		cp := *args[j].Type
+		cp.Nullable = cp.Nullable || t.Nullable
+		return &cp
+	}
+	cp := *t
+	cp.Args = nil
+	for _, a := range t.Args {
+		if a.Type != nil && a.Type.Kind == TypeParameter {
+			if j := slices.Index(names, a.Type.Name); j >= 0 && j < len(args) {
+				v := a.Variance
+				if v == Invariant {
+					v = args[j].Variance
+				}
+				var at *Type
+				if args[j].Type == nil {
+					v = Star
+				} else {
+					at = substParams(a.Type, names, args, depth+1)
+				}
+				cp.Args = append(cp.Args, TypeArg{Variance: v, Type: at})
+				continue
+			}
+		}
+		cp.Args = append(cp.Args, TypeArg{Variance: a.Variance, Type: substParams(a.Type, names, args, depth+1)})
+	}
+	cp.Abbrev = substParams(t.Abbrev, names, args, depth+1)
+	return &cp
 }
 
 // aliasID returns the class ID of typealias a.
