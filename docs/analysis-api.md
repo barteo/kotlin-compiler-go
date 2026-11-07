@@ -1710,6 +1710,45 @@ mostly members that kc's symbol classes for one origin answer and others
 (library or Java) leave to stubs, such as `psi` on a library symbol. No
 gate reaches a stub; a run that does names the member.
 
+#### Step 20: kotlinpoet's KSP interop tests
+
+kotlinpoet's `interop:ksp` tests (`TestProcessorTest`, 17 tests, and
+`KsTypesTest`, 2) run on kc with `build.sh kotlinpoet`. It clones
+kotlinpoet at `KOTLINPOET_TAG` (2.4.0, 97e504b), fetches the
+`kotlinpoet-jvm`/`kotlinpoet-ksp` jars of that version, compiles the
+test processor and the tests unchanged, and runs them with JUnit on kc
+and on stock KSP 2.3.6.
+
+The tests use kotlin-compile-testing (kctfork), which can't run in the
+fork's JVM: it brings kotlin-compiler-embeddable, whose
+`org.jetbrains.kotlin` classes are the same names as the unshaded
+kotlin-compiler 2.4.21 the fork runs on (stock KSP's aa-embeddable
+relocates them to `ksp.org.jetbrains.kotlin`). So
+`test/kotlinpoet/Compilation.kt` stands in for the part of kctfork's API
+the tests use (`KotlinCompilation`, `SourceFile.kotlin`, `configureKsp`,
+`kspProcessorOptions`, `kspSourcesDir`): `compile()` runs KSP on the
+sources and nothing else. The generated code isn't compiled, so the exit
+code is KSP's; every assertion on generated text is kotlinpoet's own.
+
+| | pass of 19 | fail |
+|---|---|---|
+| stock KSP 2.3.6 | 18 | `complexAliasing` |
+| kc | 14 | `complexAliasing`, `smokeTest`, `typeArgs`, `regression_1513_annotation`, `transitiveAliases` |
+
+- `complexAliasing` fails on both: `DaggerProvider` (an alias of a
+  class the test doesn't put on the class path in this setup) is an error
+  type, which the processor rejects. Under kctfork the test's class path
+  is the test JVM's, which has more on it.
+- `smokeTest`, `typeArgs`, `regression_1513_annotation`: a generic
+  annotation's type arguments as written, `@A<String>(...)`. kc's model
+  has an annotation's class and arguments but not its type arguments
+  (the checker only counts them), so `KtTypeReference.type` of `String`
+  there is unsupported.
+- `transitiveAliases`: an alias whose expansion uses other aliases,
+  `typealias Alias41<Z, Q> = (Alias43<Z>) -> Alias47<Q>`, expands to
+  `(List<Z>) -> List<Q>`: kc keeps the abbreviation of the alias written
+  (`Alias41`) but not those inside its expansion.
+
 ## Gaps and open questions
 
 - **Slice simplifications (M0.4).** These go when M3/M4 bring the facts in:
@@ -1746,5 +1785,9 @@ gate reaches a stub; a run that does names the member.
   answers 204, answers 28 for some of its classes, leaves 4 to stubs, 69
   are the API's own and 5 are of types kc never makes
   (`jvm/kc-aa/members.txt`, `build.sh members`, step 19).
+- **Generic annotations' type arguments** (`@A<String>`) aren't in the
+  model (step 20).
+- **Aliases inside an alias's expansion** are expanded, not kept as
+  abbreviations (step 20).
 - **Incremental checking.** A changed Kotlin file re-checks the whole
   module in Go (step 17); only parsing is per file.
