@@ -315,6 +315,9 @@ type Annotation struct {
 	// Args are its arguments as written, in the order written, as
 	// the checker evaluated them; none if it couldn't.
 	Args []NamedValue
+	// TypeArgs are the type arguments written, @A<String>, as the
+	// checker resolved them; nil for a star projection.
+	TypeArgs []*Type
 }
 
 // Update checks the module's sources and returns their model. Errors in
@@ -698,7 +701,16 @@ func (b *fileBuilder) annotation(a *syntax.Annotation) Annotation {
 		values = a.Values
 	}
 	return Annotation{ClassID: classID(b.annotationClass(a)), Node: b.prov.Annotation(a.P), Target: a.Target,
-		Args: b.args(a, values)}
+		Args: b.args(a, values), TypeArgs: b.annotationTypeArgs(a)}
+}
+
+// annotationTypeArgs returns the models of a's type arguments.
+func (b *fileBuilder) annotationTypeArgs(a *syntax.Annotation) []*Type {
+	var out []*Type
+	for _, ta := range a.TypeArgs {
+		out = append(out, b.written(ta.Type))
+	}
+	return out
 }
 
 // annotationClass returns the class of annotation a, or nil.

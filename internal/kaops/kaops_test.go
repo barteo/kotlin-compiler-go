@@ -142,6 +142,9 @@ func readAnnotation(r *wire.Reader) *ka.Annotation {
 	for n := r.Uint(); n > 0 && r.Err() == nil; n-- {
 		a.Args = append(a.Args, ka.NamedValue{Name: r.String(), Value: readValue(r)})
 	}
+	for n := r.Uint(); n > 0 && r.Err() == nil; n-- {
+		a.TypeArgs = append(a.TypeArgs, readType(r))
+	}
 	return a
 }
 
@@ -158,7 +161,7 @@ func TestValues(t *testing.T) {
 			{Kind: ka.ValueAnnotation, Node: 6, Annotation: &ka.Annotation{ClassID: "p/B", Node: 6}},
 			{Kind: ka.ValueUnsupported, Node: 7},
 		}}},
-	}}
+	}, TypeArgs: []*ka.Type{{Kind: ka.TypeClass, ClassID: "kotlin/String"}, nil}}
 	var w wire.Writer
 	writeAnnotation(&w, in)
 	writeValue(&w, nil)

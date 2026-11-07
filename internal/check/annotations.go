@@ -110,6 +110,14 @@ func (c *Checker) checkAnnotations(as []syntax.Annotation, owner *types.ClassSym
 			} else {
 				c.errorf(a.P, "%s expected for annotation class %s%s", countArgs(len(ps)), cls.DisplayName(), types.TypeParamsString(ps))
 			}
+		} else if c.u.rec != nil {
+			// The type arguments, @A<String>, are only reported: a
+			// generic annotation's arguments don't use them.
+			for _, ta := range a.TypeArgs {
+				if ta.Type != nil {
+					c.resolveType(ta.Type)
+				}
+			}
 		}
 		source := cls.Retention == types.RetentionSource
 		if source && !local {
