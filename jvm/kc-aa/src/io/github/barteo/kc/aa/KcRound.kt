@@ -552,6 +552,8 @@ internal class KcRound(
             }
             val app = application(a, entry)
             if (entry != null) app.classId?.let { annotationClasses[entry] = it }
+            val projections = (entry?.typeReference?.typeElement as? KtUserType)?.typeArguments.orEmpty()
+            if (projections.size == a.typeArgs.size) projections.zip(a.typeArgs).forEach { (p, t) -> typeRef(p.typeReference, t) }
             annotations[a] = app
         }
 
