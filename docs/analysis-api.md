@@ -1916,6 +1916,76 @@ its results into them.
 `build.sh ksp` passes 134, `build.sh stock` is unchanged, and kotlinpoet
 still passes 18 of 19.
 
+#### Step 26: TachiyomiExhaustive, and what stock KSP2's processors see
+
+KSP's own benchmark, `TachiyomiExhaustive`, now runs on both backends
+(`bench/ksp/exhaustive/run.sh`): 559 Kotlin files, 136 jars, and
+upstream's processor, which visits every node through the KSP API.
+`-Dbench.dump=FILE` makes `KspBench` write what the processor sees
+(each node's kind, name, location, resolved type and overridee), sorted,
+so the two backends can be compared line by line. The bundle has no
+`android.jar`, so `android.*` classes are missing on both backends and
+much of the code doesn't compile: that is where kc and FIR differed most.
+
+The fixes, each with a Go test in `analysis/ka` or `internal/check`:
+
+- **Missing library classes** (`check.Library.ErrorTypes`): a Java or
+  Kotlin library member whose type names a class that isn't on the class
+  path is kept, with an error type naming the class, instead of being
+  dropped. FIR keeps it too.
+- **Local declarations** (`localsOf`): under `Options.Signatures`, a
+  function or accessor body with a local declaration whose type isn't
+  written is checked, to infer that type. FIR does this for KSP's
+  `declarations` of a function. Warm runs reuse the kept check, so they
+  don't pay for it.
+- **Code that doesn't compile**, under the signature check only, as in
+  FIR:
+  - An error type fits any extension receiver, and any receiver fits an
+    error type's.
+  - A cast has the type it casts to, whatever it casts.
+  - A function type with an error part is a `FunctionN` with error
+    arguments.
+  - A call with an error argument still resolves.
+- **Error type names** (ka's `calleeName`):
+  - an unresolved callee or reference gives its own name;
+  - an uninferred type parameter gives its name (`T` of `apply`, `K` of `?:`);
+  - a resolved callee's unresolved return type gives that type's name.
+- **Typealiases:** the inferred type of a constructor call through a
+  default typealias keeps the alias (`ArrayList()`).
+- **Annotations:** a constructor property's annotations go only to its
+  parameter, as the `@Target` rules say.
+
+Of the 56839 lines of stock's dump, kc's now differs in 386 stock-only
+and 317 kc-only lines. Before this step it was 4747 and 2117. What is
+left, and why:
+
+| lines | difference | why |
+|---|---|---|
+| ~310 | error types and their names in code that doesn't compile | FIR names some error types after the candidate it tried; kc doesn't keep one. A few expressions also infer differently when an operand is an error type. |
+| ~95 | `(Unit..Unit?)`, `(Int..Int?)`, and `(MutableList<T>..List<T>)` after a `@NonNull` | kc's types can't make Unit or a primitive a platform type. They also don't record a collection's Java origin once an annotation fixes its nullability. |
+| ~65 | other flexibility: `T` from a platform receiver (`apply`), the common supertype of a platform type and a non-null one | inference keeps the non-null form |
+| 50 | anonymous object types | kc names the JVM class (`f$1`); FIR has an anonymous symbol with no name |
+| 28 | `@Contextual`, `@StringRes` and `@DrawableRes` on type arguments in bodies | annotations of types that kc doesn't resolve in bodies |
+| 2 | `ViewBoundsCheck.FLAG_*`, a package-private library field read from a file in its package | kc reads library classes' public and protected members only |
+
+`build.sh stock` passes (slice, Moshi, IC, Dagger; Room and Hilt can't be
+fetched in this container).
+
+**Numbers** (4 CPUs, JDK 21, Exhaustive, `bench/ksp/run.sh`; stock 7
+runs in one JVM, kc 10). Hot is BenchRunner's: the fastest of runs 4–6.
+Warm is the median of the runs after the first.
+
+| ms | stock KSP2 | kc | ratio |
+|---|---|---|---|
+| cold JVM, first run | 23184 | 5882 (setup 3752, process 2049) | 3.9x |
+| Hot | 6570 | 741 | 8.9x |
+| warm (median) | 6764 (setup 683, process 6148) | 639 (setup 145, process 434) | 10.6x |
+| fastest run | 6336 | 601 | 10.5x |
+
+The cold run is far from 10x: kc's setup (the IntelliJ environment and
+PSI for 559 files, 3.7 s) is most of it. Phase 3 of
+[ksp-perf.md](ksp-perf.md) is for that.
+
 ## Gaps and open questions
 
 - **Slice simplifications (M0.4).** These go when M3/M4 bring the facts in:

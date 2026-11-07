@@ -18,7 +18,16 @@ JDK 21, `bench/ksp/run.sh` (steps 11 and 17):
 | cold JVM, CDS archive (step 11) | 5810–6130 | 1870–2110 | 3x |
 | one-file body edit, Go update only | – | 25 (45 if a declaration changes) | – |
 
-These numbers predate steps 18–25. Phase 0 measures them again.
+These numbers predate steps 18–25.
+
+TachiyomiExhaustive (step 26), where kc's dump of what the processor sees
+equals stock's but for the differences step 26 lists:
+
+| ms | stock KSP2 | kc | ratio |
+|---|---|---|---|
+| cold JVM, first run | 23184 | 5882 | 3.9x |
+| Hot (fastest of runs 4–6) | 6570 | 741 | 8.9x |
+| warm (median) | 6764 | 639 | 10.6x |
 
 ## What "10x" has to mean
 
