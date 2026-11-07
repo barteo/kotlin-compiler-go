@@ -1766,21 +1766,16 @@ code is KSP's; every assertion on generated text is kotlinpoet's own.
 | | pass of 19 | fail |
 |---|---|---|
 | stock KSP 2.3.6 | 18 | `complexAliasing` |
-| kc | 14 | `complexAliasing`, `smokeTest`, `typeArgs`, `regression_1513_annotation`, `transitiveAliases` |
+| kc | 18 | `complexAliasing` |
 
-- `complexAliasing` fails on both: `DaggerProvider` (an alias of a
-  class the test doesn't put on the class path in this setup) is an error
-  type, which the processor rejects. Under kctfork the test's class path
-  is the test JVM's, which has more on it.
-- `smokeTest`, `typeArgs`, `regression_1513_annotation`: a generic
-  annotation's type arguments as written, `@A<String>(...)`. kc's model
-  has an annotation's class and arguments but not its type arguments
-  (the checker only counts them), so `KtTypeReference.type` of `String`
-  there is unsupported.
-- `transitiveAliases`: an alias whose expansion uses other aliases,
-  `typealias Alias41<Z, Q> = (Alias43<Z>) -> Alias47<Q>`, expands to
-  `(List<Z>) -> List<Q>`: kc keeps the abbreviation of the alias written
-  (`Alias41`) but not those inside its expansion.
+- `complexAliasing` fails on both, the same way: `DaggerProvider` (an
+  alias of a class the test doesn't put on the class path in this setup)
+  is an error type, which the processor rejects. Under kctfork the
+  test's class path is the test JVM's, which has more on it.
+- kc first passed 14: `smokeTest`, `typeArgs` and
+  `regression_1513_annotation` failed on a generic annotation's type
+  arguments, and `transitiveAliases` on the aliases inside an alias's
+  expansion. Step 23 fixes both.
 
 #### Step 22: the AA implementation's repository, checked again
 
@@ -1795,6 +1790,37 @@ them was still refused by this build host's network proxy (CONNECT 403):
 `analysis-api-standalone-for-ide`. So the `aa` backend is still not
 built on 2.4.21 and there is no fallback; nothing in the network
 settings was changed.
+
+#### Step 23: generic annotations' type arguments, aliases inside an alias
+
+Two model gaps that step 20 found, both now closed:
+
+- **Generic annotations' type arguments**, `@A<String, List<Int>>`. The
+  checker only counted them; now it resolves them (reported to a
+  `Recorder` as types written, like any other), ka's `Annotation` has
+  them as `TypeArgs` (nil for `*`), and the wire's `annot` ends with
+  them (`typeArgs:types`). On the JVM, `KcRound` records the types of
+  the entry's type argument references, and `KcAnalysis.getType` gives
+  the entry's type, `A<String, List<Int>>`, with them; before, it had no
+  arguments and `KtTypeReference.type` of `String` was unsupported.
+- **Aliases inside an alias's expansion.** For
+  `typealias Alias41<Z, Q> = (Alias43<Z>) -> Alias47<Q>`, the expansion
+  of `Alias41<Alias23, out Alias77<...>>` kept the abbreviation
+  `Alias41` and those of its arguments (`substAbbrevs`), but the parts
+  written as aliases on the right side lost theirs: `(List<Alias23>) ->
+  List<out ...>`. ka now builds the model of the right side as written
+  (a source typealias's, from the types the checker recorded for it) and
+  puts its arguments' abbreviations into the expansion with the
+  typealias's type parameters replaced by the arguments:
+  `(Alias43<Alias23>) -> Alias47<out Alias77<Alias73<Int>>>`, as FIR
+  has it. The right side's own top-level alias stays out (the
+  expansion's abbreviation is the alias written), and a class path
+  typealias's right side isn't read.
+
+kotlinpoet's interop tests now pass 18 of 19 on kc, as on stock KSP
+(step 20); `build.sh ksp` still passes 134 and `build.sh stock` is
+unchanged. Tests: `analysis/ka/annottypeargs_test.go`,
+`internal/kaops` `TestValues`.
 
 ## Gaps and open questions
 
@@ -1832,10 +1858,11 @@ settings was changed.
   answers 204, answers 28 for some of its classes, leaves 4 to stubs, 69
   are the API's own and 5 are of types kc never makes
   (`jvm/kc-aa/members.txt`, `build.sh members`, step 19).
-- **Generic annotations' type arguments** (`@A<String>`) aren't in the
-  model (step 20).
-- **Aliases inside an alias's expansion** are expanded, not kept as
-  abbreviations (step 20).
+- ~~**Generic annotations' type arguments** (`@A<String>`) aren't in the
+  model (step 20).~~ They are (step 23).
+- ~~**Aliases inside an alias's expansion** are expanded, not kept as
+  abbreviations (step 20).~~ A source typealias's are kept (step 23); a
+  class path typealias's right side isn't read.
 - **One libkc per daemon.** A JVM lets one class loader load libkc, and
   the KSP plugin makes a class loader per KSP class path, so a daemon runs
   kc for one KSP class path only; another fails with
