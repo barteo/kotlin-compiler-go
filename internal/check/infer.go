@@ -382,6 +382,28 @@ func (s *system) addLit(v types.Type, lit *syntax.IntLit) bool {
 	return true
 }
 
+// freeLits reports whether an unfixed variable of s has integer literals
+// among its bounds and no upper bound but Any: the literals' type is up
+// to the call that the variable's call is an argument of. Not that of
+// id(5) for <T : Long> id(t: T).
+func (s *system) freeLits() bool {
+	for _, tv := range s.vars {
+		if tv.fixed || len(tv.lits) == 0 {
+			continue
+		}
+		free := true
+		for _, u := range append(slices.Clip(tv.upper), tv.v.Bounds...) {
+			if u = s.apply(u); u.K != types.Any {
+				free = false
+			}
+		}
+		if free {
+			return true
+		}
+	}
+	return false
+}
+
 // litsFit reports whether integer literals can all have type t, a Long,
 // Byte or Short.
 func litsFit(lits []*syntax.IntLit, t types.Type) bool {
@@ -688,11 +710,7 @@ func (c *Checker) lub(a, b types.Type) types.Type {
 	if t, ok := c.join(a, b); ok {
 		return t
 	}
-	t := c.commonSuper(a.NonNull(), b.NonNull(), 0)
-	if types.MayBeNull(a) || types.MayBeNull(b) {
-		t = t.Nullable()
-	}
-	return t
+	return joinNull(c.commonSuper(a.NonNull(), b.NonNull(), 0), a, b)
 }
 
 // finish completes the system, reports what could not be inferred and

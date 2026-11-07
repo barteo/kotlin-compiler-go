@@ -520,6 +520,9 @@ func (b *Body) calls(read func(name, desc string) (*cf.Method, error), depth int
 			continue
 		}
 		m, err := read(in.Name, in.Desc)
+		if errors.Is(err, cf.ErrNotFound) && (in.Op == cf.INVOKEVIRTUAL || in.Op == cf.INVOKEINTERFACE) {
+			continue // an abstract or inherited method, called as it is
+		}
 		if err != nil {
 			return fail("it calls %s%s, which can't be read: %v", in.Name, in.Desc, err)
 		}

@@ -430,6 +430,10 @@ func (c *Checker) lowPriorityGivesWay(ms []*types.FunSym, name string, rt types.
 // class's emit(CodeWriter), not CodeWriter.emit(String). So does one
 // whose function has a context parameter that no implicit value fits.
 func (c *Checker) mayTake(f *types.FunSym, x *syntax.Call) bool {
+	if len(x.TypeArgs) > 0 && f.Name != "<init>" && len(f.TypeParams) != len(x.TypeArgs) {
+		// get<String>(name) isn't a call of a get without type parameters.
+		return false
+	}
 	amap, ok := mapArgs(f, x)
 	if !ok {
 		return false
@@ -463,7 +467,10 @@ func (c *Checker) mayTake(f *types.FunSym, x *syntax.Call) bool {
 			}
 		}
 		if cls := c.peekClass(a); cls != nil && p.K == types.Class && !cls.IsSubclassOf(p.C) {
-			return false
+			// A Java Collection<Long> also takes a listOf(1L).
+			if ro, ok := readOnlyView(p); !ok || !cls.IsSubclassOf(ro.C) {
+				return false
+			}
 		}
 	}
 	return true
@@ -511,7 +518,18 @@ func (c *Checker) takeTypes(fs []*types.FunSym, x *syntax.Call, ts []types.Type)
 		fits := true
 		for i, t := range ts {
 			p := cl.argType(i, x.Args)
-			if t.K == types.Invalid || p.K == types.Invalid || p.HasParams() || p.HasVars() {
+			if t.K == types.Invalid || p.K == types.Invalid {
+				continue
+			}
+			if p.HasParams() || p.HasVars() {
+				// Of a generic class, the argument's class must have it as
+				// a supertype: an Array of pairs isn't a Map<out K, out V>.
+				if pt, tt := p.Flex().NonNull(), t.Flex().NonNull(); pt.K == types.Class && !pt.IsFunc() && tt.K == types.Class && !tt.IsFunc() && !tt.HasVars() {
+					if _, ok := c.asSuper(tt, pt.C); !ok {
+						fits = false
+						break
+					}
+				}
 				continue
 			}
 			if lit, ok := x.Args[i].(*syntax.IntLit); ok && fitsLit(lit, p) {

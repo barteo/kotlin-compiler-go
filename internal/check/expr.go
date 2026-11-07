@@ -998,6 +998,12 @@ func (c *Checker) binary(x *syntax.Binary, want types.Type, allowRange bool) typ
 		// Long?.compareTo(Long?).
 		return c.binaryOp(x, xt, want)
 	}
+	if _, lambda := x.Y.(*syntax.Lambda); lambda && binaryOpName(x.Op) != "" {
+		// A built-in operator takes no lambda, an operator function may,
+		// which gives it its type: 3 * { verify() } for an
+		// Int.times(block: Scope.() -> Unit).
+		return c.binaryOp(x, xt, want)
+	}
 	yWant := xt
 	switch x.Y.(type) {
 	case *syntax.If, *syntax.When, *syntax.Try:
@@ -1962,6 +1968,14 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 	default:
 		t, found = c.javaProperty(x, rt)
 	}
+	if found && x.Prop == nil && x.Getter != nil && !x.Safe {
+		// A smart cast of a.b, for a friend path's stable property.
+		x.T = t
+		if k, ok := c.narrowKeyOf(x); ok && k.t != t {
+			x.Cast = needsCast(t, k.t)
+			t = k.t
+		}
+	}
 	if !found {
 		if t, found = c.extProp(x, rt); !found {
 			c.errorf(x.P, "unresolved reference: %s", x.Name)
@@ -2176,6 +2190,11 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 			// tried in turn: okio's minOf(Long, Int) to the standard
 			// library's minOf(Long, Long).
 			if !c.libraryCallable(name) {
+				// Or to a library class of the same name, imported with
+				// them: Items() next to a program's Items(range).
+				if cls := c.findClass(name); cls != nil && cls.External && constructible(cls) && c.ctorsFit(cls, fs, x) {
+					return c.construct(x, cls, fn.P, want, sink)
+				}
 				return c.resolve(x, methodCallees(fs, nil), want, sink)
 			}
 			fit := c.anyMayTake(fs, x)
@@ -2228,18 +2247,8 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 			// Or one of the class's: kotlinx.coroutines'
 			// CancellationException(message, cause) for the typealias of
 			// a class without that constructor.
-			cls.Ensure()
-			switch ctors, funs := c.anyMayTake(cls.Ctors, x), c.anyMayTake(gs, x); {
-			case !ctors && funs:
+			if !c.ctorsFit(cls, gs, x) {
 				fs = gs
-			case ctors && funs:
-				// The arguments' types decide: Compose's function
-				// BorderStroke(Dp, Color) next to the constructor
-				// BorderStroke(Dp, Brush).
-				ts := c.argTypes(x)
-				if !c.takeTypes(cls.Ctors, x, ts) && c.takeTypes(gs, x, ts) {
-					fs = gs
-				}
 			}
 		}
 		if a := c.findClassifier(name).alias; a != nil && cls != nil && !cls.Object && len(fs) == 0 {
@@ -3867,4 +3876,20 @@ func (c *Checker) entriesQualifier(x syntax.Expr) {
 			objectValue(m, obj)
 		}
 	}
+}
+
+// ctorsFit reports whether call x constructs a class cls rather than
+// calls one of the functions fs of the same name. If both take the
+// arguments, their types decide: Compose's function BorderStroke(Dp,
+// Color) next to the constructor BorderStroke(Dp, Brush).
+func (c *Checker) ctorsFit(cls *types.ClassSym, fs []*types.FunSym, x *syntax.Call) bool {
+	cls.Ensure()
+	switch ctors, funs := c.anyMayTake(cls.Ctors, x), c.anyMayTake(fs, x); {
+	case !ctors && funs:
+		return false
+	case ctors && funs:
+		ts := c.argTypes(x)
+		return c.takeTypes(cls.Ctors, x, ts) || !c.takeTypes(fs, x, ts)
+	}
+	return true
 }

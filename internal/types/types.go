@@ -760,6 +760,10 @@ type KProp struct {
 	Getter *FunSym // Ret is the property's type
 	Setter *FunSym // nil for a val
 	Alt    *KProp  // as VarSym.Alt
+	// Stable is set on a final val with a field and the default getter of
+	// a friend path's class, which smart casts as the module's own do: the
+	// symbol that stands for it in them.
+	Stable *VarSym
 }
 
 // ClassSym is a user class or a Java class from the class path. Name is the

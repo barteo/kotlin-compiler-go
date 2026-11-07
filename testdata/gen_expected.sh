@@ -15,7 +15,8 @@
 # tests.
 #
 # And it regenerates testdata/klib/X.out for each kotlinc library test X/,
-# whose library kc inlines from kotlinc's classes (TestKotlincLibrary):
+# whose library kc inlines from kotlinc's classes (TestKotlincLibrary), and
+# whose Java sources javac compiles:
 # both are compiled with the flags of the first line of the library's
 # first file, "// kotlinc: <flags>"; a use/ directory is compiled by
 # kotlinc against the app's classes, and run after it. Arguments klib/X
@@ -157,7 +158,11 @@ for name in $klibs; do
 	mkdir -p "$out/lib" "$out/app"
 	flags=$(sed -n '1s|^// kotlinc: ||p' "$(find "$name/lib" -name '*.kt' | sort | head -1)")
 	# shellcheck disable=SC2046,SC2086 # flags and file names are words
-	kotlinc -nowarn $flags -module-name lib $(find "$name/lib" -name '*.kt' | sort) -d "$out/lib" 2>"$work/err" || { cat "$work/err"; exit 1; }
+	kotlinc -nowarn $flags -module-name lib $(find "$name/lib" -name '*.kt' -o -name '*.java' | sort) -d "$out/lib" 2>"$work/err" || { cat "$work/err"; exit 1; }
+	if [ -n "$(find "$name/lib" -name '*.java')" ]; then
+		# shellcheck disable=SC2046
+		javac -nowarn -cp "$out/lib" -d "$out/lib" $(find "$name/lib" -name '*.java' | sort) 2>"$work/err" || { cat "$work/err"; exit 1; }
+	fi
 	# An app whose first file starts with "// friend" sees the library's
 	# internal declarations.
 	friend=""

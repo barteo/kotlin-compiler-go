@@ -403,21 +403,22 @@ func (c *Checker) narrowSym(x syntax.Expr) *types.VarSym {
 	case *syntax.Member:
 		// a.b.c is stable if a.b is: a stable property of a val. So is
 		// a?.b.c, which is a.b.c where a isn't null.
-		if x.Prop == nil || !c.stableOn(x.Prop, x.X.Type()) {
+		prop := c.memberSym(x)
+		if prop == nil {
 			return nil
 		}
 		if this, ok := x.X.(*syntax.This); ok && this.Recv == nil {
-			return x.Prop // this.p is p, as in memberKey
+			return prop // this.p is p, as in memberKey
 		}
 		if r := c.narrowSym(x.X); r != nil && !r.Mutable {
-			k := [2]*types.VarSym{r, x.Prop}
+			k := [2]*types.VarSym{r, prop}
 			if c.paths == nil {
 				c.paths = map[[2]*types.VarSym]*types.VarSym{}
 			}
 			if p := c.paths[k]; p != nil {
 				return p
 			}
-			p := &types.VarSym{Name: r.Name + "." + x.Prop.Name, Type: x.Prop.Type, Kind: types.Prop}
+			p := &types.VarSym{Name: r.Name + "." + prop.Name, Type: prop.Type, Kind: types.Prop}
 			c.paths[k] = p
 			return p
 		}

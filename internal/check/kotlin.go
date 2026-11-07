@@ -774,7 +774,7 @@ func (t *classTable) kfun(f *kmeta.Function, owner *types.ClassSym, scope tscope
 			case kmeta.ReturnsFalse:
 				r = 0
 			}
-			e := types.Effect{Returns: r, Param: im.Param}
+			e := types.Effect{Returns: r, Param: im.Param, Holds: im.Holds}
 			if im.Is != nil {
 				is, isOK := t.ktype(im.Is, scope)
 				if !isOK {
@@ -1132,6 +1132,9 @@ func (t *classTable) kprop(p *kmeta.Property, owner *types.ClassSym, scope tscop
 		Protected: p.GetterFlags.Visibility() == kmeta.Protected, Contexts: ctx}}
 	matchJVM(kp.Getter)
 	composeShape(kp.Getter, true)
+	if friend && !p.IsVar() && p.Flags.Modality() == kmeta.Final && p.GetterFlags&kmeta.AccessorNotDefault == 0 && p.Flags&kmeta.PropDelegated == 0 {
+		kp.Stable = &types.VarSym{Name: p.Name, Type: pt, Kind: types.Prop, Owner: owner, Resolved: true, Final: true}
+	}
 	if s := setter(p); p.IsVar() && s != nil && visibleOutside(p.SetterFlags.Visibility(), friend) && (methods == nil || hasMethod(methods, s.Name+s.Desc, p.SetterFlags>>8&1 != 0)) {
 		kp.Setter = &types.FunSym{Name: s.Name, Owner: owner, Ret: types.UnitType, Desc: s.Desc, Resolved: true, Abstract: abstract,
 			Protected: p.SetterFlags.Visibility() == kmeta.Protected, Params: []*types.VarSym{{Name: "value", Type: pt, Kind: types.Param}}, Contexts: ctx}

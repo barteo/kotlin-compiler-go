@@ -771,9 +771,19 @@ func TestKotlincLibrary(t *testing.T) {
 				flags = f
 			}
 			libOut, appOut := t.TempDir(), t.TempDir()
-			args := append(append([]string{"-nowarn", "-module-name", "lib", "-d", libOut}, strings.Fields(flags)...), srcs...)
+			javas := javaSources(t, filepath.Join(dir, "lib"))
+			args := append(append([]string{"-nowarn", "-module-name", "lib", "-d", libOut}, strings.Fields(flags)...), append(srcs, javas...)...)
 			if out, err := exec.Command(kotlinc, args...).CombinedOutput(); err != nil {
 				t.Fatalf("kotlinc: %v\n%s", err, out)
+			}
+			if len(javas) > 0 {
+				javac, err := exec.LookPath("javac")
+				if err != nil {
+					t.Skip("javac not found on PATH")
+				}
+				if out, err := exec.Command(javac, append([]string{"-nowarn", "-cp", libOut, "-d", libOut}, javas...)...).CombinedOutput(); err != nil {
+					t.Fatalf("javac: %v\n%s", err, out)
+				}
 			}
 			cp := []string{lib, libOut}
 			opts := Options{OutDir: appOut, Jobs: runtime.NumCPU(), ClassPath: cp}

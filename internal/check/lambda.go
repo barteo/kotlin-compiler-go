@@ -124,6 +124,11 @@ func (c *Checker) lambda(x *syntax.Lambda, want types.Type) types.Type {
 		if k, ok := c.kfunWant(want); ok {
 			return c.kfunRef(x, want, k)
 		}
+		if kcallable(want) {
+			// The reference's own KFunctionN is below it:
+			// mockkStatic(Ext::build).
+			want = noWant
+		}
 	}
 	if x.Ref == nil && !x.Anon && proper && samInterface(want.Flex().NonNull()) {
 		// As in Kotlin 2.4 (ResolveTopLevelLambdasAsSyntheticCallArgument),
@@ -1407,8 +1412,14 @@ func (c *Checker) lambdaFits(l *syntax.Lambda, p types.Type) bool {
 	t := p.NonNull()
 	n := 0
 	switch {
+	case wantsKProp(l, t) && t.C.Name != "kotlin/reflect/KCallable":
+		fun, prop, known := c.refKinds(l)
+		return !known || prop || !fun
 	case t.K == types.TypeVar || t.K == types.TypeParam || t.K == types.Any || wantsKProp(l, t):
 		return true // list += { }, MutableCollection<in T>.plusAssign(element: T)
+	case l.Ref != nil && kcallable(t):
+		fun, prop, known := c.refKinds(l)
+		return !known || fun || !prop
 	case t.IsFunc():
 		n = t.A.Len() - 1 - t.Contexts() // nor are its contexts
 		if t.E {
@@ -1428,6 +1439,13 @@ func (c *Checker) lambdaFits(l *syntax.Lambda, p types.Type) bool {
 		return len(l.Params) == n
 	}
 	return n <= 1
+}
+
+// kcallable reports whether t is kotlin.reflect.KFunction<R> or
+// KCallable<R>, of which a function reference's KFunctionN is a subtype.
+func kcallable(t types.Type) bool {
+	t = t.Flex().NonNull()
+	return t.K == types.Class && (t.C.Name == "kotlin/reflect/KFunction" || t.C.Name == "kotlin/reflect/KCallable")
 }
 
 func (c *Checker) lambdasFit(cd *candidate, x *syntax.Call) bool {

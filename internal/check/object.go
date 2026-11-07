@@ -380,11 +380,10 @@ func (c *Checker) staticFieldOf(cls *types.ClassSym, name string) *types.VarSym 
 // nil if there is none the code sees: a package-private one is its
 // package's.
 func (c *Checker) visibleJavaField(cls *types.ClassSym, name string) *types.VarSym {
-	f := javaField(cls, name)
-	if f != nil && f.PackagePrivate && !c.samePackage(f.Owner) {
-		return nil
+	if f := javaField(cls, name); c.visibleField(f) {
+		return f
 	}
-	return f
+	return nil
 }
 
 // inheritedStatic checks a name as a static field that the class the code

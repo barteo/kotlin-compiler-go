@@ -187,9 +187,10 @@ func (t *classTable) load(cls *types.ClassSym) {
 	cls.Final = info.Access&classfile.AccFinal != 0
 	cls.Private = info.Access&classfile.AccPublic == 0
 	cls.PackagePrivate = cls.Private
-	// The package-private members of the module's Java classes, and of
-	// package-private classes, are their package's code's.
-	samePkg := cls.PackagePrivate || t.cp != nil && t.cp.IsSource(cls.Name)
+	// The package-private members of the module's Java classes, of the
+	// friend paths' (a unit test's main classes), and of package-private
+	// classes, are their package's code's.
+	samePkg := cls.PackagePrivate || t.cp != nil && (t.cp.IsSource(cls.Name) || t.cp.Friend(cls.Name))
 	if info.Super != "" {
 		cls.Super = t.class(info.Super)
 	}
@@ -297,7 +298,7 @@ func (t *classTable) load(cls *types.ClassSym) {
 			}
 			continue
 		}
-		if fd.Access&classfile.AccPublic == 0 && !pkgPrivate || fd.Access&classfile.AccStatic == 0 {
+		if fd.Access&(classfile.AccPublic|classfile.AccProtected) == 0 && !pkgPrivate || fd.Access&classfile.AccStatic == 0 {
 			continue
 		}
 		ft, ok := t.fieldType(fd.Desc)
@@ -306,7 +307,8 @@ func (t *classTable) load(cls *types.ClassSym) {
 		}
 		if ok && ft.K != types.Unit {
 			cls.Fields[fd.Name] = &types.VarSym{Name: fd.Name, Type: ft, Kind: types.Static, Owner: cls, Resolved: true,
-				Constant: fieldConstant(fd), Mutable: fd.Access&classfile.AccFinal == 0, PackagePrivate: pkgPrivate}
+				Constant: fieldConstant(fd), Mutable: fd.Access&classfile.AccFinal == 0, PackagePrivate: pkgPrivate,
+				Protected: fd.Access&classfile.AccProtected != 0}
 		}
 		if fd.Access&classfile.AccEnum != 0 {
 			cls.Entries = append(cls.Entries, fd.Name)
@@ -483,6 +485,7 @@ func (c *Checker) resolveImports() {
 			if a, ok := user.Aliases[simple]; ok {
 				c.aliasImports[alias], found = a, true
 			}
+			classifier := found
 			if found {
 				classifiers[alias] = append(classifiers[alias], imp.P)
 			}
@@ -511,6 +514,15 @@ func (c *Checker) resolveImports() {
 					}
 				}
 				found = true
+			}
+			if found && !classifier {
+				if cls := ext.class(name); cls != nil {
+					// A friend module's class next to the program's
+					// functions of its name: test fixtures.
+					c.imports[alias] = cls
+					c.classImports = append(c.classImports, memberImport{owner: cls, name: simple, p: imp.P, path: pkg})
+					classifiers[alias] = append(classifiers[alias], imp.P)
+				}
 			}
 			if found {
 				if c.importsOnlyHidden(user, simple) {
