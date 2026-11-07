@@ -2,6 +2,7 @@ package ka
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"reflect"
@@ -50,13 +51,31 @@ func sameModel(got, want *Model) string {
 			var gs, ws strings.Builder
 			dump(&gs, got.Files[i].Snapshot, g[i].Decls, "")
 			dump(&ws, want.Files[i].Snapshot, w[i].Decls, "")
-			return fmt.Sprintf("file %s differs:\n%s\nwant:\n%s", g[i].Path, gs.String(), ws.String())
+			return fmt.Sprintf("file %s differs:\n%s\nwant:\n%s\n%s", g[i].Path, gs.String(), ws.String(), firstDiff(g[i], w[i]))
 		}
 	}
 	if !reflect.DeepEqual(got.Diagnostics, want.Diagnostics) {
 		return fmt.Sprintf("diagnostics %v, want %v", got.Diagnostics, want.Diagnostics)
 	}
 	return ""
+}
+
+// firstDiff returns the lines around the first line of a and b's JSON
+// that differs.
+func firstDiff(a, b any) string {
+	ja, err1 := json.MarshalIndent(a, "", " ")
+	jb, err2 := json.MarshalIndent(b, "", " ")
+	if err1 != nil || err2 != nil {
+		return fmt.Sprint(err1, err2)
+	}
+	la, lb := strings.Split(string(ja), "\n"), strings.Split(string(jb), "\n")
+	for i := 0; i < min(len(la), len(lb)); i++ {
+		if la[i] != lb[i] {
+			from := max(0, i-15)
+			return fmt.Sprintf("at line %d:\n%s\n<<< got %s\n>>> want %s", i, strings.Join(la[from:i], "\n"), la[i], lb[i])
+		}
+	}
+	return fmt.Sprintf("%d lines, want %d", len(la), len(lb))
 }
 
 func sources(texts ...string) []Source {
@@ -245,6 +264,10 @@ func TestIncrementalDecl(t *testing.T) {
 		"package t\nclass T { fun g() = 5 }\n",
 		"package u\nfun solo() = 1\nclass Solo\n",
 		"package u\nfun other() = 2\n",
+		"package v\nclass V { fun m() = 1 }\nfun useExt() = V().ext()\nfun useExtVal() = V().extVal\n",
+		"package v\nfun other3() = 0\n",
+		"package w\nfun useErr(x: Missing) = x.wext()\n",
+		"package w\nfun other4() = 0\n",
 	}
 	edits := []struct {
 		name     string
@@ -263,6 +286,9 @@ func TestIncrementalDecl(t *testing.T) {
 		{"class removed", 0, "open class A { open fun f() = 1 }", "", true},
 		{"conflicting function", 11, "fun other() = 2", "fun other() = 2\nfun solo() = 3", true},
 		{"conflicting class", 11, "fun other() = 2", "fun other() = 2\nclass Solo", true},
+		{"new extension", 13, "fun other3() = 0", "fun other3() = 0\nfun V.ext() = 2", true},
+		{"extension on an error type", 15, "fun other4() = 0", "fun other4() = 0\nfun Any.wext() = 1", true},
+		{"new extension property", 13, "fun other3() = 0", "fun other3() = 0\nval V.extVal get() = \"\"", true},
 	}
 	cfg := withStdlib(t)
 	for _, e := range edits {
@@ -323,7 +349,8 @@ func signatureEdits(path, text string) []string {
 
 // TestIncrementalModuleDecl makes signatureEdits to each file of the
 // module that KA_BENCH describes, one at a time, and compares each update
-// with a whole check. KA_BENCH_FILES limits it to that many files.
+// with a whole check. KA_BENCH_FILES limits it to that many files, and
+// KA_BENCH_FILE to the files whose paths contain it.
 func TestIncrementalModuleDecl(t *testing.T) {
 	s, srcs := benchModule(t)
 	defer s.Close()
@@ -345,7 +372,11 @@ func TestIncrementalModuleDecl(t *testing.T) {
 	}
 	edits, partial := 0, 0
 	check.LateInferences.Store(0)
+	only := os.Getenv("KA_BENCH_FILE")
 	for i := range srcs[:limit] {
+		if !strings.Contains(srcs[i].Path, only) {
+			continue
+		}
 		for _, text := range signatureEdits(srcs[i].Path, texts[i]) {
 			edit := slices.Clone(srcs)
 			edit[i].Text = &text
@@ -365,6 +396,13 @@ func TestIncrementalModuleDecl(t *testing.T) {
 			back, err := s.Update(context.Background(), srcs)
 			if err != nil {
 				t.Fatal(err)
+			}
+			if os.Getenv("KA_BENCH_BACK") != "" {
+				want := wholeCheck(t, s, srcs)
+				if d := sameModel(back, want); d != "" {
+					t.Errorf("%s, undone: %s", srcs[i].Path, d)
+				}
+				want.Close()
 			}
 			back.Close()
 		}

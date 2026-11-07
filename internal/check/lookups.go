@@ -262,6 +262,9 @@ func (c *Checker) noteExpr(x syntax.Expr, t types.Type) {
 		}
 	case *syntax.Member:
 		c.noteSelector(x.X, x.Name)
+		if x.Prop == nil {
+			c.noteExtension(x.X, x.Name)
+		}
 		c.noteVar(x.Prop)
 		if x.Object != nil {
 			c.noteClass(x.Object)
@@ -275,6 +278,9 @@ func (c *Checker) noteExpr(x syntax.Expr, t types.Type) {
 		case *syntax.Member:
 			if !x.Invoke {
 				c.noteSelector(fn.X, fn.Name)
+				if x.Ctor == nil && (x.Sym == nil || x.Sym.Ext) {
+					c.noteExtension(fn.X, fn.Name)
+				}
 			}
 		}
 		if x.Ctor != nil {
@@ -321,6 +327,20 @@ func (c *Checker) noteSelector(x syntax.Expr, name string) {
 	if t := x.Type(); t.K != types.Invalid {
 		c.noteMember(t, name)
 	}
+}
+
+// noteExtension reports name selected from x, a value, looked up as an
+// extension in the scopes around the code (noteName), where a call that
+// finds no member, or an extension, may find another: FIR records the
+// tower's scopes it tries too.
+func (c *Checker) noteExtension(x syntax.Expr, name string) {
+	if c.classRef(x) != nil || c.packageRef(x) != nil {
+		return
+	}
+	if q, ok := dotted(x); ok && c.u.ext.hasPackage(strings.ReplaceAll(q, ".", "/")) {
+		return
+	}
+	c.noteName(name)
 }
 
 // noteImport reports an explicit import's name looked up in its package
