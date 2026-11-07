@@ -2330,8 +2330,17 @@ var builtinParams = map[string][]string{
 func (c *Checker) javaAccessor(f *types.FunSym) bool {
 	if f.Owner.External {
 		// Not a class-path Kotlin class's getX(), whose classes have
-		// properties of their own.
-		return f.Owner.KProps == nil
+		// properties of their own, unless it overrides a Java method.
+		if f.Owner.KProps == nil {
+			return true
+		}
+		found := false
+		f.Owner.Supertypes(func(s *types.ClassSym) bool {
+			found = s != f.Owner && s.KProps == nil && s.Name != "java/lang/Object" &&
+				slices.ContainsFunc(s.Methods[f.Name], func(g *types.FunSym) bool { return len(g.Params) == len(f.Params) })
+			return !found
+		})
+		return found
 	}
 	if f.Decl == nil {
 		return false

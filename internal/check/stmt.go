@@ -549,6 +549,9 @@ func (c *Checker) exprStmt(x syntax.Expr) types.Type {
 func (c *Checker) varStmt(s *syntax.VarStmt) {
 	saved := c.declName
 	c.declName = s.Name
+	if strings.HasPrefix(s.Name, "<") {
+		c.declName = "" // a destructuring declaration's value, whose classes are the function's
+	}
 	defer func() { c.declName = saved }()
 	if s.Delegate != nil {
 		c.localDelegate(s)

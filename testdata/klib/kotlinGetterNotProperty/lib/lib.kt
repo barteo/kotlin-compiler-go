@@ -7,3 +7,7 @@ open class Repo {
 
     val name: String = "repo name"
 }
+
+class Special : Base() {
+    override fun getKind(): String = "special"
+}

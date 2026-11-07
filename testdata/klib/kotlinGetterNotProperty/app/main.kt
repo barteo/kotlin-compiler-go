@@ -1,4 +1,5 @@
 import h.Repo
+import h.Special
 
 class Test {
     private val enabled = "outer property"
@@ -14,4 +15,5 @@ class Sub : Repo() {
 fun main() {
     println(Test().run())
     println(Sub().describe())
+    println(Special().kind)
 }
