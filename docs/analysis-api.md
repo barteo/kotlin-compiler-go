@@ -1819,6 +1819,46 @@ kotlinpoet's interop tests now pass 18 of 19 on kc, as on stock KSP
 unchanged. Tests: `analysis/ka/annottypeargs_test.go`,
 `internal/kaops` `TestValues`.
 
+#### Step 24: what a one-file edit costs, and what incremental checking needs
+
+`BenchmarkUpdateEdit` (`analysis/ka/bench_test.go`, with `KA_BENCH` as
+for `BenchmarkUpdate`) updates a module again and again with one file's
+text changed each time (a comment added at its end, so its parse
+differs but not its declarations). On octi-server's 60 files, 4 CPUs,
+the median of 40 warm edits (`KC_TIMING`), in ms:
+
+| read | parse | lower | signatures | bodies | model | total |
+|---|---|---|---|---|---|---|
+| 0.5 | 1.4 | 4.2 | 26.0 | 4.2 | 5.0 | 45.5 |
+
+The 120 ms of step 17 was the first check of a session; once the class
+path's classes are read, a one-file edit costs about 45 ms, a quarter of
+a warm KSP run on kc (176 ms). Parsing is already per file. The rest is
+per module: `signatures` is mostly inferring the types of expression
+bodies and initializers without written types (Ktor's DSL lambdas in
+octi), through every file.
+
+Making it per file needs more than a cache:
+
+- The checker writes its results into the syntax trees: resolved
+  symbols, annotation classes, known types, about 50 assignments in
+  `internal/check`. So a file's lowered tree can't be kept from one check
+  to the next and checked again, and the checker would need to keep its
+  results beside the trees, or lowering would have to be redone per
+  check (4 ms) with the symbols kept apart.
+- A file's declarations are resolved against the module's, so keeping
+  the unchanged files' symbols needs knowing which of them depend on the
+  edited file: its declarations' signatures as before (a body-only edit)
+  is the common case and the safe one to start with, if the file has no
+  declaration whose type is inferred from its body.
+- The model of an unchanged file holds node IDs and types, which a
+  body-only edit elsewhere doesn't change, so the model's files could be
+  kept with the symbols.
+
+This is a change to the checker's design, not to ka, and for octi it
+would save about 40 ms of a 176 ms warm run. It is not done; the gap
+below has the numbers.
+
 ## Gaps and open questions
 
 - **Slice simplifications (M0.4).** These go when M3/M4 bring the facts in:
@@ -1868,4 +1908,7 @@ unchanged. Tests: `analysis/ka/annottypeargs_test.go`,
   into the process, which is untested; failing over to the `aa` backend
   needs the stock backend (below).
 - **Incremental checking.** A changed Kotlin file re-checks the whole
-  module in Go (step 17); only parsing is per file.
+  module in Go (step 17); only parsing is per file. On octi-server a
+  warm one-file edit costs about 45 ms, 26 of it signatures; making it per
+  file means the checker keeping its results apart from the syntax trees
+  it now writes them into (step 24).
