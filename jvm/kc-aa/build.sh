@@ -86,6 +86,7 @@ javac -d "$classes" $(find "$here/../libkc/src" -name '*.java')
 kotlinc -cp "$deps:$classes" -d "$classes" -module-name kc-aa -jvm-target 17 -jvm-default=enable $optins \
 	-nowarn "$out/Stubs.kt" $(find "$here/src" -name '*.kt')
 cp -R "$here/src/META-INF" "$classes/"
+cp "$root/psi/kinds.txt" "$classes/io/github/barteo/kc/aa/kinds.txt"
 rm -f "$out/kc-aa.jar"
 (cd "$classes" && jar cf "$out/kc-aa.jar" .)
 echo "$out/kc-aa.jar"

@@ -63,6 +63,9 @@ func TestOpenUpdateClose(t *testing.T) {
 	if !slices.Contains(lookups, ka.Lookup{Scope: "p", Kind: ka.PackageLookup, Name: "A"}) {
 		t.Errorf("lookups %v: no A in p", lookups)
 	}
+	if nodes, kinds := r.Uint(), r.Uint(); nodes < 10 || kinds == 0 {
+		t.Errorf("nodes %d, kinds %x", nodes, kinds)
+	}
 	if n := r.Uint(); n != 0 {
 		t.Errorf("%d diagnostics", n)
 	}

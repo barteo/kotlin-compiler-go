@@ -10,7 +10,7 @@
 // OpKaUpdate: session:Int n:Uint path:String*n → model
 //
 //	model   = handle:Int n:Uint file*n m:Uint diag*m
-//	file    = path:String package:String annots decls lookups
+//	file    = path:String package:String annots decls lookups nodes:Uint kinds:Uint
 //	decls   = n:Uint decl*n
 //	decl    = kind:Uint name:String node:Uint classID:String visibility:Uint
 //	          modality:Uint flags:Uint variance:Uint type receiver:type
@@ -31,7 +31,9 @@
 //	lookups = n:Uint (scope:String kind:Uint name:String)*n
 //
 // lookups are the names a file looks up (ka's File.Lookups), for
-// incremental processing; kind is a ka LookupKind.
+// incremental processing; kind is a ka LookupKind. nodes is the number of
+// the file's psi nodes and kinds the hash of their kinds in preorder
+// (psi.Snapshot.KindSequenceHash), which the JVM checks its PSI against.
 //
 // An unresolved annotation has classID "".
 //
@@ -198,6 +200,8 @@ func update(req []byte) ([]byte, error) {
 			w.Uint(uint64(l.Kind))
 			w.String(l.Name)
 		}
+		w.Uint(uint64(f.Snapshot.NodeCount()))
+		w.Uint(f.Snapshot.KindSequenceHash())
 	}
 	w.Uint(uint64(len(m.Diagnostics)))
 	for _, d := range m.Diagnostics {

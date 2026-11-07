@@ -50,7 +50,7 @@ internal object KcOps {
         val model = r.readInt()
         try {
             val files = List(r.readUint().toInt()) {
-                KcFile(r.readString(), r.readString(), r.annotations(), r.decls(), r.lookups())
+                KcFile(r.readString(), r.readString(), r.annotations(), r.decls(), r.lookups(), r.readUint().toInt(), r.readUint())
             }
             val diagnostics = List(r.readUint().toInt()) {
                 KcDiagnostic(r.readString(), r.readUint().toInt(), r.readUint().toInt(), r.readString(), r.readString())
@@ -182,6 +182,9 @@ internal class KcFile(
     val decls: List<KcDecl>,
     /** The names the file looks up, for incremental processing; Go's ka.File.Lookups. */
     val lookups: List<KcLookup>,
+    /** The number of kc's psi nodes of the file, and the hash of their kinds ([KcKinds.hash]). */
+    val nodes: Int = -1,
+    val kinds: Long = 0,
 )
 
 /**
