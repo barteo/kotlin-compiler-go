@@ -901,9 +901,14 @@ func (g *gen) lvalue(x syntax.Expr) lvalue {
 			}
 			if f.Owner != nil {
 				lv.prepare, lv.recv = func() {
-					g.dispatch(x, f.Owner)
+					if !f.Static {
+						g.dispatch(x, f.Owner)
+					}
 					prepare()
 				}, 1+size(f.Recv)
+				if f.Static {
+					lv.recv--
+				}
 				if lv.recv == 3 {
 					lv.wide = f.Recv
 				}
@@ -945,6 +950,19 @@ func (g *gen) lvalue(x syntax.Expr) lvalue {
 				g.invokeSuperBody(s, types.SetterJVM(p), "("+desc(types.FieldType(p))+")V")
 			}
 			return lv
+		}
+		if f, s := x.Getter, x.Setter; f != nil && s != nil && f.Static && s.Static {
+			// A static property: a class path object's @JvmStatic one.
+			t := x.T.Flex()
+			return lvalue{t: t, prepare: func() {}, reread: true,
+				load: func() {
+					g.code.Invoke(cf.INVOKESTATIC, f.Owner.Name, f.JVM(), funDesc(f))
+					g.coerce(types.JVMRet(f), t)
+				},
+				store: func() {
+					g.coerce(t, s.Params[0].Type)
+					g.code.Invoke(cf.INVOKESTATIC, s.Owner.Name, s.JVM(), funDesc(s))
+				}}
 		}
 		if x.Getter != nil {
 			// A Java property: getX() and setX(v).

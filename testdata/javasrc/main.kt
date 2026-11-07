@@ -1,5 +1,6 @@
 import app.Named
 import app.Square
+import text.StaticCalls
 import util.Registry
 
 // The module's Java classes, which kc reads from their sources.
@@ -41,4 +42,5 @@ fun main() {
     val named: Named = s
     println(named.label())
     widgets()
+    println(StaticCalls.all())
 }

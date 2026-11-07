@@ -1445,6 +1445,8 @@ func (g *gen) class(cd *syntax.ClassDecl) *cf.Class {
 					c.AddAbstractMethod(acc|cf.AccAbstract|accessorSynthetic(pd.Annotations, kind), f.JVM(), funDesc(f))
 					ref = c.LastMethod()
 					g.signFun(ref, f, a, funDesc(f), types.InvalidType)
+				case f.Static:
+					ref = g.function(a, cf.AccPublic|cf.AccStatic|cf.AccFinal|accessorSynthetic(pd.Annotations, kind))
 				case f.Final:
 					ref = g.function(a, cf.AccPublic|cf.AccFinal|accessorSynthetic(pd.Annotations, kind))
 				default:
@@ -3052,6 +3054,8 @@ func (g *gen) callMethod(f *types.FunSym, cls *types.ClassSym, name, d string) {
 		g.code.Invoke(cf.INVOKESTATIC, f.Owner.Name+"$DefaultImpls", name, "(L"+f.Owner.Name+";"+d[1:])
 	case selfStatic(f):
 		g.code.Invoke(cf.INVOKESTATIC, f.Owner.Name, name, "(L"+f.Owner.Name+";"+d[1:])
+	case f.Static && f.Owner != nil && f.Owner.Object:
+		g.callStatic(f, f.Owner.Name, name, d) // an object's @JvmStatic extension
 	case f.Ext && f.Owner != nil && f.Owner.Value:
 		// A value class's member extension: a static method that takes
 		// the value first, which a class path one's descriptor includes.

@@ -1194,6 +1194,16 @@ func (t *classTable) memberExtProp(p *kmeta.Property, owner *types.ClassSym, sco
 	}
 	matchJVM(sym)
 	composeShape(sym, true)
+	if s := p.Setter; p.IsVar() && s != nil && visibleOutside(p.SetterFlags.Visibility(), friend) && methods[s.Name+s.Desc] {
+		set := &types.FunSym{Name: s.Name, Owner: owner, Desc: s.Desc, Ext: true, Resolved: true, Abstract: sym.Abstract,
+			Protected: p.SetterFlags.Visibility() == kmeta.Protected, TypeParams: tps, Recv: recv, Ret: types.UnitType,
+			Params: []*types.VarSym{{Name: "value", Type: ret, Kind: types.Param}}, Contexts: ctx}
+		if owner.Value {
+			set.Impl, set.Facade = true, owner.Name
+		}
+		matchJVM(set)
+		sym.ExtSetter = set
+	}
 	return sym
 }
 
@@ -1618,6 +1628,10 @@ func (t *classTable) loadKotlin(cls *types.ClassSym, info *classfile.Info, kc *k
 		}
 		if p.Recv != nil {
 			if g := t.memberExtProp(p, cls, scope, methods); g != nil {
+				g.Static = statics[g.JVM()+g.Desc]
+				if g.ExtSetter != nil {
+					g.ExtSetter.Static = statics[g.ExtSetter.JVM()+g.ExtSetter.Desc]
+				}
 				if cls.ExtProps == nil {
 					cls.ExtProps = map[string][]*types.FunSym{}
 				}

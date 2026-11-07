@@ -14,8 +14,6 @@ own tests.
   (those of final members and member extensions of classes work).
 - Properties of a `@file:JvmMultifileClass` class that are neither
   `private` nor `const`.
-- `@JvmStatic` on extensions of objects and on delegated properties,
-  which is reported as unsupported.
 - Local `external` functions, which are reported as unsupported.
 - Opt-in requirements (`@RequiresOptIn`, `@SubclassOptInRequired`) and
   `@Deprecated` with level `ERROR` or `HIDDEN` are checked only for the
