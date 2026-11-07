@@ -46,6 +46,9 @@ const maxChecks = 2
 // javaChecks are the last checks of modules with Java sources.
 var javaChecks checkCache
 
+// checkIDs numbers checks, for Model.Check.
+var checkIDs atomic.Uint64
+
 // checkCache is a list of checks' results, most recently used last.
 type checkCache struct {
 	mu   sync.Mutex
@@ -54,6 +57,7 @@ type checkCache struct {
 
 // checked is the result of checking a module's sources.
 type checked struct {
+	check        uint64                 // the Model.Check of its models
 	key          string                 // the class path's key, for javaChecks
 	paths, texts []string               // the Kotlin sources', then the Java sources'
 	snaps        map[string]checkedSnap // the Kotlin sources' parses, by path

@@ -14,6 +14,15 @@
 // bench.jfr (see Classify.java), and bench.dump=FILE, which writes what
 // the processors can see to FILE (DumpProcessor; not for timing).
 //
+// bench.edit=PATH times edits, as a daemon's incremental runs after an
+// edit: the sources are copied, incremental processing is on and the
+// output and caches directories are kept from run to run, and before each
+// run after the first, the copy of PATH (relative to the first source
+// directory, or the first Kotlin file in it if PATH is "auto") is edited:
+// a body edit and a signature edit in turn, of a function appended to it.
+// Each run's line has KSP's dirty files (dirty=, the first round's
+// Resolver.getNewFiles).
+//
 // It is built against the KSP fork (jvm/kc-aa/build.sh) and against stock
 // KSP; bench/ksp/run.sh runs both.
 import com.google.devtools.ksp.impl.KotlinSymbolProcessing
@@ -37,6 +46,7 @@ import kotlin.system.exitProcess
 var phase = "setup"
 
 class Times {
+    var dirty = -1
     var start = 0L
     var create = 0L
     var finishStart = 0L
@@ -60,6 +70,7 @@ class TimedProvider(private val p: SymbolProcessorProvider) : SymbolProcessorPro
 
 class TimedProcessor(private val sp: SymbolProcessor, private val times: Times) : SymbolProcessor {
     override fun process(resolver: Resolver): List<KSAnnotated> {
+        if (times.rounds.isEmpty() && edit) times.dirty = resolver.getNewFiles().count()
         val s = System.nanoTime()
         phase = "process"
         try {
@@ -244,12 +255,25 @@ object BenchLogger : KSPLogger {
 
 private fun ms(ns: Long) = ns / 1_000_000
 
+/** Whether runs edit a source (bench.edit). */
+val edit = System.getProperty("bench.edit") != null
+
+/**
+ * Edits [file] for run [run] (2, 3, …): [base], its text, with a function
+ * appended whose signature changes on even runs (run 2 adds it) and whose
+ * body only changes on odd ones.
+ */
+private fun applyEdit(file: File, base: String, run: Int) {
+    val type = if (run / 2 % 2 == 1) "Int" else "Any"
+    file.writeText(base + "\nfun kspBenchEdit(): $type {\n    return $run\n}\n")
+}
+
 fun main(args: Array<String>) {
     if (args.size != 3) {
         System.err.println("usage: KspBench SRC_DIR[:SRC_DIR...] LIBS_FILE RUNS")
         exitProcess(2)
     }
-    val srcs = args[0].split(File.pathSeparator).filter { it.isNotEmpty() }.map { File(it).absoluteFile }
+    var srcs = args[0].split(File.pathSeparator).filter { it.isNotEmpty() }.map { File(it).absoluteFile }
     val libs = File(args[1]).readLines().filter { it.isNotBlank() }.map(::File)
     val runs = args[2].toInt()
     val backend = System.getProperty("ksp.backend") ?: "stock"
@@ -261,7 +285,18 @@ fun main(args: Array<String>) {
     // One output directory, emptied after each run, as Gradle's
     // build/generated/ksp is the same from run to run.
     val outBase = Files.createTempDirectory("ksp-bench").toFile()
+    var editFile: File? = null
+    var editBase = ""
+    if (edit) {
+        srcs = srcs.mapIndexed { i, d -> File(outBase, "src$i").also { d.copyRecursively(it) } }
+        val path = System.getProperty("bench.edit")
+        editFile = if (path == "auto") srcs[0].walkTopDown().filter { it.isFile && it.extension == "kt" }.minBy { it.path }
+        else File(srcs[0], path)
+        editBase = editFile.readText()
+        println("edit ${editFile.relativeTo(srcs[0])}")
+    }
     for (run in 1..runs) {
+        if (run > 1) editFile?.let { applyEdit(it, editBase, run) }
         if (run == jfrFrom) {
             rec = jdk.jfr.Recording()
             rec.enable("jdk.ExecutionSample").withPeriod(Duration.ofMillis(1))
@@ -294,7 +329,7 @@ fun main(args: Array<String>) {
             apiVersion = languageVersion
             jvmTarget = "17"
             jvmDefaultMode = "enable"
-            incremental = false
+            incremental = edit
             processorOptions = emptyMap()
         }.build()
         val t = Times()
@@ -311,7 +346,7 @@ fun main(args: Array<String>) {
         val end = System.nanoTime()
         phase = "idle"
         val files = out.walkTopDown().filter { it.isFile && !it.path.contains("/caches/") }.count()
-        out.deleteRecursively()
+        if (!edit) out.deleteRecursively()
         val process = t.rounds.sumOf { it.second - it.first }
         totals += end - t.start
         setups += t.create - t.start
@@ -319,7 +354,8 @@ fun main(args: Array<String>) {
         println(
             "run $run $backend $code files=$files total=${ms(end - t.start)} setup=${ms(t.create - t.start)} " +
                 "process=${ms(process)} rounds=${t.rounds.size} between=${ms(t.finishStart - t.create - process)} " +
-                "finish=${ms(t.finishEnd - t.finishStart)} teardown=${ms(end - t.finishEnd)}",
+                "finish=${ms(t.finishEnd - t.finishStart)} teardown=${ms(end - t.finishEnd)}" +
+                (if (edit) " dirty=${t.dirty}" else ""),
         )
         if (code != KotlinSymbolProcessing.ExitCode.OK || BenchLogger.errors > 0) {
             System.err.println("KspBench: KSP exited with $code")
@@ -332,11 +368,16 @@ fun main(args: Array<String>) {
         it.dump(File("bench.jfr").toPath())
     }
     fun median(l: List<Long>) = l.drop(l.size / 2).sorted().let { ms(it[it.size / 2]) }
+    // Edits: the medians of the body edits' runs (3, 5, …) and the
+    // signature edits' (4, 6, …), all but run 2.
+    fun edits(odd: Boolean) = totals.filterIndexed { i, _ -> i >= 2 && (i % 2 == 0) == odd }
+        .sorted().let { if (it.isEmpty()) "-" else ms(it[it.size / 2]).toString() }
     println(
         "summary $backend runs=$runs cold=${ms(totals[0])} warm=${median(totals)} " +
             "warm-setup=${median(setups)} warm-process=${median(processes)} min=${ms(totals.min())}" +
             // KSP's BenchRunner: Hot is the fastest of 3 runs after 3 warm-ups.
-            (if (runs >= 6) " hot=${ms(totals.subList(3, 6).min())}" else ""),
+            (if (runs >= 6) " hot=${ms(totals.subList(3, 6).min())}" else "") +
+            (if (edit) " edit-body=${edits(true)} edit-signature=${edits(false)}" else ""),
     )
     // Stock KSP leaves non-daemon threads behind.
     exitProcess(0)

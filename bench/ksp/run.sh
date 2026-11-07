@@ -15,7 +15,11 @@
 #	KC_TIMING set to 1 for kc's own phase split, on stderr
 #	DUMP      first write what the processors see to DUMP-BACKEND.txt
 #	          (KspBench's bench.dump), for comparing the backends; with
-#	          RUNS_AFTER_DUMP=0 nothing is timed
+#	          RUNS_AFTER_DUMP=0 nothing is timed; with DUMP_RUNS=N the
+#	          dump is the last of N runs in one JVM (a warm daemon's)
+#	EDIT      edit this source (relative to the first source directory,
+#	          or "auto") before each run after the first, with incremental
+#	          processing on (KspBench's bench.edit)
 #	JVM_OPTS  more options for the benchmark's JVMs; @B@ stands for the
 #	          backend, as in -XX:SharedArchiveFile=cds-@B@.jsa
 set -euo pipefail
@@ -51,6 +55,7 @@ procs=$({ grep -v 'symbol-processing-api\|kotlin-stdlib\|kotlin-reflect' "$procs
 for b in ${BACKENDS:-stock kc}; do
 	jvmopts=${JVM_OPTS:-}
 	jvmopts=${jvmopts//@B@/$b}
+	[ -n "${EDIT:-}" ] && jvmopts+=" -Dbench.edit=$EDIT"
 	case $b in
 	stock)
 		[ -s "$out/bench-stock.jar" ] && [ "$out/bench-stock.jar" -nt "$here/KspBench.kt" ] ||
@@ -67,7 +72,7 @@ for b in ${BACKENDS:-stock kc}; do
 	*) echo "run.sh: unknown backend $b" >&2; exit 2 ;;
 	esac
 	if [ -n "${DUMP:-}" ]; then
-		"${cmd[@]}" -Dbench.dump="$DUMP-$b.txt" KspBenchKt "$srcs" "$libsfile" 1 | grep -v '^summary'
+		"${cmd[@]}" -Dbench.dump="$DUMP-$b.txt" KspBenchKt "$srcs" "$libsfile" "${DUMP_RUNS:-1}" | grep -v '^summary'
 		[ "${RUNS_AFTER_DUMP:-1}" = 0 ] && continue
 	fi
 	jfr=()

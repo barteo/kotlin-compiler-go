@@ -37,12 +37,17 @@ func TestOpenUpdateClose(t *testing.T) {
 	w.Int(session)
 	w.Uint(1)
 	w.String(path)
+	w.Uint(0) // nothing kept
 	resp, err = kcabi.Call(OpKaUpdate, w.Message())
 	if err != nil {
 		t.Fatal(err)
 	}
 	r := wire.NewReader(resp)
 	model := r.Int()
+	check := r.Uint()
+	if r.Bool() {
+		t.Fatal("same as a kept check")
+	}
 	if n := r.Uint(); n != 1 {
 		t.Fatalf("%d files", n)
 	}
@@ -76,7 +81,25 @@ func TestOpenUpdateClose(t *testing.T) {
 		t.Error("bytes left after the model")
 	}
 
-	for _, h := range []int64{model, session} {
+	// The same update again, with the first model's check kept: the same
+	// check, without the files.
+	w = wire.Writer{}
+	w.Int(session)
+	w.Uint(1)
+	w.String(path)
+	w.Uint(1)
+	w.Uint(check)
+	resp, err = kcabi.Call(OpKaUpdate, w.Message())
+	if err != nil {
+		t.Fatal(err)
+	}
+	r = wire.NewReader(resp)
+	again := r.Int()
+	if c, same := r.Uint(), r.Bool(); c != check || !same || r.Len() != 0 {
+		t.Errorf("check %d, same %v, %d bytes; want check %d, same, nothing more", c, same, r.Len(), check)
+	}
+
+	for _, h := range []int64{model, again, session} {
 		w = wire.Writer{}
 		w.Int(h)
 		if _, err := kcabi.Call(OpKaClose, w.Message()); err != nil {
@@ -204,6 +227,7 @@ func TestClass(t *testing.T) {
 	w.Int(session)
 	w.Uint(1)
 	w.String(path)
+	w.Uint(0) // nothing kept
 	resp, err = kcabi.Call(OpKaUpdate, w.Message())
 	if err != nil {
 		t.Fatal(err)

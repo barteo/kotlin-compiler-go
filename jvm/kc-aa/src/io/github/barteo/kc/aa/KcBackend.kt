@@ -59,6 +59,15 @@ import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.psi.KtFile
 import java.io.File
 
+/**
+ * Each source's canonical path, by its path, kept by the process: a
+ * daemon's runs walk the same sources again, and resolving each path's
+ * links is a good part of a warm run's setup.
+ */
+private val canonicalPaths = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+private fun canonicalPath(f: File): String = canonicalPaths.getOrPut(f.absolutePath) { f.canonicalPath }
+
 /** The `kc` KSP backend: the Analysis API answered by kc through libkc. */
 class KcBackend : KspBackend {
     override val name: String get() = "kc"
@@ -71,7 +80,7 @@ private class KcSession(private val config: KSPConfig, @Suppress("UNUSED_PARAMET
 
     /** The Java sources the module starts with. */
     private val javaSources: List<String> = ((config as? KSPJvmConfig)?.javaSourceRoots.orEmpty()).distinct().flatMap { root ->
-        root.walkTopDown().filter { it.isFile && it.extension == "java" }.sortedBy { it.path }.map { it.canonicalPath }.toList()
+        root.walkTopDown().filter { it.isFile && it.extension == "java" }.sortedBy { it.path }.map(::canonicalPath).toList()
     }
     private val environment = KcEnvironments.acquire(config, javaSources)
     private val env: KotlinCoreEnvironment = environment.env
@@ -97,13 +106,10 @@ private class KcSession(private val config: KSPConfig, @Suppress("UNUSED_PARAMET
     private val paths = LinkedHashSet<String>()
     private lateinit var round: KcRound
 
-    /** The model [round] loads library classes from; the next update closes it. */
-    private var modelHandle = 0L
-
     init {
         (config.sourceRoots + config.commonSourceRoots).distinct().forEach { root ->
             root.walkTopDown().filter { it.isFile && it.extension == "kt" }.sortedBy { it.path }
-                .forEach { paths += it.canonicalPath }
+                .forEach { paths += canonicalPath(it) }
         }
         paths += javaSources
         timer.mark("open")
@@ -113,11 +119,40 @@ private class KcSession(private val config: KSPConfig, @Suppress("UNUSED_PARAMET
 
     private fun update() {
         val t = KcTimer()
-        val model = KcOps.update(handle, paths.toList())
-        t.mark("update")
-        if (System.getProperty("kc.diagnostics") != null) model.diagnostics.forEach { System.err.println("kc: $it") }
-        val fs = VirtualFileManager.getInstance().getFileSystem(StandardFileSystems.FILE_PROTOCOL)
         val (reused, reparsed) = environment.reused to environment.reparsed
+        val model = KcOps.update(handle, paths.toList(), environment.reusableChecks())
+        t.mark("update")
+        val next = if (model.same) {
+            // The check of a round the environment kept: its sources, and
+            // its PSI, are the same, so the round is too.
+            KcOps.close(model.handle)
+            val kept = environment.reuse(model.check)
+            printDiagnostics(kept.diagnostics)
+            kept.round.also { it.token.invalidation = null }
+        } else {
+            printDiagnostics(model.diagnostics)
+            val built = try {
+                build(model, t)
+            } catch (e: Throwable) {
+                KcOps.close(model.handle)
+                throw e
+            }
+            built.also { environment.keep(model.check, it, model.handle, model.diagnostics) }
+        }
+        if (this::round.isInitialized && round !== next) round.token.invalidation = "replaced by the next round"
+        round = next
+        provider.session = KcAnalysis.session(KcAnalysis(round, module, libraryModule))
+        t.mark("round")
+        t.print("round files=${paths.size} same=${model.same} psi-reused=${environment.reused - reused} psi-reparsed=${environment.reparsed - reparsed}")
+    }
+
+    private fun printDiagnostics(ds: List<KcDiagnostic>) {
+        if (System.getProperty("kc.diagnostics") != null) ds.forEach { System.err.println("kc: $it") }
+    }
+
+    /** The round of [model], whose sources' PSI it joins. */
+    private fun build(model: KcModel, t: KcTimer): KcRound {
+        val fs = VirtualFileManager.getInstance().getFileSystem(StandardFileSystems.FILE_PROTOCOL)
         val joined = model.files.map { f ->
             val vf: VirtualFile = fs.refreshAndFindFileByPath(f.path) ?: error("kc: no virtual file for ${f.path}")
             f to (environment.psiFile(vf) as? KtFile ?: error("kc: ${f.path} is not a Kotlin file"))
@@ -126,15 +161,7 @@ private class KcSession(private val config: KSPConfig, @Suppress("UNUSED_PARAMET
             fs.refreshAndFindFileByPath(p)?.let { environment.psiFile(it) as? PsiJavaFile }
         }
         t.mark("psi")
-        if (this::round.isInitialized) {
-            round.token.invalidation = "replaced by the next round"
-            KcOps.close(modelHandle)
-        }
-        modelHandle = model.handle
-        round = KcRound(joined, { id -> KcOps.cls(model.handle, id) }, { fq -> KcOps.pkg(model.handle, fq) }, java, project)
-        provider.session = KcAnalysis.session(KcAnalysis(round, module, libraryModule))
-        t.mark("round")
-        t.print("round files=${paths.size} psi-reused=${environment.reused - reused} psi-reparsed=${environment.reparsed - reparsed}")
+        return KcRound(joined, { id -> KcOps.cls(model.handle, id) }, { fq -> KcOps.pkg(model.handle, fq) }, java, project)
     }
 
     override fun sourceFiles(): List<KSFile> =
@@ -177,10 +204,8 @@ private class KcSession(private val config: KSPConfig, @Suppress("UNUSED_PARAMET
     }
 
     override fun close() {
-        if (this::round.isInitialized) {
-            round.token.invalidation = "session closed"
-            KcOps.close(modelHandle)
-        }
+        // The round's model is the environment's, which keeps the round.
+        if (this::round.isInitialized) round.token.invalidation = "session closed"
         KcOps.close(handle)
         KcEnvironments.release(environment)
     }
