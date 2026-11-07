@@ -2015,7 +2015,8 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 		// fun tag(tag: Any?) = tag(Any::class, tag).
 		_, t, isVar := c.scope.lookup(name)
 		if isVar && c.invokable(t) {
-			if !c.localInvokeFits(t, x) && len(c.recvs) > 0 && c.recvCall(x, fn) {
+			fits := c.localInvokeFits(t, x)
+			if !fits && len(c.recvs) > 0 && c.recvCall(x, fn) {
 				// One that can't take the arguments gives way to an
 				// implicit receiver's function, as in Kotlin, where each
 				// level of scope is tried in turn: map(crossinline
@@ -2023,7 +2024,11 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 				// transform.
 				return c.call(x, want, sink)
 			}
-			return c.invoke(x, want, sink)
+			if fits || c.cls == nil || !c.anyMayTake(c.accessible(c.cls, c.javaMethods(c.cls, name)), x) {
+				return c.invoke(x, want, sink)
+			}
+			// Or to a method of this class: a constructor parameter
+			// log, with an invoke operator, and fun log() in an init block.
 		}
 		if fs, depth := c.scope.findFunsFor(name, func(fs []*types.FunSym) bool { return c.anyMayTake(fs, x) }); len(fs) > 0 && (c.anyMayTake(fs, x) || !c.invokableProp(name)) {
 			plain := slices.DeleteFunc(slices.Clone(fs), func(f *types.FunSym) bool { return f.Ext })
@@ -2066,7 +2071,7 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 			ms := c.lowPriorityGivesWay(c.accessible(c.cls, c.javaMethods(c.cls, name)), name, c.cls.This(), x)
 			if len(ms) > 0 && (c.anyMayTake(ms, x) ||
 				c.objectTaking(name, x) == nil && !c.anyMayTake(c.topFuns(name), x) && !c.anyMayTake(c.kotlinFuns(name, false), x) &&
-					!c.thisExtension(name, x)) {
+					!c.thisExtension(name, x) && !c.propInvokeFits(name, x) && !c.ctorTakes(name, x)) {
 				if c.thisExtension(name, x) && !c.takeTypes(ms, x, c.argTypes(x)) {
 					// Members that don't take the arguments' types give way
 					// to the extensions of this, as with this.f():
@@ -2275,6 +2280,11 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 		if isVar || c.cls != nil && c.userProp(c.cls, name) != nil {
 			return c.invoke(x, want, sink) // reports that it can't be invoked
 		}
+		if (c.cls != nil || c.staticCls != nil) && c.objectHasProp(name) {
+			// A property of an object in scope, invoked: an enclosing
+			// class's companion's val f: () -> T, as f().
+			return c.invoke(x, want, sink)
+		}
 		if c.cls != nil {
 			if hidden := c.javaMethods(c.cls, name); len(hidden) > 0 {
 				// Only methods of this that the code can't see: a
@@ -2366,7 +2376,13 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 			c.args(x, nil)
 			return types.InvalidType
 		}
-		if n := c.safeReceivers(x); len(n) > 0 {
+		n := c.safeReceivers(x)
+		if r, ok := fn.X.(*syntax.Call); ok && !fn.Safe {
+			// The arguments are evaluated once the receiver's call has
+			// returned: requireNotNull(x).let { x.f() }.
+			n = append(n, c.returnNarrows(r)...)
+		}
+		if len(n) > 0 {
 			// The arguments are evaluated only if the receiver isn't
 			// null: x?.let { f(x) }.
 			c.push()
@@ -2615,6 +2631,31 @@ func (c *Checker) localInvokeFits(t types.Type, x *syntax.Call) bool {
 		}
 	}
 	return true
+}
+
+// propInvokeFits reports whether this class has a property named name
+// whose value may be invoked with call x's arguments, which comes before
+// its methods named so that can't take them: a property log, with an
+// invoke operator, and fun log().
+func (c *Checker) propInvokeFits(name string, x *syntax.Call) bool {
+	p := c.userProp(c.cls, name)
+	if p == nil || p.InProgress {
+		return false
+	}
+	ensureVar(p)
+	return c.invokable(p.Type) && c.localInvokeFits(p.Type, x)
+}
+
+// ctorTakes reports whether a class named name has a constructor that
+// may take call x's arguments, which comes after this class's methods of
+// the name that can't: Settings(mode = 1) next to fun Settings().
+func (c *Checker) ctorTakes(name string, x *syntax.Call) bool {
+	cls := c.findClass(name)
+	if cls == nil || cls.Object || cls.Interface {
+		return false
+	}
+	cls.Ensure()
+	return c.anyMayTake(userCtors(cls), x)
 }
 
 // invokeFitsType reports whether a value of type ft may be invoked with a

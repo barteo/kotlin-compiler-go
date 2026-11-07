@@ -183,6 +183,10 @@ func (t *classTable) load(cls *types.ClassSym) {
 	cls.Abstract = info.Access&(classfile.AccAbstract|classfile.AccInterface) != 0
 	cls.Final = info.Access&classfile.AccFinal != 0
 	cls.Private = info.Access&classfile.AccPublic == 0
+	cls.PackagePrivate = cls.Private
+	// The package-private members of the module's Java classes, and of
+	// package-private classes, are their package's code's.
+	samePkg := cls.PackagePrivate || t.cp != nil && t.cp.IsSource(cls.Name)
 	if info.Super != "" {
 		cls.Super = t.class(info.Super)
 	}
@@ -199,11 +203,12 @@ func (t *classTable) load(cls *types.ClassSym) {
 	cls.Fields = map[string]*types.VarSym{}
 	for _, m := range info.Methods {
 		// Protected members are for subclasses, which can be Kotlin classes.
-		if m.Access&(classfile.AccPublic|classfile.AccProtected) == 0 || m.Access&(classfile.AccSynthetic|classfile.AccBridge) != 0 {
+		pkgPrivate := samePkg && packagePrivate(m.Access)
+		if m.Access&(classfile.AccPublic|classfile.AccProtected) == 0 && !pkgPrivate || m.Access&(classfile.AccSynthetic|classfile.AccBridge) != 0 {
 			continue
 		}
 		f := &types.FunSym{Name: m.Name, Owner: cls, Desc: m.Desc, Static: m.Access&classfile.AccStatic != 0, Operator: true, Resolved: true,
-			Protected: m.Access&classfile.AccPublic == 0, Final: m.Access&classfile.AccFinal != 0 || cls.Final}
+			Protected: m.Access&classfile.AccProtected != 0, PackagePrivate: pkgPrivate, Final: m.Access&classfile.AccFinal != 0 || cls.Final}
 		// A varargs method's last parameter is parsed as its element type.
 		desc, sig := m.Desc, m.Sig
 		varargs := m.Access&classfile.AccVarargs != 0
@@ -271,7 +276,8 @@ func (t *classTable) load(cls *types.ClassSym) {
 			Builtin: types.ToChar, Desc: "()C", Resolved: true})
 	}
 	for _, fd := range info.Fields {
-		if fd.Access&classfile.AccStatic == 0 && fd.Access&(classfile.AccPublic|classfile.AccProtected) != 0 && fd.Access&classfile.AccSynthetic == 0 {
+		pkgPrivate := samePkg && packagePrivate(fd.Access)
+		if fd.Access&classfile.AccStatic == 0 && (fd.Access&(classfile.AccPublic|classfile.AccProtected) != 0 || pkgPrivate) && fd.Access&classfile.AccSynthetic == 0 {
 			// An instance field: a property to Kotlin, as AbstractList's
 			// modCount is in its subclasses.
 			if ft, ok := t.fieldType(fd.Desc); ok && ft.K != types.Unit {
@@ -284,11 +290,11 @@ func (t *classTable) load(cls *types.ClassSym) {
 					cls.JavaFields = map[string]*types.VarSym{}
 				}
 				cls.JavaFields[fd.Name] = &types.VarSym{Name: fd.Name, Type: ft.Platform(), Kind: types.Prop, Owner: cls, Resolved: true, Final: true,
-					JvmField: true, Mutable: fd.Access&classfile.AccFinal == 0, Protected: fd.Access&classfile.AccProtected != 0}
+					JvmField: true, Mutable: fd.Access&classfile.AccFinal == 0, Protected: fd.Access&classfile.AccProtected != 0, PackagePrivate: pkgPrivate}
 			}
 			continue
 		}
-		if fd.Access&classfile.AccPublic == 0 || fd.Access&classfile.AccStatic == 0 {
+		if fd.Access&classfile.AccPublic == 0 && !pkgPrivate || fd.Access&classfile.AccStatic == 0 {
 			continue
 		}
 		ft, ok := t.fieldType(fd.Desc)
@@ -297,7 +303,7 @@ func (t *classTable) load(cls *types.ClassSym) {
 		}
 		if ok && ft.K != types.Unit {
 			cls.Fields[fd.Name] = &types.VarSym{Name: fd.Name, Type: ft, Kind: types.Static, Owner: cls, Resolved: true,
-				Constant: fieldConstant(fd), Mutable: fd.Access&classfile.AccFinal == 0}
+				Constant: fieldConstant(fd), Mutable: fd.Access&classfile.AccFinal == 0, PackagePrivate: pkgPrivate}
 		}
 		if fd.Access&classfile.AccEnum != 0 {
 			cls.Entries = append(cls.Entries, fd.Name)
@@ -1415,6 +1421,21 @@ func (c *Checker) classRef(x syntax.Expr) *types.ClassSym {
 	return nil
 }
 
+// packagePrivate reports whether a Java member's access flags make it
+// package-private: neither public, protected nor private.
+func packagePrivate(access uint16) bool {
+	return access&(classfile.AccPublic|classfile.AccProtected|classfile.AccPrivate) == 0
+}
+
+// samePackage reports whether the code is in the package of class cls.
+func (c *Checker) samePackage(cls *types.ClassSym) bool {
+	pkg := ""
+	if i := strings.LastIndexByte(cls.Name, '/'); i >= 0 {
+		pkg = cls.Name[:i]
+	}
+	return c.file != nil && pkg == strings.ReplaceAll(c.file.Package, ".", "/")
+}
+
 // usable loads a Java class and reports whether kc can use it.
 func (c *Checker) usable(cls *types.ClassSym, p syntax.Pos) bool {
 	if !cls.External {
@@ -1424,7 +1445,7 @@ func (c *Checker) usable(cls *types.ClassSym, p syntax.Pos) bool {
 	switch {
 	case cls.Missing:
 		c.errorf(p, "cannot read class %s", cls.Name)
-	case cls.Private && !(cls.Internal && c.file.SuppressInvisible):
+	case cls.Private && !(cls.Internal && c.file.SuppressInvisible) && !(cls.PackagePrivate && c.samePackage(cls)):
 		// SafeCollector : ContinuationImpl under @Suppress("INVISIBLE_REFERENCE").
 		c.errorf(p, "class %s is not public", cls.DisplayName())
 	default:
@@ -2130,6 +2151,16 @@ func (c *Checker) javaProperty(x *syntax.Member, rt types.Type) (types.Type, boo
 		if c.javaAccessor(f) && len(f.Params) == 0 && !f.Unsupported && f.Ret.K != types.Unit &&
 			(getterName != x.Name || f.Ret.Flex() == types.BoolType || special) {
 			x.Getter = f
+		}
+	}
+	if x.Getter == nil && !special && getterName == x.Name {
+		// isX of getIsX(), whose setter is setIsX(), when there is no
+		// boolean isX().
+		alt := "get" + strings.ToUpper(x.Name[:1]) + x.Name[1:]
+		for _, f := range c.accessible(cls, c.javaMethods(cls, alt)) {
+			if c.javaAccessor(f) && len(f.Params) == 0 && !f.Unsupported && f.Ret.K != types.Unit {
+				x.Getter, setterName = f, "set"+alt[3:]
+			}
 		}
 	}
 	if g := acronymAccessor("get", x.Name); x.Getter == nil && !special && g != "" {

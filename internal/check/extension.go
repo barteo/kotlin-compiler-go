@@ -1,6 +1,7 @@
 package check
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
@@ -347,6 +348,13 @@ func dropOverridden(fs []*types.FunSym) []*types.FunSym {
 	out := fs[:0:0]
 	for _, f := range fs {
 		d := types.FunDesc(f)
+		if d == "" {
+			// One whose return type isn't inferred yet, by its parameters.
+			var ok bool
+			if d, ok = types.ParamsDesc(f.Params); !ok {
+				d = fmt.Sprintf("%p", f)
+			}
+		}
 		if i := strings.IndexByte(d, ')'); i >= 0 {
 			d = d[:i]
 		}
@@ -400,7 +408,7 @@ func (c *Checker) thisExtProp(x *syntax.Ident) (types.Type, bool) {
 	if _, ok := c.extProp(&syntax.Member{Name: x.Name}, t); !ok {
 		return types.InvalidType, false
 	}
-	this := &syntax.This{}
+	this := &syntax.This{Class: true} // not a nearer receiver's, as with(a) { prop }'s
 	this.P = x.P
 	m := &syntax.Member{X: this, Name: x.Name}
 	m.P = x.P

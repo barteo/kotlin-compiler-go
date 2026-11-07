@@ -517,7 +517,8 @@ func (c *Checker) sameParams(rt types.Type, f, g *types.FunSym) bool {
 		}
 	}
 	for i, p := range f.Params {
-		if !c.sameType(fs.Apply(p.Type), gs.Apply(g.Params[i].Type)) {
+		ft, gt := fs.Apply(p.Type), gs.Apply(g.Params[i].Type)
+		if !c.sameType(ft, gt) && !c.sameType(ft, invArray(gt)) {
 			return false
 		}
 	}
@@ -526,6 +527,16 @@ func (c *Checker) sameParams(rt types.Type, f, g *types.FunSym) bool {
 		return false
 	}
 	return c.sameBounds(fs, gs, f, g)
+}
+
+// invArray returns the type of a Java method's array parameter, T[], which
+// Kotlin sees as Array<(out) T>!, as Array<T>!: an override may declare
+// either.
+func invArray(t types.Type) types.Type {
+	if !t.P || t.K != types.Class || t.C != types.ArrayClass || t.A.Get(0).V != types.Out {
+		return t
+	}
+	return types.GenericType(t.C, []types.Arg{{T: t.A.Get(0).T}}).Platform()
 }
 
 // sameBounds reports whether the type parameters of methods f and g,
@@ -1633,7 +1644,7 @@ func primDesc(t types.Type) string {
 // and else a getter with its name is called, Calendar's getTime() for
 // calendar.time.
 func (c *Checker) visibleField(f *types.VarSym) bool {
-	return f != nil && (!f.Protected || c.inSubclass(f.Owner))
+	return f != nil && (!f.Protected || c.inSubclass(f.Owner)) && (!f.PackagePrivate || c.samePackage(f.Owner))
 }
 
 func instanceField(cls *types.ClassSym, name string) *types.VarSym {

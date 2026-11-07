@@ -175,6 +175,9 @@ func (c *Checker) inside(cls *types.ClassSym) bool {
 // program's by its visibility, a protected one of the class path's in
 // subclasses of its class.
 func (c *Checker) funVisible(f *types.FunSym) bool {
+	if f.PackagePrivate {
+		return c.samePackage(f.Owner)
+	}
 	v := memberVisibility(f)
 	if v == syntax.Public {
 		return true

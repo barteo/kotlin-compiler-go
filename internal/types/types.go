@@ -363,6 +363,9 @@ type VarSym struct {
 	// Protected is set on a protected field of a Java class, which only
 	// code in its subclasses sees.
 	Protected bool
+	// PackagePrivate is set on a package-private field of a Java class,
+	// which only code in its package sees.
+	PackagePrivate bool
 	// InheritsProtected is set on an override declared without a
 	// visibility of a protected property: its accessors are protected.
 	InheritsProtected bool
@@ -585,6 +588,9 @@ type FunSym struct {
 	// Inheritance.
 	Final     bool // can't be overridden
 	Protected bool // a protected Java or Kotlin member, for subclasses only
+	// PackagePrivate is set on a package-private Java method or
+	// constructor, which only code in its package sees.
+	PackagePrivate bool
 	// Private is set on the program's private functions, accessors and
 	// constructors, which are private on the JVM. As kotlinc does, other
 	// classes call a function through a static accessor, access$name, and
@@ -797,6 +803,9 @@ type ClassSym struct {
 	Abstract  bool // an abstract class or an interface: it can't be instantiated
 	Final     bool // can't be subclassed
 	Private   bool // not public
+	// PackagePrivate is set on a Java class that isn't public, which only
+	// code in its package sees, as its package-private members.
+	PackagePrivate bool
 	// Internal is set on a Kotlin class that is internal to its module,
 	// with Private: code under @Suppress("INVISIBLE_REFERENCE") may use it.
 	Internal   bool

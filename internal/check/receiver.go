@@ -125,7 +125,15 @@ func (c *Checker) headerThis(x *syntax.This, r *implicitRecv) *types.ClassSym {
 	}
 	// Then the objects in the static scope around: the enclosing
 	// classes' companions, their superclasses', and enclosing objects.
-	if objs := c.scopeObjects(); len(objs) > 0 {
+	// An object's own instance doesn't exist yet, so this is an outer
+	// object's if there is one.
+	objs := c.scopeObjects()
+	for _, obj := range objs {
+		if obj != c.staticCls {
+			return obj
+		}
+	}
+	if len(objs) > 0 {
 		return objs[0]
 	}
 	return nil
@@ -162,6 +170,8 @@ func (c *Checker) recvMember(x *syntax.Ident) (types.Type, bool) {
 			continue
 		}
 		c.capture(r.sym, r.depth)
+		old := x.Member
+		c.onUndo(func() { x.Member = old })
 		x.Member = m
 		return t, true
 	}
@@ -232,10 +242,25 @@ func (c *Checker) recvCall(x *syntax.Call, id *syntax.Ident) bool {
 		if t := c.scope.narrowed(r.sym); !c.hasFun(t, id.Name, x) && !c.hasFunProp(t, id.Name, x) && !c.extPropInvoked(m, t, c.classOf(t), x) {
 			continue
 		}
-		x.Fun = m
+		c.rewriteFun(x, m)
 		return true
 	}
 	return false
+}
+
+// rewriteFun makes m call x's function.
+func (c *Checker) rewriteFun(x *syntax.Call, m syntax.Expr) {
+	c.rewrite(&x.Fun, m)
+}
+
+// rewrite replaces the expression *p of the tree with e. A trial's
+// rewrite is undone: an object expression's receivers, which e may refer
+// to, are declared again after it.
+func (c *Checker) rewrite(p *syntax.Expr, e syntax.Expr) {
+	if old := *p; old != e {
+		c.onUndo(func() { *p = old })
+		*p = e
+	}
 }
 
 // hasFun reports whether a receiver of type t has a member or extension

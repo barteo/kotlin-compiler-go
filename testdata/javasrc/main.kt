@@ -1,6 +1,8 @@
 import app.Named
 import app.Square
 import text.StaticCalls
+import util.Events
+import util.Flags
 import util.Registry
 
 // The module's Java classes, which kc reads from their sources.
@@ -43,4 +45,9 @@ fun main() {
     println(named.label())
     widgets()
     println(StaticCalls.all())
+    println(Events().describe())
+    val flags = Flags()
+    flags.isEvent = true
+    flags.isReady = false
+    println("${flags.isEvent} ${flags.isReady}")
 }
