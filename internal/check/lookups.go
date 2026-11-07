@@ -188,6 +188,9 @@ func (c *Checker) noteName(name string) {
 // noteClassifier reports a simple name of a type or a qualifier looked up
 // in the scopes around the code, and the class it names, if any.
 func (c *Checker) noteClassifier(name string) {
+	if !c.recordsLookups() {
+		return
+	}
 	c.noteName(name)
 	k := c.nestedClassifier(name)
 	if k == (classifier{}) {

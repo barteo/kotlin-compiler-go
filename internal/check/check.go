@@ -763,7 +763,7 @@ func CheckOptions(ctx context.Context, files []*syntax.File, lib *Library, jobs 
 		})
 	}
 
-	optInErrors(checkers)
+	optInErrors(checkers, checked)
 	localClassNames(checkers)
 	var errs []*syntax.Error
 	for _, c := range checked {

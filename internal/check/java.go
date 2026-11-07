@@ -63,6 +63,12 @@ type caches struct {
 	supers  sync.Map // superKey -> superResult
 	inters  sync.Map // interKey -> types.Type, see intersect
 	methods sync.Map // methodsKey -> []*types.FunSym
+	nested  sync.Map // nestedKey -> *types.ClassSym, see nestedOf
+}
+
+type nestedKey struct {
+	cls  *types.ClassSym
+	name string
 }
 
 // cache returns the caches for a result computed from ts: the library's
@@ -840,7 +846,18 @@ func (c *Checker) nestedOf(cls *types.ClassSym, name string) *types.ClassSym {
 	if isEnumEntry(cls, name) {
 		return nil // Foo.FOO is the entry, not its class Foo$FOO
 	}
-	return c.u.ext.class(cls.Name + "$" + name)
+	// A class path class's nested classes are the library's, unless the
+	// class path has sources, whose classes are the program's.
+	t := c.u.ext
+	key := nestedKey{cls, name}
+	if n, ok := t.nested.Load(key); ok {
+		return n.(*types.ClassSym)
+	}
+	n := t.class(cls.Name + "$" + name)
+	if n == nil && (t.cp == nil || !t.cp.HasSources()) || n != nil && n.External {
+		t.nested.Store(key, n)
+	}
+	return n
 }
 
 // findClass resolves a simple class name in Kotlin's order: explicit

@@ -251,7 +251,10 @@ func (t *classTable) timed(start time.Time, n int) {
 // functionArity returns n for the class pkg+"FunctionN", such as
 // kotlin/jvm/functions/Function1 or kotlin/Function1.
 func functionArity(name, pkg string) (int, bool) {
-	s, ok := strings.CutPrefix(name, pkg+"Function")
+	s, ok := strings.CutPrefix(name, pkg)
+	if ok {
+		s, ok = strings.CutPrefix(s, "Function")
+	}
 	if !ok {
 		return 0, false
 	}

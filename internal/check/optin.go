@@ -33,8 +33,9 @@ import (
 
 // optInErrors reports the program's uses of declarations that need opt-in
 // or are deprecated with level ERROR or HIDDEN, and errors in the markers
-// and the version strings of @SinceKotlin and the like.
-func optInErrors(checkers []*Checker) {
+// and the version strings of @SinceKotlin and the like, in the checked
+// files; the markers come from all.
+func optInErrors(checkers, checked []*Checker) {
 	if len(checkers) == 0 {
 		return
 	}
@@ -43,7 +44,7 @@ func optInErrors(checkers []*Checker) {
 	for _, c := range checkers {
 		o.collect(c.file.Decls)
 	}
-	for _, c := range checkers {
+	for _, c := range checked {
 		w := &optWalker{o: o, c: c, writes: map[syntax.Expr]bool{}}
 		w.push(c.file.Annotations)
 		w.annotationErrors(c.file.Annotations)
