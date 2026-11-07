@@ -9,21 +9,23 @@
 // LIBS_FILE lists the module's libraries, one per line. The symbol
 // processors are found on the class path with ServiceLoader. System
 // properties: ksp.backend (the KSP fork's backend, kc or aa),
-// ksp.languageVersion (default 2.4; stock KSP 2.3.x's needs 2.3), and
+// ksp.languageVersion (default 2.4; stock KSP 2.3.x's needs 2.3),
 // jfr.from=N, which records execution samples from run N on into
-// bench.jfr (see Classify.java).
+// bench.jfr (see Classify.java), and bench.dump=FILE, which writes what
+// the processors can see to FILE (DumpProcessor; not for timing).
 //
 // It is built against the KSP fork (jvm/kc-aa/build.sh) and against stock
 // KSP; bench/ksp/run.sh runs both.
 import com.google.devtools.ksp.impl.KotlinSymbolProcessing
+import com.google.devtools.ksp.isLocal
 import com.google.devtools.ksp.processing.KSPJvmConfig
 import com.google.devtools.ksp.processing.KSPLogger
 import com.google.devtools.ksp.processing.Resolver
 import com.google.devtools.ksp.processing.SymbolProcessor
 import com.google.devtools.ksp.processing.SymbolProcessorEnvironment
 import com.google.devtools.ksp.processing.SymbolProcessorProvider
-import com.google.devtools.ksp.symbol.KSAnnotated
-import com.google.devtools.ksp.symbol.KSNode
+import com.google.devtools.ksp.symbol.*
+import com.google.devtools.ksp.visitor.KSTopDownVisitor
 import java.io.File
 import java.nio.file.Files
 import java.time.Duration
@@ -79,6 +81,152 @@ class TimedProcessor(private val sp: SymbolProcessor, private val times: Times) 
     override fun onError() = sp.onError()
 }
 
+/**
+ * With -Dbench.dump=FILE, DumpProcessor runs beside the processors and
+ * writes, for every node a KSTopDownVisitor reaches from getAllFiles, what
+ * the exhaustive processor asks of it: kind, origin, location, names,
+ * modifiers, resolved types, overridees and argument values, one line per
+ * node, sorted. Two backends that agree write the same file. It is for
+ * conformance runs only, never for timing.
+ */
+class DumpProvider(private val file: File) : SymbolProcessorProvider {
+    override fun create(environment: SymbolProcessorEnvironment): SymbolProcessor = DumpProcessor(file)
+}
+
+class DumpProcessor(private val file: File) : SymbolProcessor {
+    private val lines = mutableListOf<String>()
+
+    override fun process(resolver: Resolver): List<KSAnnotated> {
+        val v = DumpVisitor(lines)
+        resolver.getAllFiles().forEach { it.accept(v, Unit) }
+        return emptyList()
+    }
+
+    override fun finish() {
+        lines.sort()
+        file.writeText(lines.joinToString("\n", postfix = "\n"))
+    }
+}
+
+private fun loc(n: KSNode): String = when (val l = runCatching { n.location }.getOrElse { return "!throws" }) {
+    is FileLocation -> "${File(l.filePath).name}:${l.lineNumber}"
+    else -> "-"
+}
+
+private fun ty(t: KSType): String =
+    (if (t.isError) "!" else "") + t.toString() + "/" + (t.declaration.qualifiedName?.asString() ?: t.declaration.simpleName.asString())
+
+private fun qn(d: KSDeclaration?): String = d?.let { it.qualifiedName?.asString() ?: ("<" + it.simpleName.asString() + ">") } ?: "-"
+
+private fun value(v: Any?): String = when (v) {
+    null -> "null"
+    is KSType -> ty(v)
+    is KSDeclaration -> qn(v)
+    is KSAnnotation -> "@" + v.shortName.asString()
+    is List<*> -> v.joinToString(",", "[", "]") { value(it) }
+    is Array<*> -> v.joinToString(",", "[", "]") { value(it) }
+    else -> v.toString()
+}
+
+private fun safe(f: () -> Any?): String = try {
+    f().toString()
+} catch (e: Exception) {
+    "!throws"
+}
+
+class DumpVisitor(private val lines: MutableList<String>) : KSTopDownVisitor<Unit, Unit>() {
+    override fun defaultHandler(node: KSNode, data: Unit) {}
+
+    // An exception KSP throws is part of what a processor sees: it is
+    // written, as !throws, in place of the description. (Its class isn't:
+    // KSP 2.3.6 and the 2.3.9 fork throw different ones for the same thing.)
+    private fun emit(node: KSNode, kind: String, what: () -> String) {
+        val w = try {
+            what()
+        } catch (e: Exception) {
+            "!throws"
+        }
+        lines += "${loc(node)} $kind ${node.origin} $w"
+    }
+
+    override fun visitAnnotation(annotation: KSAnnotation, data: Unit) {
+        emit(annotation, "anno") { "${annotation.shortName.asString()} ${annotation.useSiteTarget}" }
+        super.visitAnnotation(annotation, data)
+    }
+
+    override fun visitClassDeclaration(classDeclaration: KSClassDeclaration, data: Unit) {
+        val c = classDeclaration
+        emit(c, "class") { "${qn(c)} ${c.classKind} companion=${c.isCompanionObject} ${c.modifiers.sorted()} " +
+            "parent=${qn(c.parentDeclaration)} star=${ty(c.asStarProjectedType())} ctor=${c.primaryConstructor != null}" }
+        super.visitClassDeclaration(classDeclaration, data)
+    }
+
+    override fun visitClassifierReference(reference: KSClassifierReference, data: Unit) {
+        emit(reference, "ref") { reference.referencedName() }
+        super.visitClassifierReference(reference, data)
+    }
+
+    override fun visitFile(file: KSFile, data: Unit) {
+        lines += "${file.fileName} file ${file.packageName.asString()}"
+        super.visitFile(file, data)
+    }
+
+    override fun visitFunctionDeclaration(function: KSFunctionDeclaration, data: Unit) {
+        val f = function
+        emit(f, "fun") { "${qn(f)} ${safe { f.functionKind }} abstract=${f.isAbstract} ${f.modifiers.sorted()} " +
+            "parent=${qn(f.parentDeclaration)} overridee=${safe { qn(f.findOverridee()) }}" }
+        super.visitFunctionDeclaration(function, data)
+    }
+
+    override fun visitPropertyAccessor(accessor: KSPropertyAccessor, data: Unit) {
+        emit(accessor, "accessor") { "${qn(accessor.receiver)} ${accessor.modifiers.sorted()}" }
+        super.visitPropertyAccessor(accessor, data)
+    }
+
+    override fun visitPropertyDeclaration(property: KSPropertyDeclaration, data: Unit) {
+        val p = property
+        emit(p, "prop") {
+            val extra = if (!p.isLocal()) " mutable=${p.isMutable} delegated=${p.isDelegated()} overridee=${safe { qn(p.findOverridee()) }}" else " local"
+            "${qn(p)} ${p.modifiers.sorted()} parent=${qn(p.parentDeclaration)}$extra"
+        }
+        super.visitPropertyDeclaration(property, data)
+    }
+
+    override fun visitTypeAlias(typeAlias: KSTypeAlias, data: Unit) {
+        emit(typeAlias, "alias") { "${qn(typeAlias)} ${typeAlias.name.asString()}" }
+        super.visitTypeAlias(typeAlias, data)
+    }
+
+    override fun visitTypeArgument(typeArgument: KSTypeArgument, data: Unit) {
+        emit(typeArgument, "targ") { typeArgument.variance.toString() }
+        super.visitTypeArgument(typeArgument, data)
+    }
+
+    override fun visitTypeParameter(typeParameter: KSTypeParameter, data: Unit) {
+        val t = typeParameter
+        emit(t, "tparam") { "${t.name.asString()} ${t.variance} reified=${t.isReified}" }
+        super.visitTypeParameter(typeParameter, data)
+    }
+
+    override fun visitTypeReference(typeReference: KSTypeReference, data: Unit) {
+        emit(typeReference, "type") { ty(typeReference.resolve()) }
+        super.visitTypeReference(typeReference, data)
+    }
+
+    override fun visitValueArgument(valueArgument: KSValueArgument, data: Unit) {
+        val a = valueArgument
+        emit(a, "arg") { "${a.name?.asString()} spread=${a.isSpread} ${value(a.value)}" }
+        super.visitValueArgument(valueArgument, data)
+    }
+
+    override fun visitValueParameter(valueParameter: KSValueParameter, data: Unit) {
+        val p = valueParameter
+        emit(p, "param") { "${p.name?.asString()} crossinline=${p.isCrossInline} noinline=${p.isNoInline} " +
+            "val=${p.isVal} var=${p.isVar} vararg=${p.isVararg} default=${p.hasDefault}" }
+        super.visitValueParameter(valueParameter, data)
+    }
+}
+
 object BenchLogger : KSPLogger {
     var errors = 0
     override fun logging(message: String, symbol: KSNode?) {}
@@ -121,7 +269,8 @@ fun main(args: Array<String>) {
             rec.start()
         }
         val out = File(outBase, "out")
-        val providers = ServiceLoader.load(SymbolProcessorProvider::class.java).map { TimedProvider(it) }
+        val providers = ServiceLoader.load(SymbolProcessorProvider::class.java).map { TimedProvider(it) } +
+            listOfNotNull(System.getProperty("bench.dump")?.let { DumpProvider(File(it)) })
         if (providers.isEmpty()) {
             System.err.println("KspBench: no SymbolProcessorProvider on the class path")
             exitProcess(2)
@@ -129,7 +278,7 @@ fun main(args: Array<String>) {
         val config = KSPJvmConfig.Builder().apply {
             moduleName = "main"
             sourceRoots = srcs
-            javaSourceRoots = emptyList()
+            javaSourceRoots = srcs // as KSP's Gradle plugin passes them: kc reads Java files from these only
             commonSourceRoots = emptyList()
             libraries = libs
             friends = emptyList()
@@ -152,7 +301,13 @@ fun main(args: Array<String>) {
         times = t
         phase = "setup"
         t.start = System.nanoTime()
-        val code = KotlinSymbolProcessing(config, providers, BenchLogger).execute()
+        val code = try {
+            KotlinSymbolProcessing(config, providers, BenchLogger).execute()
+        } catch (e: Throwable) {
+            // KSP leaves non-daemon threads behind, which would keep the JVM.
+            e.printStackTrace()
+            exitProcess(1)
+        }
         val end = System.nanoTime()
         phase = "idle"
         val files = out.walkTopDown().filter { it.isFile && !it.path.contains("/caches/") }.count()
@@ -179,7 +334,9 @@ fun main(args: Array<String>) {
     fun median(l: List<Long>) = l.drop(l.size / 2).sorted().let { ms(it[it.size / 2]) }
     println(
         "summary $backend runs=$runs cold=${ms(totals[0])} warm=${median(totals)} " +
-            "warm-setup=${median(setups)} warm-process=${median(processes)} min=${ms(totals.min())}",
+            "warm-setup=${median(setups)} warm-process=${median(processes)} min=${ms(totals.min())}" +
+            // KSP's BenchRunner: Hot is the fastest of 3 runs after 3 warm-ups.
+            (if (runs >= 6) " hot=${ms(totals.subList(3, 6).min())}" else ""),
     )
     // Stock KSP leaves non-daemon threads behind.
     exitProcess(0)

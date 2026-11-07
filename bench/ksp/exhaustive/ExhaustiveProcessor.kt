@@ -14,6 +14,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+// From github.com/google/ksp, benchmark/exhaustive-processor, with the
+// changes marked "kc:" below so that it runs on KSP2: upstream ran it on
+// KSP1 only, and KSP2 (2.3.6, and the 2.3.9 fork) throws for some of what it
+// asks. Each change catches one such exception, where it is thrown.
 import com.google.devtools.ksp.isLocal
 import com.google.devtools.ksp.processing.CodeGenerator
 import com.google.devtools.ksp.processing.Resolver
@@ -105,7 +109,8 @@ class ExhaustiveProcessor(
         }
 
         override fun visitFunctionDeclaration(function: KSFunctionDeclaration, data: Unit) {
-            function.functionKind
+            // kc: KSP2 throws "Unexpected location LOCAL" for a local function.
+            runCatching { function.functionKind }
             function.isAbstract
             function.findOverridee()
             super.visitFunctionDeclaration(function, data)
@@ -118,7 +123,12 @@ class ExhaustiveProcessor(
 
         override fun visitNode(node: KSNode, data: Unit) {
             collectedNodes.add(node.origin.toString())
-            collectedNodes.add(node.location.toString())
+            // kc: KSP2 (2.3.6, and the 2.3.9 fork) throws IndexOutOfBounds
+            // for the location of an enum or annotation class's implicit
+            // supertype (Enum<E>, Annotation): KSTypeReferenceResolvedImpl
+            // indexes superTypeListEntries, which is empty. Upstream ran this
+            // on KSP1 only.
+            collectedNodes.add(runCatching { node.location }.getOrNull().toString())
             super.visitNode(node, data)
         }
 
