@@ -101,7 +101,9 @@ type gen struct {
 	// their types, for typeOf.
 	reified      map[string]string
 	reifiedTypes map[string]types.Type
-	prefix       string // lambda methods are named prefix$0, prefix$1, ...
+	// serializers are the call's syntax.Call.Serializers.
+	serializers map[string]syntax.Expr
+	prefix      string // lambda methods are named prefix$0, prefix$1, ...
 	// noLines is positive in the copy of an inline function, whose code
 	// keeps the line of the call: line numbers aren't recorded.
 	noLines int

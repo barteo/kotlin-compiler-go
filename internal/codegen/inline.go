@@ -219,9 +219,10 @@ func (g *gen) inline(b *inline.Body, x *syntax.Call) {
 		return // the call is never reached
 	}
 	if x != nil {
-		saved, savedTypes := g.reified, g.reifiedTypes
+		saved, savedTypes, savedSers := g.reified, g.reifiedTypes, g.serializers
 		g.reified, g.reifiedTypes = g.reifiedClasses(x)
-		defer func() { g.reified, g.reifiedTypes = saved, savedTypes }()
+		g.serializers = x.Serializers
+		defer func() { g.reified, g.reifiedTypes, g.serializers = saved, savedTypes, savedSers }()
 	}
 	in := &inliner{g: g, c: c, b: b, x: x, locals: map[localKey]int{}, refs: map[int]cf.VType{}, reified: g.reified,
 		labels: map[int]*cf.Label{}, pos: map[int]int{},
@@ -446,6 +447,48 @@ func (in *inliner) copy() {
 	}
 }
 
+// serializerCall returns the index of the call of serializer<T>(), or
+// of a module's serializer<T>(), as kotlinc compiles it with the
+// serialization plugin's marker, whose typeOf<T>() placeholder is at
+// index i, if T's serializer is known; else -1. pop is set if the
+// module is on the stack below the placeholder.
+func (in *inliner) serializerCall(i int, r inline.Reified) (end int, pop bool) {
+	b := in.b
+	if r.Nullable || in.g.serializers[r.Param] == nil || i+3 >= len(b.Insns) {
+		return -1, false
+	}
+	name, magic := &b.Insns[i+1], &b.Insns[i+2]
+	if name.Op != cf.LDC && name.Op != cf.LDC_W || name.Const != cf.ConstString ||
+		magic.Op != cf.INVOKESTATIC || magic.Owner != "kotlin/jvm/internal/MagicApiIntrinsics" || magic.Name != "voidMagicApiCall" {
+		return -1, false
+	}
+	end = i + 3
+	var desc string
+	switch name.Str {
+	case "kotlinx.serialization.serializer.simple":
+		desc = "(Lkotlin/reflect/KType;)Lkotlinx/serialization/KSerializer;"
+	case "kotlinx.serialization.serializer.withModule":
+		desc = "(Lkotlinx/serialization/modules/SerializersModule;Lkotlin/reflect/KType;)Lkotlinx/serialization/KSerializer;"
+		// The module is below, or loaded and swapped below.
+		pop = true
+		if i+5 < len(b.Insns) && b.Insns[i+3].Op == cf.ALOAD && b.Insns[i+4].Op == cf.SWAP {
+			end, pop = i+5, false
+		}
+	default:
+		return -1, false
+	}
+	for k := i + 1; k <= end; k++ {
+		if b.Frames[b.Insns[k].Off] != nil || b.Drop[k] {
+			return -1, false
+		}
+	}
+	call := &b.Insns[end]
+	if call.Op != cf.INVOKESTATIC || call.Owner != "kotlinx/serialization/SerializersKt" || call.Name != "serializer" || call.Desc != desc {
+		return -1, false
+	}
+	return end, pop
+}
+
 // insn copies the instruction at index i.
 func (in *inliner) insn(i int) {
 	b, c := in.b, in.c
@@ -516,6 +559,18 @@ func (in *inliner) insn(i int) {
 		}
 		switch r.Kind {
 		case inline.TypeOf:
+			if end, pop := in.serializerCall(i, r); end > 0 {
+				// serializer<T>() of a T whose serializer is known: the
+				// plugin's serializer.
+				if pop {
+					c.Op(cf.POP)
+				}
+				in.g.expr(in.g.serializers[r.Param])
+				for k := i + 1; k <= end; k++ {
+					in.skip[k] = true
+				}
+				return
+			}
 			t := in.g.reifiedTypes[r.Param]
 			if r.Nullable {
 				t = t.Nullable()

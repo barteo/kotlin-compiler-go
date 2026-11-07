@@ -1300,8 +1300,13 @@ type Call struct {
 	// Value is set by the checker on a call that a compiler plugin
 	// replaces with an expression, which is generated instead: the
 	// serialization plugin's serializer<T>() of a known T.
-	Value    Expr
-	trailing bool // has a trailing lambda, or passes the last argument last
+	Value Expr
+	// Serializers are set by the checker on a call of a library's inline
+	// function with reified type parameters, by their names: the
+	// serializers of their type arguments, which its copied bytecode's
+	// serializer<T>() becomes, as the serialization plugin replaces it.
+	Serializers map[string]Expr
+	trailing    bool // has a trailing lambda, or passes the last argument last
 }
 
 // Trailing reports whether the last argument is passed to the last

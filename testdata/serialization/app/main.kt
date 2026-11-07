@@ -2,6 +2,10 @@ package app
 
 import kotlinx.serialization.InternalSerializationApi
 import kotlinx.serialization.KSerializer
+import kotlinx.serialization.descriptors.buildClassSerialDescriptor
+import kotlinx.serialization.descriptors.element
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.serializer
 import lib.LibColor
@@ -125,6 +129,9 @@ fun main() {
     check("parcel", Parcel.serializer(), Parcel(Sticker("box"), lib.Weight(250), lib.Weight(5)))
     println(serializer<List<Sticker>?>().descriptor)
     println(Json.Default.encodeToString(serializer<List<Tag>?>(), listOf(Tag("a"), Tag("b"))))
+    println(buildClassSerialDescriptor("app.Tags") { element<List<Tag>?>("tags") }.getElementDescriptor(0))
+    println(Json.Default.encodeToString<Tag>(Tag("c")))
+    println(Json.Default.decodeFromString<List<Tag>>("[\"<d>\"]"))
     println(Json.Default.decodeFromString(Encoded.serializer(), """{"never":["y"],"body":5}""").let { "$it ${it.body}" })
     check("pet", Pet.serializer(), Pet.Zebra(3))
     check("pet nested", Pet.serializer(), Pet.Wild.Fox(1))

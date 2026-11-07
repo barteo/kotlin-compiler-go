@@ -1125,25 +1125,50 @@ func (c *Checker) serializerOf(x *syntax.Call, f *types.FunSym) {
 		f.Facade != "kotlinx/serialization/SerializersKt" {
 		return
 	}
-	t := x.Reified[0]
-	if t.HasParams() || t.HasVars() {
+	x.Value = c.knownSerializer(x.P, x.Reified[0])
+}
+
+// reifiedSerializers sets x.Serializers, if f is a library's inline
+// function, whose bytecode's serializer<T>() calls kc replaces when it
+// copies them.
+func (c *Checker) reifiedSerializers(x *syntax.Call, f *types.FunSym) {
+	if !c.u.serialization || f.Decl != nil || x.Value != nil {
 		return
+	}
+	for i, tp := range f.TypeParams {
+		if !tp.Reified || i >= len(x.Reified) {
+			continue
+		}
+		if v := c.knownSerializer(x.P, x.Reified[i]); v != nil {
+			if x.Serializers == nil {
+				x.Serializers = map[string]syntax.Expr{}
+			}
+			x.Serializers[tp.Name] = v
+		}
+	}
+}
+
+// knownSerializer returns the checked expression of the serializer of
+// type t that the plugin finds, or nil.
+func (c *Checker) knownSerializer(p syntax.Pos, t types.Type) syntax.Expr {
+	if t.HasParams() || t.HasVars() {
+		return nil
 	}
 	s := c.serialSerializer(t.NonNull())
 	if s == "" {
-		return
+		return nil
 	}
-	members, err := parseMembers(c.file.Path, x.P, "val x = "+serialNullable(t, s)+"\n")
+	members, err := parseMembers(c.file.Path, p, "val x = "+serialNullable(t, s)+"\n")
 	if err != nil {
-		return
+		return nil
 	}
 	v := members[0].(*syntax.PropDecl).Init
 	n := len(c.errs)
 	if c.expr(v, noWant); len(c.errs) > n {
 		c.errs = c.errs[:n]
-		return
+		return nil
 	}
-	x.Value = v
+	return v
 }
 
 // serialSerializer returns the Kotlin of a serializer of the values of
