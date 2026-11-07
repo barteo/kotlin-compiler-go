@@ -1551,7 +1551,11 @@ func (c *Checker) runLambdas(s *system, readyOnly bool) {
 	if !readyOnly {
 		c.readyFirst(s)
 	}
-	for _, pl := range s.lambdas {
+	// A lambda's tail call merges its own lambdas into s (see checkTail),
+	// which run with the others: buildList's in run { one(buildList {
+	// add(1) }) }.
+	for i := 0; i < len(s.lambdas); i++ {
+		pl := s.lambdas[i]
 		if tv := s.unfixedVar(s.apply(pl.p)); tv != nil && !readyOnly {
 			if u, ok := s.funcUpper(tv); ok {
 				s.addUpper(tv, u)
@@ -1711,11 +1715,20 @@ func (c *Checker) stubInference(s *system, l *syntax.Lambda, params []types.Type
 	for _, v := range vars {
 		c.stubs[v] = r
 	}
-	clean := true
+	// A lambda of the group that doesn't check with the variables
+	// unfixed, as one calling Entry(it) whose constructors they make
+	// ambiguous, takes them from the others: what it recorded is dropped.
+	clean := false
 	for _, sl := range group {
-		if clean = c.stubCheck(s, sl, r); !clean {
-			break
+		nc, nj, ne := len(r.cons), len(r.joined), len(r.extra)
+		if c.stubCheck(s, sl, r) {
+			clean = true
+			continue
 		}
+		for _, v := range r.extra[ne:] {
+			delete(c.stubs, v)
+		}
+		r.cons, r.joined, r.extra = r.cons[:nc], r.joined[:nj], r.extra[:ne]
 	}
 	for _, v := range append(vars, r.extra...) {
 		delete(c.stubs, v)

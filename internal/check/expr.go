@@ -764,7 +764,11 @@ func (c *Checker) binary(x *syntax.Binary, want types.Type, allowRange bool) typ
 		xt := c.safeUnit(x.X, c.value(x.X, xw))               // x?.f() ?: y for a Unit f
 		nn, nonNull := len(c.scope.narrows), c.notNullOf(x.X) // the right side's casts may not run
 		var yt types.Type
-		if want.K == types.Invalid && xt.K != types.Invalid {
+		if lt := xt.Flex().NonNull(); intLitExpr(x.Y) && (lt == types.LongType || lt == types.ShortType || lt == types.ByteType) {
+			// An integer literal is of the left side's type: l ?: 0 is
+			// a Long for a Long? l, whatever is expected.
+			yt = c.value(x.Y, lt)
+		} else if want.K == types.Invalid && xt.K != types.Invalid {
 			// The right side expects the left's type, unless it can't be
 			// one: as kotlinc's K is a supertype of both, ktor's
 			// kotlinType?.let { serializer(it) } ?: type.serializer() is a
@@ -772,7 +776,13 @@ func (c *Checker) binary(x *syntax.Binary, want types.Type, allowRange bool) typ
 			// A call of a supertype's class expects that supertype:
 			// foo ?: listOf() for a MutableList<String>? foo is a
 			// List<String>.
+			// A mutable collection's is the read-only one, which the
+			// elvis's type is below: values ?: emptyList() for a
+			// MutableCollection.
 			yw := xt.NonNull()
+			if yw.K == types.Class && yw.C.ReadOnly != nil {
+				yw.C = yw.C.ReadOnly
+			}
 			if cls := c.peekClass(x.Y); cls != nil && yw.K == types.Class && yw.C != cls {
 				if sup, ok := c.asSuper(yw, cls); ok {
 					yw = sup
@@ -787,6 +797,10 @@ func (c *Checker) binary(x *syntax.Binary, want types.Type, allowRange bool) typ
 		if !ok {
 			c.errorf(x.P, "type mismatch: incompatible types %s and %s", xt.NonNull(), yt)
 			return types.InvalidType
+		}
+		if yt.K == types.Unit && !yt.N && t.K == types.Class && t.C.Name == "kotlin/Unit" && !t.N {
+			// x?.f() ?: g() for Unit f and g is a Unit, as either call is.
+			t = types.UnitType
 		}
 		if c.u.rec != nil {
 			c.u.rec.Elvis(x, c.subtype(xt.NonNull(), yt))
@@ -2118,7 +2132,7 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 				x.Fun = m
 				return c.staticCall(x, m, cls, want, sink)
 			}
-			if obj := c.objectMethods(name, x); obj != nil {
+			if obj := c.objectMethods(name, x); obj != nil && (c.objectTaking(name, x) != nil || !c.importTakes(name, x)) {
 				// A method of an object in scope: f() is Companion.f().
 				m := &syntax.Member{X: objectIdent(obj, fn.P), Name: name}
 				m.P = fn.P
@@ -2203,6 +2217,9 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 			return c.assertCall(x, b, name, want)
 		}
 		cls := c.findClass(name)
+		if alt := c.packageClassTaking(name, cls, x); alt != nil {
+			cls = alt
+		}
 		var fs []*types.FunSym
 		if cls == nil || !constructible(cls) {
 			// A function may have a class's name: kotlin.random.Random(seed).
@@ -2644,6 +2661,52 @@ func (c *Checker) propInvokeFits(name string, x *syntax.Call) bool {
 	}
 	ensureVar(p)
 	return c.invokable(p.Type) && c.localInvokeFits(p.Type, x)
+}
+
+// packageClassTaking returns the class named name of the code's package,
+// if cls, an imported class of that name, has no constructor that may
+// take call x's arguments and it has: as in Kotlin, a call that the
+// explicitly imported class can't take goes to the next level of scope.
+func (c *Checker) packageClassTaking(name string, cls *types.ClassSym, x *syntax.Call) *types.ClassSym {
+	if cls == nil || c.imports[name] != cls {
+		return nil
+	}
+	alt := c.pkg.Classes[name]
+	if alt == nil {
+		path := name
+		if c.file.Package != "" {
+			path = strings.ReplaceAll(c.file.Package, ".", "/") + "/" + name
+		}
+		alt = c.u.ext.class(path)
+	}
+	if alt == nil || alt == cls || !constructible(alt) {
+		return nil
+	}
+	cls.Ensure()
+	alt.Ensure()
+	if !c.anyMayTake(userCtors(alt), x) || hasLambda(x.Args) {
+		return nil
+	}
+	if c.anyMayTake(userCtors(cls), x) {
+		ts := c.argTypes(x)
+		if c.takeTypes(userCtors(cls), x, ts) || !c.takeTypes(userCtors(alt), x, ts) {
+			return nil
+		}
+	}
+	return alt
+}
+
+// importTakes reports whether a function that the file imports, or one
+// of the package or the class path, may take call x's arguments, which
+// the methods of the objects in scope named so give way to when none of
+// them can.
+func (c *Checker) importTakes(name string, x *syntax.Call) bool {
+	for _, mi := range c.memberImportsOf(name) {
+		if c.anyMayTake(c.javaMethods(mi.owner, mi.name), x) {
+			return true
+		}
+	}
+	return c.anyMayTake(c.topFuns(name), x) || c.anyMayTake(c.kotlinFuns(name, false), x)
 }
 
 // ctorTakes reports whether a class named name has a constructor that
@@ -3529,9 +3592,18 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 			}
 		}
 		if hasSubj && !single {
-			// is A, is B -> the common supertype of A and B.
+			// is A, is B -> the common supertype of A and B, and, of a
+			// sealed type, none of its other subclasses: a when over it
+			// in the branch needs only is A and is B.
+			n := narrow{recv: subj.recv, sym: subj.sym, t: subjType(), onlyNot: true}
 			if t, ok := c.joinIs(br.Conds); ok && !c.subtype(subjType(), t) && c.subtype(t, subjType()) {
-				whenTrue = append(whenTrue, narrow{recv: subj.recv, sym: subj.sym, t: c.isNarrowed(subjType(), t)})
+				n.t, n.onlyNot = c.isNarrowed(subjType(), t), false
+			}
+			if others := c.sealedOthers(subjType(), br.Conds); others != nil {
+				n.not = &coverage{null: true, classes: others}
+			}
+			if !n.onlyNot || n.not != nil {
+				whenTrue = append(whenTrue, n)
 			}
 		}
 		if br.Guard != nil {
@@ -3661,6 +3733,43 @@ func (c *Checker) joinIs(conds []syntax.WhenCond) (types.Type, bool) {
 		t = j
 	}
 	return t, true
+}
+
+// sealedOthers returns, for a subject of sealed type t and when branch
+// conditions that are all is checks, the subclasses of t's class that none
+// of the checks' classes is or is in: the classes the subject isn't when
+// one of the checks holds. It returns nil for other subjects or
+// conditions.
+func (c *Checker) sealedOthers(t types.Type, conds []syntax.WhenCond) []*types.ClassSym {
+	t = t.Flex().NonNull()
+	if t.K != types.Class || !t.C.Sealed {
+		return nil
+	}
+	var targets []*types.ClassSym
+	for _, cond := range conds {
+		if !cond.Is || cond.Target.K != types.Class {
+			return nil
+		}
+		targets = append(targets, cond.Target.C)
+	}
+	var out []*types.ClassSym
+	var walk func(cls *types.ClassSym)
+	walk = func(cls *types.ClassSym) {
+		for _, s := range cls.Subclasses {
+			switch {
+			case slices.ContainsFunc(targets, func(k *types.ClassSym) bool { return s.IsSubclassOf(k) }):
+			case s.Sealed:
+				walk(s)
+			case !slices.ContainsFunc(targets, func(k *types.ClassSym) bool { return k.IsSubclassOf(s) }):
+				out = append(out, s)
+			}
+		}
+	}
+	walk(t.C)
+	if out == nil {
+		out = []*types.ClassSym{}
+	}
+	return out
 }
 
 // matchesNull reports whether a when branch's conditions on the subject

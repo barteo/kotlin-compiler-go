@@ -4,6 +4,7 @@ import text.StaticCalls
 import util.Events
 import util.Flags
 import util.Registry
+import widget.Panels
 
 // The module's Java classes, which kc reads from their sources.
 const val SIDES = Square.SIDES + 1
@@ -50,4 +51,5 @@ fun main() {
     flags.isEvent = true
     flags.isReady = false
     println("${flags.isEvent} ${flags.isReady}")
+    println(Panels(text.Panel(listOf("a", "b"), "t")).build())
 }

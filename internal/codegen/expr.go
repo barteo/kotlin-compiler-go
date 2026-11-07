@@ -1006,6 +1006,8 @@ func (g *gen) elvis(x *syntax.Binary) {
 	g.code.Place(nonNull)
 	g.grouped(x.Groups, g.siteKey(x.P, "elvis", 1), func() {})
 	switch {
+	case res.K == types.Unit:
+		g.pop(xt) // the left side's kotlin.Unit
 	case res.IsPrimitive() && xt.K == types.TypeParam:
 		g.coerce(xt.NonNull(), res) // x ?: 0 for T : Int?
 	case res.IsPrimitive():

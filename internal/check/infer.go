@@ -443,11 +443,13 @@ func (s *system) complete() {
 			// a known lower bound.
 			score := 0
 			allProper := true
+			nested := false
 			for _, l := range tv.lower {
 				if s.proper(l) {
 					score = 2
 				} else {
 					allProper = false
+					nested = nested || !s.isVar(l)
 				}
 			}
 			// An upper bound that is another variable, as T2 in T1 <: T2,
@@ -468,6 +470,11 @@ func (s *system) complete() {
 			}
 			if allProper && (varUppers == 0 || len(tv.upper) > varUppers || len(tv.lower) > 0 || len(tv.lits) > 0) {
 				score += 3
+			}
+			if nested && score > 0 {
+				// A lower bound with variables in it, as B<T2> of
+				// listOf(a(), b()), waits for them: its type then counts.
+				score--
 			}
 			if score > best {
 				pick, best = tv, score
