@@ -60,6 +60,34 @@ func TestPackage(t *testing.T) {
 	}
 }
 
+// TestCtorAbbreviations checks that the inferred type of a call of a
+// default import's typealias's constructor keeps the typealias, as FIR's
+// does, and of the class's doesn't.
+func TestCtorAbbreviations(t *testing.T) {
+	m := updateWith(t, withJDK(t), `package p
+val a = ArrayList<Int>()
+val b = java.util.ArrayList<Int>()
+fun f() {
+    val c = HashMap<String, Int>()
+    val d = kotlin.collections.HashMap<String, Int>()
+}
+`)
+	defer m.Close()
+	ds := m.Files[0].Decls
+	var sb strings.Builder
+	for _, d := range append(ds[:2:2], ds[2].Locals...) {
+		sb.WriteString(d.Name + ": " + libType(d.Type) + "\n")
+	}
+	want := `a: java/util/ArrayList<kotlin/Int> (as kotlin/collections/ArrayList<kotlin/Int>)
+b: java/util/ArrayList<kotlin/Int>
+c: java/util/HashMap<kotlin/String, kotlin/Int> (as kotlin/collections/HashMap<kotlin/String, kotlin/Int>)
+d: java/util/HashMap<kotlin/String, kotlin/Int> (as kotlin/collections/HashMap<kotlin/String, kotlin/Int>)
+`
+	if got := sb.String(); got != want {
+		t.Errorf("got\n%s\nwant\n%s", got, want)
+	}
+}
+
 func TestAbbreviations(t *testing.T) {
 	m := updateWith(t, withJDK(t), `package p
 typealias S = String

@@ -1225,10 +1225,12 @@ func dispatchOn(cands []callee, obj *types.ClassSym) []callee {
 // checks type arguments and bounds.
 func (c *Checker) recvFits(rt, r types.Type) bool {
 	switch {
-	case r.K == types.Invalid:
-		// In signatures mode, as in FIR, an error type takes an error
-		// type: context.color() for Context.color(), Context unresolved.
-		return c.u.partial && rt.K == types.Invalid
+	case rt.K == types.Invalid || r.K == types.Invalid:
+		// In signatures mode, as in FIR, an error type fits any
+		// receiver and any receiver fits an error type: context.color()
+		// for Context.color(), Context unresolved, and x.isDark() for
+		// Int.isDark(), x's type unresolved.
+		return c.u.partial
 	case types.MayBeNull(rt) && !rt.P && !types.MayBeNull(r):
 		return false
 	case r.IsParam():

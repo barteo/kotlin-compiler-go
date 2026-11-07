@@ -880,3 +880,55 @@ class D(val context: Context) {
 		t.Errorf("types: %v", got)
 	}
 }
+
+// TestInferredLocals checks that a body with a local declaration whose
+// type isn't written is checked, under the signature check, to infer it,
+// as FIR does for KSP's processors (Tachiyomi's destructurings and local
+// vals), and that an inferred error type is named as FIR names it: by
+// the unresolved callee or reference, or the callee's type parameter
+// that wasn't inferred. As in FIR, an error type fits an extension's
+// receiver, and a cast is of its type whatever it casts.
+func TestInferredLocals(t *testing.T) {
+	m := update(t, `package a
+fun Int.isDark(): Boolean = this > 0
+class C {
+    fun f(p: Pair<String, Int>) {
+        val (s, i) = p
+        val n = s.length
+        val u = missing()
+        val v = p.nope
+        val w = gone.apply { }
+        val x = u ?: v
+        fun g() = s
+        val y = gone.pixel.isDark()
+        val z = gone.get() as? C
+    }
+}
+`)
+	defer m.Close()
+	ls := m.Files[0].Decls[1].Members[1].Locals
+	var sb strings.Builder
+	for _, l := range ls {
+		if l.Kind == KindDestructuring {
+			for _, e := range l.Params {
+				fmt.Fprintf(&sb, "%s %s\n", e.Name, typeString(nil, e.Type))
+			}
+			continue
+		}
+		fmt.Fprintf(&sb, "%s %s\n", l.Name, typeString(nil, l.Type))
+	}
+	want := `s kotlin/String
+i kotlin/Int
+n kotlin/Int
+u !missing!
+v !nope!
+w !T!
+x !K!
+g kotlin/String
+y kotlin/Boolean
+z a/C?
+`
+	if got := sb.String(); got != want {
+		t.Errorf("got\n%s\nwant\n%s", got, want)
+	}
+}

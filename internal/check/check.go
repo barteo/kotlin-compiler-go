@@ -2587,16 +2587,50 @@ func (c *Checker) checkSignatures() {
 func (c *Checker) localDeclAnnotations(d syntax.Decl, owner *types.ClassSym) {
 	switch d := d.(type) {
 	case *syntax.FunDecl:
-		c.localStmtAnnotations(d.Body, d.Sym, owner)
+		c.localsOf(d, owner)
 	case *syntax.SecondaryCtor:
 		c.localStmtAnnotations(d.Body, d.Sym, owner)
 	case *syntax.PropDecl:
 		for _, a := range []*syntax.FunDecl{d.Getter, d.Setter} {
-			if a != nil {
-				c.localStmtAnnotations(a.Body, a.Sym, owner)
+			if a != nil && a.Sym != nil {
+				c.localsOf(a, owner)
 			}
 		}
 	}
+}
+
+// localsOf is localDeclAnnotations for a function or an accessor, f: if
+// one of its local declarations has a type to infer, its body is checked,
+// as it would be without Options.Signatures, to infer it.
+func (c *Checker) localsOf(f *syntax.FunDecl, owner *types.ClassSym) {
+	if f.Body != nil && !c.done[f] && inferredLocals(f.Body) {
+		c.checkFun(f, owner)
+		return
+	}
+	c.localStmtAnnotations(f.Body, f.Sym, owner)
+}
+
+// inferredLocals reports whether one of the local declarations written
+// directly in body has a type that isn't written: a variable's, or a
+// local function's with an expression body.
+func inferredLocals(body *syntax.Block) bool {
+	for _, s := range body.Stmts {
+		switch s := s.(type) {
+		case *syntax.VarStmt:
+			if s.Type == nil {
+				return true
+			}
+		case *syntax.Destructure:
+			if slices.Contains(s.Types, nil) {
+				return true
+			}
+		case *syntax.LocalFun:
+			if s.Decl.Ret == nil && s.Decl.ExprBody != nil {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // localStmtAnnotations checks the annotations of the local variables,

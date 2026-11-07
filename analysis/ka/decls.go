@@ -3,6 +3,7 @@ package ka
 import (
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
 	"github.com/barteo/kotlin-compiler-go/internal/types"
@@ -36,8 +37,8 @@ func (b *fileBuilder) decl(d syntax.Decl, owner *syntax.ClassDecl, prefix string
 		md.Params = b.params(d.Params)
 		if d.Sym != nil {
 			md.Type = b.typ(d.Sym.Ret, d.Ret)
-			if md.Type != nil && md.Type.Kind == TypeError && md.Type.Name == "" {
-				md.Type.Name = calleeName(d.ExprBody)
+			if d.Ret == nil {
+				nameError(md.Type, d.ExprBody)
 			}
 		} else {
 			// A local function of a body that wasn't checked (signatures
@@ -70,6 +71,10 @@ func (b *fileBuilder) decl(d syntax.Decl, owner *syntax.ClassDecl, prefix string
 		md.Annotations = append(md.Annotations, b.annotations(d.RecvAnnotations)...)
 		if d.Sym != nil {
 			md.Type = b.typ(d.Sym.Type, d.Type)
+			if d.Type == nil {
+				nameError(md.Type, d.Init)
+				b.ctorAlias(md.Type, d.Init)
+			}
 		} else {
 			md.Type = b.written(d.Type)
 		}
@@ -127,6 +132,10 @@ func (b *fileBuilder) locals(body *syntax.Block) []*Decl {
 			}
 			if s.Sym != nil {
 				md.Type = b.typ(s.Sym.Type, s.Type)
+				if s.Type == nil {
+					nameError(md.Type, s.Init)
+					b.ctorAlias(md.Type, s.Init)
+				}
 			} else {
 				md.Type = b.written(s.Type)
 			}
@@ -600,13 +609,135 @@ func dataMembers(md *Decl, props []*Decl) []*Decl {
 	return append(out, cp)
 }
 
-// calleeName returns the name an unresolved call e calls, which FIR
-// names the error type of an omitted return type after, or "".
-func calleeName(e syntax.Expr) string {
-	if c, ok := e.(*syntax.Call); ok {
-		if id, ok := c.Fun.(*syntax.Ident); ok && c.Sym == nil && c.Ctor == nil {
-			return id.Name
+// retName returns the name of the type function f's declaration names
+// as its return type, for calleeName: what it wrote, or for a function
+// of a class file, the class its descriptor names, by its qualified name.
+func retName(f *types.FunSym) string {
+	if f == nil {
+		return ""
+	}
+	if d, ok := f.Decl.(*syntax.FunDecl); ok {
+		if d.Ret != nil {
+			return d.Ret.Name
 		}
+		return ""
+	}
+	if i := strings.LastIndexByte(f.Desc, ')'); i >= 0 {
+		r := strings.TrimLeft(f.Desc[i+1:], "[")
+		if strings.HasPrefix(r, "L") && strings.HasSuffix(r, ";") {
+			return strings.NewReplacer("/", ".", "$", ".").Replace(r[1 : len(r)-1])
+		}
+	}
+	return ""
+}
+
+// varName is retName for a property, v: its written type, or its
+// getter's.
+func varName(v *types.VarSym) string {
+	if v == nil {
+		return ""
+	}
+	switch d := v.Decl.(type) {
+	case *syntax.PropDecl:
+		if d.Type != nil {
+			return d.Type.Name
+		}
+	case *types.FunSym:
+		return retName(d)
+	}
+	return ""
+}
+
+// ctorAlias gives t, the inferred type of expression e, the typealias
+// that e calls the constructor of, if it is one of the default imports',
+// as FIR's type keeps it: kotlin.collections.ArrayList for ArrayList().
+func (b *fileBuilder) ctorAlias(t *Type, e syntax.Expr) {
+	c, ok := e.(*syntax.Call)
+	if !ok || c.Ctor == nil || t == nil || t.Kind != TypeClass || t.Abbrev != nil {
+		return
+	}
+	var name string
+	switch f := c.Fun.(type) {
+	case *syntax.Ident:
+		name = f.Name
+	case *syntax.Member:
+		name = qualifiedName(f)
+	}
+	if name != "" {
+		t.Abbrev = b.defaultAlias(t, &syntax.TypeRef{Name: name})
+	}
+}
+
+// qualifiedName returns the dotted name m writes, a.b.C, or "" if it
+// isn't one.
+func qualifiedName(m *syntax.Member) string {
+	switch x := m.X.(type) {
+	case *syntax.Ident:
+		return x.Name + "." + m.Name
+	case *syntax.Member:
+		if q := qualifiedName(x); q != "" {
+			return q + "." + m.Name
+		}
+	}
+	return ""
+}
+
+// nameError names t, if it is an unnamed error type, the inferred type of
+// expression e, as FIR names it: see calleeName.
+func nameError(t *Type, e syntax.Expr) {
+	if t != nil && t.Kind == TypeError && t.Name == "" && e != nil {
+		t.Name = calleeName(e)
+	}
+}
+
+// calleeName returns what FIR names the error type of expression e
+// after, or "": the name an unresolved call or reference refers to; the
+// type parameter of a call's callee that wasn't inferred; the type a
+// resolved callee's declaration names, which didn't resolve.
+func calleeName(e syntax.Expr) string {
+	switch e := e.(type) {
+	case *syntax.Call:
+		if e.Sym == nil && e.Ctor == nil {
+			switch f := e.Fun.(type) {
+			case *syntax.Ident:
+				return f.Name
+			case *syntax.Member:
+				return f.Name
+			}
+			return ""
+		}
+		if e.Sym == nil {
+			return ""
+		}
+		// A type parameter of the callee that wasn't inferred, as
+		// apply's T on an error receiver, or the type its declaration
+		// names that doesn't resolve.
+		if r := e.Sym.Ret; r.K == types.TypeParam && r.Param() != nil {
+			return r.Param().Name
+		}
+		return retName(e.Sym)
+	case *syntax.Ident:
+		if e.Sym == nil && e.Getter == nil {
+			return e.Name
+		}
+		if e.Getter != nil {
+			return retName(e.Getter)
+		}
+		return varName(e.Sym)
+	case *syntax.Member:
+		if e.Prop == nil && e.Builtin == 0 {
+			return e.Name
+		}
+		return varName(e.Prop)
+	case *syntax.Binary:
+		if e.Op == syntax.ELVIS {
+			if n := calleeName(e.X); n != "" {
+				return n
+			}
+			return "K" // the type parameter of FIR's synthetic call for ?:
+		}
+	case *syntax.NotNull:
+		return calleeName(e.X)
 	}
 	return ""
 }
