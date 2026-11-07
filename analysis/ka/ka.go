@@ -450,7 +450,12 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 	// An update whose changed files declare what they did, and whose
 	// other files are those of the check before, checks only the changed
 	// files and keeps the others' models (reuse.go).
+	// One whose changed files declare something else checks those
+	// files and the ones that look up what they declare, until the
+	// models of the files it checks besides the changed ones are as they
+	// were, or it would check too many (declEdits, dependents).
 	var only map[*syntax.File]bool
+	var dirty map[int]bool
 	if len(broken) == 0 {
 		if changed := prev.bodyEdits(paths, sources, texts, javaTexts, snaps); changed != nil {
 			incrementalUpdates.Add(1)
@@ -458,71 +463,98 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 			for _, i := range changed {
 				only[files[i]] = true
 			}
+		} else if dirty = prev.declEdits(paths, sources, texts, javaTexts, snaps, files); dirty != nil {
+			declUpdates.Add(1)
 		}
 	}
-	rec, checkErrs, err := checkFiles(ctx, files, lib, jobs, only)
-	if !rec.bodies.IsZero() {
-		tm.MarkAt("signatures", rec.bodies)
-	}
-	tm.Mark("bodies")
-	if _, crashed := err.(checkPanic); crashed && len(broken) > 0 {
-		// The checker can't take a file with syntax errors: check the
-		// others, and model the broken ones from syntax alone.
-		files, provs, _ = lowerAll(snaps, nil, jobs)
-		if java != nil {
-			java.SetKotlin(files)
+	for {
+		if dirty != nil {
+			only = map[*syntax.File]bool{}
+			for i := range dirty {
+				only[files[i]] = true
+			}
 		}
-		var clean []*syntax.File
+		rec, checkErrs, err := checkFiles(ctx, files, lib, jobs, only, namesIn(snaps, files, only))
+		if !rec.bodies.IsZero() {
+			tm.MarkAt("signatures", rec.bodies)
+		}
+		tm.Mark("bodies")
+		if _, crashed := err.(checkPanic); crashed && len(broken) > 0 {
+			// The checker can't take a file with syntax errors: check the
+			// others, and model the broken ones from syntax alone.
+			files, provs, _ = lowerAll(snaps, nil, jobs)
+			if java != nil {
+				java.SetKotlin(files)
+			}
+			var clean []*syntax.File
+			for i, f := range files {
+				if !broken[i] {
+					clean = append(clean, f)
+				}
+			}
+			rec, checkErrs, err = checkFiles(ctx, clean, lib, jobs, nil, nil)
+		}
+		if err != nil {
+			return nil, err
+		}
+		if only != nil {
+			// The kept diagnostics of the files not checked: the Java
+			// sources' are the same, as their texts are, and are kept with
+			// them.
+			m.Diagnostics = nil
+			checkedPaths := map[string]bool{}
+			for f := range only {
+				checkedPaths[f.Path] = true
+			}
+			for _, d := range prev.diags {
+				if !checkedPaths[d.Path] {
+					m.Diagnostics = append(m.Diagnostics, d)
+				}
+			}
+		}
+		for _, e := range checkErrs {
+			m.Diagnostics = append(m.Diagnostics, diagnostic(e.File, e))
+		}
+		slices.SortStableFunc(m.Diagnostics, func(a, b Diagnostic) int {
+			return cmp.Or(cmp.Compare(index(snaps, a.Path), index(snaps, b.Path)),
+				cmp.Compare(a.Line, b.Line), cmp.Compare(a.Col, b.Col))
+		})
 		for i, f := range files {
-			if !broken[i] {
-				clean = append(clean, f)
+			if only != nil && !only[f] {
+				m.Files = append(m.Files, prev.files[i])
+				continue
 			}
-		}
-		rec, checkErrs, err = checkFiles(ctx, clean, lib, jobs, nil)
-	}
-	if err != nil {
-		return nil, err
-	}
-	if only != nil {
-		// The kept diagnostics of the files not checked: the Java
-		// sources' are the same, as their texts are, and are kept with
-		// them.
-		m.Diagnostics = nil
-		checkedPaths := map[string]bool{}
-		for f := range only {
-			checkedPaths[f.Path] = true
-		}
-		for _, d := range prev.diags {
-			if !checkedPaths[d.Path] {
-				m.Diagnostics = append(m.Diagnostics, d)
+			b := &fileBuilder{f: f, snap: snaps[i], prov: provs[i], annots: rec.annots[f], values: rec.values[f], refs: rec.refs, aliases: rec.aliases, lib: m.lib,
+				tparams: map[*types.TypeParamSym]psi.NodeID{}}
+			mf := &File{Path: snaps[i].Path(), Package: f.Package, Snapshot: snaps[i], Lookups: rec.fileLookups(f)}
+			mf.Annotations = b.annotations(f.Annotations)
+			pkg := strings.ReplaceAll(f.Package, ".", "/")
+			for _, d := range f.Decls {
+				if md := b.decl(d, nil, pkg+"/"); md != nil {
+					mf.Decls = append(mf.Decls, md)
+				}
 			}
+			m.Files = append(m.Files, mf)
 		}
-	}
-	for _, e := range checkErrs {
-		m.Diagnostics = append(m.Diagnostics, diagnostic(e.File, e))
-	}
-	slices.SortStableFunc(m.Diagnostics, func(a, b Diagnostic) int {
-		return cmp.Or(cmp.Compare(index(snaps, a.Path), index(snaps, b.Path)),
-			cmp.Compare(a.Line, b.Line), cmp.Compare(a.Col, b.Col))
-	})
-	for i, f := range files {
-		if only != nil && !only[f] {
-			m.Files = append(m.Files, prev.files[i])
-			continue
+		tm.Mark("model")
+		if dirty == nil {
+			break
 		}
-		b := &fileBuilder{f: f, snap: snaps[i], prov: provs[i], annots: rec.annots[f], values: rec.values[f], refs: rec.refs, aliases: rec.aliases, lib: m.lib,
-			tparams: map[*types.TypeParamSym]psi.NodeID{}}
-		mf := &File{Path: snaps[i].Path(), Package: f.Package, Snapshot: snaps[i], Lookups: rec.fileLookups(f)}
-		mf.Annotations = b.annotations(f.Annotations)
-		pkg := strings.ReplaceAll(f.Package, ".", "/")
-		for _, d := range f.Decls {
-			if md := b.decl(d, nil, pkg+"/"); md != nil {
-				mf.Decls = append(mf.Decls, md)
-			}
+		more := prev.dependents(dirty, m.Files, texts)
+		if len(more) == 0 {
+			break
 		}
-		m.Files = append(m.Files, mf)
+		// Check again, as the checker leaves its marks on the files.
+		for i := range more {
+			dirty[i] = true
+		}
+		if len(dirty)*maxDirtyShare > len(sources) {
+			dirty, only = nil, nil
+		}
+		files, provs, _ = lowerAll(snaps, nil, jobs)
+		m.Diagnostics, m.Files = javaDiags, nil
+		tm.Mark("lower")
 	}
-	tm.Mark("model")
 	if cache != nil {
 		c := &checked{check: m.Check, key: key, paths: paths, texts: slices.Concat(texts, javaTexts), files: m.Files, diags: m.Diagnostics,
 			clean: len(broken) == 0,
@@ -539,6 +571,28 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 	}
 	ok = true
 	return m, nil
+}
+
+// namesIn returns the identifiers in the snapshots of the files in only,
+// those of files: the names of what they may need the omitted types of
+// (check.Options.Infer).
+func namesIn(snaps []*psi.Snapshot, files []*syntax.File, only map[*syntax.File]bool) map[string]bool {
+	if only == nil {
+		return nil
+	}
+	names := map[string]bool{}
+	for i, f := range files {
+		if !only[f] {
+			continue
+		}
+		snap := snaps[i]
+		for id := psi.NodeID(1); int(id) <= snap.NodeCount(); id++ {
+			if n := snap.Node(id); n.NumericKind() == psi.KindIDENTIFIER {
+				names[strings.Trim(n.Text(), "`")] = true
+			}
+		}
+	}
+	return names
 }
 
 // lowerAll lowers snaps, adding their errors to m if it isn't nil, and
@@ -612,7 +666,7 @@ func panicStack() string {
 	return strings.Join(lines, "\n")
 }
 
-func checkFiles(ctx context.Context, files []*syntax.File, lib *check.Library, jobs int, only map[*syntax.File]bool) (rec *recorder, errs []*syntax.Error, err error) {
+func checkFiles(ctx context.Context, files []*syntax.File, lib *check.Library, jobs int, only map[*syntax.File]bool, infer map[string]bool) (rec *recorder, errs []*syntax.Error, err error) {
 	rec = &recorder{annots: map[*syntax.File]map[syntax.Pos]*types.ClassSym{},
 		values: map[*syntax.File]map[syntax.Pos][]syntax.AnnotationValue{}, refs: map[*syntax.TypeRef]types.Type{},
 		aliases: map[*syntax.TypeRef]*types.AliasSym{}, lookups: map[*syntax.File][]Lookup{}}
@@ -621,7 +675,7 @@ func checkFiles(ctx context.Context, files []*syntax.File, lib *check.Library, j
 			err = checkPanic{v, panicStack()}
 		}
 	}()
-	errs, err = check.CheckOptions(ctx, files, lib, jobs, rec, check.Options{Signatures: true, Only: only})
+	errs, err = check.CheckOptions(ctx, files, lib, jobs, rec, check.Options{Signatures: true, Only: only, Infer: infer})
 	return rec, errs, err
 }
 

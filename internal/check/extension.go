@@ -204,7 +204,7 @@ func (c *Checker) resolveExtProp(d *syntax.PropDecl) {
 		sym.Type, sym.Resolved = types.InvalidType, true
 		gs.Ret, gs.Resolved = types.InvalidType, true
 	default:
-		sym.Infer = func() { c.inferProp(d) }
+		sym.Infer = c.lazily(&sym.Resolved, func() { c.inferProp(d) })
 		gs.Infer = func() { ensureVar(sym) }
 	}
 	if g.Inline {

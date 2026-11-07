@@ -89,7 +89,7 @@ func (c *Checker) backingFieldType(d *syntax.PropDecl, owner *types.ClassSym) {
 	if bf.Type == nil {
 		// Inferred before the bodies are checked, like an omitted type.
 		sym.Resolved = false
-		sym.Infer = func() { c.inferBackingField(d, owner) }
+		sym.Infer = c.lazily(&sym.Resolved, func() { c.inferBackingField(d, owner) })
 		return
 	}
 	ft := c.resolveType(bf.Type)

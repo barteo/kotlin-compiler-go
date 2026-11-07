@@ -6,9 +6,11 @@ import (
 	"os"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/barteo/kotlin-compiler-go/internal/check"
 	"github.com/barteo/kotlin-compiler-go/psi"
 )
 
@@ -217,4 +219,147 @@ func TestIncrementalModule(t *testing.T) {
 		}
 	}
 	t.Logf("%d files edited", edited)
+}
+
+// An update that changes what a file declares checks it and the files
+// that look up what it declares, and gives what a whole check does.
+func TestIncrementalDecl(t *testing.T) {
+	base := []string{
+		"package p\nopen class A { open fun f() = 1 }\nfun top() = 1\nval tv = 2\n",
+		"package p\nclass B : A() { override fun f() = 2 }\n",
+		"package p\nfun useTop() = top()\nfun inferred() = tv\n",
+		"package q\nimport p.*\nfun viaImport() = A().f()\n",
+		"package r\nfun alone(): Int { return 3 }\n",
+		"package r\nfun alone2() = alone()\n",
+		"package s\nfun more() = 4\n",
+		"package s\nfun more2() = more() + 1\n",
+		"package p\nfun chain() = inferred()\n",
+		"package t\nclass T { fun g() = 5 }\n",
+		"package u\nfun solo() = 1\nclass Solo\n",
+		"package u\nfun other() = 2\n",
+	}
+	edits := []struct {
+		name     string
+		file     int
+		from, to string
+		partial  bool
+	}{
+		{"return type", 0, "fun top() = 1", "fun top() = 1L", true},
+		{"new function", 0, "val tv = 2\n", "val tv = 2\nfun added() = 3\n", true},
+		{"member type", 0, "open fun f() = 1", "open fun f() = 1L", true},
+		{"new member", 0, "open fun f() = 1 }", "open fun f() = 1\n fun g() = 0 }", true},
+		{"property type", 0, "val tv = 2", "val tv = \"\"", true},
+		{"shadowing", 6, "fun more() = 4", "fun more() = 4\nfun alone() = \"\"", true},
+		{"removed", 4, "fun alone(): Int { return 3 }", "fun alone2x() = 1", true},
+		{"supertype", 9, "class T {", "class T : p.A() {", true},
+		{"class removed", 0, "open class A { open fun f() = 1 }", "", true},
+		{"conflicting function", 11, "fun other() = 2", "fun other() = 2\nfun solo() = 3", true},
+		{"conflicting class", 11, "fun other() = 2", "fun other() = 2\nclass Solo", true},
+	}
+	cfg := withStdlib(t)
+	for _, e := range edits {
+		t.Run(e.name, func(t *testing.T) {
+			s := Open(cfg)
+			defer s.Close()
+			if _, err := s.Update(context.Background(), sources(base...)); err != nil {
+				t.Fatal(err)
+			}
+			texts := slices.Clone(base)
+			texts[e.file] = strings.Replace(texts[e.file], e.from, e.to, 1)
+			declUpdates.Store(0)
+			got, err := s.Update(context.Background(), sources(texts...))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if partial := declUpdates.Load() == 1; partial != e.partial {
+				t.Errorf("checked partially: %v, want %v", partial, e.partial)
+			}
+			if d := sameModel(got, wholeCheck(t, s, sources(texts...))); d != "" {
+				t.Error(d)
+			}
+			// And back.
+			declUpdates.Store(0)
+			got, err = s.Update(context.Background(), sources(base...))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if d := sameModel(got, wholeCheck(t, s, sources(base...))); d != "" {
+				t.Errorf("back: %s", d)
+			}
+		})
+	}
+}
+
+// signatureEdits returns edits of text that change what it declares: a
+// function added at its end, and its first top-level callable's and first
+// top-level class's names changed, if it has them.
+func signatureEdits(path, text string) []string {
+	edits := []string{text + "\nfun kcEdit(): Int { return 1 }\n"}
+	snap := psi.Parse(path, text)
+	renamed := map[bool]bool{}
+	for id := psi.NodeID(1); int(id) <= snap.NodeCount(); id++ {
+		n := snap.Node(id)
+		k := n.NumericKind()
+		class := k == psi.KindCLASS || k == psi.KindOBJECT_DECLARATION
+		if !class && k != psi.KindFUN && k != psi.KindPROPERTY || n.Parent().Kind() != "FILE" || renamed[class] {
+			continue
+		}
+		if name := n.NameIdentifier(); name.Valid() {
+			at := name.Range().End
+			edits = append(edits, text[:at]+"KcEdit"+text[at:])
+			renamed[class] = true
+		}
+	}
+	return edits
+}
+
+// TestIncrementalModuleDecl makes signatureEdits to each file of the
+// module that KA_BENCH describes, one at a time, and compares each update
+// with a whole check. KA_BENCH_FILES limits it to that many files.
+func TestIncrementalModuleDecl(t *testing.T) {
+	s, srcs := benchModule(t)
+	defer s.Close()
+	texts := make([]string, len(srcs))
+	for i := range srcs {
+		data, err := os.ReadFile(srcs[i].Path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		texts[i] = string(data)
+		srcs[i].Text = &texts[i]
+	}
+	if _, err := s.Update(context.Background(), srcs); err != nil {
+		t.Fatal(err)
+	}
+	limit := len(srcs)
+	if n, err := strconv.Atoi(os.Getenv("KA_BENCH_FILES")); err == nil {
+		limit = min(n, limit)
+	}
+	edits, partial := 0, 0
+	check.LateInferences.Store(0)
+	for i := range srcs[:limit] {
+		for _, text := range signatureEdits(srcs[i].Path, texts[i]) {
+			edit := slices.Clone(srcs)
+			edit[i].Text = &text
+			declUpdates.Store(0)
+			got, err := s.Update(context.Background(), edit)
+			if err != nil {
+				t.Fatal(err)
+			}
+			partial += int(declUpdates.Load())
+			want := wholeCheck(t, s, edit)
+			if d := sameModel(got, want); d != "" {
+				t.Errorf("%s: %s", srcs[i].Path, d)
+			}
+			got.Close()
+			want.Close()
+			edits++
+			back, err := s.Update(context.Background(), srcs)
+			if err != nil {
+				t.Fatal(err)
+			}
+			back.Close()
+		}
+	}
+	t.Logf("%d edits, %d checked partially, %d late inferences", edits, partial, check.LateInferences.Load())
 }

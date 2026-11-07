@@ -72,7 +72,7 @@ func (p *sigParser) typeParams(owner any) []*types.TypeParamSym {
 	start := p.i
 	var ps []*types.TypeParamSym
 	for p.ok && p.peek() != '>' {
-		ps = append(ps, &types.TypeParamSym{Name: p.ident(":"), Index: len(ps), Owner: owner})
+		ps = append(ps, &types.TypeParamSym{Name: p.ident(":"), Index: len(ps), Owner: owner, Library: true})
 		for p.ok && p.peek() == ':' {
 			p.i++
 			if p.isTypeStart() {
