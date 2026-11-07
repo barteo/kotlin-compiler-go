@@ -196,7 +196,15 @@ func (in *inliner) instantiate(t *inline.Template) {
 			reified[p] = "java/lang/Object"
 		}
 	}
-	copies, err := t.Instantiate(name, reified)
+	sigs := map[string]string{}
+	for p, t := range g.reifiedTypes {
+		if !g.reifiedParam(t) {
+			var w sigWriter
+			w.typ(t, nil, declared)
+			sigs[p] = w.String()
+		}
+	}
+	copies, err := t.Instantiate(name, reified, sigs)
 	if err != nil {
 		panic(err)
 	}
