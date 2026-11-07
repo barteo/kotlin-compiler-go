@@ -63,7 +63,7 @@ mapping.
 
 | | Milestone | Status |
 |---|---|---|
-| M0.1 | JNI and Go runtime spike: `cmd/libkc`, `internal/kcabi`, `jvm/libkc/test.sh` | done |
+| M0.1 | JNI and Go runtime spike: `cmd/libkc`, `internal/kcabi`, `jvm/libkc/test.sh` | done; also in a Gradle daemon and on JDK 17 (step 21) |
 | M0.2 | AA 2.4.21 API jar from the Kotlin sources: `jvm/aa-api/build.sh` | done |
 | M0.3 | KSP fork compiles against the unshaded AA 2.4.21 API: `jvm/ksp` | done, see gaps |
 | M0.4 | Vertical slice: list annotated source classes through a `kc` KspBackend: `jvm/kc-aa/build.sh test` | done, see gaps |
@@ -86,7 +86,37 @@ and with the JDK's `libjsig` preloaded. Each run makes:
 
 Both runs pass. A 16-byte echo costs 460–680 ns on one thread.
 
-Not yet done: a run inside a real Gradle daemon, and a second JDK.
+**Step 21: in a Gradle daemon, and on JDK 17.** `jvm/libkc/test.sh gradle`
+runs the same test inside a Gradle daemon (`jvm/libkc/gradle`, Gradle
+8.14.3), the way the KSP Gradle plugin runs KSP2: a worker without
+isolation loads the classes with a `URLClassLoader` that a static of the
+plugin's keeps by class path (`KspAATask`'s `isolatedClassLoaderCache`),
+so a later build of the daemon with the same KSP class path reuses it.
+Each of two daemons, one plain and one started with `libjsig` preloaded,
+runs three builds:
+1. loads the library and runs the test;
+2. runs it again with the class loader kept from build 1;
+3. runs it with another class path, so a new class loader, which must
+   fail with `UnsatisfiedLinkError` ("already loaded in another
+   classloader"): a JVM lets one class loader load a native library.
+
+| | plain | with libjsig | Gradle daemon, builds 1 and 2 | daemon with libjsig |
+|---|---|---|---|---|
+| JDK 21.0.12 | pass (step M0.1) | pass | pass, pass | pass, pass |
+| JDK 17.0.20 | pass, 430 ns | pass, 479 ns | pass, pass | pass, pass |
+
+Every run made its 1M calls with 992 panics caught, 2M implicit null
+checks and 20 recovered stack overflows; the echo cost 390–700 ns. JDK 17
+came from Ubuntu's `openjdk-17-jdk-headless`. The JDK warns, with
+`libjsig`, that chaining through `signal()` is deprecated: the Go runtime
+installs its handlers with `sigaction`, so the warning is from the JVM's
+own check, not a failure.
+
+What build 3 means for kc: within one daemon, the kc backend works for
+every build whose KSP class path is the same one, and a build with
+another KSP class path (another KSP or kc version, or two projects whose
+KSP class paths differ) can't load libkc and fails until the daemon
+restarts. See gaps.
 
 ### M0.2 – API jar
 
@@ -1789,5 +1819,12 @@ code is KSP's; every assertion on generated text is kotlinpoet's own.
   model (step 20).
 - **Aliases inside an alias's expansion** are expanded, not kept as
   abbreviations (step 20).
+- **One libkc per daemon.** A JVM lets one class loader load libkc, and
+  the KSP plugin makes a class loader per KSP class path, so a daemon runs
+  kc for one KSP class path only; another fails with
+  `UnsatisfiedLinkError` until the daemon restarts (step 21). Loading a
+  copy of the library from another path would load a second Go runtime
+  into the process, which is untested; failing over to the `aa` backend
+  needs the stock backend (below).
 - **Incremental checking.** A changed Kotlin file re-checks the whole
   module in Go (step 17); only parsing is per file.
