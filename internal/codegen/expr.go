@@ -612,7 +612,11 @@ func (g *gen) as(x *syntax.As) {
 	}
 	if g.castChecks(x, from, to) {
 		g.checkCastNotNull(to)
-		from = from.NonNull()
+		if nn := from.NonNull(); from.IsPrimitive() || !nn.IsPrimitive() {
+			from = nn
+		}
+		// Else a platform value, as a Java generic's Boolean!, which is
+		// still its box.
 	}
 	if from.IsPrimitive() {
 		if from == to {
