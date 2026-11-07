@@ -248,7 +248,7 @@ var defaultFeatures = map[string]bool{
 	"+ProperIeee754Comparisons":                            true,
 	"+RefinedVarargConversionRulesForCallableReferences":   true,
 	"+ResolveTopLevelLambdasAsSyntheticCallArgument":       true,
-	"+WhenGuards":                                          true,
+	"+WhenGuards": true,
 }
 
 func slicesContainsFold(vs []string, s string) bool {
