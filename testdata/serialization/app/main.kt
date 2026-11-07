@@ -123,6 +123,8 @@ fun main() {
     checkJson("encoded", Encoded.serializer(), Encoded())
     checkJson("encoded2", Encoded.serializer(), Encoded(2, "b", 3, listOf("x"), true).apply { body = 4 })
     check("parcel", Parcel.serializer(), Parcel(Sticker("box"), lib.Weight(250), lib.Weight(5)))
+    println(serializer<List<Sticker>?>().descriptor)
+    println(Json.Default.encodeToString(serializer<List<Tag>?>(), listOf(Tag("a"), Tag("b"))))
     println(Json.Default.decodeFromString(Encoded.serializer(), """{"never":["y"],"body":5}""").let { "$it ${it.body}" })
     check("pet", Pet.serializer(), Pet.Zebra(3))
     check("pet nested", Pet.serializer(), Pet.Wild.Fox(1))

@@ -209,7 +209,7 @@ func boxedResult(x *syntax.Call, t types.Type) bool {
 	if m, ok := x.Fun.(*syntax.Member); ok && m.Safe {
 		return false
 	}
-	return f.Ret.IsParam() && !f.Ret.Param().Reified && desc(types.JVMRet(f))[0] == 'L'
+	return f.Ret.IsParam() && desc(types.JVMRet(f))[0] == 'L'
 }
 
 // coerceRecv is coerce for the receiver of an extension: an extension of
@@ -1867,6 +1867,11 @@ func (g *gen) invokeDefault(f *types.FunSym, mask argMask) {
 }
 
 func (g *gen) call(x *syntax.Call) {
+	if x.Value != nil {
+		g.expr(x.Value)
+		g.coerce(x.Value.Type(), x.T)
+		return
+	}
 	if unconverted(x) != syntax.Expr(x) {
 		if l, _ := g.forwarded(x); l != nil {
 			g.code.Op(cf.ACONST_NULL) // see ident

@@ -25,4 +25,11 @@ fun main() {
         limit = null
     }
     println(describe(c))
+    c.label = Counter.parse(null)
+    println(c.label == null)
+    c.label += "x"
+    c.apply { label += "y" }
+    c.label = Counter.parse(" z ")
+    c.label += "!"
+    println(c.label)
 }

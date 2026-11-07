@@ -173,6 +173,8 @@ parcel: {"sticker":"[box]","weight":"250g","extra":"5g"}
   back: Parcel(sticker=Sticker(box), weight=Weight(250), extra=Weight(5)) true
   defaults: {"sticker":"[box]","weight":"250g","extra":"5g"}
   list: [[box], 250g, !, 5g] -> Parcel(sticker=Sticker(box), weight=Weight(250), extra=Weight(5))
+kotlin.collections.ArrayList(PrimitiveDescriptor(app.Sticker))?
+["<a>","<b>"]
 Encoded(plain=1, always=a, alwaysMode=2, never=[y], neverNamed=false) 5
 pet: {"type":"app.Pet.Zebra","stripes":3}
   back: Zebra(stripes=3) true

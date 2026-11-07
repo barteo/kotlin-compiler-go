@@ -18,3 +18,9 @@ class StickerSerializer : KSerializer<Sticker> {
 // Properties of Java classes annotated @Serializable(with = ...).
 @Serializable
 data class Parcel(val sticker: Sticker, val weight: Weight, val extra: Weight? = null)
+
+class TagSerializer : KSerializer<Tag> {
+    override val descriptor: SerialDescriptor = PrimitiveSerialDescriptor("app.Tag", PrimitiveKind.STRING)
+    override fun serialize(encoder: Encoder, value: Tag) = encoder.encodeString("<${value.text}>")
+    override fun deserialize(decoder: Decoder): Tag = Tag(decoder.decodeString().removeSurrounding("<", ">"))
+}

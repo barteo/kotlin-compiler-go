@@ -1116,6 +1116,36 @@ func serialNullable(t types.Type, ser string) string {
 	return ser
 }
 
+// serializerOf sets the serializer that call x of f is, if f is
+// kotlinx.serialization's serializer<T>() and kc knows the serializer of
+// T: as with the plugin, which replaces the call, it needs no lookup when
+// the program runs, which a Java class's @Serializable(with) needs.
+func (c *Checker) serializerOf(x *syntax.Call, f *types.FunSym) {
+	if f.Name != "serializer" || f.Ext || f.Owner != nil || len(f.Params) != 0 || len(x.Reified) != 1 ||
+		f.Facade != "kotlinx/serialization/SerializersKt" {
+		return
+	}
+	t := x.Reified[0]
+	if t.HasParams() || t.HasVars() {
+		return
+	}
+	s := c.serialSerializer(t.NonNull())
+	if s == "" {
+		return
+	}
+	members, err := parseMembers(c.file.Path, x.P, "val x = "+serialNullable(t, s)+"\n")
+	if err != nil {
+		return
+	}
+	v := members[0].(*syntax.PropDecl).Init
+	n := len(c.errs)
+	if c.expr(v, noWant); len(c.errs) > n {
+		c.errs = c.errs[:n]
+		return
+	}
+	x.Value = v
+}
+
 // serialSerializer returns the Kotlin of a serializer of the values of
 // type t, which isn't nullable, as the plugin finds it, or "" if kc
 // doesn't know it.

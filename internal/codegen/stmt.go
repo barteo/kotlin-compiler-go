@@ -980,8 +980,8 @@ func (g *gen) lvalue(x syntax.Expr) lvalue {
 			// A Java property: getX() and setX(v).
 			rt := x.X.Type().NonNull()
 			t := x.T.Flex()
-			if x.T.P && t.IsPrimitive() {
-				t = t.Nullable() // an Integer, which may be null: p.x = n for an n: Int?
+			if x.T.P {
+				t = t.Nullable() // which may be null: p.x = n for an n: Int?, unchecked
 			}
 			param := x.Setter.Params[0].Type
 			return lvalue{t: t, prepare: func() { g.expr(x.X) }, recv: 1, reread: true,
@@ -1131,7 +1131,11 @@ func (g *gen) assign(s *syntax.Assign) {
 	}
 	g.dupRecv(lv)
 	lv.load()
-	if lv.t.Flex() == types.StringType {
+	if lv.t.Flex().NonNull() == types.StringType {
+		if lv.t.P || types.MayBeNull(lv.t) {
+			// A platform String may be null: "null" + v, as kotlinc's.
+			g.code.Invoke(cf.INVOKESTATIC, "java/lang/String", "valueOf", "(Ljava/lang/Object;)Ljava/lang/String;")
+		}
 		g.stringValueOf(s.Value)
 		g.code.Invoke(cf.INVOKEVIRTUAL, "java/lang/String", "concat", "(Ljava/lang/String;)Ljava/lang/String;")
 	} else {
