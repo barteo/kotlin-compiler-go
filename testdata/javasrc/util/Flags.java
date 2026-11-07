@@ -2,6 +2,7 @@ package util;
 
 public class Flags {
     static final String KIND = "flags";
+    protected final String tag = "tagged";
 
     static String describe(Flags f) {
         return KIND + " " + f.isReady();
@@ -16,6 +17,10 @@ public class Flags {
 
     public void setIsEvent(Boolean e) {
         event = e;
+    }
+
+    protected String tagged() {
+        return tag + " " + ready;
     }
 
     public boolean isReady() {

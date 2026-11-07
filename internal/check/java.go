@@ -422,6 +422,7 @@ func (c *Checker) resolveImports() {
 	c.aliasImports = map[string]*types.AliasSym{}
 	c.funImports = map[string][]*types.FunSym{}
 	c.memberImports = map[string]memberImport{}
+	c.moreMemberImports = map[string][]memberImport{}
 	c.userFuns = map[string][]*types.FunSym{}
 	c.userVars = map[string]*types.VarSym{}
 	c.userExtProps = map[string][]*types.FunSym{}
@@ -565,8 +566,10 @@ func (c *Checker) resolveImports() {
 			} else if a := owner.Aliases[simple]; a != nil {
 				c.aliasImports[alias] = a // import p.Outer.A of a nested typealias
 				classifiers[alias] = append(classifiers[alias], imp.P)
+			} else if mi := (memberImport{owner: owner, name: simple, p: imp.P, path: imp.Path}); c.memberImports[alias].owner != nil {
+				c.moreMemberImports[alias] = append(c.moreMemberImports[alias], mi)
 			} else {
-				c.memberImports[alias] = memberImport{owner: owner, name: simple, p: imp.P, path: imp.Path}
+				c.memberImports[alias] = mi
 			}
 			continue
 		}
@@ -1005,9 +1008,11 @@ func (c *Checker) extCalleesFor(name string, rt types.Type, x *syntax.Call) []ca
 			}
 		}
 	}
-	if mi, ok := c.memberImports[name]; ok && mi.owner.Object {
-		if out := fits(memberExtMethods(mi.owner, mi.name)); len(out) > 0 {
-			return dispatchOn(out, mi.owner)
+	for _, mi := range c.memberImportsOf(name) {
+		if mi.owner.Object {
+			if out := fits(memberExtMethods(mi.owner, mi.name)); len(out) > 0 {
+				return dispatchOn(out, mi.owner)
+			}
 		}
 	}
 	if out := fits(c.userFuns[name]); len(out) > 0 {
@@ -1052,6 +1057,15 @@ func (c *Checker) extCalleesFor(name string, rt types.Type, x *syntax.Call) []ca
 		}
 	}
 	return unfit
+}
+
+// memberImportsOf returns the members imported by name.
+func (c *Checker) memberImportsOf(name string) []memberImport {
+	mi, ok := c.memberImports[name]
+	if !ok {
+		return nil
+	}
+	return append([]memberImport{mi}, c.moreMemberImports[name]...)
 }
 
 // dispatchOn makes obj the dispatch receiver of member extensions.
@@ -1155,9 +1169,11 @@ func (c *Checker) extProp(x *syntax.Member, rt types.Type) (types.Type, bool) {
 			sub = func(g *types.FunSym) types.Subst { return nil }
 		}
 	}
-	if mi, ok := c.memberImports[x.Name]; ok && mi.owner.Object && best == nil {
-		fits(memberExtProps(mi.owner, mi.name))
-		dispatch = mi.owner
+	for _, mi := range c.memberImportsOf(x.Name) {
+		if mi.owner.Object && best == nil {
+			fits(memberExtProps(mi.owner, mi.name))
+			dispatch = mi.owner
+		}
 	}
 	if best == nil {
 		dispatch = nil
@@ -1434,6 +1450,12 @@ func (c *Checker) samePackage(cls *types.ClassSym) bool {
 		pkg = cls.Name[:i]
 	}
 	return c.file != nil && pkg == strings.ReplaceAll(c.file.Package, ".", "/")
+}
+
+// javaPackage reports whether cls is a Java class of the code's package,
+// whose protected members the code sees, as Java's do.
+func (c *Checker) javaPackage(cls *types.ClassSym) bool {
+	return cls != nil && cls.External && cls.KotlinName == "" && c.samePackage(cls)
 }
 
 // usable loads a Java class and reports whether kc can use it.

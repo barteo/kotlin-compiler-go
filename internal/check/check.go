@@ -138,6 +138,9 @@ type Checker struct {
 	// objects by name: enum entries, Java statics, objects' members, and
 	// those of the classes of starOwners.
 	memberImports map[string]memberImport
+	// moreMemberImports are the other members imported by a name that
+	// memberImports has: extensions of two objects, import A.f and B.f.
+	moreMemberImports map[string][]memberImport
 	// classImports are the explicitly imported top-level classes of the
 	// class path, whose visibility checkMemberImports checks.
 	classImports []memberImport

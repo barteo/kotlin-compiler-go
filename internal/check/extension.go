@@ -358,8 +358,10 @@ func dropOverridden(fs []*types.FunSym) []*types.FunSym {
 		if i := strings.IndexByte(d, ')'); i >= 0 {
 			d = d[:i]
 		}
-		if r, ok := types.ParamDesc(f.Recv); ok && f.Desc == "" {
-			d = r + d // the program's: its receiver isn't in its parameters
+		if r, ok := types.ParamDesc(f.Recv); ok && f.Desc == "" && strings.HasPrefix(d, "(") {
+			// The program's: its receiver isn't in its parameters, and
+			// comes first, as in a class file's descriptor.
+			d = "(" + r + d[1:]
 		}
 		d = f.JVM() + d
 		if seen[d] {

@@ -1644,7 +1644,7 @@ func primDesc(t types.Type) string {
 // and else a getter with its name is called, Calendar's getTime() for
 // calendar.time.
 func (c *Checker) visibleField(f *types.VarSym) bool {
-	return f != nil && (!f.Protected || c.inSubclass(f.Owner)) && (!f.PackagePrivate || c.samePackage(f.Owner))
+	return f != nil && (!f.Protected || c.inSubclass(f.Owner) || c.javaPackage(f.Owner)) && (!f.PackagePrivate || c.samePackage(f.Owner))
 }
 
 func instanceField(cls *types.ClassSym, name string) *types.VarSym {

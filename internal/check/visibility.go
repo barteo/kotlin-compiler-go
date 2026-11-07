@@ -178,6 +178,9 @@ func (c *Checker) funVisible(f *types.FunSym) bool {
 	if f.PackagePrivate {
 		return c.samePackage(f.Owner)
 	}
+	if f.Protected && c.javaPackage(f.Owner) {
+		return true
+	}
 	v := memberVisibility(f)
 	if v == syntax.Public {
 		return true
