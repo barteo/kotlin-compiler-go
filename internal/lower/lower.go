@@ -127,11 +127,13 @@ type lowerer struct {
 
 // Declarations lowers s as File does, but for the block bodies of
 // functions, initializers and secondary constructors, which it lowers
-// empty but for a leading contract { } call (Contract): what a check of
-// files that it doesn't check needs of them (check.Options.Only). A block
-// body doesn't make a declaration's type: a function with one and no
-// written return type returns Unit. Accessors keep their bodies, which
-// decide whether a property has a backing field.
+// empty but for a leading contract { } call (Contract), and the
+// expression bodies of functions whose return type is written, which it
+// lowers as empty block bodies: what a check of files that it doesn't
+// check needs of them (check.Options.Only). Such a body doesn't make a
+// declaration's type: a function with a block body and no written return
+// type returns Unit. Accessors keep their bodies, which decide whether a
+// property has a backing field.
 func Declarations(s *psi.Snapshot) (*syntax.File, *Provenance, []*syntax.Error) {
 	return lowerFile(s, true)
 }

@@ -153,6 +153,13 @@ func (l *lowerer) fun(n psi.NodeRef) *syntax.FunDecl {
 		case psi.KindBLOCK:
 			fd.Body = l.bodyBlock(c)
 		case psi.KindEQ:
+			if l.declsOnly && fd.Ret != nil {
+				// Declarations: the body of a function whose return
+				// type is written is left out, as a block body is.
+				p := l.pos(c)
+				fd.Body = &syntax.Block{P: p, End: p}
+				break
+			}
 			fd.ExprBody = l.expr(exprAfter(n, psi.KindEQ))
 		}
 		if c.NumericKind() == psi.KindTYPE_PARAMETER_LIST {
