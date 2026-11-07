@@ -1384,7 +1384,9 @@ func (c *Checker) isInitialized(x *syntax.Member, r *syntax.CallableRef) types.T
 		c.value(id, noWant)
 		p = id.Sym
 		if p != nil && p.Kind == types.Prop {
-			th := &syntax.This{}
+			// The instance of the class the code is in, if the property
+			// is its, not a nearer lambda's receiver.
+			th := &syntax.This{Class: c.cls != nil && c.cls.IsSubclassOf(p.Owner)}
 			th.P = x.P
 			c.value(th, noWant)
 			recv = th
