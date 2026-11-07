@@ -45,6 +45,8 @@ internal class KcRound(
     val javaFiles: List<PsiJavaFile> = emptyList(),
     /** Where Java library classes' class-file PSI is found; none without it. */
     private val project: com.intellij.openapi.project.Project? = null,
+    /** The trees of files' PSI joined before, which a round over the same PSI uses again. */
+    trees: KcTrees? = null,
 ) {
     val token = KcToken()
 
@@ -256,13 +258,14 @@ internal class KcRound(
         // most of a session's first round. Files parse independently.
         // kc's tree and IntelliJ's must have the same shape for the preorder
         // index to join them: the same kinds in the same order.
-        val trees = files.parallelStream().map { (f, kt) ->
-            preorder(kt.node).also { nodes ->
+        val joined = files.parallelStream().map { (f, kt) ->
+            trees?.get(kt, f) ?: preorder(kt.node).also { nodes ->
                 if (checkKinds && f.nodes >= 0 && (nodes.size - 1 != f.nodes || KcKinds.hash(nodes) != f.kinds))
                     throw KcPsiMismatch(f.path, f.nodes, nodes.size - 1)
+                trees?.put(kt, f, nodes)
             }
         }.toList()
-        fileSymbols = files.mapIndexed { i, (f, kt) -> Builder(f.path, trees[i], KaSymbolOrigin.SOURCE).file(f, kt) }
+        fileSymbols = files.mapIndexed { i, (f, kt) -> Builder(f.path, joined[i], KaSymbolOrigin.SOURCE).file(f, kt) }
         for (name in files.map { it.first.packageName } + javaFiles.map { it.packageName }) {
             var fq = FqName(name)
             while (sourcePackages.add(fq) && !fq.isRoot) fq = fq.parent()
@@ -966,3 +969,22 @@ internal class KcRound(
  */
 internal class KcPsiMismatch(val path: String, kcNodes: Int, psiNodes: Int) :
     IllegalStateException("kc: the PSI of $path differs from kc's tree ($kcNodes nodes in kc, $psiNodes in PSI, or their kinds)")
+
+/**
+ * The preorder trees ([KcRound.preorder]) of files' PSI, kept by a
+ * daemon's environment: a file whose PSI is reused has the same tree, and
+ * a model of it with the same nodes and kinds joins it as before. Each
+ * path keeps its last PSI's, which its tree's nodes hold.
+ */
+internal class KcTrees {
+    private class Joined(val psi: KtFile, val nodes: Int, val kinds: Long, val tree: Array<ASTNode>)
+
+    private val trees = java.util.concurrent.ConcurrentHashMap<String, Joined>()
+
+    fun get(kt: KtFile, f: KcFile): Array<ASTNode>? =
+        trees[f.path]?.takeIf { it.psi === kt && it.nodes == f.nodes && it.kinds == f.kinds }?.tree
+
+    fun put(kt: KtFile, f: KcFile, tree: Array<ASTNode>) {
+        trees[f.path] = Joined(kt, f.nodes, f.kinds, tree)
+    }
+}

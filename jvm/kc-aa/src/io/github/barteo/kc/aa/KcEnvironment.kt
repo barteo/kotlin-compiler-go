@@ -93,11 +93,21 @@ internal class KcEnvironment(val key: String, config: KSPConfig) {
         return psiManager.findFile(vf)
     }
 
+    /** The trees of the files' PSI that rounds joined, for later rounds over the same PSI. */
+    val trees = KcTrees()
+
     /** The bytes each file's PSI was parsed from, as [psiFile] last read them. */
     private val parsedBytes = HashMap<VirtualFile, ByteArray>()
 
     /** A round kept for a later update of the same check, with its model's handle, which the environment owns. */
-    class KeptRound(val round: KcRound, val handle: Long, val diagnostics: List<KcDiagnostic>, val reparsed: Int)
+    class KeptRound(
+        val round: KcRound,
+        val handle: Long,
+        val diagnostics: List<KcDiagnostic>,
+        val reparsed: Int,
+        /** The model's files by path, which a later model may share (KcOps.update's bases). */
+        val files: Map<String, KcFile>,
+    )
 
     /**
      * The last rounds built in this environment, by their models' checks
@@ -110,6 +120,9 @@ internal class KcEnvironment(val key: String, config: KSPConfig) {
     /** The checks of the rounds an update may use again. */
     fun reusableChecks(): List<Long> = rounds.filterValues { it.reparsed == reparsed }.keys.toList()
 
+    /** The files of the kept rounds' models, by their checks: those an update's model may share. */
+    fun baseFiles(): Map<Long, Map<String, KcFile>> = rounds.mapValues { it.value.files }
+
     /** The round kept for [check], now the most recently used. */
     fun reuse(check: Long): KeptRound {
         val k = rounds.remove(check) ?: error("kc: no round kept for check $check")
@@ -118,9 +131,9 @@ internal class KcEnvironment(val key: String, config: KSPConfig) {
     }
 
     /** Keeps [round] for later updates of [check], dropping the least recently used beyond [KEEP_ROUNDS]. */
-    fun keep(check: Long, round: KcRound, handle: Long, diagnostics: List<KcDiagnostic>) {
+    fun keep(check: Long, round: KcRound, handle: Long, diagnostics: List<KcDiagnostic>, files: List<KcFile>) {
         rounds.remove(check)?.let(::drop)
-        rounds[check] = KeptRound(round, handle, diagnostics, reparsed)
+        rounds[check] = KeptRound(round, handle, diagnostics, reparsed, files.associateBy { it.path })
         while (rounds.size > KEEP_ROUNDS) {
             val first = rounds.keys.first()
             drop(rounds.remove(first)!!)

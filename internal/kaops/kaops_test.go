@@ -38,6 +38,7 @@ func TestOpenUpdateClose(t *testing.T) {
 	w.Uint(1)
 	w.String(path)
 	w.Uint(0) // nothing kept
+	w.Uint(0) // no bases
 	resp, err = kcabi.Call(OpKaUpdate, w.Message())
 	if err != nil {
 		t.Fatal(err)
@@ -50,6 +51,9 @@ func TestOpenUpdateClose(t *testing.T) {
 	}
 	if n := r.Uint(); n != 1 {
 		t.Fatalf("%d files", n)
+	}
+	if from := r.Uint(); from != 0 {
+		t.Fatalf("file from check %d", from)
 	}
 	if p, pkg := r.String(), r.String(); p != path || pkg != "p" {
 		t.Fatalf("file %s, package %s", p, pkg)
@@ -89,6 +93,7 @@ func TestOpenUpdateClose(t *testing.T) {
 	w.String(path)
 	w.Uint(1)
 	w.Uint(check)
+	w.Uint(0) // no bases
 	resp, err = kcabi.Call(OpKaUpdate, w.Message())
 	if err != nil {
 		t.Fatal(err)
@@ -99,7 +104,25 @@ func TestOpenUpdateClose(t *testing.T) {
 		t.Errorf("check %d, same %v, %d bytes; want check %d, same, nothing more", c, same, r.Len(), check)
 	}
 
-	for _, h := range []int64{model, again, session} {
+	// Again, with the first model's check a base: the same files, left out.
+	w = wire.Writer{}
+	w.Int(session)
+	w.Uint(1)
+	w.String(path)
+	w.Uint(0) // nothing kept
+	w.Uint(1)
+	w.Uint(check)
+	resp, err = kcabi.Call(OpKaUpdate, w.Message())
+	if err != nil {
+		t.Fatal(err)
+	}
+	r = wire.NewReader(resp)
+	based := r.Int()
+	if c, same, n, from, p := r.Uint(), r.Bool(), r.Uint(), r.Uint(), r.String(); c != check || same || n != 1 || from != check || p != path {
+		t.Errorf("check %d, same %v, %d files, from %d, %s; want check %d, 1 file from it, %s", c, same, n, from, p, check, path)
+	}
+
+	for _, h := range []int64{model, again, based, session} {
 		w = wire.Writer{}
 		w.Int(h)
 		if _, err := kcabi.Call(OpKaClose, w.Message()); err != nil {
@@ -108,6 +131,9 @@ func TestOpenUpdateClose(t *testing.T) {
 	}
 	if handles.Len() != 0 {
 		t.Errorf("%d handles left", handles.Len())
+	}
+	if len(checks.m) != 0 {
+		t.Errorf("%d checks' files left", len(checks.m))
 	}
 	w = wire.Writer{}
 	w.Int(session)
@@ -228,6 +254,7 @@ func TestClass(t *testing.T) {
 	w.Uint(1)
 	w.String(path)
 	w.Uint(0) // nothing kept
+	w.Uint(0) // no bases
 	resp, err = kcabi.Call(OpKaUpdate, w.Message())
 	if err != nil {
 		t.Fatal(err)

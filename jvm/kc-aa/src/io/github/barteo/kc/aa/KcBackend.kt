@@ -120,7 +120,7 @@ private class KcSession(private val config: KSPConfig, @Suppress("UNUSED_PARAMET
     private fun update() {
         val t = KcTimer()
         val (reused, reparsed) = environment.reused to environment.reparsed
-        val model = KcOps.update(handle, paths.toList(), environment.reusableChecks())
+        val model = KcOps.update(handle, paths.toList(), environment.reusableChecks(), environment.baseFiles())
         t.mark("update")
         val next = if (model.same) {
             // The check of a round the environment kept: its sources, and
@@ -137,7 +137,7 @@ private class KcSession(private val config: KSPConfig, @Suppress("UNUSED_PARAMET
                 KcOps.close(model.handle)
                 throw e
             }
-            built.also { environment.keep(model.check, it, model.handle, model.diagnostics) }
+            built.also { environment.keep(model.check, it, model.handle, model.diagnostics, model.files) }
         }
         if (this::round.isInitialized && round !== next) round.token.invalidation = "replaced by the next round"
         round = next
@@ -161,7 +161,7 @@ private class KcSession(private val config: KSPConfig, @Suppress("UNUSED_PARAMET
             fs.refreshAndFindFileByPath(p)?.let { environment.psiFile(it) as? PsiJavaFile }
         }
         t.mark("psi")
-        return KcRound(joined, { id -> KcOps.cls(model.handle, id) }, { fq -> KcOps.pkg(model.handle, fq) }, java, project)
+        return KcRound(joined, { id -> KcOps.cls(model.handle, id) }, { fq -> KcOps.pkg(model.handle, fq) }, java, project, environment.trees)
     }
 
     override fun sourceFiles(): List<KSFile> =

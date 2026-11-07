@@ -39,14 +39,23 @@ internal object KcOps {
     /**
      * Checks [paths] in session [session] and returns their declarations,
      * or, if the check is one of [kept], only that (KcModel.same).
-     * The model's handle, which [cls] reads library classes through, is
-     * the caller's to [close].
+     * [bases] are the files of models read before, by their checks and
+     * paths: a file the new model shares with one of them is that one,
+     * not sent again. The model's handle, which [cls] reads library
+     * classes through, is the caller's to [close].
      */
-    fun update(session: Long, paths: List<String>, kept: Collection<Long> = emptyList()): KcModel {
+    fun update(
+        session: Long,
+        paths: List<String>,
+        kept: Collection<Long> = emptyList(),
+        bases: Map<Long, Map<String, KcFile>> = emptyMap(),
+    ): KcModel {
         val w = Wire.Writer().writeInt(session).writeUint(paths.size.toLong())
         paths.forEach { w.writeString(it) }
         w.writeUint(kept.size.toLong())
         kept.forEach { w.writeUint(it) }
+        w.writeUint(bases.size.toLong())
+        bases.keys.forEach { w.writeUint(it) }
         val t = KcTimer()
         val r = Wire.Reader(KcNative.call(UPDATE, w.message()))
         t.mark("native")
@@ -57,14 +66,22 @@ internal object KcOps {
                 t.print("update same")
                 return KcModel(model, emptyList(), emptyList(), check, same = true)
             }
+            var reused = 0
             val files = List(r.readUint().toInt()) {
-                KcFile(r.readString(), r.readString(), r.annotations(), r.decls(), r.lookups(), r.readUint().toInt(), r.readUint())
+                val from = r.readUint()
+                val path = r.readString()
+                if (from == 0L) {
+                    KcFile(path, r.readString(), r.annotations(), r.decls(), r.lookups(), r.readUint().toInt(), r.readUint())
+                } else {
+                    reused++
+                    bases[from]?.get(path) ?: error("kc: no file $path of check $from")
+                }
             }
             val diagnostics = List(r.readUint().toInt()) {
                 KcDiagnostic(r.readString(), r.readUint().toInt(), r.readUint().toInt(), r.readString(), r.readString())
             }
             t.mark("decode")
-            t.print("update")
+            t.print("update reused=$reused")
             return KcModel(model, files, diagnostics, check)
         } catch (e: Throwable) {
             close(model)
