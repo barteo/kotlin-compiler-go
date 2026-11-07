@@ -433,7 +433,20 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 		java.SetKotlin(files)
 	}
 	tm.Mark("lower")
-	rec, checkErrs, err := checkFiles(ctx, files, lib, jobs)
+	// An update whose changed files declare what they did, and whose
+	// other files are those of the check before, checks only the changed
+	// files and keeps the others' models (reuse.go).
+	var only map[*syntax.File]bool
+	if len(broken) == 0 {
+		if changed := prev.bodyEdits(paths, sources, texts, javaTexts, snaps); changed != nil {
+			incrementalUpdates.Add(1)
+			only = map[*syntax.File]bool{}
+			for _, i := range changed {
+				only[files[i]] = true
+			}
+		}
+	}
+	rec, checkErrs, err := checkFiles(ctx, files, lib, jobs, only)
 	if !rec.bodies.IsZero() {
 		tm.MarkAt("signatures", rec.bodies)
 	}
@@ -451,10 +464,25 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 				clean = append(clean, f)
 			}
 		}
-		rec, checkErrs, err = checkFiles(ctx, clean, lib, jobs)
+		rec, checkErrs, err = checkFiles(ctx, clean, lib, jobs, nil)
 	}
 	if err != nil {
 		return nil, err
+	}
+	if only != nil {
+		// The kept diagnostics of the files not checked: the Java
+		// sources' are the same, as their texts are, and are kept with
+		// them.
+		m.Diagnostics = nil
+		checkedPaths := map[string]bool{}
+		for f := range only {
+			checkedPaths[f.Path] = true
+		}
+		for _, d := range prev.diags {
+			if !checkedPaths[d.Path] {
+				m.Diagnostics = append(m.Diagnostics, d)
+			}
+		}
 	}
 	for _, e := range checkErrs {
 		m.Diagnostics = append(m.Diagnostics, diagnostic(e.File, e))
@@ -464,6 +492,10 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 			cmp.Compare(a.Line, b.Line), cmp.Compare(a.Col, b.Col))
 	})
 	for i, f := range files {
+		if only != nil && !only[f] {
+			m.Files = append(m.Files, prev.files[i])
+			continue
+		}
 		b := &fileBuilder{f: f, snap: snaps[i], prov: provs[i], annots: rec.annots[f], values: rec.values[f], refs: rec.refs, aliases: rec.aliases, lib: m.lib,
 			tparams: map[*types.TypeParamSym]psi.NodeID{}}
 		mf := &File{Path: snaps[i].Path(), Package: f.Package, Snapshot: snaps[i], Lookups: rec.fileLookups(f)}
@@ -479,6 +511,7 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 	tm.Mark("model")
 	if cache != nil {
 		c := &checked{key: key, paths: paths, texts: slices.Concat(texts, javaTexts), files: m.Files, diags: m.Diagnostics,
+			clean: len(broken) == 0,
 			snaps: make(map[string]checkedSnap, len(sources))}
 		for i, src := range sources {
 			c.snaps[src.Path] = checkedSnap{texts[i], snaps[i]}
@@ -565,7 +598,7 @@ func panicStack() string {
 	return strings.Join(lines, "\n")
 }
 
-func checkFiles(ctx context.Context, files []*syntax.File, lib *check.Library, jobs int) (rec *recorder, errs []*syntax.Error, err error) {
+func checkFiles(ctx context.Context, files []*syntax.File, lib *check.Library, jobs int, only map[*syntax.File]bool) (rec *recorder, errs []*syntax.Error, err error) {
 	rec = &recorder{annots: map[*syntax.File]map[syntax.Pos]*types.ClassSym{},
 		values: map[*syntax.File]map[syntax.Pos][]syntax.AnnotationValue{}, refs: map[*syntax.TypeRef]types.Type{},
 		aliases: map[*syntax.TypeRef]*types.AliasSym{}, lookups: map[*syntax.File][]Lookup{}}
@@ -574,7 +607,7 @@ func checkFiles(ctx context.Context, files []*syntax.File, lib *check.Library, j
 			err = checkPanic{v, panicStack()}
 		}
 	}()
-	errs, err = check.CheckOptions(ctx, files, lib, jobs, rec, check.Options{Signatures: true})
+	errs, err = check.CheckOptions(ctx, files, lib, jobs, rec, check.Options{Signatures: true, Only: only})
 	return rec, errs, err
 }
 
