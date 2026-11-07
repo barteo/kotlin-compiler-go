@@ -871,10 +871,15 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 				return types.InvalidType
 			}
 		}
-		// Integer literals are Int unless no candidate takes them as Int.
+		// Integer literals are Int unless no candidate takes them as Int,
+		// or one that takes them as a Long is more specific than the
+		// others: assertEquals(long, long) for assertEquals(1, aLong),
+		// not assertEquals(Object, Object).
 		match := c.applicable(cs, x, ts, partials, false)
-		if len(match) == 0 {
-			match = c.applicable(cs, x, ts, partials, true)
+		if wide := c.applicable(cs, x, ts, partials, true); len(match) == 0 || len(wide) > len(match) &&
+			slices.ContainsFunc(wide, func(cd *candidate) bool { return c.mostSpecific(cd, wide, x.Args) }) &&
+			!slices.ContainsFunc(match, func(cd *candidate) bool { return c.mostSpecific(cd, wide, x.Args) }) {
+			match = wide
 		}
 		match = c.notPropRefs(x, match)
 		match = notLowPriority(match, func(cd *candidate) *callee { return &cd.callee })
@@ -1397,10 +1402,13 @@ func (c *Checker) resolvePlain(x *syntax.Call, cs []callee, want types.Type) typ
 				return types.InvalidType
 			}
 		}
-		// Integer literals are Int unless no candidate takes them as Int.
+		// Integer literals are Int unless no candidate takes them as Int,
+		// or one that takes them as a Long is the most specific, as above.
 		match := c.plainApplicable(cs, x.Args, ts, false)
-		if len(match) == 0 {
-			match = c.plainApplicable(cs, x.Args, ts, true)
+		if wide := c.plainApplicable(cs, x.Args, ts, true); len(match) == 0 || len(wide) > len(match) &&
+			slices.ContainsFunc(wide, func(cl *callee) bool { return c.plainMostSpecific(cl, wide, x.Args) }) &&
+			!slices.ContainsFunc(match, func(cl *callee) bool { return c.plainMostSpecific(cl, wide, x.Args) }) {
+			match = wide
 		}
 		match = notLowPriority(match, func(cl *callee) *callee { return cl })
 		var maximal []*callee

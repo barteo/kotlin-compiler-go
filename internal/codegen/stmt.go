@@ -968,6 +968,9 @@ func (g *gen) lvalue(x syntax.Expr) lvalue {
 			// A Java property: getX() and setX(v).
 			rt := x.X.Type().NonNull()
 			t := x.T.Flex()
+			if x.T.P && t.IsPrimitive() {
+				t = t.Nullable() // an Integer, which may be null: p.x = n for an n: Int?
+			}
 			param := x.Setter.Params[0].Type
 			return lvalue{t: t, prepare: func() { g.expr(x.X) }, recv: 1, reread: true,
 				load: func() {
@@ -1125,8 +1128,8 @@ func (g *gen) assign(s *syntax.Assign) {
 		g.coerce(lv.t, op)
 		g.exprAs(s.Value, op)
 		g.code.Op(arithOp(op, compoundOp(s.Op)))
-		g.convert(op, lv.t.Flex())
-		g.coerce(lv.t.Flex(), lv.t)
+		g.convert(op, lv.t.Flex().NonNull())
+		g.coerce(lv.t.Flex().NonNull(), lv.t)
 	}
 	lv.store()
 }
@@ -1143,7 +1146,7 @@ func (g *gen) incDecValue(u *syntax.Unary) {
 	g.dupRecv(lv)
 	lv.load()
 	// A platform type's value, boxed, is computed with unboxed.
-	t := lv.t.Flex()
+	t := lv.t.Flex().NonNull()
 	if !u.Prefix {
 		g.dupBelow(lv, lv.t)
 	}
@@ -1215,7 +1218,7 @@ func (g *gen) incDec(u *syntax.Unary) {
 	}
 	g.dupRecv(lv)
 	lv.load()
-	t := lv.t.Flex()
+	t := lv.t.Flex().NonNull()
 	g.coerce(lv.t, t)
 	switch t.K {
 	case types.Long:

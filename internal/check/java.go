@@ -1664,6 +1664,11 @@ func javaMethods(cls *types.ClassSym, name string) []*types.FunSym {
 	var out []*types.FunSym
 	seen := map[string]bool{}
 	cls.Supertypes(func(s *types.ClassSym) bool {
+		if s != cls && s.Name == "java/lang/Object" && !anyMember[name] && !(name == "clone" && cloneable(cls)) {
+			// Kotlin types have Any's members, not Object's wait() or
+			// clone(): a Kotlin Cloneable's.
+			return true
+		}
 		var own []string
 		for _, f := range s.Methods[name] {
 			params := paramKey(f)
@@ -1687,6 +1692,16 @@ func javaMethods(cls *types.ClassSym, name string) []*types.FunSym {
 		return true
 	})
 	return out
+}
+
+// cloneable reports whether cls implements java.lang.Cloneable.
+func cloneable(cls *types.ClassSym) bool {
+	found := false
+	cls.Supertypes(func(s *types.ClassSym) bool {
+		found = s.Name == "java/lang/Cloneable"
+		return !found
+	})
+	return found
 }
 
 // javaRemoveAt reports whether f is a Java List's remove(int), which
@@ -2271,7 +2286,7 @@ func (c *Checker) javaProperty(x *syntax.Member, rt types.Type) (types.Type, boo
 	}
 	if g := acronymAccessor("get", x.Name); x.Getter == nil && !special && g != "" {
 		for _, f := range c.accessible(cls, c.javaMethods(cls, g)) {
-			if f.Owner.External && len(f.Params) == 0 && !f.Unsupported && f.Ret.K != types.Unit {
+			if f.Owner.External && c.javaAccessor(f) && len(f.Params) == 0 && !f.Unsupported && f.Ret.K != types.Unit {
 				x.Getter, setterName = f, acronymAccessor("set", x.Name)
 			}
 		}
@@ -2314,7 +2329,9 @@ var builtinParams = map[string][]string{
 // setEnabled(Boolean), which View.isEnabled's assignments call.
 func (c *Checker) javaAccessor(f *types.FunSym) bool {
 	if f.Owner.External {
-		return true
+		// Not a class-path Kotlin class's getX(), whose classes have
+		// properties of their own.
+		return f.Owner.KProps == nil
 	}
 	if f.Decl == nil {
 		return false
