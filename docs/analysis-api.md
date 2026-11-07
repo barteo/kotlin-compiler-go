@@ -76,7 +76,7 @@ mapping.
 | M4 | Queryable session `analysis/ka`: lookups, scopes, relations, overrides | done: `ka.Session.Update` and `Model` with `Class` and `Package` lookups on the class path (steps 4, 6), shared library (11), lookups recorded for incremental processing (16); scopes, relations and overrides are answered on the JVM over the model (step 5) |
 | M5 | Bridge: `cmd/libkc` operations, `tools/kagen` wire format, `jvm/kc-aa` KaSession | done: `internal/kaops` operations (open, update, close, class, package), the model wire format, written by hand in `internal/kaops` and `KcModel.kt` (no `tools/kagen` generator was needed), the `KaSession` proxy and symbol, type and annotation classes; member coverage in `jvm/kc-aa/members.txt` (step 19) |
 | M6 | KSP fork integration: the `kc` backend, IC lookups, hot paths | done: KSP's own test suite on the kc backend, `build.sh ksp` (step 15): 134 of 136 pass, the other 2 disabled in KSP, Java sources in the main module included; IC lookups recorded by kc's checker and replayed into KSP's tracker, checked against stock KSP on a fixture (step 16). Open: the whole-run fallback to `aa` (see gaps) |
-| M7 | Differential conformance against stock KSP, benchmark, CI | in progress: `bench/ksp` (step 11): warm 990 ms on stock KSP, 284 ms on kc; cold 8.1–8.7 s and 2.9–3.2 s, with a CDS archive 5.8–6.1 s and 1.9–2.1 s; CI: `.github/workflows/analysis-api.yml` (step 12) |
+| M7 | Differential conformance against stock KSP, benchmark, CI | in progress: `bench/ksp` (steps 11, 17): on octi-server warm 773 ms on stock KSP, 176 ms on kc; cold 6.2–6.4 s and 3.5–3.6 s (step 11's CDS archive: 1.9–2.1 s on kc); CI: `.github/workflows/analysis-api.yml` (step 12) |
 
 ### M0.1 – JNI spike
 
@@ -914,13 +914,8 @@ KSP with one. In Gradle the archive is the daemon's (`org.gradle.jvmargs`
 in `gradle.properties`), and cold is the first `kspKotlin` of a daemon:
 later runs are warm.
 
-Next steps:
-
-- Keep the parsed PSI across KSP runs of a daemon (an environment per
-  configuration, owning its own disposable; files reparsed only when
-  their text changes), and parse only the files KSP touches.
-- Check only the files whose text changed, reusing the declarations of
-  the rest: the update is whole-module today.
+Next steps: the environment, its PSI and the Go check kept across KSP
+runs (step 17).
 
 #### Step 12: CI
 
@@ -1567,6 +1562,157 @@ or body and records nothing for it. kc's checker resolved
 `a.street` and recorded (`m.Address`, `street`), so on kc `Label.kt`
 is reprocessed. That is the superset above: more work, the same outputs.
 
+#### Step 17: the environment, PSI and checks kept across runs
+
+A Gradle daemon runs `kspKotlin` again and again on the same module,
+mostly with no source changed, or with one. Step 11 left each run making
+a new IntelliJ environment, parsing every file's PSI and checking the
+module in Go twice, once per round. Now both halves keep what they can.
+
+**JVM: an environment per configuration** (`KcEnvironment.kt`). A
+`KcEnvironment` owns the `KotlinCoreEnvironment` and its own disposable,
+not the run's, and registers kc's `KaSessionProvider` and modification
+trackers once. `KcEnvironments.acquire` gives a run the idle environment
+of its configuration, and `release` takes it back when the session
+closes; the two used last are kept, the others disposed. The key is the
+class path and friends (path, size and modification time of each jar),
+the JDK's `lib/modules`, the Java source roots, and each Java source
+file's stamp: Java PSI resolves names through the Java file manager's
+index of the roots, built once per environment, so a changed Java source
+makes a new environment. `-Dkc.keepEnvironment=false` turns reuse off.
+`KcSessionProvider` drops the run's session on release, so a stale
+`analyze` on a kept environment fails with "no KSP run is using this
+environment" instead of answering from the last run.
+
+`KcEnvironment.psiFile` gives the PSI parsed before when the file's text
+(`LoadTextUtil.loadText`) is the cached view provider's; otherwise it
+drops the view provider and parses the file again. The old file's PSI is
+left alone, so the last run's symbols over it stay as they were. A
+generated file that KSP writes again with the same text keeps its PSI
+too: `bench/ksp`'s `KspBench` now writes every run to the same output
+directory, as Gradle does (`build/generated/ksp`); the per-run temporary
+directory gave the generated files new paths each run.
+
+**Go: checks kept** (`analysis/ka/reuse.go`). `Session.Update` reads the
+texts first. The last two checks are kept: for a Kotlin-only module in
+the library its sessions share, for a module with Java sources (checked
+against a library of its own, step 15) in a process-wide cache by the
+class path's key, together with that library. An update whose files and
+texts are a kept check's gets that check's files and diagnostics back,
+without parsing or checking (`reused=0.3` ms). An update whose texts
+differ parses only the changed files again, reusing the other files'
+snapshots, and checks the module whole: the checker resolves a file's
+declarations against the whole module's (an inferred type, an overload,
+a supertype from any file), and keeping a module's declarations from one
+check to the next would mean making the checker incremental. That is
+left for later; a one-file edit costs a whole check (about 120 ms of
+signatures on octi-server, below).
+
+Not done: parsing only the files KSP touches. KSP's `getAllFiles` and
+`getSymbolsWithAnnotation` walk every source file, and `KcRound` maps
+each file's nodes to its PSI up front, so every file is touched; with the
+PSI kept it is parsed once per daemon anyway.
+
+**Numbers.** octi-server (`github.com/d4rken-org/octi`, `server`
+module, HEAD 6e3323a, 60 Kotlin files, 7740 lines; Dagger, 31 generated
+Java files; the Gradle class paths from step 9), 4 CPUs, JDK 21, 20 runs
+in one JVM, warm the median of the last 10, and 3 cold JVMs:
+
+| ms | cold JVM | warm total | warm setup | warm process | between rounds |
+|---|---|---|---|---|---|
+| stock KSP 2.3.6, before | 6640–10530 | 799 | 109 | 690 | 5 |
+| kc, before | 3700–4320 | 701 | 182 | 225 | 300–520 |
+| stock KSP 2.3.6, after | 6190–6440 | 773 | 111 | 652 | 5 |
+| kc, after | 3470–3610 | 176 | 19 | 130 | 17–28 |
+
+(Before is this branch before step 17, with the benchmark's fixed output
+directory. Its warm kc total is above step 11's 284 ms: Dagger's
+generated Java now reaches the model (step 15), so the second round
+checks again, against a library of its own, about 350–450 ms.)
+
+A warm kc run is 4x faster than before and 4.4x faster than stock KSP's.
+Per warm run kc now spends about 5 ms per round in the native update (4
+of it encoding the model), 3 ms on PSI, and 6–9 ms in `KcRound`; the
+environment is ready in 0.3 ms. The rest is the processors: Dagger,
+XProcessing and JavaPoet. The first run of a daemon (cold) is unchanged,
+as nothing is kept yet.
+
+The Go cache is tested by `TestReuse` and `TestReuseJava`
+(`analysis/ka/reuse_test.go`): the same texts give the same files back, a
+changed file is parsed again and the others' snapshots are kept, and a
+Java module's check is kept with its library. `build.sh ksp` (134 pass)
+and `build.sh stock` run with environments kept: KSP's tests run one
+after another in one JVM, many with the same class path.
+
+#### Step 18: the PSI join checks the kind sequence
+
+kc joins its `psi` nodes to IntelliJ's PSI by preorder index (step 5),
+and before this checked only each node's PSI class at the places it
+used one. Now the join checks each file whole. The model carries, per
+file, the number of kc's psi nodes and an FNV-1a 64 hash of their kinds
+in preorder (`psi.Snapshot.KindSequenceHash`, a kind being its line in
+`psi/kinds.txt`, 0 for one not there); kaops writes them after the
+lookups (`nodes:Uint kinds:Uint`). On the JVM, `KcKinds` maps each
+IntelliJ element type to the same numbers by name (the static fields of
+`KtNodeTypes`, `KtStubElementTypes`, `KtTokens`, `KDocTokens` and
+`TokenType`, from `kinds.txt` in the jar), and `KcRound` hashes the
+preorder it already walks. A file whose count or hash differs fails the
+round with `KcPsiMismatch` (the file and both counts) rather than give
+symbols the wrong PSI. `-Dkc.checkKinds=false` turns it off.
+
+It holds on everything the gates run: KSP's 134 tests, the slice, Moshi,
+Dagger, Room, Hilt and octi-server.
+
+Cost: one identity-map lookup and a multiply per node, in the parallel
+walk `KcRound` already makes, and the hash per file in Go. Measured on
+octi-server, kc only, 30 runs per JVM, two JVMs each with and without
+the check, alternating (warm medians of the last 20 rounds):
+
+| | `KcRound`, warm | warm total | first run's `KcRound` (rounds 1, 2) |
+|---|---|---|---|
+| checked | 8.4–9.2 ms | 143–148 ms | 558–572, 149–173 ms |
+| `-Dkc.checkKinds=false` | 8.1–8.8 ms | 141–142 ms | 530–574, 120–143 ms |
+
+That is under 1 ms a round warm, and about 25 ms in a cold JVM's second
+round, where the code isn't compiled yet; both are near the runs' noise.
+
+#### Step 19: member coverage
+
+`jvm/kc-aa/members.txt` lists every Analysis API member the KSP fork's
+bytecode uses (calls, field reads and method references to
+`org.jetbrains.kotlin.analysis.api`) and whether kc answers it.
+`build.sh members` regenerates it with `gen/Members.kt`, which reads the
+fork's jar with ASM and classifies each member against kc-aa's classes:
+
+- **kc**: a `KcAnalysis` method the `KaSession` proxy dispatches to, or
+  an override in each of kc's classes implementing the owner;
+- **partial**: some of those classes override it, the others leave it to
+  a generated stub;
+- **stub**: kc leaves it to a stub, or the proxy has no method for it; a
+  call throws `UnsupportedOperationException("kc: ...")`;
+- **api**: the Analysis API answers it itself (a default method, a static
+  or concrete member, a constructor, a field), possibly through members
+  listed here;
+- **none**: an abstract member of a type kc has no class for.
+
+| | total | kc | partial | stub | api | none |
+|---|---|---|---|---|---|---|
+| all | 310 | 204 | 28 | 4 | 69 | 5 |
+| `KaSession` and its components (`session`) | 53 | 47 | | 2 | 4 | |
+| symbols | 162 | 83 | 27 | 1 | 49 | 2 |
+| types | 32 | 28 | | | 2 | 2 |
+| components | 23 | 15 | | | 8 | |
+| annotations | 14 | 13 | 1 | | | |
+| other (scopes, signatures, project structure, ...) | 26 | 18 | | 1 | 6 | 1 |
+
+The stubs: `KaSession.resolveToCall` and `getExpectsForActual`,
+`KaSourceModule.stableModuleName` and `KaEnumEntrySymbol`'s initializer.
+The `none` members are of types kc never makes: call infos, local
+variable symbols, captured and intersection types. The partials are
+mostly members that kc's symbol classes for one origin answer and others
+(library or Java) leave to stubs, such as `psi` on a library symbol. No
+gate reaches a stub; a run that does names the member.
+
 ## Gaps and open questions
 
 - **Slice simplifications (M0.4).** These go when M3/M4 bring the facts in:
@@ -1576,8 +1722,8 @@ is reprocessed. That is the superset above: more work, the same outputs.
   - ~~Library type aliases and top-level callables aren't known.~~ Fixed in
     step 6.
   - ~~Java sources are ignored.~~ Fixed in step 15.
-  - The PSI join checks each node's PSI class, not yet the whole kind
-    sequence.
+  - ~~The PSI join checks each node's PSI class, not yet the whole kind
+    sequence.~~ Fixed in step 18.
   - `dropCaches` does nothing. Dropping PsiManager's caches needs IntelliJ
     extension points that the core environment doesn't register, and sources
     don't change between rounds.
@@ -1599,7 +1745,9 @@ is reprocessed. That is the superset above: more work, the same outputs.
   `JavaFileManager` service to `KotlinCliJavaFileManagerImpl`. The `kc`
   backend gets one from `KotlinCoreEnvironment`, whose setup is part of the
   cold-start cost that M7 measures.
-- **KSP member coverage.** KSP2 uses about 308 AA members: `KaSession` 43,
-  symbols 157, types 32, components 22, annotations 14, project structure
-  10, signatures 6, scopes 4. M0.4 implements the slice's subset (see above).
-  M5 tracks coverage through a generated `members.txt`.
+- **KSP member coverage.** The fork's bytecode uses 310 AA members; kc
+  answers 204, answers 28 for some of its classes, leaves 4 to stubs, 69
+  are the API's own and 5 are of types kc never makes
+  (`jvm/kc-aa/members.txt`, `build.sh members`, step 19).
+- **Incremental checking.** A changed Kotlin file re-checks the whole
+  module in Go (step 17); only parsing is per file.
