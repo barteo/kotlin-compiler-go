@@ -106,7 +106,7 @@ internal class KcTypeContext(
     }
 
     private fun parameter(t: KcType): KaTypeParameterSymbol =
-        psi(t.param)?.let { round.byPsi[it] as? KaTypeParameterSymbol }
+        psi(t.param)?.let { round.symbolOf(it) as? KaTypeParameterSymbol }
             ?: byName(Name.identifier(t.name))
             ?: KcLibraryTypeParameterSymbol(round, Name.identifier(t.name))
 
@@ -163,7 +163,7 @@ internal class KcClassType(
     private val localPsi: PsiElement? = null,
 ) : StubKaUsualClassType(), KcBaseClassType {
     override val token get() = round.token
-    private val localSymbol: KaClassLikeSymbol? get() = local ?: localPsi?.let { round.byPsi[it] as? KaClassLikeSymbol }
+    private val localSymbol: KaClassLikeSymbol? get() = local ?: localPsi?.let { round.symbolOf(it) as? KaClassLikeSymbol }
     override val symbol: KaClassLikeSymbol
         get() = localSymbol ?: resolved ?: (if (isAlias) round.typeAlias(classId) ?: round.classSymbol(classId) else round.classSymbol(classId))
             .also { if (localPsi == null && it !is KcLibraryClassSymbol) resolved = it }

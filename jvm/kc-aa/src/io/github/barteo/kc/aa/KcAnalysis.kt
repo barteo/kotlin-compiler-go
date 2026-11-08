@@ -56,20 +56,20 @@ class KcAnalysis internal constructor(
     fun getAnalysisScope(): GlobalSearchScope = GlobalSearchScope.allScope(module.project)
 
     // KaSymbolProvider
-    fun getSymbol(file: KtFile): KaFileSymbol = round.byPsi[file] as? KaFileSymbol ?: noSymbol(file)
+    fun getSymbol(file: KtFile): KaFileSymbol = round.symbolOf(file) as? KaFileSymbol ?: noSymbol(file)
     fun getSymbol(declaration: KtDeclaration): KaDeclarationSymbol =
-        round.byPsi[declaration] as? KaDeclarationSymbol ?: noSymbol(declaration)
-    fun getSymbol(c: KtClassOrObject): KaClassSymbol? = round.byPsi[c] as? KaClassSymbol
-    fun getNamedClassSymbol(c: KtClassOrObject): KaNamedClassSymbol? = round.byPsi[c] as? KaNamedClassSymbol
+        round.symbolOf(declaration) as? KaDeclarationSymbol ?: noSymbol(declaration)
+    fun getSymbol(c: KtClassOrObject): KaClassSymbol? = round.symbolOf(c) as? KaClassSymbol
+    fun getNamedClassSymbol(c: KtClassOrObject): KaNamedClassSymbol? = round.symbolOf(c) as? KaNamedClassSymbol
     // KaJavaInteroperabilityComponent: the Java sources' classes and members.
     fun getNamedClassSymbol(c: PsiClass): KaNamedClassSymbol? {
-        synchronized(round) { round.byPsi[c] }?.let { return it as? KaNamedClassSymbol }
+        round.symbolOf(c)?.let { return it as? KaNamedClassSymbol }
         round.libraryClass(round.javaClassId(c) ?: return null)
-        return synchronized(round) { round.byPsi[c] } as? KaNamedClassSymbol
+        return round.symbolOf(c) as? KaNamedClassSymbol
     }
     fun getCallableSymbol(m: PsiMember): KaCallableSymbol? {
         m.containingClass?.let(::getNamedClassSymbol)
-        return synchronized(round) { round.byPsi[m] } as? KaCallableSymbol
+        return round.symbolOf(m) as? KaCallableSymbol
     }
 
     fun findClass(classId: ClassId): KaClassSymbol? = round.classes[classId] ?: round.libraryClass(classId)
@@ -291,7 +291,7 @@ class KcAnalysis internal constructor(
         val lower: KaType = when (val target = ct.resolve()) {
             null -> return KcErrorType(round, ct.className)
             is com.intellij.psi.PsiTypeParameter -> {
-                val sym = round.byPsi[target] as? KaTypeParameterSymbol ?: return null
+                val sym = round.symbolOf(target) as? KaTypeParameterSymbol ?: return null
                 KcTypeParameterType(round, sym.name, sym, false)
             }
             else -> KcClassType(round, javaClassId(target) ?: return null)

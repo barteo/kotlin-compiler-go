@@ -75,8 +75,14 @@ internal class KcRound(
         return byKey[key]
     }
 
-    /** Source symbols by their PSI, for `KaSession.symbol`. */
-    val byPsi = IdentityHashMap<PsiElement, KaSymbol>(sizes.psi)
+    /** Source symbols by their PSI, for `KaSession.symbol` (see [symbolOf]). */
+    private val byPsi = IdentityHashMap<PsiElement, KaSymbol>(sizes.psi)
+
+    /** The source symbol of [psi], or null. */
+    fun symbolOf(psi: PsiElement): KaSymbol? = synchronized(this) {
+        if (unrecorded.isNotEmpty()) (psi.containingFile as? KtFile)?.let(::recordTypes)
+        byPsi[psi]
+    }
 
     val classes = HashMap<ClassId, KaNamedClassSymbol>()
     val typeAliases = HashMap<ClassId, KaTypeAliasSymbol>()
@@ -117,15 +123,15 @@ internal class KcRound(
         synchronized(this) { recordTypes(expr.containingKtFile); values[expr] }
 
     /**
-     * The builders of the source files whose type references aren't
-     * recorded yet. Most rounds look up the types of few files' type
-     * references (KSP processes the dirty ones), so a file's are walked
-     * the first time one of them is looked up.
+     * The builders of the source files whose type references and symbols
+     * by PSI aren't recorded yet. Most rounds look up few files' (KSP
+     * processes the dirty ones), so a file's are recorded the first time
+     * one of them is looked up.
      */
     private val unrecorded = IdentityHashMap<KtFile, Builder>()
 
     private fun recordTypes(file: KtFile) {
-        unrecorded.remove(file)?.recordTypeRefs()
+        unrecorded.remove(file)?.record()
     }
 
     val fileSymbols: List<KcFileSymbol>
@@ -311,7 +317,8 @@ internal class KcRound(
         fileSymbols = files.mapIndexed { i, (f, kt) ->
             val b = Builder(f.path, joined[i], KaSymbolOrigin.SOURCE)
             b.deferred = ArrayList()
-            b.file(f, kt).also { if (b.deferred!!.isNotEmpty()) unrecorded[kt] = b else b.deferred = null }
+            b.deferredPsi = ArrayList()
+            b.file(f, kt).also { unrecorded[kt] = b }
         }
         for (name in files.map { it.first.packageName } + javaFiles.map { it.packageName }) {
             var fq = FqName(name)
@@ -771,8 +778,18 @@ internal class KcRound(
          */
         var deferred: ArrayList<Any>? = null
 
-        /** Records the type references [typeRef] deferred. Called with the round locked. */
-        fun recordTypeRefs() {
+        /**
+         * The symbols of a source file's declarations by PSI not recorded
+         * yet, as pairs of PSI and symbol (see [unrecorded]).
+         */
+        var deferredPsi: ArrayList<Any>? = null
+
+        /** Records what [typeRef] and [register] deferred. Called with the round locked. */
+        fun record() {
+            deferredPsi?.let { d ->
+                deferredPsi = null
+                for (i in d.indices step 2) byPsi.putIfAbsent(d[i] as PsiElement, d[i + 1] as KaSymbol)
+            }
             val d = deferred ?: return
             deferred = null
             val outer = types
@@ -825,7 +842,15 @@ internal class KcRound(
 
         fun <S : KaSymbol> register(s: S, key: String, psi: PsiElement?): S {
             putKey(key, s)
-            if (psi != null) byPsi.putIfAbsent(psi, s)
+            if (psi != null) {
+                val d = deferredPsi
+                if (d != null && psi is KtElement) {
+                    d.add(psi)
+                    d.add(s)
+                } else {
+                    byPsi.putIfAbsent(psi, s)
+                }
+            }
             return s
         }
 
