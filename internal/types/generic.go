@@ -98,7 +98,7 @@ func (c *ClassSym) life() life {
 	switch {
 	case c == nil || c.Global:
 		return processLife
-	case c.External:
+	case c.External && !c.Source:
 		return libraryLife
 	}
 	return checkLife

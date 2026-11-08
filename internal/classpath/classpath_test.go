@@ -266,3 +266,53 @@ func TestAddSource(t *testing.T) {
 		t.Error("MethodReader of a source class: no error")
 	}
 }
+
+func TestOverlay(t *testing.T) {
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, "demo"), 0o755)
+	for _, n := range []string{"A", "C"} {
+		c := classfile.NewClass(classfile.AccPublic|classfile.AccSuper, "demo/"+n, "java/lang/Object")
+		os.WriteFile(filepath.Join(dir, "demo", n+".class"), c.Bytes(), 0o644)
+	}
+	p, err := Open("", []string{dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Close()
+	before, _ := p.Classes("demo")
+	o := p.Overlay()
+	for _, name := range []string{"demo/A", "demo/B", "src/D"} {
+		o.AddSource(name, func() (*classfile.Info, error) { return &classfile.Info{Name: name, Super: "java/lang/Object"}, nil })
+	}
+	if p.HasSources() || p.Has("demo/B") || p.HasPackage("src") || p.IsSource("demo/A") {
+		t.Error("overlay sources leaked into the base")
+	}
+	if !o.HasSources() || !o.Has("demo/B") || !o.Has("demo/C") || !o.HasPackage("src") || !o.HasPackage("demo") || !o.IsSource("demo/A") || o.IsSource("demo/C") {
+		t.Error("overlay doesn't see its sources and the base's classes")
+	}
+	if got, _ := o.Classes("demo"); !slices.Equal(got, []string{"demo/A", "demo/B", "demo/C"}) {
+		t.Errorf("overlay Classes(demo) = %v", got)
+	}
+	if got, _ := p.Classes("demo"); !slices.Equal(got, before) {
+		t.Errorf("base Classes(demo) = %v, want %v", got, before)
+	}
+	if info, err := o.Load("demo/A"); err != nil || info.Access != 0 {
+		t.Errorf("overlay Load(demo/A) = %+v, %v; want the source's", info, err)
+	}
+	if info, err := p.Load("demo/A"); err != nil || info.Access == 0 {
+		t.Errorf("base Load(demo/A) = %+v, %v; want the class file's", info, err)
+	}
+	if _, err := o.Bytes("demo/C"); err != nil {
+		t.Errorf("overlay Bytes(demo/C): %v", err)
+	}
+	if _, err := o.MethodReader("demo/C"); err != nil {
+		t.Errorf("overlay MethodReader(demo/C): %v", err)
+	}
+	if o.Len() != p.Len()+3 {
+		t.Errorf("overlay Len = %d, base %d", o.Len(), p.Len())
+	}
+	o.Close()
+	if _, err := p.Bytes("demo/C"); err != nil {
+		t.Errorf("base after overlay Close: %v", err)
+	}
+}

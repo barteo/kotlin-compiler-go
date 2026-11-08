@@ -363,36 +363,21 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 	for i, src := range all {
 		paths[i] = src.Path
 	}
-	var kept *shared // the library of a module without Java sources
-	var cache *checkCache
-	var key string
-	if len(javaSources) == 0 {
-		l, err := s.library()
-		if err != nil {
-			return nil, err
-		}
-		kept, cache = l, &l.checks
-	} else if key = libraryKey(s.cfg); key != "" {
-		cache = &javaChecks
+	// The library of the class path, which the module's Java sources, if
+	// any, are put over for each check (library.withJava).
+	sl, err := s.library()
+	if err != nil {
+		return nil, err
 	}
-	prev, whole := cache.find(key, paths, texts)
+	cache := &sl.checks
+	prev, whole := cache.find("", paths, texts)
 	if whole {
 		tm.Mark("reused")
-		l := kept
-		if l == nil {
-			l = prev.sl
-			l.retain()
+		lib := sl.lib
+		if prev.lib != nil {
+			lib = prev.lib
 		}
-		return &Model{lib: l.lib, shared: l, Files: prev.files, Diagnostics: prev.diags, Check: prev.check}, nil
-	}
-	if prev == nil && kept == nil {
-		// The first update with Java sources: the parses of the update
-		// before, without them.
-		s.mu.Lock()
-		if s.lib != nil {
-			prev, _ = s.lib.checks.find("", nil, nil)
-		}
-		s.mu.Unlock()
+		return &Model{lib: lib, shared: sl, Files: prev.files, Diagnostics: prev.diags, Check: prev.check}, nil
 	}
 	javaTexts := texts[len(sources):]
 	texts = texts[:len(sources)]
@@ -410,9 +395,8 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 		javaFiles[i], javaErrs[i] = javasrc.Parse(javaSources[i].Path, javaTexts[i])
 	})
 	tm.Mark("parse")
-	var sl *shared
+	ml := sl.lib // the Model's library
 	var java *driver.JavaSources
-	var err error
 	var javaDiags []Diagnostic
 	if len(javaSources) > 0 {
 		// A file kc can't parse is left out: its classes aren't the model's.
@@ -426,15 +410,11 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 				javaDiags = append(javaDiags, Diagnostic{Path: javaSources[i].Path, Line: 1, Col: 1, Message: javaErrs[i].Error()})
 			}
 		}
-		sl, java, err = acquireJava(s.cfg, parsed)
-	} else {
-		sl = kept
+		ml = sl.lib.withJava(parsed)
+		java = ml.java
 	}
-	if err != nil {
-		return nil, err
-	}
-	lib := sl.lib.lib
-	m := &Model{lib: sl.lib, shared: sl, Diagnostics: javaDiags, Check: checkIDs.Add(1)}
+	lib := ml.lib
+	m := &Model{lib: ml, shared: sl, Diagnostics: javaDiags, Check: checkIDs.Add(1)}
 	ok := false
 	defer func() {
 		if !ok {
@@ -556,16 +536,14 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 		tm.Mark("lower")
 	}
 	if cache != nil {
-		c := &checked{check: m.Check, key: key, paths: paths, texts: slices.Concat(texts, javaTexts), files: m.Files, diags: m.Diagnostics,
+		c := &checked{check: m.Check, paths: paths, texts: slices.Concat(texts, javaTexts), files: m.Files, diags: m.Diagnostics,
 			clean: len(broken) == 0,
 			snaps: make(map[string]checkedSnap, len(sources))}
 		for i, src := range sources {
 			c.snaps[src.Path] = checkedSnap{texts[i], snaps[i]}
 		}
-		if kept == nil {
-			// The entry keeps the module's own library.
-			sl.retain()
-			c.sl = sl
+		if java != nil {
+			c.lib = ml
 		}
 		cache.keep(c)
 	}

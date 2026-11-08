@@ -230,6 +230,7 @@ func fieldConstant(fd classfile.Member) any {
 // facadeConstant returns the value of the const val name of a file
 // facade, whose field it is, also of a multifile class's facade, or nil.
 func (t *classTable) facadeConstant(facade, name string) any {
+	t = t.root()
 	info, err := t.cp.Load(facade)
 	if err != nil {
 		return nil
@@ -245,6 +246,7 @@ func (t *classTable) facadeConstant(facade, name string) any {
 // timed adds the time since start and n declarations to the Kotlin
 // metadata counter.
 func (t *classTable) timed(start time.Time, n int) {
+	t = t.root()
 	t.cp.Kotlin.Add(n, time.Since(start))
 }
 
@@ -288,6 +290,7 @@ func (t *classTable) kclass(id string) *types.ClassSym {
 // KFunction<R> and a function type, and its values are
 // kotlin.reflect.KFunction objects on the JVM.
 func (t *classTable) kfunction(n int, suspend bool) *types.ClassSym {
+	t = t.root()
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	key := n
@@ -313,6 +316,7 @@ func (t *classTable) kfunction(n int, suspend bool) *types.ClassSym {
 // extends KFunction<R> and FunctionN<P1, ..., Pn, R>, or a
 // KSuspendFunctionN that extends SuspendFunctionN<P1, ..., Pn, R>.
 func (t *classTable) loadKFunction(cls *types.ClassSym) {
+	t = t.root()
 	n, suspend, _ := kfunctionArity(cls)
 	kf := t.class("kotlin/reflect/KFunction")
 	if kf == nil {
@@ -357,6 +361,7 @@ func kfunctionArity(cls *types.ClassSym) (n int, suspend, ok bool) {
 
 // collection returns a built-in collection type. t.mu is held.
 func (t *classTable) collection(id string) *types.ClassSym {
+	t = t.root()
 	c := t.collections[id]
 	if c == nil {
 		c = types.NewExternal(collectionJVM[id], t.loadCollection)
@@ -378,6 +383,7 @@ func (t *classTable) collection(id string) *types.ClassSym {
 // rawClass returns the Java class of a collection interface, which Kotlin
 // code otherwise sees as a built-in type.
 func (t *classTable) rawClass(name string) *types.ClassSym {
+	t = t.root()
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	c := t.raw[name]
@@ -389,6 +395,7 @@ func (t *classTable) rawClass(name string) *types.ClassSym {
 }
 
 func (t *classTable) builtinClasses() map[string]*kmeta.Class {
+	t = t.root()
 	t.builtinsOnce.Do(func() {
 		start := time.Now()
 		t.builtins = map[string]*kmeta.Class{}
@@ -431,6 +438,7 @@ type tscope map[int]*types.TypeParamSym
 // ktypeParams creates the symbols of declared type parameters and adds them
 // to scope. It reports false if a bound uses a type kc doesn't support.
 func (t *classTable) ktypeParams(ps []*kmeta.TypeParam, owner any, scope tscope) ([]*types.TypeParamSym, bool) {
+	t = t.root()
 	syms := make([]*types.TypeParamSym, len(ps))
 	for i, p := range ps {
 		syms[i] = &types.TypeParamSym{Name: p.Name, Var: variance(p.Variance), Index: i, Owner: owner, Reified: p.Reified, OnlyInput: p.OnlyInput, Library: true}
@@ -453,6 +461,7 @@ func (t *classTable) ktypeParams(ps []*kmeta.TypeParam, owner any, scope tscope)
 // ktype maps a type in Kotlin metadata to a kc type, and reports false
 // if kc doesn't support it.
 func (t *classTable) ktype(kt *kmeta.Type, scope tscope) (types.Type, bool) {
+	t = t.root()
 	if kt == nil {
 		return types.InvalidType, false
 	}
@@ -580,6 +589,7 @@ func (t *classTable) ktype(kt *kmeta.Type, scope tscope) (types.Type, bool) {
 // function type of its JVM interface: suspend (A) -> R is kotlin.Function2
 // <A, Continuation<R>, Any?>.
 func (t *classTable) suspendType(kt *kmeta.Type, scope tscope) (types.Type, bool) {
+	t = t.root()
 	n, ok := functionArity(kt.Class, "kotlin/")
 	if !ok || n == 0 || len(kt.Args) != n+1 {
 		return types.InvalidType, false
@@ -697,6 +707,7 @@ func (t *classTable) valueOf(cls *types.ClassSym, kc *kmeta.Class) {
 // being created, and the underlying value's type erases to the first
 // bound's class, which is another.
 func (t *classTable) valueTypeParams(cls *types.ClassSym, kc *kmeta.Class, scope tscope) []*types.TypeParamSym {
+	t = t.root()
 	syms := make([]*types.TypeParamSym, len(kc.TypeParams))
 	for i, p := range kc.TypeParams {
 		syms[i] = &types.TypeParamSym{Name: p.Name, Var: variance(p.Variance), Index: i, Owner: cls, Reified: p.Reified, Library: true}
@@ -735,6 +746,7 @@ func mentionsClass(kt *kmeta.Type, name string) bool {
 // parameters of the enclosing class; methods says which JVM methods are
 // public (nil: all are).
 func (t *classTable) kfun(f *kmeta.Function, owner *types.ClassSym, scope tscope, methods map[string]bool) *types.FunSym {
+	t = t.root()
 	sym := &types.FunSym{Name: f.Name, Owner: owner, Desc: f.JVM.Desc, Operator: f.IsOperator(), Resolved: true}
 	if f.JVM.Name != f.Name {
 		sym.JVMName = f.JVM.Name
@@ -868,6 +880,7 @@ func inlineInfo(f *kmeta.Function, private bool) *types.InlineInfo {
 type inlineKey struct{ class, name, desc string }
 
 func (t *classTable) loadInline(class string) func(name, desc string) (*inline.Body, error) {
+	t = t.root()
 	return func(name, desc string) (*inline.Body, error) {
 		key := inlineKey{class, name, desc}
 		if load, ok := t.inlineBodies.Load(key); ok {
@@ -901,6 +914,7 @@ func (t *classTable) loadInline(class string) func(name, desc string) (*inline.B
 // kparams creates the symbols of value parameters. It reports whether kc
 // supports their types, and ok.
 func (t *classTable) kparams(ps []*kmeta.Param, scope tscope, ok bool) ([]*types.VarSym, bool) {
+	t = t.root()
 	syms := make([]*types.VarSym, len(ps))
 	for i, p := range ps {
 		kt := p.Type
@@ -1111,6 +1125,7 @@ func zeroable(f *types.FunSym) bool {
 // kprop creates the accessors of a Kotlin property, or returns nil if kc
 // can't use it.
 func (t *classTable) kprop(p *kmeta.Property, owner *types.ClassSym, scope tscope, methods map[string]bool, getter, setter func(*kmeta.Property) *kmeta.JVMSig) *types.KProp {
+	t = t.root()
 	friend := t.friend(owner.Name)
 	if !visibleOutside(p.Flags.Visibility(), friend) || !visibleOutside(p.GetterFlags.Visibility(), friend) || p.Recv != nil || p.Contexts > len(p.ContextParams) || len(p.TypeParams) > 0 {
 		return nil
@@ -1171,6 +1186,7 @@ func (t *classTable) friend(class string) bool {
 // or nil. It is a method of the class that takes the extension receiver.
 // An inline-only getter is private: its body is copied.
 func (t *classTable) memberExtProp(p *kmeta.Property, owner *types.ClassSym, scope tscope, methods map[string]bool) *types.FunSym {
+	t = t.root()
 	g := p.Getter
 	inlineOnly := g != nil && !hasMethod(methods, g.Name+g.Desc, p.GetterFlags>>8&1 != 0) && p.GetterFlags>>8&1 != 0
 	friend := t.friend(owner.Name)
@@ -1215,6 +1231,7 @@ func (t *classTable) memberExtProp(p *kmeta.Property, owner *types.ClassSym, sco
 // properties, which have no getter. It also returns the fields of its
 // properties that have one, as accessorFields does.
 func (t *classTable) companionFields(name string) (map[string]*kmeta.Type, map[string]bool) {
+	t = t.root()
 	info, err := t.cp.Load(name)
 	if err != nil || info.Kotlin == nil {
 		return nil, nil
@@ -1358,6 +1375,7 @@ func markerCtor(info *classfile.Info, d string) bool {
 
 // loadKotlin fills in a Kotlin class from its metadata.
 func (t *classTable) loadKotlin(cls *types.ClassSym, info *classfile.Info, kc *kmeta.Class) {
+	t = t.root()
 	start := time.Now()
 	cls.KotlinName = kc.Name
 	cls.Interface = info.Access&classfile.AccInterface != 0
@@ -1777,6 +1795,7 @@ func builtinSig(name string, params []*kmeta.Param, ret *kmeta.Type) kmeta.JVMSi
 // loadCollection fills in a built-in collection type: its members from
 // .kotlin_builtins, and the Java interface's other members.
 func (t *classTable) loadCollection(cls *types.ClassSym) {
+	t = t.root()
 	kc := t.builtinClasses()[cls.KotlinName]
 	if kc == nil {
 		cls.Missing = true
@@ -1864,6 +1883,7 @@ func (t *classTable) loadCollection(cls *types.ClassSym) {
 // isn't, though a subtype gets it from Java: MutableIterator's hasNext(),
 // which Iterator declares.
 func (t *classTable) platform() map[string]bool {
+	t = t.root()
 	t.platformOnce.Do(func() {
 		t.platformSet = map[string]bool{}
 		declared := map[string]bool{}
@@ -1889,6 +1909,7 @@ func (t *classTable) platform() map[string]bool {
 
 // modules reads the .kotlin_module files on the class path.
 func (t *classTable) modules() map[string][]kmeta.Part {
+	t = t.root()
 	t.moduleOnce.Do(func() {
 		start := time.Now()
 		t.parts = map[string][]kmeta.Part{}
@@ -1924,6 +1945,7 @@ func (t *classTable) modules() map[string][]kmeta.Part {
 // isKotlinPackage reports whether a package (pkg.name) has top-level
 // Kotlin declarations.
 func (t *classTable) isKotlinPackage(pkg string) bool {
+	t = t.root()
 	if !t.kotlin {
 		return false
 	}
@@ -1934,6 +1956,7 @@ func (t *classTable) isKotlinPackage(pkg string) bool {
 // pkg returns a package's top-level declarations, reading them on first
 // use, or nil if it has none.
 func (t *classTable) pkg(name string) *kpkg {
+	t = t.root()
 	if !t.isKotlinPackage(name) {
 		return nil
 	}
@@ -1992,16 +2015,19 @@ func (t *classTable) pkg(name string) *kpkg {
 
 // pkgFuns returns the public top-level functions of a package with a name.
 func (t *classTable) pkgFuns(pkg, name string) []*types.FunSym {
+	t = t.root()
 	return t.pkgFunsOf(pkg, name, false)
 }
 
 // pkgInternalFuns returns the internal top-level functions of a package
 // with a name, which code that suppresses INVISIBLE_REFERENCE may call.
 func (t *classTable) pkgInternalFuns(pkg, name string) []*types.FunSym {
+	t = t.root()
 	return t.pkgFunsOf(pkg, name, true)
 }
 
 func (t *classTable) pkgFunsOf(pkg, name string, internal bool) []*types.FunSym {
+	t = t.root()
 	p := t.pkg(pkg)
 	if p == nil || !p.names[name] {
 		return nil
@@ -2080,6 +2106,7 @@ func (t *classTable) pkgFunsOf(pkg, name string, internal bool) []*types.FunSym 
 // properties with a name. A getter takes the receiver and has the
 // property's type parameters.
 func (t *classTable) pkgExtProps(pkg, name string) []*types.FunSym {
+	t = t.root()
 	p := t.pkg(pkg)
 	if p == nil || !p.names[name] {
 		return nil
@@ -2137,6 +2164,7 @@ func (t *classTable) pkgExtProps(pkg, name string) []*types.FunSym {
 // pkgVar returns a package's public top-level property with a name that
 // isn't an extension, or nil.
 func (t *classTable) pkgVar(pkg, name string) *types.VarSym {
+	t = t.root()
 	p := t.pkg(pkg)
 	if p == nil || !p.names[name] {
 		return nil
@@ -2321,6 +2349,7 @@ func (t *classTable) pkgClass(pkg, name string) *types.ClassSym {
 // pkgClass doesn't return as a class, such as an alias of a function type
 // or of a class with fixed type arguments, or nil.
 func (t *classTable) pkgAlias(pkg, name string) *types.AliasSym {
+	t = t.root()
 	p := t.pkg(pkg)
 	if p == nil || !p.names[name] {
 		return nil
@@ -2361,6 +2390,7 @@ func (t *classTable) pkgAlias(pkg, name string) *types.AliasSym {
 // aliasClass returns the class a typealias stands for, if it is
 // typealias A<P1, ..., Pn> = C<P1, ..., Pn>.
 func (t *classTable) aliasClass(a *kmeta.TypeAlias) *types.ClassSym {
+	t = t.root()
 	e := a.Expanded
 	if e == nil || e.Class == "" || e.Nullable || len(e.Args) != len(a.TypeParams) {
 		return nil

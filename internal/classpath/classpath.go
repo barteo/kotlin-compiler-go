@@ -54,6 +54,12 @@ type Path struct {
 	sources   []source
 	// sourceCount counts the classes of source files: see AddSource.
 	sourceCount int
+	// base is the class path an overlay reads its other classes from:
+	// see Overlay.
+	base *Path
+	// merged caches Classes's merge of an overlay's packages with its
+	// base's: string -> []string.
+	merged sync.Map
 
 	// These caches belong to one compilation. The bytes and decoded objects
 	// are immutable, and a concurrent first lookup performs the read once.
@@ -171,6 +177,23 @@ func (p *Path) AddSource(name string, info func() (*classfile.Info, error)) {
 	}
 }
 
+// Overlay returns a class path with p's classes, to which AddSource adds
+// classes p doesn't see: a module's Java sources over a class path that
+// checks of other versions of the module, or other modules, share.
+// Closing it doesn't close p. Its Kotlin, Inline and Loaded figures are
+// its own, the classes it reads from p count in p's.
+func (p *Path) Overlay() *Path {
+	o := &Path{
+		classes:   map[string]entry{},
+		packages:  map[string]bool{},
+		resources: p.resources,
+		resNames:  p.resNames,
+		base:      p,
+	}
+	o.byPackage = sync.OnceValue(o.indexPackages)
+	return o
+}
+
 // HasSources reports whether AddSource added classes.
 func (p *Path) HasSources() bool { return p.sourceCount > 0 }
 
@@ -251,6 +274,9 @@ func (p *Path) HasKotlin() bool {
 
 // Close releases open files.
 func (p *Path) Close() error {
+	if p.base != nil {
+		return nil
+	}
 	var errs []error
 	for _, s := range p.sources {
 		errs = append(errs, s.close())
@@ -259,17 +285,24 @@ func (p *Path) Close() error {
 }
 
 // Len returns the number of indexed classes.
-func (p *Path) Len() int { return len(p.classes) }
+func (p *Path) Len() int {
+	if p.base != nil {
+		return p.base.Len() + len(p.classes)
+	}
+	return len(p.classes)
+}
 
 // Has reports whether a class exists, by internal name (java/util/Random).
 func (p *Path) Has(name string) bool {
 	_, ok := p.classes[name]
-	return ok
+	return ok || p.base != nil && p.base.Has(name)
 }
 
 // HasPackage reports whether any class is in the package, by internal name
 // (java/util).
-func (p *Path) HasPackage(pkg string) bool { return p.packages[pkg] }
+func (p *Path) HasPackage(pkg string) bool {
+	return p.packages[pkg] || p.base != nil && p.base.HasPackage(pkg)
+}
 
 // packageIndex is Path.byPackage's result.
 type packageIndex struct {
@@ -285,7 +318,23 @@ type packageIndex struct {
 // does if the path has a class.
 func (p *Path) Classes(pkg string) (names []string, ok bool) {
 	idx := p.byPackage()
-	return idx.classes[pkg], idx.all[pkg]
+	if p.base == nil {
+		return idx.classes[pkg], idx.all[pkg]
+	}
+	names, ok = p.base.Classes(pkg)
+	ok = ok || idx.all[pkg]
+	own := idx.classes[pkg]
+	if len(own) == 0 {
+		return names, ok
+	}
+	if m, done := p.merged.Load(pkg); done {
+		return m.([]string), ok
+	}
+	m := slices.Concat(names, own)
+	slices.Sort(m)
+	m = slices.Compact(m)
+	p.merged.Store(pkg, m)
+	return m, ok
 }
 
 func (p *Path) indexPackages() packageIndex {
@@ -342,6 +391,9 @@ func (p *Path) Package(pkg string) []string {
 // for the lifetime of Path and must not be modified.
 func (p *Path) Bytes(name string) ([]byte, error) {
 	e, ok := p.classes[name]
+	if !ok && p.base != nil {
+		return p.base.Bytes(name)
+	}
 	if !ok {
 		return nil, fmt.Errorf("class %s not found", name)
 	}
@@ -365,6 +417,9 @@ func (p *Path) Bytes(name string) ([]byte, error) {
 // MethodReader indexes a class's methods once and decodes their bodies on
 // demand. It shares the class bytes and constant pool across inline calls.
 func (p *Path) MethodReader(name string) (*classfile.MethodReader, error) {
+	if _, own := p.classes[name]; !own && p.base != nil {
+		return p.base.MethodReader(name)
+	}
 	if load, ok := p.methods.Load(name); ok {
 		return load.(func() (*classfile.MethodReader, error))()
 	}
@@ -380,13 +435,22 @@ func (p *Path) MethodReader(name string) (*classfile.MethodReader, error) {
 }
 
 // Friend reports whether a class is in a friend path, by internal name.
-func (p *Path) Friend(name string) bool { return p.classes[name].friend }
+func (p *Path) Friend(name string) bool {
+	if e, own := p.classes[name]; own || p.base == nil {
+		return e.friend
+	}
+	return p.base.Friend(name)
+}
 
 // Load reads and parses a class by internal name. The result is shared and
 // must not be modified. Source declarations are supplied by their owner.
 func (p *Path) Load(name string) (*classfile.Info, error) {
-	if e := p.classes[name]; e.info != nil {
+	e, own := p.classes[name]
+	if e.info != nil {
 		return e.info()
+	}
+	if !own && p.base != nil {
+		return p.base.Load(name)
 	}
 	if load, ok := p.infos.Load(name); ok {
 		return load.(func() (*classfile.Info, error))()

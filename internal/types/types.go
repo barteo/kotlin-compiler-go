@@ -805,7 +805,11 @@ type ClassSym struct {
 	// load on first use; call Ensure before reading the fields below or
 	// Methods.
 	External bool
-	Missing  bool // not found or unreadable
+	// Source is set, with External, on a class of the program's Java
+	// sources that a check loads over a library it shares with other
+	// checks: it lives as long as the check.
+	Source  bool
+	Missing bool // not found or unreadable
 	// MethodAnnotations reads the annotations of a method of the class
 	// file, by its name and descriptor.
 	MethodAnnotations func(name, desc string) (*classfile.MethodAnnotations, error)

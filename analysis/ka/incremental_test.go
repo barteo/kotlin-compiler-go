@@ -363,3 +363,56 @@ func TestIncrementalModuleDecl(t *testing.T) {
 	}
 	t.Logf("%d edits, %d checked partially, %d late inferences", edits, partial, check.LateInferences.Load())
 }
+
+// A body edit of a module with Java sources, whose texts are the same,
+// checks only the changed file, and gives what a whole check does.
+func TestIncrementalJava(t *testing.T) {
+	cfg := withJDK(t)
+	cfg.ModuleName = "incrementalJava"
+	java := `package q;
+public class J extends p.Base {
+    public int n;
+    public java.util.List<String> names() { return null; }
+    public p.Base base() { return this; }
+}
+`
+	a := `package p
+open class Base { open fun id() = 1 }
+class A { fun f(): Int { val j = q.J(); return j.n + j.id() } }
+`
+	b := `package p
+fun g(j: q.J): Int { return j.names().size }
+fun h() = q.J().base().id()
+`
+	srcs := func(a, b string) []Source {
+		return []Source{{Path: "a.kt", Text: &a}, {Path: "b.kt", Text: &b}, {Path: "J.java", Text: &java}}
+	}
+	s := Open(cfg)
+	defer s.Close()
+	m1, err := s.Update(context.Background(), srcs(a, b))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m1.Close()
+	if len(m1.Diagnostics) > 0 {
+		t.Fatalf("diagnostics: %v", m1.Diagnostics)
+	}
+	b2 := strings.Replace(b, "return j.names().size", "return j.names().size + 1", 1)
+	incrementalUpdates.Store(0)
+	got, err := s.Update(context.Background(), srcs(a, b2))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer got.Close()
+	if incrementalUpdates.Load() != 1 {
+		t.Errorf("not checked incrementally")
+	}
+	if got.Class("q/J") == nil {
+		t.Error("Class(q/J) = nil")
+	}
+	want := wholeCheck(t, s, srcs(a, b2))
+	defer want.Close()
+	if d := sameModel(got, want); d != "" {
+		t.Error(d)
+	}
+}
