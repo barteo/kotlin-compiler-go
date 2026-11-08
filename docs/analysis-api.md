@@ -1986,6 +1986,102 @@ The cold run is far from 10x: kc's setup (the IntelliJ environment and
 PSI for 559 files, 3.7 s) is most of it. Phase 3 of
 [ksp-perf.md](ksp-perf.md) is for that.
 
+#### Step 27: warm runs reuse the kept round
+
+A warm run with no edits checked nothing again (step 18 kept the check),
+but still encoded the whole model over JNI, decoded it and built a new
+round. Now:
+
+- **Kept rounds.** A model names its check (ka's `Model.Check`, the same
+  for an update that reuses a check whole). The JVM sends the checks of
+  the rounds its kept environment holds (up to 3, which own their
+  models' handles). If the update's check is one of them, Go doesn't
+  encode the model, and the session reuses that round and its member
+  caches. This cut setup from 130 to about 20 ms.
+- **Members by signature.** `KcMemberBuilder` matched every member
+  against every candidate. It now buckets them by kind, name and counts,
+  which a match requires. This cut process from 547 to 349 ms.
+- **Paths and PSI.** `psiFile` compares a file's bytes with the bytes its
+  PSI was parsed from, instead of decoding its text again. Source paths
+  are canonicalized once per process.
+
+TachiyomiExhaustive, 4 CPUs, JDK 21, 10 runs in one JVM:
+
+| ms | stock KSP2 (step 26) | kc | ratio |
+|---|---|---|---|
+| warm (median) | 6764 | 308 (setup 22, process 287) | 22x |
+| Hot | 6570 | 308 | 21x |
+| fastest run | 6336 | 234 | 27x |
+
+What is left of a warm run is KSP's own work and the processor's walk
+through kc-aa's symbols.
+
+#### Step 28: one-file edits
+
+`KspBench`'s edit mode (`run.sh`'s `EDIT=auto`) runs KSP incrementally
+over a copy of the sources. Before each run it edits one file, a body
+edit and a signature edit in turn. Both backends reprocess the same 3
+files.
+
+- **Lookups.** KSP's lookup storage update drops the dirty files'
+  lookups and adds the tracker's. A fork patch passes the dirty files to
+  `KspBackendSession.beginRound`, so kc-aa replays only their lookups.
+  This took 160–300 ms of lookup cache updates off each round.
+- **Signature edits check only the files they reach** (`declEdits`).
+  These are the edited files, the files whose recorded lookups find a
+  name the edit declares (before or after) or look in a class it
+  declares, and the files declaring the same names. Any file a checked
+  file's changed model reaches is checked next (`dependents`), until
+  none is left. More than half the module is checked whole.
+- **The rest is lowered as declarations.** A partial check lowers the
+  files it doesn't check with `lower.Declarations`. Block bodies are
+  empty except for a leading `contract { }` call, which `signatureHash`
+  now hashes. Expression bodies of functions with a written return type
+  are left out too. The checker records no lookups in those files and
+  skips their opt-in walk.
+- **Lookups for extensions.** `x.f()` and `x.p` now record the name in
+  the file's package and star imports when they find no member, or find
+  an extension, because an added extension may be found there.
+  `TestIncrementalModuleDecl` caught this: it makes 1170 signature edits
+  across Tachiyomi, one at a time, and compares each with a whole check.
+- **Fixes found on the way:**
+  - A race: two goroutines could infer the omitted type of an unchecked
+    file at once.
+  - A leak: `types.MakeArgs` interned type lists in a class-path
+    symbol's table, which kept every check alive (40–120 MB per check).
+- **Model delta.** The JVM sends its kept rounds' checks as bases. A
+  model file that is the same as a base's is sent as that check, and the
+  JVM reuses the `KcFile` it already decoded. This cut encode from 15–88
+  to 1 ms and decode from 14–27 to 2 ms. A round also skips walking and
+  hashing the PSI of files whose PSI and model nodes are unchanged
+  (`KcTrees`).
+
+Numbers, 12 runs in one JVM (runs 2–12 are edits, 3 files dirty on both
+backends):
+
+| ms | stock KSP2 | kc | ratio |
+|---|---|---|---|
+| body edit (median) | 871 | 204 | 4.3x |
+| signature edit (median) | 881 | 296 | 3.0x |
+| fastest edit | 784 | 178 | 4.4x |
+
+Before this step kc took 405 ms for a body edit and 973 ms for a
+signature edit. A kc edit run now splits as:
+
+- Go update, 100–210 ms:
+  - lower 30–60 ms, for all 559 files;
+  - signatures 45 ms after a body edit, 95–125 ms after a signature edit
+    (serial over every file: imports, parameter types, conflicts);
+  - bodies under 4 ms;
+  - model 5 ms.
+- Round, 30–60 ms: kc-aa builds every file's symbols again.
+- KSP's own setup and teardown, about 40 ms.
+
+10x needs the edit run under about 85 ms. That means not lowering and
+resolving the unchanged files at all, which needs the checker's module
+state kept across checks, and a round built per file on demand. Both
+are open.
+
 ## Gaps and open questions
 
 - **Slice simplifications (M0.4).** These go when M3/M4 bring the facts in:

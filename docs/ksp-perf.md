@@ -20,14 +20,21 @@ JDK 21, `bench/ksp/run.sh` (steps 11 and 17):
 
 These numbers predate steps 18–25.
 
-TachiyomiExhaustive (step 26), where kc's dump of what the processor sees
-equals stock's but for the differences step 26 lists:
+TachiyomiExhaustive, where kc's dump of what the processor sees equals
+stock's except for the differences step 26 lists. Cold is from step 26,
+warm from step 27, and edits from step 28:
 
 | ms | stock KSP2 | kc | ratio |
 |---|---|---|---|
 | cold JVM, first run | 23184 | 5882 | 3.9x |
-| Hot (fastest of runs 4–6) | 6570 | 741 | 8.9x |
-| warm (median) | 6764 | 639 | 10.6x |
+| Hot (fastest of runs 4–6) | 6570 | 308 | 21x |
+| warm (median) | 6764 | 308 | 22x |
+| one-file body edit (median) | 871 | 204 | 4.3x |
+| one-file signature edit (median) | 881 | 296 | 3.0x |
+
+W is past 10x. E is at 3–4x: an edit still lowers all 559 files and
+resolves their signatures in Go (100–210 ms), and kc-aa builds a new
+round for every file (30–60 ms). Step 28 lists what is left.
 
 ## What "10x" has to mean
 
