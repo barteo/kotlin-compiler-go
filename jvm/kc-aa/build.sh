@@ -357,8 +357,8 @@ stock dagger "$here/test/dagger/src" \
 # Room's processor (XProcessing, KotlinPoet output) over test/room/src,
 # and Hilt's with Dagger's over test/hilt/src: the class paths Gradle
 # resolves for room-compiler 2.8.4 (room-jars.sh) and hilt-compiler
-# 2.59.2, but for KSP's API and the Kotlin standard library, which KSP
-# provides.
+# 2.59.2 (hilt-jars.sh), but for KSP's API and the Kotlin standard
+# library, which KSP provides.
 . "$here/room-jars.sh"
 roomlibs=$lib/kotlin-stdlib-2.4.21.jar$(jars "${room_libs[@]}")
 procs=$(jars "${room_procs[@]}")
@@ -372,16 +372,9 @@ diff -ru "$here/test/room/want" "$out/room"
 echo "room: ok"
 stock room "$here/test/room/src" "$roomlibs" "$procs$serialization"
 
-hiltlibs=$lib/kotlin-stdlib-2.4.21.jar$(jars com.google.dagger:hilt-core:2.59.2 com.google.dagger:dagger:2.59.2 \
-	com.google.code.findbugs:jsr305:3.0.2 jakarta.inject:jakarta.inject-api:2.0.1 javax.inject:javax.inject:1 org.jspecify:jspecify:1.0.0)
-procs=$(jars com.google.dagger:hilt-compiler:2.59.2 com.google.dagger:dagger-compiler:2.59.2 com.google.dagger:dagger-spi:2.59.2 \
-	com.google.dagger:dagger:2.59.2 com.google.googlejavaformat:google-java-format:1.33.0 com.google.guava:guava:33.0.0-jre \
-	com.google.code.findbugs:jsr305:3.0.2 com.google.guava:failureaccess:1.0.2 com.squareup:javapoet:1.13.0 \
-	javax.inject:javax.inject:1 net.ltgt.gradle.incap:incap:0.2 org.jetbrains.kotlin:kotlin-metadata-jvm:2.2.20 \
-	com.squareup:kotlinpoet:1.11.0 org.jetbrains.kotlin:kotlin-reflect:1.6.10 org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.0 \
-	org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.8.0 jakarta.inject:jakarta.inject-api:2.0.1 org.jspecify:jspecify:1.0.0 \
-	org.checkerframework:checker-compat-qual:2.5.3 org.checkerframework:checker-qual:3.41.0 \
-	com.google.errorprone:error_prone_annotations:2.23.0 org.jetbrains:annotations:13.0)
+. "$here/hilt-jars.sh"
+hiltlibs=$lib/kotlin-stdlib-2.4.21.jar$(jars "${hilt_libs[@]}")
+procs=$(jars "${hilt_procs[@]}")
 rm -rf "$out/hilt"
 LD_PRELOAD=$java_home/lib/libjsig.so java -Dksp.backend=kc -Dkc.lib="$out/libkc.so" -Didea.home.path="$out" \
 	-cp "$out/runksp-classes$procs:$out/kc-aa.jar:$deps" RunKspKt "$here/test/hilt/src" "$out/hilt" "$hiltlibs" \
