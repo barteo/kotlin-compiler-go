@@ -505,10 +505,10 @@ func (l *lowerer) decl(n psi.NodeRef, lower func()) {
 	})
 }
 
-// recoveredIn is recovered for lowering the code at r, where it puts an
-// error outside r, as an expression missing at the end of the file, at
-// at: what the error's code is, for the diagnostic of the editor that
-// shows it, and the facts it invalidates.
+// recoveredIn is recovered for lowering the code at r. An error found
+// outside r, as an expression missing at the end of the file, is put at
+// at, so that the error's diagnostic, and the facts it invalidates, stay
+// the code's.
 func (l *lowerer) recoveredIn(r psi.Range, at syntax.Pos, lower func()) bool {
 	return l.recovered(func() {
 		defer func() {

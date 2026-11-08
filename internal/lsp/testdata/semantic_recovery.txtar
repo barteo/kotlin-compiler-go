@@ -1,0 +1,76 @@
+-- kc-lsp.json --
+{"modules": [{"name": "main", "sourceRoots": ["src"]}]}
+-- src/A.kt --
+fun g(s: String): Int {
+    val n: Int = s
+    /*|at*/
+    return 0
+}
+-- script --
+initialize
+open src/A.kt
+wait
+diagnostics src/A.kt
+change src/A.kt @at @at "n."
+wait
+diagnostics src/A.kt
+-- want --
+> initialize
+> open src/A.kt
+> wait
+> diagnostics src/A.kt
+[
+  {
+    "range": {
+      "start": {
+        "line": 1,
+        "character": 17
+      },
+      "end": {
+        "line": 1,
+        "character": 18
+      }
+    },
+    "severity": 2,
+    "code": "TYPE_MISMATCH",
+    "source": "kc",
+    "message": "type mismatch: inferred type is String but Int was expected"
+  }
+]
+> change src/A.kt @at @at "n."
+> wait
+> diagnostics src/A.kt
+[
+  {
+    "range": {
+      "start": {
+        "line": 3,
+        "character": 4
+      },
+      "end": {
+        "line": 3,
+        "character": 10
+      }
+    },
+    "severity": 2,
+    "code": "kc",
+    "source": "kc",
+    "message": "expected a name"
+  },
+  {
+    "range": {
+      "start": {
+        "line": 1,
+        "character": 17
+      },
+      "end": {
+        "line": 1,
+        "character": 18
+      }
+    },
+    "severity": 2,
+    "code": "TYPE_MISMATCH",
+    "source": "kc",
+    "message": "type mismatch: inferred type is String but Int was expected"
+  }
+]

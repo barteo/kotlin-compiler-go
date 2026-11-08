@@ -98,10 +98,11 @@ r, err := s.Update(ctx, sources) // sources carry editor texts, as ka.Source
 - `ka`'s library cache and body-only reuse (`libcache.go`, `reuse.go`,
   `signature.go`) move to `internal/kasession`, shared by `ka`
   (signatures only, for KSP) and `analysis` (bodies).
-- **Partial facts.** A file's facts are exported if lowering and checking
-  reported no error in it (per declaration from L2). `Result.Complete()`
-  reports whether there was no error anywhere, which is the contract
-  `AnalyzeArena` keeps.
+- **Partial facts.** A file's facts are exported but for the code its
+  errors invalidate: the statements from a broken one to the end of its
+  body, a broken expression after `=`, or a broken declaration (L2).
+  `Result.Complete()` reports whether there was no error anywhere, which
+  is the contract `AnalyzeArena` keeps.
 - Facts are kept per file and carried over for files an update doesn't
   check again, as `ka` keeps model files.
 
@@ -209,7 +210,9 @@ No test needs a JVM, as with `psi`'s goldens:
   without errors.
 - **Replay and fuzzing.** Each `testdata/**/*.kt` typed in a token at a
   time: no panic, valid protocol, and results that end equal to a whole
-  check. `FuzzEdits` runs 60 s in `pr-checks.yml`, next to `FuzzParse`.
+  check. `FuzzEdits`'s seeds run with the tests; fuzzing needs the
+  standard library, which the fuzz job doesn't install, so it runs by
+  hand (L2).
 
 The tests run in `pr-checks.yml`'s existing shards.
 
@@ -370,6 +373,68 @@ Lowered trees that the checker doesn't write into, so that unchanged
 files are neither lowered nor declared again, are the L6 work on
 declaration edits.
 
+### L2: error recovery
+
+A half-typed statement now costs the facts of its own code only:
+
+- **Lowering** (`lower.Recover`, and `lower.Signatures`) lowers a
+  statement of a closed block that fails as `syntax.ErrorExpr`, and an
+  expression after the `=` of a property, function or accessor that
+  fails the same way, keeping the declaration. A psi error inside such a
+  statement or expression is checked there, not for the whole
+  declaration. A block that lost its `}` (an unclosed string or comment
+  took it) still fails its declaration, since psi may have taken the
+  code after it too. Lowering reports each error as before, so `kc` and
+  `ka` fail as they did; `lower.File` doesn't recover. An error found
+  past the statement, as an expression missing at the end of the file,
+  is put at the statement's last token. The string template's saved
+  lowering state is restored by `defer`, now that lowering goes on after
+  a panic.
+- **The checker** gives `ErrorExpr` the invalid type, with no error, and
+  counts it as a jump, so a body cut short reports no missing return.
+  `CheckOptions` polls the context per statement and per declaration of
+  `inferAll`, and a panic of a cancelled check is dropped.
+  `TestCancelInBody` cancels inside a body.
+- **`analysis`** maps each error to the code it invalidates
+  (`errorSpans`): in a statement of a body, that statement, the ones
+  after it, which it may narrow or declare for, and the block; at a
+  brace, the block; after `=`, the expression; in a class header, the
+  header but its members; elsewhere in a declaration, the declaration;
+  in the package, the imports or past the declarations, the file. Facts
+  of those nodes are dropped in the builder's last pass; the others are
+  kept, though they may name symbols declared in dropped code. A
+  lowering error that drops a declaration others may name leaves no
+  incremental state, or makes an update a whole one: the files that
+  name it would otherwise keep stale results.
+- **`TestSessionTyping`** types every function body of `testdata/run`,
+  member or top level, in one session per program: the body is cut to
+  each prefix, with its `}` kept, as an editor auto-closes it. At each
+  prefix the facts outside the body, and those of the statements that
+  end before the caret, must equal the original ones (offsets after the
+  body shifted). Prefixes where psi's block loses its `}` are skipped.
+  By default the test replays every 14th program (every 70th with
+  `-short`), cut at each statement and in the middle of each: 23
+  programs, 120 bodies, 1,563 cuts, 109 skipped, in 15 s.
+  `KC_TYPING=all` replays every program cut after every token: 323
+  programs, 1,095 bodies, 76,826 cuts, 18,193 skipped, none failed, in
+  9 minutes. An earlier run failed 43 cuts, all in the two kinds of
+  body below.
+  Two kinds of body are left out, as their code is part of what callers
+  see: a statement with a contract changes its callers' smart casts, and
+  an inline function's body decides how callers may pass lambdas and
+  numbers the anonymous classes inlined into them. A function inside an
+  object expression is part of that expression, whose error drops it
+  all.
+- **`FuzzEdits`** edits one file of a two-file module at random and
+  compares the incremental result with a whole update. Its seed
+  `run {` found the stale-results bug above. Five minutes, about
+  190,000 runs, found nothing more.
+- **`semantic_recovery.txtar`** half-types a statement after one with a
+  type error: both errors show.
+
+Recovery costs the benchmarks nothing measurable: a body edit is p50
+27 ms, p95 51 ms, and cold open 0.45 s.
+
 ## Gaps and open questions
 
 - **Diagnostics `kc` lacks.** `kc` reports no warnings and runs few of
@@ -393,6 +458,11 @@ declaration edits.
   even when it fires rarely.
 - **Gradle import** of the projects named in L1's acceptance criterion
   (kotlinpoet, Ktor, octi-server) is not yet run.
+- **Recovery is per statement.** A broken statement drops the facts of
+  every statement after it in its body, though most don't depend on it,
+  and a broken signature drops its declaration. A block whose `}` an
+  unclosed string or comment took drops the whole declaration, or the
+  whole file when the error leaves no closing brace.
 - **Whole-file reparse** still happens for edits outside a declaration
   body: signatures, imports, and bodies inside string templates.
 - **Gradle import** depends on the Kotlin Gradle plugin's API, read
