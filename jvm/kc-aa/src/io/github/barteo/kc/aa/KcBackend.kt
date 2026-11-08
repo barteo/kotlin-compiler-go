@@ -161,7 +161,8 @@ private class KcSession(private val config: KSPConfig, @Suppress("UNUSED_PARAMET
             fs.refreshAndFindFileByPath(p)?.let { environment.psiFile(it) as? PsiJavaFile }
         }
         t.mark("psi")
-        return KcRound(joined, { id -> KcOps.cls(model.handle, id) }, { fq -> KcOps.pkg(model.handle, fq) }, java, project, environment.trees)
+        return KcRound(joined, { id -> KcOps.cls(model.handle, id) }, { fq -> KcOps.pkg(model.handle, fq) }, java, project, environment.trees,
+            if (this::round.isInitialized) round.sizes() else KcRound.Sizes())
     }
 
     override fun sourceFiles(): List<KSFile> =

@@ -47,14 +47,36 @@ internal class KcRound(
     private val project: com.intellij.openapi.project.Project? = null,
     /** The trees of files' PSI joined before, which a round over the same PSI uses again. */
     trees: KcTrees? = null,
+    /** The sizes of the round before's tables, which this one's start at. */
+    private val sizes: Sizes = Sizes(),
 ) {
+    /** The sizes of a round's tables of source symbols. */
+    class Sizes(val keys: Int = 16, val psi: Int = 16, val typeRefs: Int = 16)
+
+    /** The sizes of this round's tables, for the next round. */
+    fun sizes() = synchronized(this) { Sizes(byKey.size + (pendingKeys?.size ?: 0) / 2, byPsi.size, typeRefs.size) }
+
     val token = KcToken()
 
-    /** Every source symbol by its pointer key. */
-    val byKey = HashMap<String, KaSymbol>()
+    /**
+     * Every symbol built by its pointer key, for [restore]. A round builds
+     * every source symbol and restores few, so the keys wait in
+     * [pendingKeys], key then symbol, until the first restore.
+     */
+    private val byKey = HashMap<String, KaSymbol>()
+    private var pendingKeys: ArrayList<Any>? = ArrayList(sizes.keys * 2)
+
+    @Synchronized
+    private fun keyed(key: String): KaSymbol? {
+        pendingKeys?.let { p ->
+            for (i in p.indices step 2) byKey[p[i] as String] = p[i + 1] as KaSymbol
+            pendingKeys = null
+        }
+        return byKey[key]
+    }
 
     /** Source symbols by their PSI, for `KaSession.symbol`. */
-    val byPsi = IdentityHashMap<PsiElement, KaSymbol>()
+    val byPsi = IdentityHashMap<PsiElement, KaSymbol>(sizes.psi)
 
     val classes = HashMap<ClassId, KaNamedClassSymbol>()
     val typeAliases = HashMap<ClassId, KaTypeAliasSymbol>()
@@ -80,7 +102,7 @@ internal class KcRound(
     val values = IdentityHashMap<KtExpression, KaAnnotationValue>()
 
     /** The types of the type references in declarations, for `KtTypeReference.type`. */
-    private val typeRefs = IdentityHashMap<KtTypeReference, Pair<KcType, KcTypeContext>>()
+    private val typeRefs = IdentityHashMap<KtTypeReference, Pair<KcType, KcTypeContext>>(sizes.typeRefs)
 
     /** The type kc gave [ref], or null if it isn't among the types of the model's declarations. */
     fun typeOf(ref: KtTypeReference): KaType? = typeRefs[ref]?.let { (t, ctx) -> ctx.type(t) }
@@ -461,7 +483,7 @@ internal class KcRound(
 
     /** The symbol of pointer key [key], loading the library class it is in. */
     fun restore(key: String): KaSymbol? {
-        byKey[key]?.let { return it }
+        keyed(key)?.let { return it }
         (declaredKey.matchEntire(key) ?: fakeKey.matchEntire(key))?.let { m ->
             val owner = restore(m.groupValues[1]) as? KcClassSymbol ?: return null
             val list = if (declaredKey.matches(key)) declared(owner) else members(owner).callables
@@ -480,12 +502,12 @@ internal class KcRound(
         if (key.startsWith("pkgsym:")) return packageSymbol(FqName(key.removePrefix("pkgsym:")))
         if (key.startsWith("pkg:")) {
             libraryPackage(FqName(key.removePrefix("pkg:").split(memberKey, 2)[0]))
-            return synchronized(this) { byKey[key] }
+            return keyed(key)
         }
         if (!key.startsWith("lib:")) return null
         // The class's ID comes first; its members' keys add /kind:…, /<i or /(i.
         libraryClass(ClassId.fromString(key.removePrefix("lib:").split(memberKey, 2)[0]))
-        return synchronized(this) { byKey[key] }
+        return keyed(key)
     }
 
     fun annotation(a: KcAnnotation): KaAnnotation = annotations.getValue(a)
@@ -512,7 +534,7 @@ internal class KcRound(
 
         fun file(file: KcFile, kt: KtFile): KcFileSymbol {
             val fs = KcFileSymbol(this@KcRound, file, kt)
-            byKey[fs.key] = fs
+            putKey(fs.key, fs)
             byPsi[kt] = fs
             file.annotations.forEach(::annotation)
             fs.declarations = decls(file.decls, fs, fs.key)
@@ -739,8 +761,18 @@ internal class KcRound(
             }
         }
 
+        fun putKey(key: String, s: KaSymbol) {
+            val p = pendingKeys
+            if (p != null) {
+                p.add(key)
+                p.add(s)
+            } else {
+                byKey[key] = s
+            }
+        }
+
         fun <S : KaSymbol> register(s: S, key: String, psi: PsiElement?): S {
-            byKey[key] = s
+            putKey(key, s)
             if (psi != null) byPsi.putIfAbsent(psi, s)
             return s
         }
