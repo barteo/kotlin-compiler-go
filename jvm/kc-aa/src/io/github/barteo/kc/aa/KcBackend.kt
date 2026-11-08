@@ -137,6 +137,7 @@ private class KcSession(private val config: KSPConfig, @Suppress("UNUSED_PARAMET
                 KcOps.close(model.handle)
                 throw e
             }
+            t.mark("build")
             built.also { environment.keep(model.check, it, model.handle, model.diagnostics, model.files) }
         }
         if (this::round.isInitialized && round !== next) round.token.invalidation = "replaced by the next round"

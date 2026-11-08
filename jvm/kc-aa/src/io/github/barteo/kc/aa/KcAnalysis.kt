@@ -107,7 +107,7 @@ class KcAnalysis internal constructor(
 
     // KaEvaluator: only the expressions kc evaluated, annotation arguments
     // and annotation parameters' defaults.
-    fun evaluateAsAnnotationValue(expr: KtExpression): KaAnnotationValue? = round.values[expr]
+    fun evaluateAsAnnotationValue(expr: KtExpression): KaAnnotationValue? = round.valueOf(expr)
 
     // KaSymbolRelationProvider
     fun getContainingSymbol(s: KaSymbol): KaSymbol? = when (s) {
@@ -215,7 +215,7 @@ class KcAnalysis internal constructor(
     fun getType(ref: KtTypeReference): KaType {
         val entry = (ref.parent as? KtConstructorCalleeExpression)?.parent as? KtAnnotationEntry
         if (entry != null) {
-            val id = round.annotationClasses[entry] ?: return KcErrorType(round, ref.text)
+            val id = round.annotationClass(entry) ?: return KcErrorType(round, ref.text)
             // The type arguments written, @A<String>, as the model has them.
             val args = (ref.typeElement as? KtUserType)?.typeArguments.orEmpty().map { p ->
                 val t = p.typeReference?.let(round::typeOf) ?: return@map KcStarProjection(round.token)

@@ -105,7 +105,28 @@ internal class KcRound(
     private val typeRefs = IdentityHashMap<KtTypeReference, Pair<KcType, KcTypeContext>>(sizes.typeRefs)
 
     /** The type kc gave [ref], or null if it isn't among the types of the model's declarations. */
-    fun typeOf(ref: KtTypeReference): KaType? = typeRefs[ref]?.let { (t, ctx) -> ctx.type(t) }
+    fun typeOf(ref: KtTypeReference): KaType? =
+        synchronized(this) { recordTypes(ref.containingKtFile); typeRefs[ref] }?.let { (t, ctx) -> ctx.type(t) }
+
+    /** The class of type annotation [entry], once its file's type references are recorded. */
+    fun annotationClass(entry: KtAnnotationEntry): ClassId? =
+        synchronized(this) { recordTypes(entry.containingKtFile); annotationClasses[entry] }
+
+    /** The value kc evaluated for [expr], once its file's type references are recorded. */
+    fun valueOf(expr: KtExpression): KaAnnotationValue? =
+        synchronized(this) { recordTypes(expr.containingKtFile); values[expr] }
+
+    /**
+     * The builders of the source files whose type references aren't
+     * recorded yet. Most rounds look up the types of few files' type
+     * references (KSP processes the dirty ones), so a file's are walked
+     * the first time one of them is looked up.
+     */
+    private val unrecorded = IdentityHashMap<KtFile, Builder>()
+
+    private fun recordTypes(file: KtFile) {
+        unrecorded.remove(file)?.recordTypeRefs()
+    }
 
     val fileSymbols: List<KcFileSymbol>
 
@@ -287,7 +308,11 @@ internal class KcRound(
                 trees?.put(kt, f, nodes)
             }
         }.toList()
-        fileSymbols = files.mapIndexed { i, (f, kt) -> Builder(f.path, joined[i], KaSymbolOrigin.SOURCE).file(f, kt) }
+        fileSymbols = files.mapIndexed { i, (f, kt) ->
+            val b = Builder(f.path, joined[i], KaSymbolOrigin.SOURCE)
+            b.deferred = ArrayList()
+            b.file(f, kt).also { if (b.deferred!!.isNotEmpty()) unrecorded[kt] = b else b.deferred = null }
+        }
         for (name in files.map { it.first.packageName } + javaFiles.map { it.packageName }) {
             var fq = FqName(name)
             while (sourcePackages.add(fq) && !fq.isRoot) fq = fq.parent()
@@ -740,8 +765,35 @@ internal class KcRound(
             }
         }
 
+        /**
+         * The type references of a source file not recorded yet, as triples
+         * of reference, type and type context (see [unrecorded]).
+         */
+        var deferred: ArrayList<Any>? = null
+
+        /** Records the type references [typeRef] deferred. Called with the round locked. */
+        fun recordTypeRefs() {
+            val d = deferred ?: return
+            deferred = null
+            val outer = types
+            try {
+                for (i in d.indices step 3) {
+                    types = d[i + 2] as KcTypeContext
+                    typeRef(d[i] as KtTypeReference, d[i + 1] as KcType)
+                }
+            } finally {
+                types = outer
+            }
+        }
+
         fun typeRef(ref: KtTypeReference?, t: KcType?) {
             if (ref == null || t == null) return
+            deferred?.let { d ->
+                d.add(ref)
+                d.add(t)
+                d.add(types)
+                return
+            }
             typeRefs[ref] = t to types
             // Registered now, so the entries' classes are known before the types are built.
             t.annotations.forEach(::typeAnnotation)
