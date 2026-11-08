@@ -2133,6 +2133,64 @@ Edits gain nothing over full runs on either backend. Both reprocess the
 same 2 files, but the `@Database` aggregates every entity, so Room
 generates all 101 files again.
 
+#### Step 30: Hilt on kc and on stock KSP2
+
+`bench/ksp/hilt/run.sh` times Hilt's processors (hilt-compiler 2.59.2,
+with dagger-compiler's) on two workloads:
+
+- **small:** `test/hilt/src`, one file.
+- **large:** `gen.sh`'s module of 100 files. Each has:
+  - `@Inject` classes, one `@Singleton` and one that injects the
+    previous file's class;
+  - a `@Binds` module, and an object module with `@Named`, `@IntoSet`
+    and `@IntoMap` bindings, both `@InstallIn(SingletonComponent::class)`;
+  - an `@EntryPoint`;
+  - an `@AssistedInject` class with its factory.
+
+  Every tenth file also defines a scoped child component.
+
+There is no Hilt root (`@HiltAndroidApp` is Android's), so Hilt
+generates factories and its aggregated dependencies, but no components.
+It runs 28 rounds. Both backends generate the same files: 12 for small,
+1260 for large. `bench/ksp/workload.sh` now holds what the Room and Hilt
+scripts share, including that check.
+
+Numbers, as in step 29:
+
+| ms | stock KSP2 | kc | ratio |
+|---|---|---|---|
+| large, warm | 4415 | 1486 | 3.0x |
+| large, Hot | 4716 | 1500 | 3.1x |
+| large, cold | 17545 | 8708 | 2.0x |
+| large, body edit | 5294 | 2396 | 2.2x |
+| large, signature edit | 5253 | 2487 | 2.1x |
+| small, warm | 457 | 82 | 5.6x |
+| small, cold | 4073 | 2262 | 1.8x |
+| small, body edit | 407 | 218 | 1.9x |
+| small, signature edit | 512 | 235 | 2.2x |
+
+An edit of `Feature000.kt` dirties all 100 files on both backends,
+because each file injects the previous file's class.
+
+JFR samples of warm runs on the large module (runs 3–6, main thread):
+
+| samples | stock KSP2 | kc |
+|---|---|---|
+| Hilt and Dagger (XProcessing, Dagger, JavaPoet/KotlinPoet/google-java-format) | 1756 | 1740 |
+| writing the 1260 files (`CodeGeneratorImpl.createNewFile`, in native I/O) | 878 | 1394 |
+| the backend (Analysis API on stock; kc-aa and libkc on kc) | about 6700 | 338 |
+| all | 10167 | 4066 |
+
+On stock KSP the symbol layer's classes are shaded under `ksp.`, so
+Classify counts them with the Analysis API, and its backend figure is
+approximate.
+
+On kc, about 77% of a run is Hilt itself and writing its output, the
+same work as on stock. The backend is 8%, about 170 ms. So even a
+backend that took no time would leave the large module at about 3x. The
+writes show more samples on kc, probably because its runs write the
+same files closer together.
+
 ## Gaps and open questions
 
 - **Slice simplifications (M0.4).** These go when M3/M4 bring the facts in:

@@ -43,6 +43,12 @@ a run on both backends, so even a backend that took no time couldn't
 get better than about 2.9x. On kc, the backend's share is about 1.3 s,
 against 6.1 s on stock.
 
+Hilt (step 30), on a generated module of 100 files (factories,
+multibindings, entry points, assisted injection): warm runs take 4415 ms
+on stock and 1486 ms on kc (3.0x), and edits 5294 and 2396 ms (2.2x). On
+kc, Hilt itself and writing its 1260 files take about 77% of a run, and
+the backend about 8%.
+
 ## What "10x" has to mean
 
 **The processor floor.** In step 11's warm JFR, Dagger, XProcessing and
