@@ -2082,6 +2082,57 @@ resolving the unchanged files at all, which needs the checker's module
 state kept across checks, and a round built per file on demand. Both
 are open.
 
+#### Step 29: Room on kc and on stock KSP2
+
+Room's jars are now fetched here, and `build.sh stock` passes Room's and
+Hilt's cases on both backends. `bench/ksp/room/run.sh` times Room's
+processor (room-compiler 2.8.4) on two workloads:
+
+- **small:** `test/room/src`, one file with 2 entities and 2 DAOs.
+- **large:** `gen.sh`'s module of 100 files. Each has 2 entities (an
+  `@Embedded` class, type-converted columns, a unique index, a foreign
+  key), a `@Relation` class, a projection, and a DAO of 12 methods
+  (`suspend`, `Flow`, `IN` lists, `@Transaction`). An `AppDb` lists all
+  200 entities.
+
+Before timing, the script checks that both backends generate the same
+files: 3 for small, 101 for large.
+
+Numbers, 4 CPUs, JDK 21. Warm is the median of 10 runs in one JVM, cold
+the median of 3 fresh JVMs, and edits the medians of 12 incremental runs:
+
+| ms | stock KSP2 | kc | ratio |
+|---|---|---|---|
+| large, warm | 8104 | 3716 | 2.2x |
+| large, Hot | 8449 | 3665 | 2.3x |
+| large, cold | 20829 | 11750 | 1.8x |
+| large, body edit | 9655 | 4877 | 2.0x |
+| large, signature edit | 9712 | 4662 | 2.1x |
+| small, warm | 555 | 135 | 4.1x |
+| small, cold | 5134 | 2761 | 1.9x |
+| small, body edit | 735 | 209 | 3.5x |
+| small, signature edit | 596 | 218 | 2.7x |
+
+Room bounds the ratio. In JFR profiles of warm runs on the large module
+(runs 3–6, main thread), Room's own work takes about 2.7 s a run on
+both backends:
+
+- XProcessing: about 9% of stock's samples and 15% of kc's.
+- Room, with its sqlite-jdbc query verification: about 10% of stock's
+  and 19% of kc's.
+- KotlinPoet and JavaPoet writing the output: about 13% of stock's and
+  23% of kc's.
+
+The backend takes about 6.1 s a run on stock (the Analysis API) and
+about 1.3 s on kc (kc-aa and libkc), so the backend alone is about 4.7x
+faster. KSP's symbol layer takes about 0.6 s on both. Even if the
+backend took no time at all, the large module couldn't get better than
+about 2.9x.
+
+Edits gain nothing over full runs on either backend. Both reprocess the
+same 2 files, but the `@Database` aggregates every entity, so Room
+generates all 101 files again.
+
 ## Gaps and open questions
 
 - **Slice simplifications (M0.4).** These go when M3/M4 bring the facts in:

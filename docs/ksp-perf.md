@@ -36,6 +36,13 @@ W is past 10x. E is at 3–4x: an edit still lowers all 559 files and
 resolves their signatures in Go (100–210 ms), and kc-aa builds a new
 round for every file (30–60 ms). Step 28 lists what is left.
 
+Room (step 29), on a generated module of 100 files with 200 entities and
+100 DAOs: warm runs take 8104 ms on stock and 3716 ms on kc (2.2x), and
+edits 9655 and 4877 ms (2.0x). Room's own processing takes about 2.7 s
+a run on both backends, so even a backend that took no time couldn't
+get better than about 2.9x. On kc, the backend's share is about 1.3 s,
+against 6.1 s on stock.
+
 ## What "10x" has to mean
 
 **The processor floor.** In step 11's warm JFR, Dagger, XProcessing and
