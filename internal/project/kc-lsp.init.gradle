@@ -1,0 +1,89 @@
+// kc-lsp's model of a Gradle build: the JVM compilations of the Kotlin
+// projects, written as JSON to the file -PkcLspOut names by the task
+// kcLspModel. The Kotlin plugin's types aren't on an init script's class
+// path, so its objects are read through Groovy's dynamic properties.
+import groovy.json.JsonOutput
+
+def tryGet(Closure c) {
+    try {
+        return c()
+    } catch (Throwable ignored) {
+        return null
+    }
+}
+
+def files(fc) {
+    fc == null ? [] : fc.files.collect { it.absolutePath }
+}
+
+gradle.projectsEvaluated {
+    rootProject.tasks.register("kcLspModel") {
+        doLast {
+            def modules = []
+            rootProject.allprojects.each { p ->
+                def kotlin = p.extensions.findByName("kotlin")
+                if (kotlin == null) {
+                    return
+                }
+                def targets = []
+                def single = tryGet { kotlin.target }
+                if (single != null) {
+                    targets << single
+                } else {
+                    tryGet { kotlin.targets }?.each { t ->
+                        if (tryGet { t.platformType.name } == "jvm") {
+                            targets << t
+                        }
+                    }
+                }
+                def explicitApi = tryGet { kotlin.explicitApi?.toString() }
+                targets.each { t ->
+                    def mpp = single == null
+                    t.compilations.each { c ->
+                        def task = tryGet { c.compileTaskProvider.get() } ?: tryGet { c.compileKotlinTask }
+                        def opts = tryGet { task.compilerOptions }
+                        def name = mpp ? "${p.path}:${t.name}${c.name.capitalize()}" : "${p.path}:${c.name}"
+                        def roots = []
+                        tryGet { c.allKotlinSourceSets }?.each { ss -> roots.addAll(ss.kotlin.srcDirs.collect { it.absolutePath }) }
+                        def javaRoots = []
+                        def javaSet = tryGet { p.sourceSets.findByName(c.name) }
+                        if (javaSet != null) {
+                            javaRoots.addAll(javaSet.java.srcDirs.collect { it.absolutePath })
+                        }
+                        def outputs = files(tryGet { c.output.classesDirs })
+                        if (c.name == "main") {
+                            def jar = tryGet { p.tasks.findByName(mpp ? "${t.name}Jar" : "jar")?.archiveFile?.get()?.asFile?.absolutePath }
+                            if (jar != null) {
+                                outputs << jar
+                            }
+                        }
+                        def plugins = files(tryGet { task.pluginClasspath }).collect { new File(it).name }
+                        def free = tryGet { opts.freeCompilerArgs.get() } ?: []
+                        modules << [
+                            name       : name,
+                            kind       : c.name.toLowerCase().contains("test") ? "test" : "main",
+                            sourceRoots: roots.unique(),
+                            javaRoots  : javaRoots,
+                            classPath  : files(tryGet { c.compileDependencyFiles }),
+                            friendPaths: files(tryGet { task.friendPaths }),
+                            associated : tryGet { c.associatedCompilations.collect { a -> mpp ? "${p.path}:${t.name}${a.name.capitalize()}" : "${p.path}:${a.name}" } } ?: [],
+                            outputs    : outputs,
+                            moduleName : tryGet { opts.moduleName.getOrNull() },
+                            optIns     : tryGet { opts.optIn.get() } ?: [],
+                            jvmDefault : tryGet { opts.jvmDefault.get().toString() },
+                            freeArgs   : free,
+                            plugins    : plugins,
+                            explicitApi: explicitApi,
+                            jdkHome    : System.getProperty("java.home"),
+                        ]
+                    }
+                }
+            }
+            def out = rootProject.findProperty("kcLspOut")
+            if (out == null) {
+                throw new GradleException("kcLspModel: -PkcLspOut isn't set")
+            }
+            new File(out.toString()).text = JsonOutput.toJson([modules: modules])
+        }
+    }
+}
