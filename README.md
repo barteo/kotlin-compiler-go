@@ -161,6 +161,8 @@ It expects `kotlinc` and the JDK where Homebrew installs them; set
   and the results
 - [Survey of real code](docs/survey.md): which features real libraries use,
   and libraries built with `kc` and tested end to end
+- [Language server](docs/lsp.md): the plan for a Kotlin language server
+  on `kc`
 - [Conformance](docs/conformance.md): `kotlinc`'s own box and diagnostics
   tests run against `kc`
 - [PSI and analysis](docs/psi.md): the public parser and analysis API for
