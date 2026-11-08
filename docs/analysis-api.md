@@ -2466,6 +2466,96 @@ Where kc's time goes now:
   type-reference navigation and the maps. G1 young pauses add about
   8 ms per run; they come from KSP's heap as much as kc's.
 
+#### Step 34: less per-update work in Go and in kc-aa's round
+
+After step 33, each update of a leaf edit cost kc about 15–35 ms in Go
+(`lower` plus `signatures`, with 99 of 100 files reused) and 10–17 ms
+in kc-aa building the round's symbols, twice per run. This step cuts
+both without keeping state across checks.
+
+Changes in Go (`internal/check`):
+
+- **`resolveSignatures` runs in parallel**, one file per goroutine, up
+  to the update's jobs. Each checker resolves its own file's
+  declarations; the race detector finds no races over `internal/...`'s
+  tests, the compile corpus included.
+- **`conflicts` compares only what is reported.** With `Options.Only`,
+  it compares the declarations of the packages that have a checked
+  file, and the members of the checked files' classes. A class's
+  members and a file facade's are compared within one container, so the
+  checked files' errors are the same.
+- **No type references recorded for the files not checked.** As with
+  lookups, a Recorder isn't told the type references of a file whose
+  earlier results are kept. Each one had cost a lock and a map entry.
+
+`BenchmarkUpdateEdit` on Moshi's 100 files (a body edit of one file,
+99 reused) went from about 13.1 to 9.4 ms per update. In the JVM,
+`KC_TIMING`'s `signatures` went from 7–21 ms to about 6 ms.
+
+Changes in kc-aa (`KcRound`):
+
+- **A source file's type references are recorded when one of them is
+  looked up.** The Builder walked every declaration's type references
+  against PSI. Now each file's walk waits until the first lookup of one
+  of its type references, annotation entries or annotation values
+  (`typeOf`, `annotationClass`, `valueOf`).
+- **So are its symbols by PSI.** `KaSession.symbol`, type parameters'
+  symbols and local classes go through `KcRound.symbolOf`, which records
+  the file's entries first. Inserting every declaration into an identity
+  map was most of `Builder.register`.
+- `KC_TIMING` now splits the round's build out of `round=` as `build=`.
+
+A leaf edit's KSP rounds process the dirty file, so most files'
+entries are never recorded. `build=` went from 10–17 ms to about 8 ms
+per round.
+
+Not done: keeping the declared program across body edits (step 33's
+"fixed costs per update"). The model builder needs the edited file's
+new tree and provenance, since positions and node numbers move; the
+checker and Universe key state on declaration nodes (`classes`,
+`inlineDecls`, `done`, `serialInterfaces`); and signatures mode still
+checks a body whose locals have inferred types. That is a larger
+refactor than the 10 ms per update left in Go (`lower` about 5 ms,
+`signatures` about 6 ms in the JVM).
+
+Numbers as in step 32, kc's fastest run (min) beside the median, as
+these changes are smaller than the runs' noise:
+
+| ms | stock KSP2 | kc | ratio | kc min | step 33 kc (min) |
+|---|---|---|---|---|---|
+| Room large, warm | 7125 | 2236 | 3.2x | 2147 | 1991 (1917) |
+| Room large, edit Item000 | 8440 | 2745 | 3.1x | 2669 | 2911 (2667) |
+| Room large, leaf edit | 8642 | 2659 | 3.3x | 2562 | 2618 (2568) |
+| Room small, warm | 492 | 116 | 4.2x | 100 | 130 (97) |
+| Room small, edit | 496 | 150 | 3.3x | 122 | 185 (165) |
+| Hilt large, warm | 3322 | 612 | 5.4x | 537 | 647 (588) |
+| Hilt large, edit Feature000 | 3650 | 1012 | 3.6x | 913 | 1131 (999) |
+| Hilt large, leaf edit | 494 | 158 | 3.1x | 111 | 167 (149) |
+| Hilt small, warm | 317 | 49 | 6.5x | 46 | 42 (40) |
+| Hilt small, edit | 378 | 79 | 4.8x | 74 | 95 (80) |
+| Moshi large, warm | 2295 | 434 | 5.3x | 388 | 407 (392) |
+| Moshi large, edit Model000 | 580 | 248 | 2.3x | 206 | 225 (181) |
+| Moshi large, leaf edit | 445 | 119 | 3.7x | 90 | 106 (80) |
+| Moshi small, warm | 260 | 19 | 13.7x | 17 | 23 (21) |
+| Moshi small, edit | 267 | 46 | 5.8x | 39 | 43 (37) |
+
+Cold runs: Moshi 8570 / 4567, Hilt 14861 / 6310, Room 17232 / 9233.
+
+The phases these changes touch are faster in every `KC_TIMING` run,
+but the whole runs move by less than their spread: a leaf edit's two
+updates and two rounds save about 15–20 ms when no GC pause lands in
+them, and G1's young pauses (13–33 ms, about one per run) land in a
+different phase each run. Hilt's leaf edit and both Hilt edits are
+faster in median and minimum. Moshi's large edits are slower in this
+batch's median and minimum (leaf 119 against 106 ms), within the
+10–30 ms by which the same code moves between batches.
+
+What is left on kc's side of a leaf edit, from `KC_TIMING` and JFR:
+each update's `lower` (about 5 ms in the JVM) and `signatures` (about
+6 ms), kc-aa's round build (about 8 ms), and decoding and the native
+call around them; KSP's own setup and bookkeeping is about as much
+again.
+
 ## Gaps and open questions
 
 - **Slice simplifications (M0.4).** These go when M3/M4 bring the facts in:
