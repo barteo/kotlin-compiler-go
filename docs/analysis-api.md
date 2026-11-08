@@ -2191,6 +2191,79 @@ backend that took no time would leave the large module at about 3x. The
 writes show more samples on kc, probably because its runs write the
 same files closer together.
 
+#### Step 31: Moshi on kc and on stock KSP2
+
+`bench/ksp/moshi/run.sh` times Moshi's codegen (moshi-kotlin-codegen
+1.15.2, with build.sh's class path for it) on two workloads:
+
+- **small:** `test/moshi/src`, one file of four models.
+- **large:** `gen.sh`'s module of 100 files. Each has four
+  `@JsonClass(generateAdapter = true)` classes, in test/moshi's shapes:
+  - a data class with nullable, defaulted, `@Json`-renamed, list, map and
+    enum properties;
+  - a generic page of it;
+  - a class with `var` and `@Transient` properties;
+  - one nesting them.
+
+  Files 1 to 9 of each ten also use file 0's models.
+
+Moshi generates an adapter and a ProGuard rule per class, in two rounds.
+Both backends generate the same files: 8 for small, 800 for large.
+
+Numbers, as in steps 29 and 30. Cold is the median of three fresh JVMs.
+
+| ms | stock KSP2 | kc | ratio |
+|---|---|---|---|
+| large, warm | 2911 | 1039 | 2.8x |
+| large, Hot | 2769 | 1008 | 2.7x |
+| large, cold | 11022 | 5802 | 1.9x |
+| large, body edit | 1016 | 732 | 1.4x |
+| large, signature edit | 1071 | 704 | 1.5x |
+| small, warm | 271 | 31 | 8.7x |
+| small, cold | 2967 | 1666 | 1.8x |
+| small, body edit | 438 | 94 | 4.7x |
+| small, signature edit | 363 | 97 | 3.7x |
+
+An edit of `Model000.kt` dirties 10 files on both backends: the file
+itself and the nine that use its models.
+
+JFR samples of runs 3–6 on the large module (main thread):
+
+| samples | warm, stock | warm, kc | edit, stock | edit, kc |
+|---|---|---|---|---|
+| Moshi's codegen and KotlinPoet | 1260 | 1262 | 241 | 245 |
+| writing the generated files (`createNewFile`, native I/O) | 1042 | 1527 | 133 | 123 |
+| KSP's incremental bookkeeping (`IncrementalContextBase`) | | | about 1000 | about 1040 |
+| the backend (Analysis API on stock; kc-aa, libkc and kc's IntelliJ core on kc) | about 4400 | about 170 | about 1650 | about 930 |
+| all | 7132 | 3378 | 3084 | 2417 |
+
+As in step 30, Classify counts stock's shaded KSP classes with the
+Analysis API, so stock's backend figures are approximate.
+
+What bounds the ratio:
+
+- **Warm runs:** on kc, writing the 800 files is 45% of a run and Moshi
+  with KotlinPoet 37%. The backend is 5%, about 40 ms. A backend that
+  took no time would leave the ratio near 3x.
+- **Edit runs:** KSP's own incremental bookkeeping (updating its caches
+  and output maps, and computing the dirty set) takes about 260 ms per
+  run on both backends. That is close to half of kc's 700 ms.
+
+kc's share of an edit run is about 160 ms (`KC_TIMING=1`), in two
+module updates, each with `reused=0`:
+
+- **Round 1:** the 100 sources, with one changed. About 45 ms; their
+  signatures take 18 ms.
+- **Round 2:** the same 100 sources plus the 40 regenerated adapters.
+  About 110 ms; parsing the adapters takes 15–45 ms and their bodies
+  22 ms.
+
+Both updates check the whole module's signatures again, though only one
+file changed. Reusing the unchanged files' results there, and checking
+generated files' declarations without their bodies, are what is left
+for kc on this workload. Even with both, the bookkeeping and the writes
+would hold the large edit ratio under about 2x.
+
 ## Gaps and open questions
 
 - **Slice simplifications (M0.4).** These go when M3/M4 bring the facts in:

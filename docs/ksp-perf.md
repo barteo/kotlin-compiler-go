@@ -49,6 +49,14 @@ on stock and 1486 ms on kc (3.0x), and edits 5294 and 2396 ms (2.2x). On
 kc, Hilt itself and writing its 1260 files take about 77% of a run, and
 the backend about 8%.
 
+Moshi (step 31), on 100 files of models: warm runs take 2911 ms on stock
+and 1039 ms on kc (2.8x), and on the one-file test 271 and 31 ms (8.7x).
+Edits that dirty 10 of the 100 files take 1016 and 732 ms (1.4x). KSP's
+own incremental bookkeeping is about 260 ms of each, the same on both
+backends. kc's share is about 160 ms, because it checks the whole
+module's signatures again (`reused=0`), and the regenerated adapters'
+bodies too.
+
 ## What "10x" has to mean
 
 **The processor floor.** In step 11's warm JFR, Dagger, XProcessing and
