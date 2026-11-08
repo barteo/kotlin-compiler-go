@@ -58,8 +58,8 @@ Moshi's one-file test is past 10x; Hilt's is at 5–10x from batch to
 batch. On the large modules, what is left on kc's side of a leaf edit
 is about 35 ms of fixed costs over its two updates and rounds:
 
-- **Each update declares every file again.**  (about 5 ms in the
-  JVM) and  (about 6 ms), with 99 of 100 files reused.
+- **Each update declares every file again.** `lower` (about 5 ms in the
+  JVM) and `signatures` (about 6 ms), with 99 of 100 files reused.
   Keeping the declared program across body edits is the cut there; it
   needs the checker to take a new tree for one file under the others'
   declarations (step 34 says why that is a larger change).
@@ -67,8 +67,8 @@ is about 35 ms of fixed costs over its two updates and rounds:
   about 2 ms per round.
 - **The native call around them**: encoding, decoding and the update's
   reading and parsing, about 5 ms.
-- **KSP's incremental bookkeeping** (,
-  , the lookup storage) and G1 young pauses, which stock
+- **KSP's incremental bookkeeping** (`updateCachesAndOutputs`,
+  `calcDirtyFiles`, the lookup storage) and G1 young pauses, which stock
   pays as well: about as much as kc's share.
 
 ## What "10x" has to mean
