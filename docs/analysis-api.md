@@ -2365,6 +2365,107 @@ Where kc's time goes now:
 
 What 10x would take is in `docs/ksp-perf.md`.
 
+#### Step 33: Java sources on the shared library, and a lighter round
+
+Step 32 left three kc-side costs on the edits: a new library and a whole
+check for every update of a module with Java sources (Hilt and Dagger),
+lowering every file again on each update, and kc-aa building every
+file's symbols again each round.
+
+Changes:
+
+- **A class-path overlay for Java sources.** `classpath.Path.Overlay`
+  returns a path that adds classes on top of a base path without
+  touching it. `driver.AddJavaSources` adds a check's Java sources to an
+  overlay of the shared class path, so the shared `Path` is never
+  mutated. `IsSource` and `HasSources` look only at the overlay's own
+  classes; everything else falls through to the base.
+- **A per-check class table.** `check.Library.WithSources` returns a
+  library whose class table is a child of the shared one. The child
+  loads the overlay's source classes itself (marked
+  `types.ClassSym.Source`) and asks the parent for everything else, then
+  the program's Kotlin classes. The parent never sees the child, so jar
+  classes resolve only to jar classes. Results that involve a source
+  class (Java methods, nested classes, inherited defaults, interned type
+  arguments) go to the check's own caches instead of the shared ones.
+  This differs from kotlinc only when a Java source shadows a jar class:
+  jar signatures keep the jar class.
+- **ka shares the library with modules that have Java sources.** An
+  update with Java sources now takes the module's kept library and
+  layers a per-check `library` over it (`library.withJava`): its own
+  declarations for the source classes, and the base's for the rest.
+  `acquireJava`, which opened the JDK and class path for every update,
+  is gone. The check cache is shared too, so a Kotlin body edit with
+  unchanged Java texts is incremental. `TestSharedLibraryJava` and
+  `TestIncrementalJava` cover it.
+- **No provenance for declarations-only files.** `lower` records no
+  provenance, annotation map or negation map for files that are only
+  declared; their provenance was never read.
+- **kc-aa registers pointer keys lazily.** `KcRound`'s builder put every
+  source symbol's string key into `byKey`, which only symbol-pointer
+  restores read. The keys now wait in a list until the first restore of
+  the round. The round's identity maps start at the previous round's
+  sizes. On a Moshi leaf edit this halved the builder's JFR samples
+  (592 to 291) and cut kc's per-round build (`round=`) from a median of
+  about 19.5 ms to 13.5 ms.
+
+Not done: plan B2, keeping a lowered tree per snapshot and cloning it
+for each update. `BenchmarkUpdateEdit` on Moshi's 100 files puts all of
+an update's lowering at about 2 ms (4–12 ms in the JVM, with GC), so a
+clone could save at most about 3 ms per update, less than the run's
+noise. B1 gave no measurable time either; it stays because it allocates
+less.
+
+Numbers as in step 32 (4 CPUs, JDK 21, `run.sh 10`, both backends back
+to back):
+
+| ms | stock KSP2 | kc | ratio | step 32 |
+|---|---|---|---|---|
+| Room large, warm | 7159 | 1991 | 3.6x | 3.2x |
+| Room large, edit Item000 | 7942 | 2911 | 2.7x | 3.1x |
+| Room large, leaf edit | 8208 | 2618 | 3.1x | 3.1x |
+| Room large, cold | 16047 | 9472 | 1.7x | 2.1x |
+| Room small, warm | 429 | 130 | 3.3x | 4.5x |
+| Room small, edit | 664 | 185 | 3.6x | 3.1x |
+| Hilt large, warm | 3940 | 647 | 6.1x | 5.3x |
+| Hilt large, edit Feature000 | 3608 | 1131 | 3.2x | 3.4x |
+| Hilt large, leaf edit | 461 | 167 | 2.8x | 1.7x |
+| Hilt large, cold | 16681 | 6639 | 2.5x | 2.2x |
+| Hilt small, warm | 401 | 42 | 9.5x | 6.6x |
+| Hilt small, edit | 426 | 95 | 4.5x | 2.1x |
+| Moshi large, warm | 2195 | 407 | 5.4x | 3.8x |
+| Moshi large, edit Model000 | 564 | 225 | 2.5x | 3.2x |
+| Moshi large, leaf edit | 328 | 106 | 3.1x | 3.2x |
+| Moshi large, cold | 8044 | 4145 | 1.9x | 1.9x |
+| Moshi small, warm | 215 | 23 | 9.3x | 12x |
+| Moshi small, edit | 281 | 43 | 6.5x | 5.3x |
+
+The ratio column compares within a row; stock moved by up to 30% from
+step 32's batch (Hilt's edit of Feature000: 5971 then 3608 ms), and the
+short kc runs by about 30 ms, so ratios on rows kc didn't touch (Room,
+the edits of file 000) moved both ways. kc's own times are the steadier
+comparison: Hilt's leaf edit went from 341 to 167 ms, Hilt small's edit
+from 229 to 95 ms, Hilt's edit of Feature000 from 1751 to 1131 ms, and
+Moshi's edit of Model000 from 245 to 225 ms. Measured just after the Java change alone, Hilt
+small's edit was 62 ms (6.1x) and Hilt large's leaf edit 158 ms (2.5x).
+
+`KC_TIMING=1` on Hilt's leaf edit now reads `reused=99` and `open=0.0`
+for the update with Java sources: no library is opened, and only the
+edited file is checked. Its 170 ms update from step 32 is gone.
+
+Where kc's time goes now:
+
+- **Room:** still the processors, about 90% of kc's run.
+- **Hilt leaf edit:** 28 rounds of Dagger and Hilt processors take about
+  50 ms; each round's update is lowering (about 25 ms over the run in
+  the JVM) and signatures (about 13 ms). KSP's setup and bookkeeping
+  are about 40 ms.
+- **Moshi leaf edit:** of about 106 ms, setup is about 35 ms (kc's
+  module updates and KSP's bookkeeping) and processing about 11 ms.
+  kc-aa's round building is now about a third of the JVM samples, spread across `info`,
+  type-reference navigation and the maps. G1 young pauses add about
+  8 ms per run; they come from KSP's heap as much as kc's.
+
 ## Gaps and open questions
 
 - **Slice simplifications (M0.4).** These go when M3/M4 bring the facts in:
