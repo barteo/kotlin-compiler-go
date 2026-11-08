@@ -21,7 +21,7 @@ func main() {
 	outDir := flag.String("d", ".", "output directory for class files")
 	jobs := flag.Int("j", runtime.NumCPU(), "number of parallel workers")
 	timing := flag.Bool("time", false, "print per-phase timings to stderr")
-	features := flag.Bool("features", false, "print diagnostics as path, line:col, unsupported feature and message, separated by tabs")
+	features := flag.Bool("features", false, "print diagnostics as path, line:col, unsupported feature, kotlinc diagnostic name and message, separated by tabs")
 	var classPath string
 	flag.StringVar(&classPath, "cp", "", "class path: jars and directories separated by "+string(os.PathListSeparator))
 	flag.StringVar(&classPath, "classpath", "", "same as -cp")
@@ -96,7 +96,8 @@ func main() {
 }
 
 // printFeatures prints each diagnostic of err as path, line:col, the
-// unsupported feature it is about (empty for other errors) and the
+// unsupported feature it is about (empty for other errors), the name of
+// kotlinc's diagnostic it is (empty if kc doesn't know it) and the
 // message, separated by tabs. Errors without a position are printed as
 // they are.
 func printFeatures(err error) {
@@ -109,7 +110,7 @@ func printFeatures(err error) {
 	for _, e := range errs {
 		var se *syntax.Error
 		if errors.As(e, &se) {
-			fmt.Fprintf(os.Stderr, "%s\t%s\t%s\t%s\n", se.File, se.Pos, se.Feature, strings.ReplaceAll(se.Msg, "\n", " "))
+			fmt.Fprintf(os.Stderr, "%s\t%s\t%s\t%s\t%s\n", se.File, se.Pos, se.Feature, se.Code, strings.ReplaceAll(se.Msg, "\n", " "))
 		} else {
 			fmt.Fprintln(os.Stderr, e)
 		}

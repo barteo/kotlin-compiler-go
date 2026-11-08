@@ -761,7 +761,7 @@ func (u *Universe) sourceClass(name string) *types.ClassSym {
 }
 
 func (c *Checker) errorf(p syntax.Pos, format string, args ...any) {
-	c.errs = append(c.errs, &syntax.Error{File: c.file.Path, Pos: p, Msg: fmt.Sprintf(format, args...)})
+	c.errs = append(c.errs, &syntax.Error{File: c.file.Path, Pos: p, Msg: fmt.Sprintf(format, args...), Code: errorCodes[format]})
 }
 
 // unsupported reports the use of a Kotlin feature kc doesn't support,

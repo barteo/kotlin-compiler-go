@@ -192,7 +192,7 @@ func incremental(ctx context.Context, cfg Config, snaps []*psi.Snapshot, st *sta
 			continue
 		}
 		for _, e := range errLists[i] {
-			diags[i] = append(diags[i], diagnostic(snaps[i].Path(), e))
+			diags[i] = append(diags[i], diagnostic(snaps[i], e))
 			broken[i] = true
 		}
 	}
@@ -215,12 +215,11 @@ func incremental(ctx context.Context, cfg Config, snaps []*psi.Snapshot, st *sta
 		index[s.Path()] = i
 	}
 	for _, e := range errs {
-		d := diagnostic(e.File, e)
-		i, found := index[d.Path]
+		i, found := index[e.File]
 		if !found || !isChanged[i] {
 			return nil, nil, false, nil // not a changed file's
 		}
-		diags[i] = append(diags[i], d)
+		diags[i] = append(diags[i], diagnostic(snaps[i], e))
 		broken[i] = true
 	}
 

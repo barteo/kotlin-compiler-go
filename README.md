@@ -127,7 +127,7 @@ Arguments can be files or directories. Flags:
 | `-Xdebug` | keep dead variables in suspend functions for debuggers, as in `kotlinc` |
 | `-j` | parallel workers (default: all CPUs) |
 | `-time` | print per-phase timings |
-| `-features` | print each error with its unsupported feature, tab-separated |
+| `-features` | print each error with its unsupported feature and kotlinc diagnostic name, tab-separated |
 
 There is no Gradle plugin. To try `kc` in a Gradle build, a Gradle init
 script can replace a module's Kotlin compile task with a call to `kc`.

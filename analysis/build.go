@@ -60,7 +60,7 @@ func run(ctx context.Context, cfg Config, snaps []*psi.Snapshot, partial bool, o
 	broken := make([]bool, n)
 	for i, es := range errLists {
 		for _, e := range es {
-			res.diags = append(res.diags, diagnostic(snaps[i].Path(), e))
+			res.diags = append(res.diags, diagnostic(snaps[i], e))
 			broken[i] = true
 		}
 	}
@@ -88,8 +88,13 @@ func run(ctx context.Context, cfg Config, snaps []*psi.Snapshot, partial bool, o
 	}
 	whole := true // every error is one file's
 	for _, e := range errs {
-		res.diags = append(res.diags, diagnostic(e.File, e))
-		if i, ok := index[e.File]; ok {
+		i, ok := index[e.File]
+		var snap *psi.Snapshot
+		if ok {
+			snap = snaps[i]
+		}
+		res.diags = append(res.diags, diagnostic(snap, e))
+		if ok {
 			broken[i] = true
 		} else {
 			whole = false
@@ -134,15 +139,44 @@ func parallel(n, jobs int, fn func(i int)) {
 	wg.Wait()
 }
 
-func diagnostic(path string, e *syntax.Error) Diagnostic {
-	if e.File != "" {
-		path = e.File
+// diagnostic returns the diagnostic of e, an error in snap, which may be
+// nil if it isn't known.
+func diagnostic(snap *psi.Snapshot, e *syntax.Error) Diagnostic {
+	path := e.File
+	if path == "" && snap != nil {
+		path = snap.Path()
 	}
 	code := "source_error"
 	if e.Feature != "" {
 		code = "unsupported:" + e.Feature
 	}
-	return Diagnostic{Path: path, Line: e.Pos.Line, Column: e.Pos.Col, Code: code, Message: e.Msg}
+	d := Diagnostic{Path: path, Line: e.Pos.Line, Column: e.Pos.Col, Code: code, Kotlinc: e.Code, Message: e.Msg}
+	d.Range = errorRange(snap, d.Line, d.Column)
+	return d
+}
+
+// errorRange returns the range of the token at line and column of snap:
+// what an editor underlines. An error's position is where the construct
+// it is about starts: its first token. At a position with no token, or
+// outside snap, the range is empty.
+func errorRange(snap *psi.Snapshot, line, col int) psi.Range {
+	if snap == nil || line < 1 || col < 1 {
+		return psi.Range{}
+	}
+	src := snap.Source()
+	off := 0
+	for l := 1; l < line; l++ {
+		i := strings.IndexByte(src[off:], '\n')
+		if i < 0 {
+			return psi.Range{Start: len(src), End: len(src)}
+		}
+		off += i + 1
+	}
+	off = min(off+col-1, len(src))
+	if n := snap.NodeAt(off); n.Valid() && n.IsLeaf() && !n.IsTrivia() && n.Range().Start <= off && off < n.Range().End {
+		return n.Range()
+	}
+	return psi.Range{Start: off, End: off}
 }
 
 // duplicateClasses reports two files with the same facade class, which

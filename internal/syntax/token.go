@@ -19,6 +19,9 @@ type Error struct {
 	// Feature is set when the error is about a Kotlin feature kc doesn't
 	// support, to a stable name such as "interface" or "modifier data".
 	Feature string
+	// Code is the name of kotlinc's diagnostic the error is, as
+	// UNRESOLVED_REFERENCE, if kc knows it; "" if not.
+	Code string
 }
 
 func (e *Error) Error() string {

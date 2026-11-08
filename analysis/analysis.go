@@ -120,13 +120,20 @@ type ElementID struct {
 // Diagnostic is an error that stops analysis: a source error, with Code
 // "source_error", or a construct kc doesn't support, with Code
 // "unsupported:" and the feature's name. Line and Column are 1-based;
-// columns count bytes.
+// columns count bytes. Range is the error's first token, in bytes of the
+// snapshot's source; empty where there is none.
+//
+// Kotlinc is the name of kotlinc's diagnostic a source error is, as
+// UNRESOLVED_REFERENCE, if kc knows it. An error without one may be one
+// of kc's own limits that kotlinc wouldn't report.
 type Diagnostic struct {
-	Path    string `json:"path"`
-	Line    int    `json:"line"`
-	Column  int    `json:"column"`
-	Code    string `json:"code"`
-	Message string `json:"message"`
+	Path    string    `json:"path"`
+	Line    int       `json:"line"`
+	Column  int       `json:"column"`
+	Range   psi.Range `json:"range"`
+	Code    string    `json:"code"`
+	Kotlinc string    `json:"kotlinc,omitempty"`
+	Message string    `json:"message"`
 }
 
 // Type is a resolved Kotlin type.
