@@ -1,0 +1,44 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kc <barteo@gmail.com>
+Date: Sun, 8 Nov 2026 07:41:22 +0000
+Subject: [PATCH 11/11] Don't copy outputs to and from backups again
+
+updateOutputs backs up every output and restores the clean ones on
+every run. A copy that is already there, with the same length and time,
+is not made again: in a daemon, most outputs are those of the run
+before, backed up and restored then.
+---
+ .../devtools/ksp/common/IncrementalContextBase.kt   | 13 +++++++++++--
+ 1 file changed, 11 insertions(+), 2 deletions(-)
+
+diff --git a/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/common/IncrementalContextBase.kt b/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/common/IncrementalContextBase.kt
+index 756042d..8aadf3a 100644
+--- a/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/common/IncrementalContextBase.kt
++++ b/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/common/IncrementalContextBase.kt
+@@ -345,15 +345,24 @@ abstract class IncrementalContextBase(
+         // 2. Even if outputs are left from last compilation / processing, processors can still
+         //    fail and the outputs will need to be restored.
+ 
++        // A copy that is already there, with the same length and time (the
++        // copies keep the time), is not made again: in a daemon, most outputs
++        // are those of the run before, backed up and restored then.
++        fun copy(src: File, dst: File) {
++            if (dst.isFile && dst.length() == src.length() && dst.lastModified() == src.lastModified())
++                return
++            copyWithTimestamp(src, dst, true)
++        }
++
+         // Backup
+         outputs.forEach { generated ->
+-            copyWithTimestamp(generated.abs(), generated.bak(), true)
++            copy(generated.abs(), generated.bak())
+         }
+ 
+         // Restore non-dirty outputs
+         cleanOutputs.forEach { dst ->
+             if (dst !in outputs) {
+-                copyWithTimestamp(dst.bak(), dst.abs(), true)
++                copy(dst.bak(), dst.abs())
+             }
+         }
+     }
