@@ -492,3 +492,88 @@ fun h() = q.J().base().id()
 		t.Error(d)
 	}
 }
+
+// TestIncrementalJavaDecl makes signature edits to a module with a Java
+// source that extends, and returns, a Kotlin class, and compares each
+// update with a whole check.
+func TestIncrementalJavaDecl(t *testing.T) {
+	cfg := withJDK(t)
+	cfg.ModuleName = "incrementalJavaDecl"
+	java := `package q;
+public class J extends p.Base {
+    public int n;
+    public p.Base base() { return this; }
+    public int k() { return p.UtilKt.util(); }
+}
+`
+	java2 := `package q;
+public class K {
+    public p.Box box() { return null; }
+}
+`
+	base := []string{
+		"package p\nopen class Base { open fun id() = 1 }\n",
+		"package p\nfun h() = q.J().base().id()\nfun i() = q.J().id()\nfun n() = q.J().n\n",
+		"package p\nfun util() = 3\n",
+		"package r\nfun alone() = 1\n",
+		"package r\nfun alone2() = alone()\n",
+		"package s\nfun more() = 4\n",
+		"package s\nfun more2() = more() + 1\n",
+		"package t\nfun solo() = 5\n",
+		"package p\nclass Box\n",
+		"package u\nfun b() = q.K().box()\n",
+		"package u\nfun other() = 0\n",
+		"package u\nfun other2() = 0\n",
+	}
+	edits := []struct {
+		name     string
+		file     int
+		from, to string
+		partial  bool
+	}{
+		{"returned class removed", 8, "class Box", "class Box2", true},
+		{"inherited member type", 0, "open fun id() = 1", "open fun id() = 1L", true},
+		{"new member", 0, "open fun id() = 1 }", "open fun id() = 1\n fun other() = 0 }", true},
+		{"class removed", 0, "open class Base { open fun id() = 1 }", "", true},
+		{"facade function", 2, "fun util() = 3", "fun util() = 3L", true},
+		{"unrelated", 3, "fun alone() = 1", "fun alone() = 1L", true},
+		{"jvm name", 2, "package p\n", "@file:JvmName(\"U\")\npackage p\n", false},
+	}
+	srcs := func(texts []string) []Source {
+		out := sources(texts...)
+		return append(out, Source{Path: "J.java", Text: &java}, Source{Path: "K.java", Text: &java2})
+	}
+	for _, e := range edits {
+		t.Run(e.name, func(t *testing.T) {
+			s := Open(cfg)
+			defer s.Close()
+			m, err := s.Update(context.Background(), srcs(base))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(m.Diagnostics) > 0 {
+				t.Fatalf("diagnostics: %v", m.Diagnostics)
+			}
+			texts := slices.Clone(base)
+			texts[e.file] = strings.Replace(texts[e.file], e.from, e.to, 1)
+			declUpdates.Store(0)
+			got, err := s.Update(context.Background(), srcs(texts))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if partial := declUpdates.Load() == 1; partial != e.partial {
+				t.Errorf("checked partially: %v, want %v", partial, e.partial)
+			}
+			if d := sameModel(got, wholeCheck(t, s, srcs(texts))); d != "" {
+				t.Error(d)
+			}
+			got, err = s.Update(context.Background(), srcs(base))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if d := sameModel(got, wholeCheck(t, s, srcs(base))); d != "" {
+				t.Errorf("back: %s", d)
+			}
+		})
+	}
+}

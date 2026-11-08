@@ -1,12 +1,14 @@
 package ka
 
 import (
+	"path/filepath"
 	"reflect"
 	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
 
+	"github.com/barteo/kotlin-compiler-go/internal/javasrc"
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
 	"github.com/barteo/kotlin-compiler-go/psi"
 )
@@ -176,8 +178,8 @@ func (e *checked) bodyEdits(paths []string, sources []Source, texts, javaTexts [
 const maxDirtyShare = 2
 
 // declEdits returns the indexes of the files an update that changes
-// declarations checks, if e is a clean check of the same files, without
-// Java sources, and the changed files parse without errors: the changed
+// declarations checks, if e is a clean check of the same files, with the
+// same Java texts, and the changed files parse without errors: the changed
 // files, and those whose lookups in e find what the changed files declare
 // before (e's models) or after the edit (files, as lowered), or look in
 // the classes they declare (declaredNames.hit), or that declare the same
@@ -185,10 +187,14 @@ const maxDirtyShare = 2
 // another's declarations only through the names it looks up, which the
 // checker records as FIR does, and more; but a model that changes because
 // of them, an inferred type, may change others', which dependents checks
-// once the files are checked. It returns nil otherwise, and if no text
-// changed or more than 1/maxDirtyShare of the files would be checked.
-func (e *checked) declEdits(paths []string, sources []Source, texts, javaTexts []string, snaps []*psi.Snapshot, files []*syntax.File) map[int]bool {
-	if e == nil || !e.clean || !slices.Equal(e.paths, paths) || len(javaTexts) > 0 || len(e.files) != len(sources) {
+// once the files are checked. The Java sources whose texts name a class
+// the changed files declare, or their facade class, have their classes
+// counted as the changed files' (addJava): their signatures may change
+// with them. It returns nil otherwise, and if no text changed or more than
+// 1/maxDirtyShare of the files would be checked.
+func (e *checked) declEdits(paths []string, sources []Source, texts []string, java *javaSet, snaps []*psi.Snapshot, files []*syntax.File) map[int]bool {
+	if e == nil || !e.clean || !slices.Equal(e.paths, paths) || len(e.files) != len(sources) ||
+		!slices.Equal(e.texts[len(sources):], java.texts) {
 		return nil
 	}
 	names := newDeclaredNames()
@@ -207,8 +213,14 @@ func (e *checked) declEdits(paths []string, sources []Source, texts, javaTexts [
 		dirty[i] = true
 		names.addModel(e.files[i])
 		names.addSyntax(files[i])
+		if !names.addFacade(src.Path, e.snaps[src.Path].text, texts[i], java) {
+			return nil
+		}
 	}
 	if len(dirty) == 0 {
+		return nil
+	}
+	if !names.addJava(java) {
 		return nil
 	}
 	e.addLookingUp(dirty, names)
@@ -221,7 +233,7 @@ func (e *checked) declEdits(paths []string, sources []Source, texts, javaTexts [
 // dependents returns the files that look up what the files in dirty whose
 // texts are e's declare, if their models in files, as checked again,
 // differ from e's: those files' models may depend on theirs (declEdits).
-func (e *checked) dependents(dirty map[int]bool, files []*File, texts []string) map[int]bool {
+func (e *checked) dependents(dirty map[int]bool, files []*File, texts []string, java *javaSet) map[int]bool {
 	names := newDeclaredNames()
 	changed := false
 	for i := range dirty {
@@ -231,9 +243,15 @@ func (e *checked) dependents(dirty map[int]bool, files []*File, texts []string) 
 		changed = true
 		names.addModel(e.files[i])
 		names.addModel(files[i])
+		if !names.addFacade(files[i].Path, texts[i], texts[i], java) {
+			return allFiles(len(files))
+		}
 	}
 	if !changed {
 		return nil
+	}
+	if !names.addJava(java) {
+		return allFiles(len(files))
 	}
 	more := map[int]bool{}
 	for j, f := range e.files {
@@ -266,6 +284,7 @@ func sameDecls(a, b *File) bool {
 type declaredNames struct {
 	names   map[[2]string]bool // scope, name
 	classes map[string]bool
+	facades []string // the changed files' facade classes' simple names, with Java sources (addFacade)
 }
 
 func newDeclaredNames() *declaredNames {
@@ -351,6 +370,106 @@ func (n *declaredNames) addSyntax(f *syntax.File) {
 		}
 	}
 	walk(f.Package, f.Decls)
+}
+
+// javaSet holds a module's Java sources: their texts, and their parses,
+// nil for one kc can't parse.
+type javaSet struct {
+	texts []string
+	files []*javasrc.File
+}
+
+// allFiles returns every index below n: what dependents returns when it
+// can't tell which files a change reaches.
+func allFiles(n int) map[int]bool {
+	all := make(map[int]bool, n)
+	for i := range n {
+		all[i] = true
+	}
+	return all
+}
+
+// addFacade adds the facade class of the Kotlin source at path, whose text
+// was old and is now text, if there are Java sources, which may name it.
+// It reports false if either text may rename the facade (@JvmName,
+// @JvmMultifileClass), which a Java source may then name unseen.
+func (n *declaredNames) addFacade(path, old, text string, java *javaSet) bool {
+	if java == nil || len(java.texts) == 0 {
+		return true
+	}
+	for _, t := range []string{old, text} {
+		if strings.Contains(t, "JvmName") || strings.Contains(t, "JvmMultifileClass") {
+			return false
+		}
+	}
+	base := strings.TrimSuffix(filepath.Base(path), ".kt")
+	if base == "" {
+		return false
+	}
+	n.facades = append(n.facades, strings.ToUpper(base[:1])+base[1:]+"Kt")
+	return true
+}
+
+// addJava adds, as classes the changed files declare, the classes of the
+// Java sources whose texts name one of those classes or facades, by its
+// simple name: those Java classes' signatures may change with them, which
+// a Kotlin file using them doesn't look up. It reports false if a Java
+// source kc can't parse names one, whose classes it doesn't know.
+func (n *declaredNames) addJava(java *javaSet) bool {
+	if java == nil || len(java.texts) == 0 {
+		return true
+	}
+	simple := map[string]bool{}
+	for cls := range n.classes {
+		simple[cls[strings.LastIndexByte(cls, '.')+1:]] = true
+	}
+	for _, f := range n.facades {
+		simple[f] = true
+	}
+	var add func(scope string, cs []*javasrc.Class)
+	add = func(scope string, cs []*javasrc.Class) {
+		for _, c := range cs {
+			cls := c.Name
+			if scope != "" {
+				cls = scope + "." + c.Name
+			}
+			n.classes[cls] = true
+			add(cls, c.Nested)
+		}
+	}
+	for i, text := range java.texts {
+		if !namesAny(text, simple) {
+			continue
+		}
+		f := java.files[i]
+		if f == nil {
+			return false
+		}
+		add(f.Package, f.Classes)
+	}
+	return true
+}
+
+// namesAny reports whether text has one of names as a Java identifier.
+func namesAny(text string, names map[string]bool) bool {
+	isID := func(b byte) bool {
+		return b == '_' || b == '$' || b >= '0' && b <= '9' || b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z' || b >= 0x80
+	}
+	for i := 0; i < len(text); {
+		if !isID(text[i]) {
+			i++
+			continue
+		}
+		j := i
+		for j < len(text) && isID(text[j]) {
+			j++
+		}
+		if names[text[i:j]] {
+			return true
+		}
+		i = j
+	}
+	return false
 }
 
 // keep adds e to c, dropping the oldest past maxChecks.

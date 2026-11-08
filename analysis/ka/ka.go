@@ -448,7 +448,7 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 			for _, i := range edits {
 				dirty[i] = true
 			}
-		} else if dirty = prev.declEdits(paths, sources, texts, javaTexts, snaps, files); dirty != nil {
+		} else if dirty = prev.declEdits(paths, sources, texts, &javaSet{javaTexts, javaFiles}, snaps, files); dirty != nil {
 			declUpdates.Add(1)
 			declEdit = true
 		}
@@ -535,7 +535,7 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 		if !declEdit {
 			break
 		}
-		more := prev.dependents(dirty, m.Files, texts)
+		more := prev.dependents(dirty, m.Files, texts, &javaSet{javaTexts, javaFiles})
 		if len(more) == 0 {
 			break
 		}
