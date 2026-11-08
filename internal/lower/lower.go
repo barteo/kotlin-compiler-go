@@ -133,7 +133,8 @@ type lowerer struct {
 // check needs of them (check.Options.Only). Such a body doesn't make a
 // declaration's type: a function with a block body and no written return
 // type returns Unit. Accessors keep their bodies, which decide whether a
-// property has a backing field.
+// property has a backing field. It returns no Provenance: what isn't
+// checked isn't modeled.
 func Declarations(s *psi.Snapshot) (*syntax.File, *Provenance, []*syntax.Error) {
 	return lowerFile(s, true)
 }
@@ -146,7 +147,10 @@ func File(s *psi.Snapshot) (*syntax.File, *Provenance, []*syntax.Error) {
 }
 
 func lowerFile(s *psi.Snapshot, declsOnly bool) (*syntax.File, *Provenance, []*syntax.Error) {
-	l := &lowerer{s: s, declsOnly: declsOnly, src: s.Source(), path: s.Path(), prov: map[any]psi.NodeID{}, annots: map[syntax.Pos]psi.NodeID{}, negated: map[psi.NodeID]*syntax.IntLit{}, hoisted: map[psi.NodeID]bool{}}
+	l := &lowerer{s: s, declsOnly: declsOnly, src: s.Source(), path: s.Path(), hoisted: map[psi.NodeID]bool{}}
+	if !declsOnly {
+		l.prov, l.annots, l.negated = map[any]psi.NodeID{}, map[syntax.Pos]psi.NodeID{}, map[psi.NodeID]*syntax.IntLit{}
+	}
 	l.lines = append(l.lines, 0)
 	for i := 0; i < len(l.src); i++ {
 		if l.src[i] == '\n' {
@@ -175,12 +179,17 @@ func lowerFile(s *psi.Snapshot, declsOnly bool) (*syntax.File, *Provenance, []*s
 	f.SuppressDSL = l.suppressDSL
 	f.Annotated = l.annotated
 	syntax.FinishFile(f, l.path)
+	if declsOnly {
+		return f, nil, l.errs
+	}
 	return f, &Provenance{l.prov, l.annots, l.negated}, l.errs
 }
 
 // record notes that AST node x comes from n, and returns x.
 func record[T any](l *lowerer, x T, n psi.NodeRef) T {
-	l.prov[x] = n.ID()
+	if l.prov != nil {
+		l.prov[x] = n.ID()
+	}
 	return x
 }
 
