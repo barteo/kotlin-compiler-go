@@ -36,41 +36,40 @@ W is past 10x. E is at 3–4x: an edit still lowers all 559 files and
 resolves their signatures in Go (100–210 ms), and kc-aa builds a new
 round for every file (30–60 ms). Step 28 lists what is left.
 
-Room, Hilt and Moshi (steps 29–34), on generated modules of 100 files,
-after step 34's fixes. Ceiling means the ratio if the backend took no
+Room, Hilt and Moshi (steps 29–35), on generated modules of 100 files,
+after step 35's fixes. Ceiling means the ratio if the backend took no
 time: stock's run divided by the processors' own time, which is the same
 on both backends.
 
 | ms | stock KSP2 | kc | ratio | ceiling |
 |---|---|---|---|---|
-| Room, warm | 7125 | 2236 | 3.2x | about 3.5–4x (Room, XProcessing and KotlinPoet are about 90% of kc's run) |
-| Room, leaf edit | 8642 | 2659 | 3.3x | about 3.5x |
-| Hilt, warm | 3322 | 612 | 5.4x | about 10x |
-| Hilt, edit Feature000 (100 files dirty) | 3650 | 1012 | 3.6x | |
-| Hilt, leaf edit | 494 | 158 | 3.1x | about 10x (processing takes about 50 ms) |
-| Hilt, one-file test, warm | 317 | 49 | 6.5x | |
-| Moshi, warm | 2295 | 434 | 5.3x | about 7.5x |
-| Moshi, edit Model000 (10 files dirty) | 580 | 248 | 2.3x | |
-| Moshi, leaf edit | 445 | 119 | 3.7x | about 30x (processing takes about 13 ms) |
-| Moshi, one-file test, warm | 260 | 19 | 13.7x | |
+| Room, warm | 7091 | 2342 | 3.0x | about 3.5–4x (Room, XProcessing and KotlinPoet are about 90% of kc's run) |
+| Room, leaf edit | 8650 | 2780 | 3.1x | about 3.5x |
+| Hilt, warm | 3979 | 534 | 7.5x | about 10x |
+| Hilt, edit Feature000 (100 files dirty) | 3928 | 1069 | 3.7x | |
+| Hilt, leaf edit | 658 | 128 | 5.1x | about 10x (processing takes about 30 ms) |
+| Hilt, one-file test, warm | 366 | 52 | 7.0x | |
+| Moshi, warm | 2202 | 464 | 4.7x | about 7.5x |
+| Moshi, edit Model000 (10 files dirty) | 691 | 165 | 4.2x | |
+| Moshi, leaf edit | 387 | 81 | 4.8x | about 30x (processing takes about 10 ms) |
+| Moshi, one-file test, warm | 232 | 19 | 12.2x | |
 
 Moshi's one-file test is past 10x; Hilt's is at 5–10x from batch to
 batch. On the large modules, what is left on kc's side of a leaf edit
-is about 40–50 ms of fixed costs over its two updates and rounds:
+is about 35 ms of fixed costs over its two updates and rounds:
 
-- **Each update declares every file again.** `lower` (about 5 ms in the
-  JVM) and `signatures` (about 6 ms), with 99 of 100 files reused.
+- **Each update declares every file again.**  (about 5 ms in the
+  JVM) and  (about 6 ms), with 99 of 100 files reused.
   Keeping the declared program across body edits is the cut there; it
   needs the checker to take a new tree for one file under the others'
   declarations (step 34 says why that is a larger change).
-- **kc-aa's round** builds every file's symbols again (about 8 ms per
-  round). Reusing unchanged files' symbols would need symbols that don't
-  hold their round.
+- **kc-aa's round** now builds only the files KSP reaches (step 35),
+  about 2 ms per round.
 - **The native call around them**: encoding, decoding and the update's
   reading and parsing, about 5 ms.
-- **KSP's incremental bookkeeping** (`updateCachesAndOutputs`,
-  `calcDirtyFiles`) and G1 young pauses (13–33 ms, about one per run),
-  which stock pays as well.
+- **KSP's incremental bookkeeping** (,
+  , the lookup storage) and G1 young pauses, which stock
+  pays as well: about as much as kc's share.
 
 ## What "10x" has to mean
 

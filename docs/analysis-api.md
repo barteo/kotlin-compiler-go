@@ -2556,6 +2556,101 @@ each update's `lower` (about 5 ms in the JVM) and `signatures` (about
 call around them; KSP's own setup and bookkeeping is about as much
 again.
 
+#### Step 35: a round builds only the files KSP reaches
+
+Step 34 left kc-aa's round build at about 8 ms per round, and a JFR
+profile of Moshi's leaf edit still had `KcRound.<init>` as the largest
+kc frame. It also had restores (`KSFileImpl.defer` → `KcPointer`) flushing
+every file's pointer keys. `KC_TIMING` now prints, for each round, how
+many source files the previous round built, had a key restored from, and
+looked up by PSI or type reference. On a leaf edit those are 2, 0 and 2
+of 100: KSP's rounds process the dirty file and reach few others.
+
+Changes in kc-aa (`KcRound`):
+
+- **A source file's symbols are built the first time they're needed.**
+  The round makes each file's `KcFileSymbol` up front, with its
+  annotations, and builds its declarations on the first of:
+  - its `declarations`;
+  - a class or type alias it declares, found through an index of the
+    model's class IDs (`sourceClass`, `knownTypeAlias`), which `findClass`,
+    `classSymbol` and package scopes go through;
+  - a pointer key of the file restored;
+  - a lookup by its PSI, type references, annotation entries or values.
+  
+  A class ID declared twice keeps the eager build's choice: the last
+  file's class and the first file's type alias.
+- **Pointer keys wait per file.** Every key of a file's symbols starts
+  with the file symbol's (`file:<path>`), so a restore records only the
+  keys of the file it names, not every file's.
+- **The type reference walk waits too.** `info` queued the declaration's
+  reference (from step 34) but still walked its PSI for the references;
+  the walk itself now waits with the file's other deferred records.
+
+`build=` went from about 8 ms to about 2 ms per round on Moshi's and
+Hilt's leaf edits.
+
+Changes in Go (`analysis/ka`):
+
+- **Signature edits check only the files they reach with Java sources
+  too.** `declEdits` refused any module with Java sources, so every
+  signature edit of Hilt's second round, which has Dagger's generated
+  Java, checked all 112 files (about 50 ms in the JVM). It now applies
+  when the Java texts are unchanged. A Kotlin lookup through a Java class
+  already records its Kotlin supertypes' scopes, and a Java signature's
+  Kotlin types record their classes when used. As a safeguard, the
+  classes of the Java sources that name a changed class, or a changed
+  file's facade class, count as changed. A changed file that may rename
+  its facade (`@JvmName`, `@JvmMultifileClass`) checks the whole module.
+  `TestIncrementalJavaDecl` compares six such edits with a whole check.
+  Hilt's second-round updates went from about 50 to 13–25 ms.
+
+Tried and dropped: a higher GOGC in libkc. The GC takes about a quarter
+of an update's CPU, and GOGC=400 (with a 768 MiB soft limit) cut
+`BenchmarkUpdateEdit` from 9.1 to 7.2 ms. But Room's runs, whose live
+Go heap is 90–190 MB, were about 140 ms slower with it in two A/B pairs,
+which outweighs 2 ms per update on Moshi and Hilt.
+
+Room's processing is mostly Room's own code: in a JFR profile of its
+leaf edit, kc's `KaSession` handler is about 11% of the samples and the
+proxy dispatch around it about 2%.
+
+Numbers as in step 34 (10 runs per case, kc's fastest beside the
+median):
+
+| ms | stock KSP2 | kc | ratio | kc min | step 34 kc (min) |
+|---|---|---|---|---|---|
+| Room large, warm | 7091 | 2342 | 3.0x | 2122 | 2236 (2147) |
+| Room large, edit Item000 | 8673 | 2719 | 3.2x | 2619 | 2745 (2669) |
+| Room large, leaf edit | 8650 | 2780 | 3.1x | 2667 | 2659 (2562) |
+| Room small, warm | 524 | 117 | 4.5x | 101 | 116 (100) |
+| Room small, edit | 577 | 143 | 4.0x | 110 | 150 (122) |
+| Hilt large, warm | 3979 | 534 | 7.5x | 481 | 612 (537) |
+| Hilt large, edit Feature000 | 3928 | 1069 | 3.7x | 998 | 1012 (913) |
+| Hilt large, leaf edit | 658 | 128 | 5.1x | 108 | 158 (111) |
+| Hilt small, warm | 366 | 52 | 7.0x | 46 | 49 (46) |
+| Hilt small, edit | 375 | 69 | 5.4x | 63 | 79 (74) |
+| Moshi large, warm | 2202 | 464 | 4.7x | 447 | 434 (388) |
+| Moshi large, edit Model000 | 691 | 165 | 4.2x | 155 | 248 (206) |
+| Moshi large, leaf edit | 387 | 81 | 4.8x | 74 | 119 (90) |
+| Moshi small, warm | 232 | 19 | 12.2x | 17 | 19 (17) |
+| Moshi small, edit | 227 | 40 | 5.7x | 36 | 46 (39) |
+
+Cold runs: Moshi 8170 / 4349, Hilt 14782 / 6343, Room 18132 / 8954.
+
+The leaf edits are faster in median and minimum: Moshi's from 119 to
+81 ms, Hilt's from 158 to 128 ms. Moshi's edit of Model000, whose
+dirty files reach few others, went from 248 to 165 ms. Hilt's
+Feature000 edit dirties all 100 files and builds them all, as before.
+Stock's runs move between batches too (Hilt's warm 3322 then 3979 ms),
+so the ratios move more than kc's times. Room is unchanged within noise.
+
+What is left on kc's side of a Moshi leaf edit (about 80 ms): two
+updates in Go of about 15 ms each (`lower` about 5, `signatures` about
+6), a round build of about 2 ms each, and KSP's own setup, between-round
+and teardown bookkeeping (`calcDirtyFiles`, `updateCachesAndOutputs`,
+the lookup storage), about as much again.
+
 ## Gaps and open questions
 
 - **Slice simplifications (M0.4).** These go when M3/M4 bring the facts in:
