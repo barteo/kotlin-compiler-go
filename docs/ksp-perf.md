@@ -36,26 +36,37 @@ W is past 10x. E is at 3–4x: an edit still lowers all 559 files and
 resolves their signatures in Go (100–210 ms), and kc-aa builds a new
 round for every file (30–60 ms). Step 28 lists what is left.
 
-Room (step 29), on a generated module of 100 files with 200 entities and
-100 DAOs: warm runs take 8104 ms on stock and 3716 ms on kc (2.2x), and
-edits 9655 and 4877 ms (2.0x). Room's own processing takes about 2.7 s
-a run on both backends, so even a backend that took no time couldn't
-get better than about 2.9x. On kc, the backend's share is about 1.3 s,
-against 6.1 s on stock.
+Room, Hilt and Moshi (steps 29–32), on generated modules of 100 files,
+after step 32's fixes. Ceiling means the ratio if the backend took no
+time: stock's run divided by the processors' own time, which is the same
+on both backends.
 
-Hilt (step 30), on a generated module of 100 files (factories,
-multibindings, entry points, assisted injection): warm runs take 4415 ms
-on stock and 1486 ms on kc (3.0x), and edits 5294 and 2396 ms (2.2x). On
-kc, Hilt itself and writing its 1260 files take about 77% of a run, and
-the backend about 8%.
+| ms | stock KSP2 | kc | ratio | ceiling |
+|---|---|---|---|---|
+| Room, warm | 8782 | 2755 | 3.2x | about 3.5x (Room, XProcessing and KotlinPoet take 2.8 s) |
+| Room, leaf edit | 10850 | 3550 | 3.1x | about 3.5x |
+| Hilt, warm | 4525 | 861 | 5.3x | about 10x |
+| Hilt, edit Feature000 (100 files dirty) | 5971 | 1751 | 3.4x | |
+| Hilt, leaf edit | 585 | 341 | 1.7x | about 12x (processing takes about 50 ms) |
+| Moshi, warm | 2419 | 629 | 3.8x | about 9x |
+| Moshi, edit Model000 (10 files dirty) | 774 | 245 | 3.2x | |
+| Moshi, leaf edit | 421 | 131 | 3.2x | about 30x (processing takes about 14 ms) |
+| Moshi, one-file test, warm | 247 | 20 | 12x | |
 
-Moshi (step 31), on 100 files of models: warm runs take 2911 ms on stock
-and 1039 ms on kc (2.8x), and on the one-file test 271 and 31 ms (8.7x).
-Edits that dirty 10 of the 100 files take 1016 and 732 ms (1.4x). KSP's
-own incremental bookkeeping is about 260 ms of each, the same on both
-backends. kc's share is about 160 ms, because it checks the whole
-module's signatures again (`reused=0`), and the regenerated adapters'
-bodies too.
+10x is reached only by Moshi's one-file test. On the large modules, what
+is left on kc's side is:
+
+- **Java sources, for Hilt and Dagger.** A module with Java sources gets
+  a new library and a whole check on every update (about 170 ms of
+  Hilt's leaf edit), because the class table's Java source classes refer
+  to one check's Kotlin classes. The fix is a shared class-path table
+  under a per-check table for the Java sources.
+- **Every update lowers and declares every file again.** That is 15–25 ms
+  per update on these modules, even with 99 of 100 files reused. It is
+  most of a Moshi leaf edit.
+- **KSP's incremental bookkeeping** (`updateCachesAndOutputs`,
+  `calcDirtyFiles`): about a fifth of kc's setup and between-rounds
+  time on the leaf edits.
 
 ## What "10x" has to mean
 

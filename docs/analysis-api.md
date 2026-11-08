@@ -2264,6 +2264,107 @@ generated files' declarations without their bodies, are what is left
 for kc on this workload. Even with both, the bookkeeping and the writes
 would hold the large edit ratio under about 2x.
 
+#### Step 32: Room, Hilt and Moshi after the output, bookkeeping and lookup fixes
+
+Steps 29–31 left kc at 2–3x over stock on the three processor workloads.
+This step cuts what the KSP fork and kc spend around the processors, and
+adds a third edit: `EDIT=leaf` in each workload's `run.sh` edits the last
+generated file (`r/Item099.kt`, `h/Feature099.kt`, `m/Model099.kt`),
+which no other file uses. `EDIT=auto` still edits file 000, which Hilt's
+and Moshi's other files use.
+
+Changes:
+
+- **Output write-behind (fork patch 0010).** `CodeGeneratorImpl` hands
+  each processor an in-memory stream. When it closes, a pool of up to
+  four threads writes the bytes, skipping a file whose bytes on disk are
+  already the same. The pool is drained before anything reads the
+  outputs: the next round's files, `outputs` and `generatedFile`, and
+  the end of the run. Write errors are rethrown there.
+- **Backup copies (fork patch 0011).** `IncrementalContextBase.updateOutputs`
+  skips a backup or restore copy whose target has the same length and
+  modification time. `copyWithTimestamp` keeps both, so the test is
+  exact.
+- **Round updates reuse the last check of the same files.** KSP's rounds
+  alternate between file sets (the sources, then the sources with the
+  generated files). `checkCache.find` now prefers the most recent check
+  with the same paths, so each round's update after an edit is
+  incremental (`reused=99`) instead of a whole check (`reused=0`).
+  `TestIncrementalRounds` covers it.
+- **Per-call lookups on Room's hot paths:**
+  - The fork's `analyze { }` keeps the module's `KaSessionProvider` with
+    the module, instead of a project service lookup per call, and skips
+    the `ThreadLocal` on the thread that set it (patch 0012).
+  - `KcAnalysis`'s proxy remembers the `KaSession` methods it has no
+    implementation for. `computeIfAbsent` stores no null, so each such
+    call ran `getMethod` and its `NoSuchMethodException` again.
+  - A class type keeps its class's symbol once kc has it.
+  - `asSuper` keeps its answers per pair of classes for the round: a miss
+    always, and the supertype of a class type without arguments.
+
+  A class kc doesn't have yet can turn up later in the round (Room's
+  type converters do), so neither cache keeps answers that involved
+  one.
+
+Numbers: 4 CPUs, JDK 21, `run.sh 10`, both backends back to back on the
+same machine. Warm is the median of runs 2–10 in one JVM, edits the same
+with `COLD=0`, cold the median of two fresh JVMs. Stock varies by up to
+30% between batches on this machine, so compare within a row.
+
+| ms | stock KSP2 | kc | ratio | steps 29–31 |
+|---|---|---|---|---|
+| Room large, warm | 8782 | 2755 | 3.2x | 2.2x |
+| Room large, edit Item000 | 11068 | 3548 | 3.1x | 2.0x |
+| Room large, leaf edit | 10850 | 3550 | 3.1x | 2.2x |
+| Room large, cold | 24051 | 11582 | 2.1x | |
+| Room small, warm | 647 | 144 | 4.5x | |
+| Room small, edit | 651 | 213 | 3.1x | |
+| Hilt large, warm | 4525 | 861 | 5.3x | 3.0x |
+| Hilt large, edit Feature000 | 5971 | 1751 | 3.4x | 2.2x |
+| Hilt large, leaf edit | 585 | 341 | 1.7x | 1.2x |
+| Hilt large, cold | 17000 | 7681 | 2.2x | |
+| Hilt small, warm | 465 | 70 | 6.6x | |
+| Hilt small, edit | 470 | 229 | 2.1x | |
+| Moshi large, warm | 2419 | 629 | 3.8x | 2.8x |
+| Moshi large, edit Model000 | 774 | 245 | 3.2x | 1.4x |
+| Moshi large, leaf edit | 421 | 131 | 3.2x | 1.3x |
+| Moshi large, cold | 9846 | 5239 | 1.9x | 1.9x |
+| Moshi small, warm | 247 | 20 | 12x | 8.7x |
+| Moshi small, edit | 265 | 50 | 5.3x | 4.7x |
+
+The leaf column of steps 29–31 is from the start of this step on the
+same machine: stock 10696, 858 and 597 ms; kc 4961, 704 and 474 ms.
+
+The leaf edit dirties one file on both backends. On Room it costs as much
+as a full run: Room's database processor reads every entity and DAO
+again whenever it runs.
+
+Where kc's time goes now:
+
+- **Room:** the processors. Room, XProcessing and KotlinPoet take about
+  2.8 s of each run on both backends, so 10x of stock is out of reach;
+  a backend that took no time would get about 3.5x. In JFR samples the
+  share of kc's own JVM layer fell from 12% to about 8%; the
+  `KcAnalysis` proxy's reflection is the largest piece left (about 2%).
+- **Hilt edits:** the generated Java. Dagger writes Java sources, and a
+  module with Java sources gets a new library for every update: the JDK
+  and class path are opened again, and the Kotlin sources are checked
+  whole (`reused=0`), because the Java source classes in the library's
+  class table refer to one check's Kotlin classes. On the leaf edit that
+  update is 170 of the 186 ms between rounds; on the small module it is
+  155 ms. Splitting the class table into a shared class-path part and a
+  per-check part for Java sources is the next lever for Hilt and Dagger.
+  Even then the leaf edit would be near 3x: its 28 rounds of processors
+  take about 50 ms.
+- **Moshi edits:** fixed costs around 14 ms of processing. Of a 131 ms
+  leaf edit, JFR puts about 70% of the setup and between-rounds samples
+  in kc's two module updates. Each one lowers all 100 files again and
+  declares their signatures (15–25 ms), even with 99 reused. About 22%
+  is KSP's own bookkeeping (`updateCachesAndOutputs`, `calcDirtyFiles`).
+  GC pauses are about 20 ms per run.
+
+What 10x would take is in `docs/ksp-perf.md`.
+
 ## Gaps and open questions
 
 - **Slice simplifications (M0.4).** These go when M3/M4 bring the facts in:
