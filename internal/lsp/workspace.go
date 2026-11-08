@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -184,7 +185,9 @@ func (w *workspace) reload() {
 	w.proj = p
 	for _, pm := range p.Modules {
 		ctx, stop := context.WithCancel(s.ctx)
-		m := &module{w: w, m: pm, sess: analysis.Open(pm.Config()), kick: make(chan struct{}, 1), stop: stop,
+		cfg := pm.Config()
+		cfg.Jobs = runtime.GOMAXPROCS(0) // an update lowers and checks files in parallel
+		m := &module{w: w, m: pm, sess: analysis.Open(cfg), kick: make(chan struct{}, 1), stop: stop,
 			done: make(chan struct{}), results: map[string]fileResult{}}
 		w.mods[pm.Name] = m
 		go m.loop(ctx)

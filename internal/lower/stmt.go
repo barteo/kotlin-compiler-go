@@ -1,6 +1,8 @@
 package lower
 
 import (
+	"strings"
+
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
 	"github.com/barteo/kotlin-compiler-go/psi"
 )
@@ -18,6 +20,31 @@ func (l *lowerer) block(n psi.NodeRef) *syntax.Block {
 		l.failAt(l.end(n), "expected '}'")
 	}
 	b := &syntax.Block{P: l.pos(lb), End: l.pos(rb), Stmts: l.stmts(n)}
+	return record(l, b, n)
+}
+
+// bodyBlock lowers the BLOCK body of a function, property accessor,
+// class initializer or secondary constructor: empty but for a leading
+// contract with Signatures, unless whole is set.
+func (l *lowerer) bodyBlock(n psi.NodeRef, whole bool) *syntax.Block {
+	if !l.signatures || whole || !n.Valid() {
+		return l.block(n)
+	}
+	lb, rb := child(n, psi.KindLBRACE), child(n, psi.KindRBRACE)
+	if !lb.Valid() || !rb.Valid() {
+		return l.block(n)
+	}
+	b := &syntax.Block{P: l.pos(lb), End: l.pos(rb)}
+	for _, c := range kids(n) {
+		switch c.NumericKind() {
+		case psi.KindLBRACE, psi.KindRBRACE, psi.KindSEMICOLON:
+			continue
+		}
+		if t := l.src[c.Range().Start:]; strings.HasPrefix(t, "contract") || strings.HasPrefix(t, "kotlin.contracts") {
+			b.Stmts = []syntax.Stmt{l.stmt(c)}
+		}
+		break
+	}
 	return record(l, b, n)
 }
 

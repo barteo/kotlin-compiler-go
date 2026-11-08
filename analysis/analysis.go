@@ -15,6 +15,7 @@
 package analysis
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -391,10 +392,22 @@ type Data struct {
 // Result is the outcome of analyzing a module. Its methods return copies
 // that callers may change, and are safe for concurrent use.
 type Result struct {
-	facts   map[ElementID]*Fact
-	order   []ElementID
-	symbols []Symbol // by ID-1
+	// files are the facts of each snapshot, as passed, in node order.
+	// A Result doesn't change: an incremental update shares the files it
+	// keeps with the last.
+	files   [][]*Fact
+	index   map[psi.SnapshotID]int // of files
+	symbols []Symbol               // by ID-1
 	diags   []Diagnostic
+}
+
+// setFiles makes files the facts of snaps.
+func (r *Result) setFiles(snaps []*psi.Snapshot, files [][]*Fact) {
+	r.files = files
+	r.index = make(map[psi.SnapshotID]int, len(snaps))
+	for i, s := range snaps {
+		r.index[s.ID()] = i
+	}
 }
 
 // Fact returns the fact of the node id names.
@@ -402,11 +415,16 @@ func (r *Result) Fact(id ElementID) (Fact, bool) {
 	if r == nil {
 		return Fact{}, false
 	}
-	f, ok := r.facts[id]
+	i, ok := r.index[id.Snapshot]
 	if !ok {
 		return Fact{}, false
 	}
-	return copyFact(*f), true
+	fs := r.files[i]
+	j, ok := slices.BinarySearchFunc(fs, id.Node, func(f *Fact, n psi.NodeID) int { return cmp.Compare(f.Element.Node, n) })
+	if !ok {
+		return Fact{}, false
+	}
+	return copyFact(*fs[j]), true
 }
 
 // Symbol returns the symbol with ID id.
@@ -437,8 +455,10 @@ func (r *Result) Data() Data {
 	if r == nil {
 		return d
 	}
-	for _, id := range r.order {
-		d.Facts = append(d.Facts, copyFact(*r.facts[id]))
+	for _, fs := range r.files {
+		for _, f := range fs {
+			d.Facts = append(d.Facts, copyFact(*f))
+		}
 	}
 	for _, s := range r.symbols {
 		d.Symbols = append(d.Symbols, copySymbol(s))

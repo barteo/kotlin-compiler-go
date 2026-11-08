@@ -278,13 +278,21 @@ The server learns a workspace's modules and shows `kc`'s errors in them:
   are per file: a file with an error has diagnostics and no facts, and
   the others keep theirs. A body-only edit (equal signature hash) checks
   only the changed files (`check.Options.Only`) and carries the other
-  files' facts and diagnostics over. Their elements are remapped to the
-  new parse and their symbols renumbered. `TestSessionIncrementalRun`
-  edits a body in every file of `testdata/run`: all 574 edits are
-  incremental, and each result equals a whole update's. A library symbol
-  that only carried-over facts name is matched by its checker pointer for
-  one update only. After that it is matched by declaration, kind and
-  name, or added again.
+  files' facts and diagnostics over. The other files are lowered without
+  their block bodies (`lower.Signatures`), but for contracts and inline
+  functions' bodies, which the checker reads in files it doesn't check.
+  Carried-over facts and symbols keep their numbers and are shared with
+  the last Result. Only those that point into a changed file are copied,
+  with their elements remapped to the new parse. The changed file's facts
+  name the kept symbols by declaration, kind and name. A library symbol
+  is matched by its checker pointer, which holds for one update; after
+  that it is added again. A Result may therefore list symbols no fact
+  names, until they number more than twice the last count plus 256 and
+  are compacted. `TestSessionIncrementalRun` edits a body in every file
+  of `testdata/run`: all 574 edits are incremental, and each result
+  equals a whole update's. `TestSessionIncrementalMany` covers
+  compaction, and `TestSessionIncrementalContracts` covers another
+  file's contract and inline function.
 - **`internal/project`** loads `kc-lsp.json`, else imports Gradle, else
   takes the folder as one module. The import is an embedded Groovy init
   script with task `kcLspModel`. It reports each JVM compilation's
@@ -332,22 +340,35 @@ a generated 200-file module (or `KC_LSP_BENCH`), on a 4-core Xeon:
 
 | Measure | Target | L1 |
 |---|---:|---:|
-| Cold open to first semantic diagnostics (library, whole check) | < 1 s | 0.57 s |
-| Body edit to semantic diagnostics, without the 50 ms debounce | p50 < 30 ms, p95 < 100 ms | p50 110–126 ms, p95 132–162 ms |
+| Cold open to first semantic diagnostics (library, whole check) | < 1 s | 0.39–0.43 s |
+| Body edit to semantic diagnostics, without the 50 ms debounce | p50 < 30 ms, p95 < 100 ms | p50 28–30 ms, p95 38–46 ms |
 
-The body edit misses its target. Per edit, the profile shows:
+The first measurement of the body edit was p50 110–126 ms. Four changes
+brought it to target:
 
-- **Re-lowering every file:** about 27 ms. The checker writes into the
-  ASTs, so they can't be kept between updates.
-- **Copying the carried-over facts for remapping:** about 22 ms.
-- **Checking the changed file:** about 18 ms.
-- **Building its facts:** about 17 ms.
-- **Garbage collection:** a large share on top of that.
+- **Sharing the carried-over facts** instead of copying them, with
+  symbol numbers stable across updates. This took about 32 ms.
+- **Lowering the unchanged files without their bodies.** This took
+  about 19 ms.
+- **Per-file facts in a Result**, so an update shares whole files
+  rather than rebuilding a module-wide map. The builder's later passes
+  also skip the unchanged files. Together these took about 17 ms.
+- **Updating on every core** (`Config.Jobs`). This took about 8 ms, and
+  cold open went from 0.57 s to about 0.4 s.
 
-Copying only the facts that point into a changed file, and keeping the
-symbol table across updates, would remove most of the copying. Lowered
-trees that the checker doesn't write into are the L6 work on declaration
-edits.
+Per edit, the rest is:
+
+- signature lowering of the other files, about 5 ms on four cores;
+- the checker declaring and resolving every file's signatures, about
+  15 ms, sequential;
+- the changed file's check and facts;
+- garbage collection, about a quarter of the CPU.
+
+The p95 doubles, to about 86 ms, when the process also holds the
+libraries of earlier sessions, because GC has a larger heap to mark.
+Lowered trees that the checker doesn't write into, so that unchanged
+files are neither lowered nor declared again, are the L6 work on
+declaration edits.
 
 ## Gaps and open questions
 
@@ -355,10 +376,11 @@ edits.
   `kotlinc`'s checkers, so the editor shows fewer problems than
   IntelliJ. The precision policy keeps false errors out, not missing
   ones in.
-- **Declaration edits** check the whole module until L6, and every update
-  lowers every file while the checker writes into the trees. With the
-  copying of carried-over facts, that puts a body edit at about 120 ms
-  on a 200-file module, four times its target (L1 above).
+- **Declaration edits** check the whole module until L6. Every update
+  lowers every file's signatures and declares them again, while the
+  checker writes into the trees. A body edit on a 200-file module is at
+  its 30 ms target, with no margin, and grows with the module (L1
+  above).
 - **Project dependencies** are analyzed from source with the module
   that depends on them, as one session: a module and its dependencies'
   files are checked together, and a dependency's files are checked

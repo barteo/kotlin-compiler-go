@@ -294,6 +294,121 @@ fun useA(a: A): Int { return a.f() + a.p + top(a).length }
 	}
 }
 
+// TestSessionIncrementalMany makes many body edits to one session, in
+// turn in each file, so that symbols are kept, added and compacted, and
+// compares each update with a whole one.
+func TestSessionIncrementalMany(t *testing.T) {
+	defer func(n int) { compactSlack = n }(compactSlack)
+	compactSlack = 4
+	texts := []string{
+		"package p\nclass A(val n: Int) { fun f(): Int { return n } }\nfun top(a: A): Int { return a.f() }\n",
+		"package p\nfun useA(a: A): Int { return top(a) + a.n }\nfun more(): List<Int> { return listOf(1) }\n",
+	}
+	cfg := withJDK(t)
+	ctx := context.Background()
+	s := Open(cfg)
+	defer s.Close()
+	snaps := []*psi.Snapshot{psi.Parse("a.kt", texts[0]), psi.Parse("b.kt", texts[1])}
+	if _, err := s.Update(ctx, snaps); err != nil {
+		t.Fatal(err)
+	}
+	compactions.Store(0)
+	incrementalUpdates.Store(0)
+	const edits = 12
+	for k := range edits {
+		i := k % 2
+		text := strings.Replace(texts[i], "{ return ", fmt.Sprintf("{ val v%d = listOf(%d).map { x -> x + 1 }.size; return ", k, k), 1)
+		snaps = slices.Clone(snaps)
+		snaps[i] = psi.Parse(snaps[i].Path(), text)
+		got, err := s.Update(ctx, snaps)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if d := sameResult(t, got, wholeUpdate(t, cfg, snaps)); d != "" {
+			t.Fatalf("edit %d: %s", k, d)
+		}
+		for _, f := range got.Data().Facts {
+			for _, id := range append([]uint32{f.Symbol}, f.LambdaParameters...) {
+				if sym, ok := got.Symbol(id); id != 0 && (!ok || sym.ID != id) {
+					t.Fatalf("edit %d: fact %v names symbol %d: %v", k, f.Element, id, sym)
+				}
+			}
+		}
+	}
+	if n := incrementalUpdates.Load(); n != edits {
+		t.Errorf("%d of %d edits checked incrementally", n, edits)
+	}
+	if compactions.Load() == 0 {
+		t.Error("symbols never compacted")
+	}
+}
+
+// An incremental update reads the contracts and inline functions' bodies
+// of the files it doesn't check.
+func TestSessionIncrementalContracts(t *testing.T) {
+	b := `@file:OptIn(kotlin.contracts.ExperimentalContracts::class)
+package p
+
+import kotlin.contracts.*
+
+fun isStr(x: Any?): Boolean {
+    contract { returns(true) implies (x is String) }
+    return x is String
+}
+
+inline fun once(f: () -> Unit) {
+    contract { callsInPlace(f, InvocationKind.EXACTLY_ONCE) }
+    f()
+}
+
+inline fun forward(crossinline f: () -> Unit): Runnable = Runnable { f() }
+
+inline fun later(crossinline f: () -> Unit) {
+    Runnable { f() }.run()
+}
+
+inline fun each(xs: List<Int>, crossinline f: (Int) -> Unit) {
+    for (x in xs) later { f(x) }
+}
+`
+	a := "package p\n\nfun use(o: Any?): Int {\n    return 0\n}\n"
+	a2 := `package p
+
+fun use(o: Any?): Int {
+    val v: Int
+    once { v = 1 }
+    forward { println(v) }.run()
+    later { println(v) }
+    each(listOf(1)) { if (it > 0) return it }
+    if (isStr(o)) return o.length + v
+    return v
+}
+`
+	cfg := withJDK(t)
+	ctx := context.Background()
+	s := Open(cfg)
+	defer s.Close()
+	bs := psi.Parse("b.kt", b)
+	if res, err := s.Update(ctx, []*psi.Snapshot{psi.Parse("a.kt", a), bs}); err != nil {
+		t.Fatal(err)
+	} else if !res.Complete() {
+		t.Fatalf("diagnostics %v", res.Diagnostics())
+	}
+	snaps := []*psi.Snapshot{psi.Parse("a.kt", a2), bs}
+	incrementalUpdates.Store(0)
+	got, err := s.Update(ctx, snaps)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if incrementalUpdates.Load() != 1 {
+		t.Error("not checked incrementally")
+	}
+	// The return is an error, whose message depends on later's body.
+	if d := sameResult(t, got, wholeUpdate(t, cfg, snaps)); d != "" {
+		t.Error(d)
+	}
+}
+
 // An update that changes what a file declares is checked whole.
 func TestSessionIncrementalSignature(t *testing.T) {
 	a := "package p\nfun f() = 1\nfun g(): Int { return 1 }\n"

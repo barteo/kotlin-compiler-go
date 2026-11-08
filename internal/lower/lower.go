@@ -120,13 +120,31 @@ type lowerer struct {
 	// noTrailing is set while lowering where a brace after an expression
 	// isn't a trailing lambda for kc: a delegate in a class header.
 	noTrailing bool
+
+	// signatures is set by Signatures: block bodies are lowered empty.
+	signatures bool
 }
 
 // File lowers a psi snapshot to kc's AST, as syntax.ParseAll parses the
 // same source: after an error in a declaration, it goes on with the next
 // one, so it returns the first error of each declaration that fails.
 func File(s *psi.Snapshot) (*syntax.File, *Provenance, []*syntax.Error) {
-	l := &lowerer{s: s, src: s.Source(), path: s.Path(), prov: map[any]psi.NodeID{}, annots: map[syntax.Pos]psi.NodeID{}, negated: map[psi.NodeID]*syntax.IntLit{}, hoisted: map[psi.NodeID]bool{}}
+	return lowerFile(s, false)
+}
+
+// Signatures lowers a snapshot as File does, but for the block bodies of
+// functions, property accessors, class initializers and secondary
+// constructors, which are lowered empty: what a check of other files
+// that only declares this one (check.Options.Only) needs of it. A body
+// keeps its contract, and an inline function's body is lowered whole:
+// the checker reads those of the files it doesn't check too. The errors
+// in the bodies aren't found.
+func Signatures(s *psi.Snapshot) (*syntax.File, *Provenance, []*syntax.Error) {
+	return lowerFile(s, true)
+}
+
+func lowerFile(s *psi.Snapshot, signatures bool) (*syntax.File, *Provenance, []*syntax.Error) {
+	l := &lowerer{signatures: signatures, s: s, src: s.Source(), path: s.Path(), prov: map[any]psi.NodeID{}, annots: map[syntax.Pos]psi.NodeID{}, negated: map[psi.NodeID]*syntax.IntLit{}, hoisted: map[psi.NodeID]bool{}}
 	l.lines = append(l.lines, 0)
 	for i := 0; i < len(l.src); i++ {
 		if l.src[i] == '\n' {
@@ -139,7 +157,7 @@ func File(s *psi.Snapshot) (*syntax.File, *Provenance, []*syntax.Error) {
 		}
 	}
 	f := l.file(s.RootNode())
-	if len(l.errs) == 0 {
+	if len(l.errs) == 0 && !signatures {
 		// Every error element is under a declaration that reports it;
 		// this keeps a file with one from ever lowering cleanly.
 		for _, id := range l.errorIDs {

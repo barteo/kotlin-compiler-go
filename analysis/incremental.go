@@ -1,7 +1,6 @@
 package analysis
 
 import (
-	"cmp"
 	"context"
 	"slices"
 	"sync/atomic"
@@ -21,51 +20,62 @@ import (
 // text and on what the other files declare, not on their bodies, so the
 // others' are still right. Every other update is checked whole.
 //
-// Kept facts are rewritten for the new update: what they refer to in a
-// changed file's last parse is mapped to its new parse, whose nodes
-// outside block bodies correspond one to one (kasession.SignatureNodes),
-// and their symbols are numbered again. A kept fact's symbol is the new
-// update's if the new facts name it too: the same declaration in the
-// sources, or the same symbol of the library; else it is added.
-// A library's symbol that only kept facts name is described as the
-// update that found it did, and an update's own facts may name it again
-// under another number.
+// Kept facts and symbols keep their numbers, and are shared with the last
+// update's Result unless they refer to a changed file: what they refer to
+// in its last parse is mapped to its new parse, whose nodes outside block
+// bodies correspond one to one (kasession.SignatureNodes). The changed
+// files' facts name the kept symbols where they name the same
+// declaration in the sources, or the same symbol of the library as the
+// last update's own facts did; other symbols are added. A library's
+// symbol that only kept facts name is described as the update that found
+// it did, and an update's own facts may name it again under another
+// number. So a Result's symbols may include some no fact names, until
+// there are too many of them (state.compact).
 
 // incrementalUpdates counts the updates that check only some files, for
 // tests.
 var incrementalUpdates atomic.Int64
 
+// compactions counts the incremental updates that number their symbols
+// again, for tests.
+var compactions atomic.Int64
+
 // state is what an incremental update starts from: the last update's
 // snapshots, and each file's facts and diagnostics.
 type state struct {
-	res   *Result
+	res   *Result // its files are each file's facts
 	snaps []*psi.Snapshot
-	facts [][]*Fact // by file, in node order
 	diags [][]Diagnostic
+	// refs are the other snapshots each file's facts refer to.
+	refs [][]psi.SnapshotID
 	// syms are the symbols of res.symbols as the checker made them, or nil
 	// for one an earlier update found.
 	syms []any
+	// base is how many symbols res had when they were last numbered
+	// whole: an incremental update keeps the numbers of the symbols it
+	// keeps, and adds the changed files' new ones, until there are too
+	// many (compact).
+	base int
 }
 
 // newState returns the state of res, an update of snaps whose every error
 // is one file's, and syms its symbols; nil if two snapshots have the same
 // path.
 func newState(res *Result, snaps []*psi.Snapshot, syms []any) *state {
-	st := &state{res: res, snaps: snaps, facts: make([][]*Fact, len(snaps)), diags: make([][]Diagnostic, len(snaps)),
+	if res.files == nil {
+		res.setFiles(snaps, make([][]*Fact, len(snaps)))
+	}
+	st := &state{res: res, snaps: snaps, diags: make([][]Diagnostic, len(snaps)), refs: make([][]psi.SnapshotID, len(snaps)),
 		syms: make([]any, len(res.symbols))}
 	copy(st.syms, syms)
+	st.base = len(res.symbols)
 	byPath := map[string]int{}
-	byID := map[psi.SnapshotID]int{}
 	for i, s := range snaps {
 		if _, dup := byPath[s.Path()]; dup {
 			return nil
 		}
 		byPath[s.Path()] = i
-		byID[s.ID()] = i
-	}
-	for _, id := range res.order {
-		i := byID[id.Snapshot]
-		st.facts[i] = append(st.facts[i], res.facts[id])
+		st.refs[i] = fileRefs(s.ID(), res.files[i])
 	}
 	for _, d := range res.diags {
 		i, ok := byPath[d.Path]
@@ -75,6 +85,19 @@ func newState(res *Result, snaps []*psi.Snapshot, syms []any) *state {
 		st.diags[i] = append(st.diags[i], d)
 	}
 	return st
+}
+
+// fileRefs returns the snapshots but own that facts refer to.
+func fileRefs(own psi.SnapshotID, facts []*Fact) []psi.SnapshotID {
+	var refs []psi.SnapshotID
+	for _, f := range facts {
+		factIDs(f, func(id *ElementID) {
+			if id.Snapshot != own && !slices.Contains(refs, id.Snapshot) {
+				refs = append(refs, id.Snapshot)
+			}
+		})
+	}
+	return refs
 }
 
 // nodeMap maps the nodes outside block bodies of a changed file's last
@@ -153,19 +176,67 @@ func incremental(ctx context.Context, cfg Config, snaps []*psi.Snapshot, st *sta
 	for _, i := range changed {
 		isChanged[i] = true
 	}
-	// The kept facts and diagnostics, their elements mapped first: one in
-	// a changed file's body means the update must be checked whole.
-	m := &remapper{nodes: nodes, ok: true}
-	kept := make([][]Fact, len(snaps))
-	for i, fs := range st.facts {
+	// The kept symbols and facts, their elements mapped first: a kept fact
+	// that names a symbol declared in a changed file's body means the
+	// update must be checked whole. What doesn't refer to a changed file
+	// is shared with the last update's Result, which doesn't change.
+	m := &remapper{nodes: nodes}
+	touches := func(walk func(func(*ElementID))) bool {
+		hit := false
+		walk(func(id *ElementID) {
+			if nodes[id.Snapshot] != nil {
+				hit = true
+			}
+		})
+		return hit
+	}
+	syms := slices.Clone(st.res.symbols)
+	dead := make([]bool, len(syms))
+	for i := range syms {
+		if !touches(func(fn func(*ElementID)) { symbolIDs(&syms[i], fn) }) {
+			continue
+		}
+		s := copySymbol(syms[i])
+		m.ok = true
+		symbolIDs(&s, m.element)
+		if !m.ok {
+			dead[i] = true // a local of a changed body: no kept fact may name it
+			continue
+		}
+		syms[i] = s
+	}
+	isDead := func(id uint32) bool { return id != 0 && dead[id-1] }
+	m.ok = true
+	n := len(snaps)
+	kept := make([][]*Fact, n)
+	refs := make([][]psi.SnapshotID, n)
+	for i, fs := range st.res.files {
 		if isChanged[i] {
 			continue
 		}
-		kept[i] = make([]Fact, len(fs))
+		kept[i], refs[i] = fs, st.refs[i]
+		for _, f := range fs {
+			if isDead(f.Symbol) || slices.ContainsFunc(f.LambdaParameters, isDead) {
+				return nil, nil, false, nil
+			}
+		}
+		if !slices.ContainsFunc(refs[i], func(id psi.SnapshotID) bool { return nodes[id] != nil }) {
+			continue // shared
+		}
+		kept[i] = make([]*Fact, len(fs))
 		for j, f := range fs {
-			c := copyFact(*f)
-			factIDs(&c, m.element)
-			kept[i][j] = c
+			if touches(func(fn func(*ElementID)) { factIDs(f, fn) }) {
+				c := copyFact(*f)
+				factIDs(&c, m.element)
+				f = &c
+			}
+			kept[i][j] = f
+		}
+		refs[i] = slices.Clone(refs[i])
+		for k, id := range refs[i] {
+			if nm := nodes[id]; nm != nil {
+				refs[i][k] = nm.snap
+			}
 		}
 	}
 	if !m.ok {
@@ -173,12 +244,16 @@ func incremental(ctx context.Context, cfg Config, snaps []*psi.Snapshot, st *sta
 	}
 
 	jobs := max(cfg.Jobs, 1)
-	n := len(snaps)
 	files := make([]*syntax.File, n)
 	provs := make([]*lower.Provenance, n)
 	errLists := make([][]*syntax.Error, n)
 	parallel(n, jobs, func(i int) {
-		files[i], provs[i], errLists[i] = lower.File(snaps[i])
+		if isChanged[i] {
+			files[i], provs[i], errLists[i] = lower.File(snaps[i])
+		} else {
+			// Only declared: its facts and diagnostics are kept.
+			files[i], provs[i], _ = lower.Signatures(snaps[i])
+		}
 	})
 	if err := ctx.Err(); err != nil {
 		return nil, nil, false, err
@@ -223,45 +298,36 @@ func incremental(ctx context.Context, cfg Config, snaps []*psi.Snapshot, st *sta
 		broken[i] = true
 	}
 
-	res = &Result{facts: map[ElementID]*Fact{}}
-	var syms []any
+	// The changed files' facts, their symbols numbered into the kept
+	// table: the same symbol of the library as the last update's facts
+	// named, or the same declaration in the sources; else added.
+	built := &Result{}
+	var builtSyms []any
 	if slices.Contains(broken, false) {
-		b := newBuilder(res, snaps, files, provs, rec)
+		b := newBuilder(built, snaps, files, provs, rec)
 		b.cp = cp
 		b.broken = broken
 		b.build()
-		syms = b.syms
+		builtSyms = b.syms
 	}
-	next = &state{res: res, snaps: snaps, facts: make([][]*Fact, n), diags: diags, syms: make([]any, len(res.symbols))}
-	copy(next.syms, syms)
+	res = &Result{symbols: syms}
+	next = &state{res: res, snaps: snaps, diags: diags, refs: refs, syms: make([]any, len(syms)), base: st.base}
 	byPtr := map[any]uint32{}
-	for i, p := range next.syms {
-		byPtr[p] = uint32(i + 1)
-	}
-	type declKey struct {
-		el         ElementID
-		kind, name string
+	for i, p := range st.syms {
+		if p != nil {
+			byPtr[p] = uint32(i + 1)
+		}
 	}
 	byDecl := map[declKey]uint32{}
-	for _, s := range res.symbols {
-		if s.Declaration != nil {
+	for i, s := range syms {
+		if s.Declaration != nil && !dead[i] {
 			byDecl[declKey{*s.Declaration, s.Kind, s.Name}] = s.ID
 		}
 	}
-	// The kept facts' symbols, numbered again.
-	ids := map[uint32]uint32{}
-	symbol := func(old *uint32) {
-		if *old == 0 {
-			return
-		}
-		if id, ok := ids[*old]; ok {
-			*old = id
-			return
-		}
+	ids := make([]uint32, len(built.symbols))
+	for k, s := range built.symbols {
+		p := builtSyms[k]
 		var id uint32
-		s := copySymbol(st.res.symbols[*old-1])
-		p := st.syms[*old-1]
-		symbolIDs(&s, m.element)
 		if p != nil {
 			id = byPtr[p]
 		}
@@ -270,51 +336,105 @@ func incremental(ctx context.Context, cfg Config, snaps []*psi.Snapshot, st *sta
 		}
 		if id == 0 {
 			id = uint32(len(res.symbols) + 1)
-			s.ID = id
-			res.symbols = append(res.symbols, s)
+			res.symbols = append(res.symbols, Symbol{})
 			next.syms = append(next.syms, nil)
 		}
-		ids[*old] = id
-		*old = id
+		s.ID = id
+		res.symbols[id-1] = s
+		next.syms[id-1] = p
+		ids[k] = id
 	}
+	renumber := func(id *uint32) {
+		if *id != 0 {
+			*id = ids[*id-1]
+		}
+	}
+	all := make([][]*Fact, n)
 	for i := range snaps {
-		if isChanged[i] {
-			continue
-		}
-		for j := range kept[i] {
-			f := &kept[i][j]
-			symbol(&f.Symbol)
-			for k := range f.LambdaParameters {
-				symbol(&f.LambdaParameters[k])
+		if !isChanged[i] {
+			all[i] = kept[i]
+		} else if built.files != nil {
+			all[i] = built.files[i]
+			for _, f := range all[i] {
+				renumber(&f.Symbol)
+				for k := range f.LambdaParameters {
+					renumber(&f.LambdaParameters[k])
+				}
 			}
-			res.facts[f.Element] = f
-			res.order = append(res.order, f.Element)
+			refs[i] = fileRefs(snaps[i].ID(), all[i])
 		}
+		res.diags = append(res.diags, diags[i]...)
 	}
-	if !m.ok {
-		// A kept symbol declared in a changed file's body: a local
-		// whose fact was dropped. Can't be: be safe.
-		return nil, nil, false, nil
-	}
-	fileOf := map[psi.SnapshotID]int{}
-	for i, s := range snaps {
-		fileOf[s.ID()] = i
-	}
-	slices.SortFunc(res.order, func(a, c ElementID) int {
-		if r := cmp.Compare(fileOf[a.Snapshot], fileOf[c.Snapshot]); r != 0 {
-			return r
-		}
-		return cmp.Compare(a.Node, c.Node)
-	})
-	for _, id := range res.order {
-		i := fileOf[id.Snapshot]
-		next.facts[i] = append(next.facts[i], res.facts[id])
-	}
-	for _, ds := range diags {
-		res.diags = append(res.diags, ds...)
+	res.setFiles(snaps, all)
+	if len(res.symbols) > 2*next.base+compactSlack {
+		next.compact()
 	}
 	incrementalUpdates.Add(1)
 	return res, next, true, nil
+}
+
+// compactSlack is how many symbols beyond twice the last numbering's an
+// update may have before it compacts them.
+var compactSlack = 256
+
+type declKey struct {
+	el         ElementID
+	kind, name string
+}
+
+// compact numbers the symbols that facts name again, dropping the others:
+// those only the facts of changed files' earlier versions named.
+func (st *state) compact() {
+	res := st.res
+	ids := make([]uint32, len(res.symbols))
+	mark := func(id uint32) {
+		if id != 0 {
+			ids[id-1] = 1
+		}
+	}
+	for _, fs := range res.files {
+		for _, f := range fs {
+			mark(f.Symbol)
+			for _, p := range f.LambdaParameters {
+				mark(p)
+			}
+		}
+	}
+	var syms []Symbol
+	var ptrs []any
+	for i, used := range ids {
+		if used == 0 {
+			continue
+		}
+		ids[i] = uint32(len(syms) + 1)
+		s := res.symbols[i]
+		s.ID = ids[i]
+		syms = append(syms, s)
+		ptrs = append(ptrs, st.syms[i])
+	}
+	moved := func(id uint32) bool { return id != 0 && ids[id-1] != id }
+	for i, fs := range res.files {
+		cloned := false
+		for j, f := range fs {
+			if !moved(f.Symbol) && !slices.ContainsFunc(f.LambdaParameters, moved) {
+				continue
+			}
+			if !cloned { // it may be an earlier Result's
+				fs, cloned = slices.Clone(fs), true
+				res.files[i] = fs
+			}
+			c := copyFact(*f)
+			if c.Symbol != 0 {
+				c.Symbol = ids[c.Symbol-1]
+			}
+			for k, p := range c.LambdaParameters {
+				c.LambdaParameters[k] = ids[p-1]
+			}
+			fs[j] = &c
+		}
+	}
+	res.symbols, st.syms, st.base = syms, ptrs, len(syms)
+	compactions.Add(1)
 }
 
 // factIDs calls fn with each element f refers to but its own.
