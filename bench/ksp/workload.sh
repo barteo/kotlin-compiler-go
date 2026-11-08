@@ -1,5 +1,5 @@
 # workload.sh has what the processor workloads' run.sh scripts
-# (bench/ksp/room, bench/ksp/hilt) share; they source it after setting
+# (bench/ksp/room, bench/ksp/hilt, bench/ksp/moshi) share; they source it after setting
 # root. It sets kcaa, out and lib and defines:
 #
 #	paths GROUP:ARTIFACT:VERSION...
