@@ -17,6 +17,7 @@ func TestSemanticDiagnostics(t *testing.T) {
 		{Range: psi.Range{Start: 1, End: 2}, Code: "source_error", Kotlinc: "REDECLARATION", Message: "conflicting declarations: x"},
 		{Code: "source_error", Message: "ranges are only supported in 'for' loops and 'in' checks"},
 		{Code: "unsupported:context receivers", Message: "context receivers are not supported"},
+		{Code: "source_error", Kotlinc: "SYNTAX", Message: "Expecting an element"},
 	}
 	lowPrecision["LOW"] = true
 	defer delete(lowPrecision, "LOW")

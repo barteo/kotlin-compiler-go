@@ -239,6 +239,34 @@ func within(dir, path string) bool {
 // directly or not: the sources analyzed with it.
 func (p *Project) Roots(m *Module) []string {
 	var roots []string
+	c := p.closure(m)
+	for _, d := range p.Modules { // in the project's order
+		if c[d.Name] {
+			roots = append(roots, d.SourceRoots...)
+		}
+	}
+	return roots
+}
+
+// Dependents returns the modules whose sources include path's: the module
+// of path and those that depend on it, directly or not.
+func (p *Project) Dependents(path string) []*Module {
+	owner := p.ModuleOf(path)
+	if owner == nil {
+		return nil
+	}
+	var out []*Module
+	for _, m := range p.Modules {
+		if p.closure(m)[owner.Name] {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+// closure returns the names of m and of the modules it depends on,
+// directly or not.
+func (p *Project) closure(m *Module) map[string]bool {
 	seen := map[string]bool{}
 	var add func(m *Module)
 	add = func(m *Module) {
@@ -246,13 +274,12 @@ func (p *Project) Roots(m *Module) []string {
 			return
 		}
 		seen[m.Name] = true
-		roots = append(roots, m.SourceRoots...)
 		for _, d := range m.DependsOn {
 			add(p.Module(d))
 		}
 	}
 	add(m)
-	return roots
+	return seen
 }
 
 // Sources returns the Kotlin source files of m and of the modules it

@@ -19,6 +19,9 @@ import (
 //     code kotlinc accepts (lowPrecision).
 //   - Any other error is a warning.
 //
+// A syntax error (kotlinc's SYNTAX) isn't shown: SyntaxDiagnostics shows
+// it, from the same parse.
+//
 // DiagnosticsMode changes that.
 
 // DiagnosticsMode is the kc.diagnostics setting.
@@ -58,6 +61,9 @@ var lowPrecision = map[string]bool{
 func SemanticDiagnostics(ds []analysis.Diagnostic, mode DiagnosticsMode) []Diagnostic {
 	var out []Diagnostic
 	for _, d := range ds {
+		if d.Kotlinc == "SYNTAX" {
+			continue
+		}
 		sd := Diagnostic{Range: d.Range, Severity: Error, Code: d.Kotlinc, Message: d.Message}
 		feature, unsupported := strings.CutPrefix(d.Code, "unsupported:")
 		switch {

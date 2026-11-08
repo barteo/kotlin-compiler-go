@@ -451,7 +451,7 @@ func TestFactIDs(t *testing.T) {
 // TestDiagnosticRange checks the codes and ranges of errors.
 func TestDiagnosticRange(t *testing.T) {
 	cfg := withStdlib(t)
-	src := "package p\n\nfun f(): Int {\n    val s: String = 1\n    return nope + 1\n}\n"
+	src := "package p\n\nfun f(): Int {\n    val s: String = 1\n    val i: Int = \"a $s\"\n    return nope + 1\n}\n"
 	snap := psi.Parse("a.kt", src)
 	res, err := AnalyzeArena(context.Background(), cfg, []*psi.Snapshot{snap})
 	if err != nil {
@@ -459,12 +459,12 @@ func TestDiagnosticRange(t *testing.T) {
 	}
 	got := map[string]string{}
 	for _, d := range res.Diagnostics() {
-		got[d.Kotlinc] = src[d.Range.Start:d.Range.End]
+		got[d.Kotlinc] += src[d.Range.Start:d.Range.End] + ";"
 		if d.Code != "source_error" {
 			t.Errorf("%v: code %s", d, d.Code)
 		}
 	}
-	want := map[string]string{"TYPE_MISMATCH": "1", "UNRESOLVED_REFERENCE": "nope"}
+	want := map[string]string{"TYPE_MISMATCH": `1;"a $s";`, "UNRESOLVED_REFERENCE": "nope;"}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("code: underlined text %q, want %q (diagnostics %v)", got, want, res.Diagnostics())
 	}

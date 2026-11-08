@@ -16,9 +16,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/barteo/kotlin-compiler-go/internal/classpath"
 	"github.com/barteo/kotlin-compiler-go/internal/ide"
 	"github.com/barteo/kotlin-compiler-go/internal/lsp/jsonrpc"
 	"github.com/barteo/kotlin-compiler-go/internal/lsp/protocol"
+	"github.com/barteo/kotlin-compiler-go/internal/project"
 )
 
 var update = flag.Bool("update", false, "rewrite the want sections of testdata/*.txtar")
@@ -30,18 +32,27 @@ var update = flag.Bool("update", false, "rewrite the want sections of testdata/*
 // marker is removed before the file is opened), a "script" section of
 // commands, and a "want" section. Commands:
 //
+// An archive with a kc-lsp.json section is a workspace: its files are
+// written to a directory, which is the root URI, and the server analyzes
+// them as the modules kc-lsp.json describes (with the standard library:
+// the test is skipped without one); a section named _name isn't a file. In
+// a command's params, ROOT is the directory's URI.
+//
 //	initialize [params]       send initialize (default params: hierarchical document symbols)
 //	capabilities              print the initialize result
 //	open F                    open file F (version 1) and wait for its diagnostics
 //	change F FROM TO "text"   replace FROM..TO (@marker or line:char) and wait for diagnostics
 //	replace F SECTION         replace F's whole text with another section's
 //	close F                   close F
+//	wait                      wait until the server's semantic updates are done and their diagnostics received
 //	diagnostics F             print F's last published diagnostics
 //	symbols F                 print textDocument/documentSymbol
 //	folding F                 print textDocument/foldingRange
 //	selection F POS...        print textDocument/selectionRange
 //	tokens F                  print textDocument/semanticTokens/full, decoded
 //	request METHOD [params]   print any request's result or error
+//	notify METHOD params      send any notification
+//	write F SECTION|-         write a workspace file on disk with a section's text, or delete it
 //	shutdown, exit            end the session; exit prints the server's exit code
 func TestScripts(t *testing.T) {
 	files, _ := filepath.Glob("testdata/*.txtar")
@@ -129,9 +140,11 @@ func stripMarkers(text string) (string, map[string]int) {
 type session struct {
 	t      *testing.T
 	a      *archive
+	srv    *Server
 	client *jsonrpc.Conn
 	out    strings.Builder
 	exit   chan int
+	root   string // the workspace's directory, or ""
 
 	enc      ide.Encoding
 	initRes  json.RawMessage
@@ -139,12 +152,18 @@ type session struct {
 	texts    map[string]string
 	marks    map[string]map[string]int
 
-	mu    sync.Mutex
-	diags map[protocol.DocumentURI]protocol.PublishDiagnosticsParams
-	note  chan struct{}
+	mu       sync.Mutex
+	diags    map[protocol.DocumentURI]protocol.PublishDiagnosticsParams
+	received int64 // diagnostics notifications
+	note     chan struct{}
 }
 
-func uri(name string) protocol.DocumentURI { return protocol.DocumentURI("file:///work/" + name) }
+func (s *session) uri(name string) protocol.DocumentURI {
+	if s.root != "" {
+		return fileURI(filepath.Join(s.root, name))
+	}
+	return protocol.DocumentURI("file:///work/" + name)
+}
 
 func runScript(t *testing.T, a *archive) string {
 	cr, sw := io.Pipe()
@@ -154,8 +173,28 @@ func runScript(t *testing.T, a *archive) string {
 		versions: map[string]int{}, texts: map[string]string{}, marks: map[string]map[string]int{},
 		diags: map[protocol.DocumentURI]protocol.PublishDiagnosticsParams{}, note: make(chan struct{}, 1),
 	}
+	if a.section(project.ConfigFile) != "" {
+		if _, err := classpath.FindStdlib(); err != nil {
+			t.Skipf("no Kotlin standard library: %v", err)
+		}
+		s.root = t.TempDir()
+		for _, sec := range a.sections {
+			if sec.name == "script" || sec.name == "want" || strings.HasPrefix(sec.name, "_") {
+				continue // _name is text for commands
+			}
+			text, _ := stripMarkers(sec.body)
+			path := filepath.Join(s.root, sec.name)
+			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, []byte(text), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	s.srv = newServer(context.Background(), sr, sw)
 	go func() {
-		code, err := Serve(context.Background(), sr, sw)
+		code, err := s.srv.run()
 		if err != nil {
 			t.Errorf("server: %v", err)
 		}
@@ -168,6 +207,7 @@ func runScript(t *testing.T, a *archive) string {
 			if err := r.Unmarshal(&p); err == nil {
 				s.mu.Lock()
 				s.diags[p.URI] = p
+				s.received++
 				s.mu.Unlock()
 				select {
 				case s.note <- struct{}{}:
@@ -187,6 +227,11 @@ func runScript(t *testing.T, a *archive) string {
 		s.run(line)
 	}
 	return s.out.String()
+}
+
+// params returns a command's JSON params, ROOT replaced.
+func (s *session) params(text string) json.RawMessage {
+	return json.RawMessage(strings.ReplaceAll(text, "ROOT", string(fileURI(s.root))))
 }
 
 func (s *session) call(method string, params, result any) error {
@@ -227,7 +272,7 @@ func (s *session) waitDiagnostics(name string, version int) {
 	deadline := time.After(10 * time.Second)
 	for {
 		s.mu.Lock()
-		p, ok := s.diags[uri(name)]
+		p, ok := s.diags[s.uri(name)]
 		s.mu.Unlock()
 		if ok && (p.Version == nil || *p.Version >= version) {
 			return
@@ -269,12 +314,15 @@ func (s *session) run(line string) {
 		}
 		return args[0]
 	}
-	doc := func() protocol.TextDocumentIdentifier { return protocol.TextDocumentIdentifier{URI: uri(file())} }
+	doc := func() protocol.TextDocumentIdentifier { return protocol.TextDocumentIdentifier{URI: s.uri(file())} }
 	switch cmd {
 	case "initialize":
 		params := json.RawMessage(`{"processId":null,"capabilities":{"textDocument":{"documentSymbol":{"hierarchicalDocumentSymbolSupport":true}}}}`)
+		if s.root != "" {
+			params = json.RawMessage(fmt.Sprintf(`{"processId":null,"rootUri":%q,"capabilities":{}}`, fileURI(s.root)))
+		}
 		if rest != "" {
-			params = json.RawMessage(rest)
+			params = s.params(rest)
 		}
 		if err := s.call("initialize", params, &s.initRes); err != nil {
 			t.Fatal(err)
@@ -292,7 +340,7 @@ func (s *session) run(line string) {
 		text, marks := stripMarkers(s.a.section(name))
 		s.texts[name], s.marks[name], s.versions[name] = text, marks, 1
 		s.client.Notify("textDocument/didOpen", protocol.DidOpenTextDocumentParams{
-			TextDocument: protocol.TextDocumentItem{URI: uri(name), LanguageID: "kotlin", Version: 1, Text: text}})
+			TextDocument: protocol.TextDocumentItem{URI: s.uri(name), LanguageID: "kotlin", Version: 1, Text: text}})
 		s.waitDiagnostics(name, 1)
 	case "change":
 		name := file()
@@ -316,13 +364,32 @@ func (s *session) run(line string) {
 		s.edit(name, []protocol.TextDocumentContentChangeEvent{{Text: text}})
 	case "close":
 		s.mu.Lock()
-		delete(s.diags, uri(file()))
+		delete(s.diags, s.uri(file()))
 		s.mu.Unlock()
 		s.client.Notify("textDocument/didClose", protocol.DidCloseTextDocumentParams{TextDocument: doc()})
 		s.waitDiagnostics(file(), 0) // the empty list
+	case "wait":
+		// The server handles messages in order: a request's answer means
+		// it has handled the notifications before it.
+		s.call("kc/sync", nil, nil)
+		n := s.srv.waitIdle()
+		deadline := time.After(10 * time.Second)
+		for {
+			s.mu.Lock()
+			received := s.received
+			s.mu.Unlock()
+			if received >= n {
+				break
+			}
+			select {
+			case <-s.note:
+			case <-deadline:
+				t.Fatalf("wait: %d diagnostics notifications received of %d", received, n)
+			}
+		}
 	case "diagnostics":
 		s.mu.Lock()
-		p := s.diags[uri(file())]
+		p := s.diags[s.uri(file())]
 		s.mu.Unlock()
 		s.print(p.Diagnostics)
 	case "symbols":
@@ -362,11 +429,31 @@ func (s *session) run(line string) {
 	case "request":
 		params := json.RawMessage("null")
 		if len(args) > 1 {
-			params = json.RawMessage(strings.TrimSpace(strings.TrimPrefix(rest, args[0])))
+			params = s.params(strings.TrimSpace(strings.TrimPrefix(rest, args[0])))
 		}
 		var raw json.RawMessage
 		err := s.call(args[0], params, &raw)
 		s.printResult(raw, err)
+	case "notify":
+		if len(args) < 2 {
+			t.Fatalf("notify: want METHOD params")
+		}
+		s.client.Notify(args[0], s.params(strings.TrimSpace(strings.TrimPrefix(rest, args[0]))))
+	case "write":
+		if s.root == "" || len(args) != 2 {
+			t.Fatalf("write: want F SECTION in a workspace")
+		}
+		path := filepath.Join(s.root, file())
+		if args[1] == "-" {
+			if err := os.Remove(path); err != nil {
+				t.Fatal(err)
+			}
+			return
+		}
+		text, _ := stripMarkers(s.a.section(args[1]))
+		if err := os.WriteFile(path, []byte(text), 0o644); err != nil {
+			t.Fatal(err)
+		}
 	case "shutdown":
 		if err := s.call("shutdown", nil, nil); err != nil {
 			t.Fatal(err)
@@ -388,7 +475,7 @@ func (s *session) edit(name string, changes []protocol.TextDocumentContentChange
 	s.versions[name]++
 	v := s.versions[name]
 	s.client.Notify("textDocument/didChange", protocol.DidChangeTextDocumentParams{
-		TextDocument:   protocol.VersionedTextDocumentIdentifier{URI: uri(name), Version: v},
+		TextDocument:   protocol.VersionedTextDocumentIdentifier{URI: s.uri(name), Version: v},
 		ContentChanges: changes,
 	})
 	s.waitDiagnostics(name, v)

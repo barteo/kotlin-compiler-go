@@ -78,6 +78,22 @@ func TestLoadConfig(t *testing.T) {
 			t.Errorf("ModuleOf(%s) = %v, want %v", path, got, want)
 		}
 	}
+	names := func(ms []*Module) []string {
+		var out []string
+		for _, m := range ms {
+			out = append(out, m.Name)
+		}
+		return out
+	}
+	for path, want := range map[string][]string{
+		"src/main/kotlin/a/A.kt":     {"main", "test"},
+		"src/test/kotlin/a/ATest.kt": {"test"},
+		"elsewhere/X.kt":             nil,
+	} {
+		if got := names(p.Dependents(filepath.Join(root, path))); !slices.Equal(got, want) {
+			t.Errorf("Dependents(%s) = %v, want %v", path, got, want)
+		}
+	}
 	files, err := p.Sources(test)
 	if err != nil {
 		t.Fatal(err)

@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 	"sync"
+	"sync/atomic"
 
 	"github.com/barteo/kotlin-compiler-go/internal/ide"
 	"github.com/barteo/kotlin-compiler-go/internal/lsp/jsonrpc"
@@ -23,28 +24,73 @@ const Version = "0.1.0"
 // Server is the state of one client connection.
 type Server struct {
 	conn   *jsonrpc.Conn
+	ctx    context.Context // the server's; done at exit
 	cancel context.CancelFunc
+	work   *activity
+	disk   diskCache
+
+	// pubMu orders the diagnostics published.
+	pubMu     sync.Mutex
+	published atomic.Int64 // diagnostics notifications sent, for tests
 
 	mu           sync.Mutex
 	docs         map[protocol.DocumentURI]*ide.Document
+	paths        map[string]protocol.DocumentURI // the open documents' URIs by path
+	sem          map[protocol.DocumentURI]semantic
+	closedShown  map[string]bool // files not open whose diagnostics are shown
 	enc          ide.Encoding
 	hierarchical bool
 	initialized  bool
 	shutdown     bool
 	exitCode     int
+
+	roots        []string // the workspace folders
+	ws           []*workspace
+	mode         ide.DiagnosticsMode
+	noGradle     bool
+	initWarnings []string
+	canWatch     bool // the client registers file watchers
+	watching     bool // and does for kc-lsp
 }
 
 // Serve runs a server on r and w until the client sends exit or closes the
 // connection, and returns the exit code LSP prescribes: 0 after shutdown,
 // 1 otherwise.
 func Serve(ctx context.Context, r io.Reader, w io.Writer) (int, error) {
+	return newServer(ctx, r, w).run()
+}
+
+func newServer(ctx context.Context, r io.Reader, w io.Writer) *Server {
 	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	s := &Server{conn: jsonrpc.NewConn(r, w), cancel: cancel, docs: map[protocol.DocumentURI]*ide.Document{}, exitCode: 1}
-	err := s.conn.Serve(ctx, s.handle)
+	return &Server{
+		conn: jsonrpc.NewConn(r, w), ctx: ctx, cancel: cancel, work: newActivity(),
+		docs: map[protocol.DocumentURI]*ide.Document{}, paths: map[string]protocol.DocumentURI{},
+		sem: map[protocol.DocumentURI]semantic{}, closedShown: map[string]bool{}, exitCode: 1,
+	}
+}
+
+func (s *Server) run() (int, error) {
+	defer s.cancel()
+	err := s.conn.Serve(s.ctx, s.handle)
+	s.cancel()
+	s.mu.Lock()
+	ws := s.ws
+	s.mu.Unlock()
+	for _, w := range ws {
+		w.load.Lock()
+		w.stopModules(false)
+		w.load.Unlock()
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.exitCode, err
+}
+
+// waitIdle waits until no workspace is loading and no module updating,
+// and returns the number of diagnostics notifications sent; for tests.
+func (s *Server) waitIdle() int64 {
+	s.work.wait()
+	return s.published.Load()
 }
 
 func (s *Server) handle(ctx context.Context, r *jsonrpc.Request) (any, error) {
@@ -92,11 +138,13 @@ var handlers map[string]handler
 
 func init() {
 	handlers = map[string]handler{
-		"initialized":                      func(*Server, context.Context, *jsonrpc.Request) (any, error) { return nil, nil },
+		"initialized":                      (*Server).initializedNotification,
 		"shutdown":                         (*Server).shutdownRequest,
 		"textDocument/didOpen":             (*Server).didOpen,
 		"textDocument/didChange":           (*Server).didChange,
 		"textDocument/didClose":            (*Server).didClose,
+		"textDocument/didSave":             (*Server).didSave,
+		"workspace/didChangeWatchedFiles":  (*Server).didChangeWatchedFiles,
 		"textDocument/documentSymbol":      (*Server).documentSymbol,
 		"textDocument/foldingRange":        (*Server).foldingRange,
 		"textDocument/selectionRange":      (*Server).selectionRange,
@@ -119,10 +167,15 @@ func (s *Server) initialize(p *protocol.InitializeParams) *protocol.InitializeRe
 	if td := p.Capabilities.TextDocument; td != nil && td.DocumentSymbol != nil {
 		s.hierarchical = td.DocumentSymbol.HierarchicalDocumentSymbolSupport
 	}
+	if ws := p.Capabilities.Workspace; ws != nil && ws.DidChangeWatchedFiles != nil {
+		s.canWatch = ws.DidChangeWatchedFiles.DynamicRegistration
+	}
+	s.roots = workspaceRoots(p)
+	s.parseInitOptions(p.InitializationOptions)
 	return &protocol.InitializeResult{
 		Capabilities: protocol.ServerCapabilities{
 			PositionEncoding:       enc,
-			TextDocumentSync:       &protocol.TextDocumentSyncOptions{OpenClose: true, Change: protocol.SyncIncremental},
+			TextDocumentSync:       &protocol.TextDocumentSyncOptions{OpenClose: true, Change: protocol.SyncIncremental, Save: true},
 			DocumentSymbolProvider: true,
 			FoldingRangeProvider:   true,
 			SelectionRangeProvider: true,
@@ -133,6 +186,23 @@ func (s *Server) initialize(p *protocol.InitializeParams) *protocol.InitializeRe
 		},
 		ServerInfo: &protocol.ServerInfo{Name: "kc-lsp", Version: Version},
 	}
+}
+
+func (s *Server) initializedNotification(context.Context, *jsonrpc.Request) (any, error) {
+	s.mu.Lock()
+	roots, warnings, canWatch, loaded := s.roots, s.initWarnings, s.canWatch, s.ws != nil
+	s.mu.Unlock()
+	if loaded {
+		return nil, nil // a second initialized
+	}
+	for _, w := range warnings {
+		s.logMessage(protocol.MessageWarning, w)
+	}
+	if canWatch && len(roots) > 0 {
+		go s.watch()
+	}
+	s.loadWorkspaces(roots)
+	return nil, nil
 }
 
 func (s *Server) shutdownRequest(context.Context, *jsonrpc.Request) (any, error) {
@@ -170,10 +240,18 @@ func (s *Server) didOpen(_ context.Context, r *jsonrpc.Request) (any, error) {
 	}
 	td := p.TextDocument
 	d := ide.NewDocument(uriPath(td.URI), td.Version, td.Text)
+	// The last update's diagnostics of the file, if it is the same text.
+	last, ok := s.ownerResult(d.Path)
 	s.mu.Lock()
 	s.docs[td.URI] = d
+	s.paths[d.Path] = td.URI
+	delete(s.closedShown, d.Path)
+	if ok && last.snap.Source() == td.Text {
+		s.sem[td.URI] = semantic{d.Snap, ide.SemanticDiagnostics(last.diags, s.mode)}
+	}
 	enc := s.enc
 	s.mu.Unlock()
+	s.kickPath(d.Path, false)
 	s.publish(td.URI, d, enc)
 	return nil, nil
 }
@@ -202,7 +280,11 @@ func (s *Server) didChange(_ context.Context, r *jsonrpc.Request) (any, error) {
 	}
 	s.mu.Lock()
 	s.docs[u] = nd
+	if sem, ok := s.sem[u]; ok && sem.snap == d.Snap {
+		s.sem[u] = semantic{nd.Snap, shiftDiagnostics(sem.diags, d.Text(), nd.Text())}
+	}
 	s.mu.Unlock()
+	s.kickPath(nd.Path, false)
 	s.publish(u, nd, enc)
 	return nil, nil
 }
@@ -212,27 +294,68 @@ func (s *Server) didClose(_ context.Context, r *jsonrpc.Request) (any, error) {
 	if err := r.Unmarshal(&p); err != nil {
 		return nil, err
 	}
+	u := p.TextDocument.URI
 	s.mu.Lock()
-	delete(s.docs, p.TextDocument.URI)
+	d := s.docs[u]
+	delete(s.docs, u)
+	delete(s.sem, u)
+	if d != nil {
+		delete(s.paths, d.Path)
+	}
 	s.mu.Unlock()
-	return nil, s.conn.Notify("textDocument/publishDiagnostics",
-		protocol.PublishDiagnosticsParams{URI: p.TextDocument.URI, Diagnostics: []protocol.Diagnostic{}})
+	s.notifyDiagnostics(protocol.PublishDiagnosticsParams{URI: u, Diagnostics: []protocol.Diagnostic{}}, nil)
+	if d != nil {
+		// The file on disk is the module's again: its diagnostics are
+		// shown as a closed file's.
+		s.kickPath(d.Path, false)
+	}
+	return nil, nil
 }
 
-// publish sends the document's diagnostics.
+// publish sends an open document's diagnostics: its syntax errors and the
+// semantic diagnostics of its snapshot, unless a later version is open.
 func (s *Server) publish(u protocol.DocumentURI, d *ide.Document, enc ide.Encoding) {
 	diags := []protocol.Diagnostic{}
 	for _, e := range ide.SyntaxDiagnostics(d) {
-		diags = append(diags, protocol.Diagnostic{
-			Range:    rng(d, e.Range, enc),
-			Severity: int(e.Severity),
-			Code:     e.Code,
-			Source:   "kc",
-			Message:  e.Message,
-		})
+		diags = append(diags, protocolDiagnostic(d, e, enc))
+	}
+	s.mu.Lock()
+	sem := s.sem[u]
+	s.mu.Unlock()
+	if sem.snap == d.Snap {
+		for _, e := range sem.diags {
+			diags = append(diags, protocolDiagnostic(d, e, enc))
+		}
 	}
 	v := d.Version
-	_ = s.conn.Notify("textDocument/publishDiagnostics", protocol.PublishDiagnosticsParams{URI: u, Version: &v, Diagnostics: diags})
+	s.notifyDiagnostics(protocol.PublishDiagnosticsParams{URI: u, Version: &v, Diagnostics: diags}, func() bool {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		return s.docs[u] == d
+	})
+}
+
+// notifyDiagnostics sends diagnostics if current reports they are still
+// current, or it is nil.
+func (s *Server) notifyDiagnostics(p protocol.PublishDiagnosticsParams, current func() bool) {
+	s.pubMu.Lock()
+	defer s.pubMu.Unlock()
+	if current != nil && !current() {
+		return
+	}
+	if s.conn.Notify("textDocument/publishDiagnostics", p) == nil {
+		s.published.Add(1)
+	}
+}
+
+func protocolDiagnostic(d *ide.Document, e ide.Diagnostic, enc ide.Encoding) protocol.Diagnostic {
+	return protocol.Diagnostic{
+		Range:    rng(d, e.Range, enc),
+		Severity: int(e.Severity),
+		Code:     e.Code,
+		Source:   "kc",
+		Message:  e.Message,
+	}
 }
 
 // ---- positions ----

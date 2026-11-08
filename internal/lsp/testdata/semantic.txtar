@@ -1,0 +1,235 @@
+-- kc-lsp.json --
+{"modules": [{"name": "main", "sourceRoots": ["src"]}]}
+-- src/a/A.kt --
+package a
+
+fun main() {
+    val n: Int = /*|bad*/"one"/*|badEnd*/
+    println(n + helper())
+    /*|nope*/nope()
+}
+-- src/a/B.kt --
+package a
+
+fun /*|name*/helper/*|nameEnd*/(): Int = 1
+-- src/a/C.kt --
+package a
+
+val c: String = 1
+-- src/b/D.kt --
+package b
+
+fun d(p: Pair<Int, Int>) {
+    val [x, y] = p
+}
+-- script --
+initialize
+open src/a/A.kt
+wait
+diagnostics src/a/A.kt
+# A file that isn't open shows its diagnostics too.
+diagnostics src/a/C.kt
+# An edit moves the diagnostics after it at once, and drops those it
+# touches; the update then shows the new version's.
+change src/a/A.kt @bad @badEnd "1"
+diagnostics src/a/A.kt
+wait
+diagnostics src/a/A.kt
+# An edit in one file changes another's diagnostics.
+open src/a/B.kt
+change src/a/B.kt @name @nameEnd "helper2"
+wait
+diagnostics src/a/A.kt
+diagnostics src/a/B.kt
+change src/a/B.kt 2:4 2:11 "helper"
+wait
+diagnostics src/a/A.kt
+# An unsupported construct is information.
+open src/b/D.kt
+wait
+diagnostics src/b/D.kt
+shutdown
+exit
+-- want --
+> initialize
+> open src/a/A.kt
+> wait
+> diagnostics src/a/A.kt
+[
+  {
+    "range": {
+      "start": {
+        "line": 3,
+        "character": 17
+      },
+      "end": {
+        "line": 3,
+        "character": 22
+      }
+    },
+    "severity": 2,
+    "code": "TYPE_MISMATCH",
+    "source": "kc",
+    "message": "type mismatch: inferred type is String but Int was expected"
+  },
+  {
+    "range": {
+      "start": {
+        "line": 5,
+        "character": 4
+      },
+      "end": {
+        "line": 5,
+        "character": 8
+      }
+    },
+    "severity": 2,
+    "code": "UNRESOLVED_REFERENCE",
+    "source": "kc",
+    "message": "unresolved reference: nope"
+  }
+]
+> diagnostics src/a/C.kt
+[
+  {
+    "range": {
+      "start": {
+        "line": 2,
+        "character": 16
+      },
+      "end": {
+        "line": 2,
+        "character": 17
+      }
+    },
+    "severity": 2,
+    "code": "TYPE_MISMATCH",
+    "source": "kc",
+    "message": "type mismatch: inferred type is Int but String was expected"
+  }
+]
+> change src/a/A.kt @bad @badEnd "1"
+> diagnostics src/a/A.kt
+[
+  {
+    "range": {
+      "start": {
+        "line": 5,
+        "character": 4
+      },
+      "end": {
+        "line": 5,
+        "character": 8
+      }
+    },
+    "severity": 2,
+    "code": "UNRESOLVED_REFERENCE",
+    "source": "kc",
+    "message": "unresolved reference: nope"
+  }
+]
+> wait
+> diagnostics src/a/A.kt
+[
+  {
+    "range": {
+      "start": {
+        "line": 5,
+        "character": 4
+      },
+      "end": {
+        "line": 5,
+        "character": 8
+      }
+    },
+    "severity": 2,
+    "code": "UNRESOLVED_REFERENCE",
+    "source": "kc",
+    "message": "unresolved reference: nope"
+  }
+]
+> open src/a/B.kt
+> change src/a/B.kt @name @nameEnd "helper2"
+> wait
+> diagnostics src/a/A.kt
+[
+  {
+    "range": {
+      "start": {
+        "line": 4,
+        "character": 16
+      },
+      "end": {
+        "line": 4,
+        "character": 22
+      }
+    },
+    "severity": 2,
+    "code": "UNRESOLVED_REFERENCE",
+    "source": "kc",
+    "message": "unresolved reference: helper"
+  },
+  {
+    "range": {
+      "start": {
+        "line": 5,
+        "character": 4
+      },
+      "end": {
+        "line": 5,
+        "character": 8
+      }
+    },
+    "severity": 2,
+    "code": "UNRESOLVED_REFERENCE",
+    "source": "kc",
+    "message": "unresolved reference: nope"
+  }
+]
+> diagnostics src/a/B.kt
+[]
+> change src/a/B.kt 2:4 2:11 "helper"
+> wait
+> diagnostics src/a/A.kt
+[
+  {
+    "range": {
+      "start": {
+        "line": 5,
+        "character": 4
+      },
+      "end": {
+        "line": 5,
+        "character": 8
+      }
+    },
+    "severity": 2,
+    "code": "UNRESOLVED_REFERENCE",
+    "source": "kc",
+    "message": "unresolved reference: nope"
+  }
+]
+> open src/b/D.kt
+> wait
+> diagnostics src/b/D.kt
+[
+  {
+    "range": {
+      "start": {
+        "line": 3,
+        "character": 8
+      },
+      "end": {
+        "line": 3,
+        "character": 9
+      }
+    },
+    "severity": 3,
+    "code": "unsupported:positional destructuring",
+    "source": "kc",
+    "message": "kc doesn't support positional destructuring, so this file isn't checked further; kotlinc may accept it (positional destructuring with square brackets is not supported)"
+  }
+]
+> shutdown
+> exit
+exit code 0

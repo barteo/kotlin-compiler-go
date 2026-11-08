@@ -51,6 +51,11 @@ func NewDocument(path string, version int, text string) *Document {
 	return &Document{Path: path, Version: version, Snap: parse(path, text), lines: lineStarts(text)}
 }
 
+// DocumentOf returns the document of a snapshot, as the given version.
+func DocumentOf(snap *psi.Snapshot, version int) *Document {
+	return &Document{Path: snap.Path(), Version: version, Snap: snap, lines: lineStarts(snap.Source())}
+}
+
 // parsers keeps psi.Parsers, whose reused buffers make a reparse about 40%
 // faster (docs/psi.md, psi-reused).
 var parsers = sync.Pool{New: func() any { return new(psi.Parser) }}

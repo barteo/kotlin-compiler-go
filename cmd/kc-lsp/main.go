@@ -1,5 +1,14 @@
 // Command kc-lsp is a Kotlin language server on kc. It speaks the Language
 // Server Protocol on standard input and output; see docs/lsp.md.
+//
+// It learns a workspace folder's modules from a kc-lsp.json at its root,
+// else from Gradle if it is a Gradle build, else takes the folder as one
+// module. Its initializationOptions are:
+//
+//	{
+//	  "diagnostics": "default" | "coded" | "strict",
+//	  "gradle": false   // don't run Gradle
+//	}
 package main
 
 import (

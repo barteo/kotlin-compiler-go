@@ -355,7 +355,8 @@ func (l *lowerer) inBody(e, n psi.NodeRef) bool {
 // failSyntax fails on the psi error element e, with its message.
 func (l *lowerer) failSyntax(e psi.NodeRef) {
 	pos, msg := l.syntaxMessage(e)
-	l.failAt(pos, "%s", msg)
+	l.err = &syntax.Error{File: l.path, Pos: pos, Msg: msg, Code: "SYNTAX"}
+	panic(bailout{})
 }
 
 // syntaxMessage returns the position and message of the psi error

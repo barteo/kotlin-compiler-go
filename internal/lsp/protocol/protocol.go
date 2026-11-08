@@ -57,6 +57,15 @@ type WorkspaceFolder struct {
 type ClientCapabilities struct {
 	General      *GeneralClientCapabilities      `json:"general,omitempty"`
 	TextDocument *TextDocumentClientCapabilities `json:"textDocument,omitempty"`
+	Workspace    *WorkspaceClientCapabilities    `json:"workspace,omitempty"`
+}
+
+type WorkspaceClientCapabilities struct {
+	DidChangeWatchedFiles *DynamicRegistrationCapabilities `json:"didChangeWatchedFiles,omitempty"`
+}
+
+type DynamicRegistrationCapabilities struct {
+	DynamicRegistration bool `json:"dynamicRegistration,omitempty"`
 }
 
 type GeneralClientCapabilities struct {
@@ -91,6 +100,7 @@ const (
 type TextDocumentSyncOptions struct {
 	OpenClose bool `json:"openClose"`
 	Change    int  `json:"change"`
+	Save      bool `json:"save,omitempty"`
 }
 
 type ServerCapabilities struct {
@@ -138,6 +148,59 @@ type DidChangeTextDocumentParams struct {
 
 type DidCloseTextDocumentParams struct {
 	TextDocument TextDocumentIdentifier `json:"textDocument"`
+}
+
+type DidSaveTextDocumentParams struct {
+	TextDocument TextDocumentIdentifier `json:"textDocument"`
+}
+
+// ---- workspace ----
+
+// File change types.
+const (
+	FileCreated = 1
+	FileChanged = 2
+	FileDeleted = 3
+)
+
+type FileEvent struct {
+	URI  DocumentURI `json:"uri"`
+	Type int         `json:"type"`
+}
+
+type DidChangeWatchedFilesParams struct {
+	Changes []FileEvent `json:"changes"`
+}
+
+type FileSystemWatcher struct {
+	GlobPattern string `json:"globPattern"`
+}
+
+type DidChangeWatchedFilesRegistrationOptions struct {
+	Watchers []FileSystemWatcher `json:"watchers"`
+}
+
+type Registration struct {
+	ID              string `json:"id"`
+	Method          string `json:"method"`
+	RegisterOptions any    `json:"registerOptions,omitempty"`
+}
+
+type RegistrationParams struct {
+	Registrations []Registration `json:"registrations"`
+}
+
+// Message types.
+const (
+	MessageError   = 1
+	MessageWarning = 2
+	MessageInfo    = 3
+	MessageLog     = 4
+)
+
+type LogMessageParams struct {
+	Type    int    `json:"type"`
+	Message string `json:"message"`
 }
 
 // ---- diagnostics ----

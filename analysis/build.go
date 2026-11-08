@@ -157,7 +157,7 @@ func diagnostic(snap *psi.Snapshot, e *syntax.Error) Diagnostic {
 
 // errorRange returns the range of the token at line and column of snap:
 // what an editor underlines. An error's position is where the construct
-// it is about starts: its first token. At a position with no token, or
+// it is about starts: its first token, or a string literal. At a position with no token, or
 // outside snap, the range is empty.
 func errorRange(snap *psi.Snapshot, line, col int) psi.Range {
 	if snap == nil || line < 1 || col < 1 {
@@ -174,6 +174,10 @@ func errorRange(snap *psi.Snapshot, line, col int) psi.Range {
 	}
 	off = min(off+col-1, len(src))
 	if n := snap.NodeAt(off); n.Valid() && n.IsLeaf() && !n.IsTrivia() && n.Range().Start <= off && off < n.Range().End {
+		// A string literal is all of it, not its quote.
+		if p := n.Parent(); n.NumericKind() == psi.KindOPEN_QUOTE && p.NumericKind() == psi.KindSTRING_TEMPLATE {
+			return p.Range()
+		}
 		return n.Range()
 	}
 	return psi.Range{Start: off, End: off}
