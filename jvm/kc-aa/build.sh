@@ -356,21 +356,13 @@ stock dagger "$here/test/dagger/src" \
 
 # Room's processor (XProcessing, KotlinPoet output) over test/room/src,
 # and Hilt's with Dagger's over test/hilt/src: the class paths Gradle
-# resolves for room-compiler 2.8.4 and hilt-compiler 2.59.2, but for KSP's
-# API and the Kotlin standard library, which KSP provides. On kc, Room's
-# kotlinx-serialization is the one KSP's fork already has.
-roomlibs=$lib/kotlin-stdlib-2.4.21.jar$(jars androidx.room:room-runtime-jvm:2.8.4 androidx.room:room-common-jvm:2.8.4 \
-	androidx.collection:collection-jvm:1.5.0 androidx.sqlite:sqlite-jvm:2.6.2 androidx.annotation:annotation-jvm:1.9.1 \
-	org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.8.1 org.jetbrains:annotations:23.0.0)
-procs=$(jars androidx.room:room-migration-jvm:2.8.4 androidx.room:room-common-jvm:2.8.4 androidx.room:room-external-antlr:2.8.4 \
-	androidx.room:room-compiler-processing:2.8.4 androidx.room:room-compiler:2.8.4 com.google.auto:auto-common:1.2.1 \
-	com.google.auto.value:auto-value-annotations:1.6.3 com.intellij:annotations:12.0 com.squareup:kotlinpoet-javapoet:2.0.0 \
-	com.squareup:javapoet:1.13.0 commons-codec:commons-codec:1.15 org.jetbrains.kotlin:kotlin-metadata-jvm:2.2.0 \
-	com.squareup:kotlinpoet-jvm:2.0.0 org.jetbrains.kotlin:kotlin-reflect:2.0.10 androidx.annotation:annotation-jvm:1.9.1 \
-	org.xerial:sqlite-jdbc:3.41.2.2 com.google.guava:guava:33.2.1-jre org.jspecify:jspecify:1.0.0 org.jetbrains:annotations:13.0 \
-	com.google.guava:failureaccess:1.0.2 com.google.code.findbugs:jsr305:3.0.2 org.checkerframework:checker-qual:3.42.0 \
-	com.google.errorprone:error_prone_annotations:2.26.1)
-serialization=$(jars org.jetbrains.kotlinx:kotlinx-serialization-core-jvm:1.8.1 org.jetbrains.kotlinx:kotlinx-serialization-json-jvm:1.8.1)
+# resolves for room-compiler 2.8.4 (room-jars.sh) and hilt-compiler
+# 2.59.2, but for KSP's API and the Kotlin standard library, which KSP
+# provides.
+. "$here/room-jars.sh"
+roomlibs=$lib/kotlin-stdlib-2.4.21.jar$(jars "${room_libs[@]}")
+procs=$(jars "${room_procs[@]}")
+serialization=$(jars "${room_serialization[@]}")
 rm -rf "$out/room"
 LD_PRELOAD=$java_home/lib/libjsig.so java -Dksp.backend=kc -Dkc.lib="$out/libkc.so" -Didea.home.path="$out" \
 	-cp "$out/runksp-classes$procs:$out/kc-aa.jar:$deps" RunKspKt "$here/test/room/src" "$out/room" "$roomlibs" \

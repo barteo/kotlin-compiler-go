@@ -75,7 +75,10 @@ public class Classify {
         if (c.startsWith("ksp.") || c.startsWith("org.jetbrains.kotlin.") || c.startsWith("com.intellij.")) return "1 Analysis API / IntelliJ core";
         if (c.startsWith("com.google.devtools.ksp.")) return "2 KSP symbol layer";
         if (c.startsWith("dagger.spi.internal.shaded.androidx.")) return "3 XProcessing (KSP adapter)";
+        if (c.startsWith("androidx.room.compiler.processing.")) return "3 XProcessing (KSP adapter)";
         if (c.startsWith("dagger.")) return "4 Dagger";
+        if (c.startsWith("androidx.room.") || c.startsWith("org.antlr.")) return "4 Room";
+        if (c.startsWith("org.sqlite.")) return "4 Room (sqlite-jdbc query verification)";
         if (c.startsWith("com.squareup.") || c.startsWith("com.google.googlejavaformat") || c.startsWith("com.google.common") || c.startsWith("com.google.errorprone")) return "5 JavaPoet/google-java-format/Guava";
         if (c.startsWith("Timed") || c.startsWith("KspBench")) return "6 harness";
         return null; // java.*, jdk.*, sun.*, kotlin.*: attribute to the caller

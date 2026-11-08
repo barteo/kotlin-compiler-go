@@ -22,6 +22,8 @@
 #	          processing on (KspBench's bench.edit)
 #	JVM_OPTS  more options for the benchmark's JVMs; @B@ stands for the
 #	          backend, as in -XX:SharedArchiveFile=cds-@B@.jsa
+#	STOCK_PROCS_EXTRA  a class path stock KSP's processors also need,
+#	          which the KSP fork brings itself (Room's kotlinx-serialization)
 set -euo pipefail
 
 [ $# -ge 3 ] || { sed -n '2,15p' "$0" >&2; exit 2; }
@@ -60,7 +62,7 @@ for b in ${BACKENDS:-stock kc}; do
 	stock)
 		[ -s "$out/bench-stock.jar" ] && [ "$out/bench-stock.jar" -nt "$here/KspBench.kt" ] ||
 			kotlinc -cp "${stockcp#:}" -language-version 2.3 -api-version 2.3 -d "$out/bench-stock.jar" -jvm-target 17 -nowarn "$here/KspBench.kt"
-		cmd=(java $jvmopts -Dksp.languageVersion=2.3 -cp "$out/bench-stock.jar$stockcp:$procs")
+		cmd=(java $jvmopts -Dksp.languageVersion=2.3 -cp "$out/bench-stock.jar$stockcp:$procs${STOCK_PROCS_EXTRA:+:$STOCK_PROCS_EXTRA}")
 		;;
 	kc)
 		[ -s "$out/bench-kc.jar" ] && [ "$out/bench-kc.jar" -nt "$here/KspBench.kt" ] ||
