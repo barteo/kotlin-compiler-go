@@ -7,8 +7,9 @@
 // It lowers each snapshot's tree to kc's AST directly, recording which
 // psi node each AST node comes from, checks the AST as the compiler
 // does, and walks it back to the psi nodes. Code that kc can't compile
-// is reported as diagnostics, with no facts: a caller must not act on
-// partial results.
+// is reported as diagnostics. AnalyzeArena then has no facts; a Session
+// keeps those of the code the errors leave valid: the statements before
+// an error in a body, and the other declarations and files.
 //
 // Not every fact family is computed yet. Data.Capabilities lists those
 // that are; a fact field outside them is always zero.
@@ -444,9 +445,15 @@ func (r *Result) Diagnostics() []Diagnostic {
 	return slices.Clone(r.diags)
 }
 
-// Complete reports whether the sources had no errors, so that every file
-// has its facts. A Session's Result that isn't complete has the facts of
-// the files without errors; AnalyzeArena's has none.
+// Complete reports whether the sources had no errors, so that all the
+// code has its facts. A Session's Result that isn't complete has the
+// facts of the code its errors leave valid: an error in a statement of a
+// body loses the facts of that statement and those after it in the
+// outermost body; one in the expression after a declaration's '=', that
+// expression's; one elsewhere in a declaration, the declaration's, but
+// for a class's members; one in the package directive or the imports, or
+// in no file, all of the file's, or every file's. AnalyzeArena's has
+// none.
 func (r *Result) Complete() bool { return r != nil && len(r.diags) == 0 }
 
 // Data returns all facts and symbols.

@@ -21,7 +21,7 @@ import (
 // jars are the same (internal/kasession); Close releases it.
 //
 // Unlike AnalyzeArena, an update with errors still has facts: those of
-// every file without errors (Result.Complete). An update that only
+// the code the errors leave valid (Result.Complete). An update that only
 // changes bodies checks only the changed files (incremental.go).
 type Session struct {
 	cfg Config

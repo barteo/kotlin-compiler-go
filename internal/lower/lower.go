@@ -417,7 +417,7 @@ func (l *lowerer) recovers(e, n psi.NodeRef) bool {
 		return false
 	}
 	for p := e; p.Valid() && p.ID() > n.ID(); p = p.Parent() {
-		if par := p.Parent(); recoveringBlock(par) || inTail(par, p) {
+		if par := p.Parent(); recoveringBlock(par) || InTail(par, p) {
 			return true
 		}
 	}
@@ -437,10 +437,10 @@ func recoveringBlock(n psi.NodeRef) bool {
 	return p.NumericKind() == psi.KindFUNCTION_LITERAL && has(p, psi.KindRBRACE)
 }
 
-// inTail reports whether c, a child of n, follows the '=' of n, a
-// property, function or accessor, whose expression tailExpr lowers: up
-// to a property's accessors.
-func inTail(n, c psi.NodeRef) bool {
+// InTail reports whether c, a child of n, follows the '=' of n, a
+// property, function or accessor, up to a property's accessors: the
+// expression Recover lowers as an ErrorExpr if it fails.
+func InTail(n, c psi.NodeRef) bool {
 	switch n.NumericKind() {
 	case psi.KindPROPERTY, psi.KindFUN, psi.KindPROPERTY_ACCESSOR:
 	default:
@@ -474,7 +474,7 @@ func (l *lowerer) tailExpr(n psi.NodeRef) syntax.Expr {
 	var out syntax.Expr
 	eq := child(n, psi.KindEQ)
 	if l.recovered(func() {
-		for c := eq.NextSibling(); c.Valid() && inTail(n, c); c = c.NextSibling() {
+		for c := eq.NextSibling(); c.Valid() && InTail(n, c); c = c.NextSibling() {
 			l.syntaxError(c)
 		}
 		out = l.expr(x)

@@ -249,7 +249,7 @@ func incremental(ctx context.Context, cfg Config, snaps []*psi.Snapshot, st *sta
 	errLists := make([][]*syntax.Error, n)
 	parallel(n, jobs, func(i int) {
 		if isChanged[i] {
-			files[i], provs[i], errLists[i] = lower.File(snaps[i])
+			files[i], provs[i], errLists[i] = lower.Recover(snaps[i])
 		} else {
 			// Only declared: its facts and diagnostics are kept.
 			files[i], provs[i], _ = lower.Signatures(snaps[i])
@@ -260,6 +260,7 @@ func incremental(ctx context.Context, cfg Config, snaps []*psi.Snapshot, st *sta
 	}
 	diags := make([][]Diagnostic, n)
 	broken := make([]bool, n)
+	drops := make([][]span, n)
 	for i := range snaps {
 		if !isChanged[i] {
 			diags[i] = st.diags[i]
@@ -267,8 +268,9 @@ func incremental(ctx context.Context, cfg Config, snaps []*psi.Snapshot, st *sta
 			continue
 		}
 		for _, e := range errLists[i] {
-			diags[i] = append(diags[i], diagnostic(snaps[i], e))
-			broken[i] = true
+			d := diagnostic(snaps[i], e)
+			diags[i] = append(diags[i], d)
+			drop(snaps[i], d, &drops[i], &broken[i])
 		}
 	}
 	cp, lib, done, err := open()
@@ -294,8 +296,9 @@ func incremental(ctx context.Context, cfg Config, snaps []*psi.Snapshot, st *sta
 		if !found || !isChanged[i] {
 			return nil, nil, false, nil // not a changed file's
 		}
-		diags[i] = append(diags[i], diagnostic(snaps[i], e))
-		broken[i] = true
+		d := diagnostic(snaps[i], e)
+		diags[i] = append(diags[i], d)
+		drop(snaps[i], d, &drops[i], &broken[i])
 	}
 
 	// The changed files' facts, their symbols numbered into the kept
@@ -306,7 +309,7 @@ func incremental(ctx context.Context, cfg Config, snaps []*psi.Snapshot, st *sta
 	if slices.Contains(broken, false) {
 		b := newBuilder(built, snaps, files, provs, rec)
 		b.cp = cp
-		b.broken = broken
+		b.broken, b.drops = broken, drops
 		b.build()
 		builtSyms = b.syms
 	}

@@ -26,6 +26,10 @@ fun f(): Int {
 fun g() = 1 + )
 
 fun h(): Int = g() * 2
+
+fun i(s: String): Int {
+    return s.lengt +
+}
 `
 	f, _, lerrs := lower.Recover(psi.Parse("t.kt", src))
 	if len(lerrs) == 0 {

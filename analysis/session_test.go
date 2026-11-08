@@ -96,14 +96,14 @@ func TestSessionMatchesAnalyze(t *testing.T) {
 	}
 }
 
-// TestSessionPartial checks that a file with an error loses its facts and
-// the others keep theirs.
+// TestSessionPartial checks that an error loses the facts of the code it
+// is in, and the rest of its file and the other files keep theirs.
 func TestSessionPartial(t *testing.T) {
 	cfg := withStdlib(t)
 	s := Open(cfg)
 	defer s.Close()
 	a := psi.Parse("a.kt", "package p\nfun twice(x: Int) = x * 2\n")
-	b := psi.Parse("b.kt", "package p\nfun g(): String = twice(1)\n")
+	b := psi.Parse("b.kt", "package p\nfun g(): String = twice(1)\nfun k() = twice(3)\n")
 	c := psi.Parse("c.kt", "package p\nfun h() = twice(2) + 1\n")
 	res, err := s.Update(context.Background(), []*psi.Snapshot{a, b, c})
 	if err != nil {
@@ -112,12 +112,14 @@ func TestSessionPartial(t *testing.T) {
 	if res.Complete() || len(res.Diagnostics()) != 1 || res.Diagnostics()[0].Path != "b.kt" {
 		t.Fatalf("diagnostics %v, want one in b.kt", res.Diagnostics())
 	}
+	// g's expression body is dropped, not g or k.
+	checkFacts(t, res, b, "twice(1)", "fun g", "twice(3)")
 	files := map[psi.SnapshotID]int{}
 	for _, f := range res.Data().Facts {
 		files[f.Element.Snapshot]++
 	}
-	if files[b.ID()] != 0 || files[a.ID()] == 0 || files[c.ID()] == 0 {
-		t.Errorf("facts per file a=%d b=%d c=%d, want none in b only", files[a.ID()], files[b.ID()], files[c.ID()])
+	if files[a.ID()] == 0 || files[c.ID()] == 0 {
+		t.Errorf("facts per file a=%d c=%d, want some", files[a.ID()], files[c.ID()])
 	}
 	// AnalyzeArena stays all or nothing.
 	all, err := AnalyzeArena(context.Background(), cfg, []*psi.Snapshot{a, b, c})
@@ -127,18 +129,54 @@ func TestSessionPartial(t *testing.T) {
 	if len(all.Data().Facts) != 0 {
 		t.Errorf("AnalyzeArena has %d facts with errors", len(all.Data().Facts))
 	}
-	// A syntax error in one file: the others are still checked.
-	broken := psi.Parse("b.kt", "package p\nfun g(: String = twice(1)\n")
+	// A syntax error in g's signature: g is dropped, k is kept, and the
+	// other files are still checked.
+	broken := psi.Parse("b.kt", "package p\nfun g(): = twice(1)\nfun k() = twice(3)\n")
 	res, err = s.Update(context.Background(), []*psi.Snapshot{a, broken, c})
 	if err != nil {
 		t.Fatal(err)
 	}
+	checkFacts(t, res, broken, "fun g(): = twice(1)", "", "twice(3)")
 	files = map[psi.SnapshotID]int{}
 	for _, f := range res.Data().Facts {
 		files[f.Element.Snapshot]++
 	}
-	if files[broken.ID()] != 0 || files[a.ID()] == 0 || files[c.ID()] == 0 {
-		t.Errorf("with a syntax error: facts per file a=%d b=%d c=%d", files[a.ID()], files[broken.ID()], files[c.ID()])
+	if files[a.ID()] == 0 || files[c.ID()] == 0 {
+		t.Errorf("with a syntax error: facts per file a=%d c=%d", files[a.ID()], files[c.ID()])
+	}
+}
+
+// checkFacts checks that res has no fact of snap's code in the text gone,
+// and has facts of the text at kept, and of a node that starts with name,
+// unless it is empty.
+func checkFacts(t *testing.T, res *Result, snap *psi.Snapshot, gone, name, kept string) {
+	t.Helper()
+	src := snap.Source()
+	g := strings.Index(src, gone)
+	goneR := psi.Range{Start: g, End: g + len(gone)}
+	k := strings.Index(src, kept)
+	keptR := psi.Range{Start: k, End: k + len(kept)}
+	var sawKept, sawName bool
+	for _, f := range res.Data().Facts {
+		if f.Element.Snapshot != snap.ID() {
+			continue
+		}
+		r := snap.Node(f.Element.Node).Range()
+		if r.Start >= goneR.Start && r.End <= goneR.End {
+			t.Errorf("%s: a fact of %q, in %q", snap.Path(), src[r.Start:r.End], gone)
+		}
+		if r.Start >= keptR.Start && r.End <= keptR.End {
+			sawKept = true
+		}
+		if name != "" && strings.HasPrefix(src[r.Start:r.End], name) {
+			sawName = true
+		}
+	}
+	if !sawKept {
+		t.Errorf("%s: no fact in %q", snap.Path(), kept)
+	}
+	if name != "" && !sawName {
+		t.Errorf("%s: no fact of %q...", snap.Path(), name)
 	}
 }
 

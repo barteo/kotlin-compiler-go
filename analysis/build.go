@@ -40,9 +40,10 @@ type openLibrary func() (*classpath.Path, *check.Library, func(), error)
 
 // run lowers, checks and exports the facts of snapshots. If partial is
 // false, it stops at the first stage with errors, before opening the
-// library if lowering failed; else it checks every file that lowered and
-// exports the facts of the files without errors, and returns the state an
-// incremental update starts from, or nil if an error isn't one file's.
+// library if lowering failed; else it lowers recovering from errors
+// (lower.Recover), checks every file, and exports the facts the errors
+// leave valid (errorSpans), and returns the state an incremental update
+// starts from, or nil if an error isn't one file's.
 func run(ctx context.Context, cfg Config, snaps []*psi.Snapshot, partial bool, open openLibrary) (*Result, *state, error) {
 	jobs := max(cfg.Jobs, 1)
 	n := len(snaps)
@@ -50,17 +51,23 @@ func run(ctx context.Context, cfg Config, snaps []*psi.Snapshot, partial bool, o
 	provs := make([]*lower.Provenance, n)
 	errLists := make([][]*syntax.Error, n)
 	parallel(n, jobs, func(i int) {
-		files[i], provs[i], errLists[i] = lower.File(snaps[i])
+		if partial {
+			files[i], provs[i], errLists[i] = lower.Recover(snaps[i])
+		} else {
+			files[i], provs[i], errLists[i] = lower.File(snaps[i])
+		}
 	})
 	if err := ctx.Err(); err != nil {
 		return nil, nil, err
 	}
 	res := &Result{}
 	broken := make([]bool, n)
+	drops := make([][]span, n)
 	for i, es := range errLists {
 		for _, e := range es {
-			res.diags = append(res.diags, diagnostic(snaps[i], e))
-			broken[i] = true
+			d := diagnostic(snaps[i], e)
+			res.diags = append(res.diags, d)
+			drop(snaps[i], d, &drops[i], &broken[i])
 		}
 	}
 	if len(res.diags) > 0 && !partial {
@@ -92,9 +99,10 @@ func run(ctx context.Context, cfg Config, snaps []*psi.Snapshot, partial bool, o
 		if ok {
 			snap = snaps[i]
 		}
-		res.diags = append(res.diags, diagnostic(snap, e))
+		d := diagnostic(snap, e)
+		res.diags = append(res.diags, d)
 		if ok {
-			broken[i] = true
+			drop(snap, d, &drops[i], &broken[i])
 		} else {
 			whole = false
 			for i := range broken { // not one file's: none is trusted
@@ -112,6 +120,7 @@ func run(ctx context.Context, cfg Config, snaps []*psi.Snapshot, partial bool, o
 		if slices.Contains(broken, true) {
 			b.broken = broken
 		}
+		b.drops = drops
 		b.build()
 		syms = b.syms
 	}
@@ -119,6 +128,24 @@ func run(ctx context.Context, cfg Config, snaps []*psi.Snapshot, partial bool, o
 		return res, nil, nil
 	}
 	return res, newState(res, snaps, syms), nil
+}
+
+// drop records the facts of snap that diagnostic d of it invalidates:
+// spans of nodes, or all of them (broken).
+func drop(snap *psi.Snapshot, d Diagnostic, spans *[]span, broken *bool) {
+	if *broken {
+		return
+	}
+	if d.Line < 1 {
+		*broken = true
+		return
+	}
+	s, ok := errorSpans(snap, d.Range.Start)
+	if !ok {
+		*broken, *spans = true, nil
+		return
+	}
+	*spans = append(*spans, s...)
 }
 
 func parallel(n, jobs int, fn func(i int)) {
@@ -323,9 +350,12 @@ type builder struct {
 	pkgAnnots map[string][]string
 
 	symIDs map[any]uint32
-	// broken marks the files whose facts aren't exported, those with
-	// errors; nil if none.
+	// broken marks the files whose facts aren't exported: those an error
+	// invalidates all of, or whose facts are kept from an earlier update;
+	// nil if none. drops are the nodes of each other file whose facts
+	// errors invalidate (errorSpans), which aren't exported either.
 	broken []bool
+	drops  [][]span
 	syms   []any // *types.VarSym, *types.FunSym or *types.ClassSym, by ID-1
 
 	// negatedAt are the PREFIX_EXPRESSIONs of literals folded from them:
@@ -422,15 +452,15 @@ func (b *builder) build() {
 	b.annotations()
 	b.symbols()
 
-	// The facts by file, but the broken files', which the later passes
-	// may have found.
+	// The facts by file, but the broken files' and the dropped nodes',
+	// which the later passes may have found.
 	files := make([][]*Fact, len(b.snaps))
 	index := map[psi.SnapshotID]int{}
 	for i, s := range b.snaps {
 		index[s.ID()] = i
 	}
 	for el, f := range b.facts {
-		if i := index[el.Snapshot]; !b.isBroken(i) {
+		if i := index[el.Snapshot]; !b.isBroken(i) && (b.drops == nil || !dropped(b.drops[i], el.Node)) {
 			files[i] = append(files[i], f)
 		}
 	}

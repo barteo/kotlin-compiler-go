@@ -106,6 +106,11 @@ func jumps(e syntax.Expr) bool {
 		return true
 	}
 	switch e := e.(type) {
+	case *syntax.ErrorExpr:
+		// It may have been a return, or a throw: what follows is taken
+		// for dead, so that it reports nothing that depends on it, as a
+		// missing return.
+		return true
 	case *syntax.Call:
 		if e.Invoke {
 			if jumps(e.Fun) {
