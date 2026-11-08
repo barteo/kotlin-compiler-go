@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: kc <barteo@gmail.com>
 Date: Fri, 6 Nov 2026 22:28:45 +0000
-Subject: [PATCH 08/11] Evaluate Java annotation arguments naming Kotlin consts
+Subject: [PATCH 08/12] Evaluate Java annotation arguments naming Kotlin consts
  on kc
 
 Java PSI doesn't resolve Kotlin source classes on a backend without light

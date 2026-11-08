@@ -340,7 +340,9 @@ class KcAnalysis internal constructor(
     private fun noSymbol(e: PsiElement): Nothing = unsupported("no symbol for ${e.javaClass.simpleName} ${e.text.take(40)}")
 
     companion object {
-        private val dispatch = ConcurrentHashMap<Method, Method?>()
+        /** KcAnalysis's method for each KaSession method, or [NONE] if it has none. */
+        private val dispatch = ConcurrentHashMap<Method, Method>()
+        private val NONE: Method = Any::class.java.getMethod("hashCode")
 
         private val ANY = ClassId.fromString("kotlin/Any")
 
@@ -361,13 +363,13 @@ class KcAnalysis internal constructor(
                     "hashCode" -> if (a.isEmpty()) return System.identityHashCode(proxy)
                     "toString" -> if (a.isEmpty()) return "KcSession"
                 }
-                val impl = dispatch.computeIfAbsent(method) {
+                val impl = (dispatch[method] ?: dispatch.computeIfAbsent(method) {
                     try {
-                        KcAnalysis::class.java.getMethod(it.name, *it.parameterTypes)
+                        KcAnalysis::class.java.getMethod(it.name, *it.parameterTypes).also { m -> m.isAccessible = true }
                     } catch (_: NoSuchMethodException) {
-                        null
+                        NONE
                     }
-                }
+                }).takeIf { it !== NONE }
                 try {
                     return when {
                         impl != null -> impl.invoke(analysis, *a)

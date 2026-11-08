@@ -1,0 +1,88 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kc <barteo@gmail.com>
+Date: Sun, 8 Nov 2026 07:52:21 +0000
+Subject: [PATCH 12/12] Look up the session provider once per module
+
+analyze { } runs on nearly every KSP API call, and each call got the
+project's KaSessionProvider through a service lookup.
+---
+ .../devtools/ksp/impl/ResolverAAImpl.kt       | 27 ++++++++++++++++---
+ .../devtools/ksp/impl/symbol/kotlin/util.kt   |  4 ++-
+ 2 files changed, 27 insertions(+), 4 deletions(-)
+
+diff --git a/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/ResolverAAImpl.kt b/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/ResolverAAImpl.kt
+index 426e900..74d57d0 100644
+--- a/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/ResolverAAImpl.kt
++++ b/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/ResolverAAImpl.kt
+@@ -117,6 +117,8 @@ import com.intellij.psi.impl.file.impl.JavaFileManager
+ import org.jetbrains.kotlin.analysis.api.KaExperimentalApi
+ import org.jetbrains.kotlin.analysis.api.components.buildSubstitutor
+ import org.jetbrains.kotlin.analysis.api.projectStructure.KaSourceModule
++import org.jetbrains.kotlin.analysis.api.KaImplementationDetail
++import org.jetbrains.kotlin.analysis.api.session.KaSessionProvider
+ import org.jetbrains.kotlin.analysis.api.symbols.KaCallableSymbol
+ import org.jetbrains.kotlin.analysis.api.symbols.KaEnumEntrySymbol
+ import org.jetbrains.kotlin.analysis.api.symbols.KaFunctionSymbol
+@@ -156,13 +158,26 @@ class ResolverAAImpl(
+                 instance_prop.set(value)
+             }
+ 
+-        private val ktModule_prop: ThreadLocal<KaSourceModule> = ThreadLocal()
++        // The module and its project's session provider, looked up once:
++        // analyze { } runs on nearly every KSP API call, and getting the
++        // provider is a project service lookup.
++        private val ktModule_prop: ThreadLocal<ModuleSession> = ThreadLocal()
+         var ktModule: KaSourceModule
+-            get() = ktModule_prop.get()
++            get() = ktModule_prop.get().module
++            @OptIn(KaImplementationDetail::class)
+             set(value) {
+-                ktModule_prop.set(value)
++                val session = ModuleSession(value, KaSessionProvider.getInstance(value.project))
++                ktModule_prop.set(session)
++                lastModuleSession = session
+             }
+ 
++        // The last module session set, for its thread: the ThreadLocal's
++        // map is long on a thread that also runs the compiler.
++        @Volatile
++        private var lastModuleSession: ModuleSession? = null
++        internal val moduleSession: ModuleSession
++            get() = lastModuleSession?.takeIf { it.thread === Thread.currentThread() } ?: ktModule_prop.get()
++
+         private val kspConfig_prop: ThreadLocal<KSPConfig> = ThreadLocal()
+         var kspConfig: KSPConfig
+             get() = kspConfig_prop.get()
+@@ -173,6 +188,7 @@ class ResolverAAImpl(
+         fun tearDown() {
+             instance_prop.remove()
+             ktModule_prop.remove()
++            if (lastModuleSession?.thread === Thread.currentThread()) lastModuleSession = null
+             kspConfig_prop.remove()
+         }
+     }
+@@ -971,3 +987,8 @@ class ResolverAAImpl(
+ 
+     internal val isJvm = ktModule.targetPlatform.all { it is JvmPlatform }
+ }
++
++@OptIn(KaImplementationDetail::class)
++internal class ModuleSession(val module: KaSourceModule, val provider: KaSessionProvider) {
++    val thread: Thread = Thread.currentThread()
++}
+diff --git a/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/symbol/kotlin/util.kt b/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/symbol/kotlin/util.kt
+index faa424f..2240e83 100644
+--- a/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/symbol/kotlin/util.kt
++++ b/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/symbol/kotlin/util.kt
+@@ -315,8 +315,10 @@ internal fun KaSymbol.toContainingFile(): KSFile? {
+ 
+ internal fun KaSymbol.toDocString(): String? = this.psi?.getDocString()
+ 
++@OptIn(KaImplementationDetail::class)
+ internal inline fun <R> analyze(crossinline action: KaSession.() -> R): R {
+-    return analyze(ResolverAAImpl.ktModule, action)
++    val session = ResolverAAImpl.moduleSession
++    return session.provider.analyze(session.module, action)
+ }
+ 
+ // FIXME: https://github.com/google/ksp/issues/2480

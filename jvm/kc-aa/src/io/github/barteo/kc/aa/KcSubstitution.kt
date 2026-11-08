@@ -159,19 +159,39 @@ internal class KcTypeRelations(private val round: KcRound) {
     fun asSuper(t: KaType, id: ClassId): KaClassType? {
         val start = classType(t) ?: return null
         if (start.classId == id) return start
+        val key = SuperKey(start.classId, id)
+        val known = synchronized(supers) { supers[key] }
+        if (known === NOT_SUPER) return null
+        if (known != null && start.typeArguments.isEmpty()) return known
         val seen = HashSet<ClassId>()
         val queue = ArrayDeque<KaClassType>()
         queue.add(start)
         seen.add(start.classId)
+        var complete = true
         while (queue.isNotEmpty()) {
-            for (s in directSupertypes(queue.removeFirst())) {
+            val next = queue.removeFirst()
+            if (next.symbol is KcLibraryClassSymbol) complete = false
+            for (s in directSupertypes(next)) {
                 val c = classType(s) ?: continue
-                if (c.classId == id) return c
+                if (c.classId == id) {
+                    if (complete && start.typeArguments.isEmpty()) synchronized(supers) { supers[key] = c }
+                    return c
+                }
                 if (seen.add(c.classId)) queue.add(c)
             }
         }
+        if (complete) synchronized(supers) { supers[key] = NOT_SUPER }
         return null
     }
+
+    // asSuper's answers by class: whether the class is a subclass doesn't
+    // depend on type arguments, and the supertype of a class type without
+    // arguments is always the same. Walks that met a class kc doesn't have
+    // yet aren't kept, as it can turn up later in the round.
+    private data class SuperKey(val from: ClassId, val to: ClassId)
+
+    private val supers = HashMap<SuperKey, KaClassType>()
+    private val NOT_SUPER: KaClassType = KcClassType(round, ANY)
 
     fun isNullable(t: KaType): Boolean = when (val t = round.expand(t)) {
         // FIR's error types that name no class, such as an unresolved

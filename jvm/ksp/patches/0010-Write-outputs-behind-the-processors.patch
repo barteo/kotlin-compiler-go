@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: kc <barteo@gmail.com>
 Date: Sun, 8 Nov 2026 07:41:22 +0000
-Subject: [PATCH 10/11] Write outputs behind the processors
+Subject: [PATCH 10/12] Write outputs behind the processors
 
 A new file's stream keeps what the processor writes; when it is closed,
 a writer thread puts the bytes on disk, and leaves a file that already

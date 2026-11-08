@@ -165,7 +165,14 @@ internal class KcClassType(
     override val token get() = round.token
     private val localSymbol: KaClassLikeSymbol? get() = local ?: localPsi?.let { round.byPsi[it] as? KaClassLikeSymbol }
     override val symbol: KaClassLikeSymbol
-        get() = localSymbol ?: if (isAlias) round.typeAlias(classId) ?: round.classSymbol(classId) else round.classSymbol(classId)
+        get() = localSymbol ?: resolved ?: (if (isAlias) round.typeAlias(classId) ?: round.classSymbol(classId) else round.classSymbol(classId))
+            .also { if (localPsi == null && it !is KcLibraryClassSymbol) resolved = it }
+
+    // The symbol of a non-local class ID kc has, which is the same for the
+    // round (type relations ask for it over and over). A class kc doesn't
+    // have yet can turn up later in the round, so that isn't kept.
+    @Volatile
+    private var resolved: KaClassLikeSymbol? = null
     override val nullability get() = KaTypeNullability.create(marked)
     override val abbreviation: KaUsualClassType? get() = abbrev
     override val annotations: KaAnnotationList get() = KcAnnotationList(annots, round.token)
