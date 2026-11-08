@@ -852,7 +852,8 @@ func (c *Checker) hidesBuiltin(name string) bool {
 
 func (c *Checker) resolveType(ref *syntax.TypeRef) types.Type {
 	t := c.typeMarkers(ref, c.resolveTypeRef(ref))
-	if c.u.rec != nil && t.K != types.Invalid {
+	if c.u.rec != nil && t.K != types.Invalid && (c.u.only == nil || c.u.only[c.file]) {
+		// A file not checked (Options.Only) keeps its earlier results.
 		c.u.rec.TypeRef(ref, t)
 		c.noteType(t)
 	}
