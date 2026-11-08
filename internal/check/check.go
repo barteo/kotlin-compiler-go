@@ -673,9 +673,7 @@ func CheckOptions(ctx context.Context, files []*syntax.File, lib *Library, jobs 
 	for _, c := range checkers {
 		c.checkSupers()
 	}
-	for _, c := range checkers {
-		c.resolveSignatures()
-	}
+	parallelCheckers(checkers, jobs, (*Checker).resolveSignatures)
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -717,7 +715,7 @@ func CheckOptions(ctx context.Context, files []*syntax.File, lib *Library, jobs 
 	for _, c := range checked {
 		c.boxedReturns()
 	}
-	conflicts(checkers)
+	conflicts(checkers, checked)
 	for _, c := range checked {
 		c.checkClashes()
 	}
@@ -3533,3 +3531,37 @@ type workerPanic struct {
 }
 
 func (p *workerPanic) String() string { return fmt.Sprintf("%v\n\nworker stack:\n%s", p.v, p.stack) }
+
+// parallelCheckers runs f on each checker, on up to jobs goroutines.
+// A panic in f is re-raised on the caller's goroutine.
+func parallelCheckers(checkers []*Checker, jobs int, f func(*Checker)) {
+	if jobs <= 1 || len(checkers) < 2 {
+		for _, c := range checkers {
+			f(c)
+		}
+		return
+	}
+	var next atomic.Int64
+	var crash atomic.Pointer[workerPanic]
+	var wg sync.WaitGroup
+	for range min(jobs, len(checkers)) {
+		wg.Go(func() {
+			defer func() {
+				if v := recover(); v != nil {
+					crash.CompareAndSwap(nil, &workerPanic{v, debug.Stack()})
+				}
+			}()
+			for {
+				i := int(next.Add(1)) - 1
+				if i >= len(checkers) || crash.Load() != nil {
+					return
+				}
+				f(checkers[i])
+			}
+		})
+	}
+	wg.Wait()
+	if p := crash.Load(); p != nil {
+		panic(p)
+	}
+}

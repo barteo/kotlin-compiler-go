@@ -2,6 +2,7 @@ package check
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
@@ -46,8 +47,8 @@ type overload struct {
 }
 
 // conflicts reports the conflicting declarations of the program's
-// packages and classes.
-func conflicts(checkers []*Checker) {
+// packages and classes, in the files of the checkers checked.
+func conflicts(checkers, checked []*Checker) {
 	if len(checkers) == 0 {
 		return
 	}
@@ -64,6 +65,17 @@ func conflicts(checkers []*Checker) {
 		}
 		pkgs[c.file.Package] = append(pkgs[c.file.Package], c)
 	}
+	// Only the checked files' errors are reported: a package's
+	// declarations are compared if one of its files is checked, and a
+	// class's members if its file is (a class's members and a file
+	// facade's are all in packages compared, see sameContainer).
+	if len(checked) < len(checkers) {
+		want := map[string]bool{}
+		for _, c := range checked {
+			want[c.file.Package] = true
+		}
+		order = slices.DeleteFunc(order, func(p string) bool { return !want[p] })
+	}
 	for _, name := range order {
 		var ovs []overload
 		var decls []namedDecl
@@ -76,7 +88,7 @@ func conflicts(checkers []*Checker) {
 		overloadConflicts(ovs, reported)
 		redeclarations(decls, reported)
 	}
-	for _, c := range checkers {
+	for _, c := range checked {
 		for _, d := range c.classes {
 			if d.Sym == nil || d.Expect || d.Anonymous || d.Local {
 				continue
