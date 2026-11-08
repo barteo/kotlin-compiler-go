@@ -211,6 +211,7 @@ private class KcSession(private val config: KSPConfig, @Suppress("UNUSED_PARAMET
     override fun close() {
         // The round's model is the environment's, which keeps the round.
         if (this::round.isInitialized) round.token.invalidation = "session closed"
+        KcTimer.printCalls()
         KcOps.close(handle)
         KcEnvironments.release(environment)
     }

@@ -18,6 +18,7 @@ public class Classify {
         Map<String, Integer> setupSteps = new HashMap<>();
         Map<String, Integer> topAnalysis = new HashMap<>();
         Map<String, Integer> topProc = new HashMap<>();
+        Map<String, Double> waits = new HashMap<>();
         int total = 0, gcs = 0;
         double gcPause = 0, safepoint = 0;
         java.time.Instant first = null, last = null;
@@ -32,6 +33,24 @@ public class Classify {
             }
             if (type.equals("jdk.SafepointBegin")) {
                 safepoint += e.getDuration().toNanos() / 1e6;
+                continue;
+            }
+            if (type.equals("jdk.ThreadPark") || type.equals("jdk.JavaMonitorEnter") || type.equals("jdk.JavaMonitorWait")
+                || type.equals("jdk.ThreadSleep") || type.equals("jdk.FileRead") || type.equals("jdk.FileWrite")) {
+                var t = e.getThread("eventThread");
+                if (t == null || !"main".equals(t.getJavaName())) continue;
+                double ms = e.getDuration().toNanos() / 1e6;
+                String where = type.substring(4);
+                if (e.getStackTrace() != null) {
+                    int n = 0;
+                    for (RecordedFrame f : e.getStackTrace().getFrames()) {
+                        String c = f.getMethod().getType().getName();
+                        if (c.startsWith("java.") || c.startsWith("jdk.") || c.startsWith("sun.") || c.startsWith("kotlin.")) continue;
+                        where += " < " + c.substring(c.lastIndexOf('.') + 1) + "." + f.getMethod().getName();
+                        if (++n == 3) break;
+                    }
+                }
+                waits.merge(where, ms, Double::sum);
                 continue;
             }
             if (!type.equals("jdk.ExecutionSample") && !type.equals("jdk.NativeMethodSample")) continue;
@@ -82,6 +101,9 @@ public class Classify {
             System.out.printf("%-26s %6d (%.0f%%)%n", en.getKey(), n, 100.0 * n / total);
             for (var c : en.getValue().entrySet()) System.out.printf("    %-40s %6d (%.0f%% of phase)%n", c.getKey(), c.getValue(), 100.0 * c.getValue() / n);
         }
+        System.out.println("main thread waiting (ms):");
+        waits.entrySet().stream().sorted((a, b) -> Double.compare(b.getValue(), a.getValue())).limit(12)
+            .forEach(w -> System.out.printf("    %6.0f %s%n", w.getValue(), w.getKey()));
         System.out.println("setup steps:"); top(setupSteps, 12).forEach(x -> System.out.println("    " + x));
         System.out.println("process, analysis leaves:"); top(topAnalysis, 12).forEach(x -> System.out.println("    " + x));
         System.out.println("process, processor leaves:"); top(topProc, 12).forEach(x -> System.out.println("    " + x));

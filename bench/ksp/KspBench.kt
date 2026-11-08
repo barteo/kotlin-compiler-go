@@ -303,6 +303,9 @@ fun main(args: Array<String>) {
             rec.enable("jdk.NativeMethodSample").withPeriod(Duration.ofMillis(1))
             rec.enable("jdk.GarbageCollection")
             rec.enable("jdk.SafepointBegin")
+            for (wait in listOf("jdk.ThreadPark", "jdk.JavaMonitorEnter", "jdk.JavaMonitorWait", "jdk.ThreadSleep",
+                "jdk.FileRead", "jdk.FileWrite"))
+                rec.enable(wait).withThreshold(Duration.ofMillis(1)).withStackTrace()
             rec.start()
         }
         val out = File(outBase, "out")

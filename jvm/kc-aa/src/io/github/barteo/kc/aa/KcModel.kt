@@ -91,13 +91,13 @@ internal object KcOps {
 
     /** The class-path class [classId] (a/b/Outer.Inner) as model [model] has it, or null. */
     fun cls(model: Long, classId: String): KcDecl? {
-        val r = Wire.Reader(KcNative.call(CLASS, Wire.Writer().writeInt(model).writeString(classId).message()))
+        val r = Wire.Reader(KcTimer.timed(KcTimer.classCalls) { KcNative.call(CLASS, Wire.Writer().writeInt(model).writeString(classId).message()) })
         return r.decls().singleOrNull()
     }
 
     /** The class-path package [fqName] (dotted) as model [model] has it, or null if there is none. */
     fun pkg(model: Long, fqName: String): KcPackage? {
-        val r = Wire.Reader(KcNative.call(PACKAGE, Wire.Writer().writeInt(model).writeString(fqName).message()))
+        val r = Wire.Reader(KcTimer.timed(KcTimer.packageCalls) { KcNative.call(PACKAGE, Wire.Writer().writeInt(model).writeString(fqName).message()) })
         val exists = r.readBool()
         val classes = List(r.readUint().toInt()) { r.readString() }
         val decls = r.decls()
@@ -453,5 +453,27 @@ internal class KcTimer {
 
     companion object {
         val ON = System.getenv("KC_TIMING") != null
+
+        /** The count and ns of the library lookups (cls, pkg) since the last [printCalls]. */
+        val classCalls = LongArray(2)
+        val packageCalls = LongArray(2)
+
+        inline fun <T> timed(calls: LongArray, f: () -> T): T {
+            if (!ON) return f()
+            val start = System.nanoTime()
+            try {
+                return f()
+            } finally {
+                calls[0]++
+                calls[1] += System.nanoTime() - start
+            }
+        }
+
+        fun printCalls() {
+            if (!ON) return
+            System.err.println("kc-jvm: lookups class=${classCalls[0]}/%.1f package=${packageCalls[0]}/%.1f".format(classCalls[1] / 1e6, packageCalls[1] / 1e6))
+            classCalls.fill(0)
+            packageCalls.fill(0)
+        }
     }
 }
