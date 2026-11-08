@@ -229,6 +229,39 @@ The tests run in `pr-checks.yml`'s existing shards.
 kotlin-lsp is timed by hand on the same projects for reference, with the
 method written down as in [Benchmark](benchmark.md).
 
+## Steps
+
+### L0: protocol and syntax tier
+
+`cmd/kc-lsp` serves LSP 3.17 over stdio, with the standard library only:
+
+- **`internal/lsp/jsonrpc`** handles Content-Length framing, requests in
+  order, and `$/cancelRequest` as a cancelled `context`. A panic in a
+  handler is returned as an internal error.
+- **`internal/lsp/protocol`** holds the types L0 uses, written by hand.
+- **`internal/ide`** answers the editor's questions with plain Go values.
+  It has `Document` (one immutable version, its psi snapshot, and offset ↔
+  position mapping in UTF-16 or UTF-8), `SyntaxDiagnostics`, `Symbols`,
+  `Folds`, `SelectionRanges` and `LexicalTokens`. The inverse position
+  mapping lives in `Document`, not in psi.
+- **`internal/lsp`** covers the lifecycle (`initialize`, `shutdown`,
+  `exit`), incremental `didChange`, versioned `publishDiagnostics`,
+  `documentSymbol` (hierarchical, or flat for older clients),
+  `foldingRange`, `selectionRange` and `semanticTokens/full`. It offers
+  `positionEncoding: utf-8` when the client accepts it.
+
+`internal/lsp/testdata/*.txtar` holds 10 golden scripts. They run the
+server in process over pipes. `go test ./internal/lsp -update` rewrites
+them.
+
+Syntax diagnostics after a keystroke (`BenchmarkKeystroke`: apply an edit,
+reparse, list diagnostics) take 7 ms on a 47 KB file
+(`jvm/kc-aa/.../KcRound.kt`, 4-core Xeon). That is with psi parsers reused
+from a pool; without the pool it takes 10.5 ms. The whole file is
+reparsed, at psi's 6–7 MB/s. A file over about 60 KB misses the 10 ms
+target. The fix is to reparse only the edited top-level declaration, which
+is not done yet. The VS Code and Neovim smoke runs are not written down yet.
+
 ## Gaps and open questions
 
 - **Diagnostics `kc` lacks.** `kc` reports no warnings and runs few of
@@ -238,6 +271,8 @@ method written down as in [Benchmark](benchmark.md).
 - **Declaration edits** check the whole module until L6, and every update
   lowers every file while the checker writes into the trees.
 - **Project dependencies** read stale class output until L6.
+- **Whole-file reparse.** Every keystroke reparses the whole file; files
+  over about 60 KB miss the 10 ms syntax target.
 - **Gradle import** depends on the Kotlin Gradle plugin's API, read by
   reflection; each plugin version it supports needs a fixture.
 - **KDoc and library sources** need `-sources.jar`s, which Gradle

@@ -1,0 +1,471 @@
+package lsp
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"flag"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"regexp"
+	"strconv"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/barteo/kotlin-compiler-go/internal/ide"
+	"github.com/barteo/kotlin-compiler-go/internal/lsp/jsonrpc"
+	"github.com/barteo/kotlin-compiler-go/internal/lsp/protocol"
+)
+
+var update = flag.Bool("update", false, "rewrite the want sections of testdata/*.txtar")
+
+// TestScripts runs each testdata/*.txtar against a server in this process,
+// over pipes, and compares what the script prints with its want section.
+//
+// An archive holds source files, in which /*|name*/ marks a position (the
+// marker is removed before the file is opened), a "script" section of
+// commands, and a "want" section. Commands:
+//
+//	initialize [params]       send initialize (default params: hierarchical document symbols)
+//	capabilities              print the initialize result
+//	open F                    open file F (version 1) and wait for its diagnostics
+//	change F FROM TO "text"   replace FROM..TO (@marker or line:char) and wait for diagnostics
+//	replace F SECTION         replace F's whole text with another section's
+//	close F                   close F
+//	diagnostics F             print F's last published diagnostics
+//	symbols F                 print textDocument/documentSymbol
+//	folding F                 print textDocument/foldingRange
+//	selection F POS...        print textDocument/selectionRange
+//	tokens F                  print textDocument/semanticTokens/full, decoded
+//	request METHOD [params]   print any request's result or error
+//	shutdown, exit            end the session; exit prints the server's exit code
+func TestScripts(t *testing.T) {
+	files, _ := filepath.Glob("testdata/*.txtar")
+	if len(files) == 0 {
+		t.Fatal("no testdata/*.txtar")
+	}
+	for _, file := range files {
+		t.Run(strings.TrimSuffix(filepath.Base(file), ".txtar"), func(t *testing.T) {
+			data, err := os.ReadFile(file)
+			if err != nil {
+				t.Fatal(err)
+			}
+			a := parseArchive(string(data))
+			got := runScript(t, a)
+			if *update {
+				if err := os.WriteFile(file, []byte(a.withWant(got)), 0o644); err != nil {
+					t.Fatal(err)
+				}
+				return
+			}
+			if want := a.section("want"); got != want {
+				t.Errorf("output differs (go test ./internal/lsp -update to accept):\n%s", diffLines(want, got))
+			}
+		})
+	}
+}
+
+type archive struct {
+	sections []section
+}
+
+type section struct{ name, body string }
+
+func parseArchive(s string) *archive {
+	a := &archive{}
+	re := regexp.MustCompile(`(?m)^-- (.+?) --$\n?`)
+	locs := re.FindAllStringSubmatchIndex(s, -1)
+	for i, l := range locs {
+		end := len(s)
+		if i+1 < len(locs) {
+			end = locs[i+1][0]
+		}
+		a.sections = append(a.sections, section{s[l[2]:l[3]], s[l[1]:end]})
+	}
+	return a
+}
+
+func (a *archive) section(name string) string {
+	for _, s := range a.sections {
+		if s.name == name {
+			return s.body
+		}
+	}
+	return ""
+}
+
+func (a *archive) withWant(want string) string {
+	var b strings.Builder
+	for _, s := range a.sections {
+		if s.name == "want" {
+			continue
+		}
+		fmt.Fprintf(&b, "-- %s --\n%s", s.name, s.body)
+	}
+	fmt.Fprintf(&b, "-- want --\n%s", want)
+	return b.String()
+}
+
+var marker = regexp.MustCompile(`/\*\|(\w+)\*/`)
+
+// stripMarkers removes /*|name*/ markers and returns their offsets.
+func stripMarkers(text string) (string, map[string]int) {
+	marks := map[string]int{}
+	var b strings.Builder
+	last := 0
+	for _, m := range marker.FindAllStringSubmatchIndex(text, -1) {
+		b.WriteString(text[last:m[0]])
+		marks[text[m[2]:m[3]]] = b.Len()
+		last = m[1]
+	}
+	b.WriteString(text[last:])
+	return b.String(), marks
+}
+
+type session struct {
+	t      *testing.T
+	a      *archive
+	client *jsonrpc.Conn
+	out    strings.Builder
+	exit   chan int
+
+	enc      ide.Encoding
+	initRes  json.RawMessage
+	versions map[string]int
+	texts    map[string]string
+	marks    map[string]map[string]int
+
+	mu    sync.Mutex
+	diags map[protocol.DocumentURI]protocol.PublishDiagnosticsParams
+	note  chan struct{}
+}
+
+func uri(name string) protocol.DocumentURI { return protocol.DocumentURI("file:///work/" + name) }
+
+func runScript(t *testing.T, a *archive) string {
+	cr, sw := io.Pipe()
+	sr, cw := io.Pipe()
+	s := &session{
+		t: t, a: a, client: jsonrpc.NewConn(cr, cw), exit: make(chan int, 1),
+		versions: map[string]int{}, texts: map[string]string{}, marks: map[string]map[string]int{},
+		diags: map[protocol.DocumentURI]protocol.PublishDiagnosticsParams{}, note: make(chan struct{}, 1),
+	}
+	go func() {
+		code, err := Serve(context.Background(), sr, sw)
+		if err != nil {
+			t.Errorf("server: %v", err)
+		}
+		s.exit <- code
+		sw.Close()
+	}()
+	go s.client.Serve(context.Background(), func(_ context.Context, r *jsonrpc.Request) (any, error) {
+		if r.Method == "textDocument/publishDiagnostics" {
+			var p protocol.PublishDiagnosticsParams
+			if err := r.Unmarshal(&p); err == nil {
+				s.mu.Lock()
+				s.diags[p.URI] = p
+				s.mu.Unlock()
+				select {
+				case s.note <- struct{}{}:
+				default:
+				}
+			}
+		}
+		return nil, nil
+	})
+	defer cw.Close()
+	for _, line := range strings.Split(a.section("script"), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		fmt.Fprintf(&s.out, "> %s\n", line)
+		s.run(line)
+	}
+	return s.out.String()
+}
+
+func (s *session) call(method string, params, result any) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return s.client.Call(ctx, method, params, result)
+}
+
+func (s *session) print(v any) {
+	b, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		s.t.Fatal(err)
+	}
+	s.out.Write(b)
+	s.out.WriteByte('\n')
+}
+
+// printResult prints a raw result normalized (sorted keys, indented), or
+// the error.
+func (s *session) printResult(raw json.RawMessage, err error) {
+	if err != nil {
+		var e *jsonrpc.Error
+		if errors.As(err, &e) {
+			fmt.Fprintf(&s.out, "error %d: %s\n", e.Code, e.Message)
+			return
+		}
+		s.t.Fatal(err)
+	}
+	var v any
+	if err := json.Unmarshal(raw, &v); err != nil {
+		s.t.Fatal(err)
+	}
+	s.print(v)
+}
+
+// waitDiagnostics waits for diagnostics of the given version of a file.
+func (s *session) waitDiagnostics(name string, version int) {
+	deadline := time.After(10 * time.Second)
+	for {
+		s.mu.Lock()
+		p, ok := s.diags[uri(name)]
+		s.mu.Unlock()
+		if ok && (p.Version == nil || *p.Version >= version) {
+			return
+		}
+		select {
+		case <-s.note:
+		case <-deadline:
+			s.t.Fatalf("no diagnostics for %s version %d", name, version)
+		}
+	}
+}
+
+// position resolves @marker or line:char in file name's current text.
+func (s *session) position(name, arg string) protocol.Position {
+	if m, ok := strings.CutPrefix(arg, "@"); ok {
+		off, ok := s.marks[name][m]
+		if !ok {
+			s.t.Fatalf("no marker %s in %s", m, name)
+		}
+		p := ide.NewDocument(name, 0, s.texts[name]).Pos(off, s.enc)
+		return protocol.Position{Line: p.Line, Character: p.Char}
+	}
+	l, c, ok := strings.Cut(arg, ":")
+	line, err1 := strconv.Atoi(l)
+	char, err2 := strconv.Atoi(c)
+	if !ok || err1 != nil || err2 != nil {
+		s.t.Fatalf("bad position %q", arg)
+	}
+	return protocol.Position{Line: line, Character: char}
+}
+
+func (s *session) run(line string) {
+	t := s.t
+	cmd, rest, _ := strings.Cut(line, " ")
+	args := strings.Fields(rest)
+	file := func() string {
+		if len(args) == 0 {
+			t.Fatalf("%s: no file", cmd)
+		}
+		return args[0]
+	}
+	doc := func() protocol.TextDocumentIdentifier { return protocol.TextDocumentIdentifier{URI: uri(file())} }
+	switch cmd {
+	case "initialize":
+		params := json.RawMessage(`{"processId":null,"capabilities":{"textDocument":{"documentSymbol":{"hierarchicalDocumentSymbolSupport":true}}}}`)
+		if rest != "" {
+			params = json.RawMessage(rest)
+		}
+		if err := s.call("initialize", params, &s.initRes); err != nil {
+			t.Fatal(err)
+		}
+		var r protocol.InitializeResult
+		json.Unmarshal(s.initRes, &r)
+		if r.Capabilities.PositionEncoding == protocol.EncodingUTF8 {
+			s.enc = ide.UTF8
+		}
+		s.client.Notify("initialized", struct{}{})
+	case "capabilities":
+		s.printResult(s.initRes, nil)
+	case "open":
+		name := file()
+		text, marks := stripMarkers(s.a.section(name))
+		s.texts[name], s.marks[name], s.versions[name] = text, marks, 1
+		s.client.Notify("textDocument/didOpen", protocol.DidOpenTextDocumentParams{
+			TextDocument: protocol.TextDocumentItem{URI: uri(name), LanguageID: "kotlin", Version: 1, Text: text}})
+		s.waitDiagnostics(name, 1)
+	case "change":
+		name := file()
+		if len(args) < 4 {
+			t.Fatalf("change: want F FROM TO \"text\"")
+		}
+		from, to := s.position(name, args[1]), s.position(name, args[2])
+		q := strings.IndexByte(rest, '"')
+		if q < 0 {
+			t.Fatalf("change: no quoted text")
+		}
+		text, err := strconv.Unquote(strings.TrimSpace(rest[q:]))
+		if err != nil {
+			t.Fatalf("change: text: %v", err)
+		}
+		s.edit(name, []protocol.TextDocumentContentChangeEvent{{Range: &protocol.Range{Start: from, End: to}, Text: text}})
+	case "replace":
+		name := file()
+		text, marks := stripMarkers(s.a.section(args[1]))
+		s.marks[name] = marks
+		s.edit(name, []protocol.TextDocumentContentChangeEvent{{Text: text}})
+	case "close":
+		s.mu.Lock()
+		delete(s.diags, uri(file()))
+		s.mu.Unlock()
+		s.client.Notify("textDocument/didClose", protocol.DidCloseTextDocumentParams{TextDocument: doc()})
+		s.waitDiagnostics(file(), 0) // the empty list
+	case "diagnostics":
+		s.mu.Lock()
+		p := s.diags[uri(file())]
+		s.mu.Unlock()
+		s.print(p.Diagnostics)
+	case "symbols":
+		var raw json.RawMessage
+		err := s.call("textDocument/documentSymbol", protocol.DocumentSymbolParams{TextDocument: doc()}, &raw)
+		s.printResult(raw, err)
+	case "folding":
+		var raw json.RawMessage
+		err := s.call("textDocument/foldingRange", protocol.FoldingRangeParams{TextDocument: doc()}, &raw)
+		s.printResult(raw, err)
+	case "selection":
+		name := file()
+		var ps []protocol.Position
+		for _, a := range args[1:] {
+			ps = append(ps, s.position(name, a))
+		}
+		var res []*protocol.SelectionRange
+		if err := s.call("textDocument/selectionRange", protocol.SelectionRangeParams{TextDocument: doc(), Positions: ps}, &res); err != nil {
+			s.printResult(nil, err)
+			return
+		}
+		d := ide.NewDocument(name, 0, s.texts[name])
+		for i, r := range res {
+			fmt.Fprintf(&s.out, "%s:\n", args[1+i])
+			for ; r != nil; r = r.Parent {
+				fmt.Fprintf(&s.out, "  %s %s\n", fmtRange(r.Range), excerpt(d, r.Range, s.enc))
+			}
+		}
+	case "tokens":
+		name := file()
+		var res protocol.SemanticTokens
+		if err := s.call("textDocument/semanticTokens/full", protocol.SemanticTokensParams{TextDocument: doc()}, &res); err != nil {
+			s.printResult(nil, err)
+			return
+		}
+		s.printTokens(name, res.Data)
+	case "request":
+		params := json.RawMessage("null")
+		if len(args) > 1 {
+			params = json.RawMessage(strings.TrimSpace(strings.TrimPrefix(rest, args[0])))
+		}
+		var raw json.RawMessage
+		err := s.call(args[0], params, &raw)
+		s.printResult(raw, err)
+	case "shutdown":
+		if err := s.call("shutdown", nil, nil); err != nil {
+			t.Fatal(err)
+		}
+	case "exit":
+		s.client.Notify("exit", nil)
+		select {
+		case code := <-s.exit:
+			fmt.Fprintf(&s.out, "exit code %d\n", code)
+		case <-time.After(10 * time.Second):
+			t.Fatal("server did not exit")
+		}
+	default:
+		t.Fatalf("unknown command %q", cmd)
+	}
+}
+
+func (s *session) edit(name string, changes []protocol.TextDocumentContentChangeEvent) {
+	s.versions[name]++
+	v := s.versions[name]
+	s.client.Notify("textDocument/didChange", protocol.DidChangeTextDocumentParams{
+		TextDocument:   protocol.VersionedTextDocumentIdentifier{URI: uri(name), Version: v},
+		ContentChanges: changes,
+	})
+	s.waitDiagnostics(name, v)
+	// Keep the harness's copy of the text in step, for markers and excerpts.
+	d := ide.NewDocument(name, 0, s.texts[name])
+	edits := make([]ide.Edit, len(changes))
+	for i, c := range changes {
+		if c.Range == nil {
+			edits[i] = ide.Edit{Whole: true, Text: c.Text}
+		} else {
+			edits[i] = ide.Edit{From: pos(c.Range.Start), To: pos(c.Range.End), Text: c.Text}
+		}
+	}
+	nd, err := d.Apply(v, edits, s.enc)
+	if err != nil {
+		s.t.Fatal(err)
+	}
+	s.texts[name] = nd.Text()
+}
+
+func fmtRange(r protocol.Range) string {
+	return fmt.Sprintf("%d:%d-%d:%d", r.Start.Line, r.Start.Character, r.End.Line, r.End.Character)
+}
+
+func excerpt(d *ide.Document, r protocol.Range, enc ide.Encoding) string {
+	a, _ := d.Offset(pos(r.Start), enc)
+	b, _ := d.Offset(pos(r.End), enc)
+	text := d.Text()[a:b]
+	if len(text) > 40 {
+		text = text[:20] + "…" + text[len(text)-17:]
+	}
+	return strconv.Quote(text)
+}
+
+func (s *session) printTokens(name string, data []uint32) {
+	d := ide.NewDocument(name, 0, s.texts[name])
+	line, char := 0, 0
+	for i := 0; i+5 <= len(data); i += 5 {
+		if data[i] > 0 {
+			char = 0
+		}
+		line += int(data[i])
+		char += int(data[i+1])
+		start := protocol.Position{Line: line, Character: char}
+		end := protocol.Position{Line: line, Character: char + int(data[i+2])}
+		var mods []string
+		for b, m := range ide.TokenModifierNames {
+			if data[i+4]&(1<<b) != 0 {
+				mods = append(mods, m)
+			}
+		}
+		fmt.Fprintf(&s.out, "%d:%d %s", line, char, ide.TokenTypeNames[data[i+3]])
+		if len(mods) > 0 {
+			fmt.Fprintf(&s.out, " [%s]", strings.Join(mods, " "))
+		}
+		fmt.Fprintf(&s.out, " %s\n", excerpt(d, protocol.Range{Start: start, End: end}, s.enc))
+	}
+}
+
+// diffLines shows the first difference between two outputs with context.
+func diffLines(want, got string) string {
+	w, g := strings.Split(want, "\n"), strings.Split(got, "\n")
+	i := 0
+	for i < len(w) && i < len(g) && w[i] == g[i] {
+		i++
+	}
+	lo := max(0, i-3)
+	var b strings.Builder
+	fmt.Fprintf(&b, "first difference at line %d\n", i+1)
+	for j := lo; j < i; j++ {
+		fmt.Fprintf(&b, "  %s\n", w[j])
+	}
+	for j := i; j < min(len(w), i+5); j++ {
+		fmt.Fprintf(&b, "- %s\n", w[j])
+	}
+	for j := i; j < min(len(g), i+5); j++ {
+		fmt.Fprintf(&b, "+ %s\n", g[j])
+	}
+	return b.String()
+}
