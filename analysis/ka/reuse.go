@@ -5,6 +5,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/barteo/kotlin-compiler-go/internal/kasession"
 	"github.com/barteo/kotlin-compiler-go/psi"
 )
 
@@ -22,7 +23,7 @@ import (
 // checks, with their libraries, by the class path's key (libraryKey).
 //
 // An update that only changes bodies, whose changed files declare what
-// they did (signatureHash), with the other files and the Java texts the
+// they did (kasession.SignatureHash), with the other files and the Java texts the
 // same, checks only the changed files (check.Options.Only) and keeps the
 // others' models and diagnostics: what a file declares depends on the
 // other files' declarations, not on their bodies. Every other update is
@@ -110,7 +111,7 @@ func (e *checked) snapshot(path, text string) *psi.Snapshot {
 // bodyEdits returns the indexes of the Kotlin sources whose texts differ
 // from e's, if e is a clean check of the same files, with the same Java
 // texts, and the changed files declare what they did in e
-// (signatureHash): an update that only changes bodies. It returns nil
+// (kasession.SignatureHash): an update that only changes bodies. It returns nil
 // otherwise, and if no text changed.
 func (e *checked) bodyEdits(paths []string, sources []Source, texts, javaTexts []string, snaps []*psi.Snapshot) []int {
 	if e == nil || !e.clean || !slices.Equal(e.paths, paths) || !slices.Equal(e.texts[len(sources):], javaTexts) {
@@ -125,7 +126,7 @@ func (e *checked) bodyEdits(paths []string, sources []Source, texts, javaTexts [
 		if p.text == texts[i] {
 			continue
 		}
-		if len(snaps[i].Diagnostics()) > 0 || signatureHash(p.snap) != signatureHash(snaps[i]) {
+		if len(snaps[i].Diagnostics()) > 0 || kasession.SignatureHash(p.snap) != kasession.SignatureHash(snaps[i]) {
 			return nil
 		}
 		changed = append(changed, i)

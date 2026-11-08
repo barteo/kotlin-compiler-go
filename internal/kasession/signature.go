@@ -1,4 +1,4 @@
-package ka
+package kasession
 
 import (
 	"hash/fnv"
@@ -7,15 +7,15 @@ import (
 	"github.com/barteo/kotlin-compiler-go/psi"
 )
 
-// signatureHash returns a hash of what s declares: its tokens but for
+// SignatureHash returns a hash of what s declares: its tokens but for
 // whitespace, comments and the block bodies of functions, accessors,
 // initializers and secondary constructors, which a check of the
 // declarations (check.Options.Signatures) doesn't need. A block body
 // doesn't make a declaration's type: a function with one and no written
 // return type returns Unit. Two parses with the same hash declare the
 // same, so the other files of a module don't need checking again when
-// only bodies change (an incremental update, reuse.go).
-func signatureHash(s *psi.Snapshot) uint64 {
+// only bodies change (an incremental update).
+func SignatureHash(s *psi.Snapshot) uint64 {
 	h := fnv.New64a()
 	var buf []byte
 	// depth is the nodes' depths, which, written with each node, makes
