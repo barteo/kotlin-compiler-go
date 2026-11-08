@@ -54,25 +54,55 @@ internal class KcRound(
     class Sizes(val keys: Int = 16, val psi: Int = 16, val typeRefs: Int = 16)
 
     /** The sizes of this round's tables, for the next round. */
-    fun sizes() = synchronized(this) { Sizes(byKey.size + (pendingKeys?.size ?: 0) / 2, byPsi.size, typeRefs.size) }
+    fun sizes() = synchronized(this) {
+        Sizes(byKey.size + (pendingKeys?.size ?: 0) / 2 + pendingByFile.values.sumOf { it.keys?.size ?: 0 } / 2, byPsi.size, typeRefs.size)
+    }
 
     val token = KcToken()
 
     /**
      * Every symbol built by its pointer key, for [restore]. A round builds
-     * every source symbol and restores few, so the keys wait in
-     * [pendingKeys], key then symbol, until the first restore.
+     * every source symbol and restores few, so a source file's keys wait
+     * in its builder's [Builder.keys], key then symbol, until a key of
+     * that file is restored (see [pendingByFile]); the other keys wait in
+     * [pendingKeys] until the first restore.
      */
     private val byKey = HashMap<String, KaSymbol>()
-    private var pendingKeys: ArrayList<Any>? = ArrayList(sizes.keys * 2)
+    private var pendingKeys: ArrayList<Any>? = ArrayList()
+
+    /**
+     * The builders of the source files whose keys are pending, by the
+     * file symbol's key. Every key of a file's symbols starts with it,
+     * then "/" or nothing.
+     */
+    private val pendingByFile = HashMap<String, Builder>()
 
     @Synchronized
     private fun keyed(key: String): KaSymbol? {
         pendingKeys?.let { p ->
-            for (i in p.indices step 2) byKey[p[i] as String] = p[i + 1] as KaSymbol
+            putKeys(p)
             pendingKeys = null
         }
-        return byKey[key]
+        byKey[key]?.let { return it }
+        if (pendingByFile.isNotEmpty() && key.startsWith("file:")) {
+            // A file's path may hold "/": try each prefix ending before one.
+            var i = key.indexOf('/', 5)
+            while (true) {
+                val prefix = if (i < 0) key else key.substring(0, i)
+                pendingByFile.remove(prefix)?.let { b ->
+                    b.keys?.let(::putKeys)
+                    b.keys = null
+                    return byKey[key]
+                }
+                if (i < 0) break
+                i = key.indexOf('/', i + 1)
+            }
+        }
+        return null
+    }
+
+    private fun putKeys(p: ArrayList<Any>) {
+        for (i in p.indices step 2) byKey[p[i] as String] = p[i + 1] as KaSymbol
     }
 
     /** Source symbols by their PSI, for `KaSession.symbol` (see [symbolOf]). */
@@ -318,7 +348,11 @@ internal class KcRound(
             val b = Builder(f.path, joined[i], KaSymbolOrigin.SOURCE)
             b.deferred = ArrayList()
             b.deferredPsi = ArrayList()
-            b.file(f, kt).also { unrecorded[kt] = b }
+            b.keys = ArrayList()
+            b.file(f, kt).also {
+                unrecorded[kt] = b
+                pendingByFile[it.key] = b
+            }
         }
         for (name in files.map { it.first.packageName } + javaFiles.map { it.packageName }) {
             var fq = FqName(name)
@@ -730,7 +764,17 @@ internal class KcRound(
                  annots: List<KcAnnotation> = d.annotations.filter { !onReceiverType(it, psi) },
                  findPsi: (() -> PsiElement?)? = null): KcInfo {
             d.annotations.forEach(::annotation)
-            if (psi != null) typeRefs(d, psi)
+            if (psi != null) {
+                val defer = deferred
+                if (defer != null) {
+                    // Walking the PSI waits too; see [record].
+                    defer.add(d)
+                    defer.add(psi)
+                    defer.add(types)
+                } else {
+                    typeRefs(d, psi)
+                }
+            }
             // A source declaration without a node is one Kotlin generates:
             // an implicit constructor, an enum class's values().
             val o = if (origin == KaSymbolOrigin.SOURCE && d.node == 0 || javaEnumGenerated(d, parent)) KaSymbolOrigin.SOURCE_MEMBER_GENERATED else origin
@@ -774,7 +818,8 @@ internal class KcRound(
 
         /**
          * The type references of a source file not recorded yet, as triples
-         * of reference, type and type context (see [unrecorded]).
+         * of reference, type and type context, or of declaration, its PSI
+         * and type context for [typeRefs] (see [unrecorded]).
          */
         var deferred: ArrayList<Any>? = null
 
@@ -796,7 +841,10 @@ internal class KcRound(
             try {
                 for (i in d.indices step 3) {
                     types = d[i + 2] as KcTypeContext
-                    typeRef(d[i] as KtTypeReference, d[i + 1] as KcType)
+                    when (val x = d[i]) {
+                        is KcDecl -> typeRefs(x, d[i + 1] as PsiElement)
+                        else -> typeRef(x as KtTypeReference, d[i + 1] as KcType)
+                    }
                 }
             } finally {
                 types = outer
@@ -830,8 +878,11 @@ internal class KcRound(
             }
         }
 
+        /** A source file's pending keys, key then symbol (see [pendingByFile]). */
+        var keys: ArrayList<Any>? = null
+
         fun putKey(key: String, s: KaSymbol) {
-            val p = pendingKeys
+            val p = keys ?: pendingKeys
             if (p != null) {
                 p.add(key)
                 p.add(s)
