@@ -19,10 +19,10 @@ import (
 // diagnostics back, and an update whose texts differ parses again only
 // the files whose texts changed.
 //
-// A module without Java sources keeps its checks in the library its
-// updates share (shared.checks). One with Java sources is checked against
-// a library of its own, made with those sources; javaChecks keeps such
-// checks, with their libraries, by the class path's key (libraryKey).
+// A module keeps its checks in the library its updates share
+// (shared.checks). One with Java sources is checked against a library of
+// its own, made with those sources over the shared one, which the check
+// keeps (library.withJava).
 //
 // An update that only changes bodies, whose changed files declare what
 // they did (signatureHash), with the other files and the Java texts the
@@ -50,9 +50,6 @@ var noReuse bool
 // maxChecks is how many checks' results a cache keeps.
 const maxChecks = 2
 
-// javaChecks are the last checks of modules with Java sources.
-var javaChecks checkCache
-
 // checkIDs numbers checks, for Model.Check.
 var checkIDs atomic.Uint64
 
@@ -65,12 +62,12 @@ type checkCache struct {
 // checked is the result of checking a module's sources.
 type checked struct {
 	check        uint64                 // the Model.Check of its models
-	key          string                 // the class path's key, for javaChecks
+	key          string                 // "", or what else must match for find
 	paths, texts []string               // the Kotlin sources', then the Java sources'
 	snaps        map[string]checkedSnap // the Kotlin sources' parses, by path
 	files        []*File
 	diags        []Diagnostic
-	sl           *shared // the library the check made, for javaChecks
+	lib          *library // the library with the Java sources the check made, or nil
 	// clean is set if no file had syntax errors, so that the check's
 	// files can be kept by an update that checks only some (bodyEdits).
 	clean bool
@@ -356,19 +353,12 @@ func (n *declaredNames) addSyntax(f *syntax.File) {
 	walk(f.Package, f.Decls)
 }
 
-// keep adds e to c, releasing the libraries of the checks it drops.
+// keep adds e to c, dropping the oldest past maxChecks.
 func (c *checkCache) keep(e *checked) {
 	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.list = append(c.list, e)
-	var dropped []*checked
 	if n := len(c.list) - maxChecks; n > 0 {
-		dropped = slices.Clone(c.list[:n])
 		c.list = slices.Delete(c.list, 0, n)
-	}
-	c.mu.Unlock()
-	for _, d := range dropped {
-		if d.sl != nil {
-			d.sl.release()
-		}
 	}
 }

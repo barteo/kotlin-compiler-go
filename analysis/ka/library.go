@@ -10,6 +10,7 @@ import (
 	"github.com/barteo/kotlin-compiler-go/internal/classfile"
 	"github.com/barteo/kotlin-compiler-go/internal/classpath"
 	"github.com/barteo/kotlin-compiler-go/internal/driver"
+	"github.com/barteo/kotlin-compiler-go/internal/javasrc"
 	"github.com/barteo/kotlin-compiler-go/internal/kmeta"
 	"github.com/barteo/kotlin-compiler-go/internal/types"
 )
@@ -20,6 +21,9 @@ type library struct {
 	cp   *classpath.Path
 	lib  *check.Library
 	java *driver.JavaSources // the module's Java sources' classes, or nil
+	// base is set with java: the library of the class path that java's
+	// classes are over, which models the other classes (withJava).
+	base *library
 
 	mu     sync.Mutex
 	decls  map[string]*Decl             // by class ID; nil: no such class
@@ -40,6 +44,9 @@ type library struct {
 // files, by class ID: the built-in classes, as kotlin/String and
 // kotlin/collections/List, that have no class files of their own.
 func (l *library) builtinClasses() map[string]*kmeta.Class {
+	if l.base != nil {
+		return l.base.builtinClasses()
+	}
 	l.builtinsOnce.Do(func() {
 		l.builtins = map[string]*kmeta.Class{}
 		for _, name := range l.cp.Resources(".kotlin_builtins") {
@@ -73,6 +80,24 @@ func (m *Model) Class(id string) *Decl {
 	l := m.lib
 	if l == nil {
 		return nil
+	}
+	return l.decl(id)
+}
+
+// withJava returns a library of the classes of l's class path and the
+// module's Java sources files, for one check. It models the sources'
+// classes and leaves the others to l, which checks of other sources go on
+// sharing.
+func (l *library) withJava(files []*javasrc.File) *library {
+	java := driver.AddJavaSources(l.cp, files)
+	return &library{cp: java.Path, lib: l.lib.WithSources(java.Path), java: java, base: l,
+		decls: map[string]*Decl{}, params: map[string]map[string]string{}}
+}
+
+// decl returns the model of the class with class ID id: see Model.Class.
+func (l *library) decl(id string) *Decl {
+	if l.base != nil && !l.cp.IsSource(internalName(id)) {
+		return l.base.decl(id)
 	}
 	l.mu.Lock()
 	d, ok := l.decls[id]
@@ -1372,6 +1397,9 @@ func descClassID(desc string) string {
 // name: what tells an unsigned argument from a signed one in a class
 // file.
 func (l *library) paramTypes(id string) map[string]string {
+	if l.base != nil {
+		return l.base.paramTypes(id) // a Kotlin class's: see load
+	}
 	l.mu.Lock()
 	pt, ok := l.params[id]
 	l.mu.Unlock()

@@ -36,6 +36,9 @@ type Universe struct {
 	// which the library, shared by checks one after another, mustn't
 	// keep: see caches.
 	local caches
+	// defaults is ext's defaults for the methods of the program's Java
+	// sources loaded over a shared library: see inheritExtDefaults.
+	defaults sync.Map
 	// pendingSupers holds the classes whose supertypes resolveSupertypes
 	// hasn't resolved yet, while it runs, so that looking up a nested
 	// class through one resolves its supertypes first.
@@ -423,6 +426,19 @@ func (l *Library) EnableSerialization() {
 
 // NewLibrary returns the library of the classes in cp, which may be nil.
 func NewLibrary(cp *classpath.Path) *Library { return &Library{t: newClassTable(cp)} }
+
+// WithSources returns a library of the classes of cp, an overlay of l's
+// class path (see classpath.Path.Overlay) with the program's Java sources.
+// It shares l's classes and what checking computes from them, keeps the
+// classes of the sources, and what is computed from them, to itself, and
+// has l's settings. l never sees the sources, so a source class that has
+// the name of a class of l's class path doesn't replace it in l's
+// classes' signatures, as it would in kotlinc's.
+func (l *Library) WithSources(cp *classpath.Path) *Library {
+	w := *l
+	w.t = l.t.withSources(cp)
+	return &w
+}
 
 // KeepHidden has every Java class keep the members Kotlin can't use, the
 // package-private and private ones, in types.ClassSym.JavaHidden, as the

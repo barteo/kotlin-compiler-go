@@ -791,7 +791,11 @@ type ClassSym struct {
 	// Java classes. They are created when first referenced and filled in by
 	// load on first use; call Ensure before reading the fields below or
 	// Methods.
-	External  bool
+	External bool
+	// Source is set, with External, on a class of the program's Java
+	// sources that a check loads over a library it shares with other
+	// checks: it lives as long as the check.
+	Source    bool
 	Missing   bool // not found or unreadable
 	Interface bool
 	Abstract  bool // an abstract class or an interface: it can't be instantiated

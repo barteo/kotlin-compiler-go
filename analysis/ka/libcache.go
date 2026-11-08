@@ -10,7 +10,6 @@ import (
 
 	"github.com/barteo/kotlin-compiler-go/internal/classpath"
 	"github.com/barteo/kotlin-compiler-go/internal/driver"
-	"github.com/barteo/kotlin-compiler-go/internal/javasrc"
 )
 
 // Libraries. Opening the class path is cheap, but reading its classes is
@@ -24,8 +23,9 @@ import (
 // The checker keeps what it learns of the class path's classes in the
 // library and what it learns of the program's in each check's own
 // Universe (check.Universe.cache), so checks one after another, or at the
-// same time, can share a library. A class path with Java sources, whose
-// classes the program's classes are found through, isn't shared.
+// same time, can share a library. A module's Java sources, whose classes
+// the program's classes are found through, are put over it for each
+// check (library.withJava).
 
 // maxIdle is how many libraries no session or model uses are kept.
 const maxIdle = 2
@@ -88,21 +88,6 @@ func acquire(cfg Config) (*shared, error) {
 	libraries.list = append(libraries.list, s)
 	trimLocked()
 	return s, nil
-}
-
-// acquireJava returns a library for cfg with the classes of the module's
-// Java sources files, which isn't shared, and their set.
-func acquireJava(cfg Config, files []*javasrc.File) (*shared, *driver.JavaSources, error) {
-	cp, lib, err := driver.OpenLibrary(driver.Options{
-		JDKHome: cfg.JDKHome, NoJDK: cfg.NoJDK, ClassPath: cfg.ClassPath, FriendPaths: cfg.FriendPaths, KeepHidden: true, JavaTypes: true, ErrorTypes: true,
-		ModuleName: cfg.ModuleName, Jobs: max(cfg.Jobs, 1),
-	})
-	if err != nil {
-		return nil, nil, fmt.Errorf("ka: %w", err)
-	}
-	java := driver.AddJavaSources(cp, files)
-	l := &library{cp: cp, lib: lib, java: java, decls: map[string]*Decl{}, params: map[string]map[string]string{}}
-	return &shared{refs: 1, lib: l}, java, nil
 }
 
 // retain adds a user to s.
