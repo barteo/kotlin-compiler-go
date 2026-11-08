@@ -71,7 +71,7 @@ func (l *lowerer) blockStmt(c psi.NodeRef) syntax.Stmt {
 		return l.stmt(c)
 	}
 	var s syntax.Stmt
-	if l.recovered(func() { l.syntaxError(c); s = l.stmt(c) }) {
+	if l.recoveredIn(c.Range(), l.lastTok(c), func() { l.syntaxError(c); s = l.stmt(c) }) {
 		return s
 	}
 	e := &syntax.ErrorExpr{}

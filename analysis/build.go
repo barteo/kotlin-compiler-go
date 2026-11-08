@@ -63,11 +63,17 @@ func run(ctx context.Context, cfg Config, snaps []*psi.Snapshot, partial bool, o
 	res := &Result{}
 	broken := make([]bool, n)
 	drops := make([][]span, n)
+	// lost is set if lowering dropped a declaration: an update that
+	// checks only the files that changed can't start from this one, whose
+	// other files were checked without it.
+	lost := false
 	for i, es := range errLists {
 		for _, e := range es {
 			d := diagnostic(snaps[i], e)
 			res.diags = append(res.diags, d)
-			drop(snaps[i], d, &drops[i], &broken[i])
+			if drop(snaps[i], d, &drops[i], &broken[i]) != reachCode {
+				lost = true
+			}
 		}
 	}
 	if len(res.diags) > 0 && !partial {
@@ -124,28 +130,27 @@ func run(ctx context.Context, cfg Config, snaps []*psi.Snapshot, partial bool, o
 		b.build()
 		syms = b.syms
 	}
-	if !partial || !whole {
+	if !partial || !whole || lost {
 		return res, nil, nil
 	}
 	return res, newState(res, snaps, syms), nil
 }
 
 // drop records the facts of snap that diagnostic d of it invalidates:
-// spans of nodes, or all of them (broken).
-func drop(snap *psi.Snapshot, d Diagnostic, spans *[]span, broken *bool) {
-	if *broken {
-		return
-	}
+// spans of nodes, or all of them (broken). It returns the error's reach.
+func drop(snap *psi.Snapshot, d Diagnostic, spans *[]span, broken *bool) reach {
 	if d.Line < 1 {
-		*broken = true
-		return
-	}
-	s, ok := errorSpans(snap, d.Range.Start)
-	if !ok {
 		*broken, *spans = true, nil
-		return
+		return reachFile
 	}
-	*spans = append(*spans, s...)
+	s, r := errorSpans(snap, d.Range.Start)
+	switch {
+	case r == reachFile:
+		*broken, *spans = true, nil
+	case !*broken:
+		*spans = append(*spans, s...)
+	}
+	return r
 }
 
 func parallel(n, jobs int, fn func(i int)) {

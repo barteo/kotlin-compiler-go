@@ -473,7 +473,13 @@ func (l *lowerer) tailExpr(n psi.NodeRef) syntax.Expr {
 	}
 	var out syntax.Expr
 	eq := child(n, psi.KindEQ)
-	if l.recovered(func() {
+	r, at := eq.Range(), l.pos(eq)
+	for c := eq.NextSibling(); c.Valid() && InTail(n, c); c = c.NextSibling() {
+		if !c.IsTrivia() {
+			r.End, at = c.Range().End, l.lastTok(c)
+		}
+	}
+	if l.recoveredIn(r, at, func() {
 		for c := eq.NextSibling(); c.Valid() && InTail(n, c); c = c.NextSibling() {
 			l.syntaxError(c)
 		}
@@ -497,6 +503,36 @@ func (l *lowerer) decl(n psi.NodeRef, lower func()) {
 		l.syntaxError(n)
 		lower()
 	})
+}
+
+// recoveredIn is recovered for lowering the code at r, where it puts an
+// error outside r, as an expression missing at the end of the file, at
+// at: what the error's code is, for the diagnostic of the editor that
+// shows it, and the facts it invalidates.
+func (l *lowerer) recoveredIn(r psi.Range, at syntax.Pos, lower func()) bool {
+	return l.recovered(func() {
+		defer func() {
+			if v := recover(); v != nil {
+				if _, ok := v.(bailout); ok {
+					if off := l.offset(l.err.Pos); off < r.Start || off >= r.End {
+						e := *l.err
+						e.Pos = at
+						l.err = &e
+					}
+				}
+				panic(v)
+			}
+		}()
+		lower()
+	})
+}
+
+// offset returns the offset of pos.
+func (l *lowerer) offset(pos syntax.Pos) int {
+	if pos.Line < 1 || pos.Line > len(l.lines) {
+		return len(l.src)
+	}
+	return l.lines[pos.Line-1] + pos.Col - 1
 }
 
 // recovered runs lower, and reports whether it succeeded: when it fails,

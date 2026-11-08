@@ -44,8 +44,8 @@ fun top() = 3
 	snap := psi.Parse("a.kt", src)
 	for _, tt := range tests {
 		off := strings.Index(src, tt.at)
-		spans, ok := errorSpans(snap, off)
-		if !ok {
+		spans, r := errorSpans(snap, off)
+		if r == reachFile {
 			t.Errorf("at %q: the whole file", tt.at)
 			continue
 		}
@@ -60,7 +60,7 @@ fun top() = 3
 			}
 		}
 	}
-	if _, ok := errorSpans(snap, strings.Index(src, "package")); ok {
+	if _, r := errorSpans(snap, strings.Index(src, "package")); r != reachFile {
 		t.Error("in the package directive: not the whole file")
 	}
 }

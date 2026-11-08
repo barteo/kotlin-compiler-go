@@ -270,7 +270,11 @@ func incremental(ctx context.Context, cfg Config, snaps []*psi.Snapshot, st *sta
 		for _, e := range errLists[i] {
 			d := diagnostic(snaps[i], e)
 			diags[i] = append(diags[i], d)
-			drop(snaps[i], d, &drops[i], &broken[i])
+			if drop(snaps[i], d, &drops[i], &broken[i]) != reachCode {
+				// Lowering dropped a declaration the other files may
+				// use, as a whole update does.
+				return nil, nil, false, nil
+			}
 		}
 	}
 	cp, lib, done, err := open()

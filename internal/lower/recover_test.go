@@ -122,3 +122,14 @@ func exprKind(x syntax.Expr) string {
 	}
 	return fmt.Sprintf("%T", x)
 }
+
+// TestRecoverPosition checks that an error Recover recovers from is in
+// the statement or expression it recovers, not at the end of the file
+// where lowering looks for a missing expression.
+func TestRecoverPosition(t *testing.T) {
+	src := "fun f() {\n    val g = fun Int.() =\n}\n\nfun b() = 2\n"
+	_, _, errs := Recover(psi.Parse("a.kt", src))
+	if len(errs) != 1 || errs[0].Pos.Line != 2 {
+		t.Errorf("errors %v, want one on line 2", errs)
+	}
+}

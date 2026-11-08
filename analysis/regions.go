@@ -24,13 +24,17 @@ type span struct{ lo, hi psi.NodeID }
 // An error between the declarations of a class body, or the file, is its
 // node's; in the package or imports, or past the declarations, it is the
 // whole file's.
-func errorSpans(snap *psi.Snapshot, off int) ([]span, bool) {
+//
+// Its reach says what lowering keeps of the code around a lowering error
+// there: in a statement of a closed body, or the expression after '=',
+// all the declarations (reachCode).
+func errorSpans(snap *psi.Snapshot, off int) ([]span, reach) {
 	if snap == nil || off < 0 || off >= len(snap.Source()) {
-		return nil, false
+		return nil, reachFile
 	}
 	leaf := snap.NodeAt(off)
 	if !leaf.Valid() {
-		return nil, false
+		return nil, reachFile
 	}
 	var path []psi.NodeRef // root first
 	for n := leaf; n.Valid(); n = n.Parent() {
@@ -48,9 +52,9 @@ func errorSpans(snap *psi.Snapshot, off int) ([]span, bool) {
 			owner := p
 			switch {
 			case lower.InTail(owner, c):
-				return tailSpan(owner), true
+				return tailSpan(owner), reachCode
 			case c.NumericKind() == psi.KindBLOCK:
-				return bodySpans(d, c, path[k+1:]), true
+				return bodySpans(d, c, path[k+1:])
 			case c.NumericKind() == psi.KindPROPERTY_ACCESSOR && p == d:
 				acc = c
 				continue
@@ -61,30 +65,39 @@ func errorSpans(snap *psi.Snapshot, off int) ([]span, bool) {
 					continue
 				}
 				if k+1 < len(path) && !path[k+1].IsLeaf() {
-					return subtree(path[k+1]), true
+					return subtree(path[k+1]), reachDecl
 				}
-				return nil, true // a brace, or a separator
+				return nil, reachDecl // a brace, or a separator
 			}
 			if b := d.ChildKind(psi.KindCLASS_BODY); b.Valid() {
-				return []span{{d.ID(), b.ID() + 1}}, true
+				return []span{{d.ID(), b.ID() + 1}}, reachDecl
 			}
-			return subtree(d), true
+			return subtree(d), reachDecl
 		case !d.Valid() && p.NumericKind() == psi.KindFILE:
 			switch {
 			case isMember(c):
 				d = c
 			case c.NumericKind() == psi.KindERROR_ELEMENT:
-				return subtree(c), true
+				return subtree(c), reachDecl
 			default:
-				return nil, false
+				return nil, reachFile
 			}
 		}
 	}
 	if d.Valid() {
-		return subtree(d), true
+		return subtree(d), reachDecl
 	}
-	return nil, false
+	return nil, reachFile
 }
+
+// reach is how far an error reaches: see errorSpans.
+type reach int
+
+const (
+	reachCode reach = iota // a statement or expression of a declaration
+	reachDecl              // a declaration
+	reachFile              // the whole file
+)
 
 // isMember reports whether n is a declaration kc lowers as a member of a
 // file or a class.
@@ -98,27 +111,27 @@ func isMember(n psi.NodeRef) bool {
 }
 
 // bodySpans returns the spans an error in block b, the body of
-// declaration d, invalidates; below are the nodes from b's child down to
-// the error's.
-func bodySpans(d, b psi.NodeRef, below []psi.NodeRef) []span {
+// declaration d, invalidates, and its reach; below are the nodes from b's
+// child down to the error's.
+func bodySpans(d, b psi.NodeRef, below []psi.NodeRef) ([]span, reach) {
 	if !b.ChildKind(psi.KindLBRACE).Valid() || !b.ChildKind(psi.KindRBRACE).Valid() || len(below) == 0 {
-		return []span{{d.ID(), d.SubtreeEnd()}}
+		return []span{{d.ID(), d.SubtreeEnd()}}, reachDecl
 	}
 	self := span{b.ID(), b.ID() + 1}
 	s := below[0]
 	switch s.NumericKind() {
 	case psi.KindLBRACE, psi.KindRBRACE:
-		return []span{self}
+		return []span{self}, reachCode
 	}
 	if s.IsTrivia() {
 		// Between statements: from the next one on.
 		for s = s.NextSibling(); s.Valid() && s.IsTrivia(); s = s.NextSibling() {
 		}
 		if !s.Valid() || s.NumericKind() == psi.KindRBRACE {
-			return []span{self}
+			return []span{self}, reachCode
 		}
 	}
-	return []span{self, {s.ID(), b.SubtreeEnd()}}
+	return []span{self, {s.ID(), b.SubtreeEnd()}}, reachCode
 }
 
 // tailSpan returns the nodes after the '=' of n, a property, function or
