@@ -72,9 +72,9 @@ class KcAnalysis internal constructor(
         return round.symbolOf(m) as? KaCallableSymbol
     }
 
-    fun findClass(classId: ClassId): KaClassSymbol? = round.classes[classId] ?: round.libraryClass(classId)
+    fun findClass(classId: ClassId): KaClassSymbol? = round.sourceClass(classId) ?: round.libraryClass(classId)
     fun findClassLike(classId: ClassId): KaClassLikeSymbol? =
-        round.classes[classId] ?: round.typeAliases[classId] ?: round.libraryClass(classId) ?: round.typeAlias(classId)
+        round.sourceClass(classId) ?: round.knownTypeAlias(classId) ?: round.libraryClass(classId) ?: round.typeAlias(classId)
     fun findTypeAlias(classId: ClassId): KaTypeAliasSymbol? = round.typeAlias(classId)
     fun findPackage(fqName: FqName): KaPackageSymbol? = if (round.packageExists(fqName)) round.packageSymbol(fqName) else null
     fun findTopLevelCallables(packageFqName: FqName, name: Name): Sequence<KaCallableSymbol> =

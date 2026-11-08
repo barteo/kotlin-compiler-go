@@ -140,11 +140,12 @@ private class KcSession(private val config: KSPConfig, @Suppress("UNUSED_PARAMET
             t.mark("build")
             built.also { environment.keep(model.check, it, model.handle, model.diagnostics, model.files) }
         }
+        val touched = if (this::round.isInitialized) " previous-touched(${round.touched()})" else ""
         if (this::round.isInitialized && round !== next) round.token.invalidation = "replaced by the next round"
         round = next
         provider.session = KcAnalysis.session(KcAnalysis(round, module, libraryModule))
         t.mark("round")
-        t.print("round files=${paths.size} same=${model.same} psi-reused=${environment.reused - reused} psi-reparsed=${environment.reparsed - reparsed}")
+        t.print("round files=${paths.size} same=${model.same} psi-reused=${environment.reused - reused} psi-reparsed=${environment.reparsed - reparsed}$touched")
     }
 
     private fun printDiagnostics(ds: List<KcDiagnostic>) {

@@ -55,7 +55,7 @@ internal class KcRound(
 
     /** The sizes of this round's tables, for the next round. */
     fun sizes() = synchronized(this) {
-        Sizes(byKey.size + (pendingKeys?.size ?: 0) / 2 + pendingByFile.values.sumOf { it.keys?.size ?: 0 } / 2, byPsi.size, typeRefs.size)
+        Sizes(byKey.size + (pendingKeys?.size ?: 0) / 2 + sourceByKey.values.sumOf { it.b.keys?.size ?: 0 } / 2, byPsi.size, typeRefs.size)
     }
 
     val token = KcToken()
@@ -64,18 +64,11 @@ internal class KcRound(
      * Every symbol built by its pointer key, for [restore]. A round builds
      * every source symbol and restores few, so a source file's keys wait
      * in its builder's [Builder.keys], key then symbol, until a key of
-     * that file is restored (see [pendingByFile]); the other keys wait in
-     * [pendingKeys] until the first restore.
+     * that file is restored; the other keys wait in [pendingKeys] until
+     * the first restore.
      */
     private val byKey = HashMap<String, KaSymbol>()
     private var pendingKeys: ArrayList<Any>? = ArrayList()
-
-    /**
-     * The builders of the source files whose keys are pending, by the
-     * file symbol's key. Every key of a file's symbols starts with it,
-     * then "/" or nothing.
-     */
-    private val pendingByFile = HashMap<String, Builder>()
 
     @Synchronized
     private fun keyed(key: String): KaSymbol? {
@@ -84,14 +77,15 @@ internal class KcRound(
             pendingKeys = null
         }
         byKey[key]?.let { return it }
-        if (pendingByFile.isNotEmpty() && key.startsWith("file:")) {
-            // A file's path may hold "/": try each prefix ending before one.
+        if (key.startsWith("file:")) {
+            // Every key of a file's symbols starts with the file symbol's,
+            // then "/" or nothing. A path may hold "/": try each prefix.
             var i = key.indexOf('/', 5)
             while (true) {
-                val prefix = if (i < 0) key else key.substring(0, i)
-                pendingByFile.remove(prefix)?.let { b ->
-                    b.keys?.let(::putKeys)
-                    b.keys = null
+                sourceByKey[if (i < 0) key else key.substring(0, i)]?.let { src ->
+                    build(src)
+                    src.b.keys?.let(::putKeys)
+                    src.b.keys = null
                     return byKey[key]
                 }
                 if (i < 0) break
@@ -99,6 +93,68 @@ internal class KcRound(
             }
         }
         return null
+    }
+
+    /**
+     * A source file of the round. A round builds a file's declarations'
+     * symbols the first time they're needed: KSP processes the dirty
+     * files, which reach few others.
+     */
+    private inner class Source(val fs: KcFileSymbol, val b: Builder, val f: KcFile) {
+        var built = false
+        /** Whether the file's type references and symbols by PSI are recorded (see [recordTypes]). */
+        var recorded = false
+    }
+
+    private val sourceByKey = HashMap<String, Source>()
+    private val sourceByKt = IdentityHashMap<KtFile, Source>()
+
+    /** The file of each source class and type alias, by ID; the last file's class and the first's alias, as built eagerly. */
+    private val sourceClassFiles = HashMap<ClassId, Source>()
+    private val sourceAliasFiles = HashMap<ClassId, Source>()
+
+    /** Builds [src]'s declarations if they aren't yet. Called with the round locked. */
+    private fun build(src: Source) {
+        if (src.built) return
+        src.built = true
+        src.b.declarations(src.fs, src.f)
+    }
+
+    /** The declarations of [fs], built the first time they're asked for. */
+    fun declarationsOf(fs: KcFileSymbol): List<KaDeclarationSymbol> = synchronized(this) {
+        sourceByKey[fs.key]?.let(::build)
+        fs.built ?: emptyList()
+    }
+
+    /** The source class [id], building its file's declarations, or null. */
+    fun sourceClass(id: ClassId): KaNamedClassSymbol? = synchronized(this) {
+        classes[id] ?: sourceClassFiles[id]?.let { build(it); classes[id] }
+    }
+
+    /** The type alias [id] of the sources, or of the class path if loaded, or null. */
+    fun knownTypeAlias(id: ClassId): KaTypeAliasSymbol? = synchronized(this) {
+        sourceAliasFiles[id]?.let(::build)
+        typeAliases[id]
+    }
+
+    private fun index(ds: List<KcDecl>, src: Source) {
+        for (d in ds) {
+            when (d.kind) {
+                KcDecl.CLASS, KcDecl.INTERFACE, KcDecl.OBJECT, KcDecl.ENUM_CLASS, KcDecl.ANNOTATION_CLASS ->
+                    if (d.classId.isNotEmpty()) sourceClassFiles[ClassId.fromString(d.classId)] = src
+                KcDecl.TYPE_ALIAS ->
+                    if (d.classId.isNotEmpty()) sourceAliasFiles.putIfAbsent(ClassId.fromString(d.classId), src)
+            }
+            index(d.members, src)
+            index(d.locals, src)
+            index(d.params, src)
+        }
+    }
+
+    /** For KC_TIMING: how many source files were built, had a key restored, and had a lookup by PSI or type. */
+    fun touched() = synchronized(this) {
+        val ss = sourceByKey.values
+        "built=${ss.count { it.built }} keys=${ss.count { it.b.keys == null }} looked=${ss.count { it.recorded }}"
     }
 
     private fun putKeys(p: ArrayList<Any>) {
@@ -110,12 +166,14 @@ internal class KcRound(
 
     /** The source symbol of [psi], or null. */
     fun symbolOf(psi: PsiElement): KaSymbol? = synchronized(this) {
-        if (unrecorded.isNotEmpty()) (psi.containingFile as? KtFile)?.let(::recordTypes)
+        (psi.containingFile as? KtFile)?.let(::recordTypes)
         byPsi[psi]
     }
 
-    val classes = HashMap<ClassId, KaNamedClassSymbol>()
-    val typeAliases = HashMap<ClassId, KaTypeAliasSymbol>()
+    /** The source classes built so far (see [sourceClass]). */
+    private val classes = HashMap<ClassId, KaNamedClassSymbol>()
+    /** The type aliases built so far, the sources' and the loaded library ones (see [knownTypeAlias]). */
+    private val typeAliases = HashMap<ClassId, KaTypeAliasSymbol>()
 
     /** The library classes loaded so far, nested ones included. */
     private val libraryClasses = HashMap<ClassId, KaNamedClassSymbol>()
@@ -153,15 +211,17 @@ internal class KcRound(
         synchronized(this) { recordTypes(expr.containingKtFile); values[expr] }
 
     /**
-     * The builders of the source files whose type references and symbols
-     * by PSI aren't recorded yet. Most rounds look up few files' (KSP
-     * processes the dirty ones), so a file's are recorded the first time
-     * one of them is looked up.
+     * Records the type references and symbols by PSI of source [file],
+     * building its declarations first. Most rounds look up few files'
+     * (KSP processes the dirty ones), so a file's are recorded the first
+     * time one of them is looked up. Called with the round locked.
      */
-    private val unrecorded = IdentityHashMap<KtFile, Builder>()
-
     private fun recordTypes(file: KtFile) {
-        unrecorded.remove(file)?.record()
+        val src = sourceByKt[file] ?: return
+        if (src.recorded) return
+        src.recorded = true
+        build(src)
+        src.b.record()
     }
 
     val fileSymbols: List<KcFileSymbol>
@@ -269,7 +329,7 @@ internal class KcRound(
         val segs = fq.split('.')
         for (i in segs.indices.reversed()) {
             val id = ClassId(FqName.fromSegments(segs.subList(0, i)), FqName.fromSegments(segs.subList(i, segs.size)), false)
-            if (classes[id] != null || libraryClass(id) != null) return id
+            if (sourceClass(id) != null || libraryClass(id) != null) return id
         }
         return null
     }
@@ -349,9 +409,11 @@ internal class KcRound(
             b.deferred = ArrayList()
             b.deferredPsi = ArrayList()
             b.keys = ArrayList()
-            b.file(f, kt).also {
-                unrecorded[kt] = b
-                pendingByFile[it.key] = b
+            b.file(f, kt).also { fs ->
+                val src = Source(fs, b, f)
+                sourceByKey[fs.key] = src
+                sourceByKt[kt] = src
+                index(f.decls, src)
             }
         }
         for (name in files.map { it.first.packageName } + javaFiles.map { it.packageName }) {
@@ -407,7 +469,7 @@ internal class KcRound(
         val javaNames = it.unimi.dsi.fastutil.objects.ObjectOpenHashSet<String>()
         for (f in javaFiles) if (f.packageName == name) f.classes.mapNotNullTo(javaNames) { it.name }
         for (n in javaNames) libraryClass(ClassId(fq, Name.identifier(n)))?.let { out += it }
-        lib?.let { p -> p.classes.mapNotNullTo(out) { if (it in classes) null else libraryClass(it) } }
+        lib?.let { p -> p.classes.mapNotNullTo(out) { if (sourceClass(it) != null) null else libraryClass(it) } }
         lib?.decls?.filterTo(out) { it !is KaCallableSymbol }
         return synchronized(this) { packageScopes.getOrPut(fq) { out } }
     }
@@ -425,7 +487,7 @@ internal class KcRound(
 
     /** The type alias [id], of the sources or of the class path, or null if there is none. */
     fun typeAlias(id: ClassId): KaTypeAliasSymbol? {
-        typeAliases[id]?.let { return it }
+        knownTypeAlias(id)?.let { return it }
         if (id.isLocal || id.isNestedClass) return null
         libraryPackage(id.packageFqName)
         return synchronized(this) { typeAliases[id] }
@@ -459,7 +521,7 @@ internal class KcRound(
 
     /** The class [id], or a symbol that knows only its ID if kc doesn't have it. */
     fun classSymbol(id: ClassId): KaNamedClassSymbol =
-        classes[id] ?: libraryClass(id) ?: synchronized(this) { unknownClasses.getOrPut(id) { KcLibraryClassSymbol(this, id) } }
+        sourceClass(id) ?: libraryClass(id) ?: synchronized(this) { unknownClasses.getOrPut(id) { KcLibraryClassSymbol(this, id) } }
 
     private val classFiles = HashMap<String, PsiClass?>()
 
@@ -603,8 +665,12 @@ internal class KcRound(
             putKey(fs.key, fs)
             byPsi[kt] = fs
             file.annotations.forEach(::annotation)
-            fs.declarations = decls(file.decls, fs, fs.key)
             return fs
+        }
+
+        /** Builds source file [fs]'s declarations (see [Source]). */
+        fun declarations(fs: KcFileSymbol, file: KcFile) {
+            fs.built = decls(file.decls, fs, fs.key)
         }
 
         /**
@@ -912,7 +978,10 @@ internal class KcRound(
                 val id = d.classId
                 val classFile = if (origin == KaSymbolOrigin.JAVA_LIBRARY && id.isNotEmpty()) { { classFilePsi(id) } } else null
                 val c = register(KcClassSymbol(info(d, psi, parent, key, findPsi = classFile)), key, psi)
-                c.classId?.let { (if (origin == KaSymbolOrigin.SOURCE) classes else libraryClasses)[it] = c }
+                c.classId?.let {
+                    if (origin != KaSymbolOrigin.SOURCE) libraryClasses[it] = c
+                    else if (sourceClassFiles[it].let { f -> f == null || f.b === this }) classes[it] = c
+                }
                 c.typeParams = typeParams(d, c, key)
                 ctx.typeParams = c.typeParams
                 c.members = decls(d.members, c, key)
@@ -960,7 +1029,7 @@ internal class KcRound(
             KcDecl.TYPE_ALIAS -> scoped { ctx ->
                 val psi = psiOf<KtTypeAlias>(d)
                 val t = register(KcTypeAliasSymbol(info(d, psi, parent, key)), key, psi)
-                t.classId?.let { typeAliases.putIfAbsent(it, t) }
+                t.classId?.let { if (sourceAliasFiles[it].let { f -> f == null || f.b === this }) typeAliases.putIfAbsent(it, t) }
                 t.typeParams = typeParams(d, t, key)
                 ctx.typeParams = t.typeParams
                 t

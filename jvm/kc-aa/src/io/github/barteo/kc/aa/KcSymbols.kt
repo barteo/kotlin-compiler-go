@@ -186,7 +186,9 @@ internal class KcFileSymbol(val round: KcRound, val file: KcFile, override val p
     val key = "file:" + file.path
     override fun createPointer(): KaSymbolPointer<KaFileSymbol> = KcPointer(key)
 
-    lateinit var declarations: List<KaDeclarationSymbol>
+    /** The declarations, once [KcRound] built them. */
+    internal var built: List<KaDeclarationSymbol>? = null
+    val declarations: List<KaDeclarationSymbol> get() = built ?: round.declarationsOf(this)
 }
 
 internal class KcClassSymbol(val info: KcInfo) : StubKaNamedClassSymbol() {
