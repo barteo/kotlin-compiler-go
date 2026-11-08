@@ -22,7 +22,7 @@ import (
 // analyze lowers, checks and exports the facts of snapshots against a
 // library of its own: AnalyzeArena, all or nothing.
 func analyze(ctx context.Context, cfg Config, snaps []*psi.Snapshot) (*Result, error) {
-	res, err := run(ctx, cfg, snaps, false, func() (*classpath.Path, *check.Library, func(), error) {
+	res, _, err := run(ctx, cfg, snaps, false, func() (*classpath.Path, *check.Library, func(), error) {
 		cp, lib, err := driver.OpenLibrary(libraryOptions(cfg))
 		if err != nil {
 			return nil, nil, nil, fmt.Errorf("analysis: %w", err)
@@ -42,8 +42,9 @@ type openLibrary func() (*classpath.Path, *check.Library, func(), error)
 // run lowers, checks and exports the facts of snapshots. If partial is
 // false, it stops at the first stage with errors, before opening the
 // library if lowering failed; else it checks every file that lowered and
-// exports the facts of the files without errors.
-func run(ctx context.Context, cfg Config, snaps []*psi.Snapshot, partial bool, open openLibrary) (*Result, error) {
+// exports the facts of the files without errors, and returns the state an
+// incremental update starts from, or nil if an error isn't one file's.
+func run(ctx context.Context, cfg Config, snaps []*psi.Snapshot, partial bool, open openLibrary) (*Result, *state, error) {
 	jobs := max(cfg.Jobs, 1)
 	n := len(snaps)
 	files := make([]*syntax.File, n)
@@ -53,7 +54,7 @@ func run(ctx context.Context, cfg Config, snaps []*psi.Snapshot, partial bool, o
 		files[i], provs[i], errLists[i] = lower.File(snaps[i])
 	})
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	res := &Result{facts: map[ElementID]*Fact{}}
 	broken := make([]bool, n)
@@ -64,48 +65,56 @@ func run(ctx context.Context, cfg Config, snaps []*psi.Snapshot, partial bool, o
 		}
 	}
 	if len(res.diags) > 0 && !partial {
-		return res, nil
+		return res, nil, nil
 	}
 	if d := duplicateClasses(files); d != nil {
 		res.diags = append(res.diags, *d)
-		return res, nil
+		return res, nil, nil
 	}
 
 	cp, lib, done, err := open()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer done()
-	rec := &recorder{when: map[*syntax.When]whenReport{}, stmt: map[syntax.Stmt]bool{}, unreachable: map[syntax.Stmt]bool{}, annots: map[*syntax.File]map[syntax.Pos]*types.ClassSym{}, elvis: map[*syntax.Binary]bool{}, typeRefs: map[*syntax.TypeRef]types.Type{}, annotClass: map[*syntax.Annotation]*types.ClassSym{}, stmtTypes: map[syntax.Expr]types.Type{}, aliases: map[any]*types.AliasSym{}}
+	rec := newRecorder()
 	errs, err := check.CheckContext(ctx, files, lib, jobs, rec)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	index := map[string]int{}
 	for i, s := range snaps {
 		index[s.Path()] = i
 	}
+	whole := true // every error is one file's
 	for _, e := range errs {
 		res.diags = append(res.diags, diagnostic(e.File, e))
 		if i, ok := index[e.File]; ok {
 			broken[i] = true
 		} else {
+			whole = false
 			for i := range broken { // not one file's: none is trusted
 				broken[i] = true
 			}
 		}
 	}
-	if len(res.diags) > 0 && !partial || !slices.Contains(broken, false) {
-		return res, nil
+	if len(res.diags) > 0 && !partial {
+		return res, nil, nil
 	}
-
-	b := newBuilder(res, snaps, files, provs, rec)
-	b.cp = cp
-	if slices.Contains(broken, true) {
-		b.broken = broken
+	var syms []any
+	if slices.Contains(broken, false) {
+		b := newBuilder(res, snaps, files, provs, rec)
+		b.cp = cp
+		if slices.Contains(broken, true) {
+			b.broken = broken
+		}
+		b.build()
+		syms = b.syms
 	}
-	b.build()
-	return res, nil
+	if !partial || !whole {
+		return res, nil, nil
+	}
+	return res, newState(res, snaps, syms), nil
 }
 
 func parallel(n, jobs int, fn func(i int)) {
@@ -161,6 +170,10 @@ func duplicateClasses(files []*syntax.File) *Diagnostic {
 		}
 	}
 	return nil
+}
+
+func newRecorder() *recorder {
+	return &recorder{when: map[*syntax.When]whenReport{}, stmt: map[syntax.Stmt]bool{}, unreachable: map[syntax.Stmt]bool{}, annots: map[*syntax.File]map[syntax.Pos]*types.ClassSym{}, elvis: map[*syntax.Binary]bool{}, typeRefs: map[*syntax.TypeRef]types.Type{}, annotClass: map[*syntax.Annotation]*types.ClassSym{}, stmtTypes: map[syntax.Expr]types.Type{}, aliases: map[any]*types.AliasSym{}}
 }
 
 type whenReport struct{ exhaustive, used bool }

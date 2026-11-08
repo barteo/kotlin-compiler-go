@@ -62,3 +62,26 @@ func isBodyOwner(k psi.Kind) bool {
 	}
 	return false
 }
+
+// SignatureNodes returns the nodes SignatureHash hashes, in order: the
+// nodes but for trivia and the insides of block bodies, whose blocks it
+// lists. Two parses with the same hash have as many, of the same kinds,
+// and the i-th of one declares what the i-th of the other does: an
+// incremental update maps what refers to the declarations of an edited
+// file's last parse to its new one by them.
+func SignatureNodes(s *psi.Snapshot) []psi.NodeID {
+	var ids []psi.NodeID
+	for id, end := psi.NodeID(1), psi.NodeID(s.NodeCount()+1); id < end; {
+		n := s.Node(id)
+		if n.NumericKind() == psi.KindBLOCK && isBodyOwner(n.Parent().NumericKind()) {
+			ids = append(ids, id)
+			id = n.SubtreeEnd()
+			continue
+		}
+		if !n.IsTrivia() {
+			ids = append(ids, id)
+		}
+		id++
+	}
+	return ids
+}

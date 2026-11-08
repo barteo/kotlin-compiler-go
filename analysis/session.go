@@ -21,12 +21,14 @@ import (
 // jars are the same (internal/kasession); Close releases it.
 //
 // Unlike AnalyzeArena, an update with errors still has facts: those of
-// every file without errors (Result.Complete).
+// every file without errors (Result.Complete). An update that only
+// changes bodies checks only the changed files (incremental.go).
 type Session struct {
 	cfg Config
 
 	mu     sync.Mutex
 	lib    *kasession.Library // nil until the first Update
+	last   *state             // what the next update may start from, or nil
 	closed bool
 }
 
@@ -47,7 +49,32 @@ func (s *Session) Update(ctx context.Context, snapshots []*psi.Snapshot) (*Resul
 	if err := validate(s.cfg, snapshots); err != nil {
 		return nil, err
 	}
-	return run(ctx, s.cfg, snapshots, true, s.library)
+	s.mu.Lock()
+	last := s.last
+	s.mu.Unlock()
+	if last != nil {
+		res, next, ok, err := incremental(ctx, s.cfg, snapshots, last, s.library)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			s.keep(next)
+			return res, nil
+		}
+	}
+	res, next, err := run(ctx, s.cfg, snapshots, true, s.library)
+	if err != nil {
+		return nil, err
+	}
+	s.keep(next)
+	return res, nil
+}
+
+// keep makes st what the next update starts from.
+func (s *Session) keep(st *state) {
+	s.mu.Lock()
+	s.last = st
+	s.mu.Unlock()
 }
 
 // library returns the session's library, opening it on first use or
@@ -80,6 +107,7 @@ func (s *Session) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.closed = true
+	s.last = nil
 	if s.lib == nil {
 		return nil
 	}
