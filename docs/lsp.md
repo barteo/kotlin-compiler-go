@@ -254,13 +254,14 @@ method written down as in [Benchmark](benchmark.md).
 server in process over pipes. `go test ./internal/lsp -update` rewrites
 them.
 
-Syntax diagnostics after a keystroke (`BenchmarkKeystroke`: apply an edit,
-reparse, list diagnostics) take 7 ms on a 47 KB file
-(`jvm/kc-aa/.../KcRound.kt`, 4-core Xeon). That is with psi parsers reused
-from a pool; without the pool it takes 10.5 ms. The whole file is
-reparsed, at psi's 6–7 MB/s. A file over about 60 KB misses the 10 ms
-target. The fix is to reparse only the edited top-level declaration, which
-is not done yet. The VS Code and Neovim smoke runs are not written down yet.
+Syntax diagnostics after a keystroke take 0.7 ms on a 47 KB file
+(`BenchmarkKeystroke`: apply an edit, reparse, list diagnostics;
+`jvm/kc-aa/.../KcRound.kt`, 4-core Xeon). That is well under the 10 ms
+target. When an edit stays inside one declaration body, `psi.Reparse`
+parses only that body (see [psi](psi.md)). A whole reparse of the same
+file takes 7 ms with pooled parsers and 10.5 ms without. Splicing still
+copies the node array, so the cost grows with file size at about
+65 MB/s. The VS Code and Neovim smoke runs are not written down yet.
 
 ## Gaps and open questions
 
@@ -271,8 +272,8 @@ is not done yet. The VS Code and Neovim smoke runs are not written down yet.
 - **Declaration edits** check the whole module until L6, and every update
   lowers every file while the checker writes into the trees.
 - **Project dependencies** read stale class output until L6.
-- **Whole-file reparse.** Every keystroke reparses the whole file; files
-  over about 60 KB miss the 10 ms syntax target.
+- **Whole-file reparse** still happens for edits outside a declaration
+  body: signatures, imports, and bodies inside string templates.
 - **Gradle import** depends on the Kotlin Gradle plugin's API, read by
   reflection; each plugin version it supports needs a fixture.
 - **KDoc and library sources** need `-sources.jar`s, which Gradle

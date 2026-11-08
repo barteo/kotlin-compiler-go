@@ -34,6 +34,19 @@ compiler's PSI. The tests compare trees with dumps from stock Kotlin made by
   endings.
 - **Snapshots** are immutable and safe for concurrent use. A `Parser` can
   be reused per worker; snapshots don't keep its buffers.
+- **Reparse** (`psi.Reparse(old, from, to, text)`) gives the snapshot of an
+  edited text and always equals `Parse` of it. Some edits lie strictly
+  inside one declaration body, the lazily parsed `BLOCK` that IntelliJ
+  calls a chameleon. For those, only that body is parsed and spliced into
+  a copy of the old tree, as IntelliJ's `BlockSupportImpl` does. Two
+  conditions apply: the body's braces must stay balanced, and the old and
+  new body must each leave the lexer in the state it started in. An
+  unmatched backtick or an unterminated raw string fails the lexer
+  condition. A body inside a string template is never spliced. Every
+  other edit parses the whole text. `TestReparse` compares chains of
+  random edits to every `testdata` file against `Parse`, and
+  `FuzzReparse` runs in CI. A keystroke in a 47 KB file takes 0.7 ms,
+  against 7 ms for a whole parse.
 
 ### Performance
 

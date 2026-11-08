@@ -77,6 +77,9 @@ jobs:
       - name: FuzzParse
         run: go test ./psi -run '^$' -fuzz '^FuzzParse$' -fuzztime 60s
 
+      - name: FuzzReparse
+        run: go test ./psi -run '^$' -fuzz '^FuzzReparse$' -fuzztime 30s
+
   # The tests are bound by CPU, mostly the JVMs of kotlinc and of the
   # programs under test, so they are split among runners. The driver
   # package takes most of the time; its last shard skips the tests of the

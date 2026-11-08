@@ -36,12 +36,22 @@ type Snapshot struct {
 	src   string
 	nodes []node // nodes[0] is unused
 	diags []Diagnostic
+	lazy  []lazyBlock
+	// spliced is set when Reparse made the snapshot from another's tree.
+	spliced bool
 
 	lineStarts []int32
 	// utf16 holds checkpoints for byte to UTF-16 conversion: utf16[i] is
 	// the UTF-16 length of src[:cpOff[i]]. Both are nil for ASCII sources.
 	cpOff []int32
 	utf16 []int32
+}
+
+// lazyBlock is a lazily parsed BLOCK (see Reparse) and the range of the
+// diagnostics its parse reported.
+type lazyBlock struct {
+	id     NodeID
+	d0, d1 int32
 }
 
 const utf16Stride = 512

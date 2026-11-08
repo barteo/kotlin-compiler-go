@@ -77,11 +77,14 @@ func lineStarts(text string) []int {
 // Apply returns the next version with the edits applied in order, each to
 // the result of the ones before it, as LSP's didChange does.
 func (d *Document) Apply(version int, edits []Edit, enc Encoding) (*Document, error) {
-	text, lines := d.Text(), d.lines
+	p := parsers.Get().(*psi.Parser)
+	defer parsers.Put(p)
+	snap, lines := d.Snap, d.lines
 	for i, e := range edits {
 		if e.Whole {
-			text = e.Text
+			snap = p.Parse(d.Path, e.Text)
 		} else {
+			text := snap.Source()
 			from, err := offset(text, lines, e.From, enc)
 			if err != nil {
 				return nil, fmt.Errorf("edit %d: %w", i, err)
@@ -93,11 +96,11 @@ func (d *Document) Apply(version int, edits []Edit, enc Encoding) (*Document, er
 			if to < from {
 				return nil, fmt.Errorf("edit %d: range ends before it starts", i)
 			}
-			text = text[:from] + e.Text + text[to:]
+			snap = p.Reparse(snap, from, to, e.Text) // only the edited body, when it can
 		}
-		lines = lineStarts(text)
+		lines = lineStarts(snap.Source())
 	}
-	return &Document{Path: d.Path, Version: version, Snap: parse(d.Path, text), lines: lines}, nil
+	return &Document{Path: d.Path, Version: version, Snap: snap, lines: lines}, nil
 }
 
 // Offset converts a position to a byte offset. As LSP asks, a character

@@ -41,6 +41,9 @@ type lexer struct {
 	interpReq int
 	stack     []lexFrame
 
+	// underflow is set when a pop finds the stack empty.
+	underflow bool
+
 	commentStart int
 	commentDepth int
 	// tokStart is where the token returned by next starts; a comment
@@ -51,6 +54,14 @@ type lexer struct {
 // tokenize splits src into tokens covering it exactly. kinds[i] spans
 // [starts[i], starts[i+1]); starts has one extra entry equal to len(src).
 func tokenize(src string, kinds []Kind, starts []int32) ([]Kind, []int32) {
+	kinds, starts, _ = tokenizeNeutral(src, kinds, starts)
+	return kinds, starts
+}
+
+// tokenizeNeutral is tokenize that also reports whether the lexer ends as
+// it started, in the initial state, without popping past its start: then
+// src lexes the same wherever it appears between two code tokens.
+func tokenizeNeutral(src string, kinds []Kind, starts []int32) ([]Kind, []int32, bool) {
 	lx := lexer{src: src, interpReq: -1}
 	for {
 		k, ok := lx.next()
@@ -61,7 +72,7 @@ func tokenize(src string, kinds []Kind, starts []int32) ([]Kind, []int32) {
 		starts = append(starts, int32(lx.tokStart))
 	}
 	starts = append(starts, int32(len(src)))
-	return kinds, starts
+	return kinds, starts, !lx.underflow && lx.state == stInitial && len(lx.stack) == 0
 }
 
 func (lx *lexer) push(st lexState) {
@@ -80,6 +91,7 @@ func (lx *lexer) pushInterp(prefix int) {
 
 func (lx *lexer) pop() {
 	if len(lx.stack) == 0 {
+		lx.underflow = true
 		lx.state, lx.lBraces, lx.interpReq = stInitial, 0, -1
 		return
 	}

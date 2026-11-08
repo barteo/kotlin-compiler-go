@@ -141,6 +141,7 @@ type treeWriter struct {
 	last  []NodeID // last child of each open node
 	diags []Diagnostic
 	lexed []Kind // token kinds as lexed, before any remapping
+	lazy  []lazyBlock
 }
 
 func (w *treeWriter) add(k Kind, start, end int32) NodeID {
@@ -269,10 +270,14 @@ func (w *treeWriter) reparse(b *builder, lo, hi int, k Kind) {
 	sb := newBuilder(b.src, b.types[lo:hi], b.starts[lo:hi+1], true)
 	sb.base0 = b.base0 + lo
 	p := createForTopLevel(sb)
-	if k == KindBLOCK {
-		p.parseBlockExpression()
-	} else {
+	if k == KindLAMBDA_EXPRESSION {
 		p.parseLambdaExpression()
+		w.emit(sb)
+		return
 	}
+	i := len(w.lazy)
+	w.lazy = append(w.lazy, lazyBlock{id: NodeID(len(w.nodes)), d0: int32(len(w.diags))})
+	p.parseBlockExpression()
 	w.emit(sb)
+	w.lazy[i].d1 = int32(len(w.diags))
 }
