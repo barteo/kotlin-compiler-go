@@ -8,6 +8,8 @@ import jdk.jfr.consumer.*;
 // leaf-most frame that isn't JDK or Kotlin standard library code. Native
 // samples under KcNative.call are time in libkc (Go); time on Go's own
 // threads (the checker's workers) isn't sampled.
+// It also prints how long the recording ran, and how much of that GC
+// pauses and safepoints took.
 //
 //	java bench/ksp/Classify.java bench.jfr
 public class Classify {
@@ -16,9 +18,22 @@ public class Classify {
         Map<String, Integer> setupSteps = new HashMap<>();
         Map<String, Integer> topAnalysis = new HashMap<>();
         Map<String, Integer> topProc = new HashMap<>();
-        int total = 0;
+        int total = 0, gcs = 0;
+        double gcPause = 0, safepoint = 0;
+        java.time.Instant first = null, last = null;
         for (RecordedEvent e : RecordingFile.readAllEvents(Paths.get(args[0]))) {
             String type = e.getEventType().getName();
+            if (first == null || e.getStartTime().isBefore(first)) first = e.getStartTime();
+            if (last == null || e.getEndTime().isAfter(last)) last = e.getEndTime();
+            if (type.equals("jdk.GarbageCollection")) {
+                gcs++;
+                gcPause += e.getDuration("sumOfPauses").toNanos() / 1e6;
+                continue;
+            }
+            if (type.equals("jdk.SafepointBegin")) {
+                safepoint += e.getDuration().toNanos() / 1e6;
+                continue;
+            }
             if (!type.equals("jdk.ExecutionSample") && !type.equals("jdk.NativeMethodSample")) continue;
             RecordedStackTrace st = e.getStackTrace();
             if (st == null) continue;
@@ -59,6 +74,9 @@ public class Classify {
             }
         }
         System.out.println("main-thread samples " + total);
+        if (first != null)
+            System.out.printf("recorded %.0f ms; %d GCs paused %.0f ms; safepoints %.0f ms%n",
+                java.time.Duration.between(first, last).toNanos() / 1e6, gcs, gcPause, safepoint);
         for (var en : byPhase.entrySet()) {
             int n = en.getValue().values().stream().mapToInt(i -> i).sum();
             System.out.printf("%-26s %6d (%.0f%%)%n", en.getKey(), n, 100.0 * n / total);

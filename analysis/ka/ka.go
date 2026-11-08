@@ -571,7 +571,7 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 		m.Diagnostics, m.Files = javaDiags, nil
 		tm.Mark("lower")
 	}
-	if cache != nil {
+	if cache != nil && !noReuse {
 		c := &checked{check: m.Check, key: key, paths: paths, texts: slices.Concat(texts, javaTexts), files: m.Files, diags: m.Diagnostics,
 			clean: len(broken) == 0,
 			snaps: make(map[string]checkedSnap, len(sources))}

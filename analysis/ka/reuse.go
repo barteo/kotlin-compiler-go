@@ -83,26 +83,40 @@ type checkedSnap struct {
 
 // find returns the check with key of paths with texts that c keeps, and
 // whether it is of the same texts; or, if none is, the last check with
-// key, whose parses an update may reuse, or nil. A nil c keeps none.
+// key of the same paths, which an update may check only some files
+// against (changedFiles); or else the last check with key, whose parses
+// an update may reuse; or nil. A nil c keeps none.
+//
+// The checks of a KSP run alternate between file sets: the sources, then
+// the sources with what the processors generated. An edit's update finds
+// the last run's check of the same round, not the round before it.
 func (c *checkCache) find(key string, paths, texts []string) (*checked, bool) {
 	if c == nil || noReuse {
 		return nil, false
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	var last *checked
+	var last, same *checked
 	for i := len(c.list) - 1; i >= 0; i-- {
 		e := c.list[i]
 		if e.key != key {
 			continue
 		}
-		if slices.Equal(e.paths, paths) && slices.Equal(e.texts, texts) {
-			c.list = append(slices.Delete(c.list, i, i+1), e)
-			return e, true
+		if slices.Equal(e.paths, paths) {
+			if slices.Equal(e.texts, texts) {
+				c.list = append(slices.Delete(c.list, i, i+1), e)
+				return e, true
+			}
+			if same == nil {
+				same = e
+			}
 		}
 		if last == nil {
 			last = e
 		}
+	}
+	if same != nil {
+		return same, false
 	}
 	return last, false
 }

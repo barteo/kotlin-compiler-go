@@ -9,7 +9,8 @@
 # (default 100) files, written to data/large-N. Before timing, it runs
 # Room once on each backend (the build.sh test's RunKsp) and fails unless
 # both generate the same files (CHECK=0 skips this). EDIT=auto edits
-# r/Item000.kt (large) or r/Db.kt (small). The rest of the environment is
+# r/Item000.kt (large) or r/Db.kt (small); EDIT=leaf edits the last
+# file (large). The rest of the environment is
 # bench/ksp/run.sh's (BACKENDS, COLD, JFR, KC_TIMING, JVM_OPTS). It needs
 # jvm/kc-aa/build.sh stock to have run, which fetches Room's jars.
 set -euo pipefail
@@ -31,6 +32,7 @@ large)
 	src=$here/data/large-$n
 	[ -s "$src/r/AppDb.kt" ] && [ "$src/r/AppDb.kt" -nt "$here/gen.sh" ] || "$here/gen.sh" "$src" "$n"
 	edit=r/Item000.kt
+	leaf=r/Item$(printf %03d $((n - 1))).kt
 	;;
 *) echo "run.sh: WORKLOAD is small or large" >&2; exit 2 ;;
 esac
@@ -40,6 +42,7 @@ paths "${room_procs[@]}" > "$work/procs.txt"
 STOCK_PROCS_EXTRA=$(paths "${room_serialization[@]}" | paste -sd:)
 export STOCK_PROCS_EXTRA
 [ "${EDIT:-}" = auto ] && export EDIT=$edit
+[ "${EDIT:-}" = leaf ] && export EDIT=${leaf:-$edit}
 [ "${CHECK:-1}" = 0 ] || same_output "$src" "$work/libs.txt" "$work/procs.txt" "$work" "$STOCK_PROCS_EXTRA"
 
 exec "$root/bench/ksp/run.sh" "$src" "$work/libs.txt" "$work/procs.txt" "$@"

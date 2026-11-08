@@ -301,6 +301,8 @@ fun main(args: Array<String>) {
             rec = jdk.jfr.Recording()
             rec.enable("jdk.ExecutionSample").withPeriod(Duration.ofMillis(1))
             rec.enable("jdk.NativeMethodSample").withPeriod(Duration.ofMillis(1))
+            rec.enable("jdk.GarbageCollection")
+            rec.enable("jdk.SafepointBegin")
             rec.start()
         }
         val out = File(outBase, "out")

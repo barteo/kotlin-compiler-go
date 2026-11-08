@@ -155,6 +155,36 @@ open class B {
 	}
 }
 
+// KSP's rounds alternate between the sources and the sources with what
+// the processors generated: a body edit's update in each round is checked
+// against the last run's check of the same files, not the round before.
+func TestIncrementalRounds(t *testing.T) {
+	a := "package p\nclass A { fun f(): Int { return 1 } }\n"
+	b := "package p\nclass B(val a: A)\n"
+	gen := "package p\nclass BAdapter { fun make(a: A) = B(a) }\n"
+	a2 := "package p\nclass A { fun f(): Int { return 2 } }\n"
+	s := Open(withStdlib(t))
+	defer s.Close()
+	for _, srcs := range [][]Source{sources(a, b), sources(a, b, gen)} {
+		if _, err := s.Update(context.Background(), srcs); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, srcs := range [][]Source{sources(a2, b), sources(a2, b, gen)} {
+		incrementalUpdates.Store(0)
+		got, err := s.Update(context.Background(), srcs)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if incrementalUpdates.Load() != 1 {
+			t.Errorf("%d files: not checked incrementally", len(srcs))
+		}
+		if d := sameModel(got, wholeCheck(t, s, srcs)); d != "" {
+			t.Error(d)
+		}
+	}
+}
+
 // An update that changes what a file declares is checked whole.
 func TestIncrementalSignature(t *testing.T) {
 	a := "package p\nfun f() = 1\nfun g(): Int { return 1 }\n"
