@@ -98,8 +98,8 @@ r, err := s.Update(ctx, sources) // sources carry editor texts, as ka.Source
 - `ka`'s library cache and body-only reuse (`libcache.go`, `reuse.go`,
   `signature.go`) move to `internal/kasession`, shared by `ka`
   (signatures only, for KSP) and `analysis` (bodies).
-- **Partial facts.** A file's facts are exported for each declaration in
-  which lowering and checking reported no error. `Result.Complete()`
+- **Partial facts.** A file's facts are exported if lowering and checking
+  reported no error in it (per declaration from L2). `Result.Complete()`
   reports whether there was no error anywhere, which is the contract
   `AnalyzeArena` keeps.
 - Facts are kept per file and carried over for files an update doesn't
@@ -122,11 +122,12 @@ r, err := s.Update(ctx, sources) // sources carry editor texts, as ka.Source
   the hashes of the build files (`*.gradle*`, `gradle.properties`,
   `libs.versions.toml`), and imported again when they change. Import is
   the only time a JVM runs.
-- **Source sets.** A test source set is its own module with main as a
-  friend, as `-Xfriend-paths` does.
-- **Several modules.** Until L6 a project dependency is its Gradle class
-  output, with a notice when that is missing or older than its sources.
-  From L6 it is the other module's sources, checked as a library.
+- **Source sets.** A test source set is its own module, which depends on
+  main (Gradle's associated compilations).
+- **Several modules.** A project dependency, a class path entry that is
+  another module's output, is that module's sources, analyzed with the
+  module's in one session, so stale or missing class output doesn't
+  matter. From L6 it is checked once, as a library.
 - **Out of scope:** `.kts` (build scripts included), KMP, Android (AGP),
   and code intelligence for Java. Java sources in a module are read for
   their declarations, as `kc` reads them (`internal/javasrc`).
@@ -136,17 +137,19 @@ r, err := s.Update(ctx, sources) // sources carry editor texts, as ka.Source
 `kc`'s errors are shown as errors only where they are reliable:
 
 - **Syntax errors** come from `psi`, with ranges and kotlinc's messages.
-- **Ranges.** A checker error's position maps to the smallest psi node
-  starting there, through `lower.Provenance`.
-- **Codes.** `syntax.Error` gets a `Code`, named after kotlinc's
-  factories (`UNRESOLVED_REFERENCE`, `ARGUMENT_TYPE_MISMATCH`, ...),
-  starting with the 40 most common messages.
-- **Precision.** `bench/conformance` gets a mode that measures each code's
+- **Ranges.** A checker error's range is the psi token at its position,
+  or the whole string literal at an opening quote.
+- **Codes.** `syntax.Error` has a `Code`, named after kotlinc's
+  factories (`UNRESOLVED_REFERENCE`, `TYPE_MISMATCH`, ...), from a table
+  of the checker's message formats (`internal/check/codes.go`).
+- **Precision.** `bench/conformance -precision` measures each code's
   false errors on the diagnostics tests `kotlinc` accepts. A code is an
   error if its precision is at least 99%, otherwise a warning, and
-  messages without a code are hidden. The setting `kc.diagnostics.level`
-  shows them all. The table is committed as `bench/results/lsp-precision.tsv`
-  and works as a ratchet, as `diagnostics.tsv` does.
+  messages without a code are warnings. The setting `diagnostics`
+  (`initializationOptions`) is `default`, `coded` (only coded messages)
+  or `strict` (everything an error). The table is committed as
+  `bench/results/lsp-precision.tsv`, and a test keeps
+  `internal/ide`'s list of demoted codes equal to it.
 - **Unsupported features** (`unsupported:<feature>`) are never errors in
   the editor: they are information ("`kc` doesn't support this; `kotlinc`
   may accept it"), and the declaration has no facts.
@@ -263,6 +266,89 @@ file takes 7 ms with pooled parsers and 10.5 ms without. Splicing still
 copies the node array, so the cost grows with file size at about
 65 MB/s. The VS Code and Neovim smoke runs are not written down yet.
 
+### L1: project model and semantic session
+
+The server learns a workspace's modules and shows `kc`'s errors in them:
+
+- **`internal/kasession`** has `ka`'s refcounted library cache and its
+  signature hash, now shared with `analysis`. `ka`'s snapshot reuse
+  (`reuse.go`) stays in `ka`: `analysis` reuses facts, not models, and
+  needs none of it.
+- **`analysis.Session`** keeps a library open across updates. Its facts
+  are per file: a file with an error has diagnostics and no facts, and
+  the others keep theirs. A body-only edit (equal signature hash) checks
+  only the changed files (`check.Options.Only`) and carries the other
+  files' facts and diagnostics over. Their elements are remapped to the
+  new parse and their symbols renumbered. `TestSessionIncrementalRun`
+  edits a body in every file of `testdata/run`: all 574 edits are
+  incremental, and each result equals a whole update's. A library symbol
+  that only carried-over facts name is matched by its checker pointer for
+  one update only. After that it is matched by declaration, kind and
+  name, or added again.
+- **`internal/project`** loads `kc-lsp.json`, else imports Gradle, else
+  takes the folder as one module. The import is an embedded Groovy init
+  script with task `kcLspModel`. It reports each JVM compilation's
+  sources, class path, friend paths, outputs, module name, opt-ins, JVM
+  default, explicit API, JDK and compiler plugins (from the plugin class
+  path's jar names). The model is cached in `.kc-lsp/model.json` under a
+  hash of the build scripts, properties and version catalogs. A class
+  path entry that is another compilation's output becomes a module
+  dependency, whose sources are analyzed with the module's. A two-project
+  build (a library, and an app with tests on JUnit) imports in 43 s cold,
+  most of it downloads, and in 1.9 s with a warm daemon. Its four
+  modules check with no errors. The imports of kotlinpoet, Ktor and
+  octi-server are not run yet: running their builds needs a machine where
+  third-party build code may run.
+- **Codes and ranges.** About 55 of the checker's message formats map to
+  kotlinc's diagnostic names (`internal/check/codes.go`; a test checks
+  every format is still used). `kc -features` prints the code, and psi's
+  syntax errors are `SYNTAX`.
+- **Precision** (`bench/results/lsp-precision.tsv`). Of the 44 codes kc
+  reports in the conformance tests, 32 have no false errors on tests
+  kotlinc accepts. 12 are below 99% and are warnings, among them `TYPE_MISMATCH` (0.880, 81 false of 673),
+  `UNRESOLVED_REFERENCE` (0.927) and `UNSAFE_CALL` (0.970). Uncoded
+  messages are at 0.939. The conformance tests are edge cases, so these
+  are lower bounds for ordinary code.
+- **`internal/lsp`.**
+  - Each workspace folder loads in the background after `initialized`.
+    Each module has a session and an update goroutine.
+  - An open, edit, close or watched-file change kicks the modules whose
+    sources hold the file (`Project.Dependents`). An update runs 50 ms
+    after the last kick, on the open documents' snapshots and the other
+    files' from disk (cached by size and time). A newer kick cancels it,
+    unless the module has never finished an update.
+  - A file shows the diagnostics its own module computed for that
+    version. An edit moves the last ones by the edit, and drops those it
+    touches, until the next update. Closed files show theirs too, and a
+    file in no module shows syntax errors only.
+  - A change to `kc-lsp.json` or a Gradle file reloads the project. File
+    watchers are registered dynamically when the client supports it;
+    otherwise `didSave` reloads.
+  - Four new golden scripts run real workspaces: `semantic*.txtar`, with
+    the `wait`, `notify` and `write` commands.
+
+`internal/lsp/bench_test.go` measures through the server over pipes, on
+a generated 200-file module (or `KC_LSP_BENCH`), on a 4-core Xeon:
+
+| Measure | Target | L1 |
+|---|---:|---:|
+| Cold open to first semantic diagnostics (library, whole check) | < 1 s | 0.57 s |
+| Body edit to semantic diagnostics, without the 50 ms debounce | p50 < 30 ms, p95 < 100 ms | p50 110–126 ms, p95 132–162 ms |
+
+The body edit misses its target. Per edit, the profile shows:
+
+- **Re-lowering every file:** about 27 ms. The checker writes into the
+  ASTs, so they can't be kept between updates.
+- **Copying the carried-over facts for remapping:** about 22 ms.
+- **Checking the changed file:** about 18 ms.
+- **Building its facts:** about 17 ms.
+- **Garbage collection:** a large share on top of that.
+
+Copying only the facts that point into a changed file, and keeping the
+symbol table across updates, would remove most of the copying. Lowered
+trees that the checker doesn't write into are the L6 work on declaration
+edits.
+
 ## Gaps and open questions
 
 - **Diagnostics `kc` lacks.** `kc` reports no warnings and runs few of
@@ -270,11 +356,25 @@ copies the node array, so the cost grows with file size at about
   IntelliJ. The precision policy keeps false errors out, not missing
   ones in.
 - **Declaration edits** check the whole module until L6, and every update
-  lowers every file while the checker writes into the trees.
-- **Project dependencies** read stale class output until L6.
+  lowers every file while the checker writes into the trees. With the
+  copying of carried-over facts, that puts a body edit at about 120 ms
+  on a 200-file module, four times its target (L1 above).
+- **Project dependencies** are analyzed from source with the module
+  that depends on them, as one session: a module and its dependencies'
+  files are checked together, and a dependency's files are checked
+  again in each module that depends on it. Their own diagnostics are
+  shown from their own module only.
+- **Ranges** are one token, or a string literal, at the error's position.
+  kotlinc's ranges are often a whole call or expression.
+- **Precision** is measured on the conformance tests, not on real
+  projects. A code that never fires on a valid test counts as precise,
+  even when it fires rarely.
+- **Gradle import** of the projects named in L1's acceptance criterion
+  (kotlinpoet, Ktor, octi-server) is not yet run.
 - **Whole-file reparse** still happens for edits outside a declaration
   body: signatures, imports, and bodies inside string templates.
-- **Gradle import** depends on the Kotlin Gradle plugin's API, read by
-  reflection; each plugin version it supports needs a fixture.
+- **Gradle import** depends on the Kotlin Gradle plugin's API, read
+  dynamically from Groovy; each plugin version it supports needs a
+  fixture.
 - **KDoc and library sources** need `-sources.jar`s, which Gradle
-  downloads only when asked; the import asks for them.
+  downloads only when asked; the import doesn't ask for them yet.
