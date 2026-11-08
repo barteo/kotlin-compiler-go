@@ -31,6 +31,9 @@ func (c *Checker) stmts(b *syntax.Block, want types.Type, valueUsed bool) types.
 	t := types.UnitType
 	nothing := false
 	for i, s := range b.Stmts {
+		if c.u.cancelled() {
+			break
+		}
 		last := i == len(b.Stmts)-1
 		c.site = varSite{b, i}
 		if last && b == c.tailBlock {

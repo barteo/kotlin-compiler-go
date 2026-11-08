@@ -63,9 +63,11 @@ type Universe struct {
 	// aliasFile is the checker of the file that declares each typealias,
 	// which resolves its right side in the file's scope.
 	aliasFile map[*types.AliasSym]*Checker
-	// ctx cancels checking, and rec, if set, receives its facts.
-	ctx context.Context
-	rec Recorder
+	// ctx cancels checking, and rec, if set, receives its facts. done is
+	// ctx.Done(), which bodies poll: see cancelled.
+	ctx  context.Context
+	done <-chan struct{}
+	rec  Recorder
 	// lookups is rec if it records lookups (see lookups.go).
 	lookups LookupRecorder
 
@@ -562,11 +564,21 @@ type Options struct {
 }
 
 // CheckOptions is CheckContext, which checks what opts says.
-func CheckOptions(ctx context.Context, files []*syntax.File, lib *Library, jobs int, rec Recorder, opts Options) ([]*syntax.Error, error) {
+func CheckOptions(ctx context.Context, files []*syntax.File, lib *Library, jobs int, rec Recorder, opts Options) (_ []*syntax.Error, err error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	u := &Universe{ctx: ctx, rec: rec, Pkgs: map[string]*Package{}, prefixes: map[string]bool{}, ext: lib.t, module: moduleSuffix(lib.Module),
+	// Once ctx is done, the bodies being checked stop early, and leave
+	// what reads them after a state it may not expect: a panic then is
+	// the cancellation's.
+	defer func() {
+		if ctx.Err() != nil {
+			if v := recover(); v != nil {
+				err = ctx.Err()
+			}
+		}
+	}()
+	u := &Universe{ctx: ctx, done: ctx.Done(), rec: rec, Pkgs: map[string]*Package{}, prefixes: map[string]bool{}, ext: lib.t, module: moduleSuffix(lib.Module),
 		aliasFile: map[*types.AliasSym]*Checker{}, noJVMDefault: lib.NoJVMDefault, jvmDefaultCompat: lib.JVMDefaultCompat, parcelize: lib.Parcelize, serialization: lib.Serialization,
 		compose: lib.Compose, serialInterfaces: map[*syntax.ClassDecl]bool{}, optIns: lib.OptIns, partial: opts.Signatures}
 	u.lookups, _ = rec.(LookupRecorder)
@@ -683,7 +695,9 @@ func CheckOptions(ctx context.Context, files []*syntax.File, lib *Library, jobs 
 		wg.Go(func() {
 			defer func() {
 				if v := recover(); v != nil {
-					crash.CompareAndSwap(nil, &workerPanic{v, debug.Stack()})
+					if ctx.Err() == nil {
+						crash.CompareAndSwap(nil, &workerPanic{v, debug.Stack()})
+					}
 					for range work {
 					}
 				}
@@ -2402,6 +2416,9 @@ func argRefs(ref *syntax.TypeRef, n int) []*syntax.TypeRef {
 
 func (c *Checker) inferAll() {
 	for _, d := range c.file.Decls {
+		if c.u.cancelled() {
+			return
+		}
 		switch d := d.(type) {
 		case *syntax.FunDecl:
 			ensureFun(d.Sym)
@@ -2411,6 +2428,9 @@ func (c *Checker) inferAll() {
 	}
 	for _, d := range c.classes {
 		for _, m := range d.Members {
+			if c.u.cancelled() {
+				return
+			}
 			switch m := m.(type) {
 			case *syntax.FunDecl:
 				ensureFun(m.Sym)
@@ -3339,6 +3359,10 @@ func (c *Checker) assignable(from, to types.Type, p syntax.Pos) {
 }
 
 // cancelled reports whether done, a context's Done channel, is closed.
+// cancelled reports whether the check's context is done: inference
+// polls it between declarations, and blocks between statements.
+func (u *Universe) cancelled() bool { return cancelled(u.done) }
+
 func cancelled(done <-chan struct{}) bool {
 	select {
 	case <-done:

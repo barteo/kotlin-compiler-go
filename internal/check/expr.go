@@ -221,6 +221,9 @@ func (c *Checker) expr1(x syntax.Expr, want types.Type, allowRange bool, sink *s
 		return types.BoolType
 	case *syntax.NullLit:
 		return types.NullType
+	case *syntax.ErrorExpr:
+		// Lowering reported it.
+		return types.InvalidType
 	case *syntax.PropRef:
 		return c.propRef(x)
 	case *syntax.ObjectExpr:
