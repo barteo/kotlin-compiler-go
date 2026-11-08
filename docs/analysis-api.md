@@ -2341,9 +2341,9 @@ again whenever it runs.
 
 Where kc's time goes now:
 
-- **Room:** the processors. Room, XProcessing and KotlinPoet take about
-  2.8 s of each run on both backends, so 10x of stock is out of reach;
-  a backend that took no time would get about 3.5x. In JFR samples the
+- **Room:** the processors. Room, XProcessing and KotlinPoet are about
+  90% of kc's run, and take as long on stock, so 10x is out of reach; a
+  backend that took no time would get about 3.5x. In JFR samples the
   share of kc's own JVM layer fell from 12% to about 8%; the
   `KcAnalysis` proxy's reflection is the largest piece left (about 2%).
 - **Hilt edits:** the generated Java. Dagger writes Java sources, and a

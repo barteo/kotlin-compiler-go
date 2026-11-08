@@ -43,12 +43,12 @@ on both backends.
 
 | ms | stock KSP2 | kc | ratio | ceiling |
 |---|---|---|---|---|
-| Room, warm | 8782 | 2755 | 3.2x | about 3.5x (Room, XProcessing and KotlinPoet take 2.8 s) |
+| Room, warm | 8782 | 2755 | 3.2x | about 3.5x (Room, XProcessing and KotlinPoet are about 90% of kc's run) |
 | Room, leaf edit | 10850 | 3550 | 3.1x | about 3.5x |
 | Hilt, warm | 4525 | 861 | 5.3x | about 10x |
 | Hilt, edit Feature000 (100 files dirty) | 5971 | 1751 | 3.4x | |
 | Hilt, leaf edit | 585 | 341 | 1.7x | about 12x (processing takes about 50 ms) |
-| Moshi, warm | 2419 | 629 | 3.8x | about 9x |
+| Moshi, warm | 2419 | 629 | 3.8x | about 7.5x |
 | Moshi, edit Model000 (10 files dirty) | 774 | 245 | 3.2x | |
 | Moshi, leaf edit | 421 | 131 | 3.2x | about 30x (processing takes about 14 ms) |
 | Moshi, one-file test, warm | 247 | 20 | 12x | |
