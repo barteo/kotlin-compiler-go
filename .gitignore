@@ -3,3 +3,4 @@ bin/
 *.test
 /jvm/*/build/
 /jvm/**/.gradle/
+*.jfr
