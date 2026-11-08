@@ -1087,6 +1087,14 @@ type NullLit struct {
 	exprBase
 }
 
+// ErrorExpr stands for an expression or statement that failed to parse
+// or lower, where lowering recovers from errors (lower.Recover): the
+// checker gives it an invalid type without reporting it, as lowering
+// did.
+type ErrorExpr struct {
+	exprBase
+}
+
 // ObjectExpr is an object expression, object : I { ... }: an instance of
 // an anonymous class, Decl.
 type ObjectExpr struct {

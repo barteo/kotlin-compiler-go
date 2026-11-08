@@ -153,7 +153,7 @@ func (l *lowerer) fun(n psi.NodeRef) *syntax.FunDecl {
 		case psi.KindBLOCK:
 			fd.Body = l.bodyBlock(c, hasModifier(n, psi.KindINLINE_KEYWORD))
 		case psi.KindEQ:
-			fd.ExprBody = l.expr(exprAfter(n, psi.KindEQ))
+			fd.ExprBody = l.tailExpr(n)
 		}
 		if c.NumericKind() == psi.KindTYPE_PARAMETER_LIST {
 			fd.TypeParams = l.typeParams(tpl)
@@ -233,7 +233,7 @@ func (l *lowerer) prop(n psi.NodeRef, m syntax.Modifiers) *syntax.PropDecl {
 		case psi.KindTYPE_CONSTRAINT_LIST:
 			l.whereClause(c, pd.TypeParams)
 		case psi.KindEQ:
-			pd.Init = l.expr(exprAfter(n, psi.KindEQ))
+			pd.Init = l.tailExpr(n)
 		case psi.KindPROPERTY_DELEGATE:
 			delegate = c
 		case psi.KindPROPERTY_ACCESSOR, psi.KindBACKING_FIELD:
@@ -400,7 +400,7 @@ func (l *lowerer) accessor(pd *syntax.PropDecl, n psi.NodeRef) {
 	case has(n, psi.KindBLOCK):
 		fd.Body = l.bodyBlock(child(n, psi.KindBLOCK), false)
 	case has(n, psi.KindEQ):
-		fd.ExprBody = l.expr(exprAfter(n, psi.KindEQ))
+		fd.ExprBody = l.tailExpr(n)
 	default:
 		l.failAt(l.end(n), "unexpected %s body", name+"ter")
 	}

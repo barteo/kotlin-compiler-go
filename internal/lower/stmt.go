@@ -41,7 +41,7 @@ func (l *lowerer) bodyBlock(n psi.NodeRef, whole bool) *syntax.Block {
 			continue
 		}
 		if t := l.src[c.Range().Start:]; strings.HasPrefix(t, "contract") || strings.HasPrefix(t, "kotlin.contracts") {
-			b.Stmts = []syntax.Stmt{l.stmt(c)}
+			b.Stmts = []syntax.Stmt{l.blockStmt(c)}
 		}
 		break
 	}
@@ -56,9 +56,27 @@ func (l *lowerer) stmts(n psi.NodeRef) []syntax.Stmt {
 		case psi.KindLBRACE, psi.KindRBRACE, psi.KindSEMICOLON:
 			continue
 		}
-		out = append(out, l.stmt(c))
+		out = append(out, l.blockStmt(c))
 	}
 	return out
+}
+
+// blockStmt lowers statement c of a block. With Recover, a statement
+// that fails, or that contains a psi syntax error, is recorded as an
+// error and lowered as an ErrorExpr statement, and lowering goes on with
+// the next one: the syntaxError of the declaration skipped its errors
+// (see recovers).
+func (l *lowerer) blockStmt(c psi.NodeRef) syntax.Stmt {
+	if !l.recover {
+		return l.stmt(c)
+	}
+	var s syntax.Stmt
+	if l.recovered(func() { l.syntaxError(c); s = l.stmt(c) }) {
+		return s
+	}
+	e := &syntax.ErrorExpr{}
+	e.P = l.pos(c)
+	return &syntax.ExprStmt{X: e}
 }
 
 // body lowers a control structure's body, a THEN, ELSE or BODY: a block,
@@ -302,7 +320,7 @@ func (l *lowerer) localVar(n psi.NodeRef) *syntax.VarStmt {
 	case has(n, psi.KindPROPERTY_DELEGATE):
 		vs.Delegate = l.expr(exprAfter(child(n, psi.KindPROPERTY_DELEGATE), psi.KindBY_KEYWORD))
 	case has(n, psi.KindEQ):
-		vs.Init = l.expr(exprAfter(n, psi.KindEQ))
+		vs.Init = l.tailExpr(n)
 	case vs.Type == nil:
 		l.fail(name, "this variable must either have an explicit type or be initialized")
 	}
