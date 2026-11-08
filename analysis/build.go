@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"fmt"
+	"maps"
 	"slices"
 	"strconv"
 	"strings"
@@ -18,8 +19,31 @@ import (
 	"github.com/barteo/kotlin-compiler-go/psi"
 )
 
-// analyze lowers, checks and exports the facts of snapshots.
+// analyze lowers, checks and exports the facts of snapshots against a
+// library of its own: AnalyzeArena, all or nothing.
 func analyze(ctx context.Context, cfg Config, snaps []*psi.Snapshot) (*Result, error) {
+	res, err := run(ctx, cfg, snaps, false, func() (*classpath.Path, *check.Library, func(), error) {
+		cp, lib, err := driver.OpenLibrary(libraryOptions(cfg))
+		if err != nil {
+			return nil, nil, nil, fmt.Errorf("analysis: %w", err)
+		}
+		return cp, lib, func() { cp.Close() }, nil
+	})
+	if err != nil || res.Complete() {
+		return res, err
+	}
+	return &Result{facts: map[ElementID]*Fact{}, diags: res.diags}, nil
+}
+
+// openLibrary returns the class path and library to check against and a
+// function that releases them.
+type openLibrary func() (*classpath.Path, *check.Library, func(), error)
+
+// run lowers, checks and exports the facts of snapshots. If partial is
+// false, it stops at the first stage with errors, before opening the
+// library if lowering failed; else it checks every file that lowered and
+// exports the facts of the files without errors.
+func run(ctx context.Context, cfg Config, snaps []*psi.Snapshot, partial bool, open openLibrary) (*Result, error) {
 	jobs := max(cfg.Jobs, 1)
 	n := len(snaps)
 	files := make([]*syntax.File, n)
@@ -32,12 +56,14 @@ func analyze(ctx context.Context, cfg Config, snaps []*psi.Snapshot) (*Result, e
 		return nil, err
 	}
 	res := &Result{facts: map[ElementID]*Fact{}}
+	broken := make([]bool, n)
 	for i, es := range errLists {
 		for _, e := range es {
 			res.diags = append(res.diags, diagnostic(snaps[i].Path(), e))
+			broken[i] = true
 		}
 	}
-	if len(res.diags) > 0 {
+	if len(res.diags) > 0 && !partial {
 		return res, nil
 	}
 	if d := duplicateClasses(files); d != nil {
@@ -45,28 +71,39 @@ func analyze(ctx context.Context, cfg Config, snaps []*psi.Snapshot) (*Result, e
 		return res, nil
 	}
 
-	cp, lib, err := driver.OpenLibrary(driver.Options{
-		JDKHome: cfg.JDKHome, NoJDK: cfg.NoJDK, ClassPath: cfg.ClassPath,
-		ModuleName: cfg.ModuleName, Jobs: jobs,
-	})
+	cp, lib, done, err := open()
 	if err != nil {
-		return nil, fmt.Errorf("analysis: %w", err)
+		return nil, err
 	}
-	defer cp.Close()
+	defer done()
 	rec := &recorder{when: map[*syntax.When]whenReport{}, stmt: map[syntax.Stmt]bool{}, unreachable: map[syntax.Stmt]bool{}, annots: map[*syntax.File]map[syntax.Pos]*types.ClassSym{}, elvis: map[*syntax.Binary]bool{}, typeRefs: map[*syntax.TypeRef]types.Type{}, annotClass: map[*syntax.Annotation]*types.ClassSym{}, stmtTypes: map[syntax.Expr]types.Type{}, aliases: map[any]*types.AliasSym{}}
 	errs, err := check.CheckContext(ctx, files, lib, jobs, rec)
 	if err != nil {
 		return nil, err
 	}
+	index := map[string]int{}
+	for i, s := range snaps {
+		index[s.Path()] = i
+	}
 	for _, e := range errs {
 		res.diags = append(res.diags, diagnostic(e.File, e))
+		if i, ok := index[e.File]; ok {
+			broken[i] = true
+		} else {
+			for i := range broken { // not one file's: none is trusted
+				broken[i] = true
+			}
+		}
 	}
-	if len(res.diags) > 0 {
+	if len(res.diags) > 0 && !partial || !slices.Contains(broken, false) {
 		return res, nil
 	}
 
 	b := newBuilder(res, snaps, files, provs, rec)
 	b.cp = cp
+	if slices.Contains(broken, true) {
+		b.broken = broken
+	}
 	b.build()
 	return res, nil
 }
@@ -235,6 +272,9 @@ type builder struct {
 	pkgAnnots map[string][]string
 
 	symIDs map[any]uint32
+	// broken marks the files whose facts aren't exported, those with
+	// errors; nil if none.
+	broken []bool
 	syms   []any // *types.VarSym, *types.FunSym or *types.ClassSym, by ID-1
 
 	// negatedAt are the PREFIX_EXPRESSIONs of literals folded from them:
@@ -297,6 +337,11 @@ func (b *builder) build() {
 			return cmp.Compare(a.rank, c.rank)
 		})
 	}
+	for i := range entries {
+		if b.broken != nil && b.broken[i] {
+			entries[i] = nil
+		}
+	}
 	for i, es := range entries {
 		sid := b.snaps[i].ID()
 		for _, e := range es {
@@ -324,6 +369,17 @@ func (b *builder) build() {
 	b.wrappers()
 	b.unreachable()
 	b.annotations()
+	if b.broken != nil {
+		// The later passes walk every file: drop what they found in the
+		// broken ones.
+		skip := map[psi.SnapshotID]bool{}
+		for i, s := range b.snaps {
+			if b.broken[i] {
+				skip[s.ID()] = true
+			}
+		}
+		maps.DeleteFunc(b.res.facts, func(el ElementID, _ *Fact) bool { return skip[el.Snapshot] })
+	}
 	b.symbols()
 
 	for id := range b.res.facts {

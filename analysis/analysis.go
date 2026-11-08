@@ -21,6 +21,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/barteo/kotlin-compiler-go/internal/driver"
 	"github.com/barteo/kotlin-compiler-go/psi"
 )
 
@@ -48,6 +49,62 @@ type Config struct {
 	// "warning" or "strict". It is validated; kc's checker doesn't
 	// enforce it.
 	ExplicitAPIMode string
+	// OptIns are the markers the sources opt in to, as with kotlinc's
+	// -opt-in.
+	OptIns []string
+	// Plugins are the compiler plugins the module uses that kc knows:
+	// "compose", "serialization" and "parcelize".
+	Plugins []string
+	// JVMDefault is kotlinc's -jvm-default: "" (no-compatibility),
+	// "no-compatibility", "enable" or "disable".
+	JVMDefault string
+}
+
+// validate checks cfg and snapshots as AnalyzeArena and Session.Update
+// take them.
+func validate(cfg Config, snapshots []*psi.Snapshot) error {
+	switch cfg.ExplicitAPIMode {
+	case "", "disable", "warning", "strict":
+	default:
+		return fmt.Errorf("analysis: invalid explicit API mode %q", cfg.ExplicitAPIMode)
+	}
+	switch cfg.JVMDefault {
+	case "", "no-compatibility", "enable", "disable":
+	default:
+		return fmt.Errorf("analysis: invalid -jvm-default %q", cfg.JVMDefault)
+	}
+	for _, p := range cfg.Plugins {
+		switch p {
+		case "compose", "serialization", "parcelize":
+		default:
+			return fmt.Errorf("%w: compiler plugin %q", ErrUnsupported, p)
+		}
+	}
+	seen := map[*psi.Snapshot]bool{}
+	for _, s := range snapshots {
+		if s == nil {
+			return errors.New("analysis: nil snapshot")
+		}
+		if seen[s] {
+			return fmt.Errorf("analysis: %s passed twice", s.Path())
+		}
+		seen[s] = true
+		if strings.HasSuffix(s.Path(), ".kts") {
+			return fmt.Errorf("%w: script %s", ErrUnsupported, s.Path())
+		}
+	}
+	return nil
+}
+
+// libraryOptions returns the options cfg's library is opened with.
+func libraryOptions(cfg Config) driver.Options {
+	return driver.Options{
+		JDKHome: cfg.JDKHome, NoJDK: cfg.NoJDK, ClassPath: cfg.ClassPath, FriendPaths: cfg.FriendPaths,
+		ModuleName: cfg.ModuleName, Jobs: max(cfg.Jobs, 1), OptIns: cfg.OptIns,
+		Compose: slices.Contains(cfg.Plugins, "compose"), Serialization: slices.Contains(cfg.Plugins, "serialization"),
+		Parcelize:    slices.Contains(cfg.Plugins, "parcelize"),
+		NoJVMDefault: cfg.JVMDefault == "disable", JVMDefaultCompat: cfg.JVMDefault == "enable",
+	}
 }
 
 // ErrUnsupported is returned, wrapped, for input kc can't analyze at
@@ -362,6 +419,11 @@ func (r *Result) Diagnostics() []Diagnostic {
 	return slices.Clone(r.diags)
 }
 
+// Complete reports whether the sources had no errors, so that every file
+// has its facts. A Session's Result that isn't complete has the facts of
+// the files without errors; AnalyzeArena's has none.
+func (r *Result) Complete() bool { return r != nil && len(r.diags) == 0 }
+
 // Data returns all facts and symbols.
 func (r *Result) Data() Data {
 	d := Data{Facts: []Fact{}, Symbols: []Symbol{}, Capabilities: slices.Clone(capabilities)}
@@ -393,23 +455,8 @@ func AnalyzeArena(ctx context.Context, cfg Config, snapshots []*psi.Snapshot) (*
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	switch cfg.ExplicitAPIMode {
-	case "", "disable", "warning", "strict":
-	default:
-		return nil, fmt.Errorf("analysis: invalid explicit API mode %q", cfg.ExplicitAPIMode)
-	}
-	seen := map[*psi.Snapshot]bool{}
-	for _, s := range snapshots {
-		if s == nil {
-			return nil, errors.New("analysis: nil snapshot")
-		}
-		if seen[s] {
-			return nil, fmt.Errorf("analysis: %s passed twice", s.Path())
-		}
-		seen[s] = true
-		if strings.HasSuffix(s.Path(), ".kts") {
-			return nil, fmt.Errorf("%w: script %s", ErrUnsupported, s.Path())
-		}
+	if err := validate(cfg, snapshots); err != nil {
+		return nil, err
 	}
 	return analyze(ctx, cfg, snapshots)
 }

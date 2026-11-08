@@ -125,6 +125,13 @@ func (l *Library) Attach(key any, mk func() any) any {
 	return v
 }
 
+// Current reports whether l is still the library of opts: its jars haven't
+// changed since it was opened. An unshared library, whose class path has a
+// directory, is always current: its changes can't be seen.
+func (l *Library) Current(opts driver.Options) bool {
+	return l.key == "" || l.key == Key(opts)
+}
+
 // Retain adds a user to l.
 func (l *Library) Retain() {
 	libraries.mu.Lock()
