@@ -475,6 +475,7 @@ fun h() = q.J().base().id()
 	}
 	b2 := strings.Replace(b, "return j.names().size", "return j.names().size + 1", 1)
 	incrementalUpdates.Store(0)
+	shiftedUpdates.Store(0)
 	got, err := s.Update(context.Background(), srcs(a, b2))
 	if err != nil {
 		t.Fatal(err)
@@ -483,6 +484,9 @@ fun h() = q.J().base().id()
 	if incrementalUpdates.Load() != 1 {
 		t.Errorf("not checked incrementally")
 	}
+	if shiftedUpdates.Load() != 1 {
+		t.Errorf("b.kt not shifted")
+	}
 	if got.Class("q/J") == nil {
 		t.Error("Class(q/J) = nil")
 	}
@@ -490,6 +494,9 @@ fun h() = q.J().base().id()
 	defer want.Close()
 	if d := sameModel(got, want); d != "" {
 		t.Error(d)
+	}
+	if g, w := got.Class("q/J"), want.Class("q/J"); !reflect.DeepEqual(g, w) {
+		t.Errorf("Class(q/J) = %s, want %s", firstDiff(g, w), "")
 	}
 }
 

@@ -440,13 +440,50 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 	// dirty is the files a partial check checks; declEdit is set if they
 	// are declEdits', which may reach more as they're checked.
 	var dirty map[int]bool
+	// shifted are the changed files that keep their models (bodyreuse.go).
+	var shifted shiftedModels
 	declEdit := false
 	if changed != nil && len(broken) == 0 {
 		if edits := prev.bodyEdits(paths, sources, texts, javaTexts, snaps); edits != nil {
 			incrementalUpdates.Add(1)
 			dirty = map[int]bool{}
 			for _, i := range edits {
+				// A file whose change no check looks into keeps its model,
+				// moved to its new parse (bodyreuse.go).
+				if f, diags, ok := prev.shiftedFile(i, snaps[i], texts[i]); ok {
+					if shifted == nil {
+						shifted = shiftedModels{}
+					}
+					shifted[i] = shiftedModel{f, diags}
+					continue
+				}
 				dirty[i] = true
+			}
+			if len(dirty) == 0 {
+				shiftedUpdates.Add(int64(len(shifted)))
+				m.Files = slices.Clone(prev.files)
+				for i, s := range shifted {
+					m.Files[i] = s.file
+				}
+				m.Diagnostics = nil
+				for _, d := range prev.diags {
+					if !shifted.has(d.Path) {
+						m.Diagnostics = append(m.Diagnostics, d)
+					}
+				}
+				for _, s := range shifted {
+					m.Diagnostics = append(m.Diagnostics, s.diags...)
+				}
+				sortDiagnostics(m.Diagnostics, snaps)
+				tm.Mark("shifted")
+				// The Java sources and what the Kotlin ones declare are
+				// the same: so are the classes of the check's library.
+				if prev.lib != nil {
+					m.lib = prev.lib
+				}
+				keepCheck(cache, m, paths, slices.Concat(texts, javaTexts), sources, snaps, true, prev.lib)
+				ok = true
+				return m, nil
 			}
 		} else if dirty = prev.declEdits(paths, sources, texts, &javaSet{javaTexts, javaFiles}, snaps, files); dirty != nil {
 			declUpdates.Add(1)
@@ -502,21 +539,25 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 				checkedPaths[f.Path] = true
 			}
 			for _, d := range prev.diags {
-				if !checkedPaths[d.Path] {
+				if !checkedPaths[d.Path] && !shifted.has(d.Path) {
 					m.Diagnostics = append(m.Diagnostics, d)
 				}
+			}
+			for _, s := range shifted {
+				m.Diagnostics = append(m.Diagnostics, s.diags...)
 			}
 		}
 		for _, e := range checkErrs {
 			m.Diagnostics = append(m.Diagnostics, diagnostic(e.File, e))
 		}
-		slices.SortStableFunc(m.Diagnostics, func(a, b Diagnostic) int {
-			return cmp.Or(cmp.Compare(index(snaps, a.Path), index(snaps, b.Path)),
-				cmp.Compare(a.Line, b.Line), cmp.Compare(a.Col, b.Col))
-		})
+		sortDiagnostics(m.Diagnostics, snaps)
 		for i, f := range files {
 			if only != nil && !only[f] {
-				m.Files = append(m.Files, prev.files[i])
+				if s, ok := shifted[i]; ok {
+					m.Files = append(m.Files, s.file)
+				} else {
+					m.Files = append(m.Files, prev.files[i])
+				}
 				continue
 			}
 			b := &fileBuilder{f: f, snap: snaps[i], prov: provs[i], annots: rec.annots[f], values: rec.values[f], refs: rec.refs, aliases: rec.aliases, lib: m.lib,
@@ -551,20 +592,36 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 		m.Diagnostics, m.Files = javaDiags, nil
 		tm.Mark("lower")
 	}
-	if cache != nil && !noReuse {
-		c := &checked{check: m.Check, paths: paths, texts: slices.Concat(texts, javaTexts), files: m.Files, diags: m.Diagnostics,
-			clean: len(broken) == 0,
-			snaps: make(map[string]checkedSnap, len(sources))}
-		for i, src := range sources {
-			c.snaps[src.Path] = checkedSnap{texts[i], snaps[i]}
-		}
-		if java != nil {
-			c.lib = ml
-		}
-		cache.keep(c)
+	var javaLib *library
+	if java != nil {
+		javaLib = ml
 	}
+	keepCheck(cache, m, paths, slices.Concat(texts, javaTexts), sources, snaps, len(broken) == 0, javaLib)
 	ok = true
 	return m, nil
+}
+
+// keepCheck keeps the check that made model m, of sources with texts
+// (the Java sources' last), in cache.
+func keepCheck(cache *checkCache, m *Model, paths, texts []string, sources []Source, snaps []*psi.Snapshot, clean bool, lib *library) {
+	if cache == nil || noReuse {
+		return
+	}
+	c := &checked{check: m.Check, paths: paths, texts: texts, files: m.Files, diags: m.Diagnostics, clean: clean, lib: lib,
+		snaps: make(map[string]checkedSnap, len(sources))}
+	for i, src := range sources {
+		c.snaps[src.Path] = checkedSnap{texts[i], snaps[i]}
+	}
+	cache.keep(c)
+}
+
+// sortDiagnostics sorts diagnostics by their files' order in snaps, then
+// by position.
+func sortDiagnostics(diags []Diagnostic, snaps []*psi.Snapshot) {
+	slices.SortStableFunc(diags, func(a, b Diagnostic) int {
+		return cmp.Or(cmp.Compare(index(snaps, a.Path), index(snaps, b.Path)),
+			cmp.Compare(a.Line, b.Line), cmp.Compare(a.Col, b.Col))
+	})
 }
 
 // namesIn returns the identifiers in the snapshots of the files in only,
