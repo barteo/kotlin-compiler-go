@@ -2897,6 +2897,40 @@ What is left in a kc body-edit run is mostly outside the Go update: on
 Moshi, kc-aa's setup takes about 6 ms beyond the update, processing
 about 9, teardown about 6, and the time between rounds about 5.
 
+The batch as in step 36 (10 runs per case, kc's fastest beside the
+median):
+
+| ms | stock KSP2 | kc | ratio | kc min | step 36 kc (min) |
+|---|---|---|---|---|---|
+| Room large, warm | 7251 | 2271 | 3.2x | 2011 | 2514 (2336) |
+| Room large, edit Item000 | 8710 | 2530 | 3.4x | 2486 | 2796 (2605) |
+| Room large, leaf edit | 9156 | 2986 | 3.1x | 2398 | 2998 (2625) |
+| Room small, warm | 567 | 132 | 4.3x | 96 | 103 (80) |
+| Room small, edit | 620 | 181 | 3.4x | 152 | 180 (157) |
+| Hilt large, warm | 4148 | 745 | 5.6x | 593 | 692 (601) |
+| Hilt large, edit Feature000 | 3900 | 1226 | 3.2x | 717 | 1161 (1077) |
+| Hilt large, leaf edit | 575 | 120 | 4.8x | 66 | 102 (71) |
+| Hilt small, warm | 353 | 61 | 5.8x | 54 | 59 (53) |
+| Hilt small, edit | 451 | 60 | 7.5x | 56 | 53 (49) |
+| Moshi large, warm | 2172 | 446 | 4.9x | 409 | 458 (383) |
+| Moshi large, edit Model000 | 596 | 169 | 3.5x | 124 | 167 (148) |
+| Moshi large, leaf edit | 354 | 54 | 6.6x | 46 | 75 (66) |
+| Moshi small, warm | 292 | 25 | 11.7x | 22 | 23 (21) |
+| Moshi small, edit | 200 | 34 | 5.9x | 28 | 32 (29) |
+
+Cold runs: Moshi 7948–8142 / 4507–5141, Hilt 14359–18138 / 6527–7217,
+Room 18366–20241 / 9502–10536.
+
+Moshi's leaf edit moved most: a median of 54 ms against step 36's 75,
+with body edits at 52 ms and signature edits at 86 (stock 458 and 376).
+In 10 runs Hilt's leaf edits are noisier than in the 30-run pair above:
+body edits 103 ms and signature edits 146 (stock 599 and 714). Hilt's
+edits of Feature000 dirty all 100 files and don't take this path, and
+Room's processors dominate its rows, so their differences are this
+batch's noise. Moshi's one-file test is the first row past 10x, but
+stock's warm run there was 292 ms against 204 in step 36's batch. Taken
+against that, it is about 8x.
+
 ## Gaps and open questions
 
 - **Slice simplifications (M0.4).** These go when M3/M4 bring the facts in:
