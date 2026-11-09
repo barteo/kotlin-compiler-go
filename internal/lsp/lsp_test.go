@@ -50,6 +50,10 @@ var update = flag.Bool("update", false, "rewrite the want sections of testdata/*
 //	folding F                 print textDocument/foldingRange
 //	selection F POS...        print textDocument/selectionRange
 //	tokens F                  print textDocument/semanticTokens/full, decoded
+//	definition F POS          print textDocument/definition's locations
+//	typedef F POS             print textDocument/typeDefinition's locations
+//	references F POS [decl]   print textDocument/references' locations, with the declaration if decl
+//	highlight F POS           print textDocument/documentHighlight
 //	request METHOD [params]   print any request's result or error
 //	notify METHOD params      send any notification
 //	write F SECTION|-         write a workspace file on disk with a section's text, or delete it
@@ -163,6 +167,16 @@ func (s *session) uri(name string) protocol.DocumentURI {
 		return fileURI(filepath.Join(s.root, name))
 	}
 	return protocol.DocumentURI("file:///work/" + name)
+}
+
+// fileOf returns the file name of a URI of the session.
+func (s *session) fileOf(u protocol.DocumentURI) string {
+	if s.root != "" {
+		if rel, err := filepath.Rel(s.root, uriPath(u)); err == nil {
+			return filepath.ToSlash(rel)
+		}
+	}
+	return strings.TrimPrefix(string(u), "file:///work/")
 }
 
 func runScript(t *testing.T, a *archive) string {
@@ -417,6 +431,47 @@ func (s *session) run(line string) {
 			for ; r != nil; r = r.Parent {
 				fmt.Fprintf(&s.out, "  %s %s\n", fmtRange(r.Range), excerpt(d, r.Range, s.enc))
 			}
+		}
+	case "definition", "typedef", "references":
+		name := file()
+		if len(args) < 2 {
+			t.Fatalf("%s: no position", cmd)
+		}
+		at := protocol.TextDocumentPositionParams{TextDocument: doc(), Position: s.position(name, args[1])}
+		var params any = at
+		method := map[string]string{"definition": "textDocument/definition", "typedef": "textDocument/typeDefinition", "references": "textDocument/references"}[cmd]
+		if cmd == "references" {
+			params = protocol.ReferenceParams{TextDocumentPositionParams: at, Context: protocol.ReferenceContext{IncludeDeclaration: len(args) > 2 && args[2] == "decl"}}
+		}
+		var res []protocol.Location
+		if err := s.call(method, params, &res); err != nil {
+			s.printResult(nil, err)
+			return
+		}
+		if len(res) == 0 {
+			fmt.Fprintln(&s.out, "(none)")
+		}
+		for _, l := range res {
+			f := s.fileOf(l.URI)
+			fmt.Fprintf(&s.out, "%s %s %s\n", f, fmtRange(l.Range), excerpt(ide.NewDocument(f, 0, s.texts[f]), l.Range, s.enc))
+		}
+	case "highlight":
+		name := file()
+		if len(args) < 2 {
+			t.Fatalf("%s: no position", cmd)
+		}
+		var res []protocol.DocumentHighlight
+		if err := s.call("textDocument/documentHighlight", protocol.TextDocumentPositionParams{TextDocument: doc(), Position: s.position(name, args[1])}, &res); err != nil {
+			s.printResult(nil, err)
+			return
+		}
+		if len(res) == 0 {
+			fmt.Fprintln(&s.out, "(none)")
+		}
+		d := ide.NewDocument(name, 0, s.texts[name])
+		for _, h := range res {
+			kind := map[int]string{protocol.HighlightText: "text", protocol.HighlightRead: "read", protocol.HighlightWrite: "write"}[h.Kind]
+			fmt.Fprintf(&s.out, "%s %s %s\n", fmtRange(h.Range), kind, excerpt(d, h.Range, s.enc))
 		}
 	case "tokens":
 		name := file()

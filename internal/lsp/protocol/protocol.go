@@ -110,6 +110,11 @@ type ServerCapabilities struct {
 	FoldingRangeProvider   bool                     `json:"foldingRangeProvider,omitempty"`
 	SelectionRangeProvider bool                     `json:"selectionRangeProvider,omitempty"`
 	SemanticTokensProvider *SemanticTokensOptions   `json:"semanticTokensProvider,omitempty"`
+
+	DefinitionProvider        bool `json:"definitionProvider,omitempty"`
+	TypeDefinitionProvider    bool `json:"typeDefinitionProvider,omitempty"`
+	ReferencesProvider        bool `json:"referencesProvider,omitempty"`
+	DocumentHighlightProvider bool `json:"documentHighlightProvider,omitempty"`
 }
 
 // ---- document synchronization ----
@@ -318,4 +323,32 @@ type SemanticTokensParams struct {
 
 type SemanticTokens struct {
 	Data []uint32 `json:"data"`
+}
+
+// ---- navigation ----
+
+type TextDocumentPositionParams struct {
+	TextDocument TextDocumentIdentifier `json:"textDocument"`
+	Position     Position               `json:"position"`
+}
+
+type ReferenceContext struct {
+	IncludeDeclaration bool `json:"includeDeclaration"`
+}
+
+type ReferenceParams struct {
+	TextDocumentPositionParams
+	Context ReferenceContext `json:"context"`
+}
+
+// Document highlight kinds (DocumentHighlightKind).
+const (
+	HighlightText  = 1
+	HighlightRead  = 2
+	HighlightWrite = 3
+)
+
+type DocumentHighlight struct {
+	Range Range `json:"range"`
+	Kind  int   `json:"kind,omitempty"`
 }

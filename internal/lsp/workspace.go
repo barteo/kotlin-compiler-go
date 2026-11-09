@@ -74,7 +74,8 @@ type module struct {
 	dirty   bool     // kicked and not yet updated; counts in Server.work
 	sources []string // nil until listed
 	results map[string]fileResult
-	failed  string // the last update's error, logged once
+	last    *ide.View // the last update's, for navigation
+	failed  string    // the last update's error, logged once
 }
 
 // fileResult is the last update's diagnostics of a file, and the snapshot
@@ -444,6 +445,7 @@ func (m *module) show(res *analysis.Result, snaps []*psi.Snapshot) {
 	}
 	m.mu.Lock()
 	m.failed = ""
+	m.last = ide.NewView(res, snaps)
 	var mine []*psi.Snapshot
 	for _, snap := range snaps {
 		if p.ModuleOf(snap.Path()) == m.m {
@@ -563,26 +565,13 @@ func under(root, path string) bool {
 // change keeps its range, one after it moves with it, and one the change
 // touches is dropped.
 func shiftDiagnostics(ds []ide.Diagnostic, a, b string) []ide.Diagnostic {
-	p := 0
-	for p < len(a) && p < len(b) && a[p] == b[p] {
-		p++
-	}
-	q := 0
-	for q < len(a)-p && q < len(b)-p && a[len(a)-1-q] == b[len(b)-1-q] {
-		q++
-	}
-	end, delta := len(a)-q, len(b)-len(a)
+	m := ide.NewMapper(a, b)
 	var out []ide.Diagnostic
 	for _, d := range ds {
-		switch {
-		case d.Range.End <= p:
-		case d.Range.Start >= end:
-			d.Range.Start += delta
-			d.Range.End += delta
-		default:
-			continue
+		if r, ok := m.Range(d.Range); ok {
+			d.Range = r
+			out = append(out, d)
 		}
-		out = append(out, d)
 	}
 	return out
 }

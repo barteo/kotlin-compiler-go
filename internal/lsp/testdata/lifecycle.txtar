@@ -14,9 +14,12 @@ error -32002: textDocument/documentSymbol before initialize
 > capabilities
 {
   "capabilities": {
+    "definitionProvider": true,
+    "documentHighlightProvider": true,
     "documentSymbolProvider": true,
     "foldingRangeProvider": true,
     "positionEncoding": "utf-16",
+    "referencesProvider": true,
     "selectionRangeProvider": true,
     "semanticTokensProvider": {
       "full": true,
@@ -51,7 +54,8 @@ error -32002: textDocument/documentSymbol before initialize
       "change": 2,
       "openClose": true,
       "save": true
-    }
+    },
+    "typeDefinitionProvider": true
   },
   "serverInfo": {
     "name": "kc-lsp",

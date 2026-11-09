@@ -149,6 +149,10 @@ func init() {
 		"textDocument/foldingRange":        (*Server).foldingRange,
 		"textDocument/selectionRange":      (*Server).selectionRange,
 		"textDocument/semanticTokens/full": (*Server).semanticTokens,
+		"textDocument/definition":          (*Server).definition,
+		"textDocument/typeDefinition":      (*Server).typeDefinition,
+		"textDocument/references":          (*Server).references,
+		"textDocument/documentHighlight":   (*Server).documentHighlight,
 	}
 }
 
@@ -183,6 +187,10 @@ func (s *Server) initialize(p *protocol.InitializeParams) *protocol.InitializeRe
 				Legend: protocol.SemanticTokensLegend{TokenTypes: ide.TokenTypeNames, TokenModifiers: ide.TokenModifierNames},
 				Full:   true,
 			},
+			DefinitionProvider:        true,
+			TypeDefinitionProvider:    true,
+			ReferencesProvider:        true,
+			DocumentHighlightProvider: true,
 		},
 		ServerInfo: &protocol.ServerInfo{Name: "kc-lsp", Version: Version},
 	}
