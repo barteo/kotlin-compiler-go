@@ -133,7 +133,14 @@ func run(ctx context.Context, cfg Config, snaps []*psi.Snapshot, partial bool, o
 	if !partial || !whole || lost {
 		return res, nil, nil
 	}
-	return res, newState(res, snaps, syms), nil
+	st := newState(res, snaps, syms)
+	if st != nil {
+		parallel(n, jobs, func(i int) {
+			st.lookups[i] = rec.fileLookups(files[i])
+			st.decls[i] = declared(snaps[i])
+		})
+	}
+	return res, st, nil
 }
 
 // drop records the facts of snap that diagnostic d of it invalidates:
@@ -268,6 +275,8 @@ type recorder struct {
 	// aliases are the typealiases type references and constructor calls
 	// name.
 	aliases map[any]*types.AliasSym
+	// lookups are the names each file looked up (check.LookupRecorder).
+	lookups map[*syntax.File][]lookup
 }
 
 // Alias implements check.AliasRecorder.

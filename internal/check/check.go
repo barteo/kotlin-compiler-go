@@ -618,6 +618,8 @@ func CheckOptions(ctx context.Context, files []*syntax.File, lib *Library, jobs 
 		for _, c := range checkers {
 			if opts.Only[c.file] {
 				checked = append(checked, c)
+			} else {
+				c.looked.off = true // its lookups are those of its last check
 			}
 		}
 	}

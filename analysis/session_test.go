@@ -448,34 +448,145 @@ fun use(o: Any?): Int {
 	}
 }
 
-// An update that changes what a file declares is checked whole.
-func TestSessionIncrementalSignature(t *testing.T) {
-	a := "package p\nfun f() = 1\nfun g(): Int { return 1 }\n"
-	b := "package p\nfun h() = f()\n"
+// TestSessionIncrementalDeclarations edits what files declare, and
+// compares each update, checked with the files it affects, with a whole
+// one; incremental says whether few enough files are affected that the
+// update isn't checked whole.
+func TestSessionIncrementalDeclarations(t *testing.T) {
+	files := map[string]string{
+		"a.kt": `package p
+
+open class Base(val n: Int) {
+    open fun f(x: Int): Int = x + n
+    fun g(): Int { return n }
+}
+
+sealed interface Shape
+class Circle(val r: Double) : Shape
+object Empty : Shape
+
+fun top(a: Base): String = a.f(1).toString()
+fun inferred() = 1
+typealias Num = Int
+fun Base.ext(): Int = n
+infix fun Int.plus2(o: Int): Int = this + o
+`,
+		"b.kt": `package p
+
+class Derived : Base(1) {
+    override fun f(x: Int): Int = x * 2
+}
+
+fun useBase(b: Base): Int = b.f(2) + b.g() + top(b).length + inferred() + b.ext() + (1 plus2 2)
+fun area(s: Shape): Double = when (s) {
+    is Circle -> s.r
+    Empty -> 0.0
+}
+val num: Num = 1
+`,
+		"c.kt": `package p
+
+fun unrelated(): Int { return 3 }
+`,
+		"d.kt": `package q
+
+fun other(): String { return "d" }
+`,
+		"e.kt": `package q
+
+fun more(): String { return other() }
+`,
+	}
+	paths := []string{"a.kt", "b.kt", "c.kt", "d.kt", "e.kt"}
+	for i := range 3 {
+		p := fmt.Sprintf("r%d.kt", i)
+		files[p] = fmt.Sprintf("package r\n\nfun r%d(): Int { return %d }\n", i, i)
+		paths = append(paths, p)
+	}
+	type edit struct{ path, from, to string }
+	cases := []struct {
+		name        string
+		edits       []edit
+		incremental bool
+	}{
+		{"parameter added", []edit{{"a.kt", "open fun f(x: Int)", "open fun f(x: Int, y: Int = 0)"}}, true},
+		{"parameter renamed", []edit{{"a.kt", "fun top(a: Base)", "fun top(b: Base)"}}, true},
+		{"return type", []edit{{"a.kt", "fun g(): Int { return n }", "fun g(): Long { return n.toLong() }"}}, true},
+		{"inferred type", []edit{{"a.kt", "fun inferred() = 1", `fun inferred() = "1"`}}, true},
+		{"declaration added", []edit{{"c.kt", "fun unrelated()", "fun added() = 2\nfun unrelated()"}}, true},
+		{"overload added", []edit{{"c.kt", "fun unrelated()", "fun top(a: Derived): String = \"d\"\nfun unrelated()"}}, true},
+		{"overload removed", []edit{{"a.kt", "fun top(a: Base): String = a.f(1).toString()", ""}}, true},
+		{"member added", []edit{{"a.kt", "fun g(): Int { return n }", "fun g(): Int { return n }\n    fun ext(): Int = 0"}}, true},
+		{"subclass added", []edit{{"c.kt", "fun unrelated()", "class Square(val s: Double) : Shape\nfun unrelated()"}}, true},
+		{"supertype removed", []edit{{"a.kt", "object Empty : Shape", "object Empty"}}, true},
+		{"typealias", []edit{{"a.kt", "typealias Num = Int", "typealias Num = Long"}}, true},
+		{"infix dropped", []edit{{"a.kt", "infix fun Int.plus2", "fun Int.plus2"}}, true},
+		{"conflict", []edit{{"c.kt", "fun unrelated()", "fun inferred() = 2\nfun unrelated()"}}, true},
+		{"moved", []edit{{"a.kt", "fun inferred() = 1\n", ""}, {"c.kt", "fun unrelated()", "fun inferred() = 1\nfun unrelated()"}}, true},
+		{"other package", []edit{{"d.kt", "fun other(): String", "fun other(x: Int = 1): String"}}, true},
+		{"package", []edit{{"d.kt", "package q", "package r"}}, true},
+		{"class", []edit{{"a.kt", "open class Base(val n: Int)", "open class Base(val n: Long)"}}, true},
+		{"most files", []edit{{"d.kt", "package q", "package r"}, {"r0.kt", "fun r0()", "fun other(): String = \"\"\nfun r0()"}, {"r1.kt", "package r", "package q"}, {"r2.kt", "fun r2()", "fun r2(x: Int = 0)"}}, false},
+	}
 	cfg := withStdlib(t)
-	for _, a2 := range []string{
-		"package p\nfun f() = 1L\nfun g(): Int { return 1 }\n",
-		"package p\nfun f() = 1\nfun g(): Long { return 1 }\n",
-		"package p\nfun f() = 1\nfun g(): Int { return 1 }\nfun k() {}\n",
-	} {
-		s := Open(cfg)
-		bs := psi.Parse("b.kt", b)
-		if _, err := s.Update(context.Background(), []*psi.Snapshot{psi.Parse("a.kt", a), bs}); err != nil {
-			t.Fatal(err)
-		}
-		incrementalUpdates.Store(0)
-		snaps := []*psi.Snapshot{psi.Parse("a.kt", a2), bs}
-		got, err := s.Update(context.Background(), snaps)
+	ctx := context.Background()
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s := Open(cfg)
+			defer s.Close()
+			var first []*psi.Snapshot
+			for _, p := range paths {
+				first = append(first, psi.Parse(p, files[p]))
+			}
+			res, err := s.Update(ctx, first)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !res.Complete() {
+				t.Fatalf("diagnostics %v", res.Diagnostics())
+			}
+			snaps := slices.Clone(first)
+			for _, e := range tc.edits {
+				i := slices.Index(paths, e.path)
+				text := snaps[i].Source()
+				if !strings.Contains(text, e.from) {
+					t.Fatalf("%s has no %q", e.path, e.from)
+				}
+				snaps[i] = psi.Parse(e.path, strings.Replace(text, e.from, e.to, 1))
+			}
+			for _, step := range []struct {
+				name  string
+				snaps []*psi.Snapshot
+			}{{"edit", snaps}, {"back", first}} {
+				incrementalUpdates.Store(0)
+				got, err := s.Update(ctx, step.snaps)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if inc := incrementalUpdates.Load() == 1; inc != tc.incremental {
+					t.Errorf("%s: checked incrementally: %v", step.name, inc)
+				}
+				if d := sameResult(t, got, wholeUpdate(t, cfg, step.snaps)); d != "" {
+					t.Errorf("%s: %s", step.name, d)
+				}
+			}
+		})
+	}
+	// Files added and removed.
+	s := Open(cfg)
+	defer s.Close()
+	var all []*psi.Snapshot
+	for _, p := range paths {
+		all = append(all, psi.Parse(p, files[p]))
+	}
+	for _, snaps := range [][]*psi.Snapshot{all, all[:4], all, append(slices.Clone(all), psi.Parse("f.kt", "package q\nfun other2() = other()\n")), all} {
+		got, err := s.Update(ctx, snaps)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if incrementalUpdates.Load() != 0 {
-			t.Errorf("%q checked incrementally", a2)
-		}
 		if d := sameResult(t, got, wholeUpdate(t, cfg, snaps)); d != "" {
-			t.Error(d)
+			t.Errorf("%d files: %s", len(snaps), d)
 		}
-		s.Close()
 	}
 }
 
@@ -622,4 +733,86 @@ func TestDiagnosticRange(t *testing.T) {
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("code: underlined text %q, want %q (diagnostics %v)", got, want, res.Diagnostics())
 	}
+}
+
+// declarationEdit returns snap's text with what it declares changed: a
+// parameter with a default added to its first function with parameters'
+// parentheses (kind 0), or a top-level function added (kind 1); "" if
+// it has no such function.
+func declarationEdit(snap *psi.Snapshot, kind int) string {
+	text := snap.Source()
+	if kind == 1 {
+		return text + "\nfun kcAdded(): Int = 1\n"
+	}
+	for id := psi.NodeID(1); int(id) <= snap.NodeCount(); id++ {
+		n := snap.Node(id)
+		if n.NumericKind() != psi.KindFUN {
+			continue
+		}
+		l := n.ChildKind(psi.KindVALUE_PARAMETER_LIST)
+		if !l.Valid() {
+			continue
+		}
+		at := l.Range().Start + 1
+		sep := ""
+		if len(n.Parameters()) > 0 {
+			sep = ", "
+		}
+		return text[:at] + "kcAdded: Int = 0" + sep + text[at:]
+	}
+	return ""
+}
+
+// TestSessionIncrementalDeclarationScan changes what each file of each
+// program of testdata/run declares, but for the one-file programs with
+// -short, and compares the update, and the update back, with whole
+// ones.
+func TestSessionIncrementalDeclarationScan(t *testing.T) {
+	cfg := withJDK(t)
+	ctx := context.Background()
+	edits, incremental := 0, 0
+	for name, paths := range runModules(t) {
+		if len(paths) < 2 && testing.Short() {
+			continue
+		}
+		s := Open(cfg)
+		first := parseFiles(t, paths)
+		if _, err := s.Update(ctx, first); err != nil {
+			t.Fatal(err)
+		}
+		for i := range first {
+			for kind := range 2 {
+				text := declarationEdit(first[i], kind)
+				if text == "" {
+					continue
+				}
+				snaps := slices.Clone(first)
+				snaps[i] = psi.Parse(first[i].Path(), text)
+				incrementalUpdates.Store(0)
+				got, err := s.Update(ctx, snaps)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(first) > 1 {
+					edits++
+					if incrementalUpdates.Load() == 1 {
+						incremental++
+					}
+				}
+				if d := sameResult(t, got, wholeUpdate(t, cfg, snaps)); d != "" {
+					t.Errorf("%s: %s, edit %d: %s", name, first[i].Path(), kind, d)
+				}
+				// And back.
+				if got, err = s.Update(ctx, first); err != nil {
+					t.Fatal(err)
+				}
+				if d := sameResult(t, got, wholeUpdate(t, cfg, first)); d != "" {
+					t.Errorf("%s: %s, edit %d back: %s", name, first[i].Path(), kind, d)
+				}
+			}
+		}
+		s.Close()
+	}
+	// One file is always checked whole, and a module of two often is.
+	t.Logf("%d edits of modules of several files, %d incremental", edits, incremental)
 }

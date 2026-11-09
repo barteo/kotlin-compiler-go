@@ -56,6 +56,10 @@ type state struct {
 	// keeps, and adds the changed files' new ones, until there are too
 	// many (compact).
 	base int
+	// lookups are the names each file looked up when it was last checked,
+	// sorted, and decls what each declares.
+	lookups [][]lookup
+	decls   []declInfo
 }
 
 // newState returns the state of res, an update of snaps whose every error
@@ -66,7 +70,7 @@ func newState(res *Result, snaps []*psi.Snapshot, syms []any) *state {
 		res.setFiles(snaps, make([][]*Fact, len(snaps)))
 	}
 	st := &state{res: res, snaps: snaps, diags: make([][]Diagnostic, len(snaps)), refs: make([][]psi.SnapshotID, len(snaps)),
-		syms: make([]any, len(res.symbols))}
+		syms: make([]any, len(res.symbols)), lookups: make([][]lookup, len(snaps)), decls: make([]declInfo, len(snaps))}
 	copy(st.syms, syms)
 	st.base = len(res.symbols)
 	byPath := map[string]int{}
@@ -107,38 +111,71 @@ type nodeMap struct {
 	old, cur []psi.NodeID
 }
 
-// changedFiles returns the indexes of the snapshots that differ from
-// st's, and the maps of their nodes, if only bodies changed; ok is false
-// otherwise.
-func (st *state) changedFiles(snaps []*psi.Snapshot) (changed []int, maps map[psi.SnapshotID]*nodeMap, ok bool) {
-	if len(snaps) != len(st.snaps) {
-		return nil, nil, false
+// changes is how an update's snapshots differ from a state's.
+type changes struct {
+	old     []int  // each snapshot's index in the state's, or -1 if added
+	changed []bool // a snapshot that isn't the state's
+	nodes   map[psi.SnapshotID]*nodeMap
+	decls   []declInfo
+	// names are the names declared differently, and supers the names of
+	// the supertypes of the classes among them.
+	names  map[lookup]bool
+	supers map[string]bool
+}
+
+// changes returns how snaps differ from st's snapshots; false if two
+// have the same path. A changed file's nodes are mapped whole if only
+// bodies changed, and else as far as AlignSignatureNodes maps them; a
+// removed file's map nothing.
+func (st *state) changes(snaps []*psi.Snapshot) (*changes, bool) {
+	c := &changes{old: make([]int, len(snaps)), changed: make([]bool, len(snaps)), nodes: map[psi.SnapshotID]*nodeMap{},
+		decls: make([]declInfo, len(snaps)), names: map[lookup]bool{}, supers: map[string]bool{}}
+	byPath := make(map[string]int, len(st.snaps))
+	for j, s := range st.snaps {
+		byPath[s.Path()] = j
 	}
-	maps = map[psi.SnapshotID]*nodeMap{}
+	seen := make([]bool, len(st.snaps))
+	paths := make(map[string]bool, len(snaps))
 	for i, s := range snaps {
-		old := st.snaps[i]
-		if s.Path() != old.Path() {
-			return nil, nil, false
+		if paths[s.Path()] {
+			return nil, false
 		}
+		paths[s.Path()] = true
+		j, ok := byPath[s.Path()]
+		if !ok {
+			c.old[i], c.changed[i] = -1, true
+			c.decls[i] = declared(s)
+			touched(declInfo{}, c.decls[i], c.names, c.supers)
+			continue
+		}
+		c.old[i], seen[j] = j, true
+		old := st.snaps[j]
+		c.decls[i] = st.decls[j]
 		if s == old {
 			continue
 		}
-		if kasession.SignatureHash(s) != kasession.SignatureHash(old) {
-			return nil, nil, false
-		}
-		m := &nodeMap{snap: s.ID(), old: kasession.SignatureNodes(old), cur: kasession.SignatureNodes(s)}
-		if len(m.old) != len(m.cur) {
-			return nil, nil, false
-		}
-		for j := range m.old {
-			if old.Node(m.old[j]).NumericKind() != s.Node(m.cur[j]).NumericKind() {
-				return nil, nil, false
+		c.changed[i] = true
+		m := &nodeMap{snap: s.ID()}
+		if kasession.SignatureHash(s) == kasession.SignatureHash(old) {
+			m.old, m.cur = kasession.SignatureNodes(old), kasession.SignatureNodes(s)
+			if len(m.old) == len(m.cur) {
+				c.nodes[old.ID()] = m
+				continue
 			}
 		}
-		maps[old.ID()] = m
-		changed = append(changed, i)
+		// What it declares changed.
+		m.old, m.cur = kasession.AlignSignatureNodes(old, s)
+		c.nodes[old.ID()] = m
+		c.decls[i] = declared(s)
+		touched(st.decls[j], c.decls[i], c.names, c.supers)
 	}
-	return changed, maps, true
+	for j, s := range st.snaps {
+		if !seen[j] {
+			c.nodes[s.ID()] = &nodeMap{}
+			touched(st.decls[j], declInfo{}, c.names, c.supers)
+		}
+	}
+	return c, true
 }
 
 // remapper rewrites kept facts and symbols for a new update.
@@ -162,24 +199,34 @@ func (m *remapper) element(id *ElementID) {
 }
 
 // incremental returns the update of snaps from st, checking only the
-// changed files, and its state; ok is false if the update must be checked
-// whole.
+// changed files and those a declaration edit affects, and its state; ok
+// is false if the update must be checked whole.
 func incremental(ctx context.Context, cfg Config, snaps []*psi.Snapshot, st *state, open openLibrary) (res *Result, next *state, ok bool, err error) {
-	changed, nodes, ok := st.changedFiles(snaps)
+	c, ok := st.changes(snaps)
 	if !ok {
 		return nil, nil, false, nil
 	}
-	if len(changed) == 0 {
+	n := len(snaps)
+	if !slices.Contains(c.changed, true) && n == len(st.snaps) {
 		return st.res, st, true, nil
 	}
-	isChanged := make([]bool, len(snaps))
-	for _, i := range changed {
-		isChanged[i] = true
+	nodes := c.nodes
+	// dirty are the files checked: the changed ones, those that looked up
+	// or declare a name declared differently, and those whose kept facts
+	// would refer to what a changed file no longer declares.
+	dirty := slices.Clone(c.changed)
+	if len(c.names) > 0 {
+		for i := range snaps {
+			if !dirty[i] && affected(st.lookups[c.old[i]], c.decls[i], c.names, c.supers) {
+				dirty[i] = true
+			}
+		}
 	}
 	// The kept symbols and facts, their elements mapped first: a kept fact
-	// that names a symbol declared in a changed file's body means the
-	// update must be checked whole. What doesn't refer to a changed file
-	// is shared with the last update's Result, which doesn't change.
+	// that names a symbol declared in what a changed file no longer has,
+	// or refers to that, is its file's to check. What doesn't refer to a
+	// changed file is shared with the last update's Result, which doesn't
+	// change.
 	m := &remapper{nodes: nodes}
 	touches := func(walk func(func(*ElementID))) bool {
 		hit := false
@@ -200,38 +247,45 @@ func incremental(ctx context.Context, cfg Config, snaps []*psi.Snapshot, st *sta
 		m.ok = true
 		symbolIDs(&s, m.element)
 		if !m.ok {
-			dead[i] = true // a local of a changed body: no kept fact may name it
+			dead[i] = true // what a changed file no longer declares: no kept fact may name it
 			continue
 		}
 		syms[i] = s
 	}
 	isDead := func(id uint32) bool { return id != 0 && dead[id-1] }
-	m.ok = true
-	n := len(snaps)
 	kept := make([][]*Fact, n)
 	refs := make([][]psi.SnapshotID, n)
-	for i, fs := range st.res.files {
-		if isChanged[i] {
+	for i := range snaps {
+		if dirty[i] {
 			continue
 		}
-		kept[i], refs[i] = fs, st.refs[i]
-		for _, f := range fs {
-			if isDead(f.Symbol) || slices.ContainsFunc(f.LambdaParameters, isDead) {
-				return nil, nil, false, nil
-			}
+		j := c.old[i]
+		fs := st.res.files[j]
+		kept[i], refs[i] = fs, st.refs[j]
+		if slices.ContainsFunc(fs, func(f *Fact) bool {
+			return isDead(f.Symbol) || slices.ContainsFunc(f.LambdaParameters, isDead)
+		}) {
+			dirty[i] = true
+			continue
 		}
 		if !slices.ContainsFunc(refs[i], func(id psi.SnapshotID) bool { return nodes[id] != nil }) {
 			continue // shared
 		}
-		kept[i] = make([]*Fact, len(fs))
-		for j, f := range fs {
+		m.ok = true
+		mapped := make([]*Fact, len(fs))
+		for k, f := range fs {
 			if touches(func(fn func(*ElementID)) { factIDs(f, fn) }) {
 				c := copyFact(*f)
 				factIDs(&c, m.element)
 				f = &c
 			}
-			kept[i][j] = f
+			mapped[k] = f
 		}
+		if !m.ok {
+			dirty[i] = true // it refers to what a changed file no longer declares
+			continue
+		}
+		kept[i] = mapped
 		refs[i] = slices.Clone(refs[i])
 		for k, id := range refs[i] {
 			if nm := nodes[id]; nm != nil {
@@ -239,7 +293,15 @@ func incremental(ctx context.Context, cfg Config, snaps []*psi.Snapshot, st *sta
 			}
 		}
 	}
-	if !m.ok {
+	ndirty := 0
+	for _, d := range dirty {
+		if d {
+			ndirty++
+		}
+	}
+	if len(c.names) > 0 && ndirty*2 > n {
+		// A declaration edit that affects most files: as cheap to check
+		// whole, which also drops the symbols only the others declared.
 		return nil, nil, false, nil
 	}
 
@@ -248,7 +310,7 @@ func incremental(ctx context.Context, cfg Config, snaps []*psi.Snapshot, st *sta
 	provs := make([]*lower.Provenance, n)
 	errLists := make([][]*syntax.Error, n)
 	parallel(n, jobs, func(i int) {
-		if isChanged[i] {
+		if dirty[i] {
 			files[i], provs[i], errLists[i] = lower.Recover(snaps[i])
 		} else {
 			// Only declared: its facts and diagnostics are kept.
@@ -258,12 +320,15 @@ func incremental(ctx context.Context, cfg Config, snaps []*psi.Snapshot, st *sta
 	if err := ctx.Err(); err != nil {
 		return nil, nil, false, err
 	}
+	if duplicateClasses(files) != nil {
+		return nil, nil, false, nil
+	}
 	diags := make([][]Diagnostic, n)
 	broken := make([]bool, n)
 	drops := make([][]span, n)
 	for i := range snaps {
-		if !isChanged[i] {
-			diags[i] = st.diags[i]
+		if !dirty[i] {
+			diags[i] = st.diags[c.old[i]]
 			broken[i] = true // its facts are kept
 			continue
 		}
@@ -283,8 +348,10 @@ func incremental(ctx context.Context, cfg Config, snaps []*psi.Snapshot, st *sta
 	}
 	defer done()
 	only := map[*syntax.File]bool{}
-	for _, i := range changed {
-		only[files[i]] = true
+	for i := range snaps {
+		if dirty[i] {
+			only[files[i]] = true
+		}
 	}
 	rec := newRecorder()
 	errs, err := check.CheckOptions(ctx, files, lib, jobs, rec, check.Options{Only: only})
@@ -297,15 +364,15 @@ func incremental(ctx context.Context, cfg Config, snaps []*psi.Snapshot, st *sta
 	}
 	for _, e := range errs {
 		i, found := index[e.File]
-		if !found || !isChanged[i] {
-			return nil, nil, false, nil // not a changed file's
+		if !found || !dirty[i] {
+			return nil, nil, false, nil // not a checked file's
 		}
 		d := diagnostic(snaps[i], e)
 		diags[i] = append(diags[i], d)
 		drop(snaps[i], d, &drops[i], &broken[i])
 	}
 
-	// The changed files' facts, their symbols numbered into the kept
+	// The checked files' facts, their symbols numbered into the kept
 	// table: the same symbol of the library as the last update's facts
 	// named, or the same declaration in the sources; else added.
 	built := &Result{}
@@ -318,7 +385,8 @@ func incremental(ctx context.Context, cfg Config, snaps []*psi.Snapshot, st *sta
 		builtSyms = b.syms
 	}
 	res = &Result{symbols: syms}
-	next = &state{res: res, snaps: snaps, diags: diags, refs: refs, syms: make([]any, len(syms)), base: st.base}
+	next = &state{res: res, snaps: snaps, diags: diags, refs: refs, syms: make([]any, len(syms)), base: st.base,
+		lookups: make([][]lookup, n), decls: c.decls}
 	byPtr := map[any]uint32{}
 	for i, p := range st.syms {
 		if p != nil {
@@ -358,14 +426,18 @@ func incremental(ctx context.Context, cfg Config, snaps []*psi.Snapshot, st *sta
 	}
 	all := make([][]*Fact, n)
 	for i := range snaps {
-		if !isChanged[i] {
+		if !dirty[i] {
 			all[i] = kept[i]
-		} else if built.files != nil {
-			all[i] = built.files[i]
-			for _, f := range all[i] {
-				renumber(&f.Symbol)
-				for k := range f.LambdaParameters {
-					renumber(&f.LambdaParameters[k])
+			next.lookups[i] = st.lookups[c.old[i]]
+		} else {
+			next.lookups[i] = rec.fileLookups(files[i])
+			if built.files != nil {
+				all[i] = built.files[i]
+				for _, f := range all[i] {
+					renumber(&f.Symbol)
+					for k := range f.LambdaParameters {
+						renumber(&f.LambdaParameters[k])
+					}
 				}
 			}
 			refs[i] = fileRefs(snaps[i].ID(), all[i])
