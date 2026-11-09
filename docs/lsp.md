@@ -186,6 +186,9 @@ earlier 3–5 estimate, which assumed `ka` checks bodies. L5–L6 add about
 | `Options.OnlyDecl`: check one declaration, inferring others lazily as `Only` does (not needed: completion is under its target checking the file) | L4 | `check.go` |
 | All candidates of a call, with their mappings | L4 | `internal/check` |
 | Index of library classes and top-level names | L3, L4 | `internal/classpath`, `internal/kmeta` |
+| `syntax.Error.Data`, fix data per code (`analysis.Diagnostic.Data`) | L5 | `internal/syntax/token.go`, `internal/check` |
+| Codes for not implemented members, `NO_ELSE_IN_WHEN`, `RETURN_TYPE_MISMATCH_ON_OVERRIDE` | L5 | `internal/check/codes.go`, `class.go`, `expr.go` |
+| `MANY_IMPL_MEMBER_NOT_IMPLEMENTED` with the member's stub | L5 | `internal/check/delegation.go` |
 | A checked module's symbols as a `check.Library` layer for other modules | L6 | `internal/check`, `internal/driver` |
 | Written signatures resolved lazily per file, and checker results kept beside the trees ([step 24](analysis-api.md#step-24-what-a-one-file-edit-costs-and-what-incremental-checking-needs)) | L6 | `internal/check` |
 
@@ -585,6 +588,129 @@ The first request reads the library index. Each request lowers the
 module's other files' signatures again, as an update does; in a CPU
 profile that lowering costs about as much as checking the probe's file.
 
+### L5: editing
+
+1. **Rename** (`ide.Rename`, `textDocument/rename` and `prepareRename`)
+   edits the declaration's name and its uses in every view that analyzed
+   its file. It also edits the names that stand for the declaration
+   without a fact:
+   - the override family: what the declaration overrides, and what
+     overrides that, in the sources;
+   - a parameter's name in named arguments;
+   - the last name of import directives that import it;
+   - KDoc links (`[name]`, `[Owner.name]`) and `@param` tags in the
+     files edited.
+
+   A use written with another name (an import alias or an operator)
+   keeps it. Library declarations, `it`, `this` and `componentN` are
+   refused. A keyword name is backticked where that is legal, and refused
+   where it isn't. The server waits for the module's pending check, and
+   it fails with "analysis is out of date" rather than send a partial
+   edit when an edit falls in text typed since. `TestRenameScan`
+   renames every top-level, member and local name of `testdata/run` to
+   a fresh one and requires the program to check as before: 3,066
+   renamed, 107 refused, and 45 known failures, listed in
+   `internal/ide/testdata/rename-budget.txt`. That list may only shrink.
+2. **Call hierarchy** (`ide.PrepareCallHierarchy`, `IncomingCalls`,
+   `OutgoingCalls`) covers functions, constructors, properties and
+   classes. A class stands for its constructors and initializers.
+   Incoming calls come from the references of the declaration and its
+   override family that are calls (including operator, delegated and
+   accessor calls). They are grouped by the enclosing named declaration
+   (`psi.NodeRef.EnclosingDeclaration`, which skips lambdas and
+   accessors). Outgoing calls are the source declarations called from
+   the body outside nested named declarations.
+3. **Code actions.** The fixes come from the server's own diagnostics,
+   as last published for the document's current text, not the client's
+   copy. Those carry the fix data, and a diagnostic whose text was
+   edited since has no fix. `ide.QuickFixes` builds each fix from psi
+   around the diagnostic plus its `Data`. Types are shortened where the
+   file sees them (default imports, its package, its imports), and an
+   import is added otherwise.
+
+   | Code | Fixes |
+   |---|---|
+   | `UNRESOLVED_REFERENCE` | Import `pkg.Name`, one per candidate from the class path and the module's sources; classes only in a type |
+   | `UNRESOLVED_IMPORT`, `UNUSED_IMPORT` | Remove the import |
+   | `UNUSED_VARIABLE` | Remove the variable; an initializer that calls something stays as a statement |
+   | `UNSAFE_CALL` | Replace with `?.` (preferred), or `!!.` |
+   | `VAL_REASSIGNMENT` | Change `val` to `var` at the declaration, in another file too; found from the syntax, since a function with an error keeps no facts |
+   | `ABSTRACT_MEMBER_NOT_IMPLEMENTED` (and the class and enum entry variants) | Implement members: every missing member's stub in one edit, `TODO("Not yet implemented")` bodies |
+   | `MANY_IMPL_MEMBER_NOT_IMPLEMENTED` | Override the member |
+   | `NO_ELSE_IN_WHEN` | Add the remaining branches (preferred), or an `else` branch |
+   | `TYPE_MISMATCH` | Change the type of the property or variable, or the function's return type, to the actual one; add `!!` when the actual type is the expected one made nullable |
+   | `VIRTUAL_MEMBER_HIDDEN` | Add `override` |
+   | `NOTHING_TO_OVERRIDE` | Remove `override` |
+   | `MUST_BE_INITIALIZED_OR_BE_ABSTRACT` | Add an initializer (`null`, `0`, `false`, `""`, ... or `TODO()`), or `lateinit` |
+   | `RETURN_TYPE_MISMATCH_ON_OVERRIDE` | Change the return type to the overridden one |
+
+   `TestQuickFixes` applies each fix to a program and requires the result
+   to have no diagnostics and to compile with `driver.Compile` (29
+   cases).
+4. **Organize imports** (`source.organizeImports`) removes unused and
+   duplicate imports, then sorts the rest in IntelliJ's default Kotlin
+   layout: other imports, `java.*`, `javax.*`, `kotlin.*`, then alias
+   imports, each in lexicographic order. An import is used if a
+   reference, type or call in the file resolves through it, or a KDoc
+   link names it. A file with diagnostics, or a name an operator
+   convention may call, counts as used. Completion and the import fix
+   insert at the sorted position. `TestOrganizeImportsScan` adds an
+   unused import to every program of `testdata/run` and requires that
+   exactly it is removed and the program still checks (332 files
+   organized).
+5. **Hints.** Unused imports, and locals whose names aren't written
+   again in their block, are published as hint diagnostics tagged
+   unnecessary (`UNUSED_IMPORT`, `UNUSED_VARIABLE`). `kc` doesn't report
+   them.
+6. **Formatting** (`ide.Format`, `FormatRange`, `OnType`) changes only
+   whitespace, close to IntelliJ's Kotlin official style:
+   - **Line breaks are kept.** Runs of blank lines are capped at 2 in
+     a file or class body and at 1 elsewhere, with none after `{` or
+     before `}` of a block, lambda or `when`. Trailing whitespace goes,
+     and the file ends with one newline.
+   - **Indentation.** A line is indented one unit from the line where
+     its innermost enclosing node starts, if that is an earlier line. A
+     braced body indents from its owner's first line (a class, function,
+     `if` or call), and closing brackets, `else`, `catch`, `finally` and
+     modifiers on their own line align with their owner. The unit is
+     `tabSize` spaces, or a tab.
+   - **Spaces:** around binary operators, `=` and `->` (none around `..`
+     and `..<`); after commas; `a: T`, but ` : ` for supertypes and type
+     constraints; after `if`, `when`, `for`, `while` and `catch`; none
+     inside `()` and `[]`, before a call's `(`, around `.`, `?.` and
+     `::`, or after a prefix operator; one inside a one-line `{ x }` and
+     before `{`.
+
+   It returns nothing for a file with syntax errors, and it checks that
+   the reparsed result has the same tokens. A range formats the
+   whitespace before the tokens that start in it. Typing `}` reindents
+   the block from its owner's line, and a newline indents the new line.
+   `TestFormatCorpus`: the 604 corpus files without syntax errors keep
+   their tokens, and formatting is idempotent. On kotlinpoet's 125 files
+   (2-space indent), 648 of 40,137 lines differ from the source. All of
+   them are line wrapping and continuation that ktfmt nests and this
+   formatter doesn't.
+7. **The budget.** `TestFormatBudget` compares the formatted corpus with
+   a reference. That is IntelliJ's output, by the sha256 per file in
+   `internal/ide/testdata/format.sum` written by `tools/fmtoracle`,
+   or, until the oracle is run, the corpus as written. The files that
+   differ must be those in `format-budget.txt`, now 20 of 604, and the
+   list may only shrink.
+
+Benchmarks, on the generated 200-file module (`BenchmarkNavigation`;
+the first request after an update builds the index of uses):
+
+| Request | first | p50 | p95 |
+|---|---:|---:|---:|
+| references | 65 ms | 0.07 ms | 0.19 ms |
+| rename | 62 ms | 1.4 ms | 1.9 ms |
+| formatting | 0.2 ms | 0.07 ms | 0.17 ms |
+
+`BenchmarkFormat` formats the largest corpus file (12 KB, 399 lines) in
+3.9 ms, parsing included. Completion did not regress (p95 54–61 ms).
+The 300 ms target is for kotlinx-coroutines-core, which is not measured
+yet.
+
 ## Gaps and open questions
 
 - **Diagnostics `kc` lacks.** `kc` reports no warnings and runs few of
@@ -640,3 +766,18 @@ profile that lowering costs about as much as checking the probe's file.
   Java parameters have no names. Importables come from the class path
   and the module's sources, not from modules that don't depend on each
   other.
+- **Rename** doesn't check conflicts with other declarations (IntelliJ
+  warns), doesn't rename a property's Java-style accessors, and keeps
+  aliased and operator uses.
+- **Call hierarchy** leaves out library targets until L6.
+- **Quick fixes.** Unresolved types have an uncoded message ("unresolved
+  or unsupported type"), so they get no import fix.
+  `MANY_IMPL_MEMBER_NOT_IMPLEMENTED` is reported only for delegation.
+  Stubs call `TODO()`, not `super`. A file with syntax errors has no
+  fixes beyond its diagnostics' psi, and a function with an error has
+  no facts for fixes that need them.
+- **Formatter.** It never wraps or joins lines, and doesn't nest
+  continuations as ktfmt does. It doesn't keep the convention of a
+  constructor parameter list at column 0. The IntelliJ oracle
+  (`tools/fmtoracle`) is not run yet, so the budget's reference is the
+  corpus as written, not IntelliJ's output.

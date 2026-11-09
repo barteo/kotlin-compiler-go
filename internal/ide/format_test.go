@@ -188,3 +188,19 @@ func TestFormatBudget(t *testing.T) {
 	}
 	t.Logf("%d files differ from the reference (oracle: %v), budget %d", differ, oracle, len(budget))
 }
+
+// BenchmarkFormat formats the largest corpus file without syntax errors,
+// parsing included.
+func BenchmarkFormat(b *testing.B) {
+	var src []byte
+	for _, p := range corpus(b) {
+		data, err := os.ReadFile(p)
+		if err == nil && len(data) > len(src) && len(psi.Parse("a.kt", string(data)).Diagnostics()) == 0 {
+			src = data
+		}
+	}
+	b.SetBytes(int64(len(src)))
+	for b.Loop() {
+		Format(psi.Parse("a.kt", string(src)), FormatOptions{})
+	}
+}

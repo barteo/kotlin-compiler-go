@@ -229,8 +229,9 @@ func BenchmarkBodyEdit(b *testing.B) {
 	b.ReportMetric(float64(times[len(times)*95/100].Microseconds())/1000, "p95-ms")
 }
 
-// BenchmarkNavigation times hover, definition and references on a
-// callee in the file: the median and 95th percentile of the requests on
+// BenchmarkNavigation times hover, definition, references and rename on
+// a callee in the file (docs/lsp.md, L5: references and rename under
+// 300 ms), and formatting the file: the median and 95th percentile of the requests on
 // an updated module, and first-ms, the first request after an update,
 // which builds the view's index of uses.
 func BenchmarkNavigation(b *testing.B) {
@@ -255,6 +256,8 @@ func BenchmarkNavigation(b *testing.B) {
 		{"hover", "textDocument/hover", at2},
 		{"definition", "textDocument/definition", at2},
 		{"references", "textDocument/references", protocol.ReferenceParams{TextDocumentPositionParams: at2, Context: protocol.ReferenceContext{IncludeDeclaration: true}}},
+		{"rename", "textDocument/rename", protocol.RenameParams{TextDocumentPositionParams: at2, NewName: "renamed"}},
+		{"formatting", "textDocument/formatting", protocol.DocumentFormattingParams{TextDocument: at2.TextDocument, Options: protocol.FormattingOptions{TabSize: 4, InsertSpaces: true}}},
 	} {
 		b.Run(c.name, func(b *testing.B) {
 			s := startServer(b, root)
