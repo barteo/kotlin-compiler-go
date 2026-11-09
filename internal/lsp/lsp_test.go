@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -54,6 +55,8 @@ var update = flag.Bool("update", false, "rewrite the want sections of testdata/*
 //	typedef F POS             print textDocument/typeDefinition's locations
 //	references F POS [decl]   print textDocument/references' locations, with the declaration if decl
 //	implementation F POS      print textDocument/implementation's locations
+//	rename F POS NAME         print textDocument/rename's edits per file, and apply those of open documents
+//	prepare F POS             print textDocument/prepareRename's range and placeholder
 //	highlight F POS           print textDocument/documentHighlight
 //	hover F POS               print textDocument/hover's range and Markdown
 //	wsymbol [QUERY]           print workspace/symbol
@@ -473,6 +476,58 @@ func (s *session) run(line string) {
 			f := s.fileOf(l.URI)
 			fmt.Fprintf(&s.out, "%s %s %s\n", f, fmtRange(l.Range), excerpt(ide.NewDocument(f, 0, s.textOf(f)), l.Range, s.enc))
 		}
+	case "rename":
+		// rename F POS NAME prints the edits per file, and applies those
+		// of open documents.
+		name := file()
+		if len(args) < 3 {
+			t.Fatalf("rename: want F POS NAME")
+		}
+		var we *protocol.WorkspaceEdit
+		p := protocol.RenameParams{TextDocumentPositionParams: protocol.TextDocumentPositionParams{TextDocument: doc(), Position: s.position(name, args[1])}, NewName: args[2]}
+		if err := s.call("textDocument/rename", p, &we); err != nil {
+			s.printResult(nil, err)
+			return
+		}
+		var files []string
+		byFile := map[string][]protocol.TextEdit{}
+		for u, es := range we.Changes {
+			f := s.fileOf(u)
+			files = append(files, f)
+			sort.Slice(es, func(i, j int) bool { return posLess(es[i].Range.Start, es[j].Range.Start) })
+			byFile[f] = es
+		}
+		sort.Strings(files)
+		for _, f := range files {
+			d := ide.NewDocument(f, 0, s.textOf(f))
+			fmt.Fprintf(&s.out, "%s:\n", f)
+			for _, e := range byFile[f] {
+				fmt.Fprintf(&s.out, "  %s %s -> %q\n", fmtRange(e.Range), excerpt(d, e.Range, s.enc), e.NewText)
+			}
+		}
+		for _, f := range files {
+			if _, open := s.texts[f]; !open {
+				continue
+			}
+			es := byFile[f]
+			changes := make([]protocol.TextDocumentContentChangeEvent, len(es))
+			for i, e := range es {
+				r := e.Range
+				changes[len(es)-1-i] = protocol.TextDocumentContentChangeEvent{Range: &r, Text: e.NewText}
+			}
+			s.edit(f, changes)
+		}
+	case "prepare":
+		name := file()
+		if len(args) < 2 {
+			t.Fatalf("prepare: want F POS")
+		}
+		var res protocol.PrepareRenameResult
+		if err := s.call("textDocument/prepareRename", protocol.TextDocumentPositionParams{TextDocument: doc(), Position: s.position(name, args[1])}, &res); err != nil {
+			s.printResult(nil, err)
+			return
+		}
+		fmt.Fprintf(&s.out, "%s %s %q\n", fmtRange(res.Range), excerpt(ide.NewDocument(name, 0, s.texts[name]), res.Range, s.enc), res.Placeholder)
 	case "inlay":
 		name := file()
 		d := ide.NewDocument(name, 0, s.texts[name])
@@ -695,21 +750,37 @@ func (s *session) edit(name string, changes []protocol.TextDocumentContentChange
 		ContentChanges: changes,
 	})
 	s.waitDiagnostics(name, v)
-	// Keep the harness's copy of the text in step, for markers and excerpts.
+	// Keep the harness's copy of the text in step, for markers and
+	// excerpts; markers after an edited range move with the text.
 	d := ide.NewDocument(name, 0, s.texts[name])
-	edits := make([]ide.Edit, len(changes))
-	for i, c := range changes {
-		if c.Range == nil {
-			edits[i] = ide.Edit{Whole: true, Text: c.Text}
-		} else {
-			edits[i] = ide.Edit{From: pos(c.Range.Start), To: pos(c.Range.End), Text: c.Text}
+	for _, c := range changes {
+		e := ide.Edit{Whole: true, Text: c.Text}
+		if c.Range != nil {
+			e = ide.Edit{From: pos(c.Range.Start), To: pos(c.Range.End), Text: c.Text}
+			from, err1 := d.Offset(e.From, s.enc)
+			to, err2 := d.Offset(e.To, s.enc)
+			if err1 == nil && err2 == nil {
+				for m, off := range s.marks[name] {
+					switch {
+					case off >= to:
+						s.marks[name][m] = off + len(c.Text) - (to - from)
+					case off > from:
+						s.marks[name][m] = from
+					}
+				}
+			}
 		}
+		nd, err := d.Apply(v, []ide.Edit{e}, s.enc)
+		if err != nil {
+			s.t.Fatal(err)
+		}
+		d = nd
 	}
-	nd, err := d.Apply(v, edits, s.enc)
-	if err != nil {
-		s.t.Fatal(err)
-	}
-	s.texts[name] = nd.Text()
+	s.texts[name] = d.Text()
+}
+
+func posLess(a, b protocol.Position) bool {
+	return a.Line < b.Line || a.Line == b.Line && a.Character < b.Character
 }
 
 func fmtRange(r protocol.Range) string {

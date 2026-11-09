@@ -30,6 +30,7 @@ const (
 	CodeInternalError        = -32603
 	CodeServerNotInitialized = -32002
 	CodeRequestCancelled     = -32800
+	CodeRequestFailed        = -32803
 )
 
 // Error is a JSON-RPC error object. A handler returning one sends it as is;

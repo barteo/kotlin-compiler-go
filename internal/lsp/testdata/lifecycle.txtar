@@ -30,6 +30,9 @@ error -32002: textDocument/documentSymbol before initialize
     "inlayHintProvider": true,
     "positionEncoding": "utf-16",
     "referencesProvider": true,
+    "renameProvider": {
+      "prepareProvider": true
+    },
     "selectionRangeProvider": true,
     "semanticTokensProvider": {
       "full": true,

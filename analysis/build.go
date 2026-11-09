@@ -355,6 +355,9 @@ type builder struct {
 	pkgAnnots map[string][]string
 
 	symIDs map[any]uint32
+	// declAt are the psi nodes of declarations whose AST node is another
+	// construct's: a catch parameter's, which the Catch holds.
+	declAt map[*types.VarSym]ElementID
 	// broken marks the files whose facts aren't exported: those an error
 	// invalidates all of, or whose facts are kept from an earlier update;
 	// nil if none. drops are the nodes of each other file whose facts
@@ -623,6 +626,16 @@ func (b *builder) typeRef(r *syntax.TypeRef, t types.Type) {
 		f.Deprecated = deprecated(classDeprecation(t.C))
 	}
 	b.set(el, f)
+	// Outer.Inner: each qualifier that names an outer class is that class.
+	if t.K == types.Class && f.ImportableName == "" {
+		q := b.node(el).ChildKind(psi.KindUSER_TYPE)
+		for c := t.C.Outer; c != nil && q.Valid() && psi.Unquote(q.ChildKind(psi.KindREFERENCE_EXPRESSION).Text()) == c.Name; c = c.Outer {
+			if qt := b.cv.typ(types.ClassType(c)); qt != nil {
+				b.set(ElementID{Snapshot: el.Snapshot, Node: q.ID()}, Fact{Role: "type", Type: qt})
+			}
+			q = q.ChildKind(psi.KindUSER_TYPE)
+		}
+	}
 	// The type is recorded on the USER_TYPE; the TYPE_REFERENCE around it,
 	// through a NULLABLE_TYPE, is the same type.
 	for n := b.node(el).Parent(); n.Valid(); n = n.Parent() {
@@ -690,6 +703,7 @@ func (b *builder) visit(n any, el ElementID) {
 	case *syntax.Catch:
 		if x.Sym != nil {
 			b.typeRef(x.Type, x.Sym.Type)
+			b.declareAt(x.Sym, b.node(el).ChildKind(psi.KindVALUE_PARAMETER_LIST).ChildKind(psi.KindVALUE_PARAMETER), el.Snapshot)
 		}
 	case *syntax.VarStmt:
 		b.varStmt(x, el)
@@ -702,6 +716,9 @@ func (b *builder) visit(n any, el ElementID) {
 	case *syntax.Destructure:
 		b.destructured(x, b.node(el), el.Snapshot)
 	case *syntax.For:
+		if x.Names == nil && x.Sym != nil {
+			b.declareAt(x.Sym, b.node(el).ChildKind(psi.KindVALUE_PARAMETER), el.Snapshot)
+		}
 		if x.Names != nil && x.Body != nil {
 			d := b.node(el).ChildKind(psi.KindVALUE_PARAMETER).ChildKind(psi.KindDESTRUCTURING_DECLARATION)
 			b.destructured(generatedDestructure(x.Body, x.Var), d, el.Snapshot)
@@ -716,6 +733,20 @@ func (b *builder) visit(n any, el ElementID) {
 	case syntax.Expr:
 		b.expr(x, el)
 	}
+}
+
+// declareAt records psi node p as the declaration of s, a variable whose
+// AST node is a statement around it: a catch's or a for loop's.
+func (b *builder) declareAt(s *types.VarSym, p psi.NodeRef, snap psi.SnapshotID) {
+	if !p.Valid() {
+		return
+	}
+	el := ElementID{Snapshot: snap, Node: p.ID()}
+	if b.declAt == nil {
+		b.declAt = map[*types.VarSym]ElementID{}
+	}
+	b.declAt[s] = el
+	b.set(el, Fact{Role: "declaration", Symbol: b.sym(s)})
 }
 
 func (b *builder) propDecl(x *syntax.PropDecl, el ElementID) {
@@ -818,7 +849,13 @@ func (b *builder) destructured(s *syntax.Destructure, d psi.NodeRef, snap psi.Sn
 			continue
 		}
 		if vars[0].Name == e.Name() {
-			b.varStmt(vars[0], ElementID{Snapshot: snap, Node: e.ID()})
+			el := ElementID{Snapshot: snap, Node: e.ID()}
+			b.varStmt(vars[0], el)
+			// The entry declares the local, which the checker's expansion
+			// has no psi of its own for.
+			if _, ok := b.where[vars[0]]; !ok {
+				b.where[vars[0]] = el
+			}
 		}
 		vars = vars[1:]
 	}
@@ -896,10 +933,26 @@ func (b *builder) expr(x syntax.Expr, el ElementID) {
 		}
 		switch {
 		case x.Ref != nil:
-			// A callable reference: the call its body makes.
+			// A callable reference: the call its body makes, or the
+			// property it reads.
 			f.Call = b.call(refCall(x))
+			if f.Call == nil {
+				f.Symbol = b.sym(refProperty(x))
+			}
+			b.refClass(x, el)
 		case x.SuspendMod:
 			b.suspendCall(x, el)
+		}
+	case *syntax.ClassLit:
+		switch n := firstChild(b.node(el)); {
+		case x.Bound:
+		case x.Class.K == types.Class && x.Class.C != nil:
+			b.classNames(n, el.Snapshot, x.Class.C)
+		case x.Class.K == types.TypeParam && n.NumericKind() == psi.KindREFERENCE_EXPRESSION:
+			// T::class of a reified T.
+			if t := b.cv.typ(x.Class); t != nil {
+				b.set(ElementID{Snapshot: el.Snapshot, Node: n.ID()}, Fact{Role: "type", Type: t})
+			}
 		}
 	case *syntax.When:
 		f.When = b.when(x)
@@ -919,6 +972,16 @@ func (b *builder) expr(x syntax.Expr, el ElementID) {
 			f.Symbol = b.sym(x.Decl.Sym)
 		}
 	}
+	switch x := x.(type) {
+	case *syntax.Call:
+		if m, ok := x.Fun.(*syntax.Member); ok && x.Ctor != nil {
+			b.outerQualifier(m.X, x.Ctor.Outer)
+		}
+	case *syntax.Member:
+		if x.Object != nil {
+			b.outerQualifier(x.X, x.Object.Outer)
+		}
+	}
 	if m := safeAccess(x); m != nil && m.SelNonNull {
 		// x?.a on an x that can't be null: as kotlinc's binding
 		// context, the type stays a?'s, which the compiler's own
@@ -928,6 +991,33 @@ func (b *builder) expr(x syntax.Expr, el ElementID) {
 		}
 	}
 	b.set(el, f)
+}
+
+// outerQualifier records the classes that qualify a nested class's name
+// in an expression, Outer in Outer.Nested(), on the names that have no
+// fact of their own.
+func (b *builder) outerQualifier(q syntax.Expr, c *types.ClassSym) {
+	for c != nil && q != nil {
+		var name string
+		var next syntax.Expr
+		switch x := q.(type) {
+		case *syntax.Ident:
+			name = x.Name
+		case *syntax.Member:
+			name, next = x.Name, x.X
+		default:
+			return
+		}
+		el, ok := b.where[q]
+		if !ok || name != c.Name[strings.LastIndexAny(c.Name, "./$")+1:] {
+			return
+		}
+		if f, ok := b.facts[el]; ok && (f.Symbol != 0 || f.Call != nil) {
+			return
+		}
+		b.set(el, Fact{Role: "reference", Symbol: b.sym(c), Classifier: true, ImportableName: classFQ(c)})
+		q, c = next, c.Outer
+	}
 }
 
 // safeAccess returns the safe access x is, x?.a or x?.f(), or nil.
@@ -1164,8 +1254,26 @@ func (b *builder) callExpr(x *syntax.Call, el ElementID, f *Fact) {
 		ref := b.node(el).ChildKind(psi.KindREFERENCE_EXPRESSION)
 		fe, ok = ElementID{el.Snapshot, ref.ID()}, ref.Valid()
 	}
+	if b.node(el).NumericKind() == psi.KindBINARY_EXPRESSION {
+		// a f b, an infix call: its fact is the callee's, not the
+		// operand a's.
+		return
+	}
 	if !ok || fe == el {
 		return
+	}
+	if name := psi.Unquote(b.node(fe).Text()); x.Sym != nil && x.Sym.Name == "invoke" && name != "invoke" {
+		// f(x) or x.f() of a value f: the callee names f, not invoke.
+		s = 0
+		for _, e := range append([]syntax.Expr{x.Fun}, x.Args...) {
+			if m, ok := e.(*syntax.Member); ok {
+				e = m.X
+			}
+			if id, ok := e.(*syntax.Ident); ok && id.Name == name && id.Sym != nil {
+				s = b.sym(id.Sym)
+				break
+			}
+		}
 	}
 	cf := Fact{Role: "reference", Symbol: s, Call: copyCall(f.Call), Builtin: f.Builtin, ImplicitReceiver: copyID(f.ImplicitReceiver)}
 	if x.Sym != nil {
@@ -1191,6 +1299,16 @@ func (b *builder) callExpr(x *syntax.Call, el ElementID, f *Fact) {
 // function type reads when the checker rewrote it, f() in an inner class
 // being outer.f(): the callee, written f, is that property's reference.
 func (b *builder) invokeCallee(x *syntax.Call, el ElementID) {
+	if id, ok := x.Fun.(*syntax.Ident); ok && id.Sym != nil {
+		// s.f() of a value f of an extension function type: f is the
+		// callee the call is written with.
+		if _, written := b.where[id]; !written {
+			if ref := b.node(el).ChildKind(psi.KindREFERENCE_EXPRESSION); ref.Valid() && psi.Unquote(ref.Text()) == id.Name {
+				b.set(ElementID{el.Snapshot, ref.ID()}, Fact{Role: "reference", Symbol: b.sym(id.Sym), UsedAsExpression: true})
+			}
+		}
+		return
+	}
 	m, ok := x.Fun.(*syntax.Member)
 	if !ok {
 		return
@@ -2019,6 +2137,9 @@ func (b *builder) symbol(id uint32, s any) Symbol {
 			sym.Type = *t
 		}
 		sym.Declaration = b.decl(s.Decl)
+		if el, ok := b.declAt[s]; ok {
+			sym.Declaration = &el
+		}
 	}
 	return sym
 }
@@ -2138,6 +2259,100 @@ func operatorCall(stmts []syntax.Stmt) *syntax.Call {
 // refCall returns the call of the function, or constructor, that callable
 // reference l names, which the checker made l's body; nil for a
 // property.
+// refProperty returns the property a callable reference names, or nil.
+func refProperty(l *syntax.Lambda) any {
+	if k := l.KProp; k != nil {
+		if k.Prop != nil {
+			return k.Prop
+		}
+		if k.Getter != nil {
+			return k.Getter
+		}
+	}
+	var p any
+	syntax.Inspect(l.Body, func(n any) bool {
+		switch x := n.(type) {
+		case *syntax.Member:
+			if x.Name == l.Ref.Name && p == nil {
+				if x.Prop != nil {
+					p = x.Prop
+				} else if x.Getter != nil {
+					p = x.Getter
+				}
+			}
+		case *syntax.Ident:
+			if x.Name == l.Ref.Name && p == nil {
+				if x.Sym != nil && x.Sym.Kind != types.Local && x.Sym.Kind != types.Param {
+					p = x.Sym
+				} else if x.Getter != nil {
+					p = x.Getter
+				}
+			}
+		}
+		return p == nil
+	})
+	return p
+}
+
+// refClass records the class an unbound callable reference's left side
+// names, C in C::m or C<T>::m, as the reference's: the receiver type of
+// the function it is.
+func (b *builder) refClass(l *syntax.Lambda, el ElementID) {
+	if l.Ref.X == nil && l.Ref.Type == nil || l.Ref.Bound != nil || len(l.Params) == 0 || l.Params[0].Sym == nil {
+		return
+	}
+	t := l.Params[0].Sym.Type
+	if t.K != types.Class || t.C == nil {
+		return
+	}
+	b.classNames(firstChild(b.node(el)), el.Snapshot, t.C)
+}
+
+// classNames records class c, and its outer classes, on the names of
+// psi expression n that spells it, Outer.C or C<T>, that have no fact of
+// their own.
+func (b *builder) classNames(n psi.NodeRef, snap psi.SnapshotID, c *types.ClassSym) {
+	for c != nil && n.Valid() {
+		var next psi.NodeRef
+		switch n.NumericKind() {
+		case psi.KindCALL_EXPRESSION:
+			n = firstChild(n)
+			continue
+		case psi.KindDOT_QUALIFIED_EXPRESSION:
+			next = firstChild(n)
+			var last psi.NodeRef
+			for ch := n.FirstChild(); ch.Valid(); ch = ch.NextSibling() {
+				if !ch.IsTrivia() {
+					last = ch
+				}
+			}
+			n = last
+			if n.NumericKind() == psi.KindCALL_EXPRESSION {
+				n = firstChild(n)
+			}
+		}
+		if n.NumericKind() != psi.KindREFERENCE_EXPRESSION || n.Name() != c.Name[strings.LastIndexAny(c.Name, "./$")+1:] {
+			return
+		}
+		el := ElementID{Snapshot: snap, Node: n.ID()}
+		if f, ok := b.facts[el]; ok && (f.Symbol != 0 || f.Call != nil) {
+			return
+		}
+		b.set(el, Fact{Role: "reference", Symbol: b.sym(c), Classifier: true, ImportableName: classFQ(c)})
+		n, c = next, c.Outer
+	}
+}
+
+// firstChild returns n's first child that isn't whitespace or a comment.
+func firstChild(n psi.NodeRef) psi.NodeRef {
+	for c := n.FirstChild(); c.Valid(); c = c.NextSibling() {
+		if !c.IsTrivia() {
+			return c
+		}
+	}
+	return psi.NodeRef{}
+}
+
 func refCall(l *syntax.Lambda) *syntax.Call {
 	if l.KFun != nil {
 		return l.KFun

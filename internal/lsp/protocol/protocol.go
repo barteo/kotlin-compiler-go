@@ -131,6 +131,27 @@ type ServerCapabilities struct {
 
 	CompletionProvider    *CompletionOptions    `json:"completionProvider,omitempty"`
 	SignatureHelpProvider *SignatureHelpOptions `json:"signatureHelpProvider,omitempty"`
+	RenameProvider        *RenameOptions        `json:"renameProvider,omitempty"`
+}
+
+type RenameOptions struct {
+	PrepareProvider bool `json:"prepareProvider,omitempty"`
+}
+
+type RenameParams struct {
+	TextDocumentPositionParams
+	NewName string `json:"newName"`
+}
+
+// PrepareRenameResult is the range and placeholder variant of
+// textDocument/prepareRename's result.
+type PrepareRenameResult struct {
+	Range       Range  `json:"range"`
+	Placeholder string `json:"placeholder"`
+}
+
+type WorkspaceEdit struct {
+	Changes map[DocumentURI][]TextEdit `json:"changes"`
 }
 
 // ---- document synchronization ----

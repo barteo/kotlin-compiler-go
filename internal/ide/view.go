@@ -2,6 +2,7 @@ package ide
 
 import (
 	"slices"
+	"strings"
 	"sync"
 
 	"github.com/barteo/kotlin-compiler-go/analysis"
@@ -22,6 +23,7 @@ type View struct {
 
 	classOnce sync.Once
 	classes   map[string]analysis.ElementID // source classes by name
+	aliases   map[string]psi.NodeRef        // source typealiases by name
 	refOnce   sync.Once
 	refs      map[analysis.ElementID][]ref // by declaration
 }
@@ -88,6 +90,21 @@ func (v *View) classIndex() {
 				v.classes[s.QualifiedName] = *s.Declaration
 			}
 		})
+		v.aliases = map[string]psi.NodeRef{}
+		for _, snap := range v.snaps {
+			psi.WalkNodes(snap.RootNode(), func(n psi.NodeRef) bool {
+				switch n.NumericKind() {
+				case psi.KindTYPEALIAS:
+					if fq := declQualifiedName(n); fq != "" {
+						v.aliases[fq] = n
+					}
+					return false
+				case psi.KindFILE, psi.KindCLASS, psi.KindOBJECT_DECLARATION, psi.KindCLASS_BODY:
+					return true
+				}
+				return false
+			})
+		}
 	})
 }
 
@@ -121,8 +138,37 @@ func (v *View) use(f analysis.Fact, n psi.NodeRef) (analysis.ElementID, psi.Rang
 	case psi.KindREFERENCE_EXPRESSION:
 		if s, ok := v.symbol(f.Symbol); ok && s.Declaration != nil {
 			decl = s.Declaration
+			// An extension property's inline getter: the property.
+			if d := v.node(*decl); d.NumericKind() == psi.KindPROPERTY_ACCESSOR {
+				el := analysis.ElementID{Snapshot: decl.Snapshot, Node: d.Parent().ID()}
+				decl = &el
+			}
+			// A class's name that stands for its companion object, C in
+			// C.f(), names the class.
+			if d := v.node(*decl); d.NumericKind() == psi.KindOBJECT_DECLARATION && hasModifier(d, psi.KindCOMPANION_KEYWORD) &&
+				psi.Unquote(n.Text()) != d.Name() {
+				if c := d.Parent().Parent(); c.Declaration().Valid() {
+					el := analysis.ElementID{Snapshot: c.ContainingFile().ID(), Node: c.ID()}
+					decl = &el
+				}
+			}
 		} else if f.Call != nil {
-			decl = f.Call.Declaration
+			decl = callDeclaration(f.Call)
+			// A fun interface's SAM constructor, F { ... }: the interface.
+			if r := f.Call.ReturnType; decl == nil && r != nil && r.SAM && strings.HasSuffix("."+r.Name, "."+psi.Unquote(n.Text())) {
+				if el, ok := v.classes[r.Name]; ok {
+					decl = &el
+				}
+			}
+		} else if f.Role == "type" && f.Type != nil && f.Type.Parameter {
+			decl = v.typeParameterOf(n, *f.Type)
+		}
+		// A typealias's name, A() for typealias A = C.
+		if f.Classifier {
+			if a, ok := v.aliasFor(f, psi.Unquote(n.Text()), decl); ok {
+				el := analysis.ElementID{Snapshot: a.ContainingFile().ID(), Node: a.ID()}
+				decl = &el
+			}
 		}
 	case psi.KindUSER_TYPE:
 		if f.Type == nil {
@@ -133,17 +179,29 @@ func (v *View) use(f analysis.Fact, n psi.NodeRef) (analysis.ElementID, psi.Rang
 			break
 		}
 		name = r.Range()
+		if a, ok := v.aliases[f.ImportableName]; ok && f.ImportableName != "" {
+			el := analysis.ElementID{Snapshot: a.ContainingFile().ID(), Node: a.ID()}
+			decl = &el
+			break
+		}
 		if f.Type.Parameter {
-			if f.Type.ParameterOwner != nil {
-				if p := typeParameter(v.node(*f.Type.ParameterOwner), f.Type.Name); p.Valid() {
-					el := analysis.ElementID{Snapshot: p.ContainingFile().ID(), Node: p.ID()}
-					decl = &el
-				}
-			}
+			decl = v.typeParameterOf(n, *f.Type)
 			break
 		}
 		if el, ok := v.classes[f.Type.Name]; ok {
 			decl = &el
+		}
+	case psi.KindCALLABLE_REFERENCE_EXPRESSION:
+		// ::f, C::f, x::p: the name after the "::".
+		r := lastChild(n, psi.KindREFERENCE_EXPRESSION)
+		if !r.Valid() || r.Range().Start < n.ChildKind(psi.KindCOLONCOLON).Range().End {
+			break
+		}
+		name = r.Range()
+		if s, ok := v.symbol(f.Symbol); ok && s.Declaration != nil {
+			decl = s.Declaration
+		} else if f.Call != nil {
+			decl = f.Call.Declaration
 		}
 	case psi.KindBINARY_EXPRESSION, psi.KindPREFIX_EXPRESSION, psi.KindPOSTFIX_EXPRESSION:
 		op := n.ChildKind(psi.KindOPERATION_REFERENCE)
@@ -155,6 +213,71 @@ func (v *View) use(f analysis.Fact, n psi.NodeRef) (analysis.ElementID, psi.Rang
 		return analysis.ElementID{}, psi.Range{}, false
 	}
 	return *decl, name, true
+}
+
+// aliasFor returns the typealias a classifier reference written name
+// stands for, when decl, the class or constructor it resolved to, has
+// another name.
+func (v *View) aliasFor(f analysis.Fact, name string, decl *analysis.ElementID) (psi.NodeRef, bool) {
+	if decl != nil {
+		d := v.node(*decl)
+		switch d.NumericKind() {
+		case psi.KindPRIMARY_CONSTRUCTOR:
+			d = d.Parent()
+		case psi.KindSECONDARY_CONSTRUCTOR:
+			d = d.Parent().Parent()
+		}
+		if d.Name() == name {
+			return psi.NodeRef{}, false
+		}
+	}
+	if a, ok := v.aliases[f.ImportableName]; ok {
+		return a, true
+	}
+	var found psi.NodeRef
+	for _, a := range v.aliases {
+		if a.Name() == name {
+			if found.Valid() {
+				return psi.NodeRef{}, false
+			}
+			found = a
+		}
+	}
+	return found, found.Valid()
+}
+
+// callDeclaration returns the declaration a call resolved to, or for a
+// member a class delegates, the interface's member.
+func callDeclaration(c *analysis.Call) *analysis.ElementID {
+	if c.Declaration != nil {
+		return c.Declaration
+	}
+	for _, t := range c.Targets {
+		if t.Declaration != nil {
+			return t.Declaration
+		}
+	}
+	return nil
+}
+
+// typeParameterOf returns the declaration of type parameter t, used at
+// node n: of its owner, or else of the nearest declaration around n
+// that declares one of its name (a typealias's).
+func (v *View) typeParameterOf(n psi.NodeRef, t analysis.Type) *analysis.ElementID {
+	var p psi.NodeRef
+	if t.ParameterOwner != nil {
+		p = typeParameter(v.node(*t.ParameterOwner), t.Name)
+	}
+	for d := n.Parent(); !p.Valid() && d.Valid(); d = d.Parent() {
+		if d.Declaration().Valid() || d.NumericKind() == psi.KindTYPEALIAS {
+			p = typeParameter(d, t.Name)
+		}
+	}
+	if !p.Valid() {
+		return nil
+	}
+	el := analysis.ElementID{Snapshot: p.ContainingFile().ID(), Node: p.ID()}
+	return &el
 }
 
 // typeParameter returns the type parameter of declaration owner named
