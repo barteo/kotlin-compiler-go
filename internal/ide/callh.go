@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/barteo/kotlin-compiler-go/analysis"
+	"github.com/barteo/kotlin-compiler-go/internal/libsrc"
 	"github.com/barteo/kotlin-compiler-go/psi"
 )
 
@@ -148,9 +149,11 @@ func IncomingCalls(views []*View, path string, off int) []CallerCall {
 
 // OutgoingCalls returns the calls the declaration whose name starts at
 // off of path makes, in its code outside nested named declarations,
-// grouped by the function, constructor or class called. Calls of the
-// libraries' declarations are left out.
-func OutgoingCalls(v *View, path string, off int) []CallerCall {
+// grouped by the function, constructor or class called.
+//
+// lib, if it isn't nil, finds the declaration of a callee of the library,
+// in its sources; the calls of the others are left out.
+func OutgoingCalls(v *View, path string, off int, lib func(libsrc.Target) (psi.NodeRef, bool)) []CallerCall {
 	d := callTarget(v, path, off)
 	if !d.Valid() {
 		return nil
@@ -170,10 +173,18 @@ func OutgoingCalls(v *View, path string, off int) []CallerCall {
 			return true
 		}
 		el, name, ok := v.use(f, n)
-		if !ok {
+		var t psi.NodeRef
+		if ok {
+			t = v.node(el)
+		} else if lt, isLib := libraryTarget(v, f, n); isLib && lib != nil && f.Call != nil && n.NumericKind() == psi.KindREFERENCE_EXPRESSION &&
+			(lt.Kind == "function" || lt.Kind == "constructor") {
+			if t, ok = lib(lt); !ok {
+				return true
+			}
+			el, name = analysis.ElementID{Snapshot: t.ContainingFile().ID(), Node: t.ID()}, n.Range()
+		} else {
 			return true
 		}
-		t := v.node(el)
 		switch t.NumericKind() {
 		case psi.KindFUN, psi.KindSECONDARY_CONSTRUCTOR, psi.KindPRIMARY_CONSTRUCTOR:
 		case psi.KindCLASS, psi.KindOBJECT_DECLARATION:

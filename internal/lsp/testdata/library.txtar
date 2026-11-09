@@ -5,7 +5,7 @@ library
 -- src/A.kt --
 package p
 
-fun use(): Int {
+fun /*|use*/use(): Int {
     val l: /*|list*/List<Int> = /*|listOf*/listOf(1)
     /*|println*/println(l.size)
     val s = "x"./*|trim*/trim()
@@ -27,6 +27,7 @@ definition src/A.kt @length
 definition src/A.kt @list
 typedef src/A.kt @listOf
 hover src/A.kt @listOf
+calls src/A.kt @use
 -- want --
 > initialize
 > open src/A.kt
@@ -59,3 +60,11 @@ The returned list is serializable.
 
 **Samples:**
 - `samples.collections.Collections.Lists.singletonReadOnlyList`
+> calls src/A.kt @use
+use [12] (p) src/A.kt 2:4-2:7
+  -> mutableListOf [12] (kotlin.collections) .libcache/kotlin-stdlib-sources/commonMain/kotlin/collections/Collections.kt 105:22-105:35: 7:12-7:25 "mutableListOf"
+  -> trim [12] (kotlin.text) .libcache/kotlin-stdlib-sources/commonMain/kotlin/text/Strings.kt 180:25-180:29: 5:16-5:20 "trim"
+  -> Pair [5] (kotlin) .libcache/kotlin-stdlib-sources/commonMain/kotlin/util/Tuples.kt 26:18-26:22: 6:12-6:16 "Pair"
+  -> add [6] (MutableList) .libcache/kotlin-stdlib-sources/jvmMain/kotlin/Collections.kt 331:24-331:27: 8:6-8:9 "add"
+  -> listOf [12] (kotlin.collections) .libcache/kotlin-stdlib-sources/jvmMain/kotlin/collections/CollectionsJVM.kt 20:22-20:28: 3:23-3:29 "listOf"
+  -> println [12] (kotlin.io) .libcache/kotlin-stdlib-sources/jvmMain/kotlin/io/Console.kt 84:18-84:25: 4:4-4:11 "println"

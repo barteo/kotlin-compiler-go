@@ -35,7 +35,9 @@ func (s *Server) incomingCalls(_ context.Context, r *jsonrpc.Request) (any, erro
 }
 
 func (s *Server) outgoingCalls(_ context.Context, r *jsonrpc.Request) (any, error) {
-	return s.calls(r, func(c caret) []ide.CallerCall { return ide.OutgoingCalls(c.views[0], c.path, c.off) }, func(l *locator, to ide.CallerCall, item protocol.CallHierarchyItem, rs []protocol.Range) any {
+	return s.calls(r, func(c caret) []ide.CallerCall {
+		return ide.OutgoingCalls(c.views[0], c.path, c.off, s.libraryDecl(c.path))
+	}, func(l *locator, to ide.CallerCall, item protocol.CallHierarchyItem, rs []protocol.Range) any {
 		return protocol.CallHierarchyOutgoingCall{To: item, FromRanges: rs}
 	})
 }

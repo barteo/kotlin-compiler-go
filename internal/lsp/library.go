@@ -178,3 +178,25 @@ func (s *Server) libraryDoc(c caret) string {
 	}
 	return ide.KDoc(loc.Doc)
 }
+
+// libraryDecl returns a function finding a target's declaration in the
+// library of the module of path, in the file extracted for it, or nil
+// when library sources are off.
+func (s *Server) libraryDecl(path string) func(libsrc.Target) (psi.NodeRef, bool) {
+	if s.lib.off {
+		return nil
+	}
+	return func(t libsrc.Target) (psi.NodeRef, bool) {
+		l, _, ok := s.libraryLoc(path, t)
+		if !ok {
+			return psi.NodeRef{}, false
+		}
+		for n := l.Snap.NodeAt(l.Range.Start); n.Valid(); n = n.Parent() {
+			switch n.NumericKind() {
+			case psi.KindFUN, psi.KindSECONDARY_CONSTRUCTOR, psi.KindCLASS, psi.KindOBJECT_DECLARATION:
+				return n, true
+			}
+		}
+		return psi.NodeRef{}, false
+	}
+}

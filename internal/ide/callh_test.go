@@ -70,10 +70,10 @@ func TestCallHierarchy(t *testing.T) {
 		}
 	}
 	want := fmt.Sprintf("area(Shape) %d; area(Square) %d; constructor(Square) %d; local(total) %d; ", at("area() }"), at("area()\n}"), at("Square()."), at("local()\n"))
-	if got := fmtCalls(OutgoingCalls(v, "a.kt", at("total("))); got != want {
+	if got := fmtCalls(OutgoingCalls(v, "a.kt", at("total("), nil)); got != want {
 		t.Errorf("outgoing total: %s, want %s", got, want)
 	}
-	if got := fmtCalls(OutgoingCalls(v, "a.kt", at("Square(val"))); got != fmt.Sprintf("log(p) %d; ", at("log(\"square")) {
+	if got := fmtCalls(OutgoingCalls(v, "a.kt", at("Square(val"), nil)); got != fmt.Sprintf("log(p) %d; ", at("log(\"square")) {
 		t.Errorf("outgoing Square: %s", got)
 	}
 }
