@@ -50,13 +50,16 @@ type Server struct {
 	shutdown       bool
 	exitCode       int
 
-	roots        []string // the workspace folders
-	ws           []*workspace
-	mode         ide.DiagnosticsMode
-	noGradle     bool
-	initWarnings []string
-	canWatch     bool // the client registers file watchers
-	watching     bool // and does for kc-lsp
+	roots    []string // the workspace folders
+	ws       []*workspace
+	mode     ide.DiagnosticsMode
+	noGradle bool
+	noMaven  bool
+	// downloadSources: the imports download the library's sources.
+	downloadSources bool
+	initWarnings    []string
+	canWatch        bool // the client registers file watchers
+	watching        bool // and does for kc-lsp
 
 	lib       libraries     // the library's sources (library.go)
 	scanEvery time.Duration // how often to scan the sources, unwatched; 0 never

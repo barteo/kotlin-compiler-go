@@ -45,8 +45,12 @@ var debounce = 50 * time.Millisecond
 type initOptions struct {
 	// Diagnostics is the kc.diagnostics setting: default, coded or strict.
 	Diagnostics string `json:"diagnostics"`
-	// Gradle false stops kc-lsp from running Gradle.
+	// Gradle false stops kc-lsp from running Gradle, Maven false Maven.
 	Gradle *bool `json:"gradle"`
+	Maven  *bool `json:"maven"`
+	// DownloadSources has the build tool download the dependencies'
+	// source jars when it imports the project.
+	DownloadSources bool `json:"downloadSources"`
 	// LibrarySources false stops navigation into the library's sources,
 	// and LibraryCache is the directory their files are extracted to.
 	LibrarySources *bool  `json:"librarySources"`
@@ -175,7 +179,11 @@ func (w *workspace) reload(refresh bool) {
 	w.load.Lock()
 	defer w.load.Unlock()
 	s := w.s
-	opts := project.Options{NoGradle: s.noGradle, Gradle: project.GradleOptions{Refresh: refresh}}
+	opts := project.Options{
+		NoGradle: s.noGradle, NoMaven: s.noMaven,
+		Gradle: project.GradleOptions{Refresh: refresh, DownloadSources: s.downloadSources},
+		Maven:  project.MavenOptions{Refresh: refresh, DownloadSources: s.downloadSources},
+	}
 	p, err := project.Load(s.ctx, w.root, opts)
 	if err != nil {
 		if s.ctx.Err() == nil {
@@ -680,7 +688,7 @@ func (c *diskCache) forget(path string) {
 func isProjectFile(path string) bool {
 	name := filepath.Base(path)
 	return name == project.ConfigFile || strings.HasSuffix(name, ".gradle") || strings.HasSuffix(name, ".gradle.kts") ||
-		name == "gradle.properties" || strings.HasSuffix(name, ".versions.toml")
+		name == "gradle.properties" || strings.HasSuffix(name, ".versions.toml") || name == "pom.xml"
 }
 
 // reloadFor reloads the workspaces whose project path can change.
@@ -754,7 +762,7 @@ func (s *Server) didChangeWatchedFiles(_ context.Context, r *jsonrpc.Request) (a
 // watch asks the client to tell the server of changes to sources and
 // build files.
 func (s *Server) watch() {
-	globs := []string{"**/*.kt", "**/" + project.ConfigFile, "**/*.gradle", "**/*.gradle.kts", "**/gradle.properties", "**/*.versions.toml"}
+	globs := []string{"**/*.kt", "**/" + project.ConfigFile, "**/*.gradle", "**/*.gradle.kts", "**/gradle.properties", "**/*.versions.toml", "**/pom.xml"}
 	var ws []protocol.FileSystemWatcher
 	for _, g := range globs {
 		ws = append(ws, protocol.FileSystemWatcher{GlobPattern: g})
@@ -796,6 +804,8 @@ func (s *Server) parseInitOptions(raw json.RawMessage) {
 	}
 	s.mode = mode
 	s.noGradle = o.Gradle != nil && !*o.Gradle
+	s.noMaven = o.Maven != nil && !*o.Maven
+	s.downloadSources = o.DownloadSources
 	if o.LibrarySources != nil {
 		s.lib.off = !*o.LibrarySources
 	}

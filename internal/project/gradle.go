@@ -38,6 +38,9 @@ type GradleOptions struct {
 	Gradle string
 	// Refresh runs Gradle even if the model kept is current.
 	Refresh bool
+	// DownloadSources has Gradle download the dependencies' source jars,
+	// into its cache, where the library's sources are looked for.
+	DownloadSources bool
 	// Output receives Gradle's output; nil discards it.
 	Output io.Writer
 }
@@ -130,7 +133,11 @@ func runGradle(ctx context.Context, root string, opts GradleOptions) ([]rawModul
 			gradle = "gradle"
 		}
 	}
-	cmd := exec.CommandContext(ctx, gradle, "--quiet", "--no-configuration-cache", "--init-script", script, "-PkcLspOut="+out, "kcLspModel")
+	args := []string{"--quiet", "--no-configuration-cache", "--init-script", script, "-PkcLspOut=" + out}
+	if opts.DownloadSources {
+		args = append(args, "-PkcLspDownloadSources=true")
+	}
+	cmd := exec.CommandContext(ctx, gradle, append(args, "kcLspModel")...)
 	cmd.Dir = root
 	var log bytes.Buffer
 	w := io.Writer(&log)
@@ -211,28 +218,33 @@ func convert(raws []rawModule) []*Module {
 		if r.ExplicitAPI != nil {
 			m.ExplicitAPI = explicitAPI(*r.ExplicitAPI)
 		}
-		for _, a := range r.FreeArgs {
-			switch {
-			case strings.HasPrefix(a, "-opt-in="):
-				m.OptIns = append(m.OptIns, strings.Split(strings.TrimPrefix(a, "-opt-in="), ",")...)
-			case strings.HasPrefix(a, "-jvm-default="):
-				m.JVMDefault = jvmDefault(strings.TrimPrefix(a, "-jvm-default="))
-			case strings.HasPrefix(a, "-Xjvm-default="):
-				switch strings.TrimPrefix(a, "-Xjvm-default=") {
-				case "all":
-					m.JVMDefault = "no-compatibility"
-				case "all-compatibility":
-					m.JVMDefault = "enable"
-				case "disable":
-					m.JVMDefault = "disable"
-				}
-			case strings.HasPrefix(a, "-Xexplicit-api="):
-				m.ExplicitAPI = explicitAPI(strings.TrimPrefix(a, "-Xexplicit-api="))
-			}
-		}
+		applyFreeArgs(m, r.FreeArgs)
 		mods = append(mods, m)
 	}
 	return mods
+}
+
+// applyFreeArgs sets the options of m that compiler arguments give.
+func applyFreeArgs(m *Module, args []string) {
+	for _, a := range args {
+		switch {
+		case strings.HasPrefix(a, "-opt-in="):
+			m.OptIns = append(m.OptIns, strings.Split(strings.TrimPrefix(a, "-opt-in="), ",")...)
+		case strings.HasPrefix(a, "-jvm-default="):
+			m.JVMDefault = jvmDefault(strings.TrimPrefix(a, "-jvm-default="))
+		case strings.HasPrefix(a, "-Xjvm-default="):
+			switch strings.TrimPrefix(a, "-Xjvm-default=") {
+			case "all":
+				m.JVMDefault = "no-compatibility"
+			case "all-compatibility":
+				m.JVMDefault = "enable"
+			case "disable":
+				m.JVMDefault = "disable"
+			}
+		case strings.HasPrefix(a, "-Xexplicit-api="):
+			m.ExplicitAPI = explicitAPI(strings.TrimPrefix(a, "-Xexplicit-api="))
+		}
+	}
 }
 
 // plugin returns the compiler plugin a jar of a compilation's plugin

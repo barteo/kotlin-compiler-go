@@ -1,9 +1,9 @@
 // Package project finds what a workspace's Kotlin modules are, for the
 // language server: their sources, class paths and compiler options. A
 // workspace describes them in a kc-lsp.json at its root; else, if it is a
-// Gradle build, they are imported from Gradle (gradle.go); else the
-// workspace is one module of all its sources, with the standard library
-// and the JDK.
+// Gradle or Maven build, they are imported from Gradle (gradle.go) or
+// Maven (maven.go); else the workspace is one module of all its sources,
+// with the standard library and the JDK.
 package project
 
 import (
@@ -60,8 +60,8 @@ type Module struct {
 type Project struct {
 	// Root is the workspace's directory.
 	Root string
-	// Origin says where the modules come from: ConfigFile, "gradle" or
-	// "implicit".
+	// Origin says where the modules come from: ConfigFile, "gradle",
+	// "maven" or "implicit".
 	Origin  string
 	Modules []*Module
 	// Warnings are what was wrong but didn't stop loading: class path
@@ -71,10 +71,12 @@ type Project struct {
 
 // Options change how Load finds a project.
 type Options struct {
-	// NoGradle stops Load from running Gradle.
+	// NoGradle stops Load from running Gradle, NoMaven Maven.
 	NoGradle bool
-	// Gradle are the options of a Gradle import.
+	NoMaven  bool
+	// Gradle and Maven are the options of an import.
 	Gradle GradleOptions
+	Maven  MavenOptions
 }
 
 // Load returns the project of the workspace at root.
@@ -100,6 +102,13 @@ func Load(ctx context.Context, root string, opts Options) (*Project, error) {
 	case !opts.NoGradle && isGradle(root):
 		p.Origin = "gradle"
 		mods, err := ImportGradle(ctx, root, opts.Gradle)
+		if err != nil {
+			return nil, err
+		}
+		p.Modules = mods
+	case !opts.NoMaven && isMaven(root):
+		p.Origin = "maven"
+		mods, err := ImportMaven(ctx, root, opts.Maven)
 		if err != nil {
 			return nil, err
 		}
@@ -335,7 +344,7 @@ func (p *Project) ownerOfRoot(r string) *Module {
 // sources: the build's, the VCS's and the tools'.
 func skipDir(name string) bool {
 	switch name {
-	case "build", "out", "node_modules", ".git", ".gradle", ".idea", ".kc-lsp":
+	case "build", "out", "target", "node_modules", ".git", ".gradle", ".idea", ".kc-lsp":
 		return true
 	}
 	return false
