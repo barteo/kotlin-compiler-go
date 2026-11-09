@@ -464,6 +464,9 @@ func factIDs(f *Fact, fn func(*ElementID)) {
 func symbolIDs(s *Symbol, fn func(*ElementID)) {
 	typeIDs(&s.Type, fn)
 	idPtr(s.Declaration, fn)
+	for i := range s.Overrides {
+		fn(&s.Overrides[i])
+	}
 }
 
 func idPtr(id *ElementID, fn func(*ElementID)) {

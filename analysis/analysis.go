@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"iter"
 	"slices"
 	"strings"
 
@@ -204,6 +205,9 @@ type Symbol struct {
 	HasAbstractMembers    bool `json:"hasAbstractMembers,omitempty"`
 	HasConcreteMembers    bool `json:"hasConcreteMembers,omitempty"`
 	HasAbstractSuperclass bool `json:"hasAbstractSuperclass,omitempty"`
+	// Overrides are the declarations in the sources of the functions a
+	// function overrides, through every supertype.
+	Overrides []ElementID `json:"overrides,omitempty"`
 }
 
 // Call is a resolved call of a function or constructor.
@@ -428,6 +432,36 @@ func (r *Result) Fact(id ElementID) (Fact, bool) {
 	return copyFact(*fs[j]), true
 }
 
+// Snapshots returns the snapshots whose facts r has, as passed.
+func (r *Result) Snapshots() []psi.SnapshotID {
+	if r == nil {
+		return nil
+	}
+	out := make([]psi.SnapshotID, len(r.index))
+	for id, i := range r.index {
+		out[i] = id
+	}
+	return out
+}
+
+// FileFacts returns the facts of the snapshot id names, in node order.
+func (r *Result) FileFacts(id psi.SnapshotID) iter.Seq[Fact] {
+	return func(yield func(Fact) bool) {
+		if r == nil {
+			return
+		}
+		i, ok := r.index[id]
+		if !ok {
+			return
+		}
+		for _, f := range r.files[i] {
+			if !yield(copyFact(*f)) {
+				return
+			}
+		}
+	}
+}
+
 // Symbol returns the symbol with ID id.
 func (r *Result) Symbol(id uint32) (Symbol, bool) {
 	if r == nil || id == 0 || int(id) > len(r.symbols) {
@@ -605,5 +639,6 @@ func copySymbol(s Symbol) Symbol {
 	s.Type = copyTypeValue(s.Type)
 	s.Declaration = copyID(s.Declaration)
 	s.Supertypes = slices.Clone(s.Supertypes)
+	s.Overrides = slices.Clone(s.Overrides)
 	return s
 }

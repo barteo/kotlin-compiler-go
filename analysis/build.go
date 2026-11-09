@@ -1443,6 +1443,31 @@ func (b *builder) targets(f *types.FunSym) []Call {
 	return out
 }
 
+// overrides returns the declarations in the sources of the functions f
+// overrides, through every supertype, each once.
+func (b *builder) overrides(f *types.FunSym) []ElementID {
+	if b.rec.overridden == nil {
+		return nil
+	}
+	var out []ElementID
+	seen := map[*types.FunSym]bool{f: true}
+	var walk func(*types.FunSym)
+	walk = func(f *types.FunSym) {
+		for _, g := range b.rec.overridden(f) {
+			if seen[g] {
+				continue
+			}
+			seen[g] = true
+			if d := b.decl(g.Decl); d != nil {
+				out = append(out, *d)
+			}
+			walk(g)
+		}
+	}
+	walk(f)
+	return out
+}
+
 // funCall describes function f as a call of it would, with no call's
 // arguments, receiver or annotations.
 func (b *builder) funCall(f *types.FunSym) Call {
@@ -1974,6 +1999,7 @@ func (b *builder) symbol(id uint32, s any) Symbol {
 		if sym.Declaration == nil && s.Name == "<init>" && s.Owner != nil {
 			sym.Declaration = b.decl(s.Owner.Decl)
 		}
+		sym.Overrides = b.overrides(s)
 	case *types.VarSym:
 		switch s.Kind {
 		case types.Local:
