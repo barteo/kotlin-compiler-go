@@ -42,6 +42,7 @@ type Server struct {
 	enc          ide.Encoding
 	hierarchical bool
 	snippets     bool // the client takes snippets in completion items
+	canApplyEdit bool // the client takes workspace/applyEdit requests
 	initialized  bool
 	shutdown     bool
 	exitCode     int
@@ -178,6 +179,8 @@ func init() {
 		"completionItem/resolve":            (*Server).resolveCompletion,
 		"textDocument/signatureHelp":        (*Server).signatureHelp,
 		"workspace/executeCommand":          (*Server).executeCommand,
+		"workspace/willRenameFiles":         (*Server).willRenameFiles,
+		"workspace/didCreateFiles":          (*Server).didCreateFiles,
 	}
 }
 
@@ -201,6 +204,9 @@ func (s *Server) initialize(p *protocol.InitializeParams) *protocol.InitializeRe
 	}
 	if ws := p.Capabilities.Workspace; ws != nil && ws.DidChangeWatchedFiles != nil {
 		s.canWatch = ws.DidChangeWatchedFiles.DynamicRegistration
+	}
+	if ws := p.Capabilities.Workspace; ws != nil {
+		s.canApplyEdit = ws.ApplyEdit
 	}
 	s.roots = workspaceRoots(p)
 	s.parseInitOptions(p.InitializationOptions)
@@ -236,6 +242,15 @@ func (s *Server) initialize(p *protocol.InitializeParams) *protocol.InitializeRe
 			SignatureHelpProvider:            &protocol.SignatureHelpOptions{TriggerCharacters: []string{"(", ","}, RetriggerCharacters: []string{"="}},
 			InlayHintProvider:                true,
 			ExecuteCommandProvider:           &protocol.ExecuteCommandOptions{Commands: []string{reimportCommand}},
+			Workspace: &protocol.WorkspaceServerCapabilities{FileOperations: &protocol.FileOperationOptions{
+				WillRename: &protocol.FileOperationRegistrationOptions{Filters: []protocol.FileOperationFilter{
+					{Scheme: "file", Pattern: protocol.FileOperationPattern{Glob: "**/*.kt", Matches: "file"}},
+					{Scheme: "file", Pattern: protocol.FileOperationPattern{Glob: "**", Matches: "folder"}},
+				}},
+				DidCreate: &protocol.FileOperationRegistrationOptions{Filters: []protocol.FileOperationFilter{
+					{Scheme: "file", Pattern: protocol.FileOperationPattern{Glob: "**/*.kt", Matches: "file"}},
+				}},
+			}},
 		},
 		ServerInfo: &protocol.ServerInfo{Name: "kc-lsp", Version: Version},
 	}

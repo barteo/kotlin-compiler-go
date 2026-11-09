@@ -59,6 +59,8 @@ var update = flag.Bool("update", false, "rewrite the want sections of testdata/*
 //	implementation F POS      print textDocument/implementation's locations
 //	rename F POS NAME         print textDocument/rename's edits per file, and apply those of open documents
 //	prepare F POS             print textDocument/prepareRename's range and placeholder
+//	move FROM TO              print workspace/willRenameFiles' edits per file, and apply those of open documents
+//	applied                   wait for the server's workspace/applyEdit requests and print them
 //	calls F POS               print the call hierarchy item at POS and its incoming (<-) and outgoing (->) calls
 //	highlight F POS           print textDocument/documentHighlight
 //	hover F POS               print textDocument/hover's range and Markdown
@@ -171,6 +173,7 @@ type session struct {
 	diags    map[protocol.DocumentURI]protocol.PublishDiagnosticsParams
 	received int64 // diagnostics notifications
 	note     chan struct{}
+	applied  []protocol.ApplyWorkspaceEditParams // the server's workspace/applyEdit requests
 }
 
 func (s *session) uri(name string) protocol.DocumentURI {
@@ -281,6 +284,16 @@ func runScript(t *testing.T, a *archive) string {
 				default:
 				}
 			}
+		}
+		if r.Method == "workspace/applyEdit" {
+			var p protocol.ApplyWorkspaceEditParams
+			if err := r.Unmarshal(&p); err != nil {
+				return nil, err
+			}
+			s.mu.Lock()
+			s.applied = append(s.applied, p)
+			s.mu.Unlock()
+			return protocol.ApplyWorkspaceEditResult{Applied: true}, nil
 		}
 		return nil, nil
 	})
@@ -523,6 +536,47 @@ func (s *session) run(line string) {
 		}
 		s.printEdit(we, "")
 		s.applyEdit(we)
+	case "move":
+		// move FROM TO prints workspace/willRenameFiles' edits per file
+		// for renaming a file or folder, and applies those of open
+		// documents.
+		if len(args) != 2 {
+			t.Fatalf("move: want FROM TO")
+		}
+		var we *protocol.WorkspaceEdit
+		p := protocol.RenameFilesParams{Files: []protocol.FileRename{{OldURI: s.uri(args[0]), NewURI: s.uri(args[1])}}}
+		if err := s.call("workspace/willRenameFiles", p, &we); err != nil {
+			s.printResult(nil, err)
+			return
+		}
+		if we == nil {
+			fmt.Fprintln(&s.out, "(none)")
+			return
+		}
+		s.printEdit(we, "")
+		s.applyEdit(we)
+	case "applied":
+		// applied waits for the server's workspace/applyEdit requests and
+		// prints their edits.
+		deadline := time.Now().Add(5 * time.Second)
+		for {
+			s.mu.Lock()
+			got := s.applied
+			s.applied = nil
+			s.mu.Unlock()
+			if len(got) > 0 {
+				for _, p := range got {
+					fmt.Fprintf(&s.out, "%s\n", p.Label)
+					s.printEdit(&p.Edit, "  ")
+				}
+				break
+			}
+			if time.Now().After(deadline) {
+				fmt.Fprintln(&s.out, "(none)")
+				break
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
 	case "calls":
 		// calls F POS prints the call hierarchy item at POS, and its
 		// incoming and outgoing calls.

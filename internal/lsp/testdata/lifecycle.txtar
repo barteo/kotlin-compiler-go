@@ -102,6 +102,39 @@ error -32002: textDocument/documentSymbol before initialize
     },
     "typeDefinitionProvider": true,
     "typeHierarchyProvider": true,
+    "workspace": {
+      "fileOperations": {
+        "didCreate": {
+          "filters": [
+            {
+              "pattern": {
+                "glob": "**/*.kt",
+                "matches": "file"
+              },
+              "scheme": "file"
+            }
+          ]
+        },
+        "willRename": {
+          "filters": [
+            {
+              "pattern": {
+                "glob": "**/*.kt",
+                "matches": "file"
+              },
+              "scheme": "file"
+            },
+            {
+              "pattern": {
+                "glob": "**",
+                "matches": "folder"
+              },
+              "scheme": "file"
+            }
+          ]
+        }
+      }
+    },
     "workspaceSymbolProvider": true
   },
   "serverInfo": {

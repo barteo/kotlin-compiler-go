@@ -62,6 +62,7 @@ type ClientCapabilities struct {
 
 type WorkspaceClientCapabilities struct {
 	DidChangeWatchedFiles *DynamicRegistrationCapabilities `json:"didChangeWatchedFiles,omitempty"`
+	ApplyEdit             bool                             `json:"applyEdit,omitempty"`
 }
 
 type DynamicRegistrationCapabilities struct {
@@ -140,6 +141,58 @@ type ServerCapabilities struct {
 	DocumentRangeFormattingProvider  bool                             `json:"documentRangeFormattingProvider,omitempty"`
 	DocumentOnTypeFormattingProvider *DocumentOnTypeFormattingOptions `json:"documentOnTypeFormattingProvider,omitempty"`
 	ExecuteCommandProvider           *ExecuteCommandOptions           `json:"executeCommandProvider,omitempty"`
+
+	Workspace *WorkspaceServerCapabilities `json:"workspace,omitempty"`
+}
+
+type WorkspaceServerCapabilities struct {
+	FileOperations *FileOperationOptions `json:"fileOperations,omitempty"`
+}
+
+type FileOperationOptions struct {
+	DidCreate  *FileOperationRegistrationOptions `json:"didCreate,omitempty"`
+	WillRename *FileOperationRegistrationOptions `json:"willRename,omitempty"`
+}
+
+type FileOperationRegistrationOptions struct {
+	Filters []FileOperationFilter `json:"filters"`
+}
+
+type FileOperationFilter struct {
+	Scheme  string               `json:"scheme,omitempty"`
+	Pattern FileOperationPattern `json:"pattern"`
+}
+
+// FileOperationPattern's Matches is "file" or "folder"; "" for both.
+type FileOperationPattern struct {
+	Glob    string `json:"glob"`
+	Matches string `json:"matches,omitempty"`
+}
+
+type FileRename struct {
+	OldURI DocumentURI `json:"oldUri"`
+	NewURI DocumentURI `json:"newUri"`
+}
+
+type RenameFilesParams struct {
+	Files []FileRename `json:"files"`
+}
+
+type FileCreate struct {
+	URI DocumentURI `json:"uri"`
+}
+
+type CreateFilesParams struct {
+	Files []FileCreate `json:"files"`
+}
+
+type ApplyWorkspaceEditParams struct {
+	Label string        `json:"label,omitempty"`
+	Edit  WorkspaceEdit `json:"edit"`
+}
+
+type ApplyWorkspaceEditResult struct {
+	Applied bool `json:"applied"`
 }
 
 type ExecuteCommandOptions struct {
