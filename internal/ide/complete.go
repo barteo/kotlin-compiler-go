@@ -47,6 +47,10 @@ type CompletionContext struct {
 
 	snap  *psi.Snapshot // the document's
 	probe psi.Range     // the probe's, and the )s added, in ProbeText
+	// recv is the receiver of expr.probe, in ProbeText's syntax, for
+	// postfix templates; recvStmt is set when expr.probe is a statement.
+	recv     psi.NodeRef
+	recvStmt bool
 }
 
 // The keywords that may start an expression, a statement, a member of a
@@ -115,7 +119,9 @@ func CompletionAt(d *Document, off int) CompletionContext {
 	closers := strings.Repeat(")", max(0, strings.Count(text[lineStart:start], "(")-strings.Count(text[lineStart:start], ")")-strings.Count(rest[:lineEnd], ")")))
 	cc.ProbeText = text[:start] + analysis.ProbeName + closers + text[end:]
 	cc.probe = psi.Range{Start: start, End: start + len(analysis.ProbeName) + len(closers)}
-	cc.Keywords, cc.None = keywordsAt(parse(d.Path, cc.ProbeText), start)
+	ps := parse(d.Path, cc.ProbeText)
+	cc.Keywords, cc.None = keywordsAt(ps, start)
+	cc.recv, cc.recvStmt = postfixAt(ps, start)
 	if cc.ArgName {
 		cc.Keywords = nil
 	}
@@ -214,6 +220,9 @@ type CompletionItem struct {
 	// Import is set on a name that needs an import: the edit that adds
 	// it.
 	Import *TextEdit
+	// Edit, if set, is the range Insert replaces instead of
+	// CompletionContext.Replace: a postfix template's, from its receiver.
+	Edit *psi.Range
 	// Deprecated is set on a deprecated declaration.
 	Deprecated bool
 	// Decl is where the declaration starts, in the document Complete's
@@ -333,6 +342,19 @@ func Complete(cc CompletionContext, c *analysis.Completion, opts CompletionOptio
 			add(CompletionItem{Label: kw, Kind: "keyword", Insert: kw}, keywordGroup, typ)
 		}
 	}
+	if opts.Snippets && !cc.ArgName && !cc.Call {
+		for _, it := range cc.templates(c, member, typePos || callable) {
+			if score, ok := completionScore(it.Label, cc.Prefix); ok {
+				// A live template whose name is typed in part goes
+				// before the top-level declarations; others last.
+				g := 8
+				if it.Edit == nil && score >= 5 {
+					g = 4
+				}
+				cands = append(cands, candidate{item: it, group: g, score: score})
+			}
+		}
+	}
 	slices.SortStableFunc(cands, func(a, b candidate) int {
 		if a.group == 0 || b.group == 0 {
 			// Named arguments first, in their parameters' order.
@@ -344,13 +366,20 @@ func Complete(cc CompletionContext, c *analysis.Completion, opts CompletionOptio
 			strings.Compare(strings.ToLower(a.item.Label), strings.ToLower(b.item.Label)), strings.Compare(a.item.Label, b.item.Label),
 			strings.Compare(a.item.Detail, b.item.Detail))
 	})
+	// The limit leaves out semantic items, not templates, which are few
+	// and come last.
 	limit := cmp.Or(opts.Limit, 200)
-	if len(cands) > limit {
-		cands, incomplete = cands[:limit], true
-	}
-	for i, cd := range cands {
+	n := 0
+	for _, cd := range cands {
+		if cd.item.Kind != "snippet" {
+			if n == limit {
+				incomplete = true
+				continue
+			}
+			n++
+		}
 		it := cd.item
-		it.Sort = sortKey(i)
+		it.Sort = sortKey(len(items))
 		items = append(items, it)
 	}
 	return items, incomplete

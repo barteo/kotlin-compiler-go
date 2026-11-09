@@ -653,6 +653,7 @@ const (
 	CompletionProperty      = 10
 	CompletionEnum          = 13
 	CompletionKeyword       = 14
+	CompletionSnippet       = 15
 	CompletionStruct        = 22
 	CompletionTypeParameter = 25
 )

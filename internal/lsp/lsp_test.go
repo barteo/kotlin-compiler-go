@@ -901,6 +901,7 @@ func (s *session) run(line string) {
 			kinds[v] = k
 		}
 		kinds[protocol.CompletionVariable], kinds[protocol.CompletionClass], kinds[protocol.CompletionInterface] = "variable", "class", "interface"
+		kinds[protocol.CompletionSnippet] = "snippet"
 		for i, it := range res.Items {
 			if i == n {
 				fmt.Fprintf(&s.out, "... %d more\n", len(res.Items)-n)
@@ -912,6 +913,10 @@ func (s *session) run(line string) {
 			}
 			if it.TextEdit != nil && it.TextEdit.NewText != it.Label {
 				line += fmt.Sprintf(" => %q", it.TextEdit.NewText)
+			}
+			if it.Kind == protocol.CompletionSnippet && it.FilterText != "" {
+				// A postfix template's: its edit's range.
+				line += " @" + fmtRange(it.TextEdit.Range)
 			}
 			for _, e := range it.AdditionalTextEdits {
 				line += fmt.Sprintf(" +%s %q", fmtRange(e.Range), e.NewText)

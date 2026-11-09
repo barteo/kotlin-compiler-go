@@ -149,6 +149,7 @@ var completionKinds = map[string]int{
 	"class": protocol.CompletionClass, "interface": protocol.CompletionInterface, "object": protocol.CompletionStruct,
 	"enum": protocol.CompletionEnum, "annotation": protocol.CompletionInterface, "typealias": protocol.CompletionClass,
 	"typeParameter": protocol.CompletionTypeParameter, "package": protocol.CompletionModule, "keyword": protocol.CompletionKeyword,
+	"snippet": protocol.CompletionSnippet,
 }
 
 func completionItem(d *ide.Document, it ide.CompletionItem, replace protocol.Range, enc ide.Encoding) protocol.CompletionItem {
@@ -158,6 +159,9 @@ func completionItem(d *ide.Document, it ide.CompletionItem, replace protocol.Ran
 	}
 	if it.Snippet {
 		ci.InsertTextFormat = protocol.InsertSnippet
+	}
+	if it.Edit != nil {
+		ci.TextEdit.Range = rng(d, *it.Edit, enc)
 	}
 	if it.Deprecated {
 		ci.Tags = []int{protocol.CompletionItemTagDeprecated}
