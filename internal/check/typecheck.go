@@ -652,3 +652,56 @@ func enumerable(t types.Type) bool {
 	}
 	return false
 }
+
+// missingCases returns the conditions a when over a subject of type t
+// lacks to be exhaustive, as source text with fully qualified names:
+// enum entries, is checks of sealed subclasses (objects by name),
+// true or false, and null.
+func (c *Checker) missingCases(t types.Type, cv *coverage) []string {
+	var out []string
+	if t.K == types.Null {
+		return nil
+	}
+	nt := t.NonNull()
+	switch {
+	case nt.K == types.Bool:
+		if !cv.isTrue {
+			out = append(out, "true")
+		}
+		if !cv.isFalse {
+			out = append(out, "false")
+		}
+	case nt.K == types.Class:
+		cls := nt.C
+		cls.Ensure()
+		if cls.Entries != nil {
+			for _, e := range cls.Entries {
+				if !cv.entries[e] {
+					out = append(out, qualifiedClassName(cls)+"."+e)
+				}
+			}
+		} else {
+			out = c.missingSubclasses(cls, cv.classes, out)
+		}
+	}
+	if types.MayBeNull(t) && !t.P && !cv.null {
+		out = append(out, "null")
+	}
+	return out
+}
+
+func (c *Checker) missingSubclasses(cls *types.ClassSym, classes []*types.ClassSym, out []string) []string {
+	if c.sealedCovered(cls, classes) {
+		return out
+	}
+	if !cls.Sealed {
+		if cls.Object {
+			return append(out, qualifiedClassName(cls))
+		}
+		return append(out, "is "+qualifiedClassName(cls))
+	}
+	for _, s := range cls.Subclasses {
+		out = c.missingSubclasses(s, classes, out)
+	}
+	return out
+}

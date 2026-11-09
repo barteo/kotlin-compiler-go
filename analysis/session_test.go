@@ -81,12 +81,12 @@ func TestSessionMatchesAnalyze(t *testing.T) {
 		}
 		// With errors, the session reports at least AnalyzeArena's, and
 		// lowering errors stop AnalyzeArena before the checker.
-		have := map[Diagnostic]bool{}
+		have := map[string]bool{}
 		for _, d := range got.Diagnostics() {
-			have[d] = true
+			have[fmt.Sprint(d)] = true
 		}
 		for _, d := range want.Diagnostics() {
-			if !have[d] {
+			if !have[fmt.Sprint(d)] {
 				t.Errorf("%s: session lacks %v", name, d)
 			}
 		}

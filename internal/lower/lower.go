@@ -543,7 +543,7 @@ func (l *lowerer) recovered(lower func()) (ok bool) {
 			if _, b := r.(bailout); !b {
 				panic(r)
 			}
-			if k := len(l.errs); k == 0 || *l.errs[k-1] != *l.err {
+			if k := len(l.errs); k == 0 || !l.errs[k-1].Same(l.err) {
 				l.errs = append(l.errs, l.err)
 			}
 			ok = false

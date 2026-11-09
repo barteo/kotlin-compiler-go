@@ -801,7 +801,43 @@ func (u *Universe) sourceClass(name string) *types.ClassSym {
 }
 
 func (c *Checker) errorf(p syntax.Pos, format string, args ...any) {
-	c.errs = append(c.errs, &syntax.Error{File: c.file.Path, Pos: p, Msg: fmt.Sprintf(format, args...), Code: errorCodes[format]})
+	code := errorCodes[format]
+	var data []string
+	if code != "" {
+		for _, a := range args {
+			data = append(data, argData(a))
+		}
+	}
+	c.errs = append(c.errs, &syntax.Error{File: c.file.Path, Pos: p, Msg: fmt.Sprintf(format, args...), Code: code, Data: data})
+}
+
+// errorData reports an error with its code and fix data given.
+func (c *Checker) errorData(p syntax.Pos, code string, data []string, format string, args ...any) {
+	c.errs = append(c.errs, &syntax.Error{File: c.file.Path, Pos: p, Msg: fmt.Sprintf(format, args...), Code: code, Data: data})
+}
+
+// argData is a message argument as fix data: a type with fully
+// qualified class names.
+func argData(a any) string {
+	if t, ok := a.(types.Type); ok {
+		return sourceType(t)
+	}
+	return fmt.Sprint(a)
+}
+
+// sourceType writes t as source text with fully qualified class names.
+func sourceType(t types.Type) string {
+	return t.Format(qualifiedClassName)
+}
+
+func qualifiedClassName(c *types.ClassSym) string {
+	if c.Anonymous {
+		return c.DisplayName()
+	}
+	if c.KotlinName != "" {
+		return strings.ReplaceAll(c.KotlinName, "/", ".")
+	}
+	return strings.NewReplacer("/", ".", "$", ".").Replace(c.Name)
 }
 
 // unsupported reports the use of a Kotlin feature kc doesn't support,

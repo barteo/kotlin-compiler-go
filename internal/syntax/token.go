@@ -2,7 +2,10 @@
 // Kotlin subset.
 package syntax
 
-import "fmt"
+import (
+	"fmt"
+	"slices"
+)
 
 // Pos is a 1-based line/column position in a source file.
 type Pos struct {
@@ -22,6 +25,17 @@ type Error struct {
 	// Code is the name of kotlinc's diagnostic the error is, as
 	// UNRESOLVED_REFERENCE, if kc knows it; "" if not.
 	Code string
+	// Data holds what a quick fix needs, per code: for a coded error,
+	// the message's arguments, types with fully qualified names; for
+	// ABSTRACT_MEMBER_NOT_IMPLEMENTED, the member's signature to override,
+	// as "fun f(a: p.A): kotlin.Int"; for NO_ELSE_IN_WHEN, the missing
+	// cases, as "p.Color.RED", "is p.Shape.Circle" or "true".
+	Data []string
+}
+
+// Same reports whether e and f report the same error.
+func (e *Error) Same(f *Error) bool {
+	return e.File == f.File && e.Pos == f.Pos && e.Msg == f.Msg && e.Feature == f.Feature && e.Code == f.Code && slices.Equal(e.Data, f.Data)
 }
 
 func (e *Error) Error() string {

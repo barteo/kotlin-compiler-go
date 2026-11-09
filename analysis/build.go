@@ -181,7 +181,7 @@ func diagnostic(snap *psi.Snapshot, e *syntax.Error) Diagnostic {
 	if e.Feature != "" {
 		code = "unsupported:" + e.Feature
 	}
-	d := Diagnostic{Path: path, Line: e.Pos.Line, Column: e.Pos.Col, Code: code, Kotlinc: e.Code, Message: e.Msg}
+	d := Diagnostic{Path: path, Line: e.Pos.Line, Column: e.Pos.Col, Code: code, Kotlinc: e.Code, Message: e.Msg, Data: e.Data}
 	d.Range = errorRange(snap, d.Line, d.Column)
 	return d
 }

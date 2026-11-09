@@ -43,9 +43,11 @@ const (
 // kotlinc accepts (bench/results/lsp-precision.tsv), which are warnings.
 var lowPrecision = map[string]bool{
 	"MUST_BE_INITIALIZED_OR_BE_ABSTRACT":    true, // 0.930
+	"NO_ELSE_IN_WHEN":                       true, // 0.919
 	"NO_RETURN_IN_FUNCTION_WITH_BLOCK_BODY": true, // 0.981
 	"NONE_APPLICABLE":                       true, // 0.879
 	"NOTHING_TO_OVERRIDE":                   true, // 0.867
+	"RETURN_TYPE_MISMATCH_ON_OVERRIDE":      true, // 0.909
 	"TYPE_MISMATCH":                         true, // 0.880
 	"UNRESOLVED_IMPORT":                     true, // 0.875
 	"UNRESOLVED_LABEL":                      true, // 0.931

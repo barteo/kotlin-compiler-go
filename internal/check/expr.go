@@ -3582,7 +3582,11 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 		// As of Kotlin 1.7, a when statement over a Boolean, an enum or a
 		// sealed class must be exhaustive too.
 		if valueUsed || x.Subject != nil && enumerable(st) {
-			c.errorf(x.P, "'when' expression must be exhaustive, add necessary 'else' branch")
+			var missing []string
+			if x.Subject != nil {
+				missing = c.missingCases(st, &cov)
+			}
+			c.errorData(x.P, "NO_ELSE_IN_WHEN", missing, "'when' expression must be exhaustive, add necessary 'else' branch")
 			return types.InvalidType
 		}
 		c.completeBranches(pending, types.NothingType, noWant, false)

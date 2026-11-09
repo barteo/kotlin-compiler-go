@@ -310,13 +310,21 @@ The server learns a workspace's modules and shows `kc`'s errors in them:
   modules check with no errors. The imports of kotlinpoet, Ktor and
   octi-server are not run yet: running their builds needs a machine where
   third-party build code may run.
-- **Codes and ranges.** About 55 of the checker's message formats map to
+- **Codes and ranges.** About 60 of the checker's message formats map to
   kotlinc's diagnostic names (`internal/check/codes.go`; a test checks
   every format is still used). `kc -features` prints the code, and psi's
   syntax errors are `SYNTAX`.
-- **Precision** (`bench/results/lsp-precision.tsv`). Of the 44 codes kc
-  reports in the conformance tests, 32 have no false errors on tests
-  kotlinc accepts. 12 are below 99% and are warnings, among them `TYPE_MISMATCH` (0.880, 81 false of 673),
+- **Fix data.** `syntax.Error.Data`, passed through as
+  `analysis.Diagnostic.Data`, is what a quick fix needs, with fully
+  qualified names: a coded error's message arguments; for the
+  not-implemented codes, the member's override stub
+  (`fun f(a: kotlin.Int): p.R`, `var name: kotlin.String`); for
+  `NO_ELSE_IN_WHEN`, the missing cases (`p.Color.RED`, `is p.Circle`,
+  `p.Empty`, `false`, `null`); for `RETURN_TYPE_MISMATCH_ON_OVERRIDE`, the
+  overridden member's return type.
+- **Precision** (`bench/results/lsp-precision.tsv`). Of the 49 codes kc
+  reports in the conformance tests, 35 have no false errors on tests
+  kotlinc accepts. 14 are below 99% and are warnings, among them `TYPE_MISMATCH` (0.880, 81 false of 673),
   `UNRESOLVED_REFERENCE` (0.927) and `UNSAFE_CALL` (0.970). Uncoded
   messages are at 0.939. The conformance tests are edge cases, so these
   are lower bounds for ordinary code.

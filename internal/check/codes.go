@@ -59,4 +59,6 @@ var errorCodes = map[string]string{
 	"platform declaration clash: the following declarations have the same JVM signature (%s)":               "CONFLICTING_JVM_DECLARATIONS",
 	"duplicate JVM class name '%s'":                                                                         "DUPLICATE_CLASS_NAMES",
 	"value class cannot be recursive":                                                                       "VALUE_CLASS_CANNOT_BE_RECURSIVE",
+	"'when' expression must be exhaustive, add necessary 'else' branch":                                     "NO_ELSE_IN_WHEN",
+	"return type of '%s' is not a subtype of the return type of the overridden member '%s' defined in '%s'": "RETURN_TYPE_MISMATCH_ON_OVERRIDE",
 }

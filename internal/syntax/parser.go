@@ -110,7 +110,7 @@ func (p *parser) decl(parse func()) {
 			}
 			// A declaration after annotations on their own lines is parsed
 			// again after them, and fails again.
-			if n := len(p.errs); n == 0 || *p.errs[n-1] != *p.err {
+			if n := len(p.errs); n == 0 || !p.errs[n-1].Same(p.err) {
 				p.errs = append(p.errs, p.err)
 			}
 			p.i = start

@@ -129,6 +129,11 @@ type ElementID struct {
 // Kotlinc is the name of kotlinc's diagnostic a source error is, as
 // UNRESOLVED_REFERENCE, if kc knows it. An error without one may be one
 // of kc's own limits that kotlinc wouldn't report.
+//
+// Data is what a quick fix needs, positional per Kotlinc code, as
+// syntax.Error.Data documents: the missing cases of NO_ELSE_IN_WHEN,
+// the override stub of a member not implemented, the expected type of
+// RETURN_TYPE_MISMATCH_ON_OVERRIDE, with fully qualified names.
 type Diagnostic struct {
 	Path    string    `json:"path"`
 	Line    int       `json:"line"`
@@ -137,6 +142,7 @@ type Diagnostic struct {
 	Code    string    `json:"code"`
 	Kotlinc string    `json:"kotlinc,omitempty"`
 	Message string    `json:"message"`
+	Data    []string  `json:"data,omitempty"`
 }
 
 // Type is a resolved Kotlin type.

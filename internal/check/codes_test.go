@@ -28,10 +28,18 @@ func TestErrorCodes(t *testing.T) {
 			if !ok || len(call.Args) < 2 {
 				return true
 			}
-			if sel, ok := call.Fun.(*ast.SelectorExpr); !ok || sel.Sel.Name != "errorf" {
+			sel, ok := call.Fun.(*ast.SelectorExpr)
+			if !ok {
 				return true
 			}
-			if lit, ok := call.Args[1].(*ast.BasicLit); ok && lit.Kind == token.STRING {
+			i := 1 // errorf(p, format, ...)
+			switch {
+			case sel.Sel.Name == "errorData" && len(call.Args) >= 4:
+				i = 3 // errorData(p, code, data, format, ...)
+			case sel.Sel.Name != "errorf":
+				return true
+			}
+			if lit, ok := call.Args[i].(*ast.BasicLit); ok && lit.Kind == token.STRING {
 				if s, err := strconv.Unquote(lit.Value); err == nil {
 					used[s] = true
 				}
