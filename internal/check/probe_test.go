@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/barteo/kotlin-compiler-go/internal/classpath"
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
@@ -269,5 +270,38 @@ fun g() = listOf(A()).map(A::|)
 `)
 	if !v.Callable || !has(v, Member, "f") {
 		t.Errorf("A::: callable %v, members %v", v.Callable, itemNames(v, Member))
+	}
+}
+
+func TestImportables(t *testing.T) {
+	start := time.Now()
+	all := stdlibLibrary(t).Importables()
+	t.Logf("%d importables in %v", len(all), time.Since(start))
+	find := func(name, pkg string, class bool) bool {
+		return slices.Contains(all, Importable{Name: name, Package: pkg, Class: class})
+	}
+	for _, want := range []Importable{
+		{"sqrt", "kotlin.math", false},
+		{"PI", "kotlin.math", false},
+		{"Random", "kotlin.random", true},
+		{"ArrayList", "java.util", true},
+		{"Duration", "kotlin.time", true},
+	} {
+		if !find(want.Name, want.Package, want.Class) {
+			t.Errorf("no %+v", want)
+		}
+	}
+	for _, it := range all {
+		switch {
+		case it.Package == "kotlin" || it.Package == "kotlin.collections" || it.Package == "java.lang":
+			t.Errorf("%+v, of a default import", it)
+		case strings.HasSuffix(it.Name, "Kt") && it.Class:
+			t.Errorf("%+v, a file facade", it)
+		case strings.HasPrefix(it.Package, "sun."):
+			t.Errorf("%+v, of the JDK's internals", it)
+		}
+	}
+	if !slices.IsSortedFunc(all, func(a, b Importable) int { return strings.Compare(a.Name, b.Name) }) {
+		t.Error("not sorted by name")
 	}
 }

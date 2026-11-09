@@ -168,6 +168,8 @@ type kotlinTable struct {
 	// completion (probe.go), by class id.
 	builtinMembersMu sync.Mutex
 	builtinMembers   map[string][]Item
+	// importables is Library.Importables's index.
+	importables importables
 	builtins         map[string]*kmeta.Class // the built-in classes, by class id
 	collections      map[string]*types.ClassSym
 	raw              map[string]*types.ClassSym // the Java collection interfaces themselves
