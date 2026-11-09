@@ -3018,6 +3018,36 @@ runs differ in every phase, the processors' too (9 ms in a fast Moshi
 run, 24–44 in a slow one), so the spread is the JVM's and the
 machine's, not kc's.
 
+The batch of steps 36 and 37 (medians of 10 runs, so the leaf edits
+are still warming up), after step 38. Stock was 5–15% slower than in
+step 37's batch on every module, so the machine was too; compare the
+ratios:
+
+| ms | stock KSP2 | kc | ratio | kc min | step 37 kc (min) |
+|---|---|---|---|---|---|
+| Room large, warm | 8179 | 2760 | 3.0x | 2417 | 2271 (2011) |
+| Room large, edit Item000 | 9549 | 3053 | 3.1x | 2953 | 2530 (2486) |
+| Room large, leaf edit | 9501 | 2996 | 3.2x | 2727 | 2986 (2398) |
+| Room small, warm | 541 | 133 | 4.1x | 92 | 132 (96) |
+| Room small, edit | 588 | 166 | 3.5x | 149 | 181 (152) |
+| Hilt large, warm | 4364 | 778 | 5.6x | 664 | 745 (593) |
+| Hilt large, edit Feature000 | 4889 | 1203 | 4.1x | 986 | 1226 (717) |
+| Hilt large, leaf edit | 665 | 84 | 7.9x | 54 | 120 (66) |
+| Hilt small, warm | 427 | 67 | 6.4x | 61 | 61 (54) |
+| Hilt small, edit | 419 | 80 | 5.2x | 63 | 60 (56) |
+| Moshi large, warm | 2406 | 536 | 4.5x | 512 | 446 (409) |
+| Moshi large, edit Model000 | 748 | 175 | 4.3x | 135 | 169 (124) |
+| Moshi large, leaf edit | 413 | 73 | 5.7x | 31 | 54 (46) |
+| Moshi small, warm | 240 | 23 | 10.4x | 22 | 25 (22) |
+| Moshi small, edit | 291 | 39 | 7.5x | 33 | 34 (28) |
+
+Ten runs are too few for the leaf edits: Hilt's went from 4.8x to 7.9x,
+while Moshi's median fell from 6.6x to 5.7x though its minimum went from
+46 to 31 ms, which is the warm-up and spread above; the 100-run table is
+the measure. The whole-module edits, which change a file every other
+file depends on, and Room, whose processing dominates, stay within the
+noise of step 37's.
+
 What a fast Moshi body-edit run (about 30 ms) is made of now, from the
 second JFR: the processors about 9 ms; KSP's incremental bookkeeping
 about 5 ms (updating the lookup caches, backing up outputs, symbol
