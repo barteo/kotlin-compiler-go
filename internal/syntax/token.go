@@ -27,8 +27,10 @@ type Error struct {
 	Code string
 	// Data holds what a quick fix needs, per code: for a coded error,
 	// the message's arguments, types with fully qualified names; for
-	// ABSTRACT_MEMBER_NOT_IMPLEMENTED, the member's signature to override,
-	// as "fun f(a: p.A): kotlin.Int"; for NO_ELSE_IN_WHEN, the missing
+	// ABSTRACT_MEMBER_NOT_IMPLEMENTED and its class and enum entry
+	// variants, and for MANY_IMPL_MEMBER_NOT_IMPLEMENTED of a function, the
+	// member's signature to override, as "fun f(a: p.A): kotlin.Int"; for
+	// NO_ELSE_IN_WHEN, the missing
 	// cases, as "p.Color.RED", "is p.Shape.Circle" or "true".
 	Data []string
 }

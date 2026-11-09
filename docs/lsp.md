@@ -317,7 +317,8 @@ The server learns a workspace's modules and shows `kc`'s errors in them:
 - **Fix data.** `syntax.Error.Data`, passed through as
   `analysis.Diagnostic.Data`, is what a quick fix needs, with fully
   qualified names: a coded error's message arguments; for the
-  not-implemented codes, the member's override stub
+  not-implemented codes and `MANY_IMPL_MEMBER_NOT_IMPLEMENTED` of a
+  function, the member's override stub
   (`fun f(a: kotlin.Int): p.R`, `var name: kotlin.String`); for
   `NO_ELSE_IN_WHEN`, the missing cases (`p.Color.RED`, `is p.Circle`,
   `p.Empty`, `false`, `null`); for `RETURN_TYPE_MISMATCH_ON_OVERRIDE`, the

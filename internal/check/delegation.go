@@ -53,7 +53,7 @@ func (c *Checker) delegations() {
 					key = "ext " + key + " " + g.Recv.String()
 				}
 				if other := from[key]; other != nil && other != st {
-					c.errorf(d.P, "class '%s' must override '%s' because it inherits multiple implementations for it", cls.DisplayName(), g.Name)
+					c.errorData(d.P, "MANY_IMPL_MEMBER_NOT_IMPLEMENTED", []string{c.funStub(this, g)}, "class '%s' must override '%s' because it inherits multiple implementations for it", cls.DisplayName(), g.Name)
 					continue
 				}
 				from[key] = st

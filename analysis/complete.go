@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"unicode"
@@ -469,4 +470,43 @@ func snapshotPackage(snap *psi.Snapshot) string {
 		}
 	}
 	return ""
+}
+
+// Importables returns what an import may bring into the file at path of
+// snapshots under name: the library's and the other packages' sources'
+// public classes, typealiases, functions and properties of that name,
+// outside the default imports' packages. An unresolved reference's fix
+// offers to import them.
+func (s *Session) Importables(snapshots []*psi.Snapshot, path, name string) ([]Importable, error) {
+	_, lib, done, err := s.library()
+	if err != nil {
+		return nil, err
+	}
+	defer done()
+	own := ""
+	for _, snap := range snapshots {
+		if snap.Path() == path {
+			own = snapshotPackage(snap)
+		}
+	}
+	var out []Importable
+	seen := map[Importable]bool{}
+	add := func(im check.Importable) {
+		e := Importable{im.Name, im.Package, im.Class}
+		if im.Name == name && !im.Default && !seen[e] && lib.Accessible(im) {
+			seen[e] = true
+			out = append(out, e)
+		}
+	}
+	for _, im := range sourceImportables(snapshots) {
+		if im.Package != own {
+			add(im)
+		}
+	}
+	all := lib.Importables()
+	i, _ := slices.BinarySearchFunc(all, name, func(im check.Importable, n string) int { return strings.Compare(im.Name, n) })
+	for ; i < len(all) && all[i].Name == name; i++ {
+		add(all[i])
+	}
+	return out, nil
 }

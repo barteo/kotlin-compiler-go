@@ -2,8 +2,10 @@ package lsp
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
+	"github.com/barteo/kotlin-compiler-go/analysis"
 	"github.com/barteo/kotlin-compiler-go/internal/ide"
 	"github.com/barteo/kotlin-compiler-go/internal/lsp/jsonrpc"
 	"github.com/barteo/kotlin-compiler-go/internal/lsp/protocol"
@@ -53,15 +55,24 @@ func (s *Server) codeAction(_ context.Context, r *jsonrpc.Request) (any, error) 
 		sem := s.sem[p.TextDocument.URI]
 		s.mu.Unlock()
 		if sem.snap == d.Snap {
+			env := ide.FixEnv{Diagnostics: sem.diags, Importables: s.importables(d.Path)}
+			seen := map[string]bool{}
 			for _, e := range sem.diags {
 				if e.Range.End < from || e.Range.Start > to {
 					continue
 				}
-				for _, fx := range ide.QuickFixes(v, d, e) {
+				for _, fx := range ide.QuickFixes(v, d, e, env) {
 					we, ok := l.fixEdit(fx.Edits)
 					if !ok {
 						continue
 					}
+					// The members a class doesn't implement are a
+					// diagnostic each, with the same fix of them all.
+					k := fmt.Sprint(fx.Title, we)
+					if seen[k] {
+						continue
+					}
+					seen[k] = true
 					actions = append(actions, protocol.CodeAction{
 						Title: fx.Title, Kind: protocol.CodeActionQuickFix, IsPreferred: fx.Preferred,
 						Diagnostics: []protocol.Diagnostic{protocolDiagnostic(d, e, enc)}, Edit: we,
@@ -92,4 +103,24 @@ func (l *locator) fixEdit(edits []ide.FixEdit) (*protocol.WorkspaceEdit, bool) {
 		we.Changes[mp.uri] = append(we.Changes[mp.uri], protocol.TextEdit{Range: rng(mp.doc, r, l.enc), NewText: e.Text})
 	}
 	return we, true
+}
+
+// importables returns the lookup of declarations that path's file may
+// import, in its module; nil if no module has the file.
+func (s *Server) importables(path string) func(string) []analysis.Importable {
+	m := s.ownerModule(path)
+	if m == nil {
+		return nil
+	}
+	return func(name string) []analysis.Importable {
+		snaps, err := m.snapshots(nil)
+		if err != nil {
+			return nil
+		}
+		ims, err := m.sess.Importables(snaps, path, name)
+		if err != nil {
+			s.logMessage(protocol.MessageWarning, "code action: "+err.Error())
+		}
+		return ims
+	}
 }
