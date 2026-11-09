@@ -3169,6 +3169,66 @@ minimums of runs 51–100, output checked against stock's (`CHECK`):
 A body-edit run's phases, kc's medians: setup 5, process 8, between 3,
 teardown 5.
 
+#### Step 41: KSP stats each output once, and libkc's library classes are kept
+
+A JFR of 130 Moshi body-edit runs on kc after step 40, counting native
+samples too (`Classify` does), showed where the run's own time still
+went outside the processors. kc's share was small: each of the two
+updates about 1 ms in libkc, and psi and the round's build about 1 ms
+each per round. The largest single cost was KSP's:
+
+- **`updateOutputs`** backs up the run's outputs and restores the clean
+  ones on every run: about 1,600 `copy` checks on Moshi's 800 outputs,
+  each with five `stat` calls (`isFile`, `length` and `lastModified` of
+  the copy, `length` and `lastModified` of the original). It had 171
+  native samples, more than libkc's two updates.
+- **`relativeTo` and `toRelativeString`**, for every source and output
+  path, split both paths into components and normalize them
+  (`calcDirtyFiles`' `getRelativeFile`, `updateOutputs`' `bak`).
+- **libkc's library classes**: each round asked libkc again for every
+  class-path class it built (29 a run, 0.6 ms of JNI, encoding and
+  decoding), though Go keeps them modeled.
+
+Fork patch 0014 reads each file's attributes once
+(`Files.readAttributes`; size and time to the millisecond, as before),
+and cuts a path that is the base, a separator and a plain relative path
+directly; any other path takes the old way. Like patches 0010–0013,
+this is KSP-side and runs on kc's side of the comparison only: stock is
+KSP 2.3.6 as released.
+
+kc-aa's environment, whose key holds the class path's files and
+stamps, now keeps the library classes libkc modeled, by outermost class
+ID, and starts over for another module name or other friends. A Java
+source's class, and a class-path class a Java source declares too, is
+always asked for. Warm runs make no class calls.
+
+Not kept: `KcEnvironment.psiFile` reads every file to compare it with
+the bytes its PSI was parsed from (45 native samples). Trusting libkc's
+reuse of a file's model instead made no difference to the `psi` timer
+(0.6 ms against 0.7), so the change was dropped.
+
+The KSP bench, leaf edits, 100 runs on each backend, medians and
+minimums of runs 51–100, output checked against stock's (`CHECK`).
+Moshi's stock times are step 40's, from the same session:
+
+| ms | stock KSP2 | kc | ratio | kc min | step 40 kc |
+|---|---|---|---|---|---|
+| Moshi, leaf body edit | 202 | 22 | 9.2x | 16 | 24 |
+| Moshi, leaf signature edit | 200 | 47 | 4.3x | 34 | 51 |
+| Hilt, leaf body edit | 476 | 37 | 12.9x | 29 | 43 (step 39) |
+| Hilt, leaf signature edit | 487 | 64 | 7.6x | 48 | 66 (step 39) |
+
+Stock's Hilt runs were slower than in step 39's session (476 against
+430), as Moshi's were faster in step 39's. Within one session, batches
+of kc's Moshi body edits gave medians of 21 and 22 ms.
+
+A Moshi body-edit run is now setup 5, process 8 (the processors about
+6), between 3, teardown 4. What is left outside the processors is
+KSP's own bookkeeping (lookup caches flushed every run, dirtiness, the
+generated files' symbols; about 3 ms), libkc's two updates (about 2 ms,
+most of it reading and stat-ing the files), and kc-aa's psi and builds
+(about 2 ms).
+
 ## Gaps and open questions
 
 - **Slice simplifications (M0.4).** These go when M3/M4 bring the facts in:
