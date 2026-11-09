@@ -21,7 +21,7 @@ import (
 // analyze lowers, checks and exports the facts of snapshots against a
 // library of its own: AnalyzeArena, all or nothing.
 func analyze(ctx context.Context, cfg Config, snaps []*psi.Snapshot) (*Result, error) {
-	res, _, err := run(ctx, cfg, snaps, false, func() (*classpath.Path, *check.Library, func(), error) {
+	res, _, err := run(ctx, cfg, snaps, nil, false, func() (*classpath.Path, *check.Library, func(), error) {
 		cp, lib, err := driver.OpenLibrary(libraryOptions(cfg))
 		if err != nil {
 			return nil, nil, nil, fmt.Errorf("analysis: %w", err)
@@ -43,15 +43,19 @@ type openLibrary func() (*classpath.Path, *check.Library, func(), error)
 // library if lowering failed; else it lowers recovering from errors
 // (lower.Recover), checks every file, and exports the facts the errors
 // leave valid (errorSpans), and returns the state an incremental update
-// starts from, or nil if an error isn't one file's.
-func run(ctx context.Context, cfg Config, snaps []*psi.Snapshot, partial bool, open openLibrary) (*Result, *state, error) {
+// starts from, or nil if an error isn't one file's. The snapshots
+// declOnly, if it isn't nil, says are only declared (UpdateOptions).
+func run(ctx context.Context, cfg Config, snaps []*psi.Snapshot, declOnly []bool, partial bool, open openLibrary) (*Result, *state, error) {
 	jobs := max(cfg.Jobs, 1)
 	n := len(snaps)
 	files := make([]*syntax.File, n)
 	provs := make([]*lower.Provenance, n)
 	errLists := make([][]*syntax.Error, n)
+	isDeclared := func(i int) bool { return declOnly != nil && declOnly[i] }
 	parallel(n, jobs, func(i int) {
-		if partial {
+		if isDeclared(i) {
+			files[i], provs[i], _ = lower.Signatures(snaps[i])
+		} else if partial {
 			files[i], provs[i], errLists[i] = lower.Recover(snaps[i])
 		} else {
 			files[i], provs[i], errLists[i] = lower.File(snaps[i])
@@ -90,7 +94,17 @@ func run(ctx context.Context, cfg Config, snaps []*psi.Snapshot, partial bool, o
 	}
 	defer done()
 	rec := newRecorder()
-	errs, err := check.CheckContext(ctx, files, lib, jobs, rec)
+	var opts check.Options
+	if slices.Contains(declOnly, true) {
+		opts.Only = map[*syntax.File]bool{}
+		for i, f := range files {
+			if !isDeclared(i) {
+				opts.Only[f] = true
+			}
+			broken[i] = isDeclared(i) // no facts
+		}
+	}
+	errs, err := check.CheckOptions(ctx, files, lib, jobs, rec, opts)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -135,6 +149,7 @@ func run(ctx context.Context, cfg Config, snaps []*psi.Snapshot, partial bool, o
 	}
 	st := newState(res, snaps, syms)
 	if st != nil {
+		st.declared = declOnly
 		parallel(n, jobs, func(i int) {
 			st.lookups[i] = rec.fileLookups(files[i])
 			st.decls[i] = declared(snaps[i])

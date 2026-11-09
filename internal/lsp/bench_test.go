@@ -81,7 +81,7 @@ func benchWorkspace(b *testing.B) (root, file string, at int) {
 			b.Skipf("no Kotlin standard library: %v", err)
 		}
 		root = b.TempDir()
-		generate(b, root, 200)
+		generate(b, root, 200, false)
 		file = filepath.Join(root, "src", "gen", "File100.kt")
 	}
 	data, err := os.ReadFile(file)
@@ -114,8 +114,11 @@ func bodyLine(text string) int {
 }
 
 // generate writes a module of n files to root: classes that call each
-// other's members, with lambdas, string templates and when.
-func generate(b *testing.B, root string, n int) {
+// other's members, with lambdas, string templates and when. With split,
+// the first half is a module lib, in src/lib, and the second a module
+// app, in src/app, that depends on it and whose last file calls lib's
+// first.
+func generate(b *testing.B, root string, n int, split bool) {
 	write := func(name, text string) {
 		path := filepath.Join(root, name)
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -126,9 +129,19 @@ func generate(b *testing.B, root string, n int) {
 		}
 	}
 	write("kc-lsp.json", `{"modules": [{"name": "gen", "sourceRoots": ["src"]}]}`)
+	if split {
+		write("kc-lsp.json", `{"modules": [{"name": "lib", "sourceRoots": ["src/lib"]},
+  {"name": "app", "sourceRoots": ["src/app"], "dependsOn": ["lib"]}]}`)
+	}
 	for i := range n {
 		next := (i + 1) % n
-		write(fmt.Sprintf("src/gen/File%d.kt", i), fmt.Sprintf(`package gen
+		dir := "gen"
+		if split && i < n/2 {
+			dir, next = "lib", (i+1)%(n/2)
+		} else if split {
+			dir = "app"
+		}
+		write(fmt.Sprintf("src/%s/File%d.kt", dir, i), fmt.Sprintf(`package gen
 
 data class Item%[1]d(val id: Int, val name: String, val tags: List<String> = emptyList())
 
@@ -212,6 +225,55 @@ func BenchmarkBodyEdit(b *testing.B) {
 	v := 1
 	for b.Loop() {
 		// Insert a statement, then remove it: both are body edits.
+		for _, change := range []protocol.TextDocumentContentChangeEvent{
+			{Range: &protocol.Range{Start: p, End: p}, Text: "        val unused = 1 + 2\n"},
+			{Range: &protocol.Range{Start: p, End: protocol.Position{Line: p.Line + 1}}, Text: ""},
+		} {
+			v++
+			start := time.Now()
+			c.client.Notify("textDocument/didChange", protocol.DidChangeTextDocumentParams{
+				TextDocument: protocol.VersionedTextDocumentIdentifier{URI: u, Version: v}, ContentChanges: []protocol.TextDocumentContentChangeEvent{change}})
+			c.settle()
+			times = append(times, time.Since(start))
+		}
+	}
+	slices.Sort(times)
+	b.ReportMetric(float64(times[len(times)/2].Microseconds())/1000, "p50-ms")
+	b.ReportMetric(float64(times[len(times)*95/100].Microseconds())/1000, "p95-ms")
+}
+
+// BenchmarkModuleBodyEdit times a body edit of a dependency's file to
+// the semantic diagnostics of it and its dependent's, without the
+// debounce, on a generated workspace of two modules (generate's split):
+// the dependent only declares the dependency's files.
+func BenchmarkModuleBodyEdit(b *testing.B) {
+	if _, err := classpath.FindStdlib(); err != nil {
+		b.Skipf("no Kotlin standard library: %v", err)
+	}
+	root := b.TempDir()
+	generate(b, root, 200, true)
+	file := filepath.Join(root, "src", "lib", "File50.kt")
+	other := filepath.Join(root, "src", "app", "File150.kt")
+	text, _ := os.ReadFile(file)
+	otherText, _ := os.ReadFile(other)
+	defer func(d time.Duration) { debounce = d }(debounce)
+	debounce = 0
+	c := startServer(b, root)
+	defer c.close()
+	u := fileURI(file)
+	for _, d := range []struct {
+		path string
+		text []byte
+	}{{other, otherText}, {file, text}} {
+		c.client.Notify("textDocument/didOpen", protocol.DidOpenTextDocumentParams{
+			TextDocument: protocol.TextDocumentItem{URI: fileURI(d.path), LanguageID: "kotlin", Version: 1, Text: string(d.text)}})
+	}
+	c.settle()
+	at := bodyLine(string(text))
+	p := protocol.Position{Line: strings.Count(string(text[:at]), "\n")}
+	var times []time.Duration
+	v := 1
+	for b.Loop() {
 		for _, change := range []protocol.TextDocumentContentChangeEvent{
 			{Range: &protocol.Range{Start: p, End: p}, Text: "        val unused = 1 + 2\n"},
 			{Range: &protocol.Range{Start: p, End: protocol.Position{Line: p.Line + 1}}, Text: ""},

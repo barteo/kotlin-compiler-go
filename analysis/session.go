@@ -43,17 +43,39 @@ var libraryOpens atomic.Int64
 // opened, or a snapshot is a script (ErrUnsupported). Errors in the
 // sources are the Result's Diagnostics. Updates may run at the same time.
 func (s *Session) Update(ctx context.Context, snapshots []*psi.Snapshot) (*Result, error) {
+	return s.UpdateWith(ctx, snapshots, UpdateOptions{})
+}
+
+// UpdateOptions are an update's options.
+type UpdateOptions struct {
+	// Declared are the paths of snapshots that are only declared: the
+	// sources of modules this one depends on, which their own sessions
+	// check. Their declarations are this module's to use, as a library's
+	// are; they aren't checked, and have no facts and no diagnostics.
+	// Other facts refer to their declarations.
+	Declared map[string]bool
+}
+
+// UpdateWith is Update with options.
+func (s *Session) UpdateWith(ctx context.Context, snapshots []*psi.Snapshot, opts UpdateOptions) (*Result, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	if err := validate(s.cfg, snapshots); err != nil {
 		return nil, err
 	}
+	var declOnly []bool
+	if len(opts.Declared) > 0 {
+		declOnly = make([]bool, len(snapshots))
+		for i, snap := range snapshots {
+			declOnly[i] = opts.Declared[snap.Path()]
+		}
+	}
 	s.mu.Lock()
 	last := s.last
 	s.mu.Unlock()
 	if last != nil {
-		res, next, ok, err := incremental(ctx, s.cfg, snapshots, last, s.library)
+		res, next, ok, err := incremental(ctx, s.cfg, snapshots, declOnly, last, s.library)
 		if err != nil {
 			return nil, err
 		}
@@ -62,7 +84,7 @@ func (s *Session) Update(ctx context.Context, snapshots []*psi.Snapshot) (*Resul
 			return res, nil
 		}
 	}
-	res, next, err := run(ctx, s.cfg, snapshots, true, s.library)
+	res, next, err := run(ctx, s.cfg, snapshots, declOnly, true, s.library)
 	if err != nil {
 		return nil, err
 	}

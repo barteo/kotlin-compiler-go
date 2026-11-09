@@ -40,6 +40,24 @@ func (s *Server) views(path string) []*ide.View {
 	return out
 }
 
+// widen adds to c's views those of the modules whose sources include the
+// file of the declaration under the caret: a module checks only its own
+// files, so the uses in a dependency's files are in its views, which a
+// dependent's file isn't in.
+func (s *Server) widen(c caret) caret {
+	for _, l := range ide.Definition(c.views[0], c.path, c.off) {
+		if l.Snap == nil || l.Snap.Path() == c.path {
+			continue
+		}
+		for _, v := range s.views(l.Snap.Path()) {
+			if !slices.Contains(c.views, v) {
+				c.views = append(c.views, v)
+			}
+		}
+	}
+	return c
+}
+
 // caret is a request's position, as an offset of its first view's
 // snapshot.
 type caret struct {
@@ -145,7 +163,7 @@ func (s *Server) typeDefinition(_ context.Context, r *jsonrpc.Request) (any, err
 }
 
 func (s *Server) implementation(_ context.Context, r *jsonrpc.Request) (any, error) {
-	return s.navigate(r, func(c caret) []ide.Loc { return ide.Implementations(c.views, c.path, c.off) })
+	return s.navigate(r, func(c caret) []ide.Loc { c = s.widen(c); return ide.Implementations(c.views, c.path, c.off) })
 }
 
 // navigate answers a request for locations found from its position.
@@ -170,6 +188,7 @@ func (s *Server) references(_ context.Context, r *jsonrpc.Request) (any, error) 
 	if err != nil || !ok {
 		return []protocol.Location{}, err
 	}
+	c = s.widen(c)
 	return s.locator().locations(ide.References(c.views, c.path, c.off, p.Context.IncludeDeclaration)), nil
 }
 

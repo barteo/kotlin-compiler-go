@@ -63,6 +63,7 @@ func (s *Server) rename(ctx context.Context, r *jsonrpc.Request) (any, error) {
 	if !ok {
 		return nil, errStale
 	}
+	c = s.widen(c)
 	locs, text, err := ide.Rename(c.views, c.path, c.off, p.NewName)
 	if err != nil {
 		return nil, renameError(err)

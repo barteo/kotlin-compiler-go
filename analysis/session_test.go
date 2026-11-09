@@ -816,3 +816,91 @@ func TestSessionIncrementalDeclarationScan(t *testing.T) {
 	// One file is always checked whole, and a module of two often is.
 	t.Logf("%d edits of modules of several files, %d incremental", edits, incremental)
 }
+
+// restrict returns res with only the facts and diagnostics of the
+// snapshots whose paths keep has.
+func restrict(res *Result, snaps []*psi.Snapshot, keep map[string]bool) *Result {
+	out := &Result{symbols: res.symbols}
+	files := make([][]*Fact, len(snaps))
+	for i, s := range snaps {
+		if keep[s.Path()] {
+			files[i] = res.files[res.index[s.ID()]]
+		}
+	}
+	out.setFiles(snaps, files)
+	for _, d := range res.diags {
+		if keep[d.Path] {
+			out.diags = append(out.diags, d)
+		}
+	}
+	return out
+}
+
+// TestSessionDeclared checks that the facts and diagnostics of a module
+// whose dependencies' files are only declared (UpdateOptions.Declared)
+// are those of a whole check of them all, for its own files: for each
+// file of each program of testdata/run of several, with the others
+// declared, first, then after an edit of a body and of a declaration of
+// each declared file, incrementally.
+func TestSessionDeclared(t *testing.T) {
+	cfg := withJDK(t)
+	ctx := context.Background()
+	cases, incremental := 0, 0
+	for name, paths := range runModules(t) {
+		if len(paths) < 2 {
+			continue
+		}
+		first := parseFiles(t, paths)
+		for k := range first {
+			own := map[string]bool{first[k].Path(): true}
+			opts := UpdateOptions{Declared: map[string]bool{}}
+			for _, s := range first {
+				if !own[s.Path()] {
+					opts.Declared[s.Path()] = true
+				}
+			}
+			s := Open(cfg)
+			check := func(what string, snaps []*psi.Snapshot) {
+				t.Helper()
+				cases++
+				incrementalUpdates.Store(0)
+				got, err := s.UpdateWith(ctx, snaps, opts)
+				if err != nil {
+					t.Fatal(err)
+				}
+				incremental += int(incrementalUpdates.Load())
+				for _, d := range got.Diagnostics() {
+					if !own[d.Path] {
+						t.Errorf("%s: %s: a declared file's diagnostic %v", name, what, d)
+					}
+				}
+				for i, sn := range snaps {
+					if !own[sn.Path()] && len(got.files[got.index[sn.ID()]]) > 0 {
+						t.Errorf("%s: %s: facts of declared %s", name, what, snaps[i].Path())
+					}
+				}
+				want := wholeUpdate(t, cfg, snaps)
+				if d := sameResult(t, restrict(got, snaps, own), restrict(want, snaps, own)); d != "" {
+					t.Errorf("%s: %s: %s", name, what, d)
+				}
+			}
+			check(first[k].Path(), first)
+			for i := range first {
+				if i == k {
+					continue
+				}
+				for kind, text := range []string{bodyEdit(first[i], 0), declarationEdit(first[i], 1)} {
+					if text == "" {
+						continue
+					}
+					snaps := slices.Clone(first)
+					snaps[i] = psi.Parse(first[i].Path(), text)
+					check(fmt.Sprintf("%s, %s edit %d", first[k].Path(), first[i].Path(), kind), snaps)
+					check(fmt.Sprintf("%s, %s edit %d back", first[k].Path(), first[i].Path(), kind), first)
+				}
+			}
+			s.Close()
+		}
+	}
+	t.Logf("%d updates, %d incremental", cases, incremental)
+}

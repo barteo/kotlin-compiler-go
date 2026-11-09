@@ -389,7 +389,23 @@ func (m *module) update(ctx context.Context) (*analysis.Result, []*psi.Snapshot,
 			snaps = append(snaps, snap)
 		}
 	}
-	res, err := m.sess.Update(ctx, snaps)
+	// The files of the modules m depends on are their sessions' to check:
+	// m only declares them.
+	var opts analysis.UpdateOptions
+	m.w.mu.Lock()
+	p := m.w.proj
+	m.w.mu.Unlock()
+	if p != nil {
+		for _, snap := range snaps {
+			if p.ModuleOf(snap.Path()) != m.m {
+				if opts.Declared == nil {
+					opts.Declared = map[string]bool{}
+				}
+				opts.Declared[snap.Path()] = true
+			}
+		}
+	}
+	res, err := m.sess.UpdateWith(ctx, snaps, opts)
 	return res, snaps, err
 }
 

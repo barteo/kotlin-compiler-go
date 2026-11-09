@@ -60,6 +60,8 @@ type state struct {
 	// sorted, and decls what each declares.
 	lookups [][]lookup
 	decls   []declInfo
+	// declared are the files only declared (UpdateOptions), or nil.
+	declared []bool
 }
 
 // newState returns the state of res, an update of snaps whose every error
@@ -200,13 +202,25 @@ func (m *remapper) element(id *ElementID) {
 
 // incremental returns the update of snaps from st, checking only the
 // changed files and those a declaration edit affects, and its state; ok
-// is false if the update must be checked whole.
-func incremental(ctx context.Context, cfg Config, snaps []*psi.Snapshot, st *state, open openLibrary) (res *Result, next *state, ok bool, err error) {
+// is false if the update must be checked whole. A file only declared
+// (UpdateOptions) is never checked: one whose declarations changed
+// affects the others as a changed file does.
+func incremental(ctx context.Context, cfg Config, snaps []*psi.Snapshot, declOnly []bool, st *state, open openLibrary) (res *Result, next *state, ok bool, err error) {
 	c, ok := st.changes(snaps)
 	if !ok {
 		return nil, nil, false, nil
 	}
 	n := len(snaps)
+	isDeclared := func(i int) bool { return declOnly != nil && declOnly[i] }
+	own := n // the files checked whole
+	for i := range snaps {
+		if isDeclared(i) {
+			own--
+		}
+		if j := c.old[i]; j >= 0 && isDeclared(i) != (st.declared != nil && st.declared[j]) {
+			return nil, nil, false, nil // a file declared or checked that wasn't
+		}
+	}
 	if !slices.Contains(c.changed, true) && n == len(st.snaps) {
 		return st.res, st, true, nil
 	}
@@ -215,9 +229,12 @@ func incremental(ctx context.Context, cfg Config, snaps []*psi.Snapshot, st *sta
 	// or declare a name declared differently, and those whose kept facts
 	// would refer to what a changed file no longer declares.
 	dirty := slices.Clone(c.changed)
+	for i := range dirty {
+		dirty[i] = dirty[i] && !isDeclared(i)
+	}
 	if len(c.names) > 0 {
 		for i := range snaps {
-			if !dirty[i] && affected(st.lookups[c.old[i]], c.decls[i], c.names, c.supers) {
+			if !dirty[i] && !isDeclared(i) && affected(st.lookups[c.old[i]], c.decls[i], c.names, c.supers) {
 				dirty[i] = true
 			}
 		}
@@ -299,7 +316,7 @@ func incremental(ctx context.Context, cfg Config, snaps []*psi.Snapshot, st *sta
 			ndirty++
 		}
 	}
-	if len(c.names) > 0 && ndirty*2 > n {
+	if len(c.names) > 0 && ndirty*2 > own {
 		// A declaration edit that affects most files: as cheap to check
 		// whole, which also drops the symbols only the others declared.
 		return nil, nil, false, nil
@@ -386,7 +403,7 @@ func incremental(ctx context.Context, cfg Config, snaps []*psi.Snapshot, st *sta
 	}
 	res = &Result{symbols: syms}
 	next = &state{res: res, snaps: snaps, diags: diags, refs: refs, syms: make([]any, len(syms)), base: st.base,
-		lookups: make([][]lookup, n), decls: c.decls}
+		lookups: make([][]lookup, n), decls: c.decls, declared: declOnly}
 	byPtr := map[any]uint32{}
 	for i, p := range st.syms {
 		if p != nil {

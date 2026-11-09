@@ -29,7 +29,7 @@ func (s *Server) prepareCallHierarchy(_ context.Context, r *jsonrpc.Request) (an
 }
 
 func (s *Server) incomingCalls(_ context.Context, r *jsonrpc.Request) (any, error) {
-	return s.calls(r, func(c caret) []ide.CallerCall { return ide.IncomingCalls(c.views, c.path, c.off) }, func(l *locator, from ide.CallerCall, item protocol.CallHierarchyItem, rs []protocol.Range) any {
+	return s.calls(r, func(c caret) []ide.CallerCall { c = s.widen(c); return ide.IncomingCalls(c.views, c.path, c.off) }, func(l *locator, from ide.CallerCall, item protocol.CallHierarchyItem, rs []protocol.Range) any {
 		return protocol.CallHierarchyIncomingCall{From: item, FromRanges: rs}
 	})
 }

@@ -99,7 +99,16 @@ func (v *View) classIndex() {
 						v.aliases[fq] = n
 					}
 					return false
-				case psi.KindFILE, psi.KindCLASS, psi.KindOBJECT_DECLARATION, psi.KindCLASS_BODY:
+				case psi.KindCLASS, psi.KindOBJECT_DECLARATION:
+					// A class no symbol names, as one of a file only
+					// declared (analysis.UpdateOptions), which has no facts.
+					if fq := declQualifiedName(n); fq != "" {
+						if _, ok := v.classes[fq]; !ok {
+							v.classes[fq] = analysis.ElementID{Snapshot: snap.ID(), Node: n.ID()}
+						}
+					}
+					return true
+				case psi.KindFILE, psi.KindCLASS_BODY:
 					return true
 				}
 				return false
