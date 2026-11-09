@@ -137,17 +137,9 @@ internal class KcRound(
         typeAliases[id]
     }
 
-    private fun index(ds: List<KcDecl>, src: Source) {
-        for (d in ds) {
-            when (d.kind) {
-                KcDecl.CLASS, KcDecl.INTERFACE, KcDecl.OBJECT, KcDecl.ENUM_CLASS, KcDecl.ANNOTATION_CLASS ->
-                    if (d.classId.isNotEmpty()) sourceClassFiles[ClassId.fromString(d.classId)] = src
-                KcDecl.TYPE_ALIAS ->
-                    if (d.classId.isNotEmpty()) sourceAliasFiles.putIfAbsent(ClassId.fromString(d.classId), src)
-            }
-            index(d.members, src)
-            index(d.locals, src)
-            index(d.params, src)
+    private fun index(f: KcFile, src: Source) {
+        for ((id, alias) in f.classIds) {
+            if (alias) sourceAliasFiles.putIfAbsent(id, src) else sourceClassFiles[id] = src
         }
     }
 
@@ -413,7 +405,7 @@ internal class KcRound(
                 val src = Source(fs, b, f)
                 sourceByKey[fs.key] = src
                 sourceByKt[kt] = src
-                index(f.decls, src)
+                index(f, src)
             }
         }
         for (name in files.map { it.first.packageName } + javaFiles.map { it.packageName }) {

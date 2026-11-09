@@ -222,7 +222,32 @@ internal class KcFile(
     /** The number of kc's psi nodes of the file, and the hash of their kinds ([KcKinds.hash]). */
     val nodes: Int = -1,
     val kinds: Long = 0,
-)
+) {
+    /**
+     * The IDs of the file's classes and type aliases, local ones too, in
+     * preorder, aliases' marked: what a round indexes (KcRound.index).
+     * A file the next update shares is the same KcFile, so each round
+     * after the first doesn't parse them again.
+     */
+    val classIds: List<Pair<org.jetbrains.kotlin.name.ClassId, Boolean>> by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        val ids = ArrayList<Pair<org.jetbrains.kotlin.name.ClassId, Boolean>>()
+        fun walk(ds: List<KcDecl>) {
+            for (d in ds) {
+                when (d.kind) {
+                    KcDecl.CLASS, KcDecl.INTERFACE, KcDecl.OBJECT, KcDecl.ENUM_CLASS, KcDecl.ANNOTATION_CLASS ->
+                        if (d.classId.isNotEmpty()) ids += org.jetbrains.kotlin.name.ClassId.fromString(d.classId) to false
+                    KcDecl.TYPE_ALIAS ->
+                        if (d.classId.isNotEmpty()) ids += org.jetbrains.kotlin.name.ClassId.fromString(d.classId) to true
+                }
+                walk(d.members)
+                walk(d.locals)
+                walk(d.params)
+            }
+        }
+        walk(decls)
+        ids
+    }
+}
 
 /**
  * A name looked up in a package or a class, [scope] its qualified name;
