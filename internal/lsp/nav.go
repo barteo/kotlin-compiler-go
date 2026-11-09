@@ -2,6 +2,7 @@ package lsp
 
 import (
 	"context"
+	"slices"
 
 	"github.com/barteo/kotlin-compiler-go/internal/ide"
 	"github.com/barteo/kotlin-compiler-go/internal/lsp/jsonrpc"
@@ -142,6 +143,10 @@ func (s *Server) typeDefinition(_ context.Context, r *jsonrpc.Request) (any, err
 	return s.navigate(r, func(c caret) []ide.Loc { return ide.TypeDefinition(c.views[0], c.path, c.off) })
 }
 
+func (s *Server) implementation(_ context.Context, r *jsonrpc.Request) (any, error) {
+	return s.navigate(r, func(c caret) []ide.Loc { return ide.Implementations(c.views, c.path, c.off) })
+}
+
 // navigate answers a request for locations found from its position.
 func (s *Server) navigate(r *jsonrpc.Request, find func(caret) []ide.Loc) (any, error) {
 	var p protocol.TextDocumentPositionParams
@@ -214,4 +219,60 @@ func (s *Server) hover(_ context.Context, r *jsonrpc.Request) (any, error) {
 		h.Range = &pr
 	}
 	return h, nil
+}
+
+// maxWorkspaceSymbols caps a workspace/symbol answer.
+const maxWorkspaceSymbols = 256
+
+// workspaceSymbol searches the declarations of every module's sources:
+// the open documents' texts, and the other files' as last analyzed.
+func (s *Server) workspaceSymbol(_ context.Context, r *jsonrpc.Request) (any, error) {
+	var p protocol.WorkspaceSymbolParams
+	if err := r.Unmarshal(&p); err != nil {
+		return nil, err
+	}
+	s.mu.Lock()
+	enc := s.enc
+	ws := slices.Clone(s.ws)
+	docs := map[string]*ide.Document{}
+	uris := map[string]protocol.DocumentURI{}
+	for path, u := range s.paths {
+		docs[path], uris[path] = s.docs[u], u
+	}
+	s.mu.Unlock()
+	for _, w := range ws {
+		w.mu.Lock()
+		mods := make([]*module, 0, len(w.mods))
+		for _, m := range w.mods {
+			mods = append(mods, m)
+		}
+		w.mu.Unlock()
+		for _, m := range mods {
+			m.mu.Lock()
+			v := m.last
+			m.mu.Unlock()
+			if v == nil {
+				continue
+			}
+			for _, path := range v.Paths() {
+				if _, ok := docs[path]; !ok {
+					docs[path], uris[path] = ide.DocumentOf(v.Snapshot(path), 0), fileURI(path)
+				}
+			}
+		}
+	}
+	list := make([]*ide.Document, 0, len(docs))
+	for _, d := range docs {
+		list = append(list, d)
+	}
+	out := []protocol.SymbolInformation{}
+	for _, m := range ide.WorkspaceSymbols(list, p.Query, maxWorkspaceSymbols) {
+		out = append(out, protocol.SymbolInformation{
+			Name:          m.Symbol.Name,
+			Kind:          symbolKind(m.Symbol.Kind),
+			Location:      protocol.Location{URI: uris[m.Doc.Path], Range: rng(m.Doc, m.Symbol.NameRange, enc)},
+			ContainerName: m.Container,
+		})
+	}
+	return out, nil
 }

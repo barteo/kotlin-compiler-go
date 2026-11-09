@@ -116,6 +116,8 @@ type ServerCapabilities struct {
 	ReferencesProvider        bool `json:"referencesProvider,omitempty"`
 	DocumentHighlightProvider bool `json:"documentHighlightProvider,omitempty"`
 	HoverProvider             bool `json:"hoverProvider,omitempty"`
+	ImplementationProvider    bool `json:"implementationProvider,omitempty"`
+	WorkspaceSymbolProvider   bool `json:"workspaceSymbolProvider,omitempty"`
 }
 
 // ---- document synchronization ----
@@ -273,6 +275,10 @@ type SymbolInformation struct {
 	Kind          int      `json:"kind"`
 	Location      Location `json:"location"`
 	ContainerName string   `json:"containerName,omitempty"`
+}
+
+type WorkspaceSymbolParams struct {
+	Query string `json:"query"`
 }
 
 // ---- folding ----

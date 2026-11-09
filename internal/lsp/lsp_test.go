@@ -53,7 +53,10 @@ var update = flag.Bool("update", false, "rewrite the want sections of testdata/*
 //	definition F POS          print textDocument/definition's locations
 //	typedef F POS             print textDocument/typeDefinition's locations
 //	references F POS [decl]   print textDocument/references' locations, with the declaration if decl
+//	implementation F POS      print textDocument/implementation's locations
 //	highlight F POS           print textDocument/documentHighlight
+//	hover F POS               print textDocument/hover's range and Markdown
+//	wsymbol [QUERY]           print workspace/symbol
 //	request METHOD [params]   print any request's result or error
 //	notify METHOD params      send any notification
 //	write F SECTION|-         write a workspace file on disk with a section's text, or delete it
@@ -177,6 +180,20 @@ func (s *session) fileOf(u protocol.DocumentURI) string {
 		}
 	}
 	return strings.TrimPrefix(string(u), "file:///work/")
+}
+
+// textOf returns the text of file f: its open document's, or the
+// workspace's on disk.
+func (s *session) textOf(f string) string {
+	if t, ok := s.texts[f]; ok {
+		return t
+	}
+	if s.root != "" {
+		if b, err := os.ReadFile(filepath.Join(s.root, f)); err == nil {
+			return string(b)
+		}
+	}
+	return ""
 }
 
 func runScript(t *testing.T, a *archive) string {
@@ -432,14 +449,14 @@ func (s *session) run(line string) {
 				fmt.Fprintf(&s.out, "  %s %s\n", fmtRange(r.Range), excerpt(d, r.Range, s.enc))
 			}
 		}
-	case "definition", "typedef", "references":
+	case "definition", "typedef", "references", "implementation":
 		name := file()
 		if len(args) < 2 {
 			t.Fatalf("%s: no position", cmd)
 		}
 		at := protocol.TextDocumentPositionParams{TextDocument: doc(), Position: s.position(name, args[1])}
 		var params any = at
-		method := map[string]string{"definition": "textDocument/definition", "typedef": "textDocument/typeDefinition", "references": "textDocument/references"}[cmd]
+		method := map[string]string{"definition": "textDocument/definition", "typedef": "textDocument/typeDefinition", "references": "textDocument/references", "implementation": "textDocument/implementation"}[cmd]
 		if cmd == "references" {
 			params = protocol.ReferenceParams{TextDocumentPositionParams: at, Context: protocol.ReferenceContext{IncludeDeclaration: len(args) > 2 && args[2] == "decl"}}
 		}
@@ -453,7 +470,24 @@ func (s *session) run(line string) {
 		}
 		for _, l := range res {
 			f := s.fileOf(l.URI)
-			fmt.Fprintf(&s.out, "%s %s %s\n", f, fmtRange(l.Range), excerpt(ide.NewDocument(f, 0, s.texts[f]), l.Range, s.enc))
+			fmt.Fprintf(&s.out, "%s %s %s\n", f, fmtRange(l.Range), excerpt(ide.NewDocument(f, 0, s.textOf(f)), l.Range, s.enc))
+		}
+	case "wsymbol":
+		q := ""
+		if len(args) > 0 {
+			q = args[0]
+		}
+		var res []protocol.SymbolInformation
+		if err := s.call("workspace/symbol", protocol.WorkspaceSymbolParams{Query: q}, &res); err != nil {
+			s.printResult(nil, err)
+			return
+		}
+		if len(res) == 0 {
+			fmt.Fprintln(&s.out, "(none)")
+		}
+		for _, si := range res {
+			f := s.fileOf(si.Location.URI)
+			fmt.Fprintf(&s.out, "%s %d %q in %q %s %s\n", si.Name, si.Kind, si.ContainerName, f, fmtRange(si.Location.Range), excerpt(ide.NewDocument(f, 0, s.textOf(f)), si.Location.Range, s.enc))
 		}
 	case "highlight":
 		name := file()

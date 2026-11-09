@@ -19,6 +19,7 @@ error -32002: textDocument/documentSymbol before initialize
     "documentSymbolProvider": true,
     "foldingRangeProvider": true,
     "hoverProvider": true,
+    "implementationProvider": true,
     "positionEncoding": "utf-16",
     "referencesProvider": true,
     "selectionRangeProvider": true,
@@ -56,7 +57,8 @@ error -32002: textDocument/documentSymbol before initialize
       "openClose": true,
       "save": true
     },
-    "typeDefinitionProvider": true
+    "typeDefinitionProvider": true,
+    "workspaceSymbolProvider": true
   },
   "serverInfo": {
     "name": "kc-lsp",

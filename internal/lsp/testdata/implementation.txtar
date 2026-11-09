@@ -1,0 +1,64 @@
+-- kc-lsp.json --
+{"modules": [{"name": "main", "sourceRoots": ["src"]}]}
+-- src/A.kt --
+package p
+
+interface /*|shape*/Shape {
+    fun /*|area*/area(): Double
+}
+
+abstract class Base : Shape {
+    override fun area() = 0.0
+}
+
+fun /*|use*/use(s: Shape) = s./*|call*/area()
+-- src/B.kt --
+package p.q
+
+import p.Base
+
+class Square(val side: Double) : p.Base() {
+    override fun area() = side * side
+}
+
+object Unit1 : p.Shape {
+    override fun area() = 1.0
+}
+-- script --
+initialize
+open src/A.kt
+wait
+implementation src/A.kt @shape
+implementation src/A.kt @area
+implementation src/A.kt @call
+implementation src/A.kt @use
+wsymbol area
+wsymbol Sq
+wsymbol zzz
+-- want --
+> initialize
+> open src/A.kt
+> wait
+> implementation src/A.kt @shape
+src/A.kt 6:15-6:19 "Base"
+src/B.kt 4:6-4:12 "Square"
+src/B.kt 8:7-8:12 "Unit1"
+> implementation src/A.kt @area
+src/A.kt 7:17-7:21 "area"
+src/B.kt 5:17-5:21 "area"
+src/B.kt 9:17-9:21 "area"
+> implementation src/A.kt @call
+src/A.kt 7:17-7:21 "area"
+src/B.kt 5:17-5:21 "area"
+src/B.kt 9:17-9:21 "area"
+> implementation src/A.kt @use
+(none)
+> wsymbol area
+area 6 "Shape" in "src/A.kt" 3:8-3:12 "area"
+area 6 "Base" in "src/A.kt" 7:17-7:21 "area"
+area 6 "Square" in "src/B.kt" 5:17-5:21 "area"
+area 6 "Unit1" in "src/B.kt" 9:17-9:21 "area"
+> wsymbol Sq
+Square 5 "p.q" in "src/B.kt" 4:6-4:12 "Square"
+> wsymbol zzz
+(none)
