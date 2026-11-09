@@ -2,7 +2,7 @@
 request textDocument/documentSymbol {"textDocument":{"uri":"file:///work/A.kt"}}
 initialize
 capabilities
-request textDocument/hover {"textDocument":{"uri":"file:///work/A.kt"},"position":{"line":0,"character":0}}
+request textDocument/linkedEditingRange {"textDocument":{"uri":"file:///work/A.kt"},"position":{"line":0,"character":0}}
 request textDocument/documentSymbol {"textDocument":{"uri":"file:///work/Missing.kt"}}
 shutdown
 request textDocument/foldingRange {"textDocument":{"uri":"file:///work/A.kt"}}
@@ -18,6 +18,7 @@ error -32002: textDocument/documentSymbol before initialize
     "documentHighlightProvider": true,
     "documentSymbolProvider": true,
     "foldingRangeProvider": true,
+    "hoverProvider": true,
     "positionEncoding": "utf-16",
     "referencesProvider": true,
     "selectionRangeProvider": true,
@@ -62,8 +63,8 @@ error -32002: textDocument/documentSymbol before initialize
     "version": "0.1.0"
   }
 }
-> request textDocument/hover {"textDocument":{"uri":"file:///work/A.kt"},"position":{"line":0,"character":0}}
-error -32601: textDocument/hover is not supported
+> request textDocument/linkedEditingRange {"textDocument":{"uri":"file:///work/A.kt"},"position":{"line":0,"character":0}}
+error -32601: textDocument/linkedEditingRange is not supported
 > request textDocument/documentSymbol {"textDocument":{"uri":"file:///work/Missing.kt"}}
 error -32602: file:///work/Missing.kt is not open
 > shutdown

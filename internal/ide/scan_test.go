@@ -17,7 +17,7 @@ import (
 // TestReferencesScan checks, on every program of testdata/run, that the
 // references of each declaration in the sources are those a scan of the
 // module's facts finds, and that the definition of each of them is the
-// declaration.
+// declaration, and that hover describes both.
 func TestReferencesScan(t *testing.T) {
 	cfg := stdlib(t)
 	if _, err := classpath.FindJDK(); err != nil {
@@ -78,7 +78,13 @@ func TestReferencesScan(t *testing.T) {
 			if !slices.Equal(got, locs(sortLocs(uses))) {
 				errs = append(errs, fmt.Sprintf("references of %s:\n got %q\nwant %q", locs([]Loc{{dn.ContainingFile(), name}}), got, locs(sortLocs(uses))))
 			}
+			if _, _, ok := Hover(v, path, name.Start); !ok {
+				errs = append(errs, fmt.Sprintf("no hover on %q", locs([]Loc{{dn.ContainingFile(), name}})))
+			}
 			for _, u := range uses {
+				if _, _, ok := Hover(v, u.Snap.Path(), u.Range.Start); !ok {
+					errs = append(errs, fmt.Sprintf("no hover at %q", locs([]Loc{u})))
+				}
 				def := Definition(v, u.Snap.Path(), u.Range.Start)
 				if len(def) != 1 || def[0].Snap != dn.ContainingFile() || def[0].Range != name {
 					errs = append(errs, fmt.Sprintf("definition at %q is %q, want %q", locs([]Loc{u}), locs(def), locs([]Loc{{dn.ContainingFile(), name}})))

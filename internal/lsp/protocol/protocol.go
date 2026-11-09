@@ -115,6 +115,7 @@ type ServerCapabilities struct {
 	TypeDefinitionProvider    bool `json:"typeDefinitionProvider,omitempty"`
 	ReferencesProvider        bool `json:"referencesProvider,omitempty"`
 	DocumentHighlightProvider bool `json:"documentHighlightProvider,omitempty"`
+	HoverProvider             bool `json:"hoverProvider,omitempty"`
 }
 
 // ---- document synchronization ----
@@ -351,4 +352,17 @@ const (
 type DocumentHighlight struct {
 	Range Range `json:"range"`
 	Kind  int   `json:"kind,omitempty"`
+}
+
+// MarkupKindMarkdown is the kind of Markdown MarkupContent.
+const MarkupKindMarkdown = "markdown"
+
+type MarkupContent struct {
+	Kind  string `json:"kind"`
+	Value string `json:"value"`
+}
+
+type Hover struct {
+	Contents MarkupContent `json:"contents"`
+	Range    *Range        `json:"range,omitempty"`
 }

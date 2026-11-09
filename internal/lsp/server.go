@@ -153,6 +153,7 @@ func init() {
 		"textDocument/typeDefinition":      (*Server).typeDefinition,
 		"textDocument/references":          (*Server).references,
 		"textDocument/documentHighlight":   (*Server).documentHighlight,
+		"textDocument/hover":               (*Server).hover,
 	}
 }
 
@@ -191,6 +192,7 @@ func (s *Server) initialize(p *protocol.InitializeParams) *protocol.InitializeRe
 			TypeDefinitionProvider:    true,
 			ReferencesProvider:        true,
 			DocumentHighlightProvider: true,
+			HoverProvider:             true,
 		},
 		ServerInfo: &protocol.ServerInfo{Name: "kc-lsp", Version: Version},
 	}

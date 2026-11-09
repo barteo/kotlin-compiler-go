@@ -192,3 +192,26 @@ func (s *Server) documentHighlight(_ context.Context, r *jsonrpc.Request) (any, 
 	}
 	return out, nil
 }
+
+// hover answers null where there is nothing to describe.
+func (s *Server) hover(_ context.Context, r *jsonrpc.Request) (any, error) {
+	var p protocol.TextDocumentPositionParams
+	if err := r.Unmarshal(&p); err != nil {
+		return nil, err
+	}
+	c, ok, err := s.caretAt(p)
+	if err != nil || !ok {
+		return nil, err
+	}
+	md, at, ok := ide.Hover(c.views[0], c.path, c.off)
+	if !ok {
+		return nil, nil
+	}
+	h := &protocol.Hover{Contents: protocol.MarkupContent{Kind: protocol.MarkupKindMarkdown, Value: md}}
+	l := s.locator()
+	if mp, r, ok := l.rangeOf(ide.Loc{Snap: c.views[0].Snapshot(c.path), Range: at}); ok {
+		pr := rng(mp.doc, r, l.enc)
+		h.Range = &pr
+	}
+	return h, nil
+}

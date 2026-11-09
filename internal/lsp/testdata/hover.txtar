@@ -1,0 +1,88 @@
+-- kc-lsp.json --
+{"modules": [{"name": "main", "sourceRoots": ["src"]}]}
+-- src/A.kt --
+package p
+
+/**
+ * A box.
+ *
+ * @property item what it holds, see [get]
+ */
+open class /*|box*/Box<T>(val item: T) {
+    /** Returns [item]. */
+    open fun get(): T = item
+}
+
+fun use(b: Box<String>?): Int {
+    val /*|n*/n = b?./*|get*/get()?.length ?: 0
+    if (/*|b*/b != null) /*|println*/println(/*|smart*/b.item)
+    return n /*|plus*/+ 1
+}
+-- script --
+initialize
+open src/A.kt
+wait
+hover src/A.kt @box
+hover src/A.kt @n
+hover src/A.kt @get
+hover src/A.kt @b
+hover src/A.kt @println
+hover src/A.kt @smart
+hover src/A.kt @plus
+change src/A.kt 14:0 14:0 "\n"
+hover src/A.kt 16:12
+-- want --
+> initialize
+> open src/A.kt
+> wait
+> hover src/A.kt @box
+7:11-7:14 "Box"
+```kotlin
+open class Box<T>(val item: T)
+```
+
+A box.
+
+**Properties:**
+- `item` what it holds, see `get`
+
+package `p`
+> hover src/A.kt @n
+13:8-13:9 "n"
+```kotlin
+val n: Int
+```
+> hover src/A.kt @get
+13:15-13:18 "get"
+```kotlin
+open fun get(): T
+```
+
+Returns `item`.
+
+member of `Box`
+> hover src/A.kt @b
+14:8-14:9 "b"
+```kotlin
+b: Box<String>?
+```
+> hover src/A.kt @println
+14:19-14:26 "println"
+```kotlin
+inline fun println(message: Any?): Unit
+```
+> hover src/A.kt @smart
+14:27-14:28 "b"
+```kotlin
+b: Box<String>?
+```
+
+Smart cast to `Box<String>`
+> hover src/A.kt @plus
+(none)
+> change src/A.kt 14:0 14:0 "\n"
+> hover src/A.kt 16:12
+16:11-16:12 "n"
+```kotlin
+val n: Int
+```

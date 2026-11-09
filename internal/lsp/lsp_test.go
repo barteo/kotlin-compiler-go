@@ -473,6 +473,25 @@ func (s *session) run(line string) {
 			kind := map[int]string{protocol.HighlightText: "text", protocol.HighlightRead: "read", protocol.HighlightWrite: "write"}[h.Kind]
 			fmt.Fprintf(&s.out, "%s %s %s\n", fmtRange(h.Range), kind, excerpt(d, h.Range, s.enc))
 		}
+	case "hover":
+		name := file()
+		if len(args) < 2 {
+			t.Fatalf("%s: no position", cmd)
+		}
+		var res *protocol.Hover
+		if err := s.call("textDocument/hover", protocol.TextDocumentPositionParams{TextDocument: doc(), Position: s.position(name, args[1])}, &res); err != nil {
+			s.printResult(nil, err)
+			return
+		}
+		if res == nil {
+			fmt.Fprintln(&s.out, "(none)")
+			return
+		}
+		if res.Range != nil {
+			d := ide.NewDocument(name, 0, s.texts[name])
+			fmt.Fprintf(&s.out, "%s %s\n", fmtRange(*res.Range), excerpt(d, *res.Range, s.enc))
+		}
+		fmt.Fprintf(&s.out, "%s\n", strings.TrimRight(res.Contents.Value, "\n"))
 	case "tokens":
 		name := file()
 		var res protocol.SemanticTokens
