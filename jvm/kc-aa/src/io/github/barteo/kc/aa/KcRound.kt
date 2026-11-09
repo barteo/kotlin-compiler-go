@@ -568,8 +568,14 @@ internal class KcRound(
         }
     }
 
-    /** The declarations of class [c]: as FIR has them for a Java class (see `KcMemberBuilder.javaDeclared`). */
-    fun declared(c: KcClassSymbol): List<KaDeclarationSymbol> = members(c).declared ?: c.members
+    /**
+     * The declarations of class [c]: as FIR has them for a Java class (see
+     * `KcMemberBuilder.javaDeclared`), the class's own members otherwise,
+     * without building its member scope (KSP lists a generated file's
+     * declarations, for their names, in every incremental run).
+     */
+    fun declared(c: KcClassSymbol): List<KaDeclarationSymbol> =
+        if (hasJavaDeclarations(c)) members(c).declared ?: c.members else c.members
 
     /** The declarations [s] directly overrides (see `KaSession.directlyOverriddenSymbols`). */
     fun directlyOverridden(s: KaCallableSymbol): List<KaCallableSymbol> = when (s) {

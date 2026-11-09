@@ -37,6 +37,14 @@ internal class KcClassMembers(
     }
 }
 
+/**
+ * Whether [c]'s declarations are its members as FIR has them for a Java
+ * class (see [KcMemberBuilder.javaDeclared]) rather than [KcClassSymbol.members].
+ */
+internal fun hasJavaDeclarations(c: KcClassSymbol) =
+    (c.origin == KaSymbolOrigin.JAVA_SOURCE || c.origin == KaSymbolOrigin.JAVA_LIBRARY) &&
+        c.classKind != KaClassKind.ANNOTATION_CLASS
+
 /** A member a class inherits from [original], a supertype's member, under a new signature. */
 internal interface KcFakeOverride {
     /** The class the fake override is a member of. */
@@ -104,8 +112,7 @@ internal class KcMemberBuilder(private val round: KcRound, private val c: KcClas
             }
         }
 
-        val java = (c.origin == KaSymbolOrigin.JAVA_SOURCE || c.origin == KaSymbolOrigin.JAVA_LIBRARY) &&
-            c.classKind != KaClassKind.ANNOTATION_CLASS
+        val java = hasJavaDeclarations(c)
         val all = if (java) javaDeclared(candidates) else null
         val declared = (all ?: c.members).filterIsInstance<KaCallableSymbol>()
             .filter { it !is KaConstructorSymbol && !isStaticMember(it as KaDeclarationSymbol) }
