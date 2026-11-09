@@ -228,3 +228,60 @@ func BenchmarkBodyEdit(b *testing.B) {
 	b.ReportMetric(float64(times[len(times)/2].Microseconds())/1000, "p50-ms")
 	b.ReportMetric(float64(times[len(times)*95/100].Microseconds())/1000, "p95-ms")
 }
+
+// BenchmarkNavigation times hover, definition and references on a
+// callee in the file: the median and 95th percentile of the requests on
+// an updated module, and first-ms, the first request after an update,
+// which builds the view's index of uses.
+func BenchmarkNavigation(b *testing.B) {
+	root, file, at := benchWorkspace(b)
+	data, _ := os.ReadFile(file)
+	text := string(data)
+	off := strings.LastIndex(text, "source.items().size")
+	if off >= 0 {
+		off += len("source.")
+	} else {
+		// The first name on the edited line.
+		off = at + strings.IndexFunc(text[at:], func(r rune) bool { return r != ' ' && r != '\t' })
+	}
+	line := strings.Count(text[:off], "\n")
+	char := off - (strings.LastIndex(text[:off], "\n") + 1) // ASCII
+	u := fileURI(file)
+	at2 := protocol.TextDocumentPositionParams{TextDocument: protocol.TextDocumentIdentifier{URI: u}, Position: protocol.Position{Line: line, Character: char}}
+	for _, c := range []struct {
+		name, method string
+		params       any
+	}{
+		{"hover", "textDocument/hover", at2},
+		{"definition", "textDocument/definition", at2},
+		{"references", "textDocument/references", protocol.ReferenceParams{TextDocumentPositionParams: at2, Context: protocol.ReferenceContext{IncludeDeclaration: true}}},
+	} {
+		b.Run(c.name, func(b *testing.B) {
+			s := startServer(b, root)
+			defer s.close()
+			s.client.Notify("textDocument/didOpen", protocol.DidOpenTextDocumentParams{
+				TextDocument: protocol.TextDocumentItem{URI: u, LanguageID: "kotlin", Version: 1, Text: text}})
+			s.settle()
+			call := func() time.Duration {
+				start := time.Now()
+				var res any
+				if err := s.client.Call(context.Background(), c.method, c.params, &res); err != nil {
+					b.Fatal(err)
+				}
+				if res == nil {
+					b.Fatalf("%s found nothing", c.method)
+				}
+				return time.Since(start)
+			}
+			first := call()
+			var times []time.Duration
+			for b.Loop() {
+				times = append(times, call())
+			}
+			slices.Sort(times)
+			b.ReportMetric(float64(first.Microseconds())/1000, "first-ms")
+			b.ReportMetric(float64(times[len(times)/2].Microseconds())/1000, "p50-ms")
+			b.ReportMetric(float64(times[len(times)*95/100].Microseconds())/1000, "p95-ms")
+		})
+	}
+}

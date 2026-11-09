@@ -435,6 +435,66 @@ A half-typed statement now costs the facts of its own code only:
 Recovery costs the benchmarks nothing measurable: a body edit is p50
 27 ms, p95 51 ms, and cold open 0.45 s.
 
+### L3: navigation
+
+The server keeps each module's last update as an `ide.View`: its result
+and the snapshots it checked, with lazy indexes of the module's source
+classes and of each declaration's uses, built from per-file facts
+(`analysis.Result.FileFacts`). A request reads the views of the modules
+whose sources hold its file, the owner's first. A view may be of older
+texts than the open documents: an offset maps to it, and a result back,
+through the span the edits since changed (`ide.Mapper`, which the
+diagnostics' shifting now uses too). A position in that span finds
+nothing until the next update.
+
+- **`definition`, `typeDefinition`, `references`, `documentHighlight`.**
+  A use is a reference whose symbol or call is declared in the sources,
+  a type naming a source class or type parameter, or an operator whose
+  call is. A declaration is named across views by its file and range.
+  References gather the uses in every view of the file's modules;
+  highlights mark assignment targets, `++`/`--` and compound
+  assignments as writes. A library declaration gives no definition
+  (L6). `TestReferencesScan` checks, on every program of
+  `testdata/run`, that the references of each declaration in the
+  sources equal an independent scan of the module's facts, that the
+  definition of each use is its declaration, and that hover describes
+  both: 351 programs, 12,873 declarations, 20,582 references, none
+  failed.
+- **`hover`** shows a source declaration's header as written, without
+  annotations and comments and up to its body, initializer or
+  accessors, adding the type inference gives where none is written;
+  then its KDoc as Markdown (`[name]` links as code, tag sections); then
+  its class or package. A library function shows its call's signature,
+  a library property its accessors' type, and a variable that a smart
+  cast makes non-null says so. An operator on primitives, which has no
+  call, shows nothing.
+- **`implementation`** finds the source classes that have a class or
+  interface among their supertypes, and the functions that override a
+  function, through `Symbol.Overrides`, which `analysis` now records:
+  the source declarations a function overrides, transitively.
+- **`workspace/symbol`** searches the outlines of every module's files,
+  open ones by their current text: a subsequence of the name, ignoring
+  case, ranking exact names, prefixes and camel humps first, at most 256.
+- **Semantic tokens** add the names that references and types use to
+  the lexical tokens, classified by the declaration as its own name is
+  (a `val` is read-only, an enum entry an enum member), or a library
+  symbol by its kind. Enum entries now have their declarations: the
+  checker's entry fields point at them.
+- **`inlayHint`** shows the inferred type of a variable or lambda
+  parameter with none written, unless its initializer is a literal or
+  constructor call, and the parameter name before a literal positional
+  argument, as IntelliJ does by default, once per vararg.
+
+`BenchmarkNavigation`, on the generated 200-file module, times requests
+on a callee: hover p50 0.03 ms, p95 0.11 ms; definition p50 0.03 ms,
+p95 0.06 ms; references p50 0.04 ms, p95 0.12 ms. The first request
+after an update builds the index it needs: hover and definition the
+class map, 3.4 and 2.0 ms; references the index of uses, 73 to 90 ms.
+Building that index in the background after each update cost body
+edits 11 ms at p50 and 35 ms at p95, as it competed with the next
+update, so it is built on demand. Body edits are p50 32 ms, p95 46 ms,
+and cold open 0.43 s.
+
 ## Gaps and open questions
 
 - **Diagnostics `kc` lacks.** `kc` reports no warnings and runs few of
@@ -468,5 +528,16 @@ Recovery costs the benchmarks nothing measurable: a body edit is p50
 - **Gradle import** depends on the Kotlin Gradle plugin's API, read
   dynamically from Groovy; each plugin version it supports needs a
   fixture.
+- **Library navigation**: a library declaration has no definition and
+  no KDoc, and workspace symbols leave library classes out, until L6
+  reads library sources.
+- **Navigation follows the module.** References and implementations are
+  found in the modules whose sources hold the file, not in modules that
+  depend on it without analyzing it, and a property's overrides aren't
+  recorded, so implementations of a property find nothing.
+- **Requests are served one at a time**, so a slow one (references right
+  after an update, while its index builds) delays the next.
+- **Hover notes non-null smart casts only**; a smart cast to a subtype
+  shows the declared type.
 - **KDoc and library sources** need `-sources.jar`s, which Gradle
   downloads only when asked; the import doesn't ask for them yet.
