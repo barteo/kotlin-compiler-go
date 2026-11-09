@@ -67,6 +67,7 @@ var update = flag.Bool("update", false, "rewrite the want sections of testdata/*
 //	request METHOD [params]   print any request's result or error
 //	notify METHOD params      send any notification
 //	write F SECTION|-         write a workspace file on disk with a section's text, or delete it
+//	scan                      list the modules' sources again, as the server does every few seconds unwatched
 //	shutdown, exit            end the session; exit prints the server's exit code
 func TestScripts(t *testing.T) {
 	files, _ := filepath.Glob("testdata/*.txtar")
@@ -242,6 +243,7 @@ func runScript(t *testing.T, a *archive) string {
 		}
 	}
 	s.srv = newServer(context.Background(), sr, sw)
+	s.srv.scanEvery = 0 // the scan command scans
 	// Navigation into the library's sources is off but for the scripts
 	// that need them: "library" in a section _needs.
 	s.srv.lib.off = true
@@ -831,6 +833,8 @@ func (s *session) run(line string) {
 			t.Fatalf("notify: want METHOD params")
 		}
 		s.client.Notify(args[0], s.params(strings.TrimSpace(strings.TrimPrefix(rest, args[0]))))
+	case "scan":
+		s.srv.scanSources()
 	case "write":
 		if s.root == "" || len(args) != 2 {
 			t.Fatalf("write: want F SECTION in a workspace")
@@ -843,6 +847,9 @@ func (s *session) run(line string) {
 			return
 		}
 		text, _ := stripMarkers(s.a.section(args[1]))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
 		if err := os.WriteFile(path, []byte(text), 0o644); err != nil {
 			t.Fatal(err)
 		}

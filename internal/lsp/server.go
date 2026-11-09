@@ -11,6 +11,7 @@ import (
 	"sort"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/barteo/kotlin-compiler-go/internal/ide"
 	"github.com/barteo/kotlin-compiler-go/internal/lsp/jsonrpc"
@@ -53,7 +54,8 @@ type Server struct {
 	canWatch     bool // the client registers file watchers
 	watching     bool // and does for kc-lsp
 
-	lib libraries // the library's sources (library.go)
+	lib       libraries     // the library's sources (library.go)
+	scanEvery time.Duration // how often to scan the sources, unwatched; 0 never
 }
 
 // Serve runs a server on r and w until the client sends exit or closes the
@@ -66,7 +68,7 @@ func Serve(ctx context.Context, r io.Reader, w io.Writer) (int, error) {
 func newServer(ctx context.Context, r io.Reader, w io.Writer) *Server {
 	ctx, cancel := context.WithCancel(ctx)
 	return &Server{
-		conn: jsonrpc.NewConn(r, w), ctx: ctx, cancel: cancel, work: newActivity(),
+		conn: jsonrpc.NewConn(r, w), ctx: ctx, cancel: cancel, work: newActivity(), scanEvery: scanEvery,
 		docs: map[protocol.DocumentURI]*ide.Document{}, paths: map[string]protocol.DocumentURI{},
 		sem: map[protocol.DocumentURI]semantic{}, closedShown: map[string]bool{}, exitCode: 1,
 	}
@@ -172,6 +174,7 @@ func init() {
 		"textDocument/completion":           (*Server).completion,
 		"completionItem/resolve":            (*Server).resolveCompletion,
 		"textDocument/signatureHelp":        (*Server).signatureHelp,
+		"workspace/executeCommand":          (*Server).executeCommand,
 	}
 }
 
@@ -225,6 +228,7 @@ func (s *Server) initialize(p *protocol.InitializeParams) *protocol.InitializeRe
 			CompletionProvider:               &protocol.CompletionOptions{TriggerCharacters: []string{".", ":"}, ResolveProvider: true},
 			SignatureHelpProvider:            &protocol.SignatureHelpOptions{TriggerCharacters: []string{"(", ","}, RetriggerCharacters: []string{"="}},
 			InlayHintProvider:                true,
+			ExecuteCommandProvider:           &protocol.ExecuteCommandOptions{Commands: []string{reimportCommand}},
 		},
 		ServerInfo: &protocol.ServerInfo{Name: "kc-lsp", Version: Version},
 	}
@@ -244,6 +248,9 @@ func (s *Server) initializedNotification(context.Context, *jsonrpc.Request) (any
 		go s.watch()
 	}
 	s.loadWorkspaces(roots)
+	if s.scanEvery > 0 && len(roots) > 0 {
+		go s.scanLoop(s.scanEvery)
+	}
 	return nil, nil
 }
 
@@ -303,6 +310,7 @@ func (s *Server) didOpen(_ context.Context, r *jsonrpc.Request) (any, error) {
 	enc := s.enc
 	s.mu.Unlock()
 	s.kickPath(d.Path, false)
+	s.relistUnlisted(d.Path)
 	s.publish(td.URI, d, enc)
 	return nil, nil
 }
@@ -359,6 +367,7 @@ func (s *Server) didClose(_ context.Context, r *jsonrpc.Request) (any, error) {
 		// The file on disk is the module's again: its diagnostics are
 		// shown as a closed file's.
 		s.kickPath(d.Path, false)
+		s.relistUnlisted(d.Path)
 	}
 	return nil, nil
 }

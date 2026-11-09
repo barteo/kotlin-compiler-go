@@ -163,26 +163,34 @@ func (s *Server) loadWorkspaces(roots []string) {
 		s.work.add()
 		go func() {
 			defer s.work.done()
-			w.reload()
+			w.reload(false)
 		}()
 	}
 }
 
 // reload loads w's project again and starts its modules, stopping the old
-// ones.
-func (w *workspace) reload() {
+// ones; refresh runs Gradle even if the model kept is current. A project
+// that fails to load keeps the modules loaded before.
+func (w *workspace) reload(refresh bool) {
 	w.load.Lock()
 	defer w.load.Unlock()
-	w.stopModules(true)
 	s := w.s
-	opts := project.Options{NoGradle: s.noGradle}
+	opts := project.Options{NoGradle: s.noGradle, Gradle: project.GradleOptions{Refresh: refresh}}
 	p, err := project.Load(s.ctx, w.root, opts)
 	if err != nil {
 		if s.ctx.Err() == nil {
-			s.showMessage(protocol.MessageError, fmt.Sprintf("kc-lsp: %s: %v; only syntax errors are shown", w.root, err))
+			w.mu.Lock()
+			kept := w.proj != nil
+			w.mu.Unlock()
+			what := "only syntax errors are shown"
+			if kept {
+				what = "the modules loaded before are kept"
+			}
+			s.showMessage(protocol.MessageError, fmt.Sprintf("kc-lsp: %s: %v; %s", w.root, err, what))
 		}
 		return
 	}
+	w.stopModules(true)
 	for _, warning := range p.Warnings {
 		s.logMessage(protocol.MessageWarning, "kc-lsp: "+warning)
 	}
@@ -685,7 +693,7 @@ func (s *Server) reloadFor(path string) {
 			s.work.add()
 			go func() {
 				defer s.work.done()
-				w.reload()
+				w.reload(false)
 			}()
 		}
 	}
@@ -699,8 +707,12 @@ func (s *Server) didSave(_ context.Context, r *jsonrpc.Request) (any, error) {
 	s.mu.Lock()
 	watching := s.watching
 	s.mu.Unlock()
-	if path := uriPath(p.TextDocument.URI); !watching && isProjectFile(path) {
+	path := uriPath(p.TextDocument.URI)
+	if !watching && isProjectFile(path) {
 		s.reloadFor(path)
+	}
+	if !watching {
+		s.relistUnlisted(path)
 	}
 	return nil, nil
 }
