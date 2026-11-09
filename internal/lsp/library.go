@@ -22,8 +22,9 @@ import (
 
 // libraries is the server's state of the library's sources.
 type libraries struct {
-	off bool   // initializationOptions.librarySources false
-	dir string // initializationOptions.libraryCache, or ""
+	off     bool   // initializationOptions.librarySources false: stubs only
+	noStubs bool   // nor stubs from the library's metadata (tests)
+	dir     string // initializationOptions.libraryCache, or ""
 
 	mu      sync.Mutex
 	finders map[string]*libsrc.Finder // by class path and JDK
@@ -71,13 +72,16 @@ func (s *Server) finder(path string) *libsrc.Finder {
 }
 
 // libraryLoc locates t in the library of the module of path, and returns
-// its location in the file extracted for it.
+// its location in the file extracted for it: from the library's sources,
+// or else a stub rendered from its metadata.
 func (s *Server) libraryLoc(path string, t libsrc.Target) (ide.Loc, libsrc.Location, bool) {
-	f := s.finder(path)
-	if f == nil {
-		return ide.Loc{}, libsrc.Location{}, false
+	loc, ok := libsrc.Location{}, false
+	if f := s.finder(path); f != nil {
+		loc, ok = f.Locate(t)
 	}
-	loc, ok := f.Locate(t)
+	if !ok {
+		loc, ok = s.stub(path, t)
+	}
 	if !ok {
 		return ide.Loc{}, libsrc.Location{}, false
 	}
@@ -87,6 +91,32 @@ func (s *Server) libraryLoc(path string, t libsrc.Target) (ide.Loc, libsrc.Locat
 		return ide.Loc{}, libsrc.Location{}, false
 	}
 	return ide.Loc{Snap: s.librarySnap(file, loc.Text), Range: loc.Range}, loc, true
+}
+
+// stubArchive marks a stub's location: its Archive is stubArchive and the
+// class path's key.
+const stubArchive = "stubs:"
+
+// stub renders the declaration t is in from the metadata of the library
+// of the module that owns path, and locates t in it.
+func (s *Server) stub(path string, t libsrc.Target) (libsrc.Location, bool) {
+	if s.lib.noStubs {
+		return libsrc.Location{}, false
+	}
+	m := s.ownerModule(path)
+	if m == nil {
+		return libsrc.Location{}, false
+	}
+	name := t.Name
+	if t.Kind == "class" && t.Binary != "" && !strings.Contains(name, ".") {
+		name = strings.NewReplacer("/", ".", "$", ".").Replace(t.Binary)
+	}
+	entry, text, ok, err := m.sess.LibraryStub(name)
+	if err != nil || !ok {
+		return libsrc.Location{}, false
+	}
+	key := strings.Join(m.m.ClassPath, "\x00") + "\x01" + m.m.JDKHome
+	return libsrc.LocateIn(stubArchive+key, entry, text, t)
 }
 
 // librarySnap returns the parse of an extracted file.
@@ -106,7 +136,8 @@ func (s *Server) librarySnap(file, text string) *psi.Snapshot {
 
 // extract writes loc's file to the cache directory, if it isn't there
 // with its text, and returns its path: <dir>/<archive>-<hash>/<entry>,
-// where hash is of the archive's path.
+// where hash is of the archive's path; a stub's archive is "stubs", and
+// hash of its class path.
 func (s *Server) extract(loc libsrc.Location) (string, error) {
 	dir := s.lib.dir
 	if dir == "" {
@@ -118,6 +149,9 @@ func (s *Server) extract(loc libsrc.Location) (string, error) {
 	}
 	h := sha256.Sum256([]byte(loc.Archive))
 	base := strings.TrimSuffix(filepath.Base(loc.Archive), filepath.Ext(loc.Archive))
+	if strings.HasPrefix(loc.Archive, stubArchive) {
+		base = "stubs" // the stubs of a class path
+	}
 	file := filepath.Join(dir, base+"-"+hex.EncodeToString(h[:6]), filepath.FromSlash(loc.Entry))
 	if old, err := os.ReadFile(file); err == nil && string(old) == loc.Text {
 		return file, nil
@@ -183,7 +217,7 @@ func (s *Server) libraryDoc(c caret) string {
 // library of the module of path, in the file extracted for it, or nil
 // when library sources are off.
 func (s *Server) libraryDecl(path string) func(libsrc.Target) (psi.NodeRef, bool) {
-	if s.lib.off {
+	if s.lib.off && s.lib.noStubs {
 		return nil
 	}
 	return func(t libsrc.Target) (psi.NodeRef, bool) {

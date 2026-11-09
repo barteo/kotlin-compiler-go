@@ -263,7 +263,7 @@ func (f *Finder) locate(t Target) (Location, bool) {
 		if err != nil {
 			continue
 		}
-		if loc, ok := locateKotlin(a, idx, t); ok {
+		if loc, ok := locateKotlin(a, idx, t, func(e string) (string, error) { return Read(a, e) }); ok {
 			return loc, true
 		}
 		if loc, ok := locateJava(a, idx, t); ok {
@@ -271,6 +271,18 @@ func (f *Finder) locate(t Target) (Location, bool) {
 		}
 	}
 	return Location{}, false
+}
+
+// LocateIn finds t in text, a Kotlin file at entry of archive, as Locate
+// does in an archive: for a stub rendered from the library's metadata.
+func LocateIn(archive, entry, text string, t Target) (Location, bool) {
+	idx := &index{top: map[topKey][]string{}, byName: map[string][]string{}}
+	pkg, names := scan(text)
+	for _, n := range names {
+		idx.top[topKey{pkg, n}] = []string{entry}
+		idx.byName[n] = []string{entry}
+	}
+	return locateKotlin(archive, idx, t, func(string) (string, error) { return text, nil })
 }
 
 // candidate is a declaration that may be the target, and its score.
@@ -286,7 +298,7 @@ type candidate struct {
 // declare its top-level name in its package, trying each split of its
 // name into a package and classes, the longest package first, and else
 // any file that declares the name at the top level.
-func locateKotlin(archive string, idx *index, t Target) (Location, bool) {
+func locateKotlin(archive string, idx *index, t Target, read func(entry string) (string, error)) (Location, bool) {
 	parts := strings.Split(t.Name, ".")
 	var entries []string
 	var path []string // the names from the top-level declaration's
@@ -306,7 +318,7 @@ func locateKotlin(archive string, idx *index, t Target) (Location, bool) {
 	}
 	var cands []candidate
 	for _, e := range entries {
-		text, err := Read(archive, e)
+		text, err := read(e)
 		if err != nil {
 			continue
 		}

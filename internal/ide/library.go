@@ -70,6 +70,7 @@ func libraryTarget(v *View, f analysis.Fact, n psi.NodeRef) (libsrc.Target, bool
 			return libsrc.Target{}, false
 		}
 		withCall(&t, f.Call)
+		asProperty(&t, n)
 		return t, t.Name != ""
 	}
 	if c := f.Call; c != nil {
@@ -81,6 +82,7 @@ func libraryTarget(v *View, f analysis.Fact, n psi.NodeRef) (libsrc.Target, bool
 			t.Kind, t.Name = "constructor", name
 		}
 		withCall(&t, c)
+		asProperty(&t, n)
 		return t, true
 	}
 	if f.Type == nil || f.Type.Parameter {
@@ -128,5 +130,22 @@ func withCall(t *libsrc.Target, c *analysis.Call) {
 	}
 	if r := c.DeclaredReceiver; r != nil && c.Extension {
 		t.Receiver = simpleName(r.Name)
+	}
+}
+
+// asProperty makes t, a getter's call written as its property's name,
+// p.first for getFirst(), the property.
+func asProperty(t *libsrc.Target, n psi.NodeRef) {
+	if t.Kind != "function" || n.NumericKind() != psi.KindREFERENCE_EXPRESSION || len(t.Parameters) > 0 {
+		return
+	}
+	written := psi.Unquote(n.Text())
+	i := strings.LastIndexByte(t.Name, '.')
+	called := t.Name[i+1:]
+	if written == "" || called == written {
+		return
+	}
+	if called == "get"+strings.ToUpper(written[:1])+written[1:] || strings.HasPrefix(written, "is") && called == written {
+		t.Kind, t.Name, t.Params, t.Parameters, t.Varargs = "property", t.Name[:i+1]+written, false, nil, nil
 	}
 }

@@ -245,14 +245,19 @@ func runScript(t *testing.T, a *archive) string {
 	s.srv = newServer(context.Background(), sr, sw)
 	s.srv.scanEvery = 0 // the scan command scans
 	// Navigation into the library's sources is off but for the scripts
-	// that need them: "library" in a section _needs.
-	s.srv.lib.off = true
+	// that need them, "library" in a section _needs, and into stubs of
+	// its metadata but for those that need "stubs".
+	s.srv.lib.off, s.srv.lib.noStubs = true, true
+	if strings.Contains(a.section("_needs"), "stubs") {
+		s.srv.lib.noStubs = false
+		s.srv.lib.dir = filepath.Join(s.root, ".libcache")
+	}
 	if strings.Contains(a.section("_needs"), "library") {
 		stdlib, err := classpath.FindStdlib()
 		if err != nil || libsrc.SourcesOf(stdlib) == "" {
 			t.Skip("no sources of the Kotlin standard library")
 		}
-		s.srv.lib.off = false
+		s.srv.lib.off, s.srv.lib.noStubs = false, false
 		s.srv.lib.dir = filepath.Join(s.root, ".libcache")
 	}
 	go func() {

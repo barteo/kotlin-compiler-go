@@ -1,0 +1,61 @@
+-- kc-lsp.json --
+{"modules": [{"name": "main", "sourceRoots": ["src"]}]}
+-- _needs --
+stubs
+-- src/A.kt --
+package p
+
+fun /*|use*/use(): Int {
+    val l: /*|list*/List<Int> = /*|listOf*/listOf(1)
+    /*|println*/println(l.size)
+    val s = "x"./*|trim*/trim()
+    val p = /*|pair*/Pair(1, s)
+    val b = /*|sb*/StringBuilder()
+    b./*|append*/append(s)
+    return s./*|length*/length + p./*|first*/first
+}
+-- script --
+# Without the library's sources: stubs from its metadata.
+initialize {"processId": null, "rootUri": "ROOT", "capabilities": {}, "initializationOptions": {"librarySources": false}}
+open src/A.kt
+wait
+definition src/A.kt @listOf
+definition src/A.kt @println
+definition src/A.kt @trim
+definition src/A.kt @pair
+definition src/A.kt @first
+definition src/A.kt @sb
+definition src/A.kt @append
+definition src/A.kt @length
+typedef src/A.kt @list
+calls src/A.kt @use
+-- want --
+> initialize {"processId": null, "rootUri": "ROOT", "capabilities": {}, "initializationOptions": {"librarySources": false}}
+> open src/A.kt
+> wait
+> definition src/A.kt @listOf
+.libcache/stubs/kotlin/collections/listOf.kt 4:8-4:14 "listOf"
+> definition src/A.kt @println
+.libcache/stubs/kotlin/io/println.kt 5:4-5:11 "println"
+> definition src/A.kt @trim
+.libcache/stubs/kotlin/text/trim.kt 9:11-9:15 "trim"
+> definition src/A.kt @pair
+.libcache/stubs/kotlin/Pair.kt 4:6-4:10 "Pair"
+> definition src/A.kt @first
+.libcache/stubs/kotlin/Pair.kt 6:8-6:13 "first"
+> definition src/A.kt @sb
+.libcache/stubs/java/lang/StringBuilder.kt 4:6-4:19 "StringBuilder"
+> definition src/A.kt @append
+.libcache/stubs/java/lang/StringBuilder.kt 10:8-10:14 "append"
+> definition src/A.kt @length
+(none)
+> typedef src/A.kt @list
+.libcache/stubs/kotlin/collections/List.kt 4:10-4:14 "List"
+> calls src/A.kt @use
+use [12] (p) src/A.kt 2:4-2:7
+  -> StringBuilder [5] (java.lang) .libcache/stubs/java/lang/StringBuilder.kt 4:6-4:19: 7:12-7:25 "StringBuilder"
+  -> append [6] (StringBuilder) .libcache/stubs/java/lang/StringBuilder.kt 10:8-10:14: 8:6-8:12 "append"
+  -> Pair [5] (kotlin) .libcache/stubs/kotlin/Pair.kt 4:6-4:10: 6:12-6:16 "Pair"
+  -> listOf [12] (kotlin.collections) .libcache/stubs/kotlin/collections/listOf.kt 4:8-4:14: 3:23-3:29 "listOf"
+  -> println [12] (kotlin.io) .libcache/stubs/kotlin/io/println.kt 5:4-5:11: 4:4-4:11 "println"
+  -> trim [12] (kotlin.text) .libcache/stubs/kotlin/text/trim.kt 9:11-9:15: 5:16-5:20 "trim"
