@@ -101,6 +101,7 @@ error -32002: textDocument/documentSymbol before initialize
       "save": true
     },
     "typeDefinitionProvider": true,
+    "typeHierarchyProvider": true,
     "workspaceSymbolProvider": true
   },
   "serverInfo": {

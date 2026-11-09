@@ -165,6 +165,9 @@ func init() {
 		"textDocument/prepareCallHierarchy": (*Server).prepareCallHierarchy,
 		"callHierarchy/incomingCalls":       (*Server).incomingCalls,
 		"callHierarchy/outgoingCalls":       (*Server).outgoingCalls,
+		"textDocument/prepareTypeHierarchy": (*Server).prepareTypeHierarchy,
+		"typeHierarchy/supertypes":          (*Server).supertypes,
+		"typeHierarchy/subtypes":            (*Server).subtypes,
 		"textDocument/codeAction":           (*Server).codeAction,
 		"textDocument/formatting":           (*Server).formatting,
 		"textDocument/rangeFormatting":      (*Server).rangeFormatting,
@@ -220,6 +223,7 @@ func (s *Server) initialize(p *protocol.InitializeParams) *protocol.InitializeRe
 			ImplementationProvider:    true,
 			RenameProvider:            &protocol.RenameOptions{PrepareProvider: true},
 			CallHierarchyProvider:     true,
+			TypeHierarchyProvider:     true,
 			CodeActionProvider: &protocol.CodeActionOptions{CodeActionKinds: []string{
 				protocol.CodeActionQuickFix, protocol.CodeActionOrganizeImports,
 				protocol.CodeActionRefactorExtract, protocol.CodeActionRefactorInline, protocol.CodeActionRefactorRewrite,

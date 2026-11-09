@@ -645,6 +645,42 @@ func (s *session) run(line string) {
 		s.printEdit(we, "")
 		s.applyEdit(we)
 		fmt.Fprintf(&s.out, "%s", s.texts[name])
+	case "types":
+		// types F POS prints the type hierarchy item at POS, its
+		// supertypes, three levels deep, and its subtypes, two.
+		name := file()
+		if len(args) < 2 {
+			t.Fatalf("types: want F POS")
+		}
+		var items []protocol.TypeHierarchyItem
+		if err := s.call("textDocument/prepareTypeHierarchy", protocol.TextDocumentPositionParams{TextDocument: doc(), Position: s.position(name, args[1])}, &items); err != nil {
+			s.printResult(nil, err)
+			return
+		}
+		if len(items) == 0 {
+			fmt.Fprintln(&s.out, "(none)")
+			return
+		}
+		itemText := func(it protocol.TypeHierarchyItem) string {
+			return fmt.Sprintf("%s [%d] (%s) %s %s", it.Name, it.Kind, it.Detail, s.fileOf(it.URI), fmtRange(it.SelectionRange))
+		}
+		fmt.Fprintf(&s.out, "%s\n", itemText(items[0]))
+		var walk func(method, mark string, it protocol.TypeHierarchyItem, depth int)
+		walk = func(method, mark string, it protocol.TypeHierarchyItem, depth int) {
+			var res []protocol.TypeHierarchyItem
+			if err := s.call(method, protocol.TypeHierarchyParams{Item: it}, &res); err != nil {
+				s.printResult(nil, err)
+				return
+			}
+			for _, r := range res {
+				fmt.Fprintf(&s.out, "%s%s %s\n", strings.Repeat("  ", depth), mark, itemText(r))
+				if depth < 3 && !(mark == "v" && depth == 2) {
+					walk(method, mark, r, depth+1)
+				}
+			}
+		}
+		walk("typeHierarchy/supertypes", "^", items[0], 1)
+		walk("typeHierarchy/subtypes", "v", items[0], 1)
 	case "prepare":
 		name := file()
 		if len(args) < 2 {
