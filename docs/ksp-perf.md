@@ -36,12 +36,12 @@ W is past 10x. E is at 3–4x: an edit still lowers all 559 files and
 resolves their signatures in Go (100–210 ms), and kc-aa builds a new
 round for every file (30–60 ms). Step 28 lists what is left.
 
-Room, Hilt and Moshi (steps 29–37), on generated modules of 100 files,
-after step 36, with step 37's leaf edits. Ceiling means the ratio if the backend took no time:
-stock's run divided by the processors' own time, which is the same on
-both backends. Rows are medians of 10 runs, but for the leaf edits,
-which are medians of 30: over 10 runs stock's JIT is still warming up,
-which flatters kc (step 36).
+Room, Hilt and Moshi (steps 29–38), on generated modules of 100 files,
+after step 36, with step 38's leaf edits. Ceiling means the ratio if the
+backend took no time: stock's run divided by the processors' own time,
+which is the same on both backends. Rows are medians of 10 runs, but for
+the leaf edits, which are the medians of runs 51–100 of 100 on each
+backend: both JITs keep warming up well past 30 runs (step 38).
 
 | ms | stock KSP2 | kc | ratio | ceiling |
 |---|---|---|---|---|
@@ -49,39 +49,41 @@ which flatters kc (step 36).
 | Room, leaf edit | 8331 | 2998 | 2.8x | about 3.5x |
 | Hilt, warm | 3916 | 692 | 5.7x | about 10x |
 | Hilt, edit Feature000 (100 files dirty) | 4113 | 1161 | 3.5x | |
-| Hilt, leaf body edit (30 runs, step 37) | 407 | 67 | 6.1x | about 10x (processing takes about 25 ms) |
-| Hilt, leaf signature edit (30 runs, step 37) | 434 | 89 | 4.9x | |
+| Hilt, leaf body edit (step 38) | 426 | 42 | 10.1x | about 20x (processing takes about 20 ms) |
+| Hilt, leaf signature edit (step 38) | 445 | 68 | 6.5x | |
 | Hilt, one-file test, warm | 403 | 59 | 6.8x | |
 | Moshi, warm | 2270 | 458 | 5.0x | about 7.5x |
 | Moshi, edit Model000 (10 files dirty) | 610 | 167 | 3.7x | |
-| Moshi, leaf body edit (30 runs, step 37) | 292 | 40 | 7.3x | about 20x (processing takes about 12 ms) |
-| Moshi, leaf signature edit (30 runs, step 37) | 266 | 64 | 4.2x | |
+| Moshi, leaf body edit (step 38) | 254 | 32 | 7.9x | about 25x (processing takes about 9 ms) |
+| Moshi, leaf signature edit (step 38) | 249 | 58 | 4.3x | |
 | Moshi, one-file test, warm | 204 | 23 | 8.9x | |
 
-Nothing is at 10x yet on these modules. Moshi's one-file test and its
-leaf body edit are closest. Since step 37, a body edit that declares no
-locals runs no check: the Go update keeps the file's model, renumbered,
-and takes about 1.3 ms instead of 6.6. A leaf body edit on Moshi is now
-about 40 ms (minimum 29), and most of it is outside the Go update:
-kc-aa's setup (about 6 ms), the processors and KSP (about 9), teardown
-(about 6) and the time between rounds (about 5). What is left:
+Hilt's leaf body edit is the first edit at 10x. Since step 37, a body
+edit that declares no locals runs no check, and since step 38 an update
+reads only the files that changed: each of a body-edit run's two Go
+updates takes about 1 ms. A fast Moshi body-edit run is now about
+30 ms: the processors about 9, KSP's incremental bookkeeping about 5,
+kc-aa's rounds about 4, libkc about 2.5, and the rest IntelliJ core and
+KSP's symbol layer. What is left:
 
 - **Signature edits, and body edits that declare locals, resolve every
-  file's signatures again** (`signatures`, 4–6 ms per update), though
-  99 of 100 files are unchanged. Keeping the declared program across
-  updates would remove it, but the checker's symbols and syntax trees
-  are linked both ways, and step 37 set that aside as too large for
-  what it buys. A narrower cut is to check again only the edited
-  function's locals.
+  file's signatures again** (`lower` and `signatures`, 7–9 ms per
+  update), though 99 of 100 files are unchanged, and are about twice as
+  slow as body edits. Keeping the declared program across updates would
+  remove it, but the checker's symbols and syntax trees are linked both
+  ways, and step 37 set that aside as too large for what it buys.
+- **KSP's incremental bookkeeping** (about 5 ms on Moshi): updating the
+  lookup caches, backing up outputs (`toRelativeString` of each
+  output), collecting the symbols of the edited and generated files,
+  and `calcDirtyFiles`, which makes relative paths of every file twice.
+  Stock pays all of it; trimming it in the fork is KSP-side.
+- **kc-aa's rounds**: psi and `build`, about 4 ms per run.
 - **Comment and KDoc edits outside bodies** still take the partial
   check, though they would only need nodes and positions moved, as
   step 37 does for bodies.
-- **The native call around the updates**: reading and parsing the
-  sources, encoding and decoding, about 3 ms per update.
-- **kc-aa's setup, teardown and rounds**: about 6 ms each for setup and
-  teardown on Moshi, and about 2 ms to build each round (step 35).
-- **KSP's remaining bookkeeping** (symbol collection, dirtiness, output
-  backups) and G1 young pauses, which stock pays as well.
+- **Run-to-run spread**: in one JVM, kc's body-edit runs range from
+  about 21 to 45 ms even after 70 runs, and the slow runs are slower in
+  every phase, the processors' too.
 
 ## What "10x" has to mean
 
