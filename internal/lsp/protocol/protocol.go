@@ -133,6 +133,7 @@ type ServerCapabilities struct {
 	SignatureHelpProvider *SignatureHelpOptions `json:"signatureHelpProvider,omitempty"`
 	RenameProvider        *RenameOptions        `json:"renameProvider,omitempty"`
 	CallHierarchyProvider bool                  `json:"callHierarchyProvider,omitempty"`
+	CodeActionProvider    *CodeActionOptions    `json:"codeActionProvider,omitempty"`
 }
 
 type CallHierarchyItem struct {
@@ -280,11 +281,49 @@ const (
 )
 
 type Diagnostic struct {
-	Range    Range  `json:"range"`
-	Severity int    `json:"severity,omitempty"`
-	Code     string `json:"code,omitempty"`
-	Source   string `json:"source,omitempty"`
-	Message  string `json:"message"`
+	Range    Range    `json:"range"`
+	Severity int      `json:"severity,omitempty"`
+	Code     string   `json:"code,omitempty"`
+	Source   string   `json:"source,omitempty"`
+	Message  string   `json:"message"`
+	Tags     []int    `json:"tags,omitempty"`
+	Data     []string `json:"data,omitempty"`
+}
+
+// DiagnosticTagUnnecessary marks unused or unnecessary code.
+const DiagnosticTagUnnecessary = 1
+
+// ---- code actions ----
+
+// Code action kinds.
+const (
+	CodeActionQuickFix        = "quickfix"
+	CodeActionOrganizeImports = "source.organizeImports"
+)
+
+type CodeActionOptions struct {
+	CodeActionKinds []string `json:"codeActionKinds,omitempty"`
+}
+
+type CodeActionParams struct {
+	TextDocument TextDocumentIdentifier `json:"textDocument"`
+	Range        Range                  `json:"range"`
+	Context      CodeActionContext      `json:"context"`
+}
+
+// CodeActionContext's Diagnostics are the client's; kc offers fixes of
+// its own current diagnostics in the range instead.
+type CodeActionContext struct {
+	Diagnostics []Diagnostic `json:"diagnostics"`
+	Only        []string     `json:"only,omitempty"`
+}
+
+type CodeAction struct {
+	Title       string         `json:"title"`
+	Kind        string         `json:"kind,omitempty"`
+	Diagnostics []Diagnostic   `json:"diagnostics,omitempty"`
+	IsPreferred bool           `json:"isPreferred,omitempty"`
+	Edit        *WorkspaceEdit `json:"edit,omitempty"`
 }
 
 type PublishDiagnosticsParams struct {

@@ -83,6 +83,7 @@ type module struct {
 type fileResult struct {
 	snap  *psi.Snapshot
 	diags []analysis.Diagnostic
+	view  *ide.View // the update's, for the hints
 }
 
 // activity counts the work under way: workspaces loading and modules
@@ -449,13 +450,14 @@ func (m *module) show(res *analysis.Result, snaps []*psi.Snapshot) {
 	var mine []*psi.Snapshot
 	for _, snap := range snaps {
 		if p.ModuleOf(snap.Path()) == m.m {
-			m.results[snap.Path()] = fileResult{snap, byPath[snap.Path()]}
+			m.results[snap.Path()] = fileResult{snap, byPath[snap.Path()], m.last}
 			mine = append(mine, snap)
 		}
 	}
+	v := m.last
 	m.mu.Unlock()
 	for _, snap := range mine {
-		m.w.s.showSemantic(snap, byPath[snap.Path()])
+		m.w.s.showSemantic(snap, byPath[snap.Path()], v)
 	}
 }
 
@@ -466,6 +468,16 @@ func (m *module) show(res *analysis.Result, snaps []*psi.Snapshot) {
 type semantic struct {
 	snap  *psi.Snapshot
 	diags []ide.Diagnostic
+}
+
+// semanticOf returns an open document's semantic diagnostics: ds as mode
+// shows them, and v's hints of path, unless mode is coded.
+func semanticOf(ds []analysis.Diagnostic, mode ide.DiagnosticsMode, v *ide.View, path string) []ide.Diagnostic {
+	out := ide.SemanticDiagnostics(ds, mode)
+	if v != nil && mode != ide.DiagnosticsCoded {
+		out = append(out, ide.Hints(v, path)...)
+	}
+	return out
 }
 
 // openSnapshots returns the open documents' snapshots by path.
@@ -479,8 +491,9 @@ func (s *Server) openSnapshots() map[string]*psi.Snapshot {
 	return out
 }
 
-// showSemantic shows ds, an update's diagnostics of snap.
-func (s *Server) showSemantic(snap *psi.Snapshot, ds []analysis.Diagnostic) {
+// showSemantic shows ds, an update's diagnostics of snap, and for an
+// open document the hints of v, the update's view.
+func (s *Server) showSemantic(snap *psi.Snapshot, ds []analysis.Diagnostic, v *ide.View) {
 	path := snap.Path()
 	s.mu.Lock()
 	mode := s.mode
@@ -490,7 +503,14 @@ func (s *Server) showSemantic(snap *psi.Snapshot, ds []analysis.Diagnostic) {
 			s.mu.Unlock()
 			return // edited since: the next update shows it
 		}
-		s.sem[u] = semantic{snap, ide.SemanticDiagnostics(ds, mode)}
+		s.mu.Unlock()
+		sem := semanticOf(ds, mode, v, path)
+		s.mu.Lock()
+		if s.docs[u] != d {
+			s.mu.Unlock()
+			return
+		}
+		s.sem[u] = semantic{snap, sem}
 		enc := s.enc
 		s.mu.Unlock()
 		s.publish(u, d, enc)

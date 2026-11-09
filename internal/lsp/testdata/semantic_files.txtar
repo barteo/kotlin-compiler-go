@@ -50,7 +50,10 @@ diagnostics src/A.kt
     "severity": 2,
     "code": "UNRESOLVED_REFERENCE",
     "source": "kc",
-    "message": "unresolved reference: extra"
+    "message": "unresolved reference: extra",
+    "data": [
+      "extra"
+    ]
   }
 ]
 > write src/E.kt _E.kt
@@ -77,7 +80,11 @@ diagnostics src/A.kt
     "severity": 2,
     "code": "TYPE_MISMATCH",
     "source": "kc",
-    "message": "type mismatch: inferred type is String but Int was expected"
+    "message": "type mismatch: inferred type is String but Int was expected",
+    "data": [
+      "kotlin.String",
+      "kotlin.Int"
+    ]
   }
 ]
 > write src/E.kt -
@@ -99,7 +106,10 @@ diagnostics src/A.kt
     "severity": 2,
     "code": "UNRESOLVED_REFERENCE",
     "source": "kc",
-    "message": "unresolved reference: extra"
+    "message": "unresolved reference: extra",
+    "data": [
+      "extra"
+    ]
   }
 ]
 > write kc-lsp.json _config

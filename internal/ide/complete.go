@@ -513,28 +513,8 @@ func isFunctionType(t analysis.Type) bool {
 // importEdit returns the edit that imports fq into cc's document: after
 // its last import, or its package directive.
 func (cc CompletionContext) importEdit(fq string) *TextEdit {
-	var pkgEnd, importEnd int = -1, -1
-	for c := cc.snap.RootNode().FirstChild(); c.Valid(); c = c.NextSibling() {
-		switch c.NumericKind() {
-		case psi.KindPACKAGE_DIRECTIVE:
-			if strings.TrimSpace(c.Text()) != "" {
-				pkgEnd = c.Range().End
-			}
-		case psi.KindIMPORT_LIST:
-			for d := c.FirstChild(); d.Valid(); d = d.NextSibling() {
-				if d.NumericKind() == psi.KindIMPORT_DIRECTIVE {
-					importEnd = d.Range().End
-				}
-			}
-		}
-	}
-	switch {
-	case importEnd >= 0:
-		return &TextEdit{Range: psi.Range{Start: importEnd, End: importEnd}, Text: "\nimport " + fq}
-	case pkgEnd >= 0:
-		return &TextEdit{Range: psi.Range{Start: pkgEnd, End: pkgEnd}, Text: "\n\nimport " + fq}
-	}
-	return &TextEdit{Text: "import " + fq + "\n\n"}
+	e := ImportEdit(cc.snap, fq)
+	return &e
 }
 
 // CompletionDoc documents the declaration at offset off of snap, an

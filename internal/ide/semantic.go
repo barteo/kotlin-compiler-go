@@ -66,7 +66,7 @@ func SemanticDiagnostics(ds []analysis.Diagnostic, mode DiagnosticsMode) []Diagn
 		if d.Kotlinc == "SYNTAX" {
 			continue
 		}
-		sd := Diagnostic{Range: d.Range, Severity: Error, Code: d.Kotlinc, Message: d.Message}
+		sd := Diagnostic{Range: d.Range, Severity: Error, Code: d.Kotlinc, Message: d.Message, Data: d.Data}
 		feature, unsupported := strings.CutPrefix(d.Code, "unsupported:")
 		switch {
 		case mode == DiagnosticsStrict:

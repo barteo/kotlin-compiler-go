@@ -26,6 +26,11 @@ type Diagnostic struct {
 	Severity Severity
 	Code     string
 	Message  string
+	// Data is the analysis diagnostic's fix data (analysis.Diagnostic).
+	Data []string
+	// Unnecessary marks code that does nothing, as an unused import,
+	// which editors gray out.
+	Unnecessary bool
 }
 
 // SyntaxDiagnostics returns the document's syntax errors, which psi

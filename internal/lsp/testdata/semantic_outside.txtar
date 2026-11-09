@@ -69,7 +69,11 @@ diagnostics src/A.kt
     "severity": 2,
     "code": "TYPE_MISMATCH",
     "source": "kc",
-    "message": "type mismatch: inferred type is String but Int was expected"
+    "message": "type mismatch: inferred type is String but Int was expected",
+    "data": [
+      "kotlin.String",
+      "kotlin.Int"
+    ]
   },
   {
     "range": {
@@ -85,6 +89,9 @@ diagnostics src/A.kt
     "severity": 2,
     "code": "UNRESOLVED_REFERENCE",
     "source": "kc",
-    "message": "unresolved reference: h"
+    "message": "unresolved reference: h",
+    "data": [
+      "h"
+    ]
   }
 ]

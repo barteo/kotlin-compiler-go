@@ -70,7 +70,11 @@ exit
     "severity": 2,
     "code": "TYPE_MISMATCH",
     "source": "kc",
-    "message": "type mismatch: inferred type is String but Int was expected"
+    "message": "type mismatch: inferred type is String but Int was expected",
+    "data": [
+      "kotlin.String",
+      "kotlin.Int"
+    ]
   },
   {
     "range": {
@@ -86,7 +90,10 @@ exit
     "severity": 2,
     "code": "UNRESOLVED_REFERENCE",
     "source": "kc",
-    "message": "unresolved reference: nope"
+    "message": "unresolved reference: nope",
+    "data": [
+      "nope"
+    ]
   }
 ]
 > diagnostics src/a/C.kt
@@ -105,7 +112,11 @@ exit
     "severity": 2,
     "code": "TYPE_MISMATCH",
     "source": "kc",
-    "message": "type mismatch: inferred type is Int but String was expected"
+    "message": "type mismatch: inferred type is Int but String was expected",
+    "data": [
+      "kotlin.Int",
+      "kotlin.String"
+    ]
   }
 ]
 > change src/a/A.kt @bad @badEnd "1"
@@ -125,7 +136,10 @@ exit
     "severity": 2,
     "code": "UNRESOLVED_REFERENCE",
     "source": "kc",
-    "message": "unresolved reference: nope"
+    "message": "unresolved reference: nope",
+    "data": [
+      "nope"
+    ]
   }
 ]
 > wait
@@ -145,7 +159,10 @@ exit
     "severity": 2,
     "code": "UNRESOLVED_REFERENCE",
     "source": "kc",
-    "message": "unresolved reference: nope"
+    "message": "unresolved reference: nope",
+    "data": [
+      "nope"
+    ]
   }
 ]
 > open src/a/B.kt
@@ -167,7 +184,10 @@ exit
     "severity": 2,
     "code": "UNRESOLVED_REFERENCE",
     "source": "kc",
-    "message": "unresolved reference: helper"
+    "message": "unresolved reference: helper",
+    "data": [
+      "helper"
+    ]
   },
   {
     "range": {
@@ -183,7 +203,10 @@ exit
     "severity": 2,
     "code": "UNRESOLVED_REFERENCE",
     "source": "kc",
-    "message": "unresolved reference: nope"
+    "message": "unresolved reference: nope",
+    "data": [
+      "nope"
+    ]
   }
 ]
 > diagnostics src/a/B.kt
@@ -206,7 +229,10 @@ exit
     "severity": 2,
     "code": "UNRESOLVED_REFERENCE",
     "source": "kc",
-    "message": "unresolved reference: nope"
+    "message": "unresolved reference: nope",
+    "data": [
+      "nope"
+    ]
   }
 ]
 > open src/b/D.kt

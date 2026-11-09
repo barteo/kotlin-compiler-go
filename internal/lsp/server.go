@@ -161,6 +161,7 @@ func init() {
 		"textDocument/prepareCallHierarchy": (*Server).prepareCallHierarchy,
 		"callHierarchy/incomingCalls":       (*Server).incomingCalls,
 		"callHierarchy/outgoingCalls":       (*Server).outgoingCalls,
+		"textDocument/codeAction":           (*Server).codeAction,
 		"workspace/symbol":                  (*Server).workspaceSymbol,
 		"textDocument/inlayHint":            (*Server).inlayHint,
 		"textDocument/completion":           (*Server).completion,
@@ -211,6 +212,7 @@ func (s *Server) initialize(p *protocol.InitializeParams) *protocol.InitializeRe
 			ImplementationProvider:    true,
 			RenameProvider:            &protocol.RenameOptions{PrepareProvider: true},
 			CallHierarchyProvider:     true,
+			CodeActionProvider:        &protocol.CodeActionOptions{CodeActionKinds: []string{protocol.CodeActionQuickFix, protocol.CodeActionOrganizeImports}},
 			WorkspaceSymbolProvider:   true,
 			CompletionProvider:        &protocol.CompletionOptions{TriggerCharacters: []string{".", ":"}, ResolveProvider: true},
 			SignatureHelpProvider:     &protocol.SignatureHelpOptions{TriggerCharacters: []string{"(", ","}, RetriggerCharacters: []string{"="}},
@@ -274,12 +276,21 @@ func (s *Server) didOpen(_ context.Context, r *jsonrpc.Request) (any, error) {
 	d := ide.NewDocument(uriPath(td.URI), td.Version, td.Text)
 	// The last update's diagnostics of the file, if it is the same text.
 	last, ok := s.ownerResult(d.Path)
+	var sem []ide.Diagnostic
+	same := ok && last.snap.Source() == td.Text
+	if same {
+		s.mu.Lock()
+		mode := s.mode
+		s.mu.Unlock()
+		sem = semanticOf(last.diags, mode, last.view, d.Path)
+	}
 	s.mu.Lock()
 	s.docs[td.URI] = d
 	s.paths[d.Path] = td.URI
 	delete(s.closedShown, d.Path)
-	if ok && last.snap.Source() == td.Text {
-		s.sem[td.URI] = semantic{d.Snap, ide.SemanticDiagnostics(last.diags, s.mode)}
+	if same {
+		// The hints' ranges are of the update's snapshot, the same text.
+		s.sem[td.URI] = semantic{d.Snap, sem}
 	}
 	enc := s.enc
 	s.mu.Unlock()
@@ -387,7 +398,16 @@ func protocolDiagnostic(d *ide.Document, e ide.Diagnostic, enc ide.Encoding) pro
 		Code:     e.Code,
 		Source:   "kc",
 		Message:  e.Message,
+		Tags:     tags(e),
+		Data:     e.Data,
 	}
+}
+
+func tags(e ide.Diagnostic) []int {
+	if e.Unnecessary {
+		return []int{protocol.DiagnosticTagUnnecessary}
+	}
+	return nil
 }
 
 // ---- positions ----

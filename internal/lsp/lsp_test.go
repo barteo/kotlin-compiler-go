@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -490,34 +491,8 @@ func (s *session) run(line string) {
 			s.printResult(nil, err)
 			return
 		}
-		var files []string
-		byFile := map[string][]protocol.TextEdit{}
-		for u, es := range we.Changes {
-			f := s.fileOf(u)
-			files = append(files, f)
-			sort.Slice(es, func(i, j int) bool { return posLess(es[i].Range.Start, es[j].Range.Start) })
-			byFile[f] = es
-		}
-		sort.Strings(files)
-		for _, f := range files {
-			d := ide.NewDocument(f, 0, s.textOf(f))
-			fmt.Fprintf(&s.out, "%s:\n", f)
-			for _, e := range byFile[f] {
-				fmt.Fprintf(&s.out, "  %s %s -> %q\n", fmtRange(e.Range), excerpt(d, e.Range, s.enc), e.NewText)
-			}
-		}
-		for _, f := range files {
-			if _, open := s.texts[f]; !open {
-				continue
-			}
-			es := byFile[f]
-			changes := make([]protocol.TextDocumentContentChangeEvent, len(es))
-			for i, e := range es {
-				r := e.Range
-				changes[len(es)-1-i] = protocol.TextDocumentContentChangeEvent{Range: &r, Text: e.NewText}
-			}
-			s.edit(f, changes)
-		}
+		s.printEdit(we, "")
+		s.applyEdit(we)
 	case "calls":
 		// calls F POS prints the call hierarchy item at POS, and its
 		// incoming and outgoing calls.
@@ -563,6 +538,54 @@ func (s *session) run(line string) {
 		}
 		for _, c := range out {
 			fmt.Fprintf(&s.out, "  -> %s: %s\n", itemText(c.To), ranges(s.fileOf(it.URI), c.FromRanges))
+		}
+	case "actions":
+		// actions F FROM [TO] [only=KIND] [apply=N] prints the code
+		// actions of a range, each with its edits; apply=N applies the
+		// Nth's edits to the open documents.
+		name := file()
+		if len(args) < 2 {
+			t.Fatalf("actions: want F FROM [TO]")
+		}
+		from := s.position(name, args[1])
+		to := from
+		var only []string
+		apply := 0
+		for _, a := range args[2:] {
+			switch {
+			case strings.HasPrefix(a, "only="):
+				only = append(only, strings.TrimPrefix(a, "only="))
+			case strings.HasPrefix(a, "apply="):
+				apply, _ = strconv.Atoi(strings.TrimPrefix(a, "apply="))
+			default:
+				to = s.position(name, a)
+			}
+		}
+		var res []protocol.CodeAction
+		p := protocol.CodeActionParams{TextDocument: doc(), Range: protocol.Range{Start: from, End: to}, Context: protocol.CodeActionContext{Only: only}}
+		if err := s.call("textDocument/codeAction", p, &res); err != nil {
+			s.printResult(nil, err)
+			return
+		}
+		if len(res) == 0 {
+			fmt.Fprintln(&s.out, "(none)")
+		}
+		for i, a := range res {
+			pref := ""
+			if a.IsPreferred {
+				pref = " preferred"
+			}
+			var codes []string
+			for _, d := range a.Diagnostics {
+				codes = append(codes, d.Code)
+			}
+			fmt.Fprintf(&s.out, "%d. %s [%s%s] %s\n", i+1, a.Title, a.Kind, pref, strings.Join(codes, ","))
+			if a.Edit != nil {
+				s.printEdit(a.Edit, "  ")
+			}
+		}
+		if apply > 0 && apply <= len(res) && res[apply-1].Edit != nil {
+			s.applyEdit(res[apply-1].Edit)
 		}
 	case "prepare":
 		name := file()
@@ -889,4 +912,45 @@ func diffLines(want, got string) string {
 		fmt.Fprintf(&b, "+ %s\n", g[j])
 	}
 	return b.String()
+}
+
+// printEdit prints a workspace edit's edits, by file and position.
+func (s *session) printEdit(we *protocol.WorkspaceEdit, indent string) {
+	var files []string
+	for u := range we.Changes {
+		files = append(files, s.fileOf(u))
+	}
+	sort.Strings(files)
+	for _, f := range files {
+		es := slices.Clone(we.Changes[s.uri(f)])
+		sort.Slice(es, func(i, j int) bool { return posLess(es[i].Range.Start, es[j].Range.Start) })
+		d := ide.NewDocument(f, 0, s.textOf(f))
+		fmt.Fprintf(&s.out, "%s%s:\n", indent, f)
+		for _, e := range es {
+			fmt.Fprintf(&s.out, "%s  %s %s -> %q\n", indent, fmtRange(e.Range), excerpt(d, e.Range, s.enc), e.NewText)
+		}
+	}
+}
+
+// applyEdit applies a workspace edit's edits of open documents, last
+// first per file.
+func (s *session) applyEdit(we *protocol.WorkspaceEdit) {
+	var files []string
+	for u := range we.Changes {
+		files = append(files, s.fileOf(u))
+	}
+	sort.Strings(files)
+	for _, f := range files {
+		if _, open := s.texts[f]; !open {
+			continue
+		}
+		es := slices.Clone(we.Changes[s.uri(f)])
+		sort.Slice(es, func(i, j int) bool { return posLess(es[i].Range.Start, es[j].Range.Start) })
+		changes := make([]protocol.TextDocumentContentChangeEvent, len(es))
+		for i, e := range es {
+			r := e.Range
+			changes[len(es)-1-i] = protocol.TextDocumentContentChangeEvent{Range: &r, Text: e.NewText}
+		}
+		s.edit(f, changes)
+	}
 }

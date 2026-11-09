@@ -15,6 +15,12 @@ error -32002: textDocument/documentSymbol before initialize
 {
   "capabilities": {
     "callHierarchyProvider": true,
+    "codeActionProvider": {
+      "codeActionKinds": [
+        "quickfix",
+        "source.organizeImports"
+      ]
+    },
     "completionProvider": {
       "resolveProvider": true,
       "triggerCharacters": [

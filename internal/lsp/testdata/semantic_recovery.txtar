@@ -34,7 +34,30 @@ diagnostics src/A.kt
     "severity": 2,
     "code": "TYPE_MISMATCH",
     "source": "kc",
-    "message": "type mismatch: inferred type is String but Int was expected"
+    "message": "type mismatch: inferred type is String but Int was expected",
+    "data": [
+      "kotlin.String",
+      "kotlin.Int"
+    ]
+  },
+  {
+    "range": {
+      "start": {
+        "line": 1,
+        "character": 8
+      },
+      "end": {
+        "line": 1,
+        "character": 9
+      }
+    },
+    "severity": 4,
+    "code": "UNUSED_VARIABLE",
+    "source": "kc",
+    "message": "Variable 'n' is never used",
+    "tags": [
+      1
+    ]
   }
 ]
 > change src/A.kt @at @at "n."
@@ -71,6 +94,10 @@ diagnostics src/A.kt
     "severity": 2,
     "code": "TYPE_MISMATCH",
     "source": "kc",
-    "message": "type mismatch: inferred type is String but Int was expected"
+    "message": "type mismatch: inferred type is String but Int was expected",
+    "data": [
+      "kotlin.String",
+      "kotlin.Int"
+    ]
   }
 ]
