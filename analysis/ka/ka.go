@@ -21,6 +21,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/barteo/kotlin-compiler-go/analysis"
@@ -344,11 +345,16 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 		}
 		return false
 	})
-	texts := make([]string, len(sources)+len(javaSources))
-	readErrs := make([]error, len(texts))
+	// The library of the class path, which the module's Java sources, if
+	// any, are put over for each check (library.withJava).
+	sl, err := s.library()
+	if err != nil {
+		return nil, err
+	}
 	all := slices.Concat(sources, javaSources)
-	parallel(len(all), jobs, func(i int) { texts[i], readErrs[i] = all[i].text() })
+	texts, readErrs := sl.read.texts(all, jobs)
 	if err := errors.Join(readErrs...); err != nil {
+		sl.release()
 		return nil, err
 	}
 	tm.Mark("read")
@@ -358,12 +364,6 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 	paths := make([]string, len(all))
 	for i, src := range all {
 		paths[i] = src.Path
-	}
-	// The library of the class path, which the module's Java sources, if
-	// any, are put over for each check (library.withJava).
-	sl, err := s.library()
-	if err != nil {
-		return nil, err
 	}
 	cache := &sl.checks
 	prev, whole := cache.find("", paths, texts)
@@ -690,21 +690,27 @@ func lowerFiles(snaps []*psi.Snapshot, files []*syntax.File, provs []*lower.Prov
 	return broken
 }
 
-// parallel runs fn(i) for i in [0, n) on up to jobs goroutines.
+// parallel runs fn(i) for i in [0, n) on up to jobs goroutines, the
+// caller's one of them. Each takes the next index from a counter, so
+// items that take microseconds (a stat, a kept parse) cost no handoff
+// between threads: in a daemon, Go's threads are parked between updates,
+// and waking one per item took longer than the items.
 func parallel(n, jobs int, fn func(i int)) {
-	var wg sync.WaitGroup
-	next := make(chan int)
-	for range min(max(jobs, 1), n) {
-		wg.Go(func() {
-			for i := range next {
-				fn(i)
+	var next atomic.Int64
+	work := func() {
+		for {
+			i := int(next.Add(1) - 1)
+			if i >= n {
+				return
 			}
-		})
+			fn(i)
+		}
 	}
-	for i := range n {
-		next <- i
+	var wg sync.WaitGroup
+	for range min(max(jobs, 1), n) - 1 {
+		wg.Go(work)
 	}
-	close(next)
+	work()
 	wg.Wait()
 }
 

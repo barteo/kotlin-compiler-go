@@ -203,6 +203,15 @@ type remapper struct {
 // holdsIDs caches whether a type holds a psi.NodeID.
 var holdsIDs = map[reflect.Type]bool{}
 
+// structPlan is the fields of a struct type that hold psi.NodeIDs, which
+// a copy copies (the rest it shares); or, in unexported, one it can't.
+type structPlan struct {
+	fields     []int
+	unexported string
+}
+
+var structPlans = map[reflect.Type]*structPlan{}
+
 func holds(t reflect.Type, seen map[reflect.Type]bool) bool {
 	if t == nodeIDType {
 		return true
@@ -243,6 +252,20 @@ func init() {
 				return
 			}
 			holdsIDs[t] = holds(t, map[reflect.Type]bool{})
+			if t.Kind() == reflect.Struct && holdsIDs[t] {
+				p := &structPlan{}
+				for i := range t.NumField() {
+					f := t.Field(i)
+					if !holds(f.Type, map[reflect.Type]bool{}) {
+						continue
+					}
+					if !f.IsExported() && p.unexported == "" {
+						p.unexported = t.String() + "." + f.Name
+					}
+					p.fields = append(p.fields, i)
+				}
+				structPlans[t] = p
+			}
 			if seen[t] {
 				return
 			}
@@ -303,12 +326,16 @@ func (r *remapper) copy(v reflect.Value) reflect.Value {
 		}
 		return c
 	case reflect.Struct:
+		p := structPlans[t]
+		if p == nil {
+			panic("ka: remapNodes: no plan for " + t.String())
+		}
+		if p.unexported != "" {
+			panic("ka: remapNodes: unexported field " + p.unexported)
+		}
 		c := reflect.New(t).Elem()
 		c.Set(v)
-		for i := range t.NumField() {
-			if !t.Field(i).IsExported() {
-				panic("ka: remapNodes: unexported field " + t.String() + "." + t.Field(i).Name)
-			}
+		for _, i := range p.fields {
 			c.Field(i).Set(r.copy(v.Field(i)))
 		}
 		return c

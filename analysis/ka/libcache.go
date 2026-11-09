@@ -37,6 +37,7 @@ type shared struct {
 	refs int // guarded by libraries.mu
 
 	checks checkCache // the last checks against lib; see reuse.go
+	read   readCache  // the texts the last updates against lib read (readcache.go)
 }
 
 var libraries struct {

@@ -20,6 +20,7 @@
 #	EDIT      edit this source (relative to the first source directory,
 #	          or "auto") before each run after the first, with incremental
 #	          processing on (KspBench's bench.edit)
+#	EDIT_KIND body for body edits only (KspBench's bench.editKind)
 #	JVM_OPTS  more options for the benchmark's JVMs; @B@ stands for the
 #	          backend, as in -XX:SharedArchiveFile=cds-@B@.jsa
 #	STOCK_PROCS_EXTRA  a class path stock KSP's processors also need,
@@ -58,6 +59,7 @@ for b in ${BACKENDS:-stock kc}; do
 	jvmopts=${JVM_OPTS:-}
 	jvmopts=${jvmopts//@B@/$b}
 	[ -n "${EDIT:-}" ] && jvmopts+=" -Dbench.edit=$EDIT"
+	[ -n "${EDIT_KIND:-}" ] && jvmopts+=" -Dbench.editKind=$EDIT_KIND"
 	case $b in
 	stock)
 		[ -s "$out/bench-stock.jar" ] && [ "$out/bench-stock.jar" -nt "$here/KspBench.kt" ] ||
