@@ -20,6 +20,7 @@ error -32002: textDocument/documentSymbol before initialize
     "foldingRangeProvider": true,
     "hoverProvider": true,
     "implementationProvider": true,
+    "inlayHintProvider": true,
     "positionEncoding": "utf-16",
     "referencesProvider": true,
     "selectionRangeProvider": true,

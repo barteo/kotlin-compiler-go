@@ -2,6 +2,7 @@ package lsp
 
 import (
 	"context"
+	"errors"
 	"slices"
 
 	"github.com/barteo/kotlin-compiler-go/internal/ide"
@@ -273,6 +274,53 @@ func (s *Server) workspaceSymbol(_ context.Context, r *jsonrpc.Request) (any, er
 			Location:      protocol.Location{URI: uris[m.Doc.Path], Range: rng(m.Doc, m.Symbol.NameRange, enc)},
 			ContainerName: m.Container,
 		})
+	}
+	return out, nil
+}
+
+func (s *Server) inlayHint(_ context.Context, r *jsonrpc.Request) (any, error) {
+	var p protocol.InlayHintParams
+	if err := r.Unmarshal(&p); err != nil {
+		return nil, err
+	}
+	out := []protocol.InlayHint{}
+	d, enc, err := s.doc(p.TextDocument.URI)
+	if err != nil {
+		return nil, err
+	}
+	start, err1 := d.Offset(pos(p.Range.Start), enc)
+	end, err2 := d.Offset(pos(p.Range.End), enc)
+	if err := errors.Join(err1, err2); err != nil {
+		return nil, jsonrpc.Errorf(jsonrpc.CodeInvalidParams, "%v", err)
+	}
+	views := s.views(d.Path)
+	if len(views) == 0 {
+		return out, nil
+	}
+	v := views[0]
+	snap := v.Snapshot(d.Path)
+	var m *ide.Mapper
+	if snap != d.Snap {
+		mp := ide.NewMapper(snap.Source(), d.Text())
+		m = &mp
+	}
+	for _, h := range ide.InlayHints(v, d.Path, psi.Range{Start: 0, End: len(snap.Source())}) {
+		off := h.Offset
+		if m != nil {
+			r, ok := m.Range(psi.Range{Start: off, End: off})
+			if !ok {
+				continue
+			}
+			off = r.Start
+		}
+		if off < start || off > end {
+			continue
+		}
+		ih := protocol.InlayHint{Position: ppos(d.Pos(off, enc)), Label: h.Label, Kind: protocol.InlayHintType}
+		if h.Kind == ide.ParameterHint {
+			ih.Kind, ih.PaddingRight = protocol.InlayHintParameter, true
+		}
+		out = append(out, ih)
 	}
 	return out, nil
 }

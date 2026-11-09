@@ -20,9 +20,10 @@ type View struct {
 	snaps  map[psi.SnapshotID]*psi.Snapshot
 	byPath map[string]*psi.Snapshot
 
-	once    sync.Once
-	refs    map[analysis.ElementID][]ref // by declaration
-	classes map[string]analysis.ElementID
+	classOnce sync.Once
+	classes   map[string]analysis.ElementID // source classes by name
+	refOnce   sync.Once
+	refs      map[analysis.ElementID][]ref // by declaration
 }
 
 // A ref is a use of a declaration: the node of its fact, and the range of
@@ -78,19 +79,22 @@ func (v *View) symbol(id uint32) (analysis.Symbol, bool) {
 	return v.res.Symbol(id)
 }
 
-// index builds the view's reverse index of uses, once.
-func (v *View) index() {
-	v.once.Do(func() {
+// classIndex builds the view's map of source classes, once.
+func (v *View) classIndex() {
+	v.classOnce.Do(func() {
 		v.classes = map[string]analysis.ElementID{}
-		for id := uint32(1); ; id++ {
-			s, ok := v.res.Symbol(id)
-			if !ok {
-				break
-			}
+		v.eachSymbol(func(s analysis.Symbol) {
 			if s.Kind == "class" && s.Declaration != nil && s.QualifiedName != "" {
 				v.classes[s.QualifiedName] = *s.Declaration
 			}
-		}
+		})
+	})
+}
+
+// index builds the view's reverse index of uses, once.
+func (v *View) index() {
+	v.classIndex()
+	v.refOnce.Do(func() {
 		v.refs = map[analysis.ElementID][]ref{}
 		for _, sid := range v.res.Snapshots() {
 			snap := v.snaps[sid]
@@ -231,7 +235,7 @@ func (v *View) at(path string, off int) (target, bool) {
 	if !leaf.Valid() {
 		return target{}, false
 	}
-	v.index()
+	v.classIndex()
 	// A declaration's name.
 	if p := leaf.Parent(); p.Declaration().Valid() && named(leaf) && nameRange(p) == leaf.Range() {
 		f, _ := v.fact(p) // a secondary constructor has none

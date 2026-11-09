@@ -2109,7 +2109,7 @@ func (c *Checker) enumMembers(d *syntax.ClassDecl) {
 		if _, dup := cls.Fields[e.Name]; dup {
 			c.errorf(e.P, "conflicting declarations: %s", e.Name)
 		}
-		cls.Fields[e.Name] = &types.VarSym{Name: e.Name, Type: t, Kind: types.Static, Owner: cls, Resolved: true}
+		cls.Fields[e.Name] = &types.VarSym{Name: e.Name, Type: t, Kind: types.Static, Owner: cls, Resolved: true, Decl: e}
 	}
 	str := &types.VarSym{Name: "value", Type: types.StringType, Kind: types.Param}
 	cls.Statics = map[string][]*types.FunSym{

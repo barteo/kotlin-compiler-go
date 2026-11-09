@@ -156,6 +156,7 @@ func init() {
 		"textDocument/hover":               (*Server).hover,
 		"textDocument/implementation":      (*Server).implementation,
 		"workspace/symbol":                 (*Server).workspaceSymbol,
+		"textDocument/inlayHint":           (*Server).inlayHint,
 	}
 }
 
@@ -197,6 +198,7 @@ func (s *Server) initialize(p *protocol.InitializeParams) *protocol.InitializeRe
 			HoverProvider:             true,
 			ImplementationProvider:    true,
 			WorkspaceSymbolProvider:   true,
+			InlayHintProvider:         true,
 		},
 		ServerInfo: &protocol.ServerInfo{Name: "kc-lsp", Version: Version},
 	}
@@ -518,7 +520,41 @@ func (s *Server) semanticTokens(_ context.Context, r *jsonrpc.Request) (any, err
 	if err != nil {
 		return nil, err
 	}
-	return &protocol.SemanticTokens{Data: encodeTokens(d, ide.LexicalTokens(d), enc)}, nil
+	return &protocol.SemanticTokens{Data: encodeTokens(d, s.tokens(d), enc)}, nil
+}
+
+// tokens returns a document's lexical tokens and, from the last view of
+// the module that owns it, its references' tokens, mapped to its text.
+func (s *Server) tokens(d *ide.Document) []ide.Token {
+	toks := ide.LexicalTokens(d)
+	views := s.views(d.Path)
+	if len(views) == 0 {
+		return toks
+	}
+	v := views[0]
+	snap := v.Snapshot(d.Path)
+	var m *ide.Mapper
+	if snap != d.Snap {
+		mp := ide.NewMapper(snap.Source(), d.Text())
+		m = &mp
+	}
+	lexical := make(map[int]bool, len(toks))
+	for _, t := range toks {
+		lexical[t.Range.Start] = true
+	}
+	for _, t := range ide.ReferenceTokens(v, d.Path) {
+		if m != nil {
+			r, ok := m.Range(t.Range)
+			if !ok {
+				continue
+			}
+			t.Range = r
+		}
+		if !lexical[t.Range.Start] {
+			toks = append(toks, t)
+		}
+	}
+	return toks
 }
 
 // encodeTokens writes tokens in LSP's relative form, splitting a token that

@@ -49,7 +49,7 @@ func TypeDefinition(v *View, path string, off int) []Loc {
 	case typ.Parameter && typ.ParameterOwner != nil:
 		d = typeParameter(v.node(*typ.ParameterOwner), typ.Name)
 	default:
-		v.index()
+		v.classIndex()
 		if el, ok := v.classes[typ.Name]; ok {
 			d = v.node(el)
 		}

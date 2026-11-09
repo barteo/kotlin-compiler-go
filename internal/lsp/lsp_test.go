@@ -57,6 +57,7 @@ var update = flag.Bool("update", false, "rewrite the want sections of testdata/*
 //	highlight F POS           print textDocument/documentHighlight
 //	hover F POS               print textDocument/hover's range and Markdown
 //	wsymbol [QUERY]           print workspace/symbol
+//	inlay F                   print textDocument/inlayHint over the whole document
 //	request METHOD [params]   print any request's result or error
 //	notify METHOD params      send any notification
 //	write F SECTION|-         write a workspace file on disk with a section's text, or delete it
@@ -471,6 +472,22 @@ func (s *session) run(line string) {
 		for _, l := range res {
 			f := s.fileOf(l.URI)
 			fmt.Fprintf(&s.out, "%s %s %s\n", f, fmtRange(l.Range), excerpt(ide.NewDocument(f, 0, s.textOf(f)), l.Range, s.enc))
+		}
+	case "inlay":
+		name := file()
+		d := ide.NewDocument(name, 0, s.texts[name])
+		end := d.Pos(len(s.texts[name]), s.enc)
+		var res []protocol.InlayHint
+		if err := s.call("textDocument/inlayHint", protocol.InlayHintParams{TextDocument: doc(), Range: protocol.Range{End: protocol.Position{Line: end.Line, Character: end.Char}}}, &res); err != nil {
+			s.printResult(nil, err)
+			return
+		}
+		if len(res) == 0 {
+			fmt.Fprintln(&s.out, "(none)")
+		}
+		for _, h := range res {
+			kind := map[int]string{protocol.InlayHintType: "type", protocol.InlayHintParameter: "parameter"}[h.Kind]
+			fmt.Fprintf(&s.out, "%d:%d %s %q\n", h.Position.Line, h.Position.Character, kind, h.Label)
 		}
 	case "wsymbol":
 		q := ""

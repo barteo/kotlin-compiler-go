@@ -118,6 +118,7 @@ type ServerCapabilities struct {
 	HoverProvider             bool `json:"hoverProvider,omitempty"`
 	ImplementationProvider    bool `json:"implementationProvider,omitempty"`
 	WorkspaceSymbolProvider   bool `json:"workspaceSymbolProvider,omitempty"`
+	InlayHintProvider         bool `json:"inlayHintProvider,omitempty"`
 }
 
 // ---- document synchronization ----
@@ -326,6 +327,25 @@ type SemanticTokensOptions struct {
 
 type SemanticTokensParams struct {
 	TextDocument TextDocumentIdentifier `json:"textDocument"`
+}
+
+// Inlay hint kinds (InlayHintKind).
+const (
+	InlayHintType      = 1
+	InlayHintParameter = 2
+)
+
+type InlayHintParams struct {
+	TextDocument TextDocumentIdentifier `json:"textDocument"`
+	Range        Range                  `json:"range"`
+}
+
+type InlayHint struct {
+	Position     Position `json:"position"`
+	Label        string   `json:"label"`
+	Kind         int      `json:"kind,omitempty"`
+	PaddingLeft  bool     `json:"paddingLeft,omitempty"`
+	PaddingRight bool     `json:"paddingRight,omitempty"`
 }
 
 type SemanticTokens struct {

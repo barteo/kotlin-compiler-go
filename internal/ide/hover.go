@@ -37,6 +37,8 @@ func Hover(v *View, path string, off int) (md string, rng psi.Range, ok bool) {
 	default:
 		if s, ok := v.symbol(t.fact.Symbol); ok {
 			sig = renderSymbol(s)
+		} else if t.fact.Type != nil && t.fact.Role == "reference" {
+			sig = t.use.Text() + ": " + renderType(*t.fact.Type) // an intrinsic: String.length
 		} else if t.fact.Type != nil {
 			sig = renderType(*t.fact.Type)
 		}

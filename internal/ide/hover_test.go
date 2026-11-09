@@ -35,6 +35,7 @@ func TestHover(t *testing.T) {
 		{"fun pl|us", "```kotlin\ninternal operator fun plus(other: Box<T>): Box<T>\n```\n\nmember of `Box`"},
 		{"val |n", "```kotlin\nval n: Int\n```"},
 		{"val |f", "```kotlin\nval f: (String) -> Int\n```"},
+		{"s.len|gth", "```kotlin\nlength: Int\n```"},
 		{"xs.si|ze", "```kotlin\nval size: Int\n```"},
 		{"print|ln", "```kotlin\ninline fun println(message: Any?): Unit\n```"},
 		{"println(|b.item)", "```kotlin\nb: Box<String>?\n```\n\nSmart cast to `Box<String>`"},
