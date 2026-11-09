@@ -2944,6 +2944,89 @@ batch's noise. Moshi's one-file test is the first row past 10x, but
 stock's warm run there was 292 ms against 204 in step 36's batch. Taken
 against that, it is about 8x.
 
+#### Step 38: a body-edit run reads only the edited file
+
+After step 37, a Moshi leaf body edit took about 40 ms with kc (30 runs).
+A JFR of 50 body-edit runs (`bench.editKind=body`, below), split by
+Classify into main-thread samples at about 1 ms each:
+
+| phase | samples | of which |
+|---|---|---|
+| setup and between rounds | 864 | libkc (Go) 370, IntelliJ core 201, KSP 193, kc-aa 100 |
+| processing | 348 | the processors (KotlinPoet, Moshi) 228, KSP 46, kc-aa 32, IntelliJ core 28, libkc 14 |
+| the harness | 177 | |
+
+Go was the largest share: about 7.5 ms per run, in two updates of a
+shifted file. Their timers said `read` 1.1–2.2 ms, `parse` 0.7–1.3 ms
+and `shifted` 0.4–0.8 ms, and a profile of `BenchmarkUpdateEdit` agreed:
+`os.ReadFile` of all 100 files was about a quarter of an update's CPU,
+and the copy of the model about a seventh.
+
+**The updates read only what changed.** kc-aa passes paths, and every
+update read every file. A library now keeps the texts its updates read
+(`shared.read`, `analysis/ka/readcache.go`), with each file's stamp:
+size, modification and change times, device and inode. An update stats
+each file and reads it only if the stamp differs. A write moves the
+change time, which can't be set back, and a rename over the file moves
+the inode. As in git's index, a file whose modification or change time
+is within two seconds of when it was read isn't trusted, and is read
+again until it is older: a coarse clock may not move for a second
+write. Windows and other systems without those fields read every file.
+The cache is on the library, not the session, because kc-aa opens a
+session for every KSP run: a per-session cache missed all 100 files in
+each run's first round.
+
+**Work is handed out without a wake-up per item.** `parallel` gave out
+indexes over an unbuffered channel. In a daemon, Go's threads are parked
+between updates, and with items that take microseconds (a stat, a kept
+parse) waking a thread per item cost more than the items: a read of 100
+stats still took 1–2 ms in the JVM. Workers now take the next index from
+an atomic counter, and the caller is one of them.
+
+**The model copy skips fields without IDs.** `remapNodes` precomputes,
+for each struct type of the model, the fields that hold node IDs, and
+copies only those; the rest are shared with the struct's copy.
+
+`BenchmarkUpdateEdit` with a body edit: 1.40 ms, 0.64 MB and 1,760
+allocations before; 0.86 ms, 0.42 MB and 1,370 after. In the JVM, each
+update's native call went from 2.5–4 ms to about 1 ms (`read` 0.2–0.3
+ms, `parse` 0.2 ms, `shifted` 0.4 ms), and libkc's samples in the same
+JFR from 384 to 132.
+
+Tests: `TestReadCache` checks that a file is read again after a write
+that keeps its size and modification time, after a rename over it, and
+while it is within the window, and only then; `TestReadCacheSessions`
+that a second session's update reads no unchanged file.
+
+**kc warms up over more runs than the bench made.** Body-edit runs,
+in groups of 20 or 30 from one JVM: runs 11–30 had a median of 36 ms,
+31–50 of 29, 51–70 of 29, and 71–100 of 25 (minimum 21). Stock's JIT
+keeps warming too (step 36). So the leaf edits below are 100 runs on
+each backend, with the medians and minimums of runs 51–100, body edits
+(odd runs) and signature edits (even runs) apart, and output checked
+against stock's (`CHECK`):
+
+| ms | stock KSP2 | kc | ratio | kc min |
+|---|---|---|---|---|
+| Moshi, leaf body edit | 254 | 32 | 7.9x | 25 |
+| Moshi, leaf signature edit | 249 | 58 | 4.3x | 43 |
+| Hilt, leaf body edit | 426 | 42 | 10.1x | 39 |
+| Hilt, leaf signature edit | 445 | 68 | 6.5x | 58 |
+
+Hilt's leaf body edit is the first edit past 10x. The fast and slow
+runs differ in every phase, the processors' too (9 ms in a fast Moshi
+run, 24–44 in a slow one), so the spread is the JVM's and the
+machine's, not kc's.
+
+What a fast Moshi body-edit run (about 30 ms) is made of now, from the
+second JFR: the processors about 9 ms; KSP's incremental bookkeeping
+about 5 ms (updating the lookup caches, backing up outputs, symbol
+collection of the edited and generated files, `calcDirtyFiles`); kc-aa
+building the rounds about 4 ms (psi and `build`); libkc about 2.5 ms;
+the rest IntelliJ core and KSP's symbol layer. Signature edits are
+still about twice as slow, because their updates resolve every file's
+signatures again (4–6 ms per update).
+
 ## Gaps and open questions
 
 - **Slice simplifications (M0.4).** These go when M3/M4 bring the facts in:
