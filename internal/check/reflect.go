@@ -168,6 +168,9 @@ type refForm struct {
 // checkRef checks a callable reference, as checkLambda does a lambda.
 func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.Type, bool) {
 	r := x.Ref
+	if c.u.scopeRec != nil && r.Name == ProbeName {
+		c.probe(x, types.InvalidType)
+	}
 	x.KProp, x.KFun = nil, nil
 	c.inRef++
 	defer func() { c.inRef-- }()

@@ -47,6 +47,9 @@ func (c *Checker) wantBool(x syntax.Expr) {
 }
 
 func (c *Checker) expr(x syntax.Expr, want types.Type) types.Type {
+	if c.u.scopeRec != nil && isProbe(x) {
+		c.probe(x, want)
+	}
 	if c.file.Annotated != nil {
 		c.annotatedExpr(x)
 	}
@@ -1999,6 +2002,15 @@ func (c *Checker) invokable(t types.Type) bool {
 }
 
 func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type {
+	if c.u.scopeRec != nil {
+		// The probe may be in its arguments (probe.go).
+		c.probeCalls = append(c.probeCalls, x)
+		defer func() { c.probeCalls = c.probeCalls[:len(c.probeCalls)-1] }()
+	}
+	return c.call1(x, want, sink)
+}
+
+func (c *Checker) call1(x *syntax.Call, want types.Type, sink *system) types.Type {
 	if m, ok := x.Fun.(*syntax.Member); x.Recv || ok && m.Paren {
 		// (a?.b)(v) invokes the value of a?.b: the parentheses end
 		// its chain.

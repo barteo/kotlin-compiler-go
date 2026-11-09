@@ -285,6 +285,37 @@ func (p *Path) Classes(pkg string) (names []string, ok bool) {
 	return idx.classes[pkg], idx.all[pkg]
 }
 
+// Packages returns the internal names of the packages that have a class
+// in them or in a package inside them, sorted, the root package left out.
+func (p *Path) Packages() []string {
+	idx := p.byPackage()
+	out := make([]string, 0, len(idx.all))
+	for pkg := range idx.all {
+		if pkg != "" {
+			out = append(out, pkg)
+		}
+	}
+	slices.Sort(out)
+	return out
+}
+
+// Nested returns the internal names of the classes nested directly in
+// the class simple of package pkg, by internal names, sorted.
+func (p *Path) Nested(pkg, simple string) []string {
+	prefix := simple + "$"
+	if pkg != "" {
+		prefix = pkg + "/" + prefix
+	}
+	var out []string
+	for name := range p.classes {
+		if rest, ok := strings.CutPrefix(name, prefix); ok && rest != "" && !strings.Contains(rest, "$") {
+			out = append(out, name)
+		}
+	}
+	slices.Sort(out)
+	return out
+}
+
 func (p *Path) indexPackages() packageIndex {
 	idx := packageIndex{classes: map[string][]string{}, all: map[string]bool{}}
 	for name := range p.classes {

@@ -70,6 +70,10 @@ type Universe struct {
 	rec  Recorder
 	// lookups is rec if it records lookups (see lookups.go).
 	lookups LookupRecorder
+	// scopeRec is rec if it records the scope at the probe (probe.go),
+	// and probed is set once it has.
+	scopeRec ScopeRecorder
+	probed   atomic.Bool
 
 	// typeAnnots holds the annotated *syntax.TypeRefs noted, and
 	// typeAnnotsDone those checked, for typeannot.go.
@@ -211,7 +215,10 @@ type Checker struct {
 	// accessors' calls reading or assigning them are (see contextAccess).
 	accessed map[*syntax.Call]string
 	done     map[any]bool // declarations already checked during inference
-	inRef    int          // in callable references, which see properties' own types, not their fields'
+	// probeCalls are the calls being checked, outermost first, while a
+	// ScopeRecorder looks for the probe (probe.go).
+	probeCalls []*syntax.Call
+	inRef      int // in callable references, which see properties' own types, not their fields'
 	// jumps says, for each inlined lambda, whether a non-local return,
 	// break or continue can leave it.
 	jumps map[*syntax.Lambda]inlineJumps
@@ -578,10 +585,24 @@ func CheckOptions(ctx context.Context, files []*syntax.File, lib *Library, jobs 
 			}
 		}
 	}()
+	// Reaching the probe, outside the bodies, stops checking.
+	defer func() {
+		if err == nil && rec != nil {
+			if _, ok := rec.(ScopeRecorder); ok {
+				if v := recover(); v != nil {
+					if _, ok := v.(probeStop); !ok {
+						panic(v)
+					}
+					err = ErrProbed
+				}
+			}
+		}
+	}()
 	u := &Universe{ctx: ctx, done: ctx.Done(), rec: rec, Pkgs: map[string]*Package{}, prefixes: map[string]bool{}, ext: lib.t, module: moduleSuffix(lib.Module),
 		aliasFile: map[*types.AliasSym]*Checker{}, noJVMDefault: lib.NoJVMDefault, jvmDefaultCompat: lib.JVMDefaultCompat, parcelize: lib.Parcelize, serialization: lib.Serialization,
 		compose: lib.Compose, serialInterfaces: map[*syntax.ClassDecl]bool{}, optIns: lib.OptIns, partial: opts.Signatures}
 	u.lookups, _ = rec.(LookupRecorder)
+	u.scopeRec, _ = rec.(ScopeRecorder)
 	checkers := make([]*Checker, len(files))
 	for i, f := range files {
 		checkers[i] = &Checker{u: u, file: f, done: map[any]bool{}, checked: map[*syntax.Lambda]types.Type{},
@@ -695,7 +716,9 @@ func CheckOptions(ctx context.Context, files []*syntax.File, lib *Library, jobs 
 		wg.Go(func() {
 			defer func() {
 				if v := recover(); v != nil {
-					if ctx.Err() == nil {
+					if _, ok := v.(probeStop); ok {
+						u.probed.Store(true)
+					} else if ctx.Err() == nil {
 						crash.CompareAndSwap(nil, &workerPanic{v, debug.Stack()})
 					}
 					for range work {
@@ -723,6 +746,9 @@ func CheckOptions(ctx context.Context, files []*syntax.File, lib *Library, jobs 
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
+	}
+	if u.probed.Load() {
+		return nil, ErrProbed
 	}
 
 	if r, ok := rec.(OverrideRecorder); ok && len(checkers) > 0 {
@@ -821,6 +847,9 @@ func (c *Checker) resolveType(ref *syntax.TypeRef) types.Type {
 func (c *Checker) resolveTypeRef(ref *syntax.TypeRef) types.Type {
 	if ref.Known != nil {
 		return *ref.Known
+	}
+	if c.u.scopeRec != nil && (ref.Name == ProbeName || strings.HasSuffix(ref.Name, "."+ProbeName)) {
+		c.probeType(ref)
 	}
 	c.noteTypeAnnotations(ref)
 	if ref.And != nil {
