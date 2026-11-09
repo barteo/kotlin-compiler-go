@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/barteo/kotlin-compiler-go/internal/lower"
 	"github.com/barteo/kotlin-compiler-go/psi"
 )
 
@@ -48,6 +49,12 @@ fun top(): Int { return A<Int>(1).plain() }
 fun <R> last(r: R): R {
     return r
 }
+
+@OptIn(kotlin.contracts.ExperimentalContracts::class)
+fun nonNull(x: Any?): Boolean {
+    kotlin.contracts.contract { returns(true) implies (x != null) }
+    return x != null
+}
 `
 
 const shiftB = `package p
@@ -81,6 +88,9 @@ func TestShiftedBodyEdits(t *testing.T) {
 		{"accessor", "return field + 1", "return 2", false},
 		{"object expression", "return 1 }", "return 2 }", false},
 		{"two bodies", "return n + 1", "return n + 2", false}, // with a second change below
+		{"contract", "return x != null", "return x != null && true", false},
+		{"syntax error", "return n + 1", "return n + )", false},
+		{"unsupported", "return n + 1", "run { external fun f() }\n        return n + 1", false},
 	}
 	cfg := withStdlib(t)
 	for _, e := range edits {
@@ -219,10 +229,12 @@ func collectNodes(v reflect.Value, out *[]psi.NodeID, seen map[uintptr]bool) {
 	}
 }
 
-// TestShiftedModule edits each function body of the module that
-// KA_BENCH describes with a statement that declares nothing, one file
-// at a time: each update keeps the file's model, moved, and gives what
-// a whole check does.
+// TestShiftedModule edits a function body of each file of the module
+// that KA_BENCH describes with a statement that declares nothing, one
+// file at a time: each update keeps the file's model, moved, and gives
+// what a whole check does. Each file gets a function first, at its end,
+// as KA_BENCH_RETURN's edit does, so a module without bodies (Moshi's)
+// has one per file; the edit is in the file's first body that may shift.
 func TestShiftedModule(t *testing.T) {
 	if os.Getenv("KA_BENCH") == "" {
 		t.Skip("KA_BENCH is not set")
@@ -235,7 +247,7 @@ func TestShiftedModule(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		texts[i] = string(data)
+		texts[i] = string(data) + "\nfun kcEdit(): Int {\n    return 1\n}\n"
 		srcs[i].Text = &texts[i]
 	}
 	if _, err := s.Update(context.Background(), srcs); err != nil {
@@ -247,7 +259,8 @@ func TestShiftedModule(t *testing.T) {
 		snap := psi.Parse(srcs[i].Path, text)
 		at := -1
 		for id := psi.NodeID(1); int(id) <= snap.NodeCount(); id++ {
-			if n := snap.Node(id); n.NumericKind() == psi.KindBLOCK && n.Parent().NumericKind() == psi.KindFUN {
+			if n := snap.Node(id); n.NumericKind() == psi.KindBLOCK && n.Parent().NumericKind() == psi.KindFUN &&
+				inClasses(n.Parent()) && !hasLocals(n) && !lower.Contract(n).Valid() {
 				at = n.Range().Start + 1
 				break
 			}
@@ -264,7 +277,7 @@ func TestShiftedModule(t *testing.T) {
 			t.Fatal(err)
 		}
 		if shiftedUpdates.Load() != 1 {
-			t.Logf("%s: not shifted", srcs[i].Path)
+			t.Errorf("%s: not shifted", srcs[i].Path)
 		}
 		if d := sameModel(got, wholeCheck(t, s, edit)); d != "" {
 			t.Errorf("%s: %s", srcs[i].Path, d)

@@ -2844,6 +2844,13 @@ line and column of what comes after the change.
   old text's line starts (columns are bytes), move by the text's change
   if they come after it, and go back through the new line starts. A
   diagnostic inside the change fails the shift.
+- **The new text lowers cleanly.** An update lowers its changed files
+  in full before it looks for body edits, and takes `bodyEdits` only if
+  none has a parse or lowering error. So an edit that breaks a body, or
+  adds a construct kc can't lower (even inside a lambda, where
+  `hasLocals` doesn't look), is checked and keeps its diagnostic. Step
+  36's kept declarations are keyed by snapshot, so the shifted file's
+  new snapshot is lowered fresh.
 
 An update whose body-edited files all shift checks nothing. Its model
 is the last one with those files swapped in, its diagnostics are the
@@ -2864,9 +2871,15 @@ edits that shift (a statement, a literal, comments and blank lines, a
 lambda, a deletion, a constructor's body, the last function, an edit on
 one line, a top-level function) and edits that must be checked (a body
 gaining, editing or losing a local, a local function, an accessor, an
-object expression, two bodies). One test inserts text into every body
+object expression, two bodies, a contract, a syntax error, and an
+unsupported construct in a lambda). One test inserts text into every body
 in turn in one session, as a daemon's runs do. Another checks that
-`remapNodes` reaches every node ID of a model. `TestIncrementalJava`
+`remapNodes` reaches every node ID of a model. `TestShiftedModule`
+gives each file of a `KA_BENCH` module a function and edits each file's
+first body that may shift, one file at a time. Every file shifted and
+equalled a whole check on Moshi's, Hilt's and Room's modules (100, 100
+and 102 files) and on the Exhaustive module's 559 files of real code.
+`TestIncrementalJava`
 asserts that a Java module's body edit shifts and that the Java class
 equals a whole check's.
 
