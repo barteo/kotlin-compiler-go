@@ -70,6 +70,9 @@ func (v *View) node(el analysis.ElementID) psi.NodeRef {
 
 // fact returns the fact of n.
 func (v *View) fact(n psi.NodeRef) (analysis.Fact, bool) {
+	if !n.Valid() {
+		return analysis.Fact{}, false
+	}
 	return v.res.Fact(analysis.ElementID{Snapshot: n.ContainingFile().ID(), Node: n.ID()})
 }
 

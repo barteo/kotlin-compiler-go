@@ -9,10 +9,11 @@ import (
 	"github.com/barteo/kotlin-compiler-go/internal/ide"
 	"github.com/barteo/kotlin-compiler-go/internal/lsp/jsonrpc"
 	"github.com/barteo/kotlin-compiler-go/internal/lsp/protocol"
+	"github.com/barteo/kotlin-compiler-go/psi"
 )
 
 // codeAction offers the quick fixes of the document's diagnostics in the
-// range, and organize imports. The diagnostics are the server's own, as
+// range, the refactorings of the range, and organize imports. The diagnostics are the server's own, as
 // last shown with the document's current text, not the client's copy:
 // those have the fix data, and a diagnostic whose text was edited since
 // was dropped and has no fix.
@@ -43,6 +44,10 @@ func (s *Server) codeAction(_ context.Context, r *jsonrpc.Request) (any, error) 
 			}
 		}
 		return false
+	}
+	wantRefactor := len(p.Context.Only) == 0
+	for _, k := range p.Context.Only {
+		wantRefactor = wantRefactor || k == "refactor" || strings.HasPrefix(k, "refactor.")
 	}
 	var v *ide.View
 	if views := s.views(d.Path); len(views) > 0 {
@@ -78,6 +83,16 @@ func (s *Server) codeAction(_ context.Context, r *jsonrpc.Request) (any, error) 
 						Diagnostics: []protocol.Diagnostic{protocolDiagnostic(d, e, enc)}, Edit: we,
 					})
 				}
+			}
+		}
+	}
+	if wantRefactor && v != nil {
+		for _, fx := range ide.Refactors(v, d, psi.Range{Start: from, End: to}, ide.FixEnv{}) {
+			if !want(fx.Kind) {
+				continue
+			}
+			if we, ok := l.fixEdit(fx.Edits); ok {
+				actions = append(actions, protocol.CodeAction{Title: fx.Title, Kind: fx.Kind, Edit: we})
 			}
 		}
 	}

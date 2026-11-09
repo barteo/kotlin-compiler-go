@@ -18,7 +18,10 @@ error -32002: textDocument/documentSymbol before initialize
     "codeActionProvider": {
       "codeActionKinds": [
         "quickfix",
-        "source.organizeImports"
+        "source.organizeImports",
+        "refactor.extract",
+        "refactor.inline",
+        "refactor.rewrite"
       ]
     },
     "completionProvider": {

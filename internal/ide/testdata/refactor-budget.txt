@@ -1,0 +1,2 @@
+# Refactorings TestRefactorScan knows to break a program: module path:line:col title.
+stdlibPlatformInference stdlibPlatformInference.kt:19:13 Extract variable

@@ -8,12 +8,15 @@ import (
 	"github.com/barteo/kotlin-compiler-go/psi"
 )
 
-// A Fix is a quick fix of a diagnostic: edits of the document's text,
-// and of other files' for a fix that reaches them.
+// A Fix is a quick fix of a diagnostic, or a refactoring: edits of the
+// document's text, and of other files' for a fix that reaches them.
 type Fix struct {
 	Title     string
 	Preferred bool
 	Edits     []FixEdit
+	// Kind is a refactoring's code action kind, RefactorExtract,
+	// RefactorInline or RefactorRewrite; "" for a quick fix.
+	Kind string
 }
 
 // A FixEdit replaces a range of a snapshot's text.
@@ -757,6 +760,10 @@ var defaultPackages = map[string]bool{
 	"kotlin.jvm": true, "java.lang": true,
 }
 
+// kotlinShadowed are classes of java.lang whose simple names name
+// another class of kotlin's default imports.
+var kotlinShadowed = map[string]bool{"Deprecated": true}
+
 // A shortener shortens the qualified names of a type, or of a stub, as
 // the checker writes them, to the names the file sees, collecting the
 // imports that need adding.
@@ -819,6 +826,9 @@ func (sh *shortener) name(q string) string {
 	pkg, cls := strings.Join(segs[:k], "."), segs[k]
 	fq := pkg + "." + cls
 	short := strings.Join(segs[k:], ".")
+	if pkg == "java.lang" && kotlinShadowed[cls] {
+		return q // the default import of kotlin's comes first
+	}
 	switch imported, ok := sh.visible[cls]; {
 	case ok && imported == fq, !ok && (pkg == sh.pkg || defaultPackages[pkg] || sh.stars[pkg]):
 		return short

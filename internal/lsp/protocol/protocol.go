@@ -336,6 +336,9 @@ const DiagnosticTagUnnecessary = 1
 const (
 	CodeActionQuickFix        = "quickfix"
 	CodeActionOrganizeImports = "source.organizeImports"
+	CodeActionRefactorExtract = "refactor.extract"
+	CodeActionRefactorInline  = "refactor.inline"
+	CodeActionRefactorRewrite = "refactor.rewrite"
 )
 
 type CodeActionOptions struct {
