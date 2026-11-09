@@ -52,6 +52,8 @@ type Server struct {
 	initWarnings []string
 	canWatch     bool // the client registers file watchers
 	watching     bool // and does for kc-lsp
+
+	lib libraries // the library's sources (library.go)
 }
 
 // Serve runs a server on r and w until the client sends exit or closes the

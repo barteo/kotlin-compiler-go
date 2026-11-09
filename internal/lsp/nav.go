@@ -155,11 +155,21 @@ func (l *locator) locations(locs []ide.Loc) []protocol.Location {
 }
 
 func (s *Server) definition(_ context.Context, r *jsonrpc.Request) (any, error) {
-	return s.navigate(r, func(c caret) []ide.Loc { return ide.Definition(c.views[0], c.path, c.off) })
+	return s.navigate(r, func(c caret) []ide.Loc {
+		if locs := ide.Definition(c.views[0], c.path, c.off); len(locs) > 0 {
+			return locs
+		}
+		return s.libraryDefinition(c, false)
+	})
 }
 
 func (s *Server) typeDefinition(_ context.Context, r *jsonrpc.Request) (any, error) {
-	return s.navigate(r, func(c caret) []ide.Loc { return ide.TypeDefinition(c.views[0], c.path, c.off) })
+	return s.navigate(r, func(c caret) []ide.Loc {
+		if locs := ide.TypeDefinition(c.views[0], c.path, c.off); len(locs) > 0 {
+			return locs
+		}
+		return s.libraryDefinition(c, true)
+	})
 }
 
 func (s *Server) implementation(_ context.Context, r *jsonrpc.Request) (any, error) {
@@ -231,6 +241,9 @@ func (s *Server) hover(_ context.Context, r *jsonrpc.Request) (any, error) {
 	md, at, ok := ide.Hover(c.views[0], c.path, c.off)
 	if !ok {
 		return nil, nil
+	}
+	if doc := s.libraryDoc(c); doc != "" {
+		md += "\n\n" + doc
 	}
 	h := &protocol.Hover{Contents: protocol.MarkupContent{Kind: protocol.MarkupKindMarkdown, Value: md}}
 	l := s.locator()

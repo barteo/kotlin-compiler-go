@@ -47,6 +47,10 @@ type initOptions struct {
 	Diagnostics string `json:"diagnostics"`
 	// Gradle false stops kc-lsp from running Gradle.
 	Gradle *bool `json:"gradle"`
+	// LibrarySources false stops navigation into the library's sources,
+	// and LibraryCache is the directory their files are extracted to.
+	LibrarySources *bool  `json:"librarySources"`
+	LibraryCache   string `json:"libraryCache"`
 }
 
 // workspace is a workspace folder's project and its modules.
@@ -780,4 +784,10 @@ func (s *Server) parseInitOptions(raw json.RawMessage) {
 	}
 	s.mode = mode
 	s.noGradle = o.Gradle != nil && !*o.Gradle
+	if o.LibrarySources != nil {
+		s.lib.off = !*o.LibrarySources
+	}
+	if o.LibraryCache != "" {
+		s.lib.dir = o.LibraryCache
+	}
 }

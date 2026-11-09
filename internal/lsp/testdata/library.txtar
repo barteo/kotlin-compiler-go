@@ -1,0 +1,61 @@
+-- kc-lsp.json --
+{"modules": [{"name": "main", "sourceRoots": ["src"]}]}
+-- _needs --
+library
+-- src/A.kt --
+package p
+
+fun use(): Int {
+    val l: /*|list*/List<Int> = /*|listOf*/listOf(1)
+    /*|println*/println(l.size)
+    val s = "x"./*|trim*/trim()
+    val p = /*|pair*/Pair(1, s)
+    val m = mutableListOf<String>()
+    m./*|add*/add(s)
+    return s./*|length*/length + p.first
+}
+-- script --
+initialize
+open src/A.kt
+wait
+definition src/A.kt @listOf
+definition src/A.kt @println
+definition src/A.kt @trim
+definition src/A.kt @pair
+definition src/A.kt @add
+definition src/A.kt @length
+definition src/A.kt @list
+typedef src/A.kt @listOf
+hover src/A.kt @listOf
+-- want --
+> initialize
+> open src/A.kt
+> wait
+> definition src/A.kt @listOf
+.libcache/kotlin-stdlib-sources/jvmMain/kotlin/collections/CollectionsJVM.kt 20:22-20:28 "listOf"
+> definition src/A.kt @println
+.libcache/kotlin-stdlib-sources/jvmMain/kotlin/io/Console.kt 84:18-84:25 "println"
+> definition src/A.kt @trim
+.libcache/kotlin-stdlib-sources/commonMain/kotlin/text/Strings.kt 180:25-180:29 "trim"
+> definition src/A.kt @pair
+.libcache/kotlin-stdlib-sources/commonMain/kotlin/util/Tuples.kt 26:18-26:22 "Pair"
+> definition src/A.kt @add
+.libcache/kotlin-stdlib-sources/jvmMain/kotlin/Collections.kt 331:24-331:27 "add"
+> definition src/A.kt @length
+.libcache/kotlin-stdlib-sources/jvmMain/kotlin/String.kt 27:31-27:37 "length"
+> definition src/A.kt @list
+.libcache/kotlin-stdlib-sources/jvmMain/kotlin/Collections.kt 225:24-225:28 "List"
+> typedef src/A.kt @listOf
+.libcache/kotlin-stdlib-sources/jvmMain/kotlin/Collections.kt 225:24-225:28 "List"
+> hover src/A.kt @listOf
+3:23-3:29 "listOf"
+```kotlin
+fun <T> listOf(element: T): List<T>
+```
+
+Returns a new read-only list containing only the specified object `element`.
+
+The returned list is serializable.
+
+**Samples:**
+- `samples.collections.Collections.Lists.singletonReadOnlyList`

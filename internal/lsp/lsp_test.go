@@ -20,6 +20,7 @@ import (
 
 	"github.com/barteo/kotlin-compiler-go/internal/classpath"
 	"github.com/barteo/kotlin-compiler-go/internal/ide"
+	"github.com/barteo/kotlin-compiler-go/internal/libsrc"
 	"github.com/barteo/kotlin-compiler-go/internal/lsp/jsonrpc"
 	"github.com/barteo/kotlin-compiler-go/internal/lsp/protocol"
 	"github.com/barteo/kotlin-compiler-go/internal/project"
@@ -182,11 +183,15 @@ func (s *session) uri(name string) protocol.DocumentURI {
 func (s *session) fileOf(u protocol.DocumentURI) string {
 	if s.root != "" {
 		if rel, err := filepath.Rel(s.root, uriPath(u)); err == nil {
-			return filepath.ToSlash(rel)
+			// An extracted library file's directory is named by a hash
+			// of its archive's path.
+			return libHash.ReplaceAllString(filepath.ToSlash(rel), "$1")
 		}
 	}
 	return strings.TrimPrefix(string(u), "file:///work/")
 }
+
+var libHash = regexp.MustCompile(`^(\.libcache/[^/]*)-[0-9a-f]{12}`)
 
 // textOf returns the text of file f: its open document's, or the
 // workspace's on disk.
@@ -197,6 +202,13 @@ func (s *session) textOf(f string) string {
 	if s.root != "" {
 		if b, err := os.ReadFile(filepath.Join(s.root, f)); err == nil {
 			return string(b)
+		}
+		if strings.HasPrefix(f, ".libcache/") {
+			dir, rest, _ := strings.Cut(strings.TrimPrefix(f, ".libcache/"), "/")
+			if m, _ := filepath.Glob(filepath.Join(s.root, ".libcache", dir+"-*", rest)); len(m) > 0 {
+				b, _ := os.ReadFile(m[0])
+				return string(b)
+			}
 		}
 	}
 	return ""
@@ -230,6 +242,17 @@ func runScript(t *testing.T, a *archive) string {
 		}
 	}
 	s.srv = newServer(context.Background(), sr, sw)
+	// Navigation into the library's sources is off but for the scripts
+	// that need them: "library" in a section _needs.
+	s.srv.lib.off = true
+	if strings.Contains(a.section("_needs"), "library") {
+		stdlib, err := classpath.FindStdlib()
+		if err != nil || libsrc.SourcesOf(stdlib) == "" {
+			t.Skip("no sources of the Kotlin standard library")
+		}
+		s.srv.lib.off = false
+		s.srv.lib.dir = filepath.Join(s.root, ".libcache")
+	}
 	go func() {
 		code, err := s.srv.run()
 		if err != nil {
