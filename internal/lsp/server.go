@@ -183,6 +183,8 @@ func init() {
 		"completionItem/resolve":            (*Server).resolveCompletion,
 		"textDocument/signatureHelp":        (*Server).signatureHelp,
 		"workspace/executeCommand":          (*Server).executeCommand,
+		"textDocument/codeLens":             (*Server).codeLens,
+		"kc/mainClass":                      (*Server).mainClass,
 		"workspace/willRenameFiles":         (*Server).willRenameFiles,
 		"workspace/didCreateFiles":          (*Server).didCreateFiles,
 	}
@@ -248,7 +250,10 @@ func (s *Server) initialize(p *protocol.InitializeParams) *protocol.InitializeRe
 			CompletionProvider:               &protocol.CompletionOptions{TriggerCharacters: []string{".", ":"}, ResolveProvider: true},
 			SignatureHelpProvider:            &protocol.SignatureHelpOptions{TriggerCharacters: []string{"(", ","}, RetriggerCharacters: []string{"="}},
 			InlayHintProvider:                true,
-			ExecuteCommandProvider:           &protocol.ExecuteCommandOptions{Commands: []string{reimportCommand}},
+			ExecuteCommandProvider: &protocol.ExecuteCommandOptions{Commands: []string{
+				reimportCommand, runCommand, debugCommand, clearCachesCommand, restartCommand,
+			}},
+			CodeLensProvider: &protocol.CodeLensOptions{},
 			Workspace: &protocol.WorkspaceServerCapabilities{FileOperations: &protocol.FileOperationOptions{
 				WillRename: &protocol.FileOperationRegistrationOptions{Filters: []protocol.FileOperationFilter{
 					{Scheme: "file", Pattern: protocol.FileOperationPattern{Glob: "**/*.kt", Matches: "file"}},

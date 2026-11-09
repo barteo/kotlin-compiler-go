@@ -34,6 +34,10 @@ definition src/A.kt @length
 typedef src/A.kt @list
 calls src/A.kt @use
 calls src/A.kt @listOf
+# Clearing the caches extracts the stubs again.
+request workspace/executeCommand {"command": "kc.clearCaches"}
+wait
+definition src/A.kt @length
 -- want --
 > initialize {"processId": null, "rootUri": "ROOT", "capabilities": {}, "initializationOptions": {"librarySources": false}}
 > open src/A.kt
@@ -68,3 +72,8 @@ use [12] (p) src/A.kt 2:4-2:7
 listOf [12] (kotlin.collections) .libcache/stubs/kotlin/collections/listOf.kt 4:8-4:14
   <- use [12] (p) src/A.kt 2:4-2:7: 3:23-3:29 "listOf"
   <- other [12] (p) src/B.kt 2:4-2:9: 2:14-2:20 "listOf", 2:53-2:59 "listOf"
+> request workspace/executeCommand {"command": "kc.clearCaches"}
+null
+> wait
+> definition src/A.kt @length
+.libcache/stubs/kotlin/String.kt 5:8-5:14 "length"

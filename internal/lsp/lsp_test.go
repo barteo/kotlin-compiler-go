@@ -66,6 +66,8 @@ var update = flag.Bool("update", false, "rewrite the want sections of testdata/*
 //	hover F POS               print textDocument/hover's range and Markdown
 //	wsymbol [QUERY]           print workspace/symbol
 //	inlay F                   print textDocument/inlayHint over the whole document
+//	lens F                    print textDocument/codeLens
+//	run F [N] [debug]         print the run configuration of F's Nth run lens (kc.run or kc.debug), paths outside ROOT as base names
 //	request METHOD [params]   print any request's result or error
 //	notify METHOD params      send any notification
 //	write F SECTION|-         write a workspace file on disk with a section's text, or delete it
@@ -762,6 +764,69 @@ func (s *session) run(line string) {
 			kind := map[int]string{protocol.InlayHintType: "type", protocol.InlayHintParameter: "parameter"}[h.Kind]
 			fmt.Fprintf(&s.out, "%d:%d %s %q\n", h.Position.Line, h.Position.Character, kind, h.Label)
 		}
+	case "lens":
+		name := file()
+		var lenses []protocol.CodeLens
+		if err := s.call("textDocument/codeLens", protocol.CodeLensParams{TextDocument: doc()}, &lenses); err != nil {
+			s.printResult(nil, err)
+			return
+		}
+		if len(lenses) == 0 {
+			fmt.Fprintln(&s.out, "(none)")
+		}
+		d := ide.NewDocument(name, 0, s.textOf(name))
+		for _, l := range lenses {
+			args, _ := json.Marshal(l.Command.Arguments)
+			fmt.Fprintf(&s.out, "%s %s %s %s %s\n", fmtRange(l.Range), excerpt(d, l.Range, s.enc), l.Command.Title, l.Command.Command,
+				strings.ReplaceAll(string(args), string(s.uri(name)), name))
+		}
+	case "run":
+		file()
+		n, debug := 0, false
+		for _, a := range args[1:] {
+			if a == "debug" {
+				debug = true
+			} else {
+				n, _ = strconv.Atoi(a)
+			}
+		}
+		var lenses []protocol.CodeLens
+		if err := s.call("textDocument/codeLens", protocol.CodeLensParams{TextDocument: doc()}, &lenses); err != nil {
+			s.printResult(nil, err)
+			return
+		}
+		var runs []protocol.CodeLens
+		for _, l := range lenses {
+			if l.Command.Command == "kc.run" && !debug || l.Command.Command == "kc.debug" && debug {
+				runs = append(runs, l)
+			}
+		}
+		if n >= len(runs) {
+			fmt.Fprintln(&s.out, "(none)")
+			return
+		}
+		var c RunConfig
+		if err := s.call("workspace/executeCommand", map[string]any{"command": runs[n].Command.Command, "arguments": runs[n].Command.Arguments}, &c); err != nil {
+			s.printResult(nil, err)
+			return
+		}
+		short := func(list []string) string {
+			var out []string
+			for _, a := range list {
+				var parts []string
+				for _, p := range filepath.SplitList(a) {
+					if rel, err := filepath.Rel(s.root, p); err == nil && !strings.HasPrefix(rel, "..") && filepath.IsAbs(p) {
+						p = filepath.ToSlash(rel)
+					} else if filepath.IsAbs(p) {
+						p = filepath.Base(p)
+					}
+					parts = append(parts, p)
+				}
+				out = append(out, strings.Join(parts, ":"))
+			}
+			return strings.Join(out, " ")
+		}
+		fmt.Fprintf(&s.out, "main %s module %s out %s port %d\nbuild %s\nrun %s\n", c.MainClass, c.Module, short([]string{c.OutputDir}), c.DebugPort, short(c.Build), short(c.Run))
 	case "wsymbol":
 		q := ""
 		if len(args) > 0 {

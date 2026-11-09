@@ -142,6 +142,7 @@ type ServerCapabilities struct {
 	DocumentRangeFormattingProvider  bool                             `json:"documentRangeFormattingProvider,omitempty"`
 	DocumentOnTypeFormattingProvider *DocumentOnTypeFormattingOptions `json:"documentOnTypeFormattingProvider,omitempty"`
 	ExecuteCommandProvider           *ExecuteCommandOptions           `json:"executeCommandProvider,omitempty"`
+	CodeLensProvider                 *CodeLensOptions                 `json:"codeLensProvider,omitempty"`
 
 	Workspace *WorkspaceServerCapabilities `json:"workspace,omitempty"`
 }
@@ -715,4 +716,28 @@ type SignatureHelp struct {
 	Signatures      []SignatureInformation `json:"signatures"`
 	ActiveSignature int                    `json:"activeSignature"`
 	ActiveParameter int                    `json:"activeParameter"`
+}
+
+// Command is a command a client runs through workspace/executeCommand.
+type Command struct {
+	Title     string `json:"title"`
+	Command   string `json:"command"`
+	Arguments []any  `json:"arguments,omitempty"`
+}
+
+// CodeLensOptions are the server's code lens capability.
+type CodeLensOptions struct {
+	ResolveProvider bool `json:"resolveProvider,omitempty"`
+}
+
+// CodeLensParams are textDocument/codeLens's.
+type CodeLensParams struct {
+	TextDocument TextDocumentIdentifier `json:"textDocument"`
+}
+
+// CodeLens is a command shown above a range of a document.
+type CodeLens struct {
+	Range   Range    `json:"range"`
+	Command *Command `json:"command,omitempty"`
+	Data    any      `json:"data,omitempty"`
 }

@@ -508,6 +508,9 @@ func OnType(snap *psi.Snapshot, off int, ch string, opts FormatOptions) []TextEd
 		start = strings.LastIndexByte(src[:start], '\n') + 1
 		return FormatRange(snap, opts, psi.Range{Start: start, End: b.Range().End})
 	case "\n":
+		if es, ok := kdocEnter(snap, off); ok {
+			return es
+		}
 		end := off
 		for end < len(src) && (src[end] == ' ' || src[end] == '\t') {
 			end++
@@ -518,4 +521,86 @@ func OnType(snap *psi.Snapshot, off int, ch string, opts FormatOptions) []TextEd
 		return FormatRange(snap, opts, psi.Range{Start: end, End: end})
 	}
 	return nil
+}
+
+// kdocEnter returns the edits of an Enter typed in a KDoc comment, the
+// new line's start before off: the line goes on with its asterisk; after
+// a line of /** alone, the comment is closed if it isn't, with a @param
+// tag for each of the documented function's parameters and @return for
+// its result.
+func kdocEnter(snap *psi.Snapshot, off int) ([]TextEdit, bool) {
+	src := snap.Source()
+	off = min(off, len(src))
+	nl := strings.LastIndexByte(src[:off], '\n')
+	if nl <= 0 || strings.TrimSpace(src[nl+1:off]) != "" {
+		return nil, false
+	}
+	doc := snap.NodeAt(nl)
+	if doc.NumericKind() != psi.KindKDOC || doc.Range().Start >= nl {
+		return nil, false
+	}
+	lineEnd := strings.IndexByte(src[off:], '\n')
+	if lineEnd < 0 {
+		lineEnd = len(src) - off
+	}
+	after := strings.TrimSpace(src[off : off+lineEnd])
+	if strings.HasPrefix(after, "*") && !strings.HasPrefix(after, "*/") {
+		return nil, false // the editor went on with the asterisk
+	}
+	prevStart := strings.LastIndexByte(src[:nl], '\n') + 1
+	prev := strings.TrimRight(src[prevStart:nl], "\r")
+	lead := prev[:len(prev)-len(strings.TrimLeft(prev, " \t"))]
+	trimmed := strings.TrimSpace(prev)
+	start := doc.Range().Start
+	if trimmed != "/**" || prevStart > start {
+		// Within the comment: the line's asterisk, under the last one.
+		star := lead + " * "
+		if strings.HasPrefix(trimmed, "*") {
+			star = lead + "* "
+		}
+		return []TextEdit{{Range: psi.Range{Start: nl + 1, End: off}, Text: star}}, true
+	}
+	// After /** alone: the comment's lines, and its end.
+	text := doc.Text()
+	rest := src[off:doc.Range().End]
+	closedHere := strings.TrimSpace(rest) == "*/"
+	var decl psi.NodeRef
+	end := off
+	if closedHere {
+		decl = doc.Parent()
+		end = doc.Range().End
+	} else if strings.HasSuffix(text, "*/") && !strings.Contains(rest, "/**") && strings.TrimSpace(strings.TrimSuffix(rest, "*/")) != "" &&
+		!strings.Contains(strings.TrimSuffix(rest, "*/"), "\n\n") && !looksLikeCode(rest) {
+		// A comment with text already: only the line's asterisk.
+		return []TextEdit{{Range: psi.Range{Start: nl + 1, End: off}, Text: lead + " * "}}, true
+	} else {
+		// Not closed: the declaration after it, as if it were.
+		fixed := psi.Parse(snap.Path(), src[:off]+"*/"+src[off:])
+		decl = fixed.NodeAt(start).Parent()
+	}
+	var b strings.Builder
+	b.WriteString(lead + " * ")
+	if decl.NumericKind() == psi.KindFUN {
+		for _, p := range decl.Parameters() {
+			if name := p.Name(); name != "" {
+				b.WriteString("\n" + lead + " * @param " + name)
+			}
+		}
+		if r := decl.ReturnType(); r.Valid() && compact(r.Text()) != "Unit" {
+			b.WriteString("\n" + lead + " * @return")
+		}
+	}
+	b.WriteString("\n" + lead + " */")
+	return []TextEdit{{Range: psi.Range{Start: nl + 1, End: end}, Text: b.String()}}, true
+}
+
+// looksLikeCode reports whether the text after an Enter in what lexes as
+// a KDoc holds code: a comment left open runs on to another's end.
+func looksLikeCode(s string) bool {
+	for _, kw := range []string{"fun ", "class ", "val ", "var ", "object ", "interface ", "package ", "import "} {
+		if strings.Contains(s, kw) {
+			return true
+		}
+	}
+	return false
 }

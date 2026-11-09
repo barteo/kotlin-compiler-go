@@ -376,6 +376,11 @@ func (v *View) at(path string, off int) (target, bool) {
 		f, _ := v.fact(p) // a secondary constructor has none
 		return target{decl: p, fact: f}, true
 	}
+	// A type parameter's name in a where clause.
+	if tp := constrained(leaf); tp.Valid() {
+		f, _ := v.fact(tp)
+		return target{decl: tp, fact: f}, true
+	}
 	// A use: the nearest node with a fact, if the caret is on a name or
 	// an operator.
 	if !named(leaf) && leaf.Parent().NumericKind() != psi.KindOPERATION_REFERENCE {
@@ -498,4 +503,22 @@ func sortLocs(ls []Loc) []Loc {
 		return a.Range.End - b.Range.End
 	})
 	return slices.CompactFunc(ls, func(a, b Loc) bool { return a.Snap.Path() == b.Snap.Path() && a.Range == b.Range })
+}
+
+// constrained returns the type parameter whose name leaf is in a where
+// clause's constraint, T in where T : A; none if leaf isn't one.
+func constrained(leaf psi.NodeRef) psi.NodeRef {
+	ref := leaf.Parent()
+	c := ref.Parent()
+	if leaf.NumericKind() != psi.KindIDENTIFIER || ref.NumericKind() != psi.KindREFERENCE_EXPRESSION ||
+		c.NumericKind() != psi.KindTYPE_CONSTRAINT || firstNonTrivia(c) != ref {
+		return psi.NodeRef{}
+	}
+	owner := c.Parent().Parent()
+	for tp := owner.ChildKind(psi.KindTYPE_PARAMETER_LIST).FirstChild(); tp.Valid(); tp = tp.NextSibling() {
+		if tp.NumericKind() == psi.KindTYPE_PARAMETER && tp.Name() == leaf.Text() {
+			return tp
+		}
+	}
+	return psi.NodeRef{}
 }

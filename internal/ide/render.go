@@ -234,9 +234,16 @@ func renderSymbol(s analysis.Symbol) string {
 // precedes its body, initializer or accessors, without annotations and
 // comments, and with sym's type where it isn't written.
 func header(d psi.NodeRef, sym *analysis.Symbol) string {
+	if d.NumericKind() == psi.KindTYPE_PARAMETER {
+		return typeParameterHeader(d)
+	}
 	var parts []string
 	for c := d.FirstChild(); c.Valid(); c = c.NextSibling() {
 		if c.IsTrivia() {
+			continue
+		}
+		if d.NumericKind() == psi.KindTYPEALIAS && c.NumericKind() == psi.KindEQ {
+			parts = append(parts, "=") // an alias's type is its header's
 			continue
 		}
 		switch c.NumericKind() {
@@ -282,4 +289,33 @@ func withType(d psi.NodeRef, h string, sym *analysis.Symbol) string {
 		}
 	}
 	return h
+}
+
+// typeParameterHeader writes type parameter d with its variance or
+// reified, and its bounds: its own and its declaration's where clause's,
+// as T : A, B.
+func typeParameterHeader(d psi.NodeRef) string {
+	var b strings.Builder
+	for m := d.ChildKind(psi.KindMODIFIER_LIST).FirstChild(); m.Valid(); m = m.NextSibling() {
+		if !m.IsTrivia() && m.IsLeaf() {
+			b.WriteString(m.Text() + " ")
+		}
+	}
+	b.WriteString(d.Name())
+	var bounds []string
+	if t := d.ChildKind(psi.KindTYPE_REFERENCE); t.Valid() {
+		bounds = append(bounds, compact(t.Text()))
+	}
+	owner := d.Parent().Parent()
+	for c := owner.ChildKind(psi.KindTYPE_CONSTRAINT_LIST).FirstChild(); c.Valid(); c = c.NextSibling() {
+		if c.NumericKind() == psi.KindTYPE_CONSTRAINT && firstNonTrivia(c).Text() == d.Name() {
+			if t := c.ChildKind(psi.KindTYPE_REFERENCE); t.Valid() {
+				bounds = append(bounds, compact(t.Text()))
+			}
+		}
+	}
+	if len(bounds) > 0 {
+		b.WriteString(" : " + strings.Join(bounds, ", "))
+	}
+	return b.String()
 }

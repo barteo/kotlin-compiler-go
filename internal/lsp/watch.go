@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/barteo/kotlin-compiler-go/internal/lsp/jsonrpc"
+	"github.com/barteo/kotlin-compiler-go/internal/lsp/protocol"
 )
 
 // Files created and deleted when the client doesn't watch them, and
@@ -143,6 +144,18 @@ func (s *Server) executeCommand(_ context.Context, r *jsonrpc.Request) (any, err
 	switch p.Command {
 	case reimportCommand:
 		s.reloadAll(true)
+		return nil, nil
+	case runCommand, debugCommand:
+		return s.runCmd(p.Arguments, p.Command == debugCommand)
+	case clearCachesCommand:
+		if err := s.clearCaches(); err != nil {
+			s.logMessage(protocol.MessageWarning, "kc-lsp: clearing caches: "+err.Error())
+		}
+		return nil, nil
+	case restartCommand:
+		// The modules' sessions are closed and opened again; the
+		// build tools' models are kept.
+		s.reloadAll(false)
 		return nil, nil
 	}
 	return nil, jsonrpc.Errorf(jsonrpc.CodeInvalidParams, "unknown command %q", p.Command)

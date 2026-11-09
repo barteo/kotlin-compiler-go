@@ -1,0 +1,94 @@
+-- kc-lsp.json --
+{"modules": [{"name": ":app:main", "sourceRoots": ["src"], "optIns": ["kotlin.ExperimentalStdlibApi"]},
+ {"name": ":app:test", "kind": "test", "sourceRoots": ["test"], "dependsOn": [":app:main"]}]}
+-- src/Main.kt --
+package app
+
+fun main() {
+    println(greet())
+}
+
+fun greet() = "hi"
+
+object Tool {
+    @JvmStatic fun main(args: Array<String>) {}
+}
+-- src/Lib.kt --
+@file:JvmName("Library")
+package app
+
+fun main(vararg args: String) {}
+fun main(x: Int) {}
+-- src/Util.kt --
+package app
+
+fun util() = 1
+-- test/T.kt --
+package app
+
+class T {
+    companion object {
+        @JvmStatic fun main(args: Array<String>) = println(greet())
+    }
+}
+-- script --
+initialize
+open src/Main.kt
+open src/Lib.kt
+open test/T.kt
+open src/Util.kt
+wait
+lens src/Main.kt
+lens src/Lib.kt
+run src/Main.kt
+run src/Main.kt 1 debug
+run test/T.kt
+lens src/Util.kt
+request kc/mainClass {"textDocument": {"uri": "ROOT/src/Util.kt"}}
+request workspace/executeCommand {"command": "kc.run", "arguments": []}
+request workspace/executeCommand {"command": "kc.restart"}
+wait
+run src/Main.kt
+diagnostics test/T.kt
+-- want --
+> initialize
+> open src/Main.kt
+> open src/Lib.kt
+> open test/T.kt
+> open src/Util.kt
+> wait
+> lens src/Main.kt
+2:4-2:8 "main" Run kc.run [{"mainClass":"app.MainKt","uri":"src/Main.kt"}]
+2:4-2:8 "main" Debug kc.debug [{"mainClass":"app.MainKt","uri":"src/Main.kt"}]
+9:19-9:23 "main" Run kc.run [{"mainClass":"app.Tool","uri":"src/Main.kt"}]
+9:19-9:23 "main" Debug kc.debug [{"mainClass":"app.Tool","uri":"src/Main.kt"}]
+> lens src/Lib.kt
+3:4-3:8 "main" Run kc.run [{"mainClass":"app.Library","uri":"src/Lib.kt"}]
+3:4-3:8 "main" Debug kc.debug [{"mainClass":"app.Library","uri":"src/Lib.kt"}]
+> run src/Main.kt
+main app.MainKt module :app:main out build/kc-run/app_main port 0
+build kc -d build/kc-run/app_main -cp kotlin-stdlib.jar -opt-in kotlin.ExperimentalStdlibApi src
+run java -cp build/kc-run/app_main:kotlin-stdlib.jar app.MainKt
+> run src/Main.kt 1 debug
+main app.Tool module :app:main out build/kc-run/app_main port 5005
+build kc -d build/kc-run/app_main -cp kotlin-stdlib.jar -opt-in kotlin.ExperimentalStdlibApi src
+run java -agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=localhost:5005 -cp build/kc-run/app_main:kotlin-stdlib.jar app.Tool
+> run test/T.kt
+main app.T module :app:test out build/kc-run/app_test port 0
+build kc -d build/kc-run/app_test -cp kotlin-stdlib.jar test src
+run java -cp build/kc-run/app_test:kotlin-stdlib.jar app.T
+> lens src/Util.kt
+(none)
+> request kc/mainClass {"textDocument": {"uri": "ROOT/src/Util.kt"}}
+null
+> request workspace/executeCommand {"command": "kc.run", "arguments": []}
+error -32602: want {uri, mainClass}
+> request workspace/executeCommand {"command": "kc.restart"}
+null
+> wait
+> run src/Main.kt
+main app.MainKt module :app:main out build/kc-run/app_main port 0
+build kc -d build/kc-run/app_main -cp kotlin-stdlib.jar -opt-in kotlin.ExperimentalStdlibApi src
+run java -cp build/kc-run/app_main:kotlin-stdlib.jar app.MainKt
+> diagnostics test/T.kt
+[]

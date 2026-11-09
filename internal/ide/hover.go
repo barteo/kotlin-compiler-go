@@ -62,9 +62,12 @@ func Hover(v *View, path string, off int) (md string, rng psi.Range, ok bool) {
 
 // container names what declaration d is a member of: its class or
 // object, or its file's package; "" for a local declaration, a
-// parameter of a function, or a type parameter.
+// parameter of a function; a type parameter's, its declaration.
 func container(d psi.NodeRef) string {
 	if d.NumericKind() == psi.KindTYPE_PARAMETER {
+		if name := d.Parent().Parent().Name(); name != "" {
+			return "type parameter of `" + name + "`"
+		}
 		return ""
 	}
 	for p := d.Parent(); p.Valid(); p = p.Parent() {

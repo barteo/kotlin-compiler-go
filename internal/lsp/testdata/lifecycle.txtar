@@ -24,6 +24,7 @@ error -32002: textDocument/documentSymbol before initialize
         "refactor.rewrite"
       ]
     },
+    "codeLensProvider": {},
     "completionProvider": {
       "resolveProvider": true,
       "triggerCharacters": [
@@ -44,7 +45,11 @@ error -32002: textDocument/documentSymbol before initialize
     "documentSymbolProvider": true,
     "executeCommandProvider": {
       "commands": [
-        "kc.reimport"
+        "kc.reimport",
+        "kc.run",
+        "kc.debug",
+        "kc.clearCaches",
+        "kc.restart"
       ]
     },
     "foldingRangeProvider": true,

@@ -1,0 +1,68 @@
+-- kc-lsp.json --
+{"modules": [{"name": "main", "sourceRoots": ["src"]}]}
+-- src/A.kt --
+package p
+
+typealias /*|decl*/Names = List<String>
+
+fun first(n: /*|use*/Names): String = n.first()
+
+val empty: Names = emptyList()
+-- src/B.kt --
+package q
+
+import p.Names
+
+fun count(n: Names) = n.size
+-- script --
+initialize
+open src/A.kt
+open src/B.kt
+wait
+definition src/A.kt @use
+references src/A.kt @decl decl
+references src/A.kt @use
+highlight src/A.kt @use
+hover src/A.kt @use
+rename src/A.kt @use Words
+diagnostics src/A.kt
+diagnostics src/B.kt
+-- want --
+> initialize
+> open src/A.kt
+> open src/B.kt
+> wait
+> definition src/A.kt @use
+src/A.kt 2:10-2:15 "Names"
+> references src/A.kt @decl decl
+src/A.kt 2:10-2:15 "Names"
+src/A.kt 4:13-4:18 "Names"
+src/A.kt 6:11-6:16 "Names"
+src/B.kt 4:13-4:18 "Names"
+> references src/A.kt @use
+src/A.kt 4:13-4:18 "Names"
+src/A.kt 6:11-6:16 "Names"
+src/B.kt 4:13-4:18 "Names"
+> highlight src/A.kt @use
+2:10-2:15 write "Names"
+4:13-4:18 read "Names"
+6:11-6:16 read "Names"
+> hover src/A.kt @use
+4:13-4:18 "Names"
+```kotlin
+typealias Names = List<String>
+```
+
+package `p`
+> rename src/A.kt @use Words
+src/A.kt:
+  2:10-2:15 "Names" -> "Words"
+  4:13-4:18 "Names" -> "Words"
+  6:11-6:16 "Names" -> "Words"
+src/B.kt:
+  2:9-2:14 "Names" -> "Words"
+  4:13-4:18 "Names" -> "Words"
+> diagnostics src/A.kt
+[]
+> diagnostics src/B.kt
+[]

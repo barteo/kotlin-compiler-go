@@ -18,6 +18,14 @@ fun use(b: Box<String>?): Int {
     if (/*|b*/b != null) /*|println*/println(/*|smart*/b.item)
     return n /*|plus*/+ 1
 }
+-- src/T.kt --
+package p
+
+fun <T : Comparable<T>> biggest(a: /*|t*/T, b: T): T = if (a > b) a else b
+
+fun <R> both(x: /*|r*/R) where R : CharSequence, /*|rdecl*/R : Appendable = x
+
+class Holder</*|v*/V>(val v: V)
 -- script --
 initialize
 open src/A.kt
@@ -31,6 +39,11 @@ hover src/A.kt @smart
 hover src/A.kt @plus
 change src/A.kt 14:0 14:0 "\n"
 hover src/A.kt 16:12
+open src/T.kt
+hover src/T.kt @t
+hover src/T.kt @r
+hover src/T.kt @rdecl
+hover src/T.kt @v
 -- want --
 > initialize
 > open src/A.kt
@@ -86,3 +99,32 @@ Smart cast to `Box<String>`
 ```kotlin
 val n: Int
 ```
+> open src/T.kt
+> hover src/T.kt @t
+2:35-2:36 "T"
+```kotlin
+T : Comparable<T>
+```
+
+type parameter of `biggest`
+> hover src/T.kt @r
+4:16-4:17 "R"
+```kotlin
+R : CharSequence, Appendable
+```
+
+type parameter of `both`
+> hover src/T.kt @rdecl
+4:43-4:44 "R"
+```kotlin
+R : CharSequence, Appendable
+```
+
+type parameter of `both`
+> hover src/T.kt @v
+6:13-6:14 "V"
+```kotlin
+V
+```
+
+type parameter of `Holder`

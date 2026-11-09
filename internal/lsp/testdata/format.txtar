@@ -15,6 +15,10 @@ val y = 1
 }/*|close*/
 /*|line*/val z = 2
 }
+-- src/Doc.kt --
+/**
+/*|doc*/
+fun d(n: Int): String = ""
 -- src/Broken.kt --
 fun broken( {
 -- script --
@@ -22,17 +26,20 @@ initialize
 open src/Main.kt
 open src/Typing.kt
 open src/Broken.kt
+open src/Doc.kt
 format src/Main.kt @g @g
 format src/Main.kt
 format src/Main.kt
 ontype src/Typing.kt @line \n
 ontype src/Typing.kt @close }
 format src/Broken.kt
+ontype src/Doc.kt @doc \n
 -- want --
 > initialize
 > open src/Main.kt
 > open src/Typing.kt
 > open src/Broken.kt
+> open src/Doc.kt
 > format src/Main.kt @g @g
 src/Main.kt:
   3:19-4:0 "\n" -> "\n    "
@@ -106,3 +113,12 @@ fun h() {
 > format src/Broken.kt
 src/Broken.kt:
 fun broken( {
+> ontype src/Doc.kt @doc \n
+src/Doc.kt:
+  1:0-1:0 "" -> " * \n * @param n\n * @return\n */"
+/**
+ * 
+ * @param n
+ * @return
+ */
+fun d(n: Int): String = ""
