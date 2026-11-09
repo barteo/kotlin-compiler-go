@@ -229,6 +229,63 @@ func BenchmarkBodyEdit(b *testing.B) {
 	b.ReportMetric(float64(times[len(times)*95/100].Microseconds())/1000, "p95-ms")
 }
 
+// BenchmarkDeclarationEdit times a signature edit to its semantic
+// diagnostics, without the debounce: a parameter with a default added to
+// a member function that another file calls, then removed. On another
+// workspace (KC_LSP_BENCH) it edits the last "fun name(" of the file.
+func BenchmarkDeclarationEdit(b *testing.B) {
+	root, file, _ := benchWorkspace(b)
+	data, _ := os.ReadFile(file)
+	text := string(data)
+	defer func(d time.Duration) { debounce = d }(debounce)
+	debounce = 0
+	off := strings.LastIndex(text, "fun count(")
+	if off < 0 {
+		off = strings.LastIndex(text, "fun ")
+		if off < 0 {
+			b.Fatalf("%s: no function", file)
+		}
+		off += strings.IndexByte(text[off:], '(')
+	} else {
+		off += len("fun count")
+	}
+	off++ // after '('
+	if off >= len(text) || text[off] == '(' {
+		b.Fatalf("%s: no parameter list", file)
+	}
+	insert := "kcBench: Int = 0"
+	if text[off] != ')' {
+		insert += ", "
+	}
+	c := startServer(b, root)
+	defer c.close()
+	u := fileURI(file)
+	c.client.Notify("textDocument/didOpen", protocol.DidOpenTextDocumentParams{
+		TextDocument: protocol.TextDocumentItem{URI: u, LanguageID: "kotlin", Version: 1, Text: text}})
+	c.settle()
+	line := strings.Count(text[:off], "\n")
+	p := protocol.Position{Line: line, Character: off - (strings.LastIndex(text[:off], "\n") + 1)} // ASCII
+	end := protocol.Position{Line: line, Character: p.Character + len(insert)}
+	var times []time.Duration
+	v := 1
+	for b.Loop() {
+		for _, change := range []protocol.TextDocumentContentChangeEvent{
+			{Range: &protocol.Range{Start: p, End: p}, Text: insert},
+			{Range: &protocol.Range{Start: p, End: end}, Text: ""},
+		} {
+			v++
+			start := time.Now()
+			c.client.Notify("textDocument/didChange", protocol.DidChangeTextDocumentParams{
+				TextDocument: protocol.VersionedTextDocumentIdentifier{URI: u, Version: v}, ContentChanges: []protocol.TextDocumentContentChangeEvent{change}})
+			c.settle()
+			times = append(times, time.Since(start))
+		}
+	}
+	slices.Sort(times)
+	b.ReportMetric(float64(times[len(times)/2].Microseconds())/1000, "p50-ms")
+	b.ReportMetric(float64(times[len(times)*95/100].Microseconds())/1000, "p95-ms")
+}
+
 // BenchmarkNavigation times hover, definition, references and rename on
 // a callee in the file (docs/lsp.md, L5: references and rename under
 // 300 ms), and formatting the file: the median and 95th percentile of the requests on
