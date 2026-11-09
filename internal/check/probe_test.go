@@ -278,14 +278,15 @@ func TestImportables(t *testing.T) {
 	all := stdlibLibrary(t).Importables()
 	t.Logf("%d importables in %v", len(all), time.Since(start))
 	find := func(name, pkg string, class bool) bool {
-		return slices.Contains(all, Importable{Name: name, Package: pkg, Class: class})
+		return slices.Contains(all, Importable{Name: name, Package: pkg, Class: class, Default: pkg == "kotlin.collections"})
 	}
 	for _, want := range []Importable{
-		{"sqrt", "kotlin.math", false},
-		{"PI", "kotlin.math", false},
-		{"Random", "kotlin.random", true},
-		{"ArrayList", "java.util", true},
-		{"Duration", "kotlin.time", true},
+		{"sqrt", "kotlin.math", false, false},
+		{"PI", "kotlin.math", false, false},
+		{"Random", "kotlin.random", true, false},
+		{"ArrayList", "java.util", true, false},
+		{"Duration", "kotlin.time", true, false},
+		{"ArrayList", "kotlin.collections", true, true},
 	} {
 		if !find(want.Name, want.Package, want.Class) {
 			t.Errorf("no %+v", want)
@@ -293,15 +294,51 @@ func TestImportables(t *testing.T) {
 	}
 	for _, it := range all {
 		switch {
-		case it.Package == "kotlin" || it.Package == "kotlin.collections" || it.Package == "java.lang":
-			t.Errorf("%+v, of a default import", it)
+		case (slices.Contains(defaultPackages, it.Package) || it.Package == "java.lang") != it.Default:
+			t.Errorf("%+v, Default wrong", it)
 		case strings.HasSuffix(it.Name, "Kt") && it.Class:
 			t.Errorf("%+v, a file facade", it)
 		case strings.HasPrefix(it.Package, "sun."):
 			t.Errorf("%+v, of the JDK's internals", it)
 		}
 	}
+	lib := stdlibLibrary(t)
+	if lib.Accessible(Importable{Name: "ArrayAsCollection", Package: "kotlin.collections", Class: true}) {
+		t.Error("private ArrayAsCollection accessible")
+	}
+	if !lib.Accessible(Importable{Name: "Random", Package: "kotlin.random", Class: true}) {
+		t.Error("Random not accessible")
+	}
 	if !slices.IsSortedFunc(all, func(a, b Importable) int { return strings.Compare(a.Name, b.Name) }) {
 		t.Error("not sorted by name")
+	}
+}
+
+func TestProbeSuper(t *testing.T) {
+	v := probeView(t, `
+interface N { fun describe() = "n" }
+open class B { open fun render() = 1 }
+class C : B(), N {
+    override fun render(): Int { return super.| }
+}
+`)
+	for _, name := range []string{"render", "describe", "hashCode"} {
+		if !has(v, Member, name) {
+			t.Errorf("no member %s: %v", name, itemNames(v, Member))
+		}
+	}
+	if v.Receiver == nil || v.Receiver.String() != "B" {
+		t.Errorf("receiver = %v, want B", v.Receiver)
+	}
+}
+
+func TestProbeAnnotation(t *testing.T) {
+	v := probeView(t, `
+annotation class Marker
+@|
+fun f() {}
+`)
+	if !v.TypePosition || !slices.ContainsFunc(v.Items, func(it Item) bool { return it.Name == "Marker" }) {
+		t.Errorf("type position %v, items %v", v.TypePosition, len(v.Items))
 	}
 }

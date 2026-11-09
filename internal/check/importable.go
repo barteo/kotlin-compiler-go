@@ -2,6 +2,8 @@ package check
 
 import (
 	"cmp"
+
+	"github.com/barteo/kotlin-compiler-go/internal/classfile"
 	"slices"
 	"strings"
 	"sync"
@@ -14,16 +16,43 @@ type Importable struct {
 	Name    string
 	Package string // dotted
 	Class   bool   // a class or typealias; otherwise a function or property
+	Default bool   // in a default import's package: visible unimported
 }
 
 // importables is a classTable's index of Importables.
 type importables struct {
-	once sync.Once
-	all  []Importable
+	once   sync.Once
+	all    []Importable
+	public sync.Map // internal name -> bool
 }
 
-// Importables returns the class path's Importables outside the default
-// imports, sorted by name and package, for an editor's completion of
+// Accessible reports whether code outside im's package may name im: false
+// for a class whose class file isn't public, as a Kotlin private class's
+// or a Java package-private one's. It reads the class file's header once.
+func (l *Library) Accessible(im Importable) bool {
+	t := l.t
+	if !im.Class || t.cp == nil {
+		return true
+	}
+	name := strings.ReplaceAll(im.Package, ".", "/") + "/" + im.Name
+	if im.Package == "" {
+		name = im.Name
+	}
+	if v, ok := t.importables.public.Load(name); ok {
+		return v.(bool)
+	}
+	ok := true
+	if t.cp.Has(name) && !t.cp.IsSource(name) {
+		if data, err := t.cp.Bytes(name); err == nil {
+			access, err := classfile.AccessFlags(data)
+			ok = err == nil && access&classfile.AccPublic != 0
+		}
+	}
+	t.importables.public.Store(name, ok)
+	return ok
+}
+
+// Importables returns the class path's Importables, sorted by name and package, for an editor's completion of
 // names that need an import. It reads the class path's Kotlin packages'
 // metadata on first use, and keeps them.
 func (l *Library) Importables() []Importable {
@@ -39,12 +68,13 @@ func (l *Library) Importables() []Importable {
 		}
 		for _, pkg := range t.cp.Packages() {
 			dotted := strings.ReplaceAll(pkg, "/", ".")
-			if defaults[dotted] || !importablePackage(pkg) {
+			if !importablePackage(pkg) {
 				continue
 			}
+			def := defaults[dotted]
 			for _, name := range t.classNames(pkg) {
 				if importableName(name) {
-					out = append(out, Importable{Name: name, Package: dotted, Class: true})
+					out = append(out, Importable{Name: name, Package: dotted, Class: true, Default: def})
 				}
 			}
 			if !t.kotlin {
@@ -60,7 +90,7 @@ func (l *Library) Importables() []Importable {
 				for _, name := range aliases {
 					if !seen["a "+name] {
 						seen["a "+name] = true
-						out = append(out, Importable{Name: name, Package: dotted, Class: true})
+						out = append(out, Importable{Name: name, Package: dotted, Class: true, Default: def})
 					}
 				}
 				for _, name := range funcs {
@@ -71,7 +101,7 @@ func (l *Library) Importables() []Importable {
 					for _, f := range fs {
 						if f.Recv == nil && public(f.Flags.Visibility(), part.friend) {
 							seen["f "+name] = true
-							out = append(out, Importable{Name: name, Package: dotted})
+							out = append(out, Importable{Name: name, Package: dotted, Default: def})
 							break
 						}
 					}
@@ -84,7 +114,7 @@ func (l *Library) Importables() []Importable {
 					for _, p := range ps {
 						if p.Recv == nil && public(p.Flags.Visibility(), part.friend) {
 							seen["f "+name] = true
-							out = append(out, Importable{Name: name, Package: dotted})
+							out = append(out, Importable{Name: name, Package: dotted, Default: def})
 							break
 						}
 					}

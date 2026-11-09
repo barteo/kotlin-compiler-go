@@ -193,6 +193,7 @@ func (cv *converter) value(t types.Type, depth int) Type {
 		}
 		if t.IsFunc() {
 			out.Name = functionName(t)
+			out.Receiver = t.E
 		}
 		if t.A != nil && depth < 8 {
 			for _, a := range t.A.List {

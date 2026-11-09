@@ -161,6 +161,9 @@ type Type struct {
 	// abstract method, Suspend on a suspend function type.
 	SAM     bool `json:"sam,omitempty"`
 	Suspend bool `json:"suspend,omitempty"`
+	// Receiver is set on a function type with a receiver, A.(B) -> R,
+	// whose first argument is the receiver's type.
+	Receiver bool `json:"receiver,omitempty"`
 	// Projection is a type argument's projection: "", "in", "out" or
 	// "*".
 	Projection string `json:"projection,omitempty"`

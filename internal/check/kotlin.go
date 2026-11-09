@@ -170,10 +170,10 @@ type kotlinTable struct {
 	builtinMembers   map[string][]Item
 	// importables is Library.Importables's index.
 	importables importables
-	builtins         map[string]*kmeta.Class // the built-in classes, by class id
-	collections      map[string]*types.ClassSym
-	raw              map[string]*types.ClassSym // the Java collection interfaces themselves
-	kfuncs           map[int]*types.ClassSym    // kotlin.reflect.KFunctionN, by N, and KSuspendFunctionN, by -1-N
+	builtins    map[string]*kmeta.Class // the built-in classes, by class id
+	collections map[string]*types.ClassSym
+	raw         map[string]*types.ClassSym // the Java collection interfaces themselves
+	kfuncs      map[int]*types.ClassSym    // kotlin.reflect.KFunctionN, by N, and KSuspendFunctionN, by -1-N
 
 	moduleOnce sync.Once
 	parts      map[string][]kmeta.Part // by package name

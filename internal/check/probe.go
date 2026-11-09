@@ -83,8 +83,10 @@ type Item struct {
 // CallSite is a call the probe is an argument of.
 type CallSite struct {
 	// Funs are the functions and constructors the call may call, by its
-	// name.
-	Funs []*types.FunSym
+	// name, and Substs, by function, map the type parameters of a
+	// member's class to the receiver's type arguments, or are nil.
+	Funs   []*types.FunSym
+	Substs []types.Subst
 	// Arg is the index of the argument the probe is in, and Name the
 	// argument's name, if it is a named one.
 	Arg  int
@@ -215,11 +217,22 @@ func (c *Checker) add(v *ScopeView, it Item) {
 		if it.Fun.Hidden {
 			return
 		}
-		it.Deprecated = it.Fun.Deprecated != nil
+		it.Deprecated = it.Fun.Deprecated != nil || sourceDeprecated(it.Fun.Decl)
 	} else if it.Class != nil {
-		it.Deprecated = it.Class.Deprecated != nil
+		it.Deprecated = it.Class.Deprecated != nil || sourceDeprecated(it.Class.Decl)
+	} else if it.Var != nil {
+		it.Deprecated = sourceDeprecated(it.Var.Decl)
 	}
 	v.Items = append(v.Items, it)
+}
+
+// sourceDeprecated reports whether d, a declaration of the program, is
+// marked @Deprecated.
+func sourceDeprecated(d any) bool {
+	m, ok := d.(interface {
+		Find(target, name string) *syntax.Annotation
+	})
+	return ok && m.Find("", "Deprecated") != nil
 }
 
 // scopeItems adds what a simple name may name at the probe; only those
@@ -341,13 +354,16 @@ func (c *Checker) memberItems(v *ScopeView, rt types.Type, recv int, only string
 	seen := map[string]bool{}
 	cls.Supertypes(func(s *types.ClassSym) bool {
 		if s.Name == "java/lang/Object" {
-			// Kotlin's Any has only these.
-			for _, name := range []string{"equals", "hashCode", "toString"} {
-				for _, f := range s.Methods[name] {
-					if k := "f " + name + " " + paramKey(f); !seen[k] && !f.Static && (only == "" || only == name) {
-						seen[k] = true
-						c.add(v, Item{Name: name, Origin: Member, Fun: f, Type: f.Ret, Receiver: recv})
-					}
+			// Kotlin's Any's, which has only equals, hashCode and toString:
+			// those the classes below don't override.
+			if !c.u.ext.kotlin {
+				return true
+			}
+			for _, it := range c.u.ext.builtinItems("kotlin/Any") {
+				if k := "f " + it.Name + " " + paramKey(it.Fun); !seen[k] && (only == "" || only == it.Name) {
+					seen[k] = true
+					it.Receiver = recv
+					c.add(v, it)
 				}
 			}
 			return true
@@ -387,7 +403,13 @@ func (c *Checker) memberItems(v *ScopeView, rt types.Type, recv int, only string
 				if s.External && s.KotlinName == "" {
 					if p, ok := getterProp(f); ok {
 						prop(p, Item{Fun: f, Prop: true, Type: sub.Apply(f.Ret)})
+						if only == "" {
+							continue // offered as the property
+						}
 					}
+				}
+				if s.External && objectMethod(f) && c.u.ext.kotlin {
+					continue // Any's, at java/lang/Object
 				}
 				if only != "" && f.Name != only {
 					continue
@@ -402,6 +424,19 @@ func (c *Checker) memberItems(v *ScopeView, rt types.Type, recv int, only string
 		}
 		return true
 	})
+}
+
+// objectMethod reports whether f is a Java declaration of one of
+// Object's methods that Kotlin's Any has: equals(Object), hashCode() or
+// toString().
+func objectMethod(f *types.FunSym) bool {
+	switch f.Name {
+	case "equals":
+		return len(f.Params) == 1
+	case "hashCode", "toString":
+		return len(f.Params) == 0
+	}
+	return false
 }
 
 // builtinID returns the class id of a built-in type whose values'
@@ -871,6 +906,24 @@ func (c *Checker) rootPackages(v *ScopeView) {
 // qualifiedItems adds what x.probe may name: x a class, a package or a
 // value.
 func (c *Checker) qualifiedItems(v *ScopeView, x syntax.Expr) {
+	if s, ok := x.(*syntax.Super); ok {
+		// super.: the members of every immediate supertype, unless
+		// super<T> or super@C names one.
+		if s.Iface == nil && s.Label == "" && c.cls != nil && len(c.cls.Supers) > 0 {
+			for _, st := range c.cls.Supers {
+				if v.Receiver == nil || !st.C.Interface {
+					v.Receiver = &st
+				}
+				c.memberItems(v, st, -1, "")
+			}
+			return
+		}
+		if st, ok := c.superTarget(s, ProbeName, false); ok {
+			v.Receiver = &st
+			c.memberItems(v, st, -1, "")
+		}
+		return
+	}
 	if cls := c.classRef(x); cls != nil {
 		v.StaticOf = cls
 		c.staticItems(v, cls, "")
@@ -1144,7 +1197,8 @@ func (c *Checker) callSites(v *ScopeView, p syntax.Pos) {
 			}
 			arg = 0
 		}
-		site := CallSite{Arg: arg, Funs: c.callCandidates(x)}
+		site := CallSite{Arg: arg}
+		site.Funs, site.Substs = c.callCandidates(x)
 		for j, n := range x.Names {
 			if n == "" {
 				continue
@@ -1161,8 +1215,9 @@ func (c *Checker) callSites(v *ScopeView, p syntax.Pos) {
 }
 
 // callCandidates returns the functions and constructors call x may call,
-// by its name.
-func (c *Checker) callCandidates(x *syntax.Call) []*types.FunSym {
+// by its name, and the members' substitutions of their class's type
+// parameters.
+func (c *Checker) callCandidates(x *syntax.Call) ([]*types.FunSym, []types.Subst) {
 	tmp := &ScopeView{}
 	switch fn := x.Fun.(type) {
 	case *syntax.Ident:
@@ -1175,18 +1230,23 @@ func (c *Checker) callCandidates(x *syntax.Call) []*types.FunSym {
 			c.extensionItems(tmp, t.NonNull(), -1, c.visibleNames(), fn.Name)
 		}
 	default:
-		return nil
+		return nil, nil
 	}
 	var out []*types.FunSym
+	var substs []types.Subst
 	for _, it := range tmp.Items {
 		switch {
 		case it.Fun != nil && !it.Prop:
 			out = append(out, it.Fun)
+			substs = append(substs, it.Subst)
 		case it.Class != nil:
-			out = append(out, constructors(it.Class)...)
+			for _, f := range constructors(it.Class) {
+				out = append(out, f)
+				substs = append(substs, nil)
+			}
 		}
 	}
-	return out
+	return out, substs
 }
 
 // constructors returns the public constructors of cls.

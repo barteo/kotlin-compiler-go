@@ -54,6 +54,7 @@ func TestSessionMatchesAnalyze(t *testing.T) {
 	s := Open(cfg)
 	defer s.Close()
 	ctx := context.Background()
+	opens := libraryOpens.Load()
 	n, complete := 0, 0
 	for name, paths := range runModules(t) {
 		if testing.Short() && n >= 60 {
@@ -91,8 +92,8 @@ func TestSessionMatchesAnalyze(t *testing.T) {
 		}
 	}
 	t.Logf("%d programs, %d without errors", n, complete)
-	if libraryOpens.Load() > 1 {
-		t.Errorf("the session opened %d libraries", libraryOpens.Load())
+	if d := libraryOpens.Load() - opens; d > 1 {
+		t.Errorf("the session opened %d libraries", d)
 	}
 }
 
