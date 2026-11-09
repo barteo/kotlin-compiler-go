@@ -14,6 +14,7 @@ error -32002: textDocument/documentSymbol before initialize
 > capabilities
 {
   "capabilities": {
+    "callHierarchyProvider": true,
     "completionProvider": {
       "resolveProvider": true,
       "triggerCharacters": [

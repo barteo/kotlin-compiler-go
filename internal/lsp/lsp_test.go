@@ -57,6 +57,7 @@ var update = flag.Bool("update", false, "rewrite the want sections of testdata/*
 //	implementation F POS      print textDocument/implementation's locations
 //	rename F POS NAME         print textDocument/rename's edits per file, and apply those of open documents
 //	prepare F POS             print textDocument/prepareRename's range and placeholder
+//	calls F POS               print the call hierarchy item at POS and its incoming (<-) and outgoing (->) calls
 //	highlight F POS           print textDocument/documentHighlight
 //	hover F POS               print textDocument/hover's range and Markdown
 //	wsymbol [QUERY]           print workspace/symbol
@@ -516,6 +517,52 @@ func (s *session) run(line string) {
 				changes[len(es)-1-i] = protocol.TextDocumentContentChangeEvent{Range: &r, Text: e.NewText}
 			}
 			s.edit(f, changes)
+		}
+	case "calls":
+		// calls F POS prints the call hierarchy item at POS, and its
+		// incoming and outgoing calls.
+		name := file()
+		if len(args) < 2 {
+			t.Fatalf("calls: want F POS")
+		}
+		var items []protocol.CallHierarchyItem
+		if err := s.call("textDocument/prepareCallHierarchy", protocol.TextDocumentPositionParams{TextDocument: doc(), Position: s.position(name, args[1])}, &items); err != nil {
+			s.printResult(nil, err)
+			return
+		}
+		if len(items) == 0 {
+			fmt.Fprintln(&s.out, "(none)")
+			return
+		}
+		itemText := func(it protocol.CallHierarchyItem) string {
+			f := s.fileOf(it.URI)
+			return fmt.Sprintf("%s [%d] (%s) %s %s", it.Name, it.Kind, it.Detail, f, fmtRange(it.SelectionRange))
+		}
+		ranges := func(f string, rs []protocol.Range) string {
+			d := ide.NewDocument(f, 0, s.textOf(f))
+			var parts []string
+			for _, r := range rs {
+				parts = append(parts, fmtRange(r)+" "+excerpt(d, r, s.enc))
+			}
+			return strings.Join(parts, ", ")
+		}
+		it := items[0]
+		fmt.Fprintf(&s.out, "%s\n", itemText(it))
+		var in []protocol.CallHierarchyIncomingCall
+		if err := s.call("callHierarchy/incomingCalls", protocol.CallHierarchyCallsParams{Item: it}, &in); err != nil {
+			s.printResult(nil, err)
+			return
+		}
+		for _, c := range in {
+			fmt.Fprintf(&s.out, "  <- %s: %s\n", itemText(c.From), ranges(s.fileOf(c.From.URI), c.FromRanges))
+		}
+		var out []protocol.CallHierarchyOutgoingCall
+		if err := s.call("callHierarchy/outgoingCalls", protocol.CallHierarchyCallsParams{Item: it}, &out); err != nil {
+			s.printResult(nil, err)
+			return
+		}
+		for _, c := range out {
+			fmt.Fprintf(&s.out, "  -> %s: %s\n", itemText(c.To), ranges(s.fileOf(it.URI), c.FromRanges))
 		}
 	case "prepare":
 		name := file()

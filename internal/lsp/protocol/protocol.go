@@ -132,6 +132,30 @@ type ServerCapabilities struct {
 	CompletionProvider    *CompletionOptions    `json:"completionProvider,omitempty"`
 	SignatureHelpProvider *SignatureHelpOptions `json:"signatureHelpProvider,omitempty"`
 	RenameProvider        *RenameOptions        `json:"renameProvider,omitempty"`
+	CallHierarchyProvider bool                  `json:"callHierarchyProvider,omitempty"`
+}
+
+type CallHierarchyItem struct {
+	Name           string      `json:"name"`
+	Kind           int         `json:"kind"`
+	Detail         string      `json:"detail,omitempty"`
+	URI            DocumentURI `json:"uri"`
+	Range          Range       `json:"range"`
+	SelectionRange Range       `json:"selectionRange"`
+}
+
+type CallHierarchyCallsParams struct {
+	Item CallHierarchyItem `json:"item"`
+}
+
+type CallHierarchyIncomingCall struct {
+	From       CallHierarchyItem `json:"from"`
+	FromRanges []Range           `json:"fromRanges"`
+}
+
+type CallHierarchyOutgoingCall struct {
+	To         CallHierarchyItem `json:"to"`
+	FromRanges []Range           `json:"fromRanges"`
 }
 
 type RenameOptions struct {
