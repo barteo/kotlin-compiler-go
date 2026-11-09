@@ -298,27 +298,46 @@ func TestIncrementalDecl(t *testing.T) {
 		"package v\nfun other3() = 0\n",
 		"package w\nfun useErr(x: Missing) = x.wext()\n",
 		"package w\nfun other4() = 0\n",
+		"package x\nfun base() = 1\nval derived = base()\nclass Holder { val h = derived }\nfun unrelated() = 0\n",
+		"package x\nfun useDerived() = derived\nfun useHolder() = Holder().h\n",
+		"package x\nfun useUnrelated() = unrelated()\n",
+		"package y\ntypealias Id = Int\nclass Box(val id: Id)\nclass Other\n",
+		"package y\nfun useBox(b: Box) = b.id\nfun useOther() = Other()\n",
 	}
+	// checked, if not 0, is how many files the update's last check checks:
+	// the changed one, those that look up what changed in it, and those
+	// whose models change with them, and no more.
 	edits := []struct {
 		name     string
 		file     int
 		from, to string
 		partial  bool
+		checked  int
 	}{
-		{"return type", 0, "fun top() = 1", "fun top() = 1L", true},
-		{"new function", 0, "val tv = 2\n", "val tv = 2\nfun added() = 3\n", true},
-		{"member type", 0, "open fun f() = 1", "open fun f() = 1L", true},
-		{"new member", 0, "open fun f() = 1 }", "open fun f() = 1\n fun g() = 0 }", true},
-		{"property type", 0, "val tv = 2", "val tv = \"\"", true},
-		{"shadowing", 6, "fun more() = 4", "fun more() = 4\nfun alone() = \"\"", true},
-		{"removed", 4, "fun alone(): Int { return 3 }", "fun alone2x() = 1", true},
-		{"supertype", 9, "class T {", "class T : p.A() {", true},
-		{"class removed", 0, "open class A { open fun f() = 1 }", "", true},
-		{"conflicting function", 11, "fun other() = 2", "fun other() = 2\nfun solo() = 3", true},
-		{"conflicting class", 11, "fun other() = 2", "fun other() = 2\nclass Solo", true},
-		{"new extension", 13, "fun other3() = 0", "fun other3() = 0\nfun V.ext() = 2", true},
-		{"extension on an error type", 15, "fun other4() = 0", "fun other4() = 0\nfun Any.wext() = 1", true},
-		{"new extension property", 13, "fun other3() = 0", "fun other3() = 0\nval V.extVal get() = \"\"", true},
+		{"return type", 0, "fun top() = 1", "fun top() = 1L", true, 0},
+		{"new function", 0, "val tv = 2\n", "val tv = 2\nfun added() = 3\n", true, 0},
+		{"member type", 0, "open fun f() = 1", "open fun f() = 1L", true, 0},
+		{"new member", 0, "open fun f() = 1 }", "open fun f() = 1\n fun g() = 0 }", true, 0},
+		{"property type", 0, "val tv = 2", "val tv = \"\"", true, 0},
+		{"shadowing", 6, "fun more() = 4", "fun more() = 4\nfun alone() = \"\"", true, 0},
+		{"removed", 4, "fun alone(): Int { return 3 }", "fun alone2x() = 1", true, 0},
+		{"supertype", 9, "class T {", "class T : p.A() {", true, 0},
+		{"class removed", 0, "open class A { open fun f() = 1 }", "", true, 0},
+		{"conflicting function", 11, "fun other() = 2", "fun other() = 2\nfun solo() = 3", true, 0},
+		{"conflicting class", 11, "fun other() = 2", "fun other() = 2\nclass Solo", true, 0},
+		{"new extension", 13, "fun other3() = 0", "fun other3() = 0\nfun V.ext() = 2", true, 0},
+		{"extension on an error type", 15, "fun other4() = 0", "fun other4() = 0\nfun Any.wext() = 1", true, 0},
+		{"new extension property", 13, "fun other3() = 0", "fun other3() = 0\nval V.extVal get() = \"\"", true, 0},
+		// Declarations whose texts don't change, but whose models do with
+		// what they use in their file.
+		{"inferred from the same file", 16, "fun base() = 1", "fun base() = 1L", true, 2},
+		{"alias in the same file", 19, "typealias Id = Int", "typealias Id = Long", true, 2},
+		// Every node after the edit moves: the other declarations' models
+		// are the same.
+		{"declarations moved", 16, "fun base() = 1", "fun first() = 0\nfun base() = 1", true, 1},
+		{"unused function", 16, "fun unrelated() = 0", "fun unrelated() = 0\nfun last() = 0", true, 1},
+		{"unrelated change", 16, "fun unrelated() = 0", "fun unrelated() = 0L", true, 2},
+		{"import", 3, "import p.*", "import p.*\nimport r.alone", true, 1},
 	}
 	cfg := withStdlib(t)
 	for _, e := range edits {
@@ -337,6 +356,9 @@ func TestIncrementalDecl(t *testing.T) {
 			}
 			if partial := declUpdates.Load() == 1; partial != e.partial {
 				t.Errorf("checked partially: %v, want %v", partial, e.partial)
+			}
+			if n := lastChecked.Load(); e.checked != 0 && n != int64(e.checked) {
+				t.Errorf("checked %d files, want %d", n, e.checked)
 			}
 			if d := sameModel(got, wholeCheck(t, s, sources(texts...))); d != "" {
 				t.Error(d)

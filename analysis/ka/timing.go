@@ -43,6 +43,14 @@ func (t *Timer) MarkAt(name string, end time.Time) {
 	t.last = end
 }
 
+// Note adds a count, called name, to the phases.
+func (t *Timer) Note(name string, n int) {
+	if t == nil {
+		return
+	}
+	t.parts = append(t.parts, fmt.Sprintf("%s=%d", name, n))
+}
+
 // Print writes the phases, in ms, after what.
 func (t *Timer) Print(what string) {
 	if t == nil {

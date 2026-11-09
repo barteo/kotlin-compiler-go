@@ -20,7 +20,8 @@
 // run after the first, the copy of PATH (relative to the first source
 // directory, or the first Kotlin file in it if PATH is "auto") is edited:
 // a body edit and a signature edit in turn, of a function appended to it
-// (with bench.editKind=body, body edits only after run 2's).
+// (with bench.editKind=body, body edits only after run 2's; with
+// bench.editKind=signature, signature edits only).
 // Each run's line has KSP's dirty files (dirty=, the first round's
 // Resolver.getNewFiles).
 // bench.clean=N,M,… deletes the output and caches directories before
@@ -270,11 +271,18 @@ val clean = System.getProperty("bench.clean")?.split(',')?.filter { it.isNotBlan
  * appended whose signature changes on even runs (run 2 adds it) and whose
  * body only changes on odd ones.
  */
-/** bench.editKind: "body" keeps the appended function's type, so every edit after run 2 is a body edit (for a JFR of those). */
+/**
+ * bench.editKind: "body" keeps the appended function's type, so every edit after run 2 is a body edit;
+ * "signature" changes it on every run, so every edit is a signature edit (for a JFR of either).
+ */
 private val editKind = System.getProperty("bench.editKind", "both")
 
 private fun applyEdit(file: File, base: String, run: Int) {
-    val type = if (editKind == "body" || run / 2 % 2 == 1) "Int" else "Any"
+    val type = when (editKind) {
+        "body" -> "Int"
+        "signature" -> if (run % 2 == 0) "Int" else "Any"
+        else -> if (run / 2 % 2 == 1) "Int" else "Any"
+    }
     file.writeText(base + "\nfun kspBenchEdit(): $type {\n    return $run\n}\n")
 }
 

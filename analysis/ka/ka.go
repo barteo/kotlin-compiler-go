@@ -506,6 +506,12 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 				only[files[i]] = true
 			}
 		}
+		if only != nil {
+			lastChecked.Store(int64(len(only)))
+		} else {
+			lastChecked.Store(int64(len(files)))
+		}
+		tm.Note("checked", int(lastChecked.Load()))
 		rec, checkErrs, err := checkFiles(ctx, files, lib, jobs, only, namesIn(snaps, files, only))
 		if !rec.bodies.IsZero() {
 			tm.MarkAt("signatures", rec.bodies)

@@ -45,6 +45,10 @@ var incrementalUpdates atomic.Int64
 // what files declare (declEdits), for tests.
 var declUpdates atomic.Int64
 
+// lastChecked is how many files the last check of an update checked, for
+// tests.
+var lastChecked atomic.Int64
+
 // noReuse turns the caches off, for tests that compare an update with a
 // whole check.
 var noReuse bool
@@ -211,8 +215,11 @@ func (e *checked) declEdits(paths []string, sources []Source, texts []string, ja
 			return nil
 		}
 		dirty[i] = true
-		names.addModel(e.files[i])
-		names.addSyntax(files[i])
+		// Only the declarations whose texts changed: one whose text didn't
+		// may still change with them, which dependents finds in its model.
+		top := changedDecls(p.snap, snaps[i])
+		names.addModelOf(e.files[i], top)
+		names.addSyntaxOf(files[i], top)
 		if !names.addFacade(src.Path, e.snaps[src.Path].text, texts[i], java) {
 			return nil
 		}
@@ -230,20 +237,23 @@ func (e *checked) declEdits(paths []string, sources []Source, texts []string, ja
 	return dirty
 }
 
-// dependents returns the files that look up what the files in dirty whose
-// texts are e's declare, if their models in files, as checked again,
-// differ from e's: those files' models may depend on theirs (declEdits).
+// dependents returns the files that look up what the files in dirty
+// declare in the top-level declarations whose models in files, as checked
+// again, differ from e's: those files' models may depend on theirs
+// (declEdits). Models are compared but for psi node IDs, which an edit
+// moves, and which no other file's model holds.
 func (e *checked) dependents(dirty map[int]bool, files []*File, texts []string, java *javaSet) map[int]bool {
 	names := newDeclaredNames()
 	changed := false
 	for i := range dirty {
-		if e.snaps[files[i].Path].text != texts[i] || sameDecls(e.files[i], files[i]) {
+		top, any := changedModels(e.files[i], files[i])
+		if !any {
 			continue
 		}
 		changed = true
-		names.addModel(e.files[i])
-		names.addModel(files[i])
-		if !names.addFacade(files[i].Path, texts[i], texts[i], java) {
+		names.addModelOf(e.files[i], top)
+		names.addModelOf(files[i], top)
+		if !names.addFacade(files[i].Path, e.snaps[files[i].Path].text, texts[i], java) {
 			return allFiles(len(files))
 		}
 	}
@@ -272,10 +282,137 @@ func (e *checked) addLookingUp(dirty map[int]bool, names *declaredNames) {
 	}
 }
 
-// sameDecls reports whether a and b, models of the same text, declare the
-// same: their annotations and declarations are equal.
-func sameDecls(a, b *File) bool {
-	return a.Package == b.Package && reflect.DeepEqual(a.Annotations, b.Annotations) && reflect.DeepEqual(a.Decls, b.Decls)
+// changedDecls returns a test of which top-level declarations, by name,
+// differ between parses old and new of a file (declHashes), or nil if
+// anything else does, the package, imports or file annotations: then any
+// declaration may.
+func changedDecls(old, new *psi.Snapshot) func(name string) bool {
+	or, od := declHashes(old)
+	nr, nd := declHashes(new)
+	if or != nr {
+		return nil
+	}
+	return func(name string) bool {
+		o, inOld := od[name]
+		n, inNew := nd[name]
+		// A name neither parse shows, one the model makes up, may be anything.
+		return !inOld && !inNew || !slices.Equal(o, n)
+	}
+}
+
+// changedModels returns a test of which top-level declarations, by name,
+// differ between a and b, models of a file (sameNodes), nil if the package
+// or the file's annotations do, and whether any does.
+func changedModels(a, b *File) (func(name string) bool, bool) {
+	if a.Package != b.Package || !sameNodes(a.Annotations, b.Annotations) {
+		return nil, true
+	}
+	group := func(ds []*Decl) map[string][]*Decl {
+		g := map[string][]*Decl{}
+		for _, d := range ds {
+			g[d.Name] = append(g[d.Name], d)
+		}
+		return g
+	}
+	ga, gb := group(a.Decls), group(b.Decls)
+	changed := map[string]bool{}
+	for name, ds := range ga {
+		if !sameNodes(ds, gb[name]) {
+			changed[name] = true
+		}
+	}
+	for name := range gb {
+		if _, ok := ga[name]; !ok {
+			changed[name] = true
+		}
+	}
+	return func(name string) bool { return changed[name] }, len(changed) > 0
+}
+
+// sameNodes reports whether a and b, parts of models, are deeply equal, as
+// reflect.DeepEqual, but for the psi node IDs and snapshots they hold.
+func sameNodes(a, b any) bool {
+	return equalNodes(reflect.ValueOf(a), reflect.ValueOf(b), map[[3]uintptr]bool{})
+}
+
+var snapshotType = reflect.TypeFor[*psi.Snapshot]()
+
+func equalNodes(a, b reflect.Value, seen map[[3]uintptr]bool) bool {
+	if !a.IsValid() || !b.IsValid() {
+		return a.IsValid() == b.IsValid()
+	}
+	if a.Type() != b.Type() {
+		return false
+	}
+	if a.Type() == nodeIDType || a.Type() == snapshotType {
+		return true
+	}
+	switch a.Kind() {
+	case reflect.Pointer, reflect.Map, reflect.Slice:
+		if a.IsNil() || b.IsNil() {
+			return a.IsNil() == b.IsNil()
+		}
+		if a.Kind() != reflect.Slice || a.Len() > 0 {
+			if a.UnsafePointer() == b.UnsafePointer() && (a.Kind() != reflect.Slice || a.Len() == b.Len()) {
+				return true
+			}
+			// A cycle is equal if it is equal on the way round.
+			k := [3]uintptr{uintptr(a.UnsafePointer()), uintptr(b.UnsafePointer()), uintptr(a.Kind())}
+			if seen[k] {
+				return true
+			}
+			seen[k] = true
+		}
+	}
+	switch a.Kind() {
+	case reflect.Pointer, reflect.Interface:
+		return equalNodes(a.Elem(), b.Elem(), seen)
+	case reflect.Struct:
+		for i := range a.NumField() {
+			if !equalNodes(a.Field(i), b.Field(i), seen) {
+				return false
+			}
+		}
+		return true
+	case reflect.Slice, reflect.Array:
+		if a.Len() != b.Len() {
+			return false
+		}
+		for i := range a.Len() {
+			if !equalNodes(a.Index(i), b.Index(i), seen) {
+				return false
+			}
+		}
+		return true
+	case reflect.Map:
+		if a.Len() != b.Len() {
+			return false
+		}
+		for it := a.MapRange(); it.Next(); {
+			v := b.MapIndex(it.Key())
+			if !v.IsValid() || !equalNodes(it.Value(), v, seen) {
+				return false
+			}
+		}
+		return true
+	case reflect.Func:
+		return a.IsNil() && b.IsNil()
+	case reflect.Bool:
+		return a.Bool() == b.Bool()
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return a.Int() == b.Int()
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		return a.Uint() == b.Uint()
+	case reflect.Float32, reflect.Float64:
+		return a.Float() == b.Float() || a.Float() != a.Float() && b.Float() != b.Float()
+	case reflect.Complex64, reflect.Complex128:
+		return a.Complex() == b.Complex()
+	case reflect.String:
+		return a.String() == b.String()
+	case reflect.Chan, reflect.UnsafePointer:
+		return a.Pointer() == b.Pointer()
+	}
+	panic("ka: equalNodes: unexpected kind " + a.Kind().String())
 }
 
 // declaredNames are the names files declare, as lookups name them: each
@@ -325,7 +462,11 @@ func (n *declaredNames) declaredBy(f *File) bool {
 }
 
 // addModel adds the declarations of f, a model.
-func (n *declaredNames) addModel(f *File) {
+func (n *declaredNames) addModel(f *File) { n.addModelOf(f, nil) }
+
+// addModelOf adds the declarations of f, a model, whose top-level
+// declarations' names top reports true for, all if top is nil.
+func (n *declaredNames) addModelOf(f *File, top func(name string) bool) {
 	var walk func(scope string, ds []*Decl)
 	walk = func(scope string, ds []*Decl) {
 		for _, d := range ds {
@@ -337,14 +478,27 @@ func (n *declaredNames) addModel(f *File) {
 			}
 		}
 	}
-	walk(f.Package, f.Decls)
+	var ds []*Decl
+	for _, d := range f.Decls {
+		if top == nil || top(d.Name) {
+			ds = append(ds, d)
+		}
+	}
+	walk(f.Package, ds)
 }
 
 // addSyntax adds the declarations of f, as lowered.
-func (n *declaredNames) addSyntax(f *syntax.File) {
+func (n *declaredNames) addSyntax(f *syntax.File) { n.addSyntaxOf(f, nil) }
+
+// addSyntaxOf adds the declarations of f, as lowered, whose top-level
+// declarations' names top reports true for, all if top is nil.
+func (n *declaredNames) addSyntaxOf(f *syntax.File, top func(name string) bool) {
 	var walk func(scope string, ds []syntax.Decl)
 	walk = func(scope string, ds []syntax.Decl) {
 		for _, d := range ds {
+			if top != nil && scope == f.Package && !top(syntaxName(d)) {
+				continue
+			}
 			switch d := d.(type) {
 			case *syntax.FunDecl:
 				n.add(scope, d.Name)
@@ -370,6 +524,21 @@ func (n *declaredNames) addSyntax(f *syntax.File) {
 		}
 	}
 	walk(f.Package, f.Decls)
+}
+
+// syntaxName returns the name d declares, "" if none.
+func syntaxName(d syntax.Decl) string {
+	switch d := d.(type) {
+	case *syntax.FunDecl:
+		return d.Name
+	case *syntax.PropDecl:
+		return d.Name
+	case *syntax.TypeAliasDecl:
+		return d.Name
+	case *syntax.ClassDecl:
+		return d.Name
+	}
+	return ""
 }
 
 // javaSet holds a module's Java sources: their texts, and their parses,

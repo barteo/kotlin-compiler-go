@@ -20,7 +20,7 @@
 #	EDIT      edit this source (relative to the first source directory,
 #	          or "auto") before each run after the first, with incremental
 #	          processing on (KspBench's bench.edit)
-#	EDIT_KIND body for body edits only (KspBench's bench.editKind)
+#	EDIT_KIND body or signature for those edits only (KspBench's bench.editKind)
 #	JVM_OPTS  more options for the benchmark's JVMs; @B@ stands for the
 #	          backend, as in -XX:SharedArchiveFile=cds-@B@.jsa
 #	STOCK_PROCS_EXTRA  a class path stock KSP's processors also need,
