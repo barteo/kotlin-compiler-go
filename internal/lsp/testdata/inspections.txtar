@@ -1,0 +1,152 @@
+-- kc-lsp.json --
+{"modules": [{"name": "main", "sourceRoots": ["src"]}]}
+-- src/A.kt --
+private fun g(a: Int, b: Int) = a
+
+fun f(s: String): Int {
+    println(s/*|safe*/?.length)
+    /*|var*/var n = 1
+    return g(n, 2) + (s /*|cast*/as String).length
+}
+
+class C {
+    private fun /*|unused*/unused() = s!!
+    private val s = "s"
+}
+-- script --
+initialize
+open src/A.kt
+wait
+diagnostics src/A.kt
+actions src/A.kt @safe only=quickfix
+actions src/A.kt @var only=quickfix
+actions src/A.kt @cast only=quickfix apply=1
+actions src/A.kt @unused only=quickfix
+-- want --
+> initialize
+> open src/A.kt
+> wait
+> diagnostics src/A.kt
+[
+  {
+    "range": {
+      "start": {
+        "line": 0,
+        "character": 22
+      },
+      "end": {
+        "line": 0,
+        "character": 23
+      }
+    },
+    "severity": 2,
+    "code": "UNUSED_PARAMETER",
+    "source": "kc",
+    "message": "Parameter 'b' is never used",
+    "tags": [
+      1
+    ]
+  },
+  {
+    "range": {
+      "start": {
+        "line": 3,
+        "character": 13
+      },
+      "end": {
+        "line": 3,
+        "character": 15
+      }
+    },
+    "severity": 2,
+    "code": "UNNECESSARY_SAFE_CALL",
+    "source": "kc",
+    "message": "Unnecessary safe call on a non-null receiver of type String"
+  },
+  {
+    "range": {
+      "start": {
+        "line": 4,
+        "character": 4
+      },
+      "end": {
+        "line": 4,
+        "character": 7
+      }
+    },
+    "severity": 2,
+    "code": "CAN_BE_VAL",
+    "source": "kc",
+    "message": "Variable 'n' is never modified and can be declared immutable using 'val'"
+  },
+  {
+    "range": {
+      "start": {
+        "line": 5,
+        "character": 24
+      },
+      "end": {
+        "line": 5,
+        "character": 33
+      }
+    },
+    "severity": 2,
+    "code": "USELESS_CAST",
+    "source": "kc",
+    "message": "No cast needed",
+    "tags": [
+      1
+    ]
+  },
+  {
+    "range": {
+      "start": {
+        "line": 9,
+        "character": 16
+      },
+      "end": {
+        "line": 9,
+        "character": 22
+      }
+    },
+    "severity": 2,
+    "code": "UNUSED_PRIVATE_MEMBER",
+    "source": "kc",
+    "message": "Function 'unused' is never used",
+    "tags": [
+      1
+    ]
+  },
+  {
+    "range": {
+      "start": {
+        "line": 9,
+        "character": 28
+      },
+      "end": {
+        "line": 9,
+        "character": 30
+      }
+    },
+    "severity": 2,
+    "code": "UNNECESSARY_NOT_NULL_ASSERTION",
+    "source": "kc",
+    "message": "Unnecessary non-null assertion (!!) on a non-null receiver of type String"
+  }
+]
+> actions src/A.kt @safe only=quickfix
+1. Replace with dot call [quickfix preferred] UNNECESSARY_SAFE_CALL
+  src/A.kt:
+    3:13-3:15 "?." -> "."
+> actions src/A.kt @var only=quickfix
+1. Change to 'val' [quickfix preferred] CAN_BE_VAL
+  src/A.kt:
+    4:4-4:7 "var" -> "val"
+> actions src/A.kt @cast only=quickfix apply=1
+1. Remove useless cast [quickfix preferred] USELESS_CAST
+  src/A.kt:
+    5:22-5:33 "s as String" -> "s"
+> actions src/A.kt @unused only=quickfix
+1. Remove function 'unused' [quickfix preferred] UNUSED_PRIVATE_MEMBER
+  src/A.kt:
+    9:0-10:0 "    private fun unused() = s!!\n" -> ""

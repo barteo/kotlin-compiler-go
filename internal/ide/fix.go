@@ -192,6 +192,18 @@ func (f fixer) fixes(env FixEnv) []Fix {
 		return f.initialize()
 	case d.Code == "RETURN_TYPE_MISMATCH_ON_OVERRIDE" && len(d.Data) > 0:
 		return f.overrideReturnType()
+	case d.Code == UnnecessarySafeCall:
+		return f.fix("Replace with dot call", true, f.edit(d.Range, "."))
+	case d.Code == UnnecessaryNotNullAssertion:
+		return f.fix("Remove unnecessary non-null assertion (!!)", true, f.edit(d.Range, ""))
+	case d.Code == UselessCast:
+		return f.removeCast()
+	case d.Code == CanBeVal:
+		return f.fix("Change to 'val'", true, f.edit(d.Range, "val"))
+	case d.Code == UnusedParameter:
+		return f.removeParameter()
+	case d.Code == UnusedPrivateMember:
+		return f.removeMember()
 	}
 	return nil
 }

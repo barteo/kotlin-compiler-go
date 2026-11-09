@@ -29,7 +29,8 @@ func Hints(v *View, path string) []Diagnostic {
 	for _, d := range UnusedVariables(snap) {
 		out = append(out, Diagnostic{Range: nameRange(d), Severity: Hint, Code: UnusedVariable, Message: "Variable '" + d.Name() + "' is never used", Unnecessary: true})
 	}
-	slices.SortFunc(out, func(a, b Diagnostic) int { return a.Range.Start - b.Range.Start })
+	out = append(out, Inspections(v, path)...)
+	slices.SortStableFunc(out, func(a, b Diagnostic) int { return a.Range.Start - b.Range.Start })
 	return out
 }
 
