@@ -96,6 +96,23 @@ internal class KcEnvironment(val key: String, config: KSPConfig) {
     /** The trees of the files' PSI that rounds joined, for later rounds over the same PSI. */
     val trees = KcTrees()
 
+    /**
+     * The class-path classes libkc modeled, by outermost class ID, for the
+     * sessions after (see KcSession.libraryDecl): the environment's key
+     * holds the class path's files and stamps, and [libraryDeclsOf]
+     * starts over for another module name or other friends.
+     */
+    private val libraryDecls = HashMap<String, KcDecl>()
+    private var libraryDeclsKey: String? = null
+
+    fun libraryDeclsOf(key: String): HashMap<String, KcDecl> = synchronized(libraryDecls) {
+        if (libraryDeclsKey != key) {
+            libraryDecls.clear()
+            libraryDeclsKey = key
+        }
+        libraryDecls
+    }
+
     /** The bytes each file's PSI was parsed from, as [psiFile] last read them. */
     private val parsedBytes = HashMap<VirtualFile, ByteArray>()
 

@@ -92,6 +92,15 @@ private class KcSession(private val config: KSPConfig, @Suppress("UNUSED_PARAMET
     override val extras: KcExtras = KcExtrasImpl { round }
     private val libraryModule = KcLibraryModule(project, config)
     private val provider = environment.provider
+    /**
+     * The class-path classes libkc modeled, by outermost class ID, kept by
+     * the environment for the rounds after: its class path doesn't change,
+     * so a round asks libkc only for those none has yet. The Java sources'
+     * classes change with them and are always asked for, and so is a class
+     * a Java source declares, which hides the class path's.
+     */
+    private val libraryDecls = environment.libraryDeclsOf(
+        "module=${config.moduleName}\n" + config.friends.joinToString("\n") { it.path })
     private val handle: Long = KcOps.open(
         KcOps.Config(
             jdkHome = (config as? KSPJvmConfig)?.jdkHome?.path,
@@ -152,6 +161,16 @@ private class KcSession(private val config: KSPConfig, @Suppress("UNUSED_PARAMET
         if (System.getProperty("kc.diagnostics") != null) ds.forEach { System.err.println("kc: $it") }
     }
 
+
+    /** The class [id] (outermost) of [model]'s class path or Java sources, or null. */
+    private fun libraryDecl(model: KcModel, javaClasses: Set<String>, id: String): KcDecl? {
+        if (id in javaClasses) return KcOps.cls(model.handle, id)
+        synchronized(libraryDecls) { libraryDecls[id] }?.let { return it }
+        return KcOps.cls(model.handle, id)?.also { d ->
+            if (!d.has(KcDecl.JAVA_SOURCE)) synchronized(libraryDecls) { libraryDecls[id] = d }
+        }
+    }
+
     /** The round of [model], whose sources' PSI it joins. */
     private fun build(model: KcModel, t: KcTimer): KcRound {
         val fs = VirtualFileManager.getInstance().getFileSystem(StandardFileSystems.FILE_PROTOCOL)
@@ -162,8 +181,13 @@ private class KcSession(private val config: KSPConfig, @Suppress("UNUSED_PARAMET
         val java = paths.filter { it.endsWith(".java") }.mapNotNull { p ->
             fs.refreshAndFindFileByPath(p)?.let { environment.psiFile(it) as? PsiJavaFile }
         }
+        val javaClasses = HashSet<String>()
+        for (f in java) {
+            val pkg = f.packageName.replace('.', '/')
+            for (c in f.classes) c.name?.let { javaClasses += if (pkg.isEmpty()) it else "$pkg/$it" }
+        }
         t.mark("psi")
-        return KcRound(joined, { id -> KcOps.cls(model.handle, id) }, { fq -> KcOps.pkg(model.handle, fq) }, java, project, environment.trees,
+        return KcRound(joined, { id -> libraryDecl(model, javaClasses, id) }, { fq -> KcOps.pkg(model.handle, fq) }, java, project, environment.trees,
             if (this::round.isInitialized) round.sizes() else KcRound.Sizes())
     }
 
