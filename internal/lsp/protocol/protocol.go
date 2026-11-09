@@ -134,6 +134,38 @@ type ServerCapabilities struct {
 	RenameProvider        *RenameOptions        `json:"renameProvider,omitempty"`
 	CallHierarchyProvider bool                  `json:"callHierarchyProvider,omitempty"`
 	CodeActionProvider    *CodeActionOptions    `json:"codeActionProvider,omitempty"`
+
+	DocumentFormattingProvider       bool                             `json:"documentFormattingProvider,omitempty"`
+	DocumentRangeFormattingProvider  bool                             `json:"documentRangeFormattingProvider,omitempty"`
+	DocumentOnTypeFormattingProvider *DocumentOnTypeFormattingOptions `json:"documentOnTypeFormattingProvider,omitempty"`
+}
+
+type DocumentOnTypeFormattingOptions struct {
+	FirstTriggerCharacter string   `json:"firstTriggerCharacter"`
+	MoreTriggerCharacter  []string `json:"moreTriggerCharacter,omitempty"`
+}
+
+type FormattingOptions struct {
+	TabSize      int  `json:"tabSize"`
+	InsertSpaces bool `json:"insertSpaces"`
+}
+
+type DocumentFormattingParams struct {
+	TextDocument TextDocumentIdentifier `json:"textDocument"`
+	Options      FormattingOptions      `json:"options"`
+}
+
+type DocumentRangeFormattingParams struct {
+	TextDocument TextDocumentIdentifier `json:"textDocument"`
+	Range        Range                  `json:"range"`
+	Options      FormattingOptions      `json:"options"`
+}
+
+type DocumentOnTypeFormattingParams struct {
+	TextDocument TextDocumentIdentifier `json:"textDocument"`
+	Position     Position               `json:"position"`
+	Ch           string                 `json:"ch"`
+	Options      FormattingOptions      `json:"options"`
 }
 
 type CallHierarchyItem struct {

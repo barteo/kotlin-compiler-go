@@ -587,6 +587,34 @@ func (s *session) run(line string) {
 		if apply > 0 && apply <= len(res) && res[apply-1].Edit != nil {
 			s.applyEdit(res[apply-1].Edit)
 		}
+	case "format", "ontype":
+		// format F [FROM TO] and ontype F POS CH print the formatting
+		// edits of the document, a range or a typed character (\n for a
+		// newline), then the text with them applied, which the open
+		// document becomes.
+		name := file()
+		opts := protocol.FormattingOptions{TabSize: 4, InsertSpaces: true}
+		var res []protocol.TextEdit
+		var err error
+		switch {
+		case cmd == "ontype" && len(args) == 3:
+			ch := strings.ReplaceAll(args[2], `\n`, "\n")
+			err = s.call("textDocument/onTypeFormatting", protocol.DocumentOnTypeFormattingParams{TextDocument: doc(), Position: s.position(name, args[1]), Ch: ch, Options: opts}, &res)
+		case cmd == "ontype":
+			t.Fatalf("ontype: want F POS CH")
+		case len(args) == 3:
+			err = s.call("textDocument/rangeFormatting", protocol.DocumentRangeFormattingParams{TextDocument: doc(), Range: protocol.Range{Start: s.position(name, args[1]), End: s.position(name, args[2])}, Options: opts}, &res)
+		default:
+			err = s.call("textDocument/formatting", protocol.DocumentFormattingParams{TextDocument: doc(), Options: opts}, &res)
+		}
+		if err != nil {
+			s.printResult(nil, err)
+			return
+		}
+		we := &protocol.WorkspaceEdit{Changes: map[protocol.DocumentURI][]protocol.TextEdit{s.uri(name): res}}
+		s.printEdit(we, "")
+		s.applyEdit(we)
+		fmt.Fprintf(&s.out, "%s", s.texts[name])
 	case "prepare":
 		name := file()
 		if len(args) < 2 {

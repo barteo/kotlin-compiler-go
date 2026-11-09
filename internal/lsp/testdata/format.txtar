@@ -1,0 +1,108 @@
+-- kc-lsp.json --
+{"modules": [{"name": "main", "sourceRoots": ["src"]}]}
+-- src/Main.kt --
+class A{
+  fun f(a:Int,b :Int):Int{
+  val x=a+b
+          return x}
+/*|g*/fun g() = listOf(1,2)
+.map{it*2}
+}
+-- src/Typing.kt --
+fun h() {
+if (true) {
+val y = 1
+}/*|close*/
+/*|line*/val z = 2
+}
+-- src/Broken.kt --
+fun broken( {
+-- script --
+initialize
+open src/Main.kt
+open src/Typing.kt
+open src/Broken.kt
+format src/Main.kt @g @g
+format src/Main.kt
+format src/Main.kt
+ontype src/Typing.kt @line \n
+ontype src/Typing.kt @close }
+format src/Broken.kt
+-- want --
+> initialize
+> open src/Main.kt
+> open src/Typing.kt
+> open src/Broken.kt
+> format src/Main.kt @g @g
+src/Main.kt:
+  3:19-4:0 "\n" -> "\n    "
+class A{
+  fun f(a:Int,b :Int):Int{
+  val x=a+b
+          return x}
+    fun g() = listOf(1,2)
+.map{it*2}
+}
+> format src/Main.kt
+src/Main.kt:
+  0:7-0:7 "" -> " "
+  0:8-1:2 "\n  " -> "\n    "
+  1:10-1:10 "" -> " "
+  1:14-1:14 "" -> " "
+  1:15-1:16 " " -> ""
+  1:17-1:17 "" -> " "
+  1:22-1:22 "" -> " "
+  1:25-1:25 "" -> " "
+  1:26-2:2 "\n  " -> "\n        "
+  2:7-2:7 "" -> " "
+  2:8-2:8 "" -> " "
+  2:9-2:9 "" -> " "
+  2:10-2:10 "" -> " "
+  2:11-3:10 "\n          " -> "\n        "
+  3:18-3:18 "" -> " "
+  4:23-4:23 "" -> " "
+  4:25-5:0 "\n" -> "\n        "
+  5:4-5:4 "" -> " "
+  5:5-5:5 "" -> " "
+  5:7-5:7 "" -> " "
+  5:8-5:8 "" -> " "
+  5:9-5:9 "" -> " "
+class A {
+    fun f(a: Int, b: Int): Int {
+        val x = a + b
+        return x }
+    fun g() = listOf(1, 2)
+        .map { it * 2 }
+}
+> format src/Main.kt
+src/Main.kt:
+class A {
+    fun f(a: Int, b: Int): Int {
+        val x = a + b
+        return x }
+    fun g() = listOf(1, 2)
+        .map { it * 2 }
+}
+> ontype src/Typing.kt @line \n
+src/Typing.kt:
+  3:1-4:0 "\n" -> "\n    "
+fun h() {
+if (true) {
+val y = 1
+}
+    val z = 2
+}
+> ontype src/Typing.kt @close }
+src/Typing.kt:
+  0:9-1:0 "\n" -> "\n    "
+  1:11-2:0 "\n" -> "\n        "
+  2:9-3:0 "\n" -> "\n    "
+fun h() {
+    if (true) {
+        val y = 1
+    }
+    val z = 2
+}
+> format src/Broken.kt
+src/Broken.kt:
+fun broken( {

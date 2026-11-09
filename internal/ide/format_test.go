@@ -1,6 +1,8 @@
 package ide
 
 import (
+	"crypto/sha256"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,7 +14,7 @@ import (
 func formatted(t *testing.T, src string, opts FormatOptions) string {
 	t.Helper()
 	snap := psi.Parse("a.kt", src)
-	edits, why := format(snap, opts)
+	edits, why := format(snap, opts, psi.Range{Start: 0, End: len(src)})
 	if why != "" {
 		t.Fatalf("no format of\n%s\n%s", src, why)
 	}
@@ -100,7 +102,7 @@ func TestFormatCorpus(t *testing.T) {
 			continue
 		}
 		files++
-		edits, why := format(snap, FormatOptions{})
+		edits, why := format(snap, FormatOptions{}, psi.Range{Start: 0, End: len(src)})
 		if why != "" {
 			t.Errorf("%s: %s", p, why)
 			continue
@@ -110,10 +112,79 @@ func TestFormatCorpus(t *testing.T) {
 		}
 		changed++
 		out := applyEdits(string(src), edits)
-		if again, why := format(psi.Parse(snap.Path(), out), FormatOptions{}); len(again) > 0 || why != "" {
+		if again, why := format(psi.Parse(snap.Path(), out), FormatOptions{}, psi.Range{Start: 0, End: len(out)}); len(again) > 0 || why != "" {
 			e := again[0]
 			t.Errorf("%s: formatting isn't idempotent: %q at %d (%s)", p, out[max(0, e.Range.Start-30):e.Range.End], e.Range.Start, e.Text)
 		}
 	}
 	t.Logf("%d files formatted, %d changed, %d with syntax errors skipped", files, changed, skipped)
+}
+
+// TestFormatBudget compares the formatter's output on the corpus with a
+// reference: IntelliJ's output, by the sha256 per file in
+// testdata/format.sum written by tools/fmtoracle, or, without that file,
+// the corpus as written. The files that differ must be the ones listed
+// in testdata/format-budget.txt, and the list may only shrink. With
+// KC_FORMAT_OUT set, it writes its output there, for tools/fmtoracle.
+func TestFormatBudget(t *testing.T) {
+	outDir := os.Getenv("KC_FORMAT_OUT")
+	ref := map[string]string{} // relative path → sha256 of the reference
+	oracle := false
+	if b, err := os.ReadFile("testdata/format.sum"); err == nil {
+		oracle = true
+		for _, l := range strings.Split(string(b), "\n") {
+			if f := strings.Fields(l); len(f) == 2 {
+				ref[f[1]] = f[0]
+			}
+		}
+	}
+	budget := map[string]bool{}
+	if b, err := os.ReadFile("testdata/format-budget.txt"); err == nil {
+		for _, l := range strings.Split(string(b), "\n") {
+			if l = strings.TrimSpace(l); l != "" && !strings.HasPrefix(l, "#") {
+				budget[l] = true
+			}
+		}
+	}
+	var differ int
+	for _, p := range corpus(t) {
+		src, err := os.ReadFile(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rel, _ := filepath.Rel("../../testdata", p)
+		rel = filepath.ToSlash(rel)
+		snap := psi.Parse(rel, string(src))
+		if len(snap.Diagnostics()) > 0 {
+			continue
+		}
+		out := applyEdits(string(src), Format(snap, FormatOptions{}))
+		if outDir != "" {
+			dst := filepath.Join(outDir, filepath.FromSlash(rel))
+			if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(dst, []byte(out), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		want, ok := ref[rel]
+		if !oracle {
+			want, ok = fmt.Sprintf("%x", sha256.Sum256(src)), true
+		}
+		if !ok {
+			continue // not formatted by the oracle
+		}
+		same := fmt.Sprintf("%x", sha256.Sum256([]byte(out))) == want
+		switch {
+		case !same && !budget[rel]:
+			t.Errorf("%s: formatted differently from the reference; fix the formatter or add it to testdata/format-budget.txt", rel)
+		case same && budget[rel]:
+			t.Errorf("%s now formats as the reference: remove it from testdata/format-budget.txt", rel)
+		}
+		if !same {
+			differ++
+		}
+	}
+	t.Logf("%d files differ from the reference (oracle: %v), budget %d", differ, oracle, len(budget))
 }

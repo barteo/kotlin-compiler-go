@@ -33,30 +33,25 @@ func (o FormatOptions) unit() string {
 // space. A file with syntax errors, or whose formatting would change its
 // tokens, gets no edits.
 func Format(snap *psi.Snapshot, opts FormatOptions) []TextEdit {
-	edits, err := format(snap, opts)
-	if err != "" {
-		return nil
-	}
+	edits, _ := format(snap, opts, psi.Range{Start: 0, End: len(snap.Source())})
 	return edits
 }
 
-// FormatRange returns the edits of Format that touch r.
+// FormatRange formats the tokens that start in r: the whitespace before
+// each. Lines outside r keep their indent, which those in r indent from.
 func FormatRange(snap *psi.Snapshot, opts FormatOptions, r psi.Range) []TextEdit {
-	var out []TextEdit
-	for _, e := range Format(snap, opts) {
-		if e.Range.End >= r.Start && e.Range.Start <= r.End {
-			out = append(out, e)
-		}
-	}
-	return out
+	edits, _ := format(snap, opts, r)
+	return edits
 }
 
-// format returns Format's edits, or why there are none.
-func format(snap *psi.Snapshot, opts FormatOptions) ([]TextEdit, string) {
+// format returns the edits of the tokens that start in r, or why there
+// are none.
+func format(snap *psi.Snapshot, opts FormatOptions, r psi.Range) ([]TextEdit, string) {
 	if len(snap.Diagnostics()) > 0 {
 		return nil, "syntax errors"
 	}
 	f := newFormatter(snap, opts)
+	f.from, f.to = r.Start, r.End
 	edits := f.edits()
 	if len(edits) == 0 {
 		return nil, ""
@@ -115,6 +110,9 @@ type formatter struct {
 	toks   []token
 	lines  []int          // offsets of the lines' starts
 	indent map[int]string // a line's new indent, by line
+	// from and to bound the starts of the tokens formatted, and the
+	// file's end is formatted if to is at it.
+	from, to int
 }
 
 func newFormatter(snap *psi.Snapshot, opts FormatOptions) *formatter {
@@ -161,13 +159,16 @@ func (f *formatter) edits() []TextEdit {
 	if len(f.toks) == 0 {
 		return nil
 	}
-	add(0, f.toks[0].start, "")
-	f.indent[f.line(f.toks[0].start)] = ""
+	in := func(t token) bool { return f.from <= t.start && t.start <= f.to }
+	if in(f.toks[0]) {
+		add(0, f.toks[0].start, "")
+		f.indent[f.line(f.toks[0].start)] = ""
+	}
 	for i := 1; i < len(f.toks); i++ {
 		l, r := f.toks[i-1], f.toks[i]
 		gap := f.src[l.end:r.start]
-		if strings.TrimSpace(gap) != "" {
-			continue // not whitespace: a token formatting doesn't know
+		if !in(r) || strings.TrimSpace(gap) != "" {
+			continue // outside the range, or not whitespace: a token formatting doesn't know
 		}
 		n := strings.Count(gap, "\n")
 		if n == 0 {
@@ -179,8 +180,9 @@ func (f *formatter) edits() []TextEdit {
 		f.indent[f.line(r.start)] = ind
 		add(l.end, r.start, strings.Repeat("\n", n)+ind)
 	}
-	last := f.toks[len(f.toks)-1]
-	add(last.end, len(f.src), "\n")
+	if last := f.toks[len(f.toks)-1]; f.to >= len(f.src) {
+		add(last.end, len(f.src), "\n")
+	}
 	return out
 }
 
@@ -482,4 +484,38 @@ func binaryOp(t token) bool {
 		return true
 	}
 	return false
+}
+
+// OnType returns the edits of Format for ch typed before off: for '}',
+// those of the block it closes; for a newline, the indent of the line
+// off starts, if a token follows on it. An empty line gets none, so the
+// editor's own indent stays.
+func OnType(snap *psi.Snapshot, off int, ch string, opts FormatOptions) []TextEdit {
+	src := snap.Source()
+	switch ch {
+	case "}":
+		rb := snap.NodeAt(off - 1)
+		if rb.NumericKind() != psi.KindRBRACE {
+			return nil
+		}
+		// The block, from the line its owner starts on: typing a '}'
+		// reindents what it closes, as IntelliJ does.
+		b := rb.Parent()
+		start := b.Range().Start
+		if o := owner(b); o.Valid() {
+			start = o.Range().Start
+		}
+		start = strings.LastIndexByte(src[:start], '\n') + 1
+		return FormatRange(snap, opts, psi.Range{Start: start, End: b.Range().End})
+	case "\n":
+		end := off
+		for end < len(src) && (src[end] == ' ' || src[end] == '\t') {
+			end++
+		}
+		if end == len(src) || src[end] == '\n' || src[end] == '\r' {
+			return nil
+		}
+		return FormatRange(snap, opts, psi.Range{Start: end, End: end})
+	}
+	return nil
 }

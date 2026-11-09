@@ -29,7 +29,15 @@ error -32002: textDocument/documentSymbol before initialize
       ]
     },
     "definitionProvider": true,
+    "documentFormattingProvider": true,
     "documentHighlightProvider": true,
+    "documentOnTypeFormattingProvider": {
+      "firstTriggerCharacter": "}",
+      "moreTriggerCharacter": [
+        "\n"
+      ]
+    },
+    "documentRangeFormattingProvider": true,
     "documentSymbolProvider": true,
     "foldingRangeProvider": true,
     "hoverProvider": true,
