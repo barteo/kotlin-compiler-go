@@ -97,7 +97,15 @@ func simpleName(name string) string {
 // renderCall writes the callee of a call: fun <T> R.name(p: P): T, or
 // Name(p: P) for a constructor.
 func renderCall(c analysis.Call) string {
+	s, _ := renderSignature(c)
+	return s
+}
+
+// renderSignature is renderCall, with each parameter's [start, end) in
+// it.
+func renderSignature(c analysis.Call) (string, [][2]int) {
 	var b strings.Builder
+	var params [][2]int
 	name := simpleName(c.Name)
 	ctor := name == "<init>"
 	if ctor {
@@ -125,6 +133,7 @@ func renderCall(c analysis.Call) string {
 		if i > 0 {
 			b.WriteString(", ")
 		}
+		start := b.Len()
 		if i < len(c.Varargs) && c.Varargs[i] {
 			b.WriteString("vararg ")
 			if len(p.Arguments) == 1 {
@@ -134,16 +143,17 @@ func renderCall(c analysis.Call) string {
 				p = analysis.Type{Name: elem} // IntArray's Int
 			}
 		}
-		if i < len(c.ParameterNames) && c.ParameterNames[i] != "" {
-			b.WriteString(c.ParameterNames[i] + ": ")
+		if i < len(c.ParameterNames) && c.ParameterNames[i] != "" && !(c.FromJava && c.ParameterNames[i] == "p") {
+			b.WriteString(c.ParameterNames[i] + ": ") // not a Java class file's placeholder
 		}
 		b.WriteString(renderType(p))
+		params = append(params, [2]int{start, b.Len()})
 	}
 	b.WriteString(")")
 	if !ctor && c.DeclaredReturnType != nil {
 		b.WriteString(": " + renderType(*c.DeclaredReturnType))
 	}
-	return b.String()
+	return b.String(), params
 }
 
 // renderReceiver writes a receiver type, in parentheses if it is a

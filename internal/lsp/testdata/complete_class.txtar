@@ -170,7 +170,7 @@ trim function fun CharSequence.trim(predicate: (Char) -> Boolean): CharSequence 
 trim function fun CharSequence.trim(vararg chars: Char): CharSequence => "trim("
 ... 42 more
 > complete src/C.kt @applyThis 3
-append method fun append(p: Any!): StringBuilder! => "append("
-append method fun append(p: Boolean): StringBuilder! => "append("
-append method fun append(p: Char): StringBuilder! => "append("
+append method fun append(Any!): StringBuilder! => "append("
+append method fun append(Boolean): StringBuilder! => "append("
+append method fun append(Char): StringBuilder! => "append("
 ... 76 more

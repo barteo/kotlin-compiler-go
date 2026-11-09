@@ -60,6 +60,15 @@ error -32002: textDocument/documentSymbol before initialize
         ]
       }
     },
+    "signatureHelpProvider": {
+      "retriggerCharacters": [
+        "="
+      ],
+      "triggerCharacters": [
+        "(",
+        ","
+      ]
+    },
     "textDocumentSync": {
       "change": 2,
       "openClose": true,

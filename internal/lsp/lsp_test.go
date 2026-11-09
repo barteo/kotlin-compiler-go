@@ -543,6 +543,41 @@ func (s *session) run(line string) {
 			fmt.Fprintf(&s.out, "%s %s\n", fmtRange(*res.Range), excerpt(d, *res.Range, s.enc))
 		}
 		fmt.Fprintf(&s.out, "%s\n", strings.TrimRight(res.Contents.Value, "\n"))
+	case "signature":
+		// signature F POS: the candidates, the active one marked with *,
+		// with the active parameter in [brackets], and the first line of
+		// their documentation.
+		name := file()
+		if len(args) < 2 {
+			t.Fatalf("%s: no position", cmd)
+		}
+		var res *protocol.SignatureHelp
+		params := protocol.TextDocumentPositionParams{TextDocument: doc(), Position: s.position(name, args[1])}
+		if err := s.call("textDocument/signatureHelp", params, &res); err != nil {
+			s.printResult(nil, err)
+			return
+		}
+		if res == nil {
+			fmt.Fprintln(&s.out, "(none)")
+			return
+		}
+		for i, sig := range res.Signatures {
+			label := []rune(sig.Label) // ASCII in the tests: UTF-16 units are runes
+			if sig.ActiveParameter != nil && *sig.ActiveParameter >= 0 && *sig.ActiveParameter < len(sig.Parameters) {
+				pr := sig.Parameters[*sig.ActiveParameter].Label
+				label = []rune(string(label[:pr[0]]) + "[" + string(label[pr[0]:pr[1]]) + "]" + string(label[pr[1]:]))
+			}
+			mark := " "
+			if i == res.ActiveSignature {
+				mark = "*"
+			}
+			line := mark + " " + string(label)
+			if sig.Documentation != nil {
+				first, _, _ := strings.Cut(sig.Documentation.Value, "\n")
+				line += "  // " + first
+			}
+			fmt.Fprintln(&s.out, line)
+		}
 	case "complete":
 		// complete F POS [N [doc]]: the first N items (default 12), as
 		// label, kind and detail, then what an item inserts if it isn't

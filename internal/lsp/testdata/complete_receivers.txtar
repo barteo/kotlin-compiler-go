@@ -230,18 +230,18 @@ toString method fun toString(): String => "toString()"
 > complete src/Use.kt @companionNamed 2
 create method fun create(): Builder
 > complete src/Use.kt @javaStatic 3
-abs method fun abs(p: Double): Double
-abs method fun abs(p: Float): Float
-abs method fun abs(p: Int): Int
+abs method fun abs(Double): Double
+abs method fun abs(Float): Float
+abs method fun abs(Int): Int
 ... 5 more
 > complete src/Use.kt @javaField 3
-print method fun print(p: Any!): Unit
-print method fun print(p: Boolean): Unit
-print method fun print(p: Char): Unit
+print method fun print(Any!): Unit
+print method fun print(Boolean): Unit
+print method fun print(Char): Unit
 ... 18 more
 > complete src/Use.kt @javaConst 2
 MAX_VALUE property Int
-max method fun max(p: Int, p: Int): Int => "max("
+max method fun max(Int, Int): Int => "max("
 > complete src/Use.kt @extProp 2
 label property String
 > complete src/Use.kt @extFun 2

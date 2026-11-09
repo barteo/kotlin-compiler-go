@@ -160,6 +160,7 @@ func init() {
 		"textDocument/inlayHint":           (*Server).inlayHint,
 		"textDocument/completion":          (*Server).completion,
 		"completionItem/resolve":           (*Server).resolveCompletion,
+		"textDocument/signatureHelp":       (*Server).signatureHelp,
 	}
 }
 
@@ -205,6 +206,7 @@ func (s *Server) initialize(p *protocol.InitializeParams) *protocol.InitializeRe
 			ImplementationProvider:    true,
 			WorkspaceSymbolProvider:   true,
 			CompletionProvider:        &protocol.CompletionOptions{TriggerCharacters: []string{".", ":"}, ResolveProvider: true},
+			SignatureHelpProvider:     &protocol.SignatureHelpOptions{TriggerCharacters: []string{"(", ","}, RetriggerCharacters: []string{"="}},
 			InlayHintProvider:         true,
 		},
 		ServerInfo: &protocol.ServerInfo{Name: "kc-lsp", Version: Version},
