@@ -50,7 +50,8 @@ structural rewrites, about 170 places in `internal/check`; codegen reads
 them back), so a tree can't be checked twice and every update lowers
 every file again
 ([step 24](analysis-api.md#step-24-what-a-one-file-edit-costs-and-what-incremental-checking-needs)).
-The plan works within that until L6.
+The plan works within that; L6 narrows what an update checks, not what
+it lowers.
 
 ## Design
 
@@ -165,7 +166,7 @@ r, err := s.Update(ctx, sources) // sources carry editor texts, as ka.Source
 | L3 | Navigation | `hover` (type, signature, KDoc), `definition`, `typeDefinition`, `references`, `documentHighlight`, `implementation` (`Inheritors`, `Call.Targets`), `workspace/symbol`, semantic `semanticTokens`, `inlayHint` (inferred types, parameter names from `Call`'s mapping) | golden scripts; references equal a scan of the module's facts; hover and definition p95 < 20 ms |
 | L4 | Completion | `completion` (locals, receivers, members, extensions, keywords, named arguments, imports from the class index), `completionItem/resolve`, `signatureHelp` | golden lists at about 150 carets; p95 < 100 ms on octi-server |
 | L5 | Editing | `rename`, `codeAction` (organize imports and about 15 fixes keyed by code: add import, `?.` or `!!`, make `var`, implement members, add `when` branches, change type, remove unused, ...), `callHierarchy`, `formatting` | each fix's result compiles with `kc`; the formatter is idempotent on the corpus, with a committed diff budget against IntelliJ's formatter |
-| L6 | Daily use | modules checked against each other's sources, library navigation (`-sources.jar` from Gradle's cache, else a read-only `kc-lib:` stub from metadata), declaration edits checked per file, file watching and re-import | declaration edit < 150 ms on octi-server; rename and references across modules; definition into the standard library opens its source |
+| L6 | Daily use | modules checked against each other's sources, library navigation (`-sources.jar` from Gradle's cache, else a read-only stub from metadata), declaration edits checked per file, file watching and re-import | declaration edit < 150 ms on octi-server; rename and references across modules; definition into the standard library opens its source |
 
 L0–L4 make a usable server, about 4–6 engineer-months. That is more than an
 earlier 3–5 estimate, which assumed `ka` checks bodies. L5–L6 add about
@@ -190,7 +191,9 @@ earlier 3–5 estimate, which assumed `ka` checks bodies. L5–L6 add about
 | Codes for not implemented members, `NO_ELSE_IN_WHEN`, `RETURN_TYPE_MISMATCH_ON_OVERRIDE` | L5 | `internal/check/codes.go`, `class.go`, `expr.go` |
 | `MANY_IMPL_MEMBER_NOT_IMPLEMENTED` with the member's stub | L5 | `internal/check/delegation.go` |
 | A checked module's symbols as a `check.Library` layer for other modules | L6 | `internal/check`, `internal/driver` |
-| Written signatures resolved lazily per file, and checker results kept beside the trees ([step 24](analysis-api.md#step-24-what-a-one-file-edit-costs-and-what-incremental-checking-needs)) | L6 | `internal/check` |
+| Written signatures resolved lazily per file, and checker results kept beside the trees ([step 24](analysis-api.md#step-24-what-a-one-file-edit-costs-and-what-incremental-checking-needs)) (not done: L6 narrows what is checked instead) | L6 | `internal/check` |
+| Lookups recorded only for the files checked (`Options.Only`); `analysis`'s recorder keeps them per file | L6 | `internal/check/lookups.go`, `check.go`, `analysis/declared.go` |
+| `Library.Stub`: a class, or a package's functions and properties of a name, rendered as Kotlin source | L6 | `internal/check/stub.go` |
 
 ## Tests
 
@@ -465,8 +468,8 @@ nothing until the next update.
   call is. A declaration is named across views by its file and range.
   References gather the uses in every view of the file's modules;
   highlights mark assignment targets, `++`/`--` and compound
-  assignments as writes. A library declaration gives no definition
-  (L6). `TestReferencesScan` checks, on every program of
+  assignments as writes. A library declaration's definition is in its
+  sources or a stub (L6). `TestReferencesScan` checks, on every program of
   `testdata/run`, that the references of each declaration in the
   sources equal an independent scan of the module's facts, that the
   definition of each use is its declaration, and that hover describes
@@ -711,22 +714,103 @@ the first request after an update builds the index of uses):
 The 300 ms target is for kotlinx-coroutines-core, which is not measured
 yet.
 
+### L6: daily use
+
+1. **Declaration edits check the files they affect.** Each file's
+   checker records the names it looks up in packages and classes
+   (`check.LookupRecorder`), and `analysis` keeps them per file with the
+   names each file declares and the hash of the top-level declaration
+   that declares each. An update that changes, adds or removes a
+   declaration touches the names declared differently before and after.
+   It checks the edited files, the files that looked up a touched name,
+   the files that declare one (overloads and conflicts), and the files
+   that look up a supertype's name of a touched class (sealed
+   hierarchies). The others keep their facts, as for a body edit. If
+   more than half of the module is dirty, the whole module is checked.
+   Lookups are recorded only for the files checked, so a body edit pays
+   nothing for them. `TestSessionIncrementalDeclarations` and
+   `TestSessionIncrementalDeclarationScan` (a parameter with a default
+   added to the first function of each file of `testdata/run`) require
+   every incremental result to equal a whole check.
+2. **A dependency module's files are declared, not checked**, in the
+   modules that depend on it (`analysis.UpdateOptions.Declared`). They
+   are lowered with signatures only, are never in `Only`, and have no
+   facts or diagnostics there: their own module checks them. A change in
+   which files are declared checks the module whole. Navigation from a
+   dependency's declaration (references, rename, implementations,
+   incoming calls) widens to the modules of the declaration's file, and
+   a class of a dependency is found by its syntax when no symbol of the
+   dependent's names it. `TestSessionDeclared` and `modules.txtar`
+   cover the two-module case.
+3. **Library sources** (`internal/libsrc`). A jar's sources are a
+   sibling `-sources.jar`, or the one in Gradle's
+   `files-2.1/<group>/<artifact>/<version>/*/` cache, and the JDK's are
+   `$JAVA_HOME/lib/src.zip`. An archive is indexed once, by the package
+   and top-level names each `.kt` file's header declares and by each
+   `.java` file's class, and the index is cached by the archive's size
+   and time. A target (`ide.LibraryTarget`: a class, function,
+   constructor or property with the call's parameters and receiver) is
+   located by splitting its name into package and classes, longest
+   package first, then walking members. Overloads are ranked by receiver,
+   parameter count, varargs and parameter types' simple names, and an
+   `actual` beats an `expect`. The standard library's sources, laid out
+   by source set rather than package, resolve `listOf`, `println`,
+   `String.trim`, `Pair`, `MutableList.add` and `String.length`
+   (`TestStdlibSources`).
+4. **Library navigation in the server.** Definition and type definition
+   of a library target, and outgoing calls to library callees, go to the
+   declaration in a file extracted from the archive to a cache directory
+   (`initializationOptions.libraryCache`, else the user cache dir's
+   `kc-lsp/sources`), read-only. Every client opens it as a file, with
+   the syntax features of a file outside the modules. That replaces the
+   planned `kc-lib:` URIs and `kc/libSource` request, which every client
+   would need a content provider for. Hover adds the declaration's KDoc.
+   `initializationOptions.librarySources: false` turns the sources off.
+5. **Stubs from metadata.** When no sources have the target, or sources
+   are off, `check.Library.Stub` renders the top-level class (members,
+   constructors, companion and Java statics, enum entries, supertypes)
+   or the package's functions and properties of the name, as Kotlin
+   without bodies. The stub is extracted to `stubs-<hash>/` in the same
+   cache and the target is located in it as in sources
+   (`libsrc.LocateIn`). A getter's call written as its property,
+   `p.first`, goes to the property. `library_stubs.txtar` covers it.
+6. **Watching and re-import.** With the client's file watchers, created
+   and deleted files re-list the modules' sources as before. Without
+   them, opening, saving or closing a Kotlin file that a module's roots
+   hold but its list doesn't re-lists the module. A scan every 5 s lists
+   the sources again, kicks the modules whose list changed, and drops the
+   disk snapshots of files no module lists. `workspace/executeCommand
+   kc.reimport` reloads the projects with Gradle's model refreshed, and
+   a project that fails to load keeps the modules loaded before
+   (`unwatched.txtar`).
+
+Benchmarks, on the generated 200-file module (`-benchtime 30x`):
+
+| Edit to semantic diagnostics | before L6 p50 | p50 | p95 |
+|---|---:|---:|---:|
+| body edit | 35 ms | 28 ms | 47 ms |
+| body edit in a dependency module (`BenchmarkModuleBodyEdit`) | 33 ms | 27 ms | 40 ms |
+| declaration edit (`BenchmarkDeclarationEdit`) | 340 ms | 31 ms | 46 ms |
+
+The declaration edit is under the 150 ms target on the generated
+module. octi-server isn't measured. Completion did not regress (p95
+56–57 ms), nor did navigation.
+
 ## Gaps and open questions
 
 - **Diagnostics `kc` lacks.** `kc` reports no warnings and runs few of
   `kotlinc`'s checkers, so the editor shows fewer problems than
   IntelliJ. The precision policy keeps false errors out, not missing
   ones in.
-- **Declaration edits** check the whole module until L6. Every update
-  lowers every file's signatures and declares them again, while the
-  checker writes into the trees. A body edit on a 200-file module is at
-  its 30 ms target, with no margin, and grows with the module (L1
-  above).
-- **Project dependencies** are analyzed from source with the module
-  that depends on them, as one session: a module and its dependencies'
-  files are checked together, and a dependency's files are checked
-  again in each module that depends on it. Their own diagnostics are
-  shown from their own module only.
+- **Every update declares every file again.** L6 narrows what is
+  checked, not what is lowered and declared, since the checker writes
+  into the trees. Lookups are a superset of what a file depends on, so
+  a declaration edit may check more files than it needs, and a name
+  many files look up (a common class's member) can make the module
+  check whole.
+- **Project dependencies** are declared in each dependent module under
+  the dependent's module name, so a dependency's `internal`
+  declarations stay visible there.
 - **Ranges** are one token, or a string literal, at the error's position.
   kotlinc's ranges are often a whole call or expression.
 - **Precision** is measured on the conformance tests, not on real
@@ -744,32 +828,38 @@ yet.
 - **Gradle import** depends on the Kotlin Gradle plugin's API, read
   dynamically from Groovy; each plugin version it supports needs a
   fixture.
-- **Library navigation**: a library declaration has no definition and
-  no KDoc, and workspace symbols leave library classes out, until L6
-  reads library sources.
+- **Library navigation** stops at the library's file: inside it there
+  are only syntax features, with no semantic navigation. Workspace
+  symbols leave library declarations out. The JDK's sources need
+  `src.zip`, which some JDK installs leave out. Stubs leave out default
+  values, annotations and KDoc, and use simple type names. Kotlin's
+  builtin classes (`String`, `Int`, `Any`), which come from
+  `.kotlin_builtins` rather than class files, have no stub, so
+  `s.length` goes nowhere without sources. Prepare call hierarchy on a
+  library declaration finds nothing.
 - **Navigation follows the module.** References and implementations are
-  found in the modules whose sources hold the file, not in modules that
-  depend on it without analyzing it, and a property's overrides aren't
-  recorded, so implementations of a property find nothing.
+  found in the modules whose sources hold the file and, from L6, those
+  of the declaration's file. A property's overrides aren't recorded, so
+  implementations of a property find nothing.
 - **Requests are served one at a time**, so a slow one (references right
   after an update, while its index builds) delays the next.
 - **Hover notes non-null smart casts only**; a smart cast to a subtype
   shows the declared type.
 - **KDoc and library sources** need `-sources.jar`s, which Gradle
-  downloads only when asked; the import doesn't ask for them yet.
+  downloads only when asked; the import doesn't ask for them yet, so
+  only those already in Gradle's cache or beside a jar are found.
 - **Completion** is measured on the generated module, not octi-server.
   Each request lowers every file's signatures again (L6 keeps them).
   Rendered signatures leave out type parameters' bounds and default
   values. A member of a nullable receiver after `.` is offered without
   rewriting it to `?.`. Keyword sets are approximations of where the
-  grammar allows each one. Library declarations have no KDoc (L6), and
-  Java parameters have no names. Importables come from the class path
+  grammar allows each one. Library declarations have no KDoc in
+  completion, and Java parameters have no names. Importables come from the class path
   and the module's sources, not from modules that don't depend on each
   other.
 - **Rename** doesn't check conflicts with other declarations (IntelliJ
   warns), doesn't rename a property's Java-style accessors, and keeps
   aliased and operator uses.
-- **Call hierarchy** leaves out library targets until L6.
 - **Quick fixes.** Unresolved types have an uncoded message ("unresolved
   or unsupported type"), so they get no import fix.
   `MANY_IMPL_MEMBER_NOT_IMPLEMENTED` is reported only for delegation.
