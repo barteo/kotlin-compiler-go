@@ -25,8 +25,17 @@ func renderType(t analysis.Type) string {
 		if t.Nullable {
 			b.WriteString("(")
 		}
+		params := t.Arguments[:n]
+		if t.Receiver && n > 0 {
+			r := renderType(argument(params[0]))
+			if strings.HasPrefix(r, "(") || strings.HasSuffix(r, "?") {
+				r = "(" + r + ")"
+			}
+			b.WriteString(r + ".")
+			params = params[1:]
+		}
 		b.WriteString("(")
-		for i, a := range t.Arguments[:n] {
+		for i, a := range params {
 			if i > 0 {
 				b.WriteString(", ")
 			}
@@ -121,6 +130,8 @@ func renderCall(c analysis.Call) string {
 			if len(p.Arguments) == 1 {
 				p = p.Arguments[0] // Array<out T>'s T
 				p.Projection = ""
+			} else if elem, ok := strings.CutSuffix(p.Name, "Array"); ok && strings.HasPrefix(p.Name, "kotlin.") && len(p.Arguments) == 0 {
+				p = analysis.Type{Name: elem} // IntArray's Int
 			}
 		}
 		if i < len(c.ParameterNames) && c.ParameterNames[i] != "" {

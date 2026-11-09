@@ -1,0 +1,176 @@
+-- kc-lsp.json --
+{"modules": [{"name": "main", "sourceRoots": ["src"]}]}
+-- src/C.kt --
+package c
+
+interface Named {
+    val name: String
+    fun describe(): String = "named $name"
+}
+
+open class Base(val id: Int) {
+    open fun render(): String = "base"
+    protected fun helper() = 1
+}
+
+class Impl(id: Int, override val name: String) : Base(id), Named {
+    private val cache = mutableMapOf<Int, String>()
+
+    init {
+        cac/*|init*/
+    }
+
+    override fun render(): String {
+        return super./*|super*/
+    }
+
+    fun useProtected() {
+        hel/*|protected*/
+    }
+
+    fun outerAccess() {
+        val inner = object {
+            fun go() = na/*|objectExpr*/
+        }
+    }
+
+    inner class Inner {
+        fun up() = this@Impl./*|labeledThis*/
+    }
+
+    companion object {
+        val DEFAULT = 0
+        fun make() = DEF/*|companionScope*/
+    }
+}
+
+fun Impl.extension() {
+    ren/*|extensionThis*/
+}
+
+fun <T : Named> generic(t: T) {
+    t./*|boundMembers*/
+}
+
+sealed class Result
+class Ok(val value: Int) : Result()
+class Err(val message: String) : Result()
+
+fun branches(r: Result) {
+    when (r) {
+        is O/*|isBranch*/ -> {}
+        else -> {}
+    }
+}
+
+fun okValue(r: Result) {
+    if (r is Ok) r./*|smartOk*/
+}
+
+enum class Dir { NORTH, SOUTH }
+
+fun enumWhen(d: Dir) {
+    when (d) {
+        Dir.NO/*|enumBranch*/ -> {}
+        else -> {}
+    }
+}
+
+fun initializer() {
+    val list = mutableListOf<Int>()
+    list.ad/*|mutableAdd*/
+}
+
+fun nullableReceiver(s: String?) {
+    s?.let { it.tri/*|letIt*/ }
+}
+
+fun scopeFunctionThis() {
+    StringBuilder().apply { app/*|applyThis*/ }
+}
+-- script --
+initialize
+open src/C.kt
+wait
+complete src/C.kt @init 2
+complete src/C.kt @super 4
+complete src/C.kt @protected 2
+complete src/C.kt @objectExpr 2
+complete src/C.kt @labeledThis 4
+complete src/C.kt @companionScope 2
+complete src/C.kt @extensionThis 2
+complete src/C.kt @boundMembers 4
+complete src/C.kt @isBranch 2
+complete src/C.kt @smartOk 2
+complete src/C.kt @enumBranch 2
+complete src/C.kt @mutableAdd 3
+complete src/C.kt @letIt 3
+complete src/C.kt @applyThis 3
+-- want --
+> initialize
+> open src/C.kt
+> wait
+> complete src/C.kt @init 2
+cache property MutableMap<Int, String>
+CachedRowSet class javax.sql.rowset.CachedRowSet +0:9-0:9 "\n\nimport javax.sql.rowset.CachedRowSet"
+... 105 more
+> complete src/C.kt @super 4
+describe method fun describe(): String => "describe()"
+name property String
+render method fun render(): String => "render()"
+toString method fun toString(): String => "toString()"
+... 4 more
+> complete src/C.kt @protected 2
+helper method fun helper(): Int => "helper()"
+HTMLDivElement class org.w3c.dom.html.HTMLDivElement +0:9-0:9 "\n\nimport org.w3c.dom.html.HTMLDivElement"
+... 70 more
+> complete src/C.kt @objectExpr 2
+name property String
+naturalOrder function fun <T> naturalOrder(): Comparator<T> => "naturalOrder()"
+... 141 more
+> complete src/C.kt @labeledThis 4
+cache property MutableMap<Int, String>
+describe method fun describe(): String => "describe()"
+helper method fun helper(): Int => "helper()"
+id property Int
+... 17 more
+> complete src/C.kt @companionScope 2
+DEFAULT property Int
+DEFAULT_BUFFER_SIZE property Int
+... 79 more
+> complete src/C.kt @extensionThis 2
+render method fun render(): String => "render()"
+Renderer class javax.swing.Renderer +0:9-0:9 "\n\nimport javax.swing.Renderer"
+... 171 more
+> complete src/C.kt @boundMembers 4
+describe method fun describe(): String => "describe()"
+name property String
+equals method operator fun equals(other: Any?): Boolean => "equals("
+hashCode method fun hashCode(): Int => "hashCode()"
+... 31 more
+> complete src/C.kt @isBranch 2
+(incomplete)
+Ok class c.Ok
+OptIn interface kotlin.OptIn
+... 198 more
+> complete src/C.kt @smartOk 2
+value property Int
+equals method operator fun equals(other: Any?): Boolean => "equals("
+... 11 more
+> complete src/C.kt @enumBranch 2
+NORTH property Dir
+> complete src/C.kt @mutableAdd 3
+add method fun add(element: Int): Boolean => "add("
+add method fun add(index: Int, element: Int): Unit => "add("
+addAll method fun addAll(elements: Collection<Int>): Boolean => "addAll("
+... 25 more
+> complete src/C.kt @letIt 3
+trim function fun CharSequence.trim(): CharSequence => "trim()"
+trim function fun CharSequence.trim(predicate: (Char) -> Boolean): CharSequence => "trim("
+trim function fun CharSequence.trim(vararg chars: Char): CharSequence => "trim("
+... 42 more
+> complete src/C.kt @applyThis 3
+append method fun append(p: Any!): StringBuilder! => "append("
+append method fun append(p: Boolean): StringBuilder! => "append("
+append method fun append(p: Char): StringBuilder! => "append("
+... 76 more

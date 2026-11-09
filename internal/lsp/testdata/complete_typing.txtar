@@ -1,0 +1,170 @@
+-- kc-lsp.json --
+{"modules": [{"name": "main", "sourceRoots": ["src"]}]}
+-- src/A.kt --
+package p
+
+class Point(val x: Int, val y: Int) {
+    fun scaled(k: Int) = Point(x * k, y * k)
+}
+
+fun work(p: Point, names: List<String>) {
+    val sum = p.x + p.y
+    println(sum)
+    if (sum > 0) {
+        println(names.size)
+    }
+}
+-- dot.kt --
+package p
+
+class Point(val x: Int, val y: Int) {
+    fun scaled(k: Int) = Point(x * k, y * k)
+}
+
+fun work(p: Point, names: List<String>) {
+    p./*|dot*/
+    val sum = p.x + p.y
+    println(sum)
+    if (sum > 0) {
+        println(names.size)
+    }
+}
+-- dotif.kt --
+package p
+
+class Point(val x: Int, val y: Int) {
+    fun scaled(k: Int) = Point(x * k, y * k)
+}
+
+fun work(p: Point, names: List<String>) {
+    val sum = p.x + p.y
+    println(sum)
+    names./*|dotif*/
+    if (sum > 0) {
+        println(names.size)
+    }
+}
+-- paren.kt --
+package p
+
+class Point(val x: Int, val y: Int) {
+    fun scaled(k: Int) = Point(x * k, y * k)
+}
+
+fun work(p: Point, names: List<String>) {
+    val sum = p.x + p.y
+    println(p.scaled(/*|paren*/
+    if (sum > 0) {
+        println(names.size)
+    }
+}
+-- name.kt --
+package p
+
+class Point(val x: Int, val y: Int) {
+    fun scaled(k: Int) = Point(x * k, y * k)
+}
+
+fun work(p: Point, names: List<String>) {
+    val sum = p.x + p.y
+    su/*|name*/
+    if (sum > 0) {
+        println(names.size)
+    }
+}
+-- val.kt --
+package p
+
+class Point(val x: Int, val y: Int) {
+    fun scaled(k: Int) = Point(x * k, y * k)
+}
+
+fun work(p: Point, names: List<String>) {
+    val sum = p.x + p.y
+    val q = /*|val*/
+    if (sum > 0) {
+        println(names.size)
+    }
+}
+-- member.kt --
+package p
+
+class Point(val x: Int, val y: Int) {
+    fun scaled(k: Int) = Point(x * k, y * k)
+    fun /*|fun*/
+}
+
+fun work(p: Point, names: List<String>) {
+}
+-- classbody.kt --
+package p
+
+class Point(val x: Int, val y: Int) {
+    fun scaled(k: Int) = Point(x * k, y * k)
+    ov/*|classbody*/
+}
+-- script --
+initialize
+open src/A.kt
+wait
+replace src/A.kt dot.kt
+complete src/A.kt @dot 5
+replace src/A.kt dotif.kt
+complete src/A.kt @dotif 3
+replace src/A.kt paren.kt
+complete src/A.kt @paren 3
+replace src/A.kt name.kt
+complete src/A.kt @name 3
+replace src/A.kt val.kt
+complete src/A.kt @val 4
+replace src/A.kt member.kt
+complete src/A.kt @fun 3
+replace src/A.kt classbody.kt
+complete src/A.kt @classbody 3
+-- want --
+> initialize
+> open src/A.kt
+> wait
+> replace src/A.kt dot.kt
+> complete src/A.kt @dot 5
+scaled method fun scaled(k: Int): Point => "scaled("
+x property Int
+y property Int
+equals method operator fun equals(other: Any?): Boolean => "equals("
+hashCode method fun hashCode(): Int => "hashCode()"
+... 10 more
+> replace src/A.kt dotif.kt
+> complete src/A.kt @dotif 3
+(incomplete)
+contains method operator fun contains(element: String): Boolean => "contains("
+containsAll method fun containsAll(elements: Collection<String>): Boolean => "containsAll("
+equals method operator fun equals(other: Any?): Boolean => "equals("
+... 197 more
+> replace src/A.kt paren.kt
+> complete src/A.kt @paren 3
+(incomplete)
+k = variable Int => "k = "
+sum variable Int
+compareValues function fun <T> compareValues(a: T?, b: T?): Int => "compareValues("
+... 197 more
+> replace src/A.kt name.kt
+> complete src/A.kt @name 3
+(incomplete)
+sum variable Int
+super keyword
+sun package sun
+... 197 more
+> replace src/A.kt val.kt
+> complete src/A.kt @val 4
+(incomplete)
+names variable List<String>
+p variable Point
+sum variable Int
+Point class p.Point => "Point("
+... 196 more
+> replace src/A.kt member.kt
+> complete src/A.kt @fun 3
+(none)
+> replace src/A.kt classbody.kt
+> complete src/A.kt @classbody 3
+override keyword

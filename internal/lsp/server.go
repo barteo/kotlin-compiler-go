@@ -40,6 +40,7 @@ type Server struct {
 	closedShown  map[string]bool // files not open whose diagnostics are shown
 	enc          ide.Encoding
 	hierarchical bool
+	snippets     bool // the client takes snippets in completion items
 	initialized  bool
 	shutdown     bool
 	exitCode     int
@@ -157,6 +158,8 @@ func init() {
 		"textDocument/implementation":      (*Server).implementation,
 		"workspace/symbol":                 (*Server).workspaceSymbol,
 		"textDocument/inlayHint":           (*Server).inlayHint,
+		"textDocument/completion":          (*Server).completion,
+		"completionItem/resolve":           (*Server).resolveCompletion,
 	}
 }
 
@@ -174,6 +177,9 @@ func (s *Server) initialize(p *protocol.InitializeParams) *protocol.InitializeRe
 	}
 	if td := p.Capabilities.TextDocument; td != nil && td.DocumentSymbol != nil {
 		s.hierarchical = td.DocumentSymbol.HierarchicalDocumentSymbolSupport
+	}
+	if td := p.Capabilities.TextDocument; td != nil && td.Completion != nil && td.Completion.CompletionItem != nil {
+		s.snippets = td.Completion.CompletionItem.SnippetSupport
 	}
 	if ws := p.Capabilities.Workspace; ws != nil && ws.DidChangeWatchedFiles != nil {
 		s.canWatch = ws.DidChangeWatchedFiles.DynamicRegistration
@@ -198,6 +204,7 @@ func (s *Server) initialize(p *protocol.InitializeParams) *protocol.InitializeRe
 			HoverProvider:             true,
 			ImplementationProvider:    true,
 			WorkspaceSymbolProvider:   true,
+			CompletionProvider:        &protocol.CompletionOptions{TriggerCharacters: []string{".", ":"}, ResolveProvider: true},
 			InlayHintProvider:         true,
 		},
 		ServerInfo: &protocol.ServerInfo{Name: "kc-lsp", Version: Version},

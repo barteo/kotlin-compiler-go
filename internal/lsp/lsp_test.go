@@ -543,6 +543,62 @@ func (s *session) run(line string) {
 			fmt.Fprintf(&s.out, "%s %s\n", fmtRange(*res.Range), excerpt(d, *res.Range, s.enc))
 		}
 		fmt.Fprintf(&s.out, "%s\n", strings.TrimRight(res.Contents.Value, "\n"))
+	case "complete":
+		// complete F POS [N [doc]]: the first N items (default 12), as
+		// label, kind and detail, then what an item inserts if it isn't
+		// its label, and the import it adds; with doc, the first item's
+		// documentation, from completionItem/resolve.
+		name := file()
+		if len(args) < 2 {
+			t.Fatalf("%s: no position", cmd)
+		}
+		n := 12
+		if len(args) > 2 {
+			n, _ = strconv.Atoi(args[2])
+		}
+		var res protocol.CompletionList
+		params := protocol.CompletionParams{TextDocumentPositionParams: protocol.TextDocumentPositionParams{TextDocument: doc(), Position: s.position(name, args[1])}}
+		if err := s.call("textDocument/completion", params, &res); err != nil {
+			s.printResult(nil, err)
+			return
+		}
+		if len(res.Items) == 0 {
+			fmt.Fprintln(&s.out, "(none)")
+		}
+		if res.IsIncomplete {
+			fmt.Fprintln(&s.out, "(incomplete)")
+		}
+		kinds := map[int]string{}
+		for k, v := range completionKinds {
+			kinds[v] = k
+		}
+		kinds[protocol.CompletionVariable], kinds[protocol.CompletionClass], kinds[protocol.CompletionInterface] = "variable", "class", "interface"
+		for i, it := range res.Items {
+			if i == n {
+				fmt.Fprintf(&s.out, "... %d more\n", len(res.Items)-n)
+				break
+			}
+			line := it.Label + " " + kinds[it.Kind]
+			if it.Detail != "" {
+				line += " " + it.Detail
+			}
+			if it.TextEdit != nil && it.TextEdit.NewText != it.Label {
+				line += fmt.Sprintf(" => %q", it.TextEdit.NewText)
+			}
+			for _, e := range it.AdditionalTextEdits {
+				line += fmt.Sprintf(" +%s %q", fmtRange(e.Range), e.NewText)
+			}
+			if len(it.Tags) > 0 {
+				line += " (deprecated)"
+			}
+			if len(it.Data) > 0 && i == 0 && len(args) > 3 && args[3] == "doc" {
+				var resolved protocol.CompletionItem
+				if err := s.call("completionItem/resolve", it, &resolved); err == nil && resolved.Documentation != nil {
+					line += "\n    " + strings.ReplaceAll(resolved.Documentation.Value, "\n", "\n    ")
+				}
+			}
+			fmt.Fprintln(&s.out, line)
+		}
 	case "tokens":
 		name := file()
 		var res protocol.SemanticTokens

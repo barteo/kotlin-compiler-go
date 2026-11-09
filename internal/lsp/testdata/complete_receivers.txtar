@@ -1,0 +1,313 @@
+-- kc-lsp.json --
+{"modules": [{"name": "main", "sourceRoots": ["src"]}]}
+-- src/Model.kt --
+package model
+
+enum class Color { RED, GREEN, BLUE; fun dim() = this }
+
+sealed interface Shape {
+    val area: Double
+}
+data class Circle(val radius: Double) : Shape {
+    override val area: Double get() = 3.14 * radius * radius
+}
+data class Square(val side: Double) : Shape {
+    override val area: Double get() = side * side
+    fun diagonal(): Double = side * 1.41
+}
+
+object Registry {
+    val shapes = mutableListOf<Shape>()
+    fun register(s: Shape) { shapes += s }
+    const val LIMIT = 10
+}
+
+class Builder {
+    var width = 0
+    var height = 0
+    fun size(w: Int, h: Int) { width = w; height = h }
+    class Part(val name: String)
+    inner class Slot
+    companion object Factory {
+        fun create(): Builder = Builder()
+    }
+}
+
+fun build(block: Builder.() -> Unit): Builder = Builder().apply(block)
+
+val Shape.label: String get() = "shape of $area"
+fun Shape.describe(): String = label
+
+fun <T : Comparable<T>> List<T>.largest(): T? = maxOrNull()
+-- src/Use.kt --
+package model
+
+fun lambdas(shapes: List<Shape>) {
+    shapes.forEach { it./*|it*/ }
+    shapes.map { s -> s.ar/*|lambdaParam*/ea }
+    build { wi/*|withReceiver*/dth = 1 }
+    build { this./*|thisReceiver*/ }
+    with(Registry) { reg/*|with*/ister(Circle(1.0)) }
+    "text".run { len/*|run*/gth }
+}
+
+fun smart(s: Shape) {
+    if (s is Square) s.dia/*|isSquare*/gonal()
+    when (s) {
+        is Circle -> s.rad/*|whenCircle*/ius
+        is Square -> s.si/*|whenSquare*/de
+    }
+}
+
+fun enumStatic() {
+    Color./*|enum*/
+}
+
+fun objectStatic() {
+    Registry./*|object*/
+}
+
+fun companionStatic() {
+    Builder./*|companion*/
+}
+
+fun statics() {
+    Color.RED.di/*|enumMember*/m()
+    Builder.Factory.cr/*|companionNamed*/eate()
+    Math.ab/*|javaStatic*/s(1)
+    System.out.pri/*|javaField*/ntln()
+    Integer.MAX/*|javaConst*/_VALUE
+}
+
+fun extensions(c: Circle, nums: List<Int>) {
+    c.lab/*|extProp*/el
+    c.desc/*|extFun*/ribe()
+    nums.larg/*|bounded*/est()
+    listOf("a").lar/*|boundedString*/gest()
+    nums.firstOrN/*|stdlibExt*/ull()
+}
+
+fun generics(m: Map<String, List<Int>>) {
+    m.getOrD/*|mapMember*/efault("a", emptyList())
+    m.entries.first().val/*|entry*/ue
+    m["a"]?.firstO/*|safeChain*/rNull()
+}
+
+fun packageQualifier() {
+    java.util./*|package*/
+}
+
+fun packages() {
+    kotlin.collections.Array/*|packageClass*/List<Int>()
+    model.Col/*|ownPackage*/or.RED
+}
+
+fun constructors() {
+    Circle(rad/*|ctorNamed*/ius = 1.0)
+    Builder.Part(/*|nestedCtor*/)
+    Square(/*|ctorArg*/)
+}
+
+class Inside {
+    val field = 1
+    fun method() {
+        fie/*|implicitThis*/ld
+        this.met/*|explicitThis*/hod()
+    }
+}
+
+fun typeArgs(): Map<String, Sha/*|typeArg*/pe>? = null
+
+fun callableRefs() {
+    val f = Circle::rad/*|propRef*/ius
+    val g = ::bui/*|topRef*/ld
+}
+
+fun templates(c: Circle) {
+    println("$c.radius ${c.rad/*|longTemplate*/ius}")
+}
+-- script --
+initialize
+open src/Use.kt
+wait
+complete src/Use.kt @it 4
+complete src/Use.kt @lambdaParam 2
+complete src/Use.kt @withReceiver 2
+complete src/Use.kt @thisReceiver 5
+complete src/Use.kt @with 2
+complete src/Use.kt @run 2
+complete src/Use.kt @isSquare 2
+complete src/Use.kt @whenCircle 2
+complete src/Use.kt @whenSquare 2
+complete src/Use.kt @enum 6
+complete src/Use.kt @enumMember 2
+complete src/Use.kt @object 5
+complete src/Use.kt @companion 4
+complete src/Use.kt @companionNamed 2
+complete src/Use.kt @javaStatic 3
+complete src/Use.kt @javaField 3
+complete src/Use.kt @javaConst 2
+complete src/Use.kt @extProp 2
+complete src/Use.kt @extFun 2
+complete src/Use.kt @bounded 2
+complete src/Use.kt @boundedString 2
+complete src/Use.kt @stdlibExt 2
+complete src/Use.kt @mapMember 2
+complete src/Use.kt @entry 2
+complete src/Use.kt @safeChain 2
+complete src/Use.kt @package 5
+complete src/Use.kt @packageClass 2
+complete src/Use.kt @ownPackage 2
+complete src/Use.kt @ctorNamed 3
+complete src/Use.kt @nestedCtor 3
+complete src/Use.kt @ctorArg 3
+complete src/Use.kt @implicitThis 2
+complete src/Use.kt @explicitThis 2
+complete src/Use.kt @typeArg 3
+complete src/Use.kt @propRef 2
+complete src/Use.kt @topRef 2
+complete src/Use.kt @longTemplate 2
+-- want --
+> initialize
+> open src/Use.kt
+> wait
+> complete src/Use.kt @it 4
+area property Double
+equals method operator fun equals(other: Any?): Boolean => "equals("
+hashCode method fun hashCode(): Int => "hashCode()"
+toString method fun toString(): String => "toString()"
+... 11 more
+> complete src/Use.kt @lambdaParam 2
+area property Double
+> complete src/Use.kt @withReceiver 2
+width property Int
+> complete src/Use.kt @thisReceiver 5
+height property Int
+size method fun size(w: Int, h: Int): Unit => "size("
+width property Int
+equals method operator fun equals(other: Any?): Boolean => "equals("
+hashCode method fun hashCode(): Int => "hashCode()"
+... 10 more
+> complete src/Use.kt @with 2
+register method fun register(s: Shape): Unit
+Registry object model.Registry
+... 30 more
+> complete src/Use.kt @run 2
+length property Int
+elementAt function fun CharSequence.elementAt(index: Int): Char => "elementAt("
+... 107 more
+> complete src/Use.kt @isSquare 2
+diagonal method fun diagonal(): Double
+> complete src/Use.kt @whenCircle 2
+radius property Double
+> complete src/Use.kt @whenSquare 2
+side property Double
+toString method fun toString(): String => "toString()"
+... 1 more
+> complete src/Use.kt @enum 6
+BLUE property Color
+GREEN property Color
+RED property Color
+valueOf method fun valueOf(value: String): Color => "valueOf("
+values method fun values(): Array<Color> => "values()"
+> complete src/Use.kt @enumMember 2
+dim method fun dim(): Color
+ordinal method fun ordinal(): Int
+... 3 more
+> complete src/Use.kt @object 5
+LIMIT property Int
+register method fun register(s: Shape): Unit => "register("
+shapes property MutableList<Shape>
+equals method operator fun equals(other: Any?): Boolean => "equals("
+hashCode method fun hashCode(): Int => "hashCode()"
+... 10 more
+> complete src/Use.kt @companion 4
+create method fun create(): Builder => "create()"
+equals method operator fun equals(other: Any?): Boolean => "equals("
+hashCode method fun hashCode(): Int => "hashCode()"
+toString method fun toString(): String => "toString()"
+... 12 more
+> complete src/Use.kt @companionNamed 2
+create method fun create(): Builder
+> complete src/Use.kt @javaStatic 3
+abs method fun abs(p: Double): Double
+abs method fun abs(p: Float): Float
+abs method fun abs(p: Int): Int
+... 5 more
+> complete src/Use.kt @javaField 3
+print method fun print(p: Any!): Unit
+print method fun print(p: Boolean): Unit
+print method fun print(p: Char): Unit
+... 18 more
+> complete src/Use.kt @javaConst 2
+MAX_VALUE property Int
+max method fun max(p: Int, p: Int): Int => "max("
+> complete src/Use.kt @extProp 2
+label property String
+> complete src/Use.kt @extFun 2
+describe function fun Shape.describe(): String
+> complete src/Use.kt @bounded 2
+largest function fun <T> List<T>.largest(): T?
+> complete src/Use.kt @boundedString 2
+largest function fun <T> List<T>.largest(): T?
+spliterator method operator fun spliterator(): Spliterator<String!>!
+... 10 more
+> complete src/Use.kt @stdlibExt 2
+firstOrNull function fun <T> Iterable<T>.firstOrNull(): T?
+firstOrNull function fun <T> Iterable<T>.firstOrNull(predicate: (T) -> Boolean): T?
+... 2 more
+> complete src/Use.kt @mapMember 2
+getOrDefault method fun getOrDefault(key: String, defaultValue: List<Int>): List<Int>
+> complete src/Use.kt @entry 2
+value property List<Int>
+javaClass property Class<T>
+> complete src/Use.kt @safeChain 2
+firstOrNull function fun <T> Iterable<T>.firstOrNull(): T?
+firstOrNull function fun <T> Iterable<T>.firstOrNull(predicate: (T) -> Boolean): T?
+... 5 more
+> complete src/Use.kt @package 5
+AbstractCollection class java.util.AbstractCollection
+AbstractList class java.util.AbstractList
+AbstractMap class java.util.AbstractMap
+AbstractQueue class java.util.AbstractQueue
+AbstractSequentialList class java.util.AbstractSequentialList
+... 115 more
+> complete src/Use.kt @packageClass 2
+ArrayList class java.util.ArrayList
+ArrayDeque class kotlin.collections.ArrayDeque
+... 2 more
+> complete src/Use.kt @ownPackage 2
+Color enum model.Color
+> complete src/Use.kt @ctorNamed 3
+radius = variable Double => "radius"
+> complete src/Use.kt @nestedCtor 3
+(incomplete)
+name = variable String => "name = "
+buildString function fun buildString(builderAction: StringBuilder.() -> Unit): String => "buildString("
+buildString function fun buildString(capacity: Int, builderAction: StringBuilder.() -> Unit): String => "buildString("
+... 197 more
+> complete src/Use.kt @ctorArg 3
+(incomplete)
+side = variable Double => "side = "
+maxOf function fun maxOf(a: Double, b: Double): Double => "maxOf("
+maxOf function fun maxOf(a: Double, b: Double, c: Double): Double => "maxOf("
+... 197 more
+> complete src/Use.kt @implicitThis 2
+field property Int
+Field class java.lang.reflect.Field +0:13-0:13 "\n\nimport java.lang.reflect.Field"
+... 104 more
+> complete src/Use.kt @explicitThis 2
+method method fun method(): Unit
+> complete src/Use.kt @typeArg 3
+Shape interface model.Shape
+ShardingKey class java.sql.ShardingKey +0:13-0:13 "\n\nimport java.sql.ShardingKey"
+ShardingKeyBuilder class java.sql.ShardingKeyBuilder +0:13-0:13 "\n\nimport java.sql.ShardingKeyBuilder"
+... 62 more
+> complete src/Use.kt @propRef 2
+radius property Double
+> complete src/Use.kt @topRef 2
+build function fun build(block: Builder.() -> Unit): Builder
+buildMap function fun <K, V> buildMap(builderAction: MutableMap<K, V>.() -> Unit): Map<K, V>
+... 18 more
+> complete src/Use.kt @longTemplate 2
+radius property Double

@@ -1,0 +1,227 @@
+-- kc-lsp.json --
+{"modules": [{"name": "main", "sourceRoots": ["src"]}]}
+-- src/M.kt --
+package m
+
+/**
+ * A user, named [name].
+ * @property age in years
+ */
+data class User(val name: String, val age: Int) {
+    /** Whether [age] is at least 18. */
+    val adult: Boolean get() = age >= 18
+    @Deprecated("use adult")
+    fun isAdult(): Boolean = adult
+    fun greet(other: User): String = "hi ${other.name}"
+    private fun secret() = 0
+}
+
+fun inString(u: User) {
+    val s = "name: /*|inString*/"
+}
+
+fun inBlockComment(u: User) {
+    /* u./*|inBlockComment*/ */
+}
+
+fun afterNumber() {
+    val n = 12/*|afterNumber*/
+}
+
+fun deprecated(u: User) {
+    u.isA/*|deprecated*/
+}
+
+fun privateHidden(u: User) {
+    u.sec/*|privateHidden*/
+}
+
+fun dataMembers(u: User) {
+    u.comp/*|dataMembers*/
+}
+
+fun copyCall(u: User) {
+    u.cop/*|copyCall*/
+}
+
+fun nullableNoSafe(u: User?) {
+    u./*|nullableNoSafe*/
+}
+
+fun elvis(u: User?) {
+    val n = u?.name ?: u/*|elvis*/
+}
+
+fun chained(users: List<User>) {
+    users.filter { it.adult }.map { it./*|chained*/ }
+}
+
+fun forLoop(users: List<User>) {
+    for (user in users) us/*|forLoop*/
+}
+
+fun destructured(u: User) {
+    val (n, a) = u
+    /*|destructured*/
+}
+
+fun shadowed(name: Int) {
+    val f = { name: String -> nam/*|shadowed*/ }
+}
+
+fun lambdaIt(users: List<User>) {
+    users.forEach { i/*|lambdaIt*/ }
+}
+
+fun stringMembers(s: String) {
+    s.sub/*|stringMembers*/
+}
+
+fun intMembers(n: Int) {
+    n.plu/*|intMembers*/
+}
+
+fun resolveDoc(u: User) {
+    u.adu/*|resolveDoc*/
+}
+
+fun self(u: User) {
+    u.greet(/*|self*/)
+}
+
+fun tryCatch() {
+    try {
+    } catch (e: Exception) {
+        e.mess/*|catchParam*/
+    }
+}
+
+fun whenSubject(x: Any) {
+    when (x) {
+        is User -> x.na/*|whenSubject*/
+    }
+}
+
+val topProp = 1
+fun topProperty() {
+    topP/*|topProperty*/
+}
+-- script --
+initialize
+open src/M.kt
+wait
+complete src/M.kt @inString 2
+complete src/M.kt @inBlockComment 2
+complete src/M.kt @afterNumber 2
+complete src/M.kt @deprecated 3
+complete src/M.kt @privateHidden 2
+complete src/M.kt @dataMembers 3
+complete src/M.kt @copyCall 2
+complete src/M.kt @nullableNoSafe 4
+complete src/M.kt @elvis 3
+complete src/M.kt @chained 4
+complete src/M.kt @forLoop 2
+complete src/M.kt @destructured 4
+complete src/M.kt @shadowed 2
+complete src/M.kt @lambdaIt 3
+complete src/M.kt @stringMembers 4
+complete src/M.kt @intMembers 2
+complete src/M.kt @resolveDoc 1 doc
+complete src/M.kt @self 3
+complete src/M.kt @catchParam 2
+complete src/M.kt @whenSubject 2
+complete src/M.kt @topProperty 2
+-- want --
+> initialize
+> open src/M.kt
+> wait
+> complete src/M.kt @inString 2
+(none)
+> complete src/M.kt @inBlockComment 2
+(none)
+> complete src/M.kt @afterNumber 2
+(none)
+> complete src/M.kt @deprecated 3
+isAdult method fun isAdult(): Boolean => "isAdult()" (deprecated)
+> complete src/M.kt @privateHidden 2
+(none)
+> complete src/M.kt @dataMembers 3
+component1 method operator fun component1(): String => "component1()"
+component2 method operator fun component2(): Int => "component2()"
+> complete src/M.kt @copyCall 2
+copy method fun copy(name: String, age: Int): User => "copy("
+component1 method operator fun component1(): String => "component1()"
+... 1 more
+> complete src/M.kt @nullableNoSafe 4
+adult property Boolean
+age property Int
+greet method fun greet(other: User): String => "greet("
+name property String
+... 16 more
+> complete src/M.kt @elvis 3
+(incomplete)
+u variable User?
+uintArrayOf function fun uintArrayOf(vararg elements: UInt): UIntArray => "uintArrayOf("
+ubyteArrayOf function fun ubyteArrayOf(vararg elements: UByte): UByteArray => "ubyteArrayOf("
+... 197 more
+> complete src/M.kt @chained 4
+adult property Boolean
+age property Int
+greet method fun greet(other: User): String => "greet("
+name property String
+... 16 more
+> complete src/M.kt @forLoop 2
+users variable List<User>
+user variable User
+... 106 more
+> complete src/M.kt @destructured 4
+(incomplete)
+u variable User
+a variable Int
+n variable String
+afterNumber function fun afterNumber(): Unit => "afterNumber()"
+... 196 more
+> complete src/M.kt @shadowed 2
+name variable String
+Name class javax.lang.model.element.Name +0:9-0:9 "\n\nimport javax.lang.model.element.Name"
+... 36 more
+> complete src/M.kt @lambdaIt 3
+(incomplete)
+it variable User
+if keyword
+interface keyword
+... 197 more
+> complete src/M.kt @stringMembers 4
+subSequence method fun subSequence(startIndex: Int, endIndex: Int): CharSequence => "subSequence("
+substring function fun CharSequence.substring(range: IntRange): String => "substring("
+substring function fun CharSequence.substring(startIndex: Int, endIndex: Int): String => "substring("
+substring function fun String.substring(range: IntRange): String => "substring("
+... 14 more
+> complete src/M.kt @intMembers 2
+plus method operator fun plus(other: Byte): Int => "plus("
+plus method operator fun plus(other: Double): Double => "plus("
+... 5 more
+> complete src/M.kt @resolveDoc 1 doc
+adult property Boolean
+    ```kotlin
+    val adult: Boolean
+    ```
+    
+    Whether `age` is at least 18.
+... 1 more
+> complete src/M.kt @self 3
+(incomplete)
+other = variable User => "other = "
+u variable User
+afterNumber function fun afterNumber(): Unit => "afterNumber()"
+... 197 more
+> complete src/M.kt @catchParam 2
+message property String!
+localizedMessage property String!
+> complete src/M.kt @whenSubject 2
+name property String
+runCatching function fun <T, R> T.runCatching(block: T.() -> R): Result<R> => "runCatching("
+> complete src/M.kt @topProperty 2
+topProp property Int
+topProperty function fun topProperty(): Unit => "topProperty()"
+... 9 more

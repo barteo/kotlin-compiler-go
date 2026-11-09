@@ -74,6 +74,15 @@ type GeneralClientCapabilities struct {
 
 type TextDocumentClientCapabilities struct {
 	DocumentSymbol *DocumentSymbolClientCapabilities `json:"documentSymbol,omitempty"`
+	Completion     *CompletionClientCapabilities     `json:"completion,omitempty"`
+}
+
+type CompletionClientCapabilities struct {
+	CompletionItem *CompletionItemClientCapabilities `json:"completionItem,omitempty"`
+}
+
+type CompletionItemClientCapabilities struct {
+	SnippetSupport bool `json:"snippetSupport,omitempty"`
 }
 
 type DocumentSymbolClientCapabilities struct {
@@ -119,6 +128,9 @@ type ServerCapabilities struct {
 	ImplementationProvider    bool `json:"implementationProvider,omitempty"`
 	WorkspaceSymbolProvider   bool `json:"workspaceSymbolProvider,omitempty"`
 	InlayHintProvider         bool `json:"inlayHintProvider,omitempty"`
+
+	CompletionProvider    *CompletionOptions    `json:"completionProvider,omitempty"`
+	SignatureHelpProvider *SignatureHelpOptions `json:"signatureHelpProvider,omitempty"`
 }
 
 // ---- document synchronization ----
@@ -391,4 +403,97 @@ type MarkupContent struct {
 type Hover struct {
 	Contents MarkupContent `json:"contents"`
 	Range    *Range        `json:"range,omitempty"`
+}
+
+// ---- completion ----
+
+type CompletionOptions struct {
+	TriggerCharacters []string `json:"triggerCharacters,omitempty"`
+	ResolveProvider   bool     `json:"resolveProvider,omitempty"`
+}
+
+type CompletionContext struct {
+	TriggerKind      int    `json:"triggerKind"`
+	TriggerCharacter string `json:"triggerCharacter,omitempty"`
+}
+
+type CompletionParams struct {
+	TextDocumentPositionParams
+	Context *CompletionContext `json:"context,omitempty"`
+}
+
+// Completion item kinds (CompletionItemKind).
+const (
+	CompletionMethod        = 2
+	CompletionFunction      = 3
+	CompletionConstructor   = 4
+	CompletionField         = 5
+	CompletionVariable      = 6
+	CompletionClass         = 7
+	CompletionInterface     = 8
+	CompletionModule        = 9
+	CompletionProperty      = 10
+	CompletionEnum          = 13
+	CompletionKeyword       = 14
+	CompletionStruct        = 22
+	CompletionTypeParameter = 25
+)
+
+// Insert text formats (InsertTextFormat).
+const (
+	InsertPlainText = 1
+	InsertSnippet   = 2
+)
+
+// CompletionItemTagDeprecated marks a deprecated item.
+const CompletionItemTagDeprecated = 1
+
+type TextEdit struct {
+	Range   Range  `json:"range"`
+	NewText string `json:"newText"`
+}
+
+type CompletionItem struct {
+	Label               string          `json:"label"`
+	Kind                int             `json:"kind,omitempty"`
+	Tags                []int           `json:"tags,omitempty"`
+	Detail              string          `json:"detail,omitempty"`
+	Documentation       *MarkupContent  `json:"documentation,omitempty"`
+	SortText            string          `json:"sortText,omitempty"`
+	FilterText          string          `json:"filterText,omitempty"`
+	InsertTextFormat    int             `json:"insertTextFormat,omitempty"`
+	TextEdit            *TextEdit       `json:"textEdit,omitempty"`
+	AdditionalTextEdits []TextEdit      `json:"additionalTextEdits,omitempty"`
+	Data                json.RawMessage `json:"data,omitempty"`
+}
+
+type CompletionList struct {
+	IsIncomplete bool             `json:"isIncomplete"`
+	Items        []CompletionItem `json:"items"`
+}
+
+// ---- signature help ----
+
+type SignatureHelpOptions struct {
+	TriggerCharacters   []string `json:"triggerCharacters,omitempty"`
+	RetriggerCharacters []string `json:"retriggerCharacters,omitempty"`
+}
+
+type ParameterInformation struct {
+	// Label is the parameter's [start, end) in its signature's label,
+	// in UTF-16 units.
+	Label [2]int `json:"label"`
+}
+
+type SignatureInformation struct {
+	Label           string                 `json:"label"`
+	Documentation   *MarkupContent         `json:"documentation,omitempty"`
+	Parameters      []ParameterInformation `json:"parameters"`
+	ActiveParameter *int                   `json:"activeParameter,omitempty"`
+}
+
+type SignatureHelp struct {
+	Signatures      []SignatureInformation `json:"signatures"`
+	ActiveSignature int                    `json:"activeSignature"`
+	ActiveParameter int                    `json:"activeParameter"`
 }

@@ -1,0 +1,129 @@
+-- kc-lsp.json --
+{"modules": [{"name": "main", "sourceRoots": ["src"]}]}
+-- src/K.kt --
+package k
+
+fu/*|topFun*/
+
+class C {
+    ov/*|memberOverride*/
+}
+
+class D {
+    priv/*|memberPrivate*/
+}
+
+fun statement(flag: Boolean) {
+    whi/*|while*/
+}
+
+fun statementRet() {
+    re/*|return*/
+}
+
+fun expression(flag: Boolean) {
+    val x = i/*|ifExpr*/
+}
+
+fun expressionNull() {
+    val x: String? = nu/*|null*/
+}
+
+fun expressionWhen(n: Int) {
+    val x = whe/*|when*/
+}
+
+fun afterDot(s: String) {
+    s.wh/*|noKeywordsAfterDot*/
+}
+
+fun typePosition() {
+    val x: Stri/*|noKeywordsInType*/
+}
+
+fun declName() {
+    val tr/*|declName*/
+}
+
+fun funName() {
+    fun so/*|funName*/
+}
+
+fun paramName(i/*|paramName*/
+-- script --
+initialize
+open src/K.kt
+wait
+complete src/K.kt @topFun 4
+complete src/K.kt @memberOverride 4
+complete src/K.kt @memberPrivate 4
+complete src/K.kt @while 4
+complete src/K.kt @return 4
+complete src/K.kt @ifExpr 4
+complete src/K.kt @null 4
+complete src/K.kt @when 4
+complete src/K.kt @noKeywordsAfterDot 4
+complete src/K.kt @noKeywordsInType 4
+complete src/K.kt @declName 4
+complete src/K.kt @funName 4
+complete src/K.kt @paramName 4
+-- want --
+> initialize
+> open src/K.kt
+> wait
+> complete src/K.kt @topFun 4
+fun keyword
+> complete src/K.kt @memberOverride 4
+override keyword
+> complete src/K.kt @memberPrivate 4
+private keyword
+> complete src/K.kt @while 4
+while keyword
+WrongThreadException class java.lang.WrongThreadException
+JvmDefaultWithCompatibility interface kotlin.jvm.JvmDefaultWithCompatibility
+NoWhenBranchMatchedException class kotlin.NoWhenBranchMatchedException
+... 4 more
+> complete src/K.kt @return 4
+(incomplete)
+return keyword
+readln function fun readln(): String => "readln()"
+repeat function fun repeat(times: Int, action: (Int) -> Unit): Unit => "repeat("
+require function fun require(value: Boolean): Unit => "require("
+... 196 more
+> complete src/K.kt @ifExpr 4
+(incomplete)
+if keyword
+iterator function fun <T> iterator(block: suspend SequenceScope<T>.() -> Unit): Iterator<T> => "iterator("
+Int class kotlin.Int
+Integer class java.lang.Integer
+... 196 more
+> complete src/K.kt @null 4
+null keyword
+nullsLast function fun <T> nullsLast(): Comparator<T?> => "nullsLast()"
+nullsLast function fun <T> nullsLast(comparator: Comparator<in T>): Comparator<T?> => "nullsLast("
+nullsFirst function fun <T> nullsFirst(): Comparator<T?> => "nullsFirst()"
+... 81 more
+> complete src/K.kt @when 4
+when keyword
+WebSocketHandshakeException class java.net.http.WebSocketHandshakeException +0:9-0:9 "\n\nimport java.net.http.WebSocketHandshakeException"
+expressionWhen function fun expressionWhen(n: Int): Unit => "expressionWhen("
+WrongThreadException class java.lang.WrongThreadException
+... 7 more
+> complete src/K.kt @noKeywordsAfterDot 4
+maxWith function fun CharSequence.maxWith(comparator: Comparator<in Char>): Char => "maxWith("
+minWith function fun CharSequence.minWith(comparator: Comparator<in Char>): Char => "minWith("
+endsWith function fun CharSequence.endsWith(char: Char, ignoreCase: Boolean): Boolean => "endsWith("
+endsWith function fun CharSequence.endsWith(suffix: CharSequence, ignoreCase: Boolean): Boolean => "endsWith("
+... 27 more
+> complete src/K.kt @noKeywordsInType 4
+String class kotlin.String
+Strictfp interface kotlin.jvm.Strictfp
+StrictMath class java.lang.StrictMath
+StringBuffer class java.lang.StringBuffer
+... 95 more
+> complete src/K.kt @declName 4
+(none)
+> complete src/K.kt @funName 4
+(none)
+> complete src/K.kt @paramName 4
+(none)
