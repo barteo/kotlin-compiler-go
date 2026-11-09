@@ -113,8 +113,8 @@ r, err := s.Update(ctx, sources) // sources carry editor texts, as ka.Source
   name, a kind (`main`, `test`), Kotlin and Java source roots, a class
   path, friend modules or paths, module dependencies, a JDK home and
   compiler options (`-opt-in`, `compose`, `serialization`, `parcelize`,
-  `-jvm-default`, explicit API). Maven, Bazel and hand-made setups write
-  it themselves.
+  `-jvm-default`, explicit API). Bazel and hand-made setups write it
+  themselves.
 - **Gradle.** `kc-lsp` runs `./gradlew -q --init-script
   kc-lsp.init.gradle.kts kcLspModel`, with the script embedded in the
   binary. It generalizes `bench/kotlinpoet/classpath.init.gradle.kts`:
@@ -124,6 +124,12 @@ r, err := s.Update(ctx, sources) // sources carry editor texts, as ka.Source
   the hashes of the build files (`*.gradle*`, `gradle.properties`,
   `libs.versions.toml`), and imported again when they change. Import is
   the only time a JVM runs.
+- **Maven** (from L7). Without a `kc-lsp.json` or a Gradle build, a
+  `pom.xml` is read for its modules, source directories, and the
+  `kotlin-maven-plugin`'s executions, compiler plugins and arguments,
+  with the parent's `pluginManagement` and properties. The class paths
+  come from `mvn dependency:build-classpath`, once per scope. The model
+  is cached in `.kc-lsp/maven.json`, keyed by the poms' hash.
 - **Source sets.** A test source set is its own module, which depends on
   main (Gradle's associated compilations).
 - **Several modules.** A project dependency, a class path entry that is
@@ -167,6 +173,7 @@ r, err := s.Update(ctx, sources) // sources carry editor texts, as ka.Source
 | L4 | Completion | `completion` (locals, receivers, members, extensions, keywords, named arguments, imports from the class index), `completionItem/resolve`, `signatureHelp` | golden lists at about 150 carets; p95 < 100 ms on octi-server |
 | L5 | Editing | `rename`, `codeAction` (organize imports and about 15 fixes keyed by code: add import, `?.` or `!!`, make `var`, implement members, add `when` branches, change type, remove unused, ...), `callHierarchy`, `formatting` | each fix's result compiles with `kc`; the formatter is idempotent on the corpus, with a committed diff budget against IntelliJ's formatter |
 | L6 | Daily use | modules checked against each other's sources, library navigation (`-sources.jar` from Gradle's cache, else a read-only stub from metadata), declaration edits checked per file, file watching and re-import | declaration edit < 150 ms on octi-server; rename and references across modules; definition into the standard library opens its source |
+| L7 | Parity with kotlin-lsp | refactorings and intentions, type hierarchy, moving files, the library in workspace symbols and call hierarchy, completion templates, run lens, KDoc Enter, inspections with fixes, Maven import, downloading sources | each refactoring's and fix's result checks with `kc` throughout `testdata/run`; completion doesn't regress; the parity table below |
 
 L0–L4 make a usable server, about 4–6 engineer-months. That is more than an
 earlier 3–5 estimate, which assumed `ka` checks bodies. L5–L6 add about
@@ -796,11 +803,136 @@ The declaration edit is under the 150 ms target on the generated
 module. octi-server isn't measured. Completion did not regress (p95
 56–57 ms), nor did navigation.
 
+### L7: parity with kotlin-lsp
+
+The reference is JetBrains' kotlin-lsp, which runs IntelliJ's Kotlin
+plugin headless. fwcd's server is deprecated, and kc-lsp already did
+everything it does. L7 adds what kotlin-lsp has and kc-lsp lacked, one
+commit per step:
+
+1. **Refactorings and intentions** as `refactor.*` code actions:
+   - extract variable and inline variable;
+   - specify and remove an explicit type;
+   - add names to call arguments;
+   - convert a function between an expression body and a block body.
+
+   Each is conservative: one that might change what the code means, as
+   moving a smart cast or a conditional evaluation, isn't offered.
+   `TestRefactorScan` applies them throughout `testdata/run`, with one
+   known failure budgeted.
+2. **Type hierarchy.** Supertypes resolve through the module's facts.
+   Subtypes come from every module's view. A library class, in sources
+   or a stub, resolves its supertypes by its file's syntax.
+3. **Moving files and packages.** `workspace/willRenameFiles` returns
+   the edits that keep the sources compiling:
+   - the moved file's `package` directive;
+   - other files' imports and fully qualified uses of its declarations;
+   - imports for the files that used them unqualified;
+   - in the moved file, imports of what it used from its old package.
+
+   `workspace/didCreateFiles` gives a new empty file its directory's
+   `package`.
+4. **The library in more places:**
+   - `workspace/symbol` appends the library's matches, located lazily
+     through `workspaceSymbol/resolve`;
+   - stubs render the builtin classes' metadata, so `s.length` works
+     without sources;
+   - call hierarchy prepares on a library declaration, and its incoming
+     calls are the sources' uses of the same overload.
+5. **Completion templates**, for clients that take snippets, after the
+   semantic items:
+   - postfix templates after `expr.`, chosen by type and position: `if`,
+     `else`, `not`, `for`, `nn`, `null`, `val`, `var`, `return`, `when`,
+     `let`, `also`, `print`, `par`;
+   - live templates where a statement or declaration starts: `sout`,
+     `iter`, `fori`, `ifn`, `inn`, `todo`, `main`, `fun0`–`fun2`,
+     `exfun`, `singleton`, `enum`, `data` and others.
+6. **Run lens and commands:**
+   - **Run** and **Debug** lenses over each `main`, top level or
+     `@JvmStatic`. `kc.run` and `kc.debug` answer the `kc` command that
+     builds the module into `build/kc-run`, and the `java` command that
+     runs the main class (with a JDWP agent on port 5005 for Debug).
+     `kc/mainClass` gives the same for a document.
+   - `kc.clearCaches` deletes the extracted sources and stubs and
+     reloads.
+   - `kc.restart` reopens the sessions.
+   - Enter in a KDoc continues its `*`. After `/**` alone, it closes the
+     comment with `@param` and `@return` tags.
+   - Hover on a type parameter shows its bounds, the `where` clause's
+     included.
+7. **Inspections**: warnings with a quick fix each, for code that
+   compiles but is redundant:
+   - `UNNECESSARY_SAFE_CALL`;
+   - `UNNECESSARY_NOT_NULL_ASSERTION`;
+   - `USELESS_CAST`;
+   - `CAN_BE_VAL`;
+   - `UNUSED_PARAMETER`, for private and local functions. Its fix also
+     removes the call sites' arguments.
+   - `UNUSED_PRIVATE_MEMBER`.
+
+   They are judged only on a file without diagnostics, whose facts are
+   complete. They skip what they can't tell: platform and generic types,
+   smart-cast receivers, casts that may infer a call's type arguments,
+   overloads, and names a string literal holds (reflection).
+   `TestInspectionsScan` applies every fix in `testdata/run`, and each
+   program must still check. It finds 11 warnings and applies 9 fixes,
+   none of them budgeted; the two unused parameters' functions are
+   overloaded, so they get no fix. Two are on
+   `nullSafetyCodegen.kt`'s deliberately unsound reads of uninitialized
+   non-null properties, where `kotlinc` warns too.
+8. **Maven import**, as in [Project model](#project-model).
+   `initializationOptions.downloadSources` has the import fetch the
+   dependencies' source jars into the build tool's cache, where
+   navigation already looks. Gradle's init script runs an artifact
+   resolution query, and Maven runs `dependency:sources`.
+
+| kotlin-lsp feature | kc-lsp |
+|---|---|
+| Diagnostics | done; errors only where the code's precision is at least 99%, plus the inspections' warnings |
+| Completion, resolve, signature help | done |
+| Postfix and live templates | done; IntelliJ's common set, not user-defined templates |
+| Hover, KDoc | done; library KDoc needs sources |
+| Definition, type definition, implementation | done; implementations of a property find nothing |
+| References, highlight, rename | done; rename doesn't check conflicts |
+| Call hierarchy | done, library declarations included |
+| Type hierarchy | done |
+| Workspace symbols | done, library included |
+| Document symbols, folding, selection range, semantic tokens, inlay hints | done |
+| Formatting, range, on type | done; never wraps or joins lines |
+| KDoc Enter | done |
+| Quick fixes | partial: about 20, against IntelliJ's hundreds |
+| Inspections | partial: 6, against IntelliJ's hundreds |
+| Intentions and refactorings | partial: extract, inline, explicit type, argument names, body style, move |
+| Organize imports | done |
+| Moving files, packages and folders | done |
+| File templates | done: a new file's `package` |
+| Run lens | done; builds with `kc`, not with Gradle or Maven |
+| Debugger (DAP) | gap: Debug gives a JDWP command line, not a debug adapter |
+| Gradle import, JVM | done |
+| Maven import | done |
+| KMP, Android import | gap |
+| Library sources, downloading them | done |
+| Decompiled library classes | partial: stubs from metadata |
+| Java documents | gap: Java sources are read for their declarations only |
+| Clear caches, restart | done |
+
+Benchmarks, on the generated 200-file module (`-benchtime 30x`):
+
+| Request | p50 | p95 |
+|---|---:|---:|
+| completion after `.` | 26 ms | 46 ms |
+| completion at a statement, with templates | 36 ms | 60 ms |
+| `workspace/symbol HashMap`, mostly library (`BenchmarkWorkspaceSymbol`) | 8 ms | 13 ms |
+| `workspace/symbol Item`, sources | 10 ms | 17 ms |
+
+Completion stays under its 100 ms target with templates.
+
 ## Gaps and open questions
 
-- **Diagnostics `kc` lacks.** `kc` reports no warnings and runs few of
-  `kotlinc`'s checkers, so the editor shows fewer problems than
-  IntelliJ. The precision policy keeps false errors out, not missing
+- **Diagnostics `kc` lacks.** `kc` reports no warnings beyond L7's six
+  inspections, and runs few of `kotlinc`'s checkers, so the editor shows
+  fewer problems than IntelliJ. The inspections are silent on a file
+  with any diagnostic. The precision policy keeps false errors out, not missing
   ones in.
 - **Every update declares every file again.** L6 narrows what is
   checked, not what is lowered and declared, since the checker writes
@@ -829,14 +961,10 @@ module. octi-server isn't measured. Completion did not regress (p95
   dynamically from Groovy; each plugin version it supports needs a
   fixture.
 - **Library navigation** stops at the library's file: inside it there
-  are only syntax features, with no semantic navigation. Workspace
-  symbols leave library declarations out. The JDK's sources need
-  `src.zip`, which some JDK installs leave out. Stubs leave out default
-  values, annotations and KDoc, and use simple type names. Kotlin's
-  builtin classes (`String`, `Int`, `Any`), which come from
-  `.kotlin_builtins` rather than class files, have no stub, so
-  `s.length` goes nowhere without sources. Prepare call hierarchy on a
-  library declaration finds nothing.
+  are only syntax features, with no semantic navigation. The JDK's
+  sources need `src.zip`, which some JDK installs leave out. Stubs leave
+  out default values, annotations and KDoc, and use simple type names.
+  A library declaration's outgoing calls are empty.
 - **Navigation follows the module.** References and implementations are
   found in the modules whose sources hold the file and, from L6, those
   of the declaration's file. A property's overrides aren't recorded, so
@@ -845,9 +973,26 @@ module. octi-server isn't measured. Completion did not regress (p95
   after an update, while its index builds) delays the next.
 - **Hover notes non-null smart casts only**; a smart cast to a subtype
   shows the declared type.
-- **KDoc and library sources** need `-sources.jar`s, which Gradle
-  downloads only when asked; the import doesn't ask for them yet, so
-  only those already in Gradle's cache or beside a jar are found.
+- **KDoc and library sources** need `-sources.jar`s. They are
+  downloaded only with `initializationOptions.downloadSources`.
+  Otherwise only those already in Gradle's cache or beside a jar are
+  found. The Gradle query is read dynamically, as the rest of the init
+  script is, and isn't run against a real build in the tests.
+- **Maven import** runs no lifecycle phase. Maven 3 may then fail to
+  resolve a reactor module that was never installed or compiled, and
+  the import fails with Maven's message. Profiles, `build-helper` source
+  roots and the Kotlin plugin's `jvmTarget` aren't read. Compiler
+  plugins other than serialization (`spring`, `all-open`, `no-arg`) are
+  warned about and dropped, as for Gradle.
+- **Out of L7:**
+  - a debug adapter: kotlin-lsp's is experimental too;
+  - KMP and Android import;
+  - `.java` documents;
+  - IntelliJ's breadth of intentions and inspections;
+  - user-defined live templates.
+
+  The run lens builds with `kc`, so a build that needs Gradle tasks
+  (resources, code generation) runs differently there.
 - **Completion** is measured on the generated module, not octi-server.
   Each request lowers every file's signatures again (L6 keeps them).
   Rendered signatures leave out type parameters' bounds and default

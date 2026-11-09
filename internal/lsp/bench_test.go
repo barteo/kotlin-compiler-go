@@ -2,6 +2,7 @@ package lsp
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -440,6 +441,44 @@ func BenchmarkCompletion(b *testing.B) {
 				}
 				if os.Getenv("KC_LSP_BENCH") == "" && len(res.Items) == 0 {
 					b.Fatal("no completion items")
+				}
+				return time.Since(start)
+			}
+			first := call()
+			var times []time.Duration
+			for b.Loop() {
+				times = append(times, call())
+			}
+			slices.Sort(times)
+			b.ReportMetric(float64(first.Microseconds())/1000, "first-ms")
+			b.ReportMetric(float64(times[len(times)/2].Microseconds())/1000, "p50-ms")
+			b.ReportMetric(float64(times[len(times)*95/100].Microseconds())/1000, "p95-ms")
+		})
+	}
+}
+
+// BenchmarkWorkspaceSymbol times workspace/symbol, whose results are the
+// sources' and then the library's: a query few names of the sources
+// match, which the class path's importables fill, and a source class's.
+func BenchmarkWorkspaceSymbol(b *testing.B) {
+	root, file, _ := benchWorkspace(b)
+	data, _ := os.ReadFile(file)
+	u := fileURI(file)
+	for _, q := range []string{"HashMap", "Item"} {
+		b.Run(q, func(b *testing.B) {
+			s := startServer(b, root)
+			defer s.close()
+			s.client.Notify("textDocument/didOpen", protocol.DidOpenTextDocumentParams{
+				TextDocument: protocol.TextDocumentItem{URI: u, LanguageID: "kotlin", Version: 1, Text: string(data)}})
+			s.settle()
+			call := func() time.Duration {
+				start := time.Now()
+				var res []json.RawMessage
+				if err := s.client.Call(context.Background(), "workspace/symbol", protocol.WorkspaceSymbolParams{Query: q}, &res); err != nil {
+					b.Fatal(err)
+				}
+				if len(res) == 0 {
+					b.Fatalf("no symbols for %q", q)
 				}
 				return time.Since(start)
 			}
