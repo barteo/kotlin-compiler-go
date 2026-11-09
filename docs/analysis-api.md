@@ -3135,6 +3135,40 @@ Those runs line up with no Go GC (one every two runs, 12–28 ms of
 concurrent marking); the phase runs on all four cores while the JVM's
 compiler threads still warm up.
 
+#### Step 40: a round indexes classes from IDs parsed once per file
+
+A JFR of 130 Moshi body-edit runs on kc (`EDIT=leaf
+bench.editKind=body`), by share of the main thread's samples:
+
+| | share |
+|---|---|
+| KSP's `updateCaches` (lookup caches: path normalising, `CompressedAppendableFile` writes) | 6.4% |
+| KSP's `calcDirtyFiles` | 5.2% |
+| KSP's `registerGeneratedFiles` | 2.3% |
+| kc-aa `KcRound.<init>` | 8.4% |
+| of which `KcRound.index` | 4.7% |
+| the processors (Moshi, KotlinPoet) | about 20% |
+
+`KcRound.index` maps every class of every file to its source, so each
+round called `ClassId.fromString` for every class of the 100–104 files,
+though only one changed. `KcFile` now keeps its parsed class IDs (with
+whether each is a type alias), and `KcModel.update` reuses unchanged
+files' `KcFile`s across updates, so a round parses only the new files'.
+
+KSP's three steps are the same work on both backends; they are in the
+fork, not kc's to cut, and stay as they are.
+
+The KSP bench, Moshi, leaf edits, 100 runs on each backend, medians and
+minimums of runs 51–100, output checked against stock's (`CHECK`):
+
+| ms | stock KSP2 | kc | ratio | kc min | step 39 kc |
+|---|---|---|---|---|---|
+| Moshi, leaf body edit | 202 | 24 | 8.4x | 17 | 28 |
+| Moshi, leaf signature edit | 200 | 51 | 3.9x | 30 | 51 |
+
+A body-edit run's phases, kc's medians: setup 5, process 8, between 3,
+teardown 5.
+
 ## Gaps and open questions
 
 - **Slice simplifications (M0.4).** These go when M3/M4 bring the facts in:
