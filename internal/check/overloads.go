@@ -69,18 +69,36 @@ func conflicts(checkers, checked []*Checker) {
 	// declarations are compared if one of its files is checked, and a
 	// class's members if its file is (a class's members and a file
 	// facade's are all in packages compared, see sameContainer).
+	// And of a package's other files, only the declarations named as one
+	// of the checked files' can conflict with theirs.
+	var names map[string]map[string]bool // package -> names
 	if len(checked) < len(checkers) {
-		want := map[string]bool{}
+		names = map[string]map[string]bool{}
 		for _, c := range checked {
-			want[c.file.Package] = true
+			ns := names[c.file.Package]
+			if ns == nil {
+				ns = map[string]bool{}
+				names[c.file.Package] = ns
+			}
+			for _, d := range c.file.Decls {
+				if n, ok := topLevelName(d); ok {
+					ns[n] = true
+				}
+			}
 		}
-		order = slices.DeleteFunc(order, func(p string) bool { return !want[p] })
+		order = slices.DeleteFunc(order, func(p string) bool { return names[p] == nil })
 	}
+	only := checkers[0].u.only
 	for _, name := range order {
 		var ovs []overload
 		var decls []namedDecl
 		for _, c := range pkgs[name] {
 			for _, d := range c.file.Decls {
+				if names != nil && !only[c.file] {
+					if n, ok := topLevelName(d); ok && !names[name][n] {
+						continue
+					}
+				}
 				ovs = c.declOverloads(ovs, d, nil)
 				decls = c.namedDecls(decls, d)
 			}
@@ -280,6 +298,22 @@ func sameSignature(a, b *overload) bool {
 		}
 	}
 	return true
+}
+
+// topLevelName returns the name of a top-level declaration that may
+// conflict with another: a function, property, class or type alias.
+func topLevelName(d syntax.Decl) (string, bool) {
+	switch d := d.(type) {
+	case *syntax.FunDecl:
+		return d.Name, true
+	case *syntax.PropDecl:
+		return d.Name, true
+	case *syntax.ClassDecl:
+		return d.Name, true
+	case *syntax.TypeAliasDecl:
+		return d.Name, true
+	}
+	return "", false
 }
 
 // overloadConflicts reports the overloads of one scope that conflict.

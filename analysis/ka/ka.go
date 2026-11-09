@@ -613,7 +613,7 @@ func lowerFiles(snaps []*psi.Snapshot, files []*syntax.File, provs []*lower.Prov
 	parallel(len(todo), jobs, func(k int) {
 		i := todo[k]
 		if declsOnly != nil && declsOnly(i) {
-			files[i], provs[i], errLists[i] = lower.Declarations(snaps[i])
+			files[i], provs[i], errLists[i] = declarations(snaps[i])
 		} else {
 			files[i], provs[i], errLists[i] = lower.File(snaps[i])
 		}
