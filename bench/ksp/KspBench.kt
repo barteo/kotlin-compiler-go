@@ -22,6 +22,8 @@
 // a body edit and a signature edit in turn, of a function appended to it.
 // Each run's line has KSP's dirty files (dirty=, the first round's
 // Resolver.getNewFiles).
+// bench.clean=N,M,… deletes the output and caches directories before
+// those runs, as a clean build in the same daemon would.
 //
 // It is built against the KSP fork (jvm/kc-aa/build.sh) and against stock
 // KSP; bench/ksp/run.sh runs both.
@@ -258,6 +260,10 @@ private fun ms(ns: Long) = ns / 1_000_000
 /** Whether runs edit a source (bench.edit). */
 val edit = System.getProperty("bench.edit") != null
 
+/** Runs (bench.clean=3,7) before which the output and caches are deleted, as by a clean build. */
+val clean = System.getProperty("bench.clean")?.split(',')?.filter { it.isNotBlank() }?.map { it.trim().toInt() }?.toSet()
+    ?: emptySet()
+
 /**
  * Edits [file] for run [run] (2, 3, …): [base], its text, with a function
  * appended whose signature changes on even runs (run 2 adds it) and whose
@@ -309,6 +315,7 @@ fun main(args: Array<String>) {
             rec.start()
         }
         val out = File(outBase, "out")
+        if (run in clean) out.deleteRecursively()
         val providers = ServiceLoader.load(SymbolProcessorProvider::class.java).map { TimedProvider(it) } +
             listOfNotNull(System.getProperty("bench.dump")?.let { DumpProvider(File(it)) })
         if (providers.isEmpty()) {
