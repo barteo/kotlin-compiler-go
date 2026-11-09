@@ -2783,6 +2783,120 @@ minimum. Moshi's minimum went from 74 to 66 ms in the batch, and to
 cases, which process all files, didn't use these paths, so their
 differences are this batch's noise.
 
+#### Step 37: a body edit keeps the edited file's model, without a check
+
+After step 36, a leaf body edit on Moshi took about 54 ms with kc. Each
+KSP run makes two Go updates, one per round, and `BenchmarkUpdateEdit`
+put one update at about 6.4 ms: 1.3 ms to lower (a copy of 99 kept
+trees), 3.6 ms to resolve all 100 files' signatures, and GC for about a
+third of the CPU. Re-resolving was the cost step 36 left.
+
+**Keeping the checker's Universe across updates was weighed and set
+aside.** That was the cut steps 34 and 36 pointed to. Symbols point into
+syntax trees, and the phases build links both ways: sealed subclasses,
+overrides, alias files. `resolveClass` is not idempotent (it makes a new
+constructor and appends to the class's properties). The checker keeps
+declared and body state together in about 100 fields. Taking a new tree
+for one file under the others' declarations means separating all of
+that, and the results must still equal a whole check's.
+
+**A body edit doesn't need a check at all, most of the time.** ka checks
+signatures only (`check.Options{Signatures: true}`). In that mode
+`checkSignatures` looks into a block body for one thing: the local
+declarations written directly in it, whose inferred types it checks, and
+which the model lists (`Decl.Locals`, from `fileBuilder.locals`). The
+model takes nothing else from a body. `bodyEdits` already guarantees
+that no token outside block bodies changed (`signatureHash`). So when a
+file's change lies inside one body that declares no locals, before or
+after the edit, what the check finds in the file is exactly what the
+last check found. Only the psi node IDs after the body move, and the
+line and column of what comes after the change.
+
+`analysis/ka/bodyreuse.go` takes such files over (`shiftedFile`):
+
+- **One region.** The common prefix and suffix of the old and new texts
+  give the change. It must lie strictly inside the braces of one block
+  body: the outermost one around it whose owner is a function, a
+  secondary constructor or an initializer.
+- **Only declarations' bodies, in classes and objects.** The owner's
+  ancestors must be classes, objects and class bodies up to the file. A
+  function of an object expression in a property's initializer may be
+  checked to infer the property's type. An accessor's body decides
+  whether its property has a backing field, so accessors are left out.
+- **No contract, no locals.** A leading `contract { }` call changes what
+  callers see. A body that declares a variable, a destructuring, a
+  function, a class, an object or a type alias directly, before or after
+  the edit, is checked. So is one with an annotated or labeled
+  statement, which may be such a declaration.
+- **The trees are verified node by node.** The new body must start where
+  the old one did and end moved by the text's change. The node counts
+  must differ by exactly the body's change in size. Every node before
+  the body must have the same kind and start, and every node after it
+  the same kind and start moved by the change. That is microseconds for
+  one file, and it makes the renumbering exact.
+- **The model is copied with its IDs renumbered.** `remapNodes` copies a
+  `File` by reflection, so a field added to the model later can't be
+  missed. IDs before the body stay, IDs after it move by the change in
+  node count, and an ID inside the body fails the shift. Pointer
+  sharing is kept, and values that hold no IDs (strings, lookups, the
+  snapshot) are shared. It panics on an unexported field it would skip.
+- **Diagnostics move.** The file's diagnostics go to offsets through the
+  old text's line starts (columns are bytes), move by the text's change
+  if they come after it, and go back through the new line starts. A
+  diagnostic inside the change fails the shift.
+
+An update whose body-edited files all shift checks nothing. Its model
+is the last one with those files swapped in, its diagnostics are the
+last ones with those files' replaced, and the cache entry keeps the new
+texts and snapshots as a clean check would (`tm.Mark("shifted")`). If
+some files shift and others don't, the others are checked as before,
+and the shifted ones take their copies instead of the old models.
+
+**Java sources.** Hilt's second round has generated Java files, and a
+check with Java sources builds a library from them. A shifted update
+changes no Kotlin declarations and no Java text, so it reuses the
+library the last check kept (`prev.lib`). Without that, Hilt's second
+round never shifted.
+
+Tests (`analysis/ka/bodyreuse_test.go`) compare each update with a whole
+check of the same sources (`sameModel`, with diagnostics). They cover
+edits that shift (a statement, a literal, comments and blank lines, a
+lambda, a deletion, a constructor's body, the last function, an edit on
+one line, a top-level function) and edits that must be checked (a body
+gaining, editing or losing a local, a local function, an accessor, an
+object expression, two bodies). One test inserts text into every body
+in turn in one session, as a daemon's runs do. Another checks that
+`remapNodes` reaches every node ID of a model. `TestIncrementalJava`
+asserts that a Java module's body edit shifts and that the Java class
+equals a whole check's.
+
+`BenchmarkUpdateEdit` with a body edit (`KA_BENCH_RETURN`, a statement
+added to a function in Model099): 6.6 ms, 9.7 MB and 54,600 allocations
+before; 1.3 ms, 0.64 MB and 1,760 allocations after. The shift itself
+takes about 0.4 ms. Signature edits are unchanged. (The module's
+generated sources have no function bodies, so the benchmark's
+comment edit, outside any body, still takes the partial check.)
+
+The KSP bench, leaf edits over 30 runs, with output checked against
+stock's (`CHECK`). Both rounds of body-edit runs shift.
+
+| ms | stock KSP2 | kc | ratio | step 36 kc (30 runs) |
+|---|---|---|---|---|
+| Moshi, warm | 198 | 49 | 4.0x | |
+| Moshi, body edit | 292 | 40 (min 29) | 7.3x | 54 |
+| Moshi, signature edit | 266 | 64 | 4.2x | 77 |
+| Hilt, warm | 407 | 82 | 5.0x | |
+| Hilt, body edit | 407 | 67 | 6.1x | |
+| Hilt, signature edit | 434 | 89 | 4.9x | |
+
+Room's small module, `EDIT=auto`, 10 runs: warm 507 / 199, body edit
+509 / 218, signature edit 522 / 199. Room's processor dominates, so the
+shift doesn't show there.
+
+What is left in a kc body-edit run is mostly outside the Go update: on
+Moshi, kc-aa's setup takes about 6 ms beyond the update, processing
+about 9, teardown about 6, and the time between rounds about 5.
+
 ## Gaps and open questions
 
 - **Slice simplifications (M0.4).** These go when M3/M4 bring the facts in:
