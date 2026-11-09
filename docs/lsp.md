@@ -181,9 +181,9 @@ earlier 3–5 estimate, which assumed `ka` checks bodies. L5–L6 add about
 | A broken statement or expression lowers to `syntax.ErrorExpr` (type `Invalid`) and its member is kept; the compiler still fails, since lowering reports the error | L2 | `internal/lower`, `internal/syntax/ast.go`, `internal/check` |
 | No checker panic on recovered trees | L2 | `internal/check` |
 | Cancellation inside `inferAll` (`check.go:2403`) and every few statements of a body | L2 | `internal/check` |
-| **Probe**: lowering puts a `syntax.Probe` at the caret, like IntelliJ's dummy identifier; the checker reports the scope there to an optional `ScopeRecorder` and stops checking that declaration | L4 | `internal/check` (`recorder.go`, `scope.go`, new `probe.go`) |
+| **Probe**: a name at the caret, `check.ProbeName`, like IntelliJ's dummy identifier; the checker reports the scope there to an optional `ScopeRecorder` and stops checking that file | L4 | `internal/check` (`recorder.go`, `scope.go`, new `probe.go`) |
 | `ScopeView`: locals in order, implicit receivers (`state.recvs`, `ctxs`, `cls`) with smart-cast types, the expected type, the receiver of `x.`, `x?.` and `x::`; members with extensions, a package's top-level names (`kpkg.names`), imports | L4 | `internal/check` |
-| `Options.OnlyDecl`: check one declaration, inferring others lazily as `Only` does | L4 | `check.go` |
+| `Options.OnlyDecl`: check one declaration, inferring others lazily as `Only` does (not needed: completion is under its target checking the file) | L4 | `check.go` |
 | All candidates of a call, with their mappings | L4 | `internal/check` |
 | Index of library classes and top-level names | L3, L4 | `internal/classpath`, `internal/kmeta` |
 | A checked module's symbols as a `check.Library` layer for other modules | L6 | `internal/check`, `internal/driver` |
@@ -495,6 +495,87 @@ edits 11 ms at p50 and 35 ms at p95, as it competed with the next
 update, so it is built on demand. Body edits are p50 32 ms, p95 46 ms,
 and cold open 0.43 s.
 
+### L4: completion
+
+Completion checks the document as it is now, with a probe at the caret,
+as IntelliJ does with its dummy identifier. Nothing is mapped from the
+last update's view, which fails inside the span just typed.
+
+1. `ide.CompletionAt` uses psi only. It finds the name at the caret (the
+   prefix is the part before it) and the context:
+   - nothing in comments, strings or after a digit;
+   - an `import` or `package` directive, with its qualifier;
+   - a named argument's name;
+   - whether `(` or `<` follows, so that no parentheses are inserted;
+   - the keywords that fit: statement, expression, class-body and
+     top-level sets, none after a dot, in a type or where a declaration
+     is being named.
+
+   It returns the document with `check.ProbeName` in place of the name,
+   and a `)` for each `(` the line leaves open.
+2. `analysis.Session.Complete` lowers the probe's file with recovery and
+   the others by their signatures. It checks only that file
+   (`check.Options.Only`) against the session's library, and never
+   touches the session's state, so the next update stays incremental.
+   The checker, on reaching the probe, builds a `check.ScopeView` and
+   stops:
+   - as an identifier: locals innermost first, with smart casts;
+     implicit receivers' members; extensions that fit them; top-level
+     functions, properties and classifiers from the package, imports,
+     star imports and default imports; root packages;
+   - after `x.`, `x?.`, `super.` or `x::`: the receiver's members and the
+     extensions that fit it, by the resolution rules' own scopes and
+     `extFits` for bounded type parameters; a class's statics,
+     companion and nested classes; a package's members;
+   - in a type or an annotation: classifiers, type parameters and
+     packages.
+
+   With the view come the expected type, the calls the probe is an
+   argument of, with every candidate and its substitution, and, when the
+   prefix has a letter, the class path's and other packages'
+   declarations it may import. The library index
+   (`check.Library.Importables`) reads the class path's packages and
+   Kotlin metadata once, about 40 ms for the standard library and JDK.
+   It leaves out facades and synthetic classes, and classes whose class
+   file isn't public (read from the header on first use).
+3. `ide.Complete` ranks the items:
+   1. prefix matches (as typed, then in any case), then camel humps,
+      then other subsequences;
+   2. the expected type, taken from the checker or else the parameter
+      every candidate has for the argument;
+   3. then by scope: named arguments in parameter order, locals,
+      innermost receiver's members, other receivers', keywords typed in
+      part, extensions, top-level names, other keywords, imports;
+   4. then non-deprecated first, sources before libraries, shorter names
+      and labels.
+
+   A function inserts `name()` or `name(`, or with snippets `name($0)`,
+   or `name { $0 }` for a sole lambda parameter. An import adds an edit
+   after the last import, or after `package`. The list is capped at 200
+   and marked incomplete. `completionItem/resolve` adds the declaration's
+   header and KDoc.
+4. `signatureHelp` (`ide.SignatureAt`) finds the argument list around the
+   caret in psi, counts commas, and replaces the argument's expression
+   with the probe. The candidates come fewest parameters first; the
+   active one is the first with a parameter for the argument, by
+   position or name. Each candidate carries its KDoc.
+
+Goldens: 150 completion carets in `complete_{scope,typing,receivers,
+args,types,keywords,import,class,misc}.txtar`, and 14 signature carets.
+`BenchmarkCompletion`, on the generated 200-file module, completes in a
+function body after `items.`, at a statement with `su` (which lists
+importables), and in a type after `val x: Ma`:
+
+| Case | first | p50 | p95 |
+|---|---:|---:|---:|
+| after a dot | 82 ms | 31 ms | 54 ms |
+| statement | 105 ms | 39 ms | 69 ms |
+| type | 31 ms | 33 ms | 63 ms |
+
+The first request reads the library index. Each request lowers the
+module's other files' signatures again, as an update does; in a CPU
+profile that lowering costs about as much as checking the probe's file.
+
 ## Gaps and open questions
 
 - **Diagnostics `kc` lacks.** `kc` reports no warnings and runs few of
@@ -541,3 +622,12 @@ and cold open 0.43 s.
   shows the declared type.
 - **KDoc and library sources** need `-sources.jar`s, which Gradle
   downloads only when asked; the import doesn't ask for them yet.
+- **Completion** is measured on the generated module, not octi-server.
+  Each request lowers every file's signatures again (L6 keeps them).
+  Rendered signatures leave out type parameters' bounds and default
+  values. A member of a nullable receiver after `.` is offered without
+  rewriting it to `?.`. Keyword sets are approximations of where the
+  grammar allows each one. Library declarations have no KDoc (L6), and
+  Java parameters have no names. Importables come from the class path
+  and the module's sources, not from modules that don't depend on each
+  other.

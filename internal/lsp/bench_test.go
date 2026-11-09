@@ -285,3 +285,51 @@ func BenchmarkNavigation(b *testing.B) {
 		})
 	}
 }
+
+// BenchmarkCompletion times completion in a function body (docs/lsp.md,
+// L4: p95 under 100 ms): after a dot, at a statement's start with a
+// prefix, which also lists the class path's importables, and in a type.
+func BenchmarkCompletion(b *testing.B) {
+	root, file, at := benchWorkspace(b)
+	data, _ := os.ReadFile(file)
+	text := string(data)
+	u := fileURI(file)
+	for _, c := range []struct{ name, insert string }{
+		{"dot", "    items."},
+		{"statement", "    su"},
+		{"type", "    val x: Ma"},
+	} {
+		b.Run(c.name, func(b *testing.B) {
+			s := startServer(b, root)
+			defer s.close()
+			edited := text[:at] + c.insert + "\n" + text[at:]
+			s.client.Notify("textDocument/didOpen", protocol.DidOpenTextDocumentParams{
+				TextDocument: protocol.TextDocumentItem{URI: u, LanguageID: "kotlin", Version: 1, Text: edited}})
+			s.settle()
+			end := at + len(c.insert)
+			pos := protocol.Position{Line: strings.Count(edited[:end], "\n"), Character: len(c.insert)} // ASCII
+			params := protocol.CompletionParams{TextDocumentPositionParams: protocol.TextDocumentPositionParams{
+				TextDocument: protocol.TextDocumentIdentifier{URI: u}, Position: pos}}
+			call := func() time.Duration {
+				start := time.Now()
+				var res protocol.CompletionList
+				if err := s.client.Call(context.Background(), "textDocument/completion", params, &res); err != nil {
+					b.Fatal(err)
+				}
+				if os.Getenv("KC_LSP_BENCH") == "" && len(res.Items) == 0 {
+					b.Fatal("no completion items")
+				}
+				return time.Since(start)
+			}
+			first := call()
+			var times []time.Duration
+			for b.Loop() {
+				times = append(times, call())
+			}
+			slices.Sort(times)
+			b.ReportMetric(float64(first.Microseconds())/1000, "first-ms")
+			b.ReportMetric(float64(times[len(times)/2].Microseconds())/1000, "p50-ms")
+			b.ReportMetric(float64(times[len(times)*95/100].Microseconds())/1000, "p95-ms")
+		})
+	}
+}
