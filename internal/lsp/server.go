@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/url"
 	"path/filepath"
+	"slices"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -43,9 +44,11 @@ type Server struct {
 	hierarchical bool
 	snippets     bool // the client takes snippets in completion items
 	canApplyEdit bool // the client takes workspace/applyEdit requests
-	initialized  bool
-	shutdown     bool
-	exitCode     int
+	// resolveSymbols: the client resolves a workspace symbol's range.
+	resolveSymbols bool
+	initialized    bool
+	shutdown       bool
+	exitCode       int
 
 	roots        []string // the workspace folders
 	ws           []*workspace
@@ -174,6 +177,7 @@ func init() {
 		"textDocument/rangeFormatting":      (*Server).rangeFormatting,
 		"textDocument/onTypeFormatting":     (*Server).onTypeFormatting,
 		"workspace/symbol":                  (*Server).workspaceSymbol,
+		"workspaceSymbol/resolve":           (*Server).resolveWorkspaceSymbol,
 		"textDocument/inlayHint":            (*Server).inlayHint,
 		"textDocument/completion":           (*Server).completion,
 		"completionItem/resolve":            (*Server).resolveCompletion,
@@ -207,6 +211,9 @@ func (s *Server) initialize(p *protocol.InitializeParams) *protocol.InitializeRe
 	}
 	if ws := p.Capabilities.Workspace; ws != nil {
 		s.canApplyEdit = ws.ApplyEdit
+		if ws.Symbol != nil && ws.Symbol.ResolveSupport != nil {
+			s.resolveSymbols = slices.Contains(ws.Symbol.ResolveSupport.Properties, "location.range")
+		}
 	}
 	s.roots = workspaceRoots(p)
 	s.parseInitOptions(p.InitializationOptions)
@@ -234,7 +241,7 @@ func (s *Server) initialize(p *protocol.InitializeParams) *protocol.InitializeRe
 				protocol.CodeActionQuickFix, protocol.CodeActionOrganizeImports,
 				protocol.CodeActionRefactorExtract, protocol.CodeActionRefactorInline, protocol.CodeActionRefactorRewrite,
 			}},
-			WorkspaceSymbolProvider:          true,
+			WorkspaceSymbolProvider:          &protocol.WorkspaceSymbolOptions{ResolveProvider: true},
 			DocumentFormattingProvider:       true,
 			DocumentRangeFormattingProvider:  true,
 			DocumentOnTypeFormattingProvider: &protocol.DocumentOnTypeFormattingOptions{FirstTriggerCharacter: "}", MoreTriggerCharacter: []string{"\n"}},

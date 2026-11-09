@@ -3,6 +3,7 @@ package check
 import (
 	"cmp"
 	"fmt"
+	"github.com/barteo/kotlin-compiler-go/internal/kmeta"
 	"slices"
 	"strings"
 
@@ -24,8 +25,14 @@ func (l *Library) Stub(qualified string) (file, text string, ok bool) {
 		pkg, name := strings.Join(parts[:i], "."), parts[i]
 		var b stubWriter
 		b.header(qualified, pkg)
-		if cls := l.Class(qualified2(pkg, name)); cls != nil {
+		id := qualified2(pkg, name)
+		cls := l.Class(id)
+		if cls != nil {
 			cls.Ensure()
+		}
+		if kc := t.builtinClasses()[id]; t.kotlin && kc != nil && (cls == nil || cls.Missing) {
+			b.builtin(t, kc, name) // String, Int, Any: no class file
+		} else if cls != nil {
 			if cls.Missing {
 				continue
 			}
@@ -171,6 +178,67 @@ func (b *stubWriter) class(cls *types.ClassSym, name, indent string) {
 		b.WriteString(in + "}\n")
 	}
 	b.WriteString(indent + "}\n")
+}
+
+// builtin writes kc, a class of the standard library's builtins, which
+// has no class file, declared as name: its supertypes and its public
+// properties and functions.
+func (b *stubWriter) builtin(t *classTable, kc *kmeta.Class, name string) {
+	scope := tscope{}
+	tps, _ := t.ktypeParams(kc.TypeParams, nil, scope)
+	var mods []string
+	kw := "class"
+	switch kc.Kind() {
+	case kmeta.KindInterface:
+		kw = "interface"
+	case kmeta.KindObject, kmeta.KindCompanion:
+		kw = "object"
+	case kmeta.KindEnum:
+		kw = "enum class"
+	case kmeta.KindAnnotation:
+		kw = "annotation class"
+	default:
+		switch kc.Flags.Modality() {
+		case kmeta.Open:
+			mods = append(mods, "open")
+		case kmeta.Abstract:
+			mods = append(mods, "abstract")
+		case kmeta.Sealed:
+			mods = append(mods, "sealed")
+		}
+	}
+	for _, m := range mods {
+		b.WriteString(m + " ")
+	}
+	b.WriteString(kw + " " + name + typeParams(tps))
+	var supers []string
+	for _, st := range kc.Supers {
+		if typ, ok := t.ktype(st, scope); ok && !(typ.K == types.Class && typ.C != nil && isRoot(typ.C)) {
+			supers = append(supers, stubType(typ))
+		}
+	}
+	if len(supers) > 0 {
+		b.WriteString(" : " + strings.Join(supers, ", "))
+	}
+	b.WriteString(" {\n")
+	const in = "    "
+	for _, p := range kc.Props {
+		if p.Flags.Visibility() != kmeta.Public {
+			continue
+		}
+		if typ, ok := t.ktype(p.Type, scope); ok {
+			b.variable(&types.VarSym{Name: p.Name, Type: typ}, in)
+		}
+	}
+	for _, f := range kc.Funcs {
+		if f.Flags.Visibility() != kmeta.Public {
+			continue
+		}
+		if sym := t.kfun(f, nil, scope, nil); !sym.Unsupported {
+			b.fun(sym, in)
+		}
+	}
+	b.WriteString("}\n")
 }
 
 // members writes cls's properties and methods.

@@ -767,7 +767,7 @@ func (s *session) run(line string) {
 		if len(args) > 0 {
 			q = args[0]
 		}
-		var res []protocol.SymbolInformation
+		var res []json.RawMessage
 		if err := s.call("workspace/symbol", protocol.WorkspaceSymbolParams{Query: q}, &res); err != nil {
 			s.printResult(nil, err)
 			return
@@ -775,9 +775,29 @@ func (s *session) run(line string) {
 		if len(res) == 0 {
 			fmt.Fprintln(&s.out, "(none)")
 		}
-		for _, si := range res {
+		for _, raw := range res {
+			// A symbol with only a URI is resolved, and marked "resolved".
+			var si protocol.SymbolInformation
+			var ws struct {
+				Location struct {
+					Range *protocol.Range `json:"range"`
+				} `json:"location"`
+			}
+			json.Unmarshal(raw, &si)
+			json.Unmarshal(raw, &ws)
+			mark := ""
+			if ws.Location.Range == nil {
+				var resolved json.RawMessage
+				if err := s.call("workspaceSymbol/resolve", raw, &resolved); err != nil {
+					s.printResult(nil, err)
+					continue
+				}
+				si = protocol.SymbolInformation{}
+				json.Unmarshal(resolved, &si)
+				mark = " resolved"
+			}
 			f := s.fileOf(si.Location.URI)
-			fmt.Fprintf(&s.out, "%s %d %q in %q %s %s\n", si.Name, si.Kind, si.ContainerName, f, fmtRange(si.Location.Range), excerpt(ide.NewDocument(f, 0, s.textOf(f)), si.Location.Range, s.enc))
+			fmt.Fprintf(&s.out, "%s %d %q in %q %s %s%s\n", si.Name, si.Kind, si.ContainerName, f, fmtRange(si.Location.Range), excerpt(ide.NewDocument(f, 0, s.textOf(f)), si.Location.Range, s.enc), mark)
 		}
 	case "highlight":
 		name := file()

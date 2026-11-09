@@ -298,14 +298,41 @@ func (s *Server) workspaceSymbol(_ context.Context, r *jsonrpc.Request) (any, er
 	for _, d := range docs {
 		list = append(list, d)
 	}
-	out := []protocol.SymbolInformation{}
-	for _, m := range ide.WorkspaceSymbols(list, p.Query, maxWorkspaceSymbols) {
-		out = append(out, protocol.SymbolInformation{
+	srcs := ide.WorkspaceSymbols(list, p.Query, maxWorkspaceSymbols)
+	s.mu.Lock()
+	lazy := s.resolveSymbols
+	s.mu.Unlock()
+	if !lazy {
+		out := []protocol.SymbolInformation{}
+		for _, m := range srcs {
+			out = append(out, protocol.SymbolInformation{
+				Name:          m.Symbol.Name,
+				Kind:          symbolKind(m.Symbol.Kind),
+				Location:      protocol.Location{URI: uris[m.Doc.Path], Range: rng(m.Doc, m.Symbol.NameRange, enc)},
+				ContainerName: m.Container,
+			})
+		}
+		for _, ls := range s.librarySymbols(p.Query, maxEagerLibrarySymbols) {
+			if loc, ok := s.resolveLibrarySymbol(ls); ok {
+				out = append(out, protocol.SymbolInformation{Name: ls.Simple, Kind: ls.kind(), Location: loc, ContainerName: ls.Package})
+			}
+		}
+		return out, nil
+	}
+	out := []protocol.WorkspaceSymbol{}
+	for _, m := range srcs {
+		out = append(out, protocol.WorkspaceSymbol{
 			Name:          m.Symbol.Name,
 			Kind:          symbolKind(m.Symbol.Kind),
 			Location:      protocol.Location{URI: uris[m.Doc.Path], Range: rng(m.Doc, m.Symbol.NameRange, enc)},
 			ContainerName: m.Container,
 		})
+	}
+	if ls := s.librarySymbols(p.Query, maxLibrarySymbols); len(ls) > 0 {
+		dir, _ := s.cacheDir()
+		for _, l := range ls {
+			out = append(out, protocol.WorkspaceSymbol{Name: l.Simple, Kind: l.kind(), Location: protocol.LocationURI{URI: fileURI(dir)}, ContainerName: l.Package, Data: l})
+		}
 	}
 	return out, nil
 }

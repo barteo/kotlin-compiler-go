@@ -2,8 +2,10 @@ package lsp
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/barteo/kotlin-compiler-go/internal/ide"
+	"github.com/barteo/kotlin-compiler-go/internal/libsrc"
 	"github.com/barteo/kotlin-compiler-go/internal/lsp/jsonrpc"
 	"github.com/barteo/kotlin-compiler-go/internal/lsp/protocol"
 )
@@ -18,14 +20,39 @@ func (s *Server) prepareCallHierarchy(_ context.Context, r *jsonrpc.Request) (an
 		return nil, err
 	}
 	it, ok := ide.PrepareCallHierarchy(c.views[0], c.path, c.off)
+	var data *callData
 	if !ok {
-		return nil, nil
+		var t libsrc.Target
+		if it, t, ok = ide.PrepareLibraryCallHierarchy(c.views[0], c.path, c.off, s.libraryClass(c.path)); !ok {
+			return nil, nil
+		}
+		data = &callData{Target: t, Path: c.path}
 	}
 	item, ok := s.locator().callItem(it)
 	if !ok {
 		return nil, nil
 	}
+	if data != nil {
+		item.Data = data
+	}
 	return []protocol.CallHierarchyItem{item}, nil
+}
+
+// callData is the data of a library declaration's call hierarchy item:
+// its target, and the source file whose module it was asked in.
+type callData struct {
+	Target libsrc.Target `json:"target"`
+	Path   string        `json:"path"`
+}
+
+// libraryCalls returns the incoming calls in all modules' sources of the
+// library's declaration an item names; false if it names none.
+func (s *Server) libraryCalls(item protocol.CallHierarchyItem) ([]ide.CallerCall, bool) {
+	var d callData
+	if b, err := json.Marshal(item.Data); err != nil || item.Data == nil || json.Unmarshal(b, &d) != nil || d.Target.Name == "" {
+		return nil, false
+	}
+	return ide.LibraryIncomingCalls(s.allViews(), d.Target), true
 }
 
 func (s *Server) incomingCalls(_ context.Context, r *jsonrpc.Request) (any, error) {
@@ -50,13 +77,38 @@ func (s *Server) calls(r *jsonrpc.Request, find func(caret) []ide.CallerCall, wr
 	if err := r.Unmarshal(&p); err != nil {
 		return nil, err
 	}
+	incoming := r.Method == "callHierarchy/incomingCalls"
+	if calls, ok := s.libraryCalls(p.Item); ok {
+		// A library declaration's: its calls in the sources; it makes
+		// none the sources tell of.
+		out := []any{}
+		if !incoming {
+			return out, nil
+		}
+		l := s.locator()
+		for _, cc := range calls {
+			item, ok := l.callItem(cc.Item)
+			if !ok {
+				continue
+			}
+			var rs []protocol.Range
+			for _, rg := range cc.Ranges {
+				if mp, rg, ok := l.rangeOf(ide.Loc{Snap: cc.Item.Snap, Range: rg}); ok {
+					rs = append(rs, rng(mp.doc, rg, l.enc))
+				}
+			}
+			if len(rs) > 0 {
+				out = append(out, wrap(l, cc, item, rs))
+			}
+		}
+		return out, nil
+	}
 	c, ok, err := s.caretIn(protocol.TextDocumentPositionParams{TextDocument: protocol.TextDocumentIdentifier{URI: p.Item.URI}, Position: p.Item.SelectionRange.Start})
 	if err != nil || !ok {
 		return []any{}, err
 	}
 	out := []any{}
 	l := s.locator()
-	incoming := r.Method == "callHierarchy/incomingCalls"
 	for _, cc := range find(c) {
 		item, ok := l.callItem(cc.Item)
 		if !ok {

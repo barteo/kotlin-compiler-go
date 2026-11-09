@@ -510,3 +510,21 @@ func (s *Session) Importables(snapshots []*psi.Snapshot, path, name string) ([]I
 	}
 	return out, nil
 }
+
+// LibraryImportables calls f with each top-level declaration of the
+// library that a file can import or use unimported, in name order, until
+// f returns false: the classes and typealiases, functions and properties
+// of the class path's packages, but inaccessible classes.
+func (s *Session) LibraryImportables(f func(Importable) bool) error {
+	_, lib, done, err := s.library()
+	if err != nil {
+		return err
+	}
+	defer done()
+	for _, im := range lib.Importables() {
+		if lib.Accessible(im) && !f(Importable{im.Name, im.Package, im.Class}) {
+			return nil
+		}
+	}
+	return nil
+}

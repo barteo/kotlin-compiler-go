@@ -14,6 +14,10 @@ fun /*|use*/use(): Int {
     b./*|append*/append(s)
     return s./*|length*/length + p./*|first*/first
 }
+-- src/B.kt --
+package p
+
+fun other() = listOf("a").size + listOf(1, 2).size + listOf(3).size
 -- script --
 # Without the library's sources: stubs from its metadata.
 initialize {"processId": null, "rootUri": "ROOT", "capabilities": {}, "initializationOptions": {"librarySources": false}}
@@ -29,6 +33,7 @@ definition src/A.kt @append
 definition src/A.kt @length
 typedef src/A.kt @list
 calls src/A.kt @use
+calls src/A.kt @listOf
 -- want --
 > initialize {"processId": null, "rootUri": "ROOT", "capabilities": {}, "initializationOptions": {"librarySources": false}}
 > open src/A.kt
@@ -48,7 +53,7 @@ calls src/A.kt @use
 > definition src/A.kt @append
 .libcache/stubs/java/lang/StringBuilder.kt 10:8-10:14 "append"
 > definition src/A.kt @length
-(none)
+.libcache/stubs/kotlin/String.kt 5:8-5:14 "length"
 > typedef src/A.kt @list
 .libcache/stubs/kotlin/collections/List.kt 4:10-4:14 "List"
 > calls src/A.kt @use
@@ -59,3 +64,7 @@ use [12] (p) src/A.kt 2:4-2:7
   -> listOf [12] (kotlin.collections) .libcache/stubs/kotlin/collections/listOf.kt 4:8-4:14: 3:23-3:29 "listOf"
   -> println [12] (kotlin.io) .libcache/stubs/kotlin/io/println.kt 5:4-5:11: 4:4-4:11 "println"
   -> trim [12] (kotlin.text) .libcache/stubs/kotlin/text/trim.kt 9:11-9:15: 5:16-5:20 "trim"
+> calls src/A.kt @listOf
+listOf [12] (kotlin.collections) .libcache/stubs/kotlin/collections/listOf.kt 4:8-4:14
+  <- use [12] (p) src/A.kt 2:4-2:7: 3:23-3:29 "listOf"
+  <- other [12] (p) src/B.kt 2:4-2:9: 2:14-2:20 "listOf", 2:53-2:59 "listOf"

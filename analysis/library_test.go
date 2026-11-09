@@ -21,6 +21,10 @@ func TestLibraryStub(t *testing.T) {
 		{"kotlin.io.println", "kotlin/io/println.kt", "fun println(message: Any?)"},
 		{"java.lang.StringBuilder", "java/lang/StringBuilder.kt", "fun append("},
 		{"kotlin.collections.ArrayDeque", "kotlin/collections/ArrayDeque.kt", "fun addFirst(element: E)"},
+		{"kotlin.String.length", "kotlin/String.kt", "val length: Int"},
+		{"kotlin.Int", "kotlin/Int.kt", "operator fun plus(other: Int): Int"},
+		{"kotlin.Any", "kotlin/Any.kt", "fun hashCode(): Int"},
+		{"kotlin.collections.List", "kotlin/collections/List.kt", "val size: Int"},
 	} {
 		path, text, ok, err := s.LibraryStub(c.name)
 		if err != nil || !ok {

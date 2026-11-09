@@ -139,13 +139,9 @@ func (s *Server) librarySnap(file, text string) *psi.Snapshot {
 // where hash is of the archive's path; a stub's archive is "stubs", and
 // hash of its class path.
 func (s *Server) extract(loc libsrc.Location) (string, error) {
-	dir := s.lib.dir
-	if dir == "" {
-		cache, err := os.UserCacheDir()
-		if err != nil {
-			return "", err
-		}
-		dir = filepath.Join(cache, "kc-lsp", "sources")
+	dir, err := s.cacheDir()
+	if err != nil {
+		return "", err
 	}
 	h := sha256.Sum256([]byte(loc.Archive))
 	base := strings.TrimSuffix(filepath.Base(loc.Archive), filepath.Ext(loc.Archive))
@@ -179,6 +175,18 @@ func (s *Server) extract(loc libsrc.Location) (string, error) {
 		return "", werr
 	}
 	return file, nil
+}
+
+// cacheDir returns the directory of the extracted files.
+func (s *Server) cacheDir() (string, error) {
+	if s.lib.dir != "" {
+		return s.lib.dir, nil
+	}
+	cache, err := os.UserCacheDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(cache, "kc-lsp", "sources"), nil
 }
 
 // libraryDefinition returns the location in the library of what the

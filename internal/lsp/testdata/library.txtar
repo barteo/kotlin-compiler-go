@@ -14,6 +14,10 @@ fun /*|use*/use(): Int {
     m./*|add*/add(s)
     return s./*|length*/length + p.first
 }
+-- src/B.kt --
+package p
+
+fun other() = listOf("a").size + listOf(1, 2).size + listOf(3).size
 -- script --
 initialize
 open src/A.kt
@@ -28,6 +32,7 @@ definition src/A.kt @list
 typedef src/A.kt @listOf
 hover src/A.kt @listOf
 calls src/A.kt @use
+calls src/A.kt @listOf
 -- want --
 > initialize
 > open src/A.kt
@@ -68,3 +73,7 @@ use [12] (p) src/A.kt 2:4-2:7
   -> add [6] (MutableList) .libcache/kotlin-stdlib-sources/jvmMain/kotlin/Collections.kt 331:24-331:27: 8:6-8:9 "add"
   -> listOf [12] (kotlin.collections) .libcache/kotlin-stdlib-sources/jvmMain/kotlin/collections/CollectionsJVM.kt 20:22-20:28: 3:23-3:29 "listOf"
   -> println [12] (kotlin.io) .libcache/kotlin-stdlib-sources/jvmMain/kotlin/io/Console.kt 84:18-84:25: 4:4-4:11 "println"
+> calls src/A.kt @listOf
+listOf [12] (kotlin.collections) .libcache/kotlin-stdlib-sources/jvmMain/kotlin/collections/CollectionsJVM.kt 20:22-20:28
+  <- use [12] (p) src/A.kt 2:4-2:7: 3:23-3:29 "listOf"
+  <- other [12] (p) src/B.kt 2:4-2:9: 2:14-2:20 "listOf", 2:53-2:59 "listOf"

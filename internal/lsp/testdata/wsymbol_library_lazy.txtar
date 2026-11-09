@@ -1,0 +1,22 @@
+-- kc-lsp.json --
+{"modules": [{"name": "main", "sourceRoots": ["src"]}]}
+-- _needs --
+library
+-- src/A.kt --
+package p
+
+class ArrayDequeUser
+-- script --
+initialize {"processId":null,"rootUri":"ROOT","capabilities":{"workspace":{"symbol":{"resolveSupport":{"properties":["location.range"]}}}}}
+wait
+wsymbol ArrayDeque
+wsymbol buildList
+-- want --
+> initialize {"processId":null,"rootUri":"ROOT","capabilities":{"workspace":{"symbol":{"resolveSupport":{"properties":["location.range"]}}}}}
+> wait
+> wsymbol ArrayDeque
+ArrayDequeUser 5 "p" in "src/A.kt" 2:6-2:20 "ArrayDequeUser"
+ArrayDeque 5 "java.util" in ".libcache/stubs/java/util/ArrayDeque.kt" 4:11-4:21 "ArrayDeque" resolved
+ArrayDeque 5 "kotlin.collections" in ".libcache/kotlin-stdlib-sources/commonMain/kotlin/collections/ArrayDeque.kt" 16:13-16:23 "ArrayDeque" resolved
+> wsymbol buildList
+buildList 12 "kotlin.collections" in ".libcache/kotlin-stdlib-sources/commonMain/kotlin/collections/Collections.kt" 185:22-185:31 "buildList" resolved

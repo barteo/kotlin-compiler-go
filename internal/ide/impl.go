@@ -144,6 +144,9 @@ func packageName(snap *psi.Snapshot) string {
 
 // matchScore rates how well name matches query; ok is false if it
 // doesn't.
+// MatchScore is matchScore, for symbols found elsewhere.
+func MatchScore(name, query string) (int, bool) { return matchScore(name, query) }
+
 func matchScore(name, query string) (score int, ok bool) {
 	if query == "" {
 		return 0, true

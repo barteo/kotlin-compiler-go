@@ -135,7 +135,9 @@ error -32002: textDocument/documentSymbol before initialize
         }
       }
     },
-    "workspaceSymbolProvider": true
+    "workspaceSymbolProvider": {
+      "resolveProvider": true
+    }
   },
   "serverInfo": {
     "name": "kc-lsp",

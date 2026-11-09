@@ -61,8 +61,9 @@ type ClientCapabilities struct {
 }
 
 type WorkspaceClientCapabilities struct {
-	DidChangeWatchedFiles *DynamicRegistrationCapabilities `json:"didChangeWatchedFiles,omitempty"`
-	ApplyEdit             bool                             `json:"applyEdit,omitempty"`
+	DidChangeWatchedFiles *DynamicRegistrationCapabilities   `json:"didChangeWatchedFiles,omitempty"`
+	ApplyEdit             bool                               `json:"applyEdit,omitempty"`
+	Symbol                *WorkspaceSymbolClientCapabilities `json:"symbol,omitempty"`
 }
 
 type DynamicRegistrationCapabilities struct {
@@ -121,14 +122,14 @@ type ServerCapabilities struct {
 	SelectionRangeProvider bool                     `json:"selectionRangeProvider,omitempty"`
 	SemanticTokensProvider *SemanticTokensOptions   `json:"semanticTokensProvider,omitempty"`
 
-	DefinitionProvider        bool `json:"definitionProvider,omitempty"`
-	TypeDefinitionProvider    bool `json:"typeDefinitionProvider,omitempty"`
-	ReferencesProvider        bool `json:"referencesProvider,omitempty"`
-	DocumentHighlightProvider bool `json:"documentHighlightProvider,omitempty"`
-	HoverProvider             bool `json:"hoverProvider,omitempty"`
-	ImplementationProvider    bool `json:"implementationProvider,omitempty"`
-	WorkspaceSymbolProvider   bool `json:"workspaceSymbolProvider,omitempty"`
-	InlayHintProvider         bool `json:"inlayHintProvider,omitempty"`
+	DefinitionProvider        bool                    `json:"definitionProvider,omitempty"`
+	TypeDefinitionProvider    bool                    `json:"typeDefinitionProvider,omitempty"`
+	ReferencesProvider        bool                    `json:"referencesProvider,omitempty"`
+	DocumentHighlightProvider bool                    `json:"documentHighlightProvider,omitempty"`
+	HoverProvider             bool                    `json:"hoverProvider,omitempty"`
+	ImplementationProvider    bool                    `json:"implementationProvider,omitempty"`
+	WorkspaceSymbolProvider   *WorkspaceSymbolOptions `json:"workspaceSymbolProvider,omitempty"`
+	InlayHintProvider         bool                    `json:"inlayHintProvider,omitempty"`
 
 	CompletionProvider    *CompletionOptions    `json:"completionProvider,omitempty"`
 	SignatureHelpProvider *SignatureHelpOptions `json:"signatureHelpProvider,omitempty"`
@@ -234,6 +235,7 @@ type CallHierarchyItem struct {
 	URI            DocumentURI `json:"uri"`
 	Range          Range       `json:"range"`
 	SelectionRange Range       `json:"selectionRange"`
+	Data           any         `json:"data,omitempty"`
 }
 
 type TypeHierarchyItem struct {
@@ -480,6 +482,30 @@ type SymbolInformation struct {
 	Kind          int      `json:"kind"`
 	Location      Location `json:"location"`
 	ContainerName string   `json:"containerName,omitempty"`
+}
+
+// WorkspaceSymbol is a symbol whose Location may be only a URI, which
+// workspaceSymbol/resolve completes, with the Data it gave.
+type WorkspaceSymbol struct {
+	Name          string `json:"name"`
+	Kind          int    `json:"kind"`
+	Location      any    `json:"location"` // a Location, or a LocationURI
+	ContainerName string `json:"containerName,omitempty"`
+	Data          any    `json:"data,omitempty"`
+}
+
+type LocationURI struct {
+	URI DocumentURI `json:"uri"`
+}
+
+type WorkspaceSymbolOptions struct {
+	ResolveProvider bool `json:"resolveProvider,omitempty"`
+}
+
+type WorkspaceSymbolClientCapabilities struct {
+	ResolveSupport *struct {
+		Properties []string `json:"properties"`
+	} `json:"resolveSupport,omitempty"`
 }
 
 type WorkspaceSymbolParams struct {

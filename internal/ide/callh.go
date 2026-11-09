@@ -256,3 +256,98 @@ func containerName(d psi.NodeRef) string {
 	}
 	return ""
 }
+
+// PrepareLibraryCallHierarchy returns the item of the library's function,
+// constructor or class the caret at off of path uses, in the file lib
+// finds it in, and the target that names it.
+func PrepareLibraryCallHierarchy(v *View, path string, off int, lib LibraryClass) (CallItem, libsrc.Target, bool) {
+	t, ok := LibraryTarget(v, path, off)
+	if !ok || lib == nil || t.Kind != "function" && t.Kind != "constructor" && t.Kind != "class" {
+		return CallItem{}, libsrc.Target{}, false
+	}
+	d, ok := lib(t)
+	if !ok {
+		return CallItem{}, libsrc.Target{}, false
+	}
+	if t.Kind == "constructor" {
+		d = classOf(d) // its class's item, as a source class's
+	}
+	it, ok := callItem(d)
+	return it, t, ok
+}
+
+// LibraryIncomingCalls returns the calls in views' sources of the
+// library's declaration t: of a function, those of its overload; of a
+// class or constructor, its constructors'. They are grouped by the
+// declaration they are made in.
+func LibraryIncomingCalls(views []*View, t libsrc.Target) []CallerCall {
+	type group struct {
+		item   CallItem
+		ranges []psi.Range
+	}
+	groups := map[key]*group{}
+	var order []key
+	seen := map[key]bool{}
+	for _, v := range views {
+		for _, path := range v.Paths() {
+			psi.WalkNodes(v.Snapshot(path).RootNode(), func(n psi.NodeRef) bool {
+				switch n.NumericKind() {
+				case psi.KindIMPORT_LIST, psi.KindPACKAGE_DIRECTIVE:
+					return false
+				case psi.KindREFERENCE_EXPRESSION:
+				default:
+					return true
+				}
+				f, ok := v.fact(n)
+				if !ok || f.Call == nil {
+					return true
+				}
+				u, ok := libraryTarget(v, f, n)
+				if !ok || !sameTarget(t, u) || seen[key{path, n.Range()}] {
+					return true
+				}
+				seen[key{path, n.Range()}] = true
+				caller, ok := callItem(n.EnclosingDeclaration())
+				if !ok {
+					return true
+				}
+				ck := key{caller.Snap.Path(), caller.NameRange}
+				g, ok := groups[ck]
+				if !ok {
+					g = &group{item: caller}
+					groups[ck] = g
+					order = append(order, ck)
+				}
+				g.ranges = append(g.ranges, n.Range())
+				return true
+			})
+		}
+	}
+	out := make([]CallerCall, 0, len(order))
+	for _, k := range order {
+		g := groups[k]
+		slices.SortFunc(g.ranges, func(a, b psi.Range) int { return a.Start - b.Start })
+		out = append(out, CallerCall{g.item, g.ranges})
+	}
+	sortCalls(out)
+	return out
+}
+
+// sameTarget reports whether a use's target u names the declaration t
+// does: a class and its constructors are one; a function's parameters
+// and receiver must match where both are known.
+func sameTarget(t, u libsrc.Target) bool {
+	kind := func(k string) string {
+		if k == "class" {
+			return "constructor"
+		}
+		return k
+	}
+	if t.Name != u.Name || kind(t.Kind) != kind(u.Kind) {
+		return false
+	}
+	if t.Kind == "function" && t.Params && u.Params {
+		return slices.Equal(t.Parameters, u.Parameters) && slices.Equal(t.Varargs, u.Varargs) && t.Receiver == u.Receiver
+	}
+	return true
+}
