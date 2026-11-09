@@ -2651,6 +2651,138 @@ updates in Go of about 15 ms each (`lower` about 5, `signatures` about
 and teardown bookkeeping (`calcDirtyFiles`, `updateCachesAndOutputs`,
 the lookup storage), about as much again.
 
+#### Step 36: KSP's caches stay in memory, and updates reuse lowered declarations
+
+After step 35, a Moshi leaf edit took about 80 ms on kc. Roughly 30 ms
+was kc's two Go updates. Another 35–40 ms was KSP's own incremental
+bookkeeping, which stock KSP pays too. A JFR profile at 1 ms sampling
+showed where KSP's part went:
+
+- **JSON maps.** Every run decoded the `symbols`, `sealed` and
+  `sourceToOutputs` maps (`PersistentMap.deserialize`) and wrote all
+  three back at the end, changed or not. `sourceToOutputs` was written
+  twice.
+- **Lookup storages.** Every run opened Kotlin IC's two `LookupStorage`s
+  and closed them at the end. A fresh storage starts with cold page
+  caches, so `calcDirtyFiles`' lookups of the edited file's symbols read
+  from disk (`PersistentMapImpl.get`), and opening and forcing them cost
+  more.
+
+`relativeTo` and `DirtinessPropagator`'s inverted map, which step 36's
+plan also listed, were under 1 ms per run together, so they are
+unchanged.
+
+KSP-side changes (fork patch 0013). These are in KSP, not in kc's
+backend. Stock KSP 2.3.x runs without them, so the comparison below
+includes them on kc's side only:
+
+- **The maps stay in memory between runs on the same caches.**
+  `PersistentMap` keeps each map as last read or written in the process,
+  with its file's size, modification time (ns) and file key. A later
+  run gets a copy while the file still has that stamp, and decodes it
+  otherwise. A map equal to the kept copy, whose file still matches, is
+  not written again. The second `sourceToOutputs` write is gone. The
+  copy always mirrors the file, so error and rebuild paths need nothing
+  special. A missing file (a deleted caches directory) drops the entry.
+- **The lookup storages stay open.** A process-wide pool, keyed by
+  storage and base directory, hands a run the storage the last run put
+  back. It does so only while every file in the storage's directory has
+  the stamp it had then; otherwise the storage is closed and opened
+  again. A run takes the storage out of the pool, so two runs on one
+  caches directory never share one. It flushes and puts it back at the
+  end (`LookupStorageWrapper.release`), and a run that fails closes it.
+
+`KspBench` gets `bench.clean=N,M`, which deletes the output and caches
+directories before those runs, as a clean build in the same daemon
+would. Moshi's leaf edit with cleans before runs 4, 5 and 9 dirties all
+100 files on those runs and 1 file on the others. Its Model000 edit
+dirties 10 files on each incremental run, with or without cleans.
+
+Moshi's leaf edit went from about 81 to 62 ms, and Hilt's from about
+128 to 85 ms. In the warm JFR profile, `KotlinSymbolProcessing.execute`
+went from 697 to 453 samples over 36 runs.
+
+kc-side changes (Go):
+
+- **Lowered declarations are kept across updates.** An update that
+  checks only some files lowered every other file as declarations only
+  (`lower.Declarations`), getting the same trees as the update before.
+  `analysis/ka` now keeps each parse's lowered declarations
+  (`declcache.go`) for as long as the parse itself is kept. The cache is
+  keyed by `weak.Pointer[psi.Snapshot]`, and `runtime.AddCleanup`
+  removes an entry once its snapshot is collected. The checker writes
+  into the trees it checks, so each update gets a copy.
+- **The copy is generated.** `syntax.Clone` is a typed deep copy, made
+  from the AST's types by `TestCloneGenerated`, which also fails when
+  `clone_gen.go` is stale. A lowered tree can hold a node twice: a
+  delegated property's accessors hold the property and its reference.
+  `Clone` keeps such nodes shared through a map of copies, used only for
+  a file that needs it, and remaps `File.Annotated`'s node keys.
+  `TestClone` checks that copies of the lowered test sources (both
+  `File` and `Declarations`) are equal to the originals (`syntax.Diff`)
+  and share no node, slice or map with them. A copy costs about half a
+  lowering, since Moshi's constructor parameters carry defaults and
+  annotations.
+- **`conflicts` compares fewer declarations.** It compared every
+  declaration of a checked file's package. From the package's
+  unchecked files, only declarations with the same name as one in a
+  checked file can conflict with the checked file's, so only those are
+  compared.
+
+`BenchmarkUpdateEdit` on Moshi's large module, editing the leaf file:
+about 8.9 ms before, 7.6 with the declarations kept, and 6.7 with both
+changes.
+
+Measured and left alone:
+
+- Running the error-only passes on checked files only, and the smaller
+  allocations in the checker's setup. `errorf`'s `Sprintf` and those
+  passes are about 1% of an update's CPU.
+- `lookupAlias`, the alias lookup of every type reference, is about 9%,
+  and data classes' members about 6%. Both are part of re-resolving
+  every file's signatures on every update, which keeping the declared
+  program across updates would remove. That is the remaining large cut
+  on kc's side (step 34).
+
+The batch as in step 35 (10 runs per case, kc's fastest beside the
+median). The machine was noisier than in step 35's batch: rows where
+nothing changed for kc, like Room, moved by up to 10% each way.
+
+| ms | stock KSP2 | kc | ratio | kc min | step 35 kc (min) |
+|---|---|---|---|---|---|
+| Room large, warm | 7067 | 2514 | 2.8x | 2336 | 2342 (2122) |
+| Room large, edit Item000 | 8154 | 2796 | 2.9x | 2605 | 2719 (2619) |
+| Room large, leaf edit | 8331 | 2998 | 2.8x | 2625 | 2780 (2667) |
+| Room small, warm | 435 | 103 | 4.2x | 80 | 117 (101) |
+| Room small, edit | 644 | 180 | 3.6x | 157 | 143 (110) |
+| Hilt large, warm | 3916 | 692 | 5.7x | 601 | 534 (481) |
+| Hilt large, edit Feature000 | 4113 | 1161 | 3.5x | 1077 | 1069 (998) |
+| Hilt large, leaf edit | 535 | 102 | 5.2x | 71 | 128 (108) |
+| Hilt small, warm | 403 | 59 | 6.8x | 53 | 52 (46) |
+| Hilt small, edit | 279 | 53 | 5.3x | 49 | 69 (63) |
+| Moshi large, warm | 2270 | 458 | 5.0x | 383 | 464 (447) |
+| Moshi large, edit Model000 | 610 | 167 | 3.7x | 148 | 165 (155) |
+| Moshi large, leaf edit | 405 | 75 | 5.4x | 66 | 81 (74) |
+| Moshi small, warm | 204 | 23 | 8.9x | 21 | 19 (17) |
+| Moshi small, edit | 211 | 32 | 6.6x | 29 | 40 (36) |
+
+Cold runs: Moshi 9015–9537 / 4312–4622, Hilt 14746–15723 / 5712–6488,
+Room 16082–16623 / 8134–9094.
+
+**Ten runs flatter kc's leaf edits.** `warm` is the median of the second
+half of the runs. With 30 runs, stock's JIT keeps warming up: its leaf
+edits went to 246 ms (Moshi) and 375 ms (Hilt), and kc's medians were
+76 and 69 ms (minimums 43 and 61). That puts the ratios at 3.2x and
+5.4x, not the 5x of ten runs. kc's Moshi runs are bimodal: body edits
+take 54 ms and signature edits 77 ms. Later steps should report leaf
+edits from 30 runs or more.
+
+The leaf edits that KSP's caches dominated are faster in median and in
+minimum. Moshi's minimum went from 74 to 66 ms in the batch, and to
+43 ms in the 30-run pair. Hilt's went from 108 to 71 ms. The warm
+cases, which process all files, didn't use these paths, so their
+differences are this batch's noise.
+
 ## Gaps and open questions
 
 - **Slice simplifications (M0.4).** These go when M3/M4 bring the facts in:

@@ -36,40 +36,44 @@ W is past 10x. E is at 3–4x: an edit still lowers all 559 files and
 resolves their signatures in Go (100–210 ms), and kc-aa builds a new
 round for every file (30–60 ms). Step 28 lists what is left.
 
-Room, Hilt and Moshi (steps 29–35), on generated modules of 100 files,
-after step 35's fixes. Ceiling means the ratio if the backend took no
-time: stock's run divided by the processors' own time, which is the same
-on both backends.
+Room, Hilt and Moshi (steps 29–36), on generated modules of 100 files,
+after step 36. Ceiling means the ratio if the backend took no time:
+stock's run divided by the processors' own time, which is the same on
+both backends. Rows are medians of 10 runs, but for the leaf edits,
+which are medians of 30: over 10 runs stock's JIT is still warming up,
+which flatters kc (step 36).
 
 | ms | stock KSP2 | kc | ratio | ceiling |
 |---|---|---|---|---|
-| Room, warm | 7091 | 2342 | 3.0x | about 3.5–4x (Room, XProcessing and KotlinPoet are about 90% of kc's run) |
-| Room, leaf edit | 8650 | 2780 | 3.1x | about 3.5x |
-| Hilt, warm | 3979 | 534 | 7.5x | about 10x |
-| Hilt, edit Feature000 (100 files dirty) | 3928 | 1069 | 3.7x | |
-| Hilt, leaf edit | 658 | 128 | 5.1x | about 10x (processing takes about 30 ms) |
-| Hilt, one-file test, warm | 366 | 52 | 7.0x | |
-| Moshi, warm | 2202 | 464 | 4.7x | about 7.5x |
-| Moshi, edit Model000 (10 files dirty) | 691 | 165 | 4.2x | |
-| Moshi, leaf edit | 387 | 81 | 4.8x | about 30x (processing takes about 10 ms) |
-| Moshi, one-file test, warm | 232 | 19 | 12.2x | |
+| Room, warm | 7067 | 2514 | 2.8x | about 3.5–4x (Room, XProcessing and KotlinPoet are about 90% of kc's run) |
+| Room, leaf edit | 8331 | 2998 | 2.8x | about 3.5x |
+| Hilt, warm | 3916 | 692 | 5.7x | about 10x |
+| Hilt, edit Feature000 (100 files dirty) | 4113 | 1161 | 3.5x | |
+| Hilt, leaf edit (30 runs) | 375 | 69 | 5.4x | about 10x (processing takes about 25 ms) |
+| Hilt, one-file test, warm | 403 | 59 | 6.8x | |
+| Moshi, warm | 2270 | 458 | 5.0x | about 7.5x |
+| Moshi, edit Model000 (10 files dirty) | 610 | 167 | 3.7x | |
+| Moshi, leaf edit (30 runs) | 246 | 76 | 3.2x | about 20x (processing takes about 12 ms) |
+| Moshi, one-file test, warm | 204 | 23 | 8.9x | |
 
-Moshi's one-file test is past 10x; Hilt's is at 5–10x from batch to
-batch. On the large modules, what is left on kc's side of a leaf edit
-is about 35 ms of fixed costs over its two updates and rounds:
+Nothing is at 10x yet on these modules. Moshi's one-file test is
+closest. A leaf edit on kc is now about 60–75 ms: two Go updates of
+about 12 ms each, kc-aa's rounds, the processors, and what is left of
+KSP's bookkeeping. Step 36 moved KSP's caches into memory (in the fork,
+so stock doesn't get it). What is left on kc's side:
 
-- **Each update declares every file again.** `lower` (about 5 ms in the
-  JVM) and `signatures` (about 6 ms), with 99 of 100 files reused.
-  Keeping the declared program across body edits is the cut there; it
-  needs the checker to take a new tree for one file under the others'
-  declarations (step 34 says why that is a larger change).
-- **kc-aa's round** now builds only the files KSP reaches (step 35),
-  about 2 ms per round.
-- **The native call around them**: encoding, decoding and the update's
-  reading and parsing, about 5 ms.
-- **KSP's incremental bookkeeping** (`updateCachesAndOutputs`,
-  `calcDirtyFiles`, the lookup storage) and G1 young pauses, which stock
-  pays as well: about as much as kc's share.
+- **Each update resolves every file's signatures again** (`signatures`,
+  4–6 ms per update), though 99 of 100 files are unchanged. Lowering
+  them is now a copy of kept trees (step 36). Keeping the declared
+  program across updates is the cut, and it needs the checker to take
+  a new tree for one file under the others' declarations (step 34 says
+  why that is a larger change).
+- **The native call around the updates**: reading and parsing the
+  sources, encoding and decoding, about 3 ms per update.
+- **kc-aa's round** builds only the files KSP reaches (step 35), about
+  2 ms per round.
+- **KSP's remaining bookkeeping** (symbol collection, dirtiness, output
+  backups) and G1 young pauses, which stock pays as well.
 
 ## What "10x" has to mean
 
