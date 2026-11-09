@@ -3057,6 +3057,84 @@ the rest IntelliJ core and KSP's symbol layer. Signature edits are
 still about twice as slow, because their updates resolve every file's
 signatures again (4–6 ms per update).
 
+#### Step 39: a signature edit checks only what looks up the declarations that changed
+
+After step 38, a leaf signature edit on Moshi took about 58 ms with kc
+against 32 for a body edit. `bench.editKind=signature` (new: every run
+changes the appended function's return type) and the `checked=` count
+now on each `kc-go: update` line showed where the extra time went: each
+run's second round checked 5 files, not 1. Round 2 holds the 100
+sources and the 4 adapters Moshi generated for Model099 in that run.
+Only Model099 changed, but `declEdits` counted every name it declares as
+changed, and the adapters look up `Model099User` and the rest, so they
+were checked too, with their bodies' locals (`bodies` 3–4 ms, `model`
+0.6 ms).
+
+**Only the top-level declarations whose texts changed count.**
+`declHashes` (`signature.go`) hashes each top-level declaration of a
+parse as `signatureHash` hashes a file (no bodies, no trivia, depths
+from the file), by name, and hashes the rest (package, imports, file
+annotations, declarations without names) together. A declaration's hash
+doesn't depend on where it is in the file. `changedDecls` compares the
+old and new parses of a changed file. If the rest differs, every
+declaration counts as before. Otherwise only the names whose hashes
+differ, in order (an added, removed or reordered overload counts), give
+`declaredNames` the declarations, their members and their classes
+(`addModelOf`, `addSyntaxOf`).
+
+**A declaration whose text didn't change may still change with one that
+did** (`val x = f()`, a class using a type alias of the same file). The
+checked files' models find it: `dependents` now compares, for every
+checked file, each top-level declaration's model, grouped by name, with
+the last check's (`changedModels`), and adds the names whose models
+differ. It used to compare whole files, and only those whose texts were
+the same, because a changed text moves psi node IDs, which models hold.
+`sameNodes` compares models as `reflect.DeepEqual` does but takes any
+two node IDs (and snapshots) as equal: no file's model holds another
+file's node IDs, so other files can't see them move.
+
+Tests: `TestIncrementalDecl` has new cases, with how many files the
+update's last check checks (`lastChecked`): a function whose return type
+changes the inferred type of a property and a class member of its file
+(2 files), a type alias a class of its file uses (2), a declaration
+added before the others, which moves every node after it (1), an added
+function nobody uses (1), an unrelated function's type (2), and an
+import (1, every declaration counted). Under the old rule the moved
+declarations checked 3. `TestIncrementalModuleDecl` (a function added
+to each file, and its first top-level callable and class renamed, each
+compared with a whole check):
+every edit equalled a whole check, and all but one were partial checks:
+200 on Moshi's module, 200 on Hilt's, 204 on Room's (203 partial), and
+1,170 on the Exhaustive module's 559 files. `TestShiftedModule` and
+`TestIncrementalModule` pass on the same four.
+
+The KSP bench, Moshi and Hilt, leaf edits, 100 runs on each backend, medians and
+minimums of runs 51–100, output checked against stock's (`CHECK`).
+Each signature-edit run's second round now checks 1 file:
+
+| ms | stock KSP2 | kc | ratio | kc min | step 38 kc |
+|---|---|---|---|---|---|
+| Moshi, leaf body edit | 200 | 28 | 7.1x | 23 | 32 |
+| Moshi, leaf signature edit | 205 | 51 | 4.0x | 36 | 58 |
+| Moshi, signature edits only (`bench.editKind=signature`) | | 44 | | 36 | |
+| Hilt, leaf body edit | 430 | 43 | 10.0x | 35 | 42 |
+| Hilt, leaf signature edit | 436 | 66 | 6.6x | 54 | 68 |
+
+Stock was faster on Moshi than in step 38's session (about 200 ms
+against 254, in two runs of 100), so the Moshi ratios are lower though
+kc's times are too.
+
+A signature-edit run still costs about twice a body-edit run. Its two
+updates each lower the 99 unchanged files from the declaration cache
+(2–2.5 ms, a copy of each tree) and resolve every file's signatures
+(3.5–7 ms in the JVM). The allocation profile of the second shows what
+building the checker's symbols again costs: a fifth of the bytes are the
+`componentN` and `copy` functions of data classes (`dataMembers`), and a
+`FunSym` is 584 bytes. Some runs' `signatures` phase takes 12–30 ms.
+Those runs line up with no Go GC (one every two runs, 12–28 ms of
+concurrent marking); the phase runs on all four cores while the JVM's
+compiler threads still warm up.
+
 ## Gaps and open questions
 
 - **Slice simplifications (M0.4).** These go when M3/M4 bring the facts in:
