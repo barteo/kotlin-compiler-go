@@ -3229,6 +3229,64 @@ generated files' symbols; about 3 ms), libkc's two updates (about 2 ms,
 most of it reading and stat-ing the files), and kc-aa's psi and builds
 (about 2 ms).
 
+#### Step 42: KSP's output checks run in parallel, and listing a class's declarations builds no member scope
+
+Step 41's JFR (90 recorded Moshi body-edit runs, main-thread samples,
+execution and native, about 1 ms each) left these as the run's largest
+items outside the processors: KSP's `updateOutputs` (126 samples),
+`calcDirtyFiles` (61), `updateLookupCache` (58) and
+`registerGeneratedFiles` (40), libkc's two updates (166 native) and
+`KcRound.<init>` (60).
+
+**`updateOutputs`** still compared every output with its backup (step
+41: two `stat` calls each), about 1,600 pairs a run. Fork patch 0015
+runs the comparisons on a parallel stream, from 64 pairs on; the copies
+that are needed (about 4 in a warm run) are made in order, one at a
+time, as `copyWithTimestamp` creates missing parent directories with a
+non-overwriting copy. KSP-side, and on kc's side of the comparison only,
+as patches 0010–0014.
+
+**`registerGeneratedFiles` and `calcDirtyFiles`** collect the names a
+file declares (`SymbolCollector`): KSP lists each class's declarations,
+which asks kc for the class's declared member scope. `KcRound.declared`
+built the class's whole member scope (inherited members, override
+matching: `KcMemberBuilder.build`) and returned its own members unless
+it was a Java class. So every run built the member scopes of the four
+adapters Moshi had generated. It now builds them only for a Java class,
+whose declarations are FIR's view of its members
+(`hasJavaDeclarations`, shared with the builder).
+
+Under KSP's `execute`, the main thread's samples per 90 runs:
+
+| | step 41 | step 42 |
+|---|---|---|
+| `SymbolCollector` | 55 | 20 |
+| `KcMemberBuilder.build` | 29 | 4 |
+| `updateOutputs` (execution + native) | 126 | 68 |
+| all of `execute` (execution + native) | 1,090 | 964 |
+
+Dropped: sending round 2's update only the new paths. Go stats the
+files in parallel already, and `read` is 0.2 ms an update.
+
+The KSP bench, Moshi, leaf edits, 100 runs on each backend, in two
+batches one after the other, medians and minimums of runs 51–100, output
+checked against stock's (`CHECK`):
+
+| ms | stock KSP2 | kc | ratio | kc min |
+|---|---|---|---|---|
+| Moshi, leaf body edit, batch 1 | 238 | 21 | 11.3x | 16 |
+| Moshi, leaf body edit, batch 2 | 188 | 20 | 9.4x | 17 |
+| Moshi, leaf signature edit, batch 1 | 236 | 41 | 5.8x | 26 |
+| Moshi, leaf signature edit, batch 2 | 188 | 39 | 4.8x | 32 |
+| Hilt, leaf body edit | 476 (step 41) | 38 | 12.5x | 28 |
+| Hilt, leaf signature edit | 487 (step 41) | 66 | 7.4x | 55 |
+
+Stock's medians moved by 50 ms between the two batches, kc's by 1 ms.
+Over both, Moshi's body edit is about 10.4x (213 against 20.5).
+Batches of kc on the same code gave trimmed means of 20.5 to 22.5 ms
+before these cuts, so the totals alone can't show cuts this size; the
+samples above do.
+
 ## Gaps and open questions
 
 - **Slice simplifications (M0.4).** These go when M3/M4 bring the facts in:

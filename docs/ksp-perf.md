@@ -36,14 +36,15 @@ W is past 10x. E is at 3–4x: an edit still lowers all 559 files and
 resolves their signatures in Go (100–210 ms), and kc-aa builds a new
 round for every file (30–60 ms). Step 28 lists what is left.
 
-Room, Hilt and Moshi (steps 29–41), on generated modules of 100 files,
+Room, Hilt and Moshi (steps 29–42), on generated modules of 100 files,
 after step 36, with step 39's leaf edits. Ceiling means the ratio if the
 backend took no time: stock's run divided by the processors' own time,
 which is the same on both backends. Rows are medians of 10 runs, but for
 the leaf edits, which are the medians of runs 51–100 of 100 on each
 backend: both JITs keep warming up well past 30 runs (step 38). Stock
 ran Moshi's leaf edits in about 200 ms in step 39's session, against 254
-in step 38's.
+in step 38's, and in 238 and 188 ms in two batches one after the other in
+step 42's: Moshi's step 42 rows pool both batches.
 
 | ms | stock KSP2 | kc | ratio | ceiling |
 |---|---|---|---|---|
@@ -51,20 +52,20 @@ in step 38's.
 | Room, leaf edit | 8331 | 2998 | 2.8x | about 3.5x |
 | Hilt, warm | 3916 | 692 | 5.7x | about 10x |
 | Hilt, edit Feature000 (100 files dirty) | 4113 | 1161 | 3.5x | |
-| Hilt, leaf body edit (step 41) | 476 | 37 | 12.9x | about 20x (processing takes about 20 ms) |
-| Hilt, leaf signature edit (step 41) | 487 | 64 | 7.6x | |
+| Hilt, leaf body edit (step 42) | 476 | 38 | 12.5x | about 20x (processing takes about 20 ms) |
+| Hilt, leaf signature edit (step 42) | 487 | 66 | 7.4x | |
 | Hilt, one-file test, warm | 403 | 59 | 6.8x | |
 | Moshi, warm | 2270 | 458 | 5.0x | about 7.5x |
 | Moshi, edit Model000 (10 files dirty) | 610 | 167 | 3.7x | |
-| Moshi, leaf body edit (step 41) | 202 | 22 | 9.2x | about 25x (processing takes about 9 ms) |
-| Moshi, leaf signature edit (step 41) | 200 | 47 | 4.3x | |
+| Moshi, leaf body edit (step 42, two batches) | 213 | 20.5 | 10.4x (9.4–11.3x) | about 25x (processing takes about 9 ms) |
+| Moshi, leaf signature edit (step 42, two batches) | 212 | 40 | 5.3x (4.8–5.8x) | |
 | Moshi, one-file test, warm | 204 | 23 | 8.9x | |
 
 Hilt's leaf body edit is the first edit at 10x. Since step 37, a body
 edit that declares no locals runs no check, and since step 38 an update
 reads only the files that changed: each of a body-edit run's two Go
 updates takes about 1 ms. A Moshi body-edit run is now about
-22 ms (step 41): the processors about 9, KSP's incremental bookkeeping about 5,
+21 ms (step 42): the processors about 9, KSP's incremental bookkeeping about 5,
 kc-aa's rounds about 4, libkc about 2.5, and the rest IntelliJ core and
 KSP's symbol layer. What is left:
 
