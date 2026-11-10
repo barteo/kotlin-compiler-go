@@ -135,11 +135,14 @@ type scanPoint struct {
 
 // refactorSample returns where to refactor in snap, and which kind:
 // every local val's name to inline; every seventh call or qualified
-// expression, selected, to extract; and every third declaration's name, to
-// rewrite.
+// expression, selected, to extract; every third declaration's name, to
+// rewrite; and the constructs the rewrite intentions convert: half the
+// statement keywords, each it, lambda parameter, string template, String
+// concatenation and local declared without a value, and a fifth of the
+// argument lists.
 func refactorSample(snap *psi.Snapshot) []scanPoint {
 	var out []scanPoint
-	exprs, decls := 0, 0
+	exprs, decls, rewrites := 0, 0, 0
 	psi.WalkNodes(snap.RootNode(), func(n psi.NodeRef) bool {
 		switch n.NumericKind() {
 		case psi.KindPROPERTY:
@@ -159,6 +162,36 @@ func refactorSample(snap *psi.Snapshot) []scanPoint {
 				}
 				decls++
 			}
+		case psi.KindIF_KEYWORD, psi.KindELSE_KEYWORD, psi.KindWHEN_KEYWORD, psi.KindFOR_KEYWORD, psi.KindWHILE_KEYWORD, psi.KindDO_KEYWORD:
+			if rewrites%2 == 0 {
+				out = append(out, scanPoint{n.Range().Start, 0, RefactorRewrite})
+			}
+			rewrites++
+		case psi.KindREFERENCE_EXPRESSION:
+			if n.Text() == "it" {
+				out = append(out, scanPoint{n.Range().Start, 0, RefactorRewrite})
+			}
+		case psi.KindVALUE_PARAMETER:
+			if id := n.NameIdentifier(); id.Valid() && n.Parent().Parent().NumericKind() == psi.KindFUNCTION_LITERAL {
+				out = append(out, scanPoint{id.Range().Start, 0, RefactorRewrite})
+			}
+		case psi.KindSTRING_TEMPLATE:
+			out = append(out, scanPoint{n.Range().Start + 1, 0, RefactorRewrite})
+		case psi.KindVALUE_ARGUMENT_LIST:
+			if rewrites%5 == 0 {
+				out = append(out, scanPoint{n.Range().Start + 1, 0, RefactorRewrite})
+			}
+			rewrites++
+		}
+		switch n.NumericKind() {
+		case psi.KindBINARY_EXPRESSION:
+			if n.ChildKind(psi.KindOPERATION_REFERENCE).FirstChild().NumericKind() == psi.KindPLUS && n.Parent().NumericKind() != psi.KindBINARY_EXPRESSION {
+				out = append(out, scanPoint{n.ChildKind(psi.KindOPERATION_REFERENCE).Range().Start, 0, RefactorRewrite})
+			}
+		case psi.KindPROPERTY:
+			if id := n.NameIdentifier(); id.Valid() && n.Parent().NumericKind() == psi.KindBLOCK && !n.ChildKind(psi.KindEQ).Valid() {
+				out = append(out, scanPoint{id.Range().Start, 0, RefactorRewrite})
+			}
 		case psi.KindCALL_EXPRESSION, psi.KindDOT_QUALIFIED_EXPRESSION:
 			if exprs%7 == 0 {
 				out = append(out, scanPoint{n.Range().Start, n.Range().End, RefactorExtract})
@@ -167,7 +200,8 @@ func refactorSample(snap *psi.Snapshot) []scanPoint {
 		}
 		return true
 	})
-	return out
+	slices.SortStableFunc(out, func(a, b scanPoint) int { return a.off - b.off })
+	return slices.Compact(out)
 }
 
 // applyScanEdits applies edits to src, from the end.

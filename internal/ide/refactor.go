@@ -36,7 +36,7 @@ func Refactors(v *View, doc *Document, rng psi.Range, env FixEnv) []Fix {
 	}
 	r := refactorer{fixer{v: v, doc: doc, snap: snap, d: Diagnostic{Range: rng}}}
 	var out []Fix
-	for _, f := range []func() []Fix{r.extract, r.inline, r.specifyType, r.removeType, r.argumentNames, r.toExpressionBody, r.toBlockBody} {
+	for _, f := range []func() []Fix{r.extract, r.inline, r.specifyType, r.removeType, r.argumentNames, r.toExpressionBody, r.toBlockBody, r.rewrites} {
 		out = append(out, f()...)
 	}
 	return out
@@ -527,7 +527,9 @@ func typeName(t analysis.Type) string {
 		return "s"
 	case "List", "MutableList", "ArrayList", "Set", "MutableSet", "HashSet", "Collection", "Iterable", "Array", "Sequence":
 		if len(t.Arguments) == 1 && t.Arguments[0].Name != "" && t.Arguments[0].Projection != "*" {
-			return typeName(t.Arguments[0]) + "s"
+			if s := typeName(t.Arguments[0]) + "s"; identifier(s) {
+				return s // not "is", of Ints
+			}
 		}
 	}
 	if _, ok := functionArity(t.Name); ok {
@@ -823,6 +825,16 @@ func (r refactorer) argumentNames() []Fix {
 		return nil
 	}
 	c := f.Call
+	if !calleeIs(c, call) {
+		return nil // a call the checker rewrote, as a safe call into a let
+	}
+	seen := map[string]bool{}
+	for _, n := range c.ParameterNames {
+		if seen[n] {
+			return nil // not the declared names
+		}
+		seen[n] = true
+	}
 	var all []FixEdit
 	var mine []FixEdit
 	mineName := ""
@@ -858,6 +870,14 @@ func (r refactorer) argumentNames() []Fix {
 		out = append(out, r.refactor(RefactorRewrite, "Add names to call arguments", all...)...)
 	}
 	return out
+}
+
+// calleeIs reports whether c, a call's fact, is of the function call
+// names, or of the constructor of the class it names.
+func calleeIs(c *analysis.Call, call psi.NodeRef) bool {
+	name := psi.Unquote(strings.TrimSpace(call.ChildKind(psi.KindREFERENCE_EXPRESSION).Text()))
+	q := strings.TrimSuffix(c.Name, ".<init>")
+	return name != "" && (q == name || strings.HasSuffix(q, "."+name))
 }
 
 // function returns the innermost function the caret is in, outside its
@@ -960,8 +980,8 @@ func (r refactorer) toBlockBody() []Fix {
 	eq := fn.ChildKind(psi.KindEQ)
 	e := fn.Body()
 	ps := fn.ChildKind(psi.KindVALUE_PARAMETER_LIST)
-	if !eq.Valid() || !e.Valid() || !ps.Valid() {
-		return nil
+	if !eq.Valid() || !e.Valid() || !ps.Valid() || e.NumericKind() == psi.KindANNOTATED_EXPRESSION {
+		return nil // return @A x would read as a label
 	}
 	var edits []FixEdit
 	unit := false

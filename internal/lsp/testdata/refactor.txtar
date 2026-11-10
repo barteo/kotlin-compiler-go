@@ -48,6 +48,9 @@ actions src/app/Main.kt @g only=quickfix
   src/app/Main.kt:
     7:13-7:13 "" -> "a = "
     7:16-7:16 "" -> "b = "
+3. Put arguments on separate lines [refactor.rewrite] 
+  src/app/Main.kt:
+    7:12-7:18 "(n, s)" -> "(\n        n,\n        s\n    )"
 > actions src/app/Main.kt @g only=refactor
 1. Specify return type explicitly [refactor.rewrite] 
   src/app/Main.kt:
