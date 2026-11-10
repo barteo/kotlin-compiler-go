@@ -45,6 +45,22 @@ class Counter(var n: Int) {
     }
 }
 
+// A receiver whose function an integer literal or a Java static field
+// doesn't fit gives way to the next: color(5) and
+// color(Integer.MAX_VALUE) in v.paint { } are the enclosing class's
+// color(Int), not the View's color(Paint).
+class Paint(val name: String)
+open class View { override fun toString() = "View" }
+fun View.color(p: Paint, alpha: Int = 255) = "view color ${p.name} $alpha"
+fun View.paint(block: View.() -> String) = block()
+open class Screen { fun color(id: Int) = "screen color $id" }
+class Page : Screen() {
+    fun render(v: View) {
+        println(v.paint { color(5) + " on " + this + ", " + color(Paint("red")) })
+        println(v.paint { color(Integer.MAX_VALUE) })
+    }
+}
+
 fun main() {
     val page = html {
         text = "t"
@@ -74,4 +90,5 @@ fun main() {
         }
     }
     println(outer.render())
+    Page().render(View())
 }
