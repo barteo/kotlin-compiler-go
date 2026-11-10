@@ -1,0 +1,118 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kc <barteo@gmail.com>
+Date: Tue, 10 Nov 2026 18:48:29 +0000
+Subject: [PATCH] Reuse the symbols of generated files whose text is unchanged
+
+After each round, registerGeneratedFiles visited every declaration of
+every file the round generated, to record the symbols it defines. A
+daemon that runs KSP again generates most of those files with the same
+text as the run before, and on the Hilt bench that visit (through the
+files' Java classes and their members) took about 1 ms a run.
+
+The symbols depend only on a file's text, so the last text and symbols
+of each generated file are kept for the process, and a file generated
+again with the same text gets the kept symbols. KSP_NO_SYMBOL_REUSE=1
+collects them every time; KSP_SYMBOL_VERIFY=1 collects them every time
+and fails if they differ from the kept ones.
+---
+ .../ksp/common/IncrementalContextBase.kt      | 52 ++++++++++++++++++-
+ .../ksp/impl/symbol/kotlin/KSFileImpl.kt      |  2 +-
+ 2 files changed, 52 insertions(+), 2 deletions(-)
+
+diff --git a/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/common/IncrementalContextBase.kt b/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/common/IncrementalContextBase.kt
+index c15f423..ec3a142 100644
+--- a/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/common/IncrementalContextBase.kt
++++ b/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/common/IncrementalContextBase.kt
+@@ -17,6 +17,8 @@
+ 
+ package com.google.devtools.ksp.common
+ 
++import com.google.devtools.ksp.impl.symbol.kotlin.KSFileImpl
++import com.google.devtools.ksp.impl.symbol.kotlin.KSFileJavaImpl
+ import com.google.devtools.ksp.symbol.KSClassDeclaration
+ import com.google.devtools.ksp.symbol.KSDeclaration
+ import com.google.devtools.ksp.symbol.KSDeclarationContainer
+@@ -81,6 +83,43 @@ object SymbolCollector : KSDefaultVisitor<(LookupSymbolWrapper) -> Unit, Unit>()
+     }
+ }
+ 
++/**
++ * The symbols [SymbolCollector] collects from a file, by the file's text.
++ * They depend only on the text: a file's top-level and member declarations
++ * (local ones excluded) and their qualified names. The last text and
++ * symbols of each file are kept for the process, so a daemon that
++ * generates a file again with the same text doesn't visit its declarations
++ * again. KSP_NO_SYMBOL_REUSE=1 collects them every time; KSP_SYMBOL_VERIFY=1
++ * collects them every time and fails if they differ from the kept ones.
++ */
++internal object DefinedSymbols {
++    private class Entry(val text: String, val symbols: List<LookupSymbolWrapper>)
++
++    private val entries = ConcurrentHashMap<String, Entry>()
++    private val disabled = System.getenv("KSP_NO_SYMBOL_REUSE") != null
++    private val verify = System.getenv("KSP_SYMBOL_VERIFY") != null
++
++    fun of(file: KSFile, collect: ((LookupSymbolWrapper) -> Unit) -> Unit): List<LookupSymbolWrapper> {
++        val text = if (disabled) null else textOf(file)
++        val entry = text?.let { entries[file.filePath] }?.takeIf { it.text.contentEquals(text) }
++        if (entry != null && !verify)
++            return entry.symbols
++        val symbols = ArrayList<LookupSymbolWrapper>()
++        collect { symbols.add(it) }
++        if (entry != null && entry.symbols != symbols)
++            throw IllegalStateException("KSP_SYMBOL_VERIFY: ${file.filePath}: ${entry.symbols} != $symbols")
++        if (text != null)
++            entries[file.filePath] = Entry(entry?.text ?: text.toString(), symbols)
++        return symbols
++    }
++
++    private fun textOf(file: KSFile): CharSequence? = when (file) {
++        is KSFileJavaImpl -> file.psi.viewProvider.contents
++        is KSFileImpl -> file.psi.viewProvider.contents
++        else -> null
++    }
++}
++
+ @Suppress("MemberVisibilityCanBePrivate", "CanBeParameter")
+ abstract class IncrementalContextBase(
+     protected val anyChangesWildcard: File,
+@@ -147,6 +186,17 @@ abstract class IncrementalContextBase(
+         }
+     }
+ 
++    // A generated file is mostly the same text as the last run generated
++    // for it: its symbols are then the ones collected from that text.
++    private fun collectGeneratedSymbols(ksFiles: Collection<KSFile>) {
++        ksFiles.forEach { file ->
++            val relative = file.relativeFile
++            DefinedSymbols.of(file) { file.accept(SymbolCollector, it) }.forEach {
++                updatedSymbols.putValue(relative, it)
++            }
++        }
++    }
++
+     private val removedOutputsKey = File("<This is a virtual key for removed outputs; DO NOT USE>")
+ 
+     private fun updateFromRemovedOutputs() {
+@@ -495,7 +545,7 @@ abstract class IncrementalContextBase(
+         if (!isIncremental)
+             return@closeFilesOnException
+ 
+-        collectDefinedSymbols(newFiles)
++        collectGeneratedSymbols(newFiles)
+     }
+ 
+     fun <T> closeFilesOnException(f: () -> T): T {
+diff --git a/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/symbol/kotlin/KSFileImpl.kt b/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/symbol/kotlin/KSFileImpl.kt
+index d152f4e..ca3a886 100644
+--- a/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/symbol/kotlin/KSFileImpl.kt
++++ b/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/symbol/kotlin/KSFileImpl.kt
+@@ -42,7 +42,7 @@ class KSFileImpl private constructor(internal val ktFileSymbol: KaFileSymbol) :
+         fun getCached(ktFileSymbol: KaFileSymbol) = cache.getOrPut(ktFileSymbol) { KSFileImpl(ktFileSymbol) }
+     }
+ 
+-    private val psi: PsiFile
++    internal val psi: PsiFile
+         get() = ktFileSymbol.psi as PsiFile
+ 
+     override val packageName: KSName by lazy {
