@@ -140,9 +140,8 @@ Kotlin 2.4.21's tests on `kc`:
 | Box tests | Tests | Share of run |
 |:---|---:|---:|
 | run (of 7,480) | 6,543 | |
-| pass | 6,542 | 99.98% |
-| codegen error | 1 | 0.02% |
-| check error, parse/unsupported, crash, timeout | 0 | |
+| pass | 6,543 | 100% |
+| check error, parse/unsupported, crash, codegen error, timeout | 0 | |
 | VerifyError, linkage error, exception, wrong result | 0 | |
 
 | Diagnostics tests | Tests | Share of run |
@@ -161,10 +160,6 @@ break the failures down; the largest groups are:
 
 - **Silent miscompilation**: none. No box test that `kc` compiles
   gives a wrong result, throws, or fails to verify or link.
-- **Codegen error**: one box test, `coroutines/kt51530.kt`, whose
-  `invokeSuspend` needs a branch longer than the JVM's 32,767 bytes
-  ("method too large") since operand stacks of inlined code and loops
-  moved to locals (#57).
 - **Accepts invalid**: argument type mismatches
   (`ARGUMENT_TYPE_MISMATCH` 26), calls on nullable values (`UNSAFE_CALL`
   19), unresolved names (`UNRESOLVED_REFERENCE` 14), uninferred

@@ -273,7 +273,10 @@ enclosing loop, inlined body or lambda stay, for jumps out of it, but
 those spilled theirs too. An object that `new` created and isn't
 constructed yet can't be stored: a constructor call whose arguments
 inline code, loop or `try` evaluates them first, into locals, and then
-creates the object, as `kotlinc` does. `TestRun` checks that no backward
+creates the object, as `kotlinc` does. In a call where two or more
+arguments inline code, the arguments before each of those wait in locals
+(`heldArgs`) instead of all moving at each one, so the code grows with
+the number of arguments, not its square. `TestRun` checks that no backward
 branch in the test programs has values on the stack.
 
 ## Coroutines
