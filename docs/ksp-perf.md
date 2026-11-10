@@ -71,6 +71,8 @@ step 42's: Moshi's step 42 rows pool both batches.
 | Hilt, leaf signature edit (step 50) | 334 | 39 | 8.6x (12.2x against step 49's stock) | step 50 cut 0.4 ms off the two updates (A/B), inside the totals' spread |
 | Hilt, leaf body edit (step 51) | 335 | 35 | 9.6x | stock's teardown 93 ms; step 51 took nothing off Hilt (A/B) |
 | Hilt, leaf signature edit (step 51) | 335 | 40 | 8.4x | |
+| Hilt, leaf body edit (step 52) | 368 | 35 | 10.5x | stock's teardown 112–115 ms |
+| Hilt, leaf signature edit (step 52) | 378 | 39 | 9.7x | step 52 cut 2 ms (A/B, 40 against 42; round 2's update 1.8 against 3.2 ms) |
 | Hilt, one-file test, warm | 403 | 59 | 6.8x | |
 | Moshi, warm | 2270 | 458 | 5.0x | about 7.5x |
 | Moshi, edit Model000 (10 files dirty) | 610 | 167 | 3.7x | |
@@ -93,6 +95,8 @@ step 42's: Moshi's step 42 rows pool both batches.
 | Moshi, leaf signature edit (step 50) | 194 | 20 | 9.7x | step 50 cut 0.7 ms off the two updates (A/B, 5.4 against 6.1 ms) |
 | Moshi, leaf body edit (step 51) | 359 | 17 | 21x (10.8x against step 50's stock) | stock's teardown took 204 ms here, 30–116 before |
 | Moshi, leaf signature edit (step 51) | 340 | 21 | 16x (9.2x against step 50's stock) | step 51 cut 0.3–0.4 ms (A/B), inside the totals' spread |
+| Moshi, leaf body edit (step 52) | 227 | 18 | 12.6x | stock's teardown 72–75 ms, 192–204 in step 51 |
+| Moshi, leaf signature edit (step 52) | 223 | 19 | 11.7x (10.2x against step 50's stock) | step 52 cut 2 ms (A/B, 20 against 22; round 2's update 1.0 against 2.7 ms) |
 | Moshi, one-file test, warm | 204 | 23 | 8.9x | |
 
 Hilt's leaf body edit is the first edit at 10x. Since step 37, a body
@@ -126,7 +130,14 @@ KSP's symbol layer. What is left:
   goroutine, and parses only the files left to parse: waking Go's parked
   threads cost more than they saved. That took 0.4–0.7 ms off a
   signature run's two updates (A/B, 5.4 against 6.1 ms on Moshi);
-  `KC_ALWAYS_PARALLEL=1` restores the fan-outs. Step 43's session ran on a slower machine: kc's unchanged body path
+  `KC_ALWAYS_PARALLEL=1` restores the fan-outs. Since step 52 a KSP
+  run's second update, which compared the edited file with the last
+  run's round 2 and checked it again, takes its model from round 1's
+  check when nothing the generated files declare (Kotlin or Java) can
+  reach it: round 2's update drops to a body run's (1.0 against 2.7 ms
+  on Moshi, 1.8 against 3.2 on Hilt), 2 ms off a signature run on both
+  (A/B); `KC_NO_BORROW=1` turns it off. A signature run now costs
+  about 1 ms more than a body run. Step 43's session ran on a slower machine: kc's unchanged body path
   took 26 ms on Moshi there, against 20.5 in step 42's, so its rows
   aren't comparable with step 42's.
 - **KSP's incremental bookkeeping** (about 3 ms on Moshi since fork

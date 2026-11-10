@@ -4233,6 +4233,84 @@ batches, so its Moshi ratios swing with it; its Hilt teardown took
 though the A/B on one machine puts them 0.3–0.4 ms below: a batch's
 machine state moves the totals more than this step does.
 
+#### Step 52: round 2 takes the edited file's model from round 1
+
+After step 51, a signature run cost 3–4 ms more than a body run, and
+most of the difference was libkc's second update, after KSP adds the
+generated files: about 2.5 ms on Moshi and 3 on Hilt (`native`),
+against about 1 for a body run's. That update compares the files with
+the check it finds for the same paths, the last run's round 2, in
+which the edited file had the other text. So `declEdits` made it dirty
+and the update checked it again, though round 1 had checked it moments
+before with the same text and the same parse (`cache.snapshot` already
+took the parse from there).
+
+Now, once `declEdits` has the dirty files, `checkCache.borrow` looks
+for another kept check that has them with the same text and parse: round
+1's. It takes that check's models of the dirty files if:
+- that check is clean, of Kotlin sources only, reports nothing in them,
+  and has no file the update doesn't;
+- each Kotlin file the update has that it doesn't, or has with another
+  text, `prev` has with the same text, so what it declares is `prev`'s
+  model of it, and kc parses each of the update's Java sources;
+- no dirty file looks up or declares a name those Kotlin and Java files
+  declare (`declaredNames.affects`, the rule `declEdits` stands on);
+- no dirty file writes, as a word, the name of a package they make:
+  one none of the lending check's files is in or inside, and the class
+  path doesn't have. A package missing from round 1 that a file names
+  is reported there, so the rule above leaves it out; this covers the
+  rest;
+- with Java sources, no Java text names a class or facade of the dirty
+  files whose models differ from `prev`'s.
+
+Then, as an update that only shifted models does, it takes `prev`'s
+models of the rest and `prev`'s library: its Java classes see the
+Kotlin classes as they were, which the last rule allows. If `dependents`
+finds another file that looks up what changed, the update drops the
+borrowed models and checks as before. `KC_NO_BORROW=1` turns it off.
+The JVM needs no change: a borrowed `*File` is round 1's, which
+`kaops` encodes as reused, so the round takes the decoded file and the
+tree joined in round 1.
+
+The first version left out updates with Java sources, which is all of
+Hilt's round 2s: its processors generate Java. Its tests cover generated
+Java files, one whose class a dirty file then resolves to, one that names
+the changed facade, and new packages with parents the class path has or
+hasn't.
+
+In the KSP bench, six alternating batches per project (on, off, off,
+on, on, off; off is `KC_NO_BORROW=1`), round 2's update in signature
+runs, medians (means in brackets) of runs 51–100 (Moshi's batches ran
+the first version, which took the same path there):
+
+| ms | Moshi on | Moshi off | Hilt on | Hilt off |
+|---|---|---|---|---|
+| round 2's update, libkc's parts after `parse` | 0.4 (borrow) | 2.0 (check) | 0.7 (borrow) | 2.2 (check) |
+| round 2's `native` | 0.8 (1.45) | 2.5 (2.77) | 1.6 (1.91) | 3.0 (3.44) |
+| round 2's `update` (JVM) | 1.0 (1.62) | 2.7 (2.98) | 1.8 (2.11) | 3.2 (3.67) |
+| run total, signature | 20 (21.6) | 22 (23.5) | 40 (40.5) | 42 (44.9) |
+| run total, body | 18 (20.3) | 19 (19.1) | 38 (39.6) | 36 (37.7) |
+
+Round 2's signature update now costs what a body run's does. It
+borrowed on 49 of each batch's 50 signature runs. Body runs take the shifted path
+as before; their totals moved within the batches' spread.
+
+The KSP bench, both backends, 100 runs, output checked against stock's,
+medians of runs 51–100:
+
+| ms | stock KSP2 | kc | ratio | kc min |
+|---|---|---|---|---|
+| Moshi, leaf body edit | 227 | 18 | 12.6x | 15 |
+| Moshi, leaf signature edit | 223 | 19 | 11.7x | 18 |
+| Hilt, leaf body edit | 368 | 35 | 10.5x | 29 |
+| Hilt, leaf signature edit | 378 | 39 | 9.7x | 33 |
+
+Stock's Moshi teardown took 72–75 ms here, against 192–204 in step 51's
+batch; its Hilt teardown took 112–115. Moshi's signature edit is now
+above 10x against this batch's stock and step 50's (194 ms, 10.2x).
+A kc signature run now costs about 1 ms more than a body run, on
+both projects: the check of the edited file in round 1.
+
 ## Gaps and open questions
 
 - **Slice simplifications (M0.4).** These go when M3/M4 bring the facts in:
