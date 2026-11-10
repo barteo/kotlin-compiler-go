@@ -59,6 +59,8 @@ step 42's: Moshi's step 42 rows pool both batches.
 | Hilt, leaf signature edit (step 44, slower machine) | 495 | 54 | 9.2x | steps 43–44 cut 20 ms (A/B on one machine) |
 | Hilt, leaf body edit (step 45, slower machine) | 504 | 41 | 12.3x | |
 | Hilt, leaf signature edit (step 45, slower machine) | 481 | 48 | 10.0x | step 45 cut 5–6 ms (A/B against step 44's libkc) |
+| Hilt, leaf body edit (step 46, Gradle's layout) | 484 | 36 | 13.4x | |
+| Hilt, leaf signature edit (step 46, Gradle's layout) | 476 | 43 | 11.1x | |
 | Hilt, one-file test, warm | 403 | 59 | 6.8x | |
 | Moshi, warm | 2270 | 458 | 5.0x | about 7.5x |
 | Moshi, edit Model000 (10 files dirty) | 610 | 167 | 3.7x | |
@@ -69,6 +71,8 @@ step 42's: Moshi's step 42 rows pool both batches.
 | Moshi, leaf signature edit (step 44, slower machine) | 217 | 35 | 6.2x | steps 43–44 cut 10 ms (A/B on one machine) |
 | Moshi, leaf body edit (step 45, slower machine) | 232 | 26 | 8.9x | |
 | Moshi, leaf signature edit (step 45, slower machine) | 225 | 33 | 6.8x | step 45 cut 5–6 ms (A/B against step 44's libkc) |
+| Moshi, leaf body edit (step 46, Gradle's layout) | 200 | 22 | 9.1x | the layout cut stock's teardown by about 15 ms |
+| Moshi, leaf signature edit (step 46, Gradle's layout) | 207 | 28 | 7.4x | |
 | Moshi, one-file test, warm | 204 | 23 | 8.9x | |
 
 Hilt's leaf body edit is the first edit at 10x. Since step 37, a body
@@ -101,9 +105,21 @@ KSP's symbol layer. What is left:
   lookup caches (flushed every run), checking every output against its
   backup (a `stat` of each), collecting the symbols of the edited and
   generated files, and `calcDirtyFiles`' dirtiness propagation. Stock
-  pays all of it; trimming it in the fork is KSP-side.
-- **kc-aa's rounds**: psi and `build`, about 3 ms per run since step 40
-  stopped parsing every class ID each round.
+  pays all of it; trimming it in the fork is KSP-side. Until step 46 the
+  bench's layout sent each backup path through `toRelativeString`'s
+  slow path, which Gradle's layout doesn't. What is left is reads and
+  writes of KSP's on-disk lookup and symbol maps, spread thin: cutting
+  it would need an in-memory layer over them.
+- **kc-aa's rounds**: about 5 ms per Moshi body run since step 46. That
+  step made the JVM keep unchanged files' PSI by libkc's text hash
+  (no stat or read per file per round), cached the session's source
+  listings by directory time, and shared the edited file's parse
+  between a run's two updates: 1.7 ms off. What is left is the two
+  updates (about 1.3 ms each), IntelliJ parsing the edited file, and the
+  second round's shift of its model. Since step 46 the bench passes
+  Gradle's layout (one project directory over the sources and the
+  outputs), which also sped up stock: its Moshi rows from step 46 on
+  aren't comparable with earlier ones.
 - **Comment and KDoc edits outside bodies** still take the partial
   check, though they would only need nodes and positions moved, as
   step 37 does for bodies.

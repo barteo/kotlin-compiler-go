@@ -3607,6 +3607,111 @@ second, so its ratios aren't used. A Moshi signature run is now 7 ms
 over a body run. Its two updates take about 3 ms each, and a body run's
 take about 1.
 
+#### Step 46: the JVM keeps unchanged files' PSI by libkc's text hash
+
+After step 45, a Moshi body-edit run took 26–27 ms with kc. A JFR of it
+showed two things to cut, one in the bench and one in kc-aa.
+
+**The bench's layout.** KspBench passed the first source directory as
+`projectBaseDir`, and the outputs were under a sibling directory. Every
+output path relative to the base was then `../out/...`. That missed
+fork patch 0014's fast path, so `updateOutputs`' backup paths went
+through `toRelativeString`'s slow path: 304 of the 3962 Java samples
+under `execute`. Gradle passes the project directory, which holds both
+the sources and `build/generated/ksp`. KspBench now passes the
+directory that holds both, for both backends. That brought kc's body run
+to 25 ms, and stock's Moshi teardown from about 45 ms to 30.
+
+**kc's rounds.** With `KC_TIMING`, a body run's kc time was about
+6.7 ms:
+
+| phase | ms |
+|---|---|
+| session (`environment` 0.4, `open` 0.7) | 1.1 |
+| round 1: update, psi, build | 1.3, 1.1, 1.0 |
+| round 2: update, psi, build | 1.3, 0.9, 0.5 |
+
+`psi` found each of about 100 files' virtual file
+(`refreshAndFindFileByPath`, a stat each), and `KcEnvironment.psiFile`
+read each file's bytes to compare them with the bytes its PSI was
+parsed from. That ran every round, though libkc had just found the
+same texts by their stamps. The session walked the source roots twice,
+once for `.kt` files and once for `.java` ones, with a stat per entry.
+And the second round's update parsed the edited file again: it reuses
+the last run's check of the same round (`checkCache.find`), whose text
+for that file is the old one.
+
+Four changes:
+- **libkc's file records carry a text hash** (`kaops`'s `textHash`, the
+  64-bit FNV-1a of the text as read, which is the file's bytes).
+  `KcEnvironment` keeps, by path, the virtual file and the hash of the
+  bytes `psiFile` last read for it. A round whose `KcFile.text` matches
+  gets the cached PSI, if its view provider is still the file's, with no
+  stat and no read. Otherwise `psiFile` runs as before and records the
+  hash of what it read. A file read between libkc's read and the JVM's
+  gets a hash that differs from libkc's, so the next round reads it
+  again. `TestTextHash` checks `textHash` against FNV-1a's published
+  values; the JVM's `textHash` is the same loop.
+- **Parses are shared across kept checks.** `checkCache.snapshot`
+  looks in every check the cache keeps for a parse of the same path and
+  text. The second round takes the edited file's parse from the first
+  round's check.
+- **Source listings are cached** (`SourceWalk` in `KcBackend.kt`). Each
+  directory's listing is kept with its modification time, which adding,
+  removing or renaming an entry changes. A walk then stats only the
+  directories. As in libkc's read cache, a directory modified within 2 s
+  of being listed is listed again until it is older.
+- `build`'s error for a missing file now says "no Kotlin PSI", which
+  covers both causes.
+
+After the change:
+
+| phase | ms, step 46 | step 45 |
+|---|---|---|
+| session | 0.4 | 1.1 |
+| round 1 psi | 0.3 | 1.1 |
+| round 2 psi | 0.1 | 0.9 |
+| round 2's Go parse | 0.1 | 0.3 |
+
+That is about 1.7 ms off kc's 6.7 per body run. What is left of kc's
+rounds is the two updates (about 1.3 ms each in the JVM, 1.1–1.2 of
+it `native`), IntelliJ parsing the edited file (round 1's `build`), and
+the second round's shift of the edited file's model (0.5 ms).
+
+Tests:
+- `TestIncrementalModuleDecl`, `TestIncrementalModule` and
+  `TestShiftedModule` pass on Moshi, Hilt, Room and Exhaustive, with
+  the files resolved per edit unchanged (2.4, 2.0, 52.5, 478.6).
+- `build.sh stock` and `build.sh ksp` (134/136) pass, and the bench's
+  `CHECK` finds kc's output the same as stock's on Moshi and Hilt.
+- `internal/classfile`'s and `internal/driver`'s tests fail in this
+  sandbox only. The proxy's `JAVA_TOOL_OPTIONS` banner gets into the
+  JVM's output, and with no UTF-8 locale a non-ASCII class name breaks.
+  With the variable unset and `LANG=C.UTF-8`, they pass.
+
+Moshi body edits only, kc only, six batches: 23, 22, 23, 23, 22 and 21
+ms (medians of runs 51–100), against 25 with the new layout and step
+45's code, and 26–27 with the old layout.
+
+The KSP bench, both backends, leaf edits alternating body and signature,
+100 runs, output checked against stock's (`CHECK`):
+
+| ms | stock KSP2 | kc | ratio | kc min |
+|---|---|---|---|---|
+| Moshi, leaf body edit | 200 | 22 | 9.1x | 17 |
+| Moshi, leaf signature edit | 207 | 28 | 7.4x | 21 |
+| Hilt, leaf body edit | 484 | 36 | 13.4x | 31 |
+| Hilt, leaf signature edit | 476 | 43 | 11.1x | 37 |
+
+Both Hilt edits are past 10x. A second Moshi batch gave kc 21 and 26 ms,
+but stock's teardowns there were 190–205 ms, against 29–30 in the
+first, so its ratios aren't used. On Moshi, stock is faster than in
+step 45's rows (232 and 225 ms) because of the bench's layout: 10x is
+now 20 ms. The rest of a kc body run is the processors (about 9 ms,
+half of it KotlinPoet writing the adapter) and KSP's bookkeeping (about
+5): reads and writes of its on-disk lookup and symbol maps, spread over
+`calcDirtyFiles`, `DirtinessPropagator` and `updateCaches`.
+
 ## Gaps and open questions
 
 - **Slice simplifications (M0.4).** These go when M3/M4 bring the facts in:
