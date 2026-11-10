@@ -6,7 +6,7 @@ Cold kotlinc starts one JVM per module; warm kotlinc runs all three in one JVM.
 These are compiler timings, excluding Gradle, tests and AtomicFU bytecode transformation.
 
 - Machine: Darwin arm64, 8 CPUs
-- Revision: e86fe2a
+- Revision: 1d1d79a
 - go version go1.27.2 darwin/arm64
 - openjdk version "21.0.12.1" 2026-08-18
 - info: kotlinc-jvm 2.4.21 (JRE 21.0.12.1)
@@ -18,9 +18,9 @@ These are compiler timings, excluding Gradle, tests and AtomicFU bytecode transf
 
 | Command | Wall time | vs `kc -j 1` | CPU time (user+sys) | Peak memory |
 |:---|---:|---:|---:|---:|
-| `kc -j 1` | 361 ± 3 ms | — | 670 ms | 78 MB |
-| `kc -j 8` | 237 ± 4 ms | 1.5x faster | 882 ms | 90 MB |
-| `kotlinc (cold JVM)` | 19,420 ± 385 ms | 53.8x slower | 70,606 ms | 1,074 MB |
+| `kc -j 1` | 366 ± 4 ms | — | 680 ms | 82 MB |
+| `kc -j 8` | 244 ± 6 ms | 1.5x faster | 899 ms | 95 MB |
+| `kotlinc (cold JVM)` | 19,966 ± 176 ms | 54.5x slower | 75,228 ms | 1,081 MB |
 
-- kotlinc in a warm JVM (median of the last 10 of 20 complete builds): 2252 ms
+- kotlinc in a warm JVM (median of the last 10 of 20 complete builds): 2267 ms
 - Class files: kc 671, kotlinc 668
