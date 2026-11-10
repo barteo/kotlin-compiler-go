@@ -9,9 +9,12 @@ import (
 )
 
 // Parsed Java sources. A library keeps the parse of each Java source the
-// last update against it had (shared.java), by path, with its text: a
-// KSP run's second round, and a daemon's next run, parse only the Java
-// sources whose texts changed. A parsed file is only read once parsed
+// last two updates against it had (shared.java), by path, with its text:
+// a KSP run's second round, and a daemon's next run, parse only the Java
+// sources whose texts changed. Two, because the Java files a run's first
+// round generates are sources of its second round only: the next run's
+// first round doesn't have them, and its second has them again, with
+// texts that are mostly the same. A parsed file is only read once parsed
 // (javasrc.NewSet and the class views it gives build values of their
 // own), so models can share it.
 
@@ -28,26 +31,33 @@ type javaParse struct {
 	err  error
 }
 
-// javaCache is a library's parsed Java sources, by path.
+// javaCache is a library's parsed Java sources, by path: the last
+// update's, and the one's before.
 type javaCache struct {
-	mu sync.Mutex
-	m  map[string]javaParse
+	mu       sync.Mutex
+	m, older map[string]javaParse
 }
 
 // parse returns the parses of sources, whose texts are texts, parsing
-// those whose texts differ from the last update's, and keeps them for the
-// next update.
+// those whose texts differ from the last two updates', and keeps them for
+// the next updates.
 func (c *javaCache) parse(sources []Source, texts []string, jobs int) ([]*javasrc.File, []error) {
 	c.mu.Lock()
-	prev := c.m
+	prev, older := c.m, c.older
 	c.mu.Unlock()
 	files := make([]*javasrc.File, len(sources))
 	errs := make([]error, len(sources))
 	var todo []int
 	for i, src := range sources {
-		if p, ok := prev[src.Path]; ok && p.text == texts[i] && !noReuse && !noRoundReuse {
-			files[i], errs[i] = p.file, p.err
-			continue
+		if !noReuse && !noRoundReuse {
+			if p, ok := prev[src.Path]; ok && p.text == texts[i] {
+				files[i], errs[i] = p.file, p.err
+				continue
+			}
+			if p, ok := older[src.Path]; ok && p.text == texts[i] {
+				files[i], errs[i] = p.file, p.err
+				continue
+			}
 		}
 		todo = append(todo, i)
 	}
@@ -61,7 +71,7 @@ func (c *javaCache) parse(sources []Source, texts []string, jobs int) ([]*javasr
 		m[src.Path] = javaParse{texts[i], files[i], errs[i]}
 	}
 	c.mu.Lock()
-	c.m = m
+	c.m, c.older = m, prev
 	c.mu.Unlock()
 	return files, errs
 }

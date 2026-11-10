@@ -173,4 +173,11 @@ func TestFixedSources(t *testing.T) {
 	text := "package p; public class J { int x; }"
 	srcs[1].Text = &text
 	update("Java text", 0, 1).Close()
+	// A KSP run's generated Java sources are its second round's only: the
+	// next run's second round reuses their parses past its first round.
+	java := srcs[1]
+	srcs = []Source{srcs[0]}
+	update("without Java", 0, 0).Close()
+	srcs = append(srcs, java)
+	update("with Java again", 0, 0).Close()
 }
