@@ -644,9 +644,10 @@ func (g *gen) propMeta(s *metaScope, p *types.VarSym, pd *syntax.PropDecl, cp *s
 		kp.Recv = s.typ(*recv)
 	}
 	if pd != nil && pd.Getter != nil && pd.Getter.Sym != nil && (pd.Getter.Sym.Ext || ctx != "") {
-		getterDesc = funDesc(pd.Getter.Sym)
+		getterDesc = funDesc(pd.Getter.Sym) // with a composable getter's Composer and flags
+	} else {
+		getterDesc = composeGetterDesc(p, getterDesc)
 	}
-	getterDesc = composeGetterDesc(p, getterDesc)
 	if owner != nil && owner.Value && p != owner.Underlying {
 		getterDesc = "(" + desc(owner.Underlying.Type) + getterDesc[1:]
 	}

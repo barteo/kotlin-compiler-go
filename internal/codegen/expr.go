@@ -1294,7 +1294,7 @@ func (g *gen) member(x *syntax.Member) {
 				g.inline(b, nil) // inline-only, of the class path
 				return
 			}
-			g.composeArgs(f, nil, nil)
+			g.composeGetterArgs(x, f)
 			g.callMethod(f, f.Owner, f.JVM(), funDesc(f))
 		})
 		return
@@ -1309,7 +1309,7 @@ func (g *gen) member(x *syntax.Member) {
 		g.safeCall(x, types.JVMRet(f), x.T, func() {
 			g.coerceRecv(rt, f.Recv)
 			if inlineBody(f, nil) == nil {
-				g.composeArgs(f, nil, nil) // a composable getter's Composer
+				g.composeGetterArgs(x, f)
 			}
 			g.invokeFun(nil, f, nil) // copied if inline-only
 		})

@@ -307,9 +307,11 @@ func onCtorField(c *types.ClassSym) bool {
 // property target on its synthetic method getter$annotations, named after
 // its getter's JVM name, getter, which takes an extension property's
 // receiver, as kotlinc does: also if they are all SOURCE annotations,
-// which it doesn't keep. It returns the method's name and descriptor,
-// which metadata refers to, or "".
-func (g *gen) propertyAnnotations(c *cf.Class, getter string, recv *types.Type, as []syntax.Annotation, p placement, private bool) (string, string) {
+// which it doesn't keep. A composable property's method takes a Composer
+// and an int of change flags after it, as kotlinc's Compose plugin writes
+// it. It returns the method's name and descriptor, which metadata refers
+// to, or "".
+func (g *gen) propertyAnnotations(c *cf.Class, getter string, recv *types.Type, as []syntax.Annotation, p placement, private, composable bool) (string, string) {
 	n := 0
 	for i := range as {
 		a := &as[i]
@@ -329,6 +331,9 @@ func (g *gen) propertyAnnotations(c *cf.Class, getter string, recv *types.Type, 
 	if recv != nil {
 		d = "(" + desc(*recv) + ")V"
 	}
+	if composable {
+		d = types.ComposeDesc(d, 1)
+	}
 	access := uint16(cf.AccPublic | cf.AccStatic | cf.AccSynthetic)
 	if private {
 		access = cf.AccPrivate | cf.AccStatic | cf.AccSynthetic
@@ -337,8 +342,8 @@ func (g *gen) propertyAnnotations(c *cf.Class, getter string, recv *types.Type, 
 		access = cf.AccPublic | cf.AccStatic | cf.AccSynthetic
 	}
 	code := c.NewMethod(access, mname, d)
-	if recv != nil {
-		code.AllocLocal(desc(*recv))
+	for _, pd := range descParams(d) {
+		code.AllocLocal(pd)
 	}
 	code.Op(cf.RETURN)
 	if err := code.Err(); err != nil {
@@ -475,7 +480,7 @@ func (g *gen) propAnnotations(c *cf.Class, p *syntax.PropDecl, recv *types.Type,
 	case p.Sym != nil:
 		getter = types.GetterJVM(p.Sym)
 	}
-	name, d := g.propertyAnnotations(c, getter, recv, p.Annotations, placement{site: "property", dflt: onProperty}, private)
+	name, d := g.propertyAnnotations(c, getter, recv, p.Annotations, placement{site: "property", dflt: onProperty}, private, p.Sym != nil && p.Sym.Composable)
 	if name != "" && p.Sym != nil {
 		g.shared.annotated[p.Sym] = [2]string{name, d}
 	}
