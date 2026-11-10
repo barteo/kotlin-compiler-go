@@ -117,6 +117,7 @@ Not supported, and reported as such:
 - graphs with type parameters, and graph factories that are abstract classes;
 - javax, Jakarta, Dagger and Guice interop;
 - member injection into classes from the class path;
+- member injection that depends on the class itself, as `@Inject lateinit var s: Lazy<S>` in `S`;
 - `createDynamicGraph` and `createDynamicGraphFactory`, and calls of `createGraph` and `createGraphFactory` whose type argument is inferred;
 - graph functions that create a graph extension from parameters, other than its factory's.
 

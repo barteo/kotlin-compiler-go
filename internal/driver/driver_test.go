@@ -1232,6 +1232,8 @@ func TestMetro(t *testing.T) {
 			options: map[string]string{"custom-inject": "a/MyInject"}},
 		"dynamic graph":       {src: "@DependencyGraph interface G\nfun g() = createDynamicGraph<G>()", feature: true},
 		"inferred graph type": {src: "@DependencyGraph interface G { companion object : G by createGraph() }", feature: true},
+		"member of its own type": {src: "@Inject class S { @Inject lateinit var s: Lazy<S> }\n@DependencyGraph interface G { val s: S }",
+			feature: true},
 	} {
 		t.Run(name, func(t *testing.T) {
 			file := filepath.Join(t.TempDir(), "a.kt")

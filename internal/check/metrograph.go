@@ -42,6 +42,8 @@ type mGraph struct {
 	containers map[*types.ClassSym]string // binding containers' instances
 	failed     bool
 	excluded   map[string]bool
+	// injecting holds the classes whose members are being resolved.
+	injecting map[*types.ClassSym]bool
 
 	// A graph extension's graph is an inner class of its parent's, whose
 	// bindings it uses. The names of each graph's members start with its
@@ -1208,7 +1210,16 @@ func (gr *mGraph) ctorBinding(r *mReq, cls *types.ClassSym, ctor *types.FunSym, 
 		return nil, false
 	}
 	kotlin := isSource(cls) || cls.KotlinName != ""
+	if gr.injecting[cls] {
+		gr.unsupported("kc can't inject a member of %s that depends on %s", cls.DisplayName(), cls.DisplayName())
+		return nil, false
+	}
+	if gr.injecting == nil {
+		gr.injecting = map[*types.ClassSym]bool{}
+	}
+	gr.injecting[cls] = true
 	inject, ok := gr.memberInjections(cls, "it", cls.DisplayName())
+	delete(gr.injecting, cls)
 	if !ok {
 		return nil, false
 	}
