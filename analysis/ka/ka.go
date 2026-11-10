@@ -377,19 +377,27 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 	}
 	javaTexts := texts[len(sources):]
 	texts = texts[:len(sources)]
+	// The kept parses are taken first, on this goroutine, and only the
+	// files left are parsed in parallel: an edit's update parses one,
+	// which starts no goroutine (smallCheck).
 	snaps := make([]*psi.Snapshot, len(sources))
-	parallel(len(sources), jobs, func(i int) {
+	var toParse []int
+	for i := range sources {
 		if snap := prev.snapshot(sources[i].Path, texts[i]); snap != nil {
 			snaps[i] = snap
-			return
+			continue
 		}
 		// A KSP run's second update finds the last run's check of its
 		// round, whose edited files' texts differ: the check of the
 		// first round, just before, has them.
 		if snap := cache.snapshot(sources[i].Path, texts[i]); snap != nil {
 			snaps[i] = snap
-			return
+			continue
 		}
+		toParse = append(toParse, i)
+	}
+	parallel(len(toParse), jobs, func(k int) {
+		i := toParse[k]
 		snaps[i] = psi.Parse(sources[i].Path, texts[i])
 	})
 	javaFiles := make([]*javasrc.File, len(javaSources))
@@ -509,7 +517,8 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 	} else {
 		lastResolved.Store(int64(len(sources)))
 	}
-	maps.Copy(broken, lowerFiles(snaps, files, provs, m, jobs, rest, notDirty, stub))
+	cj := checkJobs(jobs, dirty, reach)
+	maps.Copy(broken, lowerFiles(snaps, files, provs, m, cj, rest, notDirty, stub))
 	if java != nil {
 		java.SetKotlin(files)
 	}
@@ -527,7 +536,7 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 			lastChecked.Store(int64(len(files)))
 		}
 		tm.Note("checked", int(lastChecked.Load()))
-		rec, checkErrs, err := checkFiles(ctx, files, lib, jobs, only, namesIn(snaps, files, only))
+		rec, checkErrs, err := checkFiles(ctx, files, lib, cj, only, namesIn(snaps, files, only))
 		if !rec.bodies.IsZero() {
 			tm.MarkAt("signatures", rec.bodies)
 		}
@@ -616,7 +625,8 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 		} else {
 			lastResolved.Store(int64(len(sources)))
 		}
-		lowerFiles(snaps, files, provs, nil, jobs, rest, notDirty, stub)
+		cj = checkJobs(jobs, dirty, reach)
+		lowerFiles(snaps, files, provs, nil, cj, rest, notDirty, stub)
 		m.Diagnostics, m.Files = javaDiags, nil
 		tm.Mark("lower")
 	}
@@ -924,11 +934,50 @@ func lowerFiles(snaps []*psi.Snapshot, files []*syntax.File, provs []*lower.Prov
 	return broken
 }
 
+// smallCheck is the most files a partial check checks or resolves the
+// declarations of (its dirty files and the others it reaches; stubs
+// aren't counted) that it lowers and checks on the caller's goroutine
+// alone. In a daemon, Go's threads are parked between updates, and
+// waking them for each of an update's fan-outs (the lowering, the
+// signatures, the bodies) took longer than they saved on a one-file
+// edit's check: in a harness that sleeps 15 ms and sweeps 64 MB before
+// each update, Moshi's signature edit took 1.8 ms on one goroutine
+// against 2.0-2.2 on four, Hilt's 2.0 against 2.3 (docs/analysis-api.md,
+// step 50).
+const smallCheck = 8
+
+// alwaysParallel turns smallCheck off, for comparisons
+// (KC_ALWAYS_PARALLEL=1): every update uses the session's jobs.
+var alwaysParallel = os.Getenv("KC_ALWAYS_PARALLEL") != ""
+
+// checkJobs returns the goroutines a check of the dirty files, which
+// reaches reach (nil for every file), lowers and checks on: one for a
+// small partial check (smallCheck), jobs otherwise.
+func checkJobs(jobs int, dirty, reach map[int]bool) int {
+	if alwaysParallel || dirty == nil {
+		return jobs
+	}
+	n := len(dirty)
+	if reach == nil {
+		return jobs
+	}
+	for i := range reach {
+		if !dirty[i] {
+			n++
+		}
+	}
+	if n > smallCheck {
+		return jobs
+	}
+	return 1
+}
+
 // parallel runs fn(i) for i in [0, n) on up to jobs goroutines, the
 // caller's one of them. Each takes the next index from a counter, so
 // items that take microseconds (a stat, a kept parse) cost no handoff
 // between threads: in a daemon, Go's threads are parked between updates,
-// and waking one per item took longer than the items.
+// and waking one per item took longer than the items. Waking any at
+// all costs more than a few small items take (smallCheck).
 func parallel(n, jobs int, fn func(i int)) {
 	var next atomic.Int64
 	work := func() {

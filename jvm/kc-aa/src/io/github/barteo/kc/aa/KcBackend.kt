@@ -240,7 +240,7 @@ private class KcSession(private val config: KSPConfig, @Suppress("UNUSED_PARAMET
         }
         t.mark("psi")
         return KcRound(joined, { id -> libraryDecl(model, javaClasses, id) }, { fq -> KcOps.pkg(model.handle, fq) }, java, project, environment.trees,
-            if (this::round.isInitialized) round.sizes() else KcRound.Sizes())
+            if (this::round.isInitialized) round.sizes() else KcRound.Sizes(), t)
     }
 
     override fun sourceFiles(): List<KSFile> =
