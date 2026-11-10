@@ -141,37 +141,44 @@ Kotlin 2.4.21's tests on `kc`:
 
 | Box tests | Tests | Share of run |
 |:---|---:|---:|
-| run (of 7,480) | 6,483 | |
-| pass | 6,483 | 100% |
-| check error, parse/unsupported, crash, codegen error, timeout | 0 | |
+| run (of 7,480) | 6,543 | |
+| pass | 6,542 | >99.9% |
+| codegen error | 1 | <0.1% |
+| check error, parse/unsupported, crash, timeout | 0 | |
 | VerifyError, linkage error, exception, wrong result | 0 | |
 
 | Diagnostics tests | Tests | Share of run |
 |:---|---:|---:|
-| run (of 10,827) | 7,200 | |
-| rejects invalid | 3,562 | 49.5% |
-| accepts valid | 3,099 | 43.0% |
-| accepts invalid | 259 | 3.6% |
-| rejects valid | 262 | 3.6% |
+| run (of 10,827) | 7,286 | |
+| rejects invalid | 3,616 | 49.6% |
+| accepts valid | 3,131 | 43.0% |
+| accepts invalid | 263 | 3.6% |
+| rejects valid | 258 | 3.5% |
 | parse/unsupported | 18 | 0.2% |
 | crash | 0 | |
 
-`kc` agrees with `kotlinc` on 92% of the diagnostics tests, and reports
-13,125 of the 18,930 expected errors (69%) on their lines. The reports
+`kc` agrees with `kotlinc` on 93% of the diagnostics tests, and reports
+13,379 of the 19,696 expected errors (68%) on their lines. The reports
 break the failures down; the largest groups are:
 
 - **Silent miscompilation**: none. No box test that `kc` compiles
   gives a wrong result, throws, or fails to verify or link.
+- **Codegen error**: `coroutines/kt51530.kt`, a suspend lambda that
+  inlines dozens of `mapNotNull` calls into one method, whose branches
+  then jump farther than a branch offset reaches (`method too large:
+  branch offset`). It has failed since the operand stack moved to locals
+  for inlined code and loops (#57).
 - **Accepts invalid**: argument type mismatches
   (`ARGUMENT_TYPE_MISMATCH` 26), calls on nullable values (`UNSAFE_CALL`
   19), unresolved names (`UNRESOLVED_REFERENCE` 14), uninferred
-  parameter types (`CANNOT_INFER_PARAMETER_TYPE` 9), initializer type
-  mismatches (`INITIALIZER_TYPE_MISMATCH` 7), overload ambiguities
-  (`OVERLOAD_RESOLUTION_AMBIGUITY` 7) and impossible smart casts
+  parameter types (`CANNOT_INFER_PARAMETER_TYPE` 9), overload
+  ambiguities (`OVERLOAD_RESOLUTION_AMBIGUITY` 8), unsupported
+  constructs (`UNSUPPORTED` 8), initializer type mismatches
+  (`INITIALIZER_TYPE_MISMATCH` 7) and impossible smart casts
   (`SMARTCAST_IMPOSSIBLE` 7).
-- **Rejects valid**, by `kc`'s first error: type mismatches (65),
+- **Rejects valid**, by `kc`'s first error: type mismatches (66),
   inference failures (52), unresolved names and imports (32), ambiguous
-  calls (14), and calls on nullable receivers (6). No box test is
+  calls (14), and calls on nullable receivers (4). No box test is
   rejected.
 
 The committed `.tsv` files serve as a ratchet: a change must make

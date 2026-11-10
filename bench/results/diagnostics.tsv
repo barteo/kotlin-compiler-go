@@ -169,7 +169,7 @@ tests/annotations/AnnotatedBlock.kt	rejects invalid	on an expected line
 tests/annotations/AnnotatedCatchValueParameter.kt	rejects invalid	on an expected line	
 tests/annotations/AnnotatedConstructor.kt	accepts valid		
 tests/annotations/AnnotatedConstructorParams.kt	accepts valid		
-tests/annotations/AnnotatedErrorTypeRef.kt	rejects invalid	on an expected line	
+tests/annotations/AnnotatedErrorTypeRef.kt	rejects invalid	elsewhere	
 tests/annotations/AnnotatedLocalObjectFun.kt	accepts valid		
 tests/annotations/AnnotatedLocalObjectProperty.kt	accepts valid		
 tests/annotations/AnnotatedLoop.kt	accepts valid		
@@ -8348,7 +8348,7 @@ tests/smartCasts/lambdasWithContracts/lambdaWithCallInPlaceAndCycles.kt	rejects 
 tests/smartCasts/lambdasWithContracts/lambdaWithCallInPlaceAndDelegate.kt	rejects invalid	on an expected line	
 tests/smartCasts/lambdasWithContracts/lambdaWithCallInPlaceAndOperators.kt	accepts valid		
 tests/smartCasts/lambdasWithContracts/lambdaWithCallInPlaceAssignmnetsAndCycles.kt	rejects invalid	on an expected line	
-tests/smartCasts/lambdasWithContracts/lambdaWithImpliesContract.kt	rejects valid	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _	lambdaWithImpliesContract.kt:33: only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type A?
+tests/smartCasts/lambdasWithContracts/lambdaWithImpliesContract.kt	accepts valid		
 tests/smartCasts/literalInWhenSubject.kt	accepts valid		
 tests/smartCasts/localClassChanges.kt	accepts invalid	SMARTCAST_IMPOSSIBLE	localClassChanges.kt:12: SMARTCAST_IMPOSSIBLE
 tests/smartCasts/localDelegatedProperty.kt	rejects invalid	on an expected line	
@@ -9779,7 +9779,7 @@ testsWithStdLib/components.kt	accepts valid
 testsWithStdLib/concurrent.kt	accepts valid		
 testsWithStdLib/concurrentMapOfAliases.kt	accepts valid		
 testsWithStdLib/contextParametersFunctions.kt	rejects invalid	on an expected line	
-testsWithStdLib/contracts/complexConditionWithSafeCall.kt	rejects valid	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _	complexConditionWithSafeCall.kt:17: only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type PersonDto?
+testsWithStdLib/contracts/complexConditionWithSafeCall.kt	accepts valid		
 testsWithStdLib/contracts/controlflow/flowInlining/breakContinuesInInlinedLambda.kt	rejects invalid	on an expected line	
 testsWithStdLib/contracts/controlflow/flowInlining/complexTryWithTryInFinally.kt	accepts valid		
 testsWithStdLib/contracts/controlflow/flowInlining/expressionBody.kt	accepts valid		

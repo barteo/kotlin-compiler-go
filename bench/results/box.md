@@ -2,15 +2,15 @@
 
 The box tests of JetBrains/kotlin v2.4.21 (`compiler/testData/codegen/box`), each compiled by kc and run: its `box()` must return `"OK"`. `bench/kotlin-tests.sh box` writes this file, and [docs/conformance.md](../../docs/conformance.md) explains it.
 
-Of 7480 test files, 937 are skipped and 6543 run. 6543 pass (100.0%).
+Of 7480 test files, 937 are skipped and 6543 run. 6542 pass (100.0%).
 
 | Result | Tests | Share |
 |:---|---:|---:|
-| pass | 6543 | 100.0% |
+| pass | 6542 | 100.0% |
 | parse/unsupported | 0 | 0.0% |
 | check error | 0 | 0.0% |
 | crash | 0 | 0.0% |
-| codegen error | 0 | 0.0% |
+| codegen error | 1 | 0.0% |
 | VerifyError | 0 | 0.0% |
 | linkage error | 0 | 0.0% |
 | exception | 0 | 0.0% |
@@ -48,7 +48,7 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 |:---|---:|---:|---:|---:|---:|---:|---:|
 | ranges | 805 | 805 | 0 | 0 | 0 | 0 | 0 |
 | inlineClasses | 787 | 787 | 0 | 0 | 0 | 0 | 0 |
-| coroutines | 499 | 499 | 0 | 0 | 0 | 0 | 0 |
+| coroutines | 499 | 498 | 0 | 0 | 1 | 0 | 0 |
 | callableReference | 299 | 299 | 0 | 0 | 0 | 0 | 0 |
 | inference | 207 | 207 | 0 | 0 | 0 | 0 | 0 |
 | controlStructures | 158 | 158 | 0 | 0 | 0 | 0 | 0 |
@@ -199,4 +199,12 @@ Tests for other backends, that kotlinc's JVM backend ignores, or that need what 
 | stringTrim | 1 | 1 | 0 | 0 | 0 | 0 | 0 |
 | suppressions | 1 | 1 | 0 | 0 | 0 | 0 | 0 |
 | trailingComma | 1 | 1 | 0 | 0 | 0 | 0 | 0 |
+
+## Code generation errors
+
+kc checked the test but failed to generate its code.
+
+| Error | Tests | Examples |
+|:---|---:|:---|
+| `code generation: method too large: branch offset n` | 1 | `coroutines/kt51530.kt` |
 
