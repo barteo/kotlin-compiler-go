@@ -354,6 +354,7 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 	if err != nil {
 		return nil, err
 	}
+	tm.Mark("library")
 	all := slices.Concat(sources, javaSources)
 	var fixed map[string]string
 	if s.cfg.FixedSources && !noRoundReuse {

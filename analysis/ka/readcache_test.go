@@ -181,3 +181,51 @@ func TestFixedSources(t *testing.T) {
 	srcs = append(srcs, java)
 	update("with Java again", 0, 0).Close()
 }
+
+// More files changed than smallCheck are read in parallel, and every one
+// of them is read again.
+func TestReadCacheMany(t *testing.T) {
+	if runtime.GOOS != "linux" && runtime.GOOS != "darwin" {
+		t.Skip("no stamps here")
+	}
+	defer func(w time.Duration) { racyWindow = w }(racyWindow)
+	racyWindow = 50 * time.Millisecond
+	dir := t.TempDir()
+	old := time.Now().Add(-time.Hour)
+	var srcs []Source
+	write := func(text string) {
+		t.Helper()
+		for _, src := range srcs {
+			if err := os.WriteFile(src.Path, []byte(text+filepath.Base(src.Path)), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chtimes(src.Path, old, old); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	for i := range 3 * smallCheck {
+		srcs = append(srcs, Source{Path: filepath.Join(dir, fmt.Sprintf("f%d.kt", i))})
+	}
+	var c readCache
+	check := func(name, text string, reads int64) {
+		t.Helper()
+		filesRead.Store(0)
+		texts, errs := c.texts(srcs, 4, nil)
+		for i, src := range srcs {
+			if want := text + filepath.Base(src.Path); errs[i] != nil || texts[i] != want {
+				t.Errorf("%s: %s is %q (%v), want %q", name, src.Path, texts[i], errs[i], want)
+			}
+		}
+		if n := filesRead.Load(); n != reads {
+			t.Errorf("%s: read %d files, want %d", name, n, reads)
+		}
+	}
+	write("a ")
+	check("first", "a ", int64(len(srcs)))
+	time.Sleep(2 * racyWindow)
+	check("settled", "a ", int64(len(srcs)))
+	check("unchanged", "a ", 0)
+	write("b ")
+	check("all changed", "b ", int64(len(srcs)))
+}
