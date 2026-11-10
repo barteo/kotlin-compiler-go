@@ -3899,6 +3899,98 @@ What is left of KSP's bookkeeping on a Moshi body run:
 - the rest of `updateCachesAndOutputs`, including the
   `cachesUpToDate` marker's `createNewFile` (19).
 
+#### Step 49: libkc keeps reachable's index between updates
+
+After step 48, Hilt's signature edit was the one row under 10x (9.4x).
+Its runs make two incremental updates in libkc, one per round, and each
+checks one file. In the round timings an update took about 3.5–4 ms in
+the JVM, of which lowering took about 1.0 ms, signatures 0.8–1.1 and
+bodies 0.3–0.5.
+
+In a CPU profile of the Go bench's Hilt signature update
+(`BenchmarkUpdateEdit`, `KA_BENCH_SIGNATURE=1`, edit
+`h/Feature099.kt`), these are the shares of `Update`:
+
+| Part | Share |
+|---|---|
+| `checkFiles` | 22% |
+| `parallel` (the per-file fan-out) | 15% |
+| `reachable` | 13% |
+| `lowerFiles` | 13% |
+| `declEdits`, `dependents`, `bodyEdits` | 5–6% each |
+
+`reachable` (step 43) finds the files a changed declaration reaches by
+name. Each time, it indexed all of the module's files first, through
+their cached `fileNames`:
+- the declarations that declare each name;
+- the sealed classes' names;
+- the declarations whose supertype lists write each name.
+
+That came to 1,360 files on Hilt's second round. Between two daemon
+updates, only the edited file's parse differs.
+
+The check cache now keeps the indexes of the last four updates, keyed by
+their files' paths. A KSP run's rounds alternate between two lists, the
+second with the generated files. An update over the same paths takes
+the kept index and changes the entries only of the files whose
+`fileNames` differ, by pointer. The cache keeps those by parse, so an
+unchanged file's pointer is the same. Removing a file's entries drops
+its declarations from each name's list and decrements the sealed
+counts. The traversal is unchanged.
+
+The switches:
+- `KC_NO_REACH_INDEX=1` builds the index for each update, as before.
+- In tests, each kept index is compared with a fresh one, and any
+  difference panics.
+
+`TestReachIndexKept` applies 11 edits cumulatively to one session:
+- sealed classes and subclasses added and removed;
+- supertypes changed;
+- an operator added;
+- a conflicting function;
+- a class removed and a class renamed.
+
+Each update is compared with a whole check. Breaking the sealed
+decrement made the comparison panic, as it should.
+
+The Go bench, Hilt signature edit, three runs each:
+- on: 2.52, 2.44 and 2.49 ms per update;
+- off: 2.84, 2.73 and 2.74 ms;
+- so about 0.26 ms less per update.
+
+In the KSP bench, six alternating batches per project (on, off, off, on,
+on, off), the medians of the JVM's `update` over runs 51–100 (means in
+brackets):
+
+| ms, both updates | on | off (`KC_NO_REACH_INDEX=1`) |
+|---|---|---|
+| Moshi signature | 7.0 (7.95) | 7.2 (8.44) |
+| Hilt signature | 7.9 (8.67) | 8.3 (9.10) |
+| Moshi body | 2.7 (3.11) | 2.8 (3.11) |
+| Hilt body | 3.3 (3.84) | 3.4 (3.84) |
+
+So that is 0.2–0.5 ms off a signature run's updates. Body runs take
+libkc's shifted path, which doesn't check. The run totals didn't move
+outside the batches' spread: Hilt signature was 48 (51.0) on against 49
+(49.9) off, and Moshi's 27 (28.2) against 26 (27.7).
+
+Two other things were tried first and dropped:
+- **Parsing the edited file in kc-aa while libkc updates.** The JVM
+  would parse the file on another thread, overlapping the native update,
+  instead of after it.
+  - Round 1's JVM time fell by 0.0–0.2 ms: Moshi body 2.40 against 2.60,
+    Moshi signature 4.60 against 4.70, Hilt body 2.90 against 3.05, and
+    Hilt signature 5.35 against 5.35.
+  - The parse it hides is 0.5–0.7 ms. But waking the thread takes
+    0.1–1.2 ms, and the PSI step after it still takes 0.2–0.3. On four
+    cores the native update itself slowed by about 0.6 ms from the
+    contention.
+  - The first, in-order A/B looked like a regression. Batches in ABBA
+    order showed it was noise. Every A/B since is in that order.
+- **The caches' up-to-date marker.** Measured in place, its create took
+  161 µs and its delete 63 µs (medians). JFR overstates native frames
+  like those, so there was little to take.
+
 ## Gaps and open questions
 
 - **Slice simplifications (M0.4).** These go when M3/M4 bring the facts in:

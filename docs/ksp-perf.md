@@ -105,7 +105,11 @@ KSP's symbol layer. What is left:
   for a body edit's. Hilt's signature edit is at 10x and Moshi's at
   6.8x. What is left of a Moshi update is spread out: the check (about
   1 ms), lowering the edited file, reading, parsing and the model.
-  Step 43's session ran on a slower machine: kc's unchanged body path
+  Since step 49 the index `reachable` builds over every file's
+  declarations is kept between updates and patched for the files whose
+  parses changed, which took 0.2–0.5 ms off a signature run's two
+  updates (A/B, 7.9 against 8.3 ms on Hilt); the run totals didn't move
+  outside the batches' spread. Step 43's session ran on a slower machine: kc's unchanged body path
   took 26 ms on Moshi there, against 20.5 in step 42's, so its rows
   aren't comparable with step 42's.
 - **KSP's incremental bookkeeping** (about 3 ms on Moshi since fork
