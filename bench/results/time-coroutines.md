@@ -11,9 +11,9 @@ Kotlin/kotlinx.coroutines 1.11.0's kotlinx-coroutines-core for the JVM: 169 file
 
 | Command | Wall time | vs `kc -j 1` | CPU time (user+sys) | Peak memory |
 |:---|---:|---:|---:|---:|
-| `kc -j 1` | 320 ± 5 ms | — | 531 ms | 111 MB |
-| `kc -j 8` | 176 ± 1 ms | 1.8x faster | 755 ms | 127 MB |
-| `kotlinc (cold JVM)` | 10,860 ± 446 ms | 33.9x slower | 36,971 ms | 1,115 MB |
+| `kc -j 1` | 312 ± 10 ms | — | 519 ms | 115 MB |
+| `kc -j 8` | 179 ± 7 ms | 1.7x faster | 747 ms | 130 MB |
+| `kotlinc (cold JVM)` | 11,234 ± 431 ms | 36.0x slower | 45,412 ms | 1,091 MB |
 
-- kotlinc in a warm JVM (median of the last 10 of 20 runs in one JVM): 2215 ms
+- kotlinc in a warm JVM (median of the last 10 of 20 runs in one JVM): 2315 ms
 - Class files: kc 790, kotlinc 850

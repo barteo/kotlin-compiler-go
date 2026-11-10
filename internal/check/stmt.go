@@ -213,10 +213,7 @@ func (c *Checker) narrowAfter(s syntax.Stmt) {
 			whenTrue, _ := c.narrowing(call.Args[0])
 			c.scope.narrows = append(c.scope.narrows, whenTrue...)
 		case types.RequireNotNull, types.CheckNotNull:
-			if k, ok := c.narrowKeyOf(call.Args[0]); ok && k.t.K != types.Invalid {
-				k.t = k.t.NonNull()
-				c.scope.narrows = append(c.scope.narrows, k)
-			}
+			c.scope.narrows = append(c.scope.narrows, c.equalNonNull(call.Args[0])...)
 		}
 		return
 	}

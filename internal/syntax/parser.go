@@ -880,6 +880,7 @@ func (p *parser) parseType() *TypeRef {
 	var as []Annotation
 	for p.at(AT) {
 		a := p.annotation()
+		p.skipNL()
 		as = append(as, a)
 		if a.Target == "receiver" {
 			// receiver takes those of a receiver type.
@@ -2837,6 +2838,7 @@ func (p *parser) parseCall(fn Expr, targs []*TypeArg) Expr {
 // ref, with x its name.
 func (p *parser) parseColonColon(x Expr, ref *TypeRef) Expr {
 	t := p.expect(COLON_COLON)
+	p.skipNL()
 	if p.at(CLASS) {
 		p.next()
 		cl := &ClassLit{Ref: ref}
@@ -3052,6 +3054,7 @@ func (p *parser) parsePrimary() Expr {
 		return p.anonFun("")
 	case COLON_COLON:
 		p.next()
+		p.skipNL()
 		if p.at(CLASS) {
 			p.failAt(t.Pos, "a class literal needs a class or a value before ::")
 		}

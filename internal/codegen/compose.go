@@ -562,6 +562,15 @@ func (g *gen) composeArgs(f *types.FunSym, mask argMask, args []callArg) {
 	}
 }
 
+// composeGetterArgs pushes the arguments of getter f, of the extension
+// property that x reads, that follow its receivers, if it is composable,
+// as composeArgs does for a call of it.
+func (g *gen) composeGetterArgs(x *syntax.Member, f *types.FunSym) {
+	if f.Composable {
+		g.composeArgs(f, nil, g.composeCallArgs(&syntax.Call{Fun: x, Sym: f}, f, nil))
+	}
+}
+
 // callArgs returns the arguments of call x of composable function f by
 // its tracked parameters: the extension receiver, the parameters, whose
 // omitted ones' bits are in mask, and the dispatch receiver.

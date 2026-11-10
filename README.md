@@ -18,15 +18,15 @@ up. `kc` uses all cores, as it does by default.
 
 | Project | Files | Lines | `kotlinc` | `kc` | Speedup |
 |:---|---:|---:|---:|---:|---:|
-| kotlinpoet 2.4.0 | 39 | 8.7k | 1.21 s | 104 ms | **12x** |
-| Ktor 3.6.0 (`ktor-io`, `ktor-utils`, `ktor-http`) | 236 | 24k | 2.25 s | 237 ms | **10x** |
-| kotlinx-coroutines-core 1.11.0 | 169 | 34k | 2.22 s | 176 ms | **13x** |
+| kotlinpoet 2.4.0 | 39 | 8.7k | 1.11 s | 104 ms | **11x** |
+| Ktor 3.6.0 (`ktor-io`, `ktor-utils`, `ktor-http`) | 236 | 24k | 2.27 s | 244 ms | **9x** |
+| kotlinx-coroutines-core 1.11.0 | 169 | 34k | 2.32 s | 179 ms | **13x** |
 
-- **On one core** (`kc -j 1`) `kc` is still 6.2–7.9x faster than warm
-  `kotlinc`: 152 ms, 361 ms and 320 ms.
+- **On one core** (`kc -j 1`) `kc` is still 6.2–7.4x faster than warm
+  `kotlinc`: 153 ms, 366 ms and 312 ms.
 - **Cold**, with a new JVM per build as on the command line or in CI,
-  `kotlinc` takes 7.0 s, 19.4 s and 10.9 s, 62–82x slower than `kc`.
-- **Memory:** `kc` peaks at 90–127 MB, and cold `kotlinc`, with an 8 GB
+  `kotlinc` takes 7.5 s, 20.0 s and 11.2 s, 63–82x slower than `kc`.
+- **Memory:** `kc` peaks at 93–130 MB, and cold `kotlinc`, with an 8 GB
   heap limit, at 1.0–1.1 GB.
 
 How each number is measured, and the full tables with CPU time, are in
@@ -58,14 +58,14 @@ on one thread, `kc` is faster at each phase that both of them run:
 
 | Work | `kotlinc` | `kc -j 1` | Ratio |
 |:---|---:|---:|---:|
-| Parsing | 4.8 s | 0.26 s | ~18x |
-| Resolution and type checking | 9.5 s | 1.13 s | ~8x |
-| Checkers (warnings and errors) | 4.6 s | none | |
-| Reading the class path | 0.5 s | 0.01 s | |
-| Backend, with inlining and writing | 14.9 s | 1.39 s | ~11x |
-| **Total** | **34.3 s** | **2.79 s** | **12x** |
+| Parsing | 5.2 s | 0.26 s | ~20x |
+| Resolution and type checking | 8.0 s | 1.12 s | ~7x |
+| Checkers (warnings and errors) | 4.0 s | none | |
+| Reading the class path | 0.4 s | 0.01 s | |
+| Backend, with inlining and writing | 14.1 s | 1.38 s | ~10x |
+| **Total** | **31.7 s** | **2.77 s** | **11x** |
 
-Even without its checkers, `kotlinc` would take 30 s, 11x as long as
+Even without its checkers, `kotlinc` would take 28 s, 10x as long as
 `kc`. This profile is of 500 generated files (202k lines) in a warm JVM
 ([Where kotlinc's time goes](docs/benchmark.md#where-kotlincs-time-goes)).
 
@@ -75,8 +75,8 @@ Even without its checkers, `kotlinc` would take 30 s, 11x as long as
   seconds starting the JVM and warming up the JIT.
 - **Parallelism.** `kc` parses, checks bodies and generates class files
   on all cores; `kotlinc`'s frontend uses one.
-- **Fewer passes.** `kotlinc`'s time is spread over 88 IR lowerings and
-  290 checkers, none above about 2%. `kc` generates code in one pass
+- **Fewer passes.** `kotlinc`'s time is spread over 84 IR lowerings and
+  272 checkers, none above about 2%. `kc` generates code in one pass
   over the checked AST.
 - **Lazy inputs.** `kc` indexes the class path in about 5 ms while
   parsing, and decodes a class only when it's first used.

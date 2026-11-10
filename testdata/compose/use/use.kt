@@ -36,6 +36,17 @@ import app.Skips
 import app.Skips2
 import app.Varargs
 import app.Strings
+import app.Wide
+import app.WidePanel
+import app.Wides
+import app.Times
+import app.ExtProps
+import app.Scale
+import app.boxed
+import app.described
+import app.second
+import app.shown
+import lib.Insets
 import lib.Runs
 import app.describe
 import app.title
@@ -136,5 +147,16 @@ fun main() {
         ShowSlots(slots)
         ShowSlots(fromApp)
         Decorations(n.intValue)
+        // The program's composables with default values and more than 31
+        // parameters.
+        Wides(n.intValue)
+        Wide("use", p1 = n.intValue, p32 = 7)
+        Wide("use none")
+        WidePanel("u").Show(p0 = n.intValue, tail = "?")
+        Times(n.intValue).Show(6)
+        // The program's composable extension properties.
+        ExtProps(label.value, n.intValue)
+        Text("use ${Insets.shown} ${label.value.boxed} ${listOf(1, n.intValue).second} ${n.intValue.described}")
+        Scale(n.intValue).Show(4)
     }
 }
