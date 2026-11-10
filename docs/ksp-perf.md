@@ -75,6 +75,8 @@ step 42's: Moshi's step 42 rows pool both batches.
 | Hilt, leaf signature edit (step 52) | 378 | 39 | 9.7x | step 52 cut 2 ms (A/B, 40 against 42; round 2's update 1.8 against 3.2 ms) |
 | Hilt, leaf body edit (step 54) | 337 | 36 | 9.4x (10.2x against step 52's stock) | stock's teardown 65 ms, 112–115 in step 52 |
 | Hilt, leaf signature edit (step 54) | 334 | 39 | 8.6x (9.7x against step 52's stock) | step 54 cut the teardown 0.6–0.9 ms (A/B, equal environments) |
+| Hilt, leaf body edit (step 55, two batches) | 355.5 | 37 | 9.6x | stock's teardown 66–166 ms across this step's four batches: 8.8x to 11.8x |
+| Hilt, leaf signature edit (step 55, two batches) | 359 | 39.5 | 9.1x | step 55 cut `between` 1–2 ms (A/B, equal environments) |
 | Hilt, one-file test, warm | 403 | 59 | 6.8x | |
 | Moshi, warm | 2270 | 458 | 5.0x | about 7.5x |
 | Moshi, edit Model000 (10 files dirty) | 610 | 167 | 3.7x | |
@@ -101,6 +103,8 @@ step 42's: Moshi's step 42 rows pool both batches.
 | Moshi, leaf signature edit (step 52) | 223 | 19 | 11.7x (10.2x against step 50's stock) | step 52 cut 2 ms (A/B, 20 against 22; round 2's update 1.0 against 2.7 ms) |
 | Moshi, leaf body edit (step 54) | 199 | 21 | 9.5x (10.8x against step 52's stock) | stock's teardown 42 ms, 72–75 in step 52 |
 | Moshi, leaf signature edit (step 54) | 205 | 21 | 9.8x (10.6x against step 52's stock) | step 54 doesn't apply to Moshi (patch 0017 skips its updates) |
+| Moshi, leaf body edit (step 55) | 203 | 18 | 11.3x | |
+| Moshi, leaf signature edit (step 55) | 197 | 19 | 10.4x | step 55 cut about 2 ms (A/B, equal environments, 20 against 23 and 21 against 23) |
 | Moshi, one-file test, warm | 204 | 23 | 8.9x | |
 
 Hilt's leaf body edit is the first edit at 10x. Since step 37, a body
@@ -169,8 +173,11 @@ KSP's symbol layer. What is left:
   made Hilt 2–3 ms slower (A/B): the processors' first
   `getSymbolsWithAnnotation` then built the same declarations, and the
   processors ran slower beside patch 0016's backup check, which the
-  visit had left room for. It was reverted. (Step 54 found that A/B
-  biased by the environment, below; the patch needs another.) Since
+  visit had left room for. It was reverted. Step 54 found that A/B
+  biased by the environment (below), and step 55 re-ran it with the
+  switch set in both arms: the patch, now 0019, takes 1–2 ms off
+  `between` on Hilt and about 2 ms off Moshi's runs, and `process`
+  doesn't grow, so it is back. `KSP_NO_SYMBOL_REUSE=1` turns it off. Since
   step 54 (patch 0018) an update the skip leaves to run, as on Hilt's
   signature edits, writes only the records that changed instead of
   every record the tracker has, and the tracker's paths are made

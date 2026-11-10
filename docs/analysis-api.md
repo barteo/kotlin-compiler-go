@@ -4391,7 +4391,8 @@ Leads for later:
 Step 54 found that this step's A/B is biased (see there): only its "off"
 arm set an environment variable, and that alone made runs about 2 ms
 faster. The patch may not have been slower at all; it needs another A/B
-with the variable set in both arms.
+with the variable set in both arms. (Step 55 ran it: the patch saves
+1–2 ms in `between` and leaves `process` as it was, so it is back.)
 
 #### Step 54: the lookup storages updated by delta
 
@@ -4494,6 +4495,70 @@ Stock ran faster in this batch than in step 52's: its teardown took
 runs are where they were. Against step 52's stock, the ratios are
 10.8x and 10.6x (Moshi) and 10.2x and 9.7x (Hilt). Stock's teardown, and
 so the ratio, moves by tens of ms from one batch to the next.
+
+#### Step 55: step 53's symbol reuse, re-tested with equal environments
+
+Step 53's A/B set `KSP_NO_SYMBOL_REUSE=1` only in its "off" arm, the
+bias step 54 found. So this step put the patch back, unchanged but for
+its switches, as fork patch 0019 on top of 0018. It keeps each generated
+file's last text and the symbols `registerGeneratedFiles` collected from
+it, and reuses the symbols when the text is the same. The switches now
+check for `1`, like 0017's and 0018's, so `KSP_NO_SYMBOL_REUSE=0` keeps
+reuse on (step 53's checked only that the variable was set).
+
+`KSP_SYMBOL_VERIFY=1` collects every reused file's symbols again and
+fails if they differ. It ran with `KSP_LOOKUP_VERIFY=1`, so 0018's delta
+stays checked with 0019 on top. Hilt (leaf, 100 runs; `EDIT=auto`, 40)
+and Moshi (leaf, 100) passed on every run. `build.sh stock` is 11 ok and
+`build.sh ksp` is 134/136.
+
+Six batches per project, kc only (on, off, off, on, on, off; `=0` for
+on, `=1` for off), medians (means in brackets) of runs 51–100:
+
+| ms | Hilt on | Hilt off | Moshi on | Moshi off |
+|---|---|---|---|---|
+| run total, body | 36 (38.3) | 38 (39.6) | 20 (21.4) | 23 (23.0) |
+| run total, signature | 40 (40.8) | 41 (42.3) | 21 (22.0) | 23 (24.1) |
+| `between`, body | 3 (3.6) | 4 (4.7) | 2 (2.7) | 3 (3.3) |
+| `between`, signature | 3 (3.8) | 5 (5.6) | 2 (2.6) | 3 (3.0) |
+| `process`, body | 25 (26.3) | 25 (26.3) | 9 (10.7) | 10 (11.0) |
+| `process`, signature | 25 (26.2) | 25 (25.5) | 9 (10.4) | 11 (11.1) |
+
+`between` is where `registerGeneratedFiles` runs after each round. On
+Hilt it is lower in every "on" batch than in every "off" batch: 1–2 ms,
+as the profile predicted. `process` doesn't grow. So step 53's slowdown
+came from the bias, not from the patch: the processors' first
+`getSymbolsWithAnnotation` does build the declarations the visit used to
+build (step 53's JFR), but that costs less than the visit did. Moshi's
+totals drop by about 2 ms, more than its `between` alone, though one of
+its "off" batches was slow throughout.
+
+With stock in the same batches (`BACKENDS="stock kc" CHECK=1`), Hilt
+again ran on, off, off, on with equal environments. kc's medians:
+
+| ms | on | off |
+|---|---|---|
+| Hilt, body | 37 | 36 |
+| Hilt, signature | 39.5 | 40 |
+| `between`, both kinds | 3 | 4 |
+
+The totals there are within the spread; `between` drops in every batch.
+A first comparison batch had kc's Hilt runs at 41 and 43 ms, 4 ms of it
+in `process`, but no later batch, on or off, repeated it.
+
+The KSP bench, both backends, 100 runs, output checked against stock's,
+medians of runs 51–100 (Hilt pools the two "on" batches above):
+
+| ms | stock KSP2 | kc | ratio | kc min |
+|---|---|---|---|---|
+| Moshi, leaf body edit | 203 | 18 | 11.3x | 14 |
+| Moshi, leaf signature edit | 197 | 19 | 10.4x | 15 |
+| Hilt, leaf body edit | 355.5 | 37 | 9.6x | 28 |
+| Hilt, leaf signature edit | 359 | 39.5 | 9.1x | 30 |
+
+Stock's teardown moved between 66 and 166 ms from one Hilt batch to the
+next, so the Hilt ratios ranged from 8.8x to 11.8x across the four
+batches. kc moved by 3–4 ms.
 
 ## Gaps and open questions
 
