@@ -3287,6 +3287,117 @@ Batches of kc on the same code gave trimmed means of 20.5 to 22.5 ms
 before these cuts, so the totals alone can't show cuts this size; the
 samples above do.
 
+#### Step 43: a partial check resolves only the signatures it can reach
+
+After step 42, a signature edit still cost about twice a body edit
+(Moshi 40 ms against 20.5, Hilt 66 against 38). Each of a signature
+run's two Go updates checks one file (step 39), but `check.CheckOptions`
+ran `resolveSignatures` over every file of the module: all of their
+functions, properties and members, with their types. That was the
+largest item of a signature-edit update's CPU profile, 2.27 s of the
+`BenchmarkUpdateEdit` profile against 0.8 s for lowering.
+
+**ka passes the files the checked ones can reach**
+(`check.Options.Resolve`, from `reachable` in `ka.go`). A top-level
+declaration is reached if a reached text writes a name it declares (its
+own, or the name of a class it nests). Its own text is then reached too,
+but not the rest of its file. The starting points are:
+- the checked files' whole texts;
+- the top-level operators and the functions a construct calls by
+  convention (`check.IsOperatorName`: `plus`, `getValue`, `componentN`...),
+  which code calls without writing their names;
+- the declarations whose names the Java sources write, whose members
+  may return a Kotlin class that no Kotlin text names.
+
+So an inferred type of another file (`val x = f()`), a supertype, a
+typealias, an extension, and the members of every class a reached text
+names are all reached through the names that lead to them.
+
+The checker resolves the signatures only of the files that hold a
+reached declaration. In `CheckOptions`, `resolveSignatures`,
+`forwardInlinable`, `checkMemberImports`, `inheritDefaults`,
+`delegations`, the `inferNamed` loop and `conflicts` run over those
+files. Every file is still declared, with its imports, typealiases and
+supertypes, so every class has its symbol and supertypes, and names and
+sealed hierarchies resolve as before. If more than half the files are
+reached, every file is resolved. `KC_NO_REACH` turns it off.
+
+Each file's identifiers, whole and per top-level declaration, are kept
+with its parse (`checkCache.names`), so an update finds only the changed
+file's again.
+
+Following whole files reached too much on Hilt. Each `FeatureN.kt`
+names `Feature(N-1)Clock` in a constructor, so whole files chained to
+62.8 of 100 files per edit. Per declaration, it reaches 2.0, because
+`Feature098Clock`'s own text names no other file. A declaration of a
+reached file that isn't reached itself still has its signature
+resolved, with the classes it names (every file declares them), but no
+member of theirs.
+
+Tests:
+- `TestIncrementalDecl` has three new cases, with how many files the
+  check resolves (`lastResolved`):
+  - a member reached only through another file's inferred return type;
+  - an operator extension no file names;
+  - a file with one reached and one unreached declaration.
+- `TestIncrementalJavaDecl` has one new case: a Kotlin class only a
+  Java source names.
+- Without the operator seed and the Java seed, those models differ from
+  a whole check.
+- `TestIncrementalModuleDecl` now logs the files resolved per edit.
+  Every edit still equals a whole check: 2.4 of 100 files on Moshi,
+  2.0 of 100 on Hilt, and 52.5 of 102 on Room (renaming an entity
+  checks `AppDb.kt`, which names all 100, so those edits resolve every
+  file). On the Exhaustive module it was 478.6 of 559, mostly the
+  fallback.
+- `TestShiftedModule` and `TestIncrementalModule` pass on all four
+  modules.
+- `build.sh stock` and `build.sh ksp` (134/136) pass.
+
+`BenchmarkUpdateEdit` (Moshi, `KA_BENCH_SIGNATURE`: a function added
+to Model099 each time) took 5.5–6.6 ms per update, against 9.4–9.8
+with `KC_NO_REACH`. `resolveSignatures` fell from 2.27 s to 0.29 s of
+the profile. Most of what is left is lowering the 99 unchanged files
+as declarations from the declaration cache (a copy of each tree), and
+GC.
+
+This session ran on a slower machine than step 42's: kc's body edits,
+whose path didn't change, took 26–28 ms on Moshi against 20.5, and
+56 ms on Hilt against 38. So the step was measured A/B on the same
+machine: kc only, signature edits only (`EDIT_KIND=signature`), four
+batches each with the cut on and off, alternating. Medians and minimums
+of runs 51–100:
+
+| ms | on | off (`KC_NO_REACH`) |
+|---|---|---|
+| Moshi, leaf signature edit, batch 1 | 42 (min 33) | 48 (min 36) |
+| Moshi, leaf signature edit, batch 2 | 41 (min 31) | 54 (min 37) |
+| Hilt, leaf signature edit, batch 1 | 73 (min 52) | 82 (min 62) |
+| Hilt, leaf signature edit, batch 2 | 70 (min 54) | 79 (min 60) |
+
+That is about 8 ms off a Moshi signature run and 9 off a Hilt one.
+Setup and between, the two updates, each fall by 3–5 ms. With
+`KC_TIMING`, a warm update's `signatures` phase is now 2–3 ms, against
+3.5–7 in step 39, and `lower` is 2–3 ms.
+
+The KSP bench on the same machine, both backends, leaf edits
+alternating body and signature, 100 runs, output checked against
+stock's (`CHECK`):
+
+| ms | stock KSP2 | kc | ratio | kc min |
+|---|---|---|---|---|
+| Moshi, leaf body edit | 187 | 26 | 7.2x | 21 |
+| Moshi, leaf signature edit | 186 | 40 | 4.7x | 31 |
+| Hilt, leaf body edit | 583 | 56 | 10.4x | 43 |
+| Hilt, leaf signature edit | 572 | 86 | 6.7x | 69 |
+
+A second Moshi batch gave kc 28 and 44 ms. Stock's medians in that
+batch were 362 and 380 ms, with teardowns of 178–194 ms against 28 in
+the first, so it isn't used for ratios. These ratios are lower than
+step 42's, though kc's signature path is faster, because this machine
+slowed kc's unchanged body path by about a quarter, and stock's Moshi
+runs by less.
+
 ## Gaps and open questions
 
 - **Slice simplifications (M0.4).** These go when M3/M4 bring the facts in:
