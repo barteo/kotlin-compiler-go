@@ -21,3 +21,4 @@ run/stdlibReifiedObjects.kt
 run/stdlibTailrecSuspend.kt
 run/stdlibWhereClauses.kt
 run/stdlibWire.kt
+run/typeAnnotationNewline.kt
