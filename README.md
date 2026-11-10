@@ -129,10 +129,25 @@ Arguments can be files or directories. Flags:
 | `-time` | print per-phase timings |
 | `-features` | print each error with its unsupported feature, tab-separated |
 
-There is no Gradle plugin. To try `kc` in a Gradle build, a Gradle init
-script can replace a module's Kotlin compile task with a call to `kc`.
-[bench/kotlinpoet/kc.init.gradle.kts](bench/kotlinpoet/kc.init.gradle.kts)
-does this for kotlinpoet.
+### Use it in a Gradle build
+
+There is no Gradle plugin. [tools/gradle/use-kc.init.gradle.kts](tools/gradle/use-kc.init.gradle.kts) is an init script that makes every Kotlin/JVM compile task of a build run `kc` instead of `kotlinc`: `compileKotlin`, Android's `compile<Variant>Kotlin`, and a multiplatform module's `compileAndroidMain` and `compileKotlinJvm`. `kc` gets the task's own sources, Java sources, class path, friend paths, module name, `-jvm-default` mode and Compose, kotlinx.serialization and Parcelize plugins. An Android module compiles against `android.jar`, any other module against the JDK of its Java toolchain. Dexing, R8, javac and packaging then use `kc`'s classes. It is meant for fast local builds; CI and release builds should keep `kotlinc`.
+
+```sh
+KC=$PWD/bin/kc ./gradlew assembleDebug --init-script /path/to/kotlin-compiler-go/tools/gradle/use-kc.init.gradle.kts
+```
+
+If `kc` fails on a module, `kotlinc` compiles that module and the build log says so. A module that uses a compiler plugin `kc` doesn't apply, such as one that generates code the program needs, is also left to `kotlinc`, with a warning that names the plugin. `kc` compiles whole modules, so the tasks are not incremental. A new `kc` binary recompiles every module, and a build without the init script recompiles with `kotlinc`.
+
+| Variable | Meaning |
+|---|---|
+| `KC` | the `kc` binary (default: `kc` on `PATH`) |
+| `KC_STRICT` | `1`: a `kc` failure or an unsupported compiler plugin fails the build instead of falling back to `kotlinc` |
+| `KC_SKIP` | comma-separated task paths to leave to `kotlinc`, such as `:app:compileDebugKotlin` |
+| `KC_IGNORE_PLUGINS` | comma-separated compiler plugins, as `artifact` or `group:artifact`, that `kc` may leave out because the program works without them (default: `compose-stability-compiler`) |
+| `KC_JDK_HOME` | the JDK for modules without `android.jar`, in place of the task's Java toolchain |
+
+[bench/kotlinpoet/kc.init.gradle.kts](bench/kotlinpoet/kc.init.gradle.kts) is a narrower version that the kotlinpoet benchmark uses.
 
 ### Repeat the benchmark
 

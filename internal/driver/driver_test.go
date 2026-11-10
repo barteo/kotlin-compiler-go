@@ -802,9 +802,11 @@ func TestKotlincLibrary(t *testing.T) {
 }
 
 // TestSignatures compiles testdata/signatures/ with kotlinc and kc, both
-// with -jvm-default=disable, and compares the generic signatures, the
-// Signature attributes, of the members both builds have that Java sees:
-// those of classes, fields and methods that aren't synthetic.
+// with -jvm-default=disable and then both with -jvm-default=enable, whose
+// interfaces have DefaultImpls classes beside their default methods, and
+// compares the generic signatures, the Signature attributes, of the
+// members both builds have that Java sees: those of classes, fields and
+// methods that aren't synthetic.
 func TestSignatures(t *testing.T) {
 	lib := stdlib()
 	if lib == "" {
@@ -815,12 +817,22 @@ func TestSignatures(t *testing.T) {
 		t.Skip("kotlinc not found on PATH")
 	}
 	srcs := sources(t, "../../testdata/signatures")
+	for _, mode := range []string{"disable", "enable"} {
+		t.Run(mode, func(t *testing.T) {
+			opts := Options{Jobs: runtime.NumCPU(), ClassPath: []string{lib},
+				NoJVMDefault: mode == "disable", JVMDefaultCompat: mode == "enable"}
+			compareSignatures(t, kotlinc, srcs, mode, opts)
+		})
+	}
+}
+
+func compareSignatures(t *testing.T, kotlinc string, srcs []string, mode string, opts Options) {
 	kotlincOut, kcOut := t.TempDir(), t.TempDir()
-	args := append([]string{"-nowarn", "-jvm-default=disable", "-d", kotlincOut}, srcs...)
+	args := append([]string{"-nowarn", "-jvm-default=" + mode, "-d", kotlincOut}, srcs...)
 	if out, err := exec.Command(kotlinc, args...).CombinedOutput(); err != nil {
 		t.Fatalf("kotlinc: %v\n%s", err, out)
 	}
-	opts := Options{OutDir: kcOut, Jobs: runtime.NumCPU(), ClassPath: []string{lib}, NoJVMDefault: true}
+	opts.OutDir = kcOut
 	if err := Compile(srcs, opts); err != nil {
 		t.Fatalf("compile: %v", err)
 	}

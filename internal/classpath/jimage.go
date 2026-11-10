@@ -2,9 +2,11 @@ package classpath
 
 import (
 	"bytes"
+	"compress/zlib"
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 )
 
@@ -23,6 +25,18 @@ import (
 // is /module/parent/base.extension, each part an offset into strings.
 // Integers are in the platform's byte order, which is little-endian on
 // every platform the JDK ships for today.
+//
+// A JDK linked with jlink --compress, such as the one Android Studio
+// bundles, stores most classes compressed: the location's compressed size
+// is nonzero, and the resource starts with a header,
+//
+//	magic 0xCAFEFAFA (u4), compressed size (u8), uncompressed size (u8),
+//	decompressor name (u4 offset into strings), config (u4), terminal (u1)
+//
+// followed by the compressed bytes. Decompressing them can give another
+// header, when compressions were stacked. The "zip" decompressor is zlib;
+// the other one the JDK has, "compact-cp", shares constant pool strings
+// across classes and is not supported.
 
 const (
 	jimageMagic = 0xCAFEDADA
@@ -35,17 +49,57 @@ const (
 	attrOffset       = 5
 	attrCompressed   = 6
 	attrUncompressed = 7
+
+	compressedMagic      = 0xCAFEFAFA
+	compressedHeaderSize = 29
 )
 
 type jimage struct {
 	f         *os.File
 	indexSize int64
+	strs      []byte
+}
+
+func (j *jimage) str(off uint64) ([]byte, error) {
+	if off >= uint64(len(j.strs)) {
+		return nil, errors.New("bad string offset")
+	}
+	s := j.strs[off:]
+	if end := bytes.IndexByte(s, 0); end >= 0 {
+		return s[:end], nil
+	}
+	return nil, errors.New("unterminated string")
 }
 
 func (j *jimage) read(e *entry) ([]byte, error) {
 	b := make([]byte, e.size)
-	_, err := j.f.ReadAt(b, j.indexSize+e.off)
-	return b, err
+	if _, err := j.f.ReadAt(b, j.indexSize+e.off); err != nil {
+		return nil, err
+	}
+	for len(b) >= compressedHeaderSize && binary.LittleEndian.Uint32(b) == compressedMagic {
+		size := binary.LittleEndian.Uint64(b[4:])
+		usize := binary.LittleEndian.Uint64(b[12:])
+		name, err := j.str(uint64(binary.LittleEndian.Uint32(b[20:])))
+		if err != nil {
+			return nil, err
+		}
+		if size > uint64(len(b)-compressedHeaderSize) {
+			return nil, errors.New("bad compressed resource size")
+		}
+		if string(name) != "zip" {
+			return nil, fmt.Errorf("resource compressed with %q, which is not supported", name)
+		}
+		r, err := zlib.NewReader(bytes.NewReader(b[compressedHeaderSize : compressedHeaderSize+size]))
+		if err != nil {
+			return nil, err
+		}
+		out := make([]byte, usize)
+		if _, err := io.ReadFull(r, out); err != nil {
+			return nil, fmt.Errorf("decompressing: %w", err)
+		}
+		b = out
+	}
+	return b, nil
 }
 
 func (j *jimage) close() error { return j.f.Close() }
@@ -82,17 +136,8 @@ func (p *Path) addJImage(path string) error {
 	}
 	offsets := index[4*tableLen : 8*tableLen]
 	locs := index[8*tableLen : 8*tableLen+locSize]
-	strs := index[8*tableLen+locSize:]
-	str := func(off uint64) ([]byte, error) {
-		if off >= uint64(len(strs)) {
-			return nil, errors.New("bad string offset")
-		}
-		s := strs[off:]
-		if end := bytes.IndexByte(s, 0); end >= 0 {
-			return s[:end], nil
-		}
-		return nil, errors.New("unterminated string")
-	}
+	j.strs = index[8*tableLen+locSize:]
+	str := j.str
 
 	var attrs [8]uint64
 	var name []byte
@@ -133,15 +178,16 @@ func (p *Path) addJImage(path string) error {
 		if string(base) == "module-info" {
 			continue
 		}
+		size := attrs[attrUncompressed]
 		if attrs[attrCompressed] != 0 {
-			return fmt.Errorf("%s: compressed images are not supported", path)
+			size = attrs[attrCompressed]
 		}
 		name = name[:0]
 		if len(parent) > 0 {
 			name = append(append(name, parent...), '/')
 		}
 		name = append(name, base...)
-		p.add(string(name), entry{src: j, off: int64(attrs[attrOffset]), size: int64(attrs[attrUncompressed])})
+		p.add(string(name), entry{src: j, off: int64(attrs[attrOffset]), size: int64(size)})
 	}
 	return nil
 }
