@@ -3803,6 +3803,102 @@ What is left of KSP's bookkeeping on Moshi, by the same JFR:
 - `CodeGeneratorImpl.drain`'s wait for the output writers, about
   0.4 ms.
 
+#### Step 48: KSP skips lookup-cache updates that change nothing
+
+After step 47, a Moshi body run's largest piece of KSP bookkeeping was
+`updateLookupCache`. It took 65 of 937 main-thread samples, about 1.4 ms
+per run:
+- `LookupStorageWrapperImpl.flush`, 42 samples: `PersistentHashMap.force`
+  writing appended records;
+- `LookupStorage.addAll`, 17;
+- `release`, 5.
+
+Kotlin's `LookupStorage.update(tracker, F, removed)` drops the dirty
+files' ids (`removeLookupsFrom`), then gives them new ids and appends
+their records (`addAll`). Records for files outside `F` that the
+tracker names are appended under their existing ids. So every daemon
+run rewrites and flushes the dirty files' lookups, even when they are
+what they were, and the storage grows by that much each run.
+
+Fork patch 0017 keeps, with each lookup storage that `LookupStorages`
+holds open between runs, what this process knows the storage holds,
+per file. A file the last update or removal was of has its lookups
+exactly. A file an update only appended to has at least those lookups.
+On Hilt those are the library class files that the processing of a
+dirty file looked at.
+
+An update leaves:
+- exactly the tracker's records for each file in `F`;
+- for any other file, what it held plus the tracker's records.
+
+That is the storage as it was when it already holds exactly the
+tracker's records for each file in `F`, and at least them for each
+other file the tracker names. `update` then returns without touching
+the storage, and `flush` writes only after a change.
+
+The bookkeeping:
+- A storage opened again knows nothing.
+- `removeLookupsFrom` records its files as empty.
+- An update with removed files clears what is known.
+- `KSP_NO_LOOKUP_SKIP=1` turns the skip off.
+- `KSP_LOOKUP_VERIFY=1` makes each update that could be skipped run
+  anyway, and fails if `get` then differs for any symbol the tracker
+  holds.
+
+A first version required every file the tracker names to be in `F`.
+That never held on Hilt, whose processors record lookups against
+classes in jars (`hilt-core`, `dagger`, the JDK). Treating those files
+as "at least" fixed it.
+
+A temporary log showed when the skip fires:
+- on every Moshi run after the first, body and signature, since the
+  edited file's lookups don't depend on the function's type;
+- on every Hilt body run;
+- on no Hilt signature run, since the edited file's lookups differ by
+  one between `Int` and `Any`.
+
+`build.sh` runs each KSP run in a fresh JVM, so the skip never fires
+there. The tests are bench batches:
+- `KSP_LOOKUP_VERIFY=1` on Moshi and Hilt, leaf edits (100 runs) and
+  `EDIT=auto` (Model000, 10 files dirty, 100 runs; Feature000, 100
+  files dirty, 40 runs): all runs OK, no difference;
+- `EDIT=auto` with the skip on and off: the same `dirty=` on every run.
+
+In the new JFR, `updateLookupCache` takes 29 samples, with no `flush` and
+no `addAll`. What is left is normalizing the tracker's paths, the
+storage directory's stamps and the set comparison.
+
+A/B on one machine, kc only, leaf edits alternating body and signature,
+medians of runs 51–100 (means in brackets):
+
+| ms | on | off (`KSP_NO_LOOKUP_SKIP=1`) |
+|---|---|---|
+| Moshi body, 3 batches | 18 (20.1), teardown 1 (1.4) | 21 (22.2), teardown 3 (2.9) |
+| Moshi signature, 3 batches | 24 (24.8) | 25 (26.6) |
+| Hilt body, 2 batches | 34 (35.4), teardown 2 (1.8) | 35 (37.0), teardown 2 (2.4) |
+| Hilt signature, 2 batches | 41 (44.0) | 42.5 (43.7) |
+
+The KSP bench, both backends, 100 runs, output checked against stock's
+(`CHECK`):
+
+| ms | stock KSP2 | kc | ratio | kc min |
+|---|---|---|---|---|
+| Moshi, leaf body edit | 218 | 18 | 12.1x | 14 |
+| Moshi, leaf signature edit | 219 | 22 | 10.0x | 17 |
+| Hilt, leaf body edit | 366 | 34 | 10.8x | 28 |
+| Hilt, leaf signature edit | 376 | 40 | 9.4x | 33 |
+
+Stock varies from batch to batch again. Its Hilt teardown was 120 ms
+here against 185–206 in step 47's batch, and its Moshi teardown 54
+against 116. Against step 46's Moshi stock (200 and 207 ms), kc's
+Moshi rows are 11.1x and 9.4x.
+
+What is left of KSP's bookkeeping on a Moshi body run:
+- `calcDirtyFiles`, 55 samples, about 1.1 ms (`DirtinessPropagator`
+  15);
+- the rest of `updateCachesAndOutputs`, including the
+  `cachesUpToDate` marker's `createNewFile` (19).
+
 ## Gaps and open questions
 
 - **Slice simplifications (M0.4).** These go when M3/M4 bring the facts in:
