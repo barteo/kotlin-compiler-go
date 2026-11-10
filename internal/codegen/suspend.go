@@ -312,9 +312,15 @@ func (g *gen) stateMachineEntry(sm *stateMachine) {
 	c.Local(cf.ASTORE, sm.susp)
 	sm.entry = c.Assigned()
 	sm.dispatch = cf.NewLabel()
+	// The dispatch follows the body, which can be longer than a branch's
+	// 2-byte offset reaches (kotlinc's tableswitch at the start has 4), as
+	// with many inlined lambdas: goto_w jumps there.
+	start := cf.NewLabel()
 	c.Local(cf.ALOAD, sm.cont)
 	c.FieldInsn(cf.GETFIELD, cls, "label", "I")
-	c.Jump(cf.IFNE, sm.dispatch)
+	c.Jump(cf.IFEQ, start)
+	c.GotoWide(sm.dispatch)
+	c.Place(start)
 	g.throwOnFailure(sm.result)
 }
 

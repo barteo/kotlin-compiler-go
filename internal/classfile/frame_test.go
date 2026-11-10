@@ -483,6 +483,37 @@ func TestOpStack(t *testing.T) {
 	}
 }
 
+// far: b ? 2 : 1, but the jump for true passes 40,000 bytes of code,
+// further than a branch's 2-byte offset reaches.
+func far(c *Class, jump func(*Code, *Label)) *Code {
+	code := c.NewMethod(AccPublic|AccStatic, "far", "(Z)I")
+	code.AllocLocal("Z")
+	near, end := NewLabel(), NewLabel()
+	code.Local(ILOAD, 0)
+	code.Jump(IFEQ, near)
+	jump(code, end)
+	code.Place(near)
+	for range 20000 {
+		code.Iconst(0)
+		code.Op(POP)
+	}
+	code.Iconst(1)
+	code.Op(IRETURN)
+	code.Place(end)
+	code.Iconst(2)
+	code.Op(IRETURN)
+	return code
+}
+
+func TestGotoWide(t *testing.T) {
+	c := NewClass(AccPublic|AccSuper, "T", "java/lang/Object")
+	check(t, frames(t, far(c, (*Code).GotoWide)), "10: [I] []\n40012: [I] []\n")
+	err := far(c, func(c *Code, l *Label) { c.Jump(GOTO, l) }).Err()
+	if err == nil || !strings.Contains(err.Error(), "method too large: branch offset 40005") {
+		t.Errorf("got %v, want goto's offset to be too large", err)
+	}
+}
+
 // TestVerify runs the methods above on the JVM with full verification.
 func TestVerify(t *testing.T) {
 	java, err := exec.LookPath("java")
@@ -499,6 +530,7 @@ func TestVerify(t *testing.T) {
 	classify(c)
 	count(c)
 	ops(c)
+	far(c, (*Code).GotoWide)
 	code := c.NewMethod(AccPublic|AccStatic, "main", "([Ljava/lang/String;)V")
 	code.AllocLocal("[Ljava/lang/String;")
 	println := func(push func(), d string) {
@@ -538,6 +570,12 @@ func TestVerify(t *testing.T) {
 	}
 	code.Invoke(INVOKESTATIC, "FrameTest", "sumArray", "([I)I")
 	code.Invoke(INVOKEVIRTUAL, "java/io/PrintStream", "println", "(I)V")
+	for _, b := range []int32{1, 0} {
+		println(func() {
+			code.Iconst(b)
+			code.Invoke(INVOKESTATIC, "FrameTest", "far", "(Z)I")
+		}, "I")
+	}
 	code.Iconst(3)
 	code.Invoke(INVOKESTATIC, "FrameTest", "loop", "(I)V")
 	for _, s := range []string{"12", "x"} {
@@ -576,7 +614,7 @@ func TestVerify(t *testing.T) {
 	if err != nil {
 		t.Fatalf("java: %v\n%s", err, out)
 	}
-	if got := string(out); got != "10\n12\n-1\n50\n99\n4\n6\n0.5\n1.0\n6\n12\n-1\na\nb\ns\n1\na\nb\n" {
+	if got := string(out); got != "10\n12\n-1\n50\n99\n4\n6\n0.5\n1.0\n6\n2\n1\n12\n-1\na\nb\ns\n1\na\nb\n" {
 		t.Errorf("output %q", got)
 	}
 }

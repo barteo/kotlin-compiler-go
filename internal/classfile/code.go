@@ -716,6 +716,19 @@ func (c *Code) Jump(op byte, l *Label) {
 	}
 }
 
+// GotoWide jumps to l with goto_w, whose 4-byte offset reaches a label
+// further than goto's 2 bytes can: past the end of a body of any size.
+func (c *Code) GotoWide(l *Label) {
+	if !c.reachable {
+		return
+	}
+	at := len(c.buf)
+	c.trace(traceGoto, -1, l)
+	c.buf = append(c.buf, GOTO_W, 0, 0, 0, 0)
+	c.branch(l, fixup{at: at, patch: at + 1, wide: true})
+	c.reachable = false
+}
+
 // branch records an edge from the current state to l, whose offset goes
 // where f says.
 func (c *Code) branch(l *Label, f fixup) {
