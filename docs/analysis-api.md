@@ -4673,6 +4673,70 @@ faster than step 55's (37 and 39.5), but its Moshi runs are 3 ms slower
 (18 and 19), as were this step's Moshi A/B batches in both arms (19–23),
 so the machine, not kc alone, moved between the steps.
 
+#### Step 58: the Java sources' classes, and absent names, kept across rounds
+
+The class-path classes libkc models are kept by kc-aa's environment
+(`KcSession.libraryDecl`), so a warm run asks libkc only for the classes
+of its Java sources, which change with them, and for names libkc has no
+class of, which it didn't keep. On Hilt that is 24 `KcOps.cls` calls a
+run (`kc-jvm: lookups class=24/0.4–0.5`): 12 for the generated Java
+classes of round 2, and 12 in round 1 for those same classes, not
+generated yet, and package names (`h`, `dagger`). A trace of each call
+put the Go `Model.Class` at 0–3 µs, the whole call at 1–30 µs inside Go,
+and 5–60 µs seen from the JVM: the cost is the call, and its
+message, not the model.
+
+libkc already keeps a check's library, the Java sources' classes with
+it, when an update finds the Java sources and the Kotlin classes they
+name as they were (the shifted and borrowed updates set `m.lib =
+prev.lib`). Hilt's round 2 takes one of those on both edit kinds: its
+generated Java texts are the same run after run. So each library over
+Java sources now gets an id unique in the process (`Model.JavaID`), sent
+with the model (`model = handle check java same ...`), and kc-aa keeps
+the Java classes it was given, nulls too, by that id, for the last four
+ids. The class reply says whether the class path, the sources left
+out, has no class of the name (`Model.Absent`; `n:Uint decl*n
+absent:Bool`), and kc-aa keeps those names with the class-path classes;
+a class of the program is absent from the class path too, and a Java
+source's class is asked by its id first. `KC_NO_JAVA_DECLS=1` turns both
+off. New tests: `TestJavaID` (same id after a body edit, another after
+a Java edit, 0 without Java sources, `Absent` of a source class) and
+`TestClass`'s absent flag. `build.sh stock` is 11 ok and `build.sh ksp`
+is 134/136.
+
+Six batches per project, kc only (on, off, off, on, on, off), runs
+51–100, medians (means in brackets):
+
+| ms | Hilt on | Hilt off | Moshi on | Moshi off |
+|---|---|---|---|---|
+| class calls per run | 0 | 24 (0.5 ms) | 0 | 0 |
+| run total, body | 35 (36.5) | 38 (38.9) | 20 (21.0) | 20 (21.0) |
+| run total, signature | 37 (40.2) | 41 (42.2) | 22 (22.7) | 20 (21.8) |
+
+Moshi makes no class calls in either arm: its rows are the spread. Hilt's
+batch medians were 34–36 on and 35–41 off for body runs, 36–40 and 37–44
+for signature runs, and the "off" batch between two "on" ones matched
+them: the cut is the 0.5 ms the calls took, the rest of the difference
+the batches' spread.
+
+The KSP bench, both backends, 100 runs, output checked against stock's,
+medians of runs 51–100:
+
+| ms | stock KSP2 | kc | ratio | kc min |
+|---|---|---|---|---|
+| Moshi, leaf body edit | 209 | 17 | 12.3x | 14 |
+| Moshi, leaf signature edit | 219 | 17 | 12.9x | 15 |
+| Hilt, leaf body edit | 436 | 31 | 14.1x | 27 |
+| Hilt, leaf signature edit | 418 | 33 | 12.7x | 28 |
+| Room, leaf body edit | 9054 | 3076 | 2.9x | 2668 |
+| Room, leaf signature edit | 8967 | 2870 | 3.1x | 2494 |
+
+kc ran faster in this batch than in the A/B's (Hilt 31 and 33 against 35
+and 37), and stock's Hilt teardown was slow again (169–182 ms, 65–115 in
+steps 52–55). Against step 55's stock, kc's runs here are 11.5x and 10.9x
+on Hilt and 11.9x and 11.6x on Moshi. Room's ratio is bounded by its
+processors (about 3.5x, the ceiling in `docs/ksp-perf.md`).
+
 ## Gaps and open questions
 
 - **Slice simplifications (M0.4).** These go when M3/M4 bring the facts in:

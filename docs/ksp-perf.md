@@ -50,6 +50,8 @@ step 42's: Moshi's step 42 rows pool both batches.
 |---|---|---|---|---|
 | Room, warm | 7067 | 2514 | 2.8x | about 3.5–4x (Room, XProcessing and KotlinPoet are about 90% of kc's run) |
 | Room, leaf edit | 8331 | 2998 | 2.8x | about 3.5x |
+| Room, leaf body edit (step 58) | 9054 | 3076 | 2.9x | |
+| Room, leaf signature edit (step 58) | 8967 | 2870 | 3.1x | |
 | Hilt, warm | 3916 | 692 | 5.7x | about 10x |
 | Hilt, edit Feature000 (100 files dirty) | 4113 | 1161 | 3.5x | |
 | Hilt, leaf body edit (step 42) | 476 | 38 | 12.5x | about 20x (processing takes about 20 ms) |
@@ -79,6 +81,8 @@ step 42's: Moshi's step 42 rows pool both batches.
 | Hilt, leaf signature edit (step 55, two batches) | 359 | 39.5 | 9.1x | step 55 cut `between` 1–2 ms (A/B, equal environments) |
 | Hilt, leaf body edit (step 57) | 401 | 35 | 11.5x (10.2x against step 55's stock) | stock's teardown 120 ms, setup 63 ms |
 | Hilt, leaf signature edit (step 57) | 401 | 37 | 10.8x (9.7x against step 55's stock) | step 57 cut round 1's read 0.6 ms (A/B, equal environments; totals within the spread) |
+| Hilt, leaf body edit (step 58) | 436 | 31 | 14.1x (11.5x against step 55's stock) | stock's teardown 182 ms |
+| Hilt, leaf signature edit (step 58) | 418 | 33 | 12.7x (10.9x against step 55's stock) | step 58 cut 24 `KcOps.cls` calls, 0.5 ms (A/B, equal environments) |
 | Hilt, one-file test, warm | 403 | 59 | 6.8x | |
 | Moshi, warm | 2270 | 458 | 5.0x | about 7.5x |
 | Moshi, edit Model000 (10 files dirty) | 610 | 167 | 3.7x | |
@@ -109,6 +113,8 @@ step 42's: Moshi's step 42 rows pool both batches.
 | Moshi, leaf signature edit (step 55) | 197 | 19 | 10.4x | step 55 cut about 2 ms (A/B, equal environments, 20 against 23 and 21 against 23) |
 | Moshi, leaf body edit (step 57) | 297 | 21 | 14.1x (9.7x against step 55's stock) | stock's teardown 139 ms, 42–75 in steps 52–54 |
 | Moshi, leaf signature edit (step 57) | 315 | 22 | 14.3x (9.0x against step 55's stock) | step 57 cut round 1's read 0.5 ms (A/B, equal environments) |
+| Moshi, leaf body edit (step 58) | 209 | 17 | 12.3x (11.9x against step 55's stock) | |
+| Moshi, leaf signature edit (step 58) | 219 | 17 | 12.9x (11.6x against step 55's stock) | step 58 doesn't apply to Moshi (no class calls in warm runs) |
 | Moshi, one-file test, warm | 204 | 23 | 8.9x | |
 
 Hilt's leaf body edit is the first edit at 10x. Since step 37, a body
@@ -299,7 +305,11 @@ total, minus the floor. For Exhaustive, that is the whole 10x.
   (`reused`), keep `KcModel` and the round's symbols on the JVM instead of
   encoding and decoding again (4 ms per round today). Also keep decoded
   library classes per library key, so a warm run makes no `KcOps.cls`
-  calls for classes it has seen.
+  calls for classes it has seen. Since step 58 the Java sources'
+  classes are kept too, by the id libkc gives the library it keeps
+  while the Java sources are the same (`Model.JavaID`), and so are the
+  names the class path has no class of: a warm Hilt run makes no
+  `KcOps.cls` call (`KC_NO_JAVA_DECLS=1` turns that off).
 - **KSP hot paths the processors call:** `asMemberOf`,
   `isAssignableFrom`, `KSType` equality and hashing (`KcSubstitution`,
   `KcTypes`), `getJvmName`/`mapToJvmSignature`, and repeated
