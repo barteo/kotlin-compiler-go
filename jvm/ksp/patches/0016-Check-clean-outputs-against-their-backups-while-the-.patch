@@ -9,21 +9,20 @@ Subject: [PATCH] Check clean outputs against their backups while the
  1 file changed, 75 insertions(+), 23 deletions(-)
 
 diff --git a/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/common/IncrementalContextBase.kt b/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/common/IncrementalContextBase.kt
-index 73a2254..252aa0e 100644
+index 73a2254..c15f423 100644
 --- a/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/common/IncrementalContextBase.kt
 +++ b/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/common/IncrementalContextBase.kt
-@@ -33,7 +33,10 @@ import java.io.IOException
+@@ -33,7 +33,9 @@ import java.io.IOException
  import java.nio.file.Files
  import java.nio.file.attribute.BasicFileAttributes
  import java.util.Date
 +import java.util.concurrent.CompletableFuture
  import java.util.concurrent.ConcurrentHashMap
 +import java.util.concurrent.Future
-+import java.util.stream.Collectors
  
  /**
   * [path] relative to [base], as `File(path).relativeTo(base).path` gives it,
-@@ -302,6 +305,7 @@ abstract class IncrementalContextBase(
+@@ -302,6 +304,7 @@ abstract class IncrementalContextBase(
          ).propagate(initialSet)
  
          updateFromRemovedOutputs()
@@ -31,7 +30,7 @@ index 73a2254..252aa0e 100644
  
          logDirtyFiles(
              ksFiles.filter { it.relativeFile in dirtyFiles },
-@@ -352,13 +356,72 @@ abstract class IncrementalContextBase(
+@@ -352,13 +355,73 @@ abstract class IncrementalContextBase(
          sourceToOutputsMap.flush()
      }
  
@@ -73,7 +72,7 @@ index 73a2254..252aa0e 100644
 +    // The clean outputs are known well before then: they are outputs in
 +    // sourceToOutputsMap, which only updateCaches changes, at the end, and
 +    // only for dirty sources. So the same check of all its outputs starts
-+    // here, once the dirty files are known, on other threads, while the
++    // here, once the dirty files are known, on another thread, while the
 +    // processors run; updateOutputs then checks again only the pairs this
 +    // left out and the outputs the run wrote (a processor may have changed
 +    // those; the output writer writes no others). Backups change only in
@@ -85,13 +84,14 @@ index 73a2254..252aa0e 100644
 +        if (System.getenv("KSP_NO_PRECHECK") == "1")
 +            return
 +        // The maps' lists are replaced, never changed: the snapshot can be
-+        // read on another thread.
++        // read on another thread, the common pool's.
 +        val lists = ArrayList(sourceToOutputsMap.values)
 +        precheck = CompletableFuture.supplyAsync {
 +            val outs = HashSet<File>()
 +            lists.forEach { outs.addAll(it) }
-+            val stream = if (outs.size >= PARALLEL_CHECKS) outs.parallelStream() else outs.stream()
-+            stream.filter { upToDate(it.bak(), it.abs()) }.collect(Collectors.toSet())
++            // One thread: the processors and the output writers use the
++            // other cores, and this has about ten milliseconds to finish.
++            outs.filterTo(HashSet()) { upToDate(it.bak(), it.abs()) }
 +        }
 +    }
 +
