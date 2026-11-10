@@ -591,6 +591,7 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 			break
 		}
 		more := prev.dependents(dirty, m.Files, texts, &javaSet{javaTexts, javaFiles})
+		tm.Mark("dependents")
 		if len(more) == 0 {
 			break
 		}
@@ -617,6 +618,7 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 		javaLib = ml
 	}
 	keepCheck(cache, m, paths, slices.Concat(texts, javaTexts), sources, snaps, len(broken) == 0, javaLib)
+	tm.Mark("keep")
 	ok = true
 	return m, nil
 }
@@ -632,6 +634,7 @@ func keepCheck(cache *checkCache, m *Model, paths, texts []string, sources []Sou
 	for i, src := range sources {
 		c.snaps[src.Path] = checkedSnap{texts[i], snaps[i]}
 	}
+	c.keys = cache.keysOf(m.Files)
 	cache.keep(c)
 }
 

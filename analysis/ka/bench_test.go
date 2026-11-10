@@ -16,6 +16,7 @@ import (
 // line, separated by a comma (as bench/ksp/run.sh takes them). It is
 // skipped without KA_BENCH.
 func BenchmarkUpdate(b *testing.B) {
+	noVerifyKeys(b)
 	s, sources := benchModule(b)
 	defer s.Close()
 	for b.Loop() {
@@ -33,6 +34,7 @@ func BenchmarkUpdate(b *testing.B) {
 // KA_BENCH_RETURN set, a function added once whose body returns the run's
 // number, as bench/ksp's body edits do.
 func BenchmarkUpdateEdit(b *testing.B) {
+	noVerifyKeys(b)
 	s, sources := benchModule(b)
 	defer s.Close()
 	i := 0
@@ -62,6 +64,13 @@ func BenchmarkUpdateEdit(b *testing.B) {
 		}
 		m.Close()
 	}
+}
+
+// noVerifyKeys turns verifyKeys off for a benchmark, which times the
+// keys alone.
+func noVerifyKeys(b *testing.B) {
+	verifyKeys = false
+	b.Cleanup(func() { verifyKeys = true })
 }
 
 func benchModule(b testing.TB) (*Session, []Source) {

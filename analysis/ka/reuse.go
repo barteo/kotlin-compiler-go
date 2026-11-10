@@ -65,6 +65,8 @@ type checkCache struct {
 	list []*checked
 	// ids are the identifiers of the parses the checks hold (reachable).
 	ids map[*psi.Snapshot]*fileNames
+	// keys are the keys of the models the checks hold (keysOf).
+	keys map[*File]*fileKeys
 }
 
 // checked is the result of checking a module's sources.
@@ -74,6 +76,7 @@ type checked struct {
 	paths, texts []string               // the Kotlin sources', then the Java sources'
 	snaps        map[string]checkedSnap // the Kotlin sources' parses, by path
 	files        []*File
+	keys         []*fileKeys // files' (keysOf)
 	diags        []Diagnostic
 	lib          *library // the library with the Java sources the check made, or nil
 	// clean is set if no file had syntax errors, so that the check's
@@ -232,6 +235,7 @@ func (e *checked) declEdits(paths []string, sources []Source, texts []string, ja
 	if !names.addJava(java) {
 		return nil
 	}
+	names.seal()
 	e.addLookingUp(dirty, names)
 	if len(dirty)*maxDirtyShare > len(sources) {
 		return nil
@@ -265,9 +269,10 @@ func (e *checked) dependents(dirty map[int]bool, files []*File, texts []string, 
 	if !names.addJava(java) {
 		return allFiles(len(files))
 	}
+	names.seal()
 	more := map[int]bool{}
 	for j, f := range e.files {
-		if !dirty[j] && (names.hit(f.Lookups) || names.declaredBy(f)) {
+		if !dirty[j] && names.affects(f, e.keys[j]) {
 			more[j] = true
 		}
 	}
@@ -278,7 +283,7 @@ func (e *checked) dependents(dirty map[int]bool, files []*File, texts []string, 
 // those that declare one of them, whose declarations may conflict.
 func (e *checked) addLookingUp(dirty map[int]bool, names *declaredNames) {
 	for j, f := range e.files {
-		if !dirty[j] && (names.hit(f.Lookups) || names.declaredBy(f)) {
+		if !dirty[j] && names.affects(f, e.keys[j]) {
 			dirty[j] = true
 		}
 	}
@@ -424,6 +429,8 @@ type declaredNames struct {
 	names   map[[2]string]bool // scope, name
 	classes map[string]bool
 	facades []string // the changed files' facade classes' simple names, with Java sources (addFacade)
+	// nameKeys and classKeys are the names' and classes' keys (seal).
+	nameKeys, classKeys []uint64
 }
 
 func newDeclaredNames() *declaredNames {
@@ -654,6 +661,19 @@ func (c *checkCache) keep(e *checked) {
 	for snap := range c.ids {
 		if !slices.ContainsFunc(c.list, func(e *checked) bool { s, ok := e.snaps[snap.Path()]; return ok && s.snap == snap }) {
 			delete(c.ids, snap)
+		}
+	}
+	if c.keys != nil {
+		held := map[*File]bool{}
+		for _, e := range c.list {
+			for _, f := range e.files {
+				held[f] = true
+			}
+		}
+		for f := range c.keys {
+			if !held[f] {
+				delete(c.keys, f)
+			}
 		}
 	}
 }
