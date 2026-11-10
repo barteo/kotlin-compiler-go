@@ -170,3 +170,29 @@ func TestSourcesOfGradle(t *testing.T) {
 		t.Errorf("SourcesOf = %q, want %q", got, src)
 	}
 }
+
+// TestLocalEntries checks that entries outside the archive's root are
+// not indexed, so their names never reach a file system path.
+func TestLocalEntries(t *testing.T) {
+	for name, want := range map[string]bool{
+		"a/B.kt": true, "B.kt": true, "a/./B.kt": true,
+		"../B.kt": false, "a/../../B.kt": false, "/etc/B.kt": false, `a\..\..\B.kt`: false, "": false,
+	} {
+		if got := LocalEntry(name); got != want {
+			t.Errorf("LocalEntry(%q) = %v, want %v", name, got, want)
+		}
+	}
+	dir := t.TempDir()
+	jar := filepath.Join(dir, "lib-1.0.jar")
+	writeJar(t, jar, map[string]string{"x/Y.class": ""})
+	writeJar(t, filepath.Join(dir, "lib-1.0-sources.jar"), map[string]string{
+		"../../Evil.kt":   "package evil\n\nclass Evil\n",
+		"../../Evil.java": "package evil;\n\npublic class Evil {}\n",
+	})
+	f := New([]string{jar}, "-")
+	for _, tg := range []Target{{Kind: "class", Name: "evil.Evil"}, {Kind: "class", Name: "evil.Evil", Binary: "evil/Evil"}} {
+		if loc, ok := f.Locate(tg); ok {
+			t.Errorf("%v: found in %q", tg, loc.Entry)
+		}
+	}
+}

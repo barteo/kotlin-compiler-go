@@ -3,6 +3,7 @@ package lsp
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -142,6 +143,9 @@ func (s *Server) extract(loc libsrc.Location) (string, error) {
 	dir, err := s.cacheDir()
 	if err != nil {
 		return "", err
+	}
+	if !libsrc.LocalEntry(loc.Entry) {
+		return "", fmt.Errorf("library entry %q is not a local path", loc.Entry)
 	}
 	h := sha256.Sum256([]byte(loc.Archive))
 	base := strings.TrimSuffix(filepath.Base(loc.Archive), filepath.Ext(loc.Archive))

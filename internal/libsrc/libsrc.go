@@ -187,6 +187,9 @@ func readIndex(archive string) (*index, error) {
 	defer r.Close()
 	idx := &index{top: map[topKey][]string{}, byName: map[string][]string{}, java: map[string]string{}}
 	for _, f := range r.File {
+		if !LocalEntry(f.Name) {
+			continue // ../x.kt would be extracted outside the cache
+		}
 		switch {
 		case strings.HasSuffix(f.Name, ".java"):
 			name := strings.TrimSuffix(f.Name, ".java")
@@ -220,6 +223,14 @@ func readFile(f *zip.File) (string, error) {
 	defer rc.Close()
 	b, err := io.ReadAll(rc)
 	return string(b), err
+}
+
+// LocalEntry reports whether an archive's entry name is a relative path
+// within the archive: not absolute, no .. element, no backslash or
+// volume name. Only such entries are indexed, so that a location's
+// entry can be extracted under a directory.
+func LocalEntry(name string) bool {
+	return name != "" && !strings.Contains(name, "\\") && filepath.IsLocal(filepath.FromSlash(name))
 }
 
 // Read returns the text of an archive's entry.
