@@ -1379,9 +1379,9 @@ func (c *Checker) narrowing(cond syntax.Expr) (whenTrue, whenFalse []narrow) {
 				n = append(n, c.safeReceivers(x.X)...)
 			case xnull:
 				n = append(n, c.safeReceivers(x.Y)...)
-			case nonNull(x.Y.Type()):
+			case equalsNonNull(x.Y.Type()):
 				n, eq = c.equalNonNull(x.X), !eq
-			case nonNull(x.X.Type()):
+			case equalsNonNull(x.X.Type()):
 				n, eq = c.equalNonNull(x.Y), !eq
 			}
 			whenTrue, whenFalse = null, n
@@ -1555,35 +1555,37 @@ func (c *Checker) contractNarrows(x *syntax.Call, returns int) []narrow {
 			out = append(out, whenTrue...)
 			continue
 		}
+		if e.Is == nil {
+			// The argument isn't null, nor are the receivers of its safe
+			// calls: !x?.y.isNullOrEmpty() means x isn't null either.
+			out = append(out, c.equalNonNull(arg)...)
+			continue
+		}
 		k, ok := c.narrowKeyOf(arg)
-		switch {
-		case !ok:
-		case e.Is != nil:
-			is := *e.Is
-			if is.HasParams() && len(x.Reified) == len(f.TypeParams) {
-				// The call's type arguments: value is R for its R.
-				sub := types.Subst{}
-				for i, tp := range f.TypeParams {
-					sub[tp] = types.Arg{T: x.Reified[i]}
-				}
-				is = sub.Apply(is)
+		if !ok {
+			continue
+		}
+		is := *e.Is
+		if is.HasParams() && len(x.Reified) == len(f.TypeParams) {
+			// The call's type arguments: value is R for its R.
+			sub := types.Subst{}
+			for i, tp := range f.TypeParams {
+				sub[tp] = types.Arg{T: x.Reified[i]}
 			}
-			own := func(t types.Type) bool {
-				return t.Has(func(u types.Type) bool { return u.K == types.TypeParam && slices.Contains(f.TypeParams, u.Param()) })
+			is = sub.Apply(is)
+		}
+		own := func(t types.Type) bool {
+			return t.Has(func(u types.Type) bool { return u.K == types.TypeParam && slices.Contains(f.TypeParams, u.Param()) })
+		}
+		if own(is) && is.K == types.Class && len(is.C.TypeParams) > 0 {
+			// this is Error, of a NetRequestStatus<T>: the arguments
+			// are the argument's, as for x is Error.
+			if t, known, _ := c.bareArgs(is.C, &syntax.TypeRef{Nullable: is.N}, k.t); known {
+				is = t
 			}
-			if own(is) && is.K == types.Class && len(is.C.TypeParams) > 0 {
-				// this is Error, of a NetRequestStatus<T>: the arguments
-				// are the argument's, as for x is Error.
-				if t, known, _ := c.bareArgs(is.C, &syntax.TypeRef{Nullable: is.N}, k.t); known {
-					is = t
-				}
-			}
-			if !own(is) && !c.subtype(k.t, is) {
-				k.t = c.isNarrowed(k.t, is)
-				out = append(out, k)
-			}
-		case types.MayBeNull(k.t):
-			k.t = k.t.NonNull()
+		}
+		if !own(is) && !c.subtype(k.t, is) {
+			k.t = c.isNarrowed(k.t, is)
 			out = append(out, k)
 		}
 	}
@@ -1692,6 +1694,14 @@ func (c *Checker) localKey(k narrow) *types.VarSym {
 // nonNull reports whether a checked expression's type has no null.
 func nonNull(t types.Type) bool {
 	return t.K != types.Invalid && !types.MayBeNull(t)
+}
+
+// equalsNonNull reports whether being equal to a value of type t makes the
+// other side of the equality non-null. kotlinc counts a platform type, such
+// as that of a Java static field, as non-null here, so when (r?.action)
+// { File.separator -> } smart casts r.
+func equalsNonNull(t types.Type) bool {
+	return nonNull(t) || t.P
 }
 
 // receiver checks the receiver of a member access or member call.
@@ -3462,7 +3472,7 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 						whenTrue, later = append(whenTrue, t...), append(later, f...)
 					}
 				}
-				if single && nonNull(ct) {
+				if single && equalsNonNull(ct) {
 					// Equal to a value that isn't null: neither the
 					// subject nor the receivers of its safe calls are.
 					if hasSubj && types.MayBeNull(subjType()) {
