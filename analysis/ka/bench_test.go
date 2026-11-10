@@ -66,11 +66,11 @@ func BenchmarkUpdateEdit(b *testing.B) {
 	}
 }
 
-// noVerifyKeys turns verifyKeys off for a benchmark, which times the
-// keys alone.
+// noVerifyKeys turns verifyKeys and verifyReach off for a benchmark,
+// which times the keys and the kept reachable indexes alone.
 func noVerifyKeys(b *testing.B) {
-	verifyKeys = false
-	b.Cleanup(func() { verifyKeys = true })
+	verifyKeys, verifyReach = false, false
+	b.Cleanup(func() { verifyKeys, verifyReach = true, true })
 }
 
 func benchModule(b testing.TB) (*Session, []Source) {

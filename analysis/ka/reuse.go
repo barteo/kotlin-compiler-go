@@ -67,6 +67,9 @@ type checkCache struct {
 	ids map[*psi.Snapshot]*fileNames
 	// keys are the keys of the models the checks hold (keysOf).
 	keys map[*File]*fileKeys
+	// reach are reachable's indexes of the last updates' files, the most
+	// recent first (reachIndex).
+	reach []*reachIndex
 }
 
 // checked is the result of checking a module's sources.

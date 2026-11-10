@@ -418,6 +418,61 @@ func TestIncrementalDecl(t *testing.T) {
 	}
 }
 
+// An update that checks only some files changes the reachable index the
+// update before kept for the same files: its entries stay those of a new
+// index (verifyReach), and its models a whole check's. The edits of
+// TestIncrementalDecl are made one after another, on one session.
+func TestReachIndexKept(t *testing.T) {
+	base := []string{
+		"package p\nopen class A { open fun f() = 1 }\nfun top() = 1\nval tv = 2\n",
+		"package p\nclass B : A() { override fun f() = 2 }\n",
+		"package p\nfun useTop() = top()\nfun inferred() = tv\n",
+		"package sl\nsealed class S\nclass A1 : S()\nfun pick(s: S) = when (s) { is A1 -> 1 }\nfun sl0() = 0\n",
+		"package sl\nclass B1 : S()\n",
+		"package o\nclass Vec(val x: Int)\n",
+		"package o\noperator fun Vec.plus(o: Vec) = Vec(x + o.x)\n",
+		"package o\nfun sum(a: Vec, b: Vec) = a + b\nfun oo() = 0\n",
+		"package u\nfun solo() = 1\nclass Solo\n",
+		"package u\nfun other() = 2\n",
+	}
+	edits := []struct {
+		file     int
+		from, to string
+	}{
+		{0, "fun top() = 1", "fun top() = 1L"},
+		{0, "val tv = 2\n", "val tv = 2\nfun added() = 3\n"},
+		{4, "class B1 : S()", "class B1 : S()\nclass C1 : S()"},
+		{3, "sealed class S", "sealed class S\nsealed class S2"},
+		{4, "class C1 : S()", "class C1 : S2()"},
+		{3, "sealed class S2", "open class S2"},
+		{7, "fun oo() = 0", "fun oo() = 0L"},
+		{6, "operator fun Vec.plus", "operator fun Vec.minus(o: Vec) = this\noperator fun Vec.plus"},
+		{9, "fun other() = 2", "fun other() = 2\nfun solo() = 3"},
+		{0, "open class A { open fun f() = 1 }", ""},
+		{8, "class Solo", "class Solo2"},
+	}
+	s := Open(withStdlib(t))
+	defer s.Close()
+	if _, err := s.Update(context.Background(), sources(base...)); err != nil {
+		t.Fatal(err)
+	}
+	texts := slices.Clone(base)
+	before := reachIndexPatched.Load()
+	for i, e := range edits {
+		texts[e.file] = strings.Replace(texts[e.file], e.from, e.to, 1)
+		got, err := s.Update(context.Background(), sources(texts...))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if d := sameModel(got, wholeCheck(t, s, sources(texts...))); d != "" {
+			t.Errorf("edit %d: %s", i, d)
+		}
+	}
+	if reachIndexPatched.Load() == before {
+		t.Error("no update changed a kept index")
+	}
+}
+
 // signatureEdits returns edits of text that change what it declares: a
 // function added at its end, and its first top-level callable's and first
 // top-level class's names changed, if it has them.

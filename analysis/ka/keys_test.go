@@ -8,7 +8,10 @@ import (
 
 // The package's tests check every file's keys against its names
 // (declaredNames.affects).
-func init() { verifyKeys = true }
+func init() {
+	verifyKeys = true
+	verifyReach = true
+}
 
 func TestIntersects(t *testing.T) {
 	many := make([]uint64, 100)

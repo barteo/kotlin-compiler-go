@@ -697,40 +697,26 @@ func reachable(snaps []*psi.Snapshot, dirty map[int]bool, javaTexts []string, ca
 	if dirty == nil || noReach {
 		return nil
 	}
-	type at struct{ file, decl int }
 	fns := make([]*fileNames, len(snaps))
-	declares := map[string][]at{}
-	sealed := map[string]bool{}
-	subs := map[string][]at{} // by a name their supertypes write
+	for i, snap := range snaps {
+		fns[i] = cache.names(snap)
+	}
+	x := cache.reachIndex(snaps, fns)
+	defer cache.putReachIndex(x)
 	set := map[int]bool{}
-	reached := map[at]bool{}
+	reached := map[reachAt]bool{}
 	var queue []map[string]bool
-	reach := func(a at) {
+	reach := func(a reachAt) {
 		set[a.file] = true
 		if !reached[a] {
 			reached[a] = true
 			queue = append(queue, fns[a.file].decls[a.decl].ids)
 		}
 	}
-	for i, snap := range snaps {
-		fn := cache.names(snap)
-		fns[i] = fn
-		for k, d := range fn.decls {
-			for _, n := range d.names {
-				declares[n] = append(declares[n], at{i, k})
-			}
-			for _, n := range d.sealed {
-				sealed[n] = true
-			}
-			for n := range d.supers {
-				subs[n] = append(subs[n], at{i, k})
-			}
-		}
-	}
 	for i, fn := range fns {
 		for k, d := range fn.decls {
 			if d.operator {
-				reach(at{i, k})
+				reach(reachAt{i, k})
 			}
 		}
 		if dirty[i] {
@@ -744,11 +730,11 @@ func reachable(snaps []*psi.Snapshot, dirty map[int]bool, javaTexts []string, ca
 			return
 		}
 		names[n] = true
-		for _, a := range declares[n] {
+		for _, a := range x.declares[n] {
 			reach(a)
 		}
-		if sealed[n] {
-			for _, a := range subs[n] {
+		if x.sealed[n] > 0 {
+			for _, a := range x.subs[n] {
 				reach(a)
 			}
 		}
