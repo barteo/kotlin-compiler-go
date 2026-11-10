@@ -4388,6 +4388,113 @@ Leads for later:
 - `calcDirtyFiles` (about 1 ms, spread);
 - round 1's signature update in Go (about 0.3 ms that looks cuttable).
 
+Step 54 found that this step's A/B is biased (see there): only its "off"
+arm set an environment variable, and that alone made runs about 2 ms
+faster. The patch may not have been slower at all; it needs another A/B
+with the variable set in both arms.
+
+#### Step 54: the lookup storages updated by delta
+
+On Hilt's signature runs, fork patch 0017's skip never fires: the edited
+file looks up `Int` in one run and `Any` in the next. Then
+`LookupStorageWrapperImpl.update` ran Kotlin's full update
+(`BuildUtilKt.update` in the compiler jar):
+- `removeLookupsFrom(F)` for the dirty files;
+- then `addAll` of every record the run's tracker has: thousands of
+  appends to `lookupMap`, nearly all of records the storage already
+  held, which the flush then wrote.
+
+Step 53's profile put that at 48 samples on signature runs against 17
+on body runs.
+
+Writing it showed something about KSP's own layout:
+- The tracker has files as absolute paths (`virtualFile.path`).
+- The storage's path converter keeps paths as they are.
+- The dirty files KSP passes are relative to the base directory.
+
+So `removeLookupsFrom(F)` finds nothing to drop, in stock KSP too: a
+dirty file's old records stay, and each update only adds. A record a
+file no longer makes keeps it dirty for later edits of that symbol.
+That is conservative, not wrong. kc keeps that behaviour.
+
+Fork patch 0018 writes only what changed, when the process knows each
+dirty file's records (`known`, patch 0017's):
+- a dirty file that looks up only more than it did gets those records;
+- one that no longer looks up something it did is removed, as the full
+  update does it. If its records are still there afterwards (`get` of
+  a symbol it still looks up names it), it gets only the new ones;
+  otherwise it gets them all again;
+- any other file the tracker names gets the records the storage isn't
+  known to hold;
+- a run that writes nothing doesn't flush.
+
+Every update, skipped or not, also made each tracker path relative to
+the base directory first. Paths outside it (library classes) take
+`relativeTo`'s slow path, 7 samples on signature runs. Those paths are
+now kept for the process. `KSP_NO_LOOKUP_DELTA=1` turns both off.
+
+`KSP_LOOKUP_VERIFY=1` runs the full update after the delta and fails if
+that changes what `get` returns for any symbol either touches.
+- Hilt (leaf, 100 runs; `EDIT=auto`, 40) and Moshi (leaf, 100) passed.
+- `dirty=` was the same in every run with and without the delta.
+- `build.sh stock` is 11 ok and `build.sh ksp` is 134/136.
+
+Under JFR (Hilt signature runs, 50 each), `updateLookupCache` went from
+48 samples to 38:
+- `addAll` 10 → 3;
+- the flush 16 → 11, now mostly the persistent maps' fixed cost (forcing
+  the mapped files, writing the append caches).
+
+**The A/B, and a bias in the earlier ones.** The first A/B, like step 53's,
+set `KSP_NO_LOOKUP_DELTA=1` in the "off" arm and nothing in the "on"
+arm. The "off" arm came out 2–3 ms faster on Hilt, as in step 53, and
+again in `process` and `between`, which the patch doesn't touch. Batches
+in reverse order (off, on, on, off) gave the same result.
+
+With the variable set in both arms (`=0` for on, `=1` for off), the
+difference reversed and moved into the teardown. So the size of the
+environment alone shifts these runs by about 2 ms, as large as the
+effects being measured. That is the known bias of environment size on
+memory layout.
+
+Steps 48–52 also set their switch only in the "off" arm. Their "on" arms
+were faster all the same, so if anything the bias understated those
+gains. From here on, both arms set the switch.
+
+Equal environments, medians (means in brackets) of runs 51–100. Hilt has
+six batches (on, off, off, on, on, off); Moshi has four (on, off, off,
+on):
+
+| ms | Hilt on | Hilt off | Moshi on | Moshi off |
+|---|---|---|---|---|
+| teardown, body | 1.0 (1.6) | 2.0 (2.2) | 2.0 (1.9) | 1.0 (1.4) |
+| teardown, signature | 2.0 (1.9) | 3.0 (2.8) | 2.0 (1.8) | 1.0 (1.5) |
+| run total, body | 36 (39.8) | 38 (38.9) | 19 (20.5) | 18 (19.0) |
+| run total, signature | 40 (41.9) | 41 (42.5) | 21 (21.8) | 20 (21.4) |
+
+On Hilt the teardown drops by 0.6–0.9 ms, on body runs (the path memo)
+and on signature runs (both parts). Moshi's teardown is about 0.4 ms
+higher with the patch, in all ten of its batches, with or without the
+bias. Only the memo applies there, since patch 0017 skips every Moshi
+update, and why it would cost anything is open. Its totals moved within
+the batches' spread.
+
+The KSP bench, both backends, 100 runs, output checked against stock's,
+medians of runs 51–100:
+
+| ms | stock KSP2 | kc | ratio | kc min |
+|---|---|---|---|---|
+| Moshi, leaf body edit | 199 | 21 | 9.5x | 14 |
+| Moshi, leaf signature edit | 205 | 21 | 9.8x | 17 |
+| Hilt, leaf body edit | 337 | 36 | 9.4x | 30 |
+| Hilt, leaf signature edit | 334 | 39 | 8.6x | 32 |
+
+Stock ran faster in this batch than in step 52's: its teardown took
+42 ms on Moshi against 72–75, and 65–71 on Hilt against 112–115. kc's
+runs are where they were. Against step 52's stock, the ratios are
+10.8x and 10.6x (Moshi) and 10.2x and 9.7x (Hilt). Stock's teardown, and
+so the ratio, moves by tens of ms from one batch to the next.
+
 ## Gaps and open questions
 
 - **Slice simplifications (M0.4).** These go when M3/M4 bring the facts in:

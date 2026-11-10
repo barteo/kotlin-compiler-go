@@ -73,6 +73,8 @@ step 42's: Moshi's step 42 rows pool both batches.
 | Hilt, leaf signature edit (step 51) | 335 | 40 | 8.4x | |
 | Hilt, leaf body edit (step 52) | 368 | 35 | 10.5x | stock's teardown 112–115 ms |
 | Hilt, leaf signature edit (step 52) | 378 | 39 | 9.7x | step 52 cut 2 ms (A/B, 40 against 42; round 2's update 1.8 against 3.2 ms) |
+| Hilt, leaf body edit (step 54) | 337 | 36 | 9.4x (10.2x against step 52's stock) | stock's teardown 65 ms, 112–115 in step 52 |
+| Hilt, leaf signature edit (step 54) | 334 | 39 | 8.6x (9.7x against step 52's stock) | step 54 cut the teardown 0.6–0.9 ms (A/B, equal environments) |
 | Hilt, one-file test, warm | 403 | 59 | 6.8x | |
 | Moshi, warm | 2270 | 458 | 5.0x | about 7.5x |
 | Moshi, edit Model000 (10 files dirty) | 610 | 167 | 3.7x | |
@@ -97,6 +99,8 @@ step 42's: Moshi's step 42 rows pool both batches.
 | Moshi, leaf signature edit (step 51) | 340 | 21 | 16x (9.2x against step 50's stock) | step 51 cut 0.3–0.4 ms (A/B), inside the totals' spread |
 | Moshi, leaf body edit (step 52) | 227 | 18 | 12.6x | stock's teardown 72–75 ms, 192–204 in step 51 |
 | Moshi, leaf signature edit (step 52) | 223 | 19 | 11.7x (10.2x against step 50's stock) | step 52 cut 2 ms (A/B, 20 against 22; round 2's update 1.0 against 2.7 ms) |
+| Moshi, leaf body edit (step 54) | 199 | 21 | 9.5x (10.8x against step 52's stock) | stock's teardown 42 ms, 72–75 in step 52 |
+| Moshi, leaf signature edit (step 54) | 205 | 21 | 9.8x (10.6x against step 52's stock) | step 54 doesn't apply to Moshi (patch 0017 skips its updates) |
 | Moshi, one-file test, warm | 204 | 23 | 8.9x | |
 
 Hilt's leaf body edit is the first edit at 10x. Since step 37, a body
@@ -165,7 +169,16 @@ KSP's symbol layer. What is left:
   made Hilt 2–3 ms slower (A/B): the processors' first
   `getSymbolsWithAnnotation` then built the same declarations, and the
   processors ran slower beside patch 0016's backup check, which the
-  visit had left room for. It was reverted.
+  visit had left room for. It was reverted. (Step 54 found that A/B
+  biased by the environment, below; the patch needs another.) Since
+  step 54 (patch 0018) an update the skip leaves to run, as on Hilt's
+  signature edits, writes only the records that changed instead of
+  every record the tracker has, and the tracker's paths are made
+  relative once per process: 0.6–0.9 ms off Hilt's teardown (A/B).
+  `KSP_NO_LOOKUP_DELTA=1` turns it off. In KSP's layout, the full
+  update's removal of the dirty files' old records drops nothing (the
+  records are under absolute paths, the dirty files relative ones), in
+  stock too.
 - **kc-aa's rounds**: about 5 ms per Moshi body run since step 46. That
   step made the JVM keep unchanged files' PSI by libkc's text hash
   (no stat or read per file per round), cached the session's source
@@ -190,7 +203,10 @@ KSP's symbol layer. What is left:
   step 37 does for bodies.
 - **Run-to-run spread**: in one JVM, kc's body-edit runs range from
   about 21 to 45 ms even after 70 runs, and the slow runs are slower in
-  every phase, the processors' too.
+  every phase, the processors' too. Since step 54 the A/Bs set their
+  switch in both arms (`=0` and `=1`): setting an environment variable in
+  one arm only shifted Hilt's runs by about 2 ms, in phases the change
+  under test doesn't touch.
 
 ## What "10x" has to mean
 
