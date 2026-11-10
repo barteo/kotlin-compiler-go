@@ -290,7 +290,10 @@ echo "moshi: ok"
 # step 16).
 iclibs=$lib/kotlin-stdlib-2.4.21.jar:$out/m2/moshi-1.15.2.jar:$out/m2/okio-jvm-3.7.0.jar
 # icrun DIR JAVA... runs the test in DIR with the command JAVA... (a java
-# with its options and class path) and writes DIR/dirty.txt.
+# with its options and class path) and writes DIR/dirty.txt. With
+# icclean=1, the outputs (all of DIR/out but its caches) are deleted before
+# the second run, as Gradle does, so that KSP restores the clean ones from
+# its backups.
 icrun() {
 	local d=$1 f mod=
 	shift
@@ -300,6 +303,9 @@ icrun() {
 	"$@" -Dksp.incremental=true -Dksp.incrementalLog=true RunKspKt "$d/src" "$d/out" "$iclibs" > "$d/first.txt"
 	grep -q '^Dirty / All: 100.00%$' "$d/out/caches/logs/kspDirtySet.log"
 	cp -r "$here/test/ic/edit/." "$d/src"
+	if [ "${icclean:-}" = 1 ]; then
+		find "${d:?}/out" -mindepth 1 -maxdepth 1 ! -name caches -exec rm -r {} +
+	fi
 	for f in $(cd "$here/test/ic/edit" && find . -type f | sort); do
 		mod=$mod:$d/src/${f#./}
 	done
@@ -315,6 +321,10 @@ icrun "$out/ic" env LD_PRELOAD="$java_home/lib/libjsig.so" java -Dksp.backend=kc
 	-cp "$out/runksp-classes:$out/kc-aa.jar:$deps$procs"
 diff -u "$here/test/ic/dirty.txt" "$out/ic/dirty.txt"
 echo "incremental: ok ($(wc -l < "$out/ic/dirty.txt") of $(find "$here/test/ic/src" -type f | wc -l) files dirty)"
+icclean=1 icrun "$out/ic-gradle" env LD_PRELOAD="$java_home/lib/libjsig.so" java -Dksp.backend=kc -Dkc.lib="$out/libkc.so" \
+	-Didea.home.path="$out" -cp "$out/runksp-classes:$out/kc-aa.jar:$deps$procs"
+diff -u "$here/test/ic/dirty.txt" "$out/ic-gradle/dirty.txt"
+echo "incremental, outputs deleted: ok ($(wc -l < "$out/ic-gradle/dirty.txt") of $(find "$here/test/ic/src" -type f | wc -l) files dirty)"
 if [ "$mode" = stock ]; then
 	icrun "$out/stock-ic" java -Dksp.languageVersion=2.3 -cp "$out/runksp-stock$procs$stockcp"
 	{ diff "$here/test/ic/dirty.txt" "$out/stock-ic/dirty.txt" || true; } | grep '^[<>]' > "$out/stock-ic.diff" || true
