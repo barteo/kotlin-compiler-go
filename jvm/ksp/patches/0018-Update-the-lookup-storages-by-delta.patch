@@ -1,0 +1,198 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kc <barteo@gmail.com>
+Date: Tue, 10 Nov 2026 19:16:45 +0000
+Subject: [PATCH] Update the lookup storages by delta
+
+An update of the lookup storages that patch 0017 doesn't skip, as on a
+signature edit, dropped the dirty files' records and added every record
+the run's tracker has: thousands of appends, nearly all of records the
+storage already held, and a flush that wrote them all.
+
+When this process knows each dirty file's records, the update now
+writes only what changed: a dirty file that no longer looks up
+something it did is dropped as before and gets its records again (only
+the new ones where dropping dropped nothing); one that only looks up
+more gets those; any other file gets the records the storage isn't
+known to hold. A run that writes nothing doesn't flush. The storage
+then gives what the full update would leave.
+
+(The tracker has files as absolute paths, which the storage keeps as
+they are, while the dirty files are relative to the base directory: in
+this layout, dropping a dirty file's records drops nothing, in either
+update.)
+
+Every update, skipped or not, first makes each of the tracker's paths
+relative to the base directory, and a path outside it (a library's
+class) takes relativeTo's slow path. The same paths come back every
+run, so they are kept, made relative, for the process.
+
+KSP_NO_LOOKUP_DELTA=1 turns both off. KSP_LOOKUP_VERIFY=1 makes the
+full update after the delta and checks that it changes nothing get
+returns for the symbols either touches.
+---
+ .../devtools/ksp/impl/IncrementalContextAA.kt | 121 ++++++++++++++++--
+ 1 file changed, 111 insertions(+), 10 deletions(-)
+
+diff --git a/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/IncrementalContextAA.kt b/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/IncrementalContextAA.kt
+index 0748bf2..7e637a6 100644
+--- a/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/IncrementalContextAA.kt
++++ b/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/IncrementalContextAA.kt
+@@ -356,6 +356,14 @@ class LookupStorageWrapperImpl(
+ 
+     // A file as the storage's path converter keys it: relative to the base
+     // directory (the files to compile already are).
++    // The tracker's paths, relative as pathOf makes them, by base directory:
++    // the same paths come back every run, and a path outside the base
++    // directory (a library's class) takes relativeTo's slow path.
++    private val relative = if (baseDir == null || NO_DELTA) null else RELATIVE.getOrPut(baseDir.path) { ConcurrentHashMap() }
++
++    private fun trackerPathOf(path: String): String =
++        relative?.getOrPut(path) { pathOf(File(path)) } ?: pathOf(File(path))
++
+     private fun pathOf(file: File): String =
+         if (baseDir == null || !file.isAbsolute) file.path
+         else com.google.devtools.ksp.common.relativeFile(file, baseDir).path
+@@ -373,12 +381,20 @@ class LookupStorageWrapperImpl(
+             return
+         }
+ 
+-        // The tracker's lookups, by file.
++        // The tracker's lookups, by file, and each file's path as the
++        // tracker has it.
+         val byFile = HashMap<String, MutableSet<LookupSymbol>>()
++        val trackerPath = HashMap<String, String>()
+         tracker.lookups.entrySet().forEach { (symbol, paths) ->
+-            paths.forEach { byFile.getOrPut(pathOf(File(it))) { HashSet() }.add(symbol) }
++            paths.forEach {
++                val f = trackerPathOf(it)
++                trackerPath.putIfAbsent(f, it)
++                byFile.getOrPut(f) { HashSet() }.add(symbol)
++            }
+         }
+-        val files = filesToCompile.mapTo(LinkedHashSet()) { pathOf(it) }
++        val fileOf = LinkedHashMap<String, File>()
++        filesToCompile.forEach { fileOf.putIfAbsent(pathOf(it), it) }
++        val files = fileOf.keys
+ 
+         val unchanged =
+             files.all { f -> known[f]?.let { it.exact && it.symbols == (byFile[f] ?: emptySet<LookupSymbol>()) } == true } &&
+@@ -386,13 +402,28 @@ class LookupStorageWrapperImpl(
+         if (unchanged && !VERIFY && !NO_SKIP)
+             return
+ 
+-        val before = if (unchanged && VERIFY) tracker.lookups.keySet().associateWith { impl.get(it).toSet() } else null
+-        impl.update(tracker, filesToCompile, removedFiles)
+-        dirty = true
+-        before?.forEach { (symbol, paths) ->
+-            val after = impl.get(symbol).toSet()
+-            if (after != paths)
+-                throw IllegalStateException("kc: lookup update skip would differ for $symbol: $paths, $after")
++        if (!unchanged && !NO_DELTA && files.all { known[it]?.exact == true }) {
++            val touched = updateDelta(files, fileOf, byFile, trackerPath)
++            // KSP_LOOKUP_VERIFY=1: the full update after the delta must not
++            // change what get returns for any symbol either touches.
++            if (VERIFY) {
++                val after = touched.associateWith { impl.get(it).toSet() }
++                impl.update(tracker, filesToCompile, removedFiles)
++                after.forEach { (symbol, paths) ->
++                    val full = impl.get(symbol).toSet()
++                    if (full != paths)
++                        throw IllegalStateException("kc: lookup delta differs for $symbol: $paths, $full")
++                }
++            }
++        } else {
++            val before = if (unchanged && VERIFY) tracker.lookups.keySet().associateWith { impl.get(it).toSet() } else null
++            impl.update(tracker, filesToCompile, removedFiles)
++            dirty = true
++            before?.forEach { (symbol, paths) ->
++                val after = impl.get(symbol).toSet()
++                if (after != paths)
++                    throw IllegalStateException("kc: lookup update skip would differ for $symbol: $paths, $after")
++            }
+         }
+         files.forEach { known[it] = KnownLookups(byFile[it] ?: emptySet(), true) }
+         byFile.forEach { (f, symbols) ->
+@@ -403,6 +434,67 @@ class LookupStorageWrapperImpl(
+         }
+     }
+ 
++    // The update of files F, each of whose records this process knows
++    // exactly, by what changed: the full update drops F's records and adds
++    // every record the tracker has, most of which the storage holds
++    // already. Here a file in F that no longer looks up something it did is
++    // dropped as there and gets all its records again, or, where dropping
++    // drops nothing, only those it didn't have; one that only looks up
++    // more gets those; and any other file the tracker names gets
++    // the records the storage isn't known to hold. The storage then holds
++    // what the full update would leave, for every symbol: what it held,
++    // without F's records where the full update could drop them, and the
++    // tracker's. (The tracker has files as absolute paths, which the
++    // storage keeps as they are, and F's are relative to the base
++    // directory: in KSP's own layout, removing F's records drops nothing,
++    // in both updates.)
++    private fun updateDelta(
++        files: Set<String>,
++        fileOf: Map<String, File>,
++        byFile: Map<String, Set<LookupSymbol>>,
++        trackerPath: Map<String, String>,
++    ): Set<LookupSymbol> {
++        val records = MultiMap.createSet<LookupSymbol, String>()
++        val paths = HashSet<String>()
++        val droppedSymbols = HashSet<LookupSymbol>()
++        fun add(f: String, symbols: Collection<LookupSymbol>) {
++            if (symbols.isEmpty()) return
++            val p = trackerPath.getValue(f)
++            paths.add(p)
++            symbols.forEach { records.putValue(it, p) }
++        }
++        var changed = false
++        for (f in files) {
++            val now = byFile[f] ?: emptySet()
++            val old = known.getValue(f).symbols
++            if (now.containsAll(old)) {
++                add(f, now - old)
++                continue
++            }
++            // Dropped as by the full update. Where that drops nothing (a
++            // symbol the file looks up still names it), the records it had
++            // are still there; otherwise it gets them all again.
++            droppedSymbols.addAll(old)
++            val probe = old.firstOrNull { it in now }
++            impl.removeLookupsFrom(sequenceOf(fileOf.getValue(f)))
++            changed = true
++            if (probe != null && impl.get(probe).any { pathOf(File(it)) == f })
++                add(f, now - old)
++            else
++                add(f, now)
++        }
++        byFile.forEach { (f, symbols) ->
++            if (f !in files) add(f, known[f]?.let { symbols - it.symbols } ?: symbols)
++        }
++
++        if (paths.isNotEmpty()) impl.addAll(records, paths)
++        if (changed || paths.isNotEmpty()) dirty = true
++
++        // The symbols the full update would touch.
++        byFile.values.forEach { droppedSymbols.addAll(it) }
++        return droppedSymbols
++    }
++
+     override fun removeLookupsFrom(files: Sequence<File>) {
+         val list = files.toList()
+         impl.removeLookupsFrom(list.asSequence())
+@@ -434,6 +526,15 @@ class LookupStorageWrapperImpl(
+ 
+         /** KSP_NO_LOOKUP_SKIP=1: no update is skipped. */
+         val NO_SKIP = System.getenv("KSP_NO_LOOKUP_SKIP") == "1"
++
++        /**
++         * KSP_NO_LOOKUP_DELTA=1: an update that isn't skipped drops and adds
++         * every record, never a delta, and the tracker's paths are made
++         * relative again each run.
++         */
++        val NO_DELTA = System.getenv("KSP_NO_LOOKUP_DELTA") == "1"
++
++        val RELATIVE = ConcurrentHashMap<String, ConcurrentHashMap<String, String>>()
+     }
+ }
+ 
