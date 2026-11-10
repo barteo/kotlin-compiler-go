@@ -55,12 +55,16 @@ step 42's: Moshi's step 42 rows pool both batches.
 | Hilt, leaf body edit (step 42) | 476 | 38 | 12.5x | about 20x (processing takes about 20 ms) |
 | Hilt, leaf signature edit (step 42) | 487 | 66 | 7.4x | |
 | Hilt, leaf signature edit (step 43, slower machine) | 572 | 86 | 6.7x | step 43 cut 9 ms (A/B on one machine) |
+| Hilt, leaf body edit (step 44, slower machine) | 505 | 43 | 11.7x | |
+| Hilt, leaf signature edit (step 44, slower machine) | 495 | 54 | 9.2x | steps 43–44 cut 20 ms (A/B on one machine) |
 | Hilt, one-file test, warm | 403 | 59 | 6.8x | |
 | Moshi, warm | 2270 | 458 | 5.0x | about 7.5x |
 | Moshi, edit Model000 (10 files dirty) | 610 | 167 | 3.7x | |
 | Moshi, leaf body edit (step 42, two batches) | 213 | 20.5 | 10.4x (9.4–11.3x) | about 25x (processing takes about 9 ms) |
 | Moshi, leaf signature edit (step 42, two batches) | 212 | 40 | 5.3x (4.8–5.8x) | |
 | Moshi, leaf signature edit (step 43, slower machine) | 186 | 40 | 4.7x | step 43 cut 8 ms (A/B on one machine) |
+| Moshi, leaf body edit (step 44, slower machine) | 216 | 25 | 8.6x | |
+| Moshi, leaf signature edit (step 44, slower machine) | 217 | 35 | 6.2x | steps 43–44 cut 10 ms (A/B on one machine) |
 | Moshi, one-file test, warm | 204 | 23 | 8.9x | |
 
 Hilt's leaf body edit is the first edit at 10x. Since step 37, a body
@@ -75,10 +79,13 @@ KSP's symbol layer. What is left:
   more than body edits.** Since step 39 they check only the files that
   look up the declarations that changed. Since step 43 they resolve the
   signatures only of the files those reach by name (2 of 100 on Moshi
-  and Hilt), which took 8–9 ms off a signature run measured on one
-  machine. Each of their two updates still lowers the 99 unchanged files
-  as declarations from the declaration cache (2–3 ms, a copy of each
-  tree) and declares every file for the checker (`signatures`, 2–3 ms).
+  and Hilt), and since step 44 the files they can't reach are stubs: a
+  path and a package, not a copy of their declarations. Together that
+  took 10 ms off a Moshi signature run and 20 off a Hilt one, measured
+  on one machine. Each of their two updates now takes about 3.5 ms in
+  Go (`BenchmarkUpdateEdit`). The largest item left is `declEdits`'
+  search for the files that look up a changed declaration
+  (`declaredBy`).
   Step 43's session ran on a slower machine: kc's unchanged body path
   took 26 ms on Moshi there, against 20.5 in step 42's, so its rows
   aren't comparable with step 42's.

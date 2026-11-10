@@ -3398,6 +3398,116 @@ step 42's, though kc's signature path is faster, because this machine
 slowed kc's unchanged body path by about a quarter, and stock's Moshi
 runs by less.
 
+#### Step 44: files a partial check can't reach become stubs
+
+After step 43, a partial check resolved signatures only in the files it
+could reach, but each update still lowered every unchanged file and
+declared them all. The `BenchmarkUpdateEdit` profile (Moshi,
+`KA_BENCH_SIGNATURE`, 5.9 ms per update) showed:
+- `syntax.Clone` copying the 99 unchanged files' declarations out of
+  the declaration cache: 2.24 s of `Update`'s 4.59. The checker mutates
+  trees, so each update needs its own copy.
+- GC background marking, largely for those copies: 3.26 s.
+- `declare`, `resolveSupertypes` and `resolveImports` over every file:
+  about 1.1 s.
+
+**A file a partial check can't reach is given a stub, not a copy**
+(`declStub` in `declcache.go`). The stub is a `syntax.File` with the
+cached tree's path, package and facade, and no declarations. The checker
+then declares only its package, so `import a.b.*` and qualified names
+still resolve. `Update` now computes the reach (`reachable`, now
+index-based) before lowering, for body edits and declaration edits
+alike. The dependents loop recomputes it as `dirty` grows. A whole
+check, or a reach over half the files, stubs nothing.
+
+The name closure now covers one lookup that step 43's didn't need,
+because every file used to be declared:
+- **Sealed hierarchies.** A `when`'s exhaustiveness counts a sealed
+  class's subclasses (`ClassSym.Subclasses`). The checker builds that
+  list from the subclasses' declared supertypes, and nothing need write
+  a subclass's name. So a reached name of a source `sealed` class or
+  interface also reaches every declaration whose supertype list writes
+  that name. `snapNames` records each declaration's sealed names, from
+  the psi's modifier lists, and its supertype identifiers.
+
+These are never stubbed, though nothing else names them:
+- files with file annotations (`@file:JvmName`, `@file:JvmMultifileClass`);
+- multifile parts;
+- files with `expect` declarations;
+- files whose parse has errors (those aren't cached anyway).
+
+The checker reports no clash between two files' facades, so for facades
+the guard is only a precaution. Java names were already handled: the
+Java texts' identifiers seed the closure (step 43), and `SetKotlin`
+gets the stubs, which hold no classes.
+
+`check.Options.Resolve` (step 43) is gone. Every file that isn't a stub
+holds a reached declaration, so the checker resolves all it is given.
+
+Tests:
+- **`TestIncrementalDecl` has three new cases:**
+  - **A sealed class's subclass in a file nothing names.** The whole
+    check reports the `when` as not exhaustive. Without the sealed rule,
+    the partial check's model differs.
+  - **An import of a package only an unreached file declares.** A stub
+    without its package gives "unresolved import".
+  - **Two files with one `@file:JvmName`.**
+- **Module tests:**
+  - `TestIncrementalModuleDecl`, `TestIncrementalModule` and
+    `TestShiftedModule` pass on Moshi, Hilt, Room and Exhaustive.
+  - The files reached per edit are step 43's: 2.4, 2.0, 52.5 and 478.6.
+- **JVM checks:** `build.sh stock` and `build.sh ksp` (134/136) pass.
+
+`BenchmarkUpdateEdit` took 3.2–3.9 ms per update, against 5.5–6.6 in
+step 43 and 9.4–10.3 with `KC_NO_REACH`, which now turns off both steps.
+In the profile:
+- `syntax.Clone` fell from 2.24 s to 0.02 s.
+- `declare` is gone.
+- GC marking fell from 3.26 s to 0.81 s.
+
+The largest item left is `declEdits`' search for the files that look up
+a changed declaration: `addLookingUp` → `declaredNames.declaredBy`,
+0.50 s of `Update`'s 2.81.
+
+With `KC_TIMING`, a warm partial update's `signatures` phase is now
+0.8–0.9 ms, against 5.5–7.8 with `KC_NO_REACH`. Its `lower` phase is
+1.5–2.0 ms, against 2.2–2.8. The `lower` timer also covers `declEdits`
+and `bodyEdits`, so what is left of it is mostly that search.
+
+The bench ran on the same machine as step 43's. Kc only, signature edits
+only, two batches each with the cut on and off, alternating. Medians and
+minimums of runs 51–100:
+
+| ms | on | off (`KC_NO_REACH`) |
+|---|---|---|
+| Moshi, leaf signature edit, batch 1 | 34 (min 29) | 49 (min 36) |
+| Moshi, leaf signature edit, batch 2 | 41 (min 31) | 47 (min 38) |
+| Hilt, leaf signature edit, batch 1 | 61 (min 48) | 80 (min 61) |
+| Hilt, leaf signature edit, batch 2 | 58 (min 46) | 79 (min 61) |
+
+Steps 43 and 44 together take about 10 ms off a Moshi signature run
+(step 43 alone: 8) and about 20 off a Hilt one (step 43 alone: 9).
+Setup and between, the two updates, each fall by 4–6 ms on Moshi and
+by 7–12 ms on Hilt.
+
+The KSP bench on the same machine, both backends, leaf edits
+alternating body and signature, 100 runs, output checked against
+stock's (`CHECK`):
+
+| ms | stock KSP2 | kc | ratio | kc min |
+|---|---|---|---|---|
+| Moshi, leaf body edit | 216 | 25 | 8.6x | 21 |
+| Moshi, leaf signature edit | 217 | 35 | 6.2x | 28 |
+| Hilt, leaf body edit | 505 | 43 | 11.7x | 36 |
+| Hilt, leaf signature edit | 495 | 54 | 9.2x | 47 |
+
+The bench's body edit declares no locals, so it runs no check and this
+step doesn't touch it. Yet Hilt's body edit took 43 ms here, against 56
+in step 43's batch, and stock's Hilt edits ran in about 500 ms, against
+about 575. The machine's speed varies that much between batches, so the
+same-batch A/B above is this step's measure. On it, step 44 alone is
+about 2 ms of Moshi's signature run and 11 of Hilt's.
+
 ## Gaps and open questions
 
 - **Slice simplifications (M0.4).** These go when M3/M4 bring the facts in:
