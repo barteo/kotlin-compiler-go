@@ -204,6 +204,12 @@ func (f fixer) fixes(env FixEnv) []Fix {
 		return f.removeParameter()
 	case d.Code == UnusedPrivateMember:
 		return f.removeMember()
+	case findingCodes[d.Code]:
+		api := ""
+		if f.v != nil {
+			api = f.v.ExplicitAPI
+		}
+		return f.findingFix(styleFindings(f.snap, api))
 	}
 	return nil
 }

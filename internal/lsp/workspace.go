@@ -483,6 +483,7 @@ func (m *module) show(res *analysis.Result, snaps []*psi.Snapshot) {
 	m.mu.Lock()
 	m.failed = ""
 	m.last = ide.NewView(res, snaps)
+	m.last.ExplicitAPI = m.m.ExplicitAPI
 	var mine []*psi.Snapshot
 	for _, snap := range snaps {
 		if p.ModuleOf(snap.Path()) == m.m {

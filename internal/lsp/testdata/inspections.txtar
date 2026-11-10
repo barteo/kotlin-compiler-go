@@ -13,6 +13,10 @@ class C {
     private fun /*|unused*/unused() = s!!
     private val s = "s"
 }
+-- src/B.kt --
+/*|pub*/public class B() {
+    fun h(x: Int) = "${x}";
+}
 -- script --
 initialize
 open src/A.kt
@@ -22,6 +26,10 @@ actions src/A.kt @safe only=quickfix
 actions src/A.kt @var only=quickfix
 actions src/A.kt @cast only=quickfix apply=1
 actions src/A.kt @unused only=quickfix
+open src/B.kt
+wait
+diagnostics src/B.kt
+actions src/B.kt @pub only=quickfix apply=1
 -- want --
 > initialize
 > open src/A.kt
@@ -150,3 +158,88 @@ actions src/A.kt @unused only=quickfix
 1. Remove function 'unused' [quickfix preferred] UNUSED_PRIVATE_MEMBER
   src/A.kt:
     9:0-10:0 "    private fun unused() = s!!\n" -> ""
+> open src/B.kt
+> wait
+> diagnostics src/B.kt
+[
+  {
+    "range": {
+      "start": {
+        "line": 0,
+        "character": 0
+      },
+      "end": {
+        "line": 0,
+        "character": 6
+      }
+    },
+    "severity": 4,
+    "code": "REDUNDANT_VISIBILITY_MODIFIER",
+    "source": "kc",
+    "message": "Redundant visibility modifier",
+    "tags": [
+      1
+    ]
+  },
+  {
+    "range": {
+      "start": {
+        "line": 0,
+        "character": 14
+      },
+      "end": {
+        "line": 0,
+        "character": 16
+      }
+    },
+    "severity": 4,
+    "code": "REMOVE_EMPTY_PRIMARY_CONSTRUCTOR",
+    "source": "kc",
+    "message": "Remove empty primary constructor",
+    "tags": [
+      1
+    ]
+  },
+  {
+    "range": {
+      "start": {
+        "line": 1,
+        "character": 21
+      },
+      "end": {
+        "line": 1,
+        "character": 25
+      }
+    },
+    "severity": 4,
+    "code": "REMOVE_CURLY_BRACES_FROM_TEMPLATE",
+    "source": "kc",
+    "message": "Redundant curly braces in string template",
+    "tags": [
+      1
+    ]
+  },
+  {
+    "range": {
+      "start": {
+        "line": 1,
+        "character": 26
+      },
+      "end": {
+        "line": 1,
+        "character": 27
+      }
+    },
+    "severity": 4,
+    "code": "REDUNDANT_SEMICOLON",
+    "source": "kc",
+    "message": "Redundant semicolon",
+    "tags": [
+      1
+    ]
+  }
+]
+> actions src/B.kt @pub only=quickfix apply=1
+1. Remove redundant 'public' modifier [quickfix preferred] REDUNDANT_VISIBILITY_MODIFIER
+  src/B.kt:
+    0:0-0:7 "public " -> ""

@@ -157,6 +157,32 @@ fun f() = o(1)
 
 fun f() = A::class.java.getDeclaredMethod("r")
 `, "", ""},
+		{"semicolon", "fun f() {\n    val x = 1;\n    println(x); println(x)\n}\n", "REDUNDANT_SEMICOLON ;", "fun f() {\n    val x = 1\n    println(x); println(x)\n}\n"},
+		{"semicolon before lambda", "fun g(f: () -> Unit) = f()\n\nfun f() {\n    val x = 1;\n    { println(x) }()\n}\n", "", ""},
+		{"empty loop body", "fun f() {\n    var i = 0\n    while (++i < 3);\n    for (x in 1..2);\n    if (i > 0);\n    println(i)\n}\n", "", ""},
+		{"do while semicolon", "fun f() {\n    var i = 0\n    do while (i++ < 5);\n    println(i)\n}\n", "REDUNDANT_SEMICOLON ;", "fun f() {\n    var i = 0\n    do while (i++ < 5)\n    println(i)\n}\n"},
+		{"enum semicolon", "enum class E { A, B; }\n", "REDUNDANT_SEMICOLON ;", "enum class E { A, B }\n"},
+		{"enum semicolon with members", "enum class E {\n    A, B;\n\n    fun f() = 1\n}\n", "", ""},
+		{"unit return type", "fun f(): Unit {\n    println()\n}\n", "REDUNDANT_UNIT_RETURN_TYPE Unit", "fun f() {\n    println()\n}\n"},
+		{"unit override", "interface I {\n    fun f()\n}\n\nclass A : I {\n    override fun f(): Unit {\n    }\n}\n", "", ""},
+		{"unit expression body", "fun f(): Unit = println()\n", "", ""},
+		{"public", "public class A {\n    public fun f() = 1\n}\n", "REDUNDANT_VISIBILITY_MODIFIER public; REDUNDANT_VISIBILITY_MODIFIER public", "class A {\n    public fun f() = 1\n}\n"},
+		{"public override", "abstract class B {\n    protected abstract fun f(): Int\n}\n\nclass C : B() {\n    public override fun f() = 1\n}\n", "", ""},
+		{"final", "class A {\n    final fun f() = 1\n}\n", "REDUNDANT_MODALITY_MODIFIER final", "class A {\n    fun f() = 1\n}\n"},
+		{"final in open class", "open class A {\n    final fun f() = 1\n}\n", "", ""},
+		{"interface modifiers", "interface I {\n    open fun f() = 1\n    abstract fun g(): Int\n}\n", "REDUNDANT_MODALITY_MODIFIER open; REDUNDANT_MODALITY_MODIFIER abstract", "interface I {\n    fun f() = 1\n    abstract fun g(): Int\n}\n"},
+		{"empty class body", "class A {}\n\nobject O {\n}\n", "REMOVE_EMPTY_CLASS_BODY {}; REMOVE_EMPTY_CLASS_BODY {\n}", "class A\n\nobject O {\n}\n"},
+		{"empty object literal body", "interface I\n\nfun f(): I = object : I {}\n", "", ""},
+		{"enum without entries", "enum class E {;\n    fun f() = 1\n}\n", "", ""},
+		{"lambda on next line", "fun <T> build(f: () -> T): T = f()\n\nfun f() {\n    val x = build()\n    { 1 }\n    println(x)\n}\n", "", ""},
+		{"empty body comment", "class A {\n    // later\n}\n", "", ""},
+		{"empty constructor", "class A()\n", "REMOVE_EMPTY_PRIMARY_CONSTRUCTOR ()", "class A\n"},
+		{"empty constructor secondary", "class A() {\n    constructor(x: Int) : this()\n}\n", "", ""},
+		{"constructor keyword", "class A constructor(val x: Int)\n", "REDUNDANT_CONSTRUCTOR_KEYWORD constructor", "class A(val x: Int)\n"},
+		{"private constructor", "class A private constructor(val x: Int)\n", "", ""},
+		{"lambda parentheses", "fun f() = listOf(1).map() { it + 1 }\n", "REMOVE_EMPTY_PARENTHESES_FROM_LAMBDA_CALL ()", "fun f() = listOf(1).map { it + 1 }\n"},
+		{"template braces", "fun f(x: Int) = \"${x} ${x}a ${x + 1}\"\n\nclass A {\n    override fun toString() = \"${this.hashCode()}\"\n}\n", "REMOVE_CURLY_BRACES_FROM_TEMPLATE ${x}", "fun f(x: Int) = \"$x ${x}a ${x + 1}\"\n\nclass A {\n    override fun toString() = \"${this.hashCode()}\"\n}\n"},
+		{"template this", "class A {\n    fun f() = \"${this}\"\n}\n", "REMOVE_CURLY_BRACES_FROM_TEMPLATE ${this}", "class A {\n    fun f() = \"$this\"\n}\n"},
 		{"broken file", `fun f(s: String) = s?.length + undefined
 `, "", ""},
 	}
@@ -283,6 +309,26 @@ func TestInspectionsScan(t *testing.T) {
 					}
 					line, col, _ := sn.Position(d.Range.Start)
 					id := fmt.Sprintf("%s %s:%d:%d %s", name, sn.Path(), line, col, d.Code)
+					if os.Getenv("KC_INSPECT_LOG") != "" {
+						t.Logf("%s %q", id, sn.Source()[d.Range.Start:d.Range.End])
+					}
+					if findingCodes[d.Code] {
+						// The fix removes the finding, and makes no new one.
+						count := func(snap *psi.Snapshot) int {
+							n := 0
+							for _, x := range styleFindings(snap, "") {
+								if x.Code == d.Code {
+									n++
+								}
+							}
+							return n
+						}
+						for _, a := range after {
+							if a.Path() == sn.Path() && count(a) != count(sn)-1 {
+								t.Errorf("%s: %d findings after the fix, %d before", id, count(a), count(sn))
+							}
+						}
+					}
 					if ds := res.Diagnostics(); len(ds) > 0 {
 						failed++
 						failing[id] = true

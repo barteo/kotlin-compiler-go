@@ -26,6 +26,10 @@ type View struct {
 	aliases   map[string]psi.NodeRef        // source typealiases by name
 	refOnce   sync.Once
 	refs      map[analysis.ElementID][]ref // by declaration
+
+	// ExplicitAPI is the module's explicit API mode, which inspections
+	// read.
+	ExplicitAPI string
 }
 
 // A ref is a use of a declaration: the node of its fact, and the range of
