@@ -4006,6 +4006,131 @@ took 21 ms here, and 22 in the A/B batches, against 18 there, with the
 same code on that path. Stock's Hilt runs were back at about 470 ms,
 against step 48's 366.
 
+#### Step 50: small updates run on the calling thread
+
+After step 49, every row was at 10x except Moshi's signature edit (9.2x
+on that session's slower machine). A signature run pays for libkc's two
+partial checks, which a body run doesn't. Each checks one file. In the
+JVM in step 49, these took 2.9 and 3.6 ms (`native`):
+
+| Round | read | parse | lower | signatures | bodies |
+|---|---|---|---|---|---|
+| 1 | 0.4 | 0.3 | 0.5 | 1.0 | 0.3 |
+| 2 | 0.3 | 0.1 | 1.0 | 1.5 | 0.3 |
+
+The Go bench takes 1.95 ms for the same update. It runs updates back to
+back, though, while a daemon's come 15–20 ms apart, with the JVM running
+in between.
+
+So a harness outside the repository (an outside Go module over
+`ka.Open` and `Session.Update`) times Moshi's real edit, which flips
+`kspBenchEdit()` between `Int` and `Any`. Before each update it sleeps
+15 ms and sweeps 64 MB. Medians of updates 100–300:
+
+| Update | 4 jobs (the default) | 2 jobs | 1 job |
+|---|---|---|---|
+| Moshi signature | 2.04–2.23 | 2.22 | 1.78–1.83 |
+| Hilt signature | 2.28 | | 1.97 |
+| Moshi body (shifted) | 0.87 | | 0.83 |
+
+Run back to back with no sleep, it is 1.54 against 1.34 ms. The sleep
+alone adds 0.35–0.45 ms to both, from parked threads and cold caches.
+
+With one job, the saving is in lowering (0.45 against 0.39 ms) and
+signatures (0.71 against 0.54). Each fan-out wakes Go threads that are
+parked between updates:
+- `parallel` over all 100 sources for the parse, though 99 take a kept
+  parse;
+- the lowering of the other files as stubs and declarations;
+- the checker's signature and body workers.
+
+For a one-file check, that costs more than the threads save.
+
+Step 50 makes `Update` keep small updates on the calling goroutine:
+- The parse takes the kept parses serially and calls `parallel` only on
+  the files left to parse. One left starts no goroutine; a cold update
+  still parses them all in parallel.
+- A partial check whose dirty files, plus the non-dirty files it reaches
+  (stubs aren't counted), number at most `smallCheck` (8) lowers and
+  checks them on one goroutine.
+- The count is taken again when `dependents` widens the check, and a
+  whole check uses the session's jobs.
+- `KC_ALWAYS_PARALLEL=1` restores the fan-outs.
+
+The read (a stat per file) measured the same either way and is
+unchanged.
+
+Results:
+
+| | after | `KC_ALWAYS_PARALLEL=1` |
+|---|---|---|
+| Harness, Moshi signature, two runs | 1.86, 1.83 ms | 2.17, 2.14 ms |
+| Harness, Hilt signature, two runs | 2.15, 2.22 ms | 2.38, 2.56 ms |
+| Harness, Moshi body | 0.91–0.92 ms | 0.90–0.99 ms |
+| Go bench, Moshi signature | 1.90 ms | 2.02 ms |
+| Go bench, Hilt signature | 2.08 ms | 2.23 ms |
+| Go bench, `KA_BENCH_RETURN` | the same | the same |
+
+In the KSP bench, six alternating batches per project (on, off, off, on,
+on, off), the sums of both rounds' JVM `update` per run, medians (means
+in brackets) of runs 51–100:
+
+| ms | on | off (`KC_ALWAYS_PARALLEL=1`) |
+|---|---|---|
+| Moshi signature, `update` | 5.4 (5.84) | 6.1 (6.91) |
+| kc-go `lower` | 0.9 | 1.2 |
+| kc-go `signatures` | 1.3 | 1.9 |
+| kc-go `bodies` | 0.7 | 0.6 |
+| Hilt signature, `update` | 5.7 (6.40) | 6.1 (7.01) |
+| kc-go `lower` | 1.1 | 1.3 |
+| kc-go `signatures` | 1.1 | 1.6 |
+| kc-go `bodies` | 1.0 | 0.8 |
+| Moshi body, `update` | 2.2 | 2.2 |
+| Hilt body, `update` | 2.7 | 2.6 |
+
+That is 0.4–0.7 ms off a signature run's updates, a little more than
+the harness predicted. The one-goroutine body check is 0.1–0.2 ms slower,
+but lowering and signatures more than make up for it. Run totals moved
+within the batches' spread: Moshi signature 21 (22.4) against 22 (23.8),
+Hilt signature 39 (40.9) against 38 (39.5).
+
+**The JVM side.** Round 2's `build` took 0.8–1.0 ms, though it parsed
+nothing, and JFR saw only a fifth of it. `KcRound`'s constructor runs a
+`parallelStream` over every file to join kc's tree with IntelliJ's,
+though a daemon's round finds all but at most one joined before.
+`KC_TIMING` now marks its parts and counts the trees a round joins
+afresh (`joined=`). In a Moshi batch:
+- the join took 0.7 ms in round 1 (one tree joined: IntelliJ parsing
+  the edited file) and 0.2 ms in round 2 (Hilt 0.9 and 0.3);
+- building the files' symbols took 0.2 ms;
+- the rest took nothing.
+
+Round 2 joins no tree, yet the join takes 0.2–0.3 ms. A version that
+took the kept trees on the calling thread, and joined only the files
+left, didn't change it: 0.20 (0.25) against 0.20 (0.32) on Moshi, and
+0.30 (0.32) against 0.30 (0.27) on Hilt. Waking the common pool cost
+0.06–0.09 ms in a scratch test, too little to matter. So that version
+was dropped and the counts kept. What round 2's join pays for is still
+open, as is the edited file's IntelliJ parse in round 1 (0.7 ms).
+
+The KSP bench, both backends, 100 runs, output checked against stock's
+(`CHECK`), medians of runs 51–100:
+
+| ms | stock KSP2 | kc | ratio | kc min |
+|---|---|---|---|---|
+| Moshi, leaf body edit | 184 | 16 | 11.5x | 13 |
+| Moshi, leaf signature edit | 194 | 20 | 9.7x | 16 |
+| Hilt, leaf body edit | 325 | 34 | 9.6x | 28 |
+| Hilt, leaf signature edit | 334 | 39 | 8.6x | 34 |
+
+This batch ran about 15% faster than step 49's on both backends: kc's
+Moshi body run took 16 ms against 21, and stock's process phase 96 ms
+against 108.
+
+Stock's Hilt teardown was 78 ms here against 190 in step 49, as in step
+48 (120 against 185–206). So Hilt's ratios swing with stock: against
+step 49's stock Hilt runs (469 and 477), kc's are 13.8x and 12.2x.
+
 ## Gaps and open questions
 
 - **Slice simplifications (M0.4).** These go when M3/M4 bring the facts in:

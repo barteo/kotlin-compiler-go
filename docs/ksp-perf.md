@@ -67,6 +67,8 @@ step 42's: Moshi's step 42 rows pool both batches.
 | Hilt, leaf signature edit (step 48) | 376 | 40 | 9.4x | the skip doesn't fire on Hilt's signature edits |
 | Hilt, leaf body edit (step 49) | 469 | 40 | 11.7x | this session's machine was slower: kc's Moshi body run took 21 ms against step 48's 18 |
 | Hilt, leaf signature edit (step 49) | 477 | 47 | 10.1x | step 49 cut 0.4 ms off the two updates (A/B), inside the totals' spread |
+| Hilt, leaf body edit (step 50) | 325 | 34 | 9.6x (13.8x against step 49's stock) | stock's teardown was 78 ms here, 190 in step 49; this batch ran about 15% faster on both backends |
+| Hilt, leaf signature edit (step 50) | 334 | 39 | 8.6x (12.2x against step 49's stock) | step 50 cut 0.4 ms off the two updates (A/B), inside the totals' spread |
 | Hilt, one-file test, warm | 403 | 59 | 6.8x | |
 | Moshi, warm | 2270 | 458 | 5.0x | about 7.5x |
 | Moshi, edit Model000 (10 files dirty) | 610 | 167 | 3.7x | |
@@ -85,6 +87,8 @@ step 42's: Moshi's step 42 rows pool both batches.
 | Moshi, leaf signature edit (step 48) | 219 | 22 | 10.0x (9.4x against step 46's stock) | |
 | Moshi, leaf body edit (step 49) | 209 | 21 | 10.0x | |
 | Moshi, leaf signature edit (step 49) | 211 | 23 | 9.2x | |
+| Moshi, leaf body edit (step 50) | 184 | 16 | 11.5x | the faster machine: kc 16 against 21 ms, stock's process phase 96 against 108 |
+| Moshi, leaf signature edit (step 50) | 194 | 20 | 9.7x | step 50 cut 0.7 ms off the two updates (A/B, 5.4 against 6.1 ms) |
 | Moshi, one-file test, warm | 204 | 23 | 8.9x | |
 
 Hilt's leaf body edit is the first edit at 10x. Since step 37, a body
@@ -113,7 +117,12 @@ KSP's symbol layer. What is left:
   declarations is kept between updates and patched for the files whose
   parses changed, which took 0.2–0.5 ms off a signature run's two
   updates (A/B, 7.9 against 8.3 ms on Hilt); the run totals didn't move
-  outside the batches' spread. Step 43's session ran on a slower machine: kc's unchanged body path
+  outside the batches' spread. Since step 50 an update whose
+  check covers at most 8 files lowers and checks them on the calling
+  goroutine, and parses only the files left to parse: waking Go's parked
+  threads cost more than they saved. That took 0.4–0.7 ms off a
+  signature run's two updates (A/B, 5.4 against 6.1 ms on Moshi);
+  `KC_ALWAYS_PARALLEL=1` restores the fan-outs. Step 43's session ran on a slower machine: kc's unchanged body path
   took 26 ms on Moshi there, against 20.5 in step 42's, so its rows
   aren't comparable with step 42's.
 - **KSP's incremental bookkeeping** (about 3 ms on Moshi since fork
@@ -143,7 +152,11 @@ KSP's symbol layer. What is left:
   second round's shift of its model. Since step 46 the bench passes
   Gradle's layout (one project directory over the sources and the
   outputs), which also sped up stock: its Moshi rows from step 46 on
-  aren't comparable with earlier ones.
+  aren't comparable with earlier ones. Since step 50 `KC_TIMING`
+  splits a round's `build`: joining kc's trees with IntelliJ's takes
+  0.7–0.9 ms in round 1 (IntelliJ parsing the edited file, `joined=1`)
+  and 0.2–0.3 ms in round 2, which joins nothing; why is open. Building
+  the files' symbols takes about 0.2 ms per round.
 - **Comment and KDoc edits outside bodies** still take the partial
   check, though they would only need nodes and positions moved, as
   step 37 does for bodies.
