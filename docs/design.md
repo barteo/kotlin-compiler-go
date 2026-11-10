@@ -24,6 +24,16 @@ JDK, -cp    ─(concurrently with parsing)─▶ index class names
 | `internal/inline` | Analyzes the bytecode of library inline functions for the inliner |
 | `internal/codegen` | AST to bytecode, including the inliner and the compiler plugins' code |
 | `internal/driver` | Pipeline and worker pools |
+| `psi` | Public lossless parser with the Kotlin compiler's PSI shape (see [PSI and analysis](psi.md)) |
+| `internal/lower` | Lowers a psi tree to the AST `internal/syntax` builds, with provenance |
+| `analysis` | Public API: checks psi snapshots and reports facts keyed by psi node |
+
+The front end is `internal/syntax`'s parser by default. With
+`Options.Frontend` (or `KC_FRONTEND`) set to `psi`, files are parsed by
+`psi` and lowered by `internal/lower` instead; both give the same AST, and
+CI runs the test suite through each. The shared desugarings (delegated
+properties, callable references, modifiers) are in
+`internal/syntax/build.go`.
 
 Omitted return and property types are inferred first, in order, because
 other files' bodies depend on them; after that the parallel phases only
@@ -263,7 +273,10 @@ enclosing loop, inlined body or lambda stay, for jumps out of it, but
 those spilled theirs too. An object that `new` created and isn't
 constructed yet can't be stored: a constructor call whose arguments
 inline code, loop or `try` evaluates them first, into locals, and then
-creates the object, as `kotlinc` does. `TestRun` checks that no backward
+creates the object, as `kotlinc` does. In a call where two or more
+arguments inline code, the arguments before each of those wait in locals
+(`heldArgs`) instead of all moving at each one, so the code grows with
+the number of arguments, not its square. `TestRun` checks that no backward
 branch in the test programs has values on the stack.
 
 ## Coroutines

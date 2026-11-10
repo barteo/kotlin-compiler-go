@@ -139,6 +139,7 @@ func (t *classTable) load(cls *types.ClassSym) {
 		cls.JVMMethods[m.Name+m.Desc] = m.Access
 	}
 	cls.StabilityInferred = info.StabilityInferred
+	cls.Deprecated = classFileDeprecation(info.Deprecated)
 	for _, a := range slices.Concat(info.Invisible, info.Visible) {
 		if strings.HasPrefix(a, "L") && strings.HasSuffix(a, ";") {
 			if c := t.class(a[1 : len(a)-1]); c != nil {
@@ -228,6 +229,7 @@ func (t *classTable) load(cls *types.ClassSym) {
 		}
 		f.Unsupported = !ok || !vok
 		f.Abstract = m.Access&classfile.AccAbstract != 0
+		f.Annotations, f.Deprecated = m.Annotations, classFileDeprecation(m.Deprecated)
 		if m.Name == "toString" && len(f.Params) == 0 && kotlinMapped[cls.Name] {
 			// Kotlin sees these classes as Kotlin types, whose toString is
 			// Any's: a String, not a platform String!.
@@ -2237,4 +2239,12 @@ func (c *Checker) arrayIterator(t types.Type) *types.FunSym {
 	f.Recv, f.Ret = types.ClassType(t.C), types.ClassType(it)
 	f.Facade, f.Desc = "kotlin/jvm/internal/ArrayIteratorsKt", "("+t.C.Name+")L"+it.Name+";"
 	return f
+}
+
+// classFileDeprecation is the deprecation a class file gives a class or member.
+func classFileDeprecation(d *classfile.Deprecation) *types.Deprecation {
+	if d == nil {
+		return nil
+	}
+	return &types.Deprecation{Message: d.Message, Level: d.Level}
 }

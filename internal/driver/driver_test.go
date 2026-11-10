@@ -23,12 +23,33 @@ import (
 	"github.com/barteo/kotlin-compiler-go/internal/classpath"
 	"github.com/barteo/kotlin-compiler-go/internal/kmeta"
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
+	"github.com/barteo/kotlin-compiler-go/psi"
 )
 
 // stdlib returns the path of kotlin-stdlib.jar, or "" if it isn't found.
 func stdlib() string {
 	path, _ := classpath.FindStdlib()
 	return path
+}
+
+// skipPSIGrammar skips a test of srcs under the psi frontend if one of
+// them is Kotlin kc parses but stock Kotlin 2.4.21's grammar, which psi
+// follows, doesn't.
+func skipPSIGrammar(t *testing.T, srcs ...string) {
+	t.Helper()
+	if f, _ := frontendOf(Options{}); f != "psi" {
+		return
+	}
+	for _, path := range srcs {
+		b, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		ds := psi.Parse(path, string(b)).Diagnostics()
+		if _, errs := syntax.ParseAll(path, string(b)); len(ds) > 0 && len(errs) == 0 {
+			t.Skipf("psi frontend: %s: %s, which kc's parser accepts", path, ds[0].Message)
+		}
+	}
 }
 
 // usesStdlib reports whether a test program or error test needs the Kotlin
@@ -105,6 +126,7 @@ func runProgram(t *testing.T, java, f, lib string, withLib bool) {
 		srcs, main = sources(t, f), filepath.Join(f, "main.kt")
 	}
 	flagOptions(&opts, kotlincFlags(main))
+	skipPSIGrammar(t, srcs...)
 	if err := Compile(srcs, opts); err != nil {
 		t.Fatalf("compile: %v", err)
 	}
@@ -524,6 +546,7 @@ func TestErrors(t *testing.T) {
 					}
 				}
 			}
+			skipPSIGrammar(t, srcs...)
 			err := Compile(srcs, opts)
 			if err == nil {
 				t.Fatal("expected errors, compiled successfully")
@@ -744,6 +767,7 @@ func TestKotlincLibrary(t *testing.T) {
 				// The program sees the library's internal declarations.
 				opts.FriendPaths = []string{libOut}
 			}
+			skipPSIGrammar(t, appSrcs...)
 			if err := Compile(appSrcs, opts); err != nil {
 				t.Fatalf("compile program: %v", err)
 			}

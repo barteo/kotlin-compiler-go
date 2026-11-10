@@ -118,6 +118,7 @@ func (c *Checker) localFun(s *syntax.LocalFun) {
 		if p.Default != nil {
 			c.assignable(c.value(p.Default, p.Sym.Type), p.Sym.Type, p.Default.Pos())
 		}
+		c.scope.shadow(p.Sym)
 		c.scope.declare(p.Sym)
 	}
 	switch {

@@ -1186,6 +1186,9 @@ type Member struct {
 	// calls composables: the call runs in a replace group, and a null
 	// receiver's path in an empty one.
 	Groups bool
+	// SelNonNull is set by the checker on a safe access whose selector's
+	// own type, before the safe access makes it nullable, isn't.
+	SelNonNull bool
 	// Nothing is set by the checker on a safe call that, on a non-null
 	// receiver, is of type Nothing: a generic one, which may return, as
 	// x?.f() for a T := Nothing.

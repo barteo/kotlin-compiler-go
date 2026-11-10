@@ -60,18 +60,38 @@ jobs:
       - name: go build
         run: go build ./...
 
+      - name: psi/kinds_gen.go is up to date
+        run: go run ./cmd/psi-kinds -check
+
+  fuzz-psi:
+    name: Fuzz psi
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.mod
+
+      - name: FuzzParse
+        run: go test ./psi -run '^$' -fuzz '^FuzzParse$' -fuzztime 60s
+
   # The tests are bound by CPU, mostly the JVMs of kotlinc and of the
   # programs under test, so they are split among runners. The driver
   # package takes most of the time; its last shard skips the tests of the
-  # others, so that a new test runs there.
+  # others, so that a new test runs there. Each shard runs with both
+  # frontends: psi parses a lossless psi tree and lowers it to kc's AST
+  # (internal/lower).
   test:
-    name: Test (${{ matrix.name }})
+    name: Test (${{ matrix.shard.name }}, ${{ matrix.frontend }} frontend)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
-        include:
+        frontend: [syntax, psi]
+        shard:
           - name: driver programs
             packages: ./internal/driver
             args: -run '^TestRun$'
@@ -85,6 +105,7 @@ jobs:
             packages: $(go list ./... | grep -v '/internal/driver$')
             args: ''
     env:
+      KC_FRONTEND: ${{ matrix.frontend }}
       # For kotlinc's JVM, which compiles a few files and exits: C1 alone
       # and the serial collector take about 40% less CPU than the default
       # tiered compilation and G1. The heap sizes are kotlinc's defaults,
@@ -118,7 +139,7 @@ jobs:
           kotlinc -version
 
       - name: go test
-        run: go test -race -v ${{ matrix.args }} ${{ matrix.packages }} 2>&1 | tee "$RUNNER_TEMP/test.log"
+        run: go test -race -v ${{ matrix.shard.args }} ${{ matrix.shard.packages }} 2>&1 | tee "$RUNNER_TEMP/test.log"
 
       # The tests skip themselves when java, javac, javap, kotlinc, the
       # standard library or the JDK's sources are missing, so a broken setup

@@ -1501,9 +1501,12 @@ func (g *gen) invokeSuperBody(s *syntax.Super, name, d string) {
 }
 
 func (g *gen) args(x *syntax.Call, f *types.FunSym) {
+	h := g.holdArgs(x.Args)
 	for i, a := range x.Args {
+		h.before(g, a)
 		g.argAs(a, paramType(f, i))
 	}
+	h.release(g)
 	g.continuationArg(x)
 	g.line(x.Pos()) // the call, after arguments on other lines
 }
@@ -1616,6 +1619,10 @@ func (g *gen) valueArgs(x *syntax.Call, f *types.FunSym) argMask {
 		}
 	}
 	var mask argMask
+	var h *heldArgs
+	if len(stored) == 0 {
+		h = g.holdArgs(x.Args)
+	}
 	for j, p := range f.Params {
 		var args []syntax.Expr
 		arg := -1
@@ -1631,6 +1638,7 @@ func (g *gen) valueArgs(x *syntax.Call, f *types.FunSym) argMask {
 			g.code.Retire(varargs)
 		case p.Vararg && (len(args) > 0 || !p.Default):
 			d, elem := varargDesc(x, p, jvm[j])
+			h.before(g, args...)
 			g.varargs(args, d, elem)
 		case len(args) == 0:
 			// Omitted, or a vararg parameter with a default value that
@@ -1642,13 +1650,72 @@ func (g *gen) valueArgs(x *syntax.Call, f *types.FunSym) argMask {
 				g.code.Local(loadOp(p.Type), slot)
 				g.code.Retire(slot)
 			} else {
+				h.before(g, args[0])
 				g.argAs(args[0], paramType(f, j))
 			}
 		}
 	}
+	h.release(g)
 	g.continuationArg(x)
 	g.line(x.Pos())
 	return mask
+}
+
+// heldArgs keeps the arguments of a call that are evaluated in locals
+// while later ones inline code. Inlined code starts with the stack moved
+// to locals (see spillStack), so in f(a.map { }, b.map { }, ...) each
+// argument would move all those before it, and back: code that grows
+// with the square of the arguments, too large for a method with a few
+// dozen (kotlinc's codegen/box/coroutines/kt51530.kt). Before an argument
+// that inlines code, the arguments evaluated since the last one go to
+// locals instead, and release puts them all back, in order, after the
+// last: code that grows with the arguments.
+type heldArgs struct {
+	depth int   // the stack's depth before the arguments
+	slots []int // the arguments in locals, topmost first, as Spill's
+}
+
+// holdArgs returns a heldArgs for a call's arguments, or nil (whose
+// methods do nothing) unless two or more of them inline code: with one,
+// the inlined code moving the arguments before it is no larger.
+func (g *gen) holdArgs(args []syntax.Expr) *heldArgs {
+	n := 0
+	for _, a := range args {
+		if a != nil && inlinesCode([]syntax.Expr{a}) {
+			n++
+		}
+	}
+	if n < 2 {
+		return nil
+	}
+	return &heldArgs{depth: g.code.Depth()}
+}
+
+// before moves the arguments evaluated since the last move to locals, if
+// the arguments about to be evaluated inline code.
+func (h *heldArgs) before(g *gen, args ...syntax.Expr) {
+	if h == nil || g.code.Depth() == h.depth || !inlinesCode(args) {
+		return
+	}
+	h.hold(g)
+}
+
+func (h *heldArgs) hold(g *gen) {
+	slots, ok := g.code.SpillAbove(h.depth)
+	if !ok {
+		panic("an object under construction among a call's arguments")
+	}
+	h.slots = append(slots, h.slots...)
+}
+
+// release puts the arguments back on the stack, after the last one.
+func (h *heldArgs) release(g *gen) {
+	if h == nil || len(h.slots) == 0 {
+		return
+	}
+	h.hold(g)
+	g.code.Unspill(h.slots)
+	h.slots = nil
 }
 
 // omits reports whether call x leaves out an argument of f's.

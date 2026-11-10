@@ -299,6 +299,11 @@ func paramsString(ps []types.Type) string {
 // returns the parameter types and the result type, and false if the
 // parameters don't match the expected ones.
 func (c *Checker) checkLambda(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.Type, bool) {
+	if c.file.Annotated != nil {
+		// A lambda argument is checked here, not by expr, which checks
+		// the annotations of the others: list.map @A { }.
+		c.annotatedExpr(x)
+	}
 	if x.Ref != nil {
 		return c.checkRef(x, w)
 	}
@@ -421,6 +426,9 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 	c.lambdas = append(c.lambdas[:len(c.lambdas):len(c.lambdas)], x)
 	c.scope = &scope{parent: saved.scope, depth: len(c.lambdas)}
 	for _, s := range syms {
+		if s != x.It {
+			c.scope.shadow(s)
+		}
 		if s.Name != "_" && !c.scope.declare(s) {
 			c.errorf(s.Decl.(*syntax.LambdaParam).P, "conflicting declarations: %s", s.Name)
 		}
@@ -1039,6 +1047,16 @@ func (c *Checker) sam(cls *types.ClassSym) *types.FunSym {
 		return nil
 	}
 	return cls.SAM(findSAM)
+}
+
+// JavaSAM reports whether cls is a Java interface with a single abstract
+// method, which a lambda converts to as to a fun interface.
+func JavaSAM(cls *types.ClassSym) bool {
+	if !cls.External || cls.KotlinName != "" {
+		return false
+	}
+	cls.Ensure()
+	return cls.Interface && !cls.Missing && cls.SAM(findSAM) != nil
 }
 
 // The methods of Object that interfaces may redeclare as abstract.

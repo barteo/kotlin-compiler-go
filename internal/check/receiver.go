@@ -192,7 +192,7 @@ func (c *Checker) recvTarget(x syntax.Expr) syntax.Expr {
 	if !ok || len(c.recvs) == 0 {
 		return x
 	}
-	if _, _, local := c.scope.lookup(id.Name); local {
+	if v, _, local := c.scope.lookup(id.Name); local && propParam(v) == nil {
 		return x
 	}
 	n := len(c.errs)
@@ -202,6 +202,20 @@ func (c *Checker) recvTarget(x syntax.Expr) syntax.Expr {
 	}
 	id.Member = nil
 	return x
+}
+
+// propParam returns the property that a primary constructor parameter
+// declares, val x or var x, and nil for other variables. In property
+// initializers and init blocks, as in Kotlin, its name is the property's
+// for implicit receivers, whose members come first, and for assignments.
+func propParam(v *types.VarSym) *types.VarSym {
+	if v == nil || v.Kind != types.Param {
+		return nil
+	}
+	if cp, ok := v.Decl.(*syntax.CtorParam); ok && cp.IsProp {
+		return cp.PropSym
+	}
+	return nil
 }
 
 // recvCall rewrites an unqualified call f(args) to a call on the innermost

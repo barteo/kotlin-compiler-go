@@ -306,6 +306,11 @@ type VarSym struct {
 	// call's type arguments, not used to infer them.
 	NoInfer bool
 
+	// Shadowed is set on a local or parameter declared with the name of
+	// a local or parameter of an enclosing scope, which it hides: as
+	// kotlinc's NAME_SHADOWING warning.
+	Shadowed bool
+
 	// Parameters of Kotlin and Java functions read from class files.
 	Vararg  bool // takes any number of arguments of Type, passed in an array
 	Default bool // declares a default value, so the argument can be omitted
@@ -538,8 +543,13 @@ type FunSym struct {
 	// ExtSetter is set on the getter of a var extension property of the
 	// program: its setter, which takes the receiver and the value.
 	ExtSetter   *FunSym
-	Unsupported bool   // kc can't call it: see Why
-	Hidden      bool   // @Deprecated(level = HIDDEN): compiled, but not a candidate for calls
+	Unsupported bool // kc can't call it: see Why
+	Hidden      bool // @Deprecated(level = HIDDEN): compiled, but not a candidate for calls
+	// Annotations are the descriptors of the annotations of a method of
+	// the class path, La/b/C;, and Deprecated its deprecation: the
+	// program's functions have their declaration's.
+	Annotations []string
+	Deprecated  *Deprecation
 	Why         string // why it is unsupported, if not for its types
 	// Feature is the feature that Why reports unsupported, if it isn't
 	// an inline-only call.
@@ -645,6 +655,9 @@ type FunSym struct {
 	// Inline is set on an inline function of the class path whose body
 	// kc can copy into its callers.
 	Inline *InlineInfo
+	// Declared is set on every inline function of the class path, one
+	// kc calls as an intrinsic too, with its parameters' flags.
+	Declared *InlineFlags
 	// Platform is set on a member of a Kotlin collection type that only
 	// its Java interface declares, such as forEach(Consumer). As in
 	// kotlinc, an extension that fits the call comes first.
@@ -893,6 +906,8 @@ type ClassSym struct {
 	// see codegen/stability.go.
 	Annotations       []*ClassSym
 	StabilityInferred int
+	// Deprecated is the deprecation of a class of the class path.
+	Deprecated *Deprecation
 
 	// Global is set on a class that a package-level variable declares for
 	// all compilations in the process, such as kotlin.Array: see MakeArgs.
@@ -1379,4 +1394,18 @@ func KotlinParamsDesc(d string, f *FunSym) string {
 		d = d[:i] + ")"
 	}
 	return d
+}
+
+// Deprecation is what a class file says of a deprecated class or method:
+// the message and level of its @kotlin.Deprecated, or Java's
+// deprecation, which kotlinc reports as "Deprecated in Java".
+type Deprecation struct {
+	Message string
+	Level   string // WARNING, ERROR or HIDDEN
+}
+
+// InlineFlags are the crossinline and noinline flags of each value
+// parameter of an inline function.
+type InlineFlags struct {
+	Crossinline, Noinline []bool
 }

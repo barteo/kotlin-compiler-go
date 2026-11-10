@@ -3,7 +3,6 @@ package syntax
 import (
 	"errors"
 	"fmt"
-	"math"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -11,7 +10,6 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/barteo/kotlin-compiler-go/internal/intbits"
 	"github.com/barteo/kotlin-compiler-go/internal/types"
 )
 
@@ -48,15 +46,7 @@ type parser struct {
 
 // annotate records annotations as of statement or expression n, before
 // those it has.
-func (p *parser) annotate(n any, as []Annotation) {
-	if len(as) == 0 {
-		return
-	}
-	if p.annotated == nil {
-		p.annotated = map[any][]Annotation{}
-	}
-	p.annotated[n] = append(slices.Clip(as), p.annotated[n]...)
-}
+func (p *parser) annotate(n any, as []Annotation) { Annotate(&p.annotated, n, as) }
 
 type bailout struct{}
 
@@ -76,43 +66,13 @@ func Parse(path, src string) (f *File, errs []*Error) {
 		}
 	}()
 	f = p.parseFile()
-	f.Path = path
 	f.Errors = p.later
 	f.SuppressInvisible = p.suppressInvisible
 	f.SuppressShadowed = p.suppressShadowed
 	f.SuppressDSL = p.suppressDSL
 	f.Annotated = p.annotated
-	f.Facade = facade(f, path)
-	f.Part = part(f, path)
+	FinishFile(f, path)
 	return f, nil
-}
-
-// facade returns the JVM internal name of a file's facade class: from the
-// file name, or @file:JvmName, in the file's package.
-func facade(f *File, path string) string {
-	name := f.JvmName
-	if name == "" {
-		name = FacadeName(path)
-	}
-	if f.Package == "" {
-		return name
-	}
-	return strings.ReplaceAll(f.Package, ".", "/") + "/" + name
-}
-
-// part returns the JVM internal name of a file's part of a multi-file
-// class, Facade__FileKt, if it is annotated @file:JvmMultifileClass and
-// named with @file:JvmName, or "".
-func part(f *File, path string) string {
-	if f.JvmName == "" {
-		return ""
-	}
-	for _, a := range f.Annotations {
-		if a.Is("JvmMultifileClass") {
-			return f.Facade + "__" + FacadeName(path)
-		}
-	}
-	return ""
 }
 
 // ParseAll parses a file like Parse, but doesn't stop at the first error.
@@ -126,14 +86,12 @@ func ParseAll(path, src string) (*File, []*Error) {
 	}
 	p := &parser{file: path, toks: toks, recover: true}
 	f := p.parseFile()
-	f.Path = path
 	f.Errors = p.later
 	f.SuppressInvisible = p.suppressInvisible
 	f.SuppressShadowed = p.suppressShadowed
 	f.SuppressDSL = p.suppressDSL
 	f.Annotated = p.annotated
-	f.Facade = facade(f, path)
-	f.Part = part(f, path)
+	FinishFile(f, path)
 	return f, p.errs
 }
 
@@ -636,7 +594,8 @@ func (p *parser) anonFun(label string) *Lambda {
 	// The parameters, whose types the expected type can give.
 	p.expect(LPAREN)
 	for !p.at(RPAREN) {
-		p.modifiers()
+		m := p.modifiers()
+		p.noContexts(&m, "value parameters")
 		name := p.ident()
 		lp := &LambdaParam{P: name.Pos, Name: name.Text}
 		if p.at(COLON) {
@@ -673,25 +632,8 @@ func (p *parser) anonFun(label string) *Lambda {
 	default:
 		p.unexpected("the body of an anonymous function")
 	}
-	labelReturns(l.Body, l.Label)
+	LabelReturns(l.Body, l.Label)
 	return l
-}
-
-// labelReturns labels the returns in an anonymous function's body that
-// return from it: not those of the lambdas, local functions and objects
-// in it.
-func labelReturns(b *Block, label string) {
-	Inspect(b, func(n any) bool {
-		switch n := n.(type) {
-		case *Lambda, *LocalFun, *ObjectExpr, *LocalClass:
-			return false
-		case *Jump:
-			if n.Kind == RETURN && n.Label == "" {
-				n.Label = label
-			}
-		}
-		return true
-	})
 }
 
 // anonFunAt reports whether the fun at i starts an anonymous function,
@@ -888,7 +830,7 @@ func (p *parser) parseFile() *File {
 				add(fd)
 			case VAL, VAR:
 				pd := p.parseProp(m)
-				for _, d := range delegated(pd, false, f.Decls) {
+				for _, d := range DelegatedProp(pd, false, f.Decls) {
 					add(d)
 				}
 			case CLASS, INTERFACE, OBJECT:
@@ -946,7 +888,7 @@ func (p *parser) parseType() *TypeRef {
 		}
 		unsafe = unsafe || a.Is("UnsafeVariance")
 		noInfer = noInfer || a.Name == "NoInfer" || a.Is("internal.NoInfer")
-		composable = composable || composableAnno(a)
+		composable = composable || IsComposable(a)
 		if w := WildcardsOf([]Annotation{a}); w != DefaultWildcards {
 			wild = w
 		}
@@ -1329,6 +1271,7 @@ func (p *parser) params() []*Param {
 	p.expect(LPAREN)
 	for !p.at(RPAREN) {
 		m := p.modifiers()
+		p.noContexts(&m, "value parameters")
 		pn := p.ident()
 		p.expect(COLON)
 		param := &Param{P: pn.Pos, Name: pn.Text, Type: p.parseType(), Vararg: m.Vararg, Noinline: m.Noinline, Crossinline: m.Crossinline,
@@ -1499,71 +1442,6 @@ func (p *parser) whereClause(tps []*TypeParam) {
 		p.skipNL()
 		p.next()
 	}
-}
-
-// delegated returns a property's declarations: for a delegated property,
-// its field, x$delegate, then the property itself, with accessors that
-// call the delegate. A class's passes this as the delegate's thisRef, and
-// an extension property its receiver. As in kotlinc, the fields of
-// extension properties with the same name, among the declarations
-// before, are x$delegate$1, x$delegate$2, ..., and so are those of
-// properties beside one declared as `x$delegate`.
-func delegated(pd *PropDecl, member bool, before []Decl) []Decl {
-	if pd.Field == nil {
-		return []Decl{pd}
-	}
-	taken := func(name string) bool {
-		for _, d := range before {
-			if d, ok := d.(*PropDecl); ok && d.Name == name && (d.DelegateOf != nil || d.Recv == nil) {
-				return true
-			}
-		}
-		return false
-	}
-	for i := 1; taken(pd.Field.Name); i++ {
-		pd.Field.Name = pd.Name + "$delegate$" + strconv.Itoa(i)
-	}
-	pos := pd.Field.P
-	ref := &PropRef{Name: pd.Name, Mutable: pd.Mutable, Recv: member, Ext: pd.Recv != nil, Index: -1}
-	ref.P = pos
-	pd.Ref = ref
-	call := func(name string, args ...Expr) *Call {
-		var this Expr
-		if member || pd.Recv != nil {
-			t := &This{}
-			t.P = pos
-			this = t
-		} else {
-			n := &NullLit{}
-			n.P = pos
-			this = n
-		}
-		id := &Ident{Name: pd.Field.Name}
-		id.P = pos
-		var field Expr = id
-		if member && pd.Recv != nil {
-			// The class's field, not the receiver's, which may be of
-			// the same class.
-			t := &This{Class: true}
-			t.P = pos
-			f := &Member{X: t, Name: pd.Field.Name}
-			f.P = pos
-			field = f
-		}
-		m := &Member{X: field, Name: name}
-		m.P = pos
-		c := &Call{Fun: m, Args: append([]Expr{this, ref}, args...)}
-		c.P = pos
-		return c
-	}
-	pd.Getter = &FunDecl{P: pos, Name: "get", Property: pd.Name, Ret: pd.Type, ExprBody: call("getValue")}
-	if pd.Mutable {
-		value := &Ident{Name: "value"}
-		value.P = pos
-		pd.Setter = &FunDecl{P: pos, Name: "set", Property: pd.Name, Params: []*Param{{P: pos, Name: "value", Type: pd.Type}},
-			ExprBody: call("setValue", value)}
-	}
-	return []Decl{pd.Field, pd}
 }
 
 func (p *parser) parseProp(m Modifiers) *PropDecl {
@@ -1875,8 +1753,7 @@ func (p *parser) parseClass(m Modifiers) *ClassDecl {
 	if m.Inline && kw.Kind == CLASS {
 		// The deprecated inline class is a value class, which kotlinc
 		// annotates @JvmInline.
-		m.Annotations = append(m.Annotations, Annotation{P: kw.Pos, Name: "kotlin.jvm.JvmInline", Implicit: true})
-		m.Value, m.JvmInline = true, true
+		InlineClass(&m, kw.Pos)
 	}
 	cd := &ClassDecl{Modifiers: m, P: kw.Pos, Interface: kw.Kind == INTERFACE, Object: kw.Kind == OBJECT}
 	defer func() {
@@ -1924,6 +1801,7 @@ func (p *parser) parseClass(m Modifiers) *ClassDecl {
 		p.next()
 		for !p.at(RPAREN) {
 			m := p.modifiers()
+			p.noContexts(&m, "value parameters")
 			cp := &CtorParam{Modifiers: m}
 			if p.at(VAL) || p.at(VAR) {
 				cp.IsProp = true
@@ -2069,8 +1947,7 @@ func (p *parser) enumEntries(cd *ClassDecl) {
 // of the entry, a subclass of the enum, whose superclass's constructor
 // call is the entry's.
 func (p *parser) enumEntryBody(cd *ClassDecl, e *EnumEntry) *ClassDecl {
-	body := &ClassDecl{P: e.P, Name: e.Name, HasPrimary: true, EnumEntry: true}
-	body.Supers = []*SuperType{{Type: &TypeRef{P: e.P, Name: cd.Name}, Call: e.Call}}
+	body := EnumEntryClass(cd.Name, e)
 	p.expect(LBRACE)
 	p.skipSemis()
 	for !p.at(RBRACE) && !p.at(EOF) {
@@ -2087,7 +1964,7 @@ func (p *parser) supertypes(cd *ClassDecl) {
 		p.skipNL()
 		st := &SuperType{Type: p.parseType()}
 		if p.at(LPAREN) {
-			st.Call = p.parseCall(typeExpr(st.Type), st.Type.Args).(*Call)
+			st.Call = p.parseCall(TypeExpr(st.Type), st.Type.Args).(*Call)
 		}
 		j := p.i
 		for p.toks[j].Kind == NL {
@@ -2118,21 +1995,6 @@ func (p *parser) supertypes(cd *ClassDecl) {
 	}
 }
 
-// typeExpr returns the expression that names a class: B or a.b.B, for
-// the constructor call of a supertype.
-func typeExpr(t *TypeRef) Expr {
-	parts := strings.Split(t.Name, ".")
-	id := &Ident{Name: parts[0]}
-	id.P = t.P
-	var x Expr = id
-	for _, name := range parts[1:] {
-		m := &Member{X: x, Name: name}
-		m.P = t.P
-		x = m
-	}
-	return x
-}
-
 // member parses a class member.
 func (p *parser) member(cd *ClassDecl) {
 	m := p.modifiers()
@@ -2149,7 +2011,7 @@ func (p *parser) member(cd *ClassDecl) {
 		cd.Members = append(cd.Members, fd)
 	case VAL, VAR:
 		pd := p.parseProp(m)
-		cd.Members = append(cd.Members, delegated(pd, true, cd.Members)...)
+		cd.Members = append(cd.Members, DelegatedProp(pd, true, cd.Members)...)
 	case CLASS, INTERFACE, OBJECT:
 		p.noContexts(&m, "classes")
 		cd.Members = append(cd.Members, p.parseClass(m))
@@ -2235,22 +2097,10 @@ func (p *parser) annotation() Annotation {
 		a.Args = p.annotationArgs(p.i+1, end)
 		p.i = end + 1
 	}
-	if a.Name == "Suppress" || a.Name == "kotlin.Suppress" {
-		for _, arg := range a.Args {
-			for _, t := range arg.Toks {
-				for _, part := range t.Parts {
-					switch part.Lit {
-					case "INVISIBLE_MEMBER", "INVISIBLE_REFERENCE":
-						p.suppressInvisible = true
-					case "RECEIVER_SHADOWED_BY_CONTEXT_PARAMETER":
-						p.suppressShadowed = true
-					case "DSL_SCOPE_VIOLATION":
-						p.suppressDSL = true
-					}
-				}
-			}
-		}
-	}
+	inv, sh, dsl := Suppressions(&a)
+	p.suppressInvisible = p.suppressInvisible || inv
+	p.suppressShadowed = p.suppressShadowed || sh
+	p.suppressDSL = p.suppressDSL || dsl
 	return a
 }
 
@@ -2434,7 +2284,7 @@ func (p *parser) parseStmt() Stmt {
 	case *ExprStmt:
 		if l, ok := s.X.(*Lambda); ok {
 			for _, a := range as {
-				annotateLambda(l, a)
+				AnnotateLambda(l, a)
 			}
 		}
 		p.annotate(s.X, as)
@@ -2442,22 +2292,6 @@ func (p *parser) parseStmt() Stmt {
 		p.annotate(s, as)
 	}
 	return s
-}
-
-// annotateLambda records annotation a of lambda l if it is Compose's
-// @Composable or @DontMemoize.
-func annotateLambda(l *Lambda, a Annotation) {
-	switch {
-	case composableAnno(a):
-		l.Annotated = true
-	case a.Name == "DontMemoize" || a.Name == "androidx.compose.runtime.DontMemoize":
-		l.DontMemoize = true
-	}
-}
-
-// composableAnno reports whether a is Compose's @Composable.
-func composableAnno(a Annotation) bool {
-	return a.Name == "Composable" || a.Name == "androidx.compose.runtime.Composable"
 }
 
 func (p *parser) parseStmtAfterAnnotations() Stmt {
@@ -2717,7 +2551,7 @@ func (p *parser) parseInfix() Expr {
 			m.P = name.Pos
 			c := &Call{Fun: m, Args: []Expr{p.parseRange()}, Infix: true}
 			c.P = name.Pos
-			labelLambdas(c)
+			LabelLambdas(c)
 			x = c
 			continue
 		}
@@ -2778,12 +2612,7 @@ func (p *parser) parsePrefix() Expr {
 	case MINUS, PLUS, NOT:
 		op := p.next()
 		x := p.parsePrefix()
-		if lit, ok := x.(*IntLit); ok && op.Kind == MINUS && !lit.Unsigned && lit.Val > 0 && p.toks[p.i-1].Kind == INT {
-			// As K2, a negative literal is one literal, not (-1) or -(1):
-			// -1 may be a Short and -2147483648 is an Int.
-			lit.Val = -lit.Val
-			lit.Long = strings.HasSuffix(p.toks[p.i-1].Text, "L") || lit.Val < math.MinInt32
-			lit.P = op.Pos
+		if lit, ok := x.(*IntLit); ok && op.Kind == MINUS && p.toks[p.i-1].Kind == INT && NegateLiteral(lit, p.toks[p.i-1].Text, op.Pos) {
 			return lit
 		}
 		u := &Unary{Op: op.Kind, X: x}
@@ -2935,7 +2764,7 @@ func (p *parser) parsePostfix() Expr {
 			}
 			l := p.trailingLambda()
 			for _, a := range as {
-				annotateLambda(l, a)
+				AnnotateLambda(l, a)
 			}
 			p.annotate(l, as)
 			if !ok {
@@ -2945,7 +2774,7 @@ func (p *parser) parsePostfix() Expr {
 			}
 			fn.Args = append(fn.Args, l)
 			fn.trailing = true
-			labelLambdas(fn)
+			LabelLambdas(fn)
 		default:
 			return x
 		}
@@ -3001,7 +2830,7 @@ func (p *parser) parseCall(fn Expr, targs []*TypeArg) Expr {
 		p.next()
 	}
 	p.expect(RPAREN)
-	labelLambdas(c)
+	LabelLambdas(c)
 	return c
 }
 
@@ -3025,13 +2854,7 @@ func (p *parser) parseColonColon(x Expr, ref *TypeRef) Expr {
 // callableRef returns a callable reference, as a lambda for the checker to
 // fill in.
 func (p *parser) callableRef(pos Pos, ref *CallableRef) *Lambda {
-	if ref.Type != nil {
-		ref.X = nil
-	}
-	l := &Lambda{Arrow: true, Body: &Block{}, Ref: ref}
-	l.P = pos
-	l.Body.P = pos
-	return l
+	return CallableRefLambda(pos, ref)
 }
 
 // trailable reports whether a lambda after x is a trailing lambda: x is
@@ -3069,25 +2892,6 @@ func dottedName(x Expr) (string, bool) {
 		return s + "." + x.Name, ok
 	}
 	return "", false
-}
-
-// labelLambdas gives the lambdas passed to a call the function's name as
-// their label, for return@name.
-func labelLambdas(c *Call) {
-	var name string
-	switch fn := c.Fun.(type) {
-	case *Ident:
-		name = fn.Name
-	case *Member:
-		name = fn.Name
-	default:
-		return
-	}
-	for _, a := range c.Args {
-		if l, ok := a.(*Lambda); ok && l.Label == "" {
-			l.Label = name
-		}
-	}
 }
 
 func (p *parser) parsePrimary() Expr {
@@ -3175,7 +2979,7 @@ func (p *parser) parsePrimary() Expr {
 		p.next()
 		x := p.parseExpr()
 		p.expect(RPAREN)
-		parenthesized(x)
+		Parenthesized(x)
 		return x
 	case IF:
 		return p.parseIf()
@@ -3262,7 +3066,7 @@ func (p *parser) parsePrimary() Expr {
 		p.skipNL()
 		x := p.parsePrefix()
 		if l, ok := x.(*Lambda); ok {
-			annotateLambda(l, a)
+			AnnotateLambda(l, a)
 		}
 		p.annotate(x, []Annotation{a})
 		return x
@@ -3338,27 +3142,10 @@ func (p *parser) parseLambda() *Lambda {
 }
 
 func (p *parser) intLit(t Token) Expr {
-	text := strings.ReplaceAll(t.Text, "_", "")
-	long := strings.HasSuffix(text, "L")
-	text = strings.TrimSuffix(text, "L")
-	unsigned := t.Kind == UNSIGNED
-	if unsigned {
-		text = strings.TrimRight(text, "uU")
-	}
-	base := 10
-	switch {
-	case strings.HasPrefix(text, "0x") || strings.HasPrefix(text, "0X"):
-		base, text = 16, text[2:]
-	case strings.HasPrefix(text, "0b") || strings.HasPrefix(text, "0B"):
-		base, text = 2, text[2:]
-	}
-	v, err := strconv.ParseUint(text, base, 64)
-	if err != nil || v > math.MaxInt64 && !unsigned {
+	lit, ok := IntLiteral(t.Pos, t.Text, t.Kind == UNSIGNED)
+	if !ok {
 		p.failAt(t.Pos, "the value is out of range")
 	}
-	lit := &IntLit{Val: intbits.FromBits(v), Unsigned: unsigned}
-	lit.P = t.Pos
-	lit.Long = long || v > math.MaxInt32 && !unsigned || v > math.MaxUint32
 	return lit
 }
 
@@ -3605,9 +3392,9 @@ func (p *parser) parseWhen() Expr {
 	return n
 }
 
-// parenthesized marks x, a safe call a?.b or a?.f() or an index of one,
+// Parenthesized marks x, a safe call a?.b or a?.f() or an index of one,
 // a?.b[i], as written in parentheses (see exprBase.Paren).
-func parenthesized(x Expr) {
+func Parenthesized(x Expr) {
 	switch x := x.(type) {
 	case *Member:
 		x.Paren = x.Safe

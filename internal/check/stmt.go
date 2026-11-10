@@ -36,6 +36,12 @@ func (c *Checker) stmts(b *syntax.Block, want types.Type, valueUsed bool) types.
 		if last && b == c.tailBlock {
 			c.sink, c.tailBlock = c.tailSink, nil
 		}
+		if rec := c.u.rec; rec != nil {
+			if nothing {
+				rec.Unreachable(s)
+			}
+			rec.Stmt(s, valueUsed && last)
+		}
 		st := c.stmt(s, valueUsed && last, want)
 		if st.K == types.Nothing || stmtJumps(s) {
 			nothing = true
@@ -402,6 +408,7 @@ func (c *Checker) stmt(s syntax.Stmt, valueUsed bool, want types.Type) types.Typ
 		c.push()
 		c.reset(vars)
 		s.Sym = &types.VarSym{Name: s.Var, Type: elem, Kind: types.Local}
+		c.scope.shadow(s.Sym)
 		c.scope.declare(s.Sym)
 		c.loops = append(c.loops, &loopCtx{node: s, label: s.Label, lambdas: len(c.lambdas)})
 		c.block(s.Body, noWant, false)
@@ -515,6 +522,12 @@ func (c *Checker) exprStmt(x syntax.Expr) types.Type {
 	if n := len(c.lrets); n > 0 && c.lrets[n-1].tail == x {
 		c.lrets[n-1].tailType = t
 	}
+	switch x.(type) {
+	case *syntax.If, *syntax.When, *syntax.Try:
+		if c.u.rec != nil && t.K != types.Invalid {
+			c.u.rec.StmtType(x, t)
+		}
+	}
 	if t.K == types.Range {
 		c.errorf(x.Pos(), "ranges are only supported in 'for' loops and 'in' checks")
 	}
@@ -565,6 +578,7 @@ func (c *Checker) varStmt(s *syntax.VarStmt) {
 	if !s.Mutable && s.Init != nil && t.Flex() == types.BoolType {
 		c.condVal(s.Sym, s.Init)
 	}
+	c.scope.shadow(s.Sym)
 	if !c.scope.declare(s.Sym) {
 		c.errorf(s.P, "conflicting declarations: %s", s.Name)
 	}
@@ -781,6 +795,11 @@ func (c *Checker) lvalue(x syntax.Expr) (types.Type, bool) {
 		if !ok {
 			c.errorf(x.P, "unresolved reference: %s", x.Name)
 			return types.InvalidType, false
+		}
+		if p := propParam(sym); p != nil {
+			// var x in the primary constructor: x = v assigns the property.
+			c.captureThis()
+			sym = p
 		}
 		c.checkTopVar(sym, x.P)
 		x.Sym = sym
