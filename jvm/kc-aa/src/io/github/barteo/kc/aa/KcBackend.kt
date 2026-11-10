@@ -207,7 +207,7 @@ private class KcSession(private val config: KSPConfig, @Suppress("UNUSED_PARAMET
         round = next
         provider.session = KcAnalysis.session(KcAnalysis(round, module, libraryModule))
         t.mark("round")
-        t.print("round files=${paths.size} same=${model.same} psi-reused=${environment.reused - reused} psi-reparsed=${environment.reparsed - reparsed}$touched")
+        t.print("round files=${paths.size} same=${model.same} psi-reused=${environment.reused - reused} psi-reparsed=${environment.reparsed - reparsed} joined=${next.joinedNew.get()}$touched")
     }
 
     private fun printDiagnostics(ds: List<KcDiagnostic>) {

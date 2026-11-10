@@ -52,6 +52,9 @@ internal class KcRound(
     /** Marks the constructor's parts (KC_TIMING), if given. */
     timer: KcTimer? = null,
 ) {
+    /** How many files' trees this round joined, not finding them joined before (KC_TIMING). */
+    val joinedNew = java.util.concurrent.atomic.AtomicInteger()
+
     /** The sizes of a round's tables of source symbols. */
     class Sizes(val keys: Int = 16, val psi: Int = 16, val typeRefs: Int = 16)
 
@@ -391,28 +394,14 @@ internal class KcRound(
         // most of a session's first round. Files parse independently.
         // kc's tree and IntelliJ's must have the same shape for the preorder
         // index to join them: the same kinds in the same order.
-        fun join(f: KcFile, kt: KtFile): Array<ASTNode> =
-            preorder(kt.node).also { nodes ->
+        val joined = files.parallelStream().map { (f, kt) ->
+            trees?.get(kt, f) ?: preorder(kt.node).also { nodes ->
                 if (checkKinds && f.nodes >= 0 && (nodes.size - 1 != f.nodes || KcKinds.hash(nodes) != f.kinds))
                     throw KcPsiMismatch(f.path, f.nodes, nodes.size - 1)
                 trees?.put(kt, f, nodes)
+                joinedNew.incrementAndGet()
             }
-        // The trees joined before are taken on this thread, and only the
-        // files left are joined in parallel: a daemon's edit leaves one,
-        // and handing it to the common pool's parked threads took longer
-        // than joining it here (docs/analysis-api.md, step 50).
-        val joined: List<Array<ASTNode>> = if (alwaysParallel) {
-            files.parallelStream().map { (f, kt) -> trees?.get(kt, f) ?: join(f, kt) }.toList()
-        } else {
-            val kept = files.map { (f, kt) -> trees?.get(kt, f) }
-            val missing = kept.indices.filter { kept[it] == null }
-            val made = if (missing.size > 1) missing.parallelStream().map { join(files[it].first, files[it].second) }.toList()
-            else missing.map { join(files[it].first, files[it].second) }
-            val out = ArrayList<Array<ASTNode>>(files.size)
-            var k = 0
-            for (t in kept) out.add(t ?: made[k++])
-            out
-        }
+        }.toList()
         timer?.mark("join")
         fileSymbols = files.mapIndexed { i, (f, kt) ->
             val b = Builder(f.path, joined[i], KaSymbolOrigin.SOURCE)
@@ -1182,9 +1171,6 @@ internal class KcRound(
         /** A fake override's key: its class's key, /~, its index in the member scope, and a member's suffix. */
         private val fakeKey = Regex("^(.*)/~(\\d+)(.*)$")
         private val declaredKey = Regex("^(.*)/~d(\\d+)(.*)$")
-
-        /** Joins every file's tree on the common pool, as before step 50 (KC_ALWAYS_PARALLEL=1, for comparisons). */
-        val alwaysParallel = System.getenv("KC_ALWAYS_PARALLEL") != null
 
         /**
          * The nodes of a tree in preorder, from 1; index 0 is null. This is
