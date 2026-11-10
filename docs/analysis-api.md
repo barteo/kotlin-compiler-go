@@ -4131,6 +4131,108 @@ Stock's Hilt teardown was 78 ms here against 190 in step 49, as in step
 48 (120 against 185–206). So Hilt's ratios swing with stock: against
 step 49's stock Hilt runs (469 and 477), kc's are 13.8x and 12.2x.
 
+#### Step 51: the edited file's PSI is parsed while libkc updates
+
+Step 50 left IntelliJ's parse of the edited file in round 1's tree join
+(0.6–0.8 ms with `joined=1`), plus about 0.15 ms making its PSI. Both
+ran on the calling thread after libkc's update returned. KSP passes
+the files Gradle says were modified (`KSPConfig.modifiedSources`), so
+the session knows before the update which file's PSI it will need.
+
+Now, before calling `KcOps.update` for a session's first round,
+`KcSession` hands the modified Kotlin sources to
+`KcEnvironment.parseAhead`. On the common pool, it:
+- finds and reads each file;
+- makes its PSI with `psiFile` (which records the hash of the bytes it
+  read);
+- walks the tree, which has IntelliJ parse it;
+- leaves the tree in `KcTrees` under its PSI.
+
+The calling thread waits for it after the update and touches nothing of
+the environment before then. The round's `psiFile(path, libkc's hash)`
+finds the same hash and takes the PSI made ahead. The join takes the
+tree made ahead, checks it as one it made, and keeps it. Trees no round
+took are dropped after the join. A file that changes between the two
+reads has another hash and is made again, as before. A file that fails
+ahead is left to the round. `KC_NO_PARSE_AHEAD=1` turns it off.
+
+`KC_TIMING` now prints the parse's parts (`kc-jvm: ahead`) and splits
+the round's update into `native` and `wait`. It also marks the round's
+field initializers (`fields`, which take nothing). `KcTimer` no longer
+counts its own formatting in the next part.
+
+The parse's parts, medians of runs 51–100:
+
+| ms | Moshi | Hilt |
+|---|---|---|
+| waking a pool thread | 0.1 | 0.1 |
+| making the PSI | 0.1–0.2 | 0.2 |
+| the parse | 0.6–0.7 | 0.7–0.9 |
+| all, body runs (mean) | 1.1 (1.8) | 1.5 (1.9) |
+
+The parse costs what it did on the calling thread. A signature run's
+round-1 update (about 2.5 ms) almost always outlasts it. A body run's
+(about 1 ms) often doesn't: the calling thread then waits, 0 ms at the
+median but 0.4–0.7 ms on average.
+
+In the KSP bench, six alternating batches per project (on, off, off,
+on, on, off; off is `KC_NO_PARSE_AHEAD=1`), sums of both rounds,
+medians (means in brackets) of runs 51–100:
+
+| ms | Moshi on | Moshi off | Hilt on | Hilt off |
+|---|---|---|---|---|
+| body, `update` | 2.8 (3.20) | 2.3 (2.68) | 3.6 (3.95) | 2.8 (3.32) |
+| body, `psi` | 0.2 | 0.4 | 0.5 | 0.6 |
+| body, `join` | 0.3 | 0.9 | 0.4 | 1.1 |
+| body, the three | 3.3 | 3.6 | 4.5 | 4.5 |
+| signature, `update` | 5.9 (6.46) | 5.6 (5.90) | 6.8 (7.67) | 6.0 (6.94) |
+| signature, `psi` | 0.2 | 0.4 | 0.5 | 0.6 |
+| signature, `join` | 0.4 | 0.9 | 0.4 | 1.1 |
+| signature, the three | 6.5 | 6.9 | 7.7 | 7.7 |
+
+The join and the PSI step lose 0.7–0.8 ms, but round 1's update grows
+by 0.3–0.8 ms. Part of that is the wait. The rest is libkc itself,
+slower with the parse beside it:
+- round 1's `native` takes 1.1 against 1.0 ms on Moshi's body runs,
+  and 1.6 against 1.1 on Hilt's;
+- its `read`'s mean goes from 0.38 to 0.62 ms (Moshi) and from 0.56 to
+  0.90 (Hilt), though its median stays at 0.3;
+- round 2, with nothing beside it, takes the same either way.
+
+The machine has four cores. The parse competes with libkc's parallel
+`read` and with Go's idle GC workers, and both sides with each other's
+caches. So the step takes 0.3–0.4 ms off a Moshi run and nothing off a
+Hilt one. Run totals moved within the batches' spread:
+
+| | on | off |
+|---|---|---|
+| Moshi body | 18 (19.4) | 19 (19.5) |
+| Moshi signature | 22 (23.0) | 22 (24.1) |
+| Hilt body | 37 (38.8) | 36 (37.8) |
+| Hilt signature | 44 (46.1) | 42 (43.9) |
+
+That leaves two leads:
+- Make a file's tree lazy in `Builder`, so the round would wait for
+  the parse only when it first builds that file's symbols, not after
+  the update.
+- Start the parse after libkc's `read`, not beside it.
+
+The KSP bench, both backends, 100 runs, output checked against stock's,
+medians of runs 51–100:
+
+| ms | stock KSP2 | kc | ratio | kc min |
+|---|---|---|---|---|
+| Moshi, leaf body edit | 359 | 17 | 21x (10.8x against step 50's stock) | 15 |
+| Moshi, leaf signature edit | 340 | 21 | 16x (9.2x against step 50's stock) | 16 |
+| Hilt, leaf body edit | 335 | 35 | 9.6x | 29 |
+| Hilt, leaf signature edit | 335 | 40 | 8.4x | 33 |
+
+Stock's Moshi teardown took 192–204 ms here, against 30–116 in earlier
+batches, so its Moshi ratios swing with it; its Hilt teardown took
+92–93. kc's Moshi totals are 1 ms above step 50's comparison batch,
+though the A/B on one machine puts them 0.3–0.4 ms below: a batch's
+machine state moves the totals more than this step does.
+
 ## Gaps and open questions
 
 - **Slice simplifications (M0.4).** These go when M3/M4 bring the facts in:

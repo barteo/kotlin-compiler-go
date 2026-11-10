@@ -69,6 +69,8 @@ step 42's: Moshi's step 42 rows pool both batches.
 | Hilt, leaf signature edit (step 49) | 477 | 47 | 10.1x | step 49 cut 0.4 ms off the two updates (A/B), inside the totals' spread |
 | Hilt, leaf body edit (step 50) | 325 | 34 | 9.6x (13.8x against step 49's stock) | stock's teardown was 78 ms here, 190 in step 49; this batch ran about 15% faster on both backends |
 | Hilt, leaf signature edit (step 50) | 334 | 39 | 8.6x (12.2x against step 49's stock) | step 50 cut 0.4 ms off the two updates (A/B), inside the totals' spread |
+| Hilt, leaf body edit (step 51) | 335 | 35 | 9.6x | stock's teardown 93 ms; step 51 took nothing off Hilt (A/B) |
+| Hilt, leaf signature edit (step 51) | 335 | 40 | 8.4x | |
 | Hilt, one-file test, warm | 403 | 59 | 6.8x | |
 | Moshi, warm | 2270 | 458 | 5.0x | about 7.5x |
 | Moshi, edit Model000 (10 files dirty) | 610 | 167 | 3.7x | |
@@ -89,6 +91,8 @@ step 42's: Moshi's step 42 rows pool both batches.
 | Moshi, leaf signature edit (step 49) | 211 | 23 | 9.2x | |
 | Moshi, leaf body edit (step 50) | 184 | 16 | 11.5x | the faster machine: kc 16 against 21 ms, stock's process phase 96 against 108 |
 | Moshi, leaf signature edit (step 50) | 194 | 20 | 9.7x | step 50 cut 0.7 ms off the two updates (A/B, 5.4 against 6.1 ms) |
+| Moshi, leaf body edit (step 51) | 359 | 17 | 21x (10.8x against step 50's stock) | stock's teardown took 204 ms here, 30–116 before |
+| Moshi, leaf signature edit (step 51) | 340 | 21 | 16x (9.2x against step 50's stock) | step 51 cut 0.3–0.4 ms (A/B), inside the totals' spread |
 | Moshi, one-file test, warm | 204 | 23 | 8.9x | |
 
 Hilt's leaf body edit is the first edit at 10x. Since step 37, a body
@@ -156,7 +160,12 @@ KSP's symbol layer. What is left:
   splits a round's `build`: joining kc's trees with IntelliJ's takes
   0.7–0.9 ms in round 1 (IntelliJ parsing the edited file, `joined=1`)
   and 0.2–0.3 ms in round 2, which joins nothing; why is open. Building
-  the files' symbols takes about 0.2 ms per round.
+  the files' symbols takes about 0.2 ms per round. Since step 51
+  the session makes and parses the PSI of the files Gradle says were
+  modified on another thread while libkc updates. Round 1's join drops
+  to about 0.1 ms, but libkc's update is slower beside the parse, and
+  body runs sometimes wait for it. That took 0.3–0.4 ms off a Moshi run
+  and nothing off a Hilt one (A/B); `KC_NO_PARSE_AHEAD=1` turns it off.
 - **Comment and KDoc edits outside bodies** still take the partial
   check, though they would only need nodes and positions moved, as
   step 37 does for bodies.
