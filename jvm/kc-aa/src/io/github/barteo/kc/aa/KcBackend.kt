@@ -124,6 +124,9 @@ internal object SourceWalk {
 
 private val noParseAhead = !System.getenv("KC_NO_PARSE_AHEAD").isNullOrEmpty()
 
+/** KC_NO_JAVA_DECLS=1 asks libkc for the Java sources' classes, and the names it has no class of, every round. */
+private val noJavaDecls = System.getenv("KC_NO_JAVA_DECLS") == "1"
+
 /** The `kc` KSP backend: the Analysis API answered by kc through libkc. */
 class KcBackend : KspBackend {
     override val name: String get() = "kc"
@@ -151,9 +154,12 @@ private class KcSession(private val config: KSPConfig, @Suppress("UNUSED_PARAMET
     /**
      * The class-path classes libkc modeled, by outermost class ID, kept by
      * the environment for the rounds after: its class path doesn't change,
-     * so a round asks libkc only for those none has yet. The Java sources'
-     * classes change with them and are always asked for, and so is a class
-     * a Java source declares, which hides the class path's.
+     * so a round asks libkc only for those none has yet, and not again for
+     * a name libkc said it has no class of. The Java sources' classes are
+     * kept by the model's KcModel.java, which libkc gives a round whose
+     * Java sources, and the Kotlin classes they name, are those of one
+     * before; a class a Java source declares, which hides the class
+     * path's, isn't kept with those.
      */
     private val libraryDecls = environment.libraryDeclsOf(
         "module=${config.moduleName}\n" + config.friends.joinToString("\n") { it.path })
@@ -237,11 +243,21 @@ private class KcSession(private val config: KSPConfig, @Suppress("UNUSED_PARAMET
 
     /** The class [id] (outermost) of [model]'s class path or Java sources, or null. */
     private fun libraryDecl(model: KcModel, javaClasses: Set<String>, id: String): KcDecl? {
-        if (id in javaClasses) return KcOps.cls(model.handle, id)
-        synchronized(libraryDecls) { libraryDecls[id] }?.let { return it }
-        return KcOps.cls(model.handle, id)?.also { d ->
-            if (!d.has(KcDecl.JAVA_SOURCE)) synchronized(libraryDecls) { libraryDecls[id] = d }
+        if (id in javaClasses) {
+            val java = if (model.java == 0L || noJavaDecls) null else libraryDecls.java(model.java)
+            java?.let { synchronized(libraryDecls) { if (id in it) return it[id] } }
+            return KcOps.cls(model.handle, id).first.also { d -> java?.let { synchronized(libraryDecls) { it[id] = d } } }
         }
+        synchronized(libraryDecls) {
+            libraryDecls.decls[id]?.let { return it }
+            if (id in libraryDecls.absent) return null
+        }
+        val (d, absent) = KcOps.cls(model.handle, id)
+        synchronized(libraryDecls) {
+            if (d != null && !d.has(KcDecl.JAVA_SOURCE)) libraryDecls.decls[id] = d
+            if (absent && !noJavaDecls) libraryDecls.absent += id
+        }
+        return d
     }
 
     /** The round of [model], whose sources' PSI it joins. */

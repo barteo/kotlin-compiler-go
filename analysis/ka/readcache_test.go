@@ -229,3 +229,46 @@ func TestReadCacheMany(t *testing.T) {
 	write("b ")
 	check("all changed", "b ", int64(len(srcs)))
 }
+
+// A model's JavaID is that of the update before when its Java sources,
+// and the Kotlin classes they name, are the same, and the Class of a Java
+// source class is then too; it is another when they change, and 0
+// without Java sources.
+func TestJavaID(t *testing.T) {
+	cfg := withStdlib(t)
+	dir := t.TempDir()
+	text := func(s string) *string { return &s }
+	kt := Source{Path: filepath.Join(dir, "a.kt"), Text: text("package p\nclass A {\n    fun f(): Int { return 1 }\n}")}
+	java := Source{Path: filepath.Join(dir, "J.java"), Text: text("package p; public class J { public A a; }")}
+	s := Open(cfg)
+	defer s.Close()
+	update := func(srcs ...Source) *Model {
+		t.Helper()
+		m, err := s.Update(context.Background(), srcs)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { m.Close() })
+		return m
+	}
+	first := update(kt, java)
+	if first.JavaID() == 0 || first.Class("p/J") == nil {
+		t.Fatalf("first: JavaID %d, class %v", first.JavaID(), first.Class("p/J"))
+	}
+	kt.Text = text("package p\nclass A {\n    fun f(): Int { return 2 }\n}")
+	body := update(kt, java)
+	if body.JavaID() != first.JavaID() || body.Class("p/J") != first.Class("p/J") {
+		t.Errorf("a body edit: JavaID %d, want %d", body.JavaID(), first.JavaID())
+	}
+	java.Text = text("package p; public class J { public A b; }")
+	changed := update(kt, java)
+	if changed.JavaID() == body.JavaID() || changed.JavaID() == 0 {
+		t.Errorf("a Java edit: JavaID %d, the last %d", changed.JavaID(), body.JavaID())
+	}
+	if m := update(kt); m.JavaID() != 0 {
+		t.Errorf("no Java sources: JavaID %d", m.JavaID())
+	}
+	if !first.Absent("p/A") || !first.Absent("p/J") || first.Absent("kotlin/Unit") {
+		t.Errorf("Absent: p/A %v, p/J %v, kotlin/Unit %v", first.Absent("p/A"), first.Absent("p/J"), first.Absent("kotlin/Unit"))
+	}
+}

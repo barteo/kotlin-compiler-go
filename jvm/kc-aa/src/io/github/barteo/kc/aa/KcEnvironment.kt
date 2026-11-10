@@ -160,15 +160,43 @@ internal class KcEnvironment(val key: String, config: KSPConfig) {
      * holds the class path's files and stamps, and [libraryDeclsOf]
      * starts over for another module name or other friends.
      */
-    private val libraryDecls = HashMap<String, KcDecl>()
+    private val libraryDecls = LibraryDecls()
     private var libraryDeclsKey: String? = null
 
-    fun libraryDeclsOf(key: String): HashMap<String, KcDecl> = synchronized(libraryDecls) {
+    fun libraryDeclsOf(key: String): LibraryDecls = synchronized(libraryDecls) {
         if (libraryDeclsKey != key) {
             libraryDecls.clear()
             libraryDeclsKey = key
         }
         libraryDecls
+    }
+
+    /**
+     * What libkc said of the classes of a class path: the classes it
+     * modeled, the names it has no class of, and the classes of the last
+     * [MAX_JAVA] sets of Java sources it modeled over it, by their
+     * models' KcModel.java (null for a class it didn't model), most
+     * recently used last. A KSP run's rounds and the runs after see the
+     * same few sets: a round's generated Java sources are the next
+     * round's, again and again.
+     */
+    class LibraryDecls {
+        val decls = HashMap<String, KcDecl>()
+        val absent = HashSet<String>()
+        private val java = LinkedHashMap<Long, HashMap<String, KcDecl?>>(8, 0.75f, true)
+
+        /** The classes of the Java sources of models whose KcModel.java is [id]. */
+        fun java(id: Long): HashMap<String, KcDecl?> = synchronized(this) {
+            java.getOrPut(id) { HashMap() }.also {
+                while (java.size > MAX_JAVA) java.remove(java.keys.first())
+            }
+        }
+
+        fun clear() = synchronized(this) {
+            decls.clear()
+            absent.clear()
+            java.clear()
+        }
     }
 
     /** The bytes each file's PSI was parsed from, as [psiFile] last read them. */
@@ -229,6 +257,9 @@ internal class KcEnvironment(val key: String, config: KSPConfig) {
     private companion object {
         /** A KSP run's rounds that check different sources: the first, and the ones with generated files. */
         const val KEEP_ROUNDS = 3
+
+        /** The sets of Java sources LibraryDecls keeps the classes of: a round's, and a few more. */
+        const val MAX_JAVA = KEEP_ROUNDS + 1
     }
 }
 

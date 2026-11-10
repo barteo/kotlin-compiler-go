@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/barteo/kotlin-compiler-go/internal/check"
 	"github.com/barteo/kotlin-compiler-go/internal/classfile"
@@ -24,6 +25,9 @@ type library struct {
 	// base is set with java: the library of the class path that java's
 	// classes are over, which models the other classes (withJava).
 	base *library
+	// javaID is set with java: it identifies the library among those of
+	// the process (Model.JavaID).
+	javaID uint64
 
 	mu     sync.Mutex
 	decls  map[string]*Decl             // by class ID; nil: no such class
@@ -84,13 +88,45 @@ func (m *Model) Class(id string) *Decl {
 	return l.decl(id)
 }
 
+// JavaID identifies the classes of the model's Java sources: models with
+// the same JavaID give the same Class for each of them, as an update
+// that finds the Java sources, and the Kotlin classes they name, as they
+// were keeps their library. It is 0 if the model has no Java sources,
+// and unique in the process otherwise, so a client may keep the classes
+// it was given by it.
+func (m *Model) JavaID() uint64 {
+	if m.lib == nil {
+		return 0
+	}
+	return m.lib.javaID
+}
+
+// Absent reports whether the class path, the module's sources left out,
+// has no class id: one that Class gives nil for as long as the class
+// path is the same, whatever the sources are. A client may keep that it
+// has none, and ask a model's Class only for the classes of its Java
+// sources.
+func (m *Model) Absent(id string) bool {
+	l := m.lib
+	if l == nil {
+		return false
+	}
+	if l.base != nil {
+		l = l.base
+	}
+	return !l.cp.HasSources() && !l.cp.Has(internalName(id))
+}
+
+// javaIDs numbers the libraries withJava returns.
+var javaIDs atomic.Uint64
+
 // withJava returns a library of the classes of l's class path and the
 // module's Java sources files, for one check. It models the sources'
 // classes and leaves the others to l, which checks of other sources go on
 // sharing.
 func (l *library) withJava(files []*javasrc.File) *library {
 	java := driver.AddJavaSources(l.cp, files)
-	return &library{cp: java.Path, lib: l.lib.WithSources(java.Path), java: java, base: l,
+	return &library{cp: java.Path, lib: l.lib.WithSources(java.Path), java: java, base: l, javaID: javaIDs.Add(1),
 		decls: map[string]*Decl{}, params: map[string]map[string]string{}}
 }
 

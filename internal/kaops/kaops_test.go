@@ -48,6 +48,9 @@ func TestOpenUpdateClose(t *testing.T) {
 	r := wire.NewReader(resp)
 	model := r.Int()
 	check := r.Uint()
+	if java := r.Uint(); java != 0 {
+		t.Errorf("Java sources %d, want none", java)
+	}
 	if r.Bool() {
 		t.Fatal("same as a kept check")
 	}
@@ -105,7 +108,7 @@ func TestOpenUpdateClose(t *testing.T) {
 	}
 	r = wire.NewReader(resp)
 	again := r.Int()
-	if c, same := r.Uint(), r.Bool(); c != check || !same || r.Len() != 0 {
+	if c, _, same := r.Uint(), r.Uint(), r.Bool(); c != check || !same || r.Len() != 0 {
 		t.Errorf("check %d, same %v, %d bytes; want check %d, same, nothing more", c, same, r.Len(), check)
 	}
 
@@ -123,7 +126,7 @@ func TestOpenUpdateClose(t *testing.T) {
 	}
 	r = wire.NewReader(resp)
 	based := r.Int()
-	if c, same, n, from, p := r.Uint(), r.Bool(), r.Uint(), r.Uint(), r.String(); c != check || same || n != 1 || from != check || p != path {
+	if c, _, same, n, from, p := r.Uint(), r.Uint(), r.Bool(), r.Uint(), r.Uint(), r.String(); c != check || same || n != 1 || from != check || p != path {
 		t.Errorf("check %d, same %v, %d files, from %d, %s; want check %d, 1 file from it, %s", c, same, n, from, p, check, path)
 	}
 
@@ -238,7 +241,7 @@ func TestClass(t *testing.T) {
 		t.Skipf("no kotlin-stdlib.jar (set KOTLIN_HOME): %v", err)
 	}
 	path := filepath.Join(t.TempDir(), "a.kt")
-	if err := os.WriteFile(path, []byte("package p\n"), 0o666); err != nil {
+	if err := os.WriteFile(path, []byte("package p\nclass A\n"), 0o666); err != nil {
 		t.Fatal(err)
 	}
 	var w wire.Writer
@@ -268,10 +271,11 @@ func TestClass(t *testing.T) {
 	model := wire.NewReader(resp).Int()
 
 	for _, tc := range []struct {
-		id   string
-		n    uint64
-		kind ka.Kind
-	}{{"kotlin/Deprecated", 1, ka.KindAnnotationClass}, {"no/Such", 0, 0}} {
+		id     string
+		n      uint64
+		kind   ka.Kind
+		absent bool
+	}{{"kotlin/Deprecated", 1, ka.KindAnnotationClass, false}, {"no/Such", 0, 0, true}, {"p/A", 0, 0, true}} {
 		w = wire.Writer{}
 		w.Int(model)
 		w.String(tc.id)
@@ -284,6 +288,9 @@ func TestClass(t *testing.T) {
 			t.Fatalf("%s: %d decls", tc.id, n)
 		}
 		if tc.n == 0 {
+			if absent := r.Bool(); absent != tc.absent {
+				t.Errorf("%s: absent %v", tc.id, absent)
+			}
 			continue
 		}
 		if k, name := ka.Kind(r.Uint()), r.String(); k != tc.kind || name != "Deprecated" {

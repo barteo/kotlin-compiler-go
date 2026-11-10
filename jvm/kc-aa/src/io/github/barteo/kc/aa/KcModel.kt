@@ -65,9 +65,10 @@ internal object KcOps {
         val model = r.readInt()
         try {
             val check = r.readUint()
+            val java = r.readUint()
             if (r.readBool()) {
                 t.print("update same")
-                return KcModel(model, emptyList(), emptyList(), check, same = true)
+                return KcModel(model, emptyList(), emptyList(), check, java, same = true)
             }
             var reused = 0
             val files = List(r.readUint().toInt()) {
@@ -85,17 +86,22 @@ internal object KcOps {
             }
             t.mark("decode")
             t.print("update reused=$reused")
-            return KcModel(model, files, diagnostics, check)
+            return KcModel(model, files, diagnostics, check, java)
         } catch (e: Throwable) {
             close(model)
             throw e
         }
     }
 
-    /** The class-path class [classId] (a/b/Outer.Inner) as model [model] has it, or null. */
-    fun cls(model: Long, classId: String): KcDecl? {
+    /**
+     * The class-path class [classId] (a/b/Outer.Inner) as model [model] has
+     * it, or null, and whether the class path, the sources left out, has
+     * no such class: one there is none of while the class path is the same.
+     */
+    fun cls(model: Long, classId: String): Pair<KcDecl?, Boolean> {
         val r = Wire.Reader(KcTimer.timed(KcTimer.classCalls) { KcNative.call(CLASS, Wire.Writer().writeInt(model).writeString(classId).message()) })
-        return r.decls().singleOrNull()
+        val d = r.decls().singleOrNull()
+        return d to r.readBool()
     }
 
     /** The class-path package [fqName] (dotted) as model [model] has it, or null if there is none. */
@@ -190,7 +196,9 @@ internal object KcOps {
 
 /** The module's sources as one update saw them; Go's ka.Model. */
 /**
- * The model of an update: its [handle], and its [check] (Go's Model.Check).
+ * The model of an update: its [handle], its [check] (Go's Model.Check),
+ * and [java], which identifies the classes of its Java sources (Go's
+ * Model.JavaID): models with the same one have the same, and 0 is none.
  * If [same], the update asked with a kept check and this is it again: the
  * model's files and diagnostics are left out, as they are that check's.
  */
@@ -199,6 +207,7 @@ internal class KcModel(
     val files: List<KcFile>,
     val diagnostics: List<KcDiagnostic>,
     val check: Long = 0,
+    val java: Long = 0,
     val same: Boolean = false,
 )
 

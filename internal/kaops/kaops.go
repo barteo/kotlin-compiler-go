@@ -9,7 +9,7 @@
 //
 // OpKaUpdate: session:Int n:Uint path:String*n k:Uint kept:Uint*k b:Uint base:Uint*b → model
 //
-//	model   = handle:Int check:Uint same:Bool [n:Uint file*n m:Uint diag*m]
+//	model   = handle:Int check:Uint java:Uint same:Bool [n:Uint file*n m:Uint diag*m]
 //	file    = from:Uint path:String [package:String annots decls lookups nodes:Uint kinds:Uint
 //	          text:Uint]
 //	decls   = n:Uint decl*n
@@ -32,7 +32,7 @@
 //	diag    = path:String line:Uint col:Uint message:String feature:String
 //	lookups = n:Uint (scope:String kind:Uint name:String)*n
 //
-// check is the model's ka Model.Check. kept are the checks whose models
+// check is the model's ka Model.Check, and java its Model.JavaID. kept are the checks whose models
 // the caller kept what it built from; if check is one of them, same is
 // set and the files and diagnostics, which are that model's, are left out.
 // base are the checks whose models' files the caller kept as it read
@@ -69,11 +69,13 @@
 // OpKaClose: handle:Int → nothing. It releases a session or a model, and
 // the class path a model reads.
 //
-// OpKaClass: model:Int classID:String → n:Uint decl*n
+// OpKaClass: model:Int classID:String → n:Uint decl*n absent:Bool
 //
 // It returns the model of a class of the class path (ka's Model.Class),
 // its nested classes among its members; n is 0 if there is no such class
-// and 1 otherwise. A library declaration's nodes are 0.
+// and 1 otherwise. A library declaration's nodes are 0. absent is set if
+// n is 0 and the class path, the sources left out, has no such class
+// (ka's Model.Absent).
 //
 // OpKaPackage: model:Int package:String → exists:Bool n:Uint classID:String*n decls
 //
@@ -154,8 +156,10 @@ func class(req []byte) ([]byte, error) {
 	var w wire.Writer
 	if d := m.Class(id); d != nil {
 		writeDecls(&w, []*ka.Decl{d})
+		w.Bool(false)
 	} else {
 		writeDecls(&w, nil)
+		w.Bool(m.Absent(id))
 	}
 	return w.Message(), nil
 }
@@ -214,6 +218,7 @@ func update(req []byte) ([]byte, error) {
 	w.Int(int64(handles.Put(m)))
 	checks.add(m)
 	w.Uint(m.Check)
+	w.Uint(m.JavaID())
 	same := slices.Contains(kept, m.Check)
 	w.Bool(same)
 	if same {
