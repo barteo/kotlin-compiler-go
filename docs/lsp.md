@@ -10,8 +10,9 @@ on top of `kc`. It aims at what JetBrains'
   imports and workspace symbols.
 
 kotlin-lsp is an alpha, runs IntelliJ in a JVM and supports Gradle and
-Maven JVM projects (no KMP). Nothing here is built yet; the milestones
-below are the order of work.
+Maven JVM projects, Android experimentally (no KMP). The milestones
+below were the order of work; L0 to L8 are built, and the table after
+L7 compares the two servers.
 
 ## Why
 
@@ -886,35 +887,46 @@ commit per step:
    navigation already looks. Gradle's init script runs an artifact
    resolution query, and Maven runs `dependency:sources`.
 
-| kotlin-lsp feature | kc-lsp |
-|---|---|
-| Diagnostics | done; errors only where the code's precision is at least 99%, plus the inspections' warnings |
-| Completion, resolve, signature help | done |
-| Postfix and live templates | done; IntelliJ's common set, not user-defined templates |
-| Hover, KDoc | done; library KDoc needs sources |
-| Definition, type definition, implementation | done; implementations of a property find nothing |
-| References, highlight, rename | done; rename doesn't check conflicts |
-| Call hierarchy | done, library declarations included |
-| Type hierarchy | done |
-| Workspace symbols | done, library included |
-| Document symbols, folding, selection range, semantic tokens, inlay hints | done |
-| Formatting, range, on type | done; never wraps or joins lines |
-| KDoc Enter | done |
-| Quick fixes | partial: about 50, one for each inspection included, against IntelliJ's hundreds |
-| Inspections | partial: 25 codes, configurable, against IntelliJ's hundreds |
-| Intentions and refactorings | partial: extract, inline, explicit type, argument names, body style, move, and L8's 13 rewrites |
-| Organize imports | done |
-| Moving files, packages and folders | done |
-| File templates | done: a new file's `package` |
-| Run lens | done; builds with `kc`, not with Gradle or Maven |
-| Debugger (DAP) | gap: Debug gives a JDWP command line, not a debug adapter |
-| Gradle import, JVM | done |
-| Maven import | done |
-| KMP, Android import | gap |
-| Library sources, downloading them | done |
-| Decompiled library classes | partial: stubs from metadata |
-| Java documents | gap: Java sources are read for their declarations only |
-| Clear caches, restart | done |
+The table compares kc-lsp with what kotlin-lsp documents in its README
+and `RELEASES.md`, up to v263.6379.0. It doesn't cover what kotlin-lsp
+does without documenting it. IntelliJ's own breadth, hundreds of
+inspections and quick fixes, is a longer-term reference, not kotlin-lsp's
+stated scope; kotlin-lsp says it carries "most of the Kotlin intentions
+from the IntelliJ Kotlin plugin".
+
+| Feature | kotlin-lsp | kc-lsp |
+|---|---|---|
+| Diagnostics | the compiler's errors and warnings, and IntelliJ's default inspections | partial: errors only where the code's precision is at least 99%, few compiler warnings (`USELESS_ELVIS`), and 25 inspection codes, silent on a file with any diagnostic |
+| Quick fixes | IntelliJ's, formatted when applied | partial: about 50, one for each inspection included; no fix-all, no suppress action |
+| Intentions | "most of the Kotlin intentions from the IntelliJ Kotlin plugin" | partial: specify and remove type, argument names, body style, and L8's 13 rewrites |
+| Refactorings | rename, extract variable, inline local variable, move files and packages | done: rename (no conflict check), extract and inline variable, move files, packages and folders |
+| Completion, signature help | done | done; ranking not measured against IntelliJ's |
+| Postfix and live templates | live templates | done: IntelliJ's common postfix and live templates, not user-defined ones |
+| Hover, KDoc | done | done; library KDoc needs sources |
+| Definition, type definition, implementation | done | done; implementations of a property find nothing |
+| References, rename | done | done |
+| Document highlight, selection range, type hierarchy | not documented | done |
+| Call hierarchy | done | done, library declarations included |
+| Workspace symbols | done, library included | done, library included |
+| Document symbols, folding, semantic tokens | done, with `semanticTokens/range` for large files | done; whole-file semantic tokens only |
+| Inlay hints | done, with `jetbrains.kotlin.hints.*` settings | done; no settings |
+| Formatting, range, on type | done, `.editorconfig` read; closing brackets and quotes inserted as you type | done; never wraps or joins lines; no `.editorconfig`, no bracket insertion |
+| KDoc Enter | done | done |
+| Organize imports | done | done |
+| File templates | IntelliJ-style, with variables | partial: a new file's `package` |
+| Run lens | run and debug `main` | done; builds with `kc`, not with Gradle or Maven |
+| Debugger (DAP) | experimental: attach, launch from `launch.json`, breakpoints, stepping, threads, frames, variables, evaluation, thread dumps | gap: Debug gives a JDWP command line, not a debug adapter |
+| Gradle import, JVM | done | done |
+| Maven import | done, `settings.xml` credentials included | done |
+| Android import | experimental | gap |
+| KMP import | not yet ("coming in the future releases") | gap |
+| Several projects in one workspace | done (`intellij.projects`) | done: workspace folders and `kc-lsp.json` modules |
+| Build-file changes | reload: always, ask first or never | always re-imported |
+| Library sources | downloaded on sync by default | done; downloading needs `downloadSources` |
+| Decompiled library classes | not documented | partial: stubs from metadata |
+| Java documents | served in mixed projects, with references between Kotlin and Java | gap: Java sources are read for their declarations only |
+| Settings | changed at run time; a JDK chosen for symbol resolution | at initialization only (`initializationOptions`); the JDK is found, not chosen |
+| Reimport, clear caches, restart | done | done |
 
 Benchmarks, on the generated 200-file module (`-benchtime 30x`):
 
@@ -1092,10 +1104,12 @@ within their run-to-run noise on the same machine.
   plugins other than serialization (`spring`, `all-open`, `no-arg`) are
   warned about and dropped, as for Gradle.
 - **Out of L7:**
-  - a debug adapter: kotlin-lsp's is experimental too;
-  - KMP and Android import;
+  - a debug adapter, which kotlin-lsp has, experimental;
+  - Android import, experimental in kotlin-lsp, and KMP import, which
+    kotlin-lsp lacks too;
   - `.java` documents;
-  - IntelliJ's breadth of intentions and inspections;
+  - IntelliJ's breadth of intentions and inspections, much of which
+    kotlin-lsp carries;
   - user-defined live templates.
 
   The run lens builds with `kc`, so a build that needs Gradle tasks
