@@ -164,6 +164,8 @@ private class KcSession(private val config: KSPConfig, @Suppress("UNUSED_PARAMET
             jobs = Runtime.getRuntime().availableProcessors(),
             classPath = (config.libraries + config.friends).map { it.path }.distinct(),
             friendPaths = config.friends.map { it.path },
+            // KSP only adds files between its rounds.
+            fixedSources = true,
         ),
     )
 

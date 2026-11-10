@@ -21,6 +21,8 @@ internal object KcOps {
         val classPath: List<String>,
         /** The entries of [classPath] whose internal declarations the module sees. */
         val friendPaths: List<String> = emptyList(),
+        /** The sources don't change while the session is open, as in a KSP run (see ka.Config.FixedSources). */
+        val fixedSources: Boolean = false,
     )
 
     fun open(cfg: Config): Long {
@@ -33,6 +35,7 @@ internal object KcOps {
         cfg.classPath.forEach { w.writeString(it) }
         w.writeUint(cfg.friendPaths.size.toLong())
         cfg.friendPaths.forEach { w.writeString(it) }
+        w.writeBool(cfg.fixedSources)
         return Wire.Reader(KcNative.call(OPEN, w.message())).readInt()
     }
 

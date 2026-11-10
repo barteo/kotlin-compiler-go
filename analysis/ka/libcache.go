@@ -38,6 +38,7 @@ type shared struct {
 
 	checks checkCache // the last checks against lib; see reuse.go
 	read   readCache  // the texts the last updates against lib read (readcache.go)
+	java   javaCache  // the Java sources the last update against lib parsed (javacache.go)
 }
 
 var libraries struct {

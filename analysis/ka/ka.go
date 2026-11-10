@@ -46,6 +46,9 @@ type Session struct {
 
 	mu  sync.Mutex
 	lib *shared // the library of the last Update, unless it has Java sources
+	// fixed are the texts of the last Update's sources read from their
+	// files, by path, with Config.FixedSources.
+	fixed map[string]string
 }
 
 // Close releases the class path the session's updates read. The models
@@ -352,10 +355,27 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 		return nil, err
 	}
 	all := slices.Concat(sources, javaSources)
-	texts, readErrs := sl.read.texts(all, jobs)
+	var fixed map[string]string
+	if s.cfg.FixedSources && !noRoundReuse {
+		s.mu.Lock()
+		fixed = s.fixed
+		s.mu.Unlock()
+	}
+	texts, readErrs := sl.read.texts(all, jobs, fixed)
 	if err := errors.Join(readErrs...); err != nil {
 		sl.release()
 		return nil, err
+	}
+	if s.cfg.FixedSources && !noRoundReuse {
+		next := make(map[string]string, len(all))
+		for i, src := range all {
+			if src.Text == nil {
+				next[src.Path] = texts[i]
+			}
+		}
+		s.mu.Lock()
+		s.fixed = next
+		s.mu.Unlock()
 	}
 	tm.Mark("read")
 	// The results of the last checks are kept: an update of the same
@@ -400,11 +420,7 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 		i := toParse[k]
 		snaps[i] = psi.Parse(sources[i].Path, texts[i])
 	})
-	javaFiles := make([]*javasrc.File, len(javaSources))
-	javaErrs := make([]error, len(javaSources))
-	parallel(len(javaSources), jobs, func(i int) {
-		javaFiles[i], javaErrs[i] = javasrc.Parse(javaSources[i].Path, javaTexts[i])
-	})
+	javaFiles, javaErrs := sl.java.parse(javaSources, javaTexts, jobs)
 	tm.Mark("parse")
 	ml := sl.lib // the Model's library
 	var java *driver.JavaSources

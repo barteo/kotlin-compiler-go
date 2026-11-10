@@ -40,20 +40,33 @@ type readCache struct {
 
 // texts returns the texts of sources, reading the files of those without
 // a Text whose stamps differ from the last update's, and keeps them for
-// the next update.
-func (c *readCache) texts(sources []Source, jobs int) ([]string, []error) {
+// the next update. A source in fixed (Config.FixedSources: the texts the
+// session's last update had) has that text, and its file isn't statted.
+func (c *readCache) texts(sources []Source, jobs int, fixed map[string]string) ([]string, []error) {
 	c.mu.Lock()
 	prev := c.m
 	c.mu.Unlock()
 	texts := make([]string, len(sources))
 	errs := make([]error, len(sources))
 	read := make([]readText, len(sources))
-	parallel(len(sources), jobs, func(i int) {
-		src := sources[i]
+	var todo []int
+	for i, src := range sources {
 		if src.Text != nil {
 			texts[i] = *src.Text
-			return
+			continue
 		}
+		if t, ok := fixed[src.Path]; ok && !noReuse {
+			texts[i] = t
+			if e, hit := prev[src.Path]; hit && e.text == t {
+				read[i] = e
+			}
+			continue
+		}
+		todo = append(todo, i)
+	}
+	parallel(len(todo), jobs, func(k int) {
+		i := todo[k]
+		src := sources[i]
 		if noReuse {
 			texts[i], errs[i] = src.text()
 			return

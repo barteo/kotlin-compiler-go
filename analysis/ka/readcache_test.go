@@ -38,7 +38,7 @@ func TestReadCache(t *testing.T) {
 	check := func(name string, want []string, reads int64) {
 		t.Helper()
 		filesRead.Store(0)
-		texts, errs := c.texts(srcs, 2)
+		texts, errs := c.texts(srcs, 2, nil)
 		for i := range srcs {
 			if errs[i] != nil {
 				t.Fatalf("%s: %v", name, errs[i])
@@ -75,7 +75,7 @@ func TestReadCache(t *testing.T) {
 	text := "package z"
 	srcs = []Source{{Path: a, Text: &text}, {Path: filepath.Join(dir, "gone.kt")}}
 	filesRead.Store(0)
-	texts, errs := c.texts(srcs, 2)
+	texts, errs := c.texts(srcs, 2, nil)
 	if texts[0] != text || errs[0] != nil || errs[1] == nil {
 		t.Errorf("text %q, errors %v", texts[0], errs)
 	}
@@ -124,4 +124,53 @@ func TestReadCacheSessions(t *testing.T) {
 	if len(m.Files) != 2 || len(m.Files[1].Decls) != 1 || m.Files[1].Decls[0].ClassID != "p/B" {
 		t.Errorf("model: %d files", len(m.Files))
 	}
+}
+
+// With FixedSources, a session's updates take the texts its last update
+// had without reading the files again, and read the files it hadn't; a
+// Java source is parsed again only when its text changes.
+func TestFixedSources(t *testing.T) {
+	cfg := withStdlib(t)
+	cfg.FixedSources = true
+	dir := t.TempDir()
+	write := func(name, text string) Source {
+		t.Helper()
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte(text), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return Source{Path: path}
+	}
+	srcs := []Source{write("a.kt", "package p\nclass A"), write("J.java", "package p; public class J {}")}
+	s := Open(cfg)
+	defer s.Close()
+	update := func(name string, reads, parses int64) *Model {
+		t.Helper()
+		filesRead.Store(0)
+		javaParsed.Store(0)
+		m, err := s.Update(context.Background(), srcs)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if n := filesRead.Load(); n != reads {
+			t.Errorf("%s: read %d files, want %d", name, n, reads)
+		}
+		if n := javaParsed.Load(); n != parses {
+			t.Errorf("%s: parsed %d Java files, want %d", name, n, parses)
+		}
+		return m
+	}
+	update("first", 2, 1).Close()
+	// Changed on disk, in the window that would read it again: the
+	// session keeps the text it had.
+	write("a.kt", "package p\nclass C")
+	srcs = append(srcs, write("b.kt", "package p\nclass B(val a: A, val j: J)"))
+	m := update("second", 1, 0)
+	if len(m.Files) != 2 || m.Files[0].Decls[0].ClassID != "p/A" || len(m.Diagnostics) != 0 {
+		t.Errorf("second: %d files, diagnostics %v", len(m.Files), m.Diagnostics)
+	}
+	m.Close()
+	text := "package p; public class J { int x; }"
+	srcs[1].Text = &text
+	update("Java text", 0, 1).Close()
 }

@@ -48,6 +48,12 @@ type Config struct {
 	// "warning" or "strict". It is validated; kc's checker doesn't
 	// enforce it.
 	ExplicitAPIMode string
+	// FixedSources says the files don't change while the session is
+	// open, as in a KSP run, which only adds files between its rounds and
+	// reads each source once: an update takes the text a source had in
+	// the session's last update without statting the file again.
+	// Sources given with a Text are taken as given.
+	FixedSources bool
 }
 
 // ErrUnsupported is returned, wrapped, for input kc can't analyze at

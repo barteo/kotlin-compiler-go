@@ -32,7 +32,9 @@ func BenchmarkUpdate(b *testing.B) {
 // KA_BENCH_EDIT's (the first file by default): a comment added at its end;
 // with KA_BENCH_SIGNATURE set, a function, named after the run; or, with
 // KA_BENCH_RETURN set, a function added once whose body returns the run's
-// number, as bench/ksp's body edits do.
+// number, as bench/ksp's body edits do; or, with KA_BENCH_TYPE set, that
+// function with its return type changed between Int and Any on every
+// run, as bench/ksp's signature edits do.
 func BenchmarkUpdateEdit(b *testing.B) {
 	noVerifyKeys(b)
 	s, sources := benchModule(b)
@@ -56,6 +58,13 @@ func BenchmarkUpdateEdit(b *testing.B) {
 		}
 		if os.Getenv("KA_BENCH_SIGNATURE") != "" {
 			text = string(data) + "\nfun kcEdit" + strconv.Itoa(n) + "(): Int { return 1 }\n"
+		}
+		if os.Getenv("KA_BENCH_TYPE") != "" {
+			typ := "Int"
+			if n%2 == 1 {
+				typ = "Any"
+			}
+			text = string(data) + "\nfun kspBenchEdit(): " + typ + " {\n    return " + strconv.Itoa(n) + "\n}\n"
 		}
 		sources[i].Text = &text
 		m, err := s.Update(context.Background(), sources)

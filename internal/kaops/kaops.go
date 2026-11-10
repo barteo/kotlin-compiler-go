@@ -5,7 +5,7 @@
 // OpKaOpen: config → session handle
 //
 //	config  = jdkHome:String noJDK:Bool moduleName:String jobs:Uint
-//	          n:Uint classPath:String*n m:Uint friendPath:String*m
+//	          n:Uint classPath:String*n m:Uint friendPath:String*m fixed:Bool
 //
 // OpKaUpdate: session:Int n:Uint path:String*n k:Uint kept:Uint*k b:Uint base:Uint*b → model
 //
@@ -173,6 +173,7 @@ func open(req []byte) ([]byte, error) {
 	for n := r.Uint(); n > 0 && r.Err() == nil; n-- {
 		cfg.FriendPaths = append(cfg.FriendPaths, r.String())
 	}
+	cfg.FixedSources = r.Bool()
 	if err := r.Err(); err != nil {
 		return nil, err
 	}
