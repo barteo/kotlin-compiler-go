@@ -122,6 +122,8 @@ internal object SourceWalk {
     }
 }
 
+private val noParseAhead = !System.getenv("KC_NO_PARSE_AHEAD").isNullOrEmpty()
+
 /** The `kc` KSP backend: the Analysis API answered by kc through libkc. */
 class KcBackend : KspBackend {
     override val name: String get() = "kc"
@@ -176,13 +178,29 @@ private class KcSession(private val config: KSPConfig, @Suppress("UNUSED_PARAMET
         paths += javaSources
         timer.mark("open")
         timer.print("session")
-        update()
+        update(config.modifiedSources.filter { it.path.endsWith(".kt") }.map(::canonicalPath).filter { it in paths })
     }
 
-    private fun update() {
+    /**
+     * Updates libkc's model to [paths] and builds the round over it. The
+     * PSI of [modified], the sources Gradle says changed, is made and
+     * parsed while libkc updates, unless KC_NO_PARSE_AHEAD is set.
+     */
+    private fun update(modified: List<String> = emptyList()) {
         val t = KcTimer()
         val (reused, reparsed) = environment.reused to environment.reparsed
-        val model = KcOps.update(handle, paths.toList(), environment.reusableChecks(), environment.baseFiles())
+        val checks = environment.reusableChecks()
+        val base = environment.baseFiles()
+        val ahead = if (modified.isEmpty() || noParseAhead) null else environment.parseAhead(modified)
+        val model = try {
+            KcOps.update(handle, paths.toList(), checks, base)
+        } finally {
+            if (ahead != null) {
+                t.mark("native")
+                ahead.join()
+                t.mark("wait")
+            }
+        }
         t.mark("update")
         val next = if (model.same) {
             // The check of a round the environment kept: its sources, and

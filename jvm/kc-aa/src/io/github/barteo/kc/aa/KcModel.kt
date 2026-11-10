@@ -463,15 +463,16 @@ internal sealed class KcValue(val node: Int) {
  * and writes them, in ms, to standard error on a line that starts with
  * "kc-jvm:" (bench/ksp).
  */
-internal class KcTimer {
-    private var last = System.nanoTime()
+internal class KcTimer(start: Long = System.nanoTime()) {
+    private var last = start
     private val parts = StringBuilder()
 
     fun mark(name: String) {
         if (!ON) return
         val now = System.nanoTime()
         parts.append(' ').append(name).append('=').append("%.1f".format((now - last) / 1e6))
-        last = now
+        // Formatting isn't counted in the next part.
+        last = System.nanoTime()
     }
 
     fun print(what: String) {

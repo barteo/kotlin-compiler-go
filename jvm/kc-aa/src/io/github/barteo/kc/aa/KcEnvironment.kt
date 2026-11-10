@@ -114,6 +114,37 @@ internal class KcEnvironment(val key: String, config: KSPConfig) {
 
     private val files = VirtualFileManager.getInstance().getFileSystem(StandardFileSystems.FILE_PROTOCOL)
 
+    /**
+     * Has the PSI of the Kotlin files at [paths] made and parsed on another
+     * thread, while the caller waits for libkc's update: the files Gradle
+     * says were modified, whose PSI the round after the update would
+     * otherwise make and parse itself. A file is read again here, and
+     * [psiFile] given libkc's hash of the same bytes takes the PSI made
+     * here; its tree waits in [trees] for the round's join. The caller
+     * touches nothing of this environment until the result is done, and
+     * a file that fails is left to the round.
+     */
+    fun parseAhead(paths: List<String>): java.util.concurrent.CompletableFuture<Void> {
+        val submitted = System.nanoTime()
+        return java.util.concurrent.CompletableFuture.runAsync {
+            val t = KcTimer(submitted)
+            t.mark("start")
+            for (p in paths) {
+                try {
+                    val vf = files.refreshAndFindFileByPath(p) ?: continue
+                    t.mark("find")
+                    val kt = psiFile(vf, p) as? org.jetbrains.kotlin.psi.KtFile ?: continue
+                    t.mark("psi")
+                    trees.ahead(kt, KcRound.preorder(kt.node))
+                    t.mark("parse")
+                } catch (e: Exception) {
+                    // The round makes and parses the file itself.
+                }
+            }
+            t.print("ahead files=${paths.size}")
+        }
+    }
+
     /** A file's PSI's virtual file, and the hash of the bytes [psiFile] last read from it. */
     private class Parsed(val vf: VirtualFile, val hash: Long)
 

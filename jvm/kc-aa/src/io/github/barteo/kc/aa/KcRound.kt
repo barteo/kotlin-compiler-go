@@ -394,14 +394,16 @@ internal class KcRound(
         // most of a session's first round. Files parse independently.
         // kc's tree and IntelliJ's must have the same shape for the preorder
         // index to join them: the same kinds in the same order.
+        timer?.mark("fields")
         val joined = files.parallelStream().map { (f, kt) ->
-            trees?.get(kt, f) ?: preorder(kt.node).also { nodes ->
+            trees?.get(kt, f) ?: (trees?.takeAhead(kt) ?: preorder(kt.node)).also { nodes ->
                 if (checkKinds && f.nodes >= 0 && (nodes.size - 1 != f.nodes || KcKinds.hash(nodes) != f.kinds))
                     throw KcPsiMismatch(f.path, f.nodes, nodes.size - 1)
                 trees?.put(kt, f, nodes)
                 joinedNew.incrementAndGet()
             }
         }.toList()
+        trees?.dropAhead()
         timer?.mark("join")
         fileSymbols = files.mapIndexed { i, (f, kt) ->
             val b = Builder(f.path, joined[i], KaSymbolOrigin.SOURCE)
@@ -1221,5 +1223,20 @@ internal class KcTrees {
 
     fun put(kt: KtFile, f: KcFile, tree: Array<ASTNode>) {
         trees[f.path] = Joined(kt, f.nodes, f.kinds, tree)
+    }
+
+    /** Trees made before their round, by PSI ([KcEnvironment.parseAhead]): not yet checked against a model. */
+    private val ahead = java.util.concurrent.ConcurrentHashMap<KtFile, Array<ASTNode>>()
+
+    fun ahead(kt: KtFile, tree: Array<ASTNode>) {
+        ahead[kt] = tree
+    }
+
+    /** [kt]'s tree made before its round, if one was: the round checks and keeps it as one it made. */
+    fun takeAhead(kt: KtFile): Array<ASTNode>? = if (ahead.isEmpty()) null else ahead.remove(kt)
+
+    /** Drops the trees made ahead that a round didn't take, whose PSI it doesn't have. */
+    fun dropAhead() {
+        ahead.clear()
     }
 }
