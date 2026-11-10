@@ -374,3 +374,20 @@ func TestInspectionsScan(t *testing.T) {
 		os.WriteFile("testdata/inspect-budget.txt", []byte("# Inspection fixes TestInspectionsScan knows to break a program: module path:line:col code.\n"+strings.Join(ids, "\n")+"\n"), 0o644)
 	}
 }
+
+func TestInspectionLevels(t *testing.T) {
+	levels, warnings := ParseInspectionLevels(map[string]string{
+		ReplaceGetOrSet: "off", RedundantIf: "warning", "NOPE": "off", UselessElvis: "loud",
+	})
+	if len(levels) != 2 || levels[ReplaceGetOrSet] != 0 || levels[RedundantIf] != Warning {
+		t.Errorf("levels %v", levels)
+	}
+	if want := []string{`unknown inspection "NOPE"`, `unknown level "loud" of inspection USELESS_ELVIS (off, hint, information or warning)`}; !slices.Equal(warnings, want) {
+		t.Errorf("warnings %q, want %q", warnings, want)
+	}
+	hints := []Diagnostic{{Code: ReplaceGetOrSet, Severity: Information}, {Code: RedundantIf, Severity: Information}, {Code: UnusedImport, Severity: Hint}}
+	got := levels.Apply(hints)
+	if len(got) != 2 || got[0].Code != RedundantIf || got[0].Severity != Warning || got[1].Severity != Hint || hints[1].Severity != Information {
+		t.Errorf("applied %v", got)
+	}
+}

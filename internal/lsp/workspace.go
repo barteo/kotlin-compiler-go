@@ -55,6 +55,9 @@ type initOptions struct {
 	// and LibraryCache is the directory their files are extracted to.
 	LibrarySources *bool  `json:"librarySources"`
 	LibraryCache   string `json:"libraryCache"`
+	// Inspections sets the hints' severities by code: off, hint,
+	// information or warning.
+	Inspections map[string]string `json:"inspections"`
 }
 
 // workspace is a workspace folder's project and its modules.
@@ -508,11 +511,11 @@ type semantic struct {
 }
 
 // semanticOf returns an open document's semantic diagnostics: ds as mode
-// shows them, and v's hints of path, unless mode is coded.
-func semanticOf(ds []analysis.Diagnostic, mode ide.DiagnosticsMode, v *ide.View, path string) []ide.Diagnostic {
+// shows them, and v's hints of path at levels, unless mode is coded.
+func semanticOf(ds []analysis.Diagnostic, mode ide.DiagnosticsMode, levels ide.InspectionLevels, v *ide.View, path string) []ide.Diagnostic {
 	out := ide.SemanticDiagnostics(ds, mode)
 	if v != nil && mode != ide.DiagnosticsCoded {
-		out = append(out, ide.Hints(v, path)...)
+		out = append(out, levels.Apply(ide.Hints(v, path))...)
 	}
 	return out
 }
@@ -533,7 +536,7 @@ func (s *Server) openSnapshots() map[string]*psi.Snapshot {
 func (s *Server) showSemantic(snap *psi.Snapshot, ds []analysis.Diagnostic, v *ide.View) {
 	path := snap.Path()
 	s.mu.Lock()
-	mode := s.mode
+	mode, levels := s.mode, s.levels
 	if u, open := s.paths[path]; open {
 		d := s.docs[u]
 		if d.Snap != snap {
@@ -541,7 +544,7 @@ func (s *Server) showSemantic(snap *psi.Snapshot, ds []analysis.Diagnostic, v *i
 			return // edited since: the next update shows it
 		}
 		s.mu.Unlock()
-		sem := semanticOf(ds, mode, v, path)
+		sem := semanticOf(ds, mode, levels, v, path)
 		s.mu.Lock()
 		if s.docs[u] != d {
 			s.mu.Unlock()
@@ -804,6 +807,11 @@ func (s *Server) parseInitOptions(raw json.RawMessage) {
 		s.initWarnings = append(s.initWarnings, fmt.Sprintf("kc-lsp: unknown diagnostics setting %q; using default", o.Diagnostics))
 	}
 	s.mode = mode
+	levels, warnings := ide.ParseInspectionLevels(o.Inspections)
+	for _, w := range warnings {
+		s.initWarnings = append(s.initWarnings, "kc-lsp: inspections: "+w)
+	}
+	s.levels = levels
 	s.noGradle = o.Gradle != nil && !*o.Gradle
 	s.noMaven = o.Maven != nil && !*o.Maven
 	s.downloadSources = o.DownloadSources

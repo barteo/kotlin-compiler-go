@@ -900,9 +900,9 @@ commit per step:
 | Document symbols, folding, selection range, semantic tokens, inlay hints | done |
 | Formatting, range, on type | done; never wraps or joins lines |
 | KDoc Enter | done |
-| Quick fixes | partial: about 20, against IntelliJ's hundreds |
-| Inspections | partial: 6, against IntelliJ's hundreds |
-| Intentions and refactorings | partial: extract, inline, explicit type, argument names, body style, move |
+| Quick fixes | partial: about 50, one for each inspection included, against IntelliJ's hundreds |
+| Inspections | partial: 25 codes, configurable, against IntelliJ's hundreds |
+| Intentions and refactorings | partial: extract, inline, explicit type, argument names, body style, move, and L8's 13 rewrites |
 | Organize imports | done |
 | Moving files, packages and folders | done |
 | File templates | done: a new file's `package` |
@@ -927,10 +927,110 @@ Benchmarks, on the generated 200-file module (`-benchtime 30x`):
 
 Completion stays under its 100 ms target with templates.
 
+### L8: more inspections, fixes and intentions
+
+L8 widens L7's three partial rows of the parity table with IntelliJ's
+commonest Kotlin inspections, quick fixes and intentions. There are no
+protocol changes: all of them ride on published diagnostics and
+`codeAction`.
+
+1. **Style inspections**, by syntax alone (`inspect_style.go`). Each is
+   a `Hint` marked unnecessary, so it is grayed out, with a fix that
+   deletes or rewrites it:
+   - `REDUNDANT_SEMICOLON`;
+   - `REDUNDANT_UNIT_RETURN_TYPE`, not on an override;
+   - `REDUNDANT_VISIBILITY_MODIFIER`: `public`, unless the module's
+     explicit API mode is set, and `private` in a private class;
+   - `REDUNDANT_MODALITY_MODIFIER`: `final` in a final class, and `open`
+     or `abstract` in an interface;
+   - `REMOVE_EMPTY_CLASS_BODY`, `REMOVE_EMPTY_PRIMARY_CONSTRUCTOR`,
+     `REDUNDANT_CONSTRUCTOR_KEYWORD`;
+   - `REMOVE_EMPTY_PARENTHESES_FROM_LAMBDA_CALL`;
+   - `REMOVE_CURLY_BRACES_FROM_TEMPLATE`.
+
+   Each skips what deleting would break or change: a `;` before a
+   lambda on the next line, or ending an empty loop body; an object
+   literal's body; an enum's entry list.
+2. **Idiom inspections**, by the facts' types (`inspect_idioms.go`):
+   - `USELESS_ELVIS`, a warning as in `kotlinc`;
+   - `REDUNDANT_STRING_TEMPLATE`, a hint;
+   - `REPLACE_GET_OR_SET`, `REPLACE_SIZE_ZERO_CHECK_WITH_IS_EMPTY`,
+     `REPLACE_SIZE_CHECK_WITH_IS_NOT_EMPTY`, `REPLACE_NEGATED_IS_EMPTY`,
+     `REDUNDANT_IF`, as information;
+   - `REMOVE_REDUNDANT_QUALIFIER_NAME`, a hint, for a qualified type or
+     call that the file's imports and default imports already name.
+
+   A Java `get` or `set` counts as an operator only on a collection or
+   map. Negating a comparison flips it, except on floating-point types,
+   where `NaN` makes `!(a < b)` differ from `a >= b`.
+3. **Quick fixes** for codes that had none:
+   - the unresolved type message gets imports, and **create class** or
+     **create interface**;
+   - `UNRESOLVED_REFERENCE` gets **create function**, top level or a
+     member of the enclosing class or of the receiver's class (which
+     can be in another file), **create class** for a constructor call,
+     and **create local variable** or **create property**. Parameter
+     types come from the arguments; the return type comes from the
+     expected type, or is `Unit` at a statement;
+   - `NO_RETURN_IN_FUNCTION_WITH_BLOCK_BODY`: add `return`;
+   - `UNINITIALIZED_VARIABLE`: initialize with the type's default value;
+   - `FINAL_SUPERTYPE` and `OVERRIDING_FINAL_MEMBER`: make the source
+     declaration `open`;
+   - `REIFIED_TYPE_PARAMETER_NO_INLINE`: add `inline`;
+     `TYPE_PARAMETER_AS_REIFIED`: make the callee's type parameter
+     `reified`, adding `inline` if needed;
+   - `JVM_STATIC_NOT_IN_OBJECT_OR_COMPANION`, `WRONG_ANNOTATION_TARGET`,
+     `REPEATED_ANNOTATION`: remove the annotation.
+4. **Rewrite intentions**, `refactor.rewrite` actions
+   (`refactor_rewrite.go`):
+   - replace `if` with `when`, and a `when` without a subject with
+     `if`;
+   - add braces to an `if`, `else`, `for`, `while` or `do` body, and
+     remove them from a body of one statement;
+   - invert an `if` with an `else`;
+   - convert a String concatenation to a template, and back;
+   - replace `it` with an explicit parameter, and back;
+   - join a local's declaration and the assignment after it;
+   - put arguments or parameters on separate lines, or on one line.
+
+   They aren't offered where the result would mean something else:
+   - a dangling `else`;
+   - a declaration or lambda left as a branch;
+   - an `if` expression without `else`;
+   - a lambda branch, which loses its arrow and turns into a block;
+   - concatenation in a `const` initializer;
+   - a nested lambda's own `it`;
+   - lists holding comments.
+5. **Settings.** `initializationOptions.inspections` maps a code to
+   `off`, `hint`, `information` or `warning`, for example
+   `{"REPLACE_GET_OR_SET": "off"}`. An unknown code or level is logged
+   when the client is initialized.
+
+Tests:
+- `TestQuickFixes` and `TestRewrites` check each fix's and intention's
+  result: it must check without diagnostics and compile with `kc`.
+- `TestInspectionsScan` applies every inspection's fix throughout
+  `testdata/run`, and each program must still check. It finds
+  76 warnings and applies 74 fixes, none failing; 42 of the warnings are
+  `REPLACE_GET_OR_SET`.
+- `TestRefactorScan` now also samples the rewrites' constructs. Its
+  roughly 13,700 applications have one known failure, budgeted since L7.
+  It found three older bugs, now fixed:
+  - argument names on a call the checker rewrote, as a safe call;
+  - argument names on a callee whose parameter names repeat;
+  - a block body for an annotated expression body, where
+    `return @A x` reads as a label.
+
+Benchmarks: `Hints`, the unused-code checks and all the inspections,
+takes 0.11 ms p50 and 1.6 ms p95 per file of `testdata/run`, and 4.7 ms
+on the slowest. That is within the 5 ms budget for each publish.
+`BenchmarkBodyEdit` and `BenchmarkCompletion` before and after L8 stay
+within their run-to-run noise on the same machine.
+
 ## Gaps and open questions
 
-- **Diagnostics `kc` lacks.** `kc` reports no warnings beyond L7's six
-  inspections, and runs few of `kotlinc`'s checkers, so the editor shows
+- **Diagnostics `kc` lacks.** `kc` reports no warnings beyond the
+  inspections of L7 and L8, and runs few of `kotlinc`'s checkers, so the editor shows
   fewer problems than IntelliJ. The inspections are silent on a file
   with any diagnostic. The precision policy keeps false errors out, not missing
   ones in.

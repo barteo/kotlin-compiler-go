@@ -53,6 +53,7 @@ type Server struct {
 	roots    []string // the workspace folders
 	ws       []*workspace
 	mode     ide.DiagnosticsMode
+	levels   ide.InspectionLevels // the hints' severities set
 	noGradle bool
 	noMaven  bool
 	// downloadSources: the imports download the library's sources.
@@ -332,9 +333,9 @@ func (s *Server) didOpen(_ context.Context, r *jsonrpc.Request) (any, error) {
 	same := ok && last.snap.Source() == td.Text
 	if same {
 		s.mu.Lock()
-		mode := s.mode
+		mode, levels := s.mode, s.levels
 		s.mu.Unlock()
-		sem = semanticOf(last.diags, mode, last.view, d.Path)
+		sem = semanticOf(last.diags, mode, levels, last.view, d.Path)
 	}
 	s.mu.Lock()
 	s.docs[td.URI] = d
