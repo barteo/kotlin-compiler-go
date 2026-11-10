@@ -7,9 +7,9 @@ Of 10827 test files, 3541 are skipped and 7286 run.
 | Result | Tests | Share |
 |:---|---:|---:|
 | rejects invalid | 3616 | 49.6% |
-| accepts valid | 3129 | 42.9% |
+| accepts valid | 3132 | 43.0% |
 | accepts invalid | 263 | 3.6% |
-| rejects valid | 260 | 3.6% |
+| rejects valid | 257 | 3.5% |
 | parse/unsupported | 18 | 0.2% |
 | crash | 0 | 0.0% |
 
@@ -121,7 +121,7 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 |:---|---:|:---|
 | `type mismatch: inferred type is _ but _ was expected` | 66 | `tests/annotations/parameters/expressions/unaryPlus.kt`, `tests/callableReference/function/localConstructor.kt` |
 | `cannot infer type for type parameter '_'. Specify it explicitly.` | 51 | `tests/callableReference/generic/kt35896.kt`, `tests/callableReference/genericCallWithReferenceAgainstVararg.kt` |
-| `unresolved reference: _` | 28 | `tests/callResolution/suspendCOnversionForReceiver.kt`, `tests/callableReference/bound/controlFlow.kt` |
+| `unresolved reference: _` | 27 | `tests/callResolution/suspendCOnversionForReceiver.kt`, `tests/callableReference/bound/controlFlow.kt` |
 | `ambiguous call: n candidates for '_' take (_)` | 14 | `tests/callableReference/resolve/kt35887.kt`, `tests/contextSensitiveResolutionUsingExpectedType/ideHint/forExpressions/multipleOverloads.kt` |
 | `'_' expression must be exhaustive, add necessary '_' branch` | 7 | `tests/controlStructures/whenWithNothingTypedSubject.kt`, `tests/exhaustiveness/positive/smartcastToExhaustiveInterface.kt` |
 | `no function '_' takes n arguments` | 6 | `tests/cast/kt15161.kt`, `tests/errorProneAtomicArrayArguments.kt` |
@@ -141,7 +141,6 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 | `too many arguments for annotation java/lang/annotation/Target` | 2 | `tests/annotations/JavaAnnotationConstructors.kt`, `testsWithStdLib/annotations/annotationIncompatibleTargets.kt` |
 | `type of '_' doesn't match the type of the overridden var-property` | 2 | `tests/extraCheckers/kt69190.kt`, `tests/smartCasts/intersectionScope/propertiesConflict.kt` |
 | `unresolved label: _` | 2 | `tests/labelAndReceiverForInfix.kt`, `tests/labeledReturnFromNotLabeledUnnamedFunction.kt` |
-| `val cannot be reassigned` | 2 | `tests/controlFlowAnalysis/scopeOfAnonymousInitializer.kt`, `testsWithStdLib/reinitializations/constructorVarWrite.kt` |
 | `'_' hides member of supertype '_' and needs '_' modifier` | 1 | `tests/targetedBuiltIns/backwardCompatibility/fillInStackTrace.kt` |
 | `'_' is deprecated with level HIDDEN` | 1 | `tests/problems/kt14059.kt` |
 | `'_' modifier is required on '_'` | 1 | `tests/problems/kt36815.kt` |
@@ -159,7 +158,8 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 | `one type argument expected for class X.Y` | 1 | `tests/innerClasses/inCallableReferenceLHS/misplacedArgumentsInInnerOnly.kt` |
 | `one type argument expected for typealias TA<T>` | 1 | `tests/upperBoundsViolatedInLhsOfGetClass.kt` |
 | `operator '_' cannot be applied to A and B` | 1 | `tests/inference/emptyIntersectionTypes/emptyIntersectionOnIf.kt` |
-| *20 more* | 20 | |
+| `operator '_' cannot be applied to A<*> and B<*>` | 1 | `tests/comparisonOfGenericInterfaceWithGenericClass.kt` |
+| *19 more* | 19 | |
 
 ## Errors by diagnostic
 
@@ -240,7 +240,7 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | `cannot infer type for type parameter '_'. Specify it explicitly.` | 533 |
 | `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 319 |
 | `type mismatch: inferred type is _ but _ was expected` | 303 |
-| `unresolved reference: _` | 266 |
+| `unresolved reference: _` | 264 |
 | `platform declaration clash: _` | 150 |
 | `class '_' is not abstract and does not implement abstract member '_'` | 55 |
 | `suspend function '_' cannot override non-suspend function '_' defined in '_'` | 50 |
@@ -252,7 +252,6 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | `unresolved or unsupported type: _` | 26 |
 | `operator '_' cannot be applied to Any?` | 16 |
 | `type checking has run into a recursive problem; specify the type of '_'` | 16 |
-| `val cannot be reassigned` | 16 |
 | `variable '_' must be initialized` | 16 |
 | `'_' overrides nothing` | 15 |
 | `expected expression, found '_'` | 14 |
@@ -265,6 +264,7 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | `unresolved import: _` | 12 |
 | `'_' modifier is required on '_'` | 11 |
 | `not enough information to infer type arguments of ::barn: specify the expected function type` | 11 |
+| `val cannot be reassigned` | 11 |
 | `expected parameter of type _` | 10 |
 | `expression '_' of type _ cannot be invoked as a function` | 10 |
 | *190 more* | |

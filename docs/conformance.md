@@ -140,17 +140,18 @@ Kotlin 2.4.21's tests on `kc`:
 | Box tests | Tests | Share of run |
 |:---|---:|---:|
 | run (of 7,480) | 6,543 | |
-| pass | 6,543 | 100% |
-| check error, parse/unsupported, crash, codegen error, timeout | 0 | |
+| pass | 6,542 | 99.98% |
+| codegen error | 1 | 0.02% |
+| check error, parse/unsupported, crash, timeout | 0 | |
 | VerifyError, linkage error, exception, wrong result | 0 | |
 
 | Diagnostics tests | Tests | Share of run |
 |:---|---:|---:|
 | run (of 10,827) | 7,286 | |
 | rejects invalid | 3,616 | 49.6% |
-| accepts valid | 3,129 | 42.9% |
+| accepts valid | 3,132 | 43.0% |
 | accepts invalid | 263 | 3.6% |
-| rejects valid | 260 | 3.6% |
+| rejects valid | 257 | 3.5% |
 | parse/unsupported | 18 | 0.2% |
 | crash | 0 | |
 
@@ -160,6 +161,10 @@ break the failures down; the largest groups are:
 
 - **Silent miscompilation**: none. No box test that `kc` compiles
   gives a wrong result, throws, or fails to verify or link.
+- **Codegen error**: one box test, `coroutines/kt51530.kt`, whose
+  `invokeSuspend` needs a branch longer than the JVM's 32,767 bytes
+  ("method too large") since operand stacks of inlined code and loops
+  moved to locals (#57).
 - **Accepts invalid**: argument type mismatches
   (`ARGUMENT_TYPE_MISMATCH` 26), calls on nullable values (`UNSAFE_CALL`
   19), unresolved names (`UNRESOLVED_REFERENCE` 14), uninferred
@@ -169,7 +174,7 @@ break the failures down; the largest groups are:
   (`INITIALIZER_TYPE_MISMATCH` 7) and impossible smart casts
   (`SMARTCAST_IMPOSSIBLE` 7).
 - **Rejects valid**, by `kc`'s first error: type mismatches (66),
-  inference failures (52), unresolved names and imports (32), ambiguous
+  inference failures (52), unresolved names and imports (31), ambiguous
   calls (14), and calls on nullable receivers (6). No box test is
   rejected.
 
