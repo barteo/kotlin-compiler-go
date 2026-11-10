@@ -1110,6 +1110,7 @@ func (g *gen) safeCall(m *syntax.Member, memberType, result types.Type, body fun
 		g.code.Op(cf.POP)
 		g.code.Jump(cf.GOTO, c.null)
 		g.code.Place(ok)
+		g.unboxSafeReceiver(rt)
 		body()
 		g.coerce(memberType, c.t)
 		return
@@ -1117,12 +1118,7 @@ func (g *gen) safeCall(m *syntax.Member, memberType, result types.Type, body fun
 	isNull, end := cf.NewLabel(), join(result)
 	g.code.Op(cf.DUP)
 	g.code.Jump(cf.IFNULL, isNull)
-	switch nn := rt.NonNull(); {
-	case nn.IsPrimitive():
-		g.unbox(rt)
-	case types.Unboxed(nn) && !types.Unboxed(rt):
-		g.unboxValue(nn)
-	}
+	g.unboxSafeReceiver(rt)
 	g.grouped(m.Groups, g.siteKey(m.P, "safe", 0), func() {
 		body()
 		if m.Nothing {
@@ -1141,6 +1137,18 @@ func (g *gen) safeCall(m *syntax.Member, memberType, result types.Type, body fun
 	g.code.Place(end)
 	if p != nil {
 		g.unspillBelow(p.stack, result)
+	}
+}
+
+// unboxSafeReceiver unboxes the non-null receiver of type rt of a safe
+// call, which the null check left boxed: a primitive, or a value class
+// whose members take its underlying value.
+func (g *gen) unboxSafeReceiver(rt types.Type) {
+	switch nn := rt.NonNull(); {
+	case nn.IsPrimitive():
+		g.unbox(rt)
+	case types.Unboxed(nn) && !types.Unboxed(rt):
+		g.unboxValue(nn)
 	}
 }
 

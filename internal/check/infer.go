@@ -275,9 +275,12 @@ func (s *system) subArgs(sup, b types.Type) {
 		switch v {
 		case types.Out:
 			s.nest++
-			if ta.V == types.Star || ta.V == types.In {
+			switch ta.V {
+			case types.Star:
+				s.sub(starArgBound(sup, i), ba.T)
+			case types.In:
 				s.sub(types.AnyType.Nullable(), ba.T)
-			} else {
+			default:
 				s.sub(ta.T, ba.T)
 			}
 			s.nest--
