@@ -3991,6 +3991,21 @@ Two other things were tried first and dropped:
   161 µs and its delete 63 µs (medians). JFR overstates native frames
   like those, so there was little to take.
 
+The KSP bench, both backends, 100 runs, output checked against stock's
+(`CHECK`), medians of runs 51–100:
+
+| ms | stock KSP2 | kc | ratio | kc min |
+|---|---|---|---|---|
+| Moshi, leaf body edit | 209 | 21 | 10.0x | 17 |
+| Moshi, leaf signature edit | 211 | 23 | 9.2x | 20 |
+| Hilt, leaf body edit | 469 | 40 | 11.7x | 31 |
+| Hilt, leaf signature edit | 477 | 47 | 10.1x | 35 |
+
+This session's machine was slower than step 48's: kc's Moshi body run
+took 21 ms here, and 22 in the A/B batches, against 18 there, with the
+same code on that path. Stock's Hilt runs were back at about 470 ms,
+against step 48's 366.
+
 ## Gaps and open questions
 
 - **Slice simplifications (M0.4).** These go when M3/M4 bring the facts in:

@@ -65,6 +65,8 @@ step 42's: Moshi's step 42 rows pool both batches.
 | Hilt, leaf signature edit (step 47) | 460 | 44 | 10.5x | step 47 cut 3 ms (A/B, 41 against 44) |
 | Hilt, leaf body edit (step 48) | 366 | 34 | 10.8x | stock's teardown was 120 ms here, 185 in step 47; step 48 cut 1–1.5 ms (A/B) |
 | Hilt, leaf signature edit (step 48) | 376 | 40 | 9.4x | the skip doesn't fire on Hilt's signature edits |
+| Hilt, leaf body edit (step 49) | 469 | 40 | 11.7x | this session's machine was slower: kc's Moshi body run took 21 ms against step 48's 18 |
+| Hilt, leaf signature edit (step 49) | 477 | 47 | 10.1x | step 49 cut 0.4 ms off the two updates (A/B), inside the totals' spread |
 | Hilt, one-file test, warm | 403 | 59 | 6.8x | |
 | Moshi, warm | 2270 | 458 | 5.0x | about 7.5x |
 | Moshi, edit Model000 (10 files dirty) | 610 | 167 | 3.7x | |
@@ -81,6 +83,8 @@ step 42's: Moshi's step 42 rows pool both batches.
 | Moshi, leaf signature edit (step 47) | 274 | 24 | 11.4x (8.6x against step 46's stock) | step 47 cut 1–2 ms (A/B) |
 | Moshi, leaf body edit (step 48) | 218 | 18 | 12.1x (11.1x against step 46's stock) | step 48 cut 2–3 ms (A/B, 18 against 21) |
 | Moshi, leaf signature edit (step 48) | 219 | 22 | 10.0x (9.4x against step 46's stock) | |
+| Moshi, leaf body edit (step 49) | 209 | 21 | 10.0x | |
+| Moshi, leaf signature edit (step 49) | 211 | 23 | 9.2x | |
 | Moshi, one-file test, warm | 204 | 23 | 8.9x | |
 
 Hilt's leaf body edit is the first edit at 10x. Since step 37, a body
