@@ -509,6 +509,47 @@ func suggestName(x psi.NodeRef, t analysis.Type) string {
 	return typeName(t)
 }
 
+// indentUnit returns the indent of one level in src: a tab if its first
+// indented line starts with one, else its smallest indent of two to
+// eight spaces; four spaces if there is none. Code actions get no
+// formatting options, so the file's own indentation stands for them.
+func indentUnit(src string) string {
+	least := 0
+	for _, line := range strings.Split(src, "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		if line[0] == '\t' {
+			if least == 0 {
+				return "\t"
+			}
+			continue
+		}
+		n := len(line) - len(strings.TrimLeft(line, " "))
+		if n > 1 && strings.TrimSpace(line)[0] != '*' && (least == 0 || n < least) { // not a KDoc's continuation, nor a stray space
+			least = n
+		}
+	}
+	if least == 0 || least > 8 {
+		return "    "
+	}
+	return strings.Repeat(" ", least)
+}
+
+// reunit rewrites text's indents, written in levels of four spaces as
+// the fixes' templates are, in levels of unit.
+func reunit(text, unit string) string {
+	if unit == "    " {
+		return text
+	}
+	lines := strings.Split(text, "\n")
+	for i, l := range lines {
+		n := len(l) - len(strings.TrimLeft(l, " "))
+		lines[i] = strings.Repeat(unit, n/4) + l[n/4*4:]
+	}
+	return strings.Join(lines, "\n")
+}
+
 // typeName returns a name for a value of type t.
 func typeName(t analysis.Type) string {
 	simple := simpleName(t.Name)
@@ -1007,7 +1048,7 @@ func (r refactorer) toBlockBody() []Fix {
 	if unit {
 		ret = ""
 	}
-	body := "{\n" + indent + "    " + ret + e.Text() + "\n" + indent + "}"
+	body := "{\n" + indent + indentUnit(r.snap.Source()) + ret + e.Text() + "\n" + indent + "}"
 	edits = append([]FixEdit{r.edit(psi.Range{Start: eq.Range().Start, End: e.Range().End}, body)}, edits...)
 	return r.refactor(RefactorRewrite, "Convert to block body", edits...)
 }

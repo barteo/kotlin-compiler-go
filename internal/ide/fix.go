@@ -512,7 +512,7 @@ func (f fixer) implement(title string, stubs []string) []Fix {
 				}
 			}
 		}
-		edits = append(edits, f.edit(psi.Range{Start: at, End: at}, " {\n"+indentLines(members, indent+"    ", "\n")+"\n"+indent+"}"))
+		edits = append(edits, f.edit(psi.Range{Start: at, End: at}, " {\n"+indentLines(members, indent, indentUnit(f.snap.Source()), "\n")+"\n"+indent+"}"))
 	}
 	return f.fix(title, true, append(edits, sh.imports()...)...)
 }
@@ -525,7 +525,7 @@ func (f fixer) insertInto(block psi.NodeRef, items []string, indent, sep string)
 	if !lb.Valid() || !rb.Valid() {
 		return FixEdit{}, false
 	}
-	text := indentLines(items, indent+"    ", sep)
+	text := indentLines(items, indent, indentUnit(block.ContainingFile().Source()), sep)
 	last := lastSignificant(block, psi.KindRBRACE)
 	if !last.Valid() || last == lb {
 		return f.edit(psi.Range{Start: lb.Range().End, End: rb.Range().Start}, "\n"+text+"\n"+indent), true
@@ -575,17 +575,17 @@ func lineIndent(src string, off int) string {
 
 // indentLines prefixes each line of items with indent, joining the items
 // with sep and a newline.
-func indentLines(items []string, indent, sep string) string {
+func indentLines(items []string, indent, unit, sep string) string {
 	var b strings.Builder
 	for i, it := range items {
 		if i > 0 {
 			b.WriteString(sep + "\n")
 		}
-		for j, l := range strings.Split(it, "\n") {
+		for j, l := range strings.Split(reunit(it, unit), "\n") {
 			if j > 0 {
 				b.WriteString("\n")
 			}
-			b.WriteString(indent + l)
+			b.WriteString(indent + unit + l)
 		}
 	}
 	return b.String()

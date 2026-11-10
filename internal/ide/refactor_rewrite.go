@@ -1,6 +1,7 @@
 package ide
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/barteo/kotlin-compiler-go/psi"
@@ -94,7 +95,7 @@ func (r refactorer) ifToWhen() []Fix {
 	if len(branches) == len(conds) && r.used(n) {
 		return nil // an if expression without an else doesn't compile
 	}
-	ind := lineIndent(r.snap.Source(), n.Range().Start)
+	ind, unit := lineIndent(r.snap.Source(), n.Range().Start), indentUnit(r.snap.Source())
 	var b strings.Builder
 	b.WriteString("when {\n")
 	for i, br := range branches {
@@ -102,7 +103,7 @@ func (r refactorer) ifToWhen() []Fix {
 		if i < len(conds) {
 			cond = conds[i].Text()
 		}
-		b.WriteString(ind + "    " + cond + " -> " + reindent(br.Text(), "    ", 0) + "\n")
+		b.WriteString(ind + unit + cond + " -> " + reindent(br.Text(), unit, 0) + "\n")
 	}
 	b.WriteString(ind + "}")
 	return r.refactor(RefactorRewrite, "Replace 'if' with 'when'", r.edit(n.Range(), b.String()))
@@ -137,7 +138,7 @@ func (r refactorer) whenToIf() []Fix {
 		if body.NumericKind() == psi.KindIF && i < len(entries)-1 {
 			return nil // the next else could go to it
 		}
-		text := reindent(body.Text(), "", 4)
+		text := reindent(body.Text(), "", len(indentUnit(r.snap.Source())))
 		if e.ChildKind(psi.KindELSE_KEYWORD).Valid() {
 			if i == 0 {
 				return nil
@@ -216,7 +217,8 @@ func (r refactorer) braces() []Fix {
 	}
 	ind := lineIndent(r.snap.Source(), top.Range().Start)
 	if x.NumericKind() != psi.KindBLOCK {
-		text := "{\n" + ind + "    " + reindent(x.Text(), "    ", 0) + "\n" + ind + "}"
+		unit := indentUnit(r.snap.Source())
+		text := "{\n" + ind + unit + reindent(x.Text(), unit, 0) + "\n" + ind + "}"
 		return r.refactor(RefactorRewrite, "Add braces to '"+c.Text()+"' statement", r.edit(x.Range(), text))
 	}
 	inner := branch(body)
@@ -238,7 +240,7 @@ func (r refactorer) braces() []Fix {
 	if c.NumericKind() == psi.KindIF_KEYWORD && r.used(stmt) && inner.NumericKind() == psi.KindBINARY_EXPRESSION && assignment(inner) {
 		return nil
 	}
-	return r.refactor(RefactorRewrite, "Remove braces from '"+c.Text()+"' statement", r.edit(x.Range(), reindent(inner.Text(), "", 4)))
+	return r.refactor(RefactorRewrite, "Remove braces from '"+c.Text()+"' statement", r.edit(x.Range(), reindent(inner.Text(), "", len(indentUnit(r.snap.Source())))))
 }
 
 // invertIf negates an if's condition and swaps its branches.
@@ -309,13 +311,14 @@ func (r refactorer) concatToTemplate() []Fix {
 	if !top.Valid() || hasComment(top) {
 		return nil
 	}
-	literal := false
 	var parts []string // template text, an expression's as "\x00name" when a bare name may do
+	var lits []bool    // whether a part is a literal's
 	for _, op := range ops {
 		if s, ok := stringContent(op); ok {
-			parts, literal = append(parts, s), true
+			parts, lits = append(parts, s), append(lits, true)
 			continue
 		}
+		lits = append(lits, false)
 		if strings.HasPrefix(op.Text(), `"""`) || strings.Contains(op.Text(), "\n") {
 			return nil
 		}
@@ -329,11 +332,19 @@ func (r refactorer) concatToTemplate() []Fix {
 			parts = append(parts, "${"+x.Text()+"}")
 		}
 	}
-	if !literal {
+	if !slices.Contains(lits, true) {
 		return nil
 	}
 	var b strings.Builder
 	for i, p := range parts {
+		if lits[i] {
+			// "$" + "x" would join to the template "$x".
+			if i+1 < len(parts) && lits[i+1] && parts[i+1] != "" && (isIdentPart(parts[i+1][0]) || parts[i+1][0] == '{') && loneDollar(p) {
+				p = p[:len(p)-1] + `\$`
+			}
+			b.WriteString(p)
+			continue
+		}
 		name, bare := strings.CutPrefix(p, "\x00")
 		if !bare {
 			b.WriteString(p)
@@ -350,6 +361,19 @@ func (r refactorer) concatToTemplate() []Fix {
 		}
 	}
 	return r.refactor(RefactorRewrite, "Convert concatenation to template", r.edit(top.Range(), `"`+b.String()+`"`))
+}
+
+// loneDollar reports whether a literal's text ends with a $ that isn't
+// escaped.
+func loneDollar(text string) bool {
+	if !strings.HasSuffix(text, "$") {
+		return false
+	}
+	k := 0
+	for i := len(text) - 2; i >= 0 && text[i] == '\\'; i-- {
+		k++
+	}
+	return k%2 == 0
 }
 
 // templateToConcat converts a string template with expressions to a
@@ -633,7 +657,7 @@ func (r refactorer) argumentLines() []Fix {
 		var b strings.Builder
 		b.WriteString("(\n")
 		for i, it := range items {
-			b.WriteString(ind + "    " + it.Text())
+			b.WriteString(ind + indentUnit(src) + it.Text())
 			if i < len(items)-1 {
 				b.WriteString(",")
 			}

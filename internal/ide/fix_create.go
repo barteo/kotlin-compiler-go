@@ -343,7 +343,7 @@ func (f fixer) createFunction(name string, params []createParameter, ret string,
 	var out []Fix
 	if top := topDeclaration(pos); top.Valid() {
 		at := top.Range().End
-		edits := append([]FixEdit{f.edit(psi.Range{Start: at, End: at}, "\n\n"+decl)}, sh.imports()...)
+		edits := append([]FixEdit{f.edit(psi.Range{Start: at, End: at}, "\n\n"+reunit(decl, indentUnit(f.snap.Source())))}, sh.imports()...)
 		out = append(out, Fix{Title: "Create function '" + name + "'", Edits: edits})
 	}
 	if cls := enclosingClass(pos); cls.Valid() {
@@ -388,8 +388,9 @@ func memberInsert(cls psi.NodeRef, decl string) (TextEdit, bool) {
 	}
 	src := cls.ContainingFile().Source()
 	classInd := lineIndent(src, cls.Range().Start)
-	ind := classInd + "    "
-	lines := strings.Split(decl, "\n")
+	unit := indentUnit(src)
+	ind := classInd + unit
+	lines := strings.Split(reunit(decl, unit), "\n")
 	for i := range lines {
 		lines[i] = ind + lines[i]
 	}

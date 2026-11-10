@@ -29,6 +29,16 @@ var idiomCodes = map[string]bool{
 	ReplaceSizeCheck: true, ReplaceNegatedIsEmpty: true, RedundantIf: true, RedundantQualifierName: true,
 }
 
+// negated reports whether x is the operand of a !, in parentheses or
+// not.
+func negated(x psi.NodeRef) bool {
+	p := x.Parent()
+	for p.NumericKind() == psi.KindPARENTHESIZED {
+		p = p.Parent()
+	}
+	return p.NumericKind() == psi.KindPREFIX_EXPRESSION && p.ChildKind(psi.KindOPERATION_REFERENCE).FirstChild().NumericKind() == psi.KindEXCL
+}
+
 // idiomFindings returns the idiom findings of snap, a file of v.
 func idiomFindings(v *View, snap *psi.Snapshot) []finding {
 	var out []finding
@@ -60,8 +70,8 @@ func idiomFindings(v *View, snap *psi.Snapshot) []finding {
 				}
 			}
 		case psi.KindPREFIX_EXPRESSION:
-			if n.ChildKind(psi.KindOPERATION_REFERENCE).FirstChild().NumericKind() != psi.KindEXCL {
-				break
+			if n.ChildKind(psi.KindOPERATION_REFERENCE).FirstChild().NumericKind() != psi.KindEXCL || negated(n) {
+				break // in !!x.isEmpty(), the fix would leave !x.isNotEmpty()
 			}
 			if x := lastExpression(n); x.NumericKind() == psi.KindDOT_QUALIFIED_EXPRESSION {
 				call := lastExpression(x)

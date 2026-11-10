@@ -109,6 +109,21 @@ fun f(x: Int) {
     }
 }
 `},
+		{"add braces, two-space file", "Add braces to 'if' statement", `package p
+
+fun f(x: Int) {
+  /*|*/if (x > 0) println(x)
+}
+`, `package p
+
+fun f(x: Int) {
+  if (x > 0) {
+    println(x)
+  }
+}
+`},
+		{"replace if with when, tabs", "Replace 'if' with 'when'", "package p\n\nfun f(x: Int) {\n\t/*|*/if (x > 0) println(x)\n\telse println(-x)\n}\n",
+			"package p\n\nfun f(x: Int) {\n\twhen {\n\t\tx > 0 -> println(x)\n\t\telse -> println(-x)\n\t}\n}\n"},
 		{"add braces to else", "Add braces to 'else' statement", `package p
 
 fun f(x: Int) {
@@ -211,6 +226,13 @@ fun f(name: String) = name /*|*/+ "!"
 `, `package p
 
 fun f(name: String) = "$name!"
+`},
+		{"concatenation to template, a lone $", "Convert concatenation to template", `package p
+
+fun f(name: String) = "$" /*|*/+ "x" + "a$" + name
+`, `package p
+
+fun f(name: String) = "\$xa$$name"
 `},
 		{"concatenation to template, not a String", "Convert concatenation to template", `package p
 

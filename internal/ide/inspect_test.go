@@ -196,6 +196,7 @@ fun f() = A::class.java.getDeclaredMethod("r")
 		{"size not zero", "fun f(l: List<Int>, a: IntArray) = l.size > 0 && a.size != 0\n", "REPLACE_SIZE_CHECK_WITH_IS_NOT_EMPTY l.size > 0; REPLACE_SIZE_CHECK_WITH_IS_NOT_EMPTY a.size != 0", "fun f(l: List<Int>, a: IntArray) = l.isNotEmpty() && a.size != 0\n"},
 		{"size of class", "class A(val size: Int)\n\nfun f(a: A) = a.size == 0\n", "", ""},
 		{"negated isEmpty", "fun f(m: Map<Int, Int>) = !m.isEmpty()\n", "REPLACE_NEGATED_IS_EMPTY !m.isEmpty()", "fun f(m: Map<Int, Int>) = m.isNotEmpty()\n"},
+		{"double negated isEmpty", "fun f(m: Map<Int, Int>) = !!m.isEmpty()\n", "", ""},
 		{"redundant if", "fun f(x: Int) = if (x > 0) true else false\n", "REDUNDANT_IF if", "fun f(x: Int) = x > 0\n"},
 		{"redundant if negated", "fun f(x: Int): Boolean {\n    if (x > 0) {\n        return false\n    } else {\n        return true\n    }\n}\n", "REDUNDANT_IF if", "fun f(x: Int): Boolean {\n    return x <= 0\n}\n"},
 		{"redundant if double", "fun f(x: Double) = if (x > 0.0) false else true\n", "REDUNDANT_IF if", "fun f(x: Double) = !(x > 0.0)\n"},
@@ -312,6 +313,10 @@ func TestInspectionsScan(t *testing.T) {
 		v := NewView(res, snaps)
 		for _, sn := range snaps {
 			doc := NewDocument(sn.Path(), 1, sn.Source())
+			before := map[string]int{}
+			for _, d := range Inspections(v, sn.Path()) {
+				before[d.Code]++
+			}
 			for _, d := range Inspections(v, sn.Path()) {
 				found[d.Code]++
 				for _, fx := range QuickFixes(v, doc, d, FixEnv{}) {
@@ -363,6 +368,20 @@ func TestInspectionsScan(t *testing.T) {
 						t.Errorf("%s: %s", id, strings.Join(msgs, "; "))
 					} else if budget[id] && !testing.Short() {
 						t.Errorf("%s now applies cleanly: remove it from testdata/inspect-budget.txt", id)
+					} else if !findingCodes[d.Code] && d.Code != UnnecessarySafeCall {
+						// The fix removes the warning, and makes no new one of its
+						// code. Not for safe calls: in s?.length?.toString(), the
+						// fix of the first makes the second unnecessary, as kotlinc
+						// would then say too.
+						n := 0
+						for _, x := range Inspections(NewView(res, after), sn.Path()) {
+							if x.Code == d.Code {
+								n++
+							}
+						}
+						if n >= before[d.Code] {
+							t.Errorf("%s: %d warnings after the fix, %d before", id, n, before[d.Code])
+						}
 					}
 				}
 			}

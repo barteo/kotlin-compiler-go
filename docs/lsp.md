@@ -1001,6 +1001,10 @@ protocol changes: all of them ride on published diagnostics and
    - concatenation in a `const` initializer;
    - a nested lambda's own `it`;
    - lists holding comments.
+
+   `codeAction` carries no formatting options, so the rewrites, and the
+   fixes that insert members or bodies, indent by the file's own unit:
+   a tab, or its smallest indent of spaces.
 5. **Settings.** `initializationOptions.inspections` maps a code to
    `off`, `hint`, `information` or `warning`, for example
    `{"REPLACE_GET_OR_SET": "off"}`. An unknown code or level is logged
@@ -1011,8 +1015,11 @@ Tests:
   result: it must check without diagnostics and compile with `kc`.
 - `TestInspectionsScan` applies every inspection's fix throughout
   `testdata/run`, and each program must still check. It finds
-  76 warnings and applies 74 fixes, none failing; 42 of the warnings are
-  `REPLACE_GET_OR_SET`.
+  75 warnings and applies 73 fixes, none failing; 42 of the warnings are
+  `REPLACE_GET_OR_SET`. Each fix must also leave fewer warnings of its
+  code in the file. The one exception is a safe call, where fixing
+  `s?.` in `s?.length?.toString()` rightly makes the next `?.`
+  unnecessary.
 - `TestRefactorScan` now also samples the rewrites' constructs. Its
   roughly 13,700 applications have one known failure, budgeted since L7.
   It found three older bugs, now fixed:
@@ -1105,9 +1112,7 @@ within their run-to-run noise on the same machine.
 - **Rename** doesn't check conflicts with other declarations (IntelliJ
   warns), doesn't rename a property's Java-style accessors, and keeps
   aliased and operator uses.
-- **Quick fixes.** Unresolved types have an uncoded message ("unresolved
-  or unsupported type"), so they get no import fix.
-  `MANY_IMPL_MEMBER_NOT_IMPLEMENTED` is reported only for delegation.
+- **Quick fixes.** `MANY_IMPL_MEMBER_NOT_IMPLEMENTED` is reported only for delegation.
   Stubs call `TODO()`, not `super`. A file with syntax errors has no
   fixes beyond its diagnostics' psi, and a function with an error has
   no facts for fixes that need them.
