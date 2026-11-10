@@ -61,6 +61,8 @@ step 42's: Moshi's step 42 rows pool both batches.
 | Hilt, leaf signature edit (step 45, slower machine) | 481 | 48 | 10.0x | step 45 cut 5–6 ms (A/B against step 44's libkc) |
 | Hilt, leaf body edit (step 46, Gradle's layout) | 484 | 36 | 13.4x | |
 | Hilt, leaf signature edit (step 46, Gradle's layout) | 476 | 43 | 11.1x | |
+| Hilt, leaf body edit (step 47) | 461 | 37 | 12.5x | step 47 cut 3.5 ms (A/B, 34.5 against 38) |
+| Hilt, leaf signature edit (step 47) | 460 | 44 | 10.5x | step 47 cut 3 ms (A/B, 41 against 44) |
 | Hilt, one-file test, warm | 403 | 59 | 6.8x | |
 | Moshi, warm | 2270 | 458 | 5.0x | about 7.5x |
 | Moshi, edit Model000 (10 files dirty) | 610 | 167 | 3.7x | |
@@ -73,6 +75,8 @@ step 42's: Moshi's step 42 rows pool both batches.
 | Moshi, leaf signature edit (step 45, slower machine) | 225 | 33 | 6.8x | step 45 cut 5–6 ms (A/B against step 44's libkc) |
 | Moshi, leaf body edit (step 46, Gradle's layout) | 200 | 22 | 9.1x | the layout cut stock's teardown by about 15 ms |
 | Moshi, leaf signature edit (step 46, Gradle's layout) | 207 | 28 | 7.4x | |
+| Moshi, leaf body edit (step 47) | 272 | 20 | 13.6x (10.0x against step 46's stock) | stock's teardown varies from batch to batch (116 ms here, 30 in step 46) |
+| Moshi, leaf signature edit (step 47) | 274 | 24 | 11.4x (8.6x against step 46's stock) | step 47 cut 1–2 ms (A/B) |
 | Moshi, one-file test, warm | 204 | 23 | 8.9x | |
 
 Hilt's leaf body edit is the first edit at 10x. Since step 37, a body
@@ -107,9 +111,14 @@ KSP's symbol layer. What is left:
   generated files, and `calcDirtyFiles`' dirtiness propagation. Stock
   pays all of it; trimming it in the fork is KSP-side. Until step 46 the
   bench's layout sent each backup path through `toRelativeString`'s
-  slow path, which Gradle's layout doesn't. What is left is reads and
-  writes of KSP's on-disk lookup and symbol maps, spread thin: cutting
-  it would need an in-memory layer over them.
+  slow path, which Gradle's layout doesn't. Since step 47 (fork patch
+  0016) the check of clean outputs against their backups runs on another
+  thread while the processors run, which took 1.5–3 ms off the
+  teardown. What is left is reads and writes of KSP's on-disk lookup and
+  symbol maps (`updateLookupCache`, about 1.3 ms), `DirtinessPropagator`
+  (about 0.7), the caches' up-to-date marker, deleted and created again
+  each run, and the wait for the output writers (about 0.4). Cutting
+  the maps' share would need an in-memory layer over them.
 - **kc-aa's rounds**: about 5 ms per Moshi body run since step 46. That
   step made the JVM keep unchanged files' PSI by libkc's text hash
   (no stat or read per file per round), cached the session's source

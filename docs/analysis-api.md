@@ -3712,6 +3712,97 @@ half of it KotlinPoet writing the adapter) and KSP's bookkeeping (about
 5): reads and writes of its on-disk lookup and symbol maps, spread over
 `calcDirtyFiles`, `DirtinessPropagator` and `updateCaches`.
 
+#### Step 47: KSP checks clean outputs against their backups while the processors run
+
+After step 46, a Moshi body run took 22 ms with kc: setup 4, processing
+9, kc's second round 2 and teardown 4. A JFR of runs 51–100 put about
+1.7 ms per run of the teardown in `updateOutputs`:
+
+- 33 main-thread samples (about 0.7 ms per run) in `upToDate`,
+  `attributes` and the backup paths;
+- `ThreadPark` events in 22 of the 50 runs, 51.6 ms in all, while the main
+  thread waited for fork patch 0015's parallel check.
+
+`updateOutputs` checks every clean output against its backup (size and
+millisecond time), which is about 800 outputs and 1600 stats on Moshi,
+on every run. In a daemon almost all of them are up to date.
+
+The clean outputs are known long before the end of the run. They are
+outputs in `sourceToOutputsMap`. That map is in memory once
+`calcDirtyFiles` returns, and only `updateCaches` changes it, at the end
+of the run and only for dirty sources.
+
+Fork patch 0016 starts the same check of every output in the map on a
+common-pool thread when `calcDirtyFiles` returns (`startOutputChecks`):
+
+- The main thread only snapshots the map's lists, which are replaced,
+  never changed.
+- `updateOutputs` then takes the set of outputs found up to date. It
+  checks again only the pairs that are missing from the set and the
+  outputs this run wrote. A processor may have changed those, and the
+  output writer writes no others.
+- The dirty outputs' backups are checked as before.
+- Backups change only in `updateOutputs`.
+- The one difference: an outside change to a clean output or to its
+  backup made while the processors run is seen by the next run, as a
+  change made just after this run would be. Gradle cleans the outputs
+  before KSP starts.
+- `KSP_NO_PRECHECK=1` turns the check off, for A/B batches.
+
+A first version checked in parallel, as patch 0015 does at the end. On
+Moshi it cut the teardown by as much, but processing got 0.7–1.5 ms
+slower in two of four batches. The processors and the output writers
+use the other cores. One thread finishes well within the about 11 ms it
+has, and in three alternating batches it did as well as the parallel
+version or better (body 20 against 20 ms, signature 25 against 25,
+means 21.3 against 21.8 and 26.2 against 27.2).
+
+`build.sh`'s incremental check now also runs with the outputs deleted
+before the second run, as Gradle does
+(`incremental, outputs deleted: ok`). Until now the restore of clean
+outputs from their backups had no test, because the outputs were always
+still there.
+
+With the change, the JFR has 4 main-thread samples in `updateOutputs`
+and no parks.
+
+A/B on one machine, kc only, leaf edits alternating body and signature,
+medians of runs 51–100 (means in brackets):
+
+| ms | on | off (`KSP_NO_PRECHECK=1`) |
+|---|---|---|
+| Moshi body, 3 batches | 21 (22.2), teardown 2 (2.4) | 22 (22.7), teardown 4 (3.9) |
+| Moshi signature, 3 batches | 25 (27.0) | 27 (27.8) |
+| Hilt body, 2 batches | 34.5 (36.1), teardown 2 (1.6) | 38 (40.1), teardown 5 (4.8) |
+| Hilt signature, 2 batches | 41 (44.5) | 44 (45.9) |
+
+The teardown drops by 1.5–3 ms on both projects. On Moshi the totals
+gain less, 0.5–2 ms, because processing's mean rises by up to 0.8 ms
+while the check runs beside it.
+
+The KSP bench, both backends, 100 runs, output checked against stock's
+(`CHECK`):
+
+| ms | stock KSP2 | kc | ratio | kc min |
+|---|---|---|---|---|
+| Moshi, leaf body edit | 272 | 20 | 13.6x | 16 |
+| Moshi, leaf signature edit | 274 | 24 | 11.4x | 20 |
+| Hilt, leaf body edit | 461 | 37 | 12.5x | 31 |
+| Hilt, leaf signature edit | 460 | 44 | 10.5x | 36 |
+
+Stock's Moshi teardown was 116 ms in this batch, against 29–30 in step
+46's first batch. Step 46's second batch had already shown that it
+varies from batch to batch. Against step 46's faster stock (200 and 207
+ms), kc's Moshi rows are 10.0x and 8.6x.
+
+What is left of KSP's bookkeeping on Moshi, by the same JFR:
+- `updateLookupCache`, about 1.3 ms per run;
+- `cachesUpToDateFile.createNewFile`, 37 samples in this JFR and 3 in
+  step 46's, so it varies;
+- `DirtinessPropagator`, about 0.7 ms;
+- `CodeGeneratorImpl.drain`'s wait for the output writers, about
+  0.4 ms.
+
 ## Gaps and open questions
 
 - **Slice simplifications (M0.4).** These go when M3/M4 bring the facts in:
