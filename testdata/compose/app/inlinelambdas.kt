@@ -8,8 +8,16 @@ import lib.Text
 class Slots {
     val items = mutableListOf<@Composable (String) -> Unit>()
 
+    val extras = mutableListOf<@Composable () -> Unit>()
+
     fun add(content: @Composable (String) -> Unit) {
         items += content
+    }
+
+    // A lambda added with +=, which has several candidates, is a
+    // composable one too.
+    fun extra(label: String) {
+        extras += { Text("extra $label") }
     }
 }
 
@@ -30,10 +38,14 @@ fun ShowSlots(slots: Slots) {
     for (c in slots.items) {
         c("slot")
     }
+    for (c in slots.extras) {
+        c()
+    }
 }
 
 // The program's copies.
 fun appSlots(): Slots = Slots().apply {
     typed<String> { Text("app typed $it") }
     plain("app")
+    extra("app")
 }
