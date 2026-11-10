@@ -1248,6 +1248,33 @@ func TestMetro(t *testing.T) {
 	}
 }
 
+// A contribution of a class in the default package, or of an internal
+// class, has a hint that names it.
+func TestMetroHints(t *testing.T) {
+	lib := stdlib()
+	rt, _ := metroJars()
+	if lib == "" || rt == "" {
+		t.Skip("kotlin-stdlib.jar or Metro 1.5.2's runtime not found")
+	}
+	for name, src := range map[string]string{
+		"default package": "import dev.zacsweers.metro.*\n\ninterface I\n@ContributesBinding(AppScope::class) @Inject class Impl : I\n",
+		"internal class":  "package a\n\nimport dev.zacsweers.metro.*\n\ninterface I\n@ContributesBinding(AppScope::class) @Inject internal class Impl : I\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			file := filepath.Join(t.TempDir(), "a.kt")
+			os.WriteFile(file, []byte(src), 0o644)
+			out := t.TempDir()
+			if err := Compile([]string{file}, Options{OutDir: out, Jobs: 1, ClassPath: []string{lib, rt}, Metro: true}); err != nil {
+				t.Fatal(err)
+			}
+			hints, _ := filepath.Glob(filepath.Join(out, "metro/hints/*.class"))
+			if len(hints) != 1 {
+				t.Errorf("got hints %v, want one", hints)
+			}
+		})
+	}
+}
+
 // composeJars returns the class path of Compose's runtime: $KC_COMPOSE_CP,
 // or the version that testdata/compose.out was generated with in Gradle's
 // cache, runtime-android 1.9.2 and runtime-annotation-android 1.9.2, whose

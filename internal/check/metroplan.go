@@ -573,8 +573,9 @@ func contributionName(scope *types.ClassSym) string {
 	return "MetroContributionTo" + strings.ToUpper(s[:1]) + s[1:]
 }
 
-// hint writes the hint of a class's contribution to a scope: a function
-// in package metro.hints, named after the scope, that takes the class.
+// hint writes the hint of a class's contribution to a scope: a public
+// function in package metro.hints, named after the scope, that takes the
+// class, also an internal one, as Metro's does.
 func (m *metroAnalysis) hint(cls, scope *types.ClassSym) {
 	fn := strings.ReplaceAll(fqName(scope), ".", "_")
 	var name strings.Builder
@@ -583,8 +584,16 @@ func (m *metroAnalysis) hint(cls, scope *types.ClassSym) {
 	}
 	name.WriteString(strings.ToUpper(fn[:1]) + fn[1:])
 	facade := name.String() + "Kt"
-	src := fmt.Sprintf("@file:JvmName(%q)\npackage metro.hints\n\n@kotlin.Deprecated(\"This synthesized declaration should not be used directly\", level = kotlin.DeprecationLevel.HIDDEN)\nfun %s(contributed: %s) {}\n",
-		facade, fn, metroClassName(cls))
+	imp := ""
+	top := cls
+	for top.Outer != nil {
+		top = top.Outer
+	}
+	if !strings.Contains(top.Name, "/") {
+		imp = "import " + metroClassName(top) + "\n\n" // a class of the default package
+	}
+	src := fmt.Sprintf("@file:JvmName(%q)\npackage metro.hints\n\n%s@kotlin.Deprecated(\"This synthesized declaration should not be used directly\", level = kotlin.DeprecationLevel.HIDDEN)\n@kotlin.Suppress(\"EXPOSED_PARAMETER_TYPE\")\nfun %s(contributed: %s) {}\n",
+		facade, imp, fn, metroClassName(cls))
 	m.plan.Files = append(m.plan.Files, MetroFile{Path: "metro/hints/" + facade + ".kt", Src: src})
 }
 
