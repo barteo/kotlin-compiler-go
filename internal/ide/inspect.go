@@ -77,6 +77,9 @@ func Inspections(v *View, path string) []Diagnostic {
 	for _, x := range styleFindings(snap, v.ExplicitAPI) {
 		out = append(out, x.Diagnostic)
 	}
+	for _, x := range idiomFindings(v, snap) {
+		out = append(out, x.Diagnostic)
+	}
 	for _, d := range unusedPrivate(snap) {
 		what := "Function"
 		if d.NumericKind() == psi.KindPROPERTY {

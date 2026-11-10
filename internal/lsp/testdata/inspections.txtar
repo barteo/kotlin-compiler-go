@@ -17,6 +17,12 @@ class C {
 /*|pub*/public class B() {
     fun h(x: Int) = "${x}";
 }
+-- src/C.kt --
+fun c(xs: List<Int>, s: String): Boolean {
+    println(/*|get*/xs.get(0))
+    println(s ?: "none")
+    return if (xs.size == 0) false else true
+}
 -- script --
 initialize
 open src/A.kt
@@ -30,6 +36,10 @@ open src/B.kt
 wait
 diagnostics src/B.kt
 actions src/B.kt @pub only=quickfix apply=1
+open src/C.kt
+wait
+diagnostics src/C.kt
+actions src/C.kt @get only=quickfix apply=1
 -- want --
 > initialize
 > open src/A.kt
@@ -243,3 +253,79 @@ actions src/B.kt @pub only=quickfix apply=1
 1. Remove redundant 'public' modifier [quickfix preferred] REDUNDANT_VISIBILITY_MODIFIER
   src/B.kt:
     0:0-0:7 "public " -> ""
+> open src/C.kt
+> wait
+> diagnostics src/C.kt
+[
+  {
+    "range": {
+      "start": {
+        "line": 1,
+        "character": 12
+      },
+      "end": {
+        "line": 1,
+        "character": 21
+      }
+    },
+    "severity": 3,
+    "code": "REPLACE_GET_OR_SET",
+    "source": "kc",
+    "message": "Explicit 'get' call can be replaced with indexing"
+  },
+  {
+    "range": {
+      "start": {
+        "line": 2,
+        "character": 14
+      },
+      "end": {
+        "line": 2,
+        "character": 23
+      }
+    },
+    "severity": 2,
+    "code": "USELESS_ELVIS",
+    "source": "kc",
+    "message": "Elvis operator (?:) always returns the left operand of non-nullable type String",
+    "tags": [
+      1
+    ]
+  },
+  {
+    "range": {
+      "start": {
+        "line": 3,
+        "character": 11
+      },
+      "end": {
+        "line": 3,
+        "character": 13
+      }
+    },
+    "severity": 3,
+    "code": "REDUNDANT_IF",
+    "source": "kc",
+    "message": "Redundant 'if' statement"
+  },
+  {
+    "range": {
+      "start": {
+        "line": 3,
+        "character": 15
+      },
+      "end": {
+        "line": 3,
+        "character": 27
+      }
+    },
+    "severity": 3,
+    "code": "REPLACE_SIZE_ZERO_CHECK_WITH_IS_EMPTY",
+    "source": "kc",
+    "message": "Size check can be replaced with 'isEmpty()'"
+  }
+]
+> actions src/C.kt @get only=quickfix apply=1
+1. Replace 'get' call with indexing operator [quickfix preferred] REPLACE_GET_OR_SET
+  src/C.kt:
+    1:12-1:21 "xs.get(0)" -> "xs[0]"

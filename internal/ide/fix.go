@@ -210,6 +210,12 @@ func (f fixer) fixes(env FixEnv) []Fix {
 			api = f.v.ExplicitAPI
 		}
 		return f.findingFix(styleFindings(f.snap, api))
+	case idiomCodes[d.Code]:
+		// The view's facts are of its snapshot: the document's if unchanged.
+		if f.v == nil || f.v.byPath[f.snap.Path()] == nil || f.v.byPath[f.snap.Path()].Source() != f.snap.Source() {
+			return nil
+		}
+		return f.findingFix(idiomFindings(f.v, f.v.byPath[f.snap.Path()]))
 	}
 	return nil
 }
