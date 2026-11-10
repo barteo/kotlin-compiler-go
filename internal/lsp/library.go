@@ -26,6 +26,7 @@ type libraries struct {
 	off     bool   // initializationOptions.librarySources false: stubs only
 	noStubs bool   // nor stubs from the library's metadata (tests)
 	dir     string // initializationOptions.libraryCache, or ""
+	jdk     string // the JDK whose sources to read, if not the module's (tests)
 
 	mu      sync.Mutex
 	finders map[string]*libsrc.Finder // by class path and JDK
@@ -58,6 +59,9 @@ func (s *Server) finder(path string) *libsrc.Finder {
 	if !found {
 		return nil
 	}
+	if s.lib.jdk != "" {
+		jdk = s.lib.jdk
+	}
 	key := strings.Join(cp, "\x00") + "\x01" + jdk
 	s.lib.mu.Lock()
 	defer s.lib.mu.Unlock()
@@ -76,9 +80,18 @@ func (s *Server) finder(path string) *libsrc.Finder {
 // its location in the file extracted for it: from the library's sources,
 // or else a stub rendered from its metadata.
 func (s *Server) libraryLoc(path string, t libsrc.Target) (ide.Loc, libsrc.Location, bool) {
+	return s.libraryLocIn(path, t, false)
+}
+
+// libraryLocIn is libraryLoc; with kotlin, a declaration in a Java source
+// is located in its stub instead, a Kotlin rendering of its class file.
+func (s *Server) libraryLocIn(path string, t libsrc.Target, kotlin bool) (ide.Loc, libsrc.Location, bool) {
 	loc, ok := libsrc.Location{}, false
 	if f := s.finder(path); f != nil {
 		loc, ok = f.Locate(t)
+		if ok && kotlin && !strings.HasSuffix(loc.Entry, ".kt") {
+			ok = false
+		}
 	}
 	if !ok {
 		loc, ok = s.stub(path, t)
@@ -227,13 +240,14 @@ func (s *Server) libraryDoc(c caret) string {
 
 // libraryDecl returns a function finding a target's declaration in the
 // library of the module of path, in the file extracted for it, or nil
-// when library sources are off.
+// when library sources are off. The declaration is Kotlin's, for the
+// hierarchies to read: a Java class's is in its stub.
 func (s *Server) libraryDecl(path string) func(libsrc.Target) (psi.NodeRef, bool) {
 	if s.lib.off && s.lib.noStubs {
 		return nil
 	}
 	return func(t libsrc.Target) (psi.NodeRef, bool) {
-		l, _, ok := s.libraryLoc(path, t)
+		l, _, ok := s.libraryLocIn(path, t, true)
 		if !ok {
 			return psi.NodeRef{}, false
 		}

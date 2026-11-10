@@ -1,6 +1,7 @@
 package lsp
 
 import (
+	"archive/zip"
 	"context"
 	"encoding/json"
 	"errors"
@@ -264,6 +265,12 @@ func runScript(t *testing.T, a *archive) string {
 		}
 		s.srv.lib.off, s.srv.lib.noStubs = false, false
 		s.srv.lib.dir = filepath.Join(s.root, ".libcache")
+	}
+	// The JDK's sources are not the machine's, whose JDK may have none:
+	// sections _jdksrc/<entry> are the src.zip of a JDK of their own.
+	s.srv.lib.jdk = libsrc.NoJDK
+	if jdk := writeJDKSources(t, a, s.root); jdk != "" {
+		s.srv.lib.jdk = jdk
 	}
 	go func() {
 		code, err := s.srv.run()
@@ -1196,4 +1203,40 @@ func (s *session) applyEdit(we *protocol.WorkspaceEdit) {
 		}
 		s.edit(f, changes)
 	}
+}
+
+// writeJDKSources writes the sections _jdksrc/<entry> as the lib/src.zip
+// of a directory under root, and returns the directory; "" if there are
+// none.
+func writeJDKSources(t *testing.T, a *archive, root string) string {
+	var files []section
+	for _, sec := range a.sections {
+		if strings.HasPrefix(sec.name, "_jdksrc/") {
+			files = append(files, sec)
+		}
+	}
+	if len(files) == 0 {
+		return ""
+	}
+	dir := filepath.Join(root, ".jdk")
+	if err := os.MkdirAll(filepath.Join(dir, "lib"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	f, err := os.Create(filepath.Join(dir, "lib", "src.zip"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	w := zip.NewWriter(f)
+	for _, sec := range files {
+		fw, err := w.Create(strings.TrimPrefix(sec.name, "_jdksrc/"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		fw.Write([]byte(sec.body))
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return dir
 }

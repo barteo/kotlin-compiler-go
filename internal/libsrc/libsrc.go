@@ -74,8 +74,11 @@ type located struct {
 // maxFound is how many targets' locations a Finder keeps.
 const maxFound = 256
 
+// NoJDK, as New's jdkHome, leaves the JDK's sources out.
+const NoJDK = "-"
+
 // New returns the finder of the sources of classPath's jars and of the
-// JDK at jdkHome ("" for $JAVA_HOME's).
+// JDK at jdkHome ("" for $JAVA_HOME's, NoJDK for none).
 func New(classPath []string, jdkHome string) *Finder {
 	f := &Finder{}
 	seen := map[string]bool{}
@@ -91,7 +94,7 @@ func New(classPath []string, jdkHome string) *Finder {
 	if jdkHome == "" {
 		jdkHome = os.Getenv("JAVA_HOME")
 	}
-	if jdkHome != "" {
+	if jdkHome != "" && jdkHome != NoJDK {
 		if p := filepath.Join(jdkHome, "lib", "src.zip"); exists(p) {
 			add(p)
 		}
