@@ -57,3 +57,29 @@ func declarations(s *psi.Snapshot) (*syntax.File, *lower.Provenance, []*syntax.E
 	declCache.Unlock()
 	return f, prov, nil
 }
+
+// declStub returns, for a file a check of only some files can't reach
+// (reachable), a stub of lower.Declarations(s): its path and package,
+// which the checker still declares, so that an import of the package
+// resolves, but no declarations, which saves copying them. A file whose
+// declarations aren't kept, or with file annotations (@file:JvmName,
+// @file:JvmMultifileClass) or expect declarations, which pair or clash
+// with other files' without naming them, is lowered as declarations.
+func declStub(s *psi.Snapshot) (*syntax.File, *lower.Provenance, []*syntax.Error) {
+	if noReuse {
+		return lower.Declarations(s)
+	}
+	k := weak.Make(s)
+	declCache.Lock()
+	e, ok := declCache.m[k]
+	declCache.Unlock()
+	if !ok {
+		return declarations(s)
+	}
+	f := e.f
+	if len(f.Annotations) > 0 || f.JvmName != "" || f.Part != "" || len(f.Expects) > 0 || len(f.Errors) > 0 {
+		c, _ := syntax.Clone(f, e.shares)
+		return c, nil, nil
+	}
+	return &syntax.File{Path: f.Path, Package: f.Package, PackageP: f.PackageP, Facade: f.Facade}, nil, nil
+}

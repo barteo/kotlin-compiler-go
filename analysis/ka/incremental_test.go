@@ -316,6 +316,16 @@ func TestIncrementalDecl(t *testing.T) {
 		"package m2\nfun farValue() = 1L\n",
 		"package m2\nclass Far { fun far() = 2 }\n",
 		"package m2\nfun useNear() = Near().near()\nfun mm() = 0\n",
+		// A sealed class's subclass no file names, which a when counts.
+		"package sl\nsealed class S\nclass A1 : S()\nfun pick(s: S) = when (s) { is A1 -> 1 }\nfun sl0() = 0\n",
+		"package sl\nclass B1 : S()\n",
+		// A package only a file the check doesn't reach declares.
+		"package qq\nfun qq1() = 1\n",
+		"package pp\nimport qq.*\nfun pp0() = 0\n",
+		// Two facades of one name. The checker reports no clash, so this
+		// only shows that declStub, which never stubs them, stays right.
+		"@file:JvmName(\"Facade\")\npackage jj\nfun jj1() = 1\n",
+		"@file:JvmName(\"Facade\")\npackage jj\nfun jj0() = 0\n",
 	}
 	// checked, if not 0, is how many files the update's last check checks:
 	// the changed one, those that look up what changed in it, and those
@@ -354,6 +364,9 @@ func TestIncrementalDecl(t *testing.T) {
 		{"reached by an inferred type", 23, "fun zz() = 0", "fun zz() = 0L", true, 1},
 		{"reached by an operator", 26, "fun oo() = 0", "fun oo() = 0L", true, 1},
 		{"reached by a declaration", 30, "fun mm() = 0", "fun mm() = 0L", true, 1},
+		{"sealed subclass", 31, "fun sl0() = 0", "fun sl0() = 0L", true, 1},
+		{"package of a stub", 34, "fun pp0() = 0", "fun pp0() = 0L", true, 1},
+		{"facade name", 36, "fun jj0() = 0", "fun jj0() = 0L", true, 1},
 	}
 	// resolved is, for some edits, how many files the update's last
 	// check resolves the signatures of (reachable).
@@ -361,6 +374,8 @@ func TestIncrementalDecl(t *testing.T) {
 		"reached by an inferred type": 5, // its own three, o's operator and Vec
 		"reached by an operator":      3,
 		"reached by a declaration":    5, // its own, Near's, farValue's, o's operator and Vec
+		"sealed subclass":             4, // its own, B1's, o's operator and Vec
+		"package of a stub":           3,
 		"unused function":             3, // and o's operator and Vec
 	}
 	cfg := withStdlib(t)

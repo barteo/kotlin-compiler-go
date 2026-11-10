@@ -426,7 +426,7 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 	changed := prev.changedFiles(paths, sources, texts)
 	broken := map[int]bool{}
 	if changed != nil {
-		broken = lowerFiles(snaps, files, provs, m, jobs, changed, nil)
+		broken = lowerFiles(snaps, files, provs, m, jobs, changed, nil, nil)
 	}
 	rest := func(i int) bool { return files[i] == nil }
 	// An update whose changed files declare what they did, and whose
@@ -494,7 +494,15 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 	if dirty == nil {
 		notDirty = nil
 	}
-	maps.Copy(broken, lowerFiles(snaps, files, provs, m, jobs, rest, notDirty))
+	// The files a check of only some can't reach are stubs (reachable).
+	var reach map[int]bool
+	stub := func(i int) bool { return reach != nil && !reach[i] }
+	if dirty != nil {
+		reach = reachable(snaps, dirty, javaTexts, cache)
+	} else {
+		lastResolved.Store(int64(len(sources)))
+	}
+	maps.Copy(broken, lowerFiles(snaps, files, provs, m, jobs, rest, notDirty, stub))
 	if java != nil {
 		java.SetKotlin(files)
 	}
@@ -512,7 +520,7 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 			lastChecked.Store(int64(len(files)))
 		}
 		tm.Note("checked", int(lastChecked.Load()))
-		rec, checkErrs, err := checkFiles(ctx, files, lib, jobs, only, namesIn(snaps, files, only), reachable(snaps, files, only, javaTexts, cache))
+		rec, checkErrs, err := checkFiles(ctx, files, lib, jobs, only, namesIn(snaps, files, only))
 		if !rec.bodies.IsZero() {
 			tm.MarkAt("signatures", rec.bodies)
 		}
@@ -530,7 +538,7 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 					clean = append(clean, f)
 				}
 			}
-			rec, checkErrs, err = checkFiles(ctx, clean, lib, jobs, nil, nil, nil)
+			rec, checkErrs, err = checkFiles(ctx, clean, lib, jobs, nil, nil)
 		}
 		if err != nil {
 			return nil, err
@@ -594,7 +602,13 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 			dirty, only, notDirty = nil, nil, nil
 		}
 		clear(files)
-		lowerFiles(snaps, files, provs, nil, jobs, rest, notDirty)
+		reach = nil
+		if dirty != nil {
+			reach = reachable(snaps, dirty, javaTexts, cache)
+		} else {
+			lastResolved.Store(int64(len(sources)))
+		}
+		lowerFiles(snaps, files, provs, nil, jobs, rest, notDirty, stub)
 		m.Diagnostics, m.Files = javaDiags, nil
 		tm.Mark("lower")
 	}
@@ -652,60 +666,79 @@ func namesIn(snaps []*psi.Snapshot, files []*syntax.File, only map[*syntax.File]
 	return names
 }
 
-// reachable returns, for a check of only some files, the files whose
-// signatures the checker resolves (check.Options.Resolve): the checked
-// files, and those holding a top-level declaration reached from them. A
-// declaration is reached if a reached text writes a name it declares
-// (its own or a class's it nests), and its text is then reached: the
-// checked files' whole texts are, and so are the top-level operators and
-// functions a construct calls by convention, which code calls without
-// writing their names, and the declarations named in the Java sources,
-// whose members may return a Kotlin class no Kotlin file names. So an
-// inferred type (val x = f()), a supertype, a typealias or an extension
-// is reached through the names that lead to it, and so are the members
-// of the classes a reached text names. A declaration that isn't reached
-// in a file that is still has its signature resolved, with the classes
-// it names, which every file declares, but none of their members. It
+// reachable returns, for a check of only the dirty files, the files
+// the check can reach: the others are given to it as stubs, their
+// packages without declarations (declStub). A top-level declaration is
+// reached if a reached text writes a name it declares (its own or a
+// class's it nests), and its text is then reached: the dirty files'
+// whole texts are, and so are the top-level operators and functions a
+// construct calls by convention, which code calls without writing their
+// names, and the declarations named in the Java sources, whose members
+// may return a Kotlin class no Kotlin file names. So an inferred type
+// (val x = f()), a supertype, a typealias or an extension is reached
+// through the names that lead to it, and so are the members of the
+// classes a reached text names. A reached sealed class reaches the
+// classes whose supertypes name it too, which a when on it counts
+// though no text need name them. Every name the check looks up is one a
+// reached text writes, so the files declaring it are reached. It
 // returns nil, every file, if the files reached are more than half.
-func reachable(snaps []*psi.Snapshot, files []*syntax.File, only map[*syntax.File]bool, javaTexts []string, cache *checkCache) map[*syntax.File]bool {
-	lastResolved.Store(int64(len(files)))
-	if only == nil || noReach {
+func reachable(snaps []*psi.Snapshot, dirty map[int]bool, javaTexts []string, cache *checkCache) map[int]bool {
+	lastResolved.Store(int64(len(snaps)))
+	if dirty == nil || noReach {
 		return nil
 	}
 	type at struct{ file, decl int }
 	fns := make([]*fileNames, len(snaps))
 	declares := map[string][]at{}
-	set := map[*syntax.File]bool{}
+	sealed := map[string]bool{}
+	subs := map[string][]at{} // by a name their supertypes write
+	set := map[int]bool{}
 	reached := map[at]bool{}
 	var queue []map[string]bool
 	reach := func(a at) {
-		set[files[a.file]] = true
+		set[a.file] = true
 		if !reached[a] {
 			reached[a] = true
 			queue = append(queue, fns[a.file].decls[a.decl].ids)
 		}
 	}
-	for i, f := range files {
-		fn := cache.names(snaps[i])
+	for i, snap := range snaps {
+		fn := cache.names(snap)
 		fns[i] = fn
 		for k, d := range fn.decls {
 			for _, n := range d.names {
 				declares[n] = append(declares[n], at{i, k})
 			}
+			for _, n := range d.sealed {
+				sealed[n] = true
+			}
+			for n := range d.supers {
+				subs[n] = append(subs[n], at{i, k})
+			}
+		}
+	}
+	for i, fn := range fns {
+		for k, d := range fn.decls {
 			if d.operator {
 				reach(at{i, k})
 			}
 		}
-		if only[f] {
-			set[f] = true
+		if dirty[i] {
+			set[i] = true
 			queue = append(queue, fn.all)
 		}
 	}
 	names := map[string]bool{}
 	name := func(n string) {
-		if !names[n] {
-			names[n] = true
-			for _, a := range declares[n] {
+		if names[n] {
+			return
+		}
+		names[n] = true
+		for _, a := range declares[n] {
+			reach(a)
+		}
+		if sealed[n] {
+			for _, a := range subs[n] {
 				reach(a)
 			}
 		}
@@ -720,7 +753,7 @@ func reachable(snaps []*psi.Snapshot, files []*syntax.File, only map[*syntax.Fil
 			name(n)
 		}
 	}
-	if len(set)*2 > len(files) {
+	if len(set)*2 > len(snaps) {
 		return nil
 	}
 	lastResolved.Store(int64(len(set)))
@@ -732,8 +765,8 @@ func reachable(snaps []*psi.Snapshot, files []*syntax.File, only map[*syntax.Fil
 // signatures.
 var noReach = os.Getenv("KC_NO_REACH") != ""
 
-// lastResolved is how many files the last check resolved the
-// signatures of, for tests.
+// lastResolved is how many files the last check was given whole, not
+// as stubs (reachable), for tests.
 var lastResolved atomic.Int64
 
 // fileNames are the identifiers a parse writes (reachable): all of them,
@@ -746,6 +779,10 @@ type fileNames struct {
 type declNames struct {
 	names []string        // the names it declares: its own, and its classes'
 	ids   map[string]bool // the identifiers it writes
+	// sealed are the names of its sealed classes, and supers the
+	// identifiers its classes' supertype lists write.
+	sealed []string
+	supers map[string]bool
 	// operator is set for a function whose name is an operator's or a
 	// conventional one's (check.IsOperatorName).
 	operator bool
@@ -775,9 +812,24 @@ func snapNames(snap *psi.Snapshot) *fileNames {
 					d.ids[t] = true
 				}
 			case psi.KindCLASS, psi.KindOBJECT_DECLARATION:
-				if isDecl && id != n.ID() {
-					if name := m.NameIdentifier(); name.Valid() {
-						d.names = append(d.names, strings.Trim(name.Text(), "`"))
+				if !isDecl {
+					break
+				}
+				name := m.NameIdentifier()
+				if name.Valid() && id != n.ID() {
+					d.names = append(d.names, strings.Trim(name.Text(), "`"))
+				}
+				if name.Valid() && m.ChildKind(psi.KindMODIFIER_LIST).ChildKind(psi.KindSEALED_KEYWORD).Valid() {
+					d.sealed = append(d.sealed, strings.Trim(name.Text(), "`"))
+				}
+				if st := m.ChildKind(psi.KindSUPER_TYPE_LIST); st.Valid() {
+					for sid := st.ID(); sid < st.SubtreeEnd(); sid++ {
+						if x := snap.Node(sid); x.NumericKind() == psi.KindIDENTIFIER {
+							if d.supers == nil {
+								d.supers = map[string]bool{}
+							}
+							d.supers[strings.Trim(x.Text(), "`")] = true
+						}
 					}
 				}
 			}
@@ -835,7 +887,7 @@ func (c *checkCache) names(snap *psi.Snapshot) *fileNames {
 func lowerAll(snaps []*psi.Snapshot, m *Model, jobs int) ([]*syntax.File, []*lower.Provenance, map[int]bool) {
 	files := make([]*syntax.File, len(snaps))
 	provs := make([]*lower.Provenance, len(snaps))
-	broken := lowerFiles(snaps, files, provs, m, jobs, nil, nil)
+	broken := lowerFiles(snaps, files, provs, m, jobs, nil, nil, nil)
 	return files, provs, broken
 }
 
@@ -843,7 +895,7 @@ func lowerAll(snaps []*psi.Snapshot, m *Model, jobs int) ([]*syntax.File, []*low
 // is nil) into files and provs, as declarations only those for which
 // declsOnly is true (lower.Declarations), adding their errors to m if it
 // isn't nil, and returns the indexes of those with errors.
-func lowerFiles(snaps []*psi.Snapshot, files []*syntax.File, provs []*lower.Provenance, m *Model, jobs int, need, declsOnly func(i int) bool) map[int]bool {
+func lowerFiles(snaps []*psi.Snapshot, files []*syntax.File, provs []*lower.Provenance, m *Model, jobs int, need, declsOnly, stub func(i int) bool) map[int]bool {
 	var todo []int
 	for i := range snaps {
 		if need == nil || need(i) {
@@ -853,7 +905,9 @@ func lowerFiles(snaps []*psi.Snapshot, files []*syntax.File, provs []*lower.Prov
 	errLists := make([][]*syntax.Error, len(snaps))
 	parallel(len(todo), jobs, func(k int) {
 		i := todo[k]
-		if declsOnly != nil && declsOnly(i) {
+		if stub != nil && stub(i) {
+			files[i], provs[i], errLists[i] = declStub(snaps[i])
+		} else if declsOnly != nil && declsOnly(i) {
 			files[i], provs[i], errLists[i] = declarations(snaps[i])
 		} else {
 			files[i], provs[i], errLists[i] = lower.File(snaps[i])
@@ -927,7 +981,7 @@ func panicStack() string {
 	return strings.Join(lines, "\n")
 }
 
-func checkFiles(ctx context.Context, files []*syntax.File, lib *check.Library, jobs int, only map[*syntax.File]bool, infer map[string]bool, resolve map[*syntax.File]bool) (rec *recorder, errs []*syntax.Error, err error) {
+func checkFiles(ctx context.Context, files []*syntax.File, lib *check.Library, jobs int, only map[*syntax.File]bool, infer map[string]bool) (rec *recorder, errs []*syntax.Error, err error) {
 	rec = &recorder{annots: map[*syntax.File]map[syntax.Pos]*types.ClassSym{},
 		values: map[*syntax.File]map[syntax.Pos][]syntax.AnnotationValue{}, refs: map[*syntax.TypeRef]types.Type{},
 		aliases: map[*syntax.TypeRef]*types.AliasSym{}, lookups: map[*syntax.File][]Lookup{}}
@@ -936,7 +990,7 @@ func checkFiles(ctx context.Context, files []*syntax.File, lib *check.Library, j
 			err = checkPanic{v, panicStack()}
 		}
 	}()
-	errs, err = check.CheckOptions(ctx, files, lib, jobs, rec, check.Options{Signatures: true, Only: only, Infer: infer, Resolve: resolve})
+	errs, err = check.CheckOptions(ctx, files, lib, jobs, rec, check.Options{Signatures: true, Only: only, Infer: infer})
 	return rec, errs, err
 }
 

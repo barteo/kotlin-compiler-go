@@ -598,13 +598,6 @@ type Options struct {
 	// operators': those the checked files name. One that isn't is inferred
 	// when a checked file needs it, one at a time (lazily).
 	Infer map[string]bool
-	// Resolve is, with Only, the files whose declarations' signatures are
-	// resolved, the checked files among them; nil is every file. The
-	// others are declared, with their supertypes and typealiases, but
-	// their functions, properties and classes' members aren't resolved:
-	// the caller passes the files the checked files can reach (by the
-	// names they write, analysis/ka), so none of them is looked into.
-	Resolve map[*syntax.File]bool
 }
 
 // IsOperatorName reports whether name is that of an operator, or of a
@@ -636,19 +629,6 @@ func CheckOptions(ctx context.Context, files []*syntax.File, lib *Library, jobs 
 		for _, c := range checkers {
 			if opts.Only[c.file] {
 				checked = append(checked, c)
-			}
-		}
-	}
-	// resolved are the checkers of the files whose signatures are
-	// resolved (opts.Resolve).
-	resolved := checkers
-	if opts.Only != nil && opts.Resolve != nil {
-		resolved = nil
-		for _, c := range checkers {
-			if opts.Resolve[c.file] {
-				resolved = append(resolved, c)
-			} else if opts.Only[c.file] {
-				panic("check: a checked file whose signatures aren't resolved")
 			}
 		}
 	}
@@ -698,18 +678,18 @@ func CheckOptions(ctx context.Context, files []*syntax.File, lib *Library, jobs 
 	for _, c := range checkers {
 		c.checkSupers()
 	}
-	parallelCheckers(resolved, jobs, (*Checker).resolveSignatures)
+	parallelCheckers(checkers, jobs, (*Checker).resolveSignatures)
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	forwardInlinable(resolved)
-	for _, c := range resolved {
+	forwardInlinable(checkers)
+	for _, c := range checkers {
 		c.checkMemberImports()
 	}
-	for _, c := range resolved {
+	for _, c := range checkers {
 		c.inheritDefaults()
 	}
-	for _, c := range resolved {
+	for _, c := range checkers {
 		c.delegations()
 	}
 	for _, c := range checked {
@@ -722,7 +702,7 @@ func CheckOptions(ctx context.Context, files []*syntax.File, lib *Library, jobs 
 	}
 	if opts.Only != nil {
 		named := func(name string) bool { return opts.Infer[name] || isOperatorName(name) }
-		for _, c := range resolved {
+		for _, c := range checkers {
 			if !opts.Only[c.file] {
 				c.inferNamed(named)
 			}
@@ -740,7 +720,7 @@ func CheckOptions(ctx context.Context, files []*syntax.File, lib *Library, jobs 
 	for _, c := range checked {
 		c.boxedReturns()
 	}
-	conflicts(resolved, checked)
+	conflicts(checkers, checked)
 	for _, c := range checked {
 		c.checkClashes()
 	}
