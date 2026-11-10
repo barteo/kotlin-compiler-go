@@ -1,0 +1,155 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kc <kc@localhost>
+Date: Tue, 10 Nov 2026 14:04:55 +0000
+Subject: [PATCH] Skip lookup storage updates that change nothing
+
+---
+ .../devtools/ksp/impl/IncrementalContextAA.kt | 92 +++++++++++++++++--
+ 1 file changed, 83 insertions(+), 9 deletions(-)
+
+diff --git a/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/IncrementalContextAA.kt b/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/IncrementalContextAA.kt
+index 61dee0c..0cbf82a 100644
+--- a/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/IncrementalContextAA.kt
++++ b/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/IncrementalContextAA.kt
+@@ -287,9 +287,24 @@ class LookupTrackerWrapperImpl(val lookupTracker: LookupTracker) : LookupTracker
+  * share one, and puts it back when it is done with it. A storage is used
+  * again only while none of its files has changed since it was put back;
+  * otherwise it is closed and opened again.
++ *
++ * With a storage kept open goes what this process knows it holds: per
++ * file (relative to the base directory, as the storage's path converter
++ * makes it), the lookups the file's records are, as the last update or
++ * removal of that file here left them. A storage opened again knows
++ * nothing. [LookupStorageWrapperImpl.update] uses it to skip updates that
++ * change nothing: an update of files F with lookups L leaves (S - F) + L,
++ * which is S when S already holds exactly L's records for each file in F
++ * and L names no file outside F. A daemon run whose dirty files look up
++ * what they did the last time (a body edit, most often) then neither
++ * rewrites nor flushes the storage.
+  */
+ internal object LookupStorages {
+-    private class Entry(val storage: LookupStorage, val stamps: Map<String, FileStamp>)
++    private class Entry(
++        val storage: LookupStorage,
++        val stamps: Map<String, FileStamp>,
++        val known: HashMap<String, Set<LookupSymbol>>,
++    )
+ 
+     private val idle = ConcurrentHashMap<String, Entry>()
+ 
+@@ -301,17 +316,19 @@ internal object LookupStorages {
+ 
+     fun acquire(dir: File, baseDir: File, icContext: IncrementalCompilationContext): LookupStorageWrapperImpl {
+         val key = key(dir, baseDir)
+-        val storage = idle.remove(key)?.let { e ->
++        val reused = idle.remove(key)?.let { e ->
+             if (e.stamps.isNotEmpty() && e.stamps == stamps(dir)) {
+-                e.storage
++                e
+             } else {
+                 runCatching { e.storage.close() }
+                 null
+             }
+-        } ?: LookupStorage(dir, icContext)
+-        return LookupStorageWrapperImpl(storage) { keep ->
++        }
++        val storage = reused?.storage ?: LookupStorage(dir, icContext)
++        val known = reused?.known ?: HashMap()
++        return LookupStorageWrapperImpl(storage, baseDir, known) { keep ->
+             if (keep) {
+-                idle.put(key, Entry(storage, stamps(dir)))?.let { runCatching { it.storage.close() } }
++                idle.put(key, Entry(storage, stamps(dir), known))?.let { runCatching { it.storage.close() } }
+             } else {
+                 storage.close()
+             }
+@@ -321,22 +338,67 @@ internal object LookupStorages {
+ 
+ class LookupStorageWrapperImpl(
+     val impl: LookupStorage,
++    private val baseDir: File? = null,
++    private val known: HashMap<String, Set<LookupSymbol>> = HashMap(),
+     private val done: ((keep: Boolean) -> Unit)? = null,
+ ) : LookupStorageWrapper {
+     private var finished = false
+ 
++    // Whether this run changed the storage, which then needs a flush.
++    private var dirty = false
++
+     override fun get(lookupSymbol: LookupSymbolWrapper): Collection<String> =
+         impl.get(LookupSymbol(lookupSymbol.name, lookupSymbol.scope))
+ 
++    // A file as the storage's path converter keys it: relative to the base
++    // directory (the files to compile already are).
++    private fun pathOf(file: File): String =
++        if (baseDir == null || !file.isAbsolute) file.path
++        else com.google.devtools.ksp.common.relativeFile(file, baseDir).path
++
+     override fun update(
+         lookupTracker: LookupTrackerWrapper,
+         filesToCompile: Iterable<File>,
+         removedFiles: Iterable<File>
+     ) {
+-        impl.update((lookupTracker as LookupTrackerWrapperImpl).lookupTracker, filesToCompile, removedFiles)
++        val tracker = (lookupTracker as LookupTrackerWrapperImpl).lookupTracker
++        if (baseDir == null || tracker !is LookupTrackerImpl || removedFiles.any()) {
++            impl.update(tracker, filesToCompile, removedFiles)
++            dirty = true
++            known.clear()
++            return
++        }
++
++        // The tracker's lookups, by file.
++        val byFile = HashMap<String, MutableSet<LookupSymbol>>()
++        tracker.lookups.entrySet().forEach { (symbol, paths) ->
++            paths.forEach { byFile.getOrPut(pathOf(File(it))) { HashSet() }.add(symbol) }
++        }
++        val files = filesToCompile.mapTo(LinkedHashSet()) { pathOf(it) }
++
++        val unchanged = files.containsAll(byFile.keys) &&
++            files.all { f -> known[f]?.let { it == (byFile[f] ?: emptySet<LookupSymbol>()) } == true }
++        if (unchanged && !VERIFY && !NO_SKIP)
++            return
++
++        val before = if (unchanged && VERIFY) tracker.lookups.keySet().associateWith { impl.get(it).toSet() } else null
++        impl.update(tracker, filesToCompile, removedFiles)
++        dirty = true
++        before?.forEach { (symbol, paths) ->
++            val after = impl.get(symbol).toSet()
++            if (after != paths)
++                throw IllegalStateException("kc: lookup update skip would differ for $symbol: $paths, $after")
++        }
++        files.forEach { known[it] = byFile[it] ?: emptySet() }
++        byFile.keys.forEach { if (it !in files) known.remove(it) }
+     }
+ 
+-    override fun removeLookupsFrom(files: Sequence<File>) = impl.removeLookupsFrom(files)
++    override fun removeLookupsFrom(files: Sequence<File>) {
++        val list = files.toList()
++        impl.removeLookupsFrom(list.asSequence())
++        dirty = true
++        list.forEach { known[pathOf(it)] = emptySet() }
++    }
+ 
+     override fun close() {
+         if (finished) return
+@@ -350,7 +412,19 @@ class LookupStorageWrapperImpl(
+         done?.invoke(true) ?: impl.close()
+     }
+ 
+-    override fun flush() = impl.flush()
++    override fun flush() {
++        if (dirty)
++            impl.flush()
++        dirty = false
++    }
++
++    private companion object {
++        /** KSP_LOOKUP_VERIFY=1: updates that could be skipped are made, and must not change what [get] returns. */
++        val VERIFY = System.getenv("KSP_LOOKUP_VERIFY") == "1"
++
++        /** KSP_NO_LOOKUP_SKIP=1: no update is skipped. */
++        val NO_SKIP = System.getenv("KSP_NO_LOOKUP_SKIP") == "1"
++    }
+ }
+ 
+ internal class RelativeFileToPathConverter(val baseDir: File) : FileToPathConverter {
