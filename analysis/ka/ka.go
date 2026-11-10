@@ -512,7 +512,7 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 			lastChecked.Store(int64(len(files)))
 		}
 		tm.Note("checked", int(lastChecked.Load()))
-		rec, checkErrs, err := checkFiles(ctx, files, lib, jobs, only, namesIn(snaps, files, only))
+		rec, checkErrs, err := checkFiles(ctx, files, lib, jobs, only, namesIn(snaps, files, only), reachable(snaps, files, only, javaTexts, cache))
 		if !rec.bodies.IsZero() {
 			tm.MarkAt("signatures", rec.bodies)
 		}
@@ -530,7 +530,7 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 					clean = append(clean, f)
 				}
 			}
-			rec, checkErrs, err = checkFiles(ctx, clean, lib, jobs, nil, nil)
+			rec, checkErrs, err = checkFiles(ctx, clean, lib, jobs, nil, nil, nil)
 		}
 		if err != nil {
 			return nil, err
@@ -652,6 +652,184 @@ func namesIn(snaps []*psi.Snapshot, files []*syntax.File, only map[*syntax.File]
 	return names
 }
 
+// reachable returns, for a check of only some files, the files whose
+// signatures the checker resolves (check.Options.Resolve): the checked
+// files, and those holding a top-level declaration reached from them. A
+// declaration is reached if a reached text writes a name it declares
+// (its own or a class's it nests), and its text is then reached: the
+// checked files' whole texts are, and so are the top-level operators and
+// functions a construct calls by convention, which code calls without
+// writing their names, and the declarations named in the Java sources,
+// whose members may return a Kotlin class no Kotlin file names. So an
+// inferred type (val x = f()), a supertype, a typealias or an extension
+// is reached through the names that lead to it, and so are the members
+// of the classes a reached text names. A declaration that isn't reached
+// in a file that is still has its signature resolved, with the classes
+// it names, which every file declares, but none of their members. It
+// returns nil, every file, if the files reached are more than half.
+func reachable(snaps []*psi.Snapshot, files []*syntax.File, only map[*syntax.File]bool, javaTexts []string, cache *checkCache) map[*syntax.File]bool {
+	lastResolved.Store(int64(len(files)))
+	if only == nil || noReach {
+		return nil
+	}
+	type at struct{ file, decl int }
+	fns := make([]*fileNames, len(snaps))
+	declares := map[string][]at{}
+	set := map[*syntax.File]bool{}
+	reached := map[at]bool{}
+	var queue []map[string]bool
+	reach := func(a at) {
+		set[files[a.file]] = true
+		if !reached[a] {
+			reached[a] = true
+			queue = append(queue, fns[a.file].decls[a.decl].ids)
+		}
+	}
+	for i, f := range files {
+		fn := cache.names(snaps[i])
+		fns[i] = fn
+		for k, d := range fn.decls {
+			for _, n := range d.names {
+				declares[n] = append(declares[n], at{i, k})
+			}
+			if d.operator {
+				reach(at{i, k})
+			}
+		}
+		if only[f] {
+			set[f] = true
+			queue = append(queue, fn.all)
+		}
+	}
+	names := map[string]bool{}
+	name := func(n string) {
+		if !names[n] {
+			names[n] = true
+			for _, a := range declares[n] {
+				reach(a)
+			}
+		}
+	}
+	for _, t := range javaTexts {
+		javaIdentifiers(t, name)
+	}
+	for len(queue) > 0 {
+		ids := queue[len(queue)-1]
+		queue = queue[:len(queue)-1]
+		for n := range ids {
+			name(n)
+		}
+	}
+	if len(set)*2 > len(files) {
+		return nil
+	}
+	lastResolved.Store(int64(len(set)))
+	return set
+}
+
+// noReach turns reachable off, for tests and comparisons
+// (KC_NO_REACH): a check of only some files resolves every file's
+// signatures.
+var noReach = os.Getenv("KC_NO_REACH") != ""
+
+// lastResolved is how many files the last check resolved the
+// signatures of, for tests.
+var lastResolved atomic.Int64
+
+// fileNames are the identifiers a parse writes (reachable): all of them,
+// and those of each top-level declaration.
+type fileNames struct {
+	all   map[string]bool
+	decls []declNames
+}
+
+type declNames struct {
+	names []string        // the names it declares: its own, and its classes'
+	ids   map[string]bool // the identifiers it writes
+	// operator is set for a function whose name is an operator's or a
+	// conventional one's (check.IsOperatorName).
+	operator bool
+}
+
+func snapNames(snap *psi.Snapshot) *fileNames {
+	fn := &fileNames{all: map[string]bool{}}
+	root := snap.RootNode()
+	for n := root.FirstChild(); n.Valid(); n = n.NextSibling() {
+		k := n.NumericKind()
+		isDecl := k == psi.KindCLASS || k == psi.KindOBJECT_DECLARATION || k == psi.KindFUN || k == psi.KindPROPERTY || k == psi.KindTYPEALIAS
+		var d declNames
+		if isDecl {
+			d.ids = map[string]bool{}
+			if name := n.NameIdentifier(); name.Valid() {
+				d.names = append(d.names, strings.Trim(name.Text(), "`"))
+				d.operator = k == psi.KindFUN && check.IsOperatorName(d.names[0])
+			}
+		}
+		for id := n.ID(); id < n.SubtreeEnd(); id++ {
+			m := snap.Node(id)
+			switch m.NumericKind() {
+			case psi.KindIDENTIFIER:
+				t := strings.Trim(m.Text(), "`")
+				fn.all[t] = true
+				if isDecl {
+					d.ids[t] = true
+				}
+			case psi.KindCLASS, psi.KindOBJECT_DECLARATION:
+				if isDecl && id != n.ID() {
+					if name := m.NameIdentifier(); name.Valid() {
+						d.names = append(d.names, strings.Trim(name.Text(), "`"))
+					}
+				}
+			}
+		}
+		if isDecl {
+			fn.decls = append(fn.decls, d)
+		}
+	}
+	return fn
+}
+
+// javaIdentifiers calls f with each identifier of a Java text.
+func javaIdentifiers(text string, f func(string)) {
+	start := -1
+	for i := 0; i <= len(text); i++ {
+		c := byte(0)
+		if i < len(text) {
+			c = text[i]
+		}
+		word := c == '_' || c == '$' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= 0x80 || start >= 0 && c >= '0' && c <= '9'
+		switch {
+		case word && start < 0:
+			start = i
+		case !word && start >= 0:
+			f(text[start:i])
+			start = -1
+		}
+	}
+}
+
+// names returns the identifiers snap's text writes, kept with the parse
+// while a check c keeps holds it.
+func (c *checkCache) names(snap *psi.Snapshot) *fileNames {
+	if c == nil {
+		return snapNames(snap)
+	}
+	c.mu.Lock()
+	fn, ok := c.ids[snap]
+	c.mu.Unlock()
+	if ok {
+		return fn
+	}
+	fn = snapNames(snap)
+	c.mu.Lock()
+	if c.ids == nil {
+		c.ids = map[*psi.Snapshot]*fileNames{}
+	}
+	c.ids[snap] = fn
+	c.mu.Unlock()
+	return fn
+}
+
 // lowerAll lowers snaps, adding their errors to m if it isn't nil, and
 // returns the indexes of those with errors.
 func lowerAll(snaps []*psi.Snapshot, m *Model, jobs int) ([]*syntax.File, []*lower.Provenance, map[int]bool) {
@@ -749,7 +927,7 @@ func panicStack() string {
 	return strings.Join(lines, "\n")
 }
 
-func checkFiles(ctx context.Context, files []*syntax.File, lib *check.Library, jobs int, only map[*syntax.File]bool, infer map[string]bool) (rec *recorder, errs []*syntax.Error, err error) {
+func checkFiles(ctx context.Context, files []*syntax.File, lib *check.Library, jobs int, only map[*syntax.File]bool, infer map[string]bool, resolve map[*syntax.File]bool) (rec *recorder, errs []*syntax.Error, err error) {
 	rec = &recorder{annots: map[*syntax.File]map[syntax.Pos]*types.ClassSym{},
 		values: map[*syntax.File]map[syntax.Pos][]syntax.AnnotationValue{}, refs: map[*syntax.TypeRef]types.Type{},
 		aliases: map[*syntax.TypeRef]*types.AliasSym{}, lookups: map[*syntax.File][]Lookup{}}
@@ -758,7 +936,7 @@ func checkFiles(ctx context.Context, files []*syntax.File, lib *check.Library, j
 			err = checkPanic{v, panicStack()}
 		}
 	}()
-	errs, err = check.CheckOptions(ctx, files, lib, jobs, rec, check.Options{Signatures: true, Only: only, Infer: infer})
+	errs, err = check.CheckOptions(ctx, files, lib, jobs, rec, check.Options{Signatures: true, Only: only, Infer: infer, Resolve: resolve})
 	return rec, errs, err
 }
 

@@ -303,6 +303,19 @@ func TestIncrementalDecl(t *testing.T) {
 		"package x\nfun useUnrelated() = unrelated()\n",
 		"package y\ntypealias Id = Int\nclass Box(val id: Id)\nclass Other\n",
 		"package y\nfun useBox(b: Box) = b.id\nfun useOther() = Other()\n",
+		// Files a check of only one reaches through names alone: an
+		// inferred type of another file, and an operator no file names.
+		"package z\nclass Deep { fun deep() = 1 }\n",
+		"package z\nfun makeDeep() = Deep()\n",
+		"package z\nfun useDeep() = makeDeep().deep()\nfun zz() = 0\n",
+		"package o\nclass Vec(val x: Int)\n",
+		"package o\noperator fun Vec.plus(o: Vec) = Vec(x + o.x)\n",
+		"package o\nfun sum(a: Vec, b: Vec) = a + b\nfun oo() = 0\n",
+		// Only Near is reached in its file: Far's isn't resolved.
+		"package m2\nclass Near { fun near() = farValue() }\nclass Unused(val f: Far)\n",
+		"package m2\nfun farValue() = 1L\n",
+		"package m2\nclass Far { fun far() = 2 }\n",
+		"package m2\nfun useNear() = Near().near()\nfun mm() = 0\n",
 	}
 	// checked, if not 0, is how many files the update's last check checks:
 	// the changed one, those that look up what changed in it, and those
@@ -338,6 +351,17 @@ func TestIncrementalDecl(t *testing.T) {
 		{"unused function", 16, "fun unrelated() = 0", "fun unrelated() = 0\nfun last() = 0", true, 1},
 		{"unrelated change", 16, "fun unrelated() = 0", "fun unrelated() = 0L", true, 2},
 		{"import", 3, "import p.*", "import p.*\nimport r.alone", true, 1},
+		{"reached by an inferred type", 23, "fun zz() = 0", "fun zz() = 0L", true, 1},
+		{"reached by an operator", 26, "fun oo() = 0", "fun oo() = 0L", true, 1},
+		{"reached by a declaration", 30, "fun mm() = 0", "fun mm() = 0L", true, 1},
+	}
+	// resolved is, for some edits, how many files the update's last
+	// check resolves the signatures of (reachable).
+	resolved := map[string]int64{
+		"reached by an inferred type": 5, // its own three, o's operator and Vec
+		"reached by an operator":      3,
+		"reached by a declaration":    5, // its own, Near's, farValue's, o's operator and Vec
+		"unused function":             3, // and o's operator and Vec
 	}
 	cfg := withStdlib(t)
 	for _, e := range edits {
@@ -359,6 +383,9 @@ func TestIncrementalDecl(t *testing.T) {
 			}
 			if n := lastChecked.Load(); e.checked != 0 && n != int64(e.checked) {
 				t.Errorf("checked %d files, want %d", n, e.checked)
+			}
+			if n, want := lastResolved.Load(), resolved[e.name]; want != 0 && n != want {
+				t.Errorf("resolved %d files, want %d", n, want)
 			}
 			if d := sameModel(got, wholeCheck(t, s, sources(texts...))); d != "" {
 				t.Error(d)
@@ -422,7 +449,7 @@ func TestIncrementalModuleDecl(t *testing.T) {
 	if n, err := strconv.Atoi(os.Getenv("KA_BENCH_FILES")); err == nil {
 		limit = min(n, limit)
 	}
-	edits, partial := 0, 0
+	edits, partial, resolved := 0, 0, 0
 	check.LateInferences.Store(0)
 	only := os.Getenv("KA_BENCH_FILE")
 	for i := range srcs[:limit] {
@@ -438,6 +465,7 @@ func TestIncrementalModuleDecl(t *testing.T) {
 				t.Fatal(err)
 			}
 			partial += int(declUpdates.Load())
+			resolved += int(lastResolved.Load())
 			want := wholeCheck(t, s, edit)
 			if d := sameModel(got, want); d != "" {
 				t.Errorf("%s: %s", srcs[i].Path, d)
@@ -459,7 +487,8 @@ func TestIncrementalModuleDecl(t *testing.T) {
 			back.Close()
 		}
 	}
-	t.Logf("%d edits, %d checked partially, %d late inferences", edits, partial, check.LateInferences.Load())
+	t.Logf("%d edits, %d checked partially, %d late inferences, %.1f of %d files resolved per edit",
+		edits, partial, check.LateInferences.Load(), float64(resolved)/float64(max(edits, 1)), len(srcs))
 }
 
 // A body edit of a module with Java sources, whose texts are the same,
@@ -549,10 +578,12 @@ public class K {
 		"package s\nfun more() = 4\n",
 		"package s\nfun more2() = more() + 1\n",
 		"package t\nfun solo() = 5\n",
-		"package p\nclass Box\n",
+		"package p\nclass Box { fun size() = 1 }\n",
 		"package u\nfun b() = q.K().box()\n",
 		"package u\nfun other() = 0\n",
 		"package u\nfun other2() = 0\n",
+		// Only K.java names Box.
+		"package u\nfun viaJava() = q.K().box().size()\nfun zz() = 0\n",
 	}
 	edits := []struct {
 		name     string
@@ -560,7 +591,8 @@ public class K {
 		from, to string
 		partial  bool
 	}{
-		{"returned class removed", 8, "class Box", "class Box2", true},
+		{"returned class removed", 8, "class Box {", "class Box2 {", true},
+		{"reached by a Java source", 12, "fun zz() = 0", "fun zz() = 0L", true},
 		{"inherited member type", 0, "open fun id() = 1", "open fun id() = 1L", true},
 		{"new member", 0, "open fun id() = 1 }", "open fun id() = 1\n fun other() = 0 }", true},
 		{"class removed", 0, "open class Base { open fun id() = 1 }", "", true},

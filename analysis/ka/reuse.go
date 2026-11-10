@@ -63,6 +63,8 @@ var checkIDs atomic.Uint64
 type checkCache struct {
 	mu   sync.Mutex
 	list []*checked
+	// ids are the identifiers of the parses the checks hold (reachable).
+	ids map[*psi.Snapshot]*fileNames
 }
 
 // checked is the result of checking a module's sources.
@@ -648,5 +650,10 @@ func (c *checkCache) keep(e *checked) {
 	c.list = append(c.list, e)
 	if n := len(c.list) - maxChecks; n > 0 {
 		c.list = slices.Delete(c.list, 0, n)
+	}
+	for snap := range c.ids {
+		if !slices.ContainsFunc(c.list, func(e *checked) bool { s, ok := e.snaps[snap.Path()]; return ok && s.snap == snap }) {
+			delete(c.ids, snap)
+		}
 	}
 }

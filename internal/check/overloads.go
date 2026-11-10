@@ -72,7 +72,7 @@ func conflicts(checkers, checked []*Checker) {
 	// And of a package's other files, only the declarations named as one
 	// of the checked files' can conflict with theirs.
 	var names map[string]map[string]bool // package -> names
-	if len(checked) < len(checkers) {
+	if len(checked) < len(checkers) || u.only != nil {
 		names = map[string]map[string]bool{}
 		for _, c := range checked {
 			ns := names[c.file.Package]
