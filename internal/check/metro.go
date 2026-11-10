@@ -255,19 +255,43 @@ func parseExpr(path string, p syntax.Pos, src string) (*syntax.Call, error) {
 // createGraph or createGraphFactory: a call by a simple or qualified name
 // of them with one type argument.
 func metroCalls(file *syntax.File, f func(*syntax.Call)) {
+	allCalls(file, func(x *syntax.Call) {
+		if len(x.TypeArgs) != 1 || len(x.Args) != 0 {
+			return
+		}
+		name := ""
+		switch fn := x.Fun.(type) {
+		case *syntax.Ident:
+			name = fn.Name
+		case *syntax.Member:
+			name = fn.Name
+		}
+		if name == "createGraph" || name == "createGraphFactory" {
+			f(x)
+		}
+	})
+}
+
+// metroIntrinsics reports the calls of Metro's createGraph functions that
+// kc has not replaced: their bodies only throw, as Metro's plugin replaces
+// each call.
+func (c *Checker) metroIntrinsics() {
+	if c.u.metro == nil {
+		return
+	}
+	allCalls(c.file, func(x *syntax.Call) {
+		if x.Sym != nil && x.Sym.Facade == "dev/zacsweers/metro/CreateGraphKt" {
+			c.unsupported(x.P, "metro", "kc can't compile this call of %s", x.Sym.Name)
+		}
+	})
+}
+
+// allCalls calls f for each call in the file's code.
+func allCalls(file *syntax.File, f func(*syntax.Call)) {
 	inspect := func(node any) {
 		syntax.Inspect(node, func(n any) bool {
-			if x, ok := n.(*syntax.Call); ok && len(x.TypeArgs) == 1 && len(x.Args) == 0 {
-				name := ""
-				switch fn := x.Fun.(type) {
-				case *syntax.Ident:
-					name = fn.Name
-				case *syntax.Member:
-					name = fn.Name
-				}
-				if name == "createGraph" || name == "createGraphFactory" {
-					f(x)
-				}
+			if x, ok := n.(*syntax.Call); ok {
+				f(x)
 			}
 			return true
 		})

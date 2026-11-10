@@ -2385,6 +2385,7 @@ func (c *Checker) checkBodies() {
 	c.propRefs()
 	c.inlineFileChecks()
 	c.typeAnnotations()
+	c.metroIntrinsics()
 }
 
 // checkClass checks a class's code: its constructors' calls, property

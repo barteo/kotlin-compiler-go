@@ -1230,6 +1230,8 @@ func TestMetro(t *testing.T) {
 		"extension with parameters": {src: "@GraphExtension interface E {\n@GraphExtension.Factory interface F { fun create(@Provides s: String): E }\n}\n@DependencyGraph interface G { val e: E }", msg: "takes parameters"},
 		"custom annotations": {src: "@DependencyGraph interface G", feature: true,
 			options: map[string]string{"custom-inject": "a/MyInject"}},
+		"dynamic graph":       {src: "@DependencyGraph interface G\nfun g() = createDynamicGraph<G>()", feature: true},
+		"inferred graph type": {src: "@DependencyGraph interface G { companion object : G by createGraph() }", feature: true},
 	} {
 		t.Run(name, func(t *testing.T) {
 			file := filepath.Join(t.TempDir(), "a.kt")

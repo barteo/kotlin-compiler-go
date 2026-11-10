@@ -117,6 +117,7 @@ Not supported, and reported as such:
 - graphs with type parameters, and graph factories that are abstract classes;
 - javax, Jakarta, Dagger and Guice interop;
 - member injection into classes from the class path;
+- `createDynamicGraph` and `createDynamicGraphFactory`, and calls of `createGraph` and `createGraphFactory` whose type argument is inferred;
 - graph functions that create a graph extension from parameters, other than its factory's.
 
 `kc` writes no `$MetroFactory` classes, so a graph that `kotlinc` compiles can't use a module that `kc` compiles. A graph that `kc` compiles can use modules that either compiler compiled.
