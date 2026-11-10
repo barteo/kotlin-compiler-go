@@ -426,6 +426,12 @@ func (c *Checker) mayTake(f *types.FunSym, x *syntax.Call) bool {
 			// constructor Color(ULong).
 			return false
 		}
+		if l, ok := a.(*syntax.IntLit); ok && !l.Unsigned && !c.subtype(intLit(l, l.Val, p), p) {
+			// 5 is no ColorValue: color(5) in button.apply { } calls
+			// the enclosing Fragment's color(Int), not the button's
+			// View.color(ColorValue).
+			return false
+		}
 		if t, ok := c.peekType(a); ok && !c.subtype(t, p) {
 			if _, sam := c.samValue(t, p); !sam {
 				return false
@@ -538,7 +544,8 @@ func (c *Checker) peekClass(a syntax.Expr) *types.ClassSym {
 }
 
 // peekType returns the type of a simple argument without checking it:
-// this, a local, or a literal. It reports false for other expressions,
+// this, a local, a literal, or a Java class's static field. It reports
+// false for other expressions,
 // which are checked once, when the call is resolved.
 func (c *Checker) peekType(a syntax.Expr) (types.Type, bool) {
 	switch a := a.(type) {
@@ -564,6 +571,17 @@ func (c *Checker) peekType(a syntax.Expr) (types.Type, bool) {
 	case *syntax.Ident:
 		if _, t, ok := c.scope.lookup(a.Name); ok && t.K != types.Invalid {
 			return t, true
+		}
+	case *syntax.Member:
+		// A class path class's static field: R.color.failRed is an Int.
+		if a.Safe {
+			break
+		}
+		if cls := c.classRef(a.X); cls != nil && cls.External {
+			cls.Ensure()
+			if f := c.staticFieldOf(cls, a.Name); f != nil && f.Type.K != types.Invalid {
+				return f.Type, true
+			}
 		}
 	}
 	return types.InvalidType, false
