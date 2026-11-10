@@ -505,7 +505,7 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 			declEdit = true
 			// A KSP run's second round, whose first checked the dirty
 			// files just before: their models are that check's (borrow).
-			if lent, diags, lentOK := cache.borrow(prev, dirty, sources, texts, javaTexts, snaps); lentOK {
+			if lent, diags, lentOK := cache.borrow(prev, dirty, sources, texts, &javaSet{javaTexts, javaFiles}, snaps, sl.lib.cp); lentOK {
 				mfs := slices.Clone(prev.files)
 				for i, f := range lent {
 					mfs[i] = f
@@ -527,7 +527,12 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 					m.Diagnostics = append(m.Diagnostics, diags...)
 					sortDiagnostics(m.Diagnostics, snaps)
 					tm.Mark("borrowed")
-					keepCheck(cache, m, paths, slices.Concat(texts, javaTexts), sources, snaps, true, nil)
+					// The Java sources and the Kotlin classes they see are
+					// the same (borrow): so are the classes of the library.
+					if prev.lib != nil {
+						m.lib = prev.lib
+					}
+					keepCheck(cache, m, paths, slices.Concat(texts, javaTexts), sources, snaps, true, prev.lib)
 					ok = true
 					return m, nil
 				}

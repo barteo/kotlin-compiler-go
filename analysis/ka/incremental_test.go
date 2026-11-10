@@ -727,31 +727,51 @@ func TestIncrementalBorrow(t *testing.T) {
 		from   string
 		to     string
 		borrow bool
+		gj     string // a generated Java file, if any
 	}{
-		{"signature", []string{a, b}, []string{gen}, nil, false, 0, "fun edit(): Int = 1", "fun edit(): Any = 2", true},
-		{"new declaration", []string{a, b}, []string{gen}, nil, false, 0, "fun edit(): Int = 1", "fun edit(): Int = 1\nfun added() = 2", true},
-		{"looked up, borrowed too", []string{a, b + "fun useEdit() = edit()\n"}, []string{gen}, nil, false, 0, "fun edit(): Int = 1", "fun edit(): Long = 1L", true},
+		{"signature", []string{a, b}, []string{gen}, nil, false, 0, "fun edit(): Int = 1", "fun edit(): Any = 2", true, ""},
+		{"new declaration", []string{a, b}, []string{gen}, nil, false, 0, "fun edit(): Int = 1", "fun edit(): Int = 1\nfun added() = 2", true, ""},
+		{"looked up, borrowed too", []string{a, b + "fun useEdit() = edit()\n"}, []string{gen}, nil, false, 0, "fun edit(): Int = 1", "fun edit(): Long = 1L", true, ""},
 		{"looks up what a generated file declares",
 			[]string{a + "fun pick() = helper(1)\n", b}, []string{gen + "fun helper(x: Int) = 1L\n"}, nil, false,
-			0, "fun edit(): Int = 1", "fun edit(): Any = 2", false},
-		{"a generated file looks it up", []string{a, b}, []string{gen + "fun g() = edit()\n"}, nil, false, 0, "fun edit(): Int = 1", "fun edit(): Long = 1L", false},
-		{"a generated file changed", []string{a, b}, []string{gen}, []string{gen + "class More\n"}, false, 0, "fun edit(): Int = 1", "fun edit(): Any = 2", false},
-		{"names a new package", []string{a + "val label = \"gen\"\n", b}, []string{"package p.gen\nclass G\n"}, nil, false, 0, "fun edit(): Int = 1", "fun edit(): Any = 2", false},
-		{"other package", []string{a, b}, []string{"package p.gen\nclass G(val a: p.A)\n"}, nil, false, 0, "fun edit(): Int = 1", "fun edit(): Any = 2", true},
-		{"java", []string{a, b}, []string{gen}, nil, true, 0, "fun edit(): Int = 1", "fun edit(): Any = 2", false},
+			0, "fun edit(): Int = 1", "fun edit(): Any = 2", false, ""},
+		{"a generated file looks it up", []string{a, b}, []string{gen + "fun g() = edit()\n"}, nil, false, 0, "fun edit(): Int = 1", "fun edit(): Long = 1L", false, ""},
+		{"a generated file changed", []string{a, b}, []string{gen}, []string{gen + "class More\n"}, false, 0, "fun edit(): Int = 1", "fun edit(): Any = 2", false, ""},
+		{"names a new package", []string{a + "val label = \"gen\"\n", b}, []string{"package p.gen\nclass G\n"}, nil, false, 0, "fun edit(): Int = 1", "fun edit(): Any = 2", false, ""},
+		{"other package", []string{a, b}, []string{"package p.gen\nclass G(val a: p.A)\n"}, nil, false, 0, "fun edit(): Int = 1", "fun edit(): Any = 2", true, ""},
+		{"java", []string{a, b}, []string{gen}, nil, true, 0, "fun edit(): Int = 1", "fun edit(): Any = 2", false, ""},
+		{"generated java", []string{a, b}, nil, nil, false, 0, "fun edit(): Int = 1", "fun edit(): Any = 2", true,
+			"package p;\npublic class AFactory { public A make() { return new A(); } }\n"},
+		{"java names the facade", []string{a, b}, nil, nil, false, 0, "fun edit(): Int = 1", "fun edit(): Long = 1L", false,
+			"package p;\npublic class Edits { public Object e() { return F0Kt.edit(); } }\n"},
+		{"java declares what it looks up", []string{strings.Replace(a, "package p\n", "package p\nimport r.*\n", 1) + "fun make() = Rc()\n", b, "package r\nclass Rc\n"}, nil, nil, false, 0, "fun edit(): Int = 1", "fun edit(): Any = 2", false,
+			"package p;\npublic class Rc { }\n"},
+		{"names a new java package", []string{a + "val label = \"aggregated\"\n", b}, nil, nil, false, 0, "fun edit(): Int = 1", "fun edit(): Any = 2", false,
+			"package deps.aggregated.codegen;\npublic class D { }\n"},
+		{"names a java package the class path has", []string{a + "val label = \"util\"\n", b}, nil, nil, false, 0, "fun edit(): Int = 1", "fun edit(): Any = 2", true,
+			"package java.util.gen;\npublic class D { }\n"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			cfg := withStdlib(t)
-			if c.java {
+			if c.java || c.gj != "" {
 				cfg = withJDK(t)
 			}
 			s := Open(cfg)
 			defer s.Close()
+			gj := c.gj
 			srcs := func(texts ...string) []Source {
 				out := sources(texts...)
 				if c.java {
 					out = append(out, Source{Path: "J.java", Text: &java})
+				}
+				return out
+			}
+			// A round with the generated files: the Java one too.
+			withGen := func(texts ...string) []Source {
+				out := srcs(texts...)
+				if gj != "" {
+					out = append(out, Source{Path: "gen/G.java", Text: &gj})
 				}
 				return out
 			}
@@ -767,7 +787,7 @@ func TestIncrementalBorrow(t *testing.T) {
 			base := append(slices.Clone(c.s), "package r\nfun r1() = 1\n", "package r\nfun r2() = 2\n", "package r\nfun r3() = 3\n")
 			// A run before the edit: its two rounds.
 			update(srcs(base...))
-			update(srcs(slices.Concat(base, c.g)...))
+			update(withGen(slices.Concat(base, c.g)...))
 			edited := slices.Clone(base)
 			edited[c.file] = strings.Replace(edited[c.file], c.from, c.to, 1)
 			if edited[c.file] == base[c.file] {
@@ -778,16 +798,20 @@ func TestIncrementalBorrow(t *testing.T) {
 				g = c.g2
 			}
 			for round, texts := range [][]string{edited, slices.Concat(edited, g)} {
+				in := srcs
+				if round == 1 {
+					in = withGen
+				}
 				borrowedUpdates.Store(0)
 				declUpdates.Store(0)
-				got := update(srcs(texts...))
+				got := update(in(texts...))
 				if declUpdates.Load() != 1 {
 					t.Errorf("round %d: not checked partially", round+1)
 				}
 				if borrowed, want := borrowedUpdates.Load() == 1, round == 1 && c.borrow && !noBorrow; borrowed != want {
 					t.Errorf("round %d: borrowed %v, want %v", round+1, borrowed, want)
 				}
-				if d := sameModel(got, wholeCheck(t, s, srcs(texts...))); d != "" {
+				if d := sameModel(got, wholeCheck(t, s, in(texts...))); d != "" {
 					t.Errorf("round %d: %s", round+1, d)
 				}
 			}

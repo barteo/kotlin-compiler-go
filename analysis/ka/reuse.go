@@ -9,6 +9,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/barteo/kotlin-compiler-go/internal/classpath"
 	"github.com/barteo/kotlin-compiler-go/internal/javasrc"
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
 	"github.com/barteo/kotlin-compiler-go/psi"
@@ -321,20 +322,25 @@ var noBorrow = os.Getenv("KC_NO_BORROW") != ""
 // c keeps, which checked them with the same parses: a KSP run's first
 // round, when prev is the last run's second (find). It reports false,
 // and the update checks them, unless:
-//   - neither check nor the update has Java sources, whose libraries the
-//     checks make their own (library.withJava);
-//   - the other check is clean, has every dirty file with the same parse
-//     and reports nothing in it, and has no file the update doesn't;
-//   - each file the update has that the other check doesn't, or has with
-//     another text, prev has with the same text: what it declares is
-//     prev's model of it;
+//   - the other check is clean, of Kotlin sources only, has every dirty
+//     file with the same parse and reports nothing in it, and has no file
+//     the update doesn't;
+//   - each Kotlin file the update has that the other check doesn't, or
+//     has with another text, prev has with the same text: what it
+//     declares is prev's model of it; and kc parses each of the update's
+//     Java sources, which prev has too (declEdits);
 //   - no dirty file looks up or declares a name those files declare
-//     (declaredNames.affects), nor writes, as a word, the last name of a
-//     package they declare that none of the other check's files does.
-//     A file that names a package missing from a check reports it there,
-//     which the rule above leaves out; this is for the rest.
-func (c *checkCache) borrow(prev *checked, dirty map[int]bool, sources []Source, texts, javaTexts []string, snaps []*psi.Snapshot) (map[int]*File, []Diagnostic, bool) {
-	if c == nil || noReuse || noBorrow || prev == nil || len(javaTexts) > 0 || len(dirty) == 0 {
+//     (declaredNames.affects), nor writes, as a word, the name of a
+//     package they make, one none of the other check's files is in or
+//     inside and the class path doesn't have (cp). A file that names a
+//     package missing from a check reports it there, which the rule
+//     above leaves out; this is for the rest;
+//   - with Java sources, no Java text names a class or facade of the
+//     dirty files whose models differ from prev's (addJava): the classes
+//     of prev's library, which the update takes as the shifted one does,
+//     see the Kotlin classes as they were (JavaSources.SetKotlin).
+func (c *checkCache) borrow(prev *checked, dirty map[int]bool, sources []Source, texts []string, java *javaSet, snaps []*psi.Snapshot, cp *classpath.Path) (map[int]*File, []Diagnostic, bool) {
+	if c == nil || noReuse || noBorrow || prev == nil || len(dirty) == 0 || len(java.texts) > 0 && prev.lib == nil {
 		return nil, nil, false
 	}
 	c.mu.Lock()
@@ -345,15 +351,20 @@ func (c *checkCache) borrow(prev *checked, dirty map[int]bool, sources []Source,
 		if o == prev || !o.clean || o.key != prev.key || len(o.texts) != len(o.files) {
 			continue
 		}
-		if files, diags, ok := o.lend(prev, dirty, sources, texts, snaps); ok {
-			return files, diags, true
+		files, diags, ok := o.lend(prev, dirty, sources, texts, java, snaps, cp)
+		if !ok {
+			continue
 		}
+		if len(java.texts) > 0 && !prev.javaBlind(dirty, files, texts, java) {
+			return nil, nil, false
+		}
+		return files, diags, true
 	}
 	return nil, nil, false
 }
 
 // lend is borrow from o, a clean check of Kotlin sources only.
-func (o *checked) lend(prev *checked, dirty map[int]bool, sources []Source, texts []string, snaps []*psi.Snapshot) (map[int]*File, []Diagnostic, bool) {
+func (o *checked) lend(prev *checked, dirty map[int]bool, sources []Source, texts []string, java *javaSet, snaps []*psi.Snapshot, cp *classpath.Path) (map[int]*File, []Diagnostic, bool) {
 	at := make(map[string]int, len(o.paths))
 	for k, p := range o.paths {
 		at[p] = k
@@ -390,15 +401,29 @@ func (o *checked) lend(prev *checked, dirty map[int]bool, sources []Source, text
 	}
 	// What the update's files differ by from o's.
 	names := newDeclaredNames()
+	// The packages o's files are in, and those these are inside.
 	pkgs := map[string]bool{}
 	for _, f := range o.files {
-		pkgs[f.Package] = true
+		for p := f.Package; p != ""; p = parentPackage(p) {
+			pkgs[p] = true
+		}
+	}
+	newPkgs := map[string]bool{}
+	addPackage := func(pkg string) {
+		for p := pkg; p != "" && !pkgs[p]; p = parentPackage(p) {
+			pkgs[p] = true
+			if cp != nil {
+				if _, ok := cp.Classes(strings.ReplaceAll(p, ".", "/")); ok {
+					continue
+				}
+			}
+			newPkgs[p[strings.LastIndexByte(p, '.')+1:]] = true
+		}
 	}
 	prevAt := make(map[string]int, len(prev.paths))
 	for k, p := range prev.paths {
 		prevAt[p] = k
 	}
-	newPkgs := map[string]bool{}
 	for j, src := range sources {
 		if k, ok := at[src.Path]; ok && o.texts[k] == texts[j] {
 			continue
@@ -412,9 +437,26 @@ func (o *checked) lend(prev *checked, dirty map[int]bool, sources []Source, text
 		}
 		f := prev.files[k]
 		names.addModel(f)
-		if !pkgs[f.Package] {
-			newPkgs[f.Package[strings.LastIndexByte(f.Package, '.')+1:]] = true
+		addPackage(f.Package)
+	}
+	for _, f := range java.files {
+		if f == nil {
+			return nil, nil, false
 		}
+		var add func(scope string, cs []*javasrc.Class)
+		add = func(scope string, cs []*javasrc.Class) {
+			for _, c := range cs {
+				names.add(scope, c.Name)
+				cls := c.Name
+				if scope != "" {
+					cls = scope + "." + c.Name
+				}
+				names.classes[cls] = true
+				add(cls, c.Nested)
+			}
+		}
+		add(f.Package, f.Classes)
+		addPackage(f.Package)
 	}
 	names.seal()
 	for i, f := range files {
@@ -423,6 +465,47 @@ func (o *checked) lend(prev *checked, dirty map[int]bool, sources []Source, text
 		}
 	}
 	return files, nil, true
+}
+
+// parentPackage returns the package pkg is in, "" for a top-level one.
+func parentPackage(pkg string) string {
+	if i := strings.LastIndexByte(pkg, '.'); i >= 0 {
+		return pkg[:i]
+	}
+	return ""
+}
+
+// javaBlind reports whether no Java source names a class or facade of the
+// dirty files whose models in files differ from e's (borrow).
+func (e *checked) javaBlind(dirty map[int]bool, files map[int]*File, texts []string, java *javaSet) bool {
+	names := newDeclaredNames()
+	for i := range dirty {
+		top, any := changedModels(e.files[i], files[i])
+		if !any {
+			continue
+		}
+		names.addModelOf(e.files[i], top)
+		names.addModelOf(files[i], top)
+		if !names.addFacade(files[i].Path, e.snaps[files[i].Path].text, texts[i], java) {
+			return false
+		}
+	}
+	simple := map[string]bool{}
+	for cls := range names.classes {
+		simple[cls[strings.LastIndexByte(cls, '.')+1:]] = true
+	}
+	for _, f := range names.facades {
+		simple[f] = true
+	}
+	if len(simple) == 0 {
+		return true
+	}
+	for _, text := range java.texts {
+		if namesAny(text, simple) {
+			return false
+		}
+	}
+	return true
 }
 
 // addLookingUp adds to dirty the files whose lookups in e hit names, and
