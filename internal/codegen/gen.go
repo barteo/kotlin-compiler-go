@@ -1243,21 +1243,7 @@ func (g *gen) class(cd *syntax.ClassDecl) *cf.Class {
 	for _, p := range companionFields(cd) {
 		g.propField(c, p, false)
 	}
-	// The static fields of the consts of an object, or of the class's
-	// companion object, as kotlinc writes them: with their values, if
-	// kc computes them, or else the static initializer assigns them.
-	for _, pd := range constDecls(cd) {
-		acc := uint16(cf.AccPublic | cf.AccStatic | cf.AccFinal)
-		if v := constPool(c, pd.Sym); v != 0 {
-			if pd.Visibility == syntax.Private {
-				acc = cf.AccPrivate | cf.AccStatic | cf.AccFinal
-			}
-			c.AddConstField(acc, pd.Name, desc(pd.Sym.Type), v)
-		} else {
-			c.AddField(acc, pd.Name, desc(pd.Sym.Type))
-		}
-		g.fieldAnnotations(c.LastField(), pd.Annotations, pd.Sym.Type, placement{"field", onField})
-	}
+	g.constFields(c, cd)
 	g.stableField(c, cd)
 	self := "L" + cls.Name + ";"
 	if cls.Entries != nil {
@@ -2091,6 +2077,24 @@ func (g *gen) propField(c *cf.Class, p *types.VarSym, inClinit bool) {
 	c.AddField(acc|fieldModifiers(as), p.Name, desc(ft))
 	g.signField(c.LastField(), ft, propRef(p), desc(ft), p.Mutable, as, p.Owner)
 	g.fieldAnnotations(c.LastField(), as, p.Type, field)
+}
+
+// constFields adds the static fields of the consts of an object, or of
+// class cd's companion object, as kotlinc writes them: with their values,
+// if kc computes them, or else the static initializer assigns them.
+func (g *gen) constFields(c *cf.Class, cd *syntax.ClassDecl) {
+	for _, pd := range constDecls(cd) {
+		acc := uint16(cf.AccPublic | cf.AccStatic | cf.AccFinal)
+		if v := constPool(c, pd.Sym); v != 0 {
+			if pd.Visibility == syntax.Private {
+				acc = cf.AccPrivate | cf.AccStatic | cf.AccFinal
+			}
+			c.AddConstField(acc, pd.Name, desc(pd.Sym.Type), v)
+		} else {
+			c.AddField(acc, pd.Name, desc(pd.Sym.Type))
+		}
+		g.fieldAnnotations(c.LastField(), pd.Annotations, pd.Sym.Type, placement{"field", onField})
+	}
 }
 
 // companionFields returns the properties of class cd's companion object
