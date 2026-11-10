@@ -1,6 +1,7 @@
 package ka
 
 import (
+	"os"
 	"path/filepath"
 	"reflect"
 	"slices"
@@ -36,6 +37,16 @@ import (
 // may come from any file), and a module's declarations aren't kept from
 // one check to the next. A model's files and declarations aren't changed
 // once Update returns, so models can share them.
+
+// A KSP run's checks alternate between file sets, the sources and then
+// the sources with what the processors generated, and an edit's update
+// finds the last run's check of the same set (find). The second round's
+// update of an edit that changes declarations then finds the edited files
+// changed, though the first round's check, just before, checked them with
+// the same texts. Such an update takes their models from that check
+// instead of checking them again, when what the two checks' files differ
+// by can't change them (borrow): a file's model depends on another's
+// declarations only through the names it looks up, as declEdits has it.
 
 // incrementalUpdates counts the updates that check only some files, for
 // tests.
@@ -296,6 +307,122 @@ func (e *checked) dependents(dirty map[int]bool, files []*File, texts []string, 
 		}
 	}
 	return more
+}
+
+// borrowedUpdates counts the updates that took the models of their dirty
+// files from another check (borrow), for tests.
+var borrowedUpdates atomic.Int64
+
+// noBorrow turns borrow off, for tests and comparisons (KC_NO_BORROW).
+var noBorrow = os.Getenv("KC_NO_BORROW") != ""
+
+// borrow returns the models and diagnostics of the dirty files of an
+// update whose check before is prev (declEdits), taken from another check
+// c keeps, which checked them with the same parses: a KSP run's first
+// round, when prev is the last run's second (find). It reports false,
+// and the update checks them, unless:
+//   - neither check nor the update has Java sources, whose libraries the
+//     checks make their own (library.withJava);
+//   - the other check is clean, has every dirty file with the same parse
+//     and reports nothing in it, and has no file the update doesn't;
+//   - each file the update has that the other check doesn't, or has with
+//     another text, prev has with the same text: what it declares is
+//     prev's model of it;
+//   - no dirty file looks up or declares a name those files declare
+//     (declaredNames.affects), nor writes, as a word, the last name of a
+//     package they declare that none of the other check's files does.
+//     A file that names a package missing from a check reports it there,
+//     which the rule above leaves out; this is for the rest.
+func (c *checkCache) borrow(prev *checked, dirty map[int]bool, sources []Source, texts, javaTexts []string, snaps []*psi.Snapshot) (map[int]*File, []Diagnostic, bool) {
+	if c == nil || noReuse || noBorrow || prev == nil || len(javaTexts) > 0 || len(dirty) == 0 {
+		return nil, nil, false
+	}
+	c.mu.Lock()
+	list := slices.Clone(c.list)
+	c.mu.Unlock()
+	for i := len(list) - 1; i >= 0; i-- {
+		o := list[i]
+		if o == prev || !o.clean || o.key != prev.key || len(o.texts) != len(o.files) {
+			continue
+		}
+		if files, diags, ok := o.lend(prev, dirty, sources, texts, snaps); ok {
+			return files, diags, true
+		}
+	}
+	return nil, nil, false
+}
+
+// lend is borrow from o, a clean check of Kotlin sources only.
+func (o *checked) lend(prev *checked, dirty map[int]bool, sources []Source, texts []string, snaps []*psi.Snapshot) (map[int]*File, []Diagnostic, bool) {
+	at := make(map[string]int, len(o.paths))
+	for k, p := range o.paths {
+		at[p] = k
+	}
+	inUpdate := make(map[string]bool, len(sources))
+	for _, src := range sources {
+		inUpdate[src.Path] = true
+	}
+	for _, p := range o.paths {
+		if !inUpdate[p] {
+			return nil, nil, false
+		}
+	}
+	files := map[int]*File{}
+	keys := map[int]*fileKeys{}
+	for i := range dirty {
+		k, ok := at[sources[i].Path]
+		if !ok || o.texts[k] != texts[i] || o.snaps[sources[i].Path].snap != snaps[i] {
+			return nil, nil, false
+		}
+		files[i] = o.files[k]
+		if k < len(o.keys) && o.keys[k] != nil {
+			keys[i] = o.keys[k]
+		} else {
+			keys[i] = newFileKeys(o.files[k])
+		}
+	}
+	for _, d := range o.diags {
+		for i := range dirty {
+			if d.Path == sources[i].Path {
+				return nil, nil, false
+			}
+		}
+	}
+	// What the update's files differ by from o's.
+	names := newDeclaredNames()
+	pkgs := map[string]bool{}
+	for _, f := range o.files {
+		pkgs[f.Package] = true
+	}
+	prevAt := make(map[string]int, len(prev.paths))
+	for k, p := range prev.paths {
+		prevAt[p] = k
+	}
+	newPkgs := map[string]bool{}
+	for j, src := range sources {
+		if k, ok := at[src.Path]; ok && o.texts[k] == texts[j] {
+			continue
+		}
+		if dirty[j] {
+			return nil, nil, false
+		}
+		k, ok := prevAt[src.Path]
+		if !ok || k >= len(prev.files) || prev.texts[k] != texts[j] {
+			return nil, nil, false
+		}
+		f := prev.files[k]
+		names.addModel(f)
+		if !pkgs[f.Package] {
+			newPkgs[f.Package[strings.LastIndexByte(f.Package, '.')+1:]] = true
+		}
+	}
+	names.seal()
+	for i, f := range files {
+		if names.affects(f, keys[i]) || len(newPkgs) > 0 && namesAny(texts[i], newPkgs) {
+			return nil, nil, false
+		}
+	}
+	return files, nil, true
 }
 
 // addLookingUp adds to dirty the files whose lookups in e hit names, and

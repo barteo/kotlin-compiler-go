@@ -708,3 +708,89 @@ public class K {
 		})
 	}
 }
+
+// A KSP run's second round, after an edit that changes a declaration,
+// takes the edited files' models from the first round's check when what
+// the generated files declare can't change them (checkCache.borrow), and
+// gives what a whole check does either way.
+func TestIncrementalBorrow(t *testing.T) {
+	a := "package p\nclass A { val n = 1 }\nfun edit(): Int = 1\n"
+	b := "package p\nclass B(val a: A)\nfun helper(x: Any) = 1\n"
+	gen := "package p\nclass BAdapter { fun make(a: A) = B(a) }\n"
+	java := "package q;\npublic class J { public int n; }\n"
+	cases := []struct {
+		name   string
+		s, g   []string // the sources, and the generated files
+		g2     []string // the generated files after the edit, if others
+		java   bool
+		file   int
+		from   string
+		to     string
+		borrow bool
+	}{
+		{"signature", []string{a, b}, []string{gen}, nil, false, 0, "fun edit(): Int = 1", "fun edit(): Any = 2", true},
+		{"new declaration", []string{a, b}, []string{gen}, nil, false, 0, "fun edit(): Int = 1", "fun edit(): Int = 1\nfun added() = 2", true},
+		{"looked up, borrowed too", []string{a, b + "fun useEdit() = edit()\n"}, []string{gen}, nil, false, 0, "fun edit(): Int = 1", "fun edit(): Long = 1L", true},
+		{"looks up what a generated file declares",
+			[]string{a + "fun pick() = helper(1)\n", b}, []string{gen + "fun helper(x: Int) = 1L\n"}, nil, false,
+			0, "fun edit(): Int = 1", "fun edit(): Any = 2", false},
+		{"a generated file looks it up", []string{a, b}, []string{gen + "fun g() = edit()\n"}, nil, false, 0, "fun edit(): Int = 1", "fun edit(): Long = 1L", false},
+		{"a generated file changed", []string{a, b}, []string{gen}, []string{gen + "class More\n"}, false, 0, "fun edit(): Int = 1", "fun edit(): Any = 2", false},
+		{"names a new package", []string{a + "val label = \"gen\"\n", b}, []string{"package p.gen\nclass G\n"}, nil, false, 0, "fun edit(): Int = 1", "fun edit(): Any = 2", false},
+		{"other package", []string{a, b}, []string{"package p.gen\nclass G(val a: p.A)\n"}, nil, false, 0, "fun edit(): Int = 1", "fun edit(): Any = 2", true},
+		{"java", []string{a, b}, []string{gen}, nil, true, 0, "fun edit(): Int = 1", "fun edit(): Any = 2", false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			cfg := withStdlib(t)
+			if c.java {
+				cfg = withJDK(t)
+			}
+			s := Open(cfg)
+			defer s.Close()
+			srcs := func(texts ...string) []Source {
+				out := sources(texts...)
+				if c.java {
+					out = append(out, Source{Path: "J.java", Text: &java})
+				}
+				return out
+			}
+			update := func(srcs []Source) *Model {
+				m, err := s.Update(context.Background(), srcs)
+				if err != nil {
+					t.Fatal(err)
+				}
+				return m
+			}
+			// Files no edit reaches, so that the updates check only some
+			// (maxDirtyShare).
+			base := append(slices.Clone(c.s), "package r\nfun r1() = 1\n", "package r\nfun r2() = 2\n", "package r\nfun r3() = 3\n")
+			// A run before the edit: its two rounds.
+			update(srcs(base...))
+			update(srcs(slices.Concat(base, c.g)...))
+			edited := slices.Clone(base)
+			edited[c.file] = strings.Replace(edited[c.file], c.from, c.to, 1)
+			if edited[c.file] == base[c.file] {
+				t.Fatal("no edit")
+			}
+			g := c.g
+			if c.g2 != nil {
+				g = c.g2
+			}
+			for round, texts := range [][]string{edited, slices.Concat(edited, g)} {
+				borrowedUpdates.Store(0)
+				declUpdates.Store(0)
+				got := update(srcs(texts...))
+				if declUpdates.Load() != 1 {
+					t.Errorf("round %d: not checked partially", round+1)
+				}
+				if borrowed, want := borrowedUpdates.Load() == 1, round == 1 && c.borrow && !noBorrow; borrowed != want {
+					t.Errorf("round %d: borrowed %v, want %v", round+1, borrowed, want)
+				}
+				if d := sameModel(got, wholeCheck(t, s, srcs(texts...))); d != "" {
+					t.Errorf("round %d: %s", round+1, d)
+				}
+			}
+		})
+	}
+}

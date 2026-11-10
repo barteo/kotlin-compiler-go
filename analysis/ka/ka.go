@@ -503,6 +503,35 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 		} else if dirty = prev.declEdits(paths, sources, texts, &javaSet{javaTexts, javaFiles}, snaps, files); dirty != nil {
 			declUpdates.Add(1)
 			declEdit = true
+			// A KSP run's second round, whose first checked the dirty
+			// files just before: their models are that check's (borrow).
+			if lent, diags, lentOK := cache.borrow(prev, dirty, sources, texts, javaTexts, snaps); lentOK {
+				mfs := slices.Clone(prev.files)
+				for i, f := range lent {
+					mfs[i] = f
+				}
+				if more := prev.dependents(dirty, mfs, texts, &javaSet{javaTexts, javaFiles}); len(more) == 0 {
+					borrowedUpdates.Add(1)
+					tm.Note("borrowed", len(lent))
+					m.Files = mfs
+					m.Diagnostics = nil
+					dirtyPaths := map[string]bool{}
+					for i := range dirty {
+						dirtyPaths[sources[i].Path] = true
+					}
+					for _, d := range prev.diags {
+						if !dirtyPaths[d.Path] {
+							m.Diagnostics = append(m.Diagnostics, d)
+						}
+					}
+					m.Diagnostics = append(m.Diagnostics, diags...)
+					sortDiagnostics(m.Diagnostics, snaps)
+					tm.Mark("borrowed")
+					keepCheck(cache, m, paths, slices.Concat(texts, javaTexts), sources, snaps, true, nil)
+					ok = true
+					return m, nil
+				}
+			}
 		}
 	}
 	notDirty := func(i int) bool { return !dirty[i] }
