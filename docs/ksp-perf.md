@@ -77,6 +77,8 @@ step 42's: Moshi's step 42 rows pool both batches.
 | Hilt, leaf signature edit (step 54) | 334 | 39 | 8.6x (9.7x against step 52's stock) | step 54 cut the teardown 0.6–0.9 ms (A/B, equal environments) |
 | Hilt, leaf body edit (step 55, two batches) | 355.5 | 37 | 9.6x | stock's teardown 66–166 ms across this step's four batches: 8.8x to 11.8x |
 | Hilt, leaf signature edit (step 55, two batches) | 359 | 39.5 | 9.1x | step 55 cut `between` 1–2 ms (A/B, equal environments) |
+| Hilt, leaf body edit (step 57) | 401 | 35 | 11.5x (10.2x against step 55's stock) | stock's teardown 120 ms, setup 63 ms |
+| Hilt, leaf signature edit (step 57) | 401 | 37 | 10.8x (9.7x against step 55's stock) | step 57 cut round 1's read 0.6 ms (A/B, equal environments; totals within the spread) |
 | Hilt, one-file test, warm | 403 | 59 | 6.8x | |
 | Moshi, warm | 2270 | 458 | 5.0x | about 7.5x |
 | Moshi, edit Model000 (10 files dirty) | 610 | 167 | 3.7x | |
@@ -105,6 +107,8 @@ step 42's: Moshi's step 42 rows pool both batches.
 | Moshi, leaf signature edit (step 54) | 205 | 21 | 9.8x (10.6x against step 52's stock) | step 54 doesn't apply to Moshi (patch 0017 skips its updates) |
 | Moshi, leaf body edit (step 55) | 203 | 18 | 11.3x | |
 | Moshi, leaf signature edit (step 55) | 197 | 19 | 10.4x | step 55 cut about 2 ms (A/B, equal environments, 20 against 23 and 21 against 23) |
+| Moshi, leaf body edit (step 57) | 297 | 21 | 14.1x (9.7x against step 55's stock) | stock's teardown 139 ms, 42–75 in steps 52–54 |
+| Moshi, leaf signature edit (step 57) | 315 | 22 | 14.3x (9.0x against step 55's stock) | step 57 cut round 1's read 0.5 ms (A/B, equal environments) |
 | Moshi, one-file test, warm | 204 | 23 | 8.9x | |
 
 Hilt's leaf body edit is the first edit at 10x. Since step 37, a body
@@ -219,7 +223,11 @@ KSP's symbol layer. What is left:
   every phase, the processors' too. Since step 54 the A/Bs set their
   switch in both arms (`=0` and `=1`): setting an environment variable in
   one arm only shifted Hilt's runs by about 2 ms, in phases the change
-  under test doesn't touch.
+  under test doesn't touch. Until step 57, a run's first libkc update
+  stalled about 1 ms in its read in a third of the runs: it statted the
+  sources in goroutines while the JVM's threads were busy. It now stats
+  them on the calling goroutine (`KC_NO_SERIAL_STAT=1` turns that off),
+  and no run's read reaches 1 ms.
 
 ## What "10x" has to mean
 

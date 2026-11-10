@@ -4612,6 +4612,67 @@ Moshi's 2 ms on body runs is more than the phases saved (one of its
 "off" batches was slow). There was no stock run: the ratios stay step
 55's.
 
+#### Step 57: round 1's read without the goroutine fan-out
+
+Steps 55 and 56's `KC_TIMING` logs show one stall that no other phase
+has: round 1's Go `read` was 1 ms or more in 30–43% of the runs (Hilt 65
+and 61 of 150 per edit kind, Moshi 43 and 45). It was bimodal, 0.2–0.4 ms
+or 1.2–1.8 ms, in both arms of each A/B. Other phases reach 1 ms in a
+few runs, apart from signature runs' `bodies` (15–23 of 150). A GC would
+land on random phases.
+
+Round 1's update is the first Go work after the processors, in a new
+session, and `readCache.texts` sent every source's stat to `parallel`,
+four goroutines here. A stat is a syscall: a goroutine that blocks in it
+can wait for its thread to be woken, with the JVM's threads busy (step
+51's parse-ahead among them), while the update waits for it. Warm, 100
+stats take about 0.13 ms one after another.
+
+The files the last update read are now statted on the calling
+goroutine; only the files to read go to `parallel`, when there are more
+than `smallCheck` (8). Files without a last read (a first update, new
+files) are read as before, so a cold start still reads in parallel.
+`KC_NO_SERIAL_STAT=1` turns it off. `KC_TIMING` now marks `library`, the
+shared library's lookup, apart from `read`. A new test reads 24 changed
+files through the parallel branch. `build.sh stock` is 11 ok and
+`build.sh ksp` is 134/136.
+
+Six batches per project, kc only (on, off, off, on, on, off; `=0` for
+on, `=1` for off), runs 51–100: round 1's `read` (mean, runs at 1 ms or
+more out of 75) and the run totals' medians (means in brackets):
+
+| ms | Hilt on | Hilt off | Moshi on | Moshi off |
+|---|---|---|---|---|
+| round 1 read, body | 0.21, 0 | 0.78, 29 | 0.22, 0 | 0.78, 28 |
+| round 1 read, signature | 0.21, 0 | 0.84, 25 | 0.21, 0 | 0.66, 20 |
+| round 2 read, body | 0.27 | 0.25 | 0.15 | 0.37 |
+| round 2 read, signature | 0.63 | 0.41 | 0.13 | 0.29 |
+| run total, body | 37 (38.1) | 36 (37.4) | 20 (20.9) | 21 (22.4) |
+| run total, signature | 39 (40.3) | 40 (42.0) | 21 (21.9) | 22 (22.1) |
+
+The stall is gone: no "on" run's round 1 read reaches 1 ms, and its mean
+drops by 0.5–0.6 ms; `library` stays under 0.1 ms. Hilt's signature
+round 2 mean is one slow run's. Moshi's totals drop by about 1 ms; Hilt's
+batch medians spread from 34 to 38 ms, which covers the difference.
+
+The KSP bench, both backends, 100 runs, output checked against stock's,
+medians of runs 51–100:
+
+| ms | stock KSP2 | kc | ratio | kc min |
+|---|---|---|---|---|
+| Moshi, leaf body edit | 297 | 21 | 14.1x | 15 |
+| Moshi, leaf signature edit | 315 | 22 | 14.3x | 16 |
+| Hilt, leaf body edit | 401 | 35 | 11.5x | 30 |
+| Hilt, leaf signature edit | 401 | 37 | 10.8x | 33 |
+
+Stock was slow in this batch: its teardown was 139 ms on Moshi and 120 ms
+on Hilt (42–75 and 65–115 in steps 52–55), and its Moshi runs were about
+100 ms slower than step 55's. Against step 55's stock, kc's runs here are
+9.0–9.7x on Moshi and 9.7–10.2x on Hilt. kc's Hilt runs are 2–2.5 ms
+faster than step 55's (37 and 39.5), but its Moshi runs are 3 ms slower
+(18 and 19), as were this step's Moshi A/B batches in both arms (19–23),
+so the machine, not kc alone, moved between the steps.
+
 ## Gaps and open questions
 
 - **Slice simplifications (M0.4).** These go when M3/M4 bring the facts in:
