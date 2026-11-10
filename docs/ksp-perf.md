@@ -205,6 +205,12 @@ KSP's symbol layer. What is left:
   to about 0.1 ms, but libkc's update is slower beside the parse, and
   body runs sometimes wait for it. That took 0.3–0.4 ms off a Moshi run
   and nothing off a Hilt one (A/B); `KC_NO_PARSE_AHEAD=1` turns it off.
+  Since step 56 a run's second round takes its first round's texts
+  without statting the files (kc-aa opens the session with
+  `FixedSources`), and libkc keeps the last two updates' Java parses
+  by text: round 2's read drops by 0.05–0.16 ms and Hilt's Java parse
+  (0.3–0.4 ms) is gone (A/B, too small to show in the totals);
+  `KC_NO_ROUND_REUSE=1` turns both off.
 - **Comment and KDoc edits outside bodies** still take the partial
   check, though they would only need nodes and positions moved, as
   step 37 does for bodies.

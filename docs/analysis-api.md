@@ -4560,6 +4560,58 @@ Stock's teardown moved between 66 and 166 ms from one Hilt batch to the
 next, so the Hilt ratios ranged from 8.8x to 11.8x across the four
 batches. kc moved by 3–4 ms.
 
+#### Step 56: a KSP run's second round reuses its first round's sources
+
+A KSP run's rounds are updates of one libkc session, and KSP only adds
+files between them. Yet each update statted every source again (and read
+those changed within the racy window), and parsed every Java source
+again: about 0.3 ms of reading and, on Hilt, 0.3 ms of Java parsing in
+round 2 (step 55's `KC_TIMING`). Two changes:
+
+- **Fixed sources.** `ka.Config.FixedSources`, which kc-aa sets (OpKaOpen
+  gained a trailing `fixed:Bool`), says the files don't change while the
+  session is open. An update then takes the text a source had in the
+  session's last update without statting its file, and reads only the
+  files that are new: in round 2, the files round 1 generated.
+- **Java parses kept.** The library keeps the parse of each Java source
+  by path and text (`javacache.go`), and parses only the sources whose
+  texts changed. A parsed `javasrc.File` is only read once parsed, so
+  models share it. It keeps the parses of the last two updates, not one:
+  Hilt's Java files are generated in round 1 and are sources of round 2
+  only, so the next run's round 1, which has no Java sources, would drop
+  them before its round 2. The first A/B, with one update kept, showed no
+  hit at all; their texts are mostly the same from run to run.
+
+`KC_NO_ROUND_REUSE=1` turns both off. `build.sh stock` is 11 ok and
+`build.sh ksp` is 134/136; a new test checks that a session with fixed
+sources doesn't see a file changed on disk, reads a new one, and parses a
+Java source again only when its text changes or after two updates
+without it.
+
+Six batches per project, kc only (on, off, off, on, on, off; `=0` for
+on, `=1` for off), means of round 2's phases (`KC_TIMING`, 0.1 ms
+resolution) and medians (means in brackets) of the run totals, runs
+51–100. Moshi is from the first A/B (it has no Java sources), Hilt from
+the second, with two updates' parses kept:
+
+| ms | Hilt on | Hilt off | Moshi on | Moshi off |
+|---|---|---|---|---|
+| round 2 read, body | 0.32 | 0.35 | 0.25 | 0.41 |
+| round 2 read, signature | 0.29 | 0.41 | 0.25 | 0.41 |
+| round 2 parse, body | 0.00 | 0.32 | 0.00 | 0.00 |
+| round 2 parse, signature | 0.01 | 0.38 | 0.00 | 0.00 |
+| run total, body | 35 (37.5) | 35 (36.6) | 17 (18.5) | 19 (20.2) |
+| run total, signature | 37 (40.5) | 38 (39.9) | 20 (20.9) | 20 (22.1) |
+
+Round 2's Java parse is gone on Hilt and its read drops by 0.05–0.1 ms:
+what is left is reading the 12 files round 1 generated, which KSP writes
+anew every run. On Moshi the read drops by 0.16 ms. That is 0.4 ms a Hilt
+run and 0.16 ms a Moshi one, below the spread of the totals, which don't
+show it: Hilt's first "on" batch was slow throughout (38 and 39 ms), and
+Moshi's 2 ms on body runs is more than the phases saved (one of its
+"off" batches was slow). There was no stock run: the ratios stay step
+55's.
+
 ## Gaps and open questions
 
 - **Slice simplifications (M0.4).** These go when M3/M4 bring the facts in:
