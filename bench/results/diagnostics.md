@@ -7,15 +7,15 @@ Of 10827 test files, 3541 are skipped and 7286 run.
 | Result | Tests | Share |
 |:---|---:|---:|
 | rejects invalid | 3616 | 49.6% |
-| accepts valid | 3132 | 43.0% |
+| accepts valid | 3134 | 43.0% |
 | accepts invalid | 263 | 3.6% |
-| rejects valid | 257 | 3.5% |
+| rejects valid | 255 | 3.5% |
 | parse/unsupported | 18 | 0.2% |
 | crash | 0 | 0.0% |
 
 *Rejects invalid* and *accepts valid* agree with kotlinc. *Accepts invalid* is code kotlinc rejects that kc compiles; *rejects valid*, code kotlinc compiles that kc's checker rejects. Both are bugs. A *parse/unsupported* test uses a feature kc doesn't support, which says nothing about its checks.
 
-Of the 3616 tests both reject, kc reports an error on the line of an expected one in 3402.
+Of the 3616 tests both reject, kc reports an error on the line of an expected one in 3401.
 
 A test is invalid if it stops before the backend or marks an error: one that runs to it (`BACKEND`) can mark the JVM backend's errors, such as `CONFLICTING_JVM_DECLARATIONS`. Of the tests run, 177 stop at `FRONTEND` but mark no error: most add the `CHECK_TYPE` helpers, whose names (`_`) kotlinc reports outside the test infrastructure, and count as valid; the others leave their errors out with the `DIAGNOSTICS` directive. 101 run to the backend and mark one. 5 marked names have no declared severity (debug information, for one), and count as neither.
 
@@ -125,9 +125,9 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 | `ambiguous call: n candidates for '_' take (_)` | 14 | `tests/callableReference/resolve/kt35887.kt`, `tests/contextSensitiveResolutionUsingExpectedType/ideHint/forExpressions/multipleOverloads.kt` |
 | `'_' expression must be exhaustive, add necessary '_' branch` | 7 | `tests/controlStructures/whenWithNothingTypedSubject.kt`, `tests/exhaustiveness/positive/smartcastToExhaustiveInterface.kt` |
 | `no function '_' takes n arguments` | 6 | `tests/cast/kt15161.kt`, `tests/errorProneAtomicArrayArguments.kt` |
-| `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 6 | `tests/regressions/Jet169.kt`, `tests/secondaryConstructors/dataFlowInDelegationCall.kt` |
 | `expression '_' of type _ cannot be invoked as a function` | 5 | `tests/companionObjectCall.kt`, `tests/expresssions/invoke/incorrectInvokeReceiver.kt` |
 | `none of the n candidates for '_' take (_)` | 4 | `tests/callableReference/noAmbiguityWhenAllReferencesAreInapplicable.kt`, `tests/problems/kt52219.kt` |
+| `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 4 | `tests/regressions/Jet169.kt`, `tests/secondaryConstructors/dataFlowInDelegationCall.kt` |
 | `unresolved import: _` | 4 | `tests/errorProneAtomicArraySuggestions.kt`, `tests/errorProneAtomicReferenceArguments.kt` |
 | `'_' overrides nothing` | 3 | `tests/genericReceiverPropertyOverride.kt`, `tests/generics/finalUpperBoundWithOverride.kt` |
 | `overload resolution ambiguity for B::foo: specify the expected function type` | 3 | `tests/callableReference/callableReferenceWithMostSpecificGenericTypeParameter.kt`, `tests/callableReference/resolve/kt9601.kt` |
@@ -165,11 +165,11 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 13381 of 19696 expected errors (67.9%) on their lines.
+kc reports 13379 of 19696 expected errors (67.9%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
-| `SYNTAX` | 872 | 223 | 649 |
+| `SYNTAX` | 872 | 222 | 650 |
 | `UNRESOLVED_REFERENCE` | 2154 | 1658 | 496 |
 | `CONFLICTING_JVM_DECLARATIONS` | 996 | 518 | 478 |
 | `ARGUMENT_TYPE_MISMATCH` | 1263 | 837 | 426 |
@@ -208,9 +208,9 @@ kc reports 13381 of 19696 expected errors (67.9%) on their lines.
 | `EXPLICIT_TYPE_ARGUMENTS_IN_PROPERTY_ACCESS` | 36 | 5 | 31 |
 | `INAPPLICABLE_JVM_FIELD` | 33 | 2 | 31 |
 | `OPT_IN_USAGE_ERROR` | 96 | 66 | 30 |
+| `WRONG_ANNOTATION_TARGET` | 337 | 307 | 30 |
 | `ASSIGNMENT_IN_EXPRESSION_CONTEXT` | 32 | 3 | 29 |
 | `REPEATED_MODIFIER` | 39 | 10 | 29 |
-| `WRONG_ANNOTATION_TARGET` | 337 | 308 | 29 |
 | `JVM_EXPOSE_BOXED_CANNOT_EXPOSE_PRIVATE` | 28 | 0 | 28 |
 | `UNDERSCORE_USAGE_WITHOUT_BACKTICKS` | 28 | 1 | 27 |
 | `WRONG_ANNOTATION_TARGET_WITH_USE_SITE_TARGET` | 79 | 52 | 27 |
@@ -238,7 +238,7 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | Error | Count |
 |:---|---:|
 | `cannot infer type for type parameter '_'. Specify it explicitly.` | 533 |
-| `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 319 |
+| `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 313 |
 | `type mismatch: inferred type is _ but _ was expected` | 303 |
 | `unresolved reference: _` | 264 |
 | `platform declaration clash: _` | 150 |
