@@ -160,7 +160,32 @@ func (f fixer) fixes(env FixEnv) []Fix {
 	case d.Code == UnusedVariable:
 		return f.removeVariable()
 	case d.Code == "UNRESOLVED_REFERENCE":
-		return f.importFixes(env)
+		if len(d.Data) == 0 {
+			return nil
+		}
+		return append(f.importFixes(env, d.Data[0]), f.createFromUsage(d.Data[0])...)
+	case strings.HasPrefix(d.Message, unresolvedType):
+		name := strings.TrimPrefix(d.Message, unresolvedType)
+		if strings.ContainsAny(name, ".<") {
+			return nil
+		}
+		return append(f.importFixes(env, name), f.createClass(name)...)
+	case d.Code == "NO_RETURN_IN_FUNCTION_WITH_BLOCK_BODY":
+		return f.addReturn()
+	case d.Code == "UNINITIALIZED_VARIABLE":
+		return f.initializeVariable()
+	case d.Code == "FINAL_SUPERTYPE":
+		return f.makeSupertypeOpen()
+	case d.Code == "OVERRIDING_FINAL_MEMBER":
+		return f.makeMemberOpen()
+	case d.Code == "REIFIED_TYPE_PARAMETER_NO_INLINE":
+		return f.addInline()
+	case d.Code == "TYPE_PARAMETER_AS_REIFIED":
+		return f.makeReified()
+	case d.Code == "JVM_STATIC_NOT_IN_OBJECT_OR_COMPANION":
+		return f.removeAnnotation("JvmStatic")
+	case d.Code == "WRONG_ANNOTATION_TARGET", d.Code == "REPEATED_ANNOTATION":
+		return f.removeAnnotation("")
 	case d.Code == "UNRESOLVED_IMPORT":
 		return f.removeImport("Remove unresolved import")
 	case d.Code == "UNSAFE_CALL":
@@ -234,11 +259,10 @@ func (f fixer) declaration(kinds ...psi.Kind) psi.NodeRef {
 // importFixes imports the unresolved name, one fix per candidate: a
 // class in a type, a class or function as a callee, anything else as a
 // plain name. A qualified name's selector, a member, has none.
-func (f fixer) importFixes(env FixEnv) []Fix {
-	if env.Importables == nil || len(f.d.Data) == 0 {
+func (f fixer) importFixes(env FixEnv, name string) []Fix {
+	if env.Importables == nil {
 		return nil
 	}
-	name := f.d.Data[0]
 	id := f.snap.NodeAt(f.d.Range.Start)
 	ref := id.Parent()
 	if ref.NumericKind() != psi.KindREFERENCE_EXPRESSION {
@@ -733,22 +757,9 @@ func (f fixer) initialize() []Fix {
 		return nil
 	}
 	t := tr.Text()
-	init := "TODO()"
-	switch {
-	case strings.HasSuffix(t, "?"):
-		init = "null"
-	case t == "Int" || t == "Long" || t == "Short" || t == "Byte" || t == "kotlin.Int":
-		init = "0"
-	case t == "Double":
-		init = "0.0"
-	case t == "Float":
-		init = "0f"
-	case t == "Boolean":
-		init = "false"
-	case t == "String":
-		init = `""`
-	case t == "Char":
-		init = "' '"
+	init := defaultValue(t)
+	if init == "" {
+		init = "TODO()"
 	}
 	end := tr.Range().End
 	out := f.fix("Add initializer", true, f.edit(psi.Range{Start: end, End: end}, " = "+init))

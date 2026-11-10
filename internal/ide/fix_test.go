@@ -411,6 +411,27 @@ fun f(l: MutableList<Int>) {
     l.add(1)
 }
 `},
+		{"import type", "source_error", "Import 'lib.Box'", "package p\n\nfun f(b: Box) = b.x\n", "package p\n\nimport lib.Box\n\nfun f(b: Box) = b.x\n"},
+		{"create class from type", "source_error", "Create class 'Thing'", "package p\n\nfun f(t: Thing) = t\n", "package p\n\nfun f(t: Thing) = t\n\nclass Thing\n"},
+		{"create interface", "source_error", "Create interface 'Named'", "package p\n\nclass A : Named\n", "package p\n\nclass A : Named\n\ninterface Named\n"},
+		{"create superclass", "source_error", "Create class 'Base2'", "package p\n\nclass A : Base2()\n", "package p\n\nclass A : Base2()\n\nopen class Base2\n"},
+		{"create function", "UNRESOLVED_REFERENCE", "Create function 'g'", "package p\n\nfun f(s: String): Int {\n    return g(1, s)\n}\n", "package p\n\nfun f(s: String): Int {\n    return g(1, s)\n}\n\nfun g(i: Int, s: String): Int {\n    TODO(\"Not yet implemented\")\n}\n"},
+		{"create unit function", "UNRESOLVED_REFERENCE", "Create function 'log'", "package p\n\nfun f(b: lib.Box) {\n    log(b, 2L)\n}\n", "package p\n\nimport lib.Box\n\nfun f(b: lib.Box) {\n    log(b, 2L)\n}\n\nfun log(b: Box, l: Long) {\n    TODO(\"Not yet implemented\")\n}\n"},
+		{"create member function", "UNRESOLVED_REFERENCE", "Create member function 'A.g'", "package p\n\nclass A {\n    fun f(): Boolean = g(\"x\")\n}\n", "package p\n\nclass A {\n    fun f(): Boolean = g(\"x\")\n\n    private fun g(s: String): Boolean {\n        TODO(\"Not yet implemented\")\n    }\n}\n"},
+		{"create function on receiver", "UNRESOLVED_REFERENCE", "Create member function 'A.size'", "package p\n\nclass A {\n}\n\nfun f(a: A): Int = a.size()\n", "package p\n\nclass A {\n    fun size(): Int {\n        TODO(\"Not yet implemented\")\n    }\n}\n\nfun f(a: A): Int = a.size()\n"},
+		{"create class from call", "UNRESOLVED_REFERENCE", "Create class 'Point'", "package p\n\nfun f() = Point(1, 2.0)\n", "package p\n\nfun f() = Point(1, 2.0)\n\nclass Point(val i: Int, val d: Double)\n"},
+		{"create local variable", "UNRESOLVED_REFERENCE", "Create local variable 'limit'", "package p\n\nfun f(): Int {\n    val x = 1\n    return limit\n}\n", "package p\n\nfun f(): Int {\n    val x = 1\n    val limit: Int = TODO()\n    return limit\n}\n"},
+		{"create property", "UNRESOLVED_REFERENCE", "Create property 'enabled'", "package p\n\nfun f(): Int = if (enabled) 1 else 0\n", "package p\n\nfun f(): Int = if (enabled) 1 else 0\n\nval enabled: Boolean = TODO()\n"},
+		{"add return", "NO_RETURN_IN_FUNCTION_WITH_BLOCK_BODY", "Add 'return' before the expression", "package p\n\nfun f(x: Int): Int {\n    println(x)\n    x + 1\n}\n", "package p\n\nfun f(x: Int): Int {\n    println(x)\n    return x + 1\n}\n"},
+		{"initialize variable", "UNINITIALIZED_VARIABLE", "Initialize with default value", "package p\n\nfun f(): Int {\n    var x: Int\n    return x\n}\n", "package p\n\nfun f(): Int {\n    var x: Int = 0\n    return x\n}\n"},
+		{"make class open", "FINAL_SUPERTYPE", "Make 'A' open", "package p\n\nclass A\n\nclass B : A()\n", "package p\n\nopen class A\n\nclass B : A()\n"},
+		{"make member open", "OVERRIDING_FINAL_MEMBER", "Make 'A.f' open", "package p\n\nopen class A {\n    fun f() = 1\n}\n\nclass B : A() {\n    override fun f() = 2\n}\n", "package p\n\nopen class A {\n    open fun f() = 1\n}\n\nclass B : A() {\n    override fun f() = 2\n}\n"},
+		{"make final override open", "OVERRIDING_FINAL_MEMBER", "Make 'B.id' open", "package p\n\nopen class B : lib.Base() {\n    final override fun id() = 1\n}\n\nclass C : B() {\n    override fun id() = 2\n}\n", "package p\n\nopen class B : lib.Base() {\n    override fun id() = 1\n}\n\nclass C : B() {\n    override fun id() = 2\n}\n"},
+		{"add inline", "REIFIED_TYPE_PARAMETER_NO_INLINE", "Add 'inline' modifier", "package p\n\nfun <reified T> f(x: Any) = x is T\n", "package p\n\ninline fun <reified T> f(x: Any) = x is T\n"},
+		{"make reified", "TYPE_PARAMETER_AS_REIFIED", "Make 'U' reified", "package p\n\ninline fun <reified T> f(x: Any) = x is T\n\nfun <U> g(x: Any) = f<U>(x)\n", "package p\n\ninline fun <reified T> f(x: Any) = x is T\n\ninline fun <reified U> g(x: Any) = f<U>(x)\n"},
+		{"remove jvmstatic", "JVM_STATIC_NOT_IN_OBJECT_OR_COMPANION", "Remove '@JvmStatic' annotation", "package p\n\nclass A {\n    @JvmStatic fun f() = 1\n}\n", "package p\n\nclass A {\n    fun f() = 1\n}\n"},
+		{"remove wrong target", "WRONG_ANNOTATION_TARGET", "Remove '@JvmStatic' annotation", "package p\n\n@JvmStatic\nclass A\n", "package p\n\nclass A\n"},
+		{"remove repeated", "REPEATED_ANNOTATION", "Remove '@Deprecated' annotation", "package p\n\n@Deprecated(\"a\") @Deprecated(\"b\")\nfun f() = 1\n", "package p\n\n@Deprecated(\"a\") \nfun f() = 1\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			got := applyQuickFix(t, cfg, tc.code, tc.fix, tc.src)
