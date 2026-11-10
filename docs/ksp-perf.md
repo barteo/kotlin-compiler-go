@@ -157,7 +157,15 @@ KSP's symbol layer. What is left:
   Moshi's body run. What is left is `calcDirtyFiles` (about 1.1 ms,
   `DirtinessPropagator` among it), the caches' up-to-date marker,
   deleted and created again each run, and the wait for the output
-  writers (about 0.4).
+  writers (about 0.4). Step 53 profiled Hilt: its largest piece is
+  `registerGeneratedFiles`, about 1 ms a run collecting the symbols of
+  the generated Java files, then the lookup storages' update and flush
+  on signature runs (about 0.9 ms more than a body run's). Reusing the
+  symbols of generated files whose text was unchanged (fork patch 0018)
+  made Hilt 2–3 ms slower (A/B): the processors' first
+  `getSymbolsWithAnnotation` then built the same declarations, and the
+  processors ran slower beside patch 0016's backup check, which the
+  visit had left room for. It was reverted.
 - **kc-aa's rounds**: about 5 ms per Moshi body run since step 46. That
   step made the JVM keep unchanged files' PSI by libkc's text hash
   (no stat or read per file per round), cached the session's source

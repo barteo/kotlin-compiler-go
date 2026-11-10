@@ -4311,6 +4311,83 @@ above 10x against this batch's stock and step 50's (194 ms, 10.2x).
 A kc signature run now costs about 1 ms more than a body run, on
 both projects: the check of the edited file in round 1.
 
+#### Step 53: Hilt's overhead outside the processors (no change kept)
+
+After step 52, a Hilt run took 35 ms (body edit) or 39 (signature edit)
+against stock's 368 and 378, and the processors themselves about 20 of
+that. This step profiled Hilt, to find the largest piece outside
+processor code that kc or the fork controls, and cut it.
+
+Two kc batches of 100 runs on Hilt, a leaf edit, JFR from run 51 (the
+recording slows the runs about 2x; one sample is about 1.4 ms a run at
+this scale, calibrated against `KC_TIMING`'s libkc time):
+
+| samples (50 runs) | signature edit | body edit |
+|---|---|---|
+| `process`, all | 630 | |
+| …of it, not processor code (KSP's symbol layer 102, kc-aa 64, IntelliJ 44, libkc 11) | 221 | |
+| setup, between rounds and teardown, all | 463 | 332 |
+| …`updateCachesAndOutputs` | 88 | 61 |
+| ……updating and flushing the lookup storages | 48 | 17 |
+| ……writing the symbol maps (`PersistentMap.flush`) | 15 | 12 |
+| …`calcDirtyFiles` (symbols of the edited file, `DirtinessPropagator`, paths) | 42 | 29 |
+| …`registerGeneratedFiles` (the symbols of each generated Java file) | 40 | 34 |
+| …`IncrementalContextAA`'s construction | 12 | 10 |
+
+Inside `process`, the 221 samples that aren't processor code are spread
+over about 30 KSP and kc-aa calls; the largest is
+`getSymbolsWithAnnotation`'s `mapAnnotatedSymbols` (24). In the Go
+benchmark (`BenchmarkUpdateEdit`, Hilt, `h/Feature099.kt`), round 1's
+signature update takes 2.07 ms against a body edit's 0.91, spread over
+the check (0.59), parsing (0.27), the signature hash (0.15), lowering
+(0.15), `dependents` (0.14) and reading (0.13): about 0.3 ms of it looked
+cuttable.
+
+The largest single piece was `registerGeneratedFiles`, on every Hilt
+run: after each round, KSP visits every declaration of every file the
+round generated, to record the symbols it defines. Most of those files
+have the same text as the run before, and the symbols depend only on the
+text. So fork patch 0018 kept each generated file's last text and
+symbols for the process and reused them when the text matched
+(`KSP_SYMBOL_VERIFY=1` batches on Moshi and Hilt matched the symbols
+collected anew on every run). Under JFR, `registerGeneratedFiles` went
+from 40 samples to none, but `mapAnnotatedSymbols` went from 24 to 57:
+the processors' first `getSymbolsWithAnnotation` of each round now built
+the generated files' declarations, which the visit used to build first.
+
+Six alternating batches per project (on, off, off, on, on, off; off is
+`KSP_NO_SYMBOL_REUSE=1`), medians (means in brackets) of runs 51–100:
+
+| ms | Hilt on | Hilt off | Moshi on | Moshi off |
+|---|---|---|---|---|
+| run total, body | 37 (39.3) | 35 (36.6) | 19 (20.8) | 19 (19.9) |
+| run total, signature | 40 (43.5) | 37 (40.5) | 21 (22.4) | 20 (21.8) |
+| `process`, body | 25 (26.4) | 22 (23.1) | 9 (10.0) | 9 (9.4) |
+| `process`, signature | 25 (26.9) | 23 (24.4) | 9 (10.4) | 9 (9.5) |
+
+The patch made Hilt 2–3 ms slower, all of it in `process`; kc's own
+parts (`KC_TIMING`) didn't move. The JFR batch put the extra time in
+the processors' own code (JavaPoet's `emit`, `KspFiler.write`). Patch
+0016's check of clean outputs against their backups (about 2,500
+`stat`s on one thread) runs while the processors do, on a 4-core machine
+that also runs the output writer. With that check off
+(`KSP_NO_PRECHECK=1`, four alternating batches), the patch saved
+1.5–2.5 ms instead (Hilt body 38.5 against 41, signature 41.5 against
+43), with `process` equal. So the visit had left room for the backup
+check, and without it the check competed with the processors. Both
+settings are still slower than step 52's (the check on, no patch: 35
+and 37), so the patch was reverted.
+
+Leads for later:
+- the backup check's cost while the processors run, now measured
+  through the patch: fewer `stat`s (outputs and backups this process
+  wrote or copied and whose stamps still match), or a later start;
+- a delta update of the lookup storages on signature runs, where patch
+  0017's skip never fires (about 0.9 ms more than a body run's update
+  and flush);
+- `calcDirtyFiles` (about 1 ms, spread);
+- round 1's signature update in Go (about 0.3 ms that looks cuttable).
+
 ## Gaps and open questions
 
 - **Slice simplifications (M0.4).** These go when M3/M4 bring the facts in:
