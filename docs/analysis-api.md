@@ -3508,6 +3508,105 @@ about 575. The machine's speed varies that much between batches, so the
 same-batch A/B above is this step's measure. On it, step 44 alone is
 about 2 ms of Moshi's signature run and 11 of Hilt's.
 
+#### Step 45: changed names are tested against each file's hashed keys
+
+After step 44, a signature edit's update took 3.2–3.9 ms in
+`BenchmarkUpdateEdit` (Moshi) and 5.0–6.0 ms in the JVM's `native`
+timer. A third of that went on finding the files a changed declaration
+reaches: `declEdits` (`addLookingUp`) and then `dependents` scanned every
+unchanged file's lookups and declarations (`declaredNames.hit`,
+`declaredBy`). Each step hashed a `[2]string` key, and `declaredBy`
+called `strings.ReplaceAll` per class. That was 0.9 s of `Update`'s
+2.81 s, while the names searched for were the few the edit changed.
+`KC_TIMING` didn't show it: `dependents` and `keepCheck` ran after the
+timer's last mark.
+
+**Each model now has its keys** (`fileKeys` in `keys.go`): the sorted
+64-bit hashes (`hash/maphash`, one seed per process) of
+- its lookups' scopes and names;
+- its lookups' scopes alone;
+- its declarations' scopes and names, walked as `declaredBy` walks them.
+
+`checkCache.keysOf` computes them when a check is kept and keeps them
+with the models (`checked.keys`). An unchanged file's model is the same
+`*File` from one check to the next, so an update computes only the
+checked files' keys. `keep` drops the keys of models no kept check
+holds. `declaredNames.seal` hashes the changed names and classes, and
+`intersects` searches for them in each file's keys. It binary-searches
+when the sets are far apart in size and merges them otherwise. A hash
+that collides can only add a file to those checked.
+
+The tests turn on `verifyKeys`: each file the keys pass over is checked
+against `hit` and `declaredBy` too, and a miss panics. `TestFileKeys`
+compares the two for every single name and class a small module looks
+up or declares, and `TestIntersects` covers both of `intersects`'
+paths. `KC_TIMING` now marks `dependents` and `keep`.
+
+This step's plan also had `reachable` keep its name index across updates.
+After this step `reachable` was 0.10 s of `Update`'s 1.70 s, about
+0.1 ms per update, so it wasn't done: an index kept across updates holds
+the parses it indexed until it is rebuilt.
+
+Tests:
+- `TestIncrementalModuleDecl`, `TestIncrementalModule` and
+  `TestShiftedModule` pass on Moshi, Hilt, Room and Exhaustive with
+  `verifyKeys` on, with the files resolved per edit unchanged (2.4,
+  2.0, 52.5, 478.6).
+- With `newFileKeys` leaving out declarations, `TestIncrementalDecl`
+  panics on the first file the keys miss.
+- `build.sh stock` and `build.sh ksp` (134/136) pass.
+
+`BenchmarkUpdateEdit` (Moshi, `KA_BENCH_SIGNATURE`) took 2.1–2.9 ms per
+update, against 3.2–3.9 in step 44. In the profile, the two scans fell
+from 0.9 s to 0.04 s, and `Update` from 2.81 s to 1.70 s. What is left
+is spread out:
+- `checkFiles`, 0.37 s;
+- reading the texts, 0.21 s;
+- the edited file's model and lowering, about 0.5 s;
+- `changedModels`, 0.13 s.
+
+There is no switch for this step, so it was measured against step 44's
+libkc, built from 6ab8413, swapped in between batches on the same
+machine. Kc only, signature edits only, two batches each, alternating.
+Medians and minimums of runs 51–100, and of `native` per update:
+
+| ms | step 45 | step 44 | `native`, 45 against 44 |
+|---|---|---|---|
+| Moshi, leaf signature edit, batch 1 | 31 (min 26) | 35 (min 29) | 3.2 against 5.2 |
+| Moshi, leaf signature edit, batch 2 | 30 (min 23) | 37 (min 29) | 3.0 against 5.3 |
+| Hilt, leaf signature edit, batch 1 | 56 (min 47) | 62 (min 45) | 4.0 against 6.0 |
+| Hilt, leaf signature edit, batch 2 | 52 (min 40) | 57 (min 45) | 3.8 against 5.6 |
+
+Each update's `native` falls by about 2 ms, and a run by 5–6 ms. With
+`KC_TIMING`, the phases now add up to `native`. On Moshi they are:
+
+| phase | ms |
+|---|---|
+| read | 0.3 |
+| parse | 0.3 |
+| lower (with `declEdits`) | 0.8, against 1.5 |
+| signatures | 1.0 |
+| bodies | 0.3 |
+| model | 0.1 |
+| dependents | 0.1 |
+| keep | 0.1 |
+
+The KSP bench, both backends, leaf edits alternating body and signature,
+100 runs, output checked against stock's (`CHECK`):
+
+| ms | stock KSP2 | kc | ratio | kc min |
+|---|---|---|---|---|
+| Moshi, leaf body edit | 232 | 26 | 8.9x | 22 |
+| Moshi, leaf signature edit | 225 | 33 | 6.8x | 26 |
+| Hilt, leaf body edit | 504 | 41 | 12.3x | 35 |
+| Hilt, leaf signature edit | 481 | 48 | 10.0x | 43 |
+
+Hilt's signature edit is now at 10x. Moshi's first batch gave kc 27 and
+32 ms, but stock's teardowns were 98–101 ms there, against 45–46 in the
+second, so its ratios aren't used. A Moshi signature run is now 7 ms
+over a body run. Its two updates take about 3 ms each, and a body run's
+take about 1.
+
 ## Gaps and open questions
 
 - **Slice simplifications (M0.4).** These go when M3/M4 bring the facts in:
