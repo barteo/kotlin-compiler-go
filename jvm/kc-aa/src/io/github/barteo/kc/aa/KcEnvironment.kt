@@ -5,7 +5,9 @@ import com.google.devtools.ksp.processing.KSPJvmConfig
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.fileEditor.impl.LoadTextUtil
 import com.intellij.openapi.util.Disposer
+import com.intellij.openapi.vfs.StandardFileSystems
 import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.openapi.vfs.VirtualFileManager
 import com.intellij.psi.PsiFile
 import com.intellij.psi.PsiManager
 import com.intellij.psi.impl.PsiManagerEx
@@ -67,17 +69,34 @@ internal class KcEnvironment(val key: String, config: KSPConfig) {
     var reused = 0
 
     /**
+     * The PSI of the file at [path], whose text libkc read has hash [text]
+     * ([KcFile.text]): the PSI [psiFile] gave for it before, without
+     * reading the file again, if the bytes it read then have that hash and
+     * the PSI is still the file's; otherwise [psiFile]'s.
+     */
+    fun psiFile(path: String, text: Long): PsiFile? {
+        parsed[path]?.let { p ->
+            if (text != 0L && p.hash == text && (psiManager as PsiManagerEx).fileManager.findCachedViewProvider(p.vf) != null) {
+                reused++
+                return psiManager.findFile(p.vf)
+            }
+        }
+        return files.refreshAndFindFileByPath(path)?.let { psiFile(it, path) }
+    }
+
+    /**
      * The PSI of [vf]: the one parsed before if the file's text is the
      * same, or a new one. A file whose text changed gets a new view
      * provider, so its old PSI (and the old round's symbols over it) are
      * left as they were.
      */
-    fun psiFile(vf: VirtualFile): PsiFile? {
+    fun psiFile(vf: VirtualFile, path: String = vf.path): PsiFile? {
         val fm = (psiManager as PsiManagerEx).fileManager
         val cached = fm.findCachedViewProvider(vf)
         // The file's bytes, compared with those its PSI was parsed from:
         // cheaper than decoding its text again.
         val bytes = vf.contentsToByteArray()
+        parsed[path] = Parsed(vf, textHash(bytes))
         if (cached != null) {
             val same = parsedBytes[vf]?.contentEquals(bytes)
                 ?: (cached.contents.toString() == LoadTextUtil.loadText(vf).toString())
@@ -92,6 +111,14 @@ internal class KcEnvironment(val key: String, config: KSPConfig) {
         parsedBytes[vf] = bytes
         return psiManager.findFile(vf)
     }
+
+    private val files = VirtualFileManager.getInstance().getFileSystem(StandardFileSystems.FILE_PROTOCOL)
+
+    /** A file's PSI's virtual file, and the hash of the bytes [psiFile] last read from it. */
+    private class Parsed(val vf: VirtualFile, val hash: Long)
+
+    /** By path, as [psiFile] was asked for it. */
+    private val parsed = HashMap<String, Parsed>()
 
     /** The trees of the files' PSI that rounds joined, for later rounds over the same PSI. */
     val trees = KcTrees()
@@ -219,4 +246,14 @@ internal object KcEnvironments {
             javaSources.forEach { append(stamp(File(it))).append('\n') }
         }
     }
+}
+
+/** The 64-bit FNV-1a hash of [bytes]: libkc's hash of a file's text (kaops's textHash). */
+internal fun textHash(bytes: ByteArray): Long {
+    var h = -0x340d631b7bdddcdbL // 14695981039346656037
+    for (b in bytes) {
+        h = h xor (b.toLong() and 0xff)
+        h *= 0x100000001b3L
+    }
+    return h
 }

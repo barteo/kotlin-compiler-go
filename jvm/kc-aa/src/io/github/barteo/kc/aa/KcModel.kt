@@ -71,7 +71,7 @@ internal object KcOps {
                 val from = r.readUint()
                 val path = r.readString()
                 if (from == 0L) {
-                    KcFile(path, r.readString(), r.annotations(), r.decls(), r.lookups(), r.readUint().toInt(), r.readUint())
+                    KcFile(path, r.readString(), r.annotations(), r.decls(), r.lookups(), r.readUint().toInt(), r.readUint(), r.readUint())
                 } else {
                     reused++
                     bases[from]?.get(path) ?: error("kc: no file $path of check $from")
@@ -222,6 +222,8 @@ internal class KcFile(
     /** The number of kc's psi nodes of the file, and the hash of their kinds ([KcKinds.hash]). */
     val nodes: Int = -1,
     val kinds: Long = 0,
+    /** The hash of the file's text as libkc read it (KcEnvironment's textHash), or 0. */
+    val text: Long = 0,
 ) {
     /**
      * The IDs of the file's classes and type aliases, local ones too, in

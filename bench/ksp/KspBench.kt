@@ -342,7 +342,9 @@ fun main(args: Array<String>) {
             libraries = libs
             friends = emptyList()
             jdkHome = File(System.getProperty("java.home"))
-            projectBaseDir = srcs.first()
+            // Gradle's is the project directory, which holds both the
+            // sources and build/generated/ksp: so outBase, with src0 and out.
+            projectBaseDir = if (edit) outBase else srcs.first()
             outputBaseDir = out
             cachesDir = File(out, "caches")
             classOutputDir = File(out, "classes")

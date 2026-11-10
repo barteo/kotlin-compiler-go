@@ -17,7 +17,8 @@ import (
 
 func TestOpenUpdateClose(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "a.kt")
-	if err := os.WriteFile(path, []byte("package p\nannotation class A\n@A class C\n"), 0o666); err != nil {
+	src := "package p\nannotation class A\n@A class C\n"
+	if err := os.WriteFile(path, []byte(src), 0o666); err != nil {
 		t.Fatal(err)
 	}
 	var w wire.Writer
@@ -74,6 +75,9 @@ func TestOpenUpdateClose(t *testing.T) {
 	}
 	if nodes, kinds := r.Uint(), r.Uint(); nodes < 10 || kinds == 0 {
 		t.Errorf("nodes %d, kinds %x", nodes, kinds)
+	}
+	if h, want := r.Uint(), textHash(src); h != want {
+		t.Errorf("text hash %x, want %x", h, want)
 	}
 	if n := r.Uint(); n != 0 {
 		t.Errorf("%d diagnostics", n)
@@ -397,4 +401,13 @@ func readAnnotations(r *wire.Reader) []ka.Annotation {
 		out = append(out, *readAnnotation(r))
 	}
 	return out
+}
+
+func TestTextHash(t *testing.T) {
+	// FNV-1a's published 64-bit test values, which KcEnvironment's must match.
+	for text, want := range map[string]uint64{"": 0xcbf29ce484222325, "a": 0xaf63dc4c8601ec8c, "foobar": 0x85944171f73967e8} {
+		if h := textHash(text); h != want {
+			t.Errorf("textHash(%q) = %x, want %x", text, h, want)
+		}
+	}
 }

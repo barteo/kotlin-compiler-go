@@ -10,7 +10,8 @@
 // OpKaUpdate: session:Int n:Uint path:String*n k:Uint kept:Uint*k b:Uint base:Uint*b → model
 //
 //	model   = handle:Int check:Uint same:Bool [n:Uint file*n m:Uint diag*m]
-//	file    = from:Uint path:String [package:String annots decls lookups nodes:Uint kinds:Uint]
+//	file    = from:Uint path:String [package:String annots decls lookups nodes:Uint kinds:Uint
+//	          text:Uint]
 //	decls   = n:Uint decl*n
 //	decl    = kind:Uint name:String node:Uint classID:String visibility:Uint
 //	          modality:Uint flags:Uint variance:Uint type receiver:type
@@ -44,6 +45,9 @@
 // incremental processing; kind is a ka LookupKind. nodes is the number of
 // the file's psi nodes and kinds the hash of their kinds in preorder
 // (psi.Snapshot.KindSequenceHash), which the JVM checks its PSI against.
+// text is the 64-bit FNV-1a hash of the file's text as read, its bytes:
+// the JVM keeps the PSI it parsed from bytes of the same hash without
+// reading the file again.
 //
 // An unresolved annotation has classID "".
 //
@@ -233,6 +237,7 @@ func update(req []byte) ([]byte, error) {
 		}
 		w.Uint(uint64(f.Snapshot.NodeCount()))
 		w.Uint(f.Snapshot.KindSequenceHash())
+		w.Uint(textHash(f.Snapshot.Source()))
 	}
 	w.Uint(uint64(len(m.Diagnostics)))
 	for _, d := range m.Diagnostics {
@@ -243,6 +248,17 @@ func update(req []byte) ([]byte, error) {
 		w.String(d.Feature)
 	}
 	return w.Message(), nil
+}
+
+// textHash is the 64-bit FNV-1a hash of text's bytes (OpKaUpdate's
+// text), which jvm/kc-aa's KcEnvironment computes the same way.
+func textHash(text string) uint64 {
+	h := uint64(14695981039346656037)
+	for i := 0; i < len(text); i++ {
+		h ^= uint64(text[i])
+		h *= 1099511628211
+	}
+	return h
 }
 
 // checks are the files of the models with open handles, by their checks,

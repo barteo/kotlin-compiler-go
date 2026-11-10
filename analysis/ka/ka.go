@@ -383,6 +383,13 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 			snaps[i] = snap
 			return
 		}
+		// A KSP run's second update finds the last run's check of its
+		// round, whose edited files' texts differ: the check of the
+		// first round, just before, has them.
+		if snap := cache.snapshot(sources[i].Path, texts[i]); snap != nil {
+			snaps[i] = snap
+			return
+		}
 		snaps[i] = psi.Parse(sources[i].Path, texts[i])
 	})
 	javaFiles := make([]*javasrc.File, len(javaSources))

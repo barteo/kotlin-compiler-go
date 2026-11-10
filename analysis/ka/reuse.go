@@ -140,6 +140,22 @@ func (e *checked) snapshot(path, text string) *psi.Snapshot {
 	return nil
 }
 
+// snapshot returns the parse of the file at path with text of any check
+// c keeps, or nil.
+func (c *checkCache) snapshot(path, text string) *psi.Snapshot {
+	if c == nil || noReuse {
+		return nil
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for i := len(c.list) - 1; i >= 0; i-- {
+		if snap := c.list[i].snapshot(path, text); snap != nil {
+			return snap
+		}
+	}
+	return nil
+}
+
 // changedFiles returns a test of which sources' texts differ from e's, if
 // e is a clean check of the same files, whose update may then check only
 // some of them; nil otherwise.

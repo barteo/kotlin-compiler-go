@@ -68,6 +68,60 @@ private val canonicalPaths = java.util.concurrent.ConcurrentHashMap<String, Stri
 
 private fun canonicalPath(f: File): String = canonicalPaths.getOrPut(f.absolutePath) { f.canonicalPath }
 
+/**
+ * The files under source roots, kept by the process: a daemon's runs list
+ * the same directories again. Each directory's listing is kept with the
+ * directory's modification time, which adding, removing or renaming an
+ * entry changes (editing a file doesn't, and needn't), so a later walk
+ * stats the directories, not each file. As libkc's read cache does with
+ * files (analysis/ka/readcache.go), a directory modified within
+ * [RACY_MILLIS] of being listed is listed again until it is older: a
+ * coarse clock may not have moved since.
+ */
+internal object SourceWalk {
+    private class Listing(val modified: java.nio.file.attribute.FileTime, val listedAt: Long, val files: List<File>, val dirs: List<File>)
+
+    private val listings = java.util.concurrent.ConcurrentHashMap<String, Listing>()
+    private const val RACY_MILLIS = 2000L
+
+    /** The files under [root] named *.[ext], sorted by path: `root.walkTopDown()`'s, as files. */
+    fun files(root: File, ext: String): List<File> {
+        val out = ArrayList<File>()
+        fun walk(dir: File) {
+            val l = listing(dir) ?: return
+            l.files.filterTo(out) { it.extension == ext }
+            l.dirs.forEach(::walk)
+        }
+        if (root.isFile) {
+            if (root.extension == ext) out += root
+        } else {
+            walk(root)
+        }
+        out.sortBy { it.path }
+        return out
+    }
+
+    private fun listing(dir: File): Listing? {
+        val now = System.currentTimeMillis()
+        val modified = try {
+            java.nio.file.Files.getLastModifiedTime(dir.toPath())
+        } catch (e: java.io.IOException) {
+            listings.remove(dir.path)
+            return null
+        }
+        listings[dir.path]?.let { l ->
+            if (l.modified == modified && modified.toMillis() < l.listedAt - RACY_MILLIS) return l
+        }
+        val entries = dir.listFiles() ?: return null
+        val files = ArrayList<File>()
+        val dirs = ArrayList<File>()
+        for (e in entries) {
+            if (e.isDirectory) dirs += e else if (e.isFile) files += e
+        }
+        return Listing(modified, now, files, dirs).also { listings[dir.path] = it }
+    }
+}
+
 /** The `kc` KSP backend: the Analysis API answered by kc through libkc. */
 class KcBackend : KspBackend {
     override val name: String get() = "kc"
@@ -80,7 +134,7 @@ private class KcSession(private val config: KSPConfig, @Suppress("UNUSED_PARAMET
 
     /** The Java sources the module starts with. */
     private val javaSources: List<String> = ((config as? KSPJvmConfig)?.javaSourceRoots.orEmpty()).distinct().flatMap { root ->
-        root.walkTopDown().filter { it.isFile && it.extension == "java" }.sortedBy { it.path }.map(::canonicalPath).toList()
+        SourceWalk.files(root, "java").map(::canonicalPath)
     }
     private val environment = KcEnvironments.acquire(config, javaSources)
     private val env: KotlinCoreEnvironment = environment.env
@@ -117,8 +171,7 @@ private class KcSession(private val config: KSPConfig, @Suppress("UNUSED_PARAMET
 
     init {
         (config.sourceRoots + config.commonSourceRoots).distinct().forEach { root ->
-            root.walkTopDown().filter { it.isFile && it.extension == "kt" }.sortedBy { it.path }
-                .forEach { paths += canonicalPath(it) }
+            SourceWalk.files(root, "kt").forEach { paths += canonicalPath(it) }
         }
         paths += javaSources
         timer.mark("open")
@@ -175,8 +228,7 @@ private class KcSession(private val config: KSPConfig, @Suppress("UNUSED_PARAMET
     private fun build(model: KcModel, t: KcTimer): KcRound {
         val fs = VirtualFileManager.getInstance().getFileSystem(StandardFileSystems.FILE_PROTOCOL)
         val joined = model.files.map { f ->
-            val vf: VirtualFile = fs.refreshAndFindFileByPath(f.path) ?: error("kc: no virtual file for ${f.path}")
-            f to (environment.psiFile(vf) as? KtFile ?: error("kc: ${f.path} is not a Kotlin file"))
+            f to (environment.psiFile(f.path, f.text) as? KtFile ?: error("kc: no Kotlin PSI for ${f.path}"))
         }
         val java = paths.filter { it.endsWith(".java") }.mapNotNull { p ->
             fs.refreshAndFindFileByPath(p)?.let { environment.psiFile(it) as? PsiJavaFile }
