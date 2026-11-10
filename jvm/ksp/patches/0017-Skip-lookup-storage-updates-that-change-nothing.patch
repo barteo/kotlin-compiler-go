@@ -4,40 +4,44 @@ Date: Tue, 10 Nov 2026 14:04:55 +0000
 Subject: [PATCH] Skip lookup storage updates that change nothing
 
 ---
- .../devtools/ksp/impl/IncrementalContextAA.kt | 92 +++++++++++++++++--
- 1 file changed, 83 insertions(+), 9 deletions(-)
+ .../devtools/ksp/impl/IncrementalContextAA.kt | 105 ++++++++++++++++--
+ 1 file changed, 96 insertions(+), 9 deletions(-)
 
 diff --git a/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/IncrementalContextAA.kt b/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/IncrementalContextAA.kt
-index 61dee0c..0cbf82a 100644
+index 61dee0c..0748bf2 100644
 --- a/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/IncrementalContextAA.kt
 +++ b/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/IncrementalContextAA.kt
-@@ -287,9 +287,24 @@ class LookupTrackerWrapperImpl(val lookupTracker: LookupTracker) : LookupTracker
+@@ -287,9 +287,28 @@ class LookupTrackerWrapperImpl(val lookupTracker: LookupTracker) : LookupTracker
   * share one, and puts it back when it is done with it. A storage is used
   * again only while none of its files has changed since it was put back;
   * otherwise it is closed and opened again.
 + *
-+ * With a storage kept open goes what this process knows it holds: per
++ * With a storage kept open goes what this process knows it holds, per
 + * file (relative to the base directory, as the storage's path converter
-+ * makes it), the lookups the file's records are, as the last update or
-+ * removal of that file here left them. A storage opened again knows
++ * makes it): the lookups of the file's records, exactly for a file the
++ * last update or removal here was of, or at least those, for a file an
++ * update only added records for (a class file in a library that a
++ * dirty file's processing looked at, say). A storage opened again knows
 + * nothing. [LookupStorageWrapperImpl.update] uses it to skip updates that
-+ * change nothing: an update of files F with lookups L leaves (S - F) + L,
-+ * which is S when S already holds exactly L's records for each file in F
-+ * and L names no file outside F. A daemon run whose dirty files look up
-+ * what they did the last time (a body edit, most often) then neither
-+ * rewrites nor flushes the storage.
++ * change nothing. An update of files F with lookups L drops F's records
++ * and adds L's, so the storage then holds exactly L's records for the
++ * files in F and, for any other file, what it held and L's records. That
++ * is what it held already when it holds exactly L's records for each
++ * file in F and at least L's for each other file L names. A daemon run
++ * whose dirty files look up what they did the last time (a body edit,
++ * most often) then neither rewrites nor flushes the storage.
   */
  internal object LookupStorages {
 -    private class Entry(val storage: LookupStorage, val stamps: Map<String, FileStamp>)
 +    private class Entry(
 +        val storage: LookupStorage,
 +        val stamps: Map<String, FileStamp>,
-+        val known: HashMap<String, Set<LookupSymbol>>,
++        val known: HashMap<String, KnownLookups>,
 +    )
  
      private val idle = ConcurrentHashMap<String, Entry>()
  
-@@ -301,17 +316,19 @@ internal object LookupStorages {
+@@ -301,17 +320,19 @@ internal object LookupStorages {
  
      fun acquire(dir: File, baseDir: File, icContext: IncrementalCompilationContext): LookupStorageWrapperImpl {
          val key = key(dir, baseDir)
@@ -62,12 +66,12 @@ index 61dee0c..0cbf82a 100644
              } else {
                  storage.close()
              }
-@@ -321,22 +338,67 @@ internal object LookupStorages {
+@@ -321,22 +342,73 @@ internal object LookupStorages {
  
  class LookupStorageWrapperImpl(
      val impl: LookupStorage,
 +    private val baseDir: File? = null,
-+    private val known: HashMap<String, Set<LookupSymbol>> = HashMap(),
++    private val known: HashMap<String, KnownLookups> = HashMap(),
      private val done: ((keep: Boolean) -> Unit)? = null,
  ) : LookupStorageWrapper {
      private var finished = false
@@ -105,8 +109,9 @@ index 61dee0c..0cbf82a 100644
 +        }
 +        val files = filesToCompile.mapTo(LinkedHashSet()) { pathOf(it) }
 +
-+        val unchanged = files.containsAll(byFile.keys) &&
-+            files.all { f -> known[f]?.let { it == (byFile[f] ?: emptySet<LookupSymbol>()) } == true }
++        val unchanged =
++            files.all { f -> known[f]?.let { it.exact && it.symbols == (byFile[f] ?: emptySet<LookupSymbol>()) } == true } &&
++                byFile.all { (f, symbols) -> f in files || known[f]?.symbols?.containsAll(symbols) == true }
 +        if (unchanged && !VERIFY && !NO_SKIP)
 +            return
 +
@@ -118,8 +123,13 @@ index 61dee0c..0cbf82a 100644
 +            if (after != paths)
 +                throw IllegalStateException("kc: lookup update skip would differ for $symbol: $paths, $after")
 +        }
-+        files.forEach { known[it] = byFile[it] ?: emptySet() }
-+        byFile.keys.forEach { if (it !in files) known.remove(it) }
++        files.forEach { known[it] = KnownLookups(byFile[it] ?: emptySet(), true) }
++        byFile.forEach { (f, symbols) ->
++            if (f !in files) {
++                val k = known[f]
++                known[f] = if (k == null) KnownLookups(symbols, false) else KnownLookups(k.symbols + symbols, k.exact)
++            }
++        }
      }
  
 -    override fun removeLookupsFrom(files: Sequence<File>) = impl.removeLookupsFrom(files)
@@ -127,12 +137,12 @@ index 61dee0c..0cbf82a 100644
 +        val list = files.toList()
 +        impl.removeLookupsFrom(list.asSequence())
 +        dirty = true
-+        list.forEach { known[pathOf(it)] = emptySet() }
++        list.forEach { known[pathOf(it)] = KnownLookups(emptySet(), true) }
 +    }
  
      override fun close() {
          if (finished) return
-@@ -350,7 +412,19 @@ class LookupStorageWrapperImpl(
+@@ -350,9 +422,24 @@ class LookupStorageWrapperImpl(
          done?.invoke(true) ?: impl.close()
      }
  
@@ -152,4 +162,9 @@ index 61dee0c..0cbf82a 100644
 +    }
  }
  
++/** A file's records in a lookup storage: [symbols] exactly, or at least those. */
++class KnownLookups(val symbols: Set<LookupSymbol>, val exact: Boolean)
++
  internal class RelativeFileToPathConverter(val baseDir: File) : FileToPathConverter {
+     override fun toPath(file: File): String = file.path
+     override fun toFile(path: String): File = com.google.devtools.ksp.common.relativeFile(File(path), baseDir)
