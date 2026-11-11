@@ -207,6 +207,8 @@ internal class KcClassSymbol(val info: KcInfo) : StubKaNamedClassSymbol() {
 
     /** The members: callables, constructors, enum entries, nested classes. */
     lateinit var members: List<KaDeclarationSymbol>
+    /** The members Kotlin generates that are in the member scope but not among [members]. */
+    var generated: List<KaCallableSymbol> = emptyList()
     override val companionObject: KaNamedClassSymbol?
         get() = members.firstOrNull { it is KcClassSymbol && it.info.decl.isCompanion } as KaNamedClassSymbol?
 }

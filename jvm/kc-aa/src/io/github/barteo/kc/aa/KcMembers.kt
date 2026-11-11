@@ -120,7 +120,7 @@ internal class KcMemberBuilder(private val round: KcRound, private val c: KcClas
         val java = (c.origin == KaSymbolOrigin.JAVA_SOURCE || c.origin == KaSymbolOrigin.JAVA_LIBRARY) &&
             c.classKind != KaClassKind.ANNOTATION_CLASS
         val all = if (java) javaDeclared(candidates) else null
-        val declared = (all ?: c.members).filterIsInstance<KaCallableSymbol>()
+        val declared = (all ?: (c.members + c.generated)).filterIsInstance<KaCallableSymbol>()
             .filter { it !is KaConstructorSymbol && !isStaticMember(it as KaDeclarationSymbol) }
 
         val overridden = IdentityHashMap<KaCallableSymbol, List<KaCallableSymbol>>()
