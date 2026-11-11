@@ -35,7 +35,7 @@ class Holder<T>(val t: T) {
 }
 
 fun projectedLambdaParams(f: java.util.concurrent.CompletableFuture<*>, h: Holder<*>, c: MutableList<java.util.function.Consumer<out CharSequence>>) {
-    f.handle { v, _ -> val n: Int = v } // ERROR type mismatch: inferred type is Any? but Int was expected
+    f.handle { v, _ -> val n: Int = v } // ERROR type mismatch: inferred type is Any! but Int was expected
     h.use { v -> val n: Int = v } // ERROR type mismatch: inferred type is Any? but Int was expected
     c.add { v -> val n: Int = v } // ERROR type mismatch: inferred type is CharSequence! but Int was expected
 }
