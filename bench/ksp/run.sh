@@ -31,7 +31,7 @@ lib=$kspwork/aa/m2
 m2=$kspwork/m2
 runtime=$lib/kotlin-compiler-2.4.21.jar:$lib/kotlin-stdlib-2.4.21.jar:$lib/kotlin-reflect-2.4.21.jar:$lib/kotlinx-coroutines-core-jvm-1.8.0.jar:$lib/annotations-23.0.0.jar
 deps=$kspwork/aa/kc-aa-api-2.4.21.jar:$runtime:$lib/caffeine-2.9.3.jar:$kspwork/ksp-aa-kc.jar
-deps=$deps:$m2/symbol-processing-api-2.3.9.jar:$m2/symbol-processing-common-deps-2.3.9.jar
+deps=$deps:$kspwork/symbol-processing-api.jar:$m2/symbol-processing-common-deps-2.3.13.jar
 deps=$deps:$m2/kotlinx-serialization-core-jvm-1.6.3.jar:$m2/kotlinx-serialization-json-jvm-1.6.3.jar
 stockcp=
 for jar in symbol-processing-aa-embeddable-2.3.6 symbol-processing-api-2.3.6 symbol-processing-common-deps-2.3.6 \

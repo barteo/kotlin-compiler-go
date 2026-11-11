@@ -116,11 +116,11 @@ decls:kotlin.coroutines.AbstractCoroutineContextKey: - function kotlin.coroutine
 decls:kotlin.coroutines.AbstractCoroutineContextKey: - property kotlin.coroutines.AbstractCoroutineContextKey.safeCast: fun kotlin.Function1<kotlin.coroutines.CoroutineContext.Element, E?>
 decls:kotlin.coroutines.AbstractCoroutineContextKey: - property kotlin.coroutines.AbstractCoroutineContextKey.topmostKey: kotlin.coroutines.CoroutineContext.Key<*>
 decls:kotlin.coroutines.AbstractCoroutineContextKey: KOTLIN_LIB CLASS class kotlin.coroutines.AbstractCoroutineContextKey<B : kotlin.coroutines.CoroutineContext.Element, E : B> : kotlin.coroutines.CoroutineContext.Key<E>
-e.Args: class e.Defaults : kotlin.Any (s = "dflt", i = 3, l = 7L, c = 'c', z = false, f = 1.5f, d = 2.0, u = 3u, e = e.Color.GREEN, k = kotlin.Any::class, arr = ["x", "y"], inner = @e.Inner(s = "d", xs = [1, 2]))
-e.Args: class e.Full : kotlin.Any (s = "const!", i = -4, l = 1099511627776L, c = 'q', z = true, f = 0.25f, d = 1000.0, u = 4294967295u, e = e.Color.RED, k = kotlin.String::class, arr = ["a", "const"], inner = @e.Inner(xs = [5], s = "in"))
+e.Args: class e.Defaults : kotlin.Any (s = "dflt", i = 3, l = 7L, c = 'c', z = false, f = 1.5f, d = 2.0, u = 3u, e = e.Color.GREEN, k = kotlin.Any::class, arr = ["x", "y"], inner = @e.Inner(s = "d", xs = [1, 2]), v = [])
+e.Args: class e.Full : kotlin.Any (s = "const!", i = -4, l = 1099511627776L, c = 'q', z = true, f = 0.25f, d = 1000.0, u = 4294967295u, e = e.Color.RED, k = kotlin.String::class, arr = ["a", "const"], inner = @e.Inner(xs = [5], s = "in"), v = [])
 e.Args: class e.Positional : kotlin.Any (s = "pos", i = 9, v = ["p", "q"], l = 7L, c = 'c', z = false, f = 1.5f, d = 2.0, u = 3u, e = e.Color.GREEN, k = kotlin.Any::class, arr = ["x", "y"], inner = @e.Inner(s = "d", xs = [1, 2]))
 e.Args: function e.spread(): kotlin.Unit (v = ["s1"], s = "dflt", i = 3, l = 7L, c = 'c', z = false, f = 1.5f, d = 2.0, u = 3u, e = e.Color.GREEN, k = kotlin.Any::class, arr = ["x", "y"], inner = @e.Inner(s = "d", xs = [1, 2]))
-e.Inner: class e.Defaults : kotlin.Any (s = "in")
+e.Inner: class e.Defaults : kotlin.Any (s = "in", xs = [])
 fun:g.top: KOTLIN function g.top(x: kotlin.Int): kotlin.Int [g.AliasKt]
 fun:kotlin.collections.listOf: KOTLIN_LIB function kotlin.collections.listOf<T : kotlin.Any?>(): kotlin.collections.List<T> [kotlin.collections.CollectionsKt__CollectionsKt]
 fun:kotlin.collections.listOf: KOTLIN_LIB function kotlin.collections.listOf<T : kotlin.Any?>(element: T): kotlin.collections.List<T> [kotlin.collections.CollectionsKt__CollectionsJVMKt]

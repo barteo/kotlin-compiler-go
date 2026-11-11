@@ -297,8 +297,15 @@ private class KcExtrasImpl(private val round: () -> KcRound) : KcExtras {
      * from [default] (kc gives KSP no Java class finder). Like FIR, it makes
      * up an empty array or null for a parameter without one.
      */
-    override fun javaAnnotationDefault(symbol: KaValueParameterSymbol, default: JavaAnnotationArgument?): KaAnnotationValue? {
-        val p = symbol as? KcValueParameterSymbol ?: KcAnalysis.unsupported("KcExtras.javaAnnotationDefault of $symbol")
+    override fun javaAnnotationDefault(symbol: KaValueParameterSymbol, default: JavaAnnotationArgument): KaAnnotationValue? =
+        annotationDefault(symbol, "javaAnnotationDefault")
+
+    /** A KLib annotation parameter's default, from the model like [javaAnnotationDefault]. */
+    override fun libraryAnnotationDefault(symbol: KaValueParameterSymbol): KaAnnotationValue? =
+        annotationDefault(symbol, "libraryAnnotationDefault")
+
+    private fun annotationDefault(symbol: KaValueParameterSymbol, member: String): KaAnnotationValue? {
+        val p = symbol as? KcValueParameterSymbol ?: KcAnalysis.unsupported("KcExtras.$member of $symbol")
         p.default?.let { return it }
         val token = p.info.round.token
         val t = p.info.decl.type

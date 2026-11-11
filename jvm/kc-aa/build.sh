@@ -53,7 +53,7 @@ m2=$kspwork/m2
 aa=$kspwork/aa/kc-aa-api-2.4.21.jar
 runtime=$lib/kotlin-compiler-2.4.21.jar:$lib/kotlin-stdlib-2.4.21.jar:$lib/kotlin-reflect-2.4.21.jar:$lib/kotlinx-coroutines-core-jvm-1.8.0.jar:$lib/annotations-23.0.0.jar
 deps=$aa:$runtime:$lib/caffeine-2.9.3.jar:$kspwork/ksp-aa-kc.jar
-deps=$deps:$m2/symbol-processing-api-2.3.9.jar:$m2/symbol-processing-common-deps-2.3.9.jar
+deps=$deps:$kspwork/symbol-processing-api.jar:$m2/symbol-processing-common-deps-2.3.13.jar
 deps=$deps:$m2/kotlinx-serialization-core-jvm-1.6.3.jar:$m2/kotlinx-serialization-json-jvm-1.6.3.jar
 kotlinc() { java -Xmx3g -cp "$runtime" org.jetbrains.kotlin.cli.jvm.K2JVMCompiler -no-stdlib -no-reflect "$@"; }
 
@@ -239,7 +239,8 @@ if [ "$mode" = stock ]; then
 		"$here/test/RunKsp.kt"
 	# The slice on stock KSP differs from want.txt only as recorded in
 	# test/slice/stock.diff: what kc doesn't model yet (see
-	# docs/analysis-api.md, step 10).
+	# docs/analysis-api.md, step 10), and the [] the KSP fork, newer than
+	# 2.3.6, adds for a vararg parameter without arguments.
 	rm -rf "$out/test-classes-stock" "$out/stock-slice"
 	kotlinc -cp "${stockcp#:}" -language-version 2.3 -api-version 2.3 -d "$out/test-classes-stock" -jvm-target 17 -nowarn \
 		"$here/test/PrintAnnotated.kt"
