@@ -304,6 +304,7 @@ func writeAnnotation(w *wire.Writer, a *ka.Annotation) {
 	for _, t := range a.TypeArgs {
 		writeType(w, t)
 	}
+	w.String(a.Alias)
 }
 
 func writeValue(w *wire.Writer, v *ka.Value) {

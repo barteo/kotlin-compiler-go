@@ -145,6 +145,7 @@ func readAnnotation(r *wire.Reader) *ka.Annotation {
 	for n := r.Uint(); n > 0 && r.Err() == nil; n-- {
 		a.TypeArgs = append(a.TypeArgs, readType(r))
 	}
+	a.Alias = r.String()
 	return a
 }
 
@@ -161,7 +162,7 @@ func TestValues(t *testing.T) {
 			{Kind: ka.ValueAnnotation, Node: 6, Annotation: &ka.Annotation{ClassID: "p/B", Node: 6}},
 			{Kind: ka.ValueUnsupported, Node: 7},
 		}}},
-	}, TypeArgs: []*ka.Type{{Kind: ka.TypeClass, ClassID: "kotlin/String", Delegated: true}, nil}}
+	}, TypeArgs: []*ka.Type{{Kind: ka.TypeClass, ClassID: "kotlin/String", Delegated: true}, nil}, Alias: "p/AliasOfA"}
 	var w wire.Writer
 	writeAnnotation(&w, in)
 	writeValue(&w, nil)

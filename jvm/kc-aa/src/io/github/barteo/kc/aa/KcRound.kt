@@ -68,6 +68,8 @@ internal class KcRound(
 
     /** The class of each annotation entry, for `KtTypeReference.type`. */
     val annotationClasses = IdentityHashMap<KtAnnotationEntry, ClassId>()
+    /** The typealiases annotation entries name their classes by. */
+    val annotationAliases = IdentityHashMap<KtAnnotationEntry, ClassId>()
 
     private val annotations = IdentityHashMap<KcAnnotation, KaAnnotation>()
 
@@ -563,7 +565,10 @@ internal class KcRound(
                 it as? KtAnnotationEntry ?: error("kc: annotation node ${a.node} of $where is ${nodes[a.node].elementType}")
             }
             val app = application(a, entry)
-            if (entry != null) app.classId?.let { annotationClasses[entry] = it }
+            if (entry != null) {
+                app.classId?.let { annotationClasses[entry] = it }
+                if (a.alias.isNotEmpty()) annotationAliases[entry] = ClassId.fromString(a.alias)
+            }
             val projections = (entry?.typeReference?.typeElement as? KtUserType)?.typeArguments.orEmpty()
             if (projections.size == a.typeArgs.size) projections.zip(a.typeArgs).forEach { (p, t) -> typeRef(p.typeReference, t) }
             annotations[a] = app

@@ -781,3 +781,18 @@ class C(i: I) : I by i, J
 		t.Errorf("supertypes %v", st)
 	}
 }
+
+// TestAnnotationAlias checks that an annotation that names its class by a
+// typealias has the typealias's class ID, and its class's.
+func TestAnnotationAlias(t *testing.T) {
+	m := update(t, `package a
+annotation class A
+typealias B = A
+@B @A class C
+`)
+	defer m.Close()
+	as := m.Files[0].Decls[2].Annotations
+	if len(as) != 2 || as[0].ClassID != "a/A" || as[0].Alias != "a/B" || as[1].ClassID != "a/A" || as[1].Alias != "" {
+		t.Errorf("annotations %+v", as)
+	}
+}

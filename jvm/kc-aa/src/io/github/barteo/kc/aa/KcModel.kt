@@ -94,7 +94,8 @@ internal object KcOps {
         val target = readString()
         val implied = readUint() == 1L
         val args = List(readUint().toInt()) { readString() to value()!! }
-        return KcAnnotation(classId, node, target, implied, args, List(readUint().toInt()) { type() })
+        val typeArgs = List(readUint().toInt()) { type() }
+        return KcAnnotation(classId, node, target, implied, args, typeArgs, readString())
     }
 
     private fun Wire.Reader.value(): KcValue? {
@@ -392,9 +393,14 @@ internal class KcTypeArg(val variance: Int, val type: KcType?)
  */
 // target is the use-site target as written, or "" for none; implied is set
 // when Kotlin's default rule chose it ("field") for one written without.
-/** [typeArgs] are the type arguments written, @A<String>; null for a star projection. */
+/**
+ * [typeArgs] are the type arguments written, @A<String>; null for a star
+ * projection. [alias] is the class ID of the typealias the annotation names
+ * its class by, or "".
+ */
 internal class KcAnnotation(val classId: String, val node: Int, val target: String, val implied: Boolean,
-                            val args: List<Pair<String, KcValue>>, val typeArgs: List<KcType?> = emptyList())
+                            val args: List<Pair<String, KcValue>>, val typeArgs: List<KcType?> = emptyList(),
+                            val alias: String = "")
 
 /**
  * An annotation argument's value; Go's ka.Value. [node] is the expression
