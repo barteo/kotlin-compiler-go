@@ -624,21 +624,22 @@ internal class KcScope(
     override val token: KaLifetimeToken,
 ) : KaScope {
     /**
-     * As FIR's scopes give them: the callables, grouped by name in order of
-     * first appearance with functions before properties, then the
-     * classifiers, then the constructors.
+     * The callables as FIR's scopes give them: grouped by name in order of
+     * first appearance, with functions before properties.
      */
-    override val declarations: Sequence<KaDeclarationSymbol> get() {
+    private val grouped: List<KaCallableSymbol> by lazy {
         val byName = LinkedHashMap<Name?, MutableList<KaCallableSymbol>>()
-        for (c in callables) byName.getOrPut(nameOf(c)) { ArrayList() } += c
-        val grouped = byName.values.flatMap { g -> g.filterIsInstance<KaFunctionSymbol>() + g.filterNot { it is KaFunctionSymbol } }
-        return grouped.asSequence() + classifiers + constructors
+        for (c in decls) if (c is KaCallableSymbol && c !is KaConstructorSymbol) byName.getOrPut(nameOf(c)) { ArrayList() } += c
+        byName.values.flatMap { g -> g.filterIsInstance<KaFunctionSymbol>() + g.filterNot { it is KaFunctionSymbol } }
     }
+
+    /** The callables, then the classifiers, then the constructors. */
+    override val declarations: Sequence<KaDeclarationSymbol> get() = callables + classifiers + constructors
     override fun declarations(nameFilter: (Name) -> Boolean) = decls.asSequence().filter { nameOf(it)?.let(nameFilter) == true }
     override fun declarations(names: Collection<Name>) = declarations { it in names }
     override fun declarations(vararg names: Name) = declarations(names.toList())
 
-    override val callables get() = decls.asSequence().filterIsInstance<KaCallableSymbol>().filter { it !is KaConstructorSymbol }
+    override val callables get() = grouped.asSequence()
     override fun callables(nameFilter: (Name) -> Boolean) = callables.filter { nameOf(it)?.let(nameFilter) == true }
     override fun callables(names: Collection<Name>) = callables { it in names }
     override fun callables(vararg names: Name) = callables(names.toList())
