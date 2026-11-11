@@ -370,7 +370,10 @@ internal class KcPropertySymbol(val info: KcInfo) : StubKaKotlinPropertySymbol()
     override val isFromPrimaryConstructor get() = info.psi is KtParameter
     override val isConst get() = info.decl.has(KcDecl.CONST)
     override val isLateInit get() = info.decl.has(KcDecl.LATEINIT)
-    override val isOverride get() = info.decl.has(KcDecl.OVERRIDE)
+    /** Written, or for a library property, which metadata doesn't mark, whether it overrides one, as in FIR. */
+    override val isOverride: Boolean by lazy {
+        info.decl.has(KcDecl.OVERRIDE) || info.origin == KaSymbolOrigin.LIBRARY && info.round.directlyOverridden(this).isNotEmpty()
+    }
     override val isExternal get() = info.decl.has(KcDecl.EXTERNAL)
     override val isExpect get() = info.decl.has(KcDecl.EXPECT)
     override val isActual get() = info.decl.has(KcDecl.ACTUAL)
