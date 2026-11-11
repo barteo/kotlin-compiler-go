@@ -122,7 +122,8 @@ Arguments can be files or directories. Flags:
 | `-module-name` | module name, as in `kotlinc` (default `main`) |
 | `-friend-paths` | class path entries whose internal declarations are visible (`kotlinc`'s `-Xfriend-paths`) |
 | `-opt-in` | opt in to a requirement marker by qualified name, as `kotlinc`'s `-opt-in`; may be repeated |
-| `-parcelize`, `-serialization`, `-compose` | apply the parcelize, kotlinx.serialization and Compose plugins |
+| `-parcelize`, `-serialization`, `-compose`, `-metro` | apply the parcelize, kotlinx.serialization, Compose and Metro plugins |
+| `-P` | a Metro option, as `kotlinc`'s `-P plugin:dev.zacsweers.metro.compiler:key=value`; may be repeated |
 | `-jvm-default` | how interface bodies compile, as in `kotlinc` (default `no-compatibility`) |
 | `-Xdebug` | keep dead variables in suspend functions for debuggers, as in `kotlinc` |
 | `-j` | parallel workers (default: all CPUs) |
@@ -131,7 +132,7 @@ Arguments can be files or directories. Flags:
 
 ### Use it in a Gradle build
 
-There is no Gradle plugin. [tools/gradle/use-kc.init.gradle.kts](tools/gradle/use-kc.init.gradle.kts) is an init script that makes every Kotlin/JVM compile task of a build run `kc` instead of `kotlinc`: `compileKotlin`, Android's `compile<Variant>Kotlin`, and a multiplatform module's `compileAndroidMain` and `compileKotlinJvm`. `kc` gets the task's own sources, Java sources, class path, friend paths, module name, `-jvm-default` mode and Compose, kotlinx.serialization and Parcelize plugins. An Android module compiles against `android.jar`, any other module against the JDK of its Java toolchain. Dexing, R8, javac and packaging then use `kc`'s classes. It is meant for fast local builds; CI and release builds should keep `kotlinc`.
+There is no Gradle plugin. [tools/gradle/use-kc.init.gradle.kts](tools/gradle/use-kc.init.gradle.kts) is an init script that makes every Kotlin/JVM compile task of a build run `kc` instead of `kotlinc`: `compileKotlin`, Android's `compile<Variant>Kotlin`, and a multiplatform module's `compileAndroidMain` and `compileKotlinJvm`. `kc` gets the task's own sources, Java sources, class path, friend paths, module name, `-jvm-default` mode and Compose, kotlinx.serialization, Parcelize and Metro plugins, with Metro's options. An Android module compiles against `android.jar`, any other module against the JDK of its Java toolchain. Dexing, R8, javac and packaging then use `kc`'s classes. It is meant for fast local builds; CI and release builds should keep `kotlinc`.
 
 ```sh
 KC=$PWD/bin/kc ./gradlew assembleDebug --init-script /path/to/kotlin-compiler-go/tools/gradle/use-kc.init.gradle.kts
@@ -223,12 +224,7 @@ Tests use the JDK in `$JAVA_HOME`, or the JDK of `java` on `PATH`. On macOS
 `export JAVA_HOME=$(/usr/libexec/java_home -v 21)`. Without a JDK, tests fail
 with unresolved references to Java classes such as `HashMap`.
 
-Tests that need the standard library find `kotlin-stdlib.jar` in
-`$KOTLIN_HOME/lib` or next to `kotlinc` on `PATH`, and are skipped without
-it. Tests that compare with `kotlinc` are skipped if it isn't on `PATH`. The
-kotlinx.serialization 1.9.0 and Compose runtime 1.9.2 tests use jars from
-Gradle's cache, or from `KC_SERIALIZATION_CP` and `KC_COMPOSE_CP`, and are
-skipped without them.
+Tests that need the standard library find `kotlin-stdlib.jar` in `$KOTLIN_HOME/lib` or next to `kotlinc` on `PATH`, and are skipped without it. Tests that compare with `kotlinc` are skipped if it isn't on `PATH`. The kotlinx.serialization 1.9.0, Compose runtime 1.9.2 and Metro 1.5.2 tests use jars from Gradle's cache, or from `KC_SERIALIZATION_CP`, `KC_COMPOSE_CP`, and `KC_METRO_CP` (Metro's runtime) with `KC_METRO_PLUGIN` (its compiler plugin), and are skipped without them.
 
 - `testdata/run/`: programs compiled with `kc` and run under
   `java -Xverify:all`. Output must match `*.out`, which

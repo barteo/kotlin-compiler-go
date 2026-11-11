@@ -60,6 +60,13 @@ type Options struct {
 	// Compose compiles as kotlinc does with the Compose compiler plugin:
 	// @Composable functions take a Composer and change flags.
 	Compose bool
+	// Metro compiles as kotlinc does with the Metro dependency injection
+	// compiler plugin: @DependencyGraph interfaces get implementations
+	// that build what they return.
+	Metro bool
+	// MetroOptions are the Metro plugin's options, by key, as kotlinc's
+	// -P plugin:dev.zacsweers.metro.compiler:key=value passes them.
+	MetroOptions map[string]string
 	// Debug compiles as kotlinc's -Xdebug: suspend functions save dead
 	// variables' values in their continuations as they are, not nulled
 	// out, for debuggers.
@@ -194,6 +201,7 @@ func Compile(paths []string, opts Options) error {
 		return err
 	}
 	files := make([]*syntax.File, len(paths))
+	srcs := make([]string, len(paths))
 	errLists := make([][]*syntax.Error, len(paths))
 	ioErrs := make([]error, len(paths))
 	parallel(len(paths), opts.Jobs, func(i int) {
@@ -202,7 +210,8 @@ func Compile(paths []string, opts Options) error {
 			ioErrs[i] = err
 			return
 		}
-		files[i], errLists[i] = parse(frontend, paths[i], string(src))
+		srcs[i] = string(src)
+		files[i], errLists[i] = parse(frontend, paths[i], srcs[i])
 	})
 	if err := errors.Join(ioErrs...); err != nil {
 		return err
@@ -251,6 +260,14 @@ func Compile(paths []string, opts Options) error {
 	}
 	start = time.Now()
 
+	if opts.Metro && opts.MetroOptions["enabled"] != "false" && slices.ContainsFunc(files, check.UsesMetro) {
+		r.lib.MetroOptions = opts.MetroOptions
+		var err error
+		if files, err = planMetro(files, srcs, frontend, r.lib, opts.Jobs); err != nil {
+			return err
+		}
+		phase("metro")
+	}
 	for _, e := range check.CheckWith(files, r.lib, opts.Jobs) {
 		diags = append(diags, e)
 	}
@@ -541,6 +558,36 @@ func frontendOf(opts Options) (string, error) {
 
 // parse parses a source file with frontend. Like syntax.Parse, it returns
 // only the first error.
+// MetroPluginID is the id of Metro's compiler plugin, whose options
+// MetroOptions are.
+const MetroPluginID = "dev.zacsweers.metro.compiler"
+
+// planMetro returns the files, parsed again from srcs, to check with what
+// the Metro plugin adds to them, in lib, and the files of Kotlin it adds.
+func planMetro(files []*syntax.File, srcs []string, frontend string, lib *check.Library, jobs int) ([]*syntax.File, error) {
+	plan, errs := check.PlanMetro(files, lib)
+	if len(errs) > 0 {
+		diags := make([]error, len(errs))
+		for i, e := range errs {
+			diags[i] = e
+		}
+		return nil, errors.Join(diags...)
+	}
+	again := make([]*syntax.File, len(files), len(files)+len(plan.Files))
+	parallel(len(files), jobs, func(i int) {
+		again[i], _ = parse(frontend, files[i].Path, srcs[i])
+	})
+	for _, f := range plan.Files {
+		pf, perrs := syntax.Parse(f.Path, f.Src)
+		if len(perrs) > 0 {
+			return nil, perrs[0]
+		}
+		again = append(again, pf)
+	}
+	lib.MetroPlan = plan
+	return again, nil
+}
+
 func parse(frontend, path, src string) (*syntax.File, []*syntax.Error) {
 	if frontend != "psi" {
 		return syntax.Parse(path, src)
