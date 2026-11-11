@@ -1225,6 +1225,8 @@ func TestMetro(t *testing.T) {
 			msg: "[Metro/DependencyCycle]"},
 		"duplicate": {src: "@DependencyGraph interface G { val s: String\n@Provides fun a(): String = \"a\"\n@Provides fun b(): String = \"b\" }",
 			msg: "[Metro/DuplicateBinding]"},
+		"provided and contributed": {src: "interface S\n@Inject @ContributesBinding(AppScope::class) class I : S\n@DependencyGraph(AppScope::class) interface G { val s: S\n@Provides fun s(): S = object : S {} }",
+			msg: "[Metro/DuplicateBinding]"},
 		"unscoped graph": {src: "@Inject @SingleIn(AppScope::class) class A\n@DependencyGraph interface G { val a: A }",
 			msg: "[Metro/IncompatiblyScopedBindings]"},
 		"extension with parameters": {src: "@GraphExtension interface E {\n@GraphExtension.Factory interface F { fun create(@Provides s: String): E }\n}\n@DependencyGraph interface G { val e: E }", msg: "takes parameters"},

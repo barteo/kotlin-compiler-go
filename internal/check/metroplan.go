@@ -259,6 +259,25 @@ type mMember struct {
 	defaults  []bool // which parameters declare default values
 }
 
+// same reports whether o declares the same member as mm, which it
+// overrides or which overrides it. A parameter whose type is a type
+// parameter matches any type.
+func (mm *mMember) same(o *mMember) bool {
+	if mm.name != o.name || mm.prop != o.prop || len(mm.params) != len(o.params) || (mm.recv == nil) != (o.recv == nil) {
+		return false
+	}
+	for i, p := range mm.params {
+		s, t := p.Type, o.params[i].Type
+		if s.K == types.TypeParam || t.K == types.TypeParam {
+			continue
+		}
+		if s.K != t.K || s.K == types.Class && s.C.Name != t.C.Name {
+			return false
+		}
+	}
+	return true
+}
+
 // declared returns the members a class declares.
 func (m *metroAnalysis) declared(cls *types.ClassSym) []*mMember {
 	if cls == nil {
@@ -397,14 +416,13 @@ func (c *Checker) metroResolve(ref *syntax.TypeRef, cls *types.ClassSym) types.T
 // of that name is.
 func (m *metroAnalysis) inherited(cls *types.ClassSym) []*mMember {
 	var out []*mMember
-	index := map[string]*mMember{}
 	cls.Supertypes(func(s *types.ClassSym) bool {
 		if s.Name == "java/lang/Object" || s.KotlinName == "kotlin/Any" {
 			return true
 		}
 		for _, mm := range m.declared(s) {
-			k := fmt.Sprintf("%s/%v/%d/%v", mm.name, mm.prop, len(mm.params), mm.recv != nil)
-			if prev, ok := index[k]; ok {
+			if i := slices.IndexFunc(out, mm.same); i >= 0 {
+				prev := out[i]
 				prev.abstract = prev.abstract && mm.abstract
 				if len(prev.anns) == 0 {
 					prev.anns = mm.anns
@@ -412,7 +430,6 @@ func (m *metroAnalysis) inherited(cls *types.ClassSym) []*mMember {
 				continue
 			}
 			cp := *mm
-			index[k] = &cp
 			out = append(out, &cp)
 		}
 		return true

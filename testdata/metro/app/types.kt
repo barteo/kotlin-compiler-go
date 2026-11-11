@@ -92,6 +92,13 @@ class Screen {
     fun show() = formatter.format("screen with " + greeter?.greet())
 }
 
+class Panel {
+    @Inject
+    lateinit var formatter: Formatter
+
+    fun show() = formatter.format("panel")
+}
+
 @BindingContainer
 class Config(private val port: Int) {
     @Provides

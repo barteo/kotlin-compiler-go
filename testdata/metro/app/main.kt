@@ -43,6 +43,8 @@ interface AppGraph {
 
     fun inject(screen: Screen)
 
+    fun inject(panel: Panel)
+
     val sessions: SessionGraph.Factory
 
     @DependencyGraph.Factory
@@ -58,6 +60,10 @@ interface AppGraph {
 @DependencyGraph
 interface SmallGraph {
     val message: Message
+
+    val a: app.a.Child
+
+    val b: app.b.Child
 
     @Provides
     fun count(): Int = 3
@@ -98,7 +104,12 @@ fun main() {
     val screen = Screen()
     graph.inject(screen)
     println(screen.show())
-    println(createGraph<SmallGraph>().message)
+    val panel = Panel()
+    graph.inject(panel)
+    println(panel.show())
+    val small = createGraph<SmallGraph>()
+    println(small.message)
+    println("${small.a.letter}${small.b.letter}")
     val session = (graph as SessionGraph.Factory).createSession(7)
     println(session.auth.token())
     println(session.auth === session.auth)

@@ -2,6 +2,7 @@ package check
 
 import (
 	"fmt"
+	"math"
 	"slices"
 	"strconv"
 	"strings"
@@ -44,6 +45,9 @@ type mGraph struct {
 	excluded   map[string]bool
 	// injecting holds the classes whose members are being resolved.
 	injecting map[*types.ClassSym]bool
+	// contributor is the class from another compilation whose
+	// contribution's bindings are being added.
+	contributor *types.ClassSym
 
 	// A graph extension's graph is an inner class of its parent's, whose
 	// bindings it uses. The names of each graph's members start with its
@@ -71,7 +75,8 @@ type mBinding struct {
 	fn       string // the function of Impl that returns it, once written
 	priority int64
 	multi    *mMulti
-	// from is the class that contributes the binding, if any.
+	// from is the class that contributes the binding, if any. Only the
+	// priorities of contributed bindings decide between them.
 	from string
 	// owner is the graph whose class has the binding's function.
 	owner *mGraph
@@ -205,6 +210,9 @@ func isSetType(t types.Type) bool {
 // add adds a binding.
 func (gr *mGraph) add(b *mBinding) {
 	b.owner = gr
+	if c := gr.contributor; c != nil {
+		b.from, b.priority = c.Name, gr.m.contributedPriority(c, b.key)
+	}
 	gr.bindings[b.key] = append(gr.bindings[b.key], b)
 }
 
@@ -398,15 +406,14 @@ func (gr *mGraph) setup(a *mAnn, factoryAnn, factoryName string) bool {
 
 	// The members of the graph and of the interfaces it implements.
 	var accessors []*mMember
-	treeSeen := map[string]bool{}
+	var treeSeen []*mMember
 	tree := append([]*types.ClassSym{cls}, supers...)
 	for _, t := range tree {
 		for _, mm := range m.inherited(t) {
-			k := fmt.Sprintf("%s/%v/%d/%v", mm.name, mm.prop, len(mm.params), mm.recv != nil)
-			if treeSeen[k] {
+			if slices.ContainsFunc(treeSeen, mm.same) {
 				continue
 			}
-			treeSeen[k] = true
+			treeSeen = append(treeSeen, mm)
 			switch {
 			case find(mm.anns, mProvides) != nil:
 				gr.provides(mm, "this")
@@ -542,7 +549,9 @@ func (gr *mGraph) contributedBinding(cls *types.ClassSym, a *mAnn) error {
 			}
 			found = true
 			gr.containers[nc] = ""
+			gr.contributor = cls
 			gr.container(nc)
+			gr.contributor = nil
 		}
 		if !found && find(m.annsOf(cls), mContributesBinding) == a {
 			return fmt.Errorf("kc can't find the contribution of %s to its scope: its class files have no MetroContribution interface", cls.DisplayName())
@@ -562,10 +571,7 @@ func (gr *mGraph) contributedBinding(cls *types.ClassSym, a *mAnn) error {
 	if !ok {
 		return fmt.Errorf("kc can't name %s", cls.DisplayName())
 	}
-	prio := int64(-1 << 31)
-	if p, ok := a.args["priority"]; ok {
-		prio = p.num
-	}
+	prio := contributionPriority(a)
 	alias := func(key string) *mBinding {
 		return &mBinding{key: key, t: bound, what: cls.DisplayName() + " as " + bound.String(), deps: []*mReq{dep},
 			expr: func(args []string) string { return args[0] }, priority: prio, from: cls.Name}
@@ -589,6 +595,31 @@ func (gr *mGraph) contributedBinding(cls *types.ClassSym, a *mAnn) error {
 		return gr.mapElem(m.implicitKey(key, cls), bound, q, alias(""))
 	}
 	return nil
+}
+
+// contributionPriority returns the priority of @ContributesBinding a.
+func contributionPriority(a *mAnn) int64 {
+	if p, ok := a.args["priority"]; ok {
+		return p.num
+	}
+	return math.MinInt32
+}
+
+// contributedPriority returns the priority of the @ContributesBinding of
+// class cls that binds key.
+func (m *metroAnalysis) contributedPriority(cls *types.ClassSym, key string) int64 {
+	anns := m.annsOf(cls)
+	for _, a := range anns {
+		if a.cls != mContributesBinding {
+			continue
+		}
+		if t, err := m.boundType(cls, a); err == nil {
+			if k, ok := keyOf(t, m.qualifier(anns)); ok && k == key {
+				return contributionPriority(a)
+			}
+		}
+	}
+	return math.MinInt32
 }
 
 func (gr *mGraph) setOf(t types.Type) types.Type {
@@ -1068,7 +1099,7 @@ func (gr *mGraph) resolve(r *mReq) *mBinding {
 					tie = true
 				}
 			}
-			if tie {
+			if tie || slices.ContainsFunc(bs, func(b *mBinding) bool { return b.from == "" }) {
 				var whats []string
 				for _, b := range bs {
 					whats = append(whats, b.what)
@@ -1624,12 +1655,7 @@ func (gr *mGraph) extension(ext *types.ClassSym) *mGraph {
 	}
 	child := gr.m.newGraph(gr.c, ext, gr.pos, gr)
 	child.prefix = fmt.Sprintf("%se%d_", gr.prefix, len(gr.children))
-	child.impl = strings.ReplaceAll(ext.DisplayName(), ".", "") + "Impl"
-	for g := gr; g != nil; g = g.parent {
-		if g.impl == child.impl {
-			child.impl += strconv.Itoa(len(gr.children))
-		}
-	}
+	child.impl = gr.extensionName(strings.ReplaceAll(ext.DisplayName(), ".", "") + "Impl")
 	gr.children[ext] = child
 	for g := gr; g != nil; g = g.parent {
 		if g.g == ext {
@@ -1645,6 +1671,25 @@ func (gr *mGraph) extension(ext *types.ClassSym) *mGraph {
 	}
 	gr.fields = append(gr.fields, child.class("inner class "+child.impl))
 	return child
+}
+
+// extensionName returns name, or name with a number when the graph,
+// an enclosing graph or another extension of the graph has that name.
+func (gr *mGraph) extensionName(name string) string {
+	taken := map[string]bool{}
+	for g := gr; g != nil; g = g.parent {
+		taken[g.impl] = true
+	}
+	for _, c := range gr.children {
+		if c != nil {
+			taken[c.impl] = true
+		}
+	}
+	n := name
+	for i := 2; taken[n]; i++ {
+		n = name + strconv.Itoa(i)
+	}
+	return n
 }
 
 // extensionBinding returns the binding of a graph extension, or of the
