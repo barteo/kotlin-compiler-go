@@ -1733,15 +1733,21 @@ func (c *Checker) stubInference(s *system, l *syntax.Lambda, params []types.Type
 	for _, v := range vars {
 		c.stubs[v] = r
 	}
-	// A lambda of the group that doesn't check with the variables
-	// unfixed, as one calling Entry(it) whose constructors they make
+	// A lambda of the group whose only errors with the variables unfixed
+	// are ambiguous calls, as Entry(it) whose constructors they make
 	// ambiguous, takes them from the others: what it recorded is dropped.
+	// Any other error leaves the variables uninferred, as in Kotlin.
 	clean := false
 	for _, sl := range group {
 		nc, nj, ne := len(r.cons), len(r.joined), len(r.extra)
-		if c.stubCheck(s, sl, r) {
+		ok, ambiguous := c.stubCheck(s, sl, r)
+		if ok {
 			clean = true
 			continue
+		}
+		if !ambiguous {
+			clean = false
+			break
 		}
 		for _, v := range r.extra[ne:] {
 			delete(c.stubs, v)
@@ -1812,16 +1818,16 @@ func (c *Checker) boundVars(s *system, params []types.Type, vars []*types.TypePa
 }
 
 // stubCheck checks sl for stubInference, and reports whether it checks
-// without errors. They and the types the check gives the tree are
+// without errors, and whether its errors are all ambiguous calls. They and the types the check gives the tree are
 // discarded, and what it changes outside sl's lambda undone. A result type
 // with r's variables takes the lambda's: (A<T, T>) -> A<T, T> gives T from
 // { it.convert() }.
-func (c *Checker) stubCheck(s *system, sl stubLambda, r *stubRun) bool {
+func (c *Checker) stubCheck(s *system, sl stubLambda, r *stubRun) (clean, ambiguous bool) {
 	ps := make([]types.Type, len(sl.params))
 	for i, p := range sl.params {
 		ps[i] = s.apply(p)
 	}
-	n, checked, saved := len(c.errs), c.checked, c.scope
+	n, a, checked, saved := len(c.errs), c.ambiguities, c.checked, c.scope
 	c.checked, c.scope = maps.Clone(checked), sl.scope
 	ft := sl.ft
 	w := lambdaWant{params: ps, known: true, recv: ft.Flex().E, ctx: ft.Flex().Contexts(), suspend: isSuspendFunc(ft), composable: isComposableFunc(ft), ret: noWant}
@@ -1833,12 +1839,13 @@ func (c *Checker) stubCheck(s *system, sl stubLambda, r *stubRun) bool {
 	c.trial = t
 	_, bt, _ := c.checkLambda(sl.l, w)
 	c.endTrial(t)
-	clean := len(c.errs) == n
+	clean = len(c.errs) == n
+	ambiguous = !clean && c.ambiguities-a == len(c.errs)-n
 	if clean && bt.K != types.Invalid && bt.K != types.Unit && ret.Has(func(u types.Type) bool { return u.K == types.TypeVar && c.stubs[u.Param()] == r }) {
 		r.cons = append(r.cons, [2]types.Type{bt, ret})
 	}
 	c.errs, c.checked, c.scope = c.errs[:n], checked, saved
-	return clean
+	return clean, ambiguous
 }
 
 // stubRun is a check of stubInference's: the system of the call whose
