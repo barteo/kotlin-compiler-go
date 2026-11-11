@@ -1852,9 +1852,10 @@ func javaMethods(cls *types.ClassSym, name string) []*types.FunSym {
 			}
 			// The program's overloads in one class are distinct even when
 			// their erasures are the same, as f(List<A>) and f(List<B>)
-			// renamed by @JvmName. A class file's are distinct by
-			// descriptor, but for covariant return bridges.
-			if f.Decl == nil {
+			// renamed by @JvmName, and so are a class file's whose JVM
+			// names aren't their own. A class file's others are distinct
+			// by descriptor, but for covariant return bridges.
+			if f.Decl == nil && (f.JVMName == "" || f.JVMName == f.Name) {
 				seen[params] = true
 			} else {
 				own = append(own, params)
