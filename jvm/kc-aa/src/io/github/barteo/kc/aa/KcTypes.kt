@@ -416,7 +416,10 @@ internal class KcClassTypeBuilder(override val token: KaLifetimeToken) : KaClass
         arguments += KcTypeArgument(type, variance, token)
     }
 
-    fun build(round: KcRound, id: ClassId): KaType = KcClassType(round, id, arguments.toList(), isMarkedNullable)
+    /** The type of class [id]: a function type if it is a function class, as FIR's. */
+    fun build(round: KcRound, id: ClassId): KaType =
+        if (KcTypeContext.isFunctionClass(id.asString())) KcFunctionType(round, id, arguments.toList(), isMarkedNullable, false, 0)
+        else KcClassType(round, id, arguments.toList(), isMarkedNullable)
 
     /** The type of local class [c]: its class ID is local, as in FIR. */
     fun build(round: KcRound, c: KaClassLikeSymbol, pkg: FqName): KaType =
