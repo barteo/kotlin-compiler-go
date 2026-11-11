@@ -1184,7 +1184,7 @@ func (c *Checker) extCalleesFor(name string, rt types.Type, x *syntax.Call) []ca
 	for i := len(c.recvs) - 1; i >= 0; i-- {
 		r := &c.recvs[i]
 		rt := c.scope.narrowed(r.sym).NonNull()
-		if cls := c.classOf(rt); cls != nil && (cls.External || c.u.memberExts) {
+		if cls := c.classOf(rt); cls != nil && c.mayHaveMemberExts(cls) {
 			if out := fits(memberExtMethods(cls, name)); len(out) > 0 {
 				for j := range out {
 					out[j].dispatchRecv = r
@@ -1347,7 +1347,7 @@ func (c *Checker) extProp(x *syntax.Member, rt types.Type) (types.Type, bool) {
 	for i := len(c.recvs) - 1; i >= 0 && best == nil; i-- {
 		r := &c.recvs[i]
 		t := c.scope.narrowed(r.sym).NonNull()
-		if cls := c.classOf(t); cls != nil && (cls.External || c.u.memberExts) {
+		if cls := c.classOf(t); cls != nil && c.mayHaveMemberExts(cls) {
 			sub = func(g *types.FunSym) types.Subst { return c.memberSubst(t, g.Owner) }
 			if fits(memberExtProps(cls, x.Name)); best != nil {
 				dispatch, dispatchRecv = nil, r
