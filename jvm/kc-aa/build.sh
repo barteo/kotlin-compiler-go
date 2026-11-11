@@ -9,12 +9,15 @@
 # that prints the annotated symbols (test/PrintAnnotated.kt), and compares
 # the output with test/slice/want.txt; then it runs Moshi's KSP codegen over
 # test/moshi/src (test/RunKsp.kt) and compares what it generates with
-# test/moshi/want, and Dagger's, Room's and Hilt's the same way, over
-# test/{dagger,room,hilt}/src, and checks incremental processing's dirty
+# test/moshi/want, and Dagger's, Room's, Hilt's and kotlin-inject's (with
+# kotlin-inject-anvil's) the same way, over
+# test/{dagger,room,hilt,inject}/src, and checks incremental processing's dirty
 # set over test/ic. "stock" does what "test" does, and then runs
 # each on stock KSP 2.3.13 (its embeddable Analysis API, Kotlin 2.4) over
 # the same sources: the processors' output must match the same want
 # directories, and the slice's want.txt but for test/slice/stock.diff.
+# It also runs test/dump/Dump.kt over test/dump/src on both and compares
+# their outputs with each other.
 # Room's jars come from Google's Maven repository (GOOGLE_MAVEN_REPO), the
 # rest from Maven Central (MAVEN_REPO).
 #
@@ -400,3 +403,37 @@ rm -rf "$out/hilt/caches" "$out/hilt/classes"
 diff -ru "$here/test/hilt/want" "$out/hilt"
 echo "hilt: ok"
 stock hilt "$here/test/hilt/src" "$hiltlibs" "$procs"
+
+# kotlin-inject's processor with kotlin-inject-anvil's over
+# test/inject/src: typealiased qualifiers and function types, assisted and
+# function injection, generated components that later rounds merge.
+. "$here/inject-jars.sh"
+injectlibs=$lib/kotlin-stdlib-2.4.21.jar$(jars "${inject_libs[@]}")
+procs=$(jars "${inject_procs[@]}")
+rm -rf "$out/inject"
+LD_PRELOAD=$java_home/lib/libjsig.so java -Dksp.backend=kc -Dkc.lib="$out/libkc.so" -Didea.home.path="$out" \
+	-cp "$out/runksp-classes$procs:$out/kc-aa.jar:$deps" RunKspKt "$here/test/inject/src" "$out/inject" "$injectlibs" \
+	> "$out/inject.txt"
+rm -rf "$out/inject/caches" "$out/inject/classes"
+diff -ru "$here/test/inject/want" "$out/inject"
+echo "inject: ok"
+stock inject "$here/test/inject/src" "$injectlibs" "$procs"
+
+# test/dump/Dump.kt over test/dump/src, on kc and on stock KSP: what
+# KSP says about each declaration, and the files in the order KSP lists
+# them, which is the order their directories list them in, so the two
+# are compared with each other rather than with a recorded want.
+if [ "$mode" = stock ]; then
+	rm -rf "$out/dump-classes" "$out/dump" "$out/stock-dump"
+	kotlinc -cp "$lib/kotlin-stdlib-2.4.21.jar:$out/m2/symbol-processing-api-2.3.13.jar" -d "$out/dump-classes" -jvm-target 17 -nowarn \
+		"$here/test/dump/Dump.kt"
+	mkdir -p "$out/dump-classes/META-INF/services"
+	echo DumpProvider > "$out/dump-classes/META-INF/services/com.google.devtools.ksp.processing.SymbolProcessorProvider"
+	LD_PRELOAD=$java_home/lib/libjsig.so java -Dksp.backend=kc -Dkc.lib="$out/libkc.so" -Didea.home.path="$out" \
+		-cp "$out/runksp-classes:$out/dump-classes:$out/kc-aa.jar:$deps" RunKspKt "$here/test/dump/src" "$out/dump" \
+		"$lib/kotlin-stdlib-2.4.21.jar" > "$out/dump.txt"
+	java -cp "$out/runksp-stock:$out/dump-classes$stockcp" RunKspKt "$here/test/dump/src" \
+		"$out/stock-dump" "$lib/kotlin-stdlib-2.4.21.jar" > "$out/stock-dump.txt"
+	diff -u "$out/stock-dump/resources/dump.txt" "$out/dump/resources/dump.txt"
+	echo "dump: same as stock KSP ($(wc -l < "$out/dump/resources/dump.txt") lines)"
+fi
