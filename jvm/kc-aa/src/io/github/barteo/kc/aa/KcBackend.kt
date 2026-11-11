@@ -59,6 +59,13 @@ import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.psi.KtFile
 import java.io.File
 
+/**
+ * The module's source roots: Kotlin and Java sources are read from each of
+ * them, whichever list names it, as stock KSP's source module does.
+ */
+internal fun sourceRoots(config: KSPConfig): List<File> =
+    (config.sourceRoots + config.commonSourceRoots + (config as? KSPJvmConfig)?.javaSourceRoots.orEmpty()).distinct()
+
 /** The `kc` KSP backend: the Analysis API answered by kc through libkc. */
 class KcBackend : KspBackend {
     override val name: String get() = "kc"
@@ -70,7 +77,7 @@ private class KcSession(private val config: KSPConfig, @Suppress("UNUSED_PARAMET
     private val timer = KcTimer()
 
     /** The Java sources the module starts with. */
-    private val javaSources: List<String> = ((config as? KSPJvmConfig)?.javaSourceRoots.orEmpty()).distinct().flatMap { root ->
+    private val javaSources: List<String> = sourceRoots(config).flatMap { root ->
         root.walkTopDown().filter { it.isFile && it.extension == "java" }.sortedBy { it.path }.map { it.canonicalPath }.toList()
     }
     private val environment = KcEnvironments.acquire(config, javaSources)
@@ -101,7 +108,7 @@ private class KcSession(private val config: KSPConfig, @Suppress("UNUSED_PARAMET
     private var modelHandle = 0L
 
     init {
-        (config.sourceRoots + config.commonSourceRoots).distinct().forEach { root ->
+        sourceRoots(config).forEach { root ->
             root.walkTopDown().filter { it.isFile && it.extension == "kt" }.sortedBy { it.path }
                 .forEach { paths += it.canonicalPath }
         }
