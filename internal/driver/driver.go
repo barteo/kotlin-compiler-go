@@ -45,8 +45,11 @@ type Options struct {
 	// checking approximates them, for the Analysis API: see
 	// check.Library.JavaTypes.
 	JavaTypes bool
-	JDKHome   string // JDK whose classes are used; found automatically if empty
-	NoJDK     bool   // don't use JDK classes
+	// ErrorTypes reads missing classes in library signatures as error
+	// types, for the Analysis API: see check.Library.ErrorTypes.
+	ErrorTypes bool
+	JDKHome    string // JDK whose classes are used; found automatically if empty
+	NoJDK      bool   // don't use JDK classes
 	// ModuleName is the module's name, which the JVM names of internal
 	// members end with, as with kotlinc's -module-name; "main" if empty.
 	ModuleName string
@@ -133,6 +136,9 @@ func newLibrary(cp *classpath.Path, opts Options) *check.Library {
 	}
 	if opts.JavaTypes {
 		lib.JavaTypes()
+	}
+	if opts.ErrorTypes {
+		lib.ErrorTypes()
 	}
 	if opts.Serialization {
 		lib.EnableSerialization()
@@ -466,25 +472,30 @@ func addJavaSet(cp *classpath.Path, files []*javasrc.File, outside *javaOutside)
 	set := javasrc.NewSet(files)
 	set.Outside = outside
 	for _, name := range set.Names() {
-		cp.AddSource(name, func() (*cf.Info, error) { return set.Info(name) })
+		cp.AddSource(name, sync.OnceValues(func() (*cf.Info, error) { return set.Info(name) }))
 	}
 	return set
 }
 
 // JavaSources are a module's Java sources, whose classes AddJavaSources
-// added to a class path.
+// put over a class path.
 type JavaSources struct {
 	*javasrc.Set
+	// Path is the class path with the sources' classes: an overlay of
+	// the class path AddJavaSources was given, which it leaves as it is.
+	Path    *classpath.Path
 	outside *javaOutside
 }
 
-// AddJavaSources adds the classes of a module's parsed Java sources to
-// class path cp, ahead of its own. The classes they name may be the
-// module's Kotlin classes, which SetKotlin tells them of before any of
-// their classes is read.
+// AddJavaSources returns the classes of a module's parsed Java sources
+// over class path cp, ahead of its own, which checks of other sources can
+// go on sharing. The classes they name may be the module's Kotlin
+// classes, which SetKotlin tells them of before any of their classes is
+// read.
 func AddJavaSources(cp *classpath.Path, files []*javasrc.File) *JavaSources {
 	outside := &javaOutside{cp: cp}
-	return &JavaSources{Set: addJavaSet(cp, files, outside), outside: outside}
+	o := cp.Overlay()
+	return &JavaSources{Set: addJavaSet(o, files, outside), Path: o, outside: outside}
 }
 
 // SetKotlin sets the module's Kotlin sources.

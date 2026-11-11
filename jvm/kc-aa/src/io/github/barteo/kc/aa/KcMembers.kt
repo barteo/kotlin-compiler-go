@@ -7,6 +7,8 @@ import org.jetbrains.kotlin.analysis.api.base.KaContextReceiver
 import org.jetbrains.kotlin.analysis.api.symbols.*
 import org.jetbrains.kotlin.analysis.api.symbols.pointers.KaSymbolPointer
 import org.jetbrains.kotlin.analysis.api.types.KaSubstitutor
+import org.jetbrains.kotlin.analysis.api.types.KaClassType
+import org.jetbrains.kotlin.analysis.api.types.KaErrorType
 import org.jetbrains.kotlin.analysis.api.types.KaType
 import org.jetbrains.kotlin.descriptors.Visibilities
 import org.jetbrains.kotlin.descriptors.Visibility
@@ -34,6 +36,14 @@ internal class KcClassMembers(
         val EMPTY = KcClassMembers(emptyList(), IdentityHashMap(), emptyList())
     }
 }
+
+/**
+ * Whether [c]'s declarations are its members as FIR has them for a Java
+ * class (see [KcMemberBuilder.javaDeclared]) rather than [KcClassSymbol.members].
+ */
+internal fun hasJavaDeclarations(c: KcClassSymbol) =
+    (c.origin == KaSymbolOrigin.JAVA_SOURCE || c.origin == KaSymbolOrigin.JAVA_LIBRARY) &&
+        c.classKind != KaClassKind.ANNOTATION_CLASS
 
 /** A member a class inherits from [original], a supertype's member, under a new signature. */
 internal interface KcFakeOverride {
@@ -102,21 +112,25 @@ internal class KcMemberBuilder(private val round: KcRound, private val c: KcClas
             }
         }
 
-        val java = (c.origin == KaSymbolOrigin.JAVA_SOURCE || c.origin == KaSymbolOrigin.JAVA_LIBRARY) &&
-            c.classKind != KaClassKind.ANNOTATION_CLASS
+        val java = hasJavaDeclarations(c)
         val all = if (java) javaDeclared(candidates) else null
         val declared = (all ?: c.members).filterIsInstance<KaCallableSymbol>()
             .filter { it !is KaConstructorSymbol && !isStaticMember(it as KaDeclarationSymbol) }
 
         val overridden = IdentityHashMap<KaCallableSymbol, List<KaCallableSymbol>>()
-        val pending = candidates.toMutableList()
+        // Only candidates of the same signature key can match: index them by it.
+        val byKey = HashMap<SignatureKey, MutableList<Candidate>>()
+        for (cd in candidates) signatureKey(cd.symbol)?.let { byKey.getOrPut(it) { ArrayList() } += cd }
+        val overriding = IdentityHashMap<Candidate, Boolean>()
         for (d in declared) {
             val dc = Candidate(d, rel.empty)
-            val hits = candidates.filter { matches(dc, it) && (!java || returnCompatible(d, it)) }
+            val bucket = signatureKey(d)?.let(byKey::get) ?: continue
+            val hits = bucket.filter { matches(dc, it) && (!java || returnCompatible(d, it)) }
             if (hits.isEmpty()) continue
             overridden[d] = hits.flatMap { declaredOriginals(it.symbol) }.distinct()
-            pending.removeAll { p -> hits.any { it === p } }
+            for (h in hits) overriding[h] = true
         }
+        val pending = candidates.filterTo(ArrayList()) { !overriding.containsKey(it) }
 
         val callables = ArrayList<KaCallableSymbol>(declared)
         if (java) {
@@ -140,8 +154,15 @@ internal class KcMemberBuilder(private val round: KcRound, private val c: KcClas
         }
 
         val groups = ArrayList<MutableList<Candidate>>()
+        val groupsByKey = HashMap<SignatureKey, MutableList<MutableList<Candidate>>>()
         for (p in pending) {
-            groups.firstOrNull { matches(it[0], p) }?.add(p) ?: groups.add(mutableListOf(p))
+            val k = signatureKey(p.symbol)
+            if (k == null) {
+                groups.add(mutableListOf(p))
+                continue
+            }
+            val same = groupsByKey.getOrPut(k) { ArrayList() }
+            same.firstOrNull { matches(it[0], p) }?.add(p) ?: mutableListOf(p).also { groups.add(it); same.add(it) }
         }
 
         for (g in groups) {
@@ -307,6 +328,17 @@ internal class KcMemberBuilder(private val round: KcRound, private val c: KcClas
             else -> s // Java fields keep their declared types.
         }
 
+    /** What two members [matches] must share: kind, name, and the counts it compares. */
+    private data class SignatureKey(val kind: Int, val name: Name, val params: Int, val typeParams: Int, val receiver: Boolean)
+
+    /** [s]'s [SignatureKey], or null if [matches] never holds for it. */
+    private fun signatureKey(s: KaCallableSymbol): SignatureKey? = when (s) {
+        is KaNamedFunctionSymbol -> SignatureKey(0, s.name, s.valueParameters.size, s.typeParameters.size, s.receiverParameter != null)
+        is KaPropertySymbol -> SignatureKey(1, s.name, 0, 0, s.receiverParameter != null)
+        is KaJavaFieldSymbol -> SignatureKey(2, s.name, 0, 0, false)
+        else -> null
+    }
+
     /**
      * Whether candidates [x] and [y] have the same signature: functions of
      * the same name, receiver, parameter and type parameter counts whose
@@ -324,8 +356,9 @@ internal class KcMemberBuilder(private val round: KcRound, private val c: KcClas
                     (a.receiverParameter == null) != (b.receiverParameter == null)
                 ) return false
                 val sb = positional(y.sub, b.typeParameters, a.typeParameters)
-                sameType(a.receiverType, x.sub, b.receiverType, sb) &&
-                    a.valueParameters.indices.all { sameType(a.valueParameters[it].returnType, x.sub, b.valueParameters[it].returnType, sb) }
+                val strict = isSource(a) != isSource(b)
+                sameType(a.receiverType, x.sub, b.receiverType, sb, strict) &&
+                    a.valueParameters.indices.all { sameType(a.valueParameters[it].returnType, x.sub, b.valueParameters[it].returnType, sb, strict) }
             }
             a is KaPropertySymbol && b is KaPropertySymbol ->
                 a.name == b.name && (a.receiverParameter == null) == (b.receiverParameter == null) &&
@@ -350,9 +383,32 @@ internal class KcMemberBuilder(private val round: KcRound, private val c: KcClas
         return KcChainedSubstitutor(sub, rel.substitutor(map))
     }
 
-    private fun sameType(a: KaType?, sa: KaSubstitutor, b: KaType?, sb: KaSubstitutor): Boolean {
+    /**
+     * Whether [a] and [b] are the same type once substituted. With
+     * [strict], for a source member and a library one, neither may have an
+     * error type: in FIR a library's type naming a class missing from the
+     * class path is still that class's, which a source error type isn't,
+     * so an override of a method taking an Android type, without
+     * android.jar, overrides nothing.
+     */
+    private fun sameType(a: KaType?, sa: KaSubstitutor, b: KaType?, sb: KaSubstitutor, strict: Boolean = false): Boolean {
         if (a == null || b == null) return a == null && b == null
-        return rel.equal(sa.substitute(a), sb.substitute(b), lenient = true)
+        val x = sa.substitute(a)
+        val y = sb.substitute(b)
+        if (strict && (hasError(x) || hasError(y))) return false
+        return rel.equal(x, y, lenient = true)
+    }
+
+    private fun isSource(s: KaCallableSymbol) = fakeOverrideOriginal(s).origin.let {
+        it == KaSymbolOrigin.SOURCE || it == KaSymbolOrigin.SOURCE_MEMBER_GENERATED || it == KaSymbolOrigin.JAVA_SOURCE
+    }
+
+    private fun hasError(t: KaType): Boolean = when (t) {
+        is KaErrorType -> true
+        is KcFlexibleType -> hasError(t.lowerBound)
+        is KcDefinitelyNotNullType -> hasError(t.original)
+        is KaClassType -> t.typeArguments.any { a -> a.type?.let(::hasError) == true }
+        else -> false
     }
 }
 

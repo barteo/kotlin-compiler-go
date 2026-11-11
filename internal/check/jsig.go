@@ -60,6 +60,19 @@ func (p *sigParser) ident(delims string) string {
 	return ""
 }
 
+// sourceOwner reports whether a type parameter's owner is, or is a member
+// of, a class of a check's Java sources, which doesn't live as long as the
+// library.
+func sourceOwner(owner any) bool {
+	switch o := owner.(type) {
+	case *types.ClassSym:
+		return o.Source
+	case *types.FunSym:
+		return o.Owner != nil && o.Owner.Source
+	}
+	return false
+}
+
 // typeParams parses <T:bound;U::bound;> and returns the parameters. The
 // parameters are in scope in their own bounds.
 func (p *sigParser) typeParams(owner any) []*types.TypeParamSym {
@@ -72,7 +85,7 @@ func (p *sigParser) typeParams(owner any) []*types.TypeParamSym {
 	start := p.i
 	var ps []*types.TypeParamSym
 	for p.ok && p.peek() != '>' {
-		ps = append(ps, &types.TypeParamSym{Name: p.ident(":"), Index: len(ps), Owner: owner})
+		ps = append(ps, &types.TypeParamSym{Name: p.ident(":"), Index: len(ps), Owner: owner, Library: !sourceOwner(owner)})
 		for p.ok && p.peek() == ':' {
 			p.i++
 			if p.isTypeStart() {

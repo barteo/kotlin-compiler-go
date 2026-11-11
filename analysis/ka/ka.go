@@ -15,11 +15,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"runtime/debug"
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/barteo/kotlin-compiler-go/analysis"
@@ -44,6 +46,9 @@ type Session struct {
 
 	mu  sync.Mutex
 	lib *shared // the library of the last Update, unless it has Java sources
+	// fixed are the texts of the last Update's sources read from their
+	// files, by path, with Config.FixedSources.
+	fixed map[string]string
 }
 
 // Close releases the class path the session's updates read. The models
@@ -189,6 +194,9 @@ const (
 	FlagBackingField
 	// FlagJavaSource is set on a class of the module's Java sources.
 	FlagJavaSource
+	// FlagEntryBody is set on a source enum entry with a body; its
+	// Members are the body's declarations.
+	FlagEntryBody
 )
 
 // Model is the declarations of a module's sources as they were when Update
@@ -200,6 +208,12 @@ type Model struct {
 	// syntax error is left out (a class keeps its other members), and an
 	// unresolved annotation has no class ID.
 	Diagnostics []Diagnostic
+	// Check identifies the check the model's files and diagnostics come
+	// from: an update that reuses a check whole returns a model with the
+	// same Check, and the same Files and Diagnostics, as the update that
+	// made it. A client that kept what it built from that model may keep
+	// using it.
+	Check uint64
 
 	lib       *library // the class path's classes; see Class
 	shared    *shared  // lib, which Close releases
@@ -334,12 +348,35 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 		}
 		return false
 	})
-	texts := make([]string, len(sources)+len(javaSources))
-	readErrs := make([]error, len(texts))
-	all := slices.Concat(sources, javaSources)
-	parallel(len(all), jobs, func(i int) { texts[i], readErrs[i] = all[i].text() })
-	if err := errors.Join(readErrs...); err != nil {
+	// The library of the class path, which the module's Java sources, if
+	// any, are put over for each check (library.withJava).
+	sl, err := s.library()
+	if err != nil {
 		return nil, err
+	}
+	tm.Mark("library")
+	all := slices.Concat(sources, javaSources)
+	var fixed map[string]string
+	if s.cfg.FixedSources && !noRoundReuse {
+		s.mu.Lock()
+		fixed = s.fixed
+		s.mu.Unlock()
+	}
+	texts, readErrs := sl.read.texts(all, jobs, fixed)
+	if err := errors.Join(readErrs...); err != nil {
+		sl.release()
+		return nil, err
+	}
+	if s.cfg.FixedSources && !noRoundReuse {
+		next := make(map[string]string, len(all))
+		for i, src := range all {
+			if src.Text == nil {
+				next[src.Path] = texts[i]
+			}
+		}
+		s.mu.Lock()
+		s.fixed = next
+		s.mu.Unlock()
 	}
 	tm.Mark("read")
 	// The results of the last checks are kept: an update of the same
@@ -349,56 +386,45 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 	for i, src := range all {
 		paths[i] = src.Path
 	}
-	var kept *shared // the library of a module without Java sources
-	var cache *checkCache
-	var key string
-	if len(javaSources) == 0 {
-		l, err := s.library()
-		if err != nil {
-			return nil, err
-		}
-		kept, cache = l, &l.checks
-	} else if key = libraryKey(s.cfg); key != "" {
-		cache = &javaChecks
-	}
-	prev, whole := cache.find(key, paths, texts)
+	cache := &sl.checks
+	prev, whole := cache.find("", paths, texts)
 	if whole {
 		tm.Mark("reused")
-		l := kept
-		if l == nil {
-			l = prev.sl
-			l.retain()
+		lib := sl.lib
+		if prev.lib != nil {
+			lib = prev.lib
 		}
-		return &Model{lib: l.lib, shared: l, Files: prev.files, Diagnostics: prev.diags}, nil
-	}
-	if prev == nil && kept == nil {
-		// The first update with Java sources: the parses of the update
-		// before, without them.
-		s.mu.Lock()
-		if s.lib != nil {
-			prev, _ = s.lib.checks.find("", nil, nil)
-		}
-		s.mu.Unlock()
+		return &Model{lib: lib, shared: sl, Files: prev.files, Diagnostics: prev.diags, Check: prev.check}, nil
 	}
 	javaTexts := texts[len(sources):]
 	texts = texts[:len(sources)]
+	// The kept parses are taken first, on this goroutine, and only the
+	// files left are parsed in parallel: an edit's update parses one,
+	// which starts no goroutine (smallCheck).
 	snaps := make([]*psi.Snapshot, len(sources))
-	parallel(len(sources), jobs, func(i int) {
+	var toParse []int
+	for i := range sources {
 		if snap := prev.snapshot(sources[i].Path, texts[i]); snap != nil {
 			snaps[i] = snap
-			return
+			continue
 		}
+		// A KSP run's second update finds the last run's check of its
+		// round, whose edited files' texts differ: the check of the
+		// first round, just before, has them.
+		if snap := cache.snapshot(sources[i].Path, texts[i]); snap != nil {
+			snaps[i] = snap
+			continue
+		}
+		toParse = append(toParse, i)
+	}
+	parallel(len(toParse), jobs, func(k int) {
+		i := toParse[k]
 		snaps[i] = psi.Parse(sources[i].Path, texts[i])
 	})
-	javaFiles := make([]*javasrc.File, len(javaSources))
-	javaErrs := make([]error, len(javaSources))
-	parallel(len(javaSources), jobs, func(i int) {
-		javaFiles[i], javaErrs[i] = javasrc.Parse(javaSources[i].Path, javaTexts[i])
-	})
+	javaFiles, javaErrs := sl.java.parse(javaSources, javaTexts, jobs)
 	tm.Mark("parse")
-	var sl *shared
+	ml := sl.lib // the Model's library
 	var java *driver.JavaSources
-	var err error
 	var javaDiags []Diagnostic
 	if len(javaSources) > 0 {
 		// A file kc can't parse is left out: its classes aren't the model's.
@@ -412,15 +438,11 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 				javaDiags = append(javaDiags, Diagnostic{Path: javaSources[i].Path, Line: 1, Col: 1, Message: javaErrs[i].Error()})
 			}
 		}
-		sl, java, err = acquireJava(s.cfg, parsed)
-	} else {
-		sl = kept
+		ml = sl.lib.withJava(parsed)
+		java = ml.java
 	}
-	if err != nil {
-		return nil, err
-	}
-	lib := sl.lib.lib
-	m := &Model{lib: sl.lib, shared: sl, Diagnostics: javaDiags}
+	lib := ml.lib
+	m := &Model{lib: ml, shared: sl, Diagnostics: javaDiags, Check: checkIDs.Add(1)}
 	ok := false
 	defer func() {
 		if !ok {
@@ -428,144 +450,601 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 		}
 	}()
 	tm.Mark("open")
-	files, provs, broken := lowerAll(snaps, m, jobs)
+	// An update that may check only some files lowers the changed ones
+	// first, then the others, those it won't check as declarations only
+	// (lower.Declarations).
+	files := make([]*syntax.File, len(snaps))
+	provs := make([]*lower.Provenance, len(snaps))
+	changed := prev.changedFiles(paths, sources, texts)
+	broken := map[int]bool{}
+	if changed != nil {
+		broken = lowerFiles(snaps, files, provs, m, jobs, changed, nil, nil)
+	}
+	rest := func(i int) bool { return files[i] == nil }
+	// An update whose changed files declare what they did, and whose
+	// other files are those of the check before, checks only the changed
+	// files and keeps the others' models (reuse.go).
+	// One whose changed files declare something else checks those
+	// files and the ones that look up what they declare, until the
+	// models of the files it checks besides the changed ones are as they
+	// were, or it would check too many (declEdits, dependents).
+	var only map[*syntax.File]bool
+	// dirty is the files a partial check checks; declEdit is set if they
+	// are declEdits', which may reach more as they're checked.
+	var dirty map[int]bool
+	// shifted are the changed files that keep their models (bodyreuse.go).
+	var shifted shiftedModels
+	declEdit := false
+	if changed != nil && len(broken) == 0 {
+		if edits := prev.bodyEdits(paths, sources, texts, javaTexts, snaps); edits != nil {
+			incrementalUpdates.Add(1)
+			dirty = map[int]bool{}
+			for _, i := range edits {
+				// A file whose change no check looks into keeps its model,
+				// moved to its new parse (bodyreuse.go).
+				if f, diags, ok := prev.shiftedFile(i, snaps[i], texts[i]); ok {
+					if shifted == nil {
+						shifted = shiftedModels{}
+					}
+					shifted[i] = shiftedModel{f, diags}
+					continue
+				}
+				dirty[i] = true
+			}
+			if len(dirty) == 0 {
+				shiftedUpdates.Add(int64(len(shifted)))
+				m.Files = slices.Clone(prev.files)
+				for i, s := range shifted {
+					m.Files[i] = s.file
+				}
+				m.Diagnostics = nil
+				for _, d := range prev.diags {
+					if !shifted.has(d.Path) {
+						m.Diagnostics = append(m.Diagnostics, d)
+					}
+				}
+				for _, s := range shifted {
+					m.Diagnostics = append(m.Diagnostics, s.diags...)
+				}
+				sortDiagnostics(m.Diagnostics, snaps)
+				tm.Mark("shifted")
+				// The Java sources and what the Kotlin ones declare are
+				// the same: so are the classes of the check's library.
+				if prev.lib != nil {
+					m.lib = prev.lib
+				}
+				keepCheck(cache, m, paths, slices.Concat(texts, javaTexts), sources, snaps, true, prev.lib)
+				ok = true
+				return m, nil
+			}
+		} else if dirty = prev.declEdits(paths, sources, texts, &javaSet{javaTexts, javaFiles}, snaps, files); dirty != nil {
+			declUpdates.Add(1)
+			declEdit = true
+			// A KSP run's second round, whose first checked the dirty
+			// files just before: their models are that check's (borrow).
+			if lent, diags, lentOK := cache.borrow(prev, dirty, sources, texts, &javaSet{javaTexts, javaFiles}, snaps, sl.lib.cp); lentOK {
+				mfs := slices.Clone(prev.files)
+				for i, f := range lent {
+					mfs[i] = f
+				}
+				if more := prev.dependents(dirty, mfs, texts, &javaSet{javaTexts, javaFiles}); len(more) == 0 {
+					borrowedUpdates.Add(1)
+					tm.Note("borrowed", len(lent))
+					m.Files = mfs
+					m.Diagnostics = nil
+					dirtyPaths := map[string]bool{}
+					for i := range dirty {
+						dirtyPaths[sources[i].Path] = true
+					}
+					for _, d := range prev.diags {
+						if !dirtyPaths[d.Path] {
+							m.Diagnostics = append(m.Diagnostics, d)
+						}
+					}
+					m.Diagnostics = append(m.Diagnostics, diags...)
+					sortDiagnostics(m.Diagnostics, snaps)
+					tm.Mark("borrowed")
+					// The Java sources and the Kotlin classes they see are
+					// the same (borrow): so are the classes of the library.
+					if prev.lib != nil {
+						m.lib = prev.lib
+					}
+					keepCheck(cache, m, paths, slices.Concat(texts, javaTexts), sources, snaps, true, prev.lib)
+					ok = true
+					return m, nil
+				}
+			}
+		}
+	}
+	notDirty := func(i int) bool { return !dirty[i] }
+	if dirty == nil {
+		notDirty = nil
+	}
+	// The files a check of only some can't reach are stubs (reachable).
+	var reach map[int]bool
+	stub := func(i int) bool { return reach != nil && !reach[i] }
+	if dirty != nil {
+		reach = reachable(snaps, dirty, javaTexts, cache)
+	} else {
+		lastResolved.Store(int64(len(sources)))
+	}
+	cj := checkJobs(jobs, dirty, reach)
+	maps.Copy(broken, lowerFiles(snaps, files, provs, m, cj, rest, notDirty, stub))
 	if java != nil {
 		java.SetKotlin(files)
 	}
 	tm.Mark("lower")
-	// An update whose changed files declare what they did, and whose
-	// other files are those of the check before, checks only the changed
-	// files and keeps the others' models (reuse.go).
-	var only map[*syntax.File]bool
-	if len(broken) == 0 {
-		if changed := prev.bodyEdits(paths, sources, texts, javaTexts, snaps); changed != nil {
-			incrementalUpdates.Add(1)
+	for {
+		if dirty != nil {
 			only = map[*syntax.File]bool{}
-			for _, i := range changed {
+			for i := range dirty {
 				only[files[i]] = true
 			}
 		}
-	}
-	rec, checkErrs, err := checkFiles(ctx, files, lib, jobs, only)
-	if !rec.bodies.IsZero() {
-		tm.MarkAt("signatures", rec.bodies)
-	}
-	tm.Mark("bodies")
-	if _, crashed := err.(checkPanic); crashed && len(broken) > 0 {
-		// The checker can't take a file with syntax errors: check the
-		// others, and model the broken ones from syntax alone.
-		files, provs, _ = lowerAll(snaps, nil, jobs)
-		if java != nil {
-			java.SetKotlin(files)
+		if only != nil {
+			lastChecked.Store(int64(len(only)))
+		} else {
+			lastChecked.Store(int64(len(files)))
 		}
-		var clean []*syntax.File
+		tm.Note("checked", int(lastChecked.Load()))
+		rec, checkErrs, err := checkFiles(ctx, files, lib, cj, only, namesIn(snaps, files, only))
+		if !rec.bodies.IsZero() {
+			tm.MarkAt("signatures", rec.bodies)
+		}
+		tm.Mark("bodies")
+		if _, crashed := err.(checkPanic); crashed && len(broken) > 0 {
+			// The checker can't take a file with syntax errors: check the
+			// others, and model the broken ones from syntax alone.
+			files, provs, _ = lowerAll(snaps, nil, jobs)
+			if java != nil {
+				java.SetKotlin(files)
+			}
+			var clean []*syntax.File
+			for i, f := range files {
+				if !broken[i] {
+					clean = append(clean, f)
+				}
+			}
+			rec, checkErrs, err = checkFiles(ctx, clean, lib, jobs, nil, nil)
+		}
+		if err != nil {
+			return nil, err
+		}
+		if only != nil {
+			// The kept diagnostics of the files not checked: the Java
+			// sources' are the same, as their texts are, and are kept with
+			// them.
+			m.Diagnostics = nil
+			checkedPaths := map[string]bool{}
+			for f := range only {
+				checkedPaths[f.Path] = true
+			}
+			for _, d := range prev.diags {
+				if !checkedPaths[d.Path] && !shifted.has(d.Path) {
+					m.Diagnostics = append(m.Diagnostics, d)
+				}
+			}
+			for _, s := range shifted {
+				m.Diagnostics = append(m.Diagnostics, s.diags...)
+			}
+		}
+		for _, e := range checkErrs {
+			m.Diagnostics = append(m.Diagnostics, diagnostic(e.File, e))
+		}
+		sortDiagnostics(m.Diagnostics, snaps)
 		for i, f := range files {
-			if !broken[i] {
-				clean = append(clean, f)
+			if only != nil && !only[f] {
+				if s, ok := shifted[i]; ok {
+					m.Files = append(m.Files, s.file)
+				} else {
+					m.Files = append(m.Files, prev.files[i])
+				}
+				continue
 			}
-		}
-		rec, checkErrs, err = checkFiles(ctx, clean, lib, jobs, nil)
-	}
-	if err != nil {
-		return nil, err
-	}
-	if only != nil {
-		// The kept diagnostics of the files not checked: the Java
-		// sources' are the same, as their texts are, and are kept with
-		// them.
-		m.Diagnostics = nil
-		checkedPaths := map[string]bool{}
-		for f := range only {
-			checkedPaths[f.Path] = true
-		}
-		for _, d := range prev.diags {
-			if !checkedPaths[d.Path] {
-				m.Diagnostics = append(m.Diagnostics, d)
+			b := &fileBuilder{f: f, snap: snaps[i], prov: provs[i], annots: rec.annots[f], values: rec.values[f], refs: rec.refs, aliases: rec.aliases, lib: m.lib,
+				tparams: map[*types.TypeParamSym]psi.NodeID{}}
+			mf := &File{Path: snaps[i].Path(), Package: f.Package, Snapshot: snaps[i], Lookups: rec.fileLookups(f)}
+			mf.Annotations = b.annotations(f.Annotations)
+			pkg := strings.ReplaceAll(f.Package, ".", "/")
+			for _, d := range f.Decls {
+				if md := b.decl(d, nil, pkg+"/"); md != nil {
+					mf.Decls = append(mf.Decls, md)
+				}
 			}
+			m.Files = append(m.Files, mf)
 		}
+		tm.Mark("model")
+		if !declEdit {
+			break
+		}
+		more := prev.dependents(dirty, m.Files, texts, &javaSet{javaTexts, javaFiles})
+		tm.Mark("dependents")
+		if len(more) == 0 {
+			break
+		}
+		// Check again, as the checker leaves its marks on the files.
+		for i := range more {
+			dirty[i] = true
+		}
+		if len(dirty)*maxDirtyShare > len(sources) {
+			dirty, only, notDirty = nil, nil, nil
+		}
+		clear(files)
+		reach = nil
+		if dirty != nil {
+			reach = reachable(snaps, dirty, javaTexts, cache)
+		} else {
+			lastResolved.Store(int64(len(sources)))
+		}
+		cj = checkJobs(jobs, dirty, reach)
+		lowerFiles(snaps, files, provs, nil, cj, rest, notDirty, stub)
+		m.Diagnostics, m.Files = javaDiags, nil
+		tm.Mark("lower")
 	}
-	for _, e := range checkErrs {
-		m.Diagnostics = append(m.Diagnostics, diagnostic(e.File, e))
+	var javaLib *library
+	if java != nil {
+		javaLib = ml
 	}
-	slices.SortStableFunc(m.Diagnostics, func(a, b Diagnostic) int {
-		return cmp.Or(cmp.Compare(index(snaps, a.Path), index(snaps, b.Path)),
-			cmp.Compare(a.Line, b.Line), cmp.Compare(a.Col, b.Col))
-	})
-	for i, f := range files {
-		if only != nil && !only[f] {
-			m.Files = append(m.Files, prev.files[i])
-			continue
-		}
-		b := &fileBuilder{f: f, snap: snaps[i], prov: provs[i], annots: rec.annots[f], values: rec.values[f], refs: rec.refs, aliases: rec.aliases, lib: m.lib,
-			tparams: map[*types.TypeParamSym]psi.NodeID{}}
-		mf := &File{Path: snaps[i].Path(), Package: f.Package, Snapshot: snaps[i], Lookups: rec.fileLookups(f)}
-		mf.Annotations = b.annotations(f.Annotations)
-		pkg := strings.ReplaceAll(f.Package, ".", "/")
-		for _, d := range f.Decls {
-			if md := b.decl(d, nil, pkg+"/"); md != nil {
-				mf.Decls = append(mf.Decls, md)
-			}
-		}
-		m.Files = append(m.Files, mf)
-	}
-	tm.Mark("model")
-	if cache != nil {
-		c := &checked{key: key, paths: paths, texts: slices.Concat(texts, javaTexts), files: m.Files, diags: m.Diagnostics,
-			clean: len(broken) == 0,
-			snaps: make(map[string]checkedSnap, len(sources))}
-		for i, src := range sources {
-			c.snaps[src.Path] = checkedSnap{texts[i], snaps[i]}
-		}
-		if kept == nil {
-			// The entry keeps the module's own library.
-			sl.retain()
-			c.sl = sl
-		}
-		cache.keep(c)
-	}
+	keepCheck(cache, m, paths, slices.Concat(texts, javaTexts), sources, snaps, len(broken) == 0, javaLib)
+	tm.Mark("keep")
 	ok = true
 	return m, nil
 }
 
+// keepCheck keeps the check that made model m, of sources with texts
+// (the Java sources' last), in cache.
+func keepCheck(cache *checkCache, m *Model, paths, texts []string, sources []Source, snaps []*psi.Snapshot, clean bool, lib *library) {
+	if cache == nil || noReuse {
+		return
+	}
+	c := &checked{check: m.Check, paths: paths, texts: texts, files: m.Files, diags: m.Diagnostics, clean: clean, lib: lib,
+		snaps: make(map[string]checkedSnap, len(sources))}
+	for i, src := range sources {
+		c.snaps[src.Path] = checkedSnap{texts[i], snaps[i]}
+	}
+	c.keys = cache.keysOf(m.Files)
+	cache.keep(c)
+}
+
+// sortDiagnostics sorts diagnostics by their files' order in snaps, then
+// by position.
+func sortDiagnostics(diags []Diagnostic, snaps []*psi.Snapshot) {
+	slices.SortStableFunc(diags, func(a, b Diagnostic) int {
+		return cmp.Or(cmp.Compare(index(snaps, a.Path), index(snaps, b.Path)),
+			cmp.Compare(a.Line, b.Line), cmp.Compare(a.Col, b.Col))
+	})
+}
+
+// namesIn returns the identifiers in the snapshots of the files in only,
+// those of files: the names of what they may need the omitted types of
+// (check.Options.Infer).
+func namesIn(snaps []*psi.Snapshot, files []*syntax.File, only map[*syntax.File]bool) map[string]bool {
+	if only == nil {
+		return nil
+	}
+	names := map[string]bool{}
+	for i, f := range files {
+		if !only[f] {
+			continue
+		}
+		snap := snaps[i]
+		for id := psi.NodeID(1); int(id) <= snap.NodeCount(); id++ {
+			if n := snap.Node(id); n.NumericKind() == psi.KindIDENTIFIER {
+				names[strings.Trim(n.Text(), "`")] = true
+			}
+		}
+	}
+	return names
+}
+
+// reachable returns, for a check of only the dirty files, the files
+// the check can reach: the others are given to it as stubs, their
+// packages without declarations (declStub). A top-level declaration is
+// reached if a reached text writes a name it declares (its own or a
+// class's it nests), and its text is then reached: the dirty files'
+// whole texts are, and so are the top-level operators and functions a
+// construct calls by convention, which code calls without writing their
+// names, and the declarations named in the Java sources, whose members
+// may return a Kotlin class no Kotlin file names. So an inferred type
+// (val x = f()), a supertype, a typealias or an extension is reached
+// through the names that lead to it, and so are the members of the
+// classes a reached text names. A reached sealed class reaches the
+// classes whose supertypes name it too, which a when on it counts
+// though no text need name them. Every name the check looks up is one a
+// reached text writes, so the files declaring it are reached. It
+// returns nil, every file, if the files reached are more than half.
+func reachable(snaps []*psi.Snapshot, dirty map[int]bool, javaTexts []string, cache *checkCache) map[int]bool {
+	lastResolved.Store(int64(len(snaps)))
+	if dirty == nil || noReach {
+		return nil
+	}
+	fns := make([]*fileNames, len(snaps))
+	for i, snap := range snaps {
+		fns[i] = cache.names(snap)
+	}
+	x := cache.reachIndex(snaps, fns)
+	defer cache.putReachIndex(x)
+	set := map[int]bool{}
+	reached := map[reachAt]bool{}
+	var queue []map[string]bool
+	reach := func(a reachAt) {
+		set[a.file] = true
+		if !reached[a] {
+			reached[a] = true
+			queue = append(queue, fns[a.file].decls[a.decl].ids)
+		}
+	}
+	for i, fn := range fns {
+		for k, d := range fn.decls {
+			if d.operator {
+				reach(reachAt{i, k})
+			}
+		}
+		if dirty[i] {
+			set[i] = true
+			queue = append(queue, fn.all)
+		}
+	}
+	names := map[string]bool{}
+	name := func(n string) {
+		if names[n] {
+			return
+		}
+		names[n] = true
+		for _, a := range x.declares[n] {
+			reach(a)
+		}
+		if x.sealed[n] > 0 {
+			for _, a := range x.subs[n] {
+				reach(a)
+			}
+		}
+	}
+	for _, t := range javaTexts {
+		javaIdentifiers(t, name)
+	}
+	for len(queue) > 0 {
+		ids := queue[len(queue)-1]
+		queue = queue[:len(queue)-1]
+		for n := range ids {
+			name(n)
+		}
+	}
+	if len(set)*2 > len(snaps) {
+		return nil
+	}
+	lastResolved.Store(int64(len(set)))
+	return set
+}
+
+// noReach turns reachable off, for tests and comparisons
+// (KC_NO_REACH): a check of only some files resolves every file's
+// signatures.
+var noReach = os.Getenv("KC_NO_REACH") != ""
+
+// lastResolved is how many files the last check was given whole, not
+// as stubs (reachable), for tests.
+var lastResolved atomic.Int64
+
+// fileNames are the identifiers a parse writes (reachable): all of them,
+// and those of each top-level declaration.
+type fileNames struct {
+	all   map[string]bool
+	decls []declNames
+}
+
+type declNames struct {
+	names []string        // the names it declares: its own, and its classes'
+	ids   map[string]bool // the identifiers it writes
+	// sealed are the names of its sealed classes, and supers the
+	// identifiers its classes' supertype lists write.
+	sealed []string
+	supers map[string]bool
+	// operator is set for a function whose name is an operator's or a
+	// conventional one's (check.IsOperatorName).
+	operator bool
+}
+
+func snapNames(snap *psi.Snapshot) *fileNames {
+	fn := &fileNames{all: map[string]bool{}}
+	root := snap.RootNode()
+	for n := root.FirstChild(); n.Valid(); n = n.NextSibling() {
+		k := n.NumericKind()
+		isDecl := k == psi.KindCLASS || k == psi.KindOBJECT_DECLARATION || k == psi.KindFUN || k == psi.KindPROPERTY || k == psi.KindTYPEALIAS
+		var d declNames
+		if isDecl {
+			d.ids = map[string]bool{}
+			if name := n.NameIdentifier(); name.Valid() {
+				d.names = append(d.names, strings.Trim(name.Text(), "`"))
+				d.operator = k == psi.KindFUN && check.IsOperatorName(d.names[0])
+			}
+		}
+		for id := n.ID(); id < n.SubtreeEnd(); id++ {
+			m := snap.Node(id)
+			switch m.NumericKind() {
+			case psi.KindIDENTIFIER:
+				t := strings.Trim(m.Text(), "`")
+				fn.all[t] = true
+				if isDecl {
+					d.ids[t] = true
+				}
+			case psi.KindCLASS, psi.KindOBJECT_DECLARATION:
+				if !isDecl {
+					break
+				}
+				name := m.NameIdentifier()
+				if name.Valid() && id != n.ID() {
+					d.names = append(d.names, strings.Trim(name.Text(), "`"))
+				}
+				if name.Valid() && m.ChildKind(psi.KindMODIFIER_LIST).ChildKind(psi.KindSEALED_KEYWORD).Valid() {
+					d.sealed = append(d.sealed, strings.Trim(name.Text(), "`"))
+				}
+				if st := m.ChildKind(psi.KindSUPER_TYPE_LIST); st.Valid() {
+					for sid := st.ID(); sid < st.SubtreeEnd(); sid++ {
+						if x := snap.Node(sid); x.NumericKind() == psi.KindIDENTIFIER {
+							if d.supers == nil {
+								d.supers = map[string]bool{}
+							}
+							d.supers[strings.Trim(x.Text(), "`")] = true
+						}
+					}
+				}
+			}
+		}
+		if isDecl {
+			fn.decls = append(fn.decls, d)
+		}
+	}
+	return fn
+}
+
+// javaIdentifiers calls f with each identifier of a Java text.
+func javaIdentifiers(text string, f func(string)) {
+	start := -1
+	for i := 0; i <= len(text); i++ {
+		c := byte(0)
+		if i < len(text) {
+			c = text[i]
+		}
+		word := c == '_' || c == '$' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= 0x80 || start >= 0 && c >= '0' && c <= '9'
+		switch {
+		case word && start < 0:
+			start = i
+		case !word && start >= 0:
+			f(text[start:i])
+			start = -1
+		}
+	}
+}
+
+// names returns the identifiers snap's text writes, kept with the parse
+// while a check c keeps holds it.
+func (c *checkCache) names(snap *psi.Snapshot) *fileNames {
+	if c == nil {
+		return snapNames(snap)
+	}
+	c.mu.Lock()
+	fn, ok := c.ids[snap]
+	c.mu.Unlock()
+	if ok {
+		return fn
+	}
+	fn = snapNames(snap)
+	c.mu.Lock()
+	if c.ids == nil {
+		c.ids = map[*psi.Snapshot]*fileNames{}
+	}
+	c.ids[snap] = fn
+	c.mu.Unlock()
+	return fn
+}
+
 // lowerAll lowers snaps, adding their errors to m if it isn't nil, and
-// reports which have errors.
+// returns the indexes of those with errors.
 func lowerAll(snaps []*psi.Snapshot, m *Model, jobs int) ([]*syntax.File, []*lower.Provenance, map[int]bool) {
 	files := make([]*syntax.File, len(snaps))
 	provs := make([]*lower.Provenance, len(snaps))
+	broken := lowerFiles(snaps, files, provs, m, jobs, nil, nil, nil)
+	return files, provs, broken
+}
+
+// lowerFiles lowers the snaps for which need is true (every one if need
+// is nil) into files and provs, as declarations only those for which
+// declsOnly is true (lower.Declarations), adding their errors to m if it
+// isn't nil, and returns the indexes of those with errors.
+func lowerFiles(snaps []*psi.Snapshot, files []*syntax.File, provs []*lower.Provenance, m *Model, jobs int, need, declsOnly, stub func(i int) bool) map[int]bool {
+	var todo []int
+	for i := range snaps {
+		if need == nil || need(i) {
+			todo = append(todo, i)
+		}
+	}
 	errLists := make([][]*syntax.Error, len(snaps))
-	parallel(len(snaps), jobs, func(i int) {
-		files[i], provs[i], errLists[i] = lower.File(snaps[i])
+	parallel(len(todo), jobs, func(k int) {
+		i := todo[k]
+		if stub != nil && stub(i) {
+			files[i], provs[i], errLists[i] = declStub(snaps[i])
+		} else if declsOnly != nil && declsOnly(i) {
+			files[i], provs[i], errLists[i] = declarations(snaps[i])
+		} else {
+			files[i], provs[i], errLists[i] = lower.File(snaps[i])
+		}
 	})
 	broken := map[int]bool{}
-	for i, snap := range snaps {
+	for _, i := range todo {
 		errs := errLists[i]
 		if len(errs) > 0 {
 			broken[i] = true
 		}
 		if m != nil {
 			for _, e := range errs {
-				m.Diagnostics = append(m.Diagnostics, diagnostic(snap.Path(), e))
+				m.Diagnostics = append(m.Diagnostics, diagnostic(snaps[i].Path(), e))
 			}
 		}
 	}
-	return files, provs, broken
+	return broken
 }
 
-// parallel runs fn(i) for i in [0, n) on up to jobs goroutines.
+// smallCheck is the most files a partial check checks or resolves the
+// declarations of (its dirty files and the others it reaches; stubs
+// aren't counted) that it lowers and checks on the caller's goroutine
+// alone. In a daemon, Go's threads are parked between updates, and
+// waking them for each of an update's fan-outs (the lowering, the
+// signatures, the bodies) took longer than they saved on a one-file
+// edit's check: in a harness that sleeps 15 ms and sweeps 64 MB before
+// each update, Moshi's signature edit took 1.8 ms on one goroutine
+// against 2.0-2.2 on four, Hilt's 2.0 against 2.3 (docs/analysis-api.md,
+// step 50).
+const smallCheck = 8
+
+// alwaysParallel turns smallCheck off, for comparisons
+// (KC_ALWAYS_PARALLEL=1): every update uses the session's jobs.
+var alwaysParallel = os.Getenv("KC_ALWAYS_PARALLEL") != ""
+
+// checkJobs returns the goroutines a check of the dirty files, which
+// reaches reach (nil for every file), lowers and checks on: one for a
+// small partial check (smallCheck), jobs otherwise.
+func checkJobs(jobs int, dirty, reach map[int]bool) int {
+	if alwaysParallel || dirty == nil {
+		return jobs
+	}
+	n := len(dirty)
+	if reach == nil {
+		return jobs
+	}
+	for i := range reach {
+		if !dirty[i] {
+			n++
+		}
+	}
+	if n > smallCheck {
+		return jobs
+	}
+	return 1
+}
+
+// parallel runs fn(i) for i in [0, n) on up to jobs goroutines, the
+// caller's one of them. Each takes the next index from a counter, so
+// items that take microseconds (a stat, a kept parse) cost no handoff
+// between threads: in a daemon, Go's threads are parked between updates,
+// and waking one per item took longer than the items. Waking any at
+// all costs more than a few small items take (smallCheck).
 func parallel(n, jobs int, fn func(i int)) {
-	var wg sync.WaitGroup
-	next := make(chan int)
-	for range min(max(jobs, 1), n) {
-		wg.Go(func() {
-			for i := range next {
-				fn(i)
+	var next atomic.Int64
+	work := func() {
+		for {
+			i := int(next.Add(1) - 1)
+			if i >= n {
+				return
 			}
-		})
+			fn(i)
+		}
 	}
-	for i := range n {
-		next <- i
+	var wg sync.WaitGroup
+	for range min(max(jobs, 1), n) - 1 {
+		wg.Go(work)
 	}
-	close(next)
+	work()
 	wg.Wait()
 }
 
@@ -598,7 +1077,7 @@ func panicStack() string {
 	return strings.Join(lines, "\n")
 }
 
-func checkFiles(ctx context.Context, files []*syntax.File, lib *check.Library, jobs int, only map[*syntax.File]bool) (rec *recorder, errs []*syntax.Error, err error) {
+func checkFiles(ctx context.Context, files []*syntax.File, lib *check.Library, jobs int, only map[*syntax.File]bool, infer map[string]bool) (rec *recorder, errs []*syntax.Error, err error) {
 	rec = &recorder{annots: map[*syntax.File]map[syntax.Pos]*types.ClassSym{},
 		values: map[*syntax.File]map[syntax.Pos][]syntax.AnnotationValue{}, refs: map[*syntax.TypeRef]types.Type{},
 		aliases: map[*syntax.TypeRef]*types.AliasSym{}, lookups: map[*syntax.File][]Lookup{}}
@@ -607,7 +1086,7 @@ func checkFiles(ctx context.Context, files []*syntax.File, lib *check.Library, j
 			err = checkPanic{v, panicStack()}
 		}
 	}()
-	errs, err = check.CheckOptions(ctx, files, lib, jobs, rec, check.Options{Signatures: true, Only: only})
+	errs, err = check.CheckOptions(ctx, files, lib, jobs, rec, check.Options{Signatures: true, Only: only, Infer: infer})
 	return rec, errs, err
 }
 

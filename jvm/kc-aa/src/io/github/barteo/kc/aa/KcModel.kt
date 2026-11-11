@@ -21,6 +21,8 @@ internal object KcOps {
         val classPath: List<String>,
         /** The entries of [classPath] whose internal declarations the module sees. */
         val friendPaths: List<String> = emptyList(),
+        /** The sources don't change while the session is open, as in a KSP run (see ka.Config.FixedSources). */
+        val fixedSources: Boolean = false,
     )
 
     fun open(cfg: Config): Long {
@@ -33,46 +35,78 @@ internal object KcOps {
         cfg.classPath.forEach { w.writeString(it) }
         w.writeUint(cfg.friendPaths.size.toLong())
         cfg.friendPaths.forEach { w.writeString(it) }
+        w.writeBool(cfg.fixedSources)
         return Wire.Reader(KcNative.call(OPEN, w.message())).readInt()
     }
 
     /**
-     * Checks [paths] in session [session] and returns their declarations.
-     * The model's handle, which [cls] reads library classes through, is
-     * the caller's to [close].
+     * Checks [paths] in session [session] and returns their declarations,
+     * or, if the check is one of [kept], only that (KcModel.same).
+     * [bases] are the files of models read before, by their checks and
+     * paths: a file the new model shares with one of them is that one,
+     * not sent again. The model's handle, which [cls] reads library
+     * classes through, is the caller's to [close].
      */
-    fun update(session: Long, paths: List<String>): KcModel {
+    fun update(
+        session: Long,
+        paths: List<String>,
+        kept: Collection<Long> = emptyList(),
+        bases: Map<Long, Map<String, KcFile>> = emptyMap(),
+    ): KcModel {
         val w = Wire.Writer().writeInt(session).writeUint(paths.size.toLong())
         paths.forEach { w.writeString(it) }
+        w.writeUint(kept.size.toLong())
+        kept.forEach { w.writeUint(it) }
+        w.writeUint(bases.size.toLong())
+        bases.keys.forEach { w.writeUint(it) }
         val t = KcTimer()
         val r = Wire.Reader(KcNative.call(UPDATE, w.message()))
         t.mark("native")
         val model = r.readInt()
         try {
+            val check = r.readUint()
+            val java = r.readUint()
+            if (r.readBool()) {
+                t.print("update same")
+                return KcModel(model, emptyList(), emptyList(), check, java, same = true)
+            }
+            var reused = 0
             val files = List(r.readUint().toInt()) {
-                KcFile(r.readString(), r.readString(), r.annotations(), r.decls(), r.lookups(), r.readUint().toInt(), r.readUint())
+                val from = r.readUint()
+                val path = r.readString()
+                if (from == 0L) {
+                    KcFile(path, r.readString(), r.annotations(), r.decls(), r.lookups(), r.readUint().toInt(), r.readUint(), r.readUint())
+                } else {
+                    reused++
+                    bases[from]?.get(path) ?: error("kc: no file $path of check $from")
+                }
             }
             val diagnostics = List(r.readUint().toInt()) {
                 KcDiagnostic(r.readString(), r.readUint().toInt(), r.readUint().toInt(), r.readString(), r.readString())
             }
             t.mark("decode")
-            t.print("update")
-            return KcModel(model, files, diagnostics)
+            t.print("update reused=$reused")
+            return KcModel(model, files, diagnostics, check, java)
         } catch (e: Throwable) {
             close(model)
             throw e
         }
     }
 
-    /** The class-path class [classId] (a/b/Outer.Inner) as model [model] has it, or null. */
-    fun cls(model: Long, classId: String): KcDecl? {
-        val r = Wire.Reader(KcNative.call(CLASS, Wire.Writer().writeInt(model).writeString(classId).message()))
-        return r.decls().singleOrNull()
+    /**
+     * The class-path class [classId] (a/b/Outer.Inner) as model [model] has
+     * it, or null, and whether the class path, the sources left out, has
+     * no such class: one there is none of while the class path is the same.
+     */
+    fun cls(model: Long, classId: String): Pair<KcDecl?, Boolean> {
+        val r = Wire.Reader(KcTimer.timed(KcTimer.classCalls) { KcNative.call(CLASS, Wire.Writer().writeInt(model).writeString(classId).message()) })
+        val d = r.decls().singleOrNull()
+        return d to r.readBool()
     }
 
     /** The class-path package [fqName] (dotted) as model [model] has it, or null if there is none. */
     fun pkg(model: Long, fqName: String): KcPackage? {
-        val r = Wire.Reader(KcNative.call(PACKAGE, Wire.Writer().writeInt(model).writeString(fqName).message()))
+        val r = Wire.Reader(KcTimer.timed(KcTimer.packageCalls) { KcNative.call(PACKAGE, Wire.Writer().writeInt(model).writeString(fqName).message()) })
         val exists = r.readBool()
         val classes = List(r.readUint().toInt()) { r.readString() }
         val decls = r.decls()
@@ -161,7 +195,21 @@ internal object KcOps {
 }
 
 /** The module's sources as one update saw them; Go's ka.Model. */
-internal class KcModel(val handle: Long, val files: List<KcFile>, val diagnostics: List<KcDiagnostic>)
+/**
+ * The model of an update: its [handle], its [check] (Go's Model.Check),
+ * and [java], which identifies the classes of its Java sources (Go's
+ * Model.JavaID): models with the same one have the same, and 0 is none.
+ * If [same], the update asked with a kept check and this is it again: the
+ * model's files and diagnostics are left out, as they are that check's.
+ */
+internal class KcModel(
+    val handle: Long,
+    val files: List<KcFile>,
+    val diagnostics: List<KcDiagnostic>,
+    val check: Long = 0,
+    val java: Long = 0,
+    val same: Boolean = false,
+)
 
 /** An error in the sources; Go's ka.Diagnostic. */
 internal class KcDiagnostic(val path: String, val line: Int, val col: Int, val message: String, val feature: String) {
@@ -186,7 +234,34 @@ internal class KcFile(
     /** The number of kc's psi nodes of the file, and the hash of their kinds ([KcKinds.hash]). */
     val nodes: Int = -1,
     val kinds: Long = 0,
-)
+    /** The hash of the file's text as libkc read it (KcEnvironment's textHash), or 0. */
+    val text: Long = 0,
+) {
+    /**
+     * The IDs of the file's classes and type aliases, local ones too, in
+     * preorder, aliases' marked: what a round indexes (KcRound.index).
+     * A file the next update shares is the same KcFile, so each round
+     * after the first doesn't parse them again.
+     */
+    val classIds: List<Pair<org.jetbrains.kotlin.name.ClassId, Boolean>> by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        val ids = ArrayList<Pair<org.jetbrains.kotlin.name.ClassId, Boolean>>()
+        fun walk(ds: List<KcDecl>) {
+            for (d in ds) {
+                when (d.kind) {
+                    KcDecl.CLASS, KcDecl.INTERFACE, KcDecl.OBJECT, KcDecl.ENUM_CLASS, KcDecl.ANNOTATION_CLASS ->
+                        if (d.classId.isNotEmpty()) ids += org.jetbrains.kotlin.name.ClassId.fromString(d.classId) to false
+                    KcDecl.TYPE_ALIAS ->
+                        if (d.classId.isNotEmpty()) ids += org.jetbrains.kotlin.name.ClassId.fromString(d.classId) to true
+                }
+                walk(d.members)
+                walk(d.locals)
+                walk(d.params)
+            }
+        }
+        walk(decls)
+        ids
+    }
+}
 
 /**
  * A name looked up in a package or a class, [scope] its qualified name;
@@ -296,6 +371,8 @@ internal class KcDecl(
         const val BACKING_FIELD = 1L shl 25
         /** A class of the module's Java sources (with [JAVA]). */
         const val JAVA_SOURCE = 1L shl 26
+        /** A source enum entry with a body, whose [members] are the body's. */
+        const val ENTRY_BODY = 1L shl 27
 
         // Go's ka.Variance values.
         const val INVARIANT = 0
@@ -326,6 +403,8 @@ internal class KcType(
     val isFlexible get() = flags and 2 != 0
     val isDefinitelyNonNull get() = flags and 4 != 0
     val isExtension get() = flags and 8 != 0
+    /** An inferred type's error type, not an unresolved class's (Go's ka.Type.Inferred). */
+    val isInferred get() = flags and 16 != 0
 
     companion object {
         // Go's ka.TypeKind values.
@@ -396,15 +475,16 @@ internal sealed class KcValue(val node: Int) {
  * and writes them, in ms, to standard error on a line that starts with
  * "kc-jvm:" (bench/ksp).
  */
-internal class KcTimer {
-    private var last = System.nanoTime()
+internal class KcTimer(start: Long = System.nanoTime()) {
+    private var last = start
     private val parts = StringBuilder()
 
     fun mark(name: String) {
         if (!ON) return
         val now = System.nanoTime()
         parts.append(' ').append(name).append('=').append("%.1f".format((now - last) / 1e6))
-        last = now
+        // Formatting isn't counted in the next part.
+        last = System.nanoTime()
     }
 
     fun print(what: String) {
@@ -413,5 +493,27 @@ internal class KcTimer {
 
     companion object {
         val ON = System.getenv("KC_TIMING") != null
+
+        /** The count and ns of the library lookups (cls, pkg) since the last [printCalls]. */
+        val classCalls = LongArray(2)
+        val packageCalls = LongArray(2)
+
+        inline fun <T> timed(calls: LongArray, f: () -> T): T {
+            if (!ON) return f()
+            val start = System.nanoTime()
+            try {
+                return f()
+            } finally {
+                calls[0]++
+                calls[1] += System.nanoTime() - start
+            }
+        }
+
+        fun printCalls() {
+            if (!ON) return
+            System.err.println("kc-jvm: lookups class=${classCalls[0]}/%.1f package=${packageCalls[0]}/%.1f".format(classCalls[1] / 1e6, packageCalls[1] / 1e6))
+            classCalls.fill(0)
+            packageCalls.fill(0)
+        }
     }
 }

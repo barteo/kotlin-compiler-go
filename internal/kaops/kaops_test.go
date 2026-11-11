@@ -17,7 +17,8 @@ import (
 
 func TestOpenUpdateClose(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "a.kt")
-	if err := os.WriteFile(path, []byte("package p\nannotation class A\n@A class C\n"), 0o666); err != nil {
+	src := "package p\nannotation class A\n@A class C\n"
+	if err := os.WriteFile(path, []byte(src), 0o666); err != nil {
 		t.Fatal(err)
 	}
 	var w wire.Writer
@@ -25,8 +26,9 @@ func TestOpenUpdateClose(t *testing.T) {
 	w.Bool(true) // no JDK
 	w.String("m")
 	w.Uint(1)
-	w.Uint(0) // no class path
-	w.Uint(0) // no friend paths
+	w.Uint(0)     // no class path
+	w.Uint(0)     // no friend paths
+	w.Bool(false) // sources may change
 	resp, err := kcabi.Call(OpKaOpen, w.Message())
 	if err != nil {
 		t.Fatal(err)
@@ -37,14 +39,26 @@ func TestOpenUpdateClose(t *testing.T) {
 	w.Int(session)
 	w.Uint(1)
 	w.String(path)
+	w.Uint(0) // nothing kept
+	w.Uint(0) // no bases
 	resp, err = kcabi.Call(OpKaUpdate, w.Message())
 	if err != nil {
 		t.Fatal(err)
 	}
 	r := wire.NewReader(resp)
 	model := r.Int()
+	check := r.Uint()
+	if java := r.Uint(); java != 0 {
+		t.Errorf("Java sources %d, want none", java)
+	}
+	if r.Bool() {
+		t.Fatal("same as a kept check")
+	}
 	if n := r.Uint(); n != 1 {
 		t.Fatalf("%d files", n)
+	}
+	if from := r.Uint(); from != 0 {
+		t.Fatalf("file from check %d", from)
 	}
 	if p, pkg := r.String(), r.String(); p != path || pkg != "p" {
 		t.Fatalf("file %s, package %s", p, pkg)
@@ -66,6 +80,9 @@ func TestOpenUpdateClose(t *testing.T) {
 	if nodes, kinds := r.Uint(), r.Uint(); nodes < 10 || kinds == 0 {
 		t.Errorf("nodes %d, kinds %x", nodes, kinds)
 	}
+	if h, want := r.Uint(), textHash(src); h != want {
+		t.Errorf("text hash %x, want %x", h, want)
+	}
 	if n := r.Uint(); n != 0 {
 		t.Errorf("%d diagnostics", n)
 	}
@@ -76,7 +93,44 @@ func TestOpenUpdateClose(t *testing.T) {
 		t.Error("bytes left after the model")
 	}
 
-	for _, h := range []int64{model, session} {
+	// The same update again, with the first model's check kept: the same
+	// check, without the files.
+	w = wire.Writer{}
+	w.Int(session)
+	w.Uint(1)
+	w.String(path)
+	w.Uint(1)
+	w.Uint(check)
+	w.Uint(0) // no bases
+	resp, err = kcabi.Call(OpKaUpdate, w.Message())
+	if err != nil {
+		t.Fatal(err)
+	}
+	r = wire.NewReader(resp)
+	again := r.Int()
+	if c, _, same := r.Uint(), r.Uint(), r.Bool(); c != check || !same || r.Len() != 0 {
+		t.Errorf("check %d, same %v, %d bytes; want check %d, same, nothing more", c, same, r.Len(), check)
+	}
+
+	// Again, with the first model's check a base: the same files, left out.
+	w = wire.Writer{}
+	w.Int(session)
+	w.Uint(1)
+	w.String(path)
+	w.Uint(0) // nothing kept
+	w.Uint(1)
+	w.Uint(check)
+	resp, err = kcabi.Call(OpKaUpdate, w.Message())
+	if err != nil {
+		t.Fatal(err)
+	}
+	r = wire.NewReader(resp)
+	based := r.Int()
+	if c, _, same, n, from, p := r.Uint(), r.Uint(), r.Bool(), r.Uint(), r.Uint(), r.String(); c != check || same || n != 1 || from != check || p != path {
+		t.Errorf("check %d, same %v, %d files, from %d, %s; want check %d, 1 file from it, %s", c, same, n, from, p, check, path)
+	}
+
+	for _, h := range []int64{model, again, based, session} {
 		w = wire.Writer{}
 		w.Int(h)
 		if _, err := kcabi.Call(OpKaClose, w.Message()); err != nil {
@@ -85,6 +139,9 @@ func TestOpenUpdateClose(t *testing.T) {
 	}
 	if handles.Len() != 0 {
 		t.Errorf("%d handles left", handles.Len())
+	}
+	if len(checks.m) != 0 {
+		t.Errorf("%d checks' files left", len(checks.m))
 	}
 	w = wire.Writer{}
 	w.Int(session)
@@ -184,7 +241,7 @@ func TestClass(t *testing.T) {
 		t.Skipf("no kotlin-stdlib.jar (set KOTLIN_HOME): %v", err)
 	}
 	path := filepath.Join(t.TempDir(), "a.kt")
-	if err := os.WriteFile(path, []byte("package p\n"), 0o666); err != nil {
+	if err := os.WriteFile(path, []byte("package p\nclass A\n"), 0o666); err != nil {
 		t.Fatal(err)
 	}
 	var w wire.Writer
@@ -194,7 +251,8 @@ func TestClass(t *testing.T) {
 	w.Uint(1)
 	w.Uint(1)
 	w.String(jar)
-	w.Uint(0) // no friend paths
+	w.Uint(0)     // no friend paths
+	w.Bool(false) // sources may change
 	resp, err := kcabi.Call(OpKaOpen, w.Message())
 	if err != nil {
 		t.Fatal(err)
@@ -204,6 +262,8 @@ func TestClass(t *testing.T) {
 	w.Int(session)
 	w.Uint(1)
 	w.String(path)
+	w.Uint(0) // nothing kept
+	w.Uint(0) // no bases
 	resp, err = kcabi.Call(OpKaUpdate, w.Message())
 	if err != nil {
 		t.Fatal(err)
@@ -211,10 +271,11 @@ func TestClass(t *testing.T) {
 	model := wire.NewReader(resp).Int()
 
 	for _, tc := range []struct {
-		id   string
-		n    uint64
-		kind ka.Kind
-	}{{"kotlin/Deprecated", 1, ka.KindAnnotationClass}, {"no/Such", 0, 0}} {
+		id     string
+		n      uint64
+		kind   ka.Kind
+		absent bool
+	}{{"kotlin/Deprecated", 1, ka.KindAnnotationClass, false}, {"no/Such", 0, 0, true}, {"p/A", 0, 0, true}} {
 		w = wire.Writer{}
 		w.Int(model)
 		w.String(tc.id)
@@ -227,6 +288,9 @@ func TestClass(t *testing.T) {
 			t.Fatalf("%s: %d decls", tc.id, n)
 		}
 		if tc.n == 0 {
+			if absent := r.Bool(); absent != tc.absent {
+				t.Errorf("%s: absent %v", tc.id, absent)
+			}
 			continue
 		}
 		if k, name := ka.Kind(r.Uint()), r.String(); k != tc.kind || name != "Deprecated" {
@@ -328,7 +392,7 @@ func readType(r *wire.Reader) *ka.Type {
 	}
 	t := &ka.Type{Kind: kind, ClassID: r.String()}
 	flags := r.Uint()
-	t.Nullable, t.Flexible, t.DefinitelyNonNull, t.Extension = flags&1 != 0, flags&2 != 0, flags&4 != 0, flags&8 != 0
+	t.Nullable, t.Flexible, t.DefinitelyNonNull, t.Extension, t.Inferred = flags&1 != 0, flags&2 != 0, flags&4 != 0, flags&8 != 0, flags&16 != 0
 	t.Param = psi.NodeID(r.Uint())
 	t.Name = r.String()
 	t.Contexts = int(r.Uint())
@@ -346,4 +410,13 @@ func readAnnotations(r *wire.Reader) []ka.Annotation {
 		out = append(out, *readAnnotation(r))
 	}
 	return out
+}
+
+func TestTextHash(t *testing.T) {
+	// FNV-1a's published 64-bit test values, which KcEnvironment's must match.
+	for text, want := range map[string]uint64{"": 0xcbf29ce484222325, "a": 0xaf63dc4c8601ec8c, "foobar": 0x85944171f73967e8} {
+		if h := textHash(text); h != want {
+			t.Errorf("textHash(%q) = %x, want %x", text, h, want)
+		}
+	}
 }

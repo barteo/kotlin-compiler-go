@@ -151,8 +151,15 @@ func (l *lowerer) fun(n psi.NodeRef) *syntax.FunDecl {
 		case psi.KindTYPE_CONSTRAINT_LIST:
 			where = c
 		case psi.KindBLOCK:
-			fd.Body = l.block(c)
+			fd.Body = l.bodyBlock(c)
 		case psi.KindEQ:
+			if l.declsOnly && fd.Ret != nil {
+				// Declarations: the body of a function whose return
+				// type is written is left out, as a block body is.
+				p := l.pos(c)
+				fd.Body = &syntax.Block{P: p, End: p}
+				break
+			}
 			fd.ExprBody = l.expr(exprAfter(n, psi.KindEQ))
 		}
 		if c.NumericKind() == psi.KindTYPE_PARAMETER_LIST {
@@ -709,7 +716,7 @@ func (l *lowerer) member(cd *syntax.ClassDecl, n psi.NodeRef) {
 		if !b.Valid() {
 			l.failAt(l.end(n), "expected '{'")
 		}
-		cd.Members = append(cd.Members, record(l, &syntax.InitBlock{P: l.pos(child(n, psi.KindINIT_KEYWORD)), Body: l.block(b),
+		cd.Members = append(cd.Members, record(l, &syntax.InitBlock{P: l.pos(child(n, psi.KindINIT_KEYWORD)), Body: l.bodyBlock(b),
 			Annotations: m.Annotations}, n))
 	case psi.KindCOMPANION_BLOCK:
 		pos := l.pos(n)
@@ -739,7 +746,7 @@ func (l *lowerer) secondaryCtor(n psi.NodeRef, m syntax.Modifiers) *syntax.Secon
 		}
 	}
 	if b := child(n, psi.KindBLOCK); b.Valid() {
-		sc.Body = l.block(b)
+		sc.Body = l.bodyBlock(b)
 	}
 	return sc
 }

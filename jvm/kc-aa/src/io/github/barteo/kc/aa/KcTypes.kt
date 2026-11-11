@@ -54,8 +54,10 @@ internal class KcTypeContext(
 
     /** The KaType of [t]. */
     fun type(t: KcType): KaType = when (t.kind) {
+        // An annotated Java collection's bounds are both nullable, or
+        // neither: (Mutable)List<T>?.
         KcType.CLASS -> if (t.isFlexible) {
-            KcFlexibleType(round, classType(t, false), classType(t, true, readOnly[t.classId], t.classId == "kotlin/Array"))
+            KcFlexibleType(round, classType(t, t.isNullable), classType(t, !t.isDefinitelyNonNull, readOnly[t.classId], t.classId == "kotlin/Array"))
         } else {
             classType(t, t.isNullable)
         }
@@ -70,7 +72,7 @@ internal class KcTypeContext(
         else -> if (t.isFlexible) {
             KcFlexibleType(round, errorType(round, t.name, false), errorType(round, t.name, true))
         } else {
-            errorType(round, t.name, t.isNullable)
+            if (t.isInferred) KcMissingType(round, t.isNullable, t.name) else errorType(round, t.name, t.isNullable)
         }
     }
 
@@ -104,7 +106,7 @@ internal class KcTypeContext(
     }
 
     private fun parameter(t: KcType): KaTypeParameterSymbol =
-        psi(t.param)?.let { round.byPsi[it] as? KaTypeParameterSymbol }
+        psi(t.param)?.let { round.symbolOf(it) as? KaTypeParameterSymbol }
             ?: byName(Name.identifier(t.name))
             ?: KcLibraryTypeParameterSymbol(round, Name.identifier(t.name))
 
@@ -161,9 +163,16 @@ internal class KcClassType(
     private val localPsi: PsiElement? = null,
 ) : StubKaUsualClassType(), KcBaseClassType {
     override val token get() = round.token
-    private val localSymbol: KaClassLikeSymbol? get() = local ?: localPsi?.let { round.byPsi[it] as? KaClassLikeSymbol }
+    private val localSymbol: KaClassLikeSymbol? get() = local ?: localPsi?.let { round.symbolOf(it) as? KaClassLikeSymbol }
     override val symbol: KaClassLikeSymbol
-        get() = localSymbol ?: if (isAlias) round.typeAlias(classId) ?: round.classSymbol(classId) else round.classSymbol(classId)
+        get() = localSymbol ?: resolved ?: (if (isAlias) round.typeAlias(classId) ?: round.classSymbol(classId) else round.classSymbol(classId))
+            .also { if (localPsi == null && it !is KcLibraryClassSymbol) resolved = it }
+
+    // The symbol of a non-local class ID kc has, which is the same for the
+    // round (type relations ask for it over and over). A class kc doesn't
+    // have yet can turn up later in the round, so that isn't kept.
+    @Volatile
+    private var resolved: KaClassLikeSymbol? = null
     override val nullability get() = KaTypeNullability.create(marked)
     override val abbreviation: KaUsualClassType? get() = abbrev
     override val annotations: KaAnnotationList get() = KcAnnotationList(annots, round.token)
@@ -247,10 +256,19 @@ internal class KcFlexibleType(
 ) : StubKaFlexibleType(), KcTypeBase {
     override val token get() = round.token
     override val marked get() = false
-    override val nullability get() = KaTypeNullability.UNKNOWN
+    // An annotated Java collection's bounds are both nullable, or neither.
+    override val nullability
+        get() = when {
+            lowerBound.nullability == KaTypeNullability.NULLABLE -> KaTypeNullability.NULLABLE
+            upperBound.nullability == KaTypeNullability.NON_NULLABLE -> KaTypeNullability.NON_NULLABLE
+            else -> KaTypeNullability.UNKNOWN
+        }
     override val abbreviation get() = null
     override val annotations: KaAnnotationList get() = KcAnnotationList(emptyList(), round.token)
-    override fun withNullability(nullable: Boolean) = (if (nullable) upperBound else lowerBound)
+    override fun withNullability(nullable: Boolean): KaType {
+        val b = if (nullable) upperBound else lowerBound
+        return (b as? KcTypeBase)?.withNullability(nullable) ?: b
+    }
     override fun equals(other: Any?) = other is KcFlexibleType && other.lowerBound == lowerBound && other.upperBound == upperBound
     override fun hashCode() = lowerBound.hashCode() * 31 + upperBound.hashCode()
     override fun toString() = "$lowerBound!"
@@ -295,19 +313,23 @@ internal class KcErrorType(
 internal fun errorType(round: KcRound, name: String?, marked: Boolean = false): KaType =
     if (name.isNullOrEmpty()) KcMissingType(round, marked) else KcErrorType(round, name, marked)
 
-/** An error type that names no class; see [errorType]. */
+/**
+ * An error type that names no class (see [errorType]), or an inferred
+ * type's, which FIR gives the presentable [text] of what didn't resolve.
+ */
 internal class KcMissingType(
     private val round: KcRound,
     override val marked: Boolean = false,
+    private val text: String? = null,
 ) : StubKaErrorType(), KcTypeBase {
     override val token get() = round.token
     override val nullability get() = KaTypeNullability.create(marked)
     override val abbreviation get() = null
     override val annotations: KaAnnotationList get() = KcAnnotationList(emptyList(), round.token)
-    override val errorMessage: String get() = "no type"
-    override val presentableText: String? get() = null
-    override fun withNullability(nullable: Boolean) = if (nullable == marked) this else KcMissingType(round, nullable)
-    override fun toString() = "ERROR"
+    override val errorMessage: String get() = if (text == null) "no type" else "unresolved: $text"
+    override val presentableText: String? get() = text
+    override fun withNullability(nullable: Boolean) = if (nullable == marked) this else KcMissingType(round, nullable, text)
+    override fun toString() = if (text == null) "ERROR" else "ERROR($text)"
 }
 
 /**

@@ -1,0 +1,59 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kc <barteo@gmail.com>
+Date: Sat, 7 Nov 2026 22:35:06 +0000
+Subject: [PATCH 09/12] Pass the dirty files to KspBackendSession.beginRound
+
+A backend that replays its front end's lookups into the tracker needs
+replay only the dirty files': the incremental caches keep the others'
+lookups, and replace only the dirty files' with what the tracker holds.
+---
+ .../google/devtools/ksp/impl/KotlinSymbolProcessing.kt    | 2 +-
+ .../com/google/devtools/ksp/impl/backend/KspBackend.kt    | 8 ++++++--
+ .../devtools/ksp/impl/backend/fir/StandaloneBackend.kt    | 2 +-
+ 3 files changed, 8 insertions(+), 4 deletions(-)
+
+diff --git a/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/KotlinSymbolProcessing.kt b/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/KotlinSymbolProcessing.kt
+index 789cb45..bdfe7d8 100644
+--- a/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/KotlinSymbolProcessing.kt
++++ b/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/KotlinSymbolProcessing.kt
+@@ -173,7 +173,7 @@ class KotlinSymbolProcessing(
+             // 1) there is an error
+             // 2) there is no more new files.
+             while (!logger.hasError) {
+-                session.beginRound(dualLookupTracker)
++                session.beginRound(dualLookupTracker, allDirtyKSFiles)
+ 
+                 val resolutionStrategy =
+                     if (kspConfig.experimentalPsiResolution)
+diff --git a/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/backend/KspBackend.kt b/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/backend/KspBackend.kt
+index 83fae74..bd91828 100644
+--- a/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/backend/KspBackend.kt
++++ b/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/backend/KspBackend.kt
+@@ -77,8 +77,12 @@ interface KspBackendSession {
+     /** The module's source files: Kotlin and, on the JVM, Java. Called once. */
+     fun sourceFiles(): List<KSFile>
+ 
+-    /** Called before each round, with the tracker the round records lookups in. */
+-    fun beginRound(lookupTracker: DualLookupTracker)
++    /**
++     * Called before each round, with the tracker the round records lookups
++     * in and the files KSP processes again ([dirtyFiles]): only their
++     * lookups replace the ones the caches have.
++     */
++    fun beginRound(lookupTracker: DualLookupTracker, dirtyFiles: List<KSFile>)
+ 
+     /**
+      * Whether the tracker [beginRound] gets receives the front end's lookups.
+diff --git a/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/backend/fir/StandaloneBackend.kt b/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/backend/fir/StandaloneBackend.kt
+index aebf8bf..104ab42 100644
+--- a/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/backend/fir/StandaloneBackend.kt
++++ b/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/impl/backend/fir/StandaloneBackend.kt
+@@ -162,7 +162,7 @@ private class StandaloneSession(kspConfig: KSPConfig, projectDisposable: Disposa
+ 
+     override fun sourceFiles(): List<KSFile> = prepareAllKSFiles(env, modules, javaFileManager)
+ 
+-    override fun beginRound(lookupTracker: DualLookupTracker) {
++    override fun beginRound(lookupTracker: DualLookupTracker, dirtyFiles: List<KSFile>) {
+         // FirSession in AA is created lazily. Getting it instantiates module providers, which requires source roots
+         // to be resolved. Therefore, due to the implementation, it has to be registered repeatedly after the files
+         // are created.

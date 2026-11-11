@@ -13,8 +13,18 @@
 #	COLD      fresh-JVM runs per backend (default 3)
 #	JFR       record bench-BACKEND.jfr from this run on (see Classify.java)
 #	KC_TIMING set to 1 for kc's own phase split, on stderr
+#	DUMP      first write what the processors see to DUMP-BACKEND.txt
+#	          (KspBench's bench.dump), for comparing the backends; with
+#	          RUNS_AFTER_DUMP=0 nothing is timed; with DUMP_RUNS=N the
+#	          dump is the last of N runs in one JVM (a warm daemon's)
+#	EDIT      edit this source (relative to the first source directory,
+#	          or "auto") before each run after the first, with incremental
+#	          processing on (KspBench's bench.edit)
+#	EDIT_KIND body or signature for those edits only (KspBench's bench.editKind)
 #	JVM_OPTS  more options for the benchmark's JVMs; @B@ stands for the
 #	          backend, as in -XX:SharedArchiveFile=cds-@B@.jsa
+#	STOCK_PROCS_EXTRA  a class path stock KSP's processors also need,
+#	          which the KSP fork brings itself (Room's kotlinx-serialization)
 set -euo pipefail
 
 [ $# -ge 3 ] || { sed -n '2,15p' "$0" >&2; exit 2; }
@@ -43,16 +53,18 @@ done
 kotlinc() { java -Xmx3g -cp "$runtime" org.jetbrains.kotlin.cli.jvm.K2JVMCompiler -no-stdlib -no-reflect "$@"; }
 
 # The processors, but for what KSP itself brings.
-procs=$(grep -v 'symbol-processing-api\|kotlin-stdlib\|kotlin-reflect' "$procsfile" | paste -sd:)
+procs=$({ grep -v 'symbol-processing-api\|kotlin-stdlib\|kotlin-reflect' "$procsfile" || true; } | paste -sd:)
 
 for b in ${BACKENDS:-stock kc}; do
 	jvmopts=${JVM_OPTS:-}
 	jvmopts=${jvmopts//@B@/$b}
+	[ -n "${EDIT:-}" ] && jvmopts+=" -Dbench.edit=$EDIT"
+	[ -n "${EDIT_KIND:-}" ] && jvmopts+=" -Dbench.editKind=$EDIT_KIND"
 	case $b in
 	stock)
 		[ -s "$out/bench-stock.jar" ] && [ "$out/bench-stock.jar" -nt "$here/KspBench.kt" ] ||
 			kotlinc -cp "${stockcp#:}" -language-version 2.3 -api-version 2.3 -d "$out/bench-stock.jar" -jvm-target 17 -nowarn "$here/KspBench.kt"
-		cmd=(java $jvmopts -Dksp.languageVersion=2.3 -cp "$out/bench-stock.jar$stockcp:$procs")
+		cmd=(java $jvmopts -Dksp.languageVersion=2.3 -cp "$out/bench-stock.jar$stockcp:$procs${STOCK_PROCS_EXTRA:+:$STOCK_PROCS_EXTRA}")
 		;;
 	kc)
 		[ -s "$out/bench-kc.jar" ] && [ "$out/bench-kc.jar" -nt "$here/KspBench.kt" ] ||
@@ -63,6 +75,10 @@ for b in ${BACKENDS:-stock kc}; do
 		;;
 	*) echo "run.sh: unknown backend $b" >&2; exit 2 ;;
 	esac
+	if [ -n "${DUMP:-}" ]; then
+		"${cmd[@]}" -Dbench.dump="$DUMP-$b.txt" KspBenchKt "$srcs" "$libsfile" "${DUMP_RUNS:-1}" | grep -v '^summary'
+		[ "${RUNS_AFTER_DUMP:-1}" = 0 ] && continue
+	fi
 	jfr=()
 	[ -n "${JFR:-}" ] && jfr=(-Djfr.from="$JFR")
 	"${cmd[@]}" "${jfr[@]}" KspBenchKt "$srcs" "$libsfile" "$runs"

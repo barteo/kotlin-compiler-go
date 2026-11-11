@@ -16,6 +16,7 @@ import (
 // line, separated by a comma (as bench/ksp/run.sh takes them). It is
 // skipped without KA_BENCH.
 func BenchmarkUpdate(b *testing.B) {
+	noVerifyKeys(b)
 	s, sources := benchModule(b)
 	defer s.Close()
 	for b.Loop() {
@@ -28,8 +29,14 @@ func BenchmarkUpdate(b *testing.B) {
 }
 
 // BenchmarkUpdateEdit times an Update after an edit of one file's body,
-// KA_BENCH_EDIT's (the first file by default): a comment added at its end.
+// KA_BENCH_EDIT's (the first file by default): a comment added at its end;
+// with KA_BENCH_SIGNATURE set, a function, named after the run; or, with
+// KA_BENCH_RETURN set, a function added once whose body returns the run's
+// number, as bench/ksp's body edits do; or, with KA_BENCH_TYPE set, that
+// function with its return type changed between Int and Any on every
+// run, as bench/ksp's signature edits do.
 func BenchmarkUpdateEdit(b *testing.B) {
+	noVerifyKeys(b)
 	s, sources := benchModule(b)
 	defer s.Close()
 	i := 0
@@ -46,6 +53,19 @@ func BenchmarkUpdateEdit(b *testing.B) {
 	for b.Loop() {
 		n++
 		text := string(data) + "\n// edit " + strconv.Itoa(n) + "\n"
+		if os.Getenv("KA_BENCH_RETURN") != "" {
+			text = string(data) + "\nfun kcEdit(): Int {\n    return " + strconv.Itoa(n) + "\n}\n"
+		}
+		if os.Getenv("KA_BENCH_SIGNATURE") != "" {
+			text = string(data) + "\nfun kcEdit" + strconv.Itoa(n) + "(): Int { return 1 }\n"
+		}
+		if os.Getenv("KA_BENCH_TYPE") != "" {
+			typ := "Int"
+			if n%2 == 1 {
+				typ = "Any"
+			}
+			text = string(data) + "\nfun kspBenchEdit(): " + typ + " {\n    return " + strconv.Itoa(n) + "\n}\n"
+		}
 		sources[i].Text = &text
 		m, err := s.Update(context.Background(), sources)
 		if err != nil {
@@ -53,6 +73,13 @@ func BenchmarkUpdateEdit(b *testing.B) {
 		}
 		m.Close()
 	}
+}
+
+// noVerifyKeys turns verifyKeys and verifyReach off for a benchmark,
+// which times the keys and the kept reachable indexes alone.
+func noVerifyKeys(b *testing.B) {
+	verifyKeys, verifyReach = false, false
+	b.Cleanup(func() { verifyKeys, verifyReach = true, true })
 }
 
 func benchModule(b testing.TB) (*Session, []Source) {

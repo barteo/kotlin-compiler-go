@@ -56,25 +56,25 @@ class KcAnalysis internal constructor(
     fun getAnalysisScope(): GlobalSearchScope = GlobalSearchScope.allScope(module.project)
 
     // KaSymbolProvider
-    fun getSymbol(file: KtFile): KaFileSymbol = round.byPsi[file] as? KaFileSymbol ?: noSymbol(file)
+    fun getSymbol(file: KtFile): KaFileSymbol = round.symbolOf(file) as? KaFileSymbol ?: noSymbol(file)
     fun getSymbol(declaration: KtDeclaration): KaDeclarationSymbol =
-        round.byPsi[declaration] as? KaDeclarationSymbol ?: noSymbol(declaration)
-    fun getSymbol(c: KtClassOrObject): KaClassSymbol? = round.byPsi[c] as? KaClassSymbol
-    fun getNamedClassSymbol(c: KtClassOrObject): KaNamedClassSymbol? = round.byPsi[c] as? KaNamedClassSymbol
+        round.symbolOf(declaration) as? KaDeclarationSymbol ?: noSymbol(declaration)
+    fun getSymbol(c: KtClassOrObject): KaClassSymbol? = round.symbolOf(c) as? KaClassSymbol
+    fun getNamedClassSymbol(c: KtClassOrObject): KaNamedClassSymbol? = round.symbolOf(c) as? KaNamedClassSymbol
     // KaJavaInteroperabilityComponent: the Java sources' classes and members.
     fun getNamedClassSymbol(c: PsiClass): KaNamedClassSymbol? {
-        synchronized(round) { round.byPsi[c] }?.let { return it as? KaNamedClassSymbol }
+        round.symbolOf(c)?.let { return it as? KaNamedClassSymbol }
         round.libraryClass(round.javaClassId(c) ?: return null)
-        return synchronized(round) { round.byPsi[c] } as? KaNamedClassSymbol
+        return round.symbolOf(c) as? KaNamedClassSymbol
     }
     fun getCallableSymbol(m: PsiMember): KaCallableSymbol? {
         m.containingClass?.let(::getNamedClassSymbol)
-        return synchronized(round) { round.byPsi[m] } as? KaCallableSymbol
+        return round.symbolOf(m) as? KaCallableSymbol
     }
 
-    fun findClass(classId: ClassId): KaClassSymbol? = round.classes[classId] ?: round.libraryClass(classId)
+    fun findClass(classId: ClassId): KaClassSymbol? = round.sourceClass(classId) ?: round.libraryClass(classId)
     fun findClassLike(classId: ClassId): KaClassLikeSymbol? =
-        round.classes[classId] ?: round.typeAliases[classId] ?: round.libraryClass(classId) ?: round.typeAlias(classId)
+        round.sourceClass(classId) ?: round.knownTypeAlias(classId) ?: round.libraryClass(classId) ?: round.typeAlias(classId)
     fun findTypeAlias(classId: ClassId): KaTypeAliasSymbol? = round.typeAlias(classId)
     fun findPackage(fqName: FqName): KaPackageSymbol? = if (round.packageExists(fqName)) round.packageSymbol(fqName) else null
     fun findTopLevelCallables(packageFqName: FqName, name: Name): Sequence<KaCallableSymbol> =
@@ -107,7 +107,7 @@ class KcAnalysis internal constructor(
 
     // KaEvaluator: only the expressions kc evaluated, annotation arguments
     // and annotation parameters' defaults.
-    fun evaluateAsAnnotationValue(expr: KtExpression): KaAnnotationValue? = round.values[expr]
+    fun evaluateAsAnnotationValue(expr: KtExpression): KaAnnotationValue? = round.valueOf(expr)
 
     // KaSymbolRelationProvider
     fun getContainingSymbol(s: KaSymbol): KaSymbol? = when (s) {
@@ -126,7 +126,9 @@ class KcAnalysis internal constructor(
         is KcTypeAliasSymbol -> s.info.parent.takeUnless { it is KaFileSymbol || it is KaPackageSymbol }
         is KcConstructorSymbol -> s.info.parent
         is KcEnumEntrySymbol -> s.info.parent
+        is KcEnumEntryInitializerSymbol -> s.entry
         is KcValueParameterSymbol -> s.info.parent
+        is KcLocalVariableSymbol -> s.info.parent
         is KcTypeParameterSymbol -> s.info.parent
         is KcJavaFieldSymbol -> s.info.parent
         is KcGetterSymbol -> s.property
@@ -213,7 +215,7 @@ class KcAnalysis internal constructor(
     fun getType(ref: KtTypeReference): KaType {
         val entry = (ref.parent as? KtConstructorCalleeExpression)?.parent as? KtAnnotationEntry
         if (entry != null) {
-            val id = round.annotationClasses[entry] ?: return KcErrorType(round, ref.text)
+            val id = round.annotationClass(entry) ?: return KcErrorType(round, ref.text)
             // The type arguments written, @A<String>, as the model has them.
             val args = (ref.typeElement as? KtUserType)?.typeArguments.orEmpty().map { p ->
                 val t = p.typeReference?.let(round::typeOf) ?: return@map KcStarProjection(round.token)
@@ -289,7 +291,7 @@ class KcAnalysis internal constructor(
         val lower: KaType = when (val target = ct.resolve()) {
             null -> return KcErrorType(round, ct.className)
             is com.intellij.psi.PsiTypeParameter -> {
-                val sym = round.byPsi[target] as? KaTypeParameterSymbol ?: return null
+                val sym = round.symbolOf(target) as? KaTypeParameterSymbol ?: return null
                 KcTypeParameterType(round, sym.name, sym, false)
             }
             else -> KcClassType(round, javaClassId(target) ?: return null)
@@ -327,7 +329,7 @@ class KcAnalysis internal constructor(
     private fun base(type: KaType): KcTypeBase = type as? KcTypeBase ?: unsupported("type $type isn't kc's")
 
     private fun members(s: KaDeclarationContainerSymbol): List<KaDeclarationSymbol> =
-        (s as? KcClassSymbol)?.let(round::declared) ?: unsupported("members of $s")
+        (s as? KcClassSymbol)?.let(round::declared) ?: (s as? KcEnumEntryInitializerSymbol)?.members ?: unsupported("members of $s")
 
     /**
      * Whether a member belongs in the static scope: a nested class that
@@ -338,7 +340,9 @@ class KcAnalysis internal constructor(
     private fun noSymbol(e: PsiElement): Nothing = unsupported("no symbol for ${e.javaClass.simpleName} ${e.text.take(40)}")
 
     companion object {
-        private val dispatch = ConcurrentHashMap<Method, Method?>()
+        /** KcAnalysis's method for each KaSession method, or [NONE] if it has none. */
+        private val dispatch = ConcurrentHashMap<Method, Method>()
+        private val NONE: Method = Any::class.java.getMethod("hashCode")
 
         private val ANY = ClassId.fromString("kotlin/Any")
 
@@ -359,13 +363,13 @@ class KcAnalysis internal constructor(
                     "hashCode" -> if (a.isEmpty()) return System.identityHashCode(proxy)
                     "toString" -> if (a.isEmpty()) return "KcSession"
                 }
-                val impl = dispatch.computeIfAbsent(method) {
+                val impl = (dispatch[method] ?: dispatch.computeIfAbsent(method) {
                     try {
-                        KcAnalysis::class.java.getMethod(it.name, *it.parameterTypes)
+                        KcAnalysis::class.java.getMethod(it.name, *it.parameterTypes).also { m -> m.isAccessible = true }
                     } catch (_: NoSuchMethodException) {
-                        null
+                        NONE
                     }
-                }
+                }).takeIf { it !== NONE }
                 try {
                     return when {
                         impl != null -> impl.invoke(analysis, *a)

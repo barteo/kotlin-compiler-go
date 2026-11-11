@@ -157,8 +157,19 @@ func (c *Checker) asExpr(x *syntax.As) types.Type {
 	st := c.castOperand(x) // see expected.go
 	t := c.checkTarget(x.Ref, st, types.InvalidType, false)
 	x.Target = t
-	if t.K == types.Invalid || st.K == types.Invalid {
+	if t.K == types.Invalid {
 		return types.InvalidType
+	}
+	if st.K == types.Invalid {
+		if !c.u.partial {
+			return types.InvalidType
+		}
+		// In signatures mode, as in FIR, a cast is of the type it
+		// casts to, whatever it casts.
+		if x.Safe {
+			return t.Nullable()
+		}
+		return t
 	}
 	if x.Safe {
 		return t.Nullable()

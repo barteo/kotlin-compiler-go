@@ -56,7 +56,7 @@ type lookups struct {
 // noteLookup reports name looked up in scope, once per file.
 func (c *Checker) noteLookup(scope string, kind LookupKind, name string) {
 	r := c.u.lookups
-	if r == nil || name == "" || strings.HasPrefix(name, "<") {
+	if !c.recordsLookups() || name == "" || strings.HasPrefix(name, "<") {
 		return
 	}
 	k := lookupKey{scope, name, kind}
@@ -73,8 +73,12 @@ func (c *Checker) noteLookup(scope string, kind LookupKind, name string) {
 	r.Lookup(c.file, scope, kind, name)
 }
 
-// recordsLookups reports whether lookups are being recorded.
-func (c *Checker) recordsLookups() bool { return c.u.lookups != nil }
+// recordsLookups reports whether c's lookups are being recorded: not in
+// a file that a check of only some files doesn't check (Options.Only),
+// whose lookups are those of its last check.
+func (c *Checker) recordsLookups() bool {
+	return c.u.lookups != nil && (c.u.only == nil || c.u.only[c.file])
+}
 
 // classScope returns the qualified name of cls as a scope, or "" and false
 // for a class that other files can't see: a local or anonymous one.
@@ -184,6 +188,9 @@ func (c *Checker) noteName(name string) {
 // noteClassifier reports a simple name of a type or a qualifier looked up
 // in the scopes around the code, and the class it names, if any.
 func (c *Checker) noteClassifier(name string) {
+	if !c.recordsLookups() {
+		return
+	}
 	c.noteName(name)
 	k := c.nestedClassifier(name)
 	if k == (classifier{}) {
@@ -255,6 +262,9 @@ func (c *Checker) noteExpr(x syntax.Expr, t types.Type) {
 		}
 	case *syntax.Member:
 		c.noteSelector(x.X, x.Name)
+		if x.Prop == nil {
+			c.noteExtension(x.X, x.Name)
+		}
 		c.noteVar(x.Prop)
 		if x.Object != nil {
 			c.noteClass(x.Object)
@@ -268,6 +278,9 @@ func (c *Checker) noteExpr(x syntax.Expr, t types.Type) {
 		case *syntax.Member:
 			if !x.Invoke {
 				c.noteSelector(fn.X, fn.Name)
+				if x.Ctor == nil && (x.Sym == nil || x.Sym.Ext) {
+					c.noteExtension(fn.X, fn.Name)
+				}
 			}
 		}
 		if x.Ctor != nil {
@@ -314,6 +327,20 @@ func (c *Checker) noteSelector(x syntax.Expr, name string) {
 	if t := x.Type(); t.K != types.Invalid {
 		c.noteMember(t, name)
 	}
+}
+
+// noteExtension reports name selected from x, a value, looked up as an
+// extension in the scopes around the code (noteName), where a call that
+// finds no member, or an extension, may find another: FIR records the
+// tower's scopes it tries too.
+func (c *Checker) noteExtension(x syntax.Expr, name string) {
+	if c.classRef(x) != nil || c.packageRef(x) != nil {
+		return
+	}
+	if q, ok := dotted(x); ok && c.u.ext.hasPackage(strings.ReplaceAll(q, ".", "/")) {
+		return
+	}
+	c.noteName(name)
 }
 
 // noteImport reports an explicit import's name looked up in its package

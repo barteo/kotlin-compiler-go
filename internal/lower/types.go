@@ -358,7 +358,9 @@ func (l *lowerer) whereClause(n psi.NodeRef, tps []*syntax.TypeParam) {
 // annotation lowers an ANNOTATION_ENTRY.
 func (l *lowerer) annotation(n psi.NodeRef) syntax.Annotation {
 	a := syntax.Annotation{P: l.pos(n)}
-	l.annots[a.P] = n.ID()
+	if l.annots != nil {
+		l.annots[a.P] = n.ID()
+	}
 	if t := child(n, psi.KindANNOTATION_TARGET); t.Valid() {
 		a.Target = t.Text()
 	}
@@ -415,14 +417,16 @@ func (l *lowerer) annotationArgs(n psi.NodeRef) []syntax.AnnotationArg {
 			arg.Name = ident(first(first(start)))
 			start = next(next(start)) // after the '='
 		}
-		psi.WalkNodes(c, func(k psi.NodeRef) bool {
-			if k.NumericKind() == psi.KindCALL_EXPRESSION {
-				if list := child(k, psi.KindVALUE_ARGUMENT_LIST); list.Valid() {
-					l.annots[l.pos(list)] = k.ID()
+		if l.annots != nil {
+			psi.WalkNodes(c, func(k psi.NodeRef) bool {
+				if k.NumericKind() == psi.KindCALL_EXPRESSION {
+					if list := child(k, psi.KindVALUE_ARGUMENT_LIST); list.Valid() {
+						l.annots[l.pos(list)] = k.ID()
+					}
 				}
-			}
-			return true
-		})
+				return true
+			})
+		}
 		if start.Valid() {
 			from := l.tokenStart(start)
 			toks, _ := syntax.TokenizeAt(l.path, l.src[from:c.Range().End], l.posAt(from))

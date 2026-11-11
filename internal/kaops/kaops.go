@@ -5,12 +5,13 @@
 // OpKaOpen: config → session handle
 //
 //	config  = jdkHome:String noJDK:Bool moduleName:String jobs:Uint
-//	          n:Uint classPath:String*n m:Uint friendPath:String*m
+//	          n:Uint classPath:String*n m:Uint friendPath:String*m fixed:Bool
 //
-// OpKaUpdate: session:Int n:Uint path:String*n → model
+// OpKaUpdate: session:Int n:Uint path:String*n k:Uint kept:Uint*k b:Uint base:Uint*b → model
 //
-//	model   = handle:Int n:Uint file*n m:Uint diag*m
-//	file    = path:String package:String annots decls lookups nodes:Uint kinds:Uint
+//	model   = handle:Int check:Uint java:Uint same:Bool [n:Uint file*n m:Uint diag*m]
+//	file    = from:Uint path:String [package:String annots decls lookups nodes:Uint kinds:Uint
+//	          text:Uint]
 //	decls   = n:Uint decl*n
 //	decl    = kind:Uint name:String node:Uint classID:String visibility:Uint
 //	          modality:Uint flags:Uint variance:Uint type receiver:type
@@ -31,10 +32,22 @@
 //	diag    = path:String line:Uint col:Uint message:String feature:String
 //	lookups = n:Uint (scope:String kind:Uint name:String)*n
 //
+// check is the model's ka Model.Check, and java its Model.JavaID. kept are the checks whose models
+// the caller kept what it built from; if check is one of them, same is
+// set and the files and diagnostics, which are that model's, are left out.
+// base are the checks whose models' files the caller kept as it read
+// them: a file that is one of theirs, as an update that checks only some
+// files keeps the others', has its check as from and nothing after its
+// path.
+// Otherwise from is 0.
+//
 // lookups are the names a file looks up (ka's File.Lookups), for
 // incremental processing; kind is a ka LookupKind. nodes is the number of
 // the file's psi nodes and kinds the hash of their kinds in preorder
 // (psi.Snapshot.KindSequenceHash), which the JVM checks its PSI against.
+// text is the 64-bit FNV-1a hash of the file's text as read, its bytes:
+// the JVM keeps the PSI it parsed from bytes of the same hash without
+// reading the file again.
 //
 // An unresolved annotation has classID "".
 //
@@ -56,11 +69,13 @@
 // OpKaClose: handle:Int → nothing. It releases a session or a model, and
 // the class path a model reads.
 //
-// OpKaClass: model:Int classID:String → n:Uint decl*n
+// OpKaClass: model:Int classID:String → n:Uint decl*n absent:Bool
 //
 // It returns the model of a class of the class path (ka's Model.Class),
 // its nested classes among its members; n is 0 if there is no such class
-// and 1 otherwise. A library declaration's nodes are 0.
+// and 1 otherwise. A library declaration's nodes are 0. absent is set if
+// n is 0 and the class path, the sources left out, has no such class
+// (ka's Model.Absent).
 //
 // OpKaPackage: model:Int package:String → exists:Bool n:Uint classID:String*n decls
 //
@@ -74,6 +89,8 @@ import (
 	"context"
 	"io"
 	"math"
+	"slices"
+	"sync"
 
 	"github.com/barteo/kotlin-compiler-go/analysis/ka"
 	"github.com/barteo/kotlin-compiler-go/internal/kcabi"
@@ -139,8 +156,10 @@ func class(req []byte) ([]byte, error) {
 	var w wire.Writer
 	if d := m.Class(id); d != nil {
 		writeDecls(&w, []*ka.Decl{d})
+		w.Bool(false)
 	} else {
 		writeDecls(&w, nil)
+		w.Bool(m.Absent(id))
 	}
 	return w.Message(), nil
 }
@@ -158,6 +177,7 @@ func open(req []byte) ([]byte, error) {
 	for n := r.Uint(); n > 0 && r.Err() == nil; n-- {
 		cfg.FriendPaths = append(cfg.FriendPaths, r.String())
 	}
+	cfg.FixedSources = r.Bool()
 	if err := r.Err(); err != nil {
 		return nil, err
 	}
@@ -172,6 +192,13 @@ func update(req []byte) ([]byte, error) {
 	var sources []ka.Source
 	for n := r.Uint(); n > 0 && r.Err() == nil; n-- {
 		sources = append(sources, ka.Source{Path: r.String()})
+	}
+	var kept, bases []uint64
+	for n := r.Uint(); n > 0 && r.Err() == nil; n-- {
+		kept = append(kept, r.Uint())
+	}
+	for n := r.Uint(); n > 0 && r.Err() == nil; n-- {
+		bases = append(bases, r.Uint())
 	}
 	if err := r.Err(); err != nil {
 		return nil, err
@@ -189,9 +216,22 @@ func update(req []byte) ([]byte, error) {
 	defer tm.Mark("encode")
 	var w wire.Writer
 	w.Int(int64(handles.Put(m)))
+	checks.add(m)
+	w.Uint(m.Check)
+	w.Uint(m.JavaID())
+	same := slices.Contains(kept, m.Check)
+	w.Bool(same)
+	if same {
+		return w.Message(), nil
+	}
+	from := checks.files(bases)
 	w.Uint(uint64(len(m.Files)))
 	for _, f := range m.Files {
+		w.Uint(from[f])
 		w.String(f.Path)
+		if from[f] != 0 {
+			continue
+		}
 		w.String(f.Package)
 		writeAnnotations(&w, f.Annotations)
 		writeDecls(&w, f.Decls)
@@ -203,6 +243,7 @@ func update(req []byte) ([]byte, error) {
 		}
 		w.Uint(uint64(f.Snapshot.NodeCount()))
 		w.Uint(f.Snapshot.KindSequenceHash())
+		w.Uint(textHash(f.Snapshot.Source()))
 	}
 	w.Uint(uint64(len(m.Diagnostics)))
 	for _, d := range m.Diagnostics {
@@ -213,6 +254,68 @@ func update(req []byte) ([]byte, error) {
 		w.String(d.Feature)
 	}
 	return w.Message(), nil
+}
+
+// textHash is the 64-bit FNV-1a hash of text's bytes (OpKaUpdate's
+// text), which jvm/kc-aa's KcEnvironment computes the same way.
+func textHash(text string) uint64 {
+	h := uint64(14695981039346656037)
+	for i := 0; i < len(text); i++ {
+		h ^= uint64(text[i])
+		h *= 1099511628211
+	}
+	return h
+}
+
+// checks are the files of the models with open handles, by their checks,
+// for the files an update leaves out (OpKaUpdate's base). Models of the
+// same check have the same files.
+var checks = checkFiles{m: map[uint64]*checkEntry{}}
+
+type checkFiles struct {
+	mu sync.Mutex
+	m  map[uint64]*checkEntry
+}
+
+type checkEntry struct {
+	models int // the open handles of models of the check
+	files  []*ka.File
+}
+
+func (c *checkFiles) add(m *ka.Model) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	e := c.m[m.Check]
+	if e == nil {
+		e = &checkEntry{files: m.Files}
+		c.m[m.Check] = e
+	}
+	e.models++
+}
+
+func (c *checkFiles) remove(m *ka.Model) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if e := c.m[m.Check]; e != nil {
+		if e.models--; e.models == 0 {
+			delete(c.m, m.Check)
+		}
+	}
+}
+
+// files returns the check of each file of the models of checks.
+func (c *checkFiles) files(checks []uint64) map[*ka.File]uint64 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	from := map[*ka.File]uint64{}
+	for _, check := range checks {
+		if e := c.m[check]; e != nil {
+			for _, f := range e.files {
+				from[f] = check
+			}
+		}
+	}
+	return from
 }
 
 func writeDecls(w *wire.Writer, ds []*ka.Decl) {
@@ -259,7 +362,7 @@ func writeType(w *wire.Writer, t *ka.Type) {
 	w.Uint(uint64(t.Kind))
 	w.String(t.ClassID)
 	var flags uint64
-	for i, on := range [...]bool{t.Nullable, t.Flexible, t.DefinitelyNonNull, t.Extension} {
+	for i, on := range [...]bool{t.Nullable, t.Flexible, t.DefinitelyNonNull, t.Extension, t.Inferred} {
 		if on {
 			flags |= 1 << i
 		}
@@ -353,6 +456,9 @@ func closeHandle(req []byte) ([]byte, error) {
 		return nil, err
 	}
 	handles.Delete(h)
+	if m, ok := x.(*ka.Model); ok {
+		checks.remove(m)
+	}
 	if c, ok := x.(io.Closer); ok {
 		return nil, c.Close()
 	}

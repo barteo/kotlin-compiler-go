@@ -59,6 +59,78 @@ import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.psi.KtFile
 import java.io.File
 
+/**
+ * Each source's canonical path, by its path, kept by the process: a
+ * daemon's runs walk the same sources again, and resolving each path's
+ * links is a good part of a warm run's setup.
+ */
+private val canonicalPaths = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+private fun canonicalPath(f: File): String = canonicalPaths.getOrPut(f.absolutePath) { f.canonicalPath }
+
+/**
+ * The files under source roots, kept by the process: a daemon's runs list
+ * the same directories again. Each directory's listing is kept with the
+ * directory's modification time, which adding, removing or renaming an
+ * entry changes (editing a file doesn't, and needn't), so a later walk
+ * stats the directories, not each file. As libkc's read cache does with
+ * files (analysis/ka/readcache.go), a directory modified within
+ * [RACY_MILLIS] of being listed is listed again until it is older: a
+ * coarse clock may not have moved since.
+ */
+internal object SourceWalk {
+    private class Listing(val modified: java.nio.file.attribute.FileTime, val listedAt: Long, val files: List<File>, val dirs: List<File>)
+
+    private val listings = java.util.concurrent.ConcurrentHashMap<String, Listing>()
+    private const val RACY_MILLIS = 2000L
+
+    /** The files under [root] named *.[ext], sorted by path: `root.walkTopDown()`'s, as files. */
+    fun files(root: File, ext: String): List<File> {
+        val out = ArrayList<File>()
+        fun walk(dir: File) {
+            val l = listing(dir) ?: return
+            l.files.filterTo(out) { it.extension == ext }
+            l.dirs.forEach(::walk)
+        }
+        if (root.isFile) {
+            if (root.extension == ext) out += root
+        } else {
+            walk(root)
+        }
+        out.sortBy { it.path }
+        return out
+    }
+
+    private fun listing(dir: File): Listing? {
+        val now = System.currentTimeMillis()
+        val modified = try {
+            java.nio.file.Files.getLastModifiedTime(dir.toPath())
+        } catch (e: java.io.IOException) {
+            listings.remove(dir.path)
+            return null
+        }
+        listings[dir.path]?.let { l ->
+            if (l.modified == modified && modified.toMillis() < l.listedAt - RACY_MILLIS) return l
+        }
+        val entries = dir.listFiles() ?: return null
+        val files = ArrayList<File>()
+        val dirs = ArrayList<File>()
+        for (e in entries) {
+            if (e.isDirectory) dirs += e else if (e.isFile) files += e
+        }
+        return Listing(modified, now, files, dirs).also { listings[dir.path] = it }
+    }
+}
+
+private val noParseAhead = !System.getenv("KC_NO_PARSE_AHEAD").isNullOrEmpty()
+
+/** KC_NO_JAVA_DECLS=1 asks libkc for the Java sources' classes, and the names it has no class of, every round. */
+private val noJavaDecls = System.getenv("KC_NO_JAVA_DECLS") == "1"
+
+// Only the files Gradle says were modified are parsed while libkc updates,
+// as before step 59, not the new ones (for comparison).
+private val noAheadNew = System.getenv("KC_NO_AHEAD_NEW") == "1"
+
 /** The `kc` KSP backend: the Analysis API answered by kc through libkc. */
 class KcBackend : KspBackend {
     override val name: String get() = "kc"
@@ -71,7 +143,7 @@ private class KcSession(private val config: KSPConfig, @Suppress("UNUSED_PARAMET
 
     /** The Java sources the module starts with. */
     private val javaSources: List<String> = ((config as? KSPJvmConfig)?.javaSourceRoots.orEmpty()).distinct().flatMap { root ->
-        root.walkTopDown().filter { it.isFile && it.extension == "java" }.sortedBy { it.path }.map { it.canonicalPath }.toList()
+        SourceWalk.files(root, "java").map(::canonicalPath)
     }
     private val environment = KcEnvironments.acquire(config, javaSources)
     private val env: KotlinCoreEnvironment = environment.env
@@ -83,6 +155,18 @@ private class KcSession(private val config: KSPConfig, @Suppress("UNUSED_PARAMET
     override val extras: KcExtras = KcExtrasImpl { round }
     private val libraryModule = KcLibraryModule(project, config)
     private val provider = environment.provider
+    /**
+     * The class-path classes libkc modeled, by outermost class ID, kept by
+     * the environment for the rounds after: its class path doesn't change,
+     * so a round asks libkc only for those none has yet, and not again for
+     * a name libkc said it has no class of. The Java sources' classes are
+     * kept by the model's KcModel.java, which libkc gives a round whose
+     * Java sources, and the Kotlin classes they name, are those of one
+     * before; a class a Java source declares, which hides the class
+     * path's, isn't kept with those.
+     */
+    private val libraryDecls = environment.libraryDeclsOf(
+        "module=${config.moduleName}\n" + config.friends.joinToString("\n") { it.path })
     private val handle: Long = KcOps.open(
         KcOps.Config(
             jdkHome = (config as? KSPJvmConfig)?.jdkHome?.path,
@@ -90,6 +174,8 @@ private class KcSession(private val config: KSPConfig, @Suppress("UNUSED_PARAMET
             jobs = Runtime.getRuntime().availableProcessors(),
             classPath = (config.libraries + config.friends).map { it.path }.distinct(),
             friendPaths = config.friends.map { it.path },
+            // KSP only adds files between its rounds.
+            fixedSources = true,
         ),
     )
 
@@ -97,44 +183,112 @@ private class KcSession(private val config: KSPConfig, @Suppress("UNUSED_PARAMET
     private val paths = LinkedHashSet<String>()
     private lateinit var round: KcRound
 
-    /** The model [round] loads library classes from; the next update closes it. */
-    private var modelHandle = 0L
-
     init {
         (config.sourceRoots + config.commonSourceRoots).distinct().forEach { root ->
-            root.walkTopDown().filter { it.isFile && it.extension == "kt" }.sortedBy { it.path }
-                .forEach { paths += it.canonicalPath }
+            SourceWalk.files(root, "kt").forEach { paths += canonicalPath(it) }
         }
         paths += javaSources
         timer.mark("open")
         timer.print("session")
-        update()
+        update(config.modifiedSources.filter { it.path.endsWith(".kt") }.map(::canonicalPath).filter { it in paths })
     }
 
-    private fun update() {
+    /**
+     * Updates libkc's model to [paths] and builds the round over it. While
+     * libkc updates, the PSI the round would make and parse after it is
+     * made and parsed (KcEnvironment.parseAhead), unless KC_NO_PARSE_AHEAD
+     * is set: that of [modified], the sources Gradle says changed, and of
+     * the Kotlin files no round joined yet. That is every Kotlin file in a
+     * new environment's first round, and the generated ones in the rounds
+     * after; a warm run's others are joined already. Java files are left
+     * to [build]: IntelliJ parses them no faster in parallel, and loading
+     * them ahead gained nothing (docs/analysis-api.md, step 59).
+     */
+    private fun update(modified: List<String> = emptyList()) {
         val t = KcTimer()
-        val model = KcOps.update(handle, paths.toList())
-        t.mark("update")
-        if (System.getProperty("kc.diagnostics") != null) model.diagnostics.forEach { System.err.println("kc: $it") }
-        val fs = VirtualFileManager.getInstance().getFileSystem(StandardFileSystems.FILE_PROTOCOL)
         val (reused, reparsed) = environment.reused to environment.reparsed
+        val checks = environment.reusableChecks()
+        val base = environment.baseFiles()
+        val toParse = if (noAheadNew) modified else
+            (modified + paths.filter { it.endsWith(".kt") && !environment.trees.has(it) }).distinct()
+        val ahead = if (toParse.isEmpty() || noParseAhead) null else environment.parseAhead(toParse)
+        val model = try {
+            KcOps.update(handle, paths.toList(), checks, base)
+        } finally {
+            if (ahead != null) {
+                t.mark("native")
+                ahead.join()
+                t.mark("wait")
+            }
+        }
+        t.mark("update")
+        val next = if (model.same) {
+            // The check of a round the environment kept: its sources, and
+            // its PSI, are the same, so the round is too.
+            KcOps.close(model.handle)
+            val kept = environment.reuse(model.check)
+            printDiagnostics(kept.diagnostics)
+            kept.round.also { it.token.invalidation = null }
+        } else {
+            printDiagnostics(model.diagnostics)
+            val built = try {
+                build(model, t)
+            } catch (e: Throwable) {
+                KcOps.close(model.handle)
+                throw e
+            }
+            t.mark("build")
+            built.also { environment.keep(model.check, it, model.handle, model.diagnostics, model.files) }
+        }
+        val touched = if (this::round.isInitialized) " previous-touched(${round.touched()})" else ""
+        if (this::round.isInitialized && round !== next) round.token.invalidation = "replaced by the next round"
+        round = next
+        provider.session = KcAnalysis.session(KcAnalysis(round, module, libraryModule))
+        t.mark("round")
+        t.print("round files=${paths.size} same=${model.same} psi-reused=${environment.reused - reused} psi-reparsed=${environment.reparsed - reparsed} joined=${next.joinedNew.get()}$touched")
+    }
+
+    private fun printDiagnostics(ds: List<KcDiagnostic>) {
+        if (System.getProperty("kc.diagnostics") != null) ds.forEach { System.err.println("kc: $it") }
+    }
+
+
+    /** The class [id] (outermost) of [model]'s class path or Java sources, or null. */
+    private fun libraryDecl(model: KcModel, javaClasses: Set<String>, id: String): KcDecl? {
+        if (id in javaClasses) {
+            val java = if (model.java == 0L || noJavaDecls) null else libraryDecls.java(model.java)
+            java?.let { synchronized(libraryDecls) { if (id in it) return it[id] } }
+            return KcOps.cls(model.handle, id).first.also { d -> java?.let { synchronized(libraryDecls) { it[id] = d } } }
+        }
+        synchronized(libraryDecls) {
+            libraryDecls.decls[id]?.let { return it }
+            if (id in libraryDecls.absent) return null
+        }
+        val (d, absent) = KcOps.cls(model.handle, id)
+        synchronized(libraryDecls) {
+            if (d != null && !d.has(KcDecl.JAVA_SOURCE)) libraryDecls.decls[id] = d
+            if (absent && !noJavaDecls) libraryDecls.absent += id
+        }
+        return d
+    }
+
+    /** The round of [model], whose sources' PSI it joins. */
+    private fun build(model: KcModel, t: KcTimer): KcRound {
+        val fs = VirtualFileManager.getInstance().getFileSystem(StandardFileSystems.FILE_PROTOCOL)
         val joined = model.files.map { f ->
-            val vf: VirtualFile = fs.refreshAndFindFileByPath(f.path) ?: error("kc: no virtual file for ${f.path}")
-            f to (environment.psiFile(vf) as? KtFile ?: error("kc: ${f.path} is not a Kotlin file"))
+            f to (environment.psiFile(f.path, f.text) as? KtFile ?: error("kc: no Kotlin PSI for ${f.path}"))
         }
         val java = paths.filter { it.endsWith(".java") }.mapNotNull { p ->
             fs.refreshAndFindFileByPath(p)?.let { environment.psiFile(it) as? PsiJavaFile }
         }
-        t.mark("psi")
-        if (this::round.isInitialized) {
-            round.token.invalidation = "replaced by the next round"
-            KcOps.close(modelHandle)
+        val javaClasses = HashSet<String>()
+        for (f in java) {
+            val pkg = f.packageName.replace('.', '/')
+            for (c in f.classes) c.name?.let { javaClasses += if (pkg.isEmpty()) it else "$pkg/$it" }
         }
-        modelHandle = model.handle
-        round = KcRound(joined, { id -> KcOps.cls(model.handle, id) }, { fq -> KcOps.pkg(model.handle, fq) }, java, project)
-        provider.session = KcAnalysis.session(KcAnalysis(round, module, libraryModule))
-        t.mark("round")
-        t.print("round files=${paths.size} psi-reused=${environment.reused - reused} psi-reparsed=${environment.reparsed - reparsed}")
+        t.mark("psi")
+        return KcRound(joined, { id -> libraryDecl(model, javaClasses, id) }, { fq -> KcOps.pkg(model.handle, fq) }, java, project, environment.trees,
+            if (this::round.isInitialized) round.sizes() else KcRound.Sizes(), t)
     }
 
     override fun sourceFiles(): List<KSFile> =
@@ -146,15 +300,20 @@ private class KcSession(private val config: KSPConfig, @Suppress("UNUSED_PARAMET
     // lookups, class scopes too, as FIR's lookup tracker component does: KSP
     // finds the files a changed class member dirties in its symbol lookups,
     // and its class tracker, for CLASSIFIER lookups, stays empty on FIR
-    // (docs/analysis-api.md, "Step 16: incremental lookups").
+    // (docs/analysis-api.md, "Step 16: incremental lookups"). Only the
+    // dirty files' are: KSP's caches keep the others' lookups, and replace
+    // only the dirty files' with what the tracker has. Without incremental
+    // processing KSP keeps none.
     override val recordsLookups: Boolean get() = true
 
     private val replayed = HashSet<String>()
 
-    override fun beginRound(lookupTracker: DualLookupTracker) {
+    override fun beginRound(lookupTracker: DualLookupTracker, dirtyFiles: List<KSFile>) {
+        if (!config.incremental) return
+        val dirty = dirtyFiles.mapTo(HashSet()) { it.filePath }
         for (s in round.fileSymbols) {
-            if (!replayed.add(s.file.path)) continue
             val path = s.psi.virtualFile.path
+            if (path !in dirty || !replayed.add(s.file.path)) continue
             for (l in s.file.lookups)
                 lookupTracker.record(path, Position.NO_POSITION, l.scope, ScopeKind.PACKAGE, l.name)
         }
@@ -177,10 +336,9 @@ private class KcSession(private val config: KSPConfig, @Suppress("UNUSED_PARAMET
     }
 
     override fun close() {
-        if (this::round.isInitialized) {
-            round.token.invalidation = "session closed"
-            KcOps.close(modelHandle)
-        }
+        // The round's model is the environment's, which keeps the round.
+        if (this::round.isInitialized) round.token.invalidation = "session closed"
+        KcTimer.printCalls()
         KcOps.close(handle)
         KcEnvironments.release(environment)
     }
@@ -334,6 +492,7 @@ private class KcExtrasImpl(private val round: () -> KcRound) : KcExtras {
                 is KcEnumEntrySymbol -> s.info
                 is KcTypeAliasSymbol -> s.info
                 is KcBackingFieldSymbol -> s.info
+                is KcLocalVariableSymbol -> s.info
                 else -> return null
             }
             if (info.decl.module.isNotEmpty()) return info.decl.module

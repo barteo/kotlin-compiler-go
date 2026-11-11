@@ -119,3 +119,40 @@ func TestReuseJava(t *testing.T) {
 		t.Errorf("model after the change:\n%s", got)
 	}
 }
+
+// Modules with Java sources share the class path's library: each check
+// puts its sources over it, which the other checks don't see.
+func TestSharedLibraryJava(t *testing.T) {
+	cfg := withJDK(t)
+	cfg.ModuleName = "sharedJava"
+	k := "package p\n\nclass K { fun s(): String = \"\" }\n"
+	update := func(path, java string) *Model {
+		t.Helper()
+		s := Open(cfg)
+		defer s.Close()
+		m, err := s.Update(context.Background(), []Source{{Path: "k.kt", Text: &k}, {Path: path, Text: &java}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return m
+	}
+	m1 := update("J.java", "package q;\npublic class J { public int n; public p.K k; }\n")
+	defer m1.Close()
+	m2 := update("J2.java", "package q;\npublic class J2 { public String s; }\n")
+	defer m2.Close()
+	if m1.shared != m2.shared {
+		t.Fatal("the checks don't share the class path's library")
+	}
+	if m1.shared.lib.cp.HasSources() {
+		t.Error("the shared class path has the Java sources")
+	}
+	if m1.Class("q/J") == nil || m1.Class("q/J2") != nil {
+		t.Errorf("first check: Class(q/J) = %v, Class(q/J2) = %v", m1.Class("q/J"), m1.Class("q/J2"))
+	}
+	if m2.Class("q/J2") == nil || m2.Class("q/J") != nil {
+		t.Errorf("second check: Class(q/J2) = %v, Class(q/J) = %v", m2.Class("q/J2"), m2.Class("q/J"))
+	}
+	if a, b := m1.Class("java/lang/Thread"), m2.Class("java/lang/Thread"); a == nil || a != b {
+		t.Error("the checks don't share the class path's models")
+	}
+}

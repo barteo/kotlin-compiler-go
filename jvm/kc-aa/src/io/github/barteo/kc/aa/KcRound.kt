@@ -13,6 +13,7 @@ import com.intellij.psi.PsiTypeParameterListOwner
 import com.intellij.psi.util.PsiTreeUtil
 import org.jetbrains.kotlin.analysis.api.annotations.KaAnnotation
 import org.jetbrains.kotlin.analysis.api.annotations.KaAnnotationValue
+import org.jetbrains.kotlin.analysis.api.symbols.KaSymbolOrigin
 import org.jetbrains.kotlin.analysis.api.symbols.*
 import org.jetbrains.kotlin.analysis.api.symbols.markers.KaNamedSymbol
 import org.jetbrains.kotlin.analysis.api.types.KaType
@@ -23,6 +24,7 @@ import org.jetbrains.kotlin.analysis.api.KaConstantInitializerValue
 import org.jetbrains.kotlin.analysis.api.KaExperimentalApi
 import org.jetbrains.kotlin.fileClasses.JvmFileClassUtil
 import org.jetbrains.kotlin.name.Name
+import org.jetbrains.kotlin.types.Variance
 import org.jetbrains.kotlin.kdoc.lexer.KDocTokens
 import org.jetbrains.kotlin.psi.*
 import java.util.IdentityHashMap
@@ -43,17 +45,132 @@ internal class KcRound(
     val javaFiles: List<PsiJavaFile> = emptyList(),
     /** Where Java library classes' class-file PSI is found; none without it. */
     private val project: com.intellij.openapi.project.Project? = null,
+    /** The trees of files' PSI joined before, which a round over the same PSI uses again. */
+    trees: KcTrees? = null,
+    /** The sizes of the round before's tables, which this one's start at. */
+    private val sizes: Sizes = Sizes(),
+    /** Marks the constructor's parts (KC_TIMING), if given. */
+    timer: KcTimer? = null,
 ) {
+    /** How many files' trees this round joined, not finding them joined before (KC_TIMING). */
+    val joinedNew = java.util.concurrent.atomic.AtomicInteger()
+
+    /** The sizes of a round's tables of source symbols. */
+    class Sizes(val keys: Int = 16, val psi: Int = 16, val typeRefs: Int = 16)
+
+    /** The sizes of this round's tables, for the next round. */
+    fun sizes() = synchronized(this) {
+        Sizes(byKey.size + (pendingKeys?.size ?: 0) / 2 + sourceByKey.values.sumOf { it.b.keys?.size ?: 0 } / 2, byPsi.size, typeRefs.size)
+    }
+
     val token = KcToken()
 
-    /** Every source symbol by its pointer key. */
-    val byKey = HashMap<String, KaSymbol>()
+    /**
+     * Every symbol built by its pointer key, for [restore]. A round builds
+     * every source symbol and restores few, so a source file's keys wait
+     * in its builder's [Builder.keys], key then symbol, until a key of
+     * that file is restored; the other keys wait in [pendingKeys] until
+     * the first restore.
+     */
+    private val byKey = HashMap<String, KaSymbol>()
+    private var pendingKeys: ArrayList<Any>? = ArrayList()
 
-    /** Source symbols by their PSI, for `KaSession.symbol`. */
-    val byPsi = IdentityHashMap<PsiElement, KaSymbol>()
+    @Synchronized
+    private fun keyed(key: String): KaSymbol? {
+        pendingKeys?.let { p ->
+            putKeys(p)
+            pendingKeys = null
+        }
+        byKey[key]?.let { return it }
+        if (key.startsWith("file:")) {
+            // Every key of a file's symbols starts with the file symbol's,
+            // then "/" or nothing. A path may hold "/": try each prefix.
+            var i = key.indexOf('/', 5)
+            while (true) {
+                sourceByKey[if (i < 0) key else key.substring(0, i)]?.let { src ->
+                    build(src)
+                    src.b.keys?.let(::putKeys)
+                    src.b.keys = null
+                    return byKey[key]
+                }
+                if (i < 0) break
+                i = key.indexOf('/', i + 1)
+            }
+        }
+        return null
+    }
 
-    val classes = HashMap<ClassId, KaNamedClassSymbol>()
-    val typeAliases = HashMap<ClassId, KaTypeAliasSymbol>()
+    /**
+     * A source file of the round. A round builds a file's declarations'
+     * symbols the first time they're needed: KSP processes the dirty
+     * files, which reach few others.
+     */
+    private inner class Source(val fs: KcFileSymbol, val b: Builder, val f: KcFile) {
+        var built = false
+        /** Whether the file's type references and symbols by PSI are recorded (see [recordTypes]). */
+        var recorded = false
+    }
+
+    private val sourceByKey = HashMap<String, Source>()
+    private val sourceByKt = IdentityHashMap<KtFile, Source>()
+
+    /** The file of each source class and type alias, by ID; the last file's class and the first's alias, as built eagerly. */
+    private val sourceClassFiles = HashMap<ClassId, Source>()
+    private val sourceAliasFiles = HashMap<ClassId, Source>()
+
+    /** Builds [src]'s declarations if they aren't yet. Called with the round locked. */
+    private fun build(src: Source) {
+        if (src.built) return
+        src.built = true
+        src.b.declarations(src.fs, src.f)
+    }
+
+    /** The declarations of [fs], built the first time they're asked for. */
+    fun declarationsOf(fs: KcFileSymbol): List<KaDeclarationSymbol> = synchronized(this) {
+        sourceByKey[fs.key]?.let(::build)
+        fs.built ?: emptyList()
+    }
+
+    /** The source class [id], building its file's declarations, or null. */
+    fun sourceClass(id: ClassId): KaNamedClassSymbol? = synchronized(this) {
+        classes[id] ?: sourceClassFiles[id]?.let { build(it); classes[id] }
+    }
+
+    /** The type alias [id] of the sources, or of the class path if loaded, or null. */
+    fun knownTypeAlias(id: ClassId): KaTypeAliasSymbol? = synchronized(this) {
+        sourceAliasFiles[id]?.let(::build)
+        typeAliases[id]
+    }
+
+    private fun index(f: KcFile, src: Source) {
+        for ((id, alias) in f.classIds) {
+            if (alias) sourceAliasFiles.putIfAbsent(id, src) else sourceClassFiles[id] = src
+        }
+    }
+
+    /** For KC_TIMING: how many source files were built, had a key restored, and had a lookup by PSI or type. */
+    fun touched() = synchronized(this) {
+        val ss = sourceByKey.values
+        "built=${ss.count { it.built }} keys=${ss.count { it.b.keys == null }} looked=${ss.count { it.recorded }}"
+    }
+
+    private fun putKeys(p: ArrayList<Any>) {
+        for (i in p.indices step 2) byKey[p[i] as String] = p[i + 1] as KaSymbol
+    }
+
+    /** Source symbols by their PSI, for `KaSession.symbol` (see [symbolOf]). */
+    private val byPsi = IdentityHashMap<PsiElement, KaSymbol>(sizes.psi)
+
+    /** The source symbol of [psi], or null. */
+    fun symbolOf(psi: PsiElement): KaSymbol? = synchronized(this) {
+        (psi.containingFile as? KtFile)?.let(::recordTypes)
+        byPsi[psi]
+    }
+
+    /** The source classes built so far (see [sourceClass]). */
+    private val classes = HashMap<ClassId, KaNamedClassSymbol>()
+    /** The type aliases built so far, the sources' and the loaded library ones (see [knownTypeAlias]). */
+    private val typeAliases = HashMap<ClassId, KaTypeAliasSymbol>()
 
     /** The library classes loaded so far, nested ones included. */
     private val libraryClasses = HashMap<ClassId, KaNamedClassSymbol>()
@@ -76,10 +193,33 @@ internal class KcRound(
     val values = IdentityHashMap<KtExpression, KaAnnotationValue>()
 
     /** The types of the type references in declarations, for `KtTypeReference.type`. */
-    private val typeRefs = IdentityHashMap<KtTypeReference, Pair<KcType, KcTypeContext>>()
+    private val typeRefs = IdentityHashMap<KtTypeReference, Pair<KcType, KcTypeContext>>(sizes.typeRefs)
 
     /** The type kc gave [ref], or null if it isn't among the types of the model's declarations. */
-    fun typeOf(ref: KtTypeReference): KaType? = typeRefs[ref]?.let { (t, ctx) -> ctx.type(t) }
+    fun typeOf(ref: KtTypeReference): KaType? =
+        synchronized(this) { recordTypes(ref.containingKtFile); typeRefs[ref] }?.let { (t, ctx) -> ctx.type(t) }
+
+    /** The class of type annotation [entry], once its file's type references are recorded. */
+    fun annotationClass(entry: KtAnnotationEntry): ClassId? =
+        synchronized(this) { recordTypes(entry.containingKtFile); annotationClasses[entry] }
+
+    /** The value kc evaluated for [expr], once its file's type references are recorded. */
+    fun valueOf(expr: KtExpression): KaAnnotationValue? =
+        synchronized(this) { recordTypes(expr.containingKtFile); values[expr] }
+
+    /**
+     * Records the type references and symbols by PSI of source [file],
+     * building its declarations first. Most rounds look up few files'
+     * (KSP processes the dirty ones), so a file's are recorded the first
+     * time one of them is looked up. Called with the round locked.
+     */
+    private fun recordTypes(file: KtFile) {
+        val src = sourceByKt[file] ?: return
+        if (src.recorded) return
+        src.recorded = true
+        build(src)
+        src.b.record()
+    }
 
     val fileSymbols: List<KcFileSymbol>
 
@@ -186,7 +326,7 @@ internal class KcRound(
         val segs = fq.split('.')
         for (i in segs.indices.reversed()) {
             val id = ClassId(FqName.fromSegments(segs.subList(0, i)), FqName.fromSegments(segs.subList(i, segs.size)), false)
-            if (classes[id] != null || libraryClass(id) != null) return id
+            if (sourceClass(id) != null || libraryClass(id) != null) return id
         }
         return null
     }
@@ -254,13 +394,30 @@ internal class KcRound(
         // most of a session's first round. Files parse independently.
         // kc's tree and IntelliJ's must have the same shape for the preorder
         // index to join them: the same kinds in the same order.
-        val trees = files.parallelStream().map { (f, kt) ->
-            preorder(kt.node).also { nodes ->
+        timer?.mark("fields")
+        val joined = files.parallelStream().map { (f, kt) ->
+            trees?.get(kt, f) ?: (trees?.takeAhead(kt) ?: preorder(kt.node)).also { nodes ->
                 if (checkKinds && f.nodes >= 0 && (nodes.size - 1 != f.nodes || KcKinds.hash(nodes) != f.kinds))
                     throw KcPsiMismatch(f.path, f.nodes, nodes.size - 1)
+                trees?.put(kt, f, nodes)
+                joinedNew.incrementAndGet()
             }
         }.toList()
-        fileSymbols = files.mapIndexed { i, (f, kt) -> Builder(f.path, trees[i], KaSymbolOrigin.SOURCE).file(f, kt) }
+        trees?.dropAhead()
+        timer?.mark("join")
+        fileSymbols = files.mapIndexed { i, (f, kt) ->
+            val b = Builder(f.path, joined[i], KaSymbolOrigin.SOURCE)
+            b.deferred = ArrayList()
+            b.deferredPsi = ArrayList()
+            b.keys = ArrayList()
+            b.file(f, kt).also { fs ->
+                val src = Source(fs, b, f)
+                sourceByKey[fs.key] = src
+                sourceByKt[kt] = src
+                index(f, src)
+            }
+        }
+        timer?.mark("symbols")
         for (name in files.map { it.first.packageName } + javaFiles.map { it.packageName }) {
             var fq = FqName(name)
             while (sourcePackages.add(fq) && !fq.isRoot) fq = fq.parent()
@@ -314,7 +471,7 @@ internal class KcRound(
         val javaNames = it.unimi.dsi.fastutil.objects.ObjectOpenHashSet<String>()
         for (f in javaFiles) if (f.packageName == name) f.classes.mapNotNullTo(javaNames) { it.name }
         for (n in javaNames) libraryClass(ClassId(fq, Name.identifier(n)))?.let { out += it }
-        lib?.let { p -> p.classes.mapNotNullTo(out) { if (it in classes) null else libraryClass(it) } }
+        lib?.let { p -> p.classes.mapNotNullTo(out) { if (sourceClass(it) != null) null else libraryClass(it) } }
         lib?.decls?.filterTo(out) { it !is KaCallableSymbol }
         return synchronized(this) { packageScopes.getOrPut(fq) { out } }
     }
@@ -332,7 +489,7 @@ internal class KcRound(
 
     /** The type alias [id], of the sources or of the class path, or null if there is none. */
     fun typeAlias(id: ClassId): KaTypeAliasSymbol? {
-        typeAliases[id]?.let { return it }
+        knownTypeAlias(id)?.let { return it }
         if (id.isLocal || id.isNestedClass) return null
         libraryPackage(id.packageFqName)
         return synchronized(this) { typeAliases[id] }
@@ -366,7 +523,7 @@ internal class KcRound(
 
     /** The class [id], or a symbol that knows only its ID if kc doesn't have it. */
     fun classSymbol(id: ClassId): KaNamedClassSymbol =
-        classes[id] ?: libraryClass(id) ?: synchronized(this) { unknownClasses.getOrPut(id) { KcLibraryClassSymbol(this, id) } }
+        sourceClass(id) ?: libraryClass(id) ?: synchronized(this) { unknownClasses.getOrPut(id) { KcLibraryClassSymbol(this, id) } }
 
     private val classFiles = HashMap<String, PsiClass?>()
 
@@ -421,8 +578,14 @@ internal class KcRound(
         }
     }
 
-    /** The declarations of class [c]: as FIR has them for a Java class (see `KcMemberBuilder.javaDeclared`). */
-    fun declared(c: KcClassSymbol): List<KaDeclarationSymbol> = members(c).declared ?: c.members
+    /**
+     * The declarations of class [c]: as FIR has them for a Java class (see
+     * `KcMemberBuilder.javaDeclared`), the class's own members otherwise,
+     * without building its member scope (KSP lists a generated file's
+     * declarations, for their names, in every incremental run).
+     */
+    fun declared(c: KcClassSymbol): List<KaDeclarationSymbol> =
+        if (hasJavaDeclarations(c)) members(c).declared ?: c.members else c.members
 
     /** The declarations [s] directly overrides (see `KaSession.directlyOverriddenSymbols`). */
     fun directlyOverridden(s: KaCallableSymbol): List<KaCallableSymbol> = when (s) {
@@ -456,7 +619,7 @@ internal class KcRound(
 
     /** The symbol of pointer key [key], loading the library class it is in. */
     fun restore(key: String): KaSymbol? {
-        byKey[key]?.let { return it }
+        keyed(key)?.let { return it }
         (declaredKey.matchEntire(key) ?: fakeKey.matchEntire(key))?.let { m ->
             val owner = restore(m.groupValues[1]) as? KcClassSymbol ?: return null
             val list = if (declaredKey.matches(key)) declared(owner) else members(owner).callables
@@ -475,12 +638,12 @@ internal class KcRound(
         if (key.startsWith("pkgsym:")) return packageSymbol(FqName(key.removePrefix("pkgsym:")))
         if (key.startsWith("pkg:")) {
             libraryPackage(FqName(key.removePrefix("pkg:").split(memberKey, 2)[0]))
-            return synchronized(this) { byKey[key] }
+            return keyed(key)
         }
         if (!key.startsWith("lib:")) return null
         // The class's ID comes first; its members' keys add /kind:…, /<i or /(i.
         libraryClass(ClassId.fromString(key.removePrefix("lib:").split(memberKey, 2)[0]))
-        return synchronized(this) { byKey[key] }
+        return keyed(key)
     }
 
     fun annotation(a: KcAnnotation): KaAnnotation = annotations.getValue(a)
@@ -507,11 +670,15 @@ internal class KcRound(
 
         fun file(file: KcFile, kt: KtFile): KcFileSymbol {
             val fs = KcFileSymbol(this@KcRound, file, kt)
-            byKey[fs.key] = fs
+            putKey(fs.key, fs)
             byPsi[kt] = fs
             file.annotations.forEach(::annotation)
-            fs.declarations = decls(file.decls, fs, fs.key)
             return fs
+        }
+
+        /** Builds source file [fs]'s declarations (see [Source]). */
+        fun declarations(fs: KcFileSymbol, file: KcFile) {
+            fs.built = decls(file.decls, fs, fs.key)
         }
 
         /**
@@ -559,7 +726,10 @@ internal class KcRound(
 
         fun application(a: KcAnnotation, psi: KtCallElement?): KcAnnotationApplication {
             val id = a.classId.takeIf { it.isNotEmpty() }?.let(ClassId::fromString)
-            val args = a.args.map { (name, v) -> KcNamedValue(Name.identifier(name), value(v), token) }
+            // FIR resolves @Target early (COMPILER_REQUIRED_ANNOTATIONS),
+            // and the vararg array it builds there has no source.
+            val early = a.classId == "kotlin/annotation/Target"
+            val args = a.args.map { (name, v) -> KcNamedValue(Name.identifier(name), value(v, early), token) }
             return KcAnnotationApplication(this@KcRound, id, psi, useSiteTarget(if (a.implied) "" else a.target), args)
         }
 
@@ -571,18 +741,41 @@ internal class KcRound(
             return if (n == 0) t else KcClassType(this@KcRound, t.classId, List(n) { KcStarProjection(token) }, t.marked)
         }
 
-        /** The KaAnnotationValue of [v], recorded as its expression's value. */
-        fun value(v: KcValue): KaAnnotationValue {
+        /** The type of a library annotation parameter's default class
+         *  literal of type [t]: a generic class's without arguments has its
+         *  type parameters' upper bounds, as FIR's deserializer gives them
+         *  (`KSerializer::class` is `KSerializer<Any?>`); a Java class's
+         *  has star projections. */
+        fun defaultClassLiteralType(t: KaType): KaType {
+            if (t !is KcClassType || t.typeArguments.isNotEmpty() || t.isAlias) return t
+            val c = t.symbol as? KaClassSymbol ?: return t
+            // A Java class's has star projections, as in the sources:
+            // HashMap::class is HashMap<*, *>.
+            if (c.origin == KaSymbolOrigin.JAVA_LIBRARY || c.origin == KaSymbolOrigin.JAVA_SOURCE) return classLiteralType(t)
+            val ps = c.typeParameters
+            if (ps.isEmpty()) return t
+            val anyN by lazy { KcBuiltinTypes(this@KcRound).nullableAny }
+            return KcClassType(this@KcRound, t.classId,
+                ps.map { KcTypeArgument(it.upperBounds.firstOrNull() ?: anyN, Variance.INVARIANT, token) }, t.marked)
+        }
+
+        /** The KaAnnotationValue of [v], recorded as its expression's value;
+         *  a vararg's array has no psi if [early]; a class literal is a
+         *  library parameter's default if [library]. */
+        fun value(v: KcValue, early: Boolean = false, library: Boolean = false): KaAnnotationValue {
             val psi = psi(v.node) as? KtElement
             val out = when (v) {
                 is KcValue.Const -> KcConstantAnnotationValue(KcConstant.of(v, psi), token)
                 is KcValue.Enum -> KcEnumEntryValue(
                     CallableId(ClassId.fromString(v.classId), Name.identifier(v.entry)), psi, token)
-                is KcValue.ClassLit -> KcClassLiteralValue(classLiteralType(types.type(v.type)),
+                is KcValue.ClassLit -> KcClassLiteralValue(types.type(v.type).let { if (library) defaultClassLiteralType(it) else classLiteralType(it) },
                     v.type.classId.takeIf { v.type.kind == KcType.CLASS && it.isNotEmpty() }?.let(ClassId::fromString),
                     psi, token)
                 is KcValue.Nested -> KcNestedAnnotationValue(application(v.annotation, psi as? KtCallElement), psi, token)
-                is KcValue.Array -> KcArrayValue(v.elems.map(::value), psi, token)
+                // A vararg's array, which has no node, is at its first
+                // element, as FIR's is: @Suppress("A", "B").
+                is KcValue.Array -> KcArrayValue(v.elems.map { value(it, library = library) },
+                    psi ?: v.elems.firstOrNull()?.takeIf { !early }?.let { psi(it.node) as? KtElement }, token)
                 is KcValue.Unsupported -> KcUnsupportedValue(psi, token)
             }
             if (psi is KtExpression) values.putIfAbsent(psi, out)
@@ -645,7 +838,17 @@ internal class KcRound(
                  annots: List<KcAnnotation> = d.annotations.filter { !onReceiverType(it, psi) },
                  findPsi: (() -> PsiElement?)? = null): KcInfo {
             d.annotations.forEach(::annotation)
-            if (psi != null) typeRefs(d, psi)
+            if (psi != null) {
+                val defer = deferred
+                if (defer != null) {
+                    // Walking the PSI waits too; see [record].
+                    defer.add(d)
+                    defer.add(psi)
+                    defer.add(types)
+                } else {
+                    typeRefs(d, psi)
+                }
+            }
             // A source declaration without a node is one Kotlin generates:
             // an implicit constructor, an enum class's values().
             val o = if (origin == KaSymbolOrigin.SOURCE && d.node == 0 || javaEnumGenerated(d, parent)) KaSymbolOrigin.SOURCE_MEMBER_GENERATED else origin
@@ -687,8 +890,49 @@ internal class KcRound(
             }
         }
 
+        /**
+         * The type references of a source file not recorded yet, as triples
+         * of reference, type and type context, or of declaration, its PSI
+         * and type context for [typeRefs] (see [unrecorded]).
+         */
+        var deferred: ArrayList<Any>? = null
+
+        /**
+         * The symbols of a source file's declarations by PSI not recorded
+         * yet, as pairs of PSI and symbol (see [unrecorded]).
+         */
+        var deferredPsi: ArrayList<Any>? = null
+
+        /** Records what [typeRef] and [register] deferred. Called with the round locked. */
+        fun record() {
+            deferredPsi?.let { d ->
+                deferredPsi = null
+                for (i in d.indices step 2) byPsi.putIfAbsent(d[i] as PsiElement, d[i + 1] as KaSymbol)
+            }
+            val d = deferred ?: return
+            deferred = null
+            val outer = types
+            try {
+                for (i in d.indices step 3) {
+                    types = d[i + 2] as KcTypeContext
+                    when (val x = d[i]) {
+                        is KcDecl -> typeRefs(x, d[i + 1] as PsiElement)
+                        else -> typeRef(x as KtTypeReference, d[i + 1] as KcType)
+                    }
+                }
+            } finally {
+                types = outer
+            }
+        }
+
         fun typeRef(ref: KtTypeReference?, t: KcType?) {
             if (ref == null || t == null) return
+            deferred?.let { d ->
+                d.add(ref)
+                d.add(t)
+                d.add(types)
+                return
+            }
             typeRefs[ref] = t to types
             // Registered now, so the entries' classes are known before the types are built.
             t.annotations.forEach(::typeAnnotation)
@@ -708,9 +952,30 @@ internal class KcRound(
             }
         }
 
+        /** A source file's pending keys, key then symbol (see [pendingByFile]). */
+        var keys: ArrayList<Any>? = null
+
+        fun putKey(key: String, s: KaSymbol) {
+            val p = keys ?: pendingKeys
+            if (p != null) {
+                p.add(key)
+                p.add(s)
+            } else {
+                byKey[key] = s
+            }
+        }
+
         fun <S : KaSymbol> register(s: S, key: String, psi: PsiElement?): S {
-            byKey[key] = s
-            if (psi != null) byPsi.putIfAbsent(psi, s)
+            putKey(key, s)
+            if (psi != null) {
+                val d = deferredPsi
+                if (d != null && psi is KtElement) {
+                    d.add(psi)
+                    d.add(s)
+                } else {
+                    byPsi.putIfAbsent(psi, s)
+                }
+            }
             return s
         }
 
@@ -721,7 +986,10 @@ internal class KcRound(
                 val id = d.classId
                 val classFile = if (origin == KaSymbolOrigin.JAVA_LIBRARY && id.isNotEmpty()) { { classFilePsi(id) } } else null
                 val c = register(KcClassSymbol(info(d, psi, parent, key, findPsi = classFile)), key, psi)
-                c.classId?.let { (if (origin == KaSymbolOrigin.SOURCE) classes else libraryClasses)[it] = c }
+                c.classId?.let {
+                    if (origin != KaSymbolOrigin.SOURCE) libraryClasses[it] = c
+                    else if (sourceClassFiles[it].let { f -> f == null || f.b === this }) classes[it] = c
+                }
                 c.typeParams = typeParams(d, c, key)
                 ctx.typeParams = c.typeParams
                 c.members = decls(d.members, c, key)
@@ -729,7 +997,13 @@ internal class KcRound(
             }
             KcDecl.ENUM_ENTRY -> {
                 val psi = psiOf<KtEnumEntry>(d) ?: javaPsi(d, parent)
-                register(KcEnumEntrySymbol(info(d, psi, parent, key)), key, psi)
+                val e = register(KcEnumEntrySymbol(info(d, psi, parent, key)), key, psi)
+                if (d.has(KcDecl.ENTRY_BODY)) {
+                    val init = KcEnumEntryInitializerSymbol(e)
+                    e.initializerSymbol = init
+                    init.members = decls(d.members, init, "$key/body")
+                }
+                e
             }
             KcDecl.FUNCTION -> scoped { ctx ->
                 val psi = psiOf<KtNamedFunction>(d) ?: javaPsi(d, parent)
@@ -747,7 +1021,7 @@ internal class KcRound(
                 locals(d, key) { c }
                 c
             }
-            KcDecl.PROPERTY -> scoped { ctx -> property(d, parent!!, key, ctx) }
+            KcDecl.PROPERTY -> if (isLocal(parent)) localVariable(d, parent!!, key) else scoped { ctx -> property(d, parent!!, key, ctx) }
             KcDecl.JAVA_FIELD -> {
                 val psi = javaPsi(d, parent)
                 register(KcJavaFieldSymbol(info(d, psi, parent, key)), key, psi)
@@ -757,18 +1031,30 @@ internal class KcRound(
                 val s = register(KcDestructuringSymbol(info(d, psi, parent, key)), key, psi)
                 // The entries' containing symbol is the enclosing callable,
                 // as for any other local property.
-                s.entries = d.params.mapIndexed { i, e -> scoped { ctx -> property(e, parent!!, "$key/$i", ctx) } }
+                s.entries = d.params.mapIndexed { i, e -> localVariable(e, parent!!, "$key/$i") }
                 s
             }
             KcDecl.TYPE_ALIAS -> scoped { ctx ->
                 val psi = psiOf<KtTypeAlias>(d)
                 val t = register(KcTypeAliasSymbol(info(d, psi, parent, key)), key, psi)
-                t.classId?.let { typeAliases.putIfAbsent(it, t) }
+                t.classId?.let { if (sourceAliasFiles[it].let { f -> f == null || f.b === this }) typeAliases.putIfAbsent(it, t) }
                 t.typeParams = typeParams(d, t, key)
                 ctx.typeParams = t.typeParams
                 t
             }
             else -> error("kc: unexpected declaration kind ${d.kind} for ${d.name} in $where")
+        }
+
+        /** Whether a declaration in [parent] is local: in a body, not a class's member. */
+        fun isLocal(parent: KaSymbol?) = parent != null && parent !is KaClassSymbol && parent !is KaFileSymbol && parent !is KaPackageSymbol
+
+        /** A local `val` or `var`, or a destructuring entry: FIR's KaLocalVariableSymbol. */
+        fun localVariable(d: KcDecl, parent: KaSymbol, key: String): KcLocalVariableSymbol {
+            val psi = psi(d.node)
+            check(psi == null || psi is KtProperty || psi is KtDestructuringDeclarationEntry) { "kc: local ${d.name} in $where is $psi" }
+            val v = register(KcLocalVariableSymbol(info(d, psi, parent, key)), key, psi)
+            locals(d, key) { v }
+            return v
         }
 
         /**
@@ -866,7 +1152,10 @@ internal class KcRound(
                     ?: (javaOwnerPsi(parent) as? PsiMethod)?.parameterList?.parameters?.getOrNull(i)
                 // @all: on a constructor property is its parameter's too.
                 val own = v.annotations.filter { it.target == "" || it.target == "param" || it.target == "all" }
-                val default = v.default?.let(::value)
+                // A class file's, not the sources' (a Java annotation's
+                // parameters have no psi of their own, but their class has).
+                val library = psi == null && javaOwnerPsi(parent) == null
+                val default = v.default?.let { value(it, library = library) }
                 register(KcValueParameterSymbol(info(v, psi, parent, k, own), default), k, psi)
             }
     }
@@ -917,3 +1206,40 @@ internal class KcRound(
  */
 internal class KcPsiMismatch(val path: String, kcNodes: Int, psiNodes: Int) :
     IllegalStateException("kc: the PSI of $path differs from kc's tree ($kcNodes nodes in kc, $psiNodes in PSI, or their kinds)")
+
+/**
+ * The preorder trees ([KcRound.preorder]) of files' PSI, kept by a
+ * daemon's environment: a file whose PSI is reused has the same tree, and
+ * a model of it with the same nodes and kinds joins it as before. Each
+ * path keeps its last PSI's, which its tree's nodes hold.
+ */
+internal class KcTrees {
+    private class Joined(val psi: KtFile, val nodes: Int, val kinds: Long, val tree: Array<ASTNode>)
+
+    private val trees = java.util.concurrent.ConcurrentHashMap<String, Joined>()
+
+    fun get(kt: KtFile, f: KcFile): Array<ASTNode>? =
+        trees[f.path]?.takeIf { it.psi === kt && it.nodes == f.nodes && it.kinds == f.kinds }?.tree
+
+    fun put(kt: KtFile, f: KcFile, tree: Array<ASTNode>) {
+        trees[f.path] = Joined(kt, f.nodes, f.kinds, tree)
+    }
+
+    /** Whether a round joined a tree of the file at [path]. */
+    fun has(path: String): Boolean = trees.containsKey(path)
+
+    /** Trees made before their round, by PSI ([KcEnvironment.parseAhead]): not yet checked against a model. */
+    private val ahead = java.util.concurrent.ConcurrentHashMap<KtFile, Array<ASTNode>>()
+
+    fun ahead(kt: KtFile, tree: Array<ASTNode>) {
+        ahead[kt] = tree
+    }
+
+    /** [kt]'s tree made before its round, if one was: the round checks and keeps it as one it made. */
+    fun takeAhead(kt: KtFile): Array<ASTNode>? = if (ahead.isEmpty()) null else ahead.remove(kt)
+
+    /** Drops the trees made ahead that a round didn't take, whose PSI it doesn't have. */
+    fun dropAhead() {
+        ahead.clear()
+    }
+}

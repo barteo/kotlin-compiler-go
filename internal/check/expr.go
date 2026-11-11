@@ -1763,6 +1763,11 @@ func (c *Checker) callReceiver(fn *syntax.Member, want types.Type) (types.Type, 
 	vt := c.value(fn.X, want)
 	t := c.fixedStub(c.declaredIfNull(fn.X, vt))
 	if t.K == types.Invalid {
+		if c.u.partial {
+			if cands := c.extCallees(fn.Name, t); len(cands) > 0 {
+				return t, cands, true // see recvFits
+			}
+		}
 		return t, nil, false
 	}
 	t = c.castView(fn.X, t, fn.Name)
@@ -2713,7 +2718,12 @@ func (c *Checker) index(x *syntax.Index, name string, args []syntax.Expr, want t
 	x.Call = call
 	t := c.expr(call, want)
 	if f := call.Sym; f != nil && !f.Operator {
-		c.errorf(x.P, "'operator' modifier is required on '%s' in '%s'", name, f.Owner.DisplayName())
+		if f.Owner != nil {
+			c.errorf(x.P, "'operator' modifier is required on '%s' in '%s'", name, f.Owner.DisplayName())
+		} else {
+			// A top-level function, an extension.
+			c.errorf(x.P, "'operator' modifier is required on '%s'", name)
+		}
 	}
 	if rt := chainType(x.X); safe && rt.K != types.Invalid && types.MayBeNull(rt) && !rt.P {
 		c.errorf(x.P, "only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type %s", rt)

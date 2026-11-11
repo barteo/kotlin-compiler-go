@@ -1,0 +1,161 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kc <kc@localhost>
+Date: Tue, 10 Nov 2026 12:38:55 +0000
+Subject: [PATCH] Check clean outputs against their backups while the
+ processors run
+
+---
+ .../ksp/common/IncrementalContextBase.kt      | 98 ++++++++++++++-----
+ 1 file changed, 75 insertions(+), 23 deletions(-)
+
+diff --git a/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/common/IncrementalContextBase.kt b/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/common/IncrementalContextBase.kt
+index 73a2254..c15f423 100644
+--- a/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/common/IncrementalContextBase.kt
++++ b/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/common/IncrementalContextBase.kt
+@@ -33,7 +33,9 @@ import java.io.IOException
+ import java.nio.file.Files
+ import java.nio.file.attribute.BasicFileAttributes
+ import java.util.Date
++import java.util.concurrent.CompletableFuture
+ import java.util.concurrent.ConcurrentHashMap
++import java.util.concurrent.Future
+ 
+ /**
+  * [path] relative to [base], as `File(path).relativeTo(base).path` gives it,
+@@ -302,6 +304,7 @@ abstract class IncrementalContextBase(
+         ).propagate(initialSet)
+ 
+         updateFromRemovedOutputs()
++        startOutputChecks()
+ 
+         logDirtyFiles(
+             ksFiles.filter { it.relativeFile in dirtyFiles },
+@@ -352,13 +355,73 @@ abstract class IncrementalContextBase(
+         sourceToOutputsMap.flush()
+     }
+ 
+-    private fun updateOutputs(outputs: Set<File>, cleanOutputs: Collection<File>) {
+-        val outRoot = kspOutputDir
+-        val bakRoot = File(cachesDir, "backups")
++    private val bakRoot = File(cachesDir, "backups")
+ 
+-        fun File.abs() = File(baseDir, path)
+-        fun File.bak() = abs().let { File(bakRoot, relativeUnder(it.path, outRoot) ?: it.toRelativeString(outRoot)) }
++    private fun File.abs() = File(baseDir, path)
++    private fun File.bak() =
++        abs().let { File(bakRoot, relativeUnder(it.path, kspOutputDir) ?: it.toRelativeString(kspOutputDir)) }
+ 
++    // A copy that is already there, with the same length and time (the
++    // copies keep the time, to the millisecond), is not made again: in a
++    // daemon, most outputs are those of the run before, backed up and
++    // restored then. Each file's attributes are read once.
++    private fun attributes(f: File): BasicFileAttributes? =
++        try {
++            Files.readAttributes(f.toPath(), BasicFileAttributes::class.java)
++        } catch (e: IOException) {
++            null
++        }
++
++    private fun upToDate(src: File, dst: File): Boolean {
++        val d = attributes(dst)
++        if (d == null || !d.isRegularFile) return false
++        val s = attributes(src) ?: return false
++        return s.size() == d.size() && s.lastModifiedTime().toMillis() == d.lastModifiedTime().toMillis()
++    }
++
++    // The outputs whose restore from the backups (bak -> abs) was found up
++    // to date while the processors ran, by startOutputChecks.
++    private var precheck: Future<Set<File>>? = null
++
++    // At the end of a run, updateOutputs checks every clean output against
++    // its backup: in a daemon, hundreds of pairs, almost all up to date.
++    // The clean outputs are known well before then: they are outputs in
++    // sourceToOutputsMap, which only updateCaches changes, at the end, and
++    // only for dirty sources. So the same check of all its outputs starts
++    // here, once the dirty files are known, on another thread, while the
++    // processors run; updateOutputs then checks again only the pairs this
++    // left out and the outputs the run wrote (a processor may have changed
++    // those; the output writer writes no others). Backups change only in
++    // updateOutputs. The one difference: an outside change to a clean
++    // output or its backup made while the processors run is seen by the
++    // next run, as one made just after this run would be. Gradle cleans
++    // outputs before KSP starts. KSP_NO_PRECHECK=1 turns this off.
++    private fun startOutputChecks() {
++        if (System.getenv("KSP_NO_PRECHECK") == "1")
++            return
++        // The maps' lists are replaced, never changed: the snapshot can be
++        // read on another thread, the common pool's.
++        val lists = ArrayList(sourceToOutputsMap.values)
++        precheck = CompletableFuture.supplyAsync {
++            val outs = HashSet<File>()
++            lists.forEach { outs.addAll(it) }
++            // One thread: the processors and the output writers use the
++            // other cores, and this has about ten milliseconds to finish.
++            outs.filterTo(HashSet()) { upToDate(it.bak(), it.abs()) }
++        }
++    }
++
++    private fun takePrecheck(): Set<File> {
++        val f = precheck ?: return emptySet()
++        precheck = null
++        return try {
++            f.get()
++        } catch (e: Exception) {
++            emptySet()
++        }
++    }
++
++    private fun updateOutputs(outputs: Set<File>, cleanOutputs: Collection<File>, written: Set<File>) {
+         // Backing up outputs is necessary for two reasons:
+         //
+         // 1. Currently, outputs are always cleaned up in gradle plugin before compiler is called.
+@@ -370,27 +433,15 @@ abstract class IncrementalContextBase(
+         // 2. Even if outputs are left from last compilation / processing, processors can still
+         //    fail and the outputs will need to be restored.
+ 
+-        // A copy that is already there, with the same length and time (the
+-        // copies keep the time, to the millisecond), is not made again: in a
+-        // daemon, most outputs are those of the run before, backed up and
+-        // restored then. Each file's attributes are read once.
+-        fun attributes(f: File): BasicFileAttributes? =
+-            try {
+-                Files.readAttributes(f.toPath(), BasicFileAttributes::class.java)
+-            } catch (e: IOException) {
+-                null
+-            }
+-        fun upToDate(src: File, dst: File): Boolean {
+-            val d = attributes(dst)
+-            if (d == null || !d.isRegularFile) return false
+-            val s = attributes(src) ?: return false
+-            return s.size() == d.size() && s.lastModifiedTime().toMillis() == d.lastModifiedTime().toMillis()
+-        }
++        val checked = takePrecheck()
+ 
+         // Backup, then restore non-dirty outputs: the copies, source first.
+         val copies = ArrayList<Pair<File, File>>(outputs.size + cleanOutputs.size)
+         outputs.forEach { generated -> copies.add(generated.abs() to generated.bak()) }
+-        cleanOutputs.forEach { dst -> if (dst !in outputs) copies.add(dst.bak() to dst.abs()) }
++        cleanOutputs.forEach { dst ->
++            if (dst !in outputs && (dst !in checked || dst in written))
++                copies.add(dst.bak() to dst.abs())
++        }
+ 
+         // The checks read only attributes and run in parallel; the copies
+         // that are needed (few, in a daemon) are made in order, one at a
+@@ -457,6 +508,7 @@ abstract class IncrementalContextBase(
+     }
+ 
+     fun closeFiles() {
++        precheck = null
+         symbolsMap.flush()
+         onDemandImportsCache.clear()
+         sealedMap.flush()
+@@ -525,7 +577,7 @@ abstract class IncrementalContextBase(
+             if (!isDirty(source))
+                 cleanOutputs.addAll(sourceToOutputsMap[source]!!)
+         }
+-        updateOutputs(dirtyOutputs, cleanOutputs)
++        updateOutputs(dirtyOutputs, cleanOutputs, outputs)
+ 
+         cachesUpToDateFile.createNewFile()
+         assert(cachesUpToDateFile.exists())

@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: kc <barteo@gmail.com>
 Date: Thu, 5 Nov 2026 11:55:50 +0000
-Subject: [PATCH 2/8] Move FIR-internal queries behind KcExtras
+Subject: [PATCH 02/12] Move FIR-internal queries behind KcExtras
 
 KSP casts Analysis API symbols and types to their FIR implementation
 classes for about a dozen facts the public API lacks: type mapping modes,

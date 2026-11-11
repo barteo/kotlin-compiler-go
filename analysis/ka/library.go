@@ -5,11 +5,13 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/barteo/kotlin-compiler-go/internal/check"
 	"github.com/barteo/kotlin-compiler-go/internal/classfile"
 	"github.com/barteo/kotlin-compiler-go/internal/classpath"
 	"github.com/barteo/kotlin-compiler-go/internal/driver"
+	"github.com/barteo/kotlin-compiler-go/internal/javasrc"
 	"github.com/barteo/kotlin-compiler-go/internal/kmeta"
 	"github.com/barteo/kotlin-compiler-go/internal/types"
 )
@@ -20,6 +22,12 @@ type library struct {
 	cp   *classpath.Path
 	lib  *check.Library
 	java *driver.JavaSources // the module's Java sources' classes, or nil
+	// base is set with java: the library of the class path that java's
+	// classes are over, which models the other classes (withJava).
+	base *library
+	// javaID is set with java: it identifies the library among those of
+	// the process (Model.JavaID).
+	javaID uint64
 
 	mu     sync.Mutex
 	decls  map[string]*Decl             // by class ID; nil: no such class
@@ -40,6 +48,9 @@ type library struct {
 // files, by class ID: the built-in classes, as kotlin/String and
 // kotlin/collections/List, that have no class files of their own.
 func (l *library) builtinClasses() map[string]*kmeta.Class {
+	if l.base != nil {
+		return l.base.builtinClasses()
+	}
 	l.builtinsOnce.Do(func() {
 		l.builtins = map[string]*kmeta.Class{}
 		for _, name := range l.cp.Resources(".kotlin_builtins") {
@@ -73,6 +84,56 @@ func (m *Model) Class(id string) *Decl {
 	l := m.lib
 	if l == nil {
 		return nil
+	}
+	return l.decl(id)
+}
+
+// JavaID identifies the classes of the model's Java sources: models with
+// the same JavaID give the same Class for each of them, as an update
+// that finds the Java sources, and the Kotlin classes they name, as they
+// were keeps their library. It is 0 if the model has no Java sources,
+// and unique in the process otherwise, so a client may keep the classes
+// it was given by it.
+func (m *Model) JavaID() uint64 {
+	if m.lib == nil {
+		return 0
+	}
+	return m.lib.javaID
+}
+
+// Absent reports whether the class path, the module's sources left out,
+// has no class id: one that Class gives nil for as long as the class
+// path is the same, whatever the sources are. A client may keep that it
+// has none, and ask a model's Class only for the classes of its Java
+// sources.
+func (m *Model) Absent(id string) bool {
+	l := m.lib
+	if l == nil {
+		return false
+	}
+	if l.base != nil {
+		l = l.base
+	}
+	return !l.cp.HasSources() && !l.cp.Has(internalName(id))
+}
+
+// javaIDs numbers the libraries withJava returns.
+var javaIDs atomic.Uint64
+
+// withJava returns a library of the classes of l's class path and the
+// module's Java sources files, for one check. It models the sources'
+// classes and leaves the others to l, which checks of other sources go on
+// sharing.
+func (l *library) withJava(files []*javasrc.File) *library {
+	java := driver.AddJavaSources(l.cp, files)
+	return &library{cp: java.Path, lib: l.lib.WithSources(java.Path), java: java, base: l, javaID: javaIDs.Add(1),
+		decls: map[string]*Decl{}, params: map[string]map[string]string{}}
+}
+
+// decl returns the model of the class with class ID id: see Model.Class.
+func (l *library) decl(id string) *Decl {
+	if l.base != nil && !l.cp.IsSource(internalName(id)) {
+		return l.base.decl(id)
 	}
 	l.mu.Lock()
 	d, ok := l.decls[id]
@@ -917,6 +978,7 @@ func (l *library) javaClass(cls *types.ClassSym, depth int) *Decl {
 			md.Flags |= FlagStatic
 		}
 		if fd := fieldAccess[v.Name]; fd != nil {
+			md.Type = unresolved(md.Type, fd.Desc) // a missing class's (check.Library.ErrorTypes)
 			md.Visibility = javaVisibility(fd.Access)
 			if fd.Access&classfile.AccFinal == 0 {
 				md.Flags |= FlagMutable
@@ -1198,12 +1260,31 @@ func unresolved(t *Type, desc string) *Type {
 func (b *fileBuilder) javaType(t types.Type) *Type {
 	out := b.typ(t, nil)
 	if out == nil || !t.N || t.P || t.K == types.Null {
-		return platform(out)
+		out = platform(out)
+	} else {
+		for _, a := range out.Args {
+			platform(a.Type)
+		}
 	}
-	for _, a := range out.Args {
-		platform(a.Type)
+	// An annotated collection is still mutable or not: (Mutable)List<T>?.
+	if out != nil && out.Kind == TypeClass && !out.Flexible && mutableCollections[out.ClassID] && t.K != types.Null {
+		out.Flexible = true
+		out.DefinitelyNonNull = !out.Nullable
 	}
 	return out
+}
+
+// mutableCollections are the mutable collection types, which a Java
+// collection type is the flexible type of, up to the read-only one.
+var mutableCollections = map[string]bool{
+	"kotlin/collections/MutableIterable":         true,
+	"kotlin/collections/MutableCollection":       true,
+	"kotlin/collections/MutableList":             true,
+	"kotlin/collections/MutableSet":              true,
+	"kotlin/collections/MutableMap":              true,
+	"kotlin/collections/MutableMap.MutableEntry": true,
+	"kotlin/collections/MutableIterator":         true,
+	"kotlin/collections/MutableListIterator":     true,
 }
 
 // platform returns t, a type from a Java class, with its nullable types
@@ -1352,6 +1433,9 @@ func descClassID(desc string) string {
 // name: what tells an unsigned argument from a signed one in a class
 // file.
 func (l *library) paramTypes(id string) map[string]string {
+	if l.base != nil {
+		return l.base.paramTypes(id) // a Kotlin class's: see load
+	}
 	l.mu.Lock()
 	pt, ok := l.params[id]
 	l.mu.Unlock()

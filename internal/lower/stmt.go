@@ -21,6 +21,43 @@ func (l *lowerer) block(n psi.NodeRef) *syntax.Block {
 	return record(l, b, n)
 }
 
+// bodyBlock lowers the block body of a function, initializer or
+// secondary constructor: with declsOnly, only its contract (Declarations).
+func (l *lowerer) bodyBlock(n psi.NodeRef) *syntax.Block {
+	lb, rb := child(n, psi.KindLBRACE), child(n, psi.KindRBRACE)
+	if !l.declsOnly || !lb.Valid() || !rb.Valid() {
+		return l.block(n)
+	}
+	b := &syntax.Block{P: l.pos(lb), End: l.pos(rb)}
+	if c := Contract(n); c.Valid() {
+		b.Stmts = []syntax.Stmt{l.stmt(c)}
+	}
+	return record(l, b, n)
+}
+
+// Contract returns the first statement of block, a function's body, if
+// it may be a contract { } call, whose effects callers in other files
+// see: a call of contract, or of a qualified one. It returns an invalid
+// node otherwise.
+func Contract(block psi.NodeRef) psi.NodeRef {
+	c := first(block)
+	for c.Valid() && (c.NumericKind() == psi.KindLBRACE || c.NumericKind() == psi.KindSEMICOLON) {
+		c = next(c)
+	}
+	call := c
+	if call.NumericKind() == psi.KindDOT_QUALIFIED_EXPRESSION {
+		if ks := kids(call); len(ks) > 0 {
+			call = ks[len(ks)-1]
+		}
+	}
+	if call.NumericKind() == psi.KindCALL_EXPRESSION {
+		if f := first(call); f.NumericKind() == psi.KindREFERENCE_EXPRESSION && f.Text() == "contract" {
+			return c
+		}
+	}
+	return psi.NodeRef{}
+}
+
 // stmts lowers the statements of a BLOCK.
 func (l *lowerer) stmts(n psi.NodeRef) []syntax.Stmt {
 	var out []syntax.Stmt

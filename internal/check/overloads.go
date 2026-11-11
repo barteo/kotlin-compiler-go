@@ -2,6 +2,7 @@ package check
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
@@ -46,8 +47,8 @@ type overload struct {
 }
 
 // conflicts reports the conflicting declarations of the program's
-// packages and classes.
-func conflicts(checkers []*Checker) {
+// packages and classes, in the files of the checkers checked.
+func conflicts(checkers, checked []*Checker) {
 	if len(checkers) == 0 {
 		return
 	}
@@ -64,11 +65,40 @@ func conflicts(checkers []*Checker) {
 		}
 		pkgs[c.file.Package] = append(pkgs[c.file.Package], c)
 	}
+	// Only the checked files' errors are reported: a package's
+	// declarations are compared if one of its files is checked, and a
+	// class's members if its file is (a class's members and a file
+	// facade's are all in packages compared, see sameContainer).
+	// And of a package's other files, only the declarations named as one
+	// of the checked files' can conflict with theirs.
+	var names map[string]map[string]bool // package -> names
+	if len(checked) < len(checkers) || u.only != nil {
+		names = map[string]map[string]bool{}
+		for _, c := range checked {
+			ns := names[c.file.Package]
+			if ns == nil {
+				ns = map[string]bool{}
+				names[c.file.Package] = ns
+			}
+			for _, d := range c.file.Decls {
+				if n, ok := topLevelName(d); ok {
+					ns[n] = true
+				}
+			}
+		}
+		order = slices.DeleteFunc(order, func(p string) bool { return names[p] == nil })
+	}
+	only := checkers[0].u.only
 	for _, name := range order {
 		var ovs []overload
 		var decls []namedDecl
 		for _, c := range pkgs[name] {
 			for _, d := range c.file.Decls {
+				if names != nil && !only[c.file] {
+					if n, ok := topLevelName(d); ok && !names[name][n] {
+						continue
+					}
+				}
 				ovs = c.declOverloads(ovs, d, nil)
 				decls = c.namedDecls(decls, d)
 			}
@@ -76,7 +106,7 @@ func conflicts(checkers []*Checker) {
 		overloadConflicts(ovs, reported)
 		redeclarations(decls, reported)
 	}
-	for _, c := range checkers {
+	for _, c := range checked {
 		for _, d := range c.classes {
 			if d.Sym == nil || d.Expect || d.Anonymous || d.Local {
 				continue
@@ -268,6 +298,22 @@ func sameSignature(a, b *overload) bool {
 		}
 	}
 	return true
+}
+
+// topLevelName returns the name of a top-level declaration that may
+// conflict with another: a function, property, class or type alias.
+func topLevelName(d syntax.Decl) (string, bool) {
+	switch d := d.(type) {
+	case *syntax.FunDecl:
+		return d.Name, true
+	case *syntax.PropDecl:
+		return d.Name, true
+	case *syntax.ClassDecl:
+		return d.Name, true
+	case *syntax.TypeAliasDecl:
+		return d.Name, true
+	}
+	return "", false
 }
 
 // overloadConflicts reports the overloads of one scope that conflict.

@@ -445,7 +445,7 @@ func (c *Checker) lowPriorityGivesWay(ms []*types.FunSym, name string, rt types.
 // class's emit(CodeWriter), not CodeWriter.emit(String). So does one
 // whose function has a context parameter that no implicit value fits.
 func (c *Checker) mayTake(f *types.FunSym, x *syntax.Call) bool {
-	amap, ok := mapArgs(f, x)
+	amap, ok := c.mapArgs(f, x)
 	if !ok {
 		return false
 	}
@@ -512,7 +512,7 @@ func (c *Checker) argTypes(x *syntax.Call) []types.Type {
 // types ts, as argTypes returns them.
 func (c *Checker) takeTypes(fs []*types.FunSym, x *syntax.Call, ts []types.Type) bool {
 	for _, f := range fs {
-		amap, ok := mapArgs(f, x)
+		amap, ok := c.mapArgs(f, x)
 		if !ok || f.Unsupported {
 			continue
 		}

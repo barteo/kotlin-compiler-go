@@ -51,7 +51,7 @@ func (l *lowerer) expr(n psi.NodeRef) syntax.Expr {
 		l.failAt(l.posAt(len(l.src)), "expected an expression")
 	}
 	x := l.expr1(n)
-	if _, ok := l.prov[x]; !ok {
+	if _, ok := l.prov[x]; !ok && l.prov != nil {
 		l.prov[x] = n.ID()
 	}
 	return x
@@ -197,11 +197,15 @@ func (l *lowerer) expr1(n psi.NodeRef) syntax.Expr {
 		case psi.KindLAMBDA_EXPRESSION:
 			lam := l.lambda(x)
 			lam.Label = name
-			l.prov[lam] = x.ID()
+			if l.prov != nil {
+				l.prov[lam] = x.ID()
+			}
 			return lam
 		case psi.KindFUN:
 			f := l.anonFun(x, name)
-			l.prov[f] = x.ID()
+			if l.prov != nil {
+				l.prov[f] = x.ID()
+			}
 			return f
 		}
 		// A label on another expression has no effect.
@@ -336,7 +340,9 @@ func (l *lowerer) prefix(n psi.NodeRef) syntax.Expr {
 		// -1 is a literal, but not -(1).
 		if last := l.lastLeaf(operand); last.NumericKind() == psi.KindINTEGER_LITERAL && !strings.ContainsAny(last.Text(), "uU") &&
 			syntax.NegateLiteral(lit, last.Text(), l.pos(op)) {
-			l.negated[n.ID()] = lit
+			if l.negated != nil {
+				l.negated[n.ID()] = lit
+			}
 			return lit
 		}
 	}
@@ -816,7 +822,9 @@ func (l *lowerer) when(n psi.NodeRef) syntax.Expr {
 				l.fail(pd, "unexpected declaration in 'when' subject")
 			}
 			w.SubjVar = ident(child(pd, psi.KindIDENTIFIER))
-			l.prov[WhenSubject{w}] = pd.ID()
+			if l.prov != nil {
+				l.prov[WhenSubject{w}] = pd.ID()
+			}
 			if t := child(pd, psi.KindTYPE_REFERENCE); t.Valid() {
 				w.SubjType = l.typeRef(t)
 			}

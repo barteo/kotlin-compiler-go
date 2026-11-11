@@ -559,3 +559,105 @@ c m0 f0x2000000 : kotlin/String!
 		t.Errorf("got:\n%s\nwant:\n%s", got, want)
 	}
 }
+
+// TestAnnotatedJavaCollection checks that a Java collection type with a
+// nullability annotation is still flexible between the mutable and the
+// read-only collection, as FIR's (Mutable)List<String>? is.
+func TestAnnotatedJavaCollection(t *testing.T) {
+	java := `package j;
+
+import java.util.List;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+
+public class Coll {
+    public @Nullable List<String> maybe() { return null; }
+    public @NotNull List<String> sure() { return null; }
+    public List<String> plain() { return null; }
+    public @Nullable String text() { return null; }
+}
+`
+	nullable := "package org.jetbrains.annotations;\npublic @interface Nullable {}\n"
+	notNull := "package org.jetbrains.annotations;\npublic @interface NotNull {}\n"
+	kotlin := "package j\nfun f(c: Coll) = c.maybe()\n"
+	sources := []Source{{Path: "j/Uses.kt", Text: &kotlin}, {Path: "j/Coll.java", Text: &java},
+		{Path: "org/jetbrains/annotations/Nullable.java", Text: &nullable},
+		{Path: "org/jetbrains/annotations/NotNull.java", Text: &notNull}}
+	s := Open(withJDK(t))
+	defer s.Close()
+	m, err := s.Update(context.Background(), sources)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close()
+	d := m.Class("j/Coll")
+	if d == nil {
+		t.Fatal("j/Coll: nil")
+	}
+	want := map[string][3]bool{ // Nullable, Flexible, DefinitelyNonNull
+		"maybe": {true, true, false},
+		"sure":  {false, true, true},
+		"plain": {false, true, false},
+		"text":  {true, false, false},
+	}
+	for _, md := range d.Members {
+		w, ok := want[md.Name]
+		if !ok {
+			continue
+		}
+		delete(want, md.Name)
+		ty := md.Type
+		if ty == nil {
+			t.Errorf("%s: no type", md.Name)
+			continue
+		}
+		if got := [3]bool{ty.Nullable, ty.Flexible, ty.DefinitelyNonNull}; got != w {
+			t.Errorf("%s: %s nullable, flexible, definitely non-null %v, want %v", md.Name, ty.ClassID, got, w)
+		}
+	}
+	for n := range want {
+		t.Errorf("%s: missing", n)
+	}
+}
+
+// TestMissingClassParam checks that a Java constructor or method whose
+// signature names a class not on the class path (as android.jar's are
+// in KSP's Tachiyomi benchmark) can still be called, with an error type
+// for that class, as FIR calls it: the types of declarations that call
+// it are inferred.
+func TestMissingClassParam(t *testing.T) {
+	java := `package j;
+
+public class Prefs {
+    public Prefs(Missing m) {}
+    public static Prefs of(Missing m) { return null; }
+    public Gone gone() { return null; }
+}
+`
+	kotlin := `package j
+class Uses(m: Missing) {
+    val a = Prefs(m)
+    val b = Prefs.of(m)
+    val c = a.gone()
+}
+`
+	sources := []Source{{Path: "j/Uses.kt", Text: &kotlin}, {Path: "j/Prefs.java", Text: &java}}
+	s := Open(withJDK(t))
+	defer s.Close()
+	m, err := s.Update(context.Background(), sources)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, d := range m.Files[0].Decls[0].Members {
+		if d.Type != nil {
+			got[d.Name] = d.Type.ClassID
+			if d.Type.Kind == TypeError {
+				got[d.Name] = "error"
+			}
+		}
+	}
+	if got["a"] != "j/Prefs" || got["b"] != "j/Prefs" || got["c"] != "error" {
+		t.Errorf("types: %v", got)
+	}
+}

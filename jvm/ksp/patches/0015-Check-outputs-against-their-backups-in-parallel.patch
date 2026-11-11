@@ -1,0 +1,70 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kc <kc@localhost>
+Date: Mon, 9 Nov 2026 22:39:07 +0000
+Subject: [PATCH] Check outputs against their backups in parallel
+
+Backing up a run's outputs and restoring the clean ones compares each
+output with its backup by their attributes: about 1,600 pairs on a
+module with 800 outputs, each two stat calls. The comparisons now run in
+parallel (from 64 pairs on); the copies that are needed, few in a
+daemon, are still made in order, one at a time, as copyWithTimestamp
+creates missing parent directories.
+---
+ .../ksp/common/IncrementalContextBase.kt      | 33 ++++++++++---------
+ 1 file changed, 17 insertions(+), 16 deletions(-)
+
+diff --git a/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/common/IncrementalContextBase.kt b/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/common/IncrementalContextBase.kt
+index 0882477..73a2254 100644
+--- a/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/common/IncrementalContextBase.kt
++++ b/kotlin-analysis-api/src/main/kotlin/com/google/devtools/ksp/common/IncrementalContextBase.kt
+@@ -110,6 +110,9 @@ abstract class IncrementalContextBase(
+     companion object {
+         /** The marker of caches a later incremental run may trust; without it, the run rebuilds. */
+         const val CACHES_UP_TO_DATE = "caches.uptodate"
++
++        /** How many outputs and backups to check before the checks run in parallel. */
++        private const val PARALLEL_CHECKS = 64
+     }
+ 
+     private val logsDir = File(cachesDir, "logs").apply { mkdirs() }
+@@ -377,26 +380,24 @@ abstract class IncrementalContextBase(
+             } catch (e: IOException) {
+                 null
+             }
+-        fun copy(src: File, dst: File) {
++        fun upToDate(src: File, dst: File): Boolean {
+             val d = attributes(dst)
+-            if (d != null && d.isRegularFile) {
+-                val s = attributes(src)
+-                if (s != null && s.size() == d.size() && s.lastModifiedTime().toMillis() == d.lastModifiedTime().toMillis())
+-                    return
+-            }
+-            copyWithTimestamp(src, dst, true)
++            if (d == null || !d.isRegularFile) return false
++            val s = attributes(src) ?: return false
++            return s.size() == d.size() && s.lastModifiedTime().toMillis() == d.lastModifiedTime().toMillis()
+         }
+ 
+-        // Backup
+-        outputs.forEach { generated ->
+-            copy(generated.abs(), generated.bak())
+-        }
++        // Backup, then restore non-dirty outputs: the copies, source first.
++        val copies = ArrayList<Pair<File, File>>(outputs.size + cleanOutputs.size)
++        outputs.forEach { generated -> copies.add(generated.abs() to generated.bak()) }
++        cleanOutputs.forEach { dst -> if (dst !in outputs) copies.add(dst.bak() to dst.abs()) }
+ 
+-        // Restore non-dirty outputs
+-        cleanOutputs.forEach { dst ->
+-            if (dst !in outputs) {
+-                copy(dst.bak(), dst.abs())
+-            }
++        // The checks read only attributes and run in parallel; the copies
++        // that are needed (few, in a daemon) are made in order, one at a
++        // time, as copyWithTimestamp creates missing parent directories.
++        val stream = if (copies.size >= PARALLEL_CHECKS) copies.parallelStream() else copies.stream()
++        stream.filter { (src, dst) -> !upToDate(src, dst) }.toList().forEach { (src, dst) ->
++            copyWithTimestamp(src, dst, true)
+         }
+     }
+ 

@@ -157,7 +157,7 @@ func (c *Checker) callLocal(x *syntax.Call, fs []*types.FunSym, depth int, want 
 			ok = append(ok, f)
 			continue
 		}
-		if _, fits := mapArgs(f, x); fits || len(fs) == 1 {
+		if _, fits := c.mapArgs(f, x); fits || len(fs) == 1 {
 			c.errorf(x.P, "type checking has run into a recursive problem: '%s' needs an explicit return type", f.Name)
 			c.args(x, nil)
 			return types.InvalidType

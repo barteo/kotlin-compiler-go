@@ -5,7 +5,9 @@ import com.google.devtools.ksp.processing.KSPJvmConfig
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.fileEditor.impl.LoadTextUtil
 import com.intellij.openapi.util.Disposer
+import com.intellij.openapi.vfs.StandardFileSystems
 import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.openapi.vfs.VirtualFileManager
 import com.intellij.psi.PsiFile
 import com.intellij.psi.PsiManager
 import com.intellij.psi.impl.PsiManagerEx
@@ -67,26 +69,208 @@ internal class KcEnvironment(val key: String, config: KSPConfig) {
     var reused = 0
 
     /**
+     * The PSI of the file at [path], whose text libkc read has hash [text]
+     * ([KcFile.text]): the PSI [psiFile] gave for it before, without
+     * reading the file again, if the bytes it read then have that hash and
+     * the PSI is still the file's; otherwise [psiFile]'s.
+     */
+    fun psiFile(path: String, text: Long): PsiFile? {
+        parsed[path]?.let { p ->
+            if (text != 0L && p.hash == text && (psiManager as PsiManagerEx).fileManager.findCachedViewProvider(p.vf) != null) {
+                reused++
+                return psiManager.findFile(p.vf)
+            }
+        }
+        return files.refreshAndFindFileByPath(path)?.let { psiFile(it, path) }
+    }
+
+    /**
      * The PSI of [vf]: the one parsed before if the file's text is the
      * same, or a new one. A file whose text changed gets a new view
      * provider, so its old PSI (and the old round's symbols over it) are
      * left as they were.
      */
-    fun psiFile(vf: VirtualFile): PsiFile? {
+    fun psiFile(vf: VirtualFile, path: String = vf.path): PsiFile? {
         val fm = (psiManager as PsiManagerEx).fileManager
         val cached = fm.findCachedViewProvider(vf)
+        // The file's bytes, compared with those its PSI was parsed from:
+        // cheaper than decoding its text again.
+        val bytes = vf.contentsToByteArray()
+        parsed[path] = Parsed(vf, textHash(bytes))
         if (cached != null) {
-            if (cached.contents.toString() == LoadTextUtil.loadText(vf).toString()) {
+            val same = parsedBytes[vf]?.contentEquals(bytes)
+                ?: (cached.contents.toString() == LoadTextUtil.loadText(vf).toString())
+            if (same) {
                 reused++
+                parsedBytes[vf] = bytes
                 return psiManager.findFile(vf)
             }
             fm.setViewProvider(vf, null)
             reparsed++
         }
+        parsedBytes[vf] = bytes
         return psiManager.findFile(vf)
     }
 
-    fun dispose() = Disposer.dispose(disposable)
+    private val files = VirtualFileManager.getInstance().getFileSystem(StandardFileSystems.FILE_PROTOCOL)
+
+    /**
+     * Has the PSI of the Kotlin files at [paths] made and parsed on another
+     * thread, while the caller waits for libkc's update: the files whose
+     * PSI the round after the update would otherwise make and parse
+     * itself (KcSession.update). A file is read again here, and [psiFile]
+     * given libkc's hash of the same bytes takes the PSI made here; its
+     * tree waits in [trees] for the round's join. The PSI is made one
+     * file after another ([psiFile] isn't thread-safe), and parsed in
+     * parallel when there are many files. The caller touches nothing of
+     * this environment until the result is done, and a file that fails is
+     * left to the round.
+     */
+    fun parseAhead(paths: List<String>): java.util.concurrent.CompletableFuture<Void> {
+        val submitted = System.nanoTime()
+        return java.util.concurrent.CompletableFuture.runAsync {
+            val t = KcTimer(submitted)
+            t.mark("start")
+            val made = paths.mapNotNull { p ->
+                try {
+                    files.refreshAndFindFileByPath(p)?.let { psiFile(it, p) } as? org.jetbrains.kotlin.psi.KtFile
+                } catch (e: Exception) {
+                    null // The round makes the file's PSI itself.
+                }
+            }
+            t.mark("psi")
+            val parse = { kt: org.jetbrains.kotlin.psi.KtFile ->
+                try {
+                    trees.ahead(kt, KcRound.preorder(kt.node))
+                } catch (e: Exception) {
+                    // The round parses the file itself.
+                }
+            }
+            if (made.size > SMALL_AHEAD) made.parallelStream().forEach(parse) else made.forEach(parse)
+            t.mark("parse")
+            t.print("ahead files=${made.size}")
+        }
+    }
+
+    /** A file's PSI's virtual file, and the hash of the bytes [psiFile] last read from it. */
+    private class Parsed(val vf: VirtualFile, val hash: Long)
+
+    /** By path, as [psiFile] was asked for it. */
+    private val parsed = HashMap<String, Parsed>()
+
+    /** The trees of the files' PSI that rounds joined, for later rounds over the same PSI. */
+    val trees = KcTrees()
+
+    /**
+     * The class-path classes libkc modeled, by outermost class ID, for the
+     * sessions after (see KcSession.libraryDecl): the environment's key
+     * holds the class path's files and stamps, and [libraryDeclsOf]
+     * starts over for another module name or other friends.
+     */
+    private val libraryDecls = LibraryDecls()
+    private var libraryDeclsKey: String? = null
+
+    fun libraryDeclsOf(key: String): LibraryDecls = synchronized(libraryDecls) {
+        if (libraryDeclsKey != key) {
+            libraryDecls.clear()
+            libraryDeclsKey = key
+        }
+        libraryDecls
+    }
+
+    /**
+     * What libkc said of the classes of a class path: the classes it
+     * modeled, the names it has no class of, and the classes of the last
+     * [MAX_JAVA] sets of Java sources it modeled over it, by their
+     * models' KcModel.java (null for a class it didn't model), most
+     * recently used last. A KSP run's rounds and the runs after see the
+     * same few sets: a round's generated Java sources are the next
+     * round's, again and again.
+     */
+    class LibraryDecls {
+        val decls = HashMap<String, KcDecl>()
+        val absent = HashSet<String>()
+        private val java = LinkedHashMap<Long, HashMap<String, KcDecl?>>(8, 0.75f, true)
+
+        /** The classes of the Java sources of models whose KcModel.java is [id]. */
+        fun java(id: Long): HashMap<String, KcDecl?> = synchronized(this) {
+            java.getOrPut(id) { HashMap() }.also {
+                while (java.size > MAX_JAVA) java.remove(java.keys.first())
+            }
+        }
+
+        fun clear() = synchronized(this) {
+            decls.clear()
+            absent.clear()
+            java.clear()
+        }
+    }
+
+    /** The bytes each file's PSI was parsed from, as [psiFile] last read them. */
+    private val parsedBytes = HashMap<VirtualFile, ByteArray>()
+
+    /** A round kept for a later update of the same check, with its model's handle, which the environment owns. */
+    class KeptRound(
+        val round: KcRound,
+        val handle: Long,
+        val diagnostics: List<KcDiagnostic>,
+        val reparsed: Int,
+        /** The model's files by path, which a later model may share (KcOps.update's bases). */
+        val files: Map<String, KcFile>,
+    )
+
+    /**
+     * The last rounds built in this environment, by their models' checks
+     * (Go's Model.Check), least recently used first: an update that gets
+     * one of these checks back uses its round again, if [psiFile] has
+     * parsed no file again since, so that its PSI is the files' PSI.
+     */
+    private val rounds = LinkedHashMap<Long, KeptRound>()
+
+    /** The checks of the rounds an update may use again. */
+    fun reusableChecks(): List<Long> = rounds.filterValues { it.reparsed == reparsed }.keys.toList()
+
+    /** The files of the kept rounds' models, by their checks: those an update's model may share. */
+    fun baseFiles(): Map<Long, Map<String, KcFile>> = rounds.mapValues { it.value.files }
+
+    /** The round kept for [check], now the most recently used. */
+    fun reuse(check: Long): KeptRound {
+        val k = rounds.remove(check) ?: error("kc: no round kept for check $check")
+        rounds[check] = k
+        return k
+    }
+
+    /** Keeps [round] for later updates of [check], dropping the least recently used beyond [KEEP_ROUNDS]. */
+    fun keep(check: Long, round: KcRound, handle: Long, diagnostics: List<KcDiagnostic>, files: List<KcFile>) {
+        rounds.remove(check)?.let(::drop)
+        rounds[check] = KeptRound(round, handle, diagnostics, reparsed, files.associateBy { it.path })
+        while (rounds.size > KEEP_ROUNDS) {
+            val first = rounds.keys.first()
+            drop(rounds.remove(first)!!)
+        }
+    }
+
+    private fun drop(k: KeptRound) {
+        k.round.token.invalidation = "dropped from the kept rounds"
+        KcOps.close(k.handle)
+    }
+
+    fun dispose() {
+        rounds.values.forEach(::drop)
+        rounds.clear()
+        Disposer.dispose(disposable)
+    }
+
+    private companion object {
+        /** A KSP run's rounds that check different sources: the first, and the ones with generated files. */
+        const val KEEP_ROUNDS = 3
+
+        /** The sets of Java sources LibraryDecls keeps the classes of: a round's, and a few more. */
+        const val MAX_JAVA = KEEP_ROUNDS + 1
+
+        /** Up to this many files, [parseAhead] parses them one after another. */
+        const val SMALL_AHEAD = 8
+    }
 }
 
 /**
@@ -134,4 +318,14 @@ internal object KcEnvironments {
             javaSources.forEach { append(stamp(File(it))).append('\n') }
         }
     }
+}
+
+/** The 64-bit FNV-1a hash of [bytes]: libkc's hash of a file's text (kaops's textHash). */
+internal fun textHash(bytes: ByteArray): Long {
+    var h = -0x340d631b7bdddcdbL // 14695981039346656037
+    for (b in bytes) {
+        h = h xor (b.toLong() and 0xff)
+        h *= 0x100000001b3L
+    }
+    return h
 }

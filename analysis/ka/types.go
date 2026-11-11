@@ -47,9 +47,14 @@ type Type struct {
 	// Nullable is set on a type marked nullable, T?.
 	Nullable bool
 	// Flexible is set on a platform type from Java, T!: its lower bound
-	// is the type without Nullable, its upper bound the nullable one.
+	// is the type without Nullable, its upper bound the nullable one. A
+	// Java collection's is flexible even where a nullability annotation
+	// made it nullable or not, as FIR's (Mutable)List<T>? is: Nullable
+	// then makes its lower bound nullable too, and DefinitelyNonNull its
+	// upper bound not nullable.
 	Flexible bool
-	// DefinitelyNonNull is set on a type parameter's type T & Any.
+	// DefinitelyNonNull is set on a type parameter's type T & Any, and on
+	// a not-null Java collection's flexible type (see Flexible).
 	DefinitelyNonNull bool
 	// Param is a TypeParameter's TYPE_PARAMETER node, in the file of the
 	// declaration the type belongs to; 0 if the parameter isn't in the
@@ -62,6 +67,11 @@ type Type struct {
 	// and Contexts is its number of context parameters, which come first.
 	Extension bool
 	Contexts  int
+	// Inferred is set on a TypeError that is an inferred type's, not an
+	// unresolved class's: FIR's KaErrorType rather than a
+	// KaClassErrorType, which may be null, and whose Name is its
+	// presentable text (see calleeName).
+	Inferred bool
 	// Abbrev is the typealias type the type was written as, if it was:
 	// a TypeClass whose ClassID is the typealias's, with the typealias's
 	// type arguments and the type's nullability. The type is the
@@ -121,6 +131,39 @@ func variance(v types.Variance) Variance {
 	return Invariant
 }
 
+// invalidFuncType returns the model of function type ref, which isn't
+// valid as some of its parts aren't: as in FIR, it is a function type
+// whose invalid parts are error types, (MotionEvent) -> Unit being
+// Function1<<ERROR TYPE: MotionEvent>, Unit>.
+func (b *fileBuilder) invalidFuncType(ref *syntax.TypeRef, depth int) *Type {
+	var refs []*syntax.TypeRef
+	refs = append(refs, ref.Contexts...)
+	if ref.Recv != nil {
+		refs = append(refs, ref.Recv)
+	}
+	refs = append(refs, ref.Params...)
+	refs = append(refs, ref.Ret)
+	n := strconv.Itoa(len(refs) - 1)
+	out := &Type{Kind: TypeClass, ClassID: "kotlin/Function" + n, Extension: ref.Recv != nil,
+		Contexts: len(ref.Contexts), Nullable: ref.Nullable, Annotations: b.annotations(ref.Annotations)}
+	if ref.Suspend {
+		out.ClassID = "kotlin/coroutines/SuspendFunction" + n
+	}
+	for _, r := range refs {
+		var at *Type
+		if t, ok := b.refs[r]; ok {
+			at = b.typeAt(t, r, depth+1)
+		} else {
+			at = b.typeAt(types.InvalidType, r, depth+1)
+		}
+		if at != nil && r != ref.Ret {
+			b.parameterName(at, r)
+		}
+		out.Args = append(out.Args, TypeArg{Variance: Invariant, Type: at})
+	}
+	return out
+}
+
 // typ returns the model of type t, which ref, if not nil, wrote: an
 // error type's text is ref's. It returns nil for a type the model can't
 // have: an inference variable that leaked.
@@ -135,8 +178,13 @@ func (b *fileBuilder) typeAt(t types.Type, ref *syntax.TypeRef, depth int) *Type
 	out := &Type{}
 	switch t.K {
 	case types.Invalid, types.TypeVar:
+		if ref != nil && ref.Ret != nil && t.K == types.Invalid && !ref.Composable && b.aliases[ref] == nil {
+			return b.invalidFuncType(ref, depth)
+		}
 		out.Kind = TypeError
 		out.Name = b.refText(ref)
+		// As in FIR, an unresolved Bundle? is a nullable error type.
+		out.Nullable = ref != nil && ref.Nullable
 		return out
 	case types.Class:
 		out.Kind = TypeClass
@@ -200,6 +248,9 @@ func (b *fileBuilder) typeAt(t types.Type, ref *syntax.TypeRef, depth int) *Type
 						r = argRefs[i]
 					}
 					ta.Type = b.typeAt(a.T, r, depth+1)
+					if ref != nil && ref.Ret != nil && r != nil && r != ref.Ret && ta.Type != nil {
+						b.parameterName(ta.Type, r)
+					}
 				}
 				out.Args = append(out.Args, ta)
 			}
@@ -520,4 +571,27 @@ func internalClassID(name string) string {
 		pkg, rel = name[:i+1], name[i+1:]
 	}
 	return pkg + strings.ReplaceAll(rel, "$", ".")
+}
+
+// parameterName gives t, the type of a function type's parameter written
+// with a name, (newScale: Float) -> Unit, the annotation
+// @ParameterName("newScale"), as FIR does. ref is the parameter's type.
+func (b *fileBuilder) parameterName(t *Type, ref *syntax.TypeRef) {
+	id := b.prov.Node(ref)
+	if id == 0 {
+		return
+	}
+	n := b.snap.Node(id)
+	for i := 0; i < 3 && n.Valid() && n.NumericKind() != psi.KindVALUE_PARAMETER; i++ {
+		n = n.Parent()
+	}
+	if !n.Valid() || n.NumericKind() != psi.KindVALUE_PARAMETER {
+		return
+	}
+	name := n.NameIdentifier()
+	if !name.Valid() {
+		return
+	}
+	t.Annotations = append(t.Annotations, Annotation{ClassID: "kotlin/ParameterName",
+		Args: []NamedValue{{Name: "name", Value: &Value{Kind: ValueConst, Const: ConstString, Str: name.Text(), Node: n.ID()}}}})
 }

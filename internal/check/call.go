@@ -169,22 +169,22 @@ func preferred(n int, args []syntax.Expr, cand func(i int) *callee) int {
 // last parameter. Parameters without an argument must have default values
 // (or be the vararg). It returns nil for a one-to-one match, and false if
 // the arguments don't fit.
-func mapArgs(f *types.FunSym, x *syntax.Call) ([]int, bool) {
+func (c *Checker) mapArgs(f *types.FunSym, x *syntax.Call) ([]int, bool) {
 	if x.Names == nil && x.RefArgs != nil {
 		if names := refNames(f, x.RefArgs); names != nil {
 			named := *x
 			named.Names = names
-			return mapNamed(f, &named)
+			return c.mapNamed(f, &named)
 		}
 	}
 	if x.Names != nil {
-		return mapNamed(f, x)
+		return c.mapNamed(f, x)
 	}
 	ps := f.Params
 	n := len(x.Args)
 	simple := n == len(ps)
 	for _, p := range ps {
-		simple = simple && !p.Vararg && p.Type.K != types.Invalid
+		simple = simple && !p.Vararg && (p.Type.K != types.Invalid || c.u.partial)
 	}
 	for _, a := range x.Args {
 		simple = simple && !isSpread(a)
@@ -195,7 +195,7 @@ func mapArgs(f *types.FunSym, x *syntax.Call) ([]int, bool) {
 	amap := make([]int, n)
 	limit, positional := len(ps), n
 	if x.Trailing() && n > 0 && len(ps) > 0 {
-		if ps[len(ps)-1].Type.K == types.Invalid {
+		if ps[len(ps)-1].Type.K == types.Invalid && !c.u.partial {
 			return nil, false
 		}
 		amap[n-1] = len(ps) - 1
@@ -203,7 +203,7 @@ func mapArgs(f *types.FunSym, x *syntax.Call) ([]int, bool) {
 	}
 	pi := 0
 	for i := range positional {
-		if pi >= limit || ps[pi].Type.K == types.Invalid || isSpread(x.Args[i]) && !ps[pi].Vararg {
+		if pi >= limit || ps[pi].Type.K == types.Invalid && !c.u.partial || isSpread(x.Args[i]) && !ps[pi].Vararg {
 			return nil, false
 		}
 		amap[i] = pi
@@ -259,7 +259,7 @@ func refNames(f *types.FunSym, ts []types.Type) []string {
 // first, then named ones, which go to the parameters with their names. As
 // in Kotlin, positional arguments can follow named ones that are in
 // their own positions: f(a = 1, 2).
-func mapNamed(f *types.FunSym, x *syntax.Call) ([]int, bool) {
+func (c *Checker) mapNamed(f *types.FunSym, x *syntax.Call) ([]int, bool) {
 	ps := f.Params
 	amap := make([]int, len(x.Args))
 	used := make([]bool, len(ps))
@@ -292,7 +292,7 @@ func mapNamed(f *types.FunSym, x *syntax.Call) ([]int, bool) {
 			}
 			amap[i] = j
 		}
-		if ps[amap[i]].Type.K == types.Invalid || isSpread(x.Args[i]) && !ps[amap[i]].Vararg {
+		if ps[amap[i]].Type.K == types.Invalid && !c.u.partial || isSpread(x.Args[i]) && !ps[amap[i]].Vararg {
 			return nil, false
 		}
 		used[amap[i]] = true
@@ -717,7 +717,7 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 		if cl.f.Hidden {
 			continue
 		}
-		amap, ok := mapArgs(cl.f, x)
+		amap, ok := c.mapArgs(cl.f, x)
 		if !ok {
 			continue
 		}

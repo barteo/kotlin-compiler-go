@@ -44,6 +44,7 @@ func (c *Checker) nestedClassifier(name string) classifier {
 		// classes that implement Widget.
 		for s := k; s != nil && found == (classifier{}); s = s.Super {
 			s.Ensure()
+			c.ensureSupers(s)
 			if s.External {
 				// A class path class's, as java.util.AbstractMap's
 				// SimpleEntry, or clikt's AbstractHelpFormatter's

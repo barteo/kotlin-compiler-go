@@ -1,0 +1,143 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kc <barteo@gmail.com>
+Date: Sun, 8 Nov 2026 07:41:22 +0000
+Subject: [PATCH 10/12] Write outputs behind the processors
+
+A new file's stream keeps what the processor writes; when it is closed,
+a writer thread puts the bytes on disk, and leaves a file that already
+has them alone. KSP reads the outputs only between processors' calls
+(generatedFile, outputs, closeFiles), and each of those writes what is
+still open and waits for the writes first.
+---
+ .../ksp/common/impl/CodeGeneratorImpl.kt      | 80 ++++++++++++++++---
+ 1 file changed, 70 insertions(+), 10 deletions(-)
+
+diff --git a/common-util/src/main/kotlin/com/google/devtools/ksp/common/impl/CodeGeneratorImpl.kt b/common-util/src/main/kotlin/com/google/devtools/ksp/common/impl/CodeGeneratorImpl.kt
+index f8fb8d4..bad88fd 100644
+--- a/common-util/src/main/kotlin/com/google/devtools/ksp/common/impl/CodeGeneratorImpl.kt
++++ b/common-util/src/main/kotlin/com/google/devtools/ksp/common/impl/CodeGeneratorImpl.kt
+@@ -24,10 +24,14 @@ import com.google.devtools.ksp.symbol.KSClassDeclaration
+ import com.google.devtools.ksp.symbol.KSFile
+ import com.google.devtools.ksp.symbol.KSFunctionDeclaration
+ import com.google.devtools.ksp.symbol.KSPropertyDeclaration
++import java.io.ByteArrayOutputStream
+ import java.io.File
+-import java.io.FileOutputStream
+ import java.io.IOException
+ import java.io.OutputStream
++import java.util.concurrent.ExecutionException
++import java.util.concurrent.ExecutorService
++import java.util.concurrent.Executors
++import java.util.concurrent.Future
+ 
+ class CodeGeneratorImpl(
+     private val classDir: File,
+@@ -40,7 +44,44 @@ class CodeGeneratorImpl(
+     private val isIncremental: Boolean
+ ) : CodeGenerator {
+     private val fileMap = mutableMapOf<String, File>()
+-    private val fileOutputStreamMap = mutableMapOf<String, FileOutputStream>()
++    private val fileOutputStreamMap = mutableMapOf<String, Output>()
++
++    // Outputs are written behind: a new file's stream keeps what the
++    // processor writes, and when it is closed a writer thread puts the
++    // bytes on disk, leaving a file that already has them alone. KSP reads
++    // the outputs only between processors' calls (generatedFile, outputs,
++    // closeFiles), and each of those first writes what is still open and
++    // waits for the writes (drain).
++    private val writes = mutableListOf<Future<*>>()
++
++    private inner class Output(val file: File) : ByteArrayOutputStream() {
++        var closed = false
++
++        override fun close() {
++            if (closed)
++                return
++            closed = true
++            val bytes = toByteArray()
++            writes += writer.submit { write(file, bytes) }
++        }
++    }
++
++    /** Writes the streams still open and waits for the writes of the closed ones. */
++    private fun drain() {
++        fileOutputStreamMap.values.forEach {
++            if (!it.closed)
++                write(it.file, it.toByteArray())
++        }
++        val pending = writes.toList()
++        writes.clear()
++        pending.forEach {
++            try {
++                it.get()
++            } catch (e: ExecutionException) {
++                throw e.cause ?: e
++            }
++        }
++    }
+ 
+     private val separator = File.separator
+ 
+@@ -51,6 +92,7 @@ class CodeGeneratorImpl(
+         fileOutputStreamMap.keys.forEach {
+             fileOutputStreamMap[it]!!.close()
+         }
++        drain()
+         fileOutputStreamMap.clear()
+     }
+ 
+@@ -153,11 +195,6 @@ class CodeGeneratorImpl(
+         if (path in fileMap) {
+             throw FileAlreadyExistsException(file)
+         }
+-        val parentFile = file.parentFile
+-        if (!parentFile.exists() && !parentFile.mkdirs()) {
+-            throw IllegalStateException("failed to make parent directories.")
+-        }
+-        file.writeText("")
+         fileMap[path] = file
+         val sources = if (dependencies.isAllSources) {
+             allSources + anyChangesWildcard
+@@ -169,7 +206,7 @@ class CodeGeneratorImpl(
+             }
+         }
+         associate(sources, file)
+-        fileOutputStreamMap[path] = fileMap[path]!!.outputStream()
++        fileOutputStreamMap[path] = Output(file)
+         return fileOutputStreamMap[path]!!
+     }
+ 
+@@ -202,8 +239,31 @@ class CodeGeneratorImpl(
+     }
+ 
+     val outputs: Set<File>
+-        get() = fileMap.values.mapTo(mutableSetOf()) { it.relativeTo(projectBase) }
++        get() {
++            drain()
++            return fileMap.values.mapTo(mutableSetOf()) { it.relativeTo(projectBase) }
++        }
+ 
+     override val generatedFile: Collection<File>
+-        get() = fileOutputStreamMap.keys.map { fileMap[it]!! }
++        get() {
++            drain()
++            return fileOutputStreamMap.keys.map { fileMap[it]!! }
++        }
++
++    private companion object {
++        val writer: ExecutorService = Executors.newFixedThreadPool(
++            Runtime.getRuntime().availableProcessors().coerceIn(1, 4)
++        ) { r -> Thread(r, "ksp-output-writer").apply { isDaemon = true } }
++
++        /** Puts [bytes] in [file], unless it has them already. */
++        fun write(file: File, bytes: ByteArray) {
++            if (file.isFile && file.length() == bytes.size.toLong() && file.readBytes().contentEquals(bytes))
++                return
++            val parent = file.parentFile
++            if (!parent.isDirectory && !parent.mkdirs() && !parent.isDirectory) {
++                throw IllegalStateException("failed to make parent directories.")
++            }
++            file.writeBytes(bytes)
++        }
++    }
+ }

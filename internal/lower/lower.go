@@ -120,13 +120,37 @@ type lowerer struct {
 	// noTrailing is set while lowering where a brace after an expression
 	// isn't a trailing lambda for kc: a delegate in a class header.
 	noTrailing bool
+
+	// declsOnly is set by Declarations.
+	declsOnly bool
+}
+
+// Declarations lowers s as File does, but for the block bodies of
+// functions, initializers and secondary constructors, which it lowers
+// empty but for a leading contract { } call (Contract), and the
+// expression bodies of functions whose return type is written, which it
+// lowers as empty block bodies: what a check of files that it doesn't
+// check needs of them (check.Options.Only). Such a body doesn't make a
+// declaration's type: a function with a block body and no written return
+// type returns Unit. Accessors keep their bodies, which decide whether a
+// property has a backing field. It returns no Provenance: what isn't
+// checked isn't modeled.
+func Declarations(s *psi.Snapshot) (*syntax.File, *Provenance, []*syntax.Error) {
+	return lowerFile(s, true)
 }
 
 // File lowers a psi snapshot to kc's AST, as syntax.ParseAll parses the
 // same source: after an error in a declaration, it goes on with the next
 // one, so it returns the first error of each declaration that fails.
 func File(s *psi.Snapshot) (*syntax.File, *Provenance, []*syntax.Error) {
-	l := &lowerer{s: s, src: s.Source(), path: s.Path(), prov: map[any]psi.NodeID{}, annots: map[syntax.Pos]psi.NodeID{}, negated: map[psi.NodeID]*syntax.IntLit{}, hoisted: map[psi.NodeID]bool{}}
+	return lowerFile(s, false)
+}
+
+func lowerFile(s *psi.Snapshot, declsOnly bool) (*syntax.File, *Provenance, []*syntax.Error) {
+	l := &lowerer{s: s, declsOnly: declsOnly, src: s.Source(), path: s.Path(), hoisted: map[psi.NodeID]bool{}}
+	if !declsOnly {
+		l.prov, l.annots, l.negated = map[any]psi.NodeID{}, map[syntax.Pos]psi.NodeID{}, map[psi.NodeID]*syntax.IntLit{}
+	}
 	l.lines = append(l.lines, 0)
 	for i := 0; i < len(l.src); i++ {
 		if l.src[i] == '\n' {
@@ -155,12 +179,17 @@ func File(s *psi.Snapshot) (*syntax.File, *Provenance, []*syntax.Error) {
 	f.SuppressDSL = l.suppressDSL
 	f.Annotated = l.annotated
 	syntax.FinishFile(f, l.path)
+	if declsOnly {
+		return f, nil, l.errs
+	}
 	return f, &Provenance{l.prov, l.annots, l.negated}, l.errs
 }
 
 // record notes that AST node x comes from n, and returns x.
 func record[T any](l *lowerer, x T, n psi.NodeRef) T {
-	l.prov[x] = n.ID()
+	if l.prov != nil {
+		l.prov[x] = n.ID()
+	}
 	return x
 }
 

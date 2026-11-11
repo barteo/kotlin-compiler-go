@@ -73,7 +73,7 @@ stubbed=(
 	symbols.KaTypeParameterSymbol symbols.KaEnumEntrySymbol symbols.KaTypeAliasSymbol
 	symbols.KaPropertyGetterSymbol symbols.KaPropertySetterSymbol symbols.KaReceiverParameterSymbol
 	symbols.KaJavaFieldSymbol symbols.KaPackageSymbol symbols.KaBackingFieldSymbol
-	symbols.KaDestructuringDeclarationSymbol symbols.KaSyntheticJavaPropertySymbol
+	symbols.KaDestructuringDeclarationSymbol symbols.KaSyntheticJavaPropertySymbol symbols.KaAnonymousObjectSymbol symbols.KaLocalVariableSymbol
 	types.KaUsualClassType types.KaClassErrorType types.KaFunctionType types.KaTypeParameterType
 	types.KaFlexibleType types.KaDefinitelyNotNullType types.KaErrorType
 	annotations.KaAnnotation projectStructure.KaSourceModule projectStructure.KaLibraryModule
@@ -290,7 +290,10 @@ echo "moshi: ok"
 # step 16).
 iclibs=$lib/kotlin-stdlib-2.4.21.jar:$out/m2/moshi-1.15.2.jar:$out/m2/okio-jvm-3.7.0.jar
 # icrun DIR JAVA... runs the test in DIR with the command JAVA... (a java
-# with its options and class path) and writes DIR/dirty.txt.
+# with its options and class path) and writes DIR/dirty.txt. With
+# icclean=1, the outputs (all of DIR/out but its caches) are deleted before
+# the second run, as Gradle does, so that KSP restores the clean ones from
+# its backups.
 icrun() {
 	local d=$1 f mod=
 	shift
@@ -300,6 +303,9 @@ icrun() {
 	"$@" -Dksp.incremental=true -Dksp.incrementalLog=true RunKspKt "$d/src" "$d/out" "$iclibs" > "$d/first.txt"
 	grep -q '^Dirty / All: 100.00%$' "$d/out/caches/logs/kspDirtySet.log"
 	cp -r "$here/test/ic/edit/." "$d/src"
+	if [ "${icclean:-}" = 1 ]; then
+		find "${d:?}/out" -mindepth 1 -maxdepth 1 ! -name caches -exec rm -r {} +
+	fi
 	for f in $(cd "$here/test/ic/edit" && find . -type f | sort); do
 		mod=$mod:$d/src/${f#./}
 	done
@@ -315,6 +321,10 @@ icrun "$out/ic" env LD_PRELOAD="$java_home/lib/libjsig.so" java -Dksp.backend=kc
 	-cp "$out/runksp-classes:$out/kc-aa.jar:$deps$procs"
 diff -u "$here/test/ic/dirty.txt" "$out/ic/dirty.txt"
 echo "incremental: ok ($(wc -l < "$out/ic/dirty.txt") of $(find "$here/test/ic/src" -type f | wc -l) files dirty)"
+icclean=1 icrun "$out/ic-gradle" env LD_PRELOAD="$java_home/lib/libjsig.so" java -Dksp.backend=kc -Dkc.lib="$out/libkc.so" \
+	-Didea.home.path="$out" -cp "$out/runksp-classes:$out/kc-aa.jar:$deps$procs"
+diff -u "$here/test/ic/dirty.txt" "$out/ic-gradle/dirty.txt"
+echo "incremental, outputs deleted: ok ($(wc -l < "$out/ic-gradle/dirty.txt") of $(find "$here/test/ic/src" -type f | wc -l) files dirty)"
 if [ "$mode" = stock ]; then
 	icrun "$out/stock-ic" java -Dksp.languageVersion=2.3 -cp "$out/runksp-stock$procs$stockcp"
 	{ diff "$here/test/ic/dirty.txt" "$out/stock-ic/dirty.txt" || true; } | grep '^[<>]' > "$out/stock-ic.diff" || true
@@ -356,21 +366,13 @@ stock dagger "$here/test/dagger/src" \
 
 # Room's processor (XProcessing, KotlinPoet output) over test/room/src,
 # and Hilt's with Dagger's over test/hilt/src: the class paths Gradle
-# resolves for room-compiler 2.8.4 and hilt-compiler 2.59.2, but for KSP's
-# API and the Kotlin standard library, which KSP provides. On kc, Room's
-# kotlinx-serialization is the one KSP's fork already has.
-roomlibs=$lib/kotlin-stdlib-2.4.21.jar$(jars androidx.room:room-runtime-jvm:2.8.4 androidx.room:room-common-jvm:2.8.4 \
-	androidx.collection:collection-jvm:1.5.0 androidx.sqlite:sqlite-jvm:2.6.2 androidx.annotation:annotation-jvm:1.9.1 \
-	org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.8.1 org.jetbrains:annotations:23.0.0)
-procs=$(jars androidx.room:room-migration-jvm:2.8.4 androidx.room:room-common-jvm:2.8.4 androidx.room:room-external-antlr:2.8.4 \
-	androidx.room:room-compiler-processing:2.8.4 androidx.room:room-compiler:2.8.4 com.google.auto:auto-common:1.2.1 \
-	com.google.auto.value:auto-value-annotations:1.6.3 com.intellij:annotations:12.0 com.squareup:kotlinpoet-javapoet:2.0.0 \
-	com.squareup:javapoet:1.13.0 commons-codec:commons-codec:1.15 org.jetbrains.kotlin:kotlin-metadata-jvm:2.2.0 \
-	com.squareup:kotlinpoet-jvm:2.0.0 org.jetbrains.kotlin:kotlin-reflect:2.0.10 androidx.annotation:annotation-jvm:1.9.1 \
-	org.xerial:sqlite-jdbc:3.41.2.2 com.google.guava:guava:33.2.1-jre org.jspecify:jspecify:1.0.0 org.jetbrains:annotations:13.0 \
-	com.google.guava:failureaccess:1.0.2 com.google.code.findbugs:jsr305:3.0.2 org.checkerframework:checker-qual:3.42.0 \
-	com.google.errorprone:error_prone_annotations:2.26.1)
-serialization=$(jars org.jetbrains.kotlinx:kotlinx-serialization-core-jvm:1.8.1 org.jetbrains.kotlinx:kotlinx-serialization-json-jvm:1.8.1)
+# resolves for room-compiler 2.8.4 (room-jars.sh) and hilt-compiler
+# 2.59.2 (hilt-jars.sh), but for KSP's API and the Kotlin standard
+# library, which KSP provides.
+. "$here/room-jars.sh"
+roomlibs=$lib/kotlin-stdlib-2.4.21.jar$(jars "${room_libs[@]}")
+procs=$(jars "${room_procs[@]}")
+serialization=$(jars "${room_serialization[@]}")
 rm -rf "$out/room"
 LD_PRELOAD=$java_home/lib/libjsig.so java -Dksp.backend=kc -Dkc.lib="$out/libkc.so" -Didea.home.path="$out" \
 	-cp "$out/runksp-classes$procs:$out/kc-aa.jar:$deps" RunKspKt "$here/test/room/src" "$out/room" "$roomlibs" \
@@ -380,16 +382,9 @@ diff -ru "$here/test/room/want" "$out/room"
 echo "room: ok"
 stock room "$here/test/room/src" "$roomlibs" "$procs$serialization"
 
-hiltlibs=$lib/kotlin-stdlib-2.4.21.jar$(jars com.google.dagger:hilt-core:2.59.2 com.google.dagger:dagger:2.59.2 \
-	com.google.code.findbugs:jsr305:3.0.2 jakarta.inject:jakarta.inject-api:2.0.1 javax.inject:javax.inject:1 org.jspecify:jspecify:1.0.0)
-procs=$(jars com.google.dagger:hilt-compiler:2.59.2 com.google.dagger:dagger-compiler:2.59.2 com.google.dagger:dagger-spi:2.59.2 \
-	com.google.dagger:dagger:2.59.2 com.google.googlejavaformat:google-java-format:1.33.0 com.google.guava:guava:33.0.0-jre \
-	com.google.code.findbugs:jsr305:3.0.2 com.google.guava:failureaccess:1.0.2 com.squareup:javapoet:1.13.0 \
-	javax.inject:javax.inject:1 net.ltgt.gradle.incap:incap:0.2 org.jetbrains.kotlin:kotlin-metadata-jvm:2.2.20 \
-	com.squareup:kotlinpoet:1.11.0 org.jetbrains.kotlin:kotlin-reflect:1.6.10 org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.0 \
-	org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.8.0 jakarta.inject:jakarta.inject-api:2.0.1 org.jspecify:jspecify:1.0.0 \
-	org.checkerframework:checker-compat-qual:2.5.3 org.checkerframework:checker-qual:3.41.0 \
-	com.google.errorprone:error_prone_annotations:2.23.0 org.jetbrains:annotations:13.0)
+. "$here/hilt-jars.sh"
+hiltlibs=$lib/kotlin-stdlib-2.4.21.jar$(jars "${hilt_libs[@]}")
+procs=$(jars "${hilt_procs[@]}")
 rm -rf "$out/hilt"
 LD_PRELOAD=$java_home/lib/libjsig.so java -Dksp.backend=kc -Dkc.lib="$out/libkc.so" -Didea.home.path="$out" \
 	-cp "$out/runksp-classes$procs:$out/kc-aa.jar:$deps" RunKspKt "$here/test/hilt/src" "$out/hilt" "$hiltlibs" \
