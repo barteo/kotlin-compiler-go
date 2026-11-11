@@ -110,14 +110,14 @@ func TestLibraryClass(t *testing.T) {
   8 imports v0 m0 f0x0: kotlin/Array<out kotlin/String>
 1 AbstractList [kotlin/collections/AbstractList] v0 m2 f0x0 @kotlin/SinceKotlin(version = "1.1") <out E> : kotlin/collections/AbstractCollection<E> kotlin/collections/List<E>
   10 <init> v2 m0 f0x1000000
-  8 size v0 m2 f0x0: kotlin/Int
   7 get v0 m2 f0x200 (index: kotlin/Int): E
+  8 size v0 m2 f0x0: kotlin/Int
 1 AbstractCoroutineContextKey [kotlin/coroutines/AbstractCoroutineContextKey] v0 m2 f0x0 @kotlin/SinceKotlin(version = "1.3") @kotlin/ExperimentalStdlibApi() @kotlin/Deprecated(message = "Polymorphic coroutine context keys are error-prone, difficult to implement correctly, and can encourage depending on implementation details. Prefer retrieving the element by its base key and casting it explicitly when needed or introducing a dedicated extension property.") @kotlin/DeprecatedSinceKotlin(warningSince = "2.4") <B : kotlin/coroutines/CoroutineContext.Element> <E : B> : kotlin/coroutines/CoroutineContext.Key<E>
   10 <init> v0 m0 f0x1000000 (baseKey: kotlin/coroutines/CoroutineContext.Key<B>, safeCast: kotlin/Function1<kotlin/coroutines/CoroutineContext.Element, E?>)
-  8 safeCast v1 m0 f0x2000000: kotlin/Function1<kotlin/coroutines/CoroutineContext.Element, E?>
-  8 topmostKey v1 m0 f0x2000000: kotlin/coroutines/CoroutineContext.Key<*>
   7 tryCast v3 m0 f0x0 (element: kotlin/coroutines/CoroutineContext.Element): E?
   7 isSubKey v3 m0 f0x0 (key: kotlin/coroutines/CoroutineContext.Key<*>): kotlin/Boolean
+  8 safeCast v1 m0 f0x2000000: kotlin/Function1<kotlin/coroutines/CoroutineContext.Element, E?>
+  8 topmostKey v1 m0 f0x2000000: kotlin/coroutines/CoroutineContext.Key<*>
 `
 	if got := sb.String(); got != want {
 		t.Errorf("got:\n%s\nwant:\n%s", got, want)
@@ -233,8 +233,8 @@ func TestLibraryBuiltins(t *testing.T) {
   7 hashCode v0 m1 f0x0: kotlin/Int
   7 toString v0 m1 f0x0: kotlin/String
 1 String [kotlin/String] v0 m0 f0x0 : java/io/Serializable kotlin/Comparable<kotlin/String> kotlin/CharSequence
-  8 length v0 m1 f0x0: kotlin/Int
   7 get v0 m1 f0x200 (index: kotlin/Int): kotlin/Char
+  8 length v0 m1 f0x0: kotlin/Int
   3 Companion [kotlin/String.Companion] v0 m0 f0x800001 : kotlin/Any
 1 Int [kotlin/Int] v0 m0 f0x0 : kotlin/Number kotlin/Comparable<kotlin/Int>
   7 inc v0 m0 f0x200: kotlin/Int
@@ -242,7 +242,6 @@ func TestLibraryBuiltins(t *testing.T) {
   3 Companion [kotlin/Int.Companion] v0 m0 f0x800001 : kotlin/Any
     8 MAX_VALUE v0 m0 f0x2000: kotlin/Int
 2 List [kotlin/collections/List] v0 m2 f0x0 <out E> : kotlin/collections/Collection<E>
-  8 size v0 m2 f0x0: kotlin/Int
   7 isEmpty v0 m2 f0x0: kotlin/Boolean
   7 contains v0 m2 f0x200 (element: E): kotlin/Boolean
   7 iterator v0 m2 f0x200: kotlin/collections/Iterator<E>
@@ -253,19 +252,20 @@ func TestLibraryBuiltins(t *testing.T) {
   7 listIterator v0 m2 f0x0: kotlin/collections/ListIterator<E>
   7 listIterator v0 m2 f0x0 (index: kotlin/Int): kotlin/collections/ListIterator<E>
   7 subList v0 m2 f0x0 (fromIndex: kotlin/Int, toIndex: kotlin/Int): kotlin/collections/List<E>
+  8 size v0 m2 f0x0: kotlin/Int
   7 spliterator v0 m1 f0x400000: java/util/Spliterator<E!>!
   7 getFirst v0 m1 f0x400000: E!
   7 getLast v0 m1 f0x400000: E!
 2 Map [kotlin/collections/Map] v0 m2 f0x0 <K> <out V> : kotlin/Any
-  8 size v0 m2 f0x0: kotlin/Int
-  8 keys v0 m2 f0x0: kotlin/collections/Set<K>
-  8 values v0 m2 f0x0: kotlin/collections/Collection<V>
-  8 entries v0 m2 f0x0: kotlin/collections/Set<kotlin/collections/Map.Entry<K, V>>
   7 isEmpty v0 m2 f0x0: kotlin/Boolean
   7 containsKey v0 m2 f0x0 (key: K): kotlin/Boolean
   7 containsValue v0 m2 f0x0 (value: V): kotlin/Boolean
   7 get v0 m2 f0x200 (key: K): V?
   7 getOrDefault v0 m1 f0x0 (key: K, defaultValue: V): V
+  8 size v0 m2 f0x0: kotlin/Int
+  8 keys v0 m2 f0x0: kotlin/collections/Set<K>
+  8 values v0 m2 f0x0: kotlin/collections/Collection<V>
+  8 entries v0 m2 f0x0: kotlin/collections/Set<kotlin/collections/Map.Entry<K, V>>
   7 forEach v0 m1 f0x400000 (p0: java/util/function/BiConsumer<in K!, in V!>!): kotlin/Unit
   2 Entry [kotlin/collections/Map.Entry] v0 m2 f0x800000 <out K> <out V> : kotlin/Any
     8 key v0 m2 f0x0: K

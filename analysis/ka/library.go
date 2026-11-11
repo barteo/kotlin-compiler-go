@@ -403,14 +403,15 @@ func (l *library) kotlinDecl(kc *kmeta.Class, info *classfile.Info, det *classfi
 			}
 		}
 	}
-	for _, p := range kc.Props {
-		if p.Flags.MemberKind() != 1 {
-			d.Members = append(d.Members, l.kproperty(p, scope, bySig, consts))
-		}
-	}
+	// Functions before properties, as FIR's deserialized classes have them.
 	for _, f := range kc.Funcs {
 		if f.Flags.MemberKind() != 1 {
 			d.Members = append(d.Members, l.kfunction(f, scope, bySig))
+		}
+	}
+	for _, p := range kc.Props {
+		if p.Flags.MemberKind() != 1 {
+			d.Members = append(d.Members, l.kproperty(p, scope, bySig, consts))
 		}
 	}
 	for _, e := range kc.EnumEntries {
