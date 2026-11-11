@@ -115,35 +115,54 @@ internal class KcEnvironment(val key: String, config: KSPConfig) {
     private val files = VirtualFileManager.getInstance().getFileSystem(StandardFileSystems.FILE_PROTOCOL)
 
     /**
-     * Has the PSI of the Kotlin files at [paths] made and parsed on another
-     * thread, while the caller waits for libkc's update: the files Gradle
-     * says were modified, whose PSI the round after the update would
-     * otherwise make and parse itself. A file is read again here, and
-     * [psiFile] given libkc's hash of the same bytes takes the PSI made
-     * here; its tree waits in [trees] for the round's join. The caller
-     * touches nothing of this environment until the result is done, and
-     * a file that fails is left to the round.
+     * Has the PSI of the files at [paths] made and parsed on another
+     * thread, while the caller waits for libkc's update: the files whose
+     * PSI the round after the update would otherwise make and parse
+     * itself (KcSession.update). A file is read again here, and [psiFile]
+     * given libkc's hash of the same bytes takes the PSI made here. A
+     * Kotlin file's tree waits in [trees] for the round's join; a Java
+     * file's classes are loaded, which parses it. The PSI is made one
+     * file after another ([psiFile] isn't thread-safe), and parsed in
+     * parallel when there are many files. The caller touches nothing of
+     * this environment until the result is done, and a file that fails is
+     * left to the round.
      */
     fun parseAhead(paths: List<String>): java.util.concurrent.CompletableFuture<Void> {
         val submitted = System.nanoTime()
         return java.util.concurrent.CompletableFuture.runAsync {
             val t = KcTimer(submitted)
             t.mark("start")
-            for (p in paths) {
+            val made = paths.mapNotNull { p ->
                 try {
-                    val vf = files.refreshAndFindFileByPath(p) ?: continue
-                    t.mark("find")
-                    val kt = psiFile(vf, p) as? org.jetbrains.kotlin.psi.KtFile ?: continue
-                    t.mark("psi")
-                    trees.ahead(kt, KcRound.preorder(kt.node))
-                    t.mark("parse")
+                    files.refreshAndFindFileByPath(p)?.let { psiFile(it, p) }
                 } catch (e: Exception) {
-                    // The round makes and parses the file itself.
+                    null // The round makes the file's PSI itself.
                 }
             }
-            t.print("ahead files=${paths.size}")
+            t.mark("psi")
+            val parse = { f: PsiFile ->
+                try {
+                    when (f) {
+                        is org.jetbrains.kotlin.psi.KtFile -> trees.ahead(f, KcRound.preorder(f.node))
+                        is com.intellij.psi.PsiJavaFile -> {
+                            f.packageName
+                            fun walk(c: com.intellij.psi.PsiClass) { c.innerClasses.forEach(::walk) }
+                            f.classes.forEach(::walk)
+                        }
+                    }
+                } catch (e: Exception) {
+                    // The round parses the file itself.
+                }
+            }
+            if (made.size > SMALL_AHEAD) made.parallelStream().forEach(parse) else made.forEach(parse)
+            t.mark("parse")
+            val kt = made.count { it is org.jetbrains.kotlin.psi.KtFile }
+            t.print("ahead kt=$kt java=${made.size - kt}")
         }
     }
+
+    /** Whether [psiFile] made the PSI of the file at [path] before. */
+    fun loaded(path: String): Boolean = path in parsed
 
     /** A file's PSI's virtual file, and the hash of the bytes [psiFile] last read from it. */
     private class Parsed(val vf: VirtualFile, val hash: Long)
@@ -260,6 +279,9 @@ internal class KcEnvironment(val key: String, config: KSPConfig) {
 
         /** The sets of Java sources LibraryDecls keeps the classes of: a round's, and a few more. */
         const val MAX_JAVA = KEEP_ROUNDS + 1
+
+        /** Up to this many files, [parseAhead] parses them one after another. */
+        const val SMALL_AHEAD = 8
     }
 }
 

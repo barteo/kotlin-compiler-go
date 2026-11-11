@@ -127,6 +127,10 @@ private val noParseAhead = !System.getenv("KC_NO_PARSE_AHEAD").isNullOrEmpty()
 /** KC_NO_JAVA_DECLS=1 asks libkc for the Java sources' classes, and the names it has no class of, every round. */
 private val noJavaDecls = System.getenv("KC_NO_JAVA_DECLS") == "1"
 
+// Only the files Gradle says were modified are parsed while libkc updates,
+// as before step 59, not the new ones (for comparison).
+private val noAheadNew = System.getenv("KC_NO_AHEAD_NEW") == "1"
+
 /** The `kc` KSP backend: the Analysis API answered by kc through libkc. */
 class KcBackend : KspBackend {
     override val name: String get() = "kc"
@@ -190,16 +194,24 @@ private class KcSession(private val config: KSPConfig, @Suppress("UNUSED_PARAMET
     }
 
     /**
-     * Updates libkc's model to [paths] and builds the round over it. The
-     * PSI of [modified], the sources Gradle says changed, is made and
-     * parsed while libkc updates, unless KC_NO_PARSE_AHEAD is set.
+     * Updates libkc's model to [paths] and builds the round over it. While
+     * libkc updates, the PSI the round would make and parse after it is
+     * made and parsed (KcEnvironment.parseAhead), unless KC_NO_PARSE_AHEAD
+     * is set: that of [modified], the sources Gradle says changed, and of
+     * the sources the environment hasn't parsed yet, the Kotlin files no
+     * round joined and the Java files it never loaded. That is every file
+     * in a new environment's first round, and the generated files in the
+     * rounds after; a warm run's others are joined and loaded already.
      */
     private fun update(modified: List<String> = emptyList()) {
         val t = KcTimer()
         val (reused, reparsed) = environment.reused to environment.reparsed
         val checks = environment.reusableChecks()
         val base = environment.baseFiles()
-        val ahead = if (modified.isEmpty() || noParseAhead) null else environment.parseAhead(modified)
+        val toParse = if (noAheadNew) modified else (modified + paths.filter {
+            if (it.endsWith(".kt")) !environment.trees.has(it) else !environment.loaded(it)
+        }).distinct()
+        val ahead = if (toParse.isEmpty() || noParseAhead) null else environment.parseAhead(toParse)
         val model = try {
             KcOps.update(handle, paths.toList(), checks, base)
         } finally {

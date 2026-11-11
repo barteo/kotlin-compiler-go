@@ -1225,6 +1225,9 @@ internal class KcTrees {
         trees[f.path] = Joined(kt, f.nodes, f.kinds, tree)
     }
 
+    /** Whether a round joined a tree of the file at [path]. */
+    fun has(path: String): Boolean = trees.containsKey(path)
+
     /** Trees made before their round, by PSI ([KcEnvironment.parseAhead]): not yet checked against a model. */
     private val ahead = java.util.concurrent.ConcurrentHashMap<KtFile, Array<ASTNode>>()
 
