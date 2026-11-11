@@ -63,6 +63,9 @@ func TestOpenUpdateClose(t *testing.T) {
 	if !slices.Contains(lookups, ka.Lookup{Scope: "p", Kind: ka.PackageLookup, Name: "A"}) {
 		t.Errorf("lookups %v: no A in p", lookups)
 	}
+	if nodes, kinds := r.Uint(), r.Uint(); nodes < 10 || kinds == 0 {
+		t.Errorf("nodes %d, kinds %x", nodes, kinds)
+	}
 	if n := r.Uint(); n != 0 {
 		t.Errorf("%d diagnostics", n)
 	}
@@ -139,6 +142,9 @@ func readAnnotation(r *wire.Reader) *ka.Annotation {
 	for n := r.Uint(); n > 0 && r.Err() == nil; n-- {
 		a.Args = append(a.Args, ka.NamedValue{Name: r.String(), Value: readValue(r)})
 	}
+	for n := r.Uint(); n > 0 && r.Err() == nil; n-- {
+		a.TypeArgs = append(a.TypeArgs, readType(r))
+	}
 	return a
 }
 
@@ -155,7 +161,7 @@ func TestValues(t *testing.T) {
 			{Kind: ka.ValueAnnotation, Node: 6, Annotation: &ka.Annotation{ClassID: "p/B", Node: 6}},
 			{Kind: ka.ValueUnsupported, Node: 7},
 		}}},
-	}}
+	}, TypeArgs: []*ka.Type{{Kind: ka.TypeClass, ClassID: "kotlin/String"}, nil}}
 	var w wire.Writer
 	writeAnnotation(&w, in)
 	writeValue(&w, nil)

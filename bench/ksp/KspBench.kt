@@ -110,6 +110,9 @@ fun main(args: Array<String>) {
     val totals = mutableListOf<Long>()
     val setups = mutableListOf<Long>()
     val processes = mutableListOf<Long>()
+    // One output directory, emptied after each run, as Gradle's
+    // build/generated/ksp is the same from run to run.
+    val outBase = Files.createTempDirectory("ksp-bench").toFile()
     for (run in 1..runs) {
         if (run == jfrFrom) {
             rec = jdk.jfr.Recording()
@@ -117,7 +120,7 @@ fun main(args: Array<String>) {
             rec.enable("jdk.NativeMethodSample").withPeriod(Duration.ofMillis(1))
             rec.start()
         }
-        val out = Files.createTempDirectory("ksp-bench").toFile()
+        val out = File(outBase, "out")
         val providers = ServiceLoader.load(SymbolProcessorProvider::class.java).map { TimedProvider(it) }
         if (providers.isEmpty()) {
             System.err.println("KspBench: no SymbolProcessorProvider on the class path")
@@ -168,6 +171,7 @@ fun main(args: Array<String>) {
             exitProcess(1)
         }
     }
+    outBase.deleteRecursively()
     rec?.let {
         it.stop()
         it.dump(File("bench.jfr").toPath())
