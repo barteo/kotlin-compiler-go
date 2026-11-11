@@ -43,7 +43,7 @@ func (c *Checker) refShapes(l *syntax.Lambda) []types.Type {
 	return c.memberRefShapes(cls, r.Name)
 }
 
-// refKinds reports whether reference l, ::name or C::name, names a
+// refKinds reports whether reference l, ::name, C::name or a.b.C::name, names a
 // function and whether it names a property, and false for known when kc
 // can't tell without checking it. A reference that names only properties
 // isn't a KFunction, and one that names only functions isn't a
@@ -61,21 +61,30 @@ func (c *Checker) refKinds(l *syntax.Lambda) (fun, prop, known bool) {
 		fs, _ := c.scope.findFuns(r.Name)
 		return len(fs) > 0 || len(c.topFuns(r.Name)) > 0, c.topVar(r.Name) != nil, true
 	}
-	id, ok := r.X.(*syntax.Ident)
-	if !ok || c.isVar(id.Name) {
-		return false, false, false
+	var cls *types.ClassSym
+	switch x := r.X.(type) {
+	case *syntax.Ident:
+		if !c.isVar(x.Name) {
+			cls = c.lookupClass(x.Name)
+		}
+	case *syntax.Member:
+		cls = c.classRef(x) // a.b.C::name, C.Companion::name
 	}
-	cls := c.lookupClass(id.Name)
 	if cls == nil {
 		return false, false, false
 	}
 	cls.Ensure()
+	if r.Name == "length" && c.isCharSequence(cls) || r.Name == "size" && c.hasSize(cls) {
+		return false, true, true // Kotlin's properties of Java's methods
+	}
 	prop = c.memberProp(cls, r.Name) != nil
+	static := false
 	cls.Supertypes(func(s *types.ClassSym) bool {
 		prop = prop || s.KProps[r.Name] != nil
-		return !prop
+		static = static || len(s.Statics[r.Name]) > 0 // a Java class's static method: UUID::randomUUID
+		return true
 	})
-	return len(c.javaMethods(cls, r.Name)) > 0 || len(c.extCallees(r.Name, cls.This())) > 0, prop, true
+	return static || len(c.javaMethods(cls, r.Name)) > 0 || len(c.extCallees(r.Name, cls.This())) > 0, prop, true
 }
 
 // topRefShapes returns the types of ::name, naming top-level functions or
