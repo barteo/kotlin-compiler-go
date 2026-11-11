@@ -374,11 +374,17 @@ func (g *gen) stubAccess() uint16 {
 }
 
 // staticStub generates the static method of descriptor d that calls the
-// method of companion comp with the same name and descriptor.
+// method of companion comp with the same name and descriptor: a private
+// one for a private method, which it calls through its accessor, as
+// kotlinc does.
 func (g *gen) staticStub(fd *syntax.FunDecl, comp *types.ClassSym, d string, varargs bool, params []*types.VarSym) {
 	access := g.stubAccess() | synthetic(&fd.Modifiers)
 	if varargs {
 		access |= cf.AccVarargs
+	}
+	private := fd.Sym.Private && !fd.Sym.External
+	if private {
+		access = access&^cf.AccPublic | cf.AccPrivate
 	}
 	name := fd.Sym.JVM()
 	if fd.Sym.External && d == funDesc(fd.Sym) {
@@ -399,7 +405,13 @@ func (g *gen) staticStub(fd *syntax.FunDecl, comp *types.ClassSym, d string, var
 	for _, pd := range descParams(d) {
 		g.code.Local(loadOpOf(pd), g.code.AllocLocal(pd))
 	}
-	g.code.Invoke(cf.INVOKEVIRTUAL, comp.Name, name, d)
+	if private {
+		// The companion's private method, through its accessor.
+		g.shared.methods[privateMethod{class: comp.Name, name: name, desc: d}] = true
+		g.code.Invoke(cf.INVOKESTATIC, comp.Name, "access$"+name, "(L"+comp.Name+";"+d[1:])
+	} else {
+		g.code.Invoke(cf.INVOKEVIRTUAL, comp.Name, name, d)
+	}
 	g.code.Op(returnOpOf(d[strings.IndexByte(d, ')')+1:]))
 	g.check()
 }
