@@ -4849,7 +4849,6 @@ medians:
 
 | ms | Moshi on | Moshi off | Hilt on | Hilt off | Room on | Room off |
 |---|---|---|---|---|---|---|
-| environment | 676 (all three projects) | 597 (all three projects) | | | | |
 | round 1 | 375 | 457 | 429 | 500 | 497 | 627 |
 | setup | 1412 | 1428 | 1458 | 1448 | 1620 | 1694 |
 | cold run | 5981 | 6067 | 8515 | 8697 | 12371 | 12779 |
@@ -4861,7 +4860,8 @@ What the A/B shows:
   for step 59's parse, which needs the environment and so can't start
   before it.
 - **The environment loses about as much.** Beside libkc's update it
-  slowed by about 80 ms. Setup, where the change lands, moved by −16,
+  slowed by about 80 ms: a median of 676 ms against 597, over all three
+  projects' 36 JVMs per arm. Setup, where the change lands, moved by −16,
   +10 and −74 ms.
 - **The totals' differences aren't the change's.** They come from
   processing and round 2, which it doesn't touch.
