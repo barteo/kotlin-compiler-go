@@ -1,6 +1,7 @@
 package codegen
 
 import (
+	"maps"
 	"sync"
 
 	cf "github.com/barteo/kotlin-compiler-go/internal/classfile"
@@ -169,6 +170,7 @@ func (g *gen) inlineBody(x *syntax.Call, d *syntax.FunDecl) {
 	if len(g.reifiedArgs(x, f)) > 0 {
 		g.nameObjects(d)
 	}
+	defer g.copySerializers(x, f)()
 	c := g.code
 	saved := g.saveSlots(d)
 	defer g.restoreSlots(saved)
@@ -389,6 +391,83 @@ func (g *gen) reifiedArgs(x *syntax.Call, f *types.FunSym) types.Subst {
 		}
 	}
 	return s
+}
+
+// callSerializers returns the serializers of the type arguments of call
+// x for the reified type parameters of f, by their names: those the
+// checker found (syntax.Call.Serializers), and those of the type
+// parameters of the copies being generated that the call passes on, as
+// decode<T>() in a copy for a T whose serializer is known.
+func (g *gen) callSerializers(x *syntax.Call, f *types.FunSym) map[string]syntax.Expr {
+	out := x.Serializers
+	if len(g.shared.serializers) == 0 {
+		return out
+	}
+	cloned := false
+	for i, tp := range f.TypeParams {
+		if !tp.Reified || i >= len(x.Reified) || out[tp.Name] != nil {
+			continue
+		}
+		if v := g.paramSerializer(x.Reified[i]); v != nil {
+			if !cloned {
+				out, cloned = maps.Clone(out), true
+				if out == nil {
+					out = map[string]syntax.Expr{}
+				}
+			}
+			out[tp.Name] = v
+		}
+	}
+	return out
+}
+
+// paramSerializer returns the serializer of the type argument that a
+// copy being generated has for t, one of its reified type parameters, or
+// nil.
+func (g *gen) paramSerializer(t types.Type) syntax.Expr {
+	if !t.IsParam() || t.N {
+		return nil
+	}
+	return g.shared.serializers[t.Param()]
+}
+
+// copySerializers records, while a copy of the program's inline function
+// f for call x is generated, the serializers of the call's type
+// arguments, which serializer<T>() in the copy is then, as the
+// serialization plugin replaces it. It returns the function that forgets
+// them.
+func (g *gen) copySerializers(x *syntax.Call, f *types.FunSym) func() {
+	sers := g.callSerializers(x, f)
+	if len(sers) == 0 {
+		return func() {}
+	}
+	if g.shared.serializers == nil {
+		g.shared.serializers = map[*types.TypeParamSym]syntax.Expr{}
+	}
+	saved := map[*types.TypeParamSym]syntax.Expr{}
+	for _, tp := range f.TypeParams {
+		if v := sers[tp.Name]; v != nil && tp.Reified {
+			saved[tp] = g.shared.serializers[tp]
+			g.shared.serializers[tp] = v
+		}
+	}
+	return func() {
+		for tp, v := range saved {
+			if v == nil {
+				delete(g.shared.serializers, tp)
+			} else {
+				g.shared.serializers[tp] = v
+			}
+		}
+	}
+}
+
+// isSerializerCall reports whether x calls kotlinx.serialization's
+// serializer<T>().
+func isSerializerCall(x *syntax.Call) bool {
+	f := x.Sym
+	return f != nil && f.Name == "serializer" && !f.Ext && f.Owner == nil && len(f.Params) == 0 && len(x.Reified) == 1 &&
+		f.Facade == "kotlinx/serialization/SerializersKt"
 }
 
 // reify substitutes the reified type parameters of the copy being

@@ -172,6 +172,10 @@ type fileState struct {
 	// convertedArg.
 	inlinedConvs map[*syntax.Call]*types.VarSym
 	count        map[string]int // lambdas named with each class and prefix
+	// serializers are the serializers of the type arguments of the
+	// reified type parameters of the program's inline functions whose
+	// copies are being generated: see copySerializers.
+	serializers map[*types.TypeParamSym]syntax.Expr
 	// lambdasIn are the lambdas of the inline functions the file copies,
 	// by function: see declaredInCopy.
 	lambdasIn map[*syntax.FunDecl]map[*syntax.Lambda]bool

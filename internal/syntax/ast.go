@@ -1310,10 +1310,10 @@ type Call struct {
 	// replaces with an expression, which is generated instead: the
 	// serialization plugin's serializer<T>() of a known T.
 	Value Expr
-	// Serializers are set by the checker on a call of a library's inline
-	// function with reified type parameters, by their names: the
-	// serializers of their type arguments, which its copied bytecode's
-	// serializer<T>() becomes, as the serialization plugin replaces it.
+	// Serializers are set by the checker on a call of an inline function
+	// with reified type parameters, by their names: the serializers of
+	// their type arguments, which serializer<T>() in its copy becomes, as
+	// the serialization plugin replaces it.
 	Serializers map[string]Expr
 	trailing    bool // has a trailing lambda, or passes the last argument last
 }

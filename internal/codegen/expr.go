@@ -1887,6 +1887,13 @@ func (g *gen) call(x *syntax.Call) {
 		g.coerce(x.Value.Type(), x.T)
 		return
 	}
+	if len(g.shared.serializers) > 0 && isSerializerCall(x) {
+		if v := g.paramSerializer(x.Reified[0]); v != nil {
+			g.expr(v)
+			g.coerce(v.Type(), x.T)
+			return
+		}
+	}
 	if unconverted(x) != syntax.Expr(x) {
 		if l, _ := g.forwarded(x); l != nil {
 			g.code.Op(cf.ACONST_NULL) // see ident

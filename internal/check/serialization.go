@@ -1128,11 +1128,12 @@ func (c *Checker) serializerOf(x *syntax.Call, f *types.FunSym) {
 	x.Value = c.knownSerializer(x.P, x.Reified[0])
 }
 
-// reifiedSerializers sets x.Serializers, if f is a library's inline
-// function, whose bytecode's serializer<T>() calls kc replaces when it
-// copies them.
+// reifiedSerializers sets x.Serializers, if f is an inline function,
+// whose serializer<T>() calls kc replaces when it copies them: those of
+// a library's bytecode, and those of the program's function, also in the
+// inline functions it passes T on to.
 func (c *Checker) reifiedSerializers(x *syntax.Call, f *types.FunSym) {
-	if !c.u.serialization || f.Decl != nil || x.Value != nil {
+	if !c.u.serialization || x.Value != nil {
 		return
 	}
 	for i, tp := range f.TypeParams {
