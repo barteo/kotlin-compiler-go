@@ -960,9 +960,9 @@ func TestParcelize(t *testing.T) {
 	}
 
 	// A property of a type that kc doesn't write as the plugin does
-	// leaves the class to kotlinc: also one that is Parcelable or
-	// Serializable, but that the plugin writes in a way of its own.
-	for _, typ := range []string{"IntArray", "Array<Int>", "CharSequence", "java.util.TreeMap<String, Int>", "java.util.LinkedList<Int>", "IntRange"} {
+	// leaves the class to kotlinc: one that the plugin writes in a way of
+	// its own, such as a range, which is Serializable, or with writeValue.
+	for _, typ := range []string{"IntRange", "kotlin.time.Duration", "Any", "List<Any>", "Map<String, Iterable<Int>>", "List<@kotlinx.parcelize.DataClass Pair<Int, Int>>"} {
 		t.Run("unsupported "+typ, func(t *testing.T) {
 			src := filepath.Join(t.TempDir(), "a.kt")
 			os.WriteFile(src, []byte("import android.os.Parcelable\nimport kotlinx.parcelize.Parcelize\n\n"+

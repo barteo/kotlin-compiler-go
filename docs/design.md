@@ -327,5 +327,6 @@ depend on property types once those are known:
 - **kotlinx.serialization** (`check/serialization.go`, `codegen/serial.go`):
   the `$serializer` object, `serializer()`, `write$Self` and the
   deserialization constructor.
-- **Parcelize** (`check/parcelize.go`): `writeToParcel`, a `C$Creator`
-  class and `CREATOR`.
+- **Parcelize** (`check/parcelize.go`): `describeContents`,
+  `writeToParcel`, a `C$Creator` class and `CREATOR`, which write and read
+  each property as kotlinc's serializer for its type does.

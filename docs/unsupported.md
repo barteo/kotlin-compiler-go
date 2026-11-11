@@ -78,13 +78,12 @@ S::class)` get their `serializer()`.
 
 ## Parcelize (`-parcelize`)
 
-Not supported: other types than `String`, the primitive types, enums,
-`Parcelable`s, `Serializable`s, `Array<String>`, and `List`,
-`MutableList`, `ArrayList`, `Set`, `MutableSet`, `LinkedHashSet`, `Map`,
-`MutableMap`, `LinkedHashMap` and `HashMap` of these (so not other
-arrays, `CharSequence`, `Bundle`...); custom `Parceler`s;
-`@TypeParceler`, `@WriteWith` and `@RawValue`; generic `@Parcelize`
-classes.
+Not supported: properties of value classes, of the types that the
+plugin writes in ways of its own that `kc` doesn't (ranges, `Duration`,
+`Uuid`, unsigned integers and kotlinx.collections.immutable's
+collections), and of types it writes with `writeValue`; custom
+`Parceler`s; `@TypeParceler`, `@WriteWith` and `@RawValue`; generic
+`@Parcelize` classes.
 
 ## Compose (`-compose`)
 
@@ -242,3 +241,11 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   primitive (`int`) to its `-impl` methods.
 - Annotations on local variables, type parameters, types and
   expressions aren't written, nor are `@[A B]` lists.
+
+**Compiler plugins**
+
+- The parcelize plugin reads a `FileDescriptor` with
+  `Parcel.readFileDescriptor()`, which returns a `ParcelFileDescriptor`.
+  `kotlinc` casts it to `FileDescriptor`, which fails, except for the
+  elements of collections and arrays, which it leaves uncast; `kc` casts
+  those too.

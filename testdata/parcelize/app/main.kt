@@ -1,4 +1,13 @@
+import android.os.Binder
+import android.os.Bundle
 import android.os.Parcel
+import android.os.PersistableBundle
+import android.util.Size
+import android.util.SizeF
+import android.util.SparseArray
+import android.util.SparseBooleanArray
+import android.util.SparseIntArray
+import android.util.SparseLongArray
 import android.os.Parcelable
 import java.math.BigDecimal
 import lib.LibOpen
@@ -66,8 +75,52 @@ fun main() {
     )
     println("tone: ${Tone.LOUD.shout()} ${Tone.LOUD.code}")
 
+    roundTrip("builtins", builtins())
+    roundTrip("builtin nulls", builtins(nulls = true))
+    roundTrip("descriptors", Descriptors(null, listOf(), mapOf("k" to listOf())))
+
     // newArray makes an array of the class.
     val creator = Inner::class.java.getField("CREATOR").get(null) as Parcelable.Creator<*>
     val array = creator.newArray(2)
     println("newArray: ${array.size} ${array.javaClass.simpleName}")
+}
+
+fun builtins(nulls: Boolean = false): Builtins {
+    val bundle = Bundle()
+    bundle.putString("k", "v")
+    val pbundle = PersistableBundle()
+    pbundle.putString("p", "q")
+    val binder = Binder("b")
+    val sba = SparseBooleanArray()
+    sba.put(3, true)
+    sba.put(1, false)
+    val sia = SparseIntArray()
+    sia.put(2, 20)
+    val sla = SparseLongArray()
+    sla.put(5, 50L)
+    val sa = SparseArray<String>()
+    sa.put(7, "seven")
+    sa.put(4, "four")
+    val nsa = SparseArray<Inner?>()
+    nsa.put(1, Inner(1, "one"))
+    nsa.put(2, null)
+    val deque = ArrayDeque<String>()
+    deque.add("d")
+    val jdeque = java.util.ArrayDeque<Long>()
+    jdeque.add(8L)
+    val conc = java.util.concurrent.ConcurrentHashMap<String, Long>()
+    conc["c"] = 9L
+    return Builtins(
+        StringBuilder("cs"), if (nulls) null else "ncs", bundle, if (nulls) null else bundle, if (nulls) null else pbundle,
+        intArrayOf(1, 2), if (nulls) null else intArrayOf(3), longArrayOf(4L), floatArrayOf(1.5f), doubleArrayOf(2.5),
+        booleanArrayOf(true, false), byteArrayOf(5), charArrayOf('x'), shortArrayOf(6, 7), if (nulls) null else shortArrayOf(8),
+        arrayOf(9L, 10L), if (nulls) null else arrayOf(11, null), arrayOf(Inner(2, "two")), arrayOf(Color.RED, null),
+        binder, if (nulls) null else binder, arrayOf(binder), listOf(binder),
+        Size(1, 2), if (nulls) null else Size(3, 4), SizeF(1.5f, 2.5f), sba, if (nulls) null else sba,
+        sia, if (nulls) null else sia, sla, sa, if (nulls) null else nsa,
+        hashSetOf(12), deque, jdeque, sortedSetOf("b", "a"),
+        if (nulls) null else java.util.TreeSet(listOf(14, 13)), java.util.TreeMap(mapOf("t" to 15)), sortedMapOf(16 to Inner(3, "three")),
+        conc, Marker, if (nulls) null else Marker,
+        StringBuilder("sb"), java.util.LinkedList(listOf(17)), Twice,
+    )
 }

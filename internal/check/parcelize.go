@@ -36,9 +36,19 @@ import (
 // An enum class's are its name, which createFromParcel looks up with
 // valueOf. A sealed class or interface annotated @Parcelize gets nothing,
 // but the plugin makes its direct subclasses Parcelable as if they were
-// annotated too (parcelizeSealed).
+// annotated too (parcelizeSealed). describeContents returns 1 if a
+// property holds a java.io.FileDescriptor (parcelDescribe).
 //
-// Types that the plugin writes in ways kc doesn't are unsupported, as
+// How each property is written is the serializer that kotlinc's
+// IrParcelSerializerFactory picks for its type (serializer): by the
+// exact class for String, CharSequence, Bundle, the primitives, their
+// arrays, Android's Size and sparse arrays, and the collections it
+// knows; then Parcelables, binders, objects, enums, functions and
+// Serializables.
+//
+// Value classes, the types that the plugin writes in ways kc doesn't
+// (ranges, Duration, Uuid, the unsigned integers and kotlinx's immutable
+// collections) and those it writes with writeValue are unsupported, as
 // are custom Parcelers, @TypeParceler, @WriteWith and @RawValue.
 
 // parcelize adds the members of the file's classes annotated @Parcelize,
@@ -300,14 +310,17 @@ func setPos(v reflect.Value, p syntax.Pos) {
 }
 
 // parcelBody writes the body of a parcelize function, d, of class cls:
-// writeToParcel, which writes the class's properties, or Creator's
-// createFromParcel, which reads them.
+// writeToParcel, which writes the class's properties, Creator's
+// createFromParcel, which reads them, or describeContents.
 func (c *Checker) parcelBody(d *syntax.FunDecl, cls *types.ClassSym) {
 	if !d.Plugin || cls == nil {
 		return
 	}
 	var target *types.ClassSym
 	switch {
+	case d.Name == "describeContents":
+		c.parcelDescribe(d, cls)
+		return
 	case d.Name == "writeToParcel":
 		target = cls
 	case d.Name == "createFromParcel" && cls.Outer != nil:
@@ -327,9 +340,15 @@ func (c *Checker) parcelBody(d *syntax.FunDecl, cls *types.ClassSym) {
 			g.stmt("dest.writeInt(1)")
 		}
 		for _, p := range cd.CtorParams {
+			if a := parcelDataClass(p.Type); a != nil {
+				c.unsupported(a.P, "parcelize", "@DataClass is not supported")
+				return
+			}
 			v := g.fresh("v")
 			g.stmt("val %s = this.`%s`", v, p.Name)
-			g.write(p.Sym.Type, v)
+			if ser := g.serializer(p.Sym.Type); ser != nil {
+				g.write(ser, p.Sym.Type, v)
+			}
 		}
 	default:
 		if target.Object {
@@ -339,7 +358,11 @@ func (c *Checker) parcelBody(d *syntax.FunDecl, cls *types.ClassSym) {
 			args := make([]string, len(cd.CtorParams))
 			for i, p := range cd.CtorParams {
 				args[i] = g.fresh("a")
-				g.stmt("val %s = %s", args[i], g.read(p.Sym.Type))
+				x := "null!!"
+				if ser := g.serializer(p.Sym.Type); ser != nil {
+					x = g.read(ser, p.Sym.Type)
+				}
+				g.stmt("val %s = %s", args[i], x)
 			}
 			g.stmt("return %s(%s)", g.fq, strings.Join(args, ", "))
 		}
@@ -373,6 +396,53 @@ func (c *Checker) parcelBody(d *syntax.FunDecl, cls *types.ClassSym) {
 	d.Body = body
 }
 
+// parcelDescribe writes the body of describeContents, d, of class cls:
+// CONTENTS_FILE_DESCRIPTOR, 1, if one of its properties holds a
+// java.io.FileDescriptor, as kotlinc's, and otherwise 0, which the body
+// that addParcelMembers declares returns.
+func (c *Checker) parcelDescribe(d *syntax.FunDecl, cls *types.ClassSym) {
+	cd := cls.Decl.(*syntax.ClassDecl)
+	if cd.Enum {
+		return
+	}
+	for _, p := range cd.CtorParams {
+		if p.Sym != nil && parcelFileDescriptors(p.Sym.Type) {
+			members, err := parseMembers(c.file.Path, cd.P, "fun f(): kotlin.Int {\nreturn 1\n}\n")
+			if err != nil {
+				c.errorf(cd.P, "parcelize: %v", err)
+				return
+			}
+			d.Body, d.ExprBody = members[0].(*syntax.FunDecl).Body, nil
+			return
+		}
+	}
+}
+
+// parcelDataClass returns an annotation @kotlinx.parcelize.DataClass in
+// type ref, at any depth, with which the plugin writes a data class by its
+// properties, or nil.
+func parcelDataClass(ref *syntax.TypeRef) *syntax.Annotation {
+	if ref == nil {
+		return nil
+	}
+	for i := range ref.Annotations {
+		if a := &ref.Annotations[i]; a.Name == "DataClass" || a.Name == "kotlinx.parcelize.DataClass" {
+			return a
+		}
+	}
+	for _, a := range ref.Args {
+		if a := parcelDataClass(a.Type); a != nil {
+			return a
+		}
+	}
+	for _, r := range append([]*syntax.TypeRef{ref.Ret, ref.Recv, ref.Outer, ref.And}, ref.Params...) {
+		if a := parcelDataClass(r); a != nil {
+			return a
+		}
+	}
+	return nil
+}
+
 // parcelGen writes the Kotlin of a parcelize function's body: Parcel's
 // methods called on dest, in writeToParcel, or parcel, in
 // createFromParcel.
@@ -404,105 +474,256 @@ func (g *parcelGen) fail(t types.Type) {
 	}
 }
 
-// A parcelKind is how the plugin writes a type.
+// A parcelKind is how the plugin writes a type: the IrParcelSerializer
+// that kotlinc's IrParcelSerializerFactory picks for it.
 type parcelKind uint8
 
 const (
-	parcelUnsupported  parcelKind = iota
-	parcelString                  // writeString, which takes null
-	parcelPrimitive               // writeInt and the others
-	parcelEnum                    // writeString(name)
-	parcelStringList              // writeStringList, which takes null
-	parcelStringArray             // writeStringArray, which takes null
-	parcelEfficient               // a final Parcelable of the module's: its writeToParcel and CREATOR
-	parcelGeneric                 // writeParcelable, which takes null
-	parcelSerializable            // writeSerializable, which takes null
-	parcelList                    // the size and the elements
-	parcelSet
-	parcelMap
+	parcelSimple       parcelKind = iota // dest.write(v) and parcel.read()
+	parcelPrimitive                      // writeInt and the others; Boolean, Short and Char as Ints
+	parcelLoader                         // dest.write(v) and parcel.read(classLoader): Bundle, PersistableBundle
+	parcelCharSequence                   // TextUtils.writeToParcel and CHAR_SEQUENCE_CREATOR
+	parcelEnum                           // writeString(name)
+	parcelEfficient                      // a final Parcelable of the module's: its writeToParcel and CREATOR
+	parcelGeneric                        // writeParcelable, which takes null
+	parcelObject                         // writeInt(1), and the object
+	parcelArray                          // the size and the elements: ShortArray and Array<T>
+	parcelSparse                         // the size and each key and value: SparseIntArray, SparseLongArray, SparseArray<T>
+	parcelCollection                     // the size and the elements: lists and sets
+	parcelMap                            // the size and each key and value
 )
 
-// kind returns how the plugin writes a value of (non-null) type t, and
-// for a collection, the class it reads it into.
-func (g *parcelGen) kind(t types.Type) (parcelKind, string) {
+// A parcelSer is how the plugin writes a type, and its elements'.
+type parcelSer struct {
+	kind parcelKind
+	// nullAware is set if the plugin writes a null of a nullable type
+	// as a null marker, 0, and a value as 1 before it, rather than as the
+	// value itself.
+	nullAware bool
+	// write and read are the Parcel methods of parcelSimple and
+	// parcelLoader. A parcelSimple value read is cast to the type if cast
+	// is set, and a value written to wcast if it isn't empty.
+	write, read string
+	cast        bool
+	wcast       string
+	// coll is the class that parcelSparse, parcelCollection and parcelMap
+	// read into, with type arguments, and capacity whether its
+	// constructor takes the size.
+	coll     string
+	capacity bool
+	// elem writes the elements (a map's values), and key a map's keys.
+	elem, key *parcelSer
+}
+
+// parcelCollections are the classes the plugin writes as lists, sets and
+// maps, by Kotlin or JVM name: the class it reads each into, whether its
+// constructor takes the size, and whether a list of String or IBinder is
+// written with writeStringList or writeBinderList.
+var parcelCollections = map[string]struct {
+	kind           parcelKind
+	coll           string
+	capacity, fast bool
+}{
+	"kotlin/collections/List":                {parcelCollection, "java.util.ArrayList", true, true},
+	"kotlin/collections/MutableList":         {parcelCollection, "java.util.ArrayList", true, true},
+	"java/util/List":                         {parcelCollection, "java.util.ArrayList", true, true},
+	"java/util/ArrayList":                    {parcelCollection, "java.util.ArrayList", true, true},
+	"kotlin/collections/ArrayDeque":          {parcelCollection, "kotlin.collections.ArrayDeque", true, false},
+	"java/util/ArrayDeque":                   {parcelCollection, "java.util.ArrayDeque", true, false},
+	"kotlin/collections/Set":                 {parcelCollection, "java.util.LinkedHashSet", true, false},
+	"kotlin/collections/MutableSet":          {parcelCollection, "java.util.LinkedHashSet", true, false},
+	"java/util/Set":                          {parcelCollection, "java.util.LinkedHashSet", true, false},
+	"java/util/HashSet":                      {parcelCollection, "java.util.HashSet", true, false},
+	"java/util/LinkedHashSet":                {parcelCollection, "java.util.LinkedHashSet", true, false},
+	"java/util/NavigableSet":                 {parcelCollection, "java.util.TreeSet", false, false},
+	"java/util/SortedSet":                    {parcelCollection, "java.util.TreeSet", false, false},
+	"kotlin/collections/Map":                 {parcelMap, "java.util.LinkedHashMap", true, false},
+	"kotlin/collections/MutableMap":          {parcelMap, "java.util.LinkedHashMap", true, false},
+	"java/util/Map":                          {parcelMap, "java.util.LinkedHashMap", true, false},
+	"java/util/HashMap":                      {parcelMap, "java.util.HashMap", true, false},
+	"java/util/LinkedHashMap":                {parcelMap, "java.util.LinkedHashMap", true, false},
+	"java/util/SortedMap":                    {parcelMap, "java.util.TreeMap", false, false},
+	"java/util/NavigableMap":                 {parcelMap, "java.util.TreeMap", false, false},
+	"java/util/TreeMap":                      {parcelMap, "java.util.TreeMap", false, false},
+	"java/util/concurrent/ConcurrentHashMap": {parcelMap, "java.util.concurrent.ConcurrentHashMap", true, false},
+}
+
+// parcelSimples are the classes the plugin writes with a Parcel method
+// of their own, by Kotlin or JVM name, and whether with a null marker.
+var parcelSimples = map[string]parcelSer{
+	"java/io/FileDescriptor":          {write: "writeFileDescriptor", read: "readFileDescriptor", cast: true, nullAware: true},
+	"android/util/Size":               {write: "writeSize", read: "readSize", nullAware: true},
+	"android/util/SizeF":              {write: "writeSizeF", read: "readSizeF", nullAware: true},
+	"kotlin/IntArray":                 {write: "writeIntArray", read: "createIntArray"},
+	"kotlin/LongArray":                {write: "writeLongArray", read: "createLongArray"},
+	"kotlin/FloatArray":               {write: "writeFloatArray", read: "createFloatArray"},
+	"kotlin/DoubleArray":              {write: "writeDoubleArray", read: "createDoubleArray"},
+	"kotlin/BooleanArray":             {write: "writeBooleanArray", read: "createBooleanArray"},
+	"kotlin/ByteArray":                {write: "writeByteArray", read: "createByteArray"},
+	"kotlin/CharArray":                {write: "writeCharArray", read: "createCharArray"},
+	"android/util/SparseBooleanArray": {write: "writeSparseBooleanArray", read: "readSparseBooleanArray"},
+}
+
+// parcelUnsupported are the classes the plugin writes in ways of its own
+// that kc doesn't: ranges, Duration and Uuid, the unsigned integers and
+// their arrays, and kotlinx.collections.immutable's collections.
+var parcelUnsupported = map[string]bool{
+	"kotlin/ranges/IntRange": true, "kotlin/ranges/LongRange": true, "kotlin/ranges/CharRange": true,
+	"kotlin/time/Duration": true, "kotlin/uuid/Uuid": true,
+	"kotlin/UInt": true, "kotlin/ULong": true, "kotlin/UShort": true, "kotlin/UByte": true,
+	"kotlin/UIntArray": true, "kotlin/ULongArray": true, "kotlin/UShortArray": true, "kotlin/UByteArray": true,
+	"kotlinx/collections/immutable/PersistentList": true, "kotlinx/collections/immutable/ImmutableList": true,
+	"kotlinx/collections/immutable/PersistentSet": true, "kotlinx/collections/immutable/ImmutableSet": true,
+	"kotlinx/collections/immutable/PersistentMap": true, "kotlinx/collections/immutable/ImmutableMap": true,
+}
+
+// parcelArg returns the type of type t's argument i as the plugin sees
+// it: its upper bound, Any? for a star or an in projection.
+func parcelArg(t types.Type, i int) types.Type {
+	if t.A == nil || i >= t.A.Len() {
+		return types.AnyType.Nullable()
+	}
+	a := t.A.Get(i)
+	if a.V == types.Star || a.V == types.In {
+		return types.AnyType.Nullable()
+	}
+	return a.T
+}
+
+// isClass reports whether type t is of the class with JVM name name.
+func isClass(t types.Type, name string) bool {
+	return t.K == types.Class && t.C.Name == name
+}
+
+// serializer returns how the plugin writes a value of type t, as its
+// IrParcelSerializerFactory picks it: by the exact class for the types
+// it knows, then Parcelables, binders, objects, enums, functions and
+// Serializables. It returns nil for a type kc can't write.
+func (g *parcelGen) serializer(t types.Type) *parcelSer {
+	t = t.NonNull()
 	switch t.K {
 	case types.String:
-		return parcelString, ""
+		return &parcelSer{kind: parcelSimple, write: "writeString", read: "readString"}
 	case types.Int, types.Long, types.Float, types.Double, types.Byte, types.Short, types.Char, types.Bool:
-		return parcelPrimitive, ""
+		return &parcelSer{kind: parcelPrimitive, nullAware: true}
 	case types.Class:
 	default:
-		return parcelUnsupported, ""
+		g.fail(t)
+		return nil
+	}
+	if t.IsFunc() {
+		if t.IsSuspendFunc() || t.IsComposableFunc() || t.Contexts() > 0 {
+			g.fail(t)
+			return nil
+		}
+		return &parcelSer{kind: parcelSimple, write: "writeSerializable", read: "readSerializable", cast: true, wcast: "java.io.Serializable"}
 	}
 	cls := t.C
 	cls.Ensure()
-	elem := func(i int) (types.Type, bool) {
-		if t.A == nil || i >= t.A.Len() || t.A.Get(i).V == types.Star {
-			return types.InvalidType, false
-		}
-		return t.A.Get(i).T, true
-	}
 	name := cls.KotlinName
 	if name == "" {
 		name = cls.Name
 	}
-	switch name {
-	case "kotlin/collections/List", "kotlin/collections/MutableList", "java/util/List", "java/util/ArrayList":
-		if e, ok := elem(0); ok && e.K == types.String {
-			return parcelStringList, ""
+	known := func(m map[string]bool) bool { return m[name] || m[cls.Name] }
+	if known(parcelUnsupported) || cls.Value {
+		g.fail(t)
+		return nil
+	}
+	lookup := func(name string) string {
+		if _, ok := parcelCollections[name]; ok {
+			return name
 		}
-		return parcelList, "java.util.ArrayList"
-	case "kotlin/collections/Set", "kotlin/collections/MutableSet", "java/util/Set", "java/util/LinkedHashSet":
-		return parcelSet, "java.util.LinkedHashSet"
-	case "kotlin/collections/Map", "kotlin/collections/MutableMap", "java/util/Map", "java/util/LinkedHashMap":
-		return parcelMap, "java.util.LinkedHashMap"
-	case "java/util/HashMap":
-		return parcelMap, "java.util.HashMap"
+		if _, ok := parcelSimples[name]; ok {
+			return name
+		}
+		return ""
 	}
-	if e, ok := elem(0); ok && cls.Array && e.K == types.String {
-		return parcelStringArray, ""
+	key := lookup(name)
+	if key == "" {
+		key = lookup(cls.Name)
 	}
-	if cls.Array || parcelSpecial(cls) {
-		return parcelUnsupported, ""
+	if key == "" {
+		key = name
+	}
+	switch key {
+	case "kotlin/CharSequence", "java/lang/CharSequence":
+		return &parcelSer{kind: parcelCharSequence}
+	case "android/os/Bundle":
+		return &parcelSer{kind: parcelLoader, write: "writeBundle", read: "readBundle"}
+	case "android/os/PersistableBundle":
+		return &parcelSer{kind: parcelLoader, write: "writePersistableBundle", read: "readPersistableBundle"}
+	case "kotlin/Array", "kotlin/ShortArray":
+		e := types.ArrayElem(t)
+		if key == "kotlin/Array" {
+			switch en := e.NonNull(); {
+			case en.K == types.String:
+				return &parcelSer{kind: parcelSimple, write: "writeStringArray", read: "createStringArray"}
+			case isClass(en, "android/os/IBinder"):
+				return &parcelSer{kind: parcelSimple, write: "writeBinderArray", read: "createBinderArray"}
+			}
+		}
+		return g.withElem(&parcelSer{kind: parcelArray, nullAware: true}, e)
+	case "android/util/SparseIntArray":
+		return g.withElem(&parcelSer{kind: parcelSparse, nullAware: true, coll: "android.util.SparseIntArray"}, types.IntType)
+	case "android/util/SparseLongArray":
+		return g.withElem(&parcelSer{kind: parcelSparse, nullAware: true, coll: "android.util.SparseLongArray"}, types.LongType)
+	case "android/util/SparseArray":
+		e := parcelArg(t, 0)
+		return g.withElem(&parcelSer{kind: parcelSparse, nullAware: true, coll: "android.util.SparseArray<" + g.typeText(e) + ">"}, e)
+	}
+	if s, ok := parcelSimples[key]; ok {
+		s.kind = parcelSimple
+		return &s
+	}
+	if c, ok := parcelCollections[key]; ok {
+		if c.kind == parcelMap {
+			k, v := parcelArg(t, 0), parcelArg(t, 1)
+			s := &parcelSer{kind: parcelMap, nullAware: true, coll: c.coll + "<" + g.typeText(k) + ", " + g.typeText(v) + ">", capacity: c.capacity}
+			if s.key = g.serializer(k); s.key == nil {
+				return nil
+			}
+			return g.withElem(s, v)
+		}
+		e := parcelArg(t, 0)
+		if c.fast {
+			switch en := e.NonNull(); {
+			case en.K == types.String:
+				return &parcelSer{kind: parcelSimple, write: "writeStringList", read: "createStringArrayList"}
+			case isClass(en, "android/os/IBinder"):
+				return &parcelSer{kind: parcelSimple, write: "writeBinderList", read: "createBinderArrayList"}
+			}
+		}
+		return g.withElem(&parcelSer{kind: parcelCollection, nullAware: true, coll: c.coll + "<" + g.typeText(e) + ">", capacity: c.capacity}, e)
 	}
 	if p := g.c.u.ext.class("android/os/Parcelable"); p != nil && cls.IsSubclassOf(p) {
 		if g.efficient(cls) {
-			return parcelEfficient, ""
+			return &parcelSer{kind: parcelEfficient, nullAware: true}
 		}
-		return parcelGeneric, ""
+		return &parcelSer{kind: parcelGeneric}
+	}
+	if b := g.c.u.ext.class("android/os/IBinder"); b != nil && cls.IsSubclassOf(b) {
+		return &parcelSer{kind: parcelSimple, write: "writeStrongBinder", read: "readStrongBinder", cast: cls != b}
+	}
+	if cls.Object {
+		return &parcelSer{kind: parcelObject}
 	}
 	if cls.Entries != nil {
-		return parcelEnum, ""
+		return &parcelSer{kind: parcelEnum, nullAware: true}
 	}
 	if s := g.c.u.ext.class("java/io/Serializable"); s != nil && cls.IsSubclassOf(s) {
-		return parcelSerializable, ""
+		return &parcelSer{kind: parcelSimple, write: "writeSerializable", read: "readSerializable", cast: true}
 	}
-	return parcelUnsupported, ""
+	g.fail(t)
+	return nil
 }
 
-// parcelSpecials are the classes that the plugin writes in ways of their
-// own, which kc doesn't, and the collections, whose other classes it
-// writes in their own ways too or not at all. A class that is one of them
-// isn't written as a Parcelable or a Serializable, which many of them are.
-var parcelSpecials = map[string]bool{
-	"android/os/Bundle": true, "android/os/PersistableBundle": true, "android/os/IBinder": true,
-	"android/util/Size": true, "android/util/SizeF": true, "android/util/SparseArray": true,
-	"android/util/SparseBooleanArray": true, "android/util/SparseIntArray": true, "android/util/SparseLongArray": true,
-	"java/io/FileDescriptor": true, "java/lang/CharSequence": true, "kotlin/CharSequence": true,
-	"java/util/Collection": true, "java/util/Map": true, "kotlin/collections/Collection": true, "kotlin/collections/Map": true,
-	"kotlin/collections/ArrayDeque": true, "kotlin/ranges/IntRange": true, "kotlin/ranges/LongRange": true,
-	"kotlin/ranges/CharRange": true, "kotlin/time/Duration": true, "kotlin/uuid/Uuid": true,
-}
-
-// parcelSpecial reports whether class cls is one of parcelSpecials or
-// inherits from one.
-func parcelSpecial(cls *types.ClassSym) bool {
-	found := false
-	cls.Supertypes(func(s *types.ClassSym) bool {
-		found = parcelSpecials[s.Name] || s.KotlinName != "" && parcelSpecials[s.KotlinName]
-		return !found
-	})
-	return found
+// withElem returns s with the serializer of its elements, of type e, or
+// nil if kc can't write them.
+func (g *parcelGen) withElem(s *parcelSer, e types.Type) *parcelSer {
+	if s.elem = g.serializer(e); s.elem == nil {
+		return nil
+	}
+	return s
 }
 
 // efficient reports whether the plugin writes a Parcelable of class cls
@@ -518,30 +739,31 @@ func (g *parcelGen) efficient(cls *types.ClassSym) bool {
 	return cd.Parcelize || cls.Companion != nil && cls.Companion.Prop("CREATOR") != nil
 }
 
-// nullable reports whether the plugin writes a null of kind k with a
-// null marker before the value, rather than as the value itself.
-func nullable(k parcelKind) bool {
-	return k != parcelString && k != parcelStringList && k != parcelStringArray && k != parcelGeneric && k != parcelSerializable
-}
-
-// write writes the statements that write value v, a local, of type t.
-func (g *parcelGen) write(t types.Type, v string) {
-	k, _ := g.kind(t.NonNull())
-	if k == parcelUnsupported {
-		g.fail(t)
-		return
-	}
-	if t.N && nullable(k) {
+// write writes the statements that write value v, a local, of type t
+// with serializer s.
+func (g *parcelGen) write(s *parcelSer, t types.Type, v string) {
+	if t.N && s.nullAware {
 		// A null marker, 0 or 1, and then the value.
 		g.stmt("if (%s == null) dest.writeInt(0) else {", v)
 		g.stmt("dest.writeInt(1)")
-		g.write(t.NonNull(), v)
+		g.write(s, t.NonNull(), v)
 		g.stmt("}")
 		return
 	}
-	switch k {
-	case parcelString:
-		g.stmt("dest.writeString(%s)", v)
+	switch s.kind {
+	case parcelSimple:
+		if s.wcast != "" {
+			q := ""
+			if t.N {
+				q = "?"
+			}
+			v = fmt.Sprintf("(%s as %s%s)", v, s.wcast, q)
+		}
+		g.stmt("dest.%s(%s)", s.write, v)
+	case parcelLoader:
+		g.stmt("dest.%s(%s)", s.write, v)
+	case parcelCharSequence:
+		g.stmt("android.text.TextUtils.writeToParcel(%s, dest, flags)", v)
 	case parcelPrimitive:
 		switch t.K {
 		case types.Int:
@@ -563,21 +785,32 @@ func (g *parcelGen) write(t types.Type, v string) {
 		}
 	case parcelEnum:
 		g.stmt("dest.writeString(%s.name)", v)
-	case parcelStringList:
-		g.stmt("dest.writeStringList(%s)", v)
-	case parcelStringArray:
-		g.stmt("dest.writeStringArray(%s)", v)
 	case parcelEfficient:
 		g.stmt("%s.writeToParcel(dest, flags)", v)
 	case parcelGeneric:
 		g.stmt("dest.writeParcelable(%s, flags)", v)
-	case parcelSerializable:
-		g.stmt("dest.writeSerializable(%s)", v)
-	case parcelList, parcelSet:
+	case parcelObject:
+		g.stmt("dest.writeInt(1)")
+	case parcelArray, parcelCollection:
 		g.stmt("dest.writeInt(%s.size)", v)
 		e := g.fresh("e")
 		g.stmt("for (%s in %s) {", e, v)
-		g.write(t.A.Get(0).T, e)
+		if s.kind == parcelArray {
+			g.write(s.elem, types.ArrayElem(t), e)
+		} else {
+			g.write(s.elem, parcelArg(t, 0), e)
+		}
+		g.stmt("}")
+	case parcelSparse:
+		n, i, x := g.fresh("n"), g.fresh("i"), g.fresh("x")
+		g.stmt("val %s = %s.size()", n, v)
+		g.stmt("dest.writeInt(%s)", n)
+		g.stmt("var %s = 0", i)
+		g.stmt("while (%s != %s) {", i, n)
+		g.stmt("dest.writeInt(%s.keyAt(%s))", v, i)
+		g.stmt("val %s = %s.valueAt(%s)", x, v, i)
+		g.write(s.elem, g.sparseElem(t), x)
+		g.stmt("%s++", i)
 		g.stmt("}")
 	case parcelMap:
 		g.stmt("dest.writeInt(%s.size)", v)
@@ -585,25 +818,31 @@ func (g *parcelGen) write(t types.Type, v string) {
 		g.stmt("for (%s in %s.entries) {", e, v)
 		g.stmt("val %s = %s.key", key, e)
 		g.stmt("val %s = %s.value", val, e)
-		g.write(t.A.Get(0).T, key)
-		g.write(t.A.Get(1).T, val)
+		g.write(s.key, parcelArg(t, 0), key)
+		g.write(s.elem, parcelArg(t, 1), val)
 		g.stmt("}")
 	}
 }
 
-// read writes the statements that read a value of type t, and returns the
-// expression that is the value then.
-func (g *parcelGen) read(t types.Type) string {
-	k, coll := g.kind(t.NonNull())
-	if k == parcelUnsupported {
-		g.fail(t)
-		return "null!!"
+// sparseElem returns the type of the values of a sparse array of type t.
+func (g *parcelGen) sparseElem(t types.Type) types.Type {
+	switch t.C.Name {
+	case "android/util/SparseIntArray":
+		return types.IntType
+	case "android/util/SparseLongArray":
+		return types.LongType
 	}
-	if t.N && nullable(k) {
+	return parcelArg(t, 0)
+}
+
+// read writes the statements that read a value of type t with serializer
+// s, and returns the expression that is the value then.
+func (g *parcelGen) read(s *parcelSer, t types.Type) string {
+	if t.N && s.nullAware {
 		// After a null marker. A value that takes statements to read is
 		// read into a local.
 		mark := g.body.Len()
-		x := g.read(t.NonNull())
+		x := g.read(s, t.NonNull())
 		if g.body.Len() == mark {
 			return fmt.Sprintf("(if (parcel.readInt() == 0) null else %s)", x)
 		}
@@ -617,9 +856,16 @@ func (g *parcelGen) read(t types.Type) string {
 		g.stmt("}")
 		return v
 	}
-	switch k {
-	case parcelString:
-		return "parcel.readString()"
+	switch s.kind {
+	case parcelSimple:
+		if s.cast {
+			return fmt.Sprintf("(parcel.%s() as %s)", s.read, g.typeText(t))
+		}
+		return fmt.Sprintf("parcel.%s()", s.read)
+	case parcelLoader:
+		return fmt.Sprintf("parcel.%s(%s::class.java.classLoader)", s.read, g.fq)
+	case parcelCharSequence:
+		return "android.text.TextUtils.CHAR_SEQUENCE_CREATOR.createFromParcel(parcel)"
 	case parcelPrimitive:
 		switch t.K {
 		case types.Int:
@@ -641,38 +887,83 @@ func (g *parcelGen) read(t types.Type) string {
 		}
 	case parcelEnum:
 		return fmt.Sprintf("%s.valueOf(parcel.readString())", fqName(t.C))
-	case parcelStringList:
-		return "parcel.createStringArrayList()"
-	case parcelStringArray:
-		return "parcel.createStringArray()"
 	case parcelEfficient:
 		return fmt.Sprintf("`$c%d`.createFromParcel(parcel)", g.creator(t.C))
 	case parcelGeneric:
 		return fmt.Sprintf("parcel.readParcelable<%s>(%s::class.java.classLoader)", g.typeText(t.NonNull()), g.fq)
-	case parcelSerializable:
-		return fmt.Sprintf("(parcel.readSerializable() as %s)", g.typeText(t))
-	case parcelList, parcelSet, parcelMap:
-		n, v, i := g.fresh("n"), g.fresh("l"), g.fresh("i")
-		args := make([]string, t.A.Len())
-		for j := range args {
-			args[j] = g.typeText(t.A.Get(j).T)
-		}
+	case parcelObject:
+		g.stmt("parcel.readInt()")
+		return fqName(t.C)
+	case parcelArray:
+		e := types.ArrayElem(t)
+		n, a, i := g.fresh("n"), g.fresh("a"), g.fresh("i")
 		g.stmt("val %s = parcel.readInt()", n)
-		g.stmt("val %s = %s<%s>(%s)", v, coll, strings.Join(args, ", "), n)
+		switch {
+		case t.C.KotlinName == "kotlin/ShortArray":
+			g.stmt("val %s = kotlin.ShortArray(%s)", a, n)
+		case e.N:
+			g.stmt("val %s = arrayOfNulls<%s>(%s)", a, g.typeText(e.NonNull()), n)
+		default:
+			g.stmt("val %s = arrayOfNulls<%s>(%s) as kotlin.Array<%[2]s>", a, g.typeText(e), n)
+		}
 		g.stmt("var %s = 0", i)
 		g.stmt("while (%s != %s) {", i, n)
-		if k == parcelMap {
-			key := g.fresh("k")
-			g.stmt("val %s = %s", key, g.read(t.A.Get(0).T))
-			g.stmt("%s.put(%s, %s)", v, key, g.read(t.A.Get(1).T))
+		g.stmt("%s[%s] = %s", a, i, g.read(s.elem, e))
+		g.stmt("%s++", i)
+		g.stmt("}")
+		return a
+	case parcelSparse:
+		r, a, k := g.fresh("r"), g.fresh("a"), g.fresh("k")
+		g.stmt("var %s = parcel.readInt()", r)
+		g.stmt("val %s = %s(%s)", a, s.coll, r)
+		g.stmt("while (%s != 0) {", r)
+		g.stmt("val %s = parcel.readInt()", k)
+		g.stmt("%s.put(%s, %s)", a, k, g.read(s.elem, g.sparseElem(t)))
+		g.stmt("%s--", r)
+		g.stmt("}")
+		return a
+	case parcelCollection, parcelMap:
+		n, v, i := g.fresh("n"), g.fresh("l"), g.fresh("i")
+		g.stmt("val %s = parcel.readInt()", n)
+		if s.capacity {
+			g.stmt("val %s = %s(%s)", v, s.coll, n)
 		} else {
-			g.stmt("%s.add(%s)", v, g.read(t.A.Get(0).T))
+			g.stmt("val %s = %s()", v, s.coll)
+		}
+		g.stmt("var %s = 0", i)
+		g.stmt("while (%s != %s) {", i, n)
+		if s.kind == parcelMap {
+			key := g.fresh("k")
+			g.stmt("val %s = %s", key, g.read(s.key, parcelArg(t, 0)))
+			g.stmt("%s.put(%s, %s)", v, key, g.read(s.elem, parcelArg(t, 1)))
+		} else {
+			g.stmt("%s.add(%s)", v, g.read(s.elem, parcelArg(t, 0)))
 		}
 		g.stmt("%s++", i)
 		g.stmt("}")
 		return v
 	}
 	return "null!!"
+}
+
+// parcelFileDescriptors reports whether type t, or one of its type
+// arguments, is java.io.FileDescriptor, for which describeContents
+// returns CONTENTS_FILE_DESCRIPTOR, 1.
+func parcelFileDescriptors(t types.Type) bool {
+	if t.K != types.Class {
+		return false
+	}
+	if t.C.Name == "java/io/FileDescriptor" {
+		return true
+	}
+	if t.A != nil {
+		for _, a := range t.A.List {
+			if a.V != types.Star && parcelFileDescriptors(a.T) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // creator returns the number of the local that holds class cls's CREATOR.
@@ -686,8 +977,24 @@ func (g *parcelGen) creator(cls *types.ClassSym) int {
 	return len(g.creators) - 1
 }
 
-// typeText writes type t as Kotlin, as kotlinType does.
+// typeText writes type t as Kotlin, as kotlinType does, and a function
+// type too.
 func (g *parcelGen) typeText(t types.Type) string {
+	if t.IsFunc() && !t.IsSuspendFunc() && !t.IsComposableFunc() && t.Contexts() == 0 {
+		args := make([]string, t.A.Len())
+		for i, a := range t.A.List {
+			if a.V != types.Inv {
+				g.fail(t)
+				return "kotlin.Any"
+			}
+			args[i] = g.typeText(a.T)
+		}
+		s := "(" + strings.Join(args[:len(args)-1], ", ") + ") -> " + args[len(args)-1]
+		if t.N {
+			s = "(" + s + ")?"
+		}
+		return s
+	}
 	s, ok := kotlinType(t)
 	if !ok {
 		g.fail(t)

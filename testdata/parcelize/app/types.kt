@@ -1,6 +1,17 @@
 package p
 
+import android.os.Binder
+import android.os.Bundle
+import android.os.IBinder
 import android.os.Parcelable
+import android.os.PersistableBundle
+import android.util.Size
+import android.util.SizeF
+import android.util.SparseArray
+import android.util.SparseBooleanArray
+import android.util.SparseIntArray
+import android.util.SparseLongArray
+import java.io.FileDescriptor
 import kotlinx.parcelize.IgnoredOnParcel
 import kotlinx.parcelize.Parcelize
 import java.math.BigDecimal
@@ -131,3 +142,49 @@ data class Modes(
     val level: Level, val nlevel: Level?, val tone: Tone, val ntone: Tone?, val step: Step, val go: Step.Go,
     val stop: Step.Stop, val mode: Mode, val edit: Edit?,
 ) : Parcelable
+
+// The plugin's own ways of writing Android's and Java's types: each with
+// a Parcel method of its own, or the size and the elements, and the
+// collections it knows by class. Another class, such as StringBuilder or
+// LinkedList, is just Serializable, and an object that isn't Parcelable
+// is written as 1, so that a null one reads back as the object.
+object Marker {
+    override fun toString() = "Marker"
+}
+
+object Twice : (Int) -> Int, java.io.Serializable {
+    override fun invoke(x: Int) = x * 2
+    override fun toString() = "Twice"
+}
+
+@Parcelize
+class Builtins(
+    val cs: CharSequence, val ncs: CharSequence?, val bundle: Bundle, val nbundle: Bundle?, val pbundle: PersistableBundle?,
+    val ints: IntArray, val nints: IntArray?, val longs: LongArray, val floats: FloatArray, val doubles: DoubleArray,
+    val bools: BooleanArray, val bytes: ByteArray, val chars: CharArray, val shorts: ShortArray, val nshorts: ShortArray?,
+    val boxed: Array<Long>, val nboxed: Array<Int?>?, val inners: Array<Inner>, val colors: Array<Color?>,
+    val binder: IBinder, val nbinder: Binder?, val binders: Array<IBinder>, val binderList: List<IBinder>,
+    val size: Size, val nsize: Size?, val sizeF: SizeF, val sba: SparseBooleanArray, val nsba: SparseBooleanArray?,
+    val sia: SparseIntArray, val nsia: SparseIntArray?, val sla: SparseLongArray, val sa: SparseArray<String>, val nsa: SparseArray<Inner?>?,
+    val hashSet: HashSet<Int>, val deque: ArrayDeque<String>, val jdeque: java.util.ArrayDeque<Long>, val sorted: java.util.SortedSet<String>,
+    val nav: java.util.NavigableSet<Int>?, val treeMap: java.util.TreeMap<String, Int>, val sortedMap: java.util.SortedMap<Int, Inner>,
+    val conc: java.util.concurrent.ConcurrentHashMap<String, Long>, val marker: Marker, val nmarker: Marker?,
+    val builder: StringBuilder, val linked: java.util.LinkedList<Int>, val fn: (Int) -> Int,
+) : Parcelable {
+    override fun toString() = listOf(
+        cs, ncs, bundle, nbundle, pbundle, ints.contentToString(), nints?.contentToString(), longs.contentToString(),
+        floats.contentToString(), doubles.contentToString(), bools.contentToString(), bytes.contentToString(),
+        chars.contentToString(), shorts.contentToString(), nshorts?.contentToString(), boxed.contentToString(),
+        nboxed?.contentToString(), inners.contentToString(), colors.contentToString(), binder, nbinder,
+        binders.contentToString(), binderList, size, nsize, sizeF, sba, nsba, sia, nsia, sla, sa, nsa, hashSet, deque,
+        jdeque, sorted, nav, treeMap, sortedMap, conc, marker, nmarker, builder, linked, fn(3),
+    ).toString()
+
+    override fun equals(other: Any?) = other is Builtins && other.toString() == toString()
+    override fun hashCode() = toString().hashCode()
+}
+
+// A FileDescriptor makes describeContents 1. (The plugin reads one back as
+// a ParcelFileDescriptor, which isn't one, so only nulls round-trip.)
+@Parcelize
+data class Descriptors(val fd: FileDescriptor?, val fds: List<FileDescriptor>, val nested: Map<String, List<FileDescriptor?>>?) : Parcelable
