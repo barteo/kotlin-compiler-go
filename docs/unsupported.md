@@ -86,9 +86,9 @@ whose bound is a collection; a `@TypeParceler` or `@WriteWith` whose
 `Parceler` isn't an object or doesn't fit the type, or two
 `@TypeParceler`s for one type; a `Parceler` companion object of another
 type than the class's; a `@DataClass` type whose data class's
-constructor or properties the class can't see. So is a `@DataClass` type
-whose data class, or one in it, is another module's, such as `Pair`,
-which kotlinc compiles.
+constructor or properties the class can't see, or whose data class, or
+one in it, is another module's, such as `Pair`, for which kotlinc's
+plugin finds no properties and crashes.
 
 ## Compose (`-compose`)
 

@@ -966,9 +966,9 @@ func TestParcelize(t *testing.T) {
 	// Parcelable, for which kotlinc reports an error; or with a type
 	// parameter whose bound is a collection, which kotlinc fails to
 	// compile; or with a custom Parceler that kotlinc rejects, or a
-	// companion one of another class; or with a @DataClass type that is
-	// another module's data class, or whose constructor the class can't
-	// see.
+	// companion one of another class; or with a @DataClass type whose
+	// constructor the class can't see, or that is another module's data
+	// class, which kotlinc fails to compile.
 	for _, decl := range []string{
 		"class A(val x: V) : Parcelable\n\n@JvmInline\nvalue class V(val n: Int)",
 		"class A(val x: @kotlinx.parcelize.DataClass D) : Parcelable\n\ndata class D private constructor(val n: Int)",

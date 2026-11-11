@@ -64,7 +64,8 @@ import (
 //
 // A type parameter whose bound is an array or a collection, which
 // kotlinc fails to compile, is unsupported, and so is a @DataClass type of
-// another module's data class, whose properties kc doesn't know.
+// another module's data class, for which kotlinc's plugin finds no
+// properties and crashes.
 //
 // A custom Parceler object writes a type that @WriteWith names it for, or
 // that a @TypeParceler of the class or the property does (custom). One
@@ -1084,7 +1085,9 @@ func (g *parcelGen) special(t types.Type, name string) *parcelSer {
 // writes by the properties of its primary constructor, in order, and reads
 // with it: their serializers are those of a data class's properties too.
 // kc writes only the program's data classes, whose constructor and
-// properties the class can see, as kotlinc reports an error for others.
+// properties the class can see: kotlinc reports an error for others of
+// the program, and crashes on another module's, whose properties its
+// plugin doesn't find.
 func (g *parcelGen) data(t types.Type) *parcelSer {
 	cd, ok := t.C.Decl.(*syntax.ClassDecl)
 	if !ok || cd.CtorMods.Visibility == syntax.Private || cd.CtorMods.Visibility == syntax.Protected {
