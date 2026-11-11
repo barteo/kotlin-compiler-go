@@ -92,6 +92,24 @@ self written: parcelable(p.SelfWritten) string(me) int(3)
 self array: parcelable(p.SelfArray) string(arr)
   read: SelfArray(arr)
   equal: true, describeContents: 0
+comparable: parcelable(p.Cmp) value(c) int(2) value(d) value(e)
+  read: Cmp(x=c, xs=[d, e])
+  equal: true, describeContents: 0
+bounded: parcelable(p.Bounded) serializable(1) serializable(2)
+  read: Bounded(x=1, y=2)
+  equal: true, describeContents: 0
+bounded nulls: parcelable(p.Bounded) serializable(1.5) serializable(null)
+  read: Bounded(x=1.5, y=null)
+  equal: true, describeContents: 0
+generic self written: parcelable(p.GenSelf) string(gen)
+  read: GenSelf(gen, null)
+  equal: true, describeContents: 0
+aliased: parcelable(p.Aliased) int(3)
+  read: Aliased(6)
+  equal: true, describeContents: 0
+import aliased: parcelable(p.ImportAliased) int(4)
+  read: ImportAliased(5)
+  equal: true, describeContents: 0
 stamps: parcelable(p.Stamps) long(1) int(1) long(2) int(1) long(3) long(4) long(5)
   read: Stamps(s=Stamp(t=1), ns=Stamp(t=2), ss=[Stamp(t=3)], o=Stamp(t=4), nn=Stamp(t=5))
   equal: true, describeContents: 0
@@ -109,6 +127,7 @@ fast: parcelable(p.Fast) int(2) int(101) int(102) int(1) string(A) int(1) string
   equal: true, describeContents: 0
 newArray: 2 Inner[]
 Parceler's newArray: 3
-use: parcelable(Holder) parcelable(p.Inner) int(7) string(seven) parcelable(p.Empty) int(1) parcelable(p.Outer$Deep) long(8) parcelable(p.Shape$Circle) double(9.0) parcelable(p.Base) string(ten) string(RED) parcelable(p.Level) string(HIGH) parcelable(p.Step$Go) int(1) string(LOW) parcelable(p.Builtins) int(1) string(cs) int(1) string(null) bundle(Bundle{k=v}) bundle(null) persistableBundle(null) intArray([1, 2]) intArray(null) longArray([4]) floatArray([1.5]) doubleArray([2.5]) booleanArray([true, false]) byteArray([5]) charArray([x]) int(2) int(6) int(7) int(0) int(2) long(9) long(10) int(0) int(1) int(2) string(two) int(2) int(1) string(RED) int(0) binder(Binder(b)) binder(null) binderArray([Binder(b)]) binderList([Binder(b)]) size(1x2) int(0) sizeF(1.5x2.5) sparseBooleanArray({1=false, 3=true}) sparseBooleanArray(null) int(1) int(2) int(20) int(0) int(1) int(5) long(50) int(2) int(4) string(four) int(7) string(seven) int(0) int(1) int(12) int(1) string(d) int(1) long(8) int(2) string(a) string(b) int(0) int(1) string(t) int(15) int(1) int(16) int(3) string(three) int(1) string(c) long(9) int(1) int(1) serializable(sb) serializable([17]) serializable(Twice) parcelable(p.Descriptors) int(0) int(0) int(0) parcelable(p.Raw) value(Plain(n=1)) value(Plain(n=2)) int(1) value(Plain(n=3)) int(2) value(Plain(n=4)) value(null) value(Plain(n=5)) int(1) string(k) value(Plain(n=6)) string(s) parcelable(p.Box) parcelable(p.Inner) int(1) string(one) int(0) parcelable(p.Inner) int(2) string(two) parcelable(null) parcelable(p.SelfWritten) string(you) int(4) parcelable(p.Stamps) long(1) int(1) long(2) int(1) long(3) long(4) long(5) long(6) string(W)
-  read: Holder(inner=Inner(x=7, name=seven), empty=Empty, deep=Deep(id=8), shape=Circle(r=9.0), base=Base(ten), color=RED, level=HIGH, step=Go(steps=1, level=LOW), builtins=[cs, null, Bundle{k=v}, null, null, [1, 2], null, [4], [1.5], [2.5], [true, false], [5], [x], [6, 7], null, [9, 10], null, [Inner(x=2, name=two)], [RED, null], Binder(b), null, [Binder(b)], [Binder(b)], 1x2, null, 1.5x2.5, {1=false, 3=true}, null, {2=20}, null, {5=50}, {4=four, 7=seven}, null, [12], [d], [8], [a, b], null, {t=15}, {16=Inner(x=3, name=three)}, {c=9}, Marker, Marker, sb, [17], 6], descriptors=Descriptors(fd=null, fds=[], nested=null), raw=Raw(p=Plain(n=1), np=Plain(n=2), ps=[Plain(n=3)], inner=[Plain(n=4), null], any=Plain(n=5), m={k=Plain(n=6)}, s=s), box=Box(item=Inner(x=1, name=one), items=[], maybe=Inner(x=2, name=two)), boxes=null, self=SelfWritten(name=you, n=4), stamps=Stamps(s=Stamp(t=1), ns=Stamp(t=2), ss=[Stamp(t=3)], o=Stamp(t=4), nn=Stamp(t=5)), mine=UseStamps(s=Stamp(t=6), w=w))
+generic Parceler's newArray: 4
+use: parcelable(Holder) parcelable(p.Inner) int(7) string(seven) parcelable(p.Empty) int(1) parcelable(p.Outer$Deep) long(8) parcelable(p.Shape$Circle) double(9.0) parcelable(p.Base) string(ten) string(RED) parcelable(p.Level) string(HIGH) parcelable(p.Step$Go) int(1) string(LOW) parcelable(p.Builtins) int(1) string(cs) int(1) string(null) bundle(Bundle{k=v}) bundle(null) persistableBundle(null) intArray([1, 2]) intArray(null) longArray([4]) floatArray([1.5]) doubleArray([2.5]) booleanArray([true, false]) byteArray([5]) charArray([x]) int(2) int(6) int(7) int(0) int(2) long(9) long(10) int(0) int(1) int(2) string(two) int(2) int(1) string(RED) int(0) binder(Binder(b)) binder(null) binderArray([Binder(b)]) binderList([Binder(b)]) size(1x2) int(0) sizeF(1.5x2.5) sparseBooleanArray({1=false, 3=true}) sparseBooleanArray(null) int(1) int(2) int(20) int(0) int(1) int(5) long(50) int(2) int(4) string(four) int(7) string(seven) int(0) int(1) int(12) int(1) string(d) int(1) long(8) int(2) string(a) string(b) int(0) int(1) string(t) int(15) int(1) int(16) int(3) string(three) int(1) string(c) long(9) int(1) int(1) serializable(sb) serializable([17]) serializable(Twice) parcelable(p.Descriptors) int(0) int(0) int(0) parcelable(p.Raw) value(Plain(n=1)) value(Plain(n=2)) int(1) value(Plain(n=3)) int(2) value(Plain(n=4)) value(null) value(Plain(n=5)) int(1) string(k) value(Plain(n=6)) string(s) parcelable(p.Box) parcelable(p.Inner) int(1) string(one) int(0) parcelable(p.Inner) int(2) string(two) parcelable(null) parcelable(p.SelfWritten) string(you) int(4) parcelable(p.Stamps) long(1) int(1) long(2) int(1) long(3) long(4) long(5) long(6) string(W) parcelable(p.GenSelf) string(g) parcelable(p.Aliased) int(5) parcelable(p.Bounded) serializable(6) serializable(null)
+  read: Holder(inner=Inner(x=7, name=seven), empty=Empty, deep=Deep(id=8), shape=Circle(r=9.0), base=Base(ten), color=RED, level=HIGH, step=Go(steps=1, level=LOW), builtins=[cs, null, Bundle{k=v}, null, null, [1, 2], null, [4], [1.5], [2.5], [true, false], [5], [x], [6, 7], null, [9, 10], null, [Inner(x=2, name=two)], [RED, null], Binder(b), null, [Binder(b)], [Binder(b)], 1x2, null, 1.5x2.5, {1=false, 3=true}, null, {2=20}, null, {5=50}, {4=four, 7=seven}, null, [12], [d], [8], [a, b], null, {t=15}, {16=Inner(x=3, name=three)}, {c=9}, Marker, Marker, sb, [17], 6], descriptors=Descriptors(fd=null, fds=[], nested=null), raw=Raw(p=Plain(n=1), np=Plain(n=2), ps=[Plain(n=3)], inner=[Plain(n=4), null], any=Plain(n=5), m={k=Plain(n=6)}, s=s), box=Box(item=Inner(x=1, name=one), items=[], maybe=Inner(x=2, name=two)), boxes=null, self=SelfWritten(name=you, n=4), stamps=Stamps(s=Stamp(t=1), ns=Stamp(t=2), ss=[Stamp(t=3)], o=Stamp(t=4), nn=Stamp(t=5)), mine=UseStamps(s=Stamp(t=6), w=w), gen=GenSelf(g, null), aliased=Aliased(10), bounded=Bounded(x=6, y=null))
   equal: false

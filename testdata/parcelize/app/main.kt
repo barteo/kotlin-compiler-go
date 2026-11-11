@@ -88,6 +88,12 @@ fun main() {
     roundTrip("boxes", Boxes(box, null, listOf(box), Unused(5)))
     roundTrip("self written", SelfWritten("me", 3))
     roundTrip("self array", SelfArray("arr"))
+    roundTrip("comparable", Cmp("c", listOf("d", "e")))
+    roundTrip("bounded", Bounded(1, 2))
+    roundTrip("bounded nulls", Bounded(1.5, null))
+    roundTrip("generic self written", GenSelf("gen", 7))
+    roundTrip("aliased", Aliased(3))
+    roundTrip("import aliased", ImportAliased(4))
     roundTrip("stamps", stamps())
     roundTrip("stamp nulls", Stamps(Stamp(1), null, listOf(), Stamp(2), null))
     roundTrip("writes", Writes(Stamp(1), Stamp(2), Stamp(3), listOf(Stamp(4))))
@@ -103,6 +109,8 @@ fun main() {
     // A Parceler companion's own newArray makes it.
     val selfCreator = SelfArray::class.java.getField("CREATOR").get(null) as Parcelable.Creator<*>
     println("Parceler's newArray: ${selfCreator.newArray(2).size}")
+    val genCreator = GenSelf::class.java.getField("CREATOR").get(null) as Parcelable.Creator<*>
+    println("generic Parceler's newArray: ${genCreator.newArray(2).size}")
 }
 
 fun builtins(nulls: Boolean = false): Builtins {

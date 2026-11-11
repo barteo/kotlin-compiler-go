@@ -330,6 +330,9 @@ depend on property types once those are known:
 - **Parcelize** (`check/parcelize.go`): `describeContents`,
   `writeToParcel`, a `C$Creator` class and `CREATOR`, which write and read
   each property as kotlinc's serializer for its type does: a generic
-  class's as its type erased, a `@RawValue` one with `writeValue`, and one
+  class's as its type erased, each type parameter as its erased bound,
+  which the class's constructor is called with as type arguments that a
+  plugin's code needn't keep within their bounds; a `@RawValue` one with
+  `writeValue`, and one
   that a `@TypeParceler` or `@WriteWith` names a `Parceler` for with it; or
   a class's `Parceler` companion object, which writes the class itself.

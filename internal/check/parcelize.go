@@ -48,13 +48,15 @@ import (
 // property written with writeValue unless its type, or one that it is an
 // argument of, is annotated @RawValue, so kc leaves such a class to it.
 // A generic class's properties are written as their types erased, each
-// type parameter as its bound (parcelErase), and its Creator is of the
-// class star-projected, C<*>.
+// type parameter as its erased bound (parcelErase), and its Creator is of
+// the class star-projected, C<*>. The class is constructed with the
+// erased bounds as type arguments, which needn't be within the bounds in
+// a plugin's code.
 //
-// Value classes, the types that the plugin writes in ways kc doesn't
+// Value classes and the types that the plugin writes in ways kc doesn't
 // (ranges, Duration, Uuid, the unsigned integers and kotlinx's immutable
-// collections) and type parameters with several bounds, or a bound that
-// names a type parameter, are unsupported.
+// collections) are unsupported, and so is a type parameter whose bound is
+// an array or a collection, which kotlinc fails to compile.
 //
 // A custom Parceler object writes a type that @WriteWith names it for, or
 // that a @TypeParceler of the class or the property does (custom). One
@@ -206,19 +208,6 @@ func (c *Checker) addParcelMembers(cd *syntax.ClassDecl, name string) {
 		c.errorf(cd.P, "'Parcelable' should have a primary constructor")
 		return
 	}
-	// A class whose companion object is a Parceler writes and reads
-	// itself, and its constructor's parameters needn't be properties.
-	// The supertypes aren't resolved yet: parcelBody checks this guess.
-	parceler := parcelCompanionParceler(cd) != nil
-	for _, p := range cd.CtorParams {
-		if cd.Enum || parceler {
-			break
-		}
-		if !p.IsProp {
-			c.errorf(p.P, "'Parcelable' constructor parameter should be 'val' or 'var'")
-			return
-		}
-	}
 	describe := true
 	for _, m := range cd.Members {
 		switch m := m.(type) {
@@ -332,7 +321,7 @@ func (c *Checker) parcelBody(d *syntax.FunDecl, cls *types.ClassSym) {
 	}
 	cd := target.Decl.(*syntax.ClassDecl)
 	g := &parcelGen{c: c, fq: fqName(target)}
-	comp, ok := c.parcelParceler(cd, target)
+	comp, ok := c.parcelParceler(cd, target, d.Name == "writeToParcel")
 	if !ok {
 		return
 	}
@@ -348,12 +337,7 @@ func (c *Checker) parcelBody(d *syntax.FunDecl, cls *types.ClassSym) {
 	if len(cd.TypeParams) > 0 {
 		bounds := make([]string, len(cd.TypeParams))
 		for i, tp := range cd.TypeParams {
-			b, ok := parcelBound(tp.Sym)
-			if !ok {
-				c.unsupported(tp.P, "parcelize", "@Parcelize classes with a type parameter that has several bounds, or a bound that names a type parameter, are not supported")
-				return
-			}
-			bounds[i] = g.typeText(b)
+			bounds[i] = g.typeText(parcelBound(tp.Sym))
 		}
 		targs = "<" + strings.Join(bounds, ", ") + ">"
 	}
@@ -466,7 +450,7 @@ func (c *Checker) parcelDescribe(d *syntax.FunDecl, cls *types.ClassSym) {
 // makes an array of nulls.
 func (c *Checker) parcelNewArray(d *syntax.FunDecl, cls *types.ClassSym) {
 	cd := cls.Decl.(*syntax.ClassDecl)
-	comp, ok := c.parcelParceler(cd, cls)
+	comp, ok := c.parcelParceler(cd, cls, false)
 	if !ok || comp == nil {
 		return
 	}
@@ -481,9 +465,14 @@ func (c *Checker) parcelNewArray(d *syntax.FunDecl, cls *types.ClassSym) {
 	if !declared {
 		return
 	}
-	// Parceler's newArray makes an Array<C>, which Creator's is of C?.
+	// Parceler's newArray makes an Array<C>, which Creator's is of C?;
+	// of C<*> for a generic class.
+	name := fqName(cls)
+	if n := len(cls.TypeParams); n > 0 {
+		name += "<" + strings.Repeat("*, ", n-1) + "*>"
+	}
 	members, err := parseMembers(c.file.Path, cd.P, fmt.Sprintf(
-		"fun f(): kotlin.Array<%[2]s?> {\nreturn %[1]s.newArray(size) as kotlin.Array<%[2]s?>\n}\n", fqName(comp), fqName(cls)))
+		"fun f(): kotlin.Array<%[2]s?> {\nreturn %[1]s.newArray(size) as kotlin.Array<%[2]s?>\n}\n", fqName(comp), name))
 	if err != nil {
 		c.errorf(cd.P, "parcelize: %v", err)
 		return
@@ -491,42 +480,42 @@ func (c *Checker) parcelNewArray(d *syntax.FunDecl, cls *types.ClassSym) {
 	d.Body, d.ExprBody = members[0].(*syntax.FunDecl).Body, nil
 }
 
-// parcelCompanionParceler returns the companion object of class cd if
-// one of its supertypes, as written, is named Parceler, or nil: then it
-// is kotlinx.parcelize.Parceler, which addParcelMembers assumes before
-// the supertypes resolve.
-func parcelCompanionParceler(cd *syntax.ClassDecl) *syntax.ClassDecl {
-	for _, m := range cd.Members {
-		if m, ok := m.(*syntax.ClassDecl); ok && m.Companion {
-			for _, st := range m.Supers {
-				if st.Type != nil && (st.Type.Name == "Parceler" || st.Type.Name == "kotlinx.parcelize.Parceler") {
-					return m
-				}
-			}
-		}
-	}
-	return nil
-}
-
 // parcelParceler returns class cls's companion object if it is a
 // kotlinx.parcelize.Parceler, which writes and reads the class, or nil.
-// It reports, and returns false, if addParcelMembers's guess from the
-// supertypes as written was wrong, or the class is generic.
-func (c *Checker) parcelParceler(cd *syntax.ClassDecl, cls *types.ClassSym) (*types.ClassSym, bool) {
-	guess := parcelCompanionParceler(cd) != nil
+// Without one, the constructor's parameters must be properties, which
+// the class is written as: it reports, and returns false, if one isn't,
+// in writeToParcel (write). It also returns false, reporting that kc
+// can't, if the class star-projected isn't of the Parceler's type.
+func (c *Checker) parcelParceler(cd *syntax.ClassDecl, cls *types.ClassSym, write bool) (*types.ClassSym, bool) {
 	pc := c.u.ext.class("kotlinx/parcelize/Parceler")
-	actual := cls.Companion != nil && pc != nil && cls.Companion.IsSubclassOf(pc)
-	switch {
-	case guess != actual:
-		c.unsupported(cd.P, "parcelize", "a companion object that is a Parceler by another name is not supported")
-		return nil, false
-	case actual && len(cd.TypeParams) > 0:
-		c.unsupported(cd.P, "parcelize", "generic @Parcelize classes with a Parceler companion object are not supported")
-		return nil, false
-	case actual:
-		return cls.Companion, true
+	if cls.Companion == nil || pc == nil || !cls.Companion.IsSubclassOf(pc) {
+		for _, p := range cd.CtorParams {
+			if !p.IsProp && !cd.Enum {
+				if write {
+					c.errorf(p.P, "'Parcelable' constructor parameter should be 'val' or 'var'")
+				}
+				return nil, false
+			}
+		}
+		return nil, true
 	}
-	return nil, true
+	if pt, ok := c.asSuper(types.ClassType(cls.Companion), pc); ok {
+		self := types.ClassType(cls)
+		if len(cls.TypeParams) > 0 {
+			args := make([]types.Arg, len(cls.TypeParams))
+			for i := range args {
+				args[i] = types.Arg{V: types.Star}
+			}
+			self = types.GenericType(cls, args)
+		}
+		if !c.subtype(self, parcelArg(pt, 0)) {
+			if write {
+				c.unsupported(cd.P, "parcelize", "a Parceler companion object of %s, not %s, is not supported", parcelArg(pt, 0), self)
+			}
+			return nil, false
+		}
+	}
+	return cls.Companion, true
 }
 
 // A parcelEntry is a @TypeParceler<T, P>: the type T and the Parceler
@@ -614,19 +603,30 @@ func parcelAnnotation(ref *syntax.TypeRef, name string) *syntax.Annotation {
 	return nil
 }
 
-// parcelBound returns the bound that type parameter p erases to, if the
-// plugin's reads of it can be passed to the class's constructor with it
-// as the type argument: if p has one bound, at most, which names no type
-// parameter.
-func parcelBound(p *types.TypeParamSym) (types.Type, bool) {
-	if p == nil || len(p.Bounds) > 1 {
-		return types.Type{}, false
+// parcelBound returns the type that type parameter p erases to, as the
+// plugin dispatches on it: its erased upper bound, the first bound that
+// is a class rather than an interface, or else the first, with the type
+// arguments that name type parameters star-projected (Comparable<*> for
+// T : Comparable<T>). The reads of p's values are of that type, and the
+// class's constructor is called with it as p's type argument, which
+// needn't be within p's bounds in a plugin's code (state.plugin).
+func parcelBound(p *types.TypeParamSym) types.Type {
+	b := p.ErasureBound()
+	if b.IsParam() {
+		return parcelErase(b) // T : U
 	}
-	b := p.Bound()
-	if parcelHasParam(b) {
-		return types.Type{}, false
+	if b.K != types.Class || b.A == nil {
+		return b
 	}
-	return b, true
+	args := make([]types.Arg, b.A.Len())
+	for i, a := range b.A.List {
+		args[i] = a
+		if a.V != types.Star && parcelHasParam(a.T) {
+			args[i] = types.Arg{V: types.Star}
+		}
+	}
+	b.A = types.MakeArgs(args)
+	return b
 }
 
 // parcelHasParam reports whether type t names a type parameter.
@@ -644,14 +644,30 @@ func parcelHasParam(t types.Type) bool {
 	return false
 }
 
+// parcelNeedsArgs reports whether the plugin writes a value of type t
+// by its type arguments: an array's, a sparse array's or a collection's.
+// It fails to write a type parameter that erases to one, which has none.
+func parcelNeedsArgs(t types.Type) bool {
+	if t.K != types.Class {
+		return false
+	}
+	for _, name := range []string{t.C.KotlinName, t.C.Name} {
+		if _, ok := parcelCollections[name]; ok || name == "kotlin/Array" || name == "android/util/SparseArray" {
+			return true
+		}
+	}
+	return false
+}
+
 // parcelErase returns type t with each type parameter in it replaced by
 // its bound, nullable if the parameter's value can be null, as the
 // plugin dispatches on a type parameter's erased upper bound. A type
-// parameter whose bound parcelBound rejects is left as it is.
+// parameter whose bound the plugin writes by its type arguments, which
+// it fails to (parcelNeedsArgs), is left as it is, which kc can't write.
 func parcelErase(t types.Type) types.Type {
 	if t.K == types.TypeParam {
-		b, ok := parcelBound(t.Param())
-		if !ok {
+		b := parcelBound(t.Param())
+		if parcelNeedsArgs(b) {
 			return t
 		}
 		if t.N || t.Param().NullableBound() && !t.D {

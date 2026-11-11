@@ -964,8 +964,9 @@ func TestParcelize(t *testing.T) {
 	// one with a property of a type that the plugin writes in a way of its
 	// own, such as a range, which is Serializable; of a type that it writes
 	// with writeValue but isn't annotated @RawValue, for which kotlinc
-	// reports an error; or with a type parameter whose bound kc can't pass
-	// to the constructor; or with a custom Parceler that kotlinc rejects.
+	// reports an error; or with a type parameter whose bound is a
+	// collection, which kotlinc fails to compile; or with a custom Parceler
+	// that kotlinc rejects, or a companion one of another class.
 	for _, decl := range []string{
 		"class A(val x: IntRange) : Parcelable",
 		"class A(val x: kotlin.time.Duration) : Parcelable",
@@ -974,8 +975,10 @@ func TestParcelize(t *testing.T) {
 		"class A(val x: Map<String, Iterable<Int>>) : Parcelable",
 		"class A(val x: List<@kotlinx.parcelize.DataClass Pair<Int, Int>>) : Parcelable",
 		"class A<T>(val x: T) : Parcelable",
-		"class A<T : Comparable<T>>(val x: @kotlinx.parcelize.RawValue T) : Parcelable",
-		"class A<T>(val x: @kotlinx.parcelize.RawValue T) : Parcelable where T : Parcelable, T : java.io.Serializable",
+		"class A<L : List<String>>(val x: L) : Parcelable",
+		"class A<T, L : Map<String, T>>(val x: @kotlinx.parcelize.RawValue L) : Parcelable",
+		"class A(val x: Int) : Parcelable {\n    companion object : kotlinx.parcelize.Parceler<String> {\n" +
+			"        override fun create(parcel: Parcel) = \"\"\n        override fun String.write(parcel: Parcel, flags: Int) {}\n    }\n}",
 		"class A(val x: @kotlinx.parcelize.WriteWith<P> String) : Parcelable",
 		"class A(val x: @kotlinx.parcelize.WriteWith<Q> Int) : Parcelable",
 		"@kotlinx.parcelize.TypeParceler<Int, P>()\n@kotlinx.parcelize.TypeParceler<Int, P>()\nclass A(val x: Int) : Parcelable",
@@ -995,6 +998,19 @@ func TestParcelize(t *testing.T) {
 			}
 		})
 	}
+
+	// A constructor parameter that isn't a property is an error, as with
+	// kotlinc, unless a Parceler companion object writes the class.
+	t.Run("parameter not a property", func(t *testing.T) {
+		src := filepath.Join(t.TempDir(), "a.kt")
+		os.WriteFile(src, []byte("import android.os.Parcelable\nimport kotlinx.parcelize.Parcelize\n\n"+
+			"@Parcelize\nclass A(val x: Int, y: Int) : Parcelable\n"), 0o644)
+		err := Compile([]string{src}, Options{OutDir: t.TempDir(), Jobs: 1, ClassPath: cp, Parcelize: true})
+		var se *syntax.Error
+		if !errors.As(err, &se) || se.Feature != "" || !strings.Contains(err.Error(), "'Parcelable' constructor parameter should be 'val' or 'var'") {
+			t.Errorf("got %v, want the val or var error", err)
+		}
+	})
 }
 
 // TestJavaSources compiles testdata/javasrc/, a module of Kotlin and Java

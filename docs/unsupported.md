@@ -81,14 +81,13 @@ S::class)` get their `serializer()`.
 Not supported: properties of value classes, and of the types that the
 plugin writes in ways of its own that `kc` doesn't (ranges, `Duration`,
 `Uuid`, unsigned integers and kotlinx.collections.immutable's
-collections); generic `@Parcelize` classes with a type parameter that
-has several bounds, or a bound that names a type parameter, or with a
-`Parceler` companion object; a companion object that is a `Parceler`
-through a type alias. A class that kotlinc reports an error for is left
-to kotlinc too: one with a property of a type that the plugin can only
-write with `writeValue` and that isn't annotated `@RawValue`, or a
-`@TypeParceler` or `@WriteWith` whose `Parceler` isn't an object or
-doesn't fit the type, or two `@TypeParceler`s for one type.
+collections); types annotated `@DataClass`. A class that kotlinc reports
+an error for, or fails to compile, is left to kotlinc too: one with a
+property of a type that the plugin can only write with `writeValue` and
+that isn't annotated `@RawValue`, or of a type parameter whose bound is a
+collection; a `@TypeParceler` or `@WriteWith` whose `Parceler` isn't an
+object or doesn't fit the type, or two `@TypeParceler`s for one type; a
+`Parceler` companion object of another type than the class's.
 
 ## Compose (`-compose`)
 

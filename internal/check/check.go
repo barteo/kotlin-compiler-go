@@ -281,6 +281,11 @@ type Checker struct {
 }
 
 type state struct {
+	// plugin is set in the body of a function that kc writes for a
+	// compiler plugin (FunDecl.Plugin), and in its lambdas: its explicit
+	// type arguments needn't be within their bounds, as kotlinc's
+	// plugins, which write IR, don't check them either.
+	plugin     bool
 	scope      *scope
 	cls        *types.ClassSym
 	this       *types.VarSym // what smart casts of this narrow; nil outside classes
@@ -2736,7 +2741,7 @@ func (c *Checker) checkFun(d *syntax.FunDecl, cls *types.ClassSym) {
 		s.declare(p)
 	}
 	c.state = state{scope: s, cls: cls, this: newThis(cls), fn: sym, retType: sym.Ret, retAllowed: true, tparams: funTypeParams(sym, cls),
-		recvs: extRecvs(d), ctxs: funContexts(d)}
+		recvs: extRecvs(d), ctxs: funContexts(d), plugin: d.Plugin}
 	c.inAnon(cls)
 	if sym.Suspend {
 		d.Continuation = c.anonName()

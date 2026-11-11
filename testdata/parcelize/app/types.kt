@@ -15,6 +15,7 @@ import android.util.SparseLongArray
 import java.io.FileDescriptor
 import kotlinx.parcelize.IgnoredOnParcel
 import kotlinx.parcelize.Parceler
+import kotlinx.parcelize.Parceler as ParcelerAlias
 import kotlinx.parcelize.Parcelize
 import kotlinx.parcelize.RawValue
 import kotlinx.parcelize.TypeParceler
@@ -285,6 +286,59 @@ class SelfArray(name: String) : Parcelable {
         override fun SelfArray.write(parcel: Parcel, flags: Int) = parcel.writeString(name)
         @Suppress("UNCHECKED_CAST")
         override fun newArray(size: Int) = arrayOfNulls<SelfArray>(size + 1) as Array<SelfArray>
+    }
+}
+
+// A type parameter is written as its erased bound: the class among its
+// bounds, Number, or else the first, Comparable<*>.
+@Parcelize
+data class Cmp<T : Comparable<T>>(val x: @RawValue T, val xs: @RawValue List<T>) : Parcelable
+
+@Parcelize
+data class Bounded<T>(val x: T, val y: T?) : Parcelable where T : Comparable<T>, T : Number
+
+// A generic class's Parceler companion object is of the class
+// star-projected.
+@Parcelize
+class GenSelf<T>(val label: String, val extra: @RawValue T?) : Parcelable {
+    override fun toString() = "GenSelf($label, $extra)"
+    override fun equals(other: Any?) = other is GenSelf<*> && other.label == label
+    override fun hashCode() = label.hashCode()
+
+    companion object : Parceler<GenSelf<*>> {
+        override fun create(parcel: Parcel): GenSelf<*> = GenSelf(parcel.readString()!!, null)
+        override fun GenSelf<*>.write(parcel: Parcel, flags: Int) = parcel.writeString(label)
+        @Suppress("UNCHECKED_CAST")
+        override fun newArray(size: Int) = arrayOfNulls<GenSelf<*>>(size + 2) as Array<GenSelf<*>>
+    }
+}
+
+// Parceler companion objects through a type alias and an import alias.
+typealias AliasedParceler = Parceler<Aliased>
+
+@Parcelize
+class Aliased(n: Int) : Parcelable {
+    val m = n * 2
+    override fun toString() = "Aliased($m)"
+    override fun equals(other: Any?) = other is Aliased && other.m == m
+    override fun hashCode() = m
+
+    companion object : AliasedParceler {
+        override fun create(parcel: Parcel) = Aliased(parcel.readInt())
+        override fun Aliased.write(parcel: Parcel, flags: Int) = parcel.writeInt(m / 2)
+    }
+}
+
+@Parcelize
+class ImportAliased(n: Int) : Parcelable {
+    val m = n + 1
+    override fun toString() = "ImportAliased($m)"
+    override fun equals(other: Any?) = other is ImportAliased && other.m == m
+    override fun hashCode() = m
+
+    companion object : ParcelerAlias<ImportAliased> {
+        override fun create(parcel: Parcel) = ImportAliased(parcel.readInt())
+        override fun ImportAliased.write(parcel: Parcel, flags: Int) = parcel.writeInt(m - 1)
     }
 }
 
