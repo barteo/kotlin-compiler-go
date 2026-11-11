@@ -115,13 +115,12 @@ internal class KcEnvironment(val key: String, config: KSPConfig) {
     private val files = VirtualFileManager.getInstance().getFileSystem(StandardFileSystems.FILE_PROTOCOL)
 
     /**
-     * Has the PSI of the files at [paths] made and parsed on another
+     * Has the PSI of the Kotlin files at [paths] made and parsed on another
      * thread, while the caller waits for libkc's update: the files whose
      * PSI the round after the update would otherwise make and parse
      * itself (KcSession.update). A file is read again here, and [psiFile]
-     * given libkc's hash of the same bytes takes the PSI made here. A
-     * Kotlin file's tree waits in [trees] for the round's join; a Java
-     * file's classes are loaded, which parses it. The PSI is made one
+     * given libkc's hash of the same bytes takes the PSI made here; its
+     * tree waits in [trees] for the round's join. The PSI is made one
      * file after another ([psiFile] isn't thread-safe), and parsed in
      * parallel when there are many files. The caller touches nothing of
      * this environment until the result is done, and a file that fails is
@@ -134,35 +133,24 @@ internal class KcEnvironment(val key: String, config: KSPConfig) {
             t.mark("start")
             val made = paths.mapNotNull { p ->
                 try {
-                    files.refreshAndFindFileByPath(p)?.let { psiFile(it, p) }
+                    files.refreshAndFindFileByPath(p)?.let { psiFile(it, p) } as? org.jetbrains.kotlin.psi.KtFile
                 } catch (e: Exception) {
                     null // The round makes the file's PSI itself.
                 }
             }
             t.mark("psi")
-            val parse = { f: PsiFile ->
+            val parse = { kt: org.jetbrains.kotlin.psi.KtFile ->
                 try {
-                    when (f) {
-                        is org.jetbrains.kotlin.psi.KtFile -> trees.ahead(f, KcRound.preorder(f.node))
-                        is com.intellij.psi.PsiJavaFile -> {
-                            f.packageName
-                            fun walk(c: com.intellij.psi.PsiClass) { c.innerClasses.forEach(::walk) }
-                            f.classes.forEach(::walk)
-                        }
-                    }
+                    trees.ahead(kt, KcRound.preorder(kt.node))
                 } catch (e: Exception) {
                     // The round parses the file itself.
                 }
             }
             if (made.size > SMALL_AHEAD) made.parallelStream().forEach(parse) else made.forEach(parse)
             t.mark("parse")
-            val kt = made.count { it is org.jetbrains.kotlin.psi.KtFile }
-            t.print("ahead kt=$kt java=${made.size - kt}")
+            t.print("ahead files=${made.size}")
         }
     }
-
-    /** Whether [psiFile] made the PSI of the file at [path] before. */
-    fun loaded(path: String): Boolean = path in parsed
 
     /** A file's PSI's virtual file, and the hash of the bytes [psiFile] last read from it. */
     private class Parsed(val vf: VirtualFile, val hash: Long)

@@ -198,19 +198,19 @@ private class KcSession(private val config: KSPConfig, @Suppress("UNUSED_PARAMET
      * libkc updates, the PSI the round would make and parse after it is
      * made and parsed (KcEnvironment.parseAhead), unless KC_NO_PARSE_AHEAD
      * is set: that of [modified], the sources Gradle says changed, and of
-     * the sources the environment hasn't parsed yet, the Kotlin files no
-     * round joined and the Java files it never loaded. That is every file
-     * in a new environment's first round, and the generated files in the
-     * rounds after; a warm run's others are joined and loaded already.
+     * the Kotlin files no round joined yet. That is every Kotlin file in a
+     * new environment's first round, and the generated ones in the rounds
+     * after; a warm run's others are joined already. Java files are left
+     * to [build]: IntelliJ parses them no faster in parallel, and loading
+     * them ahead gained nothing (docs/analysis-api.md, step 59).
      */
     private fun update(modified: List<String> = emptyList()) {
         val t = KcTimer()
         val (reused, reparsed) = environment.reused to environment.reparsed
         val checks = environment.reusableChecks()
         val base = environment.baseFiles()
-        val toParse = if (noAheadNew) modified else (modified + paths.filter {
-            if (it.endsWith(".kt")) !environment.trees.has(it) else !environment.loaded(it)
-        }).distinct()
+        val toParse = if (noAheadNew) modified else
+            (modified + paths.filter { it.endsWith(".kt") && !environment.trees.has(it) }).distinct()
         val ahead = if (toParse.isEmpty() || noParseAhead) null else environment.parseAhead(toParse)
         val model = try {
             KcOps.update(handle, paths.toList(), checks, base)
