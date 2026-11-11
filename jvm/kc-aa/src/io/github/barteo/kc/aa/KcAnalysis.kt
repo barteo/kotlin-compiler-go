@@ -18,7 +18,9 @@ import org.jetbrains.kotlin.analysis.api.signatures.KaFunctionSignature
 import org.jetbrains.kotlin.analysis.api.signatures.KaVariableSignature
 import org.jetbrains.kotlin.analysis.api.types.KaClassType
 import org.jetbrains.kotlin.analysis.api.types.KaSubstitutor
+import org.jetbrains.kotlin.analysis.api.components.KaDiagnosticCheckerFilter
 import org.jetbrains.kotlin.analysis.api.components.KaSubtypingErrorTypePolicy
+import org.jetbrains.kotlin.analysis.api.diagnostics.KaDiagnosticWithPsi
 import org.jetbrains.kotlin.analysis.api.types.KaType
 import org.jetbrains.kotlin.load.kotlin.TypeMappingMode
 import org.jetbrains.kotlin.name.ClassId
@@ -309,6 +311,17 @@ class KcAnalysis internal constructor(
         val pkg = (top.containingFile as? com.intellij.psi.PsiJavaFile)?.packageName
             ?: top.qualifiedName?.substringBeforeLast('.', "") ?: ""
         return ClassId(FqName(pkg), FqName.fromSegments(names.reversed()), false)
+    }
+
+    // KaDiagnosticProvider
+    /**
+     * The errors kc found in [file]; its notes of features it doesn't
+     * support aren't errors in the file.
+     */
+    fun collectDiagnostics(file: KtFile, filter: KaDiagnosticCheckerFilter): Collection<KaDiagnosticWithPsi<*>> {
+        val path = file.virtualFile?.path?.let { java.io.File(it).canonicalPath } ?: return emptyList()
+        return round.diagnostics.filter { it.feature.isEmpty() && java.io.File(it.path).canonicalPath == path }
+            .map { KcDiagnosticWithPsi(it, file, round.token) }
     }
 
     // KaTypeRelationChecker

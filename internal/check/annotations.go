@@ -295,7 +295,7 @@ func (c *Checker) annotationValues(cls *types.ClassSym, args []annotArg, p synta
 			switch {
 			case v.Vararg:
 				// No arguments for a vararg parameter: kotlinc writes [].
-				values = append(values, syntax.AnnotationValue{Name: v.Name, Type: v.Type, Array: true})
+				values = append(values, syntax.AnnotationValue{Name: v.Name, Type: v.Type, Array: true, Omitted: true})
 			case !v.Default && cls.Annotation:
 				c.errorf(p, "no value passed for parameter '%s'", v.Name)
 				ok = false

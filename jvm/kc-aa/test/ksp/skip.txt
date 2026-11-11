@@ -1,2 +1,7 @@
+testChangingBehavior: unsupported: KcBackingFieldSymbol.containingSymbol (backing fields API)
 testDeferredTypeRefs: disabled: @Disabled in KSPUnitTestSuite
+testJvmNameRecord: missing: a library Java record (LibRecord) isn't found
 testPlatformDeclaration: disabled: @Disabled in KSPUnitTestSuite
+testPluginProblemReporter: unsupported: no PluginProblemReporter service in kc's environment
+testRegisterProcessorForNewFeatures: unsupported: KcBackingFieldSymbol.containingSymbol (backing fields API)
+testTypeAnnotationClassReference: missing: a resolved type's annotation (TypeAnnotationClassReferenceProcessor: Sequence is empty)

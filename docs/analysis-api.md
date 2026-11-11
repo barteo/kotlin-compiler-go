@@ -75,7 +75,7 @@ mapping.
 | M3 | Richer symbol model: visibility and modality enums, flags, origins, library annotation arguments, Java parameter names | done: source types, flags and modality (step 1); KaTypes on the JVM (2); annotation arguments (3); library classes (4); inherited members, overrides, subtyping (5); packages, library top-level declarations, alias abbreviations (6); JVM type mapping (7); backing fields (8); Java sources in the module (15). Moshi, Dagger, Room and Hilt byte-identical to stock KSP 2.3.6 (steps 7–9, 14) |
 | M4 | Queryable session `analysis/ka`: lookups, scopes, relations, overrides | done: `ka.Session.Update` and `Model` with `Class` and `Package` lookups on the class path (steps 4, 6), shared library (11), lookups recorded for incremental processing (16); scopes, relations and overrides are answered on the JVM over the model (step 5) |
 | M5 | Bridge: `cmd/libkc` operations, `tools/kagen` wire format, `jvm/kc-aa` KaSession | done: `internal/kaops` operations (open, update, close, class, package), the model wire format, written by hand in `internal/kaops` and `KcModel.kt` (no `tools/kagen` generator was needed), the `KaSession` proxy and symbol, type and annotation classes; member coverage in `jvm/kc-aa/members.txt` (step 19) |
-| M6 | KSP fork integration: the `kc` backend, IC lookups, hot paths | done: KSP's own test suite on the kc backend, `build.sh ksp` (step 15): 134 of 136 pass, the other 2 disabled in KSP, Java sources in the main module included; IC lookups recorded by kc's checker and replayed into KSP's tracker, checked against stock KSP on a fixture (step 16). Open: the whole-run fallback to `aa` (see gaps) |
+| M6 | KSP fork integration: the `kc` backend, IC lookups, hot paths | done: KSP's own test suite on the kc backend, `build.sh ksp` (steps 15, 26): 166 of 173 pass on the fork's upstream merge, 2 disabled in KSP, Java sources in the main module included; IC lookups recorded by kc's checker and replayed into KSP's tracker, checked against stock KSP on a fixture (step 16). Open: the whole-run fallback to `aa` (see gaps) |
 | M7 | Differential conformance against stock KSP, benchmark, CI | in progress: `bench/ksp` (steps 11, 17): on octi-server warm 773 ms on stock KSP, 176 ms on kc; cold 6.2–6.4 s and 3.5–3.6 s (step 11's CDS archive: 1.9–2.1 s on kc); CI: `.github/workflows/analysis-api.yml` (step 12) |
 
 ### M0.1 – JNI spike
@@ -1918,6 +1918,57 @@ its results into them.
 
 `build.sh ksp` passes 134, `build.sh stock` is unchanged, and kotlinpoet
 still passes 18 of 19.
+
+#### Step 26: the KSP fork on upstream's latest
+
+The fork's `kc-backend` branch merged upstream KSP: the `ApiFeatures` API
+(`enableBackingFields`, `enableContextParameters`), the `runKSPTest` test
+helpers, 37 new tests, `[]` for a vararg parameter without arguments, and
+a type check of generated files with `collectDiagnostics`.
+
+- **Build** (`jvm/ksp/build.sh`): `ApiFeatures` and `KSBackingField` are
+  newer than any released `symbol-processing-api`, so the fork's `api`
+  module is compiled from its sources into `symbol-processing-api.jar`;
+  `common-deps` is 2.3.13's (`KSP_DEPS_VERSION`).
+- **Suite** (`ksptest/KspSuite.kt`): it finds `runKSPTest` cases too,
+  constructs processors with an `ApiFeatures` (`-Dksptest.features` turns
+  on `backingFields` and `contextParameters`), and reads `// EXPECT
+  ENABLE_X = TRUE:` lines for the features on.
+- **Annotation defaults** (`KcExtras`): `libraryAnnotationDefault` joins
+  `javaAnnotationDefault`, both from the model.
+- **Java annotation `value`** (`analysis/ka/library.go`): FIR makes a
+  Java annotation's `value()` of an array type a vararg parameter, first
+  in its constructor (kotlinc writes it first, too), so KSP's absent
+  vararg gives `value: []` for `@J(x = 42)`. The checker already treated it
+  as vararg.
+- **Library argument order**: FIR's loader of a Kotlin class file's
+  annotation puts its empty array arguments after the others: kotlinc
+  writes `@A(x = 42)` of `A(vararg val value: Char, val x: Int)` as `value
+  = [], x = 42`, and AA reports `x` first. Checked on stock KSP 2.3.6;
+  `emptyArraysLast` does the same.
+- **An empty array written** (`@A([])`) is an argument; only the empty
+  array the checker makes for a vararg parameter without arguments
+  (`syntax.AnnotationValue.Omitted`) isn't.
+- **`collectDiagnostics`** (`KcAnalysis`) reports kc's errors in the file
+  as `KaDiagnosticWithPsi`s at the leaf of their position; its notes of
+  features kc doesn't support aren't errors in the file.
+
+The slice's `v = []` and `xs = []` (`@Args`, `@Inner` without their vararg
+arguments) are the fork's, so `test/slice/stock.diff` records them
+against stock 2.3.6.
+
+Result: 166 of 173 pass. The rest (`test/ksp/skip.txt`):
+
+| Class | Tests |
+|---|---|
+| `disabled`: `@Disabled` in `KSPUnitTestSuite` | 2 |
+| `unsupported`: `KcBackingFieldSymbol.containingSymbol` | 2 |
+| `unsupported`: no `PluginProblemReporter` service | 1 |
+| `missing`: a library Java record | 1 |
+| `missing`: a resolved type's annotation | 1 |
+
+`build.sh stock` passes: the slice, Moshi, Dagger, Room, Hilt and
+incremental processing, on kc and on stock KSP.
 
 ## Gaps and open questions
 

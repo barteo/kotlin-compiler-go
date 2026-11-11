@@ -838,7 +838,8 @@ func (l *library) javaClass(cls *types.ClassSym, depth int) *Decl {
 	}
 	if d.Kind == KindAnnotationClass {
 		// Its parameters are its methods, in class-file order, as the
-		// parameters of a constructor.
+		// parameters of a constructor, as FIR's: value first, a vararg
+		// parameter if its type is an array.
 		ctor := &Decl{Kind: KindConstructor, Name: "<init>", Visibility: Public, Modality: ModalityFinal,
 			Flags: FlagPrimary | FlagJava}
 		for i := range det.Methods {
@@ -847,17 +848,29 @@ func (l *library) javaClass(cls *types.ClassSym, depth int) *Decl {
 				continue
 			}
 			p := &Decl{Kind: KindValueParameter, Name: m.Name}
+			var hint string
 			if fs := cls.Methods[m.Name]; len(fs) > 0 {
-				p.Type = platform(b.typ(fs[0].Ret, nil))
+				t := fs[0].Ret
+				p.Type = platform(b.typ(t, nil))
+				hint = paramHint(p.Type)
+				if m.Name == "value" && t.IsArray() {
+					// value of an array type is a vararg parameter.
+					p.Flags |= FlagVararg
+					p.Type = platform(b.typ(types.VarargElem(t), nil))
+				}
 				if p.Type != nil {
 					p.Type.Flexible = false // annotation parameters aren't null
 				}
 			}
 			if m.Default != nil {
 				p.Flags |= FlagHasDefault
-				p.Default = l.value(m.Default, paramHint(p.Type), 0)
+				p.Default = l.value(m.Default, hint, 0)
 			}
-			ctor.Params = append(ctor.Params, p)
+			if p.Name == "value" {
+				ctor.Params = slices.Insert(ctor.Params, 0, p)
+			} else {
+				ctor.Params = append(ctor.Params, p)
+			}
 		}
 		d.Members = append(d.Members, ctor)
 	} else {
@@ -1242,12 +1255,33 @@ func (l *library) annotations(as []classfile.Annotation, kotlin bool) []Annotati
 	var out []Annotation
 	for i := range as {
 		a := l.annotation(&as[i], 0)
-		if kotlin && skipped[internalName(a.ClassID)] {
-			continue
+		if kotlin {
+			if skipped[internalName(a.ClassID)] {
+				continue
+			}
+			emptyArraysLast(a)
 		}
 		out = append(out, *a)
 	}
 	return out
+}
+
+// emptyArraysLast moves the empty array arguments of annotation a, of a
+// Kotlin class file, after its others, as FIR's loader of them has them:
+// kotlinc writes [] for a vararg parameter without arguments, in its
+// place (@A(x = 42) of A(vararg val value: Char, val x: Int) is written
+// value = [], x = 42), and the Analysis API reports x first.
+func emptyArraysLast(a *Annotation) {
+	slices.SortStableFunc(a.Args, func(x, y NamedValue) int {
+		return emptyArray(x.Value) - emptyArray(y.Value)
+	})
+}
+
+func emptyArray(v *Value) int {
+	if v != nil && v.Kind == ValueArray && len(v.Elems) == 0 {
+		return 1
+	}
+	return 0
 }
 
 // annotation returns the model of class-file annotation a.

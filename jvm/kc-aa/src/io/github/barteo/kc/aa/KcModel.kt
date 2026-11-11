@@ -168,6 +168,45 @@ internal class KcDiagnostic(val path: String, val line: Int, val col: Int, val m
     override fun toString() = "$path:$line:$col: " + (if (feature.isEmpty()) "" else "unsupported: $feature: ") + message
 }
 
+/** Diagnostic [d] of [file], at the leaf there: what `collectDiagnostics` reports. */
+internal class KcDiagnosticWithPsi(
+    private val d: KcDiagnostic,
+    file: org.jetbrains.kotlin.psi.KtFile,
+    private val lifetime: org.jetbrains.kotlin.analysis.api.lifetime.KaLifetimeToken,
+) : org.jetbrains.kotlin.analysis.api.diagnostics.KaDiagnosticWithPsi<com.intellij.psi.PsiElement> {
+    private val element: com.intellij.psi.PsiElement = file.findElementAt(offset(file.text)) ?: file
+
+    /** The offset of [d]'s line and column (1-based, the column in UTF-8 bytes) in [text]. */
+    private fun offset(text: String): Int {
+        var at = 0
+        repeat(d.line - 1) {
+            val nl = text.indexOf('\n', at)
+            if (nl < 0) return text.length
+            at = nl + 1
+        }
+        var bytes = d.col - 1
+        while (bytes > 0 && at < text.length && text[at] != '\n') {
+            val c = text[at]
+            bytes -= when {
+                c.code < 0x80 -> 1
+                c.code < 0x800 -> 2
+                Character.isHighSurrogate(c) -> { at++; 4 }
+                else -> 3
+            }
+            at++
+        }
+        return at.coerceAtMost(text.length)
+    }
+
+    override val psi get() = element
+    override val textRanges: Collection<com.intellij.openapi.util.TextRange> get() = listOf(element.textRange)
+    override val diagnosticClass get() = KcDiagnosticWithPsi::class
+    override val factoryName get() = "KC_ERROR"
+    override val severity get() = org.jetbrains.kotlin.analysis.api.diagnostics.KaSeverity.ERROR
+    override val defaultMessage get() = d.message
+    override val token get() = lifetime
+}
+
 /**
  * A class-path package; Go's ka.Package: its top-level classes' class IDs,
  * and its top-level functions, properties (whose classId is their JVM

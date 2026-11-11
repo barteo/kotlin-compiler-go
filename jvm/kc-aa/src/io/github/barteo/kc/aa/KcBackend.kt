@@ -131,7 +131,8 @@ private class KcSession(private val config: KSPConfig, @Suppress("UNUSED_PARAMET
             KcOps.close(modelHandle)
         }
         modelHandle = model.handle
-        round = KcRound(joined, { id -> KcOps.cls(model.handle, id) }, { fq -> KcOps.pkg(model.handle, fq) }, java, project)
+        round = KcRound(joined, { id -> KcOps.cls(model.handle, id) }, { fq -> KcOps.pkg(model.handle, fq) }, java, project,
+            model.diagnostics)
         provider.session = KcAnalysis.session(KcAnalysis(round, module, libraryModule))
         t.mark("round")
         t.print("round files=${paths.size} psi-reused=${environment.reused - reused} psi-reparsed=${environment.reparsed - reparsed}")

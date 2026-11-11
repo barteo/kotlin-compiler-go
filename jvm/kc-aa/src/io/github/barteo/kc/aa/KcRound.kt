@@ -43,6 +43,8 @@ internal class KcRound(
     val javaFiles: List<PsiJavaFile> = emptyList(),
     /** Where Java library classes' class-file PSI is found; none without it. */
     private val project: com.intellij.openapi.project.Project? = null,
+    /** The errors kc found in the module's sources. */
+    val diagnostics: List<KcDiagnostic> = emptyList(),
 ) {
     val token = KcToken()
 

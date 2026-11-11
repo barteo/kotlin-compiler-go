@@ -316,6 +316,9 @@ type AnnotationValue struct {
 	Type  types.Type
 	Array bool
 	Elems []AnnotationElem
+	// Omitted marks the empty array of a vararg parameter given no
+	// arguments, which isn't written in the source.
+	Omitted bool
 }
 
 // AnnotationElem is a value, or an element of an array value: a checked
