@@ -656,6 +656,14 @@ func (p *SerialProp) Sym() *types.VarSym {
 	return p.Prop.Sym
 }
 
+// Annotations returns the property's annotations.
+func (p *SerialProp) Annotations() []Annotation {
+	if p.Param != nil {
+		return p.Param.Modifiers.Annotations
+	}
+	return p.Prop.Annotations
+}
+
 // Default returns the property's default value, or its initializer.
 func (p *SerialProp) Default() Expr {
 	if p.Param != nil {

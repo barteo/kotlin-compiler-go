@@ -1490,6 +1490,12 @@ func (c *Checker) lambdaMayBe(cd *candidate, l *syntax.Lambda, p types.Type) boo
 				fits = true
 				break
 			}
+			// Or a composable one, with the Compose plugin: content +=
+			// { Tag() } for a MutableList<@Composable () -> Unit>.
+			if c.u.compose && c.u.ext.funcs.ComposableClass(n) != nil && c.subtype(c.u.ext.funcs.ComposableType(ps, types.NothingType), u) {
+				fits = true
+				break
+			}
 		}
 		if !fits {
 			return false

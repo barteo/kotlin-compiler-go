@@ -24,7 +24,14 @@ val List<Foo>.extProp: List<Foo> get() = this
 var <T> Box<T>.extVar: List<T>
     get() = emptyList()
     set(v) {}
-interface WithDefault { fun d(a: List<Foo>): List<Foo> = a }
+interface WithDefault {
+    fun d(a: List<Foo>): List<Foo> = a
+    val p: List<Foo> get() = emptyList()
+    var v: Map<String, Foo>
+        get() = emptyMap()
+        set(value) {}
+    val <Q> Box<Q>.items: List<Q> get() = listOf(t)
+}
 
 abstract class Coll<E> : AbstractCollection<E>() {
     override fun contains(element: E): Boolean = false

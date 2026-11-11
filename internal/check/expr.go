@@ -2186,9 +2186,12 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 			x.Builtin = types.NewString // String(): a new empty string
 			return types.StringType
 		}
-		if f := arrayFuns[name]; f != nil && (name != "String" || c.mayTake(f, x) || len(c.kotlinFuns(name, false)) == 0) {
-			// String(chars); the standard library has String(bytes,
-			// charset) and others.
+		if f := arrayFuns[name]; f != nil && (name != "String" || len(c.kotlinFuns(name, false)) == 0 ||
+			c.mayTake(f, x) && c.takeTypes([]*types.FunSym{f}, x, c.argTypes(x))) {
+			// String(chars); the standard library has String(bytes),
+			// String(bytes, charset) and others. mayTake can't see the
+			// type of an argument that is a call, as in
+			// String(s.toByteArray()), so the arguments are checked first.
 			return c.arrayCall(x, f, want, sink)
 		}
 		if b, ok := assertions[name]; ok && len(c.funImports[name]) == 0 {

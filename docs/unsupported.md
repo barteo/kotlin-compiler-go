@@ -63,13 +63,14 @@ and `TODO`. Use the Java classes directly for the rest. Also:
 
 Not supported: generic classes; interfaces annotated `@Serializable`
 that aren't sealed; local classes; superclasses from other modules;
-more than 32 properties; custom serializers of properties
-(`@Serializable(with = ...)` on a property, `@Contextual`,
-`@UseSerializers`); `@EncodeDefault`; the annotations that formats read
+more than 32 properties; some ways of naming serializers of properties
+(a generic class in `@Serializable(with = ...)` on a property, `@Contextual`,
+`@UseSerializers`); the annotations that formats read
 (`@JsonNames`, `@ProtoNumber`...); arrays and the other types with
 built-in serializers (`Duration`, `Uuid`...). Properties can be of the
-primitive types, `String`, enums, `@Serializable` classes and objects,
-interfaces (polymorphically), and `List`, `Set`, `Map`, `HashSet`,
+primitive types, `String`, enums, `@Serializable` classes, objects and
+value classes, `UInt`, `ULong`, `UShort`, `UByte`, interfaces
+(polymorphically), and `List`, `Set`, `Map`, `HashSet`,
 `HashMap`, `Pair` and `Triple` of these, each nullable too.
 
 Without `-serialization`, only classes annotated `@Serializable(with =
@@ -104,6 +105,23 @@ Not supported yet:
 - `@ExplicitGroupsComposable`.
 
 Without `-compose`, calls of libraries' composables aren't supported.
+
+## Metro (`-metro`)
+
+`kc` implements Metro 1.5.2's dependency graphs: `@DependencyGraph` and its factory, with `@Provides` and `@Includes` parameters; `@Inject` constructors and objects, `@Provides`, `@Binds`, qualifiers and `@SingleIn` scopes; requests as `() -> T`, `Provider<T>` and `Lazy<T>`; set and map multibindings, including `@ElementsIntoSet`, `@Multibinds` and wrapped map values; `@BindingContainer`; assisted injection; member injection; `@ContributesTo`, `@ContributesBinding`, `@ContributesIntoSet` and `@ContributesIntoMap` with `replaces` and `excludes`, from this module or the class path; and `@GraphExtension`s with their factories.
+
+Not supported, and reported as such:
+
+- custom annotations (the `custom-*` options), and options that change Metro's output, other than `enabled`, `contributes-as-inject` and `enable-function-providers`;
+- `@Provides` extension functions;
+- graphs with type parameters, and graph factories that are abstract classes;
+- javax, Jakarta, Dagger and Guice interop;
+- member injection into classes from the class path;
+- member injection that depends on the class itself, as `@Inject lateinit var s: Lazy<S>` in `S`;
+- `createDynamicGraph` and `createDynamicGraphFactory`, and calls of `createGraph` and `createGraphFactory` whose type argument is inferred;
+- graph functions that create a graph extension from parameters, other than its factory's.
+
+`kc` writes no `$MetroFactory` classes, so a graph that `kotlinc` compiles can't use a module that `kc` compiles. A graph that `kc` compiles can use modules that either compiler compiled.
 
 ## Differences from kotlinc
 

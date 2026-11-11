@@ -275,6 +275,7 @@ root
     text "app typed slot String"
   text "app slot"
   text "fixed slot"
+  text "extra app"
   text "plain"
   deco 1
     text "boxed"
@@ -574,6 +575,7 @@ root
     text "app typed slot String"
   text "app slot"
   text "fixed slot"
+  text "extra app"
   text "plain"
   deco 1
     text "boxed"
@@ -873,6 +875,7 @@ root
     text "app typed slot String"
   text "app slot"
   text "fixed slot"
+  text "extra app"
   text "plain"
   deco 1
     text "boxed"
@@ -1184,6 +1187,7 @@ root
     text "app typed slot String"
   text "app slot"
   text "fixed slot"
+  text "extra app"
   text "plain"
   deco 1
     text "boxed"
@@ -1489,6 +1493,7 @@ root
     text "app typed slot String"
   text "app slot"
   text "fixed slot"
+  text "extra app"
   text "plain"
   deco 1
     text "boxed"
@@ -1793,6 +1798,7 @@ root
     text "app typed slot String"
   text "app slot"
   text "fixed slot"
+  text "extra app"
   text "plain"
   deco 1
     text "boxed"
@@ -2097,6 +2103,7 @@ root
     text "app typed slot String"
   text "app slot"
   text "fixed slot"
+  text "extra app"
   text "plain"
   deco 1
     text "boxed"
@@ -2401,6 +2408,7 @@ root
     text "app typed slot String"
   text "app slot"
   text "fixed slot"
+  text "extra app"
   text "plain"
   deco 1
     text "boxed"
@@ -2705,6 +2713,7 @@ root
     text "app typed slot String"
   text "app slot"
   text "fixed slot"
+  text "extra app"
   text "plain"
   deco 1
     text "boxed"
@@ -3009,6 +3018,7 @@ root
     text "app typed slot String"
   text "app slot"
   text "fixed slot"
+  text "extra app"
   text "plain"
   deco 1
     text "boxed"

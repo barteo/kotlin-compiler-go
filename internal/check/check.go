@@ -47,6 +47,8 @@ type Universe struct {
 	// parcelize is Library.Parcelize, and serialization
 	// Library.Serialization, and compose Library.Compose.
 	parcelize, serialization, compose bool
+	// metro is Library.MetroPlan.
+	metro *MetroPlan
 	// parcelSealed is parcelizeSealed's, with parcelize.
 	parcelSealed map[string]bool
 	// serialInterfaces are the sealed interfaces annotated @Serializable,
@@ -395,6 +397,12 @@ type Library struct {
 	// OptIns are the qualified names of the requirement markers the
 	// module opts in to, as kotlinc's -opt-in: see optin.go.
 	OptIns []string
+	// MetroPlan is what the Metro compiler plugin adds to the program:
+	// see metro.go.
+	MetroPlan *MetroPlan
+	// MetroOptions are the Metro plugin's options, by key: see
+	// metroOptions.
+	MetroOptions map[string]string
 }
 
 // EnableSerialization sets Serialization. The code that kc writes for the
@@ -552,84 +560,8 @@ type Options struct {
 
 // CheckOptions is CheckContext, which checks what opts says.
 func CheckOptions(ctx context.Context, files []*syntax.File, lib *Library, jobs int, rec Recorder, opts Options) ([]*syntax.Error, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	u := &Universe{ctx: ctx, rec: rec, Pkgs: map[string]*Package{}, prefixes: map[string]bool{}, ext: lib.t, module: moduleSuffix(lib.Module),
-		aliasFile: map[*types.AliasSym]*Checker{}, noJVMDefault: lib.NoJVMDefault, jvmDefaultCompat: lib.JVMDefaultCompat, parcelize: lib.Parcelize, serialization: lib.Serialization,
-		compose: lib.Compose, serialInterfaces: map[*syntax.ClassDecl]bool{}, optIns: lib.OptIns, partial: opts.Signatures}
-	checkers := make([]*Checker, len(files))
-	for i, f := range files {
-		checkers[i] = &Checker{u: u, file: f, done: map[any]bool{}, checked: map[*syntax.Lambda]types.Type{},
-			jumps:    map[*syntax.Lambda]inlineJumps{},
-			varSites: map[*types.VarSym]varSite{}, concurrent: map[varFrame]bool{}, nestedAssigns: map[*types.VarSym][]types.Type{}, assignsMemo: map[any][]string{},
-			classCache: map[string]classifier{}, funCache: map[funKey][]*types.FunSym{},
-			levelCache: map[funKey][][]*types.FunSym{}}
-	}
-	inheritDefaults(files)
-	dropContracts(checkers)
-	if u.parcelize {
-		u.parcelSealed = parcelizeSealed(checkers)
-	}
-	for _, c := range checkers {
-		c.declare()
-	}
-	if lib.t.cp != nil && lib.t.cp.HasSources() {
-		find := u.sourceClass
-		lib.t.sources.Store(&find)
-	}
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	expectActual(checkers)
-	// Imports can name declarations of any file.
-	for _, c := range checkers {
-		c.resolveImports()
-	}
-	// Typealiases can stand for supertypes.
-	for _, c := range checkers {
-		c.resolveAliases()
-	}
-	for _, c := range checkers {
-		c.resolveAliasStars()
-	}
-	for _, c := range checkers {
-		c.resolveSupertypes()
-	}
-	for _, c := range checkers {
-		c.resolveClassBounds()
-	}
-	for _, c := range checkers {
-		c.findCycles()
-	}
-	for _, c := range checkers {
-		c.checkSupers()
-	}
-	for _, c := range checkers {
-		c.resolveSignatures()
-	}
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	forwardInlinable(checkers)
-	for _, c := range checkers {
-		c.checkMemberImports()
-	}
-	for _, c := range checkers {
-		c.inheritDefaults()
-	}
-	for _, c := range checkers {
-		c.delegations()
-	}
-	for _, c := range checkers {
-		c.defaultImpls()
-	}
-	// Omitted return and property types are inferred up front, in order, so
-	// the parallel phase only reads signatures.
-	for _, c := range checkers {
-		c.inferAll()
-	}
-	if err := ctx.Err(); err != nil {
+	_, checkers, err := signatures(ctx, files, lib, rec, opts)
+	if err != nil {
 		return nil, err
 	}
 	for _, c := range checkers {
@@ -714,6 +646,93 @@ func CheckOptions(ctx context.Context, files []*syntax.File, lib *Library, jobs 
 		errs = append(errs, c.errs...)
 	}
 	return errs, nil
+}
+
+// signatures declares the files' declarations and resolves their
+// signatures: the phases of checking before bodies are checked, as opts
+// says.
+func signatures(ctx context.Context, files []*syntax.File, lib *Library, rec Recorder, opts Options) (*Universe, []*Checker, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, nil, err
+	}
+	u := &Universe{ctx: ctx, rec: rec, Pkgs: map[string]*Package{}, prefixes: map[string]bool{}, ext: lib.t, module: moduleSuffix(lib.Module),
+		aliasFile: map[*types.AliasSym]*Checker{}, noJVMDefault: lib.NoJVMDefault, jvmDefaultCompat: lib.JVMDefaultCompat, parcelize: lib.Parcelize, serialization: lib.Serialization,
+		compose: lib.Compose, serialInterfaces: map[*syntax.ClassDecl]bool{}, optIns: lib.OptIns, metro: lib.MetroPlan, partial: opts.Signatures}
+	checkers := make([]*Checker, len(files))
+	for i, f := range files {
+		checkers[i] = &Checker{u: u, file: f, done: map[any]bool{}, checked: map[*syntax.Lambda]types.Type{},
+			jumps:    map[*syntax.Lambda]inlineJumps{},
+			varSites: map[*types.VarSym]varSite{}, concurrent: map[varFrame]bool{}, nestedAssigns: map[*types.VarSym][]types.Type{}, assignsMemo: map[any][]string{},
+			classCache: map[string]classifier{}, funCache: map[funKey][]*types.FunSym{},
+			levelCache: map[funKey][][]*types.FunSym{}}
+	}
+	inheritDefaults(files)
+	dropContracts(checkers)
+	if u.parcelize {
+		u.parcelSealed = parcelizeSealed(checkers)
+	}
+	for _, c := range checkers {
+		c.declare()
+	}
+	if lib.t.cp != nil && lib.t.cp.HasSources() {
+		find := u.sourceClass
+		lib.t.sources.Store(&find)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, nil, err
+	}
+	expectActual(checkers)
+	// Imports can name declarations of any file.
+	for _, c := range checkers {
+		c.resolveImports()
+	}
+	// Typealiases can stand for supertypes.
+	for _, c := range checkers {
+		c.resolveAliases()
+	}
+	for _, c := range checkers {
+		c.resolveAliasStars()
+	}
+	for _, c := range checkers {
+		c.resolveSupertypes()
+	}
+	for _, c := range checkers {
+		c.resolveClassBounds()
+	}
+	for _, c := range checkers {
+		c.findCycles()
+	}
+	for _, c := range checkers {
+		c.checkSupers()
+	}
+	for _, c := range checkers {
+		c.resolveSignatures()
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, nil, err
+	}
+	forwardInlinable(checkers)
+	for _, c := range checkers {
+		c.checkMemberImports()
+	}
+	for _, c := range checkers {
+		c.inheritDefaults()
+	}
+	for _, c := range checkers {
+		c.delegations()
+	}
+	for _, c := range checkers {
+		c.defaultImpls()
+	}
+	// Omitted return and property types are inferred up front, in order, so
+	// the parallel phase only reads signatures.
+	for _, c := range checkers {
+		c.inferAll()
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, nil, err
+	}
+	return u, checkers, nil
 }
 
 // sourceClass returns the program's class with an internal name, as
@@ -1171,6 +1190,7 @@ func (c *Checker) resolveClassBounds() {
 func (c *Checker) declare() {
 	c.errs = append(c.errs, c.file.Errors...)
 	c.dropExtensions()
+	c.metroInsert()
 	c.serializableWith()
 	c.parcelize()
 	c.serialization()
@@ -2467,17 +2487,8 @@ func (c *Checker) inferProp(d *syntax.PropDecl) {
 
 // checkBodies checks everything not already checked during inference.
 func (c *Checker) checkBodies() {
-	c.annotations(c.file.Annotations, nil, fileSite)
-	for _, d := range c.file.Decls {
-		c.declAnnotations(d, nil)
-	}
+	c.allAnnotations()
 	done := c.u.ctx.Done()
-	for _, d := range c.classes {
-		if d.Sym != nil && d.Sym.Outer == nil {
-			continue // a top-level class, checked above
-		}
-		c.declAnnotations(d, d.Sym.Outer)
-	}
 	for _, d := range c.file.Decls {
 		if cancelled(done) {
 			return
@@ -2502,6 +2513,7 @@ func (c *Checker) checkBodies() {
 	c.propRefs()
 	c.inlineFileChecks()
 	c.typeAnnotations()
+	c.metroIntrinsics()
 }
 
 // checkSignatures is checkBodies for Options.Signatures: the annotations
