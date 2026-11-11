@@ -13,10 +13,12 @@ import (
 func (c *Checker) isExpr(x *syntax.Is) types.Type {
 	st := c.value(x.X, noWant)
 	declared := types.InvalidType
+	var known []types.Type
 	if v := c.narrowSym(x.X); v != nil {
 		declared = v.Type
+		known = append(c.earlierCasts(x.X, v), declared)
 	}
-	x.Target = c.checkTarget(x.Ref, st, declared, true)
+	x.Target = c.checkTarget(x.Ref, st, known, true)
 	orig := st
 	if declared.K != types.Invalid {
 		orig = declared // kotlinc checks the type before smart casts
@@ -155,7 +157,7 @@ func (c *Checker) erasedSub(ts, us []types.Type) bool {
 
 func (c *Checker) asExpr(x *syntax.As) types.Type {
 	st := c.castOperand(x) // see expected.go
-	t := c.checkTarget(x.Ref, st, types.InvalidType, false)
+	t := c.checkTarget(x.Ref, st, nil, false)
 	x.Target = t
 	if t.K == types.Invalid || st.K == types.Invalid {
 		return types.InvalidType
@@ -173,12 +175,33 @@ func (c *Checker) asExpr(x *syntax.As) types.Type {
 	return t
 }
 
+// earlierCasts returns the smart casts of a val x, named v, that a later
+// one replaced: all of them still hold, but kc, without intersection
+// types, keeps only the last in x's type. After x as Function2<A, B, C>
+// and assertTrue(x is SuspendFunction1<A, C>), x is Function2<A, B, C>
+// is still known.
+func (c *Checker) earlierCasts(x syntax.Expr, v *types.VarSym) []types.Type {
+	if _, ok := x.(*syntax.Ident); !ok || v.Mutable {
+		return nil
+	}
+	var ts []types.Type
+	for s := c.scope; s != nil; s = s.parent {
+		for _, n := range s.narrows {
+			if n.sym == v && n.recv == nil && !n.onlyNot {
+				ts = append(ts, n.t)
+			}
+		}
+	}
+	return ts
+}
+
 // checkTarget resolves the type T of x is T or x as T, where x has type
 // subject. On the JVM, type arguments are erased: is can only check them
-// when the subject's type determines them, or the type x is declared with
-// if a smart cast has changed it, which kc, without intersection types,
-// no longer sees in subject; as doesn't check them.
-func (c *Checker) checkTarget(ref *syntax.TypeRef, subject, declared types.Type, is bool) types.Type {
+// when the subject's type determines them, or one of the types known
+// that x has, if a smart cast has changed it, which kc, without
+// intersection types, no longer sees in subject: the type x is declared
+// with and its earlier smart casts. as doesn't check them.
+func (c *Checker) checkTarget(ref *syntax.TypeRef, subject types.Type, known []types.Type, is bool) types.Type {
 	c.bareRef, c.bareSubject = ref, subject
 	t := c.resolveType(ref)
 	c.bareRef = nil
@@ -196,7 +219,7 @@ func (c *Checker) checkTarget(ref *syntax.TypeRef, subject, declared types.Type,
 		c.errorf(ref.P, "cannot check for an instance of %s", t)
 		return types.InvalidType
 	case t.IsParam():
-		if is && !t.Param().Reified && !c.paramKnown(t, subject) && (declared.K == types.Invalid || !c.paramKnown(t, declared)) {
+		if is && !t.Param().Reified && !c.paramKnown(t, subject) && !slices.ContainsFunc(known, func(k types.Type) bool { return c.paramKnown(t, k) }) {
 			c.errorf(ref.P, "cannot check for instance of erased type: %s", t)
 			return types.InvalidType
 		}
@@ -207,7 +230,7 @@ func (c *Checker) checkTarget(ref *syntax.TypeRef, subject, declared types.Type,
 		c.unsupported(ref.P, "compose", "is and as with composable function types are not supported")
 		return types.InvalidType
 	}
-	if is && t.A != nil && !allStar(t) && !c.argsKnown(t, subject, ref) && (declared.K == types.Invalid || !c.argsKnown(t, declared, ref)) {
+	if is && t.A != nil && !allStar(t) && !c.argsKnown(t, subject, ref) && !slices.ContainsFunc(known, func(k types.Type) bool { return c.argsKnown(t, k, ref) }) {
 		c.errorf(ref.P, "cannot check for instance of erased type: %s", t)
 		return types.InvalidType
 	}
