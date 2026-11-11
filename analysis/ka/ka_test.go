@@ -766,3 +766,18 @@ data class D(@A val x: Int, @param:A val y: Int, @property:A val z: Int, @get:A 
 		t.Errorf("copy's parameters' annotations %v, want %v", got, want)
 	}
 }
+
+// TestDelegatedSupertype checks that a supertype a class implements by
+// delegation is marked, and the others aren't.
+func TestDelegatedSupertype(t *testing.T) {
+	m := update(t, `package a
+interface I
+interface J
+class C(i: I) : I by i, J
+`)
+	defer m.Close()
+	st := m.Files[0].Decls[2].Supertypes
+	if len(st) != 2 || !st[0].Delegated || st[1].Delegated {
+		t.Errorf("supertypes %v", st)
+	}
+}

@@ -296,11 +296,18 @@ func (b *fileBuilder) supertypes(d *syntax.ClassDecl) []*Type {
 		out = append(out, &Type{Kind: TypeClass, ClassID: "kotlin/Annotation"})
 	}
 	for _, st := range d.Supers {
+		var t *Type
 		if d.Sym != nil {
-			out = append(out, b.typ(st.T, st.Type))
+			t = b.typ(st.T, st.Type)
 		} else {
-			out = append(out, b.written(st.Type))
+			t = b.written(st.Type)
 		}
+		if st.Delegate != nil && t != nil {
+			c := *t
+			c.Delegated = true
+			t = &c
+		}
+		out = append(out, t)
 	}
 	if len(out) == 0 {
 		out = append(out, &Type{Kind: TypeClass, ClassID: "kotlin/Any"})

@@ -94,20 +94,25 @@ internal fun isStaticMember(s: KaDeclarationSymbol) = when (s) {
 internal class KcMemberBuilder(private val round: KcRound, private val c: KcClassSymbol) {
     private val rel = round.relations
 
-    /** A member of a supertype and the substitutor of that supertype's arguments. */
-    private class Candidate(val symbol: KaCallableSymbol, val sub: KaSubstitutor)
+    /**
+     * A member of a supertype and the substitutor of that supertype's
+     * arguments; [delegated] if the class implements the supertype by
+     * delegation.
+     */
+    private class Candidate(val symbol: KaCallableSymbol, val sub: KaSubstitutor, val delegated: Boolean = false)
 
     fun build(): KcClassMembers {
         val candidates = ArrayList<Candidate>()
         val statics = c.members.filter(::isStaticMember).toMutableList()
-        for (st in c.superTypes) {
+        for ((i, st) in c.superTypes.withIndex()) {
             val ct = rel.classType(st) ?: continue
             val sc = ct.symbol as? KcClassSymbol ?: continue
             val sub = rel.typeSubstitutor(ct)
             val inherited = round.members(sc)
+            val delegated = c.info.decl.supertypes.getOrNull(i)?.isDelegated == true
             for (m in inherited.callables) {
                 if (m.visibility == KaSymbolVisibility.PRIVATE) continue
-                candidates += Candidate(m, sub)
+                candidates += Candidate(m, sub, delegated)
             }
             if ((sc.origin == KaSymbolOrigin.JAVA_LIBRARY || sc.origin == KaSymbolOrigin.JAVA_SOURCE) && sc.classKind == KaClassKind.CLASS) {
                 for (s in inherited.statics) {
@@ -162,9 +167,18 @@ internal class KcMemberBuilder(private val round: KcRound, private val c: KcClas
             groups.firstOrNull { matches(it[0], p) }?.add(p) ?: groups.add(mutableListOf(p))
         }
 
+        // A member of an interface the class delegates to, but Any's, is
+        // the class's own, as FIR generates it, overriding each supertype's.
+        val declaredEnd = callables.size
         for (g in groups) {
             val members = mostSpecific(g)
             val key = c.info.key + "/~" + callables.size
+            val delegate = g.firstOrNull { it.delegated && declaredOriginals(it.symbol).none(::isAnyMember) }
+            if (delegate != null) {
+                val overrides = g.flatMap { declaredOriginals(it.symbol) }.distinct()
+                callables += fake(delegate, KaSymbolOrigin.DELEGATED, if (overrides.size > 1) overrides else emptyList(), key)
+                continue
+            }
             callables += if (members.size == 1) {
                 val m = members[0]
                 if (unchanged(m)) m.symbol else fake(m, KaSymbolOrigin.SUBSTITUTION_OVERRIDE, emptyList(), key)
@@ -178,6 +192,16 @@ internal class KcMemberBuilder(private val round: KcRound, private val c: KcClas
                 val chosen = specific.firstOrNull { it.symbol.modality != KaSymbolModality.ABSTRACT } ?: specific[0]
                 fake(chosen, KaSymbolOrigin.INTERSECTION_OVERRIDE, members.map { it.symbol }, key)
             }
+        }
+        // FIR's scope names the delegated interfaces' members right after
+        // the class's own: their names come first among the others.
+        val delegatedNames = HashMap<Name, Int>()
+        for (cd in candidates) if (cd.delegated) delegatedNames.putIfAbsent(cd.symbol.callableId?.callableName ?: continue, delegatedNames.size)
+        if (delegatedNames.isNotEmpty()) {
+            val rest = callables.subList(declaredEnd, callables.size)
+            val sorted = rest.sortedBy { delegatedNames[it.callableId?.callableName] ?: Int.MAX_VALUE }
+            rest.clear()
+            rest.addAll(sorted)
         }
         return KcClassMembers(callables, overridden, statics, all, enhanced)
     }
@@ -403,6 +427,9 @@ internal class KcMemberBuilder(private val round: KcRound, private val c: KcClas
     private fun isBuiltinMember(f: KaCallableSymbol): Boolean = f is KcRenamedFunctionSymbol ||
         fakeOverrideOriginal(f).callableId?.classId?.packageFqName?.asString()?.let { it == "kotlin" || it == "kotlin.collections" } == true
 
+    /** Whether [s] is declared by kotlin.Any. */
+    private fun isAnyMember(s: KaCallableSymbol) = s.callableId?.classId?.asString() == "kotlin/Any"
+
     /** Whether [m]'s substitutor changes none of its types. */
     private fun unchanged(m: Candidate): Boolean {
         val s = m.symbol
@@ -501,7 +528,8 @@ internal class KcFakeFunctionSymbol(
     override val visibility get() = original.visibility
     override val compilerVisibility get() = compilerVisibilityOf(original.visibility)
     override val location get() = KaSymbolLocation.CLASS
-    override val modality get() = original.modality
+    /** A delegated member implements the interface's: it is open. */
+    override val modality get() = if (origin == KaSymbolOrigin.DELEGATED) KaSymbolModality.OPEN else original.modality
     override val returnType: KaType by lazy { sub.substitute(original.returnType) }
     override val receiverParameter: KaReceiverParameterSymbol? by lazy {
         original.receiverParameter?.let { KcFakeReceiverParameterSymbol(this, it, sub.substitute(it.returnType), "$key/rcv") }
@@ -546,7 +574,7 @@ internal class KcFakePropertySymbol(
     override val visibility get() = original.visibility
     override val compilerVisibility get() = compilerVisibilityOf(original.visibility)
     override val location get() = KaSymbolLocation.CLASS
-    override val modality get() = original.modality
+    override val modality get() = if (origin == KaSymbolOrigin.DELEGATED) KaSymbolModality.OPEN else original.modality
     override val isVal get() = original.isVal
     override val isFromPrimaryConstructor get() = original.isFromPrimaryConstructor
     override val isConst get() = original.isConst

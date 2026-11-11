@@ -371,6 +371,8 @@ internal class KcType(
     val isFlexible get() = flags and 2 != 0
     val isDefinitelyNonNull get() = flags and 4 != 0
     val isExtension get() = flags and 8 != 0
+    /** A supertype the class implements by delegation, I by x. */
+    val isDelegated get() = flags and 16 != 0
 
     companion object {
         // Go's ka.TypeKind values.

@@ -161,7 +161,7 @@ func TestValues(t *testing.T) {
 			{Kind: ka.ValueAnnotation, Node: 6, Annotation: &ka.Annotation{ClassID: "p/B", Node: 6}},
 			{Kind: ka.ValueUnsupported, Node: 7},
 		}}},
-	}, TypeArgs: []*ka.Type{{Kind: ka.TypeClass, ClassID: "kotlin/String"}, nil}}
+	}, TypeArgs: []*ka.Type{{Kind: ka.TypeClass, ClassID: "kotlin/String", Delegated: true}, nil}}
 	var w wire.Writer
 	writeAnnotation(&w, in)
 	writeValue(&w, nil)
@@ -331,6 +331,7 @@ func readType(r *wire.Reader) *ka.Type {
 	t := &ka.Type{Kind: kind, ClassID: r.String()}
 	flags := r.Uint()
 	t.Nullable, t.Flexible, t.DefinitelyNonNull, t.Extension = flags&1 != 0, flags&2 != 0, flags&4 != 0, flags&8 != 0
+	t.Delegated = flags&16 != 0
 	t.Param = psi.NodeID(r.Uint())
 	t.Name = r.String()
 	t.Contexts = int(r.Uint())
