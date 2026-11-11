@@ -227,6 +227,17 @@ func (g *gen) inlineBody(x *syntax.Call, d *syntax.FunDecl) {
 	// The arguments, in the parameters' order, go to the parameters'
 	// locals; an inlined lambda's placeholder is dropped. A composable's
 	// copy calls composables with the caller's Composer.
+	passed := map[int]*syntax.Ident{}
+	for i := range f.Params {
+		if id := g.passedOnArg(x, d, i); id != nil {
+			passed[i] = id
+			if g.passedOn == nil {
+				g.passedOn = map[*syntax.Ident]bool{}
+			}
+			g.passedOn[id] = true
+			defer delete(g.passedOn, id)
+		}
+	}
 	mask := g.valueArgs(x, f)
 	lambdas := map[*types.VarSym]*syntax.Lambda{}
 	owners := map[*syntax.Lambda]*srcInline{}
@@ -235,6 +246,11 @@ func (g *gen) inlineBody(x *syntax.Call, d *syntax.FunDecl) {
 		if l := inlinedArg(x, i); l != nil {
 			c.Op(cf.POP)
 			lambdas[p] = l
+			continue
+		}
+		if id := passed[i]; id != nil {
+			c.Op(cf.POP)
+			g.setSlot(p, g.slot(id.Sym))
 			continue
 		}
 		if l, owner := g.forwardedArg(x, i); l != nil {
@@ -591,6 +607,28 @@ func convertedArg(x *syntax.Call, d *syntax.FunDecl, i int) (*syntax.Call, *synt
 		}
 	}
 	return nil, nil, nil
+}
+
+// passedOnArg returns the argument that call x of the program's inline
+// function d passes for its parameter i, if it is a parameter of the
+// inline function whose method is being generated that both only invoke:
+// the copy of d reads that parameter's local, as kotlinc's does, without
+// a local of its own, so the method's bytecode still only invokes the
+// parameter, and the copies made from it inline the lambda passed for it.
+func (g *gen) passedOnArg(x *syntax.Call, d *syntax.FunDecl, i int) *syntax.Ident {
+	if len(g.inlineParams) == 0 || len(g.srcInl) > 0 || i >= len(d.Inlinable) || !d.Inlinable[i] {
+		return nil
+	}
+	for k, a := range x.Args {
+		j := k
+		if x.ArgMap != nil {
+			j = x.ArgMap[k]
+		}
+		if id, ok := a.(*syntax.Ident); ok && j == i && id.Sym != nil && g.inlineParams[id.Sym] {
+			return id
+		}
+	}
+	return nil
 }
 
 // forwardedArg returns the lambda that call x passes on for parameter i,

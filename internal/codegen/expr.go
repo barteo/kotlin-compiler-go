@@ -392,6 +392,10 @@ func (g *gen) ident(x *syntax.Ident) {
 		g.code.Op(cf.ACONST_NULL)
 		return
 	}
+	if g.passedOn[x] {
+		g.code.Op(cf.ACONST_NULL) // the copy reads the parameter itself: see passedOnArg
+		return
+	}
 	if x.Object != nil {
 		g.objectRef(x.Object)
 		return

@@ -100,6 +100,12 @@ type gen struct {
 	// srcInl are the copies of the program's inline functions being
 	// generated, innermost last.
 	srcInl []*srcInline
+	// inlineParams are, in the method of an inline function, its
+	// parameters whose lambdas its copies inline, and passedOn the
+	// arguments that pass one of them on to another inline function:
+	// see passedOnArg.
+	inlineParams map[*types.VarSym]bool
+	passedOn     map[*syntax.Ident]bool
 	// reified are the classes of the reified type parameters of the
 	// stdlib's inline function being copied, by name, and reifiedTypes
 	// their types, for typeOf.
@@ -1000,6 +1006,16 @@ func (g *gen) function(fd *syntax.FunDecl, access uint16) cf.MemberRef {
 		saved := g.publicInline
 		g.publicInline = true
 		defer func() { g.publicInline = saved }()
+	}
+	if fd.Inline && !sym.Suspend && len(fd.Inlinable) == len(fd.Params) {
+		saved := g.inlineParams
+		g.inlineParams = map[*types.VarSym]bool{}
+		for i, p := range fd.Params {
+			if fd.Inlinable[i] && p.Sym != nil {
+				g.inlineParams[p.Sym] = true
+			}
+		}
+		defer func() { g.inlineParams = saved }()
 	}
 	d := funDesc(sym)
 	if g.implsThis {
