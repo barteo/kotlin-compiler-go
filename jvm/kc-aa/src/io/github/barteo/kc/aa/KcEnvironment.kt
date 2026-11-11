@@ -287,12 +287,9 @@ internal object KcEnvironments {
     private val idle = ArrayList<KcEnvironment>() // least recently used first
     private val enabled = System.getProperty("kc.keepEnvironment") != "false"
 
-    /** Whether [acquire] would give an environment kept for [key], not a new one. */
     @Synchronized
-    fun has(key: String): Boolean = enabled && idle.any { it.key == key }
-
-    @Synchronized
-    fun acquire(config: KSPConfig, key: String): KcEnvironment {
+    fun acquire(config: KSPConfig, javaSources: List<String>): KcEnvironment {
+        val key = key(config, javaSources)
         if (enabled) {
             val i = idle.indexOfLast { it.key == key }
             if (i >= 0) return idle.removeAt(i)
@@ -311,8 +308,7 @@ internal object KcEnvironments {
         while (idle.size > KEEP) idle.removeAt(0).dispose()
     }
 
-    /** The key of the environment for [config] and [javaSources]: the class path's and the Java sources' stamps. */
-    fun key(config: KSPConfig, javaSources: List<String>): String {
+    private fun key(config: KSPConfig, javaSources: List<String>): String {
         val jvm = config as? KSPJvmConfig
         fun stamp(f: File) = "${f.path}:${f.length()}:${f.lastModified()}"
         return buildString {
