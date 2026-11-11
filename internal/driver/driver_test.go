@@ -283,6 +283,22 @@ func sources(t *testing.T, dir string) []string {
 	return out
 }
 
+// javaSources returns the Java source files in dir and its
+// subdirectories.
+func javaSources(t *testing.T, dir string) []string {
+	var out []string
+	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if err == nil && strings.HasSuffix(path, ".java") {
+			out = append(out, path)
+		}
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
 // mainClass returns the class name of a file's facade, as java takes it.
 func mainClass(t *testing.T, path string) string {
 	src, err := os.ReadFile(path)
@@ -755,9 +771,19 @@ func TestKotlincLibrary(t *testing.T) {
 				flags = f
 			}
 			libOut, appOut := t.TempDir(), t.TempDir()
-			args := append(append([]string{"-nowarn", "-module-name", "lib", "-d", libOut}, strings.Fields(flags)...), srcs...)
+			javas := javaSources(t, filepath.Join(dir, "lib"))
+			args := append(append([]string{"-nowarn", "-module-name", "lib", "-d", libOut}, strings.Fields(flags)...), append(srcs, javas...)...)
 			if out, err := exec.Command(kotlinc, args...).CombinedOutput(); err != nil {
 				t.Fatalf("kotlinc: %v\n%s", err, out)
+			}
+			if len(javas) > 0 {
+				javac, err := exec.LookPath("javac")
+				if err != nil {
+					t.Skip("javac not found on PATH")
+				}
+				if out, err := exec.Command(javac, append([]string{"-nowarn", "-cp", libOut, "-d", libOut}, javas...)...).CombinedOutput(); err != nil {
+					t.Fatalf("javac: %v\n%s", err, out)
+				}
 			}
 			cp := []string{lib, libOut}
 			opts := Options{OutDir: appOut, Jobs: runtime.NumCPU(), ClassPath: cp}
@@ -1038,13 +1064,7 @@ func TestJavaSources(t *testing.T) {
 	if err != nil {
 		t.Fatalf("missing expected output (run testdata/gen_expected.sh): %v", err)
 	}
-	var javas []string
-	filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
-		if err == nil && strings.HasSuffix(p, ".java") {
-			javas = append(javas, p)
-		}
-		return err
-	})
+	javas := javaSources(t, dir)
 	out := t.TempDir()
 	if err := Compile(append(sources(t, dir), javas...), Options{OutDir: out, Jobs: runtime.NumCPU(), ClassPath: []string{lib}}); err != nil {
 		t.Fatalf("compile: %v", err)
@@ -1124,15 +1144,33 @@ func TestSerialization(t *testing.T) {
 	kotlincArgs := func(cp, out string, srcs ...string) []string {
 		return append([]string{"-nowarn", plugin, "-cp", cp, "-d", out}, srcs...)
 	}
-	args := kotlincArgs(rt, libOut, sources(t, filepath.Join(dir, "lib"))...)
+	// The Java classes are compiled by javac, after the Kotlin code that
+	// reads their sources.
+	javac := func(cp, out string, srcs []string) {
+		if len(srcs) == 0 {
+			return
+		}
+		if out, err := exec.Command("javac", append([]string{"-nowarn", "-cp", cp, "-d", out}, srcs...)...).CombinedOutput(); err != nil {
+			t.Fatalf("javac: %v\n%s", err, out)
+		}
+	}
+	libJava, appJava := javaSources(t, filepath.Join(dir, "lib")), javaSources(t, filepath.Join(dir, "app"))
+	if len(libJava)+len(appJava) > 0 {
+		if _, err := exec.LookPath("javac"); err != nil {
+			t.Skip("javac not found on PATH")
+		}
+	}
+	args := kotlincArgs(rt, libOut, append(sources(t, filepath.Join(dir, "lib")), libJava...)...)
 	if out, err := exec.Command(kotlinc, append([]string{"-module-name", "lib"}, args...)...).CombinedOutput(); err != nil {
 		t.Fatalf("kotlinc lib: %v\n%s", err, out)
 	}
+	javac(path(rt, libOut), libOut, libJava)
 	cp := append([]string{lib, libOut}, runtimeJars...)
 	opts := Options{OutDir: appOut, Jobs: runtime.NumCPU(), ClassPath: cp, ModuleName: "app", Serialization: true}
-	if err := Compile(sources(t, filepath.Join(dir, "app")), opts); err != nil {
+	if err := Compile(append(sources(t, filepath.Join(dir, "app")), appJava...), opts); err != nil {
 		t.Fatalf("compile program: %v", err)
 	}
+	javac(path(rt, lib, libOut, appOut), appOut, appJava)
 	args = kotlincArgs(path(rt, libOut, appOut), useOut, sources(t, filepath.Join(dir, "use"))...)
 	if out, err := exec.Command(kotlinc, args...).CombinedOutput(); err != nil {
 		t.Fatalf("kotlinc use: %v\n%s", err, out)
@@ -1173,6 +1211,148 @@ func TestSerialization(t *testing.T) {
 			var se *syntax.Error
 			if !errors.As(err, &se) || se.Feature != "serialization" {
 				t.Errorf("got %v, want a serialization error", err)
+			}
+		})
+	}
+}
+
+// metroJars returns Metro's runtime jar and its compiler plugin jar:
+// $KC_METRO_CP and $KC_METRO_PLUGIN, or the version that
+// testdata/metro.out was generated with, 1.5.2, in Gradle's cache. It
+// returns "" for either if it isn't found.
+func metroJars() (runtimeJar, plugin string) {
+	runtimeJar, plugin = os.Getenv("KC_METRO_CP"), os.Getenv("KC_METRO_PLUGIN")
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return runtimeJar, plugin
+	}
+	cache := filepath.Join(home, ".gradle/caches/modules-2/files-2.1/dev.zacsweers.metro")
+	if runtimeJar == "" {
+		if jars, _ := filepath.Glob(filepath.Join(cache, "runtime-jvm/1.5.2/*/runtime-jvm-1.5.2.jar")); len(jars) > 0 {
+			runtimeJar = jars[0]
+		}
+	}
+	if plugin == "" {
+		if jars, _ := filepath.Glob(filepath.Join(cache, "compiler/1.5.2/*/compiler-1.5.2.jar")); len(jars) > 0 {
+			plugin = jars[0]
+		}
+	}
+	return runtimeJar, plugin
+}
+
+// TestMetro compiles testdata/metro/mid, contributions to a scope, and
+// testdata/metro/app, graphs, with kc's Metro plugin, against a library,
+// testdata/metro/lib, that kotlinc compiles with Metro's. It runs the
+// program and compares its output with kotlinc's, testdata/metro.out.
+func TestMetro(t *testing.T) {
+	java, err := exec.LookPath("java")
+	if err != nil {
+		t.Skip("java not found on PATH")
+	}
+	lib := stdlib()
+	if lib == "" {
+		t.Skip("kotlin-stdlib.jar not found: set KOTLIN_HOME")
+	}
+	kotlinc, err := exec.LookPath("kotlinc")
+	if err != nil {
+		t.Skip("kotlinc not found on PATH")
+	}
+	rt, plugin := metroJars()
+	if rt == "" || plugin == "" {
+		t.Skip("Metro 1.5.2 not found in Gradle's cache: set KC_METRO_CP to its runtime jar and KC_METRO_PLUGIN to its compiler jar")
+	}
+	const dir = "../../testdata/metro"
+	want, err := os.ReadFile(dir + ".out")
+	if err != nil {
+		t.Fatalf("missing expected output (run testdata/gen_expected.sh): %v", err)
+	}
+	path := func(elems ...string) string { return strings.Join(elems, string(os.PathListSeparator)) }
+	libOut, midOut, appOut := t.TempDir(), t.TempDir(), t.TempDir()
+	args := append([]string{"-nowarn", "-jvm-target", "17", "-Xplugin=" + plugin, "-module-name", "lib", "-cp", rt, "-d", libOut}, sources(t, filepath.Join(dir, "lib"))...)
+	if out, err := exec.Command(kotlinc, args...).CombinedOutput(); err != nil {
+		t.Fatalf("kotlinc lib: %v\n%s", err, out)
+	}
+	cp := []string{lib, rt, libOut}
+	opts := Options{OutDir: midOut, Jobs: runtime.NumCPU(), ClassPath: cp, ModuleName: "mid", Metro: true}
+	if err := Compile(sources(t, filepath.Join(dir, "mid")), opts); err != nil {
+		t.Fatalf("compile mid: %v", err)
+	}
+	opts = Options{OutDir: appOut, Jobs: runtime.NumCPU(), ClassPath: append(cp, midOut), ModuleName: "app", Metro: true}
+	if err := Compile(sources(t, filepath.Join(dir, "app")), opts); err != nil {
+		t.Fatalf("compile app: %v", err)
+	}
+	cmd := exec.Command(java, "-Xverify:all", "-cp", path(appOut, midOut, libOut, rt, lib), "app.MainKt")
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("java: %v\n%s", err, stderr.String())
+	}
+	if got := stdout.String(); got != string(want) {
+		t.Errorf("output mismatch\n%s", diff(string(want), got))
+	}
+
+	const header = "import dev.zacsweers.metro.*\n\n"
+	for name, tc := range map[string]struct {
+		src, msg string
+		feature  bool
+		options  map[string]string
+	}{
+		"missing binding": {src: "class A\n@DependencyGraph interface G { val a: A }", msg: "[Metro/MissingBinding]"},
+		"cycle": {src: "@Inject class A(val b: B)\n@Inject class B(val a: A)\n@DependencyGraph interface G { val a: A }",
+			msg: "[Metro/DependencyCycle]"},
+		"duplicate": {src: "@DependencyGraph interface G { val s: String\n@Provides fun a(): String = \"a\"\n@Provides fun b(): String = \"b\" }",
+			msg: "[Metro/DuplicateBinding]"},
+		"provided and contributed": {src: "interface S\n@Inject @ContributesBinding(AppScope::class) class I : S\n@DependencyGraph(AppScope::class) interface G { val s: S\n@Provides fun s(): S = object : S {} }",
+			msg: "[Metro/DuplicateBinding]"},
+		"unscoped graph": {src: "@Inject @SingleIn(AppScope::class) class A\n@DependencyGraph interface G { val a: A }",
+			msg: "[Metro/IncompatiblyScopedBindings]"},
+		"extension with parameters": {src: "@GraphExtension interface E {\n@GraphExtension.Factory interface F { fun create(@Provides s: String): E }\n}\n@DependencyGraph interface G { val e: E }", msg: "takes parameters"},
+		"custom annotations": {src: "@DependencyGraph interface G", feature: true,
+			options: map[string]string{"custom-inject": "a/MyInject"}},
+		"dynamic graph":       {src: "@DependencyGraph interface G\nfun g() = createDynamicGraph<G>()", feature: true},
+		"inferred graph type": {src: "@DependencyGraph interface G { companion object : G by createGraph() }", feature: true},
+		"member of its own type": {src: "@Inject class S { @Inject lateinit var s: Lazy<S> }\n@DependencyGraph interface G { val s: S }",
+			feature: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			file := filepath.Join(t.TempDir(), "a.kt")
+			os.WriteFile(file, []byte(header+tc.src+"\n"), 0o644)
+			err := Compile([]string{file}, Options{OutDir: t.TempDir(), Jobs: 1, ClassPath: cp, Metro: true, MetroOptions: tc.options})
+			var se *syntax.Error
+			switch {
+			case err == nil:
+				t.Errorf("compiled; want an error")
+			case tc.feature && (!errors.As(err, &se) || se.Feature != "metro"):
+				t.Errorf("got %v, want an unsupported Metro feature", err)
+			case !tc.feature && !strings.Contains(err.Error(), tc.msg):
+				t.Errorf("got %v, want %s", err, tc.msg)
+			}
+		})
+	}
+}
+
+// A contribution of a class in the default package, or of an internal
+// class, has a hint that names it.
+func TestMetroHints(t *testing.T) {
+	lib := stdlib()
+	rt, _ := metroJars()
+	if lib == "" || rt == "" {
+		t.Skip("kotlin-stdlib.jar or Metro 1.5.2's runtime not found")
+	}
+	for name, src := range map[string]string{
+		"default package": "import dev.zacsweers.metro.*\n\ninterface I\n@ContributesBinding(AppScope::class) @Inject class Impl : I\n",
+		"internal class":  "package a\n\nimport dev.zacsweers.metro.*\n\ninterface I\n@ContributesBinding(AppScope::class) @Inject internal class Impl : I\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			file := filepath.Join(t.TempDir(), "a.kt")
+			os.WriteFile(file, []byte(src), 0o644)
+			out := t.TempDir()
+			if err := Compile([]string{file}, Options{OutDir: out, Jobs: 1, ClassPath: []string{lib, rt}, Metro: true}); err != nil {
+				t.Fatal(err)
+			}
+			hints, _ := filepath.Glob(filepath.Join(out, "metro/hints/*.class"))
+			if len(hints) != 1 {
+				t.Errorf("got hints %v, want one", hints)
 			}
 		})
 	}

@@ -19,7 +19,8 @@
 //              compose-stability-compiler, which adds recomposition tracing and stability reports).
 //              Kotlin's scripting plugin, which only compiles .kts scripts, is always left out.
 //
-// kc applies the Compose, kotlinx.serialization and Parcelize plugins. A module that uses any other
+// kc applies the Compose, kotlinx.serialization, Parcelize and Metro plugins, and passes kc the
+// Metro plugin's options. A module that uses any other
 // compiler plugin, such as one that generates code its program needs, is left to kotlinc, with a
 // warning that names the plugin, or fails the build under KC_STRICT=1. kc compiles whole modules,
 // so the tasks are not incremental. Included builds (build-logic) keep kotlinc. The script reads the tasks through reflection, as their types
@@ -76,11 +77,12 @@ if (gradle.parent == null) {
           val i = parts.indexOf("files-2.1")
           return if (i >= 0 && parts.size > i + 2) "${parts[i + 1]}:${parts[i + 2]}" else jar.nameWithoutExtension
         }
-        val plugins = pluginJars.map { it.name }
+        val plugins = pluginJars.map { coordinates(it) }
         val known = mapOf(
           "compose-compiler-plugin" to "-compose",
           "serialization-compiler-plugin" to "-serialization",
           "parcelize-compiler" to "-parcelize",
+          "dev.zacsweers.metro:compiler" to "-metro",
         )
         val ignored = (System.getenv("KC_IGNORE_PLUGINS") ?: "compose-stability-compiler")
           .split(',').map { it.trim() }.filter { it.isNotEmpty() } + "kotlin-scripting-compiler-embeddable"
@@ -119,6 +121,16 @@ if (gradle.parent == null) {
         for (jar in plugins) {
           val flag = known.entries.firstOrNull { jar.contains(it.key) }?.value
           if (flag != null && flag !in args) args += flag
+        }
+        // Metro's options, as the Metro Gradle plugin passes them to kotlinc.
+        if ("-metro" in args) {
+          val configs = (call(task, "getPluginOptions") as org.gradle.api.provider.Provider<*>).get() as List<*>
+          for (config in configs) {
+            val all = call(config!!, "allOptions") as Map<*, *>
+            for (option in (all["dev.zacsweers.metro.compiler"] as List<*>?).orEmpty()) {
+              args += listOf("-P", "plugin:dev.zacsweers.metro.compiler:${call(option!!, "getKey")}=${call(option, "getValue")}")
+            }
+          }
         }
         val left = plugins.filter { jar -> known.keys.none { jar.contains(it) } }
         if (left.isNotEmpty()) logger.info("kc: ${task.path} leaves out compiler plugins $left")

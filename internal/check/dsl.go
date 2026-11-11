@@ -276,7 +276,7 @@ func (c *Checker) dslProp(x *syntax.Ident) {
 	case m.Prop != nil && m.Prop.Owner != nil:
 		still = func() bool { return x.Member == m }
 		c.dslMember(x, m, false, m.Prop.Owner, x.Name, still)
-	case m.Getter != nil && !m.Getter.Static:
+	case m.Getter != nil && (!m.Getter.Static || m.Getter.Ext):
 		still = func() bool { return x.Member == m }
 		c.dslMember(x, m, m.Getter.Ext, m.Getter.Owner, x.Name, still)
 	}

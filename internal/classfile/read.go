@@ -38,6 +38,9 @@ type Info struct {
 	// Repeatable is the container class of a repeatable annotation
 	// class, the value of its @java.lang.annotation.Repeatable, or "".
 	Repeatable string
+	// SerialWith is the serializer class of a class annotated
+	// @kotlinx.serialization.Serializable(with = S::class), or "".
+	SerialWith string
 	// KotlinTargets are the values of @kotlin.annotation.Target
 	// (AnnotationTarget names), and JavaTargets those of
 	// @java.lang.annotation.Target (ElementType names).
@@ -470,6 +473,23 @@ func kotlinMeta(r *reader, p *pool, info *Info) (*KotlinMeta, error) {
 				}
 				if d, err := p.utf8(r.u2()); err == nil && strings.HasPrefix(d, "L") && strings.HasSuffix(d, ";") {
 					info.Repeatable = d[1 : len(d)-1]
+				}
+			}
+			continue
+		case "Lkotlinx/serialization/Serializable;":
+			info.Visible = append(info.Visible, typ)
+			for range r.u2() {
+				name, err := p.utf8(r.u2())
+				if err != nil {
+					return nil, err
+				}
+				if r.u1() != 'c' || name != "with" {
+					r.pos--
+					skipValue(r)
+					continue
+				}
+				if d, err := p.utf8(r.u2()); err == nil && strings.HasPrefix(d, "L") && strings.HasSuffix(d, ";") {
+					info.SerialWith = d[1 : len(d)-1]
 				}
 			}
 			continue

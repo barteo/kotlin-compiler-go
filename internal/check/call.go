@@ -848,9 +848,11 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			inner := newSystem(c)
 			c.sink = inner
 			ts[i] = c.value(a, noWant)
-			if plain && len(inner.lambdas) == 0 && inner.selfInferable(ts[i]) {
+			if plain && len(inner.lambdas) == 0 && !inner.freeLits() && inner.selfInferable(ts[i]) {
 				// Among plain candidates, a call that can be inferred on
 				// its own is: println(maxOf(a, b)) picks println(Int).
+				// One of integer literals isn't: or(1, 2) is a Long for
+				// f(Int?, Long?).
 				inner.finish()
 				ts[i] = inner.final(ts[i])
 				continue
@@ -873,10 +875,15 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 				return types.InvalidType
 			}
 		}
-		// Integer literals are Int unless no candidate takes them as Int.
+		// Integer literals are Int unless no candidate takes them as Int,
+		// or one that takes them as a Long is more specific than the
+		// others: assertEquals(long, long) for assertEquals(1, aLong),
+		// not assertEquals(Object, Object).
 		match := c.applicable(cs, x, ts, partials, false)
-		if len(match) == 0 {
-			match = c.applicable(cs, x, ts, partials, true)
+		if wide := c.applicable(cs, x, ts, partials, true); len(match) == 0 || len(wide) > len(match) &&
+			slices.ContainsFunc(wide, func(cd *candidate) bool { return c.mostSpecific(cd, wide, x.Args) }) &&
+			!slices.ContainsFunc(match, func(cd *candidate) bool { return c.mostSpecific(cd, wide, x.Args) }) {
+			match = wide
 		}
 		match = c.notPropRefs(x, match)
 		match = notLowPriority(match, func(cd *candidate) *callee { return &cd.callee })
@@ -922,6 +929,7 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 				c.errorf(x.P, "none of the %d candidates for '%s' takes (%s)", len(cs), name, strings.Join(names, ", "))
 			} else {
 				c.errorf(x.P, "ambiguous call: %d candidates for '%s' take (%s)", len(match), name, strings.Join(names, ", "))
+				c.ambiguities++
 			}
 			return types.InvalidType
 		}
@@ -1399,10 +1407,13 @@ func (c *Checker) resolvePlain(x *syntax.Call, cs []callee, want types.Type) typ
 				return types.InvalidType
 			}
 		}
-		// Integer literals are Int unless no candidate takes them as Int.
+		// Integer literals are Int unless no candidate takes them as Int,
+		// or one that takes them as a Long is the most specific, as above.
 		match := c.plainApplicable(cs, x.Args, ts, false)
-		if len(match) == 0 {
-			match = c.plainApplicable(cs, x.Args, ts, true)
+		if wide := c.plainApplicable(cs, x.Args, ts, true); len(match) == 0 || len(wide) > len(match) &&
+			slices.ContainsFunc(wide, func(cl *callee) bool { return c.plainMostSpecific(cl, wide, x.Args) }) &&
+			!slices.ContainsFunc(match, func(cl *callee) bool { return c.plainMostSpecific(cl, wide, x.Args) }) {
+			match = wide
 		}
 		match = notLowPriority(match, func(cl *callee) *callee { return cl })
 		var maximal []*callee
@@ -1432,6 +1443,7 @@ func (c *Checker) resolvePlain(x *syntax.Call, cs []callee, want types.Type) typ
 				c.errorf(x.P, "none of the %d candidates for '%s' takes (%s)", len(cs), cs[0].f.Name, strings.Join(names, ", "))
 			} else {
 				c.errorf(x.P, "ambiguous call: %d candidates for '%s' take (%s)", len(match), cs[0].f.Name, strings.Join(names, ", "))
+				c.ambiguities++
 			}
 			return types.InvalidType
 		}
@@ -1491,7 +1503,7 @@ func (c *Checker) plainApplicable(cs []callee, args []syntax.Expr, ts []types.Ty
 func (c *Checker) plainMostSpecific(f *callee, cs []*callee, args []syntax.Expr) bool {
 	for _, g := range cs {
 		for i := range args {
-			if fa, ga := f.argType(i, args), g.argType(i, args); boxedPrimitive(fa, ga) || !c.subtype(fa, ga) {
+			if fa, ga := f.argType(i, args), g.argType(i, args); boxedPrimitive(fa, ga) || !c.subtype(fa, ga) && !numberMoreSpecific(fa, ga) {
 				return false
 			}
 		}
@@ -1700,7 +1712,7 @@ func (c *Checker) applicable(cs []*candidate, x *syntax.Call, ts []types.Type, p
 		// Each attempt starts from a fresh copy of the candidate.
 		try := &candidate{callee: cd.callee, sub: cd.sub, params: cd.params, sys: cd.sys.clone(), sams: cd.sams, susps: cd.susps}
 		c.constrain(try, x, ts, partials, longLits)
-		if try.sys.ok && c.lambdasFit(try, x) && c.withinBounds(try) {
+		if try.sys.ok && try.sys.litsFitUppers() && c.lambdasFit(try, x) && c.withinBounds(try) {
 			out = append(out, try)
 		}
 	}
@@ -1747,6 +1759,9 @@ func (c *Checker) mostSpecific(f *candidate, cs []*candidate, args []syntax.Expr
 			fa, ga := f.recv.ApplyIn(f.argType(i, args)), sub.ApplyIn(g.argType(i, args))
 			if boxedPrimitive(fa, ga) {
 				return false
+			}
+			if numberMoreSpecific(fa, ga) {
+				continue
 			}
 			sys.sub(fa, ga)
 		}
@@ -1818,6 +1833,26 @@ func overriddenGiveWay(cs []*candidate) []*candidate {
 		}
 	}
 	return out
+}
+
+// numberMoreSpecific reports whether a parameter of built-in number type
+// a is more specific than one of number type b, though neither is a
+// subtype of the other: f(Int?) is more specific than f(Long?) for
+// f(null). As in kotlinc, Double comes before Float, Int before Long,
+// Short and Byte, and Short before Byte.
+func numberMoreSpecific(a, b types.Type) bool {
+	if a.P || b.P || a.N && !b.N {
+		return false
+	}
+	switch a.K {
+	case types.Double:
+		return b.K == types.Float
+	case types.Int:
+		return b.K == types.Short || b.K == types.Byte || b.K == types.Long
+	case types.Short:
+		return b.K == types.Byte
+	}
+	return false
 }
 
 // boxedPrimitive reports whether a is a Java boxed primitive, Long!, and b

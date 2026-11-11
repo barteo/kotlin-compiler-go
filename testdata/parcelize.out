@@ -152,6 +152,9 @@ write nulls: parcelable(p.Writes) long(1) int(0) long(-1) int(0)
 fast: parcelable(p.Fast) int(2) int(101) int(102) int(1) string(A) int(1) string(B) int(1) int(1) byte(1) int(1) int(103)
   read: Fast([1, 2], [a], [b], {1=true}, 3)
   equal: true, describeContents: 0
+persistent: parcelable(p.Persistent) stringList([a, b]) int(2) int(1) int(2) int(1) string(t) int(1) string(k) long(3) int(1) int(1) int(4) string(four)
+  read: Persistent(names=persistent[a, b], ids=persistent[1, 2], tags=persistent[t], counts=persistent{k=3}, more=persistent[Inner(x=4, name=four)])
+  equal: true, describeContents: 0
 newArray: 2 Inner[]
 Parceler's newArray: 3
 generic Parceler's newArray: 4

@@ -454,3 +454,13 @@ data class Immutables(
     val pm: PersistentMap<String, Int>, val im: ImmutableMap<Int, String?>, val sl: PersistentList<String>,
     val nsl: PersistentList<String>?, val npl: PersistentList<Int>?, val bl: ImmutableList<IBinder>,
 ) : Parcelable
+
+// kotlinx.collections.immutable's collections, read into persistent ones.
+@Parcelize
+data class Persistent(
+    val names: kotlinx.collections.immutable.ImmutableList<String>,
+    val ids: kotlinx.collections.immutable.PersistentList<Int>,
+    val tags: kotlinx.collections.immutable.ImmutableSet<String>,
+    val counts: kotlinx.collections.immutable.ImmutableMap<String, Long>,
+    val more: kotlinx.collections.immutable.ImmutableList<Inner>?,
+) : Parcelable

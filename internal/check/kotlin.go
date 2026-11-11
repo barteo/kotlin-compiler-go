@@ -774,7 +774,7 @@ func (t *classTable) kfun(f *kmeta.Function, owner *types.ClassSym, scope tscope
 			case kmeta.ReturnsFalse:
 				r = 0
 			}
-			e := types.Effect{Returns: r, Param: im.Param}
+			e := types.Effect{Returns: r, Param: im.Param, Holds: im.Holds}
 			if im.Is != nil {
 				is, isOK := t.ktype(im.Is, scope)
 				if !isOK {
@@ -786,7 +786,7 @@ func (t *classTable) kfun(f *kmeta.Function, owner *types.ClassSym, scope tscope
 		}
 	}
 	jvm := f.JVM
-	if methods != nil && !methods[jvm.Name+jvm.Desc] && jvm.Name == f.Name && ok && rok {
+	if methods != nil && !hasMethod(methods, jvm.Name+jvm.Desc, f.IsInline()) && jvm.Name == f.Name && ok && rok {
 		// A metadata's signature leaves out the name and descriptor that
 		// value class parameters give: Compose's MeasurePolicy's
 		// measure-3p2s80s(MeasureScope, List, long), which kotlinc
@@ -810,7 +810,7 @@ func (t *classTable) kfun(f *kmeta.Function, owner *types.ClassSym, scope tscope
 	composeTypes(sym)
 	sym.Unsupported = !ok || sym.Unsupported
 	sym.Abstract = f.Flags.Modality() == kmeta.Abstract
-	if methods != nil && !methods[jvm.Name+jvm.Desc] && sym.Why == "" {
+	if methods != nil && !hasMethod(methods, jvm.Name+jvm.Desc, f.IsInline()) && sym.Why == "" {
 		sym.Unsupported = true
 		sym.Why = "'" + f.Name + "' is an inline-only function, and kc doesn't inline functions"
 		if ok && f.IsInline() {
@@ -1116,7 +1116,7 @@ func (t *classTable) kprop(p *kmeta.Property, owner *types.ClassSym, scope tscop
 		return nil
 	}
 	g := getter(p)
-	if g == nil || methods != nil && !methods[g.Name+g.Desc] {
+	if g == nil || methods != nil && !hasMethod(methods, g.Name+g.Desc, p.GetterFlags>>8&1 != 0) {
 		return nil
 	}
 	pt, ok := t.ktype(p.Type, scope)
@@ -1132,7 +1132,10 @@ func (t *classTable) kprop(p *kmeta.Property, owner *types.ClassSym, scope tscop
 		Protected: p.GetterFlags.Visibility() == kmeta.Protected, Contexts: ctx}}
 	matchJVM(kp.Getter)
 	composeShape(kp.Getter, true)
-	if s := setter(p); p.IsVar() && s != nil && visibleOutside(p.SetterFlags.Visibility(), friend) && (methods == nil || methods[s.Name+s.Desc]) {
+	if friend && !p.IsVar() && p.Flags.Modality() == kmeta.Final && p.GetterFlags&kmeta.AccessorNotDefault == 0 && p.Flags&kmeta.PropDelegated == 0 {
+		kp.Stable = &types.VarSym{Name: p.Name, Type: pt, Kind: types.Prop, Owner: owner, Resolved: true, Final: true}
+	}
+	if s := setter(p); p.IsVar() && s != nil && visibleOutside(p.SetterFlags.Visibility(), friend) && (methods == nil || hasMethod(methods, s.Name+s.Desc, p.SetterFlags>>8&1 != 0)) {
 		kp.Setter = &types.FunSym{Name: s.Name, Owner: owner, Ret: types.UnitType, Desc: s.Desc, Resolved: true, Abstract: abstract,
 			Protected: p.SetterFlags.Visibility() == kmeta.Protected, Params: []*types.VarSym{{Name: "value", Type: pt, Kind: types.Param}}, Contexts: ctx}
 		matchJVM(kp.Setter)
@@ -1169,10 +1172,10 @@ func (t *classTable) friend(class string) bool {
 // An inline-only getter is private: its body is copied.
 func (t *classTable) memberExtProp(p *kmeta.Property, owner *types.ClassSym, scope tscope, methods map[string]bool) *types.FunSym {
 	g := p.Getter
-	inlineOnly := g != nil && !methods[g.Name+g.Desc] && p.GetterFlags>>8&1 != 0
+	inlineOnly := g != nil && !hasMethod(methods, g.Name+g.Desc, p.GetterFlags>>8&1 != 0) && p.GetterFlags>>8&1 != 0
 	friend := t.friend(owner.Name)
 	if !visibleOutside(p.Flags.Visibility(), friend) || !visibleOutside(p.GetterFlags.Visibility(), friend) || g == nil ||
-		!methods[g.Name+g.Desc] && !inlineOnly || p.Contexts > len(p.ContextParams) {
+		!hasMethod(methods, g.Name+g.Desc, p.GetterFlags>>8&1 != 0) && !inlineOnly || p.Contexts > len(p.ContextParams) {
 		return nil
 	}
 	sym := &types.FunSym{Name: g.Name, Owner: owner, Desc: g.Desc, Ext: true, Resolved: true,
@@ -1194,6 +1197,16 @@ func (t *classTable) memberExtProp(p *kmeta.Property, owner *types.ClassSym, sco
 	}
 	matchJVM(sym)
 	composeShape(sym, true)
+	if s := p.Setter; p.IsVar() && s != nil && visibleOutside(p.SetterFlags.Visibility(), friend) && hasMethod(methods, s.Name+s.Desc, p.SetterFlags>>8&1 != 0) {
+		set := &types.FunSym{Name: s.Name, Owner: owner, Desc: s.Desc, Ext: true, Resolved: true, Abstract: sym.Abstract,
+			Protected: p.SetterFlags.Visibility() == kmeta.Protected, TypeParams: tps, Recv: recv, Ret: types.UnitType,
+			Params: []*types.VarSym{{Name: "value", Type: ret, Kind: types.Param}}, Contexts: ctx}
+		if owner.Value {
+			set.Impl, set.Facade = true, owner.Name
+		}
+		matchJVM(set)
+		sym.ExtSetter = set
+	}
 	return sym
 }
 
@@ -1302,14 +1315,29 @@ func hiddenMethods(info *classfile.Info) map[string]bool {
 	return m
 }
 
+// publicMethods returns the class's public and protected methods: true
+// for one Java can call, false for a synthetic one that Kotlin can, as
+// kotlinc writes a function annotated @JvmSynthetic or an inline one with
+// reified type parameters. A synthetic one annotated @Deprecated(level =
+// HIDDEN), which calls can't choose, is left out.
 func publicMethods(info *classfile.Info) map[string]bool {
 	m := make(map[string]bool, len(info.Methods))
 	for _, f := range info.Methods {
-		if f.Access&(classfile.AccPublic|classfile.AccProtected) != 0 && f.Access&classfile.AccSynthetic == 0 {
-			m[f.Name+f.Desc] = true
+		if f.Access&(classfile.AccPublic|classfile.AccProtected) == 0 || f.Hidden && f.Access&classfile.AccSynthetic != 0 {
+			continue
 		}
+		m[f.Name+f.Desc] = f.Access&classfile.AccSynthetic == 0
 	}
 	return m
+}
+
+// hasMethod reports whether methods has a method of signature sig that
+// a Kotlin call can call: a synthetic one, unless it is inline, whose
+// method doesn't know its reified type parameters and whose body is
+// copied.
+func hasMethod(methods map[string]bool, sig string, inline bool) bool {
+	v, ok := methods[sig]
+	return v || ok && !inline
 }
 
 const markerSuffix = "Lkotlin/jvm/internal/DefaultConstructorMarker;)V"
@@ -1619,6 +1647,10 @@ func (t *classTable) loadKotlin(cls *types.ClassSym, info *classfile.Info, kc *k
 		}
 		if p.Recv != nil {
 			if g := t.memberExtProp(p, cls, scope, methods); g != nil {
+				g.Static = statics[g.JVM()+g.Desc]
+				if g.ExtSetter != nil {
+					g.ExtSetter.Static = statics[g.ExtSetter.JVM()+g.ExtSetter.Desc]
+				}
 				if cls.ExtProps == nil {
 					cls.ExtProps = map[string][]*types.FunSym{}
 				}
@@ -2067,8 +2099,8 @@ func (t *classTable) pkgExtProps(pkg, name string) []*types.FunSym {
 		for _, pr := range decls {
 			g := pr.Getter
 			// An inline-only getter is private: its body is copied.
-			inlineOnly := g != nil && !part.methods[g.Name+g.Desc] && pr.GetterFlags>>8&1 != 0
-			if pr.Recv == nil || !public(pr.Flags.Visibility(), part.friend) || g == nil || !part.methods[g.Name+g.Desc] && !inlineOnly || pr.Contexts > len(pr.ContextParams) {
+			inlineOnly := g != nil && !hasMethod(part.methods, g.Name+g.Desc, pr.GetterFlags>>8&1 != 0) && pr.GetterFlags>>8&1 != 0
+			if pr.Recv == nil || !public(pr.Flags.Visibility(), part.friend) || g == nil || !hasMethod(part.methods, g.Name+g.Desc, pr.GetterFlags>>8&1 != 0) && !inlineOnly || pr.Contexts > len(pr.ContextParams) {
 				continue
 			}
 			sym := &types.FunSym{Name: g.Name, Desc: g.Desc, Facade: part.facade, Ext: true, Resolved: true}
@@ -2088,7 +2120,7 @@ func (t *classTable) pkgExtProps(pkg, name string) []*types.FunSym {
 			matchJVM(sym)
 			composeShape(sym, false) // WindowInsets.isImeVisible
 			// A var's setter: (receiver, value) on the same facade.
-			if s := pr.Setter; pr.IsVar() && s != nil && public(pr.SetterFlags.Visibility(), part.friend) && part.methods[s.Name+s.Desc] {
+			if s := pr.Setter; pr.IsVar() && s != nil && public(pr.SetterFlags.Visibility(), part.friend) && hasMethod(part.methods, s.Name+s.Desc, pr.SetterFlags>>8&1 != 0) {
 				set := &types.FunSym{Name: s.Name, Desc: s.Desc, Facade: part.facade, Ext: true, Final: true, Resolved: true,
 					TypeParams: tps, Recv: recv, Ret: types.UnitType, Params: []*types.VarSym{{Name: "value", Type: ret, Kind: types.Param}}, Contexts: ctx}
 				matchJVM(set)

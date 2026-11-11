@@ -37,7 +37,7 @@ func (c *Checker) nestedClass(name string) *types.ClassSym {
 // nestedClassifier finds a class or a typealias nested in the enclosing
 // classes by its simple name.
 func (c *Checker) nestedClassifier(name string) classifier {
-	for k := c.scopeClass(); k != nil; k = k.Outer {
+	for k := c.scopeClass(); k != nil; k = c.nextEnclosing(k) {
 		var found classifier
 		// A class sees its superclasses' nested classes too, but not its
 		// interfaces': a Widget.Mode doesn't hide an imported Mode in the
@@ -361,7 +361,7 @@ func (c *Checker) hasStatic(cls *types.ClassSym, name string) bool {
 // are static fields of the class it is the companion of, where
 // Outer.Companion.X finds them.
 func (c *Checker) staticFieldOf(cls *types.ClassSym, name string) *types.VarSym {
-	if f := javaField(cls, name); f != nil || !cls.External || !cls.Object {
+	if f := c.visibleJavaField(cls, name); f != nil || !cls.External || !cls.Object {
 		return f
 	}
 	i := strings.LastIndexByte(cls.Name, '$')
@@ -370,8 +370,18 @@ func (c *Checker) staticFieldOf(cls *types.ClassSym, name string) *types.VarSym 
 	}
 	if outer := c.u.ext.class(cls.Name[:i]); outer != nil {
 		if outer.Ensure(); outer.Companion == cls {
-			return javaField(outer, name)
+			return c.visibleJavaField(outer, name)
 		}
+	}
+	return nil
+}
+
+// visibleJavaField returns the static field of a class named name, or
+// nil if there is none the code sees: a package-private one is its
+// package's.
+func (c *Checker) visibleJavaField(cls *types.ClassSym, name string) *types.VarSym {
+	if f := javaField(cls, name); c.visibleField(f) {
+		return f
 	}
 	return nil
 }
@@ -381,7 +391,7 @@ func (c *Checker) staticFieldOf(cls *types.ClassSym, name string) *types.VarSym 
 // Activity's code.
 func (c *Checker) inheritedStatic(x *syntax.Ident) (types.Type, bool) {
 	for k := c.cls; k != nil; k = k.Outer {
-		f := javaField(k, x.Name)
+		f := c.visibleJavaField(k, x.Name)
 		if f == nil {
 			continue
 		}

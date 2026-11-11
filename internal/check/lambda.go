@@ -124,6 +124,11 @@ func (c *Checker) lambda(x *syntax.Lambda, want types.Type) types.Type {
 		if k, ok := c.kfunWant(want); ok {
 			return c.kfunRef(x, want, k)
 		}
+		if kcallable(want) {
+			// The reference's own KFunctionN is below it:
+			// mockkStatic(Ext::build).
+			want = noWant
+		}
 	}
 	if x.Ref == nil && !x.Anon && proper && samInterface(want.Flex().NonNull()) {
 		// As in Kotlin 2.4 (ResolveTopLevelLambdasAsSyntheticCallArgument),
@@ -1407,8 +1412,14 @@ func (c *Checker) lambdaFits(l *syntax.Lambda, p types.Type) bool {
 	t := p.NonNull()
 	n := 0
 	switch {
+	case wantsKProp(l, t) && t.C.Name != "kotlin/reflect/KCallable":
+		fun, prop, known := c.refKinds(l)
+		return !known || prop || !fun
 	case t.K == types.TypeVar || t.K == types.TypeParam || t.K == types.Any || wantsKProp(l, t):
 		return true // list += { }, MutableCollection<in T>.plusAssign(element: T)
+	case l.Ref != nil && kcallable(t):
+		fun, prop, known := c.refKinds(l)
+		return !known || fun || !prop
 	case t.IsFunc():
 		n = t.A.Len() - 1 - t.Contexts() // nor are its contexts
 		if t.E {
@@ -1428,6 +1439,13 @@ func (c *Checker) lambdaFits(l *syntax.Lambda, p types.Type) bool {
 		return len(l.Params) == n
 	}
 	return n <= 1
+}
+
+// kcallable reports whether t is kotlin.reflect.KFunction<R> or
+// KCallable<R>, of which a function reference's KFunctionN is a subtype.
+func kcallable(t types.Type) bool {
+	t = t.Flex().NonNull()
+	return t.K == types.Class && (t.C.Name == "kotlin/reflect/KFunction" || t.C.Name == "kotlin/reflect/KCallable")
 }
 
 func (c *Checker) lambdasFit(cd *candidate, x *syntax.Call) bool {
@@ -1551,7 +1569,11 @@ func (c *Checker) runLambdas(s *system, readyOnly bool) {
 	if !readyOnly {
 		c.readyFirst(s)
 	}
-	for _, pl := range s.lambdas {
+	// A lambda's tail call merges its own lambdas into s (see checkTail),
+	// which run with the others: buildList's in run { one(buildList {
+	// add(1) }) }.
+	for i := 0; i < len(s.lambdas); i++ {
+		pl := s.lambdas[i]
 		if tv := s.unfixedVar(s.apply(pl.p)); tv != nil && !readyOnly {
 			if u, ok := s.funcUpper(tv); ok {
 				s.addUpper(tv, u)
@@ -1711,11 +1733,26 @@ func (c *Checker) stubInference(s *system, l *syntax.Lambda, params []types.Type
 	for _, v := range vars {
 		c.stubs[v] = r
 	}
-	clean := true
+	// A lambda of the group whose only errors with the variables unfixed
+	// are ambiguous calls, as Entry(it) whose constructors they make
+	// ambiguous, takes them from the others: what it recorded is dropped.
+	// Any other error leaves the variables uninferred, as in Kotlin.
+	clean := false
 	for _, sl := range group {
-		if clean = c.stubCheck(s, sl, r); !clean {
+		nc, nj, ne := len(r.cons), len(r.joined), len(r.extra)
+		ok, ambiguous := c.stubCheck(s, sl, r)
+		if ok {
+			clean = true
+			continue
+		}
+		if !ambiguous {
+			clean = false
 			break
 		}
+		for _, v := range r.extra[ne:] {
+			delete(c.stubs, v)
+		}
+		r.cons, r.joined, r.extra = r.cons[:nc], r.joined[:nj], r.extra[:ne]
 	}
 	for _, v := range append(vars, r.extra...) {
 		delete(c.stubs, v)
@@ -1781,16 +1818,16 @@ func (c *Checker) boundVars(s *system, params []types.Type, vars []*types.TypePa
 }
 
 // stubCheck checks sl for stubInference, and reports whether it checks
-// without errors. They and the types the check gives the tree are
+// without errors, and whether its errors are all ambiguous calls. They and the types the check gives the tree are
 // discarded, and what it changes outside sl's lambda undone. A result type
 // with r's variables takes the lambda's: (A<T, T>) -> A<T, T> gives T from
 // { it.convert() }.
-func (c *Checker) stubCheck(s *system, sl stubLambda, r *stubRun) bool {
+func (c *Checker) stubCheck(s *system, sl stubLambda, r *stubRun) (clean, ambiguous bool) {
 	ps := make([]types.Type, len(sl.params))
 	for i, p := range sl.params {
 		ps[i] = s.apply(p)
 	}
-	n, checked, saved := len(c.errs), c.checked, c.scope
+	n, a, checked, saved := len(c.errs), c.ambiguities, c.checked, c.scope
 	c.checked, c.scope = maps.Clone(checked), sl.scope
 	ft := sl.ft
 	w := lambdaWant{params: ps, known: true, recv: ft.Flex().E, ctx: ft.Flex().Contexts(), suspend: isSuspendFunc(ft), composable: isComposableFunc(ft), ret: noWant}
@@ -1802,12 +1839,13 @@ func (c *Checker) stubCheck(s *system, sl stubLambda, r *stubRun) bool {
 	c.trial = t
 	_, bt, _ := c.checkLambda(sl.l, w)
 	c.endTrial(t)
-	clean := len(c.errs) == n
+	clean = len(c.errs) == n
+	ambiguous = !clean && c.ambiguities-a == len(c.errs)-n
 	if clean && bt.K != types.Invalid && bt.K != types.Unit && ret.Has(func(u types.Type) bool { return u.K == types.TypeVar && c.stubs[u.Param()] == r }) {
 		r.cons = append(r.cons, [2]types.Type{bt, ret})
 	}
 	c.errs, c.checked, c.scope = c.errs[:n], checked, saved
-	return clean
+	return clean, ambiguous
 }
 
 // stubRun is a check of stubInference's: the system of the call whose

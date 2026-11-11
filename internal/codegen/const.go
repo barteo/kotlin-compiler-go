@@ -2,6 +2,7 @@ package codegen
 
 import (
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode"
@@ -120,7 +121,13 @@ func constDecls(cd *syntax.ClassDecl) []*syntax.PropDecl {
 	}
 	for _, m := range cd.Members {
 		if ccd, ok := m.(*syntax.ClassDecl); ok && ccd.Sym != nil && ccd.Sym == cd.Sym.Companion {
+			n := len(out)
 			add(ccd)
+			if cd.Sym.Interface {
+				// An interface's fields are public: its companion keeps
+				// its private consts.
+				out = append(out[:n], slices.DeleteFunc(out[n:], func(pd *syntax.PropDecl) bool { return pd.Visibility == syntax.Private })...)
+			}
 		}
 	}
 	return out

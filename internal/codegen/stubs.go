@@ -177,7 +177,7 @@ func (g *gen) overloads(fd *syntax.FunDecl, owner *types.ClassSym, access uint16
 	}
 	for _, o := range overloadsOf(fd) {
 		acc := access &^ cf.AccVarargs
-		if hasVararg(taken(f.Params, o.omitted)) {
+		if hasVararg(taken(f.Params, o.omitted)) && !f.Suspend && !f.Composable {
 			acc |= cf.AccVarargs
 		}
 		if owner == nil || !owner.Interface {
@@ -246,8 +246,16 @@ func (g *gen) staticStubs(cd *syntax.ClassDecl) {
 			continue
 		}
 		for _, m := range ccd.Members {
-			if pd, ok := m.(*syntax.PropDecl); ok && pd.Sym != nil && pd.Sym.JvmStatic && !pd.Sym.Private {
+			if pd, ok := m.(*syntax.PropDecl); ok && pd.Sym != nil && pd.Sym.JvmStatic && !pd.Sym.Private && pd.Visibility != syntax.Private {
 				g.propStubs(pd.Sym, comp)
+				continue
+			}
+			if pd, ok := m.(*syntax.PropDecl); ok && pd.Recv != nil && pd.Getter != nil && pd.Find("", "JvmStatic") != nil {
+				for _, a := range []*syntax.FunDecl{pd.Getter, pd.Setter} {
+					if a != nil && a.Sym != nil && !a.Sym.Private {
+						g.staticStub(a, comp, funDesc(a.Sym), false, a.Sym.Params)
+					}
+				}
 				continue
 			}
 			fd, ok := m.(*syntax.FunDecl)
@@ -257,7 +265,7 @@ func (g *gen) staticStubs(cd *syntax.ClassDecl) {
 			g.staticStub(fd, comp, funDesc(fd.Sym), varargs(fd.Sym), fd.Sym.Params)
 			for _, o := range overloadsOf(fd) {
 				params := taken(fd.Sym.Params, o.omitted)
-				g.staticStub(fd, comp, o.desc, hasVararg(params), params)
+				g.staticStub(fd, comp, o.desc, hasVararg(params) && !fd.Sym.Suspend && !fd.Sym.Composable, params)
 			}
 		}
 	}

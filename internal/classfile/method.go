@@ -87,7 +87,9 @@ func UninitType(class string, off int) VType { return vtype{tag: tUninit, name: 
 // NullType is the type of null.
 var NullType VType = nullType
 
-var errNotFound = errors.New("method not found")
+// ErrNotFound is the error of reading a method a class has no code of:
+// an abstract or inherited one.
+var ErrNotFound = errors.New("method not found")
 
 // ReadMethod reads the code of the method with a name and descriptor
 // from a class file.
@@ -140,7 +142,7 @@ type methodEntry struct {
 func (mr *MethodReader) ReadMethod(name, desc string) (*Method, error) {
 	e := mr.methods[methodKey{name, desc}]
 	if e == nil {
-		return nil, fmt.Errorf("%s%s: %w", name, desc, errNotFound)
+		return nil, fmt.Errorf("%s%s: %w", name, desc, ErrNotFound)
 	}
 	e.once.Do(func() {
 		m := &Method{Class: mr.class, Facade: mr.facade, Access: e.access, Name: name, Desc: desc, pool: mr.pool}
