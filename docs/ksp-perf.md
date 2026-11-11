@@ -371,6 +371,10 @@ Kc's own cold work left is:
 - Hilt's serial Java PSI, about 0.5 s.
 
 The rest is warm-up that both backends share.
+Step 60 ran libkc's first update beside the environment's construction.
+Round 1 gained 70–130 ms, but the environment slowed by about 80 ms on
+the 4 CPUs, so the change was reverted. Cold runs are CPU-bound: a cut
+has to remove work, not overlap it.
 
 - **A slim environment.** Replace `KotlinCoreEnvironment` with the minimum
   KSP needs: the Kotlin PSI parser, plus Java PSI and the file manager only

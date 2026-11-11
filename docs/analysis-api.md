@@ -4830,6 +4830,53 @@ cold is:
 - round 2's native update, slowed by the parse beside it;
 - Hilt's serial Java PSI, about 0.5 s.
 
+#### Step 60: libkc's first update beside the environment (reverted)
+
+A fresh JVM's session acquires its environment first, about 0.6 s of
+`KotlinCoreEnvironment`. Only then does it run libkc's first update,
+0.25–0.5 s. That update needs only the session's handle and its source
+paths: a new environment has no kept rounds to share (`reusableChecks`
+and `baseFiles` are empty).
+
+Step 60 opened libkc and listed the sources first. When no kept
+environment matched the key (`KcEnvironments.has`), it started the first
+update on another thread, and the round's update took its result.
+`KC_NO_EARLY_UPDATE=1` kept the old order. `build.sh stock` was 11 ok,
+`build.sh ksp` 134/136, and the bench's check passed on Moshi.
+
+Cold A/B, as in step 59 (15 JVMs per arm for Moshi and Hilt, 6 for Room),
+medians:
+
+| ms | Moshi on | Moshi off | Hilt on | Hilt off | Room on | Room off |
+|---|---|---|---|---|---|---|
+| environment | 676 (all three projects) | 597 (all three projects) | | | | |
+| round 1 | 375 | 457 | 429 | 500 | 497 | 627 |
+| setup | 1412 | 1428 | 1458 | 1448 | 1620 | 1694 |
+| cold run | 5981 | 6067 | 8515 | 8697 | 12371 | 12779 |
+
+What the A/B shows:
+
+- **Round 1 gains.** Libkc's update finished while the environment was
+  made (`kc-jvm: early update=270–300`), and round 1 then waited only
+  for step 59's parse, which needs the environment and so can't start
+  before it.
+- **The environment loses about as much.** Beside libkc's update it
+  slowed by about 80 ms. Setup, where the change lands, moved by −16,
+  +10 and −74 ms.
+- **The totals' differences aren't the change's.** They come from
+  processing and round 2, which it doesn't touch.
+
+A cold run on these 4 CPUs is bound by the CPU: the JIT's compiler
+threads, IntelliJ's and the processors' class loading, and libkc share
+them, so moving work beside other work gains little. Step 59 gained
+where its parse ran beside libkc's single-threaded phases and the
+round's waits; here the environment's construction was itself busy.
+Reverted. A cold cut has to remove work, not overlap it:
+
+- a slimmer environment, which the plan's Phase 3 targets;
+- fewer classes loaded;
+- less parsed.
+
 ## Gaps and open questions
 
 - **Slice simplifications (M0.4).** These go when M3/M4 bring the facts in:
