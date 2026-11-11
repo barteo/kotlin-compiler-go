@@ -52,8 +52,11 @@ the files KSP touches with kotlin-compiler 2.4.21's PSI and maps them to
 mapping.
 
 **KSP fork.**
-- KSP2 uses a shaded AA and reaches into FIR internals, so it is forked as a
-  patch series in [`jvm/ksp/patches`](../jvm/ksp/patches).
+- KSP2 uses a shaded AA and reaches into FIR internals, so it is forked:
+  branch [`kc-backend` of barteo/ksp](https://github.com/barteo/ksp/tree/kc-backend),
+  KSP 2.3.9 with one commit per change. Until 2026-11-11 the fork was a
+  patch series in `jvm/ksp/patches`; the patch numbers below are the
+  branch's commits in order.
 - Session creation sits behind a `KspBackend` (chosen with
   `-Dksp.backend=aa|kc`).
 - FIR-internal queries sit behind `KcExtras`.
@@ -102,9 +105,9 @@ builds the API jar from the Kotlin sources at `v2.4.21` instead:
 ### M0.3 – KSP fork
 
 `jvm/ksp/build.sh` builds the fork:
-1. It checks out KSP at tag 2.3.9.
-2. It applies the patches.
-3. It compiles the `kotlin-analysis-api` module (the processing loop, the KS*
+1. It checks out the fork at the commit it pins: KSP at tag 2.3.9 with
+   the patches below as commits.
+2. It compiles the `kotlin-analysis-api` module (the processing loop, the KS*
    symbol model and the command line) against the M0.2 jar. The result has
    275 classes.
 
@@ -926,7 +929,7 @@ request: `jvm/libkc/test.sh` (the JNI stress test, with and without
 libjsig) and `jvm/kc-aa/build.sh stock` (the slice, Moshi and Dagger, and
 since step 14 Room and Hilt, on the kc backend, compared with their recorded output, and on stock KSP
 2.3.6). The Analysis API jar and the KSP fork are cached, keyed by their
-build scripts and the patches; the processors' and stock KSP's jars too.
+build scripts, which pin the fork's commit; the processors' and stock KSP's jars too.
 From nothing, on 4 CPUs, both take under 3 minutes. The Go half's tests
 (`analysis/...`, `internal/kaops`, `internal/check`) run in PR checks
 with the rest. The benchmark isn't run in CI: octi-server isn't vendored,

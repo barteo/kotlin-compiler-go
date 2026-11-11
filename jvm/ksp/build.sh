@@ -1,16 +1,14 @@
 #!/usr/bin/env bash
-# build.sh builds kc's fork of KSP2's kotlin-analysis-api module: KSP at tag
-# $KSP_TAG with the patches in jvm/ksp/patches applied, compiled against the
-# unshaded Analysis API 2.4.21 jar that jvm/aa-api/build.sh makes.
+# build.sh builds kc's fork of KSP2's kotlin-analysis-api module, compiled
+# against the unshaded Analysis API 2.4.21 jar that jvm/aa-api/build.sh makes.
+# The fork is branch $KSP_BRANCH of $KSP_REPO: KSP at tag $KSP_TAG with kc's
+# commits on top. build.sh checks out $KSP_COMMIT, a commit on that branch.
 #
 #	jvm/ksp/build.sh [workdir]
 #
-# It writes $workdir/ksp-aa-kc.jar (default workdir: jvm/ksp/build). The
-# patched KSP checkout is $workdir/ksp, a git repository whose branch kc holds
-# one commit per patch, so changing the fork is: edit and commit there, then
-#
-#	git -C $workdir/ksp format-patch --zero-commit --no-signature \
-#		-o jvm/ksp/patches $KSP_COMMIT
+# It writes $workdir/ksp-aa-kc.jar (default workdir: jvm/ksp/build). The KSP
+# checkout is $workdir/ksp. Changing the fork is: commit to $KSP_BRANCH, push
+# it, and set KSP_COMMIT here to the new tip.
 #
 # The jar leaves out the parts of the module that need the Analysis API
 # implementation (the standalone FIR session, whose artifacts live on
@@ -24,7 +22,9 @@
 set -euo pipefail
 
 KSP_TAG=2.3.9
-KSP_COMMIT=799f6c17b4a84acd9d9f15e53a6d0022f442ab95
+KSP_REPO=https://github.com/barteo/ksp.git
+KSP_BRANCH=kc-backend
+KSP_COMMIT=ee88fd857921acdf2a77c7376610ff3cfe094833
 VERSION=2.4.21
 MAVEN=${MAVEN_REPO:-https://repo1.maven.org/maven2}
 
@@ -56,18 +56,14 @@ fetch com/google/devtools/ksp/symbol-processing-common-deps/$KSP_TAG/symbol-proc
 fetch org/jetbrains/kotlinx/kotlinx-serialization-core-jvm/1.6.3/kotlinx-serialization-core-jvm-1.6.3.jar
 fetch org/jetbrains/kotlinx/kotlinx-serialization-json-jvm/1.6.3/kotlinx-serialization-json-jvm-1.6.3.jar
 
-# A shallow checkout of $KSP_TAG with the patches on branch kc.
+# A shallow checkout of $KSP_COMMIT.
 src=$work/ksp
-patches=("$here"/patches/*.patch)
-stamp=$(cat "${patches[@]}" | git hash-object --stdin)
-if [ "$(cat "$src/.git/kc-patches" 2>/dev/null)" != "$stamp" ]; then
+if [ "$(git --git-dir="$src/.git" rev-parse -q --verify HEAD 2>/dev/null)" != "$KSP_COMMIT" ]; then
 	rm -rf "$src"
 	git init -q "$src"
-	git -C "$src" remote add origin https://github.com/google/ksp.git
+	git -C "$src" remote add origin "$KSP_REPO"
 	git -C "$src" fetch -q --depth 1 origin $KSP_COMMIT
-	git -C "$src" checkout -q -b kc FETCH_HEAD
-	git -C "$src" -c user.name=kc -c user.email=kc@localhost am -q --committer-date-is-author-date "${patches[@]}"
-	echo "$stamp" > "$src/.git/kc-patches"
+	git -C "$src" checkout -q -b $KSP_BRANCH FETCH_HEAD
 fi
 
 (cd "$src" && find kotlin-analysis-api/src/main/kotlin common-util/src/main -name '*.kt' \

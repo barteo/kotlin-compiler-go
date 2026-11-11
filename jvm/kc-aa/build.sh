@@ -38,7 +38,7 @@ java_home=${JAVA_HOME:-$(dirname "$(dirname "$(readlink -f "$(command -v javac)"
 
 # The KSP fork, the Analysis API jar and their dependencies.
 kspwork=$here/../ksp/build
-if [ ! -s "$kspwork/ksp-aa-kc.jar" ] || [ -n "$(find "$here/../ksp/patches" -newer "$kspwork/ksp-aa-kc.jar")" ]; then
+if [ ! -s "$kspwork/ksp-aa-kc.jar" ] || [ -n "$(find "$here/../ksp/build.sh" -newer "$kspwork/ksp-aa-kc.jar")" ]; then
 	"$here/../ksp/build.sh" "$kspwork" >/dev/null
 fi
 lib=$kspwork/aa/m2
