@@ -2197,7 +2197,14 @@ func (g *gen) ungroupedCall(x *syntax.Call) {
 		m := x.Fun.(*syntax.Member)
 		rt := m.T // receiver type, non-null
 		ret := builtinRet(x)
-		g.safeCall(m, ret, x.T, func() { g.builtinMember(x, rt) })
+		g.safeCall(m, ret, x.T, func() {
+			if rt.IsPrimitive() && g.code.Reachable() && g.code.StackTop().Tag() == cf.VObject {
+				// The receiver's box, where its expression has the type
+				// of a type parameter inferred as the primitive type.
+				g.castErased(types.AnyType.Nullable(), rt)
+			}
+			g.builtinMember(x, rt)
+		})
 
 	case x.Ctor != nil && x.Ctor.KotlinAnnotation():
 		g.annotationNew(x)
