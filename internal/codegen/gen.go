@@ -3290,15 +3290,28 @@ func (g *gen) invokeVirtual(cls *types.ClassSym, name, d string) {
 	}
 }
 
+// inOuter reports whether p is a companion object's property whose field
+// the outer class holds, and that has accessors: the delegate of a
+// delegated property has none.
+func inOuter(p *types.VarSym) bool {
+	pd, ok := p.Decl.(*syntax.PropDecl)
+	return ok && pd.DelegateOf == nil && p.Owner != nil && p.Owner.CompanionOf != nil && !p.JvmField && p.StaticField()
+}
+
 // directGet and directSet report whether code reads or writes a
 // property's field directly rather than through its getter or setter: as
 // kotlinc does, in the class that declares it, if the accessor is a
 // default one that can't be overridden. The body of a public inline
 // function or accessor, which other classes copy, calls the accessors of
-// the properties that aren't private.
+// the properties that aren't private. So does a companion object's code
+// for its properties whose fields the outer class holds, unless the
+// accessor is private: a mock of the companion then answers for them.
 func (g *gen) directGet(p *types.VarSym) bool {
 	if p.Lateinit && !p.Private {
 		return false // its getter checks it, as kotlinc calls it
+	}
+	if inOuter(p) && !p.Private && !g.companionInits {
+		return false
 	}
 	direct := p.JvmField || g.inClass(p.Owner) && (!g.publicInline || p.Private) && (p.Final || p.Private || p.Deferred && !p.Mutable) && p.HasField() && p.Getter == nil && !p.Const
 	if direct && !p.JvmField {
@@ -3327,6 +3340,9 @@ func lateinitAccess(pd *syntax.PropDecl) uint16 {
 }
 
 func (g *gen) directSet(p *types.VarSym) bool {
+	if inOuter(p) && !p.Private && !p.SetterPrivate && !g.companionInits {
+		return false
+	}
 	in := g.inClass(p.Owner) || g.companionInits && p.Owner == g.owner
 	direct := p.JvmField || in && (!g.publicInline || p.Private) && (p.Final || p.Private || p.SetterPrivate || p.Deferred && !p.Mutable) && p.HasField() && p.Setter == nil && !p.Const
 	if direct && !p.JvmField {

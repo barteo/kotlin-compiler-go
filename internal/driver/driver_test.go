@@ -807,6 +807,87 @@ fun main() {
 	}
 }
 
+// TestCompanionAccessors checks that a companion object's code reads and
+// writes its properties whose fields the outer class holds through their
+// accessors, as kotlinc's does, so a mock of the companion answers for
+// them, and the fields of those with a private accessor directly.
+func TestCompanionAccessors(t *testing.T) {
+	lib := stdlib()
+	if lib == "" {
+		t.Skip("kotlin-stdlib.jar not found: set KOTLIN_HOME")
+	}
+	tmp := t.TempDir()
+	src := filepath.Join(tmp, "manager.kt")
+	if err := os.WriteFile(src, []byte(`class Manager {
+    companion object {
+        @JvmStatic
+        var existing: Manager? = null
+            private set
+
+        var count = 0
+
+        private var hidden = 0
+
+        fun viaGetter(): Manager? = existing
+
+        fun viaSetter() {
+            count = count + 1
+        }
+
+        fun direct() {
+            existing = Manager()
+            hidden = hidden + 1
+        }
+    }
+}
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(tmp, "out")
+	if err := Compile([]string{src}, Options{OutDir: out, Jobs: 1, ClassPath: []string{lib}}); err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(out, "Manager$Companion.class"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ms, err := classfile.ReadMethods(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string][]string{
+		"viaGetter": {"getExisting"},
+		"viaSetter": {"getCount", "setCount"},
+		"direct":    {"existing", "hidden", "hidden"},
+	}
+	for _, m := range ms {
+		names, ok := want[m.Name]
+		if !ok {
+			continue
+		}
+		insns, err := m.Decode()
+		if err != nil {
+			t.Fatalf("%s: %v", m.Name, err)
+		}
+		var got []string
+		for i := range insns {
+			switch in := &insns[i]; in.Op {
+			case classfile.INVOKEVIRTUAL, classfile.GETSTATIC, classfile.PUTSTATIC:
+				if in.Owner == "Manager" || in.Owner == "Manager$Companion" {
+					got = append(got, in.Name)
+				}
+			}
+		}
+		if !slices.Equal(got, names) {
+			t.Errorf("%s uses %v, want %v", m.Name, got, names)
+		}
+		delete(want, m.Name)
+	}
+	if len(want) > 0 {
+		t.Errorf("methods not found: %v", want)
+	}
+}
+
 // TestKotlincLibrary compiles each library test of testdata/klib/X/ the
 // other way round from TestLibrary: kotlinc compiles the library, X/lib/,
 // with module name lib and the flags of the first line of its first file,
