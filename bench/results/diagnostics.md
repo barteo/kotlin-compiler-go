@@ -237,10 +237,10 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 
 | Error | Count |
 |:---|---:|
-| `cannot infer type for type parameter '_'. Specify it explicitly.` | 533 |
+| `cannot infer type for type parameter '_'. Specify it explicitly.` | 527 |
 | `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 313 |
 | `type mismatch: inferred type is _ but _ was expected` | 303 |
-| `unresolved reference: _` | 264 |
+| `unresolved reference: _` | 252 |
 | `platform declaration clash: _` | 150 |
 | `class '_' is not abstract and does not implement abstract member '_'` | 55 |
 | `suspend function '_' cannot override non-suspend function '_' defined in '_'` | 50 |
@@ -257,12 +257,12 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | `expected expression, found '_'` | 14 |
 | `expected n parameter of type _ but n were declared` | 14 |
 | `not enough information to infer type arguments of ::foon: specify the expected function type` | 14 |
-| `assignment operators ambiguity: '_' and '_' both apply` | 12 |
 | `expected no parameters, but n were declared` | 12 |
 | `overload resolution ambiguity for ::foo: specify the expected function type` | 12 |
 | `private setters are not allowed for open properties` | 12 |
 | `unresolved import: _` | 12 |
 | `'_' modifier is required on '_'` | 11 |
+| `assignment operators ambiguity: '_' and '_' both apply` | 11 |
 | `not enough information to infer type arguments of ::barn: specify the expected function type` | 11 |
 | `val cannot be reassigned` | 11 |
 | `expected parameter of type _` | 10 |
