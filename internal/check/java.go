@@ -1853,6 +1853,7 @@ func (c *Checker) companionInvokes(comp *types.ClassSym, x *syntax.Call) bool {
 
 // construct checks a constructor call of a user or Java class.
 func (c *Checker) construct(x *syntax.Call, cls *types.ClassSym, p syntax.Pos, want types.Type, sink *system) types.Type {
+	cls.Ensure()
 	if cls.Array {
 		return c.arrayConstruct(x, cls, want, sink)
 	}
