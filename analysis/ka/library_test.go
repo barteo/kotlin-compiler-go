@@ -216,7 +216,7 @@ func TestLibraryBuiltins(t *testing.T) {
 	defer m.Close()
 	var sb strings.Builder
 	for _, id := range []string{"kotlin/Any", "kotlin/String", "kotlin/Int", "kotlin/collections/List",
-		"kotlin/collections/Map", "kotlin/Comparable", "kotlin/Function1"} {
+		"kotlin/collections/Map", "kotlin/Comparable", "kotlin/Function1", "kotlin/Array", "kotlin/IntArray"} {
 		d := m.Class(id)
 		if d == nil {
 			t.Fatalf("%s: nil", id)
@@ -232,11 +232,11 @@ func TestLibraryBuiltins(t *testing.T) {
   7 equals v0 m1 f0x200 (other: kotlin/Any?): kotlin/Boolean
   7 hashCode v0 m1 f0x0: kotlin/Int
   7 toString v0 m1 f0x0: kotlin/String
-1 String [kotlin/String] v0 m0 f0x0 : java/io/Serializable kotlin/Comparable<kotlin/String> kotlin/CharSequence
+1 String [kotlin/String] v0 m0 f0x0 : kotlin/Comparable<kotlin/String> kotlin/CharSequence java/io/Serializable
   7 get v0 m1 f0x200 (index: kotlin/Int): kotlin/Char
   8 length v0 m1 f0x0: kotlin/Int
   3 Companion [kotlin/String.Companion] v0 m0 f0x800001 : kotlin/Any
-1 Int [kotlin/Int] v0 m0 f0x0 : kotlin/Number kotlin/Comparable<kotlin/Int>
+1 Int [kotlin/Int] v0 m0 f0x0 : kotlin/Number kotlin/Comparable<kotlin/Int> java/io/Serializable
   7 inc v0 m0 f0x200: kotlin/Int
   7 toLong v0 m1 f0x0: kotlin/Long
   3 Companion [kotlin/Int.Companion] v0 m0 f0x800001 : kotlin/Any
@@ -273,6 +273,21 @@ func TestLibraryBuiltins(t *testing.T) {
 2 Comparable [kotlin/Comparable] v0 m2 f0x0 <in T> : kotlin/Any
   7 compareTo v0 m2 f0x200 (other: T): kotlin/Int
 2 Function1 [kotlin/Function1] v0 m2 f0x0 <in P1> <out R> : kotlin/Function<R>
+1 Array [kotlin/Array] v0 m0 f0x0 <T> : kotlin/Cloneable java/io/Serializable
+  10 <init> v0 m0 f0x0 (size: kotlin/Int, init: kotlin/Function1<kotlin/Int, T>)
+  7 get v0 m0 f0x200 (index: kotlin/Int): T
+  7 set v0 m0 f0x200 (index: kotlin/Int, value: T): kotlin/Unit
+  7 iterator v0 m0 f0x200: kotlin/collections/Iterator<T>
+  8 size v0 m0 f0x0: kotlin/Int
+  7 clone v0 m0 f0x100000: kotlin/Array<T>
+1 IntArray [kotlin/IntArray] v0 m0 f0x0 : kotlin/Cloneable java/io/Serializable
+  10 <init> v0 m0 f0x1000000 (size: kotlin/Int)
+  10 <init> v0 m0 f0x0 (size: kotlin/Int, init: kotlin/Function1<kotlin/Int, kotlin/Int>)
+  7 get v0 m0 f0x200 (index: kotlin/Int): kotlin/Int
+  7 set v0 m0 f0x200 (index: kotlin/Int, value: kotlin/Int): kotlin/Unit
+  7 iterator v0 m0 f0x200: kotlin/collections/IntIterator
+  8 size v0 m0 f0x0: kotlin/Int
+  7 clone v0 m0 f0x100000: kotlin/IntArray
 `
 	if got := sb.String(); got != want {
 		t.Errorf("got:\n%s\nwant:\n%s", got, want)
