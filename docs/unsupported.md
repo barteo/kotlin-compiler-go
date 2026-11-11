@@ -78,10 +78,10 @@ S::class)` get their `serializer()`.
 
 ## Parcelize (`-parcelize`)
 
-Not supported: properties of value classes, and of the types that the
-plugin writes in ways of its own that `kc` doesn't (ranges, `Duration`,
-`Uuid`, unsigned integers and kotlinx.collections.immutable's
-collections); types annotated `@DataClass`. A class that kotlinc reports
+Not supported: properties of value classes other than the standard
+library's, and of kotlinx.collections.immutable's collections, which the
+plugin writes in a way of its own that `kc` doesn't; types annotated
+`@DataClass`. A class that kotlinc reports
 an error for, or fails to compile, is left to kotlinc too: one with a
 property of a type that the plugin can only write with `writeValue` and
 that isn't annotated `@RawValue`, or of a type parameter whose bound is a

@@ -2197,6 +2197,9 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 		if b, ok := assertions[name]; ok && len(c.funImports[name]) == 0 {
 			return c.assertCall(x, b, name, want)
 		}
+		if name == "kc$coerce" && c.state.plugin {
+			return c.coerceCall(x)
+		}
 		cls := c.findClass(name)
 		var fs []*types.FunSym
 		if cls == nil || !constructible(cls) {

@@ -94,6 +94,8 @@ fun main() {
     roundTrip("generic self written", GenSelf("gen", 7))
     roundTrip("aliased", Aliased(3))
     roundTrip("import aliased", ImportAliased(4))
+    roundTrip("specials", specials())
+    roundTrip("special nulls", specials(nulls = true))
     roundTrip("stamps", stamps())
     roundTrip("stamp nulls", Stamps(Stamp(1), null, listOf(), Stamp(2), null))
     roundTrip("writes", Writes(Stamp(1), Stamp(2), Stamp(3), listOf(Stamp(4))))

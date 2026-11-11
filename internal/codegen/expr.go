@@ -1905,6 +1905,11 @@ func (g *gen) ungroupedCall(x *syntax.Call) {
 		// Not a suspension point of the state machine: see suspensionPoint.
 		panic("tail call of suspend function " + x.Sym.Name + " not generated as a jump")
 	}
+	if x.Builtin == types.UnsafeCoerce {
+		// The value is the same on the JVM: see check.coerceCall.
+		g.expr(x.Args[0])
+		return
+	}
 	if x.Builtin == types.SuspendIntrinsic {
 		g.suspendIntrinsic(x)
 		return

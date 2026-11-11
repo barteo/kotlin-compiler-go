@@ -42,8 +42,12 @@ import (
 // How each property is written is the serializer that kotlinc's
 // IrParcelSerializerFactory picks for its type (serializer): by the
 // exact class for String, CharSequence, Bundle, the primitives, their
-// arrays, Android's Size and sparse arrays, and the collections it
-// knows; then Parcelables, binders, objects, enums, functions and
+// arrays, Android's Size and sparse arrays, the collections it knows, and
+// the standard library's types that it writes in ways of its own
+// (special): the unsigned integers, their arrays and Duration as their
+// underlying values, which the plugin's code coerces to and from with
+// kc's `kc$coerce` intrinsic, ranges as their bounds and a Uuid as its
+// halves; then Parcelables, binders, objects, enums, functions and
 // Serializables; and else writeValue. kotlinc reports an error for a
 // property written with writeValue unless its type, or one that it is an
 // argument of, is annotated @RawValue, so kc leaves such a class to it.
@@ -53,10 +57,10 @@ import (
 // erased bounds as type arguments, which needn't be within the bounds in
 // a plugin's code.
 //
-// Value classes and the types that the plugin writes in ways kc doesn't
-// (ranges, Duration, Uuid, the unsigned integers and kotlinx's immutable
-// collections) are unsupported, and so is a type parameter whose bound is
-// an array or a collection, which kotlinc fails to compile.
+// Other value classes and kotlinx's immutable collections, which the
+// plugin writes in ways kc doesn't, are unsupported, and so is a type
+// parameter whose bound is an array or a collection, which kotlinc fails
+// to compile.
 //
 // A custom Parceler object writes a type that @WriteWith names it for, or
 // that a @TypeParceler of the class or the property does (custom). One
@@ -748,6 +752,9 @@ const (
 	parcelMap                            // the size and each key and value
 	parcelValue                          // writeValue and readValue(classLoader): a type annotated @RawValue
 	parcelCustom                         // a Parceler object's write and create: @TypeParceler, @WriteWith
+	parcelCoerce                         // the underlying value: the unsigned integers and their arrays, Duration
+	parcelRange                          // the first and last values: IntRange, LongRange, CharRange
+	parcelUuid                           // the two halves, with writeLong
 )
 
 // A parcelSer is how the plugin writes a type, and its elements'.
@@ -774,6 +781,11 @@ type parcelSer struct {
 	// its Parceler's type argument.
 	obj *types.ClassSym
 	x   types.Type
+	// under writes parcelCoerce's underlying values, of type repr, and
+	// parcelRange's bounds; ctor is the range's class.
+	under *parcelSer
+	repr  types.Type
+	ctor  string
 }
 
 // parcelCollections are the classes the plugin writes as lists, sets and
@@ -826,13 +838,8 @@ var parcelSimples = map[string]parcelSer{
 }
 
 // parcelUnsupported are the classes the plugin writes in ways of its own
-// that kc doesn't: ranges, Duration and Uuid, the unsigned integers and
-// their arrays, and kotlinx.collections.immutable's collections.
+// that kc doesn't: kotlinx.collections.immutable's collections.
 var parcelUnsupported = map[string]bool{
-	"kotlin/ranges/IntRange": true, "kotlin/ranges/LongRange": true, "kotlin/ranges/CharRange": true,
-	"kotlin/time/Duration": true, "kotlin/uuid/Uuid": true,
-	"kotlin/UInt": true, "kotlin/ULong": true, "kotlin/UShort": true, "kotlin/UByte": true,
-	"kotlin/UIntArray": true, "kotlin/ULongArray": true, "kotlin/UShortArray": true, "kotlin/UByteArray": true,
 	"kotlinx/collections/immutable/PersistentList": true, "kotlinx/collections/immutable/ImmutableList": true,
 	"kotlinx/collections/immutable/PersistentSet": true, "kotlinx/collections/immutable/ImmutableSet": true,
 	"kotlinx/collections/immutable/PersistentMap": true, "kotlinx/collections/immutable/ImmutableMap": true,
@@ -900,6 +907,9 @@ func (g *parcelGen) serializer(t types.Type, ref *syntax.TypeRef, raw bool) *par
 		name = cls.Name
 	}
 	known := func(m map[string]bool) bool { return m[name] || m[cls.Name] }
+	if s := g.special(t, name); s != nil {
+		return s
+	}
 	if known(parcelUnsupported) || cls.Value {
 		g.fail(t)
 		return nil
@@ -1001,6 +1011,49 @@ func (g *parcelGen) serializer(t types.Type, ref *syntax.TypeRef, raw bool) *par
 		return &parcelSer{kind: parcelSimple, write: "writeSerializable", read: "readSerializable", cast: true}
 	}
 	return g.value(t, raw)
+}
+
+// special returns the serializer of a type of the standard library that
+// the plugin writes in a way of its own, of class name, or nil: an
+// unsigned integer, or an array of them, and Duration, as the underlying
+// value, which it unsafely coerces to; a range, as its bounds; a Uuid, as
+// its halves.
+func (g *parcelGen) special(t types.Type, name string) *parcelSer {
+	coerce := func(under *parcelSer, repr types.Type, marker bool) *parcelSer {
+		return &parcelSer{kind: parcelCoerce, nullAware: marker, under: under, repr: repr}
+	}
+	prim := &parcelSer{kind: parcelPrimitive, nullAware: true}
+	simple := func(write, read string) *parcelSer {
+		return &parcelSer{kind: parcelSimple, write: write, read: read}
+	}
+	array := types.ArrayOf
+	switch name {
+	case "kotlin/UInt":
+		return coerce(prim, types.IntType, true)
+	case "kotlin/ULong", "kotlin/time/Duration":
+		return coerce(prim, types.LongType, true)
+	case "kotlin/UByte":
+		return coerce(prim, types.ByteType, true)
+	case "kotlin/UShort":
+		return coerce(prim, types.ShortType, true)
+	case "kotlin/UIntArray":
+		return coerce(simple("writeIntArray", "createIntArray"), array(types.IntType), false)
+	case "kotlin/ULongArray":
+		return coerce(simple("writeLongArray", "createLongArray"), array(types.LongType), false)
+	case "kotlin/UByteArray":
+		return coerce(simple("writeByteArray", "createByteArray"), array(types.ByteType), false)
+	case "kotlin/UShortArray":
+		return coerce(&parcelSer{kind: parcelArray, nullAware: true, elem: prim}, array(types.ShortType), true)
+	case "kotlin/ranges/IntRange":
+		return &parcelSer{kind: parcelRange, nullAware: true, under: prim, repr: types.IntType, ctor: "kotlin.ranges.IntRange"}
+	case "kotlin/ranges/LongRange":
+		return &parcelSer{kind: parcelRange, nullAware: true, under: prim, repr: types.LongType, ctor: "kotlin.ranges.LongRange"}
+	case "kotlin/ranges/CharRange":
+		return &parcelSer{kind: parcelRange, nullAware: true, under: prim, repr: types.CharType, ctor: "kotlin.ranges.CharRange"}
+	case "kotlin/uuid/Uuid":
+		return &parcelSer{kind: parcelUuid, nullAware: true}
+	}
+	return nil
 }
 
 // custom returns the serializer of type t, written as ref, if a custom
@@ -1201,13 +1254,30 @@ func (g *parcelGen) write(s *parcelSer, t types.Type, v string) {
 		g.write(s.elem, g.sparseElem(t), x)
 		g.stmt("%s++", i)
 		g.stmt("}")
+	case parcelCoerce:
+		u := g.fresh("u")
+		repr := s.repr
+		if t.N {
+			repr = repr.Nullable() // an unsigned array without a marker
+		}
+		g.stmt("val %s = `kc$coerce`<%s>(%s)", u, g.typeText(repr), v)
+		g.write(s.under, repr, u)
+	case parcelRange:
+		g.write(s.under, s.repr, v+".first")
+		g.write(s.under, s.repr, v+".endInclusive")
+	case parcelUuid:
+		a, b := g.fresh("a"), g.fresh("b")
+		g.stmt("%s.toLongs { %s, %s ->", v, a, b)
+		g.stmt("dest.writeLong(%s)", a)
+		g.stmt("dest.writeLong(%s)", b)
+		g.stmt("}")
 	case parcelMap:
 		g.stmt("dest.writeInt(%s.size)", v)
 		e, key, val := g.fresh("e"), g.fresh("k"), g.fresh("w")
 		g.stmt("for (%s in %s.entries) {", e, v)
 		g.stmt("val %s = %s.key", key, e)
-		g.stmt("val %s = %s.value", val, e)
 		g.write(s.key, parcelArg(t, 0), key)
+		g.stmt("val %s = %s.value", val, e)
 		g.write(s.elem, parcelArg(t, 1), val)
 		g.stmt("}")
 	}
@@ -1325,6 +1395,16 @@ func (g *parcelGen) read(s *parcelSer, t types.Type) string {
 		g.stmt("%s--", r)
 		g.stmt("}")
 		return a
+	case parcelCoerce:
+		repr := s.repr
+		if t.N {
+			repr = repr.Nullable()
+		}
+		return fmt.Sprintf("`kc$coerce`<%s>(%s)", g.typeText(t), g.read(s.under, repr))
+	case parcelRange:
+		return fmt.Sprintf("%s(%s, %s)", s.ctor, g.read(s.under, s.repr), g.read(s.under, s.repr))
+	case parcelUuid:
+		return "kotlin.uuid.Uuid.fromLongs(parcel.readLong(), parcel.readLong())"
 	case parcelCollection, parcelMap:
 		n, v, i := g.fresh("n"), g.fresh("l"), g.fresh("i")
 		g.stmt("val %s = parcel.readInt()", n)

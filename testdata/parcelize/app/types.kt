@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalUnsignedTypes::class, kotlin.uuid.ExperimentalUuidApi::class)
+
 package p
 
 import android.os.Binder
@@ -368,4 +370,35 @@ class Fast(val ints: IntArray, val strs: List<String>, val arr: Array<String>, v
     override fun toString() = "Fast(${ints.contentToString()}, $strs, ${arr.contentToString()}, $sba, $n)"
     override fun equals(other: Any?) = other is Fast && other.toString() == toString()
     override fun hashCode() = toString().hashCode()
+}
+
+// The standard library's types that the plugin writes in ways of its own:
+// unsigned integers and their arrays and Duration as the underlying
+// values, ranges as their bounds, and a Uuid as its halves.
+@Parcelize
+class Specials(
+    val ui: UInt, val nui: UInt?, val ul: ULong, val nul: ULong?, val ub: UByte, val nub: UByte?, val us: UShort, val nus: UShort?,
+    val uia: UIntArray, val nuia: UIntArray?, val ula: ULongArray, val uba: UByteArray?, val usa: UShortArray, val nusa: UShortArray?,
+    val lui: List<UInt?>, val aul: Array<ULong>, val d: kotlin.time.Duration, val nd: kotlin.time.Duration?,
+    val durations: Map<UInt, kotlin.time.Duration>, val ir: IntRange, val nir: IntRange?, val lr: LongRange, val cr: CharRange?,
+    val ranges: List<IntRange>, val id: kotlin.uuid.Uuid, val nid: kotlin.uuid.Uuid?,
+) : Parcelable {
+    override fun toString() = "Specials($ui, $nui, $ul, $nul, $ub, $nub, $us, $nus, ${uia.contentToString()}, ${nuia?.contentToString()}, " +
+        "${ula.contentToString()}, ${uba?.contentToString()}, ${usa.contentToString()}, ${nusa?.contentToString()}, $lui, " +
+        "${aul.contentToString()}, $d, $nd, $durations, $ir, $nir, $lr, $cr, $ranges, $id, $nid)"
+    override fun equals(other: Any?) = other is Specials && other.toString() == toString()
+    override fun hashCode() = toString().hashCode()
+}
+
+fun specials(nulls: Boolean = false): Specials {
+    val id = kotlin.uuid.Uuid.fromLongs(0x0123456789abcdefL, -2L)
+    return Specials(
+        4000000000u, if (nulls) null else 1u, 18000000000000000000uL, if (nulls) null else 2uL, 200u, if (nulls) null else 3u,
+        60000u, if (nulls) null else 4u, uintArrayOf(1u, 4000000000u), if (nulls) null else uintArrayOf(5u),
+        ulongArrayOf(18000000000000000000uL), if (nulls) null else ubyteArrayOf(255u, 1u), ushortArrayOf(65535u),
+        if (nulls) null else ushortArrayOf(7u, 8u), listOf(1u, null, 3000000000u), arrayOf(9uL, 18000000000000000000uL),
+        kotlin.time.Duration.parse("1h 30m"), if (nulls) null else kotlin.time.Duration.parse("-2s"),
+        mapOf(1u to kotlin.time.Duration.parse("5ms")), 1..10, if (nulls) null else 3..2, 5L..6L, if (nulls) null else 'a'..'z',
+        listOf(0..1, 2 until 4), id, if (nulls) null else id,
+    )
 }

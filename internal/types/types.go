@@ -1109,6 +1109,13 @@ const (
 	// ComposeKey is Compose's key(keys...) { ... }: the lambda is inlined
 	// in a movable group, whose key the keys are (see codegen/compose.go).
 	ComposeKey
+
+	// UnsafeCoerce is `kc$coerce`<R>(x), which only the code kc writes
+	// for compiler plugins calls: x, of a value class type held unboxed,
+	// as R, the type of its underlying value, or the other way round. On
+	// the JVM the value is unchanged, as with kotlinc's IR's unsafe
+	// coerce.
+	UnsafeCoerce
 )
 
 // BitwiseOps are the bitwise functions of Int and Long, which are JVM

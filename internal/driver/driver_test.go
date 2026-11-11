@@ -961,15 +961,12 @@ func TestParcelize(t *testing.T) {
 	}
 
 	// A class that kc doesn't write as the plugin does is left to kotlinc:
-	// one with a property of a type that the plugin writes in a way of its
-	// own, such as a range, which is Serializable; of a type that it writes
-	// with writeValue but isn't annotated @RawValue, for which kotlinc
-	// reports an error; or with a type parameter whose bound is a
-	// collection, which kotlinc fails to compile; or with a custom Parceler
-	// that kotlinc rejects, or a companion one of another class.
+	// one with a property of a type that the plugin writes with writeValue
+	// but isn't annotated @RawValue, for which kotlinc reports an error; or
+	// with a type parameter whose bound is a collection, which kotlinc
+	// fails to compile; or with a custom Parceler that kotlinc rejects, or
+	// a companion one of another class.
 	for _, decl := range []string{
-		"class A(val x: IntRange) : Parcelable",
-		"class A(val x: kotlin.time.Duration) : Parcelable",
 		"class A(val x: Any) : Parcelable",
 		"class A(val x: List<Any>) : Parcelable",
 		"class A(val x: Map<String, Iterable<Int>>) : Parcelable",

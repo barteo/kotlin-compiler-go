@@ -332,7 +332,10 @@ depend on property types once those are known:
   each property as kotlinc's serializer for its type does: a generic
   class's as its type erased, each type parameter as its erased bound,
   which the class's constructor is called with as type arguments that a
-  plugin's code needn't keep within their bounds; a `@RawValue` one with
-  `writeValue`, and one
+  plugin's code needn't keep within their bounds; an unsigned integer,
+  an array of them or a `Duration` as its underlying value, which the
+  plugin's code reaches with an intrinsic only it can call,
+  `` `kc$coerce`<T>(x) ``, that converts between a value class and its
+  underlying type; a `@RawValue` one with `writeValue`, and one
   that a `@TypeParceler` or `@WriteWith` names a `Parceler` for with it; or
   a class's `Parceler` companion object, which writes the class itself.
