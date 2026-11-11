@@ -336,6 +336,10 @@ depend on property types once those are known:
   an array of them or a `Duration` as its underlying value, which the
   plugin's code reaches with an intrinsic only it can call,
   `` `kc$coerce`<T>(x) ``, that converts between a value class and its
-  underlying type; a `@RawValue` one with `writeValue`, and one
+  underlying type; a `@DataClass` one by its properties; an immutable
+  collection of kotlinx's as a list, set or map, converted with an
+  extension that the plugin's code calls by its qualified name in
+  backticks, which only it can; a `@RawValue` one with `writeValue`, and
+  one
   that a `@TypeParceler` or `@WriteWith` names a `Parceler` for with it; or
   a class's `Parceler` companion object, which writes the class itself.

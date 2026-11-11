@@ -40,10 +40,14 @@ type gen struct {
 	code    *cf.Code
 	owner   *types.ClassSym // class whose members are being generated
 	retType types.Type
-	loops   []loopLabels
-	tries   []*tryCtx       // the try blocks the code is in, innermost last
-	lam     *lambdaCtx      // set in a lambda's method
-	inl     []*inlineLambda // the inlined lambdas being generated, innermost last
+	// plugin is set in the body of a function that a compiler plugin
+	// declares, whose code, as kotlinc's plugins' IR, has no checks of
+	// platform-typed values.
+	plugin bool
+	loops  []loopLabels
+	tries  []*tryCtx       // the try blocks the code is in, innermost last
+	lam    *lambdaCtx      // set in a lambda's method
+	inl    []*inlineLambda // the inlined lambdas being generated, innermost last
 	// nonNull holds the parameters and locals whose values are never
 	// null, of which a safe call doesn't check for null: see knownNonNull.
 	nonNull map[*types.VarSym]bool
@@ -1081,6 +1085,7 @@ func (g *gen) functionBody(fd *syntax.FunDecl) {
 	sym := fd.Sym
 	g.prefix = sym.Name + "$lambda"
 	g.retType = types.JVMRet(sym)
+	g.plugin = fd.Plugin
 	g.loops, g.tries = nil, nil
 	for _, p := range sym.Contexts {
 		g.setSlot(p, g.code.AllocLocal(paramDesc(p.Type)))
@@ -1650,7 +1655,7 @@ func (g *gen) delegated(dl *syntax.Delegated) {
 	g.code.Op(returnOpOf(ret))
 	g.check()
 	if value {
-		g.valueOverride(f)
+		g.valueOverride(f, false)
 		return
 	}
 	for _, b := range f.Bridges {

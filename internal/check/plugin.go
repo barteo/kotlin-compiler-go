@@ -1,6 +1,8 @@
 package check
 
 import (
+	"strings"
+
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
 	"github.com/barteo/kotlin-compiler-go/internal/types"
 )
@@ -29,4 +31,20 @@ func (c *Checker) coerceCall(x *syntax.Call) types.Type {
 		return types.InvalidType
 	}
 	return to
+}
+
+// pluginQualified splits the name of an extension function that a
+// plugin's code calls by its qualified name, written in backticks, as
+// x.`kotlinx.collections.immutable.toPersistentList`(), into the package
+// and the simple name. Only a plugin's code can call one, which no
+// declaration of the program hides, as the plugin calls it.
+func pluginQualified(c *Checker, name string) (pkg, simple string, ok bool) {
+	if !c.state.plugin || !c.u.ext.kotlin {
+		return "", "", false
+	}
+	i := strings.LastIndexByte(name, '.')
+	if i <= 0 {
+		return "", "", false
+	}
+	return name[:i], name[i+1:], true
 }

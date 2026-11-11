@@ -832,6 +832,8 @@ type ClassSym struct {
 	// boxed: see Unboxed.
 	Value      bool
 	Underlying *VarSym
+	// Data is set on data classes, of the program or the class path.
+	Data bool
 	// Fun is set on fun interfaces, of the program or the class path, to
 	// whose single abstract method lambdas passed for them convert.
 	Fun bool

@@ -78,16 +78,17 @@ S::class)` get their `serializer()`.
 
 ## Parcelize (`-parcelize`)
 
-Not supported: properties of value classes other than the standard
-library's, and of kotlinx.collections.immutable's collections, which the
-plugin writes in a way of its own that `kc` doesn't; types annotated
-`@DataClass`. A class that kotlinc reports
-an error for, or fails to compile, is left to kotlinc too: one with a
-property of a type that the plugin can only write with `writeValue` and
-that isn't annotated `@RawValue`, or of a type parameter whose bound is a
-collection; a `@TypeParceler` or `@WriteWith` whose `Parceler` isn't an
-object or doesn't fit the type, or two `@TypeParceler`s for one type; a
-`Parceler` companion object of another type than the class's.
+A class that kotlinc reports an error for, or fails to compile, is left
+to kotlinc: one with a property of a type that the plugin can only write
+with `writeValue` and that isn't annotated `@RawValue`, such as a value
+class that isn't `Parcelable` or `Serializable`, or of a type parameter
+whose bound is a collection; a `@TypeParceler` or `@WriteWith` whose
+`Parceler` isn't an object or doesn't fit the type, or two
+`@TypeParceler`s for one type; a `Parceler` companion object of another
+type than the class's; a `@DataClass` type whose data class's
+constructor or properties the class can't see. So is a `@DataClass` type
+whose data class, or one in it, is another module's, such as `Pair`,
+which kotlinc compiles.
 
 ## Compose (`-compose`)
 
@@ -259,3 +260,9 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   cast to the array type, which `kotlinc` doesn't. kotlinc reports
   `@TypeParceler` and `@WriteWith` in a class that isn't `@Parcelize`
   as errors; `kc` ignores them.
+- `kotlinc`'s plugin code casts values to the types they are passed as
+  where those are supertypes, as a list read to `List` or the receiver of
+  `toPersistentList` to `Iterable`; `kc`'s doesn't, and casts the
+  elements of a value class that it reads into a list to the class.
+- `Uuid` is written with an inlined `toLongs`, whose lambda's arguments
+  `kc` boxes (see Inlining).

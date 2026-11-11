@@ -88,7 +88,7 @@ func (g *gen) requireNonNull(msg string) {
 // reference type.
 func (g *gen) checkPlatform(x syntax.Expr, to types.Type) {
 	from := x.Type()
-	if !from.P || !checked(to) || !g.code.Reachable() {
+	if !from.P || !checked(to) || !g.code.Reachable() || g.plugin {
 		return
 	}
 	if c, ok := x.(*syntax.Call); ok && c.Sym != nil && c.Sym.Owner != nil && c.Sym.Owner.Name == "java/lang/Object" {

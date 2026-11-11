@@ -1152,7 +1152,7 @@ func (c *Checker) declareClass(d *syntax.ClassDecl, name string, outer *types.Cl
 		sym = new(types.ClassSym)
 	}
 	*sym = types.ClassSym{Name: name, Methods: map[string][]*types.FunSym{}, Decl: d, Annotation: d.Annotation,
-		Value: d.Value && !d.Interface && !d.Object, Fun: d.Fun,
+		Value: d.Value && !d.Interface && !d.Object, Fun: d.Fun, Data: d.Data,
 		Interface: d.Interface || d.Annotation, Abstract: d.Abstract || d.Interface || d.Annotation || d.Sealed,
 		Final:  d.Object || d.Enum || !d.Open && !d.Abstract && !d.Interface && !d.Sealed,
 		Object: d.Object, Outer: outer, Nested: map[string]*types.ClassSym{}, Aliases: map[string]*types.AliasSym{}, Sealed: d.Sealed,

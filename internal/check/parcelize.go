@@ -47,8 +47,13 @@ import (
 // (special): the unsigned integers, their arrays and Duration as their
 // underlying values, which the plugin's code coerces to and from with
 // kc's `kc$coerce` intrinsic, ranges as their bounds and a Uuid as its
-// halves; then Parcelables, binders, objects, enums, functions and
-// Serializables; and else writeValue. kotlinc reports an error for a
+// halves; then Parcelables, binders, objects, enums, functions, data
+// classes annotated @DataClass, or in one, by their properties (data),
+// and Serializables; and else writeValue. Value classes of the program
+// are written as any class. kotlinx's immutable collections are read as
+// lists, sets and maps, and converted with its toPersistentList and the
+// others, which the plugin's code calls by their qualified names
+// (pluginQualified). kotlinc reports an error for a
 // property written with writeValue unless its type, or one that it is an
 // argument of, is annotated @RawValue, so kc leaves such a class to it.
 // A generic class's properties are written as their types erased, each
@@ -57,10 +62,9 @@ import (
 // erased bounds as type arguments, which needn't be within the bounds in
 // a plugin's code.
 //
-// Other value classes and kotlinx's immutable collections, which the
-// plugin writes in ways kc doesn't, are unsupported, and so is a type
-// parameter whose bound is an array or a collection, which kotlinc fails
-// to compile.
+// A type parameter whose bound is an array or a collection, which
+// kotlinc fails to compile, is unsupported, and so is a @DataClass type of
+// another module's data class, whose properties kc doesn't know.
 //
 // A custom Parceler object writes a type that @WriteWith names it for, or
 // that a @TypeParceler of the class or the property does (custom). One
@@ -362,10 +366,6 @@ func (c *Checker) parcelBody(d *syntax.FunDecl, cls *types.ClassSym) {
 			g.stmt("dest.writeInt(1)")
 		}
 		for _, p := range cd.CtorParams {
-			if a := parcelTypeAnnotation(p.Type, "DataClass"); a != nil {
-				c.unsupported(a.P, "parcelize", "@DataClass is not supported")
-				return
-			}
 			if g.scope, ok = c.parcelScope(&p.Modifiers); !ok {
 				return
 			}
@@ -381,18 +381,21 @@ func (c *Checker) parcelBody(d *syntax.FunDecl, cls *types.ClassSym) {
 			g.stmt("parcel.readInt()")
 			g.stmt("return %s", g.fq)
 		} else {
-			args := make([]string, len(cd.CtorParams))
-			for i, p := range cd.CtorParams {
-				args[i] = g.fresh("a")
-				if g.scope, ok = c.parcelScope(&p.Modifiers); !ok {
-					return
-				}
-				x := "null!!"
+			failed := false
+			args := g.readAll(len(cd.CtorParams), func(i int) (string, types.Type) {
+				p := cd.CtorParams[i]
 				t := parcelErase(p.Sym.Type)
-				if ser := g.serializer(t, p.Type, false); ser != nil {
-					x = g.read(ser, t)
+				if g.scope, ok = c.parcelScope(&p.Modifiers); !ok {
+					failed = true
+					return "null!!", t
 				}
-				g.stmt("val %s = %s", args[i], x)
+				if ser := g.serializer(t, p.Type, false); ser != nil {
+					return g.read(ser, t), t
+				}
+				return "null!!", t
+			})
+			if failed {
+				return
 			}
 			g.stmt("return %s%s(%s)", g.fq, targs, strings.Join(args, ", "))
 		}
@@ -403,26 +406,23 @@ func (c *Checker) parcelBody(d *syntax.FunDecl, cls *types.ClassSym) {
 		}
 		return // createFromParcel fails too, and its body throws
 	}
-	// The CREATOR fields that the body reads, in locals declared first.
-	var src strings.Builder
-	for i, cr := range g.creators {
-		fmt.Fprintf(&src, "val `$c%d`: android.os.Parcelable.Creator<%s> = null!!\n", i, g.typeText(cr))
-	}
-	src.WriteString(g.body.String())
-	members, err := parseMembers(c.file.Path, cd.P, "fun f() {\n"+src.String()+"}\n")
+	members, err := parseMembers(c.file.Path, cd.P, "fun f() {\n"+g.body.String()+"}\n")
 	if err != nil {
 		c.errorf(cd.P, "parcelize: %v", err)
 		return
 	}
 	body := members[0].(*syntax.FunDecl).Body
+	// The CREATOR fields that the body reads, as `$c0` and so on, which
+	// Kotlin can't name: a class's own, which the plugin adds.
 	creator := c.u.ext.class("android/os/Parcelable$Creator")
+	repl := map[string]syntax.Expr{}
 	for i, cr := range g.creators {
-		vs := body.Stmts[i].(*syntax.VarStmt)
 		t := types.GenericType(creator, []types.Arg{{T: cr}})
 		id := &syntax.Ident{Name: "CREATOR", Sym: &types.VarSym{Name: "CREATOR", Kind: types.Static, Owner: cr.C, Type: t, Resolved: true}}
-		id.P, id.T = vs.P, t
-		vs.Init = checked(id, t)
+		id.P, id.T = cd.P, t
+		repl[fmt.Sprintf("$c%d", i)] = checked(id, t)
 	}
+	replaceIdents(reflect.ValueOf(body), repl)
 	d.Body = body
 }
 
@@ -714,6 +714,9 @@ type parcelGen struct {
 	// classScope and scope are the @TypeParceler annotations of the class
 	// and of the property being written, which the class's win over.
 	classScope, scope []parcelEntry
+	// inData is set while the serializers of a data class's properties
+	// are made: a data class is written by its properties in one too.
+	inData bool
 }
 
 func (g *parcelGen) stmt(format string, args ...any) {
@@ -755,6 +758,7 @@ const (
 	parcelCoerce                         // the underlying value: the unsigned integers and their arrays, Duration
 	parcelRange                          // the first and last values: IntRange, LongRange, CharRange
 	parcelUuid                           // the two halves, with writeLong
+	parcelData                           // each property: a data class annotated @DataClass, or in one
 )
 
 // A parcelSer is how the plugin writes a type, and its elements'.
@@ -775,6 +779,9 @@ type parcelSer struct {
 	// constructor takes the size.
 	coll     string
 	capacity bool
+	// persistent is the extension that the plugin converts a collection
+	// it reads with: kotlinx's toPersistentList, or another.
+	persistent string
 	// elem writes the elements (a map's values), and key a map's keys.
 	elem, key *parcelSer
 	// obj is parcelCustom's Parceler object, and x the type it writes,
@@ -786,6 +793,11 @@ type parcelSer struct {
 	under *parcelSer
 	repr  types.Type
 	ctor  string
+	// props are parcelData's properties, of the types fields, which
+	// members write.
+	props   []string
+	fields  []types.Type
+	members []*parcelSer
 }
 
 // parcelCollections are the classes the plugin writes as lists, sets and
@@ -796,30 +808,46 @@ var parcelCollections = map[string]struct {
 	kind           parcelKind
 	coll           string
 	capacity, fast bool
+	persistent     string // the extension that converts it, for kotlinx's immutable collections
 }{
-	"kotlin/collections/List":                {parcelCollection, "java.util.ArrayList", true, true},
-	"kotlin/collections/MutableList":         {parcelCollection, "java.util.ArrayList", true, true},
-	"java/util/List":                         {parcelCollection, "java.util.ArrayList", true, true},
-	"java/util/ArrayList":                    {parcelCollection, "java.util.ArrayList", true, true},
-	"kotlin/collections/ArrayDeque":          {parcelCollection, "kotlin.collections.ArrayDeque", true, false},
-	"java/util/ArrayDeque":                   {parcelCollection, "java.util.ArrayDeque", true, false},
-	"kotlin/collections/Set":                 {parcelCollection, "java.util.LinkedHashSet", true, false},
-	"kotlin/collections/MutableSet":          {parcelCollection, "java.util.LinkedHashSet", true, false},
-	"java/util/Set":                          {parcelCollection, "java.util.LinkedHashSet", true, false},
-	"java/util/HashSet":                      {parcelCollection, "java.util.HashSet", true, false},
-	"java/util/LinkedHashSet":                {parcelCollection, "java.util.LinkedHashSet", true, false},
-	"java/util/NavigableSet":                 {parcelCollection, "java.util.TreeSet", false, false},
-	"java/util/SortedSet":                    {parcelCollection, "java.util.TreeSet", false, false},
-	"kotlin/collections/Map":                 {parcelMap, "java.util.LinkedHashMap", true, false},
-	"kotlin/collections/MutableMap":          {parcelMap, "java.util.LinkedHashMap", true, false},
-	"java/util/Map":                          {parcelMap, "java.util.LinkedHashMap", true, false},
-	"java/util/HashMap":                      {parcelMap, "java.util.HashMap", true, false},
-	"java/util/LinkedHashMap":                {parcelMap, "java.util.LinkedHashMap", true, false},
-	"java/util/SortedMap":                    {parcelMap, "java.util.TreeMap", false, false},
-	"java/util/NavigableMap":                 {parcelMap, "java.util.TreeMap", false, false},
-	"java/util/TreeMap":                      {parcelMap, "java.util.TreeMap", false, false},
-	"java/util/concurrent/ConcurrentHashMap": {parcelMap, "java.util.concurrent.ConcurrentHashMap", true, false},
+	"kotlin/collections/List":                      {parcelCollection, "java.util.ArrayList", true, true, ""},
+	"kotlin/collections/MutableList":               {parcelCollection, "java.util.ArrayList", true, true, ""},
+	"java/util/List":                               {parcelCollection, "java.util.ArrayList", true, true, ""},
+	"java/util/ArrayList":                          {parcelCollection, "java.util.ArrayList", true, true, ""},
+	"kotlin/collections/ArrayDeque":                {parcelCollection, "kotlin.collections.ArrayDeque", true, false, ""},
+	"java/util/ArrayDeque":                         {parcelCollection, "java.util.ArrayDeque", true, false, ""},
+	"kotlin/collections/Set":                       {parcelCollection, "java.util.LinkedHashSet", true, false, ""},
+	"kotlin/collections/MutableSet":                {parcelCollection, "java.util.LinkedHashSet", true, false, ""},
+	"java/util/Set":                                {parcelCollection, "java.util.LinkedHashSet", true, false, ""},
+	"java/util/HashSet":                            {parcelCollection, "java.util.HashSet", true, false, ""},
+	"java/util/LinkedHashSet":                      {parcelCollection, "java.util.LinkedHashSet", true, false, ""},
+	"java/util/NavigableSet":                       {parcelCollection, "java.util.TreeSet", false, false, ""},
+	"java/util/SortedSet":                          {parcelCollection, "java.util.TreeSet", false, false, ""},
+	"kotlin/collections/Map":                       {parcelMap, "java.util.LinkedHashMap", true, false, ""},
+	"kotlin/collections/MutableMap":                {parcelMap, "java.util.LinkedHashMap", true, false, ""},
+	"java/util/Map":                                {parcelMap, "java.util.LinkedHashMap", true, false, ""},
+	"java/util/HashMap":                            {parcelMap, "java.util.HashMap", true, false, ""},
+	"java/util/LinkedHashMap":                      {parcelMap, "java.util.LinkedHashMap", true, false, ""},
+	"java/util/SortedMap":                          {parcelMap, "java.util.TreeMap", false, false, ""},
+	"java/util/NavigableMap":                       {parcelMap, "java.util.TreeMap", false, false, ""},
+	"java/util/TreeMap":                            {parcelMap, "java.util.TreeMap", false, false, ""},
+	"java/util/concurrent/ConcurrentHashMap":       {parcelMap, "java.util.concurrent.ConcurrentHashMap", true, false, ""},
+	"kotlinx/collections/immutable/ImmutableList":  {parcelCollection, "java.util.ArrayList", true, true, persistentList},
+	"kotlinx/collections/immutable/PersistentList": {parcelCollection, "java.util.ArrayList", true, true, persistentList},
+	"kotlinx/collections/immutable/ImmutableSet":   {parcelCollection, "java.util.LinkedHashSet", true, false, persistentSet},
+	"kotlinx/collections/immutable/PersistentSet":  {parcelCollection, "java.util.LinkedHashSet", true, false, persistentSet},
+	"kotlinx/collections/immutable/ImmutableMap":   {parcelMap, "java.util.LinkedHashMap", true, false, persistentMap},
+	"kotlinx/collections/immutable/PersistentMap":  {parcelMap, "java.util.LinkedHashMap", true, false, persistentMap},
 }
+
+// The extensions that convert the collections the plugin reads to
+// kotlinx's immutable ones, by qualified name: a plugin's code calls them
+// as pluginQualified describes.
+const (
+	persistentList = "kotlinx.collections.immutable.toPersistentList"
+	persistentSet  = "kotlinx.collections.immutable.toPersistentSet"
+	persistentMap  = "kotlinx.collections.immutable.toPersistentMap"
+)
 
 // parcelSimples are the classes the plugin writes with a Parcel method
 // of their own, by Kotlin or JVM name, and whether with a null marker.
@@ -835,14 +863,6 @@ var parcelSimples = map[string]parcelSer{
 	"kotlin/ByteArray":                {write: "writeByteArray", read: "createByteArray"},
 	"kotlin/CharArray":                {write: "writeCharArray", read: "createCharArray"},
 	"android/util/SparseBooleanArray": {write: "writeSparseBooleanArray", read: "readSparseBooleanArray"},
-}
-
-// parcelUnsupported are the classes the plugin writes in ways of its own
-// that kc doesn't: kotlinx.collections.immutable's collections.
-var parcelUnsupported = map[string]bool{
-	"kotlinx/collections/immutable/PersistentList": true, "kotlinx/collections/immutable/ImmutableList": true,
-	"kotlinx/collections/immutable/PersistentSet": true, "kotlinx/collections/immutable/ImmutableSet": true,
-	"kotlinx/collections/immutable/PersistentMap": true, "kotlinx/collections/immutable/ImmutableMap": true,
 }
 
 // parcelArg returns the type of type t's argument i as the plugin sees
@@ -906,13 +926,8 @@ func (g *parcelGen) serializer(t types.Type, ref *syntax.TypeRef, raw bool) *par
 	if name == "" {
 		name = cls.Name
 	}
-	known := func(m map[string]bool) bool { return m[name] || m[cls.Name] }
 	if s := g.special(t, name); s != nil {
 		return s
-	}
-	if known(parcelUnsupported) || cls.Value {
-		g.fail(t)
-		return nil
 	}
 	lookup := func(name string) string {
 		if _, ok := parcelCollections[name]; ok {
@@ -975,7 +990,7 @@ func (g *parcelGen) serializer(t types.Type, ref *syntax.TypeRef, raw bool) *par
 	if c, ok := parcelCollections[key]; ok {
 		if c.kind == parcelMap {
 			k, v := parcelArg(t, 0), parcelArg(t, 1)
-			s := &parcelSer{kind: parcelMap, nullAware: true, coll: c.coll + "<" + g.typeText(k) + ", " + g.typeText(v) + ">", capacity: c.capacity}
+			s := &parcelSer{kind: parcelMap, nullAware: true, coll: c.coll + "<" + g.typeText(k) + ", " + g.typeText(v) + ">", capacity: c.capacity, persistent: c.persistent}
 			if s.key = g.serializer(k, parcelArgRef(ref, t, 0), raw); s.key == nil {
 				return nil
 			}
@@ -983,14 +998,16 @@ func (g *parcelGen) serializer(t types.Type, ref *syntax.TypeRef, raw bool) *par
 		}
 		e := parcelArg(t, 0)
 		if c.fast && !g.hasCustom(e, parcelArgRef(ref, t, 0)) {
+			// An immutable list's is converted, after a null marker.
+			marker := c.persistent != ""
 			switch en := e.NonNull(); {
 			case en.K == types.String:
-				return &parcelSer{kind: parcelSimple, write: "writeStringList", read: "createStringArrayList"}
+				return &parcelSer{kind: parcelSimple, write: "writeStringList", read: "createStringArrayList", nullAware: marker, persistent: c.persistent}
 			case isClass(en, "android/os/IBinder"):
-				return &parcelSer{kind: parcelSimple, write: "writeBinderList", read: "createBinderArrayList"}
+				return &parcelSer{kind: parcelSimple, write: "writeBinderList", read: "createBinderArrayList", nullAware: marker, persistent: c.persistent}
 			}
 		}
-		return g.withElem(&parcelSer{kind: parcelCollection, nullAware: true, coll: c.coll + "<" + g.typeText(e) + ">", capacity: c.capacity}, e, parcelArgRef(ref, t, 0), raw)
+		return g.withElem(&parcelSer{kind: parcelCollection, nullAware: true, coll: c.coll + "<" + g.typeText(e) + ">", capacity: c.capacity, persistent: c.persistent}, e, parcelArgRef(ref, t, 0), raw)
 	}
 	if p := g.c.u.ext.class("android/os/Parcelable"); p != nil && cls.IsSubclassOf(p) {
 		if g.efficient(cls) {
@@ -1007,8 +1024,15 @@ func (g *parcelGen) serializer(t types.Type, ref *syntax.TypeRef, raw bool) *par
 	if cls.Entries != nil {
 		return &parcelSer{kind: parcelEnum, nullAware: true}
 	}
+	if cls.Data && (g.inData || ref != nil && parcelAnnotation(ref, "DataClass") != nil) {
+		return g.data(t)
+	}
 	if s := g.c.u.ext.class("java/io/Serializable"); s != nil && cls.IsSubclassOf(s) {
-		return &parcelSer{kind: parcelSimple, write: "writeSerializable", read: "readSerializable", cast: true}
+		ser := &parcelSer{kind: parcelSimple, write: "writeSerializable", read: "readSerializable", cast: true}
+		if cls.Value {
+			ser.wcast = "java.io.Serializable" // the box, which kotlinc casts
+		}
+		return ser
 	}
 	return g.value(t, raw)
 }
@@ -1054,6 +1078,42 @@ func (g *parcelGen) special(t types.Type, name string) *parcelSer {
 		return &parcelSer{kind: parcelUuid, nullAware: true}
 	}
 	return nil
+}
+
+// data returns the serializer of data class type t, which the plugin
+// writes by the properties of its primary constructor, in order, and reads
+// with it: their serializers are those of a data class's properties too.
+// kc writes only the program's data classes, whose constructor and
+// properties the class can see, as kotlinc reports an error for others.
+func (g *parcelGen) data(t types.Type) *parcelSer {
+	cd, ok := t.C.Decl.(*syntax.ClassDecl)
+	if !ok || cd.CtorMods.Visibility == syntax.Private || cd.CtorMods.Visibility == syntax.Protected {
+		g.fail(t)
+		return nil
+	}
+	s := &parcelSer{kind: parcelData, nullAware: true}
+	sub := g.c.memberSubst(t, t.C)
+	in := g.inData
+	g.inData = true
+	defer func() { g.inData = in }()
+	for _, p := range cd.CtorParams {
+		if !p.IsProp {
+			continue
+		}
+		if p.Visibility == syntax.Private || p.Visibility == syntax.Protected || p.PropSym == nil {
+			g.fail(t)
+			return nil
+		}
+		ft := sub.Apply(p.PropSym.Type)
+		m := g.serializer(ft, p.Type, false)
+		if m == nil {
+			return nil
+		}
+		s.props = append(s.props, p.Name)
+		s.fields = append(s.fields, ft)
+		s.members = append(s.members, m)
+	}
+	return s
 }
 
 // custom returns the serializer of type t, written as ref, if a custom
@@ -1265,6 +1325,12 @@ func (g *parcelGen) write(s *parcelSer, t types.Type, v string) {
 	case parcelRange:
 		g.write(s.under, s.repr, v+".first")
 		g.write(s.under, s.repr, v+".endInclusive")
+	case parcelData:
+		for i, p := range s.props {
+			m := g.fresh("m")
+			g.stmt("val %s = %s.`%s`", m, v, p)
+			g.write(s.members[i], s.fields[i], m)
+		}
 	case parcelUuid:
 		a, b := g.fresh("a"), g.fresh("b")
 		g.stmt("%s.toLongs { %s, %s ->", v, a, b)
@@ -1283,6 +1349,33 @@ func (g *parcelGen) write(s *parcelSer, t types.Type, v string) {
 	}
 }
 
+// readAll reads n values, value i, of type t, as read(i) returns, and
+// returns the expressions that are them, which a call takes as its
+// arguments: locals that hold them if one takes statements to read, as
+// kotlinc's code then reads each before the next, and else the
+// expressions read. A value class's value is held unboxed.
+func (g *parcelGen) readAll(n int, read func(i int) (x string, t types.Type)) []string {
+	locals, xs := make([]string, n), make([]string, n)
+	mark, plain := g.body.Len(), true
+	for i := range n {
+		locals[i] = g.fresh("a")
+		before := g.body.Len()
+		x, t := read(i)
+		plain = plain && g.body.Len() == before
+		xs[i] = x
+		if types.IsValue(t) {
+			g.stmt("val %s: %s = %s", locals[i], g.typeText(t), x)
+		} else {
+			g.stmt("val %s = %s", locals[i], x)
+		}
+	}
+	if plain {
+		g.body.Truncate(mark)
+		return xs
+	}
+	return locals
+}
+
 // sparseElem returns the type of the values of a sparse array of type t.
 func (g *parcelGen) sparseElem(t types.Type) types.Type {
 	switch t.C.Name {
@@ -1299,6 +1392,12 @@ func (g *parcelGen) sparseElem(t types.Type) types.Type {
 // read writes the statements that read a value of type t with serializer
 // s, and returns the expression that is the value then.
 func (g *parcelGen) read(s *parcelSer, t types.Type) string {
+	if s.persistent != "" && !(t.N && s.nullAware) {
+		// Converted, as kotlinc's ConvertPersistent serializer does.
+		c := *s
+		c.persistent = ""
+		return fmt.Sprintf("%s.`%s`()", g.read(&c, t), s.persistent)
+	}
 	if t.N && s.nullAware {
 		// After a null marker. A value that takes statements to read is
 		// read into a local.
@@ -1405,6 +1504,11 @@ func (g *parcelGen) read(s *parcelSer, t types.Type) string {
 		return fmt.Sprintf("%s(%s, %s)", s.ctor, g.read(s.under, s.repr), g.read(s.under, s.repr))
 	case parcelUuid:
 		return "kotlin.uuid.Uuid.fromLongs(parcel.readLong(), parcel.readLong())"
+	case parcelData:
+		xs := g.readAll(len(s.props), func(i int) (string, types.Type) {
+			return g.read(s.members[i], s.fields[i]), s.fields[i]
+		})
+		return fmt.Sprintf("%s(%s)", g.typeText(t.NonNull()), strings.Join(xs, ", "))
 	case parcelCollection, parcelMap:
 		n, v, i := g.fresh("n"), g.fresh("l"), g.fresh("i")
 		g.stmt("val %s = parcel.readInt()", n)

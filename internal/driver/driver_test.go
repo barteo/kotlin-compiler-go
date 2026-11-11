@@ -962,11 +962,16 @@ func TestParcelize(t *testing.T) {
 
 	// A class that kc doesn't write as the plugin does is left to kotlinc:
 	// one with a property of a type that the plugin writes with writeValue
-	// but isn't annotated @RawValue, for which kotlinc reports an error; or
-	// with a type parameter whose bound is a collection, which kotlinc
-	// fails to compile; or with a custom Parceler that kotlinc rejects, or
-	// a companion one of another class.
+	// but isn't annotated @RawValue, as a value class that isn't
+	// Parcelable, for which kotlinc reports an error; or with a type
+	// parameter whose bound is a collection, which kotlinc fails to
+	// compile; or with a custom Parceler that kotlinc rejects, or a
+	// companion one of another class; or with a @DataClass type that is
+	// another module's data class, or whose constructor the class can't
+	// see.
 	for _, decl := range []string{
+		"class A(val x: V) : Parcelable\n\n@JvmInline\nvalue class V(val n: Int)",
+		"class A(val x: @kotlinx.parcelize.DataClass D) : Parcelable\n\ndata class D private constructor(val n: Int)",
 		"class A(val x: Any) : Parcelable",
 		"class A(val x: List<Any>) : Parcelable",
 		"class A(val x: Map<String, Iterable<Int>>) : Parcelable",

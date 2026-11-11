@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalUnsignedTypes::class, kotlin.uuid.ExperimentalUuidApi::class)
+@file:OptIn(ExperimentalUnsignedTypes::class, kotlin.uuid.ExperimentalUuidApi::class, kotlinx.parcelize.Experimental::class)
 
 package p
 
@@ -15,6 +15,13 @@ import android.util.SparseBooleanArray
 import android.util.SparseIntArray
 import android.util.SparseLongArray
 import java.io.FileDescriptor
+import kotlinx.collections.immutable.ImmutableList
+import kotlinx.collections.immutable.ImmutableMap
+import kotlinx.collections.immutable.ImmutableSet
+import kotlinx.collections.immutable.PersistentList
+import kotlinx.collections.immutable.PersistentMap
+import kotlinx.collections.immutable.PersistentSet
+import kotlinx.parcelize.DataClass
 import kotlinx.parcelize.IgnoredOnParcel
 import kotlinx.parcelize.Parceler
 import kotlinx.parcelize.Parceler as ParcelerAlias
@@ -402,3 +409,48 @@ fun specials(nulls: Boolean = false): Specials {
         listOf(0..1, 2 until 4), id, if (nulls) null else id,
     )
 }
+
+// Value classes are written as any class: a @Parcelize one as a
+// Parcelable, a Serializable one with writeSerializable, and others with
+// writeValue.
+@Parcelize
+@JvmInline
+value class Id(val v: Int) : Parcelable
+
+@Parcelize
+@JvmInline
+value class Name(val s: String) : Parcelable
+
+@JvmInline
+value class SerialName(val s: String) : java.io.Serializable
+
+@JvmInline
+value class PlainValue(val n: Int)
+
+@Parcelize
+data class ValueBox(
+    val id: Id, val nid: Id?, val name: Name, val ser: SerialName, val nser: SerialName?,
+    val p: @RawValue PlainValue, val np: @RawValue PlainValue?, val ids: List<Id>,
+) : Parcelable
+
+// A data class annotated @DataClass is written by its properties, and so
+// is one in it.
+data class Pt(val x: Int, val y: String?)
+
+data class Line(val a: Pt, val b: Pt?, val ids: List<Int>)
+
+data class Tagged<T>(val t: T, val n: Int)
+
+@Parcelize
+data class DataClasses(
+    val l: @DataClass Line, val nl: @DataClass Line?, val ls: List<@DataClass Pt>, val g: @DataClass Tagged<String>,
+) : Parcelable
+
+// kotlinx's immutable collections, read as lists, sets and maps and then
+// converted.
+@Parcelize
+data class Immutables(
+    val pl: PersistentList<Int>, val il: ImmutableList<Int?>, val ps: PersistentSet<String>, val iset: ImmutableSet<Long>,
+    val pm: PersistentMap<String, Int>, val im: ImmutableMap<Int, String?>, val sl: PersistentList<String>,
+    val nsl: PersistentList<String>?, val npl: PersistentList<Int>?, val bl: ImmutableList<IBinder>,
+) : Parcelable

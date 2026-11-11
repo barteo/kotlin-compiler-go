@@ -12,6 +12,9 @@ import android.os.Parcelable
 import java.math.BigDecimal
 import lib.LibOpen
 import lib.LibPoint
+import kotlinx.collections.immutable.persistentListOf
+import kotlinx.collections.immutable.persistentMapOf
+import kotlinx.collections.immutable.persistentSetOf
 import p.*
 
 // roundTrip writes x with writeParcelable, which calls its writeToParcel,
@@ -96,6 +99,13 @@ fun main() {
     roundTrip("import aliased", ImportAliased(4))
     roundTrip("specials", specials())
     roundTrip("special nulls", specials(nulls = true))
+    roundTrip("id", Id(5))
+    roundTrip("value box", valueBox())
+    roundTrip("value box nulls", ValueBox(Id(1), null, Name("n"), SerialName("s"), null, PlainValue(2), null, listOf()))
+    roundTrip("data classes", dataClasses())
+    roundTrip("data class nulls", DataClasses(Line(Pt(1, null), null, listOf()), null, listOf(), Tagged("t", 0)))
+    roundTrip("immutables", immutables())
+    roundTrip("immutable nulls", immutables(nulls = true))
     roundTrip("stamps", stamps())
     roundTrip("stamp nulls", Stamps(Stamp(1), null, listOf(), Stamp(2), null))
     roundTrip("writes", Writes(Stamp(1), Stamp(2), Stamp(3), listOf(Stamp(4))))
@@ -158,3 +168,13 @@ fun builtins(nulls: Boolean = false): Builtins {
 fun raw() = Raw(Plain(1), Plain(2), listOf(Plain(3)), listOf(Plain(4), null), Plain(5), mapOf("k" to Plain(6)), "s")
 
 fun stamps() = Stamps(Stamp(1), Stamp(2), listOf(Stamp(3)), Stamp(4), Stamp(5))
+
+fun valueBox() = ValueBox(Id(1), Id(2), Name("n"), SerialName("s"), SerialName("t"), PlainValue(3), PlainValue(4), listOf(Id(5), Id(6)))
+
+fun dataClasses() = DataClasses(Line(Pt(1, "a"), Pt(2, null), listOf(3, 4)), Line(Pt(5, "b"), null, listOf()), listOf(Pt(6, "c")), Tagged("t", 7))
+
+fun immutables(nulls: Boolean = false) = Immutables(
+    persistentListOf(1, 2), persistentListOf(3, null), persistentSetOf("a", "b"), persistentSetOf(4L),
+    persistentMapOf("k" to 5), persistentMapOf(6 to null, 7 to "v"), persistentListOf("x", "y"),
+    if (nulls) null else persistentListOf("z"), if (nulls) null else persistentListOf(8), persistentListOf(Binder("b")),
+)
