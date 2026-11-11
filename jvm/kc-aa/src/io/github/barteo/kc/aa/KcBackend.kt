@@ -317,7 +317,8 @@ private class KcExtrasImpl(private val round: () -> KcRound) : KcExtras {
         p.default?.let { return it }
         val token = p.info.round.token
         val t = p.info.decl.type
-        return if (t != null && t.kind == KcType.CLASS && arrayClass.matches(t.classId)) {
+        // A vararg parameter's type is its element type, and its value an array.
+        return if (p.info.decl.has(KcDecl.VARARG) || t != null && t.kind == KcType.CLASS && arrayClass.matches(t.classId)) {
             KcArrayValue(emptyList(), null, token)
         } else {
             // FIR's converter gives no value for a non-array parameter
