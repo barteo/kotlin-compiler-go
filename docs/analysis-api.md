@@ -4871,7 +4871,9 @@ threads, IntelliJ's and the processors' class loading, and libkc share
 them, so moving work beside other work gains little. Step 59 gained
 where its parse ran beside libkc's single-threaded phases and the
 round's waits; here the environment's construction was itself busy.
-Reverted. A cold cut has to remove work, not overlap it:
+Step 11 had tried the same overlap and dropped it for the same reason:
+the session waited 0.2 ms for the update, but cold setup saved only
+about 60 ms. Reverted. A cold cut has to remove work, not overlap it:
 
 - a slimmer environment, which the plan's Phase 3 targets;
 - fewer classes loaded;
