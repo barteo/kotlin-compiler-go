@@ -30,6 +30,9 @@ func (c *Checker) refShapes(l *syntax.Lambda) []types.Type {
 		return []types.Type{ft}
 	}
 	if r.X == nil {
+		if ts := c.ctorRefShapes(r.Name); ts != nil {
+			return ts
+		}
 		return c.topRefShapes(r.Name)
 	}
 	id, ok := r.X.(*syntax.Ident)
@@ -121,6 +124,35 @@ func (c *Checker) topRefShapes(name string) []types.Type {
 			return nil
 		}
 		out = append(out, t)
+	}
+	return out
+}
+
+// ctorRefShapes returns the types of ::name, naming only a class of the
+// program without type parameters: those of its constructors.
+func (c *Checker) ctorRefShapes(name string) []types.Type {
+	cls := c.lookupClass(name)
+	if cls == nil || cls.External || cls.Inner || cls.Interface || cls.Object || len(cls.TypeParams) > 0 || c.isVar(name) ||
+		c.cls != nil && c.hasCallable(c.cls, name) {
+		return nil
+	}
+	if fs, _ := c.scope.findFuns(name); len(fs) > 0 || len(c.topFuns(name)) > 0 {
+		return nil
+	}
+	var out []types.Type
+	for _, f := range userCtors(cls) {
+		ensureFun(f)
+		if f.Hidden || f.Unsupported || len(f.Contexts) > 0 {
+			return nil
+		}
+		var ps []types.Type
+		for _, q := range f.Params {
+			if q.Vararg || q.Type.K == types.Invalid || q.Type.HasParams() {
+				return nil
+			}
+			ps = append(ps, q.Type)
+		}
+		out = append(out, c.u.ext.funcs.Type(ps, cls.This()))
 	}
 	return out
 }
