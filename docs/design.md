@@ -329,4 +329,5 @@ depend on property types once those are known:
   deserialization constructor.
 - **Parcelize** (`check/parcelize.go`): `describeContents`,
   `writeToParcel`, a `C$Creator` class and `CREATOR`, which write and read
-  each property as kotlinc's serializer for its type does.
+  each property as kotlinc's serializer for its type does: a generic
+  class's as its type erased, and a `@RawValue` one with `writeValue`.

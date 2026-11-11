@@ -71,6 +71,8 @@ public final class Parcel {
 
     public void writeSerializable(Serializable v) { put("serializable", v); }
     public Serializable readSerializable() { return (Serializable) next(); }
+    public void writeValue(Object v) { put("value", v); }
+    public Object readValue(ClassLoader loader) { return next(); }
 
     // As Android's, the class's name and then what its writeToParcel
     // writes, which readParcelable reads with the class's CREATOR.

@@ -44,12 +44,18 @@ import (
 // exact class for String, CharSequence, Bundle, the primitives, their
 // arrays, Android's Size and sparse arrays, and the collections it
 // knows; then Parcelables, binders, objects, enums, functions and
-// Serializables.
+// Serializables; and else writeValue. kotlinc reports an error for a
+// property written with writeValue unless its type, or one that it is an
+// argument of, is annotated @RawValue, so kc leaves such a class to it.
+// A generic class's properties are written as their types erased, each
+// type parameter as its bound (parcelErase), and its Creator is of the
+// class star-projected, C<*>.
 //
 // Value classes, the types that the plugin writes in ways kc doesn't
 // (ranges, Duration, Uuid, the unsigned integers and kotlinx's immutable
-// collections) and those it writes with writeValue are unsupported, as
-// are custom Parcelers, @TypeParceler, @WriteWith and @RawValue.
+// collections) and type parameters with several bounds, or a bound that
+// names a type parameter, are unsupported, as are custom Parcelers,
+// @TypeParceler and @WriteWith.
 
 // parcelize adds the members of the file's classes annotated @Parcelize,
 // if kc compiles with the plugin.
@@ -191,9 +197,6 @@ func (c *Checker) addParcelMembers(cd *syntax.ClassDecl, name string) {
 	case cd.Inner:
 		c.errorf(cd.P, "'Parcelable' can't be an inner class")
 		return
-	case len(cd.TypeParams) > 0:
-		c.unsupported(cd.P, "parcelize", "@Parcelize classes with type parameters are not supported")
-		return
 	case !cd.Object && !cd.Enum && !cd.HasPrimary:
 		c.errorf(cd.P, "'Parcelable' should have a primary constructor")
 		return
@@ -209,12 +212,6 @@ func (c *Checker) addParcelMembers(cd *syntax.ClassDecl, name string) {
 		if !p.IsProp {
 			c.errorf(p.P, "'Parcelable' constructor parameter should be 'val' or 'var'")
 			return
-		}
-		for _, a := range []string{"WriteWith", "RawValue"} {
-			if a := p.Find("", a); a != nil {
-				c.unsupported(a.P, "parcelize", "@%s is not supported", a.Name)
-				return
-			}
 		}
 	}
 	describe := true
@@ -233,6 +230,11 @@ func (c *Checker) addParcelMembers(cd *syntax.ClassDecl, name string) {
 				return
 			}
 		}
+	}
+	// A generic class's Creator is of the class star-projected, C<*>, as
+	// kotlinc's.
+	if n := len(cd.TypeParams); n > 0 {
+		name += "<" + strings.Repeat("*, ", n-1) + "*>"
 	}
 	// As kotlinc's, the members are final in a final class.
 	final := ""
@@ -330,6 +332,22 @@ func (c *Checker) parcelBody(d *syntax.FunDecl, cls *types.ClassSym) {
 	}
 	cd := target.Decl.(*syntax.ClassDecl)
 	g := &parcelGen{c: c, fq: fqName(target)}
+	// A generic class's properties are written as their types erased,
+	// each type parameter as its bound, and read into a call of its
+	// constructor with the bounds as type arguments.
+	targs := ""
+	if len(cd.TypeParams) > 0 {
+		bounds := make([]string, len(cd.TypeParams))
+		for i, tp := range cd.TypeParams {
+			b, ok := parcelBound(tp.Sym)
+			if !ok {
+				c.unsupported(tp.P, "parcelize", "@Parcelize classes with a type parameter that has several bounds, or a bound that names a type parameter, are not supported")
+				return
+			}
+			bounds[i] = g.typeText(b)
+		}
+		targs = "<" + strings.Join(bounds, ", ") + ">"
+	}
 	switch {
 	case cd.Enum && d.Name == "writeToParcel":
 		g.stmt("dest.writeString(this.name)")
@@ -340,14 +358,17 @@ func (c *Checker) parcelBody(d *syntax.FunDecl, cls *types.ClassSym) {
 			g.stmt("dest.writeInt(1)")
 		}
 		for _, p := range cd.CtorParams {
-			if a := parcelDataClass(p.Type); a != nil {
-				c.unsupported(a.P, "parcelize", "@DataClass is not supported")
-				return
+			for _, name := range []string{"DataClass", "WriteWith"} {
+				if a := parcelTypeAnnotation(p.Type, name); a != nil {
+					c.unsupported(a.P, "parcelize", "@%s is not supported", name)
+					return
+				}
 			}
 			v := g.fresh("v")
 			g.stmt("val %s = this.`%s`", v, p.Name)
-			if ser := g.serializer(p.Sym.Type); ser != nil {
-				g.write(ser, p.Sym.Type, v)
+			t := parcelErase(p.Sym.Type)
+			if ser := g.serializer(t, p.Type, false); ser != nil {
+				g.write(ser, t, v)
 			}
 		}
 	default:
@@ -359,12 +380,13 @@ func (c *Checker) parcelBody(d *syntax.FunDecl, cls *types.ClassSym) {
 			for i, p := range cd.CtorParams {
 				args[i] = g.fresh("a")
 				x := "null!!"
-				if ser := g.serializer(p.Sym.Type); ser != nil {
-					x = g.read(ser, p.Sym.Type)
+				t := parcelErase(p.Sym.Type)
+				if ser := g.serializer(t, p.Type, false); ser != nil {
+					x = g.read(ser, t)
 				}
 				g.stmt("val %s = %s", args[i], x)
 			}
-			g.stmt("return %s(%s)", g.fq, strings.Join(args, ", "))
+			g.stmt("return %s%s(%s)", g.fq, targs, strings.Join(args, ", "))
 		}
 	}
 	if g.err != "" {
@@ -376,7 +398,7 @@ func (c *Checker) parcelBody(d *syntax.FunDecl, cls *types.ClassSym) {
 	// The CREATOR fields that the body reads, in locals declared first.
 	var src strings.Builder
 	for i, cr := range g.creators {
-		fmt.Fprintf(&src, "val `$c%d`: android.os.Parcelable.Creator<%s> = null!!\n", i, fqName(cr))
+		fmt.Fprintf(&src, "val `$c%d`: android.os.Parcelable.Creator<%s> = null!!\n", i, g.typeText(cr))
 	}
 	src.WriteString(g.body.String())
 	members, err := parseMembers(c.file.Path, cd.P, "fun f() {\n"+src.String()+"}\n")
@@ -388,8 +410,8 @@ func (c *Checker) parcelBody(d *syntax.FunDecl, cls *types.ClassSym) {
 	creator := c.u.ext.class("android/os/Parcelable$Creator")
 	for i, cr := range g.creators {
 		vs := body.Stmts[i].(*syntax.VarStmt)
-		t := types.GenericType(creator, []types.Arg{{T: types.ClassType(cr)}})
-		id := &syntax.Ident{Name: "CREATOR", Sym: &types.VarSym{Name: "CREATOR", Kind: types.Static, Owner: cr, Type: t, Resolved: true}}
+		t := types.GenericType(creator, []types.Arg{{T: cr}})
+		id := &syntax.Ident{Name: "CREATOR", Sym: &types.VarSym{Name: "CREATOR", Kind: types.Static, Owner: cr.C, Type: t, Resolved: true}}
 		id.P, id.T = vs.P, t
 		vs.Init = checked(id, t)
 	}
@@ -406,7 +428,7 @@ func (c *Checker) parcelDescribe(d *syntax.FunDecl, cls *types.ClassSym) {
 		return
 	}
 	for _, p := range cd.CtorParams {
-		if p.Sym != nil && parcelFileDescriptors(p.Sym.Type) {
+		if p.Sym != nil && parcelFileDescriptors(parcelErase(p.Sym.Type)) {
 			members, err := parseMembers(c.file.Path, cd.P, "fun f(): kotlin.Int {\nreturn 1\n}\n")
 			if err != nil {
 				c.errorf(cd.P, "parcelize: %v", err)
@@ -418,29 +440,102 @@ func (c *Checker) parcelDescribe(d *syntax.FunDecl, cls *types.ClassSym) {
 	}
 }
 
-// parcelDataClass returns an annotation @kotlinx.parcelize.DataClass in
-// type ref, at any depth, with which the plugin writes a data class by its
-// properties, or nil.
-func parcelDataClass(ref *syntax.TypeRef) *syntax.Annotation {
+// parcelTypeAnnotation returns an annotation of kotlinx.parcelize's
+// named name in type ref, at any depth, or nil: @DataClass, with which the
+// plugin writes a data class by its properties, or @WriteWith, which
+// names a Parceler.
+func parcelTypeAnnotation(ref *syntax.TypeRef, name string) *syntax.Annotation {
 	if ref == nil {
 		return nil
 	}
-	for i := range ref.Annotations {
-		if a := &ref.Annotations[i]; a.Name == "DataClass" || a.Name == "kotlinx.parcelize.DataClass" {
-			return a
-		}
+	if a := parcelAnnotation(ref, name); a != nil {
+		return a
 	}
 	for _, a := range ref.Args {
-		if a := parcelDataClass(a.Type); a != nil {
+		if a := parcelTypeAnnotation(a.Type, name); a != nil {
 			return a
 		}
 	}
 	for _, r := range append([]*syntax.TypeRef{ref.Ret, ref.Recv, ref.Outer, ref.And}, ref.Params...) {
-		if a := parcelDataClass(r); a != nil {
+		if a := parcelTypeAnnotation(r, name); a != nil {
 			return a
 		}
 	}
 	return nil
+}
+
+// parcelAnnotation returns the annotation of kotlinx.parcelize's named
+// name on type ref itself, or nil.
+func parcelAnnotation(ref *syntax.TypeRef, name string) *syntax.Annotation {
+	for i := range ref.Annotations {
+		if a := &ref.Annotations[i]; a.Name == name || a.Name == "kotlinx.parcelize."+name {
+			return a
+		}
+	}
+	return nil
+}
+
+// parcelBound returns the bound that type parameter p erases to, if the
+// plugin's reads of it can be passed to the class's constructor with it
+// as the type argument: if p has one bound, at most, which names no type
+// parameter.
+func parcelBound(p *types.TypeParamSym) (types.Type, bool) {
+	if p == nil || len(p.Bounds) > 1 {
+		return types.Type{}, false
+	}
+	b := p.Bound()
+	if parcelHasParam(b) {
+		return types.Type{}, false
+	}
+	return b, true
+}
+
+// parcelHasParam reports whether type t names a type parameter.
+func parcelHasParam(t types.Type) bool {
+	if t.IsParam() {
+		return true
+	}
+	if t.K == types.Class && t.A != nil {
+		for _, a := range t.A.List {
+			if a.V != types.Star && parcelHasParam(a.T) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// parcelErase returns type t with each type parameter in it replaced by
+// its bound, nullable if the parameter's value can be null, as the
+// plugin dispatches on a type parameter's erased upper bound. A type
+// parameter whose bound parcelBound rejects is left as it is.
+func parcelErase(t types.Type) types.Type {
+	if t.K == types.TypeParam {
+		b, ok := parcelBound(t.Param())
+		if !ok {
+			return t
+		}
+		if t.N || t.Param().NullableBound() && !t.D {
+			return b.Nullable()
+		}
+		return b.NonNull()
+	}
+	if t.K != types.Class || t.A == nil {
+		return t
+	}
+	args := make([]types.Arg, t.A.Len())
+	changed := false
+	for i, a := range t.A.List {
+		args[i] = a
+		if a.V != types.Star {
+			args[i].T = parcelErase(a.T)
+			changed = changed || args[i].T != a.T
+		}
+	}
+	if changed {
+		t.A = types.MakeArgs(args)
+	}
+	return t
 }
 
 // parcelGen writes the Kotlin of a parcelize function's body: Parcel's
@@ -451,9 +546,11 @@ type parcelGen struct {
 	fq   string // the qualified name of the class annotated @Parcelize
 	body bytes.Buffer
 	n    int
-	// creators are the classes whose CREATOR fields the body reads, as
-	// locals $c0, $c1...
-	creators []*types.ClassSym
+	// creators are the types of the classes whose CREATOR fields the body
+	// reads, as locals $c0, $c1...: the property's type, which for a
+	// generic class has type arguments that the class's CREATOR, of C<*>,
+	// doesn't.
+	creators []types.Type
 	err      string // why a property's type can't be written, if it can't
 }
 
@@ -491,6 +588,7 @@ const (
 	parcelSparse                         // the size and each key and value: SparseIntArray, SparseLongArray, SparseArray<T>
 	parcelCollection                     // the size and the elements: lists and sets
 	parcelMap                            // the size and each key and value
+	parcelValue                          // writeValue and readValue(classLoader): a type annotated @RawValue
 )
 
 // A parcelSer is how the plugin writes a type, and its elements'.
@@ -598,8 +696,17 @@ func isClass(t types.Type, name string) bool {
 // serializer returns how the plugin writes a value of type t, as its
 // IrParcelSerializerFactory picks it: by the exact class for the types
 // it knows, then Parcelables, binders, objects, enums, functions and
-// Serializables. It returns nil for a type kc can't write.
-func (g *parcelGen) serializer(t types.Type) *parcelSer {
+// Serializables, and else with writeValue. It returns nil for a type kc
+// can't write.
+//
+// ref is the type as written, if it is known, whose type arguments are
+// t's. kc writes a type with writeValue only if it, or a type it is an
+// argument of, is annotated @RawValue (raw), as kotlinc reports an error
+// for one that isn't, which it leaves to kotlinc.
+func (g *parcelGen) serializer(t types.Type, ref *syntax.TypeRef, raw bool) *parcelSer {
+	if ref != nil && parcelAnnotation(ref, "RawValue") != nil {
+		raw = true
+	}
 	t = t.NonNull()
 	switch t.K {
 	case types.String:
@@ -607,6 +714,8 @@ func (g *parcelGen) serializer(t types.Type) *parcelSer {
 	case types.Int, types.Long, types.Float, types.Double, types.Byte, types.Short, types.Char, types.Bool:
 		return &parcelSer{kind: parcelPrimitive, nullAware: true}
 	case types.Class:
+	case types.Any:
+		return g.value(t, raw)
 	default:
 		g.fail(t)
 		return nil
@@ -654,6 +763,10 @@ func (g *parcelGen) serializer(t types.Type) *parcelSer {
 		return &parcelSer{kind: parcelLoader, write: "writePersistableBundle", read: "readPersistableBundle"}
 	case "kotlin/Array", "kotlin/ShortArray":
 		e := types.ArrayElem(t)
+		eref := parcelArgRef(ref, t, 0)
+		if key == "kotlin/ShortArray" {
+			eref = nil
+		}
 		if key == "kotlin/Array" {
 			switch en := e.NonNull(); {
 			case en.K == types.String:
@@ -662,14 +775,14 @@ func (g *parcelGen) serializer(t types.Type) *parcelSer {
 				return &parcelSer{kind: parcelSimple, write: "writeBinderArray", read: "createBinderArray"}
 			}
 		}
-		return g.withElem(&parcelSer{kind: parcelArray, nullAware: true}, e)
+		return g.withElem(&parcelSer{kind: parcelArray, nullAware: true}, e, eref, raw)
 	case "android/util/SparseIntArray":
-		return g.withElem(&parcelSer{kind: parcelSparse, nullAware: true, coll: "android.util.SparseIntArray"}, types.IntType)
+		return g.withElem(&parcelSer{kind: parcelSparse, nullAware: true, coll: "android.util.SparseIntArray"}, types.IntType, nil, raw)
 	case "android/util/SparseLongArray":
-		return g.withElem(&parcelSer{kind: parcelSparse, nullAware: true, coll: "android.util.SparseLongArray"}, types.LongType)
+		return g.withElem(&parcelSer{kind: parcelSparse, nullAware: true, coll: "android.util.SparseLongArray"}, types.LongType, nil, raw)
 	case "android/util/SparseArray":
 		e := parcelArg(t, 0)
-		return g.withElem(&parcelSer{kind: parcelSparse, nullAware: true, coll: "android.util.SparseArray<" + g.typeText(e) + ">"}, e)
+		return g.withElem(&parcelSer{kind: parcelSparse, nullAware: true, coll: "android.util.SparseArray<" + g.typeText(e) + ">"}, e, parcelArgRef(ref, t, 0), raw)
 	}
 	if s, ok := parcelSimples[key]; ok {
 		s.kind = parcelSimple
@@ -679,10 +792,10 @@ func (g *parcelGen) serializer(t types.Type) *parcelSer {
 		if c.kind == parcelMap {
 			k, v := parcelArg(t, 0), parcelArg(t, 1)
 			s := &parcelSer{kind: parcelMap, nullAware: true, coll: c.coll + "<" + g.typeText(k) + ", " + g.typeText(v) + ">", capacity: c.capacity}
-			if s.key = g.serializer(k); s.key == nil {
+			if s.key = g.serializer(k, parcelArgRef(ref, t, 0), raw); s.key == nil {
 				return nil
 			}
-			return g.withElem(s, v)
+			return g.withElem(s, v, parcelArgRef(ref, t, 1), raw)
 		}
 		e := parcelArg(t, 0)
 		if c.fast {
@@ -693,7 +806,7 @@ func (g *parcelGen) serializer(t types.Type) *parcelSer {
 				return &parcelSer{kind: parcelSimple, write: "writeBinderList", read: "createBinderArrayList"}
 			}
 		}
-		return g.withElem(&parcelSer{kind: parcelCollection, nullAware: true, coll: c.coll + "<" + g.typeText(e) + ">", capacity: c.capacity}, e)
+		return g.withElem(&parcelSer{kind: parcelCollection, nullAware: true, coll: c.coll + "<" + g.typeText(e) + ">", capacity: c.capacity}, e, parcelArgRef(ref, t, 0), raw)
 	}
 	if p := g.c.u.ext.class("android/os/Parcelable"); p != nil && cls.IsSubclassOf(p) {
 		if g.efficient(cls) {
@@ -713,14 +826,34 @@ func (g *parcelGen) serializer(t types.Type) *parcelSer {
 	if s := g.c.u.ext.class("java/io/Serializable"); s != nil && cls.IsSubclassOf(s) {
 		return &parcelSer{kind: parcelSimple, write: "writeSerializable", read: "readSerializable", cast: true}
 	}
-	g.fail(t)
-	return nil
+	return g.value(t, raw)
 }
 
-// withElem returns s with the serializer of its elements, of type e, or
-// nil if kc can't write them.
-func (g *parcelGen) withElem(s *parcelSer, e types.Type) *parcelSer {
-	if s.elem = g.serializer(e); s.elem == nil {
+// value returns the serializer of a type t that the plugin writes with
+// writeValue, if it is annotated @RawValue (raw), or else reports that kc
+// can't write it.
+func (g *parcelGen) value(t types.Type, raw bool) *parcelSer {
+	if !raw {
+		g.fail(t)
+		return nil
+	}
+	return &parcelSer{kind: parcelValue}
+}
+
+// parcelArgRef returns type argument i of type ref, written, if it is
+// type t's: ref is of t's class and has as many arguments. A type alias
+// may have others.
+func parcelArgRef(ref *syntax.TypeRef, t types.Type, i int) *syntax.TypeRef {
+	if ref == nil || ref.Name == "" || t.A == nil || len(ref.Args) != t.A.Len() {
+		return nil
+	}
+	return ref.Args[i].Type
+}
+
+// withElem returns s with the serializer of its elements, of type e,
+// written as ref, or nil if kc can't write them.
+func (g *parcelGen) withElem(s *parcelSer, e types.Type, ref *syntax.TypeRef, raw bool) *parcelSer {
+	if s.elem = g.serializer(e, ref, raw); s.elem == nil {
 		return nil
 	}
 	return s
@@ -762,6 +895,8 @@ func (g *parcelGen) write(s *parcelSer, t types.Type, v string) {
 		g.stmt("dest.%s(%s)", s.write, v)
 	case parcelLoader:
 		g.stmt("dest.%s(%s)", s.write, v)
+	case parcelValue:
+		g.stmt("dest.writeValue(%s)", v)
 	case parcelCharSequence:
 		g.stmt("android.text.TextUtils.writeToParcel(%s, dest, flags)", v)
 	case parcelPrimitive:
@@ -864,6 +999,12 @@ func (g *parcelGen) read(s *parcelSer, t types.Type) string {
 		return fmt.Sprintf("parcel.%s()", s.read)
 	case parcelLoader:
 		return fmt.Sprintf("parcel.%s(%s::class.java.classLoader)", s.read, g.fq)
+	case parcelValue:
+		x := fmt.Sprintf("parcel.readValue(%s::class.java.classLoader)", g.fq)
+		if t.K == types.Any {
+			return x // as kotlinc, which doesn't check it
+		}
+		return fmt.Sprintf("(%s as %s)", x, g.typeText(t))
 	case parcelCharSequence:
 		return "android.text.TextUtils.CHAR_SEQUENCE_CREATOR.createFromParcel(parcel)"
 	case parcelPrimitive:
@@ -888,7 +1029,7 @@ func (g *parcelGen) read(s *parcelSer, t types.Type) string {
 	case parcelEnum:
 		return fmt.Sprintf("%s.valueOf(parcel.readString())", fqName(t.C))
 	case parcelEfficient:
-		return fmt.Sprintf("`$c%d`.createFromParcel(parcel)", g.creator(t.C))
+		return fmt.Sprintf("`$c%d`.createFromParcel(parcel)", g.creator(t))
 	case parcelGeneric:
 		return fmt.Sprintf("parcel.readParcelable<%s>(%s::class.java.classLoader)", g.typeText(t.NonNull()), g.fq)
 	case parcelObject:
@@ -966,14 +1107,16 @@ func parcelFileDescriptors(t types.Type) bool {
 	return false
 }
 
-// creator returns the number of the local that holds class cls's CREATOR.
-func (g *parcelGen) creator(cls *types.ClassSym) int {
+// creator returns the number of the local that holds the CREATOR of type
+// t's class, as a Creator of t.
+func (g *parcelGen) creator(t types.Type) int {
+	t = t.NonNull()
 	for i, c := range g.creators {
-		if c == cls {
+		if c == t {
 			return i
 		}
 	}
-	g.creators = append(g.creators, cls)
+	g.creators = append(g.creators, t)
 	return len(g.creators) - 1
 }
 

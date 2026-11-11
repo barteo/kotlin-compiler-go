@@ -959,14 +959,31 @@ func TestParcelize(t *testing.T) {
 		t.Errorf("output mismatch\n%s", diff(string(want), got))
 	}
 
-	// A property of a type that kc doesn't write as the plugin does
-	// leaves the class to kotlinc: one that the plugin writes in a way of
-	// its own, such as a range, which is Serializable, or with writeValue.
-	for _, typ := range []string{"IntRange", "kotlin.time.Duration", "Any", "List<Any>", "Map<String, Iterable<Int>>", "List<@kotlinx.parcelize.DataClass Pair<Int, Int>>"} {
-		t.Run("unsupported "+typ, func(t *testing.T) {
+	// A class that kc doesn't write as the plugin does is left to kotlinc:
+	// one with a property of a type that the plugin writes in a way of its
+	// own, such as a range, which is Serializable; of a type that it writes
+	// with writeValue but isn't annotated @RawValue, for which kotlinc
+	// reports an error; or with a type parameter whose bound kc can't pass
+	// to the constructor.
+	for _, decl := range []string{
+		"class A(val x: IntRange) : Parcelable",
+		"class A(val x: kotlin.time.Duration) : Parcelable",
+		"class A(val x: Any) : Parcelable",
+		"class A(val x: List<Any>) : Parcelable",
+		"class A(val x: Map<String, Iterable<Int>>) : Parcelable",
+		"class A(val x: List<@kotlinx.parcelize.DataClass Pair<Int, Int>>) : Parcelable",
+		"class A<T>(val x: T) : Parcelable",
+		"class A<T : Comparable<T>>(val x: @kotlinx.parcelize.RawValue T) : Parcelable",
+		"class A<T>(val x: @kotlinx.parcelize.RawValue T) : Parcelable where T : Parcelable, T : java.io.Serializable",
+		"class A(val x: @kotlinx.parcelize.WriteWith<P> Int) : Parcelable",
+	} {
+		t.Run("unsupported "+decl, func(t *testing.T) {
 			src := filepath.Join(t.TempDir(), "a.kt")
-			os.WriteFile(src, []byte("import android.os.Parcelable\nimport kotlinx.parcelize.Parcelize\n\n"+
-				"@Parcelize\nclass A(val x: "+typ+") : Parcelable\n"), 0o644)
+			os.WriteFile(src, []byte("import android.os.Parcel\nimport android.os.Parcelable\nimport kotlinx.parcelize.Parcelize\n\n"+
+				"object P : kotlinx.parcelize.Parceler<Int> {\n"+
+				"    override fun create(parcel: Parcel) = parcel.readInt()\n"+
+				"    override fun Int.write(parcel: Parcel, flags: Int) = parcel.writeInt(this)\n}\n\n"+
+				"@Parcelize\n"+decl+"\n"), 0o644)
 			err := Compile([]string{src}, Options{OutDir: t.TempDir(), Jobs: 1, ClassPath: cp, Parcelize: true})
 			var se *syntax.Error
 			if !errors.As(err, &se) || se.Feature != "parcelize" {

@@ -78,6 +78,14 @@ fun main() {
     roundTrip("builtins", builtins())
     roundTrip("builtin nulls", builtins(nulls = true))
     roundTrip("descriptors", Descriptors(null, listOf(), mapOf("k" to listOf())))
+    roundTrip("raw", raw())
+    roundTrip("raw nulls", Raw(Plain(1), null, listOf(), listOf(null), null, mapOf(), "s"))
+    val box = Box(Inner(1, "one"), listOf(Inner(2, "two")), null)
+    roundTrip("box", box)
+    roundTrip("nums", Nums(1, arrayOf<Number>(2, 3L, 4.5), "s"))
+    roundTrip("nums nulls", Nums<Int, String>(1, null, null))
+    roundTrip("raw box", RawBox(Plain(1), listOf(Plain(2), Plain(3))))
+    roundTrip("boxes", Boxes(box, null, listOf(box), Unused(5)))
 
     // newArray makes an array of the class.
     val creator = Inner::class.java.getField("CREATOR").get(null) as Parcelable.Creator<*>
@@ -124,3 +132,5 @@ fun builtins(nulls: Boolean = false): Builtins {
         StringBuilder("sb"), java.util.LinkedList(listOf(17)), Twice,
     )
 }
+
+fun raw() = Raw(Plain(1), Plain(2), listOf(Plain(3)), listOf(Plain(4), null), Plain(5), mapOf("k" to Plain(6)), "s")

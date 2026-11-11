@@ -14,6 +14,7 @@ import android.util.SparseLongArray
 import java.io.FileDescriptor
 import kotlinx.parcelize.IgnoredOnParcel
 import kotlinx.parcelize.Parcelize
+import kotlinx.parcelize.RawValue
 import java.math.BigDecimal
 import lib.LibOpen
 import lib.LibPoint
@@ -188,3 +189,36 @@ class Builtins(
 // a ParcelFileDescriptor, which isn't one, so only nulls round-trip.)
 @Parcelize
 data class Descriptors(val fd: FileDescriptor?, val fds: List<FileDescriptor>, val nested: Map<String, List<FileDescriptor?>>?) : Parcelable
+
+// A class the plugin has no way to write but writeValue, which @RawValue
+// allows, as elements of a container too. It doesn't change how a type
+// that the plugin does know is written.
+data class Plain(val n: Int)
+
+@Parcelize
+data class Raw(
+    val p: @RawValue Plain, val np: @RawValue Plain?, val ps: @RawValue List<Plain>, val inner: List<@RawValue Plain?>,
+    val any: @RawValue Any?, val m: Map<String, @RawValue Any>, val s: @RawValue String,
+) : Parcelable
+
+// A generic class's properties are written as their types erased: each
+// type parameter as its bound.
+@Parcelize
+data class Box<T : Parcelable>(val item: T, val items: List<T>, val maybe: T?) : Parcelable
+
+@Parcelize
+class Nums<N : Number, S : java.io.Serializable>(val n: N, val ns: Array<N>?, val s: S?) : Parcelable {
+    override fun toString() = "Nums($n, ${ns?.contentToString()}, $s)"
+    override fun equals(other: Any?) = other is Nums<*, *> && other.toString() == toString()
+    override fun hashCode() = toString().hashCode()
+}
+
+@Parcelize
+data class RawBox<T>(val v: @RawValue T, val vs: @RawValue List<T>) : Parcelable
+
+@Parcelize
+data class Unused<T>(val i: Int) : Parcelable
+
+// A final generic class of the module's is read with its CREATOR.
+@Parcelize
+data class Boxes(val b: Box<Inner>, val nb: Box<Inner>?, val bs: List<Box<Inner>>, val unused: Unused<String>) : Parcelable

@@ -2657,7 +2657,12 @@ func (g *gen) staticInit(cd *syntax.ClassDecl) {
 		const d = "Landroid/os/Parcelable$Creator;"
 		creator := cls.Nested["Creator"].Name
 		g.cls.AddField(cf.AccPublic|cf.AccStatic|cf.AccFinal, "CREATOR", d)
-		g.cls.LastField().SetSignature("Landroid/os/Parcelable$Creator<L" + cls.Name + ";>;")
+		// A generic class's is of the class star-projected: C<*>.
+		args := ""
+		if n := len(cd.TypeParams); n > 0 {
+			args = "<" + strings.Repeat("*", n) + ">"
+		}
+		g.cls.LastField().SetSignature("Landroid/os/Parcelable$Creator<L" + cls.Name + args + ";>;")
 		g.code.New(creator)
 		g.code.Op(cf.DUP)
 		g.code.Invoke(cf.INVOKESPECIAL, creator, "<init>", "()V")
