@@ -118,6 +118,11 @@ type gen struct {
 	// erasedCast is the last checkcast of a value read as a type
 	// parameter's erasure, which uncastErased takes back.
 	erasedCast erasedCast
+	// unusedSuspend is a suspend call whose value a statement drops, as
+	// the Object it returns: kotlinc doesn't cast it. leftObject is set
+	// once its suspension point leaves the Object.
+	unusedSuspend *syntax.Call
+	leftObject    bool
 }
 
 // tailrec is the state of a tailrec function: tail calls of fd store
@@ -937,9 +942,10 @@ func hasVararg(ps []*types.VarSym) bool {
 
 // varargs reports whether f's method is a variable arity method, as Java
 // sees it: its last parameter is a vararg, but for a composable's, which
-// the Composer and change flags follow.
+// the Composer and change flags follow, and a suspend function's, which
+// its Continuation follows.
 func varargs(f *types.FunSym) bool {
-	return hasVararg(f.Params) && !f.Composable
+	return hasVararg(f.Params) && !f.Composable && !f.Suspend
 }
 
 func (g *gen) check() {
@@ -1445,6 +1451,8 @@ func (g *gen) class(cd *syntax.ClassDecl) *cf.Class {
 					c.AddAbstractMethod(acc|cf.AccAbstract|accessorSynthetic(pd.Annotations, kind), f.JVM(), funDesc(f))
 					ref = c.LastMethod()
 					g.signFun(ref, f, a, funDesc(f), types.InvalidType)
+				case f.Static:
+					ref = g.function(a, cf.AccPublic|cf.AccStatic|cf.AccFinal|accessorSynthetic(pd.Annotations, kind))
 				case f.Final:
 					ref = g.function(a, cf.AccPublic|cf.AccFinal|accessorSynthetic(pd.Annotations, kind))
 				default:
@@ -3052,6 +3060,8 @@ func (g *gen) callMethod(f *types.FunSym, cls *types.ClassSym, name, d string) {
 		g.code.Invoke(cf.INVOKESTATIC, f.Owner.Name+"$DefaultImpls", name, "(L"+f.Owner.Name+";"+d[1:])
 	case selfStatic(f):
 		g.code.Invoke(cf.INVOKESTATIC, f.Owner.Name, name, "(L"+f.Owner.Name+";"+d[1:])
+	case f.Static && f.Owner != nil && f.Owner.Object:
+		g.callStatic(f, f.Owner.Name, name, d) // an object's @JvmStatic extension
 	case f.Ext && f.Owner != nil && f.Owner.Value:
 		// A value class's member extension: a static method that takes
 		// the value first, which a class path one's descriptor includes.

@@ -363,6 +363,9 @@ type VarSym struct {
 	// Protected is set on a protected field of a Java class, which only
 	// code in its subclasses sees.
 	Protected bool
+	// PackagePrivate is set on a package-private field of a Java class,
+	// which only code in its package sees.
+	PackagePrivate bool
 	// InheritsProtected is set on an override declared without a
 	// visibility of a protected property: its accessors are protected.
 	InheritsProtected bool
@@ -571,6 +574,9 @@ type FunSym struct {
 	Composable bool
 	Changed    int
 	Defaults   int
+	// ComposableGetter is set on a composable property's getter, whose
+	// name has no hash for a value class it returns, as kotlinc's.
+	ComposableGetter bool
 	// ComposeDefaults is set on an open composable member with default
 	// values: its method takes no masks, and callers call the static
 	// name$default method of its owner's ComposeDefaultImpls class, a
@@ -585,6 +591,9 @@ type FunSym struct {
 	// Inheritance.
 	Final     bool // can't be overridden
 	Protected bool // a protected Java or Kotlin member, for subclasses only
+	// PackagePrivate is set on a package-private Java method or
+	// constructor, which only code in its package sees.
+	PackagePrivate bool
 	// Private is set on the program's private functions, accessors and
 	// constructors, which are private on the JVM. As kotlinc does, other
 	// classes call a function through a static accessor, access$name, and
@@ -754,6 +763,10 @@ type KProp struct {
 	Getter *FunSym // Ret is the property's type
 	Setter *FunSym // nil for a val
 	Alt    *KProp  // as VarSym.Alt
+	// Stable is set on a final val with a field and the default getter of
+	// a friend path's class, which smart casts as the module's own do: the
+	// symbol that stands for it in them.
+	Stable *VarSym
 }
 
 // ClassSym is a user class or a Java class from the class path. Name is the
@@ -798,7 +811,8 @@ type ClassSym struct {
 	Final     bool // can't be subclassed
 	Private   bool // not public
 	// PackagePrivate is set, with Private, on a Java class of package
-	// visibility, which the classes of its package can use.
+	// visibility, which only code in its package sees, as its
+	// package-private members.
 	PackagePrivate bool
 	// Internal is set on a Kotlin class that is internal to its module,
 	// with Private: code under @Suppress("INVISIBLE_REFERENCE") may use it.
@@ -862,6 +876,9 @@ type ClassSym struct {
 	// @JvmRepeatable or Java's @Repeatable: an element can have several
 	// of its annotations.
 	Repeatable bool
+	// SerialWith is the serializer of a Java class annotated
+	// @Serializable(with = S::class), which properties of its type use.
+	SerialWith *ClassSym
 
 	// Kotlin classes read from metadata.
 	KotlinName string // class id, e.g. kotlin/collections/Map.Entry; "" for Java classes

@@ -2,6 +2,8 @@ package app
 
 import androidx.compose.runtime.Composable
 import lib.Insets
+import lib.Radii
+import lib.Radius
 import lib.Runs
 import lib.Text
 import lib.visible
@@ -56,4 +58,10 @@ fun ExtProps(label: String, n: Int) {
     Scale(3).Show(n)
     with(Scale(n)) { Text("with ${2.scaled}") }
     Text("safe ${label.takeIf { n > 1 }?.boxed}")
+}
+
+// A class's composable property of a value class type, and the library's.
+class Corners(val k: Int) {
+    val corner: Radius
+        @Composable get() = Radius(Radii.small.v + Radii.large().v + k)
 }

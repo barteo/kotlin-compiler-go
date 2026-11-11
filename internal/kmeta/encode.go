@@ -398,7 +398,7 @@ func (w *writer) function(f *Function) []byte {
 		var c enc
 		for _, im := range f.Implies {
 			var conclusion, eff enc
-			if im.Is == nil {
+			if im.Is == nil && !im.Holds {
 				conclusion.int(1, 3) // negated null check: p != null
 			}
 			conclusion.int(2, im.Param+1)

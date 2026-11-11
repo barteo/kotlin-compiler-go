@@ -3,6 +3,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import app.Badge
 import app.Badges
+import app.Corners
 import app.Counter
 import app.Decorations
 import app.ShowSlots
@@ -158,5 +159,6 @@ fun main() {
         ExtProps(label.value, n.intValue)
         Text("use ${Insets.shown} ${label.value.boxed} ${listOf(1, n.intValue).second} ${n.intValue.described}")
         Scale(n.intValue).Show(4)
+        Text("corner ${Corners(n.intValue).corner.v}")
     }
 }

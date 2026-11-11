@@ -133,11 +133,14 @@ type Param struct {
 	Arity int    // N for a kotlin.jvm.functions.FunctionN, or -1
 	// Inlinable is set on a function-typed parameter that the body only
 	// invokes. Loads and Invokes are its uses, as instruction indexes:
-	// Invokes are the calls of FunctionN.invoke on it.
+	// Invokes are the calls of FunctionN.invoke on it. Swaps are the swaps
+	// of it with the value below, as kotlinc's x; aload f; swap; invoke,
+	// which do nothing once it is inlined and off the stack.
 	Inlinable bool
 	Why       string // why a function-typed parameter isn't inlinable
 	Loads     []int
 	Invokes   []int
+	Swaps     []int
 	// InTry is set for the invokes in the range of an exception handler
 	// of any exception whose finally block can't be copied: see Finally.
 	InTry []bool
@@ -431,7 +434,7 @@ func analyze(m *cf.Method, read func(name, desc string) (*cf.Method, error), dep
 		}
 		if why, ok := escaped[i]; ok {
 			p.Why = why
-			p.Loads, p.Invokes, p.InTry = nil, nil, nil
+			p.Loads, p.Invokes, p.Swaps, p.InTry = nil, nil, nil, nil
 			continue
 		}
 		p.Inlinable = true
@@ -517,6 +520,9 @@ func (b *Body) calls(read func(name, desc string) (*cf.Method, error), depth int
 			continue
 		}
 		m, err := read(in.Name, in.Desc)
+		if errors.Is(err, cf.ErrNotFound) && (in.Op == cf.INVOKEVIRTUAL || in.Op == cf.INVOKEINTERFACE) {
+			continue // an abstract or inherited method, called as it is
+		}
 		if err != nil {
 			return fail("it calls %s%s, which can't be read: %v", in.Name, in.Desc, err)
 		}
@@ -675,7 +681,7 @@ type val struct {
 // invoke is added to escaped, with the reason.
 func (b *Body) flow(escaped map[int]string) error {
 	for _, p := range b.Params {
-		p.Loads, p.Invokes = nil, nil
+		p.Loads, p.Invokes, p.Swaps = nil, nil, nil
 	}
 	bySlot := map[int]int{}
 	for i, p := range b.Params {
@@ -797,6 +803,13 @@ func (b *Body) flow(escaped map[int]string) error {
 			pops, pushes := in.Effect()
 			switch op {
 			case cf.DUP, cf.DUP_X1, cf.DUP_X2, cf.DUP2, cf.DUP2_X1, cf.DUP2_X2, cf.SWAP:
+				if n := len(st); op == cf.SWAP && n >= 2 {
+					for _, v := range st[n-2:] {
+						if v.param >= 0 {
+							b.Params[v.param].Swaps = append(b.Params[v.param].Swaps, i)
+						}
+					}
+				}
 				var err error
 				if st, err = permute(op, st); err != nil {
 					return fmt.Errorf("%v at %d", err, in.Off)

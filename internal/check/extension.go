@@ -1,6 +1,7 @@
 package check
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
@@ -31,31 +32,6 @@ import (
 // in ExtProps. In an interface, one without a getter is abstract, and
 // class delegation implements it, as the interface's other members. In a
 // value class, either is a static method that takes the value first.
-
-// dropExtensions reports the extension properties declared in classes
-// that kc doesn't support, and removes them, so that the rest of the
-// checker doesn't see them: those annotated @JvmStatic.
-func (c *Checker) dropExtensions() {
-	c.file.Decls = c.dropExt(c.file.Decls, nil)
-}
-
-func (c *Checker) dropExt(decls []syntax.Decl, cls *syntax.ClassDecl) []syntax.Decl {
-	member := cls != nil
-	out := decls[:0]
-	for _, d := range decls {
-		switch d := d.(type) {
-		case *syntax.PropDecl:
-			if d.Recv != nil && member && d.Find("", "JvmStatic") != nil {
-				c.unsupported(d.P, "@JvmStatic extension property", "@JvmStatic is not supported on extension properties")
-				continue
-			}
-		case *syntax.ClassDecl:
-			d.Members = c.dropExt(d.Members, d)
-		}
-		out = append(out, d)
-	}
-	return out
-}
 
 // checkInfix checks an infix function: a member or an extension with one
 // parameter, which is not a vararg. It may have a default value.
@@ -267,8 +243,31 @@ func (c *Checker) declareMemberExtProp(d *syntax.PropDecl, cls *types.ClassSym) 
 		cls.ExtProps[d.Name] = append(cls.ExtProps[d.Name], g.Sym)
 		c.declareExtSetter(d, cls, g.Sym.Module)
 		c.composeGetter(d, d.Sym, cls)
+		c.jvmStaticExtProp(d, cls)
 	}
 	c.resolveExtProp(d)
+}
+
+// jvmStaticExtProp checks @JvmStatic on extension property d of class
+// cls. In an object, its accessors are static methods that take the
+// receiver first; in a companion, static methods of the outer class call
+// them: see staticStubs.
+func (c *Checker) jvmStaticExtProp(d *syntax.PropDecl, cls *types.ClassSym) {
+	if d.Find("", "JvmStatic") == nil {
+		return
+	}
+	switch {
+	case !cls.Object || cls.Anonymous:
+		c.errorf(d.P, "only members in named objects and companion objects can be annotated with '@JvmStatic'")
+	case cls.CompanionOf != nil:
+	case d.Override:
+		c.errorf(d.P, "override member cannot be '@JvmStatic' in an object")
+	default:
+		d.Getter.Sym.Static = true
+		if d.Setter != nil {
+			d.Setter.Sym.Static = true
+		}
+	}
 }
 
 // overriddenExtProps returns the getters of the extension properties of
@@ -360,11 +359,20 @@ func dropOverridden(fs []*types.FunSym) []*types.FunSym {
 	out := fs[:0:0]
 	for _, f := range fs {
 		d := types.FunDesc(f)
+		if d == "" {
+			// One whose return type isn't inferred yet, by its parameters.
+			var ok bool
+			if d, ok = types.ParamsDesc(f.Params); !ok {
+				d = fmt.Sprintf("%p", f)
+			}
+		}
 		if i := strings.IndexByte(d, ')'); i >= 0 {
 			d = d[:i]
 		}
-		if r, ok := types.ParamDesc(f.Recv); ok && f.Desc == "" {
-			d = r + d // the program's: its receiver isn't in its parameters
+		if r, ok := types.ParamDesc(f.Recv); ok && f.Desc == "" && strings.HasPrefix(d, "(") {
+			// The program's: its receiver isn't in its parameters, and
+			// comes first, as in a class file's descriptor.
+			d = "(" + r + d[1:]
 		}
 		d = f.JVM() + d
 		if seen[d] {
@@ -413,7 +421,7 @@ func (c *Checker) thisExtProp(x *syntax.Ident) (types.Type, bool) {
 	if _, ok := c.extProp(&syntax.Member{Name: x.Name}, t); !ok {
 		return types.InvalidType, false
 	}
-	this := &syntax.This{}
+	this := &syntax.This{Class: true} // not a nearer receiver's, as with(a) { prop }'s
 	this.P = x.P
 	m := &syntax.Member{X: this, Name: x.Name}
 	m.P = x.P

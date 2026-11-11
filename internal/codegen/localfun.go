@@ -54,7 +54,7 @@ func (g *gen) localFun(lf *syntax.LocalFun) {
 	if g.inInterface() {
 		access &^= cf.AccFinal // interface methods can't be final
 	}
-	if hasVararg(f.Params) {
+	if varargs(f) {
 		access |= cf.AccVarargs
 	}
 	lc := &lambdaCtx{slots: map[*types.VarSym]int{}, fun: true}

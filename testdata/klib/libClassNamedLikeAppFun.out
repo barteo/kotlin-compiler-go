@@ -1,0 +1,5 @@
+Items(own=[], other=[])
+Items(own=[1], other=[])
+Items(own=[1, 2], other=[0])
+0 3
+1 4

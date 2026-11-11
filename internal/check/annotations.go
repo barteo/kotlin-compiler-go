@@ -185,8 +185,9 @@ func (c *Checker) checkAnnotations(as []syntax.Annotation, owner *types.ClassSym
 
 // annotationParams returns the parameters of annotation class cls: its
 // constructor's for a Kotlin class, its methods' for a Java one, whose
-// value method takes a positional argument. A Java method's Class<T> is
-// a KClass<T> to Kotlin.
+// value method takes a positional argument, and, if it is an array, any
+// number of them, as a vararg parameter. A Java method's Class<T> is a
+// KClass<T> to Kotlin.
 func (c *Checker) annotationParams(cls *types.ClassSym) []*types.VarSym {
 	if cls.Annotation || cls.AnnotationParams != nil {
 		return cls.AnnotationParams
@@ -198,7 +199,8 @@ func (c *Checker) annotationParams(cls *types.ClassSym) []*types.VarSym {
 	for _, fs := range cls.Methods {
 		for _, f := range fs {
 			if f.Abstract && len(f.Params) == 0 {
-				ps = append(ps, &types.VarSym{Name: f.Name, Type: c.kclassOfJava(f.Ret), Kind: types.Param})
+				t := c.kclassOfJava(f.Ret)
+				ps = append(ps, &types.VarSym{Name: f.Name, Type: t, Kind: types.Param, Vararg: f.Name == "value" && t.IsArray()})
 			}
 		}
 	}

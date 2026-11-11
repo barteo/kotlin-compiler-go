@@ -111,6 +111,19 @@ val Insets.Companion.visible: Boolean
 @Composable
 fun currentComposerName(): String = "composer"
 
+// An object's composable properties of a value class type, as a theme's
+// dimensions: their getters' names have no hash, unlike its functions'.
+@JvmInline
+value class Radius(val v: Int)
+
+object Radii {
+    val small: Radius
+        @Composable get() = Radius(currentComposerName().length)
+
+    @Composable
+    fun large(): Radius = Radius(small.v * 2)
+}
+
 // An interface whose composable a program's class implements.
 interface Widget {
     @Composable

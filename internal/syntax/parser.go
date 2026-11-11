@@ -25,6 +25,10 @@ type parser struct {
 	// noTrailing is set while parsing a delegate in a class header, where a
 	// brace starts the class body rather than a trailing lambda.
 	noTrailing bool
+	// typeArgs is the depth of type argument lists being parsed, in which
+	// a qualified type name goes on past newlines: List<a.b
+	// .C>.
+	typeArgs int
 	// anonFuns numbers the file's anonymous functions, whose labels are
 	// fun$1, fun$2, ...
 	anonFuns int
@@ -946,8 +950,15 @@ func (p *parser) parseType() *TypeRef {
 	}
 	t := p.ident()
 	ref := &TypeRef{P: t.Pos, Name: t.Text}
-	for p.at(DOT) && p.toks[p.i+1].Kind != LPAREN {
+	for {
+		if p.typeArgs > 0 && p.at(NL) && p.peekPastNL() == DOT {
+			p.skipNL()
+		}
+		if !p.at(DOT) || p.toks[p.i+1].Kind == LPAREN {
+			break
+		}
 		p.next()
+		p.skipNL()
 		ref.Name += "." + p.ident().Text
 	}
 	if p.at(LT) {
@@ -1060,6 +1071,8 @@ func (p *parser) parseParenType() *TypeRef {
 // parseTypeArgs parses <A, out B, in C, *>.
 func (p *parser) parseTypeArgs() []*TypeArg {
 	p.expect(LT)
+	p.typeArgs++
+	defer func() { p.typeArgs-- }()
 	var args []*TypeArg
 	for {
 		p.skipNL()

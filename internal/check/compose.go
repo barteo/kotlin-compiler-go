@@ -127,7 +127,7 @@ func (c *Checker) composeGetter(d *syntax.PropDecl, p *types.VarSym, owner *type
 		return
 	}
 	g := d.Getter.Sym
-	g.Composable, p.Composable = true, true
+	g.Composable, g.ComposableGetter, p.Composable = true, true, true
 	slots := 0
 	if d.Recv != nil {
 		slots++

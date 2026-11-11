@@ -36,17 +36,23 @@ func (c *Checker) checkMemberImports() {
 	for _, ci := range c.classImports {
 		c.checkClassImport(ci)
 	}
-	for _, mi := range c.memberImports {
-		if !c.usable(mi.owner, mi.p) {
-			continue
+	for name := range c.memberImports {
+		for _, mi := range c.memberImportsOf(name) {
+			c.checkMemberImport(mi)
 		}
-		switch {
-		case c.importedStatic(mi) || mi.owner.Object && c.objectHas(mi.owner, mi.name):
-		case c.objectHas(mi.owner, mi.name):
-			c.errorf(mi.p, "cannot import '%s'. Functions and properties can only be imported from packages or objects", mi.name)
-		default:
-			c.errorf(mi.p, "unresolved import: %s", mi.path)
-		}
+	}
+}
+
+func (c *Checker) checkMemberImport(mi memberImport) {
+	if !c.usable(mi.owner, mi.p) {
+		return
+	}
+	switch {
+	case c.importedStatic(mi) || mi.owner.Object && c.objectHas(mi.owner, mi.name):
+	case c.objectHas(mi.owner, mi.name):
+		c.errorf(mi.p, "cannot import '%s'. Functions and properties can only be imported from packages or objects", mi.name)
+	default:
+		c.errorf(mi.p, "unresolved import: %s", mi.path)
 	}
 }
 
