@@ -131,6 +131,10 @@ private val noJavaDecls = System.getenv("KC_NO_JAVA_DECLS") == "1"
 // as before step 59, not the new ones (for comparison).
 private val noAheadNew = System.getenv("KC_NO_AHEAD_NEW") == "1"
 
+// A new environment's first libkc update waits for the environment, as
+// before step 60, instead of running while it is made (for comparison).
+private val noEarlyUpdate = System.getenv("KC_NO_EARLY_UPDATE") == "1"
+
 /** The `kc` KSP backend: the Analysis API answered by kc through libkc. */
 class KcBackend : KspBackend {
     override val name: String get() = "kc"
@@ -145,28 +149,6 @@ private class KcSession(private val config: KSPConfig, @Suppress("UNUSED_PARAMET
     private val javaSources: List<String> = ((config as? KSPJvmConfig)?.javaSourceRoots.orEmpty()).distinct().flatMap { root ->
         SourceWalk.files(root, "java").map(::canonicalPath)
     }
-    private val environment = KcEnvironments.acquire(config, javaSources)
-    private val env: KotlinCoreEnvironment = environment.env
-    init {
-        timer.mark("environment")
-    }
-    override val project: Project = env.project
-    override val module = KcModule(project, config)
-    override val extras: KcExtras = KcExtrasImpl { round }
-    private val libraryModule = KcLibraryModule(project, config)
-    private val provider = environment.provider
-    /**
-     * The class-path classes libkc modeled, by outermost class ID, kept by
-     * the environment for the rounds after: its class path doesn't change,
-     * so a round asks libkc only for those none has yet, and not again for
-     * a name libkc said it has no class of. The Java sources' classes are
-     * kept by the model's KcModel.java, which libkc gives a round whose
-     * Java sources, and the Kotlin classes they name, are those of one
-     * before; a class a Java source declares, which hides the class
-     * path's, isn't kept with those.
-     */
-    private val libraryDecls = environment.libraryDeclsOf(
-        "module=${config.moduleName}\n" + config.friends.joinToString("\n") { it.path })
     private val handle: Long = KcOps.open(
         KcOps.Config(
             jdkHome = (config as? KSPJvmConfig)?.jdkHome?.path,
@@ -189,6 +171,49 @@ private class KcSession(private val config: KSPConfig, @Suppress("UNUSED_PARAMET
         }
         paths += javaSources
         timer.mark("open")
+    }
+
+    private val environmentKey = KcEnvironments.key(config, javaSources)
+
+    /**
+     * The first update of a new environment, which libkc runs while the
+     * environment is made: it has no rounds kept to share (no checks, no
+     * base files), and doesn't touch the environment. A kept environment's
+     * first update waits for it, to share its rounds.
+     */
+    private var early: java.util.concurrent.CompletableFuture<KcModel>? =
+        if (noEarlyUpdate || KcEnvironments.has(environmentKey)) null else {
+            val list = paths.toList()
+            java.util.concurrent.CompletableFuture.supplyAsync {
+                val t = KcTimer()
+                KcOps.update(handle, list).also { t.mark("update"); t.print("early files=${list.size}") }
+            }
+        }
+
+    private val environment = KcEnvironments.acquire(config, environmentKey)
+    private val env: KotlinCoreEnvironment = environment.env
+    init {
+        timer.mark("environment")
+    }
+    override val project: Project = env.project
+    override val module = KcModule(project, config)
+    override val extras: KcExtras = KcExtrasImpl { round }
+    private val libraryModule = KcLibraryModule(project, config)
+    private val provider = environment.provider
+    /**
+     * The class-path classes libkc modeled, by outermost class ID, kept by
+     * the environment for the rounds after: its class path doesn't change,
+     * so a round asks libkc only for those none has yet, and not again for
+     * a name libkc said it has no class of. The Java sources' classes are
+     * kept by the model's KcModel.java, which libkc gives a round whose
+     * Java sources, and the Kotlin classes they name, are those of one
+     * before; a class a Java source declares, which hides the class
+     * path's, isn't kept with those.
+     */
+    private val libraryDecls = environment.libraryDeclsOf(
+        "module=${config.moduleName}\n" + config.friends.joinToString("\n") { it.path })
+
+    init {
         timer.print("session")
         update(config.modifiedSources.filter { it.path.endsWith(".kt") }.map(::canonicalPath).filter { it in paths })
     }
@@ -212,8 +237,18 @@ private class KcSession(private val config: KSPConfig, @Suppress("UNUSED_PARAMET
         val toParse = if (noAheadNew) modified else
             (modified + paths.filter { it.endsWith(".kt") && !environment.trees.has(it) }).distinct()
         val ahead = if (toParse.isEmpty() || noParseAhead) null else environment.parseAhead(toParse)
+        val first = early
+        early = null
         val model = try {
-            KcOps.update(handle, paths.toList(), checks, base)
+            if (first != null) {
+                try {
+                    first.join()
+                } catch (e: java.util.concurrent.CompletionException) {
+                    throw e.cause ?: e
+                }
+            } else {
+                KcOps.update(handle, paths.toList(), checks, base)
+            }
         } finally {
             if (ahead != null) {
                 t.mark("native")
