@@ -727,3 +727,17 @@ class K {
 		t.Errorf("got\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
 	}
 }
+
+// TestDataObject checks that a data object has no copy, which only a data
+// class has, as in FIR.
+func TestDataObject(t *testing.T) {
+	m := update(t, `package a
+data object None
+`)
+	defer m.Close()
+	for _, d := range m.Files[0].Decls[0].Members {
+		if d.Kind != KindConstructor {
+			t.Errorf("member %s, want only the constructor", d.Name)
+		}
+	}
+}

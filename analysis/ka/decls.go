@@ -256,7 +256,7 @@ func (b *fileBuilder) class(d *syntax.ClassDecl, prefix string) *Decl {
 			props = append(props, mp)
 		}
 		defer func() {
-			if d.Data {
+			if d.Data && !d.Object {
 				md.Members = append(md.Members, dataMembers(md, props)...)
 			}
 		}()
