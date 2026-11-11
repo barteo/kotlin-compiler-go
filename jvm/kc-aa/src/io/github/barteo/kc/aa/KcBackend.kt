@@ -78,7 +78,7 @@ private class KcSession(private val config: KSPConfig, @Suppress("UNUSED_PARAMET
 
     /** The Java sources the module starts with. */
     private val javaSources: List<String> = sourceRoots(config).flatMap { root ->
-        root.walkTopDown().filter { it.isFile && it.extension == "java" }.sortedBy { it.path }.map { it.canonicalPath }.toList()
+        root.walkTopDown().filter { it.isFile && it.extension == "java" }.map { it.canonicalPath }.toList()
     }
     private val environment = KcEnvironments.acquire(config, javaSources)
     private val env: KotlinCoreEnvironment = environment.env
@@ -109,7 +109,7 @@ private class KcSession(private val config: KSPConfig, @Suppress("UNUSED_PARAMET
 
     init {
         sourceRoots(config).forEach { root ->
-            root.walkTopDown().filter { it.isFile && it.extension == "kt" }.sortedBy { it.path }
+            root.walkTopDown().filter { it.isFile && it.extension == "kt" }
                 .forEach { paths += it.canonicalPath }
         }
         paths += javaSources
