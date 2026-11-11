@@ -4737,6 +4737,99 @@ steps 52–55). Against step 55's stock, kc's runs here are 11.5x and 10.9x
 on Hilt and 11.9x and 11.6x on Moshi. Room's ratio is bounded by its
 processors (about 3.5x, the ceiling in `docs/ksp-perf.md`).
 
+#### Step 59: the sources no round parsed yet, parsed while libkc updates
+
+Step 59 turns to cold runs, the first run in a fresh JVM. Run 1 of step
+58's batches put most of kc-aa's own cold time after libkc's updates:
+
+- **Moshi.** Round 1's join (IntelliJ parsing the 100 sources) took
+  203–255 ms after a native update of about 200 ms. Round 2's join of
+  the 400 generated files took 805–906 ms after a native update of
+  566–637 ms.
+- **Hilt.** Round 1's join took 250–278 ms. In round 2, `KcSession.build`
+  loading the PSI of the 1260 generated Java files one by one took
+  426–545 ms.
+
+Step 51's parse-ahead already overlapped the two, but only for the files
+Gradle reports as modified. Making the join lazy, per file, was looked at
+and set aside:
+
+- KSP's annotation walk visits every new file.
+- Building a file's symbols reads its PSI (`psiOf`, accessors, annotation
+  filters).
+- KSP reads Java annotations and `psi.classes` from PSI.
+
+So every new file would be parsed anyway, serially under the round's
+lock.
+
+**The change.** `KcSession.update` now parses ahead the modified files
+plus every Kotlin file no round has joined yet (`KcTrees.has`). That is
+every Kotlin file in a fresh environment's first round, and the
+generated ones in the rounds after. A warm run's other files are already
+joined, so warm runs parse ahead what they did before.
+
+`parseAhead` makes the PSI one file after another, since `psiFile` isn't
+thread-safe, and that part is cheap. It then parses in a `parallelStream`
+when there are more than 8 files. The round's join takes the trees from
+`trees.takeAhead`, and `checkKinds` checks them as before.
+`KC_NO_AHEAD_NEW=1` keeps step 51's list, of modified files only.
+
+A first version also loaded the new Java files' classes ahead, in
+parallel. Hilt's round 2 then waited 460 ms (423–525) for the ahead work,
+against 490 ms (450–556) loading serially in `build`. IntelliJ parsed the
+Java files no faster in parallel, and libkc's update slowed beside them,
+so Java files are left to `build` again.
+
+`build.sh stock` is 11 ok and `build.sh ksp` is 134/136 on both versions.
+The bench's check (kc generates what stock does) passed on Moshi and Hilt.
+
+**The A/B.** Cold runs, kc only, `COLD=4` per batch plus the bench's own
+run 1. Moshi and Hilt ran six batches (on, off, off, on, on, off: 15 JVMs
+per arm); Room ran four (on, off, off, on: 6 JVMs per arm). The table
+shows medians, with ranges in brackets. "Round" is the round's whole
+`KC_TIMING` line: native update, wait, PSI, join, symbols and build.
+
+| ms | Moshi on | Moshi off | Hilt on | Hilt off | Room on | Room off |
+|---|---|---|---|---|---|---|
+| cold run | 5677 (5400–6103) | 6028 (5857–6535) | 8593 (7927–9012) | 8780 (8370–9110) | 11860 (11246–12318) | 12620 (12520–13293) |
+| setup | 1321 | 1415 | 1491 | 1628 | 1562 | 1757 |
+| process | 2155 | 2180 | 4870 | 4914 | 8432 | 8596 |
+| round 1 | 409 | 525 | 525 | 634 | 610 | 745 |
+| round 1 join | 24 | 217 | 33 | 282 | 45 | 332 |
+| round 2 | 1249 | 1444 | 648 | 652 | 1389 | 1830 |
+| round 2 join | 90 | 793 | 0 | 0 | 139 | 1116 |
+
+What the numbers show:
+
+- **Libkc's update slows beside the parse.** On 4 CPUs, Moshi's round 2
+  native update took 1131 ms against about 600. Its Go phases slowed
+  too: parse 320 ms against 144, bodies 440 against 217. So the overlap
+  gives back about a quarter of the join, not all of it.
+- **The cuts.** Room gains the most, 760 ms a run, of which round 2's
+  400 generated Kotlin files are 440 ms. Moshi gains 350 ms. Hilt gains
+  about 190 ms, all of it round 1's; its round 2 is Java.
+- **A disturbed Hilt batch.** One Hilt A/B, run right after `build.sh
+  ksp`, had its first batches at 9–10.7 s and showed "on" slower in
+  `process`. Six clean batches afterwards, in the table, show `process`
+  equal in both arms (4870 against 4914).
+
+**Against stock.** Stock KSP2 cold, `COLD=4` plus run 1 (5 JVMs), medians:
+
+| ms | stock KSP2 | kc (step 59) | ratio | kc before (off) | ratio before |
+|---|---|---|---|---|---|
+| Moshi, cold run | 11411 | 5677 | 2.0x | 6028 | 1.9x |
+| Hilt, cold run | 19570 | 8593 | 2.3x | 8780 | 2.2x |
+| Room, cold run | 24818 | 11860 | 2.1x | 12620 | 2.0x |
+
+A cold run is mostly JIT warm-up and setup that both backends share:
+KSP's, the processors' and IntelliJ's. Of kc's own work, what is left
+cold is:
+
+- the environment, about 0.5–0.6 s;
+- libkc's first update, about 0.2–0.45 s;
+- round 2's native update, slowed by the parse beside it;
+- Hilt's serial Java PSI, about 0.5 s.
+
 ## Gaps and open questions
 
 - **Slice simplifications (M0.4).** These go when M3/M4 bring the facts in:

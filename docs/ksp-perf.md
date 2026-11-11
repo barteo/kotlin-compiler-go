@@ -215,6 +215,11 @@ KSP's symbol layer. What is left:
   to about 0.1 ms, but libkc's update is slower beside the parse, and
   body runs sometimes wait for it. That took 0.3–0.4 ms off a Moshi run
   and nothing off a Hilt one (A/B); `KC_NO_PARSE_AHEAD=1` turns it off.
+  Since step 59 it also parses every Kotlin file no round joined yet:
+  all of them in a fresh JVM's first round, and the generated ones in
+  the rounds after. That takes 350 ms off a cold Moshi run, 190 off
+  Hilt's and 760 off Room's. `KC_NO_AHEAD_NEW=1` restricts it to the
+  modified files again.
   Since step 56 a run's second round takes its first round's texts
   without statting the files (kc-aa opens the session with
   `FixedSources`), and libkc keeps the last two updates' Java parses
@@ -346,6 +351,26 @@ Step 11's split of kc's cold 3.5 s: environment 500 ms, first Go update
 280–310 ms, first `KcRound` 500–660 ms (IntelliJ parsing PSI with code the
 JIT hasn't compiled yet), processing 1.3 s (64% the processors' own class
 loading and warm-up).
+
+Step 59 (Room, Hilt and Moshi, 100-file modules, 4 CPUs, JDK 21) parses
+the files no round has joined yet while libkc updates (A/B in
+`analysis-api.md`). Cold run medians of 5 stock JVMs and 15 kc JVMs (6
+for Room):
+
+| ms | stock KSP2 | kc | ratio |
+|---|---|---|---|
+| Moshi, cold run (step 59) | 11411 | 5677 | 2.0x |
+| Hilt, cold run (step 59) | 19570 | 8593 | 2.3x |
+| Room, cold run (step 59) | 24818 | 11860 | 2.1x |
+
+Kc's own cold work left is:
+
+- the environment, about 0.5–0.6 s;
+- the first update, about 0.2–0.45 s;
+- round 2's native update, slower beside the parse;
+- Hilt's serial Java PSI, about 0.5 s.
+
+The rest is warm-up that both backends share.
 
 - **A slim environment.** Replace `KotlinCoreEnvironment` with the minimum
   KSP needs: the Kotlin PSI parser, plus Java PSI and the file manager only
