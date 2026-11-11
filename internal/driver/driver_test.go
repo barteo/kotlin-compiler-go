@@ -283,6 +283,22 @@ func sources(t *testing.T, dir string) []string {
 	return out
 }
 
+// javaSources returns the Java source files in dir and its
+// subdirectories.
+func javaSources(t *testing.T, dir string) []string {
+	var out []string
+	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if err == nil && strings.HasSuffix(path, ".java") {
+			out = append(out, path)
+		}
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
 // mainClass returns the class name of a file's facade, as java takes it.
 func mainClass(t *testing.T, path string) string {
 	src, err := os.ReadFile(path)
@@ -755,9 +771,19 @@ func TestKotlincLibrary(t *testing.T) {
 				flags = f
 			}
 			libOut, appOut := t.TempDir(), t.TempDir()
-			args := append(append([]string{"-nowarn", "-module-name", "lib", "-d", libOut}, strings.Fields(flags)...), srcs...)
+			javas := javaSources(t, filepath.Join(dir, "lib"))
+			args := append(append([]string{"-nowarn", "-module-name", "lib", "-d", libOut}, strings.Fields(flags)...), append(srcs, javas...)...)
 			if out, err := exec.Command(kotlinc, args...).CombinedOutput(); err != nil {
 				t.Fatalf("kotlinc: %v\n%s", err, out)
+			}
+			if len(javas) > 0 {
+				javac, err := exec.LookPath("javac")
+				if err != nil {
+					t.Skip("javac not found on PATH")
+				}
+				if out, err := exec.Command(javac, append([]string{"-nowarn", "-cp", libOut, "-d", libOut}, javas...)...).CombinedOutput(); err != nil {
+					t.Fatalf("javac: %v\n%s", err, out)
+				}
 			}
 			cp := []string{lib, libOut}
 			opts := Options{OutDir: appOut, Jobs: runtime.NumCPU(), ClassPath: cp}
@@ -999,13 +1025,7 @@ func TestJavaSources(t *testing.T) {
 	if err != nil {
 		t.Fatalf("missing expected output (run testdata/gen_expected.sh): %v", err)
 	}
-	var javas []string
-	filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
-		if err == nil && strings.HasSuffix(p, ".java") {
-			javas = append(javas, p)
-		}
-		return err
-	})
+	javas := javaSources(t, dir)
 	out := t.TempDir()
 	if err := Compile(append(sources(t, dir), javas...), Options{OutDir: out, Jobs: runtime.NumCPU(), ClassPath: []string{lib}}); err != nil {
 		t.Fatalf("compile: %v", err)
@@ -1085,15 +1105,33 @@ func TestSerialization(t *testing.T) {
 	kotlincArgs := func(cp, out string, srcs ...string) []string {
 		return append([]string{"-nowarn", plugin, "-cp", cp, "-d", out}, srcs...)
 	}
-	args := kotlincArgs(rt, libOut, sources(t, filepath.Join(dir, "lib"))...)
+	// The Java classes are compiled by javac, after the Kotlin code that
+	// reads their sources.
+	javac := func(cp, out string, srcs []string) {
+		if len(srcs) == 0 {
+			return
+		}
+		if out, err := exec.Command("javac", append([]string{"-nowarn", "-cp", cp, "-d", out}, srcs...)...).CombinedOutput(); err != nil {
+			t.Fatalf("javac: %v\n%s", err, out)
+		}
+	}
+	libJava, appJava := javaSources(t, filepath.Join(dir, "lib")), javaSources(t, filepath.Join(dir, "app"))
+	if len(libJava)+len(appJava) > 0 {
+		if _, err := exec.LookPath("javac"); err != nil {
+			t.Skip("javac not found on PATH")
+		}
+	}
+	args := kotlincArgs(rt, libOut, append(sources(t, filepath.Join(dir, "lib")), libJava...)...)
 	if out, err := exec.Command(kotlinc, append([]string{"-module-name", "lib"}, args...)...).CombinedOutput(); err != nil {
 		t.Fatalf("kotlinc lib: %v\n%s", err, out)
 	}
+	javac(path(rt, libOut), libOut, libJava)
 	cp := append([]string{lib, libOut}, runtimeJars...)
 	opts := Options{OutDir: appOut, Jobs: runtime.NumCPU(), ClassPath: cp, ModuleName: "app", Serialization: true}
-	if err := Compile(sources(t, filepath.Join(dir, "app")), opts); err != nil {
+	if err := Compile(append(sources(t, filepath.Join(dir, "app")), appJava...), opts); err != nil {
 		t.Fatalf("compile program: %v", err)
 	}
+	javac(path(rt, lib, libOut, appOut), appOut, appJava)
 	args = kotlincArgs(path(rt, libOut, appOut), useOut, sources(t, filepath.Join(dir, "use"))...)
 	if out, err := exec.Command(kotlinc, args...).CombinedOutput(); err != nil {
 		t.Fatalf("kotlinc use: %v\n%s", err, out)

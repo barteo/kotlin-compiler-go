@@ -447,14 +447,17 @@ func (g *parcelGen) kind(t types.Type) (parcelKind, string) {
 		name = cls.Name
 	}
 	switch name {
-	case "kotlin/collections/List", "kotlin/collections/MutableList", "java/util/List", "java/util/ArrayList":
+	case "kotlin/collections/List", "kotlin/collections/MutableList", "java/util/List", "java/util/ArrayList",
+		immutablePkg + "ImmutableList", immutablePkg + "PersistentList":
 		if e, ok := elem(0); ok && e.K == types.String {
 			return parcelStringList, ""
 		}
 		return parcelList, "java.util.ArrayList"
-	case "kotlin/collections/Set", "kotlin/collections/MutableSet", "java/util/Set", "java/util/LinkedHashSet":
+	case "kotlin/collections/Set", "kotlin/collections/MutableSet", "java/util/Set", "java/util/LinkedHashSet",
+		immutablePkg + "ImmutableSet", immutablePkg + "PersistentSet":
 		return parcelSet, "java.util.LinkedHashSet"
-	case "kotlin/collections/Map", "kotlin/collections/MutableMap", "java/util/Map", "java/util/LinkedHashMap":
+	case "kotlin/collections/Map", "kotlin/collections/MutableMap", "java/util/Map", "java/util/LinkedHashMap",
+		immutablePkg + "ImmutableMap", immutablePkg + "PersistentMap":
 		return parcelMap, "java.util.LinkedHashMap"
 	case "java/util/HashMap":
 		return parcelMap, "java.util.HashMap"
@@ -478,6 +481,34 @@ func (g *parcelGen) kind(t types.Type) (parcelKind, string) {
 		return parcelSerializable, ""
 	}
 	return parcelUnsupported, ""
+}
+
+// immutablePkg is the package of kotlinx.collections.immutable, whose
+// collections the plugin writes as Kotlin's and reads into persistent
+// ones: see persistent.
+const immutablePkg = "kotlinx/collections/immutable/"
+
+// persistent returns x, a value read for type t, as a persistent
+// collection if t is one of kotlinx.collections.immutable's, as the
+// plugin's toPersistentList() and the others make it.
+func (g *parcelGen) persistent(t types.Type, x string) string {
+	if t.K != types.Class || !strings.HasPrefix(t.C.Name, immutablePkg) || t.A == nil {
+		return x
+	}
+	args := make([]string, t.A.Len())
+	for i := range args {
+		args[i] = g.typeText(t.A.Get(i).T)
+	}
+	of := "kotlinx.collections.immutable.persistent%sOf<" + strings.Join(args, ", ") + ">().%s(%s)"
+	switch strings.TrimPrefix(t.C.Name, immutablePkg) {
+	case "ImmutableList", "PersistentList":
+		return fmt.Sprintf(of, "List", "addAll", x)
+	case "ImmutableSet", "PersistentSet":
+		return fmt.Sprintf(of, "Set", "addAll", x)
+	case "ImmutableMap", "PersistentMap":
+		return fmt.Sprintf(of, "Map", "putAll", x)
+	}
+	return x
 }
 
 // parcelSpecials are the classes that the plugin writes in ways of their
@@ -617,6 +648,12 @@ func (g *parcelGen) read(t types.Type) string {
 		g.stmt("}")
 		return v
 	}
+	return g.persistent(t, g.readKind(t, k, coll))
+}
+
+// readKind is read for a non-null value or one without a null marker, of
+// kind k.
+func (g *parcelGen) readKind(t types.Type, k parcelKind, coll string) string {
 	switch k {
 	case parcelString:
 		return "parcel.readString()"

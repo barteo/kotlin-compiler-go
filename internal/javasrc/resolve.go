@@ -1,6 +1,7 @@
 package javasrc
 
 import (
+	"slices"
 	"sort"
 	"strings"
 	"unicode"
@@ -112,6 +113,42 @@ type resolver struct {
 	// noInherit is set while resolving a top-level class's supertypes,
 	// which the member types it inherits from them can't name.
 	noInherit bool
+}
+
+// classLiteral returns the class of the class literal that annotation
+// arguments args, as Annotation has them, give the argument name: S of
+// with = S.class or with = a.b.S.class.
+func (r *resolver) classLiteral(args []string, name string) string {
+	i := slices.Index(args, name)
+	if i < 0 {
+		return ""
+	}
+	end := slices.Index(args[i+1:], "class")
+	if end < 1 {
+		return ""
+	}
+	parts := args[i+1 : i+1+end]
+	if len(parts) == 1 {
+		n, _ := r.lookup(parts[0])
+		return n
+	}
+	return r.s.qualified(strings.Join(parts, "."))
+}
+
+// annotations returns the descriptors of annotations as, La/b/C;, as a
+// class file's member has them.
+func (r *resolver) annotations(as []*Annotation) []string {
+	var out []string
+	for _, a := range as {
+		name := strings.ReplaceAll(a.Name, ".", "/")
+		if !strings.Contains(a.Name, ".") {
+			if n, _ := r.lookup(a.Name); n != "" {
+				name = n
+			}
+		}
+		out = append(out, "L"+name+";")
+	}
+	return out
 }
 
 // lookup resolves a simple type name to a class's internal name, or to a
@@ -495,6 +532,11 @@ func (s *Set) Info(name string) (*classfile.Info, error) {
 					info.Retention = arg
 				}
 			}
+		case "Serializable", "kotlinx.serialization.Serializable":
+			if n, _ := r.lookup("Serializable"); a.Name == "Serializable" && n != "kotlinx/serialization/Serializable" {
+				continue
+			}
+			info.SerialWith = r.classLiteral(a.Args, "with")
 		case "Target", "java.lang.annotation.Target":
 			for _, arg := range a.Args {
 				if arg != "ElementType" && strings.ToUpper(arg) == arg {
@@ -565,7 +607,7 @@ func (s *Set) Info(name string) (*classfile.Info, error) {
 		}
 		desc, sig := mr.methodDesc(m.TypeParams, outer, params, ret, m.Throws)
 		declared[m.Name+desc] = true
-		info.Methods = append(info.Methods, classfile.Member{Access: access, Name: m.Name, Desc: desc, Sig: sig})
+		info.Methods = append(info.Methods, classfile.Member{Access: access, Name: m.Name, Desc: desc, Sig: sig, Annotations: mr.annotations(m.Annotations)})
 	}
 	var canonical []*Type // a record's canonical constructor's parameters
 	for _, p := range c.Components {

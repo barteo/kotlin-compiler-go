@@ -54,6 +54,11 @@ func (g *gen) invokeFun(x *syntax.Call, f *types.FunSym, mask argMask) {
 		if f.Suspend {
 			g.calledSuspend(x)
 		}
+		if f.Facade == "" && f.Owner != nil && !f.Impl && !f.Ext {
+			// A class's member, on the receiver below the arguments.
+			g.invokeMember(f, f.Owner.This(), mask)
+			return
+		}
 		g.invokeStatic(f.Facade, f, mask, false)
 		return
 	}
@@ -313,7 +318,7 @@ func (in *inliner) inlineLambdas() {
 			panic("a lambda is inlined for a parameter its function doesn't only invoke")
 		}
 		in.lambdas[first+i] = l
-		for _, ld := range p.Loads {
+		for _, ld := range slices.Concat(p.Loads, p.Swaps) {
 			in.skip[ld] = true
 		}
 		for _, inv := range p.Invokes {

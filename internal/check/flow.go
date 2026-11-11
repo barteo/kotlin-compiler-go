@@ -781,21 +781,39 @@ func (c *Checker) narrowKeyOf(x syntax.Expr) (narrow, bool) {
 	return narrow{sym: sym, t: c.scope.narrowed(sym)}, true
 }
 
+// memberSym returns the stable property that m reads, or nil.
+func (c *Checker) memberSym(m *syntax.Member) *types.VarSym {
+	if m.Prop == nil {
+		if m.Getter != nil && m.Getter.Owner != nil {
+			// A friend path's class's stable property.
+			if kp := m.Getter.Owner.KProps[m.Name]; kp != nil && kp.Getter == m.Getter {
+				return kp.Stable
+			}
+		}
+		return nil
+	}
+	if !c.stableOn(m.Prop, m.X.Type()) {
+		return nil
+	}
+	return m.Prop
+}
+
 // memberKey returns the narrowing of a.p, where p is a stable property
 // of a stable value a, and the type of a.p is t.
 func (c *Checker) memberKey(m *syntax.Member, t types.Type) (narrow, bool) {
-	if m.Prop == nil || !c.stableOn(m.Prop, m.X.Type()) {
+	sym := c.memberSym(m)
+	if sym == nil {
 		return narrow{}, false
 	}
 	if this, ok := m.X.(*syntax.This); ok && this.Recv == nil {
 		// this.p is p, as this@C.p in class C.
-		return narrow{sym: m.Prop, t: c.scope.narrowedMember(nil, m.Prop, t)}, true
+		return narrow{sym: sym, t: c.scope.narrowedMember(nil, sym, t)}, true
 	}
 	recv := c.narrowSym(m.X)
 	if recv == nil {
 		return narrow{}, false
 	}
-	return narrow{recv: recv, sym: m.Prop, t: c.scope.narrowedMember(recv, m.Prop, t)}, true
+	return narrow{recv: recv, sym: sym, t: c.scope.narrowedMember(recv, sym, t)}, true
 }
 
 // stableMember reports whether reading property p through a stable value

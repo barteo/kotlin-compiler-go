@@ -140,6 +140,9 @@ type Checker struct {
 	// objects by name: enum entries, Java statics, objects' members, and
 	// those of the classes of starOwners.
 	memberImports map[string]memberImport
+	// moreMemberImports are the other members imported by a name that
+	// memberImports has: extensions of two objects, import A.f and B.f.
+	moreMemberImports map[string][]memberImport
 	// classImports are the explicitly imported top-level classes of the
 	// class path, whose visibility checkMemberImports checks.
 	classImports []memberImport
@@ -215,6 +218,8 @@ type Checker struct {
 	// stubInference is inferring, with the run that records constraints on
 	// them.
 	stubs map[*types.TypeParamSym]*stubRun
+	// ambiguities counts the ambiguous calls reported.
+	ambiguities int
 	// trial is set while stubInference checks a lambda, to undo what the
 	// check changes outside the lambda.
 	trial *trial
@@ -1061,7 +1066,6 @@ func (c *Checker) resolveClassBounds() {
 // declare enters the file's top-level names into its package.
 func (c *Checker) declare() {
 	c.errs = append(c.errs, c.file.Errors...)
-	c.dropExtensions()
 	c.metroInsert()
 	c.serializableWith()
 	c.parcelize()
@@ -1482,8 +1486,6 @@ func (c *Checker) resolveFun(d *syntax.FunDecl, owner *types.ClassSym) {
 			c.errorf(d.P, "'@JvmStatic' annotation cannot be used on 'external' members of interface companions")
 		case owner.CompanionOf != nil:
 			// A static method of the outer class calls it: see staticStubs.
-		case d.Recv != nil:
-			c.unsupported(d.P, "@JvmStatic extension in object", "@JvmStatic is not supported on extension functions of objects")
 		case d.Override:
 			c.errorf(d.P, "override member cannot be '@JvmStatic' in an object")
 		default:
@@ -1690,8 +1692,6 @@ func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
 		switch {
 		case owner == nil || !owner.Object || owner.Anonymous:
 			c.errorf(d.P, "only members in named objects and companion objects can be annotated with '@JvmStatic'")
-		case d.Field != nil:
-			c.unsupported(d.P, "@JvmStatic delegated property", "@JvmStatic is not supported on delegated properties")
 		case d.Override && owner.CompanionOf == nil:
 			c.errorf(d.P, "override member cannot be '@JvmStatic' in an object")
 		default:

@@ -541,12 +541,7 @@ func (g *gen) funMeta(s *metaScope, fd *syntax.FunDecl, owner *types.ClassSym) *
 		}
 	}
 	for _, e := range sym.Implies {
-		// returns(value) implies (p != null) or (p is T); not (p), which
-		// metadata isn't written for.
-		if e.Holds {
-			continue
-		}
-		im := kmeta.Implies{Returns: kmeta.ReturnsAny, Param: e.Param}
+		im := kmeta.Implies{Returns: kmeta.ReturnsAny, Param: e.Param, Holds: e.Holds}
 		switch e.Returns {
 		case 1:
 			im.Returns = kmeta.ReturnsTrue

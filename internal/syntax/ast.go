@@ -1296,7 +1296,11 @@ type Call struct {
 	// lambda makes: the types of its arguments, the reference's
 	// parameters, which go to the callee's as Kotlin adapts a reference
 	// (see refNames).
-	RefArgs  []types.Type
+	RefArgs []types.Type
+	// Value is set by the checker on a call that a compiler plugin
+	// replaces with an expression, which is generated instead: the
+	// serialization plugin's serializer<T>() of a known T.
+	Value    Expr
 	trailing bool // has a trailing lambda, or passes the last argument last
 }
 

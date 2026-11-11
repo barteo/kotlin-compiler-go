@@ -382,6 +382,28 @@ func (s *system) addLit(v types.Type, lit *syntax.IntLit) bool {
 	return true
 }
 
+// freeLits reports whether an unfixed variable of s has integer literals
+// among its bounds and no upper bound but Any: the literals' type is up
+// to the call that the variable's call is an argument of. Not that of
+// id(5) for <T : Long> id(t: T).
+func (s *system) freeLits() bool {
+	for _, tv := range s.vars {
+		if tv.fixed || len(tv.lits) == 0 {
+			continue
+		}
+		free := true
+		for _, u := range append(slices.Clip(tv.upper), tv.v.Bounds...) {
+			if u = s.apply(u); u.K != types.Any {
+				free = false
+			}
+		}
+		if free {
+			return true
+		}
+	}
+	return false
+}
+
 // litsFit reports whether integer literals can all have type t, a Long,
 // Byte or Short.
 func litsFit(lits []*syntax.IntLit, t types.Type) bool {
@@ -443,11 +465,13 @@ func (s *system) complete() {
 			// a known lower bound.
 			score := 0
 			allProper := true
+			nested := false
 			for _, l := range tv.lower {
 				if s.proper(l) {
 					score = 2
 				} else {
 					allProper = false
+					nested = nested || !s.isVar(l)
 				}
 			}
 			// An upper bound that is another variable, as T2 in T1 <: T2,
@@ -468,6 +492,11 @@ func (s *system) complete() {
 			}
 			if allProper && (varUppers == 0 || len(tv.upper) > varUppers || len(tv.lower) > 0 || len(tv.lits) > 0) {
 				score += 3
+			}
+			if nested && score > 0 {
+				// A lower bound with variables in it, as B<T2> of
+				// listOf(a(), b()), waits for them: its type then counts.
+				score--
 			}
 			if score > best {
 				pick, best = tv, score
@@ -681,11 +710,7 @@ func (c *Checker) lub(a, b types.Type) types.Type {
 	if t, ok := c.join(a, b); ok {
 		return t
 	}
-	t := c.commonSuper(a.NonNull(), b.NonNull(), 0)
-	if types.MayBeNull(a) || types.MayBeNull(b) {
-		t = t.Nullable()
-	}
-	return t
+	return joinNull(c.commonSuper(a.NonNull(), b.NonNull(), 0), a, b)
 }
 
 // finish completes the system, reports what could not be inferred and

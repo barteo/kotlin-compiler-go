@@ -1,6 +1,11 @@
 import app.Named
 import app.Square
+import text.StaticCalls
+import util.Defaults
+import util.Events
+import util.Flags
 import util.Registry
+import widget.Panels
 
 // The module's Java classes, which kc reads from their sources.
 const val SIDES = Square.SIDES + 1
@@ -41,4 +46,13 @@ fun main() {
     val named: Named = s
     println(named.label())
     widgets()
+    println(StaticCalls.all())
+    println(Events().describe())
+    val flags = Flags()
+    flags.isEvent = true
+    flags.isReady = false
+    println("${flags.isEvent} ${flags.isReady}")
+    println(Panels(text.Panel(listOf("a", "b"), "t")).build())
+    println(Defaults.describe())
+    println(util.LookupUser.count())
 }

@@ -1,0 +1,4 @@
+users.id
+users.name
+users.email
+host.*

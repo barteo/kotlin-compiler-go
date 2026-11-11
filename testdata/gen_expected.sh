@@ -15,7 +15,8 @@
 # tests.
 #
 # And it regenerates testdata/klib/X.out for each kotlinc library test X/,
-# whose library kc inlines from kotlinc's classes (TestKotlincLibrary):
+# whose library kc inlines from kotlinc's classes (TestKotlincLibrary), and
+# whose Java sources javac compiles:
 # both are compiled with the flags of the first line of the library's
 # first file, "// kotlinc: <flags>"; a use/ directory is compiled by
 # kotlinc against the app's classes, and run after it. Arguments klib/X
@@ -27,7 +28,7 @@
 # program, which runs after it. The argument parcelize selects it.
 #
 # And testdata/serialization.out (TestSerialization): kotlinc, with its
-# kotlinx.serialization plugin, compiles serialization/lib/, then
+# kotlinx.serialization plugin, and javac compile serialization/lib/, then
 # serialization/app/ against it, and serialization/use/ against the app,
 # which runs after it. The runtime is kotlinx.serialization 1.9.0's core
 # and JSON jars, from Gradle's cache or $KC_SERIALIZATION_CP. The
@@ -166,7 +167,11 @@ for name in $klibs; do
 	mkdir -p "$out/lib" "$out/app"
 	flags=$(sed -n '1s|^// kotlinc: ||p' "$(find "$name/lib" -name '*.kt' | sort | head -1)")
 	# shellcheck disable=SC2046,SC2086 # flags and file names are words
-	kotlinc -nowarn $flags -module-name lib $(find "$name/lib" -name '*.kt' | sort) -d "$out/lib" 2>"$work/err" || { cat "$work/err"; exit 1; }
+	kotlinc -nowarn $flags -module-name lib $(find "$name/lib" -name '*.kt' -o -name '*.java' | sort) -d "$out/lib" 2>"$work/err" || { cat "$work/err"; exit 1; }
+	if [ -n "$(find "$name/lib" -name '*.java')" ]; then
+		# shellcheck disable=SC2046
+		javac -nowarn -cp "$out/lib" -d "$out/lib" $(find "$name/lib" -name '*.java' | sort) 2>"$work/err" || { cat "$work/err"; exit 1; }
+	fi
 	# An app whose first file starts with "// friend" sees the library's
 	# internal declarations.
 	friend=""
@@ -227,9 +232,13 @@ if [ -n "$serialization" ]; then
 	mkdir -p "$out/lib" "$out/app" "$out/use"
 	plugin="-Xplugin=$klib/kotlinx-serialization-compiler-plugin.jar"
 	# shellcheck disable=SC2046 # file names are words
-	kotlinc -nowarn -module-name lib "$plugin" -cp "$rt" $(find lib -name '*.kt' | sort) -d "$out/lib" 2>"$work/err" || { cat "$work/err"; exit 1; }
+	kotlinc -nowarn -module-name lib "$plugin" -cp "$rt" $(find lib -name '*.kt' -o -name '*.java' | sort) -d "$out/lib" 2>"$work/err" || { cat "$work/err"; exit 1; }
 	# shellcheck disable=SC2046
-	kotlinc -nowarn -module-name app "$plugin" -cp "$rt:$out/lib" $(find app -name '*.kt' | sort) -d "$out/app" 2>"$work/err" || { cat "$work/err"; exit 1; }
+	javac -nowarn -cp "$rt:$out/lib" -d "$out/lib" $(find lib -name '*.java' | sort) 2>"$work/err" || { cat "$work/err"; exit 1; }
+	# shellcheck disable=SC2046
+	kotlinc -nowarn -module-name app "$plugin" -cp "$rt:$out/lib" $(find app -name '*.kt' -o -name '*.java' | sort) -d "$out/app" 2>"$work/err" || { cat "$work/err"; exit 1; }
+	# shellcheck disable=SC2046
+	javac -nowarn -cp "$rt:$out/lib:$out/app" -d "$out/app" $(find app -name '*.java' | sort) 2>"$work/err" || { cat "$work/err"; exit 1; }
 	# shellcheck disable=SC2046
 	kotlinc -nowarn "$plugin" -cp "$rt:$out/lib:$out/app" $(find use -name '*.kt' | sort) -d "$out/use" 2>"$work/err" || { cat "$work/err"; exit 1; }
 	kotlin -cp "$out/app:$out/lib:$rt" app.MainKt >"$root/serialization.out" 2>/dev/null

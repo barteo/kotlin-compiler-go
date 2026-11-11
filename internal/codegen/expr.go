@@ -209,7 +209,7 @@ func boxedResult(x *syntax.Call, t types.Type) bool {
 	if m, ok := x.Fun.(*syntax.Member); ok && m.Safe {
 		return false
 	}
-	return f.Ret.IsParam() && !f.Ret.Param().Reified && desc(types.JVMRet(f))[0] == 'L'
+	return f.Ret.IsParam() && desc(types.JVMRet(f))[0] == 'L'
 }
 
 // coerceRecv is coerce for the receiver of an extension: an extension of
@@ -1006,6 +1006,8 @@ func (g *gen) elvis(x *syntax.Binary) {
 	g.code.Place(nonNull)
 	g.grouped(x.Groups, g.siteKey(x.P, "elvis", 1), func() {})
 	switch {
+	case res.K == types.Unit:
+		g.pop(xt) // the left side's kotlin.Unit
 	case res.IsPrimitive() && xt.K == types.TypeParam:
 		g.coerce(xt.NonNull(), res) // x ?: 0 for T : Int?
 	case res.IsPrimitive():
@@ -1244,7 +1246,7 @@ func (g *gen) member(x *syntax.Member) {
 		g.code.Invoke(cf.INVOKESTATIC, x.Getter.Owner.Name, x.Getter.Name, x.Getter.Desc)
 		g.code.Invoke(cf.INVOKESTATIC, "kotlin/enums/EnumEntriesKt", "enumEntries", "([Ljava/lang/Enum;)Lkotlin/enums/EnumEntries;")
 		return
-	case x.Getter != nil && x.Getter.Static:
+	case x.Getter != nil && x.Getter.Static && !x.Getter.Ext:
 		// A static getter: E.entries.
 		g.code.Invoke(cf.INVOKESTATIC, x.Getter.Owner.Name, x.Getter.Name, x.Getter.Desc)
 		g.coerce(types.JVMRet(x.Getter), x.T)
@@ -1281,11 +1283,11 @@ func (g *gen) member(x *syntax.Member) {
 		rt := x.X.Type()
 		if x.Safe {
 			rt = rt.NonNull()
-		} else {
+		} else if !f.Static {
 			g.dispatch(x, f.Owner)
 		}
 		g.safeCall(x, types.JVMRet(f), x.T, func() {
-			if x.Safe {
+			if x.Safe && !f.Static {
 				g.dispatch(x, f.Owner)
 				g.swapUnder(rt)
 			}
@@ -1865,6 +1867,11 @@ func (g *gen) invokeDefault(f *types.FunSym, mask argMask) {
 }
 
 func (g *gen) call(x *syntax.Call) {
+	if x.Value != nil {
+		g.expr(x.Value)
+		g.coerce(x.Value.Type(), x.T)
+		return
+	}
 	if unconverted(x) != syntax.Expr(x) {
 		if l, _ := g.forwarded(x); l != nil {
 			g.code.Op(cf.ACONST_NULL) // see ident
@@ -2044,18 +2051,24 @@ func (g *gen) ungroupedCall(x *syntax.Call) {
 		m := x.Fun.(*syntax.Member)
 		rt := m.T
 		if !m.Safe {
-			g.dispatch(m, f.Owner)
+			if !f.Static {
+				g.dispatch(m, f.Owner)
+			}
 			g.contextArgs(x, f)
 		}
 		g.safeCall(m, types.JVMRet(f), x.T, func() {
 			if m.Safe {
 				// This goes below the receiver, unboxed if primitive.
-				g.dispatch(m, f.Owner)
-				g.swapUnder(m.X.Type().NonNull())
+				if !f.Static {
+					g.dispatch(m, f.Owner)
+					g.swapUnder(m.X.Type().NonNull())
+				}
 				g.contextsUnder(x, f, m.X.Type().NonNull())
 			}
 			g.coerceRecv(rt, f.Recv)
-			if mask := g.callArgs(x, f); mask.any() {
+			if mask := g.callArgs(x, f); f.Static {
+				g.invokeStatic(f.Owner.Name, f, mask, false) // an object's @JvmStatic extension
+			} else if mask.any() {
 				g.invokeDefault(f, mask)
 			} else {
 				g.callMethod(f, f.Owner, f.JVM(), funDesc(f))
