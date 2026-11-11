@@ -558,6 +558,17 @@ type defaultBody struct {
 	prop     *syntax.PropDecl
 	acc      *syntax.FunDecl
 	site     string
+	// recv is the receiver of a member extension, which the method takes
+	// first.
+	recv *types.Type
+}
+
+// of returns m as the body of member f, with f's extension receiver.
+func (m defaultBody) of(f *types.FunSym) defaultBody {
+	if f.Ext && len(f.Contexts) == 0 {
+		m.recv = &f.Recv
+	}
+	return m
 }
 
 func (m defaultBody) synthetic() uint16 {
@@ -579,7 +590,7 @@ func ownBodies(s *types.ClassSym) []defaultBody {
 			case *syntax.FunDecl:
 				if f := m.Sym; f != nil && m.Visibility != syntax.Private {
 					abstract := f.Abstract || m.Body == nil && m.ExprBody == nil
-					out = append(out, defaultBody{f.JVM(), funDesc(f), f.Params, f.Ret, abstract, m, m.P.Line, s, f.Hidden, nil, nil, nil, ""})
+					out = append(out, defaultBody{f.JVM(), funDesc(f), f.Params, f.Ret, abstract, m, m.P.Line, s, f.Hidden, nil, nil, nil, "", nil}.of(f))
 				}
 			case *syntax.PropDecl:
 				p := m.Sym
@@ -589,7 +600,7 @@ func ownBodies(s *types.ClassSym) []defaultBody {
 				get := defaultBody{name: types.GetterJVM(p), desc: "()" + desc(types.GetterType(p)), ret: types.GetterType(p), abstract: true}
 				if a := m.Getter; a != nil && a.Sym != nil && (a.Body != nil || a.ExprBody != nil) {
 					f := a.Sym
-					get = defaultBody{f.JVM(), funDesc(f), f.Params, f.Ret, false, nil, a.P.Line, s, f.Hidden, f, m, a, "get"}
+					get = defaultBody{f.JVM(), funDesc(f), f.Params, f.Ret, false, nil, a.P.Line, s, f.Hidden, f, m, a, "get", nil}.of(f)
 				}
 				out = append(out, get)
 				if !p.Mutable {
@@ -598,7 +609,7 @@ func ownBodies(s *types.ClassSym) []defaultBody {
 				set := defaultBody{name: types.SetterJVM(p), desc: "(" + desc(types.FieldType(p)) + ")V", ret: types.UnitType, abstract: true}
 				if a := m.Setter; a != nil && a.Sym != nil && (a.Body != nil || a.ExprBody != nil) {
 					f := a.Sym
-					set = defaultBody{f.JVM(), funDesc(f), f.Params, f.Ret, false, nil, a.P.Line, s, f.Hidden, f, m, a, "set"}
+					set = defaultBody{f.JVM(), funDesc(f), f.Params, f.Ret, false, nil, a.P.Line, s, f.Hidden, f, m, a, "set", nil}.of(f)
 				}
 				out = append(out, set)
 			}
@@ -608,7 +619,7 @@ func ownBodies(s *types.ClassSym) []defaultBody {
 	s.Ensure()
 	add := func(f *types.FunSym) {
 		if f != nil && !f.Static && !f.Platform {
-			out = append(out, defaultBody{name: f.JVM(), desc: funDesc(f), params: f.Params, ret: f.Ret, abstract: f.Abstract, owner: s, hidden: f.Hidden})
+			out = append(out, defaultBody{name: f.JVM(), desc: funDesc(f), params: f.Params, ret: f.Ret, abstract: f.Abstract, owner: s, hidden: f.Hidden}.of(f))
 		}
 	}
 	for _, name := range slices.Sorted(maps.Keys(s.Methods)) {
@@ -616,9 +627,20 @@ func ownBodies(s *types.ClassSym) []defaultBody {
 			add(f)
 		}
 	}
+	for _, name := range slices.Sorted(maps.Keys(s.ExtMethods)) {
+		for _, f := range s.ExtMethods[name] {
+			add(f)
+		}
+	}
 	for _, name := range slices.Sorted(maps.Keys(s.KProps)) {
 		add(s.KProps[name].Getter)
 		add(s.KProps[name].Setter)
+	}
+	for _, name := range slices.Sorted(maps.Keys(s.ExtProps)) {
+		for _, f := range s.ExtProps[name] {
+			add(f)
+			add(f.ExtSetter)
+		}
 	}
 	return out
 }
@@ -673,8 +695,13 @@ func (g *gen) defaultBridges(cd *syntax.ClassDecl, c *cf.Class) {
 			ref := c.LastMethod()
 			g.bridgeAnnotations(ref, m)
 			nullability(methodAdder(ref), m.ret)
+			lead := 0
+			if m.recv != nil {
+				nullability(paramAdder(ref, 0), *m.recv)
+				lead = 1
+			}
 			for i, p := range m.params {
-				nullability(paramAdder(ref, i), p.Type)
+				nullability(paramAdder(ref, lead+i), p.Type)
 			}
 			code.Line(cd.P.Line)
 			code.AllocLocal("L" + cls.Name + ";")
