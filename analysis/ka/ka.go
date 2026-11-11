@@ -224,7 +224,28 @@ type File struct {
 	Snapshot    *psi.Snapshot
 	Annotations []Annotation // @file: annotations
 	Decls       []*Decl      // top-level declarations, in source order
+	// Lookups are the names the file's code looks up in packages and
+	// classes, for incremental processing, sorted: what Kotlin's lookup
+	// tracker records for it, and more. A file with syntax errors has
+	// none.
+	Lookups []Lookup
 }
+
+// Lookup is a name looked up in a scope: a package, a.b ("" for the
+// default package), or a class, a.b.Outer.Inner.
+type Lookup struct {
+	Scope string
+	Kind  LookupKind
+	Name  string
+}
+
+// LookupKind is the kind of scope a Lookup searched.
+type LookupKind uint8
+
+const (
+	PackageLookup LookupKind = iota // a package
+	ClassLookup                     // a class: its members and nested classes
+)
 
 // Decl is a declaration in the sources.
 type Decl struct {
@@ -294,6 +315,9 @@ type Annotation struct {
 	// Args are its arguments as written, in the order written, as
 	// the checker evaluated them; none if it couldn't.
 	Args []NamedValue
+	// TypeArgs are the type arguments written, @A<String>, as the
+	// checker resolved them; nil for a star projection.
+	TypeArgs []*Type
 }
 
 // Update checks the module's sources and returns their model. Errors in
@@ -310,30 +334,67 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 		}
 		return false
 	})
-	snaps := make([]*psi.Snapshot, len(sources))
-	readErrs := make([]error, len(sources))
-	parallel(len(sources), jobs, func(i int) {
-		text, err := sources[i].text()
+	texts := make([]string, len(sources)+len(javaSources))
+	readErrs := make([]error, len(texts))
+	all := slices.Concat(sources, javaSources)
+	parallel(len(all), jobs, func(i int) { texts[i], readErrs[i] = all[i].text() })
+	if err := errors.Join(readErrs...); err != nil {
+		return nil, err
+	}
+	tm.Mark("read")
+	// The results of the last checks are kept: an update of the same
+	// files with the same texts reuses one whole, and the others reuse
+	// the parses of the files whose texts are the same (reuse.go).
+	paths := make([]string, len(all))
+	for i, src := range all {
+		paths[i] = src.Path
+	}
+	var kept *shared // the library of a module without Java sources
+	var cache *checkCache
+	var key string
+	if len(javaSources) == 0 {
+		l, err := s.library()
 		if err != nil {
-			readErrs[i] = err
+			return nil, err
+		}
+		kept, cache = l, &l.checks
+	} else if key = libraryKey(s.cfg); key != "" {
+		cache = &javaChecks
+	}
+	prev, whole := cache.find(key, paths, texts)
+	if whole {
+		tm.Mark("reused")
+		l := kept
+		if l == nil {
+			l = prev.sl
+			l.retain()
+		}
+		return &Model{lib: l.lib, shared: l, Files: prev.files, Diagnostics: prev.diags}, nil
+	}
+	if prev == nil && kept == nil {
+		// The first update with Java sources: the parses of the update
+		// before, without them.
+		s.mu.Lock()
+		if s.lib != nil {
+			prev, _ = s.lib.checks.find("", nil, nil)
+		}
+		s.mu.Unlock()
+	}
+	javaTexts := texts[len(sources):]
+	texts = texts[:len(sources)]
+	snaps := make([]*psi.Snapshot, len(sources))
+	parallel(len(sources), jobs, func(i int) {
+		if snap := prev.snapshot(sources[i].Path, texts[i]); snap != nil {
+			snaps[i] = snap
 			return
 		}
-		snaps[i] = psi.Parse(sources[i].Path, text)
+		snaps[i] = psi.Parse(sources[i].Path, texts[i])
 	})
 	javaFiles := make([]*javasrc.File, len(javaSources))
 	javaErrs := make([]error, len(javaSources))
-	javaReadErrs := make([]error, len(javaSources))
 	parallel(len(javaSources), jobs, func(i int) {
-		text, err := javaSources[i].text()
-		if err != nil {
-			javaReadErrs[i] = err
-			return
-		}
-		javaFiles[i], javaErrs[i] = javasrc.Parse(javaSources[i].Path, text)
+		javaFiles[i], javaErrs[i] = javasrc.Parse(javaSources[i].Path, javaTexts[i])
 	})
-	if err := errors.Join(append(readErrs, javaReadErrs...)...); err != nil {
-		return nil, err
-	}
 	tm.Mark("parse")
 	var sl *shared
 	var java *driver.JavaSources
@@ -353,7 +414,7 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 		}
 		sl, java, err = acquireJava(s.cfg, parsed)
 	} else {
-		sl, err = s.library()
+		sl = kept
 	}
 	if err != nil {
 		return nil, err
@@ -372,7 +433,20 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 		java.SetKotlin(files)
 	}
 	tm.Mark("lower")
-	rec, checkErrs, err := checkFiles(ctx, files, lib, jobs)
+	// An update whose changed files declare what they did, and whose
+	// other files are those of the check before, checks only the changed
+	// files and keeps the others' models (reuse.go).
+	var only map[*syntax.File]bool
+	if len(broken) == 0 {
+		if changed := prev.bodyEdits(paths, sources, texts, javaTexts, snaps); changed != nil {
+			incrementalUpdates.Add(1)
+			only = map[*syntax.File]bool{}
+			for _, i := range changed {
+				only[files[i]] = true
+			}
+		}
+	}
+	rec, checkErrs, err := checkFiles(ctx, files, lib, jobs, only)
 	if !rec.bodies.IsZero() {
 		tm.MarkAt("signatures", rec.bodies)
 	}
@@ -390,10 +464,25 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 				clean = append(clean, f)
 			}
 		}
-		rec, checkErrs, err = checkFiles(ctx, clean, lib, jobs)
+		rec, checkErrs, err = checkFiles(ctx, clean, lib, jobs, nil)
 	}
 	if err != nil {
 		return nil, err
+	}
+	if only != nil {
+		// The kept diagnostics of the files not checked: the Java
+		// sources' are the same, as their texts are, and are kept with
+		// them.
+		m.Diagnostics = nil
+		checkedPaths := map[string]bool{}
+		for f := range only {
+			checkedPaths[f.Path] = true
+		}
+		for _, d := range prev.diags {
+			if !checkedPaths[d.Path] {
+				m.Diagnostics = append(m.Diagnostics, d)
+			}
+		}
 	}
 	for _, e := range checkErrs {
 		m.Diagnostics = append(m.Diagnostics, diagnostic(e.File, e))
@@ -403,9 +492,13 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 			cmp.Compare(a.Line, b.Line), cmp.Compare(a.Col, b.Col))
 	})
 	for i, f := range files {
+		if only != nil && !only[f] {
+			m.Files = append(m.Files, prev.files[i])
+			continue
+		}
 		b := &fileBuilder{f: f, snap: snaps[i], prov: provs[i], annots: rec.annots[f], values: rec.values[f], refs: rec.refs, aliases: rec.aliases, lib: m.lib,
 			tparams: map[*types.TypeParamSym]psi.NodeID{}}
-		mf := &File{Path: snaps[i].Path(), Package: f.Package, Snapshot: snaps[i]}
+		mf := &File{Path: snaps[i].Path(), Package: f.Package, Snapshot: snaps[i], Lookups: rec.fileLookups(f)}
 		mf.Annotations = b.annotations(f.Annotations)
 		pkg := strings.ReplaceAll(f.Package, ".", "/")
 		for _, d := range f.Decls {
@@ -416,6 +509,20 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 		m.Files = append(m.Files, mf)
 	}
 	tm.Mark("model")
+	if cache != nil {
+		c := &checked{key: key, paths: paths, texts: slices.Concat(texts, javaTexts), files: m.Files, diags: m.Diagnostics,
+			clean: len(broken) == 0,
+			snaps: make(map[string]checkedSnap, len(sources))}
+		for i, src := range sources {
+			c.snaps[src.Path] = checkedSnap{texts[i], snaps[i]}
+		}
+		if kept == nil {
+			// The entry keeps the module's own library.
+			sl.retain()
+			c.sl = sl
+		}
+		cache.keep(c)
+	}
 	ok = true
 	return m, nil
 }
@@ -491,16 +598,16 @@ func panicStack() string {
 	return strings.Join(lines, "\n")
 }
 
-func checkFiles(ctx context.Context, files []*syntax.File, lib *check.Library, jobs int) (rec *recorder, errs []*syntax.Error, err error) {
+func checkFiles(ctx context.Context, files []*syntax.File, lib *check.Library, jobs int, only map[*syntax.File]bool) (rec *recorder, errs []*syntax.Error, err error) {
 	rec = &recorder{annots: map[*syntax.File]map[syntax.Pos]*types.ClassSym{},
 		values: map[*syntax.File]map[syntax.Pos][]syntax.AnnotationValue{}, refs: map[*syntax.TypeRef]types.Type{},
-		aliases: map[*syntax.TypeRef]*types.AliasSym{}}
+		aliases: map[*syntax.TypeRef]*types.AliasSym{}, lookups: map[*syntax.File][]Lookup{}}
 	defer func() {
 		if v := recover(); v != nil {
 			err = checkPanic{v, panicStack()}
 		}
 	}()
-	errs, err = check.CheckOptions(ctx, files, lib, jobs, rec, check.Options{Signatures: true})
+	errs, err = check.CheckOptions(ctx, files, lib, jobs, rec, check.Options{Signatures: true, Only: only})
 	return rec, errs, err
 }
 
@@ -528,6 +635,27 @@ type recorder struct {
 	aliases map[*syntax.TypeRef]*types.AliasSym
 	// bodies is when the checker started the bodies.
 	bodies time.Time
+	// lookups are the files' lookups, as the checker reports them.
+	lookups map[*syntax.File][]Lookup
+}
+
+func (r *recorder) Lookup(f *syntax.File, scope string, kind check.LookupKind, name string) {
+	k := PackageLookup
+	if kind == check.ClassLookup {
+		k = ClassLookup
+	}
+	r.mu.Lock()
+	r.lookups[f] = append(r.lookups[f], Lookup{Scope: scope, Kind: k, Name: name})
+	r.mu.Unlock()
+}
+
+// fileLookups returns f's lookups, sorted and without duplicates.
+func (r *recorder) fileLookups(f *syntax.File) []Lookup {
+	ls := r.lookups[f]
+	slices.SortFunc(ls, func(a, b Lookup) int {
+		return cmp.Or(cmp.Compare(a.Scope, b.Scope), cmp.Compare(a.Kind, b.Kind), cmp.Compare(a.Name, b.Name))
+	})
+	return slices.Compact(ls)
 }
 
 func (r *recorder) Bodies() { r.bodies = time.Now() }
@@ -606,7 +734,16 @@ func (b *fileBuilder) annotation(a *syntax.Annotation) Annotation {
 		values = a.Values
 	}
 	return Annotation{ClassID: classID(b.annotationClass(a)), Node: b.prov.Annotation(a.P), Target: a.Target,
-		Args: b.args(a, values)}
+		Args: b.args(a, values), TypeArgs: b.annotationTypeArgs(a)}
+}
+
+// annotationTypeArgs returns the models of a's type arguments.
+func (b *fileBuilder) annotationTypeArgs(a *syntax.Annotation) []*Type {
+	var out []*Type
+	for _, ta := range a.TypeArgs {
+		out = append(out, b.written(ta.Type))
+	}
+	return out
 }
 
 // annotationClass returns the class of annotation a, or nil.

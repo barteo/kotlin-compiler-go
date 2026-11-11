@@ -252,7 +252,14 @@ internal class KcRound(
     init {
         // Walking a file's tree has IntelliJ parse it, the first time:
         // most of a session's first round. Files parse independently.
-        val trees = files.parallelStream().map { (_, kt) -> preorder(kt.node) }.toList()
+        // kc's tree and IntelliJ's must have the same shape for the preorder
+        // index to join them: the same kinds in the same order.
+        val trees = files.parallelStream().map { (f, kt) ->
+            preorder(kt.node).also { nodes ->
+                if (checkKinds && f.nodes >= 0 && (nodes.size - 1 != f.nodes || KcKinds.hash(nodes) != f.kinds))
+                    throw KcPsiMismatch(f.path, f.nodes, nodes.size - 1)
+            }
+        }.toList()
         fileSymbols = files.mapIndexed { i, (f, kt) -> Builder(f.path, trees[i], KaSymbolOrigin.SOURCE).file(f, kt) }
         for (name in files.map { it.first.packageName } + javaFiles.map { it.packageName }) {
             var fq = FqName(name)
@@ -545,6 +552,8 @@ internal class KcRound(
             }
             val app = application(a, entry)
             if (entry != null) app.classId?.let { annotationClasses[entry] = it }
+            val projections = (entry?.typeReference?.typeElement as? KtUserType)?.typeArguments.orEmpty()
+            if (projections.size == a.typeArgs.size) projections.zip(a.typeArgs).forEach { (p, t) -> typeRef(p.typeReference, t) }
             annotations[a] = app
         }
 
@@ -867,6 +876,9 @@ internal class KcRound(
         @Suppress("UNCHECKED_CAST")
         private val noNodes = arrayOfNulls<ASTNode>(1) as Array<ASTNode>
 
+        /** Whether the PSI join checks each file's kinds; -Dkc.checkKinds=false turns it off, to time it. */
+        private val checkKinds = System.getProperty("kc.checkKinds") != "false"
+
         private val memberKey = Regex("/(?=[0-9<(])")
 
         /** A fake override's key: its class's key, /~, its index in the member scope, and a member's suffix. */
@@ -898,3 +910,10 @@ internal class KcRound(
         }
     }
 }
+
+/**
+ * kc's psi tree of a file and kotlin-compiler's differ in shape, so kc's
+ * node IDs can't be mapped to its PSI.
+ */
+internal class KcPsiMismatch(val path: String, kcNodes: Int, psiNodes: Int) :
+    IllegalStateException("kc: the PSI of $path differs from kc's tree ($kcNodes nodes in kc, $psiNodes in PSI, or their kinds)")

@@ -6,7 +6,11 @@
 //
 // LIBs are the module's libraries; system properties ksp.arg.NAME=VALUE
 // are processor options, and ksp.languageVersion (default 2.4) is the
-// language and API version: stock KSP 2.3.x's needs 2.3.
+// language and API version: stock KSP 2.3.x's needs 2.3. ksp.incremental=true
+// asks for incremental processing, with the caches in OUT_DIR/caches;
+// ksp.modified and ksp.removed list the sources changed since the last run
+// (":"-separated), and ksp.incrementalLog=true writes KSP's logs, the dirty
+// set's among them, to OUT_DIR/caches/logs.
 import com.google.devtools.ksp.impl.KotlinSymbolProcessing
 import com.google.devtools.ksp.processing.KSPJvmConfig
 import com.google.devtools.ksp.processing.KSPLogger
@@ -30,6 +34,9 @@ object RunLogger : KSPLogger {
         e.printStackTrace()
     }
 }
+
+fun files(property: String): List<File> =
+    System.getProperty(property, "").split(File.pathSeparator).filter { it.isNotEmpty() }.map { File(it).absoluteFile }
 
 fun main(args: Array<String>) {
     if (args.size < 2) {
@@ -60,6 +67,9 @@ fun main(args: Array<String>) {
         jvmTarget = "17"
         jvmDefaultMode = "enable"
         incremental = System.getProperty("ksp.incremental") == "true"
+        incrementalLog = System.getProperty("ksp.incrementalLog") == "true"
+        modifiedSources = files("ksp.modified")
+        removedSources = files("ksp.removed")
         processorOptions = options
     }.build()
     val providers = ServiceLoader.load(SymbolProcessorProvider::class.java).toList()

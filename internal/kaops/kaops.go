@@ -10,7 +10,7 @@
 // OpKaUpdate: session:Int n:Uint path:String*n → model
 //
 //	model   = handle:Int n:Uint file*n m:Uint diag*m
-//	file    = path:String package:String annots decls
+//	file    = path:String package:String annots decls lookups nodes:Uint kinds:Uint
 //	decls   = n:Uint decl*n
 //	decl    = kind:Uint name:String node:Uint classID:String visibility:Uint
 //	          modality:Uint flags:Uint variance:Uint type receiver:type
@@ -23,11 +23,18 @@
 //	          contexts:Uint n:Uint (variance:Uint type)*n abbrev:type annots]
 //	annots  = n:Uint annot*n
 //	annot   = classID:String node:Uint target:String implied:Uint n:Uint (name:String value)*n
+//	          typeArgs:types
 //	value   = kind:Uint [node:Uint
 //	          const: ckind:Uint [bits:Int | float:Uint | str:String]
 //	          | enum: classID:String entry:String | class: type
 //	          | annotation: annot | array: n:Uint value*n]
 //	diag    = path:String line:Uint col:Uint message:String feature:String
+//	lookups = n:Uint (scope:String kind:Uint name:String)*n
+//
+// lookups are the names a file looks up (ka's File.Lookups), for
+// incremental processing; kind is a ka LookupKind. nodes is the number of
+// the file's psi nodes and kinds the hash of their kinds in preorder
+// (psi.Snapshot.KindSequenceHash), which the JVM checks its PSI against.
 //
 // An unresolved annotation has classID "".
 //
@@ -188,6 +195,14 @@ func update(req []byte) ([]byte, error) {
 		w.String(f.Package)
 		writeAnnotations(&w, f.Annotations)
 		writeDecls(&w, f.Decls)
+		w.Uint(uint64(len(f.Lookups)))
+		for _, l := range f.Lookups {
+			w.String(l.Scope)
+			w.Uint(uint64(l.Kind))
+			w.String(l.Name)
+		}
+		w.Uint(uint64(f.Snapshot.NodeCount()))
+		w.Uint(f.Snapshot.KindSequenceHash())
 	}
 	w.Uint(uint64(len(m.Diagnostics)))
 	for _, d := range m.Diagnostics {
@@ -282,6 +297,10 @@ func writeAnnotation(w *wire.Writer, a *ka.Annotation) {
 	for _, arg := range a.Args {
 		w.String(arg.Name)
 		writeValue(w, arg.Value)
+	}
+	w.Uint(uint64(len(a.TypeArgs)))
+	for _, t := range a.TypeArgs {
+		writeType(w, t)
 	}
 }
 

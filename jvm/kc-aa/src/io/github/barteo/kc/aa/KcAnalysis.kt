@@ -214,7 +214,17 @@ class KcAnalysis internal constructor(
         val entry = (ref.parent as? KtConstructorCalleeExpression)?.parent as? KtAnnotationEntry
         if (entry != null) {
             val id = round.annotationClasses[entry] ?: return KcErrorType(round, ref.text)
-            return KcClassType(round, id)
+            // The type arguments written, @A<String>, as the model has them.
+            val args = (ref.typeElement as? KtUserType)?.typeArguments.orEmpty().map { p ->
+                val t = p.typeReference?.let(round::typeOf) ?: return@map KcStarProjection(round.token)
+                val v = when (p.projectionKind) {
+                    KtProjectionKind.IN -> org.jetbrains.kotlin.types.Variance.IN_VARIANCE
+                    KtProjectionKind.OUT -> org.jetbrains.kotlin.types.Variance.OUT_VARIANCE
+                    else -> org.jetbrains.kotlin.types.Variance.INVARIANT
+                }
+                KcTypeArgument(t, v, round.token)
+            }
+            return KcClassType(round, id, args)
         }
         round.typeOf(ref)?.let { return it }
         // An argument of a type kc couldn't resolve, which has no arguments: KS<NotExist>.
@@ -374,11 +384,17 @@ class KcAnalysis internal constructor(
 
 /** Hands out the current round's session for every `analyze` call. */
 internal class KcSessionProvider(project: Project) : KaSessionProvider(project) {
+    /** The session of the KSP run using the environment; none between runs. */
     @Volatile
-    lateinit var session: KaSession
+    var session: KaSession? = null
 
-    override fun getAnalysisSession(useSiteElement: PsiElement): KaSession = session
-    override fun getAnalysisSession(useSiteModule: KaModule): KaSession = session
+    fun clear() {
+        session = null
+    }
+
+    private fun current(): KaSession = session ?: error("kc: no KSP run is using this environment")
+    override fun getAnalysisSession(useSiteElement: PsiElement): KaSession = current()
+    override fun getAnalysisSession(useSiteModule: KaModule): KaSession = current()
     override fun beforeEnteringAnalysis(session: KaSession, useSiteElement: PsiElement) {}
     override fun beforeEnteringAnalysis(session: KaSession, useSiteModule: KaModule) {}
     override fun afterLeavingAnalysis(session: KaSession, useSiteElement: PsiElement) {}

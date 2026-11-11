@@ -2,7 +2,7 @@
 # build.sh builds the kc KSP backend: the Analysis API answered by kc
 # through libkc (jvm/kc-aa/src), and the libkc.so it loads.
 #
-#	jvm/kc-aa/build.sh [test|stock|ksp]
+#	jvm/kc-aa/build.sh [test|stock|ksp|members|kotlinpoet]
 #
 # It writes build/kc-aa.jar and build/libkc.so. With "test" it then runs
 # KSP's processing loop on the kc backend over test/slice, with a processor
@@ -10,7 +10,8 @@
 # the output with test/slice/want.txt; then it runs Moshi's KSP codegen over
 # test/moshi/src (test/RunKsp.kt) and compares what it generates with
 # test/moshi/want, and Dagger's, Room's and Hilt's the same way, over
-# test/{dagger,room,hilt}/src. "stock" does what "test" does, and then runs
+# test/{dagger,room,hilt}/src, and checks incremental processing's dirty
+# set over test/ic. "stock" does what "test" does, and then runs
 # each on stock KSP 2.3.6 (its embeddable Analysis API, Kotlin 2.3) over
 # the same sources: the processors' output must match the same want
 # directories, and the slice's want.txt but for test/slice/stock.diff.
@@ -23,6 +24,12 @@
 # lists doesn't pass; KSP_UPDATE=1 rewrites pass.txt. KSP_TESTS=REGEX runs
 # only the tests whose names match. test/ksp/skip.txt says why each other
 # test fails. KSP_JAVA_OPTS adds JVM options (-Dkc.diagnostics prints kc's).
+#
+# "kotlinpoet" runs kotlinpoet's interop:ksp tests on kc and on stock KSP
+# (test/kotlinpoet/Compilation.kt, docs/analysis-api.md step 20).
+#
+# "members" writes members.txt: each Analysis API member the KSP fork's
+# bytecode uses, and whether kc answers it (gen/Members.kt).
 #
 # The symbol classes extend generated stubs (build/Stubs.kt, made by
 # gen/GenStubs.kt) whose members throw UnsupportedOperationException("kc:
@@ -85,11 +92,86 @@ javac -d "$classes" $(find "$here/../libkc/src" -name '*.java')
 kotlinc -cp "$deps:$classes" -d "$classes" -module-name kc-aa -jvm-target 17 -jvm-default=enable $optins \
 	-nowarn "$out/Stubs.kt" $(find "$here/src" -name '*.kt')
 cp -R "$here/src/META-INF" "$classes/"
+cp "$root/psi/kinds.txt" "$classes/io/github/barteo/kc/aa/kinds.txt"
 rm -f "$out/kc-aa.jar"
 (cd "$classes" && jar cf "$out/kc-aa.jar" .)
 echo "$out/kc-aa.jar"
 
+MAVEN=${MAVEN_REPO:-https://repo1.maven.org/maven2}
+GMAVEN=${GOOGLE_MAVEN_REPO:-https://dl.google.com/dl/android/maven2}
+mkdir -p "$out/m2"
+# fetch PATH [REPO] downloads PATH from REPO (Maven Central by default)
+# into build/m2.
+fetch() {
+	local path=$1 repo=${2:-$MAVEN} dst=$out/m2/$(basename "$1")
+	[ -s "$dst" ] && return
+	for i in 1 2 3 4 5 6 7 8; do
+		curl -sSfL -o "$dst.tmp" "$repo/$path" && mv "$dst.tmp" "$dst" && return
+		sleep $((i * 3))
+	done
+	echo "build.sh: can't download $repo/$path" >&2
+	exit 1
+}
+# jars GROUP:ARTIFACT:VERSION... fetches those jars, androidx's from
+# Google's Maven repository, and prints their class path, ":"-prefixed.
+jars() {
+	local c g a v repo cp=
+	for c; do
+		IFS=: read -r g a v <<< "$c"
+		repo=$MAVEN
+		[[ $g == androidx.* ]] && repo=$GMAVEN
+		fetch "${g//.//}/$a/$v/$a-$v.jar" "$repo"
+		cp=$cp:$out/m2/$a-$v.jar
+	done
+	echo "$cp"
+}
+
 mode=${1:-}
+if [ "$mode" = members ]; then
+	# members.txt: the Analysis API members the KSP fork uses, and which kc answers.
+	rm -rf "$out/members"
+	kotlinc -cp "$runtime" -d "$out/members" "$here/gen/Members.kt" 2>&1 | grep -v '^warning' || true
+	java -cp "$out/members:$out/kc-aa.jar:$deps" MembersKt "$here/members.txt" "$kspwork/ksp-aa-kc.jar" "$out/kc-aa.jar"
+	grep '^# total' "$here/members.txt"
+	exit 0
+fi
+# kotlinpoet's interop:ksp tests (TestProcessorTest, KsTypesTest), from
+# its sources at KOTLINPOET_TAG, on a stand-in for kotlin-compile-testing
+# (test/kotlinpoet/Compilation.kt) that runs KSP alone: on kc, then on
+# stock KSP 2.3.6.
+if [ "$mode" = kotlinpoet ]; then
+	tag=${KOTLINPOET_TAG:-2.4.0}
+	kp=$out/kotlinpoet
+	[ -d "$kp/src-$tag" ] || git clone -q --depth 1 -b "$tag" https://github.com/square/kotlinpoet.git "$kp/src-$tag"
+	t=$kp/src-$tag/interop/ksp/test-processor/src
+	poet=$(jars com.squareup:kotlinpoet-jvm:$tag com.squareup:kotlinpoet-ksp:$tag)
+	junit=$(jars junit:junit:4.13.2 org.hamcrest:hamcrest-core:1.3 com.willowtreeapps.assertk:assertk-jvm:0.28.1 \
+		com.willowtreeapps.opentest4k:opentest4k-jvm:1.3.0 org.opentest4j:opentest4j:1.3.0 \
+		org.jetbrains.kotlin:kotlin-test:2.4.21 org.jetbrains.kotlin:kotlin-test-junit:2.4.21)
+	stockcp=$(jars com.google.devtools.ksp:symbol-processing-aa-embeddable:2.3.6 com.google.devtools.ksp:symbol-processing-api:2.3.6 \
+		com.google.devtools.ksp:symbol-processing-common-deps:2.3.6 org.jetbrains.kotlin:kotlin-stdlib:2.3.0)
+	stockcp=$stockcp:$(jars org.jetbrains.intellij.deps.kotlinx:kotlinx-coroutines-core-jvm:1.8.0-intellij-14)
+	rm -rf "$kp/proc" "$kp/tests" "$kp/shim-kc" "$kp/shim-stock" "$kp/work"
+	kotlinc -cp "$deps$poet$(jars com.google.auto.service:auto-service-annotations:1.1.1)" -d "$kp/proc" -jvm-target 17 -nowarn \
+		$(find "$t/main" -name '*.kt')
+	kotlinc -cp "$deps$poet$junit:$kp/proc" -d "$kp/shim-kc" -jvm-target 17 -nowarn "$here/test/kotlinpoet/Compilation.kt"
+	kotlinc -cp "${stockcp#:}" -language-version 2.3 -api-version 2.3 -d "$kp/shim-stock" -jvm-target 17 -nowarn \
+		"$here/test/kotlinpoet/Compilation.kt"
+	kotlinc -cp "$deps$poet$junit:$kp/proc:$kp/shim-kc" -d "$kp/tests" -jvm-target 17 -nowarn $(find "$t/test" -name '*.kt')
+	classes="com.squareup.kotlinpoet.ksp.test.processor.TestProcessorTest com.squareup.kotlinpoet.ksp.test.processor.KsTypesTest"
+	sources=$lib/kotlin-stdlib-2.4.21.jar:$kp/proc${poet}
+	mkdir -p "$kp/work"
+	(cd "$kp/work" && LD_PRELOAD=$java_home/lib/libjsig.so java -Xss8m ${KSP_JAVA_OPTS:-} -Dksp.backend=kc -Dkc.lib="$out/libkc.so" \
+		-Didea.home.path="$out" -Dkotlinpoet.classpath="$sources" \
+		-cp "$kp/shim-kc:$kp/tests:$kp/proc:$out/kc-aa.jar:$deps$poet$junit" org.junit.runner.JUnitCore $classes > "$kp/kc.txt" 2>&1) || true
+	(cd "$kp/work" && java -Dkotlinpoet.classpath="$sources" -cp "$kp/shim-stock:$kp/tests:$kp/proc:$lib/kotlin-stdlib-2.4.21.jar${stockcp}${poet}${junit}" \
+		org.junit.runner.JUnitCore $classes > "$kp/stock.txt" 2>&1) || true
+	for b in kc stock; do
+		echo "kotlinpoet: $b: $(grep -E '^(OK|Tests run)' "$kp/$b.txt")"
+		grep -E '^[0-9]+\) ' "$kp/$b.txt" | sed "s/^/kotlinpoet: $b: /"
+	done
+	exit 0
+fi
 if [ "$mode" = ksp ]; then
 	ksp=$kspwork/ksp
 	kt=$out/ksptest
@@ -141,35 +223,6 @@ diff -u "$here/test/slice/want.txt" "$out/slice.txt"
 echo "slice: ok"
 
 # Moshi's codegen, a real processor, from Maven Central.
-MAVEN=${MAVEN_REPO:-https://repo1.maven.org/maven2}
-GMAVEN=${GOOGLE_MAVEN_REPO:-https://dl.google.com/dl/android/maven2}
-mkdir -p "$out/m2"
-# fetch PATH [REPO] downloads PATH from REPO (Maven Central by default)
-# into build/m2.
-fetch() {
-	local path=$1 repo=${2:-$MAVEN} dst=$out/m2/$(basename "$1")
-	[ -s "$dst" ] && return
-	for i in 1 2 3 4 5 6 7 8; do
-		curl -sSfL -o "$dst.tmp" "$repo/$path" && mv "$dst.tmp" "$dst" && return
-		sleep $((i * 3))
-	done
-	echo "build.sh: can't download $repo/$path" >&2
-	exit 1
-}
-# jars GROUP:ARTIFACT:VERSION... fetches those jars, androidx's from
-# Google's Maven repository, and prints their class path, ":"-prefixed.
-jars() {
-	local c g a v repo cp=
-	for c; do
-		IFS=: read -r g a v <<< "$c"
-		repo=$MAVEN
-		[[ $g == androidx.* ]] && repo=$GMAVEN
-		fetch "${g//.//}/$a/$v/$a-$v.jar" "$repo"
-		cp=$cp:$out/m2/$a-$v.jar
-	done
-	echo "$cp"
-}
-
 # Stock KSP and RunKsp built against it.
 if [ "$mode" = stock ]; then
 	stockcp=
@@ -228,23 +281,46 @@ LD_PRELOAD=$java_home/lib/libjsig.so java -Dksp.backend=kc -Dkc.lib="$out/libkc.
 rm -rf "$out/moshi/caches"
 diff -ru "$here/test/moshi/want" "$out/moshi"
 echo "moshi: ok"
-# Asked for incremental processing, KSP rebuilds on every run on kc, which
-# records no lookups: the same output, and the caches' up-to-date marker,
-# here left from an earlier run, deleted so that the next run rebuilds too.
-rm -rf "$out/moshi-ic"
-mkdir -p "$out/moshi-ic/caches"
-touch "$out/moshi-ic/caches/caches.uptodate"
-LD_PRELOAD=$java_home/lib/libjsig.so java -Dksp.backend=kc -Dksp.incremental=true -Dkc.lib="$out/libkc.so" -Didea.home.path="$out" \
-	-cp "$out/runksp-classes:$out/kc-aa.jar:$deps$procs" RunKspKt \
-	"$here/test/moshi/src" "$out/moshi-ic" "$lib/kotlin-stdlib-2.4.21.jar:$out/m2/moshi-1.15.2.jar:$out/m2/okio-jvm-3.7.0.jar" \
-	> "$out/moshi-ic.txt"
-if [ -e "$out/moshi-ic/caches/caches.uptodate" ]; then
-	echo "incremental: caches.uptodate kept on kc" >&2
-	exit 1
+# Incremental processing (icrun): Moshi's codegen over a copy of
+# test/ic/src, then, test/ic/edit copied over it, again with KSP told which
+# files were modified. The second run's dirty set, from KSP's log, must be
+# test/ic/dirty.txt, and its outputs those of a clean run over the edited
+# sources. On stock KSP (in "stock" mode) the dirty set differs from
+# dirty.txt only as recorded in test/ic/stock.diff (docs/analysis-api.md,
+# step 16).
+iclibs=$lib/kotlin-stdlib-2.4.21.jar:$out/m2/moshi-1.15.2.jar:$out/m2/okio-jvm-3.7.0.jar
+# icrun DIR JAVA... runs the test in DIR with the command JAVA... (a java
+# with its options and class path) and writes DIR/dirty.txt.
+icrun() {
+	local d=$1 f mod=
+	shift
+	rm -rf "$d"
+	mkdir -p "$d"
+	cp -r "$here/test/ic/src" "$d/src"
+	"$@" -Dksp.incremental=true -Dksp.incrementalLog=true RunKspKt "$d/src" "$d/out" "$iclibs" > "$d/first.txt"
+	grep -q '^Dirty / All: 100.00%$' "$d/out/caches/logs/kspDirtySet.log"
+	cp -r "$here/test/ic/edit/." "$d/src"
+	for f in $(cd "$here/test/ic/edit" && find . -type f | sort); do
+		mod=$mod:$d/src/${f#./}
+	done
+	"$@" -Dksp.incremental=true -Dksp.incrementalLog=true -Dksp.modified="${mod#:}" RunKspKt "$d/src" "$d/out" "$iclibs" \
+		> "$d/second.txt"
+	awk '/^=== Build/ { n = 0; delete s } /^Dirty:$/ { d = 1; next } d && /^ / { s[n++] = $1; next } { d = 0 }
+		END { for (i = 0; i < n; i++) print s[i] }' "$d/out/caches/logs/kspDirtySet.log" | sort > "$d/dirty.txt"
+	"$@" RunKspKt "$d/src" "$d/clean" "$iclibs" > "$d/clean.txt"
+	rm -rf "$d/out/caches" "$d/clean/caches"
+	diff -ru "$d/clean" "$d/out"
+}
+icrun "$out/ic" env LD_PRELOAD="$java_home/lib/libjsig.so" java -Dksp.backend=kc -Dkc.lib="$out/libkc.so" -Didea.home.path="$out" \
+	-cp "$out/runksp-classes:$out/kc-aa.jar:$deps$procs"
+diff -u "$here/test/ic/dirty.txt" "$out/ic/dirty.txt"
+echo "incremental: ok ($(wc -l < "$out/ic/dirty.txt") of $(find "$here/test/ic/src" -type f | wc -l) files dirty)"
+if [ "$mode" = stock ]; then
+	icrun "$out/stock-ic" java -Dksp.languageVersion=2.3 -cp "$out/runksp-stock$procs$stockcp"
+	{ diff "$here/test/ic/dirty.txt" "$out/stock-ic/dirty.txt" || true; } | grep '^[<>]' > "$out/stock-ic.diff" || true
+	diff -u "$here/test/ic/stock.diff" "$out/stock-ic.diff"
+	echo "incremental: stock KSP differs as recorded"
 fi
-rm -rf "$out/moshi-ic/caches"
-diff -ru "$here/test/moshi/want" "$out/moshi-ic"
-echo "incremental: rebuilds on kc (ok)"
 stock moshi "$here/test/moshi/src" "$lib/kotlin-stdlib-2.4.21.jar:$out/m2/moshi-1.15.2.jar:$out/m2/okio-jvm-3.7.0.jar" "$procs"
 
 # Dagger's KSP processor (XProcessing) over test/dagger/src. Its jars come

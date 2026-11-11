@@ -63,6 +63,9 @@ func (c *Checker) expr(x syntax.Expr, want types.Type) types.Type {
 	}
 	x.SetType(t)
 	c.composeRead(x)
+	if c.u.lookups != nil {
+		c.noteExpr(x, t)
+	}
 	return t
 }
 

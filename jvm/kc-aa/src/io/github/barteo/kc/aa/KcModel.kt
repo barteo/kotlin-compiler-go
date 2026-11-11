@@ -50,7 +50,7 @@ internal object KcOps {
         val model = r.readInt()
         try {
             val files = List(r.readUint().toInt()) {
-                KcFile(r.readString(), r.readString(), r.annotations(), r.decls())
+                KcFile(r.readString(), r.readString(), r.annotations(), r.decls(), r.lookups(), r.readUint().toInt(), r.readUint())
             }
             val diagnostics = List(r.readUint().toInt()) {
                 KcDiagnostic(r.readString(), r.readUint().toInt(), r.readUint().toInt(), r.readString(), r.readString())
@@ -85,12 +85,16 @@ internal object KcOps {
 
     private fun Wire.Reader.annotations(): List<KcAnnotation> = List(readUint().toInt()) { annotation() }
 
+    private fun Wire.Reader.lookups(): List<KcLookup> =
+        List(readUint().toInt()) { KcLookup(readString(), readUint().toInt(), readString()) }
+
     private fun Wire.Reader.annotation(): KcAnnotation {
         val classId = readString()
         val node = readUint().toInt()
         val target = readString()
         val implied = readUint() == 1L
-        return KcAnnotation(classId, node, target, implied, List(readUint().toInt()) { readString() to value()!! })
+        val args = List(readUint().toInt()) { readString() to value()!! }
+        return KcAnnotation(classId, node, target, implied, args, List(readUint().toInt()) { type() })
     }
 
     private fun Wire.Reader.value(): KcValue? {
@@ -177,7 +181,23 @@ internal class KcFile(
     val packageName: String,
     val annotations: List<KcAnnotation>,
     val decls: List<KcDecl>,
+    /** The names the file looks up, for incremental processing; Go's ka.File.Lookups. */
+    val lookups: List<KcLookup>,
+    /** The number of kc's psi nodes of the file, and the hash of their kinds ([KcKinds.hash]). */
+    val nodes: Int = -1,
+    val kinds: Long = 0,
 )
+
+/**
+ * A name looked up in a package or a class, [scope] its qualified name;
+ * Go's ka.Lookup. [kind] is [PACKAGE] or [CLASS].
+ */
+internal class KcLookup(val scope: String, val kind: Int, val name: String) {
+    companion object {
+        const val PACKAGE = 0
+        const val CLASS = 1
+    }
+}
 
 /**
  * A declaration; Go's ka.Decl. [node] is the declaration's psi node, a
@@ -325,7 +345,9 @@ internal class KcTypeArg(val variance: Int, val type: KcType?)
  */
 // target is the use-site target as written, or "" for none; implied is set
 // when Kotlin's default rule chose it ("field") for one written without.
-internal class KcAnnotation(val classId: String, val node: Int, val target: String, val implied: Boolean, val args: List<Pair<String, KcValue>>)
+/** [typeArgs] are the type arguments written, @A<String>; null for a star projection. */
+internal class KcAnnotation(val classId: String, val node: Int, val target: String, val implied: Boolean,
+                            val args: List<Pair<String, KcValue>>, val typeArgs: List<KcType?> = emptyList())
 
 /**
  * An annotation argument's value; Go's ka.Value. [node] is the expression
