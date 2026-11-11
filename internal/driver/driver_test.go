@@ -953,8 +953,9 @@ func TestParcelize(t *testing.T) {
 		}
 		return stdout.String()
 	}
-	got := run("MainKt", appOut, libOut, javaOut, lib)
-	got += run("UseKt", useOut, appOut, libOut, javaOut, lib)
+	// A Parceler is kotlinx.parcelize's, from its runtime.
+	got := run("MainKt", appOut, libOut, javaOut, lib, runtimeJar)
+	got += run("UseKt", useOut, appOut, libOut, javaOut, lib, runtimeJar)
 	if got != string(want) {
 		t.Errorf("output mismatch\n%s", diff(string(want), got))
 	}
@@ -964,7 +965,7 @@ func TestParcelize(t *testing.T) {
 	// own, such as a range, which is Serializable; of a type that it writes
 	// with writeValue but isn't annotated @RawValue, for which kotlinc
 	// reports an error; or with a type parameter whose bound kc can't pass
-	// to the constructor.
+	// to the constructor; or with a custom Parceler that kotlinc rejects.
 	for _, decl := range []string{
 		"class A(val x: IntRange) : Parcelable",
 		"class A(val x: kotlin.time.Duration) : Parcelable",
@@ -975,7 +976,9 @@ func TestParcelize(t *testing.T) {
 		"class A<T>(val x: T) : Parcelable",
 		"class A<T : Comparable<T>>(val x: @kotlinx.parcelize.RawValue T) : Parcelable",
 		"class A<T>(val x: @kotlinx.parcelize.RawValue T) : Parcelable where T : Parcelable, T : java.io.Serializable",
-		"class A(val x: @kotlinx.parcelize.WriteWith<P> Int) : Parcelable",
+		"class A(val x: @kotlinx.parcelize.WriteWith<P> String) : Parcelable",
+		"class A(val x: @kotlinx.parcelize.WriteWith<Q> Int) : Parcelable",
+		"@kotlinx.parcelize.TypeParceler<Int, P>()\n@kotlinx.parcelize.TypeParceler<Int, P>()\nclass A(val x: Int) : Parcelable",
 	} {
 		t.Run("unsupported "+decl, func(t *testing.T) {
 			src := filepath.Join(t.TempDir(), "a.kt")
@@ -983,6 +986,7 @@ func TestParcelize(t *testing.T) {
 				"object P : kotlinx.parcelize.Parceler<Int> {\n"+
 				"    override fun create(parcel: Parcel) = parcel.readInt()\n"+
 				"    override fun Int.write(parcel: Parcel, flags: Int) = parcel.writeInt(this)\n}\n\n"+
+				"abstract class Q : kotlinx.parcelize.Parceler<Int>\n\n"+
 				"@Parcelize\n"+decl+"\n"), 0o644)
 			err := Compile([]string{src}, Options{OutDir: t.TempDir(), Jobs: 1, ClassPath: cp, Parcelize: true})
 			var se *syntax.Error

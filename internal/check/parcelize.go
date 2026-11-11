@@ -54,8 +54,13 @@ import (
 // Value classes, the types that the plugin writes in ways kc doesn't
 // (ranges, Duration, Uuid, the unsigned integers and kotlinx's immutable
 // collections) and type parameters with several bounds, or a bound that
-// names a type parameter, are unsupported, as are custom Parcelers,
-// @TypeParceler and @WriteWith.
+// names a type parameter, are unsupported.
+//
+// A custom Parceler object writes a type that @WriteWith names it for, or
+// that a @TypeParceler of the class or the property does (custom). One
+// that writes an array's or list's elements keeps the plugin from writing
+// it with a Parcel method of its own (hasCustom). A companion object that
+// is a Parceler writes and reads the class itself (parcelParceler).
 
 // parcelize adds the members of the file's classes annotated @Parcelize,
 // if kc compiles with the plugin.
@@ -201,12 +206,12 @@ func (c *Checker) addParcelMembers(cd *syntax.ClassDecl, name string) {
 		c.errorf(cd.P, "'Parcelable' should have a primary constructor")
 		return
 	}
-	if a := cd.Find("", "TypeParceler"); a != nil {
-		c.unsupported(a.P, "parcelize", "@TypeParceler is not supported")
-		return
-	}
+	// A class whose companion object is a Parceler writes and reads
+	// itself, and its constructor's parameters needn't be properties.
+	// The supertypes aren't resolved yet: parcelBody checks this guess.
+	parceler := parcelCompanionParceler(cd) != nil
 	for _, p := range cd.CtorParams {
-		if cd.Enum {
+		if cd.Enum || parceler {
 			break
 		}
 		if !p.IsProp {
@@ -220,14 +225,6 @@ func (c *Checker) addParcelMembers(cd *syntax.ClassDecl, name string) {
 		case *syntax.FunDecl:
 			if m.Name == "describeContents" && len(m.Params) == 0 {
 				describe = false
-			}
-		case *syntax.ClassDecl:
-			if m.Companion && len(m.Supers) > 0 {
-				// A Parceler, which writes and reads the class itself, or
-				// not: kc can't tell the supertypes apart before they
-				// resolve.
-				c.unsupported(m.P, "parcelize", "@Parcelize classes with a companion object that has supertypes are not supported")
-				return
 			}
 		}
 	}
@@ -327,11 +324,23 @@ func (c *Checker) parcelBody(d *syntax.FunDecl, cls *types.ClassSym) {
 		target = cls
 	case d.Name == "createFromParcel" && cls.Outer != nil:
 		target = cls.Outer
+	case d.Name == "newArray" && cls.Outer != nil:
+		c.parcelNewArray(d, cls.Outer)
+		return
 	default:
 		return
 	}
 	cd := target.Decl.(*syntax.ClassDecl)
 	g := &parcelGen{c: c, fq: fqName(target)}
+	comp, ok := c.parcelParceler(cd, target)
+	if !ok {
+		return
+	}
+	if comp == nil {
+		if g.classScope, ok = c.parcelScope(&cd.Modifiers); !ok {
+			return
+		}
+	}
 	// A generic class's properties are written as their types erased,
 	// each type parameter as its bound, and read into a call of its
 	// constructor with the bounds as type arguments.
@@ -349,6 +358,13 @@ func (c *Checker) parcelBody(d *syntax.FunDecl, cls *types.ClassSym) {
 		targs = "<" + strings.Join(bounds, ", ") + ">"
 	}
 	switch {
+	case comp != nil && d.Name == "writeToParcel":
+		// The companion object, a Parceler, writes the class.
+		v := g.fresh("v")
+		g.stmt("val %s = this", v)
+		g.stmt("kotlin.with(%s) { %s.write(dest, flags) }", fqName(comp), v)
+	case comp != nil:
+		g.stmt("return %s.create(parcel)", fqName(comp))
 	case cd.Enum && d.Name == "writeToParcel":
 		g.stmt("dest.writeString(this.name)")
 	case cd.Enum:
@@ -358,11 +374,12 @@ func (c *Checker) parcelBody(d *syntax.FunDecl, cls *types.ClassSym) {
 			g.stmt("dest.writeInt(1)")
 		}
 		for _, p := range cd.CtorParams {
-			for _, name := range []string{"DataClass", "WriteWith"} {
-				if a := parcelTypeAnnotation(p.Type, name); a != nil {
-					c.unsupported(a.P, "parcelize", "@%s is not supported", name)
-					return
-				}
+			if a := parcelTypeAnnotation(p.Type, "DataClass"); a != nil {
+				c.unsupported(a.P, "parcelize", "@DataClass is not supported")
+				return
+			}
+			if g.scope, ok = c.parcelScope(&p.Modifiers); !ok {
+				return
 			}
 			v := g.fresh("v")
 			g.stmt("val %s = this.`%s`", v, p.Name)
@@ -379,6 +396,9 @@ func (c *Checker) parcelBody(d *syntax.FunDecl, cls *types.ClassSym) {
 			args := make([]string, len(cd.CtorParams))
 			for i, p := range cd.CtorParams {
 				args[i] = g.fresh("a")
+				if g.scope, ok = c.parcelScope(&p.Modifiers); !ok {
+					return
+				}
 				x := "null!!"
 				t := parcelErase(p.Sym.Type)
 				if ser := g.serializer(t, p.Type, false); ser != nil {
@@ -438,6 +458,125 @@ func (c *Checker) parcelDescribe(d *syntax.FunDecl, cls *types.ClassSym) {
 			return
 		}
 	}
+}
+
+// parcelNewArray writes the body of Creator's newArray, d, of class cls:
+// its companion object's newArray, if the companion is a Parceler that
+// declares one, as kotlinc's. The body that addParcelMembers declares
+// makes an array of nulls.
+func (c *Checker) parcelNewArray(d *syntax.FunDecl, cls *types.ClassSym) {
+	cd := cls.Decl.(*syntax.ClassDecl)
+	comp, ok := c.parcelParceler(cd, cls)
+	if !ok || comp == nil {
+		return
+	}
+	declared := false
+	if ccd, ok := comp.Decl.(*syntax.ClassDecl); ok {
+		for _, m := range ccd.Members {
+			if f, ok := m.(*syntax.FunDecl); ok && f.Name == "newArray" && len(f.Params) == 1 && f.Recv == nil {
+				declared = true
+			}
+		}
+	}
+	if !declared {
+		return
+	}
+	// Parceler's newArray makes an Array<C>, which Creator's is of C?.
+	members, err := parseMembers(c.file.Path, cd.P, fmt.Sprintf(
+		"fun f(): kotlin.Array<%[2]s?> {\nreturn %[1]s.newArray(size) as kotlin.Array<%[2]s?>\n}\n", fqName(comp), fqName(cls)))
+	if err != nil {
+		c.errorf(cd.P, "parcelize: %v", err)
+		return
+	}
+	d.Body, d.ExprBody = members[0].(*syntax.FunDecl).Body, nil
+}
+
+// parcelCompanionParceler returns the companion object of class cd if
+// one of its supertypes, as written, is named Parceler, or nil: then it
+// is kotlinx.parcelize.Parceler, which addParcelMembers assumes before
+// the supertypes resolve.
+func parcelCompanionParceler(cd *syntax.ClassDecl) *syntax.ClassDecl {
+	for _, m := range cd.Members {
+		if m, ok := m.(*syntax.ClassDecl); ok && m.Companion {
+			for _, st := range m.Supers {
+				if st.Type != nil && (st.Type.Name == "Parceler" || st.Type.Name == "kotlinx.parcelize.Parceler") {
+					return m
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// parcelParceler returns class cls's companion object if it is a
+// kotlinx.parcelize.Parceler, which writes and reads the class, or nil.
+// It reports, and returns false, if addParcelMembers's guess from the
+// supertypes as written was wrong, or the class is generic.
+func (c *Checker) parcelParceler(cd *syntax.ClassDecl, cls *types.ClassSym) (*types.ClassSym, bool) {
+	guess := parcelCompanionParceler(cd) != nil
+	pc := c.u.ext.class("kotlinx/parcelize/Parceler")
+	actual := cls.Companion != nil && pc != nil && cls.Companion.IsSubclassOf(pc)
+	switch {
+	case guess != actual:
+		c.unsupported(cd.P, "parcelize", "a companion object that is a Parceler by another name is not supported")
+		return nil, false
+	case actual && len(cd.TypeParams) > 0:
+		c.unsupported(cd.P, "parcelize", "generic @Parcelize classes with a Parceler companion object are not supported")
+		return nil, false
+	case actual:
+		return cls.Companion, true
+	}
+	return nil, true
+}
+
+// A parcelEntry is a @TypeParceler<T, P>: the type T and the Parceler
+// object P that writes it.
+type parcelEntry struct {
+	t   types.Type
+	obj *types.ClassSym
+}
+
+// parcelScope returns the @TypeParceler annotations among annotations
+// m, of a class or a constructor property. It reports, and returns false,
+// what kotlinc reports as an error, which it leaves to kotlinc: a
+// Parceler that isn't an object, or one type twice.
+func (c *Checker) parcelScope(m *syntax.Modifiers) ([]parcelEntry, bool) {
+	var scope []parcelEntry
+	for i := range m.Annotations {
+		a := &m.Annotations[i]
+		if a.Name != "TypeParceler" && a.Name != "kotlinx.parcelize.TypeParceler" {
+			continue
+		}
+		if len(a.TypeArgs) != 2 || a.TypeArgs[0].Type == nil || a.TypeArgs[1].Type == nil {
+			c.unsupported(a.P, "parcelize", "@TypeParceler needs a type and a Parceler")
+			return nil, false
+		}
+		t := c.resolveType(a.TypeArgs[0].Type)
+		obj, ok := c.parcelerObject(a, c.resolveType(a.TypeArgs[1].Type))
+		if !ok {
+			return nil, false
+		}
+		for _, e := range scope {
+			if c.sameType(e.t, t) {
+				c.unsupported(a.P, "parcelize", "@TypeParceler for %s twice", t)
+				return nil, false
+			}
+		}
+		scope = append(scope, parcelEntry{t, obj})
+	}
+	return scope, true
+}
+
+// parcelerObject returns the class of type p, named by annotation a, if
+// it is an object that is a kotlinx.parcelize.Parceler, or reports that
+// it isn't, and returns false.
+func (c *Checker) parcelerObject(a *syntax.Annotation, p types.Type) (*types.ClassSym, bool) {
+	pc := c.u.ext.class("kotlinx/parcelize/Parceler")
+	if p.K != types.Class || pc == nil || !p.C.Object || !p.C.IsSubclassOf(pc) {
+		c.unsupported(a.P, "parcelize", "the Parceler of @%s must be an object", a.Name)
+		return nil, false
+	}
+	return p.C, true
 }
 
 // parcelTypeAnnotation returns an annotation of kotlinx.parcelize's
@@ -552,6 +691,9 @@ type parcelGen struct {
 	// doesn't.
 	creators []types.Type
 	err      string // why a property's type can't be written, if it can't
+	// classScope and scope are the @TypeParceler annotations of the class
+	// and of the property being written, which the class's win over.
+	classScope, scope []parcelEntry
 }
 
 func (g *parcelGen) stmt(format string, args ...any) {
@@ -589,6 +731,7 @@ const (
 	parcelCollection                     // the size and the elements: lists and sets
 	parcelMap                            // the size and each key and value
 	parcelValue                          // writeValue and readValue(classLoader): a type annotated @RawValue
+	parcelCustom                         // a Parceler object's write and create: @TypeParceler, @WriteWith
 )
 
 // A parcelSer is how the plugin writes a type, and its elements'.
@@ -611,6 +754,10 @@ type parcelSer struct {
 	capacity bool
 	// elem writes the elements (a map's values), and key a map's keys.
 	elem, key *parcelSer
+	// obj is parcelCustom's Parceler object, and x the type it writes,
+	// its Parceler's type argument.
+	obj *types.ClassSym
+	x   types.Type
 }
 
 // parcelCollections are the classes the plugin writes as lists, sets and
@@ -704,6 +851,9 @@ func isClass(t types.Type, name string) bool {
 // argument of, is annotated @RawValue (raw), as kotlinc reports an error
 // for one that isn't, which it leaves to kotlinc.
 func (g *parcelGen) serializer(t types.Type, ref *syntax.TypeRef, raw bool) *parcelSer {
+	if s, ok := g.custom(t, ref); s != nil || !ok {
+		return s
+	}
 	if ref != nil && parcelAnnotation(ref, "RawValue") != nil {
 		raw = true
 	}
@@ -767,7 +917,7 @@ func (g *parcelGen) serializer(t types.Type, ref *syntax.TypeRef, raw bool) *par
 		if key == "kotlin/ShortArray" {
 			eref = nil
 		}
-		if key == "kotlin/Array" {
+		if key == "kotlin/Array" && !g.hasCustom(e, eref) {
 			switch en := e.NonNull(); {
 			case en.K == types.String:
 				return &parcelSer{kind: parcelSimple, write: "writeStringArray", read: "createStringArray"}
@@ -785,6 +935,14 @@ func (g *parcelGen) serializer(t types.Type, ref *syntax.TypeRef, raw bool) *par
 		return g.withElem(&parcelSer{kind: parcelSparse, nullAware: true, coll: "android.util.SparseArray<" + g.typeText(e) + ">"}, e, parcelArgRef(ref, t, 0), raw)
 	}
 	if s, ok := parcelSimples[key]; ok {
+		// A primitive array, or SparseBooleanArray, whose elements a
+		// custom Parceler writes is written as any array, or sparse array.
+		switch {
+		case cls.Elem.K != types.Invalid && cls.Array && g.hasCustom(cls.Elem, nil):
+			return g.withElem(&parcelSer{kind: parcelArray, nullAware: true}, cls.Elem, nil, raw)
+		case key == "android/util/SparseBooleanArray" && g.hasCustom(types.BoolType, nil):
+			return g.withElem(&parcelSer{kind: parcelSparse, nullAware: true, coll: "android.util.SparseBooleanArray"}, types.BoolType, nil, raw)
+		}
 		s.kind = parcelSimple
 		return &s
 	}
@@ -798,7 +956,7 @@ func (g *parcelGen) serializer(t types.Type, ref *syntax.TypeRef, raw bool) *par
 			return g.withElem(s, v, parcelArgRef(ref, t, 1), raw)
 		}
 		e := parcelArg(t, 0)
-		if c.fast {
+		if c.fast && !g.hasCustom(e, parcelArgRef(ref, t, 0)) {
 			switch en := e.NonNull(); {
 			case en.K == types.String:
 				return &parcelSer{kind: parcelSimple, write: "writeStringList", read: "createStringArrayList"}
@@ -827,6 +985,82 @@ func (g *parcelGen) serializer(t types.Type, ref *syntax.TypeRef, raw bool) *par
 		return &parcelSer{kind: parcelSimple, write: "writeSerializable", read: "readSerializable", cast: true}
 	}
 	return g.value(t, raw)
+}
+
+// custom returns the serializer of type t, written as ref, if a custom
+// Parceler writes it, as kotlinc's getCustomSerializer finds one: one that
+// @WriteWith names on the type; or else the class's or the property's
+// @TypeParceler for the type, the class's first; or else, for a nullable
+// type, one for the type non-null, after a null marker. It returns false
+// if it reported that kc can't write t.
+func (g *parcelGen) custom(t types.Type, ref *syntax.TypeRef) (*parcelSer, bool) {
+	var obj *types.ClassSym
+	wrap := false
+	if a := parcelAnnotationOf(ref, "WriteWith"); a != nil {
+		if len(a.TypeArgs) != 1 || a.TypeArgs[0].Type == nil {
+			g.fail(t)
+			return nil, false
+		}
+		var ok bool
+		if obj, ok = g.c.parcelerObject(a, g.c.resolveType(a.TypeArgs[0].Type)); !ok {
+			g.fail(t)
+			return nil, false
+		}
+		wrap = t.N && !types.MayBeNull(g.parcelerType(obj))
+	} else if obj = g.lookup(t); obj == nil && t.N {
+		obj, wrap = g.lookup(t.NonNull()), true
+	}
+	if obj == nil {
+		return nil, true
+	}
+	x := g.parcelerType(obj)
+	v := t
+	if wrap {
+		v = t.NonNull()
+	}
+	if !g.c.subtype(v, x) {
+		// kotlinc reports that the Parceler's type is incompatible.
+		g.fail(t)
+		return nil, false
+	}
+	return &parcelSer{kind: parcelCustom, nullAware: wrap, obj: obj, x: x}, true
+}
+
+// parcelAnnotationOf is parcelAnnotation for a type ref that may be nil.
+func parcelAnnotationOf(ref *syntax.TypeRef, name string) *syntax.Annotation {
+	if ref == nil {
+		return nil
+	}
+	return parcelAnnotation(ref, name)
+}
+
+// lookup returns the Parceler object of the @TypeParceler for type t, of
+// the class's or else the property's, or nil.
+func (g *parcelGen) lookup(t types.Type) *types.ClassSym {
+	for _, scope := range [][]parcelEntry{g.classScope, g.scope} {
+		for _, e := range scope {
+			if g.c.sameType(e.t, t) {
+				return e.obj
+			}
+		}
+	}
+	return nil
+}
+
+// hasCustom reports whether a custom Parceler writes elements of type e,
+// written as ref, which keeps the plugin from writing their array or list
+// with a Parcel method of its own.
+func (g *parcelGen) hasCustom(e types.Type, ref *syntax.TypeRef) bool {
+	return parcelAnnotationOf(ref, "WriteWith") != nil || g.lookup(e) != nil || e.N && g.lookup(e.NonNull()) != nil
+}
+
+// parcelerType returns the type that Parceler object obj writes: its
+// Parceler's type argument.
+func (g *parcelGen) parcelerType(obj *types.ClassSym) types.Type {
+	if pt, ok := g.c.asSuper(types.ClassType(obj), g.c.u.ext.class("kotlinx/parcelize/Parceler")); ok {
+		return parcelArg(pt, 0)
+	}
+	return types.AnyType.Nullable()
 }
 
 // value returns the serializer of a type t that the plugin writes with
@@ -897,6 +1131,10 @@ func (g *parcelGen) write(s *parcelSer, t types.Type, v string) {
 		g.stmt("dest.%s(%s)", s.write, v)
 	case parcelValue:
 		g.stmt("dest.writeValue(%s)", v)
+	case parcelCustom:
+		// Parceler's write is a member extension, which only an object
+		// in scope as a receiver can call.
+		g.stmt("kotlin.with(%s) { %s.write(dest, flags) }", fqName(s.obj), v)
 	case parcelCharSequence:
 		g.stmt("android.text.TextUtils.writeToParcel(%s, dest, flags)", v)
 	case parcelPrimitive:
@@ -966,6 +1204,8 @@ func (g *parcelGen) sparseElem(t types.Type) types.Type {
 		return types.IntType
 	case "android/util/SparseLongArray":
 		return types.LongType
+	case "android/util/SparseBooleanArray":
+		return types.BoolType
 	}
 	return parcelArg(t, 0)
 }
@@ -999,6 +1239,12 @@ func (g *parcelGen) read(s *parcelSer, t types.Type) string {
 		return fmt.Sprintf("parcel.%s()", s.read)
 	case parcelLoader:
 		return fmt.Sprintf("parcel.%s(%s::class.java.classLoader)", s.read, g.fq)
+	case parcelCustom:
+		x := fmt.Sprintf("%s.create(parcel)", fqName(s.obj))
+		if !g.c.subtype(s.x, t) {
+			return fmt.Sprintf("(%s as %s)", x, g.typeText(t))
+		}
+		return x
 	case parcelValue:
 		x := fmt.Sprintf("parcel.readValue(%s::class.java.classLoader)", g.fq)
 		if t.K == types.Any {
@@ -1040,8 +1286,8 @@ func (g *parcelGen) read(s *parcelSer, t types.Type) string {
 		n, a, i := g.fresh("n"), g.fresh("a"), g.fresh("i")
 		g.stmt("val %s = parcel.readInt()", n)
 		switch {
-		case t.C.KotlinName == "kotlin/ShortArray":
-			g.stmt("val %s = kotlin.ShortArray(%s)", a, n)
+		case t.C != types.ArrayClass:
+			g.stmt("val %s = %s(%s)", a, fqName(t.C), n) // a primitive array
 		case e.N:
 			g.stmt("val %s = arrayOfNulls<%s>(%s)", a, g.typeText(e.NonNull()), n)
 		default:

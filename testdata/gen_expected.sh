@@ -193,8 +193,8 @@ if [ -n "$parcelize" ]; then
 	kotlinc -nowarn "$plugin" -cp "$out/java:$klib/parcelize-runtime.jar:$out/lib" $(find app -name '*.kt' | sort) -d "$out/app" 2>"$work/err" || { cat "$work/err"; exit 1; }
 	# shellcheck disable=SC2046
 	kotlinc -nowarn "$plugin" -cp "$out/java:$klib/parcelize-runtime.jar:$out/app" $(find use -name '*.kt' | sort) -d "$out/use" 2>"$work/err" || { cat "$work/err"; exit 1; }
-	kotlin -cp "$out/app:$out/lib:$out/java" MainKt >"$root/parcelize.out" 2>/dev/null
-	kotlin -cp "$out/use:$out/app:$out/lib:$out/java" UseKt >>"$root/parcelize.out" 2>/dev/null
+	kotlin -cp "$out/app:$out/lib:$out/java:$klib/parcelize-runtime.jar" MainKt >"$root/parcelize.out" 2>/dev/null
+	kotlin -cp "$out/use:$out/app:$out/lib:$out/java:$klib/parcelize-runtime.jar" UseKt >>"$root/parcelize.out" 2>/dev/null
 	echo "wrote parcelize.out"
 fi
 

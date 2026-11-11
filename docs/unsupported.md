@@ -81,11 +81,14 @@ S::class)` get their `serializer()`.
 Not supported: properties of value classes, and of the types that the
 plugin writes in ways of its own that `kc` doesn't (ranges, `Duration`,
 `Uuid`, unsigned integers and kotlinx.collections.immutable's
-collections); custom `Parceler`s; `@TypeParceler` and `@WriteWith`;
-generic `@Parcelize` classes with a type parameter that has several
-bounds, or a bound that names a type parameter. A class with a property
-of a type that the plugin can only write with `writeValue`, and that
-isn't annotated `@RawValue`, is left to kotlinc too, which reports it.
+collections); generic `@Parcelize` classes with a type parameter that
+has several bounds, or a bound that names a type parameter, or with a
+`Parceler` companion object; a companion object that is a `Parceler`
+through a type alias. A class that kotlinc reports an error for is left
+to kotlinc too: one with a property of a type that the plugin can only
+write with `writeValue` and that isn't annotated `@RawValue`, or a
+`@TypeParceler` or `@WriteWith` whose `Parceler` isn't an object or
+doesn't fit the type, or two `@TypeParceler`s for one type.
 
 ## Compose (`-compose`)
 
@@ -251,3 +254,9 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   `kotlinc` casts it to `FileDescriptor`, which fails, except for the
   elements of collections and arrays, which it leaves uncast; `kc` casts
   those too.
+- A custom `Parceler`'s `write`, a member extension, is called through an
+  inlined `with`, which leaves a `Unit` loaded and popped after the call
+  that `kotlinc` doesn't have, and a `Parceler` companion's `newArray` is
+  cast to the array type, which `kotlinc` doesn't. kotlinc reports
+  `@TypeParceler` and `@WriteWith` in a class that isn't `@Parcelize`
+  as errors; `kc` ignores them.

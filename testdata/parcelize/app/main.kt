@@ -86,11 +86,23 @@ fun main() {
     roundTrip("nums nulls", Nums<Int, String>(1, null, null))
     roundTrip("raw box", RawBox(Plain(1), listOf(Plain(2), Plain(3))))
     roundTrip("boxes", Boxes(box, null, listOf(box), Unused(5)))
+    roundTrip("self written", SelfWritten("me", 3))
+    roundTrip("self array", SelfArray("arr"))
+    roundTrip("stamps", stamps())
+    roundTrip("stamp nulls", Stamps(Stamp(1), null, listOf(), Stamp(2), null))
+    roundTrip("writes", Writes(Stamp(1), Stamp(2), Stamp(3), listOf(Stamp(4))))
+    roundTrip("write nulls", Writes(Stamp(1), null, null, listOf()))
+    val sba = SparseBooleanArray()
+    sba.put(1, true)
+    roundTrip("fast", Fast(intArrayOf(1, 2), listOf("a"), arrayOf("b"), sba, 3))
 
     // newArray makes an array of the class.
     val creator = Inner::class.java.getField("CREATOR").get(null) as Parcelable.Creator<*>
     val array = creator.newArray(2)
     println("newArray: ${array.size} ${array.javaClass.simpleName}")
+    // A Parceler companion's own newArray makes it.
+    val selfCreator = SelfArray::class.java.getField("CREATOR").get(null) as Parcelable.Creator<*>
+    println("Parceler's newArray: ${selfCreator.newArray(2).size}")
 }
 
 fun builtins(nulls: Boolean = false): Builtins {
@@ -134,3 +146,5 @@ fun builtins(nulls: Boolean = false): Builtins {
 }
 
 fun raw() = Raw(Plain(1), Plain(2), listOf(Plain(3)), listOf(Plain(4), null), Plain(5), mapOf("k" to Plain(6)), "s")
+
+fun stamps() = Stamps(Stamp(1), Stamp(2), listOf(Stamp(3)), Stamp(4), Stamp(5))

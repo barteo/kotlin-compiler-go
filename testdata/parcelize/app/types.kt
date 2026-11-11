@@ -3,6 +3,7 @@ package p
 import android.os.Binder
 import android.os.Bundle
 import android.os.IBinder
+import android.os.Parcel
 import android.os.Parcelable
 import android.os.PersistableBundle
 import android.util.Size
@@ -13,8 +14,11 @@ import android.util.SparseIntArray
 import android.util.SparseLongArray
 import java.io.FileDescriptor
 import kotlinx.parcelize.IgnoredOnParcel
+import kotlinx.parcelize.Parceler
 import kotlinx.parcelize.Parcelize
 import kotlinx.parcelize.RawValue
+import kotlinx.parcelize.TypeParceler
+import kotlinx.parcelize.WriteWith
 import java.math.BigDecimal
 import lib.LibOpen
 import lib.LibPoint
@@ -222,3 +226,92 @@ data class Unused<T>(val i: Int) : Parcelable
 // A final generic class of the module's is read with its CREATOR.
 @Parcelize
 data class Boxes(val b: Box<Inner>, val nb: Box<Inner>?, val bs: List<Box<Inner>>, val unused: Unused<String>) : Parcelable
+
+// Custom Parcelers: objects that write and read a type their own way.
+data class Stamp(val t: Long)
+
+object StampParceler : Parceler<Stamp> {
+    override fun create(parcel: Parcel) = Stamp(parcel.readLong())
+    override fun Stamp.write(parcel: Parcel, flags: Int) = parcel.writeLong(t)
+}
+
+object NullableStampParceler : Parceler<Stamp?> {
+    override fun create(parcel: Parcel) = parcel.readLong().let { if (it < 0) null else Stamp(it) }
+    override fun Stamp?.write(parcel: Parcel, flags: Int) = parcel.writeLong(this?.t ?: -1)
+}
+
+object ShortStampParceler : Parceler<Stamp> {
+    override fun create(parcel: Parcel) = Stamp(parcel.readInt().toLong())
+    override fun Stamp.write(parcel: Parcel, flags: Int) = parcel.writeInt(t.toInt())
+}
+
+object PlusHundred : Parceler<Int> {
+    override fun create(parcel: Parcel) = parcel.readInt() - 100
+    override fun Int.write(parcel: Parcel, flags: Int) = parcel.writeInt(this + 100)
+}
+
+object Upper : Parceler<String> {
+    override fun create(parcel: Parcel) = parcel.readString()!!.lowercase()
+    override fun String.write(parcel: Parcel, flags: Int) = parcel.writeString(uppercase())
+}
+
+object BoolAsByte : Parceler<Boolean> {
+    override fun create(parcel: Parcel) = parcel.readByte() != 0.toByte()
+    override fun Boolean.write(parcel: Parcel, flags: Int) = parcel.writeByte(if (this) 1 else 0)
+}
+
+// A companion object that is a Parceler writes and reads the class, whose
+// constructor's parameters needn't be properties.
+@Parcelize
+data class SelfWritten(val name: String, val n: Int) : Parcelable {
+    companion object : Parceler<SelfWritten> {
+        override fun create(parcel: Parcel) = SelfWritten(parcel.readString()!!, parcel.readInt())
+        override fun SelfWritten.write(parcel: Parcel, flags: Int) {
+            parcel.writeString(name)
+            parcel.writeInt(n)
+        }
+    }
+}
+
+@Parcelize
+class SelfArray(name: String) : Parcelable {
+    val name = name
+    override fun toString() = "SelfArray($name)"
+    override fun equals(other: Any?) = other is SelfArray && other.name == name
+    override fun hashCode() = name.hashCode()
+
+    companion object : Parceler<SelfArray> {
+        override fun create(parcel: Parcel) = SelfArray(parcel.readString()!!)
+        override fun SelfArray.write(parcel: Parcel, flags: Int) = parcel.writeString(name)
+        @Suppress("UNCHECKED_CAST")
+        override fun newArray(size: Int) = arrayOfNulls<SelfArray>(size + 1) as Array<SelfArray>
+    }
+}
+
+// The class's @TypeParceler wins over the property's for the same type; a
+// nullable type takes one for the type non-null after a null marker.
+@Parcelize
+@TypeParceler<Stamp, StampParceler>()
+data class Stamps(
+    val s: Stamp, val ns: Stamp?, val ss: List<Stamp>,
+    @TypeParceler<Stamp, ShortStampParceler>() val o: Stamp,
+    @TypeParceler<Stamp?, NullableStampParceler>() val nn: Stamp?,
+) : Parcelable
+
+@Parcelize
+data class Writes(
+    val s: @WriteWith<StampParceler> Stamp, val ns: @WriteWith<StampParceler> Stamp?,
+    val nn: @WriteWith<NullableStampParceler> Stamp?, val ss: List<@WriteWith<StampParceler> Stamp>,
+) : Parcelable
+
+// A custom Parceler of the elements keeps the plugin from writing an
+// array or list with a Parcel method of its own.
+@Parcelize
+@TypeParceler<Int, PlusHundred>()
+@TypeParceler<String, Upper>()
+@TypeParceler<Boolean, BoolAsByte>()
+class Fast(val ints: IntArray, val strs: List<String>, val arr: Array<String>, val sba: SparseBooleanArray, val n: Int?) : Parcelable {
+    override fun toString() = "Fast(${ints.contentToString()}, $strs, ${arr.contentToString()}, $sba, $n)"
+    override fun equals(other: Any?) = other is Fast && other.toString() == toString()
+    override fun hashCode() = toString().hashCode()
+}
