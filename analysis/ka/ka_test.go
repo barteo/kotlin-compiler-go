@@ -741,3 +741,28 @@ data object None
 		}
 	}
 }
+
+// TestDataCopyAnnotations checks that a data class's copy parameters have
+// the annotations of its constructor's parameters, without their use-site
+// targets, as in FIR.
+func TestDataCopyAnnotations(t *testing.T) {
+	m := update(t, `package a
+annotation class A
+data class D(@A val x: Int, @param:A val y: Int, @property:A val z: Int, @get:A val w: Int)
+`)
+	defer m.Close()
+	var got []string
+	for _, d := range m.Files[0].Decls[1].Members {
+		if d.Name != "copy" {
+			continue
+		}
+		for _, p := range d.Params {
+			for _, a := range p.Annotations {
+				got = append(got, p.Name+":"+a.ClassID+":"+a.Target)
+			}
+		}
+	}
+	if want := []string{"x:a/A:", "y:a/A:"}; !slices.Equal(got, want) {
+		t.Errorf("copy's parameters' annotations %v, want %v", got, want)
+	}
+}

@@ -557,9 +557,10 @@ func memberModality(m *syntax.Modifiers, owner *syntax.ClassDecl, noBody bool) M
 
 // dataMembers returns the members Kotlin generates for data class md
 // with primary constructor properties props, as FIR has them after the
-// class's own members: componentN for each property, then copy.
-// equals, hashCode and toString are generated later, so FIR's
-// declarations don't have them.
+// class's own members: componentN for each property, then copy, whose
+// parameters have the annotations of the constructor's, without their
+// use-site targets. equals, hashCode and toString are generated later,
+// so FIR's declarations don't have them.
 func dataMembers(md *Decl, props []*Decl) []*Decl {
 	var out []*Decl
 	for i, p := range props {
@@ -567,9 +568,13 @@ func dataMembers(md *Decl, props []*Decl) []*Decl {
 			Visibility: p.Visibility, Modality: ModalityFinal, Flags: FlagOperator, Type: p.Type})
 	}
 	cp := &Decl{Kind: KindFunction, Name: "copy", Visibility: Public, Modality: ModalityFinal}
+	ctorParams := map[string]*Decl{}
 	for _, m := range md.Members {
 		if m.Kind == KindConstructor && m.Flags&FlagPrimary != 0 {
 			cp.Visibility = m.Visibility
+			for _, p := range m.Params {
+				ctorParams[p.Name] = p
+			}
 		}
 	}
 	self := &Type{Kind: TypeClass, ClassID: md.ClassID}
@@ -578,7 +583,16 @@ func dataMembers(md *Decl, props []*Decl) []*Decl {
 	}
 	cp.Type = self
 	for _, p := range props {
-		cp.Params = append(cp.Params, &Decl{Kind: KindValueParameter, Name: p.Name, Type: p.Type, Flags: FlagHasDefault})
+		cpp := &Decl{Kind: KindValueParameter, Name: p.Name, Type: p.Type, Flags: FlagHasDefault}
+		if cparam := ctorParams[p.Name]; cparam != nil {
+			for _, a := range cparam.Annotations {
+				if a.Target == "" || a.Target == "param" || a.Target == "all" {
+					a.Target, a.Implied = "", false
+					cpp.Annotations = append(cpp.Annotations, a)
+				}
+			}
+		}
+		cp.Params = append(cp.Params, cpp)
 	}
 	return append(out, cp)
 }
