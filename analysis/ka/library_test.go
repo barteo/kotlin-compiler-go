@@ -3,6 +3,7 @@ package ka
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -557,5 +558,29 @@ c m0 f0x2000000 : kotlin/String!
 `
 	if got := sb.String(); got != want {
 		t.Errorf("got:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+// TestLibraryPrivateNested: a library Java class's private nested
+// classes are among its members, as its private methods are (FIR lists
+// them in the class's declared scope).
+func TestLibraryPrivateNested(t *testing.T) {
+	m := updateWith(t, withJDK(t), "package p\nclass A")
+	defer m.Close()
+	d := m.Class("java/util/AbstractList")
+	if d == nil {
+		t.Fatal("java/util/AbstractList: nil")
+	}
+	var got []string
+	for _, md := range d.Members {
+		if md.Kind == KindClass && md.Visibility == Private {
+			got = append(got, md.Name)
+		}
+	}
+	slices.Sort(got)
+	for _, name := range []string{"Itr", "ListItr", "SubList"} {
+		if _, ok := slices.BinarySearch(got, name); !ok {
+			t.Errorf("private nested class %s missing; have %v", name, got)
+		}
 	}
 }

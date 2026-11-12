@@ -2110,7 +2110,8 @@ is what probing around them on stock 2.3.13 turned up:
 
 The slice checks these against stock: `members:` of an `AbstractMap`
 subclass (`f.Table`), an `AbstractSet` subclass (`f.Names`) and a
-class/interface diamond (`f.Both`), and `decls:java.util.AbstractMap`.
+class/interface diamond (`f.Both`), and `decls:` of `java.util.AbstractMap`
+and `java.util.AbstractList`.
 Its `stock.diff` is down to the 6 lines of the vararg `[]` (step 29).
 
 Not done:
@@ -2119,8 +2120,12 @@ Not done:
 - FIR's predefined enhancements of JDK methods.
 - Combining an annotated Java type with the overridden members' (an
   annotated type isn't flexible, so it is left as it is).
-- A library Java class's private nested classes (`AbstractList.Itr`,
-  `SubList`): stock lists them among the class's declarations, kc doesn't.
+
+A library Java class's private nested classes (`AbstractList.Itr`,
+`SubList`, `RandomAccessSpliterator`) are among its declarations now, as
+on stock. Its private methods and fields already were; ka's library model
+left out only private nested classes. `decls:java.util.AbstractList`
+checks them in the slice.
 
 ## Gaps and open questions
 
