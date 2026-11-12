@@ -55,8 +55,7 @@ internal class KcTypeContext(
     /** The KaType of [t]. */
     fun type(t: KcType): KaType = when (t.kind) {
         KcType.CLASS -> if (t.isFlexible) {
-            KcFlexibleType(round, classType(t, false, array = if (t.classId == "kotlin/Array") Variance.INVARIANT else null),
-                classType(t, true, readOnly[t.classId], array = if (t.classId == "kotlin/Array") Variance.OUT_VARIANCE else null))
+            KcFlexibleType(round, classType(t, false), classType(t, true, readOnly[t.classId], t.classId == "kotlin/Array"))
         } else {
             classType(t, t.isNullable)
         }
@@ -78,18 +77,15 @@ internal class KcTypeContext(
     private fun annotations(t: KcType): List<KaAnnotation> =
         if (t.annotations.isEmpty() || annotate == null) emptyList() else t.annotations.map(annotate)
 
-    /**
-     * [t] as a class type; [as] replaces its class, for a Java collection's
-     * read-only upper bound, and [array] the variance of a Java array's
-     * element: as in FIR, `Array<(out) T>` is `(Array<T>..Array<out T>?)`.
-     */
-    private fun classType(t: KcType, nullable: Boolean, `as`: String? = null, array: Variance? = null): KcBaseClassType {
+    /** [t] as a class type; [as] replaces its class, for a Java collection's read-only upper bound. */
+    private fun classType(t: KcType, nullable: Boolean, `as`: String? = null, out: Boolean = false): KcBaseClassType {
         // A local class's type names its declaration.
         val localPsi = if (t.param != 0 && `as` == null) psi(t.param) else null
         val id = if (localPsi == null) ClassId.fromString(`as` ?: t.classId) else t.classId.lastIndexOf('/').let { i ->
             ClassId(FqName(if (i < 0) "" else t.classId.substring(0, i).replace('/', '.')), FqName(t.classId.substring(i + 1)), true)
         }
-        val args = if (array != null) args(t).map { if (it is KcTypeArgument && it.variance != Variance.IN_VARIANCE) KcTypeArgument(it.type, array, round.token) else it } else args(t)
+        // A Java array's upper bound is Array<out T>?.
+        val args = if (out) args(t).map { if (it is KcTypeArgument && it.variance == Variance.INVARIANT) KcTypeArgument(it.type, Variance.OUT_VARIANCE, round.token) else it } else args(t)
         val annots = annotations(t)
         val abbrev = t.abbrev?.takeIf { it.kind == KcType.CLASS }?.let {
             KcClassType(round, ClassId.fromString(it.classId), args(it), nullable, isAlias = true, annots = annots)
@@ -141,8 +137,6 @@ internal interface KcTypeBase : KaType {
 
 internal sealed interface KcBaseClassType : KcTypeBase {
     override fun withNullability(nullable: Boolean): KcBaseClassType
-    /** The type of class [id] with arguments [args], marked nullable if [nullable], and this type's annotations. */
-    fun rebuild(id: ClassId, args: List<KaTypeProjection>, nullable: Boolean): KcBaseClassType
 }
 
 private fun KaType.text(marked: Boolean, s: String) = if (marked) "$s?" else s
@@ -177,9 +171,6 @@ internal class KcClassType(
     override fun withNullability(nullable: Boolean): KcClassType =
         if (nullable == marked) this
         else KcClassType(round, classId, typeArguments, nullable, abbrev?.withNullability(nullable), isAlias, annots, local, localPsi)
-    override fun rebuild(id: ClassId, args: List<KaTypeProjection>, nullable: Boolean): KcBaseClassType =
-        if (id == classId && args == typeArguments) withNullability(nullable)
-        else KcClassType(round, id, args, nullable, annots = annots, local = local, localPsi = localPsi)
     // The abbreviation isn't part of the type's identity, as in FIR.
     override fun equals(other: Any?) = other is KcClassType && other.classId == classId && other.localSymbol == localSymbol &&
         other.marked == marked && other.isAlias == isAlias && other.typeArguments == typeArguments
@@ -224,9 +215,6 @@ internal class KcFunctionType(
     override fun withNullability(nullable: Boolean) =
         if (nullable == marked) this
         else KcFunctionType(round, classId, typeArguments, nullable, hasReceiver, contexts, abbrev?.withNullability(nullable), annots)
-    override fun rebuild(id: ClassId, args: List<KaTypeProjection>, nullable: Boolean): KcBaseClassType =
-        if (args == typeArguments) withNullability(nullable)
-        else KcFunctionType(round, classId, args, nullable, hasReceiver, contexts, null, annots)
     override fun equals(other: Any?) = other is KcFunctionType && other.classId == classId &&
         other.marked == marked && other.hasReceiver == hasReceiver && other.typeArguments == typeArguments
     override fun hashCode() = (classId.hashCode() * 31 + typeArguments.hashCode()) * 2 + if (marked) 1 else 0

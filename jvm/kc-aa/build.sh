@@ -212,8 +212,6 @@ slice=(a.Marker a.Other kotlin.Suppress e.Args e.Inner kotlin.Deprecated java.be
 	decls:kotlin.ReplaceWith decls:kotlin.coroutines.AbstractCoroutineContextKey decls:java.util.AbstractMap.SimpleEntry decls:java.lang.Thread.State decls:b.E decls:kotlin.DeprecationLevel
 	decls:f.Strings members:f.Strings members:f.Base members:f.Bag:get,size,toString members:f.Table:equals,get,remove,containsKey,putAll members:f.Names:contains,remove,toString,addAll members:f.Both:run decls:java.util.AbstractMap decls:java.util.AbstractList assign:f.Assign sealed:f.Shape
 	overrides:f.Strings#get:f.Named#get overrides:f.Strings#get:f.Source#get overrides:f.Strings#name:f.Source#get
-	members:f.Cache:get,merge,compute sig:java.util.HashMap:get,getOrDefault,merge,compute,forEach,putIfAbsent sig:java.util.Optional:of,ofNullable,get,empty
-	sig:java.util.function.UnaryOperator sig:java.util.AbstractMap:keySet,entrySet,values sig:java.util.ArrayList:removeIf,replaceAll,subList,spliterator
 	package:g package:kotlin.collections:listOf,lastIndex,ArrayList,List,emptyList,AbstractList package:java.util.function:Supplier
 	fun:kotlin.collections.listOf fun:g.top prop:kotlin.collections.lastIndex prop:kotlin.coroutines.intrinsics.COROUTINE_SUSPENDED prop:g.topProp alias:g.Holder jvm:h.Sigs annots:a.Targets a.OnField a.FieldOrFun a.Anywhere)
 rm -rf "$out/test-classes" "$out/slice"

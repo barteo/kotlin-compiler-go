@@ -104,12 +104,8 @@ internal class KcInfo(
             else -> Visibilities.Public
         }
 
-    /**
-     * Whether the declaration is a Java class's, or a JDK method a Kotlin
-     * collection interface has (FIR's JVM mapped scope: MutableMap.compute).
-     */
-    val isJava get() = origin == KaSymbolOrigin.JAVA_LIBRARY || origin == KaSymbolOrigin.JAVA_SOURCE ||
-        origin == KaSymbolOrigin.JAVA_SYNTHETIC_PROPERTY || decl.has(KcDecl.JAVA)
+    /** Whether the declaration is a Java class's. */
+    val isJava get() = origin == KaSymbolOrigin.JAVA_LIBRARY || origin == KaSymbolOrigin.JAVA_SOURCE || origin == KaSymbolOrigin.JAVA_SYNTHETIC_PROPERTY
 
     val location: KaSymbolLocation
         get() = when (parent) {
@@ -311,8 +307,7 @@ internal class KcValueParameterSymbol(val info: KcInfo, val default: KaAnnotatio
     override val name get() = info.name
     override val visibility get() = KaSymbolVisibility.LOCAL
     override val compilerVisibility get() = Visibilities.Local
-    /** Its type as declared, before a Java method's enhancement. */
-    val declaredType: KaType by lazy { info.type(info.decl.type) }
+    private val declaredType: KaType by lazy { info.type(info.decl.type) }
     override val returnType: KaType get() = enhanced() ?: declaredType
     override val isVararg get() = info.decl.has(KcDecl.VARARG)
     override val isCrossinline get() = info.decl.has(KcDecl.CROSSINLINE)
@@ -331,8 +326,8 @@ internal class KcValueParameterSymbol(val info: KcInfo, val default: KaAnnotatio
 
     /** A Java method's parameter's type as enhanced (see [KcEnhancement]), or null. */
     private fun enhanced(): KaType? {
+        if (!info.isJava) return null
         val f = info.parent as? KcFunctionSymbol ?: return null
-        if (!f.info.isJava) return null
         val e = info.round.enhancement(f, f.info.parent) ?: return null
         return e.params.getOrNull(f.params.indexOfFirst { it === this })
     }

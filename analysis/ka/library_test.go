@@ -584,30 +584,3 @@ func TestLibraryPrivateNested(t *testing.T) {
 		}
 	}
 }
-
-// TestPureImplementations checks the Kotlin interfaces Java classes
-// purely implement, each in place of the class's own supertype of that
-// class, at the end. (kc reads @PurelyImplements's argument only from
-// class files: it doesn't read a Java source's annotation arguments.)
-func TestPureImplementations(t *testing.T) {
-	m := updateWith(t, withJDK(t), "package p\nclass A")
-	defer m.Close()
-	for _, c := range []struct{ id, want string }{
-		{"java/util/HashMap", "java/util/AbstractMap<K!, V!> kotlin/Cloneable java/io/Serializable kotlin/collections/MutableMap<K, V>"},
-		{"java/util/ArrayList", "java/util/AbstractList<E!> java/util/RandomAccess kotlin/Cloneable java/io/Serializable kotlin/collections/MutableList<E>"},
-		{"java/util/function/UnaryOperator", "java/util/function/Function<T, T>"},
-	} {
-		d := m.Class(c.id)
-		if d == nil {
-			t.Errorf("%s: nil", c.id)
-			continue
-		}
-		var got []string
-		for _, st := range d.Supertypes {
-			got = append(got, libType(st))
-		}
-		if g := strings.Join(got, " "); g != c.want {
-			t.Errorf("%s supertypes:\n got %s\nwant %s", c.id, g, c.want)
-		}
-	}
-}

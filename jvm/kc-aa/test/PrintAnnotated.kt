@@ -22,11 +22,6 @@
 //	                       a type alias's type, and the declaration it expands to
 //	annots:a.b.C           the annotations, with use-site targets, of C's
 //	                       constructor parameters, properties and accessors
-//	sig:a.b.C[:n1,n2]      C's declared functions (named n1, n2 if given) with
-//	                       their types' nullability: T! for a platform type
-//
-// -Dkc.libs adds libraries (path-separated) to -Dkc.stdlib, and -Dkc.javaSrc
-// makes SRC_DIR a Java source root too.
 import com.google.devtools.ksp.KspExperimental
 import com.google.devtools.ksp.getDeclaredFunctions
 import com.google.devtools.ksp.isConstructor
@@ -48,7 +43,7 @@ class PrintAnnotatedProvider(private val names: List<String>, private val out: M
         override fun process(resolver: Resolver): List<KSAnnotated> {
             for (name in names) {
                 val mode = name.substringBefore(':', "")
-                if (mode in setOf("members", "assign", "sealed", "overrides", "package", "fun", "prop", "alias", "jvm", "annots", "sig")) {
+                if (mode in setOf("members", "assign", "sealed", "overrides", "package", "fun", "prop", "alias", "jvm", "annots")) {
                     mode(resolver, mode, name.removePrefix("$mode:"), name)
                     continue
                 }
@@ -125,16 +120,6 @@ class PrintAnnotatedProvider(private val names: List<String>, private val out: M
                         }
                         out += "$tag: ${m.origin} ${m.simpleName.asString()} in " +
                             "${m.parentDeclaration?.qualifiedName?.asString()}$overridee; as member $asMember"
-                    }
-                }
-                "sig" -> {
-                    val c = cls(resolver, arg.substringBefore(':'))
-                    val only = arg.substringAfter(':', "").split(',').filter { it.isNotEmpty() }.toSet()
-                    for (f in c.getDeclaredFunctions()) {
-                        if (only.isNotEmpty() && f.simpleName.asString() !in only) continue
-                        out += "$tag: ${f.simpleName.asString()}" + typeParams(f.typeParameters) +
-                            f.parameters.joinToString(", ", "(", ")") { (if (it.isVararg) "vararg " else "") + platform(it.type.resolve()) } +
-                            ": " + (f.returnType?.resolve()?.let(::platform) ?: "?")
                     }
                 }
                 "assign" -> {
@@ -251,26 +236,6 @@ fun render(t: KSType): String {
     return fn + name + args + (if (t.isMarkedNullable) "?" else "")
 }
 
-/** [t] as [render] has it, with T! for a platform type, at every level. */
-fun platform(t: KSType): String {
-    if (t.isError) return "<ERROR ${t.declaration.simpleName.asString()}>"
-    val d = t.declaration
-    val name = if (d is KSTypeParameter) d.name.asString() else d.qualifiedName?.asString() ?: d.simpleName.asString()
-    val args = if (t.arguments.isEmpty()) "" else t.arguments.joinToString(", ", "<", ">") { a ->
-        when (a.variance) {
-            Variance.STAR -> "*"
-            Variance.INVARIANT -> platform(a.type!!.resolve())
-            else -> a.variance.label + " " + platform(a.type!!.resolve())
-        }
-    }
-    val n = when (t.nullability) {
-        Nullability.PLATFORM -> "!"
-        Nullability.NULLABLE -> "?"
-        Nullability.NOT_NULL -> ""
-    }
-    return name + args + n
-}
-
 object StderrLogger : KSPLogger {
     override fun logging(message: String, symbol: KSNode?) {}
     override fun info(message: String, symbol: KSNode?) {}
@@ -291,10 +256,9 @@ fun main(args: Array<String>) {
     val config = KSPJvmConfig.Builder().apply {
         moduleName = "slice"
         sourceRoots = listOf(src)
-        javaSourceRoots = if (System.getProperty("kc.javaSrc") != null) listOf(src) else emptyList()
+        javaSourceRoots = emptyList()
         commonSourceRoots = emptyList()
-        libraries = listOfNotNull(System.getProperty("kc.stdlib")).map(::File) +
-            System.getProperty("kc.libs").orEmpty().split(File.pathSeparator).filter { it.isNotEmpty() }.map(::File)
+        libraries = System.getProperty("kc.stdlib")?.let { listOf(File(it)) } ?: emptyList()
         jdkHome = File(System.getProperty("java.home"))
         projectBaseDir = src
         outputBaseDir = out

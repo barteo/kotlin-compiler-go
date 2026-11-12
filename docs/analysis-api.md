@@ -2114,123 +2114,18 @@ class/interface diamond (`f.Both`), and `decls:` of `java.util.AbstractMap`
 and `java.util.AbstractList`.
 Its `stock.diff` is down to the 6 lines of the vararg `[]` (step 29).
 
-Not done here, done in step 31:
-- ~~Enhancing type arguments (FIR enhances the whole type, argument by
-  argument).~~
-- ~~FIR's predefined enhancements of JDK methods.~~
-- ~~Combining an annotated Java type with the overridden members' (an
-  annotated type isn't flexible, so it is left as it is).~~
+Not done:
+- Enhancing type arguments (FIR enhances the whole type, argument by
+  argument).
+- FIR's predefined enhancements of JDK methods.
+- Combining an annotated Java type with the overridden members' (an
+  annotated type isn't flexible, so it is left as it is).
 
 A library Java class's private nested classes (`AbstractList.Itr`,
 `SubList`, `RandomAccessSpliterator`) are among its declarations now, as
 on stock. Its private methods and fields already were; ka's library model
 left out only private nested classes. `decls:java.util.AbstractList`
 checks them in the slice.
-
-#### Step 31: FIR's Java signature enhancement, whole
-
-Step 30's enhancement took a Java method's top-level nullability and
-mutability from the members it overrides. `KcEnhancer` (`KcEnhance.kt`)
-now does what FIR's `FirSignatureEnhancement` does, and the three things
-step 30 left out are done:
-
-- **Indexed qualifiers.** A type and each of its arguments, in preorder
-  (a star takes one place), get qualifiers from the method's own
-  annotations and from the overridden members' types at the same place,
-  combined as FIR's `computeQualifiersForOverride`: a return type's top
-  place prefers not-null and mutable; any other place takes a qualifier
-  only if every member that has one agrees; and the places below a return
-  type's top take nothing if an overridden type isn't equal to it.
-  Applying them changes only flexible places, both bounds: `List<String>`
-  overriding `fun b(x: List<String?>): List<String>` is
-  `b(List<String?>): List<String>`; `Map<String, ? extends List<Integer>>`
-  overriding `Map<String?, List<Int?>>` is
-  `Map<String?, out List<Int?>>`.
-- **Annotated types.** kc's checker bakes a declaration nullability
-  annotation into the type (`@NotNull List<String>` is
-  `MutableList<String!>`, not flexible), so the enhancer treats such a
-  type as the flexible type it was, with the annotation's qualifier as
-  its own. Its own qualifier wins over the overridden members', and its
-  arguments still take theirs. A type-use annotation is read where it
-  is, and an annotated type parameter use that is not-null is
-  definitely not-null (`<T> @NotNull T e(@Nullable T x)` is `e(T!): T`
-  overriding `fun <T> e(x: T): T`). Overrides are matched on the flexible
-  types, so `@NotNull String a(@NotNull String x)` overrides
-  `fun a(x: String?): String` (step 30 didn't match it).
-- **Predefined enhancements.** FIR's
-  `PREDEFINED_FUNCTION_ENHANCEMENT_INFO_BY_SIGNATURE`, keyed by JVM
-  class and descriptor: `Map.compute`/`merge`/`putIfAbsent`/`forEach`/...,
-  `Collection.removeIf`/`stream`, `List.replaceAll`, `Iterable.spliterator`,
-  `Optional`, `Reference.get`, the `java.util.function` interfaces, and
-  the JDK 21 sequenced collection members. They apply to the JDK methods
-  themselves (a static one too: `Optional.of(T): Optional<T>`), to the JDK
-  methods kc adds to Kotlin's collection interfaces (`jvmMappedMembers`,
-  now `KcInfo.isJava`), and through them to the Java methods overriding
-  them: `HashMap.merge(K?, V, BiFunction<in V, in V, out V?>): V?`.
-
-Around them, to match stock:
-
-- **Pure implementations.** FIR gives `ArrayList`/`LinkedList` a
-  `MutableList<E>` supertype, the `HashSet`s and `HashMap`s
-  `MutableSet`/`MutableMap`, Guava's immutable collections the read-only
-  ones, and `UnaryOperator`/`BinaryOperator` `Function`/`BiFunction`
-  (`FakePureImplementationsProvider`), or the interface a class's
-  `@kotlin.jvm.PurelyImplements` names. Its arguments are the class's
-  type parameters, not flexible, and it replaces the class's own
-  supertype of that class, at the end (`ka`'s `purelyImplement`). So
-  `HashMap.get` is `get(K): V?`, and KSP prints `K?` (`K`'s bound is
-  `Any!`).
-- **Several overridden members.** A Java method enhances from every
-  member it overrides, an intersection override's members included,
-  but not one another of those overrides (FIR's `nonSubsumed`):
-  `ArrayList.spliterator()` overrides `List`'s, not also the
-  `Iterable.spliterator()` that `MutableIterable` has with an inflexible
-  argument. A built-in member's erased parameter (step 30) is enhanced
-  too, unless the member it implements gives it an inflexible type, and
-  `MutableMap.remove(key, value)` erases both. A getter implementing a
-  Kotlin property enhances from it: `AbstractMap.keySet()` is
-  `MutableSet<K!>`.
-- **JDK methods on Kotlin interfaces** enhance as FIR has them, from the
-  JDK classes, whose supertypes' arguments are flexible: `List.spliterator()`
-  is `Spliterator<E!>`. `jvmMappedMembers` gives a read-only interface
-  the members that don't mutate and its mutable one the others, so
-  `MutableMap`'s `forEach` is `Map`'s.
-- **Override matching.** A Java method matches a Java super's method on
-  its declared types (`HashMap.get(Object)` overrides
-  `AbstractMap.get(Object)`, enhanced as `get(K!)`) and other members on
-  their types flexible at every place
-  (`BiFunction<in V!, ...>` matches `BiFunction<in V & Any, ...>`).
-- **Java arrays.** A Java array's flexible type is
-  `(Array<T>..Array<out T>?)`, as FIR's; its lower bound was
-  `Array<out T>`, which `Array<String?>` didn't match.
-
-The slice checks these against stock with `sig:` of `java.util.HashMap`,
-`Optional`, `UnaryOperator`, `AbstractMap` and `ArrayList`, and the
-`members:` of a `HashMap` subclass (`f.Cache`); `ka`'s
-`TestPureImplementations` checks the supertypes. `PrintAnnotated` has a
-`sig:a.b.C[:names]` mode that prints a class's functions with platform
-types marked `!`, and reads Java sources with `-Dkc.javaSrc` and
-libraries with `-Dkc.libs`, for probing Java code the slice can't hold.
-
-Gaps left:
-- `java.util.Map` and `java.util.Collection` aren't classes kc declares,
-  so KSP's `getClassDeclarationByName("java.util.Map")` finds none (stock
-  finds the Java interface).
-- kc reads no annotation arguments from a Java source, so a Java source's
-  `@PurelyImplements` does nothing (a class file's works).
-- A boxed `@NotNull Integer` and an `int` are the same type in kc's model,
-  so the boxed one isn't enhanced.
-- A predefined enhancement that FIR applies only from a language version
-  on (`errorsSinceLanguageVersion`) always applies.
-- A Java class's own getter that implements a built-in property
-  (`HashMap.keySet()`) isn't among its members; the inherited one
-  (`AbstractMap.keySet()`) is. This predates step 30.
-
-Results: the slice matches `want.txt`, and on stock differs only as
-`stock.diff` records; Moshi, Dagger, Room and Hilt match on both; KSP's
-suite passes 171 of 173 with each feature configuration; kotlinpoet's
-interop tests fail `transitiveAliases` and `complexAliasing` on kc and
-`complexAliasing` on stock, as before.
 
 ## Gaps and open questions
 

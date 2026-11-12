@@ -14,9 +14,3 @@ open class Runner : Runs { override fun run() {} }
 
 /** Runner.run overrides Runs.run, and Both still has an intersection override of the two. */
 class Both : Runner(), Runs
-
-/**
- * HashMap purely implements MutableMap<K, V>: get(Object) is get(K) and
- * merge's types are those of FIR's predefined enhancement of Map.merge.
- */
-abstract class Cache : java.util.HashMap<String, Int>()
