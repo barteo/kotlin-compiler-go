@@ -324,6 +324,20 @@ With `-compose`, `-serialization`, `-parcelize` and `-metro`, `kc` compiles as `
 - **kotlinx.serialization** (`check/serialization.go`, `codegen/serial.go`):
   the `$serializer` object, `serializer()`, `write$Self` and the
   deserialization constructor.
-- **Parcelize** (`check/parcelize.go`): `writeToParcel`, a `C$Creator`
-  class and `CREATOR`.
+- **Parcelize** (`check/parcelize.go`): `describeContents`,
+  `writeToParcel`, a `C$Creator` class and `CREATOR`, which write and read
+  each property as kotlinc's serializer for its type does: a generic
+  class's as its type erased, each type parameter as its erased bound,
+  which the class's constructor is called with as type arguments that a
+  plugin's code needn't keep within their bounds; an unsigned integer,
+  an array of them or a `Duration` as its underlying value, which the
+  plugin's code reaches with an intrinsic only it can call,
+  `` `kc$coerce`<T>(x) ``, that converts between a value class and its
+  underlying type; a `@DataClass` one by its properties; an immutable
+  collection of kotlinx's as a list, set or map, converted with an
+  extension that the plugin's code calls by its qualified name in
+  backticks, which only it can; a `@RawValue` one with `writeValue`, and
+  one
+  that a `@TypeParceler` or `@WriteWith` names a `Parceler` for with it; or
+  a class's `Parceler` companion object, which writes the class itself.
 - **Metro** (`check/metro.go`, `metroplan.go`, `metrograph.go`, `metroannot.go`): what a dependency graph returns depends on the resolved types of every binding, so a module that uses Metro is checked twice. `PlanMetro` first resolves the program's signatures and annotations, and the bindings of each `@DependencyGraph`, and writes what Metro adds as Kotlin: a graph's `Impl` class, whose private functions call `@Inject` constructors and `@Provides` members directly and hold scoped values in `kotlin.Lazy`, its companion object, which `createGraph` and `createGraphFactory` calls become, an inner class for each `@GraphExtension` it creates, which uses its parent's bindings and scopes, a contributing class's nested `MetroContributionTo...` interface of `@Binds` functions, and its hint in package `metro.hints`. The files, parsed again, are then checked and compiled with those members added. A graph finds the class path's contributions as Metro's does, by their hints and nested contribution interfaces, so it merges modules compiled by `kotlinc` with Metro and modules compiled by `kc`. `kc` writes no `$MetroFactory` classes, so a graph that `kotlinc` compiles can't use a module that `kc` compiles. Custom annotations, graph type parameters, abstract-class graph factories, `@Provides` extensions, Dagger, Guice and javax interop and the options that change Metro's output are not supported, and say so.

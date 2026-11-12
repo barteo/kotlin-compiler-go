@@ -110,7 +110,11 @@ func elementOf(t types.Type, e syntax.AnnotationElem) cf.ElementValue {
 	x := e.X
 	t = t.NonNull()
 	if cl, ok := x.(*syntax.ClassLit); ok {
-		return cf.ElementValue{Tag: 'c', Class: desc(types.Erase(cl.Class.NonNull()))}
+		c := types.Erase(cl.Class.NonNull())
+		if c.K == types.Unit {
+			return cf.ElementValue{Tag: 'c', Class: "Lkotlin/Unit;"}
+		}
+		return cf.ElementValue{Tag: 'c', Class: desc(c)}
 	}
 	if t.K == types.Class && isEnum(t.C) {
 		name := ""

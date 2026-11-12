@@ -645,7 +645,11 @@ func (c *Checker) typeArgsFit(cl callee, typeArgs []*syntax.TypeArg, targs []typ
 // candidate cd, against their parameters' bounds, with the other type
 // arguments as the call inferred them: T : Element<K> in
 // Container<Alpha, BetaKey, _>(). Arguments _ were inferred within them.
+// A plugin's code isn't checked (state.plugin).
 func (c *Checker) typeArgBounds(x *syntax.Call, cd *candidate, targs []types.Type, s *system) {
+	if c.state.plugin {
+		return
+	}
 	for j, p := range cd.tparams {
 		t := targs[j]
 		if x.TypeArgs[j].Underscore || t.K == types.Invalid {

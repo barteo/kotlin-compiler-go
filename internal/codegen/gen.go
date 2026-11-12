@@ -40,10 +40,14 @@ type gen struct {
 	code    *cf.Code
 	owner   *types.ClassSym // class whose members are being generated
 	retType types.Type
-	loops   []loopLabels
-	tries   []*tryCtx       // the try blocks the code is in, innermost last
-	lam     *lambdaCtx      // set in a lambda's method
-	inl     []*inlineLambda // the inlined lambdas being generated, innermost last
+	// plugin is set in the body of a function that a compiler plugin
+	// declares, whose code, as kotlinc's plugins' IR, has no checks of
+	// platform-typed values.
+	plugin bool
+	loops  []loopLabels
+	tries  []*tryCtx       // the try blocks the code is in, innermost last
+	lam    *lambdaCtx      // set in a lambda's method
+	inl    []*inlineLambda // the inlined lambdas being generated, innermost last
 	// nonNull holds the parameters and locals whose values are never
 	// null, of which a safe call doesn't check for null: see knownNonNull.
 	nonNull map[*types.VarSym]bool
@@ -101,7 +105,9 @@ type gen struct {
 	// their types, for typeOf.
 	reified      map[string]string
 	reifiedTypes map[string]types.Type
-	prefix       string // lambda methods are named prefix$0, prefix$1, ...
+	// serializers are the call's syntax.Call.Serializers.
+	serializers map[string]syntax.Expr
+	prefix      string // lambda methods are named prefix$0, prefix$1, ...
 	// noLines is positive in the copy of an inline function, whose code
 	// keeps the line of the call: line numbers aren't recorded.
 	noLines int
@@ -369,9 +375,6 @@ func (g *gen) privateAccessors() {
 				code.Local(cf.ALOAD, code.AllocLocal(self))
 			}
 			code.FieldInsn(get, fieldOwner(p), p.Name, d)
-			if p.Lateinit {
-				lateinitCheck(code, p.Name, g.shared.opts.Stdlib)
-			}
 			code.Op(returnOp(ft))
 			if err := code.Err(); err != nil {
 				panic(err)
@@ -1087,6 +1090,7 @@ func (g *gen) functionBody(fd *syntax.FunDecl) {
 	sym := fd.Sym
 	g.prefix = sym.Name + "$lambda"
 	g.retType = types.JVMRet(sym)
+	g.plugin = fd.Plugin
 	g.loops, g.tries = nil, nil
 	for _, p := range sym.Contexts {
 		g.setSlot(p, g.code.AllocLocal(paramDesc(p.Type)))
@@ -1658,7 +1662,7 @@ func (g *gen) delegated(dl *syntax.Delegated) {
 	g.code.Op(returnOpOf(ret))
 	g.check()
 	if value {
-		g.valueOverride(f)
+		g.valueOverride(f, false)
 		return
 	}
 	for _, b := range f.Bridges {
@@ -2665,7 +2669,12 @@ func (g *gen) staticInit(cd *syntax.ClassDecl) {
 		const d = "Landroid/os/Parcelable$Creator;"
 		creator := cls.Nested["Creator"].Name
 		g.cls.AddField(cf.AccPublic|cf.AccStatic|cf.AccFinal, "CREATOR", d)
-		g.cls.LastField().SetSignature("Landroid/os/Parcelable$Creator<L" + cls.Name + ";>;")
+		// A generic class's is of the class star-projected: C<*>.
+		args := ""
+		if n := len(cd.TypeParams); n > 0 {
+			args = "<" + strings.Repeat("*", n) + ">"
+		}
+		g.cls.LastField().SetSignature("Landroid/os/Parcelable$Creator<L" + cls.Name + args + ";>;")
 		g.code.New(creator)
 		g.code.Op(cf.DUP)
 		g.code.Invoke(cf.INVOKESPECIAL, creator, "<init>", "()V")
@@ -3438,6 +3447,7 @@ func (g *gen) getProp(cls *types.ClassSym, p *types.VarSym) {
 		} else {
 			g.code.Invoke(cf.INVOKESTATIC, p.Owner.Name, privateGetter(p), "(L"+p.Owner.Name+";)"+d)
 		}
+		g.lateinit(p) // the accessor reads the field as it is, as isInitialized does
 		g.coerce(ft, p.Type)
 		return
 	}

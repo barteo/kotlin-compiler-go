@@ -178,7 +178,7 @@ func (g *gen) valueClass(cd *syntax.ClassDecl) *cf.Class {
 		}
 		if fd.Override {
 			declared[types.InstanceJVM(f)+funDesc(f)] = true
-			g.valueOverride(f)
+			g.valueOverride(f, fd.Plugin)
 		}
 	}
 
@@ -518,7 +518,7 @@ func (g *gen) valueInherited(f *types.FunSym) {
 func (g *gen) valueMember(fd *syntax.FunDecl) {
 	f := fd.Sym
 	access := uint16(cf.AccPublic | cf.AccStatic)
-	if !fd.Override {
+	if !fd.Override || fd.Plugin { // a plugin's members are final, as kotlinc's
 		access |= cf.AccFinal
 	}
 	if varargs(f) {
@@ -551,10 +551,14 @@ func (g *gen) valueMember(fd *syntax.FunDecl) {
 
 // valueOverride generates the instance method of member f of a value
 // class that overrides an interface's, which its callers call, and its
-// bridges: they call f's static method on the box's value.
-func (g *gen) valueOverride(f *types.FunSym) {
+// bridges: they call f's static method on the box's value. The instance
+// method is final if final is set.
+func (g *gen) valueOverride(f *types.FunSym, final bool) {
 	name := types.InstanceJVM(f)
 	g.valueBridge(name, funDesc(f), f)
+	if final {
+		g.cls.LastMethod().AddAccess(cf.AccFinal)
+	}
 	params := bridgeParams(f)
 	for _, b := range f.Bridges {
 		if !g.cache().collectionBridge(g.owner, b) { // a collection's own bridge, as remove(int)
@@ -572,13 +576,22 @@ func (g *gen) valueBridge(name, d string, f *types.FunSym) {
 	ud := desc(u.Type)
 	g.code = g.cls.NewMethod(cf.AccPublic, name, d)
 	g.code.AllocLocal("L" + cls.Name + ";")
-	g.code.Local(cf.ALOAD, 0)
-	g.code.FieldInsn(cf.GETFIELD, cls.Name, u.Name, ud)
 	fd := funDesc(f)
 	from, to := descParams(d), descParams(fd)
+	slots := make([]int, len(from))
 	for i, pd := range from {
-		slot := g.code.AllocLocal(pd)
-		g.code.Local(loadOpOf(pd), slot)
+		slots[i] = g.code.AllocLocal(pd)
+	}
+	if len(f.Params) == len(from) {
+		// It checks its parameters, as kotlinc's does, before f does.
+		for i, p := range f.Params {
+			g.checkParam(slots[i], p.Type, p.Name)
+		}
+	}
+	g.code.Local(cf.ALOAD, 0)
+	g.code.FieldInsn(cf.GETFIELD, cls.Name, u.Name, ud)
+	for i, pd := range from {
+		g.code.Local(loadOpOf(pd), slots[i])
 		g.convertDesc(pd, to[i])
 	}
 	g.code.Invoke(cf.INVOKESTATIC, cls.Name, f.JVM(), "("+ud+fd[1:])

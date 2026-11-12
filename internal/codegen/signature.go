@@ -1,6 +1,7 @@
 package codegen
 
 import (
+	"slices"
 	"strings"
 
 	cf "github.com/barteo/kotlin-compiler-go/internal/classfile"
@@ -95,8 +96,8 @@ func (m wildMode) nested(v types.Variance) wildMode {
 type sigWriter struct{ strings.Builder }
 
 // typeParams writes a list of type parameters with their bounds: a class
-// bound, which is empty if the first bound is an interface, then
-// interface bounds.
+// bound, which is empty if no bound is a class, then interface bounds.
+// As kotlinc, a class bound written after interfaces comes first.
 func (w *sigWriter) typeParams(ps []*types.TypeParamSym) {
 	if len(ps) == 0 {
 		return
@@ -107,7 +108,11 @@ func (w *sigWriter) typeParams(ps []*types.TypeParamSym) {
 		if len(p.Bounds) == 0 {
 			w.WriteString(":Ljava/lang/Object;")
 		}
-		for i, b := range p.Bounds {
+		bounds := p.Bounds
+		if i := slices.IndexFunc(bounds, isClassBound); i > 0 {
+			bounds = append([]types.Type{bounds[i]}, slices.Delete(slices.Clone(bounds), i, i+1)...)
+		}
+		for i, b := range bounds {
 			w.WriteByte(':')
 			if i == 0 && !isClassBound(b) {
 				w.WriteByte(':') // no class bound

@@ -301,6 +301,11 @@ type Checker struct {
 }
 
 type state struct {
+	// plugin is set in the body of a function that kc writes for a
+	// compiler plugin (FunDecl.Plugin), and in its lambdas: its explicit
+	// type arguments needn't be within their bounds, as kotlinc's
+	// plugins, which write IR, don't check them either.
+	plugin     bool
 	scope      *scope
 	cls        *types.ClassSym
 	this       *types.VarSym // what smart casts of this narrow; nil outside classes
@@ -1329,7 +1334,7 @@ func (c *Checker) declareClass(d *syntax.ClassDecl, name string, outer *types.Cl
 		sym = new(types.ClassSym)
 	}
 	*sym = types.ClassSym{Name: name, Methods: map[string][]*types.FunSym{}, Decl: d, Annotation: d.Annotation,
-		Value: d.Value && !d.Interface && !d.Object, Fun: d.Fun,
+		Value: d.Value && !d.Interface && !d.Object, Fun: d.Fun, Data: d.Data,
 		Interface: d.Interface || d.Annotation, Abstract: d.Abstract || d.Interface || d.Annotation || d.Sealed,
 		Final:  d.Object || d.Enum || !d.Open && !d.Abstract && !d.Interface && !d.Sealed,
 		Object: d.Object, Outer: outer, Nested: map[string]*types.ClassSym{}, Aliases: map[string]*types.AliasSym{}, Sealed: d.Sealed,
@@ -3010,7 +3015,7 @@ func (c *Checker) checkFun(d *syntax.FunDecl, cls *types.ClassSym) {
 		s.declare(p)
 	}
 	c.state = state{scope: s, cls: cls, this: newThis(cls), fn: sym, retType: sym.Ret, retAllowed: true, tparams: funTypeParams(sym, cls),
-		recvs: extRecvs(d), ctxs: funContexts(d)}
+		recvs: extRecvs(d), ctxs: funContexts(d), plugin: d.Plugin}
 	c.inAnon(cls)
 	if sym.Suspend {
 		d.Continuation = c.anonName()

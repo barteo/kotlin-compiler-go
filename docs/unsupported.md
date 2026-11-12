@@ -76,13 +76,17 @@ S::class)` get their `serializer()`.
 
 ## Parcelize (`-parcelize`)
 
-Not supported: other types than `String`, the primitive types, enums,
-`Parcelable`s, `Serializable`s, `Array<String>`, and `List`,
-`MutableList`, `ArrayList`, `Set`, `MutableSet`, `LinkedHashSet`, `Map`,
-`MutableMap`, `LinkedHashMap` and `HashMap` of these (so not other
-arrays, `CharSequence`, `Bundle`...); custom `Parceler`s;
-`@TypeParceler`, `@WriteWith` and `@RawValue`; generic `@Parcelize`
-classes.
+A class that kotlinc reports an error for, or fails to compile, is left
+to kotlinc: one with a property of a type that the plugin can only write
+with `writeValue` and that isn't annotated `@RawValue`, such as a value
+class that isn't `Parcelable` or `Serializable`, or of a type parameter
+whose bound is a collection; a `@TypeParceler` or `@WriteWith` whose
+`Parceler` isn't an object or doesn't fit the type, or two
+`@TypeParceler`s for one type; a `Parceler` companion object of another
+type than the class's; a `@DataClass` type whose data class's
+constructor or properties the class can't see, or whose data class, or
+one in it, is another module's, such as `Pair`, for which kotlinc's
+plugin finds no properties and crashes.
 
 ## Compose (`-compose`)
 
@@ -257,3 +261,23 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   primitive (`int`) to its `-impl` methods.
 - Annotations on local variables, type parameters, types and
   expressions aren't written, nor are `@[A B]` lists.
+
+**Compiler plugins**
+
+- The parcelize plugin reads a `FileDescriptor` with
+  `Parcel.readFileDescriptor()`, which returns a `ParcelFileDescriptor`.
+  `kotlinc` casts it to `FileDescriptor`, which fails, except for the
+  elements of collections and arrays, which it leaves uncast; `kc` casts
+  those too.
+- A custom `Parceler`'s `write`, a member extension, is called through an
+  inlined `with`, which leaves a `Unit` loaded and popped after the call
+  that `kotlinc` doesn't have, and a `Parceler` companion's `newArray` is
+  cast to the array type, which `kotlinc` doesn't. kotlinc reports
+  `@TypeParceler` and `@WriteWith` in a class that isn't `@Parcelize`
+  as errors; `kc` ignores them.
+- `kotlinc`'s plugin code casts values to the types they are passed as
+  where those are supertypes, as a list read to `List` or the receiver of
+  `toPersistentList` to `Iterable`; `kc`'s doesn't, and casts the
+  elements of a value class that it reads into a list to the class.
+- `Uuid` is written with an inlined `toLongs`, whose lambda's arguments
+  `kc` boxes (see Inlining).

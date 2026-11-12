@@ -1,0 +1,6 @@
+prim true
+prim true
+prim false
+prim false
+boxed true
+NullPointerException

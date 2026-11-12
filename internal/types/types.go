@@ -804,12 +804,15 @@ type ClassSym struct {
 	// Java classes. They are created when first referenced and filled in by
 	// load on first use; call Ensure before reading the fields below or
 	// Methods.
-	External  bool
-	Missing   bool // not found or unreadable
-	Interface bool
-	Abstract  bool // an abstract class or an interface: it can't be instantiated
-	Final     bool // can't be subclassed
-	Private   bool // not public
+	External bool
+	Missing  bool // not found or unreadable
+	// MethodAnnotations reads the annotations of a method of the class
+	// file, by its name and descriptor.
+	MethodAnnotations func(name, desc string) (*classfile.MethodAnnotations, error)
+	Interface         bool
+	Abstract          bool // an abstract class or an interface: it can't be instantiated
+	Final             bool // can't be subclassed
+	Private           bool // not public
 	// PackagePrivate is set, with Private, on a Java class of package
 	// visibility, which only code in its package sees, as its
 	// package-private members.
@@ -849,6 +852,8 @@ type ClassSym struct {
 	// boxed: see Unboxed.
 	Value      bool
 	Underlying *VarSym
+	// Data is set on data classes, of the program or the class path.
+	Data bool
 	// Fun is set on fun interfaces, of the program or the class path, to
 	// whose single abstract method lambdas passed for them convert.
 	Fun bool
@@ -1138,6 +1143,13 @@ const (
 	// ComposeKey is Compose's key(keys...) { ... }: the lambda is inlined
 	// in a movable group, whose key the keys are (see codegen/compose.go).
 	ComposeKey
+
+	// UnsafeCoerce is `kc$coerce`<R>(x), which only the code kc writes
+	// for compiler plugins calls: x, of a value class type held unboxed,
+	// as R, the type of its underlying value, or the other way round. On
+	// the JVM the value is unchanged, as with kotlinc's IR's unsafe
+	// coerce.
+	UnsafeCoerce
 )
 
 // BitwiseOps are the bitwise functions of Int and Long, which are JVM

@@ -67,3 +67,8 @@ fun <T> twoClasses(x: T) where T : Number, T : Exception {} // ERROR only one of
 fun <T, U> boundedByParam(x: T) where T : U, T : Comparable<T> {} // ERROR type parameter cannot have any other bounds if it's bounded by another type parameter
 fun <T> outOfBounds(x: T) where T : CharSequence, T : Comparable<T> {}
 fun useOutOfBounds() = outOfBounds(1) // ERROR type argument is not within its bounds: inferred type Int of type parameter 'T' is not a subtype of CharSequence
+
+// Only a compiler plugin's code may call a constructor with type arguments
+// out of their bounds.
+class SelfBounded<T : Comparable<T>>(val x: T)
+fun explicitOutOfBounds(c: Comparable<*>) = SelfBounded<Comparable<*>>(c) // ERROR type argument is not within its bounds

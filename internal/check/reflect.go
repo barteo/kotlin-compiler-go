@@ -109,7 +109,7 @@ func (c *Checker) classLitType(ref *syntax.TypeRef, callable bool) types.Type {
 	if ref.Args == nil && !builtinTypeNames[ref.Name] {
 		if cls := c.lookupClass(ref.Name); cls != nil && ensured(cls).TypeParams != nil && cls.Inner && cls.OuterParams > 0 && !callable {
 			return starInner(cls) // Outer.Inner::class, for Outer<T>
-		} else if cls != nil && cls.TypeParams != nil {
+		} else if cls != nil && len(cls.TypeParams) > 0 {
 			stars := make([]*syntax.TypeArg, len(cls.TypeParams))
 			for i := range stars {
 				stars[i] = &syntax.TypeArg{P: ref.P, Variance: types.Star}
