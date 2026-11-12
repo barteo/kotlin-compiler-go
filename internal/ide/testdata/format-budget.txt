@@ -13,10 +13,12 @@ run/privateAccess.kt
 run/receiverPrecedence.kt
 run/stdlibCoroutinesAbi.kt
 run/stdlibCoroutinesTurbine.kt
+run/stdlibInlineArgs.kt
 run/stdlibJvmAbi.kt
 run/stdlibLineBreaks.kt
 run/stdlibMemberExtDelegation.kt
 run/stdlibParserGaps.kt
+run/stdlibQualifiedTypeArgOnLines.kt
 run/stdlibReifiedObjects.kt
 run/stdlibTailrecSuspend.kt
 run/stdlibWhereClauses.kt

@@ -24,9 +24,13 @@ stdlibContextReferences stdlibContextReferences.kt:26:1 prop
 stdlibDelegatedExtensions stdlibDelegatedExtensions.kt:41:1 size
 stdlibEnumEntriesPriority stdlibEnumEntriesPriority.kt:1:1 Shadowing
 stdlibErasedCasts stdlibErasedCasts.kt:55:5 get
+stdlibImportedFunctionOverObjectMethod stdlibImportedFunctionOverObjectMethod.kt:3:1 Pack
+stdlibJvmStaticExtensions stdlibJvmStaticExtensions.kt:9:1 Strings
 stdlibJvmStaticObjects stdlibJvmStaticObjects.kt:13:5 late
 stdlibKtorIo stdlibKtorIo.kt:123:1 Slot
 stdlibLateinit stdlibLateinit.kt:5:5 name
+stdlibLateinitCheckInReceiverLambda stdlibLateinitCheckInReceiverLambda.kt:8:5 value
+stdlibLateinitCheckInSuspendLambda stdlibLateinitCheckInSuspendLambda.kt:9:1 topLevel
 stdlibLoopVarTypes stdlibLoopVarTypes.kt:12:10 x
 stdlibMemberExtProps stdlibMemberExtProps.kt:21:5 label
 stdlibMemberExtProps stdlibMemberExtProps.kt:46:5 end
