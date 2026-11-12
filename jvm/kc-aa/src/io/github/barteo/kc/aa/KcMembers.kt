@@ -197,7 +197,10 @@ internal class KcMemberBuilder(private val round: KcRound, private val c: KcClas
         return erasedParams[d.name.asString()].orEmpty().filter { it < ps.size }.associateWith { erased.sub.substitute(ps[it].returnType) }
     }
 
-    /** The Kotlin properties among [candidates] that Java method [d] of [c] is the getter of, if [java]: MutableMap.keys for AbstractMap.keySet(). */
+    /**
+     * The Kotlin properties among [candidates] that Java method [d] of [c]
+     * is the getter of, if [java]: MutableMap.keys for AbstractMap.keySet().
+     */
     private fun getterOf(d: KaNamedFunctionSymbol, candidates: List<Candidate>, java: Boolean): List<Candidate> =
         if (!java || d.valueParameters.isNotEmpty() || d.typeParameters.isNotEmpty()) emptyList()
         else candidates.filter { isProperty(it.symbol) && getterName(it.symbol as KaPropertySymbol) == d.name.asString() }
@@ -218,11 +221,10 @@ internal class KcMemberBuilder(private val round: KcRound, private val c: KcClas
     /**
      * Substitutor [sub] of a supertype's arguments, for enhancing a member
      * of [c]: unless [java], so in a Kotlin class, a JDK method's
-     * (`jvmMappedMembers`), with [c]'s type parameters flexible after
-     * it. FIR has these methods from
-     * the JDK's classes, whose supertypes' arguments are flexible, so
-     * List.spliterator() returns `Spliterator<E!>`, not Iterable's
-     * `Spliterator<T>` with List's `E`.
+     * (`jvmMappedMembers`), with [c]'s type parameters flexible after it.
+     * FIR has these methods from the JDK's classes, whose supertypes'
+     * arguments are flexible, so List.spliterator() returns
+     * `Spliterator<E!>`, not Iterable's `Spliterator<T>` with List's `E`.
      */
     private fun mapped(sub: KaSubstitutor, java: Boolean): KaSubstitutor {
         if (java || c.typeParameters.isEmpty()) return sub

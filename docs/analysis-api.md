@@ -2226,7 +2226,11 @@ Gaps left:
   (`HashMap.keySet()`) isn't among its members; the inherited one
   (`AbstractMap.keySet()`) is. This predates step 30.
 
-The slice matches `want.txt`, and `ka`'s tests pass.
+Results: the slice matches `want.txt`, and on stock differs only as
+`stock.diff` records; Moshi, Dagger, Room and Hilt match on both; KSP's
+suite passes 171 of 173 with each feature configuration; kotlinpoet's
+interop tests fail `transitiveAliases` and `complexAliasing` on kc and
+`complexAliasing` on stock, as before.
 
 ## Gaps and open questions
 
