@@ -66,12 +66,6 @@ mapping.
 - **Slice simplifications.** These go when the symbol model and the
   queryable session bring the facts in:
   - Accessors read their flags from PSI modifiers, not from `kc`.
-  - ~~There are no backing-field symbols, so `@field:` annotations are dropped.~~
-    Fixed.
-  - ~~Library type aliases and top-level callables aren't known.~~ Fixed.
-  - ~~Java sources are ignored.~~ Fixed.
-  - ~~The PSI join checks each node's PSI class, not yet the whole kind
-    sequence.~~ Fixed.
   - `dropCaches` does nothing. Dropping PsiManager's caches needs IntelliJ
     extension points that the core environment doesn't register, and sources
     don't change between rounds.
