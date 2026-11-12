@@ -51,6 +51,9 @@ fun main() = runBlocking {
     println(mutex.guarded<String> { null })
     println(mutex.guarded<String> { error("failed ${mutex.isLocked}") })
     println(mutex.isLocked)
+    println(recovered { delay(1); 5 })
+    println(recovered<Int> { error("lost") })
+    println(recovered({ delay(1); it.message }) { error("found") })
     // Not copied: its own method.
     val m = Class.forName("store.InlineKt").getMethod("halved", Int::class.javaPrimitiveType, Continuation::class.java)
     println(runCatching { m.invoke(null, -1, Continuation<Any?>(EmptyCoroutineContext) {}) }.exceptionOrNull()?.cause)

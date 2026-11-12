@@ -29,4 +29,7 @@ held true
 nothing
 failed true
 false
+5
+null
+found
 java.lang.IllegalArgumentException: negative: -1
