@@ -10,3 +10,5 @@ twice 3
 <init> In(7, 3) true
 [invokeSuspend x, releaseIntercepted]
 true
+<init> true <init> k4 true
+<init> <init>

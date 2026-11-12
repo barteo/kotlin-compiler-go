@@ -753,10 +753,10 @@ tests/callableReference/function/innerConstructorFromExtension.kt	rejects invali
 tests/callableReference/function/innerConstructorFromTopLevel.kt	rejects invalid	on an expected line	
 tests/callableReference/function/javaStaticMethod.kt	skip	Java sources	
 tests/callableReference/function/lhsNotAClass.kt	rejects invalid	on an expected line	
-tests/callableReference/function/localConstructor.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	localConstructor.kt:10: type mismatch: inferred type is () -> LocalConstructorKt.main.A but KFunction0<LocalConstructorKt.main.A> was expected
-tests/callableReference/function/localConstructorFromExtensionInLocalClass.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	localConstructorFromExtensionInLocalClass.kt:12: type mismatch: inferred type is () -> LocalConstructorFromExtensionInLocalClassKt.main.A but KFunction0<LocalConstructorFromExtensionInLocalClassKt.main.A> was expected
-tests/callableReference/function/localConstructorFromLocalClass.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	localConstructorFromLocalClass.kt:9: type mismatch: inferred type is () -> LocalConstructorFromLocalClassKt.main.A but KFunction0<LocalConstructorFromLocalClassKt.main.A> was expected
-tests/callableReference/function/localConstructorFromLocalExtension.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	localConstructorFromLocalExtension.kt:11: type mismatch: inferred type is () -> LocalConstructorFromLocalExtensionKt.main.A but KFunction0<LocalConstructorFromLocalExtensionKt.main.A> was expected
+tests/callableReference/function/localConstructor.kt	accepts valid		
+tests/callableReference/function/localConstructorFromExtensionInLocalClass.kt	accepts valid		
+tests/callableReference/function/localConstructorFromLocalClass.kt	accepts valid		
+tests/callableReference/function/localConstructorFromLocalExtension.kt	accepts valid		
 tests/callableReference/function/localNamedFun.kt	accepts valid		
 tests/callableReference/function/localNamedFunFromExtensionInLocalClass.kt	accepts valid		
 tests/callableReference/function/localNamedFunFromLocalClass.kt	accepts valid		

@@ -7,9 +7,9 @@ Of 10827 test files, 3541 are skipped and 7286 run.
 | Result | Tests | Share |
 |:---|---:|---:|
 | rejects invalid | 3645 | 50.0% |
-| accepts valid | 3150 | 43.2% |
+| accepts valid | 3154 | 43.3% |
 | accepts invalid | 235 | 3.2% |
-| rejects valid | 240 | 3.3% |
+| rejects valid | 236 | 3.2% |
 | parse/unsupported | 16 | 0.2% |
 | crash | 0 | 0.0% |
 
@@ -119,7 +119,7 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 | First error | Tests | Examples |
 |:---|---:|:---|
-| `type mismatch: inferred type is _ but _ was expected` | 59 | `tests/annotations/parameters/expressions/unaryPlus.kt`, `tests/callableReference/function/localConstructor.kt` |
+| `type mismatch: inferred type is _ but _ was expected` | 55 | `tests/annotations/parameters/expressions/unaryPlus.kt`, `tests/callableReference/resolve/eagerResolveOfSingleCallableReference.kt` |
 | `cannot infer type for type parameter '_'. Specify it explicitly.` | 48 | `tests/callableReference/generic/kt35896.kt`, `tests/callableReference/genericCallWithReferenceAgainstVararg.kt` |
 | `unresolved reference: _` | 24 | `tests/callResolution/suspendCOnversionForReceiver.kt`, `tests/callableReference/bound/controlFlow.kt` |
 | `ambiguous call: n candidates for '_' take (_)` | 16 | `tests/callableReference/noAmbiguityWhenAllReferencesAreInapplicable.kt`, `tests/callableReference/resolve/kt35887.kt` |
@@ -238,7 +238,7 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | Error | Count |
 |:---|---:|
 | `cannot infer type for type parameter '_'. Specify it explicitly.` | 520 |
-| `type mismatch: inferred type is _ but _ was expected` | 289 |
+| `type mismatch: inferred type is _ but _ was expected` | 283 |
 | `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 207 |
 | `unresolved reference: _` | 203 |
 | `platform declaration clash: _` | 150 |

@@ -153,9 +153,9 @@ Kotlin 2.4.21's tests on `kc`:
 |:---|---:|---:|
 | run (of 10,827) | 7,286 | |
 | rejects invalid | 3,645 | 50.0% |
-| accepts valid | 3,150 | 43.2% |
+| accepts valid | 3,154 | 43.3% |
 | accepts invalid | 235 | 3.2% |
-| rejects valid | 240 | 3.3% |
+| rejects valid | 236 | 3.2% |
 | parse/unsupported | 16 | 0.2% |
 | crash | 0 | |
 
@@ -172,7 +172,7 @@ break the failures down; the largest groups are:
   (`OVERLOAD_RESOLUTION_AMBIGUITY` 8), unsupported constructs
   (`UNSUPPORTED` 8) and initializer type mismatches
   (`INITIALIZER_TYPE_MISMATCH` 6).
-- **Rejects valid**, by `kc`'s first error: type mismatches (59),
+- **Rejects valid**, by `kc`'s first error: type mismatches (55),
   inference failures (48), unresolved names and imports (28), ambiguous
   calls (16), and non-exhaustive `when`s (7). No box test is rejected.
 
