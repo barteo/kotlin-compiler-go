@@ -92,6 +92,23 @@ func (g *gen) ktype(t types.Type, bound bool) {
 		g.code.Invoke(cf.INVOKESTATIC, refl, name, "(Lkotlin/reflect/KClassifier;)Lkotlin/reflect/KType;")
 		return
 	}
+	if t.P {
+		// A platform type, as kotlinc builds it: between its non-null
+		// type, a mutable collection's, and its nullable type, a
+		// read-only one's.
+		g.ktype(t.NonNull(), bound)
+		g.kclassType(t.Nullable(), bound, false)
+		g.code.Invoke(cf.INVOKESTATIC, refl, "platformType", "(Lkotlin/reflect/KType;Lkotlin/reflect/KType;)Lkotlin/reflect/KType;")
+		return
+	}
+	g.kclassType(t, bound, true)
+}
+
+// kclassType pushes the KType of t, which is no type parameter and no
+// platform type: see ktype. A mutable collection's is marked if mutable
+// is set.
+func (g *gen) kclassType(t types.Type, bound, mutable bool) {
+	const refl, proj = "kotlin/jvm/internal/Reflection", "kotlin/reflect/KTypeProjection"
 	nn := t.NonNull()
 	switch {
 	case nn.IsPrimitive() && t.N:
@@ -149,7 +166,7 @@ func (g *gen) ktype(t types.Type, bound bool) {
 		}
 		g.code.Invoke(cf.INVOKESTATIC, refl, name, d+")Lkotlin/reflect/KType;")
 	}
-	if nn.K == types.Class && nn.C.ReadOnly != nil {
+	if mutable && nn.K == types.Class && nn.C.ReadOnly != nil {
 		g.code.Invoke(cf.INVOKESTATIC, refl, "mutableCollectionType", "(Lkotlin/reflect/KType;)Lkotlin/reflect/KType;")
 	}
 }
