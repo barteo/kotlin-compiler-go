@@ -804,12 +804,15 @@ type ClassSym struct {
 	// Java classes. They are created when first referenced and filled in by
 	// load on first use; call Ensure before reading the fields below or
 	// Methods.
-	External  bool
-	Missing   bool // not found or unreadable
-	Interface bool
-	Abstract  bool // an abstract class or an interface: it can't be instantiated
-	Final     bool // can't be subclassed
-	Private   bool // not public
+	External bool
+	Missing  bool // not found or unreadable
+	// MethodAnnotations reads the annotations of a method of the class
+	// file, by its name and descriptor.
+	MethodAnnotations func(name, desc string) (*classfile.MethodAnnotations, error)
+	Interface         bool
+	Abstract          bool // an abstract class or an interface: it can't be instantiated
+	Final             bool // can't be subclassed
+	Private           bool // not public
 	// PackagePrivate is set on a Java class that isn't public, which only
 	// code in its package sees, as its package-private members.
 	PackagePrivate bool

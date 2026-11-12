@@ -386,6 +386,8 @@ func (c *Checker) join(a, b types.Type) (types.Type, bool) {
 			return a, true // T? and T, for a T that may be null, give T?
 		case types.MayBeNull(b) && !b.P:
 			return b, true
+		case b.P:
+			return b, true // T and T! give T!, which isn't checked for null
 		}
 		return a, true
 	}

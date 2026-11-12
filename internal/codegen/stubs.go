@@ -552,8 +552,12 @@ type defaultBody struct {
 	// @Deprecated(level = HIDDEN), which kotlinc makes synthetic.
 	owner  *types.ClassSym
 	hidden bool
-	// accessor is the program's property accessor, when it is one.
+	// accessor is the program's property accessor, when it is one: the
+	// accessor acc of property prop, site "get" or "set".
 	accessor *types.FunSym
+	prop     *syntax.PropDecl
+	acc      *syntax.FunDecl
+	site     string
 }
 
 func (m defaultBody) synthetic() uint16 {
@@ -575,7 +579,7 @@ func ownBodies(s *types.ClassSym) []defaultBody {
 			case *syntax.FunDecl:
 				if f := m.Sym; f != nil && m.Visibility != syntax.Private {
 					abstract := f.Abstract || m.Body == nil && m.ExprBody == nil
-					out = append(out, defaultBody{f.JVM(), funDesc(f), f.Params, f.Ret, abstract, m, m.P.Line, s, f.Hidden, nil})
+					out = append(out, defaultBody{f.JVM(), funDesc(f), f.Params, f.Ret, abstract, m, m.P.Line, s, f.Hidden, nil, nil, nil, ""})
 				}
 			case *syntax.PropDecl:
 				p := m.Sym
@@ -585,7 +589,7 @@ func ownBodies(s *types.ClassSym) []defaultBody {
 				get := defaultBody{name: types.GetterJVM(p), desc: "()" + desc(types.GetterType(p)), ret: types.GetterType(p), abstract: true}
 				if a := m.Getter; a != nil && a.Sym != nil && (a.Body != nil || a.ExprBody != nil) {
 					f := a.Sym
-					get = defaultBody{f.JVM(), funDesc(f), f.Params, f.Ret, false, nil, a.P.Line, s, f.Hidden, f}
+					get = defaultBody{f.JVM(), funDesc(f), f.Params, f.Ret, false, nil, a.P.Line, s, f.Hidden, f, m, a, "get"}
 				}
 				out = append(out, get)
 				if !p.Mutable {
@@ -594,7 +598,7 @@ func ownBodies(s *types.ClassSym) []defaultBody {
 				set := defaultBody{name: types.SetterJVM(p), desc: "(" + desc(types.FieldType(p)) + ")V", ret: types.UnitType, abstract: true}
 				if a := m.Setter; a != nil && a.Sym != nil && (a.Body != nil || a.ExprBody != nil) {
 					f := a.Sym
-					set = defaultBody{f.JVM(), funDesc(f), f.Params, f.Ret, false, nil, a.P.Line, s, f.Hidden, f}
+					set = defaultBody{f.JVM(), funDesc(f), f.Params, f.Ret, false, nil, a.P.Line, s, f.Hidden, f, m, a, "set"}
 				}
 				out = append(out, set)
 			}
@@ -667,6 +671,7 @@ func (g *gen) defaultBridges(cd *syntax.ClassDecl, c *cf.Class) {
 			}
 			code := c.NewMethod(cf.AccPublic|cf.AccBridge|m.synthetic(), m.name, m.desc)
 			ref := c.LastMethod()
+			g.bridgeAnnotations(ref, m)
 			nullability(methodAdder(ref), m.ret)
 			for i, p := range m.params {
 				nullability(paramAdder(ref, i), p.Type)
@@ -718,4 +723,56 @@ func superImplements(s *types.ClassSym, m defaultBody) bool {
 		}
 	}
 	return false
+}
+
+// bridgeAnnotations writes the annotations of interface member m on its
+// bridge ref, but for nullability's, as kotlinc copies them: JUnit, for
+// one, finds a @Rule getter among the class's own methods only.
+func (g *gen) bridgeAnnotations(ref cf.MemberRef, m defaultBody) {
+	add := methodAdder(ref)
+	switch {
+	case m.decl != nil:
+		writeAnnotations(add, m.decl.Annotations, all)
+		if deprecated(m.decl.Annotations) {
+			ref.Deprecate()
+		}
+		i := 0
+		if m.decl.RecvSym != nil {
+			writeAnnotations(paramAdder(ref, 0), m.decl.RecvAnnotations, site("receiver"))
+			i = 1
+		}
+		for j, p := range m.decl.Params {
+			writeAnnotations(paramAdder(ref, i+j), p.Annotations, all)
+		}
+	case m.acc != nil:
+		writeAnnotations(add, m.acc.Annotations, all)
+		g.accessorAnnotations(ref, m.prop, m.site)
+		for j, p := range m.acc.Params {
+			writeAnnotations(paramAdder(ref, j), p.Annotations, all)
+		}
+	case m.owner != nil && m.owner.MethodAnnotations != nil:
+		as, err := m.owner.MethodAnnotations(m.name, m.desc)
+		if err != nil {
+			return
+		}
+		if as.Deprecated {
+			ref.Deprecate()
+		}
+		copyAnnotations(add, as.Visible, true)
+		copyAnnotations(add, as.Invisible, false)
+		for i, ps := range as.VisibleParams {
+			copyAnnotations(paramAdder(ref, i), ps, true)
+		}
+		for i, ps := range as.InvisibleParams {
+			copyAnnotations(paramAdder(ref, i), ps, false)
+		}
+	}
+}
+
+func copyAnnotations(add adder, as []cf.Annotation, visible bool) {
+	for _, a := range as {
+		if a.Type != "Lorg/jetbrains/annotations/NotNull;" && a.Type != "Lorg/jetbrains/annotations/Nullable;" {
+			add(a, visible)
+		}
+	}
 }

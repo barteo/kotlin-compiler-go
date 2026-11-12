@@ -612,7 +612,11 @@ func (g *gen) as(x *syntax.As) {
 	}
 	if g.castChecks(x, from, to) {
 		g.checkCastNotNull(to)
-		from = from.NonNull()
+		if nn := from.NonNull(); from.IsPrimitive() || !nn.IsPrimitive() {
+			from = nn
+		}
+		// Else a platform value, as a Java generic's Boolean!, which is
+		// still its box.
 	}
 	if from.IsPrimitive() {
 		if from == to {
@@ -779,6 +783,7 @@ func (g *gen) global(p *types.VarSym) {
 	case p.Private:
 		g.shared.access[p] |= 1
 		g.code.Invoke(cf.INVOKESTATIC, p.Facade, privateGetter(p), "()"+d)
+		g.lateinit(p)
 	case p.Composable && p.Facade == composablesKt && p.Name == "currentComposer":
 		// An intrinsic: its getter only throws.
 		g.loadComposer()
@@ -1349,10 +1354,20 @@ func (g *gen) member(x *syntax.Member) {
 	}
 	if x.Builtin == types.IsInitialized {
 		// this::x.isInitialized: whether the field is assigned.
+		// From another class, as a lambda's, a private field is read
+		// with its static accessor.
 		p := x.Prop
-		if p.Kind == types.Global {
-			g.code.FieldInsn(cf.GETSTATIC, p.FieldClass(), p.Name, desc(types.FieldType(p)))
-		} else {
+		d := desc(types.FieldType(p))
+		switch {
+		case p.Kind == types.Global && p.Private && g.cls.Name != p.FieldClass():
+			g.shared.access[p] |= 1
+			g.code.Invoke(cf.INVOKESTATIC, p.Facade, privateGetter(p), "()"+d)
+		case p.Kind == types.Global:
+			g.code.FieldInsn(cf.GETSTATIC, p.FieldClass(), p.Name, d)
+		case p.Private:
+			g.expr(x.X)
+			g.outerField(p, false)
+		default:
 			g.expr(x.X)
 			g.getField(p)
 		}

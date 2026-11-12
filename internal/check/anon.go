@@ -213,6 +213,7 @@ func (c *Checker) anonClass(d *syntax.ClassDecl, what, whats string, name func()
 			*prev.outer, outer = *outer, prev.outer
 		}
 		ctx.outer = outer
+		frame.Outer = outer
 		name := c.cls.DisplayName()
 		r := implicitRecv{sym: outer, label: name[strings.LastIndexByte(name, '.')+1:], depth: depth, outer: true, class: true}
 		n := 0

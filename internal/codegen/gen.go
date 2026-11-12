@@ -101,7 +101,9 @@ type gen struct {
 	// their types, for typeOf.
 	reified      map[string]string
 	reifiedTypes map[string]types.Type
-	prefix       string // lambda methods are named prefix$0, prefix$1, ...
+	// serializers are the call's syntax.Call.Serializers.
+	serializers map[string]syntax.Expr
+	prefix      string // lambda methods are named prefix$0, prefix$1, ...
 	// noLines is positive in the copy of an inline function, whose code
 	// keeps the line of the call: line numbers aren't recorded.
 	noLines int
@@ -369,9 +371,6 @@ func (g *gen) privateAccessors() {
 				code.Local(cf.ALOAD, code.AllocLocal(self))
 			}
 			code.FieldInsn(get, fieldOwner(p), p.Name, d)
-			if p.Lateinit {
-				lateinitCheck(code, p.Name, g.shared.opts.Stdlib)
-			}
 			code.Op(returnOp(ft))
 			if err := code.Err(); err != nil {
 				panic(err)
@@ -3438,6 +3437,7 @@ func (g *gen) getProp(cls *types.ClassSym, p *types.VarSym) {
 		} else {
 			g.code.Invoke(cf.INVOKESTATIC, p.Owner.Name, privateGetter(p), "(L"+p.Owner.Name+";)"+d)
 		}
+		g.lateinit(p) // the accessor reads the field as it is, as isInitialized does
 		g.coerce(ft, p.Type)
 		return
 	}

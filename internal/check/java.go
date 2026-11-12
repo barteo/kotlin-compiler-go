@@ -176,6 +176,13 @@ func (t *classTable) load(cls *types.ClassSym) {
 		}
 		cls.TargetsKnown = known
 	}
+	cls.MethodAnnotations = func(name, desc string) (*classfile.MethodAnnotations, error) {
+		b, err := t.cp.Bytes(cls.Name)
+		if err != nil {
+			return nil, err
+		}
+		return classfile.ReadMethodAnnotations(b, name, desc)
+	}
 	if t.kotlin && info.Kotlin != nil && info.Kotlin.K == kmeta.KindClassFile {
 		if kc, err := kmeta.ReadClass(info.Kotlin); err == nil {
 			t.loadKotlin(cls, info, kc)
@@ -1846,6 +1853,7 @@ func (c *Checker) companionInvokes(comp *types.ClassSym, x *syntax.Call) bool {
 
 // construct checks a constructor call of a user or Java class.
 func (c *Checker) construct(x *syntax.Call, cls *types.ClassSym, p syntax.Pos, want types.Type, sink *system) types.Type {
+	cls.Ensure()
 	if cls.Array {
 		return c.arrayConstruct(x, cls, want, sink)
 	}
@@ -2269,8 +2277,9 @@ func (c *Checker) javaProperty(x *syntax.Member, rt types.Type) (types.Type, boo
 	for _, f := range c.accessible(cls, c.javaMethods(cls, getterName)) {
 		// Only Java methods are seen as properties, and the program's
 		// overrides of them.
-		if c.javaAccessor(f) && len(f.Params) == 0 && !f.Unsupported && f.Ret.K != types.Unit &&
-			(getterName != x.Name || f.Ret.Flex() == types.BoolType || special) {
+		// isX() is the getter of isX whatever its result, as Rx's
+		// Maybe.isEmpty(), a Single<Boolean>.
+		if c.javaAccessor(f) && len(f.Params) == 0 && !f.Unsupported && f.Ret.K != types.Unit {
 			x.Getter = f
 		}
 	}
@@ -2296,9 +2305,24 @@ func (c *Checker) javaProperty(x *syntax.Member, rt types.Type) (types.Type, boo
 	}
 	sub := c.memberSubst(rt, x.Getter.Owner)
 	// A setter may return a value, which an assignment drops: Android's
-	// Intent.setFlags returns the Intent.
+	// Intent.setFlags returns the Intent. Its parameter is of the type of
+	// the getter or of a getter that it overrides: EditText.getText()'s
+	// Editable overrides TextView.getText()'s CharSequence, which
+	// setText(CharSequence) takes.
+	getters := []*types.FunSym{x.Getter}
+	cls.Supertypes(func(s *types.ClassSym) bool {
+		if s != cls {
+			for _, g := range c.javaMethods(s, x.Getter.Name) {
+				if len(g.Params) == 0 {
+					getters = append(getters, g)
+				}
+			}
+		}
+		return true
+	})
 	for _, f := range c.accessible(cls, c.javaMethods(cls, setterName)) {
-		if c.javaAccessor(f) && len(f.Params) == 1 && !f.Unsupported && sameJavaType(f, x.Getter) {
+		if c.javaAccessor(f) && len(f.Params) == 1 && !f.Unsupported &&
+			slices.ContainsFunc(getters, func(g *types.FunSym) bool { return sameJavaType(f, g) }) {
 			x.Setter = f
 		}
 	}

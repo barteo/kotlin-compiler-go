@@ -1,0 +1,6 @@
+class Msg
+java.util.List<? extends Msg>
+java.util.Map<java.lang.String, ? extends Msg>
+java.util.Set<? extends Msg>
+class [I
+class java.lang.Integer
