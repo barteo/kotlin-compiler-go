@@ -1339,7 +1339,7 @@ func (c *Checker) declareClass(d *syntax.ClassDecl, name string, outer *types.Cl
 	}
 	if d.Annotation {
 		sym.Retention, sym.Targets = declaredAnnotation(&d.Modifiers)
-		sym.TargetsKnown = true
+		sym.TargetsKnown, sym.TargetsRead = true, true
 		sym.Repeatable = slices.ContainsFunc(d.Annotations, func(a syntax.Annotation) bool {
 			switch a.Name {
 			case "Repeatable", "kotlin.annotation.Repeatable", "JvmRepeatable", "kotlin.jvm.JvmRepeatable", "java.lang.annotation.Repeatable":

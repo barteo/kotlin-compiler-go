@@ -241,6 +241,8 @@ func writeDecls(w *wire.Writer, ds []*ka.Decl) {
 		for _, c := range d.Inheritors {
 			w.String(c)
 		}
+		writeType(w, d.FieldType)
+		writeDecls(w, d.Contexts)
 	}
 }
 

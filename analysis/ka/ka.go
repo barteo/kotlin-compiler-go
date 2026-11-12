@@ -299,6 +299,14 @@ type Decl struct {
 	// metadata lists them; nil for the others (a source sealed class's
 	// are found from the sources).
 	Inheritors []string
+	// FieldType is the type of a source property's explicit backing
+	// field, field: T = init, if it narrows the property's; nil for the
+	// others, whose field has the property's type.
+	FieldType *Type
+	// Contexts are a function's or a property's context parameters,
+	// context(a: A, _: B), of kind KindValueParameter; an unnamed one's
+	// name is _.
+	Contexts []*Decl
 }
 
 // Annotation is an annotation in the sources.

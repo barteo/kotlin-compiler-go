@@ -211,6 +211,7 @@ func (t *classTable) load(cls *types.ClassSym) {
 			known = known && info.JavaTargets != nil && cls.Targets&types.TargetType == 0
 		}
 		cls.TargetsKnown = known
+		cls.TargetsRead = known || info.KotlinTargets != nil || info.Kotlin != nil || info.JavaTargets != nil
 	}
 	if t.kotlin && info.Kotlin != nil && info.Kotlin.K == kmeta.KindClassFile {
 		if kc, err := kmeta.ReadClass(info.Kotlin); err == nil {

@@ -279,7 +279,7 @@ private class KcExtrasImpl(private val round: () -> KcRound) : KcExtras {
         val info = when (val s = fakeOverrideOriginal(symbol)) {
             is KcFunctionSymbol -> s.info
             is KcPropertySymbol -> s.info
-            is KcGetterSymbol -> s.property.info
+            is KcGetterSymbol -> (s.property as? KcPropertySymbol)?.info ?: return null
             is KcSetterSymbol -> s.property.info
             else -> return null
         }
@@ -331,14 +331,16 @@ private class KcExtrasImpl(private val round: () -> KcRound) : KcExtras {
         while (s != null) {
             val info = when (s) {
                 is KcFakeOverride -> { s = s.owner; continue }
-                is KcGetterSymbol -> s.property.info
+                is KcGetterSymbol -> { s = s.property; continue }
                 is KcSetterSymbol -> s.property.info
                 is KcClassSymbol -> s.info
                 is KcFunctionSymbol -> s.info
                 is KcConstructorSymbol -> s.info
                 is KcValueParameterSymbol -> s.info
+                is KcContextParameterSymbol -> s.info
                 is KcTypeParameterSymbol -> s.info
                 is KcPropertySymbol -> s.info
+                is KcJavaAnnotationPropertySymbol -> s.info
                 is KcEnumEntrySymbol -> s.info
                 is KcTypeAliasSymbol -> s.info
                 is KcBackingFieldSymbol -> s.info

@@ -872,6 +872,12 @@ type ClassSym struct {
 	// class path's that are Kotlin or have a @Target, but not a Java
 	// source's, whose class info is only what javasrc reads.
 	TargetsKnown bool
+	// TargetsRead is set on an annotation class whose Targets were read
+	// from a @Target (or are Kotlin's default), even if kc doesn't check
+	// them (TargetsKnown): a Java source's, or a Java class's that may be
+	// on a type. They decide where an annotation without a use-site
+	// target goes, as Kotlin's default rule does.
+	TargetsRead bool
 	// Repeatable is set on an annotation class annotated @Repeatable,
 	// @JvmRepeatable or Java's @Repeatable: an element can have several
 	// of its annotations.

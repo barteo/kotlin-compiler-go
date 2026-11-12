@@ -739,6 +739,7 @@ internal class KcRound(
                 f.typeParams = typeParams(d, f, key)
                 ctx.typeParams = f.typeParams
                 f.params = params(d, f, key)
+                f.contexts = contexts(d, f, key)
                 locals(d, key) { f }
                 f
             }
@@ -752,7 +753,12 @@ internal class KcRound(
             KcDecl.PROPERTY -> scoped { ctx -> property(d, parent!!, key, ctx) }
             KcDecl.JAVA_FIELD -> {
                 val psi = javaPsi(d, parent)
-                register(KcJavaFieldSymbol(info(d, psi, parent, key)), key, psi)
+                // A Java library field's is its class file's, as in FIR:
+                // KSP reads a backing field's modifiers from it.
+                val classFile = if (origin == KaSymbolOrigin.JAVA_LIBRARY) {
+                    { (parent?.psi as? PsiClass)?.findFieldByName(d.name, false) }
+                } else null
+                register(KcJavaFieldSymbol(info(d, psi, parent, key, findPsi = classFile)), key, psi)
             }
             KcDecl.DESTRUCTURING -> {
                 val psi = psiOf<KtDestructuringDeclaration>(d)
@@ -779,7 +785,7 @@ internal class KcRound(
          * already has only the property's: the untargeted ones that may be
          * on a property are on both it and the parameter, as in Kotlin 2.4.
          */
-        fun property(d: KcDecl, parent: KaSymbol, key: String, ctx: KcTypeContext): KcPropertySymbol {
+        fun property(d: KcDecl, parent: KaSymbol, key: String, ctx: KcTypeContext): KaPropertySymbol {
             val psi = psi(d.node)
             check(psi == null && (origin != KaSymbolOrigin.SOURCE || d.node == 0) || psi is KtProperty || psi is KtParameter || psi is KtDestructuringDeclarationEntry) {
                 "kc: property ${d.name} in $where is $psi"
@@ -797,15 +803,15 @@ internal class KcRound(
                 (parent as? KcClassSymbol)?.info?.decl?.kind == KcDecl.ANNOTATION_CLASS
             val owner = javaOwnerPsi(parent)
             val src = psi ?: if (javaAnnotation) (owner as? PsiClass)?.findMethodsByName(d.name, false)?.firstOrNull() ?: owner else owner
+            if (javaAnnotation) return javaAnnotationProperty(d, src, parent, key, own)
             // A Java library enum's entries is its class too, once that has PSI.
             val classFile = if (origin == KaSymbolOrigin.JAVA_LIBRARY && d.name == "entries" && d.has(KcDecl.STATIC) &&
                 (parent as? KcClassSymbol)?.classKind == KaClassKind.ENUM_CLASS) { { parent.psi } } else null
-            val p = KcPropertySymbol(info(d, src, parent, key, own, classFile).let {
-                if (javaAnnotation) KcInfo(this@KcRound, d, src, parent, key, own, types, KaSymbolOrigin.JAVA_SYNTHETIC_PROPERTY) else it
-            })
+            val p = KcPropertySymbol(info(d, src, parent, key, own, classFile))
             register(p, key, src)
             p.typeParams = typeParams(d, p, key)
             ctx.typeParams = p.typeParams
+            p.contexts = contexts(d, p, key)
             val accessors = (psi as? KtProperty)?.accessors.orEmpty()
             p.getterSymbol = KcGetterSymbol(
                 KcInfo(this@KcRound, d, accessors.firstOrNull { it.isGetter }, p, "$key/get", d.annotations.filter { it.target == "get" }, types, p.info.origin),
@@ -830,9 +836,10 @@ internal class KcRound(
             }
             if (p.hasBackingField) {
                 val field = d.annotations.filter { it.target == "field" || it.target == "delegate" }
+                val fieldPsi = (p.info.psi as? KtProperty)?.fieldDeclaration
                 p.backingField = KcBackingFieldSymbol(
-                    KcInfo(this@KcRound, d, null, p, "$key/field", field, types, p.info.origin), p,
-                ).also { register(it, "$key/field", null) }
+                    KcInfo(this@KcRound, d, fieldPsi, p, "$key/field", field, types, p.info.origin), p,
+                ).also { register(it, "$key/field", fieldPsi) }
             }
             // An accessor's locals are its; the model has them on the property.
             locals(d, key) { psi ->
@@ -840,6 +847,28 @@ internal class KcRound(
                     val ap = (a as? KcGetterSymbol)?.info?.psi ?: (a as? KcSetterSymbol)?.info?.psi
                     ap != null && psi != null && PsiTreeUtil.isAncestor(ap, psi, true)
                 } ?: p
+            }
+            return p
+        }
+
+        /**
+         * Java annotation class method [d], at [src], as a synthetic Java
+         * property with a getter, whose Java getter is the method.
+         */
+        fun javaAnnotationProperty(d: KcDecl, src: PsiElement?, parent: KaSymbol, key: String, own: List<KcAnnotation>): KaPropertySymbol {
+            info(d, src, parent, key, own)
+            val p = KcJavaAnnotationPropertySymbol(KcInfo(this@KcRound, d, src, parent, key, own, types, KaSymbolOrigin.JAVA_SYNTHETIC_PROPERTY))
+            register(p, key, src)
+            p.getterSymbol = KcGetterSymbol(
+                KcInfo(this@KcRound, d, null, p, "$key/get", d.annotations.filter { it.target == "get" }, types, p.info.origin), p,
+            ).also { register(it, "$key/get", null) }
+            val m = KcDecl(KcDecl.FUNCTION, d.name, 0, "", visibility = d.visibility, modality = d.modality, flags = 0,
+                variance = KcDecl.INVARIANT, type = d.type, receiver = null, supertypes = emptyList(), bounds = emptyList(),
+                annotations = d.annotations, typeParams = emptyList(), params = emptyList(), members = emptyList())
+            p.javaGetter = KcFunctionSymbol(KcInfo(this@KcRound, m, src, parent, "$key/java", own, types, origin)).also {
+                it.typeParams = emptyList()
+                it.params = emptyList()
+                register(it, "$key/java", null)
             }
             return p
         }
@@ -870,6 +899,14 @@ internal class KcRound(
                 val own = v.annotations.filter { it.target == "" || it.target == "param" || it.target == "all" }
                 val default = v.default?.let(::value)
                 register(KcValueParameterSymbol(info(v, psi, parent, k, own), default), k, psi)
+            }
+
+        /** The context parameters of [d], a function or a property, [parent]. */
+        fun contexts(d: KcDecl, parent: KaSymbol, key: String): List<KaContextParameterSymbol> =
+            d.contexts.mapIndexed { i, v ->
+                val k = "$key/ctx$i"
+                val psi = psiOf<KtParameter>(v)
+                register(KcContextParameterSymbol(info(v, psi, parent, k, v.annotations)), k, psi)
             }
     }
 

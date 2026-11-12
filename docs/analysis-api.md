@@ -75,7 +75,7 @@ mapping.
 | M3 | Richer symbol model: visibility and modality enums, flags, origins, library annotation arguments, Java parameter names | done: source types, flags and modality (step 1); KaTypes on the JVM (2); annotation arguments (3); library classes (4); inherited members, overrides, subtyping (5); packages, library top-level declarations, alias abbreviations (6); JVM type mapping (7); backing fields (8); Java sources in the module (15). Moshi, Dagger, Room and Hilt byte-identical to stock KSP 2.3.6 (steps 7–9, 14) |
 | M4 | Queryable session `analysis/ka`: lookups, scopes, relations, overrides | done: `ka.Session.Update` and `Model` with `Class` and `Package` lookups on the class path (steps 4, 6), shared library (11), lookups recorded for incremental processing (16); scopes, relations and overrides are answered on the JVM over the model (step 5) |
 | M5 | Bridge: `cmd/libkc` operations, `tools/kagen` wire format, `jvm/kc-aa` KaSession | done: `internal/kaops` operations (open, update, close, class, package), the model wire format, written by hand in `internal/kaops` and `KcModel.kt` (no `tools/kagen` generator was needed), the `KaSession` proxy and symbol, type and annotation classes; member coverage in `jvm/kc-aa/members.txt` (step 19) |
-| M6 | KSP fork integration: the `kc` backend, IC lookups, hot paths | done: KSP's own test suite on the kc backend, `build.sh ksp` (steps 15, 26, 27): 171 of 173 pass on the fork's upstream merge, the other 2 disabled in KSP, Java sources in the main module included; IC lookups recorded by kc's checker and replayed into KSP's tracker, checked against stock KSP on a fixture (step 16). Open: the whole-run fallback to `aa` (see gaps) |
+| M6 | KSP fork integration: the `kc` backend, IC lookups, hot paths | done: KSP's own test suite on the kc backend, `build.sh ksp` (steps 15, 26, 27, 28): 171 of 173 pass on the fork's upstream merge, with and without its backing-field and context-parameter features, the other 2 disabled in KSP, Java sources in the main module included; IC lookups recorded by kc's checker and replayed into KSP's tracker, checked against stock KSP on a fixture (step 16). Open: the whole-run fallback to `aa` (see gaps) |
 | M7 | Differential conformance against stock KSP, benchmark, CI | in progress: `bench/ksp` (steps 11, 17): on octi-server warm 773 ms on stock KSP, 176 ms on kc; cold 6.2–6.4 s and 3.5–3.6 s (step 11's CDS archive: 1.9–2.1 s on kc); CI: `.github/workflows/analysis-api.yml` (step 12) |
 
 ### M0.1 – JNI spike
@@ -1998,6 +1998,42 @@ incremental processing, on kc and on stock KSP.
   does, if the application has none, for `PluginException.createByClass`.
 
 Result: 171 of 173 pass; the other 2 are the tests KSP disables.
+
+#### Step 28: KSP's feature configurations
+
+Upstream runs KSP's suite again with each of its new API features on:
+backing fields (`KSPropertyDeclaration.backingField`), context
+parameters (`contextParameters`) and both.
+`KSP_JAVA_OPTS=-Dksptest.features=backingFields,contextParameters` runs
+them on the kc backend. They needed:
+
+- **Explicit backing fields' type**: `val x: List<T>` with `field:
+  ArrayList<T> = ...` has a field of the narrower type. `ka.Decl.FieldType`
+  carries it, and the backing field symbol has it and its
+  `KtBackingField` as PSI.
+- **A field-only annotation without a use-site target** (`@Inject
+  lateinit var`, `Inject` a Java source annotation with
+  `@Target(FIELD)`) goes on the backing field. `types.ClassSym.TargetsRead`
+  marks annotation classes whose targets were read, even where kc doesn't
+  check them (a Java source's), and placement uses it.
+- **An interface's property** has no backing field, even one written
+  with an initializer.
+- **Java fields' PSI**: KSP reads a Java backing field's modifiers from
+  its PSI, so a Java library field has its class file's (`ClsFieldImpl`),
+  as its class does.
+- **A Java annotation class's method** is a synthetic Java property
+  (`KaSyntheticJavaPropertySymbol`), as in FIR, with its method as
+  `javaGetterSymbol`; KSP gives it a backing field that shares the
+  property's type.
+- **Context parameters**: `ka.Decl.Contexts` has a function's and a
+  property's, from the sources (with their nodes and annotations) and
+  from metadata (annotations from the method's first parameters). Each
+  is a `KaContextParameterSymbol` whose containing symbol is its
+  function or property; an unnamed one, `_`, has FIR's special name,
+  which KSP reports as no name.
+
+Result: 171 of 173 in each of the four configurations; the other 2 are
+the tests KSP disables.
 
 ## Gaps and open questions
 

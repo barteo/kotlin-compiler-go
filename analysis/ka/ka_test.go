@@ -677,3 +677,53 @@ class C {
 		t.Errorf("got\n%s\nwant\n%s", got, want)
 	}
 }
+
+// TestContextParameters checks a function's and a property's context
+// parameters, from the sources (with their nodes and annotations) and
+// from the library's metadata.
+func TestContextParameters(t *testing.T) {
+	m := update(t, `package p
+annotation class A
+interface C1
+interface C2
+context(@A c: C1, _: C2)
+fun f() {}
+class K {
+	context(c: C1)
+	val p: Int get() = 1
+}
+`)
+	defer m.Close()
+	f := m.Files[0]
+	var got []string
+	ctxs := func(owner string, ds []*Decl) {
+		for _, d := range ds {
+			s := fmt.Sprintf("%s(%s: %s)", owner, d.Name, typeString(f.Snapshot, d.Type))
+			if d.Node != 0 {
+				s += " " + f.Snapshot.Node(d.Node).Kind()
+			}
+			for _, a := range d.Annotations {
+				s += " @" + a.ClassID
+			}
+			got = append(got, s)
+		}
+	}
+	for _, d := range f.Decls {
+		ctxs(d.Name, d.Contexts)
+		for _, mem := range d.Members {
+			ctxs(d.Name+"."+mem.Name, mem.Contexts)
+		}
+	}
+	for _, d := range m.Package("kotlin").Decls {
+		if d.Name == "contextOf" {
+			ctxs("kotlin.contextOf", d.Contexts)
+		}
+	}
+	want := []string{
+		"f(c: p/C1) VALUE_PARAMETER @p/A", "f(_: p/C2) VALUE_PARAMETER", "K.p(c: p/C1) VALUE_PARAMETER",
+		"kotlin.contextOf(context: A#?)", // a library type parameter, without a node
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("got\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+}

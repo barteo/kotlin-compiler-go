@@ -459,6 +459,11 @@ func (l *library) kproperty(p *kmeta.Property, scope kscope, bySig map[string]*c
 		md.Receiver = l.ktype(p.Recv, ps, 0)
 	}
 	md.Type = l.ktype(p.Type, ps, 0)
+	var getter *classfile.MemberDetails
+	if p.Getter != nil {
+		getter = bySig[p.Getter.Name+p.Getter.Desc]
+	}
+	md.Contexts = l.kcontexts(p.ContextParams, ps, getter)
 	if md.Flags&FlagConst != 0 && p.Field != nil {
 		if c, ok := consts[p.Field.Name]; ok {
 			md.Default = l.constValue(c, md.Type)
@@ -534,6 +539,7 @@ func (l *library) kfunction(f *kmeta.Function, scope kscope, bySig map[string]*c
 	}
 	m := bySig[f.JVM.Name+f.JVM.Desc]
 	md.Params = l.kparams(f.Params, fs, m)
+	md.Contexts = l.kcontexts(f.ContextParams, fs, m)
 	md.Type = l.ktype(f.Ret, fs, 0)
 	if f.Flags&hasAnnotations != 0 && m != nil {
 		md.Annotations = l.annotations(m.Annotations, true)
@@ -668,6 +674,23 @@ func (l *library) kparams(ps []*kmeta.Param, scope kscope, m *classfile.MemberDe
 			if j := len(m.Params) - len(ps) + i; j >= 0 && j < len(m.Params) {
 				md.Annotations = l.annotations(m.Params[j], true)
 			}
+		}
+		out = append(out, md)
+	}
+	return out
+}
+
+// kcontexts returns the models of context parameters ps of the method m
+// (nil if unknown), which are its first parameters.
+func (l *library) kcontexts(ps []*kmeta.Param, scope kscope, m *classfile.MemberDetails) []*Decl {
+	var out []*Decl
+	for i, p := range ps {
+		md := &Decl{Kind: KindValueParameter, Name: p.Name, Type: l.ktype(p.Type, scope, 0)}
+		if p.Flags&kmeta.ParamNoinline != 0 {
+			md.Flags |= FlagNoinline
+		}
+		if p.Flags&hasAnnotations != 0 && m != nil && i < len(m.Params) {
+			md.Annotations = l.annotations(m.Params[i], true)
 		}
 		out = append(out, md)
 	}

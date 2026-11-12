@@ -238,9 +238,10 @@ internal class KcFunctionSymbol(val info: KcInfo) : StubKaNamedFunctionSymbol() 
     override val isBuiltinFunctionInvoke get() = false
     override val hasStableParameterNames get() = !info.isJava
     override val contextReceivers: List<KaContextReceiver> get() = emptyList()
-    override val contextParameters: List<KaContextParameterSymbol> get() = emptyList()
+    override val contextParameters: List<KaContextParameterSymbol> get() = contexts
     override fun createPointer(): KaSymbolPointer<KaNamedFunctionSymbol> = info.pointer()
 
+    var contexts: List<KaContextParameterSymbol> = emptyList()
     lateinit var typeParams: List<KaTypeParameterSymbol>
     lateinit var params: List<KaValueParameterSymbol>
     override val typeParameters get() = typeParams
@@ -281,6 +282,21 @@ internal class KcConstructorSymbol(val info: KcInfo) : StubKaConstructorSymbol()
  * A value parameter; [default] is an annotation parameter's default value,
  * which KSP asks a library parameter for (`KcExtras.javaAnnotationDefault`).
  */
+/**
+ * A context parameter of a function or a property, context(a: A); an
+ * unnamed one, context(_: A), has the special name FIR gives it.
+ */
+internal class KcContextParameterSymbol(val info: KcInfo) : StubKaContextParameterSymbol() {
+    override val token get() = info.round.token
+    override val psi get() = info.psi
+    override val origin get() = info.origin
+    override val annotations get() = info.annotations
+    override val name: Name
+        get() = info.decl.name.let { if (it == "_" || it.startsWith("<")) SpecialNames.UNDERSCORE_FOR_UNUSED_VAR else Name.identifier(it) }
+    override val returnType: KaType by lazy { info.type(info.decl.type) }
+    override fun createPointer(): KaSymbolPointer<KaContextParameterSymbol> = info.pointer()
+}
+
 internal class KcValueParameterSymbol(val info: KcInfo, val default: KaAnnotationValue? = null) : StubKaValueParameterSymbol() {
     override val token get() = info.round.token
     override val psi get() = info.psi
@@ -351,7 +367,7 @@ internal class KcPropertySymbol(val info: KcInfo) : StubKaKotlinPropertySymbol()
     override val receiverParameter: KaReceiverParameterSymbol? by lazy { info.receiver(this) }
     override val returnType: KaType by lazy { info.type(info.decl.type) }
     override val contextReceivers: List<KaContextReceiver> get() = emptyList()
-    override val contextParameters: List<KaContextParameterSymbol> get() = emptyList()
+    override val contextParameters: List<KaContextParameterSymbol> get() = contexts
     override val typeParameters: List<KaTypeParameterSymbol> get() = typeParams
     override val hasGetter get() = true
     override val hasSetter get() = !isVal
@@ -369,6 +385,7 @@ internal class KcPropertySymbol(val info: KcInfo) : StubKaKotlinPropertySymbol()
     }
     override fun createPointer(): KaSymbolPointer<KaKotlinPropertySymbol> = info.pointer()
 
+    var contexts: List<KaContextParameterSymbol> = emptyList()
     lateinit var typeParams: List<KaTypeParameterSymbol>
     lateinit var getterSymbol: KcGetterSymbol
     var setterSymbol: KcSetterSymbol? = null
@@ -377,14 +394,52 @@ internal class KcPropertySymbol(val info: KcInfo) : StubKaKotlinPropertySymbol()
     override val setter get() = setterSymbol
 }
 
-internal class KcGetterSymbol(val info: KcInfo, val property: KcPropertySymbol) : StubKaPropertyGetterSymbol() {
+/**
+ * A Java annotation class's method, which FIR has as a synthetic Java
+ * property: a val, with a backing field (KSP models that one from the
+ * property), and [javaGetterSymbol] the method itself.
+ */
+internal class KcJavaAnnotationPropertySymbol(val info: KcInfo) : StubKaSyntheticJavaPropertySymbol() {
+    override val token get() = info.round.token
+    override val psi get() = info.psi
+    override val origin get() = info.origin
+    override val annotations get() = info.annotations
+    override val name get() = info.name
+    override val callableId get() = info.callableId(name)
+    override val visibility get() = info.visibility
+    override val compilerVisibility get() = info.compilerVisibility
+    override val modality get() = info.modality
+    override val isVal get() = true
+    override val isOverride get() = false
+    override val isExtension get() = false
+    override val isStatic get() = false
+    override val isExpect get() = false
+    override val isActual get() = false
+    override val isExternal get() = false
+    override val isCompanion get() = false
+    override val hasSetter get() = false
+    override val initializer: KaInitializerValue? get() = null
+    override val receiverParameter: KaReceiverParameterSymbol? get() = null
+    override val typeParameters: List<KaTypeParameterSymbol> get() = emptyList()
+    override val returnType: KaType by lazy { info.type(info.decl.type) }
+    override val setter: KaPropertySetterSymbol? get() = null
+    override val javaSetterSymbol: KaNamedFunctionSymbol? get() = null
+    override fun createPointer(): KaSymbolPointer<KaSyntheticJavaPropertySymbol> = info.pointer()
+
+    lateinit var getterSymbol: KcGetterSymbol
+    lateinit var javaGetter: KcFunctionSymbol
+    override val getter get() = getterSymbol
+    override val javaGetterSymbol: KaNamedFunctionSymbol get() = javaGetter
+}
+
+internal class KcGetterSymbol(val info: KcInfo, val property: KaPropertySymbol) : StubKaPropertyGetterSymbol() {
     override val token get() = info.round.token
     override val psi get() = info.psi
     override val origin get() = info.origin
     override val annotations get() = info.annotations
     override val callableId: CallableId? get() = null
     override val visibility get() = property.visibility
-    override val compilerVisibility get() = property.compilerVisibility
+    override val compilerVisibility get() = compilerVisibilityOf(property.visibility)
     override val modality get() = property.modality
     override val returnType get() = property.returnType
     override val isDefault get() = info.psi == null
@@ -486,9 +541,11 @@ internal class KcDestructuringSymbol(val info: KcInfo) : StubKaDestructuringDecl
  */
 internal class KcBackingFieldSymbol(val info: KcInfo, override val owningProperty: KcPropertySymbol) : StubKaBackingFieldSymbol() {
     override val token get() = info.round.token
-    override val psi: PsiElement? get() = null
+    /** An explicit backing field's KtBackingField. */
+    override val psi: PsiElement? get() = info.psi
     override val annotations get() = info.annotations
-    override val returnType: KaType get() = owningProperty.returnType
+    // An explicit backing field's type, or its property's.
+    override val returnType: KaType get() = info.decl.fieldType?.let { info.type(it) } ?: owningProperty.returnType
     override val isVal get() = owningProperty.isVal
     override val isNotDefault get() = false
     override fun createPointer(): KaSymbolPointer<KaBackingFieldSymbol> = info.pointer()

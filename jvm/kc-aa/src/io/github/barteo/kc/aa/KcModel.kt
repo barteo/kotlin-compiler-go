@@ -140,6 +140,8 @@ internal object KcOps {
                 locals = decls(),
                 module = readString(),
                 inheritors = List(readUint().toInt()) { readString() },
+                fieldType = type(),
+                contexts = decls(),
             )
         }
 
@@ -270,6 +272,10 @@ internal class KcDecl(
     val module: String = "",
     /** A library sealed class's direct subclasses' class IDs, from its metadata. */
     val inheritors: List<String> = emptyList(),
+    /** The type of a source property's explicit backing field, if it narrows the property's. */
+    val fieldType: KcType? = null,
+    /** A function's or a property's context parameters (VALUE_PARAMETER); an unnamed one's name is `_`. */
+    val contexts: List<KcDecl> = emptyList(),
 ) {
     fun has(flag: Long) = flags and flag != 0L
     val isCompanion get() = has(COMPANION)

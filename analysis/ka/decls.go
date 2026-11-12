@@ -34,6 +34,7 @@ func (b *fileBuilder) decl(d syntax.Decl, owner *syntax.ClassDecl, prefix string
 		// parameter's.
 		md.Annotations = append(md.Annotations, b.annotations(d.RecvAnnotations)...)
 		md.Params = b.params(d.Params)
+		md.Contexts = b.params(d.Contexts)
 		if d.Sym != nil {
 			md.Type = b.typ(d.Sym.Ret, d.Ret)
 			if md.Type != nil && md.Type.Kind == TypeError && md.Type.Name == "" {
@@ -58,14 +59,21 @@ func (b *fileBuilder) decl(d syntax.Decl, owner *syntax.ClassDecl, prefix string
 			}
 		}
 		md.Modality = memberModality(&d.Modifiers, owner, d.Init == nil && d.Getter == nil)
-		if d.Sym != nil && d.Field == nil && !d.Expect && (d.Sym.HasField() || d.BackingField != nil) {
+		// An interface's property has no field, even one written with an
+		// initializer (an error).
+		if d.Sym != nil && d.Field == nil && !d.Expect && (owner == nil || !owner.Interface) &&
+			(d.Sym.HasField() || d.BackingField != nil) {
 			md.Flags |= FlagBackingField
 		}
 		md.TypeParams = b.typeParams(d.TypeParams)
 		md.Receiver = b.written(d.Recv)
 		md.Annotations = append(md.Annotations, b.annotations(d.RecvAnnotations)...)
+		md.Contexts = b.params(d.Contexts)
 		if d.Sym != nil {
 			md.Type = b.typ(d.Sym.Type, d.Type)
+			if d.Sym.FieldT != nil && d.BackingField != nil {
+				md.FieldType = b.typ(*d.Sym.FieldT, d.BackingField.Type)
+			}
 		} else {
 			md.Type = b.written(d.Type)
 		}
@@ -365,7 +373,7 @@ func (b *fileBuilder) propAnnotations(as []syntax.Annotation, ctor bool) []Annot
 			out = append(out, b.allTargets(m, b.annotationClass(a))...)
 			continue
 		}
-		if cls := b.annotationClass(a); m.Target == "" && cls != nil && cls.TargetsKnown {
+		if cls := b.annotationClass(a); m.Target == "" && cls != nil && cls.TargetsRead {
 			switch {
 			case cls.Targets&types.TargetProperty != 0:
 			case cls.Targets&types.TargetField != 0:
@@ -387,7 +395,7 @@ func (b *fileBuilder) propAnnotations(as []syntax.Annotation, ctor bool) []Annot
 // constructor property's parameter has its own.
 func (b *fileBuilder) allTargets(m Annotation, cls *types.ClassSym) []Annotation {
 	targets := types.DefaultTargets
-	if cls != nil && cls.TargetsKnown {
+	if cls != nil && cls.TargetsRead {
 		targets = cls.Targets
 	}
 	var out []Annotation
@@ -416,7 +424,7 @@ func (b *fileBuilder) ctorParamAnnotations(as []syntax.Annotation) []Annotation 
 		if a.Implicit {
 			continue
 		}
-		if cls := b.annotationClass(a); (a.Target == "" || a.Target == "all") && cls != nil && cls.TargetsKnown &&
+		if cls := b.annotationClass(a); (a.Target == "" || a.Target == "all") && cls != nil && cls.TargetsRead &&
 			cls.Targets&types.TargetValueParameter == 0 {
 			continue
 		}

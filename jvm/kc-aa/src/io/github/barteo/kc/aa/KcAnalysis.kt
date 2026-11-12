@@ -125,6 +125,8 @@ class KcAnalysis internal constructor(
         is KcClassSymbol -> s.info.parent.takeUnless { it is KaFileSymbol || it is KaPackageSymbol }
         is KcFunctionSymbol -> s.info.parent.takeUnless { it is KaFileSymbol || it is KaPackageSymbol }
         is KcPropertySymbol -> s.info.parent.takeUnless { it is KaFileSymbol || it is KaPackageSymbol }
+        is KcContextParameterSymbol -> s.info.parent
+        is KcJavaAnnotationPropertySymbol -> s.info.parent
         is KcTypeAliasSymbol -> s.info.parent.takeUnless { it is KaFileSymbol || it is KaPackageSymbol }
         is KcConstructorSymbol -> s.info.parent
         is KcEnumEntrySymbol -> s.info.parent
@@ -205,6 +207,7 @@ class KcAnalysis internal constructor(
                 is KcClassSymbol -> cur.info.parent
                 is KcFunctionSymbol -> cur.info.parent
                 is KcPropertySymbol -> cur.info.parent
+                is KcJavaAnnotationPropertySymbol -> cur.info.parent
                 is KcTypeAliasSymbol -> cur.info.parent
                 else -> getContainingSymbol(cur)
             }
