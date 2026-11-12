@@ -507,6 +507,12 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 		}
 	}
 	c.state = saved
+	// As in Kotlin, the vars declared outside it that it assigns lose the
+	// smart casts they have where it is, though it may run in place and
+	// assign only values of their narrowed types: x of if (x != null) {
+	// run { x = "a" }; x.length } is a String?. A check after it narrows
+	// them again (see varStable).
+	c.reset(c.watchedVars(x.Body))
 	if lr.bare && !(w.check && w.ret.K != types.Invalid) {
 		// As kotlinc infers it, the last expression's value is dropped,
 		// and the lambda's other results must be Units:

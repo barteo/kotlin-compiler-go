@@ -151,29 +151,29 @@ Kotlin 2.4.21's tests on `kc`:
 | Diagnostics tests | Tests | Share of run |
 |:---|---:|---:|
 | run (of 10,827) | 7,286 | |
-| rejects invalid | 3,617 | 49.6% |
-| accepts valid | 3,142 | 43.1% |
-| accepts invalid | 263 | 3.6% |
-| rejects valid | 248 | 3.4% |
+| rejects invalid | 3,635 | 49.9% |
+| accepts valid | 3,146 | 43.2% |
+| accepts invalid | 245 | 3.4% |
+| rejects valid | 244 | 3.3% |
 | parse/unsupported | 16 | 0.2% |
 | crash | 0 | |
 
 `kc` agrees with `kotlinc` on 93% of the diagnostics tests, and reports
-13,386 of the 19,697 expected errors (68%) on their lines. The reports
+13,430 of the 19,697 expected errors (68%) on their lines. The reports
 break the failures down; the largest groups are:
 
 - **Silent miscompilation**: none. No box test that `kc` compiles
   gives a wrong result, throws, or fails to verify or link.
 - **Accepts invalid**: argument type mismatches
-  (`ARGUMENT_TYPE_MISMATCH` 26), calls on nullable values (`UNSAFE_CALL`
-  19), unresolved names (`UNRESOLVED_REFERENCE` 14), uninferred
-  parameter types (`CANNOT_INFER_PARAMETER_TYPE` 9), overload
-  ambiguities (`OVERLOAD_RESOLUTION_AMBIGUITY` 8), unsupported
-  constructs (`UNSUPPORTED` 8), initializer type mismatches
+  (`ARGUMENT_TYPE_MISMATCH` 26), unresolved names
+  (`UNRESOLVED_REFERENCE` 14), uninferred parameter types
+  (`CANNOT_INFER_PARAMETER_TYPE` 9), overload ambiguities
+  (`OVERLOAD_RESOLUTION_AMBIGUITY` 8), unsupported constructs
+  (`UNSUPPORTED` 8), initializer type mismatches
   (`INITIALIZER_TYPE_MISMATCH` 7) and impossible smart casts
-  (`SMARTCAST_IMPOSSIBLE` 7).
-- **Rejects valid**, by `kc`'s first error: type mismatches (65),
-  inference failures (49), unresolved names and imports (29), ambiguous
+  (`SMARTCAST_IMPOSSIBLE` 6).
+- **Rejects valid**, by `kc`'s first error: type mismatches (60),
+  inference failures (48), unresolved names and imports (29), ambiguous
   calls (16), and non-exhaustive `when`s (7). No box test is rejected.
 
 The committed `.tsv` files serve as a ratchet: a change must make

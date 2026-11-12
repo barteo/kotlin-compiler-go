@@ -2416,7 +2416,18 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 			// null: x?.let { f(x) }.
 			c.push()
 			c.scope.narrows = n
-			defer c.pop()
+			defer func() {
+				c.pop()
+				// The vars its lambdas assign lose their smart casts
+				// past it too (see checkLambda1), which may not run.
+				var lambdas []any
+				for _, a := range x.Args {
+					if l, ok := a.(*syntax.Lambda); ok {
+						lambdas = append(lambdas, l.Body)
+					}
+				}
+				c.reset(c.watchedVars(lambdas...))
+			}()
 		}
 		if fn.Safe {
 			// x?.f() is f's result or null: an expected T? expects f's

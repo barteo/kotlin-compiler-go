@@ -446,6 +446,24 @@ func narrowable(t types.Type) bool {
 func (c *Checker) reset(vars []*types.VarSym) {
 	for _, v := range vars {
 		c.scope.narrows = append(c.scope.narrows, narrow{sym: v, t: v.Type})
+		c.dropMembers(v)
+	}
+}
+
+// dropMembers undoes the smart casts of the properties of var v, which
+// another value of v doesn't have: y.x of if (y.x != null) { y = My(null)
+// } is an Int? again.
+func (c *Checker) dropMembers(v *types.VarSym) {
+	var syms []*types.VarSym
+	for sc := c.scope; sc != nil; sc = sc.parent {
+		for _, n := range sc.narrows {
+			if n.recv == v && !slices.Contains(syms, n.sym) {
+				syms = append(syms, n.sym)
+			}
+		}
+	}
+	for _, p := range syms {
+		c.scope.narrows = append(c.scope.narrows, narrow{recv: v, sym: p, t: p.Type})
 	}
 }
 
@@ -647,6 +665,7 @@ func (c *Checker) assignedVar(v *types.VarSym, vt types.Type) {
 		t = vt
 	}
 	c.scope.narrows = append(c.scope.narrows, narrow{sym: v, t: t})
+	c.dropMembers(v)
 }
 
 // mayNotRun undoes the smart casts that code that may not run, as the

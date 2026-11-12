@@ -8236,7 +8236,7 @@ tests/smartCasts/extensionSafeCall.kt	rejects invalid	on an expected line
 tests/smartCasts/fakeSmartCastOnEquality.kt	rejects invalid	on an expected line	
 tests/smartCasts/falseReceiverSmartCast.kt	accepts valid		
 tests/smartCasts/falseUnnecessaryCall.kt	accepts valid		
-tests/smartCasts/fieldExclExcl.kt	accepts invalid	UNSAFE_CALL	fieldExclExcl.kt:11: UNSAFE_CALL
+tests/smartCasts/fieldExclExcl.kt	rejects invalid	on an expected line	
 tests/smartCasts/fieldInGetter.kt	accepts valid		
 tests/smartCasts/fieldPlus.kt	rejects invalid	on an expected line	
 tests/smartCasts/genericIntersection.kt	accepts valid		
@@ -10762,7 +10762,7 @@ testsWithStdLib/smartcasts/letAlwaysChangesToNotNull.kt	rejects invalid	on an ex
 testsWithStdLib/smartcasts/letChangesToNotNull.kt	rejects invalid	on an expected line	
 testsWithStdLib/smartcasts/letChangesToNull.kt	rejects invalid	on an expected line	
 testsWithStdLib/smartcasts/letChangesToNullComplex.kt	rejects invalid	on an expected line	
-testsWithStdLib/smartcasts/letMergeNotNull.kt	accepts invalid	UNSAFE_CALL	letMergeNotNull.kt:8: UNSAFE_CALL
+testsWithStdLib/smartcasts/letMergeNotNull.kt	rejects invalid	on an expected line	
 testsWithStdLib/smartcasts/letStable.kt	accepts valid		
 testsWithStdLib/smartcasts/letUsesOwnReceiver.kt	accepts valid		
 testsWithStdLib/smartcasts/listOfGeneric.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	listOfGeneric.kt:6: type mismatch: inferred type is List<String> but Collection<T> was expected

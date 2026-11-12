@@ -6,16 +6,16 @@ Of 10827 test files, 3541 are skipped and 7286 run.
 
 | Result | Tests | Share |
 |:---|---:|---:|
-| rejects invalid | 3633 | 49.9% |
+| rejects invalid | 3635 | 49.9% |
 | accepts valid | 3146 | 43.2% |
-| accepts invalid | 247 | 3.4% |
+| accepts invalid | 245 | 3.4% |
 | rejects valid | 244 | 3.3% |
 | parse/unsupported | 16 | 0.2% |
 | crash | 0 | 0.0% |
 
 *Rejects invalid* and *accepts valid* agree with kotlinc. *Accepts invalid* is code kotlinc rejects that kc compiles; *rejects valid*, code kotlinc compiles that kc's checker rejects. Both are bugs. A *parse/unsupported* test uses a feature kc doesn't support, which says nothing about its checks.
 
-Of the 3633 tests both reject, kc reports an error on the line of an expected one in 3418.
+Of the 3635 tests both reject, kc reports an error on the line of an expected one in 3420.
 
 A test is invalid if it stops before the backend or marks an error: one that runs to it (`BACKEND`) can mark the JVM backend's errors, such as `CONFLICTING_JVM_DECLARATIONS`. Of the tests run, 177 stop at `FRONTEND` but mark no error: most add the `CHECK_TYPE` helpers, whose names (`_`) kotlinc reports outside the test infrastructure, and count as valid; the others leave their errors out with the `DIAGNOSTICS` directive. 101 run to the backend and mark one. 5 marked names have no declared severity (debug information, for one), and count as neither.
 
@@ -84,7 +84,6 @@ Tests kotlinc rejects that kc compiles, by the errors their markup expects. A te
 | `RETURN_TYPE_MISMATCH` | 3 | 2 | `tests/inference/noInferUnit.kt`, `tests/smartCasts/safecalls/receiverAndChainFalse.kt` |
 | `RETURN_TYPE_MISMATCH_BY_DELEGATION` | 3 | 0 | `tests/delegation/covariantOverrides/fromClass.kt`, `tests/delegation/covariantOverrides/irrelevant.kt` |
 | `SYNTAX` | 3 | 2 | `tests/explicitDefinitelyNotNullableViaIntersection/isAsOperators.kt`, `tests/modifiers/primaryConstructorMissingBrackets.kt` |
-| `UNSAFE_CALL` | 3 | 2 | `tests/smartCasts/fieldExclExcl.kt`, `tests/smartCasts/unstableToStable.kt` |
 | `UPPER_BOUND_VIOLATED_IN_TYPEALIAS_EXPANSION` | 3 | 1 | `tests/typealias/boundsViolationInTypeAliasRHS.kt`, `tests/typealias/kt19601.kt` |
 | `AMBIGUOUS_ANONYMOUS_TYPE_INFERRED` | 2 | 2 | `tests/declarationChecks/localObjectInInnerClass.kt`, `tests/exposed/ambiguousAnonymousExposed.kt` |
 | `AMBIGUOUS_LABEL` | 2 | 2 | `tests/ambiguousLabelInExtensionFunctionWithOuterClass.kt`, `tests/ambiguousLabelInSuper.kt` |
@@ -111,6 +110,7 @@ Tests kotlinc rejects that kc compiles, by the errors their markup expects. A te
 | `ADAPTED_CALLABLE_REFERENCE_AGAINST_REFLECTION_TYPE` | 1 | 0 | `tests/callableReference/adapted/noKFunctionForAdaptation.kt` |
 | `AMBIGUOUS_SUPER` | 1 | 1 | `tests/thisAndSuper/unqualifiedSuper/unqualifiedSuperWithCallableProperty.kt` |
 | `ANNOTATION_IN_CONTRACT_ERROR` | 1 | 1 | `tests/contracts/suppressContractWarning.kt` |
+| `ANNOTATION_IN_WHERE_CLAUSE_ERROR` | 1 | 1 | `tests/kt46483.kt` |
 | *71 more* | 71 | |
 
 ## Rejects valid
@@ -165,12 +165,12 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 13416 of 19697 expected errors (68.1%) on their lines.
+kc reports 13430 of 19697 expected errors (68.2%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
 | `SYNTAX` | 872 | 222 | 650 |
-| `UNRESOLVED_REFERENCE` | 2154 | 1658 | 496 |
+| `UNRESOLVED_REFERENCE` | 2154 | 1659 | 495 |
 | `CONFLICTING_JVM_DECLARATIONS` | 996 | 518 | 478 |
 | `ARGUMENT_TYPE_MISMATCH` | 1263 | 837 | 426 |
 | `UNSUPPORTED` | 230 | 34 | 196 |
@@ -193,8 +193,8 @@ kc reports 13416 of 19697 expected errors (68.1%) on their lines.
 | `INITIALIZER_TYPE_MISMATCH` | 388 | 338 | 50 |
 | `NO_VALUE_FOR_PARAMETER` | 167 | 120 | 47 |
 | `INVISIBLE_REFERENCE` | 361 | 315 | 46 |
-| `SMARTCAST_IMPOSSIBLE` | 176 | 130 | 46 |
 | `UNINITIALIZED_VARIABLE` | 208 | 162 | 46 |
+| `SMARTCAST_IMPOSSIBLE` | 176 | 132 | 44 |
 | `UPPER_BOUND_VIOLATED` | 112 | 70 | 42 |
 | `NON_PUBLIC_CALL_FROM_PUBLIC_INLINE` | 59 | 19 | 40 |
 | `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` | 85 | 45 | 40 |
@@ -207,7 +207,6 @@ kc reports 13416 of 19697 expected errors (68.1%) on their lines.
 | `EXPLICIT_TYPE_ARGUMENTS_IN_PROPERTY_ACCESS` | 36 | 5 | 31 |
 | `INAPPLICABLE_JVM_FIELD` | 33 | 2 | 31 |
 | `OPT_IN_USAGE_ERROR` | 96 | 66 | 30 |
-| `UNSAFE_CALL` | 473 | 443 | 30 |
 | `WRONG_ANNOTATION_TARGET` | 337 | 307 | 30 |
 | `ASSIGNMENT_IN_EXPRESSION_CONTEXT` | 32 | 3 | 29 |
 | `REPEATED_MODIFIER` | 39 | 10 | 29 |
@@ -221,6 +220,7 @@ kc reports 13416 of 19697 expected errors (68.1%) on their lines.
 | `ASSIGN_OPERATOR_AMBIGUITY` | 35 | 12 | 23 |
 | `PROPERTY_INITIALIZER_NO_BACKING_FIELD` | 32 | 9 | 23 |
 | `UNINITIALIZED_ENUM_COMPANION` | 65 | 42 | 23 |
+| `UNSAFE_CALL` | 473 | 451 | 22 |
 | `INLINE_FROM_HIGHER_PLATFORM` | 21 | 0 | 21 |
 | `NOTHING_TO_OVERRIDE` | 65 | 44 | 21 |
 | `INAPPLICABLE_CANDIDATE` | 115 | 96 | 19 |
@@ -238,7 +238,7 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | Error | Count |
 |:---|---:|
 | `cannot infer type for type parameter '_'. Specify it explicitly.` | 520 |
-| `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 313 |
+| `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 314 |
 | `type mismatch: inferred type is _ but _ was expected` | 293 |
 | `unresolved reference: _` | 229 |
 | `platform declaration clash: _` | 150 |
