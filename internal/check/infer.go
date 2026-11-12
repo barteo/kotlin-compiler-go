@@ -46,6 +46,10 @@ type tvar struct {
 	// fixed to it, which Subst approximates as Kotlin does, out Int in
 	// an invariant argument and Int at the top level (V is Inv if none).
 	capt types.Arg
+	// synth is set for a variable kc adds, which isn't a type parameter
+	// the code can give: openResult's. One without bounds, of a lambda
+	// whose body has errors, is the error type, without another error.
+	synth bool
 }
 
 type inferError struct {
@@ -619,6 +623,8 @@ func (s *system) fix(tv *tvar) {
 				val = b
 			}
 		}
+	case tv.synth:
+		val = types.InvalidType
 	default:
 		s.errs = append(s.errs, inferError{tv.pos, "cannot infer type for type parameter '" + tv.v.Name + "'. Specify it explicitly."})
 	}

@@ -1887,29 +1887,29 @@ func (c *Checker) infixExtOnly(name string, rt types.Type) bool {
 	return false
 }
 
-// typedLambdaParams returns sys with the constraints of lambda l's
-// parameters declared with types, for a parameter of function type p,
-// or nil: as with kotlinc, each of p's parameter types is a subtype of
-// the type declared, before the lambda is analysed, so A of foldl(0) {
-// e: Int, acc: Long -> acc + e } is a Long.
-func (c *Checker) typedLambdaParams(sys *system, l *syntax.Lambda, p types.Type) *system {
+// declaredParams returns, for each of the n parameters of function type
+// t, its contexts and receiver among them, the type lambda l declares the
+// parameter with, or the invalid type: the parameters after t's receiver
+// that l declares with a type that resolves without errors.
+func (c *Checker) declaredParams(l *syntax.Lambda, t types.Type, n int) []types.Type {
 	if l.Ref != nil || !l.Arrow {
 		return nil
 	}
-	t := p.NonNull()
+	t = t.Flex().NonNull()
 	if !t.IsFunc() {
 		return nil
 	}
 	off := t.Contexts()
-	n := t.A.Len() - 1 - off
 	if t.E {
 		off++
-		n--
 	}
-	if n != len(l.Params) {
+	if n-off != len(l.Params) {
 		return nil
 	}
-	var trial *system
+	ds := make([]types.Type, n)
+	for i := range ds {
+		ds[i] = types.InvalidType
+	}
 	for j, lp := range l.Params {
 		if lp.Type == nil {
 			continue
@@ -1920,10 +1920,27 @@ func (c *Checker) typedLambdaParams(sys *system, l *syntax.Lambda, p types.Type)
 			c.errs = c.errs[:errs]
 			continue
 		}
+		ds[off+j] = d
+	}
+	return ds
+}
+
+// typedLambdaParams returns sys with the constraints of lambda l's
+// parameters declared with types, for a parameter of function type p,
+// or nil: as with kotlinc, each of p's parameter types is a subtype of
+// the type declared, before the lambda is analysed, so A of foldl(0) {
+// e: Int, acc: Long -> acc + e } is a Long.
+func (c *Checker) typedLambdaParams(sys *system, l *syntax.Lambda, p types.Type) *system {
+	t := p.NonNull()
+	if !t.IsFunc() {
+		return nil
+	}
+	var trial *system
+	for i, d := range c.declaredParams(l, t, t.A.Len()-1) {
 		if d.K == types.Invalid {
 			continue
 		}
-		pt := t.A.Get(off + j).T
+		pt := t.A.Get(i).T
 		if !pt.HasVars() {
 			continue
 		}

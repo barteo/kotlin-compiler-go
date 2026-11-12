@@ -7,9 +7,9 @@ Of 10827 test files, 3541 are skipped and 7286 run.
 | Result | Tests | Share |
 |:---|---:|---:|
 | rejects invalid | 3617 | 49.6% |
-| accepts valid | 3142 | 43.1% |
+| accepts valid | 3146 | 43.2% |
 | accepts invalid | 263 | 3.6% |
-| rejects valid | 248 | 3.4% |
+| rejects valid | 244 | 3.3% |
 | parse/unsupported | 16 | 0.2% |
 | crash | 0 | 0.0% |
 
@@ -119,7 +119,7 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 | First error | Tests | Examples |
 |:---|---:|:---|
-| `type mismatch: inferred type is _ but _ was expected` | 65 | `tests/annotations/parameters/expressions/unaryPlus.kt`, `tests/callableReference/function/localConstructor.kt` |
+| `type mismatch: inferred type is _ but _ was expected` | 60 | `tests/annotations/parameters/expressions/unaryPlus.kt`, `tests/callableReference/function/localConstructor.kt` |
 | `cannot infer type for type parameter '_'. Specify it explicitly.` | 48 | `tests/callableReference/generic/kt35896.kt`, `tests/callableReference/genericCallWithReferenceAgainstVararg.kt` |
 | `unresolved reference: _` | 25 | `tests/callResolution/suspendCOnversionForReceiver.kt`, `tests/callableReference/bound/controlFlow.kt` |
 | `ambiguous call: n candidates for '_' take (_)` | 16 | `tests/callableReference/noAmbiguityWhenAllReferencesAreInapplicable.kt`, `tests/callableReference/resolve/kt35887.kt` |
@@ -136,6 +136,7 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 | `type argument is not within its bounds: type parameter '_' must be subtype of '_', but actual: _` | 3 | `tests/inference/capturedTypes/capturedTypeWithInnerTypealias.kt`, `tests/inference/unsoundness2.kt` |
 | `type checking has run into a recursive problem; specify the type of '_'` | 3 | `tests/checkers/uselessCastLeadsToRecursiveProblem.kt`, `tests/problems/kt27790.kt` |
 | `'_' is not defined in this context` | 2 | `tests/functionLiterals/kt51317.kt`, `testsWithStdLib/mapList.kt` |
+| `cannot infer a type for this parameter. Please specify it explicitly.` | 2 | `tests/inference/completion/postponedArgumentsAnalysis/lackOfDeepIncorporation.kt`, `tests/inference/kt36819.kt` |
 | `expression of type _ cannot be invoked as a function` | 2 | `tests/controlFlowAnalysis/deadCode/deadCallInInvokeCall.kt`, `tests/expresssions/invoke/safeCallsWithImplicitInvoke.kt` |
 | `n type arguments expected for '_'` | 2 | `tests/delegatingConstructorsAndTypeAliases.kt`, `tests/generics/innerClasses/implicitArguments/secondLevelDepth.kt` |
 | `type of '_' doesn't match the type of the overridden var-property` | 2 | `tests/extraCheckers/kt69190.kt`, `tests/smartCasts/intersectionScope/propertiesConflict.kt` |
@@ -145,7 +146,6 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 | `'_' modifier is required on '_'` | 1 | `tests/problems/kt36815.kt` |
 | `'_' needs an explicit return type on '_'` | 1 | `tests/inference/completion/inferLabeledElementTypeForLambdaInReturnInCatch.kt` |
 | `assignment operators ambiguity: '_' and '_' both apply` | 1 | `tests/operatorsOverloading/plusAssignOnVarAndCollections.kt` |
-| `cannot infer a type for this parameter. Please specify it explicitly.` | 1 | `tests/inference/completion/postponedArgumentsAnalysis/lackOfDeepIncorporation.kt` |
 | `expected no parameters, but n were declared` | 1 | `tests/inference/extensionLambdasAndArrow.kt` |
 | `expected parameter of type _` | 1 | `tests/resolve/starProjectionAndFunctionType.kt` |
 | `function invocation '_' expected; use ::bar for a reference` | 1 | `tests/resolve/resolveAnnotatedLambdaArgument.kt` |
@@ -165,7 +165,7 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 13386 of 19697 expected errors (68.0%) on their lines.
+kc reports 13388 of 19697 expected errors (68.0%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
@@ -176,7 +176,7 @@ kc reports 13386 of 19697 expected errors (68.0%) on their lines.
 | `UNSUPPORTED` | 230 | 34 | 196 |
 | `WRONG_MODIFIER_TARGET` | 299 | 169 | 130 |
 | `CONFLICTING_OVERLOADS` | 719 | 596 | 123 |
-| `RETURN_TYPE_MISMATCH` | 395 | 280 | 115 |
+| `RETURN_TYPE_MISMATCH` | 395 | 282 | 113 |
 | `UNRESOLVED_REFERENCE_WRONG_RECEIVER` | 211 | 127 | 84 |
 | `CANNOT_INFER_PARAMETER_TYPE` | 560 | 477 | 83 |
 | `CONST_VAL_WITH_NON_CONST_INITIALIZER` | 243 | 162 | 81 |
@@ -237,9 +237,9 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 
 | Error | Count |
 |:---|---:|
-| `cannot infer type for type parameter '_'. Specify it explicitly.` | 521 |
+| `cannot infer type for type parameter '_'. Specify it explicitly.` | 520 |
 | `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 313 |
-| `type mismatch: inferred type is _ but _ was expected` | 301 |
+| `type mismatch: inferred type is _ but _ was expected` | 293 |
 | `unresolved reference: _` | 229 |
 | `platform declaration clash: _` | 150 |
 | `class '_' is not abstract and does not implement abstract member '_'` | 55 |

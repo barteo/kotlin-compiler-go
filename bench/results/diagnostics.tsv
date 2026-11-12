@@ -3954,7 +3954,7 @@ tests/inference/cannotCompleteResolveWithFunctionLiterals.kt	rejects invalid	on 
 tests/inference/capturedInProjectedFlexibleType.kt	skip	Java sources	
 tests/inference/capturedTypeForJavaTypeParameter.kt	skip	Java sources	
 tests/inference/capturedTypes/approximateBeforeFixation.kt	accepts valid		
-tests/inference/capturedTypes/approximateBeforeFixation2.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	approximateBeforeFixation2.kt:9: type mismatch: inferred type is C but B was expected
+tests/inference/capturedTypes/approximateBeforeFixation2.kt	accepts valid		
 tests/inference/capturedTypes/approximateContravariantCapturedTypes.kt	rejects invalid	on an expected line	
 tests/inference/capturedTypes/approximationForCollectionAsserter.kt	accepts valid		
 tests/inference/capturedTypes/approximationLeavesNonTrivialLowerBound.kt	accepts valid		
@@ -4229,7 +4229,7 @@ tests/inference/fixVariableToNothing.kt	accepts valid
 tests/inference/fixationOrder/inputTypesFirst.kt	skip	LANGUAGE	
 tests/inference/fixationOrder/inputTypesFirstSimplified.kt	skip	LANGUAGE	
 tests/inference/fixationOrder/inputTypesFirstSimplifiedFeatureDisabled.kt	skip	LANGUAGE	
-tests/inference/fixationOrder/onesForOutputTypesPostponed.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	onesForOutputTypesPostponed.kt:12: type mismatch: inferred type is C but B was expected
+tests/inference/fixationOrder/onesForOutputTypesPostponed.kt	accepts valid		
 tests/inference/fixationOrder/reifiedFirst.kt	skip	Java sources	
 tests/inference/fixationOrder/reifiedFirstSimple.kt	accepts valid		
 tests/inference/fixationOrder/revisableAtomVsPCLA.kt	rejects invalid	on an expected line	
@@ -4292,11 +4292,11 @@ tests/inference/kt3184.kt	accepts valid
 tests/inference/kt32196.kt	accepts valid		
 tests/inference/kt32415.kt	accepts valid		
 tests/inference/kt32434.kt	skip	Java sources	
-tests/inference/kt32462.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	kt32462.kt:18: type mismatch: inferred type is C but B was expected
+tests/inference/kt32462.kt	accepts valid		
 tests/inference/kt33263.kt	accepts valid		
 tests/inference/kt35702.kt	accepts valid		
 tests/inference/kt36044.kt	accepts valid		
-tests/inference/kt36819.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	kt36819.kt:17: type mismatch: inferred type is C but B was expected
+tests/inference/kt36819.kt	rejects valid	cannot infer a type for this parameter. Please specify it explicitly.	kt36819.kt:38: cannot infer a type for this parameter. Please specify it explicitly.
 tests/inference/kt37853.kt	accepts valid		
 tests/inference/kt39220.kt	parse/unsupported	property reference	
 tests/inference/kt40131.kt	rejects invalid	on an expected line	
@@ -10329,7 +10329,7 @@ testsWithStdLib/inference/completion/postponedArgumentsAnalysis/fixInputTypeToMo
 testsWithStdLib/inference/completion/postponedArgumentsAnalysis/fixReceiverToMoreSpecificType.kt	accepts valid		
 testsWithStdLib/inference/completion/postponedArgumentsAnalysis/kt38799.kt	accepts valid		
 testsWithStdLib/inference/completion/postponedArgumentsAnalysis/manyArguments.kt	accepts valid		
-testsWithStdLib/inference/completion/postponedArgumentsAnalysis/moreSpecificOutputType.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	moreSpecificOutputType.kt:5: type mismatch: inferred type is Set<K> but ObservableSet<K> was expected
+testsWithStdLib/inference/completion/postponedArgumentsAnalysis/moreSpecificOutputType.kt	accepts valid		
 testsWithStdLib/inference/completion/postponedArgumentsAnalysis/performance/reuseBuiltFunctionalTypesForIdLambdas.kt	accepts valid		
 testsWithStdLib/inference/completion/postponedArgumentsAnalysis/performance/reuseBuiltFunctionalTypesForLambdas.kt	accepts valid		
 testsWithStdLib/inference/completion/postponedArgumentsAnalysis/performance/reuseBuiltFunctionalTypesForPairOfLambdas.kt	accepts valid		
