@@ -152,14 +152,14 @@ Kotlin 2.4.21's tests on `kc`:
 |:---|---:|---:|
 | run (of 10,827) | 7,286 | |
 | rejects invalid | 3,635 | 49.9% |
-| accepts valid | 3,146 | 43.2% |
+| accepts valid | 3,148 | 43.2% |
 | accepts invalid | 245 | 3.4% |
-| rejects valid | 244 | 3.3% |
+| rejects valid | 242 | 3.3% |
 | parse/unsupported | 16 | 0.2% |
 | crash | 0 | |
 
 `kc` agrees with `kotlinc` on 93% of the diagnostics tests, and reports
-13,430 of the 19,697 expected errors (68%) on their lines. The reports
+13,442 of the 19,697 expected errors (68%) on their lines. The reports
 break the failures down; the largest groups are:
 
 - **Silent miscompilation**: none. No box test that `kc` compiles
@@ -172,8 +172,8 @@ break the failures down; the largest groups are:
   (`UNSUPPORTED` 8), initializer type mismatches
   (`INITIALIZER_TYPE_MISMATCH` 7) and impossible smart casts
   (`SMARTCAST_IMPOSSIBLE` 6).
-- **Rejects valid**, by `kc`'s first error: type mismatches (60),
-  inference failures (48), unresolved names and imports (29), ambiguous
+- **Rejects valid**, by `kc`'s first error: type mismatches (59),
+  inference failures (48), unresolved names and imports (28), ambiguous
   calls (16), and non-exhaustive `when`s (7). No box test is rejected.
 
 The committed `.tsv` files serve as a ratchet: a change must make

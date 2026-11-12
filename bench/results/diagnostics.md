@@ -7,9 +7,9 @@ Of 10827 test files, 3541 are skipped and 7286 run.
 | Result | Tests | Share |
 |:---|---:|---:|
 | rejects invalid | 3635 | 49.9% |
-| accepts valid | 3146 | 43.2% |
+| accepts valid | 3148 | 43.2% |
 | accepts invalid | 245 | 3.4% |
-| rejects valid | 244 | 3.3% |
+| rejects valid | 242 | 3.3% |
 | parse/unsupported | 16 | 0.2% |
 | crash | 0 | 0.0% |
 
@@ -119,9 +119,9 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 | First error | Tests | Examples |
 |:---|---:|:---|
-| `type mismatch: inferred type is _ but _ was expected` | 60 | `tests/annotations/parameters/expressions/unaryPlus.kt`, `tests/callableReference/function/localConstructor.kt` |
+| `type mismatch: inferred type is _ but _ was expected` | 59 | `tests/annotations/parameters/expressions/unaryPlus.kt`, `tests/callableReference/function/localConstructor.kt` |
 | `cannot infer type for type parameter '_'. Specify it explicitly.` | 48 | `tests/callableReference/generic/kt35896.kt`, `tests/callableReference/genericCallWithReferenceAgainstVararg.kt` |
-| `unresolved reference: _` | 25 | `tests/callResolution/suspendCOnversionForReceiver.kt`, `tests/callableReference/bound/controlFlow.kt` |
+| `unresolved reference: _` | 24 | `tests/callResolution/suspendCOnversionForReceiver.kt`, `tests/callableReference/bound/controlFlow.kt` |
 | `ambiguous call: n candidates for '_' take (_)` | 16 | `tests/callableReference/noAmbiguityWhenAllReferencesAreInapplicable.kt`, `tests/callableReference/resolve/kt35887.kt` |
 | `'_' expression must be exhaustive, add necessary '_' branch` | 7 | `tests/controlStructures/whenWithNothingTypedSubject.kt`, `tests/exhaustiveness/positive/smartcastToExhaustiveInterface.kt` |
 | `no function '_' takes n arguments` | 6 | `tests/cast/kt15161.kt`, `tests/errorProneAtomicArrayArguments.kt` |
@@ -165,7 +165,7 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 13430 of 19697 expected errors (68.2%) on their lines.
+kc reports 13442 of 19697 expected errors (68.2%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
@@ -194,7 +194,6 @@ kc reports 13430 of 19697 expected errors (68.2%) on their lines.
 | `NO_VALUE_FOR_PARAMETER` | 167 | 120 | 47 |
 | `INVISIBLE_REFERENCE` | 361 | 315 | 46 |
 | `UNINITIALIZED_VARIABLE` | 208 | 162 | 46 |
-| `SMARTCAST_IMPOSSIBLE` | 176 | 132 | 44 |
 | `UPPER_BOUND_VIOLATED` | 112 | 70 | 42 |
 | `NON_PUBLIC_CALL_FROM_PUBLIC_INLINE` | 59 | 19 | 40 |
 | `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` | 85 | 45 | 40 |
@@ -202,6 +201,7 @@ kc reports 13430 of 19697 expected errors (68.2%) on their lines.
 | `INAPPLICABLE_OPERATOR_MODIFIER` | 143 | 104 | 39 |
 | `AMBIGUOUS_ANONYMOUS_TYPE_INFERRED` | 38 | 2 | 36 |
 | `MUST_BE_INITIALIZED_OR_BE_ABSTRACT` | 79 | 44 | 35 |
+| `SMARTCAST_IMPOSSIBLE` | 176 | 141 | 35 |
 | `CONFUSING_BRANCH_CONDITION_ERROR` | 37 | 3 | 34 |
 | `OVERLOAD_RESOLUTION_AMBIGUITY` | 121 | 89 | 32 |
 | `EXPLICIT_TYPE_ARGUMENTS_IN_PROPERTY_ACCESS` | 36 | 5 | 31 |
@@ -220,11 +220,11 @@ kc reports 13430 of 19697 expected errors (68.2%) on their lines.
 | `ASSIGN_OPERATOR_AMBIGUITY` | 35 | 12 | 23 |
 | `PROPERTY_INITIALIZER_NO_BACKING_FIELD` | 32 | 9 | 23 |
 | `UNINITIALIZED_ENUM_COMPANION` | 65 | 42 | 23 |
-| `UNSAFE_CALL` | 473 | 451 | 22 |
 | `INLINE_FROM_HIGHER_PLATFORM` | 21 | 0 | 21 |
 | `NOTHING_TO_OVERRIDE` | 65 | 44 | 21 |
 | `INAPPLICABLE_CANDIDATE` | 115 | 96 | 19 |
 | `INCORRECT_TYPE_PARAMETER_OF_PROPERTY` | 30 | 11 | 19 |
+| `UNSAFE_CALL` | 473 | 454 | 19 |
 | `RETURN_TYPE_MISMATCH_ON_OVERRIDE` | 36 | 18 | 18 |
 | `UPPER_BOUND_VIOLATED_IN_TYPEALIAS_EXPANSION` | 44 | 26 | 18 |
 | `OPT_IN_MARKER_CAN_ONLY_BE_USED_AS_ANNOTATION_OR_ARGUMENT_IN_OPT_IN` | 19 | 2 | 17 |
@@ -238,9 +238,9 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | Error | Count |
 |:---|---:|
 | `cannot infer type for type parameter '_'. Specify it explicitly.` | 520 |
-| `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 314 |
-| `type mismatch: inferred type is _ but _ was expected` | 293 |
-| `unresolved reference: _` | 229 |
+| `type mismatch: inferred type is _ but _ was expected` | 291 |
+| `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 207 |
+| `unresolved reference: _` | 203 |
 | `platform declaration clash: _` | 150 |
 | `class '_' is not abstract and does not implement abstract member '_'` | 55 |
 | `suspend function '_' cannot override non-suspend function '_' defined in '_'` | 50 |
@@ -250,13 +250,13 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | `no function '_' takes n arguments` | 30 |
 | `unresolved or unsupported type: _` | 26 |
 | `cannot infer a type for this parameter. Please specify it explicitly.` | 19 |
-| `operator '_' cannot be applied to Any?` | 16 |
 | `type checking has run into a recursive problem; specify the type of '_'` | 16 |
 | `variable '_' must be initialized` | 16 |
 | `'_' overrides nothing` | 15 |
 | `expected expression, found '_'` | 14 |
 | `expected n parameter of type _ but n were declared` | 14 |
 | `not enough information to infer type arguments of ::foon: specify the expected function type` | 14 |
+| `operator '_' cannot be applied to Any?` | 14 |
 | `expected no parameters, but n were declared` | 12 |
 | `overload resolution ambiguity for ::foo: specify the expected function type` | 12 |
 | `private setters are not allowed for open properties` | 12 |

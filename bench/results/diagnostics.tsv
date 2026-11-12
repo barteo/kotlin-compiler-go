@@ -2034,7 +2034,7 @@ tests/controlFlowAnalysis/reassignmentInConcurrentLambdas.kt	rejects invalid	on 
 tests/controlFlowAnalysis/reassignmentInLambda.kt	accepts valid		
 tests/controlFlowAnalysis/reassignmentInTryCatch.kt	rejects invalid	on an expected line	
 tests/controlFlowAnalysis/reassignmentInTryCatchWithJumps.kt	rejects invalid	on an expected line	
-tests/controlFlowAnalysis/reassignmentWithLambda.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	reassignmentWithLambda.kt:16: type mismatch: inferred type is Any? but Any was expected
+tests/controlFlowAnalysis/reassignmentWithLambda.kt	accepts valid		
 tests/controlFlowAnalysis/referenceToPropertyInitializer.kt	rejects invalid	on an expected line	
 tests/controlFlowAnalysis/repeatUnitializedErrorOnlyForLocalVars.kt	rejects invalid	on an expected line	
 tests/controlFlowAnalysis/safeCallAfterVariableInitialization.kt	accepts valid		
@@ -8542,7 +8542,7 @@ tests/smartCasts/twoImplicitReceivers.kt	accepts valid
 tests/smartCasts/typeDegradation.kt	accepts valid		
 tests/smartCasts/typeInComparison.kt	rejects invalid	on an expected line	
 tests/smartCasts/typeOfLambdaWithSmartcast.kt	accepts valid		
-tests/smartCasts/typeParameterWithBounds.kt	rejects valid	unresolved reference: _	typeParameterWithBounds.kt:11: unresolved reference: length
+tests/smartCasts/typeParameterWithBounds.kt	accepts valid		
 tests/smartCasts/unstableSmartCastOnInvokeReceiver.kt	rejects invalid	on an expected line	
 tests/smartCasts/unstableSmartcastAndAmbiguity.kt	accepts valid		
 tests/smartCasts/unstableToStable.kt	accepts invalid	SMARTCAST_IMPOSSIBLE; UNSAFE_CALL	unstableToStable.kt:7: SMARTCAST_IMPOSSIBLE

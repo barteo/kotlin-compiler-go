@@ -2,6 +2,7 @@ package check
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
@@ -584,9 +585,6 @@ func (c *Checker) varStmt(s *syntax.VarStmt) {
 	if s.Sym.Deferred {
 		c.deferred++
 	}
-	if !s.Mutable && s.Init != nil && types.MayBeNull(t) {
-		c.implyNonNull(s.Sym, s.Init)
-	}
 	if !s.Mutable && s.Init != nil && t.Flex() == types.BoolType {
 		c.condVal(s.Sym, s.Init)
 	}
@@ -596,6 +594,9 @@ func (c *Checker) varStmt(s *syntax.VarStmt) {
 	}
 	if narrowed.K != types.Invalid {
 		c.assignedVar(s.Sym, narrowed)
+	}
+	if s.Init != nil {
+		c.bindValue(s.Sym, s.Init, s.Type != nil)
 	}
 }
 
@@ -613,18 +614,22 @@ func (c *Checker) smartCastFrom(x syntax.Expr, t types.Type) (types.Type, bool) 
 	return d, true
 }
 
-// implyNonNull records the smart casts that v, a val of value x, not
-// being null implies: x's receivers of safe calls aren't null either,
-// when they are vals, nor is x when it's a stable val itself: val s = x
-// is an alias of x.
-func (c *Checker) implyNonNull(v *types.VarSym, x syntax.Expr) {
-	var ns []narrow
-	if k, ok := c.narrowKeyOf(x); ok && !k.sym.Mutable && (k.recv == nil || !k.recv.Mutable) && types.MayBeNull(k.t) {
-		k.t = k.t.NonNull()
-		ns = append(ns, k)
+// bindValue records the smart casts that local v, declared or assigned
+// with the value of x, shares with x, as kotlinc's: unless its type is
+// given (typed), v is an alias of x, a stable value or a local var (see
+// alias), and if v is a val, its not being null implies that the
+// receivers of x's safe calls aren't null either, as for val t = a?.b,
+// where t != null means a != null.
+func (c *Checker) bindValue(v *types.VarSym, x syntax.Expr, typed bool) {
+	if k, ok := c.narrowKeyOf(x); ok && !typed && c.aliasable(k) {
+		c.alias(v, k)
 	}
+	if v.Mutable || !types.MayBeNull(v.Type) {
+		return
+	}
+	var ns []narrow
 	for _, k := range c.safeReceivers(x) {
-		if !k.sym.Mutable && (k.recv == nil || !k.recv.Mutable) {
+		if c.aliasable(k) {
 			ns = append(ns, k)
 		}
 	}
@@ -1162,6 +1167,11 @@ func (c *Checker) assign(s *syntax.Assign) {
 		if v != nil {
 			c.assignedVar(v, vt)
 			c.assignedNested(v, vt)
+			if slices.Contains(c.scope.vars, v) {
+				// Not in a branch, where another value of v may meet
+				// it, nor in a lambda.
+				c.bindValue(v, s.Value, false)
+			}
 		} else {
 			c.assignedVal(s.Target, vt)
 		}

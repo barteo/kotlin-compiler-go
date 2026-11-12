@@ -650,6 +650,10 @@ type FunSym struct {
 	// once, as its contract says, callsInPlace(f, EXACTLY_ONCE): definite
 	// assignment follows the lambda's body as the call's code.
 	Once []bool
+	// InPlace marks the parameters whose lambdas it calls in place, any
+	// number of times, callsInPlace(f) of any kind: they don't run after
+	// it returns.
+	InPlace []bool
 
 	// Implies are the effects of the function's contract that say what a
 	// parameter is if it returns: returns(false) implies (this != null)
