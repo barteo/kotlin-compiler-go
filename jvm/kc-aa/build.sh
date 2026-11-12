@@ -12,7 +12,7 @@
 # test/moshi/want, and Dagger's, Room's and Hilt's the same way, over
 # test/{dagger,room,hilt}/src, and checks incremental processing's dirty
 # set over test/ic. "stock" does what "test" does, and then runs
-# each on stock KSP 2.3.6 (its embeddable Analysis API, Kotlin 2.3) over
+# each on stock KSP 2.3.13 (its embeddable Analysis API, Kotlin 2.4) over
 # the same sources: the processors' output must match the same want
 # directories, and the slice's want.txt but for test/slice/stock.diff.
 # Room's jars come from Google's Maven repository (GOOGLE_MAVEN_REPO), the
@@ -45,7 +45,7 @@ java_home=${JAVA_HOME:-$(dirname "$(dirname "$(readlink -f "$(command -v javac)"
 
 # The KSP fork, the Analysis API jar and their dependencies.
 kspwork=$here/../ksp/build
-if [ ! -s "$kspwork/ksp-aa-kc.jar" ] || [ -n "$(find "$here/../ksp/patches" -newer "$kspwork/ksp-aa-kc.jar")" ]; then
+if [ ! -s "$kspwork/ksp-aa-kc.jar" ] || [ -n "$(find "$here/../ksp/build.sh" -newer "$kspwork/ksp-aa-kc.jar")" ]; then
 	"$here/../ksp/build.sh" "$kspwork" >/dev/null
 fi
 lib=$kspwork/aa/m2
@@ -53,7 +53,7 @@ m2=$kspwork/m2
 aa=$kspwork/aa/kc-aa-api-2.4.21.jar
 runtime=$lib/kotlin-compiler-2.4.21.jar:$lib/kotlin-stdlib-2.4.21.jar:$lib/kotlin-reflect-2.4.21.jar:$lib/kotlinx-coroutines-core-jvm-1.8.0.jar:$lib/annotations-23.0.0.jar
 deps=$aa:$runtime:$lib/caffeine-2.9.3.jar:$kspwork/ksp-aa-kc.jar
-deps=$deps:$m2/symbol-processing-api-2.3.9.jar:$m2/symbol-processing-common-deps-2.3.9.jar
+deps=$deps:$kspwork/symbol-processing-api.jar:$m2/symbol-processing-common-deps-2.3.13.jar
 deps=$deps:$m2/kotlinx-serialization-core-jvm-1.6.3.jar:$m2/kotlinx-serialization-json-jvm-1.6.3.jar
 kotlinc() { java -Xmx3g -cp "$runtime" org.jetbrains.kotlin.cli.jvm.K2JVMCompiler -no-stdlib -no-reflect "$@"; }
 
@@ -74,6 +74,7 @@ stubbed=(
 	symbols.KaPropertyGetterSymbol symbols.KaPropertySetterSymbol symbols.KaReceiverParameterSymbol
 	symbols.KaJavaFieldSymbol symbols.KaPackageSymbol symbols.KaBackingFieldSymbol
 	symbols.KaDestructuringDeclarationSymbol symbols.KaSyntheticJavaPropertySymbol
+	symbols.KaContextParameterSymbol
 	types.KaUsualClassType types.KaClassErrorType types.KaFunctionType types.KaTypeParameterType
 	types.KaFlexibleType types.KaDefinitelyNotNullType types.KaErrorType
 	annotations.KaAnnotation projectStructure.KaSourceModule projectStructure.KaLibraryModule
@@ -138,7 +139,7 @@ fi
 # kotlinpoet's interop:ksp tests (TestProcessorTest, KsTypesTest), from
 # its sources at KOTLINPOET_TAG, on a stand-in for kotlin-compile-testing
 # (test/kotlinpoet/Compilation.kt) that runs KSP alone: on kc, then on
-# stock KSP 2.3.6.
+# stock KSP 2.3.13.
 if [ "$mode" = kotlinpoet ]; then
 	tag=${KOTLINPOET_TAG:-2.4.0}
 	kp=$out/kotlinpoet
@@ -148,14 +149,14 @@ if [ "$mode" = kotlinpoet ]; then
 	junit=$(jars junit:junit:4.13.2 org.hamcrest:hamcrest-core:1.3 com.willowtreeapps.assertk:assertk-jvm:0.28.1 \
 		com.willowtreeapps.opentest4k:opentest4k-jvm:1.3.0 org.opentest4j:opentest4j:1.3.0 \
 		org.jetbrains.kotlin:kotlin-test:2.4.21 org.jetbrains.kotlin:kotlin-test-junit:2.4.21)
-	stockcp=$(jars com.google.devtools.ksp:symbol-processing-aa-embeddable:2.3.6 com.google.devtools.ksp:symbol-processing-api:2.3.6 \
-		com.google.devtools.ksp:symbol-processing-common-deps:2.3.6 org.jetbrains.kotlin:kotlin-stdlib:2.3.0)
+	stockcp=$(jars com.google.devtools.ksp:symbol-processing-aa-embeddable:2.3.13 com.google.devtools.ksp:symbol-processing-api:2.3.13 \
+		com.google.devtools.ksp:symbol-processing-common-deps:2.3.13 org.jetbrains.kotlin:kotlin-stdlib:2.4.21)
 	stockcp=$stockcp:$(jars org.jetbrains.intellij.deps.kotlinx:kotlinx-coroutines-core-jvm:1.8.0-intellij-14)
 	rm -rf "$kp/proc" "$kp/tests" "$kp/shim-kc" "$kp/shim-stock" "$kp/work"
 	kotlinc -cp "$deps$poet$(jars com.google.auto.service:auto-service-annotations:1.1.1)" -d "$kp/proc" -jvm-target 17 -nowarn \
 		$(find "$t/main" -name '*.kt')
 	kotlinc -cp "$deps$poet$junit:$kp/proc" -d "$kp/shim-kc" -jvm-target 17 -nowarn "$here/test/kotlinpoet/Compilation.kt"
-	kotlinc -cp "${stockcp#:}" -language-version 2.3 -api-version 2.3 -d "$kp/shim-stock" -jvm-target 17 -nowarn \
+	kotlinc -cp "${stockcp#:}" -d "$kp/shim-stock" -jvm-target 17 -nowarn \
 		"$here/test/kotlinpoet/Compilation.kt"
 	kotlinc -cp "$deps$poet$junit:$kp/proc:$kp/shim-kc" -d "$kp/tests" -jvm-target 17 -nowarn $(find "$t/test" -name '*.kt')
 	classes="com.squareup.kotlinpoet.ksp.test.processor.TestProcessorTest com.squareup.kotlinpoet.ksp.test.processor.KsTypesTest"
@@ -209,7 +210,7 @@ fi
 # The symbols PrintAnnotated prints (see its doc comment).
 slice=(a.Marker a.Other kotlin.Suppress e.Args e.Inner kotlin.Deprecated java.beans.JavaBean
 	decls:kotlin.ReplaceWith decls:kotlin.coroutines.AbstractCoroutineContextKey decls:java.util.AbstractMap.SimpleEntry decls:java.lang.Thread.State decls:b.E decls:kotlin.DeprecationLevel
-	decls:f.Strings members:f.Strings members:f.Base members:f.Bag:get,size,toString assign:f.Assign sealed:f.Shape
+	decls:f.Strings members:f.Strings members:f.Base members:f.Bag:get,size,toString members:f.Table:equals,get,remove,containsKey,putAll members:f.Names:contains,remove,toString,addAll members:f.Both:run decls:java.util.AbstractMap decls:java.util.AbstractList assign:f.Assign sealed:f.Shape
 	overrides:f.Strings#get:f.Named#get overrides:f.Strings#get:f.Source#get overrides:f.Strings#name:f.Source#get
 	package:g package:kotlin.collections:listOf,lastIndex,ArrayList,List,emptyList,AbstractList package:java.util.function:Supplier
 	fun:kotlin.collections.listOf fun:g.top prop:kotlin.collections.lastIndex prop:kotlin.coroutines.intrinsics.COROUTINE_SUSPENDED prop:g.topProp alias:g.Holder jvm:h.Sigs annots:a.Targets a.OnField a.FieldOrFun a.Anywhere)
@@ -226,24 +227,25 @@ echo "slice: ok"
 # Stock KSP and RunKsp built against it.
 if [ "$mode" = stock ]; then
 	stockcp=
-	for jar in com/google/devtools/ksp/symbol-processing-aa-embeddable/2.3.6/symbol-processing-aa-embeddable-2.3.6.jar \
-		com/google/devtools/ksp/symbol-processing-api/2.3.6/symbol-processing-api-2.3.6.jar \
-		com/google/devtools/ksp/symbol-processing-common-deps/2.3.6/symbol-processing-common-deps-2.3.6.jar \
-		org/jetbrains/kotlin/kotlin-stdlib/2.3.0/kotlin-stdlib-2.3.0.jar \
+	for jar in com/google/devtools/ksp/symbol-processing-aa-embeddable/2.3.13/symbol-processing-aa-embeddable-2.3.13.jar \
+		com/google/devtools/ksp/symbol-processing-api/2.3.13/symbol-processing-api-2.3.13.jar \
+		com/google/devtools/ksp/symbol-processing-common-deps/2.3.13/symbol-processing-common-deps-2.3.13.jar \
+		org/jetbrains/kotlin/kotlin-stdlib/2.4.21/kotlin-stdlib-2.4.21.jar \
 		org/jetbrains/intellij/deps/kotlinx/kotlinx-coroutines-core-jvm/1.8.0-intellij-14/kotlinx-coroutines-core-jvm-1.8.0-intellij-14.jar; do
 		fetch "$jar"
 		stockcp=$stockcp:$out/m2/$(basename "$jar")
 	done
 	rm -rf "$out/runksp-stock"
-	kotlinc -cp "${stockcp#:}" -language-version 2.3 -api-version 2.3 -d "$out/runksp-stock" -jvm-target 17 -nowarn \
+	kotlinc -cp "${stockcp#:}" -d "$out/runksp-stock" -jvm-target 17 -nowarn \
 		"$here/test/RunKsp.kt"
 	# The slice on stock KSP differs from want.txt only as recorded in
-	# test/slice/stock.diff: what kc doesn't model yet (see
-	# docs/analysis-api.md, step 10).
+	# test/slice/stock.diff: the [] that google/ksp's main, past 2.3.13
+	# and in the fork, adds for a vararg parameter without arguments
+	# (docs/analysis-api.md, steps 10, 29 and 30).
 	rm -rf "$out/test-classes-stock" "$out/stock-slice"
-	kotlinc -cp "${stockcp#:}" -language-version 2.3 -api-version 2.3 -d "$out/test-classes-stock" -jvm-target 17 -nowarn \
+	kotlinc -cp "${stockcp#:}" -d "$out/test-classes-stock" -jvm-target 17 -nowarn \
 		"$here/test/PrintAnnotated.kt"
-	java -Dksp.languageVersion=2.3 -Dkc.stdlib="$lib/kotlin-stdlib-2.4.21.jar" -cp "$out/test-classes-stock$stockcp" \
+	java -Dkc.stdlib="$lib/kotlin-stdlib-2.4.21.jar" -cp "$out/test-classes-stock$stockcp" \
 		PrintAnnotatedKt "$here/test/slice/src" "$out/stock-slice" "${slice[@]}" > "$out/stock-slice.txt"
 	{ diff "$here/test/slice/want.txt" "$out/stock-slice.txt" || true; } | grep '^[<>]' > "$out/stock-slice.diff" || true
 	diff -u "$here/test/slice/stock.diff" "$out/stock-slice.diff"
@@ -254,7 +256,7 @@ fi
 stock() {
 	[ "$mode" = stock ] || return 0
 	rm -rf "$out/stock-$1"
-	java -Dksp.languageVersion=2.3 -cp "$out/runksp-stock$4$stockcp" RunKspKt "$2" "$out/stock-$1" "$3" > "$out/stock-$1.txt"
+	java -cp "$out/runksp-stock$4$stockcp" RunKspKt "$2" "$out/stock-$1" "$3" > "$out/stock-$1.txt"
 	rm -rf "$out/stock-$1/caches" "$out/stock-$1/classes"
 	diff -ru "$here/test/$1/want" "$out/stock-$1"
 	echo "$1: stock KSP ok"
@@ -316,7 +318,7 @@ icrun "$out/ic" env LD_PRELOAD="$java_home/lib/libjsig.so" java -Dksp.backend=kc
 diff -u "$here/test/ic/dirty.txt" "$out/ic/dirty.txt"
 echo "incremental: ok ($(wc -l < "$out/ic/dirty.txt") of $(find "$here/test/ic/src" -type f | wc -l) files dirty)"
 if [ "$mode" = stock ]; then
-	icrun "$out/stock-ic" java -Dksp.languageVersion=2.3 -cp "$out/runksp-stock$procs$stockcp"
+	icrun "$out/stock-ic" java -cp "$out/runksp-stock$procs$stockcp"
 	{ diff "$here/test/ic/dirty.txt" "$out/stock-ic/dirty.txt" || true; } | grep '^[<>]' > "$out/stock-ic.diff" || true
 	diff -u "$here/test/ic/stock.diff" "$out/stock-ic.diff"
 	echo "incremental: stock KSP differs as recorded"

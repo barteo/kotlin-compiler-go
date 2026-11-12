@@ -43,6 +43,41 @@ func (c *Checker) refShapes(l *syntax.Lambda) []types.Type {
 	return c.memberRefShapes(cls, r.Name)
 }
 
+// refKinds reports whether reference l, ::name or C::name, names a
+// function and whether it names a property, and false for known when kc
+// can't tell without checking it. A reference that names only properties
+// isn't a KFunction, and one that names only functions isn't a
+// KProperty: property(Price::cents) is property(KProperty1<T, G>), not
+// property(KFunction<Unit>).
+func (c *Checker) refKinds(l *syntax.Lambda) (fun, prop, known bool) {
+	r := l.Ref
+	if r == nil || r.Type != nil || r.Bound != nil {
+		return false, false, false
+	}
+	if r.X == nil {
+		if _, _, ok := c.scope.lookup(r.Name); ok || c.lookupClass(r.Name) != nil {
+			return false, false, false
+		}
+		fs, _ := c.scope.findFuns(r.Name)
+		return len(fs) > 0 || len(c.topFuns(r.Name)) > 0, c.topVar(r.Name) != nil, true
+	}
+	id, ok := r.X.(*syntax.Ident)
+	if !ok || c.isVar(id.Name) {
+		return false, false, false
+	}
+	cls := c.lookupClass(id.Name)
+	if cls == nil {
+		return false, false, false
+	}
+	cls.Ensure()
+	prop = c.memberProp(cls, r.Name) != nil
+	cls.Supertypes(func(s *types.ClassSym) bool {
+		prop = prop || s.KProps[r.Name] != nil
+		return !prop
+	})
+	return len(c.javaMethods(cls, r.Name)) > 0 || len(c.extCallees(r.Name, cls.This())) > 0, prop, true
+}
+
 // topRefShapes returns the types of ::name, naming top-level functions or
 // a top-level property.
 func (c *Checker) topRefShapes(name string) []types.Type {

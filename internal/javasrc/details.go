@@ -1,6 +1,7 @@
 package javasrc
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/barteo/kotlin-compiler-go/internal/classfile"
@@ -97,6 +98,20 @@ func (r *resolver) nullability(as []*Annotation) []string {
 		}
 		for _, c := range r.annotations([]*Annotation{a}) {
 			out = append(out, c.Type)
+		}
+	}
+	return out
+}
+
+// methodAnnotations returns the descriptors of a method's annotations as
+// its class file's member lists them: all of them, as annotationNames
+// has them, and the nullability annotations, as nullability resolves
+// them, where those differ.
+func (r *resolver) methodAnnotations(as []*Annotation) []string {
+	out := r.annotationNames(as)
+	for _, n := range r.nullability(as) {
+		if !slices.Contains(out, n) {
+			out = append(out, n)
 		}
 	}
 	return out

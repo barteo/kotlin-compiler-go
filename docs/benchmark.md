@@ -49,32 +49,32 @@ does. Gradle itself, incremental compilation and tests are left out.
 ## Results
 
 Apple M2 MacBook Air (4 performance and 4 efficiency cores, 16 GB),
-JDK 21, at `e86fe2a` on 4 November 2026.
+JDK 21, at `1d1d79a` on 10 November 2026.
 
 Wall time:
 
 | Input | Files | Lines | `kc -j 1` | `kc -j 8` | `kotlinc` cold | `kotlinc` warm | Warm `kotlinc` / `kc -j 1` |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| Generated | 100 | 40k | 0.60 s | 0.31 s | 17.6 s | 6.8 s | 11x |
-| Generated | 1,000 | 404k | 5.85 s | 2.80 s | 80.1 s | 91.1 s | 16x |
-| kotlinpoet | 39 | 8.7k | 152 ms | 104 ms | 7.0 s | 1.21 s | 7.9x |
-| kotlinx-coroutines-core | 169 | 34k | 320 ms | 176 ms | 10.9 s | 2.22 s | 6.9x |
-| Ktor, 3 modules | 236 | 24k | 361 ms | 237 ms | 19.4 s | 2.25 s | 6.2x |
+| Generated | 100 | 40k | 0.60 s | 0.33 s | 17.8 s | 6.9 s | 12x |
+| Generated | 1,000 | 404k | 5.98 s | 2.88 s | 80.6 s | 98.9 s | 17x |
+| kotlinpoet | 39 | 8.7k | 153 ms | 104 ms | 7.5 s | 1.11 s | 7.3x |
+| kotlinx-coroutines-core | 169 | 34k | 312 ms | 179 ms | 11.2 s | 2.32 s | 7.4x |
+| Ktor, 3 modules | 236 | 24k | 366 ms | 244 ms | 20.0 s | 2.27 s | 6.2x |
 
 Peak memory (resident set size):
 
 | Input | Files | Lines | `kc -j 1` | `kc -j 8` | `kotlinc` cold | Cold `kotlinc` / `kc -j 1` |
 |---|---:|---:|---:|---:|---:|---:|
-| Generated | 100 | 40k | 168 MB | 232 MB | 1.53 GB | 9.1x |
-| Generated | 1,000 | 404k | 1.29 GB | 1.73 GB | 3.99 GB | 3.1x |
-| kotlinpoet | 39 | 8.7k | 77 MB | 91 MB | 1.02 GB | 13x |
-| kotlinx-coroutines-core | 169 | 34k | 111 MB | 127 MB | 1.12 GB | 10x |
-| Ktor, 3 modules | 236 | 24k | 78 MB | 90 MB | 1.07 GB | 14x |
+| Generated | 100 | 40k | 171 MB | 238 MB | 1.41 GB | 8.3x |
+| Generated | 1,000 | 404k | 1.31 GB | 1.75 GB | 4.02 GB | 3.1x |
+| kotlinpoet | 39 | 8.7k | 80 MB | 93 MB | 1.03 GB | 13x |
+| kotlinx-coroutines-core | 169 | 34k | 115 MB | 130 MB | 1.09 GB | 9.5x |
+| Ktor, 3 modules | 236 | 24k | 82 MB | 95 MB | 1.08 GB | 13x |
 
 - `kotlinc` runs with an 8 GB heap limit (`HEAP`). Warm `kotlinc`'s
   memory isn't measured.
 - Warm `kotlinc` doesn't settle at 1,000 files on this 16 GB machine:
-  its four runs took 74–91 s, mostly slower than cold.
+  its four runs took 78–99 s, mostly slower than cold.
 - `kotlinc`'s times vary by 10–20% between sessions although it doesn't
   change. To measure a change to `kc`, time both builds in one session.
 - Full tables, with CPU time, are in [bench/results](../bench/results/).
@@ -90,19 +90,20 @@ thread.
 
 | Work | `kotlinc` | `kc -j 1` | Ratio |
 |:---|---:|---:|---:|
-| Parsing | 4.8 s | 0.26 s | ~18x |
-| Resolution and type checking | 9.5 s | 1.13 s | ~8x |
-| Checkers (warnings and errors) | 4.6 s | none | |
-| Reading the class path | 0.5 s | 0.01 s | |
-| Backend, with inlining and writing | 14.9 s | 1.39 s | ~11x |
-| **Total** | **34.3 s** | **2.79 s** | **12x** |
+| Parsing | 5.2 s | 0.26 s | ~20x |
+| Resolution and type checking | 8.0 s | 1.12 s | ~7x |
+| Checkers (warnings and errors) | 4.0 s | none | |
+| Reading the class path | 0.4 s | 0.01 s | |
+| Backend, with inlining and writing | 14.1 s | 1.38 s | ~10x |
+| **Total** | **31.7 s** | **2.77 s** | **11x** |
 
 - There is no hotspot: no single lowering or checker takes more than
-  about 2%. The time is spread over 82 IR lowerings and 289 checkers,
+  about 2%. The time is spread over 84 IR lowerings and 272 checkers,
   each walking the tree.
-- `kotlinc`'s frontend runs on one core. With `-Xbackend-threads=0` it
-  took 33.1 s, against 34.0 s for the profiled runs. `kc` checks and
-  generates code in parallel.
+- `kotlinc`'s frontend runs on one core; only its backend can use more.
+  With `-Xbackend-threads=0` (a backend thread per core) and without the
+  profiler it took 23.5 s, against 33.2 s for the profiled runs. `kc`
+  also checks in parallel.
 - Of `kc`'s backend, 0.63 s is writing 10,001 class files.
 
 ## What the numbers don't show

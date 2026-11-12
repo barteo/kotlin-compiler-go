@@ -66,6 +66,9 @@ type Path struct {
 	// built on first use. See Classes.
 	byPackage func() packageIndex
 
+	pkgOnce    sync.Once
+	pkgClasses map[string][]string // see Package
+
 	IndexTime time.Duration
 	loaded    atomic.Int64
 	loadNanos atomic.Int64
@@ -343,6 +346,27 @@ func (p *Path) indexPackages() packageIndex {
 		slices.Sort(names)
 	}
 	return idx
+}
+
+// Package returns the internal names of the classes in a package, by
+// internal name (java/util), sorted. Classes of nested packages aren't in
+// it.
+func (p *Path) Package(pkg string) []string {
+	p.pkgOnce.Do(func() {
+		p.pkgClasses = map[string][]string{}
+		for name := range p.classes {
+			i := strings.LastIndexByte(name, '/')
+			pk := ""
+			if i >= 0 {
+				pk = name[:i]
+			}
+			p.pkgClasses[pk] = append(p.pkgClasses[pk], name)
+		}
+		for _, names := range p.pkgClasses {
+			slices.Sort(names)
+		}
+	})
+	return p.pkgClasses[pkg]
 }
 
 // Bytes reads a class file by internal name. The returned bytes are shared

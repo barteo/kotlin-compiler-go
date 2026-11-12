@@ -47,9 +47,8 @@ diagnostic markup, and looks for `box()` in the class `kotlinc` puts it
 in. It skips tests for other backends, tests `kotlinc`'s JVM backend
 ignores, and tests that need `LANGUAGE` features, compiler arguments,
 Java sources, or modules with friends or `dependsOn`. A `LANGUAGE` that
-only sets features as Kotlin 2.4 has them by default, or as kc
-follows them
-(`+AllowAccessToProtectedFieldFromSuperCompanion`,
+only sets features as Kotlin 2.4 has them by default, or as `kc`
+follows them (`+AllowAccessToProtectedFieldFromSuperCompanion`,
 `+AllowReifiedTypeInCatchClause`,
 `+AllowReturnInExpressionBodyWithExplicitType`,
 `+AvoidWrongOptimizationOfTypeOperatorsOnValueClasses`,
@@ -120,9 +119,8 @@ Three things differ from the test infrastructure:
 - **Directory options.** Directories whose test classes give `kotlinc`
   options (the return value checker in `crv/`, explicit API mode, header
   mode, strict equality, `-jvm-default` modes) are skipped, as are tests
-  with `LANGUAGE` features (but those on by default in Kotlin 2.4),
-  Java sources,
-  multiplatform modules or `IGNORE_FIR_DIAGNOSTICS`.
+  with `LANGUAGE` features (but those on by default in Kotlin 2.4), Java
+  sources, multiplatform modules or `IGNORE_FIR_DIAGNOSTICS`.
 
 ## Checking the harness
 
@@ -141,23 +139,23 @@ Kotlin 2.4.21's tests on `kc`:
 
 | Box tests | Tests | Share of run |
 |:---|---:|---:|
-| run (of 7,480) | 6,483 | |
-| pass | 6,483 | 100% |
+| run (of 7,480) | 6,543 | |
+| pass | 6,543 | 100% |
 | check error, parse/unsupported, crash, codegen error, timeout | 0 | |
 | VerifyError, linkage error, exception, wrong result | 0 | |
 
 | Diagnostics tests | Tests | Share of run |
 |:---|---:|---:|
-| run (of 10,827) | 7,200 | |
-| rejects invalid | 3,562 | 49.5% |
-| accepts valid | 3,099 | 43.0% |
-| accepts invalid | 259 | 3.6% |
-| rejects valid | 262 | 3.6% |
-| parse/unsupported | 18 | 0.2% |
+| run (of 10,827) | 7,286 | |
+| rejects invalid | 3,617 | 49.6% |
+| accepts valid | 3,142 | 43.1% |
+| accepts invalid | 263 | 3.6% |
+| rejects valid | 248 | 3.4% |
+| parse/unsupported | 16 | 0.2% |
 | crash | 0 | |
 
-`kc` agrees with `kotlinc` on 92% of the diagnostics tests, and reports
-13,125 of the 18,930 expected errors (69%) on their lines. The reports
+`kc` agrees with `kotlinc` on 93% of the diagnostics tests, and reports
+13,386 of the 19,697 expected errors (68%) on their lines. The reports
 break the failures down; the largest groups are:
 
 - **Silent miscompilation**: none. No box test that `kc` compiles
@@ -165,14 +163,14 @@ break the failures down; the largest groups are:
 - **Accepts invalid**: argument type mismatches
   (`ARGUMENT_TYPE_MISMATCH` 26), calls on nullable values (`UNSAFE_CALL`
   19), unresolved names (`UNRESOLVED_REFERENCE` 14), uninferred
-  parameter types (`CANNOT_INFER_PARAMETER_TYPE` 9), initializer type
-  mismatches (`INITIALIZER_TYPE_MISMATCH` 7), overload ambiguities
-  (`OVERLOAD_RESOLUTION_AMBIGUITY` 7) and impossible smart casts
+  parameter types (`CANNOT_INFER_PARAMETER_TYPE` 9), overload
+  ambiguities (`OVERLOAD_RESOLUTION_AMBIGUITY` 8), unsupported
+  constructs (`UNSUPPORTED` 8), initializer type mismatches
+  (`INITIALIZER_TYPE_MISMATCH` 7) and impossible smart casts
   (`SMARTCAST_IMPOSSIBLE` 7).
 - **Rejects valid**, by `kc`'s first error: type mismatches (65),
-  inference failures (52), unresolved names and imports (32), ambiguous
-  calls (14), and calls on nullable receivers (6). No box test is
-  rejected.
+  inference failures (49), unresolved names and imports (29), ambiguous
+  calls (16), and non-exhaustive `when`s (7). No box test is rejected.
 
 The committed `.tsv` files serve as a ratchet: a change must make
 `-baseline` report no regressions, and the tests it fixes measure it.

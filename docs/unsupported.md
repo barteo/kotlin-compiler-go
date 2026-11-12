@@ -14,8 +14,6 @@ own tests.
   (those of final members and member extensions of classes work).
 - Properties of a `@file:JvmMultifileClass` class that are neither
   `private` nor `const`.
-- `@JvmStatic` on extensions of objects and on delegated properties,
-  which is reported as unsupported.
 - Local `external` functions, which are reported as unsupported.
 - Opt-in requirements (`@RequiresOptIn`, `@SubclassOptInRequired`) and
   `@Deprecated` with level `ERROR` or `HIDDEN` are checked only for the
@@ -63,13 +61,14 @@ and `TODO`. Use the Java classes directly for the rest. Also:
 
 Not supported: generic classes; interfaces annotated `@Serializable`
 that aren't sealed; local classes; superclasses from other modules;
-more than 32 properties; custom serializers of properties
-(`@Serializable(with = ...)` on a property, `@Contextual`,
-`@UseSerializers`); `@EncodeDefault`; the annotations that formats read
+more than 32 properties; some ways of naming serializers of properties
+(a generic class in `@Serializable(with = ...)` on a property, `@Contextual`,
+`@UseSerializers`); the annotations that formats read
 (`@JsonNames`, `@ProtoNumber`...); arrays and the other types with
 built-in serializers (`Duration`, `Uuid`...). Properties can be of the
-primitive types, `String`, enums, `@Serializable` classes and objects,
-interfaces (polymorphically), and `List`, `Set`, `Map`, `HashSet`,
+primitive types, `String`, enums, `@Serializable` classes, objects and
+value classes, `UInt`, `ULong`, `UShort`, `UByte`, interfaces
+(polymorphically), and `List`, `Set`, `Map`, `HashSet`,
 `HashMap`, `Pair` and `Triple` of these, each nullable too.
 
 Without `-serialization`, only classes annotated `@Serializable(with =
@@ -77,13 +76,17 @@ S::class)` get their `serializer()`.
 
 ## Parcelize (`-parcelize`)
 
-Not supported: other types than `String`, the primitive types, enums,
-`Parcelable`s, `Serializable`s, `Array<String>`, and `List`,
-`MutableList`, `ArrayList`, `Set`, `MutableSet`, `LinkedHashSet`, `Map`,
-`MutableMap`, `LinkedHashMap` and `HashMap` of these (so not other
-arrays, `CharSequence`, `Bundle`...); custom `Parceler`s;
-`@TypeParceler`, `@WriteWith` and `@RawValue`; generic `@Parcelize`
-classes.
+A class that kotlinc reports an error for, or fails to compile, is left
+to kotlinc: one with a property of a type that the plugin can only write
+with `writeValue` and that isn't annotated `@RawValue`, such as a value
+class that isn't `Parcelable` or `Serializable`, or of a type parameter
+whose bound is a collection; a `@TypeParceler` or `@WriteWith` whose
+`Parceler` isn't an object or doesn't fit the type, or two
+`@TypeParceler`s for one type; a `Parceler` companion object of another
+type than the class's; a `@DataClass` type whose data class's
+constructor or properties the class can't see, or whose data class, or
+one in it, is another module's, such as `Pair`, for which kotlinc's
+plugin finds no properties and crashes.
 
 ## Compose (`-compose`)
 
@@ -100,11 +103,27 @@ Not supported yet:
   function types, and `is` and `as` with them;
 - lambdas converted to fun interfaces whose composable method returns a
   value or that use `this`;
-- composables with bodies in interfaces, and composable extension
-  properties;
+- composables with bodies in interfaces;
 - `@ExplicitGroupsComposable`.
 
 Without `-compose`, calls of libraries' composables aren't supported.
+
+## Metro (`-metro`)
+
+`kc` implements Metro 1.5.2's dependency graphs: `@DependencyGraph` and its factory, with `@Provides` and `@Includes` parameters; `@Inject` constructors and objects, `@Provides`, `@Binds`, qualifiers and `@SingleIn` scopes; requests as `() -> T`, `Provider<T>` and `Lazy<T>`; set and map multibindings, including `@ElementsIntoSet`, `@Multibinds` and wrapped map values; `@BindingContainer`; assisted injection; member injection; `@ContributesTo`, `@ContributesBinding`, `@ContributesIntoSet` and `@ContributesIntoMap` with `replaces` and `excludes`, from this module or the class path; and `@GraphExtension`s with their factories.
+
+Not supported, and reported as such:
+
+- custom annotations (the `custom-*` options), and options that change Metro's output, other than `enabled`, `contributes-as-inject` and `enable-function-providers`;
+- `@Provides` extension functions;
+- graphs with type parameters, and graph factories that are abstract classes;
+- javax, Jakarta, Dagger and Guice interop;
+- member injection into classes from the class path;
+- member injection that depends on the class itself, as `@Inject lateinit var s: Lazy<S>` in `S`;
+- `createDynamicGraph` and `createDynamicGraphFactory`, and calls of `createGraph` and `createGraphFactory` whose type argument is inferred;
+- graph functions that create a graph extension from parameters, other than its factory's.
+
+`kc` writes no `$MetroFactory` classes, so a graph that `kotlinc` compiles can't use a module that `kc` compiles. A graph that `kc` compiles can use modules that either compiler compiled.
 
 ## Differences from kotlinc
 
@@ -242,3 +261,23 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   primitive (`int`) to its `-impl` methods.
 - Annotations on local variables, type parameters, types and
   expressions aren't written, nor are `@[A B]` lists.
+
+**Compiler plugins**
+
+- The parcelize plugin reads a `FileDescriptor` with
+  `Parcel.readFileDescriptor()`, which returns a `ParcelFileDescriptor`.
+  `kotlinc` casts it to `FileDescriptor`, which fails, except for the
+  elements of collections and arrays, which it leaves uncast; `kc` casts
+  those too.
+- A custom `Parceler`'s `write`, a member extension, is called through an
+  inlined `with`, which leaves a `Unit` loaded and popped after the call
+  that `kotlinc` doesn't have, and a `Parceler` companion's `newArray` is
+  cast to the array type, which `kotlinc` doesn't. kotlinc reports
+  `@TypeParceler` and `@WriteWith` in a class that isn't `@Parcelize`
+  as errors; `kc` ignores them.
+- `kotlinc`'s plugin code casts values to the types they are passed as
+  where those are supertypes, as a list read to `List` or the receiver of
+  `toPersistentList` to `Iterable`; `kc`'s doesn't, and casts the
+  elements of a value class that it reads into a list to the class.
+- `Uuid` is written with an inlined `toLongs`, whose lambda's arguments
+  `kc` boxes (see Inlining).

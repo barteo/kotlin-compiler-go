@@ -1,6 +1,6 @@
 // Command kc compiles a subset of Kotlin to JVM class files.
 //
-//	kc [-d outdir] [-cp path] [-module-name name] [-parcelize] [-serialization] [-compose] [-Xdebug] [-j N] [-time] [-features] files-or-dirs...
+//	kc [-d outdir] [-cp path] [-module-name name] [-parcelize] [-serialization] [-compose] [-metro] [-Xdebug] [-j N] [-time] [-features] files-or-dirs...
 package main
 
 import (
@@ -32,15 +32,26 @@ func main() {
 	parcelize := flag.Bool("parcelize", false, "compile as kotlinc does with the parcelize compiler plugin: classes annotated @Parcelize get their Parcelable members")
 	serialization := flag.Bool("serialization", false, "compile as kotlinc does with the kotlinx.serialization compiler plugin: classes annotated @Serializable get their serializers")
 	compose := flag.Bool("compose", false, "compile as kotlinc does with the Compose compiler plugin: @Composable functions take a Composer and change flags")
+	metro := flag.Bool("metro", false, "compile as kotlinc does with the Metro dependency injection compiler plugin: @DependencyGraph interfaces get implementations")
 	debug := flag.Bool("Xdebug", false, "compile as kotlinc's -Xdebug: suspend functions keep dead variables' values for debuggers")
 	var optIns []string
 	flag.Func("opt-in", "opt in to the requirement marker with this qualified name, as kotlinc's -opt-in; may be repeated", func(v string) error {
 		optIns = append(optIns, v)
 		return nil
 	})
+	metroOptions := map[string]string{}
+	flag.Func("P", "a compiler plugin's option, as kotlinc's -P: plugin:dev.zacsweers.metro.compiler:key=value, for -metro; may be repeated", func(v string) error {
+		rest, ok := strings.CutPrefix(v, "plugin:"+driver.MetroPluginID+":")
+		key, value, ok2 := strings.Cut(rest, "=")
+		if !ok || !ok2 {
+			return fmt.Errorf("unsupported plugin option %s: only plugin:%s:key=value", v, driver.MetroPluginID)
+		}
+		metroOptions[key] = value
+		return nil
+	})
 	jvmDefault := flag.String("jvm-default", "no-compatibility", "how interfaces' bodies compile, as with kotlinc: no-compatibility (JVM default methods), enable (also in DefaultImpls classes) or disable (DefaultImpls classes)")
 	flag.Usage = func() {
-		fmt.Fprintln(os.Stderr, "usage: kc [-d outdir] [-cp path] [-module-name name] [-parcelize] [-serialization] [-compose] [-j N] [-time] files-or-dirs...")
+		fmt.Fprintln(os.Stderr, "usage: kc [-d outdir] [-cp path] [-module-name name] [-parcelize] [-serialization] [-compose] [-metro] [-j N] [-time] files-or-dirs...")
 		flag.PrintDefaults()
 	}
 	flag.Parse()
@@ -75,7 +86,7 @@ func main() {
 		os.Exit(2)
 	}
 	opts := driver.Options{OutDir: *outDir, Jobs: *jobs, JDKHome: *jdkHome, NoJDK: *noJDK, ModuleName: *moduleName,
-		NoJVMDefault: *jvmDefault == "disable", JVMDefaultCompat: *jvmDefault == "enable", Parcelize: *parcelize, Serialization: *serialization, Compose: *compose, Debug: *debug, OptIns: optIns}
+		NoJVMDefault: *jvmDefault == "disable", JVMDefaultCompat: *jvmDefault == "enable", Parcelize: *parcelize, Serialization: *serialization, Compose: *compose, Metro: *metro, MetroOptions: metroOptions, Debug: *debug, OptIns: optIns}
 	if classPath != "" {
 		opts.ClassPath = filepath.SplitList(classPath)
 	}

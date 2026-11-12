@@ -209,7 +209,7 @@ func boxedResult(x *syntax.Call, t types.Type) bool {
 	if m, ok := x.Fun.(*syntax.Member); ok && m.Safe {
 		return false
 	}
-	return f.Ret.IsParam() && !f.Ret.Param().Reified && desc(types.JVMRet(f))[0] == 'L'
+	return f.Ret.IsParam() && desc(types.JVMRet(f))[0] == 'L'
 }
 
 // coerceRecv is coerce for the receiver of an extension: an extension of
@@ -612,7 +612,11 @@ func (g *gen) as(x *syntax.As) {
 	}
 	if g.castChecks(x, from, to) {
 		g.checkCastNotNull(to)
-		from = from.NonNull()
+		if nn := from.NonNull(); from.IsPrimitive() || !nn.IsPrimitive() {
+			from = nn
+		}
+		// Else a platform value, as a Java generic's Boolean!, which is
+		// still its box.
 	}
 	if from.IsPrimitive() {
 		if from == to {
@@ -779,6 +783,7 @@ func (g *gen) global(p *types.VarSym) {
 	case p.Private:
 		g.shared.access[p] |= 1
 		g.code.Invoke(cf.INVOKESTATIC, p.Facade, privateGetter(p), "()"+d)
+		g.lateinit(p)
 	case p.Composable && p.Facade == composablesKt && p.Name == "currentComposer":
 		// An intrinsic: its getter only throws.
 		g.loadComposer()
@@ -1006,6 +1011,8 @@ func (g *gen) elvis(x *syntax.Binary) {
 	g.code.Place(nonNull)
 	g.grouped(x.Groups, g.siteKey(x.P, "elvis", 1), func() {})
 	switch {
+	case res.K == types.Unit:
+		g.pop(xt) // the left side's kotlin.Unit
 	case res.IsPrimitive() && xt.K == types.TypeParam:
 		g.coerce(xt.NonNull(), res) // x ?: 0 for T : Int?
 	case res.IsPrimitive():
@@ -1244,7 +1251,7 @@ func (g *gen) member(x *syntax.Member) {
 		g.code.Invoke(cf.INVOKESTATIC, x.Getter.Owner.Name, x.Getter.Name, x.Getter.Desc)
 		g.code.Invoke(cf.INVOKESTATIC, "kotlin/enums/EnumEntriesKt", "enumEntries", "([Ljava/lang/Enum;)Lkotlin/enums/EnumEntries;")
 		return
-	case x.Getter != nil && x.Getter.Static:
+	case x.Getter != nil && x.Getter.Static && !x.Getter.Ext:
 		// A static getter: E.entries.
 		g.code.Invoke(cf.INVOKESTATIC, x.Getter.Owner.Name, x.Getter.Name, x.Getter.Desc)
 		g.coerce(types.JVMRet(x.Getter), x.T)
@@ -1281,11 +1288,11 @@ func (g *gen) member(x *syntax.Member) {
 		rt := x.X.Type()
 		if x.Safe {
 			rt = rt.NonNull()
-		} else {
+		} else if !f.Static {
 			g.dispatch(x, f.Owner)
 		}
 		g.safeCall(x, types.JVMRet(f), x.T, func() {
-			if x.Safe {
+			if x.Safe && !f.Static {
 				g.dispatch(x, f.Owner)
 				g.swapUnder(rt)
 			}
@@ -1294,7 +1301,7 @@ func (g *gen) member(x *syntax.Member) {
 				g.inline(b, nil) // inline-only, of the class path
 				return
 			}
-			g.composeArgs(f, nil, nil)
+			g.composeGetterArgs(x, f)
 			g.callMethod(f, f.Owner, f.JVM(), funDesc(f))
 		})
 		return
@@ -1309,7 +1316,7 @@ func (g *gen) member(x *syntax.Member) {
 		g.safeCall(x, types.JVMRet(f), x.T, func() {
 			g.coerceRecv(rt, f.Recv)
 			if inlineBody(f, nil) == nil {
-				g.composeArgs(f, nil, nil) // a composable getter's Composer
+				g.composeGetterArgs(x, f)
 			}
 			g.invokeFun(nil, f, nil) // copied if inline-only
 		})
@@ -1347,10 +1354,20 @@ func (g *gen) member(x *syntax.Member) {
 	}
 	if x.Builtin == types.IsInitialized {
 		// this::x.isInitialized: whether the field is assigned.
+		// From another class, as a lambda's, a private field is read
+		// with its static accessor.
 		p := x.Prop
-		if p.Kind == types.Global {
-			g.code.FieldInsn(cf.GETSTATIC, p.FieldClass(), p.Name, desc(types.FieldType(p)))
-		} else {
+		d := desc(types.FieldType(p))
+		switch {
+		case p.Kind == types.Global && p.Private && g.cls.Name != p.FieldClass():
+			g.shared.access[p] |= 1
+			g.code.Invoke(cf.INVOKESTATIC, p.Facade, privateGetter(p), "()"+d)
+		case p.Kind == types.Global:
+			g.code.FieldInsn(cf.GETSTATIC, p.FieldClass(), p.Name, d)
+		case p.Private:
+			g.expr(x.X)
+			g.outerField(p, false)
+		default:
 			g.expr(x.X)
 			g.getField(p)
 		}
@@ -1501,9 +1518,12 @@ func (g *gen) invokeSuperBody(s *syntax.Super, name, d string) {
 }
 
 func (g *gen) args(x *syntax.Call, f *types.FunSym) {
+	h := g.holdArgs(x.Args)
 	for i, a := range x.Args {
+		h.before(g, a)
 		g.argAs(a, paramType(f, i))
 	}
+	h.release(g)
 	g.continuationArg(x)
 	g.line(x.Pos()) // the call, after arguments on other lines
 }
@@ -1616,6 +1636,10 @@ func (g *gen) valueArgs(x *syntax.Call, f *types.FunSym) argMask {
 		}
 	}
 	var mask argMask
+	var h *heldArgs
+	if len(stored) == 0 {
+		h = g.holdArgs(x.Args)
+	}
 	for j, p := range f.Params {
 		var args []syntax.Expr
 		arg := -1
@@ -1631,6 +1655,7 @@ func (g *gen) valueArgs(x *syntax.Call, f *types.FunSym) argMask {
 			g.code.Retire(varargs)
 		case p.Vararg && (len(args) > 0 || !p.Default):
 			d, elem := varargDesc(x, p, jvm[j])
+			h.before(g, args...)
 			g.varargs(args, d, elem)
 		case len(args) == 0:
 			// Omitted, or a vararg parameter with a default value that
@@ -1642,13 +1667,72 @@ func (g *gen) valueArgs(x *syntax.Call, f *types.FunSym) argMask {
 				g.code.Local(loadOp(p.Type), slot)
 				g.code.Retire(slot)
 			} else {
+				h.before(g, args[0])
 				g.argAs(args[0], paramType(f, j))
 			}
 		}
 	}
+	h.release(g)
 	g.continuationArg(x)
 	g.line(x.Pos())
 	return mask
+}
+
+// heldArgs keeps the arguments of a call that are evaluated in locals
+// while later ones inline code. Inlined code starts with the stack moved
+// to locals (see spillStack), so in f(a.map { }, b.map { }, ...) each
+// argument would move all those before it, and back: code that grows
+// with the square of the arguments, too large for a method with a few
+// dozen (kotlinc's codegen/box/coroutines/kt51530.kt). Before an argument
+// that inlines code, the arguments evaluated since the last one go to
+// locals instead, and release puts them all back, in order, after the
+// last: code that grows with the arguments.
+type heldArgs struct {
+	depth int   // the stack's depth before the arguments
+	slots []int // the arguments in locals, topmost first, as Spill's
+}
+
+// holdArgs returns a heldArgs for a call's arguments, or nil (whose
+// methods do nothing) unless two or more of them inline code: with one,
+// the inlined code moving the arguments before it is no larger.
+func (g *gen) holdArgs(args []syntax.Expr) *heldArgs {
+	n := 0
+	for _, a := range args {
+		if a != nil && inlinesCode([]syntax.Expr{a}) {
+			n++
+		}
+	}
+	if n < 2 {
+		return nil
+	}
+	return &heldArgs{depth: g.code.Depth()}
+}
+
+// before moves the arguments evaluated since the last move to locals, if
+// the arguments about to be evaluated inline code.
+func (h *heldArgs) before(g *gen, args ...syntax.Expr) {
+	if h == nil || g.code.Depth() == h.depth || !inlinesCode(args) {
+		return
+	}
+	h.hold(g)
+}
+
+func (h *heldArgs) hold(g *gen) {
+	slots, ok := g.code.SpillAbove(h.depth)
+	if !ok {
+		panic("an object under construction among a call's arguments")
+	}
+	h.slots = append(slots, h.slots...)
+}
+
+// release puts the arguments back on the stack, after the last one.
+func (h *heldArgs) release(g *gen) {
+	if h == nil || len(h.slots) == 0 {
+		return
+	}
+	h.hold(g)
+	g.code.Unspill(h.slots)
+	h.slots = nil
 }
 
 // omits reports whether call x leaves out an argument of f's.
@@ -1798,6 +1882,11 @@ func (g *gen) invokeDefault(f *types.FunSym, mask argMask) {
 }
 
 func (g *gen) call(x *syntax.Call) {
+	if x.Value != nil {
+		g.expr(x.Value)
+		g.coerce(x.Value.Type(), x.T)
+		return
+	}
 	if unconverted(x) != syntax.Expr(x) {
 		if l, _ := g.forwarded(x); l != nil {
 			g.code.Op(cf.ACONST_NULL) // see ident
@@ -1837,6 +1926,11 @@ func (g *gen) ungroupedCall(x *syntax.Call) {
 	if x.Tail && x.Sym.Suspend {
 		// Not a suspension point of the state machine: see suspensionPoint.
 		panic("tail call of suspend function " + x.Sym.Name + " not generated as a jump")
+	}
+	if x.Builtin == types.UnsafeCoerce {
+		// The value is the same on the JVM: see check.coerceCall.
+		g.expr(x.Args[0])
+		return
 	}
 	if x.Builtin == types.SuspendIntrinsic {
 		g.suspendIntrinsic(x)
@@ -1977,18 +2071,24 @@ func (g *gen) ungroupedCall(x *syntax.Call) {
 		m := x.Fun.(*syntax.Member)
 		rt := m.T
 		if !m.Safe {
-			g.dispatch(m, f.Owner)
+			if !f.Static {
+				g.dispatch(m, f.Owner)
+			}
 			g.contextArgs(x, f)
 		}
 		g.safeCall(m, types.JVMRet(f), x.T, func() {
 			if m.Safe {
 				// This goes below the receiver, unboxed if primitive.
-				g.dispatch(m, f.Owner)
-				g.swapUnder(m.X.Type().NonNull())
+				if !f.Static {
+					g.dispatch(m, f.Owner)
+					g.swapUnder(m.X.Type().NonNull())
+				}
 				g.contextsUnder(x, f, m.X.Type().NonNull())
 			}
 			g.coerceRecv(rt, f.Recv)
-			if mask := g.callArgs(x, f); mask.any() {
+			if mask := g.callArgs(x, f); f.Static {
+				g.invokeStatic(f.Owner.Name, f, mask, false) // an object's @JvmStatic extension
+			} else if mask.any() {
 				g.invokeDefault(f, mask)
 			} else {
 				g.callMethod(f, f.Owner, f.JVM(), funDesc(f))

@@ -52,8 +52,12 @@ the files KSP touches with kotlin-compiler 2.4.21's PSI and maps them to
 mapping.
 
 **KSP fork.**
-- KSP2 uses a shaded AA and reaches into FIR internals, so it is forked as a
-  patch series in [`jvm/ksp/patches`](../jvm/ksp/patches).
+- KSP2 uses a shaded AA and reaches into FIR internals, so it is forked:
+  branch [`kc-backend` of barteo/ksp](https://github.com/barteo/ksp/tree/kc-backend),
+  google/ksp's main (past release 2.3.13; first KSP 2.3.9) with one commit
+  per change. Until 2026-11-11 the fork was a
+  patch series in `jvm/ksp/patches`; the patch numbers below are the
+  branch's commits in order.
 - Session creation sits behind a `KspBackend` (chosen with
   `-Dksp.backend=aa|kc`).
 - FIR-internal queries sit behind `KcExtras`.
@@ -69,10 +73,10 @@ mapping.
 | M0.4 | Vertical slice: list annotated source classes through a `kc` KspBackend: `jvm/kc-aa/build.sh test` | done, see gaps |
 | M1 | `psi` on Kotlin 2.4.21 | done before this work |
 | M2 | Error tolerance, `types.Invalid` payload, extension-vs-top-level overload bug, `@Contextual`/`@EncodeDefault` | done (two items moved, see M2) |
-| M3 | Richer symbol model: visibility and modality enums, flags, origins, library annotation arguments, Java parameter names | done: source types, flags and modality (step 1); KaTypes on the JVM (2); annotation arguments (3); library classes (4); inherited members, overrides, subtyping (5); packages, library top-level declarations, alias abbreviations (6); JVM type mapping (7); backing fields (8); Java sources in the module (15). Moshi, Dagger, Room and Hilt byte-identical to stock KSP 2.3.6 (steps 7–9, 14) |
+| M3 | Richer symbol model: visibility and modality enums, flags, origins, library annotation arguments, Java parameter names | done: source types, flags and modality (step 1); KaTypes on the JVM (2); annotation arguments (3); library classes (4); inherited members, overrides, subtyping (5); packages, library top-level declarations, alias abbreviations (6); JVM type mapping (7); backing fields (8); Java sources in the module (15). Moshi, Dagger, Room and Hilt byte-identical to stock KSP 2.3.6 (steps 7–9, 14), and to 2.3.13 (step 29) |
 | M4 | Queryable session `analysis/ka`: lookups, scopes, relations, overrides | done: `ka.Session.Update` and `Model` with `Class` and `Package` lookups on the class path (steps 4, 6), shared library (11), lookups recorded for incremental processing (16); scopes, relations and overrides are answered on the JVM over the model (step 5) |
 | M5 | Bridge: `cmd/libkc` operations, `tools/kagen` wire format, `jvm/kc-aa` KaSession | done: `internal/kaops` operations (open, update, close, class, package), the model wire format, written by hand in `internal/kaops` and `KcModel.kt` (no `tools/kagen` generator was needed), the `KaSession` proxy and symbol, type and annotation classes; member coverage in `jvm/kc-aa/members.txt` (step 19) |
-| M6 | KSP fork integration: the `kc` backend, IC lookups, hot paths | done: KSP's own test suite on the kc backend, `build.sh ksp` (step 15): 134 of 136 pass, the other 2 disabled in KSP, Java sources in the main module included; IC lookups recorded by kc's checker and replayed into KSP's tracker, checked against stock KSP on a fixture (step 16). Open: the whole-run fallback to `aa` (see gaps) |
+| M6 | KSP fork integration: the `kc` backend, IC lookups, hot paths | done: KSP's own test suite on the kc backend, `build.sh ksp` (steps 15, 26, 27, 28): 171 of 173 pass on the fork's upstream merge, with and without its backing-field and context-parameter features, the other 2 disabled in KSP, Java sources in the main module included; IC lookups recorded by kc's checker and replayed into KSP's tracker, checked against stock KSP on a fixture (step 16). Open: the whole-run fallback to `aa` (see gaps) |
 | M7 | Differential conformance against stock KSP, benchmark, CI | in progress: `bench/ksp` (steps 11, 17): on octi-server warm 773 ms on stock KSP, 176 ms on kc; cold 6.2–6.4 s and 3.5–3.6 s (step 11's CDS archive: 1.9–2.1 s on kc); CI: `.github/workflows/analysis-api.yml` (step 12) |
 
 ### M0.1 – JNI spike
@@ -132,9 +136,10 @@ builds the API jar from the Kotlin sources at `v2.4.21` instead:
 ### M0.3 – KSP fork
 
 `jvm/ksp/build.sh` builds the fork:
-1. It checks out KSP at tag 2.3.9.
-2. It applies the patches.
-3. It compiles the `kotlin-analysis-api` module (the processing loop, the KS*
+1. It checks out the fork at the commit it pins: google/ksp's main (at
+   first tag 2.3.9; since step 26, past release 2.3.13) with the patches
+   below as commits.
+2. It compiles the `kotlin-analysis-api` module (the processing loop, the KS*
    symbol model and the command line) against the M0.2 jar. The result has
    275 classes.
 
@@ -951,7 +956,7 @@ request: `jvm/libkc/test.sh` (the JNI stress test, with and without
 libjsig) and `jvm/kc-aa/build.sh stock` (the slice, Moshi and Dagger, and
 since step 14 Room and Hilt, on the kc backend, compared with their recorded output, and on stock KSP
 2.3.6). The Analysis API jar and the KSP fork are cached, keyed by their
-build scripts and the patches; the processors' and stock KSP's jars too.
+build scripts, which pin the fork's commit; the processors' and stock KSP's jars too.
 From nothing, on 4 CPUs, both take under 3 minutes. The Go half's tests
 (`analysis/...`, `internal/kaops`, `internal/check`) run in PR checks
 with the rest. The benchmark isn't run in CI: octi-server isn't vendored,
@@ -1915,6 +1920,212 @@ its results into them.
 
 `build.sh ksp` passes 134, `build.sh stock` is unchanged, and kotlinpoet
 still passes 18 of 19.
+
+#### Step 26: the KSP fork on upstream's latest
+
+The fork's `kc-backend` branch merged upstream KSP: the `ApiFeatures` API
+(`enableBackingFields`, `enableContextParameters`), the `runKSPTest` test
+helpers, 37 new tests, `[]` for a vararg parameter without arguments, and
+a type check of generated files with `collectDiagnostics`.
+
+- **Build** (`jvm/ksp/build.sh`): `ApiFeatures` and `KSBackingField` are
+  newer than any released `symbol-processing-api`, so the fork's `api`
+  module is compiled from its sources into `symbol-processing-api.jar`;
+  `common-deps` is 2.3.13's (`KSP_DEPS_VERSION`).
+- **Suite** (`ksptest/KspSuite.kt`): it finds `runKSPTest` cases too,
+  constructs processors with an `ApiFeatures` (`-Dksptest.features` turns
+  on `backingFields` and `contextParameters`), and reads `// EXPECT
+  ENABLE_X = TRUE:` lines for the features on.
+- **Annotation defaults** (`KcExtras`): `libraryAnnotationDefault` joins
+  `javaAnnotationDefault`, both from the model.
+- **Java annotation `value`** (`analysis/ka/library.go`): FIR makes a
+  Java annotation's `value()` of an array type a vararg parameter, first
+  in its constructor (kotlinc writes it first, too), so KSP's absent
+  vararg gives `value: []` for `@J(x = 42)`. The checker already treated it
+  as vararg.
+- **Library argument order**: FIR's loader of a Kotlin class file's
+  annotation puts its empty array arguments after the others: kotlinc
+  writes `@A(x = 42)` of `A(vararg val value: Char, val x: Int)` as `value
+  = [], x = 42`, and AA reports `x` first. Checked on stock KSP 2.3.6;
+  `emptyArraysLast` does the same.
+- **An empty array written** (`@A([])`) is an argument; only the empty
+  array the checker makes for a vararg parameter without arguments
+  (`syntax.AnnotationValue.Omitted`) isn't.
+- **`collectDiagnostics`** (`KcAnalysis`) reports kc's errors in the file
+  as `KaDiagnosticWithPsi`s at the leaf of their position; its notes of
+  features kc doesn't support aren't errors in the file.
+
+The slice's `v = []` and `xs = []` (`@Args`, `@Inner` without their vararg
+arguments) are the fork's, so `test/slice/stock.diff` records them
+against stock 2.3.6.
+
+Result: 166 of 173 pass. The rest (`test/ksp/skip.txt`):
+
+| Class | Tests |
+|---|---|
+| `disabled`: `@Disabled` in `KSPUnitTestSuite` | 2 |
+| `unsupported`: `KcBackingFieldSymbol.containingSymbol` | 2 |
+| `unsupported`: no `PluginProblemReporter` service | 1 |
+| `missing`: a library Java record | 1 |
+| `missing`: a resolved type's annotation | 1 |
+
+`build.sh stock` passes: the slice, Moshi, Dagger, Room, Hilt and
+incremental processing, on kc and on stock KSP.
+
+#### Step 27: the rest of KSP's tests
+
+- **Backing fields' container** (testChangingBehavior,
+  testRegisterProcessorForNewFeatures): a backing field's containing
+  symbol is its property, as FIR's.
+- **`// JVM_TARGET:`** (testJvmNameRecord): `KspSuite` compiles the
+  test's library modules for it and gives it to KSP, as
+  `AbstractKSPAATest` does; a library's `@JvmRecord` class needs 16.
+- **Java type annotations** (testTypeAnnotationClassReference): javac
+  writes TYPE_USE annotations (`@A int f`, `List<@A String>`, `String @A
+  []`, `<T extends @A Number>`) to `Runtime{Visible,Invisible}TypeAnnotations`
+  with a path into the type. `classfile.ParseDetails` reads them, a
+  class's and its members', and `analysis/ka` puts each on the type of a
+  Java library field, method return, parameter or type parameter bound
+  that its path leads to: into a type argument, an array's element type
+  or a wildcard's bound. An annotation of a wildcard itself is dropped,
+  and a vararg parameter's element type takes those of the array's
+  element. Nullability annotations (JetBrains' are TYPE_USE too) stay on
+  the type, and those visible at run time come first, as ASM reads them.
+  A flexible type's annotations are its lower bound's, as FIR's
+  attributes are. Checked against stock KSP 2.3.6 on a class with each
+  case (`TestJavaTypeAnnotations` keeps them). Java sources in the module
+  don't have them yet.
+- **`PluginProblemReporter`** (testPluginProblemReporter): the
+  environment registers the application service KSP's standalone backend
+  does, if the application has none, for `PluginException.createByClass`.
+
+Result: 171 of 173 pass; the other 2 are the tests KSP disables.
+
+#### Step 28: KSP's feature configurations
+
+Upstream runs KSP's suite again with each of its new API features on:
+backing fields (`KSPropertyDeclaration.backingField`), context
+parameters (`contextParameters`) and both.
+`KSP_JAVA_OPTS=-Dksptest.features=backingFields,contextParameters` runs
+them on the kc backend. They needed:
+
+- **Explicit backing fields' type**: `val x: List<T>` with `field:
+  ArrayList<T> = ...` has a field of the narrower type. `ka.Decl.FieldType`
+  carries it, and the backing field symbol has it and its
+  `KtBackingField` as PSI.
+- **A field-only annotation without a use-site target** (`@Inject
+  lateinit var`, `Inject` a Java source annotation with
+  `@Target(FIELD)`) goes on the backing field. `types.ClassSym.TargetsRead`
+  marks annotation classes whose targets were read, even where kc doesn't
+  check them (a Java source's), and placement uses it.
+- **An interface's property** has no backing field, even one written
+  with an initializer.
+- **Java fields' PSI**: KSP reads a Java backing field's modifiers from
+  its PSI, so a Java library field has its class file's (`ClsFieldImpl`),
+  as its class does.
+- **A Java annotation class's method** is a synthetic Java property
+  (`KaSyntheticJavaPropertySymbol`), as in FIR, with its method as
+  `javaGetterSymbol`; KSP gives it a backing field that shares the
+  property's type.
+- **Context parameters**: `ka.Decl.Contexts` has a function's and a
+  property's, from the sources (with their nodes and annotations) and
+  from metadata (annotations from the method's first parameters). Each
+  is a `KaContextParameterSymbol` whose containing symbol is its
+  function or property; an unnamed one, `_`, has FIR's special name,
+  which KSP reports as no name.
+
+Result: 171 of 173 in each of the four configurations; the other 2 are
+the tests KSP disables.
+
+#### Step 29: stock KSP 2.3.13
+
+`build.sh stock` and `build.sh kotlinpoet` compare with stock KSP 2.3.13,
+the latest release, instead of 2.3.6. 2.3.13's aa-embeddable carries a
+Kotlin 2.4.20 compiler, and its API jar needs stdlib 2.4, so stock now
+runs at language version 2.4, as kc does, with stdlib 2.4.21. The
+`-language-version 2.3` pins for the stock harnesses are gone.
+
+- Moshi, Dagger, Room and Hilt still match `want` byte for byte, and the
+  incremental dirty set still differs only by `n/Label.kt`
+  (`test/ic/stock.diff`, step 16).
+- The slice's `stock.diff` shrank from 17 lines to 10. Stock now agrees
+  with kc on:
+  - `a.Targets.b` (`@field:Marker @param:Other("p") var b`): 2.3.6 also
+    listed the `@param:` annotation among property `b`'s; 2.3.13, like
+    kc, keeps it on the parameter only;
+  - `AbstractMap.SimpleEntry`'s `getKey`/`getValue`, which override
+    `Map.Entry`'s properties, are the properties `key` and `value`.
+- What remains: `SimpleEntry.equals`'s parameter (`Any` on kc, `Any?` on
+  stock) and which `toString` `f.Bag` inherits (`AbstractCollection`'s on
+  kc, a `SYNTHETIC` override in `AbstractList` on stock), both fixed in
+  step 30; and the `[]`
+  for a vararg without arguments. That one comes from google/ksp's main
+  after the 2.3.13 tag (03801ce, 6ae2cbb), which the fork has and stock
+  2.3.13 doesn't.
+- kotlinpoet's interop tests: 18 of 19 on stock 2.3.13 (`complexAliasing`
+  fails, as before), 17 on kc. kc also fails `transitiveAliases`, since
+  step 26 and for the same kind of reason as the `[]`: google/ksp's
+  main after 2.3.13 has 463611a ("Fix KSTypeParameterImpl bounds"),
+  which reports a type parameter's bound as its abbreviated type. So on
+  the fork `<T : Alias41<Alias23, out Alias77<Alias73<Int>>>>` comes out
+  as written, and kotlinpoet's expected text, `Alias41<Alias43<Alias23>,
+  Alias47<out Alias77<Alias73<Int>>>>`, is built from the expansion that
+  2.3.13 reports. kc's model still has both (`TestRightSideAbbrevs`).
+
+#### Step 30: Java signature enhancement and intersection overrides
+
+The two slice differences step 29 left that were kc's are fixed, and so
+is what probing around them on stock 2.3.13 turned up:
+
+- **Intersection overrides.** FIR merges the members a class inherits
+  under one signature only when they come from the same declaration.
+  Otherwise it makes an intersection override, even where one of them
+  overrides another: `class B : A(), I`, with `A.f` overriding `I.f`,
+  has a `SYNTHETIC` `f` of its own, and `AbstractList` (`AbstractCollection`'s
+  `toString` and `List`'s, which is `Any`'s) has one for `toString`, which
+  every list class inherits. `KcMemberBuilder.mostSpecific` no longer
+  drops a member that another one in the group overrides. The member the
+  intersection stands for is unchanged: the first non-abstract one, else
+  the first.
+- **Java methods enhanced from the members they override.** A Java
+  method's flexible types take nullability and a collection's
+  mutability from the Kotlin members it overrides, as FIR's override
+  qualifiers have them. A parameter takes one only if every overridden
+  member that has one agrees; a return type prefers not-null and mutable.
+  So `AbstractList.equals(Object)` takes `Any?` (from `Any.equals`),
+  `AbstractMap.get`/`put`/`remove` return `V?`, and
+  `addAll(Collection<? extends E>)` takes `Collection<out E>`.
+  `KcClassMembers.enhanced` holds the types, and `KcFunctionSymbol` and
+  `KcValueParameterSymbol` read them once their class's members are
+  built. While those are being built, they read their declared types.
+- **Erased built-in parameters.** `contains(Object)`, `remove(Object)`,
+  `indexOf`, `lastIndexOf`, `containsKey`, `containsValue`, `get`,
+  `getOrDefault`, and `containsAll`/`removeAll`/`retainAll(Collection<?>)`
+  implement the `kotlin.collections` members whose parameters Java
+  erases (FIR's SpecialGenericSignatures). They now override those
+  members, and their parameters take the members' types: `contains(E)`,
+  `containsKey(K)`, `containsAll(Collection<E>)`. Before, a Kotlin
+  subclass of `AbstractSet` or `AbstractMap` had both the Java method
+  and the built-in as members.
+
+The slice checks these against stock: `members:` of an `AbstractMap`
+subclass (`f.Table`), an `AbstractSet` subclass (`f.Names`) and a
+class/interface diamond (`f.Both`), and `decls:` of `java.util.AbstractMap`
+and `java.util.AbstractList`.
+Its `stock.diff` is down to the 6 lines of the vararg `[]` (step 29).
+
+Not done:
+- Enhancing type arguments (FIR enhances the whole type, argument by
+  argument).
+- FIR's predefined enhancements of JDK methods.
+- Combining an annotated Java type with the overridden members' (an
+  annotated type isn't flexible, so it is left as it is).
+
+A library Java class's private nested classes (`AbstractList.Itr`,
+`SubList`, `RandomAccessSpliterator`) are among its declarations now, as
+on stock. Its private methods and fields already were; ka's library model
+left out only private nested classes. `decls:java.util.AbstractList`
+checks them in the slice.
 
 ## Gaps and open questions
 

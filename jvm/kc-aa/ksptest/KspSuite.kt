@@ -13,11 +13,16 @@
 // processed by KotlinSymbolProcessing with the test's processor. System
 // properties: ksptest.stdlib (the Kotlin standard library, a library of
 // every module), ksptest.annotations (JetBrains' annotations jar, on
-// javac's class path), ksptest.timeout (seconds per test, default 120).
+// javac's class path), ksptest.timeout (seconds per test, default 120),
+// ksptest.features (the ApiFeatures to enable, as a comma-separated list of
+// backingFields and contextParameters; default none, as in
+// AAConfiguredDefaultFeaturesUnitTestSuite).
 //
 // A RESULTS line is "STATUS name reason": PASS, FAIL (the output differs
 // from the expected one; WORK_DIR/name.diff has both), ERROR (the run
 // threw; WORK_DIR/name.log has the trace) or SKIP (@Disabled).
+import com.google.devtools.ksp.ApiFeatures
+import com.google.devtools.ksp.buildApiFeatures
 import com.google.devtools.ksp.impl.KotlinSymbolProcessing
 import com.google.devtools.ksp.processing.KSPJvmConfig
 import com.google.devtools.ksp.processing.KSPLogger
@@ -51,7 +56,8 @@ class Module(val name: String, val deps: List<String>, val friends: List<String>
 /** The tests of KSPUnitTestSuite, with AAConfiguredUnitTestSuite's overrides. */
 fun collect(ksp: File): List<Case> {
     val dir = File(ksp, "kotlin-analysis-api/src/test/kotlin/com/google/devtools/ksp/test")
-    val run = Regex("""(runTest|runFailingTest|runThrowingTest)\("\${'$'}AA_PATH/([^"]+)"\)""")
+    // runKSPTest("x.kt") is runTest("${'$'}AA_PATH/x.kt"), and so on.
+    val run = Regex("""(runTest|runFailingTest|runThrowingTest)\("\${'$'}AA_PATH/([^"]+)"\)|(runKSPTest|runFailingKSPTest|runThrowingKSPTest)\("([^"]+)"[,)]""")
     fun read(f: File): LinkedHashMap<String, Case> {
         val cases = LinkedHashMap<String, Case>()
         val lines = f.readLines()
@@ -66,12 +72,13 @@ fun collect(ksp: File): List<Case> {
             }
             val body = lines.subList(i, minOf(i + 4, lines.size)).joinToString("\n")
             val r = run.find(body) ?: continue
-            val kind = when (r.groupValues[1]) {
-                "runFailingTest" -> Kind.FAILING
-                "runThrowingTest" -> Kind.THROWING
+            val fn = r.groupValues[1].ifEmpty { r.groupValues[3] }
+            val kind = when (fn) {
+                "runFailingTest", "runFailingKSPTest" -> Kind.FAILING
+                "runThrowingTest", "runThrowingKSPTest" -> Kind.THROWING
                 else -> Kind.RUN
             }
-            cases[name] = Case(name, r.groupValues[2], kind, disabled)
+            cases[name] = Case(name, r.groupValues[2].ifEmpty { r.groupValues[4] }, kind, disabled)
         }
         return cases
     }
@@ -131,9 +138,40 @@ fun modules(test: File): List<Module> {
     return mods
 }
 
-fun expected(lines: List<String>): String =
-    lines.dropWhile { !it.startsWith("// EXPECTED:") }.drop(1).takeWhile { !it.startsWith("// END") }
-        .joinToString("\n") { it.substring(3).trim() }
+/** The features ksptest.features names. */
+fun features(): ApiFeatures {
+    val names = System.getProperty("ksptest.features", "").split(',').map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+    val unknown = names - setOf("backingFields", "contextParameters")
+    require(unknown.isEmpty()) { "ksptest.features: unknown $unknown" }
+    return buildApiFeatures {
+        enableBackingFields = "backingFields" in names
+        enableContextParameters = "contextParameters" in names
+    }
+}
+
+/**
+ * The expected output for [features], as AbstractKSPTest.parseExpectedOutput
+ * gives it: a "// EXPECT ENABLE_X = TRUE, ...: line" line counts only when
+ * each of its conditions holds.
+ */
+fun expected(lines: List<String>, features: ApiFeatures): String {
+    val values = mapOf(
+        "ENABLE_BACKING_FIELDS" to features.enableBackingFields,
+        "ENABLE_CONTEXT_PARAMETERS" to features.enableContextParameters,
+    )
+    return lines.dropWhile { !it.startsWith("// EXPECTED:") }.drop(1).takeWhile { !it.startsWith("// END") }
+        .mapNotNull { line ->
+            if (!line.startsWith("// EXPECT")) return@mapNotNull line.drop(2).trim()
+            val conds = line.removePrefix("// EXPECT").substringBefore(':').split(',').map { it.trim() }
+            val holds = conds.all { c ->
+                val (k, v) = c.split('=').map { it.trim() }.also { require(it.size == 2) { "bad EXPECT condition: $c" } }
+                val want = values[k] ?: error("unknown feature in EXPECT: $k")
+                want == v.lowercase().toBooleanStrict()
+            }
+            if (holds) line.substringAfter(':').trim() else null
+        }
+        .joinToString("\n")
+}
 
 class Logger(private val out: StringBuilder) : KSPLogger {
     override fun logging(message: String, symbol: KSNode?) {}
@@ -145,13 +183,17 @@ class Logger(private val out: StringBuilder) : KSPLogger {
 
 fun trace(e: Throwable): String = StringWriter().also { e.printStackTrace(PrintWriter(it)) }.toString()
 
-class Suite(val work: File, compilerCp: List<File>) {
+class Suite(val work: File, compilerCp: List<File>, val features: ApiFeatures) {
     val stdlib = System.getProperty("ksptest.stdlib")?.let(::File)
     val annotations = System.getProperty("ksptest.annotations")?.let(::File)
     private val compiler = URLClassLoader(compilerCp.map { it.toURI().toURL() }.toTypedArray(), ClassLoader.getPlatformClassLoader())
     private val k2jvm = compiler.loadClass("org.jetbrains.kotlin.cli.jvm.K2JVMCompiler")
 
     fun root(test: File, mod: String) = File(work, "${test.nameWithoutExtension}/$mod")
+
+    /** The test's "// JVM_TARGET:" directive, for its modules and for KSP; none for the default. */
+    fun jvmTarget(test: File): String? =
+        test.useLines { ls -> ls.firstOrNull { it.startsWith("// JVM_TARGET:") }?.substringAfter(':')?.trim() }
 
     fun write(dir: File, files: List<SrcFile>) {
         for (f in files) File(dir, f.name).apply { parentFile.mkdirs(); writeText(f.text) }
@@ -170,7 +212,8 @@ class Suite(val work: File, compilerCp: List<File>) {
         val cp = deps.map { it.canonicalPath } + kotlinSrc.path + listOfNotNull(stdlib?.path)
         val args = arrayOf(kotlinSrc.path, javaSrc.path, "-d", out.absolutePath, "-no-stdlib", "-no-reflect",
             "-Xannotation-target-all", "-module-name", m.name, "-classpath", cp.joinToString(File.pathSeparator)) +
-            (if (m.friends.isEmpty()) emptyArray() else arrayOf("-Xfriend-paths=" + deps.takeLast(m.friends.size).joinToString(",")))
+            (if (m.friends.isEmpty()) emptyArray() else arrayOf("-Xfriend-paths=" + deps.takeLast(m.friends.size).joinToString(","))) +
+            (jvmTarget(test)?.let { arrayOf("-jvm-target", it) } ?: emptyArray())
         val buf = ByteArrayOutputStream()
         val inst = k2jvm.getDeclaredConstructor().newInstance()
         val old = Thread.currentThread().contextClassLoader
@@ -202,8 +245,8 @@ class Suite(val work: File, compilerCp: List<File>) {
         val input = lines.find { it.startsWith("// PROCESSOR INPUT:") }?.substringAfter("// PROCESSOR INPUT:")
             ?.split(',')?.map { it.trim() }
         val cls = Class.forName("com.google.devtools.ksp.processor.$procName")
-        val proc = (if (input == null) cls.getDeclaredConstructor().newInstance()
-            else cls.getDeclaredConstructor(List::class.java).newInstance(input)) as AbstractTestProcessor
+        val proc = (if (input == null) cls.getDeclaredConstructor(ApiFeatures::class.java).newInstance(features)
+            else cls.getDeclaredConstructor(List::class.java, ApiFeatures::class.java).newInstance(input, features)) as AbstractTestProcessor
         val root = root(test, main.name)
         val kotlinSrc = File(root, "kotlinSrc").apply { mkdirs() }
         val javaSrc = File(root, "java-sources/${main.name}")
@@ -217,7 +260,7 @@ class Suite(val work: File, compilerCp: List<File>) {
             javaSourceRoots = if (javaFiles.isEmpty()) emptyList() else listOf(javaSrc)
             commonSourceRoots = emptyList()
             jdkHome = File(System.getProperty("java.home"))
-            jvmTarget = "1.8"
+            jvmTarget = jvmTarget(test) ?: "1.8"
             languageVersion = System.getProperty("ksp.languageVersion", "2.4")
             apiVersion = languageVersion
             libraries = main.deps.map { File(root(test, it), "out") } + listOfNotNull(stdlib)
@@ -254,7 +297,8 @@ fun main(args: Array<String>) {
     val timeout = System.getProperty("ksptest.timeout", "120").toLong()
     val cases = collect(ksp).filter { only == null || only.containsMatchIn(it.name) }
     System.err.println("ksp: ${cases.size} tests")
-    val suite = Suite(work, compilerCp)
+    val features = features()
+    val suite = Suite(work, compilerCp, features)
     val exec = Executors.newCachedThreadPool { r -> Thread(r).apply { isDaemon = true } }
     val counts = sortedMapOf<String, Int>()
     val lines = mutableListOf<String>()
@@ -269,7 +313,7 @@ fun main(args: Array<String>) {
             status = "SKIP"
             reason = "@Disabled"
         } else {
-            val want = expected(test.readLines())
+            val want = expected(test.readLines(), features)
             val f = exec.submit<String> { suite.run(test, log) }
             try {
                 val got = f.get(timeout, TimeUnit.SECONDS)

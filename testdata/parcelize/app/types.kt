@@ -1,8 +1,34 @@
+@file:OptIn(ExperimentalUnsignedTypes::class, kotlin.uuid.ExperimentalUuidApi::class, kotlinx.parcelize.Experimental::class)
+
 package p
 
+import android.os.Binder
+import android.os.Bundle
+import android.os.IBinder
+import android.os.Parcel
 import android.os.Parcelable
+import android.os.PersistableBundle
+import android.util.Size
+import android.util.SizeF
+import android.util.SparseArray
+import android.util.SparseBooleanArray
+import android.util.SparseIntArray
+import android.util.SparseLongArray
+import java.io.FileDescriptor
+import kotlinx.collections.immutable.ImmutableList
+import kotlinx.collections.immutable.ImmutableMap
+import kotlinx.collections.immutable.ImmutableSet
+import kotlinx.collections.immutable.PersistentList
+import kotlinx.collections.immutable.PersistentMap
+import kotlinx.collections.immutable.PersistentSet
+import kotlinx.parcelize.DataClass
 import kotlinx.parcelize.IgnoredOnParcel
+import kotlinx.parcelize.Parceler
+import kotlinx.parcelize.Parceler as ParcelerAlias
 import kotlinx.parcelize.Parcelize
+import kotlinx.parcelize.RawValue
+import kotlinx.parcelize.TypeParceler
+import kotlinx.parcelize.WriteWith
 import java.math.BigDecimal
 import lib.LibOpen
 import lib.LibPoint
@@ -130,4 +156,311 @@ class Edit(val id: String, val tags: Array<String>, val more: Array<String>?) : 
 data class Modes(
     val level: Level, val nlevel: Level?, val tone: Tone, val ntone: Tone?, val step: Step, val go: Step.Go,
     val stop: Step.Stop, val mode: Mode, val edit: Edit?,
+) : Parcelable
+
+// The plugin's own ways of writing Android's and Java's types: each with
+// a Parcel method of its own, or the size and the elements, and the
+// collections it knows by class. Another class, such as StringBuilder or
+// LinkedList, is just Serializable, and an object that isn't Parcelable
+// is written as 1, so that a null one reads back as the object.
+object Marker {
+    override fun toString() = "Marker"
+}
+
+object Twice : (Int) -> Int, java.io.Serializable {
+    override fun invoke(x: Int) = x * 2
+    override fun toString() = "Twice"
+}
+
+@Parcelize
+class Builtins(
+    val cs: CharSequence, val ncs: CharSequence?, val bundle: Bundle, val nbundle: Bundle?, val pbundle: PersistableBundle?,
+    val ints: IntArray, val nints: IntArray?, val longs: LongArray, val floats: FloatArray, val doubles: DoubleArray,
+    val bools: BooleanArray, val bytes: ByteArray, val chars: CharArray, val shorts: ShortArray, val nshorts: ShortArray?,
+    val boxed: Array<Long>, val nboxed: Array<Int?>?, val inners: Array<Inner>, val colors: Array<Color?>,
+    val binder: IBinder, val nbinder: Binder?, val binders: Array<IBinder>, val binderList: List<IBinder>,
+    val size: Size, val nsize: Size?, val sizeF: SizeF, val sba: SparseBooleanArray, val nsba: SparseBooleanArray?,
+    val sia: SparseIntArray, val nsia: SparseIntArray?, val sla: SparseLongArray, val sa: SparseArray<String>, val nsa: SparseArray<Inner?>?,
+    val hashSet: HashSet<Int>, val deque: ArrayDeque<String>, val jdeque: java.util.ArrayDeque<Long>, val sorted: java.util.SortedSet<String>,
+    val nav: java.util.NavigableSet<Int>?, val treeMap: java.util.TreeMap<String, Int>, val sortedMap: java.util.SortedMap<Int, Inner>,
+    val conc: java.util.concurrent.ConcurrentHashMap<String, Long>, val marker: Marker, val nmarker: Marker?,
+    val builder: StringBuilder, val linked: java.util.LinkedList<Int>, val fn: (Int) -> Int,
+) : Parcelable {
+    override fun toString() = listOf(
+        cs, ncs, bundle, nbundle, pbundle, ints.contentToString(), nints?.contentToString(), longs.contentToString(),
+        floats.contentToString(), doubles.contentToString(), bools.contentToString(), bytes.contentToString(),
+        chars.contentToString(), shorts.contentToString(), nshorts?.contentToString(), boxed.contentToString(),
+        nboxed?.contentToString(), inners.contentToString(), colors.contentToString(), binder, nbinder,
+        binders.contentToString(), binderList, size, nsize, sizeF, sba, nsba, sia, nsia, sla, sa, nsa, hashSet, deque,
+        jdeque, sorted, nav, treeMap, sortedMap, conc, marker, nmarker, builder, linked, fn(3),
+    ).toString()
+
+    override fun equals(other: Any?) = other is Builtins && other.toString() == toString()
+    override fun hashCode() = toString().hashCode()
+}
+
+// A FileDescriptor makes describeContents 1. (The plugin reads one back as
+// a ParcelFileDescriptor, which isn't one, so only nulls round-trip.)
+@Parcelize
+data class Descriptors(val fd: FileDescriptor?, val fds: List<FileDescriptor>, val nested: Map<String, List<FileDescriptor?>>?) : Parcelable
+
+// A class the plugin has no way to write but writeValue, which @RawValue
+// allows, as elements of a container too. It doesn't change how a type
+// that the plugin does know is written.
+data class Plain(val n: Int)
+
+@Parcelize
+data class Raw(
+    val p: @RawValue Plain, val np: @RawValue Plain?, val ps: @RawValue List<Plain>, val inner: List<@RawValue Plain?>,
+    val any: @RawValue Any?, val m: Map<String, @RawValue Any>, val s: @RawValue String,
+) : Parcelable
+
+// A generic class's properties are written as their types erased: each
+// type parameter as its bound.
+@Parcelize
+data class Box<T : Parcelable>(val item: T, val items: List<T>, val maybe: T?) : Parcelable
+
+@Parcelize
+class Nums<N : Number, S : java.io.Serializable>(val n: N, val ns: Array<N>?, val s: S?) : Parcelable {
+    override fun toString() = "Nums($n, ${ns?.contentToString()}, $s)"
+    override fun equals(other: Any?) = other is Nums<*, *> && other.toString() == toString()
+    override fun hashCode() = toString().hashCode()
+}
+
+@Parcelize
+data class RawBox<T>(val v: @RawValue T, val vs: @RawValue List<T>) : Parcelable
+
+@Parcelize
+data class Unused<T>(val i: Int) : Parcelable
+
+// A final generic class of the module's is read with its CREATOR.
+@Parcelize
+data class Boxes(val b: Box<Inner>, val nb: Box<Inner>?, val bs: List<Box<Inner>>, val unused: Unused<String>) : Parcelable
+
+// Custom Parcelers: objects that write and read a type their own way.
+data class Stamp(val t: Long)
+
+object StampParceler : Parceler<Stamp> {
+    override fun create(parcel: Parcel) = Stamp(parcel.readLong())
+    override fun Stamp.write(parcel: Parcel, flags: Int) = parcel.writeLong(t)
+}
+
+object NullableStampParceler : Parceler<Stamp?> {
+    override fun create(parcel: Parcel) = parcel.readLong().let { if (it < 0) null else Stamp(it) }
+    override fun Stamp?.write(parcel: Parcel, flags: Int) = parcel.writeLong(this?.t ?: -1)
+}
+
+object ShortStampParceler : Parceler<Stamp> {
+    override fun create(parcel: Parcel) = Stamp(parcel.readInt().toLong())
+    override fun Stamp.write(parcel: Parcel, flags: Int) = parcel.writeInt(t.toInt())
+}
+
+object PlusHundred : Parceler<Int> {
+    override fun create(parcel: Parcel) = parcel.readInt() - 100
+    override fun Int.write(parcel: Parcel, flags: Int) = parcel.writeInt(this + 100)
+}
+
+object Upper : Parceler<String> {
+    override fun create(parcel: Parcel) = parcel.readString()!!.lowercase()
+    override fun String.write(parcel: Parcel, flags: Int) = parcel.writeString(uppercase())
+}
+
+object BoolAsByte : Parceler<Boolean> {
+    override fun create(parcel: Parcel) = parcel.readByte() != 0.toByte()
+    override fun Boolean.write(parcel: Parcel, flags: Int) = parcel.writeByte(if (this) 1 else 0)
+}
+
+// A companion object that is a Parceler writes and reads the class, whose
+// constructor's parameters needn't be properties.
+@Parcelize
+data class SelfWritten(val name: String, val n: Int) : Parcelable {
+    companion object : Parceler<SelfWritten> {
+        override fun create(parcel: Parcel) = SelfWritten(parcel.readString()!!, parcel.readInt())
+        override fun SelfWritten.write(parcel: Parcel, flags: Int) {
+            parcel.writeString(name)
+            parcel.writeInt(n)
+        }
+    }
+}
+
+@Parcelize
+class SelfArray(name: String) : Parcelable {
+    val name = name
+    override fun toString() = "SelfArray($name)"
+    override fun equals(other: Any?) = other is SelfArray && other.name == name
+    override fun hashCode() = name.hashCode()
+
+    companion object : Parceler<SelfArray> {
+        override fun create(parcel: Parcel) = SelfArray(parcel.readString()!!)
+        override fun SelfArray.write(parcel: Parcel, flags: Int) = parcel.writeString(name)
+        @Suppress("UNCHECKED_CAST")
+        override fun newArray(size: Int) = arrayOfNulls<SelfArray>(size + 1) as Array<SelfArray>
+    }
+}
+
+// A type parameter is written as its erased bound: the class among its
+// bounds, Number, or else the first, Comparable<*>.
+@Parcelize
+data class Cmp<T : Comparable<T>>(val x: @RawValue T, val xs: @RawValue List<T>) : Parcelable
+
+@Parcelize
+data class Bounded<T>(val x: T, val y: T?) : Parcelable where T : Comparable<T>, T : Number
+
+// A generic class's Parceler companion object is of the class
+// star-projected.
+@Parcelize
+class GenSelf<T>(val label: String, val extra: @RawValue T?) : Parcelable {
+    override fun toString() = "GenSelf($label, $extra)"
+    override fun equals(other: Any?) = other is GenSelf<*> && other.label == label
+    override fun hashCode() = label.hashCode()
+
+    companion object : Parceler<GenSelf<*>> {
+        override fun create(parcel: Parcel): GenSelf<*> = GenSelf(parcel.readString()!!, null)
+        override fun GenSelf<*>.write(parcel: Parcel, flags: Int) = parcel.writeString(label)
+        @Suppress("UNCHECKED_CAST")
+        override fun newArray(size: Int) = arrayOfNulls<GenSelf<*>>(size + 2) as Array<GenSelf<*>>
+    }
+}
+
+// Parceler companion objects through a type alias and an import alias.
+typealias AliasedParceler = Parceler<Aliased>
+
+@Parcelize
+class Aliased(n: Int) : Parcelable {
+    val m = n * 2
+    override fun toString() = "Aliased($m)"
+    override fun equals(other: Any?) = other is Aliased && other.m == m
+    override fun hashCode() = m
+
+    companion object : AliasedParceler {
+        override fun create(parcel: Parcel) = Aliased(parcel.readInt())
+        override fun Aliased.write(parcel: Parcel, flags: Int) = parcel.writeInt(m / 2)
+    }
+}
+
+@Parcelize
+class ImportAliased(n: Int) : Parcelable {
+    val m = n + 1
+    override fun toString() = "ImportAliased($m)"
+    override fun equals(other: Any?) = other is ImportAliased && other.m == m
+    override fun hashCode() = m
+
+    companion object : ParcelerAlias<ImportAliased> {
+        override fun create(parcel: Parcel) = ImportAliased(parcel.readInt())
+        override fun ImportAliased.write(parcel: Parcel, flags: Int) = parcel.writeInt(m - 1)
+    }
+}
+
+// The class's @TypeParceler wins over the property's for the same type; a
+// nullable type takes one for the type non-null after a null marker.
+@Parcelize
+@TypeParceler<Stamp, StampParceler>()
+data class Stamps(
+    val s: Stamp, val ns: Stamp?, val ss: List<Stamp>,
+    @TypeParceler<Stamp, ShortStampParceler>() val o: Stamp,
+    @TypeParceler<Stamp?, NullableStampParceler>() val nn: Stamp?,
+) : Parcelable
+
+@Parcelize
+data class Writes(
+    val s: @WriteWith<StampParceler> Stamp, val ns: @WriteWith<StampParceler> Stamp?,
+    val nn: @WriteWith<NullableStampParceler> Stamp?, val ss: List<@WriteWith<StampParceler> Stamp>,
+) : Parcelable
+
+// A custom Parceler of the elements keeps the plugin from writing an
+// array or list with a Parcel method of its own.
+@Parcelize
+@TypeParceler<Int, PlusHundred>()
+@TypeParceler<String, Upper>()
+@TypeParceler<Boolean, BoolAsByte>()
+class Fast(val ints: IntArray, val strs: List<String>, val arr: Array<String>, val sba: SparseBooleanArray, val n: Int?) : Parcelable {
+    override fun toString() = "Fast(${ints.contentToString()}, $strs, ${arr.contentToString()}, $sba, $n)"
+    override fun equals(other: Any?) = other is Fast && other.toString() == toString()
+    override fun hashCode() = toString().hashCode()
+}
+
+// The standard library's types that the plugin writes in ways of its own:
+// unsigned integers and their arrays and Duration as the underlying
+// values, ranges as their bounds, and a Uuid as its halves.
+@Parcelize
+class Specials(
+    val ui: UInt, val nui: UInt?, val ul: ULong, val nul: ULong?, val ub: UByte, val nub: UByte?, val us: UShort, val nus: UShort?,
+    val uia: UIntArray, val nuia: UIntArray?, val ula: ULongArray, val uba: UByteArray?, val usa: UShortArray, val nusa: UShortArray?,
+    val lui: List<UInt?>, val aul: Array<ULong>, val d: kotlin.time.Duration, val nd: kotlin.time.Duration?,
+    val durations: Map<UInt, kotlin.time.Duration>, val ir: IntRange, val nir: IntRange?, val lr: LongRange, val cr: CharRange?,
+    val ranges: List<IntRange>, val id: kotlin.uuid.Uuid, val nid: kotlin.uuid.Uuid?,
+) : Parcelable {
+    override fun toString() = "Specials($ui, $nui, $ul, $nul, $ub, $nub, $us, $nus, ${uia.contentToString()}, ${nuia?.contentToString()}, " +
+        "${ula.contentToString()}, ${uba?.contentToString()}, ${usa.contentToString()}, ${nusa?.contentToString()}, $lui, " +
+        "${aul.contentToString()}, $d, $nd, $durations, $ir, $nir, $lr, $cr, $ranges, $id, $nid)"
+    override fun equals(other: Any?) = other is Specials && other.toString() == toString()
+    override fun hashCode() = toString().hashCode()
+}
+
+fun specials(nulls: Boolean = false): Specials {
+    val id = kotlin.uuid.Uuid.fromLongs(0x0123456789abcdefL, -2L)
+    return Specials(
+        4000000000u, if (nulls) null else 1u, 18000000000000000000uL, if (nulls) null else 2uL, 200u, if (nulls) null else 3u,
+        60000u, if (nulls) null else 4u, uintArrayOf(1u, 4000000000u), if (nulls) null else uintArrayOf(5u),
+        ulongArrayOf(18000000000000000000uL), if (nulls) null else ubyteArrayOf(255u, 1u), ushortArrayOf(65535u),
+        if (nulls) null else ushortArrayOf(7u, 8u), listOf(1u, null, 3000000000u), arrayOf(9uL, 18000000000000000000uL),
+        kotlin.time.Duration.parse("1h 30m"), if (nulls) null else kotlin.time.Duration.parse("-2s"),
+        mapOf(1u to kotlin.time.Duration.parse("5ms")), 1..10, if (nulls) null else 3..2, 5L..6L, if (nulls) null else 'a'..'z',
+        listOf(0..1, 2 until 4), id, if (nulls) null else id,
+    )
+}
+
+// Value classes are written as any class: a @Parcelize one as a
+// Parcelable, a Serializable one with writeSerializable, and others with
+// writeValue.
+@Parcelize
+@JvmInline
+value class Id(val v: Int) : Parcelable
+
+@Parcelize
+@JvmInline
+value class Name(val s: String) : Parcelable
+
+@JvmInline
+value class SerialName(val s: String) : java.io.Serializable
+
+@JvmInline
+value class PlainValue(val n: Int)
+
+@Parcelize
+data class ValueBox(
+    val id: Id, val nid: Id?, val name: Name, val ser: SerialName, val nser: SerialName?,
+    val p: @RawValue PlainValue, val np: @RawValue PlainValue?, val ids: List<Id>,
+) : Parcelable
+
+// A data class annotated @DataClass is written by its properties, and so
+// is one in it.
+data class Pt(val x: Int, val y: String?)
+
+data class Line(val a: Pt, val b: Pt?, val ids: List<Int>)
+
+data class Tagged<T>(val t: T, val n: Int)
+
+@Parcelize
+data class DataClasses(
+    val l: @DataClass Line, val nl: @DataClass Line?, val ls: List<@DataClass Pt>, val g: @DataClass Tagged<String>,
+) : Parcelable
+
+// kotlinx's immutable collections, read as lists, sets and maps and then
+// converted.
+@Parcelize
+data class Immutables(
+    val pl: PersistentList<Int>, val il: ImmutableList<Int?>, val ps: PersistentSet<String>, val iset: ImmutableSet<Long>,
+    val pm: PersistentMap<String, Int>, val im: ImmutableMap<Int, String?>, val sl: PersistentList<String>,
+    val nsl: PersistentList<String>?, val npl: PersistentList<Int>?, val bl: ImmutableList<IBinder>,
+) : Parcelable
+
+// kotlinx.collections.immutable's collections, read into persistent ones.
+@Parcelize
+data class Persistent(
+    val names: kotlinx.collections.immutable.ImmutableList<String>,
+    val ids: kotlinx.collections.immutable.PersistentList<Int>,
+    val tags: kotlinx.collections.immutable.ImmutableSet<String>,
+    val counts: kotlinx.collections.immutable.ImmutableMap<String, Long>,
+    val more: kotlinx.collections.immutable.ImmutableList<Inner>?,
 ) : Parcelable

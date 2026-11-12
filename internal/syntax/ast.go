@@ -316,6 +316,9 @@ type AnnotationValue struct {
 	Type  types.Type
 	Array bool
 	Elems []AnnotationElem
+	// Omitted marks the empty array of a vararg parameter given no
+	// arguments, which isn't written in the source.
+	Omitted bool
 }
 
 // AnnotationElem is a value, or an element of an array value: a checked
@@ -656,6 +659,14 @@ func (p *SerialProp) Sym() *types.VarSym {
 	return p.Prop.Sym
 }
 
+// Annotations returns the property's annotations.
+func (p *SerialProp) Annotations() []Annotation {
+	if p.Param != nil {
+		return p.Param.Modifiers.Annotations
+	}
+	return p.Prop.Annotations
+}
+
 // Default returns the property's default value, or its initializer.
 func (p *SerialProp) Default() Expr {
 	if p.Param != nil {
@@ -822,8 +833,10 @@ type LocalFun struct {
 	// calls, and whether it uses the enclosing class's this.
 	Frame *Lambda
 	// Method is set by codegen: the name of the static method the function
-	// is, such as main$g, of class Owner, and Desc its descriptor.
+	// is, such as main$g, of class Owner, and Desc its descriptor. This is
+	// the class whose this the frame captures.
 	Method, Owner, Desc string
+	This                *types.ClassSym
 }
 
 type VarStmt struct {
@@ -1300,8 +1313,17 @@ type Call struct {
 	// lambda makes: the types of its arguments, the reference's
 	// parameters, which go to the callee's as Kotlin adapts a reference
 	// (see refNames).
-	RefArgs  []types.Type
-	trailing bool // has a trailing lambda, or passes the last argument last
+	RefArgs []types.Type
+	// Value is set by the checker on a call that a compiler plugin
+	// replaces with an expression, which is generated instead: the
+	// serialization plugin's serializer<T>() of a known T.
+	Value Expr
+	// Serializers are set by the checker on a call of a library's inline
+	// function with reified type parameters, by their names: the
+	// serializers of their type arguments, which its copied bytecode's
+	// serializer<T>() becomes, as the serialization plugin replaces it.
+	Serializers map[string]Expr
+	trailing    bool // has a trailing lambda, or passes the last argument last
 }
 
 // Trailing reports whether the last argument is passed to the last
@@ -1366,9 +1388,12 @@ type Lambda struct {
 	Ret      types.Type      // the body's result type, as the function type sees it
 	Captures []*types.VarSym // locals and parameters of enclosing functions it uses
 	This     bool            // it uses the enclosing class's this
-	SAM      *types.FunSym   // the Java interface method it implements, if converted; T is then the interface
-	Suspend  bool            // a suspend lambda: its expected type is a suspend function type
-	Class    string          // the class of a suspend lambda that isn't inlined
+	// Outer is set on the frame of an object expression's class: the
+	// capture that stands for the enclosing class's this.
+	Outer   *types.VarSym
+	SAM     *types.FunSym // the Java interface method it implements, if converted; T is then the interface
+	Suspend bool          // a suspend lambda: its expected type is a suspend function type
+	Class   string        // the class of a suspend lambda that isn't inlined
 	// Inline is set on a lambda passed to an inline function that
 	// invokes it: its body is generated where the function's inlined body
 	// invokes it, and it has no object, method or captures.

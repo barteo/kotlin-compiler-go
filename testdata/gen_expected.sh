@@ -15,7 +15,8 @@
 # tests.
 #
 # And it regenerates testdata/klib/X.out for each kotlinc library test X/,
-# whose library kc inlines from kotlinc's classes (TestKotlincLibrary):
+# whose library kc inlines from kotlinc's classes (TestKotlincLibrary), and
+# whose Java sources javac compiles:
 # both are compiled with the flags of the first line of the library's
 # first file, "// kotlinc: <flags>"; a use/ directory is compiled by
 # kotlinc against the app's classes, and run after it. Arguments klib/X
@@ -27,7 +28,7 @@
 # program, which runs after it. The argument parcelize selects it.
 #
 # And testdata/serialization.out (TestSerialization): kotlinc, with its
-# kotlinx.serialization plugin, compiles serialization/lib/, then
+# kotlinx.serialization plugin, and javac compile serialization/lib/, then
 # serialization/app/ against it, and serialization/use/ against the app,
 # which runs after it. The runtime is kotlinx.serialization 1.9.0's core
 # and JSON jars, from Gradle's cache or $KC_SERIALIZATION_CP. The
@@ -41,6 +42,12 @@
 # are taken from their aars in Gradle's cache, with androidx.collection
 # 1.5.0 and kotlinx.coroutines 1.8.1, or $KC_COMPOSE_CP. The argument
 # compose selects it.
+#
+# And testdata/metro.out (TestMetro): kotlinc, with the Metro compiler
+# plugin 1.5.2, compiles metro/lib/, then metro/mid/ against it and
+# metro/app/ against both, and the program runs. The runtime is Metro's
+# runtime-jvm 1.5.2 and the plugin its compiler jar, from Gradle's cache,
+# or $KC_METRO_CP and $KC_METRO_PLUGIN. The argument metro selects it.
 #
 # And testdata/javasrc.out (TestJavaSources): kotlinc compiles javasrc/,
 # Kotlin and Java sources that use each other, and javac then its Java
@@ -64,11 +71,13 @@ klibs=""
 parcelize=""
 serialization=""
 compose=""
+metro=""
 javasrc=""
 if [ $# -eq 0 ]; then
 	parcelize=1
 	serialization=1
 	compose=1
+	metro=1
 	javasrc=1
 	libs=$(cd "$root/lib" 2>/dev/null && ls -d */ | sed 's|/$||' || true)
 	klibs=$(cd "$root/klib" 2>/dev/null && ls -d */ | sed 's|/$||' || true)
@@ -87,6 +96,7 @@ for f in "$@"; do
 	parcelize) parcelize=1 ;;
 	serialization) serialization=1 ;;
 	compose) compose=1 ;;
+	metro) metro=1 ;;
 	javasrc) javasrc=1 ;;
 	*) runs="$runs $f" ;;
 	esac
@@ -157,7 +167,11 @@ for name in $klibs; do
 	mkdir -p "$out/lib" "$out/app"
 	flags=$(sed -n '1s|^// kotlinc: ||p' "$(find "$name/lib" -name '*.kt' | sort | head -1)")
 	# shellcheck disable=SC2046,SC2086 # flags and file names are words
-	kotlinc -nowarn $flags -module-name lib $(find "$name/lib" -name '*.kt' | sort) -d "$out/lib" 2>"$work/err" || { cat "$work/err"; exit 1; }
+	kotlinc -nowarn $flags -module-name lib $(find "$name/lib" -name '*.kt' -o -name '*.java' | sort) -d "$out/lib" 2>"$work/err" || { cat "$work/err"; exit 1; }
+	if [ -n "$(find "$name/lib" -name '*.java')" ]; then
+		# shellcheck disable=SC2046
+		javac -nowarn -cp "$out/lib" -d "$out/lib" $(find "$name/lib" -name '*.java' | sort) 2>"$work/err" || { cat "$work/err"; exit 1; }
+	fi
 	# An app whose first file starts with "// friend" sees the library's
 	# internal declarations.
 	friend=""
@@ -193,8 +207,8 @@ if [ -n "$parcelize" ]; then
 	kotlinc -nowarn "$plugin" -cp "$out/java:$klib/parcelize-runtime.jar:$out/lib" $(find app -name '*.kt' | sort) -d "$out/app" 2>"$work/err" || { cat "$work/err"; exit 1; }
 	# shellcheck disable=SC2046
 	kotlinc -nowarn "$plugin" -cp "$out/java:$klib/parcelize-runtime.jar:$out/app" $(find use -name '*.kt' | sort) -d "$out/use" 2>"$work/err" || { cat "$work/err"; exit 1; }
-	kotlin -cp "$out/app:$out/lib:$out/java" MainKt >"$root/parcelize.out" 2>/dev/null
-	kotlin -cp "$out/use:$out/app:$out/lib:$out/java" UseKt >>"$root/parcelize.out" 2>/dev/null
+	kotlin -cp "$out/app:$out/lib:$out/java:$klib/parcelize-runtime.jar" MainKt >"$root/parcelize.out" 2>/dev/null
+	kotlin -cp "$out/use:$out/app:$out/lib:$out/java:$klib/parcelize-runtime.jar" UseKt >>"$root/parcelize.out" 2>/dev/null
 	echo "wrote parcelize.out"
 fi
 
@@ -218,14 +232,41 @@ if [ -n "$serialization" ]; then
 	mkdir -p "$out/lib" "$out/app" "$out/use"
 	plugin="-Xplugin=$klib/kotlinx-serialization-compiler-plugin.jar"
 	# shellcheck disable=SC2046 # file names are words
-	kotlinc -nowarn -module-name lib "$plugin" -cp "$rt" $(find lib -name '*.kt' | sort) -d "$out/lib" 2>"$work/err" || { cat "$work/err"; exit 1; }
+	kotlinc -nowarn -module-name lib "$plugin" -cp "$rt" $(find lib -name '*.kt' -o -name '*.java' | sort) -d "$out/lib" 2>"$work/err" || { cat "$work/err"; exit 1; }
 	# shellcheck disable=SC2046
-	kotlinc -nowarn -module-name app "$plugin" -cp "$rt:$out/lib" $(find app -name '*.kt' | sort) -d "$out/app" 2>"$work/err" || { cat "$work/err"; exit 1; }
+	javac -nowarn -cp "$rt:$out/lib" -d "$out/lib" $(find lib -name '*.java' | sort) 2>"$work/err" || { cat "$work/err"; exit 1; }
+	# shellcheck disable=SC2046
+	kotlinc -nowarn -module-name app "$plugin" -cp "$rt:$out/lib" $(find app -name '*.kt' -o -name '*.java' | sort) -d "$out/app" 2>"$work/err" || { cat "$work/err"; exit 1; }
+	# shellcheck disable=SC2046
+	javac -nowarn -cp "$rt:$out/lib:$out/app" -d "$out/app" $(find app -name '*.java' | sort) 2>"$work/err" || { cat "$work/err"; exit 1; }
 	# shellcheck disable=SC2046
 	kotlinc -nowarn "$plugin" -cp "$rt:$out/lib:$out/app" $(find use -name '*.kt' | sort) -d "$out/use" 2>"$work/err" || { cat "$work/err"; exit 1; }
 	kotlin -cp "$out/app:$out/lib:$rt" app.MainKt >"$root/serialization.out" 2>/dev/null
 	kotlin -cp "$out/use:$out/app:$out/lib:$rt" UseKt >>"$root/serialization.out" 2>/dev/null
 	echo "wrote serialization.out"
+fi
+
+# The Metro test.
+if [ -n "$metro" ]; then
+	cd "$root/metro"
+	cache=$HOME/.gradle/caches/modules-2/files-2.1/dev.zacsweers.metro
+	rt=${KC_METRO_CP:-$(find "$cache/runtime-jvm/1.5.2" -name runtime-jvm-1.5.2.jar 2>/dev/null | head -1)}
+	mp=${KC_METRO_PLUGIN:-$(find "$cache/compiler/1.5.2" -name compiler-1.5.2.jar 2>/dev/null | head -1)}
+	if [ -z "$rt" ] || [ -z "$mp" ]; then
+		echo "Metro 1.5.2 not found: set KC_METRO_CP and KC_METRO_PLUGIN" >&2
+		exit 1
+	fi
+	out="$work/metro"
+	mkdir -p "$out/lib" "$out/mid" "$out/app"
+	k="kotlinc -nowarn -jvm-target 17 -Xplugin=$mp"
+	# shellcheck disable=SC2046 # file names are words
+	$k -module-name lib -cp "$rt" $(find lib -name '*.kt' | sort) -d "$out/lib" 2>"$work/err" || { cat "$work/err"; exit 1; }
+	# shellcheck disable=SC2046
+	$k -module-name mid -cp "$rt:$out/lib" $(find mid -name '*.kt' | sort) -d "$out/mid" 2>"$work/err" || { cat "$work/err"; exit 1; }
+	# shellcheck disable=SC2046
+	$k -module-name app -cp "$rt:$out/lib:$out/mid" $(find app -name '*.kt' | sort) -d "$out/app" 2>"$work/err" || { cat "$work/err"; exit 1; }
+	kotlin -cp "$out/app:$out/mid:$out/lib:$rt" app.MainKt >"$root/metro.out" 2>/dev/null
+	echo "wrote metro.out"
 fi
 
 # The compose test.

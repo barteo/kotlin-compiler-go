@@ -87,7 +87,8 @@ func BoxedDesc(t Type) string {
 // first.
 func mangledName(f *FunSym) string {
 	member := f.Owner != nil && !f.Static
-	mangle := member && IsValue(f.Ret)
+	retMangles := member && IsValue(f.Ret) && !f.ComposableGetter
+	mangle := retMangles
 	if f.Ext && Mangles(f.Recv) {
 		mangle = true
 	}
@@ -116,7 +117,7 @@ func mangledName(f *FunSym) string {
 			}
 		}
 		var ret *Type
-		if member && IsValue(f.Ret) {
+		if retMangles {
 			ret = &f.Ret
 		}
 		return f.Name + "-" + Mangle(ps, ret)
@@ -189,7 +190,7 @@ func GetterJVM(p *VarSym) string {
 	}
 	name := GetterName(p.Name)
 	switch {
-	case p.Owner != nil && IsValue(p.Type):
+	case p.Owner != nil && IsValue(p.Type) && !p.Composable:
 		name += "-" + Mangle(nil, &p.Type)
 	case p.Owner != nil && p.Owner.Value && p != p.Owner.Underlying:
 		name += "-impl"

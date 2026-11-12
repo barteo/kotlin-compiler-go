@@ -131,7 +131,8 @@ private class KcSession(private val config: KSPConfig, @Suppress("UNUSED_PARAMET
             KcOps.close(modelHandle)
         }
         modelHandle = model.handle
-        round = KcRound(joined, { id -> KcOps.cls(model.handle, id) }, { fq -> KcOps.pkg(model.handle, fq) }, java, project)
+        round = KcRound(joined, { id -> KcOps.cls(model.handle, id) }, { fq -> KcOps.pkg(model.handle, fq) }, java, project,
+            model.diagnostics)
         provider.session = KcAnalysis.session(KcAnalysis(round, module, libraryModule))
         t.mark("round")
         t.print("round files=${paths.size} psi-reused=${environment.reused - reused} psi-reparsed=${environment.reparsed - reparsed}")
@@ -278,7 +279,7 @@ private class KcExtrasImpl(private val round: () -> KcRound) : KcExtras {
         val info = when (val s = fakeOverrideOriginal(symbol)) {
             is KcFunctionSymbol -> s.info
             is KcPropertySymbol -> s.info
-            is KcGetterSymbol -> s.property.info
+            is KcGetterSymbol -> (s.property as? KcPropertySymbol)?.info ?: return null
             is KcSetterSymbol -> s.property.info
             else -> return null
         }
@@ -297,8 +298,15 @@ private class KcExtrasImpl(private val round: () -> KcRound) : KcExtras {
      * from [default] (kc gives KSP no Java class finder). Like FIR, it makes
      * up an empty array or null for a parameter without one.
      */
-    override fun javaAnnotationDefault(symbol: KaValueParameterSymbol, default: JavaAnnotationArgument?): KaAnnotationValue? {
-        val p = symbol as? KcValueParameterSymbol ?: KcAnalysis.unsupported("KcExtras.javaAnnotationDefault of $symbol")
+    override fun javaAnnotationDefault(symbol: KaValueParameterSymbol, default: JavaAnnotationArgument): KaAnnotationValue? =
+        annotationDefault(symbol, "javaAnnotationDefault")
+
+    /** A KLib annotation parameter's default, from the model like [javaAnnotationDefault]. */
+    override fun libraryAnnotationDefault(symbol: KaValueParameterSymbol): KaAnnotationValue? =
+        annotationDefault(symbol, "libraryAnnotationDefault")
+
+    private fun annotationDefault(symbol: KaValueParameterSymbol, member: String): KaAnnotationValue? {
+        val p = symbol as? KcValueParameterSymbol ?: KcAnalysis.unsupported("KcExtras.$member of $symbol")
         p.default?.let { return it }
         val token = p.info.round.token
         val t = p.info.decl.type
@@ -323,14 +331,16 @@ private class KcExtrasImpl(private val round: () -> KcRound) : KcExtras {
         while (s != null) {
             val info = when (s) {
                 is KcFakeOverride -> { s = s.owner; continue }
-                is KcGetterSymbol -> s.property.info
+                is KcGetterSymbol -> { s = s.property; continue }
                 is KcSetterSymbol -> s.property.info
                 is KcClassSymbol -> s.info
                 is KcFunctionSymbol -> s.info
                 is KcConstructorSymbol -> s.info
                 is KcValueParameterSymbol -> s.info
+                is KcContextParameterSymbol -> s.info
                 is KcTypeParameterSymbol -> s.info
                 is KcPropertySymbol -> s.info
+                is KcJavaAnnotationPropertySymbol -> s.info
                 is KcEnumEntrySymbol -> s.info
                 is KcTypeAliasSymbol -> s.info
                 is KcBackingFieldSymbol -> s.info

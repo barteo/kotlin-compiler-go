@@ -80,13 +80,13 @@ type NamedValue struct {
 // args returns the arguments of annotation a, whose checked values are
 // values: those written, in the order they are written, as FIR's
 // argument mapping has them. A vararg parameter without arguments, whose
-// value is an empty array, isn't written.
+// value is an empty array, isn't written; an empty array written is.
 func (b *fileBuilder) args(a *syntax.Annotation, values []syntax.AnnotationValue) []NamedValue {
 	var out []NamedValue
 	var at []int
 	next := 0 // the next positional argument
 	for _, v := range values {
-		if v.Array && len(v.Elems) == 0 && !named(a, v.Name) {
+		if v.Omitted {
 			continue
 		}
 		out = append(out, NamedValue{Name: v.Name, Value: b.checked(v)})
@@ -110,17 +110,6 @@ func (b *fileBuilder) args(a *syntax.Annotation, values []syntax.AnnotationValue
 		sorted[i] = out[j]
 	}
 	return sorted
-}
-
-// named reports whether annotation a has an argument named name; false
-// for a nested annotation, which keeps no arguments.
-func named(a *syntax.Annotation, name string) bool {
-	for _, arg := range a.Args {
-		if arg.Name == name {
-			return true
-		}
-	}
-	return false
 }
 
 // checked returns the model of a checked argument v.

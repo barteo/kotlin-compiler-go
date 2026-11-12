@@ -40,10 +40,14 @@ type gen struct {
 	code    *cf.Code
 	owner   *types.ClassSym // class whose members are being generated
 	retType types.Type
-	loops   []loopLabels
-	tries   []*tryCtx       // the try blocks the code is in, innermost last
-	lam     *lambdaCtx      // set in a lambda's method
-	inl     []*inlineLambda // the inlined lambdas being generated, innermost last
+	// plugin is set in the body of a function that a compiler plugin
+	// declares, whose code, as kotlinc's plugins' IR, has no checks of
+	// platform-typed values.
+	plugin bool
+	loops  []loopLabels
+	tries  []*tryCtx       // the try blocks the code is in, innermost last
+	lam    *lambdaCtx      // set in a lambda's method
+	inl    []*inlineLambda // the inlined lambdas being generated, innermost last
 	// nonNull holds the parameters and locals whose values are never
 	// null, of which a safe call doesn't check for null: see knownNonNull.
 	nonNull map[*types.VarSym]bool
@@ -101,7 +105,9 @@ type gen struct {
 	// their types, for typeOf.
 	reified      map[string]string
 	reifiedTypes map[string]types.Type
-	prefix       string // lambda methods are named prefix$0, prefix$1, ...
+	// serializers are the call's syntax.Call.Serializers.
+	serializers map[string]syntax.Expr
+	prefix      string // lambda methods are named prefix$0, prefix$1, ...
 	// noLines is positive in the copy of an inline function, whose code
 	// keeps the line of the call: line numbers aren't recorded.
 	noLines int
@@ -118,6 +124,11 @@ type gen struct {
 	// erasedCast is the last checkcast of a value read as a type
 	// parameter's erasure, which uncastErased takes back.
 	erasedCast erasedCast
+	// unusedSuspend is a suspend call whose value a statement drops, as
+	// the Object it returns: kotlinc doesn't cast it. leftObject is set
+	// once its suspension point leaves the Object.
+	unusedSuspend *syntax.Call
+	leftObject    bool
 }
 
 // tailrec is the state of a tailrec function: tail calls of fd store
@@ -364,9 +375,6 @@ func (g *gen) privateAccessors() {
 				code.Local(cf.ALOAD, code.AllocLocal(self))
 			}
 			code.FieldInsn(get, fieldOwner(p), p.Name, d)
-			if p.Lateinit {
-				lateinitCheck(code, p.Name, g.shared.opts.Stdlib)
-			}
 			code.Op(returnOp(ft))
 			if err := code.Err(); err != nil {
 				panic(err)
@@ -746,7 +754,7 @@ func (g *gen) facade() *cf.Class {
 		if ad, ok := d.(*syntax.TypeAliasDecl); ok {
 			// A type alias's annotations, on its synthetic method
 			// name$annotations, as kotlinc writes them.
-			g.propertyAnnotations(c, ad.Name, nil, ad.Annotations, all, ad.Visibility == syntax.Private)
+			g.propertyAnnotations(c, ad.Name, nil, ad.Annotations, all, ad.Visibility == syntax.Private, false)
 		}
 	}
 	// The fields that the static initializer assigns: all but those
@@ -937,9 +945,10 @@ func hasVararg(ps []*types.VarSym) bool {
 
 // varargs reports whether f's method is a variable arity method, as Java
 // sees it: its last parameter is a vararg, but for a composable's, which
-// the Composer and change flags follow.
+// the Composer and change flags follow, and a suspend function's, which
+// its Continuation follows.
 func varargs(f *types.FunSym) bool {
-	return hasVararg(f.Params) && !f.Composable
+	return hasVararg(f.Params) && !f.Composable && !f.Suspend
 }
 
 func (g *gen) check() {
@@ -1081,6 +1090,7 @@ func (g *gen) functionBody(fd *syntax.FunDecl) {
 	sym := fd.Sym
 	g.prefix = sym.Name + "$lambda"
 	g.retType = types.JVMRet(sym)
+	g.plugin = fd.Plugin
 	g.loops, g.tries = nil, nil
 	for _, p := range sym.Contexts {
 		g.setSlot(p, g.code.AllocLocal(paramDesc(p.Type)))
@@ -1289,7 +1299,7 @@ func (g *gen) class(cd *syntax.ClassDecl) *cf.Class {
 			continue // with the delegated members, below
 		}
 		as, _, propSite := classPropAnnotations(p)
-		if name, md := g.propertyAnnotations(g.annotationsHolder(c, cls), types.GetterJVM(p), nil, as, propSite, p.Private); name != "" {
+		if name, md := g.propertyAnnotations(g.annotationsHolder(c, cls), types.GetterJVM(p), nil, as, propSite, p.Private, p.Composable); name != "" {
 			g.shared.annotated[p] = [2]string{name, md}
 		}
 		if isDelegateField(p.Decl) || p.Const || p.JvmField {
@@ -1445,6 +1455,8 @@ func (g *gen) class(cd *syntax.ClassDecl) *cf.Class {
 					c.AddAbstractMethod(acc|cf.AccAbstract|accessorSynthetic(pd.Annotations, kind), f.JVM(), funDesc(f))
 					ref = c.LastMethod()
 					g.signFun(ref, f, a, funDesc(f), types.InvalidType)
+				case f.Static:
+					ref = g.function(a, cf.AccPublic|cf.AccStatic|cf.AccFinal|accessorSynthetic(pd.Annotations, kind))
 				case f.Final:
 					ref = g.function(a, cf.AccPublic|cf.AccFinal|accessorSynthetic(pd.Annotations, kind))
 				default:
@@ -1650,7 +1662,7 @@ func (g *gen) delegated(dl *syntax.Delegated) {
 	g.code.Op(returnOpOf(ret))
 	g.check()
 	if value {
-		g.valueOverride(f)
+		g.valueOverride(f, false)
 		return
 	}
 	for _, b := range f.Bridges {
@@ -2657,7 +2669,12 @@ func (g *gen) staticInit(cd *syntax.ClassDecl) {
 		const d = "Landroid/os/Parcelable$Creator;"
 		creator := cls.Nested["Creator"].Name
 		g.cls.AddField(cf.AccPublic|cf.AccStatic|cf.AccFinal, "CREATOR", d)
-		g.cls.LastField().SetSignature("Landroid/os/Parcelable$Creator<L" + cls.Name + ";>;")
+		// A generic class's is of the class star-projected: C<*>.
+		args := ""
+		if n := len(cd.TypeParams); n > 0 {
+			args = "<" + strings.Repeat("*", n) + ">"
+		}
+		g.cls.LastField().SetSignature("Landroid/os/Parcelable$Creator<L" + cls.Name + args + ";>;")
 		g.code.New(creator)
 		g.code.Op(cf.DUP)
 		g.code.Invoke(cf.INVOKESPECIAL, creator, "<init>", "()V")
@@ -3052,6 +3069,8 @@ func (g *gen) callMethod(f *types.FunSym, cls *types.ClassSym, name, d string) {
 		g.code.Invoke(cf.INVOKESTATIC, f.Owner.Name+"$DefaultImpls", name, "(L"+f.Owner.Name+";"+d[1:])
 	case selfStatic(f):
 		g.code.Invoke(cf.INVOKESTATIC, f.Owner.Name, name, "(L"+f.Owner.Name+";"+d[1:])
+	case f.Static && f.Owner != nil && f.Owner.Object:
+		g.callStatic(f, f.Owner.Name, name, d) // an object's @JvmStatic extension
 	case f.Ext && f.Owner != nil && f.Owner.Value:
 		// A value class's member extension: a static method that takes
 		// the value first, which a class path one's descriptor includes.
@@ -3428,6 +3447,7 @@ func (g *gen) getProp(cls *types.ClassSym, p *types.VarSym) {
 		} else {
 			g.code.Invoke(cf.INVOKESTATIC, p.Owner.Name, privateGetter(p), "(L"+p.Owner.Name+";)"+d)
 		}
+		g.lateinit(p) // the accessor reads the field as it is, as isInitialized does
 		g.coerce(ft, p.Type)
 		return
 	}

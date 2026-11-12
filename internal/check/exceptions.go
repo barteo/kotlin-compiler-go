@@ -84,7 +84,19 @@ func (c *Checker) tryExpr(x *syntax.Try, want types.Type, valueUsed bool) types.
 	}
 	ends = append(ends, c.watchExit(nil))
 	c.sinkTail(x.Body, sink)
-	result := c.block(x.Body, want, valueUsed)
+	// Without a sink, the body and the catch blocks are inferred together
+	// as an if's branches: try { list } catch (e: E) { emptyList() }.
+	var pending *[]pendingBranch
+	if valueUsed && sink == nil {
+		pending = &[]pendingBranch{}
+	}
+	block := func(b *syntax.Block) types.Type {
+		if pending != nil {
+			return c.branch(b, want, valueUsed, pending)
+		}
+		return c.block(b, want, valueUsed)
+	}
+	result := block(x.Body)
 	if len(x.Catches) > 0 {
 		inBody = c.tryAssigned(bodyVars, x.Body)
 	}
@@ -105,7 +117,7 @@ func (c *Checker) tryExpr(x *syntax.Try, want types.Type, valueUsed bool) types.
 		c.scope.narrows = append(c.scope.narrows, inBody...)
 		c.scope.declare(cb.Sym)
 		ends = append(ends, c.watchExit(nil))
-		bt := c.block(cb.Body, want, valueUsed)
+		bt := block(cb.Body)
 		c.pop()
 		allJump = allJump && bt.K == types.Nothing
 		if valueUsed {
@@ -119,6 +131,9 @@ func (c *Checker) tryExpr(x *syntax.Try, want types.Type, valueUsed bool) types.
 			}
 			result = j
 		}
+	}
+	if pending != nil {
+		result = c.completeBranches(*pending, result, want, true)
 	}
 	if x.Finally != nil {
 		c.finallies = c.finallies[:len(c.finallies)-1]

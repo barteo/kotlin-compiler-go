@@ -440,3 +440,15 @@ fun Locals(label: String) {
         }
     }
 }
+
+// A class whose extension function reads the object: its composable,
+// which calls it on an argument, uses the object, so it doesn't skip when
+// only the object changed.
+class Times(val k: Int) {
+    fun Int.times(): Int = this * k
+
+    @Composable
+    fun Show(n: Int) {
+        Text("times ${n.times()}")
+    }
+}

@@ -185,6 +185,25 @@ func returnsFrom(l *syntax.Lambda) bool {
 	return found
 }
 
+// returnNarrows returns the smart casts that hold once call returns: its
+// function's contract's, and those of require(cond) and check(cond), after
+// which cond holds, and of requireNotNull(x) and checkNotNull(x), after
+// which x isn't null.
+func (c *Checker) returnNarrows(call *syntax.Call) []narrow {
+	out := c.contractNarrows(call, -1)
+	if len(call.Args) == 0 {
+		return out
+	}
+	switch call.Builtin {
+	case types.Require, types.Check:
+		whenTrue, _ := c.narrowing(call.Args[0])
+		out = append(out, whenTrue...)
+	case types.RequireNotNull, types.CheckNotNull:
+		out = append(out, c.equalNonNull(call.Args[0])...)
+	}
+	return out
+}
+
 // narrowAfter applies smart casts that hold after a statement such as
 // `if (x == null) return` or `x as T`.
 func (c *Checker) narrowAfter(s syntax.Stmt) {
@@ -210,20 +229,10 @@ func (c *Checker) narrowAfter(s syntax.Stmt) {
 		return
 	}
 	if call, ok := es.X.(*syntax.Call); ok {
-		c.scope.narrows = append(c.scope.narrows, c.contractNarrows(call, -1)...)
-	}
-	if call, ok := es.X.(*syntax.Call); ok && len(call.Args) > 0 {
-		// The contracts of require(cond) and check(cond): cond holds
-		// after them; of requireNotNull(x) and checkNotNull(x): x isn't
-		// null.
-		switch call.Builtin {
-		case types.Require, types.Check:
-			whenTrue, _ := c.narrowing(call.Args[0])
-			c.scope.narrows = append(c.scope.narrows, whenTrue...)
-		case types.RequireNotNull, types.CheckNotNull:
-			c.scope.narrows = append(c.scope.narrows, c.equalNonNull(call.Args[0])...)
+		c.scope.narrows = append(c.scope.narrows, c.returnNarrows(call)...)
+		if len(call.Args) > 0 {
+			return
 		}
-		return
 	}
 	n, ok := es.X.(*syntax.If)
 	if !ok {
@@ -551,6 +560,9 @@ func (c *Checker) exprStmt(x syntax.Expr) types.Type {
 func (c *Checker) varStmt(s *syntax.VarStmt) {
 	saved := c.declName
 	c.declName = s.Name
+	if strings.HasPrefix(s.Name, "<") {
+		c.declName = "" // a destructuring declaration's value, whose classes are the function's
+	}
 	defer func() { c.declName = saved }()
 	if s.Delegate != nil {
 		c.localDelegate(s)
@@ -1120,7 +1132,7 @@ func (c *Checker) assign(s *syntax.Assign) {
 			return
 		}
 	}
-	s.Target = c.objectTarget(c.thisJavaTarget(c.importTarget(c.recvTarget(s.Target))))
+	c.rewrite(&s.Target, c.objectTarget(c.thisJavaTarget(c.importTarget(c.recvTarget(s.Target)))))
 	n := len(c.errs)
 	var tt types.Type
 	var mutable bool
@@ -1330,7 +1342,7 @@ func (c *Checker) incDec(u *syntax.Unary, value bool) types.Type {
 			return result(stmts, reread)
 		}
 	}
-	u.X = c.objectTarget(c.thisJavaTarget(c.importTarget(c.recvTarget(u.X))))
+	c.rewrite(&u.X, c.objectTarget(c.thisJavaTarget(c.importTarget(c.recvTarget(u.X)))))
 	t, mutable := c.lvalue(u.X)
 	if f, _ := contextAccessor(u.X, false); !builtinIncDec(t) || f != nil {
 		// Also a property with context parameters', whose accessors
@@ -1383,7 +1395,9 @@ func (c *Checker) isInitialized(x *syntax.Member, r *syntax.CallableRef) types.T
 		c.value(id, noWant)
 		p = id.Sym
 		if p != nil && p.Kind == types.Prop {
-			th := &syntax.This{}
+			// The instance of the class the code is in, if the property
+			// is its, not a nearer lambda's receiver.
+			th := &syntax.This{Class: c.cls != nil && c.cls.IsSubclassOf(p.Owner)}
 			th.P = x.P
 			c.value(th, noWant)
 			recv = th

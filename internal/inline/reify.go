@@ -369,15 +369,19 @@ func (t *Template) Params() []string {
 // Instantiate returns a copy of the template's class file named name,
 // whose marked operations use the classes of the type arguments, by the
 // type parameters' names (internal names, or descriptors of arrays). The
-// markers become nops, so the code keeps its offsets and its frames.
-func (t *Template) Instantiate(name string, classes map[string]string) ([]Instance, error) {
-	return t.instantiate(name, classes, map[string]string{t.Name: name})
+// markers become nops, so the code keeps its offsets and its frames. Its
+// generic signatures name the type arguments of sigs, by the type
+// parameters' names, in place of the parameters: the superclass
+// TypeReference<T> of an object : TypeReference<T>() {} becomes the
+// TypeReference<Msg> that reflection reads.
+func (t *Template) Instantiate(name string, classes, sigs map[string]string) ([]Instance, error) {
+	return t.instantiate(name, classes, sigs, map[string]string{t.Name: name})
 }
 
 // instantiate copies the template as name, with the classes that renames
 // maps renamed in its constants, and its nested templates, which it
 // creates instead, as name$1, name$2 and so on.
-func (t *Template) instantiate(name string, classes map[string]string, renames map[string]string) ([]Instance, error) {
+func (t *Template) instantiate(name string, classes, sigs map[string]string, renames map[string]string) ([]Instance, error) {
 	renames = maps.Clone(renames)
 	renames[t.Name] = name
 	for i, n := range t.nested {
@@ -385,20 +389,20 @@ func (t *Template) instantiate(name string, classes map[string]string, renames m
 	}
 	var out []Instance
 	for _, n := range t.nested {
-		ins, err := n.t.instantiate(renames[n.t.Name], classes, renames)
+		ins, err := n.t.instantiate(renames[n.t.Name], classes, sigs, renames)
 		if err != nil {
 			return nil, err
 		}
 		out = append(out, ins...)
 	}
-	data, err := t.instantiate1(name, classes, renames)
+	data, err := t.instantiate1(name, classes, sigs, renames)
 	if err != nil {
 		return nil, err
 	}
 	return append([]Instance{{Name: name, Data: data}}, out...), nil
 }
 
-func (t *Template) instantiate1(name string, classes map[string]string, renames map[string]string) ([]byte, error) {
+func (t *Template) instantiate1(name string, classes, sigs map[string]string, renames map[string]string) ([]byte, error) {
 	data := t.data
 	dotted := map[string]string{}
 	for old, n := range renames {
@@ -433,6 +437,7 @@ func (t *Template) instantiate1(name string, classes map[string]string, renames 
 						}
 					}
 				}
+				s = substVars(s, sigs)
 			}
 			e = append([]byte{1, byte(len(s) >> 8), byte(len(s))}, s...)
 		}
@@ -505,4 +510,36 @@ func (t *Template) instantiate1(name string, classes map[string]string, renames 
 		}
 	}
 	return out, nil
+}
+
+// substVars replaces the type variables of signature s that sigs has, TT;
+// for type parameter T, with their signatures. A type variable follows
+// the start or a character that ends or opens a type, unlike a class's
+// name, which follows a package's slash or another letter.
+func substVars(s []byte, sigs map[string]string) []byte {
+	if len(sigs) == 0 || !bytes.Contains(s, []byte{';'}) {
+		return s
+	}
+	var out []byte
+	for i := 0; i < len(s); i++ {
+		if s[i] == 'T' && (i == 0 || strings.IndexByte("();<>[+-:*", s[i-1]) >= 0) {
+			if end := bytes.IndexByte(s[i:], ';'); end > 0 {
+				if sig, ok := sigs[string(s[i+1:i+end])]; ok {
+					if out == nil {
+						out = append([]byte(nil), s[:i]...)
+					}
+					out = append(out, sig...)
+					i += end
+					continue
+				}
+			}
+		}
+		if out != nil {
+			out = append(out, s[i])
+		}
+	}
+	if out == nil {
+		return s
+	}
+	return out
 }

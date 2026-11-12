@@ -109,35 +109,3 @@ return `ErrUnsupported`.
 `Data.Capabilities` lists the fact families that are computed; a fact field
 of a family outside it is always zero, and a caller that needs it should
 refuse to run rather than read zeros. `Result`'s methods return deep copies.
-
-### Where facts come from
-
-| Fact | Source |
-|---|---|
-| `Type` | the checked expression's or declaration's `types.Type`, converted to Kotlin's names (`kotlin.Any`, `kotlin.Function1`, ...); an `if`, `when` or `try` used as a statement has the type the recorder reports for it |
-| `Symbol` | the symbol an identifier, member, call or declaration resolved to, interned per result; `when (val x = e)`'s `PROPERTY` declares `x` |
-| `Call` | the resolved function, argument mapping, receivers, type arguments and inline flags; on a compound assignment and `x++`, the operator the checker rewrote it to; on a callable reference, the function or constructor it names; `suspend { }` is a call of `kotlin.suspend`; a member function the checker builds in, `1.plus(2)` or `"a".plus(b)`, is named by its receiver's type, `kotlin.Int.plus`, except those the standard library declares as extensions: `x.toString()` on a nullable `x` is `kotlin.toString` and `s.isEmpty()`, `uppercase`, `lowercase`, `substring` and `toCharArray` are `kotlin.text.*`, with `Extension` and `DeclaredReceiver`; a function-type value's call `f()` has no stable parameter names, and its callee reference the property's symbol; a delegate `by lazy { e }`'s `getValue` returns `e`'s type |
-| `When` | the recorder; `Exhaustive` and `Missing` ignore the `else` branch |
-| `FlowNonNull`, `DefinitelyNonNull` | a nullable declaration read as non-null after a smart cast; a safe access `x?.a` on an `x` that can't be null, whose `Type` stays nullable, as kotlinc's |
-| `UsedAsExpression`, `Unreachable` | the recorder; an Elvis whose left side can't be null is unreachable, as kotlinc reports it |
-| `SuspendOperation` | a `for` loop whose `iterator()`, `hasNext()` or `next()` is a suspend operator |
-| `ReturnTarget`, `ReceiverTarget` | the jump's lambda or enclosing function; `this`'s receiver |
-| `ImplicitReceiver`, `Call.ImplicitReceiver` | on a call (and its callee reference) or property reference with no explicit receiver: the lambda with a receiver, extension function, or class or object whose `this` supplies it |
-| `Type.SAM` | a `fun interface`, or a Java interface with one abstract method that Kotlin doesn't map to its own type (`Runnable`, not `Comparable`) |
-| `Call.Annotations`, `OwnerAnnotations`, `PackageAnnotations` | the callee declaration's annotations, or a library method's class-file annotations; its class's (not an enclosing class's); a library class's package's `package-info` |
-| `Deprecated` | the `@kotlin.Deprecated` message, folded as a constant, of what a reference or `USER_TYPE` names (a constructor falls back to its class), or `Deprecated in Java`; set only for the `WARNING` level |
-| `Symbol.Shadowed` | a local, `for` variable, local delegate, explicit lambda parameter or local function parameter whose name an enclosing local or parameter already has (`_` and the implicit `it` never shadow, as kotlinc's `NAME_SHADOWING`) |
-| Destructuring entries | each `DESTRUCTURING_DECLARATION_ENTRY` of `val (a, b) = e`, a lambda's `{ (a, b) -> }` and `for ((a, b) in xs)` declares the local the checker expands it to, the symbol the entry's references have, with `Shadowed`; `_` declares nothing |
-| `Call.Targets` | the functions the callee overrides, from the checker's own override resolution, each with its own `Targets`: the tree kotlinc's `overriddenTreeUniqueAsSequence` walks |
-| `ImpossibleCast` | an `as` between types kotlinc's `isCastPossible` rejects: unrelated, with either side final; a `null` cast to a non-null type |
-| `Accessors` | on a property access, the accessors it can call: a Java getter and its setter (`java.util.Calendar.getFirstDayOfWeek`, `setFirstDayOfWeek`), or a Kotlin property's `<get-p>` and, for a `var`, `<set-p>`, with the overridden properties' accessors as `Targets`; not a `Call`, which rules read as "this is a call" |
-| `Call` on `==`, `!=` | the `equals` found first up the left operand's supertypes, with `kotlin.Any.equals` as a target |
-| `ImportableName` through a typealias | a type reference or a constructor call that names a typealias has the alias's name, `q.Alias`, from the checker's `AliasRecorder`; its `Type` and `Call` are the expansion's |
-| Annotation entries | each annotation's `TYPE_REFERENCE` and `USER_TYPE` have the annotation class's type, from the recorder's `Annotation`, also on a lambda passed as an argument (`list.map @A { }`); an annotation nested in another's argument (`@Deprecated("", ReplaceWith("x"))`) has its `CALL_EXPRESSION` typed, and its callee the class as a `Classifier` with its `ImportableName`, but no `Type`, as kotlinc |
-| `Package` | on each name of a package that qualifies a reference to a top-level function, property, class or object, its fully qualified name: `kotlin` and `kotlin.math` in `kotlin.math.floor(x)`, `java.lang` in `java.lang.Math.max(a, b)` |
-| `Symbol.HasAbstractMembers`, `HasConcreteMembers` | whether a class's member scope, as kotlinc's `unsubstitutedMemberScope`, holds an abstract member or one that isn't: the class's and its supertypes' members that nothing in the hierarchy overrides, `kotlin.Any`'s open members and the nested classes |
-
-Facts recorded on an expression are copied to the wrapper nodes Kotlin's
-PSI puts around it (`DOT_QUALIFIED_EXPRESSION`, `PARENTHESIZED`, labels,
-annotations), and a type reference's type is set on both its `USER_TYPE`
-and its `TYPE_REFERENCE`.

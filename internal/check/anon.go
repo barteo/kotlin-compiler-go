@@ -34,6 +34,7 @@ type anonCtx struct {
 	tparams    []*types.TypeParamSym
 	localCalls *[]localCall
 	staticCls  *types.ClassSym // the class whose static scope the code is in, outside a class
+	outer      *types.VarSym   // the enclosing class's this, if in a class
 }
 
 // inAnon makes the state of code in class cls, if it is an object
@@ -203,6 +204,16 @@ func (c *Checker) anonClass(d *syntax.ClassDecl, what, whats string, name func()
 		// inner or anonymous enclosing class, which come first, and
 		// outside the lambdas'.
 		outer = &types.VarSym{Name: "this$0", Kind: types.Local, Type: c.cls.This()}
+		if prev := c.anon[d.Sym]; d.Sym != nil && c.redeclared[d.Sym] && prev != nil && prev.outer != nil {
+			// Declared again after a trial check of the lambda the class
+			// is in (see stubInference): it keeps the symbol, which the
+			// calls of the enclosing class's members that the trial
+			// rewrote onto it (see recvCall) refer to, as hasExpired() in
+			// an object in callbackFlow { }.
+			*prev.outer, outer = *outer, prev.outer
+		}
+		ctx.outer = outer
+		frame.Outer = outer
 		name := c.cls.DisplayName()
 		r := implicitRecv{sym: outer, label: name[strings.LastIndexByte(name, '.')+1:], depth: depth, outer: true, class: true}
 		n := 0
@@ -284,6 +295,7 @@ func (c *Checker) anonClass(d *syntax.ClassDecl, what, whats string, name func()
 	c.state, c.classes, c.lookupCls = saved, savedClasses, savedLookup
 	c.propagateCaptures()
 
+	d.OuterThis = nil // a trial check's, if this check doesn't capture it
 	for _, v := range frame.Captures {
 		if v == outer {
 			d.OuterThis = outer

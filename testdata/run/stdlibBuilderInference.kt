@@ -188,6 +188,20 @@ class SubStore<T> : Store<T>()
 
 fun <T> store(block: Store<T>.() -> Unit): Store<T> = SubStore<T>().apply(block)
 
+// An object expression in a builder lambda, which is checked before its
+// variable is inferred and again after, calls the enclosing class's
+// members and names its this.
+interface Listener { fun fire() }
+class Emitter(private val ready: Boolean) {
+    fun isReady() = ready
+    fun events() = build {
+        val l = object : Listener {
+            override fun fire() { if (isReady()) yield("fired by " + this@Emitter.ready) }
+        }
+        l.fire()
+    }
+}
+
 fun main() {
     // A value passed where the variable is expected.
     val target = Target("a")
@@ -396,4 +410,5 @@ fun main() {
     val ofNested: Unit = nested.take()
     println(ofNested)
     println(buildList { add(1); add(2); removeAt(0) })
+    println(Emitter(true).events())
 }

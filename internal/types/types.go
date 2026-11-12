@@ -384,6 +384,9 @@ type VarSym struct {
 	// Protected is set on a protected field of a Java class, which only
 	// code in its subclasses sees.
 	Protected bool
+	// PackagePrivate is set on a package-private field of a Java class,
+	// which only code in its package sees.
+	PackagePrivate bool
 	// InheritsProtected is set on an override declared without a
 	// visibility of a protected property: its accessors are protected.
 	InheritsProtected bool
@@ -592,6 +595,9 @@ type FunSym struct {
 	Composable bool
 	Changed    int
 	Defaults   int
+	// ComposableGetter is set on a composable property's getter, whose
+	// name has no hash for a value class it returns, as kotlinc's.
+	ComposableGetter bool
 	// ComposeDefaults is set on an open composable member with default
 	// values: its method takes no masks, and callers call the static
 	// name$default method of its owner's ComposeDefaultImpls class, a
@@ -606,6 +612,9 @@ type FunSym struct {
 	// Inheritance.
 	Final     bool // can't be overridden
 	Protected bool // a protected Java or Kotlin member, for subclasses only
+	// PackagePrivate is set on a package-private Java method or
+	// constructor, which only code in its package sees.
+	PackagePrivate bool
 	// Private is set on the program's private functions, accessors and
 	// constructors, which are private on the JVM. As kotlinc does, other
 	// classes call a function through a static accessor, access$name, and
@@ -775,6 +784,10 @@ type KProp struct {
 	Getter *FunSym // Ret is the property's type
 	Setter *FunSym // nil for a val
 	Alt    *KProp  // as VarSym.Alt
+	// Stable is set on a final val with a field and the default getter of
+	// a friend path's class, which smart casts as the module's own do: the
+	// symbol that stands for it in them.
+	Stable *VarSym
 }
 
 // ClassSym is a user class or a Java class from the class path. Name is the
@@ -812,14 +825,18 @@ type ClassSym struct {
 	// Java classes. They are created when first referenced and filled in by
 	// load on first use; call Ensure before reading the fields below or
 	// Methods.
-	External  bool
-	Missing   bool // not found or unreadable
-	Interface bool
-	Abstract  bool // an abstract class or an interface: it can't be instantiated
-	Final     bool // can't be subclassed
-	Private   bool // not public
+	External bool
+	Missing  bool // not found or unreadable
+	// MethodAnnotations reads the annotations of a method of the class
+	// file, by its name and descriptor.
+	MethodAnnotations func(name, desc string) (*classfile.MethodAnnotations, error)
+	Interface         bool
+	Abstract          bool // an abstract class or an interface: it can't be instantiated
+	Final             bool // can't be subclassed
+	Private           bool // not public
 	// PackagePrivate is set, with Private, on a Java class of package
-	// visibility, which the classes of its package can use.
+	// visibility, which only code in its package sees, as its
+	// package-private members.
 	PackagePrivate bool
 	// Internal is set on a Kotlin class that is internal to its module,
 	// with Private: code under @Suppress("INVISIBLE_REFERENCE") may use it.
@@ -856,6 +873,8 @@ type ClassSym struct {
 	// boxed: see Unboxed.
 	Value      bool
 	Underlying *VarSym
+	// Data is set on data classes, of the program or the class path.
+	Data bool
 	// Fun is set on fun interfaces, of the program or the class path, to
 	// whose single abstract method lambdas passed for them convert.
 	Fun bool
@@ -879,10 +898,19 @@ type ClassSym struct {
 	// class path's that are Kotlin or have a @Target, but not a Java
 	// source's, whose class info is only what javasrc reads.
 	TargetsKnown bool
+	// TargetsRead is set on an annotation class whose Targets were read
+	// from a @Target (or are Kotlin's default), even if kc doesn't check
+	// them (TargetsKnown): a Java source's, or a Java class's that may be
+	// on a type. They decide where an annotation without a use-site
+	// target goes, as Kotlin's default rule does.
+	TargetsRead bool
 	// Repeatable is set on an annotation class annotated @Repeatable,
 	// @JvmRepeatable or Java's @Repeatable: an element can have several
 	// of its annotations.
 	Repeatable bool
+	// SerialWith is the serializer of a Java class annotated
+	// @Serializable(with = S::class), which properties of its type use.
+	SerialWith *ClassSym
 
 	// Kotlin classes read from metadata.
 	KotlinName string // class id, e.g. kotlin/collections/Map.Entry; "" for Java classes
@@ -1136,6 +1164,13 @@ const (
 	// ComposeKey is Compose's key(keys...) { ... }: the lambda is inlined
 	// in a movable group, whose key the keys are (see codegen/compose.go).
 	ComposeKey
+
+	// UnsafeCoerce is `kc$coerce`<R>(x), which only the code kc writes
+	// for compiler plugins calls: x, of a value class type held unboxed,
+	// as R, the type of its underlying value, or the other way round. On
+	// the JVM the value is unchanged, as with kotlinc's IR's unsafe
+	// coerce.
+	UnsafeCoerce
 )
 
 // BitwiseOps are the bitwise functions of Int and Long, which are JVM

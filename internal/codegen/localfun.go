@@ -33,6 +33,9 @@ func localOf(f *types.FunSym) *syntax.LocalFun {
 // kotlinc's, its context parameters and an extension's receiver come
 // first.
 func (g *gen) localDesc(lf *syntax.LocalFun) string {
+	if lf.Desc != "" {
+		return lf.Desc // from code in another class, an object expression's
+	}
 	f := lf.Decl.Sym
 	return "(" + leadDesc(f) + g.frameDesc(lf.Frame) + sigDesc(f)[1:]
 }
@@ -54,14 +57,14 @@ func (g *gen) localFun(lf *syntax.LocalFun) {
 	if g.inInterface() {
 		access &^= cf.AccFinal // interface methods can't be final
 	}
-	if hasVararg(f.Params) {
+	if varargs(f) {
 		access |= cf.AccVarargs
 	}
 	lc := &lambdaCtx{slots: map[*types.VarSym]int{}, fun: true}
 	lg := &gen{file: g.file, cls: g.cls, owner: g.owner, shared: g.shared, prefix: name + "$lambda", lam: lc, noLines: g.noLines,
 		publicInline: g.publicInline, lambdaReified: g.reifiedSubst()} // copies of an inline function copy its lambdas
 	d := g.localDesc(lf)
-	lf.Desc = d
+	lf.Desc, lf.This = d, g.thisClass()
 	lg.code = g.cls.NewMethod(access, name, d)
 	lg.retType = f.Ret
 	for _, p := range f.Contexts {
@@ -161,7 +164,7 @@ func (g *gen) callLocal(x *syntax.Call, lf *syntax.LocalFun) {
 	if m, ok := x.Fun.(*syntax.Member); ok && f.Ext {
 		g.exprAs(m.X, f.Recv) // the receiver, x in x.g()
 	}
-	g.loadFrame(lf.Frame)
+	g.loadLocalFrame(lf)
 	name, d := lf.Method, g.localDesc(lf)
 	if mask := g.callArgs(x, f); mask.any() {
 		g.pushMask(mask, types.DefaultBits(f))
@@ -185,4 +188,20 @@ func (g *gen) invokeLocal(name, d string) {
 	} else {
 		g.code.Invoke(cf.INVOKESTATIC, g.cls.Name, name, d)
 	}
+}
+
+// loadLocalFrame pushes what local function lf's frame captures. In an
+// object expression's code, its this is the object's capture of the
+// enclosing class's this.
+func (g *gen) loadLocalFrame(lf *syntax.LocalFun) {
+	if lf.Frame.This && lf.This != nil && lf.This != g.thisClass() && g.owner != nil {
+		if cd, ok := g.owner.Decl.(*syntax.ClassDecl); ok && cd.OuterThis != nil && cd.OuterThis.Type.NonNull() == lf.This.This() {
+			g.loadStorage(cd.OuterThis)
+			for _, v := range lf.Frame.Captures {
+				g.loadStorage(v)
+			}
+			return
+		}
+	}
+	g.loadFrame(lf.Frame)
 }

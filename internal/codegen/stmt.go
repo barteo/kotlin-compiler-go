@@ -209,7 +209,19 @@ func (g *gen) exprStmt(x syntax.Expr) {
 			return
 		}
 	}
-	g.expr(x)
+	if call, ok := x.(*syntax.Call); ok && call.Sym != nil && call.Sym.Suspend && call.T.K != types.Unit && call.T.K != types.Nothing {
+		saved := g.unusedSuspend
+		g.unusedSuspend, g.leftObject = call, false
+		g.expr(x)
+		g.unusedSuspend = saved
+		if g.leftObject {
+			g.leftObject = false
+			g.code.Op(cf.POP)
+			return
+		}
+	} else {
+		g.expr(x)
+	}
 	g.uncastErased()
 	g.pop(x.Type())
 }
@@ -901,9 +913,14 @@ func (g *gen) lvalue(x syntax.Expr) lvalue {
 			}
 			if f.Owner != nil {
 				lv.prepare, lv.recv = func() {
-					g.dispatch(x, f.Owner)
+					if !f.Static {
+						g.dispatch(x, f.Owner)
+					}
 					prepare()
 				}, 1+size(f.Recv)
+				if f.Static {
+					lv.recv--
+				}
 				if lv.recv == 3 {
 					lv.wide = f.Recv
 				}
@@ -946,10 +963,26 @@ func (g *gen) lvalue(x syntax.Expr) lvalue {
 			}
 			return lv
 		}
+		if f, s := x.Getter, x.Setter; f != nil && s != nil && f.Static && s.Static {
+			// A static property: a class path object's @JvmStatic one.
+			t := x.T.Flex()
+			return lvalue{t: t, prepare: func() {}, reread: true,
+				load: func() {
+					g.code.Invoke(cf.INVOKESTATIC, f.Owner.Name, f.JVM(), funDesc(f))
+					g.coerce(types.JVMRet(f), t)
+				},
+				store: func() {
+					g.coerce(t, s.Params[0].Type)
+					g.code.Invoke(cf.INVOKESTATIC, s.Owner.Name, s.JVM(), funDesc(s))
+				}}
+		}
 		if x.Getter != nil {
 			// A Java property: getX() and setX(v).
 			rt := x.X.Type().NonNull()
 			t := x.T.Flex()
+			if x.T.P {
+				t = t.Nullable() // which may be null: p.x = n for an n: Int?, unchecked
+			}
 			param := x.Setter.Params[0].Type
 			return lvalue{t: t, prepare: func() { g.expr(x.X) }, recv: 1, reread: true,
 				load: func() {
@@ -1098,7 +1131,11 @@ func (g *gen) assign(s *syntax.Assign) {
 	}
 	g.dupRecv(lv)
 	lv.load()
-	if lv.t.Flex() == types.StringType {
+	if lv.t.Flex().NonNull() == types.StringType {
+		if lv.t.P || types.MayBeNull(lv.t) {
+			// A platform String may be null: "null" + v, as kotlinc's.
+			g.code.Invoke(cf.INVOKESTATIC, "java/lang/String", "valueOf", "(Ljava/lang/Object;)Ljava/lang/String;")
+		}
 		g.stringValueOf(s.Value)
 		g.code.Invoke(cf.INVOKEVIRTUAL, "java/lang/String", "concat", "(Ljava/lang/String;)Ljava/lang/String;")
 	} else {
@@ -1107,8 +1144,8 @@ func (g *gen) assign(s *syntax.Assign) {
 		g.coerce(lv.t, op)
 		g.exprAs(s.Value, op)
 		g.code.Op(arithOp(op, compoundOp(s.Op)))
-		g.convert(op, lv.t.Flex())
-		g.coerce(lv.t.Flex(), lv.t)
+		g.convert(op, lv.t.Flex().NonNull())
+		g.coerce(lv.t.Flex().NonNull(), lv.t)
 	}
 	lv.store()
 }
@@ -1125,7 +1162,7 @@ func (g *gen) incDecValue(u *syntax.Unary) {
 	g.dupRecv(lv)
 	lv.load()
 	// A platform type's value, boxed, is computed with unboxed.
-	t := lv.t.Flex()
+	t := lv.t.Flex().NonNull()
 	if !u.Prefix {
 		g.dupBelow(lv, lv.t)
 	}
@@ -1197,7 +1234,7 @@ func (g *gen) incDec(u *syntax.Unary) {
 	}
 	g.dupRecv(lv)
 	lv.load()
-	t := lv.t.Flex()
+	t := lv.t.Flex().NonNull()
 	g.coerce(lv.t, t)
 	switch t.K {
 	case types.Long:

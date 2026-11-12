@@ -381,6 +381,8 @@ func hasReified(f *types.FunSym) bool {
 // not type parameters, which are erased, unless reified in turn.
 func (c *Checker) reifiedArgs(x *syntax.Call, f *types.FunSym, sub types.Subst, s *system) {
 	x.Reified = c.reifiedTypes(x.P, f, sub, s)
+	c.serializerOf(x, f)
+	c.reifiedSerializers(x, f)
 }
 
 // reifiedProp records the type arguments of a read x of an extension

@@ -125,7 +125,15 @@ func (c *Checker) headerThis(x *syntax.This, r *implicitRecv) *types.ClassSym {
 	}
 	// Then the objects in the static scope around: the enclosing
 	// classes' companions, their superclasses', and enclosing objects.
-	if objs := c.scopeObjects(); len(objs) > 0 {
+	// An object's own instance doesn't exist yet, so this is an outer
+	// object's if there is one.
+	objs := c.scopeObjects()
+	for _, obj := range objs {
+		if obj != c.staticCls {
+			return obj
+		}
+	}
+	if len(objs) > 0 {
 		return objs[0]
 	}
 	return nil
@@ -162,6 +170,8 @@ func (c *Checker) recvMember(x *syntax.Ident) (types.Type, bool) {
 			continue
 		}
 		c.capture(r.sym, r.depth)
+		old := x.Member
+		c.onUndo(func() { x.Member = old })
 		x.Member = m
 		return t, true
 	}
@@ -234,7 +244,7 @@ func (c *Checker) recvCall(x *syntax.Call, id *syntax.Ident) bool {
 			continue
 		}
 		if !c.extensionsGiveWay(t, id.Name, x) {
-			x.Fun = m
+			c.rewriteFun(x, m)
 			return true
 		}
 	}
@@ -258,6 +268,21 @@ func (c *Checker) extensionsGiveWay(t types.Type, name string, x *syntax.Call) b
 		}
 	}
 	return len(fs) > 0 && !c.takeTypes(fs, x, c.argTypes(x))
+}
+
+// rewriteFun makes m call x's function.
+func (c *Checker) rewriteFun(x *syntax.Call, m syntax.Expr) {
+	c.rewrite(&x.Fun, m)
+}
+
+// rewrite replaces the expression *p of the tree with e. A trial's
+// rewrite is undone: an object expression's receivers, which e may refer
+// to, are declared again after it.
+func (c *Checker) rewrite(p *syntax.Expr, e syntax.Expr) {
+	if old := *p; old != e {
+		c.onUndo(func() { *p = old })
+		*p = e
+	}
 }
 
 // hasFun reports whether a receiver of type t has a member or extension
@@ -445,6 +470,10 @@ func (c *Checker) lowPriorityGivesWay(ms []*types.FunSym, name string, rt types.
 // class's emit(CodeWriter), not CodeWriter.emit(String). So does one
 // whose function has a context parameter that no implicit value fits.
 func (c *Checker) mayTake(f *types.FunSym, x *syntax.Call) bool {
+	if len(x.TypeArgs) > 0 && f.Name != "<init>" && len(f.TypeParams) != len(x.TypeArgs) {
+		// get<String>(name) isn't a call of a get without type parameters.
+		return false
+	}
 	amap, ok := mapArgs(f, x)
 	if !ok {
 		return false
@@ -466,13 +495,22 @@ func (c *Checker) mayTake(f *types.FunSym, x *syntax.Call) bool {
 			// constructor Color(ULong).
 			return false
 		}
+		if l, ok := a.(*syntax.IntLit); ok && !l.Unsigned && !c.subtype(intLit(l, l.Val, p), p) {
+			// 5 is no ColorValue: color(5) in button.apply { } calls
+			// the enclosing Fragment's color(Int), not the button's
+			// View.color(ColorValue).
+			return false
+		}
 		if t, ok := c.peekType(a); ok && !c.subtype(t, p) {
 			if _, sam := c.samValue(t, p); !sam {
 				return false
 			}
 		}
 		if cls := c.peekClass(a); cls != nil && p.K == types.Class && !cls.IsSubclassOf(p.C) {
-			return false
+			// A Java Collection<Long> also takes a listOf(1L).
+			if ro, ok := readOnlyView(p); !ok || !cls.IsSubclassOf(ro.C) {
+				return false
+			}
 		}
 	}
 	return true
@@ -520,7 +558,18 @@ func (c *Checker) takeTypes(fs []*types.FunSym, x *syntax.Call, ts []types.Type)
 		fits := true
 		for i, t := range ts {
 			p := cl.argType(i, x.Args)
-			if t.K == types.Invalid || p.K == types.Invalid || p.HasParams() || p.HasVars() {
+			if t.K == types.Invalid || p.K == types.Invalid {
+				continue
+			}
+			if p.HasParams() || p.HasVars() {
+				// Of a generic class, the argument's class must have it as
+				// a supertype: an Array of pairs isn't a Map<out K, out V>.
+				if pt, tt := p.Flex().NonNull(), t.Flex().NonNull(); pt.K == types.Class && !pt.IsFunc() && tt.K == types.Class && !tt.IsFunc() && !tt.HasVars() {
+					if _, ok := c.asSuper(tt, pt.C); !ok {
+						fits = false
+						break
+					}
+				}
 				continue
 			}
 			if lit, ok := x.Args[i].(*syntax.IntLit); ok && fitsLit(lit, p) {
@@ -578,7 +627,8 @@ func (c *Checker) peekClass(a syntax.Expr) *types.ClassSym {
 }
 
 // peekType returns the type of a simple argument without checking it:
-// this, a local, or a literal. It reports false for other expressions,
+// this, a local, a literal, or a Java class's static field. It reports
+// false for other expressions,
 // which are checked once, when the call is resolved.
 func (c *Checker) peekType(a syntax.Expr) (types.Type, bool) {
 	switch a := a.(type) {
@@ -604,6 +654,17 @@ func (c *Checker) peekType(a syntax.Expr) (types.Type, bool) {
 	case *syntax.Ident:
 		if _, t, ok := c.scope.lookup(a.Name); ok && t.K != types.Invalid {
 			return t, true
+		}
+	case *syntax.Member:
+		// A class path class's static field: R.color.failRed is an Int.
+		if a.Safe {
+			break
+		}
+		if cls := c.classRef(a.X); cls != nil && cls.External {
+			cls.Ensure()
+			if f := c.staticFieldOf(cls, a.Name); f != nil && f.Type.K != types.Invalid {
+				return f.Type, true
+			}
 		}
 	}
 	return types.InvalidType, false

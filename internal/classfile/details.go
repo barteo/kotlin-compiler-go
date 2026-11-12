@@ -1,5 +1,7 @@
 package classfile
 
+import "slices"
+
 // Details are the parts of a class file that Parse skips and the Analysis
 // API reports (analysis/ka): the arguments of the annotations of the class,
 // its members and their parameters, the names of methods' parameters, and
@@ -15,6 +17,9 @@ type Details struct {
 	// Nested are the internal names of the class's named nested classes,
 	// in InnerClasses order.
 	Nested []string
+	// TypeAnnotations are the annotations of the types in the class's
+	// signature: its type parameters, their bounds and its supertypes.
+	TypeAnnotations []TypeAnnotation
 }
 
 // MemberDetails are a field's or method's Details.
@@ -31,7 +36,58 @@ type MemberDetails struct {
 	ParamNames []string
 	// Default is an annotation method's AnnotationDefault, or nil.
 	Default *ElementValue
+	// TypeAnnotations are the annotations of the types in its signature,
+	// those visible at run time first, then those kept in the class file
+	// only, as ASM reads them.
+	TypeAnnotations []TypeAnnotation
 }
+
+// TypeAnnotation is an annotation of a type in a field's or method's
+// signature (JVMS 4.7.20): @A in int @A [], List<@A String> or @A int f.
+type TypeAnnotation struct {
+	// Target is the kind of type it annotates: TargetField and so on.
+	Target byte
+	// Index is a TargetParam's parameter, a type parameter's (the
+	// TargetTypeParam targets and their bounds'), a TargetThrows'
+	// exception, or a TargetSupertype's interface (65535 for the
+	// superclass).
+	Index int
+	// Bound is a type parameter bound's bound: 0 is the class bound, the
+	// interface bounds follow, from 1 even with no class bound.
+	Bound int
+	// Path is where in that type the annotated type is.
+	Path       []PathStep
+	Annotation Annotation
+}
+
+// The targets of class and member type annotations (JVMS table 4.7.20-A).
+const (
+	TargetClassTypeParam      = 0x00
+	TargetTypeParam           = 0x01
+	TargetSupertype           = 0x10
+	TargetClassTypeParamBound = 0x11
+	TargetTypeParamBound      = 0x12
+	TargetField               = 0x13
+	TargetReturn              = 0x14
+	TargetReceiver            = 0x15
+	TargetParam               = 0x16
+	TargetThrows              = 0x17
+)
+
+// PathStep is a step of a type annotation's path (JVMS 4.7.20.2): into an
+// array's element type (PathArray), a nested type (PathNested), a
+// wildcard's bound (PathWildcard) or type argument Arg (PathTypeArg).
+type PathStep struct {
+	Kind, Arg byte
+}
+
+// The kinds of a PathStep.
+const (
+	PathArray    = 0
+	PathNested   = 1
+	PathWildcard = 2
+	PathTypeArg  = 3
+)
 
 // ParseDetails reads the Details of a class file.
 func ParseDetails(data []byte) (*Details, error) {
@@ -53,6 +109,7 @@ func ParseDetails(data []byte) (*Details, error) {
 			m.Access = r.u2()
 			m.Name, _ = p.utf8(r.u2())
 			m.Desc, _ = p.utf8(r.u2())
+			visible := 0 // the number of visible TypeAnnotations, which come first
 			for range r.u2() {
 				attr, _ := p.utf8(r.u2())
 				size := int(r.u4())
@@ -74,6 +131,12 @@ func ParseDetails(data []byte) (*Details, error) {
 						r.skip(2)               // access
 						m.ParamNames = append(m.ParamNames, pn)
 					}
+				case "RuntimeVisibleTypeAnnotations":
+					as := readTypeAnnotations(r, p)
+					m.TypeAnnotations = slices.Insert(m.TypeAnnotations, visible, as...)
+					visible += len(as)
+				case "RuntimeInvisibleTypeAnnotations":
+					m.TypeAnnotations = append(m.TypeAnnotations, readTypeAnnotations(r, p)...)
 				case "AnnotationDefault":
 					if v, ok := readValue(r, p, 0); ok {
 						m.Default = &v
@@ -90,6 +153,7 @@ func ParseDetails(data []byte) (*Details, error) {
 	d.Fields = members()
 	d.Methods = members()
 	var visible []Annotation
+	visibleTypes := 0
 	for range r.u2() {
 		attr, _ := p.utf8(r.u2())
 		size := int(r.u4())
@@ -99,6 +163,12 @@ func ParseDetails(data []byte) (*Details, error) {
 			d.Annotations = append(d.Annotations, readAnnotations(r, p)...)
 		case "RuntimeVisibleAnnotations":
 			visible = append(visible, readAnnotations(r, p)...)
+		case "RuntimeVisibleTypeAnnotations":
+			as := readTypeAnnotations(r, p)
+			d.TypeAnnotations = slices.Insert(d.TypeAnnotations, visibleTypes, as...)
+			visibleTypes += len(as)
+		case "RuntimeInvisibleTypeAnnotations":
+			d.TypeAnnotations = append(d.TypeAnnotations, readTypeAnnotations(r, p)...)
 		case "InnerClasses":
 			for range r.u2() {
 				inner, outer, simple := r.u2(), r.u2(), r.u2()
@@ -138,6 +208,39 @@ func readAnnotations(r *reader, p *pool) []Annotation {
 		}
 		if ok {
 			out = append(out, *v.Ann)
+		}
+	}
+	return out
+}
+
+// readTypeAnnotations reads a class's, field's or method's
+// Runtime*TypeAnnotations attribute's annotations, dropping the ones it
+// can't decode; it stops at a target they can't have (a Code attribute's).
+func readTypeAnnotations(r *reader, p *pool) []TypeAnnotation {
+	var out []TypeAnnotation
+	for range r.u2() {
+		a := TypeAnnotation{Target: r.u1()}
+		switch a.Target {
+		case TargetClassTypeParam, TargetTypeParam, TargetParam:
+			a.Index = int(r.u1())
+		case TargetClassTypeParamBound, TargetTypeParamBound:
+			a.Index, a.Bound = int(r.u1()), int(r.u1())
+		case TargetField, TargetReturn, TargetReceiver:
+		case TargetSupertype, TargetThrows:
+			a.Index = int(r.u2())
+		default:
+			return out
+		}
+		for range r.u1() {
+			a.Path = append(a.Path, PathStep{Kind: r.u1(), Arg: r.u1()})
+		}
+		v, ok := readAnnotation(r, p)
+		if r.err != nil {
+			break
+		}
+		if ok {
+			a.Annotation = *v.Ann
+			out = append(out, a)
 		}
 	}
 	return out

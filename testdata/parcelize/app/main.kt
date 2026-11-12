@@ -1,8 +1,20 @@
+import android.os.Binder
+import android.os.Bundle
 import android.os.Parcel
+import android.os.PersistableBundle
+import android.util.Size
+import android.util.SizeF
+import android.util.SparseArray
+import android.util.SparseBooleanArray
+import android.util.SparseIntArray
+import android.util.SparseLongArray
 import android.os.Parcelable
 import java.math.BigDecimal
 import lib.LibOpen
 import lib.LibPoint
+import kotlinx.collections.immutable.persistentListOf
+import kotlinx.collections.immutable.persistentMapOf
+import kotlinx.collections.immutable.persistentSetOf
 import p.*
 
 // roundTrip writes x with writeParcelable, which calls its writeToParcel,
@@ -66,8 +78,111 @@ fun main() {
     )
     println("tone: ${Tone.LOUD.shout()} ${Tone.LOUD.code}")
 
+    roundTrip("builtins", builtins())
+    roundTrip("builtin nulls", builtins(nulls = true))
+    roundTrip("descriptors", Descriptors(null, listOf(), mapOf("k" to listOf())))
+    roundTrip("raw", raw())
+    roundTrip("raw nulls", Raw(Plain(1), null, listOf(), listOf(null), null, mapOf(), "s"))
+    val box = Box(Inner(1, "one"), listOf(Inner(2, "two")), null)
+    roundTrip("box", box)
+    roundTrip("nums", Nums(1, arrayOf<Number>(2, 3L, 4.5), "s"))
+    roundTrip("nums nulls", Nums<Int, String>(1, null, null))
+    roundTrip("raw box", RawBox(Plain(1), listOf(Plain(2), Plain(3))))
+    roundTrip("boxes", Boxes(box, null, listOf(box), Unused(5)))
+    roundTrip("self written", SelfWritten("me", 3))
+    roundTrip("self array", SelfArray("arr"))
+    roundTrip("comparable", Cmp("c", listOf("d", "e")))
+    roundTrip("bounded", Bounded(1, 2))
+    roundTrip("bounded nulls", Bounded(1.5, null))
+    roundTrip("generic self written", GenSelf("gen", 7))
+    roundTrip("aliased", Aliased(3))
+    roundTrip("import aliased", ImportAliased(4))
+    roundTrip("specials", specials())
+    roundTrip("special nulls", specials(nulls = true))
+    roundTrip("id", Id(5))
+    roundTrip("value box", valueBox())
+    roundTrip("value box nulls", ValueBox(Id(1), null, Name("n"), SerialName("s"), null, PlainValue(2), null, listOf()))
+    roundTrip("data classes", dataClasses())
+    roundTrip("data class nulls", DataClasses(Line(Pt(1, null), null, listOf()), null, listOf(), Tagged("t", 0)))
+    roundTrip("immutables", immutables())
+    roundTrip("immutable nulls", immutables(nulls = true))
+    roundTrip("stamps", stamps())
+    roundTrip("stamp nulls", Stamps(Stamp(1), null, listOf(), Stamp(2), null))
+    roundTrip("writes", Writes(Stamp(1), Stamp(2), Stamp(3), listOf(Stamp(4))))
+    roundTrip("write nulls", Writes(Stamp(1), null, null, listOf()))
+    val sba = SparseBooleanArray()
+    sba.put(1, true)
+    roundTrip("fast", Fast(intArrayOf(1, 2), listOf("a"), arrayOf("b"), sba, 3))
+
+    roundTrip(
+        "persistent",
+        Persistent(
+            kotlinx.collections.immutable.persistentListOf("a", "b"), kotlinx.collections.immutable.persistentListOf(1, 2),
+            kotlinx.collections.immutable.persistentSetOf("t"), kotlinx.collections.immutable.persistentMapOf("k" to 3L),
+            kotlinx.collections.immutable.persistentListOf(Inner(4, "four")),
+        ),
+    )
     // newArray makes an array of the class.
     val creator = Inner::class.java.getField("CREATOR").get(null) as Parcelable.Creator<*>
     val array = creator.newArray(2)
     println("newArray: ${array.size} ${array.javaClass.simpleName}")
+    // A Parceler companion's own newArray makes it.
+    val selfCreator = SelfArray::class.java.getField("CREATOR").get(null) as Parcelable.Creator<*>
+    println("Parceler's newArray: ${selfCreator.newArray(2).size}")
+    val genCreator = GenSelf::class.java.getField("CREATOR").get(null) as Parcelable.Creator<*>
+    println("generic Parceler's newArray: ${genCreator.newArray(2).size}")
 }
+
+fun builtins(nulls: Boolean = false): Builtins {
+    val bundle = Bundle()
+    bundle.putString("k", "v")
+    val pbundle = PersistableBundle()
+    pbundle.putString("p", "q")
+    val binder = Binder("b")
+    val sba = SparseBooleanArray()
+    sba.put(3, true)
+    sba.put(1, false)
+    val sia = SparseIntArray()
+    sia.put(2, 20)
+    val sla = SparseLongArray()
+    sla.put(5, 50L)
+    val sa = SparseArray<String>()
+    sa.put(7, "seven")
+    sa.put(4, "four")
+    val nsa = SparseArray<Inner?>()
+    nsa.put(1, Inner(1, "one"))
+    nsa.put(2, null)
+    val deque = ArrayDeque<String>()
+    deque.add("d")
+    val jdeque = java.util.ArrayDeque<Long>()
+    jdeque.add(8L)
+    val conc = java.util.concurrent.ConcurrentHashMap<String, Long>()
+    conc["c"] = 9L
+    return Builtins(
+        StringBuilder("cs"), if (nulls) null else "ncs", bundle, if (nulls) null else bundle, if (nulls) null else pbundle,
+        intArrayOf(1, 2), if (nulls) null else intArrayOf(3), longArrayOf(4L), floatArrayOf(1.5f), doubleArrayOf(2.5),
+        booleanArrayOf(true, false), byteArrayOf(5), charArrayOf('x'), shortArrayOf(6, 7), if (nulls) null else shortArrayOf(8),
+        arrayOf(9L, 10L), if (nulls) null else arrayOf(11, null), arrayOf(Inner(2, "two")), arrayOf(Color.RED, null),
+        binder, if (nulls) null else binder, arrayOf(binder), listOf(binder),
+        Size(1, 2), if (nulls) null else Size(3, 4), SizeF(1.5f, 2.5f), sba, if (nulls) null else sba,
+        sia, if (nulls) null else sia, sla, sa, if (nulls) null else nsa,
+        hashSetOf(12), deque, jdeque, sortedSetOf("b", "a"),
+        if (nulls) null else java.util.TreeSet(listOf(14, 13)), java.util.TreeMap(mapOf("t" to 15)), sortedMapOf(16 to Inner(3, "three")),
+        conc, Marker, if (nulls) null else Marker,
+        StringBuilder("sb"), java.util.LinkedList(listOf(17)), Twice,
+    )
+}
+
+fun raw() = Raw(Plain(1), Plain(2), listOf(Plain(3)), listOf(Plain(4), null), Plain(5), mapOf("k" to Plain(6)), "s")
+
+fun stamps() = Stamps(Stamp(1), Stamp(2), listOf(Stamp(3)), Stamp(4), Stamp(5))
+
+fun valueBox() = ValueBox(Id(1), Id(2), Name("n"), SerialName("s"), SerialName("t"), PlainValue(3), PlainValue(4), listOf(Id(5), Id(6)))
+
+fun dataClasses() = DataClasses(Line(Pt(1, "a"), Pt(2, null), listOf(3, 4)), Line(Pt(5, "b"), null, listOf()), listOf(Pt(6, "c")), Tagged("t", 7))
+
+fun immutables(nulls: Boolean = false) = Immutables(
+    persistentListOf(1, 2), persistentListOf(3, null), persistentSetOf("a", "b"), persistentSetOf(4L),
+    persistentMapOf("k" to 5), persistentMapOf(6 to null, 7 to "v"), persistentListOf("x", "y"),
+    if (nulls) null else persistentListOf("z"), if (nulls) null else persistentListOf(8), persistentListOf(Binder("b")),
+)

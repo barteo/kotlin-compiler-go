@@ -3,11 +3,15 @@ package lib
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.descriptors.PrimitiveKind
+import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
 import kotlinx.serialization.descriptors.SerialDescriptor
 import kotlinx.serialization.encoding.AbstractDecoder
 import kotlinx.serialization.encoding.AbstractEncoder
 import kotlinx.serialization.encoding.CompositeDecoder
 import kotlinx.serialization.encoding.CompositeEncoder
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
 import kotlinx.serialization.modules.EmptySerializersModule
 import kotlinx.serialization.modules.SerializersModule
 
@@ -80,4 +84,11 @@ fun <T> listRoundTrip(s: KSerializer<T>, v: T): String {
     e.encodeSerializableValue(s, v)
     val back = ListDecoder(ArrayDeque(e.list)).decodeSerializableValue(s)
     return "${e.list} -> $back"
+}
+
+// A serializer of another module, which properties of the program name.
+object LibUpper : KSerializer<String> {
+    override val descriptor: SerialDescriptor = PrimitiveSerialDescriptor("lib.Upper", PrimitiveKind.STRING)
+    override fun serialize(encoder: Encoder, value: String) = encoder.encodeString(value.uppercase())
+    override fun deserialize(decoder: Decoder): String = decoder.decodeString().lowercase()
 }

@@ -308,6 +308,8 @@ func readDecls(r *wire.Reader) []*ka.Decl {
 		for n := r.Uint(); n > 0 && r.Err() == nil; n-- {
 			d.Inheritors = append(d.Inheritors, r.String())
 		}
+		d.FieldType = readType(r)
+		d.Contexts = readDecls(r)
 		out = append(out, d)
 	}
 	return out

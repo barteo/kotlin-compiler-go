@@ -45,13 +45,13 @@ jobs:
       # The Analysis API jar (compiled from the Kotlin sources), the KSP
       # fork and the jars they need from Maven Central (and Google's Maven
       # repository, for Room): what the build
-      # scripts and the patches pin, so they key the cache. Maven Central
+      # scripts pin, the KSP fork's commit included, so they key the cache. Maven Central
       # answers busy clients with 429s, which the scripts retry.
       - name: Cache the Analysis API jar and the KSP fork
         uses: actions/cache@v5
         with:
           path: jvm/ksp/build
-          key: kc-ksp-${{ hashFiles('jvm/aa-api/build.sh', 'jvm/ksp/build.sh', 'jvm/ksp/patches/*') }}
+          key: kc-ksp-${{ hashFiles('jvm/aa-api/build.sh', 'jvm/ksp/build.sh') }}
       - name: Cache the processors and stock KSP
         uses: actions/cache@v5
         with:

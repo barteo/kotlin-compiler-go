@@ -47,6 +47,8 @@ type Universe struct {
 	// parcelize is Library.Parcelize, and serialization
 	// Library.Serialization, and compose Library.Compose.
 	parcelize, serialization, compose bool
+	// metro is Library.MetroPlan.
+	metro *MetroPlan
 	// parcelSealed is parcelizeSealed's, with parcelize.
 	parcelSealed map[string]bool
 	// serialInterfaces are the sealed interfaces annotated @Serializable,
@@ -156,6 +158,9 @@ type Checker struct {
 	// objects by name: enum entries, Java statics, objects' members, and
 	// those of the classes of starOwners.
 	memberImports map[string]memberImport
+	// moreMemberImports are the other members imported by a name that
+	// memberImports has: extensions of two objects, import A.f and B.f.
+	moreMemberImports map[string][]memberImport
 	// classImports are the explicitly imported top-level classes of the
 	// class path, whose visibility checkMemberImports checks.
 	classImports []memberImport
@@ -235,6 +240,8 @@ type Checker struct {
 	// stubInference is inferring, with the run that records constraints on
 	// them.
 	stubs map[*types.TypeParamSym]*stubRun
+	// ambiguities counts the ambiguous calls reported.
+	ambiguities int
 	// trial is set while stubInference checks a lambda, to undo what the
 	// check changes outside the lambda.
 	trial *trial
@@ -303,6 +310,11 @@ type Checker struct {
 }
 
 type state struct {
+	// plugin is set in the body of a function that kc writes for a
+	// compiler plugin (FunDecl.Plugin), and in its lambdas: its explicit
+	// type arguments needn't be within their bounds, as kotlinc's
+	// plugins, which write IR, don't check them either.
+	plugin     bool
 	scope      *scope
 	cls        *types.ClassSym
 	this       *types.VarSym // what smart casts of this narrow; nil outside classes
@@ -407,6 +419,12 @@ type Library struct {
 	// OptIns are the qualified names of the requirement markers the
 	// module opts in to, as kotlinc's -opt-in: see optin.go.
 	OptIns []string
+	// MetroPlan is what the Metro compiler plugin adds to the program:
+	// see metro.go.
+	MetroPlan *MetroPlan
+	// MetroOptions are the Metro plugin's options, by key: see
+	// metroOptions.
+	MetroOptions map[string]string
 }
 
 // EnableSerialization sets Serialization. The code that kc writes for the
@@ -598,97 +616,12 @@ func CheckOptions(ctx context.Context, files []*syntax.File, lib *Library, jobs 
 			}
 		}
 	}()
-	u := &Universe{ctx: ctx, done: ctx.Done(), rec: rec, Pkgs: map[string]*Package{}, prefixes: map[string]bool{}, ext: lib.t, module: moduleSuffix(lib.Module),
-		aliasFile: map[*types.AliasSym]*Checker{}, noJVMDefault: lib.NoJVMDefault, jvmDefaultCompat: lib.JVMDefaultCompat, parcelize: lib.Parcelize, serialization: lib.Serialization,
-		compose: lib.Compose, serialInterfaces: map[*syntax.ClassDecl]bool{}, optIns: lib.OptIns, partial: opts.Signatures}
-	u.lookups, _ = rec.(LookupRecorder)
-	u.scopeRec, _ = rec.(ScopeRecorder)
-	checkers := make([]*Checker, len(files))
-	for i, f := range files {
-		checkers[i] = &Checker{u: u, file: f, done: map[any]bool{}, checked: map[*syntax.Lambda]types.Type{},
-			jumps:    map[*syntax.Lambda]inlineJumps{},
-			varSites: map[*types.VarSym]varSite{}, concurrent: map[varFrame]bool{}, nestedAssigns: map[*types.VarSym][]types.Type{}, assignsMemo: map[any][]string{},
-			classCache: map[string]classifier{}, funCache: map[funKey][]*types.FunSym{},
-			levelCache: map[funKey][][]*types.FunSym{}}
+	u, checkers, err := signatures(ctx, files, lib, rec, opts)
+	if err != nil {
+		return nil, err
 	}
 	// checked are the checkers of the files to check (opts.Only).
-	checked := checkers
-	if opts.Only != nil {
-		checked = nil
-		for _, c := range checkers {
-			if opts.Only[c.file] {
-				checked = append(checked, c)
-			} else {
-				c.looked.off = true // its lookups are those of its last check
-			}
-		}
-	}
-	inheritDefaults(files)
-	dropContracts(checkers)
-	if u.parcelize {
-		u.parcelSealed = parcelizeSealed(checkers)
-	}
-	for _, c := range checkers {
-		c.declare()
-	}
-	if lib.t.cp != nil && lib.t.cp.HasSources() {
-		find := u.sourceClass
-		lib.t.sources.Store(&find)
-	}
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	expectActual(checkers)
-	// Imports can name declarations of any file.
-	for _, c := range checkers {
-		c.resolveImports()
-	}
-	// Typealiases can stand for supertypes.
-	for _, c := range checkers {
-		c.resolveAliases()
-	}
-	for _, c := range checkers {
-		c.resolveAliasStars()
-	}
-	for _, c := range checkers {
-		c.resolveSupertypes()
-	}
-	for _, c := range checkers {
-		c.resolveClassBounds()
-	}
-	for _, c := range checkers {
-		c.findCycles()
-	}
-	for _, c := range checkers {
-		c.checkSupers()
-	}
-	for _, c := range checkers {
-		c.resolveSignatures()
-	}
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	forwardInlinable(checkers)
-	for _, c := range checkers {
-		c.checkMemberImports()
-	}
-	for _, c := range checkers {
-		c.inheritDefaults()
-	}
-	for _, c := range checkers {
-		c.delegations()
-	}
-	for _, c := range checked {
-		c.defaultImpls()
-	}
-	// Omitted return and property types are inferred up front, in order, so
-	// the parallel phase only reads signatures.
-	for _, c := range checked {
-		c.inferAll()
-	}
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
+	checked := onlyCheckers(checkers, opts)
 	for _, c := range checked {
 		c.checkExposure()
 	}
@@ -778,6 +711,114 @@ func CheckOptions(ctx context.Context, files []*syntax.File, lib *Library, jobs 
 		errs = append(errs, c.errs...)
 	}
 	return errs, nil
+}
+
+// signatures declares the files' declarations and resolves their
+// signatures: the phases of checking before bodies are checked, as opts
+// says.
+func signatures(ctx context.Context, files []*syntax.File, lib *Library, rec Recorder, opts Options) (*Universe, []*Checker, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, nil, err
+	}
+	u := &Universe{ctx: ctx, done: ctx.Done(), rec: rec, Pkgs: map[string]*Package{}, prefixes: map[string]bool{}, ext: lib.t, module: moduleSuffix(lib.Module),
+		aliasFile: map[*types.AliasSym]*Checker{}, noJVMDefault: lib.NoJVMDefault, jvmDefaultCompat: lib.JVMDefaultCompat, parcelize: lib.Parcelize, serialization: lib.Serialization,
+		compose: lib.Compose, serialInterfaces: map[*syntax.ClassDecl]bool{}, optIns: lib.OptIns, metro: lib.MetroPlan, partial: opts.Signatures}
+	u.lookups, _ = rec.(LookupRecorder)
+	u.scopeRec, _ = rec.(ScopeRecorder)
+	checkers := make([]*Checker, len(files))
+	for i, f := range files {
+		checkers[i] = &Checker{u: u, file: f, done: map[any]bool{}, checked: map[*syntax.Lambda]types.Type{},
+			jumps:    map[*syntax.Lambda]inlineJumps{},
+			varSites: map[*types.VarSym]varSite{}, concurrent: map[varFrame]bool{}, nestedAssigns: map[*types.VarSym][]types.Type{}, assignsMemo: map[any][]string{},
+			classCache: map[string]classifier{}, funCache: map[funKey][]*types.FunSym{},
+			levelCache: map[funKey][][]*types.FunSym{}}
+		if opts.Only != nil && !opts.Only[f] {
+			checkers[i].looked.off = true // its lookups are those of its last check
+		}
+	}
+	inheritDefaults(files)
+	dropContracts(checkers)
+	if u.parcelize {
+		u.parcelSealed = parcelizeSealed(checkers)
+	}
+	for _, c := range checkers {
+		c.declare()
+	}
+	if lib.t.cp != nil && lib.t.cp.HasSources() {
+		find := u.sourceClass
+		lib.t.sources.Store(&find)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, nil, err
+	}
+	expectActual(checkers)
+	// Imports can name declarations of any file.
+	for _, c := range checkers {
+		c.resolveImports()
+	}
+	// Typealiases can stand for supertypes.
+	for _, c := range checkers {
+		c.resolveAliases()
+	}
+	for _, c := range checkers {
+		c.resolveAliasStars()
+	}
+	for _, c := range checkers {
+		c.resolveSupertypes()
+	}
+	for _, c := range checkers {
+		c.resolveClassBounds()
+	}
+	for _, c := range checkers {
+		c.findCycles()
+	}
+	for _, c := range checkers {
+		c.checkSupers()
+	}
+	for _, c := range checkers {
+		c.resolveSignatures()
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, nil, err
+	}
+	forwardInlinable(checkers)
+	for _, c := range checkers {
+		c.checkMemberImports()
+	}
+	for _, c := range checkers {
+		c.inheritDefaults()
+	}
+	for _, c := range checkers {
+		c.delegations()
+	}
+	checked := onlyCheckers(checkers, opts)
+	for _, c := range checked {
+		c.defaultImpls()
+	}
+	// Omitted return and property types are inferred up front, in order, so
+	// the parallel phase only reads signatures.
+	for _, c := range checked {
+		c.inferAll()
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, nil, err
+	}
+	return u, checkers, nil
+}
+
+// onlyCheckers returns the checkers of the files to check: all of them,
+// or those opts.Only names.
+func onlyCheckers(checkers []*Checker, opts Options) []*Checker {
+	if opts.Only == nil {
+		return checkers
+	}
+	var checked []*Checker
+	for _, c := range checkers {
+		if opts.Only[c.file] {
+			checked = append(checked, c)
+		}
+	}
+	return checked
 }
 
 // sourceClass returns the program's class with an internal name, as
@@ -1274,7 +1315,7 @@ func (c *Checker) resolveClassBounds() {
 // declare enters the file's top-level names into its package.
 func (c *Checker) declare() {
 	c.errs = append(c.errs, c.file.Errors...)
-	c.dropExtensions()
+	c.metroInsert()
 	c.serializableWith()
 	c.parcelize()
 	c.serialization()
@@ -1378,7 +1419,7 @@ func (c *Checker) declareClass(d *syntax.ClassDecl, name string, outer *types.Cl
 		sym = new(types.ClassSym)
 	}
 	*sym = types.ClassSym{Name: name, Methods: map[string][]*types.FunSym{}, Decl: d, Annotation: d.Annotation,
-		Value: d.Value && !d.Interface && !d.Object, Fun: d.Fun,
+		Value: d.Value && !d.Interface && !d.Object, Fun: d.Fun, Data: d.Data,
 		Interface: d.Interface || d.Annotation, Abstract: d.Abstract || d.Interface || d.Annotation || d.Sealed,
 		Final:  d.Object || d.Enum || !d.Open && !d.Abstract && !d.Interface && !d.Sealed,
 		Object: d.Object, Outer: outer, Nested: map[string]*types.ClassSym{}, Aliases: map[string]*types.AliasSym{}, Sealed: d.Sealed,
@@ -1388,7 +1429,7 @@ func (c *Checker) declareClass(d *syntax.ClassDecl, name string, outer *types.Cl
 	}
 	if d.Annotation {
 		sym.Retention, sym.Targets = declaredAnnotation(&d.Modifiers)
-		sym.TargetsKnown = true
+		sym.TargetsKnown, sym.TargetsRead = true, true
 		sym.Repeatable = slices.ContainsFunc(d.Annotations, func(a syntax.Annotation) bool {
 			switch a.Name {
 			case "Repeatable", "kotlin.annotation.Repeatable", "JvmRepeatable", "kotlin.jvm.JvmRepeatable", "java.lang.annotation.Repeatable":
@@ -1694,8 +1735,6 @@ func (c *Checker) resolveFun(d *syntax.FunDecl, owner *types.ClassSym) {
 			c.errorf(d.P, "'@JvmStatic' annotation cannot be used on 'external' members of interface companions")
 		case owner.CompanionOf != nil:
 			// A static method of the outer class calls it: see staticStubs.
-		case d.Recv != nil:
-			c.unsupported(d.P, "@JvmStatic extension in object", "@JvmStatic is not supported on extension functions of objects")
 		case d.Override:
 			c.errorf(d.P, "override member cannot be '@JvmStatic' in an object")
 		default:
@@ -1902,8 +1941,6 @@ func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
 		switch {
 		case owner == nil || !owner.Object || owner.Anonymous:
 			c.errorf(d.P, "only members in named objects and companion objects can be annotated with '@JvmStatic'")
-		case d.Field != nil:
-			c.unsupported(d.P, "@JvmStatic delegated property", "@JvmStatic is not supported on delegated properties")
 		case d.Override && owner.CompanionOf == nil:
 			c.errorf(d.P, "override member cannot be '@JvmStatic' in an object")
 		default:
@@ -2577,17 +2614,8 @@ func (c *Checker) inferProp(d *syntax.PropDecl) {
 
 // checkBodies checks everything not already checked during inference.
 func (c *Checker) checkBodies() {
-	c.annotations(c.file.Annotations, nil, fileSite)
-	for _, d := range c.file.Decls {
-		c.declAnnotations(d, nil)
-	}
+	c.allAnnotations()
 	done := c.u.ctx.Done()
-	for _, d := range c.classes {
-		if d.Sym != nil && d.Sym.Outer == nil {
-			continue // a top-level class, checked above
-		}
-		c.declAnnotations(d, d.Sym.Outer)
-	}
 	for _, d := range c.file.Decls {
 		if cancelled(done) {
 			return
@@ -2612,6 +2640,7 @@ func (c *Checker) checkBodies() {
 	c.propRefs()
 	c.inlineFileChecks()
 	c.typeAnnotations()
+	c.metroIntrinsics()
 }
 
 // checkSignatures is checkBodies for Options.Signatures: the annotations
@@ -3077,7 +3106,7 @@ func (c *Checker) checkFun(d *syntax.FunDecl, cls *types.ClassSym) {
 		s.declare(p)
 	}
 	c.state = state{scope: s, cls: cls, this: newThis(cls), fn: sym, retType: sym.Ret, retAllowed: true, tparams: funTypeParams(sym, cls),
-		recvs: extRecvs(d), ctxs: funContexts(d)}
+		recvs: extRecvs(d), ctxs: funContexts(d), plugin: d.Plugin}
 	c.inAnon(cls)
 	if sym.Suspend {
 		d.Continuation = c.anonName()

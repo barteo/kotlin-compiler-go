@@ -387,6 +387,8 @@ func (c *Checker) join(a, b types.Type) (types.Type, bool) {
 			return a, true // T? and T, for a T that may be null, give T?
 		case types.MayBeNull(b) && !b.P:
 			return b, true
+		case b.P:
+			return b, true // T and T! give T!, which isn't checked for null
 		}
 		return a, true
 	}
@@ -413,16 +415,22 @@ func (c *Checker) join(a, b types.Type) (types.Type, bool) {
 				t = types.ClassType(n)
 			}
 		}
-		if types.MayBeNull(a) || types.MayBeNull(b) {
-			return t.Nullable(), true
-		}
-		return t, true
+		return joinNull(t, a, b), true
 	}
-	t := c.commonSuper(a.NonNull(), b.NonNull(), 0)
-	if types.MayBeNull(a) || types.MayBeNull(b) {
-		t = t.Nullable()
+	return joinNull(c.commonSuper(a.NonNull(), b.NonNull(), 0), a, b), true
+}
+
+// joinNull returns t, the common supertype of a and b, nullable if one
+// of them may be null and isn't a platform type, a platform type if one
+// of them is, as kotlinc's of a String! and an Int! is a Comparable<*>!.
+func joinNull(t, a, b types.Type) types.Type {
+	switch {
+	case types.MayBeNull(a) && !a.P, types.MayBeNull(b) && !b.P:
+		return t.Nullable()
+	case a.P || b.P:
+		return t.Platform()
 	}
-	return t, true
+	return t
 }
 
 // joinBranch joins the type of a branch of an if, when or try, bt, with

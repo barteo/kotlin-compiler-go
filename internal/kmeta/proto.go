@@ -169,13 +169,15 @@ type PluginData struct {
 // name$default method, rather than the function with masks.
 var ComposeMetadata = PluginData{Plugin: "androidx.compose.compiler.plugins.kotlin", Data: []byte{2, 4}}
 
-// Implies is a contract's returns(value) implies (p != null) or (p is
-// T) effect: if the function returns Returns, the parameter at Param (-1:
-// the extension receiver) isn't null, or is an Is if that isn't nil.
-// Returns is ReturnsTrue, ReturnsFalse or ReturnsAny, for returns().
+// Implies is a contract's returns(value) implies (p != null), (p is T)
+// or (p) effect: if the function returns Returns, the parameter at Param
+// (-1: the extension receiver) isn't null, is an Is if that isn't nil, or
+// is true if Holds. Returns is ReturnsTrue, ReturnsFalse or ReturnsAny,
+// for returns().
 type Implies struct {
 	Returns, Param int
 	Is             *Type
+	Holds          bool
 }
 
 // The values of Implies.Returns.
@@ -837,6 +839,9 @@ func (s scope) contract(msg []byte) ([]InPlace, []Implies) {
 		case typ == 0 && args <= 1 && returns != -2 && hasConclusion && conclusion.param >= -1 &&
 			(conclusion.flags == 3 && conclusion.is == nil || conclusion.flags == 0 && conclusion.is != nil):
 			implies = append(implies, Implies{Returns: returns, Param: conclusion.param, Is: conclusion.is})
+		case typ == 0 && args <= 1 && returns != -2 && hasConclusion && conclusion.param >= 0 &&
+			conclusion.flags == 0 && conclusion.is == nil && conclusion.constant < 0:
+			implies = append(implies, Implies{Returns: returns, Param: conclusion.param, Holds: true})
 		}
 	}
 	return out, implies
@@ -926,6 +931,9 @@ func (s scope) function(msg []byte) *Function {
 	}
 	fn.Contexts = max(recvs, len(fn.ContextParams))
 	bindNames(fn.TypeParams, append(paramTypes(append(fn.ContextParams[:len(fn.ContextParams):len(fn.ContextParams)], fn.Params...)), fn.Recv, fn.Ret)...)
+	for _, im := range fn.Implies {
+		bindNames(fn.TypeParams, im.Is) // returns() implies (value is T)
+	}
 	// JvmProtoBufUtil.getJvmMethodSignature: absent parts are the defaults.
 	fn.JVM.Name = fn.Name
 	if sig != nil {

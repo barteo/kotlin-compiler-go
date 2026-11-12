@@ -140,6 +140,8 @@ internal object KcOps {
                 locals = decls(),
                 module = readString(),
                 inheritors = List(readUint().toInt()) { readString() },
+                fieldType = type(),
+                contexts = decls(),
             )
         }
 
@@ -166,6 +168,45 @@ internal class KcModel(val handle: Long, val files: List<KcFile>, val diagnostic
 /** An error in the sources; Go's ka.Diagnostic. */
 internal class KcDiagnostic(val path: String, val line: Int, val col: Int, val message: String, val feature: String) {
     override fun toString() = "$path:$line:$col: " + (if (feature.isEmpty()) "" else "unsupported: $feature: ") + message
+}
+
+/** Diagnostic [d] of [file], at the leaf there: what `collectDiagnostics` reports. */
+internal class KcDiagnosticWithPsi(
+    private val d: KcDiagnostic,
+    file: org.jetbrains.kotlin.psi.KtFile,
+    private val lifetime: org.jetbrains.kotlin.analysis.api.lifetime.KaLifetimeToken,
+) : org.jetbrains.kotlin.analysis.api.diagnostics.KaDiagnosticWithPsi<com.intellij.psi.PsiElement> {
+    private val element: com.intellij.psi.PsiElement = file.findElementAt(offset(file.text)) ?: file
+
+    /** The offset of [d]'s line and column (1-based, the column in UTF-8 bytes) in [text]. */
+    private fun offset(text: String): Int {
+        var at = 0
+        repeat(d.line - 1) {
+            val nl = text.indexOf('\n', at)
+            if (nl < 0) return text.length
+            at = nl + 1
+        }
+        var bytes = d.col - 1
+        while (bytes > 0 && at < text.length && text[at] != '\n') {
+            val c = text[at]
+            bytes -= when {
+                c.code < 0x80 -> 1
+                c.code < 0x800 -> 2
+                Character.isHighSurrogate(c) -> { at++; 4 }
+                else -> 3
+            }
+            at++
+        }
+        return at.coerceAtMost(text.length)
+    }
+
+    override val psi get() = element
+    override val textRanges: Collection<com.intellij.openapi.util.TextRange> get() = listOf(element.textRange)
+    override val diagnosticClass get() = KcDiagnosticWithPsi::class
+    override val factoryName get() = "KC_ERROR"
+    override val severity get() = org.jetbrains.kotlin.analysis.api.diagnostics.KaSeverity.ERROR
+    override val defaultMessage get() = d.message
+    override val token get() = lifetime
 }
 
 /**
@@ -231,6 +272,10 @@ internal class KcDecl(
     val module: String = "",
     /** A library sealed class's direct subclasses' class IDs, from its metadata. */
     val inheritors: List<String> = emptyList(),
+    /** The type of a source property's explicit backing field, if it narrows the property's. */
+    val fieldType: KcType? = null,
+    /** A function's or a property's context parameters (VALUE_PARAMETER); an unnamed one's name is `_`. */
+    val contexts: List<KcDecl> = emptyList(),
 ) {
     fun has(flag: Long) = flags and flag != 0L
     val isCompanion get() = has(COMPANION)

@@ -868,7 +868,7 @@ func (c *Checker) propShadowed(x *syntax.Ident) {
 		if !c.memberShadowed(m, false, types.Type{}, m.Prop.Owner) {
 			return
 		}
-	case m.Getter != nil && !m.Getter.Static:
+	case m.Getter != nil && (!m.Getter.Static || m.Getter.Ext):
 		if !c.memberShadowed(m, m.Getter.Ext, m.Getter.Recv, m.Getter.Owner) {
 			return
 		}
