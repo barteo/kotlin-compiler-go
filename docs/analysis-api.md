@@ -56,8 +56,8 @@ mapping.
   branch [`kc-backend` of barteo/ksp](https://github.com/barteo/ksp/tree/kc-backend),
   google/ksp's main (past release 2.3.13; first KSP 2.3.9) with one commit
   per change. Until 2026-11-11 the fork was a
-  patch series in `jvm/ksp/patches`; the patch numbers below are the
-  branch's commits in order.
+  patch series in `jvm/ksp/patches`, whose patches are the branch's
+  commits in order.
 - Session creation sits behind a `KspBackend` (chosen with
   `-Dksp.backend=aa|kc`).
 - FIR-internal queries sit behind `KcExtras`.
@@ -65,15 +65,15 @@ mapping.
 
 ## Gaps and open questions
 
-- **Slice simplifications (M0.4).** These go when M3/M4 bring the facts in:
+- **Slice simplifications.** These go when the symbol model and the
+  queryable session bring the facts in:
   - Accessors read their flags from PSI modifiers, not from `kc`.
   - ~~There are no backing-field symbols, so `@field:` annotations are dropped.~~
-    Fixed in step 14.
-  - ~~Library type aliases and top-level callables aren't known.~~ Fixed in
-    step 6.
-  - ~~Java sources are ignored.~~ Fixed in step 15.
+    Fixed.
+  - ~~Library type aliases and top-level callables aren't known.~~ Fixed.
+  - ~~Java sources are ignored.~~ Fixed.
   - ~~The PSI join checks each node's PSI class, not yet the whole kind
-    sequence.~~ Fixed in step 18.
+    sequence.~~ Fixed.
   - `dropCaches` does nothing. Dropping PsiManager's caches needs IntelliJ
     extension points that the core environment doesn't register, and sources
     don't change between rounds.
@@ -81,7 +81,7 @@ mapping.
 - **Stock backend not built here.** The jar leaves out `backend/fir/`,
   `standalone/` and the Java stubs in `src/main/java`, because they need the
   AA implementation (FIR, low-level API, standalone), whose artifacts are not
-  reachable from this build host (checked again in step 22).
+  reachable from this build host.
   - The stock `aa` backend therefore has not been compiled or run against
     2.4.21.
   - Upstream's Gradle build still pins `aaKotlinBaseVersion=2.4.20-dev-2407`.
@@ -90,29 +90,29 @@ mapping.
   kotlinx-serialization compiler plugin. Nothing needs it: the
   incremental caches (`PersistentMap`) use hand-written `KSerializer`s
   for their keys and values (`FileSerializer`, `SymbolSerializer`), and
-  step 16 runs them on kc.
+  they run on kc.
 - **Java file manager.** `ResolverAAImpl.javaFileManager` casts the project's
   `JavaFileManager` service to `KotlinCliJavaFileManagerImpl`. The `kc`
   backend gets one from `KotlinCoreEnvironment`, whose setup is part of the
-  cold-start cost that M7 measures.
+  cold-start cost measured in `bench/ksp`.
 - **KSP member coverage.** The fork's bytecode uses 310 AA members; kc
   answers 204, answers 28 for some of its classes, leaves 4 to stubs, 69
   are the API's own and 5 are of types kc never makes
-  (`jvm/kc-aa/members.txt`, `build.sh members`, step 19).
+  (`jvm/kc-aa/members.txt`, `build.sh members`).
 - ~~**Generic annotations' type arguments** (`@A<String>`) aren't in the
-  model (step 20).~~ They are (step 23).
+  model.~~ They are.
 - ~~**Aliases inside an alias's expansion** are expanded, not kept as
-  abbreviations (step 20).~~ A source typealias's are kept (step 23); a
+  abbreviations.~~ A source typealias's are kept; a
   class path typealias's right side isn't read.
 - **One libkc per daemon.** A JVM lets one class loader load libkc, and
   the KSP plugin makes a class loader per KSP class path, so a daemon runs
   kc for one KSP class path only; another fails with
-  `UnsatisfiedLinkError` until the daemon restarts (step 21). Loading a
+  `UnsatisfiedLinkError` until the daemon restarts. Loading a
   copy of the library from another path would load a second Go runtime
   into the process, which is untested; failing over to the `aa` backend
-  needs the stock backend (below).
+  needs the stock backend (above).
 - **Incremental checking.** An edit that changes only bodies checks
-  only the edited files (step 25): 25 ms for a one-file edit on
+  only the edited files: 25 ms for a one-file edit on
   octi-server, down from 45. Every file is still lowered and has its
   written signatures resolved. An edit that changes declarations checks
   the whole module.
