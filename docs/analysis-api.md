@@ -54,7 +54,7 @@ mapping.
 **KSP fork.**
 - KSP2 uses a shaded AA and reaches into FIR internals, so it is forked:
   branch [`kc-backend` of barteo/ksp](https://github.com/barteo/ksp/tree/kc-backend),
-  google/ksp's main (past release 2.3.13; first KSP 2.3.9) with one commit
+  google/ksp's main (past release 2.3.13) with one commit
   per change. Until 2026-11-11 the fork was a
   patch series in `jvm/ksp/patches`, whose patches are the branch's
   commits in order.
