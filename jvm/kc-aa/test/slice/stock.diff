@@ -1,12 +1,5 @@
-> a.Other: property a.Targets.b: kotlin.String (var) (s = "p")
-< annots:a.Targets: property b FIELD:Marker
-> annots:a.Targets: property b PARAM:Other FIELD:Marker
 < decls:java.util.AbstractMap.SimpleEntry: - function java.util.AbstractMap.SimpleEntry.equals(p0: kotlin.Any): kotlin.Boolean
-< decls:java.util.AbstractMap.SimpleEntry: - function java.util.AbstractMap.SimpleEntry.getKey(): K
-< decls:java.util.AbstractMap.SimpleEntry: - function java.util.AbstractMap.SimpleEntry.getValue(): V
 > decls:java.util.AbstractMap.SimpleEntry: - function java.util.AbstractMap.SimpleEntry.equals(p0: kotlin.Any?): kotlin.Boolean
-> decls:java.util.AbstractMap.SimpleEntry: - property java.util.AbstractMap.SimpleEntry.key: K
-> decls:java.util.AbstractMap.SimpleEntry: - property java.util.AbstractMap.SimpleEntry.value: V
 < e.Args: class e.Defaults : kotlin.Any (s = "dflt", i = 3, l = 7L, c = 'c', z = false, f = 1.5f, d = 2.0, u = 3u, e = e.Color.GREEN, k = kotlin.Any::class, arr = ["x", "y"], inner = @e.Inner(s = "d", xs = [1, 2]), v = [])
 < e.Args: class e.Full : kotlin.Any (s = "const!", i = -4, l = 1099511627776L, c = 'q', z = true, f = 0.25f, d = 1000.0, u = 4294967295u, e = e.Color.RED, k = kotlin.String::class, arr = ["a", "const"], inner = @e.Inner(xs = [5], s = "in"), v = [])
 > e.Args: class e.Defaults : kotlin.Any (s = "dflt", i = 3, l = 7L, c = 'c', z = false, f = 1.5f, d = 2.0, u = 3u, e = e.Color.GREEN, k = kotlin.Any::class, arr = ["x", "y"], inner = @e.Inner(s = "d", xs = [1, 2]))
