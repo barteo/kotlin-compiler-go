@@ -91,11 +91,9 @@ mapping.
   answers 204, answers 28 for some of its classes, leaves 4 to stubs, 69
   are the API's own and 5 are of types kc never makes
   (`jvm/kc-aa/members.txt`, `build.sh members`).
-- ~~**Generic annotations' type arguments** (`@A<String>`) aren't in the
-  model.~~ They are.
-- ~~**Aliases inside an alias's expansion** are expanded, not kept as
-  abbreviations.~~ A source typealias's are kept; a
-  class path typealias's right side isn't read.
+- **Aliases inside a class path typealias's expansion** are expanded, not
+  kept as abbreviations: its right side isn't read. A source typealias's
+  are kept.
 - **One libkc per daemon.** A JVM lets one class loader load libkc, and
   the KSP plugin makes a class loader per KSP class path, so a daemon runs
   kc for one KSP class path only; another fails with
