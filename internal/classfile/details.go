@@ -67,11 +67,11 @@ const (
 	TargetSupertype           = 0x10
 	TargetClassTypeParamBound = 0x11
 	TargetTypeParamBound      = 0x12
-	TargetField          = 0x13
-	TargetReturn         = 0x14
-	TargetReceiver       = 0x15
-	TargetParam          = 0x16
-	TargetThrows         = 0x17
+	TargetField               = 0x13
+	TargetReturn              = 0x14
+	TargetReceiver            = 0x15
+	TargetParam               = 0x16
+	TargetThrows              = 0x17
 )
 
 // PathStep is a step of a type annotation's path (JVMS 4.7.20.2): into an
