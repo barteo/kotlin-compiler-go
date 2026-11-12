@@ -18,57 +18,161 @@ import (
 	"github.com/barteo/kotlin-compiler-go/psi"
 )
 
-// analyze lowers, checks and exports the facts of snapshots.
+// analyze lowers, checks and exports the facts of snapshots against a
+// library of its own: AnalyzeArena, all or nothing.
 func analyze(ctx context.Context, cfg Config, snaps []*psi.Snapshot) (*Result, error) {
+	res, _, err := run(ctx, cfg, snaps, nil, false, func() (*classpath.Path, *check.Library, func(), error) {
+		cp, lib, err := driver.OpenLibrary(libraryOptions(cfg))
+		if err != nil {
+			return nil, nil, nil, fmt.Errorf("analysis: %w", err)
+		}
+		return cp, lib, func() { cp.Close() }, nil
+	})
+	if err != nil || res.Complete() {
+		return res, err
+	}
+	return &Result{diags: res.diags}, nil
+}
+
+// openLibrary returns the class path and library to check against and a
+// function that releases them.
+type openLibrary func() (*classpath.Path, *check.Library, func(), error)
+
+// run lowers, checks and exports the facts of snapshots. If partial is
+// false, it stops at the first stage with errors, before opening the
+// library if lowering failed; else it lowers recovering from errors
+// (lower.Recover), checks every file, and exports the facts the errors
+// leave valid (errorSpans), and returns the state an incremental update
+// starts from, or nil if an error isn't one file's. The snapshots
+// declOnly, if it isn't nil, says are only declared (UpdateOptions).
+func run(ctx context.Context, cfg Config, snaps []*psi.Snapshot, declOnly []bool, partial bool, open openLibrary) (*Result, *state, error) {
 	jobs := max(cfg.Jobs, 1)
 	n := len(snaps)
 	files := make([]*syntax.File, n)
 	provs := make([]*lower.Provenance, n)
 	errLists := make([][]*syntax.Error, n)
+	isDeclared := func(i int) bool { return declOnly != nil && declOnly[i] }
 	parallel(n, jobs, func(i int) {
-		files[i], provs[i], errLists[i] = lower.File(snaps[i])
+		if isDeclared(i) {
+			files[i], provs[i], _ = lower.Signatures(snaps[i])
+		} else if partial {
+			files[i], provs[i], errLists[i] = lower.Recover(snaps[i])
+		} else {
+			files[i], provs[i], errLists[i] = lower.File(snaps[i])
+		}
 	})
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	res := &Result{facts: map[ElementID]*Fact{}}
+	res := &Result{}
+	broken := make([]bool, n)
+	drops := make([][]span, n)
+	// lost is set if lowering dropped a declaration: an update that
+	// checks only the files that changed can't start from this one, whose
+	// other files were checked without it.
+	lost := false
 	for i, es := range errLists {
 		for _, e := range es {
-			res.diags = append(res.diags, diagnostic(snaps[i].Path(), e))
+			d := diagnostic(snaps[i], e)
+			res.diags = append(res.diags, d)
+			if drop(snaps[i], d, &drops[i], &broken[i]) != reachCode {
+				lost = true
+			}
 		}
 	}
-	if len(res.diags) > 0 {
-		return res, nil
+	if len(res.diags) > 0 && !partial {
+		return res, nil, nil
 	}
 	if d := duplicateClasses(files); d != nil {
 		res.diags = append(res.diags, *d)
-		return res, nil
+		return res, nil, nil
 	}
 
-	cp, lib, err := driver.OpenLibrary(driver.Options{
-		JDKHome: cfg.JDKHome, NoJDK: cfg.NoJDK, ClassPath: cfg.ClassPath,
-		ModuleName: cfg.ModuleName, Jobs: jobs,
-	})
+	cp, lib, done, err := open()
 	if err != nil {
-		return nil, fmt.Errorf("analysis: %w", err)
+		return nil, nil, err
 	}
-	defer cp.Close()
-	rec := &recorder{when: map[*syntax.When]whenReport{}, stmt: map[syntax.Stmt]bool{}, unreachable: map[syntax.Stmt]bool{}, annots: map[*syntax.File]map[syntax.Pos]*types.ClassSym{}, elvis: map[*syntax.Binary]bool{}, typeRefs: map[*syntax.TypeRef]types.Type{}, annotClass: map[*syntax.Annotation]*types.ClassSym{}, stmtTypes: map[syntax.Expr]types.Type{}, aliases: map[any]*types.AliasSym{}}
-	errs, err := check.CheckContext(ctx, files, lib, jobs, rec)
+	defer done()
+	rec := newRecorder()
+	var opts check.Options
+	if slices.Contains(declOnly, true) {
+		opts.Only = map[*syntax.File]bool{}
+		for i, f := range files {
+			if !isDeclared(i) {
+				opts.Only[f] = true
+			}
+			broken[i] = isDeclared(i) // no facts
+		}
+	}
+	errs, err := check.CheckOptions(ctx, files, lib, jobs, rec, opts)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
+	index := map[string]int{}
+	for i, s := range snaps {
+		index[s.Path()] = i
+	}
+	whole := true // every error is one file's
 	for _, e := range errs {
-		res.diags = append(res.diags, diagnostic(e.File, e))
+		i, ok := index[e.File]
+		var snap *psi.Snapshot
+		if ok {
+			snap = snaps[i]
+		}
+		d := diagnostic(snap, e)
+		res.diags = append(res.diags, d)
+		if ok {
+			drop(snap, d, &drops[i], &broken[i])
+		} else {
+			whole = false
+			for i := range broken { // not one file's: none is trusted
+				broken[i] = true
+			}
+		}
 	}
-	if len(res.diags) > 0 {
-		return res, nil
+	if len(res.diags) > 0 && !partial {
+		return res, nil, nil
 	}
+	var syms []any
+	if slices.Contains(broken, false) {
+		b := newBuilder(res, snaps, files, provs, rec)
+		b.cp = cp
+		if slices.Contains(broken, true) {
+			b.broken = broken
+		}
+		b.drops = drops
+		b.build()
+		syms = b.syms
+	}
+	if !partial || !whole || lost {
+		return res, nil, nil
+	}
+	st := newState(res, snaps, syms)
+	if st != nil {
+		st.declared = declOnly
+		parallel(n, jobs, func(i int) {
+			st.lookups[i] = rec.fileLookups(files[i])
+			st.decls[i] = declared(snaps[i])
+		})
+	}
+	return res, st, nil
+}
 
-	b := newBuilder(res, snaps, files, provs, rec)
-	b.cp = cp
-	b.build()
-	return res, nil
+// drop records the facts of snap that diagnostic d of it invalidates:
+// spans of nodes, or all of them (broken). It returns the error's reach.
+func drop(snap *psi.Snapshot, d Diagnostic, spans *[]span, broken *bool) reach {
+	if d.Line < 1 {
+		*broken, *spans = true, nil
+		return reachFile
+	}
+	s, r := errorSpans(snap, d.Range.Start)
+	switch {
+	case r == reachFile:
+		*broken, *spans = true, nil
+	case !*broken:
+		*spans = append(*spans, s...)
+	}
+	return r
 }
 
 func parallel(n, jobs int, fn func(i int)) {
@@ -88,15 +192,48 @@ func parallel(n, jobs int, fn func(i int)) {
 	wg.Wait()
 }
 
-func diagnostic(path string, e *syntax.Error) Diagnostic {
-	if e.File != "" {
-		path = e.File
+// diagnostic returns the diagnostic of e, an error in snap, which may be
+// nil if it isn't known.
+func diagnostic(snap *psi.Snapshot, e *syntax.Error) Diagnostic {
+	path := e.File
+	if path == "" && snap != nil {
+		path = snap.Path()
 	}
 	code := "source_error"
 	if e.Feature != "" {
 		code = "unsupported:" + e.Feature
 	}
-	return Diagnostic{Path: path, Line: e.Pos.Line, Column: e.Pos.Col, Code: code, Message: e.Msg}
+	d := Diagnostic{Path: path, Line: e.Pos.Line, Column: e.Pos.Col, Code: code, Kotlinc: e.Code, Message: e.Msg, Data: e.Data}
+	d.Range = errorRange(snap, d.Line, d.Column)
+	return d
+}
+
+// errorRange returns the range of the token at line and column of snap:
+// what an editor underlines. An error's position is where the construct
+// it is about starts: its first token, or a string literal. At a position with no token, or
+// outside snap, the range is empty.
+func errorRange(snap *psi.Snapshot, line, col int) psi.Range {
+	if snap == nil || line < 1 || col < 1 {
+		return psi.Range{}
+	}
+	src := snap.Source()
+	off := 0
+	for l := 1; l < line; l++ {
+		i := strings.IndexByte(src[off:], '\n')
+		if i < 0 {
+			return psi.Range{Start: len(src), End: len(src)}
+		}
+		off += i + 1
+	}
+	off = min(off+col-1, len(src))
+	if n := snap.NodeAt(off); n.Valid() && n.IsLeaf() && !n.IsTrivia() && n.Range().Start <= off && off < n.Range().End {
+		// A string literal is all of it, not its quote.
+		if p := n.Parent(); n.NumericKind() == psi.KindOPEN_QUOTE && p.NumericKind() == psi.KindSTRING_TEMPLATE {
+			return p.Range()
+		}
+		return n.Range()
+	}
+	return psi.Range{Start: off, End: off}
 }
 
 // duplicateClasses reports two files with the same facade class, which
@@ -126,6 +263,10 @@ func duplicateClasses(files []*syntax.File) *Diagnostic {
 	return nil
 }
 
+func newRecorder() *recorder {
+	return &recorder{when: map[*syntax.When]whenReport{}, stmt: map[syntax.Stmt]bool{}, unreachable: map[syntax.Stmt]bool{}, annots: map[*syntax.File]map[syntax.Pos]*types.ClassSym{}, elvis: map[*syntax.Binary]bool{}, typeRefs: map[*syntax.TypeRef]types.Type{}, annotClass: map[*syntax.Annotation]*types.ClassSym{}, stmtTypes: map[syntax.Expr]types.Type{}, aliases: map[any]*types.AliasSym{}}
+}
+
 type whenReport struct{ exhaustive, used bool }
 
 // recorder keeps what the checker reports, the last report of each node.
@@ -149,6 +290,8 @@ type recorder struct {
 	// aliases are the typealiases type references and constructor calls
 	// name.
 	aliases map[any]*types.AliasSym
+	// lookups are the names each file looked up (check.LookupRecorder).
+	lookups map[*syntax.File][]lookup
 }
 
 // Alias implements check.AliasRecorder.
@@ -218,6 +361,7 @@ func (r *recorder) Annotation(f *syntax.File, a *syntax.Annotation, cls *types.C
 // lowered from.
 type builder struct {
 	res   *Result
+	facts map[ElementID]*Fact // the facts found, of res when built
 	snaps []*psi.Snapshot
 	files []*syntax.File
 	provs []*lower.Provenance
@@ -235,6 +379,15 @@ type builder struct {
 	pkgAnnots map[string][]string
 
 	symIDs map[any]uint32
+	// declAt are the psi nodes of declarations whose AST node is another
+	// construct's: a catch parameter's, which the Catch holds.
+	declAt map[*types.VarSym]ElementID
+	// broken marks the files whose facts aren't exported: those an error
+	// invalidates all of, or whose facts are kept from an earlier update;
+	// nil if none. drops are the nodes of each other file whose facts
+	// errors invalidate (errorSpans), which aren't exported either.
+	broken []bool
+	drops  [][]span
 	syms   []any // *types.VarSym, *types.FunSym or *types.ClassSym, by ID-1
 
 	// negatedAt are the PREFIX_EXPRESSIONs of literals folded from them:
@@ -253,7 +406,7 @@ type builder struct {
 }
 
 func newBuilder(res *Result, snaps []*psi.Snapshot, files []*syntax.File, provs []*lower.Provenance, rec *recorder) *builder {
-	b := &builder{res: res, snaps: snaps, files: files, provs: provs, rec: rec,
+	b := &builder{res: res, facts: map[ElementID]*Fact{}, snaps: snaps, files: files, provs: provs, rec: rec,
 		where: map[any]ElementID{}, names: map[*types.FunSym]string{}, symIDs: map[any]uint32{}, receivers: map[*types.VarSym]ElementID{}, classAt: map[ElementID]*types.ClassSym{}, negatedAt: map[*syntax.IntLit]ElementID{}, pkgAnnots: map[string][]string{}}
 	b.cv = converter{decl: b.decl, supers: map[*types.ClassSym][]string{}}
 	return b
@@ -286,6 +439,11 @@ func (b *builder) build() {
 	entries := make([][]entry, len(b.snaps))
 	for i, p := range b.provs {
 		sid := b.snaps[i].ID()
+		if b.isBroken(i) {
+			// Only what the others' facts refer to.
+			p.Each(func(n any, id psi.NodeID) { b.where[n] = ElementID{sid, id} })
+			continue
+		}
 		p.Each(func(n any, id psi.NodeID) {
 			b.where[n] = ElementID{sid, id}
 			entries[i] = append(entries[i], entry{n, id, rank(n)})
@@ -326,27 +484,33 @@ func (b *builder) build() {
 	b.annotations()
 	b.symbols()
 
-	for id := range b.res.facts {
-		b.res.order = append(b.res.order, id)
-	}
+	// The facts by file, but the broken files' and the dropped nodes',
+	// which the later passes may have found.
+	files := make([][]*Fact, len(b.snaps))
 	index := map[psi.SnapshotID]int{}
 	for i, s := range b.snaps {
 		index[s.ID()] = i
 	}
-	slices.SortFunc(b.res.order, func(a, c ElementID) int {
-		if r := cmp.Compare(index[a.Snapshot], index[c.Snapshot]); r != 0 {
-			return r
+	for el, f := range b.facts {
+		if i := index[el.Snapshot]; !b.isBroken(i) && (b.drops == nil || !dropped(b.drops[i], el.Node)) {
+			files[i] = append(files[i], f)
 		}
-		return cmp.Compare(a.Node, c.Node)
-	})
+	}
+	for _, fs := range files {
+		slices.SortFunc(fs, func(a, c *Fact) int { return cmp.Compare(a.Element.Node, c.Element.Node) })
+	}
+	b.res.setFiles(b.snaps, files)
 }
+
+// isBroken reports whether the facts of the ith file aren't exported.
+func (b *builder) isBroken(i int) bool { return b.broken != nil && b.broken[i] }
 
 // fact returns the fact of el, adding it.
 func (b *builder) fact(el ElementID) *Fact {
-	f := b.res.facts[el]
+	f := b.facts[el]
 	if f == nil {
 		f = &Fact{Element: el}
-		b.res.facts[el] = f
+		b.facts[el] = f
 	}
 	return f
 }
@@ -486,6 +650,16 @@ func (b *builder) typeRef(r *syntax.TypeRef, t types.Type) {
 		f.Deprecated = deprecated(classDeprecation(t.C))
 	}
 	b.set(el, f)
+	// Outer.Inner: each qualifier that names an outer class is that class.
+	if t.K == types.Class && f.ImportableName == "" {
+		q := b.node(el).ChildKind(psi.KindUSER_TYPE)
+		for c := t.C.Outer; c != nil && q.Valid() && psi.Unquote(q.ChildKind(psi.KindREFERENCE_EXPRESSION).Text()) == c.Name; c = c.Outer {
+			if qt := b.cv.typ(types.ClassType(c)); qt != nil {
+				b.set(ElementID{Snapshot: el.Snapshot, Node: q.ID()}, Fact{Role: "type", Type: qt})
+			}
+			q = q.ChildKind(psi.KindUSER_TYPE)
+		}
+	}
 	// The type is recorded on the USER_TYPE; the TYPE_REFERENCE around it,
 	// through a NULLABLE_TYPE, is the same type.
 	for n := b.node(el).Parent(); n.Valid(); n = n.Parent() {
@@ -553,6 +727,7 @@ func (b *builder) visit(n any, el ElementID) {
 	case *syntax.Catch:
 		if x.Sym != nil {
 			b.typeRef(x.Type, x.Sym.Type)
+			b.declareAt(x.Sym, b.node(el).ChildKind(psi.KindVALUE_PARAMETER_LIST).ChildKind(psi.KindVALUE_PARAMETER), el.Snapshot)
 		}
 	case *syntax.VarStmt:
 		b.varStmt(x, el)
@@ -565,6 +740,9 @@ func (b *builder) visit(n any, el ElementID) {
 	case *syntax.Destructure:
 		b.destructured(x, b.node(el), el.Snapshot)
 	case *syntax.For:
+		if x.Names == nil && x.Sym != nil {
+			b.declareAt(x.Sym, b.node(el).ChildKind(psi.KindVALUE_PARAMETER), el.Snapshot)
+		}
 		if x.Names != nil && x.Body != nil {
 			d := b.node(el).ChildKind(psi.KindVALUE_PARAMETER).ChildKind(psi.KindDESTRUCTURING_DECLARATION)
 			b.destructured(generatedDestructure(x.Body, x.Var), d, el.Snapshot)
@@ -579,6 +757,20 @@ func (b *builder) visit(n any, el ElementID) {
 	case syntax.Expr:
 		b.expr(x, el)
 	}
+}
+
+// declareAt records psi node p as the declaration of s, a variable whose
+// AST node is a statement around it: a catch's or a for loop's.
+func (b *builder) declareAt(s *types.VarSym, p psi.NodeRef, snap psi.SnapshotID) {
+	if !p.Valid() {
+		return
+	}
+	el := ElementID{Snapshot: snap, Node: p.ID()}
+	if b.declAt == nil {
+		b.declAt = map[*types.VarSym]ElementID{}
+	}
+	b.declAt[s] = el
+	b.set(el, Fact{Role: "declaration", Symbol: b.sym(s)})
 }
 
 func (b *builder) propDecl(x *syntax.PropDecl, el ElementID) {
@@ -681,7 +873,13 @@ func (b *builder) destructured(s *syntax.Destructure, d psi.NodeRef, snap psi.Sn
 			continue
 		}
 		if vars[0].Name == e.Name() {
-			b.varStmt(vars[0], ElementID{Snapshot: snap, Node: e.ID()})
+			el := ElementID{Snapshot: snap, Node: e.ID()}
+			b.varStmt(vars[0], el)
+			// The entry declares the local, which the checker's expansion
+			// has no psi of its own for.
+			if _, ok := b.where[vars[0]]; !ok {
+				b.where[vars[0]] = el
+			}
 		}
 		vars = vars[1:]
 	}
@@ -759,10 +957,26 @@ func (b *builder) expr(x syntax.Expr, el ElementID) {
 		}
 		switch {
 		case x.Ref != nil:
-			// A callable reference: the call its body makes.
+			// A callable reference: the call its body makes, or the
+			// property it reads.
 			f.Call = b.call(refCall(x))
+			if f.Call == nil {
+				f.Symbol = b.sym(refProperty(x))
+			}
+			b.refClass(x, el)
 		case x.SuspendMod:
 			b.suspendCall(x, el)
+		}
+	case *syntax.ClassLit:
+		switch n := firstChild(b.node(el)); {
+		case x.Bound:
+		case x.Class.K == types.Class && x.Class.C != nil:
+			b.classNames(n, el.Snapshot, x.Class.C)
+		case x.Class.K == types.TypeParam && n.NumericKind() == psi.KindREFERENCE_EXPRESSION:
+			// T::class of a reified T.
+			if t := b.cv.typ(x.Class); t != nil {
+				b.set(ElementID{Snapshot: el.Snapshot, Node: n.ID()}, Fact{Role: "type", Type: t})
+			}
 		}
 	case *syntax.When:
 		f.When = b.when(x)
@@ -782,6 +996,16 @@ func (b *builder) expr(x syntax.Expr, el ElementID) {
 			f.Symbol = b.sym(x.Decl.Sym)
 		}
 	}
+	switch x := x.(type) {
+	case *syntax.Call:
+		if m, ok := x.Fun.(*syntax.Member); ok && x.Ctor != nil {
+			b.outerQualifier(m.X, x.Ctor.Outer)
+		}
+	case *syntax.Member:
+		if x.Object != nil {
+			b.outerQualifier(x.X, x.Object.Outer)
+		}
+	}
 	if m := safeAccess(x); m != nil && m.SelNonNull {
 		// x?.a on an x that can't be null: as kotlinc's binding
 		// context, the type stays a?'s, which the compiler's own
@@ -791,6 +1015,33 @@ func (b *builder) expr(x syntax.Expr, el ElementID) {
 		}
 	}
 	b.set(el, f)
+}
+
+// outerQualifier records the classes that qualify a nested class's name
+// in an expression, Outer in Outer.Nested(), on the names that have no
+// fact of their own.
+func (b *builder) outerQualifier(q syntax.Expr, c *types.ClassSym) {
+	for c != nil && q != nil {
+		var name string
+		var next syntax.Expr
+		switch x := q.(type) {
+		case *syntax.Ident:
+			name = x.Name
+		case *syntax.Member:
+			name, next = x.Name, x.X
+		default:
+			return
+		}
+		el, ok := b.where[q]
+		if !ok || name != c.Name[strings.LastIndexAny(c.Name, "./$")+1:] {
+			return
+		}
+		if f, ok := b.facts[el]; ok && (f.Symbol != 0 || f.Call != nil) {
+			return
+		}
+		b.set(el, Fact{Role: "reference", Symbol: b.sym(c), Classifier: true, ImportableName: classFQ(c)})
+		q, c = next, c.Outer
+	}
 }
 
 // safeAccess returns the safe access x is, x?.a or x?.f(), or nil.
@@ -1027,8 +1278,26 @@ func (b *builder) callExpr(x *syntax.Call, el ElementID, f *Fact) {
 		ref := b.node(el).ChildKind(psi.KindREFERENCE_EXPRESSION)
 		fe, ok = ElementID{el.Snapshot, ref.ID()}, ref.Valid()
 	}
+	if b.node(el).NumericKind() == psi.KindBINARY_EXPRESSION {
+		// a f b, an infix call: its fact is the callee's, not the
+		// operand a's.
+		return
+	}
 	if !ok || fe == el {
 		return
+	}
+	if name := psi.Unquote(b.node(fe).Text()); x.Sym != nil && x.Sym.Name == "invoke" && name != "invoke" {
+		// f(x) or x.f() of a value f: the callee names f, not invoke.
+		s = 0
+		for _, e := range append([]syntax.Expr{x.Fun}, x.Args...) {
+			if m, ok := e.(*syntax.Member); ok {
+				e = m.X
+			}
+			if id, ok := e.(*syntax.Ident); ok && id.Name == name && id.Sym != nil {
+				s = b.sym(id.Sym)
+				break
+			}
+		}
 	}
 	cf := Fact{Role: "reference", Symbol: s, Call: copyCall(f.Call), Builtin: f.Builtin, ImplicitReceiver: copyID(f.ImplicitReceiver)}
 	if x.Sym != nil {
@@ -1054,6 +1323,16 @@ func (b *builder) callExpr(x *syntax.Call, el ElementID, f *Fact) {
 // function type reads when the checker rewrote it, f() in an inner class
 // being outer.f(): the callee, written f, is that property's reference.
 func (b *builder) invokeCallee(x *syntax.Call, el ElementID) {
+	if id, ok := x.Fun.(*syntax.Ident); ok && id.Sym != nil {
+		// s.f() of a value f of an extension function type: f is the
+		// callee the call is written with.
+		if _, written := b.where[id]; !written {
+			if ref := b.node(el).ChildKind(psi.KindREFERENCE_EXPRESSION); ref.Valid() && psi.Unquote(ref.Text()) == id.Name {
+				b.set(ElementID{el.Snapshot, ref.ID()}, Fact{Role: "reference", Symbol: b.sym(id.Sym), UsedAsExpression: true})
+			}
+		}
+		return
+	}
 	m, ok := x.Fun.(*syntax.Member)
 	if !ok {
 		return
@@ -1148,13 +1427,16 @@ var textExtensions = map[types.Builtin]struct{ name, recv string }{
 // literals' facts, as calls of unaryMinus on the literals' values.
 func (b *builder) negated() {
 	for i, p := range b.provs {
+		if b.isBroken(i) {
+			continue
+		}
 		sid := b.snaps[i].ID()
 		p.Negated(func(id psi.NodeID, lit *syntax.IntLit) {
 			el, ok := b.where[lit]
 			if !ok {
 				return
 			}
-			src, ok := b.res.facts[el]
+			src, ok := b.facts[el]
 			if !ok || src.Type == nil {
 				return
 			}
@@ -1296,6 +1578,31 @@ func (b *builder) targets(f *types.FunSym) []Call {
 			}
 			seen[g] = true
 			out = append(out, b.funCall(g))
+			walk(g)
+		}
+	}
+	walk(f)
+	return out
+}
+
+// overrides returns the declarations in the sources of the functions f
+// overrides, through every supertype, each once.
+func (b *builder) overrides(f *types.FunSym) []ElementID {
+	if b.rec.overridden == nil {
+		return nil
+	}
+	var out []ElementID
+	seen := map[*types.FunSym]bool{f: true}
+	var walk func(*types.FunSym)
+	walk = func(f *types.FunSym) {
+		for _, g := range b.rec.overridden(f) {
+			if seen[g] {
+				continue
+			}
+			seen[g] = true
+			if d := b.decl(g.Decl); d != nil {
+				out = append(out, *d)
+			}
 			walk(g)
 		}
 	}
@@ -1701,7 +2008,7 @@ func (b *builder) usedAsExpression() {
 			reported[ElementID{el.Snapshot, t.ID()}] = used
 		}
 	}
-	for el, f := range b.res.facts {
+	for el, f := range b.facts {
 		if f.Role != "expression" && f.Role != "reference" {
 			continue
 		}
@@ -1718,7 +2025,10 @@ func (b *builder) usedAsExpression() {
 // wrappers gives wrappers their inner expressions' facts, innermost
 // first.
 func (b *builder) wrappers() {
-	for _, s := range b.snaps {
+	for i, s := range b.snaps {
+		if b.isBroken(i) {
+			continue
+		}
 		for id := psi.NodeID(s.NodeCount()); id >= 1; id-- {
 			n := s.Node(id)
 			if !isWrapper(n.NumericKind()) {
@@ -1728,7 +2038,7 @@ func (b *builder) wrappers() {
 			if !in.Valid() {
 				continue
 			}
-			src, ok := b.res.facts[ElementID{s.ID(), in.ID()}]
+			src, ok := b.facts[ElementID{s.ID(), in.ID()}]
 			if !ok {
 				continue
 			}
@@ -1831,6 +2141,7 @@ func (b *builder) symbol(id uint32, s any) Symbol {
 		if sym.Declaration == nil && s.Name == "<init>" && s.Owner != nil {
 			sym.Declaration = b.decl(s.Owner.Decl)
 		}
+		sym.Overrides = b.overrides(s)
 	case *types.VarSym:
 		switch s.Kind {
 		case types.Local:
@@ -1850,6 +2161,9 @@ func (b *builder) symbol(id uint32, s any) Symbol {
 			sym.Type = *t
 		}
 		sym.Declaration = b.decl(s.Decl)
+		if el, ok := b.declAt[s]; ok {
+			sym.Declaration = &el
+		}
 	}
 	return sym
 }
@@ -1969,6 +2283,100 @@ func operatorCall(stmts []syntax.Stmt) *syntax.Call {
 // refCall returns the call of the function, or constructor, that callable
 // reference l names, which the checker made l's body; nil for a
 // property.
+// refProperty returns the property a callable reference names, or nil.
+func refProperty(l *syntax.Lambda) any {
+	if k := l.KProp; k != nil {
+		if k.Prop != nil {
+			return k.Prop
+		}
+		if k.Getter != nil {
+			return k.Getter
+		}
+	}
+	var p any
+	syntax.Inspect(l.Body, func(n any) bool {
+		switch x := n.(type) {
+		case *syntax.Member:
+			if x.Name == l.Ref.Name && p == nil {
+				if x.Prop != nil {
+					p = x.Prop
+				} else if x.Getter != nil {
+					p = x.Getter
+				}
+			}
+		case *syntax.Ident:
+			if x.Name == l.Ref.Name && p == nil {
+				if x.Sym != nil && x.Sym.Kind != types.Local && x.Sym.Kind != types.Param {
+					p = x.Sym
+				} else if x.Getter != nil {
+					p = x.Getter
+				}
+			}
+		}
+		return p == nil
+	})
+	return p
+}
+
+// refClass records the class an unbound callable reference's left side
+// names, C in C::m or C<T>::m, as the reference's: the receiver type of
+// the function it is.
+func (b *builder) refClass(l *syntax.Lambda, el ElementID) {
+	if l.Ref.X == nil && l.Ref.Type == nil || l.Ref.Bound != nil || len(l.Params) == 0 || l.Params[0].Sym == nil {
+		return
+	}
+	t := l.Params[0].Sym.Type
+	if t.K != types.Class || t.C == nil {
+		return
+	}
+	b.classNames(firstChild(b.node(el)), el.Snapshot, t.C)
+}
+
+// classNames records class c, and its outer classes, on the names of
+// psi expression n that spells it, Outer.C or C<T>, that have no fact of
+// their own.
+func (b *builder) classNames(n psi.NodeRef, snap psi.SnapshotID, c *types.ClassSym) {
+	for c != nil && n.Valid() {
+		var next psi.NodeRef
+		switch n.NumericKind() {
+		case psi.KindCALL_EXPRESSION:
+			n = firstChild(n)
+			continue
+		case psi.KindDOT_QUALIFIED_EXPRESSION:
+			next = firstChild(n)
+			var last psi.NodeRef
+			for ch := n.FirstChild(); ch.Valid(); ch = ch.NextSibling() {
+				if !ch.IsTrivia() {
+					last = ch
+				}
+			}
+			n = last
+			if n.NumericKind() == psi.KindCALL_EXPRESSION {
+				n = firstChild(n)
+			}
+		}
+		if n.NumericKind() != psi.KindREFERENCE_EXPRESSION || n.Name() != c.Name[strings.LastIndexAny(c.Name, "./$")+1:] {
+			return
+		}
+		el := ElementID{Snapshot: snap, Node: n.ID()}
+		if f, ok := b.facts[el]; ok && (f.Symbol != 0 || f.Call != nil) {
+			return
+		}
+		b.set(el, Fact{Role: "reference", Symbol: b.sym(c), Classifier: true, ImportableName: classFQ(c)})
+		n, c = next, c.Outer
+	}
+}
+
+// firstChild returns n's first child that isn't whitespace or a comment.
+func firstChild(n psi.NodeRef) psi.NodeRef {
+	for c := n.FirstChild(); c.Valid(); c = c.NextSibling() {
+		if !c.IsTrivia() {
+			return c
+		}
+	}
+	return psi.NodeRef{}
+}
+
 func refCall(l *syntax.Lambda) *syntax.Call {
 	if l.KFun != nil {
 		return l.KFun

@@ -1,0 +1,79 @@
+-- kc-lsp.json --
+{"modules": [{"name": "main", "sourceRoots": ["src"]}]}
+-- _needs --
+library
+-- src/A.kt --
+package p
+
+fun /*|use*/use(): Int {
+    val l: /*|list*/List<Int> = /*|listOf*/listOf(1)
+    /*|println*/println(l.size)
+    val s = "x"./*|trim*/trim()
+    val p = /*|pair*/Pair(1, s)
+    val m = mutableListOf<String>()
+    m./*|add*/add(s)
+    return s./*|length*/length + p.first
+}
+-- src/B.kt --
+package p
+
+fun other() = listOf("a").size + listOf(1, 2).size + listOf(3).size
+-- script --
+initialize
+open src/A.kt
+wait
+definition src/A.kt @listOf
+definition src/A.kt @println
+definition src/A.kt @trim
+definition src/A.kt @pair
+definition src/A.kt @add
+definition src/A.kt @length
+definition src/A.kt @list
+typedef src/A.kt @listOf
+hover src/A.kt @listOf
+calls src/A.kt @use
+calls src/A.kt @listOf
+-- want --
+> initialize
+> open src/A.kt
+> wait
+> definition src/A.kt @listOf
+.libcache/kotlin-stdlib-sources/jvmMain/kotlin/collections/CollectionsJVM.kt 20:22-20:28 "listOf"
+> definition src/A.kt @println
+.libcache/kotlin-stdlib-sources/jvmMain/kotlin/io/Console.kt 84:18-84:25 "println"
+> definition src/A.kt @trim
+.libcache/kotlin-stdlib-sources/commonMain/kotlin/text/Strings.kt 180:25-180:29 "trim"
+> definition src/A.kt @pair
+.libcache/kotlin-stdlib-sources/commonMain/kotlin/util/Tuples.kt 26:18-26:22 "Pair"
+> definition src/A.kt @add
+.libcache/kotlin-stdlib-sources/jvmMain/kotlin/Collections.kt 331:24-331:27 "add"
+> definition src/A.kt @length
+.libcache/kotlin-stdlib-sources/jvmMain/kotlin/String.kt 27:31-27:37 "length"
+> definition src/A.kt @list
+.libcache/kotlin-stdlib-sources/jvmMain/kotlin/Collections.kt 225:24-225:28 "List"
+> typedef src/A.kt @listOf
+.libcache/kotlin-stdlib-sources/jvmMain/kotlin/Collections.kt 225:24-225:28 "List"
+> hover src/A.kt @listOf
+3:23-3:29 "listOf"
+```kotlin
+fun <T> listOf(element: T): List<T>
+```
+
+Returns a new read-only list containing only the specified object `element`.
+
+The returned list is serializable.
+
+**Samples:**
+- `samples.collections.Collections.Lists.singletonReadOnlyList`
+> calls src/A.kt @use
+use [12] (p) src/A.kt 2:4-2:7
+  -> mutableListOf [12] (kotlin.collections) .libcache/kotlin-stdlib-sources/commonMain/kotlin/collections/Collections.kt 105:22-105:35: 7:12-7:25 "mutableListOf"
+  -> trim [12] (kotlin.text) .libcache/kotlin-stdlib-sources/commonMain/kotlin/text/Strings.kt 180:25-180:29: 5:16-5:20 "trim"
+  -> Pair [5] (kotlin) .libcache/kotlin-stdlib-sources/commonMain/kotlin/util/Tuples.kt 26:18-26:22: 6:12-6:16 "Pair"
+  -> add [6] (MutableList) .libcache/kotlin-stdlib-sources/jvmMain/kotlin/Collections.kt 331:24-331:27: 8:6-8:9 "add"
+  -> listOf [12] (kotlin.collections) .libcache/kotlin-stdlib-sources/jvmMain/kotlin/collections/CollectionsJVM.kt 20:22-20:28: 3:23-3:29 "listOf"
+  -> println [12] (kotlin.io) .libcache/kotlin-stdlib-sources/jvmMain/kotlin/io/Console.kt 84:18-84:25: 4:4-4:11 "println"
+> calls src/A.kt @listOf
+listOf [12] (kotlin.collections) .libcache/kotlin-stdlib-sources/jvmMain/kotlin/collections/CollectionsJVM.kt 20:22-20:28
+  <- use [12] (p) src/A.kt 2:4-2:7: 3:23-3:29 "listOf"
+  <- other [12] (p) src/B.kt 2:4-2:9: 2:14-2:20 "listOf", 2:53-2:59 "listOf"

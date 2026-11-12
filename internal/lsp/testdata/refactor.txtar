@@ -1,0 +1,63 @@
+-- kc-lsp.json --
+{"modules": [{"name": "main", "sourceRoots": ["src"]}]}
+-- src/app/Main.kt --
+package app
+
+fun /*|g*/g(a: Int, b: String) = a + b.length
+
+fun /*|f*/f(s: String): Int {
+    val /*|n*/n = s.trim().length
+    return g(/*|arg*/n, s) + /*|x*/s.length/*|xe*/ * 2
+}
+-- script --
+initialize
+open src/app/Main.kt
+wait
+actions src/app/Main.kt @n
+actions src/app/Main.kt @x @xe only=refactor.extract apply=1
+wait
+diagnostics src/app/Main.kt
+actions src/app/Main.kt @arg only=refactor.rewrite
+actions src/app/Main.kt @g only=refactor
+actions src/app/Main.kt @g only=quickfix
+-- want --
+> initialize
+> open src/app/Main.kt
+> wait
+> actions src/app/Main.kt @n
+1. Inline variable 'n' [refactor.inline] 
+  src/app/Main.kt:
+    5:0-6:0 "    val n = s.trim().length\n" -> ""
+    6:13-6:14 "n" -> "s.trim().length"
+2. Specify type explicitly [refactor.rewrite] 
+  src/app/Main.kt:
+    5:9-5:9 "" -> ": Int"
+> actions src/app/Main.kt @x @xe only=refactor.extract apply=1
+1. Extract variable [refactor.extract] 
+  src/app/Main.kt:
+    6:4-6:4 "" -> "val length = s.length\n    "
+    6:21-6:29 "s.length" -> "length"
+> wait
+> diagnostics src/app/Main.kt
+[]
+> actions src/app/Main.kt @arg only=refactor.rewrite
+1. Add 'a =' to argument [refactor.rewrite] 
+  src/app/Main.kt:
+    7:13-7:13 "" -> "a = "
+2. Add names to call arguments [refactor.rewrite] 
+  src/app/Main.kt:
+    7:13-7:13 "" -> "a = "
+    7:16-7:16 "" -> "b = "
+3. Put arguments on separate lines [refactor.rewrite] 
+  src/app/Main.kt:
+    7:12-7:18 "(n, s)" -> "(\n        n,\n        s\n    )"
+> actions src/app/Main.kt @g only=refactor
+1. Specify return type explicitly [refactor.rewrite] 
+  src/app/Main.kt:
+    2:24-2:24 "" -> ": Int"
+2. Convert to block body [refactor.rewrite] 
+  src/app/Main.kt:
+    2:24-2:24 "" -> ": Int"
+    2:25-2:39 "= a + b.length" -> "{\n    return a + b.length\n}"
+> actions src/app/Main.kt @g only=quickfix
+(none)

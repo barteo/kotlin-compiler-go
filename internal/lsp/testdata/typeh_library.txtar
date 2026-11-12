@@ -1,0 +1,46 @@
+-- kc-lsp.json --
+{"modules": [{"name": "main", "sourceRoots": ["src"]}]}
+-- _needs --
+library
+-- src/A.kt --
+package p
+
+class /*|mine*/Mine : AbstractList<Int>() {
+    override val size get() = 0
+    override fun get(index: Int) = 0
+}
+
+fun f(l: /*|list*/ArrayList<Int>) = l
+-- script --
+initialize
+open src/A.kt
+wait
+types src/A.kt @mine
+types src/A.kt @list
+-- want --
+> initialize
+> open src/A.kt
+> wait
+> types src/A.kt @mine
+Mine [5] (p) src/A.kt 2:6-2:10
+  ^ AbstractList [5] (kotlin.collections) .libcache/kotlin-stdlib-sources/commonMain/kotlin/collections/AbstractList.kt 20:22-20:34
+    ^ AbstractCollection [5] (kotlin.collections) .libcache/kotlin-stdlib-sources/commonMain/kotlin/collections/AbstractCollection.kt 14:22-14:40
+      ^ Collection [11] (kotlin.collections) .libcache/kotlin-stdlib-sources/jvmMain/kotlin/Collections.kt 63:24-63:34
+    ^ List [11] (kotlin.collections) .libcache/kotlin-stdlib-sources/jvmMain/kotlin/Collections.kt 225:24-225:28
+      ^ Collection [11] (kotlin.collections) .libcache/kotlin-stdlib-sources/jvmMain/kotlin/Collections.kt 63:24-63:34
+> types src/A.kt @list
+ArrayList [5] (java.util) .libcache/stubs/java/util/ArrayList.kt 4:11-4:20
+  ^ AbstractList [5] (java.util) .libcache/stubs/java/util/AbstractList.kt 4:15-4:27
+    ^ AbstractCollection [5] (java.util) .libcache/stubs/java/util/AbstractCollection.kt 4:15-4:33
+      ^ MutableCollection [11] (kotlin.collections) .libcache/kotlin-stdlib-sources/jvmMain/kotlin/Collections.kt 124:24-124:41
+    ^ MutableList [11] (kotlin.collections) .libcache/kotlin-stdlib-sources/jvmMain/kotlin/Collections.kt 321:24-321:35
+      ^ List [11] (kotlin.collections) .libcache/kotlin-stdlib-sources/jvmMain/kotlin/Collections.kt 225:24-225:28
+      ^ MutableCollection [11] (kotlin.collections) .libcache/kotlin-stdlib-sources/jvmMain/kotlin/Collections.kt 124:24-124:41
+  ^ MutableList [11] (kotlin.collections) .libcache/kotlin-stdlib-sources/jvmMain/kotlin/Collections.kt 321:24-321:35
+    ^ List [11] (kotlin.collections) .libcache/kotlin-stdlib-sources/jvmMain/kotlin/Collections.kt 225:24-225:28
+      ^ Collection [11] (kotlin.collections) .libcache/kotlin-stdlib-sources/jvmMain/kotlin/Collections.kt 63:24-63:34
+    ^ MutableCollection [11] (kotlin.collections) .libcache/kotlin-stdlib-sources/jvmMain/kotlin/Collections.kt 124:24-124:41
+      ^ Collection [11] (kotlin.collections) .libcache/kotlin-stdlib-sources/jvmMain/kotlin/Collections.kt 63:24-63:34
+      ^ MutableIterable [11] (kotlin.collections) .libcache/kotlin-stdlib-sources/jvmMain/kotlin/Collections.kt 29:24-29:39
+  ^ RandomAccess [11] (java.util) .libcache/stubs/java/util/RandomAccess.kt 4:10-4:22
+  ^ Cloneable [11] (java.lang) .libcache/stubs/java/lang/Cloneable.kt 4:10-4:19

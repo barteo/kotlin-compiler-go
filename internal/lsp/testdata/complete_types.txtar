@@ -1,0 +1,165 @@
+-- kc-lsp.json --
+{"modules": [{"name": "main", "sourceRoots": ["src"]}]}
+-- src/T.kt --
+package t
+
+interface Animal
+class Dog : Animal
+class Cat : Animal
+typealias Pets = List<Animal>
+annotation class Marker
+
+class Outer {
+    class Nested
+    inner class Inner
+}
+
+fun param(a: Ani/*|paramType*/) {}
+
+fun ret(): Pe/*|returnType*/ = emptyList()
+
+fun local() {
+    val x: Mutable/*|stdlibType*/
+}
+
+fun nullable() {
+    val x: Do/*|nullableType*/? = null
+}
+
+fun generic() {
+    val x: List<Ca/*|typeArgument*/> = emptyList()
+}
+
+fun nested() {
+    val x: Outer./*|nestedType*/
+}
+
+class Impl : Ani/*|supertype*/
+
+fun <T : Compar/*|bound*/> bounded(t: T) {}
+
+fun isCheck(a: Animal) {
+    if (a is Do/*|isType*/) {}
+}
+
+fun asCast(a: Any) {
+    val d = a as Ca/*|asType*/
+}
+
+@Mark/*|annotation*/
+fun annotated() {}
+
+fun javaType() {
+    val x: java.util.concurrent.Atomic/*|qualifiedType*/
+}
+
+fun lambdaType() {
+    val f: (Str/*|functionTypeParam*/) -> Unit = {}
+}
+
+fun importable() {
+    val x: AtomicIntege/*|importableType*/
+}
+
+class Prop {
+    val p: Lis/*|propertyType*/<Int> = emptyList()
+}
+-- script --
+initialize
+open src/T.kt
+wait
+complete src/T.kt @paramType 3
+complete src/T.kt @returnType 3
+complete src/T.kt @stdlibType 4
+complete src/T.kt @nullableType 3
+complete src/T.kt @typeArgument 3
+complete src/T.kt @nestedType 4
+complete src/T.kt @supertype 3
+complete src/T.kt @bound 3
+complete src/T.kt @isType 3
+complete src/T.kt @asType 3
+complete src/T.kt @annotation 3
+complete src/T.kt @qualifiedType 4
+complete src/T.kt @functionTypeParam 3
+complete src/T.kt @importableType 3
+complete src/T.kt @propertyType 3
+-- want --
+> initialize
+> open src/T.kt
+> wait
+> complete src/T.kt @paramType 3
+Animal interface t.Animal
+Transient interface kotlin.jvm.Transient
+Annotation interface kotlin.Annotation
+... 97 more
+> complete src/T.kt @returnType 3
+(incomplete)
+Pets class t.Pets
+Period class java.time.Period +0:9-0:9 "\n\nimport java.time.Period"
+Permission class java.security.Permission +0:9-0:9 "\n\nimport java.security.Permission"
+... 197 more
+> complete src/T.kt @stdlibType 4
+MutableMap interface kotlin.collections.MutableMap
+MutableSet interface kotlin.collections.MutableSet
+MutableList interface kotlin.collections.MutableList
+MutableIterable interface kotlin.collections.MutableIterable
+... 13 more
+> complete src/T.kt @nullableType 3
+(incomplete)
+Dog class t.Dog
+Double class kotlin.Double
+DoubleArray class kotlin.DoubleArray
+... 197 more
+> complete src/T.kt @typeArgument 3
+(incomplete)
+Cat class t.Cat
+Card class javax.smartcardio.Card +0:9-0:9 "\n\nimport javax.smartcardio.Card"
+Caret class javax.swing.text.Caret +0:9-0:9 "\n\nimport javax.swing.text.Caret"
+... 197 more
+> complete src/T.kt @nestedType 4
+Inner class t.Outer.Inner
+Nested class t.Outer.Nested
+> complete src/T.kt @supertype 3
+Animal interface t.Animal
+Transient interface kotlin.jvm.Transient
+Annotation interface kotlin.Annotation
+... 97 more
+> complete src/T.kt @bound 3
+Comparable interface kotlin.Comparable
+Comparator interface java.util.Comparator
+ComparableTimeMark class kotlin.time.ComparableTimeMark +0:9-0:9 "\n\nimport kotlin.time.ComparableTimeMark"
+... 9 more
+> complete src/T.kt @isType 3
+(incomplete)
+Dog class t.Dog
+Double class kotlin.Double
+DoubleArray class kotlin.DoubleArray
+... 197 more
+> complete src/T.kt @asType 3
+(incomplete)
+Cat class t.Cat
+Card class javax.smartcardio.Card +0:9-0:9 "\n\nimport javax.smartcardio.Card"
+Caret class javax.swing.text.Caret +0:9-0:9 "\n\nimport javax.swing.text.Caret"
+... 197 more
+> complete src/T.kt @annotation 3
+Marker interface t.Marker
+DslMarker interface kotlin.DslMarker
+MediaTracker class java.awt.MediaTracker +0:9-0:9 "\n\nimport java.awt.MediaTracker"
+... 2 more
+> complete src/T.kt @qualifiedType 4
+atomic package java.util.concurrent.atomic
+> complete src/T.kt @functionTypeParam 3
+(incomplete)
+String class kotlin.String
+Strictfp interface kotlin.jvm.Strictfp
+StrictMath class java.lang.StrictMath
+... 197 more
+> complete src/T.kt @importableType 3
+AtomicInteger class java.util.concurrent.atomic.AtomicInteger +0:9-0:9 "\n\nimport java.util.concurrent.atomic.AtomicInteger"
+AtomicIntegerArray class java.util.concurrent.atomic.AtomicIntegerArray +0:9-0:9 "\n\nimport java.util.concurrent.atomic.AtomicIntegerArray"
+AtomicIntegerFieldUpdater class java.util.concurrent.atomic.AtomicIntegerFieldUpdater +0:9-0:9 "\n\nimport java.util.concurrent.atomic.AtomicIntegerFieldUpdater"
+> complete src/T.kt @propertyType 3
+List interface kotlin.collections.List
+ListIterator interface kotlin.collections.ListIterator
+ListUI class javax.swing.plaf.ListUI +0:9-0:9 "\n\nimport javax.swing.plaf.ListUI"
+... 41 more

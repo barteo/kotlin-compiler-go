@@ -605,17 +605,26 @@ func (l *lowerer) stringLit(n psi.NodeRef) syntax.Expr {
 			if !x.Valid() {
 				l.failAt(l.end(first(e)), "expected an expression")
 			}
-			annotated, anonFuns := l.annotated, l.anonFuns
-			inv, sh, dsl := l.suppressInvisible, l.suppressShadowed, l.suppressDSL
-			l.annotated, l.anonFuns = nil, 0
-			part := l.expr(x)
-			l.annotated, l.anonFuns = annotated, anonFuns
-			l.suppressInvisible, l.suppressShadowed, l.suppressDSL = inv, sh, dsl
-			s.Parts = append(s.Parts, syntax.TmplPart{X: part})
+			s.Parts = append(s.Parts, syntax.TmplPart{X: l.templateEntry(x)})
 		}
 	}
 	flush()
 	return s
+}
+
+// templateEntry lowers the expression of a string template entry, which
+// keeps none of the annotations, anonymous function count and suppress
+// flags of the template's own lowering: those are restored when it
+// returns, or fails.
+func (l *lowerer) templateEntry(x psi.NodeRef) syntax.Expr {
+	annotated, anonFuns := l.annotated, l.anonFuns
+	inv, sh, dsl := l.suppressInvisible, l.suppressShadowed, l.suppressDSL
+	defer func() {
+		l.annotated, l.anonFuns = annotated, anonFuns
+		l.suppressInvisible, l.suppressShadowed, l.suppressDSL = inv, sh, dsl
+	}()
+	l.annotated, l.anonFuns = nil, 0
+	return l.expr(x)
 }
 
 // lambda lowers a LAMBDA_EXPRESSION.

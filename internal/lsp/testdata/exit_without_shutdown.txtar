@@ -1,0 +1,7 @@
+-- script --
+initialize
+exit
+-- want --
+> initialize
+> exit
+exit code 1

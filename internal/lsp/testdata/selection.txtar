@@ -1,0 +1,30 @@
+-- A.kt --
+fun f(xs: List<Int>): Int {
+    return xs.fi/*|mid*/lter { it > 0 }.size/*|end*/ + 1
+}
+-- script --
+initialize
+open A.kt
+selection A.kt @mid @end
+-- want --
+> initialize
+> open A.kt
+> selection A.kt @mid @end
+@mid:
+  1:14-1:20 "filter"
+  1:14-1:31 "filter { it > 0 }"
+  1:11-1:31 "xs.filter { it > 0 }"
+  1:11-1:36 "xs.filter { it > 0 }.size"
+  1:11-1:40 "xs.filter { it > 0 }.size + 1"
+  1:4-1:40 "return xs.filter { it > 0 }.size + 1"
+  0:26-2:1 "{\n    return xs.filt… > 0 }.size + 1\n}"
+  0:0-2:1 "fun f(xs: List<Int>)… > 0 }.size + 1\n}"
+  0:0-3:0 "fun f(xs: List<Int>)…> 0 }.size + 1\n}\n"
+@end:
+  1:32-1:36 "size"
+  1:11-1:36 "xs.filter { it > 0 }.size"
+  1:11-1:40 "xs.filter { it > 0 }.size + 1"
+  1:4-1:40 "return xs.filter { it > 0 }.size + 1"
+  0:26-2:1 "{\n    return xs.filt… > 0 }.size + 1\n}"
+  0:0-2:1 "fun f(xs: List<Int>)… > 0 }.size + 1\n}"
+  0:0-3:0 "fun f(xs: List<Int>)…> 0 }.size + 1\n}\n"

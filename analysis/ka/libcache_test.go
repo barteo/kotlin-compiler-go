@@ -2,6 +2,7 @@ package ka
 
 import (
 	"context"
+	"github.com/barteo/kotlin-compiler-go/internal/kasession"
 	"io"
 	"os"
 	"path/filepath"
@@ -129,26 +130,25 @@ func TestLibraryKey(t *testing.T) {
 	s2.Close()
 	s3.Close()
 	// Fill the idle libraries with others: the oldest is closed.
-	for i := range maxIdle {
+	for i := range kasession.MaxIdle {
 		cfg := cfg
 		cfg.ModuleName = "m" + string(rune('a'+i))
 		s := Open(cfg)
 		updateSession(t, s, src)
 		s.Close()
 	}
-	libraries.mu.Lock()
-	defer libraries.mu.Unlock()
+	list, refs := kasession.Listed()
 	idle := 0
-	for _, s := range libraries.list {
-		if s == old {
+	for i, l := range list {
+		if l == old.l {
 			t.Error("the least recently used library is still open")
 		}
-		if s.refs == 0 {
+		if refs[i] == 0 {
 			idle++
 		}
 	}
-	if idle > maxIdle {
-		t.Errorf("%d idle libraries, want at most %d", idle, maxIdle)
+	if idle > kasession.MaxIdle {
+		t.Errorf("%d idle libraries, want at most %d", idle, kasession.MaxIdle)
 	}
 }
 

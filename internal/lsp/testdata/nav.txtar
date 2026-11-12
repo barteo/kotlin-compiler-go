@@ -1,0 +1,96 @@
+-- kc-lsp.json --
+{"modules": [{"name": "main", "sourceRoots": ["src"]}]}
+-- src/A.kt --
+package p
+
+open class /*|box*/Box<T>(val item: T) {
+    open fun get(): T = item
+}
+
+class IntBox(i: Int) : Box<Int>(i) {
+    override fun get() = 2
+}
+
+fun use(b: Box<String>?): String {
+    var /*|y*/y = 1
+    y += 2
+    if (/*|b*/b != null) println(b./*|item*/item + y)
+    return "" + IntBox(3)./*|get*/get() + /*|lib*/listOf(y)
+}
+-- src/B.kt --
+package p
+
+fun other(b: Box<Int>) = b./*|item*/item + /*|use*/use(null).length
+-- script --
+initialize
+open src/A.kt
+open src/B.kt
+wait
+definition src/B.kt @item
+definition src/B.kt @use
+definition src/A.kt @lib
+typedef src/A.kt @get
+typedef src/A.kt @item
+typedef src/A.kt @b
+references src/A.kt @box decl
+references src/A.kt @box
+references src/B.kt @item decl
+references src/A.kt @get decl
+highlight src/A.kt @y
+change src/A.kt 0:0 0:0 "// a line\n"
+definition src/B.kt @item
+references src/A.kt 15:27 decl
+highlight src/A.kt 12:9
+definition src/A.kt 0:4
+-- want --
+> initialize
+> open src/A.kt
+> open src/B.kt
+> wait
+> definition src/B.kt @item
+src/A.kt 2:22-2:26 "item"
+> definition src/B.kt @use
+src/A.kt 10:4-10:7 "use"
+> definition src/A.kt @lib
+(none)
+> typedef src/A.kt @get
+(none)
+> typedef src/A.kt @item
+(none)
+> typedef src/A.kt @b
+src/A.kt 2:11-2:14 "Box"
+> references src/A.kt @box decl
+src/A.kt 2:11-2:14 "Box"
+src/A.kt 6:23-6:26 "Box"
+src/A.kt 10:11-10:14 "Box"
+src/B.kt 2:13-2:16 "Box"
+> references src/A.kt @box
+src/A.kt 6:23-6:26 "Box"
+src/A.kt 10:11-10:14 "Box"
+src/B.kt 2:13-2:16 "Box"
+> references src/B.kt @item decl
+src/A.kt 2:22-2:26 "item"
+src/A.kt 3:24-3:28 "item"
+src/A.kt 13:29-13:33 "item"
+src/B.kt 2:27-2:31 "item"
+> references src/A.kt @get decl
+src/A.kt 7:17-7:20 "get"
+src/A.kt 14:26-14:29 "get"
+> highlight src/A.kt @y
+11:8-11:9 write "y"
+12:4-12:5 write "y"
+13:36-13:37 read "y"
+14:41-14:42 read "y"
+> change src/A.kt 0:0 0:0 "// a line\n"
+> definition src/B.kt @item
+src/A.kt 3:22-3:26 "item"
+> references src/A.kt 15:27 decl
+src/A.kt 8:17-8:20 "get"
+src/A.kt 15:26-15:29 "get"
+> highlight src/A.kt 12:9
+12:8-12:9 write "y"
+13:4-13:5 write "y"
+14:36-14:37 read "y"
+15:41-15:42 read "y"
+> definition src/A.kt 0:4
+(none)

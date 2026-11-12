@@ -1,0 +1,145 @@
+-- kc-lsp.json --
+{"modules": [{"name": "main", "sourceRoots": ["src"]}]}
+-- src/lib/Lib.kt --
+package lib
+
+class Box(val x: Int)
+class Other
+fun helper() = 1
+-- src/app/Main.kt --
+package app
+
+import lib.Other
+import kotlin.math.abs
+import lib.Box
+import lib.helper
+
+fun /*|f*/f(): Int {
+    val /*|unused*/unused = helper()
+    val /*|plain*/plain = 2
+    return abs(Box(1).x)
+}
+-- script --
+initialize
+open src/lib/Lib.kt
+open src/app/Main.kt
+wait
+diagnostics src/app/Main.kt
+actions src/app/Main.kt @f only=source.organizeImports apply=1
+actions src/app/Main.kt @unused
+actions src/app/Main.kt @plain apply=1
+wait
+diagnostics src/app/Main.kt
+actions src/app/Main.kt @unused apply=1
+wait
+diagnostics src/app/Main.kt
+-- want --
+> initialize
+> open src/lib/Lib.kt
+> open src/app/Main.kt
+> wait
+> diagnostics src/app/Main.kt
+[
+  {
+    "range": {
+      "start": {
+        "line": 2,
+        "character": 0
+      },
+      "end": {
+        "line": 2,
+        "character": 16
+      }
+    },
+    "severity": 4,
+    "code": "UNUSED_IMPORT",
+    "source": "kc",
+    "message": "Unused import directive",
+    "tags": [
+      1
+    ]
+  },
+  {
+    "range": {
+      "start": {
+        "line": 8,
+        "character": 8
+      },
+      "end": {
+        "line": 8,
+        "character": 14
+      }
+    },
+    "severity": 4,
+    "code": "UNUSED_VARIABLE",
+    "source": "kc",
+    "message": "Variable 'unused' is never used",
+    "tags": [
+      1
+    ]
+  },
+  {
+    "range": {
+      "start": {
+        "line": 9,
+        "character": 8
+      },
+      "end": {
+        "line": 9,
+        "character": 13
+      }
+    },
+    "severity": 4,
+    "code": "UNUSED_VARIABLE",
+    "source": "kc",
+    "message": "Variable 'plain' is never used",
+    "tags": [
+      1
+    ]
+  }
+]
+> actions src/app/Main.kt @f only=source.organizeImports apply=1
+1. Organize imports [source.organizeImports] 
+  src/app/Main.kt:
+    2:0-5:17 "import lib.Other\nimp…import lib.helper" -> "import lib.Box\nimport lib.helper\nimport kotlin.math.abs"
+> actions src/app/Main.kt @unused
+1. Remove variable 'unused', keeping its initializer [quickfix preferred] UNUSED_VARIABLE
+  src/app/Main.kt:
+    7:4-7:25 "val unused = helper()" -> "helper()"
+> actions src/app/Main.kt @plain apply=1
+1. Remove variable 'plain' [quickfix preferred] UNUSED_VARIABLE
+  src/app/Main.kt:
+    8:0-9:0 "    val plain = 2\n" -> ""
+> wait
+> diagnostics src/app/Main.kt
+[
+  {
+    "range": {
+      "start": {
+        "line": 7,
+        "character": 8
+      },
+      "end": {
+        "line": 7,
+        "character": 14
+      }
+    },
+    "severity": 4,
+    "code": "UNUSED_VARIABLE",
+    "source": "kc",
+    "message": "Variable 'unused' is never used",
+    "tags": [
+      1
+    ]
+  }
+]
+> actions src/app/Main.kt @unused apply=1
+1. Remove variable 'unused', keeping its initializer [quickfix preferred] UNUSED_VARIABLE
+  src/app/Main.kt:
+    7:4-7:25 "val unused = helper()" -> "helper()"
+2. Specify type explicitly [refactor.rewrite] 
+  src/app/Main.kt:
+    7:14-7:14 "" -> ": Int"
+> wait
+> diagnostics src/app/Main.kt
+[]

@@ -120,13 +120,48 @@ type lowerer struct {
 	// noTrailing is set while lowering where a brace after an expression
 	// isn't a trailing lambda for kc: a delegate in a class header.
 	noTrailing bool
+
+	// signatures is set by Signatures: block bodies are lowered empty.
+	signatures bool
+
+	// recover is set by Recover and Signatures: an error in a statement
+	// of a block, or in the expression after '=' of a property, function
+	// or accessor, fails only that statement or expression, which is
+	// lowered as an ErrorExpr.
+	recover bool
 }
 
 // File lowers a psi snapshot to kc's AST, as syntax.ParseAll parses the
 // same source: after an error in a declaration, it goes on with the next
 // one, so it returns the first error of each declaration that fails.
 func File(s *psi.Snapshot) (*syntax.File, *Provenance, []*syntax.Error) {
-	l := &lowerer{s: s, src: s.Source(), path: s.Path(), prov: map[any]psi.NodeID{}, annots: map[syntax.Pos]psi.NodeID{}, negated: map[psi.NodeID]*syntax.IntLit{}, hoisted: map[psi.NodeID]bool{}}
+	return lowerFile(s, false, false)
+}
+
+// Recover lowers a snapshot as File does, but recovers from errors in
+// statements and expressions too: a statement of a block in braces that
+// fails, or the expression after '=' of a property, function or
+// accessor, is lowered as a syntax.ErrorExpr, with its error returned,
+// and the declaration is kept. A block that psi left without its closing
+// brace still fails its declaration: what follows it is lost to it.
+func Recover(s *psi.Snapshot) (*syntax.File, *Provenance, []*syntax.Error) {
+	return lowerFile(s, false, true)
+}
+
+// Signatures lowers a snapshot as File does, but for the block bodies of
+// functions, property accessors, class initializers and secondary
+// constructors, which are lowered empty: what a check of other files
+// that only declares this one (check.Options.Only) needs of it. A body
+// keeps its contract, and an inline function's body is lowered whole:
+// the checker reads those of the files it doesn't check too. It recovers
+// as Recover does, and the errors in the bodies it doesn't lower aren't
+// found.
+func Signatures(s *psi.Snapshot) (*syntax.File, *Provenance, []*syntax.Error) {
+	return lowerFile(s, true, true)
+}
+
+func lowerFile(s *psi.Snapshot, signatures, recover bool) (*syntax.File, *Provenance, []*syntax.Error) {
+	l := &lowerer{signatures: signatures, recover: recover, s: s, src: s.Source(), path: s.Path(), prov: map[any]psi.NodeID{}, annots: map[syntax.Pos]psi.NodeID{}, negated: map[psi.NodeID]*syntax.IntLit{}, hoisted: map[psi.NodeID]bool{}}
 	l.lines = append(l.lines, 0)
 	for i := 0; i < len(l.src); i++ {
 		if l.src[i] == '\n' {
@@ -139,7 +174,7 @@ func File(s *psi.Snapshot) (*syntax.File, *Provenance, []*syntax.Error) {
 		}
 	}
 	f := l.file(s.RootNode())
-	if len(l.errs) == 0 {
+	if len(l.errs) == 0 && !signatures {
 		// Every error element is under a declaration that reports it;
 		// this keeps a file with one from ever lowering cleanly.
 		for _, id := range l.errorIDs {
@@ -267,7 +302,7 @@ func (l *lowerer) syntaxError(n psi.NodeRef) {
 	i := sort.Search(len(l.errorIDs), func(i int) bool { return l.errorIDs[i] >= lo })
 	for ; i < len(l.errorIDs) && l.errorIDs[i] < hi; i++ {
 		e := l.s.Node(l.errorIDs[i])
-		if l.inBody(e, n) || l.recoverable(e) {
+		if l.inBody(e, n) || l.recoverable(e) || l.recovers(e, n) {
 			continue
 		}
 		l.failSyntax(e)
@@ -355,7 +390,8 @@ func (l *lowerer) inBody(e, n psi.NodeRef) bool {
 // failSyntax fails on the psi error element e, with its message.
 func (l *lowerer) failSyntax(e psi.NodeRef) {
 	pos, msg := l.syntaxMessage(e)
-	l.failAt(pos, "%s", msg)
+	l.err = &syntax.Error{File: l.path, Pos: pos, Msg: msg, Code: "SYNTAX"}
+	panic(bailout{})
 }
 
 // syntaxMessage returns the position and message of the psi error
@@ -372,21 +408,149 @@ func (l *lowerer) syntaxMessage(e psi.NodeRef) (syntax.Pos, string) {
 	return l.posAt(r.Start), msg
 }
 
+// recovers reports whether, with Recover, the psi error element e under
+// n is left to a statement or expression that recovers from it: e is in
+// a statement of a block in braces under n, or after the '=' of a
+// property, function or accessor under n, or n itself.
+func (l *lowerer) recovers(e, n psi.NodeRef) bool {
+	if !l.recover {
+		return false
+	}
+	for p := e; p.Valid() && p.ID() > n.ID(); p = p.Parent() {
+		if par := p.Parent(); recoveringBlock(par) || InTail(par, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// recoveringBlock reports whether n is a BLOCK whose statements are each
+// lowered with blockStmt: one in braces, or a lambda's, closed.
+func recoveringBlock(n psi.NodeRef) bool {
+	if n.NumericKind() != psi.KindBLOCK {
+		return false
+	}
+	if has(n, psi.KindLBRACE) {
+		return has(n, psi.KindRBRACE)
+	}
+	p := n.Parent()
+	return p.NumericKind() == psi.KindFUNCTION_LITERAL && has(p, psi.KindRBRACE)
+}
+
+// InTail reports whether c, a child of n, follows the '=' of n, a
+// property, function or accessor, up to a property's accessors: the
+// expression Recover lowers as an ErrorExpr if it fails.
+func InTail(n, c psi.NodeRef) bool {
+	switch n.NumericKind() {
+	case psi.KindPROPERTY, psi.KindFUN, psi.KindPROPERTY_ACCESSOR:
+	default:
+		return false
+	}
+	eq := child(n, psi.KindEQ)
+	if !eq.Valid() || c.ID() <= eq.ID() {
+		return false
+	}
+	for s := eq.NextSibling(); s.Valid(); s = s.NextSibling() {
+		switch s.NumericKind() {
+		case psi.KindPROPERTY_ACCESSOR, psi.KindBACKING_FIELD:
+			return false
+		}
+		if s.ID() == c.ID() {
+			return true
+		}
+	}
+	return false
+}
+
+// tailExpr lowers the expression after the '=' of n, a property,
+// function or accessor. With Recover, an expression that fails, or that
+// psi syntax errors follow, is recorded as an error and lowered as an
+// ErrorExpr.
+func (l *lowerer) tailExpr(n psi.NodeRef) syntax.Expr {
+	x := exprAfter(n, psi.KindEQ)
+	if !l.recover {
+		return l.expr(x)
+	}
+	var out syntax.Expr
+	eq := child(n, psi.KindEQ)
+	r, at := eq.Range(), l.pos(eq)
+	for c := eq.NextSibling(); c.Valid() && InTail(n, c); c = c.NextSibling() {
+		if !c.IsTrivia() {
+			r.End, at = c.Range().End, l.lastTok(c)
+		}
+	}
+	if l.recoveredIn(r, at, func() {
+		for c := eq.NextSibling(); c.Valid() && InTail(n, c); c = c.NextSibling() {
+			l.syntaxError(c)
+		}
+		out = l.expr(x)
+	}) {
+		return out
+	}
+	e := &syntax.ErrorExpr{}
+	if x.Valid() {
+		e.P = l.pos(x)
+	} else {
+		e.P = l.afterToken(eq)
+	}
+	return e
+}
+
 // decl lowers one declaration with lower. An error is recorded, and
 // lowering goes on after the declaration.
 func (l *lowerer) decl(n psi.NodeRef, lower func()) {
+	l.recovered(func() {
+		l.syntaxError(n)
+		lower()
+	})
+}
+
+// recoveredIn is recovered for lowering the code at r. An error found
+// outside r, as an expression missing at the end of the file, is put at
+// at, so that the error's diagnostic, and the facts it invalidates, stay
+// the code's.
+func (l *lowerer) recoveredIn(r psi.Range, at syntax.Pos, lower func()) bool {
+	return l.recovered(func() {
+		defer func() {
+			if v := recover(); v != nil {
+				if _, ok := v.(bailout); ok {
+					if off := l.offset(l.err.Pos); off < r.Start || off >= r.End {
+						e := *l.err
+						e.Pos = at
+						l.err = &e
+					}
+				}
+				panic(v)
+			}
+		}()
+		lower()
+	})
+}
+
+// offset returns the offset of pos.
+func (l *lowerer) offset(pos syntax.Pos) int {
+	if pos.Line < 1 || pos.Line > len(l.lines) {
+		return len(l.src)
+	}
+	return l.lines[pos.Line-1] + pos.Col - 1
+}
+
+// recovered runs lower, and reports whether it succeeded: when it fails,
+// its error is recorded, unless it repeats the last one.
+func (l *lowerer) recovered(lower func()) (ok bool) {
 	defer func() {
 		if r := recover(); r != nil {
-			if _, ok := r.(bailout); !ok {
+			if _, b := r.(bailout); !b {
 				panic(r)
 			}
-			if k := len(l.errs); k == 0 || *l.errs[k-1] != *l.err {
+			if k := len(l.errs); k == 0 || !l.errs[k-1].Same(l.err) {
 				l.errs = append(l.errs, l.err)
 			}
+			ok = false
 		}
 	}()
-	l.syntaxError(n)
 	lower()
+	return true
 }
 
 // ---- tree helpers ----

@@ -65,11 +65,17 @@ type Universe struct {
 	// aliasFile is the checker of the file that declares each typealias,
 	// which resolves its right side in the file's scope.
 	aliasFile map[*types.AliasSym]*Checker
-	// ctx cancels checking, and rec, if set, receives its facts.
-	ctx context.Context
-	rec Recorder
+	// ctx cancels checking, and rec, if set, receives its facts. done is
+	// ctx.Done(), which bodies poll: see cancelled.
+	ctx  context.Context
+	done <-chan struct{}
+	rec  Recorder
 	// lookups is rec if it records lookups (see lookups.go).
 	lookups LookupRecorder
+	// scopeRec is rec if it records the scope at the probe (probe.go),
+	// and probed is set once it has.
+	scopeRec ScopeRecorder
+	probed   atomic.Bool
 
 	// typeAnnots holds the annotated *syntax.TypeRefs noted, and
 	// typeAnnotsDone those checked, for typeannot.go.
@@ -214,7 +220,10 @@ type Checker struct {
 	// accessors' calls reading or assigning them are (see contextAccess).
 	accessed map[*syntax.Call]string
 	done     map[any]bool // declarations already checked during inference
-	inRef    int          // in callable references, which see properties' own types, not their fields'
+	// probeCalls are the calls being checked, outermost first, while a
+	// ScopeRecorder looks for the probe (probe.go).
+	probeCalls []*syntax.Call
+	inRef      int // in callable references, which see properties' own types, not their fields'
 	// jumps says, for each inlined lambda, whether a non-local return,
 	// break or continue can leave it.
 	jumps map[*syntax.Lambda]inlineJumps
@@ -580,8 +589,34 @@ type Options struct {
 }
 
 // CheckOptions is CheckContext, which checks what opts says.
-func CheckOptions(ctx context.Context, files []*syntax.File, lib *Library, jobs int, rec Recorder, opts Options) ([]*syntax.Error, error) {
-	_, checkers, err := signatures(ctx, files, lib, rec, opts)
+func CheckOptions(ctx context.Context, files []*syntax.File, lib *Library, jobs int, rec Recorder, opts Options) (_ []*syntax.Error, err error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	// Once ctx is done, the bodies being checked stop early, and leave
+	// what reads them after a state it may not expect: a panic then is
+	// the cancellation's.
+	defer func() {
+		if ctx.Err() != nil {
+			if v := recover(); v != nil {
+				err = ctx.Err()
+			}
+		}
+	}()
+	// Reaching the probe, outside the bodies, stops checking.
+	defer func() {
+		if err == nil && rec != nil {
+			if _, ok := rec.(ScopeRecorder); ok {
+				if v := recover(); v != nil {
+					if _, ok := v.(probeStop); !ok {
+						panic(v)
+					}
+					err = ErrProbed
+				}
+			}
+		}
+	}()
+	u, checkers, err := signatures(ctx, files, lib, rec, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -616,7 +651,11 @@ func CheckOptions(ctx context.Context, files []*syntax.File, lib *Library, jobs 
 		wg.Go(func() {
 			defer func() {
 				if v := recover(); v != nil {
-					crash.CompareAndSwap(nil, &workerPanic{v, debug.Stack()})
+					if _, ok := v.(probeStop); ok {
+						u.probed.Store(true)
+					} else if ctx.Err() == nil {
+						crash.CompareAndSwap(nil, &workerPanic{v, debug.Stack()})
+					}
 					for range work {
 					}
 				}
@@ -642,6 +681,9 @@ func CheckOptions(ctx context.Context, files []*syntax.File, lib *Library, jobs 
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
+	}
+	if u.probed.Load() {
+		return nil, ErrProbed
 	}
 
 	if r, ok := rec.(OverrideRecorder); ok && len(checkers) > 0 {
@@ -678,10 +720,11 @@ func signatures(ctx context.Context, files []*syntax.File, lib *Library, rec Rec
 	if err := ctx.Err(); err != nil {
 		return nil, nil, err
 	}
-	u := &Universe{ctx: ctx, rec: rec, Pkgs: map[string]*Package{}, prefixes: map[string]bool{}, ext: lib.t, module: moduleSuffix(lib.Module),
+	u := &Universe{ctx: ctx, done: ctx.Done(), rec: rec, Pkgs: map[string]*Package{}, prefixes: map[string]bool{}, ext: lib.t, module: moduleSuffix(lib.Module),
 		aliasFile: map[*types.AliasSym]*Checker{}, noJVMDefault: lib.NoJVMDefault, jvmDefaultCompat: lib.JVMDefaultCompat, parcelize: lib.Parcelize, serialization: lib.Serialization,
 		compose: lib.Compose, serialInterfaces: map[*syntax.ClassDecl]bool{}, optIns: lib.OptIns, metro: lib.MetroPlan, partial: opts.Signatures}
 	u.lookups, _ = rec.(LookupRecorder)
+	u.scopeRec, _ = rec.(ScopeRecorder)
 	checkers := make([]*Checker, len(files))
 	for i, f := range files {
 		checkers[i] = &Checker{u: u, file: f, done: map[any]bool{}, checked: map[*syntax.Lambda]types.Type{},
@@ -689,6 +732,9 @@ func signatures(ctx context.Context, files []*syntax.File, lib *Library, rec Rec
 			varSites: map[*types.VarSym]varSite{}, concurrent: map[varFrame]bool{}, nestedAssigns: map[*types.VarSym][]types.Type{}, assignsMemo: map[any][]string{},
 			classCache: map[string]classifier{}, funCache: map[funKey][]*types.FunSym{},
 			levelCache: map[funKey][][]*types.FunSym{}}
+		if opts.Only != nil && !opts.Only[f] {
+			checkers[i].looked.off = true // its lookups are those of its last check
+		}
 	}
 	inheritDefaults(files)
 	dropContracts(checkers)
@@ -798,7 +844,43 @@ func (u *Universe) sourceClass(name string) *types.ClassSym {
 }
 
 func (c *Checker) errorf(p syntax.Pos, format string, args ...any) {
-	c.errs = append(c.errs, &syntax.Error{File: c.file.Path, Pos: p, Msg: fmt.Sprintf(format, args...)})
+	code := errorCodes[format]
+	var data []string
+	if code != "" {
+		for _, a := range args {
+			data = append(data, argData(a))
+		}
+	}
+	c.errs = append(c.errs, &syntax.Error{File: c.file.Path, Pos: p, Msg: fmt.Sprintf(format, args...), Code: code, Data: data})
+}
+
+// errorData reports an error with its code and fix data given.
+func (c *Checker) errorData(p syntax.Pos, code string, data []string, format string, args ...any) {
+	c.errs = append(c.errs, &syntax.Error{File: c.file.Path, Pos: p, Msg: fmt.Sprintf(format, args...), Code: code, Data: data})
+}
+
+// argData is a message argument as fix data: a type with fully
+// qualified class names.
+func argData(a any) string {
+	if t, ok := a.(types.Type); ok {
+		return sourceType(t)
+	}
+	return fmt.Sprint(a)
+}
+
+// sourceType writes t as source text with fully qualified class names.
+func sourceType(t types.Type) string {
+	return t.Format(qualifiedClassName)
+}
+
+func qualifiedClassName(c *types.ClassSym) string {
+	if c.Anonymous {
+		return c.DisplayName()
+	}
+	if c.KotlinName != "" {
+		return strings.ReplaceAll(c.KotlinName, "/", ".")
+	}
+	return strings.NewReplacer("/", ".", "$", ".").Replace(c.Name)
 }
 
 // unsupported reports the use of a Kotlin feature kc doesn't support,
@@ -844,6 +926,9 @@ func (c *Checker) resolveType(ref *syntax.TypeRef) types.Type {
 func (c *Checker) resolveTypeRef(ref *syntax.TypeRef) types.Type {
 	if ref.Known != nil {
 		return *ref.Known
+	}
+	if c.u.scopeRec != nil && (ref.Name == ProbeName || strings.HasSuffix(ref.Name, "."+ProbeName)) {
+		c.probeType(ref)
 	}
 	c.noteTypeAnnotations(ref)
 	if ref.And != nil {
@@ -2128,7 +2213,7 @@ func (c *Checker) enumMembers(d *syntax.ClassDecl) {
 		if _, dup := cls.Fields[e.Name]; dup {
 			c.errorf(e.P, "conflicting declarations: %s", e.Name)
 		}
-		cls.Fields[e.Name] = &types.VarSym{Name: e.Name, Type: t, Kind: types.Static, Owner: cls, Resolved: true}
+		cls.Fields[e.Name] = &types.VarSym{Name: e.Name, Type: t, Kind: types.Static, Owner: cls, Resolved: true, Decl: e}
 	}
 	str := &types.VarSym{Name: "value", Type: types.StringType, Kind: types.Param}
 	cls.Statics = map[string][]*types.FunSym{
@@ -2435,6 +2520,9 @@ func argRefs(ref *syntax.TypeRef, n int) []*syntax.TypeRef {
 
 func (c *Checker) inferAll() {
 	for _, d := range c.file.Decls {
+		if c.u.cancelled() {
+			return
+		}
 		switch d := d.(type) {
 		case *syntax.FunDecl:
 			ensureFun(d.Sym)
@@ -2444,6 +2532,9 @@ func (c *Checker) inferAll() {
 	}
 	for _, d := range c.classes {
 		for _, m := range d.Members {
+			if c.u.cancelled() {
+				return
+			}
 			switch m := m.(type) {
 			case *syntax.FunDecl:
 				ensureFun(m.Sym)
@@ -3364,6 +3455,10 @@ func (c *Checker) assignable(from, to types.Type, p syntax.Pos) {
 }
 
 // cancelled reports whether done, a context's Done channel, is closed.
+// cancelled reports whether the check's context is done: inference
+// polls it between declarations, and blocks between statements.
+func (u *Universe) cancelled() bool { return cancelled(u.done) }
+
 func cancelled(done <-chan struct{}) bool {
 	select {
 	case <-done:

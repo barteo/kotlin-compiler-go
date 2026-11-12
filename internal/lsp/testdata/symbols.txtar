@@ -1,0 +1,548 @@
+-- A.kt --
+package demo
+
+typealias Handler = (String) -> Unit
+
+const val LIMIT = 10
+val greeting: String = "hi"
+
+interface Shape {
+    fun area(): Double
+}
+
+data class Circle(val radius: Double, private var name: String, scale: Int) : Shape {
+    override fun area(): Double {
+        val local = radius * radius
+        fun helper() = local
+        return helper() * Math.PI
+    }
+
+    constructor(r: Int) : this(r.toDouble(), "c", 1)
+
+    companion object {
+        fun unit() = Circle(1.0, "unit", 1)
+    }
+}
+
+enum class Color(val rgb: Int) {
+    RED(0xff0000), GREEN(0x00ff00);
+
+    fun hex() = rgb.toString(16)
+}
+
+object Registry {
+    val shapes = mutableListOf<Shape>()
+}
+
+fun <T : Shape> T.describe(prefix: String = ""): String = prefix + area()
+-- script --
+initialize
+open A.kt
+symbols A.kt
+-- want --
+> initialize
+> open A.kt
+> symbols A.kt
+[
+  {
+    "detail": "= (String) -\u003e Unit",
+    "kind": 5,
+    "name": "Handler",
+    "range": {
+      "end": {
+        "character": 36,
+        "line": 2
+      },
+      "start": {
+        "character": 0,
+        "line": 2
+      }
+    },
+    "selectionRange": {
+      "end": {
+        "character": 17,
+        "line": 2
+      },
+      "start": {
+        "character": 10,
+        "line": 2
+      }
+    }
+  },
+  {
+    "kind": 14,
+    "name": "LIMIT",
+    "range": {
+      "end": {
+        "character": 20,
+        "line": 4
+      },
+      "start": {
+        "character": 0,
+        "line": 4
+      }
+    },
+    "selectionRange": {
+      "end": {
+        "character": 15,
+        "line": 4
+      },
+      "start": {
+        "character": 10,
+        "line": 4
+      }
+    }
+  },
+  {
+    "detail": ": String",
+    "kind": 7,
+    "name": "greeting",
+    "range": {
+      "end": {
+        "character": 27,
+        "line": 5
+      },
+      "start": {
+        "character": 0,
+        "line": 5
+      }
+    },
+    "selectionRange": {
+      "end": {
+        "character": 12,
+        "line": 5
+      },
+      "start": {
+        "character": 4,
+        "line": 5
+      }
+    }
+  },
+  {
+    "children": [
+      {
+        "detail": "(): Double",
+        "kind": 6,
+        "name": "area",
+        "range": {
+          "end": {
+            "character": 22,
+            "line": 8
+          },
+          "start": {
+            "character": 4,
+            "line": 8
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 12,
+            "line": 8
+          },
+          "start": {
+            "character": 8,
+            "line": 8
+          }
+        }
+      }
+    ],
+    "kind": 11,
+    "name": "Shape",
+    "range": {
+      "end": {
+        "character": 1,
+        "line": 9
+      },
+      "start": {
+        "character": 0,
+        "line": 7
+      }
+    },
+    "selectionRange": {
+      "end": {
+        "character": 15,
+        "line": 7
+      },
+      "start": {
+        "character": 10,
+        "line": 7
+      }
+    }
+  },
+  {
+    "children": [
+      {
+        "detail": ": Double",
+        "kind": 7,
+        "name": "radius",
+        "range": {
+          "end": {
+            "character": 36,
+            "line": 11
+          },
+          "start": {
+            "character": 18,
+            "line": 11
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 28,
+            "line": 11
+          },
+          "start": {
+            "character": 22,
+            "line": 11
+          }
+        }
+      },
+      {
+        "detail": ": String",
+        "kind": 7,
+        "name": "name",
+        "range": {
+          "end": {
+            "character": 62,
+            "line": 11
+          },
+          "start": {
+            "character": 38,
+            "line": 11
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 54,
+            "line": 11
+          },
+          "start": {
+            "character": 50,
+            "line": 11
+          }
+        }
+      },
+      {
+        "detail": "(): Double",
+        "kind": 6,
+        "name": "area",
+        "range": {
+          "end": {
+            "character": 5,
+            "line": 16
+          },
+          "start": {
+            "character": 4,
+            "line": 12
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 21,
+            "line": 12
+          },
+          "start": {
+            "character": 17,
+            "line": 12
+          }
+        }
+      },
+      {
+        "detail": "(r: Int)",
+        "kind": 9,
+        "name": "constructor",
+        "range": {
+          "end": {
+            "character": 52,
+            "line": 18
+          },
+          "start": {
+            "character": 4,
+            "line": 18
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 15,
+            "line": 18
+          },
+          "start": {
+            "character": 4,
+            "line": 18
+          }
+        }
+      },
+      {
+        "children": [
+          {
+            "detail": "()",
+            "kind": 6,
+            "name": "unit",
+            "range": {
+              "end": {
+                "character": 43,
+                "line": 21
+              },
+              "start": {
+                "character": 8,
+                "line": 21
+              }
+            },
+            "selectionRange": {
+              "end": {
+                "character": 16,
+                "line": 21
+              },
+              "start": {
+                "character": 12,
+                "line": 21
+              }
+            }
+          }
+        ],
+        "kind": 19,
+        "name": "Companion",
+        "range": {
+          "end": {
+            "character": 5,
+            "line": 22
+          },
+          "start": {
+            "character": 4,
+            "line": 20
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 20,
+            "line": 20
+          },
+          "start": {
+            "character": 14,
+            "line": 20
+          }
+        }
+      }
+    ],
+    "kind": 5,
+    "name": "Circle",
+    "range": {
+      "end": {
+        "character": 1,
+        "line": 23
+      },
+      "start": {
+        "character": 0,
+        "line": 11
+      }
+    },
+    "selectionRange": {
+      "end": {
+        "character": 17,
+        "line": 11
+      },
+      "start": {
+        "character": 11,
+        "line": 11
+      }
+    }
+  },
+  {
+    "children": [
+      {
+        "detail": ": Int",
+        "kind": 7,
+        "name": "rgb",
+        "range": {
+          "end": {
+            "character": 29,
+            "line": 25
+          },
+          "start": {
+            "character": 17,
+            "line": 25
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 24,
+            "line": 25
+          },
+          "start": {
+            "character": 21,
+            "line": 25
+          }
+        }
+      },
+      {
+        "kind": 22,
+        "name": "RED",
+        "range": {
+          "end": {
+            "character": 18,
+            "line": 26
+          },
+          "start": {
+            "character": 4,
+            "line": 26
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 7,
+            "line": 26
+          },
+          "start": {
+            "character": 4,
+            "line": 26
+          }
+        }
+      },
+      {
+        "kind": 22,
+        "name": "GREEN",
+        "range": {
+          "end": {
+            "character": 35,
+            "line": 26
+          },
+          "start": {
+            "character": 19,
+            "line": 26
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 24,
+            "line": 26
+          },
+          "start": {
+            "character": 19,
+            "line": 26
+          }
+        }
+      },
+      {
+        "detail": "()",
+        "kind": 6,
+        "name": "hex",
+        "range": {
+          "end": {
+            "character": 32,
+            "line": 28
+          },
+          "start": {
+            "character": 4,
+            "line": 28
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 11,
+            "line": 28
+          },
+          "start": {
+            "character": 8,
+            "line": 28
+          }
+        }
+      }
+    ],
+    "kind": 10,
+    "name": "Color",
+    "range": {
+      "end": {
+        "character": 1,
+        "line": 29
+      },
+      "start": {
+        "character": 0,
+        "line": 25
+      }
+    },
+    "selectionRange": {
+      "end": {
+        "character": 16,
+        "line": 25
+      },
+      "start": {
+        "character": 11,
+        "line": 25
+      }
+    }
+  },
+  {
+    "children": [
+      {
+        "kind": 7,
+        "name": "shapes",
+        "range": {
+          "end": {
+            "character": 39,
+            "line": 32
+          },
+          "start": {
+            "character": 4,
+            "line": 32
+          }
+        },
+        "selectionRange": {
+          "end": {
+            "character": 14,
+            "line": 32
+          },
+          "start": {
+            "character": 8,
+            "line": 32
+          }
+        }
+      }
+    ],
+    "kind": 19,
+    "name": "Registry",
+    "range": {
+      "end": {
+        "character": 1,
+        "line": 33
+      },
+      "start": {
+        "character": 0,
+        "line": 31
+      }
+    },
+    "selectionRange": {
+      "end": {
+        "character": 15,
+        "line": 31
+      },
+      "start": {
+        "character": 7,
+        "line": 31
+      }
+    }
+  },
+  {
+    "detail": "T.(prefix: String = \"\"): String",
+    "kind": 12,
+    "name": "describe",
+    "range": {
+      "end": {
+        "character": 73,
+        "line": 35
+      },
+      "start": {
+        "character": 0,
+        "line": 35
+      }
+    },
+    "selectionRange": {
+      "end": {
+        "character": 26,
+        "line": 35
+      },
+      "start": {
+        "character": 18,
+        "line": 35
+      }
+    }
+  }
+]

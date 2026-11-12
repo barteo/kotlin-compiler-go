@@ -151,9 +151,9 @@ func (l *lowerer) fun(n psi.NodeRef) *syntax.FunDecl {
 		case psi.KindTYPE_CONSTRAINT_LIST:
 			where = c
 		case psi.KindBLOCK:
-			fd.Body = l.block(c)
+			fd.Body = l.bodyBlock(c, hasModifier(n, psi.KindINLINE_KEYWORD))
 		case psi.KindEQ:
-			fd.ExprBody = l.expr(exprAfter(n, psi.KindEQ))
+			fd.ExprBody = l.tailExpr(n)
 		}
 		if c.NumericKind() == psi.KindTYPE_PARAMETER_LIST {
 			fd.TypeParams = l.typeParams(tpl)
@@ -233,7 +233,7 @@ func (l *lowerer) prop(n psi.NodeRef, m syntax.Modifiers) *syntax.PropDecl {
 		case psi.KindTYPE_CONSTRAINT_LIST:
 			l.whereClause(c, pd.TypeParams)
 		case psi.KindEQ:
-			pd.Init = l.expr(exprAfter(n, psi.KindEQ))
+			pd.Init = l.tailExpr(n)
 		case psi.KindPROPERTY_DELEGATE:
 			delegate = c
 		case psi.KindPROPERTY_ACCESSOR, psi.KindBACKING_FIELD:
@@ -398,9 +398,9 @@ func (l *lowerer) accessor(pd *syntax.PropDecl, n psi.NodeRef) {
 	}
 	switch {
 	case has(n, psi.KindBLOCK):
-		fd.Body = l.block(child(n, psi.KindBLOCK))
+		fd.Body = l.bodyBlock(child(n, psi.KindBLOCK), false)
 	case has(n, psi.KindEQ):
-		fd.ExprBody = l.expr(exprAfter(n, psi.KindEQ))
+		fd.ExprBody = l.tailExpr(n)
 	default:
 		l.failAt(l.end(n), "unexpected %s body", name+"ter")
 	}
@@ -709,7 +709,7 @@ func (l *lowerer) member(cd *syntax.ClassDecl, n psi.NodeRef) {
 		if !b.Valid() {
 			l.failAt(l.end(n), "expected '{'")
 		}
-		cd.Members = append(cd.Members, record(l, &syntax.InitBlock{P: l.pos(child(n, psi.KindINIT_KEYWORD)), Body: l.block(b),
+		cd.Members = append(cd.Members, record(l, &syntax.InitBlock{P: l.pos(child(n, psi.KindINIT_KEYWORD)), Body: l.bodyBlock(b, false),
 			Annotations: m.Annotations}, n))
 	case psi.KindCOMPANION_BLOCK:
 		pos := l.pos(n)
@@ -739,7 +739,7 @@ func (l *lowerer) secondaryCtor(n psi.NodeRef, m syntax.Modifiers) *syntax.Secon
 		}
 	}
 	if b := child(n, psi.KindBLOCK); b.Valid() {
-		sc.Body = l.block(b)
+		sc.Body = l.bodyBlock(b, false)
 	}
 	return sc
 }
@@ -800,4 +800,9 @@ func (l *lowerer) objectExpr(n psi.NodeRef) *syntax.ObjectExpr {
 	x := &syntax.ObjectExpr{Decl: cd}
 	x.P = cd.P
 	return record(l, x, n)
+}
+
+// hasModifier reports whether declaration n has modifier keyword k.
+func hasModifier(n psi.NodeRef, k psi.Kind) bool {
+	return has(child(n, psi.KindMODIFIER_LIST), k)
 }

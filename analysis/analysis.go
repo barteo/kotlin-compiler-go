@@ -7,20 +7,24 @@
 // It lowers each snapshot's tree to kc's AST directly, recording which
 // psi node each AST node comes from, checks the AST as the compiler
 // does, and walks it back to the psi nodes. Code that kc can't compile
-// is reported as diagnostics, with no facts: a caller must not act on
-// partial results.
+// is reported as diagnostics. AnalyzeArena then has no facts; a Session
+// keeps those of the code the errors leave valid: the statements before
+// an error in a body, and the other declarations and files.
 //
 // Not every fact family is computed yet. Data.Capabilities lists those
 // that are; a fact field outside them is always zero.
 package analysis
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
+	"iter"
 	"slices"
 	"strings"
 
+	"github.com/barteo/kotlin-compiler-go/internal/driver"
 	"github.com/barteo/kotlin-compiler-go/psi"
 )
 
@@ -48,6 +52,62 @@ type Config struct {
 	// "warning" or "strict". It is validated; kc's checker doesn't
 	// enforce it.
 	ExplicitAPIMode string
+	// OptIns are the markers the sources opt in to, as with kotlinc's
+	// -opt-in.
+	OptIns []string
+	// Plugins are the compiler plugins the module uses that kc knows:
+	// "compose", "serialization" and "parcelize".
+	Plugins []string
+	// JVMDefault is kotlinc's -jvm-default: "" (no-compatibility),
+	// "no-compatibility", "enable" or "disable".
+	JVMDefault string
+}
+
+// validate checks cfg and snapshots as AnalyzeArena and Session.Update
+// take them.
+func validate(cfg Config, snapshots []*psi.Snapshot) error {
+	switch cfg.ExplicitAPIMode {
+	case "", "disable", "warning", "strict":
+	default:
+		return fmt.Errorf("analysis: invalid explicit API mode %q", cfg.ExplicitAPIMode)
+	}
+	switch cfg.JVMDefault {
+	case "", "no-compatibility", "enable", "disable":
+	default:
+		return fmt.Errorf("analysis: invalid -jvm-default %q", cfg.JVMDefault)
+	}
+	for _, p := range cfg.Plugins {
+		switch p {
+		case "compose", "serialization", "parcelize":
+		default:
+			return fmt.Errorf("%w: compiler plugin %q", ErrUnsupported, p)
+		}
+	}
+	seen := map[*psi.Snapshot]bool{}
+	for _, s := range snapshots {
+		if s == nil {
+			return errors.New("analysis: nil snapshot")
+		}
+		if seen[s] {
+			return fmt.Errorf("analysis: %s passed twice", s.Path())
+		}
+		seen[s] = true
+		if strings.HasSuffix(s.Path(), ".kts") {
+			return fmt.Errorf("%w: script %s", ErrUnsupported, s.Path())
+		}
+	}
+	return nil
+}
+
+// libraryOptions returns the options cfg's library is opened with.
+func libraryOptions(cfg Config) driver.Options {
+	return driver.Options{
+		JDKHome: cfg.JDKHome, NoJDK: cfg.NoJDK, ClassPath: cfg.ClassPath, FriendPaths: cfg.FriendPaths,
+		ModuleName: cfg.ModuleName, Jobs: max(cfg.Jobs, 1), OptIns: cfg.OptIns,
+		Compose: slices.Contains(cfg.Plugins, "compose"), Serialization: slices.Contains(cfg.Plugins, "serialization"),
+		Parcelize:    slices.Contains(cfg.Plugins, "parcelize"),
+		NoJVMDefault: cfg.JVMDefault == "disable", JVMDefaultCompat: cfg.JVMDefault == "enable",
+	}
 }
 
 // ErrUnsupported is returned, wrapped, for input kc can't analyze at
@@ -63,13 +123,26 @@ type ElementID struct {
 // Diagnostic is an error that stops analysis: a source error, with Code
 // "source_error", or a construct kc doesn't support, with Code
 // "unsupported:" and the feature's name. Line and Column are 1-based;
-// columns count bytes.
+// columns count bytes. Range is the error's first token, in bytes of the
+// snapshot's source; empty where there is none.
+//
+// Kotlinc is the name of kotlinc's diagnostic a source error is, as
+// UNRESOLVED_REFERENCE, if kc knows it. An error without one may be one
+// of kc's own limits that kotlinc wouldn't report.
+//
+// Data is what a quick fix needs, positional per Kotlinc code, as
+// syntax.Error.Data documents: the missing cases of NO_ELSE_IN_WHEN,
+// the override stub of a member not implemented, the expected type of
+// RETURN_TYPE_MISMATCH_ON_OVERRIDE, with fully qualified names.
 type Diagnostic struct {
-	Path    string `json:"path"`
-	Line    int    `json:"line"`
-	Column  int    `json:"column"`
-	Code    string `json:"code"`
-	Message string `json:"message"`
+	Path    string    `json:"path"`
+	Line    int       `json:"line"`
+	Column  int       `json:"column"`
+	Range   psi.Range `json:"range"`
+	Code    string    `json:"code"`
+	Kotlinc string    `json:"kotlinc,omitempty"`
+	Message string    `json:"message"`
+	Data    []string  `json:"data,omitempty"`
 }
 
 // Type is a resolved Kotlin type.
@@ -94,6 +167,9 @@ type Type struct {
 	// abstract method, Suspend on a suspend function type.
 	SAM     bool `json:"sam,omitempty"`
 	Suspend bool `json:"suspend,omitempty"`
+	// Receiver is set on a function type with a receiver, A.(B) -> R,
+	// whose first argument is the receiver's type.
+	Receiver bool `json:"receiver,omitempty"`
 	// Projection is a type argument's projection: "", "in", "out" or
 	// "*".
 	Projection string `json:"projection,omitempty"`
@@ -138,6 +214,9 @@ type Symbol struct {
 	HasAbstractMembers    bool `json:"hasAbstractMembers,omitempty"`
 	HasConcreteMembers    bool `json:"hasConcreteMembers,omitempty"`
 	HasAbstractSuperclass bool `json:"hasAbstractSuperclass,omitempty"`
+	// Overrides are the declarations in the sources of the functions a
+	// function overrides, through every supertype.
+	Overrides []ElementID `json:"overrides,omitempty"`
 }
 
 // Call is a resolved call of a function or constructor.
@@ -327,10 +406,22 @@ type Data struct {
 // Result is the outcome of analyzing a module. Its methods return copies
 // that callers may change, and are safe for concurrent use.
 type Result struct {
-	facts   map[ElementID]*Fact
-	order   []ElementID
-	symbols []Symbol // by ID-1
+	// files are the facts of each snapshot, as passed, in node order.
+	// A Result doesn't change: an incremental update shares the files it
+	// keeps with the last.
+	files   [][]*Fact
+	index   map[psi.SnapshotID]int // of files
+	symbols []Symbol               // by ID-1
 	diags   []Diagnostic
+}
+
+// setFiles makes files the facts of snaps.
+func (r *Result) setFiles(snaps []*psi.Snapshot, files [][]*Fact) {
+	r.files = files
+	r.index = make(map[psi.SnapshotID]int, len(snaps))
+	for i, s := range snaps {
+		r.index[s.ID()] = i
+	}
 }
 
 // Fact returns the fact of the node id names.
@@ -338,11 +429,46 @@ func (r *Result) Fact(id ElementID) (Fact, bool) {
 	if r == nil {
 		return Fact{}, false
 	}
-	f, ok := r.facts[id]
+	i, ok := r.index[id.Snapshot]
 	if !ok {
 		return Fact{}, false
 	}
-	return copyFact(*f), true
+	fs := r.files[i]
+	j, ok := slices.BinarySearchFunc(fs, id.Node, func(f *Fact, n psi.NodeID) int { return cmp.Compare(f.Element.Node, n) })
+	if !ok {
+		return Fact{}, false
+	}
+	return copyFact(*fs[j]), true
+}
+
+// Snapshots returns the snapshots whose facts r has, as passed.
+func (r *Result) Snapshots() []psi.SnapshotID {
+	if r == nil {
+		return nil
+	}
+	out := make([]psi.SnapshotID, len(r.index))
+	for id, i := range r.index {
+		out[i] = id
+	}
+	return out
+}
+
+// FileFacts returns the facts of the snapshot id names, in node order.
+func (r *Result) FileFacts(id psi.SnapshotID) iter.Seq[Fact] {
+	return func(yield func(Fact) bool) {
+		if r == nil {
+			return
+		}
+		i, ok := r.index[id]
+		if !ok {
+			return
+		}
+		for _, f := range r.files[i] {
+			if !yield(copyFact(*f)) {
+				return
+			}
+		}
+	}
 }
 
 // Symbol returns the symbol with ID id.
@@ -362,14 +488,27 @@ func (r *Result) Diagnostics() []Diagnostic {
 	return slices.Clone(r.diags)
 }
 
+// Complete reports whether the sources had no errors, so that all the
+// code has its facts. A Session's Result that isn't complete has the
+// facts of the code its errors leave valid: an error in a statement of a
+// body loses the facts of that statement and those after it in the
+// outermost body; one in the expression after a declaration's '=', that
+// expression's; one elsewhere in a declaration, the declaration's, but
+// for a class's members; one in the package directive or the imports, or
+// in no file, all of the file's, or every file's. AnalyzeArena's has
+// none.
+func (r *Result) Complete() bool { return r != nil && len(r.diags) == 0 }
+
 // Data returns all facts and symbols.
 func (r *Result) Data() Data {
 	d := Data{Facts: []Fact{}, Symbols: []Symbol{}, Capabilities: slices.Clone(capabilities)}
 	if r == nil {
 		return d
 	}
-	for _, id := range r.order {
-		d.Facts = append(d.Facts, copyFact(*r.facts[id]))
+	for _, fs := range r.files {
+		for _, f := range fs {
+			d.Facts = append(d.Facts, copyFact(*f))
+		}
 	}
 	for _, s := range r.symbols {
 		d.Symbols = append(d.Symbols, copySymbol(s))
@@ -393,23 +532,8 @@ func AnalyzeArena(ctx context.Context, cfg Config, snapshots []*psi.Snapshot) (*
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	switch cfg.ExplicitAPIMode {
-	case "", "disable", "warning", "strict":
-	default:
-		return nil, fmt.Errorf("analysis: invalid explicit API mode %q", cfg.ExplicitAPIMode)
-	}
-	seen := map[*psi.Snapshot]bool{}
-	for _, s := range snapshots {
-		if s == nil {
-			return nil, errors.New("analysis: nil snapshot")
-		}
-		if seen[s] {
-			return nil, fmt.Errorf("analysis: %s passed twice", s.Path())
-		}
-		seen[s] = true
-		if strings.HasSuffix(s.Path(), ".kts") {
-			return nil, fmt.Errorf("%w: script %s", ErrUnsupported, s.Path())
-		}
+	if err := validate(cfg, snapshots); err != nil {
+		return nil, err
 	}
 	return analyze(ctx, cfg, snapshots)
 }
@@ -524,5 +648,6 @@ func copySymbol(s Symbol) Symbol {
 	s.Type = copyTypeValue(s.Type)
 	s.Declaration = copyID(s.Declaration)
 	s.Supertypes = slices.Clone(s.Supertypes)
+	s.Overrides = slices.Clone(s.Overrides)
 	return s
 }

@@ -829,7 +829,7 @@ func (c *Checker) checkInheritance(d *syntax.ClassDecl) {
 			}
 			ret := c.overrideSubst(this, f, o).Apply(o.Ret)
 			if f.Ret.K != types.Invalid && ret.K != types.Invalid && !c.subtype(f.Ret, ret) {
-				c.errorf(fd.P, "return type of '%s' is not a subtype of the return type of the overridden member '%s' defined in '%s'", f.Name, f.Name, o.Owner.DisplayName())
+				c.errorData(fd.P, "RETURN_TYPE_MISMATCH_ON_OVERRIDE", []string{sourceType(ret)}, "return type of '%s' is not a subtype of the return type of the overridden member '%s' defined in '%s'", f.Name, f.Name, o.Owner.DisplayName())
 			}
 			for i, p := range f.Params {
 				// Not if f's name is mangled: its bridge unboxes them.
@@ -1070,24 +1070,31 @@ func (c *Checker) checkImplemented(d *syntax.ClassDecl) {
 	cls := d.Sym
 	this := cls.This()
 	reported := map[string]bool{}
-	missing := func(name string) {
+	// missing reports abstract member name, of a class or interface
+	// owner, whose signature to override is sig.
+	missing := func(name string, owner *types.ClassSym, sig string) {
 		if !reported[name] {
 			reported[name] = true
+			data := []string{sig}
 			if d.Enum {
 				// An enum with abstract members is abstract, and its entries
 				// implement them in their bodies.
 				cls.Abstract = true
 				for _, e := range d.Entries {
 					if e.Body == nil {
-						c.errorf(e.P, "enum entry '%s.%s' does not implement abstract member '%s'", cls.DisplayName(), e.Name, name)
+						c.errorData(e.P, "ABSTRACT_MEMBER_NOT_IMPLEMENTED_BY_ENUM_ENTRY", data, "enum entry '%s.%s' does not implement abstract member '%s'", cls.DisplayName(), e.Name, name)
 					}
 				}
 				return
 			}
+			code := "ABSTRACT_CLASS_MEMBER_NOT_IMPLEMENTED"
+			if owner != nil && owner.Interface {
+				code = "ABSTRACT_MEMBER_NOT_IMPLEMENTED"
+			}
 			if cls.Anonymous {
-				c.errorf(d.P, "object is not abstract and does not implement abstract member '%s'", name)
+				c.errorData(d.P, code, data, "object is not abstract and does not implement abstract member '%s'", name)
 			} else {
-				c.errorf(d.P, "class '%s' is not abstract and does not implement abstract member '%s'", cls.DisplayName(), name)
+				c.errorData(d.P, code, data, "class '%s' is not abstract and does not implement abstract member '%s'", cls.DisplayName(), name)
 			}
 		}
 	}
@@ -1095,12 +1102,12 @@ func (c *Checker) checkImplemented(d *syntax.ClassDecl) {
 		for _, m := range d.Members {
 			switch m := m.(type) {
 			case *syntax.FunDecl:
-				if m.Abstract {
-					missing(m.Name)
+				if m.Abstract && m.Sym != nil {
+					missing(m.Name, cls, c.funStub(this, m.Sym))
 				}
 			case *syntax.PropDecl:
-				if m.Abstract {
-					missing(m.Name)
+				if m.Abstract && m.Sym != nil {
+					missing(m.Name, cls, propStub(m.Name, m.Sym.Type, m.Sym.Mutable))
 				}
 			}
 		}
@@ -1126,7 +1133,7 @@ func (c *Checker) checkImplemented(d *syntax.ClassDecl) {
 					continue
 				}
 				if !c.implemented(cls, this, g) && !(s.Java != nil && concreteInSuper(cls, g.JVM()+types.FunDesc(g))) && !numberImplemented(cls, s, g) {
-					missing(name)
+					missing(name, s, c.funStub(this, g))
 				}
 				if s.Interface && hasDefaults(g) && !inlineReported {
 					// The intersection override of an inline function of a
@@ -1142,7 +1149,7 @@ func (c *Checker) checkImplemented(d *syntax.ClassDecl) {
 		for name, fs := range s.ExtMethods {
 			for _, g := range fs {
 				if g.Abstract && !c.implemented(cls, this, g) {
-					missing(name)
+					missing(name, s, c.funStub(this, g))
 				}
 			}
 		}
@@ -1150,7 +1157,7 @@ func (c *Checker) checkImplemented(d *syntax.ClassDecl) {
 			for _, p := range s.Props {
 				if p.Abstract {
 					if q := c.implementingProp(cls, s, p.Name, p.Contexts); (q == nil || q.Abstract) && (p.Mutable || !c.javaPropImplements(cls, this, s, p.Name, p.Type, p.Contexts)) {
-						missing(p.Name)
+						missing(p.Name, s, propStub(p.Name, c.memberSubst(this, s).Apply(p.Type), p.Mutable))
 					} else {
 						c.inheritedPropImpl(d, cls, s, p, q)
 					}
@@ -1162,13 +1169,62 @@ func (c *Checker) checkImplemented(d *syntax.ClassDecl) {
 				if kp.Getter.Abstract {
 					if q := c.implementingProp(cls, s, name, kp.Getter.Contexts); (q == nil || q.Abstract) && !concreteInSuper(cls, kp.Getter.JVM()+types.FunDesc(kp.Getter)) &&
 						(kp.Setter != nil || !c.javaPropImplements(cls, this, s, name, kp.Getter.Ret, kp.Getter.Contexts)) {
-						missing(name)
+						missing(name, s, propStub(name, c.memberSubst(this, s).Apply(kp.Getter.Ret), kp.Setter != nil))
 					}
 				}
 			}
 		}
 		return true
 	})
+}
+
+// funStub returns the signature of abstract method g of a supertype of
+// this, seen from this, for a stub that overrides it.
+func (c *Checker) funStub(this types.Type, g *types.FunSym) string {
+	sub := c.memberSubst(this, g.Owner)
+	var b strings.Builder
+	if g.Suspend {
+		b.WriteString("suspend ")
+	}
+	b.WriteString("fun ")
+	if len(g.TypeParams) > 0 {
+		var ps []string
+		for _, p := range g.TypeParams {
+			s := p.Name
+			if len(p.Bounds) == 1 {
+				s += ": " + sourceType(sub.Apply(p.Bounds[0]))
+			}
+			ps = append(ps, s)
+		}
+		b.WriteString("<" + strings.Join(ps, ", ") + "> ")
+	}
+	if g.Ext {
+		b.WriteString(sourceType(sub.Apply(g.Recv)) + ".")
+	}
+	var ps []string
+	for i, p := range g.Params {
+		name := p.Name
+		if name == "" || strings.HasPrefix(name, "$") {
+			name = fmt.Sprintf("p%d", i)
+		}
+		pt := sub.Apply(p.Type)
+		s := name + ": " + sourceType(pt)
+		if p.Vararg {
+			s = "vararg " + name + ": " + sourceType(types.VarargElem(pt))
+		}
+		ps = append(ps, s)
+	}
+	b.WriteString(g.Name + "(" + strings.Join(ps, ", ") + "): " + sourceType(sub.Apply(g.Ret)))
+	return b.String()
+}
+
+// propStub returns the signature of an abstract property to override.
+func propStub(name string, t types.Type, mutable bool) string {
+	kw := "val "
+	if mutable {
+		kw = "var "
+	}
+	return kw + name + ": " + sourceType(t)
 }
 
 // hasDefaults reports whether a function has parameters with default

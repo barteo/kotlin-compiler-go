@@ -20,6 +20,7 @@ type diag struct {
 	file    string // as the test names it
 	line    int
 	feature string // the unsupported feature, or ""
+	code    string // kotlinc's diagnostic the error is, if kc knows it
 	msg     string
 }
 
@@ -141,8 +142,8 @@ func parseKcOutput(out string, byPath map[string]string, res *compileResult) {
 		}
 	}
 	for _, line := range lines {
-		f := strings.SplitN(line, "\t", 4)
-		if len(f) != 4 {
+		f := strings.SplitN(line, "\t", 5)
+		if len(f) != 5 {
 			continue
 		}
 		var l, col int
@@ -151,7 +152,7 @@ func parseKcOutput(out string, byPath map[string]string, res *compileResult) {
 		if name == "" {
 			name = filepath.Base(f[0])
 		}
-		res.diags = append(res.diags, diag{file: name, line: l, feature: f[2], msg: f[3]})
+		res.diags = append(res.diags, diag{file: name, line: l, feature: f[2], code: f[3], msg: f[4]})
 	}
 	if len(res.diags) == 0 {
 		res.other = lines[len(lines)-1]

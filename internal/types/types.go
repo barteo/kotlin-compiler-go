@@ -171,7 +171,24 @@ func (t Type) IsIntLike() bool {
 	return false
 }
 
-func (t Type) String() string {
+func (t Type) String() string { return t.Format(nil) }
+
+// Format writes t as String does, with class names from name, or their
+// display names if name is nil.
+func (t Type) Format(name func(*ClassSym) string) string {
+	s := t.format(name)
+	if name != nil { // builtins as kotlin.Int too
+		switch t.K {
+		case Unit, Nothing, Bool, Int, Long, Double, Char, Float, Byte, Short, String, Any:
+			s = "kotlin." + s
+		case Range:
+			s = "kotlin.ranges." + t.RangeElem().Format(nil) + "Progression" + s[strings.Index(s, "Progression")+len("Progression"):]
+		}
+	}
+	return s
+}
+
+func (t Type) format(name func(*ClassSym) string) string {
 	var s string
 	switch t.K {
 	case Invalid:
@@ -204,21 +221,25 @@ func (t Type) String() string {
 		s = "Any"
 	case Class:
 		if t.IsFunc() {
-			if fs, ok := funcString(t); ok {
+			if fs, ok := funcString(t, name); ok {
 				s = fs
 				break
 			}
 		}
-		s = t.C.DisplayName()
+		if name != nil {
+			s = name(t.C)
+		} else {
+			s = t.C.DisplayName()
+		}
 		if t.A != nil {
 			args := make([]string, len(t.A.List))
 			for i, a := range t.A.List {
-				args[i] = a.String()
+				args[i] = a.Format(name)
 			}
 			s += "<" + strings.Join(args, ", ") + ">"
 		}
 	case Range:
-		s = t.RangeElem().String() + "Progression"
+		s = t.RangeElem().Format(name) + "Progression"
 	case TypeParam, TypeVar:
 		s = t.Param().Name
 		if t.N && t.Param().Intersection {

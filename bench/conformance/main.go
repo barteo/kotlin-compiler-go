@@ -58,6 +58,7 @@ func main() {
 	timeout := flag.Duration("timeout", 10*time.Second, "how long a test's box() may run")
 	work := flag.String("work", filepath.Join(os.TempDir(), "kc-conformance"), "directory for the compiled tests")
 	keep := flag.Bool("keep", false, "keep the compiled tests in -work")
+	precision := flag.String("precision", "", "with -mode diagnostics, the TSV file of kc's errors' precision by kotlinc diagnostic to write")
 	flag.Parse()
 	if *kotlin == "" || *stdlib == "" {
 		flag.Usage()
@@ -140,7 +141,7 @@ func main() {
 		p.close()
 		report = reportBox(rs, *tag, *kotlinc != "")
 	case "diagnostics":
-		c := &diagConfig{kotlin: *kotlin, suite: suite, work: *work, jobs: *jobs, keep: *keep, comp: comp}
+		c := &diagConfig{kotlin: *kotlin, suite: suite, work: *work, jobs: *jobs, keep: *keep, comp: comp, precision: *precision}
 		if rs, report, err = runDiagnostics(c, tests, *tag); err != nil {
 			log.Fatal(err)
 		}

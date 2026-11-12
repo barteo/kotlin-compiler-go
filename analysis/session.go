@@ -1,0 +1,139 @@
+package analysis
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"sync"
+	"sync/atomic"
+
+	"github.com/barteo/kotlin-compiler-go/internal/check"
+	"github.com/barteo/kotlin-compiler-go/internal/classpath"
+	"github.com/barteo/kotlin-compiler-go/internal/kasession"
+	"github.com/barteo/kotlin-compiler-go/psi"
+)
+
+// A Session analyzes the versions of one module's sources, as an editor
+// asks for them: each Update analyzes the sources as they are now.
+//
+// A session's updates share the library the class path's classes are
+// read into, as do the sessions of a process whose configurations and
+// jars are the same (internal/kasession); Close releases it.
+//
+// Unlike AnalyzeArena, an update with errors still has facts: those of
+// the code the errors leave valid (Result.Complete). An update that only
+// changes bodies checks only the changed files (incremental.go).
+type Session struct {
+	cfg Config
+
+	mu     sync.Mutex
+	lib    *kasession.Library // nil until the first Update
+	last   *state             // what the next update may start from, or nil
+	closed bool
+}
+
+// Open returns a session for the module cfg describes.
+func Open(cfg Config) *Session { return &Session{cfg: cfg} }
+
+// libraryOpens counts the libraries sessions open, for tests.
+var libraryOpens atomic.Int64
+
+// Update analyzes snapshots as the module's sources. It returns an error if
+// ctx is done, the configuration is invalid, the class path can't be
+// opened, or a snapshot is a script (ErrUnsupported). Errors in the
+// sources are the Result's Diagnostics. Updates may run at the same time.
+func (s *Session) Update(ctx context.Context, snapshots []*psi.Snapshot) (*Result, error) {
+	return s.UpdateWith(ctx, snapshots, UpdateOptions{})
+}
+
+// UpdateOptions are an update's options.
+type UpdateOptions struct {
+	// Declared are the paths of snapshots that are only declared: the
+	// sources of modules this one depends on, which their own sessions
+	// check. Their declarations are this module's to use, as a library's
+	// are; they aren't checked, and have no facts and no diagnostics.
+	// Other facts refer to their declarations.
+	Declared map[string]bool
+}
+
+// UpdateWith is Update with options.
+func (s *Session) UpdateWith(ctx context.Context, snapshots []*psi.Snapshot, opts UpdateOptions) (*Result, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if err := validate(s.cfg, snapshots); err != nil {
+		return nil, err
+	}
+	var declOnly []bool
+	if len(opts.Declared) > 0 {
+		declOnly = make([]bool, len(snapshots))
+		for i, snap := range snapshots {
+			declOnly[i] = opts.Declared[snap.Path()]
+		}
+	}
+	s.mu.Lock()
+	last := s.last
+	s.mu.Unlock()
+	if last != nil {
+		res, next, ok, err := incremental(ctx, s.cfg, snapshots, declOnly, last, s.library)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			s.keep(next)
+			return res, nil
+		}
+	}
+	res, next, err := run(ctx, s.cfg, snapshots, declOnly, true, s.library)
+	if err != nil {
+		return nil, err
+	}
+	s.keep(next)
+	return res, nil
+}
+
+// keep makes st what the next update starts from.
+func (s *Session) keep(st *state) {
+	s.mu.Lock()
+	s.last = st
+	s.mu.Unlock()
+}
+
+// library returns the session's library, opening it on first use or
+// again when its jars changed.
+func (s *Session) library() (*classpath.Path, *check.Library, func(), error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return nil, nil, nil, errors.New("analysis: session closed")
+	}
+	opts := libraryOptions(s.cfg)
+	if s.lib == nil || !s.lib.Current(opts) {
+		l, err := kasession.Acquire(opts)
+		if err != nil {
+			return nil, nil, nil, fmt.Errorf("analysis: %w", err)
+		}
+		libraryOpens.Add(1)
+		if s.lib != nil {
+			s.lib.Release()
+		}
+		s.lib = l
+	}
+	l := s.lib
+	l.Retain()
+	return l.Path, l.Lib, func() { l.Release() }, nil
+}
+
+// Close releases the session's library. Results stay usable.
+func (s *Session) Close() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.closed = true
+	s.last = nil
+	if s.lib == nil {
+		return nil
+	}
+	err := s.lib.Release()
+	s.lib = nil
+	return err
+}

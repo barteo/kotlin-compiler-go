@@ -128,7 +128,7 @@ Arguments can be files or directories. Flags:
 | `-Xdebug` | keep dead variables in suspend functions for debuggers, as in `kotlinc` |
 | `-j` | parallel workers (default: all CPUs) |
 | `-time` | print per-phase timings |
-| `-features` | print each error with its unsupported feature, tab-separated |
+| `-features` | print each error with its unsupported feature and kotlinc diagnostic name, tab-separated |
 
 ### Use it in a Gradle build
 
@@ -177,6 +177,8 @@ It expects `kotlinc` and the JDK where Homebrew installs them; set
   and the results
 - [Survey of real code](docs/survey.md): which features real libraries use,
   and libraries built with `kc` and tested end to end
+- [Language server](docs/lsp.md): the plan for a Kotlin language server
+  on `kc`
 - [Conformance](docs/conformance.md): `kotlinc`'s own box and diagnostics
   tests run against `kc`
 - [PSI and analysis](docs/psi.md): the public parser and analysis API for

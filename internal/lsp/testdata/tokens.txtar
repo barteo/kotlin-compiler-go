@@ -1,0 +1,73 @@
+-- A.kt --
+package demo.app
+
+/** Doc. */
+@Suppress("UNUSED")
+class Point<T>(val x: Int, var y: Int, z: Int) {
+    fun move(dx: Int) {
+        val (a, b) = Pair(dx, 2.5)
+        var s = "a\tb${a}"
+        /* two
+           lines */
+    }
+}
+
+enum class E { ONE }
+interface I
+typealias P = Point<Int>
+object O
+val top = 'c'
+-- script --
+initialize
+open A.kt
+tokens A.kt
+-- want --
+> initialize
+> open A.kt
+> tokens A.kt
+0:0 keyword "package"
+0:8 namespace "demo"
+0:13 namespace "app"
+2:0 comment [documentation] "/** Doc. */"
+3:0 decorator "@"
+3:1 decorator "Suppress"
+3:10 string "\""
+3:11 string "UNUSED"
+3:17 string "\""
+4:0 keyword "class"
+4:6 class [declaration] "Point"
+4:12 typeParameter [declaration] "T"
+4:15 keyword "val"
+4:19 property [declaration readonly] "x"
+4:27 keyword "var"
+4:31 property [declaration] "y"
+4:39 parameter [declaration] "z"
+5:4 keyword "fun"
+5:8 method [declaration] "move"
+5:13 parameter [declaration] "dx"
+6:8 keyword "val"
+6:13 variable [declaration] "a"
+6:16 variable [declaration] "b"
+6:30 number "2.5"
+7:8 keyword "var"
+7:12 variable [declaration] "s"
+7:16 string "\""
+7:17 string "a"
+7:18 string "\\t"
+7:20 string "b"
+7:25 string "\""
+8:8 comment "/* two"
+9:0 comment "           lines */"
+13:0 keyword "enum"
+13:5 keyword "class"
+13:11 enum [declaration] "E"
+13:15 enumMember [declaration readonly] "ONE"
+14:0 keyword "interface"
+14:10 interface [declaration] "I"
+15:0 keyword "typealias"
+15:10 type [declaration] "P"
+16:0 keyword "object"
+16:7 class [declaration] "O"
+17:0 keyword "val"
+17:4 property [declaration readonly] "top"
+17:10 string "'c'"

@@ -47,6 +47,9 @@ func (c *Checker) wantBool(x syntax.Expr) {
 }
 
 func (c *Checker) expr(x syntax.Expr, want types.Type) types.Type {
+	if c.u.scopeRec != nil && isProbe(x) {
+		c.probe(x, want)
+	}
 	if c.file.Annotated != nil {
 		c.annotatedExpr(x)
 	}
@@ -221,6 +224,9 @@ func (c *Checker) expr1(x syntax.Expr, want types.Type, allowRange bool, sink *s
 		return types.BoolType
 	case *syntax.NullLit:
 		return types.NullType
+	case *syntax.ErrorExpr:
+		// Lowering reported it.
+		return types.InvalidType
 	case *syntax.PropRef:
 		return c.propRef(x)
 	case *syntax.ObjectExpr:
@@ -2034,6 +2040,15 @@ func (c *Checker) invokable(t types.Type) bool {
 }
 
 func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type {
+	if c.u.scopeRec != nil {
+		// The probe may be in its arguments (probe.go).
+		c.probeCalls = append(c.probeCalls, x)
+		defer func() { c.probeCalls = c.probeCalls[:len(c.probeCalls)-1] }()
+	}
+	return c.call1(x, want, sink)
+}
+
+func (c *Checker) call1(x *syntax.Call, want types.Type, sink *system) types.Type {
 	if m, ok := x.Fun.(*syntax.Member); x.Recv || ok && m.Paren {
 		// (a?.b)(v) invokes the value of a?.b: the parentheses end
 		// its chain.
@@ -3705,7 +3720,11 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 		// As of Kotlin 1.7, a when statement over a Boolean, an enum or a
 		// sealed class must be exhaustive too.
 		if valueUsed || x.Subject != nil && enumerable(st) {
-			c.errorf(x.P, "'when' expression must be exhaustive, add necessary 'else' branch")
+			var missing []string
+			if x.Subject != nil {
+				missing = c.missingCases(st, &cov)
+			}
+			c.errorData(x.P, "NO_ELSE_IN_WHEN", missing, "'when' expression must be exhaustive, add necessary 'else' branch")
 			return types.InvalidType
 		}
 		c.completeBranches(pending, types.NothingType, noWant, false)

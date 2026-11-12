@@ -1,6 +1,8 @@
 package lower
 
 import (
+	"strings"
+
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
 	"github.com/barteo/kotlin-compiler-go/psi"
 )
@@ -21,6 +23,31 @@ func (l *lowerer) block(n psi.NodeRef) *syntax.Block {
 	return record(l, b, n)
 }
 
+// bodyBlock lowers the BLOCK body of a function, property accessor,
+// class initializer or secondary constructor: empty but for a leading
+// contract with Signatures, unless whole is set.
+func (l *lowerer) bodyBlock(n psi.NodeRef, whole bool) *syntax.Block {
+	if !l.signatures || whole || !n.Valid() {
+		return l.block(n)
+	}
+	lb, rb := child(n, psi.KindLBRACE), child(n, psi.KindRBRACE)
+	if !lb.Valid() || !rb.Valid() {
+		return l.block(n)
+	}
+	b := &syntax.Block{P: l.pos(lb), End: l.pos(rb)}
+	for _, c := range kids(n) {
+		switch c.NumericKind() {
+		case psi.KindLBRACE, psi.KindRBRACE, psi.KindSEMICOLON:
+			continue
+		}
+		if t := l.src[c.Range().Start:]; strings.HasPrefix(t, "contract") || strings.HasPrefix(t, "kotlin.contracts") {
+			b.Stmts = []syntax.Stmt{l.blockStmt(c)}
+		}
+		break
+	}
+	return record(l, b, n)
+}
+
 // stmts lowers the statements of a BLOCK.
 func (l *lowerer) stmts(n psi.NodeRef) []syntax.Stmt {
 	var out []syntax.Stmt
@@ -29,9 +56,27 @@ func (l *lowerer) stmts(n psi.NodeRef) []syntax.Stmt {
 		case psi.KindLBRACE, psi.KindRBRACE, psi.KindSEMICOLON:
 			continue
 		}
-		out = append(out, l.stmt(c))
+		out = append(out, l.blockStmt(c))
 	}
 	return out
+}
+
+// blockStmt lowers statement c of a block. With Recover, a statement
+// that fails, or that contains a psi syntax error, is recorded as an
+// error and lowered as an ErrorExpr statement, and lowering goes on with
+// the next one: the syntaxError of the declaration skipped its errors
+// (see recovers).
+func (l *lowerer) blockStmt(c psi.NodeRef) syntax.Stmt {
+	if !l.recover {
+		return l.stmt(c)
+	}
+	var s syntax.Stmt
+	if l.recoveredIn(c.Range(), l.lastTok(c), func() { l.syntaxError(c); s = l.stmt(c) }) {
+		return s
+	}
+	e := &syntax.ErrorExpr{}
+	e.P = l.pos(c)
+	return &syntax.ExprStmt{X: e}
 }
 
 // body lowers a control structure's body, a THEN, ELSE or BODY: a block,
@@ -275,7 +320,7 @@ func (l *lowerer) localVar(n psi.NodeRef) *syntax.VarStmt {
 	case has(n, psi.KindPROPERTY_DELEGATE):
 		vs.Delegate = l.expr(exprAfter(child(n, psi.KindPROPERTY_DELEGATE), psi.KindBY_KEYWORD))
 	case has(n, psi.KindEQ):
-		vs.Init = l.expr(exprAfter(n, psi.KindEQ))
+		vs.Init = l.tailExpr(n)
 	case vs.Type == nil:
 		l.fail(name, "this variable must either have an explicit type or be initialized")
 	}

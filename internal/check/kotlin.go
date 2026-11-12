@@ -164,10 +164,16 @@ var mutators = map[string]bool{
 // classTable and uses its lock for the symbol maps.
 type kotlinTable struct {
 	builtinsOnce sync.Once
-	builtins     map[string]*kmeta.Class // the built-in classes, by class id
-	collections  map[string]*types.ClassSym
-	raw          map[string]*types.ClassSym // the Java collection interfaces themselves
-	kfuncs       map[int]*types.ClassSym    // kotlin.reflect.KFunctionN, by N, and KSuspendFunctionN, by -1-N
+	// builtinMembers are the members of the built-in types for
+	// completion (probe.go), by class id.
+	builtinMembersMu sync.Mutex
+	builtinMembers   map[string][]Item
+	// importables is Library.Importables's index.
+	importables importables
+	builtins    map[string]*kmeta.Class // the built-in classes, by class id
+	collections map[string]*types.ClassSym
+	raw         map[string]*types.ClassSym // the Java collection interfaces themselves
+	kfuncs      map[int]*types.ClassSym    // kotlin.reflect.KFunctionN, by N, and KSuspendFunctionN, by -1-N
 
 	moduleOnce sync.Once
 	parts      map[string][]kmeta.Part // by package name

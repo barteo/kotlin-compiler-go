@@ -109,3 +109,75 @@ func TestUnclosedPropertyType(t *testing.T) {
 		t.Errorf("got properties %q, want %q", got, want)
 	}
 }
+
+// TestSignatures checks that Signatures lowers block bodies empty but for
+// contracts and inline functions', and the rest as File does.
+func TestSignatures(t *testing.T) {
+	src := `package p
+
+import kotlin.contracts.*
+
+class A(val n: Int) {
+    init { println(n) }
+    constructor() : this(1) { println("c") }
+    val p: Int get() { return n }
+    fun f(): Int { val x = n; return x }
+    fun g() = n + 1
+}
+
+fun c(x: Any?): Boolean {
+    contract { returns(true) implies (x is String) }
+    return x is String
+}
+
+inline fun i(f: () -> Unit) { f(); f() }
+`
+	s := psi.Parse("a.kt", src)
+	whole, _, errs := File(s)
+	if len(errs) > 0 {
+		t.Fatal(errs)
+	}
+	sig, prov, errs := Signatures(s)
+	if len(errs) > 0 {
+		t.Fatal(errs)
+	}
+	stmts := map[string]int{}
+	for _, d := range sig.Decls {
+		switch d := d.(type) {
+		case *syntax.FunDecl:
+			stmts[d.Name] = len(d.Body.Stmts)
+		case *syntax.ClassDecl:
+			for _, m := range d.Members {
+				switch m := m.(type) {
+				case *syntax.FunDecl:
+					if m.Body != nil {
+						stmts[m.Name] = len(m.Body.Stmts)
+					} else {
+						stmts[m.Name] = -1 // an expression body
+					}
+				case *syntax.InitBlock:
+					stmts["init"] = len(m.Body.Stmts)
+				case *syntax.SecondaryCtor:
+					stmts["constructor"] = len(m.Body.Stmts)
+					if m.Delegation == nil {
+						t.Error("constructor: delegation dropped")
+					}
+				case *syntax.PropDecl:
+					stmts["get"] = len(m.Getter.Body.Stmts)
+				}
+			}
+		}
+	}
+	want := map[string]int{"init": 0, "constructor": 0, "get": 0, "f": 0, "g": -1, "c": 1, "i": 2}
+	if fmt.Sprint(stmts) != fmt.Sprint(want) {
+		t.Errorf("statements %v, want %v", stmts, want)
+	}
+	if len(sig.Decls) != len(whole.Decls) {
+		t.Errorf("%d declarations, want %d", len(sig.Decls), len(whole.Decls))
+	}
+	for _, d := range sig.Decls {
+		if prov.Node(d) == 0 {
+			t.Errorf("%T: no psi node", d)
+		}
+	}
+}

@@ -1,0 +1,26 @@
+# Corpus files (relative to testdata/) that TestFormatBudget knows Format
+# changes from the reference: format.sum if present, else the file as
+# written. The list may only shrink.
+errors/capturedTypes.kt
+errors/mappedBuiltins.kt
+errors/placement.kt
+klib/manyDefaults/app/main.kt
+klib/manyDefaults/lib/lib.kt
+run/defaultsManyParams.kt
+run/literals.kt
+run/packages/geo/Local.kt
+run/privateAccess.kt
+run/receiverPrecedence.kt
+run/stdlibCoroutinesAbi.kt
+run/stdlibCoroutinesTurbine.kt
+run/stdlibInlineArgs.kt
+run/stdlibJvmAbi.kt
+run/stdlibLineBreaks.kt
+run/stdlibMemberExtDelegation.kt
+run/stdlibParserGaps.kt
+run/stdlibQualifiedTypeArgOnLines.kt
+run/stdlibReifiedObjects.kt
+run/stdlibTailrecSuspend.kt
+run/stdlibWhereClauses.kt
+run/stdlibWire.kt
+run/typeAnnotationNewline.kt

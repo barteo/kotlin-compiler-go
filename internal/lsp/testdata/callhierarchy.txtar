@@ -1,0 +1,63 @@
+-- kc-lsp.json --
+{"modules": [{"name": "main", "sourceRoots": ["src"]}]}
+-- src/shapes/Shape.kt --
+package shapes
+
+abstract class Shape {
+    abstract fun /*|area*/area(): Double
+    operator fun /*|plus*/plus(o: Shape): Double = area() + o.area()
+}
+
+class /*|square*/Square(val side: Double) : Shape() {
+    init { /*|check*/check(side) }
+    override fun area() = side * side
+}
+
+fun /*|check*/check(x: Double) = require(x >= 0)
+-- src/app/Main.kt --
+package app
+
+import shapes.Square
+
+val unit = Square(1.0)
+
+fun /*|total*/total(xs: List<Square>): Double {
+    var sum = 0.0
+    xs.forEach { sum += it.area() }
+    return sum + (unit + Square(2.0))
+}
+-- script --
+initialize
+open src/shapes/Shape.kt
+open src/app/Main.kt
+wait
+calls src/shapes/Shape.kt @area
+calls src/shapes/Shape.kt @plus
+calls src/shapes/Shape.kt @square
+calls src/app/Main.kt @total
+calls src/shapes/Shape.kt 0:0
+-- want --
+> initialize
+> open src/shapes/Shape.kt
+> open src/app/Main.kt
+> wait
+> calls src/shapes/Shape.kt @area
+area [6] (Shape) src/shapes/Shape.kt 3:17-3:21
+  <- total [12] (app) src/app/Main.kt 6:4-6:9: 8:27-8:31 "area"
+  <- plus [6] (Shape) src/shapes/Shape.kt 4:17-4:21: 4:42-4:46 "area", 4:53-4:57 "area"
+> calls src/shapes/Shape.kt @plus
+plus [6] (Shape) src/shapes/Shape.kt 4:17-4:21
+  <- total [12] (app) src/app/Main.kt 6:4-6:9: 9:23-9:24 "+"
+  -> area [6] (Shape) src/shapes/Shape.kt 3:17-3:21: 4:42-4:46 "area", 4:53-4:57 "area"
+> calls src/shapes/Shape.kt @square
+Square [5] (shapes) src/shapes/Shape.kt 7:6-7:12
+  <- unit [7] (app) src/app/Main.kt 4:4-4:8: 4:11-4:17 "Square"
+  <- total [12] (app) src/app/Main.kt 6:4-6:9: 9:25-9:31 "Square"
+  -> check [12] (shapes) src/shapes/Shape.kt 12:4-12:9: 8:11-8:16 "check"
+> calls src/app/Main.kt @total
+total [12] (app) src/app/Main.kt 6:4-6:9
+  -> plus [6] (Shape) src/shapes/Shape.kt 4:17-4:21: 9:23-9:24 "+"
+  -> Square [5] (shapes) src/shapes/Shape.kt 7:6-7:12: 9:25-9:31 "Square"
+  -> area [6] (Square) src/shapes/Shape.kt 9:17-9:21: 8:27-8:31 "area"
+> calls src/shapes/Shape.kt 0:0
+(none)

@@ -28,6 +28,9 @@ func (c *Checker) annotationClassOf(a *syntax.Annotation, owner *types.ClassSym,
 	if !local && c.cls == nil && c.scope == nil {
 		c.lookupCls = annotationScope(owner, c.lookupCls, site)
 	}
+	if c.u.scopeRec != nil && (a.Name == ProbeName || strings.HasSuffix(a.Name, "."+ProbeName)) {
+		c.probeType(&syntax.TypeRef{Name: a.Name, P: a.P})
+	}
 	cls := c.lookupClass(a.Name)
 	c.lookupCls = saved
 	if cls != nil {

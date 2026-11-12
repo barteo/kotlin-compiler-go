@@ -281,6 +281,17 @@ func readPool(r *reader) (*pool, error) {
 }
 
 // Parse reads the declarations of a class file.
+// AccessFlags returns the access flags of the class in data, reading
+// only as far as them.
+func AccessFlags(data []byte) (uint16, error) {
+	r := &reader{b: data}
+	if _, err := readPool(r); err != nil {
+		return 0, err
+	}
+	access := r.u2()
+	return access, r.err
+}
+
 func Parse(data []byte) (*Info, error) {
 	r := &reader{b: data}
 	p, err := readPool(r)
