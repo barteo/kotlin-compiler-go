@@ -610,6 +610,7 @@ func (c *Checker) overridden(cls *types.ClassSym, f *types.FunSym) []*types.FunS
 	// Kotlin sees only Any's members of Object: an interface's clone()
 	// overrides nothing, unless it is Cloneable's.
 	anyOnly := !anyMember[f.Name] && !c.isSubclassOf(cls, "java/lang/Cloneable")
+	var pure map[string]bool // the methods of purely implemented classes, which come before their superclasses
 	cls.Supertypes(func(s *types.ClassSym) bool {
 		if s == cls || anyOnly && s.Name == "java/lang/Object" {
 			return true
@@ -619,6 +620,22 @@ func (c *Checker) overridden(cls *types.ClassSym, f *types.FunSym) []*types.FunS
 			gs = s.Methods["charAt"] // CharSequence's get, on the JVM
 		}
 		for _, g := range gs {
+			// A purely implemented Java collection class's method that
+			// overrides a Kotlin collection type's member is that member
+			// to Kotlin, and hides its superclasses' methods: an
+			// ArrayList<String>'s add(element: String) is no
+			// add(element: String?), as AbstractList<String!>'s is.
+			if g.Owner != nil && g.Owner.External && g.Owner.KotlinName == "" && g.Desc != "" {
+				if purelyImplemented[g.Owner.Name] != "" {
+					g = c.kotlinView(g)
+					if pure == nil {
+						pure = map[string]bool{}
+					}
+					pure[g.Name+g.Desc] = true
+				} else if pure[g.Name+g.Desc] {
+					continue
+				}
+			}
 			// A private member isn't inherited: it overrides and is
 			// overridden by nothing.
 			if !g.Static && !g.Private && !f.Private && c.sameParams(this, f, g) {
@@ -799,6 +816,7 @@ func (c *Checker) checkInheritance(d *syntax.ClassDecl) {
 			}
 		}
 		own := memberDesc(f)
+		badRet := false
 		for _, o := range over {
 			if o.Infix {
 				f.Infix = true // an override of an infix function is one
@@ -825,7 +843,8 @@ func (c *Checker) checkInheritance(d *syntax.ClassDecl) {
 				continue
 			}
 			ret := c.overrideSubst(this, f, o).Apply(o.Ret)
-			if f.Ret.K != types.Invalid && ret.K != types.Invalid && !c.subtype(f.Ret, ret) {
+			if f.Ret.K != types.Invalid && ret.K != types.Invalid && !c.subtype(f.Ret, ret) && !badRet {
+				badRet = true // once, as for ArrayList's get and List's
 				c.errorf(fd.P, "return type of '%s' is not a subtype of the return type of the overridden member '%s' defined in '%s'", f.Name, f.Name, o.Owner.DisplayName())
 			}
 			for i, p := range f.Params {

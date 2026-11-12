@@ -41,6 +41,9 @@ type classTable struct {
 	supers  sync.Map // superKey -> superResult
 	inters  sync.Map // interKey -> types.Type, see intersect
 	methods sync.Map // methodsKey -> []*types.FunSym
+	// views are Java methods as Kotlin sees them, with a Kotlin
+	// collection type's signature: see kotlinView.
+	views sync.Map // *types.FunSym -> *types.FunSym
 	// defaults has a sync.Once for each method whose inherited default
 	// values inheritExtDefaults looked for.
 	defaults     sync.Map // *types.FunSym -> *sync.Once
@@ -1555,6 +1558,9 @@ func (c *Checker) javaMethods(cls *types.ClassSym, name string) []*types.FunSym 
 		return ms.([]*types.FunSym)
 	}
 	ms := javaMethods(cls, name)
+	for i, f := range ms { // a new slice
+		ms[i] = c.kotlinView(f)
+	}
 	if len(ms) == 0 && (cls.Interface || cls.Array) && anyMember[name] {
 		// A Kotlin interface's supertypes, as its metadata gives them, end
 		// without Any: a function value's f.equals(g) is Object's. So do

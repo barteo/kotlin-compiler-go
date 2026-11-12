@@ -279,7 +279,7 @@ func (t *classTable) classSignature(cls *types.ClassSym, sig string) {
 		ps[0].Var = v
 	}
 	cls.TypeParams = ps
-	cls.Supers = supers
+	cls.Supers = t.pureSupers(cls, ps, supers)
 }
 
 // methodSignature fills in a method's type parameters, parameter types
