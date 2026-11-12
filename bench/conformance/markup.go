@@ -117,11 +117,13 @@ func closeParen(s string) int {
 }
 
 // unsafeAnyCallRE matches a call of hashCode() or toString() that the
-// markup expects to be an UNSAFE_CALL.
-var unsafeAnyCallRE = regexp.MustCompile(`(<![^!>]*\bUNSAFE_CALL\b[^!>]*!>\.<!>)(hashCode|toString)\(\)`)
+// markup expects to be an UNSAFE_CALL, or to be on a receiver that is a
+// SMARTCAST_IMPOSSIBLE.
+var unsafeAnyCallRE = regexp.MustCompile(`(<![^!>]*\bUNSAFE_CALL\b[^!>]*!>\.<!>|<![^!>]*\bSMARTCAST_IMPOSSIBLE\b[^!>]*!>[\w.]+<!>\.)(hashCode|toString)\(\)`)
 
 // nonNullAnyCalls returns src, a test's file that the markup expects
 // x.hashCode() or x.toString() of a nullable x to be an UNSAFE_CALL in,
+// or an x that can't be smart cast to non-null a SMARTCAST_IMPOSSIBLE,
 // with those calls made to extensions of Any that it declares. Without
 // WITH_STDLIB, kotlinc's test infrastructure has a minimal standard
 // library, without the extensions of Any? of those names that the full

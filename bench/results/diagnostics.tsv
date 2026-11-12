@@ -8168,7 +8168,7 @@ tests/signatureEnhancementOuterClassBoundsToInner.kt	skip	Java sources
 tests/simpleClass.kt	rejects invalid	on an expected line	
 tests/simpleTypeAlias.kt	accepts valid		
 tests/smartCasts/NullableFunctionTypeAsMemberMutableProperty.kt	rejects invalid	on an expected line	
-tests/smartCasts/NullableFunctionTypeAsMemberMutablePropertyFromConstructor.kt	accepts invalid	SMARTCAST_IMPOSSIBLE_ON_IMPLICIT_INVOKE_RECEIVER	NullableFunctionTypeAsMemberMutablePropertyFromConstructor.kt:10: SMARTCAST_IMPOSSIBLE_ON_IMPLICIT_INVOKE_RECEIVER
+tests/smartCasts/NullableFunctionTypeAsMemberMutablePropertyFromConstructor.kt	rejects invalid	on an expected line	
 tests/smartCasts/accessToMemberAfterReceiverReassignment.kt	rejects invalid	on an expected line	
 tests/smartCasts/afterBinaryExpr.kt	accepts valid		
 tests/smartCasts/alwaysNull.kt	rejects invalid	on an expected line	
@@ -8323,7 +8323,7 @@ tests/smartCasts/kt6819.kt	rejects invalid	on an expected line
 tests/smartCasts/kt68970.kt	skip	LANGUAGE	
 tests/smartCasts/kt7561.kt	accepts valid		
 tests/smartCasts/lambdaAndArgument.kt	accepts valid		
-tests/smartCasts/lambdaAndArgumentFun.kt	accepts invalid	SMARTCAST_IMPOSSIBLE	lambdaAndArgumentFun.kt:14: SMARTCAST_IMPOSSIBLE
+tests/smartCasts/lambdaAndArgumentFun.kt	rejects invalid	on an expected line	
 tests/smartCasts/lambdaArgumentNoSubstitutedReturn.kt	accepts valid		
 tests/smartCasts/lambdaArgumentWithBoundWithoutType.kt	rejects invalid	elsewhere	
 tests/smartCasts/lambdaArgumentWithExpectedGenericType.kt	accepts valid		
@@ -8350,11 +8350,11 @@ tests/smartCasts/lambdasWithContracts/lambdaWithCallInPlaceAndOperators.kt	accep
 tests/smartCasts/lambdasWithContracts/lambdaWithCallInPlaceAssignmnetsAndCycles.kt	rejects invalid	on an expected line	
 tests/smartCasts/lambdasWithContracts/lambdaWithImpliesContract.kt	accepts valid		
 tests/smartCasts/literalInWhenSubject.kt	accepts valid		
-tests/smartCasts/localClassChanges.kt	accepts invalid	SMARTCAST_IMPOSSIBLE	localClassChanges.kt:12: SMARTCAST_IMPOSSIBLE
+tests/smartCasts/localClassChanges.kt	rejects invalid	on an expected line	
 tests/smartCasts/localDelegatedProperty.kt	rejects invalid	on an expected line	
 tests/smartCasts/localFunBetween.kt	accepts valid		
 tests/smartCasts/localFunChanges.kt	rejects invalid	on an expected line	
-tests/smartCasts/localObjectChanges.kt	accepts invalid	SMARTCAST_IMPOSSIBLE	localObjectChanges.kt:14: SMARTCAST_IMPOSSIBLE
+tests/smartCasts/localObjectChanges.kt	rejects invalid	on an expected line	
 tests/smartCasts/longElvisChain.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	longElvisChain.kt:8: type mismatch: inferred type is Unit but Unit was expected
 tests/smartCasts/loops/WhileTrueWithBreakInIfCondition.kt	rejects invalid	on an expected line	
 tests/smartCasts/loops/assignElvisIfBreakInsideWhileTrue.kt	rejects invalid	on an expected line	
@@ -8433,7 +8433,7 @@ tests/smartCasts/objectLiterals/exclexclArgument.kt	accepts valid
 tests/smartCasts/objectLiterals/exclexclTwoArgument.kt	accepts valid		
 tests/smartCasts/objectLiterals/kt7110.kt	accepts valid		
 tests/smartCasts/objectLiterals/receiver.kt	accepts valid		
-tests/smartCasts/openInSealed.kt	accepts invalid	SMARTCAST_IMPOSSIBLE	openInSealed.kt:6: SMARTCAST_IMPOSSIBLE
+tests/smartCasts/openInSealed.kt	rejects invalid	on an expected line	
 tests/smartCasts/orInWhenBranch.kt	rejects invalid	on an expected line	
 tests/smartCasts/ownerDeclaresBothModifies.kt	rejects invalid	on an expected line	
 tests/smartCasts/problems/invoke.kt	accepts valid		
@@ -8545,8 +8545,8 @@ tests/smartCasts/typeOfLambdaWithSmartcast.kt	accepts valid
 tests/smartCasts/typeParameterWithBounds.kt	accepts valid		
 tests/smartCasts/unstableSmartCastOnInvokeReceiver.kt	rejects invalid	on an expected line	
 tests/smartCasts/unstableSmartcastAndAmbiguity.kt	accepts valid		
-tests/smartCasts/unstableToStable.kt	accepts invalid	SMARTCAST_IMPOSSIBLE; UNSAFE_CALL	unstableToStable.kt:7: SMARTCAST_IMPOSSIBLE
-tests/smartCasts/unstableToStableTypes.kt	accepts invalid	SMARTCAST_IMPOSSIBLE; UNRESOLVED_REFERENCE	unstableToStableTypes.kt:11: SMARTCAST_IMPOSSIBLE
+tests/smartCasts/unstableToStable.kt	rejects invalid	on an expected line	
+tests/smartCasts/unstableToStableTypes.kt	rejects invalid	on an expected line	
 tests/smartCasts/valCapturedInLambda.kt	accepts valid		
 tests/smartCasts/varChangedInInitializer.kt	accepts valid		
 tests/smartCasts/varChangedInLocalInitializer.kt	accepts valid		

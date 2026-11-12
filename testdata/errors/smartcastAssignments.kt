@@ -318,3 +318,46 @@ fun assignedSameInEscaping(x: Any) {
         y.length
     }
 }
+
+// A lambda passed in an argument assigns before the arguments after it
+// are evaluated.
+
+inline fun <T> pick(a: T, b: T) = a ?: b
+
+inline fun <T> make(f: (T) -> Unit): T = null!!
+
+fun assignedInEarlierArgument() {
+    var x: Int? = 5
+    pick(make<Int?> { x = null }, x.inc()) // ERROR only safe (?.) or non-null asserted
+}
+
+// In the initializers, a constructor parameter that declares a property
+// is the property, which may change if it is a var or open.
+
+class VarProp(var x: Int?) {
+    init {
+        if (x != null) x.inc() // ERROR only safe (?.) or non-null asserted
+    }
+}
+
+class ValProp(val x: Int?) {
+    init {
+        if (x != null) x.inc()
+    }
+}
+
+open class OpenProp(open val x: Int?) {
+    val y = if (x != null) x.inc() else 0 // ERROR only safe (?.) or non-null asserted
+}
+
+class FunProp(var f: (() -> Unit)?) {
+    init {
+        if (f != null) f() // ERROR use explicit
+    }
+}
+
+class PlainParam(x: Int?) {
+    init {
+        if (x != null) x.inc()
+    }
+}

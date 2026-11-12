@@ -6,16 +6,16 @@ Of 10827 test files, 3541 are skipped and 7286 run.
 
 | Result | Tests | Share |
 |:---|---:|---:|
-| rejects invalid | 3635 | 49.9% |
+| rejects invalid | 3642 | 50.0% |
 | accepts valid | 3148 | 43.2% |
-| accepts invalid | 245 | 3.4% |
+| accepts invalid | 238 | 3.3% |
 | rejects valid | 242 | 3.3% |
 | parse/unsupported | 16 | 0.2% |
 | crash | 0 | 0.0% |
 
 *Rejects invalid* and *accepts valid* agree with kotlinc. *Accepts invalid* is code kotlinc rejects that kc compiles; *rejects valid*, code kotlinc compiles that kc's checker rejects. Both are bugs. A *parse/unsupported* test uses a feature kc doesn't support, which says nothing about its checks.
 
-Of the 3635 tests both reject, kc reports an error on the line of an expected one in 3420.
+Of the 3642 tests both reject, kc reports an error on the line of an expected one in 3427.
 
 A test is invalid if it stops before the backend or marks an error: one that runs to it (`BACKEND`) can mark the JVM backend's errors, such as `CONFLICTING_JVM_DECLARATIONS`. Of the tests run, 177 stop at `FRONTEND` but mark no error: most add the `CHECK_TYPE` helpers, whose names (`_`) kotlinc reports outside the test infrastructure, and count as valid; the others leave their errors out with the `DIAGNOSTICS` directive. 101 run to the backend and mark one. 5 marked names have no declared severity (debug information, for one), and count as neither.
 
@@ -52,13 +52,12 @@ Tests kotlinc rejects that kc compiles, by the errors their markup expects. A te
 | Expected error | Tests | Only error | Examples |
 |:---|---:|---:|:---|
 | `ARGUMENT_TYPE_MISMATCH` | 26 | 16 | `tests/annotations/annotationArgumentScopeForNestedClass.kt`, `tests/collectionLiterals/kt82964.kt` |
-| `UNRESOLVED_REFERENCE` | 14 | 10 | `tests/callResolution/eagerLambdaAnalysis/morePreciseSamVsLessPreciseFunctionType.kt`, `tests/imports/ImportFromCurrentWithDifferentName.kt` |
+| `UNRESOLVED_REFERENCE` | 13 | 10 | `tests/callResolution/eagerLambdaAnalysis/morePreciseSamVsLessPreciseFunctionType.kt`, `tests/imports/ImportFromCurrentWithDifferentName.kt` |
 | `CANNOT_INFER_PARAMETER_TYPE` | 9 | 3 | `tests/callableReference/function/ambiguityTopLevelVsTopLevelGeneric.kt`, `tests/generics/kt30590.kt` |
 | `OVERLOAD_RESOLUTION_AMBIGUITY` | 8 | 7 | `tests/callResolution/kt50386.kt`, `tests/inference/pcla/overloadResolutionByLambdaReturnType.kt` |
 | `UNSUPPORTED` | 8 | 5 | `tests/NamedFunctionTypeParameterInSupertype.kt`, `tests/callableReference/property/backingField.kt` |
 | `INITIALIZER_TYPE_MISMATCH` | 7 | 4 | `tests/callableReference/adapted/noKFunctionForAdaptation.kt`, `tests/functionAsExpression/NonSuspendAnonFuncAsInitializerOfSuspendFunctionType.kt` |
 | `MISSING_DEPENDENCY_CLASS` | 6 | 3 | `tests/multimodule/AnonymousFunctionParametersOfInaccessibleTypes.kt`, `tests/multimodule/BoxedInaccessibleGenericTypeUsedByDependencies.kt` |
-| `SMARTCAST_IMPOSSIBLE` | 6 | 4 | `tests/smartCasts/lambdaAndArgumentFun.kt`, `tests/smartCasts/localClassChanges.kt` |
 | `TYPE_INFERENCE_ONLY_INPUT_TYPES_ERROR` | 6 | 5 | `testsWithStdLib/commonCollections.kt`, `testsWithStdLib/inference/annotationsForResolve/kt29307.kt` |
 | `CANNOT_WEAKEN_ACCESS_PRIVILEGE` | 5 | 4 | `tests/intersectedVisibilitiesAccessorDifferences_Small.kt`, `tests/intersectedVisibilitiesForNonAbstractPropertyAccessors.kt` |
 | `NULL_FOR_NONNULL_TYPE` | 5 | 2 | `tests/j+k/types/newListMethodsNullabilityLinkedListLatest.kt`, `tests/targetedBuiltIns/concurrentMapRemove.kt` |
@@ -111,7 +110,8 @@ Tests kotlinc rejects that kc compiles, by the errors their markup expects. A te
 | `AMBIGUOUS_SUPER` | 1 | 1 | `tests/thisAndSuper/unqualifiedSuper/unqualifiedSuperWithCallableProperty.kt` |
 | `ANNOTATION_IN_CONTRACT_ERROR` | 1 | 1 | `tests/contracts/suppressContractWarning.kt` |
 | `ANNOTATION_IN_WHERE_CLAUSE_ERROR` | 1 | 1 | `tests/kt46483.kt` |
-| *71 more* | 71 | |
+| `CANNOT_INFER_VISIBILITY` | 1 | 0 | `tests/varOverriddenByValThroughIntersection.kt` |
+| *68 more* | 68 | |
 
 ## Rejects valid
 
@@ -165,12 +165,12 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 13442 of 19697 expected errors (68.2%) on their lines.
+kc reports 13461 of 19697 expected errors (68.3%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
 | `SYNTAX` | 872 | 222 | 650 |
-| `UNRESOLVED_REFERENCE` | 2154 | 1659 | 495 |
+| `UNRESOLVED_REFERENCE` | 2154 | 1662 | 492 |
 | `CONFLICTING_JVM_DECLARATIONS` | 996 | 518 | 478 |
 | `ARGUMENT_TYPE_MISMATCH` | 1263 | 837 | 426 |
 | `UNSUPPORTED` | 230 | 34 | 196 |
@@ -201,7 +201,6 @@ kc reports 13442 of 19697 expected errors (68.2%) on their lines.
 | `INAPPLICABLE_OPERATOR_MODIFIER` | 143 | 104 | 39 |
 | `AMBIGUOUS_ANONYMOUS_TYPE_INFERRED` | 38 | 2 | 36 |
 | `MUST_BE_INITIALIZED_OR_BE_ABSTRACT` | 79 | 44 | 35 |
-| `SMARTCAST_IMPOSSIBLE` | 176 | 141 | 35 |
 | `CONFUSING_BRANCH_CONDITION_ERROR` | 37 | 3 | 34 |
 | `OVERLOAD_RESOLUTION_AMBIGUITY` | 121 | 89 | 32 |
 | `EXPLICIT_TYPE_ARGUMENTS_IN_PROPERTY_ACCESS` | 36 | 5 | 31 |
@@ -219,16 +218,17 @@ kc reports 13442 of 19697 expected errors (68.2%) on their lines.
 | `TOO_MANY_ARGUMENTS` | 102 | 78 | 24 |
 | `ASSIGN_OPERATOR_AMBIGUITY` | 35 | 12 | 23 |
 | `PROPERTY_INITIALIZER_NO_BACKING_FIELD` | 32 | 9 | 23 |
+| `SMARTCAST_IMPOSSIBLE` | 176 | 153 | 23 |
 | `UNINITIALIZED_ENUM_COMPANION` | 65 | 42 | 23 |
 | `INLINE_FROM_HIGHER_PLATFORM` | 21 | 0 | 21 |
 | `NOTHING_TO_OVERRIDE` | 65 | 44 | 21 |
 | `INAPPLICABLE_CANDIDATE` | 115 | 96 | 19 |
 | `INCORRECT_TYPE_PARAMETER_OF_PROPERTY` | 30 | 11 | 19 |
-| `UNSAFE_CALL` | 473 | 454 | 19 |
 | `RETURN_TYPE_MISMATCH_ON_OVERRIDE` | 36 | 18 | 18 |
 | `UPPER_BOUND_VIOLATED_IN_TYPEALIAS_EXPANSION` | 44 | 26 | 18 |
 | `OPT_IN_MARKER_CAN_ONLY_BE_USED_AS_ANNOTATION_OR_ARGUMENT_IN_OPT_IN` | 19 | 2 | 17 |
 | `DSL_SCOPE_VIOLATION` | 108 | 92 | 16 |
+| `REPEATED_ANNOTATION` | 62 | 46 | 16 |
 | *520 more* | | | |
 
 ## Errors kotlinc doesn't report

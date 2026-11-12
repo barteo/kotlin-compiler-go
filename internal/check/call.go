@@ -403,6 +403,20 @@ func (c *Checker) args(x *syntax.Call, cl *callee) []types.Type {
 	return ts
 }
 
+// innerLambdas returns the bodies of the lambdas in x, but those nested
+// in them.
+func innerLambdas(x syntax.Expr) []any {
+	var out []any
+	syntax.Inspect(x, func(n any) bool {
+		if l, ok := n.(*syntax.Lambda); ok {
+			out = append(out, l.Body)
+			return false
+		}
+		return true
+	})
+	return out
+}
+
 // captured returns the type final that a generic parameter param was
 // inferred as, with the projections of arg in the positions where param
 // has a variable as an invariant type argument: an Array<out X> argument
@@ -828,6 +842,12 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 	var partials []*system
 	var lambdas []int
 	for i, a := range x.Args {
+		if i > 0 {
+			// The vars that the lambdas of the arguments before it assign
+			// lose their smart casts, though they are checked after it:
+			// x of f(g { x = null }, x).
+			c.reset(c.watchedVars(innerLambdas(x.Args[i-1])...))
+		}
 		if _, ok := a.(*syntax.Lambda); ok {
 			lambdas = append(lambdas, i)
 			ts[i] = types.InvalidType

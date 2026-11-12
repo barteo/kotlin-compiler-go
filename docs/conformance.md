@@ -113,7 +113,8 @@ Three things differ from the test infrastructure:
   gives `kotlinc` an unpublished minimal library. Both compilers get the
   full one instead, so a test can resolve what it expects not to. The
   most common such call, `x.hashCode()` or `x.toString()` on a nullable
-  `x` that the markup expects to be an `UNSAFE_CALL`, would resolve to
+  `x` that the markup expects to be an `UNSAFE_CALL` (or that it
+  can't be smart cast, a `SMARTCAST_IMPOSSIBLE`), would resolve to
   the full library's `Any?` extension: the harness calls an extension of
   `Any` that it declares at the end of the file instead, which both
   compilers then reject unless `x` is smart cast to non-null.
@@ -151,27 +152,26 @@ Kotlin 2.4.21's tests on `kc`:
 | Diagnostics tests | Tests | Share of run |
 |:---|---:|---:|
 | run (of 10,827) | 7,286 | |
-| rejects invalid | 3,635 | 49.9% |
+| rejects invalid | 3,642 | 50.0% |
 | accepts valid | 3,148 | 43.2% |
-| accepts invalid | 245 | 3.4% |
+| accepts invalid | 238 | 3.3% |
 | rejects valid | 242 | 3.3% |
 | parse/unsupported | 16 | 0.2% |
 | crash | 0 | |
 
 `kc` agrees with `kotlinc` on 93% of the diagnostics tests, and reports
-13,442 of the 19,697 expected errors (68%) on their lines. The reports
+13,461 of the 19,697 expected errors (68%) on their lines. The reports
 break the failures down; the largest groups are:
 
 - **Silent miscompilation**: none. No box test that `kc` compiles
   gives a wrong result, throws, or fails to verify or link.
 - **Accepts invalid**: argument type mismatches
   (`ARGUMENT_TYPE_MISMATCH` 26), unresolved names
-  (`UNRESOLVED_REFERENCE` 14), uninferred parameter types
+  (`UNRESOLVED_REFERENCE` 13), uninferred parameter types
   (`CANNOT_INFER_PARAMETER_TYPE` 9), overload ambiguities
   (`OVERLOAD_RESOLUTION_AMBIGUITY` 8), unsupported constructs
-  (`UNSUPPORTED` 8), initializer type mismatches
-  (`INITIALIZER_TYPE_MISMATCH` 7) and impossible smart casts
-  (`SMARTCAST_IMPOSSIBLE` 6).
+  (`UNSUPPORTED` 8) and initializer type mismatches
+  (`INITIALIZER_TYPE_MISMATCH` 7).
 - **Rejects valid**, by `kc`'s first error: type mismatches (59),
   inference failures (48), unresolved names and imports (28), ambiguous
   calls (16), and non-exhaustive `when`s (7). No box test is rejected.
