@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # build.sh builds kc's fork of KSP2's kotlin-analysis-api module, compiled
 # against the unshaded Analysis API 2.4.21 jar that jvm/aa-api/build.sh makes.
-# The fork is branch $KSP_BRANCH of $KSP_REPO: KSP at tag $KSP_TAG with kc's
-# commits on top. build.sh checks out $KSP_COMMIT, a commit on that branch.
+# The fork is branch $KSP_BRANCH of $KSP_REPO: google/ksp's main (which has
+# all of release $KSP_DEPS_VERSION) with kc's commits on top. build.sh checks
+# out $KSP_COMMIT, a commit on that branch.
 #
 #	jvm/ksp/build.sh [workdir]
 #
@@ -21,7 +22,6 @@
 # KspBackend only.
 set -euo pipefail
 
-KSP_TAG=2.3.9
 KSP_REPO=https://github.com/barteo/ksp.git
 KSP_BRANCH=kc-backend
 KSP_COMMIT=cb2f0a9c33d094982ad73c03ff61c9f21e3fb4a3

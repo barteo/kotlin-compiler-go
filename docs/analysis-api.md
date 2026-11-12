@@ -54,7 +54,8 @@ mapping.
 **KSP fork.**
 - KSP2 uses a shaded AA and reaches into FIR internals, so it is forked:
   branch [`kc-backend` of barteo/ksp](https://github.com/barteo/ksp/tree/kc-backend),
-  KSP 2.3.9 with one commit per change. Until 2026-11-11 the fork was a
+  google/ksp's main (past release 2.3.13; first KSP 2.3.9) with one commit
+  per change. Until 2026-11-11 the fork was a
   patch series in `jvm/ksp/patches`; the patch numbers below are the
   branch's commits in order.
 - Session creation sits behind a `KspBackend` (chosen with
@@ -135,8 +136,9 @@ builds the API jar from the Kotlin sources at `v2.4.21` instead:
 ### M0.3 – KSP fork
 
 `jvm/ksp/build.sh` builds the fork:
-1. It checks out the fork at the commit it pins: KSP at tag 2.3.9 with
-   the patches below as commits.
+1. It checks out the fork at the commit it pins: google/ksp's main (at
+   first tag 2.3.9; since step 26, past release 2.3.13) with the patches
+   below as commits.
 2. It compiles the `kotlin-analysis-api` module (the processing loop, the KS*
    symbol model and the command line) against the M0.2 jar. The result has
    275 classes.
