@@ -2,6 +2,7 @@ package store
 
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.sync.*
 import java.io.PrintWriter
 import java.io.StringWriter
 import java.io.Writer
@@ -97,3 +98,19 @@ inline fun Flow<Int>.emitTwice(crossinline f: suspend (Int) -> Int): Flow<Int> =
 
 inline fun Flow<Int>.retried(crossinline f: (Int) -> Int): Flow<Int> =
     map { f(it) }.retryWhen { _, attempt -> attempt < 1 }.catch { emit(99) }
+
+// An inline suspend function that copies one of the library's class path:
+// the copy's suspension points are its own, marked once for its copiers.
+suspend inline fun <reified T : Any> Mutex.guarded(block: () -> T?): T {
+    val got = try {
+        withLock {
+            yield()
+            block()
+        } ?: throw IllegalStateException("nothing")
+    } catch (e: IllegalStateException) {
+        delay(1)
+        return T::class.java.cast(e.message)
+    }
+    delay(1)
+    return got
+}

@@ -25,4 +25,8 @@ peek 3
 [1, 2]
 [5, 5, 10, 10]
 [1, 1, 99]
+held true
+nothing
+failed true
+false
 java.lang.IllegalArgumentException: negative: -1
