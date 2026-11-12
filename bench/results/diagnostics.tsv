@@ -2336,10 +2336,10 @@ tests/dataFlow/EmptyIf.kt	rejects invalid	on an expected line
 tests/dataFlow/IsExpression.kt	rejects invalid	on an expected line	
 tests/dataFlow/MultipleBranchesInWhileLoopInInlinedLambda.kt	accepts valid		
 tests/dataFlow/WhenSubject.kt	accepts valid		
-tests/dataFlow/assignment/assignToNewVal.kt	accepts invalid	UNSAFE_CALL	assignToNewVal.kt:10: UNSAFE_CALL
+tests/dataFlow/assignment/assignToNewVal.kt	rejects invalid	on an expected line	
 tests/dataFlow/assignment/kt6118.kt	accepts valid		
 tests/dataFlow/assignment/uninitializedValIsCheck.kt	rejects invalid	on an expected line	
-tests/dataFlow/assignment/uninitializedValNullability.kt	accepts invalid	UNSAFE_CALL	uninitializedValNullability.kt:14: UNSAFE_CALL
+tests/dataFlow/assignment/uninitializedValNullability.kt	rejects invalid	on an expected line	
 tests/dataFlow/assignment/when.kt	accepts valid		
 tests/dataFlow/desugaredAssignment.kt	rejects invalid	on an expected line	
 tests/dataFlow/local/LocalClassBase.kt	accepts valid		
@@ -8219,7 +8219,7 @@ tests/smartCasts/doubleLambdaArgument.kt	accepts valid
 tests/smartCasts/elvis/basicOff.kt	accepts valid		
 tests/smartCasts/elvis/elvisResultSavedInVal.kt	rejects invalid	on an expected line	
 tests/smartCasts/elvis/impossible.kt	accepts valid		
-tests/smartCasts/elvisExclExcl.kt	accepts invalid	UNSAFE_CALL	elvisExclExcl.kt:5: UNSAFE_CALL
+tests/smartCasts/elvisExclExcl.kt	rejects invalid	on an expected line	
 tests/smartCasts/elvisExclExclMerge.kt	accepts valid		
 tests/smartCasts/elvisExclExclPlatform.kt	skip	Java sources	
 tests/smartCasts/elvisExprNotNull.kt	rejects invalid	on an expected line	
@@ -8232,13 +8232,13 @@ tests/smartCasts/equalsAndIdentity.kt	rejects invalid	on an expected line
 tests/smartCasts/exclUnderAnd.kt	rejects invalid	on an expected line	
 tests/smartCasts/explicitDefaultGetter.kt	accepts valid		
 tests/smartCasts/explicitTypeArguments.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	explicitTypeArguments.kt:21: type mismatch: inferred type is Box<TypeParameter> but Box<out SuperType> was expected
-tests/smartCasts/extensionSafeCall.kt	accepts invalid	UNSAFE_CALL	extensionSafeCall.kt:13: UNSAFE_CALL
+tests/smartCasts/extensionSafeCall.kt	rejects invalid	on an expected line	
 tests/smartCasts/fakeSmartCastOnEquality.kt	rejects invalid	on an expected line	
 tests/smartCasts/falseReceiverSmartCast.kt	accepts valid		
 tests/smartCasts/falseUnnecessaryCall.kt	accepts valid		
 tests/smartCasts/fieldExclExcl.kt	accepts invalid	UNSAFE_CALL	fieldExclExcl.kt:11: UNSAFE_CALL
 tests/smartCasts/fieldInGetter.kt	accepts valid		
-tests/smartCasts/fieldPlus.kt	accepts invalid	UNSAFE_CALL	fieldPlus.kt:13: UNSAFE_CALL
+tests/smartCasts/fieldPlus.kt	rejects invalid	on an expected line	
 tests/smartCasts/genericIntersection.kt	accepts valid		
 tests/smartCasts/genericSet.kt	accepts valid		
 tests/smartCasts/ifCascadeExprNotNull.kt	accepts valid		
@@ -8356,7 +8356,7 @@ tests/smartCasts/localFunBetween.kt	accepts valid
 tests/smartCasts/localFunChanges.kt	rejects invalid	on an expected line	
 tests/smartCasts/localObjectChanges.kt	accepts invalid	SMARTCAST_IMPOSSIBLE	localObjectChanges.kt:14: SMARTCAST_IMPOSSIBLE
 tests/smartCasts/longElvisChain.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	longElvisChain.kt:8: type mismatch: inferred type is Unit but Unit was expected
-tests/smartCasts/loops/WhileTrueWithBreakInIfCondition.kt	accepts invalid	UNSAFE_CALL	WhileTrueWithBreakInIfCondition.kt:13: UNSAFE_CALL
+tests/smartCasts/loops/WhileTrueWithBreakInIfCondition.kt	rejects invalid	on an expected line	
 tests/smartCasts/loops/assignElvisIfBreakInsideWhileTrue.kt	rejects invalid	on an expected line	
 tests/smartCasts/loops/assignWhenInsideWhileTrue.kt	rejects invalid	on an expected line	
 tests/smartCasts/loops/callBreakBetweenInsideDoWhile.kt	rejects invalid	on an expected line	
@@ -8435,7 +8435,7 @@ tests/smartCasts/objectLiterals/kt7110.kt	accepts valid
 tests/smartCasts/objectLiterals/receiver.kt	accepts valid		
 tests/smartCasts/openInSealed.kt	accepts invalid	SMARTCAST_IMPOSSIBLE	openInSealed.kt:6: SMARTCAST_IMPOSSIBLE
 tests/smartCasts/orInWhenBranch.kt	rejects invalid	on an expected line	
-tests/smartCasts/ownerDeclaresBothModifies.kt	accepts invalid	UNSAFE_CALL	ownerDeclaresBothModifies.kt:13: UNSAFE_CALL
+tests/smartCasts/ownerDeclaresBothModifies.kt	rejects invalid	on an expected line	
 tests/smartCasts/problems/invoke.kt	accepts valid		
 tests/smartCasts/problems/noSmartcastToNullableNothing.kt	rejects invalid	on an expected line	
 tests/smartCasts/problems/smartcastToStarProjectedSubclass.kt	skip	Java sources	
@@ -8609,9 +8609,9 @@ tests/smartCasts/variables/whileTrue.kt	rejects invalid	on an expected line
 tests/smartCasts/variables/whileWithBreak.kt	accepts valid		
 tests/smartCasts/varnotnull/assignNestedWhile.kt	rejects invalid	on an expected line	
 tests/smartCasts/varnotnull/assignment.kt	rejects invalid	on an expected line	
-tests/smartCasts/varnotnull/boundInitializer.kt	accepts invalid	UNSAFE_CALL	boundInitializer.kt:9: UNSAFE_CALL
-tests/smartCasts/varnotnull/boundInitializerWrong.kt	accepts invalid	UNSAFE_CALL	boundInitializerWrong.kt:9: UNSAFE_CALL
-tests/smartCasts/varnotnull/capturedInClosureModifiedBefore.kt	accepts invalid	SMARTCAST_IMPOSSIBLE; UNSAFE_CALL	capturedInClosureModifiedBefore.kt:30: SMARTCAST_IMPOSSIBLE
+tests/smartCasts/varnotnull/boundInitializer.kt	rejects invalid	on an expected line	
+tests/smartCasts/varnotnull/boundInitializerWrong.kt	rejects invalid	on an expected line	
+tests/smartCasts/varnotnull/capturedInClosureModifiedBefore.kt	rejects invalid	on an expected line	
 tests/smartCasts/varnotnull/capturedInlineModifiedBefore.kt	accepts valid		
 tests/smartCasts/varnotnull/classDelegationDeprecated.kt	skip	LANGUAGE	
 tests/smartCasts/varnotnull/classDelegationError.kt	skip	LANGUAGE	
@@ -8628,7 +8628,7 @@ tests/smartCasts/varnotnull/ifVarNullReturn.kt	accepts valid
 tests/smartCasts/varnotnull/inference.kt	accepts valid		
 tests/smartCasts/varnotnull/infiniteWhileWithBreak.kt	rejects invalid	on an expected line	
 tests/smartCasts/varnotnull/infix.kt	accepts valid		
-tests/smartCasts/varnotnull/initInTryReturnInCatch.kt	accepts invalid	UNSAFE_CALL	initInTryReturnInCatch.kt:40: UNSAFE_CALL
+tests/smartCasts/varnotnull/initInTryReturnInCatch.kt	rejects invalid	on an expected line	
 tests/smartCasts/varnotnull/initialization.kt	rejects invalid	on an expected line	
 tests/smartCasts/varnotnull/iterations.kt	accepts valid		
 tests/smartCasts/varnotnull/leakingLambdaInCalledInPlace.kt	rejects invalid	on an expected line	
@@ -8640,11 +8640,11 @@ tests/smartCasts/varnotnull/postfixNotnullClassIncrement.kt	accepts valid
 tests/smartCasts/varnotnull/postfixNullableClassIncrement.kt	accepts valid		
 tests/smartCasts/varnotnull/postfixNullableIncrement.kt	rejects invalid	on an expected line	
 tests/smartCasts/varnotnull/prefixNotnullClassIncrement.kt	accepts valid		
-tests/smartCasts/varnotnull/prefixNullableClassIncrement.kt	accepts invalid	UNSAFE_CALL	prefixNullableClassIncrement.kt:13: UNSAFE_CALL
+tests/smartCasts/varnotnull/prefixNullableClassIncrement.kt	rejects invalid	on an expected line	
 tests/smartCasts/varnotnull/prefixNullableIncrement.kt	rejects invalid	on an expected line	
-tests/smartCasts/varnotnull/setNotNullInTry.kt	accepts invalid	UNSAFE_CALL	setNotNullInTry.kt:13: UNSAFE_CALL
-tests/smartCasts/varnotnull/setNullInTry.kt	accepts invalid	UNSAFE_CALL	setNullInTry.kt:9: UNSAFE_CALL
-tests/smartCasts/varnotnull/setNullInTryFinally.kt	accepts invalid	UNSAFE_CALL	setNullInTryFinally.kt:15: UNSAFE_CALL
+tests/smartCasts/varnotnull/setNotNullInTry.kt	rejects invalid	on an expected line	
+tests/smartCasts/varnotnull/setNullInTry.kt	rejects invalid	on an expected line	
+tests/smartCasts/varnotnull/setNullInTryFinally.kt	rejects invalid	on an expected line	
 tests/smartCasts/varnotnull/setSameInTry.kt	accepts valid		
 tests/smartCasts/varnotnull/toFlexibleType.kt	skip	Java sources	
 tests/smartCasts/varnotnull/unnecessary.kt	accepts valid		
@@ -9106,7 +9106,7 @@ tests/typealias/kt14498a.kt	accepts invalid	TYPE_VARIANCE_CONFLICT_ERROR	kt14498
 tests/typealias/kt14518.kt	rejects invalid	on an expected line	
 tests/typealias/kt14612.kt	rejects invalid	on an expected line	
 tests/typealias/kt14641.kt	rejects invalid	on an expected line	
-tests/typealias/kt15734.kt	accepts invalid	UNSAFE_CALL	kt15734.kt:19: UNSAFE_CALL
+tests/typealias/kt15734.kt	rejects invalid	on an expected line	
 tests/typealias/kt19601.kt	accepts invalid	UPPER_BOUND_VIOLATED_IN_TYPEALIAS_EXPANSION	kt19601.kt:12: UPPER_BOUND_VIOLATED_IN_TYPEALIAS_EXPANSION
 tests/typealias/kt57065.kt	accepts valid		
 tests/typealias/kt62099.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	kt62099.kt:11: cannot infer type for type parameter 'T'. Specify it explicitly.

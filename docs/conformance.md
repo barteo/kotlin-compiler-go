@@ -111,8 +111,12 @@ Three things differ from the test infrastructure:
 
 - **The standard library.** Without `WITH_STDLIB`, the infrastructure
   gives `kotlinc` an unpublished minimal library. Both compilers get the
-  full one instead, so a test can resolve what it expects not to, such
-  as `Any?.hashCode()`.
+  full one instead, so a test can resolve what it expects not to. The
+  most common such call, `x.hashCode()` or `x.toString()` on a nullable
+  `x` that the markup expects to be an `UNSAFE_CALL`, would resolve to
+  the full library's `Any?` extension: the harness calls an extension of
+  `Any` that it declares at the end of the file instead, which both
+  compilers then reject unless `x` is smart cast to non-null.
 - **The `CHECK_TYPE` helpers** declare names (`_`) that `kotlinc` reports
   outside the infrastructure. A test that adds them stops in the
   frontend even when valid, so only its marks count.
