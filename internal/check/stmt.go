@@ -375,6 +375,9 @@ func (c *Checker) stmt(s syntax.Stmt, valueUsed bool, want types.Type) types.Typ
 	case *syntax.VarStmt:
 		c.varStmt(s)
 	case *syntax.Destructure:
+		for _, as := range s.Annotations {
+			c.localAnnotations(as, localVarSite)
+		}
 		c.destructure(s)
 	case *syntax.Assign:
 		c.assign(s)

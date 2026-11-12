@@ -179,6 +179,9 @@ type PackageData struct {
 	Locals []*Property
 }
 
+// ModuleName is the module the package part is in, if it isn't "main".
+func (p *Package) ModuleName() string { return p.module }
+
 // All decodes all the package's declarations, ordered by name.
 func (p *Package) All() (*PackageData, error) {
 	out := &PackageData{ModuleName: p.module}

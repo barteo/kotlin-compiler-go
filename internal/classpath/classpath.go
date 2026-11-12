@@ -61,7 +61,12 @@ type Path struct {
 	infos   sync.Map // string -> func() (*classfile.Info, error)
 	methods sync.Map // string -> func() (*classfile.MethodReader, error)
 
-	byPackage  sync.Once
+	// byPackage lists the top-level classes of each package, and the
+	// packages that have a class in them or in a package inside them;
+	// built on first use. See Classes.
+	byPackage func() packageIndex
+
+	pkgOnce    sync.Once
 	pkgClasses map[string][]string // see Package
 
 	IndexTime time.Duration
@@ -105,6 +110,7 @@ func Open(jdkHome string, entries []string, friends ...string) (*Path, error) {
 		packages:  make(map[string]bool, 1<<10),
 		resources: make(map[string][]entry),
 	}
+	p.byPackage = sync.OnceValue(p.indexPackages)
 	if jdkHome != "" {
 		if err := p.addJImage(filepath.Join(jdkHome, "lib", "modules")); err != nil {
 			p.Close()
@@ -265,11 +271,57 @@ func (p *Path) Has(name string) bool {
 // (java/util).
 func (p *Path) HasPackage(pkg string) bool { return p.packages[pkg] }
 
+// packageIndex is Path.byPackage's result.
+type packageIndex struct {
+	classes map[string][]string // package -> top-level classes, sorted
+	all     map[string]bool     // packages, and the packages they are in
+}
+
+// Classes returns the internal names of the top-level classes of a
+// package, by internal name (java/util), sorted: the classes whose names
+// have no $ after the package's. They include Kotlin's file facades and
+// synthetic classes: the caller reads them to tell. ok reports whether
+// the package, or a package inside it, has a class: the root package ""
+// does if the path has a class.
+func (p *Path) Classes(pkg string) (names []string, ok bool) {
+	idx := p.byPackage()
+	return idx.classes[pkg], idx.all[pkg]
+}
+
+func (p *Path) indexPackages() packageIndex {
+	idx := packageIndex{classes: map[string][]string{}, all: map[string]bool{}}
+	for name := range p.classes {
+		pkg, rel := "", name
+		if i := strings.LastIndexByte(name, '/'); i >= 0 {
+			pkg, rel = name[:i], name[i+1:]
+		}
+		if !strings.Contains(rel, "$") && rel != "module-info" && rel != "package-info" {
+			idx.classes[pkg] = append(idx.classes[pkg], name)
+		}
+		for q := pkg; !idx.all[q]; {
+			idx.all[q] = true
+			i := strings.LastIndexByte(q, '/')
+			if i < 0 {
+				if q != "" {
+					q = ""
+					continue
+				}
+				break
+			}
+			q = q[:i]
+		}
+	}
+	for _, names := range idx.classes {
+		slices.Sort(names)
+	}
+	return idx
+}
+
 // Package returns the internal names of the classes in a package, by
 // internal name (java/util), sorted. Classes of nested packages aren't in
 // it.
 func (p *Path) Package(pkg string) []string {
-	p.byPackage.Do(func() {
+	p.pkgOnce.Do(func() {
 		p.pkgClasses = map[string][]string{}
 		for name := range p.classes {
 			i := strings.LastIndexByte(name, '/')

@@ -74,7 +74,7 @@ func (l *lowerer) stmtModifiers(n psi.NodeRef) (as []syntax.Annotation, m syntax
 			as = append(as, l.annotation(cs[i]))
 			continue
 		case psi.KindANNOTATION:
-			as = append(as, l.bracketAnnotation(cs[i]))
+			as = append(as, l.bracketAnnotations(cs[i])...)
 			continue
 		}
 		break
@@ -128,7 +128,7 @@ func (l *lowerer) stmt(n psi.NodeRef) syntax.Stmt {
 			kw = child(n, psi.KindVAR_KEYWORD)
 		}
 		d := &syntax.Destructure{P: l.pos(kw), Mutable: kw.NumericKind() == psi.KindVAR_KEYWORD}
-		d.Names, d.Types = l.destructuringNames(n)
+		d.Names, d.Types, d.Annotations = l.destructuringEntries(n)
 		if !has(n, psi.KindEQ) {
 			l.failAt(l.end(n), "expected '='")
 		}

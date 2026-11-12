@@ -135,9 +135,10 @@ func (r *resolver) classLiteral(args []string, name string) string {
 	return r.s.qualified(strings.Join(parts, "."))
 }
 
-// annotations returns the descriptors of annotations as, La/b/C;, as a
-// class file's member has them.
-func (r *resolver) annotations(as []*Annotation) []string {
+// annotationNames returns the descriptors of annotations as, La/b/C;, as
+// a class file's member has them; an annotation whose name doesn't
+// resolve keeps the name it is written with.
+func (r *resolver) annotationNames(as []*Annotation) []string {
 	var out []string
 	for _, a := range as {
 		name := strings.ReplaceAll(a.Name, ".", "/")
@@ -367,8 +368,9 @@ func (r *resolver) generic(t *Type) bool {
 	return tp != nil
 }
 
-// sig returns a type's generic signature. Of a nested class's segments,
-// only the last one's type arguments are kept.
+// sig returns a type's generic signature. A nested class's type whose
+// outer class has type arguments is javac's Outer<A>.Inner<B>; otherwise
+// only the last segment's type arguments are kept.
 func (r *resolver) sig(t *Type) string {
 	var b strings.Builder
 	b.WriteString(strings.Repeat("[", t.Dims))
@@ -381,23 +383,64 @@ func (r *resolver) sig(t *Type) string {
 		b.WriteString("T" + tp.Name + ";")
 		return b.String()
 	}
-	b.WriteString("L" + n)
-	if args := t.Segs[len(t.Segs)-1].Args; len(args) > 0 {
-		b.WriteByte('<')
-		for _, a := range args {
-			switch a.Wild {
-			case '*':
-				b.WriteByte('*')
-				continue
-			case '+', '-':
-				b.WriteByte(a.Wild)
-			}
-			b.WriteString(r.sig(a.Type))
-		}
-		b.WriteByte('>')
+	if s, ok := r.innerSig(t, n); ok {
+		b.WriteString(s)
+		return b.String()
 	}
+	b.WriteString("L" + n)
+	r.argsSig(&b, t.Segs[len(t.Segs)-1].Args)
 	b.WriteByte(';')
 	return b.String()
+}
+
+// innerSig returns the signature of t, of class n, as Outer<A>.Inner<B>,
+// if a segment before its last has type arguments.
+func (r *resolver) innerSig(t *Type, n string) (string, bool) {
+	first := slices.IndexFunc(t.Segs[:len(t.Segs)-1], func(s Seg) bool { return len(s.Args) > 0 })
+	if first < 0 {
+		return "", false
+	}
+	outer, _ := r.classType(&Type{Segs: t.Segs[:first+1]})
+	if !strings.HasPrefix(n, outer+"$") {
+		return "", false
+	}
+	var b strings.Builder
+	b.WriteString("L" + outer)
+	r.argsSig(&b, t.Segs[first].Args)
+	prev := outer
+	for i := first + 1; i < len(t.Segs); i++ {
+		name := n
+		if i < len(t.Segs)-1 {
+			name, _ = r.classType(&Type{Segs: t.Segs[:i+1]})
+		}
+		if !strings.HasPrefix(name, prev+"$") {
+			return "", false
+		}
+		b.WriteString("." + name[len(prev)+1:])
+		r.argsSig(&b, t.Segs[i].Args)
+		prev = name
+	}
+	b.WriteByte(';')
+	return b.String(), true
+}
+
+// argsSig writes the signature of type arguments, if there are any.
+func (r *resolver) argsSig(b *strings.Builder, args []*TypeArg) {
+	if len(args) == 0 {
+		return
+	}
+	b.WriteByte('<')
+	for _, a := range args {
+		switch a.Wild {
+		case '*':
+			b.WriteByte('*')
+			continue
+		case '+', '-':
+			b.WriteByte(a.Wild)
+		}
+		b.WriteString(r.sig(a.Type))
+	}
+	b.WriteByte('>')
 }
 
 func (r *resolver) boundInterface(t *Type) bool {
@@ -453,6 +496,7 @@ func (s *Set) Info(name string) (*classfile.Info, error) {
 		}
 		if len(c.Extends) > 0 {
 			info.Super, _ = r.superType(c.Extends[0])
+			r.unresolved(info, c.Extends[0])
 		}
 		supers = c.Implements
 	case KindInterface:
@@ -487,9 +531,14 @@ func (s *Set) Info(name string) (*classfile.Info, error) {
 	for _, t := range supers {
 		n, _ := r.superType(t)
 		info.Interfaces = append(info.Interfaces, n)
+		r.unresolved(info, t)
+	}
+	if !slices.ContainsFunc(info.Unresolved, func(n string) bool { return n != "" }) {
+		info.Unresolved = nil
 	}
 	if c.Outer != nil {
-		access := c.Flags
+		// As javac writes it: the class's own kind flags too.
+		access := c.Flags | flags&(classfile.AccInterface|classfile.AccAbstract|classfile.AccAnnotation|classfile.AccEnum|classfile.AccFinal)
 		if static(c) {
 			access |= classfile.AccStatic
 		}
@@ -552,7 +601,7 @@ func (s *Set) Info(name string) (*classfile.Info, error) {
 		if iface {
 			access |= classfile.AccPublic | classfile.AccStatic | classfile.AccFinal
 		}
-		m := classfile.Member{Access: access, Name: f.Name, Desc: r.desc(f.Type)}
+		m := classfile.Member{Access: access, Name: f.Name, Desc: r.desc(f.Type), Annotations: r.nullability(f.Annotations)}
 		if r.generic(f.Type) {
 			m.Sig = r.sig(f.Type)
 		}
@@ -607,7 +656,16 @@ func (s *Set) Info(name string) (*classfile.Info, error) {
 		}
 		desc, sig := mr.methodDesc(m.TypeParams, outer, params, ret, m.Throws)
 		declared[m.Name+desc] = true
-		info.Methods = append(info.Methods, classfile.Member{Access: access, Name: m.Name, Desc: desc, Sig: sig, Annotations: mr.annotations(m.Annotations)})
+		mm := classfile.Member{Access: access, Name: m.Name, Desc: desc, Sig: sig, Annotations: mr.methodAnnotations(m.Annotations)}
+		for i, p := range m.Params {
+			if as := mr.nullability(p.Annotations); as != nil {
+				if mm.ParamAnnotations == nil {
+					mm.ParamAnnotations = make([][]string, len(m.Params))
+				}
+				mm.ParamAnnotations[i] = as
+			}
+		}
+		info.Methods = append(info.Methods, mm)
 	}
 	var canonical []*Type // a record's canonical constructor's parameters
 	for _, p := range c.Components {
@@ -674,6 +732,18 @@ func (r *resolver) superType(t *Type) (string, *TypeParam) {
 		return "java/lang/Object", nil
 	}
 	return n, tp
+}
+
+// unresolved adds written supertype t to info.Unresolved: its simple name
+// if it doesn't resolve, else "".
+func (r *resolver) unresolved(info *classfile.Info, t *Type) {
+	name := ""
+	if r.s.Outside != nil && len(t.Segs) > 0 {
+		if n, tp := superResolver(r.s, r.c).classType(t); tp == nil && (n == "" || !r.s.known(n)) {
+			name = t.Segs[len(t.Segs)-1].Name
+		}
+	}
+	info.Unresolved = append(info.Unresolved, name)
 }
 
 // outerParam returns the type of the outer instance an inner class's

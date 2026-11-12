@@ -229,3 +229,16 @@ func (s *Snapshot) OffsetPosition(off int) (utf16Off, line, column int, err erro
 	u := s.utf16At(off)
 	return u, l + 1, u - s.utf16At(int(s.lineStarts[l])) + 1, nil
 }
+
+// KindSequenceHash returns the FNV-1a hash of the snapshot's node kinds
+// in preorder, one 64-bit step per node: what a client that numbers
+// another tree's nodes the same way (jvm/kc-aa's PSI join) compares to
+// check that the two trees have the same shape.
+func (s *Snapshot) KindSequenceHash() uint64 {
+	h := uint64(14695981039346656037)
+	for _, n := range s.nodes[1:] {
+		h ^= uint64(n.kind)
+		h *= 1099511628211
+	}
+	return h
+}

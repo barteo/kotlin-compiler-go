@@ -231,3 +231,81 @@ func TestParseErrors(t *testing.T) {
 		}
 	}
 }
+
+// A malformed member is left out, and the rest of its class kept.
+func TestParseRecovery(t *testing.T) {
+	src := `class A {
+	Long a = 0;
+	Long f<T>(T p) { return 0; }
+	int g( ;
+	void h() {}
+	List<Double> last = List<double>()
+	private String str = "str"
+	final transient String s1;
+}
+interface B {
+	int c()
+}
+`
+	f, err := Parse("A.java", src)
+	if err == nil || f == nil {
+		t.Fatalf("got %v, %v; want the file and an error", f, err)
+	}
+	var names []string
+	for _, c := range f.Classes {
+		names = append(names, c.Name)
+		for _, fd := range c.Fields {
+			names = append(names, fd.Name)
+		}
+		for _, m := range c.Methods {
+			names = append(names, m.Name)
+		}
+	}
+	if got, want := strings.Join(names, " "), "A a last str s1 h B c"; got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+// A package or import declaration without its ; is kept, as are the
+// classes after it.
+func TestParseMissingSemicolon(t *testing.T) {
+	src := "package p\n\nimport kotlin.reflect.KClass\nimport java.util.*\n\npublic class A {}\npublic @interface T {}\n"
+	f, err := Parse("A.java", src)
+	if err == nil || f == nil {
+		t.Fatalf("got %v, %v; want the file and an error", f, err)
+	}
+	var names []string
+	for _, c := range f.Classes {
+		names = append(names, c.Name)
+	}
+	if f.Package != "p" || len(f.Imports) != 2 || !f.Imports[1].Star || strings.Join(names, " ") != "A T" {
+		t.Errorf("got package %q, imports %v, classes %v", f.Package, f.Imports, names)
+	}
+}
+
+// TestParamAnnotations checks that Details gives the annotations of a
+// method's parameters, by parameter, and nil when none has any.
+func TestParamAnnotations(t *testing.T) {
+	src := `package p;
+@interface Defer {}
+class K {
+	void f(@Defer int a, final int b) {}
+	void g(int c) {}
+}
+`
+	f, err := Parse("p/K.java", src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := NewSet([]*File{f}).Details("p/K")
+	if d == nil {
+		t.Fatal("p/K: no details")
+	}
+	got := map[string]string{}
+	for _, m := range d.Methods {
+		got[m.Name] = fmt.Sprint(m.Params)
+	}
+	if got["f"] != "[[{Lp/Defer; []}] []]" || got["g"] != "[]" {
+		t.Errorf("got %v", got)
+	}
+}

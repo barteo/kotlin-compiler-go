@@ -661,6 +661,10 @@ func bridgeAnnotations(m cf.MemberRef, as []syntax.Annotation) {
 	}
 }
 
+// UnsignedConst returns the bits of a constant of an unsigned integer
+// type, e: an unsigned literal, or a const val of one.
+func UnsignedConst(e syntax.Expr) (int64, bool) { return unsignedConst(e, 0) }
+
 // unsignedConst returns the bits of a constant of an unsigned integer
 // type: an unsigned literal, or a const val of one.
 func unsignedConst(e syntax.Expr, depth int) (int64, bool) {

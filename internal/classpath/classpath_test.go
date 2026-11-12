@@ -208,6 +208,12 @@ func TestJarAndDir(t *testing.T) {
 	if p.HasKotlin() {
 		t.Error("HasKotlin without kotlin/kotlin.kotlin_builtins")
 	}
+	for pkg, want := range map[string][]string{"demo": {"demo/Greeter", "demo/Other"}, "": nil, "dem": nil} {
+		got, ok := p.Classes(pkg)
+		if !slices.Equal(got, want) || ok != (pkg != "dem") {
+			t.Errorf("Classes(%q) = %v, %v; want %v", pkg, got, ok, want)
+		}
+	}
 	// A second compilation has its own cache, and reversed class path
 	// precedence must produce the directory's definition, not the jar's.
 	reversed, err := Open("", []string{classDir, jarPath})

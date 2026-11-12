@@ -51,9 +51,9 @@ func ReadMethodAnnotations(data []byte, name, desc string) (*MethodAnnotations, 
 			case "Deprecated":
 				out.Deprecated = true
 			case "RuntimeVisibleAnnotations":
-				out.Visible, err = readAnnotations(r, p)
+				out.Visible, err = readAnnotationsStrict(r, p)
 			case "RuntimeInvisibleAnnotations":
-				out.Invisible, err = readAnnotations(r, p)
+				out.Invisible, err = readAnnotationsStrict(r, p)
 			case "RuntimeVisibleParameterAnnotations":
 				out.VisibleParams, err = readParamAnnotations(r, p)
 			case "RuntimeInvisibleParameterAnnotations":
@@ -75,7 +75,9 @@ func ReadMethodAnnotations(data []byte, name, desc string) (*MethodAnnotations, 
 	return nil, fmt.Errorf("%w: %s%s", ErrNotFound, name, desc)
 }
 
-func readAnnotations(r *reader, p *pool) ([]Annotation, error) {
+// readAnnotationsStrict reads a Runtime*Annotations attribute's annotations,
+// failing on one it can't decode.
+func readAnnotationsStrict(r *reader, p *pool) ([]Annotation, error) {
 	var out []Annotation
 	for range r.u2() {
 		t, err := p.utf8(r.u2())
@@ -99,7 +101,7 @@ func readAnnotations(r *reader, p *pool) ([]Annotation, error) {
 func readParamAnnotations(r *reader, p *pool) ([][]Annotation, error) {
 	out := make([][]Annotation, r.u1())
 	for i := range out {
-		as, err := readAnnotations(r, p)
+		as, err := readAnnotationsStrict(r, p)
 		if err != nil {
 			return nil, err
 		}

@@ -281,7 +281,7 @@ func (l *lowerer) annotationsOf(n psi.NodeRef) []syntax.Annotation {
 		case psi.KindANNOTATION_ENTRY:
 			as = append(as, l.annotation(c))
 		case psi.KindANNOTATION:
-			as = append(as, l.bracketAnnotation(c))
+			as = append(as, l.bracketAnnotations(c)...)
 		}
 	}
 	return as
@@ -683,15 +683,33 @@ func (l *lowerer) newlineIn(from, to int) bool {
 
 // destructuringNames lowers the entries of a DESTRUCTURING_DECLARATION.
 func (l *lowerer) destructuringNames(d psi.NodeRef) ([]string, []*syntax.TypeRef) {
+	names, types, _ := l.destructuringEntries(d)
+	return names, types
+}
+
+// destructuringEntries lowers the entries of a DESTRUCTURING_DECLARATION
+// with their annotations, (@A a, b): nil where there are none (see
+// syntax.Destructure.Annotations).
+func (l *lowerer) destructuringEntries(d psi.NodeRef) ([]string, []*syntax.TypeRef, [][]syntax.Annotation) {
 	l.newDestructuring(d)
 	var names []string
 	var types []*syntax.TypeRef
+	var annots [][]syntax.Annotation
 	for _, e := range kids(d) {
 		if e.NumericKind() != psi.KindDESTRUCTURING_DECLARATION_ENTRY {
 			continue
 		}
 		if m := child(e, psi.KindMODIFIER_LIST); m.Valid() {
-			l.unexpected(m)
+			// Only annotations: (private a) is a parse error in kotlinc.
+			for _, c := range kids(m) {
+				if k := c.NumericKind(); k != psi.KindANNOTATION_ENTRY && k != psi.KindANNOTATION {
+					l.unexpected(m)
+				}
+			}
+			for len(annots) < len(names) {
+				annots = append(annots, nil)
+			}
+			annots = append(annots, l.annotationsOf(m))
 		}
 		names = append(names, ident(child(e, psi.KindIDENTIFIER)))
 		var t *syntax.TypeRef
@@ -703,7 +721,12 @@ func (l *lowerer) destructuringNames(d psi.NodeRef) ([]string, []*syntax.TypeRef
 	if len(names) == 0 {
 		l.failAt(l.end(child(d, psi.KindLPAR)), "unexpected ')'")
 	}
-	return names, types
+	if annots != nil {
+		for len(annots) < len(names) {
+			annots = append(annots, nil)
+		}
+	}
+	return names, types, annots
 }
 
 // anonFun lowers an anonymous FUN, with label, or one of its own.
@@ -866,7 +889,7 @@ func (l *lowerer) try(n psi.NodeRef) syntax.Expr {
 					case psi.KindANNOTATION_ENTRY:
 						ct.Annotations = append(ct.Annotations, l.annotation(a))
 					case psi.KindANNOTATION:
-						ct.Annotations = append(ct.Annotations, l.bracketAnnotation(a))
+						ct.Annotations = append(ct.Annotations, l.bracketAnnotations(a)...)
 					default:
 						l.unexpected(a)
 					}

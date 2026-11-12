@@ -2314,7 +2314,7 @@ func (p *parser) parseStmtAfterAnnotations() Stmt {
 		if p.at(LPAREN) {
 			// val (a, b) = e
 			d := &Destructure{P: t.Pos, Mutable: t.Kind == VAR}
-			d.Names, d.Types = p.destructuringNames()
+			d.Names, d.Types, d.Annotations = p.destructuringEntries()
 			p.expect(ASSIGN)
 			p.skipNL()
 			d.Init = p.parseExpr()
@@ -3239,10 +3239,29 @@ func (p *parser) destructuredParam() bool {
 // destructuringNames parses the names of a destructuring declaration,
 // (a, _, c: C), and their types, nil where omitted.
 func (p *parser) destructuringNames() ([]string, []*TypeRef) {
+	names, types, _ := p.destructuringEntries()
+	return names, types
+}
+
+// destructuringEntries parses the names of a destructuring declaration,
+// (@A a: T, b), with their types and annotations: nil where there are
+// none.
+func (p *parser) destructuringEntries() ([]string, []*TypeRef, [][]Annotation) {
 	p.expect(LPAREN)
 	var names []string
 	var types []*TypeRef
+	var annots [][]Annotation
 	for !p.at(RPAREN) {
+		var as []Annotation
+		for p.at(AT) {
+			as = append(as, p.annotation())
+		}
+		if as != nil {
+			for len(annots) < len(names) {
+				annots = append(annots, nil)
+			}
+			annots = append(annots, as)
+		}
 		names = append(names, p.ident().Text)
 		var t *TypeRef
 		if p.at(COLON) {
@@ -3259,7 +3278,12 @@ func (p *parser) destructuringNames() ([]string, []*TypeRef) {
 	if len(names) == 0 {
 		p.unexpected("name")
 	}
-	return names, types
+	if annots != nil {
+		for len(annots) < len(names) {
+			annots = append(annots, nil)
+		}
+	}
+	return names, types, annots
 }
 
 // parseTry parses try { } catch (e: E) { } finally { }, with any number of
