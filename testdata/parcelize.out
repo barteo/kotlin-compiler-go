@@ -56,10 +56,108 @@ modes: parcelable(p.Modes) string(LOW) int(0) parcelable(p.Tone) string(SOFT) pa
   read: Modes(level=LOW, nlevel=null, tone=SOFT, ntone=LOUD, step=Jump(to=5), go=Go(steps=6, level=HIGH), stop=Stop, mode=Edit(f, [], [c]), edit=null)
   equal: true, describeContents: 0
 tone: ! 2
+builtins: parcelable(p.Builtins) int(1) string(cs) int(1) string(ncs) bundle(Bundle{k=v}) bundle(Bundle{k=v}) persistableBundle(PersistableBundle{p=q}) intArray([1, 2]) intArray([3]) longArray([4]) floatArray([1.5]) doubleArray([2.5]) booleanArray([true, false]) byteArray([5]) charArray([x]) int(2) int(6) int(7) int(1) int(1) int(8) int(2) long(9) long(10) int(1) int(2) int(1) int(11) int(0) int(1) int(2) string(two) int(2) int(1) string(RED) int(0) binder(Binder(b)) binder(Binder(b)) binderArray([Binder(b)]) binderList([Binder(b)]) size(1x2) int(1) size(3x4) sizeF(1.5x2.5) sparseBooleanArray({1=false, 3=true}) sparseBooleanArray({1=false, 3=true}) int(1) int(2) int(20) int(1) int(1) int(2) int(20) int(1) int(5) long(50) int(2) int(4) string(four) int(7) string(seven) int(1) int(2) int(1) int(1) int(1) string(one) int(2) int(0) int(1) int(12) int(1) string(d) int(1) long(8) int(2) string(a) string(b) int(1) int(2) int(13) int(14) int(1) string(t) int(15) int(1) int(16) int(3) string(three) int(1) string(c) long(9) int(1) int(1) serializable(sb) serializable([17]) serializable(Twice)
+  read: [cs, ncs, Bundle{k=v}, Bundle{k=v}, PersistableBundle{p=q}, [1, 2], [3], [4], [1.5], [2.5], [true, false], [5], [x], [6, 7], [8], [9, 10], [11, null], [Inner(x=2, name=two)], [RED, null], Binder(b), Binder(b), [Binder(b)], [Binder(b)], 1x2, 3x4, 1.5x2.5, {1=false, 3=true}, {1=false, 3=true}, {2=20}, {2=20}, {5=50}, {4=four, 7=seven}, {1=Inner(x=1, name=one), 2=null}, [12], [d], [8], [a, b], [13, 14], {t=15}, {16=Inner(x=3, name=three)}, {c=9}, Marker, Marker, sb, [17], 6]
+  equal: true, describeContents: 0
+builtin nulls: parcelable(p.Builtins) int(1) string(cs) int(1) string(null) bundle(Bundle{k=v}) bundle(null) persistableBundle(null) intArray([1, 2]) intArray(null) longArray([4]) floatArray([1.5]) doubleArray([2.5]) booleanArray([true, false]) byteArray([5]) charArray([x]) int(2) int(6) int(7) int(0) int(2) long(9) long(10) int(0) int(1) int(2) string(two) int(2) int(1) string(RED) int(0) binder(Binder(b)) binder(null) binderArray([Binder(b)]) binderList([Binder(b)]) size(1x2) int(0) sizeF(1.5x2.5) sparseBooleanArray({1=false, 3=true}) sparseBooleanArray(null) int(1) int(2) int(20) int(0) int(1) int(5) long(50) int(2) int(4) string(four) int(7) string(seven) int(0) int(1) int(12) int(1) string(d) int(1) long(8) int(2) string(a) string(b) int(0) int(1) string(t) int(15) int(1) int(16) int(3) string(three) int(1) string(c) long(9) int(1) int(1) serializable(sb) serializable([17]) serializable(Twice)
+  read: [cs, null, Bundle{k=v}, null, null, [1, 2], null, [4], [1.5], [2.5], [true, false], [5], [x], [6, 7], null, [9, 10], null, [Inner(x=2, name=two)], [RED, null], Binder(b), null, [Binder(b)], [Binder(b)], 1x2, null, 1.5x2.5, {1=false, 3=true}, null, {2=20}, null, {5=50}, {4=four, 7=seven}, null, [12], [d], [8], [a, b], null, {t=15}, {16=Inner(x=3, name=three)}, {c=9}, Marker, Marker, sb, [17], 6]
+  equal: false, describeContents: 0
+descriptors: parcelable(p.Descriptors) int(0) int(0) int(1) int(1) string(k) int(0)
+  read: Descriptors(fd=null, fds=[], nested={k=[]})
+  equal: true, describeContents: 1
+raw: parcelable(p.Raw) value(Plain(n=1)) value(Plain(n=2)) int(1) value(Plain(n=3)) int(2) value(Plain(n=4)) value(null) value(Plain(n=5)) int(1) string(k) value(Plain(n=6)) string(s)
+  read: Raw(p=Plain(n=1), np=Plain(n=2), ps=[Plain(n=3)], inner=[Plain(n=4), null], any=Plain(n=5), m={k=Plain(n=6)}, s=s)
+  equal: true, describeContents: 0
+raw nulls: parcelable(p.Raw) value(Plain(n=1)) value(null) int(0) int(1) value(null) value(null) int(0) string(s)
+  read: Raw(p=Plain(n=1), np=null, ps=[], inner=[null], any=null, m={}, s=s)
+  equal: true, describeContents: 0
+box: parcelable(p.Box) parcelable(p.Inner) int(1) string(one) int(1) parcelable(p.Inner) int(2) string(two) parcelable(null)
+  read: Box(item=Inner(x=1, name=one), items=[Inner(x=2, name=two)], maybe=null)
+  equal: true, describeContents: 0
+nums: parcelable(p.Nums) serializable(1) int(1) int(3) serializable(2) serializable(3) serializable(4.5) serializable(s)
+  read: Nums(1, [2, 3, 4.5], s)
+  equal: true, describeContents: 0
+nums nulls: parcelable(p.Nums) serializable(1) int(0) serializable(null)
+  read: Nums(1, null, null)
+  equal: true, describeContents: 0
+raw box: parcelable(p.RawBox) value(Plain(n=1)) int(2) value(Plain(n=2)) value(Plain(n=3))
+  read: RawBox(v=Plain(n=1), vs=[Plain(n=2), Plain(n=3)])
+  equal: true, describeContents: 0
+boxes: parcelable(p.Boxes) parcelable(p.Inner) int(1) string(one) int(1) parcelable(p.Inner) int(2) string(two) parcelable(null) int(0) int(1) parcelable(p.Inner) int(1) string(one) int(1) parcelable(p.Inner) int(2) string(two) parcelable(null) int(5)
+  read: Boxes(b=Box(item=Inner(x=1, name=one), items=[Inner(x=2, name=two)], maybe=null), nb=null, bs=[Box(item=Inner(x=1, name=one), items=[Inner(x=2, name=two)], maybe=null)], unused=Unused(i=5))
+  equal: true, describeContents: 0
+self written: parcelable(p.SelfWritten) string(me) int(3)
+  read: SelfWritten(name=me, n=3)
+  equal: true, describeContents: 0
+self array: parcelable(p.SelfArray) string(arr)
+  read: SelfArray(arr)
+  equal: true, describeContents: 0
+comparable: parcelable(p.Cmp) value(c) int(2) value(d) value(e)
+  read: Cmp(x=c, xs=[d, e])
+  equal: true, describeContents: 0
+bounded: parcelable(p.Bounded) serializable(1) serializable(2)
+  read: Bounded(x=1, y=2)
+  equal: true, describeContents: 0
+bounded nulls: parcelable(p.Bounded) serializable(1.5) serializable(null)
+  read: Bounded(x=1.5, y=null)
+  equal: true, describeContents: 0
+generic self written: parcelable(p.GenSelf) string(gen)
+  read: GenSelf(gen, null)
+  equal: true, describeContents: 0
+aliased: parcelable(p.Aliased) int(3)
+  read: Aliased(6)
+  equal: true, describeContents: 0
+import aliased: parcelable(p.ImportAliased) int(4)
+  read: ImportAliased(5)
+  equal: true, describeContents: 0
+specials: parcelable(p.Specials) int(-294967296) int(1) int(1) long(-446744073709551616) int(1) long(2) byte(-56) int(1) byte(3) int(-5536) int(1) int(4) intArray([1, -294967296]) intArray([5]) longArray([-446744073709551616]) byteArray([-1, 1]) int(1) int(-1) int(1) int(2) int(7) int(8) int(3) int(1) int(1) int(0) int(1) int(-1294967296) int(2) long(9) long(-446744073709551616) long(10800000000000) int(1) long(-4000000000) int(1) int(1) long(10000000) int(1) int(10) int(1) int(3) int(2) long(5) long(6) int(1) int(97) int(122) int(2) int(0) int(1) int(2) int(3) long(81985529216486895) long(-2) int(1) long(81985529216486895) long(-2)
+  read: Specials(4000000000, 1, 18000000000000000000, 2, 200, 3, 60000, 4, [1, 4000000000], [5], [18000000000000000000], [255, 1], [65535], [7, 8], [1, null, 3000000000], [9, 18000000000000000000], 1h 30m, -2s, {1=5ms}, 1..10, 3..2, 5..6, a..z, [0..1, 2..3], 01234567-89ab-cdef-ffff-fffffffffffe, 01234567-89ab-cdef-ffff-fffffffffffe)
+  equal: true, describeContents: 0
+special nulls: parcelable(p.Specials) int(-294967296) int(0) long(-446744073709551616) int(0) byte(-56) int(0) int(-5536) int(0) intArray([1, -294967296]) intArray(null) longArray([-446744073709551616]) byteArray(null) int(1) int(-1) int(0) int(3) int(1) int(1) int(0) int(1) int(-1294967296) int(2) long(9) long(-446744073709551616) long(10800000000000) int(0) int(1) int(1) long(10000000) int(1) int(10) int(0) long(5) long(6) int(0) int(2) int(0) int(1) int(2) int(3) long(81985529216486895) long(-2) int(0)
+  read: Specials(4000000000, null, 18000000000000000000, null, 200, null, 60000, null, [1, 4000000000], null, [18000000000000000000], null, [65535], null, [1, null, 3000000000], [9, 18000000000000000000], 1h 30m, null, {1=5ms}, 1..10, null, 5..6, null, [0..1, 2..3], 01234567-89ab-cdef-ffff-fffffffffffe, null)
+  equal: true, describeContents: 0
+id: parcelable(p.Id) int(5)
+  read: Id(v=5)
+  equal: true, describeContents: 0
+value box: parcelable(p.ValueBox) int(1) int(1) int(2) string(n) serializable(SerialName(s=s)) serializable(SerialName(s=t)) value(PlainValue(n=3)) value(PlainValue(n=4)) int(2) int(5) int(6)
+  read: ValueBox(id=Id(v=1), nid=Id(v=2), name=Name(s=n), ser=SerialName(s=s), nser=SerialName(s=t), p=PlainValue(n=3), np=PlainValue(n=4), ids=[Id(v=5), Id(v=6)])
+  equal: true, describeContents: 0
+value box nulls: parcelable(p.ValueBox) int(1) int(0) string(n) serializable(SerialName(s=s)) serializable(null) value(PlainValue(n=2)) value(null) int(0)
+  read: ValueBox(id=Id(v=1), nid=null, name=Name(s=n), ser=SerialName(s=s), nser=null, p=PlainValue(n=2), np=null, ids=[])
+  equal: true, describeContents: 0
+data classes: parcelable(p.DataClasses) int(1) string(a) int(1) int(2) string(null) int(2) int(3) int(4) int(1) int(5) string(b) int(0) int(0) int(1) int(6) string(c) string(t) int(7)
+  read: DataClasses(l=Line(a=Pt(x=1, y=a), b=Pt(x=2, y=null), ids=[3, 4]), nl=Line(a=Pt(x=5, y=b), b=null, ids=[]), ls=[Pt(x=6, y=c)], g=Tagged(t=t, n=7))
+  equal: true, describeContents: 0
+data class nulls: parcelable(p.DataClasses) int(1) string(null) int(0) int(0) int(0) int(0) string(t) int(0)
+  read: DataClasses(l=Line(a=Pt(x=1, y=null), b=null, ids=[]), nl=null, ls=[], g=Tagged(t=t, n=0))
+  equal: true, describeContents: 0
+immutables: parcelable(p.Immutables) int(2) int(1) int(2) int(2) int(1) int(3) int(0) int(2) string(a) string(b) int(1) long(4) int(1) string(k) int(5) int(2) int(6) string(null) int(7) string(v) stringList([x, y]) int(1) stringList([z]) int(1) int(1) int(8) binderList([Binder(b)])
+  read: Immutables(pl=persistent[1, 2], il=persistent[3, null], ps=persistent[a, b], iset=persistent[4], pm=persistent{k=5}, im=persistent{6=null, 7=v}, sl=persistent[x, y], nsl=persistent[z], npl=persistent[8], bl=persistent[Binder(b)])
+  equal: true, describeContents: 0
+immutable nulls: parcelable(p.Immutables) int(2) int(1) int(2) int(2) int(1) int(3) int(0) int(2) string(a) string(b) int(1) long(4) int(1) string(k) int(5) int(2) int(6) string(null) int(7) string(v) stringList([x, y]) int(0) int(0) binderList([Binder(b)])
+  read: Immutables(pl=persistent[1, 2], il=persistent[3, null], ps=persistent[a, b], iset=persistent[4], pm=persistent{k=5}, im=persistent{6=null, 7=v}, sl=persistent[x, y], nsl=null, npl=null, bl=persistent[Binder(b)])
+  equal: true, describeContents: 0
+stamps: parcelable(p.Stamps) long(1) int(1) long(2) int(1) long(3) long(4) long(5)
+  read: Stamps(s=Stamp(t=1), ns=Stamp(t=2), ss=[Stamp(t=3)], o=Stamp(t=4), nn=Stamp(t=5))
+  equal: true, describeContents: 0
+stamp nulls: parcelable(p.Stamps) long(1) int(0) int(0) long(2) long(-1)
+  read: Stamps(s=Stamp(t=1), ns=null, ss=[], o=Stamp(t=2), nn=null)
+  equal: true, describeContents: 0
+writes: parcelable(p.Writes) long(1) int(1) long(2) long(3) int(1) long(4)
+  read: Writes(s=Stamp(t=1), ns=Stamp(t=2), nn=Stamp(t=3), ss=[Stamp(t=4)])
+  equal: true, describeContents: 0
+write nulls: parcelable(p.Writes) long(1) int(0) long(-1) int(0)
+  read: Writes(s=Stamp(t=1), ns=null, nn=null, ss=[])
+  equal: true, describeContents: 0
+fast: parcelable(p.Fast) int(2) int(101) int(102) int(1) string(A) int(1) string(B) int(1) int(1) byte(1) int(1) int(103)
+  read: Fast([1, 2], [a], [b], {1=true}, 3)
+  equal: true, describeContents: 0
 persistent: parcelable(p.Persistent) stringList([a, b]) int(2) int(1) int(2) int(1) string(t) int(1) string(k) long(3) int(1) int(1) int(4) string(four)
   read: Persistent(names=persistent[a, b], ids=persistent[1, 2], tags=persistent[t], counts=persistent{k=3}, more=persistent[Inner(x=4, name=four)])
   equal: true, describeContents: 0
 newArray: 2 Inner[]
-use: parcelable(Holder) parcelable(p.Inner) int(7) string(seven) parcelable(p.Empty) int(1) parcelable(p.Outer$Deep) long(8) parcelable(p.Shape$Circle) double(9.0) parcelable(p.Base) string(ten) string(RED) parcelable(p.Level) string(HIGH) parcelable(p.Step$Go) int(1) string(LOW)
-  read: Holder(inner=Inner(x=7, name=seven), empty=Empty, deep=Deep(id=8), shape=Circle(r=9.0), base=Base(ten), color=RED, level=HIGH, step=Go(steps=1, level=LOW))
-  equal: true
+Parceler's newArray: 3
+generic Parceler's newArray: 4
+use: parcelable(Holder) parcelable(p.Inner) int(7) string(seven) parcelable(p.Empty) int(1) parcelable(p.Outer$Deep) long(8) parcelable(p.Shape$Circle) double(9.0) parcelable(p.Base) string(ten) string(RED) parcelable(p.Level) string(HIGH) parcelable(p.Step$Go) int(1) string(LOW) parcelable(p.Builtins) int(1) string(cs) int(1) string(null) bundle(Bundle{k=v}) bundle(null) persistableBundle(null) intArray([1, 2]) intArray(null) longArray([4]) floatArray([1.5]) doubleArray([2.5]) booleanArray([true, false]) byteArray([5]) charArray([x]) int(2) int(6) int(7) int(0) int(2) long(9) long(10) int(0) int(1) int(2) string(two) int(2) int(1) string(RED) int(0) binder(Binder(b)) binder(null) binderArray([Binder(b)]) binderList([Binder(b)]) size(1x2) int(0) sizeF(1.5x2.5) sparseBooleanArray({1=false, 3=true}) sparseBooleanArray(null) int(1) int(2) int(20) int(0) int(1) int(5) long(50) int(2) int(4) string(four) int(7) string(seven) int(0) int(1) int(12) int(1) string(d) int(1) long(8) int(2) string(a) string(b) int(0) int(1) string(t) int(15) int(1) int(16) int(3) string(three) int(1) string(c) long(9) int(1) int(1) serializable(sb) serializable([17]) serializable(Twice) parcelable(p.Descriptors) int(0) int(0) int(0) parcelable(p.Raw) value(Plain(n=1)) value(Plain(n=2)) int(1) value(Plain(n=3)) int(2) value(Plain(n=4)) value(null) value(Plain(n=5)) int(1) string(k) value(Plain(n=6)) string(s) parcelable(p.Box) parcelable(p.Inner) int(1) string(one) int(0) parcelable(p.Inner) int(2) string(two) parcelable(null) parcelable(p.SelfWritten) string(you) int(4) parcelable(p.Stamps) long(1) int(1) long(2) int(1) long(3) long(4) long(5) long(6) string(W) parcelable(p.GenSelf) string(g) parcelable(p.Aliased) int(5) parcelable(p.Bounded) serializable(6) serializable(null) parcelable(p.Specials) int(-294967296) int(1) int(1) long(-446744073709551616) int(1) long(2) byte(-56) int(1) byte(3) int(-5536) int(1) int(4) intArray([1, -294967296]) intArray([5]) longArray([-446744073709551616]) byteArray([-1, 1]) int(1) int(-1) int(1) int(2) int(7) int(8) int(3) int(1) int(1) int(0) int(1) int(-1294967296) int(2) long(9) long(-446744073709551616) long(10800000000000) int(1) long(-4000000000) int(1) int(1) long(10000000) int(1) int(10) int(1) int(3) int(2) long(5) long(6) int(1) int(97) int(122) int(2) int(0) int(1) int(2) int(3) long(81985529216486895) long(-2) int(1) long(81985529216486895) long(-2) parcelable(p.ValueBox) int(1) int(1) int(2) string(n) serializable(SerialName(s=s)) serializable(SerialName(s=t)) value(PlainValue(n=3)) value(PlainValue(n=4)) int(2) int(5) int(6) parcelable(p.DataClasses) int(1) string(a) int(1) int(2) string(null) int(2) int(3) int(4) int(1) int(5) string(b) int(0) int(0) int(1) int(6) string(c) string(t) int(7) parcelable(p.Immutables) int(2) int(1) int(2) int(2) int(1) int(3) int(0) int(2) string(a) string(b) int(1) long(4) int(1) string(k) int(5) int(2) int(6) string(null) int(7) string(v) stringList([x, y]) int(1) stringList([z]) int(1) int(1) int(8) binderList([Binder(b)])
+  read: Holder(inner=Inner(x=7, name=seven), empty=Empty, deep=Deep(id=8), shape=Circle(r=9.0), base=Base(ten), color=RED, level=HIGH, step=Go(steps=1, level=LOW), builtins=[cs, null, Bundle{k=v}, null, null, [1, 2], null, [4], [1.5], [2.5], [true, false], [5], [x], [6, 7], null, [9, 10], null, [Inner(x=2, name=two)], [RED, null], Binder(b), null, [Binder(b)], [Binder(b)], 1x2, null, 1.5x2.5, {1=false, 3=true}, null, {2=20}, null, {5=50}, {4=four, 7=seven}, null, [12], [d], [8], [a, b], null, {t=15}, {16=Inner(x=3, name=three)}, {c=9}, Marker, Marker, sb, [17], 6], descriptors=Descriptors(fd=null, fds=[], nested=null), raw=Raw(p=Plain(n=1), np=Plain(n=2), ps=[Plain(n=3)], inner=[Plain(n=4), null], any=Plain(n=5), m={k=Plain(n=6)}, s=s), box=Box(item=Inner(x=1, name=one), items=[], maybe=Inner(x=2, name=two)), boxes=null, self=SelfWritten(name=you, n=4), stamps=Stamps(s=Stamp(t=1), ns=Stamp(t=2), ss=[Stamp(t=3)], o=Stamp(t=4), nn=Stamp(t=5)), mine=UseStamps(s=Stamp(t=6), w=w), gen=GenSelf(g, null), aliased=Aliased(10), bounded=Bounded(x=6, y=null), specials=Specials(4000000000, 1, 18000000000000000000, 2, 200, 3, 60000, 4, [1, 4000000000], [5], [18000000000000000000], [255, 1], [65535], [7, 8], [1, null, 3000000000], [9, 18000000000000000000], 1h 30m, -2s, {1=5ms}, 1..10, 3..2, 5..6, a..z, [0..1, 2..3], 01234567-89ab-cdef-ffff-fffffffffffe, 01234567-89ab-cdef-ffff-fffffffffffe), values=ValueBox(id=Id(v=1), nid=Id(v=2), name=Name(s=n), ser=SerialName(s=s), nser=SerialName(s=t), p=PlainValue(n=3), np=PlainValue(n=4), ids=[Id(v=5), Id(v=6)]), data=DataClasses(l=Line(a=Pt(x=1, y=a), b=Pt(x=2, y=null), ids=[3, 4]), nl=Line(a=Pt(x=5, y=b), b=null, ids=[]), ls=[Pt(x=6, y=c)], g=Tagged(t=t, n=7)), immutables=Immutables(pl=persistent[1, 2], il=persistent[3, null], ps=persistent[a, b], iset=persistent[4], pm=persistent{k=5}, im=persistent{6=null, 7=v}, sl=persistent[x, y], nsl=persistent[z], npl=persistent[8], bl=persistent[Binder(b)]))
+  equal: false

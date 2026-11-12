@@ -1379,6 +1379,7 @@ func (t *classTable) loadKotlin(cls *types.ClassSym, info *classfile.Info, kc *k
 	cls.Abstract = cls.Interface || mod == kmeta.Abstract || mod == kmeta.Sealed
 	cls.Final = !cls.Interface && mod == kmeta.Final
 	cls.Object = kc.Kind() == kmeta.KindObject || kc.Kind() == kmeta.KindCompanion
+	cls.Data = kc.Flags&kmeta.ClassData != 0
 	if kc.IsInner() && info.Inner != nil && info.Inner.Outer != "" {
 		// An inner class: its constructors take the outer class's
 		// instance first, which a subclass's call of one passes, as the

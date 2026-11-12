@@ -990,6 +990,9 @@ func (c *Checker) extCalleesFor(name string, rt types.Type, x *syntax.Call) []ca
 			return []callee{{f: f, tparams: f.TypeParams, ext: rt}}
 		}
 	}
+	if pkg, simple, ok := pluginQualified(c, name); ok {
+		return fits(c.u.ext.pkgFuns(pkg, simple))
+	}
 	// Local extension functions in scope come first.
 	if c.scope != nil {
 		if out := fits(c.localExts(name)); len(out) > 0 {
