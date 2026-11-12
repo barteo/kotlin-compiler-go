@@ -210,7 +210,7 @@ fi
 # The symbols PrintAnnotated prints (see its doc comment).
 slice=(a.Marker a.Other kotlin.Suppress e.Args e.Inner kotlin.Deprecated java.beans.JavaBean
 	decls:kotlin.ReplaceWith decls:kotlin.coroutines.AbstractCoroutineContextKey decls:java.util.AbstractMap.SimpleEntry decls:java.lang.Thread.State decls:b.E decls:kotlin.DeprecationLevel
-	decls:f.Strings members:f.Strings members:f.Base members:f.Bag:get,size,toString assign:f.Assign sealed:f.Shape
+	decls:f.Strings members:f.Strings members:f.Base members:f.Bag:get,size,toString members:f.Table:equals,get,remove,containsKey,putAll members:f.Names:contains,remove,toString,addAll members:f.Both:run decls:java.util.AbstractMap assign:f.Assign sealed:f.Shape
 	overrides:f.Strings#get:f.Named#get overrides:f.Strings#get:f.Source#get overrides:f.Strings#name:f.Source#get
 	package:g package:kotlin.collections:listOf,lastIndex,ArrayList,List,emptyList,AbstractList package:java.util.function:Supplier
 	fun:kotlin.collections.listOf fun:g.top prop:kotlin.collections.lastIndex prop:kotlin.coroutines.intrinsics.COROUTINE_SUSPENDED prop:g.topProp alias:g.Holder jvm:h.Sigs annots:a.Targets a.OnField a.FieldOrFun a.Anywhere)
@@ -239,10 +239,9 @@ if [ "$mode" = stock ]; then
 	kotlinc -cp "${stockcp#:}" -d "$out/runksp-stock" -jvm-target 17 -nowarn \
 		"$here/test/RunKsp.kt"
 	# The slice on stock KSP differs from want.txt only as recorded in
-	# test/slice/stock.diff: what kc doesn't model yet (see
-	# docs/analysis-api.md, step 10), and the [] that google/ksp's main,
-	# past 2.3.13 and in the fork, adds for a vararg parameter without
-	# arguments.
+	# test/slice/stock.diff: the [] that google/ksp's main, past 2.3.13
+	# and in the fork, adds for a vararg parameter without arguments
+	# (docs/analysis-api.md, steps 10, 29 and 30).
 	rm -rf "$out/test-classes-stock" "$out/stock-slice"
 	kotlinc -cp "${stockcp#:}" -d "$out/test-classes-stock" -jvm-target 17 -nowarn \
 		"$here/test/PrintAnnotated.kt"

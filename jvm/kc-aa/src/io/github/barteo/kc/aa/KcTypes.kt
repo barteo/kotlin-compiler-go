@@ -119,7 +119,7 @@ internal class KcTypeContext(
          * The read-only collection classes of the mutable ones: a Java collection's flexible
          * type is `(MutableList<T>..List<T>?)`, as in FIR.
          */
-        private val readOnly = listOf(
+        val readOnly = listOf(
             "Iterable", "Collection", "List", "Set", "Map", "Iterator", "ListIterator",
         ).associate { "kotlin/collections/Mutable$it" to "kotlin/collections/$it" } +
             ("kotlin/collections/MutableMap.MutableEntry" to "kotlin/collections/Map.Entry")

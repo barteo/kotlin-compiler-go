@@ -222,7 +222,9 @@ internal class KcFunctionSymbol(val info: KcInfo) : StubKaNamedFunctionSymbol() 
     override val compilerVisibility get() = info.compilerVisibility
     override val location get() = info.location
     override val modality get() = info.modality
-    override val returnType: KaType by lazy { info.type(info.decl.type) { info.unit } }
+    private val declaredType: KaType by lazy { info.type(info.decl.type) { info.unit } }
+    override val returnType: KaType
+        get() = (if (info.isJava) info.round.enhancement(this, info.parent)?.returnType else null) ?: declaredType
     override val receiverParameter: KaReceiverParameterSymbol? by lazy { info.receiver(this) }
     override val isSuspend get() = info.decl.has(KcDecl.SUSPEND)
     override val isInline get() = info.decl.has(KcDecl.INLINE)
@@ -305,7 +307,8 @@ internal class KcValueParameterSymbol(val info: KcInfo, val default: KaAnnotatio
     override val name get() = info.name
     override val visibility get() = KaSymbolVisibility.LOCAL
     override val compilerVisibility get() = Visibilities.Local
-    override val returnType: KaType by lazy { info.type(info.decl.type) }
+    private val declaredType: KaType by lazy { info.type(info.decl.type) }
+    override val returnType: KaType get() = enhanced() ?: declaredType
     override val isVararg get() = info.decl.has(KcDecl.VARARG)
     override val isCrossinline get() = info.decl.has(KcDecl.CROSSINLINE)
     override val isNoinline get() = info.decl.has(KcDecl.NOINLINE)
@@ -320,6 +323,14 @@ internal class KcValueParameterSymbol(val info: KcInfo, val default: KaAnnotatio
         c.members.firstOrNull { it is KcPropertySymbol && it.psi === p } as? KaKotlinPropertySymbol
     }
     override fun createPointer(): KaSymbolPointer<KaValueParameterSymbol> = info.pointer()
+
+    /** A Java method's parameter's type as enhanced (see [KcEnhancement]), or null. */
+    private fun enhanced(): KaType? {
+        if (!info.isJava) return null
+        val f = info.parent as? KcFunctionSymbol ?: return null
+        val e = info.round.enhancement(f, f.info.parent) ?: return null
+        return e.params.getOrNull(f.params.indexOfFirst { it === this })
+    }
 }
 
 internal class KcTypeParameterSymbol(val info: KcInfo) : StubKaTypeParameterSymbol() {

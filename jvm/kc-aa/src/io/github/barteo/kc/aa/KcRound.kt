@@ -423,6 +423,16 @@ internal class KcRound(
         }
     }
 
+    /**
+     * Java method [s]'s [KcEnhancement] in its class [owner], or null:
+     * none while that class's members are being built.
+     */
+    fun enhancement(s: KaCallableSymbol, owner: KaSymbol?): KcEnhancement? {
+        val c = owner as? KcClassSymbol ?: return null
+        if (building.containsKey(c)) return null
+        return members(c).enhanced[s]
+    }
+
     /** The declarations of class [c]: as FIR has them for a Java class (see `KcMemberBuilder.javaDeclared`). */
     fun declared(c: KcClassSymbol): List<KaDeclarationSymbol> = members(c).declared ?: c.members
 

@@ -2056,8 +2056,9 @@ runs at language version 2.4, as kc does, with stdlib 2.4.21. The
   - `AbstractMap.SimpleEntry`'s `getKey`/`getValue`, which override
     `Map.Entry`'s properties, are the properties `key` and `value`.
 - What remains: `SimpleEntry.equals`'s parameter (`Any` on kc, `Any?` on
-  stock); which `toString` `f.Bag` inherits (`AbstractCollection`'s on
-  kc, a `SYNTHETIC` override in `AbstractList` on stock); and the `[]`
+  stock) and which `toString` `f.Bag` inherits (`AbstractCollection`'s on
+  kc, a `SYNTHETIC` override in `AbstractList` on stock), both fixed in
+  step 30; and the `[]`
   for a vararg without arguments. That one comes from google/ksp's main
   after the 2.3.13 tag (03801ce, 6ae2cbb), which the fork has and stock
   2.3.13 doesn't.
@@ -2070,6 +2071,56 @@ runs at language version 2.4, as kc does, with stdlib 2.4.21. The
   as written, and kotlinpoet's expected text, `Alias41<Alias43<Alias23>,
   Alias47<out Alias77<Alias73<Int>>>>`, is built from the expansion that
   2.3.13 reports. kc's model still has both (`TestRightSideAbbrevs`).
+
+#### Step 30: Java signature enhancement and intersection overrides
+
+The two slice differences step 29 left that were kc's are fixed, and so
+is what probing around them on stock 2.3.13 turned up:
+
+- **Intersection overrides.** FIR merges the members a class inherits
+  under one signature only when they come from the same declaration.
+  Otherwise it makes an intersection override, even where one of them
+  overrides another: `class B : A(), I`, with `A.f` overriding `I.f`,
+  has a `SYNTHETIC` `f` of its own, and `AbstractList` (`AbstractCollection`'s
+  `toString` and `List`'s, which is `Any`'s) has one for `toString`, which
+  every list class inherits. `KcMemberBuilder.mostSpecific` no longer
+  drops a member that another one in the group overrides. The member the
+  intersection stands for is unchanged: the first non-abstract one, else
+  the first.
+- **Java methods enhanced from the members they override.** A Java
+  method's flexible types take nullability and a collection's
+  mutability from the Kotlin members it overrides, as FIR's override
+  qualifiers have them. A parameter takes one only if every overridden
+  member that has one agrees; a return type prefers not-null and mutable.
+  So `AbstractList.equals(Object)` takes `Any?` (from `Any.equals`),
+  `AbstractMap.get`/`put`/`remove` return `V?`, and
+  `addAll(Collection<? extends E>)` takes `Collection<out E>`.
+  `KcClassMembers.enhanced` holds the types, and `KcFunctionSymbol` and
+  `KcValueParameterSymbol` read them once their class's members are
+  built. While those are being built, they read their declared types.
+- **Erased built-in parameters.** `contains(Object)`, `remove(Object)`,
+  `indexOf`, `lastIndexOf`, `containsKey`, `containsValue`, `get`,
+  `getOrDefault`, and `containsAll`/`removeAll`/`retainAll(Collection<?>)`
+  implement the `kotlin.collections` members whose parameters Java
+  erases (FIR's SpecialGenericSignatures). They now override those
+  members, and their parameters take the members' types: `contains(E)`,
+  `containsKey(K)`, `containsAll(Collection<E>)`. Before, a Kotlin
+  subclass of `AbstractSet` or `AbstractMap` had both the Java method
+  and the built-in as members.
+
+The slice checks these against stock: `members:` of an `AbstractMap`
+subclass (`f.Table`), an `AbstractSet` subclass (`f.Names`) and a
+class/interface diamond (`f.Both`), and `decls:java.util.AbstractMap`.
+Its `stock.diff` is down to the 6 lines of the vararg `[]` (step 29).
+
+Not done:
+- Enhancing type arguments (FIR enhances the whole type, argument by
+  argument).
+- FIR's predefined enhancements of JDK methods.
+- Combining an annotated Java type with the overridden members' (an
+  annotated type isn't flexible, so it is left as it is).
+- A library Java class's private nested classes (`AbstractList.Itr`,
+  `SubList`): stock lists them among the class's declarations, kc doesn't.
 
 ## Gaps and open questions
 
