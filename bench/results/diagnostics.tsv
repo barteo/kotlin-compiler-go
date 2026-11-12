@@ -4103,7 +4103,7 @@ tests/inference/completion/withExact.kt	rejects invalid	on an expected line
 tests/inference/completionOfMultipleLambdas.kt	rejects invalid	on an expected line	
 tests/inference/complexInferenceOnParentizedExpression.kt	accepts valid		
 tests/inference/conflictedExpectedType.kt	rejects invalid	on an expected line	
-tests/inference/conflictingSubstitutions.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	conflictingSubstitutions.kt:11: type mismatch: inferred type is ArrayList<String> but MutableList<Any!> was expected
+tests/inference/conflictingSubstitutions.kt	accepts valid		
 tests/inference/constraints/approximationWithDefNotNullInInvPositionDuringInference.kt	accepts valid		
 tests/inference/constraints/complexDependencyWihtoutProperConstraints.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	complexDependencyWihtoutProperConstraints.kt:19: type mismatch: inferred type is () -> String but Nothing? was expected
 tests/inference/constraints/constraintFromVariantTypeWithNestedProjection.kt	rejects invalid	on an expected line	
@@ -5264,7 +5264,7 @@ tests/j+k/canDeclareIfSamAdapterIsInherited.kt	skip	Java sources
 tests/j+k/collectionOverrides/charAtAndOverloadWithoutExplicitOverride.kt	skip	Java sources	
 tests/j+k/collectionOverrides/charBuffer.kt	skip	Java sources	
 tests/j+k/collectionOverrides/collectionStringImpl.kt	skip	Java sources	
-tests/j+k/collectionOverrides/commonCollections.kt	accepts invalid	ARGUMENT_TYPE_MISMATCH	commonCollections.kt:6: ARGUMENT_TYPE_MISMATCH
+tests/j+k/collectionOverrides/commonCollections.kt	rejects invalid	on an expected line	
 tests/j+k/collectionOverrides/contains.kt	skip	Java sources	
 tests/j+k/collectionOverrides/containsAll.kt	skip	Java sources	
 tests/j+k/collectionOverrides/containsAndOverload.kt	skip	Java sources	
@@ -5543,10 +5543,10 @@ tests/j+k/types/explicitNullableJavaSmartCastAfterGenericCall.kt	skip	Java sourc
 tests/j+k/types/explicitNullableJavaTypeAlias.kt	skip	Java sources	
 tests/j+k/types/newListMethodsNullabilityLinkedList20.kt	skip	API_VERSION	
 tests/j+k/types/newListMethodsNullabilityLinkedList21.kt	skip	API_VERSION	
-tests/j+k/types/newListMethodsNullabilityLinkedListLatest.kt	accepts invalid	NULL_FOR_NONNULL_TYPE	newListMethodsNullabilityLinkedListLatest.kt:11: NULL_FOR_NONNULL_TYPE
+tests/j+k/types/newListMethodsNullabilityLinkedListLatest.kt	rejects invalid	on an expected line	
 tests/j+k/types/newListMethodsNullabilityOverridesLinkedList20.kt	skip	API_VERSION	
 tests/j+k/types/newListMethodsNullabilityOverridesLinkedList21.kt	skip	API_VERSION	
-tests/j+k/types/newListMethodsNullabilityOverridesLinkedListLatest.kt	accepts invalid	NOTHING_TO_OVERRIDE; RETURN_TYPE_MISMATCH_ON_OVERRIDE	newListMethodsNullabilityOverridesLinkedListLatest.kt:19: NOTHING_TO_OVERRIDE
+tests/j+k/types/newListMethodsNullabilityOverridesLinkedListLatest.kt	rejects invalid	on an expected line	
 tests/j+k/types/notNullTypeParameterWithKotlinNullable.kt	skip	LANGUAGE	
 tests/j+k/types/notNullTypeParameterWithKotlinNullablePreciseLowerConstraints.kt	skip	LANGUAGE	
 tests/j+k/types/rawTypesFromSelfTypeWithRawBound.kt	skip	Java sources	
@@ -8862,7 +8862,7 @@ tests/targetedBuiltIns/backwardCompatibility/derivedInterfacesWithKotlinFun.kt	r
 tests/targetedBuiltIns/backwardCompatibility/fillInStackTrace.kt	rejects valid	'_' hides member of supertype '_' and needs '_' modifier	fillInStackTrace.kt:4: 'fillInStackTrace' hides member of supertype 'Throwable' and needs 'override' modifier
 tests/targetedBuiltIns/backwardCompatibility/finalize.kt	rejects invalid	on an expected line	
 tests/targetedBuiltIns/backwardCompatibility/hashMapGetOrDefault.kt	accepts valid		
-tests/targetedBuiltIns/concurrentMapRemove.kt	accepts invalid	ARGUMENT_TYPE_MISMATCH; NULL_FOR_NONNULL_TYPE	concurrentMapRemove.kt:11: ARGUMENT_TYPE_MISMATCH
+tests/targetedBuiltIns/concurrentMapRemove.kt	rejects invalid	on an expected line	
 tests/targetedBuiltIns/forEachRemainingNullability.kt	rejects invalid	on an expected line	
 tests/targetedBuiltIns/getOrDefault.kt	rejects invalid	on an expected line	
 tests/targetedBuiltIns/mutableMapRemove.kt	rejects invalid	on an expected line	
@@ -8930,13 +8930,13 @@ tests/testsWithJava21/newListMethodsNullability21.kt	skip	API_VERSION
 tests/testsWithJava21/newListMethodsNullabilityLatest.kt	rejects invalid	on an expected line	
 tests/testsWithJava21/newListMethodsNullabilityLinkedList20.kt	skip	API_VERSION	
 tests/testsWithJava21/newListMethodsNullabilityLinkedList21.kt	skip	API_VERSION	
-tests/testsWithJava21/newListMethodsNullabilityLinkedListLatest.kt	accepts invalid	NULL_FOR_NONNULL_TYPE	newListMethodsNullabilityLinkedListLatest.kt:10: NULL_FOR_NONNULL_TYPE
+tests/testsWithJava21/newListMethodsNullabilityLinkedListLatest.kt	rejects invalid	on an expected line	
 tests/testsWithJava21/newListMethodsNullabilityOverrides20.kt	skip	API_VERSION	
 tests/testsWithJava21/newListMethodsNullabilityOverrides21.kt	skip	API_VERSION	
-tests/testsWithJava21/newListMethodsNullabilityOverridesLatest.kt	accepts invalid	NOTHING_TO_OVERRIDE; RETURN_TYPE_MISMATCH_ON_OVERRIDE	newListMethodsNullabilityOverridesLatest.kt:16: NOTHING_TO_OVERRIDE
+tests/testsWithJava21/newListMethodsNullabilityOverridesLatest.kt	rejects invalid	on an expected line	
 tests/testsWithJava21/newListMethodsNullabilityOverridesLinkedList20.kt	skip	API_VERSION	
 tests/testsWithJava21/newListMethodsNullabilityOverridesLinkedList21.kt	skip	API_VERSION	
-tests/testsWithJava21/newListMethodsNullabilityOverridesLinkedListLatest.kt	accepts invalid	NOTHING_TO_OVERRIDE; RETURN_TYPE_MISMATCH_ON_OVERRIDE	newListMethodsNullabilityOverridesLinkedListLatest.kt:18: NOTHING_TO_OVERRIDE
+tests/testsWithJava21/newListMethodsNullabilityOverridesLinkedListLatest.kt	rejects invalid	on an expected line	
 tests/testsWithJava21/noFalsePositiveAbstractToArray.kt	accepts valid		
 tests/testsWithJava21/otherHiddenInDeclaring.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	otherHiddenInDeclaring.kt:41: type mismatch: inferred type is Optional<Enum.EnumDesc<MyEnum!>!>! but Int was expected
 tests/thisAndSuper/QualifiedThis.kt	rejects invalid	on an expected line	
@@ -9767,7 +9767,7 @@ testsWithStdLib/cast/IsReified.kt	accepts valid
 testsWithStdLib/castForFunctionsWithDifferentArities.kt	accepts valid		
 testsWithStdLib/classLiteralForParameter.kt	accepts valid		
 testsWithStdLib/cloneArray.kt	accepts valid		
-testsWithStdLib/commonCollections.kt	accepts invalid	TYPE_INFERENCE_ONLY_INPUT_TYPES_ERROR	commonCollections.kt:6: TYPE_INFERENCE_ONLY_INPUT_TYPES_ERROR
+testsWithStdLib/commonCollections.kt	rejects invalid	on an expected line	
 testsWithStdLib/companionLoad.kt	accepts valid		
 testsWithStdLib/comparingDifferentSubclassesCommonInterface.kt	rejects invalid	on an expected line	
 testsWithStdLib/comparingPlatformTypes.kt	rejects invalid	on an expected line	
@@ -10293,7 +10293,7 @@ testsWithStdLib/inference/annotationsForResolve/exactAnnotationWithUpperBoundCon
 testsWithStdLib/inference/annotationsForResolve/explicitTypeArgumentAsValidInputType.kt	rejects invalid	on an expected line	
 testsWithStdLib/inference/annotationsForResolve/internalAnnotationsOnTypes.kt	accepts valid		
 testsWithStdLib/inference/annotationsForResolve/kt26698.kt	rejects invalid	on an expected line	
-testsWithStdLib/inference/annotationsForResolve/kt29307.kt	accepts invalid	TYPE_INFERENCE_ONLY_INPUT_TYPES_ERROR	kt29307.kt:6: TYPE_INFERENCE_ONLY_INPUT_TYPES_ERROR
+testsWithStdLib/inference/annotationsForResolve/kt29307.kt	rejects invalid	on an expected line	
 testsWithStdLib/inference/annotationsForResolve/kt35210.kt	accepts valid		
 testsWithStdLib/inference/annotationsForResolve/lowPriorityTopLevelValAndObject.kt	rejects valid	unresolved reference: _	test.kt:14: unresolved reference: length
 testsWithStdLib/inference/annotationsForResolve/moreOnlyInputTypes.kt	accepts valid		
@@ -10472,7 +10472,7 @@ testsWithStdLib/j+k/smartSet.kt	accepts valid
 testsWithStdLib/j+k/typeParameterUse.kt	skip	Java sources	
 testsWithStdLib/java/assertThatOnMap.kt	skip	Java sources	
 testsWithStdLib/java/checkEnhancedUpperBoundsWithEnabledImprovements.kt	skip	LANGUAGE	
-testsWithStdLib/java/concurrentHashMapContainsError.kt	accepts invalid	CONCURRENT_HASH_MAP_CONTAINS_OPERATOR_ERROR; TYPE_INFERENCE_ONLY_INPUT_TYPES_ERROR	concurrentHashMapContainsError.kt:26: CONCURRENT_HASH_MAP_CONTAINS_OPERATOR_ERROR
+testsWithStdLib/java/concurrentHashMapContainsError.kt	rejects invalid	on an expected line	
 testsWithStdLib/java/functionN.kt	skip	Java sources	
 testsWithStdLib/java/implementationWithBoundedTypeParameters.kt	skip	Java sources	
 testsWithStdLib/java/inheritedFunctionN.kt	skip	Java sources	
@@ -10669,7 +10669,7 @@ testsWithStdLib/properties/backingField/untypedPropertyWithBackingFieldUsage.kt	
 testsWithStdLib/properties/explicitBackingFieldUnsupported.kt	skip	LANGUAGE	
 testsWithStdLib/pureReifiable.kt	accepts valid		
 testsWithStdLib/pureReifiableArrayOperations.kt	accepts valid		
-testsWithStdLib/purelyImplementedCollection/arrayList.kt	accepts invalid	NULL_FOR_NONNULL_TYPE; ARGUMENT_TYPE_MISMATCH; INITIALIZER_TYPE_MISMATCH	arrayList.kt:9: NULL_FOR_NONNULL_TYPE
+testsWithStdLib/purelyImplementedCollection/arrayList.kt	rejects invalid	on an expected line	
 testsWithStdLib/purelyImplementedCollection/arrayListNullable.kt	rejects invalid	on an expected line	
 testsWithStdLib/purelyImplementedCollection/customClassMutableCollection.kt	skip	Java sources	
 testsWithStdLib/purelyImplementedCollection/customClassMutableList.kt	skip	Java sources	
@@ -10678,7 +10678,7 @@ testsWithStdLib/purelyImplementedCollection/invalidFqName.kt	skip	Java sources
 testsWithStdLib/purelyImplementedCollection/maps.kt	rejects invalid	on an expected line	
 testsWithStdLib/purelyImplementedCollection/mapsWithNullableKey.kt	rejects invalid	on an expected line	
 testsWithStdLib/purelyImplementedCollection/mapsWithNullableValues.kt	rejects invalid	on an expected line	
-testsWithStdLib/purelyImplementedCollection/sets.kt	accepts invalid	NULL_FOR_NONNULL_TYPE; ARGUMENT_TYPE_MISMATCH; INITIALIZER_TYPE_MISMATCH	sets.kt:11: NULL_FOR_NONNULL_TYPE
+testsWithStdLib/purelyImplementedCollection/sets.kt	rejects invalid	on an expected line	
 testsWithStdLib/purelyImplementedCollection/wrongTypeParametersCount.kt	skip	Java sources	
 testsWithStdLib/rangeTo.kt	accepts valid		
 testsWithStdLib/recursiveBug.kt	accepts valid		
