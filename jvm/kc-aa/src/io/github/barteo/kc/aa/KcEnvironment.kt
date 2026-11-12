@@ -2,7 +2,10 @@ package io.github.barteo.kc.aa
 
 import com.google.devtools.ksp.processing.KSPConfig
 import com.google.devtools.ksp.processing.KSPJvmConfig
+import com.intellij.diagnostic.PluginException
+import com.intellij.diagnostic.PluginProblemReporter
 import com.intellij.openapi.Disposable
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.fileEditor.impl.LoadTextUtil
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.vfs.VirtualFile
@@ -60,6 +63,14 @@ internal class KcEnvironment(val key: String, config: KSPConfig) {
         val register = project.javaClass.getMethod("registerService", Class::class.java, Any::class.java)
         register.invoke(project, KaSessionProvider::class.java, provider)
         register.invoke(project, KotlinModificationTrackerFactory::class.java, KcModificationTrackers)
+        // The application's, which the environments of a process share, as
+        // KSP's standalone backend registers it: PluginException.createByClass
+        // needs one.
+        val app = ApplicationManager.getApplication()
+        if (app.getService(PluginProblemReporter::class.java) == null) {
+            app.javaClass.getMethod("registerService", Class::class.java, Any::class.java)
+                .invoke(app, PluginProblemReporter::class.java, KcPluginProblemReporter)
+        }
     }
 
     /** How many files [psiFile] parsed again because their text changed, and how many it reused. */
@@ -134,4 +145,10 @@ internal object KcEnvironments {
             javaSources.forEach { append(stamp(File(it))).append('\n') }
         }
     }
+}
+
+/** Reports a plugin's problem as a [PluginException] of no plugin, as KSP's standalone backend does. */
+private object KcPluginProblemReporter : PluginProblemReporter {
+    override fun createPluginExceptionByClass(errorMessage: String, cause: Throwable?, pluginClass: Class<*>) =
+        PluginException(errorMessage, cause, null)
 }

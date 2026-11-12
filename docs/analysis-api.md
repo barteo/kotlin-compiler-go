@@ -75,7 +75,7 @@ mapping.
 | M3 | Richer symbol model: visibility and modality enums, flags, origins, library annotation arguments, Java parameter names | done: source types, flags and modality (step 1); KaTypes on the JVM (2); annotation arguments (3); library classes (4); inherited members, overrides, subtyping (5); packages, library top-level declarations, alias abbreviations (6); JVM type mapping (7); backing fields (8); Java sources in the module (15). Moshi, Dagger, Room and Hilt byte-identical to stock KSP 2.3.6 (steps 7–9, 14) |
 | M4 | Queryable session `analysis/ka`: lookups, scopes, relations, overrides | done: `ka.Session.Update` and `Model` with `Class` and `Package` lookups on the class path (steps 4, 6), shared library (11), lookups recorded for incremental processing (16); scopes, relations and overrides are answered on the JVM over the model (step 5) |
 | M5 | Bridge: `cmd/libkc` operations, `tools/kagen` wire format, `jvm/kc-aa` KaSession | done: `internal/kaops` operations (open, update, close, class, package), the model wire format, written by hand in `internal/kaops` and `KcModel.kt` (no `tools/kagen` generator was needed), the `KaSession` proxy and symbol, type and annotation classes; member coverage in `jvm/kc-aa/members.txt` (step 19) |
-| M6 | KSP fork integration: the `kc` backend, IC lookups, hot paths | done: KSP's own test suite on the kc backend, `build.sh ksp` (steps 15, 26): 166 of 173 pass on the fork's upstream merge, 2 disabled in KSP, Java sources in the main module included; IC lookups recorded by kc's checker and replayed into KSP's tracker, checked against stock KSP on a fixture (step 16). Open: the whole-run fallback to `aa` (see gaps) |
+| M6 | KSP fork integration: the `kc` backend, IC lookups, hot paths | done: KSP's own test suite on the kc backend, `build.sh ksp` (steps 15, 26, 27): 171 of 173 pass on the fork's upstream merge, the other 2 disabled in KSP, Java sources in the main module included; IC lookups recorded by kc's checker and replayed into KSP's tracker, checked against stock KSP on a fixture (step 16). Open: the whole-run fallback to `aa` (see gaps) |
 | M7 | Differential conformance against stock KSP, benchmark, CI | in progress: `bench/ksp` (steps 11, 17): on octi-server warm 773 ms on stock KSP, 176 ms on kc; cold 6.2–6.4 s and 3.5–3.6 s (step 11's CDS archive: 1.9–2.1 s on kc); CI: `.github/workflows/analysis-api.yml` (step 12) |
 
 ### M0.1 – JNI spike
@@ -1969,6 +1969,35 @@ Result: 166 of 173 pass. The rest (`test/ksp/skip.txt`):
 
 `build.sh stock` passes: the slice, Moshi, Dagger, Room, Hilt and
 incremental processing, on kc and on stock KSP.
+
+#### Step 27: the rest of KSP's tests
+
+- **Backing fields' container** (testChangingBehavior,
+  testRegisterProcessorForNewFeatures): a backing field's containing
+  symbol is its property, as FIR's.
+- **`// JVM_TARGET:`** (testJvmNameRecord): `KspSuite` compiles the
+  test's library modules for it and gives it to KSP, as
+  `AbstractKSPAATest` does; a library's `@JvmRecord` class needs 16.
+- **Java type annotations** (testTypeAnnotationClassReference): javac
+  writes TYPE_USE annotations (`@A int f`, `List<@A String>`, `String @A
+  []`, `<T extends @A Number>`) to `Runtime{Visible,Invisible}TypeAnnotations`
+  with a path into the type. `classfile.ParseDetails` reads them, a
+  class's and its members', and `analysis/ka` puts each on the type of a
+  Java library field, method return, parameter or type parameter bound
+  that its path leads to: into a type argument, an array's element type
+  or a wildcard's bound. An annotation of a wildcard itself is dropped,
+  and a vararg parameter's element type takes those of the array's
+  element. Nullability annotations (JetBrains' are TYPE_USE too) stay on
+  the type, and those visible at run time come first, as ASM reads them.
+  A flexible type's annotations are its lower bound's, as FIR's
+  attributes are. Checked against stock KSP 2.3.6 on a class with each
+  case (`TestJavaTypeAnnotations` keeps them). Java sources in the module
+  don't have them yet.
+- **`PluginProblemReporter`** (testPluginProblemReporter): the
+  environment registers the application service KSP's standalone backend
+  does, if the application has none, for `PluginException.createByClass`.
+
+Result: 171 of 173 pass; the other 2 are the tests KSP disables.
 
 ## Gaps and open questions
 

@@ -28,6 +28,7 @@ testBackingFieldsLateinit
 testBackingFieldsPackageName
 testBackingFieldsSignatureMapper
 testBuiltInTypes
+testChangingBehavior
 testCheckOverride
 testClassKinds
 testCompanion
@@ -100,6 +101,7 @@ testJavaWildcards2
 testJavaWildcardsSelfReferencing
 testJvmModifiersCompanionObject
 testJvmName
+testJvmNameRecord
 testLateinitProperties
 testLibOrigins
 testLocalAnnotationClass
@@ -132,6 +134,7 @@ testPackageProviderForGenerated
 testParameterTypes
 testParent
 testParentOfJavaMethodOverridingKotlinProperty
+testPluginProblemReporter
 testPrimaryConstructorOverride
 testRawTypes
 testRecordJavaAnnotationTypes
@@ -141,6 +144,7 @@ testRecordJavaOverrides
 testRecordJavaResolutions
 testRecordJavaSupertypes
 testReferenceElement
+testRegisterProcessorForNewFeatures
 testRepeatedNonRepeatableAnnotations
 testReplaceWithErrorTypeArgs
 testResolveJavaType
@@ -152,6 +156,7 @@ testThrowList
 testTopLevelMembers
 testTypeAlias
 testTypeAliasComparison
+testTypeAnnotationClassReference
 testTypeComparison2
 testTypeComposure
 testTypeParameterBoundTypeAlias

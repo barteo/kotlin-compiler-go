@@ -191,6 +191,10 @@ class Suite(val work: File, compilerCp: List<File>, val features: ApiFeatures) {
 
     fun root(test: File, mod: String) = File(work, "${test.nameWithoutExtension}/$mod")
 
+    /** The test's "// JVM_TARGET:" directive, for its modules and for KSP; none for the default. */
+    fun jvmTarget(test: File): String? =
+        test.useLines { ls -> ls.firstOrNull { it.startsWith("// JVM_TARGET:") }?.substringAfter(':')?.trim() }
+
     fun write(dir: File, files: List<SrcFile>) {
         for (f in files) File(dir, f.name).apply { parentFile.mkdirs(); writeText(f.text) }
     }
@@ -208,7 +212,8 @@ class Suite(val work: File, compilerCp: List<File>, val features: ApiFeatures) {
         val cp = deps.map { it.canonicalPath } + kotlinSrc.path + listOfNotNull(stdlib?.path)
         val args = arrayOf(kotlinSrc.path, javaSrc.path, "-d", out.absolutePath, "-no-stdlib", "-no-reflect",
             "-Xannotation-target-all", "-module-name", m.name, "-classpath", cp.joinToString(File.pathSeparator)) +
-            (if (m.friends.isEmpty()) emptyArray() else arrayOf("-Xfriend-paths=" + deps.takeLast(m.friends.size).joinToString(",")))
+            (if (m.friends.isEmpty()) emptyArray() else arrayOf("-Xfriend-paths=" + deps.takeLast(m.friends.size).joinToString(","))) +
+            (jvmTarget(test)?.let { arrayOf("-jvm-target", it) } ?: emptyArray())
         val buf = ByteArrayOutputStream()
         val inst = k2jvm.getDeclaredConstructor().newInstance()
         val old = Thread.currentThread().contextClassLoader
@@ -255,7 +260,7 @@ class Suite(val work: File, compilerCp: List<File>, val features: ApiFeatures) {
             javaSourceRoots = if (javaFiles.isEmpty()) emptyList() else listOf(javaSrc)
             commonSourceRoots = emptyList()
             jdkHome = File(System.getProperty("java.home"))
-            jvmTarget = "1.8"
+            jvmTarget = jvmTarget(test) ?: "1.8"
             languageVersion = System.getProperty("ksp.languageVersion", "2.4")
             apiVersion = languageVersion
             libraries = main.deps.map { File(root(test, it), "out") } + listOfNotNull(stdlib)

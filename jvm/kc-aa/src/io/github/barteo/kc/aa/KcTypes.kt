@@ -249,7 +249,8 @@ internal class KcFlexibleType(
     override val marked get() = false
     override val nullability get() = KaTypeNullability.UNKNOWN
     override val abbreviation get() = null
-    override val annotations: KaAnnotationList get() = KcAnnotationList(emptyList(), round.token)
+    // Its lower bound's, as FIR's flexible type's attributes are.
+    override val annotations: KaAnnotationList get() = lowerBound.annotations
     override fun withNullability(nullable: Boolean) = (if (nullable) upperBound else lowerBound)
     override fun equals(other: Any?) = other is KcFlexibleType && other.lowerBound == lowerBound && other.upperBound == upperBound
     override fun hashCode() = lowerBound.hashCode() * 31 + upperBound.hashCode()

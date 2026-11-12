@@ -133,6 +133,7 @@ class KcAnalysis internal constructor(
         is KcJavaFieldSymbol -> s.info.parent
         is KcGetterSymbol -> s.property
         is KcSetterSymbol -> s.property
+        is KcBackingFieldSymbol -> s.owningProperty
         is KcLibraryClassSymbol -> null
         // A type parameter the model has no owner for: a Java constructor's, which FIR drops too.
         is KcLibraryTypeParameterSymbol -> null

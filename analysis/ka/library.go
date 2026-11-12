@@ -169,7 +169,7 @@ func (l *library) class(id string) *Decl {
 	// Its supertypes are its Java class's, which kc maps to Kotlin's, as
 	// kotlin/String : kotlin/Comparable<kotlin/String>.
 	b := &fileBuilder{}
-	d.TypeParams = l.javaTypeParams(b, cls.TypeParams)
+	d.TypeParams = l.javaTypeParams(b, cls.TypeParams, nil, 0)
 	for i, tp := range d.TypeParams {
 		tp.Bounds = slices.DeleteFunc(tp.Bounds, func(t *Type) bool { return t.ClassID == "kotlin/Any" })
 		for _, t := range tp.Bounds {
@@ -794,7 +794,8 @@ func (l *library) javaClass(cls *types.ClassSym, depth int) *Decl {
 		}
 	}
 	b := &fileBuilder{}
-	d.TypeParams = l.javaTypeParams(b, cls.TypeParams[:len(cls.TypeParams)-cls.OuterParams]) // an inner class's outer ones are its outer class's
+	d.TypeParams = l.javaTypeParams(b, cls.TypeParams[:len(cls.TypeParams)-cls.OuterParams], // an inner class's outer ones are its outer class's
+		det.TypeAnnotations, classfile.TargetClassTypeParamBound)
 	d.Supertypes = javaSupertypes(b, cls, d.Kind, platform)
 	if source && len(info.Unresolved) > 0 {
 		// Supertypes the source wrote that don't resolve are error types,
@@ -935,6 +936,7 @@ func (l *library) javaClass(cls *types.ClassSym, depth int) *Decl {
 				md.Flags |= FlagMutable
 			}
 			md.Annotations = l.annotations(fd.Annotations, false)
+			l.typeAnnotate(md.Type, fd.TypeAnnotations, func(a *classfile.TypeAnnotation) bool { return a.Target == classfile.TargetField })
 			pos[md] = fieldIndex[v.Name]
 		}
 		d.Members = append(d.Members, md)
@@ -1080,9 +1082,9 @@ func javaVisibility(access uint16) Visibility {
 	return PackagePrivate
 }
 
-func (l *library) javaTypeParams(b *fileBuilder, tps []*types.TypeParamSym) []*Decl {
+func (l *library) javaTypeParams(b *fileBuilder, tps []*types.TypeParamSym, as []classfile.TypeAnnotation, target byte) []*Decl {
 	var out []*Decl
-	for _, tp := range tps {
+	for i, tp := range tps {
 		md := &Decl{Kind: KindTypeParameter, Name: tp.Name}
 		for _, bt := range tp.Bounds {
 			md.Bounds = append(md.Bounds, platform(b.typ(bt, nil)))
@@ -1090,9 +1092,87 @@ func (l *library) javaTypeParams(b *fileBuilder, tps []*types.TypeParamSym) []*D
 		if len(md.Bounds) == 0 { // Object, which is kotlin/Any!
 			md.Bounds = []*Type{{Kind: TypeClass, ClassID: "kotlin/Any", Flexible: true}}
 		}
+		// The class file numbers the bounds from its class bound, 0, which
+		// an interface bound first leaves empty.
+		first := 0
+		if len(tp.Bounds) > 0 && tp.Bounds[0].K == types.Class && tp.Bounds[0].C != nil {
+			tp.Bounds[0].C.Ensure()
+			if tp.Bounds[0].C.Interface {
+				first = 1
+			}
+		}
+		for j, t := range md.Bounds {
+			l.typeAnnotate(t, as, func(a *classfile.TypeAnnotation) bool {
+				return a.Target == target && a.Index == i && a.Bound == first+j
+			})
+		}
 		out = append(out, md)
 	}
 	return out
+}
+
+// typeAnnotate adds to t, a type in a Java class's signature, the
+// annotations of as that match, each on the type its path leads to, as
+// FIR's Java model has them: in a type argument, an array's element type
+// or a wildcard's bound; an annotation of a wildcard itself is dropped.
+func (l *library) typeAnnotate(t *Type, as []classfile.TypeAnnotation, match func(*classfile.TypeAnnotation) bool) {
+	for i := range as {
+		a := &as[i]
+		if !match(a) {
+			continue
+		}
+		if u := typeAt(t, a.Path); u != nil {
+			u.Annotations = append(u.Annotations, *l.annotation(&a.Annotation, 0))
+		}
+	}
+}
+
+// typeAt returns the type of t that a type annotation's path leads to, or
+// nil.
+func typeAt(t *Type, path []classfile.PathStep) *Type {
+	for i := 0; i < len(path) && t != nil; i++ {
+		switch s := path[i]; s.Kind {
+		case classfile.PathTypeArg:
+			if int(s.Arg) >= len(t.Args) {
+				return nil
+			}
+			arg := t.Args[s.Arg]
+			if arg.Variance != Invariant && (i+1 == len(path) || path[i+1].Kind != classfile.PathWildcard) {
+				return nil // the wildcard's
+			}
+			t = arg.Type
+		case classfile.PathWildcard:
+			// Its bound is the projection's type.
+		case classfile.PathArray:
+			if t.Kind != TypeClass || t.ClassID != "kotlin/Array" || len(t.Args) != 1 {
+				return nil
+			}
+			t = t.Args[0].Type
+		case classfile.PathNested:
+			// A nested class's type is one class type.
+		default:
+			return nil
+		}
+	}
+	return t
+}
+
+// paramTypeAnnotation returns type annotation a if it is of parameter i,
+// a vararg parameter's, whose type is its element type, as one of that
+// type; nil if it isn't, or is of a vararg parameter's array.
+func paramTypeAnnotation(a *classfile.TypeAnnotation, i int, vararg bool) *classfile.TypeAnnotation {
+	if a.Target != classfile.TargetParam || a.Index != i {
+		return nil
+	}
+	if !vararg {
+		return a
+	}
+	if len(a.Path) == 0 || a.Path[0].Kind != classfile.PathArray {
+		return nil
+	}
+	c := *a
+	c.Path = c.Path[1:]
+	return &c
 }
 
 // javaMethod returns the model of Java method or constructor f of class
@@ -1126,7 +1206,11 @@ func (l *library) javaMethod(b *fileBuilder, f *types.FunSym, bySig map[string]*
 	default:
 		md.Modality = ModalityOpen
 	}
-	md.TypeParams = l.javaTypeParams(b, f.TypeParams)
+	var tas []classfile.TypeAnnotation
+	if m != nil {
+		tas = m.TypeAnnotations
+	}
+	md.TypeParams = l.javaTypeParams(b, f.TypeParams, tas, classfile.TargetTypeParamBound)
 	paramDescs, retDesc := descParts(f.Desc)
 	if len(paramDescs) != len(f.Params) {
 		paramDescs = make([]string, len(f.Params))
@@ -1156,8 +1240,19 @@ func (l *library) javaMethod(b *fileBuilder, f *types.FunSym, bySig map[string]*
 			md.Params = md.Params[1:]
 		}
 	}
+	// The class file numbers the parameters the source declares.
+	for i, pd := range md.Params {
+		var vararged []classfile.TypeAnnotation
+		for j := range tas {
+			if a := paramTypeAnnotation(&tas[j], i, pd.Flags&FlagVararg != 0); a != nil {
+				vararged = append(vararged, *a)
+			}
+		}
+		l.typeAnnotate(pd.Type, vararged, func(*classfile.TypeAnnotation) bool { return true })
+	}
 	if kind == KindFunction {
 		md.Type = unresolved(b.javaType(f.Ret), retDesc)
+		l.typeAnnotate(md.Type, tas, func(a *classfile.TypeAnnotation) bool { return a.Target == classfile.TargetReturn })
 	}
 	return md
 }
