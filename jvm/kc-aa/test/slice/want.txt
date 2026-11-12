@@ -207,6 +207,9 @@ members:f.Base: KOTLIN_LIB equals in kotlin.Any; as member (kotlin.Any?): kotlin
 members:f.Base: KOTLIN_LIB hashCode in kotlin.Any; as member (): kotlin.Int
 members:f.Base: KOTLIN_LIB toString in kotlin.Any; as member (): kotlin.String
 members:f.Both:run: SYNTHETIC run in f.Both overrides f.Runner.run; as member (): kotlin.Unit
+members:f.Cache:get,merge,compute: JAVA_LIB compute in f.Cache overrides java.util.HashMap.compute; as member (kotlin.String, java.util.function.BiFunction<in kotlin.String, in kotlin.Int?, out kotlin.Int?>): kotlin.Int?
+members:f.Cache:get,merge,compute: JAVA_LIB get in f.Cache overrides java.util.HashMap.get; as member (kotlin.String): kotlin.Int?
+members:f.Cache:get,merge,compute: JAVA_LIB merge in f.Cache overrides java.util.HashMap.merge; as member (kotlin.String, kotlin.Int, java.util.function.BiFunction<in kotlin.Int, in kotlin.Int, out kotlin.Int?>): kotlin.Int?
 members:f.Names:contains,remove,toString,addAll: JAVA_LIB addAll in f.Names overrides java.util.AbstractCollection.addAll; as member (kotlin.collections.Collection<out kotlin.String>): kotlin.Boolean
 members:f.Names:contains,remove,toString,addAll: JAVA_LIB contains in f.Names overrides java.util.AbstractCollection.contains; as member (kotlin.String): kotlin.Boolean
 members:f.Names:contains,remove,toString,addAll: JAVA_LIB remove in f.Names overrides java.util.AbstractCollection.remove; as member (kotlin.String): kotlin.Boolean
@@ -266,3 +269,22 @@ prop:kotlin.collections.lastIndex: not found
 prop:kotlin.coroutines.intrinsics.COROUTINE_SUSPENDED: KOTLIN_LIB property kotlin.coroutines.intrinsics.COROUTINE_SUSPENDED: kotlin.Any [kotlin.coroutines.intrinsics.IntrinsicsKt__IntrinsicsKt]
 sealed:f.Shape: f.Circle
 sealed:f.Shape: f.Square
+sig:java.util.AbstractMap:keySet,entrySet,values: entrySet(): kotlin.collections.MutableSet<kotlin.collections.MutableMap.MutableEntry<K!, V!>>
+sig:java.util.AbstractMap:keySet,entrySet,values: keySet(): kotlin.collections.MutableSet<K!>
+sig:java.util.AbstractMap:keySet,entrySet,values: values(): kotlin.collections.MutableCollection<V!>
+sig:java.util.ArrayList:removeIf,replaceAll,subList,spliterator: removeIf(java.util.function.Predicate<in E!>!, kotlin.Int, kotlin.Int): kotlin.Boolean
+sig:java.util.ArrayList:removeIf,replaceAll,subList,spliterator: removeIf(java.util.function.Predicate<in E?>): kotlin.Boolean
+sig:java.util.ArrayList:removeIf,replaceAll,subList,spliterator: replaceAll(java.util.function.UnaryOperator<E?>): kotlin.Unit
+sig:java.util.ArrayList:removeIf,replaceAll,subList,spliterator: spliterator(): java.util.Spliterator<E!>
+sig:java.util.ArrayList:removeIf,replaceAll,subList,spliterator: subList(kotlin.Int, kotlin.Int): kotlin.collections.MutableList<E?>
+sig:java.util.HashMap:get,getOrDefault,merge,compute,forEach,putIfAbsent: compute(K?, java.util.function.BiFunction<in K?, in V?, out V?>): V?
+sig:java.util.HashMap:get,getOrDefault,merge,compute,forEach,putIfAbsent: forEach(java.util.function.BiConsumer<in K?, in V?>): kotlin.Unit
+sig:java.util.HashMap:get,getOrDefault,merge,compute,forEach,putIfAbsent: get(K?): V?
+sig:java.util.HashMap:get,getOrDefault,merge,compute,forEach,putIfAbsent: getOrDefault(K?, V?): V?
+sig:java.util.HashMap:get,getOrDefault,merge,compute,forEach,putIfAbsent: merge(K?, V, java.util.function.BiFunction<in V, in V, out V?>): V?
+sig:java.util.HashMap:get,getOrDefault,merge,compute,forEach,putIfAbsent: putIfAbsent(K?, V?): V?
+sig:java.util.Optional:of,ofNullable,get,empty: empty<T : kotlin.Any>(): java.util.Optional<T>
+sig:java.util.Optional:of,ofNullable,get,empty: get(): T
+sig:java.util.Optional:of,ofNullable,get,empty: of<T : kotlin.Any>(T): java.util.Optional<T>
+sig:java.util.Optional:of,ofNullable,get,empty: ofNullable<T : kotlin.Any>(T?): java.util.Optional<T>
+sig:java.util.function.UnaryOperator: identity<T : kotlin.Any>(): java.util.function.UnaryOperator<T!>!

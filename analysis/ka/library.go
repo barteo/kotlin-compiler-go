@@ -838,6 +838,7 @@ func (l *library) javaClass(cls *types.ClassSym, depth int) *Decl {
 	}
 	// FIR lists a Java class's run-time visible annotations first.
 	d.Annotations = l.annotations(slices.Concat(det.Annotations[det.Invisible:], det.Annotations[:det.Invisible]), false)
+	l.purelyImplement(d)
 	_, bySig := methods(det)
 	// pos is each member's index among the class's methods, fields or
 	// nested classes, in class-file (or source) order.
@@ -1049,6 +1050,72 @@ func javaMemberGroup(d *Decl) int {
 		g += 4
 	}
 	return g
+}
+
+// pureImplementations are the Kotlin interfaces Java classes implement
+// without saying so, by class ID, as FIR's FakePureImplementationsProvider:
+// java/util/ArrayList is a kotlin/collections/MutableList.
+var pureImplementations = map[string]string{
+	"java/util/ArrayList":                        "kotlin/collections/MutableList",
+	"java/util/LinkedList":                       "kotlin/collections/MutableList",
+	"java/util/HashSet":                          "kotlin/collections/MutableSet",
+	"java/util/TreeSet":                          "kotlin/collections/MutableSet",
+	"java/util/LinkedHashSet":                    "kotlin/collections/MutableSet",
+	"java/util/HashMap":                          "kotlin/collections/MutableMap",
+	"java/util/TreeMap":                          "kotlin/collections/MutableMap",
+	"java/util/LinkedHashMap":                    "kotlin/collections/MutableMap",
+	"java/util/concurrent/ConcurrentHashMap":     "kotlin/collections/MutableMap",
+	"java/util/concurrent/ConcurrentSkipListMap": "kotlin/collections/MutableMap",
+	"com/google/common/collect/ImmutableList":    "kotlin/collections/List",
+	"com/google/common/collect/ImmutableSet":     "kotlin/collections/Set",
+	"com/google/common/collect/ImmutableMap":     "kotlin/collections/Map",
+	"java/util/function/UnaryOperator":           "java/util/function/Function",
+	"java/util/function/BinaryOperator":          "java/util/function/BiFunction",
+}
+
+// purelyImplement adds to Java class d the Kotlin interface it purely
+// implements, as FIR does: one of pureImplementations, or the one its
+// @kotlin.jvm.PurelyImplements names. The interface's arguments are d's
+// type parameters, not flexible; a single one stands for each of the
+// interface's parameters, but not for an annotation's. It takes the
+// place of the supertype of that class d has, at the end:
+// java/util/ArrayList<E> : ..., kotlin/collections/MutableList<E>.
+// (A Java source's @PurelyImplements has no arguments here: kc doesn't
+// read a Java source's annotation arguments.)
+func (l *library) purelyImplement(d *Decl) {
+	id, annotated := "", false
+	for _, a := range d.Annotations {
+		if a.ClassID == "kotlin/jvm/PurelyImplements" && len(a.Args) == 1 && a.Args[0].Value != nil && a.Args[0].Value.Kind == ValueConst {
+			id, annotated = strings.ReplaceAll(a.Args[0].Value.Str, ".", "/"), true
+		}
+	}
+	if id == "" {
+		id = pureImplementations[d.ClassID]
+	}
+	if id == "" {
+		return
+	}
+	cls := l.lib.Class(id)
+	if cls == nil {
+		return
+	}
+	cls.Ensure()
+	n, own := len(cls.TypeParams), len(d.TypeParams)
+	var args []TypeArg
+	switch {
+	case n == own:
+		for _, tp := range d.TypeParams {
+			args = append(args, TypeArg{Type: &Type{Kind: TypeParameter, Name: tp.Name}})
+		}
+	case own == 1 && n > 1 && !annotated:
+		for range n {
+			args = append(args, TypeArg{Type: &Type{Kind: TypeParameter, Name: d.TypeParams[0].Name}})
+		}
+	default:
+		return
+	}
+	d.Supertypes = append(slices.DeleteFunc(d.Supertypes, func(t *Type) bool { return t.ClassID == id }),
+		&Type{Kind: TypeClass, ClassID: id, Args: args})
 }
 
 // javaSupertypes returns the supertypes of Java class cls, of kind k, each
@@ -1792,7 +1859,8 @@ var jdkMutating = map[string]bool{
 // jvmMappedMembers adds to Kotlin collection interface d the members of
 // its JDK class m.java that Kotlin's classes don't have, as FIR's JVM
 // mapped scope does: List's getFirst() and stream(), Iterable's
-// forEach(Consumer). A read-only class doesn't get the ones that mutate.
+// forEach(Consumer). A read-only class gets the ones that don't mutate,
+// its mutable class the others.
 func (l *library) jvmMappedMembers(d *Decl, m struct {
 	java     string
 	readOnly bool
@@ -1839,7 +1907,9 @@ func (l *library) jvmMappedMembers(d *Decl, m struct {
 	b := &fileBuilder{}
 	var extra []*Decl
 	for _, f := range l.lib.JavaMethods(m.java, owner) {
-		if have[key(f.Name, len(f.Params))] || jdkHidden[f.Name+f.Desc] || m.readOnly && jdkMutating[f.Name] {
+		// A read-only class has the members that don't mutate, which its
+		// mutable class inherits; that one has only the others.
+		if have[key(f.Name, len(f.Params))] || jdkHidden[f.Name+f.Desc] || m.readOnly == jdkMutating[f.Name] {
 			continue
 		}
 		have[key(f.Name, len(f.Params))] = true

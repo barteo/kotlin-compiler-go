@@ -9,7 +9,6 @@ import org.jetbrains.kotlin.analysis.api.symbols.pointers.KaSymbolPointer
 import org.jetbrains.kotlin.analysis.api.types.KaStarTypeProjection
 import org.jetbrains.kotlin.analysis.api.types.KaSubstitutor
 import org.jetbrains.kotlin.analysis.api.types.KaClassType
-import org.jetbrains.kotlin.analysis.api.types.KaDefinitelyNotNullType
 import org.jetbrains.kotlin.analysis.api.types.KaType
 import org.jetbrains.kotlin.descriptors.Visibilities
 import org.jetbrains.kotlin.descriptors.Visibility
@@ -39,16 +38,6 @@ internal class KcClassMembers(
         val EMPTY = KcClassMembers(emptyList(), IdentityHashMap(), emptyList())
     }
 }
-
-/**
- * A Java method's return and parameter types as FIR's signature
- * enhancement has them, null where they stay as declared: a flexible
- * type takes its nullability and its collection's mutability from the
- * members the method overrides. `AbstractList.equals(Object)` overrides
- * `Any.equals(other: Any?)`, so its parameter is `Any?`;
- * `AbstractMap.get` overrides `Map.get(key: K): V?` and returns `V?`.
- */
-internal class KcEnhancement(val returnType: KaType?, val params: List<KaType?>)
 
 /** A member a class inherits from [original], a supertype's member, under a new signature. */
 internal interface KcFakeOverride {
@@ -93,6 +82,7 @@ internal fun isStaticMember(s: KaDeclarationSymbol) = when (s) {
 /** Computes the [KcClassMembers] of class [c]. */
 internal class KcMemberBuilder(private val round: KcRound, private val c: KcClassSymbol) {
     private val rel = round.relations
+    private val enhancer = KcEnhancer(round)
 
     /** A member of a supertype and the substitutor of that supertype's arguments. */
     private class Candidate(val symbol: KaCallableSymbol, val sub: KaSubstitutor)
@@ -128,12 +118,26 @@ internal class KcMemberBuilder(private val round: KcRound, private val c: KcClas
         val pending = candidates.toMutableList()
         for (d in declared) {
             val dc = Candidate(d, rel.empty)
-            val erased = if (java && d is KaNamedFunctionSymbol) candidates.firstOrNull { erasedMatch(d, it) } else null
-            val hits = candidates.filter { (matches(dc, it) || it === erased) && (!java || returnCompatible(d, it)) }
+            val erased = if (java && d is KaNamedFunctionSymbol) candidates.filter { erasedMatch(d, it) } else emptyList()
+            val hits = candidates.filter { (matches(dc, it) || erased.any { e -> e === it }) && (!java || returnCompatible(d, it)) }
+            if (d is KcFunctionSymbol && d.info.isJava && c.classKind != KaClassKind.ANNOTATION_CLASS) {
+                val supers = hits.flatMap(::unwrap).filter { it.symbol is KaFunctionSymbol } + getterOf(d, candidates, java)
+                enhancer.enhance(c, d, supers.map { it.symbol to mapped(it.sub, java) }, erasedTypes(d, erased.firstOrNull()))?.let { enhanced[d] = it }
+            }
             if (hits.isEmpty()) continue
             overridden[d] = hits.flatMap { declaredOriginals(it.symbol) }.distinct()
-            if (d is KcFunctionSymbol && d.info.isJava) enhance(d, overridden.getValue(d), erased)?.let { enhanced[d] = it }
             pending.removeAll { p -> hits.any { it === p } }
+        }
+        // A static JDK method has only a predefined enhancement: Optional.of.
+        // A getter folded into a property (see javaDeclared) is still a
+        // function of the class, enhanced from the property it implements.
+        val listed = IdentityHashMap<KaCallableSymbol, Boolean>().apply { declared.forEach { put(it, true) } }
+        for (s in c.members) {
+            if (s !is KcFunctionSymbol || !s.info.isJava) continue
+            if (isStaticMember(s)) enhancer.enhance(c, s, emptyList(), emptyMap(), staticOnly = true)?.let { enhanced[s] = it }
+            else if (java && !listed.containsKey(s)) getterOf(s, candidates, true).takeIf { it.isNotEmpty() }?.let { props ->
+                enhancer.enhance(c, s, props.map { it.symbol to it.sub }, emptyMap())?.let { enhanced[s] = it }
+            }
         }
 
         val callables = ArrayList<KaCallableSymbol>(declared)
@@ -176,27 +180,67 @@ internal class KcMemberBuilder(private val round: KcRound, private val c: KcClas
                     members.all { o -> o === m || round.relations.isSubtype(ret.getValue(m), ret.getValue(o), true) }
                 }.ifEmpty { members }
                 val chosen = specific.firstOrNull { it.symbol.modality != KaSymbolModality.ABSTRACT } ?: specific[0]
-                fake(chosen, KaSymbolOrigin.INTERSECTION_OVERRIDE, members.map { it.symbol }, key)
+                fake(chosen, KaSymbolOrigin.INTERSECTION_OVERRIDE, members.map { it.symbol }, key, members.map { it.sub })
             }
         }
         return KcClassMembers(callables, overridden, statics, all, enhanced)
     }
 
     /**
-     * Java method [d]'s [KcEnhancement] from the declarations [supers] it
-     * overrides, or null if it has none. While its class's members are
-     * built, [d]'s types are its declared ones.
+     * The types FIR gives the parameters of Java method [d] that Java
+     * erases, by index: those of the built-in member [erased] it implements
+     * (the first, if it implements it through several supertypes).
      */
-    private fun enhance(d: KcFunctionSymbol, supers: List<KaCallableSymbol>, erased: Candidate?): KcEnhancement? {
-        val fs = supers.filterIsInstance<KaFunctionSymbol>()
-        if (fs.isEmpty()) return null
-        val ret = enhanceType(d.returnType, fs.map { it.returnType }, covariant = true)
-        val erasedParams = erased?.let { erasedParams[d.name.asString()] }.orEmpty()
-        val params = d.valueParameters.mapIndexed { i, p ->
-            if (i in erasedParams) erased!!.sub.substitute((erased.symbol as KaFunctionSymbol).valueParameters[i].returnType)
-            else enhanceType(p.returnType, fs.mapNotNull { it.valueParameters.getOrNull(i)?.returnType }, covariant = false)
-        }
-        return if (ret == null && params.all { it == null }) null else KcEnhancement(ret, params)
+    private fun erasedTypes(d: KaCallableSymbol, erased: Candidate?): Map<Int, KaType> {
+        if (erased == null || d !is KaNamedFunctionSymbol) return emptyMap()
+        val ps = (erased.symbol as KaFunctionSymbol).valueParameters
+        return erasedParams[d.name.asString()].orEmpty().filter { it < ps.size }.associateWith { erased.sub.substitute(ps[it].returnType) }
+    }
+
+    /** The Kotlin properties among [candidates] that Java method [d] of [c] is the getter of, if [java]: MutableMap.keys for AbstractMap.keySet(). */
+    private fun getterOf(d: KaNamedFunctionSymbol, candidates: List<Candidate>, java: Boolean): List<Candidate> =
+        if (!java || d.valueParameters.isNotEmpty() || d.typeParameters.isNotEmpty()) emptyList()
+        else candidates.filter { isProperty(it.symbol) && getterName(it.symbol as KaPropertySymbol) == d.name.asString() }
+
+    /**
+     * Members [ms] but those another of them overrides, as FIR's
+     * nonSubsumed: MutableList's spliterator() stands for List's, not also
+     * the Iterable.spliterator() that overrides, which MutableIterable has
+     * with an inflexible argument.
+     */
+    private fun nonSubsumed(ms: List<Candidate>): List<Candidate> {
+        if (ms.size < 2) return ms
+        val bases = IdentityHashMap<KaCallableSymbol, Boolean>()
+        for (m in ms) round.allOverridden(fakeOverrideOriginal(m.symbol)).forEach { bases[it] = true }
+        return ms.filter { !bases.containsKey(fakeOverrideOriginal(it.symbol)) }
+    }
+
+    /**
+     * Substitutor [sub] of a supertype's arguments, for enhancing a member
+     * of [c]: unless [java], so in a Kotlin class, a JDK method's
+     * (`jvmMappedMembers`), with [c]'s type parameters flexible after
+     * it. FIR has these methods from
+     * the JDK's classes, whose supertypes' arguments are flexible, so
+     * List.spliterator() returns `Spliterator<E!>`, not Iterable's
+     * `Spliterator<T>` with List's `E`.
+     */
+    private fun mapped(sub: KaSubstitutor, java: Boolean): KaSubstitutor {
+        if (java || c.typeParameters.isEmpty()) return sub
+        return KcChainedSubstitutor(sub, rel.substitutor(c.typeParameters.associateWith {
+            enhancer.flexibleOf(KcTypeParameterType(round, it.name, it, false))
+        }))
+    }
+
+    /**
+     * [h], or the members an intersection override [h] stands for (but
+     * those another of them overrides), each with its substitutor in [c].
+     * A class's direct supertypes' members all count: ArrayList.subList()
+     * overrides AbstractList's and MutableList's.
+     */
+    private fun unwrap(h: Candidate): List<Candidate> {
+        val s = h.symbol as? KcFakeFunctionSymbol ?: return listOf(h)
+        if (s.intersected.isEmpty()) return listOf(h)
+        return nonSubsumed(s.intersected.zip(s.intersectedSubs).flatMap { (m, sub) -> unwrap(Candidate(m, KcChainedSubstitutor(sub, h.sub))) })
     }
 
     /**
@@ -215,7 +259,7 @@ internal class KcMemberBuilder(private val round: KcRound, private val c: KcClas
         if (declaredOriginals(b).none { it.callableId?.packageName?.asString() == "kotlin.collections" }) return false
         return d.valueParameters.indices.all { i ->
             val dt = d.valueParameters[i].returnType
-            if (i in erased) isErased(dt) else sameType(dt, rel.empty, b.valueParameters[i].returnType, y.sub)
+            if (i in erased) isErased(enhancer.flexibleOf(dt)) else sameType(enhancer.flexibleOf(dt), rel.empty, b.valueParameters[i].returnType, y.sub)
         }
     }
 
@@ -226,55 +270,6 @@ internal class KcMemberBuilder(private val round: KcRound, private val c: KcClas
             "kotlin/Any" -> true
             "kotlin/collections/MutableCollection" -> lo.typeArguments.singleOrNull() is KaStarTypeProjection
             else -> false
-        }
-    }
-
-    /**
-     * Flexible type [own] with the nullability and mutability that the
-     * overridden members' types [supers] agree on, or null if they don't
-     * change it. As in FIR's override qualifiers: a parameter's
-     * (invariant) take one only if every member that has one has the same;
-     * a return type's (covariant) prefer not-null and mutable.
-     */
-    private fun enhanceType(own: KaType, supers: List<KaType>, covariant: Boolean): KaType? {
-        if (own !is KcFlexibleType) return null
-        val ns = supers.mapNotNull(::nullable).toSet()
-        val ms = supers.mapNotNull(::mutable).toSet()
-        val n = if (covariant) (if (false in ns) false else if (true in ns) true else null) else ns.singleOrNull()
-        val m = if (covariant) (if (true in ms) true else if (false in ms) false else null) else ms.singleOrNull()
-        val lo = own.lowerBound as? KcTypeBase ?: return null
-        val up = own.upperBound as? KcTypeBase ?: return null
-        val collection = (lo as? KaClassType)?.classId != (up as? KaClassType)?.classId
-        return when {
-            collection && m != null -> {
-                val base = if (m) lo else up
-                if (n != null) base.withNullability(n)
-                else KcFlexibleType(round, base.withNullability(false), base.withNullability(true))
-            }
-            n == null -> null
-            // Bounds that differ in more than nullability (a collection's
-            // mutability, an array's variance) stay flexible in that.
-            lo.withNullability(false) != up.withNullability(false) ->
-                KcFlexibleType(round, lo.withNullability(n), up.withNullability(n))
-            else -> lo.withNullability(n)
-        }
-    }
-
-    /** The nullability a type gives an override: none for a flexible one. */
-    private fun nullable(t: KaType): Boolean? = when (t) {
-        is KcFlexibleType -> null
-        is KaDefinitelyNotNullType -> false
-        else -> (t as? KcTypeBase)?.marked
-    }
-
-    /** The mutability a collection type gives an override: true for a mutable one, false for a read-only one. */
-    private fun mutable(t: KaType): Boolean? {
-        if (t is KcFlexibleType) return null
-        val id = (t as? KaClassType)?.classId?.asString() ?: return null
-        return when (id) {
-            in KcTypeContext.readOnly.keys -> true
-            in KcTypeContext.readOnly.values -> false
-            else -> null
         }
     }
 
@@ -411,9 +406,12 @@ internal class KcMemberBuilder(private val round: KcRound, private val c: KcClas
         return s !is KaFunctionSymbol || s.valueParameters.none { m.sub.substituteOrNull(it.returnType) != null }
     }
 
-    private fun fake(m: Candidate, origin: KaSymbolOrigin, intersected: List<KaCallableSymbol>, key: String): KaCallableSymbol =
+    private fun fake(
+        m: Candidate, origin: KaSymbolOrigin, intersected: List<KaCallableSymbol>, key: String,
+        subs: List<KaSubstitutor> = emptyList(),
+    ): KaCallableSymbol =
         when (val s = m.symbol) {
-            is KaNamedFunctionSymbol -> KcFakeFunctionSymbol(c, s, m.sub, origin, intersected, key)
+            is KaNamedFunctionSymbol -> KcFakeFunctionSymbol(c, s, m.sub, origin, intersected, key, subs)
             is KaKotlinPropertySymbol -> KcFakePropertySymbol(c, s, m.sub, origin, intersected, key)
             is KcSyntheticPropertySymbol -> KcFakeSyntheticPropertySymbol(c, s, m.sub, origin, intersected, key)
             else -> s // Java fields keep their declared types.
@@ -436,8 +434,12 @@ internal class KcMemberBuilder(private val round: KcRound, private val c: KcClas
                     (a.receiverParameter == null) != (b.receiverParameter == null)
                 ) return false
                 val sb = positional(y.sub, b.typeParameters, a.typeParameters)
+                val la = isJava(a)
+                val lb = isJava(b)
                 sameType(a.receiverType, x.sub, b.receiverType, sb) &&
-                    a.valueParameters.indices.all { sameType(a.valueParameters[it].returnType, x.sub, b.valueParameters[it].returnType, sb) }
+                    a.valueParameters.indices.all {
+                        sameType(loose(paramType(a, it, la && lb), la), x.sub, loose(paramType(b, it, la && lb), lb), sb)
+                    }
             }
             a is KaPropertySymbol && b is KaPropertySymbol ->
                 a.name == b.name && (a.receiverParameter == null) == (b.receiverParameter == null) &&
@@ -452,8 +454,31 @@ internal class KcMemberBuilder(private val round: KcRound, private val c: KcClas
         val a = d as? KaNamedFunctionSymbol ?: return true
         val b = m.symbol as? KaNamedFunctionSymbol ?: return true
         val sb = positional(m.sub, b.typeParameters, a.typeParameters)
-        return rel.isSubtype(a.returnType, sb.substitute(b.returnType), lenient = true)
+        return rel.isSubtype(loose(a.returnType, isJava(a)), sb.substitute(loose(b.returnType, isJava(b))), lenient = true)
     }
+
+    /**
+     * Function [f]'s parameter [i]'s type: as declared, if [java], as FIR
+     * matches a Java method's Java overrides before enhancing them.
+     * `HashMap.get(Object)` overrides `AbstractMap.get(Object)`, whose
+     * enhanced type is `K!`; AbstractCollection's `contains(Object)`, as
+     * `contains(E)`, matches Kotlin's `Set.contains(E)`.
+     */
+    private fun paramType(f: KaFunctionSymbol, i: Int, java: Boolean): KaType = when {
+        !java -> f.valueParameters[i].returnType
+        f is KcFakeFunctionSymbol -> f.sub.substitute(paramType(f.original, i, true))
+        else -> (f.valueParameters[i] as? KcValueParameterSymbol)?.declaredType ?: f.valueParameters[i].returnType
+    }
+
+    private fun isJava(s: KaCallableSymbol) = fakeOverrideOriginal(s).let { it is KcFunctionSymbol && it.info.isJava }
+
+    /**
+     * Type [t] of a Java method, if [java], as FIR matches overrides: the
+     * flexible type its nullability annotation, or an enhancement, made it
+     * not, at every position (`KcEnhancer.deepFlexibleOf`).
+     * `@NotNull String f(@NotNull String x)` overrides `f(x: String?): String`.
+     */
+    private fun loose(t: KaType, java: Boolean) = if (java) enhancer.deepFlexibleOf(t) else t
 
     /** [sub] followed by the substitution of type parameters [from] by [to]'s types, position by position. */
     private fun positional(sub: KaSubstitutor, from: List<KaTypeParameterSymbol>, to: List<KaTypeParameterSymbol>): KaSubstitutor {
@@ -468,9 +493,12 @@ internal class KcMemberBuilder(private val round: KcRound, private val c: KcClas
     }
 }
 
-/** The built-in collection members whose parameters (by index) Java erases to `Object` or `Collection<?>`. */
+/**
+ * The built-in collection members whose parameters (by index) Java erases
+ * to `Object` or `Collection<?>`: both of MutableMap's `remove(key, value)`.
+ */
 private val erasedParams = mapOf(
-    "contains" to setOf(0), "containsAll" to setOf(0), "remove" to setOf(0), "removeAll" to setOf(0),
+    "contains" to setOf(0), "containsAll" to setOf(0), "remove" to setOf(0, 1), "removeAll" to setOf(0),
     "retainAll" to setOf(0), "indexOf" to setOf(0), "lastIndexOf" to setOf(0), "containsKey" to setOf(0),
     "containsValue" to setOf(0), "get" to setOf(0), "getOrDefault" to setOf(0),
 )
@@ -488,10 +516,12 @@ private val renames = mapOf(
 internal class KcFakeFunctionSymbol(
     override val owner: KcClassSymbol,
     override val original: KaNamedFunctionSymbol,
-    private val sub: KaSubstitutor,
+    val sub: KaSubstitutor,
     override val origin: KaSymbolOrigin,
     override val intersected: List<KaCallableSymbol>,
     private val key: String,
+    /** The substitutors of [intersected] in [owner]'s supertypes. */
+    val intersectedSubs: List<KaSubstitutor> = emptyList(),
 ) : StubKaNamedFunctionSymbol(), KcFakeOverride {
     override val token get() = owner.token
     override val psi get() = original.psi
@@ -533,7 +563,7 @@ internal class KcFakeFunctionSymbol(
 internal class KcFakePropertySymbol(
     override val owner: KcClassSymbol,
     override val original: KaKotlinPropertySymbol,
-    private val sub: KaSubstitutor,
+    val sub: KaSubstitutor,
     override val origin: KaSymbolOrigin,
     override val intersected: List<KaCallableSymbol>,
     private val key: String,
