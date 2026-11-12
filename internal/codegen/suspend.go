@@ -156,11 +156,11 @@ func (g *gen) inlinedSuspend(x *syntax.Call) {
 		return
 	}
 	if p := sm.points[len(sm.points)-1]; p.call == x && p.inline && g.code.Reachable() {
-		if sm.cls == "" {
+		if sm.cls == "" && !sm.forInline {
 			g.suspended(p) // returns it
 			return
 		}
-		g.suspendFinish(p)
+		g.suspendFinish(p) // a copy for inliners keeps the body's markers
 	}
 }
 
