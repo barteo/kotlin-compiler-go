@@ -119,3 +119,14 @@ suspend inline fun <reified T : Any> Mutex.guarded(block: () -> T?): T {
     delay(1)
     return got
 }
+
+// An inline suspend function with a default value: copiers of its
+// name$default method copy its body with their lambdas, as kotlinc's do.
+suspend inline fun <T> recovered(onError: (Throwable) -> T? = { null }, block: () -> T): T? =
+    try {
+        delay(1)
+        block()
+    } catch (e: IllegalStateException) {
+        delay(1)
+        onError(e)
+    }
