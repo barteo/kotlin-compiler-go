@@ -160,6 +160,11 @@ func (c *Checker) lambda(x *syntax.Lambda, want types.Type) types.Type {
 		return c.kpropType(x, ps, r)
 	}
 	t := c.lambdaType(x, ps, r)
+	if x.Anon && isSuspendFunc(want) && proper {
+		// Of its own function type, which isn't suspend: see anonWant.
+		c.assignable(t, want, x.P)
+		return types.InvalidType
+	}
 	if x.Ref != nil && c.u.ext.kotlin && (want.K == types.Invalid || want.NonNull().K == types.Any) && t.K == types.Class && len(ps) <= types.MaxArity {
 		// Without an expected function type, a reference to a function
 		// is a KFunctionN, a kotlin.reflect object, as with kotlinc:
@@ -1426,6 +1431,8 @@ func (c *Checker) lambdaFits(l *syntax.Lambda, p types.Type) bool {
 	case l.Ref != nil && kcallable(t):
 		fun, prop, known := c.refKinds(l)
 		return !known || fun || !prop
+	case l.Anon && t.IsSuspendFunc():
+		return false // see anonWant
 	case t.IsFunc():
 		n = t.A.Len() - 1 - t.Contexts() // nor are its contexts
 		if t.E {
@@ -2609,6 +2616,9 @@ func (c *Checker) anonWant(x *syntax.Lambda, w *lambdaWant) bool {
 		c.errorf(x.P, "the anonymous function's context parameters don't match the expected function type")
 		return false
 	}
+	// Unlike a lambda, an anonymous function is never suspend, nor
+	// converted to a suspend function type, as in kotlinc.
+	w.suspend = false
 	switch {
 	case x.AnonRet != nil:
 		w.ret, w.check = c.resolveType(x.AnonRet), true

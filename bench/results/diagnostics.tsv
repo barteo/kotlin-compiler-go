@@ -3478,7 +3478,7 @@ tests/functionAsExpression/InferenceParametersTypes.kt	rejects invalid	on an exp
 tests/functionAsExpression/MissingParameterTypes.kt	rejects invalid	on an expected line	
 tests/functionAsExpression/NameDeprecation.kt	rejects invalid	on an expected line	
 tests/functionAsExpression/NoOverloadError.kt	accepts valid		
-tests/functionAsExpression/NonSuspendAnonFuncAsInitializerOfSuspendFunctionType.kt	accepts invalid	INITIALIZER_TYPE_MISMATCH	NonSuspendAnonFuncAsInitializerOfSuspendFunctionType.kt:4: INITIALIZER_TYPE_MISMATCH
+tests/functionAsExpression/NonSuspendAnonFuncAsInitializerOfSuspendFunctionType.kt	rejects invalid	on an expected line	
 tests/functionAsExpression/NonSuspendAnonFuncAsReturnValueOfSuspendFunctionTypeInConcreteFunction.kt	rejects invalid	on an expected line	
 tests/functionAsExpression/Parameters.kt	rejects invalid	on an expected line	
 tests/functionAsExpression/ReceiverByExpectedType.kt	rejects invalid	on an expected line	
@@ -3929,7 +3929,7 @@ tests/inference/NoInferenceFromDeclaredBounds.kt	rejects invalid	on an expected 
 tests/inference/UnitUpperboundLambdaReturnType.kt	rejects valid	type argument is not within its bounds: inferred type Int of type _ '_' is not a subtype of Unit	UnitUpperboundLambdaReturnType.kt:9: type argument is not within its bounds: inferred type Int of type parameter 'U' is not a subtype of Unit
 tests/inference/UnitUpperboundLambdaReturnTypeWithExplicitReturn.kt	accepts valid		
 tests/inference/annotatedUnderscoredTypeArgument.kt	rejects invalid	on an expected line	
-tests/inference/anonymousFunctionAgainsSuspendFunctionType.kt	accepts invalid	ARGUMENT_TYPE_MISMATCH	anonymousFunctionAgainsSuspendFunctionType.kt:7: ARGUMENT_TYPE_MISMATCH
+tests/inference/anonymousFunctionAgainsSuspendFunctionType.kt	rejects invalid	on an expected line	
 tests/inference/argumentPlaceholderVsClassName.kt	accepts valid		
 tests/inference/argumentTypeMismatchWithExplicitTypeArguments.kt	rejects invalid	on an expected line	
 tests/inference/argumentTypeMismatchWrongNumberOfTypeArgs.kt	rejects invalid	on an expected line	
@@ -4020,7 +4020,7 @@ tests/inference/capturedTypes/withSmartCasts.kt	skip	LANGUAGE
 tests/inference/capturedTypes/withSmartCasts2.kt	skip	LANGUAGE	
 tests/inference/capturedTypesInSelfType.kt	accepts valid		
 tests/inference/checkNotNullWithNullableExpectedType.kt	accepts valid		
-tests/inference/coerceFunctionLiteralToSuspend.kt	accepts invalid	ARGUMENT_TYPE_MISMATCH	coerceFunctionLiteralToSuspend.kt:11: ARGUMENT_TYPE_MISMATCH
+tests/inference/coerceFunctionLiteralToSuspend.kt	rejects invalid	on an expected line	
 tests/inference/coercionToUnit/afterBareReturn.kt	accepts valid		
 tests/inference/coercionToUnit/coercionToUnitForIfAsLastExpressionInLambda.kt	rejects invalid	on an expected line	
 tests/inference/coercionToUnit/coercionToUnitForLastLambdaInLambda.kt	accepts valid		
@@ -9728,7 +9728,7 @@ testsWithStdLib/callableReferences/beyoundCalls.kt	rejects invalid	on an expecte
 testsWithStdLib/callableReferences/coercionToUnit.kt	accepts valid		
 testsWithStdLib/callableReferences/companions.kt	skip	Java sources	
 testsWithStdLib/callableReferences/constructors.kt	accepts valid		
-testsWithStdLib/callableReferences/differentLevels.kt	rejects valid	no function '_' takes n arguments	differentLevels.kt:9: no function 'bar' takes 1 arguments
+testsWithStdLib/callableReferences/differentLevels.kt	accepts valid		
 testsWithStdLib/callableReferences/extensionReceiverInference.kt	accepts valid		
 testsWithStdLib/callableReferences/fromBasicDiagnosticTests/ambiguityWhenNoApplicableCallableReferenceCandidate.kt	rejects invalid	on an expected line	
 testsWithStdLib/callableReferences/fromBasicDiagnosticTests/applicableCallableReferenceFromDistantScope.kt	accepts valid		
@@ -9749,7 +9749,7 @@ testsWithStdLib/callableReferences/implicitTypes.kt	rejects invalid	on an expect
 testsWithStdLib/callableReferences/inferenceFromCallableReferenceType.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	inferenceFromCallableReferenceType.kt:13: cannot infer type for type parameter 'T'. Specify it explicitly.
 testsWithStdLib/callableReferences/inferenceFromExpectedType.kt	accepts valid		
 testsWithStdLib/callableReferences/javaStatic.kt	skip	Java sources	
-testsWithStdLib/callableReferences/manyCandidatesInference.kt	rejects valid	no function '_' takes n arguments	manyCandidatesInference.kt:9: no function 'bar' takes 1 arguments
+testsWithStdLib/callableReferences/manyCandidatesInference.kt	accepts valid		
 testsWithStdLib/callableReferences/manyInnerCandidates.kt	accepts valid		
 testsWithStdLib/callableReferences/manyInnerManyOuterCandidates.kt	accepts valid		
 testsWithStdLib/callableReferences/manyInnermanyOuterCandidatesAmbiguity.kt	rejects invalid	on an expected line	
