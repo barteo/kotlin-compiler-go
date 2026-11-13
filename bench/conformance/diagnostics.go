@@ -433,7 +433,7 @@ func reportDiagnostics(c *diagConfig, rs []*result, dts []*diagTest, tag string)
 		fmt.Fprintf(&sb, "The names without a severity: %s.\n\n", strings.Join(names, ", "))
 	}
 
-	fmt.Fprintf(&sb, "## Skipped\n\nTests for other platforms, that need language features off by default or compiler options, Java sources, or modules other than plain dependencies, or whose FIR diagnostics aren't checked.\n\n")
+	fmt.Fprintf(&sb, "## Skipped\n\nTests for other platforms, that need language features off by default or compiler options, or modules other than plain dependencies, or whose FIR diagnostics aren't checked.\n\n")
 	reportKeys(&sb, rs, catSkip, "Reason", 30, false)
 
 	fmt.Fprintf(&sb, "## Accepts invalid\n\nTests kotlinc rejects that kc compiles, by the errors their markup expects. A test counts for each; *Only error* counts the tests it is the only expected error of, which implementing it alone would fix.\n\n")

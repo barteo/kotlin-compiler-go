@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -181,8 +182,8 @@ func (t *test) files() []*srcFile {
 }
 
 // commonSkip returns why the harnesses don't run a test, or "": it is for
-// another platform, needs kotlinc's options or Java sources, or has
-// modules that aren't plain dependencies.
+// another platform, needs kotlinc's options or sources other than Kotlin
+// and Java, or has modules that aren't plain dependencies.
 func commonSkip(t *test) string {
 	if vs := t.values("TARGET_BACKEND"); len(vs) > 0 && !t.anyOf("TARGET_BACKEND", "JVM", "JVM_IR") {
 		return "TARGET_BACKEND: " + strings.Join(vs, ", ")
@@ -210,10 +211,7 @@ func commonSkip(t *test) string {
 		return "LAMBDAS: CLASS" // -Xlambdas=class, which kc doesn't have
 	}
 	for _, f := range t.files() {
-		if !strings.HasSuffix(f.name, ".kt") {
-			if strings.HasSuffix(f.name, ".java") {
-				return "Java sources"
-			}
+		if !strings.HasSuffix(f.name, ".kt") && !isJava(f) {
 			return "other sources (" + filepath.Ext(f.name) + ")"
 		}
 	}
@@ -224,6 +222,12 @@ func commonSkip(t *test) string {
 	}
 	return ""
 }
+
+// isJava reports whether f is a Java source file.
+func isJava(f *srcFile) bool { return strings.HasSuffix(f.name, ".java") }
+
+// hasJava reports whether t has Java sources.
+func hasJava(t *test) bool { return slices.ContainsFunc(t.files(), isJava) }
 
 // defaultFeatures are the LANGUAGE directive's values that change nothing:
 // features as they are by default in the Kotlin kc compiles, as in

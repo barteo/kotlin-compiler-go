@@ -54,6 +54,11 @@ func boxSkip(t *test) string {
 	if r := commonSkip(t); r != "" {
 		return r
 	}
+	if hasJava(t) {
+		// The box mode would compile them with javac, after kc, and
+		// run them with the Kotlin classes.
+		return "Java sources"
+	}
 	for _, d := range []string{"IGNORE_BACKEND", "IGNORE_BACKEND_K2"} {
 		if t.anyOf(d, "JVM", "JVM_IR", "ANY") {
 			return d + ": JVM_IR"

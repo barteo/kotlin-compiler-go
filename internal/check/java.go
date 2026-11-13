@@ -285,10 +285,10 @@ func (t *classTable) load(cls *types.ClassSym) {
 	cls.Final = info.Access&classfile.AccFinal != 0
 	cls.Private = info.Access&classfile.AccPublic == 0
 	cls.PackagePrivate = cls.Private && (info.Inner == nil || info.Inner.Access&classfile.AccPrivate == 0)
-	// The package-private members of the module's Java classes, of the
-	// friend paths' (a unit test's main classes), and of package-private
-	// classes, are their package's code's.
-	samePkg := cls.PackagePrivate || t.cp != nil && (t.cp.IsSource(cls.Name) || t.cp.Friend(cls.Name))
+	// The package-private members of Java classes are their package's
+	// code's, which Kotlin code in another module may be, but not the
+	// JDK's.
+	samePkg := cls.PackagePrivate || !jdkPackage(cls.Name) || t.cp != nil && (t.cp.IsSource(cls.Name) || t.cp.Friend(cls.Name))
 	if info.Super != "" {
 		cls.Super = t.class(info.Super)
 	}
@@ -297,13 +297,16 @@ func (t *classTable) load(cls *types.ClassSym) {
 			cls.Interfaces = append(cls.Interfaces, i)
 		}
 	}
-	// An inner class sees its outer classes' type parameters, after its
-	// own, under Library.JavaTypes.
+	// A nested class that isn't static is an inner class, as a Kotlin
+	// one is: its constructors take the outer class's instance first,
+	// outer.Inner() passes it, and it sees its outer classes' type
+	// parameters, after its own.
 	var outer []*types.TypeParamSym
-	if t.javaTypes && info.Inner != nil && info.Inner.Outer != "" && info.Inner.Access&classfile.AccStatic == 0 &&
+	if info.Inner != nil && info.Inner.Outer != "" && info.Inner.Access&classfile.AccStatic == 0 &&
 		info.Access&(classfile.AccInterface|classfile.AccEnum|classfile.AccAnnotation) == 0 {
-		if o := t.class(info.Inner.Outer); o != nil {
-			outer = ensured(o).TypeParams
+		if o := t.class(info.Inner.Outer); o != nil && !ensured(o).Interface {
+			cls.Inner, cls.Outer = true, o
+			outer = o.TypeParams
 		}
 	}
 	if info.Sig != "" || len(outer) > 0 {
@@ -349,6 +352,11 @@ func (t *classTable) load(cls *types.ClassSym) {
 			}
 		}
 		ok := t.signature(f, desc)
+		if ok && m.Name == "<init>" && cls.Inner && len(f.Params) > 0 && f.Params[0].Type.NonNull().C == cls.Outer {
+			// The outer instance, which javac's signature leaves out, as
+			// Kotlin does: outer.Inner(x) passes it.
+			f.Params = f.Params[1:]
+		}
 		if sig != "" {
 			ok = t.methodSignature(f, cls, sig, len(f.Params))
 		}
@@ -1677,6 +1685,17 @@ func (c *Checker) classRef(x syntax.Expr) *types.ClassSym {
 	return nil
 }
 
+// jdkPackage reports whether class name is in one of the JDK's packages,
+// in which Kotlin code can't be.
+func jdkPackage(name string) bool {
+	for _, p := range []string{"java/", "javax/", "jdk/", "sun/", "com/sun/"} {
+		if strings.HasPrefix(name, p) {
+			return true
+		}
+	}
+	return false
+}
+
 // packagePrivate reports whether a Java member's access flags make it
 // package-private: neither public, protected nor private.
 func packagePrivate(access uint16) bool {
@@ -1784,6 +1803,15 @@ func (c *Checker) javaMethods(cls *types.ClassSym, name string) []*types.FunSym 
 	}
 	for _, f := range ms {
 		c.inheritExtDefaults(f)
+	}
+	if !cls.External && len(ms) > 0 {
+		// A Java interface's getX() that a Kotlin property's accessor
+		// implements is the property's, which code reads by its name:
+		// a call getX() is unresolved, as in Kotlin.
+		ms = slices.DeleteFunc(slices.Clone(ms), func(f *types.FunSym) bool {
+			o := f.Owner
+			return f.Abstract && o != nil && o.External && o.KotlinName == "" && o.Java == nil && kotlinAccessorImplements(cls, o, f)
+		})
 	}
 	ms = c.intersectionDefaults(cls, ms)
 	cache.methods.Store(k, ms)
@@ -2179,8 +2207,22 @@ func (c *Checker) construct(x *syntax.Call, cls *types.ClassSym, p syntax.Pos, w
 			all = slices.Concat(all, cls.InternalCtors)
 		}
 		own := cls.TypeParams[:len(cls.TypeParams)-cls.OuterParams] // an inner class's outer ones are the receiver's
+		if len(own) > 0 && c.outerSubst[own[0]].Raw {
+			// Erased, on a raw outer (see innerConstruct), with the
+			// type arguments written for them.
+			own = nil
+			for _, a := range x.TypeArgs {
+				if a.Type != nil {
+					c.resolveType(a.Type)
+				}
+			}
+			x.TypeArgs = nil
+		}
+		// A protected constructor is also for code in the class's package,
+		// as in Java.
+		samePkg := c.javaPackage(cls)
 		for _, f := range all {
-			if !f.Protected {
+			if !f.Protected || samePkg {
 				ctors = append(ctors, f)
 				cands = append(cands, callee{f: f, tparams: append(own[:len(own):len(own)], f.TypeParams...), recv: c.outerSubst})
 			}
@@ -2511,7 +2553,7 @@ func (c *Checker) javaProperty(x *syntax.Member, rt types.Type) (types.Type, boo
 		// overrides of them.
 		// isX() is the getter of isX whatever its result, as Rx's
 		// Maybe.isEmpty(), a Single<Boolean>.
-		if c.javaAccessor(f) && len(f.Params) == 0 && !f.Unsupported && f.Ret.K != types.Unit {
+		if c.javaAccessorIn(cls, f) && len(f.Params) == 0 && !f.Unsupported && f.Ret.K != types.Unit {
 			x.Getter = f
 		}
 	}
@@ -2520,7 +2562,7 @@ func (c *Checker) javaProperty(x *syntax.Member, rt types.Type) (types.Type, boo
 		// boolean isX().
 		alt := "get" + strings.ToUpper(x.Name[:1]) + x.Name[1:]
 		for _, f := range c.accessible(cls, c.javaMethods(cls, alt)) {
-			if c.javaAccessor(f) && len(f.Params) == 0 && !f.Unsupported && f.Ret.K != types.Unit {
+			if c.javaAccessorIn(cls, f) && len(f.Params) == 0 && !f.Unsupported && f.Ret.K != types.Unit {
 				x.Getter, setterName = f, "set"+alt[3:]
 			}
 		}
@@ -2553,7 +2595,7 @@ func (c *Checker) javaProperty(x *syntax.Member, rt types.Type) (types.Type, boo
 		return true
 	})
 	for _, f := range c.accessible(cls, c.javaMethods(cls, setterName)) {
-		if c.javaAccessor(f) && len(f.Params) == 1 && !f.Unsupported &&
+		if c.javaAccessorIn(cls, f) && len(f.Params) == 1 && !f.Unsupported &&
 			slices.ContainsFunc(getters, func(g *types.FunSym) bool { return sameJavaType(f, g) }) {
 			x.Setter = f
 		}
@@ -2607,6 +2649,27 @@ func (c *Checker) javaAccessor(f *types.FunSym) bool {
 		}
 	}
 	return false
+}
+
+// javaAccessorIn reports whether method f of class cls or a supertype
+// can be a Java property's getter or setter in cls (see javaAccessor):
+// also a Kotlin method that a Java supertype of cls declares too, as
+// Kotlin class AK's getX() is in Java class B extends AK implements AJ,
+// AJ declaring getX(), and in B's subclasses.
+func (c *Checker) javaAccessorIn(cls *types.ClassSym, f *types.FunSym) bool {
+	if c.javaAccessor(f) {
+		return true
+	}
+	if f.Static {
+		return false
+	}
+	found := false
+	cls.Supertypes(func(s *types.ClassSym) bool {
+		found = s.External && s.KotlinName == "" && s.Java == nil && s.KProps == nil && s.Name != "java/lang/Object" &&
+			slices.ContainsFunc(s.Methods[f.Name], func(g *types.FunSym) bool { return !g.Static && len(g.Params) == len(f.Params) })
+		return !found
+	})
+	return found
 }
 
 // acronymAccessor returns the name of the Java accessor, with prefix get

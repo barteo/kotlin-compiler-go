@@ -926,7 +926,16 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			match = wide
 		}
 		match = c.notPropRefs(x, match)
+		if fit := slices.DeleteFunc(slices.Clone(match), func(cd *candidate) bool { return !c.refsFit(cd, x) }); len(fit) > 0 {
+			// As in Kotlin, a reference that doesn't fit a candidate's
+			// parameter makes it inapplicable.
+			match = fit
+		}
 		match = notLowPriority(match, func(cd *candidate) *callee { return &cd.callee })
+		if strict, ok := c.noRefAdaptation(x, match); ok {
+			match = strict
+		}
+		match = fewestKotlinJavaSAM(match, x.Args, func(cd *candidate) *callee { return &cd.callee })
 		var maximal []*candidate
 		for _, cd := range match {
 			if c.mostSpecific(cd, match, x.Args) {
@@ -934,6 +943,20 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			}
 		}
 		maximal = overriddenGiveWay(maximal)
+		if len(maximal) > 1 {
+			if orig := c.origSAMMaximal(maximal, x.Args); len(orig) == 1 {
+				maximal = orig
+			}
+		}
+		if len(maximal) > 1 {
+			// Of equally specific ones, which a conversion to a Kotlin fun
+			// interface makes (see funInterfaceView), those converting
+			// fewer arguments: foo(f: () -> Unit) for foo { }, not
+			// foo(r: KRunnable).
+			if fewer, ok := fewestConversions(maximal, x.Args); ok {
+				maximal = fewer
+			}
+		}
 		if len(maximal) == 0 {
 			if fewer, ok := fewestSAM(match, x.Args, func(cd *candidate) *callee { return &cd.callee }); ok {
 				for _, cd := range fewer {
@@ -1015,6 +1038,8 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 		} else if trial := c.onlyRefFit(sys, l, params[i]); trial != nil {
 			// And so does one of whose callables only one fits.
 			sys = trial
+		} else if trial := c.refArgFit(sys, l, params[i]); trial != nil {
+			sys = trial
 		} else if trial := c.typedLambdaParams(sys, l, params[i]); trial != nil {
 			sys = trial
 		}
@@ -1067,6 +1092,11 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			}
 		}
 	})
+	if sink != nil && sink == c.tailSink && hasLambda(x.Args) && !c.lambdasReady(sys) {
+		// A call taking a lambda whose parameter types aren't known yet,
+		// a builder's, is inferred on its own (see endsWithCall).
+		sink = nil
+	}
 	if sink != nil {
 		c.runLambdas(sys, true)
 		if sys.unfixed() || len(partials) > 0 || len(sys.lambdas) > 0 {
@@ -1076,8 +1106,11 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 		}
 	}
 	if len(sys.lambdas) > 0 {
-		// The expected type can help infer the lambdas' parameters.
-		if want.K != types.Invalid && !want.HasVars() && ret.HasVars() {
+		// The expected type can help infer the lambdas' parameters. One
+		// of a builder's stubs relates the call's variables to them: as
+		// in Kotlin, myBuilder2 { add("") } that myBuilder1's lambda ends
+		// with, for its Foo<K1>, infers K2 with K1 (see stubRelated).
+		if want.K != types.Invalid && (!want.HasVars() || c.onlyStubs(want)) && ret.HasVars() {
 			trial := sys.clone()
 			trial.sub(ret, want)
 			if trial.ok {
@@ -1142,6 +1175,22 @@ func (c *Checker) notPropRefs(x *syntax.Call, match []*candidate) []*candidate {
 // bar(f: () -> Unit). A function's result fits a parameter whose result
 // is Unit.
 func (c *Checker) byRefShape(x *syntax.Call, match []*candidate) *candidate {
+	refs := c.argRefShapes(x)
+	if len(refs) == 0 {
+		return nil
+	}
+	// One that takes a reference without dropping its result first:
+	// schedule(this::flush, ...) is schedule(Callable<V>, ...), not
+	// schedule(Runnable, ...), for a flush that returns a value.
+	if best := c.byRefShape1(x, match, refs, false); best != nil {
+		return best
+	}
+	return c.byRefShape1(x, match, refs, true)
+}
+
+// argRefShapes returns the types each argument of x that is a callable
+// reference may have (see refShapes), by argument index.
+func (c *Checker) argRefShapes(x *syntax.Call) map[int][]types.Type {
 	refs := map[int][]types.Type{}
 	for i, a := range x.Args {
 		if l, ok := a.(*syntax.Lambda); ok {
@@ -1150,25 +1199,15 @@ func (c *Checker) byRefShape(x *syntax.Call, match []*candidate) *candidate {
 			}
 		}
 	}
-	if len(refs) == 0 {
-		return nil
-	}
+	return refs
+}
+
+// byRefShape1 is byRefShape, where a function's result fits a parameter
+// whose result is Unit only if unit is set.
+func (c *Checker) byRefShape1(x *syntax.Call, match []*candidate, refs map[int][]types.Type, unit bool) *candidate {
 	var best *candidate
 	for _, cd := range match {
-		trial := cd.sys
-		for i, ts := range refs {
-			var fit *system
-			for _, ft := range ts {
-				if s, ok := c.refFits(trial, ft, cd.params[i]); ok {
-					fit = s
-					break
-				}
-			}
-			if trial = fit; trial == nil {
-				break
-			}
-		}
-		if trial == nil {
+		if !c.refShapesFit(x, cd, refs, unit) {
 			continue
 		}
 		if best != nil {
@@ -1177,6 +1216,51 @@ func (c *Checker) byRefShape(x *syntax.Call, match []*candidate) *candidate {
 		best = cd
 	}
 	return best
+}
+
+// refShapesFit reports whether candidate cd's parameters take one of the
+// types refs gives each reference argument, a function's result one whose
+// result is Unit only if unit is set, and its lambdas still fit then.
+func (c *Checker) refShapesFit(x *syntax.Call, cd *candidate, refs map[int][]types.Type, unit bool) bool {
+	trial := cd.sys
+	for i, ts := range refs {
+		var fit *system
+		for _, ft := range ts {
+			if s, ok := c.refFits1(trial, ft, cd.params[i], unit); ok {
+				fit = s
+				break
+			}
+		}
+		if trial = fit; trial == nil {
+			return false
+		}
+	}
+	// With the references' types, a lambda may no longer fit: in
+	// foo(B::arg0) { }, not foo(f: KFunction1<T1, R>, arg1: T1), whose
+	// T1 is a B.
+	with := *cd
+	with.sys = trial
+	return c.lambdasFit(&with, x)
+}
+
+// noRefAdaptation returns the candidates among cs that take each callable
+// reference argument without dropping its result, and whether that
+// leaves some out: as in Kotlin, schedule(this::flush) is
+// schedule(j: Job<V>), not the more specific schedule(a: Action) of a
+// fun interface Action { fun run() }, for a flush that returns a value.
+func (c *Checker) noRefAdaptation(x *syntax.Call, cs []*candidate) ([]*candidate, bool) {
+	if len(cs) < 2 {
+		return cs, false
+	}
+	refs := c.argRefShapes(x)
+	if len(refs) == 0 {
+		return cs, false
+	}
+	out := slices.DeleteFunc(slices.Clone(cs), func(cd *candidate) bool { return !c.refShapesFit(x, cd, refs, false) })
+	if len(out) == 0 || len(out) == len(cs) {
+		return cs, false
+	}
+	return out, true
 }
 
 // eagerRefType returns the type of a reference ::f to a local or top-level
@@ -1285,9 +1369,17 @@ func (c *Checker) byLambdaResult(x *syntax.Call, match []*candidate) *candidate 
 		return nil
 	}
 	var fit []*candidate
+	byLit := map[*candidate]bool{}
 	for _, cd := range match {
 		_, r, _ := funcParts(cd.params[li])
 		try := &candidate{callee: cd.callee, sub: cd.sub, params: cd.params, sys: cd.sys.clone(), sams: cd.sams, susps: cd.susps}
+		if lit := resultLit(l); lit != nil && !r.HasVars() && fitsLit(lit, r) {
+			// An integer literal is of the type expected, if it fits:
+			// debounce { 0 } for a (T) -> Long.
+			fit = append(fit, try)
+			byLit[try] = true
+			continue
+		}
 		try.sys.sub(bt, r)
 		if try.sys.ok && c.withinBounds(try) {
 			fit = append(fit, try)
@@ -1302,7 +1394,9 @@ func (c *Checker) byLambdaResult(x *syntax.Call, match []*candidate) *candidate 
 	if len(maximal) != 1 {
 		return nil
 	}
-	c.checked[l] = bt
+	if !byLit[maximal[0]] {
+		c.checked[l] = bt // else checked again, its literal of the type expected
+	}
 	return maximal[0]
 }
 
@@ -1314,6 +1408,21 @@ func (c *Checker) byLambdaResult(x *syntax.Call, match []*candidate) *candidate 
 // is the Iterable one, not the Sequence one. The lambda is then checked
 // once, after the candidate is chosen, so that a generic call it ends
 // with can be inferred with the call's other constraints.
+// resultLit returns the integer literal lambda l's body ends with, if it
+// does.
+func resultLit(l *syntax.Lambda) *syntax.IntLit {
+	n := len(l.Body.Stmts)
+	if n == 0 {
+		return nil
+	}
+	es, ok := l.Body.Stmts[n-1].(*syntax.ExprStmt)
+	if !ok {
+		return nil
+	}
+	lit, _ := es.X.(*syntax.IntLit)
+	return lit
+}
+
 func (c *Checker) byLambdaResultClass(l *syntax.Lambda, li int, match []*candidate, params []types.Type) *candidate {
 	n := len(l.Body.Stmts)
 	if n == 0 {
@@ -1451,21 +1560,53 @@ func (c *Checker) resolvePlain(x *syntax.Call, cs []callee, want types.Type) typ
 		// or one that takes them as a Long is the most specific, as above.
 		match := c.plainApplicable(cs, x.Args, ts, false)
 		if wide := c.plainApplicable(cs, x.Args, ts, true); len(match) == 0 || len(wide) > len(match) &&
-			slices.ContainsFunc(wide, func(cl *callee) bool { return c.plainMostSpecific(cl, wide, x.Args) }) &&
-			!slices.ContainsFunc(match, func(cl *callee) bool { return c.plainMostSpecific(cl, wide, x.Args) }) {
+			slices.ContainsFunc(wide, func(cl *callee) bool { return c.plainMostSpecific(cl, wide, x.Args, ts) }) &&
+			!slices.ContainsFunc(match, func(cl *callee) bool { return c.plainMostSpecific(cl, wide, x.Args, ts) }) {
 			match = wide
 		}
 		match = notLowPriority(match, func(cl *callee) *callee { return cl })
+		match = fewestKotlinJavaSAM(match, x.Args, func(cl *callee) *callee { return cl })
 		var maximal []*callee
 		for _, cl := range match {
-			if c.plainMostSpecific(cl, match, x.Args) {
+			if c.plainMostSpecific(cl, match, x.Args, ts) {
 				maximal = append(maximal, cl)
+			}
+		}
+		if len(maximal) > 1 {
+			c.origSAM = true
+			var orig []*callee
+			for _, cl := range maximal {
+				if c.plainMostSpecific(cl, maximal, x.Args, ts) {
+					orig = append(orig, cl)
+				}
+			}
+			c.origSAM = false
+			if len(orig) == 1 {
+				maximal = orig
 			}
 		}
 		if len(maximal) == 0 {
 			if fewer, ok := fewestSAM(match, x.Args, func(cl *callee) *callee { return cl }); ok {
 				for _, cl := range fewer {
-					if c.plainMostSpecific(cl, fewer, x.Args) {
+					if c.plainMostSpecific(cl, fewer, x.Args, ts) {
+						maximal = append(maximal, cl)
+					}
+				}
+			}
+		}
+		if len(maximal) != 1 && len(match) > 1 {
+			// Those that convert fewer values to fun interfaces: foo(f) for
+			// f: () -> Unit is foo(f: () -> Unit), not foo(r: KRunnable).
+			from := maximal
+			if len(from) == 0 {
+				from = match
+			}
+			n := func(cl *callee) int { return c.plainConversions(cl, x.Args, ts) }
+			least := slices.MinFunc(from, func(a, b *callee) int { return n(a) - n(b) })
+			if fewer := slices.DeleteFunc(slices.Clone(from), func(cl *callee) bool { return n(cl) != n(least) }); len(fewer) < len(from) {
+				maximal = maximal[:0]
+				for _, cl := range fewer {
+					if c.plainMostSpecific(cl, fewer, x.Args, ts) {
 						maximal = append(maximal, cl)
 					}
 				}
@@ -1540,10 +1681,11 @@ func (c *Checker) plainApplicable(cs []callee, args []syntax.Expr, ts []types.Ty
 	return out
 }
 
-func (c *Checker) plainMostSpecific(f *callee, cs []*callee, args []syntax.Expr) bool {
+func (c *Checker) plainMostSpecific(f *callee, cs []*callee, args []syntax.Expr, ts []types.Type) bool {
 	for _, g := range cs {
 		for i := range args {
-			if fa, ga := f.argType(i, args), g.argType(i, args); boxedPrimitive(fa, ga) || !c.subtype(fa, ga) && !numberMoreSpecific(fa, ga) {
+			fa, ga := c.plainFunInterfaceView(f, i, args, ts), c.plainFunInterfaceView(g, i, args, ts)
+			if boxedPrimitive(fa, ga) || !c.subtype(fa, ga) && !numberMoreSpecific(fa, ga) {
 				return false
 			}
 		}
@@ -1569,6 +1711,21 @@ func (c *Checker) sharedFunParam(cs []*candidate, i int) (types.Type, bool) {
 	return p, true
 }
 
+// platformRecv returns ext, the type of the receiver of extension call
+// x, as the platform type the receiver has, if it has one: as in Kotlin,
+// T of a T.checkType() on a Java String! is the String!, which takes
+// null, though the call sees the receiver as non-null.
+func (c *Checker) platformRecv(x *syntax.Call, ext types.Type) types.Type {
+	m, ok := x.Fun.(*syntax.Member)
+	if !ok || m.Safe || ext.P || ext.N {
+		return ext
+	}
+	if xt := m.X.Type(); xt.P && c.sameType(xt.NonNull(), ext) {
+		return xt
+	}
+	return ext
+}
+
 // constrain adds the constraints of a call's arguments to a candidate's
 // system. If longLits, integer literals may be passed as Long.
 func (c *Checker) constrain(cd *candidate, x *syntax.Call, ts []types.Type, partials []*system, longLits bool) {
@@ -1576,7 +1733,7 @@ func (c *Checker) constrain(cd *candidate, x *syntax.Call, ts []types.Type, part
 		cd.sys.merge(p.clone())
 	}
 	if cd.ext.K != types.Invalid {
-		cd.sys.sub(cd.ext, cd.sub.ApplyIn(cd.f.Recv))
+		cd.sys.sub(c.platformRecv(x, cd.ext), cd.sub.ApplyIn(cd.f.Recv))
 	}
 	for i, t := range ts {
 		p := cd.params[i]
@@ -1797,6 +1954,7 @@ func (c *Checker) mostSpecific(f *candidate, cs []*candidate, args []syntax.Expr
 		}
 		for i := range args {
 			fa, ga := f.recv.ApplyIn(f.argType(i, args)), sub.ApplyIn(g.argType(i, args))
+			fa, ga = c.funInterfaceView(f, i, args, fa), c.funInterfaceView(g, i, args, ga)
 			if boxedPrimitive(fa, ga) {
 				return false
 			}
@@ -1817,6 +1975,147 @@ func (c *Checker) mostSpecific(f *candidate, cs []*candidate, args []syntax.Expr
 		}
 	}
 	return true
+}
+
+// plainConversions returns the number of arguments of candidate cl,
+// of types ts, that convert to fun interfaces: lambdas or values.
+func (c *Checker) plainConversions(cl *callee, args []syntax.Expr, ts []types.Type) int {
+	n := cl.samArgs(args)
+	for i, t := range ts {
+		if _, lambda := args[i].(*syntax.Lambda); lambda || t.K == types.Invalid {
+			continue
+		}
+		if p := cl.argType(i, args); !c.subtype(t, p) {
+			if _, sam := c.samValue(t, p); sam {
+				n++
+			}
+		}
+	}
+	return n
+}
+
+// plainFunInterfaceView is funInterfaceView for a candidate without
+// type parameters, whose arguments have types ts.
+func (c *Checker) plainFunInterfaceView(cl *callee, i int, args []syntax.Expr, ts []types.Type) types.Type {
+	t := cl.argType(i, args)
+	pt := t.Flex().NonNull()
+	if c.origSAM || pt.K != types.Class || !pt.C.Fun && !javaSAMView(pt, args[i]) || pt.IsFunc() {
+		return t
+	}
+	if _, lambda := args[i].(*syntax.Lambda); !lambda && (i >= len(ts) || ts[i].K == types.Invalid || c.subtype(ts[i], t)) {
+		return t
+	}
+	if m, ft := c.samTarget(pt); m != nil && ft.K != types.Invalid {
+		if t.P {
+			return ft.Platform()
+		}
+		if t.N {
+			return ft.Nullable()
+		}
+		return ft
+	}
+	return t
+}
+
+// fewestConversions returns the candidates among cs that convert the
+// fewest arguments to fun interfaces, lambdas or values, and whether
+// that leaves some out.
+func fewestConversions(cs []*candidate, args []syntax.Expr) ([]*candidate, bool) {
+	n := func(cd *candidate) int { return cd.samArgs(args) + len(cd.sams) }
+	least := -1
+	for _, cd := range cs {
+		if k := n(cd); least < 0 || k < least {
+			least = k
+		}
+	}
+	out := slices.DeleteFunc(slices.Clone(cs), func(cd *candidate) bool { return n(cd) != least })
+	return out, len(out) < len(cs)
+}
+
+// funInterfaceView returns parameter type t of candidate cd's i'th
+// argument, or if it is a Kotlin fun interface the argument converts to,
+// its function type: as in Kotlin, foo(i: Int, r: KRunnable) is more
+// specific than foo(n: Number, f: () -> Unit) for foo(1, ::bar). So is a
+// Java interface a lambda converts to: test(FObject) for test { }, whose
+// (Any!) -> Unit is more specific than a test(Function1<Integer, Unit>).
+// Unless c.origSAM, when candidates as specific as each other compare by
+// the interfaces themselves, as K2 does: bar(Fn2<String, Object>) over
+// bar(Fn<String, Object>).
+func (c *Checker) funInterfaceView(cd *candidate, i int, args []syntax.Expr, t types.Type) types.Type {
+	pt := t.Flex().NonNull()
+	if c.origSAM || pt.K != types.Class || !pt.C.Fun && !javaSAMView(pt, args[i]) || pt.IsFunc() {
+		return t
+	}
+	_, lambda := args[i].(*syntax.Lambda)
+	if !lambda && cd.sams[i] == nil {
+		return t
+	}
+	if m, ft := c.samTarget(pt); m != nil && ft.K != types.Invalid {
+		if t.P {
+			return ft.Platform()
+		}
+		if t.N {
+			return ft.Nullable()
+		}
+		return ft
+	}
+	return t
+}
+
+// javaSAMView reports whether parameter type pt is a Java interface
+// whose function type a lambda argument a compares by.
+func javaSAMView(pt types.Type, a syntax.Expr) bool {
+	l, lambda := a.(*syntax.Lambda)
+	return lambda && l.Ref == nil && pt.C.Interface && pt.C.External && pt.C.KotlinName == "" && pt.C.Java == nil
+}
+
+// kotlinJavaSAMArgs returns the number of a call's lambdas that callee
+// cl, a Kotlin function, converts to Java interfaces. As K2 resolves those
+// for compatibility, they lose to the candidates that convert none: the
+// generic bar(action: () -> T) for bar { foo() }, not bar(r: Runnable),
+// and foo(m: Tom) for a fun interface Tom, not foo(j: Jerry).
+func (cl *callee) kotlinJavaSAMArgs(args []syntax.Expr) int {
+	if o := cl.f.Owner; o != nil && o.External && o.KotlinName == "" && o.Java == nil {
+		return 0
+	}
+	n := 0
+	for i, a := range args {
+		if pt := cl.argType(i, args).Flex().NonNull(); pt.K == types.Class && !pt.IsFunc() && javaSAMView(pt, a) {
+			n++
+		}
+	}
+	return n
+}
+
+// fewestKotlinJavaSAM returns the candidates among cs that convert the
+// fewest lambdas to Java interfaces as Kotlin functions (see
+// kotlinJavaSAMArgs).
+func fewestKotlinJavaSAM[C any](cs []C, args []syntax.Expr, cl func(C) *callee) []C {
+	least := -1
+	for _, c := range cs {
+		if n := cl(c).kotlinJavaSAMArgs(args); least < 0 || n < least {
+			least = n
+		}
+	}
+	if least != 0 {
+		return cs
+	}
+	return slices.DeleteFunc(slices.Clone(cs), func(c C) bool { return cl(c).kotlinJavaSAMArgs(args) != 0 })
+}
+
+// origSAMMaximal returns the most specific of candidates cs, all as
+// specific as each other by the function types of the interfaces their
+// lambdas convert to, by the interfaces themselves, if one is.
+func (c *Checker) origSAMMaximal(cs []*candidate, args []syntax.Expr) []*candidate {
+	c.origSAM = true
+	defer func() { c.origSAM = false }()
+	var out []*candidate
+	for _, cd := range cs {
+		if c.mostSpecific(cd, cs, args) {
+			out = append(out, cd)
+		}
+	}
+	return out
 }
 
 // nonGenericMaximal returns the most specific of the candidates without
@@ -1865,7 +2164,9 @@ func overriddenGiveWay(cs []*candidate) []*candidate {
 	var out []*candidate
 	for _, f := range cs {
 		overridden := slices.ContainsFunc(cs, func(g *candidate) bool {
-			return f.f.Owner != nil && g.f.Owner != nil && g.f.Owner != f.f.Owner && g.f.Name == f.f.Name &&
+			// A Java static method overrides none: C.foo(Runnable) hides
+			// A.foo(Runnable), not A.foo(Function0<Unit>).
+			return f.f.Owner != nil && g.f.Owner != nil && g.f.Owner != f.f.Owner && g.f.Name == f.f.Name && !g.f.Static &&
 				g.f.Owner.IsSubclassOf(f.f.Owner) && sameParams(f.f, g.f)
 		})
 		if !overridden {

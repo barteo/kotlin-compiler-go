@@ -74,7 +74,7 @@ func main() {
 	if *kotlinTest != "" {
 		libs = append(libs, *kotlinTest)
 	}
-	comp := &compiler{kc: *kc, kotlinc: *kotlinc, libs: libs, reflect: *reflectJar, timeout: 2 * time.Minute}
+	comp := &compiler{kc: *kc, kotlinc: *kotlinc, javac: *javac, libs: libs, reflect: *reflectJar, timeout: 2 * time.Minute}
 	if err := os.RemoveAll(*work); err != nil {
 		log.Fatal(err)
 	}
