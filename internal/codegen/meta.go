@@ -228,6 +228,26 @@ func (s *metaScope) typ(t types.Type) *kmeta.Type {
 	if t.IsIntersection() {
 		t = types.Approx(t) // metadata has no intersection types
 	}
+	if t.K == types.Class && t.A == nil && t.C.Raw() {
+		// A raw Java type, as kotlinc writes it: flexible, from the
+		// class with its parameters' erasures to its star projection,
+		// both marked raw.
+		lower, upper := t, t
+		lower.P, lower.N = false, false
+		upper.P, upper.N = false, true
+		if upper.C.ReadOnly != nil {
+			upper.C = upper.C.ReadOnly
+		}
+		la, ua := make([]types.Arg, len(t.C.TypeParams)), make([]types.Arg, len(t.C.TypeParams))
+		for i := range la {
+			la[i], ua[i] = types.Arg{T: types.AnyType.Nullable()}, types.Arg{V: types.Star}
+		}
+		lower.A, upper.A = types.MakeArgs(la), types.MakeArgs(ua)
+		kt := s.typ(lower)
+		kt.Upper = s.typ(upper)
+		kt.Raw, kt.Upper.Raw = true, true
+		return kt
+	}
 	if t.P {
 		// A platform type, T!: flexible, from T to T?, with read-only
 		// collections as the upper bound.

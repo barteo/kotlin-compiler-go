@@ -641,6 +641,9 @@ func (w *writer) typ(t *Type) []byte {
 	if t.Abbrev != nil {
 		e.msg(13, w.typ(t.Abbrev))
 	}
+	if t.Raw {
+		e.bool(101, true) // JvmProtoBuf.isRaw
+	}
 	if t.Composable {
 		var a enc
 		a.int(1, w.st.class("androidx/compose/runtime/Composable"))

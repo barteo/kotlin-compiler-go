@@ -332,8 +332,10 @@ func (c *Checker) unify(cls *types.ClassSym, sup, s types.Type, args []types.Arg
 			if j < 0 {
 				continue
 			}
-			if a.T.N && v.V != types.Star {
-				v.T = v.T.NonNull() // T? and String? give T = String
+			if a.T.N && !a.T.P && v.V != types.Star {
+				// T? and String? give T = String; a Java supertype's
+				// E! and String? give E = String?.
+				v.T = v.T.NonNull()
 			}
 			if set[j] && (args[j].V != v.V || v.V != types.Star && !c.sameType(args[j].T, v.T)) {
 				conflict = true

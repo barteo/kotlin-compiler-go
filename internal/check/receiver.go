@@ -231,7 +231,15 @@ func propParam(v *types.VarSym) *types.VarSym {
 // recvCall rewrites an unqualified call f(args) to a call on the innermost
 // implicit receiver that has a function f that takes the arguments: a
 // member or an extension. It reports false if none has.
+//
+// As in Kotlin, a receiver whose members can't take the arguments' types
+// gives way to an outer one that has the function: raise("") in
+// with(a) { with(b) { raise("") } } for a Thrower<String> and a
+// Thrower<Double> is a's raise(String). Without one, it is the inner
+// receiver's call, an error.
 func (c *Checker) recvCall(x *syntax.Call, id *syntax.Ident) bool {
+	var inner *syntax.Member
+	var ts []types.Type
 	for i := len(c.recvs) - 1; i >= 0; i-- {
 		r := &c.recvs[i]
 		if r.outer && c.cls != nil && c.hasFun(c.cls.This(), id.Name, x) {
@@ -243,8 +251,77 @@ func (c *Checker) recvCall(x *syntax.Call, id *syntax.Ident) bool {
 		if !c.hasFun(t, id.Name, x) && !c.hasFunProp(t, id.Name, x) && !c.extPropInvoked(m, t, c.classOf(t), x) {
 			continue
 		}
+		if inner == nil && i > 0 && c.onlyMembers(t, id.Name, x) {
+			if ts == nil {
+				ts = c.argTypes(x)
+			}
+			if !c.membersTake(t, id.Name, x, ts) {
+				inner = m
+				continue
+			}
+		}
 		if !c.extensionsGiveWay(t, id.Name, x) {
 			c.rewriteFun(x, m)
+			return true
+		}
+	}
+	if inner != nil {
+		c.rewriteFun(x, inner)
+		return true
+	}
+	return false
+}
+
+// onlyMembers reports whether the functions that a receiver of type t has
+// that may take call x are all members: no extension or property of a
+// function type.
+func (c *Checker) onlyMembers(t types.Type, name string, x *syntax.Call) bool {
+	if !c.memberFun(t, name, x) || c.hasFunProp(t, name, x) {
+		return false
+	}
+	for _, cl := range c.extCalleesFor(name, t.Flex(), x) {
+		if c.mayTake(cl.f, x) {
+			return false
+		}
+	}
+	return true
+}
+
+// membersTake reports whether a member function of a receiver of type t
+// may take call x's arguments of types ts, as argTypes returns them, with
+// the parameter types seen through t: Thrower<Double>'s raise(r: F) takes
+// a Double.
+func (c *Checker) membersTake(t types.Type, name string, x *syntax.Call, ts []types.Type) bool {
+	cls := c.classOf(t.Flex())
+	if cls == nil || types.MayBeNull(t.Flex()) {
+		return true
+	}
+	fs := c.accessible(cls, c.javaMethods(cls, name))
+	if len(fs) == 0 {
+		return true // a built-in, or an inner class's constructor
+	}
+	for _, f := range fs {
+		amap, ok := mapArgs(f, x)
+		if !ok || f.Unsupported || !c.mayTake(f, x) {
+			continue
+		}
+		cl := callee{f: f, amap: amap, names: x.Names}
+		sub := c.memberSubst(t.Flex(), f.Owner)
+		fits := true
+		for i, at := range ts {
+			p := sub.Apply(cl.argType(i, x.Args))
+			if at.K == types.Invalid || p.K == types.Invalid || p.HasParams() || p.HasVars() || at.HasVars() {
+				continue
+			}
+			if lit, ok := x.Args[i].(*syntax.IntLit); ok && fitsLit(lit, p) {
+				continue
+			}
+			if _, sam := c.samValue(at, p); !sam && !c.subtype(at, p) {
+				fits = false
+				break
+			}
+		}
+		if fits {
 			return true
 		}
 	}

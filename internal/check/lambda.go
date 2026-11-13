@@ -644,7 +644,7 @@ func (c *Checker) unitBody(b *syntax.Block) types.Type {
 				}
 				return types.UnitType
 			}
-			if _, ok := es.X.(*syntax.Call); ok && len(c.stubs) == 0 {
+			if _, ok := es.X.(*syntax.Call); ok {
 				return c.unitTail(b)
 			}
 		}
@@ -655,7 +655,9 @@ func (c *Checker) unitBody(b *syntax.Block) types.Type {
 // unitTail checks the body of a lambda that returns Unit and ends with a
 // call. As in K2, the call expects a Unit, if it can return one: a
 // generic call that can't be inferred on its own infers Unit, as
-// materialize() in run { materialize() } where a Unit is expected.
+// materialize() in run { materialize() } where a Unit is expected, and
+// mat() in buildBoxUnit { set(x); mat() }, whose builder's variables
+// stubInference infers.
 func (c *Checker) unitTail(b *syntax.Block) types.Type {
 	var pending []pendingBranch
 	t := c.branch(b, noWant, false, &pending)
@@ -1210,7 +1212,14 @@ func (c *Checker) samTarget(p types.Type) (*types.FunSym, types.Type) {
 func lambdaParam(sub types.Subst, t types.Type) types.Type {
 	if t.IsParam() {
 		if a, ok := sub[t.Param()]; ok && (a.V == types.Star || a.V == types.Out) {
-			return sub.Apply(t)
+			r := sub.Apply(t)
+			if t.P {
+				// A Java method's: EventListener<?>'s lambda takes an
+				// Any!, EventListener<? extends CharSequence>'s a
+				// CharSequence!.
+				return r.Platform()
+			}
+			return r
 		}
 	}
 	return sub.ApplyIn(t)
@@ -1430,6 +1439,13 @@ func composableSAM(l *syntax.Lambda, m *types.FunSym, ft, p types.Type) *syntax.
 func (c *Checker) lambdaFits(l *syntax.Lambda, p types.Type) bool {
 	t := p.NonNull()
 	n := 0
+	if l.Ref != nil && takesNothing(t) {
+		// An unbound reference takes its receiver: property(Map.Entry<K, *>::key)
+		// isn't property(KProperty0<V>).
+		if _, ok := c.refRecvType(l.Ref); ok {
+			return false
+		}
+	}
 	switch {
 	case wantsKProp(l, t) && t.C.Name != "kotlin/reflect/KCallable":
 		fun, prop, known := c.refKinds(l)
@@ -1462,6 +1478,55 @@ func (c *Checker) lambdaFits(l *syntax.Lambda, p types.Type) bool {
 	return n <= 1
 }
 
+// declaredParamsFit reports whether the parameters of lambda l declared
+// with types can take those of p, a function type, in system s: as in
+// Kotlin, foo(1) { x: Int -> } doesn't call foo(a: Any, f: (Any) -> Int),
+// nor baz(MyEnum1.X, { x: String -> }) fun <T1> baz(x: T1, y: (T1) -> Unit).
+func (c *Checker) declaredParamsFit(s *system, l *syntax.Lambda, p types.Type) bool {
+	t := p.Flex().NonNull()
+	if !t.IsFunc() || l.Ref != nil || !l.Arrow {
+		return true
+	}
+	var trial *system
+	for i, d := range c.declaredParams(l, t, t.A.Len()-1) {
+		a := t.A.Get(i)
+		if d.K == types.Invalid || a.V != types.Inv || a.T.K == types.Invalid {
+			continue
+		}
+		if !a.T.HasVars() {
+			if !c.subtype(a.T, d) {
+				return false
+			}
+			continue
+		}
+		if trial == nil {
+			trial = s.clone()
+		}
+		if trial.sub(a.T, d); !trial.ok {
+			return false
+		}
+	}
+	return true
+}
+
+// takesNothing reports whether t is the type of a callable that takes no
+// arguments: a KProperty0, a KMutableProperty0, a KFunction0 or a
+// function type without parameters.
+func takesNothing(t types.Type) bool {
+	t = t.Flex().NonNull()
+	switch {
+	case t.K != types.Class:
+		return false
+	case t.IsFunc():
+		return t.A.Len() == 1
+	}
+	switch t.C.Name {
+	case "kotlin/reflect/KProperty0", "kotlin/reflect/KMutableProperty0", "kotlin/reflect/KFunction0":
+		return true
+	}
+	return false
+}
+
 // kcallable reports whether t is kotlin.reflect.KFunction<R> or
 // KCallable<R>, of which a function reference's KFunctionN is a subtype.
 func kcallable(t types.Type) bool {
@@ -1472,7 +1537,7 @@ func kcallable(t types.Type) bool {
 func (c *Checker) lambdasFit(cd *candidate, x *syntax.Call) bool {
 	for i, a := range x.Args {
 		if l, ok := a.(*syntax.Lambda); ok {
-			if p := cd.sys.apply(cd.params[i]); !c.lambdaFits(l, p) || !c.lambdaMayBe(cd, l, p) {
+			if p := cd.sys.apply(cd.params[i]); !c.lambdaFits(l, p) || !c.lambdaMayBe(cd, l, p) || !c.declaredParamsFit(cd.sys, l, p) {
 				return false
 			}
 		}
@@ -1506,7 +1571,15 @@ func (c *Checker) lambdaMayBe(cd *candidate, l *syntax.Lambda, p types.Type) boo
 	if !l.Arrow && !l.Anon {
 		arities = []int{0, 1, 2} // it, and a receiver
 	}
-	for _, u := range tv.upper {
+	// Its upper bounds, and its declared ones: invoke(table: T) for
+	// T : Table doesn't take Foo { }.
+	uppers := slices.Clone(tv.upper)
+	for _, b := range tv.v.Bounds {
+		if b = s.apply(b); !(b.K == types.Any && b.N) {
+			uppers = append(uppers, b)
+		}
+	}
+	for _, u := range uppers {
 		if u = s.apply(u); u.HasVars() || u.K == types.Invalid {
 			continue
 		}
@@ -1649,6 +1722,22 @@ func (c *Checker) runLambdas(s *system, readyOnly bool) {
 		c.scope = saved
 	}
 	s.lambdas = rest
+}
+
+// lambdasReady reports whether runLambdas, with readyOnly, checks all the
+// lambdas of s.
+func (c *Checker) lambdasReady(s *system) bool {
+	for _, pl := range s.lambdas {
+		for _, p := range c.inputs(s, pl) {
+			if !s.known(p) {
+				return false
+			}
+		}
+		if endsInLambda(pl.l) && c.lambdaResultOpen(s, pl) || (untypedParams(pl.l) || untypedResult(pl.l)) && s.openVar(pl.p) {
+			return false
+		}
+	}
+	return true
 }
 
 // fixRelated fixes, before lambda pl is checked, the variables with
@@ -1813,6 +1902,14 @@ func (c *Checker) stubInference(s *system, l *syntax.Lambda, params []types.Type
 	for _, sl := range group {
 		vars = c.boundVars(s, sl.params, vars)
 	}
+	// So are those of the parameter types of the lambda that l returns,
+	// which it is checked for: B of func { a -> { b -> } } for
+	// func(lambda: (Container<A>) -> (Container<B>) -> Unit).
+	if _, ret, ok := funcParts(ft); ok && endsInLambda(l) {
+		if rps, _, ok := funcParts(s.apply(ret)); ok {
+			vars = c.stubVars(s, rps, vars)
+		}
+	}
 	if c.stubs == nil {
 		c.stubs = map[*types.TypeParamSym]*stubRun{}
 	}
@@ -1850,11 +1947,44 @@ func (c *Checker) stubInference(s *system, l *syntax.Lambda, params []types.Type
 		// which Kotlin rejects: they stay uninferred.
 		return
 	}
-	if useful, _, ok := r.solve(); ok {
+	if useful, trial, ok := r.solve(); ok {
 		for _, k := range useful {
 			s.sub(k[0], k[1])
 		}
+		for _, v := range r.extra {
+			if tv := trial.byVar[v]; tv.fixed && v.Origin != nil {
+				if val := trial.vals[v].T; val.K != types.Invalid && !val.HasVars() {
+					if c.stubHints == nil {
+						c.stubHints = map[stubHintKey]types.Type{}
+					}
+					c.stubHints[stubHintKey{v.Origin, c.file.Path, tv.pos}] = val
+				}
+			}
+		}
 	}
+}
+
+// stubHintKey is a variable of a call: its type parameter, and the
+// call's file and position.
+type stubHintKey struct {
+	p    *types.TypeParamSym
+	file string
+	pos  syntax.Pos
+}
+
+// stubHint returns the value that stubInference gave variable tv of a
+// call in a builder's lambda that it inferred with the builder's
+// variables, if any. As in Kotlin, which infers them together once, the
+// call keeps it where its bounds, once the builder's variables are
+// fixed, give none: S of yieldAll<S : T>(mk()) in sequence { constrain(this);
+// yieldAll(mk()) } for an Inv<U> is U's String, which S : String alone
+// doesn't give.
+func (s *system) stubHint(tv *tvar) (types.Type, bool) {
+	if tv.v.Origin == nil || s.c.stubHints == nil {
+		return types.InvalidType, false
+	}
+	t, ok := s.c.stubHints[stubHintKey{tv.v.Origin, s.c.file.Path, tv.pos}]
+	return t, ok
 }
 
 // stubLambda is a lambda that stubInference checks, for a function type ft
@@ -1919,8 +2049,18 @@ func (c *Checker) stubCheck(s *system, sl stubLambda, r *stubRun) (clean, ambigu
 	ft := sl.ft
 	w := lambdaWant{params: ps, known: true, recv: ft.Flex().E, ctx: ft.Flex().Contexts(), suspend: isSuspendFunc(ft), composable: isComposableFunc(ft), ret: noWant}
 	_, ret, _ := funcParts(ft)
-	if ret = s.apply(ret); !ret.HasVars() {
+	ret = s.apply(ret)
+	ours := func(u types.Type) bool { return u.K == types.TypeVar && c.stubs[u.Param()] == r }
+	switch {
+	case !ret.HasVars():
 		w.ret, w.check = ret, true
+	case s.unitBound(ret) || s.upperHint(ret).K == types.Unit:
+		w.ret = types.UnitType
+	case c.onlyStubs(ret) && ret.K != types.TypeVar && ret.Has(ours):
+		// As in Kotlin, a result type of the stubs, Foo<K1>, is what the
+		// call the lambda ends with is expected to return: the variables
+		// of myBuilder2 { add("") }'s Foo<K2> are then K1's.
+		w.ret = ret
 	}
 	t := &trial{classes: map[*types.ClassSym]bool{}, outer: c.trial}
 	c.trial = t
@@ -1928,7 +2068,11 @@ func (c *Checker) stubCheck(s *system, sl stubLambda, r *stubRun) (clean, ambigu
 	c.endTrial(t)
 	clean = len(c.errs) == n
 	ambiguous = !clean && c.ambiguities-a == len(c.errs)-n
-	if clean && bt.K != types.Invalid && bt.K != types.Unit && ret.Has(func(u types.Type) bool { return u.K == types.TypeVar && c.stubs[u.Param()] == r }) {
+	// So does one with the call's other variables, for a result of the
+	// stubs: MyPair<BV, IRR> of build's (Controller<BK>) -> MyPair<BV,
+	// IRR> gives BV the BK of c.foo { c.get() }'s MyPair<BK, T3>.
+	unfixed := func(u types.Type) bool { return u.K == types.TypeVar && s.isVar(u) }
+	if clean && bt.K != types.Invalid && bt.K != types.Unit && (ret.Has(ours) || ret.Has(unfixed) && bt.Has(ours)) {
 		r.cons = append(r.cons, [2]types.Type{bt, ret})
 	}
 	c.errs, c.checked, c.scope = c.errs[:n], checked, saved
@@ -2065,7 +2209,7 @@ func (r *stubRun) fixAll() (*system, [][2]types.Type) {
 	var useful, nothing [][2]types.Type
 	for _, k := range r.cons {
 		switch {
-		case (k[1].K == types.Any && k[1].N) || !trial.owns(k[0]) || !trial.owns(k[1]):
+		case (k[1].K == types.Any && k[1].N) || k[0] == k[1] || !trial.owns(k[0]) || !trial.owns(k[1]):
 		case k[0].K == types.Nothing:
 			nothing = append(nothing, k)
 		default:
@@ -2087,9 +2231,27 @@ func (r *stubRun) fixAll() (*system, [][2]types.Type) {
 	for _, v := range r.vars {
 		trial.fixVarsIn(types.VarType(v))
 	}
-	for _, v := range r.extra {
-		if tv := trial.byVar[v]; !tv.fixed && trial.fixable(tv) {
-			trial.fixVarsIn(types.VarType(v))
+	// Until none is left that can be: fixing T2 and T3 gives R1 its
+	// lower bound MyPair<T2, T3>. One whose bound is a variable that can
+	// be, of the call's own, can be too: T3 <: IRR, for IRR's W.
+	fixable := func(tv *tvar) bool {
+		if trial.fixable(tv) {
+			return true
+		}
+		for _, b := range append(tv.lower[:len(tv.lower):len(tv.lower)], tv.upper...) {
+			if w := trial.unfixedVar(b); w != nil && w != tv && trial.fixable(w) {
+				return true
+			}
+		}
+		return false
+	}
+	for more := true; more; {
+		more = false
+		for _, v := range r.extra {
+			if tv := trial.byVar[v]; !tv.fixed && fixable(tv) {
+				trial.fixVarsIn(types.VarType(v))
+				more = true
+			}
 		}
 	}
 	return trial, useful
@@ -2185,6 +2347,15 @@ func (c *Checker) endTrial(t *trial) {
 	if len(t.classes) > 0 && c.redeclared == nil {
 		c.redeclared = map[*types.ClassSym]bool{}
 	}
+	if len(t.classes) > 0 {
+		// Their methods, which declaring them again makes anew, by name.
+		c.u.local.methods.Range(func(k, _ any) bool {
+			if t.classes[k.(methodsKey).cls] {
+				c.u.local.methods.Delete(k)
+			}
+			return true
+		})
+	}
 	for cls := range t.classes {
 		c.redeclared[cls] = true
 		// Their members are declared afresh.
@@ -2241,6 +2412,56 @@ func (c *Checker) stub(t types.Type) *stubRun {
 		return nil
 	}
 	return c.stubs[t.Param()]
+}
+
+// hasStub reports whether t mentions a variable that stubInference is
+// inferring.
+func (c *Checker) hasStub(t types.Type) bool {
+	return len(c.stubs) > 0 && t.Has(func(u types.Type) bool { return u.K == types.TypeVar && c.stubs[u.Param()] != nil })
+}
+
+// stubRelated joins s, the system of a call in a lambda that
+// stubInference checks, to the run whose stubs a variable in params, a
+// lambda argument's parameter types, is equal to: a type of them is both
+// its lower and its upper bound. As in Kotlin, such a variable isn't
+// fixed for the lambda, which is checked with it unfixed, as a stub:
+// predicate(a, this) { x -> x is B }, for predicate<X>(X, Controller<X>,
+// (X) -> Boolean) on a Controller<S> whose yield(c) follows, gives X, and
+// S, the common supertype of a and c, not a's type. One only below or
+// above them is fixed: X of withCallback(a, this) { } for a
+// Controller<in X> is a's type.
+func (c *Checker) stubRelated(s *system, params []types.Type) {
+	if len(c.stubs) == 0 {
+		return
+	}
+	isStub := func(u types.Type) bool {
+		return u.K == types.TypeVar && s.byVar[u.Param()] == nil && c.stubs[u.Param()] != nil
+	}
+	for _, q := range params {
+		var r *stubRun
+		s.apply(q).Has(func(u types.Type) bool {
+			tv := s.unfixedVar(u.NonNull())
+			if tv == nil || c.stubs[tv.v] != nil {
+				return false
+			}
+			for _, l := range tv.lower {
+				if l = s.apply(l); !l.Has(isStub) || !slices.ContainsFunc(tv.upper, func(u types.Type) bool { return s.apply(u) == l }) {
+					continue
+				}
+				l.Has(func(w types.Type) bool {
+					if isStub(w) {
+						r = c.stubs[w.Param()]
+					}
+					return r != nil
+				})
+				return true
+			}
+			return false
+		})
+		if r != nil && !slices.Contains(r.joined, s) {
+			r.join(s)
+		}
+	}
 }
 
 // onlyStubs reports whether the variables t mentions are all ones that
@@ -2300,6 +2521,18 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type) {
 		}
 		return
 	}
+	if _, ok := c.kfunWant(pt); ok && l.Ref != nil && pt.HasVars() {
+		// A KFunctionN's variables are those of the reference's function,
+		// which refArgFit or onlyRefFit gave: foo(Sample::bar) for
+		// foo(x: KFunction1<T, R>) names bar().
+		trial := s.clone()
+		trial.fixVarsIn(pt)
+		if q := trial.apply(pt); !q.HasVars() && len(trial.errs) == len(s.errs) && trial.ok {
+			*s = *trial
+			l.T = c.lambda(l, q)
+			return
+		}
+	}
 	ft := pt
 	var sam *types.FunSym
 	if !pt.Flex().IsFunc() {
@@ -2348,14 +2581,17 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type) {
 	// As in Kotlin, the parameter types whose variables are known are
 	// fixed first, and only the others are inferred from the body: T of
 	// transformLatest's FlowCollector<R>.(T) from its receiver.
+	c.stubRelated(s, params)
 	for _, q := range params {
-		if s.known(q) && s.apply(q).HasVars() {
+		if s.known(q) && s.apply(q).HasVars() && !c.hasStub(s.apply(q)) {
 			s.fixVarsIn(q)
 		}
 	}
 	c.stubInference(s, l, params, ft)
 	for _, q := range params {
-		s.fixVarsIn(q)
+		if !c.hasStub(s.apply(q)) {
+			s.fixVarsIn(q)
+		}
 	}
 	for i := range params {
 		params[i] = s.final(params[i])
@@ -2377,6 +2613,21 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type) {
 			// result's function-typed bound, once known.
 			s.fixFuncInputs(r)
 			w.ret = s.upperHint(r)
+		}
+		if w.ret.K == types.Invalid && s.unitBound(r) {
+			w.ret = types.UnitType
+		}
+	case endsInLambda(l) && r.Flex().IsFunc():
+		// The lambda it returns takes its parameter types from the
+		// result's, once their variables are known: B of func { a ->
+		// { b -> } } for (Container<A>) -> (Container<B>) -> Unit.
+		if rps, _, ok := funcParts(r); ok && !slices.ContainsFunc(rps, func(p types.Type) bool { return !s.known(p) }) {
+			for _, p := range rps {
+				s.fixVarsIn(p)
+			}
+			if r = s.apply(r); !r.HasVars() {
+				w.ret, w.check = r, true
+			}
 		}
 	}
 	var bt types.Type
@@ -2515,14 +2766,18 @@ func (c *Checker) checkTail(s *system, l *syntax.Lambda, w lambdaWant, r types.T
 	return bt
 }
 
-// endsWithCall reports whether a block's last statement is a call that
-// takes no lambda, whose own inference, a builder's among them, is left
-// to it: build { set(x) } infers build's type argument from its lambda.
+// endsWithCall reports whether a block's last statement is a call, which
+// is inferred with the call the block's lambda is passed to: as in
+// Kotlin, c.foo { c.get() } that build's lambda, for a MyPair<BV, IRR>,
+// ends with infers get's T3 from IRR. Not one taking a lambda whose
+// parameter types aren't known once its other arguments are, which
+// is inferred on its own (see resolve1): build { set(x) } infers build's
+// type argument from its lambda.
 func endsWithCall(b *syntax.Block) bool {
 	if n := len(b.Stmts); n > 0 {
 		if es, ok := b.Stmts[n-1].(*syntax.ExprStmt); ok {
-			call, ok := es.X.(*syntax.Call)
-			return ok && !hasLambda(call.Args)
+			_, ok := es.X.(*syntax.Call)
+			return ok
 		}
 	}
 	return false

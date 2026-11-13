@@ -161,8 +161,14 @@ Three things differ from the test infrastructure:
 - **Directory options.** Directories whose test classes give `kotlinc`
   options (the return value checker in `crv/`, explicit API mode, header
   mode, strict equality, `-jvm-default` modes) are skipped, as are tests
-  with `LANGUAGE` features (but those on by default in Kotlin 2.4), Java
-  sources, multiplatform modules or `IGNORE_FIR_DIAGNOSTICS`.
+  with `LANGUAGE` features (but those on by default in Kotlin 2.4),
+  multiplatform modules or `IGNORE_FIR_DIAGNOSTICS`.
+
+Tests with Java sources run: `kc` gets a module's `.java` files with its
+`.kt` files and reads their declarations, as `kotlinc` does. The Java
+sources of a module that later modules depend on are then compiled with
+`javac` against its Kotlin classes, as the test infrastructure does, and
+those of the last module are only read.
 
 ## Checking the harness
 
@@ -188,30 +194,38 @@ Kotlin 2.4.21's tests on `kc`:
 
 | Diagnostics tests | Tests | Share of run |
 |:---|---:|---:|
-| run (of 10,827) | 7,286 | |
-| rejects invalid | 3,645 | 50.0% |
-| accepts valid | 3,157 | 43.3% |
-| accepts invalid | 235 | 3.2% |
-| rejects valid | 233 | 3.2% |
-| parse/unsupported | 16 | 0.2% |
-| crash | 0 | |
+| run (of 10,827) | 8,515 | |
+| rejects invalid | 3,959 | 46.5% |
+| accepts valid | 3,864 | 45.4% |
+| accepts invalid | 423 | 5.0% |
+| rejects valid | 248 | 2.9% |
+| parse/unsupported | 18 | 0.2% |
+| crash | 2 | |
+| harness error (`javac`) | 1 | |
 
-`kc` agrees with `kotlinc` on 93% of the diagnostics tests, and reports
-13,474 of the 19,697 expected errors (68%) on their lines. The reports
-break the failures down; the largest groups are:
+`kc` agrees with `kotlinc` on 92% of the diagnostics tests, and reports
+14,518 of the 21,471 expected errors (68%) on their lines. Tests with
+Java sources, which earlier runs skipped, add 1,229 tests to the run,
+and 189 of the 423 that *accept invalid* code. The reports break the failures down; the
+largest groups are:
 
 - **Silent miscompilation**: none. No box test that `kc` compiles
   gives a wrong result, throws, or fails to verify or link.
 - **Accepts invalid**: argument type mismatches
-  (`ARGUMENT_TYPE_MISMATCH` 24), unresolved names
-  (`UNRESOLVED_REFERENCE` 13), uninferred parameter types
-  (`CANNOT_INFER_PARAMETER_TYPE` 9), overload ambiguities
-  (`OVERLOAD_RESOLUTION_AMBIGUITY` 8), unsupported constructs
-  (`UNSUPPORTED` 8) and initializer type mismatches
-  (`INITIALIZER_TYPE_MISMATCH` 6).
-- **Rejects valid**, by `kc`'s first error: type mismatches (52),
-  inference failures (48), unresolved names and imports (28), ambiguous
-  calls (16), and non-exhaustive `when`s (7). No box test is rejected.
+  (`ARGUMENT_TYPE_MISMATCH` 42), unresolved names
+  (`UNRESOLVED_REFERENCE` 37), overload ambiguities
+  (`OVERLOAD_RESOLUTION_AMBIGUITY` 24), missing dependency classes
+  (`MISSING_DEPENDENCY_CLASS` 16), and the nullability that Java
+  sources' annotations give (`NULL_FOR_NONNULL_TYPE` 15, `UNSAFE_CALL`
+  12): `kc` gives Java declarations platform types, and doesn't read
+  their `@NotNull` and `@Nullable`.
+- **Rejects valid**, by `kc`'s first error: type mismatches (60),
+  inference failures (52), unresolved names and imports (37), ambiguous
+  calls (8), and non-exhaustive `when`s (8). No box test is rejected.
+- **Crashes**: two tests with Java sources, a stack overflow on a
+  recursive bound and a timeout on a nested Kotlin/Java hierarchy. The
+  harness error is a test that declares `java.util.Date`, which `javac`
+  compiles only with `--patch-module`.
 
 The committed `.tsv` files serve as a ratchet: a change must make
 `-baseline` report no regressions, and the tests it fixes measure it.

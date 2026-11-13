@@ -36,3 +36,17 @@ true false
 x 4
 2
 3 9
+2
+2
+derived
+title
+7
+7
+described described
+o 3
+plain of 5
+plain of null
+foo(Fn<Object>) got 1
+bar(Fn2) got s
+test(Listener)
+generic

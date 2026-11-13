@@ -127,8 +127,16 @@ func (c *Checker) innerConstruct(x *syntax.Call, cls *types.ClassSym, outer synt
 	sub := types.Subst{}
 	if sup, ok := c.asSuper(ot, cls.Outer); ok {
 		own := len(cls.TypeParams) - cls.OuterParams
+		if sup.A == nil {
+			// A raw outer, from Java: the inner class is raw too, its
+			// own type parameters erased as the outer's, as in Kotlin,
+			// where rawA.Inner<Double>("") takes the "".
+			for _, tp := range cls.TypeParams {
+				sub[tp] = types.Arg{T: erasure(tp), Raw: true}
+			}
+		}
 		for i, tp := range cls.TypeParams[own:] {
-			if i < sup.A.Len() {
+			if sup.A != nil && i < sup.A.Len() {
 				sub[tp] = sup.A.Get(i)
 			}
 		}
@@ -218,7 +226,7 @@ func (c *Checker) innerType(ref *syntax.TypeRef) types.Type {
 		c.errorf(ref.P, "unresolved or unsupported type: %s", ref.Name)
 		return types.InvalidType
 	}
-	if !cls.Inner {
+	if cls.Ensure(); !cls.Inner {
 		c.errorf(ref.P, "type arguments are only allowed on an outer class of an inner class: %s", ref.Name)
 		return types.InvalidType
 	}

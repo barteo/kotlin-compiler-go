@@ -105,6 +105,11 @@ func (c *Checker) expr1(x syntax.Expr, want types.Type, allowRange bool, sink *s
 			if t, ok := c.receiverProp(x); ok {
 				return t
 			}
+			// So do the static fields the class inherits from Java
+			// classes, before imported ones.
+			if t, ok := c.inheritedStatic(x); ok {
+				return t
+			}
 		}
 		if ok {
 			c.checkTopVar(sym, x.P)
@@ -1949,7 +1954,7 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 		// unless it is a property of the name with context parameters.
 		x.Prop = cls.Underlying
 		t = c.memberSubst(rt, cls).Apply(cls.Underlying.Type)
-	case cls != nil && !cls.External:
+	case cls != nil && (!cls.External || c.kotlinSuperProp(cls, x.Name)):
 		x.Prop = c.memberProp(cls, x.Name)
 		if d := c.declaredClass(x.X, cls); x.Prop == nil && d != nil && !d.External {
 			// A private property of a smart-cast variable's declared
@@ -2012,6 +2017,17 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 		t = t.Nullable()
 	}
 	return t
+}
+
+// kotlinSuperProp reports whether Java class cls inherits property name
+// of a Kotlin class of the program: the property of JavaClass().some for
+// a JavaClass extends Derived, Derived declaring or inheriting val some.
+func (c *Checker) kotlinSuperProp(cls *types.ClassSym, name string) bool {
+	if cls.KotlinName != "" || cls.Java != nil || cls.Value {
+		return false
+	}
+	p := c.memberProp(cls, name)
+	return p != nil && p.Owner != nil && !p.Owner.External
 }
 
 // effectless reports whether evaluating x has no effects to keep when
@@ -2080,7 +2096,7 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 			// Or to a method of this class: a constructor parameter
 			// log, with an invoke operator, and fun log() in an init block.
 		}
-		if fs, depth := c.scope.findFunsFor(name, func(fs []*types.FunSym) bool { return c.anyMayTake(fs, x) }); len(fs) > 0 && (c.anyMayTake(fs, x) || !c.invokableProp(name) && !c.anyMayTake(c.topFuns(name), x)) {
+		if fs, depth := c.scope.findFunsFor(name, func(fs []*types.FunSym) bool { return c.anyMayTake(fs, x) }); len(fs) > 0 && (c.anyMayTake(fs, x) || !c.invokableProp(name) && !c.anyMayTake(c.topFuns(name), x)) && !c.localGivesWay(fs, name, x) {
 			// Local functions that can't take the arguments give way to
 			// top-level ones that can, as each level in Kotlin.
 			plain := slices.DeleteFunc(slices.Clone(fs), func(f *types.FunSym) bool { return f.Ext })
@@ -2122,6 +2138,11 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 			// the package or one of the class path's, or an extension of
 			// this does.
 			ms := c.lowPriorityGivesWay(c.accessible(c.cls, c.javaMethods(c.cls, name)), name, c.cls.This(), x)
+			if !slices.ContainsFunc(ms, func(f *types.FunSym) bool { return !f.Hidden }) {
+				// Hidden ones, @Deprecated(level = HIDDEN), give way to
+				// the functions of the scopes outside.
+				ms = nil
+			}
 			if len(ms) > 0 && (c.anyMayTake(ms, x) ||
 				c.objectTaking(name, x) == nil && !c.memberImportTakes(name, x) && !c.anyMayTake(c.topFuns(name), x) && !c.anyMayTake(c.kotlinFuns(name, false), x) &&
 					!c.thisExtension(name, x) && !c.propInvokeFits(name, x) && !c.ctorTakes(name, x)) {

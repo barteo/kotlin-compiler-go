@@ -34,6 +34,10 @@ func (v Variance) String() string {
 type Arg struct {
 	V Variance
 	T Type
+	// Raw is set in the substitution of a raw Java type's parameter,
+	// whose members Kotlin erases: the parameter is T, its erasure, and
+	// the members' generic types are raw, as List<T> is List.
+	Raw bool
 }
 
 func (a Arg) String() string {
@@ -411,7 +415,7 @@ func (s Subst) ApplyArg(t Type) Type {
 			if args == nil {
 				args = slices.Clone(r.A.List)
 			}
-			args[i] = Arg{c.V, withFlags(c.T, a.T)}
+			args[i] = Arg{V: c.V, T: withFlags(c.T, a.T)}
 		}
 	}
 	if args != nil {
@@ -448,6 +452,13 @@ func (s Subst) applyA(t Type, pos Variance, exact bool) (Type, bool) {
 		if !ok {
 			return t, false
 		}
+		if a.Raw {
+			if !t.P && !t.N {
+				// An enhanced @NotNull T: its erasure, non-null.
+				return withFlags(a.T.NonNull(), t), false
+			}
+			return withFlags(a.T, t), false
+		}
 		var r Type
 		switch {
 		case a.V == Inv:
@@ -467,6 +478,25 @@ func (s Subst) applyA(t Type, pos Variance, exact bool) (Type, bool) {
 			r = s.apply(starred(p.Bounds[0], map[*TypeParamSym]bool{p: true}), Out)
 		default: // reading through in or *: the parameter's bound
 			r = s.apply(t.Param().Bound(), Out)
+			if r.K == Class && r.A == nil && !r.C.Array && r.C.Raw() {
+				// A raw bound, as B<E extends A>'s: the projection's
+				// approximation is flexible, not raw, an A<Any!>.
+				args := make([]Arg, len(r.C.TypeParams))
+				for i, tp := range r.C.TypeParams {
+					// Each parameter's bound, erased: a StubElement<T
+					// extends CharSequence>'s is CharSequence!.
+					b := tp.Bound()
+					switch {
+					case b.IsParam():
+						b = AnyType
+					case b.K == Class && !b.C.Array:
+						b.A = nil
+					}
+					args[i] = Arg{T: b.Platform()}
+				}
+				r.A = MakeArgs(args)
+				r = r.Platform()
+			}
 			if t.P && r.N && !r.P {
 				// A Java T!, whose bound is Any!: the value read has a
 				// platform type, as kotlinc's capture of the projection.
@@ -476,6 +506,10 @@ func (s Subst) applyA(t Type, pos Variance, exact bool) (Type, bool) {
 		return withFlags(r, t), a.V == Out || a.V == In
 	case Class:
 		if t.A == nil {
+			return t, false
+		}
+		if !t.C.Array && s.erases(t) {
+			t.A = nil // raw, as Java erases it; an array is not
 			return t, false
 		}
 		args := make([]Arg, len(t.A.List))
@@ -501,7 +535,7 @@ func (s Subst) applyA(t Type, pos Variance, exact bool) (Type, bool) {
 				// argument is Kotlin's captured type, which only Nothing
 				// is a subtype of: Continuation<*>.resumeWith takes a
 				// Result<Nothing>.
-				args[i] = Arg{Out, withFlags(NothingType, a.T)}
+				args[i] = Arg{V: Out, T: withFlags(NothingType, a.T)}
 			}
 			changed = changed || args[i] != a
 		}
@@ -512,6 +546,28 @@ func (s Subst) applyA(t Type, pos Variance, exact bool) (Type, bool) {
 		return t, approx
 	}
 	return t, false
+}
+
+// erases reports whether s is a raw type's substitution (see Arg.Raw),
+// which erases the generic types of its members, as Java does, and t is
+// one: a raw B's foo(Map<String, String>) takes a raw Map. As in K2, a
+// type with a generic method's own parameter isn't: <E> foo(ML<E>) still
+// takes an ML<E>.
+func (s Subst) erases(t Type) bool {
+	raw := false
+	for _, a := range s {
+		if a.Raw {
+			raw = true
+			break
+		}
+	}
+	return raw && !t.Has(func(u Type) bool {
+		if !u.IsParam() {
+			return false
+		}
+		a, ok := s[u.Param()]
+		return !ok || !a.Raw
+	})
 }
 
 // projected reports whether t is a parameter that s replaces by an out or
@@ -568,7 +624,7 @@ func (s Subst) applyArgA(a Arg, pos, v Variance, exact bool) (Arg, bool) {
 				// through a Base<*> of Base<T : Base<T>>, a List<T> is a
 				// List<out Base<*>>.
 				if b, ok := starBound(a.T.Param()); ok {
-					return Arg{Out, withFlags(b, a.T)}, r.V == Out || r.V == In
+					return Arg{V: Out, T: withFlags(b, a.T)}, r.V == Out || r.V == In
 				}
 				if p := a.T.Param(); a.T.D && len(p.Bounds) <= 1 {
 					// T & Any is within the bound made not null.
@@ -576,13 +632,13 @@ func (s Subst) applyArgA(a Arg, pos, v Variance, exact bool) (Arg, bool) {
 					if len(p.Bounds) == 1 {
 						b = p.Bounds[0].NonNull()
 					}
-					return Arg{Out, b}, true
+					return Arg{V: Out, T: b}, true
 				}
 				if p := a.T.Param(); len(p.Bounds) > 1 {
 					// Kotlin's is the intersection of its bounds, as
 					// is the parameter itself: E of Exp<*> for an
 					// Exp<E> where E : Enum<E>, E : Variant.
-					return Arg{Out, a.T}, r.V == Out || r.V == In
+					return Arg{V: Out, T: a.T}, r.V == Out || r.V == In
 				}
 				return r, true
 			case r.V == Star:
@@ -591,16 +647,16 @@ func (s Subst) applyArgA(a Arg, pos, v Variance, exact bool) (Arg, bool) {
 				// B<*, *> for B<R, T : B<List<R>, T>> is B<out List<*>, *>.
 				return r, pos == Out
 			case r.V == Inv:
-				return Arg{a.V, withFlags(r.T, a.T)}, r.V == Out || r.V == In
+				return Arg{V: a.V, T: withFlags(r.T, a.T)}, r.V == Out || r.V == In
 			case pos == In && r.V == Out && a.V != In:
-				return Arg{Out, withFlags(NothingType, a.T)}, r.V == Out || r.V == In
+				return Arg{V: Out, T: withFlags(NothingType, a.T)}, r.V == Out || r.V == In
 			case a.V == Inv || a.V == r.V:
-				return Arg{r.V, withFlags(r.T, a.T)}, r.V == Out || r.V == In
+				return Arg{V: r.V, T: withFlags(r.T, a.T)}, r.V == Out || r.V == In
 			case pos == In:
 				// Written to, an argument projected the other way than
 				// its capture is within the projection's type: Optional<out
 				// E>.map takes a Function<in E, …>.
-				return Arg{a.V, withFlags(r.T, a.T)}, r.V == Out || r.V == In
+				return Arg{V: a.V, T: withFlags(r.T, a.T)}, r.V == Out || r.V == In
 			}
 			return Arg{V: Star}, false
 		}
@@ -610,7 +666,7 @@ func (s Subst) applyArgA(a Arg, pos, v Variance, exact bool) (Arg, bool) {
 		pos = Out + In - pos
 	}
 	t, approx := s.applyA(a.T, pos, exact)
-	return Arg{a.V, t}, approx
+	return Arg{V: a.V, T: t}, approx
 }
 
 // recursiveStar reports whether p has a single class bound that p occurs in.
@@ -663,7 +719,7 @@ func starred(t Type, ps map[*TypeParamSym]bool) Type {
 		case a.T.IsParam() && ps[a.T.Param()]:
 			args[i] = Arg{V: Star}
 		default:
-			args[i] = Arg{a.V, starred(a.T, ps)}
+			args[i] = Arg{V: a.V, T: starred(a.T, ps)}
 		}
 	}
 	t.A = MakeArgs(args)

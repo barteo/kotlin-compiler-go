@@ -39,6 +39,7 @@ type compiler struct {
 	kotlinc string   // the kotlinc command, used instead of kc if set
 	libs    []string // the standard library and kotlin-test
 	reflect string
+	javac   string // compiles the Java sources of a module others depend on
 	timeout time.Duration
 	// servers, if set, run kc's compiles, instead of a process each.
 	servers *kcPool
@@ -62,7 +63,8 @@ func (c *compiler) compile(t *test, dir string, extra []*srcFile, libs libraries
 		src := filepath.Join(dir, fmt.Sprintf("m%d", mi), "src")
 		out := filepath.Join(dir, fmt.Sprintf("m%d", mi), "out")
 		files := append(m.files[:len(m.files):len(m.files)], extra...)
-		var paths []string
+		var paths, javas []string
+		kotlin := false
 		for _, f := range files {
 			p := filepath.Join(src, filepath.FromSlash(f.name))
 			if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
@@ -73,6 +75,11 @@ func (c *compiler) compile(t *test, dir string, extra []*srcFile, libs libraries
 			}
 			paths = append(paths, p)
 			byPath[p] = f.name
+			if isJava(f) {
+				javas = append(javas, p)
+			} else {
+				kotlin = true
+			}
 		}
 		if err := os.MkdirAll(out, 0o755); err != nil {
 			return nil, err
@@ -103,9 +110,27 @@ func (c *compiler) compile(t *test, dir string, extra []*srcFile, libs libraries
 			args = append(args, "-jvm-default=disable")
 		}
 		args = append(args, paths...)
+		// The Java sources of a module the next ones depend on are
+		// compiled with javac, after the Kotlin ones, as the test
+		// infrastructure does; those of the last module are only read.
+		later := mi < len(t.modules)-1
+		if !kotlin {
+			res.outDirs = append(res.outDirs, out)
+			if later {
+				if err := c.compileJava(out, cp, javas); err != nil {
+					return nil, err
+				}
+			}
+			continue
+		}
 		output, failed, timedOut := c.run(name, args)
 		res.outDirs = append(res.outDirs, out)
 		if !failed {
+			if later && len(javas) > 0 {
+				if err := c.compileJava(out, append(cp, out), javas); err != nil {
+					return nil, err
+				}
+			}
 			continue
 		}
 		if timedOut {
@@ -141,6 +166,21 @@ func (c *compiler) run(name string, args []string) (out string, failed, timedOut
 	cmd.Stdout = &stderr
 	err := cmd.Run()
 	return stderr.String(), err != nil, ctx.Err() != nil
+}
+
+// compileJava compiles the Java sources javas against the class path cp
+// into out.
+func (c *compiler) compileJava(out string, cp, javas []string) error {
+	args := []string{"-d", out, "-nowarn", "-proc:none"}
+	if len(cp) > 0 {
+		args = append(args, "-cp", strings.Join(cp, string(os.PathListSeparator)))
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+	if b, err := exec.CommandContext(ctx, c.javac, append(args, javas...)...).CombinedOutput(); err != nil {
+		return fmt.Errorf("javac: %v\n%s", err, b)
+	}
+	return nil
 }
 
 // parseKcOutput reads the diagnostics kc -features printed, or its
@@ -223,6 +263,9 @@ func progress(done int64, total int) {
 func parseFeatures(files []*srcFile) []diag {
 	var ds []diag
 	for _, f := range files {
+		if isJava(f) {
+			continue
+		}
 		for _, e := range parseAll(f) {
 			ds = append(ds, diag{file: f.name, line: e.Pos.Line, feature: e.Feature, msg: e.Msg})
 		}

@@ -43,6 +43,8 @@ func (c *Checker) subtype1(t, u types.Type) bool {
 		return true // kotlin.Unit, an object
 	case t.K == types.Unit && u.K == types.Class && u.C.Name == "kotlin/Unit":
 		return true // Unit as a Unit?
+	case u.K == types.Unit && t.K == types.Class && t.C.Name == "kotlin/Unit" && (!t.N || t.P):
+		return true // a Unit! from Java, as Function1<Integer, Unit>'s
 	case t.K == types.Unit, u.K == types.Unit && !t.IsParam(), t.K == types.Range, u.K == types.Range, u.K == types.Nothing, u.K == types.Null:
 		return false
 	}
@@ -136,6 +138,11 @@ func (c *Checker) reachesParam(t types.Type, p *types.TypeParamSym) bool {
 // argsFit compares the type arguments of sup, which has u's class, with
 // u's, by each argument's variance.
 func (c *Checker) argsFit(sup, u types.Type) bool {
+	if sup.A == nil && u.A != nil && isRaw(sup) && sup.C == u.C {
+		// A raw Java type, as its lower bound: a raw List is a
+		// MutableList<Any?>, not a List<Any>.
+		sup = rawLower(sup)
+	}
 	if u.A == nil || sup.A == nil || sup.A.Len() != u.A.Len() {
 		return true // non-generic, or a raw Java type
 	}
@@ -290,21 +297,34 @@ func (c *Checker) directSupers(t types.Type) []types.Type {
 }
 
 // rawType returns a class used without type arguments, as Java code may
-// do: star projections for each of its type parameters.
+// do: a raw type, whose members are erased (see classSubst).
 func rawType(cls *types.ClassSym) types.Type {
 	cls.Ensure()
-	if len(cls.TypeParams) == 0 {
-		return types.ClassType(cls)
+	return types.ClassType(cls)
+}
+
+// erasure returns what type parameter p of a raw type is, as Kotlin
+// erases it: its first bound, itself erased, as a platform type. A raw
+// List's E is Any!, and a T : Comparable<T> a raw Comparable!.
+func erasure(p *types.TypeParamSym) types.Type {
+	b := p.Bound()
+	for seen := map[*types.TypeParamSym]bool{p: true}; b.IsParam() && !seen[b.Param()]; {
+		seen[b.Param()] = true
+		b = b.Param().Bound()
 	}
-	args := make([]types.Arg, len(cls.TypeParams))
-	for i := range args {
-		args[i] = types.Arg{V: types.Star}
+	if b.IsParam() {
+		b = types.AnyType
 	}
-	return types.GenericType(cls, args)
+	if b.K == types.Class && !b.C.Array {
+		b.A = nil
+	}
+	return b.Platform()
 }
 
 // classSubst maps the type parameters of t's class to t's arguments. A raw
-// type maps them to star projections.
+// type maps them to their erasures, and the types that mention them to
+// raw types (see types.Arg.Raw): a raw A's foo(T, List<T>) takes an Any!
+// and a raw List.
 func classSubst(t types.Type) types.Subst {
 	ps := t.C.TypeParams
 	if len(ps) == 0 {
@@ -319,6 +339,8 @@ func classSubst(t types.Type) types.Subst {
 				// redundant, as out T of a Holder<out T>, is no capture.
 				s[p] = types.Arg{T: a.T}
 			}
+		} else if t.A == nil {
+			s[p] = types.Arg{T: erasure(p), Raw: true}
 		} else {
 			s[p] = types.Arg{V: types.Star}
 		}
