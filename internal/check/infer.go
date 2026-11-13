@@ -463,10 +463,14 @@ func (s *system) complete() {
 			if tv.fixed {
 				continue
 			}
-			if len(tv.lower) == 0 && len(tv.upper) == 0 && len(tv.lits) == 0 {
+			if len(tv.lower) == 0 && len(tv.upper) == 0 && len(tv.lits) == 0 && !(tv.star && s.isUpperOf(tv)) {
 				// Without bounds, last: fixing the others may give it
 				// some, as T's value Map<String, Int> does K and V in
 				// stateIn(initialValue = emptyMap()) on a Flow<Map<..>>.
+				// A captured star that another variable is below is
+				// known: G of <G : Enum<G>, T : G> on an Enum<*> is
+				// fixed before T. As an argument of another's bound, ER
+				// in ED : EventData<ER>, it still waits.
 				if best < -1 {
 					pick, best = tv, -1
 				}
@@ -520,6 +524,22 @@ func (s *system) complete() {
 	}
 }
 
+// isUpperOf reports whether tv is itself an upper bound of another
+// unfixed variable.
+func (s *system) isUpperOf(tv *tvar) bool {
+	for _, o := range s.vars {
+		if o == tv || o.fixed {
+			continue
+		}
+		for _, u := range o.upper {
+			if u.K == types.TypeVar && u.Param() == tv.v {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // fix chooses a value for a variable from its known bounds.
 func (s *system) fix(tv *tvar) {
 	c := s.c
@@ -553,6 +573,18 @@ func (s *system) fix(tv *tvar) {
 		// As K2, Nothing? from a null alone yields to an upper bound:
 		// bar(null, r) ?: x with T String? for an expected String?.
 		lowers = nil
+	}
+	// Without other bounds, a declared bound that is a self type counts
+	// as one (see selfTypeBounds).
+	var selfStar []types.Type
+	if len(lowers) == 0 && len(tv.lits) == 0 && len(uppers) == 0 && !tv.star && !tv.synth {
+		if bs, own, ok := s.selfTypeBounds(tv); ok {
+			if len(bs) > 0 {
+				uppers = bs
+			} else {
+				selfStar = own
+			}
+		}
 	}
 	val := types.InvalidType
 	captured := false
@@ -639,6 +671,14 @@ func (s *system) fix(tv *tvar) {
 				val = b
 			}
 		}
+	case len(selfStar) > 0:
+		// Kotlin's captured star of the variable's own bounds, which kc
+		// approximates by them: B of <B : Builder<B>> is Builder<*>.
+		captured = true
+		val = selfStar[0]
+		if len(selfStar) > 1 {
+			val = c.intersect(selfStar)
+		}
 	case tv.synth:
 		val = types.InvalidType
 	default:
@@ -689,8 +729,13 @@ func (s *system) fix(tv *tvar) {
 	if val.K == types.Invalid {
 		return
 	}
-	if tv.capt.V != types.Inv {
+	switch {
+	case tv.capt.V != types.Inv:
 		defer func() { s.vals[tv.v] = tv.capt }()
+	case len(selfStar) == 1 && len(tv.v.Bounds) == 1:
+		// The captured star itself, as Klass<T> is Klass<*> for it, not
+		// Klass<Klass<*>>; T alone is still Klass<*>.
+		defer func() { s.vals[tv.v] = types.Arg{V: types.Star} }()
 	}
 	for _, l := range tv.lower {
 		s.sub(l, val)
@@ -708,6 +753,94 @@ func (s *system) fix(tv *tvar) {
 				val.String() + " of type parameter '" + tv.v.Name + "' is not a subtype of " + b.String()})
 		}
 	}
+}
+
+// selfTypeBounds reports whether tv, which has no other bounds, is
+// inferred from its declared bounds, as K2 does when one of them is a
+// self type (VariableFixationFinder.areAllProperConstraintsSelfTypeBased):
+// T of <T : B> on a Builder<B : Builder<B>>, or on a Builder<K> in
+// <K : Builder<K>>. A declared bound is no information otherwise: T of
+// <T : CharSequence> needs another. None may depend on another unfixed
+// variable. bs are the bounds without tv in them, which K2 infers tv
+// from; own, where there are none, are those with tv, with a star for
+// it (ResultTypeResolver.getDefaultTypeForSelfType): B of <B :
+// Builder<B>> is Builder<*>.
+func (s *system) selfTypeBounds(tv *tvar) (bs, own []types.Type, ok bool) {
+	self := false
+	for _, b := range tv.v.Bounds {
+		b = s.apply(b)
+		if b.Has(func(u types.Type) bool {
+			if u.K != types.TypeVar || u.Param() == tv.v {
+				return false
+			}
+			o := s.byVar[u.Param()]
+			return o != nil && !o.fixed
+		}) {
+			return nil, nil, false
+		}
+		if b.Has(func(u types.Type) bool { return u.K == types.TypeVar && u.Param() == tv.v }) {
+			if b.K == types.Class && isSelfType(b) {
+				own = append(own, starredVar(b, tv.v))
+				self = true
+			}
+			continue
+		}
+		self = self || isSelfType(b)
+		bs = append(bs, b)
+	}
+	if !self || len(bs) == 0 && len(own) == 0 {
+		return nil, nil, false
+	}
+	return bs, own, true
+}
+
+// isSelfType reports whether t is a self type, as K2's
+// hasRecursiveTypeParametersWithGivenSelfType or isRecursiveTypeParameter
+// has it: a class type with a type parameter bounded by the class with
+// itself in it, as Enum<E : Enum<E>>, an intersection with one, or a
+// type parameter whose bound has it.
+func isSelfType(t types.Type) bool {
+	switch {
+	case t.IsIntersection():
+		return slices.ContainsFunc(t.Param().Bounds, isSelfType)
+	case t.K == types.TypeParam:
+		p := t.Param()
+		return slices.ContainsFunc(p.Bounds, func(b types.Type) bool { return mentionsParam(b, p) })
+	case t.K == types.Class && t.C != nil:
+		t.C.Ensure() // a Java class's type parameters' bounds
+		for _, p := range t.C.TypeParams {
+			for _, b := range p.Bounds {
+				if b.K == types.Class && b.C == t.C && mentionsParam(b, p) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+func mentionsParam(t types.Type, p *types.TypeParamSym) bool {
+	return t.Has(func(u types.Type) bool { return u.IsParam() && u.Param() == p })
+}
+
+// starredVar replaces the arguments that are v in t by stars, at any depth.
+func starredVar(t types.Type, v *types.TypeParamSym) types.Type {
+	if t.K != types.Class || t.A == nil {
+		return t
+	}
+	args := make([]types.Arg, t.A.Len())
+	for i, a := range t.A.List {
+		switch {
+		case a.V == types.Star:
+			args[i] = a
+		case a.T.K == types.TypeVar && a.T.Param() == v:
+			args[i] = types.Arg{V: types.Star}
+		default:
+			args[i] = types.Arg{V: a.V, T: starredVar(a.T, v)}
+		}
+	}
+	t.A = types.MakeArgs(args)
+	return t
 }
 
 // litUppers returns the Long, Short or Byte types that the unfixed

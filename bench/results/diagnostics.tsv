@@ -4154,7 +4154,7 @@ tests/inference/emptyIntersectionTypes/contravariance.kt	accepts valid
 tests/inference/emptyIntersectionTypes/covariance.kt	accepts valid		
 tests/inference/emptyIntersectionTypes/emptyIntersectionOnIf.kt	rejects valid	operator '_' cannot be applied to A and B	emptyIntersectionOnIf.kt:7: operator '===' cannot be applied to A and B
 tests/inference/emptyIntersectionTypes/inferredToNothingDueToBoundsWithSelect.kt	accepts valid		
-tests/inference/emptyIntersectionTypes/inferredToNothingDueToBoundsWithSelectWithoutCaptured.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	inferredToNothingDueToBoundsWithSelectWithoutCaptured.kt:12: cannot infer type for type parameter 'S'. Specify it explicitly.
+tests/inference/emptyIntersectionTypes/inferredToNothingDueToBoundsWithSelectWithoutCaptured.kt	accepts valid		
 tests/inference/emptyIntersectionTypes/kt45461.kt	skip	LANGUAGE	
 tests/inference/emptyIntersectionTypes/kt45461_10.kt	accepts valid		
 tests/inference/emptyIntersectionTypes/kt45461_11.kt	accepts valid		
@@ -4748,7 +4748,7 @@ tests/inference/publicApproximation/twoIntersections.kt	accepts invalid	UNRESOLV
 tests/inference/receiverTypeMismatch_withProper.kt	accepts valid		
 tests/inference/receiverWithCapturedType.kt	rejects invalid	on an expected line	
 tests/inference/recursiveCalls/kt23531.kt	rejects invalid	on an expected line	
-tests/inference/recursiveGenericExtensionReceiver.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	recursiveGenericExtensionReceiver.kt:9: cannot infer type for type parameter 'T'. Specify it explicitly.
+tests/inference/recursiveGenericExtensionReceiver.kt	accepts valid		
 tests/inference/recursiveGenericsNullableInferenceAfter.kt	skip	LANGUAGE	
 tests/inference/recursiveGenericsNullableInferenceBefore.kt	skip	LANGUAGE	
 tests/inference/recursiveLocalFuns/localFactorial.kt	rejects invalid	on an expected line	
@@ -4771,12 +4771,12 @@ tests/inference/recursiveTypes/recursiveOutInv.kt	accepts valid
 tests/inference/recursiveTypes/recursiveOutOut.kt	accepts valid		
 tests/inference/recursiveTypes/recursiveTypeWithNonStarResult.kt	accepts valid		
 tests/inference/recursiveTypes/recursiveTypes.kt	accepts valid		
-tests/inference/recursiveTypes/selfTypes/enabledInferenceOnSelfTypes/basicInferenceForImplicitSelfType.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	main.kt:11: cannot infer type for type parameter 'T'. Specify it explicitly.
-tests/inference/recursiveTypes/selfTypes/enabledInferenceOnSelfTypes/enumExtensionFunction.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	enumExtensionFunction.kt:14: cannot infer type for type parameter 'T'. Specify it explicitly.
-tests/inference/recursiveTypes/selfTypes/enabledInferenceOnSelfTypes/overridingJKCases.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	Main.kt:24: cannot infer type for type parameter 'T'. Specify it explicitly.
-tests/inference/recursiveTypes/selfTypes/enabledInferenceOnSelfTypes/recursiveTypeWithTwoTypeParams.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	main.kt:6: cannot infer type for type parameter 'T'. Specify it explicitly.
-tests/inference/recursiveTypes/selfTypes/enabledInferenceOnSelfTypes/whereAndWithCases.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	whereAndWithCases.kt:20: cannot infer type for type parameter 'T'. Specify it explicitly.
-tests/inference/recursiveTypes/selfTypes/enabledInferenceOnSelfTypes/writerAppenderExampleRecursive.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	main.kt:2: cannot infer type for type parameter 'B'. Specify it explicitly.
+tests/inference/recursiveTypes/selfTypes/enabledInferenceOnSelfTypes/basicInferenceForImplicitSelfType.kt	accepts valid		
+tests/inference/recursiveTypes/selfTypes/enabledInferenceOnSelfTypes/enumExtensionFunction.kt	accepts valid		
+tests/inference/recursiveTypes/selfTypes/enabledInferenceOnSelfTypes/overridingJKCases.kt	accepts valid		
+tests/inference/recursiveTypes/selfTypes/enabledInferenceOnSelfTypes/recursiveTypeWithTwoTypeParams.kt	accepts valid		
+tests/inference/recursiveTypes/selfTypes/enabledInferenceOnSelfTypes/whereAndWithCases.kt	accepts valid		
+tests/inference/recursiveTypes/selfTypes/enabledInferenceOnSelfTypes/writerAppenderExampleRecursive.kt	accepts valid		
 tests/inference/recursiveTypes/selfTypes/recursiveTypeWithComplexDependency1.kt	skip	LANGUAGE_FEATURE_TOGGLED	
 tests/inference/recursiveTypes/selfTypes/recursiveTypeWithComplexDependency2.kt	skip	LANGUAGE_FEATURE_TOGGLED	
 tests/inference/recursiveTypes/starProjectionOfRecursiveTypeParameterAsReifiedTypeArgument.kt	rejects invalid	on an expected line	
@@ -5647,7 +5647,7 @@ tests/javac/typeParameters/InnerWithTypeParameter.kt	accepts valid
 tests/javac/typeParameters/NestedWithInner.kt	accepts valid		
 tests/javac/typeParameters/SeveralInnersWithTypeParameters.kt	accepts valid		
 tests/javac/typeParameters/TypeParametersInInnerAndOuterWithSameNames.kt	accepts valid		
-tests/jvm/classpath/classFromJdkInLibrary.kt	codegen error	harness error	javac: exit status 1 m0/src/java/util/Date.java:1: error: package exists in another module: java.base package java.util; ^ 1 error 
+tests/jvm/classpath/classFromJdkInLibrary.kt	codegen error	harness error	javac: exit status 1 Picked up JAVA_TOOL_OPTIONS: -Djavax.net.ssl.trustStore=/etc/ssl/certs/java/cacerts -Djavax.net.ssl.trustStoreType=JKS -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=46131 -Dhttp.nonProxyHosts=localhost|127.0.0.1|::1|127.*|0.*|::|169.254.*|api.anthropic.com|api-staging.anthropic.com|api-pr-preview.anthropic.com|mcp-proxy.anthropic.com|mcp-proxy-staging.anthropic.com|registry.npmjs.org|jsr.io|npm.jsr.io|pypi.org|files.pythonhosted.org|index.crates.io|proxy.golang.org|host.docker.internal|10.*|172.16.*|172.17.*|172.18.*|172.19.*|172.20.*|172.21.*|172.22.*|172.23.*|172.24.*|172.25.*|172.26.*|172.27.*|172.28.*|172.29.*|172.30.*|172.31.*|192.168.*|100.64.0.0/10|*.svc.cluster.local|*.svc.cluster.local -Djdk.http.auth.tunneling.disabledSchemes= -Djdk.http.auth.proxying.disabledSchemes= /tmp/kc-conformance/5648/m0/src/java/util/Date.java:1: error: package exists in another module: java.base package java.util; ^ 1 error 
 tests/jvm/classpath/dependencyOnItself.kt	accepts valid		
 tests/jvm/classpath/prohibitNestedClassesByDollarName.kt	accepts invalid	UNRESOLVED_REFERENCE	main.kt:6: UNRESOLVED_REFERENCE
 tests/jvm/classpath/sameLibraryTwiceInClasspath.kt	accepts valid		
@@ -10268,7 +10268,7 @@ testsWithStdLib/functionAndFunctionN.kt	accepts valid
 testsWithStdLib/functionLiterals/nullableUnitLiteral.kt	accepts invalid	RETURN_TYPE_MISMATCH	nullableUnitLiteral.kt:7: RETURN_TYPE_MISMATCH
 testsWithStdLib/functionLiterals/pseudocodeMemoryOverhead.kt	rejects invalid	on an expected line	
 testsWithStdLib/functionX.kt	accepts invalid	INITIALIZER_TYPE_MISMATCH	functionX.kt:5: INITIALIZER_TYPE_MISMATCH
-testsWithStdLib/genericContainer.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	test.kt:2: cannot infer type for type parameter 'SELF'. Specify it explicitly.
+testsWithStdLib/genericContainer.kt	accepts valid		
 testsWithStdLib/getOnKProperty.kt	accepts valid		
 testsWithStdLib/getOrPutAmbiguity.kt	accepts valid		
 testsWithStdLib/greater.kt	skip	LANGUAGE	
@@ -10586,7 +10586,7 @@ testsWithStdLib/problems/selfReferenceToCompanionObject.kt	accepts valid
 testsWithStdLib/problems/stringConstructors.kt	rejects invalid	on an expected line	
 testsWithStdLib/problems/typeAnnotationArgument.kt	rejects invalid	on an expected line	
 testsWithStdLib/problems/typeAnnotationArgument2.kt	rejects invalid	on an expected line	
-testsWithStdLib/problems/valueOfOrNull.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	valueOfOrNull.kt:7: cannot infer type for type parameter 'R'. Specify it explicitly.
+testsWithStdLib/problems/valueOfOrNull.kt	accepts valid		
 testsWithStdLib/problems/weakHashMap.kt	accepts valid		
 testsWithStdLib/properties/backingField/backingFieldExplicitAndImplicit.kt	rejects invalid	on an expected line	
 testsWithStdLib/properties/backingField/backingFieldInInnerAndNestedScopes.kt	rejects invalid	on an expected line	
