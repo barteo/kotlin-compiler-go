@@ -932,6 +932,9 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			match = fit
 		}
 		match = notLowPriority(match, func(cd *candidate) *callee { return &cd.callee })
+		if strict, ok := c.noRefAdaptation(x, match); ok {
+			match = strict
+		}
 		var maximal []*candidate
 		for _, cd := range match {
 			if c.mostSpecific(cd, match, x.Args) {
@@ -1166,14 +1169,7 @@ func (c *Checker) notPropRefs(x *syntax.Call, match []*candidate) []*candidate {
 // bar(f: () -> Unit). A function's result fits a parameter whose result
 // is Unit.
 func (c *Checker) byRefShape(x *syntax.Call, match []*candidate) *candidate {
-	refs := map[int][]types.Type{}
-	for i, a := range x.Args {
-		if l, ok := a.(*syntax.Lambda); ok {
-			if ts := c.refShapes(l); len(ts) > 0 {
-				refs[i] = ts
-			}
-		}
-	}
+	refs := c.argRefShapes(x)
 	if len(refs) == 0 {
 		return nil
 	}
@@ -1186,33 +1182,26 @@ func (c *Checker) byRefShape(x *syntax.Call, match []*candidate) *candidate {
 	return c.byRefShape1(x, match, refs, true)
 }
 
+// argRefShapes returns the types each argument of x that is a callable
+// reference may have (see refShapes), by argument index.
+func (c *Checker) argRefShapes(x *syntax.Call) map[int][]types.Type {
+	refs := map[int][]types.Type{}
+	for i, a := range x.Args {
+		if l, ok := a.(*syntax.Lambda); ok {
+			if ts := c.refShapes(l); len(ts) > 0 {
+				refs[i] = ts
+			}
+		}
+	}
+	return refs
+}
+
 // byRefShape1 is byRefShape, where a function's result fits a parameter
 // whose result is Unit only if unit is set.
 func (c *Checker) byRefShape1(x *syntax.Call, match []*candidate, refs map[int][]types.Type, unit bool) *candidate {
 	var best *candidate
 	for _, cd := range match {
-		trial := cd.sys
-		for i, ts := range refs {
-			var fit *system
-			for _, ft := range ts {
-				if s, ok := c.refFits1(trial, ft, cd.params[i], unit); ok {
-					fit = s
-					break
-				}
-			}
-			if trial = fit; trial == nil {
-				break
-			}
-		}
-		if trial == nil {
-			continue
-		}
-		// With the references' types, a lambda may no longer fit: in
-		// foo(B::arg0) { }, not foo(f: KFunction1<T1, R>, arg1: T1), whose
-		// T1 is a B.
-		with := *cd
-		with.sys = trial
-		if !c.lambdasFit(&with, x) {
+		if !c.refShapesFit(x, cd, refs, unit) {
 			continue
 		}
 		if best != nil {
@@ -1221,6 +1210,51 @@ func (c *Checker) byRefShape1(x *syntax.Call, match []*candidate, refs map[int][
 		best = cd
 	}
 	return best
+}
+
+// refShapesFit reports whether candidate cd's parameters take one of the
+// types refs gives each reference argument, a function's result one whose
+// result is Unit only if unit is set, and its lambdas still fit then.
+func (c *Checker) refShapesFit(x *syntax.Call, cd *candidate, refs map[int][]types.Type, unit bool) bool {
+	trial := cd.sys
+	for i, ts := range refs {
+		var fit *system
+		for _, ft := range ts {
+			if s, ok := c.refFits1(trial, ft, cd.params[i], unit); ok {
+				fit = s
+				break
+			}
+		}
+		if trial = fit; trial == nil {
+			return false
+		}
+	}
+	// With the references' types, a lambda may no longer fit: in
+	// foo(B::arg0) { }, not foo(f: KFunction1<T1, R>, arg1: T1), whose
+	// T1 is a B.
+	with := *cd
+	with.sys = trial
+	return c.lambdasFit(&with, x)
+}
+
+// noRefAdaptation returns the candidates among cs that take each callable
+// reference argument without dropping its result, and whether that
+// leaves some out: as in Kotlin, schedule(this::flush) is
+// schedule(j: Job<V>), not the more specific schedule(a: Action) of a
+// fun interface Action { fun run() }, for a flush that returns a value.
+func (c *Checker) noRefAdaptation(x *syntax.Call, cs []*candidate) ([]*candidate, bool) {
+	if len(cs) < 2 {
+		return cs, false
+	}
+	refs := c.argRefShapes(x)
+	if len(refs) == 0 {
+		return cs, false
+	}
+	out := slices.DeleteFunc(slices.Clone(cs), func(cd *candidate) bool { return !c.refShapesFit(x, cd, refs, false) })
+	if len(out) == 0 || len(out) == len(cs) {
+		return cs, false
+	}
+	return out, true
 }
 
 // eagerRefType returns the type of a reference ::f to a local or top-level
