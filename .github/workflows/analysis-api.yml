@@ -62,6 +62,12 @@ jobs:
       - name: JNI stress test
         run: jvm/libkc/test.sh
 
+      # Four builds in one Gradle daemon (the runner's gradle), each in a
+      # class loader of its own after the second: libkc loaded once, through
+      # KcBridge's shared class loader, and a kc-aa of another ABI refused.
+      - name: JNI stress test in a Gradle daemon
+        run: jvm/libkc/test.sh gradle 8 20000
+
       - name: kc backend against recorded output and stock KSP
         run: jvm/kc-aa/build.sh stock
 

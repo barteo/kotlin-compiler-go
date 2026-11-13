@@ -6,6 +6,9 @@ package io.github.barteo.kc;
  * <p>The library is loaded from the path in the system property {@code kc.lib}, or else
  * as {@code kc} from {@code java.library.path}. Loading it checks that its ABI version is
  * the one this class was written for.
+ *
+ * <p>A JVM lets one class loader load a native library, so callers go through {@link
+ * KcBridge}, which loads this class once per JVM, in a class loader they all reach.
  */
 public final class KcNative {
   /** The ABI version this class expects; internal/kcabi.Version on the Go side. */
