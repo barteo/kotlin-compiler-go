@@ -2097,11 +2097,12 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 		if c.cls != nil {
 			// A method of this class, also inherited: f() is this.f(),
 			// unless none takes the arguments and an object in scope's,
-			// a top-level function of the package or one of the class
-			// path's, or an extension of this does.
+			// an imported member of an object, a top-level function of
+			// the package or one of the class path's, or an extension of
+			// this does.
 			ms := c.lowPriorityGivesWay(c.accessible(c.cls, c.javaMethods(c.cls, name)), name, c.cls.This(), x)
 			if len(ms) > 0 && (c.anyMayTake(ms, x) ||
-				c.objectTaking(name, x) == nil && !c.anyMayTake(c.topFuns(name), x) && !c.anyMayTake(c.kotlinFuns(name, false), x) &&
+				c.objectTaking(name, x) == nil && !c.memberImportTakes(name, x) && !c.anyMayTake(c.topFuns(name), x) && !c.anyMayTake(c.kotlinFuns(name, false), x) &&
 					!c.thisExtension(name, x) && !c.propInvokeFits(name, x) && !c.ctorTakes(name, x)) {
 				if c.thisExtension(name, x) && !c.takeTypes(ms, x, c.argTypes(x)) {
 					// Members that don't take the arguments' types give way
@@ -2711,17 +2712,23 @@ func (c *Checker) packageClassTaking(name string, cls *types.ClassSym, x *syntax
 	return alt
 }
 
-// importTakes reports whether a function that the file imports, or one
-// of the package or the class path, may take call x's arguments, which
-// the methods of the objects in scope named so give way to when none of
-// them can.
-func (c *Checker) importTakes(name string, x *syntax.Call) bool {
+// memberImportTakes reports whether a member of an object that the file
+// imports by name, as import p.Utils.group, may take call x's arguments.
+func (c *Checker) memberImportTakes(name string, x *syntax.Call) bool {
 	for _, mi := range c.memberImportsOf(name) {
 		if c.anyMayTake(c.javaMethods(mi.owner, mi.name), x) {
 			return true
 		}
 	}
-	return c.anyMayTake(c.topFuns(name), x) || c.anyMayTake(c.kotlinFuns(name, false), x)
+	return false
+}
+
+// importTakes reports whether a function that the file imports, or one
+// of the package or the class path, may take call x's arguments, which
+// the methods of the objects in scope named so give way to when none of
+// them can.
+func (c *Checker) importTakes(name string, x *syntax.Call) bool {
+	return c.memberImportTakes(name, x) || c.anyMayTake(c.topFuns(name), x) || c.anyMayTake(c.kotlinFuns(name, false), x)
 }
 
 // ctorTakes reports whether a class named name has a constructor that

@@ -276,7 +276,7 @@ func writeType(w *wire.Writer, t *ka.Type) {
 	w.Uint(uint64(t.Kind))
 	w.String(t.ClassID)
 	var flags uint64
-	for i, on := range [...]bool{t.Nullable, t.Flexible, t.DefinitelyNonNull, t.Extension} {
+	for i, on := range [...]bool{t.Nullable, t.Flexible, t.DefinitelyNonNull, t.Extension, t.Delegated} {
 		if on {
 			flags |= 1 << i
 		}
@@ -319,6 +319,7 @@ func writeAnnotation(w *wire.Writer, a *ka.Annotation) {
 	for _, t := range a.TypeArgs {
 		writeType(w, t)
 	}
+	w.String(a.Alias)
 }
 
 func writeValue(w *wire.Writer, v *ka.Value) {

@@ -107,6 +107,28 @@ func (g *gen) coerce(from, to types.Type) {
 			g.unbox(from)
 			g.coerce(from.NonNull(), to) // Int! to Long
 		}
+	default:
+		g.castToSuper(to)
+	}
+}
+
+// castToSuper casts the value on the stack, of a subclass of class type
+// to, to that class, as kotlinc does where a value is used as another
+// class: the verifier then takes the value as that class without
+// loading the two to compare them, so the code still verifies against a
+// version of the value's class that no longer extends it, and fails
+// only where it runs. A value used as an interface needs no cast, which
+// the verifier doesn't check.
+func (g *gen) castToSuper(to types.Type) {
+	if to.K != types.Class || to.C == nil || to.C.Interface || !g.code.Reachable() {
+		return
+	}
+	d := desc(to)
+	if d[0] != 'L' || d == objectDesc {
+		return
+	}
+	if top := g.code.StackTop(); top.Tag() == cf.VObject && top.Class() != className(d) {
+		g.code.Checkcast(className(d))
 	}
 }
 
@@ -368,6 +390,10 @@ func (g *gen) ident(x *syntax.Ident) {
 		// An inlined lambda passed on to an inline function, which
 		// inlines it: the argument is unused.
 		g.code.Op(cf.ACONST_NULL)
+		return
+	}
+	if g.passedOn[x] {
+		g.code.Op(cf.ACONST_NULL) // the copy reads the parameter itself: see passedOnArg
 		return
 	}
 	if x.Object != nil {
@@ -1887,6 +1913,13 @@ func (g *gen) call(x *syntax.Call) {
 		g.coerce(x.Value.Type(), x.T)
 		return
 	}
+	if len(g.shared.serializers) > 0 && isSerializerCall(x) {
+		if v := g.paramSerializer(x.Reified[0]); v != nil {
+			g.expr(v)
+			g.coerce(v.Type(), x.T)
+			return
+		}
+	}
 	if unconverted(x) != syntax.Expr(x) {
 		if l, _ := g.forwarded(x); l != nil {
 			g.code.Op(cf.ACONST_NULL) // see ident
@@ -2164,7 +2197,14 @@ func (g *gen) ungroupedCall(x *syntax.Call) {
 		m := x.Fun.(*syntax.Member)
 		rt := m.T // receiver type, non-null
 		ret := builtinRet(x)
-		g.safeCall(m, ret, x.T, func() { g.builtinMember(x, rt) })
+		g.safeCall(m, ret, x.T, func() {
+			if rt.IsPrimitive() && g.code.Reachable() && g.code.StackTop().Tag() == cf.VObject {
+				// The receiver's box, where its expression has the type
+				// of a type parameter inferred as the primitive type.
+				g.castErased(types.AnyType.Nullable(), rt)
+			}
+			g.builtinMember(x, rt)
+		})
 
 	case x.Ctor != nil && x.Ctor.KotlinAnnotation():
 		g.annotationNew(x)

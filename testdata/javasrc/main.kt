@@ -55,4 +55,9 @@ fun main() {
     println(Panels(text.Panel(listOf("a", "b"), "t")).build())
     println(Defaults.describe())
     println(util.LookupUser.count())
+    // The parameter of a SAM constructor's lambda whose type the generic
+    // Java method infers is a box, which an operator unboxes.
+    val found = util.Finder.find(listOf(1, 2, 3, 4), java.util.function.Predicate { it > 2 })
+    val none = util.Finder.find(listOf(1, 2), java.util.function.Predicate { it + 1 > 5 }, 9)
+    println("$found $none")
 }

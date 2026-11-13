@@ -332,6 +332,9 @@ type Annotation struct {
 	// TypeArgs are the type arguments written, @A<String>, as the
 	// checker resolved them; nil for a star projection.
 	TypeArgs []*Type
+	// Alias is the class ID of the typealias the annotation names its
+	// class by, @Alias; "" if it names the class.
+	Alias string
 }
 
 // Update checks the module's sources and returns their model. Errors in
@@ -504,7 +507,7 @@ func (s *Session) Update(ctx context.Context, sources []Source) (*Model, error) 
 				m.Files = append(m.Files, prev.files[i])
 				continue
 			}
-			b := &fileBuilder{f: f, snap: snaps[i], prov: provs[i], annots: rec.annots[f], values: rec.values[f], refs: rec.refs, aliases: rec.aliases, lib: m.lib,
+			b := &fileBuilder{f: f, snap: snaps[i], prov: provs[i], annots: rec.annots[f], values: rec.values[f], refs: rec.refs, aliases: rec.aliases, annotAliases: rec.annotAliases[f], lib: m.lib,
 				tparams: map[*types.TypeParamSym]psi.NodeID{}}
 			mf := &File{Path: snaps[i].Path(), Package: f.Package, Snapshot: snaps[i], Lookups: rec.fileLookups(f)}
 			mf.Annotations = b.annotations(f.Annotations)
@@ -647,7 +650,8 @@ func panicStack() string {
 func checkFiles(ctx context.Context, files []*syntax.File, lib *check.Library, jobs int, only map[*syntax.File]bool, infer map[string]bool) (rec *recorder, errs []*syntax.Error, err error) {
 	rec = &recorder{annots: map[*syntax.File]map[syntax.Pos]*types.ClassSym{},
 		values: map[*syntax.File]map[syntax.Pos][]syntax.AnnotationValue{}, refs: map[*syntax.TypeRef]types.Type{},
-		aliases: map[*syntax.TypeRef]*types.AliasSym{}, lookups: map[*syntax.File][]Lookup{}}
+		aliases: map[*syntax.TypeRef]*types.AliasSym{}, annotAliases: map[*syntax.File]map[syntax.Pos]*types.AliasSym{},
+		lookups: map[*syntax.File][]Lookup{}}
 	defer func() {
 		if v := recover(); v != nil {
 			err = checkPanic{v, panicStack()}
@@ -679,6 +683,8 @@ type recorder struct {
 	refs   map[*syntax.TypeRef]types.Type // the types written, as resolved
 	// aliases are the typealiases the types written name.
 	aliases map[*syntax.TypeRef]*types.AliasSym
+	// annotAliases are the typealiases annotations name their classes by.
+	annotAliases map[*syntax.File]map[syntax.Pos]*types.AliasSym
 	// bodies is when the checker started the bodies.
 	bodies time.Time
 	// lookups are the files' lookups, as the checker reports them.
@@ -712,6 +718,17 @@ func (r *recorder) Alias(x any, a *types.AliasSym) {
 		r.aliases[ref] = a
 		r.mu.Unlock()
 	}
+}
+
+func (r *recorder) AnnotationAlias(f *syntax.File, a *syntax.Annotation, alias *types.AliasSym) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	m := r.annotAliases[f]
+	if m == nil {
+		m = map[syntax.Pos]*types.AliasSym{}
+		r.annotAliases[f] = m
+	}
+	m[a.P] = alias
 }
 
 func (r *recorder) TypeRef(ref *syntax.TypeRef, t types.Type) {
@@ -756,7 +773,10 @@ type fileBuilder struct {
 	refs   map[*syntax.TypeRef]types.Type
 	// aliases are the typealiases the types written name.
 	aliases map[*syntax.TypeRef]*types.AliasSym
-	lib     *library // the class path's classes, for defaultAlias
+	// annotAliases are the typealiases the file's annotations name their
+	// classes by, by position.
+	annotAliases map[syntax.Pos]*types.AliasSym
+	lib          *library // the class path's classes, for defaultAlias
 	// tparams are the TYPE_PARAMETER nodes of the file's type
 	// parameters, which their types point to.
 	tparams map[*types.TypeParamSym]psi.NodeID
@@ -779,8 +799,12 @@ func (b *fileBuilder) annotation(a *syntax.Annotation) Annotation {
 	if !ok {
 		values = a.Values
 	}
-	return Annotation{ClassID: classID(b.annotationClass(a)), Node: b.prov.Annotation(a.P), Target: a.Target,
+	m := Annotation{ClassID: classID(b.annotationClass(a)), Node: b.prov.Annotation(a.P), Target: a.Target,
 		Args: b.args(a, values), TypeArgs: b.annotationTypeArgs(a)}
+	if al := b.annotAliases[a.P]; al != nil {
+		m.Alias = aliasID(al)
+	}
+	return m
 }
 
 // annotationTypeArgs returns the models of a's type arguments.

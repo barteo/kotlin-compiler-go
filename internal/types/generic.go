@@ -467,6 +467,11 @@ func (s Subst) applyA(t Type, pos Variance, exact bool) (Type, bool) {
 			r = s.apply(starred(p.Bounds[0], map[*TypeParamSym]bool{p: true}), Out)
 		default: // reading through in or *: the parameter's bound
 			r = s.apply(t.Param().Bound(), Out)
+			if t.P && r.N && !r.P {
+				// A Java T!, whose bound is Any!: the value read has a
+				// platform type, as kotlinc's capture of the projection.
+				r = r.Platform()
+			}
 		}
 		return withFlags(r, t), a.V == Out || a.V == In
 	case Class:

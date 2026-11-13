@@ -2,6 +2,7 @@ package ka
 
 import (
 	"cmp"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -164,11 +165,24 @@ func (l *library) class(id string) *Decl {
 		if j, ok := jvmMapped[id]; ok {
 			l.jvmMappedMembers(d, j)
 		}
-		// Kotlin adds java/io/Serializable to the classes it maps whose
-		// Java classes are.
-		if cls != nil && !cls.Missing && d.Kind != KindInterface &&
-			slices.ContainsFunc(javaSupertypes(&fileBuilder{}, cls, d.Kind, nonNull), func(t *Type) bool { return t.ClassID == "java/io/Serializable" }) {
-			d.Supertypes = append([]*Type{{Kind: TypeClass, ClassID: "java/io/Serializable"}}, d.Supertypes...)
+		if arrayClass.MatchString(id) {
+			// A JVM array is Cloneable and Serializable, and its clone()
+			// returns its own type, as FIR's JVM built-ins have it.
+			d.Supertypes = []*Type{{Kind: TypeClass, ClassID: "kotlin/Cloneable"}, {Kind: TypeClass, ClassID: "java/io/Serializable"}}
+			self := &Type{Kind: TypeClass, ClassID: id}
+			for _, tp := range d.TypeParams {
+				self.Args = append(self.Args, TypeArg{Type: &Type{Kind: TypeParameter, Name: tp.Name}})
+			}
+			d.Members = append(d.Members, &Decl{Kind: KindFunction, Name: "clone", Visibility: Public, Modality: ModalityFinal,
+				Flags: FlagOverride, Type: self})
+			return d
+		}
+		// Kotlin adds java/io/Serializable, last, to the classes it maps
+		// whose Java classes are serializable, kotlin/Int's through
+		// java/lang/Number too, as FIR's JVM built-ins do.
+		if cls != nil && !cls.Missing && d.Kind != KindInterface && serializable(cls) {
+			d.Supertypes = slices.DeleteFunc(d.Supertypes, func(t *Type) bool { return t.ClassID == "kotlin/Any" })
+			d.Supertypes = append(d.Supertypes, &Type{Kind: TypeClass, ClassID: "java/io/Serializable"})
 		}
 		return d
 	}
@@ -218,6 +232,20 @@ func (l *library) class(id string) *Decl {
 		d.Supertypes = []*Type{{Kind: TypeClass, ClassID: "kotlin/Any"}}
 	}
 	return d
+}
+
+// arrayClass matches the class IDs of Kotlin's built-in array classes.
+var arrayClass = regexp.MustCompile(`^kotlin/(Boolean|Byte|Char|Short|Int|Long|Float|Double)?Array$`)
+
+// serializable reports whether Java class cls is java/io/Serializable or
+// inherits from it.
+func serializable(cls *types.ClassSym) bool {
+	found := false
+	cls.Supertypes(func(s *types.ClassSym) bool {
+		found = classID(s) == "java/io/Serializable"
+		return !found
+	})
+	return found
 }
 
 // isFunctionClass reports whether id is a function type's class:
@@ -428,14 +456,15 @@ func (l *library) kotlinDecl(kc *kmeta.Class, info *classfile.Info, det *classfi
 			}
 		}
 	}
-	for _, p := range kc.Props {
-		if p.Flags.MemberKind() != 1 {
-			d.Members = append(d.Members, l.kproperty(p, scope, bySig, consts))
-		}
-	}
+	// Functions before properties, as FIR's deserialized classes have them.
 	for _, f := range kc.Funcs {
 		if f.Flags.MemberKind() != 1 {
 			d.Members = append(d.Members, l.kfunction(f, scope, bySig))
+		}
+	}
+	for _, p := range kc.Props {
+		if p.Flags.MemberKind() != 1 {
+			d.Members = append(d.Members, l.kproperty(p, scope, bySig, consts))
 		}
 	}
 	for _, e := range kc.EnumEntries {

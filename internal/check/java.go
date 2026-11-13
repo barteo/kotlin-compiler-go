@@ -1238,7 +1238,7 @@ func (c *Checker) extCalleesFor(name string, rt types.Type, x *syntax.Call) []ca
 	for i := len(c.recvs) - 1; i >= 0; i-- {
 		r := &c.recvs[i]
 		rt := c.scope.narrowed(r.sym).NonNull()
-		if cls := c.classOf(rt); cls != nil && (cls.External || c.u.memberExts) {
+		if cls := c.classOf(rt); cls != nil && c.mayHaveMemberExts(cls) {
 			if out := fits(memberExtMethods(cls, name)); len(out) > 0 {
 				for j := range out {
 					out[j].dispatchRecv = r
@@ -1401,7 +1401,7 @@ func (c *Checker) extProp(x *syntax.Member, rt types.Type) (types.Type, bool) {
 	for i := len(c.recvs) - 1; i >= 0 && best == nil; i-- {
 		r := &c.recvs[i]
 		t := c.scope.narrowed(r.sym).NonNull()
-		if cls := c.classOf(t); cls != nil && (cls.External || c.u.memberExts) {
+		if cls := c.classOf(t); cls != nil && c.mayHaveMemberExts(cls) {
 			sub = func(g *types.FunSym) types.Subst { return c.memberSubst(t, g.Owner) }
 			if fits(memberExtProps(cls, x.Name)); best != nil {
 				dispatch, dispatchRecv = nil, r
@@ -1910,9 +1910,10 @@ func javaMethods(cls *types.ClassSym, name string) []*types.FunSym {
 			}
 			// The program's overloads in one class are distinct even when
 			// their erasures are the same, as f(List<A>) and f(List<B>)
-			// renamed by @JvmName. A class file's are distinct by
-			// descriptor, but for covariant return bridges.
-			if f.Decl == nil {
+			// renamed by @JvmName, and so are a class file's whose JVM
+			// names aren't their own. A class file's others are distinct
+			// by descriptor, but for covariant return bridges.
+			if f.Decl == nil && (f.JVMName == "" || f.JVMName == f.Name) {
 				seen[params] = true
 			} else {
 				own = append(own, params)

@@ -47,7 +47,7 @@ internal class KcEnvironment(val key: String, config: KSPConfig) {
             // must give PSI-backed classes (JavaClassImpl).
             conf.addJvmClasspathRoots((config.libraries + config.friends).distinct())
             jvm.jdkHome?.let { conf.put(JVMConfigurationKeys.JDK_HOME, it) }
-            conf.addJavaSourceRoots(jvm.javaSourceRoots)
+            conf.addJavaSourceRoots(sourceRoots(config))
             conf.put(JVMConfigurationKeys.USE_PSI_CLASS_FILES_READING, true)
         }
         KotlinCoreEnvironment.createForProduction(disposable, conf, EnvironmentConfigFiles.JVM_CONFIG_FILES)
@@ -196,7 +196,7 @@ internal object KcEnvironments {
         return buildString {
             (config.libraries + config.friends).distinct().forEach { append(stamp(it)).append('\n') }
             jvm?.jdkHome?.let { append(stamp(File(it, "lib/modules"))).append('\n') }
-            jvm?.javaSourceRoots.orEmpty().forEach { append("root=").append(it.path).append('\n') }
+            sourceRoots(config).forEach { append("root=").append(it.path).append('\n') }
             javaSources.forEach { append(stamp(File(it))).append('\n') }
         }
     }

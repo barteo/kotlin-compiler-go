@@ -230,6 +230,9 @@ func (g *gen) inline(b *inline.Body, x *syntax.Call) {
 		saved, savedTypes, savedSers := g.reified, g.reifiedTypes, g.serializers
 		g.reified, g.reifiedTypes = g.reifiedClasses(x)
 		g.serializers = x.Serializers
+		if x.Sym != nil {
+			g.serializers = g.callSerializers(x, x.Sym)
+		}
 		defer func() { g.reified, g.reifiedTypes, g.serializers = saved, savedTypes, savedSers }()
 	}
 	in := &inliner{g: g, c: c, b: b, x: x, locals: map[localKey]int{}, refs: map[int]cf.VType{}, reified: g.reified,
