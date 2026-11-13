@@ -20,6 +20,11 @@
 // -kotlinc runs the tests (a -sample of them: it is slow) through the
 // same steps with kotlinc instead of kc, which checks the harness
 // itself: they must all pass.
+//
+// kc compiles on -j long-lived kc -serve processes (serve.go), which
+// keep the JDK's index and the library classes they read from test to
+// test: most of a test's compile is that work. -serve=false starts a kc
+// process for each module instead.
 package main
 
 import (
@@ -49,7 +54,7 @@ func main() {
 	javac := flag.String("javac", "javac", "the javac command")
 	out := flag.String("o", "", "the Markdown report to write")
 	tsv := flag.String("tsv", "", "the TSV file of results to write")
-	baseline := flag.String("baseline", "", "a TSV file of an earlier run to compare with")
+	baseline := flag.String("baseline", "", "a TSV file of an earlier run to compare with, read before -tsv is written; the harness fails if a test stopped passing")
 	filter := flag.String("filter", "", "only the tests whose path, relative to the suite, starts with this")
 	sample := flag.Int("sample", 0, "run this many tests, chosen at random among those not skipped")
 	seed := flag.Uint64("seed", 1, "the seed of -sample")
@@ -58,6 +63,7 @@ func main() {
 	timeout := flag.Duration("timeout", 10*time.Second, "how long a test's box() may run")
 	work := flag.String("work", filepath.Join(os.TempDir(), "kc-conformance"), "directory for the compiled tests")
 	keep := flag.Bool("keep", false, "keep the compiled tests in -work")
+	serve := flag.Bool("serve", true, "compile on -j long-lived kc -serve processes, which keep the class path and the standard library's classes they read from test to test, instead of a kc process a module")
 	flag.Parse()
 	if *kotlin == "" || *stdlib == "" {
 		flag.Usage()
@@ -75,11 +81,23 @@ func main() {
 		libs = append(libs, *kotlinTest)
 	}
 	comp := &compiler{kc: *kc, kotlinc: *kotlinc, javac: *javac, libs: libs, reflect: *reflectJar, timeout: 2 * time.Minute}
+	if *serve && *kotlinc == "" {
+		comp.servers = newKcPool(*kc, *jobs)
+		defer comp.servers.close()
+	}
 	if err := os.RemoveAll(*work); err != nil {
 		log.Fatal(err)
 	}
 	if err := os.MkdirAll(*work, 0o755); err != nil {
 		log.Fatal(err)
+	}
+	// Read before the run, whose TSV may replace it.
+	var baselineData []byte
+	if *baseline != "" {
+		var err error
+		if baselineData, err = os.ReadFile(*baseline); err != nil {
+			log.Fatal(err)
+		}
 	}
 	start := time.Now()
 
@@ -162,7 +180,7 @@ func main() {
 		}
 	}
 	if *baseline != "" {
-		if err := compareBaseline(*baseline, rs, good); err != nil {
+		if err := compareBaseline(*baseline, baselineData, rs, good); err != nil {
 			log.Fatal(err)
 		}
 	}

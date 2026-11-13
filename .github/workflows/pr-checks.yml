@@ -160,3 +160,63 @@ jobs:
           fi
           echo "No tests skipped for a missing tool."
 
+
+  # kotlinc's own box and diagnostics tests (docs/conformance.md), from a
+  # sparse checkout of JetBrains/kotlin at KOTLIN_VERSION's tag: a test
+  # that passes in the committed bench/results/*.tsv must still pass. The
+  # harness compiles on long-lived kc -serve processes, so both suites take
+  # about a minute on 4 CPUs. A test that starts passing is a warning: the
+  # baselines are updated with bench/kotlin-tests.sh box|diagnostics.
+  conformance:
+    name: Conformance (kotlinc's box and diagnostics tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.mod
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install kotlinc ${{ env.KOTLIN_VERSION }}
+        run: |
+          zip=kotlin-compiler-$KOTLIN_VERSION.zip
+          curl -sSfLo "$RUNNER_TEMP/$zip" \
+            "https://github.com/JetBrains/kotlin/releases/download/v$KOTLIN_VERSION/$zip"
+          echo "$KOTLIN_SHA256  $RUNNER_TEMP/$zip" | sha256sum -c -
+          unzip -q "$RUNNER_TEMP/$zip" -d "$RUNNER_TEMP"
+          echo "KOTLIN_HOME=$RUNNER_TEMP/kotlinc" >> "$GITHUB_ENV"
+
+      # The reports go to RUNNER_TEMP: the committed ones are the baseline.
+      - name: Box tests
+        run: |
+          bench/kotlin-tests.sh box -baseline bench/results/box.tsv \
+            -o "$RUNNER_TEMP/box.md" -tsv "$RUNNER_TEMP/box.tsv" 2>&1 | tee "$RUNNER_TEMP/box.log"
+
+      - name: Diagnostics tests
+        if: ${{ !cancelled() }}
+        run: |
+          bench/kotlin-tests.sh diagnostics -baseline bench/results/diagnostics.tsv \
+            -o "$RUNNER_TEMP/diagnostics.md" -tsv "$RUNNER_TEMP/diagnostics.tsv" 2>&1 | tee "$RUNNER_TEMP/diagnostics.log"
+
+      - name: Summary
+        if: ${{ !cancelled() }}
+        run: |
+          for mode in box diagnostics; do
+            log=$RUNNER_TEMP/$mode.log
+            [ -f "$log" ] || continue
+            {
+              echo "### $mode"
+              echo '```'
+              grep -E '^[0-9]+ tests in |^  [a-z/ ]+ +[0-9]+$|^baseline |^  (regression|fixed): ' "$log" || true
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            fixed=$(grep -c '^  fixed: ' "$log" || true)
+            if [ "$fixed" -gt 0 ]; then
+              echo "::warning::$mode: $fixed tests now pass; update the baseline with bench/kotlin-tests.sh $mode"
+            fi
+          done

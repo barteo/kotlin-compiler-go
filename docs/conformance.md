@@ -1,8 +1,8 @@
 # Conformance with kotlinc's own tests
 
 ```sh
-bench/kotlin-tests.sh box            # 7,480 box tests, about a minute after the first clone
-bench/kotlin-tests.sh diagnostics    # 10,827 diagnostics tests, about a minute
+bench/kotlin-tests.sh box            # 7,480 box tests, about 15 s after the first clone
+bench/kotlin-tests.sh diagnostics    # 10,827 diagnostics tests, about 10 s
 ```
 
 The [survey](survey.md) counts the features real code uses, but can't say
@@ -27,9 +27,46 @@ key and detail. Flags after the mode go to the harness:
 - `-filter when/` runs the tests whose path starts with it.
 - `-baseline bench/results/box.tsv -o "" -tsv ""` compares a run with the
   committed one, printing the tests that stopped passing and those that
-  started.
+  started, and fails if any stopped. The baseline is read before the run,
+  so a run can also write its results over it.
 - `-kotlinc kotlinc -sample 100` runs a random sample with `kotlinc`
   instead of `kc` (see [Checking the harness](#checking-the-harness)).
+- `-serve=false` starts a `kc` process for each module, instead of
+  long-lived ones (see [Long-lived kc](#long-lived-kc)).
+
+### Long-lived kc
+
+Most of compiling a test is work every test repeats: indexing the JDK's
+28,900 classes, and reading the standard library's default imports and
+the classes the test uses. Compiling an empty file takes about 62 ms of
+CPU, and the median test 66 ms. So the harness compiles on `-j`
+processes of `kc -serve`, each of which keeps the class path and the
+library it reads it with (`driver.Libraries`) for its next compiles,
+and leaves each test's own classes to that test's check, as
+`analysis/ka` does for KSP. Only class paths of the JDK and jars are
+kept, keyed by their size and modification time and by the settings the
+library reads classes with; a later module of a test, compiled against
+the earlier ones' output directories, gets a class path of its own.
+
+On 4 CPUs this takes each suite from about 3 minutes to 10 to 15
+seconds; each server peaks at about 225 MB.
+
+| Suite (4 CPUs) | A process a module | Long-lived |
+|:---|---:|---:|
+| box | 2 min 53 s | 14 s |
+| diagnostics | 2 min 57 s | 9 s |
+
+A server compiles one test at a time, so a panic, which ends it with
+its trace as it would end `kc`, is charged to the test that caused it,
+and a new server takes the next. A server also exits after any failure
+that isn't a diagnostic, such as code generation that panicked and
+recovered, so no later test sees what it left behind. Both modes put
+every test in the same category and write the same reports. Their
+class files differ only where `kc` differs from run to run anyway, in
+the order of some members, and in one test where `kc`'s result depends
+on whether `lazy` was used before (`regressions/objectInsideDelegation.kt`: a
+signature `kotlinc` doesn't write at all), which a warm library looks
+like. `-serve=false` rules out such order effects.
 
 ## Box tests
 
@@ -192,3 +229,9 @@ largest groups are:
 
 The committed `.tsv` files serve as a ratchet: a change must make
 `-baseline` report no regressions, and the tests it fixes measure it.
+CI's *Conformance* job (`.github/workflows/pr-checks.yml`) runs both
+suites against them on every pull request and push to `main`, and fails
+if a test that passes there stopped passing. The job's summary has each
+suite's counts. A test that started passing is a warning: running
+`bench/kotlin-tests.sh box` or `diagnostics` writes the new baseline to
+commit with the change.
