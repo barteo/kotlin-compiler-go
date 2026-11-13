@@ -368,8 +368,27 @@ func (p *Path) indexPackages() packageIndex {
 
 // Package returns the internal names of the classes in a package, by
 // internal name (java/util), sorted. Classes of nested packages aren't in
-// it.
+// it. An overlay's are its own and its base's. The slice must not be
+// modified.
 func (p *Path) Package(pkg string) []string {
+	if p.base != nil {
+		own := p.ownPackage(pkg)
+		base := p.base.Package(pkg)
+		if len(own) == 0 {
+			return base
+		}
+		if len(base) == 0 {
+			return own
+		}
+		all := slices.Concat(own, base)
+		slices.Sort(all)
+		return slices.Compact(all)
+	}
+	return p.ownPackage(pkg)
+}
+
+// ownPackage is Package of p's own classes.
+func (p *Path) ownPackage(pkg string) []string {
 	p.pkgOnce.Do(func() {
 		p.pkgClasses = map[string][]string{}
 		for name := range p.classes {

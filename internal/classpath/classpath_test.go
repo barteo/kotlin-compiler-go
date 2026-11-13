@@ -296,6 +296,12 @@ func TestOverlay(t *testing.T) {
 	if got, _ := p.Classes("demo"); !slices.Equal(got, before) {
 		t.Errorf("base Classes(demo) = %v, want %v", got, before)
 	}
+	if got := o.Package("demo"); !slices.Equal(got, []string{"demo/A", "demo/B", "demo/C"}) {
+		t.Errorf("overlay Package(demo) = %v", got)
+	}
+	if got := p.Package("demo"); !slices.Equal(got, []string{"demo/A", "demo/C"}) {
+		t.Errorf("base Package(demo) = %v", got)
+	}
 	if info, err := o.Load("demo/A"); err != nil || info.Access != 0 {
 		t.Errorf("overlay Load(demo/A) = %+v, %v; want the source's", info, err)
 	}
