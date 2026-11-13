@@ -138,7 +138,7 @@ There is no Gradle plugin. [tools/gradle/use-kc.init.gradle.kts](tools/gradle/us
 KC=$PWD/bin/kc ./gradlew assembleDebug --init-script /path/to/kotlin-compiler-go/tools/gradle/use-kc.init.gradle.kts
 ```
 
-If `kc` fails on a module, `kotlinc` compiles that module and the build log says so. A module that uses a compiler plugin `kc` doesn't apply, such as one that generates code the program needs, is also left to `kotlinc`, with a warning that names the plugin. `kc` compiles whole modules, so the tasks are not incremental. A new `kc` binary recompiles every module, and a build without the init script recompiles with `kotlinc`.
+If `kc` fails on a module, `kotlinc` compiles that module and the build log says so. A module that uses a compiler plugin `kc` doesn't apply, such as one that generates code the program needs, is also left to `kotlinc`, with a warning that names the plugin. `kc` compiles whole modules, so the tasks are not incremental. A new `kc` binary, or a change to `KC_STRICT`, `KC_IGNORE_PLUGINS` or `KC_JDK_HOME`, recompiles every module `kc` compiles, and a build without the init script recompiles with `kotlinc`. A task named in `KC_SKIP` is the task a build without the init script has, so it is up to date with, or restored from the build cache as, `kotlinc`'s output.
 
 | Variable | Meaning |
 |---|---|

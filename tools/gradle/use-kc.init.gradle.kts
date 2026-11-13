@@ -12,12 +12,18 @@
 //   KC         kc binary (default: kc on PATH)
 //   KC_STRICT  1: a kc failure fails the build. Otherwise kotlinc compiles that module instead,
 //              from scratch, and the build log says so.
-//   KC_SKIP    comma-separated task paths to leave to kotlinc, such as :app:compileDebugKotlin
+//   KC_SKIP    comma-separated task paths to leave to kotlinc, such as :app:compileDebugKotlin.
+//              A skipped task is the task a build without this script has, so it reuses kotlinc's
+//              outputs and build cache entries rather than kc's.
 //   KC_JDK_HOME  JDK for modules without android.jar, in place of the task's Java toolchain
 //   KC_IGNORE_PLUGINS  comma-separated compiler plugins, as artifact or group:artifact, that kc
 //              may leave out because the program works without them (default:
 //              compose-stability-compiler, which adds recomposition tracing and stability reports).
 //              Kotlin's scripting plugin, which only compiles .kts scripts, is always left out.
+//
+// KC (the binary), KC_STRICT, KC_IGNORE_PLUGINS and KC_JDK_HOME are inputs of the tasks kc compiles:
+// changing one recompiles them rather than leaving them up to date or restoring them from the
+// build cache.
 //
 // kc applies the Compose, kotlinx.serialization, Parcelize and Metro plugins, and passes kc the
 // Metro plugin's options. A module that uses any other
@@ -33,9 +39,16 @@ if (gradle.parent == null) {
     tasks.matching {
       it.javaClass.name.removeSuffix("_Decorated") == "org.jetbrains.kotlin.gradle.tasks.KotlinCompile"
     }.configureEach {
-      // A new kc binary recompiles the module.
+      // A task left to kotlinc gets neither inputs nor an action, so it is the task a build without
+      // this script has: it is up to date with, and restored from the build cache as, kotlinc's.
+      if (path in System.getenv("KC_SKIP").orEmpty().split(',').map { it.trim() }) return@configureEach
+      // What decides whether kc or kotlinc compiles the module, and what kc writes, are inputs:
+      // a new kc binary, or a change to these variables, recompiles it.
       System.getenv("KC")?.let { kc ->
         inputs.file(kc).withPropertyName("kcBinary").withPathSensitivity(PathSensitivity.NONE)
+      }
+      for (name in listOf("KC_STRICT", "KC_IGNORE_PLUGINS", "KC_JDK_HOME")) {
+        inputs.property(name, System.getenv(name).orEmpty())
       }
       doFirst {
         val task = this
@@ -49,9 +62,6 @@ if (gradle.parent == null) {
         fun option(name: String) =
           (call(call(task, "getCompilerOptions")!!, name) as org.gradle.api.provider.Provider<*>).orNull
 
-        if (task.path in System.getenv("KC_SKIP").orEmpty().split(',').map { it.trim() }) {
-          return@doFirst
-        }
         val kc = System.getenv("KC") ?: "kc"
         val strict = System.getenv("KC_STRICT") == "1"
         val dest = (call(task, "getDestinationDirectory") as org.gradle.api.file.DirectoryProperty).get().asFile
