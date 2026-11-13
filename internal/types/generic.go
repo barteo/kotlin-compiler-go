@@ -482,8 +482,17 @@ func (s Subst) applyA(t Type, pos Variance, exact bool) (Type, bool) {
 				// A raw bound, as B<E extends A>'s: the projection's
 				// approximation is flexible, not raw, an A<Any!>.
 				args := make([]Arg, len(r.C.TypeParams))
-				for i := range args {
-					args[i] = Arg{T: AnyType.Platform()}
+				for i, tp := range r.C.TypeParams {
+					// Each parameter's bound, erased: a StubElement<T
+					// extends CharSequence>'s is CharSequence!.
+					b := tp.Bound()
+					switch {
+					case b.IsParam():
+						b = AnyType
+					case b.K == Class && !b.C.Array:
+						b.A = nil
+					}
+					args[i] = Arg{T: b.Platform()}
 				}
 				r.A = MakeArgs(args)
 				r = r.Platform()
