@@ -180,6 +180,7 @@ var metroSupported = map[string]bool{
 	"interop-include-jakarta-annotations": true,
 	"interop-include-dagger-annotations":  true,
 	"enable-dagger-runtime-interop":       true,
+	"enable-kclass-to-class-interop":      true,
 }
 
 // metroOptionalBehaviors are the values of optional-binding-behavior kc

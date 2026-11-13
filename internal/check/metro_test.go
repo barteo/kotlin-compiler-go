@@ -28,7 +28,7 @@ func TestParseMetroOptions(t *testing.T) {
 		"dagger runtime alone": {opts: map[string]string{"enable-dagger-runtime-interop": "true"},
 			want: metroConfig{contributesAsInject: true, functionProviders: true, optional: "DEFAULT", daggerRuntime: true}},
 		"kclass to class": {opts: map[string]string{"enable-kclass-to-class-interop": "true"},
-			want: metroConfig{contributesAsInject: true, functionProviders: true, optional: "DEFAULT", kclassToClass: true}, err: true},
+			want: metroConfig{contributesAsInject: true, functionProviders: true, optional: "DEFAULT", kclassToClass: true}},
 		"optional bindings": {opts: map[string]string{"optional-binding-behavior": "DISABLED"},
 			want: metroConfig{contributesAsInject: true, functionProviders: true, optional: "DISABLED"}},
 		"required optional bindings": {opts: map[string]string{"optional-binding-behavior": "REQUIRE_OPTIONAL_BINDING"},

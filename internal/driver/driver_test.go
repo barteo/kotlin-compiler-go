@@ -1292,6 +1292,7 @@ func TestMetro(t *testing.T) {
 		t.Errorf("output mismatch\n%s", diff(string(want), got))
 	}
 
+	kclass := map[string]string{"enable-kclass-to-class-interop": "true"}
 	const header = "import dev.zacsweers.metro.*\n\n"
 	for name, tc := range map[string]struct {
 		src, msg string
@@ -1314,6 +1315,12 @@ func TestMetro(t *testing.T) {
 		"inferred graph type": {src: "@DependencyGraph interface G { companion object : G by createGraph() }", feature: true},
 		"member of its own type": {src: "@Inject class S { @Inject lateinit var s: Lazy<S> }\n@DependencyGraph interface G { val s: S }",
 			feature: true},
+		"class map binding": {src: "@DependencyGraph interface G { val m: Map<Class<*>, String>\n@Provides fun m(): Map<Class<*>, String> = emptyMap() }",
+			msg: "maps with Class keys", options: kclass, feature: true},
+		"class keys without the option": {src: "@DependencyGraph interface G { val m: Map<Class<*>, String>\n" +
+			"@Provides @IntoMap @ClassKey(String::class) fun s(): String = \"\" }", msg: "[Metro/MissingBinding]"},
+		"array class keys": {src: "@DependencyGraph interface G { val m: Map<Class<*>, String>\n" +
+			"@Provides @IntoMap @ClassKey(Array<String>::class) fun s(): String = \"\" }", options: kclass, feature: true},
 	} {
 		t.Run(name, func(t *testing.T) {
 			file := filepath.Join(t.TempDir(), "a.kt")
@@ -1382,8 +1389,8 @@ func TestMetroOptions(t *testing.T) {
 		options map[string]string
 		ok      bool // compiles
 	}{
-		"kclass to class": {src: "@dagger.Module object M",
-			options: map[string]string{"interop-include-dagger-annotations": "true", "enable-kclass-to-class-interop": "true"}},
+		"guice": {src: "@dagger.Module object M",
+			options: map[string]string{"interop-include-dagger-annotations": "true", "interop-include-guice-annotations": "true"}},
 		"hilt module": {src: "import dagger.Binds\nimport dagger.Module\nimport dagger.hilt.InstallIn\nimport dagger.hilt.components.SingletonComponent\n" +
 			"interface Repo\n@Module @InstallIn(SingletonComponent::class) interface RepoModule { @Binds fun bind(r: Repo): Repo }", options: hilt},
 		"custom annotations, no Metro": {src: "class A", options: map[string]string{"custom-inject": "a/MyInject"}},

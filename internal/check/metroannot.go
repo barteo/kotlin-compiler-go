@@ -379,6 +379,8 @@ func (m *metroAnalysis) kotlinValSrc(v mVal) (string, error) {
 		switch {
 		case v.class == "kotlin/Nothing":
 			return "kotlin.Nothing::class", nil
+		case strings.HasPrefix(v.class, "["):
+			return "", fmt.Errorf("kc doesn't support array class literals as Metro annotation arguments")
 		case cls == nil:
 			return "", fmt.Errorf("unknown class %s", v.class)
 		}

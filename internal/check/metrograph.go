@@ -112,6 +112,10 @@ type mReq struct {
 	full     types.Type // the type requested
 	optional bool       // a parameter with a default value
 	name     string
+	// classKeys is set if the requested map's keys are java.lang.Class,
+	// which enable-kclass-to-class-interop makes t's KClass keys.
+	classKeys bool
+	classKey  types.Type // the requested map's key type then
 }
 
 func (m *metroAnalysis) newGraph(c *Checker, cls *types.ClassSym, pos syntax.Pos, parent *mGraph) *mGraph {
@@ -176,10 +180,29 @@ func (gr *mGraph) request(t types.Type, q string) (*mReq, bool) {
 			t = types.GenericType(t.C, args)
 		}
 	}
+	if gr.m.cfg.kclassToClass && isMapType(t) {
+		if kt := t.A.List[0].T; isJavaClass(kt) {
+			args := slices.Clone(t.A.List)
+			args[0] = types.Arg{V: args[0].V, T: gr.kclassOf(kt)}
+			t = types.GenericType(t.C, args)
+			r.classKeys, r.classKey = true, kt
+		}
+	}
 	r.t = t
 	k, ok := keyOf(t, q)
 	r.key = k
 	return r, ok
+}
+
+func isJavaClass(t types.Type) bool {
+	return t.K == types.Class && t.A != nil && t.C.Name == "java/lang/Class"
+}
+
+// kclassOf returns KClass<X> for java.lang.Class<X>.
+func (gr *mGraph) kclassOf(t types.Type) types.Type {
+	k := types.GenericType(gr.c.u.ext.kclass("kotlin/reflect/KClass"), t.A.List)
+	k.N = t.N
+	return k
 }
 
 // wrapperOf returns how type t wraps a value: f for () -> T, p for
@@ -684,9 +707,9 @@ func (gr *mGraph) mapElem(key *mAnn, v types.Type, q string, b *mBinding) error 
 		return err
 	}
 	kt = kt.NonNull() // a Java annotation's String!
-	if kt.K == types.Class && kt.C.Name == "java/lang/Class" && kt.A != nil {
+	if isJavaClass(kt) {
 		// A Java annotation's Class (Dagger's ClassKey) is Kotlin's KClass.
-		kt = types.GenericType(gr.c.u.ext.kclass("kotlin/reflect/KClass"), kt.A.List)
+		kt = gr.kclassOf(kt)
 	}
 	mapCls := gr.c.u.ext.kclass("kotlin/collections/Map")
 	mt := types.GenericType(mapCls, []types.Arg{{V: types.Inv, T: kt}, {V: types.Inv, T: v}})
@@ -918,6 +941,10 @@ func (gr *mGraph) bind(b *mBinding, anns []*mAnn, t types.Type) {
 			gr.unsupported("%v", err)
 		}
 	default:
+		if m.cfg.kclassToClass && isMapType(t) && isJavaClass(t.A.List[0].T) {
+			gr.unsupported("kc doesn't support bindings of maps with Class keys with enable-kclass-to-class-interop (%s)", b.what)
+			return
+		}
 		k, ok := keyOf(t, q)
 		if !ok {
 			gr.unsupported("kc can't name the type %s of %s", t, b.what)
@@ -1482,6 +1509,20 @@ func (gr *mGraph) expr(r *mReq, site string) string {
 		return ""
 	}
 	x := fn + "()"
+	if r.classKeys {
+		// Metro's KClass keys as the Class keys requested.
+		kt, ok1 := kotlinTypeSrc(r.t.A.List[0].T)
+		ct, ok2 := kotlinTypeSrc(r.classKey)
+		vt, ok3 := kotlinTypeSrc(r.t.A.List[1].T)
+		if !ok1 || !ok2 || !ok3 {
+			gr.unsupported("kc can't name %s", r.t)
+			return ""
+		}
+		for i := len(r.vwrap) - 1; i >= 0; i-- {
+			vt = wrapTypeSrc(r.vwrap[i], vt)
+		}
+		x = fmt.Sprintf("%s.mapKeys<%s, %s, %s> { it.key.java }", x, kt, vt, ct)
+	}
 	if len(r.wrap) == 0 {
 		return x
 	}
@@ -1491,7 +1532,7 @@ func (gr *mGraph) expr(r *mReq, site string) string {
 // wrapped returns a call of the function that returns value x wrapped as
 // request r asks.
 func (gr *mGraph) wrapped(r *mReq, x string) string {
-	key := fmt.Sprintf("%s|%s|%s", r.key, r.wrap, r.vwrap)
+	key := fmt.Sprintf("%s|%s|%s|%t", r.key, r.wrap, r.vwrap, r.classKeys)
 	if fn, ok := gr.wrappers[key]; ok {
 		return fn + "()"
 	}
