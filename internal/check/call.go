@@ -1067,6 +1067,11 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			}
 		}
 	})
+	if sink != nil && sink == c.tailSink && hasLambda(x.Args) && !c.lambdasReady(sys) {
+		// A call taking a lambda whose parameter types aren't known yet,
+		// a builder's, is inferred on its own (see endsWithCall).
+		sink = nil
+	}
 	if sink != nil {
 		c.runLambdas(sys, true)
 		if sys.unfixed() || len(partials) > 0 || len(sys.lambdas) > 0 {
@@ -1076,8 +1081,11 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 		}
 	}
 	if len(sys.lambdas) > 0 {
-		// The expected type can help infer the lambdas' parameters.
-		if want.K != types.Invalid && !want.HasVars() && ret.HasVars() {
+		// The expected type can help infer the lambdas' parameters. One
+		// of a builder's stubs relates the call's variables to them: as
+		// in Kotlin, myBuilder2 { add("") } that myBuilder1's lambda ends
+		// with, for its Foo<K1>, infers K2 with K1 (see stubRelated).
+		if want.K != types.Invalid && (!want.HasVars() || c.onlyStubs(want)) && ret.HasVars() {
 			trial := sys.clone()
 			trial.sub(ret, want)
 			if trial.ok {

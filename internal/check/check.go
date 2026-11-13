@@ -241,6 +241,10 @@ type Checker struct {
 	// stubInference is inferring, with the run that records constraints on
 	// them.
 	stubs map[*types.TypeParamSym]*stubRun
+	// stubHints are the values that stubInference gave the variables of
+	// the calls in a builder's lambda that it inferred with the builder's
+	// (see stubHint).
+	stubHints map[stubHintKey]types.Type
 	// ambiguities counts the ambiguous calls reported.
 	ambiguities int
 	// trial is set while stubInference checks a lambda, to undo what the

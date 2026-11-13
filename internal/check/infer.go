@@ -108,11 +108,13 @@ func (s *system) fresh(ps []*types.TypeParamSym, base types.Subst, pos syntax.Po
 		s.byVar[vs[i]] = tv
 	}
 	// A bound that mentions another of the variables relates them: C's
-	// in <C : Iterable<T>> gives T from C's argument, as in onEach.
+	// in <C : Iterable<T>> gives T from C's argument, as in onEach. So
+	// does one that mentions a builder's variable that stubInference
+	// infers: S of yieldAll<S : T>(seq: Inv<S>) on an Inv<U> is U's.
 	for i := range ps {
 		for _, b := range vs[i].Bounds {
 			other := b.Has(func(u types.Type) bool {
-				return u.K == types.TypeVar && u.Param() != vs[i] && s.byVar[u.Param()] != nil
+				return u.K == types.TypeVar && u.Param() != vs[i] && (s.byVar[u.Param()] != nil || s.c.stubs[u.Param()] != nil)
 			})
 			if other {
 				s.addUpper(s.byVar[vs[i]], b)
@@ -561,6 +563,15 @@ func (s *system) fix(tv *tvar) {
 		if len(lowers) > 1 && len(tv.lits) == 0 {
 			val = s.withinUppers(val, lowers, uppers)
 		}
+		// A nullable lower bound with variables makes it nullable too, as
+		// in Kotlin: Out<String> and Out<M>? give Out<String>?, and M
+		// String.
+		if !types.MayBeNull(val) && slices.ContainsFunc(tv.lower, func(l types.Type) bool {
+			l = s.apply(l)
+			return l.HasVars() && l.N && l.K != types.TypeVar
+		}) {
+			val = val.Nullable()
+		}
 		if isUnsigned(val) && val.NonNull().C.Name == "kotlin/UInt" {
 			// A UInt from unsigned literals is the variable's ULong,
 			// UByte or UShort bound, as T of f<T : UByte>(1u): the call
@@ -626,6 +637,10 @@ func (s *system) fix(tv *tvar) {
 	case tv.synth:
 		val = types.InvalidType
 	default:
+		if h, ok := s.stubHint(tv); ok && len(s.c.stubs) == 0 {
+			val = h
+			break
+		}
 		s.errs = append(s.errs, inferError{tv.pos, "cannot infer type for type parameter '" + tv.v.Name + "'. Specify it explicitly."})
 	}
 	// A variable with only upper constraints is their intersection with
@@ -755,7 +770,9 @@ func (c *Checker) lub(a, b types.Type) types.Type {
 // writes the results into the tree.
 func (s *system) finish() {
 	if r := s.c.joinRun(s); r != nil {
-		r.join(s)
+		if !slices.Contains(r.joined, s) {
+			r.join(s)
+		}
 	} else {
 		s.complete()
 	}
@@ -989,6 +1006,18 @@ func (s *system) upperHint(v types.Type) types.Type {
 		}
 	}
 	return noWant
+}
+
+// unitBound reports whether v is an unfixed variable, not nullable, that
+// a declared bound makes a Unit: as in Kotlin, a lambda returning it is
+// coerced to Unit, as build { c -> s } for fun <BK : Unit> build(t:
+// (Controller<BK>) -> BK).
+func (s *system) unitBound(v types.Type) bool {
+	tv := s.unfixedVar(v)
+	if tv == nil || v.N {
+		return false
+	}
+	return slices.ContainsFunc(tv.v.Bounds, func(b types.Type) bool { b = s.apply(b); return b.K == types.Unit && !b.N })
 }
 
 // boundExcludes reports whether t is an unfixed variable whose declared
