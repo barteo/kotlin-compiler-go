@@ -97,9 +97,11 @@ mapping.
   kept as abbreviations: its right side isn't read. A source typealias's
   are kept.
 - **One libkc per daemon.** A JVM lets one class loader load a native
-  library, and the KSP plugin gives kc-aa a new class loader for each KSP
-  class path and, from 2.3.13, for each build. So `KcBridge` loads
-  `KcNative`, and libkc, once per JVM, in a class loader of its own
+  library, and the KSP plugin loads kc-aa in a class loader per KSP class
+  path. A daemon that saw a second KSP class path (another project on
+  another KSP or kc build) failed there with `UnsatisfiedLinkError:
+  ... libkc.so already loaded in another classloader` (#86). So `KcBridge`
+  loads `KcNative`, and libkc, once per JVM, in a class loader of its own
   (parent: the platform class loader) that a private `MBeanServer` keeps
   for the life of the JVM; each later kc-aa class loader finds it there.
   (System properties would not do: the Gradle daemon restores them after
@@ -109,6 +111,32 @@ mapping.
     (`gradle --stop`).
   - A kc-aa of another ABI fails with an `UnsatisfiedLinkError` naming
     both ABIs until the daemon restarts.
+
+  `bench/ksp/gradle.sh` runs the KSP Gradle plugin 2.3.13 on kc over six
+  modules with Moshi's codegen, `kspKotlin --rerun`, six builds per
+  daemon, Gradle 8.14.3 on 4 cores. The sum of the `kspKotlin` tasks, ms:
+
+  | | build 1 | builds 2–6 |
+  |---|---|---|
+  | one project, cache off, before | 11604 | 3399 3119 2843 3314 3114 |
+  | one project, cache off, after | 11226 | 3315 2961 3487 2718 3163 |
+  | one project, cache on, before | 10616 | 2879 2481 2354 2109 1896 |
+  | one project, cache on, after | 11349 | 2679 2488 2329 2152 2174 |
+  | two projects in turn, cache on, before | 11536 | project 2 fails in every build |
+  | two projects in turn, cache on, after | 10543 | 9040 3358 3293 2819 2613 |
+
+  "Cache" is `ksp.classloader.cache.processors`. The bridge costs nothing
+  measurable (one call is about 300 ns either way). Here the plugin keeps
+  its class loaders between builds of one project, with or without the
+  configuration cache: its cache service, which closes them, is declared
+  by the tasks but never made, so one project never needed the bridge.
+  Two projects did, with the cache on or off.
+- **Processors with their own Guava, in the plugin.** The plugin loads
+  processors in a child of KSP's class loader, and on kc that has
+  kotlin-compiler's unshaded Guava, so Dagger's processor fails with an
+  `IllegalAccessError` (`com.google.common.graph` split between the two).
+  Stock KSP's `aa-embeddable` shades it. The tests here, and
+  `bench/ksp/run.sh`, put the processors first on one class path instead.
 - **Incremental checking.** An edit that changes only bodies checks
   only the edited files: 25 ms for a one-file edit on
   octi-server, down from 45. Every file is still lowered and has its
