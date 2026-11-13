@@ -1252,32 +1252,31 @@ func (c *Code) Checkcast(class string) {
 	c.push(object(class))
 }
 
-// Uncast removes the checkcast at offset at, which must be the last
-// instruction, and puts back top, the type of the value before it. It
-// reports false and changes nothing if the code since refers to the
-// offset after the checkcast: a label, a line, a local's range, a
-// handler or a liveness trace.
-func (c *Code) Uncast(at int, top VType) bool {
-	end := at + 3
-	if !c.reachable || len(c.buf) != end || c.buf[at] != CHECKCAST || len(c.stack) == 0 {
+// Uncast removes the instructions from offset at to end, which must be
+// the last: a checkcast and the unboxing after it. It puts back top, the
+// type of the value before them. It reports false and changes nothing if
+// the code since refers to an offset after at: a label, a line, a local's
+// range, a handler or a liveness trace.
+func (c *Code) Uncast(at, end int, top VType) bool {
+	if !c.reachable || at >= end || len(c.buf) != end || len(c.stack) == 0 {
 		return false
 	}
-	if n := len(c.placed); n > 0 && c.placed[n-1].pos >= end {
+	if n := len(c.placed); n > 0 && c.placed[n-1].pos > at {
 		return false
 	}
-	if n := len(c.lines); n > 0 && c.lines[n-1].pc >= end {
+	if n := len(c.lines); n > 0 && c.lines[n-1].pc > at {
 		return false
 	}
-	if n := len(c.traces); n > 0 && c.traces[n-1].pos >= end {
+	if n := len(c.traces); n > 0 && c.traces[n-1].pos > at {
 		return false
 	}
 	for _, v := range c.vars {
-		if v.start >= end || v.end >= end {
+		if v.start > at || v.end > at {
 			return false
 		}
 	}
 	for _, h := range c.handlers {
-		if h.end >= end {
+		if h.end > at {
 			return false
 		}
 	}
