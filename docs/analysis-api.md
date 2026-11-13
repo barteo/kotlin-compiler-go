@@ -38,7 +38,9 @@ KSP fork (jvm/ksp)                JVM: jvm/kc-aa (Kotlin)                Go: lib
 
 **The bridge.**
 - `libkc.so` is loaded into the Gradle daemon's JVM and exposes a single JNI
-  method, `KcNative.call(op, request) → byte[]`.
+  method, `KcNative.call(op, request) → byte[]`. kc-aa calls it through
+  `KcBridge`, which loads `KcNative` once per JVM, in a class loader that
+  outlives KSP's (see "One libkc per daemon" below).
 - Go objects are opaque `int64` handles into a per-`Model` table, and Go holds
   no JVM references.
 - A panic surfaces as a `KcPanicException`, not a crash.
@@ -94,13 +96,19 @@ mapping.
 - **Aliases inside a class path typealias's expansion** are expanded, not
   kept as abbreviations: its right side isn't read. A source typealias's
   are kept.
-- **One libkc per daemon.** A JVM lets one class loader load libkc, and
-  the KSP plugin makes a class loader per KSP class path, so a daemon runs
-  kc for one KSP class path only; another fails with
-  `UnsatisfiedLinkError` until the daemon restarts. Loading a
-  copy of the library from another path would load a second Go runtime
-  into the process, which is untested; failing over to the `aa` backend
-  needs the stock backend (above).
+- **One libkc per daemon.** A JVM lets one class loader load a native
+  library, and the KSP plugin gives kc-aa a new class loader for each KSP
+  class path and, from 2.3.13, for each build. So `KcBridge` loads
+  `KcNative`, and libkc, once per JVM, in a class loader of its own
+  (parent: the platform class loader) that a private `MBeanServer` keeps
+  for the life of the JVM; each later kc-aa class loader finds it there.
+  (System properties would not do: the Gradle daemon restores them after
+  each build.) What remains:
+  - libkc, its Go runtime and its caches outlive the builds of a daemon;
+    a rebuilt `libkc.so`, or another `kc.lib`, takes a new daemon
+    (`gradle --stop`).
+  - A kc-aa of another ABI fails with an `UnsatisfiedLinkError` naming
+    both ABIs until the daemon restarts.
 - **Incremental checking.** An edit that changes only bodies checks
   only the edited files: 25 ms for a one-file edit on
   octi-server, down from 45. Every file is still lowered and has its

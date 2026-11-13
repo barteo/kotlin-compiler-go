@@ -1,3 +1,4 @@
+import io.github.barteo.kc.KcBridge;
 import io.github.barteo.kc.KcException;
 import io.github.barteo.kc.KcNative;
 import io.github.barteo.kc.KcPanicException;
@@ -8,7 +9,8 @@ import java.util.concurrent.atomic.AtomicLong;
 /**
  * Stress test of the libkc JNI bridge: concurrent calls with GC pressure, Go panics as
  * exceptions, and the JVM's own SIGSEGV uses (implicit null checks, stack banging) after the
- * Go runtime has installed its signal handlers. Exits non-zero on any failure.
+ * Go runtime has installed its signal handlers. Exits non-zero on any failure. The calls go
+ * through KcBridge, as kc-aa's do.
  *
  * <pre>java -Dkc.lib=/path/libkc.so -cp classes Stress [threads] [callsPerThread]</pre>
  */
@@ -24,6 +26,7 @@ public class Stress {
     int threads = args.length > 0 ? Integer.parseInt(args[0]) : 32;
     int calls = args.length > 1 ? Integer.parseInt(args[1]) : 31250;
     AtomicLong failures = new AtomicLong(), panics = new AtomicLong();
+    System.out.println("libkc: " + KcBridge.where());
 
     // 1. Concurrent echoes of random payloads, with a panic every 1000th call.
     Thread garbage = new Thread(() -> {
@@ -43,7 +46,7 @@ public class Stress {
         for (int i = 0; i < calls; i++) {
           if (i % 1000 == 999) {
             try {
-              KcNative.call(KcNative.OP_PANIC, ("boom " + seed).getBytes());
+              KcBridge.call(KcNative.OP_PANIC, ("boom " + seed).getBytes());
               failures.incrementAndGet();
             } catch (KcPanicException e) {
               if (!e.getMessage().contains("boom " + seed)) failures.incrementAndGet();
@@ -53,7 +56,7 @@ public class Stress {
           }
           byte[] req = new byte[r.nextInt(i % 5000 == 0 ? 1 << 20 : 4096)];
           r.nextBytes(req);
-          if (!Arrays.equals(req, KcNative.call(KcNative.OP_ECHO, req))) failures.incrementAndGet();
+          if (!Arrays.equals(req, KcBridge.call(KcNative.OP_ECHO, req))) failures.incrementAndGet();
         }
       });
       ts[t].start();
@@ -66,7 +69,7 @@ public class Stress {
 
     // 2. A request error is a KcException, not a panic.
     try {
-      KcNative.call(9999, new byte[0]);
+      KcBridge.call(9999, new byte[0]);
       failures.incrementAndGet();
     } catch (KcPanicException e) {
       failures.incrementAndGet();
@@ -91,7 +94,7 @@ public class Stress {
     // 4. Stack overflow, which the JVM detects with guard pages and SIGSEGV, in a thread
     // that also calls into Go.
     for (int i = 0; i < 20; i++) {
-      KcNative.call(KcNative.OP_ECHO, new byte[8]);
+      KcBridge.call(KcNative.OP_ECHO, new byte[8]);
       try {
         recurse(0);
         failures.incrementAndGet();
@@ -103,10 +106,10 @@ public class Stress {
 
     // 5. The cost of one call with a small payload, on one thread, after warm-up.
     byte[] small = new byte[16];
-    for (int i = 0; i < 200_000; i++) KcNative.call(KcNative.OP_ECHO, small);
+    for (int i = 0; i < 200_000; i++) KcBridge.call(KcNative.OP_ECHO, small);
     int n = 1_000_000;
     long t1 = System.nanoTime();
-    for (int i = 0; i < n; i++) KcNative.call(KcNative.OP_ECHO, small);
+    for (int i = 0; i < n; i++) KcBridge.call(KcNative.OP_ECHO, small);
     System.out.printf("per call: %.0f ns (16-byte echo, one thread)%n", (System.nanoTime() - t1) / (double) n);
 
     if (failures.get() != 0) {

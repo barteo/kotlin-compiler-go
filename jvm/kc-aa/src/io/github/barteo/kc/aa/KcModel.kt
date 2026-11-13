@@ -1,6 +1,6 @@
 package io.github.barteo.kc.aa
 
-import io.github.barteo.kc.KcNative
+import io.github.barteo.kc.KcBridge
 import io.github.barteo.kc.Wire
 
 /**
@@ -33,7 +33,7 @@ internal object KcOps {
         cfg.classPath.forEach { w.writeString(it) }
         w.writeUint(cfg.friendPaths.size.toLong())
         cfg.friendPaths.forEach { w.writeString(it) }
-        return Wire.Reader(KcNative.call(OPEN, w.message())).readInt()
+        return Wire.Reader(KcBridge.call(OPEN, w.message())).readInt()
     }
 
     /**
@@ -48,7 +48,7 @@ internal object KcOps {
         w.writeUint(kept.size.toLong())
         kept.forEach { w.writeUint(it) }
         val t = KcTimer()
-        val r = Wire.Reader(KcNative.call(UPDATE, w.message()))
+        val r = Wire.Reader(KcBridge.call(UPDATE, w.message()))
         t.mark("native")
         val model = r.readInt()
         try {
@@ -74,13 +74,13 @@ internal object KcOps {
 
     /** The class-path class [classId] (a/b/Outer.Inner) as model [model] has it, or null. */
     fun cls(model: Long, classId: String): KcDecl? {
-        val r = Wire.Reader(KcNative.call(CLASS, Wire.Writer().writeInt(model).writeString(classId).message()))
+        val r = Wire.Reader(KcBridge.call(CLASS, Wire.Writer().writeInt(model).writeString(classId).message()))
         return r.decls().singleOrNull()
     }
 
     /** The class-path package [fqName] (dotted) as model [model] has it, or null if there is none. */
     fun pkg(model: Long, fqName: String): KcPackage? {
-        val r = Wire.Reader(KcNative.call(PACKAGE, Wire.Writer().writeInt(model).writeString(fqName).message()))
+        val r = Wire.Reader(KcBridge.call(PACKAGE, Wire.Writer().writeInt(model).writeString(fqName).message()))
         val exists = r.readBool()
         val classes = List(r.readUint().toInt()) { r.readString() }
         val decls = r.decls()
@@ -88,7 +88,7 @@ internal object KcOps {
     }
 
     fun close(handle: Long) {
-        KcNative.call(CLOSE, Wire.Writer().writeInt(handle).message())
+        KcBridge.call(CLOSE, Wire.Writer().writeInt(handle).message())
     }
 
     private fun Wire.Reader.annotations(): List<KcAnnotation> = List(readUint().toInt()) { annotation() }
