@@ -130,6 +130,13 @@ Arguments can be files or directories. Flags:
 | `-time` | print per-phase timings |
 | `-features` | print each error with its unsupported feature, tab-separated |
 
+`kc -serve` compiles again and again for a tool that runs many small
+compiles: each line of stdin is one compile's arguments as a JSON array,
+answered on stdout with its exit code and output. It keeps the JDK's
+index and the classes it read from jars for the compiles after, which
+is most of a small compile's work. The conformance tests use it
+([Conformance](docs/conformance.md#long-lived-kc)).
+
 ### Use it in a Gradle build
 
 There is no Gradle plugin. [tools/gradle/use-kc.init.gradle.kts](tools/gradle/use-kc.init.gradle.kts) is an init script that makes every Kotlin/JVM compile task of a build run `kc` instead of `kotlinc`: `compileKotlin`, Android's `compile<Variant>Kotlin`, and a multiplatform module's `compileAndroidMain` and `compileKotlinJvm`. `kc` gets the task's own sources, Java sources, class path, friend paths, module name, `-jvm-default` mode and Compose, kotlinx.serialization, Parcelize and Metro plugins, with Metro's options. An Android module compiles against `android.jar`, any other module against the JDK of its Java toolchain. Dexing, R8, javac and packaging then use `kc`'s classes. It is meant for fast local builds; CI and release builds should keep `kotlinc`.

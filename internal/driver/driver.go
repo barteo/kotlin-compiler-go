@@ -81,6 +81,10 @@ type Options struct {
 	// OptIns are the qualified names of the requirement markers the whole
 	// module opts in to, as kotlinc's -opt-in.
 	OptIns []string
+	// Libraries, if set, keeps the class path and library for later
+	// compiles of the same configuration, and gives this compile those
+	// of an earlier one: see Libraries.
+	Libraries *Libraries
 }
 
 // parallel runs fn(i) for i in [0, n) on up to jobs goroutines.
@@ -173,9 +177,11 @@ func Compile(paths []string, opts Options) error {
 	// Kotlin standard library's default imports are read, also in the
 	// background: checking waits for a package only if it is not read yet.
 	type cpResult struct {
-		cp  *classpath.Path
-		lib *check.Library
-		err error
+		cp     *classpath.Path
+		lib    *check.Library
+		done   func() // called once the compile is done with cp
+		shared bool   // cp and lib's classes are opts.Libraries': see Libraries
+		err    error
 	}
 	cpDone := make(chan cpResult, 1)
 	// The classes the Java sources name that aren't theirs. The program's
@@ -185,15 +191,23 @@ func Compile(paths []string, opts Options) error {
 	var prefetch time.Duration
 	prefetched := make(chan struct{})
 	go func() {
-		cp, err := openClassPath(opts)
-		if err == nil && len(javaPaths) > 0 {
-			err = addJava(cp, javaPaths, opts.Jobs, java)
+		var r cpResult
+		if opts.Libraries != nil && len(javaPaths) == 0 {
+			// A shared library's default imports are read once: then
+			// Prefetch finds them read.
+			r.cp, r.lib, r.done, r.shared, r.err = opts.Libraries.get(opts)
+		} else {
+			r.cp, r.err = openClassPath(opts)
+			if r.err == nil && len(javaPaths) > 0 {
+				r.err = addJava(r.cp, javaPaths, opts.Jobs, java)
+			}
+			if r.err == nil {
+				r.lib = newLibrary(r.cp, opts)
+				r.done = func() { r.cp.Close() }
+			}
 		}
-		var lib *check.Library
-		if err == nil {
-			lib = newLibrary(cp, opts)
-		}
-		cpDone <- cpResult{cp, lib, err}
+		lib := r.lib
+		cpDone <- r
 		if lib != nil {
 			start := time.Now()
 			lib.Prefetch()
@@ -205,7 +219,7 @@ func Compile(paths []string, opts Options) error {
 	defer func() {
 		if r := openCP(); r.err == nil {
 			<-prefetched
-			r.cp.Close()
+			r.done()
 		}
 	}()
 
@@ -267,7 +281,10 @@ func Compile(paths []string, opts Options) error {
 	if len(javaPaths) > 0 {
 		java.kotlin = kotlinClasses(files)
 	}
-	if opts.Timing != nil {
+	if opts.Timing != nil && r.shared {
+		fmt.Fprintf(opts.Timing, "%-8s 0s (%d classes, indexed by an earlier compile; waited %v after parse)\n", "index",
+			cp.Len(), time.Since(start).Round(time.Microsecond))
+	} else if opts.Timing != nil {
 		fmt.Fprintf(opts.Timing, "%-8s %v (%d classes, concurrent with parse; waited %v after it)\n", "index",
 			cp.IndexTime.Round(time.Microsecond), cp.Len(), time.Since(start).Round(time.Microsecond))
 	}
@@ -293,6 +310,9 @@ func Compile(paths []string, opts Options) error {
 		if cp.HasKotlin() {
 			fmt.Fprintf(opts.Timing, "%-8s %v (Kotlin default imports, after index, concurrent with parse and check)\n", "prefetch",
 				prefetch.Round(time.Microsecond))
+		}
+		if r.shared {
+			fmt.Fprintf(opts.Timing, "(load, kmeta and inline: over all the compiles that share the class path)\n")
 		}
 		n, d := cp.Loaded()
 		fmt.Fprintf(opts.Timing, "%-8s %v (%d classes, part of check and prefetch)\n", "load", d.Round(time.Microsecond), n)

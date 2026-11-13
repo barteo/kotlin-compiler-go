@@ -194,12 +194,9 @@ func tsvField(s string) string {
 }
 
 // compareBaseline prints the tests whose category changed from or to a
-// good one since the baseline TSV: regressions, then fixes.
-func compareBaseline(path string, rs []*result, good func(string) bool) error {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return err
-	}
+// good one since the baseline TSV, data read from path: regressions, then
+// fixes. It returns an error if a test regressed.
+func compareBaseline(path string, data []byte, rs []*result, good func(string) bool) error {
 	old := map[string]string{}
 	for _, line := range strings.Split(string(data), "\n")[1:] {
 		f := strings.SplitN(line, "\t", 4)
@@ -228,6 +225,9 @@ func compareBaseline(path string, rs []*result, good func(string) bool) error {
 	}
 	for _, s := range better {
 		fmt.Println("  fixed:", s)
+	}
+	if len(worse) > 0 {
+		return fmt.Errorf("%d tests stopped passing (see %s)", len(worse), path)
 	}
 	return nil
 }
