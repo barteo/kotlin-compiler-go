@@ -3,6 +3,7 @@ package check
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
@@ -22,9 +23,12 @@ import (
 //     and resolves each graph's bindings (metroplan.go). It writes, as
 //     Kotlin, what the plugin adds: a graph's Impl class and its
 //     companion object, a contributing class's nested
-//     MetroContributionTo... interface of @Binds functions, and the
-//     metro.hints functions that downstream modules find the module's
-//     contributions by.
+//     MetroContributionTo... interface of @Binds functions (or, for a
+//     contributed interface, one that extends it), the metro.hints
+//     functions that downstream modules find the module's contributions
+//     by, and, with Dagger's runtime interop, Dagger's factories and
+//     members injectors, through which graphs that kotlinc compiles use
+//     the module's classes (metrodagger.go).
 //   - The files, parsed again, are then checked with the plan
 //     (Library.MetroPlan): declare adds the members to their classes,
 //     and replaces the calls of createGraph and createGraphFactory with
@@ -57,26 +61,60 @@ type MetroFile struct {
 
 const metroPkg = "dev.zacsweers.metro"
 
-// UsesMetro reports whether a file imports declarations of Metro's
-// runtime or names its annotations qualified, which the plugin then
-// reads.
-func UsesMetro(f *syntax.File) bool {
+// UsesMetro reports whether a file uses Metro's annotations, or the
+// annotations of other frameworks that Metro's options opts make it read
+// (javax.inject's, Dagger's, Hilt's): whether it imports declarations of
+// their packages or names their annotations qualified. The plugin reads
+// nothing in a file that doesn't.
+func UsesMetro(f *syntax.File, opts map[string]string) bool {
+	cfg, _ := parseMetroOptions(opts)
+	pkgs := cfg.packages()
+	in := func(name string) bool {
+		for _, p := range pkgs {
+			if name == p || strings.HasPrefix(name, p+".") {
+				return true
+			}
+		}
+		return false
+	}
 	for _, imp := range f.Imports {
-		if imp.Path == metroPkg || strings.HasPrefix(imp.Path, metroPkg+".") || strings.HasPrefix(imp.Path, "dev.zacsweers.metrox.") {
+		if in(imp.Path) {
 			return true
 		}
 	}
 	found := false
+	anns := func(as []syntax.Annotation) {
+		for _, a := range as {
+			if strings.Contains(a.Name, ".") && in(a.Name) {
+				found = true
+			}
+		}
+	}
+	params := func(ps []*syntax.Param) {
+		for _, p := range ps {
+			anns(p.Annotations)
+		}
+	}
 	var visit func(ds []syntax.Decl)
 	visit = func(ds []syntax.Decl) {
 		for _, d := range ds {
-			if cd, ok := d.(*syntax.ClassDecl); ok {
-				for _, a := range cd.Annotations {
-					if strings.HasPrefix(a.Name, metroPkg+".") {
-						found = true
-					}
+			switch d := d.(type) {
+			case *syntax.ClassDecl:
+				anns(d.Annotations)
+				anns(d.CtorMods.Annotations)
+				for _, p := range d.CtorParams {
+					anns(p.Modifiers.Annotations)
+					anns(p.Param.Annotations)
 				}
-				visit(cd.Members)
+				visit(d.Members)
+			case *syntax.FunDecl:
+				anns(d.Annotations)
+				params(d.Params)
+			case *syntax.PropDecl:
+				anns(d.Annotations)
+			case *syntax.SecondaryCtor:
+				anns(d.Annotations)
+				params(d.Params)
 			}
 		}
 	}
@@ -97,10 +135,11 @@ func PlanMetro(files []*syntax.File, lib *Library) (*MetroPlan, []*syntax.Error)
 		c.allAnnotations()
 		broken = broken || len(c.errs) > 0
 	}
-	m := newMetroAnalysis(u, checkers)
-	if err := m.options(lib.MetroOptions); err != nil {
+	cfg, err := parseMetroOptions(lib.MetroOptions)
+	if err != nil {
 		return nil, []*syntax.Error{{Msg: "kc: " + err.Error(), Feature: "metro"}}
 	}
+	m := newMetroAnalysis(u, checkers, cfg)
 	m.run()
 	if broken {
 		// The program's own errors, which checking reports, may be why.
@@ -135,28 +174,152 @@ var metroOptions = map[string]string{
 	"enable-circuit-codegen":                          "false",
 }
 
-// options reads the plugin's options.
-func (m *metroAnalysis) options(opts map[string]string) error {
-	for key, v := range opts {
-		def, known := metroOptions[key]
-		switch {
-		case key == "contributes-as-inject":
-			m.contributesAsInject = v != "false"
-		case key == "enable-function-providers":
-			m.functionProviders = v != "false"
-		case key == "optional-binding-behavior":
-			if v != "DEFAULT" && v != "" {
-				return fmt.Errorf("Metro option %s=%s is not supported", key, v)
-			}
-		case known:
-			if v != def && v != "" {
-				return fmt.Errorf("Metro option %s=%s is not supported", key, v)
-			}
-		case strings.HasPrefix(key, "custom-") && v != "":
-			return fmt.Errorf("Metro option %s (custom annotations) is not supported", key)
+// metroSupported are the options of metroOptions that kc reads; it
+// refuses the others' values but their defaults.
+var metroSupported = map[string]bool{
+	"contributes-as-inject":               true,
+	"enable-function-providers":           true,
+	"interop-include-javax-annotations":   true,
+	"interop-include-jakarta-annotations": true,
+	"interop-include-dagger-annotations":  true,
+	"enable-dagger-runtime-interop":       true,
+	"enable-kclass-to-class-interop":      true,
+	"interop-include-hilt-annotations":    true,
+}
+
+// metroOptionalBehaviors are the values of optional-binding-behavior kc
+// supports.
+var metroOptionalBehaviors = map[string]bool{"DEFAULT": true, "DISABLED": true}
+
+// metroConfig is what the plugin's options ask for.
+type metroConfig struct {
+	contributesAsInject, functionProviders bool
+	// javax, jakarta, dagger and hilt are set if Metro reads those
+	// frameworks' annotations as its own; as Metro's, Hilt's imply
+	// Dagger's, and Dagger's javax.inject's and Jakarta's.
+	javax, jakarta, dagger, hilt bool
+	// daggerRuntime is set if Dagger's Lazy and Provider are injected;
+	// kclassToClass if a class map key may be a java.lang.Class.
+	daggerRuntime, kclassToClass bool
+	// optional is optional-binding-behavior: DEFAULT, DISABLED or
+	// REQUIRE_OPTIONAL_BINDING.
+	optional string
+}
+
+// packages are the packages of the annotations Metro reads.
+func (cfg metroConfig) packages() []string {
+	pkgs := []string{metroPkg, "dev.zacsweers.metrox"}
+	if cfg.javax {
+		pkgs = append(pkgs, "javax.inject")
+	}
+	if cfg.jakarta {
+		pkgs = append(pkgs, "jakarta.inject")
+	}
+	if cfg.dagger {
+		pkgs = append(pkgs, "dagger")
+	}
+	return pkgs
+}
+
+// aliases maps the annotations of other frameworks that Metro reads as
+// its own, by internal name, to Metro's. Only annotations that say what a
+// declaration is to Metro are aliased: those that are part of a binding's
+// key, as javax.inject.Named or Singleton, stay what they are, as Metro
+// keeps them.
+func (cfg metroConfig) aliases() map[string]string {
+	a := map[string]string{}
+	if cfg.javax {
+		a["javax/inject/Inject"] = mInject
+	}
+	if cfg.jakarta {
+		a["jakarta/inject/Inject"] = mInject
+	}
+	if cfg.dagger {
+		// Dagger's map keys (ClassKey, StringKey, ...) and Reusable are
+		// keys of their own, as in Metro.
+		for k, v := range map[string]string{
+			"dagger/Module":                        mBindingContainer,
+			"dagger/Binds":                         mBinds,
+			"dagger/Provides":                      mProvides,
+			"dagger/BindsInstance":                 mProvides,
+			"dagger/MapKey":                        mMapKey,
+			"dagger/multibindings/IntoSet":         mIntoSet,
+			"dagger/multibindings/IntoMap":         mIntoMap,
+			"dagger/multibindings/ElementsIntoSet": mElementsIntoSet,
+			"dagger/multibindings/Multibinds":      mMultibinds,
+			"dagger/assisted/Assisted":             mAssisted,
+			"dagger/assisted/AssistedInject":       mAssistedInject,
+			"dagger/assisted/AssistedFactory":      mAssistedFactory,
+		} {
+			a[k] = v
 		}
 	}
-	return nil
+	return a
+}
+
+// MetroOptionsError returns an error if kc can't compile as Metro does
+// with the plugin's options opts.
+func MetroOptionsError(opts map[string]string) error {
+	_, err := parseMetroOptions(opts)
+	return err
+}
+
+// parseMetroOptions reads the plugin's options. The error, if not nil,
+// names an option whose value kc doesn't support; the config is still
+// what the options ask for.
+func parseMetroOptions(opts map[string]string) (metroConfig, error) {
+	cfg := metroConfig{contributesAsInject: true, functionProviders: true, optional: "DEFAULT"}
+	keys := make([]string, 0, len(opts))
+	for key := range opts {
+		keys = append(keys, key)
+	}
+	slices.Sort(keys)
+	var err error
+	for _, key := range keys {
+		v := opts[key]
+		on := v == "true"
+		switch key {
+		case "contributes-as-inject":
+			cfg.contributesAsInject = v != "false"
+		case "enable-function-providers":
+			cfg.functionProviders = v != "false"
+		case "optional-binding-behavior":
+			if v != "" {
+				cfg.optional = v
+			}
+		case "interop-include-javax-annotations":
+			cfg.javax = cfg.javax || on
+		case "interop-include-jakarta-annotations":
+			cfg.jakarta = cfg.jakarta || on
+		case "interop-include-dagger-annotations":
+			cfg.dagger = cfg.dagger || on
+		case "interop-include-hilt-annotations":
+			cfg.hilt = cfg.hilt || on
+		case "enable-dagger-runtime-interop":
+			cfg.daggerRuntime = cfg.daggerRuntime || on
+		case "enable-kclass-to-class-interop":
+			cfg.kclassToClass = on
+		}
+		def, known := metroOptions[key]
+		switch {
+		case err != nil:
+		case key == "optional-binding-behavior":
+			if v != "" && !metroOptionalBehaviors[v] {
+				err = fmt.Errorf("Metro option %s=%s is not supported", key, v)
+			}
+		case known && !metroSupported[key] && v != def && v != "":
+			err = fmt.Errorf("Metro option %s=%s is not supported", key, v)
+		case strings.HasPrefix(key, "custom-") && v != "":
+			err = fmt.Errorf("Metro option %s (custom annotations) is not supported", key)
+		}
+	}
+	if cfg.hilt {
+		cfg.dagger = true
+	}
+	if cfg.dagger {
+		cfg.javax, cfg.jakarta, cfg.daggerRuntime = true, true, true
+	}
+	return cfg, err
 }
 
 // allAnnotations resolves the annotations of the file and its

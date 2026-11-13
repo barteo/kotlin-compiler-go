@@ -53,10 +53,19 @@ type metroAnalysis struct {
 	// contributesAsInject and functionProviders are Metro's options of
 	// those names.
 	contributesAsInject, functionProviders bool
+	cfg                                    metroConfig
+	// alias maps other frameworks' annotations that Metro reads as its
+	// own to Metro's (metroConfig.aliases).
+	alias map[string]string
 
 	classfiles map[string]*classfile.Annotated
 	classAnns  map[*types.ClassSym][]*mAnn
 	metas      map[string]mMeta
+
+	// hiltComponentScopes caches hiltScope's @DefineComponent scopes,
+	// hiltDeps hiltAggregatedDeps.
+	hiltComponentScopes map[string]string
+	hiltDeps            *[]hiltDep
 }
 
 // mMeta is what an annotation class is to Metro.
@@ -65,12 +74,14 @@ type mMeta struct {
 	implicitClassKey         bool
 }
 
-func newMetroAnalysis(u *Universe, checkers []*Checker) *metroAnalysis {
+func newMetroAnalysis(u *Universe, checkers []*Checker, cfg metroConfig) *metroAnalysis {
 	m := &metroAnalysis{u: u, checkers: checkers, checkerOf: map[*types.ClassSym]*Checker{},
 		plan:                &MetroPlan{members: map[string][]string{}, supers: map[string][]string{}, calls: map[string]map[syntax.Pos]string{}},
-		contributesAsInject: true, functionProviders: true,
-		classfiles: map[string]*classfile.Annotated{}, classAnns: map[*types.ClassSym][]*mAnn{}, metas: map[string]mMeta{}}
+		contributesAsInject: cfg.contributesAsInject, functionProviders: cfg.functionProviders, cfg: cfg, alias: cfg.aliases(),
+		classfiles: map[string]*classfile.Annotated{}, classAnns: map[*types.ClassSym][]*mAnn{}, metas: map[string]mMeta{},
+		hiltComponentScopes: map[string]string{}}
 	for _, c := range checkers {
+		c.metroAlias = m.alias
 		for _, d := range c.classes {
 			if d.Sym != nil {
 				m.checkerOf[d.Sym] = c
@@ -102,7 +113,12 @@ func (m *metroAnalysis) run() {
 			if d.Sym == nil || d.Sym.Local || d.Sym.Anonymous {
 				continue
 			}
-			if a := find(m.annsOf(d.Sym), mDependencyGraph); a != nil {
+			as := m.annsOf(d.Sym)
+			if m.cfg.dagger && (find(as, "dagger/Component") != nil || find(as, "dagger/Subcomponent") != nil) {
+				m.unsupported(c, d.P, "kc doesn't support Dagger components (%s); use @DependencyGraph", d.Sym.DisplayName())
+				continue
+			}
+			if a := find(as, mDependencyGraph); a != nil {
 				m.graph(c, d, a)
 			}
 		}
@@ -110,6 +126,7 @@ func (m *metroAnalysis) run() {
 	for _, c := range m.checkers {
 		m.graphCalls(c)
 	}
+	m.writeDaggerFactories()
 }
 
 // class returns the class with an internal name, the program's or the
@@ -147,16 +164,17 @@ func (m *metroAnalysis) annsOf(cls *types.ClassSym) []*mAnn {
 		return as
 	}
 	var as []*mAnn
+	source := false
 	if d, ok := cls.Decl.(*syntax.ClassDecl); ok && !cls.External {
+		source = true
 		if c := m.checkerOf[cls]; c != nil {
 			as = c.fromSource(d.Annotations, cls)
 		}
 	} else if cf := m.classfile(cls.Name); cf != nil {
-		for _, a := range cf.Class {
-			as = append(as, fromClassfile(a))
-		}
-		as = expandContainers(as)
+		as = m.convertAll(cf.Class)
 	}
+	m.classAnns[cls] = as // for the lookups of hiltContributions
+	as = append(as, m.hiltContributions(cls.Name, as, source)...)
 	m.classAnns[cls] = as
 	return as
 }
@@ -257,6 +275,8 @@ type mMember struct {
 	paramAnns [][]*mAnn // the parameters' annotations
 	recvAnns  []*mAnn
 	defaults  []bool // which parameters declare default values
+	// fn is a function's symbol, of the program's members only.
+	fn *types.FunSym
 }
 
 // same reports whether o declares the same member as mm, which it
@@ -297,7 +317,7 @@ func (m *metroAnalysis) declared(cls *types.ClassSym) []*mMember {
 				if f == nil || f.Static {
 					continue
 				}
-				mm := &mMember{name: f.Name, owner: cls, ret: f.Ret, params: f.Params, abstract: f.Abstract, anns: c.fromSource(md.Annotations, cls)}
+				mm := &mMember{name: f.Name, owner: cls, ret: f.Ret, params: f.Params, abstract: f.Abstract, anns: c.fromSource(md.Annotations, cls), fn: f}
 				if md.Recv != nil && md.RecvSym != nil {
 					t := md.RecvSym.Type
 					mm.recv = &t
@@ -342,14 +362,12 @@ func (m *metroAnalysis) declared(cls *types.ClassSym) []*mMember {
 						if first == nil && !strings.HasSuffix(n, "$annotations") {
 							first = am
 						}
-						for _, a := range am.Annots {
-							as = append(as, fromClassfile(a))
-						}
+						as = append(as, m.convertAll(am.Annots)...)
 					}
 				}
 			}
 		}
-		return first, expandContainers(as)
+		return first, as
 	}
 	for _, name := range slices.Sorted(maps.Keys(cls.Methods)) {
 		for _, f := range cls.Methods[name] {
@@ -364,13 +382,13 @@ func (m *metroAnalysis) declared(cls *types.ClassSym) []*mMember {
 				mm.recv = &t
 				off = 1
 				if am != nil && len(am.Params) > 0 {
-					mm.recvAnns = convertAll(am.Params[0])
+					mm.recvAnns = m.convertAll(am.Params[0])
 				}
 			}
 			for i, p := range f.Params {
 				var pa []*mAnn
 				if am != nil && i+off < len(am.Params) {
-					pa = convertAll(am.Params[i+off])
+					pa = m.convertAll(am.Params[i+off])
 				}
 				mm.paramAnns = append(mm.paramAnns, pa)
 				mm.defaults = append(mm.defaults, p.Default)
@@ -395,12 +413,18 @@ func (m *metroAnalysis) declared(cls *types.ClassSym) []*mMember {
 	return out
 }
 
-func convertAll(as []classfile.Annotation) []*mAnn {
+// convertAll converts a class file's annotations, which Metro reads
+// those of other frameworks among as its own.
+func (m *metroAnalysis) convertAll(as []classfile.Annotation) []*mAnn {
 	var out []*mAnn
 	for _, a := range as {
 		out = append(out, fromClassfile(a))
 	}
-	return expandContainers(out)
+	out = expandContainers(out)
+	for _, a := range out {
+		a.alias(m.alias)
+	}
+	return out
 }
 
 // metroResolve resolves a type in the scope of class cls.
@@ -492,7 +516,7 @@ func (m *metroAnalysis) ctorOf(cls *types.ClassSym) (*types.FunSym, [][]*mAnn, [
 			if am.Name != "<init>" || am.Desc != desc {
 				continue
 			}
-			as := convertAll(am.Annots)
+			as := m.convertAll(am.Annots)
 			explicit := find(as, mInject) != nil || find(as, mAssistedInject) != nil || find(as, "javax/inject/Inject") != nil
 			if explicit || (classInject || assisted || implicit) && (pick == nil || len(cls.Ctors) == 1) {
 				pick = f
@@ -500,7 +524,7 @@ func (m *metroAnalysis) ctorOf(cls *types.ClassSym) (*types.FunSym, [][]*mAnn, [
 				for j := range f.Params {
 					var pa []*mAnn
 					if j < len(am.Params) {
-						pa = convertAll(am.Params[j])
+						pa = m.convertAll(am.Params[j])
 					}
 					pickAnns = append(pickAnns, pa)
 				}
@@ -533,6 +557,7 @@ func (m *metroAnalysis) contributions(c *Checker, d *syntax.ClassDecl) {
 	anns := m.annsOf(cls)
 	scopes := map[string]bool{}
 	byScope := map[string][]string{}
+	supertype := map[string]bool{}
 	var order []string
 	for _, a := range anns {
 		switch a.cls {
@@ -549,6 +574,7 @@ func (m *metroAnalysis) contributions(c *Checker, d *syntax.ClassDecl) {
 			order = append(order, scope)
 		}
 		if a.cls == mContributesTo {
+			supertype[scope] = true
 			continue
 		}
 		fn, err := m.bindsFor(c, cls, a, anns)
@@ -567,8 +593,19 @@ func (m *metroAnalysis) contributions(c *Checker, d *syntax.ClassDecl) {
 		if fns := byScope[scope]; len(fns) > 0 {
 			var b strings.Builder
 			fmt.Fprintf(&b, "@dev.zacsweers.metro.internal.MetroContribution(scope = %s::class)\n@dev.zacsweers.metro.BindingContainer\n", metroClassName(sc))
+			if m.daggerFactories() {
+				b.WriteString("@dagger.Module\n")
+			}
 			fmt.Fprintf(&b, "interface %s {\n%s\n}\n", contributionName(sc), strings.Join(fns, "\n"))
 			m.plan.members[cls.Name] = append(m.plan.members[cls.Name], b.String())
+		}
+		// A contributed interface's nested interface that extends it,
+		// which kotlinc's Metro merges into its graphs, as it writes it;
+		// kc's graphs use the interface itself. A binding container is
+		// merged itself.
+		if supertype[scope] && cls.Interface && len(cls.TypeParams) == 0 && find(anns, mBindingContainer) == nil {
+			m.plan.members[cls.Name] = append(m.plan.members[cls.Name],
+				fmt.Sprintf("@dev.zacsweers.metro.internal.MetroContribution(scope = %s::class)\ninterface %sSupertype : %s\n", metroClassName(sc), contributionName(sc), metroClassName(cls)))
 		}
 		m.hint(cls, sc)
 	}

@@ -112,18 +112,37 @@ Without `-compose`, calls of libraries' composables aren't supported.
 
 `kc` implements Metro 1.5.2's dependency graphs: `@DependencyGraph` and its factory, with `@Provides` and `@Includes` parameters; `@Inject` constructors and objects, `@Provides`, `@Binds`, qualifiers and `@SingleIn` scopes; requests as `() -> T`, `Provider<T>` and `Lazy<T>`; set and map multibindings, including `@ElementsIntoSet`, `@Multibinds` and wrapped map values; `@BindingContainer`; assisted injection; member injection; `@ContributesTo`, `@ContributesBinding`, `@ContributesIntoSet` and `@ContributesIntoMap` with `replaces` and `excludes`, from this module or the class path; and `@GraphExtension`s with their factories.
 
+With `interop-include-javax-annotations` and `interop-include-jakarta-annotations`, `kc` reads `javax.inject`'s and `jakarta.inject`'s `@Inject` as Metro's, their `@Qualifier` and `@Scope` annotations (`@Named`, `@Singleton`) as qualifiers and scopes of their own, and injects their `Provider<T>`. With `optional-binding-behavior=DISABLED`, a parameter's default value never stands in for a missing binding.
+
+With `interop-include-dagger-annotations`, which implies the javax and Jakarta options and `enable-dagger-runtime-interop`, `kc` reads Dagger's `@Module` (with `includes`) as a binding container, `@Binds`, `@Provides` and `@BindsInstance`, the multibinding annotations, `@MapKey` and its map keys (`@ClassKey` keys are `KClass`es, as in Metro), and `dagger.assisted`'s annotations, matching `@Assisted` parameters by type and identifier as Dagger does. With `enable-dagger-runtime-interop`, it injects `dagger.Lazy<T>` and `dagger.internal.Provider<T>`, and binds `java.util.Optional<T>` for `@BindsOptionalOf`. As Metro, it reports a `Provider<Lazy<T>>` whose types aren't Metro's `Provider` and Kotlin's `Lazy`.
+
+With `enable-kclass-to-class-interop`, a map's `java.lang.Class` keys are its `KClass` keys, as in Metro: `Map<Class<*>, V>`, wrapped or with wrapped values, and `@Multibinds` declarations of it, are the multibinding `Map<KClass<*>, V>`, with its keys converted.
+
+With `interop-include-hilt-annotations`, which implies the Dagger options, a Dagger `@Module` or a Hilt `@EntryPoint` annotated `@InstallIn(component)` contributes, as a binding container or a graph supertype, to the scope the component maps to: `javax.inject.Singleton` for `SingletonComponent`, the matching `dagger.hilt.android.scopes` annotation for Hilt's other built-in components, and a `@DefineComponent`'s own scope annotation. As in Metro, a graph merges what is installed in a component by that scope (`@Singleton @DependencyGraph(Singleton::class)`), `kc` writes the usual contribution hints for them, and reads the modules and entry points of Hilt's compiled `@AggregatedDeps` markers (package `hilt_aggregated_deps`), but tests'. What is installed in a component without a scope contributes nothing.
+
 Not supported, and reported as such:
 
-- custom annotations (the `custom-*` options), and options that change Metro's output, other than `enabled`, `contributes-as-inject` and `enable-function-providers`;
+- custom annotations (the `custom-*` options), and options that change Metro's output, other than `enabled`, `contributes-as-inject`, `enable-function-providers`, the javax, Jakarta, Dagger, Hilt and `KClass` options above and `optional-binding-behavior=DISABLED`. With `-metro`, `kc` checks the options before anything else, whether or not the files use Metro, so a module that uses only the annotations such an option makes Metro read (javax's, Dagger's, Hilt's) is reported, not compiled without Metro;
 - `@Provides` extension functions;
 - graphs with type parameters, and graph factories that are abstract classes;
-- javax, Jakarta, Dagger and Guice interop;
+- Guice, Anvil and kotlin-inject interop;
+- as in Metro, Hilt's `@TestInstallIn`, `@DefineComponent`'s `parent`, and `@AggregatedDeps`' `replaces` and `componentEntryPoints`;
+- with `enable-kclass-to-class-interop`, bindings of a map with `Class` keys other than a multibinding (`@Provides fun m(): Map<Class<*>, V>`); array class literals (`Array<String>::class`) as map keys;
+- Dagger's `@Component` and `@Subcomponent`, and modules with `subcomponents`;
 - member injection into classes from the class path;
+- Java modules of the class path whose `@Provides` methods are static: their bindings are missing (a `[Metro/MissingBinding]` error, not a wrong program);
 - member injection that depends on the class itself, as `@Inject lateinit var s: Lazy<S>` in `S`;
 - `createDynamicGraph` and `createDynamicGraphFactory`, and calls of `createGraph` and `createGraphFactory` whose type argument is inferred;
 - graph functions that create a graph extension from parameters, other than its factory's.
 
-`kc` writes no `$MetroFactory` classes, so a graph that `kotlinc` compiles can't use a module that `kc` compiles. A graph that `kc` compiles can use modules that either compiler compiled.
+A graph that `kc` compiles can use modules that either compiler compiled. `kc` writes no `$MetroFactory` classes, Metro's own, so a graph that `kotlinc` compiles uses a module that `kc` compiles only through Metro's Dagger interop: with `enable-dagger-runtime-interop` (which the Dagger and Hilt options imply), and Dagger on the class path, `kc` writes Dagger's classes for the module, as Dagger's compiler would, which Metro reads for classes without its own: a `_Factory` per injected class, also Metro's `@Inject` classes and generic ones; an `_Impl` per `@AssistedFactory`; a `_MembersInjector` per class with injected members; and a factory per `@Provides` function of a Dagger `@Module`, an object or a class. It also marks the nested interfaces of `@ContributesBinding`s `@dagger.Module` and writes the nested interface of a `@ContributesTo` or Hilt `@EntryPoint` interface that `kotlinc`'s graphs merge. A class of the module whose name is one of these, written by hand, is kept. Without the option, `kotlinc` reports the module's classes (`[Metro/UnprocessedUpstreamDeclaration]`, or a missing binding), as it does those that `kc` writes nothing for:
+
+- Metro's `@BindingContainer`s and their `@Provides`, which Metro reads only from a Dagger `@Module`;
+- `@Provides` functions of a companion object, which Metro doesn't read from Dagger's classes either;
+- classes with both an injected constructor and injected members, whose Dagger factory Metro can't use;
+- `@Provides` functions with type parameters, parameters with default values or vararg parameters, or overloads; injected constructors with such parameters; generic modules.
+
+Metro also fails on Dagger's injected functions (`@Inject fun set(...)`), so a `kotlinc` graph can't inject them from `kc`'s classes either. A class whose members injector `kc` can't write (private or protected injected members, a generic superclass with injected members) is reported when the option is on: without the injector, a `kotlinc` graph would inject nothing.
 
 ## Differences from kotlinc
 

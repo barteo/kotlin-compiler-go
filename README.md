@@ -138,7 +138,7 @@ There is no Gradle plugin. [tools/gradle/use-kc.init.gradle.kts](tools/gradle/us
 KC=$PWD/bin/kc ./gradlew assembleDebug --init-script /path/to/kotlin-compiler-go/tools/gradle/use-kc.init.gradle.kts
 ```
 
-If `kc` fails on a module, `kotlinc` compiles that module and the build log says so. A module that uses a compiler plugin `kc` doesn't apply, such as one that generates code the program needs, is also left to `kotlinc`, with a warning that names the plugin. `kc` compiles whole modules, so the tasks are not incremental. A new `kc` binary recompiles every module, and a build without the init script recompiles with `kotlinc`.
+If `kc` fails on a module, `kotlinc` compiles that module and the build log says so. A module that uses a compiler plugin `kc` doesn't apply, such as one that generates code the program needs, is also left to `kotlinc`, with a warning that names the plugin. `kc` compiles whole modules, so the tasks are not incremental. A new `kc` binary, or a change to `KC_STRICT`, `KC_IGNORE_PLUGINS` or `KC_JDK_HOME`, recompiles every module `kc` compiles, and a build without the init script recompiles with `kotlinc`. A task named in `KC_SKIP` is the task a build without the init script has, so it is up to date with, or restored from the build cache as, `kotlinc`'s output.
 
 | Variable | Meaning |
 |---|---|
@@ -233,7 +233,7 @@ Tests use the JDK in `$JAVA_HOME`, or the JDK of `java` on `PATH`. On macOS
 `export JAVA_HOME=$(/usr/libexec/java_home -v 21)`. Without a JDK, tests fail
 with unresolved references to Java classes such as `HashMap`.
 
-Tests that need the standard library find `kotlin-stdlib.jar` in `$KOTLIN_HOME/lib` or next to `kotlinc` on `PATH`, and are skipped without it. Tests that compare with `kotlinc` are skipped if it isn't on `PATH`. The kotlinx.serialization 1.9.0, Compose runtime 1.9.2 and Metro 1.5.2 tests use jars from Gradle's cache, or from `KC_SERIALIZATION_CP`, `KC_COMPOSE_CP`, and `KC_METRO_CP` (Metro's runtime) with `KC_METRO_PLUGIN` (its compiler plugin), and are skipped without them.
+Tests that need the standard library find `kotlin-stdlib.jar` in `$KOTLIN_HOME/lib` or next to `kotlinc` on `PATH`, and are skipped without it. Tests that compare with `kotlinc` are skipped if it isn't on `PATH`. The kotlinx.serialization 1.9.0, Compose runtime 1.9.2 and Metro 1.5.2 tests use jars from Gradle's cache, or from `KC_SERIALIZATION_CP`, `KC_COMPOSE_CP`, and `KC_METRO_CP` (Metro's runtime) with `KC_METRO_PLUGIN` (its compiler plugin), and are skipped without them. The Metro interop tests also need javax.inject 1, jakarta.inject-api 2.0.1, Dagger and hilt-core 2.60.1 and Metro's interop-dagger, interop-javax and interop-jakarta 1.5.2, from Gradle's cache or `KC_METRO_INTEROP_CP`, a class path. The tests in the other direction, `TestMetroKotlinc`, where `kotlinc` compiles graphs against modules that `kc` compiles, also need `kotlinc` on `PATH`.
 
 - `testdata/run/`: programs compiled with `kc` and run under
   `java -Xverify:all`. Output must match `*.out`, which

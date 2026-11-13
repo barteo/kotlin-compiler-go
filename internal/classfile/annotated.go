@@ -1,12 +1,14 @@
 package classfile
 
 // Annotated holds the annotations of a class file with their values: the
-// class's, its methods' and its methods' parameters', both those kept in
+// class's, its fields', its methods' and its methods' parameters', both those kept in
 // the class file only and those visible at run time. Parse keeps only
 // their descriptors.
 type Annotated struct {
 	Class   []Annotation
 	Methods []AnnotatedMethod
+	// Fields are the fields' annotations, as methods without parameters.
+	Fields []AnnotatedMethod
 	// Nested are the internal names of the classes nested in the class,
 	// from its InnerClasses attribute.
 	Nested []string
@@ -82,7 +84,9 @@ func ParseAnnotated(data []byte) (*Annotated, error) {
 					r.skip(size)
 				}
 			}
-			if kind == 1 {
+			if kind == 0 {
+				a.Fields = append(a.Fields, m)
+			} else {
 				a.Methods = append(a.Methods, m)
 			}
 		}

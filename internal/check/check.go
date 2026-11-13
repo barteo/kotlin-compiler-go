@@ -315,6 +315,10 @@ type Checker struct {
 
 	// typeAnnots are the annotated types to check (typeannot.go).
 	typeAnnots []typeAnnot
+
+	// metroAlias, while PlanMetro reads the program's annotations, maps
+	// other frameworks' annotations to Metro's (metroConfig.aliases).
+	metroAlias map[string]string
 }
 
 type state struct {

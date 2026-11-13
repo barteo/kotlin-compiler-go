@@ -1,0 +1,6 @@
+lib repo 3 7 true
+hi x from lib repo 3 7 x2
+lib lib repo 3 7 3
+3
+[a, b301] {k=7}
+hilt lib repo 3 7

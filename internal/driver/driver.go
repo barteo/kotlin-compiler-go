@@ -273,13 +273,21 @@ func Compile(paths []string, opts Options) error {
 	}
 	start = time.Now()
 
-	if opts.Metro && opts.MetroOptions["enabled"] != "false" && slices.ContainsFunc(files, check.UsesMetro) {
-		r.lib.MetroOptions = opts.MetroOptions
-		var err error
-		if files, err = planMetro(files, srcs, frontend, r.lib, opts.Jobs); err != nil {
-			return err
+	if opts.Metro && opts.MetroOptions["enabled"] != "false" {
+		// Options kc can't compile with are an error whether or not the
+		// files use Metro: the plugin, with them, may read annotations
+		// that kc wouldn't, so the module is kotlinc's to compile.
+		if err := check.MetroOptionsError(opts.MetroOptions); err != nil {
+			return &syntax.Error{Msg: "kc: " + err.Error(), Feature: "metro"}
 		}
-		phase("metro")
+		if slices.ContainsFunc(files, func(f *syntax.File) bool { return check.UsesMetro(f, opts.MetroOptions) }) {
+			r.lib.MetroOptions = opts.MetroOptions
+			var err error
+			if files, err = planMetro(files, srcs, frontend, r.lib, opts.Jobs); err != nil {
+				return err
+			}
+			phase("metro")
+		}
 	}
 	for _, e := range check.CheckWith(files, r.lib, opts.Jobs) {
 		diags = append(diags, e)
