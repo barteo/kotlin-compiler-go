@@ -126,6 +126,7 @@ func (m *metroAnalysis) run() {
 	for _, c := range m.checkers {
 		m.graphCalls(c)
 	}
+	m.writeDaggerFactories()
 }
 
 // class returns the class with an internal name, the program's or the
@@ -274,6 +275,8 @@ type mMember struct {
 	paramAnns [][]*mAnn // the parameters' annotations
 	recvAnns  []*mAnn
 	defaults  []bool // which parameters declare default values
+	// fn is a function's symbol, of the program's members only.
+	fn *types.FunSym
 }
 
 // same reports whether o declares the same member as mm, which it
@@ -314,7 +317,7 @@ func (m *metroAnalysis) declared(cls *types.ClassSym) []*mMember {
 				if f == nil || f.Static {
 					continue
 				}
-				mm := &mMember{name: f.Name, owner: cls, ret: f.Ret, params: f.Params, abstract: f.Abstract, anns: c.fromSource(md.Annotations, cls)}
+				mm := &mMember{name: f.Name, owner: cls, ret: f.Ret, params: f.Params, abstract: f.Abstract, anns: c.fromSource(md.Annotations, cls), fn: f}
 				if md.Recv != nil && md.RecvSym != nil {
 					t := md.RecvSym.Type
 					mm.recv = &t
@@ -554,6 +557,7 @@ func (m *metroAnalysis) contributions(c *Checker, d *syntax.ClassDecl) {
 	anns := m.annsOf(cls)
 	scopes := map[string]bool{}
 	byScope := map[string][]string{}
+	supertype := map[string]bool{}
 	var order []string
 	for _, a := range anns {
 		switch a.cls {
@@ -570,6 +574,7 @@ func (m *metroAnalysis) contributions(c *Checker, d *syntax.ClassDecl) {
 			order = append(order, scope)
 		}
 		if a.cls == mContributesTo {
+			supertype[scope] = true
 			continue
 		}
 		fn, err := m.bindsFor(c, cls, a, anns)
@@ -588,8 +593,19 @@ func (m *metroAnalysis) contributions(c *Checker, d *syntax.ClassDecl) {
 		if fns := byScope[scope]; len(fns) > 0 {
 			var b strings.Builder
 			fmt.Fprintf(&b, "@dev.zacsweers.metro.internal.MetroContribution(scope = %s::class)\n@dev.zacsweers.metro.BindingContainer\n", metroClassName(sc))
+			if m.daggerFactories() {
+				b.WriteString("@dagger.Module\n")
+			}
 			fmt.Fprintf(&b, "interface %s {\n%s\n}\n", contributionName(sc), strings.Join(fns, "\n"))
 			m.plan.members[cls.Name] = append(m.plan.members[cls.Name], b.String())
+		}
+		// A contributed interface's nested interface that extends it,
+		// which kotlinc's Metro merges into its graphs, as it writes it;
+		// kc's graphs use the interface itself. A binding container is
+		// merged itself.
+		if supertype[scope] && cls.Interface && len(cls.TypeParams) == 0 && find(anns, mBindingContainer) == nil {
+			m.plan.members[cls.Name] = append(m.plan.members[cls.Name],
+				fmt.Sprintf("@dev.zacsweers.metro.internal.MetroContribution(scope = %s::class)\ninterface %sSupertype : %s\n", metroClassName(sc), contributionName(sc), metroClassName(cls)))
 		}
 		m.hint(cls, sc)
 	}

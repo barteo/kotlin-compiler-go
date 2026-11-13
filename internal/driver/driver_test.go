@@ -1674,6 +1674,142 @@ fun main() {
 	}
 }
 
+// TestMetroKotlinc is the other direction of TestMetroInterop: kc
+// compiles each library testdata/metro-kotlinc/X/lib, with the Metro
+// options of the first line of X/app/main.kt and Dagger's runtime
+// interop, which makes kc write Dagger's factories and members injectors,
+// and kotlinc, with Metro's plugin, the program X/app against it. It
+// runs the program and compares its output with kotlinc's, X.out.
+func TestMetroKotlinc(t *testing.T) {
+	java, err := exec.LookPath("java")
+	if err != nil {
+		t.Skip("java not found on PATH")
+	}
+	kotlinc, err := exec.LookPath("kotlinc")
+	if err != nil {
+		t.Skip("kotlinc not found on PATH")
+	}
+	lib := stdlib()
+	rt, plugin := metroJars()
+	interop := metroInteropJars()
+	if lib == "" || rt == "" || plugin == "" || interop == nil {
+		t.Skip("kotlin-stdlib.jar, Metro 1.5.2 or the interop jars not found: set KOTLIN_HOME, KC_METRO_CP, KC_METRO_PLUGIN and KC_METRO_INTEROP_CP")
+	}
+	cp := append([]string{lib, rt}, interop...)
+	const dir = "../../testdata/metro-kotlinc"
+	progs, _ := filepath.Glob(filepath.Join(dir, "*", "app", "main.kt"))
+	if len(progs) == 0 {
+		t.Fatal("no programs in testdata/metro-kotlinc")
+	}
+	for _, main := range progs {
+		prog := filepath.Dir(filepath.Dir(main))
+		t.Run(filepath.Base(prog), func(t *testing.T) {
+			want, err := os.ReadFile(prog + ".out")
+			if err != nil {
+				t.Fatalf("missing expected output (run testdata/gen_expected.sh metro-kotlinc): %v", err)
+			}
+			src, _ := os.ReadFile(main)
+			first, _, _ := strings.Cut(string(src), "\n")
+			opts := map[string]string{"enable-dagger-runtime-interop": "true"}
+			if rest, ok := strings.CutPrefix(first, "// metro: "); ok {
+				for _, kv := range strings.Fields(rest) {
+					k, v, _ := strings.Cut(kv, "=")
+					opts[k] = v
+				}
+			}
+			libOut := t.TempDir()
+			if err := Compile(sources(t, filepath.Join(prog, "lib")), Options{OutDir: libOut, Jobs: runtime.NumCPU(), ClassPath: cp, ModuleName: "lib", Metro: true, MetroOptions: opts}); err != nil {
+				t.Fatalf("compile lib: %v", err)
+			}
+			appCP := append(slices.Clone(cp), libOut)
+			appOut := t.TempDir()
+			args := []string{"-nowarn", "-jvm-target", "17", "-Xplugin=" + plugin, "-module-name", "app", "-d", appOut,
+				"-cp", strings.Join(appCP, string(os.PathListSeparator))}
+			for k, v := range opts {
+				args = append(args, "-P", "plugin:"+MetroPluginID+":"+k+"="+v)
+			}
+			args = append(args, sources(t, filepath.Join(prog, "app"))...)
+			if out, err := exec.Command(kotlinc, args...).CombinedOutput(); err != nil {
+				t.Fatalf("kotlinc app: %v\n%s", err, out)
+			}
+			cmd := exec.Command(java, "-Xverify:all", "-cp", strings.Join(append([]string{appOut}, appCP...), string(os.PathListSeparator)), "app.MainKt")
+			var stdout, stderr bytes.Buffer
+			cmd.Stdout, cmd.Stderr = &stdout, &stderr
+			if err := cmd.Run(); err != nil {
+				t.Fatalf("java: %v\n%s", err, stderr.String())
+			}
+			if got := stdout.String(); got != string(want) {
+				t.Errorf("output mismatch\n%s", diff(string(want), got))
+			}
+		})
+	}
+
+	// The classes kc writes, and those it doesn't: a class with both an
+	// injected constructor and injected members has no factory, which
+	// Metro can't use as Dagger writes it; one written by hand is kept.
+	t.Run("generated classes", func(t *testing.T) {
+		src := filepath.Join(t.TempDir(), "lib.kt")
+		os.WriteFile(src, []byte(`package lib
+
+import javax.inject.Inject
+
+class A @Inject constructor()
+
+class Both @Inject constructor(val a: A) {
+    @Inject lateinit var b: A
+}
+
+class Plain {
+    @Inject lateinit var a: A
+}
+
+class Hand @Inject constructor()
+
+class Hand_Factory
+
+class Generic<T> @Inject constructor(val t: T)
+
+class Defaulted @Inject constructor(val s: String = "")
+`), 0o644)
+		out := t.TempDir()
+		opts := map[string]string{"interop-include-dagger-annotations": "true"}
+		if err := Compile([]string{src}, Options{OutDir: out, Jobs: 1, ClassPath: cp, ModuleName: "lib", Metro: true, MetroOptions: opts}); err != nil {
+			t.Fatalf("compile: %v", err)
+		}
+		for name, want := range map[string]bool{
+			"A_Factory": true, "Both_Factory": false, "Both_MembersInjector": true, "Plain_MembersInjector": true,
+			"Plain_Factory": false, "Generic_Factory": true, "Defaulted_Factory": false,
+		} {
+			_, err := os.Stat(filepath.Join(out, "lib", name+".class"))
+			if got := err == nil; got != want {
+				t.Errorf("%s: got %v, want %v", name, got, want)
+			}
+		}
+		// Hand_Factory is the program's, not a dagger.internal.Factory.
+		if b, err := os.ReadFile(filepath.Join(out, "lib", "Hand_Factory.class")); err != nil || bytes.Contains(b, []byte("dagger/internal/Factory")) {
+			t.Errorf("Hand_Factory: got the generated class or none (%v)", err)
+		}
+		// Without Dagger on the class path, none.
+		out2 := t.TempDir()
+		if err := Compile([]string{src}, Options{OutDir: out2, Jobs: 1, ClassPath: []string{lib, rt, interop[0]}, ModuleName: "lib", Metro: true,
+			MetroOptions: map[string]string{"interop-include-javax-annotations": "true", "enable-dagger-runtime-interop": "true"}}); err != nil {
+			t.Fatalf("compile without Dagger: %v", err)
+		}
+		if _, err := os.Stat(filepath.Join(out2, "lib", "A_Factory.class")); err == nil {
+			t.Error("A_Factory written without Dagger on the class path")
+		}
+		// A members injector kc can't write is reported: without it, a
+		// graph that kotlinc compiles would inject nothing.
+		src2 := filepath.Join(t.TempDir(), "lib.kt")
+		os.WriteFile(src2, []byte("package lib\nclass P {\n    @javax.inject.Inject private lateinit var s: String\n}\n"), 0o644)
+		err := Compile([]string{src2}, Options{OutDir: t.TempDir(), Jobs: 1, ClassPath: cp, ModuleName: "lib", Metro: true, MetroOptions: opts})
+		var se *syntax.Error
+		if err == nil || !strings.Contains(err.Error(), "members injector") || !errors.As(err, &se) || se.Feature != "metro" {
+			t.Errorf("got %v, want an unsupported members injector", err)
+		}
+	})
+}
+
 // composeJars returns the class path of Compose's runtime: $KC_COMPOSE_CP,
 // or the version that testdata/compose.out was generated with in Gradle's
 // cache, runtime-android 1.9.2 and runtime-annotation-android 1.9.2, whose

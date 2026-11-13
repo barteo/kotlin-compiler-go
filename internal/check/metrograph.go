@@ -589,8 +589,10 @@ func (gr *mGraph) contributedBinding(cls *types.ClassSym, a *mAnn) error {
 			if nc == nil {
 				continue
 			}
-			ca := find(m.annsOf(nc), mContribution)
-			if ca == nil || ca.args["scope"].class != scope {
+			nas := m.annsOf(nc)
+			ca := find(nas, mContribution)
+			// Not a contributed interface's, which only extends it.
+			if ca == nil || ca.args["scope"].class != scope || find(nas, mBindingContainer) == nil {
 				continue
 			}
 			if _, done := gr.containers[nc]; done {

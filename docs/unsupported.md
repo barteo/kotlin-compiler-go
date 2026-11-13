@@ -135,7 +135,14 @@ Not supported, and reported as such:
 - `createDynamicGraph` and `createDynamicGraphFactory`, and calls of `createGraph` and `createGraphFactory` whose type argument is inferred;
 - graph functions that create a graph extension from parameters, other than its factory's.
 
-`kc` writes no `$MetroFactory` classes, so a graph that `kotlinc` compiles can't use a module that `kc` compiles. A graph that `kc` compiles can use modules that either compiler compiled.
+A graph that `kc` compiles can use modules that either compiler compiled. `kc` writes no `$MetroFactory` classes, Metro's own, so a graph that `kotlinc` compiles uses a module that `kc` compiles only through Metro's Dagger interop: with `enable-dagger-runtime-interop` (which the Dagger and Hilt options imply), and Dagger on the class path, `kc` writes Dagger's classes for the module, as Dagger's compiler would, which Metro reads for classes without its own: a `_Factory` per injected class, also Metro's `@Inject` classes and generic ones; an `_Impl` per `@AssistedFactory`; a `_MembersInjector` per class with injected members; and a factory per `@Provides` function of a Dagger `@Module`, an object or a class. It also marks the nested interfaces of `@ContributesBinding`s `@dagger.Module` and writes the nested interface of a `@ContributesTo` or Hilt `@EntryPoint` interface that `kotlinc`'s graphs merge. A class of the module whose name is one of these, written by hand, is kept. Without the option, `kotlinc` reports the module's classes (`[Metro/UnprocessedUpstreamDeclaration]`, or a missing binding), as it does those that `kc` writes nothing for:
+
+- Metro's `@BindingContainer`s and their `@Provides`, which Metro reads only from a Dagger `@Module`;
+- `@Provides` functions of a companion object, which Metro doesn't read from Dagger's classes either;
+- classes with both an injected constructor and injected members, whose Dagger factory Metro can't use;
+- `@Provides` functions with type parameters, parameters with default values or vararg parameters, or overloads; injected constructors with such parameters; generic modules.
+
+Metro also fails on Dagger's injected functions (`@Inject fun set(...)`), so a `kotlinc` graph can't inject them from `kc`'s classes either. A class whose members injector `kc` can't write (private or protected injected members, a generic superclass with injected members) is reported when the option is on: without the injector, a `kotlinc` graph would inject nothing.
 
 ## Differences from kotlinc
 

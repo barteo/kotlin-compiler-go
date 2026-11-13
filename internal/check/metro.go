@@ -23,9 +23,12 @@ import (
 //     and resolves each graph's bindings (metroplan.go). It writes, as
 //     Kotlin, what the plugin adds: a graph's Impl class and its
 //     companion object, a contributing class's nested
-//     MetroContributionTo... interface of @Binds functions, and the
-//     metro.hints functions that downstream modules find the module's
-//     contributions by.
+//     MetroContributionTo... interface of @Binds functions (or, for a
+//     contributed interface, one that extends it), the metro.hints
+//     functions that downstream modules find the module's contributions
+//     by, and, with Dagger's runtime interop, Dagger's factories and
+//     members injectors, through which graphs that kotlinc compiles use
+//     the module's classes (metrodagger.go).
 //   - The files, parsed again, are then checked with the plan
 //     (Library.MetroPlan): declare adds the members to their classes,
 //     and replaces the calls of createGraph and createGraphFactory with

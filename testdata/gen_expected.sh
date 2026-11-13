@@ -60,6 +60,13 @@
 # interop-jakarta 1.5.2, from Gradle's cache, or $KC_METRO_INTEROP_CP.
 # The argument metro-interop selects them.
 #
+# And testdata/metro-kotlinc/X.out for each program metro-kotlinc/X/
+# (TestMetroKotlinc), in the other direction: kc compiles its library,
+# X/lib/, and kotlinc, with the Metro compiler plugin, X/app/ against it.
+# Here kotlinc compiles both, with the Metro options of the first line of
+# X/app/main.kt and enable-dagger-runtime-interop=true, and the class
+# path of the interop tests. The argument metro-kotlinc selects them.
+#
 # And testdata/javasrc.out (TestJavaSources): kotlinc compiles javasrc/,
 # Kotlin and Java sources that use each other, and javac then its Java
 # against kotlinc's classes. The argument javasrc selects it.
@@ -84,6 +91,7 @@ serialization=""
 compose=""
 metro=""
 metrointerop=""
+metrokotlinc=""
 javasrc=""
 if [ $# -eq 0 ]; then
 	parcelize=1
@@ -91,6 +99,7 @@ if [ $# -eq 0 ]; then
 	compose=1
 	metro=1
 	metrointerop=1
+	metrokotlinc=1
 	javasrc=1
 	libs=$(cd "$root/lib" 2>/dev/null && ls -d */ | sed 's|/$||' || true)
 	klibs=$(cd "$root/klib" 2>/dev/null && ls -d */ | sed 's|/$||' || true)
@@ -111,6 +120,7 @@ for f in "$@"; do
 	compose) compose=1 ;;
 	metro) metro=1 ;;
 	metro-interop) metrointerop=1 ;;
+	metro-kotlinc) metrokotlinc=1 ;;
 	javasrc) javasrc=1 ;;
 	*) runs="$runs $f" ;;
 	esac
@@ -283,8 +293,8 @@ if [ -n "$metro" ]; then
 	echo "wrote metro.out"
 fi
 
-# The Metro interop tests.
-if [ -n "$metrointerop" ]; then
+# The Metro interop tests, in both directions.
+if [ -n "$metrointerop" ] || [ -n "$metrokotlinc" ]; then
 	cache=$HOME/.gradle/caches/modules-2/files-2.1
 	rt=${KC_METRO_CP:-$(find "$cache/dev.zacsweers.metro/runtime-jvm/1.5.2" -name runtime-jvm-1.5.2.jar 2>/dev/null | head -1)}
 	mp=${KC_METRO_PLUGIN:-$(find "$cache/dev.zacsweers.metro/compiler/1.5.2" -name compiler-1.5.2.jar 2>/dev/null | head -1)}
@@ -307,10 +317,18 @@ if [ -n "$metrointerop" ]; then
 			icp="$icp${icp:+:}$jar"
 		done
 	fi
-	cd "$root/metro-interop"
+	dirs=""
+	if [ -n "$metrointerop" ]; then
+		dirs=metro-interop
+	fi
+	if [ -n "$metrokotlinc" ]; then
+		dirs="$dirs metro-kotlinc"
+	fi
+	for dir in $dirs; do
+	cd "$root/$dir"
 	for d in */; do
 		name=${d%/}
-		out="$work/metro-interop/$name"
+		out="$work/$dir/$name"
 		mkdir -p "$out"
 		ps=""
 		for o in $(sed -n '1s|^// metro: ||p' "$name/app/main.kt") enable-dagger-runtime-interop=true; do
@@ -324,8 +342,9 @@ if [ -n "$metrointerop" ]; then
 		fi
 		# shellcheck disable=SC2046,SC2086
 		$k -module-name app -cp "$rt:$icp:$out/lib" $(find "$name/app" -name '*.kt' | sort) -d "$out/app" 2>"$work/err" || { cat "$work/err"; exit 1; }
-		kotlin -cp "$out/app:$out/lib:$rt:$icp" app.MainKt >"$root/metro-interop/$name.out" 2>/dev/null
-		echo "wrote metro-interop/$name.out"
+		kotlin -cp "$out/app:$out/lib:$rt:$icp" app.MainKt >"$root/$dir/$name.out" 2>/dev/null
+		echo "wrote $dir/$name.out"
+	done
 	done
 fi
 
