@@ -37,18 +37,26 @@ internal object KcOps {
     }
 
     /**
-     * Checks [paths] in session [session] and returns their declarations.
+     * Checks [paths] in session [session] and returns their declarations,
+     * or, if the check is one of [kept], only that (KcModel.same).
      * The model's handle, which [cls] reads library classes through, is
      * the caller's to [close].
      */
-    fun update(session: Long, paths: List<String>): KcModel {
+    fun update(session: Long, paths: List<String>, kept: Collection<Long> = emptyList()): KcModel {
         val w = Wire.Writer().writeInt(session).writeUint(paths.size.toLong())
         paths.forEach { w.writeString(it) }
+        w.writeUint(kept.size.toLong())
+        kept.forEach { w.writeUint(it) }
         val t = KcTimer()
         val r = Wire.Reader(KcNative.call(UPDATE, w.message()))
         t.mark("native")
         val model = r.readInt()
         try {
+            val check = r.readUint()
+            if (r.readBool()) {
+                t.print("update same")
+                return KcModel(model, emptyList(), emptyList(), check, same = true)
+            }
             val files = List(r.readUint().toInt()) {
                 KcFile(r.readString(), r.readString(), r.annotations(), r.decls(), r.lookups(), r.readUint().toInt(), r.readUint())
             }
@@ -57,7 +65,7 @@ internal object KcOps {
             }
             t.mark("decode")
             t.print("update")
-            return KcModel(model, files, diagnostics)
+            return KcModel(model, files, diagnostics, check)
         } catch (e: Throwable) {
             close(model)
             throw e
@@ -94,7 +102,8 @@ internal object KcOps {
         val target = readString()
         val implied = readUint() == 1L
         val args = List(readUint().toInt()) { readString() to value()!! }
-        return KcAnnotation(classId, node, target, implied, args, List(readUint().toInt()) { type() })
+        val typeArgs = List(readUint().toInt()) { type() }
+        return KcAnnotation(classId, node, target, implied, args, typeArgs, readString())
     }
 
     private fun Wire.Reader.value(): KcValue? {
@@ -163,7 +172,18 @@ internal object KcOps {
 }
 
 /** The module's sources as one update saw them; Go's ka.Model. */
-internal class KcModel(val handle: Long, val files: List<KcFile>, val diagnostics: List<KcDiagnostic>)
+/**
+ * The model of an update: its [handle], and its [check] (Go's Model.Check).
+ * If [same], the update asked with a kept check and this is it again: the
+ * model's files and diagnostics are left out, as they are that check's.
+ */
+internal class KcModel(
+    val handle: Long,
+    val files: List<KcFile>,
+    val diagnostics: List<KcDiagnostic>,
+    val check: Long = 0,
+    val same: Boolean = false,
+)
 
 /** An error in the sources; Go's ka.Diagnostic. */
 internal class KcDiagnostic(val path: String, val line: Int, val col: Int, val message: String, val feature: String) {
@@ -371,6 +391,8 @@ internal class KcType(
     val isFlexible get() = flags and 2 != 0
     val isDefinitelyNonNull get() = flags and 4 != 0
     val isExtension get() = flags and 8 != 0
+    /** A supertype the class implements by delegation, I by x. */
+    val isDelegated get() = flags and 16 != 0
 
     companion object {
         // Go's ka.TypeKind values.
@@ -390,9 +412,14 @@ internal class KcTypeArg(val variance: Int, val type: KcType?)
  */
 // target is the use-site target as written, or "" for none; implied is set
 // when Kotlin's default rule chose it ("field") for one written without.
-/** [typeArgs] are the type arguments written, @A<String>; null for a star projection. */
+/**
+ * [typeArgs] are the type arguments written, @A<String>; null for a star
+ * projection. [alias] is the class ID of the typealias the annotation names
+ * its class by, or "".
+ */
 internal class KcAnnotation(val classId: String, val node: Int, val target: String, val implied: Boolean,
-                            val args: List<Pair<String, KcValue>>, val typeArgs: List<KcType?> = emptyList())
+                            val args: List<Pair<String, KcValue>>, val typeArgs: List<KcType?> = emptyList(),
+                            val alias: String = "")
 
 /**
  * An annotation argument's value; Go's ka.Value. [node] is the expression

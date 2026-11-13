@@ -753,10 +753,10 @@ tests/callableReference/function/innerConstructorFromExtension.kt	rejects invali
 tests/callableReference/function/innerConstructorFromTopLevel.kt	rejects invalid	on an expected line	
 tests/callableReference/function/javaStaticMethod.kt	skip	Java sources	
 tests/callableReference/function/lhsNotAClass.kt	rejects invalid	on an expected line	
-tests/callableReference/function/localConstructor.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	localConstructor.kt:10: type mismatch: inferred type is () -> LocalConstructorKt.main.A but KFunction0<LocalConstructorKt.main.A> was expected
-tests/callableReference/function/localConstructorFromExtensionInLocalClass.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	localConstructorFromExtensionInLocalClass.kt:12: type mismatch: inferred type is () -> LocalConstructorFromExtensionInLocalClassKt.main.A but KFunction0<LocalConstructorFromExtensionInLocalClassKt.main.A> was expected
-tests/callableReference/function/localConstructorFromLocalClass.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	localConstructorFromLocalClass.kt:9: type mismatch: inferred type is () -> LocalConstructorFromLocalClassKt.main.A but KFunction0<LocalConstructorFromLocalClassKt.main.A> was expected
-tests/callableReference/function/localConstructorFromLocalExtension.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	localConstructorFromLocalExtension.kt:11: type mismatch: inferred type is () -> LocalConstructorFromLocalExtensionKt.main.A but KFunction0<LocalConstructorFromLocalExtensionKt.main.A> was expected
+tests/callableReference/function/localConstructor.kt	accepts valid		
+tests/callableReference/function/localConstructorFromExtensionInLocalClass.kt	accepts valid		
+tests/callableReference/function/localConstructorFromLocalClass.kt	accepts valid		
+tests/callableReference/function/localConstructorFromLocalExtension.kt	accepts valid		
 tests/callableReference/function/localNamedFun.kt	accepts valid		
 tests/callableReference/function/localNamedFunFromExtensionInLocalClass.kt	accepts valid		
 tests/callableReference/function/localNamedFunFromLocalClass.kt	accepts valid		
@@ -891,7 +891,7 @@ tests/callableReference/resolve/commonSupertypeFromReturnTypesOfCallableReferenc
 tests/callableReference/resolve/compatibilityWarningOnReferenceAgainstReflectiveType.kt	skip	LANGUAGE	
 tests/callableReference/resolve/constructor.kt	accepts valid		
 tests/callableReference/resolve/eagerAndPostponedCallableReferences.kt	rejects invalid	on an expected line	
-tests/callableReference/resolve/eagerResolveOfSingleCallableReference.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	eagerResolveOfSingleCallableReference.kt:12: type mismatch: inferred type is Or but B was expected
+tests/callableReference/resolve/eagerResolveOfSingleCallableReference.kt	accepts valid		
 tests/callableReference/resolve/innerClassConstructorOnOuterClassInstance.kt	accepts valid		
 tests/callableReference/resolve/intersectionTypeOverloadWithWrongParameter.kt	rejects invalid	on an expected line	
 tests/callableReference/resolve/kt10036.kt	accepts valid		
@@ -2034,7 +2034,7 @@ tests/controlFlowAnalysis/reassignmentInConcurrentLambdas.kt	rejects invalid	on 
 tests/controlFlowAnalysis/reassignmentInLambda.kt	accepts valid		
 tests/controlFlowAnalysis/reassignmentInTryCatch.kt	rejects invalid	on an expected line	
 tests/controlFlowAnalysis/reassignmentInTryCatchWithJumps.kt	rejects invalid	on an expected line	
-tests/controlFlowAnalysis/reassignmentWithLambda.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	reassignmentWithLambda.kt:16: type mismatch: inferred type is Any? but Any was expected
+tests/controlFlowAnalysis/reassignmentWithLambda.kt	accepts valid		
 tests/controlFlowAnalysis/referenceToPropertyInitializer.kt	rejects invalid	on an expected line	
 tests/controlFlowAnalysis/repeatUnitializedErrorOnlyForLocalVars.kt	rejects invalid	on an expected line	
 tests/controlFlowAnalysis/safeCallAfterVariableInitialization.kt	accepts valid		
@@ -2336,10 +2336,10 @@ tests/dataFlow/EmptyIf.kt	rejects invalid	on an expected line
 tests/dataFlow/IsExpression.kt	rejects invalid	on an expected line	
 tests/dataFlow/MultipleBranchesInWhileLoopInInlinedLambda.kt	accepts valid		
 tests/dataFlow/WhenSubject.kt	accepts valid		
-tests/dataFlow/assignment/assignToNewVal.kt	accepts invalid	UNSAFE_CALL	assignToNewVal.kt:10: UNSAFE_CALL
+tests/dataFlow/assignment/assignToNewVal.kt	rejects invalid	on an expected line	
 tests/dataFlow/assignment/kt6118.kt	accepts valid		
 tests/dataFlow/assignment/uninitializedValIsCheck.kt	rejects invalid	on an expected line	
-tests/dataFlow/assignment/uninitializedValNullability.kt	accepts invalid	UNSAFE_CALL	uninitializedValNullability.kt:14: UNSAFE_CALL
+tests/dataFlow/assignment/uninitializedValNullability.kt	rejects invalid	on an expected line	
 tests/dataFlow/assignment/when.kt	accepts valid		
 tests/dataFlow/desugaredAssignment.kt	rejects invalid	on an expected line	
 tests/dataFlow/local/LocalClassBase.kt	accepts valid		
@@ -2522,7 +2522,7 @@ tests/delegatedProperty/getterWithSubtype.kt	accepts valid
 tests/delegatedProperty/inTrait.kt	rejects invalid	on an expected line	
 tests/delegatedProperty/incompleteTypeInference.kt	rejects invalid	on an expected line	
 tests/delegatedProperty/inference/annotatedAccessor.kt	accepts valid		
-tests/delegatedProperty/inference/callableReferenceArgumentInDelegatedExpression.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	callableReferenceArgumentInDelegatedExpression.kt:16: type mismatch: inferred type is Any? but Int was expected
+tests/delegatedProperty/inference/callableReferenceArgumentInDelegatedExpression.kt	accepts valid		
 tests/delegatedProperty/inference/decoratedLambda.kt	accepts valid		
 tests/delegatedProperty/inference/delegateExpressionAsLambda.kt	accepts valid		
 tests/delegatedProperty/inference/delegatedExpressionWithLabeledReturnInsideLambda.kt	accepts valid		
@@ -3478,7 +3478,7 @@ tests/functionAsExpression/InferenceParametersTypes.kt	rejects invalid	on an exp
 tests/functionAsExpression/MissingParameterTypes.kt	rejects invalid	on an expected line	
 tests/functionAsExpression/NameDeprecation.kt	rejects invalid	on an expected line	
 tests/functionAsExpression/NoOverloadError.kt	accepts valid		
-tests/functionAsExpression/NonSuspendAnonFuncAsInitializerOfSuspendFunctionType.kt	accepts invalid	INITIALIZER_TYPE_MISMATCH	NonSuspendAnonFuncAsInitializerOfSuspendFunctionType.kt:4: INITIALIZER_TYPE_MISMATCH
+tests/functionAsExpression/NonSuspendAnonFuncAsInitializerOfSuspendFunctionType.kt	rejects invalid	on an expected line	
 tests/functionAsExpression/NonSuspendAnonFuncAsReturnValueOfSuspendFunctionTypeInConcreteFunction.kt	rejects invalid	on an expected line	
 tests/functionAsExpression/Parameters.kt	rejects invalid	on an expected line	
 tests/functionAsExpression/ReceiverByExpectedType.kt	rejects invalid	on an expected line	
@@ -3929,7 +3929,7 @@ tests/inference/NoInferenceFromDeclaredBounds.kt	rejects invalid	on an expected 
 tests/inference/UnitUpperboundLambdaReturnType.kt	rejects valid	type argument is not within its bounds: inferred type Int of type _ '_' is not a subtype of Unit	UnitUpperboundLambdaReturnType.kt:9: type argument is not within its bounds: inferred type Int of type parameter 'U' is not a subtype of Unit
 tests/inference/UnitUpperboundLambdaReturnTypeWithExplicitReturn.kt	accepts valid		
 tests/inference/annotatedUnderscoredTypeArgument.kt	rejects invalid	on an expected line	
-tests/inference/anonymousFunctionAgainsSuspendFunctionType.kt	accepts invalid	ARGUMENT_TYPE_MISMATCH	anonymousFunctionAgainsSuspendFunctionType.kt:7: ARGUMENT_TYPE_MISMATCH
+tests/inference/anonymousFunctionAgainsSuspendFunctionType.kt	rejects invalid	on an expected line	
 tests/inference/argumentPlaceholderVsClassName.kt	accepts valid		
 tests/inference/argumentTypeMismatchWithExplicitTypeArguments.kt	rejects invalid	on an expected line	
 tests/inference/argumentTypeMismatchWrongNumberOfTypeArgs.kt	rejects invalid	on an expected line	
@@ -3954,7 +3954,7 @@ tests/inference/cannotCompleteResolveWithFunctionLiterals.kt	rejects invalid	on 
 tests/inference/capturedInProjectedFlexibleType.kt	skip	Java sources	
 tests/inference/capturedTypeForJavaTypeParameter.kt	skip	Java sources	
 tests/inference/capturedTypes/approximateBeforeFixation.kt	accepts valid		
-tests/inference/capturedTypes/approximateBeforeFixation2.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	approximateBeforeFixation2.kt:9: type mismatch: inferred type is C but B was expected
+tests/inference/capturedTypes/approximateBeforeFixation2.kt	accepts valid		
 tests/inference/capturedTypes/approximateContravariantCapturedTypes.kt	rejects invalid	on an expected line	
 tests/inference/capturedTypes/approximationForCollectionAsserter.kt	accepts valid		
 tests/inference/capturedTypes/approximationLeavesNonTrivialLowerBound.kt	accepts valid		
@@ -4020,7 +4020,7 @@ tests/inference/capturedTypes/withSmartCasts.kt	skip	LANGUAGE
 tests/inference/capturedTypes/withSmartCasts2.kt	skip	LANGUAGE	
 tests/inference/capturedTypesInSelfType.kt	accepts valid		
 tests/inference/checkNotNullWithNullableExpectedType.kt	accepts valid		
-tests/inference/coerceFunctionLiteralToSuspend.kt	accepts invalid	ARGUMENT_TYPE_MISMATCH	coerceFunctionLiteralToSuspend.kt:11: ARGUMENT_TYPE_MISMATCH
+tests/inference/coerceFunctionLiteralToSuspend.kt	rejects invalid	on an expected line	
 tests/inference/coercionToUnit/afterBareReturn.kt	accepts valid		
 tests/inference/coercionToUnit/coercionToUnitForIfAsLastExpressionInLambda.kt	rejects invalid	on an expected line	
 tests/inference/coercionToUnit/coercionToUnitForLastLambdaInLambda.kt	accepts valid		
@@ -4229,7 +4229,7 @@ tests/inference/fixVariableToNothing.kt	accepts valid
 tests/inference/fixationOrder/inputTypesFirst.kt	skip	LANGUAGE	
 tests/inference/fixationOrder/inputTypesFirstSimplified.kt	skip	LANGUAGE	
 tests/inference/fixationOrder/inputTypesFirstSimplifiedFeatureDisabled.kt	skip	LANGUAGE	
-tests/inference/fixationOrder/onesForOutputTypesPostponed.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	onesForOutputTypesPostponed.kt:12: type mismatch: inferred type is C but B was expected
+tests/inference/fixationOrder/onesForOutputTypesPostponed.kt	accepts valid		
 tests/inference/fixationOrder/reifiedFirst.kt	skip	Java sources	
 tests/inference/fixationOrder/reifiedFirstSimple.kt	accepts valid		
 tests/inference/fixationOrder/revisableAtomVsPCLA.kt	rejects invalid	on an expected line	
@@ -4292,11 +4292,11 @@ tests/inference/kt3184.kt	accepts valid
 tests/inference/kt32196.kt	accepts valid		
 tests/inference/kt32415.kt	accepts valid		
 tests/inference/kt32434.kt	skip	Java sources	
-tests/inference/kt32462.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	kt32462.kt:18: type mismatch: inferred type is C but B was expected
+tests/inference/kt32462.kt	accepts valid		
 tests/inference/kt33263.kt	accepts valid		
 tests/inference/kt35702.kt	accepts valid		
 tests/inference/kt36044.kt	accepts valid		
-tests/inference/kt36819.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	kt36819.kt:17: type mismatch: inferred type is C but B was expected
+tests/inference/kt36819.kt	rejects valid	cannot infer a type for this parameter. Please specify it explicitly.	kt36819.kt:38: cannot infer a type for this parameter. Please specify it explicitly.
 tests/inference/kt37853.kt	accepts valid		
 tests/inference/kt39220.kt	parse/unsupported	property reference	
 tests/inference/kt40131.kt	rejects invalid	on an expected line	
@@ -8168,7 +8168,7 @@ tests/signatureEnhancementOuterClassBoundsToInner.kt	skip	Java sources
 tests/simpleClass.kt	rejects invalid	on an expected line	
 tests/simpleTypeAlias.kt	accepts valid		
 tests/smartCasts/NullableFunctionTypeAsMemberMutableProperty.kt	rejects invalid	on an expected line	
-tests/smartCasts/NullableFunctionTypeAsMemberMutablePropertyFromConstructor.kt	accepts invalid	SMARTCAST_IMPOSSIBLE_ON_IMPLICIT_INVOKE_RECEIVER	NullableFunctionTypeAsMemberMutablePropertyFromConstructor.kt:10: SMARTCAST_IMPOSSIBLE_ON_IMPLICIT_INVOKE_RECEIVER
+tests/smartCasts/NullableFunctionTypeAsMemberMutablePropertyFromConstructor.kt	rejects invalid	on an expected line	
 tests/smartCasts/accessToMemberAfterReceiverReassignment.kt	rejects invalid	on an expected line	
 tests/smartCasts/afterBinaryExpr.kt	accepts valid		
 tests/smartCasts/alwaysNull.kt	rejects invalid	on an expected line	
@@ -8219,7 +8219,7 @@ tests/smartCasts/doubleLambdaArgument.kt	accepts valid
 tests/smartCasts/elvis/basicOff.kt	accepts valid		
 tests/smartCasts/elvis/elvisResultSavedInVal.kt	rejects invalid	on an expected line	
 tests/smartCasts/elvis/impossible.kt	accepts valid		
-tests/smartCasts/elvisExclExcl.kt	accepts invalid	UNSAFE_CALL	elvisExclExcl.kt:5: UNSAFE_CALL
+tests/smartCasts/elvisExclExcl.kt	rejects invalid	on an expected line	
 tests/smartCasts/elvisExclExclMerge.kt	accepts valid		
 tests/smartCasts/elvisExclExclPlatform.kt	skip	Java sources	
 tests/smartCasts/elvisExprNotNull.kt	rejects invalid	on an expected line	
@@ -8232,13 +8232,13 @@ tests/smartCasts/equalsAndIdentity.kt	rejects invalid	on an expected line
 tests/smartCasts/exclUnderAnd.kt	rejects invalid	on an expected line	
 tests/smartCasts/explicitDefaultGetter.kt	accepts valid		
 tests/smartCasts/explicitTypeArguments.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	explicitTypeArguments.kt:21: type mismatch: inferred type is Box<TypeParameter> but Box<out SuperType> was expected
-tests/smartCasts/extensionSafeCall.kt	accepts invalid	UNSAFE_CALL	extensionSafeCall.kt:13: UNSAFE_CALL
+tests/smartCasts/extensionSafeCall.kt	rejects invalid	on an expected line	
 tests/smartCasts/fakeSmartCastOnEquality.kt	rejects invalid	on an expected line	
 tests/smartCasts/falseReceiverSmartCast.kt	accepts valid		
 tests/smartCasts/falseUnnecessaryCall.kt	accepts valid		
-tests/smartCasts/fieldExclExcl.kt	accepts invalid	UNSAFE_CALL	fieldExclExcl.kt:11: UNSAFE_CALL
+tests/smartCasts/fieldExclExcl.kt	rejects invalid	on an expected line	
 tests/smartCasts/fieldInGetter.kt	accepts valid		
-tests/smartCasts/fieldPlus.kt	accepts invalid	UNSAFE_CALL	fieldPlus.kt:13: UNSAFE_CALL
+tests/smartCasts/fieldPlus.kt	rejects invalid	on an expected line	
 tests/smartCasts/genericIntersection.kt	accepts valid		
 tests/smartCasts/genericSet.kt	accepts valid		
 tests/smartCasts/ifCascadeExprNotNull.kt	accepts valid		
@@ -8323,7 +8323,7 @@ tests/smartCasts/kt6819.kt	rejects invalid	on an expected line
 tests/smartCasts/kt68970.kt	skip	LANGUAGE	
 tests/smartCasts/kt7561.kt	accepts valid		
 tests/smartCasts/lambdaAndArgument.kt	accepts valid		
-tests/smartCasts/lambdaAndArgumentFun.kt	accepts invalid	SMARTCAST_IMPOSSIBLE	lambdaAndArgumentFun.kt:14: SMARTCAST_IMPOSSIBLE
+tests/smartCasts/lambdaAndArgumentFun.kt	rejects invalid	on an expected line	
 tests/smartCasts/lambdaArgumentNoSubstitutedReturn.kt	accepts valid		
 tests/smartCasts/lambdaArgumentWithBoundWithoutType.kt	rejects invalid	elsewhere	
 tests/smartCasts/lambdaArgumentWithExpectedGenericType.kt	accepts valid		
@@ -8350,13 +8350,13 @@ tests/smartCasts/lambdasWithContracts/lambdaWithCallInPlaceAndOperators.kt	accep
 tests/smartCasts/lambdasWithContracts/lambdaWithCallInPlaceAssignmnetsAndCycles.kt	rejects invalid	on an expected line	
 tests/smartCasts/lambdasWithContracts/lambdaWithImpliesContract.kt	accepts valid		
 tests/smartCasts/literalInWhenSubject.kt	accepts valid		
-tests/smartCasts/localClassChanges.kt	accepts invalid	SMARTCAST_IMPOSSIBLE	localClassChanges.kt:12: SMARTCAST_IMPOSSIBLE
+tests/smartCasts/localClassChanges.kt	rejects invalid	on an expected line	
 tests/smartCasts/localDelegatedProperty.kt	rejects invalid	on an expected line	
 tests/smartCasts/localFunBetween.kt	accepts valid		
 tests/smartCasts/localFunChanges.kt	rejects invalid	on an expected line	
-tests/smartCasts/localObjectChanges.kt	accepts invalid	SMARTCAST_IMPOSSIBLE	localObjectChanges.kt:14: SMARTCAST_IMPOSSIBLE
+tests/smartCasts/localObjectChanges.kt	rejects invalid	on an expected line	
 tests/smartCasts/longElvisChain.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	longElvisChain.kt:8: type mismatch: inferred type is Unit but Unit was expected
-tests/smartCasts/loops/WhileTrueWithBreakInIfCondition.kt	accepts invalid	UNSAFE_CALL	WhileTrueWithBreakInIfCondition.kt:13: UNSAFE_CALL
+tests/smartCasts/loops/WhileTrueWithBreakInIfCondition.kt	rejects invalid	on an expected line	
 tests/smartCasts/loops/assignElvisIfBreakInsideWhileTrue.kt	rejects invalid	on an expected line	
 tests/smartCasts/loops/assignWhenInsideWhileTrue.kt	rejects invalid	on an expected line	
 tests/smartCasts/loops/callBreakBetweenInsideDoWhile.kt	rejects invalid	on an expected line	
@@ -8433,9 +8433,9 @@ tests/smartCasts/objectLiterals/exclexclArgument.kt	accepts valid
 tests/smartCasts/objectLiterals/exclexclTwoArgument.kt	accepts valid		
 tests/smartCasts/objectLiterals/kt7110.kt	accepts valid		
 tests/smartCasts/objectLiterals/receiver.kt	accepts valid		
-tests/smartCasts/openInSealed.kt	accepts invalid	SMARTCAST_IMPOSSIBLE	openInSealed.kt:6: SMARTCAST_IMPOSSIBLE
+tests/smartCasts/openInSealed.kt	rejects invalid	on an expected line	
 tests/smartCasts/orInWhenBranch.kt	rejects invalid	on an expected line	
-tests/smartCasts/ownerDeclaresBothModifies.kt	accepts invalid	UNSAFE_CALL	ownerDeclaresBothModifies.kt:13: UNSAFE_CALL
+tests/smartCasts/ownerDeclaresBothModifies.kt	rejects invalid	on an expected line	
 tests/smartCasts/problems/invoke.kt	accepts valid		
 tests/smartCasts/problems/noSmartcastToNullableNothing.kt	rejects invalid	on an expected line	
 tests/smartCasts/problems/smartcastToStarProjectedSubclass.kt	skip	Java sources	
@@ -8542,11 +8542,11 @@ tests/smartCasts/twoImplicitReceivers.kt	accepts valid
 tests/smartCasts/typeDegradation.kt	accepts valid		
 tests/smartCasts/typeInComparison.kt	rejects invalid	on an expected line	
 tests/smartCasts/typeOfLambdaWithSmartcast.kt	accepts valid		
-tests/smartCasts/typeParameterWithBounds.kt	rejects valid	unresolved reference: _	typeParameterWithBounds.kt:11: unresolved reference: length
+tests/smartCasts/typeParameterWithBounds.kt	accepts valid		
 tests/smartCasts/unstableSmartCastOnInvokeReceiver.kt	rejects invalid	on an expected line	
 tests/smartCasts/unstableSmartcastAndAmbiguity.kt	accepts valid		
-tests/smartCasts/unstableToStable.kt	accepts invalid	SMARTCAST_IMPOSSIBLE; UNSAFE_CALL	unstableToStable.kt:7: SMARTCAST_IMPOSSIBLE
-tests/smartCasts/unstableToStableTypes.kt	accepts invalid	SMARTCAST_IMPOSSIBLE; UNRESOLVED_REFERENCE	unstableToStableTypes.kt:11: SMARTCAST_IMPOSSIBLE
+tests/smartCasts/unstableToStable.kt	rejects invalid	on an expected line	
+tests/smartCasts/unstableToStableTypes.kt	rejects invalid	on an expected line	
 tests/smartCasts/valCapturedInLambda.kt	accepts valid		
 tests/smartCasts/varChangedInInitializer.kt	accepts valid		
 tests/smartCasts/varChangedInLocalInitializer.kt	accepts valid		
@@ -8609,9 +8609,9 @@ tests/smartCasts/variables/whileTrue.kt	rejects invalid	on an expected line
 tests/smartCasts/variables/whileWithBreak.kt	accepts valid		
 tests/smartCasts/varnotnull/assignNestedWhile.kt	rejects invalid	on an expected line	
 tests/smartCasts/varnotnull/assignment.kt	rejects invalid	on an expected line	
-tests/smartCasts/varnotnull/boundInitializer.kt	accepts invalid	UNSAFE_CALL	boundInitializer.kt:9: UNSAFE_CALL
-tests/smartCasts/varnotnull/boundInitializerWrong.kt	accepts invalid	UNSAFE_CALL	boundInitializerWrong.kt:9: UNSAFE_CALL
-tests/smartCasts/varnotnull/capturedInClosureModifiedBefore.kt	accepts invalid	SMARTCAST_IMPOSSIBLE; UNSAFE_CALL	capturedInClosureModifiedBefore.kt:30: SMARTCAST_IMPOSSIBLE
+tests/smartCasts/varnotnull/boundInitializer.kt	rejects invalid	on an expected line	
+tests/smartCasts/varnotnull/boundInitializerWrong.kt	rejects invalid	on an expected line	
+tests/smartCasts/varnotnull/capturedInClosureModifiedBefore.kt	rejects invalid	on an expected line	
 tests/smartCasts/varnotnull/capturedInlineModifiedBefore.kt	accepts valid		
 tests/smartCasts/varnotnull/classDelegationDeprecated.kt	skip	LANGUAGE	
 tests/smartCasts/varnotnull/classDelegationError.kt	skip	LANGUAGE	
@@ -8628,7 +8628,7 @@ tests/smartCasts/varnotnull/ifVarNullReturn.kt	accepts valid
 tests/smartCasts/varnotnull/inference.kt	accepts valid		
 tests/smartCasts/varnotnull/infiniteWhileWithBreak.kt	rejects invalid	on an expected line	
 tests/smartCasts/varnotnull/infix.kt	accepts valid		
-tests/smartCasts/varnotnull/initInTryReturnInCatch.kt	accepts invalid	UNSAFE_CALL	initInTryReturnInCatch.kt:40: UNSAFE_CALL
+tests/smartCasts/varnotnull/initInTryReturnInCatch.kt	rejects invalid	on an expected line	
 tests/smartCasts/varnotnull/initialization.kt	rejects invalid	on an expected line	
 tests/smartCasts/varnotnull/iterations.kt	accepts valid		
 tests/smartCasts/varnotnull/leakingLambdaInCalledInPlace.kt	rejects invalid	on an expected line	
@@ -8640,11 +8640,11 @@ tests/smartCasts/varnotnull/postfixNotnullClassIncrement.kt	accepts valid
 tests/smartCasts/varnotnull/postfixNullableClassIncrement.kt	accepts valid		
 tests/smartCasts/varnotnull/postfixNullableIncrement.kt	rejects invalid	on an expected line	
 tests/smartCasts/varnotnull/prefixNotnullClassIncrement.kt	accepts valid		
-tests/smartCasts/varnotnull/prefixNullableClassIncrement.kt	accepts invalid	UNSAFE_CALL	prefixNullableClassIncrement.kt:13: UNSAFE_CALL
+tests/smartCasts/varnotnull/prefixNullableClassIncrement.kt	rejects invalid	on an expected line	
 tests/smartCasts/varnotnull/prefixNullableIncrement.kt	rejects invalid	on an expected line	
-tests/smartCasts/varnotnull/setNotNullInTry.kt	accepts invalid	UNSAFE_CALL	setNotNullInTry.kt:13: UNSAFE_CALL
-tests/smartCasts/varnotnull/setNullInTry.kt	accepts invalid	UNSAFE_CALL	setNullInTry.kt:9: UNSAFE_CALL
-tests/smartCasts/varnotnull/setNullInTryFinally.kt	accepts invalid	UNSAFE_CALL	setNullInTryFinally.kt:15: UNSAFE_CALL
+tests/smartCasts/varnotnull/setNotNullInTry.kt	rejects invalid	on an expected line	
+tests/smartCasts/varnotnull/setNullInTry.kt	rejects invalid	on an expected line	
+tests/smartCasts/varnotnull/setNullInTryFinally.kt	rejects invalid	on an expected line	
 tests/smartCasts/varnotnull/setSameInTry.kt	accepts valid		
 tests/smartCasts/varnotnull/toFlexibleType.kt	skip	Java sources	
 tests/smartCasts/varnotnull/unnecessary.kt	accepts valid		
@@ -9106,7 +9106,7 @@ tests/typealias/kt14498a.kt	accepts invalid	TYPE_VARIANCE_CONFLICT_ERROR	kt14498
 tests/typealias/kt14518.kt	rejects invalid	on an expected line	
 tests/typealias/kt14612.kt	rejects invalid	on an expected line	
 tests/typealias/kt14641.kt	rejects invalid	on an expected line	
-tests/typealias/kt15734.kt	accepts invalid	UNSAFE_CALL	kt15734.kt:19: UNSAFE_CALL
+tests/typealias/kt15734.kt	rejects invalid	on an expected line	
 tests/typealias/kt19601.kt	accepts invalid	UPPER_BOUND_VIOLATED_IN_TYPEALIAS_EXPANSION	kt19601.kt:12: UPPER_BOUND_VIOLATED_IN_TYPEALIAS_EXPANSION
 tests/typealias/kt57065.kt	accepts valid		
 tests/typealias/kt62099.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	kt62099.kt:11: cannot infer type for type parameter 'T'. Specify it explicitly.
@@ -9728,14 +9728,14 @@ testsWithStdLib/callableReferences/beyoundCalls.kt	rejects invalid	on an expecte
 testsWithStdLib/callableReferences/coercionToUnit.kt	accepts valid		
 testsWithStdLib/callableReferences/companions.kt	skip	Java sources	
 testsWithStdLib/callableReferences/constructors.kt	accepts valid		
-testsWithStdLib/callableReferences/differentLevels.kt	rejects valid	no function '_' takes n arguments	differentLevels.kt:9: no function 'bar' takes 1 arguments
+testsWithStdLib/callableReferences/differentLevels.kt	accepts valid		
 testsWithStdLib/callableReferences/extensionReceiverInference.kt	accepts valid		
 testsWithStdLib/callableReferences/fromBasicDiagnosticTests/ambiguityWhenNoApplicableCallableReferenceCandidate.kt	rejects invalid	on an expected line	
 testsWithStdLib/callableReferences/fromBasicDiagnosticTests/applicableCallableReferenceFromDistantScope.kt	accepts valid		
 testsWithStdLib/callableReferences/fromBasicDiagnosticTests/chooseCallableReferenceDependingOnInferredReceiver.kt	rejects invalid	on an expected line	
 testsWithStdLib/callableReferences/fromBasicDiagnosticTests/commonSupertypeFromReturnTypesOfCallableReference.kt	accepts valid		
 testsWithStdLib/callableReferences/fromBasicDiagnosticTests/eagerAndPostponedCallableReferences.kt	rejects invalid	on an expected line	
-testsWithStdLib/callableReferences/fromBasicDiagnosticTests/eagerResolveOfSingleCallableReference.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	eagerResolveOfSingleCallableReference.kt:12: type mismatch: inferred type is Or but B was expected
+testsWithStdLib/callableReferences/fromBasicDiagnosticTests/eagerResolveOfSingleCallableReference.kt	accepts valid		
 testsWithStdLib/callableReferences/fromBasicDiagnosticTests/moreSpecificAmbiguousExtensions.kt	rejects invalid	on an expected line	
 testsWithStdLib/callableReferences/fromBasicDiagnosticTests/multipleOutersAndMultipleCallableReferences.kt	accepts valid		
 testsWithStdLib/callableReferences/fromBasicDiagnosticTests/noAmbiguityBetweenTopLevelAndMemberProperty.kt	accepts valid		
@@ -9749,7 +9749,7 @@ testsWithStdLib/callableReferences/implicitTypes.kt	rejects invalid	on an expect
 testsWithStdLib/callableReferences/inferenceFromCallableReferenceType.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	inferenceFromCallableReferenceType.kt:13: cannot infer type for type parameter 'T'. Specify it explicitly.
 testsWithStdLib/callableReferences/inferenceFromExpectedType.kt	accepts valid		
 testsWithStdLib/callableReferences/javaStatic.kt	skip	Java sources	
-testsWithStdLib/callableReferences/manyCandidatesInference.kt	rejects valid	no function '_' takes n arguments	manyCandidatesInference.kt:9: no function 'bar' takes 1 arguments
+testsWithStdLib/callableReferences/manyCandidatesInference.kt	accepts valid		
 testsWithStdLib/callableReferences/manyInnerCandidates.kt	accepts valid		
 testsWithStdLib/callableReferences/manyInnerManyOuterCandidates.kt	accepts valid		
 testsWithStdLib/callableReferences/manyInnermanyOuterCandidatesAmbiguity.kt	rejects invalid	on an expected line	
@@ -10329,7 +10329,7 @@ testsWithStdLib/inference/completion/postponedArgumentsAnalysis/fixInputTypeToMo
 testsWithStdLib/inference/completion/postponedArgumentsAnalysis/fixReceiverToMoreSpecificType.kt	accepts valid		
 testsWithStdLib/inference/completion/postponedArgumentsAnalysis/kt38799.kt	accepts valid		
 testsWithStdLib/inference/completion/postponedArgumentsAnalysis/manyArguments.kt	accepts valid		
-testsWithStdLib/inference/completion/postponedArgumentsAnalysis/moreSpecificOutputType.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	moreSpecificOutputType.kt:5: type mismatch: inferred type is Set<K> but ObservableSet<K> was expected
+testsWithStdLib/inference/completion/postponedArgumentsAnalysis/moreSpecificOutputType.kt	accepts valid		
 testsWithStdLib/inference/completion/postponedArgumentsAnalysis/performance/reuseBuiltFunctionalTypesForIdLambdas.kt	accepts valid		
 testsWithStdLib/inference/completion/postponedArgumentsAnalysis/performance/reuseBuiltFunctionalTypesForLambdas.kt	accepts valid		
 testsWithStdLib/inference/completion/postponedArgumentsAnalysis/performance/reuseBuiltFunctionalTypesForPairOfLambdas.kt	accepts valid		
@@ -10762,7 +10762,7 @@ testsWithStdLib/smartcasts/letAlwaysChangesToNotNull.kt	rejects invalid	on an ex
 testsWithStdLib/smartcasts/letChangesToNotNull.kt	rejects invalid	on an expected line	
 testsWithStdLib/smartcasts/letChangesToNull.kt	rejects invalid	on an expected line	
 testsWithStdLib/smartcasts/letChangesToNullComplex.kt	rejects invalid	on an expected line	
-testsWithStdLib/smartcasts/letMergeNotNull.kt	accepts invalid	UNSAFE_CALL	letMergeNotNull.kt:8: UNSAFE_CALL
+testsWithStdLib/smartcasts/letMergeNotNull.kt	rejects invalid	on an expected line	
 testsWithStdLib/smartcasts/letStable.kt	accepts valid		
 testsWithStdLib/smartcasts/letUsesOwnReceiver.kt	accepts valid		
 testsWithStdLib/smartcasts/listOfGeneric.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	listOfGeneric.kt:6: type mismatch: inferred type is List<String> but Collection<T> was expected

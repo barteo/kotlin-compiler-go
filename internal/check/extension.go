@@ -204,7 +204,7 @@ func (c *Checker) resolveExtProp(d *syntax.PropDecl) {
 		sym.Type, sym.Resolved = types.InvalidType, true
 		gs.Ret, gs.Resolved = types.InvalidType, true
 	default:
-		sym.Infer = func() { c.inferProp(d) }
+		sym.Infer = c.lazily(&sym.Resolved, func() { c.inferProp(d) })
 		gs.Infer = func() { ensureVar(sym) }
 	}
 	if g.Inline {
@@ -327,6 +327,22 @@ func (c *Checker) checkExtPropOverrides(d *syntax.ClassDecl) {
 			}
 		}
 	}
+}
+
+// mayHaveMemberExts reports whether class cls may declare or inherit
+// member extensions: a class of the class path, any class if the program
+// declares some, or a class of the program with a supertype from the
+// class path, which may declare them.
+func (c *Checker) mayHaveMemberExts(cls *types.ClassSym) bool {
+	if cls.External || c.u.memberExts {
+		return true
+	}
+	found := false
+	cls.Supertypes(func(s *types.ClassSym) bool {
+		found = s.External && (len(s.ExtMethods) > 0 || len(s.ExtProps) > 0)
+		return !found
+	})
+	return found
 }
 
 // memberExtProps returns the getters of the extension properties named

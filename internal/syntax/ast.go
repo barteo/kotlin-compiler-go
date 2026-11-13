@@ -435,6 +435,9 @@ type FunDecl struct {
 	// Once names the parameters that the function's contract, which the
 	// checker drops, says it calls exactly once.
 	Once map[string]bool
+	// InPlace names those it says it calls in place, callsInPlace of
+	// any kind.
+	InPlace map[string]bool
 	// Implies are the contract's returns(value) implies (p != null) and
 	// (p is T) effects.
 	Implies []Implies
@@ -1310,10 +1313,10 @@ type Call struct {
 	// replaces with an expression, which is generated instead: the
 	// serialization plugin's serializer<T>() of a known T.
 	Value Expr
-	// Serializers are set by the checker on a call of a library's inline
-	// function with reified type parameters, by their names: the
-	// serializers of their type arguments, which its copied bytecode's
-	// serializer<T>() becomes, as the serialization plugin replaces it.
+	// Serializers are set by the checker on a call of an inline function
+	// with reified type parameters, by their names: the serializers of
+	// their type arguments, which serializer<T>() in its copy becomes, as
+	// the serialization plugin replaces it.
 	Serializers map[string]Expr
 	trailing    bool // has a trailing lambda, or passes the last argument last
 }
@@ -1398,6 +1401,9 @@ type Lambda struct {
 	// calls it exactly once, as its contract says: the vars it assigns
 	// keep their narrowing at its start.
 	Once bool
+	// InPlace is set by the checker on a lambda passed to a function
+	// whose contract says it calls it in place, any number of times.
+	InPlace bool
 	// Ref is set on a callable reference, which is parsed as a lambda: the
 	// checker gives it parameters and a body that calls the function, or
 	// reads the property, it names.

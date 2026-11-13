@@ -7,9 +7,9 @@
 //	config  = jdkHome:String noJDK:Bool moduleName:String jobs:Uint
 //	          n:Uint classPath:String*n m:Uint friendPath:String*m
 //
-// OpKaUpdate: session:Int n:Uint path:String*n → model
+// OpKaUpdate: session:Int n:Uint path:String*n k:Uint kept:Uint*k → model
 //
-//	model   = handle:Int n:Uint file*n m:Uint diag*m
+//	model   = handle:Int check:Uint same:Bool [n:Uint file*n m:Uint diag*m]
 //	file    = path:String package:String annots decls lookups nodes:Uint kinds:Uint
 //	decls   = n:Uint decl*n
 //	decl    = kind:Uint name:String node:Uint classID:String visibility:Uint
@@ -30,6 +30,10 @@
 //	          | annotation: annot | array: n:Uint value*n]
 //	diag    = path:String line:Uint col:Uint message:String feature:String
 //	lookups = n:Uint (scope:String kind:Uint name:String)*n
+//
+// check is the model's ka Model.Check. kept are the checks whose models
+// the caller kept what it built from; if check is one of them, same is
+// set and the files and diagnostics, which are that model's, are left out.
 //
 // lookups are the names a file looks up (ka's File.Lookups), for
 // incremental processing; kind is a ka LookupKind. nodes is the number of
@@ -74,6 +78,7 @@ import (
 	"context"
 	"io"
 	"math"
+	"slices"
 
 	"github.com/barteo/kotlin-compiler-go/analysis/ka"
 	"github.com/barteo/kotlin-compiler-go/internal/kcabi"
@@ -173,6 +178,10 @@ func update(req []byte) ([]byte, error) {
 	for n := r.Uint(); n > 0 && r.Err() == nil; n-- {
 		sources = append(sources, ka.Source{Path: r.String()})
 	}
+	var kept []uint64
+	for n := r.Uint(); n > 0 && r.Err() == nil; n-- {
+		kept = append(kept, r.Uint())
+	}
 	if err := r.Err(); err != nil {
 		return nil, err
 	}
@@ -189,6 +198,12 @@ func update(req []byte) ([]byte, error) {
 	defer tm.Mark("encode")
 	var w wire.Writer
 	w.Int(int64(handles.Put(m)))
+	w.Uint(m.Check)
+	same := slices.Contains(kept, m.Check)
+	w.Bool(same)
+	if same {
+		return w.Message(), nil
+	}
 	w.Uint(uint64(len(m.Files)))
 	for _, f := range m.Files {
 		w.String(f.Path)
@@ -261,7 +276,7 @@ func writeType(w *wire.Writer, t *ka.Type) {
 	w.Uint(uint64(t.Kind))
 	w.String(t.ClassID)
 	var flags uint64
-	for i, on := range [...]bool{t.Nullable, t.Flexible, t.DefinitelyNonNull, t.Extension} {
+	for i, on := range [...]bool{t.Nullable, t.Flexible, t.DefinitelyNonNull, t.Extension, t.Delegated} {
 		if on {
 			flags |= 1 << i
 		}
@@ -304,6 +319,7 @@ func writeAnnotation(w *wire.Writer, a *ka.Annotation) {
 	for _, t := range a.TypeArgs {
 		writeType(w, t)
 	}
+	w.String(a.Alias)
 }
 
 func writeValue(w *wire.Writer, v *ka.Value) {

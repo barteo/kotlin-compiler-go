@@ -66,6 +66,7 @@ func (c *Checker) varStable(v *types.VarSym, t types.Type) bool {
 	if found != v {
 		return false
 	}
+	depth = c.pastInPlace(depth, v.Name)
 	if depth == c.scope.depth {
 		if t.K == types.Invalid {
 			return true
@@ -81,6 +82,15 @@ func (c *Checker) varStable(v *types.VarSym, t types.Type) bool {
 		return false
 	}
 	key := varFrame{v, c.lambdas[depth]}
+	if t.K != types.Invalid {
+		// The frame may run while it runs too: what it assigns may
+		// come between a check and a read.
+		for _, at := range c.frameAssigns[key] {
+			if !c.subtype(at, t) {
+				return false
+			}
+		}
+	}
 	if assigned, ok := c.concurrent[key]; ok {
 		return !assigned
 	}
@@ -88,6 +98,23 @@ func (c *Checker) varStable(v *types.VarSym, t types.Type) bool {
 	assigned := !ok || assignedOutside(site.b.Stmts[site.i+1:], v.Name, key.frame)
 	c.concurrent[key] = assigned
 	return !assigned
+}
+
+// pastInPlace returns depth, the depth of the scope of a local, past the
+// lambdas around the code that run in place, where the local's smart
+// casts are as at the call: the inlined lambdas, but those of noinline
+// and crossinline parameters, and those of callsInPlace contracts. As
+// for kotlinc, a var read in run { } isn't assigned while it runs. A
+// lambda that another lambda argument of its call assigns local name in
+// doesn't count: they may run in any order.
+func (c *Checker) pastInPlace(depth int, name string) int {
+	for depth < c.scope.depth && depth < len(c.lambdas) {
+		if l := c.lambdas[depth]; !l.InPlace && (!l.Inline || l.Crossinline) || c.siblingAssigns[l][name] {
+			break
+		}
+		depth++
+	}
+	return depth
 }
 
 // assignedOutside reports whether stmts assign a local named name where
@@ -168,10 +195,17 @@ func hasFrame(node any, frame *syntax.Lambda) bool {
 }
 
 // assignedNested records that code nested in the code declaring local
-// var v assigns it a value of type t.
+// var v assigns it a value of type t, and that the outermost frame that
+// doesn't run in place does.
 func (c *Checker) assignedNested(v *types.VarSym, t types.Type) {
-	if _, depth := c.scope.find(v.Name); depth < c.scope.depth {
+	_, depth := c.scope.find(v.Name)
+	depth = c.pastInPlace(depth, v.Name)
+	if depth < c.scope.depth {
 		c.nestedAssigns[v] = append(c.nestedAssigns[v], t)
+	}
+	if depth < len(c.lambdas) && depth < c.scope.depth {
+		key := varFrame{v, c.lambdas[depth]}
+		c.frameAssigns[key] = append(c.frameAssigns[key], t)
 	}
 }
 
@@ -343,12 +377,37 @@ func (c *Checker) watchedVars(nodes ...any) []*types.VarSym {
 			continue
 		}
 		for _, name := range c.assigns(n) {
-			if v, _ := c.scope.find(name); v != nil && isVar(v) && narrowable(v.Type) && !slices.Contains(out, v) {
+			if v, _ := c.scope.find(name); v != nil && isVar(v) && (narrowable(v.Type) || c.hasDependents(v)) && !slices.Contains(out, v) {
 				out = append(out, v)
 			}
 		}
 	}
 	return out
+}
+
+// hasDependents reports whether smart casts other than its own depend on
+// the value of var v: those of its properties, and of the values it is
+// an alias of (see alias) or implies (see bindValue).
+func (c *Checker) hasDependents(v *types.VarSym) bool {
+	for sc := c.scope; sc != nil; sc = sc.parent {
+		for _, n := range sc.narrows {
+			if n.recv == v {
+				return true
+			}
+		}
+	}
+	of := func(n narrow) bool { return n.recv == v || n.recv == nil && n.sym == v }
+	for k, ns := range c.sameAs {
+		if k.recv == v || k.recv == nil && k.sym == v || slices.ContainsFunc(ns, of) {
+			return true
+		}
+	}
+	for _, ns := range c.implied {
+		if slices.ContainsFunc(ns, of) {
+			return true
+		}
+	}
+	return false
 }
 
 // loopVars returns the vars of watchedVars(nodes...) whose narrowing a
@@ -358,6 +417,9 @@ func (c *Checker) watchedVars(nodes ...any) []*types.VarSym {
 // assign with op=, whose results, which assign checks, keep the type.
 func (c *Checker) loopVars(nodes ...any) ([]*types.VarSym, func()) {
 	vars := c.watchedVars(nodes...)
+	for _, v := range vars {
+		c.unalias(v) // even those it keeps: x++ gives x another value
+	}
 	out := vars[:0:0]
 	var kept []*types.VarSym
 	var old []types.Type
@@ -423,6 +485,17 @@ func (c *Checker) hasVars() bool {
 			}
 		}
 	}
+	// Or smart casts that depend on a var (see hasDependents).
+	if len(c.sameAs) > 0 || len(c.implied) > 0 {
+		return true
+	}
+	for sc := c.scope; sc != nil; sc = sc.parent {
+		for _, n := range sc.narrows {
+			if n.recv != nil && isVar(n.recv) {
+				return true
+			}
+		}
+	}
 	return false
 }
 
@@ -446,6 +519,95 @@ func narrowable(t types.Type) bool {
 func (c *Checker) reset(vars []*types.VarSym) {
 	for _, v := range vars {
 		c.scope.narrows = append(c.scope.narrows, narrow{sym: v, t: v.Type})
+		c.dropMembers(v)
+		c.unalias(v)
+	}
+}
+
+// impliedBy returns the smart casts that smart cast k implies: of the
+// values that hold the same value as k's (see alias), to k's type, and,
+// if k says it isn't null, those that implies (see bindValue).
+func (c *Checker) impliedBy(k narrow) []narrow {
+	var out []narrow
+	if !types.MayBeNull(k.t) {
+		out = append(out, c.implied[c.localKey(k)]...)
+	}
+	for _, p := range c.sameAs[flowKey{k.recv, k.sym}] {
+		cur := c.scope.narrowedMember(p.recv, p.sym, p.t)
+		out = append(out, narrow{recv: p.recv, sym: p.sym, t: c.isNarrowed(cur, k.t)})
+	}
+	return out
+}
+
+// aliasable reports whether smart cast k is of a value that a local can
+// be an alias of: a stable one, or a local var, or a stable property of
+// one, that no code nested in the function assigns, which may run while
+// its alias is checked.
+func (c *Checker) aliasable(k narrow) bool {
+	base := k.sym
+	if k.recv != nil {
+		base = k.recv
+	}
+	if !base.Mutable {
+		return true
+	}
+	return isVar(base) && len(c.nestedAssigns[base]) == 0 && c.varStable(base, types.Type{})
+}
+
+// alias records that local v holds the value of k, as after val v = x,
+// and so do the values that hold k's: until any of them is assigned (see
+// unalias), a smart cast of one is a smart cast of the others, as with
+// kotlinc's aliases of local variables.
+func (c *Checker) alias(v *types.VarSym, k narrow) {
+	if c.sameAs == nil {
+		c.sameAs = map[flowKey][]narrow{}
+	}
+	declared := k.t
+	if k.recv == nil {
+		declared = k.sym.Type
+	}
+	vk := flowKey{sym: v}
+	for _, p := range append([]narrow{{recv: k.recv, sym: k.sym, t: declared}}, c.sameAs[flowKey{k.recv, k.sym}]...) {
+		if p.recv == nil && p.sym == v {
+			continue
+		}
+		pk := flowKey{p.recv, p.sym}
+		c.sameAs[vk] = append(c.sameAs[vk], p)
+		c.sameAs[pk] = append(c.sameAs[pk], narrow{sym: v, t: v.Type})
+	}
+}
+
+// unalias forgets what local v and its properties share with other
+// values, which assigning v ends.
+func (c *Checker) unalias(v *types.VarSym) {
+	of := func(recv, sym *types.VarSym) bool { return recv == v || recv == nil && sym == v }
+	for k, ns := range c.sameAs {
+		if of(k.recv, k.sym) {
+			delete(c.sameAs, k)
+			continue
+		}
+		c.sameAs[k] = slices.DeleteFunc(ns, func(n narrow) bool { return of(n.recv, n.sym) })
+	}
+	delete(c.implied, v)
+	for u, ns := range c.implied {
+		c.implied[u] = slices.DeleteFunc(slices.Clone(ns), func(n narrow) bool { return of(n.recv, n.sym) })
+	}
+}
+
+// dropMembers undoes the smart casts of the properties of var v, which
+// another value of v doesn't have: y.x of if (y.x != null) { y = My(null)
+// } is an Int? again.
+func (c *Checker) dropMembers(v *types.VarSym) {
+	var syms []*types.VarSym
+	for sc := c.scope; sc != nil; sc = sc.parent {
+		for _, n := range sc.narrows {
+			if n.recv == v && !slices.Contains(syms, n.sym) {
+				syms = append(syms, n.sym)
+			}
+		}
+	}
+	for _, p := range syms {
+		c.scope.narrows = append(c.scope.narrows, narrow{recv: v, sym: p, t: p.Type})
 	}
 }
 
@@ -490,6 +652,9 @@ func (c *Checker) joinFlows(states []flowState) []narrow {
 			continue
 		}
 		v := k.recv == nil && isVar(k.sym)
+		// A property of a var that a path assigns may be wider after
+		// the paths than before them.
+		w := k.recv != nil && isVar(k.recv)
 		for _, s := range states[1:] {
 			u, ok := s[k]
 			if !ok {
@@ -517,7 +682,7 @@ func (c *Checker) joinFlows(states []flowState) []narrow {
 			t = k.sym.Type
 		case t.K == types.Invalid:
 			continue
-		case !v && cur.K != types.Invalid && !c.subtype(t, cur):
+		case !v && !w && cur.K != types.Invalid && !c.subtype(t, cur):
 			continue // only narrower than it is before the paths
 		}
 		if t != cur {
@@ -647,6 +812,8 @@ func (c *Checker) assignedVar(v *types.VarSym, vt types.Type) {
 		t = vt
 	}
 	c.scope.narrows = append(c.scope.narrows, narrow{sym: v, t: t})
+	c.dropMembers(v)
+	c.unalias(v)
 }
 
 // mayNotRun undoes the smart casts that code that may not run, as the

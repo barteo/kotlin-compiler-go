@@ -47,7 +47,7 @@ internal class KcEnvironment(val key: String, config: KSPConfig) {
             // must give PSI-backed classes (JavaClassImpl).
             conf.addJvmClasspathRoots((config.libraries + config.friends).distinct())
             jvm.jdkHome?.let { conf.put(JVMConfigurationKeys.JDK_HOME, it) }
-            conf.addJavaSourceRoots(jvm.javaSourceRoots)
+            conf.addJavaSourceRoots(sourceRoots(config))
             conf.put(JVMConfigurationKeys.USE_PSI_CLASS_FILES_READING, true)
         }
         KotlinCoreEnvironment.createForProduction(disposable, conf, EnvironmentConfigFiles.JVM_CONFIG_FILES)
@@ -86,18 +86,73 @@ internal class KcEnvironment(val key: String, config: KSPConfig) {
     fun psiFile(vf: VirtualFile): PsiFile? {
         val fm = (psiManager as PsiManagerEx).fileManager
         val cached = fm.findCachedViewProvider(vf)
+        // The file's bytes, compared with those its PSI was parsed from:
+        // cheaper than decoding its text again.
+        val bytes = vf.contentsToByteArray()
         if (cached != null) {
-            if (cached.contents.toString() == LoadTextUtil.loadText(vf).toString()) {
+            val same = parsedBytes[vf]?.contentEquals(bytes)
+                ?: (cached.contents.toString() == LoadTextUtil.loadText(vf).toString())
+            if (same) {
                 reused++
+                parsedBytes[vf] = bytes
                 return psiManager.findFile(vf)
             }
             fm.setViewProvider(vf, null)
             reparsed++
         }
+        parsedBytes[vf] = bytes
         return psiManager.findFile(vf)
     }
 
-    fun dispose() = Disposer.dispose(disposable)
+    /** The bytes each file's PSI was parsed from, as [psiFile] last read them. */
+    private val parsedBytes = HashMap<VirtualFile, ByteArray>()
+
+    /** A round kept for a later update of the same check, with its model's handle, which the environment owns. */
+    class KeptRound(val round: KcRound, val handle: Long, val diagnostics: List<KcDiagnostic>, val reparsed: Int)
+
+    /**
+     * The last rounds built in this environment, by their models' checks
+     * (Go's Model.Check), least recently used first: an update that gets
+     * one of these checks back uses its round again, if [psiFile] has
+     * parsed no file again since, so that its PSI is the files' PSI.
+     */
+    private val rounds = LinkedHashMap<Long, KeptRound>()
+
+    /** The checks of the rounds an update may use again. */
+    fun reusableChecks(): List<Long> = rounds.filterValues { it.reparsed == reparsed }.keys.toList()
+
+    /** The round kept for [check], now the most recently used. */
+    fun reuse(check: Long): KeptRound {
+        val k = rounds.remove(check) ?: error("kc: no round kept for check $check")
+        rounds[check] = k
+        return k
+    }
+
+    /** Keeps [round] for later updates of [check], dropping the least recently used beyond [KEEP_ROUNDS]. */
+    fun keep(check: Long, round: KcRound, handle: Long, diagnostics: List<KcDiagnostic>) {
+        rounds.remove(check)?.let(::drop)
+        rounds[check] = KeptRound(round, handle, diagnostics, reparsed)
+        while (rounds.size > KEEP_ROUNDS) {
+            val first = rounds.keys.first()
+            drop(rounds.remove(first)!!)
+        }
+    }
+
+    private fun drop(k: KeptRound) {
+        k.round.token.invalidation = "dropped from the kept rounds"
+        KcOps.close(k.handle)
+    }
+
+    fun dispose() {
+        rounds.values.forEach(::drop)
+        rounds.clear()
+        Disposer.dispose(disposable)
+    }
+
+    private companion object {
+        /** A KSP run's rounds that check different sources: the first, and the ones with generated files. */
+        const val KEEP_ROUNDS = 3
+    }
 }
 
 /**
@@ -141,7 +196,7 @@ internal object KcEnvironments {
         return buildString {
             (config.libraries + config.friends).distinct().forEach { append(stamp(it)).append('\n') }
             jvm?.jdkHome?.let { append(stamp(File(it, "lib/modules"))).append('\n') }
-            jvm?.javaSourceRoots.orEmpty().forEach { append("root=").append(it.path).append('\n') }
+            sourceRoots(config).forEach { append("root=").append(it.path).append('\n') }
             javaSources.forEach { append(stamp(File(it))).append('\n') }
         }
     }

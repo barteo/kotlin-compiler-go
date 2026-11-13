@@ -15,24 +15,35 @@ import (
 // listOf(id { a -> }) for an expected List<(String) -> Unit> is below
 // listOf's E, which is below (String) -> Unit. As in Kotlin, a lambda
 // passed for T takes its parameter types from it, or from a declared
-// bound, as A's of fun <A : (Int) -> Unit> take(x: A).
+// bound, as A's of fun <A : (Int) -> Unit> take(x: A). If the function
+// type is another argument's, a lower bound of a variable tv is below,
+// only its inputs are tv's: see openResult.
 func (s *system) funcUpper(tv *tvar) (types.Type, bool) {
 	if slices.ContainsFunc(tv.lower, s.proper) || slices.ContainsFunc(tv.upper, s.proper) {
 		return types.InvalidType, false
+	}
+	type bound struct {
+		t     types.Type
+		lower bool
 	}
 	seen := map[*tvar]bool{tv: true}
 	queue := []*tvar{tv}
 	for len(queue) > 0 {
 		v := queue[0]
 		queue = queue[1:]
-		bounds := slices.Concat(v.upper, v.v.Bounds)
+		var bounds []bound
+		for _, u := range slices.Concat(v.upper, v.v.Bounds) {
+			bounds = append(bounds, bound{u, false})
+		}
 		if v != tv {
 			// Or a function type another argument is: { this } of
-			// select(id { this }, fun Int.() = this) is an Int.() -> Int.
-			bounds = append(bounds, v.lower...)
+			// select(id { this }, fun Int.() = this) is an Int.() -> R.
+			for _, u := range v.lower {
+				bounds = append(bounds, bound{u, true})
+			}
 		}
-		for _, u := range bounds {
-			u = s.apply(u)
+		for _, b := range bounds {
+			u := s.apply(b.t)
 			if w := s.unfixedVar(u); w != nil {
 				if !seen[w] {
 					seen[w] = true
@@ -41,11 +52,34 @@ func (s *system) funcUpper(tv *tvar) (types.Type, bool) {
 				continue
 			}
 			if !u.HasVars() && u.Flex().IsFunc() {
+				if b.lower {
+					u = s.openResult(u.Flex(), tv.pos)
+				}
 				return u, true
 			}
 		}
 	}
 	return types.InvalidType, false
+}
+
+// openResult returns function type t with a new variable for its result.
+// As in Kotlin, a lambda passed for a variable whose bounds relate it to
+// another argument's function type takes its receiver and parameter types
+// from it, but has a result of its own: the second id's T of
+// select(id { B() }, id { C() }) is a () -> C, and select's K a () -> A,
+// for B and C both A, not the () -> B the second lambda would fail.
+func (s *system) openResult(t types.Type, pos syntax.Pos) types.Type {
+	n := len(t.A.List) - 1
+	if n < 0 {
+		return t
+	}
+	r := &types.TypeParamSym{Name: "R"}
+	sub := s.fresh([]*types.TypeParamSym{r}, nil, pos)
+	s.byVar[sub[r].T.Param()].synth = true
+	args := slices.Clone(t.A.List)
+	args[n] = types.Arg{T: sub[r].T}
+	t.A = types.MakeArgs(args)
+	return t
 }
 
 // openVar reports whether t is an unfixed variable without proper

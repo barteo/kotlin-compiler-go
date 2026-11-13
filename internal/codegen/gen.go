@@ -100,6 +100,12 @@ type gen struct {
 	// srcInl are the copies of the program's inline functions being
 	// generated, innermost last.
 	srcInl []*srcInline
+	// inlineParams are, in the method of an inline function, its
+	// parameters whose lambdas its copies inline, and passedOn the
+	// arguments that pass one of them on to another inline function:
+	// see passedOnArg.
+	inlineParams map[*types.VarSym]bool
+	passedOn     map[*syntax.Ident]bool
 	// reified are the classes of the reified type parameters of the
 	// stdlib's inline function being copied, by name, and reifiedTypes
 	// their types, for typeOf.
@@ -172,6 +178,10 @@ type fileState struct {
 	// convertedArg.
 	inlinedConvs map[*syntax.Call]*types.VarSym
 	count        map[string]int // lambdas named with each class and prefix
+	// serializers are the serializers of the type arguments of the
+	// reified type parameters of the program's inline functions whose
+	// copies are being generated: see copySerializers.
+	serializers map[*types.TypeParamSym]syntax.Expr
 	// lambdasIn are the lambdas of the inline functions the file copies,
 	// by function: see declaredInCopy.
 	lambdasIn map[*syntax.FunDecl]map[*syntax.Lambda]bool
@@ -996,6 +1006,16 @@ func (g *gen) function(fd *syntax.FunDecl, access uint16) cf.MemberRef {
 		saved := g.publicInline
 		g.publicInline = true
 		defer func() { g.publicInline = saved }()
+	}
+	if fd.Inline && !sym.Suspend && len(fd.Inlinable) == len(fd.Params) {
+		saved := g.inlineParams
+		g.inlineParams = map[*types.VarSym]bool{}
+		for i, p := range fd.Params {
+			if fd.Inlinable[i] && p.Sym != nil {
+				g.inlineParams[p.Sym] = true
+			}
+		}
+		defer func() { g.inlineParams = saved }()
 	}
 	d := funDesc(sym)
 	if g.implsThis {
@@ -3270,15 +3290,28 @@ func (g *gen) invokeVirtual(cls *types.ClassSym, name, d string) {
 	}
 }
 
+// inOuter reports whether p is a companion object's property whose field
+// the outer class holds, and that has accessors: the delegate of a
+// delegated property has none.
+func inOuter(p *types.VarSym) bool {
+	pd, ok := p.Decl.(*syntax.PropDecl)
+	return ok && pd.DelegateOf == nil && p.Owner != nil && p.Owner.CompanionOf != nil && !p.JvmField && p.StaticField()
+}
+
 // directGet and directSet report whether code reads or writes a
 // property's field directly rather than through its getter or setter: as
 // kotlinc does, in the class that declares it, if the accessor is a
 // default one that can't be overridden. The body of a public inline
 // function or accessor, which other classes copy, calls the accessors of
-// the properties that aren't private.
+// the properties that aren't private. So does a companion object's code
+// for its properties whose fields the outer class holds, unless the
+// accessor is private: a mock of the companion then answers for them.
 func (g *gen) directGet(p *types.VarSym) bool {
 	if p.Lateinit && !p.Private {
 		return false // its getter checks it, as kotlinc calls it
+	}
+	if inOuter(p) && !p.Private && !g.companionInits {
+		return false
 	}
 	direct := p.JvmField || g.inClass(p.Owner) && (!g.publicInline || p.Private) && (p.Final || p.Private || p.Deferred && !p.Mutable) && p.HasField() && p.Getter == nil && !p.Const
 	if direct && !p.JvmField {
@@ -3307,6 +3340,9 @@ func lateinitAccess(pd *syntax.PropDecl) uint16 {
 }
 
 func (g *gen) directSet(p *types.VarSym) bool {
+	if inOuter(p) && !p.Private && !p.SetterPrivate && !g.companionInits {
+		return false
+	}
 	in := g.inClass(p.Owner) || g.companionInits && p.Owner == g.owner
 	direct := p.JvmField || in && (!g.publicInline || p.Private) && (p.Final || p.Private || p.SetterPrivate || p.Deferred && !p.Mutable) && p.HasField() && p.Setter == nil && !p.Const
 	if direct && !p.JvmField {

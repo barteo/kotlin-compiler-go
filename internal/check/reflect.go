@@ -1025,7 +1025,7 @@ func kfunCall(x *syntax.Lambda) *syntax.Call {
 		return nil // not resolved
 	}
 	call, ok := x.Body.Stmts[0].(*syntax.ExprStmt).X.(*syntax.Call)
-	if !ok || call.Sym == nil || call.Invoke || x.KProp != nil || call.Ctor != nil && (call.Ctor.Value || call.Ctor.Annotation || call.Ctor.Local) {
+	if !ok || call.Sym == nil || call.Invoke || x.KProp != nil || call.Ctor != nil && (call.Ctor.Value || call.Ctor.Annotation) {
 		return nil
 	}
 	if x.Suspend && x.SAM == nil && call.Sym.Suspend && refStateMachine(x, call.Sym) {

@@ -19,7 +19,25 @@ import (
 // when it is first referenced; its members are read when first used.
 // Body checking runs in parallel, so this is safe for concurrent use.
 type classTable struct {
+	*tableShared
 	cp *classpath.Path // nil: no class path
+	// sources finds the program's classes by internal name, which the
+	// class path's classes of Java sources name. Checking sets it once
+	// the program's classes are declared.
+	sources atomic.Pointer[func(string) *types.ClassSym]
+
+	// parent is set on a check's table of its Java sources, whose class
+	// path is an overlay of parent's: see withSources. It has the
+	// classes of the sources, and finds the others in parent, which
+	// never sees them.
+	parent *classTable
+	srcMu  sync.Mutex
+	srcM   map[string]*types.ClassSym
+}
+
+// tableShared is the part of a class table its children share: the
+// classes of the class path and what is computed from them.
+type tableShared struct {
 	mu sync.Mutex
 	m  map[string]*types.ClassSym
 
@@ -37,10 +55,6 @@ type classTable struct {
 	javaTypes bool
 	funcs     *types.Functions // the interfaces of function types
 	kotlinTable
-	// sources finds the program's classes by internal name, which the
-	// class path's classes of Java sources name. Checking sets it once
-	// the program's classes are declared.
-	sources atomic.Pointer[func(string) *types.ClassSym]
 
 	// Results that depend only on loaded classes; those of the program's
 	// classes are in Universe.local.
@@ -52,6 +66,34 @@ type classTable struct {
 	// scopes are the type parameters of the Kotlin classes loaded, by
 	// their metadata's ids, which their inner classes' metadata uses.
 	scopes sync.Map // *types.ClassSym -> tscope
+}
+
+// root returns the table of the shared class path: t, or t's parent.
+func (t *classTable) root() *classTable {
+	if t.parent != nil {
+		return t.parent
+	}
+	return t
+}
+
+// withSources returns a table of the classes of cp, an overlay of t's
+// class path with Java sources, over t.
+func (t *classTable) withSources(cp *classpath.Path) *classTable {
+	t = t.root()
+	return &classTable{tableShared: t.tableShared, cp: cp, parent: t, srcM: map[string]*types.ClassSym{}}
+}
+
+// sourceClass returns the class of the Java sources with the given name.
+func (t *classTable) sourceClass(name string) *types.ClassSym {
+	t.srcMu.Lock()
+	defer t.srcMu.Unlock()
+	c, ok := t.srcM[name]
+	if !ok {
+		c = types.NewExternal(name, t.load)
+		c.Source = true
+		t.srcM[name] = c
+	}
+	return c
 }
 
 // caches hold results that checking asks for again and again: supertypes
@@ -79,7 +121,7 @@ func (u *Universe) cache(ts ...types.Type) *caches {
 func programType(t types.Type) bool {
 	switch t.K {
 	case types.Class:
-		return t.C == nil || !t.C.External && !t.C.Global
+		return t.C == nil || !t.C.External && !t.C.Global || t.C.Source
 	case types.TypeParam, types.TypeVar:
 		return true
 	}
@@ -102,7 +144,7 @@ type methodsKey struct {
 }
 
 func newClassTable(cp *classpath.Path) *classTable {
-	t := &classTable{cp: cp, m: map[string]*types.ClassSym{}, funcs: types.KcFunctions}
+	t := &classTable{tableShared: &tableShared{m: map[string]*types.ClassSym{}, funcs: types.KcFunctions}, cp: cp}
 	if cp != nil && cp.HasKotlin() {
 		t.kotlin = true
 		t.funcs = types.KotlinFunctions
@@ -118,6 +160,18 @@ func newClassTable(cp *classpath.Path) *classTable {
 // collection interfaces are the mutable collection types, and the
 // function interfaces are function types.
 func (t *classTable) class(name string) *types.ClassSym {
+	if t.parent != nil {
+		if t.cp.IsSource(name) {
+			return t.sourceClass(name)
+		}
+		if c := t.parent.class(name); c != nil {
+			return c
+		}
+		if src := t.sources.Load(); src != nil {
+			return (*src)(name)
+		}
+		return nil
+	}
 	if t.kotlin {
 		if id, ok := mutableOf[name]; ok {
 			return t.kclass(id)
@@ -1184,7 +1238,7 @@ func (c *Checker) extCalleesFor(name string, rt types.Type, x *syntax.Call) []ca
 	for i := len(c.recvs) - 1; i >= 0; i-- {
 		r := &c.recvs[i]
 		rt := c.scope.narrowed(r.sym).NonNull()
-		if cls := c.classOf(rt); cls != nil && (cls.External || c.u.memberExts) {
+		if cls := c.classOf(rt); cls != nil && c.mayHaveMemberExts(cls) {
 			if out := fits(memberExtMethods(cls, name)); len(out) > 0 {
 				for j := range out {
 					out[j].dispatchRecv = r
@@ -1347,7 +1401,7 @@ func (c *Checker) extProp(x *syntax.Member, rt types.Type) (types.Type, bool) {
 	for i := len(c.recvs) - 1; i >= 0 && best == nil; i-- {
 		r := &c.recvs[i]
 		t := c.scope.narrowed(r.sym).NonNull()
-		if cls := c.classOf(t); cls != nil && (cls.External || c.u.memberExts) {
+		if cls := c.classOf(t); cls != nil && c.mayHaveMemberExts(cls) {
 			sub = func(g *types.FunSym) types.Subst { return c.memberSubst(t, g.Owner) }
 			if fits(memberExtProps(cls, x.Name)); best != nil {
 				dispatch, dispatchRecv = nil, r
@@ -1713,7 +1767,7 @@ func (c *Checker) jvmClass(t types.Type) *types.ClassSym {
 func (c *Checker) javaMethods(cls *types.ClassSym, name string) []*types.FunSym {
 	k := methodsKey{cls, name}
 	cache := &c.u.ext.caches
-	if !cls.External && !cls.Global {
+	if !cls.External && !cls.Global || cls.Source {
 		cache = &c.u.local
 	}
 	if ms, ok := cache.methods.Load(k); ok {
@@ -1803,7 +1857,11 @@ func (c *Checker) inheritExtDefaults(f *types.FunSym) {
 	if f.Decl != nil || f.Owner == nil || !f.Owner.External || f.Static || f.Name == "<init>" || len(f.Params) == 0 {
 		return
 	}
-	once, _ := c.u.ext.defaults.LoadOrStore(f, new(sync.Once))
+	defaults := &c.u.ext.defaults
+	if f.Owner.Source {
+		defaults = &c.u.defaults
+	}
+	once, _ := defaults.LoadOrStore(f, new(sync.Once))
 	once.(*sync.Once).Do(func() {
 		if declaresDefaults(f) {
 			return
@@ -1852,9 +1910,10 @@ func javaMethods(cls *types.ClassSym, name string) []*types.FunSym {
 			}
 			// The program's overloads in one class are distinct even when
 			// their erasures are the same, as f(List<A>) and f(List<B>)
-			// renamed by @JvmName. A class file's are distinct by
-			// descriptor, but for covariant return bridges.
-			if f.Decl == nil {
+			// renamed by @JvmName, and so are a class file's whose JVM
+			// names aren't their own. A class file's others are distinct
+			// by descriptor, but for covariant return bridges.
+			if f.Decl == nil && (f.JVMName == "" || f.JVMName == f.Name) {
 				seen[params] = true
 			} else {
 				own = append(own, params)

@@ -650,6 +650,10 @@ type FunSym struct {
 	// once, as its contract says, callsInPlace(f, EXACTLY_ONCE): definite
 	// assignment follows the lambda's body as the call's code.
 	Once []bool
+	// InPlace marks the parameters whose lambdas it calls in place, any
+	// number of times, callsInPlace(f) of any kind: they don't run after
+	// it returns.
+	InPlace []bool
 
 	// Implies are the effects of the function's contract that say what a
 	// parameter is if it returns: returns(false) implies (this != null)
@@ -805,7 +809,11 @@ type ClassSym struct {
 	// load on first use; call Ensure before reading the fields below or
 	// Methods.
 	External bool
-	Missing  bool // not found or unreadable
+	// Source is set, with External, on a class of the program's Java
+	// sources that a check loads over a library it shares with other
+	// checks: it lives as long as the check.
+	Source  bool
+	Missing bool // not found or unreadable
 	// MethodAnnotations reads the annotations of a method of the class
 	// file, by its name and descriptor.
 	MethodAnnotations func(name, desc string) (*classfile.MethodAnnotations, error)

@@ -278,7 +278,7 @@ func (c *Checker) expr1(x syntax.Expr, want types.Type, allowRange bool, sink *s
 		if k, ok := c.narrowKeyOf(x.X); ok && types.MayBeNull(k.t) {
 			// x!! smart-casts x for the code after it.
 			k.t = k.t.NonNull()
-			c.scope.narrows = append(append(c.scope.narrows, k), c.implied[c.localKey(k)]...)
+			c.scope.narrows = append(append(c.scope.narrows, k), c.impliedBy(k)...)
 		}
 		c.scope.narrows = append(c.scope.narrows, c.notNullCast(x.X)...)
 		return t.NonNull()
@@ -1361,6 +1361,20 @@ func (c *Checker) hasNamed(t types.Type, name string) bool {
 
 // narrowing returns the smart casts implied by cond being true or false.
 func (c *Checker) narrowing(cond syntax.Expr) (whenTrue, whenFalse []narrow) {
+	leaf := false
+	switch x := cond.(type) {
+	case *syntax.Binary:
+		leaf = x.Op == syntax.EQ || x.Op == syntax.NE || x.Op == syntax.EQ_EQ_EQ || x.Op == syntax.NOT_EQ_EQ
+	case *syntax.Call, *syntax.Is:
+		leaf = true
+	}
+	if leaf {
+		// What it says of a var it assigns, x of x?.let { x = null; 1 }
+		// != null, was true of its old value.
+		if vars := c.watchedVars(cond); len(vars) > 0 {
+			defer func() { whenTrue, whenFalse = c.notOf(vars, whenTrue), c.notOf(vars, whenFalse) }()
+		}
+	}
 	switch x := cond.(type) {
 	case *syntax.Binary:
 		switch x.Op {
@@ -1383,7 +1397,7 @@ func (c *Checker) narrowing(cond syntax.Expr) (whenTrue, whenFalse []narrow) {
 				kn.t = types.NullType
 				null = []narrow{kn}
 				k.t = k.t.NonNull()
-				n = append([]narrow{k}, c.implied[c.localKey(k)]...)
+				n = append([]narrow{k}, c.impliedBy(k)...)
 			}
 			// a?.b != null, and a?.b == c where c isn't null, mean that a
 			// isn't null.
@@ -1487,10 +1501,7 @@ func (c *Checker) narrowing(cond syntax.Expr) (whenTrue, whenFalse []narrow) {
 		}
 		key := k
 		k.t = c.isNarrowed(k.t, x.Target)
-		n := append([]narrow{k}, safe...)
-		if !types.MayBeNull(k.t) {
-			n = append(n, c.implied[c.localKey(k)]...) // as for k != null
-		}
+		n := append(append([]narrow{k}, safe...), c.impliedBy(k)...)
 		if others != nil && !others.empty() {
 			n = c.excluding(n, key, others)
 		}
@@ -1691,9 +1702,17 @@ func (c *Checker) equalNonNull(x syntax.Expr) []narrow {
 	}
 	if ok && types.MayBeNull(k.t) {
 		k.t = k.t.NonNull()
-		n = append(append(n, k), c.implied[c.localKey(k)]...)
+		n = append(append(n, k), c.impliedBy(k)...)
 	}
 	return n
+}
+
+// notOf returns the smart casts of ns but those of vars and their
+// properties.
+func (c *Checker) notOf(vars []*types.VarSym, ns []narrow) []narrow {
+	return slices.DeleteFunc(slices.Clone(ns), func(n narrow) bool {
+		return slices.Contains(vars, n.recv) || n.recv == nil && slices.Contains(vars, n.sym)
+	})
 }
 
 // localKey returns the local the smart cast k is of, or nil if k is of a
@@ -2061,7 +2080,9 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 			// Or to a method of this class: a constructor parameter
 			// log, with an invoke operator, and fun log() in an init block.
 		}
-		if fs, depth := c.scope.findFunsFor(name, func(fs []*types.FunSym) bool { return c.anyMayTake(fs, x) }); len(fs) > 0 && (c.anyMayTake(fs, x) || !c.invokableProp(name)) {
+		if fs, depth := c.scope.findFunsFor(name, func(fs []*types.FunSym) bool { return c.anyMayTake(fs, x) }); len(fs) > 0 && (c.anyMayTake(fs, x) || !c.invokableProp(name) && !c.anyMayTake(c.topFuns(name), x)) {
+			// Local functions that can't take the arguments give way to
+			// top-level ones that can, as each level in Kotlin.
 			plain := slices.DeleteFunc(slices.Clone(fs), func(f *types.FunSym) bool { return f.Ext })
 			switch {
 			case len(plain) < len(fs) && len(plain) > 0 && c.anyMayTake(plain, x):
@@ -2097,11 +2118,12 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 		if c.cls != nil {
 			// A method of this class, also inherited: f() is this.f(),
 			// unless none takes the arguments and an object in scope's,
-			// a top-level function of the package or one of the class
-			// path's, or an extension of this does.
+			// an imported member of an object, a top-level function of
+			// the package or one of the class path's, or an extension of
+			// this does.
 			ms := c.lowPriorityGivesWay(c.accessible(c.cls, c.javaMethods(c.cls, name)), name, c.cls.This(), x)
 			if len(ms) > 0 && (c.anyMayTake(ms, x) ||
-				c.objectTaking(name, x) == nil && !c.anyMayTake(c.topFuns(name), x) && !c.anyMayTake(c.kotlinFuns(name, false), x) &&
+				c.objectTaking(name, x) == nil && !c.memberImportTakes(name, x) && !c.anyMayTake(c.topFuns(name), x) && !c.anyMayTake(c.kotlinFuns(name, false), x) &&
 					!c.thisExtension(name, x) && !c.propInvokeFits(name, x) && !c.ctorTakes(name, x)) {
 				if c.thisExtension(name, x) && !c.takeTypes(ms, x, c.argTypes(x)) {
 					// Members that don't take the arguments' types give way
@@ -2419,7 +2441,18 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 			// null: x?.let { f(x) }.
 			c.push()
 			c.scope.narrows = n
-			defer c.pop()
+			defer func() {
+				c.pop()
+				// The vars its lambdas assign lose their smart casts
+				// past it too (see checkLambda1), which may not run.
+				var lambdas []any
+				for _, a := range x.Args {
+					if l, ok := a.(*syntax.Lambda); ok {
+						lambdas = append(lambdas, l.Body)
+					}
+				}
+				c.reset(c.watchedVars(lambdas...))
+			}()
 		}
 		if fn.Safe {
 			// x?.f() is f's result or null: an expected T? expects f's
@@ -2711,17 +2744,23 @@ func (c *Checker) packageClassTaking(name string, cls *types.ClassSym, x *syntax
 	return alt
 }
 
-// importTakes reports whether a function that the file imports, or one
-// of the package or the class path, may take call x's arguments, which
-// the methods of the objects in scope named so give way to when none of
-// them can.
-func (c *Checker) importTakes(name string, x *syntax.Call) bool {
+// memberImportTakes reports whether a member of an object that the file
+// imports by name, as import p.Utils.group, may take call x's arguments.
+func (c *Checker) memberImportTakes(name string, x *syntax.Call) bool {
 	for _, mi := range c.memberImportsOf(name) {
 		if c.anyMayTake(c.javaMethods(mi.owner, mi.name), x) {
 			return true
 		}
 	}
-	return c.anyMayTake(c.topFuns(name), x) || c.anyMayTake(c.kotlinFuns(name, false), x)
+	return false
+}
+
+// importTakes reports whether a function that the file imports, or one
+// of the package or the class path, may take call x's arguments, which
+// the methods of the objects in scope named so give way to when none of
+// them can.
+func (c *Checker) importTakes(name string, x *syntax.Call) bool {
+	return c.memberImportTakes(name, x) || c.anyMayTake(c.topFuns(name), x) || c.anyMayTake(c.kotlinFuns(name, false), x)
 }
 
 // ctorTakes reports whether a class named name has a constructor that
@@ -3456,9 +3495,7 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 			}
 			x.SubjSym = &types.VarSym{Name: x.SubjVar, Type: st, Kind: types.Local}
 			c.scope.declare(x.SubjSym)
-			if types.MayBeNull(st) {
-				c.implyNonNull(x.SubjSym, x.Subject)
-			}
+			c.bindValue(x.SubjSym, x.Subject, x.SubjType != nil)
 			subj, hasSubj = narrow{sym: x.SubjSym, t: st}, true
 		} else {
 			st = c.value(x.Subject, noWant)
@@ -3581,7 +3618,7 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 					// subject nor the receivers of its safe calls are.
 					if hasSubj && types.MayBeNull(subjType()) {
 						n := narrow{recv: subj.recv, sym: subj.sym, t: subjType().NonNull()}
-						whenTrue = append(append(whenTrue, n), c.implied[c.localKey(n)]...)
+						whenTrue = append(append(whenTrue, n), c.impliedBy(n)...)
 					}
 					whenTrue = append(whenTrue, c.safeReceivers(x.Subject)...)
 				}
@@ -3590,7 +3627,7 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 					// a null one, of type Nothing?.
 					if hasSubj && types.MayBeNull(subjType()) {
 						n := narrow{recv: subj.recv, sym: subj.sym, t: subjType().NonNull()}
-						later = append(append(later, n), c.implied[c.localKey(n)]...)
+						later = append(append(later, n), c.impliedBy(n)...)
 						if single {
 							whenTrue = append(whenTrue, narrow{recv: subj.recv, sym: subj.sym, t: types.NullType})
 						}
@@ -3650,7 +3687,7 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 				if bt.K == types.Nothing {
 					if hasSubj && types.MayBeNull(subjType()) {
 						n := narrow{recv: subj.recv, sym: subj.sym, t: subjType().NonNull()}
-						afterNull = append(append(afterNull, n), c.implied[c.localKey(n)]...)
+						afterNull = append(append(afterNull, n), c.impliedBy(n)...)
 					}
 					afterNull = append(afterNull, c.safeReceivers(x.Subject)...)
 				}

@@ -62,6 +62,9 @@ type Type struct {
 	// and Contexts is its number of context parameters, which come first.
 	Extension bool
 	Contexts  int
+	// Delegated is set on a class's supertype that it implements by
+	// delegation, I by x.
+	Delegated bool
 	// Abbrev is the typealias type the type was written as, if it was:
 	// a TypeClass whose ClassID is the typealias's, with the typealias's
 	// type arguments and the type's nullability. The type is the

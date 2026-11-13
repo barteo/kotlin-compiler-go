@@ -2,6 +2,7 @@ package ka
 
 import (
 	"cmp"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -10,6 +11,7 @@ import (
 	"github.com/barteo/kotlin-compiler-go/internal/classfile"
 	"github.com/barteo/kotlin-compiler-go/internal/classpath"
 	"github.com/barteo/kotlin-compiler-go/internal/driver"
+	"github.com/barteo/kotlin-compiler-go/internal/javasrc"
 	"github.com/barteo/kotlin-compiler-go/internal/kmeta"
 	"github.com/barteo/kotlin-compiler-go/internal/types"
 )
@@ -20,6 +22,9 @@ type library struct {
 	cp   *classpath.Path
 	lib  *check.Library
 	java *driver.JavaSources // the module's Java sources' classes, or nil
+	// base is set with java: the library of the class path that java's
+	// classes are over, which models the other classes (withJava).
+	base *library
 
 	mu     sync.Mutex
 	decls  map[string]*Decl             // by class ID; nil: no such class
@@ -40,6 +45,9 @@ type library struct {
 // files, by class ID: the built-in classes, as kotlin/String and
 // kotlin/collections/List, that have no class files of their own.
 func (l *library) builtinClasses() map[string]*kmeta.Class {
+	if l.base != nil {
+		return l.base.builtinClasses()
+	}
 	l.builtinsOnce.Do(func() {
 		l.builtins = map[string]*kmeta.Class{}
 		for _, name := range l.cp.Resources(".kotlin_builtins") {
@@ -73,6 +81,24 @@ func (m *Model) Class(id string) *Decl {
 	l := m.lib
 	if l == nil {
 		return nil
+	}
+	return l.decl(id)
+}
+
+// withJava returns a library of the classes of l's class path and the
+// module's Java sources files, for one check. It models the sources'
+// classes and leaves the others to l, which checks of other sources go on
+// sharing.
+func (l *library) withJava(files []*javasrc.File) *library {
+	java := driver.AddJavaSources(l.cp, files)
+	return &library{cp: java.Path, lib: l.lib.WithSources(java.Path), java: java, base: l,
+		decls: map[string]*Decl{}, params: map[string]map[string]string{}}
+}
+
+// decl returns the model of the class with class ID id: see Model.Class.
+func (l *library) decl(id string) *Decl {
+	if l.base != nil && !l.cp.IsSource(internalName(id)) {
+		return l.base.decl(id)
 	}
 	l.mu.Lock()
 	d, ok := l.decls[id]
@@ -139,11 +165,24 @@ func (l *library) class(id string) *Decl {
 		if j, ok := jvmMapped[id]; ok {
 			l.jvmMappedMembers(d, j)
 		}
-		// Kotlin adds java/io/Serializable to the classes it maps whose
-		// Java classes are.
-		if cls != nil && !cls.Missing && d.Kind != KindInterface &&
-			slices.ContainsFunc(javaSupertypes(&fileBuilder{}, cls, d.Kind, nonNull), func(t *Type) bool { return t.ClassID == "java/io/Serializable" }) {
-			d.Supertypes = append([]*Type{{Kind: TypeClass, ClassID: "java/io/Serializable"}}, d.Supertypes...)
+		if arrayClass.MatchString(id) {
+			// A JVM array is Cloneable and Serializable, and its clone()
+			// returns its own type, as FIR's JVM built-ins have it.
+			d.Supertypes = []*Type{{Kind: TypeClass, ClassID: "kotlin/Cloneable"}, {Kind: TypeClass, ClassID: "java/io/Serializable"}}
+			self := &Type{Kind: TypeClass, ClassID: id}
+			for _, tp := range d.TypeParams {
+				self.Args = append(self.Args, TypeArg{Type: &Type{Kind: TypeParameter, Name: tp.Name}})
+			}
+			d.Members = append(d.Members, &Decl{Kind: KindFunction, Name: "clone", Visibility: Public, Modality: ModalityFinal,
+				Flags: FlagOverride, Type: self})
+			return d
+		}
+		// Kotlin adds java/io/Serializable, last, to the classes it maps
+		// whose Java classes are serializable, kotlin/Int's through
+		// java/lang/Number too, as FIR's JVM built-ins do.
+		if cls != nil && !cls.Missing && d.Kind != KindInterface && serializable(cls) {
+			d.Supertypes = slices.DeleteFunc(d.Supertypes, func(t *Type) bool { return t.ClassID == "kotlin/Any" })
+			d.Supertypes = append(d.Supertypes, &Type{Kind: TypeClass, ClassID: "java/io/Serializable"})
 		}
 		return d
 	}
@@ -193,6 +232,20 @@ func (l *library) class(id string) *Decl {
 		d.Supertypes = []*Type{{Kind: TypeClass, ClassID: "kotlin/Any"}}
 	}
 	return d
+}
+
+// arrayClass matches the class IDs of Kotlin's built-in array classes.
+var arrayClass = regexp.MustCompile(`^kotlin/(Boolean|Byte|Char|Short|Int|Long|Float|Double)?Array$`)
+
+// serializable reports whether Java class cls is java/io/Serializable or
+// inherits from it.
+func serializable(cls *types.ClassSym) bool {
+	found := false
+	cls.Supertypes(func(s *types.ClassSym) bool {
+		found = classID(s) == "java/io/Serializable"
+		return !found
+	})
+	return found
 }
 
 // isFunctionClass reports whether id is a function type's class:
@@ -403,14 +456,15 @@ func (l *library) kotlinDecl(kc *kmeta.Class, info *classfile.Info, det *classfi
 			}
 		}
 	}
-	for _, p := range kc.Props {
-		if p.Flags.MemberKind() != 1 {
-			d.Members = append(d.Members, l.kproperty(p, scope, bySig, consts))
-		}
-	}
+	// Functions before properties, as FIR's deserialized classes have them.
 	for _, f := range kc.Funcs {
 		if f.Flags.MemberKind() != 1 {
 			d.Members = append(d.Members, l.kfunction(f, scope, bySig))
+		}
+	}
+	for _, p := range kc.Props {
+		if p.Flags.MemberKind() != 1 {
+			d.Members = append(d.Members, l.kproperty(p, scope, bySig, consts))
 		}
 	}
 	for _, e := range kc.EnumEntries {
@@ -1504,6 +1558,9 @@ func descClassID(desc string) string {
 // name: what tells an unsigned argument from a signed one in a class
 // file.
 func (l *library) paramTypes(id string) map[string]string {
+	if l.base != nil {
+		return l.base.paramTypes(id) // a Kotlin class's: see load
+	}
 	l.mu.Lock()
 	pt, ok := l.params[id]
 	l.mu.Unlock()

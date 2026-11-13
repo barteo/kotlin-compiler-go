@@ -51,9 +51,9 @@ func (a Arg) String() string {
 type Args struct {
 	List  []Arg
 	param *TypeParamSym // set instead of List in a parameter's own Args
-	// local is set if the list holds a symbol of one compilation: see
+	// life is how long the longest-lived part the list holds lives: see
 	// MakeArgs.
-	local bool
+	life life
 	// lists holds the interned lists whose table is this one's: see
 	// MakeArgs.
 	lists argsTable
@@ -74,14 +74,52 @@ type argsKey struct {
 //
 // So a list is kept in a table that belongs to one of its parts, which
 // the list can't outlive: its tail, its head type's arguments and its
-// head type's class. The table is that of the first of these that is
-// local, a symbol of one compilation or a list holding one. Equal lists
-// have the same parts, so they are found in the same table, and a list is
-// collected with the compilation it belongs to. Symbols are local unless
-// they are among the few that package-level variables declare for all
-// compilations (see ClassSym.Global and TypeParamSym.Global). Lists of
-// only those and of types without symbols, such as Int, are in a table
-// for the process, globalArgs.
+// head type's class. The table is that of the part that lives the
+// shortest (life), so that the table doesn't keep the others: a symbol of
+// one compilation lives as long as it, one of the class path as long as
+// the library that loads it, which serves compilation after compilation
+// (analysis/ka), and those that package-level variables declare for all
+// compilations (see ClassSym.Global and TypeParamSym.Global) as long as
+// the process. Equal lists have the same parts, so they are found in the
+// same table, and a list is collected with the part it belongs to. Lists
+// of only the process's symbols and of types without symbols, such as
+// Int, are in a table for the process, globalArgs.
+
+// life is how long a symbol or a list lives, shortest last.
+type life uint8
+
+const (
+	processLife life = iota
+	libraryLife      // ClassSym.External, TypeParamSym.Library
+	checkLife
+)
+
+func (c *ClassSym) life() life {
+	switch {
+	case c == nil || c.Global:
+		return processLife
+	case c.External && !c.Source:
+		return libraryLife
+	}
+	return checkLife
+}
+
+func (p *TypeParamSym) life() life {
+	switch {
+	case p.Global:
+		return processLife
+	case p.Library:
+		return libraryLife
+	}
+	return checkLife
+}
+
+func (a *Args) lifetime() life {
+	if a == nil {
+		return processLife
+	}
+	return a.life
+}
 
 // argsTable interns lists of arguments: argsKey -> *Args. Checking in
 // parallel looks lists up far more often than it adds them, which
@@ -100,19 +138,20 @@ func (t *argsTable) get() *sync.Map {
 // globalArgs interns the lists that hold no local symbols.
 var globalArgs sync.Map
 
-func (a *Args) isLocal() bool { return a != nil && a.local }
-
-// table returns the table that interns the list k.
-func (k *argsKey) table() *sync.Map {
-	switch {
-	case k.tail.isLocal():
-		return k.tail.lists.get()
-	case k.head.T.A.isLocal():
-		return k.head.T.A.lists.get()
-	case k.head.T.C != nil && !k.head.T.C.Global:
-		return k.head.T.C.lists.get()
+// table returns the table that interns the list k, and how long the list
+// lives.
+func (k *argsKey) table() (*sync.Map, life) {
+	tab, l := &globalArgs, processLife
+	if a := k.tail; a.lifetime() > l {
+		tab, l = a.lists.get(), a.life
 	}
-	return &globalArgs
+	if a := k.head.T.A; a.lifetime() > l {
+		tab, l = a.lists.get(), a.life
+	}
+	if c := k.head.T.C; c.life() > l {
+		tab, l = c.lists.get(), c.life()
+	}
+	return tab, l
 }
 
 // MakeArgs returns the interned list for args, or nil if it is empty.
@@ -124,7 +163,7 @@ func MakeArgs(args []Arg) *Args {
 			a.T = Type{}
 		}
 		k := argsKey{a, tail}
-		tab := k.table()
+		tab, l := k.table()
 		n, ok := tab.Load(k)
 		if !ok {
 			list := make([]Arg, 0, len(args)-i)
@@ -132,7 +171,7 @@ func MakeArgs(args []Arg) *Args {
 			if tail != nil {
 				list = append(list, tail.List...)
 			}
-			n, _ = tab.LoadOrStore(k, &Args{List: list, local: tab != &globalArgs})
+			n, _ = tab.LoadOrStore(k, &Args{List: list, life: l})
 		}
 		tail = n.(*Args)
 	}
@@ -171,6 +210,9 @@ type TypeParamSym struct {
 	// variable declares for all compilations in the process, such as
 	// kotlin.Array's T: see MakeArgs.
 	Global bool
+	// Library is set on a parameter of a symbol of the class path, which
+	// lives as long as the library that loads it: see MakeArgs.
+	Library bool
 	// Intersection is set on the parameter that stands for an
 	// intersection type, A & B, a value that is each of its Bounds: see
 	// Intersect. It has no Owner, and erases as a parameter does.
@@ -191,7 +233,7 @@ func (p *TypeParamSym) Redeclare(q *TypeParamSym) {
 func (t Type) Param() *TypeParamSym { return t.A.param }
 
 func (p *TypeParamSym) args() *Args {
-	p.once.Do(func() { p.self = &Args{param: p, local: !p.Global} })
+	p.once.Do(func() { p.self = &Args{param: p, life: p.life()} })
 	return p.self
 }
 
@@ -425,6 +467,11 @@ func (s Subst) applyA(t Type, pos Variance, exact bool) (Type, bool) {
 			r = s.apply(starred(p.Bounds[0], map[*TypeParamSym]bool{p: true}), Out)
 		default: // reading through in or *: the parameter's bound
 			r = s.apply(t.Param().Bound(), Out)
+			if t.P && r.N && !r.P {
+				// A Java T!, whose bound is Any!: the value read has a
+				// platform type, as kotlinc's capture of the projection.
+				r = r.Platform()
+			}
 		}
 		return withFlags(r, t), a.V == Out || a.V == In
 	case Class:

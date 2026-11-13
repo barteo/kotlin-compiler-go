@@ -67,6 +67,12 @@ type AliasRecorder interface {
 	Alias(x any, a *types.AliasSym)
 }
 
+// An AnnotationAliasRecorder is a Recorder that is also told the
+// typealias an annotation names its class by: @Alias.
+type AnnotationAliasRecorder interface {
+	AnnotationAlias(f *syntax.File, a *syntax.Annotation, alias *types.AliasSym)
+}
+
 // recordAlias reports to an AliasRecorder that x names a.
 func (c *Checker) recordAlias(x any, a *types.AliasSym) {
 	if r, ok := c.u.rec.(AliasRecorder); ok {

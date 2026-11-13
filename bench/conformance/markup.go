@@ -1,6 +1,9 @@
 package main
 
-import "strings"
+import (
+	"regexp"
+	"strings"
+)
 
 // An expected diagnostic is one the markup of a test marks:
 // <!NAME!>element<!>, or <!NAME1, NAME2("arguments")!>element<!> for
@@ -111,4 +114,35 @@ func closeParen(s string) int {
 		}
 	}
 	return -1
+}
+
+// unsafeAnyCallRE matches a call of hashCode() or toString() that the
+// markup expects to be an UNSAFE_CALL, or to be on a receiver that is a
+// SMARTCAST_IMPOSSIBLE.
+var unsafeAnyCallRE = regexp.MustCompile(`(<![^!>]*\bUNSAFE_CALL\b[^!>]*!>\.<!>|<![^!>]*\bSMARTCAST_IMPOSSIBLE\b[^!>]*!>[\w.]+<!>\.)(hashCode|toString)\(\)`)
+
+// nonNullAnyCalls returns src, a test's file that the markup expects
+// x.hashCode() or x.toString() of a nullable x to be an UNSAFE_CALL in,
+// or an x that can't be smart cast to non-null a SMARTCAST_IMPOSSIBLE,
+// with those calls made to extensions of Any that it declares. Without
+// WITH_STDLIB, kotlinc's test infrastructure has a minimal standard
+// library, without the extensions of Any? of those names that the full
+// one, which both compilers get (see runOne), has: kotlinc reports the
+// call of the member, and kc, with these, the call of the extension, on
+// a value that isn't smart cast to non-null. The declarations go after
+// the last line, which keeps the lines of the markup.
+func nonNullAnyCalls(src string) string {
+	used := map[string]bool{}
+	src = unsafeAnyCallRE.ReplaceAllStringFunc(src, func(m string) string {
+		sub := unsafeAnyCallRE.FindStringSubmatch(m)
+		used[sub[2]] = true
+		return sub[1] + "kcNonNull_" + sub[2] + "()"
+	})
+	if used["hashCode"] {
+		src += "\nprivate fun Any.kcNonNull_hashCode(): Int = hashCode()\n"
+	}
+	if used["toString"] {
+		src += "\nprivate fun Any.kcNonNull_toString(): String = toString()\n"
+	}
+	return src
 }
