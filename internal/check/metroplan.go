@@ -53,6 +53,10 @@ type metroAnalysis struct {
 	// contributesAsInject and functionProviders are Metro's options of
 	// those names.
 	contributesAsInject, functionProviders bool
+	cfg                                    metroConfig
+	// alias maps other frameworks' annotations that Metro reads as its
+	// own to Metro's (metroConfig.aliases).
+	alias map[string]string
 
 	classfiles map[string]*classfile.Annotated
 	classAnns  map[*types.ClassSym][]*mAnn
@@ -65,12 +69,13 @@ type mMeta struct {
 	implicitClassKey         bool
 }
 
-func newMetroAnalysis(u *Universe, checkers []*Checker) *metroAnalysis {
+func newMetroAnalysis(u *Universe, checkers []*Checker, cfg metroConfig) *metroAnalysis {
 	m := &metroAnalysis{u: u, checkers: checkers, checkerOf: map[*types.ClassSym]*Checker{},
 		plan:                &MetroPlan{members: map[string][]string{}, supers: map[string][]string{}, calls: map[string]map[syntax.Pos]string{}},
-		contributesAsInject: true, functionProviders: true,
+		contributesAsInject: cfg.contributesAsInject, functionProviders: cfg.functionProviders, cfg: cfg, alias: cfg.aliases(),
 		classfiles: map[string]*classfile.Annotated{}, classAnns: map[*types.ClassSym][]*mAnn{}, metas: map[string]mMeta{}}
 	for _, c := range checkers {
+		c.metroAlias = m.alias
 		for _, d := range c.classes {
 			if d.Sym != nil {
 				m.checkerOf[d.Sym] = c
@@ -152,10 +157,7 @@ func (m *metroAnalysis) annsOf(cls *types.ClassSym) []*mAnn {
 			as = c.fromSource(d.Annotations, cls)
 		}
 	} else if cf := m.classfile(cls.Name); cf != nil {
-		for _, a := range cf.Class {
-			as = append(as, fromClassfile(a))
-		}
-		as = expandContainers(as)
+		as = m.convertAll(cf.Class)
 	}
 	m.classAnns[cls] = as
 	return as
@@ -342,14 +344,12 @@ func (m *metroAnalysis) declared(cls *types.ClassSym) []*mMember {
 						if first == nil && !strings.HasSuffix(n, "$annotations") {
 							first = am
 						}
-						for _, a := range am.Annots {
-							as = append(as, fromClassfile(a))
-						}
+						as = append(as, m.convertAll(am.Annots)...)
 					}
 				}
 			}
 		}
-		return first, expandContainers(as)
+		return first, as
 	}
 	for _, name := range slices.Sorted(maps.Keys(cls.Methods)) {
 		for _, f := range cls.Methods[name] {
@@ -364,13 +364,13 @@ func (m *metroAnalysis) declared(cls *types.ClassSym) []*mMember {
 				mm.recv = &t
 				off = 1
 				if am != nil && len(am.Params) > 0 {
-					mm.recvAnns = convertAll(am.Params[0])
+					mm.recvAnns = m.convertAll(am.Params[0])
 				}
 			}
 			for i, p := range f.Params {
 				var pa []*mAnn
 				if am != nil && i+off < len(am.Params) {
-					pa = convertAll(am.Params[i+off])
+					pa = m.convertAll(am.Params[i+off])
 				}
 				mm.paramAnns = append(mm.paramAnns, pa)
 				mm.defaults = append(mm.defaults, p.Default)
@@ -395,12 +395,18 @@ func (m *metroAnalysis) declared(cls *types.ClassSym) []*mMember {
 	return out
 }
 
-func convertAll(as []classfile.Annotation) []*mAnn {
+// convertAll converts a class file's annotations, which Metro reads
+// those of other frameworks among as its own.
+func (m *metroAnalysis) convertAll(as []classfile.Annotation) []*mAnn {
 	var out []*mAnn
 	for _, a := range as {
 		out = append(out, fromClassfile(a))
 	}
-	return expandContainers(out)
+	out = expandContainers(out)
+	for _, a := range out {
+		a.alias(m.alias)
+	}
+	return out
 }
 
 // metroResolve resolves a type in the scope of class cls.
@@ -492,7 +498,7 @@ func (m *metroAnalysis) ctorOf(cls *types.ClassSym) (*types.FunSym, [][]*mAnn, [
 			if am.Name != "<init>" || am.Desc != desc {
 				continue
 			}
-			as := convertAll(am.Annots)
+			as := m.convertAll(am.Annots)
 			explicit := find(as, mInject) != nil || find(as, mAssistedInject) != nil || find(as, "javax/inject/Inject") != nil
 			if explicit || (classInject || assisted || implicit) && (pick == nil || len(cls.Ctors) == 1) {
 				pick = f
@@ -500,7 +506,7 @@ func (m *metroAnalysis) ctorOf(cls *types.ClassSym) (*types.FunSym, [][]*mAnn, [
 				for j := range f.Params {
 					var pa []*mAnn
 					if j < len(am.Params) {
-						pa = convertAll(am.Params[j])
+						pa = m.convertAll(am.Params[j])
 					}
 					pickAnns = append(pickAnns, pa)
 				}

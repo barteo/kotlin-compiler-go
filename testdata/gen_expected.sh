@@ -49,6 +49,17 @@
 # runtime-jvm 1.5.2 and the plugin its compiler jar, from Gradle's cache,
 # or $KC_METRO_CP and $KC_METRO_PLUGIN. The argument metro selects it.
 #
+# And testdata/metro-interop/X.out for each program metro-interop/X/
+# (TestMetroInterop): kotlinc, with the Metro compiler plugin, compiles
+# its library, X/lib/, if any, and X/app/ against it, with the Metro
+# options of the first line of X/app/main.kt,
+# "// metro: key=value ...", and enable-dagger-runtime-interop=true, which
+# Metro needs to inject javax's and Jakarta's Provider; then it runs. The
+# class path adds javax.inject 1, jakarta.inject-api 2.0.1, Dagger and
+# hilt-core 2.60.1 and Metro's interop-dagger, interop-javax and
+# interop-jakarta 1.5.2, from Gradle's cache, or $KC_METRO_INTEROP_CP.
+# The argument metro-interop selects them.
+#
 # And testdata/javasrc.out (TestJavaSources): kotlinc compiles javasrc/,
 # Kotlin and Java sources that use each other, and javac then its Java
 # against kotlinc's classes. The argument javasrc selects it.
@@ -72,12 +83,14 @@ parcelize=""
 serialization=""
 compose=""
 metro=""
+metrointerop=""
 javasrc=""
 if [ $# -eq 0 ]; then
 	parcelize=1
 	serialization=1
 	compose=1
 	metro=1
+	metrointerop=1
 	javasrc=1
 	libs=$(cd "$root/lib" 2>/dev/null && ls -d */ | sed 's|/$||' || true)
 	klibs=$(cd "$root/klib" 2>/dev/null && ls -d */ | sed 's|/$||' || true)
@@ -97,6 +110,7 @@ for f in "$@"; do
 	serialization) serialization=1 ;;
 	compose) compose=1 ;;
 	metro) metro=1 ;;
+	metro-interop) metrointerop=1 ;;
 	javasrc) javasrc=1 ;;
 	*) runs="$runs $f" ;;
 	esac
@@ -267,6 +281,52 @@ if [ -n "$metro" ]; then
 	$k -module-name app -cp "$rt:$out/lib:$out/mid" $(find app -name '*.kt' | sort) -d "$out/app" 2>"$work/err" || { cat "$work/err"; exit 1; }
 	kotlin -cp "$out/app:$out/mid:$out/lib:$rt" app.MainKt >"$root/metro.out" 2>/dev/null
 	echo "wrote metro.out"
+fi
+
+# The Metro interop tests.
+if [ -n "$metrointerop" ]; then
+	cache=$HOME/.gradle/caches/modules-2/files-2.1
+	rt=${KC_METRO_CP:-$(find "$cache/dev.zacsweers.metro/runtime-jvm/1.5.2" -name runtime-jvm-1.5.2.jar 2>/dev/null | head -1)}
+	mp=${KC_METRO_PLUGIN:-$(find "$cache/dev.zacsweers.metro/compiler/1.5.2" -name compiler-1.5.2.jar 2>/dev/null | head -1)}
+	if [ -z "$rt" ] || [ -z "$mp" ]; then
+		echo "Metro 1.5.2 not found: set KC_METRO_CP and KC_METRO_PLUGIN" >&2
+		exit 1
+	fi
+	icp=${KC_METRO_INTEROP_CP:-}
+	if [ -z "$icp" ]; then
+		for j in javax.inject/javax.inject/1 jakarta.inject/jakarta.inject-api/2.0.1 com.google.dagger/dagger/2.60.1 \
+			com.google.dagger/hilt-core/2.60.1 dev.zacsweers.metro/interop-dagger/1.5.2 dev.zacsweers.metro/interop-javax/1.5.2 \
+			dev.zacsweers.metro/interop-jakarta/1.5.2; do
+			a=$(echo "$j" | cut -d/ -f2)
+			v=${j##*/}
+			jar=$(find "$cache/$j" -name "$a-$v.jar" 2>/dev/null | head -1)
+			if [ -z "$jar" ]; then
+				echo "$a $v not found: set KC_METRO_INTEROP_CP" >&2
+				exit 1
+			fi
+			icp="$icp${icp:+:}$jar"
+		done
+	fi
+	cd "$root/metro-interop"
+	for d in */; do
+		name=${d%/}
+		out="$work/metro-interop/$name"
+		mkdir -p "$out"
+		ps=""
+		for o in $(sed -n '1s|^// metro: ||p' "$name/app/main.kt") enable-dagger-runtime-interop=true; do
+			ps="$ps -P plugin:dev.zacsweers.metro.compiler:$o"
+		done
+		k="kotlinc -nowarn -jvm-target 17 -Xplugin=$mp $ps"
+		mkdir -p "$out/lib" "$out/app"
+		if [ -d "$name/lib" ]; then
+			# shellcheck disable=SC2046,SC2086 # file names and options are words
+			$k -module-name lib -cp "$rt:$icp" $(find "$name/lib" -name '*.kt' | sort) -d "$out/lib" 2>"$work/err" || { cat "$work/err"; exit 1; }
+		fi
+		# shellcheck disable=SC2046,SC2086
+		$k -module-name app -cp "$rt:$icp:$out/lib" $(find "$name/app" -name '*.kt' | sort) -d "$out/app" 2>"$work/err" || { cat "$work/err"; exit 1; }
+		kotlin -cp "$out/app:$out/lib:$rt:$icp" app.MainKt >"$root/metro-interop/$name.out" 2>/dev/null
+		echo "wrote metro-interop/$name.out"
+	done
 fi
 
 # The compose test.

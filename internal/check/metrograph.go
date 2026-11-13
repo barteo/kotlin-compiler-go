@@ -153,7 +153,7 @@ func keyOf(t types.Type, q string) (string, bool) {
 func (gr *mGraph) request(t types.Type, q string) (*mReq, bool) {
 	r := &mReq{full: t, q: q}
 	for {
-		w := wrapperOf(t)
+		w := gr.m.wrapperOf(t)
 		if w == 0 || w == 'f' && !gr.m.functionProviders {
 			break
 		}
@@ -163,7 +163,7 @@ func (gr *mGraph) request(t types.Type, q string) (*mReq, bool) {
 	if isMapType(t) {
 		v := t.A.List[1].T
 		for {
-			w := wrapperOf(v)
+			w := gr.m.wrapperOf(v)
 			if w == 0 || w == 'f' && !gr.m.functionProviders {
 				break
 			}
@@ -183,8 +183,10 @@ func (gr *mGraph) request(t types.Type, q string) (*mReq, bool) {
 }
 
 // wrapperOf returns how type t wraps a value: f for () -> T, p for
-// Metro's Provider<T>, l for Lazy<T>, or 0.
-func wrapperOf(t types.Type) byte {
+// Metro's Provider<T>, l for Lazy<T>, j for javax.inject.Provider<T> and
+// k for jakarta.inject.Provider<T>, which Metro injects with the options
+// that make it read those packages' annotations, or 0.
+func (m *metroAnalysis) wrapperOf(t types.Type) byte {
 	if t.K != types.Class || t.N || t.A == nil {
 		return 0
 	}
@@ -195,9 +197,16 @@ func wrapperOf(t types.Type) byte {
 		return 'p'
 	case t.C.KotlinName == "kotlin/Lazy":
 		return 'l'
+	case m.cfg.javax && t.C.Name == "javax/inject/Provider":
+		return 'j'
+	case m.cfg.jakarta && t.C.Name == "jakarta/inject/Provider":
+		return 'k'
 	}
 	return 0
 }
+
+// javaProviders are the Java Provider interfaces of wrappers.
+var javaProviders = map[byte]string{'j': "javax.inject.Provider", 'k': "jakarta.inject.Provider"}
 
 func isMapType(t types.Type) bool {
 	return t.K == types.Class && !t.N && t.A != nil && len(t.A.List) == 2 && t.C.KotlinName == "kotlin/collections/Map"
@@ -773,7 +782,7 @@ func (gr *mGraph) provides(mm *mMember, recv string) {
 			return
 		}
 		r.name = p.Name
-		r.optional = i < len(mm.defaults) && mm.defaults[i]
+		r.optional = m.cfg.optional != "DISABLED" && i < len(mm.defaults) && mm.defaults[i]
 		deps = append(deps, r)
 	}
 	name := backtick(mm.name)
@@ -1071,12 +1080,12 @@ func (m *metroAnalysis) hasInjectedMembers(cls *types.ClassSym) bool {
 	if cf == nil {
 		return false
 	}
-	for _, mt := range cf.Methods {
+	for _, mt := range slices.Concat(cf.Methods, cf.Fields) {
 		if mt.Name == "<init>" {
 			continue
 		}
-		for _, a := range mt.Annots {
-			if a.Type == "L"+mInject+";" {
+		for _, a := range m.convertAll(mt.Annots) {
+			if a.cls == mInject {
 				return true
 			}
 		}
@@ -1232,7 +1241,7 @@ func (gr *mGraph) ctorBinding(r *mReq, cls *types.ClassSym, ctor *types.FunSym, 
 			return nil, false
 		}
 		dr.name = p.Name
-		dr.optional = i < len(defs) && defs[i]
+		dr.optional = m.cfg.optional != "DISABLED" && i < len(defs) && defs[i]
 		deps = append(deps, dr)
 	}
 	ts, ok := kotlinTypeSrc(r.t)
@@ -1404,7 +1413,7 @@ func (gr *mGraph) wrapped(r *mReq, x string) string {
 	t := r.full
 	var layers []byte
 	for range r.wrap {
-		layers = append(layers, wrapperOf(t))
+		layers = append(layers, gr.m.wrapperOf(t))
 		t = t.A.List[len(t.A.List)-1].T
 	}
 	for i := len(layers) - 1; i >= 0; i-- {
@@ -1433,6 +1442,8 @@ func wrapSrc(w byte, x, t string) string {
 		return "{ " + x + " }"
 	case 'p':
 		return "object : dev.zacsweers.metro.Provider<" + t + "> { override fun invoke(): " + t + " = " + x + " }"
+	case 'j', 'k':
+		return "object : " + javaProviders[w] + "<" + t + "> { override fun get(): " + t + " = " + x + " }"
 	}
 	return "kotlin.lazy<" + t + "> { " + x + " }"
 }
@@ -1555,6 +1566,8 @@ func wrapTypeSrc(w byte, t string) string {
 		return "() -> " + t
 	case 'p':
 		return "dev.zacsweers.metro.Provider<" + t + ">"
+	case 'j', 'k':
+		return javaProviders[w] + "<" + t + ">"
 	}
 	return "kotlin.Lazy<" + t + ">"
 }

@@ -1382,12 +1382,12 @@ func TestMetroOptions(t *testing.T) {
 		options map[string]string
 		ok      bool // compiles
 	}{
-		"javax only": {src: "class A @javax.inject.Inject constructor()",
-			options: map[string]string{"interop-include-javax-annotations": "true"}},
+		"dagger only": {src: "@dagger.Module object M",
+			options: map[string]string{"interop-include-dagger-annotations": "true"}},
 		"hilt module": {src: "import dagger.Binds\nimport dagger.Module\nimport dagger.hilt.InstallIn\nimport dagger.hilt.components.SingletonComponent\n" +
 			"interface Repo\n@Module @InstallIn(SingletonComponent::class) interface RepoModule { @Binds fun bind(r: Repo): Repo }", options: hilt},
 		"custom annotations, no Metro": {src: "class A", options: map[string]string{"custom-inject": "a/MyInject"}},
-		"optional binding behavior":    {src: "class A", options: map[string]string{"optional-binding-behavior": "DISABLED"}},
+		"optional binding behavior":    {src: "class A", options: map[string]string{"optional-binding-behavior": "REQUIRE_OPTIONAL_BINDING"}},
 		"disabled":                     {src: "class A", options: map[string]string{"enabled": "false", "custom-inject": "a/MyInject"}, ok: true},
 		"no Metro":                     {src: "class A", ok: true},
 	} {
@@ -1404,6 +1404,135 @@ func TestMetroOptions(t *testing.T) {
 				t.Errorf("got %v, want no error", err)
 			case !tc.ok && (!errors.As(err, &se) || se.Feature != "metro"):
 				t.Errorf("got %v, want an unsupported Metro feature", err)
+			}
+		})
+	}
+}
+
+// metroInteropJars returns the class path the Metro interop tests add:
+// $KC_METRO_INTEROP_CP, or the jars testdata/metro-interop was generated
+// with in Gradle's cache, or nil if one isn't found.
+func metroInteropJars() []string {
+	if cp := os.Getenv("KC_METRO_INTEROP_CP"); cp != "" {
+		return filepath.SplitList(cp)
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil
+	}
+	var jars []string
+	for _, j := range []string{"javax.inject/javax.inject/1", "jakarta.inject/jakarta.inject-api/2.0.1", "com.google.dagger/dagger/2.60.1",
+		"com.google.dagger/hilt-core/2.60.1", "dev.zacsweers.metro/interop-dagger/1.5.2", "dev.zacsweers.metro/interop-javax/1.5.2",
+		"dev.zacsweers.metro/interop-jakarta/1.5.2"} {
+		parts := strings.Split(j, "/")
+		found, _ := filepath.Glob(filepath.Join(home, ".gradle/caches/modules-2/files-2.1", j, "*", parts[1]+"-"+parts[2]+".jar"))
+		if len(found) == 0 {
+			return nil
+		}
+		jars = append(jars, found[0])
+	}
+	return jars
+}
+
+// TestMetroInterop compiles each testdata/metro-interop/X/app/ with kc's
+// Metro plugin and the Metro options of the first line of its main.kt,
+// "// metro: key=value ...", against X/lib/, if any, which kotlinc compiles
+// with Metro's plugin and the same options, runs it and compares its
+// output with kotlinc's, X.out.
+func TestMetroInterop(t *testing.T) {
+	java, err := exec.LookPath("java")
+	if err != nil {
+		t.Skip("java not found on PATH")
+	}
+	lib := stdlib()
+	if lib == "" {
+		t.Skip("kotlin-stdlib.jar not found: set KOTLIN_HOME")
+	}
+	rt, plugin := metroJars()
+	interop := metroInteropJars()
+	if rt == "" || interop == nil {
+		t.Skip("Metro 1.5.2 or the interop jars not found: set KC_METRO_CP and KC_METRO_INTEROP_CP")
+	}
+	cp := append([]string{lib, rt}, interop...)
+	const dir = "../../testdata/metro-interop"
+	progs, _ := filepath.Glob(filepath.Join(dir, "*", "app", "main.kt"))
+	if len(progs) == 0 {
+		t.Fatal("no programs in testdata/metro-interop")
+	}
+	for _, main := range progs {
+		prog := filepath.Dir(filepath.Dir(main))
+		t.Run(filepath.Base(prog), func(t *testing.T) {
+			want, err := os.ReadFile(prog + ".out")
+			if err != nil {
+				t.Fatalf("missing expected output (run testdata/gen_expected.sh metro-interop): %v", err)
+			}
+			src, _ := os.ReadFile(main)
+			first, _, _ := strings.Cut(string(src), "\n")
+			opts := map[string]string{}
+			if rest, ok := strings.CutPrefix(first, "// metro: "); ok {
+				for _, kv := range strings.Fields(rest) {
+					k, v, _ := strings.Cut(kv, "=")
+					opts[k] = v
+				}
+			}
+			appCP := cp
+			if _, err := os.Stat(filepath.Join(prog, "lib")); err == nil {
+				kotlinc, err := exec.LookPath("kotlinc")
+				if err != nil || plugin == "" {
+					t.Skip("kotlinc or Metro 1.5.2's compiler plugin not found: set KC_METRO_PLUGIN")
+				}
+				libOut := t.TempDir()
+				args := []string{"-nowarn", "-jvm-target", "17", "-Xplugin=" + plugin, "-module-name", "lib", "-d", libOut,
+					"-cp", strings.Join(cp, string(os.PathListSeparator))}
+				for k, v := range opts {
+					args = append(args, "-P", "plugin:"+MetroPluginID+":"+k+"="+v)
+				}
+				// Metro needs Dagger's runtime interop to inject javax's Provider.
+				args = append(args, "-P", "plugin:"+MetroPluginID+":enable-dagger-runtime-interop=true")
+				args = append(args, sources(t, filepath.Join(prog, "lib"))...)
+				if out, err := exec.Command(kotlinc, args...).CombinedOutput(); err != nil {
+					t.Fatalf("kotlinc lib: %v\n%s", err, out)
+				}
+				appCP = append(slices.Clone(cp), libOut)
+			}
+			out := t.TempDir()
+			if err := Compile(sources(t, filepath.Join(prog, "app")), Options{OutDir: out, Jobs: runtime.NumCPU(), ClassPath: appCP, ModuleName: "app", Metro: true, MetroOptions: opts}); err != nil {
+				t.Fatalf("compile: %v", err)
+			}
+			cmd := exec.Command(java, "-Xverify:all", "-cp", strings.Join(append([]string{out}, appCP...), string(os.PathListSeparator)), "app.MainKt")
+			var stdout, stderr bytes.Buffer
+			cmd.Stdout, cmd.Stderr = &stdout, &stderr
+			if err := cmd.Run(); err != nil {
+				t.Fatalf("java: %v\n%s", err, stderr.String())
+			}
+			if got := stdout.String(); got != string(want) {
+				t.Errorf("output mismatch\n%s", diff(string(want), got))
+			}
+		})
+	}
+
+	javax := map[string]string{"interop-include-javax-annotations": "true"}
+	disabled := map[string]string{"interop-include-javax-annotations": "true", "optional-binding-behavior": "DISABLED"}
+	const header = "import dev.zacsweers.metro.*\n\n"
+	for name, tc := range map[string]struct {
+		src, msg string
+		options  map[string]string
+	}{
+		"default value, disabled": {src: "class A @javax.inject.Inject constructor(val s: String = \"\")\n@DependencyGraph interface G { val a: A }",
+			msg: "[Metro/MissingBinding]", options: disabled},
+		"javax inject without the option": {src: "class A @javax.inject.Inject constructor(val b: B)\nclass B\n@DependencyGraph interface G { val a: A }",
+			msg: "[Metro/MissingBinding]"},
+		"javax named is its own qualifier": {src: "class A @javax.inject.Inject constructor(@javax.inject.Named(\"x\") val s: String)\n" +
+			"@DependencyGraph interface G { val a: A\n@Provides @Named(\"x\") fun s(): String = \"\" }", msg: "[Metro/MissingBinding]", options: javax},
+		"javax singleton is its own scope": {src: "@javax.inject.Singleton class A @javax.inject.Inject constructor()\n" +
+			"@SingleIn(AppScope::class) @DependencyGraph interface G { val a: A }", msg: "[Metro/IncompatiblyScopedBindings]", options: javax},
+	} {
+		t.Run(name, func(t *testing.T) {
+			file := filepath.Join(t.TempDir(), "a.kt")
+			os.WriteFile(file, []byte(header+tc.src+"\n"), 0o644)
+			err := Compile([]string{file}, Options{OutDir: t.TempDir(), Jobs: 1, ClassPath: cp, Metro: true, MetroOptions: tc.options})
+			if err == nil || !strings.Contains(err.Error(), tc.msg) {
+				t.Errorf("got %v, want %s", err, tc.msg)
 			}
 		})
 	}

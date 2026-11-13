@@ -112,12 +112,14 @@ Without `-compose`, calls of libraries' composables aren't supported.
 
 `kc` implements Metro 1.5.2's dependency graphs: `@DependencyGraph` and its factory, with `@Provides` and `@Includes` parameters; `@Inject` constructors and objects, `@Provides`, `@Binds`, qualifiers and `@SingleIn` scopes; requests as `() -> T`, `Provider<T>` and `Lazy<T>`; set and map multibindings, including `@ElementsIntoSet`, `@Multibinds` and wrapped map values; `@BindingContainer`; assisted injection; member injection; `@ContributesTo`, `@ContributesBinding`, `@ContributesIntoSet` and `@ContributesIntoMap` with `replaces` and `excludes`, from this module or the class path; and `@GraphExtension`s with their factories.
 
+With `interop-include-javax-annotations` and `interop-include-jakarta-annotations`, `kc` reads `javax.inject`'s and `jakarta.inject`'s `@Inject` as Metro's, their `@Qualifier` and `@Scope` annotations (`@Named`, `@Singleton`) as qualifiers and scopes of their own, and injects their `Provider<T>`. With `optional-binding-behavior=DISABLED`, a parameter's default value never stands in for a missing binding.
+
 Not supported, and reported as such:
 
-- custom annotations (the `custom-*` options), and options that change Metro's output, other than `enabled`, `contributes-as-inject` and `enable-function-providers`. With `-metro`, `kc` checks the options before anything else, whether or not the files use Metro, so a module that uses only the annotations such an option makes Metro read (javax's, Dagger's, Hilt's) is reported, not compiled without Metro;
+- custom annotations (the `custom-*` options), and options that change Metro's output, other than `enabled`, `contributes-as-inject`, `enable-function-providers`, the javax and Jakarta options above and `optional-binding-behavior=DISABLED`. With `-metro`, `kc` checks the options before anything else, whether or not the files use Metro, so a module that uses only the annotations such an option makes Metro read (javax's, Dagger's, Hilt's) is reported, not compiled without Metro;
 - `@Provides` extension functions;
 - graphs with type parameters, and graph factories that are abstract classes;
-- javax, Jakarta, Dagger and Guice interop;
+- Dagger, Hilt, Guice, Anvil and kotlin-inject interop, Dagger's runtime interop, and `Class` map keys for `KClass` ones (`enable-kclass-to-class-interop`);
 - member injection into classes from the class path;
 - member injection that depends on the class itself, as `@Inject lateinit var s: Lazy<S>` in `S`;
 - `createDynamicGraph` and `createDynamicGraphFactory`, and calls of `createGraph` and `createGraphFactory` whose type argument is inferred;

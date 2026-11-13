@@ -136,8 +136,7 @@ func PlanMetro(files []*syntax.File, lib *Library) (*MetroPlan, []*syntax.Error)
 	if err != nil {
 		return nil, []*syntax.Error{{Msg: "kc: " + err.Error(), Feature: "metro"}}
 	}
-	m := newMetroAnalysis(u, checkers)
-	m.contributesAsInject, m.functionProviders = cfg.contributesAsInject, cfg.functionProviders
+	m := newMetroAnalysis(u, checkers, cfg)
 	m.run()
 	if broken {
 		// The program's own errors, which checking reports, may be why.
@@ -175,9 +174,15 @@ var metroOptions = map[string]string{
 // metroSupported are the options of metroOptions that kc reads; it
 // refuses the others' values but their defaults.
 var metroSupported = map[string]bool{
-	"contributes-as-inject":     true,
-	"enable-function-providers": true,
+	"contributes-as-inject":               true,
+	"enable-function-providers":           true,
+	"interop-include-javax-annotations":   true,
+	"interop-include-jakarta-annotations": true,
 }
+
+// metroOptionalBehaviors are the values of optional-binding-behavior kc
+// supports.
+var metroOptionalBehaviors = map[string]bool{"DEFAULT": true, "DISABLED": true}
 
 // metroConfig is what the plugin's options ask for.
 type metroConfig struct {
@@ -207,6 +212,22 @@ func (cfg metroConfig) packages() []string {
 		pkgs = append(pkgs, "dagger")
 	}
 	return pkgs
+}
+
+// aliases maps the annotations of other frameworks that Metro reads as
+// its own, by internal name, to Metro's. Only annotations that say what a
+// declaration is to Metro are aliased: those that are part of a binding's
+// key, as javax.inject.Named or Singleton, stay what they are, as Metro
+// keeps them.
+func (cfg metroConfig) aliases() map[string]string {
+	a := map[string]string{}
+	if cfg.javax {
+		a["javax/inject/Inject"] = mInject
+	}
+	if cfg.jakarta {
+		a["jakarta/inject/Inject"] = mInject
+	}
+	return a
 }
 
 // MetroOptionsError returns an error if kc can't compile as Metro does
@@ -255,6 +276,10 @@ func parseMetroOptions(opts map[string]string) (metroConfig, error) {
 		def, known := metroOptions[key]
 		switch {
 		case err != nil:
+		case key == "optional-binding-behavior":
+			if v != "" && !metroOptionalBehaviors[v] {
+				err = fmt.Errorf("Metro option %s=%s is not supported", key, v)
+			}
 		case known && !metroSupported[key] && v != def && v != "":
 			err = fmt.Errorf("Metro option %s=%s is not supported", key, v)
 		case strings.HasPrefix(key, "custom-") && v != "":

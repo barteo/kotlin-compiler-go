@@ -224,7 +224,7 @@ Tests use the JDK in `$JAVA_HOME`, or the JDK of `java` on `PATH`. On macOS
 `export JAVA_HOME=$(/usr/libexec/java_home -v 21)`. Without a JDK, tests fail
 with unresolved references to Java classes such as `HashMap`.
 
-Tests that need the standard library find `kotlin-stdlib.jar` in `$KOTLIN_HOME/lib` or next to `kotlinc` on `PATH`, and are skipped without it. Tests that compare with `kotlinc` are skipped if it isn't on `PATH`. The kotlinx.serialization 1.9.0, Compose runtime 1.9.2 and Metro 1.5.2 tests use jars from Gradle's cache, or from `KC_SERIALIZATION_CP`, `KC_COMPOSE_CP`, and `KC_METRO_CP` (Metro's runtime) with `KC_METRO_PLUGIN` (its compiler plugin), and are skipped without them.
+Tests that need the standard library find `kotlin-stdlib.jar` in `$KOTLIN_HOME/lib` or next to `kotlinc` on `PATH`, and are skipped without it. Tests that compare with `kotlinc` are skipped if it isn't on `PATH`. The kotlinx.serialization 1.9.0, Compose runtime 1.9.2 and Metro 1.5.2 tests use jars from Gradle's cache, or from `KC_SERIALIZATION_CP`, `KC_COMPOSE_CP`, and `KC_METRO_CP` (Metro's runtime) with `KC_METRO_PLUGIN` (its compiler plugin), and are skipped without them. The Metro interop tests also need javax.inject 1, jakarta.inject-api 2.0.1, Dagger and hilt-core 2.60.1 and Metro's interop-dagger, interop-javax and interop-jakarta 1.5.2, from Gradle's cache or `KC_METRO_INTEROP_CP`, a class path.
 
 - `testdata/run/`: programs compiled with `kc` and run under
   `java -Xverify:all`. Output must match `*.out`, which
