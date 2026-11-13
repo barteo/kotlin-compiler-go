@@ -124,8 +124,14 @@ Three things differ from the test infrastructure:
 - **Directory options.** Directories whose test classes give `kotlinc`
   options (the return value checker in `crv/`, explicit API mode, header
   mode, strict equality, `-jvm-default` modes) are skipped, as are tests
-  with `LANGUAGE` features (but those on by default in Kotlin 2.4), Java
-  sources, multiplatform modules or `IGNORE_FIR_DIAGNOSTICS`.
+  with `LANGUAGE` features (but those on by default in Kotlin 2.4),
+  multiplatform modules or `IGNORE_FIR_DIAGNOSTICS`.
+
+Tests with Java sources run: `kc` gets a module's `.java` files with its
+`.kt` files and reads their declarations, as `kotlinc` does. The Java
+sources of a module that later modules depend on are then compiled with
+`javac` against its Kotlin classes, as the test infrastructure does, and
+those of the last module are only read.
 
 ## Checking the harness
 
