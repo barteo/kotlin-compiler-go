@@ -218,51 +218,53 @@ func (c *Checker) narrowAfter(s syntax.Stmt) {
 			c.scope.narrows = append(c.scope.narrows, k)
 		}
 	}
-	// What a call returning implies: its contract's, as for a call
-	// statement. val s: String = cast(x) makes x a String. Not after an
-	// assignment, v = f(v), where it would be of v's new value.
-	called := func(x syntax.Expr) {
-		nn, notNull := x.(*syntax.NotNull)
-		if notNull {
-			x = nn.X
+	// A call anywhere in the statement that always returns before the
+	// statement ends: f(requireNotNull(x).y), val s: String = cast(x).
+	returned := func(call *syntax.Call) {
+		c.scope.narrows = append(c.scope.narrows, c.returnNarrows(call)...)
+	}
+	// f(v)!!: f returned, and not null.
+	notNull := func(x syntax.Expr) bool {
+		nn, ok := x.(*syntax.NotNull)
+		if !ok {
+			return false
 		}
-		if call, ok := x.(*syntax.Call); ok {
-			c.scope.narrows = append(c.scope.narrows, c.returnNarrows(call)...)
-			if notNull {
-				c.scope.narrows = append(c.scope.narrows, c.contractNarrows(call, 2)...)
-			}
+		call, ok := nn.X.(*syntax.Call)
+		if ok {
+			c.scope.narrows = append(c.scope.narrows, c.contractNarrows(call, 2)...)
 		}
+		return ok
 	}
 	switch s := s.(type) {
 	case *syntax.VarStmt:
 		if s.Init != nil {
-			alwaysCasts(s.Init, cast)
-			called(s.Init)
+			alwaysEvaluated(s.Init, cast, returned)
+			notNull(s.Init)
 		}
 	case *syntax.Assign:
-		alwaysCasts(s.Value, cast)
+		// Not of the target, v = f(v), where it would be of v's new value.
+		target, isKey := c.narrowKeyOf(s.Target)
+		alwaysEvaluated(s.Value, cast, func(call *syntax.Call) {
+			for _, k := range c.returnNarrows(call) {
+				if !isKey || k.recv != target.recv || k.sym != target.sym {
+					c.scope.narrows = append(c.scope.narrows, k)
+				}
+			}
+		})
 	}
 	es, ok := s.(*syntax.ExprStmt)
 	if !ok {
 		return
 	}
-	alwaysCasts(es.X, cast)
+	alwaysEvaluated(es.X, cast, returned)
 	if _, ok := es.X.(*syntax.As); ok {
 		return
 	}
-	if nn, ok := es.X.(*syntax.NotNull); ok {
-		if call, ok := nn.X.(*syntax.Call); ok {
-			// f(v)!!: f returned, and not null.
-			c.scope.narrows = append(c.scope.narrows, c.returnNarrows(call)...)
-			c.scope.narrows = append(c.scope.narrows, c.contractNarrows(call, 2)...)
-			return
-		}
+	if notNull(es.X) {
+		return
 	}
-	if call, ok := es.X.(*syntax.Call); ok {
-		c.scope.narrows = append(c.scope.narrows, c.returnNarrows(call)...)
-		if len(call.Args) > 0 {
-			return
-		}
+	if call, ok := es.X.(*syntax.Call); ok && len(call.Args) > 0 {
+		return
 	}
 	n, ok := es.X.(*syntax.If)
 	if !ok {
@@ -334,46 +336,54 @@ func (c *Checker) argScope(args []syntax.Expr, i int) *scope {
 // but not in lambdas, in branches, after a safe call or in the right
 // operand of &&, || and ?:.
 func alwaysCasts(e syntax.Expr, f func(*syntax.As)) {
+	alwaysEvaluated(e, f, func(*syntax.Call) {})
+}
+
+// alwaysEvaluated calls cast on the casts of alwaysCasts and call on the
+// calls that evaluating e always evaluates, each once what it evaluates
+// has been.
+func alwaysEvaluated(e syntax.Expr, cast func(*syntax.As), call func(*syntax.Call)) {
 	switch e := e.(type) {
 	case *syntax.As:
-		alwaysCasts(e.X, f)
+		alwaysEvaluated(e.X, cast, call)
 		if !e.Safe {
-			f(e)
+			cast(e)
 		}
 	case *syntax.Call:
 		if e.Invoke {
-			alwaysCasts(e.Fun, f)
+			alwaysEvaluated(e.Fun, cast, call)
 		} else if m, ok := e.Fun.(*syntax.Member); ok {
-			alwaysCasts(m.X, f)
+			alwaysEvaluated(m.X, cast, call)
 			if hasSafeCall(m) {
 				return
 			}
 		}
 		for _, a := range e.Args {
-			alwaysCasts(a, f)
+			alwaysEvaluated(a, cast, call)
 		}
+		call(e)
 	case *syntax.Member:
-		alwaysCasts(e.X, f)
+		alwaysEvaluated(e.X, cast, call)
 	case *syntax.Index:
-		alwaysCasts(e.X, f)
+		alwaysEvaluated(e.X, cast, call)
 		if !hasSafeCall(e.X) {
 			for _, a := range e.Args {
-				alwaysCasts(a, f)
+				alwaysEvaluated(a, cast, call)
 			}
 		}
 	case *syntax.Binary:
-		alwaysCasts(e.X, f)
+		alwaysEvaluated(e.X, cast, call)
 		if e.Op != syntax.AND && e.Op != syntax.OR && e.Op != syntax.ELVIS {
-			alwaysCasts(e.Y, f)
+			alwaysEvaluated(e.Y, cast, call)
 		}
 	case *syntax.Unary:
-		alwaysCasts(e.X, f)
+		alwaysEvaluated(e.X, cast, call)
 	case *syntax.NotNull:
-		alwaysCasts(e.X, f)
+		alwaysEvaluated(e.X, cast, call)
 	case *syntax.StringLit:
 		for _, p := range e.Parts {
 			if p.X != nil {
-				alwaysCasts(p.X, f)
+				alwaysEvaluated(p.X, cast, call)
 			}
 		}
 	}

@@ -53,3 +53,11 @@ fun oneOfSeveralIsNull(a: String?): Int = when (a) {
     "d", null -> a.length // ERROR String?
     else -> 0
 }
+
+fun shorten(s: String): String? = s.ifEmpty { null }
+
+fun assignedAgain(start: String?) {
+    var v = start
+    v = shorten(requireNotNull(v))
+    v.length // ERROR only safe (?.) or non-null asserted (!!.) calls are allowed
+}
