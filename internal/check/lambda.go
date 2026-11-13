@@ -1471,6 +1471,37 @@ func (c *Checker) lambdaFits(l *syntax.Lambda, p types.Type) bool {
 	return n <= 1
 }
 
+// declaredParamsFit reports whether the parameters of lambda l declared
+// with types can take those of p, a function type, in system s: as in
+// Kotlin, foo(1) { x: Int -> } doesn't call foo(a: Any, f: (Any) -> Int),
+// nor baz(MyEnum1.X, { x: String -> }) fun <T1> baz(x: T1, y: (T1) -> Unit).
+func (c *Checker) declaredParamsFit(s *system, l *syntax.Lambda, p types.Type) bool {
+	t := p.Flex().NonNull()
+	if !t.IsFunc() || l.Ref != nil || !l.Arrow {
+		return true
+	}
+	var trial *system
+	for i, d := range c.declaredParams(l, t, t.A.Len()-1) {
+		a := t.A.Get(i)
+		if d.K == types.Invalid || a.V != types.Inv || a.T.K == types.Invalid {
+			continue
+		}
+		if !a.T.HasVars() {
+			if !c.subtype(a.T, d) {
+				return false
+			}
+			continue
+		}
+		if trial == nil {
+			trial = s.clone()
+		}
+		if trial.sub(a.T, d); !trial.ok {
+			return false
+		}
+	}
+	return true
+}
+
 // takesNothing reports whether t is the type of a callable that takes no
 // arguments: a KProperty0, a KMutableProperty0, a KFunction0 or a
 // function type without parameters.
@@ -1499,7 +1530,7 @@ func kcallable(t types.Type) bool {
 func (c *Checker) lambdasFit(cd *candidate, x *syntax.Call) bool {
 	for i, a := range x.Args {
 		if l, ok := a.(*syntax.Lambda); ok {
-			if p := cd.sys.apply(cd.params[i]); !c.lambdaFits(l, p) || !c.lambdaMayBe(cd, l, p) {
+			if p := cd.sys.apply(cd.params[i]); !c.lambdaFits(l, p) || !c.lambdaMayBe(cd, l, p) || !c.declaredParamsFit(cd.sys, l, p) {
 				return false
 			}
 		}
@@ -1533,7 +1564,15 @@ func (c *Checker) lambdaMayBe(cd *candidate, l *syntax.Lambda, p types.Type) boo
 	if !l.Arrow && !l.Anon {
 		arities = []int{0, 1, 2} // it, and a receiver
 	}
-	for _, u := range tv.upper {
+	// Its upper bounds, and its declared ones: invoke(table: T) for
+	// T : Table doesn't take Foo { }.
+	uppers := slices.Clone(tv.upper)
+	for _, b := range tv.v.Bounds {
+		if b = s.apply(b); !(b.K == types.Any && b.N) {
+			uppers = append(uppers, b)
+		}
+	}
+	for _, u := range uppers {
 		if u = s.apply(u); u.HasVars() || u.K == types.Invalid {
 			continue
 		}

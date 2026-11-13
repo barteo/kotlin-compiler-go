@@ -443,3 +443,17 @@ func (c *Checker) outerObjectFuns(name string) []*types.FunSym {
 	}
 	return nil
 }
+
+// localGivesWay reports whether local functions fs, named name, give way
+// to the top-level functions of the name in call x: as in Kotlin, where
+// each level of scope is tried in turn, fun foobar(x: String) in a block
+// doesn't take foobar(MyEnum3.X), which the top level's foobar(x: MyEnum3)
+// does.
+func (c *Checker) localGivesWay(fs []*types.FunSym, name string, x *syntax.Call) bool {
+	tops := c.topFuns(name)
+	if len(tops) == 0 || !c.anyMayTake(tops, x) || hasLambda(x.Args) {
+		return false
+	}
+	ts := c.argTypes(x)
+	return !c.takeTypes(fs, x, ts) && c.takeTypes(tops, x, ts)
+}

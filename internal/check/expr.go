@@ -2080,7 +2080,7 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 			// Or to a method of this class: a constructor parameter
 			// log, with an invoke operator, and fun log() in an init block.
 		}
-		if fs, depth := c.scope.findFunsFor(name, func(fs []*types.FunSym) bool { return c.anyMayTake(fs, x) }); len(fs) > 0 && (c.anyMayTake(fs, x) || !c.invokableProp(name) && !c.anyMayTake(c.topFuns(name), x)) {
+		if fs, depth := c.scope.findFunsFor(name, func(fs []*types.FunSym) bool { return c.anyMayTake(fs, x) }); len(fs) > 0 && (c.anyMayTake(fs, x) || !c.invokableProp(name) && !c.anyMayTake(c.topFuns(name), x)) && !c.localGivesWay(fs, name, x) {
 			// Local functions that can't take the arguments give way to
 			// top-level ones that can, as each level in Kotlin.
 			plain := slices.DeleteFunc(slices.Clone(fs), func(f *types.FunSym) bool { return f.Ext })

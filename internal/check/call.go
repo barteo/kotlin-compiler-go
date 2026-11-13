@@ -939,6 +939,15 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			}
 		}
 		maximal = overriddenGiveWay(maximal)
+		if len(maximal) > 1 {
+			// Of equally specific ones, which a conversion to a Kotlin fun
+			// interface makes (see funInterfaceView), those converting
+			// fewer arguments: foo(f: () -> Unit) for foo { }, not
+			// foo(r: KRunnable).
+			if fewer, ok := fewestConversions(maximal, x.Args); ok {
+				maximal = fewer
+			}
+		}
 		if len(maximal) == 0 {
 			if fewer, ok := fewestSAM(match, x.Args, func(cd *candidate) *callee { return &cd.callee }); ok {
 				for _, cd := range fewer {
@@ -1320,9 +1329,17 @@ func (c *Checker) byLambdaResult(x *syntax.Call, match []*candidate) *candidate 
 		return nil
 	}
 	var fit []*candidate
+	byLit := map[*candidate]bool{}
 	for _, cd := range match {
 		_, r, _ := funcParts(cd.params[li])
 		try := &candidate{callee: cd.callee, sub: cd.sub, params: cd.params, sys: cd.sys.clone(), sams: cd.sams, susps: cd.susps}
+		if lit := resultLit(l); lit != nil && !r.HasVars() && fitsLit(lit, r) {
+			// An integer literal is of the type expected, if it fits:
+			// debounce { 0 } for a (T) -> Long.
+			fit = append(fit, try)
+			byLit[try] = true
+			continue
+		}
 		try.sys.sub(bt, r)
 		if try.sys.ok && c.withinBounds(try) {
 			fit = append(fit, try)
@@ -1337,7 +1354,9 @@ func (c *Checker) byLambdaResult(x *syntax.Call, match []*candidate) *candidate 
 	if len(maximal) != 1 {
 		return nil
 	}
-	c.checked[l] = bt
+	if !byLit[maximal[0]] {
+		c.checked[l] = bt // else checked again, its literal of the type expected
+	}
 	return maximal[0]
 }
 
@@ -1349,6 +1368,21 @@ func (c *Checker) byLambdaResult(x *syntax.Call, match []*candidate) *candidate 
 // is the Iterable one, not the Sequence one. The lambda is then checked
 // once, after the candidate is chosen, so that a generic call it ends
 // with can be inferred with the call's other constraints.
+// resultLit returns the integer literal lambda l's body ends with, if it
+// does.
+func resultLit(l *syntax.Lambda) *syntax.IntLit {
+	n := len(l.Body.Stmts)
+	if n == 0 {
+		return nil
+	}
+	es, ok := l.Body.Stmts[n-1].(*syntax.ExprStmt)
+	if !ok {
+		return nil
+	}
+	lit, _ := es.X.(*syntax.IntLit)
+	return lit
+}
+
 func (c *Checker) byLambdaResultClass(l *syntax.Lambda, li int, match []*candidate, params []types.Type) *candidate {
 	n := len(l.Body.Stmts)
 	if n == 0 {
@@ -1486,21 +1520,39 @@ func (c *Checker) resolvePlain(x *syntax.Call, cs []callee, want types.Type) typ
 		// or one that takes them as a Long is the most specific, as above.
 		match := c.plainApplicable(cs, x.Args, ts, false)
 		if wide := c.plainApplicable(cs, x.Args, ts, true); len(match) == 0 || len(wide) > len(match) &&
-			slices.ContainsFunc(wide, func(cl *callee) bool { return c.plainMostSpecific(cl, wide, x.Args) }) &&
-			!slices.ContainsFunc(match, func(cl *callee) bool { return c.plainMostSpecific(cl, wide, x.Args) }) {
+			slices.ContainsFunc(wide, func(cl *callee) bool { return c.plainMostSpecific(cl, wide, x.Args, ts) }) &&
+			!slices.ContainsFunc(match, func(cl *callee) bool { return c.plainMostSpecific(cl, wide, x.Args, ts) }) {
 			match = wide
 		}
 		match = notLowPriority(match, func(cl *callee) *callee { return cl })
 		var maximal []*callee
 		for _, cl := range match {
-			if c.plainMostSpecific(cl, match, x.Args) {
+			if c.plainMostSpecific(cl, match, x.Args, ts) {
 				maximal = append(maximal, cl)
 			}
 		}
 		if len(maximal) == 0 {
 			if fewer, ok := fewestSAM(match, x.Args, func(cl *callee) *callee { return cl }); ok {
 				for _, cl := range fewer {
-					if c.plainMostSpecific(cl, fewer, x.Args) {
+					if c.plainMostSpecific(cl, fewer, x.Args, ts) {
+						maximal = append(maximal, cl)
+					}
+				}
+			}
+		}
+		if len(maximal) != 1 && len(match) > 1 {
+			// Those that convert fewer values to fun interfaces: foo(f) for
+			// f: () -> Unit is foo(f: () -> Unit), not foo(r: KRunnable).
+			from := maximal
+			if len(from) == 0 {
+				from = match
+			}
+			n := func(cl *callee) int { return c.plainConversions(cl, x.Args, ts) }
+			least := slices.MinFunc(from, func(a, b *callee) int { return n(a) - n(b) })
+			if fewer := slices.DeleteFunc(slices.Clone(from), func(cl *callee) bool { return n(cl) != n(least) }); len(fewer) < len(from) {
+				maximal = maximal[:0]
+				for _, cl := range fewer {
+					if c.plainMostSpecific(cl, fewer, x.Args, ts) {
 						maximal = append(maximal, cl)
 					}
 				}
@@ -1575,10 +1627,11 @@ func (c *Checker) plainApplicable(cs []callee, args []syntax.Expr, ts []types.Ty
 	return out
 }
 
-func (c *Checker) plainMostSpecific(f *callee, cs []*callee, args []syntax.Expr) bool {
+func (c *Checker) plainMostSpecific(f *callee, cs []*callee, args []syntax.Expr, ts []types.Type) bool {
 	for _, g := range cs {
 		for i := range args {
-			if fa, ga := f.argType(i, args), g.argType(i, args); boxedPrimitive(fa, ga) || !c.subtype(fa, ga) && !numberMoreSpecific(fa, ga) {
+			fa, ga := c.plainFunInterfaceView(f, i, args, ts), c.plainFunInterfaceView(g, i, args, ts)
+			if boxedPrimitive(fa, ga) || !c.subtype(fa, ga) && !numberMoreSpecific(fa, ga) {
 				return false
 			}
 		}
@@ -1832,6 +1885,7 @@ func (c *Checker) mostSpecific(f *candidate, cs []*candidate, args []syntax.Expr
 		}
 		for i := range args {
 			fa, ga := f.recv.ApplyIn(f.argType(i, args)), sub.ApplyIn(g.argType(i, args))
+			fa, ga = c.funInterfaceView(f, i, args, fa), c.funInterfaceView(g, i, args, ga)
 			if boxedPrimitive(fa, ga) {
 				return false
 			}
@@ -1852,6 +1906,82 @@ func (c *Checker) mostSpecific(f *candidate, cs []*candidate, args []syntax.Expr
 		}
 	}
 	return true
+}
+
+// plainConversions returns the number of arguments of candidate cl,
+// of types ts, that convert to fun interfaces: lambdas or values.
+func (c *Checker) plainConversions(cl *callee, args []syntax.Expr, ts []types.Type) int {
+	n := cl.samArgs(args)
+	for i, t := range ts {
+		if _, lambda := args[i].(*syntax.Lambda); lambda || t.K == types.Invalid {
+			continue
+		}
+		if p := cl.argType(i, args); !c.subtype(t, p) {
+			if _, sam := c.samValue(t, p); sam {
+				n++
+			}
+		}
+	}
+	return n
+}
+
+// plainFunInterfaceView is funInterfaceView for a candidate without
+// type parameters, whose arguments have types ts.
+func (c *Checker) plainFunInterfaceView(cl *callee, i int, args []syntax.Expr, ts []types.Type) types.Type {
+	t := cl.argType(i, args)
+	pt := t.Flex().NonNull()
+	if pt.K != types.Class || !pt.C.Fun || pt.IsFunc() {
+		return t
+	}
+	if _, lambda := args[i].(*syntax.Lambda); !lambda && (i >= len(ts) || ts[i].K == types.Invalid || c.subtype(ts[i], t)) {
+		return t
+	}
+	if m, ft := c.samTarget(pt); m != nil && ft.K != types.Invalid {
+		if t.N {
+			return ft.Nullable()
+		}
+		return ft
+	}
+	return t
+}
+
+// fewestConversions returns the candidates among cs that convert the
+// fewest arguments to fun interfaces, lambdas or values, and whether
+// that leaves some out.
+func fewestConversions(cs []*candidate, args []syntax.Expr) ([]*candidate, bool) {
+	n := func(cd *candidate) int { return cd.samArgs(args) + len(cd.sams) }
+	least := -1
+	for _, cd := range cs {
+		if k := n(cd); least < 0 || k < least {
+			least = k
+		}
+	}
+	out := slices.DeleteFunc(slices.Clone(cs), func(cd *candidate) bool { return n(cd) != least })
+	return out, len(out) < len(cs)
+}
+
+// funInterfaceView returns parameter type t of candidate cd's i'th
+// argument, or if it is a Kotlin fun interface the argument converts to,
+// its function type: as in Kotlin, foo(i: Int, r: KRunnable) is more
+// specific than foo(n: Number, f: () -> Unit) for foo(1, ::bar). A Java
+// interface's conversion keeps its type, and the candidates without one
+// come first (see fewestSAM).
+func (c *Checker) funInterfaceView(cd *candidate, i int, args []syntax.Expr, t types.Type) types.Type {
+	pt := t.Flex().NonNull()
+	if pt.K != types.Class || !pt.C.Fun || pt.IsFunc() {
+		return t
+	}
+	_, lambda := args[i].(*syntax.Lambda)
+	if !lambda && cd.sams[i] == nil {
+		return t
+	}
+	if m, ft := c.samTarget(pt); m != nil && ft.K != types.Invalid {
+		if t.N {
+			return ft.Nullable()
+		}
+		return ft
+	}
+	return t
 }
 
 // nonGenericMaximal returns the most specific of the candidates without
