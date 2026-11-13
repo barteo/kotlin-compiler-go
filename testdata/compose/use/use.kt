@@ -14,6 +14,7 @@ import app.plain
 import app.typed
 import app.DrawAll
 import app.Both
+import app.Branches
 import app.Compute
 import app.Fancy
 import app.Frame
@@ -160,5 +161,7 @@ fun main() {
         Text("use ${Insets.shown} ${label.value.boxed} ${listOf(1, n.intValue).second} ${n.intValue.described}")
         Scale(n.intValue).Show(4)
         Text("corner ${Corners(n.intValue).corner.v}")
+        // The program's composables that remember lambdas in branches.
+        Branches(shown.value, n.intValue)
     }
 }
