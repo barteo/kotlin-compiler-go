@@ -40,6 +40,8 @@ type compiler struct {
 	libs    []string // the standard library and kotlin-test
 	reflect string
 	timeout time.Duration
+	// servers, if set, run kc's compiles, instead of a process each.
+	servers *kcPool
 }
 
 // libraries says which of the libraries a test compiles against.
@@ -101,16 +103,9 @@ func (c *compiler) compile(t *test, dir string, extra []*srcFile, libs libraries
 			args = append(args, "-jvm-default=disable")
 		}
 		args = append(args, paths...)
-		ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
-		cmd := exec.CommandContext(ctx, name, args...)
-		var stderr bytes.Buffer
-		cmd.Stderr = &stderr
-		cmd.Stdout = &stderr
-		err := cmd.Run()
-		timedOut := ctx.Err() != nil
-		cancel()
+		output, failed, timedOut := c.run(name, args)
 		res.outDirs = append(res.outDirs, out)
-		if err == nil {
+		if !failed {
 			continue
 		}
 		if timedOut {
@@ -118,16 +113,34 @@ func (c *compiler) compile(t *test, dir string, extra []*srcFile, libs libraries
 			return res, nil
 		}
 		if c.kotlinc != "" {
-			if res.other = kotlincError(stderr.String()); res.other == "" {
+			if res.other = kotlincError(output); res.other == "" {
 				continue
 			}
 			return res, nil
 		}
-		parseKcOutput(stderr.String(), byPath, res)
+		parseKcOutput(output, byPath, res)
 		return res, nil
 	}
 	res.ok = true
 	return res, nil
+}
+
+// run runs the compiler command name with args, on a server if there
+// are servers, and returns its output and whether it failed or timed
+// out.
+func (c *compiler) run(name string, args []string) (out string, failed, timedOut bool) {
+	if c.servers != nil && c.kotlinc == "" {
+		code, out, timedOut := c.servers.compile(args, c.timeout)
+		return out, code != 0, timedOut
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, name, args...)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	cmd.Stdout = &stderr
+	err := cmd.Run()
+	return stderr.String(), err != nil, ctx.Err() != nil
 }
 
 // parseKcOutput reads the diagnostics kc -features printed, or its

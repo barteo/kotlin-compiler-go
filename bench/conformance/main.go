@@ -20,6 +20,11 @@
 // -kotlinc runs the tests (a -sample of them: it is slow) through the
 // same steps with kotlinc instead of kc, which checks the harness
 // itself: they must all pass.
+//
+// kc compiles on -j long-lived kc -serve processes (serve.go), which
+// keep the JDK's index and the library classes they read from test to
+// test: most of a test's compile is that work. -serve=false starts a kc
+// process for each module instead.
 package main
 
 import (
@@ -58,6 +63,7 @@ func main() {
 	timeout := flag.Duration("timeout", 10*time.Second, "how long a test's box() may run")
 	work := flag.String("work", filepath.Join(os.TempDir(), "kc-conformance"), "directory for the compiled tests")
 	keep := flag.Bool("keep", false, "keep the compiled tests in -work")
+	serve := flag.Bool("serve", true, "compile on -j long-lived kc -serve processes, which keep the class path and the standard library's classes they read from test to test, instead of a kc process a module")
 	flag.Parse()
 	if *kotlin == "" || *stdlib == "" {
 		flag.Usage()
@@ -75,6 +81,10 @@ func main() {
 		libs = append(libs, *kotlinTest)
 	}
 	comp := &compiler{kc: *kc, kotlinc: *kotlinc, libs: libs, reflect: *reflectJar, timeout: 2 * time.Minute}
+	if *serve && *kotlinc == "" {
+		comp.servers = newKcPool(*kc, *jobs)
+		defer comp.servers.close()
+	}
 	if err := os.RemoveAll(*work); err != nil {
 		log.Fatal(err)
 	}

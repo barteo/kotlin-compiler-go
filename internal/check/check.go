@@ -461,6 +461,14 @@ func (l *Library) WithSources(cp *classpath.Path) *Library {
 	return &w
 }
 
+// Clone returns a library that shares l's classes and what checking
+// computes from them, with a copy of l's settings, which the copy's
+// owner can change for its own checks.
+func (l *Library) Clone() *Library {
+	c := *l
+	return &c
+}
+
 // KeepHidden has every Java class keep the members Kotlin can't use, the
 // package-private and private ones, in types.ClassSym.JavaHidden, as the
 // classes of Java sources do: the Analysis API lists them. Checking
