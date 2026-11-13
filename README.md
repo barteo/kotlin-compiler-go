@@ -117,7 +117,7 @@ Arguments can be files or directories. Flags:
 |---|---|
 | `-d` | output directory (default `.`) |
 | `-cp`, `-classpath` | jars and directories to compile against |
-| `-jdk-home` | JDK whose classes to use (default: `$JAVA_HOME`, or the JDK of `java` on `PATH`) |
+| `-jdk-home` | JDK whose classes to use, after the class path's (default: `$JAVA_HOME`, or the JDK of `java` on `PATH`) |
 | `-no-jdk` | don't use JDK classes |
 | `-module-name` | module name, as in `kotlinc` (default `main`) |
 | `-friend-paths` | class path entries whose internal declarations are visible (`kotlinc`'s `-Xfriend-paths`) |
@@ -139,7 +139,7 @@ is most of a small compile's work. The conformance tests use it
 
 ### Use it in a Gradle build
 
-There is no Gradle plugin. [tools/gradle/use-kc.init.gradle.kts](tools/gradle/use-kc.init.gradle.kts) is an init script that makes every Kotlin/JVM compile task of a build run `kc` instead of `kotlinc`: `compileKotlin`, Android's `compile<Variant>Kotlin`, and a multiplatform module's `compileAndroidMain` and `compileKotlinJvm`. `kc` gets the task's own sources, Java sources, class path, friend paths, module name, `-jvm-default` mode and Compose, kotlinx.serialization, Parcelize and Metro plugins, with Metro's options. An Android module compiles against `android.jar`, any other module against the JDK of its Java toolchain. Dexing, R8, javac and packaging then use `kc`'s classes. It is meant for fast local builds; CI and release builds should keep `kotlinc`.
+There is no Gradle plugin. [tools/gradle/use-kc.init.gradle.kts](tools/gradle/use-kc.init.gradle.kts) is an init script that makes every Kotlin/JVM compile task of a build run `kc` instead of `kotlinc`: `compileKotlin`, Android's `compile<Variant>Kotlin`, and a multiplatform module's `compileAndroidMain` and `compileKotlinJvm`. `kc` gets the task's own sources, Java sources, class path, friend paths, module name, `-jvm-default` mode and Compose, kotlinx.serialization, Parcelize and Metro plugins, with Metro's options. A module compiles against its class path and then the JDK of its Java toolchain, so an Android module's `android.jar` stands in for the JDK's classes. Dexing, R8, javac and packaging then use `kc`'s classes. It is meant for fast local builds; CI and release builds should keep `kotlinc`.
 
 ```sh
 KC=$PWD/bin/kc ./gradlew assembleDebug --init-script /path/to/kotlin-compiler-go/tools/gradle/use-kc.init.gradle.kts
@@ -154,7 +154,7 @@ If `kc` fails on a module, `kotlinc` compiles that module and the build log says
 | `KC_SKIP` | comma-separated task paths to leave to `kotlinc`, such as `:app:compileDebugKotlin` |
 | `KC_VARIANTS` | comma-separated Android build types or variants, such as `debug` or `freeDebug`, to compile with `kc`; every other variant keeps `kotlinc` |
 | `KC_IGNORE_PLUGINS` | comma-separated compiler plugins, as `artifact` or `group:artifact`, that `kc` may leave out because the program works without them (default: `compose-stability-compiler`) |
-| `KC_JDK_HOME` | the JDK for modules without `android.jar`, in place of the task's Java toolchain |
+| `KC_JDK_HOME` | the JDK to compile against, in place of the task's Java toolchain |
 
 `KC_VARIANTS` keeps `kc` out of the variants it doesn't list, so the init script can stay on for every build of a project while a release build is compiled by `kotlinc` alone:
 
