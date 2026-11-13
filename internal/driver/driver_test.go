@@ -1359,6 +1359,56 @@ func TestMetroHints(t *testing.T) {
 	}
 }
 
+// Metro's options are checked whether or not a file uses Metro: with
+// options kc refuses, a module that uses only another framework's
+// annotations, which they make Metro read, is an unsupported feature, not
+// a module that compiles without what Metro would add to it.
+func TestMetroOptions(t *testing.T) {
+	lib := stdlib()
+	var cp []string
+	if lib != "" {
+		cp = []string{lib}
+	}
+	hilt := map[string]string{
+		"interop-include-hilt-annotations":   "true",
+		"interop-include-dagger-annotations": "true",
+		"interop-include-javax-annotations":  "true",
+		"enable-dagger-runtime-interop":      "true",
+		"enable-kclass-to-class-interop":     "true",
+		"optional-binding-behavior":          "DISABLED",
+	}
+	for name, tc := range map[string]struct {
+		src     string
+		options map[string]string
+		ok      bool // compiles
+	}{
+		"javax only": {src: "class A @javax.inject.Inject constructor()",
+			options: map[string]string{"interop-include-javax-annotations": "true"}},
+		"hilt module": {src: "import dagger.Binds\nimport dagger.Module\nimport dagger.hilt.InstallIn\nimport dagger.hilt.components.SingletonComponent\n" +
+			"interface Repo\n@Module @InstallIn(SingletonComponent::class) interface RepoModule { @Binds fun bind(r: Repo): Repo }", options: hilt},
+		"custom annotations, no Metro": {src: "class A", options: map[string]string{"custom-inject": "a/MyInject"}},
+		"optional binding behavior":    {src: "class A", options: map[string]string{"optional-binding-behavior": "DISABLED"}},
+		"disabled":                     {src: "class A", options: map[string]string{"enabled": "false", "custom-inject": "a/MyInject"}, ok: true},
+		"no Metro":                     {src: "class A", ok: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if tc.ok && lib == "" {
+				t.Skip("kotlin-stdlib.jar not found: set KOTLIN_HOME")
+			}
+			file := filepath.Join(t.TempDir(), "a.kt")
+			os.WriteFile(file, []byte(tc.src+"\n"), 0o644)
+			err := Compile([]string{file}, Options{OutDir: t.TempDir(), Jobs: 1, ClassPath: cp, Metro: true, MetroOptions: tc.options})
+			var se *syntax.Error
+			switch {
+			case tc.ok && err != nil:
+				t.Errorf("got %v, want no error", err)
+			case !tc.ok && (!errors.As(err, &se) || se.Feature != "metro"):
+				t.Errorf("got %v, want an unsupported Metro feature", err)
+			}
+		})
+	}
+}
+
 // composeJars returns the class path of Compose's runtime: $KC_COMPOSE_CP,
 // or the version that testdata/compose.out was generated with in Gradle's
 // cache, runtime-android 1.9.2 and runtime-annotation-android 1.9.2, whose
