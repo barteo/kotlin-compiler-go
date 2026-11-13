@@ -18,7 +18,9 @@ type Type struct {
 	Nullable  bool
 	Flags     int   // TypeSuspend, TypeDefinitelyNonNull
 	Upper     *Type // the upper bound of a flexible type, or nil
-	Outer     *Type // the outer class's type, for an inner class
+	// Raw is set on a raw Java type, List of Java's List: JvmProtoBuf.isRaw.
+	Raw   bool
+	Outer *Type // the outer class's type, for an inner class
 	// ExtFunc is set on a function type with a receiver, A.(B) -> C:
 	// kotlin.Function2<A, B, C> annotated @ExtensionFunctionType.
 	ExtFunc bool
@@ -518,6 +520,8 @@ func (s scope) typ(msg []byte) *Type {
 			t.Abbrev = s.typ(d.bytes())
 		case 14:
 			t.Abbrev = s.typeID(d.int())
+		case 101: // JvmProtoBuf.isRaw
+			t.Raw = d.bool()
 		case 100: // JvmProtoBuf.typeAnnotation
 			a := d.bytes()
 			switch s.annotationClass(a) {

@@ -545,7 +545,8 @@ func (t *classTable) ktype(kt *kmeta.Type, scope tscope) (types.Type, bool) {
 	if cls == nil {
 		return types.InvalidType, false
 	}
-	if len(kt.Args) == 0 {
+	if len(kt.Args) == 0 || kt.Raw || kt.Upper != nil && kt.Upper.Raw {
+		// A non-generic class, or a raw Java type.
 		return nullable(types.ClassType(cls)), true
 	}
 	args := make([]types.Arg, len(kt.Args))

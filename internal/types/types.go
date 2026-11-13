@@ -975,6 +975,13 @@ func NewExternal(name string, load func(*ClassSym)) *ClassSym {
 }
 
 // Ensure loads a Java class's members. It is safe for concurrent use.
+// Raw reports whether c's type without arguments is a raw type: whether
+// c is generic and not an array class.
+func (c *ClassSym) Raw() bool {
+	c.Ensure()
+	return !c.Array && len(c.TypeParams) > 0
+}
+
 func (c *ClassSym) Ensure() {
 	if c.load != nil {
 		c.once.Do(func() { c.load(c) })

@@ -285,10 +285,10 @@ func (t *classTable) load(cls *types.ClassSym) {
 	cls.Final = info.Access&classfile.AccFinal != 0
 	cls.Private = info.Access&classfile.AccPublic == 0
 	cls.PackagePrivate = cls.Private && (info.Inner == nil || info.Inner.Access&classfile.AccPrivate == 0)
-	// The package-private members of the module's Java classes, of the
-	// friend paths' (a unit test's main classes), and of package-private
-	// classes, are their package's code's.
-	samePkg := cls.PackagePrivate || t.cp != nil && (t.cp.IsSource(cls.Name) || t.cp.Friend(cls.Name))
+	// The package-private members of Java classes are their package's
+	// code's, which Kotlin code in another module may be, but not the
+	// JDK's.
+	samePkg := cls.PackagePrivate || !jdkPackage(cls.Name) || t.cp != nil && (t.cp.IsSource(cls.Name) || t.cp.Friend(cls.Name))
 	if info.Super != "" {
 		cls.Super = t.class(info.Super)
 	}
@@ -1685,6 +1685,17 @@ func (c *Checker) classRef(x syntax.Expr) *types.ClassSym {
 	return nil
 }
 
+// jdkPackage reports whether class name is in one of the JDK's packages,
+// in which Kotlin code can't be.
+func jdkPackage(name string) bool {
+	for _, p := range []string{"java/", "javax/", "jdk/", "sun/", "com/sun/"} {
+		if strings.HasPrefix(name, p) {
+			return true
+		}
+	}
+	return false
+}
+
 // packagePrivate reports whether a Java member's access flags make it
 // package-private: neither public, protected nor private.
 func packagePrivate(access uint16) bool {
@@ -2196,6 +2207,17 @@ func (c *Checker) construct(x *syntax.Call, cls *types.ClassSym, p syntax.Pos, w
 			all = slices.Concat(all, cls.InternalCtors)
 		}
 		own := cls.TypeParams[:len(cls.TypeParams)-cls.OuterParams] // an inner class's outer ones are the receiver's
+		if len(own) > 0 && c.outerSubst[own[0]].Raw {
+			// Erased, on a raw outer (see innerConstruct), with the
+			// type arguments written for them.
+			own = nil
+			for _, a := range x.TypeArgs {
+				if a.Type != nil {
+					c.resolveType(a.Type)
+				}
+			}
+			x.TypeArgs = nil
+		}
 		// A protected constructor is also for code in the class's package,
 		// as in Java.
 		samePkg := c.javaPackage(cls)

@@ -503,7 +503,54 @@ func (c *Checker) inSubclass(cls *types.ClassSym) bool {
 // memberCallees returns the candidates for a call of methods of a
 // receiver of type rt, without those that others override.
 func (c *Checker) memberCallees(ms []*types.FunSym, rt types.Type) []callee {
-	return c.dedupe(methodCallees(ms, func(f *types.FunSym) types.Subst { return c.memberSubst(rt, f.Owner) }))
+	cls := c.dedupe(methodCallees(ms, func(f *types.FunSym) types.Subst { return c.memberSubst(rt, f.Owner) }))
+	for i, cl := range cls {
+		if g, ok := c.unerased(rt, cl); ok {
+			cls[i] = callee{f: g, tparams: g.TypeParams, recv: c.memberSubst(rt, g.Owner)}
+		}
+	}
+	return cls
+}
+
+// unerased returns the method that cl's, a Java method of a raw
+// supertype of rt, overrides in a supertype rt has with arguments, and
+// that has a more specific type: as Kotlin's intersection override, a
+// class that extends raw Base and implements Params<String> has Params's
+// fetch(): Map<String, String>, not Base's erased fetch(): Map.
+func (c *Checker) unerased(rt types.Type, cl callee) (*types.FunSym, bool) {
+	f := cl.f
+	if rt.K != types.Class || f.Owner == nil || !javaClass(f.Owner) || f.Static || !rawSubst(cl.recv) {
+		return nil, false
+	}
+	var out *types.FunSym
+	rt.C.Supertypes(func(s *types.ClassSym) bool {
+		if s == f.Owner || !f.Owner.IsSubclassOf(s) {
+			return true
+		}
+		for _, g := range methodsNamed(s, f) {
+			gs := c.memberSubst(rt, g.Owner)
+			if g.Static || g.Private || rawSubst(gs) || !c.sameParams(rt, f, g) {
+				continue
+			}
+			if c.subtype(gs.Apply(g.Ret), cl.recv.Apply(f.Ret)) && !c.subtype(cl.recv.Apply(f.Ret), gs.Apply(g.Ret)) {
+				out = g
+				return false
+			}
+		}
+		return true
+	})
+	return out, out != nil
+}
+
+// rawSubst reports whether s maps a raw type's parameters to their
+// erasures.
+func rawSubst(s types.Subst) bool {
+	for _, a := range s {
+		if a.Raw {
+			return true
+		}
+	}
+	return false
 }
 
 // sameParams reports whether method g, seen from a receiver of type rt,
@@ -521,6 +568,28 @@ func (c *Checker) sameParams(rt types.Type, f, g *types.FunSym) bool {
 	}
 	for i, p := range f.Params {
 		ft, gt := fs.Apply(p.Type), gs.Apply(g.Params[i].Type)
+		if hasRaw(ft) != hasRaw(gt) {
+			raw, other, rf, of := gt, ft, g, f
+			if hasRaw(ft) {
+				raw, other, rf, of = ft, gt, f, g
+			}
+			if rf.Owner != of.Owner && rf.Owner.IsSubclassOf(of.Owner) {
+				// A Java method overriding by erasure: foo(List) overrides
+				// foo(MutableList<Int>).
+				if !c.subtype(other, rawUpper(raw)) {
+					return false
+				}
+				continue
+			}
+			// A raw type's erased member, as Kotlin sees it: from its
+			// arguments' erasures to star projections. A raw A's
+			// foo(Map<String, List<T>>) takes a Map<Any?, Any?>, not a
+			// Map<Any?, Any>.
+			if !c.subtype(rawLower(raw), other) || !c.subtype(other, rawUpper(raw)) {
+				return false
+			}
+			continue
+		}
 		if !c.sameType(ft, gt) && !c.sameType(ft, invArray(gt)) {
 			return false
 		}
@@ -530,6 +599,73 @@ func (c *Checker) sameParams(rt types.Type, f, g *types.FunSym) bool {
 		return false
 	}
 	return c.sameBounds(fs, gs, f, g)
+}
+
+// isRaw reports whether t is a raw type: a generic class without type
+// arguments, as Java code may use one.
+func isRaw(t types.Type) bool {
+	return t.K == types.Class && t.A == nil && t.C.Raw()
+}
+
+// hasRaw reports whether t is or has a raw type.
+func hasRaw(t types.Type) bool { return t.Has(isRaw) }
+
+// rawLower returns t with its raw types replaced by their lower bounds,
+// as Kotlin's: the class with its parameters' erasures, a raw Map a
+// MutableMap<Any?, Any?>, and a raw HashMap a HashMap<Any!, Any!>.
+func rawLower(t types.Type) types.Type {
+	if isRaw(t) {
+		args := make([]types.Arg, len(t.C.TypeParams))
+		for i, p := range t.C.TypeParams {
+			b := erasure(p)
+			if o := p.Bound(); !o.P && !javaClass(t.C) {
+				b.P, b.N = false, o.N // a Kotlin class's, as List's
+			}
+			args[i] = types.Arg{T: b}
+		}
+		t.A = types.MakeArgs(args)
+		return t
+	}
+	return mapTypeArgs(t, rawLower)
+}
+
+// rawUpper returns t with its raw types replaced by their upper bounds,
+// as Kotlin's: the read-only class with star projections, nullable: a raw
+// Map a Map<*, *>?.
+func rawUpper(t types.Type) types.Type {
+	if isRaw(t) {
+		args := make([]types.Arg, len(t.C.TypeParams))
+		for i := range args {
+			args[i] = types.Arg{V: types.Star}
+		}
+		if t.C.ReadOnly != nil {
+			t.C = t.C.ReadOnly
+		}
+		t.A = types.MakeArgs(args)
+		return t.Nullable()
+	}
+	return mapTypeArgs(t, rawUpper)
+}
+
+// javaClass reports whether cls is a Java class, not one Kotlin sees as
+// its own, as List.
+func javaClass(cls *types.ClassSym) bool {
+	return cls.External && cls.KotlinName == "" && cls.Java == nil
+}
+
+// mapTypeArgs returns t with f applied to its type arguments.
+func mapTypeArgs(t types.Type, f func(types.Type) types.Type) types.Type {
+	if t.K != types.Class || t.A == nil {
+		return t
+	}
+	args := slices.Clone(t.A.List)
+	for i, a := range args {
+		if a.V != types.Star {
+			args[i].T = f(a.T)
+		}
+	}
+	t.A = types.MakeArgs(args)
+	return t
 }
 
 // invArray returns the type of a Java method's array parameter, T[], which
