@@ -7,9 +7,9 @@ Of 10827 test files, 3541 are skipped and 7286 run.
 | Result | Tests | Share |
 |:---|---:|---:|
 | rejects invalid | 3617 | 49.6% |
-| accepts valid | 3142 | 43.1% |
+| accepts valid | 3145 | 43.2% |
 | accepts invalid | 263 | 3.6% |
-| rejects valid | 248 | 3.4% |
+| rejects valid | 245 | 3.4% |
 | parse/unsupported | 16 | 0.2% |
 | crash | 0 | 0.0% |
 
@@ -119,7 +119,7 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 | First error | Tests | Examples |
 |:---|---:|:---|
-| `type mismatch: inferred type is _ but _ was expected` | 65 | `tests/annotations/parameters/expressions/unaryPlus.kt`, `tests/callableReference/function/localConstructor.kt` |
+| `type mismatch: inferred type is _ but _ was expected` | 62 | `tests/annotations/parameters/expressions/unaryPlus.kt`, `tests/callableReference/function/localConstructor.kt` |
 | `cannot infer type for type parameter '_'. Specify it explicitly.` | 48 | `tests/callableReference/generic/kt35896.kt`, `tests/callableReference/genericCallWithReferenceAgainstVararg.kt` |
 | `unresolved reference: _` | 25 | `tests/callResolution/suspendCOnversionForReceiver.kt`, `tests/callableReference/bound/controlFlow.kt` |
 | `ambiguous call: n candidates for '_' take (_)` | 16 | `tests/callableReference/noAmbiguityWhenAllReferencesAreInapplicable.kt`, `tests/callableReference/resolve/kt35887.kt` |
@@ -165,7 +165,7 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 13386 of 19697 expected errors (68.0%) on their lines.
+kc reports 13387 of 19697 expected errors (68.0%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
@@ -239,8 +239,8 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 |:---|---:|
 | `cannot infer type for type parameter '_'. Specify it explicitly.` | 521 |
 | `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 313 |
-| `type mismatch: inferred type is _ but _ was expected` | 301 |
-| `unresolved reference: _` | 229 |
+| `type mismatch: inferred type is _ but _ was expected` | 296 |
+| `unresolved reference: _` | 227 |
 | `platform declaration clash: _` | 150 |
 | `class '_' is not abstract and does not implement abstract member '_'` | 55 |
 | `suspend function '_' cannot override non-suspend function '_' defined in '_'` | 50 |
@@ -253,7 +253,6 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | `operator '_' cannot be applied to Any?` | 16 |
 | `type checking has run into a recursive problem; specify the type of '_'` | 16 |
 | `variable '_' must be initialized` | 16 |
-| `'_' overrides nothing` | 15 |
 | `expected expression, found '_'` | 14 |
 | `expected n parameter of type _ but n were declared` | 14 |
 | `not enough information to infer type arguments of ::foon: specify the expected function type` | 14 |
@@ -262,12 +261,13 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | `private setters are not allowed for open properties` | 12 |
 | `unresolved import: _` | 12 |
 | `'_' modifier is required on '_'` | 11 |
+| `'_' overrides nothing` | 11 |
 | `assignment operators ambiguity: '_' and '_' both apply` | 11 |
 | `not enough information to infer type arguments of ::barn: specify the expected function type` | 11 |
 | `val cannot be reassigned` | 11 |
 | `expected parameter of type _` | 10 |
 | `expression '_' of type _ cannot be invoked as a function` | 10 |
-| *189 more* | |
+| *184 more* | |
 
 ## Unsupported features
 

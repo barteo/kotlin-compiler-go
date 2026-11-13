@@ -148,14 +148,14 @@ Kotlin 2.4.21's tests on `kc`:
 |:---|---:|---:|
 | run (of 10,827) | 7,286 | |
 | rejects invalid | 3,617 | 49.6% |
-| accepts valid | 3,142 | 43.1% |
+| accepts valid | 3,145 | 43.2% |
 | accepts invalid | 263 | 3.6% |
-| rejects valid | 248 | 3.4% |
+| rejects valid | 245 | 3.4% |
 | parse/unsupported | 16 | 0.2% |
 | crash | 0 | |
 
 `kc` agrees with `kotlinc` on 93% of the diagnostics tests, and reports
-13,386 of the 19,697 expected errors (68%) on their lines. The reports
+13,387 of the 19,697 expected errors (68%) on their lines. The reports
 break the failures down; the largest groups are:
 
 - **Silent miscompilation**: none. No box test that `kc` compiles
@@ -168,7 +168,7 @@ break the failures down; the largest groups are:
   constructs (`UNSUPPORTED` 8), initializer type mismatches
   (`INITIALIZER_TYPE_MISMATCH` 7) and impossible smart casts
   (`SMARTCAST_IMPOSSIBLE` 7).
-- **Rejects valid**, by `kc`'s first error: type mismatches (65),
+- **Rejects valid**, by `kc`'s first error: type mismatches (62),
   inference failures (49), unresolved names and imports (29), ambiguous
   calls (16), and non-exhaustive `when`s (7). No box test is rejected.
 

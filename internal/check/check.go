@@ -3102,6 +3102,11 @@ func (c *Checker) checkPropInit(d *syntax.PropDecl, cls *types.ClassSym) {
 	if sym.Type = t; !keepsAnon(&d.Modifiers, cls) {
 		sym.Type = approx(c.approxIntersections(t))
 	}
+	if d.Const && sym.Type.P {
+		// A constant is never null: one of a Java constant has its type
+		// without the platform nullability.
+		sym.Type = sym.Type.NonNull()
+	}
 }
 
 // provideDelegate makes the delegate of property p, the initializer of

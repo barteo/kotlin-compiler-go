@@ -1,3 +1,5 @@
+getHalf bridge=true [Marked] [[]]
 getHolder bridge=true [Marked] []
+tagged bridge=true [Marked] [[], [Arg]]
 twice bridge=true [Marked, Deprecated] [[Arg]]
 6
