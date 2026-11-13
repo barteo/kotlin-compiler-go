@@ -61,6 +61,11 @@ type metroAnalysis struct {
 	classfiles map[string]*classfile.Annotated
 	classAnns  map[*types.ClassSym][]*mAnn
 	metas      map[string]mMeta
+
+	// hiltComponentScopes caches hiltScope's @DefineComponent scopes,
+	// hiltDeps hiltAggregatedDeps.
+	hiltComponentScopes map[string]string
+	hiltDeps            *[]hiltDep
 }
 
 // mMeta is what an annotation class is to Metro.
@@ -73,7 +78,8 @@ func newMetroAnalysis(u *Universe, checkers []*Checker, cfg metroConfig) *metroA
 	m := &metroAnalysis{u: u, checkers: checkers, checkerOf: map[*types.ClassSym]*Checker{},
 		plan:                &MetroPlan{members: map[string][]string{}, supers: map[string][]string{}, calls: map[string]map[syntax.Pos]string{}},
 		contributesAsInject: cfg.contributesAsInject, functionProviders: cfg.functionProviders, cfg: cfg, alias: cfg.aliases(),
-		classfiles: map[string]*classfile.Annotated{}, classAnns: map[*types.ClassSym][]*mAnn{}, metas: map[string]mMeta{}}
+		classfiles: map[string]*classfile.Annotated{}, classAnns: map[*types.ClassSym][]*mAnn{}, metas: map[string]mMeta{},
+		hiltComponentScopes: map[string]string{}}
 	for _, c := range checkers {
 		c.metroAlias = m.alias
 		for _, d := range c.classes {
@@ -157,13 +163,17 @@ func (m *metroAnalysis) annsOf(cls *types.ClassSym) []*mAnn {
 		return as
 	}
 	var as []*mAnn
+	source := false
 	if d, ok := cls.Decl.(*syntax.ClassDecl); ok && !cls.External {
+		source = true
 		if c := m.checkerOf[cls]; c != nil {
 			as = c.fromSource(d.Annotations, cls)
 		}
 	} else if cf := m.classfile(cls.Name); cf != nil {
 		as = m.convertAll(cf.Class)
 	}
+	m.classAnns[cls] = as // for the lookups of hiltContributions
+	as = append(as, m.hiltContributions(cls.Name, as, source)...)
 	m.classAnns[cls] = as
 	return as
 }

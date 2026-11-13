@@ -561,6 +561,14 @@ func (m *metroAnalysis) contributorsOf(scope string) []*types.ClassSym {
 			}
 		}
 	}
+	for _, cn := range m.hiltContributorsOf(scope) {
+		if m.u.sourceClass(cn) != nil {
+			continue
+		}
+		if cls := m.u.ext.class(cn); cls != nil && !slices.Contains(out, cls) {
+			out = append(out, cls)
+		}
+	}
 	return out
 }
 

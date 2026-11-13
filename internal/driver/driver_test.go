@@ -1376,14 +1376,6 @@ func TestMetroOptions(t *testing.T) {
 	if lib != "" {
 		cp = []string{lib}
 	}
-	hilt := map[string]string{
-		"interop-include-hilt-annotations":   "true",
-		"interop-include-dagger-annotations": "true",
-		"interop-include-javax-annotations":  "true",
-		"enable-dagger-runtime-interop":      "true",
-		"enable-kclass-to-class-interop":     "true",
-		"optional-binding-behavior":          "DISABLED",
-	}
 	for name, tc := range map[string]struct {
 		src     string
 		options map[string]string
@@ -1391,8 +1383,6 @@ func TestMetroOptions(t *testing.T) {
 	}{
 		"guice": {src: "@dagger.Module object M",
 			options: map[string]string{"interop-include-dagger-annotations": "true", "interop-include-guice-annotations": "true"}},
-		"hilt module": {src: "import dagger.Binds\nimport dagger.Module\nimport dagger.hilt.InstallIn\nimport dagger.hilt.components.SingletonComponent\n" +
-			"interface Repo\n@Module @InstallIn(SingletonComponent::class) interface RepoModule { @Binds fun bind(r: Repo): Repo }", options: hilt},
 		"custom annotations, no Metro": {src: "class A", options: map[string]string{"custom-inject": "a/MyInject"}},
 		"optional binding behavior":    {src: "class A", options: map[string]string{"optional-binding-behavior": "REQUIRE_OPTIONAL_BINDING"}},
 		"disabled":                     {src: "class A", options: map[string]string{"enabled": "false", "custom-inject": "a/MyInject"}, ok: true},
@@ -1521,6 +1511,7 @@ func TestMetroInterop(t *testing.T) {
 	javax := map[string]string{"interop-include-javax-annotations": "true"}
 	disabled := map[string]string{"interop-include-javax-annotations": "true", "optional-binding-behavior": "DISABLED"}
 	dagger := map[string]string{"interop-include-dagger-annotations": "true"}
+	hilt := map[string]string{"interop-include-hilt-annotations": "true"}
 	const header = "import dev.zacsweers.metro.*\n\n"
 	for name, tc := range map[string]struct {
 		src, msg string
@@ -1551,6 +1542,13 @@ func TestMetroInterop(t *testing.T) {
 			"@DependencyGraph interface G { val a: javax.inject.Provider<Lazy<A>> }", msg: "Cannot mix intrinsic types", options: javax},
 		"provider of dagger lazy": {src: "class A @javax.inject.Inject constructor()\n" +
 			"@DependencyGraph interface G { val a: Provider<dagger.Lazy<A>> }", msg: "Cannot mix intrinsic types", options: dagger},
+		// A component without a scope maps to none: what is installed in
+		// it contributes nothing, as in Metro.
+		"hilt component without a scope": {src: "@dagger.hilt.DefineComponent(parent = dagger.hilt.components.SingletonComponent::class) interface C\n" +
+			"@dagger.Module @dagger.hilt.InstallIn(C::class) object M { @dagger.Provides fun s(): String = \"\" }\n" +
+			"@javax.inject.Singleton @DependencyGraph(javax.inject.Singleton::class) interface G { val s: String }", msg: "[Metro/MissingBinding]", options: hilt},
+		"hilt module without the option": {src: "@dagger.Module @dagger.hilt.InstallIn(dagger.hilt.components.SingletonComponent::class) object M { @dagger.Provides fun s(): String = \"\" }\n" +
+			"@javax.inject.Singleton @DependencyGraph(javax.inject.Singleton::class) interface G { val s: String }", msg: "[Metro/MissingBinding]", options: dagger},
 		"dagger assisted identifiers": {src: "class A @dagger.assisted.AssistedInject constructor(@dagger.assisted.Assisted(\"x\") val n: Int)\n" +
 			"@dagger.assisted.AssistedFactory interface F { fun create(n: Int): A }\n" +
 			"@DependencyGraph interface G { val f: F }", msg: "with identifier \"x\"", options: dagger},
@@ -1571,6 +1569,108 @@ func TestMetroInterop(t *testing.T) {
 				t.Errorf("got %v, want an unsupported Metro feature: %v", err, tc.feature)
 			}
 		})
+	}
+}
+
+// TestMetroHilt is the build of the issue that brought Hilt's support:
+// kc compiles a module of a Hilt module and entry point, which writes
+// their contribution hints, and then a module of a graph against it.
+func TestMetroHilt(t *testing.T) {
+	java, err := exec.LookPath("java")
+	if err != nil {
+		t.Skip("java not found on PATH")
+	}
+	lib := stdlib()
+	rt, _ := metroJars()
+	interop := metroInteropJars()
+	if lib == "" || rt == "" || interop == nil {
+		t.Skip("kotlin-stdlib.jar, Metro 1.5.2 or the interop jars not found: set KOTLIN_HOME, KC_METRO_CP and KC_METRO_INTEROP_CP")
+	}
+	cp := append([]string{lib, rt}, interop...)
+	opts := map[string]string{
+		"interop-include-hilt-annotations": "true",
+		"enable-kclass-to-class-interop":   "true",
+		"optional-binding-behavior":        "DISABLED",
+	}
+	dir := t.TempDir()
+	libSrc := filepath.Join(dir, "lib.kt")
+	os.WriteFile(libSrc, []byte(`package lib
+
+import dagger.Binds
+import dagger.Module
+import dagger.Provides
+import dagger.hilt.EntryPoint
+import dagger.hilt.InstallIn
+import dagger.hilt.components.SingletonComponent
+import javax.inject.Inject
+import javax.inject.Singleton
+
+interface Repo { fun name(): String }
+
+@Singleton
+class RepoImpl @Inject constructor(private val prefix: String) : Repo {
+    override fun name() = prefix + "repo"
+}
+
+@Module
+@InstallIn(SingletonComponent::class)
+interface RepoModule {
+    @Binds fun repo(impl: RepoImpl): Repo
+
+    companion object {
+        @Provides fun prefix(): String = "lib "
+    }
+}
+
+@EntryPoint
+@InstallIn(SingletonComponent::class)
+interface RepoEntryPoint {
+    fun repo(): Repo
+}
+`), 0o644)
+	libOut := filepath.Join(dir, "lib")
+	if err := Compile([]string{libSrc}, Options{OutDir: libOut, Jobs: 1, ClassPath: cp, ModuleName: "lib", Metro: true, MetroOptions: opts}); err != nil {
+		t.Fatalf("compile lib: %v", err)
+	}
+	for _, hint := range []string{"LibRepoModuleJavax_inject_SingletonKt", "LibRepoEntryPointJavax_inject_SingletonKt"} {
+		if _, err := os.Stat(filepath.Join(libOut, "metro/hints", hint+".class")); err != nil {
+			hints, _ := filepath.Glob(filepath.Join(libOut, "metro/hints/*"))
+			t.Fatalf("missing hint %s: got %v", hint, hints)
+		}
+	}
+	appSrc := filepath.Join(dir, "main.kt")
+	os.WriteFile(appSrc, []byte(`package app
+
+import dev.zacsweers.metro.DependencyGraph
+import dev.zacsweers.metro.createGraph
+import javax.inject.Singleton
+import lib.Repo
+import lib.RepoEntryPoint
+
+@Singleton
+@DependencyGraph(Singleton::class)
+interface AppGraph {
+    val repo: Repo
+}
+
+fun main() {
+    val g = createGraph<AppGraph>()
+    println(g.repo.name() + " " + (g.repo === (g as RepoEntryPoint).repo()))
+}
+`), 0o644)
+	appCP := append(slices.Clone(cp), libOut)
+	appOut := filepath.Join(dir, "app")
+	if err := Compile([]string{appSrc}, Options{OutDir: appOut, Jobs: 1, ClassPath: appCP, ModuleName: "app", Metro: true, MetroOptions: opts}); err != nil {
+		t.Fatalf("compile app: %v", err)
+	}
+	cmd := exec.Command(java, "-Xverify:all", "-cp", strings.Join(append([]string{appOut}, appCP...), string(os.PathListSeparator)), "app.MainKt")
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("java: %v\n%s", err, stderr.String())
+	}
+	if got, want := stdout.String(), "lib repo true\n"; got != want {
+		t.Errorf("got %q, want %q", got, want)
 	}
 }
 

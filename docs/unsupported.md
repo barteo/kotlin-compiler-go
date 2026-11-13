@@ -118,12 +118,15 @@ With `interop-include-dagger-annotations`, which implies the javax and Jakarta o
 
 With `enable-kclass-to-class-interop`, a map's `java.lang.Class` keys are its `KClass` keys, as in Metro: `Map<Class<*>, V>`, wrapped or with wrapped values, and `@Multibinds` declarations of it, are the multibinding `Map<KClass<*>, V>`, with its keys converted.
 
+With `interop-include-hilt-annotations`, which implies the Dagger options, a Dagger `@Module` or a Hilt `@EntryPoint` annotated `@InstallIn(component)` contributes, as a binding container or a graph supertype, to the scope the component maps to: `javax.inject.Singleton` for `SingletonComponent`, the matching `dagger.hilt.android.scopes` annotation for Hilt's other built-in components, and a `@DefineComponent`'s own scope annotation. As in Metro, a graph merges what is installed in a component by that scope (`@Singleton @DependencyGraph(Singleton::class)`), `kc` writes the usual contribution hints for them, and reads the modules and entry points of Hilt's compiled `@AggregatedDeps` markers (package `hilt_aggregated_deps`), but tests'. What is installed in a component without a scope contributes nothing.
+
 Not supported, and reported as such:
 
-- custom annotations (the `custom-*` options), and options that change Metro's output, other than `enabled`, `contributes-as-inject`, `enable-function-providers`, the javax, Jakarta, Dagger and `KClass` options above and `optional-binding-behavior=DISABLED`. With `-metro`, `kc` checks the options before anything else, whether or not the files use Metro, so a module that uses only the annotations such an option makes Metro read (javax's, Dagger's, Hilt's) is reported, not compiled without Metro;
+- custom annotations (the `custom-*` options), and options that change Metro's output, other than `enabled`, `contributes-as-inject`, `enable-function-providers`, the javax, Jakarta, Dagger, Hilt and `KClass` options above and `optional-binding-behavior=DISABLED`. With `-metro`, `kc` checks the options before anything else, whether or not the files use Metro, so a module that uses only the annotations such an option makes Metro read (javax's, Dagger's, Hilt's) is reported, not compiled without Metro;
 - `@Provides` extension functions;
 - graphs with type parameters, and graph factories that are abstract classes;
-- Hilt, Guice, Anvil and kotlin-inject interop;
+- Guice, Anvil and kotlin-inject interop;
+- as in Metro, Hilt's `@TestInstallIn`, `@DefineComponent`'s `parent`, and `@AggregatedDeps`' `replaces` and `componentEntryPoints`;
 - with `enable-kclass-to-class-interop`, bindings of a map with `Class` keys other than a multibinding (`@Provides fun m(): Map<Class<*>, V>`); array class literals (`Array<String>::class`) as map keys;
 - Dagger's `@Component` and `@Subcomponent`, and modules with `subcomponents`;
 - member injection into classes from the class path;

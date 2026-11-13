@@ -17,7 +17,7 @@ func TestParseMetroOptions(t *testing.T) {
 			want: metroConfig{optional: "DEFAULT"}},
 		"hilt implies dagger, javax and jakarta": {opts: map[string]string{"interop-include-hilt-annotations": "true"},
 			want: metroConfig{contributesAsInject: true, functionProviders: true, optional: "DEFAULT",
-				javax: true, jakarta: true, dagger: true, hilt: true, daggerRuntime: true}, err: true},
+				javax: true, jakarta: true, dagger: true, hilt: true, daggerRuntime: true}},
 		"javax alone": {opts: map[string]string{"interop-include-javax-annotations": "true"},
 			want: metroConfig{contributesAsInject: true, functionProviders: true, optional: "DEFAULT", javax: true}},
 		"jakarta alone": {opts: map[string]string{"interop-include-jakarta-annotations": "true"},
