@@ -303,6 +303,13 @@ func (c *Checker) indexCompound(p syntax.Pos, ix *syntax.Index, assignOp string,
 	if et.K == types.Invalid {
 		return stmts, elem, true
 	}
+	if r := c.stub(et.Flex()); r != nil {
+		// As kotlinc's BUILDER_INFERENCE_STUB_RECEIVER, an element of a
+		// builder's type doesn't fix it here, as it does in get(0) + "K":
+		// this[0] += "K" in buildList { add("O") } is an error.
+		c.errorf(ix.P, "the type of a receiver hasn't been inferred yet. Specify type argument for generic parameter '%s' explicitly.", et.Flex().Param().Name)
+		return stmts, elem, true
+	}
 	if assignOp != "" && !builtinOperand(et) && c.hasFun(et.NonNull(), assignOp, &syntax.Call{Args: []syntax.Expr{arg}}) {
 		call, t := c.opCall(p, checked(read, et), assignOp, []syntax.Expr{arg}, noWant)
 		c.wantUnit(p, assignOp, t)

@@ -1107,6 +1107,14 @@ func (c *Checker) objectTarget(x syntax.Expr) syntax.Expr {
 }
 
 func (c *Checker) assign(s *syntax.Assign) {
+	// What the check writes into an assignment is the check's: one that
+	// stubInference throws away may take another branch than the one
+	// that counts, as y += 1 does for a var y of a builder's E, which
+	// would leave its rewrite in Stmts.
+	if c.trial != nil {
+		stmts, opType, value := s.Stmts, s.OpType, s.Value
+		c.onUndo(func() { s.Stmts, s.OpType, s.Value = stmts, opType, value })
+	}
 	if recv, build, ok := safeTarget(s.Target); ok {
 		c.safeAssign(s, recv, build)
 		return
@@ -1159,6 +1167,11 @@ func (c *Checker) assign(s *syntax.Assign) {
 	}
 	if mutable && c.contextWrite(s) {
 		return
+	}
+	if s.Op != syntax.ASSIGN {
+		// y += 1 for a var y = get(0) in buildList { add(1) }: y is the
+		// element's type (see fixedStub).
+		tt = c.fixedStub(tt)
 	}
 	var v *types.VarSym // a local var, whose smart casts the assignment changes
 	if id, ok := s.Target.(*syntax.Ident); ok && id.Sym != nil && isVar(id.Sym) {

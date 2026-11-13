@@ -509,7 +509,7 @@ func (c *Checker) unary(x *syntax.Unary, want types.Type) types.Type {
 				return t
 			}
 		}
-		t := c.value(x.X, want).Flex()
+		t := c.fixedStub(c.value(x.X, want)).Flex()
 		x.X, t = builtinBound(x.X, t)
 		if !builtinOperand(t) || c.unaryExt(x, t) {
 			return c.unaryOp(x, t, want)
@@ -992,7 +992,9 @@ func (c *Checker) binary(x *syntax.Binary, want types.Type, allowRange bool) typ
 		// expected: val n: Long = 8 * 1024.
 		opWant = types.LongType
 	}
-	xt := c.value(x.X, opWant).Flex()
+	// A builder's element is its type, which may be a built-in one:
+	// get(0) + "y" in buildList { add("x") } (see fixedStub).
+	xt := c.fixedStub(c.value(x.X, opWant)).Flex()
 	x.X, xt = builtinBound(x.X, xt)
 	if !builtinOperand(xt) {
 		switch x.Op {
@@ -1019,7 +1021,7 @@ func (c *Checker) binary(x *syntax.Binary, want types.Type, allowRange bool) typ
 		// pos) subtracts an Int from a Long.
 		yWant = noWant
 	}
-	yt := c.value(x.Y, yWant).Flex()
+	yt := c.fixedStub(c.value(x.Y, yWant)).Flex() // 1 + get(0), as get(0) + 1
 	x.Y, yt = builtinBound(x.Y, yt)
 	if xt.K == types.Invalid || yt.K == types.Invalid {
 		return types.InvalidType
