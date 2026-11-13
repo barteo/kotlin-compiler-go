@@ -2,7 +2,7 @@
 
 ```sh
 bench/kotlin-tests.sh box            # 7,480 box tests, about 15 s after the first clone
-bench/kotlin-tests.sh diagnostics    # 10,827 diagnostics tests, about 10 s
+bench/kotlin-tests.sh diagnostics    # 10,827 diagnostics tests, about 40 s
 ```
 
 The [survey](survey.md) counts the features real code uses, but can't say
@@ -55,6 +55,11 @@ seconds; each server peaks at about 225 MB.
 |:---|---:|---:|
 | box | 2 min 53 s | 14 s |
 | diagnostics | 2 min 57 s | 9 s |
+
+Those times are from before the diagnostics tests with Java sources
+ran. A compile with Java sources gets a class path of its own, since
+the sources are added to it, so those 1,229 tests take most of the
+diagnostics suite's 40 s now.
 
 A server compiles one test at a time, so a panic, which ends it with
 its trace as it would end `kc`, is charged to the test that caused it,
@@ -195,18 +200,18 @@ Kotlin 2.4.21's tests on `kc`:
 | Diagnostics tests | Tests | Share of run |
 |:---|---:|---:|
 | run (of 10,827) | 8,515 | |
-| rejects invalid | 3,959 | 46.5% |
+| rejects invalid | 3,963 | 46.5% |
 | accepts valid | 3,864 | 45.4% |
-| accepts invalid | 423 | 5.0% |
+| accepts invalid | 420 | 4.9% |
 | rejects valid | 248 | 2.9% |
 | parse/unsupported | 18 | 0.2% |
-| crash | 2 | |
+| crash | 1 | |
 | harness error (`javac`) | 1 | |
 
 `kc` agrees with `kotlinc` on 92% of the diagnostics tests, and reports
-14,518 of the 21,471 expected errors (68%) on their lines. Tests with
+14,526 of the 21,476 expected errors (68%) on their lines. Tests with
 Java sources, which earlier runs skipped, add 1,229 tests to the run,
-and 189 of the 423 that *accept invalid* code. The reports break the failures down; the
+and 186 of the 420 that *accept invalid* code. The reports break the failures down; the
 largest groups are:
 
 - **Silent miscompilation**: none. No box test that `kc` compiles
@@ -222,9 +227,8 @@ largest groups are:
 - **Rejects valid**, by `kc`'s first error: type mismatches (60),
   inference failures (52), unresolved names and imports (37), ambiguous
   calls (8), and non-exhaustive `when`s (8). No box test is rejected.
-- **Crashes**: two tests with Java sources, a stack overflow on a
-  recursive bound and a timeout on a nested Kotlin/Java hierarchy. The
-  harness error is a test that declares `java.util.Date`, which `javac`
+- **Crashes**: a test with Java sources, a stack overflow on a
+  recursive bound. The harness error is a test that declares `java.util.Date`, which `javac`
   compiles only with `--patch-module`.
 
 The committed `.tsv` files serve as a ratchet: a change must make

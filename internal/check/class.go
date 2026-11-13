@@ -153,7 +153,7 @@ func (c *Checker) supertype(cd *syntax.ClassDecl, st *syntax.SuperType, seen map
 // in a cycle is reported.
 func (c *Checker) findCycles() {
 	for _, cd := range c.classes {
-		if inherits(cd.Sym, cd.Sym, map[*types.ClassSym]bool{}) {
+		if inherits(cd.Sym, cd.Sym, c.u.ext.javaSource, map[*types.ClassSym]bool{}) {
 			c.cyclic = append(c.cyclic, cd)
 		}
 	}
@@ -249,14 +249,26 @@ func packageOf(cls *types.ClassSym) string {
 }
 
 // inherits reports whether one of cls's supertypes, among the program's
-// classes, is target.
-func inherits(cls, target *types.ClassSym, seen map[*types.ClassSym]bool) bool {
-	if seen[cls] || cls.External {
+// classes and those of its Java sources (javaSource), is target: class
+// K : J(), where the Java source has class J extends K, is a cycle too.
+func inherits(cls, target *types.ClassSym, javaSource func(*types.ClassSym) bool, seen map[*types.ClassSym]bool) bool {
+	if seen[cls] || cls.External && !javaSource(cls) {
 		return false
 	}
 	seen[cls] = true
+	if cls.External {
+		// A Java class has its superclass and interfaces, and Supers only
+		// if it is generic.
+		cls.Ensure()
+		for _, s := range append([]*types.ClassSym{cls.Super}, cls.Interfaces...) {
+			if s != nil && (s == target || inherits(s, target, javaSource, seen)) {
+				return true
+			}
+		}
+		return false
+	}
 	for _, s := range cls.Supers {
-		if s.C == target || inherits(s.C, target, seen) {
+		if s.C == target || inherits(s.C, target, javaSource, seen) {
 			return true
 		}
 	}
@@ -270,7 +282,7 @@ func inherits(cls, target *types.ClassSym, seen map[*types.ClassSym]bool) bool {
 				continue
 			}
 			for o := st.T.C.Outer; o != nil; o = o.Outer {
-				if o == target || inherits(o, target, seen) {
+				if o == target || inherits(o, target, javaSource, seen) {
 					return true
 				}
 			}
