@@ -1474,6 +1474,9 @@ func (c *Checker) extProp(x *syntax.Member, rt types.Type) (types.Type, bool) {
 	var best *types.FunSym
 	var bestSub types.Subst // a superclass's type parameters, for a member's
 	sub := func(g *types.FunSym) types.Subst { return nil }
+	// Another file's private one is taken only where no other fits, for
+	// the error.
+	bestSeen := false
 	fits := func(gs []*types.FunSym) {
 		for _, g := range gs {
 			s := sub(g)
@@ -1481,8 +1484,9 @@ func (c *Checker) extProp(x *syntax.Member, rt types.Type) (types.Type, bool) {
 				continue // nor is its type inferred, which may be in progress
 			}
 			ensureFun(g)
-			if best == nil || c.subtype(s.Apply(g.Recv), bestSub.Apply(best.Recv)) {
-				best, bestSub = g, s
+			seen := g.Owner != nil || !g.Private || c.canSee(syntax.Private, nil, g.Facade)
+			if best == nil || seen && !bestSeen || seen == bestSeen && c.subtype(s.Apply(g.Recv), bestSub.Apply(best.Recv)) {
+				best, bestSub, bestSeen = g, s, seen
 			}
 		}
 	}
