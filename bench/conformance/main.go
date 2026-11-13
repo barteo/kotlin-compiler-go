@@ -54,7 +54,7 @@ func main() {
 	javac := flag.String("javac", "javac", "the javac command")
 	out := flag.String("o", "", "the Markdown report to write")
 	tsv := flag.String("tsv", "", "the TSV file of results to write")
-	baseline := flag.String("baseline", "", "a TSV file of an earlier run to compare with")
+	baseline := flag.String("baseline", "", "a TSV file of an earlier run to compare with, read before -tsv is written; the harness fails if a test stopped passing")
 	filter := flag.String("filter", "", "only the tests whose path, relative to the suite, starts with this")
 	sample := flag.Int("sample", 0, "run this many tests, chosen at random among those not skipped")
 	seed := flag.Uint64("seed", 1, "the seed of -sample")
@@ -90,6 +90,14 @@ func main() {
 	}
 	if err := os.MkdirAll(*work, 0o755); err != nil {
 		log.Fatal(err)
+	}
+	// Read before the run, whose TSV may replace it.
+	var baselineData []byte
+	if *baseline != "" {
+		var err error
+		if baselineData, err = os.ReadFile(*baseline); err != nil {
+			log.Fatal(err)
+		}
 	}
 	start := time.Now()
 
@@ -172,7 +180,7 @@ func main() {
 		}
 	}
 	if *baseline != "" {
-		if err := compareBaseline(*baseline, rs, good); err != nil {
+		if err := compareBaseline(*baseline, baselineData, rs, good); err != nil {
 			log.Fatal(err)
 		}
 	}

@@ -27,7 +27,8 @@ key and detail. Flags after the mode go to the harness:
 - `-filter when/` runs the tests whose path starts with it.
 - `-baseline bench/results/box.tsv -o "" -tsv ""` compares a run with the
   committed one, printing the tests that stopped passing and those that
-  started.
+  started, and fails if any stopped. The baseline is read before the run,
+  so a run can also write its results over it.
 - `-kotlinc kotlinc -sample 100` runs a random sample with `kotlinc`
   instead of `kc` (see [Checking the harness](#checking-the-harness)).
 - `-serve=false` starts a `kc` process for each module, instead of
@@ -214,3 +215,9 @@ break the failures down; the largest groups are:
 
 The committed `.tsv` files serve as a ratchet: a change must make
 `-baseline` report no regressions, and the tests it fixes measure it.
+CI's *Conformance* job (`.github/workflows/pr-checks.yml`) runs both
+suites against them on every pull request and push to `main`, and fails
+if a test that passes there stopped passing. The job's summary has each
+suite's counts. A test that started passing is a warning: running
+`bench/kotlin-tests.sh box` or `diagnostics` writes the new baseline to
+commit with the change.
