@@ -1036,7 +1036,7 @@ func (l *library) javaClass(cls *types.ClassSym, depth int) *Decl {
 			if nc := l.lib.Class(internalClassID(n)); nc != nil {
 				nc.Ensure()
 				if !nc.Missing && nc.KotlinName == "" {
-					if nd := l.javaClass(nc, depth+1); nd != nil && (nd.Visibility != Private || source) {
+					if nd := l.javaClass(nc, depth+1); nd != nil {
 						pos[nd] = i
 						d.Members = append(d.Members, nd)
 					}

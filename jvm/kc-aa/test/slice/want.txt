@@ -86,6 +86,33 @@ decls:java.lang.Thread.State: - function java.lang.Thread.State.valueOf(value: k
 decls:java.lang.Thread.State: - function java.lang.Thread.State.values(): kotlin.Array<java.lang.Thread.State>
 decls:java.lang.Thread.State: - property java.lang.Thread.State.entries: kotlin.enums.EnumEntries<java.lang.Thread.State>
 decls:java.lang.Thread.State: JAVA_LIB ENUM_CLASS class java.lang.Thread.State : kotlin.Enum<java.lang.Thread.State>
+decls:java.util.AbstractList: - class java.util.AbstractList.Itr : kotlin.collections.MutableIterator<E>
+decls:java.util.AbstractList: - class java.util.AbstractList.ListItr : java.util.AbstractList.Itr<E>, kotlin.collections.MutableListIterator<E>
+decls:java.util.AbstractList: - class java.util.AbstractList.RandomAccessSpliterator<E : kotlin.Any> : java.util.Spliterator<E>
+decls:java.util.AbstractList: - class java.util.AbstractList.RandomAccessSubList<E : kotlin.Any> : java.util.AbstractList.SubList<E>, java.util.RandomAccess
+decls:java.util.AbstractList: - class java.util.AbstractList.SubList<E : kotlin.Any> : java.util.AbstractList<E>
+decls:java.util.AbstractList: - function <init><E : kotlin.Any>(): java.util.AbstractList<*>
+decls:java.util.AbstractList: - function java.util.AbstractList.add(p0: E): kotlin.Boolean
+decls:java.util.AbstractList: - function java.util.AbstractList.add(p0: kotlin.Int, p1: E): kotlin.Unit
+decls:java.util.AbstractList: - function java.util.AbstractList.addAll(p0: kotlin.Int, p1: kotlin.collections.Collection<out E>): kotlin.Boolean
+decls:java.util.AbstractList: - function java.util.AbstractList.clear(): kotlin.Unit
+decls:java.util.AbstractList: - function java.util.AbstractList.equals(p0: kotlin.Any?): kotlin.Boolean
+decls:java.util.AbstractList: - function java.util.AbstractList.get(p0: kotlin.Int): E
+decls:java.util.AbstractList: - function java.util.AbstractList.hashCode(): kotlin.Int
+decls:java.util.AbstractList: - function java.util.AbstractList.indexOf(p0: E): kotlin.Int
+decls:java.util.AbstractList: - function java.util.AbstractList.iterator(): kotlin.collections.MutableIterator<E>
+decls:java.util.AbstractList: - function java.util.AbstractList.lastIndexOf(p0: E): kotlin.Int
+decls:java.util.AbstractList: - function java.util.AbstractList.listIterator(): kotlin.collections.MutableListIterator<E>
+decls:java.util.AbstractList: - function java.util.AbstractList.listIterator(p0: kotlin.Int): kotlin.collections.MutableListIterator<E>
+decls:java.util.AbstractList: - function java.util.AbstractList.outOfBoundsMsg(p0: kotlin.Int): kotlin.String
+decls:java.util.AbstractList: - function java.util.AbstractList.rangeCheckForAdd(p0: kotlin.Int): kotlin.Unit
+decls:java.util.AbstractList: - function java.util.AbstractList.removeAt(p0: kotlin.Int): E
+decls:java.util.AbstractList: - function java.util.AbstractList.removeRange(p0: kotlin.Int, p1: kotlin.Int): kotlin.Unit
+decls:java.util.AbstractList: - function java.util.AbstractList.set(p0: kotlin.Int, p1: E): E
+decls:java.util.AbstractList: - function java.util.AbstractList.subList(p0: kotlin.Int, p1: kotlin.Int): kotlin.collections.MutableList<E>
+decls:java.util.AbstractList: - function java.util.AbstractList.subListRangeCheck(p0: kotlin.Int, p1: kotlin.Int, p2: kotlin.Int): kotlin.Unit
+decls:java.util.AbstractList: - property java.util.AbstractList.modCount: kotlin.Int (var)
+decls:java.util.AbstractList: JAVA_LIB CLASS class java.util.AbstractList<E : kotlin.Any> : java.util.AbstractCollection<E>, kotlin.collections.MutableList<E>
 decls:java.util.AbstractMap.SimpleEntry: - function <init><K : kotlin.Any, V : kotlin.Any>(p0: K, p1: V): java.util.AbstractMap.SimpleEntry<*, *>
 decls:java.util.AbstractMap.SimpleEntry: - function <init><K : kotlin.Any, V : kotlin.Any>(p0: kotlin.collections.MutableMap.MutableEntry<out K, out V>): java.util.AbstractMap.SimpleEntry<*, *>
 decls:java.util.AbstractMap.SimpleEntry: - function java.util.AbstractMap.SimpleEntry.equals(p0: kotlin.Any?): kotlin.Boolean
