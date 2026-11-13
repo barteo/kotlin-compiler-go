@@ -1,0 +1,14 @@
+null
+tap 2
+kotlin.Unit
+null
+tap 5
+[null, kotlin.Unit]
+{k=null}
+null
+[null]
+null
+null
+tap 10
+kotlin.Unit
+fallback

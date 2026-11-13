@@ -1155,7 +1155,13 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			if lit, ok := a.(*syntax.IntLit); ok && !lit.Long && fitsLit(lit, s.final(params[i])) {
 				lit.T = s.final(params[i]).NonNull()
 			}
-			want := captured(a.Type(), params[i], s.finalArg(params[i]))
+			pt := s.finalArg(params[i])
+			if pt.K == types.Unit && params[i].HasVars() && safeCallOf(a) && a.Type().N {
+				// A variable inferred from the Unit? of a safe call, which
+				// the Unit it is written as stands for.
+				continue
+			}
+			want := captured(a.Type(), params[i], pt)
 			c.assignable(a.Type(), want, a.Pos())
 			if best.param(i).Exact && c.subtype(a.Type(), want) && !c.subtype(want, a.Type()) {
 				// @Exact: the argument's type must be the parameter's.
@@ -1176,7 +1182,11 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 	if sink != nil {
 		c.runLambdas(sys, true)
 		if sys.unfixed() || len(partials) > 0 || len(sys.lambdas) > 0 {
-			sys.fixups = append(sys.fixups, func(s *system) { x.T = c.unitResult(f.Ret, s.final(x.T)) })
+			sys.fixups = append(sys.fixups, func(s *system) {
+				// A safe call whose result is inferred as Unit here is an
+				// argument: the Unit object or null.
+				x.T = c.safeUnit(x, c.unitResult(f.Ret, s.final(x.T)))
+			})
 			sink.merge(sys)
 			return ret
 		}
