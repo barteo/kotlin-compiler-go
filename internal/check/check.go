@@ -267,12 +267,16 @@ type Checker struct {
 	noCapture *types.VarSym
 	// Smart casts of local vars (see flow.go): where each is declared,
 	// whether code outside a frame reading it assigns it, the types that
-	// nested code assigns it, the next block's exit to record, and the
-	// statement being checked.
+	// nested code assigns it, and that each frame does, the next block's
+	// exit to record, and the statement being checked.
 	varSites      map[*types.VarSym]varSite
 	concurrent    map[varFrame]bool
 	nestedAssigns map[*types.VarSym][]types.Type
-	assignsMemo   map[any][]string
+	frameAssigns  map[varFrame][]types.Type
+	// siblingAssigns has, for a lambda argument, the names of the locals
+	// the call's other lambda arguments assign, which may run before it.
+	siblingAssigns map[*syntax.Lambda]map[string]bool
+	assignsMemo    map[any][]string
 	// loopKept has the vars that the loops being checked keep smart cast
 	// to their types, as loopVars has them.
 	loopKept map[*types.VarSym]types.Type
@@ -284,6 +288,9 @@ type Checker struct {
 	// and false imply, those of its value, as K2's for
 	// val ok = x != null; if (ok) x.length.
 	conds map[*types.VarSym][2][]narrow
+	// sameAs has, for a local or a stable value, the values that hold the
+	// same value (see alias).
+	sameAs map[flowKey][]narrow
 	// paths has the values of the stable properties of stable values,
 	// a.b of a.b.c, that smart casts are of.
 	paths map[[2]*types.VarSym]*types.VarSym
@@ -686,7 +693,7 @@ func signatures(ctx context.Context, files []*syntax.File, lib *Library, rec Rec
 	for i, f := range files {
 		checkers[i] = &Checker{u: u, file: f, done: map[any]bool{}, checked: map[*syntax.Lambda]types.Type{},
 			jumps:    map[*syntax.Lambda]inlineJumps{},
-			varSites: map[*types.VarSym]varSite{}, concurrent: map[varFrame]bool{}, nestedAssigns: map[*types.VarSym][]types.Type{}, assignsMemo: map[any][]string{},
+			varSites: map[*types.VarSym]varSite{}, concurrent: map[varFrame]bool{}, nestedAssigns: map[*types.VarSym][]types.Type{}, frameAssigns: map[varFrame][]types.Type{}, assignsMemo: map[any][]string{},
 			classCache: map[string]classifier{}, funCache: map[funKey][]*types.FunSym{},
 			levelCache: map[funKey][][]*types.FunSym{}}
 	}
@@ -1688,6 +1695,12 @@ func (c *Checker) resolveFun(d *syntax.FunDecl, owner *types.ClassSym) {
 		sym.Once = make([]bool, len(d.Params))
 		for i, p := range d.Params {
 			sym.Once[i] = d.Once[p.Name]
+		}
+	}
+	if d.InPlace != nil {
+		sym.InPlace = make([]bool, len(d.Params))
+		for i, p := range d.Params {
+			sym.InPlace[i] = d.InPlace[p.Name]
 		}
 	}
 	c.contractEffects(d, sym)

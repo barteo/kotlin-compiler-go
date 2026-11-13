@@ -160,6 +160,11 @@ func (c *Checker) lambda(x *syntax.Lambda, want types.Type) types.Type {
 		return c.kpropType(x, ps, r)
 	}
 	t := c.lambdaType(x, ps, r)
+	if x.Anon && isSuspendFunc(want) && proper {
+		// Of its own function type, which isn't suspend: see anonWant.
+		c.assignable(t, want, x.P)
+		return types.InvalidType
+	}
 	if x.Ref != nil && c.u.ext.kotlin && (want.K == types.Invalid || want.NonNull().K == types.Any) && t.K == types.Class && len(ps) <= types.MaxArity {
 		// Without an expected function type, a reference to a function
 		// is a KFunctionN, a kotlin.reflect object, as with kotlinc:
@@ -507,6 +512,12 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 		}
 	}
 	c.state = saved
+	// As in Kotlin, the vars declared outside it that it assigns lose the
+	// smart casts they have where it is, though it may run in place and
+	// assign only values of their narrowed types: x of if (x != null) {
+	// run { x = "a" }; x.length } is a String?. A check after it narrows
+	// them again (see varStable).
+	c.reset(c.watchedVars(x.Body))
 	if lr.bare && !(w.check && w.ret.K != types.Invalid) {
 		// As kotlinc infers it, the last expression's value is dropped,
 		// and the lambda's other results must be Units:
@@ -1428,6 +1439,8 @@ func (c *Checker) lambdaFits(l *syntax.Lambda, p types.Type) bool {
 	case l.Ref != nil && kcallable(t):
 		fun, prop, known := c.refKinds(l)
 		return !known || fun || !prop
+	case l.Anon && t.IsSuspendFunc():
+		return false // see anonWant
 	case t.IsFunc():
 		n = t.A.Len() - 1 - t.Contexts() // nor are its contexts
 		if t.E {
@@ -1582,15 +1595,26 @@ func (c *Checker) runLambdas(s *system, readyOnly bool) {
 	// add(1) }) }.
 	for i := 0; i < len(s.lambdas); i++ {
 		pl := s.lambdas[i]
+		var shape types.Type
 		if tv := s.unfixedVar(s.apply(pl.p)); tv != nil && !readyOnly {
 			if u, ok := s.funcUpper(tv); ok {
 				s.addUpper(tv, u)
+				if u.HasVars() {
+					// Another argument's inputs, with a result of its
+					// own: the lambda has this type.
+					shape = u
+				}
 			}
 		}
 		if tv := s.unfixedVar(s.apply(pl.p)); tv != nil && slices.ContainsFunc(append(tv.lower[:len(tv.lower):len(tv.lower)], tv.upper...), s.proper) && !ownLambda(s, tv, pl.l) {
 			// A lambda passed for a variable takes its type once known:
 			// list += { a, b -> } for MutableCollection<in T>'s T.
-			s.fix(tv)
+			if u, ok := s.refShape(tv, pl.l); ok {
+				s.sub(u, s.apply(pl.p))
+				shape = u
+			} else {
+				s.fix(tv)
+			}
 		}
 		ready := true
 		if readyOnly {
@@ -1612,6 +1636,9 @@ func (c *Checker) runLambdas(s *system, readyOnly bool) {
 		p := pl.p
 		if tv := s.unfixedVar(s.apply(p)); tv != nil && !readyOnly {
 			p = s.funcShape(tv, p)
+			if shape.K != types.Invalid {
+				p = shape
+			}
 		}
 		if !readyOnly {
 			c.fixRelated(s, pl)
@@ -1660,15 +1687,67 @@ func (c *Checker) fixRelated(s *system, pl pendingLambda) {
 
 // ownLambda reports whether lambda l, passed for variable tv, has the type
 // that tv's proper bounds would give it: l takes no parameters, and the
-// bounds are lower bounds of () -> X. tv is then above the lambdas' own
-// types, () -> Number & Comparable<*> for select({ 1 }, { 1f }), not the
-// first's.
+// bounds are lower bounds of () -> X, or it declares the types of all its
+// parameters, and they are lower bounds of function types taking as many.
+// tv is then above the lambdas' own types, () -> Number & Comparable<*>
+// for select({ 1 }, { 1f }) and (A) -> Any for select({ a: A -> a.toB() },
+// { a: A -> a.toC() }), not the first's.
 func ownLambda(s *system, tv *tvar, l *syntax.Lambda) bool {
-	if len(l.Params) > 0 || slices.ContainsFunc(tv.upper, s.proper) {
+	if slices.ContainsFunc(tv.upper, s.proper) {
 		return false
 	}
+	shape := noInputs
+	if len(l.Params) > 0 {
+		if l.Anon || untypedParams(l) {
+			return false
+		}
+		shape = func(t types.Type) bool {
+			return t.IsFunc() && !t.E && !t.IsSuspendFunc() && t.Contexts() == 0 && t.A.Len()-1 == len(l.Params)
+		}
+	}
 	for _, t := range tv.lower {
-		if t = s.apply(t); !t.HasVars() && !noInputs(t) {
+		if t = s.apply(t); !t.HasVars() && !shape(t) {
+			return false
+		}
+	}
+	return true
+}
+
+// refShape returns the function type, with a new variable for its result,
+// that a callable reference passed for variable tv is resolved with, if
+// tv's proper bounds are lower bounds that are function types taking the
+// same inputs: as in Kotlin, the reference is then one of them, with a
+// result of its own. A::toC of select(A::toB, A::toC) is toC(), not
+// toC(x: Int), and select's K the common supertype of both references.
+func (s *system) refShape(tv *tvar, l *syntax.Lambda) (types.Type, bool) {
+	if l.Ref == nil || slices.ContainsFunc(tv.upper, s.proper) {
+		return types.InvalidType, false
+	}
+	var shape types.Type
+	for _, t := range tv.lower {
+		if t = s.apply(t); t.HasVars() {
+			continue
+		}
+		t = t.Flex()
+		if !t.IsFunc() || shape.K != types.Invalid && !s.c.sameInputs(shape, t) {
+			return types.InvalidType, false
+		}
+		shape = t
+	}
+	if shape.K == types.Invalid {
+		return types.InvalidType, false
+	}
+	return s.openResult(shape, tv.pos), true
+}
+
+// sameInputs reports whether function types a and b take the same
+// contexts, receiver and parameters.
+func (c *Checker) sameInputs(a, b types.Type) bool {
+	if a.E != b.E || a.Contexts() != b.Contexts() || a.IsSuspendFunc() != b.IsSuspendFunc() || len(a.A.List) != len(b.A.List) {
+		return false
+	}
+	for i := range len(a.A.List) - 1 {
+		if !c.sameType(a.A.List[i].T, b.A.List[i].T) {
 			return false
 		}
 	}
@@ -2251,6 +2330,21 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type) {
 			}
 		}
 	}
+	// A parameter declared with a type has it: as in Kotlin, the
+	// variables of the expected one needn't be fixed before the body is
+	// checked, and the result can still constrain them: R of
+	// x.fold(B()) { acc: A, s -> C() } is A, which typedLambdaParams
+	// gave as R's upper bound, not B.
+	declared := false
+	for i, d := range c.declaredParams(l, ft, len(params)) {
+		if d.K != types.Invalid && s.apply(params[i]).HasVars() {
+			trial := s.clone()
+			if trial.sub(params[i], d); trial.ok {
+				*s = *trial
+			}
+			params[i], declared = d, true
+		}
+	}
 	// As in Kotlin, the parameter types whose variables are known are
 	// fixed first, and only the others are inferred from the body: T of
 	// transformLatest's FlowCollector<R>.(T) from its receiver.
@@ -2296,10 +2390,15 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type) {
 	} else {
 		bt = c.checkTail(s, l, w, r)
 	}
-	if r.HasVars() && bt.K != types.Invalid && bt.K != types.Unit {
-		s.sub(bt, r)
-	} else if r.HasVars() && bt.K == types.Unit && r.K == types.TypeVar {
-		s.sub(bt, r) // a lambda ending in a statement gives R := Unit
+	// A lambda ending in a statement gives R := Unit. Not if a parameter
+	// declared with a type contradicts it, as String does R's Int in
+	// foo { s: String -> 1 } for (R) -> R: the result is then checked
+	// against the type the parameter gives R (see the fixup below).
+	if r.HasVars() && bt.K != types.Invalid && (bt.K != types.Unit || r.K == types.TypeVar) {
+		trial := s.clone()
+		if trial.sub(bt, r); trial.ok || !declared {
+			s.sub(bt, r)
+		}
 	}
 	s.fixups = append(s.fixups, func(s *system) {
 		rr := c.nullableUnit(ret, s.final(ret))
@@ -2525,6 +2624,9 @@ func (c *Checker) anonWant(x *syntax.Lambda, w *lambdaWant) bool {
 		c.errorf(x.P, "the anonymous function's context parameters don't match the expected function type")
 		return false
 	}
+	// Unlike a lambda, an anonymous function is never suspend, nor
+	// converted to a suspend function type, as in kotlinc.
+	w.suspend = false
 	switch {
 	case x.AnonRet != nil:
 		w.ret, w.check = c.resolveType(x.AnonRet), true

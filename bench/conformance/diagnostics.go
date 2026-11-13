@@ -197,7 +197,11 @@ func (c *diagConfig) runOne(i int, t *test) (*result, *diagTest) {
 	if vs := t.values("RUN_PIPELINE_TILL"); len(vs) > 0 {
 		dt.pipeline = vs[0]
 	}
+	stdlib := t.has("WITH_STDLIB") || strings.HasPrefix(t.path, "testsWithStdLib/")
 	for _, f := range t.files() {
+		if !stdlib && strings.HasSuffix(f.name, ".kt") {
+			f.text = nonNullAnyCalls(f.text)
+		}
 		var es []expected
 		f.text, es = stripMarkup(f.text)
 		for _, e := range es {
@@ -254,8 +258,9 @@ func (c *diagConfig) runOne(i int, t *test) (*result, *diagTest) {
 		// declarations, run, let and a few more. kotlinc can't compile
 		// without one, and kc lacks some of the built-ins (List,
 		// KProperty) without one, so both get the standard library. A
-		// test can then resolve what it expects to be unresolved, such as
-		// Any?.hashCode(); the self-check counts those.
+		// test can then resolve what it expects to be unresolved; the
+		// self-check counts those. Not Any?.hashCode() or toString(),
+		// which nonNullAnyCalls takes out of the test's calls.
 		stdlib:  true,
 		reflect: t.has("WITH_REFLECT"),
 		optIns:  t.values("OPT_IN"),

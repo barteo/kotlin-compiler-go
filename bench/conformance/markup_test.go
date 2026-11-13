@@ -69,3 +69,22 @@ fun box() = "OK"
 		t.Errorf("facade of 1.kt = %s", got)
 	}
 }
+
+func TestNonNullAnyCalls(t *testing.T) {
+	src := "fun f(s: String?) {\n    s<!UNSAFE_CALL!>.<!>hashCode()\n    s?.hashCode()\n    s<!UNSAFE_CALL, X!>.<!>toString()\n}"
+	want := "fun f(s: String?) {\n    s<!UNSAFE_CALL!>.<!>kcNonNull_hashCode()\n    s?.hashCode()\n    s<!UNSAFE_CALL, X!>.<!>kcNonNull_toString()\n}" +
+		"\nprivate fun Any.kcNonNull_hashCode(): Int = hashCode()\n" +
+		"\nprivate fun Any.kcNonNull_toString(): String = toString()\n"
+	if got := nonNullAnyCalls(src); got != want {
+		t.Errorf("nonNullAnyCalls(%q) = %q, want %q", src, got, want)
+	}
+	src = "fun f() {\n    <!SMARTCAST_IMPOSSIBLE!>i<!>.hashCode()\n}"
+	want = "fun f() {\n    <!SMARTCAST_IMPOSSIBLE!>i<!>.kcNonNull_hashCode()\n}" +
+		"\nprivate fun Any.kcNonNull_hashCode(): Int = hashCode()\n"
+	if got := nonNullAnyCalls(src); got != want {
+		t.Errorf("nonNullAnyCalls(%q) = %q, want %q", src, got, want)
+	}
+	if src := "fun f() = super.hashCode()"; nonNullAnyCalls(src) != src {
+		t.Errorf("nonNullAnyCalls(%q) changed an unmarked call", src)
+	}
+}

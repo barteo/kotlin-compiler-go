@@ -393,7 +393,14 @@ func (c *Checker) stable(v *types.VarSym) bool {
 		return isVar(v) && c.varStable(v, types.Type{})
 	}
 	switch v.Kind {
-	case types.Local, types.Param, types.BackingField:
+	case types.Param:
+		if cp, ok := v.Decl.(*syntax.CtorParam); ok && cp.IsProp && cp.PropSym != nil {
+			// As kotlinc has it, x of class C(var x: Int?) is the
+			// property in the initializers, which may change.
+			return c.stableOn(cp.PropSym, c.thisType())
+		}
+		return true
+	case types.Local, types.BackingField:
 		return true
 	case types.Prop:
 		return c.stableOn(v, c.thisType())

@@ -403,6 +403,20 @@ func (c *Checker) args(x *syntax.Call, cl *callee) []types.Type {
 	return ts
 }
 
+// innerLambdas returns the bodies of the lambdas in x, but those nested
+// in them.
+func innerLambdas(x syntax.Expr) []any {
+	var out []any
+	syntax.Inspect(x, func(n any) bool {
+		if l, ok := n.(*syntax.Lambda); ok {
+			out = append(out, l.Body)
+			return false
+		}
+		return true
+	})
+	return out
+}
+
 // captured returns the type final that a generic parameter param was
 // inferred as, with the projections of arg in the positions where param
 // has a variable as an invariant type argument: an Array<out X> argument
@@ -848,6 +862,12 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 	var partials []*system
 	var lambdas []int
 	for i, a := range x.Args {
+		if i > 0 {
+			// The vars that the lambdas of the arguments before it assign
+			// lose their smart casts, though they are checked after it:
+			// x of f(g { x = null }, x).
+			c.reset(c.watchedVars(innerLambdas(x.Args[i-1])...))
+		}
 		if _, ok := a.(*syntax.Lambda); ok {
 			lambdas = append(lambdas, i)
 			ts[i] = types.InvalidType
@@ -1907,29 +1927,29 @@ func (c *Checker) infixExtOnly(name string, rt types.Type) bool {
 	return false
 }
 
-// typedLambdaParams returns sys with the constraints of lambda l's
-// parameters declared with types, for a parameter of function type p,
-// or nil: as with kotlinc, each of p's parameter types is a subtype of
-// the type declared, before the lambda is analysed, so A of foldl(0) {
-// e: Int, acc: Long -> acc + e } is a Long.
-func (c *Checker) typedLambdaParams(sys *system, l *syntax.Lambda, p types.Type) *system {
+// declaredParams returns, for each of the n parameters of function type
+// t, its contexts and receiver among them, the type lambda l declares the
+// parameter with, or the invalid type: the parameters after t's receiver
+// that l declares with a type that resolves without errors.
+func (c *Checker) declaredParams(l *syntax.Lambda, t types.Type, n int) []types.Type {
 	if l.Ref != nil || !l.Arrow {
 		return nil
 	}
-	t := p.NonNull()
+	t = t.Flex().NonNull()
 	if !t.IsFunc() {
 		return nil
 	}
 	off := t.Contexts()
-	n := t.A.Len() - 1 - off
 	if t.E {
 		off++
-		n--
 	}
-	if n != len(l.Params) {
+	if n-off != len(l.Params) {
 		return nil
 	}
-	var trial *system
+	ds := make([]types.Type, n)
+	for i := range ds {
+		ds[i] = types.InvalidType
+	}
 	for j, lp := range l.Params {
 		if lp.Type == nil {
 			continue
@@ -1940,10 +1960,27 @@ func (c *Checker) typedLambdaParams(sys *system, l *syntax.Lambda, p types.Type)
 			c.errs = c.errs[:errs]
 			continue
 		}
+		ds[off+j] = d
+	}
+	return ds
+}
+
+// typedLambdaParams returns sys with the constraints of lambda l's
+// parameters declared with types, for a parameter of function type p,
+// or nil: as with kotlinc, each of p's parameter types is a subtype of
+// the type declared, before the lambda is analysed, so A of foldl(0) {
+// e: Int, acc: Long -> acc + e } is a Long.
+func (c *Checker) typedLambdaParams(sys *system, l *syntax.Lambda, p types.Type) *system {
+	t := p.NonNull()
+	if !t.IsFunc() {
+		return nil
+	}
+	var trial *system
+	for i, d := range c.declaredParams(l, t, t.A.Len()-1) {
 		if d.K == types.Invalid {
 			continue
 		}
-		pt := t.A.Get(off + j).T
+		pt := t.A.Get(i).T
 		if !pt.HasVars() {
 			continue
 		}

@@ -757,7 +757,14 @@ func (t *classTable) kfun(f *kmeta.Function, owner *types.ClassSym, scope tscope
 	sym.Infix = f.IsInfix()
 	sym.Suspend = f.IsSuspend()
 	for _, ip := range f.InPlace {
-		if ip.Kind == kmeta.ExactlyOnce && ip.Param >= 0 && ip.Param < len(f.Params) {
+		if ip.Param < 0 || ip.Param >= len(f.Params) {
+			continue
+		}
+		if sym.InPlace == nil {
+			sym.InPlace = make([]bool, len(f.Params))
+		}
+		sym.InPlace[ip.Param] = true
+		if ip.Kind == kmeta.ExactlyOnce {
 			if sym.Once == nil {
 				sym.Once = make([]bool, len(f.Params))
 			}

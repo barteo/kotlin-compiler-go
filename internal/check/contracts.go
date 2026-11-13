@@ -25,7 +25,7 @@ func dropContracts(checkers []*Checker) {
 					if cls != nil {
 						o.class = cls.Name
 					}
-					d.Once, d.Implies = c.dropContract(d.Body, imported, o)
+					d.Once, d.InPlace, d.Implies = c.dropContract(d.Body, imported, o)
 				case *syntax.PropDecl:
 					o := contractOwner{name: d.Name, recv: d.Recv != nil, contexts: d.Contexts}
 					if cls != nil {
@@ -85,12 +85,12 @@ func qualifiedName(x syntax.Expr) string {
 
 // dropContract removes a block's first statement if it is contract { },
 // and returns the names of the parameters it says the function calls
-// exactly once, callsInPlace(f, InvocationKind.EXACTLY_ONCE), and its
-// returns(value) implies (p != null) and (p is T) effects. imported says
+// exactly once, callsInPlace(f, InvocationKind.EXACTLY_ONCE), and in
+// place, callsInPlace(f, kind) of any kind, and its returns(value) implies (p != null) and (p is T) effects. imported says
 // whether contract may be called by its simple name.
-func (c *Checker) dropContract(b *syntax.Block, imported bool, o contractOwner) (map[string]bool, []syntax.Implies) {
+func (c *Checker) dropContract(b *syntax.Block, imported bool, o contractOwner) (once, inPlace map[string]bool, implies []syntax.Implies) {
 	if b == nil || len(b.Stmts) == 0 {
-		return nil, nil
+		return nil, nil, nil
 	}
 	var x syntax.Expr
 	switch s := b.Stmts[0].(type) {
@@ -101,17 +101,15 @@ func (c *Checker) dropContract(b *syntax.Block, imported bool, o contractOwner) 
 	}
 	call, ok := x.(*syntax.Call)
 	if !ok || len(call.Args) != 1 || !isContractFun(call.Fun, imported) {
-		return nil, nil
+		return nil, nil, nil
 	}
 	l, ok := call.Args[0].(*syntax.Lambda)
 	if !ok || l.Anon {
 		c.errorf(call.P, "contract is not allowed here: its argument must be a lambda")
-		return nil, nil
+		return nil, nil, nil
 	}
 	c.contractDescription(call, l, o)
 	b.Stmts = b.Stmts[1:]
-	var once map[string]bool
-	var implies []syntax.Implies
 	syntax.Inspect(l.Body, func(n any) bool {
 		c, ok := n.(*syntax.Call)
 		if !ok {
@@ -121,21 +119,30 @@ func (c *Checker) dropContract(b *syntax.Block, imported bool, o contractOwner) 
 			implies = append(implies, im)
 			return false
 		}
-		if len(c.Args) != 2 {
+		if len(c.Args) != 1 && len(c.Args) != 2 {
 			return true
 		}
 		fn, ok1 := c.Fun.(*syntax.Ident)
 		p, ok2 := c.Args[0].(*syntax.Ident)
-		kind, ok3 := c.Args[1].(*syntax.Member)
-		if ok1 && ok2 && ok3 && fn.Name == "callsInPlace" && kind.Name == "EXACTLY_ONCE" {
-			if once == nil {
-				once = map[string]bool{}
+		kind, ok3 := &syntax.Member{Name: "UNKNOWN"}, true
+		if len(c.Args) == 2 {
+			kind, ok3 = c.Args[1].(*syntax.Member)
+		}
+		if ok1 && ok2 && ok3 && fn.Name == "callsInPlace" {
+			if inPlace == nil {
+				inPlace = map[string]bool{}
 			}
-			once[p.Name] = true
+			inPlace[p.Name] = true
+			if kind.Name == "EXACTLY_ONCE" {
+				if once == nil {
+					once = map[string]bool{}
+				}
+				once[p.Name] = true
+			}
 		}
 		return true
 	})
-	return once, implies
+	return once, inPlace, implies
 }
 
 // contractImplies reads returns(value) implies (p != null), (p is T) or
