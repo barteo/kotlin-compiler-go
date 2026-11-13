@@ -1745,10 +1745,13 @@ func TestMetroHilt(t *testing.T) {
 		t.Skip("java not found on PATH")
 	}
 	lib := stdlib()
+	if lib == "" {
+		t.Skip("kotlin-stdlib.jar not found: set KOTLIN_HOME")
+	}
 	rt, _ := metroJars()
 	interop := metroInteropJars()
-	if lib == "" || rt == "" || interop == nil {
-		t.Skip("kotlin-stdlib.jar, Metro 1.5.2 or the interop jars not found: set KOTLIN_HOME, KC_METRO_CP and KC_METRO_INTEROP_CP")
+	if rt == "" || interop == nil {
+		t.Skip("Metro 1.5.2 or the interop jars not found: set KC_METRO_CP and KC_METRO_INTEROP_CP")
 	}
 	cp := append([]string{lib, rt}, interop...)
 	opts := map[string]string{
@@ -1854,10 +1857,13 @@ func TestMetroKotlinc(t *testing.T) {
 		t.Skip("kotlinc not found on PATH")
 	}
 	lib := stdlib()
+	if lib == "" {
+		t.Skip("kotlin-stdlib.jar not found: set KOTLIN_HOME")
+	}
 	rt, plugin := metroJars()
 	interop := metroInteropJars()
-	if lib == "" || rt == "" || plugin == "" || interop == nil {
-		t.Skip("kotlin-stdlib.jar, Metro 1.5.2 or the interop jars not found: set KOTLIN_HOME, KC_METRO_CP, KC_METRO_PLUGIN and KC_METRO_INTEROP_CP")
+	if rt == "" || plugin == "" || interop == nil {
+		t.Skip("Metro 1.5.2 or the interop jars not found: set KC_METRO_CP, KC_METRO_PLUGIN and KC_METRO_INTEROP_CP")
 	}
 	cp := append([]string{lib, rt}, interop...)
 	const dir = "../../testdata/metro-kotlinc"
