@@ -145,8 +145,17 @@ If `kc` fails on a module, `kotlinc` compiles that module and the build log says
 | `KC` | the `kc` binary (default: `kc` on `PATH`) |
 | `KC_STRICT` | `1`: a `kc` failure or an unsupported compiler plugin fails the build instead of falling back to `kotlinc` |
 | `KC_SKIP` | comma-separated task paths to leave to `kotlinc`, such as `:app:compileDebugKotlin` |
+| `KC_VARIANTS` | comma-separated Android build types or variants, such as `debug` or `freeDebug`, to compile with `kc`; every other variant keeps `kotlinc` |
 | `KC_IGNORE_PLUGINS` | comma-separated compiler plugins, as `artifact` or `group:artifact`, that `kc` may leave out because the program works without them (default: `compose-stability-compiler`) |
 | `KC_JDK_HOME` | the JDK for modules without `android.jar`, in place of the task's Java toolchain |
+
+`KC_VARIANTS` keeps `kc` out of the variants it doesn't list, so the init script can stay on for every build of a project while a release build is compiled by `kotlinc` alone:
+
+```sh
+KC_VARIANTS=debug KC=$PWD/bin/kc ./gradlew assembleDebug assembleRelease --init-script /path/to/kotlin-compiler-go/tools/gradle/use-kc.init.gradle.kts
+```
+
+An entry is a build type, which covers each variant of that type (`debug` covers `freeDebug` and `paidDebug`), or one variant's name. A listed variant's unit and instrumented tests go with it. The compile task of any other variant is left as it is: it gets neither the `kc` step nor the binary as an input, so it stays up to date after a `kotlinc` build and never reuses classes `kc` wrote. A module without variants, such as a Kotlin/JVM library, is part of every variant that depends on it, so `kc` compiles it only in a build that runs tasks of listed variants and of no other, as `assembleDebug` does; in the build above, and in one that runs no variant's tasks at all, `kotlinc` compiles it. When that module was last compiled by `kc`, Gradle runs its compile task again with `kotlinc`. A task of an Android module whose variant the script cannot tell keeps `kotlinc`. An empty `KC_VARIANTS` lists nothing, so `kotlinc` compiles everything.
 
 [bench/kotlinpoet/kc.init.gradle.kts](bench/kotlinpoet/kc.init.gradle.kts) is a narrower version that the kotlinpoet benchmark uses.
 
