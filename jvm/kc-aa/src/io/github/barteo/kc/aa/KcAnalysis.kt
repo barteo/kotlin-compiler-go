@@ -230,6 +230,8 @@ class KcAnalysis internal constructor(
                 }
                 KcTypeArgument(t, v, round.token)
             }
+            // Written as a typealias, @Alias: its expansion, abbreviated by it.
+            round.annotationAliases[entry]?.let { return round.expand(KcClassType(round, it, args, isAlias = true)) }
             return KcClassType(round, id, args)
         }
         round.typeOf(ref)?.let { return it }

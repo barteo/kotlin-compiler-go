@@ -68,6 +68,8 @@ internal class KcRound(
 
     /** The class of each annotation entry, for `KtTypeReference.type`. */
     val annotationClasses = IdentityHashMap<KtAnnotationEntry, ClassId>()
+    /** The typealiases annotation entries name their classes by. */
+    val annotationAliases = IdentityHashMap<KtAnnotationEntry, ClassId>()
 
     private val annotations = IdentityHashMap<KcAnnotation, KaAnnotation>()
 
@@ -563,7 +565,10 @@ internal class KcRound(
                 it as? KtAnnotationEntry ?: error("kc: annotation node ${a.node} of $where is ${nodes[a.node].elementType}")
             }
             val app = application(a, entry)
-            if (entry != null) app.classId?.let { annotationClasses[entry] = it }
+            if (entry != null) {
+                app.classId?.let { annotationClasses[entry] = it }
+                if (a.alias.isNotEmpty()) annotationAliases[entry] = ClassId.fromString(a.alias)
+            }
             val projections = (entry?.typeReference?.typeElement as? KtUserType)?.typeArguments.orEmpty()
             if (projections.size == a.typeArgs.size) projections.zip(a.typeArgs).forEach { (p, t) -> typeRef(p.typeReference, t) }
             annotations[a] = app
@@ -737,6 +742,7 @@ internal class KcRound(
                 c.typeParams = typeParams(d, c, key)
                 ctx.typeParams = c.typeParams
                 c.members = decls(d.members, c, key)
+                c.generated = generated(d, c, key)
                 c
             }
             KcDecl.ENUM_ENTRY -> {
@@ -787,6 +793,28 @@ internal class KcRound(
                 t
             }
             else -> error("kc: unexpected declaration kind ${d.kind} for ${d.name} in $where")
+        }
+
+        /**
+         * The members FIR generates for source data class, data object or
+         * value class [d] that it doesn't declare itself: equals, hashCode
+         * and toString, which are in its member scope but not among its
+         * declarations.
+         */
+        fun generated(d: KcDecl, c: KcClassSymbol, key: String): List<KaCallableSymbol> {
+            if (origin != KaSymbolOrigin.SOURCE || !d.isData && !d.has(KcDecl.VALUE)) return emptyList()
+            fun type(id: String, nullable: Boolean = false) = KcType(KcType.CLASS, id, if (nullable) 1 else 0, 0, "", 0, emptyList())
+            fun fn(name: String, ret: String, flags: Long, params: List<KcDecl>) = KcDecl(KcDecl.FUNCTION, name, 0, "",
+                KcDecl.PUBLIC, KcDecl.OPEN, flags, 0, type(ret), null, emptyList(), emptyList(), emptyList(), emptyList(), params, emptyList())
+            val other = KcDecl(KcDecl.VALUE_PARAMETER, "other", 0, "", KcDecl.PUBLIC, KcDecl.FINAL, 0, 0, type("kotlin/Any", true),
+                null, emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyList())
+            return listOf(
+                fn("equals", "kotlin/Boolean", KcDecl.OVERRIDE or KcDecl.OPERATOR, listOf(other)),
+                fn("hashCode", "kotlin/Int", 0, emptyList()),
+                fn("toString", "kotlin/String", 0, emptyList()),
+            ).filter { g ->
+                d.members.none { it.kind == KcDecl.FUNCTION && it.name == g.name && it.params.size == g.params.size && it.receiver == null }
+            }.map { g -> decl(g, c, "$key/~${g.name}") as KaCallableSymbol }
         }
 
         /**

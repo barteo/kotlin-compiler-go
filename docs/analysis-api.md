@@ -61,6 +61,26 @@ mapping.
 - FIR-internal queries sit behind `KcExtras`.
 - The stock AA backend stays as `aa` and serves as the whole-run fallback.
 
+## kotlin-inject and kotlin-inject-anvil
+
+kotlin-inject 0.9.0 and kotlin-inject-anvil 0.1.7 use parts of KSP that Moshi, Dagger, Room and Hilt leave alone: typealiases as qualifiers and as function types, `asMemberOf` on inherited members, `getFunctionDeclarationsByName`, `hasDefault`, KClass and array annotation arguments, `getDeclarationsFromPackage`, and components generated in one round whose supertypes later rounds read. Their output on kc matches stock KSP's because kc does the following, as FIR does:
+
+- Source roots: Java files are read from every source root, Kotlin files from the Java roots too, and each module lists its files in the order its directories list them.
+- Function classes (`Function1<A, R>` written out) are function types.
+- A data object has no `copy`.
+- A library Kotlin class lists its functions before its properties.
+- Built-in classes get `java.io.Serializable` last. Arrays are `Cloneable` and `Serializable` and have `clone()`.
+- A scope's callables come grouped by name, functions first.
+- Data classes, data objects and value classes have the generated `equals`, `hashCode` and `toString`.
+- A member Kotlin generates in a source class (an implicit constructor, a data class's `componentN` and `copy`) is in its class's file.
+- A library property that overrides another is an override.
+- A data class's `copy` parameters carry its constructor parameters' annotations.
+- A library annotation's vararg parameter defaults to an empty array.
+- A class that implements an interface by delegation has the delegated members.
+- An annotation written through a typealias has that typealias as its type's abbreviation.
+
+`build.sh test` and `stock` run both processors over `test/inject/src` (jars in `inject-jars.sh`) and compare with `test/inject/want`, recorded from stock KSP. `build.sh stock` also runs `test/dump/Dump.kt`, a processor that writes what KSP says about each declaration in `test/dump/src` and the order of the files, on both backends, and diffs the two outputs. Files are listed in directory order, which depends on the file system, so there is no recorded want.
+
 ## Gaps and open questions
 
 - **Slice simplifications.** These go when the symbol model and the
@@ -106,3 +126,5 @@ mapping.
   octi-server, down from 45. Every file is still lowered and has its
   written signatures resolved. An edit that changes declarations checks
   the whole module.
+- **`expect` declarations.** kc leaves them out of the program, so a processor that looks for them (kotlin-inject's `@KmpComponentCreate`) finds none.
+- **Built-in members.** Members the JDK maps onto Kotlin's built-ins (`spliterator`, `stream`) are among a built-in class's declarations on kc, and only in its member scope on stock KSP. Built-in members lack some annotations (`IntrinsicConstEvaluation`, `SinceKotlin`), an enum's `getAllFunctions` lacks `java.lang.Enum`'s (`getDeclaringClass`, `describeConstable`, `finalize`), and `Array.size`'s `hasBackingField` differs.

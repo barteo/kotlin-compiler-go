@@ -59,6 +59,13 @@ import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.psi.KtFile
 import java.io.File
 
+/**
+ * The module's source roots: Kotlin and Java sources are read from each of
+ * them, whichever list names it, as stock KSP's source module does.
+ */
+internal fun sourceRoots(config: KSPConfig): List<File> =
+    (config.sourceRoots + config.commonSourceRoots + (config as? KSPJvmConfig)?.javaSourceRoots.orEmpty()).distinct()
+
 /** The `kc` KSP backend: the Analysis API answered by kc through libkc. */
 class KcBackend : KspBackend {
     override val name: String get() = "kc"
@@ -70,8 +77,8 @@ private class KcSession(private val config: KSPConfig, @Suppress("UNUSED_PARAMET
     private val timer = KcTimer()
 
     /** The Java sources the module starts with. */
-    private val javaSources: List<String> = ((config as? KSPJvmConfig)?.javaSourceRoots.orEmpty()).distinct().flatMap { root ->
-        root.walkTopDown().filter { it.isFile && it.extension == "java" }.sortedBy { it.path }.map { it.canonicalPath }.toList()
+    private val javaSources: List<String> = sourceRoots(config).flatMap { root ->
+        root.walkTopDown().filter { it.isFile && it.extension == "java" }.map { it.canonicalPath }.toList()
     }
     private val environment = KcEnvironments.acquire(config, javaSources)
     private val env: KotlinCoreEnvironment = environment.env
@@ -101,8 +108,8 @@ private class KcSession(private val config: KSPConfig, @Suppress("UNUSED_PARAMET
     private var modelHandle = 0L
 
     init {
-        (config.sourceRoots + config.commonSourceRoots).distinct().forEach { root ->
-            root.walkTopDown().filter { it.isFile && it.extension == "kt" }.sortedBy { it.path }
+        sourceRoots(config).forEach { root ->
+            root.walkTopDown().filter { it.isFile && it.extension == "kt" }
                 .forEach { paths += it.canonicalPath }
         }
         paths += javaSources
@@ -310,7 +317,8 @@ private class KcExtrasImpl(private val round: () -> KcRound) : KcExtras {
         p.default?.let { return it }
         val token = p.info.round.token
         val t = p.info.decl.type
-        return if (t != null && t.kind == KcType.CLASS && arrayClass.matches(t.classId)) {
+        // A vararg parameter's type is its element type, and its value an array.
+        return if (p.info.decl.has(KcDecl.VARARG) || t != null && t.kind == KcType.CLASS && arrayClass.matches(t.classId)) {
             KcArrayValue(emptyList(), null, token)
         } else {
             // FIR's converter gives no value for a non-array parameter
