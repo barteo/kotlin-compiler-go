@@ -3,11 +3,14 @@
 package check
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"runtime"
 	"runtime/debug"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -22,13 +25,20 @@ import (
 // It is built sequentially and is read-only during the parallel
 // body-checking phase, except for Java classes, which are loaded on demand.
 type Universe struct {
-	Pkgs     map[string]*Package // by dotted name; "" is the default package
-	prefixes map[string]bool     // the packages and their prefixes: a and a.b for a.b
+	Pkgs map[string]*Package // by dotted name; "" is the default package
+	// only is Options.Only, and late is set for the parallel phase of a
+	// check of only some files (lazily).
+	only     map[*syntax.File]bool
+	late     *lateInfer
+	prefixes map[string]bool // the packages and their prefixes: a and a.b for a.b
 	ext      *classTable
 	// local holds what ext's caches would but for the program's symbols,
 	// which the library, shared by checks one after another, mustn't
 	// keep: see caches.
 	local caches
+	// defaults is ext's defaults for the methods of the program's Java
+	// sources loaded over a shared library: see inheritExtDefaults.
+	defaults sync.Map
 	// memberExts is set if a class of the program declares extension
 	// functions, which calls with lambdas' implicit receivers then look
 	// for in their classes.
@@ -438,6 +448,19 @@ func (l *Library) EnableSerialization() {
 // NewLibrary returns the library of the classes in cp, which may be nil.
 func NewLibrary(cp *classpath.Path) *Library { return &Library{t: newClassTable(cp)} }
 
+// WithSources returns a library of the classes of cp, an overlay of l's
+// class path (see classpath.Path.Overlay) with the program's Java sources.
+// It shares l's classes and what checking computes from them, keeps the
+// classes of the sources, and what is computed from them, to itself, and
+// has l's settings. l never sees the sources, so a source class that has
+// the name of a class of l's class path doesn't replace it in l's
+// classes' signatures, as it would in kotlinc's.
+func (l *Library) WithSources(cp *classpath.Path) *Library {
+	w := *l
+	w.t = l.t.withSources(cp)
+	return &w
+}
+
 // KeepHidden has every Java class keep the members Kotlin can't use, the
 // package-private and private ones, in types.ClassSym.JavaHidden, as the
 // classes of Java sources do: the Analysis API lists them. Checking
@@ -584,11 +607,16 @@ type Options struct {
 	// An analysis that keeps the earlier results of the others
 	// (analysis/ka) checks only the files that changed.
 	Only map[*syntax.File]bool
+	// Infer is, with Only, the names of the declarations of the files not
+	// checked whose omitted types are inferred up front, with the
+	// operators': those the checked files name. One that isn't is inferred
+	// when a checked file needs it, one at a time (lazily).
+	Infer map[string]bool
 }
 
 // CheckOptions is CheckContext, which checks what opts says.
 func CheckOptions(ctx context.Context, files []*syntax.File, lib *Library, jobs int, rec Recorder, opts Options) ([]*syntax.Error, error) {
-	_, checkers, err := signatures(ctx, files, lib, rec, opts)
+	u, checkers, err := signatures(ctx, files, lib, rec, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -610,6 +638,10 @@ func CheckOptions(ctx context.Context, files []*syntax.File, lib *Library, jobs 
 
 	if r, ok := rec.(PhaseRecorder); ok {
 		r.Bodies()
+	}
+	if opts.Only != nil {
+		u.only, u.late = opts.Only, &lateInfer{}
+		defer func() { LateInferences.Add(u.late.count.Load()) }()
 	}
 	if jobs < 1 {
 		jobs = 1
@@ -760,6 +792,14 @@ func signatures(ctx context.Context, files []*syntax.File, lib *Library, rec Rec
 	// the parallel phase only reads signatures.
 	for _, c := range checked {
 		c.inferAll()
+	}
+	if opts.Only != nil {
+		named := func(name string) bool { return opts.Infer[name] || isOperatorName(name) }
+		for _, c := range checkers {
+			if !opts.Only[c.file] {
+				c.inferNamed(named)
+			}
+		}
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, nil, err
@@ -1713,7 +1753,7 @@ func (c *Checker) resolveFun(d *syntax.FunDecl, owner *types.ClassSym) {
 	case d.ExprBody == nil:
 		sym.Ret, sym.Resolved = types.UnitType, true
 	default:
-		sym.Infer = func() { c.inferFun(d) }
+		sym.Infer = c.lazily(&sym.Resolved, func() { c.inferFun(d) })
 	}
 	if d.Operator {
 		c.checkOperatorDecl(d, owner)
@@ -2001,7 +2041,7 @@ func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
 			d.Getter.Sym.Ret, d.Getter.Sym.Resolved = types.InvalidType, true
 		}
 	default:
-		sym.Infer = func() { c.inferProp(d) }
+		sym.Infer = c.lazily(&sym.Resolved, func() { c.inferProp(d) })
 	}
 	c.backingFieldType(d, owner)
 }
@@ -2447,23 +2487,105 @@ func argRefs(ref *syntax.TypeRef, n int) []*syntax.TypeRef {
 }
 
 func (c *Checker) inferAll() {
+	c.inferNamed(func(string) bool { return true })
+}
+
+// inferNamed infers the omitted types of the file's top-level and member
+// functions and properties whose names named reports.
+func (c *Checker) inferNamed(named func(string) bool) {
 	for _, d := range c.file.Decls {
 		switch d := d.(type) {
 		case *syntax.FunDecl:
-			ensureFun(d.Sym)
+			if named(d.Name) {
+				ensureFun(d.Sym)
+			}
 		case *syntax.PropDecl:
-			ensureVar(d.Sym)
+			if named(d.Name) {
+				ensureVar(d.Sym)
+			}
 		}
 	}
 	for _, d := range c.classes {
 		for _, m := range d.Members {
 			switch m := m.(type) {
 			case *syntax.FunDecl:
-				ensureFun(m.Sym)
+				if named(m.Name) {
+					ensureFun(m.Sym)
+				}
 			case *syntax.PropDecl:
-				ensureVar(m.Sym)
+				if named(m.Name) {
+					ensureVar(m.Sym)
+				}
 			}
 		}
+	}
+}
+
+// isOperatorName reports whether a function called name may be called by
+// an operator, a for loop, a destructuring or a delegation, which don't
+// name it.
+func isOperatorName(name string) bool {
+	switch name {
+	case "plus", "minus", "times", "div", "rem", "mod", "rangeTo", "rangeUntil", "contains", "get", "set", "invoke",
+		"compareTo", "equals", "inc", "dec", "unaryPlus", "unaryMinus", "not", "iterator", "next", "hasNext",
+		"getValue", "setValue", "provideDelegate", "plusAssign", "minusAssign", "timesAssign", "divAssign", "remAssign", "modAssign":
+		return true
+	}
+	return strings.HasPrefix(name, "component")
+}
+
+// LateInferences counts the omitted types of files not checked that
+// checks of only some files inferred in their parallel phase (lazily),
+// for tests.
+var LateInferences atomic.Int64
+
+// lateInfer lets one goroutine at a time infer omitted types in the files
+// not checked, re-entrantly.
+type lateInfer struct {
+	mu    sync.Mutex
+	owner atomic.Uint64 // the goroutine holding mu
+	count atomic.Int64
+}
+
+func (l *lateInfer) lock() (unlock func()) {
+	g := goroutineID()
+	if l.owner.Load() == g {
+		return func() {}
+	}
+	l.mu.Lock()
+	l.owner.Store(g)
+	l.count.Add(1)
+	return func() {
+		l.owner.Store(0)
+		l.mu.Unlock()
+	}
+}
+
+// goroutineID returns the calling goroutine's ID, from its stack trace's
+// first line: "goroutine 12 [running]:".
+func goroutineID() uint64 {
+	var buf [32]byte
+	n := runtime.Stack(buf[:], false)
+	b := bytes.TrimPrefix(buf[:n], []byte("goroutine "))
+	id, _ := strconv.ParseUint(string(b[:bytes.IndexByte(b, ' ')]), 10, 64)
+	return id
+}
+
+// lazily returns infer, which infers the omitted type of a declaration
+// that resolved reports the resolution of, made safe for the parallel
+// phase of a check of only some files: there, a checked file may need the
+// type of a declaration of a file not checked that isn't inferred up front
+// (Options.Infer), which that file's checker infers, one goroutine at a
+// time, as a checker is used by one at a time.
+func (c *Checker) lazily(resolved *bool, infer func()) func() {
+	return func() {
+		if l := c.u.late; l != nil && !c.u.only[c.file] {
+			defer l.lock()()
+			if *resolved {
+				return
+			}
+		}
+		infer()
 	}
 }
 

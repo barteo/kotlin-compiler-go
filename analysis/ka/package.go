@@ -52,6 +52,13 @@ func (m *Model) Package(pkg string) *Package {
 }
 
 func (l *library) pkg(pkg string) *Package {
+	if l.base != nil {
+		// A package's model leaves the Java sources' classes out.
+		if p := (&Model{lib: l.base}).Package(pkg); p != nil || !l.cp.HasPackage(strings.ReplaceAll(pkg, ".", "/")) {
+			return p
+		}
+		return &Package{Name: pkg}
+	}
 	names, ok := l.cp.Classes(strings.ReplaceAll(pkg, ".", "/"))
 	if !ok {
 		return nil
@@ -172,6 +179,9 @@ func (l *library) ktypeAlias(a *kmeta.TypeAlias, prefix string) *Decl {
 // declarations, from the class path's .kotlin_module files, by package
 // (dotted).
 func (l *library) parts() map[string][]kmeta.Part {
+	if l.base != nil {
+		return l.base.parts()
+	}
 	l.partsOnce.Do(func() {
 		l.partsByPkg = map[string][]kmeta.Part{}
 		// Module names repeat across jars, so every copy is read; a part
@@ -209,6 +219,9 @@ func (l *library) parts() map[string][]kmeta.Part {
 // parameters, as typealias ArrayList<E> = java.util.ArrayList<E>, by
 // name.
 func (l *library) defaultAliases() map[string]*Decl {
+	if l.base != nil {
+		return l.base.defaultAliases()
+	}
 	l.defaultOnce.Do(func() {
 		l.defaults = map[string]*Decl{}
 		m := &Model{lib: l}
