@@ -222,7 +222,10 @@ func (g *gen) exprStmt(x syntax.Expr) {
 	} else {
 		g.expr(x)
 	}
-	g.uncastErased()
+	if _, ok := g.uncastErased(); ok {
+		g.code.Op(cf.POP)
+		return
+	}
 	g.pop(x.Type())
 }
 
