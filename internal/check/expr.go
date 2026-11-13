@@ -2122,6 +2122,11 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 			// the package or one of the class path's, or an extension of
 			// this does.
 			ms := c.lowPriorityGivesWay(c.accessible(c.cls, c.javaMethods(c.cls, name)), name, c.cls.This(), x)
+			if !slices.ContainsFunc(ms, func(f *types.FunSym) bool { return !f.Hidden }) {
+				// Hidden ones, @Deprecated(level = HIDDEN), give way to
+				// the functions of the scopes outside.
+				ms = nil
+			}
 			if len(ms) > 0 && (c.anyMayTake(ms, x) ||
 				c.objectTaking(name, x) == nil && !c.memberImportTakes(name, x) && !c.anyMayTake(c.topFuns(name), x) && !c.anyMayTake(c.kotlinFuns(name, false), x) &&
 					!c.thisExtension(name, x) && !c.propInvokeFits(name, x) && !c.ctorTakes(name, x)) {

@@ -110,11 +110,19 @@ func (c *Checker) classLitType(ref *syntax.TypeRef, callable bool) types.Type {
 		if cls := c.lookupClass(ref.Name); cls != nil && ensured(cls).TypeParams != nil && cls.Inner && cls.OuterParams > 0 && !callable {
 			return starInner(cls) // Outer.Inner::class, for Outer<T>
 		} else if cls != nil && len(cls.TypeParams) > 0 {
-			stars := make([]*syntax.TypeArg, len(cls.TypeParams))
+			n := len(cls.TypeParams)
+			if a := c.lookupAlias(ref.Name); a != nil {
+				// A typealias takes its own type parameters, none for
+				// typealias Direct = Pair<String, Int>.
+				n = len(a.TypeParams)
+			}
+			stars := make([]*syntax.TypeArg, n)
 			for i := range stars {
 				stars[i] = &syntax.TypeArg{P: ref.P, Variance: types.Star}
 			}
-			ref = &syntax.TypeRef{P: ref.P, Name: ref.Name, Args: stars}
+			if n > 0 {
+				ref = &syntax.TypeRef{P: ref.P, Name: ref.Name, Args: stars}
+			}
 		}
 	}
 	t := c.resolveType(ref)
@@ -516,7 +524,7 @@ func (c *Checker) refRecvType(r *syntax.CallableRef) (types.Type, bool) {
 			return types.Type{}, false
 		}
 		cls := c.lookupClass(name)
-		if cls != nil && (ensured(cls).Object || cls.Companion != nil) {
+		if cls != nil && (ensured(cls).Object || cls.Companion != nil && !c.hasCallable(cls, r.Name) && len(c.extCallees(r.Name, cls.This())) == 0) {
 			return types.Type{}, false // may be bound to the object
 		}
 		if c.lookupClass(name+"."+r.Name) != nil {
@@ -622,6 +630,28 @@ func (c *Checker) localExtWins(r *syntax.CallableRef, recvType types.Type) bool 
 // can name, nil if it names none (it may name a property), and reports
 // an error and false if it names several.
 func (c *Checker) refTarget(p syntax.Pos, r *syntax.CallableRef, recvType types.Type, static *types.ClassSym, bound bool) (*types.FunSym, bool) {
+	fs := c.refFuns(r, recvType, static, bound)
+	if len(fs) > 1 {
+		if f := c.mostSpecificFun(fs); f != nil {
+			fs = []*types.FunSym{f}
+		}
+	}
+	switch {
+	case len(fs) == 0:
+		return nil, true
+	case len(fs) > 1:
+		c.errorf(p, "overload resolution ambiguity for %s: specify the expected function type", refString(r))
+		return nil, false
+	case len(fs[0].TypeParams) > 0 && !c.recvTypeArgsOK(fs[0], recvType, r, bound) || fs[0].Owner != nil && len(fs[0].Owner.TypeParams) > outerParams(fs[0].Owner) && fs[0].Name == "<init>":
+		c.errorf(p, "not enough information to infer type arguments of %s: specify the expected function type", refString(r))
+		return nil, false
+	}
+	return fs[0], true
+}
+
+// refFuns returns the functions reference r may name: a receiver's,
+// recvType's or the bound one's, or else those of its name in scope.
+func (c *Checker) refFuns(r *syntax.CallableRef, recvType types.Type, static *types.ClassSym, bound bool) []*types.FunSym {
 	var fs []*types.FunSym
 	switch {
 	case recvType.K != types.Invalid || bound:
@@ -702,17 +732,66 @@ func (c *Checker) refTarget(p syntax.Pos, r *syntax.CallableRef, recvType types.
 			}
 		}
 	}
-	switch {
-	case len(fs) == 0:
-		return nil, true
-	case len(fs) > 1:
-		c.errorf(p, "overload resolution ambiguity for %s: specify the expected function type", refString(r))
-		return nil, false
-	case len(fs[0].TypeParams) > 0 && !c.recvTypeArgsOK(fs[0], recvType, r, bound) || fs[0].Owner != nil && len(fs[0].Owner.TypeParams) > outerParams(fs[0].Owner) && fs[0].Name == "<init>":
-		c.errorf(p, "not enough information to infer type arguments of %s: specify the expected function type", refString(r))
-		return nil, false
+	if slices.ContainsFunc(fs, func(f *types.FunSym) bool { return f.Hidden }) {
+		fs = slices.DeleteFunc(slices.Clone(fs), func(f *types.FunSym) bool { return f.Hidden })
+		if len(fs) == 0 && recvType.K == types.Invalid && !bound {
+			// Hidden ones give way to the scopes outside: ::foo in an
+			// object nested in one with a foo().
+			fs = c.outerObjectFuns(r.Name)
+		}
 	}
-	return fs[0], true
+	return fs
+}
+
+// mostSpecificFun returns the most specific of functions fs, which a
+// reference without an expected type may name, nil if none is: as in
+// Kotlin, B::foo names fun B.foo() rather than fun A.foo() for B : A,
+// and ::bar fun bar(a: Int) rather than fun bar(a: Any).
+func (c *Checker) mostSpecificFun(fs []*types.FunSym) *types.FunSym {
+	var best *types.FunSym
+	for _, f := range fs {
+		if !slices.ContainsFunc(fs, func(g *types.FunSym) bool { return g != f && !c.funMoreSpecific(f, g) }) {
+			if best != nil {
+				return nil
+			}
+			best = f
+		}
+	}
+	return best
+}
+
+// funMoreSpecific reports whether f is at least as specific as g, as
+// mostSpecific decides for candidates: g takes f's receiver and
+// parameters. f's type parameters are kept, g's are inferred within
+// their bounds.
+func (c *Checker) funMoreSpecific(f, g *types.FunSym) bool {
+	ensureFun(f)
+	ensureFun(g)
+	if len(f.Params) != len(g.Params) || f.Ext != g.Ext || len(f.Contexts) > 0 || len(g.Contexts) > 0 {
+		return false
+	}
+	sys := newSystem(c)
+	sub := sys.fresh(g.TypeParams, nil, syntax.Pos{})
+	for _, p := range g.TypeParams {
+		v := sub[p].T
+		for _, b := range v.Param().Bounds {
+			sys.sub(v, b)
+		}
+	}
+	for i, q := range f.Params {
+		fa, ga := q.Type, sub.ApplyIn(g.Params[i].Type)
+		if q.Vararg != g.Params[i].Vararg || boxedPrimitive(fa, ga) {
+			return false
+		}
+		if numberMoreSpecific(fa, ga) {
+			continue
+		}
+		sys.sub(fa, ga)
+	}
+	if f.Ext {
+		sys.sub(f.Recv, sub.ApplyIn(g.Recv))
+	}
+	return sys.ok
 }
 
 // recvTypeArgsOK reports whether the type arguments of f, the extension

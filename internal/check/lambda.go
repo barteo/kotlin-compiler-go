@@ -1432,6 +1432,13 @@ func composableSAM(l *syntax.Lambda, m *types.FunSym, ft, p types.Type) *syntax.
 func (c *Checker) lambdaFits(l *syntax.Lambda, p types.Type) bool {
 	t := p.NonNull()
 	n := 0
+	if l.Ref != nil && takesNothing(t) {
+		// An unbound reference takes its receiver: property(Map.Entry<K, *>::key)
+		// isn't property(KProperty0<V>).
+		if _, ok := c.refRecvType(l.Ref); ok {
+			return false
+		}
+	}
 	switch {
 	case wantsKProp(l, t) && t.C.Name != "kotlin/reflect/KCallable":
 		fun, prop, known := c.refKinds(l)
@@ -1462,6 +1469,24 @@ func (c *Checker) lambdaFits(l *syntax.Lambda, p types.Type) bool {
 		return len(l.Params) == n
 	}
 	return n <= 1
+}
+
+// takesNothing reports whether t is the type of a callable that takes no
+// arguments: a KProperty0, a KMutableProperty0, a KFunction0 or a
+// function type without parameters.
+func takesNothing(t types.Type) bool {
+	t = t.Flex().NonNull()
+	switch {
+	case t.K != types.Class:
+		return false
+	case t.IsFunc():
+		return t.A.Len() == 1
+	}
+	switch t.C.Name {
+	case "kotlin/reflect/KProperty0", "kotlin/reflect/KMutableProperty0", "kotlin/reflect/KFunction0":
+		return true
+	}
+	return false
 }
 
 // kcallable reports whether t is kotlin.reflect.KFunction<R> or
@@ -2449,6 +2474,18 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type) {
 			c.assignable(lt, pt, l.P)
 		}
 		return
+	}
+	if _, ok := c.kfunWant(pt); ok && l.Ref != nil && pt.HasVars() {
+		// A KFunctionN's variables are those of the reference's function,
+		// which refArgFit or onlyRefFit gave: foo(Sample::bar) for
+		// foo(x: KFunction1<T, R>) names bar().
+		trial := s.clone()
+		trial.fixVarsIn(pt)
+		if q := trial.apply(pt); !q.HasVars() && len(trial.errs) == len(s.errs) && trial.ok {
+			*s = *trial
+			l.T = c.lambda(l, q)
+			return
+		}
 	}
 	ft := pt
 	var sam *types.FunSym

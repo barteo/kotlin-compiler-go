@@ -926,6 +926,11 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			match = wide
 		}
 		match = c.notPropRefs(x, match)
+		if fit := slices.DeleteFunc(slices.Clone(match), func(cd *candidate) bool { return !c.refsFit(cd, x) }); len(fit) > 0 {
+			// As in Kotlin, a reference that doesn't fit a candidate's
+			// parameter makes it inapplicable.
+			match = fit
+		}
 		match = notLowPriority(match, func(cd *candidate) *callee { return &cd.callee })
 		var maximal []*candidate
 		for _, cd := range match {
@@ -1014,6 +1019,8 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			}
 		} else if trial := c.onlyRefFit(sys, l, params[i]); trial != nil {
 			// And so does one of whose callables only one fits.
+			sys = trial
+		} else if trial := c.refArgFit(sys, l, params[i]); trial != nil {
 			sys = trial
 		} else if trial := c.typedLambdaParams(sys, l, params[i]); trial != nil {
 			sys = trial
@@ -1161,13 +1168,25 @@ func (c *Checker) byRefShape(x *syntax.Call, match []*candidate) *candidate {
 	if len(refs) == 0 {
 		return nil
 	}
+	// One that takes a reference without dropping its result first:
+	// schedule(this::flush, ...) is schedule(Callable<V>, ...), not
+	// schedule(Runnable, ...), for a flush that returns a value.
+	if best := c.byRefShape1(x, match, refs, false); best != nil {
+		return best
+	}
+	return c.byRefShape1(x, match, refs, true)
+}
+
+// byRefShape1 is byRefShape, where a function's result fits a parameter
+// whose result is Unit only if unit is set.
+func (c *Checker) byRefShape1(x *syntax.Call, match []*candidate, refs map[int][]types.Type, unit bool) *candidate {
 	var best *candidate
 	for _, cd := range match {
 		trial := cd.sys
 		for i, ts := range refs {
 			var fit *system
 			for _, ft := range ts {
-				if s, ok := c.refFits(trial, ft, cd.params[i]); ok {
+				if s, ok := c.refFits1(trial, ft, cd.params[i], unit); ok {
 					fit = s
 					break
 				}
@@ -1177,6 +1196,14 @@ func (c *Checker) byRefShape(x *syntax.Call, match []*candidate) *candidate {
 			}
 		}
 		if trial == nil {
+			continue
+		}
+		// With the references' types, a lambda may no longer fit: in
+		// foo(B::arg0) { }, not foo(f: KFunction1<T1, R>, arg1: T1), whose
+		// T1 is a B.
+		with := *cd
+		with.sys = trial
+		if !c.lambdasFit(&with, x) {
 			continue
 		}
 		if best != nil {

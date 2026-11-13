@@ -423,3 +423,23 @@ func (c *Checker) staticInScope(name string) *types.ClassSym {
 	}
 	return nil
 }
+
+// outerObjectFuns returns the functions named name, not hidden, of the
+// first object in scope but this class that has any.
+func (c *Checker) outerObjectFuns(name string) []*types.FunSym {
+	for _, obj := range c.scopeObjects() {
+		if obj == c.cls {
+			continue
+		}
+		var fs []*types.FunSym
+		for _, f := range c.accessible(obj, c.javaMethods(obj, name)) {
+			if !f.Hidden {
+				fs = append(fs, f)
+			}
+		}
+		if len(fs) > 0 {
+			return fs
+		}
+	}
+	return nil
+}
