@@ -1711,6 +1711,21 @@ func (c *Checker) sharedFunParam(cs []*candidate, i int) (types.Type, bool) {
 	return p, true
 }
 
+// platformRecv returns ext, the type of the receiver of extension call
+// x, as the platform type the receiver has, if it has one: as in Kotlin,
+// T of a T.checkType() on a Java String! is the String!, which takes
+// null, though the call sees the receiver as non-null.
+func (c *Checker) platformRecv(x *syntax.Call, ext types.Type) types.Type {
+	m, ok := x.Fun.(*syntax.Member)
+	if !ok || m.Safe || ext.P || ext.N {
+		return ext
+	}
+	if xt := m.X.Type(); xt.P && c.sameType(xt.NonNull(), ext) {
+		return xt
+	}
+	return ext
+}
+
 // constrain adds the constraints of a call's arguments to a candidate's
 // system. If longLits, integer literals may be passed as Long.
 func (c *Checker) constrain(cd *candidate, x *syntax.Call, ts []types.Type, partials []*system, longLits bool) {
@@ -1718,7 +1733,7 @@ func (c *Checker) constrain(cd *candidate, x *syntax.Call, ts []types.Type, part
 		cd.sys.merge(p.clone())
 	}
 	if cd.ext.K != types.Invalid {
-		cd.sys.sub(cd.ext, cd.sub.ApplyIn(cd.f.Recv))
+		cd.sys.sub(c.platformRecv(x, cd.ext), cd.sub.ApplyIn(cd.f.Recv))
 	}
 	for i, t := range ts {
 		p := cd.params[i]

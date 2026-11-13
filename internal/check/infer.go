@@ -208,6 +208,11 @@ func (s *system) sub(a, b types.Type) {
 	case b.K == types.TypeVar && s.byVar[b.Param()] != nil:
 		tv := s.byVar[b.Param()]
 		switch {
+		case pa.P && b.P:
+			// T! <: V! gives V = T!, which takes null, not V = T & Any:
+			// SortedComboBoxModel(Comparator.comparing(f)) is a
+			// SortedComboBoxModel<DataView!>, as in Kotlin.
+			a = pa
 		case b.N:
 			a = a.NonNull() // a <: V? gives a!! <: V
 		case b.D && types.MayBeNull(a):
