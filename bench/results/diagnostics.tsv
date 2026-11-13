@@ -891,7 +891,7 @@ tests/callableReference/resolve/commonSupertypeFromReturnTypesOfCallableReferenc
 tests/callableReference/resolve/compatibilityWarningOnReferenceAgainstReflectiveType.kt	skip	LANGUAGE	
 tests/callableReference/resolve/constructor.kt	accepts valid		
 tests/callableReference/resolve/eagerAndPostponedCallableReferences.kt	rejects invalid	on an expected line	
-tests/callableReference/resolve/eagerResolveOfSingleCallableReference.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	eagerResolveOfSingleCallableReference.kt:12: type mismatch: inferred type is Or but B was expected
+tests/callableReference/resolve/eagerResolveOfSingleCallableReference.kt	accepts valid		
 tests/callableReference/resolve/innerClassConstructorOnOuterClassInstance.kt	accepts valid		
 tests/callableReference/resolve/intersectionTypeOverloadWithWrongParameter.kt	rejects invalid	on an expected line	
 tests/callableReference/resolve/kt10036.kt	accepts valid		
@@ -2522,7 +2522,7 @@ tests/delegatedProperty/getterWithSubtype.kt	accepts valid
 tests/delegatedProperty/inTrait.kt	rejects invalid	on an expected line	
 tests/delegatedProperty/incompleteTypeInference.kt	rejects invalid	on an expected line	
 tests/delegatedProperty/inference/annotatedAccessor.kt	accepts valid		
-tests/delegatedProperty/inference/callableReferenceArgumentInDelegatedExpression.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	callableReferenceArgumentInDelegatedExpression.kt:16: type mismatch: inferred type is Any? but Int was expected
+tests/delegatedProperty/inference/callableReferenceArgumentInDelegatedExpression.kt	accepts valid		
 tests/delegatedProperty/inference/decoratedLambda.kt	accepts valid		
 tests/delegatedProperty/inference/delegateExpressionAsLambda.kt	accepts valid		
 tests/delegatedProperty/inference/delegatedExpressionWithLabeledReturnInsideLambda.kt	accepts valid		
@@ -9735,7 +9735,7 @@ testsWithStdLib/callableReferences/fromBasicDiagnosticTests/applicableCallableRe
 testsWithStdLib/callableReferences/fromBasicDiagnosticTests/chooseCallableReferenceDependingOnInferredReceiver.kt	rejects invalid	on an expected line	
 testsWithStdLib/callableReferences/fromBasicDiagnosticTests/commonSupertypeFromReturnTypesOfCallableReference.kt	accepts valid		
 testsWithStdLib/callableReferences/fromBasicDiagnosticTests/eagerAndPostponedCallableReferences.kt	rejects invalid	on an expected line	
-testsWithStdLib/callableReferences/fromBasicDiagnosticTests/eagerResolveOfSingleCallableReference.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	eagerResolveOfSingleCallableReference.kt:12: type mismatch: inferred type is Or but B was expected
+testsWithStdLib/callableReferences/fromBasicDiagnosticTests/eagerResolveOfSingleCallableReference.kt	accepts valid		
 testsWithStdLib/callableReferences/fromBasicDiagnosticTests/moreSpecificAmbiguousExtensions.kt	rejects invalid	on an expected line	
 testsWithStdLib/callableReferences/fromBasicDiagnosticTests/multipleOutersAndMultipleCallableReferences.kt	accepts valid		
 testsWithStdLib/callableReferences/fromBasicDiagnosticTests/noAmbiguityBetweenTopLevelAndMemberProperty.kt	accepts valid		

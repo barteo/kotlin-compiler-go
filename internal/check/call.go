@@ -572,6 +572,17 @@ func (c *Checker) typeArgs(x *syntax.Call) []types.Type {
 	return ts
 }
 
+// sameRetClass reports whether the plain (not member) candidates cs all
+// return the same class.
+func sameRetClass(cs []callee) bool {
+	for _, cl := range cs {
+		if cl.recv != nil || cl.f.Ret.K != types.Class || cl.f.Ret.C != cs[0].f.Ret.C {
+			return false
+		}
+	}
+	return len(cs) > 0
+}
+
 // underscoreSub returns the substitution of type parameters tparams of a
 // call, foo<Int, _>(), whose type arguments typeArgs, resolved as targs,
 // include _: the others are theirs, and those _ are variables of sys,
@@ -782,6 +793,15 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			cl := byArity[0]
 			c.errorf(x.TypeArgs[0].P, "%s expected for '%s%s'", countArgs(len(cl.tparams)), name, types.TypeParamsString(cl.tparams))
 			c.args(x, nil)
+			if c.u.partial && sameRetClass(byArity) {
+				// The candidates' type, with error type arguments, as
+				// FIR has mutableMapOf<String, Unresolved, Int>().
+				s := types.Subst{}
+				for _, tp := range cl.tparams {
+					s[tp] = types.Arg{T: types.InvalidType}
+				}
+				return s.Apply(cl.f.Ret)
+			}
 			return types.InvalidType
 		}
 		byArity = ok

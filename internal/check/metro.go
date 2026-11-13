@@ -88,7 +88,7 @@ func UsesMetro(f *syntax.File) bool {
 // which the files, parsed again, are then checked with. Its diagnostics
 // are the plugin's.
 func PlanMetro(files []*syntax.File, lib *Library) (*MetroPlan, []*syntax.Error) {
-	u, checkers, err := signatures(context.Background(), files, lib, nil)
+	u, checkers, err := signatures(context.Background(), files, lib, nil, Options{})
 	if err != nil {
 		return nil, []*syntax.Error{{Msg: err.Error()}}
 	}

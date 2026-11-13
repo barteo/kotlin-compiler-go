@@ -1,0 +1,268 @@
+a.Anywhere: parameter a: kotlin.Int
+a.Anywhere: parameter c: kotlin.Long
+a.Anywhere: property a.Targets.a: kotlin.Int
+a.Anywhere: property a.Targets.d: kotlin.Long
+a.FieldOrFun: property a.Targets.a: kotlin.Int
+a.Marker: class a.User.Nested : kotlin.Any
+a.Marker: class a.User<T : kotlin.Any?> : kotlin.Any
+a.Marker: class b.E.B
+a.Marker: class b.Registry : kotlin.Any
+a.Marker: class c.Broken : kotlin.Any
+a.Marker: class d.Repo<K : kotlin.Comparable<K>, out V : kotlin.Any?> : kotlin.collections.Iterable<V>
+a.Marker: function a.User.f(p: kotlin.Int): kotlin.Unit
+a.Marker: function b.top(): kotlin.Unit
+a.Marker: function c.Broken.kept(): kotlin.Unit
+a.Marker: function d.Repo.find(key: K, vararg more: K): V?
+a.Marker: function d.Repo.map<R : kotlin.Any?>(f: fun kotlin.Function1<V, R>, g: fun kotlin.coroutines.SuspendFunction2<kotlin.String, kotlin.Int, kotlin.Unit>): kotlin.collections.List<R>
+a.Marker: function d.Repo.star(xs: kotlin.collections.List<*>, ys: kotlin.Array<in kotlin.String>): kotlin.Unit
+a.Marker: function d.broken(): <ERROR <ERROR TYPE: Missing>>
+a.Marker: function d.nn<T : kotlin.Any?>(t: T & Any): T
+a.Marker: function d.platform(): kotlin.String
+a.Marker: function e.spread(): kotlin.Unit
+a.Marker: getter e: kotlin.Int
+a.Marker: getter q: kotlin.Int
+a.Marker: parameter p: kotlin.Int
+a.Marker: parameter value: kotlin.Int
+a.Marker: property a.Targets.b: kotlin.String (var)
+a.Marker: property c.Unresolved.p: <ERROR <ERROR TYPE: Missing>>
+a.Marker: property d.Repo.size: kotlin.Int
+a.Marker: property d.Repo.twice: kotlin.String on kotlin.String
+a.Marker: property d.inferred: kotlin.collections.List<kotlin.Pair<kotlin.Int, kotlin.String>>
+a.Marker: setter e
+a.Marker: type parameter T : kotlin.Any?
+a.OnField: property a.Targets.a: kotlin.Int
+a.OnField: property a.Targets.d: kotlin.Long
+a.OnField: property a.Targets.e: kotlin.Int (var)
+a.Other: class b.Plain : kotlin.Any (s = "y")
+a.Other: parameter b: kotlin.String (s = "p")
+a.Other: parameter id: kotlin.Int (s = "x")
+a.Other: property a.User.id: kotlin.Int (s = "x")
+alias:g.Holder: again: g.Again names typealias g.Again = g.Names; expands to kotlin.collections.List
+alias:g.Holder: list: kotlin.collections.ArrayList<kotlin.Int> names typealias kotlin.collections.ArrayList = java.util.ArrayList<E>; expands to java.util.ArrayList
+alias:g.Holder: mapper: g.Mapper<kotlin.Int> names typealias g.Mapper = fun kotlin.Function1<T, kotlin.String>; expands to kotlin.Function1
+alias:g.Holder: names: g.Names names typealias g.Names = kotlin.collections.List<kotlin.String>; expands to kotlin.collections.List
+alias:g.Holder: nested: kotlin.collections.ArrayList<g.Names> names typealias kotlin.collections.ArrayList = java.util.ArrayList<E>; expands to java.util.ArrayList
+alias:g.Holder: pairs: g.Pairs<kotlin.String>? names typealias g.Pairs = kotlin.collections.Map<K, kotlin.collections.List<K>>; expands to kotlin.collections.Map
+alias:g.Holder: plain: kotlin.collections.List<kotlin.String> names class kotlin.collections.List<out E : kotlin.Any?> : kotlin.collections.Collection<E>
+annots:a.Targets: getter e GET:Marker
+annots:a.Targets: param a OnParam Anywhere
+annots:a.Targets: param b PARAM:Other
+annots:a.Targets: param c OnParam Anywhere
+annots:a.Targets: property a OnProp Anywhere OnField FieldOrFun
+annots:a.Targets: property b FIELD:Marker
+annots:a.Targets: property d OnProp Anywhere OnField
+annots:a.Targets: property e FIELD:OnField
+annots:a.Targets: property f Transient
+annots:a.Targets: property g JvmField Volatile
+annots:a.Targets: setparam e SETPARAM:Marker
+annots:a.Targets: setter e SET:Marker
+assign:f.Assign: f.Named <- f.Base<kotlin.String>: false
+assign:f.Assign: f.Source<kotlin.Any> <- f.Strings: false
+assign:f.Assign: f.Source<kotlin.String> <- f.Strings: true
+assign:f.Assign: kotlin.Any <- kotlin.String?: false
+assign:f.Assign: kotlin.Comparable<kotlin.String> <- kotlin.String: true
+assign:f.Assign: kotlin.collections.Collection<kotlin.String> <- kotlin.collections.List<kotlin.String>: true
+assign:f.Assign: kotlin.collections.List<kotlin.Any> <- kotlin.collections.List<kotlin.String>: true
+decls:b.E: - class b.E.A
+decls:b.E: - class b.E.B
+decls:b.E: - function <init>(): b.E
+decls:b.E: - function b.E.valueOf(value: kotlin.String): b.E
+decls:b.E: - function b.E.values(): kotlin.Array<b.E>
+decls:b.E: - property b.E.entries: kotlin.enums.EnumEntries<b.E>
+decls:b.E: KOTLIN ENUM_CLASS class b.E : kotlin.Enum<b.E>
+decls:f.Strings: - function <init>(): f.Strings
+decls:f.Strings: - function f.Strings.get(): kotlin.String
+decls:f.Strings: - function f.Strings.hook(): kotlin.Unit
+decls:f.Strings: - function f.Strings.name(): kotlin.String
+decls:f.Strings: KOTLIN CLASS class f.Strings : f.Base<kotlin.String>, f.Named
+decls:java.lang.Thread.State: - class java.lang.Thread.State.BLOCKED
+decls:java.lang.Thread.State: - class java.lang.Thread.State.NEW
+decls:java.lang.Thread.State: - class java.lang.Thread.State.RUNNABLE
+decls:java.lang.Thread.State: - class java.lang.Thread.State.TERMINATED
+decls:java.lang.Thread.State: - class java.lang.Thread.State.TIMED_WAITING
+decls:java.lang.Thread.State: - class java.lang.Thread.State.WAITING
+decls:java.lang.Thread.State: - function <init>(): java.lang.Thread.State
+decls:java.lang.Thread.State: - function java.lang.Thread.State.valueOf(value: kotlin.String): java.lang.Thread.State
+decls:java.lang.Thread.State: - function java.lang.Thread.State.values(): kotlin.Array<java.lang.Thread.State>
+decls:java.lang.Thread.State: - property java.lang.Thread.State.entries: kotlin.enums.EnumEntries<java.lang.Thread.State>
+decls:java.lang.Thread.State: JAVA_LIB ENUM_CLASS class java.lang.Thread.State : kotlin.Enum<java.lang.Thread.State>
+decls:java.util.AbstractList: - class java.util.AbstractList.Itr : kotlin.collections.MutableIterator<E>
+decls:java.util.AbstractList: - class java.util.AbstractList.ListItr : java.util.AbstractList.Itr<E>, kotlin.collections.MutableListIterator<E>
+decls:java.util.AbstractList: - class java.util.AbstractList.RandomAccessSpliterator<E : kotlin.Any> : java.util.Spliterator<E>
+decls:java.util.AbstractList: - class java.util.AbstractList.RandomAccessSubList<E : kotlin.Any> : java.util.AbstractList.SubList<E>, java.util.RandomAccess
+decls:java.util.AbstractList: - class java.util.AbstractList.SubList<E : kotlin.Any> : java.util.AbstractList<E>
+decls:java.util.AbstractList: - function <init><E : kotlin.Any>(): java.util.AbstractList<*>
+decls:java.util.AbstractList: - function java.util.AbstractList.add(p0: E): kotlin.Boolean
+decls:java.util.AbstractList: - function java.util.AbstractList.add(p0: kotlin.Int, p1: E): kotlin.Unit
+decls:java.util.AbstractList: - function java.util.AbstractList.addAll(p0: kotlin.Int, p1: kotlin.collections.Collection<out E>): kotlin.Boolean
+decls:java.util.AbstractList: - function java.util.AbstractList.clear(): kotlin.Unit
+decls:java.util.AbstractList: - function java.util.AbstractList.equals(p0: kotlin.Any?): kotlin.Boolean
+decls:java.util.AbstractList: - function java.util.AbstractList.get(p0: kotlin.Int): E
+decls:java.util.AbstractList: - function java.util.AbstractList.hashCode(): kotlin.Int
+decls:java.util.AbstractList: - function java.util.AbstractList.indexOf(p0: E): kotlin.Int
+decls:java.util.AbstractList: - function java.util.AbstractList.iterator(): kotlin.collections.MutableIterator<E>
+decls:java.util.AbstractList: - function java.util.AbstractList.lastIndexOf(p0: E): kotlin.Int
+decls:java.util.AbstractList: - function java.util.AbstractList.listIterator(): kotlin.collections.MutableListIterator<E>
+decls:java.util.AbstractList: - function java.util.AbstractList.listIterator(p0: kotlin.Int): kotlin.collections.MutableListIterator<E>
+decls:java.util.AbstractList: - function java.util.AbstractList.outOfBoundsMsg(p0: kotlin.Int): kotlin.String
+decls:java.util.AbstractList: - function java.util.AbstractList.rangeCheckForAdd(p0: kotlin.Int): kotlin.Unit
+decls:java.util.AbstractList: - function java.util.AbstractList.removeAt(p0: kotlin.Int): E
+decls:java.util.AbstractList: - function java.util.AbstractList.removeRange(p0: kotlin.Int, p1: kotlin.Int): kotlin.Unit
+decls:java.util.AbstractList: - function java.util.AbstractList.set(p0: kotlin.Int, p1: E): E
+decls:java.util.AbstractList: - function java.util.AbstractList.subList(p0: kotlin.Int, p1: kotlin.Int): kotlin.collections.MutableList<E>
+decls:java.util.AbstractList: - function java.util.AbstractList.subListRangeCheck(p0: kotlin.Int, p1: kotlin.Int, p2: kotlin.Int): kotlin.Unit
+decls:java.util.AbstractList: - property java.util.AbstractList.modCount: kotlin.Int (var)
+decls:java.util.AbstractList: JAVA_LIB CLASS class java.util.AbstractList<E : kotlin.Any> : java.util.AbstractCollection<E>, kotlin.collections.MutableList<E>
+decls:java.util.AbstractMap.SimpleEntry: - function <init><K : kotlin.Any, V : kotlin.Any>(p0: K, p1: V): java.util.AbstractMap.SimpleEntry<*, *>
+decls:java.util.AbstractMap.SimpleEntry: - function <init><K : kotlin.Any, V : kotlin.Any>(p0: kotlin.collections.MutableMap.MutableEntry<out K, out V>): java.util.AbstractMap.SimpleEntry<*, *>
+decls:java.util.AbstractMap.SimpleEntry: - function java.util.AbstractMap.SimpleEntry.equals(p0: kotlin.Any?): kotlin.Boolean
+decls:java.util.AbstractMap.SimpleEntry: - function java.util.AbstractMap.SimpleEntry.getKey(): K
+decls:java.util.AbstractMap.SimpleEntry: - function java.util.AbstractMap.SimpleEntry.getValue(): V
+decls:java.util.AbstractMap.SimpleEntry: - function java.util.AbstractMap.SimpleEntry.hashCode(): kotlin.Int
+decls:java.util.AbstractMap.SimpleEntry: - function java.util.AbstractMap.SimpleEntry.setValue(p0: V): V
+decls:java.util.AbstractMap.SimpleEntry: - function java.util.AbstractMap.SimpleEntry.toString(): kotlin.String
+decls:java.util.AbstractMap.SimpleEntry: - property java.util.AbstractMap.SimpleEntry.key: K
+decls:java.util.AbstractMap.SimpleEntry: - property java.util.AbstractMap.SimpleEntry.serialVersionUID: kotlin.Long
+decls:java.util.AbstractMap.SimpleEntry: - property java.util.AbstractMap.SimpleEntry.value: V (var)
+decls:java.util.AbstractMap.SimpleEntry: JAVA_LIB CLASS class java.util.AbstractMap.SimpleEntry<K : kotlin.Any, V : kotlin.Any> : kotlin.collections.MutableMap.MutableEntry<K, V>, java.io.Serializable
+decls:java.util.AbstractMap: - class java.util.AbstractMap.SimpleEntry<K : kotlin.Any, V : kotlin.Any> : kotlin.collections.MutableMap.MutableEntry<K, V>, java.io.Serializable
+decls:java.util.AbstractMap: - class java.util.AbstractMap.SimpleImmutableEntry<K : kotlin.Any, V : kotlin.Any> : kotlin.collections.MutableMap.MutableEntry<K, V>, java.io.Serializable
+decls:java.util.AbstractMap: - class java.util.AbstractMap.ViewCollection<E : kotlin.Any> : kotlin.collections.MutableCollection<E>
+decls:java.util.AbstractMap: - function <init><K : kotlin.Any, V : kotlin.Any>(): java.util.AbstractMap<*, *>
+decls:java.util.AbstractMap: - function java.util.AbstractMap.clear(): kotlin.Unit
+decls:java.util.AbstractMap: - function java.util.AbstractMap.clone(): kotlin.Any
+decls:java.util.AbstractMap: - function java.util.AbstractMap.containsKey(p0: K): kotlin.Boolean
+decls:java.util.AbstractMap: - function java.util.AbstractMap.containsValue(p0: V): kotlin.Boolean
+decls:java.util.AbstractMap: - function java.util.AbstractMap.entrySet(): kotlin.collections.MutableSet<kotlin.collections.MutableMap.MutableEntry<K, V>>
+decls:java.util.AbstractMap: - function java.util.AbstractMap.eq(p0: kotlin.Any, p1: kotlin.Any): kotlin.Boolean
+decls:java.util.AbstractMap: - function java.util.AbstractMap.equals(p0: kotlin.Any?): kotlin.Boolean
+decls:java.util.AbstractMap: - function java.util.AbstractMap.get(p0: K): V?
+decls:java.util.AbstractMap: - function java.util.AbstractMap.hashCode(): kotlin.Int
+decls:java.util.AbstractMap: - function java.util.AbstractMap.isEmpty(): kotlin.Boolean
+decls:java.util.AbstractMap: - function java.util.AbstractMap.keySet(): kotlin.collections.MutableSet<K>
+decls:java.util.AbstractMap: - function java.util.AbstractMap.put(p0: K, p1: V): V?
+decls:java.util.AbstractMap: - function java.util.AbstractMap.putAll(p0: kotlin.collections.Map<out K, out V>): kotlin.Unit
+decls:java.util.AbstractMap: - function java.util.AbstractMap.remove(p0: K): V?
+decls:java.util.AbstractMap: - function java.util.AbstractMap.size(): kotlin.Int
+decls:java.util.AbstractMap: - function java.util.AbstractMap.toString(): kotlin.String
+decls:java.util.AbstractMap: - function java.util.AbstractMap.values(): kotlin.collections.MutableCollection<V>
+decls:java.util.AbstractMap: - property java.util.AbstractMap.keySet: kotlin.collections.MutableSet<K> (var)
+decls:java.util.AbstractMap: - property java.util.AbstractMap.values: kotlin.collections.MutableCollection<V> (var)
+decls:java.util.AbstractMap: JAVA_LIB CLASS class java.util.AbstractMap<K : kotlin.Any, V : kotlin.Any> : kotlin.collections.MutableMap<K, V>
+decls:kotlin.DeprecationLevel: - class kotlin.DeprecationLevel.ERROR
+decls:kotlin.DeprecationLevel: - class kotlin.DeprecationLevel.HIDDEN
+decls:kotlin.DeprecationLevel: - class kotlin.DeprecationLevel.WARNING
+decls:kotlin.DeprecationLevel: - function <init>(): kotlin.DeprecationLevel
+decls:kotlin.DeprecationLevel: - function kotlin.DeprecationLevel.valueOf(value: kotlin.String): kotlin.DeprecationLevel
+decls:kotlin.DeprecationLevel: - function kotlin.DeprecationLevel.values(): kotlin.Array<kotlin.DeprecationLevel>
+decls:kotlin.DeprecationLevel: - property kotlin.DeprecationLevel.entries: kotlin.enums.EnumEntries<kotlin.DeprecationLevel>
+decls:kotlin.DeprecationLevel: KOTLIN_LIB ENUM_CLASS class kotlin.DeprecationLevel : kotlin.Enum<kotlin.DeprecationLevel>
+decls:kotlin.ReplaceWith: - function <init>(expression: kotlin.String, vararg imports: kotlin.String): kotlin.ReplaceWith
+decls:kotlin.ReplaceWith: - property kotlin.ReplaceWith.expression: kotlin.String
+decls:kotlin.ReplaceWith: - property kotlin.ReplaceWith.imports: kotlin.Array<out kotlin.String>
+decls:kotlin.ReplaceWith: KOTLIN_LIB ANNOTATION_CLASS class kotlin.ReplaceWith : kotlin.Annotation
+decls:kotlin.coroutines.AbstractCoroutineContextKey: - function <init><B : kotlin.coroutines.CoroutineContext.Element, E : B>(baseKey: kotlin.coroutines.CoroutineContext.Key<B>, safeCast: fun kotlin.Function1<kotlin.coroutines.CoroutineContext.Element, E?>): kotlin.coroutines.AbstractCoroutineContextKey<*, *>
+decls:kotlin.coroutines.AbstractCoroutineContextKey: - function kotlin.coroutines.AbstractCoroutineContextKey.isSubKey(key: kotlin.coroutines.CoroutineContext.Key<*>): kotlin.Boolean
+decls:kotlin.coroutines.AbstractCoroutineContextKey: - function kotlin.coroutines.AbstractCoroutineContextKey.tryCast(element: kotlin.coroutines.CoroutineContext.Element): E?
+decls:kotlin.coroutines.AbstractCoroutineContextKey: - property kotlin.coroutines.AbstractCoroutineContextKey.safeCast: fun kotlin.Function1<kotlin.coroutines.CoroutineContext.Element, E?>
+decls:kotlin.coroutines.AbstractCoroutineContextKey: - property kotlin.coroutines.AbstractCoroutineContextKey.topmostKey: kotlin.coroutines.CoroutineContext.Key<*>
+decls:kotlin.coroutines.AbstractCoroutineContextKey: KOTLIN_LIB CLASS class kotlin.coroutines.AbstractCoroutineContextKey<B : kotlin.coroutines.CoroutineContext.Element, E : B> : kotlin.coroutines.CoroutineContext.Key<E>
+e.Args: class e.Defaults : kotlin.Any (s = "dflt", i = 3, l = 7L, c = 'c', z = false, f = 1.5f, d = 2.0, u = 3u, e = e.Color.GREEN, k = kotlin.Any::class, arr = ["x", "y"], inner = @e.Inner(s = "d", xs = [1, 2]), v = [])
+e.Args: class e.Full : kotlin.Any (s = "const!", i = -4, l = 1099511627776L, c = 'q', z = true, f = 0.25f, d = 1000.0, u = 4294967295u, e = e.Color.RED, k = kotlin.String::class, arr = ["a", "const"], inner = @e.Inner(xs = [5], s = "in"), v = [])
+e.Args: class e.Positional : kotlin.Any (s = "pos", i = 9, v = ["p", "q"], l = 7L, c = 'c', z = false, f = 1.5f, d = 2.0, u = 3u, e = e.Color.GREEN, k = kotlin.Any::class, arr = ["x", "y"], inner = @e.Inner(s = "d", xs = [1, 2]))
+e.Args: function e.spread(): kotlin.Unit (v = ["s1"], s = "dflt", i = 3, l = 7L, c = 'c', z = false, f = 1.5f, d = 2.0, u = 3u, e = e.Color.GREEN, k = kotlin.Any::class, arr = ["x", "y"], inner = @e.Inner(s = "d", xs = [1, 2]))
+e.Inner: class e.Defaults : kotlin.Any (s = "in", xs = [])
+fun:g.top: KOTLIN function g.top(x: kotlin.Int): kotlin.Int [g.AliasKt]
+fun:kotlin.collections.listOf: KOTLIN_LIB function kotlin.collections.listOf<T : kotlin.Any?>(): kotlin.collections.List<T> [kotlin.collections.CollectionsKt__CollectionsKt]
+fun:kotlin.collections.listOf: KOTLIN_LIB function kotlin.collections.listOf<T : kotlin.Any?>(element: T): kotlin.collections.List<T> [kotlin.collections.CollectionsKt__CollectionsJVMKt]
+fun:kotlin.collections.listOf: KOTLIN_LIB function kotlin.collections.listOf<T : kotlin.Any?>(vararg elements: T): kotlin.collections.List<T> [kotlin.collections.CollectionsKt__CollectionsKt]
+java.beans.JavaBean: class e.Bean : kotlin.Any (description = "bean", defaultProperty = "", defaultEventSet = "")
+jvm:h.Sigs: - <init> (JLjava/lang/String;)V
+jvm:h.Sigs: - Inner Lh/Sigs$Inner;
+jvm:h.Sigs: - arrays ([I[Ljava/lang/Integer;[Ljava/lang/String;[Ljava/lang/Object;[Ljava/lang/Number;[[I)[[Ljava/lang/CharSequence;
+jvm:h.Sigs: - builtins (Ljava/lang/Object;Ljava/lang/String;Ljava/lang/Comparable;Ljava/lang/Number;Ljava/lang/Throwable;Ljava/lang/CharSequence;Lh/Sigs$Inner;)V
+jvm:h.Sigs: - functions (Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function2;Lkotlin/jvm/functions/Function1;)Ljava/lang/Void;
+jvm:h.Sigs: - generics (Ljava/lang/CharSequence;Ljava/lang/Object;Ljava/util/List;Ljava/util/Map;Ljava/util/Map$Entry;)Ljava/lang/CharSequence;
+jvm:h.Sigs: - id J
+jvm:h.Sigs: - name Ljava/lang/String;
+jvm:h.Sigs: - nothing Ljava/lang/Void;
+jvm:h.Sigs: - prims (ILjava/lang/Integer;ZCD)J
+jvm:h.Sigs: - star Ljava/util/List;
+jvm:h.Sigs: - values (JLh/Id;Ljava/lang/String;Ljava/util/List;ILkotlin/time/Duration;J)J
+jvm:h.Sigs: Lh/Sigs;
+kotlin.Deprecated: class e.Old : kotlin.Any (message = "old", replaceWith = @kotlin.ReplaceWith(expression = "", imports = []), level = kotlin.DeprecationLevel.WARNING)
+kotlin.Suppress: file Model.kt (names = ["unused"])
+members:f.Bag:get,size,toString: KOTLIN get in f.Bag overrides java.util.AbstractList.get; as member (kotlin.Int): kotlin.String
+members:f.Bag:get,size,toString: KOTLIN size in f.Bag overrides java.util.AbstractCollection.size; as member : kotlin.Int
+members:f.Bag:get,size,toString: SYNTHETIC toString in java.util.AbstractList overrides java.util.AbstractCollection.toString; as member (): kotlin.String
+members:f.Base: JAVA_LIB get in f.Base overrides f.Source.get; as member (): kotlin.Any
+members:f.Base: JAVA_LIB map in f.Base overrides f.Source.map; as member (fun kotlin.Function1<kotlin.Any, R>): f.Source<R>
+members:f.Base: KOTLIN <init> in f.Base; as member (kotlin.collections.List<kotlin.Any>): f.Base<kotlin.Any>
+members:f.Base: KOTLIN first in f.Base; as member (): kotlin.Any
+members:f.Base: KOTLIN hook in f.Base; as member (): kotlin.Unit
+members:f.Base: KOTLIN items in f.Base; as member : kotlin.collections.List<kotlin.Any>
+members:f.Base: KOTLIN secret in f.Base; as member (): kotlin.Unit
+members:f.Base: KOTLIN size in f.Base overrides f.Source.size; as member : kotlin.Int
+members:f.Base: KOTLIN_LIB equals in kotlin.Any; as member (kotlin.Any?): kotlin.Boolean
+members:f.Base: KOTLIN_LIB hashCode in kotlin.Any; as member (): kotlin.Int
+members:f.Base: KOTLIN_LIB toString in kotlin.Any; as member (): kotlin.String
+members:f.Both:run: SYNTHETIC run in f.Both overrides f.Runner.run; as member (): kotlin.Unit
+members:f.Names:contains,remove,toString,addAll: JAVA_LIB addAll in f.Names overrides java.util.AbstractCollection.addAll; as member (kotlin.collections.Collection<out kotlin.String>): kotlin.Boolean
+members:f.Names:contains,remove,toString,addAll: JAVA_LIB contains in f.Names overrides java.util.AbstractCollection.contains; as member (kotlin.String): kotlin.Boolean
+members:f.Names:contains,remove,toString,addAll: JAVA_LIB remove in f.Names overrides java.util.AbstractCollection.remove; as member (kotlin.String): kotlin.Boolean
+members:f.Names:contains,remove,toString,addAll: SYNTHETIC toString in java.util.AbstractSet overrides java.util.AbstractCollection.toString; as member (): kotlin.String
+members:f.Strings: JAVA_LIB first in f.Strings overrides f.Base.first; as member (): kotlin.String
+members:f.Strings: JAVA_LIB items in f.Strings overrides f.Base.items; as member : kotlin.collections.List<kotlin.String>
+members:f.Strings: JAVA_LIB map in f.Strings overrides f.Source.map; as member (fun kotlin.Function1<kotlin.String, R>): f.Source<R>
+members:f.Strings: KOTLIN get in f.Strings overrides f.Source.get; as member (): kotlin.String
+members:f.Strings: KOTLIN hook in f.Strings overrides f.Base.hook; as member (): kotlin.Unit
+members:f.Strings: KOTLIN name in f.Strings overrides f.Named.name; as member (): kotlin.String
+members:f.Strings: KOTLIN size in f.Base overrides f.Source.size; as member : kotlin.Int
+members:f.Strings: KOTLIN_LIB equals in kotlin.Any; as member (kotlin.Any?): kotlin.Boolean
+members:f.Strings: KOTLIN_LIB hashCode in kotlin.Any; as member (): kotlin.Int
+members:f.Strings: KOTLIN_LIB toString in kotlin.Any; as member (): kotlin.String
+members:f.Strings: SYNTHETIC <init> in f.Strings; as member (): f.Strings
+members:f.Table:equals,get,remove,containsKey,putAll: JAVA_LIB containsKey in f.Table overrides java.util.AbstractMap.containsKey; as member (kotlin.String): kotlin.Boolean
+members:f.Table:equals,get,remove,containsKey,putAll: JAVA_LIB equals in java.util.AbstractMap overrides kotlin.Any.equals; as member (kotlin.Any?): kotlin.Boolean
+members:f.Table:equals,get,remove,containsKey,putAll: JAVA_LIB get in f.Table overrides java.util.AbstractMap.get; as member (kotlin.String): kotlin.Int?
+members:f.Table:equals,get,remove,containsKey,putAll: JAVA_LIB putAll in f.Table overrides java.util.AbstractMap.putAll; as member (kotlin.collections.Map<out kotlin.String, out kotlin.Int>): kotlin.Unit
+members:f.Table:equals,get,remove,containsKey,putAll: JAVA_LIB remove in f.Table overrides java.util.AbstractMap.remove; as member (kotlin.String): kotlin.Int?
+members:f.Table:equals,get,remove,containsKey,putAll: JAVA_LIB remove in f.Table overrides kotlin.collections.MutableMap.remove; as member (kotlin.String, kotlin.Int): kotlin.Boolean
+overrides:f.Strings#get:f.Named#get: true
+overrides:f.Strings#get:f.Source#get: true
+overrides:f.Strings#name:f.Source#get: false
+package:g: KOTLIN class g.Holder : kotlin.Any
+package:g: KOTLIN function g.top(x: kotlin.Int): kotlin.Int [g.AliasKt]
+package:g: KOTLIN property g.topProp: kotlin.Int [g.AliasKt]
+package:g: KOTLIN typealias g.Again
+package:g: KOTLIN typealias g.Mapper
+package:g: KOTLIN typealias g.Names
+package:g: KOTLIN typealias g.Pairs
+package:java.util.function:Supplier: JAVA_LIB class java.util.function.Supplier<T : kotlin.Any> : kotlin.Any
+package:kotlin.collections:listOf,lastIndex,ArrayList,List,emptyList,AbstractList: KOTLIN_LIB class kotlin.collections.AbstractList<out E : kotlin.Any?> : kotlin.collections.AbstractCollection<E>, kotlin.collections.List<E>
+package:kotlin.collections:listOf,lastIndex,ArrayList,List,emptyList,AbstractList: KOTLIN_LIB class kotlin.collections.List<out E : kotlin.Any?> : kotlin.collections.Collection<E>
+package:kotlin.collections:listOf,lastIndex,ArrayList,List,emptyList,AbstractList: KOTLIN_LIB function kotlin.collections.List<T : kotlin.Any?>(size: kotlin.Int, init: fun kotlin.Function1<kotlin.Int, T>): kotlin.collections.List<T> [kotlin.collections.CollectionsKt__CollectionsKt]
+package:kotlin.collections:listOf,lastIndex,ArrayList,List,emptyList,AbstractList: KOTLIN_LIB function kotlin.collections.emptyList<T : kotlin.Any?>(): kotlin.collections.List<T> [kotlin.collections.CollectionsKt__CollectionsKt]
+package:kotlin.collections:listOf,lastIndex,ArrayList,List,emptyList,AbstractList: KOTLIN_LIB function kotlin.collections.listOf<T : kotlin.Any?>(): kotlin.collections.List<T> [kotlin.collections.CollectionsKt__CollectionsKt]
+package:kotlin.collections:listOf,lastIndex,ArrayList,List,emptyList,AbstractList: KOTLIN_LIB function kotlin.collections.listOf<T : kotlin.Any?>(element: T): kotlin.collections.List<T> [kotlin.collections.CollectionsKt__CollectionsJVMKt]
+package:kotlin.collections:listOf,lastIndex,ArrayList,List,emptyList,AbstractList: KOTLIN_LIB function kotlin.collections.listOf<T : kotlin.Any?>(vararg elements: T): kotlin.collections.List<T> [kotlin.collections.CollectionsKt__CollectionsKt]
+package:kotlin.collections:listOf,lastIndex,ArrayList,List,emptyList,AbstractList: KOTLIN_LIB property kotlin.collections.lastIndex: kotlin.Int on kotlin.Array<out T> [kotlin.collections.ArraysKt___ArraysKt]
+package:kotlin.collections:listOf,lastIndex,ArrayList,List,emptyList,AbstractList: KOTLIN_LIB property kotlin.collections.lastIndex: kotlin.Int on kotlin.BooleanArray [kotlin.collections.ArraysKt___ArraysKt]
+package:kotlin.collections:listOf,lastIndex,ArrayList,List,emptyList,AbstractList: KOTLIN_LIB property kotlin.collections.lastIndex: kotlin.Int on kotlin.ByteArray [kotlin.collections.ArraysKt___ArraysKt]
+package:kotlin.collections:listOf,lastIndex,ArrayList,List,emptyList,AbstractList: KOTLIN_LIB property kotlin.collections.lastIndex: kotlin.Int on kotlin.CharArray [kotlin.collections.ArraysKt___ArraysKt]
+package:kotlin.collections:listOf,lastIndex,ArrayList,List,emptyList,AbstractList: KOTLIN_LIB property kotlin.collections.lastIndex: kotlin.Int on kotlin.DoubleArray [kotlin.collections.ArraysKt___ArraysKt]
+package:kotlin.collections:listOf,lastIndex,ArrayList,List,emptyList,AbstractList: KOTLIN_LIB property kotlin.collections.lastIndex: kotlin.Int on kotlin.FloatArray [kotlin.collections.ArraysKt___ArraysKt]
+package:kotlin.collections:listOf,lastIndex,ArrayList,List,emptyList,AbstractList: KOTLIN_LIB property kotlin.collections.lastIndex: kotlin.Int on kotlin.IntArray [kotlin.collections.ArraysKt___ArraysKt]
+package:kotlin.collections:listOf,lastIndex,ArrayList,List,emptyList,AbstractList: KOTLIN_LIB property kotlin.collections.lastIndex: kotlin.Int on kotlin.LongArray [kotlin.collections.ArraysKt___ArraysKt]
+package:kotlin.collections:listOf,lastIndex,ArrayList,List,emptyList,AbstractList: KOTLIN_LIB property kotlin.collections.lastIndex: kotlin.Int on kotlin.ShortArray [kotlin.collections.ArraysKt___ArraysKt]
+package:kotlin.collections:listOf,lastIndex,ArrayList,List,emptyList,AbstractList: KOTLIN_LIB property kotlin.collections.lastIndex: kotlin.Int on kotlin.UByteArray [kotlin.collections.unsigned.UArraysKt___UArraysKt]
+package:kotlin.collections:listOf,lastIndex,ArrayList,List,emptyList,AbstractList: KOTLIN_LIB property kotlin.collections.lastIndex: kotlin.Int on kotlin.UIntArray [kotlin.collections.unsigned.UArraysKt___UArraysKt]
+package:kotlin.collections:listOf,lastIndex,ArrayList,List,emptyList,AbstractList: KOTLIN_LIB property kotlin.collections.lastIndex: kotlin.Int on kotlin.ULongArray [kotlin.collections.unsigned.UArraysKt___UArraysKt]
+package:kotlin.collections:listOf,lastIndex,ArrayList,List,emptyList,AbstractList: KOTLIN_LIB property kotlin.collections.lastIndex: kotlin.Int on kotlin.UShortArray [kotlin.collections.unsigned.UArraysKt___UArraysKt]
+package:kotlin.collections:listOf,lastIndex,ArrayList,List,emptyList,AbstractList: KOTLIN_LIB property kotlin.collections.lastIndex: kotlin.Int on kotlin.collections.List<T> [kotlin.collections.CollectionsKt__CollectionsKt]
+package:kotlin.collections:listOf,lastIndex,ArrayList,List,emptyList,AbstractList: KOTLIN_LIB typealias kotlin.collections.ArrayList
+prop:g.topProp: KOTLIN property g.topProp: kotlin.Int [g.AliasKt]
+prop:kotlin.collections.lastIndex: not found
+prop:kotlin.coroutines.intrinsics.COROUTINE_SUSPENDED: KOTLIN_LIB property kotlin.coroutines.intrinsics.COROUTINE_SUSPENDED: kotlin.Any [kotlin.coroutines.intrinsics.IntrinsicsKt__IntrinsicsKt]
+sealed:f.Shape: f.Circle
+sealed:f.Shape: f.Square

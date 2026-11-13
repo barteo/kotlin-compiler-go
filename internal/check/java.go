@@ -28,19 +28,23 @@ type classTable struct {
 	kotlin bool
 	// serialization is Library.Serialization: see friend.
 	serialization bool
-	funcs         *types.Functions // the interfaces of function types
+	// hidden is set by Library.KeepHidden: every Java class keeps the
+	// members Kotlin can't use, as Java source classes do.
+	hidden bool
+	// javaTypes is set by Library.JavaTypes: Java declarations
+	// annotated @NotNull or @Nullable have non-null or nullable types,
+	// and inner classes have their outer classes' type parameters.
+	javaTypes bool
+	funcs     *types.Functions // the interfaces of function types
 	kotlinTable
 	// sources finds the program's classes by internal name, which the
 	// class path's classes of Java sources name. Checking sets it once
 	// the program's classes are declared.
 	sources atomic.Pointer[func(string) *types.ClassSym]
 
-	// Caches of results that depend only on loaded classes, which checking
-	// asks for again and again: supertypes with their type arguments, and
-	// the methods of a class by name.
-	supers  sync.Map // superKey -> superResult
-	inters  sync.Map // interKey -> types.Type, see intersect
-	methods sync.Map // methodsKey -> []*types.FunSym
+	// Results that depend only on loaded classes; those of the program's
+	// classes are in Universe.local.
+	caches
 	// defaults has a sync.Once for each method whose inherited default
 	// values inheritExtDefaults looked for.
 	defaults     sync.Map // *types.FunSym -> *sync.Once
@@ -48,6 +52,38 @@ type classTable struct {
 	// scopes are the type parameters of the Kotlin classes loaded, by
 	// their metadata's ids, which their inner classes' metadata uses.
 	scopes sync.Map // *types.ClassSym -> tscope
+}
+
+// caches hold results that checking asks for again and again: supertypes
+// with their type arguments, and the methods of a class by name.
+type caches struct {
+	supers  sync.Map // superKey -> superResult
+	inters  sync.Map // interKey -> types.Type, see intersect
+	methods sync.Map // methodsKey -> []*types.FunSym
+}
+
+// cache returns the caches for a result computed from ts: the library's
+// if they name only the class path's classes (or those every check
+// shares), and no type parameters; the universe's otherwise. A library
+// can serve check after check (see analysis/ka), and so mustn't keep the
+// symbols of any one program.
+func (u *Universe) cache(ts ...types.Type) *caches {
+	for _, t := range ts {
+		if t.Has(programType) {
+			return &u.local
+		}
+	}
+	return &u.ext.caches
+}
+
+func programType(t types.Type) bool {
+	switch t.K {
+	case types.Class:
+		return t.C == nil || !t.C.External && !t.C.Global
+	case types.TypeParam, types.TypeVar:
+		return true
+	}
+	return false
 }
 
 type superKey struct {
@@ -175,6 +211,7 @@ func (t *classTable) load(cls *types.ClassSym) {
 			known = known && info.JavaTargets != nil && cls.Targets&types.TargetType == 0
 		}
 		cls.TargetsKnown = known
+		cls.TargetsRead = known || info.KotlinTargets != nil || info.Kotlin != nil || info.JavaTargets != nil
 	}
 	cls.MethodAnnotations = func(name, desc string) (*classfile.MethodAnnotations, error) {
 		b, err := t.cp.Bytes(cls.Name)
@@ -193,7 +230,7 @@ func (t *classTable) load(cls *types.ClassSym) {
 	cls.Abstract = info.Access&(classfile.AccAbstract|classfile.AccInterface) != 0
 	cls.Final = info.Access&classfile.AccFinal != 0
 	cls.Private = info.Access&classfile.AccPublic == 0
-	cls.PackagePrivate = cls.Private
+	cls.PackagePrivate = cls.Private && (info.Inner == nil || info.Inner.Access&classfile.AccPrivate == 0)
 	// The package-private members of the module's Java classes, of the
 	// friend paths' (a unit test's main classes), and of package-private
 	// classes, are their package's code's.
@@ -206,16 +243,41 @@ func (t *classTable) load(cls *types.ClassSym) {
 			cls.Interfaces = append(cls.Interfaces, i)
 		}
 	}
-	if info.Sig != "" {
-		t.classSignature(cls, info.Sig)
+	// An inner class sees its outer classes' type parameters, after its
+	// own, under Library.JavaTypes.
+	var outer []*types.TypeParamSym
+	if t.javaTypes && info.Inner != nil && info.Inner.Outer != "" && info.Inner.Access&classfile.AccStatic == 0 &&
+		info.Access&(classfile.AccInterface|classfile.AccEnum|classfile.AccAnnotation) == 0 {
+		if o := t.class(info.Inner.Outer); o != nil {
+			outer = ensured(o).TypeParams
+		}
+	}
+	if info.Sig != "" || len(outer) > 0 {
+		t.classSignature(cls, info.Sig, outer)
 	}
 	cls.Methods = map[string][]*types.FunSym{}
 	cls.Statics = map[string][]*types.FunSym{}
 	cls.Fields = map[string]*types.VarSym{}
+	// A class of the program's Java sources keeps the members Kotlin
+	// can't use too, apart, for the Analysis API, which lists them.
+	source := t.hidden || t.cp.IsSource(cls.Name)
+	if source {
+		cls.JavaHidden = &types.JavaHidden{}
+	}
 	for _, m := range info.Methods {
+		if m.Default != nil && info.Access&classfile.AccAnnotation != 0 {
+			if cls.AnnotationDefaults == nil {
+				cls.AnnotationDefaults = map[string]*classfile.ElementValue{}
+			}
+			cls.AnnotationDefaults[m.Name] = m.Default
+		}
+		if m.Access&(classfile.AccSynthetic|classfile.AccBridge) != 0 {
+			continue
+		}
 		// Protected members are for subclasses, which can be Kotlin classes.
 		pkgPrivate := samePkg && packagePrivate(m.Access)
-		if m.Access&(classfile.AccPublic|classfile.AccProtected) == 0 && !pkgPrivate || m.Access&(classfile.AccSynthetic|classfile.AccBridge) != 0 {
+		hidden := m.Access&(classfile.AccPublic|classfile.AccProtected) == 0 && !pkgPrivate
+		if hidden && !source {
 			continue
 		}
 		f := &types.FunSym{Name: m.Name, Owner: cls, Desc: m.Desc, Static: m.Access&classfile.AccStatic != 0, Operator: true, Resolved: true,
@@ -239,6 +301,16 @@ func (t *classTable) load(cls *types.ClassSym) {
 		for _, p := range f.Params {
 			p.Type = javaParam(p.Type)
 		}
+		if t.javaTypes {
+			f.Ret = enhance(m.Annotations, f.Ret)
+			// javac leaves out synthetic parameters, which come first.
+			off := len(f.Params) - len(m.ParamAnnotations)
+			for i, as := range m.ParamAnnotations {
+				if off+i >= 0 {
+					f.Params[off+i].Type = enhance(as, f.Params[off+i].Type)
+				}
+			}
+		}
 		if varargs && len(f.Params) > 0 {
 			p := f.Params[len(f.Params)-1]
 			p.Vararg, p.Type = true, types.VarargArray(p.Type)
@@ -253,6 +325,16 @@ func (t *classTable) load(cls *types.ClassSym) {
 		}
 		switch {
 		case m.Name == "<clinit>":
+		case hidden:
+			if m.Name == "<init>" {
+				f.Ret = types.ClassType(cls)
+				if info.Access&classfile.AccEnum != 0 && strings.HasPrefix(m.Desc, "(Ljava/lang/String;I") && len(f.Params) >= 2 && !strings.HasPrefix(m.Sig, "(Ljava/lang/String;I") {
+					// javac's enum constructor takes the entry's name and
+					// ordinal first, which the source doesn't declare.
+					f.Params = f.Params[2:]
+				}
+			}
+			cls.JavaHidden.Methods = append(cls.JavaHidden.Methods, f)
 		case m.Name == "<init>":
 			// An abstract class's constructors are for its subclasses.
 			f.Ret = types.ClassType(cls)
@@ -300,12 +382,33 @@ func (t *classTable) load(cls *types.ClassSym) {
 				if cls.JavaFields == nil {
 					cls.JavaFields = map[string]*types.VarSym{}
 				}
-				cls.JavaFields[fd.Name] = &types.VarSym{Name: fd.Name, Type: ft.Platform(), Kind: types.Prop, Owner: cls, Resolved: true, Final: true,
+				cls.JavaFields[fd.Name] = &types.VarSym{Name: fd.Name, Type: t.fieldNullability(fd, ft.Platform()), Kind: types.Prop, Owner: cls, Resolved: true, Final: true,
 					JvmField: true, Mutable: fd.Access&classfile.AccFinal == 0, Protected: fd.Access&classfile.AccProtected != 0, PackagePrivate: pkgPrivate}
 			}
 			continue
 		}
 		if fd.Access&(classfile.AccPublic|classfile.AccProtected) == 0 && !pkgPrivate || fd.Access&classfile.AccStatic == 0 {
+			static := fd.Access&classfile.AccStatic != 0
+			if source && fd.Access&classfile.AccSynthetic == 0 && (static || fd.Access&classfile.AccProtected == 0) {
+				var tps []*types.TypeParamSym
+				if !static {
+					tps = cls.TypeParams
+				}
+				if ft, ok := t.fieldType(fd.Desc); ok && ft.K != types.Unit {
+					if fd.Sig != "" {
+						if st, sok := t.fieldSignature(fd.Sig, tps); sok {
+							ft = st
+						}
+					}
+					kind := types.Prop
+					if static {
+						kind = types.Static
+					}
+					cls.JavaHidden.Fields = append(cls.JavaHidden.Fields, &types.VarSym{Name: fd.Name, Type: t.fieldNullability(fd, ft.Platform()), Kind: kind,
+						Owner: cls, Resolved: true, Final: true, JvmField: true, Mutable: fd.Access&classfile.AccFinal == 0,
+						Constant: fieldConstant(fd)})
+				}
+			}
 			continue
 		}
 		ft, ok := t.fieldType(fd.Desc)
@@ -313,7 +416,7 @@ func (t *classTable) load(cls *types.ClassSym) {
 			ft, ok = t.fieldSignature(fd.Sig, nil)
 		}
 		if ok && ft.K != types.Unit {
-			cls.Fields[fd.Name] = &types.VarSym{Name: fd.Name, Type: ft, Kind: types.Static, Owner: cls, Resolved: true,
+			cls.Fields[fd.Name] = &types.VarSym{Name: fd.Name, Type: t.fieldNullability(fd, ft), Kind: types.Static, Owner: cls, Resolved: true,
 				Constant: fieldConstant(fd), Mutable: fd.Access&classfile.AccFinal == 0, PackagePrivate: pkgPrivate,
 				Protected: fd.Access&classfile.AccProtected != 0}
 		}
@@ -321,6 +424,60 @@ func (t *classTable) load(cls *types.ClassSym) {
 			cls.Entries = append(cls.Entries, fd.Name)
 		}
 	}
+}
+
+// fieldNullability returns the type ft of field fd as its annotations
+// make it, under Library.JavaTypes.
+func (t *classTable) fieldNullability(fd classfile.Member, ft types.Type) types.Type {
+	if !t.javaTypes {
+		return ft
+	}
+	return enhance(fd.Annotations, ft)
+}
+
+// Nullability annotations kotlinc reads on Java declarations, by
+// descriptor: true for those that make a type non-null, false for
+// nullable. JSR-305's javax.annotation ones only warn by default, and
+// leave platform types as they are.
+var javaNullability = func() map[string]bool {
+	m := map[string]bool{}
+	for _, n := range []string{"org/jetbrains/annotations/NotNull", "androidx/annotation/NonNull", "androidx/annotation/RecentlyNonNull",
+		"android/support/annotation/NonNull", "android/annotation/NonNull", "com/android/annotations/NonNull",
+		"org/eclipse/jdt/annotation/NonNull", "org/checkerframework/checker/nullness/qual/NonNull",
+		"org/checkerframework/checker/nullness/compatqual/NonNullDecl", "edu/umd/cs/findbugs/annotations/NonNull",
+		"lombok/NonNull", "io/reactivex/annotations/NonNull", "io/reactivex/rxjava3/annotations/NonNull"} {
+		m["L"+n+";"] = true
+	}
+	for _, n := range []string{"org/jetbrains/annotations/Nullable", "androidx/annotation/Nullable", "androidx/annotation/RecentlyNullable",
+		"android/support/annotation/Nullable", "android/annotation/Nullable", "com/android/annotations/Nullable",
+		"org/eclipse/jdt/annotation/Nullable", "org/checkerframework/checker/nullness/qual/Nullable",
+		"org/checkerframework/checker/nullness/compatqual/NullableDecl", "edu/umd/cs/findbugs/annotations/Nullable",
+		"edu/umd/cs/findbugs/annotations/CheckForNull", "edu/umd/cs/findbugs/annotations/PossiblyNull",
+		"io/reactivex/annotations/Nullable", "io/reactivex/rxjava3/annotations/Nullable"} {
+		m["L"+n+";"] = false
+	}
+	return m
+}()
+
+// enhance returns platform type t as the nullability annotations among
+// as make it: non-null or nullable, or t itself with neither or both.
+func enhance(as []string, t types.Type) types.Type {
+	if !t.P {
+		return t
+	}
+	notNull, nullable := false, false
+	for _, a := range as {
+		if nn, ok := javaNullability[a]; ok {
+			notNull, nullable = notNull || nn, nullable || !nn
+		}
+	}
+	switch {
+	case notNull == nullable:
+		return t
+	case notNull:
+		return t.NonNull()
+	}
+	return t.Nullable()
 }
 
 // kotlinMapped are the Java classes that are Kotlin types, with Kotlin's
@@ -451,6 +608,7 @@ func (c *Checker) resolveImports() {
 	// import: two of one name conflict, even of one class.
 	classifiers := map[string][]syntax.Pos{}
 	for _, imp := range c.file.Imports {
+		c.noteImport(imp)
 		name := strings.ReplaceAll(imp.Path, ".", "/")
 		if imp.Star {
 			if starred[imp.Path] {
@@ -740,6 +898,9 @@ func (c *Checker) findClassifier(name string) classifier {
 			return classifier{cls: k} // a local class
 		}
 	}
+	if c.u.lookups != nil {
+		defer c.noteClassifier(name)
+	}
 	if k := c.nestedClassifier(name); k != (classifier{}) {
 		return k
 	}
@@ -1023,7 +1184,7 @@ func (c *Checker) extCalleesFor(name string, rt types.Type, x *syntax.Call) []ca
 	for i := len(c.recvs) - 1; i >= 0; i-- {
 		r := &c.recvs[i]
 		rt := c.scope.narrowed(r.sym).NonNull()
-		if cls := c.classOf(rt); cls != nil && (cls.External || c.u.memberExts) {
+		if cls := c.classOf(rt); cls != nil && c.mayHaveMemberExts(cls) {
 			if out := fits(memberExtMethods(cls, name)); len(out) > 0 {
 				for j := range out {
 					out[j].dispatchRecv = r
@@ -1186,7 +1347,7 @@ func (c *Checker) extProp(x *syntax.Member, rt types.Type) (types.Type, bool) {
 	for i := len(c.recvs) - 1; i >= 0 && best == nil; i-- {
 		r := &c.recvs[i]
 		t := c.scope.narrowed(r.sym).NonNull()
-		if cls := c.classOf(t); cls != nil && (cls.External || c.u.memberExts) {
+		if cls := c.classOf(t); cls != nil && c.mayHaveMemberExts(cls) {
 			sub = func(g *types.FunSym) types.Subst { return c.memberSubst(t, g.Owner) }
 			if fits(memberExtProps(cls, x.Name)); best != nil {
 				dispatch, dispatchRecv = nil, r
@@ -1551,7 +1712,11 @@ func (c *Checker) jvmClass(t types.Type) *types.ClassSym {
 // supertypes. An override hides the methods it overrides.
 func (c *Checker) javaMethods(cls *types.ClassSym, name string) []*types.FunSym {
 	k := methodsKey{cls, name}
-	if ms, ok := c.u.ext.methods.Load(k); ok {
+	cache := &c.u.ext.caches
+	if !cls.External && !cls.Global {
+		cache = &c.u.local
+	}
+	if ms, ok := cache.methods.Load(k); ok {
 		return ms.([]*types.FunSym)
 	}
 	ms := javaMethods(cls, name)
@@ -1567,7 +1732,7 @@ func (c *Checker) javaMethods(cls *types.ClassSym, name string) []*types.FunSym 
 		c.inheritExtDefaults(f)
 	}
 	ms = c.intersectionDefaults(cls, ms)
-	c.u.ext.methods.Store(k, ms)
+	cache.methods.Store(k, ms)
 	return ms
 }
 
@@ -1687,9 +1852,10 @@ func javaMethods(cls *types.ClassSym, name string) []*types.FunSym {
 			}
 			// The program's overloads in one class are distinct even when
 			// their erasures are the same, as f(List<A>) and f(List<B>)
-			// renamed by @JvmName. A class file's are distinct by
-			// descriptor, but for covariant return bridges.
-			if f.Decl == nil {
+			// renamed by @JvmName, and so are a class file's whose JVM
+			// names aren't their own. A class file's others are distinct
+			// by descriptor, but for covariant return bridges.
+			if f.Decl == nil && (f.JVMName == "" || f.JVMName == f.Name) {
 				seen[params] = true
 			} else {
 				own = append(own, params)
@@ -1874,6 +2040,11 @@ func (c *Checker) construct(x *syntax.Call, cls *types.ClassSym, p syntax.Pos, w
 		// The program's annotation class, or a Kotlin one of the class
 		// path.
 		return c.annotationConstruct(x, cls, p, want, sink)
+	}
+	if c.annotDefault && cls.External && cls.Java == nil {
+		if cls.Ensure(); cls.Retention != types.NoRetention {
+			return c.javaAnnotationDefault(x, cls, want, sink)
+		}
 	}
 	if cls.Inner && x.Outer == nil {
 		outer, ot := c.implicitOuter(cls.Outer, p)

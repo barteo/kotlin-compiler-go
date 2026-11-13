@@ -139,6 +139,16 @@ func File(s *psi.Snapshot) (*syntax.File, *Provenance, []*syntax.Error) {
 		}
 	}
 	f := l.file(s.RootNode())
+	if len(l.errs) == 0 {
+		// Every error element is under a declaration that reports it;
+		// this keeps a file with one from ever lowering cleanly.
+		for _, id := range l.errorIDs {
+			if !l.recoverable(s.Node(id)) {
+				l.decl(s.RootNode(), func() { l.failSyntax(s.Node(id)) })
+				break
+			}
+		}
+	}
 	f.Errors = l.later
 	f.SuppressInvisible = l.suppressInvisible
 	f.SuppressShadowed = l.suppressShadowed
@@ -249,13 +259,108 @@ func (l *lowerer) unexpected(n psi.NodeRef) {
 }
 
 // syntaxError fails if n contains a psi syntax error, with its message.
+// Errors inside a class body under n don't count: each member of a body
+// is lowered with decl, which reports them, so the class keeps its other
+// members.
 func (l *lowerer) syntaxError(n psi.NodeRef) {
 	lo, hi := n.ID(), n.SubtreeEnd()
 	i := sort.Search(len(l.errorIDs), func(i int) bool { return l.errorIDs[i] >= lo })
-	if i == len(l.errorIDs) || l.errorIDs[i] >= hi {
-		return
+	for ; i < len(l.errorIDs) && l.errorIDs[i] < hi; i++ {
+		e := l.s.Node(l.errorIDs[i])
+		if l.inBody(e, n) || l.recoverable(e) {
+			continue
+		}
+		l.failSyntax(e)
 	}
-	e := l.s.Node(l.errorIDs[i])
+}
+
+// recoverable reports whether the psi error element e leaves its
+// declaration whole: a value parameter written without its type, which
+// paramType gives an invalid type and reports, an object declaration
+// without its name, which class names as FIR does and reports, or a
+// property type's unclosed type argument list, which prop keeps as far as
+// it parsed, as FIR does, and reports.
+func (l *lowerer) recoverable(e psi.NodeRef) bool {
+	p := e.Parent()
+	if unclosedPropType(e) {
+		return true
+	}
+	if p.NumericKind() == psi.KindOBJECT_DECLARATION && !first(e).Valid() && !has(p, psi.KindIDENTIFIER) {
+		return true
+	}
+	return p.NumericKind() == psi.KindVALUE_PARAMETER && !has(p, psi.KindTYPE_REFERENCE) &&
+		has(p, psi.KindIDENTIFIER) && p.Parent().NumericKind() == psi.KindVALUE_PARAMETER_LIST &&
+		(p.Parent().Parent().NumericKind() == psi.KindPRIMARY_CONSTRUCTOR ||
+			p.Parent().Parent().NumericKind() == psi.KindFUN ||
+			p.Parent().Parent().NumericKind() == psi.KindSECONDARY_CONSTRUCTOR)
+}
+
+// unclosedPropType reports whether the psi error element e is a property
+// type's unclosed type argument list, Bar<out P in val x: Bar<out P!!>, or
+// the rest of the property after that type, which psi leaves in one error
+// element.
+func unclosedPropType(e psi.NodeRef) bool {
+	p := e.Parent()
+	if p.NumericKind() == psi.KindPROPERTY {
+		t := prev(e)
+		return t.NumericKind() == psi.KindTYPE_REFERENCE && unclosedTypeArgs(t).Valid()
+	}
+	if p.NumericKind() != psi.KindTYPE_ARGUMENT_LIST || first(e).Valid() || next(e).Valid() {
+		return false
+	}
+	for n := p.Parent(); ; n = n.Parent() {
+		switch n.NumericKind() {
+		case psi.KindUSER_TYPE, psi.KindNULLABLE_TYPE, psi.KindTYPE_PROJECTION, psi.KindTYPE_ARGUMENT_LIST:
+		case psi.KindTYPE_REFERENCE:
+			if n.Parent().NumericKind() == psi.KindPROPERTY && prev(n).NumericKind() == psi.KindCOLON {
+				return true
+			}
+		default:
+			return false
+		}
+	}
+}
+
+// unclosedTypeArgs returns the error element that ends an unclosed type
+// argument list in type reference t, or an invalid NodeRef.
+func unclosedTypeArgs(t psi.NodeRef) psi.NodeRef {
+	var found psi.NodeRef
+	var walk func(n psi.NodeRef)
+	walk = func(n psi.NodeRef) {
+		for _, c := range kids(n) {
+			if found.Valid() {
+				return
+			}
+			if c.NumericKind() == psi.KindERROR_ELEMENT && n.NumericKind() == psi.KindTYPE_ARGUMENT_LIST && unclosedPropType(c) {
+				found = c
+				return
+			}
+			walk(c)
+		}
+	}
+	walk(t)
+	return found
+}
+
+// inBody reports whether e is inside a CLASS_BODY strictly under n.
+func (l *lowerer) inBody(e, n psi.NodeRef) bool {
+	for p := e.Parent(); p.Valid() && p.ID() > n.ID(); p = p.Parent() {
+		if p.NumericKind() == psi.KindCLASS_BODY {
+			return true
+		}
+	}
+	return false
+}
+
+// failSyntax fails on the psi error element e, with its message.
+func (l *lowerer) failSyntax(e psi.NodeRef) {
+	pos, msg := l.syntaxMessage(e)
+	l.failAt(pos, "%s", msg)
+}
+
+// syntaxMessage returns the position and message of the psi error
+// element e.
+func (l *lowerer) syntaxMessage(e psi.NodeRef) (syntax.Pos, string) {
 	msg := "syntax error"
 	r := e.Range()
 	for _, d := range l.s.Diagnostics() {
@@ -264,7 +369,7 @@ func (l *lowerer) syntaxError(n psi.NodeRef) {
 			break
 		}
 	}
-	l.failAt(l.posAt(r.Start), "%s", msg)
+	return l.posAt(r.Start), msg
 }
 
 // decl lowers one declaration with lower. An error is recorded, and

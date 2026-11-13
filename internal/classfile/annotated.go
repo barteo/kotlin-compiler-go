@@ -40,7 +40,7 @@ func ParseAnnotated(data []byte) (*Annotated, error) {
 			if !ok {
 				break
 			}
-			as = append(as, v)
+			as = append(as, *v.Ann)
 		}
 		r.pos = min(end, len(r.b))
 		return as
@@ -58,7 +58,7 @@ func ParseAnnotated(data []byte) (*Annotated, error) {
 					r.pos = min(end, len(r.b))
 					return into
 				}
-				into[i] = append(into[i], v)
+				into[i] = append(into[i], *v.Ann)
 			}
 		}
 		r.pos = min(end, len(r.b))
@@ -113,22 +113,4 @@ func ParseAnnotated(data []byte) (*Annotated, error) {
 		return nil, r.err
 	}
 	return a, nil
-}
-
-// readAnnotation reads an annotation: its type and its element pairs.
-func readAnnotation(r *reader, p *pool) (Annotation, bool) {
-	typ, err := p.utf8(r.u2())
-	if err != nil {
-		return Annotation{}, false
-	}
-	a := Annotation{Type: typ}
-	for range r.u2() {
-		name, err := p.utf8(r.u2())
-		v, ok := readValue(r, p, 0)
-		if err != nil || !ok {
-			return a, false
-		}
-		a.Values = append(a.Values, ElementPair{Name: name, Value: v})
-	}
-	return a, r.err == nil
 }

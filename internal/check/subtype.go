@@ -218,12 +218,13 @@ func (c *Checker) asSuper(t types.Type, target *types.ClassSym) (types.Type, boo
 		return c.asSuper1(t, target, 0) // inference variables are not reused
 	}
 	k := superKey{t, target}
-	if r, ok := c.u.ext.supers.Load(k); ok {
+	cache := c.u.cache(t, types.ClassType(target))
+	if r, ok := cache.supers.Load(k); ok {
 		r := r.(superResult)
 		return r.t, r.ok
 	}
 	st, ok := c.asSuper1(t, target, 0)
-	c.u.ext.supers.Store(k, superResult{st, ok})
+	cache.supers.Store(k, superResult{st, ok})
 	return st, ok
 }
 

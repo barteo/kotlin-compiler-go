@@ -36,6 +36,9 @@ type Config struct {
 	// against. The Kotlin standard library is not added: callers that
 	// want it name it here.
 	ClassPath []string
+	// FriendPaths are the entries of ClassPath whose internal
+	// declarations the sources see, as with kotlinc's -Xfriend-paths.
+	FriendPaths []string
 	// NoJDK analyzes without JDK classes.
 	NoJDK bool
 	// Jobs is how many goroutines lower and check the sources; less than

@@ -1,5 +1,10 @@
 package kmeta
 
+import (
+	"encoding/binary"
+	"math"
+)
+
 // The declarations in Kotlin metadata, decoded from the messages of
 // core/metadata/src/metadata.proto and the JVM extensions of
 // core/metadata.jvm/src/jvm_metadata.proto in the Kotlin repository.
@@ -30,6 +35,15 @@ type Type struct {
 	// contextOf's context parameter's, which doesn't infer a call's type
 	// arguments.
 	NoInfer bool
+	// Abbrev is the typealias type the type was written as, if it was:
+	// a type whose Alias is the typealias's class id, with the alias's
+	// type arguments; the type itself is the alias's expansion.
+	Abbrev *Type
+	// Alias is the typealias of an Abbrev, whose Class is "".
+	Alias string
+	// Annotations are the type's other annotations, @A T, with their
+	// arguments.
+	Annotations []*Annotation
 }
 
 // Type flags.
@@ -498,6 +512,12 @@ func (s scope) typ(msg []byte) *Type {
 			t.Outer = s.typ(d.bytes())
 		case 11:
 			t.Outer = s.typeID(d.int())
+		case 12:
+			t.Alias = s.names.class(d.int())
+		case 13:
+			t.Abbrev = s.typ(d.bytes())
+		case 14:
+			t.Abbrev = s.typeID(d.int())
 		case 100: // JvmProtoBuf.typeAnnotation
 			a := d.bytes()
 			switch s.annotationClass(a) {
@@ -509,8 +529,10 @@ func (s scope) typ(msg []byte) *Type {
 				t.Contexts = intArg(a)
 			case "kotlin/internal/NoInfer":
 				t.NoInfer = true
+			default:
+				t.Annotations = append(t.Annotations, s.annotation(a))
 			}
-		default: // abbreviations, other extensions
+		default: // other extensions
 			d.skip(w)
 		}
 	}
@@ -559,6 +581,78 @@ func (s scope) annotationClass(msg []byte) string {
 		d.skip(w)
 	}
 	return ""
+}
+
+// annotation decodes an Annotation message.
+func (s scope) annotation(msg []byte) *Annotation {
+	a := &Annotation{}
+	d := decoder{msg}
+	for d.more() {
+		f, w := d.key()
+		switch {
+		case f == 1 && w == wireVarint:
+			a.Class = s.names.class(d.int())
+		case f == 2 && w == wireBytes:
+			var arg AnnotationArg
+			x := decoder{d.bytes()}
+			for x.more() {
+				f, w := x.key()
+				switch {
+				case f == 1 && w == wireVarint:
+					arg.Name = s.names.str(x.int())
+				case f == 2 && w == wireBytes:
+					arg.Value = s.annotationValue(x.bytes())
+				default:
+					x.skip(w)
+				}
+			}
+			a.Args = append(a.Args, arg)
+		default:
+			d.skip(w)
+		}
+	}
+	return a
+}
+
+// annotationValue decodes an Annotation.Argument.Value message.
+func (s scope) annotationValue(msg []byte) AnnotationValue {
+	var v AnnotationValue
+	d := decoder{msg}
+	for d.more() {
+		f, w := d.key()
+		switch {
+		case f == 1 && w == wireVarint:
+			v.Kind = ValueKind(d.int())
+		case f == 2 && w == wireVarint:
+			n := d.varint()
+			v.Int = int64(n>>1) ^ -int64(n&1) // zigzag
+		case f == 3 && w == wire32:
+			if len(d.b) < 4 {
+				fail("truncated field")
+			}
+			v.Float = float64(math.Float32frombits(binary.LittleEndian.Uint32(d.b)))
+			d.fixed(4)
+		case f == 4 && w == wire64:
+			if len(d.b) < 8 {
+				fail("truncated field")
+			}
+			v.Float = math.Float64frombits(binary.LittleEndian.Uint64(d.b))
+			d.fixed(8)
+		case f == 5 && w == wireVarint:
+			v.Str = s.names.str(d.int())
+		case f == 6 && w == wireVarint:
+			v.Class = s.names.class(d.int())
+		case f == 7 && w == wireVarint:
+			v.Str = s.names.str(d.int())
+		case f == 8 && w == wireBytes:
+			v.Ann = s.annotation(d.bytes())
+		case f == 9 && w == wireBytes:
+			v.Elems = append(v.Elems, s.annotationValue(d.bytes()))
+		default:
+			d.skip(w)
+		}
+	}
+	return v
 }
 
 func (s scope) arg(msg []byte) Arg {
@@ -675,6 +769,7 @@ func bindNames(params []*TypeParam, ts ...*Type) {
 			bind(a.Type)
 		}
 		bind(t.Upper)
+		bind(t.Abbrev)
 		bind(t.Outer)
 	}
 	for _, t := range ts {

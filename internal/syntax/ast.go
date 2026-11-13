@@ -316,6 +316,9 @@ type AnnotationValue struct {
 	Type  types.Type
 	Array bool
 	Elems []AnnotationElem
+	// Omitted marks the empty array of a vararg parameter given no
+	// arguments, which isn't written in the source.
+	Omitted bool
 }
 
 // AnnotationElem is a value, or an element of an array value: a checked
@@ -921,12 +924,16 @@ type For struct {
 // turns it into Stmts: a temporary holding e, then val a =
 // temp.component1(), and so on. _ declares nothing.
 type Destructure struct {
-	P       Pos
-	Names   []string
-	Types   []*TypeRef // val (a: A, b) = e: the names' types, nil where omitted
-	Mutable bool
-	Init    Expr
-	Stmts   []*VarStmt
+	P     Pos
+	Names []string
+	Types []*TypeRef // val (a: A, b) = e: the names' types, nil where omitted
+	// Annotations are the names' own annotations, val (@A a, b) = e; nil
+	// where there are none. The checker checks them, and class files
+	// don't keep them.
+	Annotations [][]Annotation
+	Mutable     bool
+	Init        Expr
+	Stmts       []*VarStmt
 }
 
 func (*Destructure) stmtNode() {}
@@ -1306,10 +1313,10 @@ type Call struct {
 	// replaces with an expression, which is generated instead: the
 	// serialization plugin's serializer<T>() of a known T.
 	Value Expr
-	// Serializers are set by the checker on a call of a library's inline
-	// function with reified type parameters, by their names: the
-	// serializers of their type arguments, which its copied bytecode's
-	// serializer<T>() becomes, as the serialization plugin replaces it.
+	// Serializers are set by the checker on a call of an inline function
+	// with reified type parameters, by their names: the serializers of
+	// their type arguments, which serializer<T>() in its copy becomes, as
+	// the serialization plugin replaces it.
 	Serializers map[string]Expr
 	trailing    bool // has a trailing lambda, or passes the last argument last
 }

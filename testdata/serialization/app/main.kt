@@ -63,6 +63,16 @@ fun <T> encodeFails(s: KSerializer<T>, v: T) {
 fun serializerOf(type: KClass<*>, kotlinType: KType?): KSerializer<out Any?> =
     kotlinType?.let { serializer(it) } ?: type.serializer()
 
+// serializer<T>() in the program's inline functions is the serializer of
+// the call's T, also where a function passes its T on to another.
+inline fun <reified T> serialNameOf(): String = serializer<T>().descriptor.serialName
+
+inline fun <reified T> encoded(value: T): String = Json.Default.encodeToString<T>(value)
+
+inline fun <reified T> passedOn(): String = run { serialNameOf<T>() }
+
+inline fun <reified T> inLambda(): () -> String = { serializer<T>().descriptor.serialName }
+
 fun main() {
     check("prims", Prims.serializer(), Prims(1, 2L, 3, 4, 'c', 1.5f, 2.5, true, "s"))
     check("nullables", Nullables.serializer(), Nullables(str = null))
@@ -132,6 +142,7 @@ fun main() {
     println(buildClassSerialDescriptor("app.Tags") { element<List<Tag>?>("tags") }.getElementDescriptor(0))
     println(Json.Default.encodeToString<Tag>(Tag("c")))
     println(Json.Default.decodeFromString<List<Tag>>("[\"<d>\"]"))
+    println(serialNameOf<Tag>() + " " + encoded(Tag("e")) + " " + passedOn<Tag>() + " " + inLambda<Tag>()() + " " + serialNameOf<Tag?>())
     println(Json.Default.decodeFromString(Encoded.serializer(), """{"never":["y"],"body":5}""").let { "$it ${it.body}" })
     check("pet", Pet.serializer(), Pet.Zebra(3))
     check("pet nested", Pet.serializer(), Pet.Wild.Fox(1))

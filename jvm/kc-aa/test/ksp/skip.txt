@@ -1,0 +1,2 @@
+testDeferredTypeRefs: disabled: @Disabled in KSPUnitTestSuite
+testPlatformDeclaration: disabled: @Disabled in KSPUnitTestSuite

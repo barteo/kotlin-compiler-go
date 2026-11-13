@@ -145,6 +145,17 @@ func (c *Checker) resolveExtProp(d *syntax.PropDecl) {
 	g := d.Getter
 	if g == nil {
 		sym.Type, sym.Resolved = types.InvalidType, true
+		if d.Init != nil && len(d.TypeParams) == 0 {
+			// Still resolve the written types, which tools read.
+			if sym.Owner != nil {
+				c.tparams = sym.Owner.TypeParams
+				defer func() { c.tparams = nil }()
+			}
+			c.resolveType(d.Recv)
+			if d.Type != nil {
+				sym.Type = c.resolveType(d.Type)
+			}
+		}
 		return
 	}
 	gs := g.Sym
@@ -316,6 +327,22 @@ func (c *Checker) checkExtPropOverrides(d *syntax.ClassDecl) {
 			}
 		}
 	}
+}
+
+// mayHaveMemberExts reports whether class cls may declare or inherit
+// member extensions: a class of the class path, any class if the program
+// declares some, or a class of the program with a supertype from the
+// class path, which may declare them.
+func (c *Checker) mayHaveMemberExts(cls *types.ClassSym) bool {
+	if cls.External || c.u.memberExts {
+		return true
+	}
+	found := false
+	cls.Supertypes(func(s *types.ClassSym) bool {
+		found = s.External && (len(s.ExtMethods) > 0 || len(s.ExtProps) > 0)
+		return !found
+	})
+	return found
 }
 
 // memberExtProps returns the getters of the extension properties named

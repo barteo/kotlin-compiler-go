@@ -573,7 +573,7 @@ func (s *system) fix(tv *tvar) {
 			}
 		}
 	case len(tv.lits) > 0:
-		val = s.litType(tv, uppers)
+		val = s.litType(tv, append(uppers, s.litUppers(tv)...))
 	case len(uppers) > 0:
 		val = uppers[0]
 		for _, u := range uppers[1:] {
@@ -688,6 +688,38 @@ func (s *system) fix(tv *tvar) {
 				val.String() + " of type parameter '" + tv.v.Name + "' is not a subtype of " + b.String()})
 		}
 	}
+}
+
+// litUppers returns the Long, Short or Byte types that the unfixed
+// variables above tv are known to be above: the integer literals passed
+// for tv take such a type, as 1 of has("a" to 1) for has(element:
+// Pair<K, V>) once a Map<String, Long> gives V the Long.
+func (s *system) litUppers(tv *tvar) []types.Type {
+	var out []types.Type
+	for _, u := range tv.upper {
+		if u = s.apply(u); u.K != types.TypeVar || u.N {
+			continue
+		}
+		uv := s.byVar[u.Param()]
+		if uv == nil || uv.fixed || len(uv.lits) > 0 {
+			continue
+		}
+		t := types.InvalidType
+		for _, l := range uv.lower {
+			if l = s.apply(l); l.HasVars() {
+				continue // tv itself, or another variable below it
+			}
+			if t.K != types.Invalid && l != t {
+				t = types.InvalidType
+				break
+			}
+			t = l
+		}
+		if (t.K == types.Long || t.K == types.Short || t.K == types.Byte) && !t.N {
+			out = append(out, t)
+		}
+	}
+	return out
 }
 
 // litType is the type of the integer literals passed for a variable: Int,

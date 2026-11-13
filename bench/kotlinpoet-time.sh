@@ -58,7 +58,7 @@ hyperfine --warmup 1 --runs 10 --style basic --export-json "$work/kc.json" \
 # shellcheck disable=SC2086
 hyperfine --runs "$runs" --style basic --export-json "$work/kotlinc.json" \
 	--prepare "rm -rf $work/out-kotlinc && sleep $cooldown" \
-	-n "kotlinc (cold JVM)" "kotlinc $(echo $kotlinc_args) -d $work/out-kotlinc $common $jvm"
+	-n "kotlinc (cold JVM)" "kotlinc $(echo $kotlinc_args) -d $work/out-kotlinc $(echo $common $jvm)"
 python3 -c 'import json, sys
 r = [x for f in sys.argv[2:] for x in json.load(open(f))["results"]]
 json.dump({"results": r}, open(sys.argv[1], "w"), indent=2)' \

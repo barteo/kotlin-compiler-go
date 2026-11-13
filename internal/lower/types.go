@@ -72,7 +72,7 @@ func (l *lowerer) typeWith(n psi.NodeRef, recv bool) (*syntax.TypeRef, []syntax.
 				}
 			case psi.KindANNOTATION:
 				leading = false
-				as = append(as, l.bracketAnnotation(c))
+				as = append(as, l.bracketAnnotations(c)...)
 			case psi.KindSUSPEND_KEYWORD:
 				suspendAt = c
 			default:
@@ -310,7 +310,7 @@ func (l *lowerer) typeParams(n psi.NodeRef) []*syntax.TypeParam {
 					tp.Annotations = append(tp.Annotations, a)
 					tp.OnlyInput = tp.OnlyInput || a.Is("internal.OnlyInputTypes") // for the inference
 				case psi.KindANNOTATION:
-					tp.Annotations = append(tp.Annotations, l.bracketAnnotation(k))
+					tp.Annotations = append(tp.Annotations, l.bracketAnnotations(k)...)
 				case psi.KindCONTEXT_PARAMETER_LIST:
 					l.fail(child(k, psi.KindLPAR), "expected '>', found '('")
 				}
@@ -466,7 +466,7 @@ func (l *lowerer) modifiersOf(cs []psi.NodeRef) syntax.Modifiers {
 			}
 			m.Annotations = append(m.Annotations, a)
 		case psi.KindANNOTATION:
-			// @[A B]: kc skips the annotations in brackets.
+			m.Annotations = append(m.Annotations, l.bracketAnnotations(c)...)
 		case psi.KindCONTEXT_PARAMETER_LIST:
 			if m.Contexts != nil {
 				l.fail(c, "repeated context parameter lists")
@@ -564,6 +564,7 @@ func (l *lowerer) contextParams(n psi.NodeRef) []*syntax.Param {
 				case psi.KindANNOTATION_ENTRY:
 					p.Annotations = append(p.Annotations, l.annotation(k))
 				case psi.KindANNOTATION:
+					p.Annotations = append(p.Annotations, l.bracketAnnotations(k)...)
 				case psi.KindNOINLINE_KEYWORD:
 					p.Noinline = true
 				case psi.KindCROSSINLINE_KEYWORD:

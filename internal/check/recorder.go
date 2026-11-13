@@ -46,11 +46,31 @@ type OverrideRecorder interface {
 	Overridden(func(f *types.FunSym) []*types.FunSym)
 }
 
+// A ValueRecorder is a Recorder that is also given the checked arguments
+// of the annotations of declarations, by parameter, as the checker maps
+// them: those of SOURCE-retention classes too, which class files don't
+// keep, and those with errors, as far as they were checked.
+type ValueRecorder interface {
+	AnnotationValues(f *syntax.File, a *syntax.Annotation, values []syntax.AnnotationValue)
+}
+
+// A PhaseRecorder is a Recorder that is told when checking starts the
+// bodies of the files, after the signatures: for timing.
+type PhaseRecorder interface {
+	Bodies()
+}
+
 // An AliasRecorder is a Recorder that is also told the typealias a type
 // reference or a constructor call names: Alias in x: Alias and Alias(1).
 type AliasRecorder interface {
 	// Alias reports that x, a *syntax.TypeRef or a *syntax.Call, names a.
 	Alias(x any, a *types.AliasSym)
+}
+
+// An AnnotationAliasRecorder is a Recorder that is also told the
+// typealias an annotation names its class by: @Alias.
+type AnnotationAliasRecorder interface {
+	AnnotationAlias(f *syntax.File, a *syntax.Annotation, alias *types.AliasSym)
 }
 
 // recordAlias reports to an AliasRecorder that x names a.
