@@ -2252,9 +2252,9 @@ tests/cyclicHierarchy/commonSupertypeForCyclicTypes.kt	rejects invalid	on an exp
 tests/cyclicHierarchy/cyclicHierarchy.kt	rejects invalid	on an expected line	
 tests/cyclicHierarchy/javaJavaCycle.kt	accepts invalid	(no error marked)	
 tests/cyclicHierarchy/javaJavaNested.kt	accepts valid		
-tests/cyclicHierarchy/javaKotlinJavaCycle.kt	accepts invalid	CYCLIC_INHERITANCE_HIERARCHY	B.kt:2: CYCLIC_INHERITANCE_HIERARCHY
-tests/cyclicHierarchy/kotlinJavaCycle.kt	accepts invalid	CYCLIC_INHERITANCE_HIERARCHY	K.kt:2: CYCLIC_INHERITANCE_HIERARCHY
-tests/cyclicHierarchy/kotlinJavaKotlinCycle.kt	accepts invalid	CYCLIC_INHERITANCE_HIERARCHY	K.kt:2: CYCLIC_INHERITANCE_HIERARCHY
+tests/cyclicHierarchy/javaKotlinJavaCycle.kt	rejects invalid	on an expected line	
+tests/cyclicHierarchy/kotlinJavaCycle.kt	rejects invalid	on an expected line	
+tests/cyclicHierarchy/kotlinJavaKotlinCycle.kt	rejects invalid	on an expected line	
 tests/cyclicHierarchy/kotlinJavaNestedCycle.kt	accepts invalid	EXPOSED_SUPER_INTERFACE; CYCLIC_INHERITANCE_HIERARCHY	ExceptionTracker.kt:2: EXPOSED_SUPER_INTERFACE
 tests/cyclicHierarchy/kt303.kt	rejects invalid	on an expected line	
 tests/cyclicHierarchy/nestedClassInSuperClassParameter.kt	accepts valid		
@@ -10551,7 +10551,7 @@ testsWithStdLib/problems/AbstractToolConfig.kt	accepts valid
 testsWithStdLib/problems/DeepCopyIrTree.kt	skip	LANGUAGE	
 testsWithStdLib/problems/EnumMapGet.kt	accepts invalid	UPPER_BOUND_VIOLATED; UPPER_BOUND_VIOLATED_IN_TYPEALIAS_EXPANSION	EnumMapGet.kt:6: UPPER_BOUND_VIOLATED
 testsWithStdLib/problems/FieldAnnotationWithClasses.kt	accepts valid		
-testsWithStdLib/problems/KJKComplexHierarchyNestedLoop.kt	crash	timed out	
+testsWithStdLib/problems/KJKComplexHierarchyNestedLoop.kt	rejects invalid	on an expected line	
 testsWithStdLib/problems/KtFirCompositeScope.kt	accepts valid		
 testsWithStdLib/problems/NamedParameterInConcurrentMap.kt	rejects valid	named arguments are not allowed for non-Kotlin functions	NamedParameterInConcurrentMap.kt:8: named arguments are not allowed for non-Kotlin functions
 testsWithStdLib/problems/SpecialCallsWithLambdas.kt	accepts valid		

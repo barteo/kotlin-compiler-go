@@ -155,6 +155,13 @@ func newClassTable(cp *classpath.Path) *classTable {
 	return t
 }
 
+// javaSource reports whether cls is a class of the program's Java
+// sources: one of an overlay's (see withSources), or one the class path
+// has from a source file.
+func (t *classTable) javaSource(cls *types.ClassSym) bool {
+	return cls.Source || cls.External && t.cp != nil && t.cp.IsSource(cls.Name)
+}
+
 // class returns the class with the given internal name, or nil if it is
 // not on the class path. With the Kotlin standard library, the Java
 // collection interfaces are the mutable collection types, and the
