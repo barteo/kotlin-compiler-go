@@ -247,6 +247,9 @@ type Checker struct {
 	stubHints map[stubHintKey]types.Type
 	// ambiguities counts the ambiguous calls reported.
 	ambiguities int
+	// origSAM is set while candidates compare by the fun interfaces
+	// lambdas convert to, not their function types (see funInterfaceView).
+	origSAM bool
 	// trial is set while stubInference checks a lambda, to undo what the
 	// check changes outside the lambda.
 	trial *trial

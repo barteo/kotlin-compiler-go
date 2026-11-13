@@ -1125,7 +1125,8 @@ func (c *Checker) checkImplemented(d *syntax.ClassDecl) {
 				if !g.Abstract || g.Static || s.Java != nil && g.Platform || numberJavaName(s, g) {
 					continue
 				}
-				if !c.implemented(cls, this, g) && !(s.Java != nil && concreteInSuper(cls, g.JVM()+types.FunDesc(g))) && !numberImplemented(cls, s, g) {
+				if !c.implemented(cls, this, g) && !(s.Java != nil && concreteInSuper(cls, g.JVM()+types.FunDesc(g))) && !numberImplemented(cls, s, g) &&
+					!(s.External && s.KotlinName == "" && s.Java == nil && kotlinAccessorImplements(cls, s, g)) {
 					missing(name)
 				}
 				if s.Interface && hasDefaults(g) && !inlineReported {
@@ -1149,7 +1150,7 @@ func (c *Checker) checkImplemented(d *syntax.ClassDecl) {
 		if !s.External {
 			for _, p := range s.Props {
 				if p.Abstract {
-					if q := c.implementingProp(cls, s, p.Name, p.Contexts); (q == nil || q.Abstract) && (p.Mutable || !c.javaPropImplements(cls, this, s, p.Name, p.Type, p.Contexts)) {
+					if q := c.implementingProp(cls, s, p.Name, p.Contexts); (q == nil || q.Abstract) && !c.javaPropImplements(cls, this, s, p.Name, p.Type, p.Contexts, p.Mutable) {
 						missing(p.Name)
 					} else {
 						c.inheritedPropImpl(d, cls, s, p, q)
@@ -1161,7 +1162,7 @@ func (c *Checker) checkImplemented(d *syntax.ClassDecl) {
 			for kp := range kpropAlts(kp) {
 				if kp.Getter.Abstract {
 					if q := c.implementingProp(cls, s, name, kp.Getter.Contexts); (q == nil || q.Abstract) && !concreteInSuper(cls, kp.Getter.JVM()+types.FunDesc(kp.Getter)) &&
-						(kp.Setter != nil || !c.javaPropImplements(cls, this, s, name, kp.Getter.Ret, kp.Getter.Contexts)) {
+						!c.javaPropImplements(cls, this, s, name, kp.Getter.Ret, kp.Getter.Contexts, kp.Setter != nil) {
 						missing(name)
 					}
 				}
@@ -1169,6 +1170,85 @@ func (c *Checker) checkImplemented(d *syntax.ClassDecl) {
 		}
 		return true
 	})
+}
+
+// kotlinAccessorImplements reports whether abstract method g of Java
+// class s is implemented by the accessor of a Kotlin property that isn't
+// abstract, of cls or a supertype other than s, with g's JVM name and
+// number of parameters: A.y's getY() implements Java interface C's
+// getY() for a class D extends A implements C, and an override of a
+// Kotlin interface's val B.prop1 Java interface Foo's getProp1(T t), Foo
+// extending the Kotlin one.
+func kotlinAccessorImplements(cls, s *types.ClassSym, g *types.FunSym) bool {
+	name, arity := g.JVM(), len(g.Params)
+	if !strings.HasPrefix(name, "get") && !strings.HasPrefix(name, "is") && !strings.HasPrefix(name, "set") {
+		return false
+	}
+	fits := func(f *types.FunSym) bool {
+		return f != nil && !f.Abstract && !f.Static && f.JVM() == name && jvmArity(f) == arity
+	}
+	// One of cls overrides a property of a supertype: a val y of its own
+	// is an accidental override of a Java interface's getY().
+	inherited := func(prop string) bool {
+		has := false
+		cls.Supertypes(func(t *types.ClassSym) bool {
+			has = t != cls && (t.Prop(prop) != nil || len(t.ExtProps[prop]) > 0 || t.KProps[prop] != nil)
+			return !has
+		})
+		return has
+	}
+	found := false
+	cls.Supertypes(func(t *types.ClassSym) bool {
+		if t == s {
+			return true
+		}
+		switch {
+		case !t.External:
+			for _, p := range t.Props {
+				if p.Abstract || t == cls && !inherited(p.Name) {
+					continue
+				}
+				if types.GetterJVM(p) == name && len(p.Contexts) == arity || p.Mutable && !p.SetterPrivate && types.SetterJVM(p) == name && len(p.Contexts)+1 == arity {
+					found = true
+				}
+			}
+			for prop, gs := range t.ExtProps {
+				if t != cls || inherited(prop) {
+					found = found || slices.ContainsFunc(gs, fits) || slices.ContainsFunc(gs, func(f *types.FunSym) bool { return fits(f.ExtSetter) })
+				}
+			}
+		case t.KotlinName != "":
+			for _, kp := range t.KProps {
+				found = found || fits(kp.Getter) || fits(kp.Setter)
+			}
+		}
+		return !found
+	})
+	return found
+}
+
+// jvmArity returns the number of parameters of f's JVM method: its
+// context parameters, extension receiver and parameters.
+func jvmArity(f *types.FunSym) int {
+	if f.Desc != "" {
+		n := 0
+		for d := f.Desc[1:]; len(d) > 0 && d[0] != ')'; n++ {
+			for d[0] == '[' {
+				d = d[1:]
+			}
+			if d[0] == 'L' {
+				d = d[strings.IndexByte(d, ';')+1:]
+			} else {
+				d = d[1:]
+			}
+		}
+		return n
+	}
+	n := len(f.Contexts) + len(f.Params)
+	if f.Ext {
+		n++
+	}
+	return n
 }
 
 // hasDefaults reports whether a function has parameters with default
@@ -1495,7 +1575,7 @@ func (c *Checker) superCall(x *syntax.Call, fn *syntax.Member, s *syntax.Super, 
 		return types.InvalidType
 	}
 	fn.T = st
-	if !st.C.External && innerOf(st.C, fn.Name) != nil {
+	if n, _ := c.innerNamed(st.C, fn.Name); n != nil && n.Inner {
 		// super.Inner() constructs the supertype's inner class with this
 		// as its outer instance.
 		this := &syntax.This{Label: s.Label}
@@ -1725,22 +1805,47 @@ func (c *Checker) javaProp(s *types.ClassSym, name string) (string, types.Type) 
 }
 
 // javaPropImplements reports whether a superclass of cls on the class
-// path implements property name of interface s, of type t as s declares
-// it, with a method that Kotlin sees as a property (see javaProp): an
-// enum's name implements an interface's val name: String.
-func (c *Checker) javaPropImplements(cls *types.ClassSym, this types.Type, s *types.ClassSym, name string, t types.Type, ctx []*types.VarSym) bool {
-	if !s.Interface || len(ctx) > 0 {
+// path implements property name of supertype s, of type t as s declares
+// it, a var if mutable, with methods Kotlin sees as the property: an
+// enum's name implements an interface's val name: String (see
+// javaProp), and a Java class's getX() and setX(x) implement a var x.
+func (c *Checker) javaPropImplements(cls *types.ClassSym, this types.Type, s *types.ClassSym, name string, t types.Type, ctx []*types.VarSym, mutable bool) bool {
+	if len(ctx) > 0 {
 		return false
 	}
+	want := c.memberSubst(this, s).Apply(t)
 	for sc := cls.Super; sc != nil; sc = sc.Super {
 		if !sc.External {
 			continue
 		}
-		if _, pt := c.javaProp(sc, name); pt.K != types.Invalid {
-			return c.subtype(pt, c.memberSubst(this, s).Apply(t))
+		if s.Interface && !mutable {
+			if _, pt := c.javaProp(sc, name); pt.K != types.Invalid {
+				return c.subtype(pt, want)
+			}
+		}
+		if sc.KotlinName == "" && sc.Java == nil && c.javaAccessorsImplement(this, sc, name, want, mutable) {
+			return true
 		}
 	}
 	return false
+}
+
+// javaAccessorsImplement reports whether Java class sc, a superclass of
+// this, declares methods with code that implement property name of type
+// want, a var if mutable: a getter getX() or isX() whose result is a
+// subtype of want, and a setter setX(x) that takes one.
+func (c *Checker) javaAccessorsImplement(this types.Type, sc *types.ClassSym, name string, want types.Type, mutable bool) bool {
+	sc.Ensure()
+	sub := c.memberSubst(this, sc)
+	has := func(acc string, params int, fits func(*types.FunSym) bool) bool {
+		return slices.ContainsFunc(sc.Methods[acc], func(h *types.FunSym) bool {
+			return h.Owner == sc && !h.Static && !h.Abstract && !h.Ext && len(h.TypeParams) == 0 && len(h.Params) == params && fits(h)
+		})
+	}
+	if !has(types.GetterName(name), 0, func(h *types.FunSym) bool { return c.subtype(sub.Apply(h.Ret), want) }) {
+		return false
+	}
+	return !mutable || has(types.SetterName(name), 1, func(h *types.FunSym) bool { return c.subtype(want, sub.Apply(h.Params[0].Type)) })
 }
 
 // numberImplemented reports whether g, Kotlin's Number.toInt() or one of

@@ -1212,7 +1212,14 @@ func (c *Checker) samTarget(p types.Type) (*types.FunSym, types.Type) {
 func lambdaParam(sub types.Subst, t types.Type) types.Type {
 	if t.IsParam() {
 		if a, ok := sub[t.Param()]; ok && (a.V == types.Star || a.V == types.Out) {
-			return sub.Apply(t)
+			r := sub.Apply(t)
+			if t.P {
+				// A Java method's: EventListener<?>'s lambda takes an
+				// Any!, EventListener<? extends CharSequence>'s a
+				// CharSequence!.
+				return r.Platform()
+			}
+			return r
 		}
 	}
 	return sub.ApplyIn(t)

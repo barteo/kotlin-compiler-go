@@ -105,6 +105,11 @@ func (c *Checker) expr1(x syntax.Expr, want types.Type, allowRange bool, sink *s
 			if t, ok := c.receiverProp(x); ok {
 				return t
 			}
+			// So do the static fields the class inherits from Java
+			// classes, before imported ones.
+			if t, ok := c.inheritedStatic(x); ok {
+				return t
+			}
 		}
 		if ok {
 			c.checkTopVar(sym, x.P)
@@ -1949,7 +1954,7 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 		// unless it is a property of the name with context parameters.
 		x.Prop = cls.Underlying
 		t = c.memberSubst(rt, cls).Apply(cls.Underlying.Type)
-	case cls != nil && !cls.External:
+	case cls != nil && (!cls.External || c.kotlinSuperProp(cls, x.Name)):
 		x.Prop = c.memberProp(cls, x.Name)
 		if d := c.declaredClass(x.X, cls); x.Prop == nil && d != nil && !d.External {
 			// A private property of a smart-cast variable's declared
@@ -2012,6 +2017,17 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 		t = t.Nullable()
 	}
 	return t
+}
+
+// kotlinSuperProp reports whether Java class cls inherits property name
+// of a Kotlin class of the program: the property of JavaClass().some for
+// a JavaClass extends Derived, Derived declaring or inheriting val some.
+func (c *Checker) kotlinSuperProp(cls *types.ClassSym, name string) bool {
+	if cls.KotlinName != "" || cls.Java != nil || cls.Value {
+		return false
+	}
+	p := c.memberProp(cls, name)
+	return p != nil && p.Owner != nil && !p.Owner.External
 }
 
 // effectless reports whether evaluating x has no effects to keep when

@@ -43,6 +43,8 @@ func (c *Checker) subtype1(t, u types.Type) bool {
 		return true // kotlin.Unit, an object
 	case t.K == types.Unit && u.K == types.Class && u.C.Name == "kotlin/Unit":
 		return true // Unit as a Unit?
+	case u.K == types.Unit && t.K == types.Class && t.C.Name == "kotlin/Unit" && (!t.N || t.P):
+		return true // a Unit! from Java, as Function1<Integer, Unit>'s
 	case t.K == types.Unit, u.K == types.Unit && !t.IsParam(), t.K == types.Range, u.K == types.Range, u.K == types.Nothing, u.K == types.Null:
 		return false
 	}

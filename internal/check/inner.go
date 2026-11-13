@@ -128,7 +128,11 @@ func (c *Checker) innerConstruct(x *syntax.Call, cls *types.ClassSym, outer synt
 	if sup, ok := c.asSuper(ot, cls.Outer); ok {
 		own := len(cls.TypeParams) - cls.OuterParams
 		for i, tp := range cls.TypeParams[own:] {
-			if i < sup.A.Len() {
+			if sup.A == nil {
+				// A raw outer, from Java: star projections, as for
+				// its other members.
+				sub[tp] = types.Arg{V: types.Star}
+			} else if i < sup.A.Len() {
 				sub[tp] = sup.A.Get(i)
 			}
 		}
@@ -218,7 +222,7 @@ func (c *Checker) innerType(ref *syntax.TypeRef) types.Type {
 		c.errorf(ref.P, "unresolved or unsupported type: %s", ref.Name)
 		return types.InvalidType
 	}
-	if !cls.Inner {
+	if cls.Ensure(); !cls.Inner {
 		c.errorf(ref.P, "type arguments are only allowed on an outer class of an inner class: %s", ref.Name)
 		return types.InvalidType
 	}

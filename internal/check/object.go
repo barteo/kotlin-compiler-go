@@ -409,15 +409,26 @@ func (c *Checker) inheritedStatic(x *syntax.Ident) (types.Type, bool) {
 
 // staticInScope returns the class the code is in, or an outer one, with
 // static methods named name, or the Java superclass of one that has them:
-// Thread's currentThread() in a subclass's code.
+// Thread's currentThread() in a subclass's code. As in Kotlin, a class's
+// companion comes before its superclasses' statics: it returns nil if one
+// on the way has methods named name, which objectMethods finds.
 func (c *Checker) staticInScope(name string) *types.ClassSym {
+	companionHas := func(k *types.ClassSym) bool {
+		return !k.External && k.Companion != nil && len(c.javaMethods(k.Companion, name)) > 0
+	}
 	for k := c.cls; k != nil; k = k.Outer {
 		if !k.External && len(k.Statics[name]) > 0 {
 			return k
 		}
+		if companionHas(k) {
+			return nil
+		}
 		for s := k.Super; s != nil; s = s.Super {
 			if s.Ensure(); s.External && s.KotlinName == "" && len(s.Statics[name]) > 0 {
 				return s
+			}
+			if companionHas(s) {
+				return nil
 			}
 		}
 	}

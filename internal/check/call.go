@@ -935,6 +935,7 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 		if strict, ok := c.noRefAdaptation(x, match); ok {
 			match = strict
 		}
+		match = fewestKotlinJavaSAM(match, x.Args, func(cd *candidate) *callee { return &cd.callee })
 		var maximal []*candidate
 		for _, cd := range match {
 			if c.mostSpecific(cd, match, x.Args) {
@@ -942,6 +943,11 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			}
 		}
 		maximal = overriddenGiveWay(maximal)
+		if len(maximal) > 1 {
+			if orig := c.origSAMMaximal(maximal, x.Args); len(orig) == 1 {
+				maximal = orig
+			}
+		}
 		if len(maximal) > 1 {
 			// Of equally specific ones, which a conversion to a Kotlin fun
 			// interface makes (see funInterfaceView), those converting
@@ -1559,10 +1565,24 @@ func (c *Checker) resolvePlain(x *syntax.Call, cs []callee, want types.Type) typ
 			match = wide
 		}
 		match = notLowPriority(match, func(cl *callee) *callee { return cl })
+		match = fewestKotlinJavaSAM(match, x.Args, func(cl *callee) *callee { return cl })
 		var maximal []*callee
 		for _, cl := range match {
 			if c.plainMostSpecific(cl, match, x.Args, ts) {
 				maximal = append(maximal, cl)
+			}
+		}
+		if len(maximal) > 1 {
+			c.origSAM = true
+			var orig []*callee
+			for _, cl := range maximal {
+				if c.plainMostSpecific(cl, maximal, x.Args, ts) {
+					orig = append(orig, cl)
+				}
+			}
+			c.origSAM = false
+			if len(orig) == 1 {
+				maximal = orig
 			}
 		}
 		if len(maximal) == 0 {
@@ -1964,13 +1984,16 @@ func (c *Checker) plainConversions(cl *callee, args []syntax.Expr, ts []types.Ty
 func (c *Checker) plainFunInterfaceView(cl *callee, i int, args []syntax.Expr, ts []types.Type) types.Type {
 	t := cl.argType(i, args)
 	pt := t.Flex().NonNull()
-	if pt.K != types.Class || !pt.C.Fun || pt.IsFunc() {
+	if c.origSAM || pt.K != types.Class || !pt.C.Fun && !javaSAMView(pt, args[i]) || pt.IsFunc() {
 		return t
 	}
 	if _, lambda := args[i].(*syntax.Lambda); !lambda && (i >= len(ts) || ts[i].K == types.Invalid || c.subtype(ts[i], t)) {
 		return t
 	}
 	if m, ft := c.samTarget(pt); m != nil && ft.K != types.Invalid {
+		if t.P {
+			return ft.Platform()
+		}
 		if t.N {
 			return ft.Nullable()
 		}
@@ -1997,12 +2020,15 @@ func fewestConversions(cs []*candidate, args []syntax.Expr) ([]*candidate, bool)
 // funInterfaceView returns parameter type t of candidate cd's i'th
 // argument, or if it is a Kotlin fun interface the argument converts to,
 // its function type: as in Kotlin, foo(i: Int, r: KRunnable) is more
-// specific than foo(n: Number, f: () -> Unit) for foo(1, ::bar). A Java
-// interface's conversion keeps its type, and the candidates without one
-// come first (see fewestSAM).
+// specific than foo(n: Number, f: () -> Unit) for foo(1, ::bar). So is a
+// Java interface a lambda converts to: test(FObject) for test { }, whose
+// (Any!) -> Unit is more specific than a test(Function1<Integer, Unit>).
+// Unless c.origSAM, when candidates as specific as each other compare by
+// the interfaces themselves, as K2 does: bar(Fn2<String, Object>) over
+// bar(Fn<String, Object>).
 func (c *Checker) funInterfaceView(cd *candidate, i int, args []syntax.Expr, t types.Type) types.Type {
 	pt := t.Flex().NonNull()
-	if pt.K != types.Class || !pt.C.Fun || pt.IsFunc() {
+	if c.origSAM || pt.K != types.Class || !pt.C.Fun && !javaSAMView(pt, args[i]) || pt.IsFunc() {
 		return t
 	}
 	_, lambda := args[i].(*syntax.Lambda)
@@ -2010,12 +2036,71 @@ func (c *Checker) funInterfaceView(cd *candidate, i int, args []syntax.Expr, t t
 		return t
 	}
 	if m, ft := c.samTarget(pt); m != nil && ft.K != types.Invalid {
+		if t.P {
+			return ft.Platform()
+		}
 		if t.N {
 			return ft.Nullable()
 		}
 		return ft
 	}
 	return t
+}
+
+// javaSAMView reports whether parameter type pt is a Java interface
+// whose function type a lambda argument a compares by.
+func javaSAMView(pt types.Type, a syntax.Expr) bool {
+	l, lambda := a.(*syntax.Lambda)
+	return lambda && l.Ref == nil && pt.C.Interface && pt.C.External && pt.C.KotlinName == "" && pt.C.Java == nil
+}
+
+// kotlinJavaSAMArgs returns the number of a call's lambdas that callee
+// cl, a Kotlin function, converts to Java interfaces. As K2 resolves those
+// for compatibility, they lose to the candidates that convert none: the
+// generic bar(action: () -> T) for bar { foo() }, not bar(r: Runnable),
+// and foo(m: Tom) for a fun interface Tom, not foo(j: Jerry).
+func (cl *callee) kotlinJavaSAMArgs(args []syntax.Expr) int {
+	if o := cl.f.Owner; o != nil && o.External && o.KotlinName == "" && o.Java == nil {
+		return 0
+	}
+	n := 0
+	for i, a := range args {
+		if pt := cl.argType(i, args).Flex().NonNull(); pt.K == types.Class && !pt.IsFunc() && javaSAMView(pt, a) {
+			n++
+		}
+	}
+	return n
+}
+
+// fewestKotlinJavaSAM returns the candidates among cs that convert the
+// fewest lambdas to Java interfaces as Kotlin functions (see
+// kotlinJavaSAMArgs).
+func fewestKotlinJavaSAM[C any](cs []C, args []syntax.Expr, cl func(C) *callee) []C {
+	least := -1
+	for _, c := range cs {
+		if n := cl(c).kotlinJavaSAMArgs(args); least < 0 || n < least {
+			least = n
+		}
+	}
+	if least != 0 {
+		return cs
+	}
+	return slices.DeleteFunc(slices.Clone(cs), func(c C) bool { return cl(c).kotlinJavaSAMArgs(args) != 0 })
+}
+
+// origSAMMaximal returns the most specific of candidates cs, all as
+// specific as each other by the function types of the interfaces their
+// lambdas convert to, by the interfaces themselves, if one is.
+func (c *Checker) origSAMMaximal(cs []*candidate, args []syntax.Expr) []*candidate {
+	c.origSAM = true
+	defer func() { c.origSAM = false }()
+	var out []*candidate
+	for _, cd := range cs {
+		if c.mostSpecific(cd, cs, args) {
+			out = append(out, cd)
+		}
+	}
+	return out
 }
 
 // nonGenericMaximal returns the most specific of the candidates without
@@ -2064,7 +2149,9 @@ func overriddenGiveWay(cs []*candidate) []*candidate {
 	var out []*candidate
 	for _, f := range cs {
 		overridden := slices.ContainsFunc(cs, func(g *candidate) bool {
-			return f.f.Owner != nil && g.f.Owner != nil && g.f.Owner != f.f.Owner && g.f.Name == f.f.Name &&
+			// A Java static method overrides none: C.foo(Runnable) hides
+			// A.foo(Runnable), not A.foo(Function0<Unit>).
+			return f.f.Owner != nil && g.f.Owner != nil && g.f.Owner != f.f.Owner && g.f.Name == f.f.Name && !g.f.Static &&
 				g.f.Owner.IsSubclassOf(f.f.Owner) && sameParams(f.f, g.f)
 		})
 		if !overridden {
