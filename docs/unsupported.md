@@ -114,13 +114,17 @@ Without `-compose`, calls of libraries' composables aren't supported.
 
 With `interop-include-javax-annotations` and `interop-include-jakarta-annotations`, `kc` reads `javax.inject`'s and `jakarta.inject`'s `@Inject` as Metro's, their `@Qualifier` and `@Scope` annotations (`@Named`, `@Singleton`) as qualifiers and scopes of their own, and injects their `Provider<T>`. With `optional-binding-behavior=DISABLED`, a parameter's default value never stands in for a missing binding.
 
+With `interop-include-dagger-annotations`, which implies the javax and Jakarta options and `enable-dagger-runtime-interop`, `kc` reads Dagger's `@Module` (with `includes`) as a binding container, `@Binds`, `@Provides` and `@BindsInstance`, the multibinding annotations, `@MapKey` and its map keys (`@ClassKey` keys are `KClass`es, as in Metro), and `dagger.assisted`'s annotations, matching `@Assisted` parameters by type and identifier as Dagger does. With `enable-dagger-runtime-interop`, it injects `dagger.Lazy<T>` and `dagger.internal.Provider<T>`, and binds `java.util.Optional<T>` for `@BindsOptionalOf`. As Metro, it reports a `Provider<Lazy<T>>` whose types aren't Metro's `Provider` and Kotlin's `Lazy`.
+
 Not supported, and reported as such:
 
-- custom annotations (the `custom-*` options), and options that change Metro's output, other than `enabled`, `contributes-as-inject`, `enable-function-providers`, the javax and Jakarta options above and `optional-binding-behavior=DISABLED`. With `-metro`, `kc` checks the options before anything else, whether or not the files use Metro, so a module that uses only the annotations such an option makes Metro read (javax's, Dagger's, Hilt's) is reported, not compiled without Metro;
+- custom annotations (the `custom-*` options), and options that change Metro's output, other than `enabled`, `contributes-as-inject`, `enable-function-providers`, the javax, Jakarta and Dagger options above and `optional-binding-behavior=DISABLED`. With `-metro`, `kc` checks the options before anything else, whether or not the files use Metro, so a module that uses only the annotations such an option makes Metro read (javax's, Dagger's, Hilt's) is reported, not compiled without Metro;
 - `@Provides` extension functions;
 - graphs with type parameters, and graph factories that are abstract classes;
-- Dagger, Hilt, Guice, Anvil and kotlin-inject interop, Dagger's runtime interop, and `Class` map keys for `KClass` ones (`enable-kclass-to-class-interop`);
+- Hilt, Guice, Anvil and kotlin-inject interop, and `Class` map keys for `KClass` ones (`enable-kclass-to-class-interop`);
+- Dagger's `@Component` and `@Subcomponent`, and modules with `subcomponents`;
 - member injection into classes from the class path;
+- Java modules of the class path whose `@Provides` methods are static: their bindings are missing (a `[Metro/MissingBinding]` error, not a wrong program);
 - member injection that depends on the class itself, as `@Inject lateinit var s: Lazy<S>` in `S`;
 - `createDynamicGraph` and `createDynamicGraphFactory`, and calls of `createGraph` and `createGraphFactory` whose type argument is inferred;
 - graph functions that create a graph extension from parameters, other than its factory's.

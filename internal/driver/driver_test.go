@@ -1382,8 +1382,8 @@ func TestMetroOptions(t *testing.T) {
 		options map[string]string
 		ok      bool // compiles
 	}{
-		"dagger only": {src: "@dagger.Module object M",
-			options: map[string]string{"interop-include-dagger-annotations": "true"}},
+		"kclass to class": {src: "@dagger.Module object M",
+			options: map[string]string{"interop-include-dagger-annotations": "true", "enable-kclass-to-class-interop": "true"}},
 		"hilt module": {src: "import dagger.Binds\nimport dagger.Module\nimport dagger.hilt.InstallIn\nimport dagger.hilt.components.SingletonComponent\n" +
 			"interface Repo\n@Module @InstallIn(SingletonComponent::class) interface RepoModule { @Binds fun bind(r: Repo): Repo }", options: hilt},
 		"custom annotations, no Metro": {src: "class A", options: map[string]string{"custom-inject": "a/MyInject"}},
@@ -1513,10 +1513,12 @@ func TestMetroInterop(t *testing.T) {
 
 	javax := map[string]string{"interop-include-javax-annotations": "true"}
 	disabled := map[string]string{"interop-include-javax-annotations": "true", "optional-binding-behavior": "DISABLED"}
+	dagger := map[string]string{"interop-include-dagger-annotations": "true"}
 	const header = "import dev.zacsweers.metro.*\n\n"
 	for name, tc := range map[string]struct {
 		src, msg string
 		options  map[string]string
+		feature  bool // an unsupported Metro feature
 	}{
 		"default value, disabled": {src: "class A @javax.inject.Inject constructor(val s: String = \"\")\n@DependencyGraph interface G { val a: A }",
 			msg: "[Metro/MissingBinding]", options: disabled},
@@ -1526,13 +1528,40 @@ func TestMetroInterop(t *testing.T) {
 			"@DependencyGraph interface G { val a: A\n@Provides @Named(\"x\") fun s(): String = \"\" }", msg: "[Metro/MissingBinding]", options: javax},
 		"javax singleton is its own scope": {src: "@javax.inject.Singleton class A @javax.inject.Inject constructor()\n" +
 			"@SingleIn(AppScope::class) @DependencyGraph interface G { val a: A }", msg: "[Metro/IncompatiblyScopedBindings]", options: javax},
+		"dagger component":    {src: "@dagger.Component interface C", msg: "Dagger components", options: dagger, feature: true},
+		"dagger subcomponent": {src: "@dagger.Subcomponent interface C", msg: "Dagger components", options: dagger, feature: true},
+		"dagger module with subcomponents": {src: "@dagger.Subcomponent interface S\n@dagger.Module(subcomponents = [S::class]) object M\n" +
+			"@DependencyGraph(bindingContainers = [M::class]) interface G", msg: "Dagger subcomponents", options: dagger, feature: true},
+		"binds optional of a provider": {src: "class A @javax.inject.Inject constructor()\n" +
+			"@dagger.Module interface M { @dagger.BindsOptionalOf fun a(): javax.inject.Provider<A> }\n" +
+			"@DependencyGraph(bindingContainers = [M::class]) interface G", msg: "@BindsOptionalOf M.a can't return", options: dagger},
+		// An absent binding, which DISABLED doesn't make an error.
+		"binds optional of, disabled": {src: "class A\n" +
+			"@dagger.Module interface M { @dagger.BindsOptionalOf fun a(): A }\n" +
+			"@DependencyGraph(bindingContainers = [M::class]) interface G { val a: java.util.Optional<A> }",
+			options: map[string]string{"interop-include-dagger-annotations": "true", "optional-binding-behavior": "DISABLED"}},
+		"javax provider of lazy": {src: "class A @javax.inject.Inject constructor()\n" +
+			"@DependencyGraph interface G { val a: javax.inject.Provider<Lazy<A>> }", msg: "Cannot mix intrinsic types", options: javax},
+		"provider of dagger lazy": {src: "class A @javax.inject.Inject constructor()\n" +
+			"@DependencyGraph interface G { val a: Provider<dagger.Lazy<A>> }", msg: "Cannot mix intrinsic types", options: dagger},
+		"dagger assisted identifiers": {src: "class A @dagger.assisted.AssistedInject constructor(@dagger.assisted.Assisted(\"x\") val n: Int)\n" +
+			"@dagger.assisted.AssistedFactory interface F { fun create(n: Int): A }\n" +
+			"@DependencyGraph interface G { val f: F }", msg: "with identifier \"x\"", options: dagger},
 	} {
 		t.Run(name, func(t *testing.T) {
 			file := filepath.Join(t.TempDir(), "a.kt")
 			os.WriteFile(file, []byte(header+tc.src+"\n"), 0o644)
 			err := Compile([]string{file}, Options{OutDir: t.TempDir(), Jobs: 1, ClassPath: cp, Metro: true, MetroOptions: tc.options})
-			if err == nil || !strings.Contains(err.Error(), tc.msg) {
+			var se *syntax.Error
+			switch {
+			case tc.msg == "":
+				if err != nil {
+					t.Errorf("got %v, want no error", err)
+				}
+			case err == nil || !strings.Contains(err.Error(), tc.msg):
 				t.Errorf("got %v, want %s", err, tc.msg)
+			case tc.feature != (errors.As(err, &se) && se.Feature == "metro"):
+				t.Errorf("got %v, want an unsupported Metro feature: %v", err, tc.feature)
 			}
 		})
 	}

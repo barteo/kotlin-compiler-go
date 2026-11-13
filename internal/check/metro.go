@@ -178,6 +178,8 @@ var metroSupported = map[string]bool{
 	"enable-function-providers":           true,
 	"interop-include-javax-annotations":   true,
 	"interop-include-jakarta-annotations": true,
+	"interop-include-dagger-annotations":  true,
+	"enable-dagger-runtime-interop":       true,
 }
 
 // metroOptionalBehaviors are the values of optional-binding-behavior kc
@@ -226,6 +228,26 @@ func (cfg metroConfig) aliases() map[string]string {
 	}
 	if cfg.jakarta {
 		a["jakarta/inject/Inject"] = mInject
+	}
+	if cfg.dagger {
+		// Dagger's map keys (ClassKey, StringKey, ...) and Reusable are
+		// keys of their own, as in Metro.
+		for k, v := range map[string]string{
+			"dagger/Module":                        mBindingContainer,
+			"dagger/Binds":                         mBinds,
+			"dagger/Provides":                      mProvides,
+			"dagger/BindsInstance":                 mProvides,
+			"dagger/MapKey":                        mMapKey,
+			"dagger/multibindings/IntoSet":         mIntoSet,
+			"dagger/multibindings/IntoMap":         mIntoMap,
+			"dagger/multibindings/ElementsIntoSet": mElementsIntoSet,
+			"dagger/multibindings/Multibinds":      mMultibinds,
+			"dagger/assisted/Assisted":             mAssisted,
+			"dagger/assisted/AssistedInject":       mAssistedInject,
+			"dagger/assisted/AssistedFactory":      mAssistedFactory,
+		} {
+			a[k] = v
+		}
 	}
 	return a
 }

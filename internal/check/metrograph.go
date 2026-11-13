@@ -185,7 +185,8 @@ func (gr *mGraph) request(t types.Type, q string) (*mReq, bool) {
 // wrapperOf returns how type t wraps a value: f for () -> T, p for
 // Metro's Provider<T>, l for Lazy<T>, j for javax.inject.Provider<T> and
 // k for jakarta.inject.Provider<T>, which Metro injects with the options
-// that make it read those packages' annotations, or 0.
+// that make it read those packages' annotations, d for dagger.Lazy<T> and
+// i for dagger.internal.Provider<T>, which it injects with Dagger's, or 0.
 func (m *metroAnalysis) wrapperOf(t types.Type) byte {
 	if t.K != types.Class || t.N || t.A == nil {
 		return 0
@@ -201,12 +202,20 @@ func (m *metroAnalysis) wrapperOf(t types.Type) byte {
 		return 'j'
 	case m.cfg.jakarta && t.C.Name == "jakarta/inject/Provider":
 		return 'k'
+	case (m.cfg.dagger || m.cfg.daggerRuntime) && t.C.Name == "dagger/Lazy":
+		return 'd'
+	case (m.cfg.dagger || m.cfg.daggerRuntime) && t.C.Name == "dagger/internal/Provider":
+		return 'i'
 	}
 	return 0
 }
 
+// wrapperClass are the classes of wrappers, as Metro's messages name them.
+var wrapperClass = map[byte]string{'f': "kotlin/Function0", 'p': "dev/zacsweers/metro/Provider", 'l': "kotlin/Lazy",
+	'j': "javax/inject/Provider", 'k': "jakarta/inject/Provider", 'd': "dagger/Lazy", 'i': "dagger/internal/Provider"}
+
 // javaProviders are the Java Provider interfaces of wrappers.
-var javaProviders = map[byte]string{'j': "javax.inject.Provider", 'k': "jakarta.inject.Provider"}
+var javaProviders = map[byte]string{'j': "javax.inject.Provider", 'k': "jakarta.inject.Provider", 'i': "dagger.internal.Provider"}
 
 func isMapType(t types.Type) bool {
 	return t.K == types.Class && !t.N && t.A != nil && len(t.A.List) == 2 && t.C.KotlinName == "kotlin/collections/Map"
@@ -674,6 +683,11 @@ func (gr *mGraph) mapElem(key *mAnn, v types.Type, q string, b *mBinding) error 
 	if err != nil {
 		return err
 	}
+	kt = kt.NonNull() // a Java annotation's String!
+	if kt.K == types.Class && kt.C.Name == "java/lang/Class" && kt.A != nil {
+		// A Java annotation's Class (Dagger's ClassKey) is Kotlin's KClass.
+		kt = types.GenericType(gr.c.u.ext.kclass("kotlin/reflect/KClass"), kt.A.List)
+	}
 	mapCls := gr.c.u.ext.kclass("kotlin/collections/Map")
 	mt := types.GenericType(mapCls, []types.Arg{{V: types.Inv, T: kt}, {V: types.Inv, T: v}})
 	if _, ok := keyOf(mt, q); !ok {
@@ -720,8 +734,14 @@ func (gr *mGraph) container(k *types.ClassSym) {
 	case k.Object:
 		recv = metroClassName(k)
 	}
+	if a := find(m.annsOf(k), mBindingContainer); a != nil && a.orig == "dagger/Module" && len(a.argClasses("subcomponents")) > 0 {
+		gr.unsupported("kc doesn't support Dagger subcomponents (module %s)", k.DisplayName())
+		return
+	}
 	for _, mm := range m.declared(k) {
 		switch {
+		case m.cfg.daggerRuntime && find(mm.anns, "dagger/BindsOptionalOf") != nil:
+			gr.bindsOptionalOf(mm)
 		case find(mm.anns, mProvides) != nil:
 			r := recv
 			if r == "" {
@@ -745,6 +765,44 @@ func (gr *mGraph) container(k *types.ClassSym) {
 			}
 		}
 	}
+}
+
+// bindsOptionalOf adds the binding of Dagger's @BindsOptionalOf member:
+// java.util.Optional of its type's binding, if there is one.
+func (gr *mGraph) bindsOptionalOf(mm *mMember) {
+	m := gr.m
+	t := mm.ret
+	what := "@BindsOptionalOf " + mm.owner.DisplayName() + "." + mm.name
+	if len(mm.params) > 0 || mm.recv != nil {
+		gr.errorf("%s must not have parameters", what)
+		return
+	}
+	if m.wrapperOf(t) != 0 || t.K == types.Class && t.C.Name == "java/util/Optional" {
+		gr.errorf("%s can't return %s: it binds Optional of a type that isn't Provider, Lazy or Optional", what, t)
+		return
+	}
+	optional := m.class("java/util/Optional")
+	if optional == nil {
+		gr.unsupported("kc can't find java.util.Optional for %s", what)
+		return
+	}
+	q := m.qualifier(mm.anns)
+	dep, ok1 := gr.request(t, q)
+	opt := types.GenericType(optional, []types.Arg{{V: types.Inv, T: t}})
+	k, ok2 := keyOf(opt, q)
+	ts, ok3 := kotlinTypeSrc(t)
+	if !ok1 || !ok2 || !ok3 {
+		gr.unsupported("kc can't name the type %s of %s", t, what)
+		return
+	}
+	// Present if the type has a binding, whatever optional-binding-behavior is.
+	dep.optional = true
+	gr.add(&mBinding{key: k, t: opt, what: what, deps: []*mReq{dep}, expr: func(args []string) string {
+		if args[0] == "" {
+			return "java.util.Optional.empty<" + ts + ">()"
+		}
+		return "java.util.Optional.of<" + ts + ">(" + args[0] + ")"
+	}})
 }
 
 // instance returns the property of Impl that holds a binding container's
@@ -1315,6 +1373,9 @@ func (gr *mGraph) assistedFactory(r *mReq, f *types.ClassSym) *mBinding {
 	}
 	var params []string
 	samArgs := map[string]string{}
+	// Dagger's @Assisted parameters match by type and identifier, its
+	// value, rather than by name.
+	daggerArgs := map[string][]string{}
 	for i, p := range sam.params {
 		ts, ok := kotlinTypeSrc(p.Type)
 		if !ok {
@@ -1324,6 +1385,12 @@ func (gr *mGraph) assistedFactory(r *mReq, f *types.ClassSym) *mBinding {
 		name := fmt.Sprintf("`$a%d`", i)
 		params = append(params, name+": "+ts)
 		samArgs[p.Name] = name
+		var as []*mAnn
+		if i < len(sam.paramAnns) {
+			as = sam.paramAnns[i]
+		}
+		id := ts + "|" + find(as, mAssisted).str("value")
+		daggerArgs[id] = append(daggerArgs[id], name)
 	}
 	byPos := map[int]string{}
 	for i, p := range ctor.Params {
@@ -1331,8 +1398,23 @@ func (gr *mGraph) assistedFactory(r *mReq, f *types.ClassSym) *mBinding {
 		if i < len(pa) {
 			as = pa[i]
 		}
-		if find(as, mAssisted) == nil {
+		a := find(as, mAssisted)
+		if a == nil {
 			continue
+		}
+		if a.orig == "dagger/assisted/Assisted" {
+			ts, _ := kotlinTypeSrc(p.Type)
+			id := a.str("value")
+			switch args := daggerArgs[ts+"|"+id]; len(args) {
+			case 1:
+				byPos[i] = args[0]
+				continue
+			case 0:
+				gr.errorf("@AssistedFactory %s has no parameter of type %s with identifier %q for %s's assisted parameter %s", f.DisplayName(), ts, id, target.DisplayName(), p.Name)
+			default:
+				gr.errorf("@AssistedFactory %s has more than one parameter of type %s with identifier %q", f.DisplayName(), ts, id)
+			}
+			return nil
 		}
 		arg, ok := samArgs[p.Name]
 		if !ok {
@@ -1367,6 +1449,15 @@ func (gr *mGraph) multiBinding(mu *mMulti) *mBinding {
 // expr returns the Kotlin expression of a request's value, writing the
 // functions it calls, or "" after reporting why it can't.
 func (gr *mGraph) expr(r *mReq, site string) string {
+	for _, ws := range [][]byte{r.wrap, r.vwrap} {
+		for i := 0; i+1 < len(ws); i++ {
+			outer, inner := ws[i], ws[i+1]
+			if strings.IndexByte("pfjki", outer) >= 0 && strings.IndexByte("ld", inner) >= 0 && (outer != 'p' && outer != 'f' || inner != 'l') {
+				gr.errorf("Cannot mix intrinsic types across libraries for Provider<Lazy<T>> types. They must be dev.zacsweers.metro.Provider and kotlin.Lazy but found %s and %s (requested at %s)", wrapperClass[outer], wrapperClass[inner], site)
+				return ""
+			}
+		}
+	}
 	b := gr.resolve(r)
 	if b == nil {
 		if gr.failed {
@@ -1442,8 +1533,10 @@ func wrapSrc(w byte, x, t string) string {
 		return "{ " + x + " }"
 	case 'p':
 		return "object : dev.zacsweers.metro.Provider<" + t + "> { override fun invoke(): " + t + " = " + x + " }"
-	case 'j', 'k':
+	case 'j', 'k', 'i':
 		return "object : " + javaProviders[w] + "<" + t + "> { override fun get(): " + t + " = " + x + " }"
+	case 'd':
+		return "object : dagger.Lazy<" + t + "> { private val v = kotlin.lazy<" + t + "> { " + x + " }; override fun get(): " + t + " = v.value }"
 	}
 	return "kotlin.lazy<" + t + "> { " + x + " }"
 }
@@ -1566,8 +1659,10 @@ func wrapTypeSrc(w byte, t string) string {
 		return "() -> " + t
 	case 'p':
 		return "dev.zacsweers.metro.Provider<" + t + ">"
-	case 'j', 'k':
+	case 'j', 'k', 'i':
 		return javaProviders[w] + "<" + t + ">"
+	case 'd':
+		return "dagger.Lazy<" + t + ">"
 	}
 	return "kotlin.Lazy<" + t + ">"
 }

@@ -107,7 +107,12 @@ func (m *metroAnalysis) run() {
 			if d.Sym == nil || d.Sym.Local || d.Sym.Anonymous {
 				continue
 			}
-			if a := find(m.annsOf(d.Sym), mDependencyGraph); a != nil {
+			as := m.annsOf(d.Sym)
+			if m.cfg.dagger && (find(as, "dagger/Component") != nil || find(as, "dagger/Subcomponent") != nil) {
+				m.unsupported(c, d.P, "kc doesn't support Dagger components (%s); use @DependencyGraph", d.Sym.DisplayName())
+				continue
+			}
+			if a := find(as, mDependencyGraph); a != nil {
 				m.graph(c, d, a)
 			}
 		}

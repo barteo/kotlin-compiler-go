@@ -41,6 +41,14 @@ type mVal struct {
 
 func (a *mAnn) is(name string) bool { return a != nil && a.cls == name }
 
+// str returns a string argument of an annotation, or "".
+func (a *mAnn) str(name string) string {
+	if a == nil {
+		return ""
+	}
+	return a.args[name].str
+}
+
 // alias makes an annotation of another framework, by aliases, Metro's.
 func (a *mAnn) alias(aliases map[string]string) {
 	if to, ok := aliases[a.cls]; ok {
