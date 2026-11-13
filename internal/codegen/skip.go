@@ -201,51 +201,72 @@ func usedParams(params []*types.VarSym, roots ...any) []bool {
 			used[i] = true
 		}
 	}
-	for _, r := range roots {
-		syntax.Inspect(r, func(n any) bool {
-			switch n := n.(type) {
-			case *syntax.Ident:
-				mark(n.Sym)
-				if this >= 0 && implicitThis(n) {
+	captured := func(d *syntax.ClassDecl) {
+		for _, c := range d.Captures {
+			if c == d.OuterThis {
+				if this >= 0 {
 					used[this] = true
 				}
-			case *syntax.This:
-				if n.Recv != nil {
-					mark(n.Recv)
-				} else if this >= 0 && n.Obj == nil {
-					used[this] = true
-				}
-			case *syntax.Super:
-				if this >= 0 && n.Outer == nil {
-					used[this] = true
-				}
-			case *syntax.Member:
-				if this >= 0 && memberExtOfThis(n, n.Getter) {
-					used[this] = true
-				}
-			case *syntax.Call:
-				if f := n.Sym; this >= 0 && f != nil && f.Owner != nil && !f.Owner.Object && !f.Static && !n.Invoke && n.Ctor == nil {
-					switch m := n.Fun.(type) {
-					case *syntax.Ident:
-						used[this] = true // a member called on this
-					case *syntax.Member:
-						if memberExtOfThis(m, f) {
-							used[this] = true
-						}
+				continue
+			}
+			mark(c)
+		}
+	}
+	var visit func(n any) bool
+	visit = func(n any) bool {
+		switch n := n.(type) {
+		case *syntax.Ident:
+			mark(n.Sym)
+			if this >= 0 && implicitThis(n) {
+				used[this] = true
+			}
+			if n.Member != nil {
+				// A property of an implicit receiver: this.x.
+				syntax.Inspect(n.Member, visit)
+			}
+		case *syntax.ObjectExpr:
+			captured(n.Decl)
+		case *syntax.LocalClass:
+			captured(n.Decl)
+		case *syntax.This:
+			if n.Recv != nil {
+				mark(n.Recv)
+			} else if this >= 0 && n.Obj == nil {
+				used[this] = true
+			}
+		case *syntax.Super:
+			if this >= 0 && n.Outer == nil {
+				used[this] = true
+			}
+		case *syntax.Member:
+			if this >= 0 && memberExtOfThis(n, n.Getter) {
+				used[this] = true
+			}
+		case *syntax.Call:
+			if f := n.Sym; this >= 0 && f != nil && f.Owner != nil && !f.Owner.Object && !f.Static && !n.Invoke && n.Ctor == nil {
+				switch m := n.Fun.(type) {
+				case *syntax.Ident:
+					used[this] = true // a member called on this
+				case *syntax.Member:
+					if memberExtOfThis(m, f) {
+						used[this] = true
 					}
 				}
-			case *syntax.Lambda:
-				for _, c := range n.Captures {
-					mark(c)
-				}
-				if n.This && this >= 0 {
-					used[this] = true
-				}
-			case *syntax.CallableRef:
-				mark(n.Bound)
 			}
-			return true
-		})
+		case *syntax.Lambda:
+			for _, c := range n.Captures {
+				mark(c)
+			}
+			if n.This && this >= 0 {
+				used[this] = true
+			}
+		case *syntax.CallableRef:
+			mark(n.Bound)
+		}
+		return true
+	}
+	for _, r := range roots {
+		syntax.Inspect(r, visit)
 	}
 	return used
 }

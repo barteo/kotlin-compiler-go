@@ -1,6 +1,7 @@
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import app.Areas
 import app.Badge
 import app.Badges
 import app.Corners
@@ -163,5 +164,7 @@ fun main() {
         Text("corner ${Corners(n.intValue).corner.v}")
         // The program's composables that remember lambdas in branches.
         Branches(shown.value, n.intValue)
+        // The program's composable lambdas with receivers.
+        Areas(n.intValue)
     }
 }
