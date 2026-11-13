@@ -548,6 +548,8 @@ func TestErrors(t *testing.T) {
 			srcs := []string{f}
 			if fi, err := os.Stat(f); err == nil && fi.IsDir() {
 				srcs, _ = filepath.Glob(filepath.Join(f, "*.kt"))
+				javas, _ := filepath.Glob(filepath.Join(f, "*.java")) // the module's Java sources
+				srcs = append(srcs, javas...)
 			}
 			// By file name and line.
 			want := map[string]string{}

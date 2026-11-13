@@ -6,16 +6,16 @@ Of 10827 test files, 2312 are skipped and 8515 run.
 
 | Result | Tests | Share |
 |:---|---:|---:|
-| rejects invalid | 3959 | 46.5% |
+| rejects invalid | 3963 | 46.5% |
 | accepts valid | 3874 | 45.5% |
-| accepts invalid | 423 | 5.0% |
+| accepts invalid | 420 | 4.9% |
 | rejects valid | 238 | 2.8% |
 | parse/unsupported | 18 | 0.2% |
-| crash | 2 | 0.0% |
+| crash | 1 | 0.0% |
 
 *Rejects invalid* and *accepts valid* agree with kotlinc. *Accepts invalid* is code kotlinc rejects that kc compiles; *rejects valid*, code kotlinc compiles that kc's checker rejects. Both are bugs. A *parse/unsupported* test uses a feature kc doesn't support, which says nothing about its checks.
 
-Of the 3959 tests both reject, kc reports an error on the line of an expected one in 3732.
+Of the 3963 tests both reject, kc reports an error on the line of an expected one in 3736.
 
 A test is invalid if it stops before the backend or marks an error: one that runs to it (`BACKEND`) can mark the JVM backend's errors, such as `CONFLICTING_JVM_DECLARATIONS`. Of the tests run, 222 stop at `FRONTEND` but mark no error: most add the `CHECK_TYPE` helpers, whose names (`_`) kotlinc reports outside the test infrastructure, and count as valid; the others leave their errors out with the `DIAGNOSTICS` directive. 114 run to the backend and mark one. 5 marked names have no declared severity (debug information, for one), and count as neither.
 
@@ -63,7 +63,6 @@ Tests kotlinc rejects that kc compiles, by the errors their markup expects. A te
 | `(no error marked)` | 8 | 8 | `tests/cyclicHierarchy/javaJavaCycle.kt`, `tests/deprecated/javaDeprecated.kt` |
 | `UNSUPPORTED` | 8 | 5 | `tests/NamedFunctionTypeParameterInSupertype.kt`, `tests/callableReference/property/backingField.kt` |
 | `CLASSIFIER_REDECLARATION` | 7 | 7 | `tests/j+k/brokenCode/classDuplicates.kt`, `tests/redeclarations/kotlinClassJavaClassNestedRedeclaration.kt` |
-| `CYCLIC_INHERITANCE_HIERARCHY` | 7 | 6 | `tests/classpathSubstitution/cyclicSupertype.kt`, `tests/classpathSubstitution/cyclicSupertype2.kt` |
 | `JAVA_TYPE_MISMATCH` | 7 | 7 | `tests/platformTypes/genericVarianceViolation/deepTypeHierarchy.kt`, `tests/platformTypes/genericVarianceViolation/javaOutProjection.kt` |
 | `MANY_IMPL_MEMBER_NOT_IMPLEMENTED` | 6 | 5 | `tests/j+k/manyImplNotImplementedComplexHierarchy.kt`, `tests/j+k/manyImplNotImplementedComplexHierarchy2.kt` |
 | `NOTHING_TO_OVERRIDE` | 6 | 3 | `tests/j+k/types/newListMethodsNullabilityOverridesLinkedListLatest.kt`, `tests/multimodule/duplicateSuper/sameSuperTraitDifferentBounds.kt` |
@@ -76,6 +75,7 @@ Tests kotlinc rejects that kc compiles, by the errors their markup expects. A te
 | `RETURN_TYPE_MISMATCH_ON_OVERRIDE` | 5 | 1 | `tests/inference/pcla/issues/kt47989b.kt`, `tests/j+k/types/newListMethodsNullabilityOverridesLinkedListLatest.kt` |
 | `UPPER_BOUND_VIOLATED` | 5 | 2 | `tests/generics/RecursiveUpperBoundWithTwoArguments.kt`, `tests/inference/capturedTypes/kt49101.kt` |
 | `ASSIGN_OPERATOR_AMBIGUITY` | 4 | 4 | `tests/callResolution/exponentialArraySetWithPlusAssign.kt`, `tests/operatorsOverloading/AssignOperatorAmbiguity.kt` |
+| `CYCLIC_INHERITANCE_HIERARCHY` | 4 | 3 | `tests/classpathSubstitution/cyclicSupertype.kt`, `tests/classpathSubstitution/cyclicSupertype2.kt` |
 | `INAPPLICABLE_CANDIDATE` | 4 | 3 | `tests/callableReference/generic/dependOnArgumentType.kt`, `tests/j+k/sam/referenceToSamFunctionAgainstExpectedType.kt` |
 | `INCONSISTENT_TYPE_PARAMETER_BOUNDS` | 4 | 2 | `tests/enum/equalityOfEnumAndParameter.kt`, `tests/enum/equalityOfFlexibleTypeParameters.kt` |
 | `MULTIPLE_DEFAULTS_INHERITED_FROM_SUPERTYPES` | 4 | 4 | `tests/missingMultipleDefaultsOnTransitiveInheritance2.kt`, `tests/multipleDefaultsAnonymousObject.kt` |
@@ -164,12 +164,12 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 14518 of 21471 expected errors (67.6%) on their lines.
+kc reports 14526 of 21476 expected errors (67.6%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
 | `SYNTAX` | 875 | 222 | 653 |
-| `UNRESOLVED_REFERENCE` | 2489 | 1901 | 588 |
+| `UNRESOLVED_REFERENCE` | 2493 | 1905 | 588 |
 | `ARGUMENT_TYPE_MISMATCH` | 1484 | 995 | 489 |
 | `CONFLICTING_JVM_DECLARATIONS` | 996 | 518 | 478 |
 | `UNSUPPORTED` | 231 | 35 | 196 |
@@ -266,7 +266,7 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | `not enough information to infer type arguments of ::barn: specify the expected function type` | 11 |
 | `overload resolution ambiguity for ::foo: specify the expected function type` | 11 |
 | `val cannot be reassigned` | 11 |
-| *190 more* | |
+| *191 more* | |
 
 ## Unsupported features
 
@@ -305,7 +305,6 @@ At each step, the feature that unblocks the most tests given the ones before it.
 | Panic | Tests | Examples |
 |:---|---:|:---|
 | `stack overflow in types.Subst.applyA (generic.go:445)` | 1 | `tests/j+k/samByProjectedType/javaSamTypeWithRecursionInBounds.kt` |
-| `timed out` | 1 | `testsWithStdLib/problems/KJKComplexHierarchyNestedLoop.kt` |
 
 ## Warnings
 
