@@ -472,11 +472,15 @@ func groups(n any) *bool {
 // it is: a composable lambda that a composable remembers does, and an
 // inlined one's code is the code around it's. A lambda inlined into a
 // composable runs in a replace group if it returns a value, but for
-// key()'s. Other lambdas are code of their own: see composeLambda.
+// key()'s. Other lambdas are code of their own, see composeLambda, whose
+// object the composable remembers, as a composable call does a value.
 func (w *composeWalk) lambda(x *syntax.Lambda) bool {
 	j := w.c.jumps[x]
 	switch {
 	case remembered(x):
+		w.event()
+		return true
+	case !x.Inline && !x.Composable && x.KProp == nil && !x.DontMemoize:
 		w.event()
 		return true
 	case !x.Inline || j.crossinline:
