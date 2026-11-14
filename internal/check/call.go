@@ -387,6 +387,10 @@ type candidate struct {
 	sys    *system
 	sams   map[int]*types.FunSym // the arguments converted to fun interfaces: see samValue
 	susps  map[int]bool          // the arguments converted to suspend function types: see suspendConverted
+	// stubCons are the constraints that constrain recorded in builders'
+	// runs for this candidate, in a builder's lambda: applicable takes
+	// them back, and the chosen candidate's are recorded again.
+	stubCons map[*stubRun][][2]types.Type
 	// pre is sys before constrain added the arguments' constraints, kept
 	// where an argument is a smart-cast variable of a type parameter's
 	// type: see declaredCastArgs.
@@ -992,6 +996,14 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 				maximal = ng
 			}
 		}
+		if len(maximal) == 0 && len(c.stubs) > 0 {
+			// In a builder's lambda, a stub in the candidates' parameter
+			// types leaves none more specific than the others: the tie
+			// breaks as between equally specific ones, the candidate
+			// without a vararg first, make(it: Iterable<T>) of B<T>'s
+			// two for make(listOf("a")).
+			maximal = match
+		}
 		if i := preferred(len(maximal), x.Args, func(i int) *callee { return &maximal[i].callee }); i >= 0 {
 			best = maximal[i]
 		}
@@ -1018,6 +1030,7 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			return types.InvalidType
 		}
 	}
+	c.restoreStubCons(best.stubCons)
 	for i, a := range x.Args {
 		if lit, ok := a.(*syntax.IntLit); ok && fitsLit(lit, best.params[i]) {
 			lit.T = best.params[i].NonNull()
@@ -1990,7 +2003,11 @@ func (c *Checker) applicable(cs []*candidate, x *syntax.Call, ts []types.Type, p
 	for _, cd := range cs {
 		// Each attempt starts from a fresh copy of the candidate.
 		try := &candidate{callee: cd.callee, sub: cd.sub, params: cd.params, sys: cd.sys.clone(), sams: cd.sams, susps: cd.susps}
+		mark := c.markStubCons()
 		c.constrain(try, x, ts, partials, longLits)
+		// What a candidate records doesn't count for the others: B<T>'s
+		// make(vararg T) for make(listOf("a")) doesn't give T a List.
+		try.stubCons = c.takeStubCons(mark)
 		if try.sys.ok && try.sys.litsFitUppers() && c.lambdasFit(try, x) && c.withinBounds(try) {
 			out = append(out, try)
 		}
@@ -2020,6 +2037,13 @@ func (c *Checker) withinBounds(cd *candidate) bool {
 // candidate, as Kotlin decides: g accepts f's parameters as arguments.
 // f's own type parameters are kept as they are, g's are inferred.
 func (c *Checker) mostSpecific(f *candidate, cs []*candidate, args []syntax.Expr) bool {
+	// In a builder's lambda (see stubInference), comparing the
+	// candidates' parameter types records nothing, and a stub is no
+	// supertype of every type: make(it: Iterable<T>) is more specific
+	// than make(vararg values: T) for make(listOf("a")) of a B<T>.
+	saved := c.stubs
+	c.stubs = nil
+	defer func() { c.stubs = saved }()
 	for _, g := range cs {
 		if g == f {
 			continue
@@ -2468,4 +2492,40 @@ func (c *Checker) declaredCastArgs(x *syntax.Call, best *candidate, ts []types.T
 func (c *Checker) subOK(s *system, a, b types.Type) bool {
 	s.sub(a, b)
 	return s.ok
+}
+
+// markStubCons returns the number of constraints each builder's run (see
+// stubInference) has recorded so far, or nil outside a builder's lambda.
+func (c *Checker) markStubCons() map[*stubRun]int {
+	if len(c.stubs) == 0 {
+		return nil
+	}
+	m := map[*stubRun]int{}
+	for _, r := range c.stubs {
+		m[r] = len(r.cons)
+	}
+	return m
+}
+
+// takeStubCons removes the constraints the runs of mark recorded since,
+// and returns them.
+func (c *Checker) takeStubCons(mark map[*stubRun]int) map[*stubRun][][2]types.Type {
+	var out map[*stubRun][][2]types.Type
+	for r, n := range mark {
+		if len(r.cons) > n {
+			if out == nil {
+				out = map[*stubRun][][2]types.Type{}
+			}
+			out[r] = slices.Clone(r.cons[n:])
+			r.cons = r.cons[:n]
+		}
+	}
+	return out
+}
+
+// restoreStubCons records again the constraints that takeStubCons took.
+func (c *Checker) restoreStubCons(cons map[*stubRun][][2]types.Type) {
+	for r, ks := range cons {
+		r.cons = append(r.cons, ks...)
+	}
 }
