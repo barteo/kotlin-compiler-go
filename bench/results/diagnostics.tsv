@@ -3945,7 +3945,7 @@ tests/inference/callableReferences/conversionLastStatementInLambda.kt	accepts va
 tests/inference/callableReferences/conversionLastStatementInLambdaGeneric.kt	accepts valid		
 tests/inference/callableReferences/fromExpectedTypeInLambda.kt	accepts valid		
 tests/inference/callableReferences/kt55931.kt	accepts valid		
-tests/inference/callableReferences/kt56227.kt	parse/unsupported	property reference	
+tests/inference/callableReferences/kt56227.kt	accepts valid		
 tests/inference/cannotCompleteResolveAmbiguity.kt	rejects invalid	on an expected line	
 tests/inference/cannotCompleteResolveFunctionLiteralsNoUse.kt	rejects invalid	on an expected line	
 tests/inference/cannotCompleteResolveNoInfoForParameter.kt	rejects invalid	on an expected line	
@@ -4298,7 +4298,7 @@ tests/inference/kt35702.kt	accepts valid
 tests/inference/kt36044.kt	accepts valid		
 tests/inference/kt36819.kt	rejects valid	cannot infer a type for this parameter. Please specify it explicitly.	kt36819.kt:38: cannot infer a type for this parameter. Please specify it explicitly.
 tests/inference/kt37853.kt	accepts valid		
-tests/inference/kt39220.kt	parse/unsupported	property reference	
+tests/inference/kt39220.kt	rejects invalid	on an expected line	
 tests/inference/kt40131.kt	rejects invalid	on an expected line	
 tests/inference/kt40396.kt	rejects invalid	on an expected line	
 tests/inference/kt41989.kt	accepts valid		
@@ -4414,7 +4414,7 @@ tests/inference/pcla/additional/BuildeeSupertypeAsTypeVariableSourceInClassifier
 tests/inference/pcla/additional/BuildeeSupertypeAsTypeVariableSourceInFunctions.kt	accepts valid		
 tests/inference/pcla/additional/BuildeeSupertypeAsTypeVariableSourceInProperties.kt	skip	LANGUAGE	
 tests/inference/pcla/additional/BuildeeSupertypeAsTypeVariableSourceInPropertiesOld.kt	skip	LANGUAGE	
-tests/inference/pcla/assignmentOperatorAmbiguity.kt	rejects invalid	elsewhere	
+tests/inference/pcla/assignmentOperatorAmbiguity.kt	rejects invalid	on an expected line	
 tests/inference/pcla/assignmentPlusOperator.kt	rejects invalid	on an expected line	
 tests/inference/pcla/assignmentUsingIncompletePCLACall.kt	accepts valid		
 tests/inference/pcla/bothOuterAndProperConstraints.kt	accepts valid		
@@ -4438,86 +4438,86 @@ tests/inference/pcla/elvisWithNothingRHS.kt	accepts valid
 tests/inference/pcla/elvisWithReturnInLastStatementOfLastLambda.kt	accepts valid		
 tests/inference/pcla/equalityChecksOnIntegerTypesProgressive.kt	rejects invalid	on an expected line	
 tests/inference/pcla/errorOnStubReceiver.kt	accepts valid		
-tests/inference/pcla/fixationOnDemand/derivativeTypeVariables/ArgumentForSubtypeOfPCLALambdaTV.kt	rejects invalid	elsewhere	
-tests/inference/pcla/fixationOnDemand/derivativeTypeVariables/ArgumentForSupertypeOfPCLALambdaTV.kt	rejects invalid	elsewhere	
-tests/inference/pcla/fixationOnDemand/derivativeTypeVariables/DeepEquivalent.kt	rejects invalid	elsewhere	
-tests/inference/pcla/fixationOnDemand/derivativeTypeVariables/DeepSubtypeOfPCLALambdaTV.kt	rejects invalid	elsewhere	
-tests/inference/pcla/fixationOnDemand/derivativeTypeVariables/DeepSupertypeOfPCLALambdaTV.kt	rejects invalid	elsewhere	
+tests/inference/pcla/fixationOnDemand/derivativeTypeVariables/ArgumentForSubtypeOfPCLALambdaTV.kt	rejects invalid	on an expected line	
+tests/inference/pcla/fixationOnDemand/derivativeTypeVariables/ArgumentForSupertypeOfPCLALambdaTV.kt	rejects invalid	on an expected line	
+tests/inference/pcla/fixationOnDemand/derivativeTypeVariables/DeepEquivalent.kt	rejects invalid	on an expected line	
+tests/inference/pcla/fixationOnDemand/derivativeTypeVariables/DeepSubtypeOfPCLALambdaTV.kt	rejects invalid	on an expected line	
+tests/inference/pcla/fixationOnDemand/derivativeTypeVariables/DeepSupertypeOfPCLALambdaTV.kt	rejects invalid	on an expected line	
 tests/inference/pcla/fixationOnDemand/derivativeTypeVariables/PCLALambdaTVAsArgumentForSubtype.kt	rejects invalid	elsewhere	
 tests/inference/pcla/fixationOnDemand/derivativeTypeVariables/PCLALambdaTVAsArgumentForSupertype.kt	rejects invalid	elsewhere	
 tests/inference/pcla/fixationOnDemand/derivativeTypeVariables/ShallowEquivalent.kt	rejects invalid	elsewhere	
 tests/inference/pcla/fixationOnDemand/derivativeTypeVariables/ShallowSubtypeOfPCLALambdaTV.kt	rejects invalid	elsewhere	
 tests/inference/pcla/fixationOnDemand/derivativeTypeVariables/ShallowSupertypeOfPCLALambdaTV.kt	rejects invalid	elsewhere	
-tests/inference/pcla/fixationOnDemand/miscellaneous/BasicErrors.kt	rejects invalid	elsewhere	
-tests/inference/pcla/fixationOnDemand/miscellaneous/InnerDeclarationScope.kt	rejects invalid	elsewhere	
-tests/inference/pcla/fixationOnDemand/miscellaneous/NestedDependentPCLACall.kt	rejects invalid	elsewhere	
-tests/inference/pcla/fixationOnDemand/miscellaneous/NestedIndependentPCLACall.kt	rejects invalid	elsewhere	
-tests/inference/pcla/fixationOnDemand/miscellaneous/PCLACandidateShape.kt	rejects invalid	elsewhere	
+tests/inference/pcla/fixationOnDemand/miscellaneous/BasicErrors.kt	rejects invalid	on an expected line	
+tests/inference/pcla/fixationOnDemand/miscellaneous/InnerDeclarationScope.kt	rejects invalid	on an expected line	
+tests/inference/pcla/fixationOnDemand/miscellaneous/NestedDependentPCLACall.kt	rejects invalid	on an expected line	
+tests/inference/pcla/fixationOnDemand/miscellaneous/NestedIndependentPCLACall.kt	rejects invalid	on an expected line	
+tests/inference/pcla/fixationOnDemand/miscellaneous/PCLACandidateShape.kt	rejects invalid	on an expected line	
 tests/inference/pcla/fixationOnDemand/miscellaneous/ResolutionToMemberOverExtension.kt	accepts valid		
 tests/inference/pcla/fixationOnDemand/scopeNavigation/compositeTypes/ContravariantTypeVariableCapture.kt	rejects invalid	elsewhere	
 tests/inference/pcla/fixationOnDemand/scopeNavigation/compositeTypes/CovariantTypeVariableCapture.kt	rejects invalid	elsewhere	
-tests/inference/pcla/fixationOnDemand/scopeNavigation/compositeTypes/DefinitelyNonNullTypeVariable.kt	rejects invalid	elsewhere	
-tests/inference/pcla/fixationOnDemand/scopeNavigation/compositeTypes/FlexibleTypeVariable.kt	rejects invalid	elsewhere	
+tests/inference/pcla/fixationOnDemand/scopeNavigation/compositeTypes/DefinitelyNonNullTypeVariable.kt	rejects invalid	on an expected line	
+tests/inference/pcla/fixationOnDemand/scopeNavigation/compositeTypes/FlexibleTypeVariable.kt	rejects invalid	on an expected line	
 tests/inference/pcla/fixationOnDemand/scopeNavigation/compositeTypes/IntersectedTypeVariable.kt	rejects invalid	elsewhere	
-tests/inference/pcla/fixationOnDemand/scopeNavigation/compositeTypes/NullableTypeVariable.kt	rejects invalid	elsewhere	
+tests/inference/pcla/fixationOnDemand/scopeNavigation/compositeTypes/NullableTypeVariable.kt	rejects invalid	on an expected line	
 tests/inference/pcla/fixationOnDemand/scopeNavigation/compositeTypes/TypeVariableStarCapture.kt	rejects invalid	elsewhere	
-tests/inference/pcla/fixationOnDemand/scopeNavigation/concreteScopeOwner/AnyReceiverFunctionCall.kt	rejects invalid	elsewhere	
-tests/inference/pcla/fixationOnDemand/scopeNavigation/concreteScopeOwner/BasicCallableReference.kt	rejects invalid	elsewhere	
-tests/inference/pcla/fixationOnDemand/scopeNavigation/concreteScopeOwner/BasicPropertyAccess.kt	rejects invalid	elsewhere	
-tests/inference/pcla/fixationOnDemand/scopeNavigation/concreteScopeOwner/BasicPropertyAssignment.kt	rejects invalid	elsewhere	
-tests/inference/pcla/fixationOnDemand/scopeNavigation/concreteScopeOwner/ComplexCallableReference.kt	rejects invalid	elsewhere	
-tests/inference/pcla/fixationOnDemand/scopeNavigation/concreteScopeOwner/ComplexPropertyAccess.kt	rejects invalid	elsewhere	
-tests/inference/pcla/fixationOnDemand/scopeNavigation/concreteScopeOwner/ComplexPropertyAssignment.kt	rejects invalid	elsewhere	
-tests/inference/pcla/fixationOnDemand/scopeNavigation/concreteScopeOwner/FunctionCall.kt	rejects invalid	elsewhere	
-tests/inference/pcla/fixationOnDemand/scopeNavigation/concreteScopeOwner/GenericCallableReference.kt	rejects invalid	elsewhere	
-tests/inference/pcla/fixationOnDemand/scopeNavigation/concreteScopeOwner/GenericFunctionCall.kt	rejects invalid	elsewhere	
-tests/inference/pcla/fixationOnDemand/scopeNavigation/concreteScopeOwner/GenericInnerClassConstructorCall.kt	rejects invalid	elsewhere	
-tests/inference/pcla/fixationOnDemand/scopeNavigation/concreteScopeOwner/GenericPropertyAccess.kt	rejects invalid	elsewhere	
-tests/inference/pcla/fixationOnDemand/scopeNavigation/concreteScopeOwner/GenericPropertyAssignment.kt	rejects invalid	elsewhere	
-tests/inference/pcla/fixationOnDemand/scopeNavigation/concreteScopeOwner/InnerClassConstructorCall.kt	rejects invalid	elsewhere	
-tests/inference/pcla/fixationOnDemand/scopeNavigation/genericScopeOwner/AnyReceiverFunctionCall.kt	rejects invalid	elsewhere	
-tests/inference/pcla/fixationOnDemand/scopeNavigation/genericScopeOwner/BasicCallableReference.kt	rejects invalid	elsewhere	
-tests/inference/pcla/fixationOnDemand/scopeNavigation/genericScopeOwner/BasicPropertyAccess.kt	rejects invalid	elsewhere	
-tests/inference/pcla/fixationOnDemand/scopeNavigation/genericScopeOwner/BasicPropertyAssignment.kt	rejects invalid	elsewhere	
-tests/inference/pcla/fixationOnDemand/scopeNavigation/genericScopeOwner/ComplexCallableReference.kt	rejects invalid	elsewhere	
-tests/inference/pcla/fixationOnDemand/scopeNavigation/genericScopeOwner/ComplexPropertyAccess.kt	rejects invalid	elsewhere	
-tests/inference/pcla/fixationOnDemand/scopeNavigation/genericScopeOwner/ComplexPropertyAssignment.kt	rejects invalid	elsewhere	
-tests/inference/pcla/fixationOnDemand/scopeNavigation/genericScopeOwner/FunctionCall.kt	rejects invalid	elsewhere	
-tests/inference/pcla/fixationOnDemand/scopeNavigation/genericScopeOwner/GenericCallableReference.kt	rejects invalid	elsewhere	
-tests/inference/pcla/fixationOnDemand/scopeNavigation/genericScopeOwner/GenericFunctionCall.kt	rejects invalid	elsewhere	
-tests/inference/pcla/fixationOnDemand/scopeNavigation/genericScopeOwner/GenericInnerClassConstructorCall.kt	rejects invalid	elsewhere	
-tests/inference/pcla/fixationOnDemand/scopeNavigation/genericScopeOwner/GenericPropertyAccess.kt	rejects invalid	elsewhere	
-tests/inference/pcla/fixationOnDemand/scopeNavigation/genericScopeOwner/GenericPropertyAssignment.kt	rejects invalid	elsewhere	
-tests/inference/pcla/fixationOnDemand/scopeNavigation/genericScopeOwner/InnerClassConstructorCall.kt	rejects invalid	elsewhere	
-tests/inference/pcla/fixationOnDemand/syntaxForms/CompareToOperatorCall.kt	rejects invalid	elsewhere	
-tests/inference/pcla/fixationOnDemand/syntaxForms/ContainsOperatorCall.kt	rejects invalid	elsewhere	
+tests/inference/pcla/fixationOnDemand/scopeNavigation/concreteScopeOwner/AnyReceiverFunctionCall.kt	rejects invalid	on an expected line	
+tests/inference/pcla/fixationOnDemand/scopeNavigation/concreteScopeOwner/BasicCallableReference.kt	rejects invalid	on an expected line	
+tests/inference/pcla/fixationOnDemand/scopeNavigation/concreteScopeOwner/BasicPropertyAccess.kt	rejects invalid	on an expected line	
+tests/inference/pcla/fixationOnDemand/scopeNavigation/concreteScopeOwner/BasicPropertyAssignment.kt	rejects invalid	on an expected line	
+tests/inference/pcla/fixationOnDemand/scopeNavigation/concreteScopeOwner/ComplexCallableReference.kt	rejects invalid	on an expected line	
+tests/inference/pcla/fixationOnDemand/scopeNavigation/concreteScopeOwner/ComplexPropertyAccess.kt	rejects invalid	on an expected line	
+tests/inference/pcla/fixationOnDemand/scopeNavigation/concreteScopeOwner/ComplexPropertyAssignment.kt	rejects invalid	on an expected line	
+tests/inference/pcla/fixationOnDemand/scopeNavigation/concreteScopeOwner/FunctionCall.kt	rejects invalid	on an expected line	
+tests/inference/pcla/fixationOnDemand/scopeNavigation/concreteScopeOwner/GenericCallableReference.kt	rejects invalid	on an expected line	
+tests/inference/pcla/fixationOnDemand/scopeNavigation/concreteScopeOwner/GenericFunctionCall.kt	rejects invalid	on an expected line	
+tests/inference/pcla/fixationOnDemand/scopeNavigation/concreteScopeOwner/GenericInnerClassConstructorCall.kt	rejects invalid	on an expected line	
+tests/inference/pcla/fixationOnDemand/scopeNavigation/concreteScopeOwner/GenericPropertyAccess.kt	rejects invalid	on an expected line	
+tests/inference/pcla/fixationOnDemand/scopeNavigation/concreteScopeOwner/GenericPropertyAssignment.kt	rejects invalid	on an expected line	
+tests/inference/pcla/fixationOnDemand/scopeNavigation/concreteScopeOwner/InnerClassConstructorCall.kt	rejects invalid	on an expected line	
+tests/inference/pcla/fixationOnDemand/scopeNavigation/genericScopeOwner/AnyReceiverFunctionCall.kt	rejects invalid	on an expected line	
+tests/inference/pcla/fixationOnDemand/scopeNavigation/genericScopeOwner/BasicCallableReference.kt	rejects invalid	on an expected line	
+tests/inference/pcla/fixationOnDemand/scopeNavigation/genericScopeOwner/BasicPropertyAccess.kt	rejects invalid	on an expected line	
+tests/inference/pcla/fixationOnDemand/scopeNavigation/genericScopeOwner/BasicPropertyAssignment.kt	rejects invalid	on an expected line	
+tests/inference/pcla/fixationOnDemand/scopeNavigation/genericScopeOwner/ComplexCallableReference.kt	rejects invalid	on an expected line	
+tests/inference/pcla/fixationOnDemand/scopeNavigation/genericScopeOwner/ComplexPropertyAccess.kt	rejects invalid	on an expected line	
+tests/inference/pcla/fixationOnDemand/scopeNavigation/genericScopeOwner/ComplexPropertyAssignment.kt	rejects invalid	on an expected line	
+tests/inference/pcla/fixationOnDemand/scopeNavigation/genericScopeOwner/FunctionCall.kt	rejects invalid	on an expected line	
+tests/inference/pcla/fixationOnDemand/scopeNavigation/genericScopeOwner/GenericCallableReference.kt	rejects invalid	on an expected line	
+tests/inference/pcla/fixationOnDemand/scopeNavigation/genericScopeOwner/GenericFunctionCall.kt	rejects invalid	on an expected line	
+tests/inference/pcla/fixationOnDemand/scopeNavigation/genericScopeOwner/GenericInnerClassConstructorCall.kt	rejects invalid	on an expected line	
+tests/inference/pcla/fixationOnDemand/scopeNavigation/genericScopeOwner/GenericPropertyAccess.kt	rejects invalid	on an expected line	
+tests/inference/pcla/fixationOnDemand/scopeNavigation/genericScopeOwner/GenericPropertyAssignment.kt	rejects invalid	on an expected line	
+tests/inference/pcla/fixationOnDemand/scopeNavigation/genericScopeOwner/InnerClassConstructorCall.kt	rejects invalid	on an expected line	
+tests/inference/pcla/fixationOnDemand/syntaxForms/CompareToOperatorCall.kt	rejects invalid	on an expected line	
+tests/inference/pcla/fixationOnDemand/syntaxForms/ContainsOperatorCall.kt	rejects invalid	on an expected line	
 tests/inference/pcla/fixationOnDemand/syntaxForms/DestructuringDeclaration.kt	skip	LANGUAGE	
 tests/inference/pcla/fixationOnDemand/syntaxForms/DestructuringDeclarationOld.kt	skip	LANGUAGE	
 tests/inference/pcla/fixationOnDemand/syntaxForms/ForLoopContainerExpression.kt	rejects invalid	elsewhere	
-tests/inference/pcla/fixationOnDemand/syntaxForms/IndexingAssignment.kt	rejects invalid	elsewhere	
-tests/inference/pcla/fixationOnDemand/syntaxForms/IndexingOperatorCall.kt	rejects invalid	elsewhere	
-tests/inference/pcla/fixationOnDemand/syntaxForms/IndexingPlusAssignOperatorCall.kt	rejects invalid	elsewhere	
-tests/inference/pcla/fixationOnDemand/syntaxForms/IndexingPlusOperatorAssignment.kt	rejects invalid	elsewhere	
-tests/inference/pcla/fixationOnDemand/syntaxForms/InfixFunctionCall.kt	rejects invalid	elsewhere	
+tests/inference/pcla/fixationOnDemand/syntaxForms/IndexingAssignment.kt	rejects invalid	on an expected line	
+tests/inference/pcla/fixationOnDemand/syntaxForms/IndexingOperatorCall.kt	rejects invalid	on an expected line	
+tests/inference/pcla/fixationOnDemand/syntaxForms/IndexingPlusAssignOperatorCall.kt	rejects invalid	on an expected line	
+tests/inference/pcla/fixationOnDemand/syntaxForms/IndexingPlusOperatorAssignment.kt	rejects invalid	on an expected line	
+tests/inference/pcla/fixationOnDemand/syntaxForms/InfixFunctionCall.kt	rejects invalid	on an expected line	
 tests/inference/pcla/fixationOnDemand/syntaxForms/InvokeOperatorCall.kt	rejects invalid	elsewhere	
 tests/inference/pcla/fixationOnDemand/syntaxForms/LogicalNotOperatorCall.kt	rejects invalid	elsewhere	
-tests/inference/pcla/fixationOnDemand/syntaxForms/PlusAssignOperatorCall.kt	rejects invalid	elsewhere	
-tests/inference/pcla/fixationOnDemand/syntaxForms/PlusOperatorAssignment.kt	rejects invalid	elsewhere	
-tests/inference/pcla/fixationOnDemand/syntaxForms/PlusOperatorCall.kt	rejects invalid	elsewhere	
+tests/inference/pcla/fixationOnDemand/syntaxForms/PlusAssignOperatorCall.kt	rejects invalid	on an expected line	
+tests/inference/pcla/fixationOnDemand/syntaxForms/PlusOperatorAssignment.kt	rejects invalid	on an expected line	
+tests/inference/pcla/fixationOnDemand/syntaxForms/PlusOperatorCall.kt	rejects invalid	on an expected line	
 tests/inference/pcla/fixationOnDemand/syntaxForms/PostfixIncrementOperatorCall.kt	rejects invalid	on an expected line	
 tests/inference/pcla/fixationOnDemand/syntaxForms/PrefixIncrementOperatorCall.kt	rejects invalid	on an expected line	
-tests/inference/pcla/fixationOnDemand/syntaxForms/RangeOperatorCall.kt	rejects invalid	elsewhere	
+tests/inference/pcla/fixationOnDemand/syntaxForms/RangeOperatorCall.kt	rejects invalid	on an expected line	
 tests/inference/pcla/fixationOnDemand/syntaxForms/ReferenceEqualityExpression.kt	accepts valid		
 tests/inference/pcla/fixationOnDemand/syntaxForms/StringInterpolationExpression.kt	accepts valid		
 tests/inference/pcla/fixationOnDemand/syntaxForms/TypeCastExpression.kt	rejects invalid	elsewhere	
 tests/inference/pcla/fixationOnDemand/syntaxForms/TypeCheckExpression.kt	rejects invalid	elsewhere	
-tests/inference/pcla/fixationOnDemand/syntaxForms/UnarySignOperatorCall.kt	rejects invalid	elsewhere	
+tests/inference/pcla/fixationOnDemand/syntaxForms/UnarySignOperatorCall.kt	rejects invalid	on an expected line	
 tests/inference/pcla/fixationOnDemand/syntaxForms/ValueEqualityOperatorCall.kt	accepts valid		
-tests/inference/pcla/fixationOnDemand/syntaxForms/WhenExpression.kt	rejects invalid	elsewhere	
+tests/inference/pcla/fixationOnDemand/syntaxForms/WhenExpression.kt	rejects invalid	on an expected line	
 tests/inference/pcla/fixingDependentVariablesForReceivers.kt	rejects invalid	on an expected line	
 tests/inference/pcla/fixingDependentVariablesForReceiversInitial.kt	accepts valid		
-tests/inference/pcla/fixingTVForLambadaWithShallowDependencyToOuter.kt	rejects invalid	elsewhere	
-tests/inference/pcla/fixingTVForLambadaWithShallowDependencyToOuter2.kt	rejects invalid	elsewhere	
+tests/inference/pcla/fixingTVForLambadaWithShallowDependencyToOuter.kt	rejects invalid	on an expected line	
+tests/inference/pcla/fixingTVForLambadaWithShallowDependencyToOuter2.kt	rejects invalid	on an expected line	
 tests/inference/pcla/fixingTVForLambadaWithShallowDependencyToOuter3.kt	accepts valid		
 tests/inference/pcla/forceLambdaCompletionFromReturnStatement/differentBehaviorWhenSpecifiedArgument.kt	rejects invalid	elsewhere	
 tests/inference/pcla/forceLambdaCompletionFromReturnStatement/differentBehaviorWhenSpecifiedArgument20.kt	skip	LANGUAGE	
@@ -4595,7 +4595,7 @@ tests/inference/pcla/issues/kt60291c.kt	accepts valid
 tests/inference/pcla/issues/kt60447a.kt	accepts valid		
 tests/inference/pcla/issues/kt60447b.kt	accepts valid		
 tests/inference/pcla/issues/kt61310.kt	accepts valid		
-tests/inference/pcla/issues/kt63648.kt	rejects invalid	elsewhere	
+tests/inference/pcla/issues/kt63648.kt	rejects invalid	on an expected line	
 tests/inference/pcla/issues/kt63733.kt	accepts valid		
 tests/inference/pcla/issues/kt63840a.kt	accepts valid		
 tests/inference/pcla/issues/kt63840b.kt	accepts valid		
@@ -4716,7 +4716,7 @@ tests/inference/pcla/stubTypes/commonSuperTypeCovariant.kt	rejects valid	cannot 
 tests/inference/pcla/stubTypes/commonSuperTypeInvariant.kt	rejects invalid	on an expected line	
 tests/inference/pcla/stubTypes/commonSuperTypeNullable.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	main.kt:21: cannot infer type for type parameter 'R'. Specify it explicitly.
 tests/inference/pcla/stubTypes/intersect.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	main.kt:21: cannot infer type for type parameter 'R1'. Specify it explicitly.
-tests/inference/pcla/stubTypes/memberScope.kt	rejects invalid	elsewhere	
+tests/inference/pcla/stubTypes/memberScope.kt	rejects invalid	on an expected line	
 tests/inference/pcla/stubTypes/nullability.kt	accepts valid		
 tests/inference/pcla/stubTypes/renderingStubTypes.kt	accepts valid		
 tests/inference/pcla/stubTypes/simpleIntersection.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	simpleIntersection.kt:12: cannot infer type for type parameter 'R1'. Specify it explicitly.
@@ -7820,7 +7820,7 @@ tests/resolve/starProjectionAndFunctionType.kt	rejects valid	expected parameter 
 tests/resolve/superInvoke.kt	accepts valid		
 tests/resolve/typeParameterInDefaultValueInLocalFunction.kt	accepts valid		
 tests/resolve/underscoreInCatchBlockWithEnabledFeature.kt	rejects invalid	on an expected line	
-tests/resolve/varInsideLambdaThatPassedToExtensionFunctionWithTypeParametersThatDefinedInsideThisLambda.kt	rejects invalid	elsewhere	
+tests/resolve/varInsideLambdaThatPassedToExtensionFunctionWithTypeParametersThatDefinedInsideThisLambda.kt	rejects invalid	on an expected line	
 tests/resolve/wrongNumberOfTypeArguments.kt	rejects invalid	on an expected line	
 tests/resolve/wrongReceiver.kt	rejects invalid	on an expected line	
 tests/restrictsSuspensionDifference.kt	rejects invalid	on an expected line	
