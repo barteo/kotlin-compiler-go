@@ -206,18 +206,18 @@ Kotlin 2.4.21's tests on `kc`:
 | Diagnostics tests | Tests | Share of run |
 |:---|---:|---:|
 | run (of 10,827) | 8,515 | |
-| rejects invalid | 3,999 | 47.0% |
+| rejects invalid | 4,000 | 47.0% |
 | accepts valid | 3,982 | 46.8% |
-| accepts invalid | 385 | 4.5% |
+| accepts invalid | 384 | 4.5% |
 | rejects valid | 131 | 1.5% |
 | parse/unsupported | 16 | 0.2% |
 | crash | 1 | |
 | harness error (`javac`) | 1 | |
 
 `kc` agrees with `kotlinc` on 93% of the diagnostics tests, and reports
-14,892 of the 21,506 expected errors (69%) on their lines. Tests with
+14,893 of the 21,506 expected errors (69%) on their lines. Tests with
 Java sources, which earlier runs skipped, add 1,229 tests to the run,
-and 185 of the 385 that *accept invalid* code. The reports break the failures down; the
+and 185 of the 384 that *accept invalid* code. The reports break the failures down; the
 largest groups are:
 
 - **Silent miscompilation**: none. No box test that `kc` compiles

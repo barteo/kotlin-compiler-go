@@ -3613,6 +3613,11 @@ type pendingBranch struct {
 	// scope is the branch's block's, with its locals and smart casts,
 	// which its lambdas see.
 	scope *scope
+	// free is the builder's run the call's variables are related to, if
+	// nothing constrained that run's variables yet when the branch was
+	// checked (see freeStubRun).
+	free   *stubRun
+	freeAt int // the number of free's constraints then
 }
 
 // branch checks a branch of an if or when. Without a known expected
@@ -3692,7 +3697,11 @@ func (c *Checker) branch(b *syntax.Block, want types.Type, valueUsed bool, pendi
 		b.T = t
 		return t
 	}
-	*pending = append(*pending, pendingBranch{sys: inner, t: t, body: b, scope: c.blockScope, unused: !valueUsed})
+	free, freeAt := c.freeStubRun(inner), 0
+	if free != nil {
+		freeAt = len(free.cons)
+	}
+	*pending = append(*pending, pendingBranch{sys: inner, t: t, body: b, scope: c.blockScope, unused: !valueUsed, free: free, freeAt: freeAt})
 	if !valueUsed {
 		return bt
 	}
@@ -3748,9 +3757,12 @@ func (c *Checker) completeBranches(pending []pendingBranch, result, want types.T
 			// Nothing, or null's Nothing?, which the branches join with.
 			target = want
 		}
+		forced := false
 		if target.K != types.Invalid && !target.HasVars() && (valueUsed || p.open) {
 			if trial := c.branchTrial(p.sys, p.t, target); trial != nil { // see expected.go
 				p.sys = trial
+			} else {
+				forced = p.free != nil
 			}
 		}
 		// The branch's lambdas, as sequence { yield(1) }'s in
@@ -3762,6 +3774,14 @@ func (c *Checker) completeBranches(pending []pendingBranch, result, want types.T
 		c.runLambdas(p.sys, false)
 		c.scope = saved
 		p.sys.finish()
+		if forced && slices.Contains(p.free.joined, p.sys) {
+			// K2 infers the call with the builder's variables, which
+			// nothing bounded when the branch was checked: the join of
+			// the branches is its upper bound whatever the lambda does
+			// after, as add(42) after removeLast() in an if's branches
+			// is a mismatch for its Boolean.
+			p.free.force(p.freeAt, p.t, target)
+		}
 		bt := p.sys.final(p.t)
 		if !p.unused {
 			p.body.T = bt

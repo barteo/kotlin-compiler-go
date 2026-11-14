@@ -3202,3 +3202,59 @@ func (c *Checker) tailBelowReturns(tail *system, bt types.Type, ts []types.Type)
 		*tail = *trial
 	}
 }
+
+// freeStubRun returns the builder's run that s, a pending branch's call's
+// system, joins (see joinRun), if no constraint of the run bounds the
+// stubs that s's variables are bounded by: as for removeLast() in
+// buildList { if (b) removeLast() else add(42) }, K2 can't infer the
+// call before the other branches are joined, while after add(42) it can.
+func (c *Checker) freeStubRun(s *system) *stubRun {
+	r := c.joinRun(s)
+	if r == nil {
+		return nil
+	}
+	free := true
+	for _, tv := range s.vars {
+		for _, b := range append(tv.lower[:len(tv.lower):len(tv.lower)], tv.upper...) {
+			s.apply(b).Has(func(u types.Type) bool {
+				if u.K == types.TypeVar && c.stubs[u.Param()] == r && r.bounds(u.Param()) {
+					free = false
+				}
+				return false
+			})
+		}
+	}
+	if !free {
+		return nil
+	}
+	return r
+}
+
+// bounds reports whether a constraint of r relates variable v to a type
+// without variables: Int <: E of add(42), not E <: E of a call on the
+// builder's receiver.
+func (r *stubRun) bounds(v *types.TypeParamSym) bool {
+	mentions := func(t types.Type) bool {
+		return t.Has(func(u types.Type) bool { return u.K == types.TypeVar && u.Param() == v })
+	}
+	for _, k := range r.cons {
+		if mentions(k[0]) && !k[1].HasVars() || mentions(k[1]) && !k[0].HasVars() {
+			return true
+		}
+	}
+	return false
+}
+
+// force records t <: u in r as of its at'th constraint, whatever the
+// constraints after it say: those that then disagree are dropped, as
+// add drops them (see completeBranches).
+func (r *stubRun) force(at int, t, u types.Type) {
+	if at > len(r.cons) {
+		at = len(r.cons)
+	}
+	later := slices.Clone(r.cons[at:])
+	r.cons = append(r.cons[:at:at], [2]types.Type{t, u})
+	for _, k := range later {
+		r.add(k[0], k[1])
+	}
+}

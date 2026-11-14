@@ -35,9 +35,11 @@ own tests.
   projection of a builder's variable is reported as uninferred, as K2
   reports it, but kc infers its other captures of builders' variables,
   which K2 may not. An `if` or `when` whose branches mention a builder's
-  variable joins them into its inference: K2 fixes the join's variable
-  first, so `removeLast()` in one branch and `add(42)` in the other
-  check in `kc`. A builder's lambda that casts its receiver to a
+  variable joins them into its inference. A branch's generic call that
+  only the builder's variable, not yet bounded, gives a type to, as
+  `removeLast()` before `add(42)` in the other branch, takes the other
+  branches' join as its bound, as K2's fixation of the join's variable
+  first does; K2's own order of fixation isn't modeled otherwise. A builder's lambda that casts its receiver to a
   star-projected subtype, `this as DerivedBuildee<*>`, infers the
   variable as `Unit`, where K2 infers a captured type.
 

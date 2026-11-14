@@ -10521,7 +10521,7 @@ testsWithStdLib/nullableTypeParameter.kt	accepts valid
 testsWithStdLib/outstar.kt	rejects invalid	on an expected line	
 testsWithStdLib/overrideWithFunctionalType.kt	accepts valid		
 testsWithStdLib/pairReference.kt	accepts valid		
-testsWithStdLib/pcla/buildListRemoveAddInBranches.kt	accepts invalid	ARGUMENT_TYPE_MISMATCH	buildListRemoveAddInBranches.kt:7: ARGUMENT_TYPE_MISMATCH
+testsWithStdLib/pcla/buildListRemoveAddInBranches.kt	rejects invalid	on an expected line	
 testsWithStdLib/pcla/buildListToUpperBound.kt	skip	LANGUAGE	
 testsWithStdLib/pcla/buildListToUpperBoundForbidden.kt	skip	LANGUAGE	
 testsWithStdLib/pcla/buildListToUpperBoundInLazy.kt	skip	LANGUAGE	
