@@ -1,6 +1,7 @@
 package syntax
 
 import (
+	"errors"
 	"math"
 	"slices"
 	"strconv"
@@ -271,6 +272,29 @@ func IntLiteral(pos Pos, text string, unsigned bool) (*IntLit, bool) {
 	return lit, ok
 }
 
+// FloatLiteral returns the Float literal, ending in f or F, or the Double
+// literal with text at pos, or the error to report. Out of range, 1e400 is
+// infinity and 1e-400 zero, as in kotlinc, which warns.
+func FloatLiteral(pos Pos, text string) (Expr, string) {
+	text = strings.ReplaceAll(text, "_", "")
+	if n := len(text); n > 0 && (text[n-1] == 'f' || text[n-1] == 'F') {
+		v, err := strconv.ParseFloat(text[:n-1], 32)
+		if err != nil && !errors.Is(err, strconv.ErrRange) {
+			return nil, "invalid float literal"
+		}
+		lit := &FloatLit{Val: float32(v)}
+		lit.P = pos
+		return lit, ""
+	}
+	v, err := strconv.ParseFloat(text, 64)
+	if err != nil && !errors.Is(err, strconv.ErrRange) {
+		return nil, "invalid double literal"
+	}
+	lit := &DoubleLit{Val: v}
+	lit.P = pos
+	return lit, ""
+}
+
 // NegateLiteral folds a minus at pos into lit, a literal written as the
 // signed integer text, if it is positive: as K2, a negative literal is one
 // literal, not -(1), so -1 may be a Short and -2147483648 is an Int.
@@ -301,4 +325,112 @@ func EscapeValue(seq string) (rune, bool) {
 		return escape(seq[1])
 	}
 	return 0, false
+}
+
+// A Reporter reports the errors of the checks both front ends share:
+// Fail stops at one, Later goes on after it, and Unsupported stops at a
+// feature kc doesn't support (see Error.Feature).
+type Reporter interface {
+	Fail(p Pos, format string, args ...any)
+	Later(p Pos, format string, args ...any)
+	Unsupported(p Pos, feature, format string, args ...any)
+}
+
+func (p *parser) Fail(pos Pos, format string, args ...any)  { p.failAt(pos, format, args...) }
+func (p *parser) Later(pos Pos, format string, args ...any) { p.errorLater(pos, format, args...) }
+func (p *parser) Unsupported(pos Pos, feature, format string, args ...any) {
+	p.unsupported(pos, feature, format, args...)
+}
+
+// ParamOnly reports modifiers that only parameters take on another
+// declaration.
+func ParamOnly(m Modifiers, r Reporter) {
+	if m.Vararg {
+		r.Fail(m.VarargP, "modifier 'vararg' is only allowed on parameters")
+	}
+}
+
+// NoContexts reports context parameters on a declaration that Kotlin
+// doesn't allow them on, what, as kotlinc does, and drops them.
+func NoContexts(m *Modifiers, what string, r Reporter) {
+	if m.Contexts != nil {
+		r.Later(m.ContextP, "context parameters on %s are unsupported", what)
+		m.Contexts = nil
+	}
+}
+
+// CheckLocalFun reports what local function fd, with its modifiers, can't
+// be.
+func CheckLocalFun(fd *FunDecl, r Reporter) {
+	if fd.External {
+		r.Unsupported(fd.ExternalP, "local external function", "local external functions are not supported")
+	}
+	if fd.Body == nil && fd.ExprBody == nil {
+		r.Fail(fd.P, "a local function must have a body")
+	}
+}
+
+// CheckDelegated reports the accessors with bodies of delegated property
+// pd.
+func CheckDelegated(pd *PropDecl, r Reporter) {
+	for _, a := range []*FunDecl{pd.Getter, pd.Setter} {
+		if a != nil {
+			r.Fail(a.P, "delegated property cannot have accessors with non-default implementations")
+		}
+	}
+}
+
+// AccessorMods records in property pd the modifiers m of its accessor
+// name, get or set, written at pos: annotations without a target are the
+// property's, with the accessor as their target, as @get:A is.
+func AccessorMods(pd *PropDecl, name string, pos Pos, m *Modifiers, r Reporter) {
+	NoContexts(m, "property accessors", r)
+	if pd.AccessorP.Line == 0 {
+		pd.AccessorP = pos
+	}
+	if len(m.Written) > 0 {
+		pd.AccessorMods = append(pd.AccessorMods, m.Written)
+	}
+	for _, a := range m.Annotations {
+		if a.Target == "" {
+			a.Target, a.Accessor = name, true
+		}
+		pd.Annotations = append(pd.Annotations, a)
+	}
+	if name == "set" {
+		pd.SetterVis = m.Visibility
+		pd.InlineSetter = m.Inline
+	} else {
+		pd.InlineGetter = m.Inline
+	}
+}
+
+// CheckAccessor reports a second getter or setter of property pd, or a
+// setter of a val, at accessor name written at pos.
+func CheckAccessor(pd *PropDecl, name string, pos Pos, r Reporter) {
+	switch {
+	case name == "get" && pd.Getter != nil:
+		r.Fail(pos, "property has two getters")
+	case name == "set" && !pd.Mutable:
+		r.Fail(pos, "a 'val'-property cannot have a setter")
+	case name == "set" && pd.Setter != nil:
+		r.Fail(pos, "property has two setters")
+	}
+}
+
+// ExternalAccessor declares property pd's external accessor without a
+// body, external get or external set at pos, with modifiers m: a native
+// method, which takes the value as value. It returns the accessor.
+func ExternalAccessor(pd *PropDecl, name string, pos Pos, m Modifiers, r Reporter) *FunDecl {
+	CheckAccessor(pd, name, pos, r)
+	a := &FunDecl{P: pos, Name: name, Property: pd.Name}
+	a.External, a.ExternalP = true, m.ExternalP
+	if name == "get" {
+		pd.Getter = a
+	} else {
+		a.Visibility = m.Visibility
+		a.Params = []*Param{{P: pos, Name: "value"}}
+		pd.Setter = a
+	}
+	return a
 }
