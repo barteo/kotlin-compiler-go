@@ -12,13 +12,15 @@ own tests.
 
 - Reified type parameters of members of interfaces and value classes
   (those of final members and member extensions of classes work).
-- Properties of a `@file:JvmMultifileClass` class that are neither
-  `private` nor `const`.
+- `lateinit` properties of a `@file:JvmMultifileClass` class that
+  aren't `private`.
 - Local `external` functions, which are reported as unsupported.
 - Opt-in requirements (`@RequiresOptIn`, `@SubclassOptInRequired`) and
   `@Deprecated` with level `ERROR` or `HIDDEN` are checked only for the
   program's own declarations: the markers and deprecations of the class
   path, the standard library's included, aren't read from class files.
+  The class path's functions and members deprecated `HIDDEN` stay hidden,
+  as `kotlinc` compiles them synthetic, but its classes don't.
 - Builder inference that can't check a lambda's body with the type
   variables open, as a member of a value of one of them whose type
   nothing gives yet: it needs a type argument or an expected type.
@@ -26,12 +28,14 @@ own tests.
 ## Without the standard library
 
 Without `kotlin-stdlib` on the class path, only these of it are
-available, built in: `println`, `print`, `mutableListOf()`, `listOf()`
-and the other factories without arguments, `map[key] = value`, the
-array factories (`emptyArray`, `arrayOfNulls`, `toTypedArray()`),
-`Char(code)`, `String(chars)`, `String.trim()`, the `Char` functions
-that are `java.lang.Character` methods, and `require`, `check`, `error`
-and `TODO`. Use the Java classes directly for the rest. Also:
+available, built in: `println`, `print`, the array factories
+(`arrayOf`, `emptyArray`, `arrayOfNulls`), `Char(code)`,
+`String(chars)`, the `Char` functions that are `java.lang.Character`
+methods, and `require`, `check`, `error` and `TODO` (which throws an
+`UnsupportedOperationException`). Collection factories and types
+(`listOf`, `mutableListOf`, `MutableList`), `map[key] = value`,
+`toTypedArray()` and `String.trim()` need the standard library. Use the
+Java classes directly for the rest. Also:
 
 - Ranges work only in `for` loops and `in` checks; they aren't values
   (`val r = 1..10` needs `IntRange`).
@@ -45,7 +49,9 @@ and `TODO`. Use the Java classes directly for the rest. Also:
 - A library's inline function whose body has an `invokedynamic` call
   other than `StringConcatFactory`'s, such as an indy lambda's
   (`LambdaMetafactory`) that refers to a private method of the library's
-  class, can't be inlined: the call is reported.
+  class, can't be inlined. A call of one with reified type parameters,
+  or of an inline-only one, is reported; another is called as a
+  function instead, and its lambdas can't return from the caller.
 - Inline functions that `kotlinc` compiled for JVM 9 and later, with
   `StringConcatFactory` string templates, are copied into `kc`'s version
   52 classes, which then need Java 9 to run. `kotlinc` refuses to inline
@@ -55,7 +61,8 @@ and `TODO`. Use the Java classes directly for the rest. Also:
 
 - Two references of a suspend function type to the same suspend
   function aren't equal if they ignore its result, or are to an inline
-  suspend function or to one that returns a value class.
+  suspend function or to one that returns a value class of a reference
+  or nullable type (not `Int` or `Long`).
 
 ## kotlinx.serialization (`-serialization`)
 
@@ -170,15 +177,12 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   generic function whose type parameters its receiver's type doesn't
   give (`Box<Int>::first` for `fun <T> Box<T>.first()` is fine), is an
   error.
-- A value of function type `(A, B) -> R` is accepted for a context
-  function type `context(A) (B) -> R`, and the other way round, as it is
-  for an extension function type `A.(B) -> R`; `kotlinc` accepts only
-  references and lambdas there.
 - Where annotations are written, and whether they repeat, isn't checked
   for Java annotations without `@Target` or from Java sources, nor for
   use-site targets on local declarations and expressions (`@field:` on a
   local variable), nor across a typealias's expansion (`@A T` where
-  `typealias T = @A Int`) or in `where` clauses. The arguments of a
+  `typealias T = @A Int`). A repeated annotation on a `where` clause's
+  bound is an error, which `kotlinc` accepts. The arguments of a
   library's `SOURCE` annotation aren't checked, so they need not be
   constants, nor are annotations on setter parameters, `set(@A v)`.
 
@@ -190,12 +194,15 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   `kotlinc`'s take the lambda's own types and let `LambdaMetafactory`
   box. They take the enclosing object before the captures, and lambdas in
   objects take the object rather than read `INSTANCE`. A local function
-  in an `init` block captures the constructor parameters it uses.
+  in an `init` block, and a lambda in a property's initializer, take the
+  values of the `val` constructor parameters they use, where `kotlinc`'s
+  read their fields.
 - Function values (not lambdas) converted to Java SAM interfaces use
   `$sam$` wrapper classes, where `kotlinc` uses `invokedynamic`.
-- A reference to a library's inline function (`String::uppercase`) is a
-  lambda, with a lambda's `toString()` and `equals()`, and so is a
-  suspend reference whose `invoke` `kotlinc` makes a state machine (one
+- A reference to a library's inline function (`String::uppercase`), or
+  a property reference used as a function value (`val f: (P) -> Int =
+  P::x`), is a lambda, with a lambda's `toString()` and `equals()`, and
+  so is a suspend reference whose `invoke` `kotlinc` makes a state machine (one
   that ignores the result, or to an inline suspend function or one
   returning a value class).
 - A `when` over an enum compares entries with `equals`, not through a
@@ -208,8 +215,10 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   property of the same name, `kotlinc` renames the outer class's field
   (`x$1`); `kc` keeps the companion's field in the companion instead. An
   interface companion's fields are instance fields, not static ones, and
-  its lambdas and local functions are static methods of the interface.
-- No `PermittedSubclasses` attributes, and `InnerClasses` entries only
+  the lambdas and local functions of its initializers and `init` blocks
+  are static methods of the interface.
+- No `PermittedSubclasses` attributes, which `kotlinc` writes for
+  `-jvm-target 17` and later, and `InnerClasses` entries only
   for the file's own nested classes, not for those a class refers to.
 - A value class's inherited members are called on the box, and `==`
   boxes both values and calls `equals` rather than `equals-impl0`.
@@ -219,14 +228,15 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   where used. The program's own inline `getValue` always gets a
   `KProperty`.
 - The spread operator copies with `clone()` and `System.arraycopy`, not
-  `Arrays.copyOf` and `SpreadBuilder`. `Array(n) { }` calls its init
+  `Arrays.copyOf` and `SpreadBuilder`. `Array(n, ::f)` calls its init
   function as an object; `kotlinc` inlines it.
 
 **Inlining**
 
-- Inlined lambdas take and return boxed `Object`s; arguments always go
-  through locals, with a cast after each reference load; and a
-  `$default` body's mask is tested at run time rather than folded.
+- A library's inline functions, inlined from their bytecode, have their
+  lambdas take and return boxed `Object`s, their arguments always go
+  through locals, with a cast after each reference load, and their
+  `$default` bodies' masks tested at run time rather than folded.
 - Lambdas passed for crossinline parameters are objects of the library's
   template classes (`ComparisonsKt__ComparisonsKt$thenBy$1`); `kotlinc`
   regenerates those classes with the lambda inlined. `kc` copies
@@ -240,16 +250,18 @@ yet done. [Design](design.md) describes how `kc` compiles it.
 - In the method of a function with a reified type parameter, a library
   object that uses it (`filterIsInstance`'s `{ it is R }`) is copied
   erased, so code in another module that copies the method filters
-  nothing; `typeOf<List<T>>()` there throws.
-- An open inline member and an inline member of an interface are
-  ordinary methods.
+  nothing.
+- A library interface's inline member is called as an ordinary method.
+  In the program, open and interface inline members are errors, even
+  with `@Suppress("DECLARATION_CANT_BE_INLINED")`, which `kotlinc`
+  accepts.
 
 **Coroutines**
 
-- The dispatch is at the end of the method, and resume points restore
-  locals in reverse order.
+- The dispatch is at the end of the method.
 - Copied inline functions' locals are unnamed, so `@DebugMetadata`
-  doesn't list them, and they are saved only while live. The lines after
+  doesn't list them, and those dead at a suspension point are saved, not
+  nulled out as `kotlinc` does. The lines after
   suspension points come from `kc`'s line tables.
 
 **Debug information and metadata**
@@ -262,8 +274,8 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   declarations' annotations aren't repeated in metadata, as `kotlinc` 2.4
   does.
 - A value class's synthesized members' signatures are always the static
-  `-impl` methods; for an internal value class, and for one in common
-  (multiplatform) sources, `kotlinc` 2.4.20 writes the instance methods.
+  `-impl` methods; for one in common (multiplatform) sources, `kotlinc`
+  writes the instance methods.
 - Synthetic classes are named otherwise: `kotlinc` numbers every lambda
   of a function, `kc` only those that become classes, and `kc` copies
   an inline function's objects and continuations as its own classes
@@ -272,16 +284,17 @@ yet done. [Design](design.md) describes how `kc` compiles it.
 - A local class's types that use the enclosing function's type
   parameters name them; `kotlinc` writes their ids, which the class
   doesn't declare.
-- An alias of an alias is written expanded: `kc` keeps no
-  abbreviations.
-- A private property initialized with an object expression has the
-  object's supertype, not its anonymous type.
+- Types written with a typealias, and an alias of an alias, are written
+  expanded: `kc` keeps no abbreviations.
+- A class's private property initialized with an object expression has
+  the type `Outer$1` in metadata, a class that doesn't exist, rather than
+  its anonymous class (`Outer$prop$1`).
 - A generic value class whose underlying type is a type parameter
   bounded by a primitive type (`value class W<T : Int>(val s: T)`) is
   unboxed as the boxed primitive (`Integer`); `kotlinc` passes the
   primitive (`int`) to its `-impl` methods.
-- Annotations on local variables, type parameters, types and
-  expressions aren't written, nor are `@[A B]` lists.
+- Annotations on type parameters and types aren't written, nor are
+  `@[A B]` lists.
 
 **Compiler plugins**
 
