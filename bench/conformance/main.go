@@ -56,6 +56,8 @@ func main() {
 	tsv := flag.String("tsv", "", "the TSV file of results to write")
 	baseline := flag.String("baseline", "", "a TSV file of an earlier run to compare with, read before -tsv is written; the harness fails if a test stopped passing")
 	filter := flag.String("filter", "", "only the tests whose path, relative to the suite, starts with this")
+	list := flag.String("list", "", "only the tests whose paths, relative to the suite, this file lists, one a line (the first field of a TSV line; # starts a comment)")
+	strayErrs := flag.String("errors", "", "diagnostics mode: the TSV file to write kc's errors on lines without an expected diagnostic to (path, category, file:line, message)")
 	sample := flag.Int("sample", 0, "run this many tests, chosen at random among those not skipped")
 	seed := flag.Uint64("seed", 1, "the seed of -sample")
 	jobs := flag.Int("j", runtime.NumCPU(), "tests compiled at a time")
@@ -117,6 +119,11 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	if *list != "" {
+		if tests, err = filterList(tests, *list); err != nil {
+			log.Fatal(err)
+		}
+	}
 	if *sample > 0 {
 		var run []*test
 		for _, t := range tests {
@@ -158,7 +165,7 @@ func main() {
 		p.close()
 		report = reportBox(rs, *tag, *kotlinc != "")
 	case "diagnostics":
-		c := &diagConfig{kotlin: *kotlin, suite: suite, work: *work, jobs: *jobs, keep: *keep, comp: comp}
+		c := &diagConfig{kotlin: *kotlin, suite: suite, work: *work, jobs: *jobs, keep: *keep, comp: comp, strayErrs: *strayErrs}
 		if rs, report, err = runDiagnostics(c, tests, *tag); err != nil {
 			log.Fatal(err)
 		}
@@ -209,6 +216,28 @@ func findTests(suite, mode, filter string) ([]*test, error) {
 		return nil
 	})
 	return tests, err
+}
+
+// filterList returns the tests whose paths the file at name lists.
+func filterList(tests []*test, name string) ([]*test, error) {
+	data, err := os.ReadFile(name)
+	if err != nil {
+		return nil, err
+	}
+	paths := map[string]bool{}
+	for _, l := range strings.Split(string(data), "\n") {
+		l, _, _ = strings.Cut(l, "#")
+		if f := strings.Fields(l); len(f) > 0 {
+			paths[f[0]] = true
+		}
+	}
+	var out []*test
+	for _, t := range tests {
+		if paths[t.path] {
+			out = append(out, t)
+		}
+	}
+	return out, nil
 }
 
 func must[T any](v T, err error) T {

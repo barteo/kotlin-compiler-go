@@ -142,6 +142,9 @@ type diagConfig struct {
 	keep   bool
 	comp   *compiler
 	sev    map[string]string
+	// strayErrs is the file to write kc's errors on lines without an
+	// expected diagnostic to, or "".
+	strayErrs string
 }
 
 // mark is an expected diagnostic of a test, in a file.
@@ -184,7 +187,39 @@ func runDiagnostics(c *diagConfig, tests []*test, tag string) ([]*result, string
 	}
 	close(next)
 	wg.Wait()
+	if c.strayErrs != "" {
+		if err := writeStray(c.strayErrs, results, dts); err != nil {
+			return nil, "", err
+		}
+	}
 	return results, reportDiagnostics(c, results, dts, tag), nil
+}
+
+// writeStray writes kc's errors on lines without an expected diagnostic
+// as TSV: the test's path, its category, file:line and the message.
+func writeStray(name string, rs []*result, dts []*diagTest) error {
+	var sb strings.Builder
+	for i, dt := range dts {
+		if dt == nil {
+			continue
+		}
+		for _, d := range dt.stray() {
+			msg := strings.NewReplacer("\t", " ", "\n", " ").Replace(d.msg)
+			fmt.Fprintf(&sb, "%s\t%s\t%s:%d\t%s\n", rs[i].path, rs[i].category, d.file, d.line, msg)
+		}
+	}
+	return os.WriteFile(name, []byte(sb.String()), 0o644)
+}
+
+// stray returns kc's errors on lines without an expected diagnostic.
+func (dt *diagTest) stray() []diag {
+	var ds []diag
+	for _, d := range dt.kc {
+		if !slices.ContainsFunc(dt.marks, func(m mark) bool { return m.file == d.file && m.line == d.line }) {
+			ds = append(ds, d)
+		}
+	}
+	return ds
 }
 
 func (c *diagConfig) runOne(i int, t *test) (*result, *diagTest) {
@@ -465,10 +500,8 @@ func reportDiagnostics(c *diagConfig, rs []*result, dts []*diagTest, tag string)
 			}
 		}
 		// kc's errors on lines without an expected diagnostic.
-		for _, d := range dt.kc {
-			if !slices.ContainsFunc(dt.marks, func(m mark) bool { return m.file == d.file && m.line == d.line }) {
-				extra[template(d.msg)]++
-			}
+		for _, d := range dt.stray() {
+			extra[template(d.msg)]++
 		}
 	}
 	var rl []*recall
