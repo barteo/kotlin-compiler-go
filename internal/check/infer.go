@@ -481,6 +481,13 @@ func (s *system) subArgs(sup, b types.Type) {
 					s.addLower(tv, ta.T)
 				case types.In:
 					tv.proj = true
+					if s.nest == 0 && !ba.T.D && !s.captureFits(tv, sup.C.TypeParams[i]) {
+						// The capture of in X is below the class's bound,
+						// not the variable's: T : Any of bar(Array<T>) for
+						// an Array<in Int>.
+						s.ok = false
+						return
+					}
 					s.addUpper(tv, ta.T)
 				default:
 					tv.star = true
@@ -1547,4 +1554,20 @@ func (s *system) platformBound(tv *tvar) (types.Type, bool) {
 		return types.InvalidType, false
 	}
 	return b, true
+}
+
+// captureFits reports whether the capture of an in projection of class
+// parameter p, whose upper bound is p's bound, is within the declared
+// bounds of variable tv.
+func (s *system) captureFits(tv *tvar, p *types.TypeParamSym) bool {
+	cb := p.Bound()
+	if cb.HasParams() {
+		return true
+	}
+	for _, b := range tv.v.Bounds {
+		if b = s.apply(b); !b.HasVars() && !s.c.subtype(cb, b) {
+			return false
+		}
+	}
+	return true
 }

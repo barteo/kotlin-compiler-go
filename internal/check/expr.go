@@ -790,7 +790,7 @@ func (c *Checker) binary(x *syntax.Binary, want types.Type, allowRange bool) typ
 			// V of fun <V : A> test(): V? is Nothing in test() ?: error("").
 			if yt, ok := c.elvisRightFirst(x.Y); ok {
 				c.errs = c.errs[:n]
-				xt = c.safeUnit(x.X, c.value(x.X, yt.Nullable()))
+				xt = c.safeUnit(x.X, c.value(x.X, starsBounded(yt).Nullable()))
 			}
 		}
 		nn, nonNull := len(c.scope.narrows), c.notNullOf(x.X) // the right side's casts may not run
@@ -845,6 +845,12 @@ func (c *Checker) binary(x *syntax.Binary, want types.Type, allowRange bool) typ
 			// a ?: javaCall() is of a platform type, as the Java value:
 			// null if both are, and unchecked where a T? is expected.
 			t = t.Platform()
+		}
+		if isRaw(t) && javaClass(t.C) {
+			// As K2's, whose elvis is a call, the raw type is lost: a
+			// raw Generic's ?: return is a Generic<Any!>, whose generic
+			// methods aren't erased.
+			t = rawLower(t)
 		}
 		return t
 
@@ -4350,4 +4356,31 @@ func (c *Checker) sinkLambdas(on bool) func() {
 	saved := c.lambdaSink
 	c.lambdaSink, c.branchArg = on, false
 	return func() { c.lambdaSink = saved }
+}
+
+// starsBounded returns t, a value's type, with its star arguments of
+// out parameters replaced by out projections of their bounds: K2
+// captures the stars, so that E of Out<E> <: Out<*> is below the
+// capture, which kc approximates by its bound.
+func starsBounded(t types.Type) types.Type {
+	n := t.NonNull()
+	if n.K != types.Class || n.A == nil {
+		return t
+	}
+	args := slices.Clone(n.A.List)
+	changed := false
+	for i, a := range args {
+		if a.V == types.Star && i < len(n.C.TypeParams) && n.C.TypeParams[i].Var == types.Out {
+			args[i] = types.Arg{V: types.Out, T: starArgBound(n, i)}
+			changed = true
+		}
+	}
+	if !changed {
+		return t
+	}
+	n.A = types.MakeArgs(args)
+	if t.N {
+		n = n.Nullable()
+	}
+	return n
 }

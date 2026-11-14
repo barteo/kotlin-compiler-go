@@ -221,12 +221,16 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   so a parameter of the argument's own or a supertype's type takes it
   (`Future<F>` for a `CompletableFuture<*>`), and a reified one is an
   error. A member's parameter whose type holds a projected argument
-  takes `Nothing` there, so a lambda passed for an `(E) -> E` of an
-  `Inv<out CharSequence>` can't return its parameter, as it can in
-  Kotlin, and a member's explicit type argument is checked against a
+  takes `Nothing` there, except a lambda's function type, whose `out`
+  projections are their bounds in its parameters and result, as K2
+  approximates them; a function value passed for it can't return the
+  capture, and a member's explicit type argument is checked against a
   bound with a projection approximated as such a parameter is. Two reads
   of one `Out<*>` value are the same type, where they are different
-  captures in Kotlin, which some inference depends on.
+  captures in Kotlin: only an elvis's left call, inferred with the right
+  side's type, sees a star of it as below its bound. The capture of an
+  `in` projection is checked against the variable's bounds only at the
+  top of an argument's type.
 - `@OnlyInputTypes` (`contains`, `get`, `assertEquals`) is checked only
   when the types a call's variable is constrained by have no captured
   types (star projections), and the inferred type isn't an

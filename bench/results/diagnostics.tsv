@@ -945,7 +945,7 @@ tests/callableReference/whitespacesInExpression.kt	accepts valid
 tests/callableReference/withQuestionMarks.kt	skip	LANGUAGE	
 tests/callingProtectedFromInline.kt	rejects invalid	on an expected line	
 tests/callingSuspensionFunctionFromSuspendLambdas.kt	accepts valid		
-tests/capturedTypesSubtyping.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	capturedTypesSubtyping.kt:5: type mismatch: inferred type is CharSequence but Nothing was expected
+tests/capturedTypesSubtyping.kt	accepts valid		
 tests/cast.kt	rejects invalid	on an expected line	
 tests/cast/AsArray.kt	accepts valid		
 tests/cast/AsErasedError.kt	accepts valid		
@@ -3959,7 +3959,7 @@ tests/inference/capturedTypes/approximateContravariantCapturedTypes.kt	rejects i
 tests/inference/capturedTypes/approximationForCollectionAsserter.kt	accepts valid		
 tests/inference/capturedTypes/approximationLeavesNonTrivialLowerBound.kt	accepts valid		
 tests/inference/capturedTypes/avoidCreatingUselessCapturedTypes.kt	accepts valid		
-tests/inference/capturedTypes/cannotCaptureInProjection.kt	accepts invalid	ARGUMENT_TYPE_MISMATCH; CANNOT_INFER_PARAMETER_TYPE	cannotCaptureInProjection.kt:8: ARGUMENT_TYPE_MISMATCH
+tests/inference/capturedTypes/cannotCaptureInProjection.kt	rejects invalid	on an expected line	
 tests/inference/capturedTypes/captureForNullableTypes.kt	accepts valid		
 tests/inference/capturedTypes/captureForPlatformTypes.kt	accepts valid		
 tests/inference/capturedTypes/captureFromNullableTypeInScope.kt	accepts valid		
@@ -3985,7 +3985,7 @@ tests/inference/capturedTypes/capturedTypesSubstitutionIntoAbbreviation.kt	accep
 tests/inference/capturedTypes/capturedUpperBound.kt	rejects invalid	on an expected line	
 tests/inference/capturedTypes/capturingFromArgumentOfFlexibleType.kt	accepts valid		
 tests/inference/capturedTypes/capturingOfDnn.kt	accepts valid		
-tests/inference/capturedTypes/differentCapturedTypes.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	differentCapturedTypes.kt:16: cannot infer type for type parameter 'E'. Specify it explicitly.
+tests/inference/capturedTypes/differentCapturedTypes.kt	accepts valid		
 tests/inference/capturedTypes/dontCheckNewCapturedTypeSpecificChecksForOldOnes.kt	accepts valid		
 tests/inference/capturedTypes/equalityOfStarProjection.kt	skip	LANGUAGE	
 tests/inference/capturedTypes/expectedTypeHasCapturedStarArgument.kt	accepts valid		
@@ -5445,7 +5445,7 @@ tests/j+k/purelyImplementedSupertype.kt	rejects invalid	on an expected line
 tests/j+k/rawOverride.kt	accepts valid		
 tests/j+k/rawTypeCrash.kt	accepts valid		
 tests/j+k/rawTypeScope.kt	accepts valid		
-tests/j+k/rawTypesFromCaptured.kt	accepts invalid	RETURN_TYPE_MISMATCH	test.kt:7: RETURN_TYPE_MISMATCH
+tests/j+k/rawTypesFromCaptured.kt	rejects invalid	on an expected line	
 tests/j+k/rawTypesFromCapturedOriginal.kt	accepts valid		
 tests/j+k/rawUpperBounds.kt	accepts valid		
 tests/j+k/receiverEnhancement.kt	rejects invalid	on an expected line	

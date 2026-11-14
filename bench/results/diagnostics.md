@@ -6,16 +6,16 @@ Of 10827 test files, 2312 are skipped and 8515 run.
 
 | Result | Tests | Share |
 |:---|---:|---:|
-| rejects invalid | 3990 | 46.9% |
-| accepts valid | 3977 | 46.7% |
-| accepts invalid | 394 | 4.6% |
-| rejects valid | 136 | 1.6% |
+| rejects invalid | 3992 | 46.9% |
+| accepts valid | 3979 | 46.7% |
+| accepts invalid | 392 | 4.6% |
+| rejects valid | 134 | 1.6% |
 | parse/unsupported | 16 | 0.2% |
 | crash | 1 | 0.0% |
 
 *Rejects invalid* and *accepts valid* agree with kotlinc. *Accepts invalid* is code kotlinc rejects that kc compiles; *rejects valid*, code kotlinc compiles that kc's checker rejects. Both are bugs. A *parse/unsupported* test uses a feature kc doesn't support, which says nothing about its checks.
 
-Of the 3990 tests both reject, kc reports an error on the line of an expected one in 3826.
+Of the 3992 tests both reject, kc reports an error on the line of an expected one in 3828.
 
 A test is invalid if it stops before the backend or marks an error: one that runs to it (`BACKEND`) can mark the JVM backend's errors, such as `CONFLICTING_JVM_DECLARATIONS`. Of the tests run, 222 stop at `FRONTEND` but mark no error: most add the `CHECK_TYPE` helpers, whose names (`_`) kotlinc reports outside the test infrastructure, and count as valid; the others leave their errors out with the `DIAGNOSTICS` directive. 114 run to the backend and mark one. 5 marked names have no declared severity (debug information, for one), and count as neither.
 
@@ -50,8 +50,8 @@ Tests kotlinc rejects that kc compiles, by the errors their markup expects. A te
 
 | Expected error | Tests | Only error | Examples |
 |:---|---:|---:|:---|
-| `ARGUMENT_TYPE_MISMATCH` | 36 | 23 | `tests/annotations/annotationArgumentScopeForNestedClass.kt`, `tests/collectionLiterals/kt82964.kt` |
 | `UNRESOLVED_REFERENCE` | 36 | 24 | `tests/SafeCallOnFakePackage.kt`, `tests/callResolution/eagerLambdaAnalysis/samVsDefault.kt` |
+| `ARGUMENT_TYPE_MISMATCH` | 35 | 23 | `tests/annotations/annotationArgumentScopeForNestedClass.kt`, `tests/collectionLiterals/kt82964.kt` |
 | `OVERLOAD_RESOLUTION_AMBIGUITY` | 24 | 19 | `tests/callResolution/kt50386.kt`, `tests/imports/EnumEntryVsStaticAmbiguity.kt` |
 | `MISSING_DEPENDENCY_CLASS` | 16 | 10 | `tests/j+k/differentFilename.kt`, `tests/javac/Lambda.kt` |
 | `NULL_FOR_NONNULL_TYPE` | 15 | 10 | `tests/j+k/SupertypeArgumentsNullability-NotNull-SpecialTypes.kt`, `tests/j+k/SupertypeArgumentsNullability-NotNull-UserTypes.kt` |
@@ -59,8 +59,8 @@ Tests kotlinc rejects that kc compiles, by the errors their markup expects. A te
 | `ACCIDENTAL_OVERRIDE` | 10 | 8 | `tests/j+k/kjkimplicitTypesCrash.kt`, `tests/jvm/contextParameters/intersectionContextValueJava.kt` |
 | `INVISIBLE_REFERENCE` | 9 | 9 | `tests/arguments/ambiguityOnJavaOverride.kt`, `tests/classObjects/companionObjectOfPrivateClassVisibility.kt` |
 | `(no error marked)` | 8 | 8 | `tests/cyclicHierarchy/javaJavaCycle.kt`, `tests/deprecated/javaDeprecated.kt` |
-| `CANNOT_INFER_PARAMETER_TYPE` | 8 | 2 | `tests/callableReference/function/ambiguityTopLevelVsTopLevelGeneric.kt`, `tests/inference/capturedTypes/cannotCaptureInProjection.kt` |
 | `INITIALIZER_TYPE_MISMATCH` | 8 | 3 | `tests/callableReference/adapted/noKFunctionForAdaptation.kt`, `tests/j+k/sam/referenceToSamFunctionAgainstExpectedType.kt` |
+| `CANNOT_INFER_PARAMETER_TYPE` | 7 | 2 | `tests/callableReference/function/ambiguityTopLevelVsTopLevelGeneric.kt`, `tests/inference/nothingType/returnAsLastStatementInLambda.kt` |
 | `CLASSIFIER_REDECLARATION` | 7 | 7 | `tests/j+k/brokenCode/classDuplicates.kt`, `tests/redeclarations/kotlinClassJavaClassNestedRedeclaration.kt` |
 | `JAVA_TYPE_MISMATCH` | 7 | 7 | `tests/platformTypes/genericVarianceViolation/deepTypeHierarchy.kt`, `tests/platformTypes/genericVarianceViolation/javaOutProjection.kt` |
 | `UNSUPPORTED` | 7 | 5 | `tests/NamedFunctionTypeParameterInSupertype.kt`, `tests/callableReference/property/backingField.kt` |
@@ -79,7 +79,6 @@ Tests kotlinc rejects that kc compiles, by the errors their markup expects. A te
 | `OPT_IN_USAGE_ERROR` | 4 | 3 | `tests/jvm/jvmDefault/annotationsFromBinariesWithNonTrivialJvmDefaultConfiguration.kt`, `testsWithStdLib/experimental/diffrentModules.kt` |
 | `OVERRIDING_FINAL_MEMBER` | 4 | 4 | `tests/j+k/finalCollectionSize.kt`, `tests/j+k/properties/isName.kt` |
 | `POSITIONED_VALUE_ARGUMENT_FOR_JAVA_ANNOTATION` | 4 | 3 | `testsWithStdLib/annotations/annotationParameters/valueArrayAndOtherDefault.kt`, `testsWithStdLib/annotations/prohibitPositionedArgument/withValue.kt` |
-| `RETURN_TYPE_MISMATCH` | 4 | 3 | `tests/j+k/rawTypesFromCaptured.kt`, `tests/j+k/sam/enhancedSamConstructor.kt` |
 | `RETURN_TYPE_MISMATCH_ON_INHERITANCE` | 4 | 4 | `tests/override/clashesOnInheritance/flexibleReturnTypeList.kt`, `tests/override/clashesOnInheritance/kt13355viaJava.kt` |
 | `UNDERSCORE_USAGE_WITHOUT_BACKTICKS` | 4 | 4 | `tests/UnderscoreUsageInCall.kt`, `tests/UnderscoreUsageInCallableRefTypeLHS.kt` |
 | `UPPER_BOUND_VIOLATED` | 4 | 1 | `tests/generics/RecursiveUpperBoundWithTwoArguments.kt`, `tests/platformTypes/comparingWithWrongNullabilityWithoutWrtHack.kt` |
@@ -95,6 +94,7 @@ Tests kotlinc rejects that kc compiles, by the errors their markup expects. A te
 | `PROPERTY_TYPE_MISMATCH_BY_DELEGATION` | 3 | 0 | `tests/delegation/covariantOverrides/fromClass.kt`, `tests/delegation/covariantOverrides/irrelevant.kt` |
 | `PROTECTED_CALL_FROM_PUBLIC_INLINE_ERROR` | 3 | 3 | `tests/inline/inlineCallsStaticMethodFromOtherPackage.kt`, `tests/inline/protectedJavaFieldInInline.kt` |
 | `REPEATED_ANNOTATION` | 3 | 3 | `tests/annotations/repeatable/javaUnrepeatable.kt`, `tests/typealias/typeAliasExpansionRepeatedAnnotations.kt` |
+| `RETURN_TYPE_MISMATCH` | 3 | 2 | `tests/j+k/sam/enhancedSamConstructor.kt`, `tests/smartCasts/safecalls/receiverAndChainFalse.kt` |
 | `RETURN_TYPE_MISMATCH_BY_DELEGATION` | 3 | 0 | `tests/delegation/covariantOverrides/fromClass.kt`, `tests/delegation/covariantOverrides/irrelevant.kt` |
 | `SYNTAX` | 3 | 2 | `tests/explicitDefinitelyNotNullableViaIntersection/isAsOperators.kt`, `tests/modifiers/primaryConstructorMissingBrackets.kt` |
 | `UNRESOLVED_REFERENCE_WRONG_RECEIVER` | 3 | 2 | `tests/j+k/selectMoreSpecific.kt`, `tests/platformTypes/commonSupertype/withNothing.kt` |
@@ -118,9 +118,9 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 | First error | Tests | Examples |
 |:---|---:|:---|
-| `type mismatch: inferred type is _ but _ was expected` | 27 | `tests/annotations/javaAnnotationWithClassArray.kt`, `tests/annotations/parameters/expressions/unaryPlus.kt` |
+| `type mismatch: inferred type is _ but _ was expected` | 26 | `tests/annotations/javaAnnotationWithClassArray.kt`, `tests/annotations/parameters/expressions/unaryPlus.kt` |
 | `unresolved reference: _` | 22 | `tests/callResolution/incorrectPlusOperatorFromJava.kt`, `tests/callResolution/suspendCOnversionForReceiver.kt` |
-| `cannot infer type for type parameter '_'. Specify it explicitly.` | 11 | `tests/delegatedProperty/provideDelegate/commonSupertype.kt`, `tests/inference/capturedTypes/differentCapturedTypes.kt` |
+| `cannot infer type for type parameter '_'. Specify it explicitly.` | 10 | `tests/delegatedProperty/provideDelegate/commonSupertype.kt`, `tests/inference/commonSystem/postponedCompletionWithExactAnnotation.kt` |
 | `no function '_' takes n arguments` | 6 | `tests/annotations/javaAnnotationWithParameter.kt`, `tests/cast/kt15161.kt` |
 | `unresolved import: _` | 6 | `tests/errorProneAtomicArraySuggestions.kt`, `tests/errorProneAtomicReferenceArguments.kt` |
 | `ambiguous call: n candidates for '_' take (_)` | 5 | `tests/callableReference/resolve/resolveReferenceAgainstKFunctionAndKPrpoerty.kt`, `tests/multimodule/varargConflict.kt` |
@@ -164,22 +164,22 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 14871 of 21506 expected errors (69.1%) on their lines.
+kc reports 14875 of 21506 expected errors (69.2%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
 | `SYNTAX` | 875 | 222 | 653 |
 | `UNRESOLVED_REFERENCE` | 2493 | 1913 | 580 |
 | `CONFLICTING_JVM_DECLARATIONS` | 996 | 518 | 478 |
-| `ARGUMENT_TYPE_MISMATCH` | 1484 | 1208 | 276 |
+| `ARGUMENT_TYPE_MISMATCH` | 1484 | 1214 | 270 |
 | `UNSUPPORTED` | 231 | 35 | 196 |
 | `WRONG_MODIFIER_TARGET` | 300 | 170 | 130 |
 | `CONFLICTING_OVERLOADS` | 726 | 602 | 124 |
-| `RETURN_TYPE_MISMATCH` | 417 | 306 | 111 |
+| `RETURN_TYPE_MISMATCH` | 417 | 302 | 115 |
 | `INVISIBLE_REFERENCE` | 513 | 404 | 109 |
 | `NULL_FOR_NONNULL_TYPE` | 155 | 53 | 102 |
 | `UNRESOLVED_REFERENCE_WRONG_RECEIVER` | 250 | 157 | 93 |
-| `CANNOT_INFER_PARAMETER_TYPE` | 627 | 539 | 88 |
+| `CANNOT_INFER_PARAMETER_TYPE` | 627 | 541 | 86 |
 | `CONST_VAL_WITH_NON_CONST_INITIALIZER` | 251 | 166 | 85 |
 | `MUST_BE_INITIALIZED` | 102 | 21 | 81 |
 | `ANNOTATION_ARGUMENT_MUST_BE_CONST` | 224 | 144 | 80 |
@@ -237,8 +237,8 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | Error | Count |
 |:---|---:|
 | `unresolved reference: _` | 288 |
-| `type mismatch: inferred type is _ but _ was expected` | 239 |
-| `cannot infer type for type parameter '_'. Specify it explicitly.` | 233 |
+| `type mismatch: inferred type is _ but _ was expected` | 237 |
+| `cannot infer type for type parameter '_'. Specify it explicitly.` | 232 |
 | `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 199 |
 | `platform declaration clash: _` | 150 |
 | `class '_' is not abstract and does not implement abstract member '_'` | 68 |

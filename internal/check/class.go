@@ -520,6 +520,15 @@ func (c *Checker) memberCallees(ms []*types.FunSym, rt types.Type) []callee {
 		if g, ok := c.unerased(rt, cl); ok {
 			cls[i] = callee{f: g, tparams: g.TypeParams, recv: c.memberSubst(rt, g.Owner)}
 		}
+		if cl := &cls[i]; len(cl.tparams) > 0 && cl.f.Owner != nil && javaClass(cl.f.Owner) && rawSubst(cl.recv) && !rt.IsParam() {
+			// A raw type's generic method is erased too, as in Kotlin:
+			// a raw StubElement's <E> E bar(E) is bar(Any!): Any!.
+			s := maps.Clone(cl.recv)
+			for _, p := range cl.tparams {
+				s[p] = types.Arg{T: erasure(p), Raw: true}
+			}
+			cl.recv, cl.tparams = s, nil
+		}
 	}
 	return cls
 }

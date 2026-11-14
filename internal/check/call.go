@@ -1,6 +1,7 @@
 package check
 
 import (
+	"maps"
 	"math/bits"
 	"slices"
 	"strconv"
@@ -862,6 +863,8 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 		for j := range x.Args {
 			if cl.param(j).UnsafeVariance {
 				cd.params[j] = cd.sub.Apply(cl.argType(j, x.Args))
+			} else if cs := capturedSubst(cd.sub, cl.recv, cl.argType(j, x.Args), x.Args[j]); cs != nil {
+				cd.params[j] = cs.ApplyIn(cl.argType(j, x.Args))
 			} else {
 				cd.params[j] = cd.sub.ApplyIn(cl.argType(j, x.Args))
 			}
@@ -2633,4 +2636,28 @@ func (c *Checker) restoreStubCons(cons map[*stubRun][][2]types.Type) {
 	for r, ks := range cons {
 		r.cons = append(r.cons, ks...)
 	}
+}
+
+// capturedSubst returns sub with the receiver's out projections that
+// function type t, of a parameter that lambda a is passed for, mentions
+// replaced by their bounds, if it has any: K2 approximates the captures
+// in a lambda's parameter types and its result's expected type by their
+// upper bounds, so x.foo { it } on an Inv<out CharSequence>, for foo(x:
+// (E) -> E), returns a CharSequence. Elsewhere an out position takes
+// Nothing (see Subst.ApplyIn).
+func capturedSubst(sub, recv types.Subst, t types.Type, a syntax.Expr) types.Subst {
+	if _, ok := a.(*syntax.Lambda); !ok || !t.NonNull().IsFunc() {
+		return nil
+	}
+	var out types.Subst
+	for p, ra := range recv {
+		if ra.V != types.Out || ra.T.HasVars() || !t.Has(func(u types.Type) bool { return u.K == types.TypeParam && u.Param() == p }) {
+			continue
+		}
+		if out == nil {
+			out = maps.Clone(sub)
+		}
+		out[p] = types.Arg{T: ra.T}
+	}
+	return out
 }
