@@ -125,12 +125,6 @@ func superCands(cls *types.ClassSym) []callee {
 	if sc == nil {
 		return nil // java.lang.Object, without a JDK
 	}
-	if !sc.External {
-		for _, f := range userCtors(sc) {
-			cands = append(cands, callee{f: f, tparams: sc.TypeParams})
-		}
-		return cands
-	}
 	tps, recv := sc.TypeParams, types.Subst(nil)
 	if own := len(sc.TypeParams) - sc.OuterParams; sc.OuterParams > 0 {
 		// An inner class's outer type parameters are those of the
@@ -144,6 +138,12 @@ func superCands(cls *types.ClassSym) []callee {
 				}
 			}
 		}
+	}
+	if !sc.External {
+		for _, f := range userCtors(sc) {
+			cands = append(cands, callee{f: f, tparams: tps, recv: recv})
+		}
+		return cands
 	}
 	for _, f := range sc.Ctors {
 		cands = append(cands, callee{f: f, tparams: append(tps[:len(tps):len(tps)], f.TypeParams...), recv: recv})
