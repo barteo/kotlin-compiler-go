@@ -547,7 +547,8 @@ func (s *system) fix(tv *tvar) {
 	var stubs []types.Type
 	for _, l := range tv.lower {
 		if l = s.apply(l); !l.HasVars() {
-			lowers = append(lowers, l)
+			// listOf(set(key, null)) is a List<Nothing?>.
+			lowers = append(lowers, types.ApproxFlexNothing(l))
 		} else if s.c.onlyStubs(l) {
 			stubs = append(stubs, l)
 		}

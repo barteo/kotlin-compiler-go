@@ -570,7 +570,7 @@ func (c *Checker) varStmt(s *syntax.VarStmt) {
 		t = c.resolveType(s.Type)
 		c.assignable(c.value(s.Init, t), t, s.Init.Pos())
 	default:
-		t = c.value(s.Init, noWant)
+		t = types.ApproxFlexNothing(c.value(s.Init, noWant))
 		if d, ok := c.smartCastFrom(s.Init, t); ok && s.Mutable {
 			// As kotlinc's, var x = y, for a y smart cast, is of y's
 			// declared type, and smart cast as y is.

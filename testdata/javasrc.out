@@ -50,3 +50,7 @@ foo(Fn<Object>) got 1
 bar(Fn2) got s
 test(Listener)
 generic
+after set
+null
+true
+remap null

@@ -5309,7 +5309,7 @@ tests/j+k/fieldOverridesFieldOfDifferentType.kt	accepts valid
 tests/j+k/fieldOverridesNothing.kt	accepts valid		
 tests/j+k/fileJvmNameSameAsClass.kt	accepts valid		
 tests/j+k/finalCollectionSize.kt	accepts invalid	OVERRIDING_FINAL_MEMBER	main.kt:3: OVERRIDING_FINAL_MEMBER
-tests/j+k/flexibleNothing.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	main.kt:4: type mismatch: inferred type is Nothing? but Nothing was expected
+tests/j+k/flexibleNothing.kt	accepts valid		
 tests/j+k/flexibleTypeVariablePosition.kt	skip	LANGUAGE	
 tests/j+k/flexibleTypeVariablePositionPreciseLowerConstraints.kt	skip	LANGUAGE	
 tests/j+k/futureGet.kt	rejects invalid	on an expected line	
@@ -5323,7 +5323,7 @@ tests/j+k/genericConstructor/superCall.kt	rejects invalid	on an expected line
 tests/j+k/genericConstructor/superCallImpossibleToInfer.kt	rejects invalid	on an expected line	
 tests/j+k/genericConstructor/withClassTypeParameters.kt	rejects invalid	on an expected line	
 tests/j+k/genericConstructorWithMultipleBounds.kt	rejects invalid	on an expected line	
-tests/j+k/genericFunAndClassNullabilityInconsistency.kt	rejects invalid	on an expected line	
+tests/j+k/genericFunAndClassNullabilityInconsistency.kt	accepts invalid	ARGUMENT_TYPE_MISMATCH	Test.kt:5: ARGUMENT_TYPE_MISMATCH
 tests/j+k/heterogeneousReceiverOverrides.kt	accepts valid		
 tests/j+k/inheritAbstractSamAdapter.kt	accepts valid		
 tests/j+k/inheritanceStaticMethodFromInterface.kt	rejects invalid	on an expected line	
@@ -5476,7 +5476,7 @@ tests/j+k/sam/runWithSamArgumentAndIfInside.kt	accepts valid
 tests/j+k/sam/samOnTypeParameter.kt	accepts valid		
 tests/j+k/sam/staticSamFromImportWithStar.kt	accepts valid		
 tests/j+k/sam/staticSamWithExplicitImport.kt	accepts valid		
-tests/j+k/sam/typeInferenceOnSamAdapters.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	main.kt:3: type mismatch: inferred type is Nothing? but Nothing was expected
+tests/j+k/sam/typeInferenceOnSamAdapters.kt	accepts valid		
 tests/j+k/sam/withDefaultMethods.kt	accepts valid		
 tests/j+k/samByProjectedType/genericInReturnType.kt	rejects invalid	on an expected line	
 tests/j+k/samByProjectedType/genericInValueParameter.kt	accepts valid		
@@ -7024,7 +7024,7 @@ tests/platformTypes/methodCall/overloadingForSubclass.kt	accepts valid
 tests/platformTypes/methodCall/sam.kt	accepts valid		
 tests/platformTypes/methodCall/singleton.kt	accepts invalid	INITIALIZER_TYPE_MISMATCH	singleton.kt:8: INITIALIZER_TYPE_MISMATCH
 tests/platformTypes/methodCall/string.kt	accepts valid		
-tests/platformTypes/methodCall/visitor.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	k.kt:5: type mismatch: inferred type is Nothing? but Nothing was expected
+tests/platformTypes/methodCall/visitor.kt	accepts valid		
 tests/platformTypes/methodTypeParameterDefaultBound.kt	rejects valid	accidental override: the following declarations have the same JVM signature (foo()V)	main.kt:6: accidental override: the following declarations have the same JVM signature (foo()V)
 tests/platformTypes/noAnnotationInClassPath.kt	rejects invalid	on an expected line	
 tests/platformTypes/notNullTypeParameter/enhancementFromAnnotation.kt	accepts invalid	NULL_FOR_NONNULL_TYPE	main.kt:3: NULL_FOR_NONNULL_TYPE

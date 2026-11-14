@@ -37,6 +37,8 @@ func (c *Checker) subtype1(t, u types.Type) bool {
 	switch {
 	case t == u, t.K == types.Invalid, u.K == types.Invalid, t.K == types.Nothing:
 		return true
+	case t.K == types.Null && t.P:
+		return true // Nothing!, as its lower bound Nothing (see withFlags)
 	case t.K == types.Null:
 		return types.AcceptsNull(u)
 	case t.K == types.Unit && u.K == types.Any:
