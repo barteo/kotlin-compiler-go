@@ -1,6 +1,7 @@
 package check
 
 import (
+	"math/bits"
 	"slices"
 	"strconv"
 	"strings"
@@ -386,6 +387,10 @@ type candidate struct {
 	sys    *system
 	sams   map[int]*types.FunSym // the arguments converted to fun interfaces: see samValue
 	susps  map[int]bool          // the arguments converted to suspend function types: see suspendConverted
+	// pre is sys before constrain added the arguments' constraints, kept
+	// where an argument is a smart-cast variable of a type parameter's
+	// type: see declaredCastArgs.
+	pre *system
 }
 
 // args checks call arguments against the parameter types of cl (nil: no
@@ -1039,6 +1044,7 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 	if f.Name == "<init>" {
 		ret = best.sub.Apply(f.Owner.This())
 	}
+	c.declaredCastArgs(x, best, ts, partials, ret, want)
 	sys := best.sys
 	params := best.params
 	for _, i := range lambdas {
@@ -1797,6 +1803,9 @@ func (c *Checker) platformRecv(x *syntax.Call, ext types.Type) types.Type {
 // constrain adds the constraints of a call's arguments to a candidate's
 // system. If longLits, integer literals may be passed as Long.
 func (c *Checker) constrain(cd *candidate, x *syntax.Call, ts []types.Type, partials []*system, longLits bool) {
+	if cd.pre == nil && slices.ContainsFunc(x.Args, func(a syntax.Expr) bool { return castParamArg(a) != nil }) {
+		cd.pre = cd.sys.clone()
+	}
 	for _, p := range partials {
 		cd.sys.merge(p.clone())
 	}
@@ -2379,4 +2388,84 @@ func branchValue(e syntax.Expr) bool {
 		return len(e.Branches) > 0 && e.Branches[len(e.Branches)-1].Else
 	}
 	return false
+}
+
+// castParamArg returns argument a if it is a variable of a type
+// parameter's type that a smart cast gives another type, as o of type T
+// after o is String.
+func castParamArg(a syntax.Expr) *syntax.Ident {
+	id, ok := a.(*syntax.Ident)
+	if !ok || !id.Cast || id.Sym == nil || !id.Sym.Type.IsParam() || id.Sym.Type.IsIntersection() {
+		return nil
+	}
+	return id
+}
+
+// declaredCastArgs passes the smart-cast arguments of type parameter
+// types (see castParamArg) as their declared types if the arguments'
+// constraints otherwise don't hold, or the call's result ret isn't within
+// want, and then do and is. K2's smart cast is an
+// intersection with the declared type, T & String, which a variable of
+// T fits: listOf(o) for an expected Collection<T> is a List<T>.
+func (c *Checker) declaredCastArgs(x *syntax.Call, best *candidate, ts []types.Type, partials []*system, ret, want types.Type) {
+	if best.pre == nil {
+		return
+	}
+	// Either the arguments' constraints don't hold, as the value of
+	// m[o] = o for a MutableMap<String, T>, or the result isn't within
+	// want.
+	wanted := want.K != types.Invalid && !want.HasVars() && ret.HasVars()
+	if best.sys.ok && (!wanted || c.subOK(best.sys.clone(), ret, want)) {
+		return
+	}
+	var idx []int // the arguments that may be passed as declared
+	for i, a := range x.Args {
+		if castParamArg(a) != nil && i < len(ts) {
+			idx = append(idx, i)
+		}
+	}
+	if len(idx) == 0 || len(idx) > 4 {
+		return
+	}
+	// The fewest of them that make the call hold: the key of m[o] = o
+	// stays a String, its value is passed as a T.
+	masks := make([]int, 0, 1<<len(idx))
+	for m := 1; m < 1<<len(idx); m++ {
+		masks = append(masks, m)
+	}
+	slices.SortStableFunc(masks, func(a, b int) int { return bits.OnesCount(uint(a)) - bits.OnesCount(uint(b)) })
+	for _, m := range masks {
+		alt := slices.Clone(ts)
+		for j, i := range idx {
+			if m&(1<<j) != 0 {
+				dt := castParamArg(x.Args[i]).Sym.Type
+				if !types.MayBeNull(ts[i]) {
+					dt = dt.NonNull()
+				}
+				alt[i] = dt
+			}
+		}
+		cd := *best
+		cd.sys = best.pre.clone()
+		c.constrain(&cd, x, alt, partials, false)
+		if !cd.sys.ok || wanted && !c.subOK(cd.sys.clone(), ret, want) {
+			continue
+		}
+		best.sys = cd.sys
+		for j, i := range idx {
+			if m&(1<<j) != 0 {
+				id := castParamArg(x.Args[i])
+				id.Cast = false
+				id.SetType(alt[i])
+			}
+		}
+		copy(ts, alt)
+		return
+	}
+}
+
+// subOK adds the constraint a <: b to s and reports whether s still holds.
+func (c *Checker) subOK(s *system, a, b types.Type) bool {
+	s.sub(a, b)
+	return s.ok
 }
