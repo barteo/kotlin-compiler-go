@@ -5647,7 +5647,7 @@ tests/javac/typeParameters/InnerWithTypeParameter.kt	accepts valid
 tests/javac/typeParameters/NestedWithInner.kt	accepts valid		
 tests/javac/typeParameters/SeveralInnersWithTypeParameters.kt	accepts valid		
 tests/javac/typeParameters/TypeParametersInInnerAndOuterWithSameNames.kt	accepts valid		
-tests/jvm/classpath/classFromJdkInLibrary.kt	codegen error	harness error	javac: exit status 1 /tmp/kc-conformance/5648/m0/src/java/util/Date.java:1: error: package exists in another module: java.base package java.util; ^ 1 error 
+tests/jvm/classpath/classFromJdkInLibrary.kt	codegen error	harness error	javac: exit status 1 Picked up JAVA_TOOL_OPTIONS: -Djavax.net.ssl.trustStore=/etc/ssl/certs/java/cacerts -Djavax.net.ssl.trustStoreType=JKS -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=37557 -Dhttp.nonProxyHosts=localhost|127.0.0.1|::1|127.*|0.*|::|169.254.*|api.anthropic.com|api-staging.anthropic.com|api-pr-preview.anthropic.com|mcp-proxy.anthropic.com|mcp-proxy-staging.anthropic.com|registry.npmjs.org|jsr.io|npm.jsr.io|pypi.org|files.pythonhosted.org|index.crates.io|proxy.golang.org|host.docker.internal|10.*|172.16.*|172.17.*|172.18.*|172.19.*|172.20.*|172.21.*|172.22.*|172.23.*|172.24.*|172.25.*|172.26.*|172.27.*|172.28.*|172.29.*|172.30.*|172.31.*|192.168.*|100.64.0.0/10|*.svc.cluster.local|*.svc.cluster.local -Djdk.http.auth.tunneling.disabledSchemes= -Djdk.http.auth.proxying.disabledSchemes= /tmp/claude-0/-workspace-kotlin-compiler-go/c94b98c2-5210-5219-aa2a-18db5819d7a8/scratchpad/kc-conformance/5648/m0/src/java/util/Date.java:1: error: package exists in another module: java.base package java.util; ^ 1 error 
 tests/jvm/classpath/dependencyOnItself.kt	accepts valid		
 tests/jvm/classpath/prohibitNestedClassesByDollarName.kt	accepts invalid	UNRESOLVED_REFERENCE	main.kt:6: UNRESOLVED_REFERENCE
 tests/jvm/classpath/sameLibraryTwiceInClasspath.kt	accepts valid		
@@ -10293,7 +10293,7 @@ testsWithStdLib/inference/annotationsForResolve/exactAnnotationWithUpperBoundCon
 testsWithStdLib/inference/annotationsForResolve/explicitTypeArgumentAsValidInputType.kt	rejects invalid	on an expected line	
 testsWithStdLib/inference/annotationsForResolve/internalAnnotationsOnTypes.kt	accepts valid		
 testsWithStdLib/inference/annotationsForResolve/kt26698.kt	rejects invalid	on an expected line	
-testsWithStdLib/inference/annotationsForResolve/kt29307.kt	accepts invalid	TYPE_INFERENCE_ONLY_INPUT_TYPES_ERROR	kt29307.kt:6: TYPE_INFERENCE_ONLY_INPUT_TYPES_ERROR
+testsWithStdLib/inference/annotationsForResolve/kt29307.kt	rejects invalid	on an expected line	
 testsWithStdLib/inference/annotationsForResolve/kt35210.kt	accepts valid		
 testsWithStdLib/inference/annotationsForResolve/lowPriorityTopLevelValAndObject.kt	rejects valid	unresolved reference: _	test.kt:14: unresolved reference: length
 testsWithStdLib/inference/annotationsForResolve/moreOnlyInputTypes.kt	accepts valid		
@@ -10303,12 +10303,12 @@ testsWithStdLib/inference/annotationsForResolve/noInferDelegatedPropertyReferenc
 testsWithStdLib/inference/annotationsForResolve/noInferMismatchingClosestReceiver.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	noInferMismatchingClosestReceiver.kt:14: type mismatch: inferred type is KlassB but KlassA was expected
 testsWithStdLib/inference/annotationsForResolve/onlyInputTypeAndJava.kt	accepts valid		
 testsWithStdLib/inference/annotationsForResolve/onlyInputTypeRecursiveBoundAndProjections.kt	accepts valid		
-testsWithStdLib/inference/annotationsForResolve/onlyInputTypes.kt	accepts invalid	TYPE_INFERENCE_ONLY_INPUT_TYPES_ERROR	onlyInputTypes.kt:39: TYPE_INFERENCE_ONLY_INPUT_TYPES_ERROR
+testsWithStdLib/inference/annotationsForResolve/onlyInputTypes.kt	rejects invalid	on an expected line	
 testsWithStdLib/inference/annotationsForResolve/onlyInputTypesAndClassLiterals.kt	accepts valid		
 testsWithStdLib/inference/annotationsForResolve/onlyInputTypesAndLowPriority.kt	rejects invalid	on an expected line	
 testsWithStdLib/inference/annotationsForResolve/onlyInputTypesAndTopLevelCapturedTypes.kt	rejects invalid	on an expected line	
 testsWithStdLib/inference/annotationsForResolve/onlyInputTypesAnnotationWithPlatformTypes.kt	accepts valid		
-testsWithStdLib/inference/annotationsForResolve/onlyInputTypesCaptured.kt	accepts invalid	TYPE_INFERENCE_ONLY_INPUT_TYPES_ERROR	onlyInputTypesCaptured.kt:20: TYPE_INFERENCE_ONLY_INPUT_TYPES_ERROR
+testsWithStdLib/inference/annotationsForResolve/onlyInputTypesCaptured.kt	rejects invalid	on an expected line	
 testsWithStdLib/inference/annotationsForResolve/onlyInputTypesCommonConstraintSystem.kt	accepts invalid	TYPE_INFERENCE_ONLY_INPUT_TYPES_ERROR	onlyInputTypesCommonConstraintSystem.kt:47: TYPE_INFERENCE_ONLY_INPUT_TYPES_ERROR
 testsWithStdLib/inference/annotationsForResolve/onlyInputTypesUpperBound.kt	accepts valid		
 testsWithStdLib/inference/annotationsForResolve/onlyInputTypesWithLambda.kt	rejects invalid	on an expected line	
@@ -10472,7 +10472,7 @@ testsWithStdLib/j+k/smartSet.kt	accepts valid
 testsWithStdLib/j+k/typeParameterUse.kt	accepts valid		
 testsWithStdLib/java/assertThatOnMap.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	test.kt:3: type mismatch: inferred type is S? but MutableMap<Any?, Any!>! was expected
 testsWithStdLib/java/checkEnhancedUpperBoundsWithEnabledImprovements.kt	skip	LANGUAGE	
-testsWithStdLib/java/concurrentHashMapContainsError.kt	accepts invalid	CONCURRENT_HASH_MAP_CONTAINS_OPERATOR_ERROR; TYPE_INFERENCE_ONLY_INPUT_TYPES_ERROR	concurrentHashMapContainsError.kt:26: CONCURRENT_HASH_MAP_CONTAINS_OPERATOR_ERROR
+testsWithStdLib/java/concurrentHashMapContainsError.kt	rejects invalid	on an expected line	
 testsWithStdLib/java/functionN.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	main.kt:20: type mismatch: inferred type is (<error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>) -> Unit but FunctionN<Unit!>! was expected
 testsWithStdLib/java/implementationWithBoundedTypeParameters.kt	accepts valid		
 testsWithStdLib/java/inheritedFunctionN.kt	rejects invalid	on an expected line	

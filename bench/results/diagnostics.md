@@ -6,16 +6,16 @@ Of 10827 test files, 2312 are skipped and 8515 run.
 
 | Result | Tests | Share |
 |:---|---:|---:|
-| rejects invalid | 3964 | 46.6% |
+| rejects invalid | 3968 | 46.6% |
 | accepts valid | 3935 | 46.2% |
-| accepts invalid | 420 | 4.9% |
+| accepts invalid | 416 | 4.9% |
 | rejects valid | 178 | 2.1% |
 | parse/unsupported | 16 | 0.2% |
 | crash | 1 | 0.0% |
 
 *Rejects invalid* and *accepts valid* agree with kotlinc. *Accepts invalid* is code kotlinc rejects that kc compiles; *rejects valid*, code kotlinc compiles that kc's checker rejects. Both are bugs. A *parse/unsupported* test uses a feature kc doesn't support, which says nothing about its checks.
 
-Of the 3964 tests both reject, kc reports an error on the line of an expected one in 3798.
+Of the 3968 tests both reject, kc reports an error on the line of an expected one in 3802.
 
 A test is invalid if it stops before the backend or marks an error: one that runs to it (`BACKEND`) can mark the JVM backend's errors, such as `CONFLICTING_JVM_DECLARATIONS`. Of the tests run, 222 stop at `FRONTEND` but mark no error: most add the `CHECK_TYPE` helpers, whose names (`_`) kotlinc reports outside the test infrastructure, and count as valid; the others leave their errors out with the `DIAGNOSTICS` directive. 114 run to the backend and mark one. 5 marked names have no declared severity (debug information, for one), and count as neither.
 
@@ -66,7 +66,6 @@ Tests kotlinc rejects that kc compiles, by the errors their markup expects. A te
 | `JAVA_TYPE_MISMATCH` | 7 | 7 | `tests/platformTypes/genericVarianceViolation/deepTypeHierarchy.kt`, `tests/platformTypes/genericVarianceViolation/javaOutProjection.kt` |
 | `MANY_IMPL_MEMBER_NOT_IMPLEMENTED` | 6 | 5 | `tests/j+k/manyImplNotImplementedComplexHierarchy.kt`, `tests/j+k/manyImplNotImplementedComplexHierarchy2.kt` |
 | `NOTHING_TO_OVERRIDE` | 6 | 3 | `tests/j+k/types/newListMethodsNullabilityOverridesLinkedListLatest.kt`, `tests/multimodule/duplicateSuper/sameSuperTraitDifferentBounds.kt` |
-| `TYPE_INFERENCE_ONLY_INPUT_TYPES_ERROR` | 6 | 5 | `testsWithStdLib/commonCollections.kt`, `testsWithStdLib/inference/annotationsForResolve/kt29307.kt` |
 | `ASSIGNMENT_TYPE_MISMATCH` | 5 | 2 | `tests/controlFlowAnalysis/smartcastOnThisInInitializationSection.kt`, `tests/generics/varProjection/setterNotProjectedOutAssign.kt` |
 | `CANNOT_WEAKEN_ACCESS_PRIVILEGE` | 5 | 4 | `tests/intersectedVisibilitiesAccessorDifferences_Small.kt`, `tests/intersectedVisibilitiesForNonAbstractPropertyAccessors.kt` |
 | `DEPRECATION_ERROR` | 5 | 2 | `tests/deprecated/javaDeprecatedHidden.kt`, `tests/j+k/collectionOverrides/nonDirectHiddenOverride.kt` |
@@ -110,7 +109,8 @@ Tests kotlinc rejects that kc compiles, by the errors their markup expects. A te
 | `EXPANSIVE_INHERITANCE` | 2 | 2 | `tests/declarationChecks/nonExpansiveInheritanceRestriction/JavaWithKotlin.kt`, `tests/declarationChecks/nonExpansiveInheritanceRestriction/PureKotlin.kt` |
 | `FINITE_BOUNDS_VIOLATION` | 2 | 2 | `tests/declarationChecks/finiteBoundRestriction/CasesWithTwoTypeParameters.kt`, `tests/regressions/kt9633.kt` |
 | `INVISIBLE_SETTER` | 2 | 2 | `tests/extraCheckers/RedundantVisibilityModifierCheckerForInnerComponents.kt`, `tests/properties/kt47621.kt` |
-| *100 more* | 119 | |
+| `JAVA_CLASS_INHERITS_KT_PRIVATE_CLASS` | 2 | 2 | `tests/j+k/invisibleFake.kt`, `tests/j+k/invisibleFake2.kt` |
+| *99 more* | 118 | |
 
 ## Rejects valid
 
@@ -164,7 +164,7 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 14758 of 21506 expected errors (68.6%) on their lines.
+kc reports 14780 of 21506 expected errors (68.7%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
@@ -198,7 +198,6 @@ kc reports 14758 of 21506 expected errors (68.6%) on their lines.
 | `NON_PUBLIC_CALL_FROM_PUBLIC_INLINE` | 65 | 19 | 46 |
 | `UNINITIALIZED_VARIABLE` | 211 | 165 | 46 |
 | `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` | 87 | 45 | 42 |
-| `TYPE_INFERENCE_ONLY_INPUT_TYPES_ERROR` | 61 | 21 | 40 |
 | `INAPPLICABLE_OPERATOR_MODIFIER` | 143 | 104 | 39 |
 | `TOO_MANY_ARGUMENTS` | 118 | 81 | 37 |
 | `AMBIGUOUS_ANONYMOUS_TYPE_INFERRED` | 38 | 2 | 36 |
@@ -228,6 +227,7 @@ kc reports 14758 of 21506 expected errors (68.6%) on their lines.
 | `INLINE_FROM_HIGHER_PLATFORM` | 21 | 0 | 21 |
 | `REPEATED_ANNOTATION` | 69 | 48 | 21 |
 | `RETURN_TYPE_MISMATCH_ON_OVERRIDE` | 41 | 20 | 21 |
+| `INCORRECT_TYPE_PARAMETER_OF_PROPERTY` | 30 | 11 | 19 |
 | *532 more* | | | |
 
 ## Errors kotlinc doesn't report

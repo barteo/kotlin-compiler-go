@@ -10,21 +10,38 @@ import "github.com/barteo/kotlin-compiler-go/internal/types"
 // a B : A infers A, the list's, and its contains(b) for a B? infers A?,
 // which neither is: kotlinc reports that it can't infer T.
 //
+// An integer literal's inputs are the types it can have: Int, and Long,
+// Short and Byte where it fits, as K2's integer literal type's possible
+// types are.
+//
 // kc checks a variable only when each of its constraints is a type
-// without variables, type parameters (a star projection's), captures or
-// a platform type's flexibility, which it compares as K2 does; it leaves
-// the others be.
+// without variables, type parameters, star projections (which stand for
+// captured types, which kc doesn't have) or a platform type's
+// flexibility, which it compares as K2 does; it leaves the others be.
 
 // onlyInputOK reports whether val, inferred for tv, is the type of one of
 // its constraints, or kc can't tell.
 func (s *system) onlyInputOK(tv *tvar, val types.Type) bool {
-	if tv.v.Origin == nil || !tv.v.Origin.OnlyInput || tv.star || tv.proj || len(tv.lits) > 0 {
+	if tv.v.Origin == nil || !tv.v.Origin.OnlyInput || tv.star || tv.proj {
 		return true
 	}
 	if val.K == types.Invalid || val.HasVars() || hasFlex(val) {
 		return true
 	}
 	var inputs []types.Type
+	for _, lit := range tv.lits {
+		if lit.Unsigned {
+			return true
+		}
+		if !lit.Long {
+			inputs = append(inputs, types.IntType)
+		}
+		for _, t := range []types.Type{types.LongType, types.ShortType, types.ByteType} {
+			if fitsLit(lit, t) {
+				inputs = append(inputs, t)
+			}
+		}
+	}
 	for _, cs := range [][]types.Type{tv.lower, tv.upper} {
 		for _, t := range cs {
 			t = s.apply(t)
@@ -45,7 +62,8 @@ func (s *system) onlyInputOK(tv *tvar, val types.Type) bool {
 	return false
 }
 
-// hasFlex reports whether t is or has a platform type, or a star.
+// hasFlex reports whether t is or has a platform type, or a star
+// projection.
 func hasFlex(t types.Type) bool {
 	return t.Has(func(u types.Type) bool {
 		if u.P {
@@ -53,8 +71,8 @@ func hasFlex(t types.Type) bool {
 		}
 		if u.A != nil {
 			for _, a := range u.A.List {
-				if a.V != types.Inv {
-					return true // a projection, out T or *
+				if a.V == types.Star {
+					return true
 				}
 			}
 		}

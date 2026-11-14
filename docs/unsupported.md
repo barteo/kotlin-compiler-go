@@ -171,7 +171,8 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   infers some combinations of lambdas `kc` can't.
 - `@OnlyInputTypes` (`contains`, `get`, `assertEquals`) is checked only
   when the types a call's variable is constrained by have no platform
-  types, projections or captured types, and aren't literals.
+  types or captured types (star projections), and the inferred type
+  isn't an intersection's component.
 - Java module exports aren't checked, and the Java members Kotlin
   replaces (`Number.intValue()`) aren't hidden.
 - Without an expected type, a reference to a vararg function, or to a
