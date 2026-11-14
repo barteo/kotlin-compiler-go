@@ -17,7 +17,7 @@ const (
 	Unit
 	Nothing
 	Null // the type of the literal `null`, i.e. Nothing?
-	Bool
+	Bool // Bool to Short are the primitives (IsPrimitiveKind)
 	Int
 	Long
 	Double
@@ -152,14 +152,8 @@ func (t Type) IsNumeric() bool {
 func (t Type) IsPrimitive() bool { return !t.N && IsPrimitiveKind(t.K) }
 
 // IsPrimitiveKind reports whether values of kind k are JVM primitives
-// when they are not nullable.
-func IsPrimitiveKind(k Kind) bool {
-	switch k {
-	case Int, Long, Double, Bool, Char, Float, Byte, Short:
-		return true
-	}
-	return false
-}
+// when they are not nullable: the kinds from Bool to Short.
+func IsPrimitiveKind(k Kind) bool { return Bool <= k && k <= Short }
 
 // IsIntLike reports whether a primitive of type t is an int on the JVM's
 // stack: Int, Char, Byte, Short and Boolean.
@@ -176,32 +170,10 @@ func (t Type) String() string {
 	switch t.K {
 	case Invalid:
 		return "<error>"
-	case Unit:
-		s = "Unit"
-	case Nothing:
-		s = "Nothing"
 	case Null:
 		return "Nothing?"
-	case Bool:
-		s = "Boolean"
-	case Int:
-		s = "Int"
-	case Long:
-		s = "Long"
-	case Double:
-		s = "Double"
-	case Char:
-		s = "Char"
-	case Float:
-		s = "Float"
-	case Byte:
-		s = "Byte"
-	case Short:
-		s = "Short"
-	case String:
-		s = "String"
-	case Any:
-		s = "Any"
+	case Unit, Nothing, Bool, Int, Long, Double, Char, Float, Byte, Short, String, Any:
+		s = kindNames[t.K]
 	case Class:
 		if t.IsFunc() {
 			if fs, ok := funcString(t); ok {
@@ -1209,16 +1181,101 @@ func OperatorFunType(name string, recv, arg Type) (op, result Type, ok bool) {
 	return InvalidType, InvalidType, false
 }
 
-// Boxes are the classes that hold primitives as objects, by kind.
-var Boxes = map[Kind]string{
-	Int:    "java/lang/Integer",
-	Long:   "java/lang/Long",
-	Double: "java/lang/Double",
-	Bool:   "java/lang/Boolean",
-	Char:   "java/lang/Character",
-	Float:  "java/lang/Float",
-	Byte:   "java/lang/Byte",
-	Short:  "java/lang/Short",
+// kindNames are the simple names of the kinds' built-in classes: Int.
+var kindNames = [...]string{
+	Unit: "Unit", Nothing: "Nothing", Bool: "Boolean", Int: "Int", Long: "Long", Double: "Double",
+	Char: "Char", Float: "Float", Byte: "Byte", Short: "Short", String: "String", Any: "Any",
+}
+
+// kindIDs are the class ids of the kinds' built-in classes, kotlin/Int,
+// and idKinds the kinds by class id.
+var kindIDs, idKinds = func() (ids [len(kindNames)]string, kinds map[string]Kind) {
+	kinds = map[string]Kind{}
+	for k, n := range kindNames {
+		if n != "" {
+			ids[k] = "kotlin/" + n
+			kinds[ids[k]] = Kind(k)
+		}
+	}
+	return ids, kinds
+}()
+
+// Name returns the simple name of kind k's built-in class, Int, and ""
+// if it has none.
+func (k Kind) Name() string {
+	if int(k) < len(kindNames) {
+		return kindNames[k]
+	}
+	return ""
+}
+
+// ClassID returns the class id of kind k's built-in class, kotlin/Int,
+// and "" if it has none.
+func (k Kind) ClassID() string {
+	if int(k) < len(kindIDs) {
+		return kindIDs[k]
+	}
+	return ""
+}
+
+// IDKind returns the kind whose built-in class has class id id, and
+// Invalid if there is none.
+func IDKind(id string) Kind { return idKinds[id] }
+
+// Prim describes a kind whose non-null values are JVM primitives.
+type Prim struct {
+	Desc  string // the JVM descriptor: I
+	Box   string // the class that holds it as an object: java/lang/Integer
+	Unbox string // the box's method that returns the value: intValue
+}
+
+// prims are the primitive kinds' descriptions, by kind; the others' are
+// zero.
+var prims = [...]Prim{
+	Bool:   {"Z", "java/lang/Boolean", "booleanValue"},
+	Int:    {"I", "java/lang/Integer", "intValue"},
+	Long:   {"J", "java/lang/Long", "longValue"},
+	Double: {"D", "java/lang/Double", "doubleValue"},
+	Char:   {"C", "java/lang/Character", "charValue"},
+	Float:  {"F", "java/lang/Float", "floatValue"},
+	Byte:   {"B", "java/lang/Byte", "byteValue"},
+	Short:  {"S", "java/lang/Short", "shortValue"},
+}
+
+// PrimKinds are the primitive kinds, in the order of their kinds.
+var PrimKinds = []Kind{Bool, Int, Long, Double, Char, Float, Byte, Short}
+
+// PrimOf describes kind k, all of whose fields are empty if k isn't
+// primitive.
+func PrimOf(k Kind) *Prim {
+	if int(k) < len(prims) {
+		return &prims[k]
+	}
+	return &prims[Invalid]
+}
+
+// descKinds are the primitive kinds, and Unit, by JVM descriptor.
+var descKinds = func() (t [128]Kind) {
+	for _, k := range PrimKinds {
+		t[prims[k].Desc[0]] = k
+	}
+	t['V'] = Unit
+	return t
+}()
+
+// DescKind returns the kind of one-byte JVM descriptor d, a primitive's or
+// V, Unit, and Invalid for any other.
+func DescKind(d byte) Kind { return descKinds[d&127] }
+
+// BoxKind returns the primitive kind that JVM class name boxes, and
+// Invalid if it boxes none.
+func BoxKind(name string) Kind {
+	for _, k := range PrimKinds {
+		if prims[k].Box == name {
+			return k
+		}
+	}
+	return Invalid
 }
 
 // CharMethods are Char functions that the standard library declares
@@ -1242,10 +1299,11 @@ func Desc(t Type) (string, bool) {
 	if t.IsParam() {
 		return Desc(Erase(t))
 	}
-	if t.N {
-		if box, ok := Boxes[t.K]; ok {
-			return "L" + box + ";", true
+	if IsPrimitiveKind(t.K) {
+		if t.N {
+			return "L" + prims[t.K].Box + ";", true
 		}
+		return prims[t.K].Desc, true
 	}
 	switch t.K {
 	case Unit:
@@ -1256,22 +1314,6 @@ func Desc(t Type) (string, bool) {
 		return "Ljava/lang/Void;", true
 	case Any:
 		return "Ljava/lang/Object;", true
-	case Int:
-		return "I", true
-	case Long:
-		return "J", true
-	case Double:
-		return "D", true
-	case Bool:
-		return "Z", true
-	case Char:
-		return "C", true
-	case Float:
-		return "F", true
-	case Byte:
-		return "B", true
-	case Short:
-		return "S", true
 	case String:
 		return "Ljava/lang/String;", true
 	case Class:

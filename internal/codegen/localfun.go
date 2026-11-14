@@ -153,7 +153,7 @@ func (g *gen) localDefaults(lf *syntax.LocalFun) {
 		lg.code.Local(cf.ALOAD, k) // a suspend function's continuation
 	}
 	lg.invokeLocal(lf.Method, d)
-	lg.code.Op(returnOpOf(d[strings.IndexByte(d, ')')+1:])) // an Object for a suspend function
+	lg.code.Op(returnOpOf(cf.RetDesc(d))) // an Object for a suspend function
 	lg.check()
 }
 

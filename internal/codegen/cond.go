@@ -131,8 +131,8 @@ func negate(op syntax.Kind) syntax.Kind {
 }
 
 var (
-	intCmp  = map[syntax.Kind]byte{syntax.EQ: cf.IF_ICMPEQ, syntax.NE: cf.IF_ICMPNE, syntax.LT: cf.IF_ICMPLT, syntax.GE: cf.IF_ICMPGE, syntax.GT: cf.IF_ICMPGT, syntax.LE: cf.IF_ICMPLE}
-	zeroCmp = map[syntax.Kind]byte{syntax.EQ: cf.IFEQ, syntax.NE: cf.IFNE, syntax.LT: cf.IFLT, syntax.GE: cf.IFGE, syntax.GT: cf.IFGT, syntax.LE: cf.IFLE}
+	intCmp  = [...]byte{syntax.EQ: cf.IF_ICMPEQ, syntax.NE: cf.IF_ICMPNE, syntax.LT: cf.IF_ICMPLT, syntax.GE: cf.IF_ICMPGE, syntax.GT: cf.IF_ICMPGT, syntax.LE: cf.IF_ICMPLE}
+	zeroCmp = [...]byte{syntax.EQ: cf.IFEQ, syntax.NE: cf.IFNE, syntax.LT: cf.IFLT, syntax.GE: cf.IFGE, syntax.GT: cf.IFGT, syntax.LE: cf.IFLE}
 )
 
 // branchCompare compares the two values of type t on the stack and jumps

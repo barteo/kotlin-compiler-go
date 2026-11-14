@@ -10,21 +10,18 @@ import (
 	"github.com/barteo/kotlin-compiler-go/internal/types"
 )
 
-var boxClass = types.Boxes
+// boxClass returns the class that boxes primitives of kind k, and "" if
+// k isn't primitive.
+func boxClass(k types.Kind) string { return types.PrimOf(k).Box }
 
 func (g *gen) box(t types.Type) {
-	c := boxClass[t.K]
+	c := boxClass(t.K)
 	g.code.Invoke(cf.INVOKESTATIC, c, "valueOf", "("+desc(t.NonNull())+")L"+c+";")
 }
 
-var unboxNames = map[types.Kind]string{
-	types.Int: "intValue", types.Long: "longValue", types.Double: "doubleValue", types.Bool: "booleanValue",
-	types.Char: "charValue", types.Float: "floatValue", types.Byte: "byteValue", types.Short: "shortValue",
-}
-
 func (g *gen) unbox(t types.Type) {
-	nn := t.NonNull()
-	g.code.Invoke(cf.INVOKEVIRTUAL, boxClass[t.K], unboxNames[t.K], "()"+desc(nn))
+	p := types.PrimOf(t.K)
+	g.code.Invoke(cf.INVOKEVIRTUAL, p.Box, p.Unbox, "()"+desc(t.NonNull()))
 }
 
 // coerce converts the value on the stack from type from to type to.
@@ -103,7 +100,7 @@ func (g *gen) coerce(from, to types.Type) {
 	case fp:
 		g.box(from)
 	case tp:
-		if boxClass[from.K] != "" {
+		if boxClass(from.K) != "" {
 			g.unbox(from)
 			g.coerce(from.NonNull(), to) // Int! to Long
 		}
@@ -150,14 +147,14 @@ func (g *gen) castErased(erased, to types.Type) {
 		// As kotlinc: a Long read as an Int? is unboxed by Number.intValue.
 		switch to.K {
 		case types.Bool, types.Char:
-			g.code.Checkcast(boxClass[to.K])
+			g.code.Checkcast(boxClass(to.K))
 			g.unbox(to)
 		default:
 			d := desc(to)
 			if desc(erased) != "Ljava/lang/Number;" {
 				g.code.Checkcast("java/lang/Number")
 			}
-			g.code.Invoke(cf.INVOKEVIRTUAL, "java/lang/Number", numberValue[d], "()"+d)
+			g.code.Invoke(cf.INVOKEVIRTUAL, "java/lang/Number", types.PrimOf(to.K).Unbox, "()"+d)
 		}
 		return
 	}
@@ -496,7 +493,7 @@ func (g *gen) smartCast(from, to types.Type) {
 			g.coerce(from, to)
 			return
 		}
-		if box := boxClass[to.K]; desc(from) != "L"+box+";" {
+		if box := boxClass(to.K); desc(from) != "L"+box+";" {
 			g.code.Checkcast(box)
 		}
 		g.unbox(to)
@@ -510,7 +507,7 @@ func (g *gen) smartCast(from, to types.Type) {
 // instanceClass returns the class that values of type t, not a type
 // parameter, are instances of on the JVM: a box class for primitives.
 func instanceClass(t types.Type) string {
-	if c := boxClass[t.K]; c != "" {
+	if c := boxClass(t.K); c != "" {
 		return c
 	}
 	if types.IsValue(t) || t.K == types.Unit {
@@ -1362,7 +1359,7 @@ func (g *gen) member(x *syntax.Member) {
 			g.composeArgs(x.Getter, nil, nil)
 			g.invokeJava(x.Getter, rt)
 			if o := x.Getter.Owner; o != nil && o.KotlinAnnotation() {
-				g.kotlinClasses(x.Getter.Desc[strings.IndexByte(x.Getter.Desc, ')')+1:], x.Getter.Ret)
+				g.kotlinClasses(cf.RetDesc(x.Getter.Desc), x.Getter.Ret)
 			}
 		})
 		return
@@ -1624,7 +1621,7 @@ func (g *gen) valueArgs(x *syntax.Call, f *types.FunSym) argMask {
 		// takes its parameters: T's erasure, a box, for f's IC.
 		f = o
 	}
-	jvm := descParams(funDesc(f))
+	jvm := cf.DescParams(funDesc(f))
 	if f.Impl {
 		jvm = jvm[1:] // a class-path value class's member takes the value first
 	}
@@ -1814,23 +1811,6 @@ func (g *gen) zero(d string) {
 	}
 }
 
-// descParams splits a method descriptor's parameter types.
-func descParams(d string) []string {
-	var out []string
-	for i := 1; d[i] != ')'; {
-		j := i
-		for d[j] == '[' {
-			j++
-		}
-		if d[j] == 'L' {
-			j += strings.IndexByte(d[j:], ';')
-		}
-		out = append(out, d[i:j+1])
-		i = j + 1
-	}
-	return out
-}
-
 // invokeStatic calls a static method of owner: f itself, or with omitted
 // arguments (a mask with bits set), its $default variant, which takes the
 // masks and an unused marker after the arguments. A member function's
@@ -1873,7 +1853,7 @@ func (g *gen) invokeDefault(f *types.FunSym, mask argMask) {
 		// class the override's narrows, as T's erasure.
 		ret := func(f *types.FunSym) string {
 			d := funDesc(f)
-			return d[strings.IndexByte(d, ')')+1:]
+			return cf.RetDesc(d)
 		}
 		switch want := ret(f); {
 		case want == ret(o):
@@ -2512,17 +2492,7 @@ func (g *gen) builtinMember(x *syntax.Call, rt types.Type) {
 
 // negOp returns the instruction that negates a value of type t, which is
 // Int, Long, Float or Double.
-func negOp(t types.Type) byte {
-	switch t.K {
-	case types.Long:
-		return cf.LNEG
-	case types.Double:
-		return cf.DNEG
-	case types.Float:
-		return cf.FNEG
-	}
-	return cf.INEG
-}
+func negOp(t types.Type) byte { return [4]byte{cf.INEG, cf.LNEG, cf.FNEG, cf.DNEG}[stackKind(t)] }
 
 // operatorFun emits a number's or Char's operator function name, called
 // by name, on the receiver of type rt on the stack, as the operator:
@@ -2536,21 +2506,11 @@ func (g *gen) operatorFun(name string, rt types.Type, x *syntax.Call) {
 	case "unaryMinus":
 		g.code.Op(negOp(op))
 	case "inc", "dec":
-		switch op.K {
-		case types.Long:
-			g.code.Lconst(1)
-		case types.Float:
-			g.code.Fconst(1)
-		case types.Double:
-			g.code.Dconst(1)
-		default:
-			g.code.Iconst(1)
-		}
 		k := syntax.PLUS
 		if name == "dec" {
 			k = syntax.MINUS
 		}
-		g.code.Op(arithOp(op, k))
+		g.addOne(op, k)
 	case "compareTo":
 		g.exprAs(x.Args[0], op)
 		switch op.K {
@@ -2566,11 +2526,14 @@ func (g *gen) operatorFun(name string, rt types.Type, x *syntax.Call) {
 		return
 	default:
 		g.exprAs(x.Args[0], op)
-		g.code.Op(arithOp(op, map[string]syntax.Kind{
-			"plus": syntax.PLUS, "minus": syntax.MINUS, "times": syntax.STAR, "div": syntax.SLASH, "rem": syntax.PERCENT,
-		}[name]))
+		g.code.Op(arithOp(op, arithFuns[name]))
 	}
 	g.convert(op, res)
+}
+
+// arithFuns are the operators of the arithmetic functions.
+var arithFuns = map[string]syntax.Kind{
+	"plus": syntax.PLUS, "minus": syntax.MINUS, "times": syntax.STAR, "div": syntax.SLASH, "rem": syntax.PERCENT,
 }
 
 // bitwiseOps are the instructions of the bitwise functions, for an Int
@@ -2610,8 +2573,7 @@ func (g *gen) bitwise(name string, rt types.Type, args []syntax.Expr) {
 // Double.toInt() rounds toward zero and saturates, and a conversion to
 // Byte, Short or Char then keeps the low bits of the Int.
 func (g *gen) convert(from, to types.Type) {
-	f, t := stackKind(from), stackKind(to)
-	if op, ok := convOps[[2]byte{f, t}]; ok {
+	if op := convOps[stackKind(from)][stackKind(to)]; op != 0 {
 		g.code.Op(op)
 	}
 	switch {
@@ -2625,24 +2587,27 @@ func (g *gen) convert(from, to types.Type) {
 }
 
 // stackKind returns the kind of value a primitive is on the JVM's operand
-// stack: I, J, F or D.
-func stackKind(t types.Type) byte {
+// stack, which instruction families are in the order of: 0 for an int, 1
+// a long, 2 a float and 3 a double.
+func stackKind(t types.Type) int {
 	switch t.K {
 	case types.Long:
-		return 'J'
+		return 1
 	case types.Float:
-		return 'F'
+		return 2
 	case types.Double:
-		return 'D'
+		return 3
 	}
-	return 'I'
+	return 0
 }
 
-var convOps = map[[2]byte]byte{
-	{'I', 'J'}: cf.I2L, {'I', 'F'}: cf.I2F, {'I', 'D'}: cf.I2D,
-	{'J', 'I'}: cf.L2I, {'J', 'F'}: cf.L2F, {'J', 'D'}: cf.L2D,
-	{'F', 'I'}: cf.F2I, {'F', 'J'}: cf.F2L, {'F', 'D'}: cf.F2D,
-	{'D', 'I'}: cf.D2I, {'D', 'J'}: cf.D2L, {'D', 'F'}: cf.D2F,
+// convOps are the instructions that convert between the stack kinds, by
+// stackKind.
+var convOps = [4][4]byte{
+	{0, cf.I2L, cf.I2F, cf.I2D},
+	{cf.L2I, 0, cf.L2F, cf.L2D},
+	{cf.F2I, cf.F2L, 0, cf.F2D},
+	{cf.D2I, cf.D2L, cf.D2F, 0},
 }
 
 // whenBody generates the body of a when's branch: the subject, if it is a

@@ -361,37 +361,14 @@ func (c *Code) Op(op byte) {
 		return
 	}
 	c.buf = append(c.buf, op)
-	switch {
-	case op == ACONST_NULL:
-		c.push(nullType)
-		return
-	case ICONST_M1 <= op && op <= ICONST_5:
-		c.push(intType)
-		return
-	case op == LCONST_0 || op == LCONST_1:
-		c.push(longType)
-		return
-	case FCONST_0 <= op && op <= FCONST_2:
-		c.push(floatType)
-		return
-	case op == DCONST_0 || op == DCONST_1:
-		c.push(doubleType)
+	if e := &opEffects[op]; e.ok {
+		c.popN(e.pop)
+		if e.push.tag != tTop {
+			c.push(e.push)
+		}
 		return
 	}
 	switch op {
-	case NOP:
-	case IALOAD, BALOAD, CALOAD, SALOAD:
-		c.popN(2)
-		c.push(intType)
-	case FALOAD:
-		c.popN(2)
-		c.push(floatType)
-	case LALOAD:
-		c.popN(2)
-		c.push(longType)
-	case DALOAD:
-		c.popN(2)
-		c.push(doubleType)
 	case AALOAD:
 		c.pop()
 		arr := c.pop()
@@ -400,104 +377,18 @@ func (c *Code) Op(op byte) {
 		} else {
 			c.push(nullType)
 		}
-	case IASTORE, LASTORE, FASTORE, DASTORE, AASTORE, BASTORE, CASTORE, SASTORE:
-		c.popN(3)
-	case POP:
-		c.pop()
 	case POP2:
 		if c.pop().size() == 1 {
 			c.pop()
 		}
-	case DUP:
-		t := c.pop()
-		c.push(t)
-		c.push(t)
-	case DUP_X1:
-		v1, v2 := c.pop(), c.pop()
-		c.push(v1)
-		c.push(v2)
-		c.push(v1)
-	case DUP_X2:
-		v1, v2 := c.pop(), c.pop()
-		if v2.size() == 2 {
-			c.pushAll(v1, v2, v1)
-			break
+	case DUP, DUP_X1, DUP_X2, DUP2, DUP2_X1, DUP2_X2, SWAP:
+		st, ok := Permute(op, c.stack, vtype.size)
+		if !ok {
+			c.fail("operand stack underflow at offset %d", len(c.buf))
+			return
 		}
-		v3 := c.pop()
-		c.pushAll(v1, v3, v2, v1)
-	case DUP2:
-		v1 := c.pop()
-		if v1.size() == 2 {
-			c.push(v1)
-			c.push(v1)
-			break
-		}
-		v2 := c.pop()
-		c.push(v2)
-		c.push(v1)
-		c.push(v2)
-		c.push(v1)
-	case DUP2_X1:
-		v1, v2 := c.pop(), c.pop()
-		if v1.size() == 2 {
-			c.pushAll(v1, v2, v1)
-			break
-		}
-		v3 := c.pop()
-		c.pushAll(v2, v1, v3, v2, v1)
-	case DUP2_X2:
-		v1, v2 := c.pop(), c.pop()
-		switch {
-		case v1.size() == 2 && v2.size() == 2:
-			c.pushAll(v1, v2, v1)
-		case v1.size() == 2:
-			v3 := c.pop()
-			c.pushAll(v1, v3, v2, v1)
-		default:
-			v3 := c.pop()
-			if v3.size() == 2 {
-				c.pushAll(v2, v1, v3, v2, v1)
-				break
-			}
-			v4 := c.pop()
-			c.pushAll(v2, v1, v4, v3, v2, v1)
-		}
-	case SWAP:
-		v1, v2 := c.pop(), c.pop()
-		c.pushAll(v1, v2)
-	case IADD, ISUB, IMUL, IDIV, IREM, IAND, IOR, IXOR, ISHL, ISHR, IUSHR:
-		c.popN(2)
-		c.push(intType)
-	case LADD, LSUB, LMUL, LDIV, LREM, LAND, LOR, LXOR, LSHL, LSHR, LUSHR:
-		c.popN(2)
-		c.push(longType)
-	case MONITORENTER, MONITOREXIT:
-		c.pop()
-	case FADD, FSUB, FMUL, FDIV, FREM:
-		c.popN(2)
-		c.push(floatType)
-	case DADD, DSUB, DMUL, DDIV, DREM:
-		c.popN(2)
-		c.push(doubleType)
-	case INEG, LNEG, FNEG, DNEG, I2B, I2C, I2S:
-	case I2L, F2L, D2L:
-		c.pop()
-		c.push(longType)
-	case I2F, L2F, D2F:
-		c.pop()
-		c.push(floatType)
-	case I2D, L2D, F2D:
-		c.pop()
-		c.push(doubleType)
-	case L2I, F2I, D2I:
-		c.pop()
-		c.push(intType)
-	case LCMP, FCMPL, FCMPG, DCMPL, DCMPG:
-		c.popN(2)
-		c.push(intType)
-	case ARRAYLENGTH:
-		c.pop()
-		c.push(intType)
+		c.stack, c.depth = st, c.depth+int(opTable[op].push-opTable[op].pop)
+		c.max = max(c.max, c.depth)
 	case IRETURN, LRETURN, FRETURN, DRETURN, ARETURN, ATHROW:
 		c.traceEnd()
 		c.pop()
@@ -510,10 +401,92 @@ func (c *Code) Op(op byte) {
 	}
 }
 
-func (c *Code) pushAll(ts ...vtype) {
-	for _, t := range ts {
-		c.push(t)
+// opEffects are the effects on the stack of the instructions without
+// operands that pop values of any types and push at most one, of a type
+// of their own: how many values they pop, and the type they push, or top
+// for none.
+var opEffects = func() (t [256]struct {
+	ok   bool
+	pop  int
+	push vtype
+}) {
+	set := func(from, to, pop int, push vtype) {
+		for op := from; op <= to; op++ {
+			t[op].ok, t[op].pop, t[op].push = true, pop, push
+		}
 	}
+	// The types of the families of instructions, which are in this order.
+	family := [4]vtype{intType, longType, floatType, doubleType}
+	set(NOP, NOP, 0, vtype{})
+	set(ACONST_NULL, ACONST_NULL, 0, nullType)
+	set(ICONST_M1, ICONST_5, 0, intType)
+	set(LCONST_0, LCONST_1, 0, longType)
+	set(FCONST_0, FCONST_2, 0, floatType)
+	set(DCONST_0, DCONST_1, 0, doubleType)
+	for i, r := range family {
+		set(IALOAD+i, IALOAD+i, 2, r)
+	}
+	set(BALOAD, SALOAD, 2, intType)
+	set(IASTORE, SASTORE, 3, vtype{})
+	set(POP, POP, 1, vtype{})
+	for op := IADD; op <= DREM; op++ { // add, sub, mul, div, rem
+		set(op, op, 2, family[(op-IADD)%4])
+	}
+	set(INEG, DNEG, 0, vtype{}) // the value keeps its type
+	// Shifts, and, or and xor, of ints and longs.
+	for op := ISHL; op <= LXOR; op++ {
+		set(op, op, 2, family[(op-ISHL)%2])
+	}
+	for i, r := range "JFDIFDIJDIJF" { // I2L to D2F
+		set(I2L+i, I2L+i, 1, typeOf(string(r)))
+	}
+	set(I2B, I2S, 0, vtype{})
+	set(LCMP, DCMPG, 2, intType)
+	set(ARRAYLENGTH, ARRAYLENGTH, 1, intType)
+	set(MONITORENTER, MONITOREXIT, 1, vtype{})
+	return t
+}()
+
+// Permute applies DUP, DUP_X1, DUP_X2, DUP2, DUP2_X1, DUP2_X2 or SWAP to
+// operand stack st, whose values take size(v) slots each, top last. It
+// returns the new stack, which may share st's array, and false if st has
+// too few values.
+func Permute[T any](op byte, st []T, size func(T) int) ([]T, bool) {
+	n := len(st)
+	if op == DUP && n > 0 { // the most common, quickly
+		return append(st, st[n-1]), true
+	}
+	wide := func(k int) bool { return k < n && size(st[n-1-k]) == 2 }
+	// take values from the top are replaced by those at the depths in
+	// order, bottom first, where the top's depth is 0.
+	var take int
+	var order string
+	switch {
+	case op == DUP, op == DUP2 && wide(0):
+		take, order = 1, "00"
+	case op == SWAP:
+		take, order = 2, "01"
+	case op == DUP_X1, op == DUP_X2 && wide(1), op == DUP2_X1 && wide(0), op == DUP2_X2 && wide(0) && wide(1):
+		take, order = 2, "010"
+	case op == DUP2:
+		take, order = 2, "1010"
+	case op == DUP_X2, op == DUP2_X2 && wide(0):
+		take, order = 3, "0210"
+	case op == DUP2_X1, op == DUP2_X2 && wide(2):
+		take, order = 3, "10210"
+	default: // DUP2_X2 of four values
+		take, order = 4, "103210"
+	}
+	if take > n {
+		return st, false
+	}
+	var top [4]T
+	copy(top[:], st[n-take:])
+	st = st[:n-take]
+	for i := range len(order) {
+		st = append(st, top[take-1-int(order[i]-'0')])
+	}
+	return st, true
 }
 
 // Depth returns the number of values on the operand stack.

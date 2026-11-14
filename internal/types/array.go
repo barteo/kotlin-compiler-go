@@ -17,23 +17,11 @@ var primArrays = map[Kind]*ClassSym{}
 var arraysByID = map[string]*ClassSym{"kotlin/Array": ArrayClass}
 
 func init() {
-	for _, a := range []struct {
-		name string
-		elem Type
-		desc string
-	}{
-		{"IntArray", IntType, "[I"},
-		{"LongArray", LongType, "[J"},
-		{"DoubleArray", DoubleType, "[D"},
-		{"BooleanArray", BoolType, "[Z"},
-		{"CharArray", CharType, "[C"},
-		{"FloatArray", FloatType, "[F"},
-		{"ByteArray", ByteType, "[B"},
-		{"ShortArray", ShortType, "[S"},
-	} {
-		c := &ClassSym{Name: a.desc, KotlinName: "kotlin/" + a.name, External: true, Final: true, Array: true, Elem: a.elem, Global: true}
-		arrayMembers(c, a.elem)
-		primArrays[a.elem.K] = c
+	for _, k := range PrimKinds {
+		p, elem := prims[k], Type{K: k}
+		c := &ClassSym{Name: "[" + p.Desc, KotlinName: kindIDs[k] + "Array", External: true, Final: true, Array: true, Elem: elem, Global: true}
+		arrayMembers(c, elem)
+		primArrays[k] = c
 		arraysByID[c.KotlinName] = c
 	}
 }

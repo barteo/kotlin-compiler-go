@@ -262,8 +262,7 @@ func (g *gen) elementValue(v cf.ElementValue, t types.Type, outer string, line i
 		case d == "V":
 			g.code.FieldInsn(cf.GETSTATIC, "java/lang/Void", "TYPE", "Ljava/lang/Class;")
 		case len(d) == 1:
-			box := map[byte]string{'I': "Integer", 'J': "Long", 'D': "Double", 'Z': "Boolean", 'C': "Character", 'F': "Float", 'B': "Byte", 'S': "Short"}[d[0]]
-			g.code.FieldInsn(cf.GETSTATIC, "java/lang/"+box, "TYPE", "Ljava/lang/Class;")
+			g.code.FieldInsn(cf.GETSTATIC, boxClass(types.DescKind(d[0])), "TYPE", "Ljava/lang/Class;")
 		default:
 			g.code.LdcClass(className(d))
 		}
