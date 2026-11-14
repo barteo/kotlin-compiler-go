@@ -139,7 +139,9 @@ func (c *Checker) takeBranchSink() *system {
 func (c *Checker) sinkBranches(sink *system, pending []pendingBranch, result types.Type) types.Type {
 	for _, p := range pending {
 		bt := p.t
-		if p.lambda {
+		if p.sunk {
+			bt = c.sinkLambda(sink, p)
+		} else if p.lambda {
 			bt = c.branchLambda(p, result, noWant)
 		} else if p.sys != nil {
 			sink.merge(p.sys)
@@ -149,6 +151,8 @@ func (c *Checker) sinkBranches(sink *system, pending []pendingBranch, result typ
 			p.body.T = bt
 		}
 		switch {
+		case (result.K == types.Null || result.K == types.Nothing && result.N) && p.sunk:
+			result = bt.Nullable() // if (b) { -> } else null
 		case result.K == types.Nothing || result.K == types.Invalid:
 			result = bt
 		case result.HasVars() || bt.HasVars():
@@ -237,4 +241,16 @@ func (s *system) funcShape(tv *tvar, p types.Type) types.Type {
 // foo(1, id(fun(x: Int) = x)) does.
 func untypedResult(l *syntax.Lambda) bool {
 	return l.Anon && l.AnonRet == nil && !l.AnonUnit && len(l.Params) == 0 && l.AnonRecv == nil
+}
+
+// sinkLambda makes the lambda of branch p a postponed argument of sink,
+// for a variable of its own, and returns the variable.
+func (c *Checker) sinkLambda(sink *system, p pendingBranch) types.Type {
+	l := p.body.Stmts[0].(*syntax.ExprStmt).X.(*syntax.Lambda)
+	k := &types.TypeParamSym{Name: "K"}
+	v := sink.fresh([]*types.TypeParamSym{k}, nil, l.P)[k].T
+	sink.lambdas = append(sink.lambdas, pendingLambda{l, v, p.scope})
+	body := p.body
+	sink.fixups = append(sink.fixups, func(s *system) { body.T = s.final(v) })
+	return v
 }

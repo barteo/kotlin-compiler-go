@@ -203,7 +203,18 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   branch that is a lambda without its parameters' types takes them from
   the other branches only when the `if` has no expected type, and one
   takes an expected receiver as its first parameter only when it is a
-  branch's value.
+  branch's value. Only a branch lambda written without parameters
+  (`{ -> }`) of an `if` or `when` that is a generic call's argument is
+  postponed with the call, as K2's synthetic call's arguments are.
+- Conversions during inference are partial. A function value passed for
+  a suspend function type with variables gives the converted type's
+  constraint, and so does a generic call's result (`id(f)`) whose
+  variable has one lower bound. A lambda passed for a variable takes
+  its type from the variable's upper bound only when that is a suspend
+  function type or a Java SAM interface; a lambda passed through another
+  call (`id({ -> })`) isn't converted. A Java type parameter without
+  constraints is inferred as its bound only when that bound is one
+  class other than `Object`.
 - `kc` has no captured types: a projection a variable stands for is
   approximated by its bounds where it is substituted. A variable that
   captures a projection of an argument is inferred as that projection,

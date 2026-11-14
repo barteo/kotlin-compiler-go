@@ -3479,6 +3479,7 @@ func deprecatedConversion(from types.Type, b types.Builtin) string {
 
 func (c *Checker) ifExpr(x *syntax.If, want types.Type, valueUsed bool) types.Type {
 	sink := c.takeBranchSink()
+	defer c.sinkLambdas(sink != nil && c.branchArg)()
 	c.value(x.Cond, types.BoolType)
 	c.wantBool(x.Cond)
 	whenTrue, whenFalse := c.narrowing(x.Cond)
@@ -3594,6 +3595,9 @@ type pendingBranch struct {
 	// parameters' types, which, as K2's postponed argument, takes them
 	// from the others' function type: when { a -> {{ x -> }} b -> f }.
 	lambda bool
+	// sunk is set for a lambda branch postponed with the call the if or
+	// when is an argument of.
+	sunk bool
 	// open is set when the call needs the other branches' types: it has
 	// no lambdas, or they don't give their parameter types. See openLast.
 	open bool
@@ -3613,6 +3617,18 @@ type pendingBranch struct {
 // if (c) build { yield(x) } else build {}, also unused. It is then seen as
 // Nothing, which the join ignores, until completeBranches.
 func (c *Checker) branch(b *syntax.Block, want types.Type, valueUsed bool, pending *[]pendingBranch) types.Type {
+	if c.lambdaSink && valueUsed && want.K == types.Invalid && len(b.Stmts) == 1 {
+		// A lambda of an if or a when that is a call's argument is, as
+		// K2's synthetic call's, postponed with the call's: { -> } of
+		// Foo(if (b) { -> } else null) for an expected Foo<suspend ()
+		// -> Unit> is a suspend lambda (see sinkBranches).
+		if es, ok := b.Stmts[0].(*syntax.ExprStmt); ok {
+			if l, ok := es.X.(*syntax.Lambda); ok && l.Arrow && len(l.Params) == 0 && !l.Anon && l.Ref == nil && !l.SuspendMod {
+				*pending = append(*pending, pendingBranch{body: b, lambda: true, sunk: true, scope: c.scope})
+				return types.NothingType
+			}
+		}
+	}
 	if n := len(b.Stmts); n > 0 && want.Flex().E {
 		if es, ok := b.Stmts[n-1].(*syntax.ExprStmt); ok {
 			if l, ok := es.X.(*syntax.Lambda); ok && l.Arrow && !l.Anon {
@@ -3831,6 +3847,7 @@ func (c *Checker) openLast(pending []pendingBranch) {
 
 func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) types.Type {
 	sink := c.takeBranchSink()
+	defer c.sinkLambdas(sink != nil && c.branchArg)()
 	var pending []pendingBranch
 	softFail := false
 	// As after an if, the vars the branches assign have the join of their
@@ -4325,4 +4342,12 @@ func (c *Checker) ctorsFit(cls *types.ClassSym, fs []*types.FunSym, x *syntax.Ca
 		return c.takeTypes(cls.Ctors, x, ts) || !c.takeTypes(fs, x, ts)
 	}
 	return true
+}
+
+// sinkLambdas sets lambdaSink to on, and returns the function that
+// restores it. branchArg is consumed.
+func (c *Checker) sinkLambdas(on bool) func() {
+	saved := c.lambdaSink
+	c.lambdaSink, c.branchArg = on, false
+	return func() { c.lambdaSink = saved }
 }

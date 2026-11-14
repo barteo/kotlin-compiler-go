@@ -986,6 +986,10 @@ func (s *system) fix(tv *tvar) {
 			val = h
 			break
 		}
+		if b, ok := s.platformBound(tv); ok {
+			val = b
+			break
+		}
 		s.errs = append(s.errs, inferError{tv.pos, "cannot infer type for type parameter '" + tv.v.Name + "'. Specify it explicitly."})
 	}
 	// A variable with only upper constraints is their intersection with
@@ -1527,4 +1531,20 @@ func selfBounded(c *types.ClassSym, i int) bool {
 	return slices.ContainsFunc(p.Bounds, func(b types.Type) bool {
 		return b.Has(func(u types.Type) bool { return u.IsParam() && u.Param() == p })
 	})
+}
+
+// platformBound returns the bound of variable tv, for a type parameter
+// of a Java declaration, if it has one, a platform type without
+// variables other than Object: as in Kotlin, the variable without
+// constraints is inferred to it, as E of ThrowableComputable<T, E
+// extends Throwable>.
+func (s *system) platformBound(tv *tvar) (types.Type, bool) {
+	if len(tv.v.Bounds) != 1 {
+		return types.InvalidType, false
+	}
+	b := s.apply(tv.v.Bounds[0])
+	if !b.P || b.HasVars() || b.K != types.Class || b.Flex().NonNull().K == types.Any {
+		return types.InvalidType, false
+	}
+	return b, true
 }

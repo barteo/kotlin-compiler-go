@@ -5463,7 +5463,7 @@ tests/j+k/sam/enhancedSamConstructor.kt	accepts invalid	ARGUMENT_TYPE_MISMATCH; 
 tests/j+k/sam/fakeOverrideFunctionForStaticSam.kt	accepts valid		
 tests/j+k/sam/inheritedStaticSam.kt	accepts valid		
 tests/j+k/sam/javaKotlinSamConflict.kt	accepts valid		
-tests/j+k/sam/kt37920.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	test.kt:3: cannot infer type for type parameter 'E'. Specify it explicitly.
+tests/j+k/sam/kt37920.kt	accepts valid		
 tests/j+k/sam/kt39630.kt	accepts valid		
 tests/j+k/sam/lambdaParameterRemainFlexible.kt	skip	LANGUAGE	
 tests/j+k/sam/lambdaParameterRemainFlexibleRegularConstructor.kt	skip	LANGUAGE	
@@ -7844,7 +7844,7 @@ tests/safeCalls/safeCallOnFlexibleTypeAlias.kt	accepts valid
 tests/safeCalls/safeCallWithSmartCast.kt	rejects invalid	on an expected line	
 tests/samConstructors/funInterfaceConstructorReference.kt	accepts valid		
 tests/samConstructors/genericSam.kt	rejects invalid	on an expected line	
-tests/samConstructors/genericSamInferenceFromExpectType.kt	accepts invalid	ARGUMENT_TYPE_MISMATCH	main.kt:15: ARGUMENT_TYPE_MISMATCH
+tests/samConstructors/genericSamInferenceFromExpectType.kt	rejects invalid	on an expected line	
 tests/samConstructors/kotlinSam.kt	accepts valid		
 tests/samConstructors/realConstructorFunction.kt	rejects invalid	on an expected line	
 tests/samConstructors/runnable.kt	accepts valid		
@@ -7878,7 +7878,7 @@ tests/samConversions/samConversionToGenericWrongNullabilityForbiddenAndNoFlexibl
 tests/samConversions/samConversionWithCallableReference.kt	skip	LANGUAGE	
 tests/samConversions/samConversionWithCallableReferencePreciseLowerConstraints.kt	skip	LANGUAGE	
 tests/samConversions/samConversionWithCondition.kt	accepts valid		
-tests/samConversions/samConversionWithConditionJava.kt	rejects valid	cannot infer a type for this parameter. Please specify it explicitly.	main.kt:5: cannot infer a type for this parameter. Please specify it explicitly.
+tests/samConversions/samConversionWithConditionJava.kt	accepts valid		
 tests/samConversions/samConversionWithJavaFlexibleType.kt	skip	LANGUAGE	
 tests/samConversions/samConversionWithJavaFlexibleTypePreciseLowerConstraints.kt	skip	LANGUAGE	
 tests/samConversions/samConversionWithNamedArgumentAndIf.kt	accepts valid		
@@ -8765,14 +8765,14 @@ tests/suppressOnPlusAssign.kt	accepts valid
 tests/suspendConflictingOverloads.kt	rejects invalid	on an expected line	
 tests/suspendConversion/basicSuspendConversion.kt	rejects invalid	on an expected line	
 tests/suspendConversion/basicSuspendConversionForCallableReference.kt	rejects invalid	on an expected line	
-tests/suspendConversion/basicSuspendConversionGenerics.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	basicSuspendConversionGenerics.kt:13: cannot infer type for type parameter 'T'. Specify it explicitly.
+tests/suspendConversion/basicSuspendConversionGenerics.kt	accepts valid		
 tests/suspendConversion/chainedFunSuspendConversionForSimpleExpression.kt	accepts valid		
 tests/suspendConversion/complexCases.kt	rejects invalid	on an expected line	
 tests/suspendConversion/conversionInLastStatementOfWhenBranch.kt	accepts valid		
 tests/suspendConversion/implicitInvoke.kt	accepts valid		
 tests/suspendConversion/implicitInvokeFromChildClass.kt	accepts valid		
 tests/suspendConversion/implicitInvokeWithSpecificType.kt	accepts invalid	ARGUMENT_TYPE_MISMATCH	implicitInvokeWithSpecificType.kt:4: ARGUMENT_TYPE_MISMATCH
-tests/suspendConversion/inGenericArgument.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	inGenericArgument.kt:14: type mismatch: inferred type is Foo<() -> Unit> but Foo<suspend () -> Unit> was expected
+tests/suspendConversion/inGenericArgument.kt	accepts valid		
 tests/suspendConversion/overloadResolutionBySuspendModifier.kt	skip	LANGUAGE	
 tests/suspendConversion/severalConversionsInOneCall.kt	accepts valid		
 tests/suspendConversion/suspendAnonymousAsNonSuspend.kt	rejects invalid	on an expected line	

@@ -928,10 +928,10 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			// this call: compareBy's T in nullsLast(if (b) compareBy({
 			// it.a }) else compareBy({ it.b })) for a Comparator<Foo?>.
 			inner := newSystem(c)
-			c.branchSink = inner
+			c.branchSink, c.branchArg = inner, true
 			t := c.value(a, noWant)
 			ts[i] = t
-			c.branchSink = nil
+			c.branchSink, c.branchArg = nil, false
 			if len(inner.vars) > 0 || len(inner.fixups) > 0 {
 				inner.fixups = append(inner.fixups, func(s *system) { a.SetType(s.final(t)) })
 				partials = append(partials, inner)
@@ -1051,7 +1051,15 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 	for i, m := range best.sams {
 		x.Args[i] = c.samConverted(x.Args[i], m, best.params[i])
 	}
+	var lateSusps map[int]bool // converted once the variables are fixed
 	for i := range best.susps {
+		if best.params[i].HasVars() {
+			if lateSusps == nil {
+				lateSusps = map[int]bool{}
+			}
+			lateSusps[i] = true
+			continue
+		}
 		x.Args[i] = c.suspendConverted(x.Args[i], best.params[i])
 	}
 	f := best.f
@@ -1125,6 +1133,10 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			}
 			if ch, ok := a.(*syntax.Checked); ok && ch.SAM != nil {
 				ch.T = s.final(params[i]).NonNull()
+				continue
+			}
+			if lateSusps[i] {
+				x.Args[i] = c.suspendConverted(a, s.final(params[i]))
 				continue
 			}
 			if lit, ok := a.(*syntax.IntLit); ok && !lit.Long && fitsLit(lit, s.final(params[i])) {
@@ -1851,7 +1863,7 @@ func (c *Checker) constrain(cd *candidate, x *syntax.Call, ts []types.Type, part
 				continue
 			}
 		}
-		if ft, ok := c.suspendConstraint(t, p, x.Args[i]); ok {
+		if ft, ok := c.suspendConstraint(cd, t, p, x.Args[i]); ok {
 			if cd.susps == nil {
 				cd.susps = map[int]bool{}
 			}
@@ -1911,17 +1923,37 @@ func (c *Checker) constrainContexts(cd *candidate, x *syntax.Call) {
 // value that a candidate takes for a suspend function type p only by
 // suspend conversion (see suspendConverted), and returns the function
 // type it takes without it: () -> String for suspend () -> String.
-func (c *Checker) suspendConstraint(t, p types.Type, a syntax.Expr) (types.Type, bool) {
+func (c *Checker) suspendConstraint(cd *candidate, t, p types.Type, a syntax.Expr) (types.Type, bool) {
 	pt := p.NonNull()
 	switch a.(type) {
 	case *syntax.Lambda, *syntax.Checked:
 		return types.InvalidType, false
 	}
-	ft, _ := c.funcView(t, pt.A.Len()-1)
+	vt := t
+	if t.K == types.TypeVar && cd != nil && p.HasVars() {
+		// A generic call's result, as id(f)'s, by the function value
+		// it is inferred from.
+		if tv := cd.sys.byVar[t.Param()]; tv != nil && len(tv.lower) == 1 && !tv.fixed {
+			vt = tv.lower[0]
+		}
+	}
+	ft, _ := c.funcView(vt, pt.A.Len()-1)
 	ft = ft.NonNull()
-	if !pt.IsSuspendFunc() || p.HasVars() || !ft.IsFunc() || ft.C.Suspend || ft.C.Composable ||
-		ft.A.Len() != pt.A.Len() || types.MayBeNull(t) && !types.AcceptsNull(p) {
+	if !pt.IsSuspendFunc() || !ft.IsFunc() || ft.C.Suspend || ft.C.Composable ||
+		ft.A.Len() != pt.A.Len() || types.MayBeNull(vt) && !types.AcceptsNull(p) {
 		return types.InvalidType, false
+	}
+	if p.HasVars() {
+		if cd == nil {
+			return types.InvalidType, false
+		}
+		// The conversion's constraint, as K2 adds it, when the type
+		// itself doesn't fit: (Int) -> String for suspend (T) -> String
+		// gives T := Int.
+		trial := cd.sys.clone()
+		if trial.sub(vt, p); trial.ok {
+			return types.InvalidType, false
+		}
 	}
 	return c.unsuspended(p), true
 }

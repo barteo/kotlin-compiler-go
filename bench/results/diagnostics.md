@@ -6,16 +6,16 @@ Of 10827 test files, 2312 are skipped and 8515 run.
 
 | Result | Tests | Share |
 |:---|---:|---:|
-| rejects invalid | 3989 | 46.8% |
-| accepts valid | 3973 | 46.7% |
-| accepts invalid | 395 | 4.6% |
-| rejects valid | 140 | 1.6% |
+| rejects invalid | 3990 | 46.9% |
+| accepts valid | 3977 | 46.7% |
+| accepts invalid | 394 | 4.6% |
+| rejects valid | 136 | 1.6% |
 | parse/unsupported | 16 | 0.2% |
 | crash | 1 | 0.0% |
 
 *Rejects invalid* and *accepts valid* agree with kotlinc. *Accepts invalid* is code kotlinc rejects that kc compiles; *rejects valid*, code kotlinc compiles that kc's checker rejects. Both are bugs. A *parse/unsupported* test uses a feature kc doesn't support, which says nothing about its checks.
 
-Of the 3989 tests both reject, kc reports an error on the line of an expected one in 3825.
+Of the 3990 tests both reject, kc reports an error on the line of an expected one in 3826.
 
 A test is invalid if it stops before the backend or marks an error: one that runs to it (`BACKEND`) can mark the JVM backend's errors, such as `CONFLICTING_JVM_DECLARATIONS`. Of the tests run, 222 stop at `FRONTEND` but mark no error: most add the `CHECK_TYPE` helpers, whose names (`_`) kotlinc reports outside the test infrastructure, and count as valid; the others leave their errors out with the `DIAGNOSTICS` directive. 114 run to the backend and mark one. 5 marked names have no declared severity (debug information, for one), and count as neither.
 
@@ -50,7 +50,7 @@ Tests kotlinc rejects that kc compiles, by the errors their markup expects. A te
 
 | Expected error | Tests | Only error | Examples |
 |:---|---:|---:|:---|
-| `ARGUMENT_TYPE_MISMATCH` | 37 | 24 | `tests/annotations/annotationArgumentScopeForNestedClass.kt`, `tests/collectionLiterals/kt82964.kt` |
+| `ARGUMENT_TYPE_MISMATCH` | 36 | 23 | `tests/annotations/annotationArgumentScopeForNestedClass.kt`, `tests/collectionLiterals/kt82964.kt` |
 | `UNRESOLVED_REFERENCE` | 36 | 24 | `tests/SafeCallOnFakePackage.kt`, `tests/callResolution/eagerLambdaAnalysis/samVsDefault.kt` |
 | `OVERLOAD_RESOLUTION_AMBIGUITY` | 24 | 19 | `tests/callResolution/kt50386.kt`, `tests/imports/EnumEntryVsStaticAmbiguity.kt` |
 | `MISSING_DEPENDENCY_CLASS` | 16 | 10 | `tests/j+k/differentFilename.kt`, `tests/javac/Lambda.kt` |
@@ -118,9 +118,9 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 | First error | Tests | Examples |
 |:---|---:|:---|
-| `type mismatch: inferred type is _ but _ was expected` | 28 | `tests/annotations/javaAnnotationWithClassArray.kt`, `tests/annotations/parameters/expressions/unaryPlus.kt` |
+| `type mismatch: inferred type is _ but _ was expected` | 27 | `tests/annotations/javaAnnotationWithClassArray.kt`, `tests/annotations/parameters/expressions/unaryPlus.kt` |
 | `unresolved reference: _` | 22 | `tests/callResolution/incorrectPlusOperatorFromJava.kt`, `tests/callResolution/suspendCOnversionForReceiver.kt` |
-| `cannot infer type for type parameter '_'. Specify it explicitly.` | 13 | `tests/delegatedProperty/provideDelegate/commonSupertype.kt`, `tests/inference/capturedTypes/differentCapturedTypes.kt` |
+| `cannot infer type for type parameter '_'. Specify it explicitly.` | 11 | `tests/delegatedProperty/provideDelegate/commonSupertype.kt`, `tests/inference/capturedTypes/differentCapturedTypes.kt` |
 | `no function '_' takes n arguments` | 6 | `tests/annotations/javaAnnotationWithParameter.kt`, `tests/cast/kt15161.kt` |
 | `unresolved import: _` | 6 | `tests/errorProneAtomicArraySuggestions.kt`, `tests/errorProneAtomicReferenceArguments.kt` |
 | `ambiguous call: n candidates for '_' take (_)` | 5 | `tests/callableReference/resolve/resolveReferenceAgainstKFunctionAndKPrpoerty.kt`, `tests/multimodule/varargConflict.kt` |
@@ -134,7 +134,6 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 | `'_' is not defined in this context` | 2 | `tests/functionLiterals/kt51317.kt`, `testsWithStdLib/mapList.kt` |
 | `assignment operators ambiguity: '_' and '_' both apply` | 2 | `tests/operatorsOverloading/plusAssignOnVarAndCollections.kt`, `testsWithStdLib/java/intersectFlexibleAndMutable.kt` |
 | `cannot create an instance of Function` | 2 | `tests/arguments/lambdaInLambda2.kt`, `tests/functionLiterals/lambdaInLambda2.kt` |
-| `cannot infer a type for this parameter. Please specify it explicitly.` | 2 | `tests/inference/completion/postponedArgumentsAnalysis/lackOfDeepIncorporation.kt`, `tests/samConversions/samConversionWithConditionJava.kt` |
 | `expression '_' of type _ cannot be invoked as a function` | 2 | `tests/expresssions/invoke/incorrectInvokeReceiver.kt`, `tests/nullabilityAndSmartCasts/kt1778.kt` |
 | `expression of type _ cannot be invoked as a function` | 2 | `tests/controlFlowAnalysis/deadCode/deadCallInInvokeCall.kt`, `tests/expresssions/invoke/safeCallsWithImplicitInvoke.kt` |
 | `type of '_' doesn't match the type of the overridden var-property` | 2 | `tests/extraCheckers/kt69190.kt`, `tests/smartCasts/intersectionScope/propertiesConflict.kt` |
@@ -143,6 +142,7 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 | `'_' modifier is required on '_'` | 1 | `tests/problems/kt36815.kt` |
 | `'_' needs an explicit return type on '_'` | 1 | `tests/inference/completion/inferLabeledElementTypeForLambdaInReturnInCatch.kt` |
 | `accidental override: the following declarations have the same JVM signature (foo()V)` | 1 | `tests/platformTypes/methodTypeParameterDefaultBound.kt` |
+| `cannot infer a type for this parameter. Please specify it explicitly.` | 1 | `tests/inference/completion/postponedArgumentsAnalysis/lackOfDeepIncorporation.kt` |
 | `class '_' is not abstract and does not implement abstract member '_'` | 1 | `tests/j+k/collectionOverrides/mapMethodsImplementedInJava.kt` |
 | `class Base is not public` | 1 | `tests/visibility/packagePrivateStatic.kt` |
 | `class PackagePrivateGrandparentAbstractClass is not public` | 1 | `tests/visibility/packagePrivateStaticViaTypeAlias.kt` |
@@ -164,14 +164,14 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 14870 of 21506 expected errors (69.1%) on their lines.
+kc reports 14871 of 21506 expected errors (69.1%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
 | `SYNTAX` | 875 | 222 | 653 |
 | `UNRESOLVED_REFERENCE` | 2493 | 1913 | 580 |
 | `CONFLICTING_JVM_DECLARATIONS` | 996 | 518 | 478 |
-| `ARGUMENT_TYPE_MISMATCH` | 1484 | 1207 | 277 |
+| `ARGUMENT_TYPE_MISMATCH` | 1484 | 1208 | 276 |
 | `UNSUPPORTED` | 231 | 35 | 196 |
 | `WRONG_MODIFIER_TARGET` | 300 | 170 | 130 |
 | `CONFLICTING_OVERLOADS` | 726 | 602 | 124 |
@@ -237,14 +237,14 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | Error | Count |
 |:---|---:|
 | `unresolved reference: _` | 288 |
-| `type mismatch: inferred type is _ but _ was expected` | 246 |
-| `cannot infer type for type parameter '_'. Specify it explicitly.` | 242 |
+| `type mismatch: inferred type is _ but _ was expected` | 239 |
+| `cannot infer type for type parameter '_'. Specify it explicitly.` | 233 |
 | `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 199 |
 | `platform declaration clash: _` | 150 |
 | `class '_' is not abstract and does not implement abstract member '_'` | 68 |
 | `unresolved or unsupported type: _` | 59 |
 | `suspend function '_' cannot override non-suspend function '_' defined in '_'` | 50 |
-| `cannot infer a type for this parameter. Please specify it explicitly.` | 49 |
+| `cannot infer a type for this parameter. Please specify it explicitly.` | 48 |
 | `missing return statement in function '_'` | 38 |
 | `unresolved import: _` | 35 |
 | `no function '_' takes n arguments` | 27 |

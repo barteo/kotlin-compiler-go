@@ -1379,7 +1379,7 @@ func (c *Checker) argValue(arg *syntax.Expr, p types.Type, f *types.FunSym) type
 	switch {
 	case !ok:
 		t := c.value(a, p)
-		if _, ok := c.suspendConstraint(t, p, a); ok && f != nil {
+		if _, ok := c.suspendConstraint(nil, t, p, a); ok && f != nil {
 			*arg = c.suspendConverted(a, p)
 			return p
 		}
@@ -2737,6 +2737,16 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type) {
 			return
 		}
 	}
+	if pt.K == types.TypeVar && !l.Anon && l.Ref == nil {
+		// As in Kotlin, a Java interface that is a variable's upper bound
+		// is the lambda's type: T of Java's select(T, T) for a Ticker.
+		if u := s.upperHint(pt).Flex(); u.K == types.Class && !u.C.Fun && JavaSAM(u.C) {
+			if m, _ := c.samTarget(u); m != nil {
+				s.sub(u.NonNull(), pt)
+				pt = u.NonNull()
+			}
+		}
+	}
 	ft := pt
 	var sam *types.FunSym
 	if !pt.Flex().IsFunc() {
@@ -2746,8 +2756,16 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type) {
 	}
 	params, ret, ok := funcParts(ft)
 	if !ok {
-		// A type variable or Any: the lambda has its own type.
-		lt := c.lambda(l, noWant)
+		// A type variable or Any: the lambda has its own type, or, as
+		// in Kotlin, a variable's suspend function-typed upper bound:
+		// T of Foo<T> for an expected Foo<suspend () -> Unit>.
+		want := noWant
+		if pt.K == types.TypeVar && !l.Anon && l.Ref == nil {
+			if u := s.upperHint(pt); isSuspendFunc(u) {
+				want = u
+			}
+		}
+		lt := c.lambda(l, want)
 		l.T = lt
 		if pt.HasVars() {
 			s.sub(lt, pt)
@@ -2778,6 +2796,17 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type) {
 			trial := s.clone()
 			if trial.sub(params[i], d); trial.ok {
 				*s = *trial
+			} else if sam != nil {
+				// A SAM's lambda has no function type to check against
+				// the expected one: MyFunction { x: Int -> } isn't a
+				// MyFunction<in Number, *>.
+				want := s.apply(params[i])
+				if want.K == types.TypeVar {
+					if tv := s.byVar[want.Param()]; tv != nil && len(tv.lower) > 0 {
+						want = s.apply(tv.lower[0])
+					}
+				}
+				c.errorf(l.P, "type mismatch: inferred type is %s but %s was expected", d, want)
 			}
 			params[i], declared = d, true
 		}

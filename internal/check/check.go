@@ -274,6 +274,11 @@ type Checker struct {
 	// branchSink is the system of the delegate an if, a try or an
 	// elvis is: see delegateValue.
 	branchSink *system
+	// branchArg is set with branchSink for an if or a when that is a
+	// call's argument, whose lambda branches are then the call's
+	// postponed arguments (see branch). lambdaSink is set while the
+	// branches of such an if or when are checked.
+	branchArg, lambdaSink bool
 	// inferAliasArgs are the calls of typealiases' constructors that
 	// infer the aliases' type arguments: see aliasConstruct.
 	inferAliasArgs map[*syntax.Call]bool
