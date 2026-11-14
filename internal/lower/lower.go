@@ -250,6 +250,16 @@ func (l *lowerer) errorLater(pos syntax.Pos, format string, args ...any) {
 	l.later = append(l.later, &syntax.Error{File: l.path, Pos: pos, Msg: fmt.Sprintf(format, args...)})
 }
 
+// Fail, Later and Unsupported report the errors of the checks shared with
+// kc's parser (see syntax.Reporter).
+func (l *lowerer) Fail(pos syntax.Pos, format string, args ...any) { l.failAt(pos, format, args...) }
+func (l *lowerer) Later(pos syntax.Pos, format string, args ...any) {
+	l.errorLater(pos, format, args...)
+}
+func (l *lowerer) Unsupported(pos syntax.Pos, feature, format string, args ...any) {
+	l.unsupported(pos, feature, format, args...)
+}
+
 // unexpected fails on node n, which kc's grammar has no place for.
 func (l *lowerer) unexpected(n psi.NodeRef) {
 	if !n.Valid() {

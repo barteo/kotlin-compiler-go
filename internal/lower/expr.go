@@ -121,23 +121,11 @@ func (l *lowerer) expr1(n psi.NodeRef) syntax.Expr {
 		return lit
 	case psi.KindFLOAT_CONSTANT:
 		t := first(n)
-		text := strings.ReplaceAll(t.Text(), "_", "")
-		if strings.HasSuffix(text, "f") || strings.HasSuffix(text, "F") {
-			v, err := strconv.ParseFloat(strings.TrimRight(text, "fF"), 32)
-			if err != nil {
-				l.fail(t, "invalid float literal")
-			}
-			f := &syntax.FloatLit{Val: float32(v)}
-			f.P = l.pos(t)
-			return f
+		lit, msg := syntax.FloatLiteral(l.pos(t), t.Text())
+		if msg != "" {
+			l.fail(t, "%s", msg)
 		}
-		v, err := strconv.ParseFloat(text, 64)
-		if err != nil {
-			l.fail(t, "invalid double literal")
-		}
-		d := &syntax.DoubleLit{Val: v}
-		d.P = l.pos(t)
-		return d
+		return lit
 	case psi.KindCHARACTER_CONSTANT:
 		r, msg := syntax.CharValue(n.Text())
 		if msg != "" {
@@ -760,7 +748,7 @@ func (l *lowerer) anonFun(n psi.NodeRef, label string) *syntax.Lambda {
 			continue
 		}
 		m := l.modifiers(child(p, psi.KindMODIFIER_LIST))
-		l.noContexts(&m, "value parameters")
+		syntax.NoContexts(&m, "value parameters", l)
 		name := child(p, psi.KindIDENTIFIER)
 		lp := &syntax.LambdaParam{P: l.pos(name), Name: ident(name)}
 		if t := child(p, psi.KindTYPE_REFERENCE); t.Valid() {

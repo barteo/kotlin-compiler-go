@@ -257,6 +257,92 @@ type Mod struct {
 	P    Pos
 }
 
+// Set records modifier keyword name, written at p, in m: in Written, and
+// in its flag and position. It reports false if name is no modifier. Both
+// front ends read modifiers with it.
+func (m *Modifiers) Set(name string, p Pos) bool {
+	flag, pos := m.modifier(name)
+	if flag == nil {
+		return false
+	}
+	*flag = true
+	if pos != nil {
+		*pos = p
+	}
+	if v, ok := visibilities[name]; ok {
+		m.Visibility = v
+	}
+	m.Written = append(m.Written, Mod{Name: name, P: p})
+	return true
+}
+
+// noModifiers is only read, by isModifier.
+var noModifiers Modifiers
+
+// isModifier reports whether s is a modifier keyword.
+func isModifier(s string) bool {
+	flag, _ := noModifiers.modifier(s)
+	return flag != nil
+}
+
+// modifier returns the flag of modifier keyword name in m, and the field
+// of its position if m keeps one; nil if name is no modifier.
+func (m *Modifiers) modifier(name string) (flag *bool, pos *Pos) {
+	switch name {
+	case "private", "public", "internal", "protected":
+		return &m.Explicit, nil
+	case "open":
+		return &m.Open, nil
+	case "abstract":
+		return &m.Abstract, nil
+	case "override":
+		return &m.Override, nil
+	case "final":
+		return &m.Final, nil
+	case "companion":
+		return &m.Companion, nil
+	case "data":
+		return &m.Data, nil
+	case "enum":
+		return &m.Enum, nil
+	case "sealed":
+		return &m.Sealed, nil
+	case "const":
+		return &m.Const, nil
+	case "vararg":
+		return &m.Vararg, &m.VarargP
+	case "operator":
+		return &m.Operator, nil
+	case "infix":
+		return &m.Infix, nil
+	case "expect":
+		return &m.Expect, &m.ExpectP
+	case "actual":
+		return &m.Actual, nil
+	case "annotation":
+		return &m.Annotation, nil
+	case "value":
+		return &m.Value, nil
+	case "inline":
+		return &m.Inline, nil
+	case "noinline":
+		return &m.Noinline, nil
+	case "crossinline":
+		return &m.Crossinline, nil
+	case "suspend":
+		return &m.Suspend, nil
+	case "lateinit":
+		return &m.Lateinit, nil
+	case "tailrec":
+		return &m.Tailrec, nil
+	case "inner":
+		return &m.Inner, nil
+	case "external":
+		return &m.External, &m.ExternalP
+	}
+	return nil, nil
+}
+
 // Has reports whether name is among the written modifiers.
 func (m *Modifiers) Has(name string) bool {
 	for _, w := range m.Written {
