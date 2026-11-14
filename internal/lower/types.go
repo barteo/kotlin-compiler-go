@@ -46,7 +46,7 @@ func (l *lowerer) typeWith(n psi.NodeRef, recv bool) (*syntax.TypeRef, []syntax.
 			l.unexpected(c)
 		}
 	}
-	unsafe, composable, noInfer := false, false, false
+	unsafe, composable, noInfer, exact := false, false, false, false
 	var wild syntax.Wildcards
 	var as []syntax.Annotation
 	for _, m := range mods {
@@ -65,6 +65,7 @@ func (l *lowerer) typeWith(n psi.NodeRef, recv bool) (*syntax.TypeRef, []syntax.
 				as = append(as, a)
 				unsafe = unsafe || a.Is("UnsafeVariance")
 				noInfer = noInfer || a.Name == "NoInfer" || a.Is("internal.NoInfer")
+				exact = exact || a.Is("internal.Exact")
 				composable = composable || syntax.IsComposable(a)
 				if w := syntax.WildcardsOf([]syntax.Annotation{a}); w != syntax.DefaultWildcards {
 					wild = w
@@ -97,6 +98,7 @@ func (l *lowerer) typeWith(n psi.NodeRef, recv bool) (*syntax.TypeRef, []syntax.
 	}
 	t.UnsafeVariance = t.UnsafeVariance || unsafe
 	t.NoInfer = t.NoInfer || noInfer
+	t.Exact = t.Exact || exact
 	t.Composable = t.Composable || composable
 	if wild != syntax.DefaultWildcards {
 		t.Wildcards = wild
@@ -276,6 +278,7 @@ func (l *lowerer) projectionAnnotations(m psi.NodeRef, t *syntax.TypeRef) {
 		a := l.annotation(c)
 		t.UnsafeVariance = t.UnsafeVariance || a.Is("UnsafeVariance")
 		t.NoInfer = t.NoInfer || a.Name == "NoInfer" || a.Is("internal.NoInfer")
+		t.Exact = t.Exact || a.Is("internal.Exact")
 		t.Composable = t.Composable || syntax.IsComposable(a)
 		if w := syntax.WildcardsOf([]syntax.Annotation{a}); w != syntax.DefaultWildcards {
 			t.Wildcards = w

@@ -3307,7 +3307,11 @@ func (c *Checker) provideDelegate(d, p *syntax.PropDecl, t, want types.Type) typ
 	if !c.providesDelegate(t, call) {
 		return t
 	}
+	init := d.Init
 	d.Init = call
+	// A builder's lambda that is checked again declares the property
+	// anew: provideDelegate is called on the delegate as written.
+	c.onUndo(func() { d.Init = init })
 	return c.value(call, want)
 }
 
