@@ -1015,6 +1015,14 @@ func (c *Checker) kpropLambda(x *syntax.Lambda, f refForm, bound bool) ([]types.
 			this.P = p
 			x.Ref.X = this
 			return c.checkRef(x, lambdaWant{ret: noWant, prop: true})
+		case !bound && e.Member != nil && implicitRecvThis(e.Member.X) != nil:
+			// ::p for a property of an implicit receiver, a lambda's, is
+			// that receiver's this::p: bar(::a) in myBuilder { }.
+			r := implicitRecvThis(e.Member.X)
+			this := &syntax.This{Recv: r.Recv, Implicit: true, Label: r.Label}
+			this.P = p
+			x.Ref.X = this
+			return c.checkRef(x, lambdaWant{ret: noWant, prop: true})
 		case !bound && c.outerPropLabel(e) != "":
 			this := &syntax.This{Label: c.outerPropLabel(e)} // this@Outer::p in an inner class
 			this.P = p
@@ -1136,4 +1144,13 @@ func refStateMachine(x *syntax.Lambda, f *types.FunSym) bool {
 // named name.
 func (c *Checker) hasCallable(cls *types.ClassSym, name string) bool {
 	return len(c.javaMethods(cls, name)) > 0 || c.hasProp(cls, name)
+}
+
+// implicitRecvThis returns x if it is the implicit this of a receiver
+// that isn't the class's, as a lambda's, or nil.
+func implicitRecvThis(x syntax.Expr) *syntax.This {
+	if t, ok := x.(*syntax.This); ok && t.Implicit && t.Recv != nil {
+		return t
+	}
+	return nil
 }
