@@ -7,9 +7,9 @@ Of 10827 test files, 2312 are skipped and 8515 run.
 | Result | Tests | Share |
 |:---|---:|---:|
 | rejects invalid | 3963 | 46.5% |
-| accepts valid | 3906 | 45.9% |
+| accepts valid | 3931 | 46.2% |
 | accepts invalid | 420 | 4.9% |
-| rejects valid | 206 | 2.4% |
+| rejects valid | 181 | 2.1% |
 | parse/unsupported | 18 | 0.2% |
 | crash | 1 | 0.0% |
 
@@ -119,7 +119,7 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 | First error | Tests | Examples |
 |:---|---:|:---|
 | `type mismatch: inferred type is _ but _ was expected` | 50 | `tests/annotations/javaAnnotationWithClassArray.kt`, `tests/annotations/parameters/expressions/unaryPlus.kt` |
-| `cannot infer type for type parameter '_'. Specify it explicitly.` | 39 | `tests/delegatedProperty/provideDelegate/commonSupertype.kt`, `tests/delegates/delegateWithLambda.kt` |
+| `cannot infer type for type parameter '_'. Specify it explicitly.` | 25 | `tests/delegatedProperty/provideDelegate/commonSupertype.kt`, `tests/inference/capturedTypes/differentCapturedTypes.kt` |
 | `unresolved reference: _` | 22 | `tests/callResolution/incorrectPlusOperatorFromJava.kt`, `tests/callResolution/suspendCOnversionForReceiver.kt` |
 | `ambiguous call: n candidates for '_' take (_)` | 8 | `tests/callableReference/resolve/resolveReferenceAgainstKFunctionAndKPrpoerty.kt`, `tests/inference/emptyIntersectionTypes/kt51016.kt` |
 | `no function '_' takes n arguments` | 6 | `tests/annotations/javaAnnotationWithParameter.kt`, `tests/cast/kt15161.kt` |
@@ -127,7 +127,6 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 | `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 4 | `tests/j+k/withTestConnection3.kt`, `tests/platformTypes/methodCall/multipleExactBoundsNullable.kt` |
 | `'_' overrides nothing` | 3 | `tests/genericReceiverPropertyOverride.kt`, `tests/generics/finalUpperBoundWithOverride.kt` |
 | `cannot infer a type for this parameter. Please specify it explicitly.` | 3 | `tests/inference/completion/postponedArgumentsAnalysis/lackOfDeepIncorporation.kt`, `tests/inference/kt36819.kt` |
-| `none of the n candidates for '_' take (_)` | 3 | `tests/problems/kt52219.kt`, `testsWithStdLib/contracts/smartcasts/when/kt36818.kt` |
 | `platform declaration clash: _` | 3 | `tests/overload/noConflictingOverloadsWithDeprecatedHidden/ConstructorsInMemberScope.kt`, `tests/overload/noConflictingOverloadsWithDeprecatedHidden/ConstructorsInPackage.kt` |
 | `property must be initialized or be abstract` | 3 | `tests/backingField/FieldAsParam.kt`, `tests/backingField/FieldShadow.kt` |
 | `type argument is not within its bounds: type parameter '_' must be subtype of '_', but actual: _` | 3 | `tests/inference/capturedTypes/capturedTypeWithInnerTypealias.kt`, `tests/inference/unsoundness2.kt` |
@@ -138,7 +137,6 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 | `cannot create an instance of Function` | 2 | `tests/arguments/lambdaInLambda2.kt`, `tests/functionLiterals/lambdaInLambda2.kt` |
 | `expression '_' of type _ cannot be invoked as a function` | 2 | `tests/expresssions/invoke/incorrectInvokeReceiver.kt`, `tests/nullabilityAndSmartCasts/kt1778.kt` |
 | `expression of type _ cannot be invoked as a function` | 2 | `tests/controlFlowAnalysis/deadCode/deadCallInInvokeCall.kt`, `tests/expresssions/invoke/safeCallsWithImplicitInvoke.kt` |
-| `n type arguments expected for '_'` | 2 | `tests/delegatingConstructorsAndTypeAliases.kt`, `tests/generics/innerClasses/implicitArguments/secondLevelDepth.kt` |
 | `type of '_' doesn't match the type of the overridden var-property` | 2 | `tests/extraCheckers/kt69190.kt`, `tests/smartCasts/intersectionScope/propertiesConflict.kt` |
 | `unresolved label: _` | 2 | `tests/labelAndReceiverForInfix.kt`, `tests/labeledReturnFromNotLabeledUnnamedFunction.kt` |
 | `'_' is deprecated with level HIDDEN` | 1 | `tests/problems/kt14059.kt` |
@@ -155,16 +153,18 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 | `inherited platform declarations clash: the following declarations have the same JVM signature (foo(Ljava/lang/String;I)Ljava/lang/String;)` | 1 | `tests/contextParameters/overrides/KJKHierarchyWithOverride.kt` |
 | `many supertypes available, please specify the one you mean in angle brackets, e.g. '_'` | 1 | `tests/override/kt53408.kt` |
 | `missing return statement in function '_'` | 1 | `tests/inline/inlinedReturnInBranch.kt` |
+| `n type arguments expected for '_'` | 1 | `tests/delegatingConstructorsAndTypeAliases.kt` |
 | `named arguments are not allowed for non-Kotlin functions` | 1 | `testsWithStdLib/problems/NamedParameterInConcurrentMap.kt` |
 | `no type arguments expected for class OuterClass` | 1 | `tests/signatureEnhancementOuterClassBoundsToInner.kt` |
 | `one type argument expected for class B<T>` | 1 | `tests/multimodule/duplicateMethod/substitutedGenericInParams.kt` |
-| *15 more* | 15 | |
+| `one type argument expected for class X.Y` | 1 | `tests/innerClasses/inCallableReferenceLHS/misplacedArgumentsInInnerOnly.kt` |
+| *7 more* | 7 | |
 
 ## Errors by diagnostic
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 14515 of 21476 expected errors (67.6%) on their lines.
+kc reports 14516 of 21476 expected errors (67.6%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
@@ -178,7 +178,7 @@ kc reports 14515 of 21476 expected errors (67.6%) on their lines.
 | `RETURN_TYPE_MISMATCH` | 417 | 305 | 112 |
 | `INVISIBLE_REFERENCE` | 513 | 404 | 109 |
 | `NULL_FOR_NONNULL_TYPE` | 155 | 53 | 102 |
-| `CANNOT_INFER_PARAMETER_TYPE` | 620 | 521 | 99 |
+| `CANNOT_INFER_PARAMETER_TYPE` | 620 | 520 | 100 |
 | `UNRESOLVED_REFERENCE_WRONG_RECEIVER` | 250 | 157 | 93 |
 | `CONST_VAL_WITH_NON_CONST_INITIALIZER` | 251 | 166 | 85 |
 | `MUST_BE_INITIALIZED` | 102 | 21 | 81 |
@@ -236,8 +236,8 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 
 | Error | Count |
 |:---|---:|
-| `cannot infer type for type parameter '_'. Specify it explicitly.` | 588 |
-| `type mismatch: inferred type is _ but _ was expected` | 317 |
+| `cannot infer type for type parameter '_'. Specify it explicitly.` | 558 |
+| `type mismatch: inferred type is _ but _ was expected` | 316 |
 | `unresolved reference: _` | 286 |
 | `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 200 |
 | `platform declaration clash: _` | 150 |
@@ -266,7 +266,7 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | `not enough information to infer type arguments of ::barn: specify the expected function type` | 11 |
 | `overload resolution ambiguity for ::foo: specify the expected function type` | 11 |
 | `val cannot be reassigned` | 11 |
-| *191 more* | |
+| *168 more* | |
 
 ## Unsupported features
 

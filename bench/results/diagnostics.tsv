@@ -97,7 +97,7 @@ tests/PropertyInitializers.kt	rejects invalid	on an expected line
 tests/QualifiedExpressions.kt	rejects invalid	on an expected line	
 tests/RecursiveResolve.kt	accepts valid		
 tests/RecursiveTypeInference.kt	rejects invalid	on an expected line	
-tests/RecursiveTypeParameterEqualityCheck.kt	rejects valid	operator '_' cannot be applied to Barn and Barn	RecursiveTypeParameterEqualityCheck.kt:9: operator '==' cannot be applied to Bar1 and Bar3
+tests/RecursiveTypeParameterEqualityCheck.kt	accepts valid		
 tests/RedundantInterpolationPrefixCornerCases.kt	rejects invalid	on an expected line	
 tests/ReserveYieldNoMore.kt	accepts valid		
 tests/ReserveYieldNoMore2.kt	skip	LANGUAGE	
@@ -711,7 +711,7 @@ tests/callableReference/bound/syntheticExtensionOnLHS.kt	accepts valid
 tests/callableReference/bound/valueOfTypeParameterType.kt	accepts valid		
 tests/callableReference/callableReferenceAsLastExpressionInBlock.kt	accepts valid		
 tests/callableReference/callableReferenceAssignmentToVar.kt	accepts valid		
-tests/callableReference/callableReferenceInWhenExpression.kt	rejects valid	operator '_' cannot be applied to Class<Any> and KClass<Collection<*>>	callableReferenceInWhenExpression.kt:15: operator '==' cannot be applied to Class<Any> and KClass<Collection<*>>
+tests/callableReference/callableReferenceInWhenExpression.kt	accepts valid		
 tests/callableReference/callableReferenceWithMostSpecificGenericTypeParameter.kt	accepts valid		
 tests/callableReference/callableReferencesToCompanionMembers.kt	accepts valid		
 tests/callableReference/classVsPackage.kt	accepts valid		
@@ -1468,7 +1468,7 @@ tests/companionUsesNested.kt	accepts valid
 tests/compareWithReified.kt	rejects invalid	on an expected line	
 tests/comparingArbitraryClasses.kt	rejects invalid	on an expected line	
 tests/comparingCallableReferencesWithInstanceOfJavaClass.kt	accepts valid		
-tests/comparisonOfGenericInterfaceWithGenericClass.kt	rejects valid	operator '_' cannot be applied to A<*> and B<*>	comparisonOfGenericInterfaceWithGenericClass.kt:7: operator '==' cannot be applied to A<*> and B<*>
+tests/comparisonOfGenericInterfaceWithGenericClass.kt	accepts valid		
 tests/compilerCrashInRedCode.kt	rejects invalid	on an expected line	
 tests/compilerCrashInTypeParameterBoundsChecker.kt	accepts valid		
 tests/compilerCrashParameterType.kt	rejects invalid	on an expected line	
@@ -1564,7 +1564,7 @@ tests/constructorConsistency/twoSecondaryConstructors.kt	accepts valid
 tests/constructorConsistency/twoSuperTypeCalls.kt	rejects invalid	on an expected line	
 tests/constructors/erroneousDelegatedConstructorCall.kt	rejects invalid	on an expected line	
 tests/constructors/noSuperCallInSupertypes.kt	accepts valid		
-tests/contentEqualsSuggestionForTypedArrays.kt	rejects valid	operator '_' cannot be applied to Array<Char> and CharArray	contentEqualsSuggestionForTypedArrays.kt:19: operator '==' cannot be applied to Array<Char> and CharArray
+tests/contentEqualsSuggestionForTypedArrays.kt	accepts valid		
 tests/contextParameters/ambiguityBetweenReceiverAndContext.kt	rejects invalid	on an expected line	
 tests/contextParameters/callableReference.kt	skip	LANGUAGE_FEATURE_TOGGLED	
 tests/contextParameters/callableReferenceCompatibility.kt	rejects invalid	on an expected line	
@@ -2618,7 +2618,7 @@ tests/delegatedSuperTypeByExpression.kt	accepts valid
 tests/delegates/callOnThisInDelegateExpression.kt	accepts valid		
 tests/delegates/delegateInference.kt	accepts valid		
 tests/delegates/delegateWithArgInference.kt	accepts valid		
-tests/delegates/delegateWithLambda.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	delegateWithLambda.kt:15: cannot infer type for type parameter 'T'. Specify it explicitly.
+tests/delegates/delegateWithLambda.kt	accepts valid		
 tests/delegates/delegatedPropertyInsideLocalClass.kt	rejects invalid	on an expected line	
 tests/delegates/extensionGenericGetValue.kt	accepts valid		
 tests/delegates/extensionGetValueWithTypeVariableAsReceiver.kt	accepts valid		
@@ -3565,7 +3565,7 @@ tests/functionLiterals/return/LocalReturnWithFlexibleUnitType.kt	accepts valid
 tests/functionLiterals/return/LocalReturnsWithExplicitReturnType.kt	rejects invalid	on an expected line	
 tests/functionLiterals/return/MixedReturnsFromLambda.kt	accepts valid		
 tests/functionLiterals/return/MultipleLocalUnitReturns.kt	accepts valid		
-tests/functionLiterals/return/NoCommonSystem.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	NoCommonSystem.kt:9: cannot infer type for type parameter 'T'. Specify it explicitly.
+tests/functionLiterals/return/NoCommonSystem.kt	accepts valid		
 tests/functionLiterals/return/SmartCast.kt	accepts valid		
 tests/functionLiterals/return/SmartCastWithExplicitType.kt	accepts valid		
 tests/functionLiterals/return/kt66277.kt	rejects invalid	on an expected line	
@@ -3632,10 +3632,10 @@ tests/generics/innerClasses/implicitArguments/fromSuperClassesTransitive.kt	reje
 tests/generics/innerClasses/implicitArguments/inStaticScope.kt	rejects invalid	on an expected line	
 tests/generics/innerClasses/implicitArguments/runtimeCrashOnInnerWithImplicitInArgument.kt	rejects invalid	on an expected line	
 tests/generics/innerClasses/implicitArguments/runtimeCrashOnInnerWithImplicitOutArgument.kt	rejects invalid	on an expected line	
-tests/generics/innerClasses/implicitArguments/secondLevelDepth.kt	rejects valid	n type arguments expected for '_'	secondLevelDepth.kt:12: 2 type arguments expected for '<init><F, E>'
+tests/generics/innerClasses/implicitArguments/secondLevelDepth.kt	accepts valid		
 tests/generics/innerClasses/importedInner.kt	rejects invalid	on an expected line	
 tests/generics/innerClasses/innerClassGenericBounds.kt	rejects invalid	on an expected line	
-tests/generics/innerClasses/innerSuperCall.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	innerSuperCall.kt:9: cannot infer type for type parameter 'T'. Specify it explicitly.
+tests/generics/innerClasses/innerSuperCall.kt	accepts valid		
 tests/generics/innerClasses/innerSuperCallSecondary.kt	accepts valid		
 tests/generics/innerClasses/innerTP.kt	rejects invalid	on an expected line	
 tests/generics/innerClasses/innerUncheckedCast.kt	rejects invalid	on an expected line	
@@ -3643,7 +3643,7 @@ tests/generics/innerClasses/innerVariance.kt	rejects invalid	on an expected line
 tests/generics/innerClasses/iterator.kt	rejects invalid	on an expected line	
 tests/generics/innerClasses/j+k.kt	accepts valid		
 tests/generics/innerClasses/j+k_complex.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	main.kt:2: type mismatch: inferred type is CheckTypeInv<Any!> but CheckTypeInv<Int> was expected
-tests/generics/innerClasses/kt3357.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	kt3357.kt:11: cannot infer type for type parameter 'T'. Specify it explicitly.
+tests/generics/innerClasses/kt3357.kt	accepts valid		
 tests/generics/innerClasses/kt408.kt	accepts valid		
 tests/generics/innerClasses/kt6325.kt	accepts valid		
 tests/generics/innerClasses/noTypeVarianceConflictInNestedClass.kt	accepts valid		
@@ -4140,7 +4140,7 @@ tests/inference/dependOnExpectedType.kt	accepts valid
 tests/inference/dependantOnVariance.kt	rejects invalid	on an expected line	
 tests/inference/dependantOnVarianceNullable.kt	rejects invalid	on an expected line	
 tests/inference/discardInapplicableCandidateWithNotSatisfyingSelfType.kt	accepts valid		
-tests/inference/dnnArgumentInferred.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	dnnArgumentInferred.kt:12: type mismatch: inferred type is Bar<String> but Bar<String?> was expected
+tests/inference/dnnArgumentInferred.kt	accepts valid		
 tests/inference/dnnThrowJavaCall.kt	accepts valid		
 tests/inference/dontThrowEmptyIntersectionException.kt	accepts invalid	UNRESOLVED_REFERENCE	main.kt:3: UNRESOLVED_REFERENCE
 tests/inference/elvisAndLongIlt.kt	skip	LANGUAGE	
@@ -4152,7 +4152,7 @@ tests/inference/elvisWithNothingInRhs.kt	accepts valid
 tests/inference/emptyIntersectionTypes/compatibilityResolveWhenVariableHasComplexIntersectionType.kt	skip	LANGUAGE	
 tests/inference/emptyIntersectionTypes/contravariance.kt	accepts valid		
 tests/inference/emptyIntersectionTypes/covariance.kt	accepts valid		
-tests/inference/emptyIntersectionTypes/emptyIntersectionOnIf.kt	rejects valid	operator '_' cannot be applied to A and B	emptyIntersectionOnIf.kt:7: operator '===' cannot be applied to A and B
+tests/inference/emptyIntersectionTypes/emptyIntersectionOnIf.kt	accepts valid		
 tests/inference/emptyIntersectionTypes/inferredToNothingDueToBoundsWithSelect.kt	accepts valid		
 tests/inference/emptyIntersectionTypes/inferredToNothingDueToBoundsWithSelectWithoutCaptured.kt	accepts valid		
 tests/inference/emptyIntersectionTypes/kt45461.kt	skip	LANGUAGE	
@@ -4279,9 +4279,9 @@ tests/inference/intersectionTypesInConstraints.kt	rejects invalid	on an expected
 tests/inference/intersectionTypesWithContravariantTypes.kt	rejects valid	ambiguous call: n candidates for '_' take (_)	intersectionTypesWithContravariantTypes.kt:12: ambiguous call: 2 candidates for 'greater' take (Bar<Long>, Bar<Long>)
 tests/inference/intersectionWithEnum.kt	accepts valid		
 tests/inference/invokeLambdaAsFunction.kt	rejects invalid	on an expected line	
-tests/inference/javaCollector.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	javaCollector.kt:10: cannot infer type for type parameter 'A'. Specify it explicitly.
-tests/inference/knownTypeParameters.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	knownTypeParameters.kt:12: cannot infer type for type parameter 'T2'. Specify it explicitly.
-tests/inference/kt11218.kt	rejects valid	type argument is not within its bounds: inferred type TestEnum? of type _ '_' is not a subtype of Enum<TestEnum?>	kt11218.kt:10: type argument is not within its bounds: inferred type TestEnum? of type parameter 'T' is not a subtype of Enum<TestEnum?>
+tests/inference/javaCollector.kt	accepts valid		
+tests/inference/knownTypeParameters.kt	accepts valid		
+tests/inference/kt11218.kt	accepts valid		
 tests/inference/kt11963.kt	rejects invalid	on an expected line	
 tests/inference/kt12399.kt	rejects invalid	on an expected line	
 tests/inference/kt1293.kt	rejects invalid	on an expected line	
@@ -4372,7 +4372,7 @@ tests/inference/nothingType/discriminateNothingForReifiedParameter.kt	accepts in
 tests/inference/nothingType/discriminatedNothingAndSmartCast.kt	accepts valid		
 tests/inference/nothingType/discriminatedNothingInsideComplexNestedCall.kt	accepts valid		
 tests/inference/nothingType/generateConstraintWithInnerNothingType.kt	accepts valid		
-tests/inference/nothingType/genericOverride.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	genericOverride.kt:9: cannot infer type for type parameter 'V'. Specify it explicitly.
+tests/inference/nothingType/genericOverride.kt	accepts valid		
 tests/inference/nothingType/implicitInferenceTToFlexibleNothing.kt	rejects invalid	on an expected line	
 tests/inference/nothingType/implicitNothingConstraintFromReturn.kt	accepts valid		
 tests/inference/nothingType/inferArgumentToNothingFromNullConstant.kt	accepts valid		
@@ -5517,7 +5517,7 @@ tests/j+k/throwableInference/throwableTypeParamUsedInValueParam.kt	skip	LANGUAGE
 tests/j+k/throwableInference/throwableTypeVariableOnlyInThrows.kt	skip	LANGUAGE	
 tests/j+k/throwableInference/withReceiversAndContextParameters.kt	skip	LANGUAGE	
 tests/j+k/traitDefaultCall.kt	accepts valid		
-tests/j+k/typeAliasWithSamConstructor.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	Kotlin.kt:6: cannot infer type for type parameter 'T'. Specify it explicitly.
+tests/j+k/typeAliasWithSamConstructor.kt	accepts valid		
 tests/j+k/typeFromGenericFunWithAnnotation.kt	skip	LANGUAGE	
 tests/j+k/typeFromGenericFunWithAnnotationWithoutWrtHack.kt	rejects invalid	on an expected line	
 tests/j+k/typeFromGenericWithAnnotation.kt	skip	LANGUAGE	
@@ -5647,7 +5647,7 @@ tests/javac/typeParameters/InnerWithTypeParameter.kt	accepts valid
 tests/javac/typeParameters/NestedWithInner.kt	accepts valid		
 tests/javac/typeParameters/SeveralInnersWithTypeParameters.kt	accepts valid		
 tests/javac/typeParameters/TypeParametersInInnerAndOuterWithSameNames.kt	accepts valid		
-tests/jvm/classpath/classFromJdkInLibrary.kt	codegen error	harness error	javac: exit status 1 m0/src/java/util/Date.java:1: error: package exists in another module: java.base package java.util; ^ 1 error 
+tests/jvm/classpath/classFromJdkInLibrary.kt	codegen error	harness error	javac: exit status 1 Picked up JAVA_TOOL_OPTIONS: -Djavax.net.ssl.trustStore=/etc/ssl/certs/java/cacerts -Djavax.net.ssl.trustStoreType=JKS -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=41947 -Dhttp.nonProxyHosts=localhost|127.0.0.1|::1|127.*|0.*|::|169.254.*|api.anthropic.com|api-staging.anthropic.com|api-pr-preview.anthropic.com|mcp-proxy.anthropic.com|mcp-proxy-staging.anthropic.com|registry.npmjs.org|jsr.io|npm.jsr.io|pypi.org|files.pythonhosted.org|index.crates.io|proxy.golang.org|host.docker.internal|10.*|172.16.*|172.17.*|172.18.*|172.19.*|172.20.*|172.21.*|172.22.*|172.23.*|172.24.*|172.25.*|172.26.*|172.27.*|172.28.*|172.29.*|172.30.*|172.31.*|192.168.*|100.64.0.0/10|*.svc.cluster.local|*.svc.cluster.local -Djdk.http.auth.tunneling.disabledSchemes= -Djdk.http.auth.proxying.disabledSchemes= /tmp/kc-conformance/5648/m0/src/java/util/Date.java:1: error: package exists in another module: java.base package java.util; ^ 1 error 
 tests/jvm/classpath/dependencyOnItself.kt	accepts valid		
 tests/jvm/classpath/prohibitNestedClassesByDollarName.kt	accepts invalid	UNRESOLVED_REFERENCE	main.kt:6: UNRESOLVED_REFERENCE
 tests/jvm/classpath/sameLibraryTwiceInClasspath.kt	accepts valid		
@@ -7235,7 +7235,7 @@ tests/problems/kt47626.kt	accepts valid
 tests/problems/kt48228.kt	accepts valid		
 tests/problems/kt48300.kt	accepts valid		
 tests/problems/kt49700.kt	accepts invalid	SETTER_PROJECTED_OUT	kt49700.kt:14: SETTER_PROJECTED_OUT
-tests/problems/kt52219.kt	rejects valid	none of the n candidates for '_' take (_)	kt52219.kt:18: none of the 16 candidates for 'contains' takes (MyDate?)
+tests/problems/kt52219.kt	accepts valid		
 tests/problems/kt52355.kt	accepts valid		
 tests/problems/kt53267.kt	accepts valid		
 tests/problems/kt53307.kt	accepts valid		
@@ -9018,7 +9018,7 @@ tests/typeParameters/destructuringDeclarations.kt	skip	LANGUAGE
 tests/typeParameters/destructuringDeclarationsOld.kt	skip	LANGUAGE	
 tests/typeParameters/dnnAsPropertyReceiver.kt	accepts valid		
 tests/typeParameters/dontIntersectUpperBoundWithExpectedType.kt	rejects valid	type argument is not within its bounds: inferred type Bar of type _ '_' is not a subtype of Foo	dontIntersectUpperBoundWithExpectedType.kt:13: type argument is not within its bounds: inferred type Bar of type parameter 'T' is not a subtype of Foo
-tests/typeParameters/dontLoseUpperNonExpectedTypeConstraints.kt	rejects valid	type argument is not within its bounds: inferred type Any? of type _ '_' is not a subtype of Number?	dontLoseUpperNonExpectedTypeConstraints.kt:16: type argument is not within its bounds: inferred type Any? of type parameter 'S' is not a subtype of Number?
+tests/typeParameters/dontLoseUpperNonExpectedTypeConstraints.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	dontLoseUpperNonExpectedTypeConstraints.kt:16: type mismatch: inferred type is ModOp<M, M> but ModOp<M, Z> was expected
 tests/typeParameters/extFunctionTypeAsUpperBound.kt	rejects invalid	on an expected line	
 tests/typeParameters/functionTypeAsUpperBound.kt	rejects invalid	on an expected line	
 tests/typeParameters/illFormed.kt	rejects invalid	on an expected line	
@@ -9109,7 +9109,7 @@ tests/typealias/kt14641.kt	rejects invalid	on an expected line
 tests/typealias/kt15734.kt	rejects invalid	on an expected line	
 tests/typealias/kt19601.kt	accepts invalid	UPPER_BOUND_VIOLATED_IN_TYPEALIAS_EXPANSION	kt19601.kt:12: UPPER_BOUND_VIOLATED_IN_TYPEALIAS_EXPANSION
 tests/typealias/kt57065.kt	accepts valid		
-tests/typealias/kt62099.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	kt62099.kt:11: cannot infer type for type parameter 'T'. Specify it explicitly.
+tests/typealias/kt62099.kt	accepts valid		
 tests/typealias/kt67628.kt	accepts valid		
 tests/typealias/kt69227.kt	accepts valid		
 tests/typealias/localTypeAlias.kt	skip	LANGUAGE	
@@ -9157,7 +9157,7 @@ tests/typealias/typeAliasConstructorWrongClass.kt	rejects invalid	on an expected
 tests/typealias/typeAliasConstructorWrongVisibility.kt	rejects invalid	on an expected line	
 tests/typealias/typeAliasExpansionRepeatedAnnotations.kt	accepts invalid	REPEATED_ANNOTATION	typeAliasExpansionRepeatedAnnotations.kt:8: REPEATED_ANNOTATION
 tests/typealias/typeAliasForProjectionInSuperInterfaces.kt	accepts invalid	CONSTRUCTOR_OR_SUPERTYPE_ON_TYPEALIAS_WITH_TYPE_PROJECTION_ERROR; PROJECTION_IN_IMMEDIATE_ARGUMENT_TO_SUPERTYPE	typeAliasForProjectionInSuperInterfaces.kt:19: CONSTRUCTOR_OR_SUPERTYPE_ON_TYPEALIAS_WITH_TYPE_PROJECTION_ERROR
-tests/typealias/typeAliasInAnonymousObjectType.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	typeAliasInAnonymousObjectType.kt:6: cannot infer type for type parameter 'T'. Specify it explicitly.
+tests/typealias/typeAliasInAnonymousObjectType.kt	accepts valid		
 tests/typealias/typeAliasInvisibleObject.kt	rejects invalid	on an expected line	
 tests/typealias/typeAliasIsUsedAsATypeArgumentInOtherAlias.kt	accepts valid		
 tests/typealias/typeAliasNotNull.kt	accepts valid		
@@ -9479,7 +9479,7 @@ tests/when/exhaustive/exhaustivenessWithSelfType.kt	accepts valid
 tests/when/exhaustive/exhaustivenessWithSelfTypeCornerCases.kt	rejects invalid	on an expected line	
 tests/when/exhaustiveBooleanWhenWithUntrivialConst.kt	rejects invalid	on an expected line	
 tests/when/exhaustiveWhenWithConstVal.kt	rejects invalid	on an expected line	
-tests/when/extractingEntireCall.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	extractingEntireCall.kt:13: cannot infer type for type parameter 'T'. Specify it explicitly.
+tests/when/extractingEntireCall.kt	accepts valid		
 tests/when/falsePositiveDuplicateCodition.kt	accepts valid		
 tests/when/flexibleEnumInSubject.kt	rejects invalid	on an expected line	
 tests/when/guard/diverseBooleanExpression.kt	rejects invalid	on an expected line	
@@ -10004,7 +10004,7 @@ testsWithStdLib/contracts/smartcasts/throwsEffect.kt	rejects invalid	on an expec
 testsWithStdLib/contracts/smartcasts/typeSmartcastWhenNullability.kt	rejects invalid	on an expected line	
 testsWithStdLib/contracts/smartcasts/unreachableBranches.kt	rejects invalid	on an expected line	
 testsWithStdLib/contracts/smartcasts/valueOfContractedFunctionIngored.kt	rejects invalid	on an expected line	
-testsWithStdLib/contracts/smartcasts/when/kt36818.kt	rejects valid	none of the n candidates for '_' take (_)	kt36818.kt:5: none of the 16 candidates for 'contains' takes (Double?)
+testsWithStdLib/contracts/smartcasts/when/kt36818.kt	accepts valid		
 testsWithStdLib/contracts/smartcasts/when/withSubject.kt	rejects invalid	on an expected line	
 testsWithStdLib/contracts/smartcasts/when/withSubjectNullableBoolean.kt	rejects invalid	on an expected line	
 testsWithStdLib/contracts/smartcasts/when/withoutSubject.kt	rejects invalid	on an expected line	
@@ -10350,7 +10350,7 @@ testsWithStdLib/inference/dnnTypeWithNullableOld.kt	skip	LANGUAGE
 testsWithStdLib/inference/expectedSetForLambdaParameter.kt	accepts valid		
 testsWithStdLib/inference/expectedSetForLambdaParameter2.kt	accepts valid		
 testsWithStdLib/inference/flexibleTypeInSystem.kt	accepts valid		
-testsWithStdLib/inference/ifElvisReturn.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	ifElvisReturn.kt:16: cannot infer type for type parameter 'K'. Specify it explicitly.
+testsWithStdLib/inference/ifElvisReturn.kt	accepts valid		
 testsWithStdLib/inference/inapplicableWhen.kt	rejects invalid	on an expected line	
 testsWithStdLib/inference/integerLiterals.kt	accepts valid		
 testsWithStdLib/inference/intersectDfiTypesBeforeCapturing.kt	accepts valid		
@@ -10367,8 +10367,8 @@ testsWithStdLib/inference/kt36249.kt	accepts valid
 testsWithStdLib/inference/kt36951.kt	rejects invalid	on an expected line	
 testsWithStdLib/inference/kt37627.kt	accepts valid		
 testsWithStdLib/inference/kt38143.kt	accepts valid		
-testsWithStdLib/inference/kt38737.kt	rejects valid	none of the n candidates for '_' take (_)	kt38737.kt:7: none of the 16 candidates for 'contains' takes (String?)
-testsWithStdLib/inference/kt38801.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	kt38801.kt:7: cannot infer type for type parameter 'T'. Specify it explicitly.
+testsWithStdLib/inference/kt38737.kt	accepts valid		
+testsWithStdLib/inference/kt38801.kt	accepts valid		
 testsWithStdLib/inference/kt42620.kt	rejects invalid	on an expected line	
 testsWithStdLib/inference/kt4975.kt	accepts valid		
 testsWithStdLib/inference/mapNotNullWithElvis.kt	accepts valid		
@@ -10822,7 +10822,7 @@ testsWithStdLib/versionOverloads/overridableFunction.kt	rejects invalid	on an ex
 testsWithStdLib/versionOverloads/withJvmOverloads.kt	accepts valid		
 testsWithStdLib/versionOverloads/withLambdaDefaults.kt	accepts valid		
 testsWithStdLib/when/kt10192.kt	rejects invalid	on an expected line	
-testsWithStdLib/when/kt10807.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	kt10807.kt:16: cannot infer type for type parameter 'T'. Specify it explicitly.
+testsWithStdLib/when/kt10807.kt	accepts valid		
 testsWithStdLib/when/noTypeArgumentsInConstructor.kt	accepts valid		
 testsWithStdLib/whenAsLambdaReturnStatement.kt	accepts valid		
 testsWithStdLib/withInInitializer.kt	accepts valid		
