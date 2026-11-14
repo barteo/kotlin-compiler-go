@@ -22,6 +22,16 @@ fun interopDemo() {
     println(o.test { })
     println(samOverload { "generic" })
     nothingFromJava(object : Nulls.Visitor<Nothing> {})
+    println(StaticOuter().Inner().test())
+}
+
+// foo() in an inner subclass of a Java class is its static foo(), which
+// comes before the outer class's member foo().
+class StaticOuter {
+    fun foo() = "outer foo"
+    inner class Inner : StaticBase() {
+        fun test() = foo()
+    }
 }
 
 // T of a Java <T> T set(String, T), for a null, is Nothing!, which takes

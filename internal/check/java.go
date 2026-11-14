@@ -1531,6 +1531,26 @@ func (c *Checker) isVar(name string) bool {
 	if c.cls != nil && c.userProp(c.cls, name) != nil {
 		return true
 	}
+	if (c.cls != nil || c.staticCls != nil) && c.objectHasProp(name) {
+		// A property of a companion or another object in scope, which
+		// comes before a package of its name: c.length for a companion's
+		// val c, next to a package c.
+		return true
+	}
+	// So does one of an implicit receiver: b.length in fun A.f() or
+	// with(a) { }, for an A's val b.
+	recvHas := func(v *types.VarSym) bool {
+		cls := c.classOf(c.scope.narrowed(v).Flex())
+		return cls != nil && c.hasProp(cls, name)
+	}
+	if c.this != nil && recvHas(c.this) {
+		return true
+	}
+	for i := range c.recvs {
+		if recvHas(c.recvs[i].sym) {
+			return true
+		}
+	}
 	return c.topVar(name) != nil || c.valueImport(name)
 }
 
@@ -2099,8 +2119,8 @@ outer:
 	return out
 }
 
-// companionInvokes reports whether an invoke operator of companion
-// object comp, a member or an extension, may take x's arguments.
+// companionInvokes reports whether an invoke operator of object comp, a
+// companion or another, a member or an extension, may take x's arguments.
 func (c *Checker) companionInvokes(comp *types.ClassSym, x *syntax.Call) bool {
 	if c.anyMayTake(c.javaMethods(comp, "invoke"), x) {
 		return true
@@ -2113,11 +2133,85 @@ func (c *Checker) companionInvokes(comp *types.ClassSym, x *syntax.Call) bool {
 	return false
 }
 
+// ctorBeatsFuns reports whether a constructor of cls that may take call x
+// is more specific than each of the functions fs that may, as in Kotlin,
+// where a class and functions of its name at one level of scope are
+// candidates together: Foo("1") for a class Foo(str: String) and a fun
+// Foo(string: String?) constructs a Foo.
+func (c *Checker) ctorBeatsFuns(cls *types.ClassSym, fs []*types.FunSym, x *syntax.Call) bool {
+	if cls == nil || !constructible(cls) || cls.Object || cls.Interface || cls.Entries != nil || cls.Array {
+		return false
+	}
+	var fit []*types.FunSym
+	for _, f := range fs {
+		if c.mayTake(f, x) {
+			fit = append(fit, f)
+		}
+	}
+	if len(fit) == 0 {
+		return false
+	}
+	ctors := cls.Ctors
+	if !cls.External {
+		ctors = c.visibleCtors(cls)
+	}
+	for _, k := range ctors {
+		if !c.mayTake(k, x) {
+			continue
+		}
+		if !slices.ContainsFunc(fit, func(g *types.FunSym) bool { return !c.paramsMoreSpecific(k, g) || c.paramsMoreSpecific(g, k) }) {
+			return true
+		}
+	}
+	return false
+}
+
+// ctorsTake reports whether a constructor of cls may take call x.
+func (c *Checker) ctorsTake(cls *types.ClassSym, x *syntax.Call) bool {
+	if !constructible(cls) || cls.Object || cls.Interface || cls.Entries != nil || cls.Array {
+		return false
+	}
+	if cls.External {
+		return c.anyMayTake(cls.Ctors, x)
+	}
+	return c.anyMayTake(c.visibleCtors(cls), x)
+}
+
+// outerCompanion returns the companion object of the class cls is nested
+// in, if any.
+func outerCompanion(cls *types.ClassSym) *types.ClassSym {
+	if cls.Outer == nil {
+		return nil
+	}
+	return cls.Outer.Companion
+}
+
 // construct checks a constructor call of a user or Java class.
 func (c *Checker) construct(x *syntax.Call, cls *types.ClassSym, p syntax.Pos, want types.Type, sink *system) types.Type {
 	cls.Ensure()
 	if cls.Array {
 		return c.arrayConstruct(x, cls, want, sink)
+	}
+	if cls.Object && c.companionInvokes(cls, x) {
+		// An object's invoke operator: E.f() for an object f with
+		// operator fun invoke() is E.f.invoke().
+		m := &syntax.Member{X: objectIdent(cls, p), Name: "invoke"}
+		m.P = p
+		x.Fun = m
+		return c.call(x, want, sink)
+	}
+	if comp := outerCompanion(cls); cls.Object && comp != nil && comp != cls {
+		// Or a function of its name in the companion of the class it is
+		// nested in: SourceLocation.NoLocation("") for an object
+		// NoLocation and a companion's fun NoLocation(description).
+		name := cls.DisplayName()
+		name = name[strings.LastIndexByte(name, '.')+1:]
+		if c.anyMayTake(c.accessible(comp, c.javaMethods(comp, name)), x) {
+			m := &syntax.Member{X: objectIdent(comp, p), Name: name}
+			m.P = p
+			x.Fun = m
+			return c.call(x, want, sink)
+		}
 	}
 	if cls.Object {
 		c.errorf(p, "expression '%s' of type '%s' cannot be invoked as a function", cls.DisplayName(), cls.DisplayName())

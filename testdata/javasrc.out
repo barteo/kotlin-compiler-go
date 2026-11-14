@@ -54,3 +54,4 @@ after set
 null
 true
 remap null
+static foo

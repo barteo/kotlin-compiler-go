@@ -242,8 +242,11 @@ func (c *Checker) recvCall(x *syntax.Call, id *syntax.Ident) bool {
 	var ts []types.Type
 	for i := len(c.recvs) - 1; i >= 0; i-- {
 		r := &c.recvs[i]
-		if r.outer && c.cls != nil && c.hasFun(c.cls.This(), id.Name, x) {
-			return false // the object's own
+		if r.outer && c.cls != nil && (c.hasFun(c.cls.This(), id.Name, x) || c.ownStaticTakes(id.Name, x)) {
+			// The object's own, or a static method of its Java
+			// superclass: foo() in an inner class B : A() is A.foo(),
+			// not the outer class's foo().
+			return false
 		}
 		m := &syntax.Member{X: recvThis(r, id.P), Name: id.Name}
 		m.P = id.P
@@ -379,6 +382,22 @@ func (c *Checker) hasFun(t types.Type, name string, x *syntax.Call) bool {
 
 // memberFun is hasFun without extensions: a member, built-in or inner
 // class constructor that may take the call.
+// innerMemberTakes reports whether the receiver of a lambda nested in the
+// scope at depth, which declares a variable, has a member function name
+// that may take call x.
+func (c *Checker) innerMemberTakes(name string, x *syntax.Call, depth int) bool {
+	for i := len(c.recvs) - 1; i >= 0; i-- {
+		r := &c.recvs[i]
+		if r.outer || r.depth <= depth {
+			continue
+		}
+		if c.memberFun(c.scope.narrowed(r.sym), name, x) {
+			return true
+		}
+	}
+	return false
+}
+
 func (c *Checker) memberFun(t types.Type, name string, x *syntax.Call) bool {
 	t = t.Flex()
 	fits := func(fs []*types.FunSym) bool {

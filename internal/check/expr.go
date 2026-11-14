@@ -2082,6 +2082,12 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 		// A variable that can't be invoked doesn't hide functions, as in
 		// fun tag(tag: Any?) = tag(Any::class, tag).
 		_, t, isVar := c.scope.lookup(name)
+		if _, depth := c.scope.find(name); isVar && c.invokable(t) && c.innerMemberTakes(name, x, depth) && c.recvCall(x, fn) {
+			// A member of an implicit receiver nearer than the variable
+			// comes first, as each level of scope in Kotlin: foo() in
+			// with(A()) { } is A's foo, not an outer foo: A.() -> Int.
+			return c.call(x, want, sink)
+		}
 		if isVar && c.invokable(t) {
 			fits := c.localInvokeFits(t, x)
 			if !fits && len(c.recvs) > 0 && c.recvCall(x, fn) {
@@ -2160,6 +2166,16 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 					x.Fun = m
 					return c.call(x, want, sink)
 				}
+				// Members that don't take the arguments' types give way to
+				// top-level functions that do, the next level of scope:
+				// take(s.ext) for an A, next to a member take(arg: B) and a
+				// top-level take(arg: Any). The arguments are checked ahead
+				// only where there are such functions.
+				if fs := c.visible(c.topFunsFor(name, x), x); len(fs) > 0 && c.anyMayTake(fs, x) {
+					if ts := c.argTypes(x); !c.takeTypes(ms, x, ts) && c.takeTypes(fs, x, ts) {
+						return c.resolve(x, methodCallees(fs, nil), want, sink)
+					}
+				}
 				c.captureThis()
 				return c.resolve(x, c.memberCallees(ms, c.cls.This()), want, sink)
 			}
@@ -2195,6 +2211,14 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 				return c.staticCall(x, m, cls, want, sink)
 			}
 			if obj := c.objectMethods(name, x); obj != nil && (c.objectTaking(name, x) != nil || !c.importTakes(name, x)) {
+				if cls := c.findClass(name); cls != nil && cls.Outer == obj && c.ctorsTake(cls, x) {
+					// Or a class nested in it, whose constructors come
+					// first, as the classes in scope do before the
+					// functions of an implicit receiver in Kotlin: Bar("4")
+					// in Owner, for a companion's class Bar(String?) and
+					// fun Bar(String).
+					return c.construct(x, cls, fn.P, want, sink)
+				}
 				// A method of an object in scope: f() is Companion.f().
 				m := &syntax.Member{X: objectIdent(obj, fn.P), Name: name}
 				m.P = fn.P
@@ -2233,6 +2257,9 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 			return c.resolve(x, methodCallees(fs, nil), want, sink)
 		}
 		if fs := c.visible(c.topFunsFor(name, x), x); len(fs) > 0 {
+			if cls := c.findClass(name); c.ctorBeatsFuns(cls, fs, x) {
+				return c.construct(x, cls, fn.P, want, sink)
+			}
 			// The program's functions that don't fit the call give way to
 			// the class path's, as in Kotlin, where each level of scope is
 			// tried in turn: okio's minOf(Long, Int) to the standard
@@ -2657,8 +2684,12 @@ func (c *Checker) uninvokable(v *types.VarSym, name string) bool {
 }
 
 // ctorsTakeOnly reports whether a class's constructors may take call x and
-// none of functions fs, of the same name, may.
+// none of functions fs, of the same name, may, or one is more specific
+// than those that may (see ctorBeatsFuns).
 func (c *Checker) ctorsTakeOnly(cls *types.ClassSym, fs []*types.FunSym, x *syntax.Call) bool {
+	if c.ctorBeatsFuns(cls, fs, x) {
+		return true // or are more specific: bar.Foo("2") for Foo(String) and Foo(String?)
+	}
 	if cls == nil || !constructible(cls) || c.anyMayTake(fs, x) {
 		return false
 	}

@@ -1461,7 +1461,7 @@ tests/companionExtensions/operators.kt	skip	LANGUAGE
 tests/companionExtensions/resolutionToCompanionExtension.kt	skip	LANGUAGE	
 tests/companionExtensions/resolutionToCompanionExtensionOnObject.kt	skip	LANGUAGE	
 tests/companionExtensions/scopeInCompanionExtensions.kt	skip	LANGUAGE	
-tests/companionObjectCall.kt	rejects valid	expression '_' of type _ cannot be invoked as a function	companionObjectCall.kt:41: expression 'Case3.Companion' of type 'Case3.Companion' cannot be invoked as a function
+tests/companionObjectCall.kt	accepts valid		
 tests/companionObjectInEnumAccess.kt	rejects invalid	on an expected line	
 tests/companionObjectWithFactoryMethodInsideLocalClassOfGenericFunction.kt	rejects invalid	on an expected line	
 tests/companionUsesNested.kt	accepts valid		
@@ -7679,7 +7679,7 @@ tests/resolve/functionalConstraintDuringCompletion.kt	skip	LANGUAGE
 tests/resolve/implicitPropertyTypeThatMakesBehaviorOrderDependant.kt	rejects invalid	on an expected line	
 tests/resolve/implicitPropertyTypeThatMakesBehaviorOrderDependantComplexLoops.kt	rejects invalid	elsewhere	
 tests/resolve/implicitPropertyTypeThatMakesBehaviorOrderDependantIdeMode.kt	rejects invalid	on an expected line	
-tests/resolve/implicitReceiverProperty.kt	rejects valid	unresolved reference: _	a.kt:8: unresolved reference: length
+tests/resolve/implicitReceiverProperty.kt	accepts valid		
 tests/resolve/incompleteConstructorInvocation.kt	rejects invalid	on an expected line	
 tests/resolve/inferenceInLinkedLambdas.kt	accepts valid		
 tests/resolve/inferenceInLinkedLambdasDependentOnExpectedType.kt	accepts valid		
@@ -7730,7 +7730,7 @@ tests/resolve/invoke/valNamedInvoke.kt	accepts valid
 tests/resolve/invoke/wrongInvokeExtension.kt	rejects invalid	on an expected line	
 tests/resolve/jsReferenceGet.kt	rejects invalid	on an expected line	
 tests/resolve/kt28109.kt	rejects invalid	on an expected line	
-tests/resolve/kt36264.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	kt36264.kt:15: type mismatch: inferred type is A but B was expected
+tests/resolve/kt36264.kt	accepts valid		
 tests/resolve/kt49736.kt	rejects invalid	on an expected line	
 tests/resolve/lambdaAgainstTypeVariableWithConstraint.kt	skip	LANGUAGE	
 tests/resolve/lambdaAgainstTypeVariableWithConstraintAfter.kt	skip	LANGUAGE	
@@ -7779,8 +7779,8 @@ tests/resolve/overloadConflicts/varargsWithRecursiveGenerics.kt	accepts valid
 tests/resolve/overloadConflicts/withVariance.kt	rejects invalid	on an expected line	
 tests/resolve/parameterAsDefaultValueInLocalFunction.kt	rejects invalid	on an expected line	
 tests/resolve/priority/extensionVsMember.kt	accepts valid		
-tests/resolve/priority/invokeExtensionVsOther.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	invokeExtensionVsOther.kt:15: type mismatch: inferred type is CheckTypeInv<Int> but CheckTypeInv<B> was expected
-tests/resolve/priority/invokeExtensionVsOther2.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	invokeExtensionVsOther2.kt:11: type mismatch: inferred type is CheckTypeInv<Int> but CheckTypeInv<A> was expected
+tests/resolve/priority/invokeExtensionVsOther.kt	accepts valid		
+tests/resolve/priority/invokeExtensionVsOther2.kt	accepts valid		
 tests/resolve/priority/kt10219.kt	rejects invalid	on an expected line	
 tests/resolve/priority/kt10510.kt	accepts valid		
 tests/resolve/priority/kt9810.kt	accepts valid		
@@ -7789,7 +7789,7 @@ tests/resolve/priority/localExtVsNonLocalExt.kt	accepts valid
 tests/resolve/priority/memberVsLocalExt.kt	accepts valid		
 tests/resolve/priority/memberWithHidesMemberAnnotationVsMemberWithout.kt	accepts valid		
 tests/resolve/priority/samConstructorVsFunction.kt	rejects invalid	on an expected line	
-tests/resolve/priority/staticVsImplicitReceiverMember.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	1.kt:7: type mismatch: inferred type is CheckTypeInv<C> but CheckTypeInv<Unit> was expected
+tests/resolve/priority/staticVsImplicitReceiverMember.kt	accepts valid		
 tests/resolve/priority/synthesizedMembersVsExtension.kt	skip	LANGUAGE	
 tests/resolve/priority/synthesizedMembersVsExtensionOld.kt	skip	LANGUAGE	
 tests/resolve/priority/syntheticPropertiesVsExtensions.kt	accepts valid		
@@ -7808,7 +7808,7 @@ tests/resolve/resolveWithRedeclarationError.kt	rejects invalid	on an expected li
 tests/resolve/resolveWithSpecifiedFunctionLiteralWithId.kt	accepts valid		
 tests/resolve/resolveWithoutGenerics.kt	accepts valid		
 tests/resolve/resolvingToClassMembersInHeader.kt	rejects invalid	on an expected line	
-tests/resolve/sealedCompanionFunctionSameNameAsInheritor.kt	rejects valid	expression '_' of type _ cannot be invoked as a function	sealedCompanionFunctionSameNameAsInheritor.kt:10: expression 'SourceLocation.NoLocation' of type 'SourceLocation.NoLocation' cannot be invoked as a function
+tests/resolve/sealedCompanionFunctionSameNameAsInheritor.kt	accepts valid		
 tests/resolve/smartcastToMoreSpecificProperty.kt	accepts valid		
 tests/resolve/specialConstructions/constantsInIf.kt	rejects invalid	on an expected line	
 tests/resolve/specialConstructions/elvisAsCall.kt	rejects invalid	on an expected line	
@@ -7817,7 +7817,7 @@ tests/resolve/specialConstructions/inferenceForElvis.kt	accepts valid
 tests/resolve/specialConstructions/multipleSuperClasses.kt	accepts valid		
 tests/resolve/specialConstructions/reportTypeMismatchDeeplyOnBranches.kt	rejects invalid	on an expected line	
 tests/resolve/starProjectionAndFunctionType.kt	rejects valid	expected parameter of type _	starProjectionAndFunctionType.kt:5: expected parameter of type Any?
-tests/resolve/superInvoke.kt	rejects valid	unresolved reference: _	main.kt:8: unresolved reference: x
+tests/resolve/superInvoke.kt	accepts valid		
 tests/resolve/typeParameterInDefaultValueInLocalFunction.kt	accepts valid		
 tests/resolve/underscoreInCatchBlockWithEnabledFeature.kt	rejects invalid	on an expected line	
 tests/resolve/varInsideLambdaThatPassedToExtensionFunctionWithTypeParametersThatDefinedInsideThisLambda.kt	rejects invalid	elsewhere	
@@ -9152,7 +9152,7 @@ tests/typealias/typeAliasConstructorReturnType.kt	accepts valid
 tests/typealias/typeAliasConstructorTypeArgumentsInference.kt	rejects invalid	on an expected line	
 tests/typealias/typeAliasConstructorTypeArgumentsInferenceWithNestedCalls2.kt	accepts valid		
 tests/typealias/typeAliasConstructorTypeArgumentsInferenceWithPhantomTypes.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	typeAliasConstructorTypeArgumentsInferenceWithPhantomTypes.kt:11: cannot infer type for type parameter 'C'. Specify it explicitly.
-tests/typealias/typeAliasConstructorVsFunction.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	a.kt:10: type mismatch: inferred type is CheckTypeInv<String> but CheckTypeInv<B> was expected
+tests/typealias/typeAliasConstructorVsFunction.kt	accepts valid		
 tests/typealias/typeAliasConstructorWrongClass.kt	rejects invalid	on an expected line	
 tests/typealias/typeAliasConstructorWrongVisibility.kt	rejects invalid	on an expected line	
 tests/typealias/typeAliasExpansionRepeatedAnnotations.kt	accepts invalid	REPEATED_ANNOTATION	typeAliasExpansionRepeatedAnnotations.kt:8: REPEATED_ANNOTATION
@@ -10567,7 +10567,7 @@ testsWithStdLib/problems/exceptionInRepeatedAnnotation.kt	accepts valid
 testsWithStdLib/problems/falseSamConversion.kt	accepts valid		
 testsWithStdLib/problems/forEachOnZip.kt	rejects invalid	elsewhere	
 testsWithStdLib/problems/immutableName.kt	accepts valid		
-testsWithStdLib/problems/invokePriority.kt	rejects valid	expression '_' of type _ cannot be invoked as a function	invokePriority.kt:34: expression 'E.f' of type 'E.f' cannot be invoked as a function
+testsWithStdLib/problems/invokePriority.kt	accepts valid		
 testsWithStdLib/problems/invokePriorityComplex.kt	rejects invalid	on an expected line	
 testsWithStdLib/problems/isAncestor.kt	accepts valid		
 testsWithStdLib/problems/lightMember.kt	rejects invalid	on an expected line	
@@ -10717,10 +10717,10 @@ testsWithStdLib/resolve/ambiguousTypeReferences/classLiteralCase.kt	accepts vali
 testsWithStdLib/resolve/ambiguousTypeReferences/companionVsStaticScope.kt	accepts valid		
 testsWithStdLib/resolve/ambiguousTypeReferences/constructorCase.kt	accepts valid		
 testsWithStdLib/resolve/ambiguousTypeReferences/constructorCaseSpace.kt	accepts valid		
-testsWithStdLib/resolve/ambiguousTypeReferences/constructorVsCompanionMember.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	constructorVsCompanionMember.kt:24: type mismatch: inferred type is Unit but Owner.Companion.Foo was expected
+testsWithStdLib/resolve/ambiguousTypeReferences/constructorVsCompanionMember.kt	accepts valid		
 testsWithStdLib/resolve/ambiguousTypeReferences/constructorVsSyntheticValues.kt	skip	LANGUAGE	
 testsWithStdLib/resolve/ambiguousTypeReferences/constructorVsSyntheticValuesPrioritized.kt	accepts invalid	OVERLOAD_RESOLUTION_AMBIGUITY	constructorVsSyntheticValuesPrioritized.kt:15: OVERLOAD_RESOLUTION_AMBIGUITY
-testsWithStdLib/resolve/ambiguousTypeReferences/constructorVsTopLevel.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	Foo.kt:9: type mismatch: inferred type is Unit but Foo was expected
+testsWithStdLib/resolve/ambiguousTypeReferences/constructorVsTopLevel.kt	accepts valid		
 testsWithStdLib/resolve/ambiguousTypeReferences/qualifierEnumEntryOrCompanionMemberCase.kt	accepts valid		
 testsWithStdLib/resolve/ambiguousTypeReferences/qualifierEnumEntryOrCompanionMemberCase2.kt	accepts invalid	OVERLOAD_RESOLUTION_AMBIGUITY; UNRESOLVED_REFERENCE	main.kt:5: OVERLOAD_RESOLUTION_AMBIGUITY
 testsWithStdLib/resolve/ambiguousTypeReferences/qualifierForStaticCase.kt	skip	JDK_KIND	
