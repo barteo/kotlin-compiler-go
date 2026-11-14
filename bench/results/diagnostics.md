@@ -6,16 +6,16 @@ Of 10827 test files, 2312 are skipped and 8515 run.
 
 | Result | Tests | Share |
 |:---|---:|---:|
-| rejects invalid | 3987 | 46.8% |
-| accepts valid | 3958 | 46.5% |
-| accepts invalid | 397 | 4.7% |
-| rejects valid | 155 | 1.8% |
+| rejects invalid | 3989 | 46.8% |
+| accepts valid | 3965 | 46.6% |
+| accepts invalid | 395 | 4.6% |
+| rejects valid | 148 | 1.7% |
 | parse/unsupported | 16 | 0.2% |
 | crash | 1 | 0.0% |
 
 *Rejects invalid* and *accepts valid* agree with kotlinc. *Accepts invalid* is code kotlinc rejects that kc compiles; *rejects valid*, code kotlinc compiles that kc's checker rejects. Both are bugs. A *parse/unsupported* test uses a feature kc doesn't support, which says nothing about its checks.
 
-Of the 3987 tests both reject, kc reports an error on the line of an expected one in 3822.
+Of the 3989 tests both reject, kc reports an error on the line of an expected one in 3825.
 
 A test is invalid if it stops before the backend or marks an error: one that runs to it (`BACKEND`) can mark the JVM backend's errors, such as `CONFLICTING_JVM_DECLARATIONS`. Of the tests run, 222 stop at `FRONTEND` but mark no error: most add the `CHECK_TYPE` helpers, whose names (`_`) kotlinc reports outside the test infrastructure, and count as valid; the others leave their errors out with the `DIAGNOSTICS` directive. 114 run to the backend and mark one. 5 marked names have no declared severity (debug information, for one), and count as neither.
 
@@ -70,7 +70,6 @@ Tests kotlinc rejects that kc compiles, by the errors their markup expects. A te
 | `CANNOT_WEAKEN_ACCESS_PRIVILEGE` | 5 | 4 | `tests/intersectedVisibilitiesAccessorDifferences_Small.kt`, `tests/intersectedVisibilitiesForNonAbstractPropertyAccessors.kt` |
 | `DEPRECATION_ERROR` | 5 | 2 | `tests/deprecated/javaDeprecatedHidden.kt`, `tests/j+k/collectionOverrides/nonDirectHiddenOverride.kt` |
 | `RETURN_TYPE_MISMATCH_ON_OVERRIDE` | 5 | 1 | `tests/inference/pcla/issues/kt47989b.kt`, `tests/j+k/types/newListMethodsNullabilityOverridesLinkedListLatest.kt` |
-| `UPPER_BOUND_VIOLATED` | 5 | 2 | `tests/generics/RecursiveUpperBoundWithTwoArguments.kt`, `tests/inference/capturedTypes/kt49101.kt` |
 | `ASSIGN_OPERATOR_AMBIGUITY` | 4 | 4 | `tests/callResolution/exponentialArraySetWithPlusAssign.kt`, `tests/operatorsOverloading/AssignOperatorAmbiguity.kt` |
 | `CYCLIC_INHERITANCE_HIERARCHY` | 4 | 3 | `tests/classpathSubstitution/cyclicSupertype.kt`, `tests/classpathSubstitution/cyclicSupertype2.kt` |
 | `INAPPLICABLE_CANDIDATE` | 4 | 3 | `tests/callableReference/generic/dependOnArgumentType.kt`, `tests/j+k/sam/referenceToSamFunctionAgainstExpectedType.kt` |
@@ -83,6 +82,7 @@ Tests kotlinc rejects that kc compiles, by the errors their markup expects. A te
 | `RETURN_TYPE_MISMATCH` | 4 | 3 | `tests/j+k/rawTypesFromCaptured.kt`, `tests/j+k/sam/enhancedSamConstructor.kt` |
 | `RETURN_TYPE_MISMATCH_ON_INHERITANCE` | 4 | 4 | `tests/override/clashesOnInheritance/flexibleReturnTypeList.kt`, `tests/override/clashesOnInheritance/kt13355viaJava.kt` |
 | `UNDERSCORE_USAGE_WITHOUT_BACKTICKS` | 4 | 4 | `tests/UnderscoreUsageInCall.kt`, `tests/UnderscoreUsageInCallableRefTypeLHS.kt` |
+| `UPPER_BOUND_VIOLATED` | 4 | 1 | `tests/generics/RecursiveUpperBoundWithTwoArguments.kt`, `tests/platformTypes/comparingWithWrongNullabilityWithoutWrtHack.kt` |
 | `ABSTRACT_CLASS_MEMBER_NOT_IMPLEMENTED` | 3 | 3 | `tests/annotations/rendering/notImplementedMembersAroundJava.kt`, `tests/j+k/missingTypeOfParameterInFakeOverride_2.kt` |
 | `ABSTRACT_MEMBER_NOT_IMPLEMENTED` | 3 | 3 | `tests/j+k/collectionOverrides/irrelevantImplCharSequenceKotlin.kt`, `tests/override/ProtectedAndPrivateFromSupertypes.kt` |
 | `ABSTRACT_SUPER_CALL` | 3 | 3 | `tests/missingAbstractSuperCall.kt`, `tests/missingAbstractSuperCallWithClass.kt` |
@@ -110,7 +110,7 @@ Tests kotlinc rejects that kc compiles, by the errors their markup expects. A te
 | `JAVA_CLASS_INHERITS_KT_PRIVATE_CLASS` | 2 | 2 | `tests/j+k/invisibleFake.kt`, `tests/j+k/invisibleFake2.kt` |
 | `JAVA_FIELD_SHADOWED_BY_KOTLIN_PROPERTY` | 2 | 1 | `tests/fieldRename/javaFieldKotlinPropertyJavaFieldInPackagePrivate.kt`, `tests/propertyVsField/propertyFieldShadow.kt` |
 | `MEMBER_PROJECTED_OUT` | 2 | 2 | `tests/scopes/variantProjections/irrelevantUnsafeVariance.kt`, `tests/typealias/starProjection.kt` |
-| *97 more* | 115 | |
+| *97 more* | 114 | |
 
 ## Rejects valid
 
@@ -118,7 +118,7 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 | First error | Tests | Examples |
 |:---|---:|:---|
-| `type mismatch: inferred type is _ but _ was expected` | 35 | `tests/annotations/javaAnnotationWithClassArray.kt`, `tests/annotations/parameters/expressions/unaryPlus.kt` |
+| `type mismatch: inferred type is _ but _ was expected` | 28 | `tests/annotations/javaAnnotationWithClassArray.kt`, `tests/annotations/parameters/expressions/unaryPlus.kt` |
 | `unresolved reference: _` | 22 | `tests/callResolution/incorrectPlusOperatorFromJava.kt`, `tests/callResolution/suspendCOnversionForReceiver.kt` |
 | `cannot infer type for type parameter '_'. Specify it explicitly.` | 21 | `tests/delegatedProperty/provideDelegate/commonSupertype.kt`, `tests/inference/capturedTypes/differentCapturedTypes.kt` |
 | `no function '_' takes n arguments` | 6 | `tests/annotations/javaAnnotationWithParameter.kt`, `tests/cast/kt15161.kt` |
@@ -164,7 +164,7 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 14858 of 21506 expected errors (69.1%) on their lines.
+kc reports 14872 of 21506 expected errors (69.2%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
@@ -179,7 +179,7 @@ kc reports 14858 of 21506 expected errors (69.1%) on their lines.
 | `INVISIBLE_REFERENCE` | 513 | 404 | 109 |
 | `NULL_FOR_NONNULL_TYPE` | 155 | 53 | 102 |
 | `UNRESOLVED_REFERENCE_WRONG_RECEIVER` | 250 | 157 | 93 |
-| `CANNOT_INFER_PARAMETER_TYPE` | 627 | 536 | 91 |
+| `CANNOT_INFER_PARAMETER_TYPE` | 627 | 539 | 88 |
 | `CONST_VAL_WITH_NON_CONST_INITIALIZER` | 251 | 166 | 85 |
 | `MUST_BE_INITIALIZED` | 102 | 21 | 81 |
 | `ANNOTATION_ARGUMENT_MUST_BE_CONST` | 224 | 144 | 80 |
@@ -194,10 +194,10 @@ kc reports 14858 of 21506 expected errors (69.1%) on their lines.
 | `OVERLOAD_RESOLUTION_AMBIGUITY` | 159 | 104 | 55 |
 | `INITIALIZER_TYPE_MISMATCH` | 428 | 374 | 54 |
 | `NO_VALUE_FOR_PARAMETER` | 175 | 127 | 48 |
-| `UPPER_BOUND_VIOLATED` | 125 | 78 | 47 |
 | `NON_PUBLIC_CALL_FROM_PUBLIC_INLINE` | 65 | 19 | 46 |
 | `UNINITIALIZED_VARIABLE` | 211 | 165 | 46 |
 | `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` | 87 | 45 | 42 |
+| `UPPER_BOUND_VIOLATED` | 125 | 84 | 41 |
 | `INAPPLICABLE_OPERATOR_MODIFIER` | 143 | 104 | 39 |
 | `TOO_MANY_ARGUMENTS` | 118 | 81 | 37 |
 | `AMBIGUOUS_ANONYMOUS_TYPE_INFERRED` | 38 | 2 | 36 |
@@ -215,7 +215,6 @@ kc reports 14858 of 21506 expected errors (69.1%) on their lines.
 | `WRONG_ANNOTATION_TARGET_WITH_USE_SITE_TARGET` | 80 | 52 | 28 |
 | `UNDERSCORE_USAGE_WITHOUT_BACKTICKS` | 28 | 1 | 27 |
 | `TYPE_ARGUMENTS_FOR_OUTER_CLASS_WHEN_NESTED_REFERENCED` | 41 | 15 | 26 |
-| `INAPPLICABLE_CANDIDATE` | 127 | 102 | 25 |
 | `SUBCLASS_OPT_IN_INAPPLICABLE` | 25 | 0 | 25 |
 | `UNSAFE_CALL` | 523 | 498 | 25 |
 | `CONCURRENT_HASH_MAP_CONTAINS_OPERATOR_ERROR` | 24 | 0 | 24 |
@@ -223,6 +222,7 @@ kc reports 14858 of 21506 expected errors (69.1%) on their lines.
 | `PROPERTY_INITIALIZER_NO_BACKING_FIELD` | 32 | 9 | 23 |
 | `UNINITIALIZED_ENUM_COMPANION` | 65 | 42 | 23 |
 | `ASSIGN_OPERATOR_AMBIGUITY` | 35 | 13 | 22 |
+| `INAPPLICABLE_CANDIDATE` | 127 | 105 | 22 |
 | `CLASSIFIER_REDECLARATION` | 41 | 20 | 21 |
 | `INLINE_FROM_HIGHER_PLATFORM` | 21 | 0 | 21 |
 | `REPEATED_ANNOTATION` | 69 | 48 | 21 |
@@ -238,7 +238,7 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 |:---|---:|
 | `cannot infer type for type parameter '_'. Specify it explicitly.` | 290 |
 | `unresolved reference: _` | 288 |
-| `type mismatch: inferred type is _ but _ was expected` | 266 |
+| `type mismatch: inferred type is _ but _ was expected` | 252 |
 | `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 199 |
 | `platform declaration clash: _` | 150 |
 | `class '_' is not abstract and does not implement abstract member '_'` | 68 |

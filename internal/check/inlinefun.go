@@ -407,6 +407,8 @@ func (c *Checker) reifiedTypes(pos syntax.Pos, f *types.FunSym, sub types.Subst,
 		switch {
 		case tp.Reified && t.IsParam() && !t.Param().Reified:
 			c.errorf(pos, "cannot use '%s' as reified type parameter", t.Param().Name)
+		case tp.Reified && s != nil && s.captured(sub[tp]):
+			c.errorf(pos, "cannot use captured type as reified type parameter")
 		case tp.Reified && t.K == types.Nothing && !t.N:
 			// Nothing has no class; Nothing? is Void's.
 			c.errorf(pos, "cannot use 'Nothing' as reified type parameter")

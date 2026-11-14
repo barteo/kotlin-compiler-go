@@ -342,6 +342,9 @@ func classSubst(t types.Type) types.Subst {
 				// A projection the parameter's own variance makes
 				// redundant, as out T of a Holder<out T>, is no capture.
 				s[p] = types.Arg{T: a.T}
+			} else if a.V == types.Star && p.Var == types.Out && !p.Bound().HasParams() {
+				// So is a star for an out T: Out<*> is Out<out Any?>.
+				s[p] = types.Arg{T: p.Bound()}
 			}
 		} else if t.A == nil {
 			s[p] = types.Arg{T: erasure(p), Raw: true}

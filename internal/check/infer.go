@@ -437,6 +437,12 @@ func (s *system) subArgs(sup, b types.Type) {
 				default:
 					tv.star = true
 					tv.starArg = true
+					if s.nest == 0 && !ba.T.D && tv.capt.V == types.Inv && !selfBounded(sup.C, i) {
+						// A star's capture, which a parameter of the
+						// argument's supertype takes too: Fu<F> for a CF<*>.
+						// A self type's is the variable's own star.
+						tv.capt = types.Arg{V: types.Out, T: starArgBound(sup, i)}
+					}
 				}
 				continue
 			}
@@ -1451,4 +1457,26 @@ func (s *system) withinBounds() bool {
 		}
 	}
 	return true
+}
+
+// captured reports whether a is a variable inferred as a projection's
+// capture, which K2 doesn't allow as a reified type argument.
+func (s *system) captured(a types.Arg) bool {
+	if a.T.K != types.TypeVar {
+		return false
+	}
+	v := s.vals[a.T.Param()]
+	return v.V == types.Out || v.V == types.In // a star is a variable's own
+}
+
+// selfBounded reports whether class c's i-th type parameter occurs in
+// its own bounds, as E of Enum<E : Enum<E>>.
+func selfBounded(c *types.ClassSym, i int) bool {
+	if i >= len(c.TypeParams) {
+		return false
+	}
+	p := c.TypeParams[i]
+	return slices.ContainsFunc(p.Bounds, func(b types.Type) bool {
+		return b.Has(func(u types.Type) bool { return u.IsParam() && u.Param() == p })
+	})
 }

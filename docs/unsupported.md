@@ -196,6 +196,18 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   the other branches only when the `if` has no expected type, and one
   takes an expected receiver as its first parameter only when it is a
   branch's value.
+- `kc` has no captured types: a projection a variable stands for is
+  approximated by its bounds where it is substituted. A variable that
+  captures a projection of an argument is inferred as that projection,
+  so a parameter of the argument's own or a supertype's type takes it
+  (`Future<F>` for a `CompletableFuture<*>`), and a reified one is an
+  error. A member's parameter whose type holds a projected argument
+  takes `Nothing` there, so a lambda passed for an `(E) -> E` of an
+  `Inv<out CharSequence>` can't return its parameter, as it can in
+  Kotlin, and a member's explicit type argument is checked against a
+  bound with a projection approximated as such a parameter is. Two reads
+  of one `Out<*>` value are the same type, where they are different
+  captures in Kotlin, which some inference depends on.
 - `@OnlyInputTypes` (`contains`, `get`, `assertEquals`) is checked only
   when the types a call's variable is constrained by have no captured
   types (star projections), and the inferred type isn't an

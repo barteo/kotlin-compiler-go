@@ -3720,9 +3720,9 @@ tests/generics/projectionsScope/starNullabilityRecursive.kt	accepts valid
 tests/generics/projectionsScope/superClass.kt	accepts valid		
 tests/generics/projectionsScope/typeMismatchConventions.kt	rejects invalid	on an expected line	
 tests/generics/projectionsScope/typeMismatchInLambda.kt	rejects invalid	on an expected line	
-tests/generics/projectionsScope/typeParameterBounds.kt	rejects invalid	elsewhere	
-tests/generics/projectionsScope/unsafeVarianceInAliasedFunctionalType.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	unsafeVarianceInAliasedFunctionalType.kt:9: type mismatch: inferred type is Function1<*, Unit> but (T) -> Unit was expected
-tests/generics/projectionsScope/unsafeVarianceOnInputTypeOfFunctionalType.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	unsafeVarianceOnInputTypeOfFunctionalType.kt:17: type mismatch: inferred type is Any but Nothing was expected
+tests/generics/projectionsScope/typeParameterBounds.kt	rejects invalid	on an expected line	
+tests/generics/projectionsScope/unsafeVarianceInAliasedFunctionalType.kt	accepts valid		
+tests/generics/projectionsScope/unsafeVarianceOnInputTypeOfFunctionalType.kt	accepts valid		
 tests/generics/projectionsScope/unsafeVarianceStar.kt	accepts valid		
 tests/generics/projectionsScope/unsafeVarianceWithRecursiveGenerics.kt	accepts valid		
 tests/generics/projectionsScope/varargs.kt	rejects invalid	on an expected line	
@@ -3737,7 +3737,7 @@ tests/generics/starProjections/inheritedFromJava.kt	accepts valid
 tests/generics/starProjections/inheritedFromKotlin.kt	accepts valid		
 tests/generics/starProjections/invalid.kt	rejects invalid	on an expected line	
 tests/generics/suppressVarianceConflict.kt	accepts valid		
-tests/generics/tpAsReified/CapturedAsReified.kt	accepts invalid	REIFIED_TYPE_FORBIDDEN_SUBSTITUTION	CapturedAsReified.kt:8: REIFIED_TYPE_FORBIDDEN_SUBSTITUTION
+tests/generics/tpAsReified/CapturedAsReified.kt	rejects invalid	on an expected line	
 tests/generics/tpAsReified/ClassDereference.kt	rejects invalid	on an expected line	
 tests/generics/tpAsReified/Conventions.kt	rejects invalid	on an expected line	
 tests/generics/tpAsReified/DeprecationWarnings.kt	skip	LANGUAGE	
@@ -3998,7 +3998,7 @@ tests/inference/capturedTypes/kt25302.kt	accepts valid
 tests/inference/capturedTypes/kt2570.kt	accepts valid		
 tests/inference/capturedTypes/kt2872.kt	rejects invalid	on an expected line	
 tests/inference/capturedTypes/kt46727.kt	rejects invalid	on an expected line	
-tests/inference/capturedTypes/kt49101.kt	accepts invalid	UPPER_BOUND_VIOLATED	kt49101.kt:4: UPPER_BOUND_VIOLATED
+tests/inference/capturedTypes/kt49101.kt	rejects invalid	on an expected line	
 tests/inference/capturedTypes/kt52782.kt	accepts valid		
 tests/inference/capturedTypes/kt72177.kt	accepts valid		
 tests/inference/capturedTypes/memberScopeOfCaptured.kt	rejects invalid	on an expected line	
@@ -5557,8 +5557,8 @@ tests/j+k/types/typeParameter.kt	accepts valid
 tests/j+k/types/upperBoundsCheckAgainstSelfTypeInJava.kt	accepts valid		
 tests/j+k/types/varargOverride.kt	accepts valid		
 tests/j+k/usingNullableValueAsLowerBoundLeadsToNullableResult.kt	rejects invalid	on an expected line	
-tests/j+k/withTestConnection.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	test.kt:4: type mismatch: inferred type is CompletableFuture<*> but Future<Any?>! was expected
-tests/j+k/withTestConnection2.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	test.kt:3: type mismatch: inferred type is CompletableFuture<*> but Future<Any?>! was expected
+tests/j+k/withTestConnection.kt	accepts valid		
+tests/j+k/withTestConnection2.kt	accepts valid		
 tests/j+k/withTestConnection3.kt	rejects valid	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _	test.kt:3: only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type CharSequence?
 tests/j+k/withTestConnection4.kt	accepts valid		
 tests/j+k/wrongVarianceInJava.kt	rejects invalid	on an expected line	
@@ -8013,7 +8013,7 @@ tests/scopes/specialFunctionInJava_2.kt	rejects invalid	on an expected line
 tests/scopes/specialFunctionInJava_3.kt	accepts valid		
 tests/scopes/specialFunctionInJava_4.kt	accepts valid		
 tests/scopes/stopResolutionOnAmbiguity.kt	accepts valid		
-tests/scopes/variantProjections/dataClassCopy.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	dataClassCopy.kt:7: type mismatch: inferred type is String but Nothing was expected
+tests/scopes/variantProjections/dataClassCopy.kt	accepts valid		
 tests/scopes/variantProjections/interdependentStarProjections.kt	rejects invalid	on an expected line	
 tests/scopes/variantProjections/irrelevantUnsafeVariance.kt	accepts invalid	MEMBER_PROJECTED_OUT	irrelevantUnsafeVariance.kt:9: MEMBER_PROJECTED_OUT
 tests/scopes/variantProjections/unsafeVarianceAndCovariantProjection.kt	rejects valid	type argument is not within its bounds: type parameter '_' must be subtype of '_', but actual: _	unsafeVarianceAndCovariantProjection.kt:28: type argument is not within its bounds: type parameter 'T' must be subtype of 'Out3<Out3<*>>', but actual: 'Out3<*>'
@@ -10399,7 +10399,7 @@ testsWithStdLib/intellij/IntersectionWithJavaString.kt	accepts valid
 testsWithStdLib/intellij/ParentOfType.kt	skip	LANGUAGE_FEATURE_TOGGLED	
 testsWithStdLib/intellij/PersistentStateComponent.kt	rejects invalid	on an expected line	
 testsWithStdLib/intellij/UastPatterns.kt	accepts valid		
-testsWithStdLib/intellij/WithSpeedSearch.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	WithSpeedSearch.kt:8: type mismatch: inferred type is J but JList<Any?> was expected
+testsWithStdLib/intellij/WithSpeedSearch.kt	accepts valid		
 testsWithStdLib/intellij/accessInSetter.kt	accepts valid		
 testsWithStdLib/intellij/arrayOfImports.kt	rejects invalid	on an expected line	
 testsWithStdLib/intellij/baseIntrospector.kt	rejects valid	type arguments of the outer class of BaseIntrospector.AbstractRetriever are needed here: write BaseIntrospector<...>.AbstractRetriever	m1.kt:12: type arguments of the outer class of BaseIntrospector.AbstractRetriever are needed here: write BaseIntrospector<...>.AbstractRetriever
@@ -10470,7 +10470,7 @@ testsWithStdLib/j+k/recursiveTypeParameterInJava.kt	rejects invalid	on an expect
 testsWithStdLib/j+k/serializableString.kt	accepts valid		
 testsWithStdLib/j+k/smartSet.kt	accepts valid		
 testsWithStdLib/j+k/typeParameterUse.kt	accepts valid		
-testsWithStdLib/java/assertThatOnMap.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	test.kt:3: type mismatch: inferred type is S? but MutableMap<Any?, Any?>! was expected
+testsWithStdLib/java/assertThatOnMap.kt	accepts valid		
 testsWithStdLib/java/checkEnhancedUpperBoundsWithEnabledImprovements.kt	skip	LANGUAGE	
 testsWithStdLib/java/concurrentHashMapContainsError.kt	rejects invalid	on an expected line	
 testsWithStdLib/java/functionN.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	main.kt:20: type mismatch: inferred type is (<error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>) -> Unit but FunctionN<Unit!>! was expected

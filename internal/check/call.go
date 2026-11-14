@@ -688,7 +688,9 @@ func (c *Checker) typeArgBounds(x *syntax.Call, cd *candidate, targs []types.Typ
 			continue
 		}
 		for _, b := range p.Bounds {
-			if b = s.final(cd.sub.Apply(b)); !b.HasVars() && b.K != types.Invalid && !c.subtype(t, b) {
+			// A bound with a receiver's projection holds its capture,
+			// which only a written type takes: X : C<T> for a B<out N>.
+			if b = s.final(cd.sub.ApplyIn(b)); !b.HasVars() && b.K != types.Invalid && !c.subtype(t, b) {
 				c.errorf(x.TypeArgs[j].P, "type argument is not within its bounds: type parameter '%s' must be subtype of '%s', but actual: '%s'", p.Name, b, t)
 			}
 		}
