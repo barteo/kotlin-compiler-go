@@ -34,6 +34,10 @@ type tvar struct {
 	// projection, as T in KClass<T>.java for a KClass<*>: without other
 	// bounds, it is its declared bound.
 	star bool
+	// starArg is set when star is for a star projection of an argument's
+	// type, which is then known whatever variables the variable is equal
+	// to; not for the parameters of a delegate's operators.
+	starArg bool
 	// proj is set when it stands for a captured out or in projection, as
 	// T in Array<T> for an Array<out Enum<*>>: the capture is within T's
 	// bounds, even where its approximation isn't.
@@ -46,6 +50,10 @@ type tvar struct {
 	// fixed to it, which Subst approximates as Kotlin does, out Int in
 	// an invariant argument and Int at the top level (V is Inv if none).
 	capt types.Arg
+	// invRet is set when the variable is in an invariant or contravariant
+	// position of its call's result type, as T of Bar<T>, where K2 infers
+	// it from a T <: V? as T rather than T & Any.
+	invRet bool
 	// synth is set for a variable kc adds, which isn't a type parameter
 	// the code can give: openResult's. One without bounds, of a lambda
 	// whose body has errors, is the error type, without another error.
@@ -213,6 +221,12 @@ func (s *system) sub(a, b types.Type) {
 			// SortedComboBoxModel(Comparator.comparing(f)) is a
 			// SortedComboBoxModel<DataView!>, as in Kotlin.
 			a = pa
+		case b.N && !b.P && tv.invRet && a.K == types.TypeParam && !a.N && !a.D && !a.IsIntersection() && !s.nonNullBound(tv):
+			// As K2 prefers it, T <: V? gives T <: V, not T & Any <: V,
+			// where V may take T and is invariant or contravariant in the
+			// call's result: Bar(t) for class Bar<T>(t: T?) and a t: T is
+			// a Bar<T>, but removeQuestionMark(t) for fun <K>
+			// removeQuestionMark(x: K?): K is a T & Any.
 		case b.N:
 			a = a.NonNull() // a <: V? gives a!! <: V
 		case b.D && types.MayBeNull(a):
@@ -325,6 +339,7 @@ func (s *system) subArgs(sup, b types.Type) {
 					s.addUpper(tv, ta.T)
 				default:
 					tv.star = true
+					tv.starArg = true
 				}
 				continue
 			}
@@ -334,6 +349,44 @@ func (s *system) subArgs(sup, b types.Type) {
 			s.nest--
 		}
 	}
+}
+
+// markInvRet sets invRet on the variables in invariant or contravariant
+// positions of t, a call's result type.
+func (s *system) markInvRet(t types.Type) {
+	var walk func(t types.Type, inv bool)
+	walk = func(t types.Type, inv bool) {
+		switch t.K {
+		case types.TypeVar:
+			if tv := s.byVar[t.Param()]; tv != nil && inv {
+				tv.invRet = true
+			}
+		case types.Class:
+			if t.A == nil {
+				return
+			}
+			for i, a := range t.A.List {
+				v := a.V
+				if v == types.Inv && i < len(t.C.TypeParams) {
+					v = t.C.TypeParams[i].Var
+				}
+				if v != types.Star {
+					walk(a.T, inv || v != types.Out)
+				}
+			}
+		}
+	}
+	walk(t, false)
+}
+
+// nonNullBound reports whether one of tv's declared bounds excludes null.
+func (s *system) nonNullBound(tv *tvar) bool {
+	for _, b := range tv.v.Bounds {
+		if b = s.apply(b); !types.AcceptsNull(b) {
+			return true
+		}
+	}
+	return false
 }
 
 // unfixedVar returns the variable that t is, if it is an unfixed one of
@@ -484,7 +537,10 @@ func (s *system) complete() {
 			for _, l := range tv.lower {
 				if s.proper(l) {
 					score = 2
-				} else {
+				} else if !(tv.starArg && s.isVar(l)) {
+					// A captured star is known whatever the variables it
+					// is equal to: A of id's Inv<A> for a star() of Inv<*>
+					// in hh(id(star())), which hh's A then is.
 					allProper = false
 					nested = nested || !s.isVar(l)
 				}
@@ -656,7 +712,9 @@ func (s *system) fix(tv *tvar) {
 		// A with a nullable bound and T : Any, gives T = A & Any.
 		if types.MayBeNull(val) {
 			for _, b := range tv.v.Bounds {
-				if b = s.apply(b); !b.HasVars() && !types.AcceptsNull(b) {
+				// A class bound's nullability doesn't depend on variables
+				// in its arguments: T? <: TestEnum? for T : Enum<T>.
+				if b = s.apply(b); (!b.HasVars() || b.K == types.Class) && !types.AcceptsNull(b) {
 					val = val.NonNull()
 					break
 				}

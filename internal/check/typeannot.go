@@ -16,8 +16,9 @@ import (
 )
 
 var (
-	typeSite      = annotSite{siteType, types.TargetType, "type usage"}
-	typeParamSite = annotSite{siteTypeParam, types.TargetTypeParameter, "type parameter"}
+	typeSite      = annotSite{siteType, types.TargetType, "type usage", false}
+	typeBoundSite = annotSite{siteType, types.TargetType, "type usage", true}
+	typeParamSite = annotSite{siteTypeParam, types.TargetTypeParameter, "type parameter", false}
 )
 
 // typeAnnot is an annotated type, with the class it's written in.
@@ -59,21 +60,27 @@ func (c *Checker) typeAnnotations() {
 // rather than where they're first resolved, as from another class
 // inferring the declaration's type.
 func (c *Checker) signatureTypeAnnotations(owner *types.ClassSym, refs ...*syntax.TypeRef) {
+	c.typeAnnotationsAt(owner, typeSite, refs...)
+}
+
+// typeAnnotationsAt is signatureTypeAnnotations for the types at site:
+// typeSite, or typeBoundSite for a type parameter's bounds.
+func (c *Checker) typeAnnotationsAt(owner *types.ClassSym, site annotSite, refs ...*syntax.TypeRef) {
 	for _, ref := range refs {
 		if ref == nil || ref.Known != nil {
 			continue
 		}
 		if len(ref.Annotations) > 0 {
 			if _, done := c.u.typeAnnotsDone.LoadOrStore(ref, true); !done {
-				c.checkAnnotations(typeUseAnnotations(ref.Annotations), owner, typeSite, false)
+				c.checkAnnotations(typeUseAnnotations(ref.Annotations), owner, site, false)
 			}
 		}
 		for _, a := range ref.Args {
-			c.signatureTypeAnnotations(owner, a.Type)
+			c.typeAnnotationsAt(owner, site, a.Type)
 		}
-		c.signatureTypeAnnotations(owner, ref.Params...)
-		c.signatureTypeAnnotations(owner, ref.Contexts...)
-		c.signatureTypeAnnotations(owner, ref.Ret, ref.Recv, ref.Outer, ref.And)
+		c.typeAnnotationsAt(owner, site, ref.Params...)
+		c.typeAnnotationsAt(owner, site, ref.Contexts...)
+		c.typeAnnotationsAt(owner, site, ref.Ret, ref.Recv, ref.Outer, ref.And)
 	}
 }
 
@@ -103,7 +110,7 @@ func typeUseAnnotations(as []syntax.Annotation) []syntax.Annotation {
 func (c *Checker) typeParamAnnotations(tps []*syntax.TypeParam, owner *types.ClassSym) {
 	for _, tp := range tps {
 		c.annotations(tp.Annotations, owner, typeParamSite)
-		c.signatureTypeAnnotations(owner, tp.Bounds...)
+		c.typeAnnotationsAt(owner, typeBoundSite, tp.Bounds...)
 	}
 }
 

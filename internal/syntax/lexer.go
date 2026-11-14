@@ -260,6 +260,11 @@ func (lx *lexer) next() {
 			return
 		}
 	}
+	// Kotlin's lexer reads ;; as one token, DOUBLE_SEMICOLON, which
+	// separates nothing: println(1);; is an error wherever it is.
+	if strings.HasPrefix(lx.src[lx.off:], ";;") {
+		lx.errorf(p, "expected newline or ';', found ';;'")
+	}
 	// A callable reference on a nullable type, String?::plus, is ? and ::,
 	// not ?: and :.
 	if strings.HasPrefix(lx.src[lx.off:], "?::") {

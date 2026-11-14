@@ -2435,10 +2435,13 @@ func (c *Checker) javaCall(x *syntax.Call, fn *syntax.Member, rt types.Type, wan
 		if !fit {
 			return c.resolve(x, exts, want, sink)
 		}
-		if !x.Operator && hasLambda(x.Args) {
+		if !x.Operator && hasLambda(x.Args) || len(c.stubs) > 0 {
 			// The arguments' types, without the lambdas, decide: a
 			// LazyListScope's items(list) { } is the extension's, not
-			// the member items(count: Int) { }.
+			// the member items(count: Int) { }. So they do in a builder's
+			// lambda, where the member's call, inferred with the
+			// builder's variables, reports its errors only later:
+			// addAll(arrayOf(1)) in buildList { } is the extension's.
 			ts := c.argTypes(x)
 			gs := make([]*types.FunSym, len(exts))
 			for i, cl := range exts {

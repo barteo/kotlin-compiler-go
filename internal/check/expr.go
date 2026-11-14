@@ -769,7 +769,17 @@ func (c *Checker) binary(x *syntax.Binary, want types.Type, allowRange bool) typ
 			xw = want.Nullable()
 		}
 		c.sink = c.takeBranchSink()
-		xt := c.safeUnit(x.X, c.value(x.X, xw))               // x?.f() ?: y for a Unit f
+		sink, n := c.sink, len(c.errs)
+		xt := c.safeUnit(x.X, c.value(x.X, xw)) // x?.f() ?: y for a Unit f
+		if xw.K == types.Invalid && sink == nil && c.cannotInferSince(n) && retryableCall(x.X) {
+			// Nothing gives the left call's variables, but K2's K is fixed
+			// from the right side first, and the call's result is below it:
+			// V of fun <V : A> test(): V? is Nothing in test() ?: error("").
+			if yt, ok := c.elvisRightFirst(x.Y); ok {
+				c.errs = c.errs[:n]
+				xt = c.safeUnit(x.X, c.value(x.X, yt.Nullable()))
+			}
+		}
 		nn, nonNull := len(c.scope.narrows), c.notNullOf(x.X) // the right side's casts may not run
 		var yt types.Type
 		if lt := xt.Flex().NonNull(); intLitExpr(x.Y) && (lt == types.LongType || lt == types.ShortType || lt == types.ByteType) {
@@ -1180,6 +1190,9 @@ func (c *Checker) equality(p syntax.Pos, op syntax.Kind, xt, yt types.Type) type
 		if c.subtype(x, y) && !y.IsPrimitive() || c.subtype(y, x) && !x.IsPrimitive() || c.mayBeSame(x, y) {
 			return types.AnyType.Nullable()
 		}
+		if !c.equalityInapplicable(op, xt, yt) {
+			return types.AnyType.Nullable()
+		}
 		name := "=="
 		if op == syntax.EQ_EQ_EQ || op == syntax.NOT_EQ_EQ {
 			name = "==="
@@ -1191,6 +1204,118 @@ func (c *Checker) equality(p syntax.Pos, op syntax.Kind, xt, yt types.Type) type
 		return xt
 	}
 	return xt.Nullable()
+}
+
+// equalityInapplicable reports whether K2 rejects comparing values of
+// unrelated types xt and yt with op, as FirEqualityCompatibilityChecker
+// does. == is only checked where a primitive type, String, an enum or a
+// value class is involved, === where one of them isn't nullable; either
+// only if one class is final or both are classes, not interfaces. Where
+// both types can have subtypes, as K1 had it, K2 only warns: A == B for
+// an interface A and a class B is allowed, and so is a === b for an open
+// class and an abstract one.
+func (c *Checker) equalityInapplicable(op syntax.Kind, xt, yt types.Type) bool {
+	x, y := xt.Flex().NonNull(), yt.Flex().NonNull()
+	if op == syntax.EQ || op == syntax.NE {
+		if !c.builtinForEquality(x) && !c.builtinForEquality(y) && !types.IsValue(x) && !types.IsValue(y) {
+			return false
+		}
+	} else if !types.IsPrimitiveKind(x.K) && !types.IsPrimitiveKind(y.K) && types.MayBeNull(xt) && types.MayBeNull(yt) {
+		// A primitive has no identity, nullable or not: a === b for an
+		// Int? and a String? is an error.
+		return false
+	}
+	final := func(t types.Type) bool {
+		switch t.K {
+		case types.Class:
+			t.C.Ensure()
+			return !t.C.Interface && t.C.Final
+		case types.Any:
+			return false
+		}
+		return t.K != types.TypeParam
+	}
+	class := func(t types.Type) bool {
+		if t.K == types.Class {
+			return !t.C.Interface
+		}
+		return t.K != types.TypeParam
+	}
+	if !final(x) && !final(y) && !(class(x) && class(y)) {
+		return false
+	}
+	if canHaveSubtypesK1(x) && canHaveSubtypesK1(y) && c.missedByK1Enums(xt, yt) {
+		return false // only a warning
+	}
+	return true
+}
+
+// builtinForEquality reports whether t is a primitive type, String or an
+// enum, whose comparisons K2 checks.
+func (c *Checker) builtinForEquality(t types.Type) bool {
+	if types.IsPrimitiveKind(t.K) || t.K == types.String {
+		return true
+	}
+	return c.enumType(t)
+}
+
+// enumType reports whether t is of an enum class.
+func (c *Checker) enumType(t types.Type) bool {
+	if t.K != types.Class {
+		return false
+	}
+	t.C.Ensure()
+	return t.C.Super != nil && t.C.Super.Name == "java/lang/Enum"
+}
+
+// missedByK1Enums reports whether K1's check of enum comparisons let xt and
+// yt be compared (isIncompatibleEnums), which K2 then only warns about.
+func (c *Checker) missedByK1Enums(xt, yt types.Type) bool {
+	switch {
+	case !c.enumType(xt.Flex().NonNull()) && !c.enumType(yt.Flex().NonNull()):
+		return true
+	case types.MayBeNull(xt) && types.MayBeNull(yt):
+		return true
+	case xt.K == types.Nothing || yt.K == types.Nothing:
+		return true
+	}
+	return false
+}
+
+// canHaveSubtypesK1 reports whether a non-null type t can have subtypes,
+// as K1's TypeUtils.canHaveSubtypes has it: a class that isn't final can,
+// and so can a final generic one with a star, an in projection or an out
+// argument that can.
+func canHaveSubtypesK1(t types.Type) bool {
+	switch t.K {
+	case types.Any, types.TypeParam:
+		return true
+	case types.Class:
+	default:
+		return false
+	}
+	t.C.Ensure()
+	if t.C.Interface || !t.C.Final {
+		return true
+	}
+	if t.A == nil {
+		return false
+	}
+	for i, a := range t.A.List {
+		v := a.V
+		if v == types.Inv && i < len(t.C.TypeParams) {
+			v = t.C.TypeParams[i].Var
+		}
+		switch v {
+		case types.Star, types.In:
+			return true
+		case types.Out:
+			if types.MayBeNull(a.T) || canHaveSubtypesK1(a.T) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // castEquality is equality for the operands of x, of types xt and yt,
@@ -1883,7 +2008,20 @@ func (c *Checker) callReceiver(fn *syntax.Member, want types.Type) (types.Type, 
 	if t.K == types.Invalid {
 		return t, nil, false
 	}
+	c.stubReceiver(fn.X, t, fn.Name)
 	t = c.castView(fn.X, t, fn.Name)
+	if t.IsIntersection() && t.Param().Bounds[0].K == types.String && c.hasNamed(types.StringType, fn.Name) &&
+		!slices.ContainsFunc(t.Param().Bounds[1:], func(b types.Type) bool { return c.hasNamed(b, fn.Name) }) {
+		// A String & T, of a smart cast of a T, has String's built-in
+		// members and extensions, as the String did: o.trim() is a
+		// String, not CharSequence.trim()'s CharSequence. Not a name
+		// T's bounds have too: o.compareTo(p) for T : Comparable<T>.
+		st := types.StringType
+		if types.MayBeNull(t) {
+			st = st.Nullable()
+		}
+		fn.X, t = checked(fn.X, st), st
+	}
 	if vt.K == types.Null && t.K != types.Null && !fn.Safe && c.extCallees(fn.Name, t) == nil {
 		// A variable known to be null is a Nothing?, which any extension
 		// of a nullable receiver takes: i.foo() for a String?.foo()
@@ -1986,6 +2124,7 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 	if xt.K == types.Invalid {
 		return xt
 	}
+	c.stubReceiver(x.X, xt, x.Name)
 	xt = c.castView(x.X, xt, x.Name)
 	x.X, xt = builtinBound(x.X, xt)
 	if types.MayBeNull(xt) && !xt.P && !x.Safe {
@@ -3580,6 +3719,7 @@ func (c *Checker) openLast(pending []pendingBranch) {
 }
 
 func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) types.Type {
+	sink := c.takeBranchSink()
 	var pending []pendingBranch
 	softFail := false
 	// As after an if, the vars the branches assign have the join of their
@@ -3617,6 +3757,12 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 			st = c.value(x.Subject, noWant)
 			x.SubjSym = &types.VarSym{Name: "<subject>", Type: st, Kind: types.Local}
 			subj, hasSubj = c.narrowKeyOf(x.Subject)
+			if !hasSubj {
+				// Not a stable value, but the subject's own value, which the
+				// conditions test, is: not null after null -> in
+				// when (getDateOrNull()) { null -> 0; in a..b -> 1 }.
+				subj, hasSubj = narrow{sym: x.SubjSym, t: st}, true
+			}
 		}
 	}
 	hasElse := false
@@ -3678,6 +3824,12 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 					c.errorf(cond.X.Pos(), "'in' conditions need a 'when' subject")
 					c.value(cond.X, noWant)
 					break
+				}
+				// The subject as the branches before smart cast it: not
+				// null after null ->, in when (d) { null -> 0; in r -> 1 }.
+				st := st
+				if nt := subjType(); hasSubj && nt.K != types.Invalid {
+					st = nt
 				}
 				r, ok := cond.X.(*syntax.Binary)
 				var rt types.Type
@@ -3886,6 +4038,9 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 			return types.NothingType
 		}
 		return types.UnitType
+	}
+	if sink != nil {
+		return c.sinkBranches(sink, pending, result)
 	}
 	return c.completeBranches(pending, result, want, true)
 }

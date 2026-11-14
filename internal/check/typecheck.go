@@ -477,7 +477,37 @@ func (c *Checker) isNarrowed(cur, t types.Type) types.Type {
 	if i, ok := c.narrowedIntersection(cur, t); ok {
 		return i
 	}
+	if i, ok := c.paramIntersection(cur, t); ok {
+		return i
+	}
 	return t
+}
+
+// paramIntersection returns t & cur for a smart cast of a value of a type
+// parameter's type cur to a class type t, as K2 has it: o of type T is
+// a String & T after o is String, which is still a T, as listOf(o) for
+// an expected Collection<T> needs. Not to a primitive type or a value
+// class, whose values are represented otherwise.
+func (c *Checker) paramIntersection(cur, t types.Type) (types.Type, bool) {
+	a, b := cur.Flex(), t.NonNull()
+	if a.K != types.TypeParam || a.IsIntersection() || types.IsValue(b) {
+		return types.InvalidType, false
+	}
+	switch b.K {
+	case types.String:
+	case types.Class:
+		b.C.Ensure()
+		if b.C.Func || b.HasVars() {
+			return types.InvalidType, false
+		}
+	default:
+		return types.InvalidType, false
+	}
+	i := c.intersect([]types.Type{b, a.NonNull()})
+	if types.MayBeNull(t) && types.MayBeNull(cur) {
+		i = i.Nullable()
+	}
+	return i, true
 }
 
 // narrowedIntersection returns cur & t for a smart cast of a value of

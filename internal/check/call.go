@@ -1,6 +1,7 @@
 package check
 
 import (
+	"math/bits"
 	"slices"
 	"strconv"
 	"strings"
@@ -386,6 +387,14 @@ type candidate struct {
 	sys    *system
 	sams   map[int]*types.FunSym // the arguments converted to fun interfaces: see samValue
 	susps  map[int]bool          // the arguments converted to suspend function types: see suspendConverted
+	// stubCons are the constraints that constrain recorded in builders'
+	// runs for this candidate, in a builder's lambda: applicable takes
+	// them back, and the chosen candidate's are recorded again.
+	stubCons map[*stubRun][][2]types.Type
+	// pre is sys before constrain added the arguments' constraints, kept
+	// where an argument is a smart-cast variable of a type parameter's
+	// type: see declaredCastArgs.
+	pre *system
 }
 
 // args checks call arguments against the parameter types of cl (nil: no
@@ -902,6 +911,22 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			}
 			continue
 		}
+		if branchValue(a) && !plain {
+			// As K2's synthetic call of an if or a when, branches that are
+			// generic calls not inferred on their own are inferred with
+			// this call: compareBy's T in nullsLast(if (b) compareBy({
+			// it.a }) else compareBy({ it.b })) for a Comparator<Foo?>.
+			inner := newSystem(c)
+			c.branchSink = inner
+			t := c.value(a, noWant)
+			ts[i] = t
+			c.branchSink = nil
+			if len(inner.vars) > 0 || len(inner.fixups) > 0 {
+				inner.fixups = append(inner.fixups, func(s *system) { a.SetType(s.final(t)) })
+				partials = append(partials, inner)
+			}
+			continue
+		}
 		ts[i] = c.value(a, noWant)
 	}
 
@@ -971,6 +996,14 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 				maximal = ng
 			}
 		}
+		if len(maximal) == 0 && len(c.stubs) > 0 {
+			// In a builder's lambda, a stub in the candidates' parameter
+			// types leaves none more specific than the others: the tie
+			// breaks as between equally specific ones, the candidate
+			// without a vararg first, make(it: Iterable<T>) of B<T>'s
+			// two for make(listOf("a")).
+			maximal = match
+		}
 		if i := preferred(len(maximal), x.Args, func(i int) *callee { return &maximal[i].callee }); i >= 0 {
 			best = maximal[i]
 		}
@@ -997,6 +1030,7 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			return types.InvalidType
 		}
 	}
+	c.restoreStubCons(best.stubCons)
 	for i, a := range x.Args {
 		if lit, ok := a.(*syntax.IntLit); ok && fitsLit(lit, best.params[i]) {
 			lit.T = best.params[i].NonNull()
@@ -1023,6 +1057,7 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 	if f.Name == "<init>" {
 		ret = best.sub.Apply(f.Owner.This())
 	}
+	c.declaredCastArgs(x, best, ts, partials, ret, want)
 	sys := best.sys
 	params := best.params
 	for _, i := range lambdas {
@@ -1400,6 +1435,46 @@ func (c *Checker) byLambdaResult(x *syntax.Call, match []*candidate) *candidate 
 	return maximal[0]
 }
 
+// branchesClass returns the class of the calls the branches of e, an if
+// or a when with an else in lambda l, end in, if they are all calls of
+// functions l doesn't declare, without lambdas, whose results are of the
+// same class.
+func (c *Checker) branchesClass(l *syntax.Lambda, e syntax.Expr) *types.ClassSym {
+	var bodies []*syntax.Block
+	switch e := e.(type) {
+	case *syntax.If:
+		bodies = []*syntax.Block{e.Then, e.Else}
+	case *syntax.When:
+		for _, b := range e.Branches {
+			bodies = append(bodies, b.Body)
+		}
+	}
+	var cls *types.ClassSym
+	for _, b := range bodies {
+		if b == nil || len(b.Stmts) == 0 {
+			return nil
+		}
+		es, ok := b.Stmts[len(b.Stmts)-1].(*syntax.ExprStmt)
+		if !ok {
+			return nil
+		}
+		call, ok := es.X.(*syntax.Call)
+		if !ok || hasLambda(call.Args) {
+			return nil
+		}
+		fn, ok := call.Fun.(*syntax.Ident)
+		if !ok || declaredIn(l)[fn.Name] {
+			return nil
+		}
+		bc := c.peekClass(call)
+		if bc == nil || cls != nil && bc != cls {
+			return nil
+		}
+		cls = bc
+	}
+	return cls
+}
+
 // byLambdaResultClass chooses among the candidates of byLambdaResult
 // without checking lambda l, argument li, whose parameters have types
 // params, when the call it ends with has a result whose class is known
@@ -1432,12 +1507,24 @@ func (c *Checker) byLambdaResultClass(l *syntax.Lambda, li int, match []*candida
 	if !ok {
 		return nil
 	}
+	var cls *types.ClassSym
+	if branchValue(es.X) {
+		// Branches that end in calls of the same class: setOf() in
+		// flatMapTo(dest) { if (b) setOf() else setOf() }.
+		cls = c.branchesClass(l, es.X)
+		if cls == nil {
+			return nil
+		}
+	}
 	call, ok := es.X.(*syntax.Call)
-	if !ok || hasLambda(call.Args) {
+	if cls == nil && (!ok || hasLambda(call.Args)) {
 		return nil
 	}
-	var cls *types.ClassSym
-	switch fn := call.Fun.(type) {
+	var fn syntax.Expr
+	if cls == nil {
+		fn = call.Fun
+	}
+	switch fn := fn.(type) {
 	case *syntax.Ident:
 		if declaredIn(l)[fn.Name] {
 			return nil
@@ -1729,8 +1816,16 @@ func (c *Checker) platformRecv(x *syntax.Call, ext types.Type) types.Type {
 // constrain adds the constraints of a call's arguments to a candidate's
 // system. If longLits, integer literals may be passed as Long.
 func (c *Checker) constrain(cd *candidate, x *syntax.Call, ts []types.Type, partials []*system, longLits bool) {
+	if cd.pre == nil && slices.ContainsFunc(x.Args, func(a syntax.Expr) bool { return castParamArg(a) != nil }) {
+		cd.pre = cd.sys.clone()
+	}
 	for _, p := range partials {
 		cd.sys.merge(p.clone())
+	}
+	if ensureFun(cd.f); cd.f.Name == "<init>" && cd.f.Owner != nil {
+		cd.sys.markInvRet(cd.sub.Apply(cd.f.Owner.This()))
+	} else {
+		cd.sys.markInvRet(cd.sub.Apply(cd.f.Ret))
 	}
 	if cd.ext.K != types.Invalid {
 		cd.sys.sub(c.platformRecv(x, cd.ext), cd.sub.ApplyIn(cd.f.Recv))
@@ -1908,7 +2003,11 @@ func (c *Checker) applicable(cs []*candidate, x *syntax.Call, ts []types.Type, p
 	for _, cd := range cs {
 		// Each attempt starts from a fresh copy of the candidate.
 		try := &candidate{callee: cd.callee, sub: cd.sub, params: cd.params, sys: cd.sys.clone(), sams: cd.sams, susps: cd.susps}
+		mark := c.markStubCons()
 		c.constrain(try, x, ts, partials, longLits)
+		// What a candidate records doesn't count for the others: B<T>'s
+		// make(vararg T) for make(listOf("a")) doesn't give T a List.
+		try.stubCons = c.takeStubCons(mark)
 		if try.sys.ok && try.sys.litsFitUppers() && c.lambdasFit(try, x) && c.withinBounds(try) {
 			out = append(out, try)
 		}
@@ -1938,6 +2037,13 @@ func (c *Checker) withinBounds(cd *candidate) bool {
 // candidate, as Kotlin decides: g accepts f's parameters as arguments.
 // f's own type parameters are kept as they are, g's are inferred.
 func (c *Checker) mostSpecific(f *candidate, cs []*candidate, args []syntax.Expr) bool {
+	// In a builder's lambda (see stubInference), comparing the
+	// candidates' parameter types records nothing, and a stub is no
+	// supertype of every type: make(it: Iterable<T>) is more specific
+	// than make(vararg values: T) for make(listOf("a")) of a B<T>.
+	saved := c.stubs
+	c.stubs = nil
+	defer func() { c.stubs = saved }()
 	for _, g := range cs {
 		if g == f {
 			continue
@@ -2294,4 +2400,132 @@ func (c *Checker) typedLambdaParams(sys *system, l *syntax.Lambda, p types.Type)
 		}
 	}
 	return trial
+}
+
+// branchValue reports whether e is an if with an else or a when with an
+// else branch, whose value is one of its branches'.
+func branchValue(e syntax.Expr) bool {
+	switch e := e.(type) {
+	case *syntax.If:
+		return e.Else != nil
+	case *syntax.When:
+		return len(e.Branches) > 0 && e.Branches[len(e.Branches)-1].Else
+	}
+	return false
+}
+
+// castParamArg returns argument a if it is a variable of a type
+// parameter's type that a smart cast gives another type, as o of type T
+// after o is String.
+func castParamArg(a syntax.Expr) *syntax.Ident {
+	id, ok := a.(*syntax.Ident)
+	if !ok || !id.Cast || id.Sym == nil || !id.Sym.Type.IsParam() || id.Sym.Type.IsIntersection() {
+		return nil
+	}
+	return id
+}
+
+// declaredCastArgs passes the smart-cast arguments of type parameter
+// types (see castParamArg) as their declared types if the arguments'
+// constraints otherwise don't hold, or the call's result ret isn't within
+// want, and then do and is. K2's smart cast is an
+// intersection with the declared type, T & String, which a variable of
+// T fits: listOf(o) for an expected Collection<T> is a List<T>.
+func (c *Checker) declaredCastArgs(x *syntax.Call, best *candidate, ts []types.Type, partials []*system, ret, want types.Type) {
+	if best.pre == nil {
+		return
+	}
+	// Either the arguments' constraints don't hold, as the value of
+	// m[o] = o for a MutableMap<String, T>, or the result isn't within
+	// want.
+	wanted := want.K != types.Invalid && !want.HasVars() && ret.HasVars()
+	if best.sys.ok && (!wanted || c.subOK(best.sys.clone(), ret, want)) {
+		return
+	}
+	var idx []int // the arguments that may be passed as declared
+	for i, a := range x.Args {
+		if castParamArg(a) != nil && i < len(ts) {
+			idx = append(idx, i)
+		}
+	}
+	if len(idx) == 0 || len(idx) > 4 {
+		return
+	}
+	// The fewest of them that make the call hold: the key of m[o] = o
+	// stays a String, its value is passed as a T.
+	masks := make([]int, 0, 1<<len(idx))
+	for m := 1; m < 1<<len(idx); m++ {
+		masks = append(masks, m)
+	}
+	slices.SortStableFunc(masks, func(a, b int) int { return bits.OnesCount(uint(a)) - bits.OnesCount(uint(b)) })
+	for _, m := range masks {
+		alt := slices.Clone(ts)
+		for j, i := range idx {
+			if m&(1<<j) != 0 {
+				dt := castParamArg(x.Args[i]).Sym.Type
+				if !types.MayBeNull(ts[i]) {
+					dt = dt.NonNull()
+				}
+				alt[i] = dt
+			}
+		}
+		cd := *best
+		cd.sys = best.pre.clone()
+		c.constrain(&cd, x, alt, partials, false)
+		if !cd.sys.ok || wanted && !c.subOK(cd.sys.clone(), ret, want) {
+			continue
+		}
+		best.sys = cd.sys
+		for j, i := range idx {
+			if m&(1<<j) != 0 {
+				id := castParamArg(x.Args[i])
+				id.Cast = false
+				id.SetType(alt[i])
+			}
+		}
+		copy(ts, alt)
+		return
+	}
+}
+
+// subOK adds the constraint a <: b to s and reports whether s still holds.
+func (c *Checker) subOK(s *system, a, b types.Type) bool {
+	s.sub(a, b)
+	return s.ok
+}
+
+// markStubCons returns the number of constraints each builder's run (see
+// stubInference) has recorded so far, or nil outside a builder's lambda.
+func (c *Checker) markStubCons() map[*stubRun]int {
+	if len(c.stubs) == 0 {
+		return nil
+	}
+	m := map[*stubRun]int{}
+	for _, r := range c.stubs {
+		m[r] = len(r.cons)
+	}
+	return m
+}
+
+// takeStubCons removes the constraints the runs of mark recorded since,
+// and returns them.
+func (c *Checker) takeStubCons(mark map[*stubRun]int) map[*stubRun][][2]types.Type {
+	var out map[*stubRun][][2]types.Type
+	for r, n := range mark {
+		if len(r.cons) > n {
+			if out == nil {
+				out = map[*stubRun][][2]types.Type{}
+			}
+			out[r] = slices.Clone(r.cons[n:])
+			r.cons = r.cons[:n]
+		}
+	}
+	return out
+}
+
+// restoreStubCons records again the constraints that takeStubCons took.
+func (c *Checker) restoreStubCons(cons map[*stubRun][][2]types.Type) {
+	for r, ks := range cons {
+		r.cons = append(r.cons, ks...)
+	}
 }

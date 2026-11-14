@@ -17,3 +17,18 @@ fun explicit() = buildList<String> {
     add("O")
     this[0] += "K"
 }
+
+// A member of Any, which a stub has, on an element whose type nothing
+// has given yet is an error too, though add("ab") gives it later.
+fun anyMembers() {
+    buildList { if (size > 5) println(get(0).hashCode()); add("ab") } // ERROR the type of a receiver hasn't been inferred yet
+    buildList { if (size > 5) println(get(0).toString()); add("ab") } // ERROR the type of a receiver hasn't been inferred yet
+    buildList { if (size > 5) println(get(0)?.hashCode()); add("ab") } // ERROR the type of a receiver hasn't been inferred yet
+}
+
+// Not once something gives it, nor where no member is called.
+fun anyMembersFine() {
+    buildList { add("ab"); println(get(0).hashCode()) }
+    buildList { if (size > 5) println(get(0) == null); add("ab") }
+    buildList { if (size > 5) println("${get(0)}"); add("ab") }
+}

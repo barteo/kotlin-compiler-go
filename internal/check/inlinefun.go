@@ -37,7 +37,8 @@ func (c *Checker) inlineFun(d *syntax.FunDecl, owner *types.ClassSym) {
 // forwardInlinable makes a crossinline parameter of the program's inline
 // function a function object if the function passes it on to a parameter
 // of another inline function, of the call's name, that is one: of the
-// program's, or a top-level one of the class path whose body captures it.
+// program's, or a top-level one or an extension of the class path whose
+// body captures it.
 // kc doesn't copy a crossinline lambda into a nested lambda, as kotlinc
 // does, so clikt's convert(metavar, conversion), which passes its
 // conversion to convert(metavarGetter, conversion), whose lambda invokes
@@ -103,8 +104,14 @@ func forwardedToObject(d *syntax.FunDecl, name string, byName map[string][]*synt
 					found = true
 				}
 			}
-			if _, ok := x.Fun.(*syntax.Ident); ok && c != nil && len(byName[callee]) == 0 {
-				found = found || c.libTakesObject(callee, x, k)
+			if c != nil && len(byName[callee]) == 0 {
+				switch x.Fun.(type) {
+				case *syntax.Ident:
+					found = found || c.libTakesObject(callee, x, k, false)
+				case *syntax.Member:
+					// An extension's, as thenBy's in compareBy(f).thenBy(g).
+					found = found || c.libTakesObject(callee, x, k, true)
+				}
 			}
 		}
 		return !found
@@ -121,9 +128,10 @@ func forwardedToObject(d *syntax.FunDecl, name string, byName map[string][]*synt
 // libTakesObject reports whether a top-level inline function of the class
 // path, named name, that call x may call takes a function object for
 // argument k: its body captures the parameter, as a crossinline one in a
-// lambda.
-func (c *Checker) libTakesObject(name string, x *syntax.Call, k int) bool {
-	for _, fs := range c.kotlinFunLevels(name, false) {
+// lambda. ext is set for a call on a receiver, of an extension: before
+// the receiver's type is known, any of the name may be the one.
+func (c *Checker) libTakesObject(name string, x *syntax.Call, k int, ext bool) bool {
+	for _, fs := range c.kotlinFunLevels(name, ext) {
 		for _, f := range fs {
 			if f.Inline == nil {
 				continue

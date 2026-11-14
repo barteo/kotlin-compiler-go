@@ -2066,8 +2066,22 @@ func (p *parser) parseBlock() *Block {
 	b := &Block{P: p.expect(LBRACE).Pos}
 	p.skipSemis()
 	for !p.at(RBRACE) {
-		b.Stmts = append(b.Stmts, p.parseStmt())
+		st := p.parseStmt()
+		b.Stmts = append(b.Stmts, st)
 		p.endOfStatement()
+		if lf, ok := st.(*LocalFun); ok && lf.Decl.ExprBody != nil && p.peekPastNL() == SEMI {
+			// As in Kotlin's grammar, a function with an expression body
+			// takes the ';' after it, also on the next line, so what
+			// follows on the ';''s line can only be another ';' or end
+			// the block: fun a() = 1; println(a()) is an error.
+			p.skipNL()
+			p.next()
+			switch p.tok().Kind {
+			case SEMI, NL, RBRACE, EOF:
+			default:
+				p.failAt(p.tok().Pos, "Unexpected tokens (use ';' to separate expressions on the same line)")
+			}
+		}
 		p.skipSemis()
 	}
 	b.End = p.next().Pos

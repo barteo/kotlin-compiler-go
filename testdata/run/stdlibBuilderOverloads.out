@@ -1,0 +1,5 @@
+[1, 2]
+[0, 1, 2, 3]
+[a, b]
+iterable [a, b]
+[vararg [x, y]]

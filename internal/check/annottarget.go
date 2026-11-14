@@ -40,27 +40,31 @@ type annotSite struct {
 	kind    siteKind
 	targets types.Targets
 	name    string
+	// bound is set on the types of a type parameter's bounds, where, as
+	// kotlinc, annotations' targets are checked but not their repeats:
+	// where X : @A @A Comparable<X> is accepted.
+	bound bool
 }
 
 var (
-	ctorSite      = annotSite{siteCtor, types.TargetConstructor, "constructor"}
-	paramSite     = annotSite{siteParam, types.TargetValueParameter, "value parameter"}
-	typealiasSite = annotSite{siteTypealias, types.TargetTypealias, "typealias"}
-	fileSite      = annotSite{siteFile, types.TargetFile, "file"}
-	enumEntrySite = annotSite{siteEnumEntry, types.TargetProperty | types.TargetField, "enum entry"}
-	localVarSite  = annotSite{siteLocal, types.TargetLocalVariable, "local variable"}
-	catchSite     = annotSite{siteLocal, types.TargetValueParameter | types.TargetLocalVariable, "value parameter"}
-	localFunSite  = annotSite{siteFun, types.TargetFunction, "local function"}
-	exprSite      = annotSite{siteExpr, types.TargetExpression, "expression"}
+	ctorSite      = annotSite{siteCtor, types.TargetConstructor, "constructor", false}
+	paramSite     = annotSite{siteParam, types.TargetValueParameter, "value parameter", false}
+	typealiasSite = annotSite{siteTypealias, types.TargetTypealias, "typealias", false}
+	fileSite      = annotSite{siteFile, types.TargetFile, "file", false}
+	enumEntrySite = annotSite{siteEnumEntry, types.TargetProperty | types.TargetField, "enum entry", false}
+	localVarSite  = annotSite{siteLocal, types.TargetLocalVariable, "local variable", false}
+	catchSite     = annotSite{siteLocal, types.TargetValueParameter | types.TargetLocalVariable, "value parameter", false}
+	localFunSite  = annotSite{siteFun, types.TargetFunction, "local function", false}
+	exprSite      = annotSite{siteExpr, types.TargetExpression, "expression", false}
 	// A lambda and an anonymous function are functions too, and an object
 	// expression a class.
-	lambdaSite     = annotSite{siteExpr, types.TargetFunction | types.TargetExpression, "expression"}
-	objectExprSite = annotSite{siteExpr, types.TargetClass | types.TargetExpression, "expression"}
-	initSite       = annotSite{siteInit, 0, "initializer"}
+	lambdaSite     = annotSite{siteExpr, types.TargetFunction | types.TargetExpression, "expression", false}
+	objectExprSite = annotSite{siteExpr, types.TargetClass | types.TargetExpression, "expression", false}
+	initSite       = annotSite{siteInit, 0, "initializer", false}
 )
 
 func classSite(d *syntax.ClassDecl) annotSite {
-	s := annotSite{siteClass, types.TargetClass, "class"}
+	s := annotSite{siteClass, types.TargetClass, "class", false}
 	switch {
 	case d.Annotation:
 		s.targets |= types.TargetAnnotationClass
@@ -79,9 +83,9 @@ func classSite(d *syntax.ClassDecl) annotSite {
 
 func funSite(owner *types.ClassSym) annotSite {
 	if owner == nil {
-		return annotSite{siteFun, types.TargetFunction, "top level function"}
+		return annotSite{siteFun, types.TargetFunction, "top level function", false}
 	}
-	return annotSite{siteFun, types.TargetFunction, "member function"}
+	return annotSite{siteFun, types.TargetFunction, "member function", false}
 }
 
 // propSite is the site of a property, whose annotations without a use-site
@@ -89,9 +93,9 @@ func funSite(owner *types.ClassSym) annotSite {
 // properties have fields.
 func propSite(owner *types.ClassSym) annotSite {
 	if owner == nil {
-		return annotSite{siteProp, types.TargetProperty | types.TargetField, "top level property"}
+		return annotSite{siteProp, types.TargetProperty | types.TargetField, "top level property", false}
 	}
-	return annotSite{siteProp, types.TargetProperty | types.TargetField, "member property"}
+	return annotSite{siteProp, types.TargetProperty | types.TargetField, "member property", false}
 }
 
 // ctorParamSite is the site of a parameter of class cls's primary
@@ -101,7 +105,7 @@ func ctorParamSite(cls *types.ClassSym, cp *syntax.CtorParam) annotSite {
 	if !cp.IsProp {
 		return paramSite
 	}
-	s := annotSite{siteCtorProp, types.TargetValueParameter | types.TargetProperty | types.TargetField, "value parameter"}
+	s := annotSite{siteCtorProp, types.TargetValueParameter | types.TargetProperty | types.TargetField, "value parameter", false}
 	if cls != nil && cls.Annotation {
 		s.targets &^= types.TargetField
 	}
@@ -202,7 +206,7 @@ type repeatKey struct {
 // another annotation among seen has the same class and target, and
 // records it.
 func (c *Checker) repeated(a *syntax.Annotation, cls *types.ClassSym, site annotSite, seen map[repeatKey]bool) {
-	if site.kind == siteUnchecked || !cls.TargetsKnown || cls.Repeatable {
+	if site.kind == siteUnchecked || site.bound || !cls.TargetsKnown || cls.Repeatable {
 		return
 	}
 	for _, m := range cls.Annotations {

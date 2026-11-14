@@ -34,8 +34,15 @@ func (c *Checker) stmts(b *syntax.Block, want types.Type, valueUsed bool) types.
 	for i, s := range b.Stmts {
 		last := i == len(b.Stmts)-1
 		c.site = varSite{b, i}
+		var branches syntax.Expr // an if or when the block ends with, inferred in sink
+		var sink *system
 		if last && b == c.tailBlock {
-			c.sink, c.tailBlock = c.tailSink, nil
+			if es, ok := s.(*syntax.ExprStmt); ok && valueUsed && branchValue(es.X) {
+				c.branchSink, branches, sink = c.tailSink, es.X, c.tailSink
+			} else {
+				c.sink = c.tailSink
+			}
+			c.tailBlock = nil
 		}
 		if rec := c.u.rec; rec != nil {
 			if nothing {
@@ -44,6 +51,12 @@ func (c *Checker) stmts(b *syntax.Block, want types.Type, valueUsed bool) types.
 			rec.Stmt(s, valueUsed && last)
 		}
 		st := c.stmt(s, valueUsed && last, want)
+		if branches != nil {
+			c.branchSink = nil
+			if st.HasVars() && sink.owns(st) {
+				sink.fixups = append(sink.fixups, func(s *system) { branches.SetType(s.final(st)) })
+			}
+		}
 		if st.K == types.Nothing || stmtJumps(s) {
 			nothing = true
 		}

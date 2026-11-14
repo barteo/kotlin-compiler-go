@@ -23,6 +23,7 @@ func TestParseValid(t *testing.T) {
 		{"when subject", "fun f(x: Int) = when (x) {\n 1, 2 -> \"a\"\n in 3..4 -> \"b\"\n !in 0..9 -> \"c\"\n else -> \"d\"\n}"},
 		{"definitely non-nullable type", "fun <T> f(x: T & Any, l: List<T & Any>?): (T & Any) -> T = { it }"},
 		{"local extension function", "fun f() { fun Int.g() = 1 }"},
+		{"local function with expression body and semicolons", "fun f() { fun a() = 1; ; println(a()); fun b() { }; println(b()); fun c() = 2; }\nfun g() = 1; fun h() = 2"},
 		{"anonymous function", "fun f() = fun(x: Int) = x"},
 		{"anonymous function on next line", "val f =\n    fun (x: Int): Int { return x }"},
 		{"anonymous extension function", "fun f(x: Int) = when (x) {\n 0 -> null\n else -> fun Int.() { }\n}"},
@@ -153,9 +154,13 @@ func TestParseErrors(t *testing.T) {
 		{"context(_: Any?) package p", "1:1", "context parameters are unsupported in this position"},
 		{"class C {\n  context(a: A)\n}", "2:3", "expected a declaration after the context parameters"},
 		{"context(a: A)", "1:1", "expected a declaration after the context parameters"},
+		{"fun f() { fun a() = 1; println(a()) }", "1:24", "Unexpected tokens (use ';' to separate expressions on the same line)"},
+		{"fun f() {\n  fun a() = 1\n  ; println(a())\n}", "3:5", "Unexpected tokens (use ';' to separate expressions on the same line)"},
+		{"fun f() { println(1);; }", "1:21", "expected newline or ';', found ';;'"},
+		{"val x = 1;;", "1:10", "expected newline or ';', found ';;'"},
 	}
 	for _, tt := range tests {
-		t.Run(tt.msg, func(t *testing.T) {
+		t.Run(tt.src, func(t *testing.T) {
 			_, errs := Parse("t.kt", tt.src)
 			if len(errs) == 0 {
 				t.Fatal("expected an error")

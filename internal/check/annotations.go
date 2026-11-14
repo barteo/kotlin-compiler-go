@@ -416,8 +416,8 @@ func (c *Checker) declAnnotations(d syntax.Decl, owner *types.ClassSym) {
 		c.typeParamAnnotations(d.TypeParams, owner)
 		c.signatureTypeAnnotations(owner, d.Recv, d.Type)
 		params(d.Contexts)
-		fun(d.Getter, annotSite{siteUnchecked, types.TargetGetter, "getter"})
-		fun(d.Setter, annotSite{siteUnchecked, types.TargetSetter, "setter"})
+		fun(d.Getter, annotSite{siteUnchecked, types.TargetGetter, "getter", false})
+		fun(d.Setter, annotSite{siteUnchecked, types.TargetSetter, "setter", false})
 	case *syntax.TypeAliasDecl:
 		c.annotations(d.Annotations, owner, typealiasSite)
 		c.typeParamAnnotations(d.TypeParams, owner)
