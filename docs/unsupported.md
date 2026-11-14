@@ -21,9 +21,10 @@ own tests.
   path, the standard library's included, aren't read from class files.
   The class path's functions and members deprecated `HIDDEN` stay hidden,
   as `kotlinc` compiles them synthetic, but its classes don't.
-- Builder inference that can't check a lambda's body with the type
-  variables open, as a member of a value of one of them whose type
-  nothing gives yet: it needs a type argument or an expected type.
+- Builder inference of a builder nested in another whose lambda combines
+  values of both builders' variables, as `select(this@outer.get(),
+  get())`, and where Kotlin forks the constraint system for a call in the
+  lambda: it needs a type argument or an expected type.
 
 ## Without the standard library
 
