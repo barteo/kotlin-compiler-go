@@ -134,7 +134,12 @@ yet done. [Design](design.md) describes how `kc` compiles it.
 
 - Intersection types (`A & B`) are inferred only for Kotlin classes'
   shared supertypes, smart casts between a class type and an unrelated
-  interface, and incomparable upper bounds of a variable. The common
+  interface, smart casts of a value of a type parameter's type to a class
+  type or `String` (`String & T`), and incomparable upper bounds of a
+  variable. A smart cast of a `T` to a primitive type or a value class is
+  that type alone, which a generic call expecting a `T` takes only
+  directly, as `listOf(o)`, not through another call, as `mapOf(o to o)`
+  for an `Int` `o`. The common
   supertype of two builtin types is `Any`, or `Number` for numbers (for
   `Int` and `String`, Kotlin's is `Comparable<*> & Serializable`).
 - A lambda's parameter types are fixed from the constraints known when

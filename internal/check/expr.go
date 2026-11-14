@@ -2009,6 +2009,18 @@ func (c *Checker) callReceiver(fn *syntax.Member, want types.Type) (types.Type, 
 		return t, nil, false
 	}
 	t = c.castView(fn.X, t, fn.Name)
+	if t.IsIntersection() && t.Param().Bounds[0].K == types.String && c.hasNamed(types.StringType, fn.Name) &&
+		!slices.ContainsFunc(t.Param().Bounds[1:], func(b types.Type) bool { return c.hasNamed(b, fn.Name) }) {
+		// A String & T, of a smart cast of a T, has String's built-in
+		// members and extensions, as the String did: o.trim() is a
+		// String, not CharSequence.trim()'s CharSequence. Not a name
+		// T's bounds have too: o.compareTo(p) for T : Comparable<T>.
+		st := types.StringType
+		if types.MayBeNull(t) {
+			st = st.Nullable()
+		}
+		fn.X, t = checked(fn.X, st), st
+	}
 	if vt.K == types.Null && t.K != types.Null && !fn.Safe && c.extCallees(fn.Name, t) == nil {
 		// A variable known to be null is a Nothing?, which any extension
 		// of a nullable receiver takes: i.foo() for a String?.foo()
