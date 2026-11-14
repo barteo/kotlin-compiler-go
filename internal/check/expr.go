@@ -1220,7 +1220,9 @@ func (c *Checker) equalityInapplicable(op syntax.Kind, xt, yt types.Type) bool {
 		if !c.builtinForEquality(x) && !c.builtinForEquality(y) && !types.IsValue(x) && !types.IsValue(y) {
 			return false
 		}
-	} else if types.MayBeNull(xt) && types.MayBeNull(yt) {
+	} else if !types.IsPrimitiveKind(x.K) && !types.IsPrimitiveKind(y.K) && types.MayBeNull(xt) && types.MayBeNull(yt) {
+		// A primitive has no identity, nullable or not: a === b for an
+		// Int? and a String? is an error.
 		return false
 	}
 	final := func(t types.Type) bool {

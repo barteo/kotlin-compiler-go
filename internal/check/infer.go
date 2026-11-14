@@ -50,6 +50,10 @@ type tvar struct {
 	// fixed to it, which Subst approximates as Kotlin does, out Int in
 	// an invariant argument and Int at the top level (V is Inv if none).
 	capt types.Arg
+	// invRet is set when the variable is in an invariant or contravariant
+	// position of its call's result type, as T of Bar<T>, where K2 infers
+	// it from a T <: V? as T rather than T & Any.
+	invRet bool
 	// synth is set for a variable kc adds, which isn't a type parameter
 	// the code can give: openResult's. One without bounds, of a lambda
 	// whose body has errors, is the error type, without another error.
@@ -217,10 +221,12 @@ func (s *system) sub(a, b types.Type) {
 			// SortedComboBoxModel(Comparator.comparing(f)) is a
 			// SortedComboBoxModel<DataView!>, as in Kotlin.
 			a = pa
-		case b.N && !b.P && a.K == types.TypeParam && !a.N && !a.D && !a.IsIntersection() && !s.nonNullBound(tv):
+		case b.N && !b.P && tv.invRet && a.K == types.TypeParam && !a.N && !a.D && !a.IsIntersection() && !s.nonNullBound(tv):
 			// As K2 prefers it, T <: V? gives T <: V, not T & Any <: V,
-			// where V may take T: Bar(t) for class Bar<T>(t: T?) and a
-			// t: T is a Bar<T>.
+			// where V may take T and is invariant or contravariant in the
+			// call's result: Bar(t) for class Bar<T>(t: T?) and a t: T is
+			// a Bar<T>, but removeQuestionMark(t) for fun <K>
+			// removeQuestionMark(x: K?): K is a T & Any.
 		case b.N:
 			a = a.NonNull() // a <: V? gives a!! <: V
 		case b.D && types.MayBeNull(a):
@@ -343,6 +349,34 @@ func (s *system) subArgs(sup, b types.Type) {
 			s.nest--
 		}
 	}
+}
+
+// markInvRet sets invRet on the variables in invariant or contravariant
+// positions of t, a call's result type.
+func (s *system) markInvRet(t types.Type) {
+	var walk func(t types.Type, inv bool)
+	walk = func(t types.Type, inv bool) {
+		switch t.K {
+		case types.TypeVar:
+			if tv := s.byVar[t.Param()]; tv != nil && inv {
+				tv.invRet = true
+			}
+		case types.Class:
+			if t.A == nil {
+				return
+			}
+			for i, a := range t.A.List {
+				v := a.V
+				if v == types.Inv && i < len(t.C.TypeParams) {
+					v = t.C.TypeParams[i].Var
+				}
+				if v != types.Star {
+					walk(a.T, inv || v != types.Out)
+				}
+			}
+		}
+	}
+	walk(t, false)
 }
 
 // nonNullBound reports whether one of tv's declared bounds excludes null.

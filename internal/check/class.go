@@ -1477,13 +1477,22 @@ func (c *Checker) superCtor(d *syntax.ClassDecl) {
 	c.lookupCls = d.Sym // its nested classes
 	defer func() { c.lookupCls = nil }()
 	cands := superCands(d.Sym)
+	if len(x.TypeArgs) > 0 && sc.OuterParams > 0 && !sc.External && len(x.TypeArgs) != len(sc.TypeParams)-sc.OuterParams {
+		// Type arguments of a typealias are for all of an inner class's
+		// type parameters, its outer class's too: inner class Test1 :
+		// GI<T1>() for typealias GI<T> = Generic<T>.Inner. Written ones
+		// are its own: Inner<Int>().
+		for i := range cands {
+			cands[i].tparams, cands[i].recv = sc.TypeParams, nil
+		}
+	}
 	if len(cands) == 0 {
 		c.errorf(x.P, "%s has no constructor that a subclass can call", sc.DisplayName())
 		c.args(x, nil)
 		return
 	}
 	x.Ctor = sc
-	if !c.superOuter(d.Sym, x) {
+	if !c.superOuter(d.Sym, x) || !c.superOuterArgs(d.Sym, x) {
 		return
 	}
 	want := noWant
@@ -1495,6 +1504,11 @@ func (c *Checker) superCtor(d *syntax.ClassDecl) {
 				want = t
 			}
 		}
+		if want.K != types.Invalid && slices.ContainsFunc(want.A.List, func(a types.Arg) bool { return a.V != types.Inv }) {
+			c.errorf(x.P, "type alias with projections in its expansion can't be used as a constructor or a supertype: %s", want)
+			c.args(x, nil)
+			return
+		}
 	}
 	c.resolve(x, cands, want, nil)
 	if d.Sym.Object {
@@ -1503,6 +1517,35 @@ func (c *Checker) superCtor(d *syntax.ClassDecl) {
 	if sc.Local {
 		c.localConstructed(sc) // the class passes its superclass's captures
 	}
+}
+
+// superOuterArgs reports whether the outer class type arguments of inner
+// class cls's superclass, an inner class too, are those of the outer
+// instance cls passes it: not in inner class Test2 : GIInt() of a
+// Generic<T1>, for typealias GIInt = Generic<Int>.Inner.
+func (c *Checker) superOuterArgs(cls *types.ClassSym, x *syntax.Call) bool {
+	sc := x.Ctor
+	if !sc.Inner || sc.OuterParams == 0 || !cls.Inner || cls.Outer == nil {
+		return true
+	}
+	os, ok := c.asSuper(cls.Outer.This(), sc.Outer)
+	if !ok || os.A.Len() != sc.OuterParams {
+		return true
+	}
+	own := len(sc.TypeParams) - sc.OuterParams
+	for _, t := range cls.Supers {
+		if t.K != types.Class || t.C != sc || t.A.Len() != len(sc.TypeParams) {
+			continue
+		}
+		for i := range sc.OuterParams {
+			if t.A.Get(own+i) != os.A.Get(i) {
+				c.errorf(x.P, "constructor of inner class %s can be called only with receiver of containing class", sc.DisplayName())
+				c.args(x, nil)
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // selfCalls reports the uses of object obj in its own superclass's

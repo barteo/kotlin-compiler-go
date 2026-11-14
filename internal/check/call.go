@@ -1800,6 +1800,11 @@ func (c *Checker) constrain(cd *candidate, x *syntax.Call, ts []types.Type, part
 	for _, p := range partials {
 		cd.sys.merge(p.clone())
 	}
+	if ensureFun(cd.f); cd.f.Name == "<init>" && cd.f.Owner != nil {
+		cd.sys.markInvRet(cd.sub.Apply(cd.f.Owner.This()))
+	} else {
+		cd.sys.markInvRet(cd.sub.Apply(cd.f.Ret))
+	}
 	if cd.ext.K != types.Invalid {
 		cd.sys.sub(c.platformRecv(x, cd.ext), cd.sub.ApplyIn(cd.f.Recv))
 	}
