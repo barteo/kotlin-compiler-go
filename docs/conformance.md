@@ -201,32 +201,33 @@ Kotlin 2.4.21's tests on `kc`:
 |:---|---:|---:|
 | run (of 10,827) | 8,515 | |
 | rejects invalid | 3,963 | 46.5% |
-| accepts valid | 3,864 | 45.4% |
+| accepts valid | 3,933 | 46.2% |
 | accepts invalid | 420 | 4.9% |
-| rejects valid | 248 | 2.9% |
+| rejects valid | 179 | 2.1% |
 | parse/unsupported | 18 | 0.2% |
 | crash | 1 | |
 | harness error (`javac`) | 1 | |
 
-`kc` agrees with `kotlinc` on 92% of the diagnostics tests, and reports
-14,526 of the 21,476 expected errors (68%) on their lines. Tests with
+`kc` agrees with `kotlinc` on 93% of the diagnostics tests, and reports
+14,516 of the 21,476 expected errors (68%) on their lines. Tests with
 Java sources, which earlier runs skipped, add 1,229 tests to the run,
-and 186 of the 420 that *accept invalid* code. The reports break the failures down; the
+and 187 of the 420 that *accept invalid* code. The reports break the failures down; the
 largest groups are:
 
 - **Silent miscompilation**: none. No box test that `kc` compiles
   gives a wrong result, throws, or fails to verify or link.
 - **Accepts invalid**: argument type mismatches
-  (`ARGUMENT_TYPE_MISMATCH` 42), unresolved names
+  (`ARGUMENT_TYPE_MISMATCH` 43), unresolved names
   (`UNRESOLVED_REFERENCE` 37), overload ambiguities
   (`OVERLOAD_RESOLUTION_AMBIGUITY` 24), missing dependency classes
   (`MISSING_DEPENDENCY_CLASS` 16), and the nullability that Java
   sources' annotations give (`NULL_FOR_NONNULL_TYPE` 15, `UNSAFE_CALL`
   12): `kc` gives Java declarations platform types, and doesn't read
   their `@NotNull` and `@Nullable`.
-- **Rejects valid**, by `kc`'s first error: type mismatches (60),
-  inference failures (52), unresolved names and imports (37), ambiguous
-  calls (8), and non-exhaustive `when`s (8). No box test is rejected.
+- **Rejects valid**, by `kc`'s first error: type mismatches (50),
+  inference failures (32), unresolved names, imports and labels (30),
+  and ambiguous calls and assignment operators (10). No box test is
+  rejected.
 - **Crashes**: a test with Java sources, a stack overflow on a
   recursive bound. The harness error is a test that declares `java.util.Date`, which `javac`
   compiles only with `--patch-module`.
