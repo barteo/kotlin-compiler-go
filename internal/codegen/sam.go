@@ -86,15 +86,6 @@ type samKey struct {
 
 const adapter = "kotlin/jvm/internal/FunctionAdapter"
 
-// descBoxes are the boxes of primitive descriptors, and the methods that
-// unbox them.
-var descBoxes = map[byte][2]string{
-	'I': {"java/lang/Integer", "intValue"}, 'J': {"java/lang/Long", "longValue"},
-	'Z': {"java/lang/Boolean", "booleanValue"}, 'C': {"java/lang/Character", "charValue"},
-	'B': {"java/lang/Byte", "byteValue"}, 'S': {"java/lang/Short", "shortValue"},
-	'F': {"java/lang/Float", "floatValue"}, 'D': {"java/lang/Double", "doubleValue"},
-}
-
 // samWrapperClass writes class name, which implements iface's method m
 // by invoking a function of class descriptor fn.
 func (g *gen) samWrapperClass(name, outer string, iface *types.ClassSym, m *types.FunSym, fn string) {
@@ -132,7 +123,7 @@ func (g *gen) samWrapperClass(name, outer string, iface *types.ClassSym, m *type
 	d := samMethodDesc(m)
 	g.code = c.NewMethod(cf.AccPublic|cf.AccFinal|cf.AccSynthetic, m.JVM(), d)
 	g.code.AllocLocal(self)
-	ps := descParams(d)
+	ps := cf.DescParams(d)
 	slots := make([]int, len(ps))
 	for i, p := range ps {
 		slots[i] = g.code.AllocLocal(p)
@@ -152,25 +143,25 @@ func (g *gen) samWrapperClass(name, outer string, iface *types.ClassSym, m *type
 		g.code.Local(loadOpOf(p), slots[i])
 		if i < len(kts) && types.Unboxed(kts[i]) {
 			g.boxValue(kts[i]) // a value class's value, which invoke takes boxed
-		} else if b, ok := descBoxes[p[0]]; ok && len(p) == 1 {
-			g.code.Invoke(cf.INVOKESTATIC, b[0], "valueOf", "("+p+")L"+b[0]+";")
+		} else if len(p) == 1 {
+			g.box(types.Type{K: types.DescKind(p[0])})
 		}
 	}
 	g.code.InvokeInterface(fnClass, "invoke", "("+strings.Repeat(objectDesc, len(ps))+")"+objectDesc)
-	switch r := d[strings.IndexByte(d, ')')+1:]; {
+	switch r := cf.RetDesc(d); {
 	case types.Unboxed(types.JVMRet(m)) && r != "V":
 		g.castBox(types.AnyType.Nullable(), types.JVMRet(m))
 		g.unboxValue(types.JVMRet(m))
 	case r == "V":
 		g.code.Op(cf.POP)
 	case len(r) == 1:
-		b := descBoxes[r[0]]
-		g.code.Checkcast(b[0])
-		g.code.Invoke(cf.INVOKEVIRTUAL, b[0], b[1], "()"+r)
+		t := types.Type{K: types.DescKind(r[0])}
+		g.code.Checkcast(boxClass(t.K))
+		g.unbox(t)
 	case r != objectDesc:
 		g.code.Checkcast(className(r))
 	}
-	g.code.Op(returnOpOf(d[strings.IndexByte(d, ')')+1:]))
+	g.code.Op(returnOpOf(cf.RetDesc(d)))
 	g.check()
 
 	g.code = c.NewMethod(cf.AccPublic|cf.AccFinal, "getFunctionDelegate", "()Lkotlin/Function;")

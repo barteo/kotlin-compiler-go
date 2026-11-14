@@ -245,7 +245,7 @@ func isBranch(op byte) bool {
 }
 
 // Ret returns the descriptor of the method's result.
-func (b *Body) Ret() string { return b.Desc[strings.IndexByte(b.Desc, ')')+1:] }
+func (b *Body) Ret() string { return cf.RetDesc(b.Desc) }
 
 // HasHandlers reports whether the body, or a private method it inlines,
 // has exception handlers. Their frames start with an empty stack.
@@ -350,7 +350,7 @@ func analyze(m *cf.Method, read func(name, desc string) (*cf.Method, error), dep
 		}
 	}
 	slot := 0
-	ds := params(m.Desc)
+	ds := cf.DescParams(m.Desc)
 	if m.Access&cf.AccStatic == 0 {
 		b.This = true
 		ds = append([]string{"L" + m.Class + ";"}, ds...)
@@ -444,23 +444,6 @@ func analyze(m *cf.Method, read func(name, desc string) (*cf.Method, error), dep
 		}
 	}
 	return b, nil
-}
-
-// params splits a method descriptor's parameter types.
-func params(d string) []string {
-	var out []string
-	for i := 1; d[i] != ')'; {
-		j := i
-		for d[j] == '[' {
-			j++
-		}
-		if d[j] == 'L' {
-			j += strings.IndexByte(d[j:], ';')
-		}
-		out = append(out, d[i:j+1])
-		i = j + 1
-	}
-	return out
 }
 
 const functionPrefix = "Lkotlin/jvm/functions/Function"
@@ -810,9 +793,10 @@ func (b *Body) flow(escaped map[int]string) error {
 						}
 					}
 				}
-				var err error
-				if st, err = permute(op, st); err != nil {
-					return fmt.Errorf("%v at %d", err, in.Off)
+				// On a copy: states share their arrays with st.
+				var ok bool
+				if st, ok = cf.Permute(op, slices.Clone(st), func(v val) int { return int(v.size) }); !ok {
+					return fmt.Errorf("stack underflow at %d", in.Off)
 				}
 			default:
 				if err := pop(pops); err != nil {
@@ -862,95 +846,6 @@ func (b *Body) flow(escaped map[int]string) error {
 		b.FrameParams[off] = ps
 	}
 	return nil
-}
-
-// permute applies a stack instruction to the analysis's stack.
-func permute(op byte, st []val) ([]val, error) {
-	n := len(st)
-	get := func(k int) val { return st[n-1-k] }
-	if n == 0 {
-		return nil, errors.New("stack underflow")
-	}
-	need := func(k int) error {
-		if n < k {
-			return errors.New("stack underflow")
-		}
-		return nil
-	}
-	var out []val
-	switch op {
-	case cf.DUP:
-		out = append(st, get(0))
-	case cf.SWAP:
-		if err := need(2); err != nil {
-			return nil, err
-		}
-		out = append(st[:n-2:n-2], get(0), get(1))
-	case cf.DUP_X1:
-		if err := need(2); err != nil {
-			return nil, err
-		}
-		out = append(st[:n-2:n-2], get(0), get(1), get(0))
-	case cf.DUP_X2:
-		if err := need(2); err != nil {
-			return nil, err
-		}
-		if get(1).size == 2 {
-			out = append(st[:n-2:n-2], get(0), get(1), get(0))
-			break
-		}
-		if err := need(3); err != nil {
-			return nil, err
-		}
-		out = append(st[:n-3:n-3], get(0), get(2), get(1), get(0))
-	case cf.DUP2:
-		if get(0).size == 2 {
-			out = append(st, get(0))
-			break
-		}
-		if err := need(2); err != nil {
-			return nil, err
-		}
-		out = append(st, get(1), get(0))
-	case cf.DUP2_X1:
-		if err := need(2); err != nil {
-			return nil, err
-		}
-		if get(0).size == 2 {
-			out = append(st[:n-2:n-2], get(0), get(1), get(0))
-			break
-		}
-		if err := need(3); err != nil {
-			return nil, err
-		}
-		out = append(st[:n-3:n-3], get(1), get(0), get(2), get(1), get(0))
-	case cf.DUP2_X2:
-		if err := need(2); err != nil {
-			return nil, err
-		}
-		switch {
-		case get(0).size == 2 && get(1).size == 2:
-			out = append(st[:n-2:n-2], get(0), get(1), get(0))
-		case get(0).size == 2:
-			if err := need(3); err != nil {
-				return nil, err
-			}
-			out = append(st[:n-3:n-3], get(0), get(2), get(1), get(0))
-		default:
-			if err := need(3); err != nil {
-				return nil, err
-			}
-			if get(2).size == 2 {
-				out = append(st[:n-3:n-3], get(1), get(0), get(2), get(1), get(0))
-				break
-			}
-			if err := need(4); err != nil {
-				return nil, err
-			}
-			out = append(st[:n-4:n-4], get(1), get(0), get(3), get(2), get(1), get(0))
-		}
-	}
-	return out, nil
 }
 
 // ReturnsSuspended reports whether a suspend function's body returns the

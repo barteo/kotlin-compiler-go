@@ -140,7 +140,7 @@ func isClassBound(b types.Type) bool {
 // says. ref is the type as written, if known, whose annotations
 // @JvmSuppressWildcards and @JvmWildcard change that.
 func (w *sigWriter) typ(t types.Type, ref *syntax.TypeRef, m wildMode) {
-	if box, ok := types.Boxes[t.K]; ok {
+	if box := boxClass(t.K); box != "" {
 		w.WriteString("L" + box + ";")
 		return
 	}
@@ -449,7 +449,7 @@ func (w *sigWriter) member(p sigPart, d string, m wildMode) {
 // result as the mode's for results. It is also "" if params don't match
 // desc's.
 func methodSig(tps []*types.TypeParamSym, params []sigPart, ret sigPart, desc string, skip int, m wildMode) string {
-	ds := descParams(desc)
+	ds := cf.DescParams(desc)
 	if len(ds) != skip+len(params) {
 		return ""
 	}
@@ -461,7 +461,7 @@ func methodSig(tps []*types.TypeParamSym, params []sigPart, ret sigPart, desc st
 		w.member(p, ds[skip+i], m)
 	}
 	w.WriteByte(')')
-	r := desc[strings.IndexByte(desc, ')')+1:]
+	r := cf.RetDesc(desc)
 	rm := inResult
 	if m == suppressed {
 		rm = suppressed
@@ -614,7 +614,7 @@ func (g *gen) signAccessor(mr cf.MemberRef, t types.Type, ref *syntax.TypeRef, d
 		parts = append(parts, typedPart(p.Type, r))
 	}
 	var s string
-	if len(descParams(d)) == len(ctx) { // a getter's
+	if len(cf.DescParams(d)) == len(ctx) { // a getter's
 		s = methodSig(nil, parts, typedPart(t, ref), d, 0, m)
 	} else {
 		s = methodSig(nil, append(parts, typedPart(t, ref)), sigPart{t: types.UnitType}, d, 0, m)

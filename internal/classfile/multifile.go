@@ -37,18 +37,13 @@ func (c *Class) AddDelegates(part *Class) error {
 			c.Throws(m.excNames...)
 		}
 		code.Line(1)
-		for _, pd := range descParams(m.descriptor) {
+		for _, pd := range DescParams(m.descriptor) {
 			slot := code.AllocLocal(pd)
-			code.Local(kindOp(pd, ILOAD), slot)
+			code.Local(KindOf(pd).Load, slot)
 			code.NameLocal(slot, m.code.paramName(slot))
 		}
 		code.Invoke(INVOKESTATIC, part.Name, m.nameStr, m.descriptor)
-		switch ret := m.descriptor[strings.IndexByte(m.descriptor, ')')+1:]; ret {
-		case "V":
-			code.Op(RETURN)
-		default:
-			code.Op(kindOp(ret, IRETURN))
-		}
+		code.Op(KindOf(RetDesc(m.descriptor)).Return)
 		if err := code.Err(); err != nil {
 			return err
 		}
@@ -65,39 +60,6 @@ func (c *Code) paramName(slot int) string {
 		}
 	}
 	return ""
-}
-
-// descParams splits a method descriptor's parameter types.
-func descParams(d string) []string {
-	var out []string
-	for i := 1; d[i] != ')'; {
-		j := i
-		for d[j] == '[' {
-			j++
-		}
-		if d[j] == 'L' {
-			j = i + strings.IndexByte(d[i:], ';')
-		}
-		out = append(out, d[i:j+1])
-		i = j + 1
-	}
-	return out
-}
-
-// kindOp returns the instruction of the family of op, ILOAD or IRETURN,
-// for a value of type descriptor d.
-func kindOp(d string, op byte) byte {
-	switch d[0] {
-	case 'J':
-		return op + 1
-	case 'F':
-		return op + 2
-	case 'D':
-		return op + 3
-	case 'L', '[':
-		return op + 4
-	}
-	return op
 }
 
 // utf8At returns the string of Utf8 constant i.

@@ -161,25 +161,8 @@ func (p *sigParser) skipRef() {
 func (p *sigParser) javaType() types.Type {
 	c := p.peek()
 	p.i++
-	switch c {
-	case 'I':
-		return types.IntType
-	case 'J':
-		return types.LongType
-	case 'D':
-		return types.DoubleType
-	case 'Z':
-		return types.BoolType
-	case 'V':
-		return types.UnitType
-	case 'C':
-		return types.CharType
-	case 'F':
-		return types.FloatType
-	case 'B':
-		return types.ByteType
-	case 'S':
-		return types.ShortType
+	if k := types.DescKind(c); k != types.Invalid {
+		return types.Type{K: k} // a primitive, or V
 	}
 	p.i--
 	return p.refType()
@@ -268,10 +251,8 @@ func (t *classTable) classType(name string, args []types.Arg) types.Type {
 	case "java/lang/Object":
 		return types.AnyType.Platform()
 	}
-	for k, box := range boxes {
-		if name == box {
-			return types.Type{K: k}.Nullable().Platform()
-		}
+	if k := types.BoxKind(name); k != types.Invalid {
+		return types.Type{K: k}.Nullable().Platform()
 	}
 	c := t.class(name)
 	if c == nil {

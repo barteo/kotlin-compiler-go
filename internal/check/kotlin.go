@@ -974,22 +974,7 @@ func kNoInfer(t *kmeta.Type) bool {
 
 // jvmParams splits a method descriptor's parameter types, and returns
 // its result type.
-func jvmParams(d string) ([]string, string) {
-	var out []string
-	i := 1
-	for d[i] != ')' {
-		j := i
-		for d[j] == '[' {
-			j++
-		}
-		if d[j] == 'L' {
-			j += strings.IndexByte(d[j:], ';')
-		}
-		out = append(out, d[i:j+1])
-		i = j + 1
-	}
-	return out, d[i+1:]
-}
+func jvmParams(d string) ([]string, string) { return classfile.DescParams(d), classfile.RetDesc(d) }
 
 // boxedOnJVM returns t as the type of a JVM value of type jvm: a Kotlin
 // Int is a java.lang.Integer where the method overrides a generic one,
@@ -1772,18 +1757,11 @@ func erasedDesc(kt *kmeta.Type) string {
 		return "[Ljava/lang/Object;"
 	}
 	if kt.Nullable {
-		if box, ok := kotlinBoxes[kt.Class]; ok {
+		if box := types.PrimOf(types.IDKind(kt.Class)).Box; box != "" {
 			return "L" + box + ";"
 		}
 	}
 	return kmeta.MapClass(kt.Class)
-}
-
-// kotlinBoxes are the box classes of Kotlin's primitive types, by class id.
-var kotlinBoxes = map[string]string{
-	"kotlin/Int": "java/lang/Integer", "kotlin/Long": "java/lang/Long", "kotlin/Double": "java/lang/Double",
-	"kotlin/Boolean": "java/lang/Boolean", "kotlin/Char": "java/lang/Character", "kotlin/Float": "java/lang/Float",
-	"kotlin/Byte": "java/lang/Byte", "kotlin/Short": "java/lang/Short",
 }
 
 // builtinSig returns the JVM name and descriptor of a member of a
