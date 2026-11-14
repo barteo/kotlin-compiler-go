@@ -2570,7 +2570,7 @@ tests/delegatedProperty/nonDefaultAccessors.kt	rejects invalid	on an expected li
 tests/delegatedProperty/privateFinalSetterOnOpenDelegatedVar.kt	rejects invalid	on an expected line	
 tests/delegatedProperty/propertyDefferedType.kt	rejects invalid	on an expected line	
 tests/delegatedProperty/provideDelegate/commonCaseForInference.kt	accepts valid		
-tests/delegatedProperty/provideDelegate/commonSupertype.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	commonSupertype.kt:16: cannot infer type for type parameter 'X'. Specify it explicitly.
+tests/delegatedProperty/provideDelegate/commonSupertype.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	commonSupertype.kt:16: cannot infer type for type parameter 'Y'. Specify it explicitly.
 tests/delegatedProperty/provideDelegate/genericProvideDelegate.kt	accepts valid		
 tests/delegatedProperty/provideDelegate/hostAndReceiver1.kt	rejects invalid	on an expected line	
 tests/delegatedProperty/provideDelegate/hostAndReceiver2.kt	rejects invalid	on an expected line	
@@ -3659,7 +3659,7 @@ tests/generics/innerClasses/substitutedMemberScope.kt	rejects invalid	on an expe
 tests/generics/invalidArgumentsNumberInWhere.kt	rejects invalid	on an expected line	
 tests/generics/kt1575-Class.kt	accepts valid		
 tests/generics/kt1575-Function.kt	accepts valid		
-tests/generics/kt30590.kt	accepts invalid	CANNOT_INFER_PARAMETER_TYPE	kt30590.kt:8: CANNOT_INFER_PARAMETER_TYPE
+tests/generics/kt30590.kt	rejects invalid	on an expected line	
 tests/generics/kt34729.kt	rejects invalid	on an expected line	
 tests/generics/kt53656.kt	rejects invalid	on an expected line	
 tests/generics/kt5508.kt	rejects invalid	on an expected line	
@@ -4097,7 +4097,7 @@ tests/inference/completion/postponedArgumentsAnalysis/lambdasInTryCatch.kt	accep
 tests/inference/completion/postponedArgumentsAnalysis/notInferableParameterOfAnonymousFunction.kt	rejects invalid	on an expected line	
 tests/inference/completion/postponedArgumentsAnalysis/takingExtensibilityFromDeclarationOfAnonymousFunction.kt	accepts valid		
 tests/inference/completion/postponedArgumentsAnalysis/wrongVariableFixationOrder.kt	accepts valid		
-tests/inference/completion/postponedArgumentsAnalysis/wrongVariableFixationOrder2.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	wrongVariableFixationOrder2.kt:12: type mismatch: inferred type is Any but B was expected
+tests/inference/completion/postponedArgumentsAnalysis/wrongVariableFixationOrder2.kt	accepts valid		
 tests/inference/completion/transitiveConstraint.kt	accepts valid		
 tests/inference/completion/withExact.kt	rejects invalid	on an expected line	
 tests/inference/completionOfMultipleLambdas.kt	rejects invalid	on an expected line	
@@ -9018,7 +9018,7 @@ tests/typeParameters/destructuringDeclarations.kt	skip	LANGUAGE
 tests/typeParameters/destructuringDeclarationsOld.kt	skip	LANGUAGE	
 tests/typeParameters/dnnAsPropertyReceiver.kt	accepts valid		
 tests/typeParameters/dontIntersectUpperBoundWithExpectedType.kt	accepts valid		
-tests/typeParameters/dontLoseUpperNonExpectedTypeConstraints.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	dontLoseUpperNonExpectedTypeConstraints.kt:16: type mismatch: inferred type is ModOp<M, M> but ModOp<M, Z> was expected
+tests/typeParameters/dontLoseUpperNonExpectedTypeConstraints.kt	accepts valid		
 tests/typeParameters/extFunctionTypeAsUpperBound.kt	rejects invalid	on an expected line	
 tests/typeParameters/functionTypeAsUpperBound.kt	rejects invalid	on an expected line	
 tests/typeParameters/illFormed.kt	rejects invalid	on an expected line	

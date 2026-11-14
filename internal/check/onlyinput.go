@@ -49,6 +49,9 @@ func (s *system) onlyInputOK(tv *tvar, val types.Type) bool {
 	}
 	for _, cs := range [][]types.Type{tv.lower, tv.upper} {
 		for _, t := range cs {
+			if w := s.unfixedVar(t); w != nil && len(w.lits) > 0 && len(w.lower) == 0 {
+				continue // its literals, passed on to tv's (see fix)
+			}
 			t = s.apply(t)
 			if t.K == types.Invalid || t.HasVars() || t.HasParams() || t.Has(hasStar) || t.K == types.Nothing && !t.N {
 				return true

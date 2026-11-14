@@ -1,6 +1,8 @@
 package check
 
 import (
+	"fmt"
+	"os"
 	"slices"
 
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
@@ -58,6 +60,14 @@ type tvar struct {
 	// the code can give: openResult's. One without bounds, of a lambda
 	// whose body has errors, is the error type, without another error.
 	synth bool
+	// boundUp are the upper bounds that come from another variable's
+	// declared bound, which, as K2's DeclaredUpperBoundConstraintPosition,
+	// don't make the variable ready to fix.
+	boundUp []types.Type
+	// declUp are the upper bounds added from the declared bounds of the
+	// call's own type parameters, R <: T of <T : A, R : T>: a variable
+	// with no other constraints can't be inferred, as K2 has it.
+	declUp []types.Type
 }
 
 type inferError struct {
@@ -83,6 +93,9 @@ type system struct {
 	nest int
 	// contra counts the in-projected type arguments sub is inside of.
 	contra int
+	// declaring is set while the declared bounds of fresh variables are
+	// added (see tvar.declUp).
+	declaring int
 }
 
 func newSystem(c *Checker) *system {
@@ -127,7 +140,9 @@ func (s *system) fresh(ps []*types.TypeParamSym, base types.Subst, pos syntax.Po
 				return u.K == types.TypeVar && u.Param() != vs[i] && (s.byVar[u.Param()] != nil || s.c.stubs[u.Param()] != nil)
 			})
 			if other {
+				s.declaring++
 				s.addUpper(s.byVar[vs[i]], b)
+				s.declaring--
 			}
 		}
 	}
@@ -444,10 +459,17 @@ func (s *system) addLower(tv *tvar, t types.Type) {
 func (s *system) addUpper(tv *tvar, t types.Type) {
 	for _, u := range tv.upper {
 		if u == t {
+			if s.declaring == 0 {
+				// A constraint of the call's own, not only declared.
+				tv.declUp = slices.DeleteFunc(tv.declUp, func(d types.Type) bool { return d == t })
+			}
 			return
 		}
 	}
 	tv.upper = append(tv.upper, t)
+	if s.declaring > 0 {
+		tv.declUp = append(tv.declUp, t)
+	}
 	for _, l := range tv.lower {
 		s.sub(l, t)
 	}
@@ -457,6 +479,9 @@ func (s *system) addUpper(tv *tvar, t types.Type) {
 	if w := s.unfixedVar(t); w != nil && w != tv {
 		for _, b := range w.v.Bounds {
 			if b = s.apply(b); !b.HasVars() && !(b.K == types.Any && b.N) {
+				if !slices.Contains(tv.upper, b) {
+					tv.boundUp = append(tv.boundUp, b)
+				}
 				s.addUpper(tv, b)
 			}
 		}
@@ -574,9 +599,14 @@ func (s *system) complete() {
 			}
 			// An upper bound that is another variable, as T2 in T1 <: T2,
 			// is that variable's lower bound too, which is fixed first.
-			varUppers := 0
+			varUppers, boundUppers := 0, 0
 			for _, u := range tv.upper {
 				switch {
+				case slices.Contains(tv.boundUp, u) && s.proper(u):
+					// Known, but not one to make the variable ready
+					// before one with a constraint of the call's own.
+					boundUppers++
+					score = max(score, 1)
 				case s.proper(u):
 					score = max(score, 1)
 				case s.isVar(u):
@@ -592,7 +622,7 @@ func (s *system) complete() {
 				// K2's HAS_PROPER_FLEXIBLE_LOWER_CONSTRAINT.
 				score += 4
 			}
-			if allProper && (varUppers == 0 || len(tv.upper) > varUppers || len(tv.lower) > 0 || len(tv.lits) > 0) {
+			if allProper && (varUppers == 0 || len(tv.upper)-boundUppers > varUppers || len(tv.lower) > 0 || len(tv.lits) > 0) {
 				score += 3
 			}
 			if nested && score > 0 {
@@ -607,9 +637,32 @@ func (s *system) complete() {
 		if pick == nil {
 			return
 		}
+		if k2Readiness != "kc" {
+			var k2 *tvar
+			bestR := -1
+			for _, tv := range s.vars {
+				if !tv.fixed {
+					if r := s.readiness(tv); r > bestR {
+						k2, bestR = tv, r
+					}
+				}
+			}
+			if k2 != pick {
+				if k2Readiness == "log" {
+					fmt.Fprintf(os.Stderr, "READINESS %s: kc %s, K2 %s\n", pick.pos, pick.v.Name, k2.v.Name)
+				} else {
+					pick = k2
+				}
+			}
+		}
 		s.fix(pick)
 	}
 }
+
+// k2Readiness, from $KC_READINESS, keeps complete's own order of fixing
+// ("kc"), or keeps it and logs where K2's readiness order differs
+// ("log"); otherwise complete fixes variables in K2's order.
+var k2Readiness = os.Getenv("KC_READINESS")
 
 // isUpperOf reports whether tv is itself an upper bound of another
 // unfixed variable.
@@ -629,6 +682,18 @@ func (s *system) isUpperOf(tv *tvar) bool {
 
 // fix chooses a value for a variable from its known bounds.
 func (s *system) fix(tv *tvar) {
+	// An unfixed variable below it with only integer literals passes
+	// them on, as K2 incorporates ILT <: T1 and T1 <: T: T of both(id(1),
+	// id("")) has 1 and "" below.
+	for _, l := range tv.lower {
+		if w := s.unfixedVar(l); w != nil && w != tv && len(w.lits) > 0 && len(w.lower) == 0 {
+			for _, lit := range w.lits {
+				if !slices.Contains(tv.lits, lit) {
+					tv.lits = append(tv.lits, lit)
+				}
+			}
+		}
+	}
 	c := s.c
 	var lowers, uppers []types.Type
 	var stubs []types.Type
@@ -693,7 +758,18 @@ func (s *system) fix(tv *tvar) {
 	}
 	val := types.InvalidType
 	captured := false
+	declOnly := len(tv.lower) == 0 && len(tv.lits) == 0 && len(tv.upper) > 0 && !tv.star && !tv.synth &&
+		!slices.ContainsFunc(tv.upper, func(u types.Type) bool { return !slices.Contains(tv.declUp, u) })
+	if declOnly {
+		// A builder's variable is inferred from its lambda's stubs.
+		_, hinted := s.stubHint(tv)
+		declOnly = !hinted && len(s.c.stubs) == 0 && len(stubs) == 0 && len(upperStubs) == 0 && len(s.lambdas) == 0
+	}
 	switch {
+	case declOnly:
+		// Only its declared bounds: R of <T : A, R : T> in a call that
+		// gives neither.
+		s.errs = append(s.errs, inferError{tv.pos, "cannot infer type for type parameter '" + tv.v.Name + "'. Specify it explicitly."})
 	case len(lowers) > 0:
 		val = lowers[0]
 		for _, l := range lowers[1:] {
@@ -736,6 +812,10 @@ func (s *system) fix(tv *tvar) {
 			case !types.MayBeNull(val) && c.subtype(u.NonNull(), val):
 				val = u.NonNull() // Any and List<Any>? give List<Any>
 			case !types.MayBeNull(u) && c.subtype(val.NonNull(), u):
+				val = val.NonNull()
+			case u.IsParam() && !u.N && types.MayBeNull(val) && !c.subtype(val, u) && c.subtype(val.NonNull(), u):
+				// Z? and an M that may be null, for Z : M, give Z, below
+				// both, for K2's Z? & M.
 				val = val.NonNull()
 			}
 		}
@@ -837,6 +917,16 @@ func (s *system) fix(tv *tvar) {
 	s.vals[tv.v] = types.Arg{T: val}
 	if val.K == types.Invalid {
 		return
+	}
+	// A declared bound that mentions it is now the fixation's
+	// constraint, which K2 counts: T <: G of <G : Enum<G>, T : G> once G
+	// is known from the receiver.
+	for _, o := range s.vars {
+		if len(o.declUp) > 0 {
+			o.declUp = slices.DeleteFunc(o.declUp, func(u types.Type) bool {
+				return u.Has(func(w types.Type) bool { return w.K == types.TypeVar && w.Param() == tv.v })
+			})
+		}
 	}
 	switch {
 	case tv.capt.V != types.Inv:

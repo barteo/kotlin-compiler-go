@@ -177,6 +177,12 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   for an `Int` `o`. The common
   supertype of two builtin types is `Any`, or `Number` for numbers (for
   `Int` and `String`, Kotlin's is `Comparable<*> & Serializable`).
+- Variables are fixed in K2's readiness order, but their constraints
+  are bounds without K2's kinds and origins: an invariant argument is
+  two bounds rather than an equality, and of the origins only declared
+  bounds are told apart. A safe call passed to a generic call, whose
+  selector K2 completes on its own, is part of the outer call's system,
+  with its variables fixed first.
 - A lambda's parameter types are fixed from the constraints known when
   the lambda is reached; K2 picks the order from the whole system, so it
   infers some combinations of lambdas `kc` can't.

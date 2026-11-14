@@ -19,5 +19,5 @@ class Names : java.util.ArrayList<String>()
 fun subclass(n: Names) {
     n.contains("")
     n.remove(1) // remove(int index)
-    n.containsAll(listOf(1)) // ERROR type mismatch
+    n.containsAll(listOf(1)) // ERROR must be mentioned in input types
 }
