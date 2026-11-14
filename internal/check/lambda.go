@@ -1968,7 +1968,9 @@ func (c *Checker) stubInference(s *system, l *syntax.Lambda, params []types.Type
 	if c.stubs == nil {
 		c.stubs = map[*types.TypeParamSym]*stubRun{}
 	}
-	r := &stubRun{s: s, vars: vars}
+	r := &stubRun{s: s, vars: vars, depth: c.stubDepth}
+	c.stubDepth++
+	defer func() { c.stubDepth-- }()
 	for _, v := range vars {
 		c.stubs[v] = r
 	}
@@ -2160,6 +2162,11 @@ type stubRun struct {
 	// in Kotlin, BUILDER_INFERENCE_STUB_RECEIVER, also for a member of
 	// Any, which the check finds: get(0).hashCode() before add("ab").
 	recvs []stubRecv
+	// depth is the number of runs r is nested in.
+	depth int
+	// forks are the system's forks over r's variables alone (see
+	// system.stubFork), which fixAll resolves.
+	forks []fork
 }
 
 // stubRecv is a receiver of stub v at p: see stubRun.recvs.
@@ -2179,11 +2186,15 @@ func (c *Checker) joinRun(s *system) *stubRun {
 	if len(c.stubs) == 0 {
 		return nil
 	}
+	// Of nested builders' runs, the innermost: its variables are fixed
+	// first, and the outer run then joins the call's check with them
+	// fixed, select(this@build.get(), get()) in build { build2 { } }.
 	var r *stubRun
 	isStub := func(u types.Type) bool {
 		if u.K == types.TypeVar && s.byVar[u.Param()] == nil && c.stubs[u.Param()] != nil {
-			r = c.stubs[u.Param()]
-			return true
+			if q := c.stubs[u.Param()]; r == nil || q.depth > r.depth {
+				r = q
+			}
 		}
 		return false
 	}
@@ -2193,10 +2204,11 @@ func (c *Checker) joinRun(s *system) *stubRun {
 			continue
 		}
 		for _, b := range append(tv.lower[:len(tv.lower):len(tv.lower)], tv.upper...) {
-			if s.apply(b).Has(isStub) {
-				return r
-			}
+			s.apply(b).Has(isStub)
 		}
+	}
+	if r != nil {
+		return r
 	}
 	for _, run := range c.stubs {
 		for _, k := range run.cons {
@@ -2261,6 +2273,42 @@ func (r *stubRun) fixAll() (*system, [][2]types.Type) {
 		j.fixups, j.errs, j.lambdas = nil, nil, nil
 		trial.merge(j)
 	}
+	// An outer builder's stub that a bound has is a variable here too,
+	// as in K2's one system for nested builders: its run's system and
+	// constraints join the copy, though r fixes only its own.
+	var outers []*stubRun
+	for _, v := range r.extra {
+		tv := trial.byVar[v]
+		if tv == nil {
+			continue
+		}
+		for _, b := range append(tv.lower[:len(tv.lower):len(tv.lower)], tv.upper...) {
+			b.Has(func(u types.Type) bool {
+				if u.K == types.TypeVar && trial.byVar[u.Param()] == nil {
+					if q := saved[u.Param()]; q != nil && q.depth < r.depth && !slices.Contains(outers, q) {
+						outers = append(outers, q)
+					}
+				}
+				return false
+			})
+		}
+	}
+	for _, q := range outers {
+		trial.merge(q.s.clone())
+		for _, j := range q.joined {
+			if j = j.clone(); trial.byVar[j.vars[0].v] == nil {
+				j.fixups, j.errs, j.lambdas = nil, nil, nil
+				trial.merge(j)
+			}
+		}
+	}
+	for _, q := range outers {
+		for _, k := range q.cons {
+			if k[0] != k[1] && trial.owns(k[0]) && trial.owns(k[1]) && !(k[1].K == types.Any && k[1].N) {
+				trial.sub(k[0], k[1])
+			}
+		}
+	}
 	// A joined variable's bound that is a variable of r's bounds that one
 	// too, as sub relates two variables of a system: shareTypeInfo(42,
 	// materialize())'s T <: FT is FT's too, which T's literal then gives.
@@ -2304,6 +2352,9 @@ func (r *stubRun) fixAll() (*system, [][2]types.Type) {
 	for _, k := range useful {
 		trial.sub(k[0], k[1])
 	}
+	trial.forks = append(trial.forks, r.forks...)
+	trial.wholeForks = true
+	trial.resolveForks()
 	for _, v := range r.vars {
 		trial.fixVarsIn(types.VarType(v))
 	}

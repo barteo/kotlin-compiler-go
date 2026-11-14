@@ -464,7 +464,25 @@ func (c *Checker) narrowSym(x syntax.Expr) *types.VarSym {
 // T leaves a T & Any (see declaredIfNull). An interface unrelated to a
 // class type gives their intersection, as in Kotlin: an a: A? that is a B
 // is an A & B, whatever expression it is passed through.
+// otherInstance reports whether b is, or is a subclass of, another
+// instance of generic class type a's class than a.
+func (c *Checker) otherInstance(b, a types.Type) bool {
+	if b.C == a.C {
+		return b.A != nil && !c.subtype(b, a)
+	}
+	sup, ok := c.asSuper(b, a.C)
+	return ok && sup.A != nil && !c.subtype(sup, a)
+}
+
 func (c *Checker) isNarrowed(cur, t types.Type) types.Type {
+	return c.narrowedTo(cur, t, true)
+}
+
+// narrowedTo is isNarrowed; subclass is whether a subclass of another
+// instance of cur's generic class is intersected with cur, as after an
+// is or a cast, not an identity, which kc's overload resolution by a
+// lambda's result would then see differently from K2's.
+func (c *Checker) narrowedTo(cur, t types.Type, subclass bool) types.Type {
 	if c.subtype(cur.NonNull(), t) {
 		if types.MayBeNull(t) {
 			if t.IsParam() && !c.subtype(cur, t) && (c.subtype(t, cur) || cur.K == types.Null || cur.K == types.Nothing) {
@@ -485,10 +503,12 @@ func (c *Checker) isNarrowed(cur, t types.Type) types.Type {
 	if i, ok := c.paramIntersection(cur, t); ok {
 		return i
 	}
-	if a, b := cur.Flex().NonNull(), t.NonNull(); a.K == types.Class && b.K == types.Class && a.C == b.C && a.A != nil && b.A != nil && !c.subtype(b, a) {
+	if a, b := cur.Flex().NonNull(), t.NonNull(); a.K == types.Class && b.K == types.Class && a.A != nil && (subclass || a.C == b.C) && c.otherInstance(b, a) {
 		// Two instances of a generic class, Inv<T> & Inv<A> for an f of
 		// Inv<T> after f as Inv<A>, the cast's type first: K2's fork of
-		// them takes the first that leaves no errors.
+		// them takes the first that leaves no errors; so is a subclass
+		// of another instance, B & A<T> for an a of A<T> after a is B, for
+		// a B : A<Int>.
 		i := c.intersect([]types.Type{b, a})
 		if types.MayBeNull(t) && types.MayBeNull(cur) {
 			i = i.Nullable()

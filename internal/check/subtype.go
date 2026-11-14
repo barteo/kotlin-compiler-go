@@ -91,6 +91,11 @@ func (c *Checker) subtype1(t, u types.Type) bool {
 		if len(t.Param().Bounds) == 0 {
 			return u.K == types.Any
 		}
+		if t.IsIntersection() && u.K == types.Class && c.hasStub(u) && c.forkOverStubs(t, u) {
+			// Instances of a builder's variables' class that differ: its
+			// run's fork chooses one (see system.stubFork), none here.
+			return true
+		}
 		for _, b := range t.Param().Bounds {
 			if c.subtype(b.NonNull(), u) {
 				return true
@@ -514,6 +519,19 @@ func (c *Checker) commonSuper(a, b types.Type, depth int) types.Type {
 			rs = slices.DeleteFunc(rs, func(o types.Type) bool { return c.subtype(r, o) })
 			rs = append(rs, r)
 		}
+		// A component that b is a subtype of, common to both, first: A<T>
+		// of B & A<T> and C & A<T>.
+		slices.SortStableFunc(rs, func(x, y types.Type) int {
+			ex := slices.Contains(a.Param().Bounds, x) && c.subtype(b, x)
+			ey := slices.Contains(a.Param().Bounds, y) && c.subtype(b, y)
+			switch {
+			case ex && !ey:
+				return -1
+			case ey && !ex:
+				return 1
+			}
+			return 0
+		})
 		switch {
 		case len(rs) == 0:
 			return types.AnyType
@@ -783,4 +801,16 @@ func (c *Checker) boundClasses(t types.Type, out []*types.ClassSym, depth int) [
 		}
 	}
 	return out
+}
+
+// forkOverStubs reports whether components of intersection t are
+// different instances of class type u's class.
+func (c *Checker) forkOverStubs(t, u types.Type) bool {
+	var sups []types.Type
+	for _, comp := range t.Param().Bounds {
+		if sup, ok := c.asSuper(comp.NonNull(), u.C); ok && !slices.Contains(sups, sup) {
+			sups = append(sups, sup)
+		}
+	}
+	return len(sups) > 1
 }

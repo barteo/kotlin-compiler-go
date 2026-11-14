@@ -1706,7 +1706,7 @@ func (c *Checker) identNarrows(x *syntax.Binary) []narrow {
 			out = append(out, k)
 			continue
 		}
-		k.t = c.isNarrowed(k.t, ot)
+		k.t = c.narrowedTo(k.t, ot, false)
 		out = append(out, k)
 	}
 	return out

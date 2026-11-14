@@ -216,6 +216,8 @@ type Checker struct {
 	// if or when, which, as K2's synthetic call's postponed arguments, may
 	// take an expected receiver as their first parameter.
 	branchLambdas map[*syntax.Lambda]bool
+	// stubDepth is the number of stubInference runs in progress.
+	stubDepth int
 	// shadowed are the calls whose implicit receiver a context parameter
 	// shadows, reported once checked (see receiverShadowed).
 	shadowed map[syntax.Expr]shadowedUse

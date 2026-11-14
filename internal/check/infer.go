@@ -98,6 +98,11 @@ type system struct {
 	declaring int
 	// forks are the fork points not resolved yet (see fork).
 	forks []fork
+	// wholeForks is set where a fork's branch is taken only if the whole
+	// system then holds (see solves): in a builder's run, whose forks K2
+	// resolves once its lambda is analyzed. Elsewhere the first branch
+	// that its own constraints allow is.
+	wholeForks bool
 }
 
 // fork is K2's fork point: an intersection below a class type through
@@ -165,7 +170,7 @@ func (s *system) clone() *system {
 	}
 	n := &system{c: s.c, byVar: make(map[*types.TypeParamSym]*tvar, len(s.vars)), vals: make(types.Subst, len(s.vals)),
 		fixups: append([]func(*system){}, s.fixups...), errs: append([]inferError{}, s.errs...), ok: s.ok,
-		lambdas: append([]pendingLambda{}, s.lambdas...), forks: slices.Clip(s.forks)}
+		lambdas: append([]pendingLambda{}, s.lambdas...), forks: slices.Clip(s.forks), wholeForks: s.wholeForks}
 	for _, tv := range s.vars {
 		c := *tv
 		c.lower = append([]types.Type{}, tv.lower...)
@@ -206,6 +211,11 @@ func (s *system) merge(o *system) {
 // constraints are consistent with the others, or the first
 // (applyTheBestBranchFromForkPoint).
 func (s *system) resolveForks() {
+	if len(s.forks) > 0 && s.c.joinRun(s) != nil {
+		// Related to a builder's variables: its run resolves them, with
+		// all its lambda's constraints, without recording each branch's.
+		return
+	}
 	for len(s.forks) > 0 && s.ok {
 		f := s.forks[0]
 		s.forks = s.forks[1:]
@@ -213,7 +223,7 @@ func (s *system) resolveForks() {
 		for _, sup := range f.sups {
 			t := s.clone()
 			t.subArgs(sup, f.b)
-			if t.ok {
+			if t.ok && (!s.wholeForks || t.solves()) {
 				*s = *t
 				chosen = true
 				break
@@ -223,6 +233,38 @@ func (s *system) resolveForks() {
 			s.subArgs(f.sups[0], f.b)
 		}
 	}
+}
+
+// solves reports whether a copy of s, its lambdas left out, completes
+// without errors: T <: S of a builder's yield(w) with F := Int and F = S
+// doesn't.
+func (s *system) solves() bool {
+	t := s.clone()
+	t.lambdas, t.fixups = nil, nil
+	n := len(t.errs)
+	t.complete()
+	return t.ok && len(t.errs) == n
+}
+
+// stubFork returns the run of stubInference's whose variables are all
+// that b, a fork's supertype, has, if they are a run's and none is s's.
+func (s *system) stubFork(b types.Type) *stubRun {
+	var r *stubRun
+	ok := !b.Has(func(u types.Type) bool {
+		if u.K != types.TypeVar {
+			return false
+		}
+		q := s.c.stub(u)
+		if q == nil || s.byVar[u.Param()] != nil || r != nil && q != r {
+			return true
+		}
+		r = q
+		return false
+	})
+	if !ok {
+		return nil
+	}
+	return r
 }
 
 // forkSups returns the instances of b's class of the components of
@@ -357,6 +399,12 @@ func (s *system) sub(a, b types.Type) {
 		case types.Class:
 			if a.IsIntersection() && b.HasVars() {
 				if sups := s.forkSups(a, b); sups != nil {
+					if r := s.stubFork(b); r != nil {
+						// Over a builder's variables alone: its run
+						// resolves it with all the lambda's constraints.
+						r.forks = append(r.forks, fork{sups, b})
+						return
+					}
 					s.forks = append(s.forks, fork{sups, b})
 					return
 				}

@@ -4427,10 +4427,10 @@ tests/inference/pcla/changingResolveIfDontUseBuilderInference.kt	rejects invalid
 tests/inference/pcla/considerContractsOfIncompleteCalls.kt	accepts valid		
 tests/inference/pcla/constraints/violating.kt	rejects invalid	elsewhere	
 tests/inference/pcla/contextParameters.kt	accepts valid		
-tests/inference/pcla/csForks/postponingForksNecessary.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	postponingForksNecessary.kt:25: cannot infer type for type parameter 'S'. Specify it explicitly.
-tests/inference/pcla/csForks/postponingForksNecessaryWithLambda.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	postponingForksNecessaryWithLambda.kt:25: cannot infer type for type parameter 'S'. Specify it explicitly.
+tests/inference/pcla/csForks/postponingForksNecessary.kt	accepts valid		
+tests/inference/pcla/csForks/postponingForksNecessaryWithLambda.kt	accepts valid		
 tests/inference/pcla/csForks/relatedToOuter.kt	rejects invalid	on an expected line	
-tests/inference/pcla/csForks/relatedToOuterGreen.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	relatedToOuterGreen.kt:32: cannot infer type for type parameter 'S'. Specify it explicitly.
+tests/inference/pcla/csForks/relatedToOuterGreen.kt	accepts valid		
 tests/inference/pcla/csForks/simple.kt	rejects invalid	on an expected line	
 tests/inference/pcla/csForks/simpleGreen.kt	accepts valid		
 tests/inference/pcla/doubleSquareBracketsInBuilderArgument.kt	skip	LANGUAGE	
@@ -4710,16 +4710,16 @@ tests/inference/pcla/specialCallsWithCallableReferencesNonStrictOnlyInputTypes.k
 tests/inference/pcla/specialCallsWithLambdas.kt	rejects invalid	on an expected line	
 tests/inference/pcla/stubTypes/capturedTypes.kt	accepts invalid	CANNOT_INFER_PARAMETER_TYPE; ARGUMENT_TYPE_MISMATCH	main.kt:31: CANNOT_INFER_PARAMETER_TYPE
 tests/inference/pcla/stubTypes/capturedTypesId.kt	rejects invalid	elsewhere	
-tests/inference/pcla/stubTypes/commonSuperType.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	main.kt:21: cannot infer type for type parameter 'R'. Specify it explicitly.
+tests/inference/pcla/stubTypes/commonSuperType.kt	accepts valid		
 tests/inference/pcla/stubTypes/commonSuperTypeContravariant.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	main.kt:24: cannot infer type for type parameter 'R1'. Specify it explicitly.
-tests/inference/pcla/stubTypes/commonSuperTypeCovariant.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	main.kt:24: cannot infer type for type parameter 'R1'. Specify it explicitly.
+tests/inference/pcla/stubTypes/commonSuperTypeCovariant.kt	accepts valid		
 tests/inference/pcla/stubTypes/commonSuperTypeInvariant.kt	rejects invalid	on an expected line	
-tests/inference/pcla/stubTypes/commonSuperTypeNullable.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	main.kt:21: cannot infer type for type parameter 'R'. Specify it explicitly.
-tests/inference/pcla/stubTypes/intersect.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	main.kt:21: cannot infer type for type parameter 'R1'. Specify it explicitly.
+tests/inference/pcla/stubTypes/commonSuperTypeNullable.kt	accepts valid		
+tests/inference/pcla/stubTypes/intersect.kt	accepts valid		
 tests/inference/pcla/stubTypes/memberScope.kt	rejects invalid	on an expected line	
 tests/inference/pcla/stubTypes/nullability.kt	accepts valid		
 tests/inference/pcla/stubTypes/renderingStubTypes.kt	accepts valid		
-tests/inference/pcla/stubTypes/simpleIntersection.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	simpleIntersection.kt:12: cannot infer type for type parameter 'R1'. Specify it explicitly.
+tests/inference/pcla/stubTypes/simpleIntersection.kt	accepts valid		
 tests/inference/pcla/stubTypes/stubTypeReceiverRestriction.kt	skip	LANGUAGE	
 tests/inference/pcla/stubTypes/stubTypeReceiverRestrictionDisabled.kt	skip	LANGUAGE	
 tests/inference/pcla/substitutedSyntheticPropertyUsage.kt	accepts valid		

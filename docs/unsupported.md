@@ -21,10 +21,16 @@ own tests.
   path, the standard library's included, aren't read from class files.
   The class path's functions and members deprecated `HIDDEN` stay hidden,
   as `kotlinc` compiles them synthetic, but its classes don't.
-- Builder inference of a builder nested in another whose lambda combines
-  values of both builders' variables, as `select(this@outer.get(),
-  get())`, and where Kotlin forks the constraint system for a call in the
-  lambda: it needs a type argument or an expected type.
+- Builder inference isn't K2's PCLA: a builder's lambda is checked with
+  its variables unfixed and then again with them fixed. A call in a
+  nested builder that combines both builders' variables, as
+  `select(this@outer.get(), get())`, is inferred with the inner
+  builder's first, the outer one's in the system but left unfixed, and
+  again with the outer one's. A variable both below and above a
+  builder's variable, as `E` of `select(x: E, y: In<E?>)` for
+  `select(get(), getIn())`, isn't inferred: it needs a type argument
+  or an expected type. A fork of the constraint system over a builder's
+  variables waits for its lambda's constraints.
 
 ## Without the standard library
 
@@ -162,7 +168,9 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   interface, or of such an intersection to another (`C & A & B`),
   smart casts of a value of a type parameter's type to a class
   type or `String` (`String & T`), identity or safe equality of two
-  generic class types or a cast of one to the other (`Box<T> & Box<A>`), and incomparable upper bounds of a
+  generic class types or a cast of one to the other (`Box<T> & Box<A>`),
+  an `is` check or cast of one to a subclass of another instance
+  (`B & A<T>` for a `B : A<Int>`), and incomparable upper bounds of a
   variable. Other smart casts are to the target type alone: a class type
   of a generic or Java type, a type parameter to another. A call on an
   intersection takes the first component with a member of the name
