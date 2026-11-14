@@ -4514,7 +4514,7 @@ tests/inference/pcla/fixationOnDemand/syntaxForms/TypeCheckExpression.kt	rejects
 tests/inference/pcla/fixationOnDemand/syntaxForms/UnarySignOperatorCall.kt	rejects invalid	elsewhere	
 tests/inference/pcla/fixationOnDemand/syntaxForms/ValueEqualityOperatorCall.kt	accepts valid		
 tests/inference/pcla/fixationOnDemand/syntaxForms/WhenExpression.kt	rejects invalid	elsewhere	
-tests/inference/pcla/fixingDependentVariablesForReceivers.kt	rejects invalid	elsewhere	
+tests/inference/pcla/fixingDependentVariablesForReceivers.kt	rejects invalid	on an expected line	
 tests/inference/pcla/fixingDependentVariablesForReceiversInitial.kt	accepts valid		
 tests/inference/pcla/fixingTVForLambadaWithShallowDependencyToOuter.kt	rejects invalid	elsewhere	
 tests/inference/pcla/fixingTVForLambadaWithShallowDependencyToOuter2.kt	rejects invalid	elsewhere	
@@ -5647,7 +5647,7 @@ tests/javac/typeParameters/InnerWithTypeParameter.kt	accepts valid
 tests/javac/typeParameters/NestedWithInner.kt	accepts valid		
 tests/javac/typeParameters/SeveralInnersWithTypeParameters.kt	accepts valid		
 tests/javac/typeParameters/TypeParametersInInnerAndOuterWithSameNames.kt	accepts valid		
-tests/jvm/classpath/classFromJdkInLibrary.kt	codegen error	harness error	javac: exit status 1 m0/src/java/util/Date.java:1: error: package exists in another module: java.base package java.util; ^ 1 error 
+tests/jvm/classpath/classFromJdkInLibrary.kt	codegen error	harness error	javac: exit status 1 /tmp/kc-conformance/5648/m0/src/java/util/Date.java:1: error: package exists in another module: java.base package java.util; ^ 1 error 
 tests/jvm/classpath/dependencyOnItself.kt	accepts valid		
 tests/jvm/classpath/prohibitNestedClassesByDollarName.kt	accepts invalid	UNRESOLVED_REFERENCE	main.kt:6: UNRESOLVED_REFERENCE
 tests/jvm/classpath/sameLibraryTwiceInClasspath.kt	accepts valid		
