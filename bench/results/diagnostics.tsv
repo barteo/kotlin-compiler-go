@@ -4243,7 +4243,7 @@ tests/inference/forks/failForkPointWhenNoneOfThemSuccessfulFeatureDisabled.kt	sk
 tests/inference/forks/forkInWhen.kt	accepts valid		
 tests/inference/forks/kt75444Original.kt	rejects invalid	on an expected line	
 tests/inference/forks/nestedCallVariableFixation.kt	accepts valid		
-tests/inference/forks/nestedCallVariableFixationSimple.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	nestedCallVariableFixationSimple.kt:10: cannot infer type for type parameter 'A'. Specify it explicitly.
+tests/inference/forks/nestedCallVariableFixationSimple.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	nestedCallVariableFixationSimple.kt:10: type mismatch: inferred type is MyPair<F, F> but MyPair<String, String> was expected
 tests/inference/forks/overloadResolutionByLambdaReturnTypeAndExpectedType.kt	rejects invalid	on an expected line	
 tests/inference/functionPlaceholderError.kt	rejects invalid	on an expected line	
 tests/inference/genericAssignmentOperator.kt	rejects valid	operator '_' cannot be applied to Int and R<<error>>	genericAssignmentOperator.kt:9: operator '+=' cannot be applied to Int and R<<error>>
@@ -5647,7 +5647,7 @@ tests/javac/typeParameters/InnerWithTypeParameter.kt	accepts valid
 tests/javac/typeParameters/NestedWithInner.kt	accepts valid		
 tests/javac/typeParameters/SeveralInnersWithTypeParameters.kt	accepts valid		
 tests/javac/typeParameters/TypeParametersInInnerAndOuterWithSameNames.kt	accepts valid		
-tests/jvm/classpath/classFromJdkInLibrary.kt	codegen error	harness error	javac: exit status 1 Picked up JAVA_TOOL_OPTIONS: -Djavax.net.ssl.trustStore=/etc/ssl/certs/java/cacerts -Djavax.net.ssl.trustStoreType=JKS -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=41947 -Dhttp.nonProxyHosts=localhost|127.0.0.1|::1|127.*|0.*|::|169.254.*|api.anthropic.com|api-staging.anthropic.com|api-pr-preview.anthropic.com|mcp-proxy.anthropic.com|mcp-proxy-staging.anthropic.com|registry.npmjs.org|jsr.io|npm.jsr.io|pypi.org|files.pythonhosted.org|index.crates.io|proxy.golang.org|host.docker.internal|10.*|172.16.*|172.17.*|172.18.*|172.19.*|172.20.*|172.21.*|172.22.*|172.23.*|172.24.*|172.25.*|172.26.*|172.27.*|172.28.*|172.29.*|172.30.*|172.31.*|192.168.*|100.64.0.0/10|*.svc.cluster.local|*.svc.cluster.local -Djdk.http.auth.tunneling.disabledSchemes= -Djdk.http.auth.proxying.disabledSchemes= /tmp/kc-conformance/5648/m0/src/java/util/Date.java:1: error: package exists in another module: java.base package java.util; ^ 1 error 
+tests/jvm/classpath/classFromJdkInLibrary.kt	codegen error	harness error	javac: exit status 1 Picked up JAVA_TOOL_OPTIONS: -Djavax.net.ssl.trustStore=/etc/ssl/certs/java/cacerts -Djavax.net.ssl.trustStoreType=JKS -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=32945 -Dhttp.nonProxyHosts=localhost|127.0.0.1|::1|127.*|0.*|::|169.254.*|api.anthropic.com|api-staging.anthropic.com|api-pr-preview.anthropic.com|mcp-proxy.anthropic.com|mcp-proxy-staging.anthropic.com|registry.npmjs.org|jsr.io|npm.jsr.io|pypi.org|files.pythonhosted.org|index.crates.io|proxy.golang.org|host.docker.internal|10.*|172.16.*|172.17.*|172.18.*|172.19.*|172.20.*|172.21.*|172.22.*|172.23.*|172.24.*|172.25.*|172.26.*|172.27.*|172.28.*|172.29.*|172.30.*|172.31.*|192.168.*|100.64.0.0/10|*.svc.cluster.local|*.svc.cluster.local -Djdk.http.auth.tunneling.disabledSchemes= -Djdk.http.auth.proxying.disabledSchemes= /tmp/kc-conformance/5648/m0/src/java/util/Date.java:1: error: package exists in another module: java.base package java.util; ^ 1 error 
 tests/jvm/classpath/dependencyOnItself.kt	accepts valid		
 tests/jvm/classpath/prohibitNestedClassesByDollarName.kt	accepts invalid	UNRESOLVED_REFERENCE	main.kt:6: UNRESOLVED_REFERENCE
 tests/jvm/classpath/sameLibraryTwiceInClasspath.kt	accepts valid		
@@ -10765,7 +10765,7 @@ testsWithStdLib/smartcasts/letChangesToNullComplex.kt	rejects invalid	on an expe
 testsWithStdLib/smartcasts/letMergeNotNull.kt	rejects invalid	on an expected line	
 testsWithStdLib/smartcasts/letStable.kt	accepts valid		
 testsWithStdLib/smartcasts/letUsesOwnReceiver.kt	accepts valid		
-testsWithStdLib/smartcasts/listOfGeneric.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	listOfGeneric.kt:6: type mismatch: inferred type is List<String> but Collection<T> was expected
+testsWithStdLib/smartcasts/listOfGeneric.kt	accepts valid		
 testsWithStdLib/smartcasts/tryWithLambdaInside.kt	accepts valid		
 testsWithStdLib/smartcasts/unsoundSmartcast.kt	rejects invalid	on an expected line	
 testsWithStdLib/smartcasts/whileLoopNotNull.kt	accepts valid		
