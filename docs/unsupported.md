@@ -60,10 +60,15 @@ and `TODO`. Use the Java classes directly for the rest. Also:
 ## kotlinx.serialization (`-serialization`)
 
 Not supported: generic classes; interfaces annotated `@Serializable`
-that aren't sealed; local classes; superclasses from other modules;
-more than 32 properties; some ways of naming serializers of properties
-(a generic class in `@Serializable(with = ...)` on a property, `@Contextual`,
-`@UseSerializers`); the annotations that formats read
+that aren't sealed; local and inner classes and companion objects;
+classes without a primary constructor or that delegate an interface
+(`by`); superclasses from other modules; more than 32 properties;
+properties in the class body that are `lateinit`, set in an `init` block
+rather than initialized, or have accessors of their own; some ways of
+naming serializers of properties (a generic class in `@Serializable(with
+= ...)` on a property, `@Contextual`, `@UseSerializers`,
+`@UseContextualSerialization`); `@Polymorphic`, `@KeepGeneratedSerializer`
+and `@MetaSerializable`; the annotations that formats read
 (`@JsonNames`, `@ProtoNumber`...); arrays and the other types with
 built-in serializers (`Duration`, `Uuid`...). Properties can be of the
 primitive types, `String`, enums, `@Serializable` classes, objects and
@@ -92,8 +97,14 @@ plugin finds no properties and crashes.
 
 Not supported yet:
 
+- suspend, `tailrec`, `@JvmStatic` and `@JvmOverloads` composable
+  functions, and those of value classes;
+- composable properties without a getter with a body, with an inline
+  getter, delegated, or of interfaces and value classes;
+- composable functions of an interface a class delegates (`by`);
 - non-local jumps from the lambdas of inline composables;
-- `key` with a spread array of keys;
+- `key` other than with keys and a lambda, such as with a spread array
+  of keys;
 - composable calls in `catch` and `finally` blocks and in local
   functions (calls in a `try` are an error, as with `kotlinc`);
 - references to composables;
@@ -115,12 +126,17 @@ Without `-compose`, calls of libraries' composables aren't supported.
 Not supported, and reported as such:
 
 - custom annotations (the `custom-*` options), and options that change Metro's output, other than `enabled`, `contributes-as-inject` and `enable-function-providers`;
-- `@Provides` extension functions;
+- `@Provides` extension functions, and `@Provides` members of an
+  interface or an abstract class outside its companion object;
 - graphs with type parameters, and graph factories that are abstract classes;
+- injecting a generic class where the requested type's arguments are type
+  parameters, and contributed interfaces with type parameters;
 - javax, Jakarta, Dagger and Guice interop;
 - member injection into classes from the class path;
 - member injection that depends on the class itself, as `@Inject lateinit var s: Lazy<S>` in `S`;
 - `createDynamicGraph` and `createDynamicGraphFactory`, and calls of `createGraph` and `createGraphFactory` whose type argument is inferred;
+- graph members that are extensions, or functions with parameters that
+  neither inject members nor create a graph extension;
 - graph functions that create a graph extension from parameters, other than its factory's.
 
 `kc` writes no `$MetroFactory` classes, so a graph that `kotlinc` compiles can't use a module that `kc` compiles. A graph that `kc` compiles can use modules that either compiler compiled.
