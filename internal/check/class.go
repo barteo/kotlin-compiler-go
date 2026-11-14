@@ -1486,7 +1486,17 @@ func (c *Checker) superCtor(d *syntax.ClassDecl) {
 	if !c.superOuter(d.Sym, x) {
 		return
 	}
-	c.resolve(x, cands, noWant, nil)
+	want := noWant
+	if len(x.TypeArgs) == 0 {
+		// Through a typealias, the supertype gives the type arguments:
+		// class D : FooStr() for typealias FooStr = Foo<String>.
+		for _, t := range d.Sym.Supers {
+			if t.K == types.Class && t.C == sc && t.A.Len() > 0 {
+				want = t
+			}
+		}
+	}
+	c.resolve(x, cands, want, nil)
 	if d.Sym.Object {
 		c.selfCalls(d.Sym, x)
 	}
