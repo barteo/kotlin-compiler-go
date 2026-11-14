@@ -7,9 +7,9 @@ Of 10827 test files, 2312 are skipped and 8515 run.
 | Result | Tests | Share |
 |:---|---:|---:|
 | rejects invalid | 3987 | 46.8% |
-| accepts valid | 3951 | 46.4% |
+| accepts valid | 3957 | 46.5% |
 | accepts invalid | 397 | 4.7% |
-| rejects valid | 162 | 1.9% |
+| rejects valid | 156 | 1.8% |
 | parse/unsupported | 16 | 0.2% |
 | crash | 1 | 0.0% |
 
@@ -118,15 +118,14 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 | First error | Tests | Examples |
 |:---|---:|:---|
-| `type mismatch: inferred type is _ but _ was expected` | 38 | `tests/annotations/javaAnnotationWithClassArray.kt`, `tests/annotations/parameters/expressions/unaryPlus.kt` |
-| `cannot infer type for type parameter '_'. Specify it explicitly.` | 22 | `tests/delegatedProperty/provideDelegate/commonSupertype.kt`, `tests/inference/capturedTypes/differentCapturedTypes.kt` |
+| `type mismatch: inferred type is _ but _ was expected` | 36 | `tests/annotations/javaAnnotationWithClassArray.kt`, `tests/annotations/parameters/expressions/unaryPlus.kt` |
 | `unresolved reference: _` | 22 | `tests/callResolution/incorrectPlusOperatorFromJava.kt`, `tests/callResolution/suspendCOnversionForReceiver.kt` |
+| `cannot infer type for type parameter '_'. Specify it explicitly.` | 21 | `tests/delegatedProperty/provideDelegate/commonSupertype.kt`, `tests/inference/capturedTypes/differentCapturedTypes.kt` |
 | `no function '_' takes n arguments` | 6 | `tests/annotations/javaAnnotationWithParameter.kt`, `tests/cast/kt15161.kt` |
 | `unresolved import: _` | 6 | `tests/errorProneAtomicArraySuggestions.kt`, `tests/errorProneAtomicReferenceArguments.kt` |
 | `ambiguous call: n candidates for '_' take (_)` | 5 | `tests/callableReference/resolve/resolveReferenceAgainstKFunctionAndKPrpoerty.kt`, `tests/multimodule/varargConflict.kt` |
 | `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 4 | `tests/j+k/withTestConnection3.kt`, `tests/platformTypes/methodCall/multipleExactBoundsNullable.kt` |
 | `'_' overrides nothing` | 3 | `tests/genericReceiverPropertyOverride.kt`, `tests/generics/finalUpperBoundWithOverride.kt` |
-| `cannot infer a type for this parameter. Please specify it explicitly.` | 3 | `tests/inference/completion/postponedArgumentsAnalysis/lackOfDeepIncorporation.kt`, `tests/inference/kt36819.kt` |
 | `platform declaration clash: _` | 3 | `tests/overload/noConflictingOverloadsWithDeprecatedHidden/ConstructorsInMemberScope.kt`, `tests/overload/noConflictingOverloadsWithDeprecatedHidden/ConstructorsInPackage.kt` |
 | `property must be initialized or be abstract` | 3 | `tests/backingField/FieldAsParam.kt`, `tests/backingField/FieldShadow.kt` |
 | `type argument is not within its bounds: type parameter '_' must be subtype of '_', but actual: _` | 3 | `tests/inference/capturedTypes/capturedTypeWithInnerTypealias.kt`, `tests/inference/unsoundness2.kt` |
@@ -135,6 +134,7 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 | `'_' is not defined in this context` | 2 | `tests/functionLiterals/kt51317.kt`, `testsWithStdLib/mapList.kt` |
 | `assignment operators ambiguity: '_' and '_' both apply` | 2 | `tests/operatorsOverloading/plusAssignOnVarAndCollections.kt`, `testsWithStdLib/java/intersectFlexibleAndMutable.kt` |
 | `cannot create an instance of Function` | 2 | `tests/arguments/lambdaInLambda2.kt`, `tests/functionLiterals/lambdaInLambda2.kt` |
+| `cannot infer a type for this parameter. Please specify it explicitly.` | 2 | `tests/inference/completion/postponedArgumentsAnalysis/lackOfDeepIncorporation.kt`, `tests/samConversions/samConversionWithConditionJava.kt` |
 | `expression '_' of type _ cannot be invoked as a function` | 2 | `tests/expresssions/invoke/incorrectInvokeReceiver.kt`, `tests/nullabilityAndSmartCasts/kt1778.kt` |
 | `expression of type _ cannot be invoked as a function` | 2 | `tests/controlFlowAnalysis/deadCode/deadCallInInvokeCall.kt`, `tests/expresssions/invoke/safeCallsWithImplicitInvoke.kt` |
 | `type of '_' doesn't match the type of the overridden var-property` | 2 | `tests/extraCheckers/kt69190.kt`, `tests/smartCasts/intersectionScope/propertiesConflict.kt` |
@@ -146,8 +146,6 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 | `class '_' is not abstract and does not implement abstract member '_'` | 1 | `tests/j+k/collectionOverrides/mapMethodsImplementedInJava.kt` |
 | `class Base is not public` | 1 | `tests/visibility/packagePrivateStatic.kt` |
 | `class PackagePrivateGrandparentAbstractClass is not public` | 1 | `tests/visibility/packagePrivateStaticViaTypeAlias.kt` |
-| `expected no parameters, but n were declared` | 1 | `tests/inference/extensionLambdasAndArrow.kt` |
-| `expected parameter of type _` | 1 | `tests/resolve/starProjectionAndFunctionType.kt` |
 | `function invocation '_' expected; use ::bar for a reference` | 1 | `tests/resolve/resolveAnnotatedLambdaArgument.kt` |
 | `function invocation '_' expected; use ::foo for a reference` | 1 | `tests/syntax/incorrectLTGTFallback.kt` |
 | `inherited platform declarations clash: the following declarations have the same JVM signature (foo(Ljava/lang/String;I)Ljava/lang/String;)` | 1 | `tests/contextParameters/overrides/KJKHierarchyWithOverride.kt` |
@@ -158,7 +156,9 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 | `no type arguments expected for class OuterClass` | 1 | `tests/signatureEnhancementOuterClassBoundsToInner.kt` |
 | `one type argument expected for class B<T>` | 1 | `tests/multimodule/duplicateMethod/substitutedGenericInParams.kt` |
 | `one type argument expected for class X.Y` | 1 | `tests/innerClasses/inCallableReferenceLHS/misplacedArgumentsInInnerOnly.kt` |
-| *6 more* | 6 | |
+| `operator '_' cannot be applied to Enn and En` | 1 | `tests/enum/enumSubjectTypeCheck.kt` |
+| `operator '_' cannot be applied to Int and R<<error>>` | 1 | `tests/inference/genericAssignmentOperator.kt` |
+| *4 more* | 4 | |
 
 ## Errors by diagnostic
 
@@ -238,13 +238,13 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 |:---|---:|
 | `cannot infer type for type parameter '_'. Specify it explicitly.` | 290 |
 | `unresolved reference: _` | 288 |
-| `type mismatch: inferred type is _ but _ was expected` | 271 |
+| `type mismatch: inferred type is _ but _ was expected` | 266 |
 | `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 199 |
 | `platform declaration clash: _` | 150 |
 | `class '_' is not abstract and does not implement abstract member '_'` | 68 |
 | `unresolved or unsupported type: _` | 59 |
-| `cannot infer a type for this parameter. Please specify it explicitly.` | 55 |
 | `suspend function '_' cannot override non-suspend function '_' defined in '_'` | 50 |
+| `cannot infer a type for this parameter. Please specify it explicitly.` | 49 |
 | `missing return statement in function '_'` | 38 |
 | `unresolved import: _` | 35 |
 | `no function '_' takes n arguments` | 27 |
@@ -254,18 +254,18 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | `'_' overrides nothing` | 15 |
 | `ambiguous call: n candidates for '_' take (_)` | 15 |
 | `expected expression, found '_'` | 15 |
-| `expected n parameter of type _ but n were declared` | 14 |
 | `not enough information to infer type arguments of ::foon: specify the expected function type` | 14 |
 | `operator '_' cannot be applied to Any?` | 14 |
-| `expected parameter of type _` | 13 |
 | `assignment operators ambiguity: '_' and '_' both apply` | 12 |
-| `expected no parameters, but n were declared` | 12 |
 | `private setters are not allowed for open properties` | 12 |
 | `this lambda must return a value of type _` | 12 |
 | `'_' modifier is required on '_'` | 11 |
 | `not enough information to infer type arguments of ::barn: specify the expected function type` | 11 |
 | `overload resolution ambiguity for ::foo: specify the expected function type` | 11 |
+| `expected parameter of type _` | 10 |
 | `not enough information to infer type arguments of ::foo: specify the expected function type` | 10 |
+| `type checking has run into a recursive problem; specify the return type of '_'` | 10 |
+| `cannot access '_': it is private to this in '_'` | 9 |
 | *173 more* | |
 
 ## Unsupported features

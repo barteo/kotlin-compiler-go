@@ -4105,7 +4105,7 @@ tests/inference/complexInferenceOnParentizedExpression.kt	accepts valid
 tests/inference/conflictedExpectedType.kt	rejects invalid	on an expected line	
 tests/inference/conflictingSubstitutions.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	conflictingSubstitutions.kt:11: type mismatch: inferred type is ArrayList<String> but MutableList<Any!> was expected
 tests/inference/constraints/approximationWithDefNotNullInInvPositionDuringInference.kt	accepts valid		
-tests/inference/constraints/complexDependencyWihtoutProperConstraints.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	complexDependencyWihtoutProperConstraints.kt:19: type mismatch: inferred type is () -> String but Nothing? was expected
+tests/inference/constraints/complexDependencyWihtoutProperConstraints.kt	accepts valid		
 tests/inference/constraints/constraintFromVariantTypeWithNestedProjection.kt	rejects invalid	on an expected line	
 tests/inference/constraints/constraintOnFunctionLiteral.kt	rejects invalid	on an expected line	
 tests/inference/constraints/definitelyNotNullTypeInArguments.kt	skip	LANGUAGE	
@@ -4223,7 +4223,7 @@ tests/inference/expectedTypeFromCastParenthesized.kt	accepts valid
 tests/inference/expectedTypeWithGenerics.kt	accepts valid		
 tests/inference/expectedTypeWithGenericsSafeCalls.kt	accepts valid		
 tests/inference/extensionCallableReferences.kt	accepts valid		
-tests/inference/extensionLambdasAndArrow.kt	rejects valid	expected no parameters, but n were declared	extensionLambdasAndArrow.kt:10: expected no parameters, but 1 were declared
+tests/inference/extensionLambdasAndArrow.kt	accepts valid		
 tests/inference/findViewById.kt	accepts valid		
 tests/inference/fixVariableToNothing.kt	accepts valid		
 tests/inference/fixationOrder/inputTypesFirst.kt	skip	LANGUAGE	
@@ -4296,7 +4296,7 @@ tests/inference/kt32462.kt	accepts valid
 tests/inference/kt33263.kt	accepts valid		
 tests/inference/kt35702.kt	accepts valid		
 tests/inference/kt36044.kt	accepts valid		
-tests/inference/kt36819.kt	rejects valid	cannot infer a type for this parameter. Please specify it explicitly.	kt36819.kt:38: cannot infer a type for this parameter. Please specify it explicitly.
+tests/inference/kt36819.kt	accepts valid		
 tests/inference/kt37853.kt	accepts valid		
 tests/inference/kt39220.kt	rejects invalid	on an expected line	
 tests/inference/kt40131.kt	rejects invalid	on an expected line	
@@ -7816,7 +7816,7 @@ tests/resolve/specialConstructions/exclExclAsCall.kt	rejects valid	cannot infer 
 tests/resolve/specialConstructions/inferenceForElvis.kt	accepts valid		
 tests/resolve/specialConstructions/multipleSuperClasses.kt	accepts valid		
 tests/resolve/specialConstructions/reportTypeMismatchDeeplyOnBranches.kt	rejects invalid	on an expected line	
-tests/resolve/starProjectionAndFunctionType.kt	rejects valid	expected parameter of type _	starProjectionAndFunctionType.kt:5: expected parameter of type Any?
+tests/resolve/starProjectionAndFunctionType.kt	accepts valid		
 tests/resolve/superInvoke.kt	accepts valid		
 tests/resolve/typeParameterInDefaultValueInLocalFunction.kt	accepts valid		
 tests/resolve/underscoreInCatchBlockWithEnabledFeature.kt	rejects invalid	on an expected line	
@@ -8514,7 +8514,7 @@ tests/smartCasts/smartCastWithOrFalse_InferMoreImplicationsFromBooleanExpression
 tests/smartCasts/smartcastBetweenClassAndTypeParameter.kt	accepts valid		
 tests/smartCasts/smartcastInByClause.kt	accepts valid		
 tests/smartCasts/smartcastInFriendModule.kt	skip	modules with friends or dependsOn	
-tests/smartCasts/smartcastOnFunctionalType.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	smartcastOnFunctionalType.kt:20: cannot infer type for type parameter 'R'. Specify it explicitly.
+tests/smartCasts/smartcastOnFunctionalType.kt	accepts valid		
 tests/smartCasts/smartcastOnImplicitReceiverOfCallableReference.kt	accepts valid		
 tests/smartCasts/smartcastOnSameFieldOfDifferentInstances.kt	rejects invalid	on an expected line	
 tests/smartCasts/smartcastToAliasedFunctionalType.kt	accepts valid		
@@ -10322,7 +10322,7 @@ testsWithStdLib/inference/builderInferenceFromStdlib.kt	accepts valid
 testsWithStdLib/inference/callableReferenceOnParameter.kt	rejects invalid	on an expected line	
 testsWithStdLib/inference/completion/postponedArgumentsAnalysis/callableReferences.kt	rejects invalid	on an expected line	
 testsWithStdLib/inference/completion/postponedArgumentsAnalysis/complexInterdependentInputOutputTypes.kt	accepts valid		
-testsWithStdLib/inference/completion/postponedArgumentsAnalysis/deepLambdas.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	deepLambdas.kt:12: type mismatch: inferred type is (Color) -> Unit but Color was expected
+testsWithStdLib/inference/completion/postponedArgumentsAnalysis/deepLambdas.kt	accepts valid		
 testsWithStdLib/inference/completion/postponedArgumentsAnalysis/fixIndependentVariables.kt	accepts valid		
 testsWithStdLib/inference/completion/postponedArgumentsAnalysis/fixInputTypeToMoreSpecificType.kt	skip	LANGUAGE	
 testsWithStdLib/inference/completion/postponedArgumentsAnalysis/fixInputTypeToMoreSpecificTypeOld.kt	skip	LANGUAGE	

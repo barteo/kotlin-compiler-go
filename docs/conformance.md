@@ -207,9 +207,9 @@ Kotlin 2.4.21's tests on `kc`:
 |:---|---:|---:|
 | run (of 10,827) | 8,515 | |
 | rejects invalid | 3,987 | 46.8% |
-| accepts valid | 3,951 | 46.4% |
+| accepts valid | 3,957 | 46.5% |
 | accepts invalid | 397 | 4.7% |
-| rejects valid | 162 | 1.9% |
+| rejects valid | 156 | 1.8% |
 | parse/unsupported | 16 | 0.2% |
 | crash | 1 | |
 | harness error (`javac`) | 1 | |

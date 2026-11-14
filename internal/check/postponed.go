@@ -139,7 +139,9 @@ func (c *Checker) takeBranchSink() *system {
 func (c *Checker) sinkBranches(sink *system, pending []pendingBranch, result types.Type) types.Type {
 	for _, p := range pending {
 		bt := p.t
-		if p.sys != nil {
+		if p.lambda {
+			bt = c.branchLambda(p, result, noWant)
+		} else if p.sys != nil {
 			sink.merge(p.sys)
 			body, t := p.body, p.t
 			sink.fixups = append(sink.fixups, func(s *system) { body.T = s.final(t) })

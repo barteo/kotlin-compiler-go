@@ -212,6 +212,10 @@ type Checker struct {
 	// tailIfs are ifs without else that end a branch of the if a lambda
 	// ends with: statements, not values (see markTailIfs).
 	tailIfs map[*syntax.If]bool
+	// branchLambdas are the lambdas that are the values of branches of an
+	// if or when, which, as K2's synthetic call's postponed arguments, may
+	// take an expected receiver as their first parameter.
+	branchLambdas map[*syntax.Lambda]bool
 	// shadowed are the calls whose implicit receiver a context parameter
 	// shadows, reported once checked (see receiverShadowed).
 	shadowed map[syntax.Expr]shadowedUse

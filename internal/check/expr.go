@@ -3590,6 +3590,10 @@ type pendingBranch struct {
 	t    types.Type
 	body *syntax.Block
 	lit  syntax.Expr // an integer literal's value, as 0 in if (c) 1L else 0
+	// lambda is set for a branch that is only a lambda without its
+	// parameters' types, which, as K2's postponed argument, takes them
+	// from the others' function type: when { a -> {{ x -> }} b -> f }.
+	lambda bool
 	// open is set when the call needs the other branches' types: it has
 	// no lambdas, or they don't give their parameter types. See openLast.
 	open bool
@@ -3609,12 +3613,26 @@ type pendingBranch struct {
 // if (c) build { yield(x) } else build {}, also unused. It is then seen as
 // Nothing, which the join ignores, until completeBranches.
 func (c *Checker) branch(b *syntax.Block, want types.Type, valueUsed bool, pending *[]pendingBranch) types.Type {
+	if n := len(b.Stmts); n > 0 && want.Flex().E {
+		if es, ok := b.Stmts[n-1].(*syntax.ExprStmt); ok {
+			if l, ok := es.X.(*syntax.Lambda); ok && l.Arrow && !l.Anon {
+				if c.branchLambdas == nil {
+					c.branchLambdas = map[*syntax.Lambda]bool{}
+				}
+				c.branchLambdas[l] = true
+			}
+		}
+	}
 	if want.K != types.Invalid && want.K != types.Any && !want.HasVars() || len(b.Stmts) == 0 {
 		return c.block(b, want, valueUsed)
 	}
 	es, ok := b.Stmts[len(b.Stmts)-1].(*syntax.ExprStmt)
 	if !ok {
 		return c.block(b, want, valueUsed)
+	}
+	if l, ok := es.X.(*syntax.Lambda); ok && valueUsed && len(b.Stmts) == 1 && l.Arrow && len(l.Params) > 0 && untypedParams(l) && want.K == types.Invalid {
+		*pending = append(*pending, pendingBranch{body: b, lambda: true, scope: c.scope})
+		return types.NothingType
 	}
 	if valueUsed && literalArith(es.X) {
 		// An integer literal takes the type of the other branches if it
@@ -3659,6 +3677,19 @@ func (c *Checker) branch(b *syntax.Block, want types.Type, valueUsed bool, pendi
 	return types.NothingType
 }
 
+// branchLambda checks pending branch p, a lambda (see pendingBranch),
+// with the others' type, result, if it is a function type, or want.
+func (c *Checker) branchLambda(p pendingBranch, result, want types.Type) types.Type {
+	target := result
+	if !target.Flex().IsFunc() || target.HasVars() {
+		target = want
+	}
+	saved := c.scope
+	c.scope = p.scope
+	defer func() { c.scope = saved }()
+	return c.block(p.body, target, true)
+}
+
 // completeBranches completes the pending branches with the type of the
 // others, result, or the expected type, and returns the type of all. If
 // the value isn't used, only the open ones take the others' type.
@@ -3666,6 +3697,13 @@ func (c *Checker) completeBranches(pending []pendingBranch, result, want types.T
 	c.openLast(pending)
 	done := types.NothingType // the completed pending branches' type
 	for _, p := range pending {
+		if p.lambda {
+			bt := c.branchLambda(p, result, want)
+			if j, ok := c.join(result, bt); ok {
+				result = j
+			}
+			continue
+		}
 		if p.lit != nil {
 			bt := p.t
 			switch r := result.Flex().NonNull(); r {
@@ -3684,7 +3722,8 @@ func (c *Checker) completeBranches(pending []pendingBranch, result, want types.T
 			// unusedJoin.
 			target = done
 		}
-		if target.K == types.Nothing || target.K == types.Invalid || target.HasVars() {
+		if target.K == types.Nothing || target.K == types.Null || target.K == types.Invalid || target.HasVars() {
+			// Nothing, or null's Nothing?, which the branches join with.
 			target = want
 		}
 		if target.K != types.Invalid && !target.HasVars() && (valueUsed || p.open) {

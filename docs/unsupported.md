@@ -185,7 +185,14 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   with its variables fixed first.
 - A lambda's parameter types are fixed from the constraints known when
   the lambda is reached; K2 picks the order from the whole system, so it
-  infers some combinations of lambdas `kc` can't.
+  infers some combinations of lambdas `kc` can't. A lambda that declares
+  all its parameters' types is checked on its own only when its
+  variable has no function type among its bounds.
+- The branches of an `if` or `when` aren't K2's synthetic call: a
+  branch that is a lambda without its parameters' types takes them from
+  the other branches only when the `if` has no expected type, and one
+  takes an expected receiver as its first parameter only when it is a
+  branch's value.
 - `@OnlyInputTypes` (`contains`, `get`, `assertEquals`) is checked only
   when the types a call's variable is constrained by have no captured
   types (star projections), and the inferred type isn't an

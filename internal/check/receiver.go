@@ -1,6 +1,7 @@
 package check
 
 import (
+	"path"
 	"slices"
 	"strings"
 
@@ -533,6 +534,9 @@ func (c *Checker) thisExtension(name string, x *syntax.Call) bool {
 			fs = append(fs, cl.f)
 		}
 	}
+	if len(fs) > 0 && c.sameScopeTopFun(name, x, fs) {
+		return false
+	}
 	if len(fs) == 0 || !hasLambda(x.Args) {
 		return len(fs) > 0
 	}
@@ -542,6 +546,36 @@ func (c *Checker) thisExtension(name string, x *syntax.Call) bool {
 	// message) gives way to the top-level log(tag: String, priority,
 	// message) in log(TAG, INFO) { }.
 	return c.takeTypes(fs, x, c.argTypes(x))
+}
+
+// sameScopeTopFun reports whether a top-level function that isn't an
+// extension may take call x, in the package of each of extensions fs:
+// K2 tries a scope's functions before its extensions of implicit
+// receivers, so run { } in a class is kotlin's run(block), not
+// this.run { }, whose lambda would read the class's properties through
+// its own receiver, without their smart casts.
+func (c *Checker) sameScopeTopFun(name string, x *syntax.Call, fs []*types.FunSym) bool {
+	pkgs := map[string]bool{}
+	var ts []types.Type
+	for _, f := range append(slices.Clip(c.topFuns(name)), c.kotlinFuns(name, false)...) {
+		if !f.Ext && f.Facade != "" && c.mayTake(f, x) {
+			if ts == nil {
+				ts = c.argTypes(x)
+			}
+			if c.takeTypes([]*types.FunSym{f}, x, ts) {
+				pkgs[path.Dir(f.Facade)] = true
+			}
+		}
+	}
+	if len(pkgs) == 0 {
+		return false
+	}
+	for _, f := range fs {
+		if f.Facade == "" || !pkgs[path.Dir(f.Facade)] {
+			return false
+		}
+	}
+	return true
 }
 
 // lowPriorityGivesWay drops the members marked

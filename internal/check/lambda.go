@@ -36,6 +36,9 @@ type lambdaWant struct {
 	recover    bool         // checking after an error: unknown parameters are not reported
 	prop       bool         // a callable reference must name a property: see kpropRef
 	kprop      bool         // a callable reference to a property may be a KProperty object
+	// stars are the parameters whose type is a star projection, which
+	// any declared type takes, as the captured type's Nothing below it.
+	stars []bool
 }
 
 // lambdaResult collects the values a lambda's labeled returns give.
@@ -112,6 +115,20 @@ func funcParts(t types.Type) ([]types.Type, types.Type, bool) {
 	return ps, ret, true
 }
 
+// starParams returns which of the inputs of function type t, its
+// contexts, receiver and parameters, are star projections.
+func starParams(t types.Type) []bool {
+	t = t.Flex()
+	if !t.IsFunc() {
+		return nil
+	}
+	var stars []bool
+	for i := range t.A.Len() - 1 {
+		stars = append(stars, t.A.Get(i).V == types.Star)
+	}
+	return stars
+}
+
 // lambda checks a lambda whose expected type, if any, has no variables
 // but stubInference's: as in Kotlin, a builder's p = { f(it) } for a
 // (T) -> Unit p gives T f's parameter type.
@@ -147,7 +164,7 @@ func (c *Checker) lambda(x *syntax.Lambda, want types.Type) types.Type {
 	}
 	w := lambdaWant{ret: noWant, kprop: c.u.ext.kotlin}
 	if ps, r, ok := funcParts(want); ok && proper {
-		w = lambdaWant{params: ps, known: true, recv: want.Flex().E, ctx: want.Flex().Contexts(), suspend: isSuspendFunc(want), composable: isComposableFunc(want), ret: r, check: true}
+		w = lambdaWant{params: ps, known: true, recv: want.Flex().E, ctx: want.Flex().Contexts(), suspend: isSuspendFunc(want), composable: isComposableFunc(want), ret: r, check: true, stars: starParams(want)}
 	}
 	if x.Anon && !c.anonWant(x, &w) {
 		return types.InvalidType
@@ -372,7 +389,7 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 		}
 		params = params[w.ctx:]
 	}
-	if w.recv && len(params) > 0 && !anonRecvParam(x, w) {
+	if w.recv && len(params) > 0 && !anonRecvParam(x, w) && !(c.branchLambdas[x] && len(x.Params) == len(params)) {
 		// The receiver is the first parameter, and this in the body:
 		// without a label, kotlinc names it <this>.
 		name := "<this>"
@@ -386,6 +403,10 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 		params = params[1:]
 	}
 	c.destructureParams(x)
+	star := func(i int) bool {
+		i += len(w.params) - len(params) // after the contexts and receiver
+		return i < len(w.stars) && w.stars[i]
+	}
 	switch {
 	case x.Arrow:
 		if w.known && len(x.Params) != len(params) {
@@ -397,7 +418,7 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 			switch {
 			case p.Type != nil:
 				t = c.resolveType(p.Type)
-				if w.known && i < len(params) && !c.subtype(params[i], t) {
+				if w.known && i < len(params) && !(star(i) && !x.Anon) && !c.subtype(params[i], t) {
 					c.errorf(p.P, "expected parameter of type %s", params[i])
 					ok = false
 				}
@@ -1728,6 +1749,12 @@ func (c *Checker) runLambdas(s *system, readyOnly bool) {
 		c.scope = pl.scope
 		c.postponedLambda(s, pl.l, p)
 		c.scope = saved
+		if tv := s.unfixedVar(s.apply(pl.p)); tv != nil && shape.K != types.Invalid && s.unfixedVar(shape) == nil {
+			// The lambda's type is below the variable too, as K2's
+			// argument constraint: K of select(id { B() }, id { C() })
+			// waits for the second's result.
+			s.addLower(tv, shape)
+		}
 	}
 	s.lambdas = rest
 }
@@ -1790,6 +1817,18 @@ func (c *Checker) fixRelated(s *system, pl pendingLambda) {
 // for select({ 1 }, { 1f }) and (A) -> Any for select({ a: A -> a.toB() },
 // { a: A -> a.toC() }), not the first's.
 func ownLambda(s *system, tv *tvar, l *syntax.Lambda) bool {
+	if typedParams(l) && !slices.ContainsFunc(append(slices.Clip(tv.lower), tv.upper...), func(t types.Type) bool {
+		t = s.apply(t)
+		if !t.HasVars() {
+			t = t.Flex()
+			m, _ := s.c.samTarget(t)
+			return t.IsFunc() || t.IsSuspendFunc() || m != nil
+		}
+		return false
+	}) {
+		// Without a function type among the bounds to take inputs from.
+		return true
+	}
 	if slices.ContainsFunc(tv.upper, s.proper) {
 		return false
 	}
@@ -1803,11 +1842,19 @@ func ownLambda(s *system, tv *tvar, l *syntax.Lambda) bool {
 		}
 	}
 	for _, t := range tv.lower {
-		if t = s.apply(t); !t.HasVars() && !shape(t) {
+		// null's Nothing? only makes the lambda's type nullable.
+		if t = s.apply(t); !t.HasVars() && !shape(t) && t.K != types.Null && !(t.K == types.Nothing && t.N) {
 			return false
 		}
 	}
 	return true
+}
+
+// typedParams reports whether lambda l declares the types of all its
+// parameters, of which it has some: K2 analyzes it on its own, its type
+// a lower bound of the variable it is passed for, whatever the others.
+func typedParams(l *syntax.Lambda) bool {
+	return len(l.Params) > 0 && !l.Anon && l.Ref == nil && !untypedParams(l)
 }
 
 // refShape returns the function type, with a new variable for its result,
@@ -2702,7 +2749,7 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type) {
 	for i := range params {
 		params[i] = s.final(params[i])
 	}
-	w := lambdaWant{params: params, known: true, recv: ft.Flex().E, ctx: ft.Flex().Contexts(), suspend: isSuspendFunc(ft), composable: isComposableFunc(ft), ret: noWant}
+	w := lambdaWant{params: params, known: true, recv: ft.Flex().E, ctx: ft.Flex().Contexts(), suspend: isSuspendFunc(ft), composable: isComposableFunc(ft), ret: noWant, stars: starParams(ft)}
 	if sam == nil {
 		if _, pr, ok := funcParts(p); ok {
 			ret = pr
