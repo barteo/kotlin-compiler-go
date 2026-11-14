@@ -1194,6 +1194,14 @@ func (c *Checker) declareTypeParams(decls []*syntax.TypeParam, owner any, allowV
 			c.errorf(d.P, "variance annotations are only allowed for type parameters of classes")
 		}
 		d.Sym = &types.TypeParamSym{Name: d.Name, Var: d.Variance, Index: i, Owner: owner, Reified: d.Reified, OnlyInput: d.OnlyInput}
+		for _, a := range d.Annotations {
+			// As imported: @OnlyInputTypes for kotlin.internal's.
+			if !d.Sym.OnlyInput && strings.HasSuffix(a.Name, "OnlyInputTypes") {
+				if cls := c.lookupClass(a.Name); cls != nil && cls.Name == "kotlin/internal/OnlyInputTypes" {
+					d.Sym.OnlyInput = true
+				}
+			}
+		}
 		if d.Reified {
 			if _, fn := owner.(*types.FunSym); !fn {
 				c.errorf(d.P, "only type parameters of inline functions can be reified")

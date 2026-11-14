@@ -4313,7 +4313,7 @@ tests/inference/kt53494.kt	rejects valid	type mismatch: inferred type is _ but _
 tests/inference/kt54990.kt	accepts valid		
 tests/inference/kt6175.kt	rejects invalid	on an expected line	
 tests/inference/kt619.kt	accepts valid		
-tests/inference/kt62609.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	test.kt:12: cannot infer type for type parameter 'T'. Specify it explicitly.
+tests/inference/kt62609.kt	accepts valid		
 tests/inference/kt63577.kt	skip	LANGUAGE	
 tests/inference/kt63982.kt	accepts valid		
 tests/inference/kt68570.kt	accepts invalid	UNRESOLVED_REFERENCE	kt68570.kt:11: UNRESOLVED_REFERENCE
@@ -4744,7 +4744,7 @@ tests/inference/publicApproximation/nonTrivialVariance.kt	accepts valid
 tests/inference/publicApproximation/parameterInBound.kt	accepts valid		
 tests/inference/publicApproximation/projections.kt	accepts valid		
 tests/inference/publicApproximation/smartCastInLambdaReturnAfterIntersection.kt	rejects invalid	on an expected line	
-tests/inference/publicApproximation/twoIntersections.kt	accepts invalid	UNRESOLVED_REFERENCE	twoIntersections.kt:23: UNRESOLVED_REFERENCE
+tests/inference/publicApproximation/twoIntersections.kt	rejects invalid	on an expected line	
 tests/inference/receiverTypeMismatch_withProper.kt	accepts valid		
 tests/inference/receiverWithCapturedType.kt	rejects invalid	on an expected line	
 tests/inference/recursiveCalls/kt23531.kt	rejects invalid	on an expected line	
@@ -7212,7 +7212,7 @@ tests/problems/kt32509.kt	accepts valid
 tests/problems/kt32545.kt	rejects invalid	on an expected line	
 tests/problems/kt33238.kt	accepts valid		
 tests/problems/kt33857.kt	skip	LANGUAGE	
-tests/problems/kt33904.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	kt33904.kt:35: type mismatch: inferred type is Any but SERVICE was expected
+tests/problems/kt33904.kt	accepts valid		
 tests/problems/kt34064.kt	rejects invalid	elsewhere	
 tests/problems/kt3474.kt	rejects invalid	on an expected line	
 tests/problems/kt35177.kt	accepts valid		
@@ -10309,7 +10309,7 @@ testsWithStdLib/inference/annotationsForResolve/onlyInputTypesAndLowPriority.kt	
 testsWithStdLib/inference/annotationsForResolve/onlyInputTypesAndTopLevelCapturedTypes.kt	rejects invalid	on an expected line	
 testsWithStdLib/inference/annotationsForResolve/onlyInputTypesAnnotationWithPlatformTypes.kt	accepts valid		
 testsWithStdLib/inference/annotationsForResolve/onlyInputTypesCaptured.kt	rejects invalid	on an expected line	
-testsWithStdLib/inference/annotationsForResolve/onlyInputTypesCommonConstraintSystem.kt	accepts invalid	TYPE_INFERENCE_ONLY_INPUT_TYPES_ERROR	onlyInputTypesCommonConstraintSystem.kt:47: TYPE_INFERENCE_ONLY_INPUT_TYPES_ERROR
+testsWithStdLib/inference/annotationsForResolve/onlyInputTypesCommonConstraintSystem.kt	rejects invalid	on an expected line	
 testsWithStdLib/inference/annotationsForResolve/onlyInputTypesUpperBound.kt	accepts valid		
 testsWithStdLib/inference/annotationsForResolve/onlyInputTypesWithLambda.kt	rejects invalid	on an expected line	
 testsWithStdLib/inference/annotationsForResolve/onlyInputTypesWithVarargs.kt	accepts valid		

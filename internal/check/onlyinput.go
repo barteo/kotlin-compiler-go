@@ -25,7 +25,10 @@ func (s *system) onlyInputOK(tv *tvar, val types.Type) bool {
 	if tv.v.Origin == nil || !tv.v.Origin.OnlyInput || tv.star || tv.proj {
 		return true
 	}
-	if val.K == types.Invalid || val.HasVars() || hasFlex(val) {
+	// A star projection in val is a common supertype's, InvB<*> of
+	// InvB<First> and InvB<Bound>, which stands for K2's InvB<out Bound>:
+	// only those of the constraints are captured types.
+	if val.K == types.Invalid || val.HasVars() || val.Has(func(u types.Type) bool { return u.P }) {
 		return true
 	}
 	var inputs []types.Type

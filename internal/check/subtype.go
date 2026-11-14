@@ -1,6 +1,8 @@
 package check
 
 import (
+	"slices"
+
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
 	"github.com/barteo/kotlin-compiler-go/internal/types"
 )
@@ -493,6 +495,39 @@ func isBuiltin(t types.Type) bool {
 // that b also has, or Any. Marker interfaces such as Serializable, and
 // Java interfaces, are only used if nothing else is shared.
 func (c *Checker) commonSuper(a, b types.Type, depth int) types.Type {
+	if b.IsIntersection() && !a.IsIntersection() {
+		a, b = b, a
+	}
+	if a.IsIntersection() {
+		// An intersection's supertypes are its components': Base & Base2
+		// and a Three, of Base and Base3, give Base & Base3 for Base2 :
+		// Base3.
+		var rs []types.Type
+		for _, comp := range a.Param().Bounds {
+			r := c.commonSuper(comp.NonNull(), b, depth)
+			if r.K == types.Any || slices.ContainsFunc(rs, func(o types.Type) bool { return c.subtype(o, r) }) {
+				continue
+			}
+			rs = slices.DeleteFunc(rs, func(o types.Type) bool { return c.subtype(r, o) })
+			rs = append(rs, r)
+		}
+		switch {
+		case len(rs) == 0:
+			return types.AnyType
+		case len(rs) == 1 || slices.ContainsFunc(rs, func(t types.Type) bool { return !intersectable(t) }):
+			return rs[0]
+		}
+		return c.intersect(rs)
+	}
+	// A type parameter's supertypes are its bounds, which may be type
+	// parameters too: APP_SERVICE : SERVICE and MODULE_SERVICE : SERVICE
+	// give SERVICE.
+	for p, seen := a, 0; p.IsParam() && seen < 8; seen++ {
+		if b.IsParam() && c.subtype(b, p.NonNull()) {
+			return p.NonNull()
+		}
+		p = p.Param().Bound()
+	}
 	if a.IsParam() {
 		a = a.Param().Bound().NonNull()
 	}
@@ -507,7 +542,7 @@ func (c *Checker) commonSuper(a, b types.Type, depth int) types.Type {
 			continue
 		}
 		r := c.joinArgs(s, sb, depth)
-		javaIface := s.C.External && s.C.Interface && s.C.KProps == nil && s.C.KotlinName == ""
+		javaIface := s.C.External && s.C.Interface && s.C.KProps == nil && s.C.KotlinName == "" && len(s.C.TypeParams) == 0
 		if !markerInterfaces[s.C.Name] && !javaIface {
 			shared = append(shared, r)
 			continue
@@ -532,7 +567,7 @@ func (c *Checker) commonSuper(a, b types.Type, depth int) types.Type {
 func (c *Checker) minimalSupers(shared []types.Type) types.Type {
 	var min []types.Type
 	for _, s := range shared {
-		if s.C.External && s.C.KProps == nil && s.C.KotlinName == "" {
+		if s.C.External && s.C.KProps == nil && s.C.KotlinName == "" && len(s.C.TypeParams) == 0 {
 			continue // a Java class's supertypes keep the first
 		}
 		below := false
@@ -585,8 +620,11 @@ func (c *Checker) joinArgs(a, b types.Type, depth int) types.Type {
 				args[i] = x
 			case x.V == types.Inv && y.V == types.Inv && c.subtype(y.T, x.T):
 				args[i] = y
-			case x.V == types.Inv && y.V == types.Inv && intersectable(x.T) && intersectable(y.T):
+			case x.V == types.Inv && y.V == types.Inv && intersectable(x.T) && intersectable(y.T) && !(depth > 0 && c.emptyIntersection(x.T, y.T)):
 				// Or their intersection: In<A> and In<B> give In<A & B>.
+				// Nested, an empty one is a star, which keeps the type
+				// intersectable: Comparable<*> of String and Int in X<out
+				// Comparable<*>> & I<out Comparable<*>>.
 				args[i] = types.Arg{T: c.intersect([]types.Type{x.T, y.T})}
 			default:
 				args[i] = types.Arg{V: types.Star}
