@@ -181,8 +181,7 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   for Java annotations without `@Target` or from Java sources, nor for
   use-site targets on local declarations and expressions (`@field:` on a
   local variable), nor across a typealias's expansion (`@A T` where
-  `typealias T = @A Int`). A repeated annotation on a `where` clause's
-  bound is an error, which `kotlinc` accepts. The arguments of a
+  `typealias T = @A Int`). The arguments of a
   library's `SOURCE` annotation aren't checked, so they need not be
   constants, nor are annotations on setter parameters, `set(@A v)`.
 

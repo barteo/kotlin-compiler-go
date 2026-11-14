@@ -17,6 +17,11 @@ fun j(x: @Unknown Int) {} // ERROR unresolved reference: Unknown
 class C<@Decl T> // ERROR this annotation is not applicable to target 'type parameter'
 fun <@TypeParam T, @TypeUse U> k() {} // ERROR this annotation is not applicable to target 'type parameter'
 fun <@TypeParam @TypeParam T> l() {} // ERROR this annotation is not repeatable
+// As kotlinc, repeats aren't checked in a type parameter's bounds.
+fun <X : @TypeUse @TypeUse Comparable<X>> m(x: X) = x
+fun <X> n(x: X) where X : List<@TypeUse @TypeUse String> = x
+class G<X : @TypeUse @TypeUse Any>
+fun <X> o(x: X): X where X : @Decl Comparable<X> = x // ERROR this annotation is not applicable to target 'type usage'
 
 fun body(a: Any) {
     if (a is @Decl String) return // ERROR this annotation is not applicable to target 'type usage'
