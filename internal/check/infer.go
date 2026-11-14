@@ -217,6 +217,10 @@ func (s *system) sub(a, b types.Type) {
 			// SortedComboBoxModel(Comparator.comparing(f)) is a
 			// SortedComboBoxModel<DataView!>, as in Kotlin.
 			a = pa
+		case b.N && !b.P && a.K == types.TypeParam && !a.N && !a.D && !a.IsIntersection() && !s.nonNullBound(tv):
+			// As K2 prefers it, T <: V? gives T <: V, not T & Any <: V,
+			// where V may take T: Bar(t) for class Bar<T>(t: T?) and a
+			// t: T is a Bar<T>.
 		case b.N:
 			a = a.NonNull() // a <: V? gives a!! <: V
 		case b.D && types.MayBeNull(a):
@@ -339,6 +343,16 @@ func (s *system) subArgs(sup, b types.Type) {
 			s.nest--
 		}
 	}
+}
+
+// nonNullBound reports whether one of tv's declared bounds excludes null.
+func (s *system) nonNullBound(tv *tvar) bool {
+	for _, b := range tv.v.Bounds {
+		if b = s.apply(b); !types.AcceptsNull(b) {
+			return true
+		}
+	}
+	return false
 }
 
 // unfixedVar returns the variable that t is, if it is an unfixed one of
