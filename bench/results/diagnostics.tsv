@@ -5264,11 +5264,11 @@ tests/j+k/canDeclareIfSamAdapterIsInherited.kt	accepts valid
 tests/j+k/collectionOverrides/charAtAndOverloadWithoutExplicitOverride.kt	accepts valid		
 tests/j+k/collectionOverrides/charBuffer.kt	accepts valid		
 tests/j+k/collectionOverrides/collectionStringImpl.kt	accepts valid		
-tests/j+k/collectionOverrides/commonCollections.kt	accepts invalid	ARGUMENT_TYPE_MISMATCH	commonCollections.kt:6: ARGUMENT_TYPE_MISMATCH
-tests/j+k/collectionOverrides/contains.kt	accepts invalid	ARGUMENT_TYPE_MISMATCH	main.kt:18: ARGUMENT_TYPE_MISMATCH
+tests/j+k/collectionOverrides/commonCollections.kt	rejects invalid	on an expected line	
+tests/j+k/collectionOverrides/contains.kt	rejects invalid	on an expected line	
 tests/j+k/collectionOverrides/containsAll.kt	accepts invalid	ARGUMENT_TYPE_MISMATCH	main.kt:16: ARGUMENT_TYPE_MISMATCH
-tests/j+k/collectionOverrides/containsAndOverload.kt	accepts invalid	ACCIDENTAL_OVERRIDE_CLASH_BY_JVM_SIGNATURE; ARGUMENT_TYPE_MISMATCH	main.kt:2: ACCIDENTAL_OVERRIDE_CLASH_BY_JVM_SIGNATURE
-tests/j+k/collectionOverrides/containsAndOverloadWithoutExplicitOverride.kt	accepts invalid	ARGUMENT_TYPE_MISMATCH	main.kt:5: ARGUMENT_TYPE_MISMATCH
+tests/j+k/collectionOverrides/containsAndOverload.kt	rejects invalid	on an expected line	
+tests/j+k/collectionOverrides/containsAndOverloadWithoutExplicitOverride.kt	rejects invalid	on an expected line	
 tests/j+k/collectionOverrides/getCharSequence.kt	accepts valid		
 tests/j+k/collectionOverrides/intersectionWithMappedSignature.kt	accepts valid		
 tests/j+k/collectionOverrides/irrelevantCharAtAbstract.kt	accepts valid		
@@ -8009,7 +8009,7 @@ tests/scopes/publicJavaAndPrivateKotlinVar.kt	accepts valid
 tests/scopes/sameClassNameResolve.kt	accepts valid		
 tests/scopes/singleIntersectionOverride.kt	accepts valid		
 tests/scopes/specialFunctionInJava_1.kt	accepts invalid	UNRESOLVED_REFERENCE	main.kt:7: UNRESOLVED_REFERENCE
-tests/scopes/specialFunctionInJava_2.kt	accepts invalid	ARGUMENT_TYPE_MISMATCH	main.kt:4: ARGUMENT_TYPE_MISMATCH
+tests/scopes/specialFunctionInJava_2.kt	rejects invalid	on an expected line	
 tests/scopes/specialFunctionInJava_3.kt	accepts valid		
 tests/scopes/specialFunctionInJava_4.kt	accepts valid		
 tests/scopes/stopResolutionOnAmbiguity.kt	accepts valid		
@@ -9767,7 +9767,7 @@ testsWithStdLib/cast/IsReified.kt	accepts valid
 testsWithStdLib/castForFunctionsWithDifferentArities.kt	accepts valid		
 testsWithStdLib/classLiteralForParameter.kt	accepts valid		
 testsWithStdLib/cloneArray.kt	accepts valid		
-testsWithStdLib/commonCollections.kt	accepts invalid	TYPE_INFERENCE_ONLY_INPUT_TYPES_ERROR	commonCollections.kt:6: TYPE_INFERENCE_ONLY_INPUT_TYPES_ERROR
+testsWithStdLib/commonCollections.kt	rejects invalid	on an expected line	
 testsWithStdLib/companionLoad.kt	accepts valid		
 testsWithStdLib/comparingDifferentSubclassesCommonInterface.kt	rejects invalid	on an expected line	
 testsWithStdLib/comparingPlatformTypes.kt	rejects invalid	on an expected line	

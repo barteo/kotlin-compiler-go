@@ -173,9 +173,13 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   the lambda is reached; K2 picks the order from the whole system, so it
   infers some combinations of lambdas `kc` can't.
 - `@OnlyInputTypes` (`contains`, `get`, `assertEquals`) is checked only
-  when the types a call's variable is constrained by have no platform
-  types or captured types (star projections), and the inferred type
-  isn't an intersection's component.
+  when the types a call's variable is constrained by have no captured
+  types (star projections), and the inferred type isn't an
+  intersection's component.
+- Of the Java collection members K2 gives Kotlin's signatures, `kc` maps
+  `contains`, `remove`, `containsAll`, `removeAll`, `retainAll`,
+  `indexOf`, `lastIndexOf`, and a map's `containsKey`, `containsValue`,
+  `get` and `remove`; others, such as `getOrDefault`, keep Java's.
 - Of K2's predefined nullability of JDK members, only `java.util.Optional`'s
   (`of`, `ofNullable`, `empty`, `get`, `ifPresent`) is applied. A nullable
   argument for a Java method's `T!` makes `T` nullable, except in an

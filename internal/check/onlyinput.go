@@ -16,8 +16,8 @@ import "github.com/barteo/kotlin-compiler-go/internal/types"
 //
 // kc checks a variable only when each of its constraints is a type
 // without variables, type parameters, star projections (which stand for
-// captured types, which kc doesn't have) or a platform type's
-// flexibility, which it compares as K2 does; it leaves the others be.
+// captured types, which kc doesn't have); it leaves the others be. A
+// platform type is compared as K2 compares flexible types.
 
 // onlyInputOK reports whether val, inferred for tv, is the type of one of
 // its constraints, or kc can't tell.
@@ -27,8 +27,10 @@ func (s *system) onlyInputOK(tv *tvar, val types.Type) bool {
 	}
 	// A star projection in val is a common supertype's, InvB<*> of
 	// InvB<First> and InvB<Bound>, which stands for K2's InvB<out Bound>:
-	// only those of the constraints are captured types.
-	if val.K == types.Invalid || val.HasVars() || val.Has(func(u types.Type) bool { return u.P }) {
+	// only those of the constraints are captured types. A platform type
+	// in val is compared as K2 compares flexible types, by subtyping both
+	// ways: Any! of a String! and an Int is neither.
+	if val.K == types.Invalid || val.HasVars() {
 		return true
 	}
 	var inputs []types.Type
@@ -48,7 +50,7 @@ func (s *system) onlyInputOK(tv *tvar, val types.Type) bool {
 	for _, cs := range [][]types.Type{tv.lower, tv.upper} {
 		for _, t := range cs {
 			t = s.apply(t)
-			if t.K == types.Invalid || t.HasVars() || t.HasParams() || hasFlex(t) || t.K == types.Nothing && !t.N {
+			if t.K == types.Invalid || t.HasVars() || t.HasParams() || t.Has(hasStar) || t.K == types.Nothing && !t.N {
 				return true
 			}
 			inputs = append(inputs, t)
@@ -63,22 +65,4 @@ func (s *system) onlyInputOK(tv *tvar, val types.Type) bool {
 		}
 	}
 	return false
-}
-
-// hasFlex reports whether t is or has a platform type, or a star
-// projection.
-func hasFlex(t types.Type) bool {
-	return t.Has(func(u types.Type) bool {
-		if u.P {
-			return true
-		}
-		if u.A != nil {
-			for _, a := range u.A.List {
-				if a.V == types.Star {
-					return true
-				}
-			}
-		}
-		return false
-	})
 }
