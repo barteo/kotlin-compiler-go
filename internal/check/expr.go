@@ -769,7 +769,17 @@ func (c *Checker) binary(x *syntax.Binary, want types.Type, allowRange bool) typ
 			xw = want.Nullable()
 		}
 		c.sink = c.takeBranchSink()
-		xt := c.safeUnit(x.X, c.value(x.X, xw))               // x?.f() ?: y for a Unit f
+		sink, n := c.sink, len(c.errs)
+		xt := c.safeUnit(x.X, c.value(x.X, xw)) // x?.f() ?: y for a Unit f
+		if xw.K == types.Invalid && sink == nil && c.cannotInferSince(n) && retryableCall(x.X) {
+			// Nothing gives the left call's variables, but K2's K is fixed
+			// from the right side first, and the call's result is below it:
+			// V of fun <V : A> test(): V? is Nothing in test() ?: error("").
+			if yt, ok := c.elvisRightFirst(x.Y); ok {
+				c.errs = c.errs[:n]
+				xt = c.safeUnit(x.X, c.value(x.X, yt.Nullable()))
+			}
+		}
 		nn, nonNull := len(c.scope.narrows), c.notNullOf(x.X) // the right side's casts may not run
 		var yt types.Type
 		if lt := xt.Flex().NonNull(); intLitExpr(x.Y) && (lt == types.LongType || lt == types.ShortType || lt == types.ByteType) {

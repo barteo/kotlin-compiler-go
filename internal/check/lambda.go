@@ -2623,6 +2623,11 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type) {
 		if w.ret.K == types.Invalid && s.unitBound(r) {
 			w.ret = types.UnitType
 		}
+		if r.N && w.ret.K != types.Invalid {
+			// R? takes null too: mapNotNull { foo(it) } for a List<C>
+			// expects a C? of foo's T?.
+			w.ret = w.ret.Nullable()
+		}
 	case endsInLambda(l) && r.Flex().IsFunc():
 		// The lambda it returns takes its parameter types from the
 		// result's, once their variables are known: B of func { a ->

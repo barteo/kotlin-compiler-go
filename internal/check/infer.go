@@ -34,6 +34,10 @@ type tvar struct {
 	// projection, as T in KClass<T>.java for a KClass<*>: without other
 	// bounds, it is its declared bound.
 	star bool
+	// starArg is set when star is for a star projection of an argument's
+	// type, which is then known whatever variables the variable is equal
+	// to; not for the parameters of a delegate's operators.
+	starArg bool
 	// proj is set when it stands for a captured out or in projection, as
 	// T in Array<T> for an Array<out Enum<*>>: the capture is within T's
 	// bounds, even where its approximation isn't.
@@ -325,6 +329,7 @@ func (s *system) subArgs(sup, b types.Type) {
 					s.addUpper(tv, ta.T)
 				default:
 					tv.star = true
+					tv.starArg = true
 				}
 				continue
 			}
@@ -484,7 +489,10 @@ func (s *system) complete() {
 			for _, l := range tv.lower {
 				if s.proper(l) {
 					score = 2
-				} else {
+				} else if !(tv.starArg && s.isVar(l)) {
+					// A captured star is known whatever the variables it
+					// is equal to: A of id's Inv<A> for a star() of Inv<*>
+					// in hh(id(star())), which hh's A then is.
 					allProper = false
 					nested = nested || !s.isVar(l)
 				}
