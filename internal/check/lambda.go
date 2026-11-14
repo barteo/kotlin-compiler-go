@@ -511,6 +511,14 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 			lr.vals = append(lr.vals, p.x)
 		}
 	}
+	if tail := c.tailSink; tail != nil && len(lr.types) > 0 && bt.HasVars() && tail.owns(bt) && !tail.selfInferable(bt) {
+		// The call the lambda ends with, inferred with the call it is
+		// passed to (see checkTail), can't infer its variables, but the
+		// lambda's other results give the result type K2 fixes first,
+		// which the call's is below: T of listOf() in map { if (b)
+		// return@map listOf(it); listOf() }.
+		c.tailBelowReturns(tail, bt, lr.types)
+	}
 	c.state = saved
 	// As in Kotlin, the vars declared outside it that it assigns lose the
 	// smart casts they have where it is, though it may run in place and
@@ -2907,4 +2915,33 @@ func (c *Checker) anonWant(x *syntax.Lambda, w *lambdaWant) bool {
 // fun(s) = s.length for a String.() -> Int.
 func anonRecvParam(x *syntax.Lambda, w lambdaWant) bool {
 	return x.Anon && w.recv && x.AnonRecv == nil && len(x.Params) == len(w.params)
+}
+
+// tailBelowReturns constrains bt, the type of the call a lambda ends with,
+// of system tail, to be below the common supertype of the lambda's other
+// results, ts, if they are all known and that holds.
+func (c *Checker) tailBelowReturns(tail *system, bt types.Type, ts []types.Type) {
+	want := types.InvalidType
+	for _, t := range ts {
+		if t.K == types.Invalid || t.HasVars() {
+			return
+		}
+		if t.K == types.Nothing {
+			continue
+		}
+		if want.K == types.Invalid {
+			want = t
+		} else if j, ok := c.join(want, t); ok {
+			want = j
+		} else {
+			return
+		}
+	}
+	if want.K == types.Invalid {
+		return
+	}
+	trial := tail.clone()
+	if trial.sub(bt, want); trial.ok {
+		*tail = *trial
+	}
 }

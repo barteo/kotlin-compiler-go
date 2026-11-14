@@ -3590,6 +3590,7 @@ func (c *Checker) openLast(pending []pendingBranch) {
 }
 
 func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) types.Type {
+	sink := c.takeBranchSink()
 	var pending []pendingBranch
 	softFail := false
 	// As after an if, the vars the branches assign have the join of their
@@ -3896,6 +3897,9 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 			return types.NothingType
 		}
 		return types.UnitType
+	}
+	if sink != nil {
+		return c.sinkBranches(sink, pending, result)
 	}
 	return c.completeBranches(pending, result, want, true)
 }

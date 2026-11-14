@@ -902,6 +902,22 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			}
 			continue
 		}
+		if branchValue(a) && !plain {
+			// As K2's synthetic call of an if or a when, branches that are
+			// generic calls not inferred on their own are inferred with
+			// this call: compareBy's T in nullsLast(if (b) compareBy({
+			// it.a }) else compareBy({ it.b })) for a Comparator<Foo?>.
+			inner := newSystem(c)
+			c.branchSink = inner
+			t := c.value(a, noWant)
+			ts[i] = t
+			c.branchSink = nil
+			if len(inner.vars) > 0 || len(inner.fixups) > 0 {
+				inner.fixups = append(inner.fixups, func(s *system) { a.SetType(s.final(t)) })
+				partials = append(partials, inner)
+			}
+			continue
+		}
 		ts[i] = c.value(a, noWant)
 	}
 
@@ -2294,4 +2310,16 @@ func (c *Checker) typedLambdaParams(sys *system, l *syntax.Lambda, p types.Type)
 		}
 	}
 	return trial
+}
+
+// branchValue reports whether e is an if with an else or a when with an
+// else branch, whose value is one of its branches'.
+func branchValue(e syntax.Expr) bool {
+	switch e := e.(type) {
+	case *syntax.If:
+		return e.Else != nil
+	case *syntax.When:
+		return len(e.Branches) > 0 && e.Branches[len(e.Branches)-1].Else
+	}
+	return false
 }
