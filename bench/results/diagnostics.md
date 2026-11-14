@@ -7,9 +7,9 @@ Of 10827 test files, 2312 are skipped and 8515 run.
 | Result | Tests | Share |
 |:---|---:|---:|
 | rejects invalid | 3963 | 46.5% |
-| accepts valid | 3932 | 46.2% |
+| accepts valid | 3933 | 46.2% |
 | accepts invalid | 420 | 4.9% |
-| rejects valid | 180 | 2.1% |
+| rejects valid | 179 | 2.1% |
 | parse/unsupported | 18 | 0.2% |
 | crash | 1 | 0.0% |
 
@@ -118,7 +118,7 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 | First error | Tests | Examples |
 |:---|---:|:---|
-| `type mismatch: inferred type is _ but _ was expected` | 50 | `tests/annotations/javaAnnotationWithClassArray.kt`, `tests/annotations/parameters/expressions/unaryPlus.kt` |
+| `type mismatch: inferred type is _ but _ was expected` | 49 | `tests/annotations/javaAnnotationWithClassArray.kt`, `tests/annotations/parameters/expressions/unaryPlus.kt` |
 | `cannot infer type for type parameter '_'. Specify it explicitly.` | 24 | `tests/delegatedProperty/provideDelegate/commonSupertype.kt`, `tests/inference/capturedTypes/differentCapturedTypes.kt` |
 | `unresolved reference: _` | 22 | `tests/callResolution/incorrectPlusOperatorFromJava.kt`, `tests/callResolution/suspendCOnversionForReceiver.kt` |
 | `ambiguous call: n candidates for '_' take (_)` | 8 | `tests/callableReference/resolve/resolveReferenceAgainstKFunctionAndKPrpoerty.kt`, `tests/inference/emptyIntersectionTypes/kt51016.kt` |
@@ -237,7 +237,7 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | Error | Count |
 |:---|---:|
 | `cannot infer type for type parameter '_'. Specify it explicitly.` | 554 |
-| `type mismatch: inferred type is _ but _ was expected` | 312 |
+| `type mismatch: inferred type is _ but _ was expected` | 310 |
 | `unresolved reference: _` | 286 |
 | `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 200 |
 | `platform declaration clash: _` | 150 |
