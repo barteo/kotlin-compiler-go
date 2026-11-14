@@ -528,9 +528,9 @@ func (c *Checker) paramIntersection(cur, t types.Type) (types.Type, bool) {
 	if a.K != types.TypeParam || a.IsIntersection() || types.IsValue(b) {
 		return types.InvalidType, false
 	}
-	switch b.K {
-	case types.String:
-	case types.Class:
+	switch {
+	case b.K == types.String, types.IsPrimitiveKind(b.K):
+	case b.K == types.Class:
 		b.C.Ensure()
 		if b.C.Func || b.HasVars() {
 			return types.InvalidType, false

@@ -176,7 +176,7 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   non-generic interfaces only when nothing else is shared), smart casts between a class type and an unrelated
   interface, or of such an intersection to another (`C & A & B`),
   smart casts of a value of a type parameter's type to a class
-  type or `String` (`String & T`), identity or safe equality of two
+  type, a primitive type or `String` (`String & T`, `Int & T`), identity or safe equality of two
   generic class types or a cast of one to the other (`Box<T> & Box<A>`),
   an `is` check or cast of one to a subclass of another instance
   (`B & A<T>` for a `B : A<Int>`), and incomparable upper bounds of a
@@ -191,10 +191,10 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   but only over the call's own constraints, not its value's use, and
   with the cast's type first. A variable whose upper constraints don't meet its declared
   bounds, as `T` of `fun <T : Foo> foo(): T?` for a `Bar?`, is inferred
-  from the constraints alone, where Kotlin infers `Foo & Bar`. A smart cast of a `T` to a primitive type or a value class is
+  from the constraints alone, where Kotlin infers `Foo & Bar`. A smart cast of a `T` to a value class is
   that type alone, which a generic call expecting a `T` takes only
   directly, as `listOf(o)`, not through another call, as `mapOf(o to o)`
-  for an `Int` `o`. The common
+  for an `o` of a value class. The common
   supertype of two builtin types is `Any`, or `Number` for numbers (for
   `Int` and `String`, Kotlin's is `Comparable<*> & Serializable`).
 - Variables are fixed in K2's readiness order, but their constraints

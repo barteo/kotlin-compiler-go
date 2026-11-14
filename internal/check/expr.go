@@ -3992,6 +3992,10 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 					c.errorf(cond.X.Pos(), "'in' is only supported with ranges written in place, without 'step'")
 					rt = c.rangeExpr(cond.X)
 				}
+				if e := rt.RangeElem(); st.IsIntersection() && slices.Contains(st.Param().Bounds, e) {
+					// A T smart cast to Char, a Char & T, as a Char.
+					st = e
+				}
 				if !(isIntOrLong(st) && isIntOrLong(rt.RangeElem())) {
 					c.wantType(x.Subject, st, rt.RangeElem())
 				}
