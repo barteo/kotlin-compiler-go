@@ -664,7 +664,9 @@ func (s *system) fix(tv *tvar) {
 		// A with a nullable bound and T : Any, gives T = A & Any.
 		if types.MayBeNull(val) {
 			for _, b := range tv.v.Bounds {
-				if b = s.apply(b); !b.HasVars() && !types.AcceptsNull(b) {
+				// A class bound's nullability doesn't depend on variables
+				// in its arguments: T? <: TestEnum? for T : Enum<T>.
+				if b = s.apply(b); (!b.HasVars() || b.K == types.Class) && !types.AcceptsNull(b) {
 					val = val.NonNull()
 					break
 				}
