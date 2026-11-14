@@ -485,6 +485,16 @@ func (c *Checker) isNarrowed(cur, t types.Type) types.Type {
 	if i, ok := c.paramIntersection(cur, t); ok {
 		return i
 	}
+	if a, b := cur.Flex().NonNull(), t.NonNull(); a.K == types.Class && b.K == types.Class && a.C == b.C && a.A != nil && b.A != nil && !c.subtype(b, a) {
+		// Two instances of a generic class, Inv<T> & Inv<A> for an f of
+		// Inv<T> after f as Inv<A>, the cast's type first: K2's fork of
+		// them takes the first that leaves no errors.
+		i := c.intersect([]types.Type{b, a})
+		if types.MayBeNull(t) && types.MayBeNull(cur) {
+			i = i.Nullable()
+		}
+		return i
+	}
 	return t
 }
 

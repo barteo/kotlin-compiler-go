@@ -4243,7 +4243,7 @@ tests/inference/forks/failForkPointWhenNoneOfThemSuccessfulFeatureDisabled.kt	sk
 tests/inference/forks/forkInWhen.kt	accepts valid		
 tests/inference/forks/kt75444Original.kt	rejects invalid	on an expected line	
 tests/inference/forks/nestedCallVariableFixation.kt	accepts valid		
-tests/inference/forks/nestedCallVariableFixationSimple.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	nestedCallVariableFixationSimple.kt:10: type mismatch: inferred type is MyPair<F, F> but MyPair<String, String> was expected
+tests/inference/forks/nestedCallVariableFixationSimple.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	nestedCallVariableFixationSimple.kt:11: type mismatch: inferred type is Generic<E, F> & Generic<Int, String> but Generic<Any?, F> was expected
 tests/inference/forks/overloadResolutionByLambdaReturnTypeAndExpectedType.kt	rejects invalid	on an expected line	
 tests/inference/functionPlaceholderError.kt	rejects invalid	on an expected line	
 tests/inference/genericAssignmentOperator.kt	rejects valid	operator '_' cannot be applied to Int and R<<error>>	genericAssignmentOperator.kt:9: operator '+=' cannot be applied to Int and R<<error>>
@@ -7200,7 +7200,7 @@ tests/problems/kt30036.kt	accepts valid
 tests/problems/kt30352.kt	accepts valid		
 tests/problems/kt30364.kt	accepts valid		
 tests/problems/kt30591.kt	accepts valid		
-tests/problems/kt30955.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	kt30955.kt:12: type mismatch: inferred type is Inv<A> but Inv<Any?> was expected
+tests/problems/kt30955.kt	accepts valid		
 tests/problems/kt31236.kt	accepts valid		
 tests/problems/kt31263.kt	accepts valid		
 tests/problems/kt31437.kt	accepts valid		

@@ -162,14 +162,17 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   interface, or of such an intersection to another (`C & A & B`),
   smart casts of a value of a type parameter's type to a class
   type or `String` (`String & T`), identity or safe equality of two
-  generic class types (`Box<T> & Box<A>`), and incomparable upper bounds of a
+  generic class types or a cast of one to the other (`Box<T> & Box<A>`), and incomparable upper bounds of a
   variable. Other smart casts are to the target type alone: a class type
   of a generic or Java type, a type parameter to another. A call on an
   intersection takes the first component with a member of the name
   whose parameters take its arguments, and a property read on one is
   the intersection of its types only over components of the same class;
-  inference sees an intersection as its first component, the declared
-  type, where K2 forks over the components. A variable whose upper constraints don't meet its declared
+  where a call's variable is constrained by an intersection whose
+  components are different instances of one class, inference forks
+  over them as K2 does, taking the first whose constraint system holds,
+  but only over the call's own constraints, not its value's use, and
+  with the cast's type first. A variable whose upper constraints don't meet its declared
   bounds, as `T` of `fun <T : Foo> foo(): T?` for a `Bar?`, is inferred
   from the constraints alone, where Kotlin infers `Foo & Bar`. A smart cast of a `T` to a primitive type or a value class is
   that type alone, which a generic call expecting a `T` takes only

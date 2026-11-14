@@ -96,6 +96,16 @@ type system struct {
 	// declaring is set while the declared bounds of fresh variables are
 	// added (see tvar.declUp).
 	declaring int
+	// forks are the fork points not resolved yet (see fork).
+	forks []fork
+}
+
+// fork is K2's fork point: an intersection below a class type through
+// more than one of its components, A<Int> & A<T> <: A<F>, each giving
+// other constraints. The first consistent with the others is taken.
+type fork struct {
+	sups []types.Type // the components' instances of b's class
+	b    types.Type
 }
 
 func newSystem(c *Checker) *system {
@@ -155,7 +165,7 @@ func (s *system) clone() *system {
 	}
 	n := &system{c: s.c, byVar: make(map[*types.TypeParamSym]*tvar, len(s.vars)), vals: make(types.Subst, len(s.vals)),
 		fixups: append([]func(*system){}, s.fixups...), errs: append([]inferError{}, s.errs...), ok: s.ok,
-		lambdas: append([]pendingLambda{}, s.lambdas...)}
+		lambdas: append([]pendingLambda{}, s.lambdas...), forks: slices.Clip(s.forks)}
 	for _, tv := range s.vars {
 		c := *tv
 		c.lower = append([]types.Type{}, tv.lower...)
@@ -188,7 +198,46 @@ func (s *system) merge(o *system) {
 	s.fixups = append(s.fixups, o.fixups...)
 	s.errs = append(s.errs, o.errs...)
 	s.lambdas = append(s.lambdas, o.lambdas...)
+	s.forks = append(s.forks, o.forks...)
 	s.ok = s.ok && o.ok
+}
+
+// resolveForks takes, for each fork point, the first branch whose
+// constraints are consistent with the others, or the first
+// (applyTheBestBranchFromForkPoint).
+func (s *system) resolveForks() {
+	for len(s.forks) > 0 && s.ok {
+		f := s.forks[0]
+		s.forks = s.forks[1:]
+		chosen := false
+		for _, sup := range f.sups {
+			t := s.clone()
+			t.subArgs(sup, f.b)
+			if t.ok {
+				*s = *t
+				chosen = true
+				break
+			}
+		}
+		if !chosen {
+			s.subArgs(f.sups[0], f.b)
+		}
+	}
+}
+
+// forkSups returns the instances of b's class of the components of
+// intersection a, if more than one, differing, give one.
+func (s *system) forkSups(a, b types.Type) []types.Type {
+	var sups []types.Type
+	for _, comp := range a.Param().Bounds {
+		if sup, ok := s.c.asSuper(comp, b.C); ok && !slices.Contains(sups, sup) {
+			sups = append(sups, sup)
+		}
+	}
+	if len(sups) < 2 {
+		return nil
+	}
+	return sups
 }
 
 // apply replaces fixed variables in t by their values.
@@ -306,6 +355,12 @@ func (s *system) sub(a, b types.Type) {
 		switch b.K {
 		case types.Any:
 		case types.Class:
+			if a.IsIntersection() && b.HasVars() {
+				if sups := s.forkSups(a, b); sups != nil {
+					s.forks = append(s.forks, fork{sups, b})
+					return
+				}
+			}
 			sup, ok := s.c.asSuper(a, b.C)
 			if ro, flex := readOnlyView(b); !ok && flex {
 				sup, ok = s.c.asSuper(a, ro.C)
@@ -561,6 +616,7 @@ func (s *system) unfixed() bool {
 // complete fixes every variable, in an order that fixes a variable only
 // once the bounds it depends on are known.
 func (s *system) complete() {
+	s.resolveForks()
 	for {
 		var pick *tvar
 		best := -2
@@ -682,6 +738,10 @@ func (s *system) isUpperOf(tv *tvar) bool {
 
 // fix chooses a value for a variable from its known bounds.
 func (s *system) fix(tv *tvar) {
+	if len(s.forks) > 0 {
+		s.resolveForks()
+		tv = s.byVar[tv.v] // a clone's, if a branch was taken
+	}
 	// An unfixed variable below it with only integer literals passes
 	// them on, as K2 incorporates ILT <: T1 and T1 <: T: T of both(id(1),
 	// id("")) has 1 and "" below.
