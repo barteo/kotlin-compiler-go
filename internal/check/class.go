@@ -1737,6 +1737,15 @@ func (c *Checker) superCall(x *syntax.Call, fn *syntax.Member, s *syntax.Super, 
 			ms = c.javaMethods(object, fn.Name)
 		}
 	}
+	if len(ms) == 0 && c.hasFunProp(st, fn.Name, x) {
+		// A property of a function type, invoked: super.x(y) for a
+		// supertype's val x: (String) -> Boolean is super.x.invoke(y),
+		// which reads the supertype's property.
+		inv := &syntax.Member{X: fn, Name: "invoke"}
+		inv.P = fn.P
+		x.Fun = inv
+		return c.call(x, want, sink)
+	}
 	if len(ms) == 0 {
 		c.errorf(fn.P, "unresolved reference: %s", fn.Name)
 		c.args(x, nil)

@@ -767,6 +767,14 @@ func (c *Checker) mostSpecificFun(fs []*types.FunSym) *types.FunSym {
 func (c *Checker) funMoreSpecific(f, g *types.FunSym) bool {
 	ensureFun(f)
 	ensureFun(g)
+	return c.paramsMoreSpecific(f, g)
+}
+
+// paramsMoreSpecific is funMoreSpecific without inferring the functions'
+// return types, which comparing them doesn't need: a function being
+// inferred can compare itself, as fun A(b: B?) = A(b!!) next to a class
+// A(b: B) does.
+func (c *Checker) paramsMoreSpecific(f, g *types.FunSym) bool {
 	if len(f.Params) != len(g.Params) || f.Ext != g.Ext || len(f.Contexts) > 0 || len(g.Contexts) > 0 {
 		return false
 	}

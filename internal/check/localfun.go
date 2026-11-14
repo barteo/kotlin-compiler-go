@@ -131,7 +131,7 @@ func (c *Checker) localFun(s *syntax.LocalFun) {
 		c.assignable(c.value(d.ExprBody, sym.Ret), sym.Ret, d.ExprBody.Pos())
 	default:
 		sym.InProgress = true
-		t := c.expr(d.ExprBody, noWant)
+		t := types.ApproxFlexNothing(c.expr(d.ExprBody, noWant))
 		if t.K == types.Range {
 			c.errorf(d.ExprBody.Pos(), "ranges are only supported in 'for' loops and 'in' checks")
 			t = types.InvalidType

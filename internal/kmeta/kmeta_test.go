@@ -541,3 +541,66 @@ func TestEncodeD1(t *testing.T) {
 		t.Errorf("decoded %d bytes, want the %d encoded", len(got), len(b))
 	}
 }
+
+// TestContractEffects checks that the effects kc writes, returnsNotNull()
+// among them, decode as they were, and that a conclusion with an or,
+// which kc can't read, gives no effect.
+func TestContractEffects(t *testing.T) {
+	intN := &Type{Class: "kotlin/Int", Nullable: true}
+	f := &Function{Name: "f", Params: []*Param{{Name: "v", Type: intN}, {Name: "w", Type: intN}},
+		Ret: &Type{Class: "kotlin/Boolean", Nullable: true}}
+	f.Implies = []Implies{
+		{Returns: ReturnsNotNull, Param: 0},
+		{Returns: ReturnsTrue, Param: 1},
+		{Returns: ReturnsAny, Param: 0, Is: &Type{Class: "kotlin/Int"}},
+	}
+	h := WritePackage(&PackageData{Funcs: []*Function{f}})
+	p, err := ReadPackage(&classfile.KotlinMeta{K: h.K, MV: h.MV, XI: h.XI, D1: h.D1, D2: h.D2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fs, err := p.Functions("f")
+	if err != nil || len(fs) != 1 {
+		t.Fatalf("functions: %v, %d", err, len(fs))
+	}
+	got := fs[0].Implies
+	if len(got) != 3 || got[2].Is == nil || got[2].Is.Class != "kotlin/Int" {
+		t.Fatalf("effects decoded as %+v, want %+v", got, f.Implies)
+	}
+	got[2].Is, f.Implies[2].Is = nil, nil
+	if !reflect.DeepEqual(got, f.Implies) {
+		t.Errorf("effects decoded as %+v, want %+v", got, f.Implies)
+	}
+
+	// returns() implies (v != null || w != null): an Expression with an
+	// or_argument (7), whose own fields are its first part.
+	var enc1, enc2 enc
+	enc1.int(1, 3)
+	enc1.int(2, 1)
+	enc2.int(1, 3)
+	enc2.int(2, 2)
+	enc1.msg(7, enc2.b)
+	var eff, contract enc
+	eff.int(1, 0)
+	eff.msg(3, enc1.b)
+	contract.msg(1, eff.b)
+	if _, implies := (scope{}).contract(contract.b); len(implies) != 0 {
+		t.Errorf("a disjunction decoded as %+v, want no effect", implies)
+	}
+	// And an and_argument (6): both hold.
+	var a1, a2 enc
+	a1.int(1, 3)
+	a1.int(2, 1)
+	a2.int(1, 3)
+	a2.int(2, 2)
+	a1.msg(6, a2.b)
+	var eff2, contract2 enc
+	eff2.int(1, 0)
+	eff2.msg(3, a1.b)
+	contract2.msg(1, eff2.b)
+	_, implies := (scope{}).contract(contract2.b)
+	want := []Implies{{Returns: ReturnsAny, Param: 0}, {Returns: ReturnsAny, Param: 1}}
+	if !reflect.DeepEqual(implies, want) {
+		t.Errorf("a conjunction decoded as %+v, want %+v", implies, want)
+	}
+}

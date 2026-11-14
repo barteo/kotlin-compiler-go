@@ -741,12 +741,30 @@ func withFlags(r, occ Type) Type {
 	case occ.D:
 		return r.NonNull()
 	case occ.P:
-		if r.N || r.K == Unit || r.K == Nothing {
+		if r.K == Nothing {
+			// Kotlin's Nothing!, of a Java T for a T inferred from null:
+			// a platform Nothing?, which takes null and is a Nothing, but
+			// returns, unlike Nothing: set(key, null) of a Java <T> T
+			// set(String, T) isn't the end of the code.
+			return NullType.Platform()
+		}
+		if r.N || r.K == Unit {
 			return r
 		}
 		r.N, r.P, r.D = true, true, false
 	}
 	return r
+}
+
+// ApproxFlexNothing returns t, the type of a declaration or a
+// variable's bound, with Kotlin's Nothing! (see withFlags) as the Nothing?
+// it approximates to: val x = set(key, null) of a Java <T> T set(String,
+// T) is a Nothing?, not a Nothing that a String takes.
+func ApproxFlexNothing(t Type) Type {
+	if t.K == Null && t.P {
+		return NullType
+	}
+	return t
 }
 
 // TypeParamsString formats type parameters as in a declaration: <K, V>.

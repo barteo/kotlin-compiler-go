@@ -2317,6 +2317,12 @@ func (c *Checker) fixedStub(t types.Type) types.Type {
 	}
 	r.cons = append(r.cons, [2]types.Type{val, v}, [2]types.Type{v, val})
 	switch {
+	case t.P:
+		// A Java member's E!, as MutableList's get(0) in buildList {
+		// add("x"); get(0).length }: String!, not String?.
+		if !val.N {
+			val = val.Platform()
+		}
 	case t.N:
 		val = val.Nullable()
 	case t.D:

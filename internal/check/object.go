@@ -435,6 +435,17 @@ func (c *Checker) staticInScope(name string) *types.ClassSym {
 	return nil
 }
 
+// ownStaticTakes reports whether this class's Java superclasses have a
+// static method name that may take call x.
+func (c *Checker) ownStaticTakes(name string, x *syntax.Call) bool {
+	for s := c.cls; s != nil; s = s.Super {
+		if s.Ensure(); s.External && s.KotlinName == "" && c.anyMayTake(s.Statics[name], x) {
+			return true
+		}
+	}
+	return false
+}
+
 // outerObjectFuns returns the functions named name, not hidden, of the
 // first object in scope but this class that has any.
 func (c *Checker) outerObjectFuns(name string) []*types.FunSym {

@@ -3200,7 +3200,7 @@ func (c *Checker) checkFun(d *syntax.FunDecl, cls *types.ClassSym) {
 		return
 	}
 	c.retAllowed = false // `return` needs an explicit return type
-	t := c.expr(d.ExprBody, noWant)
+	t := types.ApproxFlexNothing(c.expr(d.ExprBody, noWant))
 	if t.K == types.Range {
 		c.errorf(d.ExprBody.Pos(), "ranges are only supported in 'for' loops and 'in' checks")
 		t = types.InvalidType
@@ -3244,7 +3244,7 @@ func (c *Checker) checkPropInit(d *syntax.PropDecl, cls *types.ClassSym) {
 		}
 		t, provided = c.inferDelegate(d.Init, pt, owner, c.delegateThis(p), p.Mutable)
 	} else {
-		t = c.value(d.Init, want)
+		t = types.ApproxFlexNothing(c.value(d.Init, want))
 	}
 	if p := d.DelegateOf; p != nil && p.Ref != nil && t.K != types.Invalid {
 		t = c.provideDelegate(d, p, t, provided)

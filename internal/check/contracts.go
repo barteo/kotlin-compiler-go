@@ -115,8 +115,8 @@ func (c *Checker) dropContract(b *syntax.Block, imported bool, o contractOwner) 
 		if !ok {
 			return true
 		}
-		if im, ok := contractImplies(c); ok {
-			implies = append(implies, im)
+		if ims, ok := contractImplies(c); ok {
+			implies = append(implies, ims...)
 			return false
 		}
 		if len(c.Args) != 1 && len(c.Args) != 2 {
@@ -146,33 +146,62 @@ func (c *Checker) dropContract(b *syntax.Block, imported bool, o contractOwner) 
 }
 
 // contractImplies reads returns(value) implies (p != null), (p is T) or
-// (p), for a Boolean p.
-func contractImplies(c *syntax.Call) (syntax.Implies, bool) {
+// (p), for a Boolean p, or a conjunction of them, and returnsNotNull()
+// implies them, (x is Int && y is
+// String), each of which holds when the function returns the value.
+func contractImplies(c *syntax.Call) ([]syntax.Implies, bool) {
 	var im syntax.Implies
 	m, ok := c.Fun.(*syntax.Member)
 	if !ok || m.Name != "implies" || len(c.Args) != 1 {
-		return im, false
+		return nil, false
 	}
 	ret, ok := m.X.(*syntax.Call)
 	if !ok || len(ret.Args) > 1 {
-		return im, false
+		return nil, false
 	}
-	if id, ok := ret.Fun.(*syntax.Ident); !ok || id.Name != "returns" {
-		return im, false
+	id, ok := ret.Fun.(*syntax.Ident)
+	if !ok || id.Name != "returns" && id.Name != "returnsNotNull" {
+		return nil, false
 	}
 	im.Returns = -1
-	if len(ret.Args) == 1 {
+	if id.Name == "returnsNotNull" {
+		if len(ret.Args) != 0 {
+			return nil, false
+		}
+		im.Returns = 2
+	} else if len(ret.Args) == 1 {
 		v, ok := ret.Args[0].(*syntax.BoolLit)
 		if !ok {
-			return im, false
+			return nil, false
 		}
 		im.Returns = 0
 		if v.Val {
 			im.Returns = 1
 		}
 	}
+	var out []syntax.Implies
+	var conj func(x syntax.Expr) bool
+	conj = func(x syntax.Expr) bool {
+		if b, ok := x.(*syntax.Binary); ok && b.Op == syntax.AND {
+			return conj(b.X) && conj(b.Y)
+		}
+		one, ok := impliedCondition(im, x)
+		if ok {
+			out = append(out, one)
+		}
+		return ok
+	}
+	if !conj(c.Args[0]) {
+		return nil, false
+	}
+	return out, true
+}
+
+// impliedCondition reads one condition of a contract's implies, im with
+// its Returns set: p != null, p is T or p.
+func impliedCondition(im syntax.Implies, cond syntax.Expr) (syntax.Implies, bool) {
 	var p syntax.Expr
-	switch x := c.Args[0].(type) {
+	switch x := cond.(type) {
 	case *syntax.Binary:
 		if _, null := x.Y.(*syntax.NullLit); !null || x.Op != syntax.NE {
 			return im, false

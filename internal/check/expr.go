@@ -509,7 +509,7 @@ func (c *Checker) unary(x *syntax.Unary, want types.Type) types.Type {
 				return t
 			}
 		}
-		t := c.value(x.X, want).Flex()
+		t := c.fixedStub(c.value(x.X, want)).Flex()
 		x.X, t = builtinBound(x.X, t)
 		if !builtinOperand(t) || c.unaryExt(x, t) {
 			return c.unaryOp(x, t, want)
@@ -992,7 +992,9 @@ func (c *Checker) binary(x *syntax.Binary, want types.Type, allowRange bool) typ
 		// expected: val n: Long = 8 * 1024.
 		opWant = types.LongType
 	}
-	xt := c.value(x.X, opWant).Flex()
+	// A builder's element is its type, which may be a built-in one:
+	// get(0) + "y" in buildList { add("x") } (see fixedStub).
+	xt := c.fixedStub(c.value(x.X, opWant)).Flex()
 	x.X, xt = builtinBound(x.X, xt)
 	if !builtinOperand(xt) {
 		switch x.Op {
@@ -1019,7 +1021,7 @@ func (c *Checker) binary(x *syntax.Binary, want types.Type, allowRange bool) typ
 		// pos) subtracts an Int from a Long.
 		yWant = noWant
 	}
-	yt := c.value(x.Y, yWant).Flex()
+	yt := c.fixedStub(c.value(x.Y, yWant)).Flex() // 1 + get(0), as get(0) + 1
 	x.Y, yt = builtinBound(x.Y, yt)
 	if xt.K == types.Invalid || yt.K == types.Invalid {
 		return types.InvalidType
@@ -1424,7 +1426,7 @@ func (c *Checker) narrowing(cond syntax.Expr) (whenTrue, whenFalse []narrow) {
 			// a === b, where b is of a class type, means that a is one too:
 			// ktor's prev === this.
 			if same := c.identNarrows(x); len(same) > 0 {
-				if x.Op == syntax.EQ_EQ_EQ {
+				if x.Op == syntax.EQ_EQ_EQ || x.Op == syntax.EQ {
 					whenTrue = append(whenTrue[:len(whenTrue):len(whenTrue)], same...)
 				} else {
 					whenFalse = append(whenFalse[:len(whenFalse):len(whenFalse)], same...)
@@ -1466,7 +1468,14 @@ func (c *Checker) narrowing(cond syntax.Expr) (whenTrue, whenFalse []narrow) {
 			return f, t
 		}
 		// A contract's returns(true) implies (p != null), and false.
-		return c.contractNarrows(x, 1), c.contractNarrows(x, 0)
+		// A Boolean returned is not null either: returnsNotNull()'s.
+		nn := c.contractNarrows(x, 2)
+		return append(c.contractNarrows(x, 1), nn...), append(c.contractNarrows(x, 0), nn...)
+	case *syntax.NotNull:
+		if call, ok := x.X.(*syntax.Call); ok {
+			// if (f(v)!!): what f's Boolean? result says, as f(v)'s.
+			return c.narrowing(call)
+		}
 	case *syntax.Ident:
 		if x.Member == nil && x.Sym != nil {
 			if n, ok := c.conds[x.Sym]; ok {
@@ -1525,13 +1534,22 @@ func (c *Checker) narrowing(cond syntax.Expr) (whenTrue, whenFalse []narrow) {
 // arguments, as bar(s) for s: Slice<X> === SL0: Slice<A>, where kc's
 // would replace them.
 func (c *Checker) identNarrows(x *syntax.Binary) []narrow {
-	if x.Op != syntax.EQ_EQ_EQ && x.Op != syntax.NOT_EQ_EQ {
+	switch x.Op {
+	case syntax.EQ_EQ_EQ, syntax.NOT_EQ_EQ:
+	case syntax.EQ, syntax.NE:
+		// As K2, a == b does too where a's equals is safe for smart casts
+		// (see safeEquals): ts[0] == a, for a String ts[0], makes a a
+		// String.
+		if !c.safeEquals(x.X.Type()) {
+			return nil
+		}
+	default:
 		return nil
 	}
 	var out []narrow
 	for _, side := range [][2]syntax.Expr{{x.X, x.Y}, {x.Y, x.X}} {
 		ot := side[1].Type()
-		if ot.K != types.Class || types.MayBeNull(ot) {
+		if ot.K != types.Class && ot.K != types.String && ot.K != types.TypeParam || types.MayBeNull(ot) {
 			continue
 		}
 		if k, ok := c.narrowKeyOf(side[0]); ok && !c.subtype(k.t, ot) && (ot.A == nil || k.t.K != types.Class || k.t.A == nil) {
@@ -1540,6 +1558,44 @@ func (c *Checker) identNarrows(x *syntax.Binary) []narrow {
 		}
 	}
 	return out
+}
+
+// safeEquals reports whether a value of type t is equal only to values of
+// its type, as K2's EqualsOverrideContract.SAFE_FOR_SMART_CAST has it: a
+// String, or a final class that, with its superclasses, doesn't declare
+// equals, an enum among them, but not a data class, whose equals kotlinc
+// only trusts for exhaustiveness, nor a Float or a Double. A type
+// parameter or an intersection is if one of its types is.
+func (c *Checker) safeEquals(t types.Type) bool {
+	t = t.Flex().NonNull()
+	switch {
+	case t.K == types.String:
+		return true
+	case t.IsIntersection():
+		return slices.ContainsFunc(t.Param().Bounds, c.safeEquals)
+	case t.IsParam():
+		return slices.ContainsFunc(t.Param().Bounds, c.safeEquals)
+	case t.K != types.Class || t.C == nil:
+		return false
+	}
+	cls := t.C
+	cls.Ensure()
+	if !cls.Final || cls.Abstract || cls.Interface || cls.Sealed || cls.Data || cls.Array {
+		return false
+	}
+	for k := cls; k != nil; k = k.Super {
+		k.Ensure()
+		switch k.Name {
+		case "java/lang/Object", "java/lang/Enum", "kotlin/Any", "kotlin/Enum":
+			continue
+		}
+		for _, f := range k.Methods["equals"] {
+			if len(f.Params) == 1 && !f.Static {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // contractNarrows returns the smart casts that the contract of a call's
@@ -1700,6 +1756,14 @@ func (c *Checker) safeReceivers(x syntax.Expr) []narrow {
 // value that isn't null: neither x nor the receivers of its safe calls
 // are null.
 func (c *Checker) equalNonNull(x syntax.Expr) []narrow {
+	if as, ok := x.(*syntax.As); ok && as.Safe {
+		// (a as? T) isn't null: a is a T, as after (a as? T)?.f() != null.
+		if k, ok := c.castNarrow(as); ok {
+			k.t = k.t.NonNull()
+			return append([]narrow{k}, c.impliedBy(k)...)
+		}
+		return nil
+	}
 	n := c.safeReceivers(x)
 	k, ok := c.narrowKeyOf(x)
 	if m, safe := x.(*syntax.Member); safe && m.Safe {
@@ -2080,6 +2144,12 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 		// A variable that can't be invoked doesn't hide functions, as in
 		// fun tag(tag: Any?) = tag(Any::class, tag).
 		_, t, isVar := c.scope.lookup(name)
+		if _, depth := c.scope.find(name); isVar && c.invokable(t) && c.innerMemberTakes(name, x, depth) && c.recvCall(x, fn) {
+			// A member of an implicit receiver nearer than the variable
+			// comes first, as each level of scope in Kotlin: foo() in
+			// with(A()) { } is A's foo, not an outer foo: A.() -> Int.
+			return c.call(x, want, sink)
+		}
 		if isVar && c.invokable(t) {
 			fits := c.localInvokeFits(t, x)
 			if !fits && len(c.recvs) > 0 && c.recvCall(x, fn) {
@@ -2158,6 +2228,16 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 					x.Fun = m
 					return c.call(x, want, sink)
 				}
+				// Members that don't take the arguments' types give way to
+				// top-level functions that do, the next level of scope:
+				// take(s.ext) for an A, next to a member take(arg: B) and a
+				// top-level take(arg: Any). The arguments are checked ahead
+				// only where there are such functions.
+				if fs := c.visible(c.topFunsFor(name, x), x); len(fs) > 0 && c.anyMayTake(fs, x) {
+					if ts := c.argTypes(x); !c.takeTypes(ms, x, ts) && c.takeTypes(fs, x, ts) {
+						return c.resolve(x, methodCallees(fs, nil), want, sink)
+					}
+				}
 				c.captureThis()
 				return c.resolve(x, c.memberCallees(ms, c.cls.This()), want, sink)
 			}
@@ -2193,6 +2273,14 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 				return c.staticCall(x, m, cls, want, sink)
 			}
 			if obj := c.objectMethods(name, x); obj != nil && (c.objectTaking(name, x) != nil || !c.importTakes(name, x)) {
+				if cls := c.findClass(name); cls != nil && cls.Outer == obj && c.ctorsTake(cls, x) {
+					// Or a class nested in it, whose constructors come
+					// first, as the classes in scope do before the
+					// functions of an implicit receiver in Kotlin: Bar("4")
+					// in Owner, for a companion's class Bar(String?) and
+					// fun Bar(String).
+					return c.construct(x, cls, fn.P, want, sink)
+				}
 				// A method of an object in scope: f() is Companion.f().
 				m := &syntax.Member{X: objectIdent(obj, fn.P), Name: name}
 				m.P = fn.P
@@ -2231,6 +2319,9 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 			return c.resolve(x, methodCallees(fs, nil), want, sink)
 		}
 		if fs := c.visible(c.topFunsFor(name, x), x); len(fs) > 0 {
+			if cls := c.findClass(name); c.ctorBeatsFuns(cls, fs, x) {
+				return c.construct(x, cls, fn.P, want, sink)
+			}
 			// The program's functions that don't fit the call give way to
 			// the class path's, as in Kotlin, where each level of scope is
 			// tried in turn: okio's minOf(Long, Int) to the standard
@@ -2655,8 +2746,12 @@ func (c *Checker) uninvokable(v *types.VarSym, name string) bool {
 }
 
 // ctorsTakeOnly reports whether a class's constructors may take call x and
-// none of functions fs, of the same name, may.
+// none of functions fs, of the same name, may, or one is more specific
+// than those that may (see ctorBeatsFuns).
 func (c *Checker) ctorsTakeOnly(cls *types.ClassSym, fs []*types.FunSym, x *syntax.Call) bool {
+	if c.ctorBeatsFuns(cls, fs, x) {
+		return true // or are more specific: bar.Foo("2") for Foo(String) and Foo(String?)
+	}
 	if cls == nil || !constructible(cls) || c.anyMayTake(fs, x) {
 		return false
 	}
@@ -3562,10 +3657,18 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 				if cond.Is && cond.Target.K == types.Class {
 					cov.classes = append(cov.classes, cond.Target.C)
 				}
+				switch {
+				case cond.Is && cond.Target.K != types.Invalid:
+					cov.types = append(cov.types, cond.Target)
+				case cond.NotIs && cond.Target.K == types.Class && !cond.Target.N:
+					cov.not = append(cov.not, cond.Target.C)
+				}
 				if hasSubj && single && cond.Target.K != types.Invalid {
 					n := narrow{recv: subj.recv, sym: subj.sym, t: c.isNarrowed(subjType(), cond.Target)}
 					if cond.Is {
-						whenTrue = append(whenTrue, n)
+						// And what it implies, as an if does: x.data of
+						// val y = x.data, when (y) { is String -> }.
+						whenTrue = append(append(whenTrue, n), c.impliedBy(n)...)
 					} else {
 						later = append(later, n)
 					}

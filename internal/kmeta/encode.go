@@ -405,8 +405,13 @@ func (w *writer) function(f *Function) []byte {
 			if im.Is != nil {
 				conclusion.msg(4, w.typ(im.Is))
 			}
-			eff.int(1, 0) // RETURNS_CONSTANT
-			if im.Returns != ReturnsAny {
+			switch im.Returns {
+			case ReturnsNotNull:
+				eff.int(1, 2) // RETURNS_NOT_NULL
+			default:
+				eff.int(1, 0) // RETURNS_CONSTANT
+			}
+			if im.Returns != ReturnsAny && im.Returns != ReturnsNotNull {
 				var x enc
 				x.int(3, im.Returns)
 				eff.msg(2, x.b)

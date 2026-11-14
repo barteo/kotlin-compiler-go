@@ -30,3 +30,19 @@ fun twoLambdas() {
         { container -> container.consume("") },
     )
 }
+
+// A declared bound alone gives no type unless it is a self type: one of
+// a class whose type parameter is bounded by the class itself.
+open class Plain
+class Holder<K>(val k: K) {
+    fun <T : K> get(): T = TODO()
+}
+class SelfBuilder<S : SelfBuilder<S>> {
+    fun <T : S> me(): T = TODO()
+}
+fun <T : Plain> plain(): T = TODO()
+fun declaredBounds(h: Holder<Plain>, s: SelfBuilder<*>) {
+    val a = plain() // ERROR cannot infer type for type parameter 'T'. Specify it explicitly.
+    val b = h.get() // ERROR cannot infer type for type parameter 'T'. Specify it explicitly.
+    val c = s.me()
+}
