@@ -3383,14 +3383,23 @@ func (c *Checker) delegateExprWant(x syntax.Expr, t, this types.Type) types.Type
 		}
 		return noWant
 	}
-	if id.Name != "lazy" {
+	lazy := c.u.ext.class("kotlin/Lazy")
+	if id.Name != "lazy" || lazy == nil || !c.stdlibLazy() {
 		return c.delegateFunWant(id.Name, t)
 	}
-	lazy := c.u.ext.class("kotlin/Lazy")
-	if lazy == nil {
-		return noWant
-	}
 	return types.GenericType(lazy, []types.Arg{{T: t}})
+}
+
+// stdlibLazy reports whether lazy is the standard library's, which returns
+// a Lazy, and not a function of the program's or imported that hides it.
+func (c *Checker) stdlibLazy() bool {
+	for _, f := range c.topFuns("lazy") {
+		ensureFun(f)
+		if f.Ret.K != types.Class || f.Ret.C.Name != "kotlin/Lazy" {
+			return false
+		}
+	}
+	return true
 }
 
 // passedThrough returns call's trailing lambda if every function with its
