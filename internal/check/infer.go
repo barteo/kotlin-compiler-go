@@ -711,13 +711,12 @@ func (s *system) fix(tv *tvar) {
 		// Bounds that none of the others is below give their
 		// intersection: E <: Int and E <: String, of In<E> for an
 		// In<Int> and an In<String>, give Int & String, of which kotlinc
-		// only warns that it is empty. Where the variable has declared
-		// bounds, an empty one stays an error, as S <: Long? and S <:
-		// Double? of S : T? are (see the bounds below).
+		// only warns that it is empty, with declared bounds too (a
+		// candidate with one is inapplicable among others: see
+		// emptyUppers).
 		comps := []types.Type{val}
 		for _, u := range uppers {
-			if !c.subtype(val, u) && intersectable(u) && intersectable(val) &&
-				(len(tv.v.Bounds) == 0 || !c.emptyIntersection(val, u)) {
+			if !c.subtype(val, u) && intersectable(u) && intersectable(val) {
 				comps = append(comps, u)
 			}
 		}
@@ -767,8 +766,8 @@ func (s *system) fix(tv *tvar) {
 	// A variable with only upper constraints is their intersection with
 	// its declared bounds, as K2 infers it. kc has no intersection types:
 	// it takes a bound below the constraints, and otherwise keeps them,
-	// unless the intersection is empty: S of fun <S : Out<B>> for
-	// Foo<in S> and a Foo<K> of K : Out<L> is K & Out<B>.
+	// empty or not: S of fun <S : Out<B>> for Foo<in S> and a Foo<K> of
+	// K : Out<L> is K & Out<B>.
 	upperOnly := len(lowers) == 0 && len(tv.lits) == 0 && len(uppers) > 0
 	inBounds := map[int]bool{}
 	if upperOnly {
@@ -788,7 +787,10 @@ func (s *system) fix(tv *tvar) {
 				s.errs = append(s.errs, inferError{tv.pos, "type argument for reified type parameter '" + tv.v.Name +
 					"' was inferred to the intersection of ['" + b.String() + "' & '" + val.String() + "']"})
 				inBounds[i] = true
-			case !c.emptyIntersection(val, b):
+			default:
+				// K2 infers the intersection, of which kotlinc only warns
+				// if it is empty, as T of fun <T : Foo> foo(): T? for a
+				// Bar? is Foo & Bar; kc keeps the constraints'.
 				inBounds[i] = true
 			}
 		}

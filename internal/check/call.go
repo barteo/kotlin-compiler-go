@@ -2017,7 +2017,64 @@ func (c *Checker) applicable(cs []*candidate, x *syntax.Call, ts []types.Type, p
 			out = append(out, try)
 		}
 	}
+	if len(cs) > 1 {
+		// As in K2, among several candidates, one whose variable's upper
+		// constraints have an empty intersection is inapplicable: S of
+		// greater(x: Bar<in S>, t: T) for S : T would be Long & Bar<Long>.
+		// A single one only gets a warning.
+		out = slices.DeleteFunc(out, c.emptyUppers)
+	}
 	return out
+}
+
+// emptyUppers reports whether a variable of candidate cd without lower
+// constraints has upper constraints, its declared bounds among them,
+// whose intersection is or may be empty (see emptyIntersection), as
+// K2's CheckIncompatibleTypeVariableUpperBounds finds them.
+func (c *Checker) emptyUppers(cd *candidate) bool {
+	s := cd.sys.clone()
+	for _, p := range cd.tparams {
+		if v := cd.sub[p].T; v.K == types.TypeVar {
+			for _, b := range v.Param().Bounds {
+				s.sub(v, b)
+			}
+		}
+	}
+	for _, tv := range s.vars {
+		if tv.fixed || len(tv.lits) > 0 || slices.ContainsFunc(tv.lower, s.proper) {
+			continue
+		}
+		var ups []types.Type
+		seen := map[*tvar]bool{}
+		var collect func(tv *tvar)
+		collect = func(tv *tvar) {
+			if seen[tv] {
+				return
+			}
+			seen[tv] = true
+			for _, u := range tv.upper {
+				u = s.apply(u)
+				if u.K == types.TypeVar {
+					if uv := s.byVar[u.Param()]; uv != nil && !uv.fixed {
+						collect(uv)
+					}
+					continue
+				}
+				if !u.HasVars() && (u.K == types.Class || u.IsParam() || isBuiltin(u)) {
+					ups = append(ups, u)
+				}
+			}
+		}
+		collect(tv)
+		for i := range ups {
+			for _, u := range ups[i+1:] {
+				if c.emptyIntersection(ups[i], u) || c.mayBeEmptyIntersection(ups[i], u) {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 // withinBounds reports whether a candidate's type parameters can satisfy

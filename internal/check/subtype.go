@@ -694,6 +694,30 @@ func (c *Checker) emptyIntersection(t, u types.Type) bool {
 	return false
 }
 
+// mayBeEmptyIntersection reports whether t & u may be empty, as K2's
+// FINAL_CLASS_AND_INTERFACE: a final class and an interface it doesn't
+// implement.
+func (c *Checker) mayBeEmptyIntersection(t, u types.Type) bool {
+	ts, us := c.boundClasses(t, nil, 0), c.boundClasses(u, nil, 0)
+	for _, a := range ts {
+		a.Ensure()
+		for _, b := range us {
+			b.Ensure()
+			if a.Interface == b.Interface || !a.Interface && !a.Final || !b.Interface && !b.Final {
+				continue
+			}
+			if _, ok := c.asSuper(rawType(a), b); ok {
+				continue
+			}
+			if _, ok := c.asSuper(rawType(b), a); ok {
+				continue
+			}
+			return true
+		}
+	}
+	return false
+}
+
 // boundClasses appends the classes t is: its own, or those of a type
 // parameter's bounds. Any is none.
 func (c *Checker) boundClasses(t types.Type, out []*types.ClassSym, depth int) []*types.ClassSym {

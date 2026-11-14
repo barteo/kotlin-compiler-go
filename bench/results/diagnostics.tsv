@@ -4200,7 +4200,7 @@ tests/inference/emptyIntersectionTypes/kt48935_5.kt	accepts valid
 tests/inference/emptyIntersectionTypes/kt48935_6.kt	accepts valid		
 tests/inference/emptyIntersectionTypes/kt48987.kt	accepts valid		
 tests/inference/emptyIntersectionTypes/kt49661.kt	skip	LANGUAGE	
-tests/inference/emptyIntersectionTypes/kt51016.kt	rejects valid	ambiguous call: n candidates for '_' take (_)	kt51016.kt:11: ambiguous call: 2 candidates for 'foo' take (C<Long?>)
+tests/inference/emptyIntersectionTypes/kt51016.kt	accepts valid		
 tests/inference/emptyIntersectionTypes/kt52364.kt	accepts valid		
 tests/inference/emptyIntersectionTypes/kt52393.kt	rejects invalid	on an expected line	
 tests/inference/emptyIntersectionTypes/kt52431.kt	rejects invalid	on an expected line	
@@ -4276,7 +4276,7 @@ tests/inference/integerLiteralAsComparable.kt	accepts valid
 tests/inference/intersectionTypeMultipleBoundsAsReceiver.kt	accepts valid		
 tests/inference/intersectionTypeOnWhenCall.kt	accepts valid		
 tests/inference/intersectionTypesInConstraints.kt	rejects invalid	on an expected line	
-tests/inference/intersectionTypesWithContravariantTypes.kt	rejects valid	ambiguous call: n candidates for '_' take (_)	intersectionTypesWithContravariantTypes.kt:12: ambiguous call: 2 candidates for 'greater' take (Bar<Long>, Bar<Long>)
+tests/inference/intersectionTypesWithContravariantTypes.kt	accepts valid		
 tests/inference/intersectionWithEnum.kt	accepts valid		
 tests/inference/invokeLambdaAsFunction.kt	rejects invalid	on an expected line	
 tests/inference/javaCollector.kt	accepts valid		
@@ -5913,7 +5913,7 @@ tests/localNestedObjectCapturesOuterTypeParameters.kt	rejects invalid	on an expe
 tests/localObject.kt	accepts valid		
 tests/makeSureCastNeverSucceedsRequiresDfaWarningsFeature_Off.kt	skip	LANGUAGE	
 tests/makeSureCastNeverSucceedsRequiresDfaWarningsFeature_On.kt	skip	LANGUAGE	
-tests/mapStringIntAsDelegate.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	mapStringIntAsDelegate.kt:18: type mismatch: inferred type is Int but String was expected
+tests/mapStringIntAsDelegate.kt	accepts valid		
 tests/mappingWithEmptyParameter.kt	rejects invalid	on an expected line	
 tests/metadata/exhaustiveExpectBoolean.kt	accepts valid		
 tests/missedTypeArgumentsInAnnotationCall.kt	rejects invalid	on an expected line	
@@ -7765,7 +7765,7 @@ tests/resolve/overloadConflicts/kt10472.kt	accepts valid
 tests/resolve/overloadConflicts/kt10640.kt	accepts valid		
 tests/resolve/overloadConflicts/kt31670.kt	rejects invalid	on an expected line	
 tests/resolve/overloadConflicts/kt31758.kt	rejects invalid	on an expected line	
-tests/resolve/overloadConflicts/kt37692.kt	rejects valid	ambiguous call: n candidates for '_' take (_)	kt37692.kt:14: ambiguous call: 2 candidates for 'test' take (Foo<Int>)
+tests/resolve/overloadConflicts/kt37692.kt	accepts valid		
 tests/resolve/overloadConflicts/kt55722.kt	accepts valid		
 tests/resolve/overloadConflicts/kt55722Initial.kt	accepts valid		
 tests/resolve/overloadConflicts/numberOfDefaults.kt	accepts valid		
@@ -9017,7 +9017,7 @@ tests/typeParameters/deprecatedSyntax.kt	rejects invalid	on an expected line
 tests/typeParameters/destructuringDeclarations.kt	skip	LANGUAGE	
 tests/typeParameters/destructuringDeclarationsOld.kt	skip	LANGUAGE	
 tests/typeParameters/dnnAsPropertyReceiver.kt	accepts valid		
-tests/typeParameters/dontIntersectUpperBoundWithExpectedType.kt	rejects valid	type argument is not within its bounds: inferred type Bar of type _ '_' is not a subtype of Foo	dontIntersectUpperBoundWithExpectedType.kt:13: type argument is not within its bounds: inferred type Bar of type parameter 'T' is not a subtype of Foo
+tests/typeParameters/dontIntersectUpperBoundWithExpectedType.kt	accepts valid		
 tests/typeParameters/dontLoseUpperNonExpectedTypeConstraints.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	dontLoseUpperNonExpectedTypeConstraints.kt:16: type mismatch: inferred type is ModOp<M, M> but ModOp<M, Z> was expected
 tests/typeParameters/extFunctionTypeAsUpperBound.kt	rejects invalid	on an expected line	
 tests/typeParameters/functionTypeAsUpperBound.kt	rejects invalid	on an expected line	
@@ -10288,7 +10288,7 @@ testsWithStdLib/incorrectExtensionFunctionType.kt	rejects invalid	on an expected
 testsWithStdLib/incorrectLabelReference.kt	rejects invalid	on an expected line	
 testsWithStdLib/incorrectReturnFromNothingLambda.kt	rejects invalid	on an expected line	
 testsWithStdLib/inference/annotationsForResolve/checkLowPriorityIsResolvedSuccessfully.kt	accepts valid		
-testsWithStdLib/inference/annotationsForResolve/exactAnnotation.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	exactAnnotation.kt:11: type mismatch: inferred type is Number but String was expected
+testsWithStdLib/inference/annotationsForResolve/exactAnnotation.kt	accepts valid		
 testsWithStdLib/inference/annotationsForResolve/exactAnnotationWithUpperBoundConstraint.kt	accepts invalid	ARGUMENT_TYPE_MISMATCH	exactAnnotationWithUpperBoundConstraint.kt:17: ARGUMENT_TYPE_MISMATCH
 testsWithStdLib/inference/annotationsForResolve/explicitTypeArgumentAsValidInputType.kt	rejects invalid	on an expected line	
 testsWithStdLib/inference/annotationsForResolve/internalAnnotationsOnTypes.kt	accepts valid		

@@ -7,9 +7,9 @@ Of 10827 test files, 2312 are skipped and 8515 run.
 | Result | Tests | Share |
 |:---|---:|---:|
 | rejects invalid | 3974 | 46.7% |
-| accepts valid | 3935 | 46.2% |
+| accepts valid | 3941 | 46.3% |
 | accepts invalid | 410 | 4.8% |
-| rejects valid | 178 | 2.1% |
+| rejects valid | 172 | 2.0% |
 | parse/unsupported | 16 | 0.2% |
 | crash | 1 | 0.0% |
 
@@ -118,12 +118,12 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 | First error | Tests | Examples |
 |:---|---:|:---|
-| `type mismatch: inferred type is _ but _ was expected` | 49 | `tests/annotations/javaAnnotationWithClassArray.kt`, `tests/annotations/parameters/expressions/unaryPlus.kt` |
+| `type mismatch: inferred type is _ but _ was expected` | 47 | `tests/annotations/javaAnnotationWithClassArray.kt`, `tests/annotations/parameters/expressions/unaryPlus.kt` |
 | `cannot infer type for type parameter '_'. Specify it explicitly.` | 23 | `tests/delegatedProperty/provideDelegate/commonSupertype.kt`, `tests/inference/capturedTypes/differentCapturedTypes.kt` |
 | `unresolved reference: _` | 22 | `tests/callResolution/incorrectPlusOperatorFromJava.kt`, `tests/callResolution/suspendCOnversionForReceiver.kt` |
-| `ambiguous call: n candidates for '_' take (_)` | 8 | `tests/callableReference/resolve/resolveReferenceAgainstKFunctionAndKPrpoerty.kt`, `tests/inference/emptyIntersectionTypes/kt51016.kt` |
 | `no function '_' takes n arguments` | 6 | `tests/annotations/javaAnnotationWithParameter.kt`, `tests/cast/kt15161.kt` |
 | `unresolved import: _` | 6 | `tests/errorProneAtomicArraySuggestions.kt`, `tests/errorProneAtomicReferenceArguments.kt` |
+| `ambiguous call: n candidates for '_' take (_)` | 5 | `tests/callableReference/resolve/resolveReferenceAgainstKFunctionAndKPrpoerty.kt`, `tests/multimodule/varargConflict.kt` |
 | `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 4 | `tests/j+k/withTestConnection3.kt`, `tests/platformTypes/methodCall/multipleExactBoundsNullable.kt` |
 | `'_' overrides nothing` | 3 | `tests/genericReceiverPropertyOverride.kt`, `tests/generics/finalUpperBoundWithOverride.kt` |
 | `cannot infer a type for this parameter. Please specify it explicitly.` | 3 | `tests/inference/completion/postponedArgumentsAnalysis/lackOfDeepIncorporation.kt`, `tests/inference/kt36819.kt` |
@@ -158,13 +158,13 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 | `no type arguments expected for class OuterClass` | 1 | `tests/signatureEnhancementOuterClassBoundsToInner.kt` |
 | `one type argument expected for class B<T>` | 1 | `tests/multimodule/duplicateMethod/substitutedGenericInParams.kt` |
 | `one type argument expected for class X.Y` | 1 | `tests/innerClasses/inCallableReferenceLHS/misplacedArgumentsInInnerOnly.kt` |
-| *7 more* | 7 | |
+| *6 more* | 6 | |
 
 ## Errors by diagnostic
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 14801 of 21506 expected errors (68.8%) on their lines.
+kc reports 14802 of 21506 expected errors (68.8%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
@@ -178,7 +178,7 @@ kc reports 14801 of 21506 expected errors (68.8%) on their lines.
 | `RETURN_TYPE_MISMATCH` | 417 | 306 | 111 |
 | `INVISIBLE_REFERENCE` | 513 | 404 | 109 |
 | `NULL_FOR_NONNULL_TYPE` | 155 | 53 | 102 |
-| `CANNOT_INFER_PARAMETER_TYPE` | 627 | 533 | 94 |
+| `CANNOT_INFER_PARAMETER_TYPE` | 627 | 534 | 93 |
 | `UNRESOLVED_REFERENCE_WRONG_RECEIVER` | 250 | 158 | 92 |
 | `CONST_VAL_WITH_NON_CONST_INITIALIZER` | 251 | 166 | 85 |
 | `MUST_BE_INITIALIZED` | 102 | 21 | 81 |
@@ -249,10 +249,10 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | `unresolved import: _` | 35 |
 | `no function '_' takes n arguments` | 27 |
 | `'_' expression must be exhaustive, add necessary '_' branch` | 20 |
-| `ambiguous call: n candidates for '_' take (_)` | 18 |
 | `variable '_' must be initialized` | 17 |
 | `type checking has run into a recursive problem; specify the type of '_'` | 16 |
 | `'_' overrides nothing` | 15 |
+| `ambiguous call: n candidates for '_' take (_)` | 15 |
 | `expected expression, found '_'` | 15 |
 | `expected n parameter of type _ but n were declared` | 14 |
 | `not enough information to infer type arguments of ::foon: specify the expected function type` | 14 |
