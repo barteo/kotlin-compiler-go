@@ -2761,7 +2761,7 @@ func outerBounds(s *system, params []types.Type) {
 // result with the call it is passed to: xs + ys.flatMap { y -> all(y) },
 // whose all<T> gets its T from xs's elements, through flatMap's R.
 func (c *Checker) checkTail(s *system, l *syntax.Lambda, w lambdaWant, r types.Type) types.Type {
-	if !r.HasVars() || w.ret.K != types.Invalid || l.Ref == nil && !endsWithCall(l.Body) && !returnsCall(l) {
+	if !r.HasVars() || w.ret.K != types.Invalid || l.Ref == nil && !endsWithCall(l.Body) && !returnsCall(l) && !endsWithBranches(l.Body) {
 		_, bt, _ := c.checkLambda(l, w)
 		return bt
 	}
@@ -2797,6 +2797,19 @@ func endsWithCall(b *syntax.Block) bool {
 		if es, ok := b.Stmts[n-1].(*syntax.ExprStmt); ok {
 			_, ok := es.X.(*syntax.Call)
 			return ok
+		}
+	}
+	return false
+}
+
+// endsWithBranches reports whether a block's last statement is an if or a
+// when whose value is its branches', which, as a call it ends with, is
+// inferred with the call the block's lambda is passed to: setOf()'s T in
+// flatMapTo(mutableSetOf()) { if (b) setOf() else setOf() } for a Set<X>.
+func endsWithBranches(b *syntax.Block) bool {
+	if n := len(b.Stmts); n > 0 {
+		if es, ok := b.Stmts[n-1].(*syntax.ExprStmt); ok {
+			return branchValue(es.X)
 		}
 	}
 	return false

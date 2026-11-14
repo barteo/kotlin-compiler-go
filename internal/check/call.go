@@ -1416,6 +1416,46 @@ func (c *Checker) byLambdaResult(x *syntax.Call, match []*candidate) *candidate 
 	return maximal[0]
 }
 
+// branchesClass returns the class of the calls the branches of e, an if
+// or a when with an else in lambda l, end in, if they are all calls of
+// functions l doesn't declare, without lambdas, whose results are of the
+// same class.
+func (c *Checker) branchesClass(l *syntax.Lambda, e syntax.Expr) *types.ClassSym {
+	var bodies []*syntax.Block
+	switch e := e.(type) {
+	case *syntax.If:
+		bodies = []*syntax.Block{e.Then, e.Else}
+	case *syntax.When:
+		for _, b := range e.Branches {
+			bodies = append(bodies, b.Body)
+		}
+	}
+	var cls *types.ClassSym
+	for _, b := range bodies {
+		if b == nil || len(b.Stmts) == 0 {
+			return nil
+		}
+		es, ok := b.Stmts[len(b.Stmts)-1].(*syntax.ExprStmt)
+		if !ok {
+			return nil
+		}
+		call, ok := es.X.(*syntax.Call)
+		if !ok || hasLambda(call.Args) {
+			return nil
+		}
+		fn, ok := call.Fun.(*syntax.Ident)
+		if !ok || declaredIn(l)[fn.Name] {
+			return nil
+		}
+		bc := c.peekClass(call)
+		if bc == nil || cls != nil && bc != cls {
+			return nil
+		}
+		cls = bc
+	}
+	return cls
+}
+
 // byLambdaResultClass chooses among the candidates of byLambdaResult
 // without checking lambda l, argument li, whose parameters have types
 // params, when the call it ends with has a result whose class is known
@@ -1448,12 +1488,24 @@ func (c *Checker) byLambdaResultClass(l *syntax.Lambda, li int, match []*candida
 	if !ok {
 		return nil
 	}
+	var cls *types.ClassSym
+	if branchValue(es.X) {
+		// Branches that end in calls of the same class: setOf() in
+		// flatMapTo(dest) { if (b) setOf() else setOf() }.
+		cls = c.branchesClass(l, es.X)
+		if cls == nil {
+			return nil
+		}
+	}
 	call, ok := es.X.(*syntax.Call)
-	if !ok || hasLambda(call.Args) {
+	if cls == nil && (!ok || hasLambda(call.Args)) {
 		return nil
 	}
-	var cls *types.ClassSym
-	switch fn := call.Fun.(type) {
+	var fn syntax.Expr
+	if cls == nil {
+		fn = call.Fun
+	}
+	switch fn := fn.(type) {
 	case *syntax.Ident:
 		if declaredIn(l)[fn.Name] {
 			return nil
