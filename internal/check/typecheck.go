@@ -467,6 +467,11 @@ func (c *Checker) narrowSym(x syntax.Expr) *types.VarSym {
 func (c *Checker) isNarrowed(cur, t types.Type) types.Type {
 	if c.subtype(cur.NonNull(), t) {
 		if types.MayBeNull(t) {
+			if t.IsParam() && !c.subtype(cur, t) && (c.subtype(t, cur) || cur.K == types.Null || cur.K == types.Nothing) {
+				// t: T? is T & T?, a T, after t is T, as a t known
+				// to be null is a Nothing? & T.
+				return t
+			}
 			return cur
 		}
 		return cur.NonNull()
@@ -516,6 +521,29 @@ func (c *Checker) paramIntersection(cur, t types.Type) (types.Type, bool) {
 // subclass of cur's class: t & cur.
 func (c *Checker) narrowedIntersection(cur, t types.Type) (types.Type, bool) {
 	a, b := cur.Flex().NonNull(), t.NonNull()
+	if a.IsIntersection() && b.K == types.Class && intersectable(b) && !b.C.Func && !c.subtype(b, a) {
+		// A further smart cast of an intersection adds to it: b of a
+		// class B that is an A and a C is a C & A & B. Each component
+		// must be intersectable with the target.
+		b.C.Ensure()
+		for _, u := range a.Param().Bounds {
+			if u.K != types.Class || !intersectable(u) {
+				return types.InvalidType, false
+			}
+			if c.subtype(u, b) {
+				continue
+			}
+			u.C.Ensure()
+			if !u.C.Interface && !b.C.Interface && !c.subtype(b, u) {
+				return types.InvalidType, false
+			}
+		}
+		i := c.intersect(append([]types.Type{b}, a.Param().Bounds...))
+		if types.MayBeNull(t) && types.MayBeNull(cur) {
+			i = i.Nullable()
+		}
+		return i, true
+	}
 	if a.K != types.Class || b.K != types.Class || !intersectable(a) || !intersectable(b) ||
 		a.C.Func || b.C.Func || c.subtype(b, a) {
 		return types.InvalidType, false

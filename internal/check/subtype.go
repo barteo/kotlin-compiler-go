@@ -514,7 +514,12 @@ func (c *Checker) commonSuper(a, b types.Type, depth int) types.Type {
 		switch {
 		case len(rs) == 0:
 			return types.AnyType
-		case len(rs) == 1 || slices.ContainsFunc(rs, func(t types.Type) bool { return !intersectable(t) }):
+		case len(rs) == 1 || slices.ContainsFunc(rs, func(t types.Type) bool {
+			// Generic class types may mention type parameters: Box<T> &
+			// Box<out Super> join Box<T> & Box<SubA> and Box<T> &
+			// Box<SubB>.
+			return !intersectable(t) && (t.K != types.Class || t.HasVars())
+		}):
 			return rs[0]
 		}
 		return c.intersect(rs)

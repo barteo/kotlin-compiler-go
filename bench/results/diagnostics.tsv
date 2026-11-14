@@ -3779,7 +3779,7 @@ tests/identityComparisonOnJavaValueBasedClassesWarning.kt	skip	JDK_KIND
 tests/identitySensitiveOperationsOnValueClassesAndPrimitivesWarningsDisabled.kt	skip	LANGUAGE	
 tests/identitySensitiveOperationsOnValueObjectsWarning.kt	skip	JDK_KIND	
 tests/illegalCharsInPackageWithDots.kt	accepts invalid	INVALID_CHARACTERS	A.kt:1: INVALID_CHARACTERS
-tests/implicitIntersection.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	implicitIntersection.kt:12: type mismatch: inferred type is C? but A? was expected
+tests/implicitIntersection.kt	accepts valid		
 tests/implicitNestedIntersection.kt	accepts valid		
 tests/implicitNothing.kt	rejects invalid	on an expected line	
 tests/implicitTypeFromOtherModule.kt	accepts valid		
@@ -4309,7 +4309,7 @@ tests/inference/kt49658Strict.kt	rejects invalid	elsewhere
 tests/inference/kt49961.kt	skip	LANGUAGE	
 tests/inference/kt50232a.kt	rejects invalid	on an expected line	
 tests/inference/kt53124.kt	accepts valid		
-tests/inference/kt53494.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	kt53494.kt:10: type mismatch: inferred type is C<Nothing?> but C<T> was expected
+tests/inference/kt53494.kt	accepts valid		
 tests/inference/kt54990.kt	accepts valid		
 tests/inference/kt6175.kt	rejects invalid	on an expected line	
 tests/inference/kt619.kt	accepts valid		
@@ -8231,7 +8231,7 @@ tests/smartCasts/equals.kt	accepts valid
 tests/smartCasts/equalsAndIdentity.kt	rejects invalid	on an expected line	
 tests/smartCasts/exclUnderAnd.kt	rejects invalid	on an expected line	
 tests/smartCasts/explicitDefaultGetter.kt	accepts valid		
-tests/smartCasts/explicitTypeArguments.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	explicitTypeArguments.kt:21: type mismatch: inferred type is Box<TypeParameter> but Box<out SuperType> was expected
+tests/smartCasts/explicitTypeArguments.kt	accepts valid		
 tests/smartCasts/extensionSafeCall.kt	rejects invalid	on an expected line	
 tests/smartCasts/fakeSmartCastOnEquality.kt	rejects invalid	on an expected line	
 tests/smartCasts/falseReceiverSmartCast.kt	accepts valid		
@@ -8274,11 +8274,11 @@ tests/smartCasts/inference/syntheticPropertyOnUnstableSmartcast.kt	accepts inval
 tests/smartCasts/inference/unstableSmartCastUnneededForConcreteProperty.kt	accepts valid		
 tests/smartCasts/inference/unstableSmartCastUnneededForGenericPropertyA.kt	accepts valid		
 tests/smartCasts/inference/unstableSmartCastUnneededForGenericPropertyB.kt	accepts valid		
-tests/smartCasts/intersectionScope/capturedSpecificity.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	capturedSpecificity.kt:11: type mismatch: inferred type is Any? but V? was expected
+tests/smartCasts/intersectionScope/capturedSpecificity.kt	accepts valid		
 tests/smartCasts/intersectionScope/conflictTypeParameters.kt	accepts valid		
 tests/smartCasts/intersectionScope/conflictingReturnType.kt	accepts valid		
 tests/smartCasts/intersectionScope/flexibleTypes.kt	rejects invalid	on an expected line	
-tests/smartCasts/intersectionScope/intersectReturnType.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	intersectReturnType.kt:14: type mismatch: inferred type is V but T was expected
+tests/smartCasts/intersectionScope/intersectReturnType.kt	accepts valid		
 tests/smartCasts/intersectionScope/moreSpecificSetter.kt	accepts valid		
 tests/smartCasts/intersectionScope/moreSpecificVisibility.kt	accepts valid		
 tests/smartCasts/intersectionScope/mostSpecific.kt	accepts valid		
@@ -10409,7 +10409,7 @@ testsWithStdLib/intellij/javaFunctionParamNullability.kt	accepts valid
 testsWithStdLib/intellij/lambdaForKfunction.kt	rejects invalid	on an expected line	
 testsWithStdLib/intellij/typeAliasAmbiguity.kt	accepts valid		
 testsWithStdLib/intersectDynamicAndString.kt	rejects invalid	on an expected line	
-testsWithStdLib/intersectRawAndMutable.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	test.kt:14: type mismatch: inferred type is Int but String was expected
+testsWithStdLib/intersectRawAndMutable.kt	accepts valid		
 testsWithStdLib/j+k/AnnotationWithEnum.kt	accepts invalid	POSITIONED_VALUE_ARGUMENT_FOR_JAVA_ANNOTATION	jvm.kt:4: POSITIONED_VALUE_ARGUMENT_FOR_JAVA_ANNOTATION
 testsWithStdLib/j+k/BasicWithAnnotatedJava.kt	accepts valid		
 testsWithStdLib/j+k/BasicWithAnnotatedOverriddenJava.kt	accepts valid		

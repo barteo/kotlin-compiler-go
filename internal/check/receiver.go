@@ -1029,6 +1029,29 @@ func (c *Checker) callBound(t types.Type, x *syntax.Call, name string) types.Typ
 	if b == t || x.Names != nil {
 		return b
 	}
+	if t.IsIntersection() && len(x.Args) > 0 {
+		// An intersection's members are those of all its components, of
+		// which a call picks one that takes its arguments: x.add(1) for
+		// an x of StringSet & ArrayList (raw) is the raw list's.
+		var others []types.Type
+		for _, o := range t.Param().Bounds {
+			if o = o.NonNull(); o != b {
+				if cls := c.classOf(o); cls != nil && has(cls) {
+					others = append(others, o)
+				}
+			}
+		}
+		if len(others) > 0 {
+			ts := c.argTypes(x)
+			if !c.membersTake(b, name, x, ts) {
+				for _, o := range others {
+					if c.membersTake(o, name, x, ts) {
+						return o
+					}
+				}
+			}
+		}
+	}
 	ret := func(b types.Type) (types.Type, bool) {
 		cls := c.classOf(b)
 		if cls == nil {

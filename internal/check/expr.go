@@ -1690,10 +1690,24 @@ func (c *Checker) identNarrows(x *syntax.Binary) []narrow {
 		if ot.K != types.Class && ot.K != types.String && ot.K != types.TypeParam || types.MayBeNull(ot) {
 			continue
 		}
-		if k, ok := c.narrowKeyOf(side[0]); ok && !c.subtype(k.t, ot) && (ot.A == nil || k.t.K != types.Class || k.t.A == nil) {
-			k.t = c.isNarrowed(k.t, ot)
-			out = append(out, k)
+		k, ok := c.narrowKeyOf(side[0])
+		if !ok || c.subtype(k.t, ot) {
+			continue
 		}
+		if ot.A != nil && k.t.K == types.Class && k.t.A != nil {
+			// Both generic: the value is both, Box<T> & Box<A>, as K2's
+			// smart cast is an intersection with the declared type. The
+			// declared type first, which inference, without K2's forks
+			// over the components, takes: bar(s) for an expected X?.
+			if ot.K != types.Class || ot.C.Func || k.t.C.Func || types.MayBeNull(k.t) {
+				continue
+			}
+			k.t = c.intersect([]types.Type{k.t, ot})
+			out = append(out, k)
+			continue
+		}
+		k.t = c.isNarrowed(k.t, ot)
+		out = append(out, k)
 	}
 	return out
 }
@@ -2196,6 +2210,7 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 		}
 		ensureVar(x.Prop)
 		t = c.memberSubst(rt, x.Prop.Owner).Apply(x.Prop.Type)
+		t = c.intersectionProp(xt.NonNull(), rt, x.Prop, t)
 		if !x.Safe && c.stableOn(x.Prop, rt) {
 			// A smart cast of a.b.
 			x.T = t
@@ -2233,6 +2248,50 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 		t = t.Nullable()
 	}
 	return t
+}
+
+// intersectionProp returns the type of property p, of type t seen
+// through rt, read on a receiver of intersection type xt: the
+// intersection of its types seen through each component of rt's class,
+// as K2's intersection scope has it. value of a C<out T> & C<out V> is a
+// T & V.
+func (c *Checker) intersectionProp(xt, rt types.Type, p *types.VarSym, t types.Type) types.Type {
+	if !xt.IsIntersection() || rt.K != types.Class || p.Owner == nil {
+		return t
+	}
+	ts := []types.Type{t}
+	for _, o := range xt.Param().Bounds {
+		if o = o.NonNull(); o == rt || o.K != types.Class || o.C != rt.C {
+			continue
+		}
+		u := c.memberSubst(o, p.Owner).Apply(p.Type)
+		if u.K == types.Invalid || u.HasVars() {
+			return t
+		}
+		ts = append(ts, u)
+	}
+	if len(ts) == 1 || t.HasVars() {
+		return t
+	}
+	// The components as they are, T & V of two type parameters that may
+	// be null, not (T & Any & V & Any)?: of equal ones the first stays.
+	var comps []types.Type
+	for i, u := range ts {
+		if !slices.ContainsFunc(ts[:i], func(o types.Type) bool { return c.subtype(o, u) }) &&
+			!slices.ContainsFunc(ts[i+1:], func(o types.Type) bool { return c.subtype(o, u) && !c.subtype(u, o) }) {
+			comps = append(comps, u)
+		}
+	}
+	if len(comps) == 1 {
+		return comps[0]
+	}
+	if slices.ContainsFunc(comps, func(u types.Type) bool { return u.N || u.D || u.P || u.IsIntersection() }) {
+		if r := c.intersect(comps); r.K != types.Invalid {
+			return r
+		}
+		return t
+	}
+	return c.internIntersection(comps)
 }
 
 // kotlinSuperProp reports whether Java class cls inherits property name
