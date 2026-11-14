@@ -1145,7 +1145,7 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 		// of a builder's stubs relates the call's variables to them: as
 		// in Kotlin, myBuilder2 { add("") } that myBuilder1's lambda ends
 		// with, for its Foo<K1>, infers K2 with K1 (see stubRelated).
-		if want.K != types.Invalid && (!want.HasVars() || c.onlyStubs(want)) && ret.HasVars() {
+		if want.K != types.Invalid && (!want.HasVars() || c.onlyStubs(want)) && ret.HasVars() && !f.NoInferRet {
 			trial := sys.clone()
 			trial.sub(ret, want)
 			if trial.ok {
@@ -1157,7 +1157,7 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 	// A builder's variable that stubInference infers counts as known: as
 	// in Kotlin, o.p = materialize() for a p of the builder's type
 	// variable infers materialize's T with it (see joinRun).
-	if want.K != types.Invalid && (!want.HasVars() || c.onlyStubs(want)) && ret.HasVars() {
+	if want.K != types.Invalid && (!want.HasVars() || c.onlyStubs(want)) && ret.HasVars() && !f.NoInferRet {
 		trial := sys.clone()
 		trial.sub(ret, want)
 		if trial.ok {
@@ -1846,6 +1846,11 @@ func (c *Checker) constrain(cd *candidate, x *syntax.Call, ts []types.Type, part
 			}
 			cd.susps[i] = true
 			cd.sys.sub(t, ft)
+			continue
+		}
+		if cd.param(i).NoInfer && p.HasVars() {
+			// A @NoInfer parameter's argument adds no constraint: it is
+			// checked against the type the others infer.
 			continue
 		}
 		if m, ft, ok := c.samConstraint(cd, t, p, x.Args[i]); ok {

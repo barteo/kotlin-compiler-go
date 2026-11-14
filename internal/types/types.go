@@ -273,8 +273,9 @@ type VarSym struct {
 	// that holds its delegate, which reading it calls getValue on.
 	Delegate *VarSym
 
-	// NoInfer is set on a context parameter whose type, or one of its
-	// type arguments, is annotated @NoInfer: its argument is chosen by the
+	// NoInfer is set on a parameter whose type, or one of its type
+	// arguments, is annotated @NoInfer: its argument is chosen by (a
+	// context parameter's) or checked against (a value parameter's) the
 	// call's type arguments, not used to infer them.
 	NoInfer bool
 
@@ -505,6 +506,10 @@ type FunSym struct {
 	Operator bool   // can be called by an operator, as get by x[i]: Java methods and Kotlin operator funs
 	Infix    bool   // can be called as an infix operator: a to b
 	Ext      bool   // an extension function, called on a receiver of type Recv
+	// NoInferRet is set when the result type is annotated
+	// @kotlin.internal.NoInfer: the expected type doesn't constrain the
+	// call's variables.
+	NoInferRet bool
 	Recv     Type   // Invalid if kc doesn't support the receiver's type
 	// Contexts are the context parameters of a function of the program,
 	// context(a: A) fun f(), which calls pass implicitly. On the JVM,

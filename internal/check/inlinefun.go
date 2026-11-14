@@ -404,8 +404,12 @@ func (c *Checker) reifiedTypes(pos syntax.Pos, f *types.FunSym, sub types.Subst,
 	for i, tp := range f.TypeParams {
 		t := s.final(sub.Apply(types.ParamType(tp)))
 		ts[i] = t
-		if tp.Reified && t.IsParam() && !t.Param().Reified {
+		switch {
+		case tp.Reified && t.IsParam() && !t.Param().Reified:
 			c.errorf(pos, "cannot use '%s' as reified type parameter", t.Param().Name)
+		case tp.Reified && t.K == types.Nothing && !t.N:
+			// Nothing has no class; Nothing? is Void's.
+			c.errorf(pos, "cannot use 'Nothing' as reified type parameter")
 		}
 	}
 	if f.Builtin == types.TypeOf {

@@ -4116,7 +4116,7 @@ tests/inference/constraints/earlyCompletionForCalls.kt	accepts valid
 tests/inference/constraints/equalityConstraintOnNullableType.kt	accepts valid		
 tests/inference/constraints/errorUpperBoundConstraint.kt	rejects invalid	on an expected line	
 tests/inference/constraints/fixTypeVariableWithNothingConstraintEarlierThanComplexVariable.kt	accepts valid		
-tests/inference/constraints/ignoreConstraintFromImplicitInNothing.kt	accepts invalid	REIFIED_TYPE_FORBIDDEN_SUBSTITUTION	ignoreConstraintFromImplicitInNothing.kt:15: REIFIED_TYPE_FORBIDDEN_SUBSTITUTION
+tests/inference/constraints/ignoreConstraintFromImplicitInNothing.kt	rejects invalid	on an expected line	
 tests/inference/constraints/inferTypeFromCapturedStarProjection.kt	accepts valid		
 tests/inference/constraints/kt6320.kt	rejects invalid	on an expected line	
 tests/inference/constraints/kt7351ConstraintFromUnitExpectedType.kt	accepts valid		
@@ -4361,14 +4361,14 @@ tests/inference/nestedExtensionFunctionType.kt	accepts valid
 tests/inference/nestedIfWithExpectedType.kt	rejects invalid	on an expected line	
 tests/inference/nestedLambdas.kt	accepts valid		
 tests/inference/noEnhancementOnFinalStaticConstFields.kt	accepts valid		
-tests/inference/noInferUnit.kt	accepts invalid	CANNOT_INFER_PARAMETER_TYPE; RETURN_TYPE_MISMATCH	noInferUnit.kt:9: CANNOT_INFER_PARAMETER_TYPE
-tests/inference/noInferUpperLower.kt	accepts invalid	TYPE_MISMATCH	noInferUpperLower.kt:26: TYPE_MISMATCH
+tests/inference/noInferUnit.kt	rejects invalid	on an expected line	
+tests/inference/noInferUpperLower.kt	rejects invalid	on an expected line	
 tests/inference/noInformationForParameter.kt	rejects invalid	on an expected line	
 tests/inference/noInformationForStarProjectionCase.kt	rejects invalid	on an expected line	
 tests/inference/nonFunctionalExpectedTypeForLambdaArgument.kt	rejects invalid	on an expected line	
 tests/inference/notFixedTopLevelLambdaParameter.kt	accepts valid		
 tests/inference/nothingType/complexDependancyOnVariableWithTrivialConstraint.kt	accepts valid		
-tests/inference/nothingType/discriminateNothingForReifiedParameter.kt	accepts invalid	REIFIED_TYPE_FORBIDDEN_SUBSTITUTION	discriminateNothingForReifiedParameter.kt:25: REIFIED_TYPE_FORBIDDEN_SUBSTITUTION
+tests/inference/nothingType/discriminateNothingForReifiedParameter.kt	rejects invalid	on an expected line	
 tests/inference/nothingType/discriminatedNothingAndSmartCast.kt	accepts valid		
 tests/inference/nothingType/discriminatedNothingInsideComplexNestedCall.kt	accepts valid		
 tests/inference/nothingType/generateConstraintWithInnerNothingType.kt	accepts valid		
@@ -10297,7 +10297,7 @@ testsWithStdLib/inference/annotationsForResolve/kt29307.kt	rejects invalid	on an
 testsWithStdLib/inference/annotationsForResolve/kt35210.kt	accepts valid		
 testsWithStdLib/inference/annotationsForResolve/lowPriorityTopLevelValAndObject.kt	rejects valid	unresolved reference: _	test.kt:14: unresolved reference: length
 testsWithStdLib/inference/annotationsForResolve/moreOnlyInputTypes.kt	accepts valid		
-testsWithStdLib/inference/annotationsForResolve/noInferAndLowPriority.kt	accepts invalid	TYPE_MISMATCH	noInferAndLowPriority.kt:14: TYPE_MISMATCH
+testsWithStdLib/inference/annotationsForResolve/noInferAndLowPriority.kt	rejects invalid	on an expected line	
 testsWithStdLib/inference/annotationsForResolve/noInferAnnotation.kt	rejects invalid	on an expected line	
 testsWithStdLib/inference/annotationsForResolve/noInferDelegatedPropertyReference.kt	accepts valid		
 testsWithStdLib/inference/annotationsForResolve/noInferMismatchingClosestReceiver.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	noInferMismatchingClosestReceiver.kt:14: type mismatch: inferred type is KlassB but KlassA was expected
@@ -10705,7 +10705,7 @@ testsWithStdLib/reified/arrayConstruction.kt	rejects invalid	on an expected line
 testsWithStdLib/reified/arrayOfNullsReified.kt	rejects invalid	on an expected line	
 testsWithStdLib/reified/kt11881.kt	rejects invalid	on an expected line	
 testsWithStdLib/reified/nonCallableReiefied.kt	accepts valid		
-testsWithStdLib/reified/reifiedNothingSubstitution.kt	accepts invalid	REIFIED_TYPE_FORBIDDEN_SUBSTITUTION; UNSUPPORTED	reifiedNothingSubstitution.kt:10: REIFIED_TYPE_FORBIDDEN_SUBSTITUTION
+testsWithStdLib/reified/reifiedNothingSubstitution.kt	rejects invalid	on an expected line	
 testsWithStdLib/reified/reifiedNothingSubstitutionDisabled.kt	skip	LANGUAGE	
 testsWithStdLib/reinitializations/constructorVarWrite.kt	accepts valid		
 testsWithStdLib/removeIf.kt	accepts valid		

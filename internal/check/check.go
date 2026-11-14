@@ -1765,6 +1765,7 @@ func (c *Checker) resolveFun(d *syntax.FunDecl, owner *types.ClassSym) {
 	switch {
 	case d.Ret != nil:
 		sym.Ret, sym.Resolved = c.resolveType(d.Ret), true
+		sym.NoInferRet = d.Ret.NoInfer
 	case d.ExprBody == nil:
 		sym.Ret, sym.Resolved = types.UnitType, true
 	default:
@@ -1794,7 +1795,7 @@ func (c *Checker) resolveFun(d *syntax.FunDecl, owner *types.ClassSym) {
 // of declared type t. A vararg parameter's type is an array of t.
 func (c *Checker) paramSym(p *syntax.Param, t types.Type, decl any) *types.VarSym {
 	sym := &types.VarSym{Name: p.Name, Type: t, Kind: types.Param, Decl: decl, Default: p.Default != nil,
-		UnsafeVariance: p.Type != nil && p.Type.UnsafeVariance}
+		UnsafeVariance: p.Type != nil && p.Type.UnsafeVariance, NoInfer: noInfer(p.Type)}
 	if p.External {
 		c.errorf(p.ExternalP, "modifier 'external' is not applicable to 'value parameter'")
 	}

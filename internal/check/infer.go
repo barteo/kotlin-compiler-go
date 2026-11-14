@@ -631,6 +631,23 @@ func (s *system) fix(tv *tvar) {
 		// bar(null, r) ?: x with T String? for an expected String?.
 		lowers = nil
 	}
+	if len(lowers) > 0 && len(tv.lits) == 0 && tv.v.Origin != nil && tv.v.Origin.Reified &&
+		!slices.ContainsFunc(lowers, func(l types.Type) bool { return l.K != types.Nothing && l.K != types.Null }) {
+		// Nothing is no reified type argument: as K2, one from lower
+		// bounds that are all Nothing yields to an upper bound, a
+		// declared one too (T of takeReified<T : Bound>(null) is Bound).
+		ups := uppers
+		if len(ups) == 0 {
+			for _, b := range tv.v.Bounds {
+				if b = s.apply(b); !b.HasVars() && !(b.K == types.Class && b.C == types.AnyType.C && b.N) {
+					ups = append(ups, b)
+				}
+			}
+		}
+		if len(ups) > 0 {
+			lowers, uppers = nil, ups
+		}
+	}
 	// Without other bounds, a declared bound that is a self type counts
 	// as one (see selfTypeBounds).
 	var selfStar []types.Type
