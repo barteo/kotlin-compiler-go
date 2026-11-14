@@ -1950,10 +1950,14 @@ func (c *Checker) stubInference(s *system, l *syntax.Lambda, params []types.Type
 		delete(c.stubs, v)
 	}
 	c.stubReceivers(r)
-	if !clean {
+	if !clean && !r.demanded {
 		// Code that doesn't check with the variables unfixed, as a
 		// member of a value of one of them that nothing fixes yet,
-		// which Kotlin rejects: they stay uninferred.
+		// which Kotlin rejects: they stay uninferred. Once a member
+		// fixed one on demand, as K2 does, the variables are inferred
+		// from what was recorded, and the check that counts reports
+		// what disagrees with them where it is: constrain(Interloper)
+		// after provide().memberFunction() fixed OTv to ScopeOwner.
 		return
 	}
 	if useful, trial, ok := r.solve(); ok {
@@ -2099,6 +2103,11 @@ type stubRun struct {
 	// run (see join), whose variables are stubs too.
 	joined []*system
 	extra  []*types.TypeParamSym
+	// demanded is set once a member of a value of one of the stubs fixed
+	// it to what the constraints so far give (see fixedStub), as K2
+	// fixes a variable on demand: what the lambda does after it is
+	// checked with that type.
+	demanded bool
 	// recvs are the receivers of members, x.f() or x.p, of one of the
 	// stubs that nothing fixes yet where the member is used: an error
 	// in Kotlin, BUILDER_INFERENCE_STUB_RECEIVER, also for a member of
@@ -2336,6 +2345,7 @@ func (c *Checker) fixedStub(t types.Type) types.Type {
 		return t
 	}
 	r.cons = append(r.cons, [2]types.Type{val, v}, [2]types.Type{v, val})
+	r.demanded = true
 	switch {
 	case t.P:
 		// A Java member's E!, as MutableList's get(0) in buildList {
