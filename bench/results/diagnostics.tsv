@@ -4541,8 +4541,8 @@ tests/inference/pcla/issues/kt47986Enabled.kt	skip	LANGUAGE
 tests/inference/pcla/issues/kt47986_2.kt	rejects invalid	on an expected line	
 tests/inference/pcla/issues/kt47986_3.kt	rejects invalid	on an expected line	
 tests/inference/pcla/issues/kt47986_4.kt	rejects invalid	on an expected line	
-tests/inference/pcla/issues/kt47989a.kt	accepts invalid	CANNOT_INFER_PARAMETER_TYPE	kt47989a.kt:6: CANNOT_INFER_PARAMETER_TYPE
-tests/inference/pcla/issues/kt47989b.kt	accepts invalid	CANNOT_INFER_PARAMETER_TYPE; RETURN_TYPE_MISMATCH_ON_OVERRIDE	kt47989b.kt:6: CANNOT_INFER_PARAMETER_TYPE
+tests/inference/pcla/issues/kt47989a.kt	rejects invalid	on an expected line	
+tests/inference/pcla/issues/kt47989b.kt	rejects invalid	on an expected line	
 tests/inference/pcla/issues/kt48031.kt	accepts valid		
 tests/inference/pcla/issues/kt49160a.kt	accepts valid		
 tests/inference/pcla/issues/kt49160b.kt	accepts valid		
@@ -4562,8 +4562,8 @@ tests/inference/pcla/issues/kt51148.kt	rejects invalid	on an expected line
 tests/inference/pcla/issues/kt51464.kt	rejects invalid	on an expected line	
 tests/inference/pcla/issues/kt52757.kt	accepts valid		
 tests/inference/pcla/issues/kt52838a.kt	rejects invalid	on an expected line	
-tests/inference/pcla/issues/kt52838b.kt	accepts invalid	ARGUMENT_TYPE_MISMATCH	kt52838b.kt:13: ARGUMENT_TYPE_MISMATCH
-tests/inference/pcla/issues/kt52838c.kt	accepts invalid	ARGUMENT_TYPE_MISMATCH	kt52838c.kt:12: ARGUMENT_TYPE_MISMATCH
+tests/inference/pcla/issues/kt52838b.kt	rejects invalid	on an expected line	
+tests/inference/pcla/issues/kt52838c.kt	rejects invalid	on an expected line	
 tests/inference/pcla/issues/kt53109.kt	accepts valid		
 tests/inference/pcla/issues/kt53422.kt	skip	API_VERSION	
 tests/inference/pcla/issues/kt53422a.kt	accepts valid		
@@ -4632,7 +4632,7 @@ tests/inference/pcla/issues/kt74819a.kt	accepts valid
 tests/inference/pcla/issues/kt74819b.kt	accepts valid		
 tests/inference/pcla/issues/kt74819c.kt	accepts valid		
 tests/inference/pcla/issues/kt74819d.kt	accepts valid		
-tests/inference/pcla/issues/kt74819f.kt	accepts invalid	ARGUMENT_TYPE_MISMATCH	kt74819f.kt:8: ARGUMENT_TYPE_MISMATCH
+tests/inference/pcla/issues/kt74819f.kt	rejects invalid	on an expected line	
 tests/inference/pcla/issues/kt74819g.kt	accepts valid		
 tests/inference/pcla/issues/kt74819h.kt	accepts valid		
 tests/inference/pcla/issues/kt76171WithoutAnonymousObjects.kt	accepts valid		
@@ -4688,7 +4688,7 @@ tests/inference/pcla/oneParameter/oneTypeVariable/oneTypeInfoOrigin/typeInfoSour
 tests/inference/pcla/oneParameter/oneTypeVariable/oneTypeInfoOrigin/typeInfoSources/ReturnTypesOfBuilderParameters.kt	accepts valid		
 tests/inference/pcla/oneParameter/oneTypeVariable/oneTypeInfoOrigin/typeInfoSources/UnitReturnTypeOfBuilderParametersExplicitReturnCase.kt	accepts valid		
 tests/inference/pcla/oneParameter/oneTypeVariable/oneTypeInfoOrigin/typeInfoSources/UnitReturnTypeOfBuilderParametersLastStatementReturnCase.kt	accepts valid		
-tests/inference/pcla/overloadResolutionByLambdaReturnType.kt	accepts invalid	OVERLOAD_RESOLUTION_AMBIGUITY; UNRESOLVED_REFERENCE	overloadResolutionByLambdaReturnType.kt:14: OVERLOAD_RESOLUTION_AMBIGUITY
+tests/inference/pcla/overloadResolutionByLambdaReturnType.kt	rejects invalid	on an expected line	
 tests/inference/pcla/overloadResolutionByLambdaReturnTypeInsideBI.kt	accepts valid		
 tests/inference/pcla/overloadResolutionWithTypeVariables.kt	rejects invalid	on an expected line	
 tests/inference/pcla/propertyInvokeInsidePCLALambda.kt	accepts valid		
@@ -4708,10 +4708,10 @@ tests/inference/pcla/specialCallsWithCallableReferencesDontRewriteAtSlice.kt	rej
 tests/inference/pcla/specialCallsWithCallableReferencesErrorType.kt	rejects invalid	on an expected line	
 tests/inference/pcla/specialCallsWithCallableReferencesNonStrictOnlyInputTypes.kt	rejects invalid	on an expected line	
 tests/inference/pcla/specialCallsWithLambdas.kt	rejects invalid	on an expected line	
-tests/inference/pcla/stubTypes/capturedTypes.kt	accepts invalid	CANNOT_INFER_PARAMETER_TYPE; ARGUMENT_TYPE_MISMATCH	main.kt:31: CANNOT_INFER_PARAMETER_TYPE
-tests/inference/pcla/stubTypes/capturedTypesId.kt	rejects invalid	elsewhere	
+tests/inference/pcla/stubTypes/capturedTypes.kt	rejects invalid	on an expected line	
+tests/inference/pcla/stubTypes/capturedTypesId.kt	rejects invalid	on an expected line	
 tests/inference/pcla/stubTypes/commonSuperType.kt	accepts valid		
-tests/inference/pcla/stubTypes/commonSuperTypeContravariant.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	main.kt:24: cannot infer type for type parameter 'R1'. Specify it explicitly.
+tests/inference/pcla/stubTypes/commonSuperTypeContravariant.kt	accepts valid		
 tests/inference/pcla/stubTypes/commonSuperTypeCovariant.kt	accepts valid		
 tests/inference/pcla/stubTypes/commonSuperTypeInvariant.kt	rejects invalid	on an expected line	
 tests/inference/pcla/stubTypes/commonSuperTypeNullable.kt	accepts valid		

@@ -371,6 +371,12 @@ func (s *system) sub(a, b types.Type) {
 		}
 	case a.K == types.TypeVar && s.byVar[a.Param()] != nil:
 		tv := s.byVar[a.Param()]
+		if r := s.c.stub(b); r != nil && a.N && !b.N {
+			// V? <: a builder's variable says that takes null: see
+			// stubInference.
+			s.ok = r.add(a, b)
+			return
+		}
 		if a.N && !types.AcceptsNull(b) && !(b.K == types.TypeVar && b.N) {
 			s.ok = false
 			return
@@ -477,6 +483,21 @@ func (s *system) subArgs(sup, b types.Type) {
 				}
 				switch ta.V {
 				case types.Out:
+					if k := (stubHintKey{tv.v.Origin, s.c.file.Path, tv.pos}); s.nest == 0 && tv.v.Origin != nil {
+						// As in K2, the capture of out X for a builder's
+						// variable X, which K2 can't approximate, can't be
+						// inferred: capture(getOut()) for an Inv<out R>.
+						// The builder's check records it, and the check
+						// once X is fixed reports it.
+						if s.c.stub(ta.T.Flex()) != nil {
+							if s.c.stubCapts == nil {
+								s.c.stubCapts = map[stubHintKey]bool{}
+							}
+							s.c.stubCapts[k] = true
+						} else if s.c.stubCapts[k] && len(s.c.stubs) == 0 && !slices.ContainsFunc(s.errs, func(e inferError) bool { return e.pos == tv.pos }) {
+							s.errs = append(s.errs, inferError{tv.pos, "cannot infer type for type parameter '" + tv.v.Name + "'. Specify it explicitly."})
+						}
+					}
 					tv.proj = true
 					s.addLower(tv, ta.T)
 				case types.In:

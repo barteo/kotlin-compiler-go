@@ -776,7 +776,7 @@ func (p *parser) parseImport() *Import {
 }
 
 func (p *parser) parseType() *TypeRef {
-	unsafe, composable, noInfer := false, false, false
+	unsafe, composable, noInfer, exact := false, false, false, false
 	var wild Wildcards
 	var as []Annotation
 	for p.at(AT) {
@@ -789,6 +789,7 @@ func (p *parser) parseType() *TypeRef {
 		}
 		unsafe = unsafe || a.Is("UnsafeVariance")
 		noInfer = noInfer || a.Name == "NoInfer" || a.Is("internal.NoInfer")
+		exact = exact || a.Is("internal.Exact")
 		composable = composable || IsComposable(a)
 		if w := WildcardsOf([]Annotation{a}); w != DefaultWildcards {
 			wild = w
@@ -799,6 +800,7 @@ func (p *parser) parseType() *TypeRef {
 		t.Annotations = append(as, t.Annotations...)
 		t.UnsafeVariance = t.UnsafeVariance || unsafe
 		t.NoInfer = t.NoInfer || noInfer
+		t.Exact = t.Exact || exact
 		t.Composable = t.Composable || composable
 		if wild != DefaultWildcards {
 			t.Wildcards = wild

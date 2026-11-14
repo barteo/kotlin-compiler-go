@@ -251,6 +251,10 @@ type Checker struct {
 	// the calls in a builder's lambda that it inferred with the builder's
 	// (see stubHint).
 	stubHints map[stubHintKey]types.Type
+	// stubCapts are the variables of calls in a builder's lambda that
+	// capture an out projection of one of the builder's variables: see
+	// system.subArgs.
+	stubCapts map[stubHintKey]bool
 	// ambiguities counts the ambiguous calls reported.
 	ambiguities int
 	// origSAM is set while candidates compare by the fun interfaces
@@ -1814,7 +1818,7 @@ func (c *Checker) resolveFun(d *syntax.FunDecl, owner *types.ClassSym) {
 // of declared type t. A vararg parameter's type is an array of t.
 func (c *Checker) paramSym(p *syntax.Param, t types.Type, decl any) *types.VarSym {
 	sym := &types.VarSym{Name: p.Name, Type: t, Kind: types.Param, Decl: decl, Default: p.Default != nil,
-		UnsafeVariance: p.Type != nil && p.Type.UnsafeVariance, NoInfer: noInfer(p.Type)}
+		UnsafeVariance: p.Type != nil && p.Type.UnsafeVariance, NoInfer: noInfer(p.Type), Exact: p.Type != nil && p.Type.Exact}
 	if p.External {
 		c.errorf(p.ExternalP, "modifier 'external' is not applicable to 'value parameter'")
 	}

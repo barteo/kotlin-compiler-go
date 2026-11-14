@@ -278,6 +278,9 @@ type VarSym struct {
 	// context parameter's) or checked against (a value parameter's) the
 	// call's type arguments, not used to infer them.
 	NoInfer bool
+	// Exact is set on a parameter whose type is annotated
+	// @kotlin.internal.Exact: its argument's type must be that type.
+	Exact bool
 
 	// Shadowed is set on a local or parameter declared with the name of
 	// a local or parameter of an enclosing scope, which it hides: as

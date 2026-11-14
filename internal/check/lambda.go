@@ -2014,7 +2014,7 @@ func (c *Checker) stubInference(s *system, l *syntax.Lambda, params []types.Type
 			s.sub(k[0], k[1])
 		}
 		for _, v := range r.extra {
-			if tv := trial.byVar[v]; tv.fixed && v.Origin != nil {
+			if tv := trial.byVar[v]; tv != nil && tv.fixed && v.Origin != nil {
 				if val := trial.vals[v].T; val.K != types.Invalid && !val.HasVars() {
 					if c.stubHints == nil {
 						c.stubHints = map[stubHintKey]types.Type{}
@@ -2269,6 +2269,11 @@ func (r *stubRun) fixAll() (*system, [][2]types.Type) {
 	defer func() { c.stubs = saved }()
 	trial := r.s.clone()
 	for _, j := range r.joined {
+		if !j.ok {
+			// A call that doesn't check reports its error: it says
+			// nothing of the variables.
+			continue
+		}
 		j = j.clone()
 		j.fixups, j.errs, j.lambdas = nil, nil, nil
 		trial.merge(j)
@@ -2314,6 +2319,9 @@ func (r *stubRun) fixAll() (*system, [][2]types.Type) {
 	// materialize())'s T <: FT is FT's too, which T's literal then gives.
 	for _, v := range r.extra {
 		tv, t := trial.byVar[v], types.VarType(v)
+		if tv == nil {
+			continue // of a call that doesn't check
+		}
 		for _, l := range tv.lower {
 			if w := trial.unfixedVar(l); w != nil && w != tv && !l.N {
 				trial.addUpper(w, t)
@@ -2375,7 +2383,7 @@ func (r *stubRun) fixAll() (*system, [][2]types.Type) {
 	for more := true; more; {
 		more = false
 		for _, v := range r.extra {
-			if tv := trial.byVar[v]; !tv.fixed && fixable(tv) {
+			if tv := trial.byVar[v]; tv != nil && !tv.fixed && fixable(tv) {
 				trial.fixVarsIn(types.VarType(v))
 				more = true
 			}
@@ -2391,7 +2399,7 @@ func (r *stubRun) fixAll() (*system, [][2]types.Type) {
 func (r *stubRun) project(trial *system, useful [][2]types.Type) [][2]types.Type {
 	vals := types.Subst{}
 	for _, v := range r.extra {
-		if tv := trial.byVar[v]; tv.fixed && trial.vals[v].T.K != types.Invalid {
+		if tv := trial.byVar[v]; tv != nil && tv.fixed && trial.vals[v].T.K != types.Invalid {
 			vals[v] = trial.vals[v]
 		}
 	}
@@ -2457,6 +2465,23 @@ func (c *Checker) fixedStub(t types.Type) types.Type {
 		val = val.NonNull() // x!!, or x after x != null, of a T & Any
 	}
 	return val
+}
+
+// demandStubs returns t, a parameter type of a lambda of a call in a
+// builder's lambda, with the builder's variable fixed on demand (see
+// fixedStub): as K2 fixes the input types of such a lambda to what the
+// constraints so far give, addAll(flatMap { listOf(2) }) after add("")
+// in buildList's lambda passes a List<Int> for a Collection<String>.
+func (c *Checker) demandStubs(t types.Type) types.Type {
+	// Only a stub itself, as it of flatMap's (T) -> Iterable<R>: one in a
+	// type argument, as a nested builder's Foo<K1> receiver, stays.
+	// And only a builder's own variable: a call's variable that is a
+	// stub because a lambda's parameter type is equal to it (see
+	// stubRelated) stays unfixed for the lambda.
+	if r := c.stub(t); r == nil || t.N || t.P || !slices.Contains(r.vars, t.Param()) {
+		return t
+	}
+	return c.fixedStub(t)
 }
 
 // stubReceiver records x, of type t, as the receiver of member name, of
@@ -2827,7 +2852,7 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type) {
 		}
 	}
 	for i := range params {
-		params[i] = s.final(params[i])
+		params[i] = c.demandStubs(s.final(params[i]))
 	}
 	w := lambdaWant{params: params, known: true, recv: ft.Flex().E, ctx: ft.Flex().Contexts(), suspend: isSuspendFunc(ft), composable: isComposableFunc(ft), ret: noWant, stars: starParams(ft)}
 	if sam == nil {

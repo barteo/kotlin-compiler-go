@@ -1145,7 +1145,12 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			if lit, ok := a.(*syntax.IntLit); ok && !lit.Long && fitsLit(lit, s.final(params[i])) {
 				lit.T = s.final(params[i]).NonNull()
 			}
-			c.assignable(a.Type(), captured(a.Type(), params[i], s.finalArg(params[i])), a.Pos())
+			want := captured(a.Type(), params[i], s.finalArg(params[i]))
+			c.assignable(a.Type(), want, a.Pos())
+			if best.param(i).Exact && c.subtype(a.Type(), want) && !c.subtype(want, a.Type()) {
+				// @Exact: the argument's type must be the parameter's.
+				c.errorf(a.Pos(), "type mismatch: inferred type is %s but %s was expected", a.Type(), want)
+			}
 		}
 		for _, p := range f.Params {
 			if p.Vararg {
@@ -1400,8 +1405,15 @@ func (c *Checker) byLambdaResult(x *syntax.Call, match []*candidate) *candidate 
 		if !ok {
 			return nil
 		}
+		n := len(sys.errs)
 		for _, p := range ps {
 			sys.fixVarsIn(p)
+		}
+		if len(sys.errs) > n {
+			// As in K2, a lambda whose parameter types need its body to
+			// infer, as a builder's MutableList<E1> receiver, doesn't
+			// choose: buildL { add(""); "" } is ambiguous.
+			return nil
 		}
 		for i := range ps {
 			if ps[i] = sys.final(ps[i]); ps[i].K == types.Invalid {

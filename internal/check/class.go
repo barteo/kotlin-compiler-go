@@ -985,7 +985,7 @@ func (c *Checker) checkInheritance(d *syntax.ClassDecl) {
 				continue
 			}
 			ret := c.overrideSubst(this, f, o).Apply(o.Ret)
-			if f.Ret.K != types.Invalid && ret.K != types.Invalid && !c.subtype(f.Ret, ret) {
+			if f.Ret.K != types.Invalid && ret.K != types.Invalid && !c.overrideRetFits(f.Ret, ret) {
 				c.errorf(fd.P, "return type of '%s' is not a subtype of the return type of the overridden member '%s' defined in '%s'", f.Name, f.Name, o.Owner.DisplayName())
 			}
 			for i, p := range f.Params {
@@ -2088,4 +2088,21 @@ func numberImplemented(cls, s *types.ClassSym, g *types.FunSym) bool {
 		}
 	}
 	return false
+}
+
+// overrideRetFits reports whether an override's return type t is a
+// subtype of the overridden member's u. As in K2, a builder's variable
+// in t isn't constrained by it: a stub returned by an anonymous object's
+// member fits, and one in an argument doesn't (see stubInference).
+func (c *Checker) overrideRetFits(t, u types.Type) bool {
+	if !c.hasStub(t) {
+		return c.subtype(t, u)
+	}
+	if c.stub(t.Flex()) != nil {
+		return true
+	}
+	saved := c.stubs
+	c.stubs = nil
+	defer func() { c.stubs = saved }()
+	return c.subtype(t, u)
 }

@@ -26,11 +26,20 @@ own tests.
   nested builder that combines both builders' variables, as
   `select(this@outer.get(), get())`, is inferred with the inner
   builder's first, the outer one's in the system but left unfixed, and
-  again with the outer one's. A variable both below and above a
-  builder's variable, as `E` of `select(x: E, y: In<E?>)` for
-  `select(get(), getIn())`, isn't inferred: it needs a type argument
-  or an expected type. A fork of the constraint system over a builder's
-  variables waits for its lambda's constraints.
+  again with the outer one's. A fork of the constraint system over a
+  builder's variables waits for its lambda's constraints. Of K2's
+  fixation on demand, `kc` fixes a builder's variable for a member of a
+  value of its type and for a nested call's lambda that takes the
+  variable itself as a parameter, `it` of `flatMap { }` in `buildList`,
+  not one in a type argument. A call's variable that captures an `out`
+  projection of a builder's variable is reported as uninferred, as K2
+  reports it, but kc infers its other captures of builders' variables,
+  which K2 may not. An `if` or `when` whose branches mention a builder's
+  variable joins them into its inference: K2 fixes the join's variable
+  first, so `removeLast()` in one branch and `add(42)` in the other
+  check in `kc`. A builder's lambda that casts its receiver to a
+  star-projected subtype, `this as DerivedBuildee<*>`, infers the
+  variable as `Unit`, where K2 infers a captured type.
 
 ## Without the standard library
 
