@@ -1190,6 +1190,9 @@ func (c *Checker) equality(p syntax.Pos, op syntax.Kind, xt, yt types.Type) type
 		if c.subtype(x, y) && !y.IsPrimitive() || c.subtype(y, x) && !x.IsPrimitive() || c.mayBeSame(x, y) {
 			return types.AnyType.Nullable()
 		}
+		if !c.equalityInapplicable(op, xt, yt) {
+			return types.AnyType.Nullable()
+		}
 		name := "=="
 		if op == syntax.EQ_EQ_EQ || op == syntax.NOT_EQ_EQ {
 			name = "==="
@@ -1201,6 +1204,116 @@ func (c *Checker) equality(p syntax.Pos, op syntax.Kind, xt, yt types.Type) type
 		return xt
 	}
 	return xt.Nullable()
+}
+
+// equalityInapplicable reports whether K2 rejects comparing values of
+// unrelated types xt and yt with op, as FirEqualityCompatibilityChecker
+// does. == is only checked where a primitive type, String, an enum or a
+// value class is involved, === where one of them isn't nullable; either
+// only if one class is final or both are classes, not interfaces. Where
+// both types can have subtypes, as K1 had it, K2 only warns: A == B for
+// an interface A and a class B is allowed, and so is a === b for an open
+// class and an abstract one.
+func (c *Checker) equalityInapplicable(op syntax.Kind, xt, yt types.Type) bool {
+	x, y := xt.Flex().NonNull(), yt.Flex().NonNull()
+	if op == syntax.EQ || op == syntax.NE {
+		if !c.builtinForEquality(x) && !c.builtinForEquality(y) && !types.IsValue(x) && !types.IsValue(y) {
+			return false
+		}
+	} else if types.MayBeNull(xt) && types.MayBeNull(yt) {
+		return false
+	}
+	final := func(t types.Type) bool {
+		switch t.K {
+		case types.Class:
+			t.C.Ensure()
+			return !t.C.Interface && t.C.Final
+		case types.Any:
+			return false
+		}
+		return t.K != types.TypeParam
+	}
+	class := func(t types.Type) bool {
+		if t.K == types.Class {
+			return !t.C.Interface
+		}
+		return t.K != types.TypeParam
+	}
+	if !final(x) && !final(y) && !(class(x) && class(y)) {
+		return false
+	}
+	if canHaveSubtypesK1(x) && canHaveSubtypesK1(y) && c.missedByK1Enums(xt, yt) {
+		return false // only a warning
+	}
+	return true
+}
+
+// builtinForEquality reports whether t is a primitive type, String or an
+// enum, whose comparisons K2 checks.
+func (c *Checker) builtinForEquality(t types.Type) bool {
+	if types.IsPrimitiveKind(t.K) || t.K == types.String {
+		return true
+	}
+	return c.enumType(t)
+}
+
+// enumType reports whether t is of an enum class.
+func (c *Checker) enumType(t types.Type) bool {
+	if t.K != types.Class {
+		return false
+	}
+	t.C.Ensure()
+	return t.C.Super != nil && t.C.Super.Name == "java/lang/Enum"
+}
+
+// missedByK1Enums reports whether K1's check of enum comparisons let xt and
+// yt be compared (isIncompatibleEnums), which K2 then only warns about.
+func (c *Checker) missedByK1Enums(xt, yt types.Type) bool {
+	switch {
+	case !c.enumType(xt.Flex().NonNull()) && !c.enumType(yt.Flex().NonNull()):
+		return true
+	case types.MayBeNull(xt) && types.MayBeNull(yt):
+		return true
+	case xt.K == types.Nothing || yt.K == types.Nothing:
+		return true
+	}
+	return false
+}
+
+// canHaveSubtypesK1 reports whether a non-null type t can have subtypes,
+// as K1's TypeUtils.canHaveSubtypes has it: a class that isn't final can,
+// and so can a final generic one with a star, an in projection or an out
+// argument that can.
+func canHaveSubtypesK1(t types.Type) bool {
+	switch t.K {
+	case types.Any, types.TypeParam:
+		return true
+	case types.Class:
+	default:
+		return false
+	}
+	t.C.Ensure()
+	if t.C.Interface || !t.C.Final {
+		return true
+	}
+	if t.A == nil {
+		return false
+	}
+	for i, a := range t.A.List {
+		v := a.V
+		if v == types.Inv && i < len(t.C.TypeParams) {
+			v = t.C.TypeParams[i].Var
+		}
+		switch v {
+		case types.Star, types.In:
+			return true
+		case types.Out:
+			if types.MayBeNull(a.T) || canHaveSubtypesK1(a.T) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // castEquality is equality for the operands of x, of types xt and yt,
