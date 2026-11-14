@@ -3628,6 +3628,12 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 			st = c.value(x.Subject, noWant)
 			x.SubjSym = &types.VarSym{Name: "<subject>", Type: st, Kind: types.Local}
 			subj, hasSubj = c.narrowKeyOf(x.Subject)
+			if !hasSubj {
+				// Not a stable value, but the subject's own value, which the
+				// conditions test, is: not null after null -> in
+				// when (getDateOrNull()) { null -> 0; in a..b -> 1 }.
+				subj, hasSubj = narrow{sym: x.SubjSym, t: st}, true
+			}
 		}
 	}
 	hasElse := false
@@ -3689,6 +3695,12 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 					c.errorf(cond.X.Pos(), "'in' conditions need a 'when' subject")
 					c.value(cond.X, noWant)
 					break
+				}
+				// The subject as the branches before smart cast it: not
+				// null after null ->, in when (d) { null -> 0; in r -> 1 }.
+				st := st
+				if nt := subjType(); hasSubj && nt.K != types.Invalid {
+					st = nt
 				}
 				r, ok := cond.X.(*syntax.Binary)
 				var rt types.Type
