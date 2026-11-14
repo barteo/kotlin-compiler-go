@@ -7,9 +7,9 @@ Of 10827 test files, 2312 are skipped and 8515 run.
 | Result | Tests | Share |
 |:---|---:|---:|
 | rejects invalid | 3964 | 46.6% |
-| accepts valid | 3934 | 46.2% |
+| accepts valid | 3935 | 46.2% |
 | accepts invalid | 420 | 4.9% |
-| rejects valid | 179 | 2.1% |
+| rejects valid | 178 | 2.1% |
 | parse/unsupported | 16 | 0.2% |
 | crash | 1 | 0.0% |
 
@@ -119,7 +119,7 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 | First error | Tests | Examples |
 |:---|---:|:---|
 | `type mismatch: inferred type is _ but _ was expected` | 49 | `tests/annotations/javaAnnotationWithClassArray.kt`, `tests/annotations/parameters/expressions/unaryPlus.kt` |
-| `cannot infer type for type parameter '_'. Specify it explicitly.` | 24 | `tests/delegatedProperty/provideDelegate/commonSupertype.kt`, `tests/inference/capturedTypes/differentCapturedTypes.kt` |
+| `cannot infer type for type parameter '_'. Specify it explicitly.` | 23 | `tests/delegatedProperty/provideDelegate/commonSupertype.kt`, `tests/inference/capturedTypes/differentCapturedTypes.kt` |
 | `unresolved reference: _` | 22 | `tests/callResolution/incorrectPlusOperatorFromJava.kt`, `tests/callResolution/suspendCOnversionForReceiver.kt` |
 | `ambiguous call: n candidates for '_' take (_)` | 8 | `tests/callableReference/resolve/resolveReferenceAgainstKFunctionAndKPrpoerty.kt`, `tests/inference/emptyIntersectionTypes/kt51016.kt` |
 | `no function '_' takes n arguments` | 6 | `tests/annotations/javaAnnotationWithParameter.kt`, `tests/cast/kt15161.kt` |
@@ -164,7 +164,7 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 14756 of 21506 expected errors (68.6%) on their lines.
+kc reports 14758 of 21506 expected errors (68.6%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
@@ -178,7 +178,7 @@ kc reports 14756 of 21506 expected errors (68.6%) on their lines.
 | `RETURN_TYPE_MISMATCH` | 417 | 305 | 112 |
 | `INVISIBLE_REFERENCE` | 513 | 404 | 109 |
 | `NULL_FOR_NONNULL_TYPE` | 155 | 53 | 102 |
-| `CANNOT_INFER_PARAMETER_TYPE` | 627 | 526 | 101 |
+| `CANNOT_INFER_PARAMETER_TYPE` | 627 | 527 | 100 |
 | `UNRESOLVED_REFERENCE_WRONG_RECEIVER` | 250 | 158 | 92 |
 | `CONST_VAL_WITH_NON_CONST_INITIALIZER` | 251 | 166 | 85 |
 | `MUST_BE_INITIALIZED` | 102 | 21 | 81 |
@@ -191,8 +191,8 @@ kc reports 14756 of 21506 expected errors (68.6%) on their lines.
 | `CANNOT_WEAKEN_ACCESS_PRIVILEGE` | 59 | 1 | 58 |
 | `INITIALIZER_TYPE_MISMATCH` | 428 | 370 | 58 |
 | `NO_RETURN_IN_FUNCTION_WITH_BLOCK_BODY` | 148 | 91 | 57 |
-| `OVERLOAD_RESOLUTION_AMBIGUITY` | 159 | 103 | 56 |
 | `MIXING_SUSPEND_AND_NON_SUSPEND_SUPERTYPES` | 83 | 28 | 55 |
+| `OVERLOAD_RESOLUTION_AMBIGUITY` | 159 | 104 | 55 |
 | `NO_VALUE_FOR_PARAMETER` | 175 | 127 | 48 |
 | `UPPER_BOUND_VIOLATED` | 125 | 78 | 47 |
 | `NON_PUBLIC_CALL_FROM_PUBLIC_INLINE` | 65 | 19 | 46 |
@@ -237,7 +237,7 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | Error | Count |
 |:---|---:|
 | `type mismatch: inferred type is _ but _ was expected` | 320 |
-| `cannot infer type for type parameter '_'. Specify it explicitly.` | 318 |
+| `cannot infer type for type parameter '_'. Specify it explicitly.` | 317 |
 | `unresolved reference: _` | 290 |
 | `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 199 |
 | `platform declaration clash: _` | 150 |

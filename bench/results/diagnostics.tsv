@@ -4618,7 +4618,7 @@ tests/inference/pcla/issues/kt65300j.kt	accepts valid
 tests/inference/pcla/issues/kt66229.kt	accepts valid		
 tests/inference/pcla/issues/kt66243.kt	accepts valid		
 tests/inference/pcla/issues/kt66272.kt	accepts valid		
-tests/inference/pcla/issues/kt67875.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	main.kt:6: cannot infer type for type parameter 'T'. Specify it explicitly.
+tests/inference/pcla/issues/kt67875.kt	accepts valid		
 tests/inference/pcla/issues/kt67993.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	kt67993.kt:735: cannot infer type for type parameter 'T'. Specify it explicitly.
 tests/inference/pcla/issues/kt68889.kt	skip	LANGUAGE	
 tests/inference/pcla/issues/kt68889Old.kt	skip	LANGUAGE	
