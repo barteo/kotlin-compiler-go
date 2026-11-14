@@ -81,6 +81,8 @@ type system struct {
 	// nest counts the type arguments that sub is inside of: only a top-level
 	// argument's projection is captured.
 	nest int
+	// contra counts the in-projected type arguments sub is inside of.
+	contra int
 }
 
 func newSystem(c *Checker) *system {
@@ -221,12 +223,30 @@ func (s *system) sub(a, b types.Type) {
 			// SortedComboBoxModel(Comparator.comparing(f)) is a
 			// SortedComboBoxModel<DataView!>, as in Kotlin.
 			a = pa
+			if a.K == types.TypeVar && s.byVar[a.Param()] != nil {
+				// As K2's (T & Any .. T?) <: V, a T! with D, which is X!
+				// for T = X?: F of asList(x.toArray(y)) for a y of
+				// Array<String?> is a String!.
+				a.D = true
+			}
 		case b.N && !b.P && tv.invRet && a.K == types.TypeParam && !a.N && !a.D && !a.IsIntersection() && !s.nonNullBound(tv):
 			// As K2 prefers it, T <: V? gives T <: V, not T & Any <: V,
 			// where V may take T and is invariant or contravariant in the
 			// call's result: Bar(t) for class Bar<T>(t: T?) and a t: T is
 			// a Bar<T>, but removeQuestionMark(t) for fun <K>
 			// removeQuestionMark(x: K?): K is a T & Any.
+		case b.P && a.N && a.K != types.Null && s.contra == 0:
+			// As K2 does, Foo? <: V! gives Foo? <: V: a Java <T> T
+			// transform(T) called with a String? returns a String?. Not
+			// in an in-projected type argument, where K2's equality constraints of
+			// explicit type arguments, which kc substitutes, make it
+			// flexible: S of Renderer.create { it.length } for a
+			// Renderer<in T?> of comboBox<String> is a String!.
+		case b.P && !a.N && a.K != types.TypeVar && a.K != types.Nothing:
+			// And Foo <: V! gives Foo! <: V, a flexible lower bound,
+			// which V is then fixed before others for: Key<T> <: Key<K!>
+			// makes K a T!, which takes the T? of select(value, null).
+			a = a.Platform()
 		case b.N:
 			a = a.NonNull() // a <: V? gives a!! <: V
 		case b.D && types.MayBeNull(a):
@@ -249,8 +269,13 @@ func (s *system) sub(a, b types.Type) {
 			s.ok = false
 			return
 		}
-		if dnn {
+		switch {
+		case dnn:
 			b = b.Nullable() // V & Any <: b gives V <: b?
+		case pa.P && !b.N:
+			// As K2 does, V! <: b gives V <: b!: Key<T> <: Key<K!> lets
+			// K take a T? too.
+			b = b.Platform()
 		}
 		s.addUpper(tv, b)
 	case a.K == types.Nothing:
@@ -311,11 +336,13 @@ func (s *system) subArgs(sup, b types.Type) {
 			s.nest--
 		case types.In:
 			s.nest++
+			s.contra++
 			if ta.V == types.Star || ta.V == types.Out {
 				s.sub(ba.T, types.NothingType)
 			} else {
 				s.sub(ba.T, ta.T)
 			}
+			s.contra--
 			s.nest--
 		default:
 			if ta.V != types.Inv {
@@ -560,6 +587,10 @@ func (s *system) complete() {
 			}
 			if len(tv.lits) > 0 {
 				score = max(score, 1)
+			}
+			if slices.ContainsFunc(tv.lower, func(l types.Type) bool { return l.P && s.proper(l) }) {
+				// K2's HAS_PROPER_FLEXIBLE_LOWER_CONSTRAINT.
+				score += 4
 			}
 			if allProper && (varUppers == 0 || len(tv.upper) > varUppers || len(tv.lower) > 0 || len(tv.lits) > 0) {
 				score += 3

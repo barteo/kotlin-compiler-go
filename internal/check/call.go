@@ -53,6 +53,15 @@ func (cl *callee) argType(i int, args []syntax.Expr) types.Type {
 	return p.Type
 }
 
+// isCallArg reports whether argument x is a call, spread or not.
+func isCallArg(x syntax.Expr) bool {
+	if sp, ok := x.(*syntax.Spread); ok {
+		x = sp.X
+	}
+	_, ok := x.(*syntax.Call)
+	return ok
+}
+
 func isSpread(x syntax.Expr) bool {
 	_, ok := x.(*syntax.Spread)
 	return ok
@@ -893,7 +902,7 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			ts[i] = c.value(a, p)
 			continue
 		}
-		if _, isCall := a.(*syntax.Call); isCall {
+		if isCallArg(a) {
 			inner := newSystem(c)
 			c.sink = inner
 			ts[i] = c.value(a, noWant)

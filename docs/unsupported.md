@@ -175,6 +175,11 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   when the types a call's variable is constrained by have no platform
   types or captured types (star projections), and the inferred type
   isn't an intersection's component.
+- Of K2's predefined nullability of JDK members, only `java.util.Optional`'s
+  (`of`, `ofNullable`, `empty`, `get`, `ifPresent`) is applied. A nullable
+  argument for a Java method's `T!` makes `T` nullable, except in an
+  in-projected type argument, where kc's substituted explicit type
+  arguments stand for K2's equality constraints.
 - Java module exports aren't checked, and the Java members Kotlin
   replaces (`Number.intValue()`) aren't hidden.
 - Without an expected type, a reference to a vararg function, or to a

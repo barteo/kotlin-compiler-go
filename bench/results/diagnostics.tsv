@@ -4235,7 +4235,7 @@ tests/inference/fixationOrder/reifiedFirstSimple.kt	accepts valid
 tests/inference/fixationOrder/revisableAtomVsPCLA.kt	rejects invalid	on an expected line	
 tests/inference/fixationOrderForProperConstraints.kt	accepts valid		
 tests/inference/flexibleConstraints.kt	accepts invalid	ARGUMENT_TYPE_MISMATCH	Test.kt:8: ARGUMENT_TYPE_MISMATCH
-tests/inference/flexibleConstraints2.kt	accepts invalid	INITIALIZER_TYPE_MISMATCH	Test.kt:6: INITIALIZER_TYPE_MISMATCH
+tests/inference/flexibleConstraints2.kt	rejects invalid	on an expected line	
 tests/inference/flexibleTypeAtRightSideOfElvis.kt	rejects invalid	on an expected line	
 tests/inference/flexibleTypesAsUpperBound.kt	accepts valid		
 tests/inference/forks/failForkPointWhenNoneOfThemSuccessful.kt	rejects invalid	on an expected line	
@@ -5382,7 +5382,7 @@ tests/j+k/matchers.kt	accepts valid
 tests/j+k/missingTypeOfParameterInFakeOverride_1.kt	accepts invalid	(no error marked)	
 tests/j+k/missingTypeOfParameterInFakeOverride_2.kt	accepts invalid	ABSTRACT_CLASS_MEMBER_NOT_IMPLEMENTED	missingTypeOfParameterInFakeOverride_2.kt:5: ABSTRACT_CLASS_MEMBER_NOT_IMPLEMENTED
 tests/j+k/mutableIterator.kt	accepts valid		
-tests/j+k/nullForOptionalOf.kt	accepts invalid	CANNOT_INFER_PARAMETER_TYPE; ARGUMENT_TYPE_MISMATCH	nullForOptionalOf.kt:8: CANNOT_INFER_PARAMETER_TYPE
+tests/j+k/nullForOptionalOf.kt	rejects invalid	on an expected line	
 tests/j+k/nullForOptionalOrElse.kt	accepts valid		
 tests/j+k/nullableLinkedListToQueue.kt	rejects invalid	on an expected line	
 tests/j+k/nullableRawTypeWithFlexibleArguments.kt	accepts valid		
@@ -5556,7 +5556,7 @@ tests/j+k/types/shapeMismatchInCovariantPositionGeneric.kt	accepts valid
 tests/j+k/types/typeParameter.kt	accepts valid		
 tests/j+k/types/upperBoundsCheckAgainstSelfTypeInJava.kt	accepts valid		
 tests/j+k/types/varargOverride.kt	accepts valid		
-tests/j+k/usingNullableValueAsLowerBoundLeadsToNullableResult.kt	rejects invalid	elsewhere	
+tests/j+k/usingNullableValueAsLowerBoundLeadsToNullableResult.kt	rejects invalid	on an expected line	
 tests/j+k/withTestConnection.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	test.kt:4: type mismatch: inferred type is CompletableFuture<*> but Future<Any?>! was expected
 tests/j+k/withTestConnection2.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	test.kt:3: type mismatch: inferred type is CompletableFuture<*> but Future<Any?>! was expected
 tests/j+k/withTestConnection3.kt	rejects valid	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _	test.kt:3: only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type CharSequence?
@@ -6647,7 +6647,7 @@ tests/nullabilityAndSmartCasts/unstableSmartcastWithOverloadedExtensions.kt	reje
 tests/nullableTypes/baseWithNullableUpperBound.kt	accepts valid		
 tests/nullableTypes/definitelyNotNullWithNullableBound.kt	accepts valid		
 tests/nullableTypes/elvisOnUnit.kt	accepts valid		
-tests/nullableTypes/inferenceFlexibleTToNullable.kt	accepts invalid	INITIALIZER_TYPE_MISMATCH	main.kt:2: INITIALIZER_TYPE_MISMATCH
+tests/nullableTypes/inferenceFlexibleTToNullable.kt	rejects invalid	on an expected line	
 tests/nullableTypes/kt58844.kt	rejects invalid	on an expected line	
 tests/nullableTypes/notUselessComparasionAfterSmartcast.kt	rejects invalid	on an expected line	
 tests/nullableTypes/nullAssertOnTypeWithNullableUpperBound.kt	accepts invalid	(no error marked)	
@@ -7022,7 +7022,7 @@ tests/platformTypes/methodCall/multipleExactBoundsNullable.kt	rejects valid	only
 tests/platformTypes/methodCall/objectArray.kt	accepts valid		
 tests/platformTypes/methodCall/overloadingForSubclass.kt	accepts valid		
 tests/platformTypes/methodCall/sam.kt	accepts valid		
-tests/platformTypes/methodCall/singleton.kt	accepts invalid	INITIALIZER_TYPE_MISMATCH	singleton.kt:8: INITIALIZER_TYPE_MISMATCH
+tests/platformTypes/methodCall/singleton.kt	rejects invalid	on an expected line	
 tests/platformTypes/methodCall/string.kt	accepts valid		
 tests/platformTypes/methodCall/visitor.kt	accepts valid		
 tests/platformTypes/methodTypeParameterDefaultBound.kt	rejects valid	accidental override: the following declarations have the same JVM signature (foo()V)	main.kt:6: accidental override: the following declarations have the same JVM signature (foo()V)
@@ -10470,7 +10470,7 @@ testsWithStdLib/j+k/recursiveTypeParameterInJava.kt	rejects invalid	on an expect
 testsWithStdLib/j+k/serializableString.kt	accepts valid		
 testsWithStdLib/j+k/smartSet.kt	accepts valid		
 testsWithStdLib/j+k/typeParameterUse.kt	accepts valid		
-testsWithStdLib/java/assertThatOnMap.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	test.kt:3: type mismatch: inferred type is S? but MutableMap<Any?, Any!>! was expected
+testsWithStdLib/java/assertThatOnMap.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	test.kt:3: type mismatch: inferred type is S? but MutableMap<Any?, Any?>! was expected
 testsWithStdLib/java/checkEnhancedUpperBoundsWithEnabledImprovements.kt	skip	LANGUAGE	
 testsWithStdLib/java/concurrentHashMapContainsError.kt	rejects invalid	on an expected line	
 testsWithStdLib/java/functionN.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	main.kt:20: type mismatch: inferred type is (<error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>) -> Unit but FunctionN<Unit!>! was expected

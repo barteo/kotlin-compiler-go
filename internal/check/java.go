@@ -380,6 +380,9 @@ func (t *classTable) load(cls *types.ClassSym) {
 				}
 			}
 		}
+		if ok {
+			enhanceJDK(cls.Name, f)
+		}
 		if varargs && len(f.Params) > 0 {
 			p := f.Params[len(f.Params)-1]
 			p.Vararg, p.Type = true, types.VarargArray(p.Type)

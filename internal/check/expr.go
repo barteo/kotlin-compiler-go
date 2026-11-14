@@ -289,7 +289,20 @@ func (c *Checker) expr1(x syntax.Expr, want types.Type, allowRange bool, sink *s
 		return t.NonNull()
 	case *syntax.Spread:
 		// An argument for a vararg parameter: resolve checks where it goes.
-		t := c.value(x.X, want)
+		var t types.Type
+		if _, call := x.X.(*syntax.Call); call && sink != nil {
+			// A generic call's variables are the outer call's, as
+			// unspread: T of Arrays.asList(*x.toArray(y)) for a
+			// List<String>.
+			n := len(sink.vars)
+			c.sink = sink
+			t = c.value(x.X, want)
+			if len(sink.vars) > n {
+				sink.fixups = append(sink.fixups, func(s *system) { x.SetType(s.final(t).Flex()) })
+			}
+		} else {
+			t = c.value(x.X, want)
+		}
 		switch {
 		case t.K == types.Invalid:
 		case !t.NonNull().IsArray() && !(t.K == types.Class && types.IsUnsignedArray(t.C)):

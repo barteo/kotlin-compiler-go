@@ -738,6 +738,16 @@ func withFlags(r, occ Type) Type {
 		return r
 	case occ.N && !occ.P:
 		return r.Nullable()
+	case occ.P && occ.D && occ.K == TypeVar:
+		// An inference variable's (T & Any .. T?): see check's
+		// system.sub.
+		if r.K == Nothing || r.K == Null {
+			return NullType.Platform()
+		}
+		if r.P || r.K == Unit {
+			return r
+		}
+		return r.NonNull().Platform()
 	case occ.D:
 		return r.NonNull()
 	case occ.P:
