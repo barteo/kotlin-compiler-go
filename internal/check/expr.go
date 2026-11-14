@@ -2008,6 +2008,7 @@ func (c *Checker) callReceiver(fn *syntax.Member, want types.Type) (types.Type, 
 	if t.K == types.Invalid {
 		return t, nil, false
 	}
+	c.stubReceiver(fn.X, t, fn.Name)
 	t = c.castView(fn.X, t, fn.Name)
 	if t.IsIntersection() && t.Param().Bounds[0].K == types.String && c.hasNamed(types.StringType, fn.Name) &&
 		!slices.ContainsFunc(t.Param().Bounds[1:], func(b types.Type) bool { return c.hasNamed(b, fn.Name) }) {
@@ -2123,6 +2124,7 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 	if xt.K == types.Invalid {
 		return xt
 	}
+	c.stubReceiver(x.X, xt, x.Name)
 	xt = c.castView(x.X, xt, x.Name)
 	x.X, xt = builtinBound(x.X, xt)
 	if types.MayBeNull(xt) && !xt.P && !x.Safe {

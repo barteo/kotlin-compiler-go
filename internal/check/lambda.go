@@ -1949,6 +1949,7 @@ func (c *Checker) stubInference(s *system, l *syntax.Lambda, params []types.Type
 	for _, v := range append(vars, r.extra...) {
 		delete(c.stubs, v)
 	}
+	c.stubReceivers(r)
 	if !clean {
 		// Code that doesn't check with the variables unfixed, as a
 		// member of a value of one of them that nothing fixes yet,
@@ -2098,6 +2099,17 @@ type stubRun struct {
 	// run (see join), whose variables are stubs too.
 	joined []*system
 	extra  []*types.TypeParamSym
+	// recvs are the receivers of members, x.f() or x.p, of one of the
+	// stubs that nothing fixes yet where the member is used: an error
+	// in Kotlin, BUILDER_INFERENCE_STUB_RECEIVER, also for a member of
+	// Any, which the check finds: get(0).hashCode() before add("ab").
+	recvs []stubRecv
+}
+
+// stubRecv is a receiver of stub v at p: see stubRun.recvs.
+type stubRecv struct {
+	p syntax.Pos
+	v *types.TypeParamSym
 }
 
 // joinRun returns the run that s, a call's system about to complete in a
@@ -2337,6 +2349,76 @@ func (c *Checker) fixedStub(t types.Type) types.Type {
 		val = val.NonNull() // x!!, or x after x != null, of a T & Any
 	}
 	return val
+}
+
+// stubReceiver records x, of type t, as the receiver of member name, of
+// Any, if t is a stub that nothing fixes yet (see stubRun.recvs). Not if an
+// extension of a type parameter, which takes any receiver, may be called:
+// it checkType { } for fun <T> T.checkType(f: ...).
+func (c *Checker) stubReceiver(x syntax.Expr, t types.Type, name string) {
+	r := c.stub(t.Flex())
+	if r == nil {
+		return
+	}
+	switch name {
+	case "hashCode", "toString", "equals":
+		// Members of Any, which a stub has, so the check passes. Others,
+		// which it hasn't, fail the check, and leave the variables
+		// uninferred (see stubInference).
+	default:
+		return
+	}
+	v := t.Flex().Param()
+	if !slices.Contains(r.vars, v) || r.constrains(v) {
+		// Only one of the builder's own variables that nothing constrains
+		// yet: K2 fixes one that has constraints for the member, though
+		// kc may not find their value, as of another call's variable
+		// equal to it (see fixedStub).
+		return
+	}
+	if slices.ContainsFunc(c.extCallees(name, t), func(cl callee) bool { return cl.f.Recv.Flex().NonNull().K == types.TypeParam }) {
+		return
+	}
+	r.recvs = append(r.recvs, stubRecv{x.Pos(), v})
+}
+
+// constrains reports whether a constraint of r, or of a call that joined
+// it, mentions variable v.
+func (r *stubRun) constrains(v *types.TypeParamSym) bool {
+	mentions := func(t types.Type) bool {
+		return t.Has(func(u types.Type) bool { return u.K == types.TypeVar && u.Param() == v })
+	}
+	for _, k := range r.cons {
+		if mentions(k[0]) || mentions(k[1]) {
+			return true
+		}
+	}
+	for _, s := range r.joined {
+		for _, tv := range s.vars {
+			if slices.ContainsFunc(tv.lower, mentions) || slices.ContainsFunc(tv.upper, mentions) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// stubReceivers reports the receivers of r's stubs that nothing fixed
+// where their members were used, once, as kotlinc does though the
+// variable is inferred later: buildList { if (b) get(0).hashCode();
+// add("ab") }. Only outside a trial (see trial).
+func (c *Checker) stubReceivers(r *stubRun) {
+	if c.trial != nil {
+		// In a check another run throws away, whose errors would make
+		// it fail: the check that counts finds them again.
+		return
+	}
+	for _, rv := range r.recvs {
+		msg := fmt.Sprintf("the type of a receiver hasn't been inferred yet. Specify type argument for generic parameter '%s' explicitly.", rv.v.Name)
+		if !slices.ContainsFunc(c.errs, func(e *syntax.Error) bool { return e.Pos == rv.p && e.Msg == msg }) {
+			c.errorf(rv.p, "%s", msg)
+		}
+	}
 }
 
 // trial is a check of a lambda that stubInference throws away: what it
