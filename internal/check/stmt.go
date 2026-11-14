@@ -205,10 +205,26 @@ func (c *Checker) narrowAfter(s syntax.Stmt) {
 			c.scope.narrows = append(c.scope.narrows, k)
 		}
 	}
+	// What a call returning implies: its contract's, as for a call
+	// statement. val s: String = cast(x) makes x a String. Not after an
+	// assignment, v = f(v), where it would be of v's new value.
+	called := func(x syntax.Expr) {
+		nn, notNull := x.(*syntax.NotNull)
+		if notNull {
+			x = nn.X
+		}
+		if call, ok := x.(*syntax.Call); ok {
+			c.scope.narrows = append(c.scope.narrows, c.returnNarrows(call)...)
+			if notNull {
+				c.scope.narrows = append(c.scope.narrows, c.contractNarrows(call, 2)...)
+			}
+		}
+	}
 	switch s := s.(type) {
 	case *syntax.VarStmt:
 		if s.Init != nil {
 			alwaysCasts(s.Init, cast)
+			called(s.Init)
 		}
 	case *syntax.Assign:
 		alwaysCasts(s.Value, cast)
@@ -220,6 +236,14 @@ func (c *Checker) narrowAfter(s syntax.Stmt) {
 	alwaysCasts(es.X, cast)
 	if _, ok := es.X.(*syntax.As); ok {
 		return
+	}
+	if nn, ok := es.X.(*syntax.NotNull); ok {
+		if call, ok := nn.X.(*syntax.Call); ok {
+			// f(v)!!: f returned, and not null.
+			c.scope.narrows = append(c.scope.narrows, c.returnNarrows(call)...)
+			c.scope.narrows = append(c.scope.narrows, c.contractNarrows(call, 2)...)
+			return
+		}
 	}
 	if call, ok := es.X.(*syntax.Call); ok {
 		c.scope.narrows = append(c.scope.narrows, c.returnNarrows(call)...)

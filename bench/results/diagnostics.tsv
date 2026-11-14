@@ -5921,7 +5921,7 @@ tests/missingAbstractSuperCall.kt	accepts invalid	ABSTRACT_SUPER_CALL	missingAbs
 tests/missingAbstractSuperCallExtra.kt	rejects invalid	on an expected line	
 tests/missingAbstractSuperCallWithClass.kt	accepts invalid	ABSTRACT_SUPER_CALL	missingAbstractSuperCallWithClass.kt:14: ABSTRACT_SUPER_CALL
 tests/missingAbstractSuperCallWithObject.kt	accepts invalid	ABSTRACT_SUPER_CALL	missingAbstractSuperCallWithObject.kt:14: ABSTRACT_SUPER_CALL
-tests/missingCapturedTypeProcessingInEquals.kt	rejects valid	unresolved reference: _	missingCapturedTypeProcessingInEquals.kt:6: unresolved reference: length
+tests/missingCapturedTypeProcessingInEquals.kt	accepts valid		
 tests/missingConflictingOverloads.kt	rejects invalid	on an expected line	
 tests/missingDependencyTypealias.kt	accepts valid		
 tests/missingIteratorMissing.kt	rejects invalid	on an expected line	
@@ -8181,17 +8181,17 @@ tests/smartCasts/booleans/booleanOperators.kt	rejects invalid	on an expected lin
 tests/smartCasts/booleans/equalsToBoolean.kt	rejects invalid	on an expected line	
 tests/smartCasts/booleans/jumpFromRhsOfOperator.kt	rejects invalid	on an expected line	
 tests/smartCasts/boundSmartcasts/assignToBoundSmartcastedVariable.kt	rejects invalid	on an expected line	
-tests/smartCasts/boundSmartcasts/boundSmartcastWithProjection.kt	rejects valid	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _	boundSmartcastWithProjection.kt:9: only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type String?
+tests/smartCasts/boundSmartcasts/boundSmartcastWithProjection.kt	accepts valid		
 tests/smartCasts/boundSmartcasts/boundSmartcasts.kt	rejects invalid	on an expected line	
 tests/smartCasts/boundSmartcasts/boundSmartcastsInBranches.kt	rejects invalid	on an expected line	
-tests/smartCasts/boundSmartcasts/functionCallBound.kt	rejects valid	unresolved reference: _	functionCallBound.kt:12: unresolved reference: data
+tests/smartCasts/boundSmartcasts/functionCallBound.kt	accepts valid		
 tests/smartCasts/boundSmartcasts/thisAssignment.kt	accepts valid		
 tests/smartCasts/castchecks/basicOn.kt	rejects invalid	on an expected line	
 tests/smartCasts/castchecks/castInTryWithCatch.kt	rejects invalid	on an expected line	
 tests/smartCasts/castchecks/castInTryWithJump.kt	rejects invalid	on an expected line	
 tests/smartCasts/castchecks/castInTryWithoutCatch.kt	rejects invalid	on an expected line	
 tests/smartCasts/castchecks/impossible.kt	accepts valid		
-tests/smartCasts/castchecks/insideCall.kt	rejects valid	unresolved reference: _	insideCall.kt:12: unresolved reference: toLowerCase
+tests/smartCasts/castchecks/insideCall.kt	accepts valid		
 tests/smartCasts/castchecks/kt64645.kt	accepts valid		
 tests/smartCasts/castchecks/smartCastOfNullableExpressionWithExpectedType.kt	accepts valid		
 tests/smartCasts/castchecks/variables.kt	rejects invalid	on an expected line	
@@ -8454,7 +8454,7 @@ tests/smartCasts/publicVals/protected.kt	accepts valid
 tests/smartCasts/publicVals/simple.kt	accepts valid		
 tests/smartCasts/publicVals/var.kt	rejects invalid	on an expected line	
 tests/smartCasts/qualifiedObjectAfterSmartCast.kt	accepts valid		
-tests/smartCasts/receivers/implicitReceiverAsWhenSubject.kt	rejects valid	unresolved reference: _	implicitReceiverAsWhenSubject.kt:12: unresolved reference: size
+tests/smartCasts/receivers/implicitReceiverAsWhenSubject.kt	accepts valid		
 tests/smartCasts/receivers/implicitReceivers.kt	rejects invalid	on an expected line	
 tests/smartCasts/receivers/mixingImplicitAndExplicitReceivers.kt	rejects invalid	on an expected line	
 tests/smartCasts/receivers/smartCastingExplicitReceiver.kt	accepts valid		
@@ -8469,7 +8469,7 @@ tests/smartCasts/safecalls/chainAndUse.kt	accepts valid
 tests/smartCasts/safecalls/chainInChain.kt	accepts valid		
 tests/smartCasts/safecalls/chainMixedUnsafe.kt	rejects invalid	on an expected line	
 tests/smartCasts/safecalls/childProperty.kt	accepts valid		
-tests/smartCasts/safecalls/complexIfWithOr.kt	rejects valid	unresolved reference: _	complexIfWithOr.kt:13: unresolved reference: superClass
+tests/smartCasts/safecalls/complexIfWithOr.kt	accepts valid		
 tests/smartCasts/safecalls/doubleCall.kt	rejects invalid	on an expected line	
 tests/smartCasts/safecalls/extension.kt	accepts valid		
 tests/smartCasts/safecalls/extensionCall.kt	accepts valid		
@@ -9912,11 +9912,11 @@ testsWithStdLib/contracts/fromSource/good/returnsImplies/booleanOperators.kt	rej
 testsWithStdLib/contracts/fromSource/good/returnsImplies/conditionLogic.kt	accepts valid		
 testsWithStdLib/contracts/fromSource/good/returnsImplies/eqNotEq.kt	rejects invalid	on an expected line	
 testsWithStdLib/contracts/fromSource/good/returnsImplies/inapplicable.kt	accepts valid		
-testsWithStdLib/contracts/fromSource/good/returnsImplies/namedArguments.kt	rejects valid	unresolved reference: _	namedArguments.kt:16: unresolved reference: inc
+testsWithStdLib/contracts/fromSource/good/returnsImplies/namedArguments.kt	accepts valid		
 testsWithStdLib/contracts/fromSource/good/returnsImplies/notNull.kt	accepts valid		
 testsWithStdLib/contracts/fromSource/good/returnsImplies/propertyAccessors.kt	skip	LANGUAGE	
 testsWithStdLib/contracts/fromSource/good/returnsImplies/receivers.kt	rejects invalid	on an expected line	
-testsWithStdLib/contracts/fromSource/good/returnsImplies/safeCall.kt	accepts invalid	IMPOSSIBLE_IS_CHECK_ERROR	safeCall.kt:17: IMPOSSIBLE_IS_CHECK_ERROR
+testsWithStdLib/contracts/fromSource/good/returnsImplies/safeCall.kt	rejects invalid	on an expected line	
 testsWithStdLib/contracts/fromSource/good/returnsImplies/trickyCases.kt	accepts valid		
 testsWithStdLib/contracts/fromSource/good/returnsImplies/typePredicate.kt	rejects invalid	on an expected line	
 testsWithStdLib/contracts/fromSource/good/variousContracts/newSyntax/functionsWithContract.kt	skip	LANGUAGE	
@@ -9974,7 +9974,7 @@ testsWithStdLib/contracts/smartcasts/callWithDefaultValue.kt	accepts valid
 testsWithStdLib/contracts/smartcasts/catchExceptionSpilling.kt	rejects invalid	on an expected line	
 testsWithStdLib/contracts/smartcasts/compositions.kt	rejects invalid	on an expected line	
 testsWithStdLib/contracts/smartcasts/contractWithDeepGenerics.kt	accepts valid		
-testsWithStdLib/contracts/smartcasts/contractWithNonNullAssertion.kt	rejects valid	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _	contractWithNonNullAssertion.kt:31: only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type Int?
+testsWithStdLib/contracts/smartcasts/contractWithNonNullAssertion.kt	accepts valid		
 testsWithStdLib/contracts/smartcasts/contractsOnMembers.kt	accepts valid		
 testsWithStdLib/contracts/smartcasts/deeplyNested.kt	rejects invalid	on an expected line	
 testsWithStdLib/contracts/smartcasts/extensionReceiver.kt	rejects invalid	on an expected line	
@@ -9996,7 +9996,7 @@ testsWithStdLib/contracts/smartcasts/operatorsTests/orOperatorWithConstant.kt	re
 testsWithStdLib/contracts/smartcasts/operatorsTests/orOperatorWithUnknown.kt	rejects invalid	on an expected line	
 testsWithStdLib/contracts/smartcasts/partiallyIncorrect.kt	rejects invalid	on an expected line	
 testsWithStdLib/contracts/smartcasts/receiver.kt	rejects invalid	on an expected line	
-testsWithStdLib/contracts/smartcasts/reifiedGeneric.kt	rejects valid	unresolved reference: _	reifiedGeneric.kt:30: unresolved reference: length
+testsWithStdLib/contracts/smartcasts/reifiedGeneric.kt	accepts valid		
 testsWithStdLib/contracts/smartcasts/returnsImpliesAndSafeCalls.kt	rejects invalid	on an expected line	
 testsWithStdLib/contracts/smartcasts/safecallAndReturnsNull.kt	rejects invalid	on an expected line	
 testsWithStdLib/contracts/smartcasts/smartcastOnReceiverInComplexCondition.kt	accepts valid		

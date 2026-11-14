@@ -6,16 +6,16 @@ Of 10827 test files, 2312 are skipped and 8515 run.
 
 | Result | Tests | Share |
 |:---|---:|---:|
-| rejects invalid | 3962 | 46.5% |
-| accepts valid | 3897 | 45.8% |
-| accepts invalid | 421 | 4.9% |
-| rejects valid | 215 | 2.5% |
+| rejects invalid | 3963 | 46.5% |
+| accepts valid | 3906 | 45.9% |
+| accepts invalid | 420 | 4.9% |
+| rejects valid | 206 | 2.4% |
 | parse/unsupported | 18 | 0.2% |
 | crash | 1 | 0.0% |
 
 *Rejects invalid* and *accepts valid* agree with kotlinc. *Accepts invalid* is code kotlinc rejects that kc compiles; *rejects valid*, code kotlinc compiles that kc's checker rejects. Both are bugs. A *parse/unsupported* test uses a feature kc doesn't support, which says nothing about its checks.
 
-Of the 3962 tests both reject, kc reports an error on the line of an expected one in 3735.
+Of the 3963 tests both reject, kc reports an error on the line of an expected one in 3736.
 
 A test is invalid if it stops before the backend or marks an error: one that runs to it (`BACKEND`) can mark the JVM backend's errors, such as `CONFLICTING_JVM_DECLARATIONS`. Of the tests run, 222 stop at `FRONTEND` but mark no error: most add the `CHECK_TYPE` helpers, whose names (`_`) kotlinc reports outside the test infrastructure, and count as valid; the others leave their errors out with the `DIAGNOSTICS` directive. 114 run to the backend and mark one. 5 marked names have no declared severity (debug information, for one), and count as neither.
 
@@ -110,7 +110,7 @@ Tests kotlinc rejects that kc compiles, by the errors their markup expects. A te
 | `EXPANSIVE_INHERITANCE` | 2 | 2 | `tests/declarationChecks/nonExpansiveInheritanceRestriction/JavaWithKotlin.kt`, `tests/declarationChecks/nonExpansiveInheritanceRestriction/PureKotlin.kt` |
 | `FINITE_BOUNDS_VIOLATION` | 2 | 2 | `tests/declarationChecks/finiteBoundRestriction/CasesWithTwoTypeParameters.kt`, `tests/regressions/kt9633.kt` |
 | `INVISIBLE_SETTER` | 2 | 2 | `tests/extraCheckers/RedundantVisibilityModifierCheckerForInnerComponents.kt`, `tests/properties/kt47621.kt` |
-| *101 more* | 120 | |
+| *100 more* | 119 | |
 
 ## Rejects valid
 
@@ -120,11 +120,11 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 |:---|---:|:---|
 | `type mismatch: inferred type is _ but _ was expected` | 50 | `tests/annotations/javaAnnotationWithClassArray.kt`, `tests/annotations/parameters/expressions/unaryPlus.kt` |
 | `cannot infer type for type parameter '_'. Specify it explicitly.` | 39 | `tests/delegatedProperty/provideDelegate/commonSupertype.kt`, `tests/delegates/delegateWithLambda.kt` |
-| `unresolved reference: _` | 29 | `tests/callResolution/incorrectPlusOperatorFromJava.kt`, `tests/callResolution/suspendCOnversionForReceiver.kt` |
+| `unresolved reference: _` | 22 | `tests/callResolution/incorrectPlusOperatorFromJava.kt`, `tests/callResolution/suspendCOnversionForReceiver.kt` |
 | `ambiguous call: n candidates for '_' take (_)` | 8 | `tests/callableReference/resolve/resolveReferenceAgainstKFunctionAndKPrpoerty.kt`, `tests/inference/emptyIntersectionTypes/kt51016.kt` |
 | `no function '_' takes n arguments` | 6 | `tests/annotations/javaAnnotationWithParameter.kt`, `tests/cast/kt15161.kt` |
-| `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 6 | `tests/j+k/withTestConnection3.kt`, `tests/platformTypes/methodCall/multipleExactBoundsNullable.kt` |
 | `unresolved import: _` | 6 | `tests/errorProneAtomicArraySuggestions.kt`, `tests/errorProneAtomicReferenceArguments.kt` |
+| `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 4 | `tests/j+k/withTestConnection3.kt`, `tests/platformTypes/methodCall/multipleExactBoundsNullable.kt` |
 | `'_' overrides nothing` | 3 | `tests/genericReceiverPropertyOverride.kt`, `tests/generics/finalUpperBoundWithOverride.kt` |
 | `cannot infer a type for this parameter. Please specify it explicitly.` | 3 | `tests/inference/completion/postponedArgumentsAnalysis/lackOfDeepIncorporation.kt`, `tests/inference/kt36819.kt` |
 | `none of the n candidates for '_' take (_)` | 3 | `tests/problems/kt52219.kt`, `testsWithStdLib/contracts/smartcasts/when/kt36818.kt` |
@@ -164,7 +164,7 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 14514 of 21476 expected errors (67.6%) on their lines.
+kc reports 14515 of 21476 expected errors (67.6%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
@@ -237,9 +237,9 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | Error | Count |
 |:---|---:|
 | `cannot infer type for type parameter '_'. Specify it explicitly.` | 588 |
-| `type mismatch: inferred type is _ but _ was expected` | 319 |
-| `unresolved reference: _` | 309 |
-| `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 213 |
+| `type mismatch: inferred type is _ but _ was expected` | 317 |
+| `unresolved reference: _` | 286 |
+| `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 200 |
 | `platform declaration clash: _` | 150 |
 | `class '_' is not abstract and does not implement abstract member '_'` | 68 |
 | `unresolved or unsupported type: _` | 59 |

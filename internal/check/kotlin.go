@@ -793,6 +793,8 @@ func (t *classTable) kfun(f *kmeta.Function, owner *types.ClassSym, scope tscope
 				r = 1
 			case kmeta.ReturnsFalse:
 				r = 0
+			case kmeta.ReturnsNotNull:
+				r = 2
 			}
 			e := types.Effect{Returns: r, Param: im.Param, Holds: im.Holds}
 			if im.Is != nil {
