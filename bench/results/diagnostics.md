@@ -7,9 +7,9 @@ Of 10827 test files, 2312 are skipped and 8515 run.
 | Result | Tests | Share |
 |:---|---:|---:|
 | rejects invalid | 3962 | 46.5% |
-| accepts valid | 3877 | 45.5% |
+| accepts valid | 3885 | 45.6% |
 | accepts invalid | 421 | 4.9% |
-| rejects valid | 235 | 2.8% |
+| rejects valid | 227 | 2.7% |
 | parse/unsupported | 18 | 0.2% |
 | crash | 1 | 0.0% |
 
@@ -121,7 +121,6 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 | `type mismatch: inferred type is _ but _ was expected` | 57 | `tests/annotations/javaAnnotationWithClassArray.kt`, `tests/annotations/parameters/expressions/unaryPlus.kt` |
 | `cannot infer type for type parameter '_'. Specify it explicitly.` | 39 | `tests/delegatedProperty/provideDelegate/commonSupertype.kt`, `tests/delegates/delegateWithLambda.kt` |
 | `unresolved reference: _` | 31 | `tests/callResolution/incorrectPlusOperatorFromJava.kt`, `tests/callResolution/suspendCOnversionForReceiver.kt` |
-| `'_' expression must be exhaustive, add necessary '_' branch` | 8 | `tests/controlStructures/whenWithNothingTypedSubject.kt`, `tests/exhaustiveness/positive/smartcastToExhaustiveInterface.kt` |
 | `ambiguous call: n candidates for '_' take (_)` | 8 | `tests/callableReference/resolve/resolveReferenceAgainstKFunctionAndKPrpoerty.kt`, `tests/inference/emptyIntersectionTypes/kt51016.kt` |
 | `no function '_' takes n arguments` | 6 | `tests/annotations/javaAnnotationWithParameter.kt`, `tests/cast/kt15161.kt` |
 | `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 6 | `tests/j+k/withTestConnection3.kt`, `tests/platformTypes/methodCall/multipleExactBoundsNullable.kt` |
@@ -158,13 +157,14 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 | `missing return statement in function '_'` | 1 | `tests/inline/inlinedReturnInBranch.kt` |
 | `named arguments are not allowed for non-Kotlin functions` | 1 | `testsWithStdLib/problems/NamedParameterInConcurrentMap.kt` |
 | `no type arguments expected for class OuterClass` | 1 | `tests/signatureEnhancementOuterClassBoundsToInner.kt` |
-| *16 more* | 16 | |
+| `one type argument expected for class B<T>` | 1 | `tests/multimodule/duplicateMethod/substitutedGenericInParams.kt` |
+| *15 more* | 15 | |
 
 ## Errors by diagnostic
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 14516 of 21476 expected errors (67.6%) on their lines.
+kc reports 14514 of 21476 expected errors (67.6%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
@@ -238,17 +238,17 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 |:---|---:|
 | `cannot infer type for type parameter '_'. Specify it explicitly.` | 590 |
 | `type mismatch: inferred type is _ but _ was expected` | 329 |
-| `unresolved reference: _` | 315 |
+| `unresolved reference: _` | 314 |
 | `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 213 |
 | `platform declaration clash: _` | 150 |
 | `class '_' is not abstract and does not implement abstract member '_'` | 68 |
-| `'_' expression must be exhaustive, add necessary '_' branch` | 62 |
 | `unresolved or unsupported type: _` | 59 |
 | `cannot infer a type for this parameter. Please specify it explicitly.` | 55 |
 | `suspend function '_' cannot override non-suspend function '_' defined in '_'` | 50 |
 | `missing return statement in function '_'` | 38 |
 | `unresolved import: _` | 35 |
 | `no function '_' takes n arguments` | 27 |
+| `'_' expression must be exhaustive, add necessary '_' branch` | 20 |
 | `ambiguous call: n candidates for '_' take (_)` | 18 |
 | `variable '_' must be initialized` | 17 |
 | `type checking has run into a recursive problem; specify the type of '_'` | 16 |

@@ -2122,7 +2122,7 @@ tests/controlStructures/when.kt234.kt973.kt	rejects invalid	on an expected line
 tests/controlStructures/whenInResultOfLambda.kt	accepts valid		
 tests/controlStructures/whenToAnyDiscriminatingUsages.kt	rejects invalid	on an expected line	
 tests/controlStructures/whenWithNoSubjectAndCommas.kt	rejects invalid	elsewhere	
-tests/controlStructures/whenWithNothingTypedSubject.kt	rejects valid	'_' expression must be exhaustive, add necessary '_' branch	whenWithNothingTypedSubject.kt:7: 'when' expression must be exhaustive, add necessary 'else' branch
+tests/controlStructures/whenWithNothingTypedSubject.kt	accepts valid		
 tests/copy.kt	accepts valid		
 tests/coroutines/callableReference/invokeOutideSuspend.kt	rejects invalid	on an expected line	
 tests/coroutines/callableReference/outsideSuspend.kt	accepts valid		
@@ -3157,7 +3157,7 @@ tests/exhaustiveness/positive/exhaustiveness_smartcastedBoolean.kt	rejects inval
 tests/exhaustiveness/positive/nestedIfInLambda.kt	accepts valid		
 tests/exhaustiveness/positive/nonExhaustiveWhenWithCoercionToUnit.kt	accepts valid		
 tests/exhaustiveness/positive/sameBranchMultipleConditions.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	sameBranchMultipleConditions.kt:18: type mismatch: inferred type is A but B was expected
-tests/exhaustiveness/positive/smartcastToExhaustiveInterface.kt	rejects valid	'_' expression must be exhaustive, add necessary '_' branch	smartcastToExhaustiveInterface.kt:21: 'when' expression must be exhaustive, add necessary 'else' branch
+tests/exhaustiveness/positive/smartcastToExhaustiveInterface.kt	accepts valid		
 tests/explicitDefinitelyNotNullableViaIntersection/approximation.kt	rejects invalid	on an expected line	
 tests/explicitDefinitelyNotNullableViaIntersection/bareTypes.kt	rejects invalid	on an expected line	
 tests/explicitDefinitelyNotNullableViaIntersection/dnnAgainstSam.kt	rejects invalid	on an expected line	
@@ -5816,7 +5816,7 @@ tests/jvm/multipleBigArityFunsImplemented.kt	rejects invalid	on an expected line
 tests/jvm/noWarningInLV1_5.kt	skip	LANGUAGE	
 tests/jvm/nothingToOverrideWithRawParameter.kt	skip	IGNORE_FIR_DIAGNOSTICS	
 tests/jvm/rawTypes/simple.kt	accepts valid		
-tests/jvm/sealed/sealedClassesAndInterfaces.kt	rejects valid	'_' expression must be exhaustive, add necessary '_' branch	main.kt:13: 'when' expression must be exhaustive, add necessary 'else' branch
+tests/jvm/sealed/sealedClassesAndInterfaces.kt	accepts valid		
 tests/jvm/sealed/sealedInheritorInDifferentModule.kt	rejects invalid	on an expected line	
 tests/jvm/signatureConflictHiddenByTypeParameter.kt	rejects invalid	on an expected line	
 tests/jvm/suspensionPointInMonitor.kt	accepts invalid	SUSPENSION_POINT_INSIDE_MONITOR	main.kt:7: SUSPENSION_POINT_INSIDE_MONITOR
@@ -8030,8 +8030,8 @@ tests/sealed/ExhaustiveOnTriangleStar.kt	rejects invalid	on an expected line
 tests/sealed/ExhaustiveWhen.kt	accepts valid		
 tests/sealed/ExhaustiveWhenDoubleInner.kt	accepts valid		
 tests/sealed/ExhaustiveWhenMultipleInner.kt	rejects invalid	on an expected line	
-tests/sealed/ExhaustiveWhenNegated.kt	rejects valid	'_' expression must be exhaustive, add necessary '_' branch	ExhaustiveWhenNegated.kt:11: 'when' expression must be exhaustive, add necessary 'else' branch
-tests/sealed/ExhaustiveWhenNegatedTwice.kt	rejects valid	'_' expression must be exhaustive, add necessary '_' branch	ExhaustiveWhenNegatedTwice.kt:12: 'when' expression must be exhaustive, add necessary 'else' branch
+tests/sealed/ExhaustiveWhenNegated.kt	accepts valid		
+tests/sealed/ExhaustiveWhenNegatedTwice.kt	accepts valid		
 tests/sealed/ExhaustiveWhenOnNestedSealed.kt	accepts valid		
 tests/sealed/ExhaustiveWhenOnNullable.kt	accepts valid		
 tests/sealed/ExhaustiveWhenWithAdditionalMember.kt	accepts valid		
@@ -8064,7 +8064,7 @@ tests/sealed/WithInterface.kt	accepts valid
 tests/sealed/inheritorInDifferentModule.kt	rejects invalid	on an expected line	
 tests/sealed/interfaces/inheritorInDifferentModule.kt	accepts invalid	SEALED_INHERITOR_IN_DIFFERENT_MODULE	b.kt:4: SEALED_INHERITOR_IN_DIFFERENT_MODULE
 tests/sealed/interfaces/sealedFunInterface.kt	accepts invalid	UNSUPPORTED_SEALED_FUN_INTERFACE	sealedFunInterface.kt:2: UNSUPPORTED_SEALED_FUN_INTERFACE
-tests/sealed/interfaces/simpleSealedInterface.kt	rejects valid	'_' expression must be exhaustive, add necessary '_' branch	simpleSealedInterface.kt:30: 'when' expression must be exhaustive, add necessary 'else' branch
+tests/sealed/interfaces/simpleSealedInterface.kt	accepts valid		
 tests/sealed/interfaces/triangleHierarchy.kt	accepts valid		
 tests/sealed/internalTypeInConstructor.kt	accepts valid		
 tests/sealed/kt44316.kt	accepts valid		
@@ -9503,7 +9503,7 @@ tests/when/guard/whenWithGuardSyntax.kt	rejects invalid	on an expected line
 tests/when/guard/whenWithNamedSubject.kt	rejects invalid	on an expected line	
 tests/when/guard/whenWithSealed.kt	accepts valid		
 tests/when/intersectionExhaustivenessComplex.kt	rejects invalid	on an expected line	
-tests/when/intersectionExhaustivenessSimple.kt	rejects valid	'_' expression must be exhaustive, add necessary '_' branch	intersectionExhaustivenessSimple.kt:14: 'when' expression must be exhaustive, add necessary 'else' branch
+tests/when/intersectionExhaustivenessSimple.kt	accepts valid		
 tests/when/kt10439.kt	rejects invalid	on an expected line	
 tests/when/kt10809.kt	accepts valid		
 tests/when/kt10811.kt	accepts valid		
@@ -9515,7 +9515,7 @@ tests/when/kt9929.kt	rejects invalid	on an expected line
 tests/when/kt9972.kt	rejects invalid	on an expected line	
 tests/when/nonExhaustiveDependentContext.kt	rejects invalid	on an expected line	
 tests/when/nonExhaustiveWhenStatement_1_7.kt	rejects invalid	on an expected line	
-tests/when/nullableSubjectWithIsCheck.kt	rejects valid	'_' expression must be exhaustive, add necessary '_' branch	test.kt:2: 'when' expression must be exhaustive, add necessary 'else' branch
+tests/when/nullableSubjectWithIsCheck.kt	accepts valid		
 tests/when/uselessIsCheckWithSubject.kt	accepts valid		
 tests/when/whenAndLambdaWithExpectedType.kt	rejects invalid	on an expected line	
 tests/when/whenOnClass.kt	accepts valid		

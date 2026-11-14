@@ -3564,6 +3564,12 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 				if cond.Is && cond.Target.K == types.Class {
 					cov.classes = append(cov.classes, cond.Target.C)
 				}
+				switch {
+				case cond.Is && cond.Target.K != types.Invalid:
+					cov.types = append(cov.types, cond.Target)
+				case cond.NotIs && cond.Target.K == types.Class && !cond.Target.N:
+					cov.not = append(cov.not, cond.Target.C)
+				}
 				if hasSubj && single && cond.Target.K != types.Invalid {
 					n := narrow{recv: subj.recv, sym: subj.sym, t: c.isNarrowed(subjType(), cond.Target)}
 					if cond.Is {

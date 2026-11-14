@@ -568,6 +568,16 @@ type coverage struct {
 	null, isTrue, isFalse bool
 	entries               map[string]bool   // enum entries
 	classes               []*types.ClassSym // is checks, and objects compared with
+	// owned are the enum entries by their enum, for an enum below a
+	// sealed type: C.A and C.B of an enum C : Base, for a Base subject.
+	owned map[*types.ClassSym]map[string]bool
+	// types are the types of is checks, which cover a subject of a
+	// subtype: is Int, with null, an Int?, and is List<*> a List<T>.
+	types []types.Type
+	// not are the classes of !is checks, which cover the subclasses of
+	// a sealed type that aren't theirs, as K2 has it: is First and
+	// !is First cover a Sealed.
+	not []*types.ClassSym
 }
 
 // add records a condition that compares the subject with x.
@@ -588,6 +598,7 @@ func (cv *coverage) add(x syntax.Expr) {
 		}
 		if x.Sym != nil && x.Sym.Kind == types.Static {
 			cv.entry(x.Sym.Name)
+			cv.ownedEntry(x.Sym.Owner, x.Sym.Name)
 		}
 	case *syntax.Member:
 		if x.Object != nil {
@@ -595,8 +606,22 @@ func (cv *coverage) add(x syntax.Expr) {
 		}
 		if x.Field != nil {
 			cv.entry(x.Field.Name)
+			cv.ownedEntry(x.Field.Owner, x.Field.Name)
 		}
 	}
+}
+
+func (cv *coverage) ownedEntry(cls *types.ClassSym, name string) {
+	if cls == nil {
+		return
+	}
+	if cv.owned == nil {
+		cv.owned = map[*types.ClassSym]map[string]bool{}
+	}
+	if cv.owned[cls] == nil {
+		cv.owned[cls] = map[string]bool{}
+	}
+	cv.owned[cls][name] = true
 }
 
 func (cv *coverage) entry(name string) {
@@ -614,34 +639,59 @@ func (cv *coverage) merge(o *coverage) {
 	for e := range o.entries {
 		cv.entry(e)
 	}
+	for cls, es := range o.owned {
+		for e := range es {
+			cv.ownedEntry(cls, e)
+		}
+	}
 	cv.classes = append(cv.classes[:len(cv.classes):len(cv.classes)], o.classes...)
+	cv.types = append(cv.types[:len(cv.types):len(cv.types)], o.types...)
+	cv.not = append(cv.not[:len(cv.not):len(cv.not)], o.not...)
 }
 
 // empty reports whether cv covers nothing.
 func (cv *coverage) empty() bool {
-	return !cv.null && !cv.isTrue && !cv.isFalse && len(cv.entries) == 0 && len(cv.classes) == 0
+	return !cv.null && !cv.isTrue && !cv.isFalse && len(cv.entries) == 0 && len(cv.classes) == 0 && len(cv.types) == 0 && len(cv.not) == 0
 }
 
 // covers reports whether the branches cover every value of a subject of
 // type t: true and false, every enum entry, or every subclass of a sealed
 // class, and null if t is nullable.
 func (c *Checker) covers(t types.Type, cv *coverage) bool {
-	if types.MayBeNull(t) && !t.P && !cv.null {
-		return false
+	if t.K == types.Nothing {
+		return true // no value: when (n) {} for an n: Nothing
+	}
+	if types.MayBeNull(t) && !t.P && !cv.null && !slices.ContainsFunc(cv.types, types.AcceptsNull) {
+		return false // is String? covers null
 	}
 	if t.K == types.Null {
 		return true // a subject known to be null, which null covers
 	}
 	t = t.NonNull()
+	for _, it := range cv.types {
+		// An is check of a supertype: is Int of an Int?, with null.
+		if c.subtype(t, it) {
+			return true
+		}
+	}
 	switch {
 	case t.K == types.Bool:
 		return cv.isTrue && cv.isFalse
+	case t.IsIntersection():
+		// A subject smart cast to A & B is covered as an A or a B: as a
+		// sealed I1 after require(x is I2).
+		for _, b := range t.Param().Bounds {
+			if c.covers(b, cv) {
+				return true
+			}
+		}
+		return false
 	case t.K != types.Class:
 		return false
 	}
 	cls := t.C
 	cls.Ensure()
-	if cls.Entries != nil {
+	if cls.Entries != nil && !slices.ContainsFunc(cv.classes, cls.IsSubclassOf) {
 		for _, e := range cls.Entries {
 			if !cv.entries[e] {
 				return false
@@ -649,23 +699,44 @@ func (c *Checker) covers(t types.Type, cv *coverage) bool {
 		}
 		return true
 	}
-	return c.sealedCovered(cls, cv.classes)
+	return c.sealedCovered(cls, cv, nil)
 }
 
-// sealedCovered reports whether the classes that is checks name cover
-// every instance of cls: cls or one of its supertypes is among them, or
-// cls is sealed and each of its subclasses is covered.
-func (c *Checker) sealedCovered(cls *types.ClassSym, classes []*types.ClassSym) bool {
-	for _, k := range classes {
+// sealedCovered reports whether the branches cover every instance of cls:
+// cls or one of its supertypes is among the classes of is checks, cls is
+// an enum whose entries are all compared with, or cls is sealed and each
+// of its subclasses is covered. A subclass of a sealed type, among those
+// of root, is covered by a !is check of a class it isn't related to.
+func (c *Checker) sealedCovered(cls *types.ClassSym, cv *coverage, root *types.ClassSym) bool {
+	for _, k := range cv.classes {
 		if cls.IsSubclassOf(k) {
 			return true
 		}
 	}
+	if root != nil {
+		for _, n := range cv.not {
+			if !cls.IsSubclassOf(n) && !n.IsSubclassOf(cls) {
+				return true
+			}
+		}
+	}
+	cls.Ensure()
+	if root != nil && cls.Entries != nil {
+		for _, e := range cls.Entries {
+			if !cv.owned[cls][e] {
+				return false
+			}
+		}
+		return true
+	}
 	if !cls.Sealed {
 		return false
 	}
+	if root == nil {
+		root = cls
+	}
 	for _, s := range cls.Subclasses {
-		if !c.sealedCovered(s, classes) {
+		if !c.sealedCovered(s, cv, root) {
 			return false
 		}
 	}
