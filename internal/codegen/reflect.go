@@ -20,12 +20,12 @@ func (g *gen) classLit(x *syntax.ClassLit) {
 	case x.Class.IsParam() && !x.Bound && t.IsPrimitive():
 		// A reified type parameter's class is a box, as with kotlinc:
 		// T::class for Int is Integer's.
-		g.code.LdcClass(boxClass[t.K])
+		g.code.LdcClass(boxClass(t.K))
 	case x.Bound && t.IsPrimitive():
 		// A primitive's class is the static one, int.class, as with kotlinc.
 		g.expr(x.X)
 		g.pop(x.X.Type())
-		g.code.FieldInsn(cf.GETSTATIC, boxClass[t.K], "TYPE", "Ljava/lang/Class;")
+		g.code.FieldInsn(cf.GETSTATIC, boxClass(t.K), "TYPE", "Ljava/lang/Class;")
 	case x.Bound:
 		// The run-time class of a value.
 		g.expr(x.X)
@@ -37,7 +37,7 @@ func (g *gen) classLit(x *syntax.ClassLit) {
 		g.code.Invoke(cf.INVOKEVIRTUAL, "java/lang/Object", "getClass", "()Ljava/lang/Class;")
 	case t.IsPrimitive():
 		// Int::class.java is int.class.
-		g.code.FieldInsn(cf.GETSTATIC, boxClass[t.K], "TYPE", "Ljava/lang/Class;")
+		g.code.FieldInsn(cf.GETSTATIC, boxClass(t.K), "TYPE", "Ljava/lang/Class;")
 	case t.K == types.Unit:
 		g.code.LdcClass("kotlin/Unit")
 	case t.K == types.Nothing:
@@ -95,9 +95,9 @@ func (g *gen) ktype(t types.Type, bound bool) {
 	nn := t.NonNull()
 	switch {
 	case nn.IsPrimitive() && t.N:
-		g.code.LdcClass(boxClass[nn.K]) // Int? is Integer's
+		g.code.LdcClass(boxClass(nn.K)) // Int? is Integer's
 	case nn.IsPrimitive():
-		g.code.FieldInsn(cf.GETSTATIC, boxClass[nn.K], "TYPE", "Ljava/lang/Class;")
+		g.code.FieldInsn(cf.GETSTATIC, boxClass(nn.K), "TYPE", "Ljava/lang/Class;")
 	case nn.K == types.Unit:
 		g.code.LdcClass("kotlin/Unit")
 	case nn.K == types.Nothing:

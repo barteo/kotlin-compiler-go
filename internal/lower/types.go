@@ -4,7 +4,6 @@ import (
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
 	"github.com/barteo/kotlin-compiler-go/internal/types"
 	"github.com/barteo/kotlin-compiler-go/psi"
-	"strings"
 )
 
 // typeRef lowers a TYPE_REFERENCE, or any node holding a type with its
@@ -450,15 +449,7 @@ func (l *lowerer) modifiers(n psi.NodeRef) syntax.Modifiers {
 func (l *lowerer) modifiersOf(cs []psi.NodeRef) syntax.Modifiers {
 	var m syntax.Modifiers
 	for _, c := range cs {
-		if c.IsLeaf() && syntax.IsModifier(c.Text()) {
-			m.Written = append(m.Written, syntax.Mod{Name: c.Text(), P: l.pos(c)})
-		}
-		k := c.NumericKind()
-		if k == psi.KindIDENTIFIER {
-			// A companion object's detached name: see detachName.
-			k = psi.KindForName(strings.ToUpper(c.Text()) + "_KEYWORD")
-		}
-		switch k {
+		switch c.NumericKind() {
 		case psi.KindANNOTATION_ENTRY:
 			a := l.annotation(c)
 			if a.Target == "" && a.Is("JvmInline") {
@@ -474,75 +465,13 @@ func (l *lowerer) modifiersOf(cs []psi.NodeRef) syntax.Modifiers {
 			m.Contexts, m.ContextP = l.contextParams(c), l.pos(c)
 		case psi.KindFUN_KEYWORD:
 			// fun interface: the class sets Fun.
-		case psi.KindPRIVATE_KEYWORD:
-			m.Visibility, m.Explicit = syntax.Private, true
-		case psi.KindPUBLIC_KEYWORD:
-			m.Visibility, m.Explicit = syntax.Public, true
-		case psi.KindINTERNAL_KEYWORD:
-			m.Visibility, m.Explicit = syntax.Internal, true
-		case psi.KindPROTECTED_KEYWORD:
-			m.Visibility, m.Explicit = syntax.Protected, true
-		case psi.KindOPEN_KEYWORD:
-			m.Open = true
-		case psi.KindABSTRACT_KEYWORD:
-			m.Abstract = true
-		case psi.KindOVERRIDE_KEYWORD:
-			m.Override = true
-		case psi.KindFINAL_KEYWORD:
-			m.Final = true
-		case psi.KindCOMPANION_KEYWORD:
-			m.Companion = true
-		case psi.KindDATA_KEYWORD:
-			m.Data = true
-		case psi.KindENUM_KEYWORD:
-			m.Enum = true
-		case psi.KindSEALED_KEYWORD:
-			m.Sealed = true
-		case psi.KindCONST_KEYWORD:
-			m.Const = true
-		case psi.KindVARARG_KEYWORD:
-			m.Vararg, m.VarargP = true, l.pos(c)
-		case psi.KindOPERATOR_KEYWORD:
-			m.Operator = true
-		case psi.KindINFIX_KEYWORD:
-			m.Infix = true
-		case psi.KindEXPECT_KEYWORD:
-			m.Expect, m.ExpectP = true, l.pos(c)
-		case psi.KindACTUAL_KEYWORD:
-			m.Actual = true
-		case psi.KindANNOTATION_KEYWORD:
-			m.Annotation = true
-		case psi.KindVALUE_KEYWORD:
-			m.Value = true
-		case psi.KindINLINE_KEYWORD:
-			m.Inline = true
-		case psi.KindNOINLINE_KEYWORD:
-			m.Noinline = true
-		case psi.KindCROSSINLINE_KEYWORD:
-			m.Crossinline = true
-		case psi.KindSUSPEND_KEYWORD:
-			m.Suspend = true
-		case psi.KindLATEINIT_KEYWORD:
-			m.Lateinit = true
-		case psi.KindINNER_KEYWORD:
-			m.Inner = true
-		case psi.KindTAILREC_KEYWORD:
-			m.Tailrec = true
-		case psi.KindEXTERNAL_KEYWORD:
-			m.External, m.ExternalP = true, l.pos(c)
-		default:
-			l.fail(c, "'%s' is not supported", c.Text())
+		default: // a modifier keyword, or a companion object's detached name (see detachName)
+			if !c.IsLeaf() || !m.Set(c.Text(), l.pos(c)) {
+				l.fail(c, "'%s' is not supported", c.Text())
+			}
 		}
 	}
 	return m
-}
-
-// paramOnly reports modifiers that only parameters take on another
-// declaration.
-func (l *lowerer) paramOnly(m syntax.Modifiers) {
-	if m.Vararg {
-		l.failAt(m.VarargP, "modifier 'vararg' is only allowed on parameters")
-	}
 }
 
 // contextParams lowers a CONTEXT_PARAMETER_LIST of a declaration, as kc's
@@ -595,13 +524,4 @@ func (l *lowerer) contextParams(n psi.NodeRef) []*syntax.Param {
 		l.fail(child(n, psi.KindRPAR), "expected a context parameter")
 	}
 	return ps
-}
-
-// noContexts reports context parameters on a declaration that Kotlin
-// doesn't allow them on, what, as kc's parser does, and drops them.
-func (l *lowerer) noContexts(m *syntax.Modifiers, what string) {
-	if m.Contexts != nil {
-		l.errorLater(m.ContextP, "context parameters on %s are unsupported", what)
-		m.Contexts = nil
-	}
 }

@@ -562,25 +562,8 @@ var kotlinMapped = func() map[string]bool {
 // fieldType maps a JVM field descriptor to a Kotlin type. Reference types
 // are platform types, as Kotlin sees Java declarations.
 func (t *classTable) fieldType(d string) (types.Type, bool) {
-	switch d {
-	case "I":
-		return types.IntType, true
-	case "J":
-		return types.LongType, true
-	case "D":
-		return types.DoubleType, true
-	case "Z":
-		return types.BoolType, true
-	case "C":
-		return types.CharType, true
-	case "F":
-		return types.FloatType, true
-	case "B":
-		return types.ByteType, true
-	case "S":
-		return types.ShortType, true
-	case "V":
-		return types.UnitType, true
+	if len(d) == 1 && types.DescKind(d[0]) != types.Invalid {
+		return types.Type{K: types.DescKind(d[0])}, true // a primitive, or V
 	}
 	if elem, ok := strings.CutPrefix(d, "["); ok {
 		et, ok := t.fieldType(elem)
@@ -599,10 +582,8 @@ func (t *classTable) fieldType(d string) (types.Type, bool) {
 	case "java/lang/Object":
 		return types.AnyType.Platform(), true
 	}
-	for k, box := range boxes {
-		if name == box {
-			return types.Type{K: k}.Nullable().Platform(), true
-		}
+	if k := types.BoxKind(name); k != types.Invalid {
+		return types.Type{K: k}.Nullable().Platform(), true
 	}
 	if c := t.class(name); c != nil {
 		return types.ClassType(c).Platform(), true
@@ -614,21 +595,12 @@ func (t *classTable) fieldType(d string) (types.Type, bool) {
 // descriptor and reports whether kc supports all of them.
 func (t *classTable) signature(f *types.FunSym, d string) bool {
 	ok := true
-	i := 1
-	for d[i] != ')' {
-		j := i
-		for d[j] == '[' {
-			j++
-		}
-		if d[j] == 'L' {
-			j = i + strings.IndexByte(d[i:], ';')
-		}
-		pt, pok := t.fieldType(d[i : j+1])
+	for _, p := range classfile.DescParams(d) {
+		pt, pok := t.fieldType(p)
 		ok = ok && pok
 		f.Params = append(f.Params, &types.VarSym{Name: "p", Type: pt, Kind: types.Param})
-		i = j + 1
 	}
-	rt, rok := t.fieldType(d[i+1:])
+	rt, rok := t.fieldType(classfile.RetDesc(d))
 	f.Ret = rt
 	return ok && rok
 }
@@ -641,9 +613,6 @@ func javaParam(t types.Type) types.Type {
 	}
 	return types.GenericType(t.C, []types.Arg{{V: types.Out, T: t.A.Get(0).T}}).Platform()
 }
-
-// boxes are the box classes of the primitive types.
-var boxes = types.Boxes
 
 // Kotlin type names never refer to java.lang classes.
 var kotlinTypes = map[string]bool{
@@ -1802,7 +1771,7 @@ func (c *Checker) jvmClass(t types.Type) *types.ClassSym {
 	case types.Class:
 		return t.C
 	}
-	if box, ok := boxes[t.K]; ok {
+	if box := types.PrimOf(t.K).Box; box != "" {
 		return c.u.ext.class(box)
 	}
 	return nil

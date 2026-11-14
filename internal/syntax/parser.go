@@ -1,7 +1,6 @@
 package syntax
 
 import (
-	"errors"
 	"fmt"
 	"path/filepath"
 	"slices"
@@ -307,6 +306,25 @@ func (p *parser) skipNL() {
 	}
 }
 
+// op consumes an operator, or another token, with the newlines around
+// it.
+func (p *parser) op() Token {
+	p.skipNL()
+	t := p.next()
+	p.skipNL()
+	return t
+}
+
+// comma consumes the comma after an element of a list, and reports
+// whether there is one.
+func (p *parser) comma() bool {
+	if !p.at(COMMA) {
+		return false
+	}
+	p.next()
+	return true
+}
+
 func (p *parser) skipSemis() {
 	for p.at(NL) || p.at(SEMI) {
 		p.i++
@@ -370,81 +388,7 @@ func (p *parser) modifiers() Modifiers {
 			p.skipNL()
 		case !declStart(p.toks[p.i+1].Kind):
 			return m
-		case isModifier(t.Text) && p.recordMod(&m, t):
-		case t.Text == "private" || t.Text == "public" || t.Text == "internal" || t.Text == "protected":
-			m.Visibility, m.Explicit = visibilities[t.Text], true
-			p.next()
-		case t.Text == "open":
-			m.Open = true
-			p.next()
-		case t.Text == "abstract":
-			m.Abstract = true
-			p.next()
-		case t.Text == "override":
-			m.Override = true
-			p.next()
-		case t.Text == "final":
-			m.Final = true
-			p.next()
-		case t.Text == "companion":
-			m.Companion = true
-			p.next()
-		case t.Text == "data":
-			m.Data = true
-			p.next()
-		case t.Text == "enum":
-			m.Enum = true
-			p.next()
-		case t.Text == "sealed":
-			m.Sealed = true
-			p.next()
-		case t.Text == "const":
-			m.Const = true
-			p.next()
-		case t.Text == "vararg":
-			m.Vararg, m.VarargP = true, t.Pos
-			p.next()
-		case t.Text == "operator":
-			m.Operator = true
-			p.next()
-		case t.Text == "infix":
-			m.Infix = true
-			p.next()
-		case t.Text == "expect":
-			m.Expect, m.ExpectP = true, t.Pos
-			p.next()
-		case t.Text == "actual":
-			m.Actual = true
-			p.next()
-		case t.Text == "annotation":
-			m.Annotation = true
-			p.next()
-		case t.Text == "value":
-			m.Value = true
-			p.next()
-		case t.Text == "inline":
-			m.Inline = true
-			p.next()
-		case t.Text == "noinline":
-			m.Noinline = true
-			p.next()
-		case t.Text == "crossinline":
-			m.Crossinline = true
-			p.next()
-		case t.Text == "suspend":
-			m.Suspend = true
-			p.next()
-		case t.Text == "lateinit":
-			m.Lateinit = true
-			p.next()
-		case t.Text == "inner":
-			m.Inner = true
-			p.next()
-		case t.Text == "tailrec":
-			m.Tailrec = true
-			p.next()
-		case t.Text == "external":
-			m.External, m.ExternalP = true, t.Pos
+		case m.Set(t.Text, t.Pos):
 			p.next()
 		default:
 			return m
@@ -487,10 +431,9 @@ func (p *parser) contextParams() []*Param {
 			p.parseExpr()
 			p.skipNL()
 		}
-		if !p.at(COMMA) {
+		if !p.comma() {
 			break
 		}
-		p.next()
 	}
 	p.expect(RPAREN)
 	return ps
@@ -538,15 +481,6 @@ func (p *parser) contextAnonFun() bool {
 	for j++; p.toks[j].Kind == NL; j++ {
 	}
 	return p.toks[j].Kind == FUN && p.anonFunAt(j)
-}
-
-// noContexts reports context parameters on a declaration that Kotlin
-// doesn't allow them on, what, as kotlinc does, and drops them.
-func (p *parser) noContexts(m *Modifiers, what string) {
-	if m.Contexts != nil {
-		p.errorLater(m.ContextP, "context parameters on %s are unsupported", what)
-		m.Contexts = nil
-	}
 }
 
 // danglingContexts reports context parameters that no declaration
@@ -599,7 +533,7 @@ func (p *parser) anonFun(label string) *Lambda {
 	p.expect(LPAREN)
 	for !p.at(RPAREN) {
 		m := p.modifiers()
-		p.noContexts(&m, "value parameters")
+		NoContexts(&m, "value parameters", p)
 		name := p.ident()
 		lp := &LambdaParam{P: name.Pos, Name: name.Text}
 		if p.at(COLON) {
@@ -610,16 +544,13 @@ func (p *parser) anonFun(label string) *Lambda {
 			p.failAt(p.tok().Pos, "anonymous functions can't have default values")
 		}
 		l.Params = append(l.Params, lp)
-		if !p.at(COMMA) {
+		if !p.comma() {
 			break
 		}
-		p.next()
 	}
 	p.expect(RPAREN)
 	if p.peekPastNL() == COLON {
-		p.skipNL()
-		p.next()
-		p.skipNL()
+		p.op()
 		l.AnonRet = p.parseType()
 	}
 	switch p.peekPastNL() {
@@ -628,9 +559,7 @@ func (p *parser) anonFun(label string) *Lambda {
 		l.Body = p.parseBlock()
 		l.AnonUnit = l.AnonRet == nil // a block body returns a value only with return
 	case ASSIGN:
-		p.skipNL()
-		p.next()
-		p.skipNL()
+		p.op()
 		x := p.parseExpr()
 		l.Body = &Block{P: x.Pos(), Stmts: []Stmt{&ExprStmt{X: x}}}
 	default:
@@ -666,7 +595,7 @@ func (p *parser) anonFunAt(i int) bool {
 // localClass parses a local class, after its modifiers. Kotlin has no
 // local interfaces, objects or enum classes.
 func (p *parser) localClass(m Modifiers) *LocalClass {
-	p.noContexts(&m, "classes")
+	NoContexts(&m, "classes", p)
 	t := p.tok()
 	switch {
 	case t.Kind == INTERFACE:
@@ -706,43 +635,11 @@ func relabel(fd *FunDecl, label string) {
 
 // localFun parses a local function, after its modifiers.
 func (p *parser) localFun(m Modifiers) *LocalFun {
-	p.paramOnly(m)
-	pos := p.tok().Pos
+	ParamOnly(m, p)
 	fd := p.parseFun()
 	fd.Modifiers = m
-	if m.External {
-		p.unsupported(m.ExternalP, "local external function", "local external functions are not supported")
-	}
-	if fd.Body == nil && fd.ExprBody == nil {
-		p.failAt(pos, "a local function must have a body")
-	}
+	CheckLocalFun(fd, p)
 	return &LocalFun{Decl: fd}
-}
-
-// recordMod appends the modifier t to m.Written. It returns false so that
-// modifiers goes on to the case that sets the modifier's flag.
-func (p *parser) recordMod(m *Modifiers, t *Token) bool {
-	m.Written = append(m.Written, Mod{Name: t.Text, P: t.Pos})
-	return false
-}
-
-// isModifier reports whether s is a modifier keyword.
-func isModifier(s string) bool {
-	switch s {
-	case "private", "public", "internal", "protected", "open", "abstract", "override", "final",
-		"companion", "data", "enum", "sealed", "const", "vararg", "operator", "infix", "expect", "actual", "annotation", "value", "inline", "noinline", "crossinline", "suspend",
-		"lateinit", "tailrec", "inner", "external":
-		return true
-	}
-	return false
-}
-
-// paramOnly reports modifiers that only parameters take on another
-// declaration.
-func (p *parser) paramOnly(m Modifiers) {
-	if m.Vararg {
-		p.failAt(m.VarargP, "modifier 'vararg' is only allowed on parameters")
-	}
 }
 
 // declStart reports whether a token can follow a modifier: another
@@ -798,7 +695,7 @@ func (p *parser) parseFile() *File {
 	for !p.at(EOF) {
 		p.decl(func() {
 			m := p.modifiers()
-			p.paramOnly(m)
+			ParamOnly(m, p)
 			add := func(d Decl) {
 				if m.Expect {
 					f.Expects = append(f.Expects, d)
@@ -810,12 +707,12 @@ func (p *parser) parseFile() *File {
 			case VAL, VAR:
 			case FUN:
 				if p.toks[p.i+1].Kind == INTERFACE {
-					p.noContexts(&m, "classes")
+					NoContexts(&m, "classes", p)
 				}
 			case TYPEALIAS:
-				p.noContexts(&m, "type aliases")
+				NoContexts(&m, "type aliases", p)
 			case CLASS, INTERFACE, OBJECT:
-				p.noContexts(&m, "classes")
+				NoContexts(&m, "classes", p)
 			case PACKAGE:
 				if m.Contexts != nil {
 					p.failAt(m.ContextP, "context parameters are unsupported in this position")
@@ -932,10 +829,9 @@ func (p *parser) parseType() *TypeRef {
 		for p.skipNL(); !p.at(RPAREN); p.skipNL() {
 			ctx = append(ctx, p.parseType())
 			p.skipNL()
-			if !p.at(COMMA) {
+			if !p.comma() {
 				break
 			}
-			p.next()
 		}
 		p.expect(RPAREN)
 		ft := p.parseType()
@@ -1031,16 +927,13 @@ func (p *parser) parseParenType() *TypeRef {
 		}
 		params = append(params, p.parseType())
 		p.skipNL()
-		if !p.at(COMMA) {
+		if !p.comma() {
 			break
 		}
-		p.next()
 	}
 	p.expect(RPAREN)
 	if p.peekPastNL() == ARROW {
-		p.skipNL()
-		p.next()
-		p.skipNL()
+		p.op()
 		return &TypeRef{P: pos, Params: params, Ret: p.parseType()}
 	}
 	if len(params) != 1 {
@@ -1093,10 +986,9 @@ func (p *parser) parseTypeArgs() []*TypeArg {
 		}
 		args = append(args, a)
 		p.skipNL()
-		if !p.at(COMMA) {
+		if !p.comma() {
 			break
 		}
-		p.next()
 	}
 	p.expect(GT)
 	return args
@@ -1147,17 +1039,14 @@ func (p *parser) parseTypeParams() []*TypeParam {
 		name := p.ident()
 		tp.P, tp.Name = name.Pos, name.Text
 		if p.peekPastNL() == COLON {
-			p.skipNL()
-			p.next()
-			p.skipNL()
+			p.op()
 			tp.Bounds = []*TypeRef{p.parseType()}
 		}
 		ps = append(ps, tp)
 		p.skipNL()
-		if !p.at(COMMA) {
+		if !p.comma() {
 			break
 		}
-		p.next()
 	}
 	p.expect(GT)
 	return ps
@@ -1253,9 +1142,7 @@ func (p *parser) parseFun() *FunDecl {
 	fd := &FunDecl{P: pos, Name: name.Text, TypeParams: tps, Recv: recv, RecvAnnotations: recvAs, Params: p.params()}
 	// The return type can go on the next line, and its ':' too.
 	if p.peekPastNL() == COLON {
-		p.skipNL()
-		p.next()
-		p.skipNL()
+		p.op()
 		fd.Ret = p.parseType()
 	}
 	p.whereClause(tps)
@@ -1264,9 +1151,7 @@ func (p *parser) parseFun() *FunDecl {
 		p.skipNL()
 		fd.Body = p.parseBlock()
 	case ASSIGN:
-		p.skipNL()
-		p.next()
-		p.skipNL()
+		p.op()
 		fd.ExprBody = p.parseExpr()
 	default:
 		// No body: an abstract function.
@@ -1284,7 +1169,7 @@ func (p *parser) params() []*Param {
 	p.expect(LPAREN)
 	for !p.at(RPAREN) {
 		m := p.modifiers()
-		p.noContexts(&m, "value parameters")
+		NoContexts(&m, "value parameters", p)
 		pn := p.ident()
 		p.expect(COLON)
 		param := &Param{P: pn.Pos, Name: pn.Text, Type: p.parseType(), Vararg: m.Vararg, Noinline: m.Noinline, Crossinline: m.Crossinline,
@@ -1297,10 +1182,9 @@ func (p *parser) params() []*Param {
 			param.Default = p.parseExpr()
 		}
 		ps = append(ps, param)
-		if !p.at(COMMA) {
+		if !p.comma() {
 			break
 		}
-		p.next()
 	}
 	p.expect(RPAREN)
 	return ps
@@ -1312,9 +1196,7 @@ func (p *parser) secondaryCtor(m Modifiers) *SecondaryCtor {
 	sc := &SecondaryCtor{Modifiers: m, P: p.next().Pos}
 	sc.Params = p.params()
 	if p.peekPastNL() == COLON {
-		p.skipNL()
-		p.next()
-		p.skipNL()
+		p.op()
 		t := p.tok()
 		if t.Kind != THIS && t.Kind != SUPER {
 			p.unexpected("'this' or 'super'")
@@ -1498,17 +1380,11 @@ func (p *parser) parseProp(m Modifiers) *PropDecl {
 		p.skipNL()
 		pd.Field = &PropDecl{P: t.Pos, Name: pd.Name + "$delegate", Init: p.parseExpr(), DelegateOf: pd}
 		p.accessors(pd)
-		for _, a := range []*FunDecl{pd.Getter, pd.Setter} {
-			if a != nil {
-				p.failAt(a.P, "delegated property cannot have accessors with non-default implementations")
-			}
-		}
+		CheckDelegated(pd, p)
 		return pd
 	}
 	if p.peekPastNL() == ASSIGN {
-		p.skipNL()
-		p.next()
-		p.skipNL()
+		p.op()
 		pd.Init = p.parseExpr()
 	}
 	p.accessors(pd)
@@ -1563,31 +1439,13 @@ func (p *parser) accessors(pd *PropDecl) {
 		default:
 			return
 		}
-		if pd.AccessorP.Line == 0 {
-			pd.AccessorP = t.Pos
-		}
 		p.i = start
 		m := p.modifiers()
-		p.noContexts(&m, "property accessors")
-		if len(m.Written) > 0 {
-			pd.AccessorMods = append(pd.AccessorMods, m.Written)
-		}
-		for _, a := range m.Annotations {
-			if a.Target == "" {
-				a.Target, a.Accessor = t.Text, true
-			}
-			pd.Annotations = append(pd.Annotations, a)
-		}
-		if t.Text == "set" {
-			pd.SetterVis = m.Visibility
-			pd.InlineSetter = m.Inline
-		} else {
-			pd.InlineGetter = m.Inline
-		}
+		AccessorMods(pd, t.Text, t.Pos, &m, p)
 		if p.toks[j+1].Kind != LPAREN {
 			p.i = j + 1 // an accessor without a body
 			if m.External {
-				p.externalAccessor(pd, t, m)
+				ExternalAccessor(pd, t.Text, t.Pos, m, p)
 			}
 			continue
 		}
@@ -1597,9 +1455,7 @@ func (p *parser) accessors(pd *PropDecl) {
 			pd.Setter.End = p.toks[p.i-1].Pos
 			continue
 		}
-		if pd.Getter != nil {
-			p.failAt(t.Pos, "property has two getters")
-		}
+		CheckAccessor(pd, "get", t.Pos, p)
 		p.i = j + 1
 		p.expect(LPAREN)
 		p.expect(RPAREN)
@@ -1617,9 +1473,7 @@ func (p *parser) accessors(pd *PropDecl) {
 			p.skipNL()
 			g.Body = p.parseBlock()
 		case ASSIGN:
-			p.skipNL()
-			p.next()
-			p.skipNL()
+			p.op()
 			g.ExprBody = p.parseExpr()
 		default:
 			p.unexpected("getter body")
@@ -1646,7 +1500,7 @@ func (p *parser) backingFieldAt(j int) bool {
 // modifiers and annotations before it: field: T = init.
 func (p *parser) backingField(pd *PropDecl) {
 	m := p.modifiers()
-	p.noContexts(&m, "backing fields")
+	NoContexts(&m, "backing fields", p)
 	t := p.next()
 	if pd.BackingField != nil {
 		p.failAt(t.Pos, "property has two backing fields")
@@ -1664,46 +1518,17 @@ func (p *parser) backingField(pd *PropDecl) {
 		f.Type = p.parseType()
 	}
 	if p.peekPastNL() == ASSIGN {
-		p.skipNL()
-		p.next()
-		p.skipNL()
+		p.op()
 		f.Init = p.parseExpr()
 	}
 	pd.BackingField = f
-}
-
-// externalAccessor declares an external accessor without a body,
-// external get or external set: a native method, which takes the value
-// as value.
-func (p *parser) externalAccessor(pd *PropDecl, t *Token, m Modifiers) {
-	a := &FunDecl{P: t.Pos, Name: t.Text, Property: pd.Name}
-	a.External, a.ExternalP = true, m.ExternalP
-	switch {
-	case t.Text == "get" && pd.Getter != nil:
-		p.failAt(t.Pos, "property has two getters")
-	case t.Text == "get":
-		pd.Getter = a
-	case !pd.Mutable:
-		p.failAt(t.Pos, "a 'val'-property cannot have a setter")
-	case pd.Setter != nil:
-		p.failAt(t.Pos, "property has two setters")
-	default:
-		a.Visibility = m.Visibility
-		a.Params = []*Param{{P: t.Pos, Name: "value"}}
-		pd.Setter = a
-	}
 }
 
 // setter parses a setter with a body after set: (value) { ... },
 // (v: T) = ... Its parameter's type, which may be omitted, is the
 // property's.
 func (p *parser) setter(pd *PropDecl, pos Pos, m Modifiers) *FunDecl {
-	switch {
-	case !pd.Mutable:
-		p.failAt(pos, "a 'val'-property cannot have a setter")
-	case pd.Setter != nil:
-		p.failAt(pos, "property has two setters")
-	}
+	CheckAccessor(pd, "set", pos, p)
 	st := &FunDecl{P: pos, Name: "set", Property: pd.Name}
 	st.Visibility = m.Visibility
 	st.External, st.ExternalP = m.External, m.ExternalP
@@ -1737,9 +1562,7 @@ func (p *parser) setter(pd *PropDecl, pos Pos, m Modifiers) *FunDecl {
 		p.skipNL()
 		st.Body = p.parseBlock()
 	case ASSIGN:
-		p.skipNL()
-		p.next()
-		p.skipNL()
+		p.op()
 		st.ExprBody = p.parseExpr()
 	default:
 		p.unexpected("setter body")
@@ -1804,7 +1627,7 @@ func (p *parser) parseClass(m Modifiers) *ClassDecl {
 	// class A private constructor(...).
 	if t := p.tok(); t.Kind == AT || t.Kind == IDENT && t.Text != "where" {
 		cd.CtorMods = p.modifiers()
-		p.noContexts(&cd.CtorMods, "primary constructors")
+		NoContexts(&cd.CtorMods, "primary constructors", p)
 		if t := p.tok(); t.Kind == IDENT && t.Text == "constructor" {
 			p.next()
 		}
@@ -1814,7 +1637,7 @@ func (p *parser) parseClass(m Modifiers) *ClassDecl {
 		p.next()
 		for !p.at(RPAREN) {
 			m := p.modifiers()
-			p.noContexts(&m, "value parameters")
+			NoContexts(&m, "value parameters", p)
 			cp := &CtorParam{Modifiers: m}
 			if p.at(VAL) || p.at(VAR) {
 				cp.IsProp = true
@@ -1832,10 +1655,9 @@ func (p *parser) parseClass(m Modifiers) *ClassDecl {
 				cp.Default = p.parseExpr()
 			}
 			cd.CtorParams = append(cd.CtorParams, cp)
-			if !p.at(COMMA) {
+			if !p.comma() {
 				break
 			}
-			p.next()
 		}
 		p.expect(RPAREN)
 	}
@@ -1945,10 +1767,9 @@ func (p *parser) enumEntries(cd *ClassDecl) {
 		}
 		cd.Entries = append(cd.Entries, e)
 		p.skipNL()
-		if !p.at(COMMA) {
+		if !p.comma() {
 			break
 		}
-		p.next()
 	}
 	p.skipNL()
 	if p.at(SEMI) {
@@ -2011,11 +1832,11 @@ func (p *parser) supertypes(cd *ClassDecl) {
 // member parses a class member.
 func (p *parser) member(cd *ClassDecl) {
 	m := p.modifiers()
-	p.paramOnly(m)
+	ParamOnly(m, p)
 	switch t := p.tok(); t.Kind {
 	case FUN:
 		if p.toks[p.i+1].Kind == INTERFACE {
-			p.noContexts(&m, "classes")
+			NoContexts(&m, "classes", p)
 			cd.Members = append(cd.Members, p.funInterface(m))
 			break
 		}
@@ -2026,20 +1847,20 @@ func (p *parser) member(cd *ClassDecl) {
 		pd := p.parseProp(m)
 		cd.Members = append(cd.Members, DelegatedProp(pd, true, cd.Members)...)
 	case CLASS, INTERFACE, OBJECT:
-		p.noContexts(&m, "classes")
+		NoContexts(&m, "classes", p)
 		cd.Members = append(cd.Members, p.parseClass(m))
 	case TYPEALIAS:
-		p.noContexts(&m, "type aliases")
+		NoContexts(&m, "type aliases", p)
 		cd.Members = append(cd.Members, p.parseTypeAlias(m))
 	case IDENT:
 		if t.Text == "constructor" && p.toks[p.i+1].Kind == LPAREN {
-			p.noContexts(&m, "constructors")
+			NoContexts(&m, "constructors", p)
 			cd.Members = append(cd.Members, p.secondaryCtor(m))
 			break
 		}
 		if t.Text == "init" && p.peekAfterNL(p.i+1) == LBRACE {
 			// init is a soft keyword: elsewhere, it is a name.
-			p.noContexts(&m, "initializers")
+			NoContexts(&m, "initializers", p)
 			p.next()
 			p.skipNL()
 			cd.Members = append(cd.Members, &InitBlock{P: t.Pos, Body: p.parseBlock(), Annotations: m.Annotations})
@@ -2191,10 +2012,9 @@ func ParseAnnotationArg(path string, arg *AnnotationArg) (elems []Expr, array bo
 		p.next()
 		for !p.at(RBRACK) {
 			elems = append(elems, p.parseExpr())
-			if !p.at(COMMA) {
+			if !p.comma() {
 				break
 			}
-			p.next()
 		}
 		p.expect(RBRACK)
 	} else if p.at(STAR) {
@@ -2481,7 +2301,7 @@ func (p *parser) parseStmtAfterAnnotations() Stmt {
 
 // Expressions, from lowest to highest precedence.
 
-func (p *parser) parseExpr() Expr { return p.parseDisjunction() }
+func (p *parser) parseExpr() Expr { return p.parseBinary(1) }
 
 func (p *parser) binary(op Token, x, y Expr) Expr {
 	b := &Binary{Op: op.Kind, X: x, Y: y}
@@ -2489,144 +2309,67 @@ func (p *parser) binary(op Token, x, y Expr) Expr {
 	return b
 }
 
-func (p *parser) parseDisjunction() Expr {
-	x := p.parseConjunction()
-	for p.peekPastNL() == OR {
-		p.skipNL()
-		op := p.next()
-		p.skipNL()
-		x = p.binary(op, x, p.parseConjunction())
+// binaryLevels are the precedences of the binary operators, from 1 for ||
+// to 10 for *, / and %, by kind; 0 for any other kind. An IDENT is an
+// infix call, a name b, or until, downTo or step.
+var binaryLevels = func() (t [256]int8) {
+	for i, ks := range [][]Kind{
+		{OR}, {AND}, {EQ, NE, EQ_EQ_EQ, NOT_EQ_EQ}, {LT, GT, LE, GE}, {IN, NOT_IN, IS, NOT_IS},
+		{ELVIS}, {IDENT}, {RANGE, RANGE_LT}, {PLUS, MINUS}, {STAR, SLASH, PERCENT},
+	} {
+		for _, k := range ks {
+			t[k] = int8(i + 1)
+		}
 	}
-	return x
-}
+	return t
+}()
 
-func (p *parser) parseConjunction() Expr {
-	x := p.parseEquality()
-	for p.peekPastNL() == AND {
-		p.skipNL()
-		op := p.next()
-		p.skipNL()
-		x = p.binary(op, x, p.parseEquality())
-	}
-	return x
-}
-
-func (p *parser) parseEquality() Expr {
-	x := p.parseComparison()
-	for p.at(EQ) || p.at(NE) || p.at(EQ_EQ_EQ) || p.at(NOT_EQ_EQ) {
-		op := p.next()
-		p.skipNL()
-		x = p.binary(op, x, p.parseComparison())
-	}
-	return x
-}
-
-func (p *parser) parseComparison() Expr {
-	x := p.parseNamedCheck()
-	for p.at(LT) || p.at(GT) || p.at(LE) || p.at(GE) {
-		op := p.next()
-		p.skipNL()
-		x = p.binary(op, x, p.parseNamedCheck())
-	}
-	return x
-}
-
-func (p *parser) parseNamedCheck() Expr {
-	x := p.parseElvis()
-	for p.at(IN) || p.at(NOT_IN) || p.at(IS) || p.at(NOT_IS) {
-		op := p.next()
-		p.skipNL()
-		if op.Kind == IS || op.Kind == NOT_IS {
-			is := &Is{X: x, Ref: p.parseType(), Not: op.Kind == NOT_IS}
+// parseBinary parses the operands of the binary operators of precedence
+// min and above (see binaryLevels), and those operators, by precedence
+// climbing. Only ||, && and ?: can start a line.
+func (p *parser) parseBinary(min int8) Expr {
+	x := p.parseAs()
+	for {
+		k := p.tok().Kind
+		if k == NL {
+			if k = p.peekPastNL(); k != OR && k != AND && k != ELVIS {
+				return x
+			}
+		}
+		lv := binaryLevels[k]
+		if lv < min {
+			return x
+		}
+		op := p.op()
+		switch {
+		case k == IS || k == NOT_IS:
+			is := &Is{X: x, Ref: p.parseType(), Not: k == NOT_IS}
 			is.P = op.Pos
 			x = is
-			continue
-		}
-		x = p.binary(op, x, p.parseElvis())
-	}
-	return x
-}
-
-func (p *parser) parseElvis() Expr {
-	x := p.parseInfix()
-	for p.peekPastNL() == ELVIS {
-		p.skipNL()
-		op := p.next()
-		p.skipNL()
-		x = p.binary(op, x, p.parseInfix())
-	}
-	return x
-}
-
-// parseInfix parses infix calls, a name b, which are a.name(b). The range
-// forms until, downTo and step are operators.
-func (p *parser) parseInfix() Expr {
-	x := p.parseRange()
-	for p.at(IDENT) {
-		var k Kind
-		switch p.tok().Text {
-		case "until":
-			k = UNTIL
-		case "downTo":
-			k = DOWN_TO
-		case "step":
-			k = STEP
-		default:
-			name := p.next()
-			p.skipNL()
-			m := &Member{X: x, Name: name.Text}
-			m.P = name.Pos
-			c := &Call{Fun: m, Args: []Expr{p.parseRange()}, Infix: true}
-			c.P = name.Pos
+		case k == IDENT && rangeWords[op.Text] == 0:
+			m := &Member{X: x, Name: op.Text}
+			m.P = op.Pos
+			c := &Call{Fun: m, Args: []Expr{p.parseBinary(lv + 1)}, Infix: true}
+			c.P = op.Pos
 			LabelLambdas(c)
 			x = c
-			continue
+		default:
+			if k == IDENT {
+				op.Kind = rangeWords[op.Text]
+			}
+			x = p.binary(op, x, p.parseBinary(lv+1))
 		}
-		op := p.next()
-		op.Kind = k
-		p.skipNL()
-		x = p.binary(op, x, p.parseRange())
 	}
-	return x
 }
 
-func (p *parser) parseRange() Expr {
-	x := p.parseAdditive()
-	for p.at(RANGE) || p.at(RANGE_LT) {
-		op := p.next()
-		p.skipNL()
-		x = p.binary(op, x, p.parseAdditive())
-	}
-	return x
-}
-
-func (p *parser) parseAdditive() Expr {
-	x := p.parseMultiplicative()
-	for p.at(PLUS) || p.at(MINUS) {
-		op := p.next()
-		p.skipNL()
-		x = p.binary(op, x, p.parseMultiplicative())
-	}
-	return x
-}
-
-func (p *parser) parseMultiplicative() Expr {
-	x := p.parseAs()
-	for p.at(STAR) || p.at(SLASH) || p.at(PERCENT) {
-		op := p.next()
-		p.skipNL()
-		x = p.binary(op, x, p.parseAs())
-	}
-	return x
-}
+// rangeWords are the infix functions that are operators.
+var rangeWords = map[string]Kind{"until": UNTIL, "downTo": DOWN_TO, "step": STEP}
 
 // parseAs parses x as T and x as? T. A newline may come before as.
 func (p *parser) parseAs() Expr {
 	x := p.parsePrefix()
 	for k := p.peekPastNL(); k == AS || k == AS_SAFE; k = p.peekPastNL() {
-		p.skipNL()
-		op := p.next()
-		p.skipNL()
+		op := p.op()
 		as := &As{X: x, Ref: p.parseType(), Safe: op.Kind == AS_SAFE}
 		as.P = op.Pos
 		x = as
@@ -2731,10 +2474,9 @@ func (p *parser) parsePostfix() Expr {
 				p.skipNL()
 				ix.Args = append(ix.Args, p.parseExpr())
 				p.skipNL()
-				if !p.at(COMMA) {
+				if !p.comma() {
 					break
 				}
-				p.next()
 				if p.peekPastNL() == RBRACK {
 					p.skipNL() // a trailing comma
 					break
@@ -2851,10 +2593,9 @@ func (p *parser) parseCall(fn Expr, targs []*TypeArg) Expr {
 		} else {
 			c.Args = append(c.Args, p.parseExpr())
 		}
-		if !p.at(COMMA) {
+		if !p.comma() {
 			break
 		}
-		p.next()
 	}
 	p.expect(RPAREN)
 	LabelLambdas(c)
@@ -2927,17 +2668,13 @@ func (p *parser) parsePrimary() Expr {
 	case INT:
 		p.next()
 		return p.intLit(*t)
-	case DOUBLE:
+	case DOUBLE, FLOAT:
 		p.next()
-		// Out of range, 1e400 is infinity and 1e-400 zero, as in kotlinc,
-		// which warns.
-		v, err := strconv.ParseFloat(strings.ReplaceAll(t.Text, "_", ""), 64)
-		if err != nil && !errors.Is(err, strconv.ErrRange) {
-			p.failAt(t.Pos, "invalid double literal")
+		lit, msg := FloatLiteral(t.Pos, t.Text)
+		if msg != "" {
+			p.failAt(t.Pos, "%s", msg)
 		}
-		d := &DoubleLit{Val: v}
-		d.P = t.Pos
-		return d
+		return lit
 	case STRING:
 		p.next()
 		return p.stringLit(*t)
@@ -2963,10 +2700,9 @@ func (p *parser) parsePrimary() Expr {
 		for !p.at(RBRACK) {
 			call.Args = append(call.Args, p.parseExpr())
 			p.skipNL()
-			if !p.at(COMMA) {
+			if !p.comma() {
 				break
 			}
-			p.next()
 			p.skipNL()
 		}
 		p.expect(RBRACK)
@@ -3038,16 +2774,6 @@ func (p *parser) parsePrimary() Expr {
 		c := &CharLit{Val: r}
 		c.P = t.Pos
 		return c
-	case FLOAT:
-		p.next()
-		text := strings.TrimRight(strings.ReplaceAll(t.Text, "_", ""), "fF")
-		v, err := strconv.ParseFloat(text, 32)
-		if err != nil && !errors.Is(err, strconv.ErrRange) {
-			p.failAt(t.Pos, "invalid float literal")
-		}
-		f := &FloatLit{Val: float32(v)}
-		f.P = t.Pos
-		return f
 	case UNSIGNED:
 		p.next()
 		return p.intLit(*t)
@@ -3145,10 +2871,9 @@ func (p *parser) parseLambda() *Lambda {
 			}
 			l.Params = append(l.Params, lp)
 			p.skipNL()
-			if !p.at(COMMA) {
+			if !p.comma() {
 				break
 			}
-			p.next()
 			if p.peekPastNL() == ARROW {
 				p.skipNL() // a trailing comma
 				break
@@ -3283,10 +3008,9 @@ func (p *parser) destructuringEntries() ([]string, []*TypeRef, [][]Annotation) {
 			t = p.parseType()
 		}
 		types = append(types, t)
-		if !p.at(COMMA) {
+		if !p.comma() {
 			break
 		}
-		p.next()
 	}
 	p.expect(RPAREN)
 	if len(names) == 0 {
@@ -3417,10 +3141,9 @@ func (p *parser) parseWhen() Expr {
 					c.X = p.parseExpr()
 				}
 				br.Conds = append(br.Conds, c)
-				if !p.at(COMMA) {
+				if !p.comma() {
 					break
 				}
-				p.next()
 				p.skipNL()
 				if p.at(ARROW) {
 					break // a trailing comma

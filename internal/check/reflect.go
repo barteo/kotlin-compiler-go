@@ -11,12 +11,6 @@ import (
 
 // Class literals.
 
-// builtinTypeNames are the Kotlin types resolveType knows by name.
-var builtinTypeNames = map[string]bool{
-	"Int": true, "Long": true, "Double": true, "Boolean": true, "Char": true, "Float": true,
-	"Byte": true, "Short": true, "String": true, "Unit": true, "Nothing": true, "Any": true,
-}
-
 // classLit checks X::class or x::class, and with java, X::class.java,
 // which is the java.lang.Class itself and needs no standard library.
 func (c *Checker) classLit(x *syntax.ClassLit, java bool) types.Type {
@@ -88,7 +82,7 @@ func (c *Checker) typeName(x syntax.Expr) (string, bool) {
 		parts[i], parts[j] = parts[j], parts[i]
 	}
 	name := strings.Join(parts, ".")
-	if len(parts) == 1 && (builtinTypeNames[name] || c.lookupTypeParam(name) != nil) {
+	if len(parts) == 1 && (kotlinTypes[name] || c.lookupTypeParam(name) != nil) {
 		return name, true
 	}
 	return name, c.lookupClass(name) != nil || c.lookupAlias(name) != nil
@@ -106,7 +100,7 @@ func (c *Checker) classLitType(ref *syntax.TypeRef, callable bool) types.Type {
 		c.errorf(ref.P, "cannot use '%s' as reified type parameter", ref.Name)
 		return types.InvalidType
 	}
-	if ref.Args == nil && !builtinTypeNames[ref.Name] {
+	if ref.Args == nil && !kotlinTypes[ref.Name] {
 		if cls := c.lookupClass(ref.Name); cls != nil && ensured(cls).TypeParams != nil && cls.Inner && cls.OuterParams > 0 && !callable {
 			return starInner(cls) // Outer.Inner::class, for Outer<T>
 		} else if cls != nil && len(cls.TypeParams) > 0 {

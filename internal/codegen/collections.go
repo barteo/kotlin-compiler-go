@@ -468,7 +468,7 @@ func (cc *Cache) collectionMethods(cls *types.ClassSym) []collMethod {
 				descs := []string{java}
 				if r := view[strings.IndexByte(view, ')'):]; r != java[strings.IndexByte(java, ')'):] {
 					// The class's types, but Object for the checked ones.
-					vps := descParams(view)
+					vps := cf.DescParams(view)
 					for _, pi := range sb.params {
 						vps[pi] = "Ljava/lang/Object;"
 					}
@@ -688,7 +688,7 @@ func (g *gen) markSynthetic(m collMethod) {
 func (g *gen) collMethodStart(access uint16, name, d string) ([]int, []string) {
 	g.code = g.cls.NewMethod(access, name, d)
 	g.code.AllocLocal("L" + g.owner.Name + ";")
-	ps := descParams(d)
+	ps := cf.DescParams(d)
 	slots := make([]int, len(ps))
 	for i, pd := range ps {
 		slots[i] = g.code.AllocLocal(pd)
@@ -707,14 +707,14 @@ func (g *gen) collBridge(m collMethod, access uint16) {
 			g.cls.LastMethod().SetSignature(s)
 		}
 	}
-	tps := descParams(target)
+	tps := cf.DescParams(target)
 	g.code.Local(cf.ALOAD, 0)
 	for i, pd := range ps {
 		g.code.Local(loadOpOf(pd), slots[i])
 		g.convertDesc(pd, tps[i])
 	}
 	g.invokeVirtual(g.owner, m.target[:strings.IndexByte(m.target, '(')], target)
-	ret, tret := m.desc[strings.IndexByte(m.desc, ')')+1:], target[strings.IndexByte(target, ')')+1:]
+	ret, tret := cf.RetDesc(m.desc), cf.RetDesc(target)
 	g.convertDesc(tret, ret)
 	g.code.Op(returnOpOf(ret))
 	g.check()
@@ -725,14 +725,14 @@ func (g *gen) collBridge(m collMethod, access uint16) {
 func (g *gen) collSpecialized(cls *types.ClassSym, m collMethod) {
 	slots, ps := g.collMethodStart(cf.AccPublic, m.name, m.desc)
 	target := m.target[strings.IndexByte(m.target, '('):]
-	tps := descParams(target)
+	tps := cf.DescParams(target)
 	g.code.Local(cf.ALOAD, 0)
 	for i, pd := range ps {
 		g.code.Local(loadOpOf(pd), slots[i])
 		g.convertDesc(pd, tps[i])
 	}
 	g.invokeSpecial(cls.Super, m.target[:strings.IndexByte(m.target, '(')], target)
-	ret, tret := m.desc[strings.IndexByte(m.desc, ')')+1:], target[strings.IndexByte(target, ')')+1:]
+	ret, tret := cf.RetDesc(m.desc), cf.RetDesc(target)
 	g.convertDesc(tret, ret)
 	g.code.Op(returnOpOf(ret))
 	g.check()
@@ -744,13 +744,13 @@ func (g *gen) collSpecialized(cls *types.ClassSym, m collMethod) {
 func (g *gen) collSafeBridge(m collMethod) {
 	slots, ps := g.collMethodStart(cf.AccPublic|cf.AccFinal|cf.AccBridge, m.name, m.desc)
 	target := m.target[strings.IndexByte(m.target, '('):]
-	tps := descParams(target)
-	ret := m.desc[strings.IndexByte(m.desc, ')')+1:]
+	tps := cf.DescParams(target)
+	ret := cf.RetDesc(m.desc)
 	for i, pi := range m.safe.params {
 		t := tps[pi]
 		box := t
 		if len(t) == 1 {
-			box = "L" + descBox[t] + ";"
+			box = "L" + boxClass(types.DescKind(t[0])) + ";"
 		}
 		if box == "Ljava/lang/Object;" {
 			continue
@@ -784,7 +784,7 @@ func (g *gen) collSafeBridge(m collMethod) {
 		g.convertDesc(pd, tps[i])
 	}
 	g.invokeVirtual(g.owner, m.name, target)
-	g.convertDesc(target[strings.IndexByte(target, ')')+1:], ret)
+	g.convertDesc(cf.RetDesc(target), ret)
 	g.code.Op(returnOpOf(ret))
 	g.check()
 }
@@ -803,7 +803,7 @@ func (g *gen) collGuard(sym *types.FunSym, params []*types.VarSym) []*types.VarS
 		if m.kind != collGuard || m.name+m.desc != nd {
 			continue
 		}
-		ps := descParams(m.desc)
+		ps := cf.DescParams(m.desc)
 		var out []*types.VarSym
 		for _, p := range params {
 			guard := false
@@ -830,7 +830,7 @@ func (g *gen) collGuard(sym *types.FunSym, params []*types.VarSym) []*types.VarS
 // safeResult returns what type-safe bridge m returns for an argument of
 // another type; ps are its parameters' descriptors.
 func (g *gen) safeResult(m collMethod, ps []string) {
-	ret := m.desc[strings.IndexByte(m.desc, ')')+1:]
+	ret := cf.RetDesc(m.desc)
 	switch m.safe.result {
 	case falseResult:
 		g.code.Iconst(0)
@@ -842,7 +842,7 @@ func (g *gen) safeResult(m collMethod, ps []string) {
 		last := len(ps) - 1
 		slot := 1
 		for _, pd := range ps[:last] {
-			slot += descSize(pd)
+			slot += cf.KindOf(pd).Size
 		}
 		g.code.Local(loadOpOf(ps[last]), slot)
 		g.convertDesc(ps[last], ret)

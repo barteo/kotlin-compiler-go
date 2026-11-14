@@ -109,3 +109,20 @@ func TestUnclosedPropertyType(t *testing.T) {
 		t.Errorf("got properties %q, want %q", got, want)
 	}
 }
+
+// TestOutOfRangeFloats checks that a floating-point literal out of range
+// is infinity or zero, as kc's parser and kotlinc read it, not an error.
+func TestOutOfRangeFloats(t *testing.T) {
+	src := "val a = 1e400\nval b = 1e-400\nval c = 1e40f\nval d = 1_0.5F\n"
+	want, errs := syntax.ParseAll("A.kt", src)
+	if len(errs) > 0 {
+		t.Fatalf("kc's parser rejects the file: %v", errs[0])
+	}
+	got, _, lerrs := File(psi.Parse("A.kt", src))
+	if len(lerrs) > 0 {
+		t.Fatalf("lowering failed: %v", lerrs[0])
+	}
+	if d := syntax.Diff(want, got, false); d != "" {
+		t.Errorf("ASTs differ:\n%s", d)
+	}
+}

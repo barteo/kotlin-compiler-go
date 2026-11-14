@@ -191,12 +191,6 @@ var kotlinOfJava = map[string]string{
 	"java/lang/annotation/Annotation": "kotlin/Annotation",
 }
 
-var kindIDs = map[types.Kind]string{
-	types.Unit: "kotlin/Unit", types.Nothing: "kotlin/Nothing", types.Bool: "kotlin/Boolean", types.Int: "kotlin/Int",
-	types.Long: "kotlin/Long", types.Double: "kotlin/Double", types.Char: "kotlin/Char", types.Float: "kotlin/Float",
-	types.Byte: "kotlin/Byte", types.Short: "kotlin/Short", types.String: "kotlin/String", types.Any: "kotlin/Any",
-}
-
 // classID returns a class's Kotlin class id: packages separated by '/',
 // nested classes by '.'.
 func classID(c *types.ClassSym) string {
@@ -341,8 +335,8 @@ func (s *metaScope) typ(t types.Type) *kmeta.Type {
 			}
 		}
 	default:
-		id, ok := kindIDs[t.K]
-		if !ok {
+		id := t.K.ClassID()
+		if id == "" {
 			panic("no metadata for type " + t.String())
 		}
 		kt.Class = id

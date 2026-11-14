@@ -151,8 +151,12 @@ func (l *library) class(id string) *Decl {
 	}
 	cls := l.lib.Class(id)
 	if cls == nil {
-		if jid, ok := javaPrimitiveClasses[id]; ok {
-			cls = l.lib.Class(jid)
+		// A Kotlin class that kc treats as a type has its Java class's
+		// supertypes.
+		if k := types.IDKind(id); k == types.String {
+			cls = l.lib.Class("java/lang/String")
+		} else if box := types.PrimOf(k).Box; box != "" {
+			cls = l.lib.Class(box)
 		}
 	}
 	if cls != nil && cls.Decl != nil {
@@ -264,20 +268,6 @@ func isFunctionClass(id string) bool {
 		}
 	}
 	return true
-}
-
-// javaPrimitiveClasses maps the Kotlin classes that kc treats as types,
-// not classes, to the Java classes whose supertypes they have.
-var javaPrimitiveClasses = map[string]string{
-	"kotlin/String":  "java/lang/String",
-	"kotlin/Int":     "java/lang/Integer",
-	"kotlin/Long":    "java/lang/Long",
-	"kotlin/Short":   "java/lang/Short",
-	"kotlin/Byte":    "java/lang/Byte",
-	"kotlin/Char":    "java/lang/Character",
-	"kotlin/Boolean": "java/lang/Boolean",
-	"kotlin/Float":   "java/lang/Float",
-	"kotlin/Double":  "java/lang/Double",
 }
 
 // builtinVariance returns the declared variance of type parameter i of n
@@ -1681,31 +1671,10 @@ func (l *library) value(v *classfile.ElementValue, hint string, depth int) *Valu
 	return &Value{Kind: ValueUnsupported}
 }
 
-// primitiveDescs are the Kotlin classes of the JVM's primitive types, and
-// the arrays of them.
-var primitiveDescs = map[byte][2]string{
-	'Z': {"kotlin/Boolean", "kotlin/BooleanArray"},
-	'C': {"kotlin/Char", "kotlin/CharArray"},
-	'B': {"kotlin/Byte", "kotlin/ByteArray"},
-	'S': {"kotlin/Short", "kotlin/ShortArray"},
-	'I': {"kotlin/Int", "kotlin/IntArray"},
-	'J': {"kotlin/Long", "kotlin/LongArray"},
-	'F': {"kotlin/Float", "kotlin/FloatArray"},
-	'D': {"kotlin/Double", "kotlin/DoubleArray"},
-}
-
 // javaKotlin are the Kotlin classes of Java classes a class literal in a
-// class file may name.
+// class file may name, but the boxes of primitives.
 var javaKotlin = map[string]string{
 	"java/lang/String":       "kotlin/String",
-	"java/lang/Integer":      "kotlin/Int",
-	"java/lang/Long":         "kotlin/Long",
-	"java/lang/Short":        "kotlin/Short",
-	"java/lang/Byte":         "kotlin/Byte",
-	"java/lang/Character":    "kotlin/Char",
-	"java/lang/Boolean":      "kotlin/Boolean",
-	"java/lang/Float":        "kotlin/Float",
-	"java/lang/Double":       "kotlin/Double",
 	"java/lang/Void":         "kotlin/Unit",
 	"java/util/List":         "kotlin/collections/List",
 	"java/util/Set":          "kotlin/collections/Set",
@@ -1721,15 +1690,13 @@ var javaKotlin = map[string]string{
 // Kotlin sees it: Ljava/lang/String; is kotlin/String, [I kotlin/IntArray.
 func descType(desc string) *Type {
 	switch {
-	case desc == "V":
-		return &Type{Kind: TypeClass, ClassID: "kotlin/Unit"}
 	case len(desc) == 1:
-		if p, ok := primitiveDescs[desc[0]]; ok {
-			return &Type{Kind: TypeClass, ClassID: p[0]}
+		if k := types.DescKind(desc[0]); k != types.Invalid {
+			return &Type{Kind: TypeClass, ClassID: k.ClassID()} // a primitive, or V
 		}
 	case len(desc) == 2 && desc[0] == '[':
-		if p, ok := primitiveDescs[desc[1]]; ok {
-			return &Type{Kind: TypeClass, ClassID: p[1]}
+		if k := types.DescKind(desc[1]); types.IsPrimitiveKind(k) {
+			return &Type{Kind: TypeClass, ClassID: k.ClassID() + "Array"}
 		}
 	case strings.HasPrefix(desc, "["):
 		elem := descType(desc[1:])
@@ -1741,6 +1708,9 @@ func descType(desc string) *Type {
 		name := desc[1 : len(desc)-1]
 		if k, ok := javaKotlin[name]; ok {
 			return &Type{Kind: TypeClass, ClassID: k}
+		}
+		if k := types.BoxKind(name); k != types.Invalid {
+			return &Type{Kind: TypeClass, ClassID: k.ClassID()}
 		}
 		return &Type{Kind: TypeClass, ClassID: descClassID(desc)}
 	}

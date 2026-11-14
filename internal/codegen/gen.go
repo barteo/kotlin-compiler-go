@@ -432,7 +432,7 @@ func (g *gen) privateAccessors() {
 			acc &^= cf.AccFinal // an interface's methods can't be final
 		}
 		code := c.NewMethod(acc, m.accessor(), d)
-		for _, pd := range descParams(d) {
+		for _, pd := range cf.DescParams(d) {
 			code.Local(loadOpOf(pd), code.AllocLocal(pd))
 		}
 		switch {
@@ -448,7 +448,7 @@ func (g *gen) privateAccessors() {
 		default:
 			code.Invoke(op, m.class, m.name, m.desc)
 		}
-		code.Op(returnOpOf(d[strings.IndexByte(d, ')')+1:]))
+		code.Op(returnOpOf(cf.RetDesc(d)))
 		if err := code.Err(); err != nil {
 			panic(err)
 		}
@@ -1088,7 +1088,7 @@ func (g *gen) external(fd *syntax.FunDecl, access uint16, d string) cf.MemberRef
 	g.cls.Throws(sym.Throws...)
 	if outer != nil {
 		g.code.NameLocal(g.code.AllocLocal("L"+g.cls.Name+";"), "this")
-		for i, pd := range descParams(d) {
+		for i, pd := range cf.DescParams(d) {
 			slot := g.code.AllocLocal(pd)
 			if !sym.Ext {
 				g.code.NameLocal(slot, sym.Params[i].Name)
@@ -1097,7 +1097,7 @@ func (g *gen) external(fd *syntax.FunDecl, access uint16, d string) cf.MemberRef
 		}
 		g.code.Invoke(cf.INVOKESTATIC, outer.Name, sym.JVM(), d)
 		g.code.Line(fd.P.Line)
-		g.code.Op(returnOpOf(d[strings.IndexByte(d, ')')+1:]))
+		g.code.Op(returnOpOf(cf.RetDesc(d)))
 		g.check()
 	}
 	g.annotateFun(m, fd, access&(cf.AccPrivate|cf.AccSynthetic) != 0 || g.owner != nil && g.owner.Anonymous)
@@ -1614,7 +1614,7 @@ func (g *gen) delegated(dl *syntax.Delegated) {
 		}
 	}
 	g.code.AllocLocal(self)
-	from, to := descParams(d), descParams(td)
+	from, to := cf.DescParams(d), cf.DescParams(td)
 	slots := make([]int, len(from))
 	for i, pd := range from {
 		slots[i] = g.code.AllocLocal(pd)
@@ -1665,7 +1665,7 @@ func (g *gen) delegated(dl *syntax.Delegated) {
 	} else {
 		g.code.InvokeInterface(target.Owner.Name, target.JVM(), td)
 	}
-	ret, tret := d[strings.IndexByte(d, ')')+1:], td[strings.IndexByte(td, ')')+1:]
+	ret, tret := cf.RetDesc(d), cf.RetDesc(td)
 	switch {
 	case ret == "V" && (tret == "J" || tret == "D"):
 		g.code.Op(cf.POP2)
@@ -1743,7 +1743,7 @@ func (g *gen) constructor(cd *syntax.ClassDecl) {
 	}
 	// An enum's name and ordinal, an inner class's outer instance or a
 	// local class's captures come first.
-	skip := len(descParams(ctorDesc(cd))) - len(cls.Ctor.Params)
+	skip := len(cf.DescParams(ctorDesc(cd))) - len(cls.Ctor.Params)
 	g.annotateCtor(c.LastMethod(), &cd.CtorMods, cls.Ctor.Params, nil, cd.CtorParams, skip, access&cf.AccPrivate != 0 || cls.Anonymous)
 	g.prefix = "_init_$lambda"
 	g.retType = types.UnitType
@@ -1906,7 +1906,7 @@ func (g *gen) secondary(cd *syntax.ClassDecl, sc *syntax.SecondaryCtor) {
 	if access&cf.AccSynthetic == 0 {
 		g.signCtor(g.cls.LastMethod(), cls, f, sc.Params, d, sc.Annotations)
 	}
-	skip := len(descParams(d)) - len(f.Params)
+	skip := len(cf.DescParams(d)) - len(f.Params)
 	g.annotateCtor(g.cls.LastMethod(), &sc.Modifiers, f.Params, sc.Params, nil, skip, access&cf.AccPrivate != 0)
 	g.prefix = "_init_$lambda"
 	g.retType = types.UnitType
@@ -2460,7 +2460,7 @@ func (g *gen) markerConstructor(f *types.FunSym) {
 	g.code = g.cls.NewMethod(cf.AccPublic|cf.AccSynthetic, "<init>", d[:i]+"Lkotlin/jvm/internal/DefaultConstructorMarker;"+d[i:])
 	g.code.AllocLocal("L" + f.Owner.Name + ";")
 	g.code.Local(cf.ALOAD, 0)
-	for _, pd := range descParams(d) {
+	for _, pd := range cf.DescParams(d) {
 		g.code.Local(loadOpOf(pd), g.code.AllocLocal(pd))
 	}
 	g.code.AllocLocal("Lkotlin/jvm/internal/DefaultConstructorMarker;")
@@ -2863,11 +2863,11 @@ func (g *gen) bridge(nameDesc, targetName string, params []*types.VarSym, result
 	i := strings.IndexByte(nameDesc, '(')
 	name, d := nameDesc[:i], nameDesc[i:]
 	target := methodDesc(params, result)
-	if ps := descParams(d); len(ps) > len(params)+1 && ps[len(params)] == types.ComposerDesc {
+	if ps := cf.DescParams(d); len(ps) > len(params)+1 && ps[len(params)] == types.ComposerDesc {
 		// A composable function's: the Composer and the ints are passed
 		// as they are.
 		target = types.ComposeDesc(target, len(ps)-len(params)-1)
-	} else if strings.HasSuffix(d, types.ContinuationDesc+")"+objectDesc) || len(descParams(d)) == len(params)+1 {
+	} else if strings.HasSuffix(d, types.ContinuationDesc+")"+objectDesc) || len(cf.DescParams(d)) == len(params)+1 {
 		// A suspend function's: the continuation and the result are
 		// passed as they are. A suspend function type's invoke takes
 		// the continuation as an Object.
@@ -2890,7 +2890,7 @@ func (g *gen) bridge(nameDesc, targetName string, params []*types.VarSym, result
 	}
 	g.code = g.cls.NewMethod(access, name, d)
 	g.code.AllocLocal("L" + g.owner.Name + ";")
-	from, to := descParams(d), descParams(target)
+	from, to := cf.DescParams(d), cf.DescParams(target)
 	var slots []int
 	if spread {
 		// FunctionN's invoke, which takes the arguments in an array.
@@ -2920,7 +2920,7 @@ func (g *gen) bridge(nameDesc, targetName string, params []*types.VarSym, result
 		g.convertDesc(pd, to[i])
 	}
 	g.invokeVirtual(g.owner, targetName, target)
-	ret, tret := d[strings.IndexByte(d, ')')+1:], target[strings.IndexByte(target, ')')+1:]
+	ret, tret := cf.RetDesc(d), cf.RetDesc(target)
 	switch {
 	case tret == "V" && ret != "V":
 		g.unitValue() // Unit, as an Object
@@ -3005,77 +3005,23 @@ func (g *gen) convertDesc(from, to string) {
 	switch {
 	case from == to || to == "V":
 	case len(to) == 1: // a primitive, from its box or a supertype
-		box := descBox[to]
-		if from != "L"+box+";" {
+		t := types.Type{K: types.DescKind(to[0])}
+		if box := boxClass(t.K); from != "L"+box+";" {
 			g.code.Checkcast(box)
 		}
-		g.unbox(descType[to])
+		g.unbox(t)
 	case len(from) == 1:
-		g.box(descType[from])
+		g.box(types.Type{K: types.DescKind(from[0])})
 	case to != "Ljava/lang/Object;":
 		g.code.Checkcast(className(to)) // an array's class name is its descriptor
 	}
 }
 
-// descType and descBox are the primitive types by descriptor, and their
-// box classes.
-var (
-	descType = map[string]types.Type{
-		"I": types.IntType, "J": types.LongType, "D": types.DoubleType, "Z": types.BoolType,
-		"C": types.CharType, "F": types.FloatType, "B": types.ByteType, "S": types.ShortType,
-	}
-	descBox = func() map[string]string {
-		m := map[string]string{}
-		for d, t := range descType {
-			m[d] = types.Boxes[t.K]
-		}
-		return m
-	}()
-)
-
-func loadOpOf(d string) byte {
-	switch d {
-	case "I", "Z", "C", "B", "S":
-		return cf.ILOAD
-	case "J":
-		return cf.LLOAD
-	case "F":
-		return cf.FLOAD
-	case "D":
-		return cf.DLOAD
-	}
-	return cf.ALOAD
-}
-
-func storeOpOf(d string) byte {
-	switch d {
-	case "I", "Z", "C", "B", "S":
-		return cf.ISTORE
-	case "J":
-		return cf.LSTORE
-	case "F":
-		return cf.FSTORE
-	case "D":
-		return cf.DSTORE
-	}
-	return cf.ASTORE
-}
-
-func returnOpOf(d string) byte {
-	switch d {
-	case "V":
-		return cf.RETURN
-	case "I", "Z", "C", "B", "S":
-		return cf.IRETURN
-	case "J":
-		return cf.LRETURN
-	case "F":
-		return cf.FRETURN
-	case "D":
-		return cf.DRETURN
-	}
-	return cf.ARETURN
-}
+// loadOpOf, storeOpOf and returnOpOf return the instructions that load,
+// store and return a value of type descriptor d.
+func loadOpOf(d string) byte   { return cf.KindOf(d).Load }
+func storeOpOf(d string) byte  { return cf.KindOf(d).Store }
+func returnOpOf(d string) byte { return cf.KindOf(d).Return }
 
 // callMethod calls method f of the program, by its JVM name and
 // descriptor d, on a receiver of class cls below the arguments. As with

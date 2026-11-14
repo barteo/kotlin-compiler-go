@@ -9,24 +9,6 @@ import (
 // Arrays: the array classes' members, their constructors and factories,
 // vararg arrays and the spread operator, and loops over arrays.
 
-// primArray describes the JVM array of a primitive element type, by the
-// element's descriptor.
-type primArray struct {
-	atype       byte // NEWARRAY's operand
-	load, store byte
-}
-
-var primArrays = map[byte]primArray{
-	'I': {cf.TInt, cf.IALOAD, cf.IASTORE},
-	'J': {cf.TLong, cf.LALOAD, cf.LASTORE},
-	'D': {cf.TDouble, cf.DALOAD, cf.DASTORE},
-	'Z': {cf.TBoolean, cf.BALOAD, cf.BASTORE},
-	'C': {cf.TChar, cf.CALOAD, cf.CASTORE},
-	'F': {cf.TFloat, cf.FALOAD, cf.FASTORE},
-	'B': {cf.TByte, cf.BALOAD, cf.BASTORE},
-	'S': {cf.TShort, cf.SALOAD, cf.SASTORE},
-}
-
 // className returns the class a descriptor names, as instructions take
 // it: an internal name, or an array's descriptor.
 func className(d string) string {
@@ -48,8 +30,8 @@ func (g *gen) newArrayOf(d string, elem types.Type) {
 
 func (g *gen) newArray(d string) {
 	comp := d[1:]
-	if pa, ok := primArrays[comp[0]]; ok {
-		g.code.NewArray(pa.atype)
+	if k := cf.KindOf(comp); k.NewArray != 0 {
+		g.code.NewArray(k.NewArray)
 		return
 	}
 	g.code.ANewArray(className(comp))
@@ -58,21 +40,8 @@ func (g *gen) newArray(d string) {
 // elemLoad and elemStore load and store an element of an array with
 // descriptor d; the array and the index, and for a store the value, are
 // on the stack.
-func (g *gen) elemLoad(d string) {
-	if pa, ok := primArrays[d[1]]; ok {
-		g.code.Op(pa.load)
-		return
-	}
-	g.code.Op(cf.AALOAD)
-}
-
-func (g *gen) elemStore(d string) {
-	if pa, ok := primArrays[d[1]]; ok {
-		g.code.Op(pa.store)
-		return
-	}
-	g.code.Op(cf.AASTORE)
-}
+func (g *gen) elemLoad(d string)  { g.code.Op(cf.KindOf(d[1:]).ALoad) }
+func (g *gen) elemStore(d string) { g.code.Op(cf.KindOf(d[1:]).AStore) }
 
 // arrayMemberType returns the type of the value an array member leaves
 // on the stack, for an array of type rt.

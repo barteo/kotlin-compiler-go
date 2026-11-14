@@ -81,23 +81,6 @@ type TypeArg struct {
 	Type     *Type // nil for Star
 }
 
-// primitives are the class IDs of kc's built-in kinds of types.
-var primitives = [...]string{
-	types.Unit:    "kotlin/Unit",
-	types.Nothing: "kotlin/Nothing",
-	types.Null:    "kotlin/Nothing",
-	types.Bool:    "kotlin/Boolean",
-	types.Int:     "kotlin/Int",
-	types.Long:    "kotlin/Long",
-	types.Double:  "kotlin/Double",
-	types.Char:    "kotlin/Char",
-	types.Float:   "kotlin/Float",
-	types.Byte:    "kotlin/Byte",
-	types.Short:   "kotlin/Short",
-	types.String:  "kotlin/String",
-	types.Any:     "kotlin/Any",
-}
-
 // kotlinClasses are the Kotlin classes that Java classes are, where kc
 // doesn't map them itself.
 var kotlinClasses = map[string]string{
@@ -231,13 +214,17 @@ func (b *fileBuilder) typeAt(t types.Type, ref *syntax.TypeRef, depth int) *Type
 		}
 		out.DefinitelyNonNull = t.D
 	default:
-		if int(t.K) >= len(primitives) || primitives[t.K] == "" {
+		k := t.K
+		if k == types.Null {
+			k = types.Nothing
+		}
+		if k.ClassID() == "" {
 			out.Kind = TypeError
 			out.Name = t.String()
 			return out
 		}
 		out.Kind = TypeClass
-		out.ClassID = primitives[t.K]
+		out.ClassID = k.ClassID()
 	}
 	switch {
 	case t.P: // platform types are also N

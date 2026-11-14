@@ -90,7 +90,7 @@ func (l *lowerer) importDirective(n psi.NodeRef) *syntax.Import {
 // topLevel lowers a top-level declaration.
 func (l *lowerer) topLevel(f *syntax.File, n psi.NodeRef) {
 	m := l.modifiers(child(n, psi.KindMODIFIER_LIST))
-	l.paramOnly(m)
+	syntax.ParamOnly(m, l)
 	add := func(d syntax.Decl) {
 		if m.Expect {
 			f.Expects = append(f.Expects, d)
@@ -109,10 +109,10 @@ func (l *lowerer) topLevel(f *syntax.File, n psi.NodeRef) {
 			add(d)
 		}
 	case psi.KindCLASS, psi.KindOBJECT_DECLARATION:
-		l.noContexts(&m, "classes")
+		syntax.NoContexts(&m, "classes", l)
 		add(l.class(n, m))
 	case psi.KindTYPEALIAS:
-		l.noContexts(&m, "type aliases")
+		syntax.NoContexts(&m, "type aliases", l)
 		add(l.typeAlias(n, m))
 	case psi.KindDESTRUCTURING_DECLARATION:
 		l.newDestructuring(n)
@@ -180,7 +180,7 @@ func (l *lowerer) params(n psi.NodeRef) []*syntax.Param {
 			continue
 		}
 		m := l.modifiers(child(c, psi.KindMODIFIER_LIST))
-		l.noContexts(&m, "value parameters")
+		syntax.NoContexts(&m, "value parameters", l)
 		name := child(c, psi.KindIDENTIFIER)
 		if !name.Valid() {
 			l.fail(c, "expected a name")
@@ -259,11 +259,7 @@ func (l *lowerer) prop(n psi.NodeRef, m syntax.Modifiers) *syntax.PropDecl {
 		}
 	}
 	if delegate.Valid() {
-		for _, a := range []*syntax.FunDecl{pd.Getter, pd.Setter} {
-			if a != nil {
-				l.failAt(a.P, "delegated property cannot have accessors with non-default implementations")
-			}
-		}
+		syntax.CheckDelegated(pd, l)
 	}
 	return pd
 }
@@ -295,53 +291,20 @@ func (l *lowerer) backingField(pd *syntax.PropDecl, n psi.NodeRef) {
 // accessor lowers a PROPERTY_ACCESSOR of property pd.
 func (l *lowerer) accessor(pd *syntax.PropDecl, n psi.NodeRef) {
 	m := l.modifiers(child(n, psi.KindMODIFIER_LIST))
-	l.noContexts(&m, "property accessors")
 	kw := child(n, psi.KindGET_KEYWORD)
 	name := "get"
 	if !kw.Valid() {
 		kw, name = child(n, psi.KindSET_KEYWORD), "set"
 	}
 	pos := l.pos(kw)
-	if pd.AccessorP.Line == 0 {
-		pd.AccessorP = pos
-	}
-	if len(m.Written) > 0 {
-		pd.AccessorMods = append(pd.AccessorMods, m.Written)
-	}
-	for _, a := range m.Annotations {
-		if a.Target == "" {
-			a.Target, a.Accessor = name, true
-		}
-		pd.Annotations = append(pd.Annotations, a)
-	}
-	if name == "set" {
-		pd.SetterVis = m.Visibility
-		pd.InlineSetter = m.Inline
-	} else {
-		pd.InlineGetter = m.Inline
-	}
+	syntax.AccessorMods(pd, name, pos, &m, l)
 	ps := child(n, psi.KindVALUE_PARAMETER_LIST)
 	if !ps.Valid() {
 		if has(n, psi.KindBLOCK) || has(n, psi.KindEQ) {
 			l.fail(next(kw), "unexpected %s", next(kw).Text())
 		}
 		if m.External {
-			a := record(l, &syntax.FunDecl{P: pos, Name: name, Property: pd.Name}, n)
-			a.External, a.ExternalP = true, m.ExternalP
-			switch {
-			case name == "get" && pd.Getter != nil:
-				l.failAt(pos, "property has two getters")
-			case name == "get":
-				pd.Getter = a
-			case !pd.Mutable:
-				l.failAt(pos, "a 'val'-property cannot have a setter")
-			case pd.Setter != nil:
-				l.failAt(pos, "property has two setters")
-			default:
-				a.Visibility = m.Visibility
-				a.Params = []*syntax.Param{{P: pos, Name: "value"}}
-				pd.Setter = a
-			}
+			record(l, syntax.ExternalAccessor(pd, name, pos, m, l), n)
 		}
 		return
 	}
@@ -351,10 +314,8 @@ func (l *lowerer) accessor(pd *syntax.PropDecl, n psi.NodeRef) {
 	if c := child(n, psi.KindCOLON); c.Valid() {
 		ret = next(c)
 	}
+	syntax.CheckAccessor(pd, name, pos, l)
 	if name == "get" {
-		if pd.Getter != nil {
-			l.failAt(pos, "property has two getters")
-		}
 		if ret.Valid() {
 			fd.Ret = l.typeRef(ret)
 			if pd.Type == nil {
@@ -362,12 +323,6 @@ func (l *lowerer) accessor(pd *syntax.PropDecl, n psi.NodeRef) {
 			}
 		}
 	} else {
-		switch {
-		case !pd.Mutable:
-			l.failAt(pos, "a 'val'-property cannot have a setter")
-		case pd.Setter != nil:
-			l.failAt(pos, "property has two setters")
-		}
 		fd.Visibility = m.Visibility
 		vp := child(ps, psi.KindVALUE_PARAMETER)
 		if !vp.Valid() {
@@ -478,7 +433,7 @@ func (l *lowerer) class(n psi.NodeRef, m syntax.Modifiers) *syntax.ClassDecl {
 	cd.TypeParams = l.typeParams(child(n, psi.KindTYPE_PARAMETER_LIST))
 	if pc := child(n, psi.KindPRIMARY_CONSTRUCTOR); pc.Valid() {
 		cd.CtorMods = l.modifiers(child(pc, psi.KindMODIFIER_LIST))
-		l.noContexts(&cd.CtorMods, "primary constructors")
+		syntax.NoContexts(&cd.CtorMods, "primary constructors", l)
 		if ps := child(pc, psi.KindVALUE_PARAMETER_LIST); ps.Valid() {
 			cd.HasPrimary = true
 			cd.CtorParams = l.ctorParams(ps)
@@ -516,7 +471,7 @@ func (l *lowerer) ctorParams(n psi.NodeRef) []*syntax.CtorParam {
 			continue
 		}
 		m := l.modifiers(child(c, psi.KindMODIFIER_LIST))
-		l.noContexts(&m, "value parameters")
+		syntax.NoContexts(&m, "value parameters", l)
 		cp := record(l, &syntax.CtorParam{Modifiers: m}, c)
 		if has(c, psi.KindVAL_KEYWORD) || has(c, psi.KindVAR_KEYWORD) {
 			cp.IsProp = true
@@ -685,7 +640,7 @@ func (l *lowerer) member(cd *syntax.ClassDecl, n psi.NodeRef) {
 		ms = append([]psi.NodeRef{c}, ms...)
 	}
 	m := l.modifiersOf(ms)
-	l.paramOnly(m)
+	syntax.ParamOnly(m, l)
 	switch n.NumericKind() {
 	case psi.KindFUN:
 		fd := l.fun(n)
@@ -695,16 +650,16 @@ func (l *lowerer) member(cd *syntax.ClassDecl, n psi.NodeRef) {
 		pd := l.prop(n, m)
 		cd.Members = append(cd.Members, syntax.DelegatedProp(pd, true, cd.Members)...)
 	case psi.KindCLASS, psi.KindOBJECT_DECLARATION:
-		l.noContexts(&m, "classes")
+		syntax.NoContexts(&m, "classes", l)
 		cd.Members = append(cd.Members, l.class(n, m))
 	case psi.KindTYPEALIAS:
-		l.noContexts(&m, "type aliases")
+		syntax.NoContexts(&m, "type aliases", l)
 		cd.Members = append(cd.Members, l.typeAlias(n, m))
 	case psi.KindSECONDARY_CONSTRUCTOR:
-		l.noContexts(&m, "constructors")
+		syntax.NoContexts(&m, "constructors", l)
 		cd.Members = append(cd.Members, l.secondaryCtor(n, m))
 	case psi.KindCLASS_INITIALIZER:
-		l.noContexts(&m, "initializers")
+		syntax.NoContexts(&m, "initializers", l)
 		b := child(n, psi.KindBLOCK)
 		if !b.Valid() {
 			l.failAt(l.end(n), "expected '{'")
@@ -747,7 +702,7 @@ func (l *lowerer) secondaryCtor(n psi.NodeRef, m syntax.Modifiers) *syntax.Secon
 // localClass lowers a local CLASS or OBJECT_DECLARATION with modifiers
 // m.
 func (l *lowerer) localClass(n psi.NodeRef, m syntax.Modifiers) *syntax.LocalClass {
-	l.noContexts(&m, "classes")
+	syntax.NoContexts(&m, "classes", l)
 	switch {
 	case has(n, psi.KindINTERFACE_KEYWORD):
 		l.fail(child(n, psi.KindINTERFACE_KEYWORD), "'interface' is not allowed here: local interfaces are not supported")
@@ -764,15 +719,10 @@ func (l *lowerer) localClass(n psi.NodeRef, m syntax.Modifiers) *syntax.LocalCla
 
 // localFun lowers a local FUN with modifiers m.
 func (l *lowerer) localFun(n psi.NodeRef, m syntax.Modifiers) *syntax.LocalFun {
-	l.paramOnly(m)
+	syntax.ParamOnly(m, l)
 	fd := l.fun(n)
 	fd.Modifiers = m
-	if m.External {
-		l.unsupported(m.ExternalP, "local external function", "local external functions are not supported")
-	}
-	if fd.Body == nil && fd.ExprBody == nil {
-		l.failAt(fd.P, "a local function must have a body")
-	}
+	syntax.CheckLocalFun(fd, l)
 	return &syntax.LocalFun{Decl: fd}
 }
 

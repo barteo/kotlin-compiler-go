@@ -725,23 +725,15 @@ func stableLocal(x syntax.Expr) *types.VarSym {
 
 // arithOp returns the instruction of an arithmetic operator on values of
 // type t, which is Int, Long, Float or Double.
-func arithOp(t types.Type, op syntax.Kind) byte {
-	base := map[syntax.Kind][4]byte{
-		syntax.PLUS:    {cf.IADD, cf.LADD, cf.FADD, cf.DADD},
-		syntax.MINUS:   {cf.ISUB, cf.LSUB, cf.FSUB, cf.DSUB},
-		syntax.STAR:    {cf.IMUL, cf.LMUL, cf.FMUL, cf.DMUL},
-		syntax.SLASH:   {cf.IDIV, cf.LDIV, cf.FDIV, cf.DDIV},
-		syntax.PERCENT: {cf.IREM, cf.LREM, cf.FREM, cf.DREM},
-	}[op]
-	switch t.K {
-	case types.Long:
-		return base[1]
-	case types.Float:
-		return base[2]
-	case types.Double:
-		return base[3]
-	}
-	return base[0]
+func arithOp(t types.Type, op syntax.Kind) byte { return arithOps[op][stackKind(t)] }
+
+// arithOps are the arithmetic instructions, by operator and stackKind.
+var arithOps = [...][4]byte{
+	syntax.PLUS:    {cf.IADD, cf.LADD, cf.FADD, cf.DADD},
+	syntax.MINUS:   {cf.ISUB, cf.LSUB, cf.FSUB, cf.DSUB},
+	syntax.STAR:    {cf.IMUL, cf.LMUL, cf.FMUL, cf.DMUL},
+	syntax.SLASH:   {cf.IDIV, cf.LDIV, cf.FDIV, cf.DDIV},
+	syntax.PERCENT: {cf.IREM, cf.LREM, cf.FREM, cf.DREM},
 }
 
 func compoundOp(k syntax.Kind) syntax.Kind {
@@ -1167,7 +1159,8 @@ func (g *gen) incDecValue(u *syntax.Unary) {
 		g.dupBelow(lv, lv.t)
 	}
 	g.coerce(lv.t, t)
-	g.addOne(u, t)
+	g.addOne(t, compoundOp(u.Op))
+	g.convert(types.Wider(t, t), t) // Byte, Short and Char keep their low bits
 	g.coerce(t, lv.t)
 	if u.Prefix && !reread {
 		g.dupBelow(lv, lv.t)
@@ -1200,8 +1193,9 @@ func (g *gen) dupBelow(lv lvalue, t types.Type) {
 	}
 }
 
-// addOne adds or subtracts 1 from the value of type t on top of the stack.
-func (g *gen) addOne(u *syntax.Unary, t types.Type) {
+// addOne adds or subtracts 1, as op is PLUS or MINUS, from the value of
+// type t on top of the stack.
+func (g *gen) addOne(t types.Type, op syntax.Kind) {
 	switch t.K {
 	case types.Long:
 		g.code.Lconst(1)
@@ -1212,8 +1206,7 @@ func (g *gen) addOne(u *syntax.Unary, t types.Type) {
 	default:
 		g.code.Iconst(1)
 	}
-	g.code.Op(arithOp(t, compoundOp(u.Op)))
-	g.convert(types.Wider(t, t), t) // Byte, Short and Char keep their low bits
+	g.code.Op(arithOp(t, op))
 }
 
 func (g *gen) incDec(u *syntax.Unary) {
@@ -1236,17 +1229,7 @@ func (g *gen) incDec(u *syntax.Unary) {
 	lv.load()
 	t := lv.t.Flex().NonNull()
 	g.coerce(lv.t, t)
-	switch t.K {
-	case types.Long:
-		g.code.Lconst(1)
-	case types.Float:
-		g.code.Fconst(1)
-	case types.Double:
-		g.code.Dconst(1)
-	default:
-		g.code.Iconst(1)
-	}
-	g.code.Op(arithOp(t, compoundOp(u.Op)))
+	g.addOne(t, compoundOp(u.Op))
 	g.convert(types.Wider(t, t), t) // Byte, Short and Char keep their low bits
 	g.coerce(t, lv.t)
 	lv.store()

@@ -214,7 +214,7 @@ func (g *gen) overloads(fd *syntax.FunDecl, owner *types.ClassSym, access uint16
 		}
 		g.pushMask(o.omitted, types.DefaultBits(f))
 		g.code.Invoke(cf.INVOKESTATIC, g.cls.Name, f.JVM()+"$default", d)
-		g.code.Op(returnOpOf(o.desc[strings.IndexByte(o.desc, ')')+1:]))
+		g.code.Op(returnOpOf(cf.RetDesc(o.desc)))
 		g.check()
 	}
 }
@@ -287,11 +287,11 @@ func (g *gen) propStubs(p *types.VarSym, comp *types.ClassSym) {
 			nullability(methodAdder(g.cls.LastMethod()), t)
 		}
 		g.objectRef(comp)
-		for _, pd := range descParams(d) {
+		for _, pd := range cf.DescParams(d) {
 			g.code.Local(loadOpOf(pd), g.code.AllocLocal(pd))
 		}
 		g.code.Invoke(cf.INVOKEVIRTUAL, comp.Name, name, d)
-		g.code.Op(returnOpOf(d[strings.IndexByte(d, ')')+1:]))
+		g.code.Op(returnOpOf(cf.RetDesc(d)))
 		g.check()
 	}
 	stub(types.GetterJVM(p), "()"+desc(t), types.UnitType)
@@ -328,11 +328,11 @@ func (g *gen) implsClass(cd *syntax.ClassDecl, fds []*syntax.FunDecl) {
 		g.code = c.NewMethod(cf.AccPublic|cf.AccStatic, f.JVM(), "("+self+fd[1:])
 		g.code.Local(cf.ALOAD, g.code.AllocLocal(self))
 		g.code.Checkcast(fw.Of.Name)
-		for _, pd := range descParams(fd) {
+		for _, pd := range cf.DescParams(fd) {
 			g.code.Local(loadOpOf(pd), g.code.AllocLocal(pd))
 		}
 		g.code.Invoke(cf.INVOKESTATIC, fw.Impls, f.JVM(), "(L"+fw.Of.Name+";"+fd[1:])
-		g.code.Op(returnOpOf(fd[strings.IndexByte(fd, ')')+1:]))
+		g.code.Op(returnOpOf(cf.RetDesc(fd)))
 		g.check()
 	}
 	g.cls = iface
@@ -402,7 +402,7 @@ func (g *gen) staticStub(fd *syntax.FunDecl, comp *types.ClassSym, d string, var
 	}
 	g.code.Line(fd.P.Line)
 	g.objectRef(comp)
-	for _, pd := range descParams(d) {
+	for _, pd := range cf.DescParams(d) {
 		g.code.Local(loadOpOf(pd), g.code.AllocLocal(pd))
 	}
 	if private {
@@ -412,7 +412,7 @@ func (g *gen) staticStub(fd *syntax.FunDecl, comp *types.ClassSym, d string, var
 	} else {
 		g.code.Invoke(cf.INVOKEVIRTUAL, comp.Name, name, d)
 	}
-	g.code.Op(returnOpOf(d[strings.IndexByte(d, ')')+1:]))
+	g.code.Op(returnOpOf(cf.RetDesc(d)))
 	g.check()
 }
 
@@ -452,10 +452,10 @@ func (g *gen) defaultImpls(cd *syntax.ClassDecl, iface *cf.Class) *cf.Class {
 	c := g.implsOf(cd.Sym, iface)
 	body := func(m defaultBody) {
 		d := "(" + self + m.desc[1:]
-		ret := m.desc[strings.IndexByte(m.desc, ')')+1:]
+		ret := cf.RetDesc(m.desc)
 		jd := "access$" + m.name + "$jd"
 		code := iface.NewMethod(cf.AccPublic|cf.AccStatic|cf.AccSynthetic, jd, d)
-		for _, pd := range descParams(d) {
+		for _, pd := range cf.DescParams(d) {
 			code.Local(loadOpOf(pd), code.AllocLocal(pd))
 		}
 		code.InvokeSpecialInterface(iface.Name, m.name, m.desc)
@@ -486,7 +486,7 @@ func (g *gen) defaultImpls(cd *syntax.ClassDecl, iface *cf.Class) *cf.Class {
 		for i, p := range m.params {
 			nullability(paramAdder(ref, i+1), p.Type)
 		}
-		pds := descParams(d)
+		pds := cf.DescParams(d)
 		slots := make([]int, len(pds))
 		for i, pd := range pds {
 			slots[i] = code.AllocLocal(pd)
@@ -519,7 +519,7 @@ func (g *gen) defaultImpls(cd *syntax.ClassDecl, iface *cf.Class) *cf.Class {
 			d := defaultsDesc("("+self+m.desc[1:], types.DefaultBits(m.decl.Sym), objMarker)
 			code := c.NewMethod(cf.AccPublic|cf.AccStatic|cf.AccSynthetic, m.name+"$default", d)
 			code.Line(m.line)
-			for _, pd := range descParams(d) {
+			for _, pd := range cf.DescParams(d) {
 				code.Local(loadOpOf(pd), code.AllocLocal(pd))
 			}
 			code.InvokeStaticInterface(iface.Name, m.name+"$default", d)
@@ -717,7 +717,7 @@ func (g *gen) defaultBridges(cd *syntax.ClassDecl, c *cf.Class) {
 			}
 			code.Line(cd.P.Line)
 			code.AllocLocal("L" + cls.Name + ";")
-			pds := descParams(m.desc)
+			pds := cf.DescParams(m.desc)
 			slots := make([]int, len(pds))
 			for j, pd := range pds {
 				slots[j] = code.AllocLocal(pd)
@@ -730,7 +730,7 @@ func (g *gen) defaultBridges(cd *syntax.ClassDecl, c *cf.Class) {
 				code.Local(loadOpOf(pd), slots[j])
 			}
 			code.InvokeSpecialInterface(i.Name, m.name, m.desc)
-			code.Op(returnOpOf(m.desc[strings.IndexByte(m.desc, ')')+1:]))
+			code.Op(returnOpOf(cf.RetDesc(m.desc)))
 			if err := code.Err(); err != nil {
 				panic(err)
 			}
