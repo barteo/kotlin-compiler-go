@@ -739,6 +739,7 @@ func CheckOptions(ctx context.Context, files []*syntax.File, lib *Library, jobs 
 		c.versionOverloads()
 		c.checkModifiers()
 		c.classPathChecks()
+		c.jvmDefaultModeAnnotations()
 		sort.SliceStable(c.errs, func(i, j int) bool {
 			a, b := c.errs[i].Pos, c.errs[j].Pos
 			return a.Line < b.Line || a.Line == b.Line && a.Col < b.Col
