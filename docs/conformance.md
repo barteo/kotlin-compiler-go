@@ -25,9 +25,8 @@ with a `.tsv` file beside it: one line per test, with its path, category,
 key and detail. Flags after the mode go to the harness:
 
 - `-filter when/` runs the tests whose path starts with it.
-- `-list FILE` runs the tests whose paths the file lists, one a line, as
-  [bench/results/inference.txt](../bench/results/inference.txt) lists
-  the diagnostics tests that fail for a reason in type inference.
+- `-list FILE` runs the tests whose paths the file lists, one a line
+  (the first field of a TSV line; `#` starts a comment).
 - `-errors FILE` (diagnostics) writes `kc`'s errors on lines where the
   markup expects no diagnostic to a TSV file: the test, its category, the
   file and line, and the message.
