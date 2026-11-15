@@ -660,7 +660,7 @@ func (s *Set) Info(name string) (*classfile.Info, error) {
 			m.Sig = r.sig(f.Type)
 		}
 		if access&classfile.AccStatic != 0 && access&classfile.AccFinal != 0 && f.Init != nil {
-			m.Constant = s.constant(c, f, nil)
+			m.Constant, m.MaybeConstant = s.constant(c, f, nil)
 		}
 		info.Fields = append(info.Fields, m)
 	}

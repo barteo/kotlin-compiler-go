@@ -22,16 +22,25 @@ type cval struct {
 // ConstantValue attribute holds it: an int32, int64, float32, float64 or
 // string, or nil if its initializer isn't a constant expression. seen
 // holds the fields whose values are being computed, which a cycle of
-// references isn't constant through.
-func (s *Set) constant(c *Class, f *Field, seen map[*Field]bool) any {
-	v, ok := s.fieldValue(c, f, seen)
+// references isn't constant through. If the value is nil, maybe reports
+// whether that is only because the initializer reads a field of a Kotlin
+// class (see KotlinClasses), whose value javasrc doesn't know.
+func (s *Set) constant(c *Class, f *Field, seen map[*Field]bool) (v any, maybe bool) {
+	cv, ok := s.fieldValue(c, f, seen, &maybe)
 	if !ok {
-		return nil
+		return nil, maybe
 	}
-	return v.attr()
+	return cv.attr(), false
 }
 
-func (s *Set) fieldValue(c *Class, f *Field, seen map[*Field]bool) (cval, bool) {
+// KotlinClasses is what an Outside that knows the Kotlin classes compiled
+// with the Java sources implements: Java code may read their const vals,
+// which javasrc can't evaluate.
+type KotlinClasses interface {
+	IsKotlin(name string) bool
+}
+
+func (s *Set) fieldValue(c *Class, f *Field, seen map[*Field]bool, kotlin *bool) (cval, bool) {
 	k := fieldKind(f.Type)
 	if k == 0 || seen[f] || len(f.Init) == 0 {
 		return cval{}, false
@@ -41,7 +50,7 @@ func (s *Set) fieldValue(c *Class, f *Field, seen map[*Field]bool) (cval, bool) 
 	}
 	seen[f] = true
 	defer delete(seen, f)
-	e := &evaluator{s: s, r: &resolver{s: s, c: c}, toks: joinOps(f.Init), seen: seen}
+	e := &evaluator{s: s, r: &resolver{s: s, c: c}, toks: joinOps(f.Init), seen: seen, kotlin: kotlin}
 	v, ok := e.expr()
 	if !ok || e.pos != len(e.toks) {
 		return cval{}, false
@@ -240,6 +249,8 @@ type evaluator struct {
 	toks []token
 	pos  int
 	seen map[*Field]bool
+	// kotlin is set when the expression reads a Kotlin class's field.
+	kotlin *bool
 }
 
 func (e *evaluator) tok() token {
@@ -457,13 +468,17 @@ func (e *evaluator) declaredField(class, name string) (cval, bool, bool) {
 			if f.Flags&0x0018 != 0x0018 && c.Kind != KindInterface && c.Kind != KindAnnotation {
 				return cval{}, false, true // not static final
 			}
-			v, ok := e.s.fieldValue(c, f, e.seen)
+			v, ok := e.s.fieldValue(c, f, e.seen, e.kotlin)
 			return v, ok, true
 		}
 		return cval{}, false, false
 	}
 	if e.s.Outside == nil {
 		return cval{}, false, false
+	}
+	if k, ok := e.s.Outside.(KotlinClasses); ok && k.IsKotlin(class) {
+		*e.kotlin = true
+		return cval{}, false, true
 	}
 	a, desc := e.s.Outside.Constant(class, name)
 	if desc == "" {

@@ -114,6 +114,10 @@ type Member struct {
 	// Constant is a field's ConstantValue: an int32, int64, float32,
 	// float64 or string, or nil.
 	Constant any
+	// MaybeConstant is set by javasrc on a static final field of a Java
+	// source without a Constant only because its initializer reads a
+	// Kotlin class's field: kotlinc may find it constant.
+	MaybeConstant bool
 	// Default is an annotation method's AnnotationDefault, or nil.
 	Default *ElementValue
 	// Annotations are the descriptors of the member's annotations, kept

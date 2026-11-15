@@ -507,7 +507,7 @@ func (t *classTable) load(cls *types.ClassSym) {
 		if ok && ft.K != types.Unit {
 			cls.Fields[fd.Name] = &types.VarSym{Name: fd.Name, Type: t.fieldNullability(fd, ft), Kind: types.Static, Owner: cls, Resolved: true,
 				Constant: fieldConstant(fd), Mutable: fd.Access&classfile.AccFinal == 0, PackagePrivate: pkgPrivate,
-				Protected: fd.Access&classfile.AccProtected != 0}
+				Protected: fd.Access&classfile.AccProtected != 0, MaybeConst: fd.MaybeConstant}
 		}
 		if fd.Access&classfile.AccEnum != 0 {
 			cls.Entries = append(cls.Entries, fd.Name)
