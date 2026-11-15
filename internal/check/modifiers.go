@@ -266,6 +266,7 @@ func (m *modChecker) decl(d syntax.Decl, s modScope) {
 			for _, am := range d.AccessorMods {
 				m.mods(am, tGetter|tSetter, s.parent, false)
 			}
+			m.setterVisibility(d)
 		}
 		m.expr(d.Init, s)
 		for _, acc := range []*syntax.FunDecl{d.Getter, d.Setter} {
@@ -509,5 +510,17 @@ func (m *modChecker) anon(cd *syntax.ClassDecl, s modScope) {
 	in := modScope{parent: tLocalClass | tClass, cls: cd, clsLocal: true, inAnon: true, local: true}
 	for _, d := range cd.Members {
 		m.decl(d, in)
+	}
+}
+
+// setterVisibility reports a setter more visible than its property, or
+// visible where it isn't, as protected set of an internal var
+// (SETTER_VISIBILITY_INCONSISTENT_WITH_PROPERTY_VISIBILITY).
+func (m *modChecker) setterVisibility(d *syntax.PropDecl) {
+	if d.SetterVisP.Line == 0 || d.Override && !d.Explicit {
+		return
+	}
+	if sv, pv := d.SetterVis, d.Visibility; sv != pv && sv != syntax.Private && pv != syntax.Public {
+		m.errorf(d.SetterVisP, "setter visibility must be the same or less permissive than property visibility")
 	}
 }

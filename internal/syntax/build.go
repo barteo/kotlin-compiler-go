@@ -399,6 +399,11 @@ func AccessorMods(pd *PropDecl, name string, pos Pos, m *Modifiers, r Reporter) 
 	}
 	if name == "set" {
 		pd.SetterVis = m.Visibility
+		for _, w := range m.Written {
+			if w.Name == "public" || w.Name == "private" || w.Name == "protected" || w.Name == "internal" {
+				pd.SetterVisP = w.P
+			}
+		}
 		pd.InlineSetter = m.Inline
 	} else {
 		pd.InlineGetter = m.Inline

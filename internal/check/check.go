@@ -3284,6 +3284,7 @@ func (c *Checker) checkFun(d *syntax.FunDecl, cls *types.ClassSym) {
 		c.errorf(d.ExprBody.Pos(), "ranges are only supported in 'for' loops and 'in' checks")
 		t = types.InvalidType
 	}
+	c.ambiguousAnon(d, cls, t)
 	if sym.Ret = t; !keepsAnon(&d.Modifiers, cls) {
 		sym.Ret = approx(c.approxIntersections(t))
 	}
@@ -3328,6 +3329,7 @@ func (c *Checker) checkPropInit(d *syntax.PropDecl, cls *types.ClassSym) {
 	if p := d.DelegateOf; p != nil && p.Ref != nil && t.K != types.Invalid {
 		t = c.provideDelegate(d, p, t, provided)
 	}
+	c.ambiguousAnon(d, cls, t)
 	if sym.Type = t; !keepsAnon(&d.Modifiers, cls) {
 		sym.Type = approx(c.approxIntersections(t))
 	}

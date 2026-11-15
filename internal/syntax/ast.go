@@ -572,6 +572,9 @@ type PropDecl struct {
 	Init       Expr       // nil for an abstract property, or one with a getter
 	Getter     *FunDecl   // get() = ..., or nil
 	SetterVis  Visibility // private set, ...
+	// SetterVisP is the position of the setter's visibility modifier, if
+	// it has one.
+	SetterVisP Pos
 	// InlineGetter and InlineSetter are set on inline get and inline set,
 	// which compile as ordinary accessors.
 	InlineGetter, InlineSetter bool
