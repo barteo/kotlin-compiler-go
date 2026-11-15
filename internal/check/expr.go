@@ -3858,7 +3858,10 @@ func (c *Checker) completeBranches(pending []pendingBranch, result, want types.T
 			if trial := c.branchTrial(p.sys, p.t, target); trial != nil { // see expected.go
 				p.sys = trial
 			} else {
-				forced = p.free != nil
+				// Not the Unit that a lambda's unused last statement is
+				// coerced to: put("a", listOf(1)) at the end of buildMap's
+				// lambda doesn't make V? a Unit.
+				forced = p.free != nil && !(p.unused && target.K == types.Unit)
 			}
 		}
 		// The branch's lambdas, as sequence { yield(1) }'s in
