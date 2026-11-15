@@ -2239,6 +2239,11 @@ func (t *classTable) pkgFunsOf(pkg, name string, internal bool) []*types.FunSym 
 				// start the movable group.
 				sym.Inline, sym.Builtin = nil, types.ComposeKey
 			}
+			// As in K2, one function of two modules on the class path, by
+			// its package, name and signature, is one candidate.
+			if slices.ContainsFunc(fs, func(g *types.FunSym) bool { return sameDeclaration(sym, g) }) {
+				continue
+			}
 			fs = append(fs, sym)
 		}
 	}
