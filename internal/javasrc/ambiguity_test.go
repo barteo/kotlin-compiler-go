@@ -4,7 +4,8 @@ import "testing"
 
 // TestUnresolvedAsKotlin checks the names kotlinc can't resolve in Java
 // sources: member types inherited from two supertypes or named by two
-// star imports, and classes in files named after other classes.
+// star imports. A class in a file named after another is found, as
+// kotlinc finds it in a source file it is given.
 func TestUnresolvedAsKotlin(t *testing.T) {
 	srcs := map[string]string{
 		"a/X.java":    "package a; public class X { public class Z {} public static class S {} }",
@@ -26,8 +27,8 @@ func TestUnresolvedAsKotlin(t *testing.T) {
 		files = append(files, f)
 	}
 	s := NewSet(files)
-	if s.Has("b/Two") {
-		t.Errorf("b/Two, in One.java, is a class Kotlin sees")
+	if !s.Has("b/Two") {
+		t.Errorf("b/Two, in One.java, is not a class Kotlin sees")
 	}
 	want := map[string]string{
 		"a/Y.z":     "()La/Z;",   // X.Z or I.Z (through J)

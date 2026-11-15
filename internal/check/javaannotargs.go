@@ -10,8 +10,8 @@ import (
 // an annotation's other elements, and Kotlin does too, as it knows no
 // order for them (POSITIONED_VALUE_ARGUMENT_FOR_JAVA_ANNOTATION).
 func (c *Checker) javaPositionalArgs(a *syntax.Annotation, cls *types.ClassSym) {
-	if !javaAnnotation(cls) {
-		return
+	if !javaAnnotation(cls) || !c.u.ext.kotlin {
+		return // without the standard library, @Deprecated is Java's
 	}
 	ps := c.annotationParams(cls)
 	named := false

@@ -1,7 +1,6 @@
 package javasrc
 
 import (
-	"path/filepath"
 	"slices"
 	"sort"
 	"strings"
@@ -51,24 +50,10 @@ func NewSet(files []*File) *Set {
 			prefix = strings.ReplaceAll(f.Package, ".", "/") + "/"
 		}
 		for _, c := range f.Classes {
-			if visible(f, c) {
-				add(prefix, c)
-			}
+			add(prefix, c)
 		}
 	}
 	return s
-}
-
-// visible reports whether top-level class c of file f is one Kotlin can
-// find: as kotlinc looks a class up by the file named after it, a class
-// in a file of another name, which javac allows of a class that isn't
-// public, is not there (KT-4455).
-func visible(f *File, c *Class) bool {
-	base := filepath.Base(f.Path)
-	if !strings.HasSuffix(base, ".java") {
-		return true // a source without a file name
-	}
-	return strings.TrimSuffix(base, ".java") == c.Name
 }
 
 // Names returns the internal names of the classes, sorted.
