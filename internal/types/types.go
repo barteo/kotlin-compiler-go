@@ -237,10 +237,14 @@ const (
 
 // VarSym is a local, parameter, top-level property or class property.
 type VarSym struct {
-	Name    string
-	Type    Type
-	Kind    VarKind
-	Mutable bool
+	Name string
+	// Ambiguous is set on a Java class's field when the class declares
+	// another of the name, which only broken code does: a use of it is
+	// ambiguous, as in K2.
+	Ambiguous bool
+	Type      Type
+	Kind      VarKind
+	Mutable   bool
 	// Captured is set when a lambda uses a Local or Param. A captured var
 	// is kept in a one-element array that the lambda shares.
 	Captured bool

@@ -3797,7 +3797,7 @@ tests/imports/CheckJavaVisibility2.kt	rejects invalid	on an expected line
 tests/imports/CheckVisibility_differentModule.kt	rejects invalid	on an expected line	
 tests/imports/CheckVisibility_sameModule.kt	rejects invalid	on an expected line	
 tests/imports/ClassClash.kt	rejects invalid	on an expected line	
-tests/imports/ClassClashStarImport.kt	rejects invalid	elsewhere	
+tests/imports/ClassClashStarImport.kt	rejects invalid	on an expected line	
 tests/imports/ClassClashStarImport_topLevel.kt	rejects invalid	on an expected line	
 tests/imports/ClassClash_topLevel.kt	rejects invalid	on an expected line	
 tests/imports/ClassImportsConflicting.kt	rejects invalid	on an expected line	
@@ -5257,7 +5257,7 @@ tests/j+k/arrayOfStarParametrized.kt	accepts valid
 tests/j+k/asListOfToArrayJDKBased.kt	accepts valid		
 tests/j+k/asListOfToArraySimplified.kt	accepts valid		
 tests/j+k/brokenCode/classDuplicates.kt	accepts invalid	CLASSIFIER_REDECLARATION	Hello.kt:1: CLASSIFIER_REDECLARATION
-tests/j+k/brokenCode/fieldDuplicates.kt	accepts invalid	OVERLOAD_RESOLUTION_AMBIGUITY	main.kt:4: OVERLOAD_RESOLUTION_AMBIGUITY
+tests/j+k/brokenCode/fieldDuplicates.kt	rejects invalid	on an expected line	
 tests/j+k/cachedGetValue.kt	accepts valid		
 tests/j+k/callableReferencesStaticMemberClash.kt	accepts valid		
 tests/j+k/canDeclareIfSamAdapterIsInherited.kt	accepts valid		
@@ -5486,7 +5486,7 @@ tests/j+k/samByProjectedType/noAdapterBecuaseOfRecursiveUpperBound.kt	rejects in
 tests/j+k/samByProjectedType/starProjectionComplexUpperBound.kt	accepts valid		
 tests/j+k/samInConstructorWithGenerics.kt	accepts valid		
 tests/j+k/samWithConsumer.kt	accepts valid		
-tests/j+k/selectMoreSpecific.kt	accepts invalid	OVERLOAD_RESOLUTION_AMBIGUITY; CANNOT_INFER_PARAMETER_TYPE; UNRESOLVED_REFERENCE_WRONG_RECEIVER	main.kt:3: OVERLOAD_RESOLUTION_AMBIGUITY
+tests/j+k/selectMoreSpecific.kt	rejects invalid	on an expected line	
 tests/j+k/serializable.kt	rejects invalid	on an expected line	
 tests/j+k/shadowingPrimitiveStaticField.kt	accepts valid		
 tests/j+k/signatureAnnotations/notNullVarargOverride.kt	accepts valid		
@@ -6035,13 +6035,13 @@ tests/multimodule/duplicateClass/sameClassNameDifferentPackages.kt	rejects inval
 tests/multimodule/duplicateClass/sameGenericArguments.kt	accepts valid		
 tests/multimodule/duplicateMethod/classGenericsInParams.kt	accepts valid		
 tests/multimodule/duplicateMethod/classGenericsInParamsBoundMismatch.kt	accepts valid		
-tests/multimodule/duplicateMethod/classGenericsInParamsIndexMismatch.kt	accepts invalid	OVERLOAD_RESOLUTION_AMBIGUITY	c.kt:5: OVERLOAD_RESOLUTION_AMBIGUITY
+tests/multimodule/duplicateMethod/classGenericsInParamsIndexMismatch.kt	rejects invalid	on an expected line	
 tests/multimodule/duplicateMethod/classGenericsInParamsNameMismatch.kt	accepts valid		
 tests/multimodule/duplicateMethod/classGenericsInReturnType.kt	accepts valid		
-tests/multimodule/duplicateMethod/classVsFunctionGenericsInParamsMismatch.kt	rejects invalid	elsewhere	
+tests/multimodule/duplicateMethod/classVsFunctionGenericsInParamsMismatch.kt	rejects invalid	on an expected line	
 tests/multimodule/duplicateMethod/covariantReturnTypes.kt	accepts valid		
 tests/multimodule/duplicateMethod/differenceInParamNames.kt	accepts valid		
-tests/multimodule/duplicateMethod/differentGenericsInParams.kt	accepts invalid	OVERLOAD_RESOLUTION_AMBIGUITY	c.kt:5: OVERLOAD_RESOLUTION_AMBIGUITY
+tests/multimodule/duplicateMethod/differentGenericsInParams.kt	rejects invalid	on an expected line	
 tests/multimodule/duplicateMethod/differentNumberOfParams.kt	accepts valid		
 tests/multimodule/duplicateMethod/differentReturnTypes.kt	accepts valid		
 tests/multimodule/duplicateMethod/extensionMatch.kt	accepts valid		
@@ -6057,7 +6057,7 @@ tests/multimodule/duplicateMethod/noParams.kt	accepts valid
 tests/multimodule/duplicateMethod/sameGenericsInParams.kt	accepts valid		
 tests/multimodule/duplicateMethod/simpleWithInheritance.kt	accepts valid		
 tests/multimodule/duplicateMethod/sinceKotlin.kt	skip	API_VERSION	
-tests/multimodule/duplicateMethod/substitutedGenericInParams.kt	rejects valid	one type argument expected for class B<T>	c.kt:3: one type argument expected for class B<T>
+tests/multimodule/duplicateMethod/substitutedGenericInParams.kt	accepts valid		
 tests/multimodule/duplicateSuper/differentSuperTraits.kt	accepts valid		
 tests/multimodule/duplicateSuper/sameSuperTrait.kt	accepts valid		
 tests/multimodule/duplicateSuper/sameSuperTraitDifferentBounds.kt	accepts invalid	NOTHING_TO_OVERRIDE	x.kt:6: NOTHING_TO_OVERRIDE
@@ -9748,7 +9748,7 @@ testsWithStdLib/callableReferences/ifWithCR.kt	rejects invalid	on an expected li
 testsWithStdLib/callableReferences/implicitTypes.kt	rejects invalid	on an expected line	
 testsWithStdLib/callableReferences/inferenceFromCallableReferenceType.kt	accepts valid		
 testsWithStdLib/callableReferences/inferenceFromExpectedType.kt	accepts valid		
-testsWithStdLib/callableReferences/javaStatic.kt	accepts invalid	OVERLOAD_RESOLUTION_AMBIGUITY	main.kt:12: OVERLOAD_RESOLUTION_AMBIGUITY
+testsWithStdLib/callableReferences/javaStatic.kt	rejects invalid	on an expected line	
 testsWithStdLib/callableReferences/manyCandidatesInference.kt	accepts valid		
 testsWithStdLib/callableReferences/manyInnerCandidates.kt	accepts valid		
 testsWithStdLib/callableReferences/manyInnerManyOuterCandidates.kt	accepts valid		

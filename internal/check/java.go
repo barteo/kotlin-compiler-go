@@ -460,6 +460,10 @@ func (t *classTable) load(cls *types.ClassSym) {
 				if cls.JavaFields == nil {
 					cls.JavaFields = map[string]*types.VarSym{}
 				}
+				if prev := cls.JavaFields[fd.Name]; prev != nil {
+					prev.Ambiguous = true
+					continue
+				}
 				cls.JavaFields[fd.Name] = &types.VarSym{Name: fd.Name, Type: t.fieldNullability(fd, ft.Platform()), Kind: types.Prop, Owner: cls, Resolved: true, Final: true,
 					JvmField: true, Mutable: fd.Access&classfile.AccFinal == 0, Protected: fd.Access&classfile.AccProtected != 0, PackagePrivate: pkgPrivate}
 			}
@@ -492,6 +496,10 @@ func (t *classTable) load(cls *types.ClassSym) {
 		ft, ok := t.fieldType(fd.Desc)
 		if fd.Sig != "" {
 			ft, ok = t.fieldSignature(fd.Sig, nil)
+		}
+		if prev := cls.Fields[fd.Name]; prev != nil && prev.Kind == types.Static && prev.Owner == cls {
+			prev.Ambiguous = true
+			continue
 		}
 		if ok && ft.K != types.Unit {
 			cls.Fields[fd.Name] = &types.VarSym{Name: fd.Name, Type: t.fieldNullability(fd, ft), Kind: types.Static, Owner: cls, Resolved: true,
@@ -1916,9 +1924,56 @@ func (c *Checker) javaMethods(cls *types.ClassSym, name string) []*types.FunSym 
 			})
 		}
 	}
+	ms = c.notHidden(cls, name, ms)
 	ms = c.intersectionDefaults(cls, ms)
 	cache.methods.Store(k, ms)
 	return ms
+}
+
+// notHidden adds to ms the methods of cls's supertypes compiled by
+// Kotlin that a method of ms hides by its erasure without overriding
+// them: their parameter types differ once the supertypes' type arguments
+// are substituted. Only a class of one name from two modules has them,
+// C's foo(G1<Int>?) and B's foo(G1<out Any?>?), for a C that extends
+// another module's B. As in K2, a call is ambiguous.
+func (c *Checker) notHidden(cls *types.ClassSym, name string, ms []*types.FunSym) []*types.FunSym {
+	var out []*types.FunSym
+	for _, f := range ms {
+		if f.Static || f.Owner == nil || !f.Owner.FromKotlin {
+			continue
+		}
+		key := paramKey(f)
+		cls.Supertypes(func(s *types.ClassSym) bool {
+			if s == f.Owner || !s.FromKotlin || !f.Owner.IsSubclassOf(s) {
+				return true
+			}
+			for _, g := range s.Methods[name] {
+				if g.Static || g.Private || paramKey(g) != key || slices.Contains(ms, g) || slices.Contains(out, g) {
+					continue
+				}
+				if c.notOverridden(f, g) {
+					out = append(out, g)
+				}
+			}
+			return true
+		})
+	}
+	if out == nil {
+		return ms
+	}
+	return append(slices.Clone(ms), out...)
+}
+
+// notOverridden reports whether f, a method of a subclass of g's class,
+// both compiled by Kotlin, doesn't override g, though it has g's
+// erasure: its parameter types differ from g's, seen through f's class.
+func (c *Checker) notOverridden(f, g *types.FunSym) bool {
+	if f.Owner == nil || g.Owner == nil || !f.Owner.FromKotlin || !g.Owner.FromKotlin {
+		return false
+	}
+	ensureFun(f)
+	ensureFun(g)
+	return !c.sameParams(f.Owner.This(), f, g)
 }
 
 // intersectionDefaults replaces each method of ms without default values
@@ -2044,7 +2099,10 @@ func javaMethods(cls *types.ClassSym, name string) []*types.FunSym {
 			// renamed by @JvmName, and so are a class file's whose JVM
 			// names aren't their own. A class file's others are distinct
 			// by descriptor, but for covariant return bridges.
-			if f.Decl == nil && (f.JVMName == "" || f.JVMName == f.Name) {
+			// So are two of a Java class's that differ only by their
+			// result, which only broken code declares: a call is
+			// ambiguous, as in K2.
+			if f.Decl == nil && (f.JVMName == "" || f.JVMName == f.Name) && (f.Builtin != types.NotBuiltin || !isJavaClass(s)) {
 				seen[params] = true
 			} else {
 				own = append(own, params)
@@ -2102,15 +2160,20 @@ func javaStatics(cls *types.ClassSym, name string) []*types.FunSym {
 		if s != cls && (!isJavaClass(cls) || !isJavaClass(s)) {
 			continue
 		}
+		// A subclass's static method hides its superclass's of the same
+		// parameters: GoogleApiAvailability.getInstance(). Two of one
+		// class both stay, and a call is ambiguous.
+		var own []string
 		for _, f := range s.Statics[name] {
-			// A subclass's static method hides its superclass's of the
-			// same parameters: GoogleApiAvailability.getInstance().
 			params, _, _ := strings.Cut(f.Desc, ")")
 			if f.Desc != "" && hidden[params] {
 				continue
 			}
-			hidden[params] = true
+			own = append(own, params)
 			out = append(out, f)
+		}
+		for _, p := range own {
+			hidden[p] = true
 		}
 	}
 	return out
@@ -2711,6 +2774,9 @@ func (c *Checker) staticField(x *syntax.Member, cls *types.ClassSym) types.Type 
 	}
 	if fs := c.visibleStaticFields(cls, x.Name); len(fs) > 1 {
 		c.errorf(x.P, "overload resolution ambiguity: %s is a static field of both %s and %s", x.Name, fs[0].Owner.DisplayName(), fs[1].Owner.DisplayName())
+	}
+	if f.Ambiguous {
+		c.errorf(x.P, "overload resolution ambiguity: %s", x.Name)
 	}
 	x.Field = f
 	return f.Type

@@ -323,6 +323,14 @@ Guards: `j+k/*` overload tests (`primitiveVsBoxedOverloadAndSecondParameter.kt`)
 
 Risk: dropping dedup can create false ambiguities between a Java method and its override seen twice through diamond interfaces. The box suite is the main check.
 
+**Done.** All 5 flipped, plus the *rejects valid* `duplicateMethod/substitutedGenericInParams.kt`, with 0 regressions in diagnostics and box. Notes on what landed:
+- `javaMethods` and `javaStatics` keep two methods of one Java class with the same parameters. A subclass's method still hides its superclass's. `resolve1` finds the two equally specific and reports the call ambiguous.
+- A Java class's second field of a name sets `Ambiguous` on the first (`types.VarSym`), and a use of it is an overload resolution ambiguity, qualified or not. This is simpler than making `JavaFields` slices.
+- `memberRefShapes` adds the shapes of a Java class's static methods, so `foo3(JavaClass::bar)` has two candidates that fit.
+- `notHidden` keeps a supertype's method, compiled by Kotlin, that a subclass's method hides by erasure but doesn't override, because their substituted parameter types differ (`sameParams`). `overriddenGiveWay` lets it stand too (`notOverridden`). Only a class of one name from two modules gives this.
+- The two `duplicateMethod` tests also needed a harness fix. `bench/conformance/compile.go` put every earlier module's output on the class path in file order, so a module never saw the copy of a class from the module it names first. It now puts the declared dependencies first, in the order the `// MODULE:` line names them, then the rest as before (`depsFirst`). That also fixed `substitutedGenericInParams`.
+- Unit test: `testdata/errors/javaDuplicates/`. The two-module cases are covered only by the diagnostics suite, since `TestErrors` compiles one module.
+
 ### 6. Java primitive versus boxed (fixes `primitiveVsBoxedOverloads` properly). Small.
 
 In `mostSpecific`, a Java `int` parameter is more specific than a Java `Integer` one, enhanced or not. A `long` against an `Integer` stays incomparable (`foo4`). Land this with the test's two lines both right, so it moves from "rejects invalid elsewhere" to "on an expected line" and never passes through *accepts invalid*.

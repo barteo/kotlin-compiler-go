@@ -981,7 +981,7 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 				maximal = append(maximal, cd)
 			}
 		}
-		maximal = overriddenGiveWay(maximal)
+		maximal = c.overriddenGiveWay(maximal)
 		if len(maximal) > 1 {
 			if orig := c.origSAMMaximal(maximal, x.Args); len(orig) == 1 {
 				maximal = orig
@@ -2372,7 +2372,7 @@ func (c *Checker) nonGenericMaximal(cs []*candidate, args []syntax.Expr) []*cand
 			out = append(out, cd)
 		}
 	}
-	return overriddenGiveWay(out)
+	return c.overriddenGiveWay(out)
 }
 
 // overriddenGiveWay drops the candidates among equally specific ones
@@ -2380,7 +2380,7 @@ func (c *Checker) nonGenericMaximal(cs []*candidate, args []syntax.Expr) []*cand
 // parameters, overrides: Kotlin sees only the override, as value class
 // Tag's Int.ext(n) for the T.ext(n) of its supertype Ext<Int>, which
 // dropOverridden keeps, as their JVM descriptors differ.
-func overriddenGiveWay(cs []*candidate) []*candidate {
+func (c *Checker) overriddenGiveWay(cs []*candidate) []*candidate {
 	if len(cs) < 2 {
 		return cs
 	}
@@ -2393,7 +2393,7 @@ func overriddenGiveWay(cs []*candidate) []*candidate {
 			// A Java static method overrides none: C.foo(Runnable) hides
 			// A.foo(Runnable), not A.foo(Function0<Unit>).
 			return f.f.Owner != nil && g.f.Owner != nil && g.f.Owner != f.f.Owner && g.f.Name == f.f.Name && !g.f.Static &&
-				g.f.Owner.IsSubclassOf(f.f.Owner) && sameParams(f.f, g.f)
+				g.f.Owner.IsSubclassOf(f.f.Owner) && sameParams(f.f, g.f) && !c.notOverridden(g.f, f.f)
 		})
 		if !overridden {
 			out = append(out, f)

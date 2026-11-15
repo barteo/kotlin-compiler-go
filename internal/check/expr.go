@@ -121,6 +121,9 @@ func (c *Checker) expr1(x syntax.Expr, want types.Type, allowRange bool, sink *s
 				return t
 			}
 		}
+		if ok && sym.Ambiguous {
+			c.errorf(x.P, "overload resolution ambiguity: %s", x.Name)
+		}
 		if ok {
 			c.checkTopVar(sym, x.P)
 			if v, imported := c.userVars[x.Name]; imported && v == sym {
@@ -2250,6 +2253,9 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 		t = c.memberSubst(rt, x.Prop.Owner).Apply(x.Prop.Type)
 	default:
 		t, found = c.javaProperty(x, rt)
+	}
+	if x.Prop != nil && x.Prop.Ambiguous {
+		c.errorf(x.P, "overload resolution ambiguity: %s", x.Name)
 	}
 	if found && x.Prop == nil && x.Getter != nil && !x.Safe {
 		// A smart cast of a.b, for a friend path's stable property.
