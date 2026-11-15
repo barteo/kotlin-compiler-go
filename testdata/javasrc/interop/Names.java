@@ -2,6 +2,7 @@ package interop;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.annotation.RecentlyNullable;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -33,6 +34,12 @@ public class Names {
     public static int provided(@NonNull Provider provider) {
         List<String> more = provider.more();
         return provider.names().size() + (more == null ? 0 : more.size());
+    }
+
+    // Only a warning to kotlinc: the result stays a platform type.
+    @RecentlyNullable
+    public String first() {
+        return names.get(0);
     }
 
     @NonNull

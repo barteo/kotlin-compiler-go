@@ -53,7 +53,8 @@ class Named {
 
             override fun more(): List<String>? = listOf("e")
         })
-        return "$seen ${Names.count(readOnly, mapOf("k" to "v"))} ${Names.count(emptyList(), null)} ${Names.count(all, emptyMap())} $provided"
+        val first: String = names.first()
+        return "$first $seen ${Names.count(readOnly, mapOf("k" to "v"))} ${Names.count(emptyList(), null)} ${Names.count(all, emptyMap())} $provided"
     }
 }
 
