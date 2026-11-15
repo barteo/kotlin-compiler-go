@@ -789,6 +789,7 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			c.unsupported(x.P, feature, "%s", why)
 		case noCtx != nil:
 			c.noContextArg(x.P, noCtx)
+		case unsupported && c.javaMissingClass(x, cands):
 		case unsupported:
 			c.unsupported(x.P, "unsupported types in signature", "'%s' uses types kc doesn't support", name)
 		case !slices.ContainsFunc(cands, func(cl callee) bool { return !cl.f.Hidden }):

@@ -1,6 +1,7 @@
 package javasrc
 
 import (
+	"path/filepath"
 	"slices"
 	"sort"
 	"strings"
@@ -50,10 +51,24 @@ func NewSet(files []*File) *Set {
 			prefix = strings.ReplaceAll(f.Package, ".", "/") + "/"
 		}
 		for _, c := range f.Classes {
-			add(prefix, c)
+			if visible(f, c) {
+				add(prefix, c)
+			}
 		}
 	}
 	return s
+}
+
+// visible reports whether top-level class c of file f is one Kotlin can
+// find: as kotlinc looks a class up by the file named after it, a class
+// in a file of another name, which javac allows of a class that isn't
+// public, is not there (KT-4455).
+func visible(f *File, c *Class) bool {
+	base := filepath.Base(f.Path)
+	if !strings.HasSuffix(base, ".java") {
+		return true // a source without a file name
+	}
+	return strings.TrimSuffix(base, ".java") == c.Name
 }
 
 // Names returns the internal names of the classes, sorted.
@@ -175,7 +190,9 @@ func (r *resolver) lookup(name string) (string, *TypeParam) {
 			}
 		}
 		if !r.noInherit {
-			if n := r.inherited(k, name, 0); n != "" {
+			if n := r.inherited(k, name, 0); n == ambiguous {
+				return r.missing(name), nil
+			} else if n != "" {
 				return n, nil
 			}
 		}
@@ -193,18 +210,31 @@ func (r *resolver) lookup(name string) (string, *TypeParam) {
 	if r.s.known(pkg + name) {
 		return pkg + name, nil
 	}
+	// Classes that star imports name: two of them make the name
+	// ambiguous, which kotlinc leaves unresolved.
+	found := ""
 	for _, imp := range f.Imports {
 		if !imp.Star {
 			continue
 		}
 		// import a.b.* names a package's classes, and import a.b.C.* and
 		// import static a.b.C.* the nested classes of C.
+		n := ""
 		if p := strings.ReplaceAll(imp.Name, ".", "/") + "/" + name; !imp.Static && r.s.known(p) {
-			return p, nil
+			n = p
+		} else {
+			n = r.s.memberType(r.s.qualified(imp.Name), name, 0)
 		}
-		if n := r.s.memberType(r.s.qualified(imp.Name), name, 0); n != "" {
-			return n, nil
+		switch {
+		case n == "" || n == found:
+		case found != "" || n == ambiguous:
+			return r.missing(name), nil
+		default:
+			found = n
 		}
+	}
+	if found != "" {
+		return found, nil
 	}
 	for _, imp := range f.Imports {
 		if imp.Static && !imp.Star && strings.HasSuffix(imp.Name, "."+name) {
@@ -219,27 +249,55 @@ func (r *resolver) lookup(name string) (string, *TypeParam) {
 	return "", nil
 }
 
+// ambiguous is what inherited and memberType return for a member type
+// that a class inherits from more than one supertype, different classes
+// of the same name, which kotlinc leaves unresolved.
+const ambiguous = "?"
+
+// missing returns the name a type that doesn't resolve has: a class of
+// the package that doesn't exist, as javac would complain.
+func (r *resolver) missing(name string) string {
+	if r.c.file.Package == "" {
+		return name
+	}
+	return strings.ReplaceAll(r.c.file.Package, ".", "/") + "/" + name
+}
+
 // inherited returns the internal name of a member type that class k
-// inherits from its supertypes, or "".
+// inherits from its supertypes, "", or ambiguous.
 func (r *resolver) inherited(k *Class, name string, depth int) string {
 	if depth > 16 {
 		return ""
 	}
 	sr := superResolver(r.s, k)
+	var supers []string
 	for _, t := range append(append([]*Type{}, k.Extends...), k.Implements...) {
-		super, _ := sr.classType(t)
-		if super == "" {
-			continue
-		}
-		if n := r.s.memberType(super, name, depth+1); n != "" {
-			return n
+		if super, _ := sr.classType(t); super != "" {
+			supers = append(supers, super)
 		}
 	}
-	return ""
+	return r.s.inheritedFrom(supers, name, depth)
+}
+
+// inheritedFrom returns the member type of the given name of a class with
+// supertypes supers: the one they have, "", or ambiguous if they have
+// different ones.
+func (s *Set) inheritedFrom(supers []string, name string, depth int) string {
+	found := ""
+	for _, super := range supers {
+		switch n := s.memberType(super, name, depth+1); {
+		case n == "" || n == found:
+		case n == ambiguous || found != "":
+			return ambiguous
+		default:
+			found = n
+		}
+	}
+	return found
 }
 
 // memberType returns the internal name of a member type of a class,
-// declared or inherited, or "".
+// declared or inherited, "", or ambiguous.
 func (s *Set) memberType(class, name string, depth int) string {
 	if depth > 16 {
 		return ""
@@ -254,12 +312,7 @@ func (s *Set) memberType(class, name string, depth int) string {
 		return ""
 	}
 	supers, _ := s.Outside.Supers(class)
-	for _, super := range supers {
-		if n := s.memberType(super, name, depth+1); n != "" {
-			return n
-		}
-	}
-	return ""
+	return s.inheritedFrom(supers, name, depth)
 }
 
 // qualified returns the internal name of a class by its dotted name: the
@@ -305,7 +358,7 @@ func (r *resolver) classType(t *Type) (string, *TypeParam) {
 	}
 	if n != "" {
 		for _, seg := range t.Segs[1:] {
-			if m := r.s.memberType(n, seg.Name, 0); m != "" {
+			if m := r.s.memberType(n, seg.Name, 0); m != "" && m != ambiguous {
 				n = m
 			} else {
 				n += "$" + seg.Name
