@@ -304,6 +304,13 @@ Guards: `staticsFromjava` (unqualified parts), `scopes/inheritance/statics/local
 Risk:
 - Kotlin code that uses an implemented Java interface's constant unqualified is rejected, as with `kotlinc`. This is common in old Android code, but K2 rejects it too.
 
+**Done.** All 6 flipped, with 0 regressions in diagnostics and box. Notes on what landed:
+- `inheritedStatic` walks the superclass chain of each enclosing class, and stops at the first Java class, whose static scope (`staticFields`) has all those above it. A directly implemented Java interface adds nothing. The field is checked as if qualified by that class, so a field reached through two supertypes is ambiguous here too.
+- `staticInScope` returns the first Java superclass rather than the class that declares the method, so a public static of a package-private class is accessible through a public subclass.
+- `objectExtension` makes the objects in scope, superclass companions included, receivers of extension calls, innermost first, after their own methods. As for `this`'s extensions, a top-level function of an extension's package comes first (`sameScopeTopFun`), so `run { }` in a class with a companion stays `kotlin.run`. The box suite's `comanionObjectFieldVsClassField` caught that.
+- In a delegation call's arguments, a nested object comes before a companion property of the same name. Elsewhere in a class body, the companion is an implicit receiver and its property still wins, so the rule is limited to delegation calls.
+- Unit test: `testdata/errors/classStaticScope/`.
+
 ### 5. Duplicate Java members and most-specific rules (E: 5 AI). Medium.
 
 - Keep both of two members of one Java class that share parameters, whether methods or fields. `JavaFields` becomes per-name slices; this is mostly `java.go` load code. Restrict `javaMethods`' `paramKey` dedup and `dedupe` to members from *different* classes where one overrides the other.

@@ -97,6 +97,16 @@ func (c *Checker) expr1(x syntax.Expr, want types.Type, allowRange bool, sink *s
 				}
 			}
 		}
+		if c.cls == nil && c.staticCls != nil {
+			// In a delegation call's arguments, the class's static scope
+			// comes before its companion: C is the nested object C, not
+			// the companion's val C.
+			if _, _, local := c.scope.lookup(x.Name); !local {
+				if cls := c.findClass(x.Name); cls != nil && cls.Outer == c.staticCls && cls.Object && cls != c.staticCls.Companion {
+					return objectValue(x, cls)
+				}
+			}
+		}
 		sym, t, cast, ok := c.lookupVar(x.Name)
 		if ok && sym.Kind == types.Global && (c.cls != nil || c.staticCls != nil) {
 			// As in Kotlin, the implicit receivers come before the
@@ -2508,6 +2518,15 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 					return c.construct(x, cls, fn.P, want, sink)
 				}
 				// A method of an object in scope: f() is Companion.f().
+				m := &syntax.Member{X: objectIdent(obj, fn.P), Name: name}
+				m.P = fn.P
+				x.Fun = m
+				return c.call(x, want, sink)
+			}
+			if obj := c.objectExtension(name, x); obj != nil {
+				// An extension of an object in scope, the companion of a
+				// superclass too: foo() is A.Companion.foo(), for a
+				// fun A.Companion.foo().
 				m := &syntax.Member{X: objectIdent(obj, fn.P), Name: name}
 				m.P = fn.P
 				x.Fun = m

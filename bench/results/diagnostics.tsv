@@ -7139,7 +7139,7 @@ tests/problems/definitelyNotNullStarProjection.kt	accepts valid
 tests/problems/deprecatedJavaEnumEntry.kt	accepts valid		
 tests/problems/doubleGenericDiamond.kt	accepts valid		
 tests/problems/emptySelectorInQualifiedExpression.kt	rejects invalid	elsewhere	
-tests/problems/enumEntryFieldShadow.kt	accepts invalid	UNRESOLVED_REFERENCE	DerivedEnum.kt:7: UNRESOLVED_REFERENCE
+tests/problems/enumEntryFieldShadow.kt	rejects invalid	on an expected line	
 tests/problems/expectConstructor.kt	skip	LANGUAGE	
 tests/problems/fakeTypeMismatchOnExtensionReference.kt	accepts valid		
 tests/problems/falseIntersection.kt	accepts valid		
@@ -7922,7 +7922,7 @@ tests/scopes/explicitOverrideOfTwoMembers_java.kt	accepts valid
 tests/scopes/genericVsNested.kt	accepts valid		
 tests/scopes/getterOverrideAndKotlinProperty.kt	accepts valid		
 tests/scopes/implicitReceiverMemberVsParameter.kt	accepts valid		
-tests/scopes/inheritance/companionObjectsOrder.kt	rejects valid	unresolved reference: _	companionObjectsOrder.kt:8: unresolved reference: foo
+tests/scopes/inheritance/companionObjectsOrder.kt	accepts valid		
 tests/scopes/inheritance/kt3856.kt	accepts valid		
 tests/scopes/inheritance/methodsPriority.kt	rejects invalid	on an expected line	
 tests/scopes/inheritance/nestedClassesFromInterface.kt	rejects invalid	on an expected line	
@@ -8080,7 +8080,7 @@ tests/sealed/sealedJavaClassEnabled.kt	skip	LANGUAGE
 tests/sealedClass.kt	rejects invalid	on an expected line	
 tests/secondaryConstructors/argumentsResolveInBodyAndDelegationCall.kt	rejects invalid	on an expected line	
 tests/secondaryConstructors/classInitializersWithoutPrimary.kt	accepts valid		
-tests/secondaryConstructors/companionObjectScope.kt	accepts invalid	NONE_APPLICABLE	companionObjectScope.kt:17: NONE_APPLICABLE
+tests/secondaryConstructors/companionObjectScope.kt	rejects invalid	on an expected line	
 tests/secondaryConstructors/constructorCallType.kt	rejects invalid	on an expected line	
 tests/secondaryConstructors/constructorInObject.kt	rejects invalid	on an expected line	
 tests/secondaryConstructors/constructorInTrait.kt	rejects invalid	on an expected line	
@@ -9358,7 +9358,7 @@ tests/visibility/invisiblePrivateThroughSubClass.kt	rejects invalid	on an expect
 tests/visibility/invisiblePrivateThroughSubClassDoubleSmartCast.kt	rejects invalid	on an expected line	
 tests/visibility/invisiblePrivateThroughSubClassSmartCast.kt	accepts valid		
 tests/visibility/invisibleSetterOfJavaClass.kt	rejects invalid	on an expected line	
-tests/visibility/javaInterfaceFieldDirectAccess.kt	accepts invalid	UNRESOLVED_REFERENCE	Child.kt:6: UNRESOLVED_REFERENCE
+tests/visibility/javaInterfaceFieldDirectAccess.kt	rejects invalid	on an expected line	
 tests/visibility/kotlinJavaKotlinHierarchy.kt	accepts valid		
 tests/visibility/kt56283.kt	accepts valid		
 tests/visibility/kt63434.kt	rejects invalid	on an expected line	
@@ -9368,11 +9368,11 @@ tests/visibility/moreSpecificProtectedSimple.kt	rejects invalid	on an expected l
 tests/visibility/notOverridingInternal.kt	accepts valid		
 tests/visibility/notOverridingPackagePrivate.kt	accepts valid		
 tests/visibility/overrideOfMemberInPackagePrivateClass.kt	accepts valid		
-tests/visibility/packagePrivateStatic.kt	rejects valid	class Base is not public	main.kt:7: class Base is not public
+tests/visibility/packagePrivateStatic.kt	accepts valid		
 tests/visibility/packagePrivateStaticInterfaceFieldViaKotlinClass.kt	rejects invalid	on an expected line	
 tests/visibility/packagePrivateStaticInterfaceMethod.kt	rejects invalid	on an expected line	
 tests/visibility/packagePrivateStaticViaInternal.kt	rejects invalid	on an expected line	
-tests/visibility/packagePrivateStaticViaTypeAlias.kt	rejects valid	class PackagePrivateGrandparentAbstractClass is not public	foo.kt:13: class PackagePrivateGrandparentAbstractClass is not public
+tests/visibility/packagePrivateStaticViaTypeAlias.kt	accepts valid		
 tests/visibility/privateAliasInSamePackage.kt	accepts valid		
 tests/visibility/privateCompanionInSuperClass.kt	rejects invalid	elsewhere	
 tests/visibility/privateDeclarationInAnotherFile.kt	rejects invalid	on an expected line	

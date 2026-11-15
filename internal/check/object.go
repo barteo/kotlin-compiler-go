@@ -273,6 +273,30 @@ func (c *Checker) objectMethods(name string, x *syntax.Call) *types.ClassSym {
 	return first
 }
 
+// objectExtension returns the innermost object in scope with an
+// extension function named name that may take x's arguments, or nil.
+// An object whose own methods may take them comes first.
+func (c *Checker) objectExtension(name string, x *syntax.Call) *types.ClassSym {
+	for _, obj := range c.scopeObjects() {
+		if c.anyMayTake(c.javaMethods(obj, name), x) {
+			return nil
+		}
+		var fs []*types.FunSym
+		for _, cl := range c.extCalleesFor(name, obj.This(), x) {
+			if c.mayTake(cl.f, x) {
+				fs = append(fs, cl.f)
+			}
+		}
+		// As for this's extensions, a top-level function of their
+		// package comes first: run { } is kotlin's run(block), not
+		// Companion.run { }.
+		if len(fs) > 0 && !c.sameScopeTopFun(name, x, fs) {
+			return obj
+		}
+	}
+	return nil
+}
+
 // enclosingClasses returns the class the code is in, or whose static
 // scope it is in, and the classes around it, the innermost first: past an
 // object expression or local class declared in a static scope, such as
@@ -455,23 +479,30 @@ func isJavaClass(cls *types.ClassSym) bool {
 	return cls.External && !cls.FromKotlin && cls.KotlinName == "" && cls.Java == nil
 }
 
-// inheritedStatic checks a name as a static field that the class the code
-// is in, or an outer one, inherits from a Java class: RESULT_OK in an
-// Activity's code.
+// inheritedStatic checks a name as a static field in the scope of the
+// class the code is in, or an outer one: RESULT_OK in an Activity's code.
+// As in K2, that scope is the static scope of the class and of its
+// superclasses, so a field of a Java interface the class implements
+// directly isn't in it, but one a Java superclass inherits is. The first
+// Java superclass's static scope has all those above it.
 func (c *Checker) inheritedStatic(x *syntax.Ident) (types.Type, bool) {
 	for k := c.cls; k != nil; k = k.Outer {
-		f := javaField(k, x.Name)
-		if !c.visibleField(f) {
-			continue
+		for s := k; s != nil; s = s.Super {
+			java := isJavaClass(s)
+			if fs := c.visibleStaticFields(s, x.Name); len(fs) > 0 {
+				id := &syntax.Ident{Name: s.DisplayName()}
+				id.P = x.P
+				m := &syntax.Member{X: id, Name: x.Name}
+				m.P = x.P
+				x.Member = m
+				t := c.staticField(m, s)
+				m.SetType(t)
+				return t, true
+			}
+			if java {
+				break
+			}
 		}
-		id := &syntax.Ident{Name: f.Owner.DisplayName()}
-		id.P = x.P
-		m := &syntax.Member{X: id, Name: x.Name}
-		m.P = x.P
-		x.Member = m
-		t := c.staticField(m, f.Owner)
-		m.SetType(t)
-		return t, true
 	}
 	return types.InvalidType, false
 }
@@ -492,8 +523,17 @@ func (c *Checker) staticInScope(name string) *types.ClassSym {
 		if companionHas(k) {
 			return nil
 		}
+		// The first Java superclass, through which a public static of a
+		// package-private class above it is accessible.
+		var java *types.ClassSym
 		for s := k.Super; s != nil; s = s.Super {
-			if s.Ensure(); s.External && s.KotlinName == "" && len(s.Statics[name]) > 0 {
+			if s.Ensure(); java == nil && isJavaClass(s) {
+				java = s
+			}
+			if s.External && s.KotlinName == "" && len(s.Statics[name]) > 0 {
+				if java != nil {
+					return java
+				}
 				return s
 			}
 			if companionHas(s) {
