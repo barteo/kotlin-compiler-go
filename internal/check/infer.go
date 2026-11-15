@@ -929,6 +929,7 @@ func (s *system) fix(tv *tvar) {
 		}
 		if len(lowers) > 1 && len(tv.lits) == 0 {
 			val = s.withinUppers(val, lowers, uppers)
+			val = s.flexExact(val, lowers, uppers)
 		}
 		// A nullable lower bound with variables makes it nullable too, as
 		// in Kotlin: Out<String> and Out<M>? give Out<String>?, and M
