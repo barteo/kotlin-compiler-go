@@ -339,6 +339,8 @@ Files: `internal/check/call.go` (`boxedPrimitive`, `mostSpecific`).
 
 Guards: `j+k/primitiveOverrides/*`, which must keep *accepting valid* with JavaTypes on.
 
+**Done.** `enhancedBoxed` (with `javaBoxedParam`, which reads the Java method's descriptor) makes a Java `int` beat a `@NotNull Integer` whose types are both `Int`, in `mostSpecific` and `plainMostSpecific`. `platformLitParams` covers `foo4`: when every candidate that takes an integer literal as `Int` takes it as a platform `Integer!`, and some other candidate takes a non-platform type, the literal also widens, so `foo4(1)` sees `Integer` and `long` and reports `ambiguous call`. Java `Byte!`/`Integer!`/`Long!` overloads still pick `Integer` (box `integerOverloads`). The test moved from "rejects invalid elsewhere" to "on an expected line"; 0 regressions in diagnostics and box. `TestErrors` now sets `JavaTypes` as `kc` does, so annotations such as `@NotNull` apply. Unit test: `testdata/errors/stdlibJavaPrimitiveVsBoxed/`.
+
 ### 7. Assignment operators (F: 4 AI, 2 RV). Medium.
 
 - `compoundOp`: resolve both forms. The `op` form counts only if the target is mutable and the op's result type is a subtype of the target's type. Report ambiguity only if both succeed.

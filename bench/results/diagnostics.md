@@ -15,7 +15,7 @@ Of 10827 test files, 2312 are skipped and 8515 run.
 
 *Rejects invalid* and *accepts valid* agree with kotlinc. *Accepts invalid* is code kotlinc rejects that kc compiles; *rejects valid*, code kotlinc compiles that kc's checker rejects. Both are bugs. A *parse/unsupported* test uses a feature kc doesn't support, which says nothing about its checks.
 
-Of the 4132 tests both reject, kc reports an error on the line of an expected one in 3979.
+Of the 4132 tests both reject, kc reports an error on the line of an expected one in 3980.
 
 A test is invalid if it stops before the backend or marks an error: one that runs to it (`BACKEND`) can mark the JVM backend's errors, such as `CONFLICTING_JVM_DECLARATIONS`. Of the tests run, 222 stop at `FRONTEND` but mark no error: most add the `CHECK_TYPE` helpers, whose names (`_`) kotlinc reports outside the test infrastructure, and count as valid; the others leave their errors out with the `DIAGNOSTICS` directive. 114 run to the backend and mark one. 5 marked names have no declared severity (debug information, for one), and count as neither.
 
@@ -157,12 +157,12 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 15899 of 21506 expected errors (73.9%) on their lines.
+kc reports 15902 of 21506 expected errors (73.9%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
 | `SYNTAX` | 875 | 222 | 653 |
-| `UNRESOLVED_REFERENCE` | 2493 | 1953 | 540 |
+| `UNRESOLVED_REFERENCE` | 2493 | 1954 | 539 |
 | `ARGUMENT_TYPE_MISMATCH` | 1484 | 1255 | 229 |
 | `UNSUPPORTED` | 231 | 35 | 196 |
 | `WRONG_MODIFIER_TARGET` | 300 | 170 | 130 |
@@ -197,11 +197,11 @@ kc reports 15899 of 21506 expected errors (73.9%) on their lines.
 | `NON_PUBLIC_INLINE_CALL_FROM_PUBLIC_INLINE` | 60 | 28 | 32 |
 | `INAPPLICABLE_JVM_FIELD` | 33 | 2 | 31 |
 | `OPT_IN_USAGE_ERROR` | 96 | 66 | 30 |
-| `OVERLOAD_RESOLUTION_AMBIGUITY` | 159 | 129 | 30 |
 | `ASSIGNMENT_IN_EXPRESSION_CONTEXT` | 32 | 3 | 29 |
 | `ASSIGNMENT_TYPE_MISMATCH` | 114 | 85 | 29 |
 | `REPEATED_MODIFIER` | 39 | 10 | 29 |
 | `JVM_EXPOSE_BOXED_CANNOT_EXPOSE_PRIVATE` | 28 | 0 | 28 |
+| `OVERLOAD_RESOLUTION_AMBIGUITY` | 159 | 131 | 28 |
 | `WRONG_ANNOTATION_TARGET_WITH_USE_SITE_TARGET` | 80 | 52 | 28 |
 | `UNDERSCORE_USAGE_WITHOUT_BACKTICKS` | 28 | 1 | 27 |
 | `TYPE_ARGUMENTS_FOR_OUTER_CLASS_WHEN_NESTED_REFERENCED` | 41 | 15 | 26 |

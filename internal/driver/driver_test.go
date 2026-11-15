@@ -538,7 +538,7 @@ func TestErrors(t *testing.T) {
 	lib := stdlib()
 	for _, f := range files {
 		t.Run(filepath.Base(f), func(t *testing.T) {
-			opts := Options{OutDir: t.TempDir(), Jobs: 1}
+			opts := Options{OutDir: t.TempDir(), Jobs: 1, JavaTypes: true} // as kc
 			if usesStdlib(f) {
 				if lib == "" {
 					t.Skip("kotlin-stdlib.jar not found: set KOTLIN_HOME")

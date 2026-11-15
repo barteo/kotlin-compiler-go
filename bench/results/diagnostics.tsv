@@ -5413,7 +5413,7 @@ tests/j+k/primitiveOverrides/triangleWithNotNullType.kt	accepts valid
 tests/j+k/primitiveOverrides/triangleWithNullableType.kt	accepts valid		
 tests/j+k/primitiveOverridesWithInlineClass/inlineClassErasedToPrimitiveInt.kt	skip	LANGUAGE	
 tests/j+k/primitiveVsBoxedOverloadAndSecondParameter.kt	rejects invalid	on an expected line	
-tests/j+k/primitiveVsBoxedOverloads.kt	rejects invalid	elsewhere	
+tests/j+k/primitiveVsBoxedOverloads.kt	rejects invalid	on an expected line	
 tests/j+k/privateFieldOverridesNothing.kt	accepts valid		
 tests/j+k/privateNestedClassStaticMember.kt	rejects invalid	on an expected line	
 tests/j+k/privatePropertyAndSetterMultiModule.kt	accepts valid		
