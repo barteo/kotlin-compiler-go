@@ -2829,7 +2829,7 @@ func (c *Checker) javaProperty(x *syntax.Member, rt types.Type) (types.Type, boo
 		return types.InvalidType, false
 	}
 	getterName := types.GetterName(x.Name)
-	special := false
+	special, annotElem := false, false
 	switch {
 	case x.Name == "length" && c.isCharSequence(cls):
 		getterName, special = "length", true // Kotlin's CharSequence.length property
@@ -2839,6 +2839,7 @@ func (c *Checker) javaProperty(x *syntax.Member, rt types.Type) (types.Type, boo
 		getterName, special = x.Name, true // Kotlin's Enum.name and Enum.ordinal
 	case cls.External && cls.Retention != types.NoRetention:
 		getterName, special = x.Name, true // a Java annotation's element: name()
+		annotElem = true
 	case recordComponent(cls, x.Name):
 		getterName, special = x.Name, true // a Java record's component: x()
 	}
@@ -2903,6 +2904,9 @@ func (c *Checker) javaProperty(x *syntax.Member, rt types.Type) (types.Type, boo
 			slices.ContainsFunc(getters, func(g *types.FunSym) bool { return sameJavaType(f, g) }) {
 			x.Setter = f
 		}
+	}
+	if annotElem && x.Getter.Name == x.Name {
+		return c.kclassOfJava(sub.Apply(x.Getter.Ret)), true // a Class element is a KClass
 	}
 	return sub.Apply(x.Getter.Ret), true
 }
