@@ -308,7 +308,9 @@ var pureImplementations = map[string]string{
 // they are, not as platform types, as the Kotlin type's members do:
 // ArrayList<String>'s add(E) takes a String, not a String!. Members only
 // Java declares, as TreeMap's ceilingKey(K), keep platform types, and so
-// do results, of which Kotlin's are sometimes nullable: Map's get.
+// do results, of which Kotlin's are sometimes nullable: Map's get. A
+// member that overrides one with a predefined enhancement has it too:
+// HashMap's compute() takes a function that may return null, as Map's.
 func purelyImplement(cls *types.ClassSym) {
 	iface, ok := pureImplementations[cls.Name]
 	if !ok {
@@ -353,8 +355,9 @@ func purelyImplement(cls *types.ClassSym) {
 				continue
 			}
 			g := *f
-			g.Params = make([]*types.VarSym, len(f.Params))
-			for j, p := range f.Params {
+			g.Params = slices.Clone(f.Params)
+			enhanceJDK(iface, &g)
+			for j, p := range g.Params {
 				q := *p
 				q.Type = notPlatformParams(p.Type, own)
 				g.Params[j] = &q
