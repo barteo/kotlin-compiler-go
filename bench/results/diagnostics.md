@@ -7,9 +7,9 @@ Of 10827 test files, 2312 are skipped and 8515 run.
 | Result | Tests | Share |
 |:---|---:|---:|
 | rejects invalid | 4098 | 48.1% |
-| accepts valid | 3995 | 46.9% |
+| accepts valid | 3996 | 46.9% |
 | accepts invalid | 286 | 3.4% |
-| rejects valid | 118 | 1.4% |
+| rejects valid | 117 | 1.4% |
 | parse/unsupported | 16 | 0.2% |
 | crash | 1 | 0.0% |
 
@@ -124,7 +124,7 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 | `no function '_' takes n arguments` | 6 | `tests/annotations/javaAnnotationWithParameter.kt`, `tests/cast/kt15161.kt` |
 | `unresolved import: _` | 6 | `tests/errorProneAtomicArraySuggestions.kt`, `tests/errorProneAtomicReferenceArguments.kt` |
 | `ambiguous call: n candidates for '_' take (_)` | 5 | `tests/callableReference/resolve/resolveReferenceAgainstKFunctionAndKPrpoerty.kt`, `tests/multimodule/varargConflict.kt` |
-| `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 4 | `tests/j+k/withTestConnection3.kt`, `tests/platformTypes/methodCall/multipleExactBoundsNullable.kt` |
+| `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 3 | `tests/j+k/withTestConnection3.kt`, `tests/regressions/Jet169.kt` |
 | `property must be initialized or be abstract` | 3 | `tests/backingField/FieldAsParam.kt`, `tests/backingField/FieldShadow.kt` |
 | `type argument is not within its bounds: type parameter '_' must be subtype of '_', but actual: _` | 3 | `tests/inference/capturedTypes/capturedTypeWithInnerTypealias.kt`, `tests/inference/unsoundness2.kt` |
 | `type checking has run into a recursive problem; specify the type of '_'` | 3 | `tests/checkers/uselessCastLeadsToRecursiveProblem.kt`, `tests/problems/kt27790.kt` |
@@ -160,7 +160,7 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 15793 of 21506 expected errors (73.4%) on their lines.
+kc reports 15800 of 21506 expected errors (73.5%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
@@ -176,7 +176,7 @@ kc reports 15793 of 21506 expected errors (73.4%) on their lines.
 | `CONST_VAL_WITH_NON_CONST_INITIALIZER` | 251 | 166 | 85 |
 | `MUST_BE_INITIALIZED` | 102 | 21 | 81 |
 | `ANNOTATION_ARGUMENT_MUST_BE_CONST` | 224 | 144 | 80 |
-| `CANNOT_INFER_PARAMETER_TYPE` | 627 | 547 | 80 |
+| `CANNOT_INFER_PARAMETER_TYPE` | 627 | 550 | 77 |
 | `MISSING_DEPENDENCY_CLASS` | 71 | 0 | 71 |
 | `TYPE_VARIANCE_CONFLICT_ERROR` | 123 | 54 | 69 |
 | `WRONG_NUMBER_OF_TYPE_ARGUMENTS` | 163 | 96 | 67 |
@@ -233,9 +233,9 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | Error | Count |
 |:---|---:|
 | `unresolved reference: _` | 288 |
-| `type mismatch: inferred type is _ but _ was expected` | 233 |
-| `cannot infer type for type parameter '_'. Specify it explicitly.` | 203 |
-| `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 199 |
+| `type mismatch: inferred type is _ but _ was expected` | 232 |
+| `cannot infer type for type parameter '_'. Specify it explicitly.` | 215 |
+| `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 198 |
 | `unresolved or unsupported type: _` | 59 |
 | `class '_' is not abstract and does not implement abstract member '_'` | 58 |
 | `suspend function '_' cannot override non-suspend function '_' defined in '_'` | 50 |

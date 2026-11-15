@@ -2570,7 +2570,7 @@ tests/delegatedProperty/nonDefaultAccessors.kt	rejects invalid	on an expected li
 tests/delegatedProperty/privateFinalSetterOnOpenDelegatedVar.kt	rejects invalid	on an expected line	
 tests/delegatedProperty/propertyDefferedType.kt	rejects invalid	on an expected line	
 tests/delegatedProperty/provideDelegate/commonCaseForInference.kt	accepts valid		
-tests/delegatedProperty/provideDelegate/commonSupertype.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	commonSupertype.kt:16: cannot infer type for type parameter 'Y'. Specify it explicitly.
+tests/delegatedProperty/provideDelegate/commonSupertype.kt	rejects valid	cannot infer type for type parameter '_'. Specify it explicitly.	commonSupertype.kt:16: cannot infer type for type parameter 'X'. Specify it explicitly.
 tests/delegatedProperty/provideDelegate/genericProvideDelegate.kt	accepts valid		
 tests/delegatedProperty/provideDelegate/hostAndReceiver1.kt	rejects invalid	on an expected line	
 tests/delegatedProperty/provideDelegate/hostAndReceiver2.kt	rejects invalid	on an expected line	
@@ -7018,7 +7018,7 @@ tests/platformTypes/methodCall/kotlinCollectionToJava.kt	accepts valid
 tests/platformTypes/methodCall/kt27565.kt	accepts valid		
 tests/platformTypes/methodCall/list.kt	accepts valid		
 tests/platformTypes/methodCall/multipleExactBounds.kt	accepts valid		
-tests/platformTypes/methodCall/multipleExactBoundsNullable.kt	rejects valid	only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _	main.kt:18: only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type M2?
+tests/platformTypes/methodCall/multipleExactBoundsNullable.kt	accepts valid		
 tests/platformTypes/methodCall/objectArray.kt	accepts valid		
 tests/platformTypes/methodCall/overloadingForSubclass.kt	accepts valid		
 tests/platformTypes/methodCall/sam.kt	accepts valid		
