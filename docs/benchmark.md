@@ -48,33 +48,32 @@ does. Gradle itself, incremental compilation and tests are left out.
 
 ## Results
 
-Apple M2 MacBook Air (4 performance and 4 efficiency cores, 16 GB),
-JDK 21, at `1d1d79a` on 10 November 2026.
+A Linux x86_64 cloud machine (4 CPUs, 15 GB), JDK 21, hyperfine 2.0.0,
+with the commands above, on 15 November 2026: the libraries at `f5f5cce`,
+the generated project at `0f87173`.
 
 Wall time:
 
-| Input | Files | Lines | `kc -j 1` | `kc -j 8` | `kotlinc` cold | `kotlinc` warm | Warm `kotlinc` / `kc -j 1` |
+| Input | Files | Lines | `kc -j 1` | `kc -j 4` | `kotlinc` cold | `kotlinc` warm | Warm `kotlinc` / `kc -j 1` |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| Generated | 100 | 40k | 0.60 s | 0.33 s | 17.8 s | 6.9 s | 12x |
-| Generated | 1,000 | 404k | 5.98 s | 2.88 s | 80.6 s | 98.9 s | 17x |
-| kotlinpoet | 39 | 8.7k | 153 ms | 104 ms | 7.5 s | 1.11 s | 7.3x |
-| kotlinx-coroutines-core | 169 | 34k | 312 ms | 179 ms | 11.2 s | 2.32 s | 7.4x |
-| Ktor, 3 modules | 236 | 24k | 366 ms | 244 ms | 20.0 s | 2.27 s | 6.2x |
+| Generated | 500 | 202k | 7.13 s | 4.01 s | 98.1 s | 83.9 s | 12x |
+| kotlinpoet | 39 | 8.7k | 300 ms | 211 ms | 17.8 s | 3.44 s | 11x |
+| kotlinx-coroutines-core | 169 | 34k | 796 ms | 643 ms | 28.5 s | 6.88 s | 8.6x |
+| Ktor, 3 modules | 236 | 24k | 849 ms | 698 ms | 45.7 s | 6.96 s | 8.2x |
 
 Peak memory (resident set size):
 
-| Input | Files | Lines | `kc -j 1` | `kc -j 8` | `kotlinc` cold | Cold `kotlinc` / `kc -j 1` |
+| Input | Files | Lines | `kc -j 1` | `kc -j 4` | `kotlinc` cold | Cold `kotlinc` / `kc -j 1` |
 |---|---:|---:|---:|---:|---:|---:|
-| Generated | 100 | 40k | 171 MB | 238 MB | 1.41 GB | 8.3x |
-| Generated | 1,000 | 404k | 1.31 GB | 1.75 GB | 4.02 GB | 3.1x |
-| kotlinpoet | 39 | 8.7k | 80 MB | 93 MB | 1.03 GB | 13x |
-| kotlinx-coroutines-core | 169 | 34k | 115 MB | 130 MB | 1.09 GB | 9.5x |
-| Ktor, 3 modules | 236 | 24k | 82 MB | 95 MB | 1.08 GB | 13x |
+| Generated | 500 | 202k | 755 MB | 1.03 GB | 3.36 GB | 4.4x |
+| kotlinpoet | 39 | 8.7k | 88 MB | 100 MB | 944 MB | 11x |
+| kotlinx-coroutines-core | 169 | 34k | 125 MB | 140 MB | 1.04 GB | 8.3x |
+| Ktor, 3 modules | 236 | 24k | 87 MB | 94 MB | 946 MB | 11x |
 
 - `kotlinc` runs with an 8 GB heap limit (`HEAP`). Warm `kotlinc`'s
   memory isn't measured.
-- Warm `kotlinc` doesn't settle at 1,000 files on this 16 GB machine:
-  its four runs took 78–99 s, mostly slower than cold.
+- Warm `kotlinc` doesn't settle at 500 files on this machine: its four
+  runs took 67–103 s.
 - `kotlinc`'s times vary by 10–20% between sessions although it doesn't
   change. To measure a change to `kc`, time both builds in one session.
 - Full tables, with CPU time, are in [bench/results](../bench/results/).
@@ -85,26 +84,26 @@ Peak memory (resident set size):
 
 A profile (`bench/profile.sh`, in
 [phases-500.md](../bench/results/phases-500.md)): 500 generated
-files of 202k lines, warm, on an 8-CPU machine, both compilers on one
-thread.
+files of 202k lines, warm, on the 4-CPU machine above, both compilers
+on one thread.
 
 | Work | `kotlinc` | `kc -j 1` | Ratio |
 |:---|---:|---:|---:|
-| Parsing | 5.2 s | 0.26 s | ~20x |
-| Resolution and type checking | 8.0 s | 1.12 s | ~7x |
-| Checkers (warnings and errors) | 4.0 s | none | |
-| Reading the class path | 0.4 s | 0.01 s | |
-| Backend, with inlining and writing | 14.1 s | 1.38 s | ~10x |
-| **Total** | **31.7 s** | **2.77 s** | **11x** |
+| Parsing | 4.0 s | 0.65 s | ~6x |
+| Resolution and type checking | 26.8 s | 3.06 s | ~9x |
+| Checkers (warnings and errors) | 17.9 s | none | |
+| Reading the class path | 1.4 s | 0.03 s | |
+| Backend, with inlining and writing | 34.7 s | 3.39 s | ~10x |
+| **Total** | **84.8 s** | **7.13 s** | **12x** |
 
 - There is no hotspot: no single lowering or checker takes more than
-  about 2%. The time is spread over 84 IR lowerings and 272 checkers,
+  about 2%. The time is spread over 93 IR lowerings and 330 checkers,
   each walking the tree.
 - `kotlinc`'s frontend runs on one core; only its backend can use more.
   With `-Xbackend-threads=0` (a backend thread per core) and without the
-  profiler it took 23.5 s, against 33.2 s for the profiled runs. `kc`
+  profiler it took 58.4 s, against 87.9 s for the profiled runs. `kc`
   also checks in parallel.
-- Of `kc`'s backend, 0.63 s is writing 10,001 class files.
+- Of `kc`'s backend, 1.52 s is writing 10,001 class files.
 
 ## What the numbers don't show
 
