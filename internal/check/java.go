@@ -2604,6 +2604,9 @@ func (c *Checker) javaCall(x *syntax.Call, fn *syntax.Member, rt types.Type, wan
 		return types.InvalidType
 	}
 	ms := c.lowPriorityGivesWay(c.accessible(cls, c.javaMethods(cls, fn.Name), c.declaredClass(fn.X, cls)), fn.Name, rt, x)
+	if x.Operator {
+		ms = slices.DeleteFunc(slices.Clone(ms), varargNonOperator)
+	}
 	if len(ms) == 0 && fn.Name == "get" && c.isCharSequence(cls) {
 		ms = []*types.FunSym{c.charSequenceGet()} // s[i]: charAt(i)
 	}

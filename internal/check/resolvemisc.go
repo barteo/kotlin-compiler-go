@@ -225,3 +225,18 @@ func useSiteProjected(recv types.Subst, t types.Type) bool {
 	}
 	return false
 }
+
+// varargNonOperator reports whether f, a Java method of a binary
+// operator's name, takes a vararg parameter, which makes it no operator:
+// x + "" calls the extension plus(s: String), not a Java plus(String...).
+func varargNonOperator(f *types.FunSym) bool {
+	if len(f.Params) == 0 || !f.Params[len(f.Params)-1].Vararg {
+		return false
+	}
+	switch f.Name {
+	case "plus", "minus", "times", "div", "rem", "mod", "rangeTo", "rangeUntil", "contains", "compareTo",
+		"plusAssign", "minusAssign", "timesAssign", "divAssign", "remAssign", "modAssign":
+		return true
+	}
+	return false
+}
