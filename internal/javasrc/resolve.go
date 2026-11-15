@@ -417,8 +417,12 @@ func (r *resolver) generic(t *Type) bool {
 			return true
 		}
 	}
-	_, tp := r.classType(t)
-	return tp != nil
+	n, tp := r.classType(t)
+	if tp != nil {
+		return true
+	}
+	_, implied := r.impliedOuter(t, n)
+	return implied
 }
 
 // sig returns a type's generic signature. A nested class's type whose
@@ -434,6 +438,10 @@ func (r *resolver) sig(t *Type) string {
 	n, tp := r.classType(t)
 	if tp != nil {
 		b.WriteString("T" + tp.Name + ";")
+		return b.String()
+	}
+	if s, ok := r.impliedOuter(t, n); ok {
+		b.WriteString(s)
 		return b.String()
 	}
 	if s, ok := r.innerSig(t, n); ok {
