@@ -531,18 +531,19 @@ func (t *classTable) fieldNullability(fd classfile.Member, ft types.Type) types.
 
 // Nullability annotations kotlinc reads on Java declarations, by
 // descriptor: true for those that make a type non-null, false for
-// nullable. JSR-305's javax.annotation ones only warn by default, and
-// leave platform types as they are.
+// nullable. JSR-305's javax.annotation ones and androidx's RecentlyNonNull
+// and RecentlyNullable only warn by default, and leave platform types as
+// they are.
 var javaNullability = func() map[string]bool {
 	m := map[string]bool{}
-	for _, n := range []string{"org/jetbrains/annotations/NotNull", "androidx/annotation/NonNull", "androidx/annotation/RecentlyNonNull",
+	for _, n := range []string{"org/jetbrains/annotations/NotNull", "androidx/annotation/NonNull",
 		"android/support/annotation/NonNull", "android/annotation/NonNull", "com/android/annotations/NonNull",
 		"org/eclipse/jdt/annotation/NonNull", "org/checkerframework/checker/nullness/qual/NonNull",
 		"org/checkerframework/checker/nullness/compatqual/NonNullDecl", "edu/umd/cs/findbugs/annotations/NonNull",
 		"lombok/NonNull", "io/reactivex/annotations/NonNull", "io/reactivex/rxjava3/annotations/NonNull"} {
 		m["L"+n+";"] = true
 	}
-	for _, n := range []string{"org/jetbrains/annotations/Nullable", "androidx/annotation/Nullable", "androidx/annotation/RecentlyNullable",
+	for _, n := range []string{"org/jetbrains/annotations/Nullable", "androidx/annotation/Nullable",
 		"android/support/annotation/Nullable", "android/annotation/Nullable", "com/android/annotations/Nullable",
 		"org/eclipse/jdt/annotation/Nullable", "org/checkerframework/checker/nullness/qual/Nullable",
 		"org/checkerframework/checker/nullness/compatqual/NullableDecl", "edu/umd/cs/findbugs/annotations/Nullable",
