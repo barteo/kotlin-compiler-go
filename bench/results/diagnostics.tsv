@@ -8862,7 +8862,7 @@ tests/targetedBuiltIns/backwardCompatibility/derivedInterfacesWithKotlinFun.kt	r
 tests/targetedBuiltIns/backwardCompatibility/fillInStackTrace.kt	accepts valid		
 tests/targetedBuiltIns/backwardCompatibility/finalize.kt	rejects invalid	on an expected line	
 tests/targetedBuiltIns/backwardCompatibility/hashMapGetOrDefault.kt	accepts valid		
-tests/targetedBuiltIns/concurrentMapRemove.kt	accepts invalid	ARGUMENT_TYPE_MISMATCH; NULL_FOR_NONNULL_TYPE	concurrentMapRemove.kt:11: ARGUMENT_TYPE_MISMATCH
+tests/targetedBuiltIns/concurrentMapRemove.kt	rejects invalid	on an expected line	
 tests/targetedBuiltIns/forEachRemainingNullability.kt	rejects invalid	on an expected line	
 tests/targetedBuiltIns/getOrDefault.kt	rejects invalid	on an expected line	
 tests/targetedBuiltIns/mutableMapRemove.kt	rejects invalid	on an expected line	

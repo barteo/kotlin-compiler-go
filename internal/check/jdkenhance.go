@@ -288,6 +288,7 @@ func mapCollectionMembers(cls *types.ClassSym) {
 		retype("remove", "(Ljava/lang/Object;)Ljava/lang/Object;", k)
 		if v, ok := arg('m', 1); ok {
 			retype("containsValue", "(Ljava/lang/Object;)Z", v)
+			retype("remove", "(Ljava/lang/Object;Ljava/lang/Object;)Z", k, v)
 		}
 	}
 }

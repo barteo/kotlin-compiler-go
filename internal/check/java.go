@@ -2460,7 +2460,15 @@ func (c *Checker) javaCall(x *syntax.Call, fn *syntax.Member, rt types.Type, wan
 	// Members that don't apply give way to extensions, as in Kotlin:
 	// Taggable's tag(type) to the extension tag<T>(), BigDecimal's
 	// plus(MathContext) to the operator BigDecimal.plus(BigDecimal).
-	if exts := c.extCalleesFor(fn.Name, rt, x); len(exts) > 0 {
+	exts := c.extCalleesFor(fn.Name, rt, x)
+	if slices.ContainsFunc(exts, func(cl callee) bool { return platformDependentExt(cl.f) }) {
+		// The member hides them, and the others don't take the arguments.
+		exts = slices.DeleteFunc(exts, func(cl callee) bool {
+			_, ok := mapArgs(cl.f, x)
+			return !ok || platformDependentExt(cl.f) && slices.ContainsFunc(ms, func(f *types.FunSym) bool { return len(f.Params) == len(cl.f.Params) })
+		})
+	}
+	if len(exts) > 0 {
 		fit := false
 		for _, f := range ms {
 			fit = fit || c.mayTake(f, x)
@@ -2495,6 +2503,13 @@ func (c *Checker) javaCall(x *syntax.Call, fn *syntax.Member, rt types.Type, wan
 		}
 	}
 	return c.mapGet(x, fn, cls, c.resolve(x, cands, want, sink))
+}
+
+// platformDependentExt reports whether f is one of the standard library's
+// extensions marked @PlatformDependent, Map's getOrDefault(key, value) and
+// MutableMap's remove(key, value): on the JVM, the member hides them.
+func platformDependentExt(f *types.FunSym) bool {
+	return f.Ext && strings.HasPrefix(f.Facade, "kotlin/collections/") && len(f.Params) == 2 && (f.Name == "remove" || f.Name == "getOrDefault")
 }
 
 // mapGet returns the type t of a call x of a member of cls, or t? for
