@@ -256,6 +256,13 @@ Risk:
 - Android (`Activity.RESULT_OK` through Kotlin subclasses) needs checking, and so do `analysis/ka` and KSP callers that resolve statics through `classTable`.
 - Memoize the scope per class and name, since this sits on a hot path.
 
+**Done.** All 8 flipped, with 0 regressions in diagnostics and box. Notes on what landed:
+- `staticFields` (`object.go`) is the static scope for fields. `staticField` reports two distinct visible fields as an overload resolution ambiguity.
+- `javaStatics` keeps its walk up the superclass chain only for a Java qualifier, and skips Kotlin classes on the way. Interface static methods were never collected, so nothing changed there.
+- `inheritedStatic` (unqualified fields) still uses `javaField`, until milestone 4.
+- `staticFields` isn't memoized. The diagnostics suite's time didn't change, so it was left out.
+- Unit test: `testdata/errors/javaStaticScopes/`.
+
 ### 3. Imports at one level (D: 11 AI, 2 RV). Medium.
 
 - Explicit member imports: resolve every import of the name (`memberImports` plus `moreMemberImports`) as candidates of one level. For values, two distinct survivors are an ambiguity. For calls, they go through `resolve1` together.

@@ -6,16 +6,16 @@ Of 10827 test files, 2312 are skipped and 8515 run.
 
 | Result | Tests | Share |
 |:---|---:|---:|
-| rejects invalid | 4103 | 48.2% |
+| rejects invalid | 4111 | 48.3% |
 | accepts valid | 3995 | 46.9% |
-| accepts invalid | 281 | 3.3% |
+| accepts invalid | 273 | 3.2% |
 | rejects valid | 118 | 1.4% |
 | parse/unsupported | 16 | 0.2% |
 | crash | 1 | 0.0% |
 
 *Rejects invalid* and *accepts valid* agree with kotlinc. *Accepts invalid* is code kotlinc rejects that kc compiles; *rejects valid*, code kotlinc compiles that kc's checker rejects. Both are bugs. A *parse/unsupported* test uses a feature kc doesn't support, which says nothing about its checks.
 
-Of the 4103 tests both reject, kc reports an error on the line of an expected one in 3947.
+Of the 4111 tests both reject, kc reports an error on the line of an expected one in 3956.
 
 A test is invalid if it stops before the backend or marks an error: one that runs to it (`BACKEND`) can mark the JVM backend's errors, such as `CONFLICTING_JVM_DECLARATIONS`. Of the tests run, 222 stop at `FRONTEND` but mark no error: most add the `CHECK_TYPE` helpers, whose names (`_`) kotlinc reports outside the test infrastructure, and count as valid; the others leave their errors out with the `DIAGNOSTICS` directive. 114 run to the backend and mark one. 5 marked names have no declared severity (debug information, for one), and count as neither.
 
@@ -50,8 +50,8 @@ Tests kotlinc rejects that kc compiles, by the errors their markup expects. A te
 
 | Expected error | Tests | Only error | Examples |
 |:---|---:|---:|:---|
-| `UNRESOLVED_REFERENCE` | 30 | 21 | `tests/callResolution/eagerLambdaAnalysis/samVsDefault.kt`, `tests/deprecated/javaDeprecatedHidden.kt` |
-| `OVERLOAD_RESOLUTION_AMBIGUITY` | 22 | 18 | `tests/callResolution/kt50386.kt`, `tests/imports/EnumEntryVsStaticAmbiguity.kt` |
+| `UNRESOLVED_REFERENCE` | 25 | 16 | `tests/callResolution/eagerLambdaAnalysis/samVsDefault.kt`, `tests/deprecated/javaDeprecatedHidden.kt` |
+| `OVERLOAD_RESOLUTION_AMBIGUITY` | 19 | 15 | `tests/callResolution/kt50386.kt`, `tests/imports/EnumEntryVsStaticAmbiguity.kt` |
 | `ARGUMENT_TYPE_MISMATCH` | 18 | 14 | `tests/annotations/annotationArgumentScopeForNestedClass.kt`, `tests/collectionLiterals/kt82964.kt` |
 | `MISSING_DEPENDENCY_CLASS` | 16 | 10 | `tests/j+k/differentFilename.kt`, `tests/javac/Lambda.kt` |
 | `INVISIBLE_REFERENCE` | 9 | 9 | `tests/arguments/ambiguityOnJavaOverride.kt`, `tests/classObjects/companionObjectOfPrivateClassVisibility.kt` |
@@ -160,12 +160,12 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 15810 of 21506 expected errors (73.5%) on their lines.
+kc reports 15836 of 21506 expected errors (73.6%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
 | `SYNTAX` | 875 | 222 | 653 |
-| `UNRESOLVED_REFERENCE` | 2493 | 1924 | 569 |
+| `UNRESOLVED_REFERENCE` | 2493 | 1946 | 547 |
 | `ARGUMENT_TYPE_MISMATCH` | 1484 | 1255 | 229 |
 | `UNSUPPORTED` | 231 | 35 | 196 |
 | `WRONG_MODIFIER_TARGET` | 300 | 170 | 130 |
@@ -183,8 +183,8 @@ kc reports 15810 of 21506 expected errors (73.5%) on their lines.
 | `WRONG_ANNOTATION_TARGET` | 380 | 316 | 64 |
 | `NO_RETURN_IN_FUNCTION_WITH_BLOCK_BODY` | 148 | 91 | 57 |
 | `MIXING_SUSPEND_AND_NON_SUSPEND_SUPERTYPES` | 83 | 28 | 55 |
-| `OVERLOAD_RESOLUTION_AMBIGUITY` | 159 | 104 | 55 |
 | `INITIALIZER_TYPE_MISMATCH` | 428 | 375 | 53 |
+| `OVERLOAD_RESOLUTION_AMBIGUITY` | 159 | 108 | 51 |
 | `NO_VALUE_FOR_PARAMETER` | 175 | 127 | 48 |
 | `NON_PUBLIC_CALL_FROM_PUBLIC_INLINE` | 65 | 19 | 46 |
 | `UNINITIALIZED_VARIABLE` | 211 | 165 | 46 |

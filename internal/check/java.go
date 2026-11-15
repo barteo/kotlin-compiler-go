@@ -2074,13 +2074,17 @@ func listInterface(cls *types.ClassSym) *types.ClassSym {
 	return l
 }
 
-// javaStatics collects the static methods named name of cls and its
-// superclasses.
+// javaStatics collects the static methods named name of cls and, for a
+// Java class, of its Java superclasses, through Kotlin classes. A Kotlin
+// class has its own only: KotlinSub.javaStatic() is unresolved.
 func javaStatics(cls *types.ClassSym, name string) []*types.FunSym {
 	var out []*types.FunSym
 	hidden := map[string]bool{} // the parameters of a subclass's
 	for s := cls; s != nil; s = s.Super {
 		s.Ensure()
+		if s != cls && (!isJavaClass(cls) || !isJavaClass(s)) {
+			continue
+		}
 		for _, f := range s.Statics[name] {
 			// A subclass's static method hides its superclass's of the
 			// same parameters: GoogleApiAvailability.getInstance().
@@ -2687,6 +2691,9 @@ func (c *Checker) staticField(x *syntax.Member, cls *types.ClassSym) types.Type 
 	if f == nil {
 		c.errorf(x.P, "unresolved reference: %s", x.Name)
 		return types.InvalidType
+	}
+	if fs := c.visibleStaticFields(cls, x.Name); len(fs) > 1 {
+		c.errorf(x.P, "overload resolution ambiguity: %s is a static field of both %s and %s", x.Name, fs[0].Owner.DisplayName(), fs[1].Owner.DisplayName())
 	}
 	x.Field = f
 	return f.Type

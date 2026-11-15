@@ -1,6 +1,7 @@
 package check
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
@@ -378,12 +379,80 @@ func (c *Checker) staticFieldOf(cls *types.ClassSym, name string) *types.VarSym 
 
 // visibleJavaField returns the static field of a class named name, or
 // nil if there is none the code sees: a package-private one is its
-// package's.
+// package's. Of two that the class inherits, it returns the first, and
+// staticField reports the ambiguity.
 func (c *Checker) visibleJavaField(cls *types.ClassSym, name string) *types.VarSym {
-	if f := javaField(cls, name); c.visibleField(f) {
-		return f
+	if fs := c.visibleStaticFields(cls, name); len(fs) > 0 {
+		return fs[0]
 	}
 	return nil
+}
+
+// visibleStaticFields returns the static fields named name in the static
+// scope of cls that the code sees.
+func (c *Checker) visibleStaticFields(cls *types.ClassSym, name string) []*types.VarSym {
+	var out []*types.VarSym
+	for _, f := range staticFields(cls, name) {
+		if c.visibleField(f) {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+// staticFields returns the distinct static fields named name in the
+// static scope of cls, as K2's JavaClassStaticUseSiteScope has it. A
+// Kotlin class has its own only: KotlinSub.JAVA_FIELD is unresolved. A
+// Java class has its own, or, if it declares none of the name, those of
+// its supertypes, through Kotlin classes, of which two distinct ones are
+// ambiguous: E.field, for a class E implementing two interfaces with a
+// field. One field reached along two paths is one.
+func staticFields(cls *types.ClassSym, name string) []*types.VarSym {
+	cls.Ensure()
+	if f := cls.Fields[name]; f != nil {
+		return []*types.VarSym{f}
+	}
+	if !isJavaClass(cls) {
+		return nil
+	}
+	var out []*types.VarSym
+	seen := map[*types.ClassSym]bool{}
+	var walk func(s *types.ClassSym)
+	walk = func(s *types.ClassSym) {
+		if seen[s] {
+			return
+		}
+		seen[s] = true
+		if s.Ensure(); isJavaClass(s) {
+			for _, f := range staticFields(s, name) {
+				if !slices.Contains(out, f) {
+					out = append(out, f)
+				}
+			}
+			return
+		}
+		// A Kotlin class has no statics of its supertypes, but a Java
+		// class below it sees those of the Java classes above it.
+		if s.Super != nil {
+			walk(s.Super)
+		}
+		for _, t := range s.Interfaces {
+			walk(t)
+		}
+	}
+	if cls.Super != nil {
+		walk(cls.Super)
+	}
+	for _, t := range cls.Interfaces {
+		walk(t)
+	}
+	return out
+}
+
+// isJavaClass reports whether cls is a Java class: one of the class path
+// that Kotlin didn't compile, or of the program's Java sources.
+func isJavaClass(cls *types.ClassSym) bool {
+	return cls.External && !cls.FromKotlin && cls.KotlinName == "" && cls.Java == nil
 }
 
 // inheritedStatic checks a name as a static field that the class the code
@@ -391,8 +460,8 @@ func (c *Checker) visibleJavaField(cls *types.ClassSym, name string) *types.VarS
 // Activity's code.
 func (c *Checker) inheritedStatic(x *syntax.Ident) (types.Type, bool) {
 	for k := c.cls; k != nil; k = k.Outer {
-		f := c.visibleJavaField(k, x.Name)
-		if f == nil {
+		f := javaField(k, x.Name)
+		if !c.visibleField(f) {
 			continue
 		}
 		id := &syntax.Ident{Name: f.Owner.DisplayName()}

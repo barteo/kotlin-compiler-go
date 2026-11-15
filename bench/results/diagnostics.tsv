@@ -5347,7 +5347,7 @@ tests/j+k/javaOverrideOfExtensionProperty.kt	accepts valid
 tests/j+k/javaStaticField.kt	accepts valid		
 tests/j+k/javaStaticFieldViaJJInheritance.kt	accepts valid		
 tests/j+k/javaStaticFieldViaJKJInheritance.kt	accepts valid		
-tests/j+k/javaStaticFieldViaKJInheritance.kt	accepts invalid	UNRESOLVED_REFERENCE	main.kt:4: UNRESOLVED_REFERENCE
+tests/j+k/javaStaticFieldViaKJInheritance.kt	rejects invalid	on an expected line	
 tests/j+k/javaStaticImport.kt	accepts valid		
 tests/j+k/javaSupertypeNameDisambiguation.kt	accepts valid		
 tests/j+k/jkjPrivateProperty.kt	accepts valid		
@@ -7935,13 +7935,13 @@ tests/scopes/inheritance/statics/companionObject/inheritFromContainingClass.kt	r
 tests/scopes/inheritance/statics/companionObject/inheritFromJava.kt	rejects invalid	on an expected line	
 tests/scopes/inheritance/statics/companionObject/inheritFromJavaAfterKotlin.kt	rejects invalid	on an expected line	
 tests/scopes/inheritance/statics/hidePrivateByPublic.kt	rejects invalid	on an expected line	
-tests/scopes/inheritance/statics/jjkj.kt	accepts invalid	UNRESOLVED_REFERENCE	test.kt:9: UNRESOLVED_REFERENCE
+tests/scopes/inheritance/statics/jjkj.kt	rejects invalid	on an expected line	
 tests/scopes/inheritance/statics/kjk.kt	rejects invalid	on an expected line	
 tests/scopes/inheritance/statics/localVsStatic.kt	rejects invalid	on an expected line	
-tests/scopes/inheritance/statics/nameClash0.kt	accepts invalid	OVERLOAD_RESOLUTION_AMBIGUITY	test.kt:6: OVERLOAD_RESOLUTION_AMBIGUITY
-tests/scopes/inheritance/statics/nameClash1.kt	accepts invalid	OVERLOAD_RESOLUTION_AMBIGUITY	test.kt:6: OVERLOAD_RESOLUTION_AMBIGUITY
-tests/scopes/inheritance/statics/nameClash2.kt	accepts invalid	OVERLOAD_RESOLUTION_AMBIGUITY	test.kt:9: OVERLOAD_RESOLUTION_AMBIGUITY
-tests/scopes/inheritance/statics/oneInterfaceManyTimes.kt	accepts invalid	UNRESOLVED_REFERENCE	test.kt:9: UNRESOLVED_REFERENCE
+tests/scopes/inheritance/statics/nameClash0.kt	rejects invalid	on an expected line	
+tests/scopes/inheritance/statics/nameClash1.kt	rejects invalid	on an expected line	
+tests/scopes/inheritance/statics/nameClash2.kt	rejects invalid	on an expected line	
+tests/scopes/inheritance/statics/oneInterfaceManyTimes.kt	rejects invalid	on an expected line	
 tests/scopes/inheritance/statics/overloadStatic.kt	accepts valid		
 tests/scopes/inheritance/statics/staticFunAndPropertyImport.kt	rejects invalid	on an expected line	
 tests/scopes/inheritance/statics/staticFunVsImport.kt	rejects invalid	on an expected line	
@@ -7949,8 +7949,8 @@ tests/scopes/inheritance/statics/staticPropertyVsImport.kt	accepts valid
 tests/scopes/inheritance/statics/staticVsCompanion.kt	accepts valid		
 tests/scopes/inheritance/statics/staticVsMember.kt	accepts valid		
 tests/scopes/inheritance/statics/staticVsOuter.kt	accepts valid		
-tests/scopes/inheritance/statics/staticsFromjava.kt	accepts invalid	UNRESOLVED_REFERENCE	1.kt:23: UNRESOLVED_REFERENCE
-tests/scopes/inheritance/statics/staticsFromjavaAfterKotlin.kt	accepts invalid	UNRESOLVED_REFERENCE	2.kt:5: UNRESOLVED_REFERENCE
+tests/scopes/inheritance/statics/staticsFromjava.kt	rejects invalid	on an expected line	
+tests/scopes/inheritance/statics/staticsFromjavaAfterKotlin.kt	rejects invalid	on an expected line	
 tests/scopes/initializerScopeOfExtensionProperty.kt	rejects invalid	on an expected line	
 tests/scopes/intersectionOverrideOfTwoMembers.kt	accepts valid		
 tests/scopes/intersectionOverrideOfTwoMembers_java.kt	accepts valid		
@@ -9369,7 +9369,7 @@ tests/visibility/notOverridingInternal.kt	accepts valid
 tests/visibility/notOverridingPackagePrivate.kt	accepts valid		
 tests/visibility/overrideOfMemberInPackagePrivateClass.kt	accepts valid		
 tests/visibility/packagePrivateStatic.kt	rejects valid	class Base is not public	main.kt:7: class Base is not public
-tests/visibility/packagePrivateStaticInterfaceFieldViaKotlinClass.kt	rejects invalid	elsewhere	
+tests/visibility/packagePrivateStaticInterfaceFieldViaKotlinClass.kt	rejects invalid	on an expected line	
 tests/visibility/packagePrivateStaticInterfaceMethod.kt	rejects invalid	on an expected line	
 tests/visibility/packagePrivateStaticViaInternal.kt	rejects invalid	on an expected line	
 tests/visibility/packagePrivateStaticViaTypeAlias.kt	rejects valid	class PackagePrivateGrandparentAbstractClass is not public	foo.kt:13: class PackagePrivateGrandparentAbstractClass is not public
