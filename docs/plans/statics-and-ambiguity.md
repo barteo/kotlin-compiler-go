@@ -94,7 +94,7 @@ Rejects valid:
 
 ### Left to the inference plan
 
-These seven fail on ambiguity diagnostics, but the cause is inference or lambda and callable-reference analysis. They belong in `docs/plans/inference.md`:
+These seven fail on ambiguity diagnostics, but the cause is inference or lambda and callable-reference analysis. They are copied to [`docs/plans/inference.md`](inference.md):
 
 - AI `tests/callResolution/kt50386.kt`: two generic `presenter` overloads with a lambda returning a generic class.
 - AI `tests/resolve/overloadConflicts/emptyLambdaUnitNoDiscrimination.kt`: an empty lambda must not prefer `() -> Unit` (`byLambdaResult`).
@@ -398,6 +398,8 @@ Expected total: 37 AI and 10 RV flipped, and 1 unsupported supported. The `-mark
   - Java primitive vs boxed
 
   Each line carries `// ERROR <substring>`, and `TestErrors` (`internal/driver/driver_test.go:530`) runs them. Add valid counterparts to `testdata/` so a rule that over-reports shows up.
+
+  **Done.** `TestErrors` fails on an error at any line without `// ERROR`, so the valid counterparts are unmarked lines in the same modules, which also covers the Java sources `TestRun` can't compile. Each module has valid lines next to its errors. Added: safe calls on a companion object and an object (`qualifierForms`); an explicit import and a package's own class over two star imports (`importAmbiguity/f.kt`); Java overloads by parameters, and a field and a method of one name (`javaDuplicates`); a bound reference to a Java instance field (`stdlibJavaFieldRefs`); and `op=` on read-only lists, strings, arrays, list elements and properties without an assignment operator extension in scope (`stdlibAssignOperators/v.kt`).
 - **Box suite**: `bench/kotlin-tests.sh box -baseline bench/results/box.tsv -o "" -tsv ""`, 0 regressions.
 - **analysis/ka**: `go test ./analysis/...`, because KSP resolves Java statics and imports through the same `Library`, and `go test ./...`.
 - **Performance**: milestones 2 to 4 sit on name lookup. Compare `go test -bench . ./analysis/ka` (`bench_test.go`) and the suite timings in `docs/conformance.md` before and after. Memoize `javaStaticScope` per class and name, and the star-import classifier sets per file.

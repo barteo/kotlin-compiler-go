@@ -6,4 +6,16 @@ fun g() {
     val c = p?.b // ERROR expression expected, but a package name found
     val d = JStatic.Nested()
     val e = p.b()
+    val f = WithCompanion?.x
+    val g = Obj?.x
+}
+
+class WithCompanion {
+    companion object {
+        val x = 1
+    }
+}
+
+object Obj {
+    val x = 1
 }

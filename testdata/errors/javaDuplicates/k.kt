@@ -5,6 +5,9 @@ fun test(a: A) {
     a.foo() // ERROR ambiguous call
     A.bar() // ERROR ambiguous call
     a.f // ERROR overload resolution ambiguity
+    val i: Int = a.ok(1)
+    val s: String = a.ok("")
+    val g: Int = a.g + a.g()
 }
 
 fun foo1(x: (String) -> Int) {}

@@ -10,6 +10,8 @@ fun fields() {
     val c: KMutableProperty0<Any?> = ::publicMutable
     val d: KProperty1<JavaClass, String?> = JavaClass::nonStaticField
     val e = ::privateMutable // ERROR privateMutable
+    val f: KMutableProperty0<String?> = JavaClass()::nonStaticField
+    val g: String = JavaClass::publicFinal.get()
 }
 
 enum class Some { A }

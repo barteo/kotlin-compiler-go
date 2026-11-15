@@ -9,6 +9,12 @@ public class A {
     public String f;
     public String f = "";
 
+    public int ok(int x) { return 0; }
+    public String ok(String x) { return ""; }
+
+    public int g;
+    public int g() { return 0; }
+
     public static int baz(String x) { return 0; }
     public int baz(CharSequence x) { return 0; }
 }

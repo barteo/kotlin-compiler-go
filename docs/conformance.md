@@ -236,10 +236,10 @@ failures down; the largest groups are:
   (`ARGUMENT_TYPE_MISMATCH` 18), missing dependency classes
   (`MISSING_DEPENDENCY_CLASS` 15) and class redeclarations
   (`CLASSIFIER_REDECLARATION` 7).
-- **Rejects valid**, by `kc`'s first error: type mismatches (49),
-  inference failures (32), unresolved names, imports and labels (25),
-  and ambiguous calls and assignment operators (6). No box test is
-  rejected.
+- **Rejects valid**, by `kc`'s first error: unresolved names, imports
+  and labels (26), type mismatches (25), inference failures (18: type
+  variables or parameters not inferred, bounds, recursive types) and
+  ambiguous calls (3). No box test is rejected.
 - **Crashes**: a test with Java sources, a stack overflow on a
   recursive bound. The harness error is a test that declares `java.util.Date`, which `javac`
   compiles only with `--patch-module`.
