@@ -180,6 +180,7 @@ type Implies struct {
 	Returns, Param int
 	Is             *Type
 	Holds          bool
+	Negated        bool // with Holds: the parameter is false, implies (!p)
 }
 
 // The values of Implies.Returns.
@@ -874,6 +875,8 @@ func impliedBy(returns int, x expression) (Implies, bool) {
 		return Implies{Returns: returns, Param: x.param, Is: x.is}, true
 	case x.param >= 0 && x.flags == 0 && x.is == nil && x.constant < 0:
 		return Implies{Returns: returns, Param: x.param, Holds: true}, true
+	case x.param >= 0 && x.flags == 1 && x.is == nil && x.constant < 0:
+		return Implies{Returns: returns, Param: x.param, Holds: true, Negated: true}, true
 	}
 	return Implies{}, false
 }

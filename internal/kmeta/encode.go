@@ -400,6 +400,8 @@ func (w *writer) function(f *Function) []byte {
 			var conclusion, eff enc
 			if im.Is == nil && !im.Holds {
 				conclusion.int(1, 3) // negated null check: p != null
+			} else if im.Holds && im.Negated {
+				conclusion.int(1, 1) // negated: !p
 			}
 			conclusion.int(2, im.Param+1)
 			if im.Is != nil {

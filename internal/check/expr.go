@@ -1811,7 +1811,10 @@ func (c *Checker) contractNarrows(x *syntax.Call, returns int) []narrow {
 			continue
 		}
 		if e.Holds {
-			whenTrue, _ := c.narrowing(arg) // check(x is T)
+			whenTrue, whenFalse := c.narrowing(arg) // check(x is T)
+			if e.Negated {
+				whenTrue = whenFalse // implies (!p)
+			}
 			out = append(out, whenTrue...)
 			continue
 		}
