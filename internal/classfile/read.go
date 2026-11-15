@@ -76,6 +76,9 @@ type Info struct {
 	// Sealed is set on a sealed Java class or interface: one with a
 	// PermittedSubclasses attribute.
 	Sealed bool
+	// RecordComponents are the names of a Java record's components, from
+	// its Record attribute.
+	RecordComponents []string
 }
 
 // InnerClass is an entry of the InnerClasses attribute.
@@ -479,6 +482,17 @@ func Parse(data []byte) (*Info, error) {
 			info.Deprecated = javaDeprecation(info.Deprecated)
 		case name == "PermittedSubclasses":
 			info.Sealed = true
+		case name == "Record":
+			end := r.pos + size
+			for range r.u2() {
+				info.RecordComponents = append(info.RecordComponents, must(p.utf8(r.u2())))
+				r.u2() // the descriptor
+				for range r.u2() {
+					r.u2()
+					r.skip(int(r.u4()))
+				}
+			}
+			size = end - r.pos
 		case name == "RuntimeVisibleAnnotations":
 			end := r.pos + size
 			k, e := kotlinMeta(r, p, info)

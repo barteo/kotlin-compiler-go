@@ -239,6 +239,7 @@ func (t *classTable) load(cls *types.ClassSym) {
 	cls.Deprecated = classFileDeprecation(info.Deprecated)
 	cls.OptInLevel, cls.SubclassOptIn = info.OptInLevel, info.SubclassOptIn
 	cls.JavaSealed = info.Sealed
+	cls.RecordComponents = info.RecordComponents
 	for _, a := range slices.Concat(info.Invisible, info.Visible) {
 		if strings.HasPrefix(a, "L") && strings.HasSuffix(a, ";") {
 			if c := t.class(a[1 : len(a)-1]); c != nil {
@@ -2838,6 +2839,8 @@ func (c *Checker) javaProperty(x *syntax.Member, rt types.Type) (types.Type, boo
 		getterName, special = x.Name, true // Kotlin's Enum.name and Enum.ordinal
 	case cls.External && cls.Retention != types.NoRetention:
 		getterName, special = x.Name, true // a Java annotation's element: name()
+	case recordComponent(cls, x.Name):
+		getterName, special = x.Name, true // a Java record's component: x()
 	}
 	setterName := types.SetterName(x.Name)
 	// Not those of an earlier check of x, an extension property's: a

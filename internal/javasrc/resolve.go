@@ -568,6 +568,9 @@ func (s *Set) Info(name string) (*classfile.Info, error) {
 		flags |= classfile.AccFinal
 		info.Super = "java/lang/Record"
 		supers = c.Implements
+		for _, p := range c.Components {
+			info.RecordComponents = append(info.RecordComponents, p.Name)
+		}
 	}
 	if c.Kind == KindEnum && c.ConstantBodies {
 		flags &^= classfile.AccFinal

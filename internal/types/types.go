@@ -859,6 +859,9 @@ type ClassSym struct {
 	// JavaSealed is set on a sealed Java class or interface, which no
 	// Kotlin class may extend.
 	JavaSealed bool
+	// RecordComponents are the names of a Java record's components, which
+	// are its properties to Kotlin, read by their accessors.
+	RecordComponents []string
 	// Value is set on the program's value classes, whose instances are
 	// the value of their one property, Underlying, wherever they aren't
 	// boxed: see Unboxed.
