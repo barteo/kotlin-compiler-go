@@ -25,6 +25,36 @@ fun interopDemo() {
     println(StaticOuter().Inner().test())
     println(Sources().one("a").get() + Sources().current().get() + Sources().direct().get())
     println(Sources().longer("abc", 2).get() + " " + Sources().longer("a", 2).get() + " " + Sources().longer("", 2).get())
+    println(Named().run())
+}
+
+// An annotated Java List or Map is a mutable collection and a read-only
+// one: it takes a read-only list, an empty one of an inferred type too,
+// and an override declares either.
+class Named {
+    fun run(): String {
+        val names = Names(1, listOf("a", "b", "c"))
+        var seen = 0
+        names.notify(object : Names.Listener {
+            override fun changed(names: List<String>) {
+                seen += names.size
+            }
+        })
+        names.notify(object : Names.Listener {
+            override fun changed(names: MutableList<String>) {
+                seen += names.size
+            }
+        })
+        val all: MutableList<String> = names.all()
+        all.add("d")
+        val readOnly: List<String> = names.all()
+        val provided = Names.provided(object : Names.Provider {
+            override fun names(): List<String> = readOnly
+
+            override fun more(): List<String>? = listOf("e")
+        })
+        return "$seen ${Names.count(readOnly, mapOf("k" to "v"))} ${Names.count(emptyList(), null)} ${Names.count(all, emptyMap())} $provided"
+    }
 }
 
 // T of a Java <T> Source<T> fromCallable(Callable<? extends T>), for a

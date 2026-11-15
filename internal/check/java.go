@@ -378,7 +378,7 @@ func (t *classTable) load(cls *types.ClassSym) {
 		// javac leaves out synthetic parameters, which come first.
 		off := len(f.Params) - len(m.ParamAnnotations)
 		if t.javaTypes {
-			f.Ret = enhance(m.Annotations, f.Ret)
+			f.Ret = enhanceSignature(m.Annotations, f.Ret)
 			for i, as := range m.ParamAnnotations {
 				// A declaration annotation on a vararg is the array's,
 				// not its elements', which the parameter's type is.
@@ -387,9 +387,9 @@ func (t *classTable) load(cls *types.ClassSym) {
 				switch {
 				case off+i < 0:
 				case !(varargs && off+i == len(f.Params)-1):
-					f.Params[off+i].Type = enhance(as, f.Params[off+i].Type)
+					f.Params[off+i].Type = enhanceSignature(as, f.Params[off+i].Type)
 				default:
-					f.Params[off+i].Type = enhance(slices.DeleteFunc(slices.Clone(as), func(a string) bool {
+					f.Params[off+i].Type = enhanceSignature(slices.DeleteFunc(slices.Clone(as), func(a string) bool {
 						return !strings.HasPrefix(a, "Lorg/jspecify/annotations/")
 					}), f.Params[off+i].Type)
 				}
@@ -580,7 +580,10 @@ var javaNullability = func() map[string]bool {
 }()
 
 // enhance returns platform type t as the nullability annotations among
-// as make it: non-null or nullable, or t itself with neither or both.
+// as make it: non-null or nullable, or t itself with neither or both. A
+// Java collection that isn't null stays a platform type, which is the
+// only type that is both the mutable collection and the read-only one: a
+// Kotlin override may declare either.
 func enhance(as []string, t types.Type) types.Type {
 	if !t.P {
 		return t
@@ -594,10 +597,29 @@ func enhance(as []string, t types.Type) types.Type {
 	switch {
 	case notNull == nullable:
 		return t
+	case notNull && javaCollection(t):
+		return t
 	case notNull:
 		return t.NonNull()
 	}
 	return t.Nullable()
+}
+
+// enhanceSignature is enhance for a method's parameter and result types,
+// of which a Java collection stays a platform type, nullable too: an
+// annotated List parameter takes a read-only list, and a result is a
+// read-only list where one is expected, as a mock's answer.
+func enhanceSignature(as []string, t types.Type) types.Type {
+	if javaCollection(t) {
+		return t
+	}
+	return enhance(as, t)
+}
+
+// javaCollection reports whether t is a Java collection type, which is a
+// Kotlin mutable collection and its read-only one.
+func javaCollection(t types.Type) bool {
+	return t.K == types.Class && t.C.ReadOnly != nil
 }
 
 // kotlinMapped are the Java classes that are Kotlin types, with Kotlin's
