@@ -25,19 +25,84 @@ type jdkMember struct {
 var (
 	qNP  = []jdkQual{jdkNotPlatform}
 	qNPN = []jdkQual{jdkNotPlatform, jdkNotNullable}
+	qN   = []jdkQual{jdkNullable}
+	qNN  = []jdkQual{jdkNotNullable}
+	qNP2 = []jdkQual{jdkNotPlatform, jdkNotPlatform}
+	qNP3 = []jdkQual{jdkNotPlatform, jdkNotPlatform, jdkNotPlatform}
+	qNP4 = []jdkQual{jdkNotPlatform, jdkNotPlatform, jdkNotPlatform, jdkNotPlatform}
 )
 
-// jdkEnhancements are the predefined enhancements kc applies, by class,
-// name and parameter count. Of K2's table, these are the members whose
-// types Kotlin doesn't already map: Optional's.
+// jdkEnhancements are K2's predefined enhancements of JDK members, by
+// class, name and parameter count, which tell its entries apart. Those
+// that K2 reports as errors only from a language version on, List's
+// addFirst() and the others, are errors here.
 var jdkEnhancements = map[string]map[string]map[int]jdkMember{
+	"java/util/Iterator": {
+		"forEachRemaining": {1: {params: [][]jdkQual{qNP2}}},
+	},
+	"java/lang/Iterable": {
+		"spliterator": {0: {ret: qNP2}},
+	},
+	"java/util/Collection": {
+		"removeIf":       {1: {params: [][]jdkQual{qNP2}}},
+		"stream":         {0: {ret: qNP2}},
+		"parallelStream": {0: {ret: qNP2}},
+	},
+	"java/util/List": {
+		"replaceAll":  {1: {params: [][]jdkQual{qNP2}}},
+		"addFirst":    {1: {params: [][]jdkQual{qNP}}},
+		"addLast":     {1: {params: [][]jdkQual{qNP}}},
+		"removeFirst": {0: {ret: qNP}},
+		"removeLast":  {0: {ret: qNP}},
+	},
+	"java/util/LinkedList": {
+		"addFirst":    {1: {params: [][]jdkQual{qNP}}},
+		"addLast":     {1: {params: [][]jdkQual{qNP}}},
+		"removeFirst": {0: {ret: qNP}},
+		"removeLast":  {0: {ret: qNP}},
+	},
+	"java/util/LinkedHashSet": {
+		"addFirst":    {1: {params: [][]jdkQual{qNP}}},
+		"addLast":     {1: {params: [][]jdkQual{qNP}}},
+		"removeFirst": {0: {ret: qNP}},
+		"removeLast":  {0: {ret: qNP}},
+		"getFirst":    {0: {ret: qNP}},
+		"getLast":     {0: {ret: qNP}},
+	},
+	"java/util/Map": {
+		"forEach":     {1: {params: [][]jdkQual{qNP3}}},
+		"putIfAbsent": {2: {ret: qN, params: [][]jdkQual{qNP, qNP}}},
+		"replace": {
+			2: {ret: qN, params: [][]jdkQual{qNP, qNP}},
+			3: {params: [][]jdkQual{qNP, qNP, qNP}},
+		},
+		"replaceAll":       {1: {params: [][]jdkQual{qNP4}}},
+		"compute":          {2: {ret: qN, params: [][]jdkQual{qNP, {jdkNotPlatform, jdkNotPlatform, jdkNullable, jdkNullable}}}},
+		"computeIfAbsent":  {2: {ret: qNP, params: [][]jdkQual{qNP, qNP3}}},
+		"computeIfPresent": {2: {ret: qN, params: [][]jdkQual{qNP, {jdkNotPlatform, jdkNotPlatform, jdkNotNullable, jdkNullable}}}},
+		"merge":            {3: {ret: qN, params: [][]jdkQual{qNP, qNN, {jdkNotPlatform, jdkNotNullable, jdkNotNullable, jdkNullable}}}},
+	},
+	"java/util/LinkedHashMap": {
+		"putFirst": {2: {ret: qN, params: [][]jdkQual{qNP, qNP}}},
+		"putLast":  {2: {ret: qN, params: [][]jdkQual{qNP, qNP}}},
+	},
 	"java/util/Optional": {
 		"empty":      {0: {ret: qNPN}},
-		"of":         {1: {ret: qNPN, params: [][]jdkQual{{jdkNotNullable}}}},
-		"ofNullable": {1: {ret: qNPN, params: [][]jdkQual{{jdkNullable}}}},
-		"get":        {0: {ret: []jdkQual{jdkNotNullable}}},
+		"of":         {1: {ret: qNPN, params: [][]jdkQual{qNN}}},
+		"ofNullable": {1: {ret: qNPN, params: [][]jdkQual{qN}}},
+		"get":        {0: {ret: qNN}},
 		"ifPresent":  {1: {params: [][]jdkQual{qNPN}}},
 	},
+	"java/lang/ref/Reference": {
+		"get": {0: {ret: qN}},
+	},
+	"java/util/function/Predicate":   {"test": {1: {params: [][]jdkQual{qNP}}}},
+	"java/util/function/BiPredicate": {"test": {2: {params: [][]jdkQual{qNP, qNP}}}},
+	"java/util/function/Consumer":    {"accept": {1: {params: [][]jdkQual{qNP}}}},
+	"java/util/function/BiConsumer":  {"accept": {2: {params: [][]jdkQual{qNP, qNP}}}},
+	"java/util/function/Function":    {"apply": {1: {ret: qNP, params: [][]jdkQual{qNP}}}},
+	"java/util/function/BiFunction":  {"apply": {2: {ret: qNP, params: [][]jdkQual{qNP, qNP}}}},
+	"java/util/function/Supplier":    {"get": {0: {ret: qNP}}},
 }
 
 // enhanceJDK applies the predefined enhancement of f, a member of the

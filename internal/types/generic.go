@@ -497,9 +497,10 @@ func (s Subst) applyA(t Type, pos Variance, exact bool) (Type, bool) {
 				r.A = MakeArgs(args)
 				r = r.Platform()
 			}
-			if t.P && r.N && !r.P {
-				// A Java T!, whose bound is Any!: the value read has a
-				// platform type, as kotlinc's capture of the projection.
+			if (t.P || !t.N && javaParam(t.Param())) && r.N && !r.P {
+				// A Java T!, or an enhanced T of a Java class, whose bound
+				// is Any!: the value read has a platform type, as kotlinc's
+				// capture of the projection. Supplier<*>'s get() is Any!.
 				r = r.Platform()
 			}
 		}
@@ -667,6 +668,13 @@ func (s Subst) applyArgA(a Arg, pos, v Variance, exact bool) (Arg, bool) {
 	}
 	t, approx := s.applyA(a.T, pos, exact)
 	return Arg{V: a.V, T: t}, approx
+}
+
+// javaParam reports whether p is a type parameter of a Java class without
+// bounds, whose bound is Any!.
+func javaParam(p *TypeParamSym) bool {
+	c, ok := p.Owner.(*ClassSym)
+	return ok && len(p.Bounds) == 0 && c.External && c.KotlinName == "" && c.Java == nil && !c.FromKotlin
 }
 
 // recursiveStar reports whether p has a single class bound that p occurs in.

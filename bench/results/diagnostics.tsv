@@ -5543,10 +5543,10 @@ tests/j+k/types/explicitNullableJavaSmartCastAfterGenericCall.kt	rejects invalid
 tests/j+k/types/explicitNullableJavaTypeAlias.kt	rejects invalid	on an expected line	
 tests/j+k/types/newListMethodsNullabilityLinkedList20.kt	skip	API_VERSION	
 tests/j+k/types/newListMethodsNullabilityLinkedList21.kt	skip	API_VERSION	
-tests/j+k/types/newListMethodsNullabilityLinkedListLatest.kt	accepts invalid	NULL_FOR_NONNULL_TYPE	newListMethodsNullabilityLinkedListLatest.kt:11: NULL_FOR_NONNULL_TYPE
+tests/j+k/types/newListMethodsNullabilityLinkedListLatest.kt	rejects invalid	on an expected line	
 tests/j+k/types/newListMethodsNullabilityOverridesLinkedList20.kt	skip	API_VERSION	
 tests/j+k/types/newListMethodsNullabilityOverridesLinkedList21.kt	skip	API_VERSION	
-tests/j+k/types/newListMethodsNullabilityOverridesLinkedListLatest.kt	accepts invalid	NOTHING_TO_OVERRIDE; RETURN_TYPE_MISMATCH_ON_OVERRIDE	newListMethodsNullabilityOverridesLinkedListLatest.kt:19: NOTHING_TO_OVERRIDE
+tests/j+k/types/newListMethodsNullabilityOverridesLinkedListLatest.kt	rejects invalid	on an expected line	
 tests/j+k/types/notNullTypeParameterWithKotlinNullable.kt	skip	LANGUAGE	
 tests/j+k/types/notNullTypeParameterWithKotlinNullablePreciseLowerConstraints.kt	skip	LANGUAGE	
 tests/j+k/types/rawTypesFromSelfTypeWithRawBound.kt	rejects invalid	on an expected line	
@@ -8930,13 +8930,13 @@ tests/testsWithJava21/newListMethodsNullability21.kt	skip	API_VERSION
 tests/testsWithJava21/newListMethodsNullabilityLatest.kt	rejects invalid	on an expected line	
 tests/testsWithJava21/newListMethodsNullabilityLinkedList20.kt	skip	API_VERSION	
 tests/testsWithJava21/newListMethodsNullabilityLinkedList21.kt	skip	API_VERSION	
-tests/testsWithJava21/newListMethodsNullabilityLinkedListLatest.kt	accepts invalid	NULL_FOR_NONNULL_TYPE	newListMethodsNullabilityLinkedListLatest.kt:10: NULL_FOR_NONNULL_TYPE
+tests/testsWithJava21/newListMethodsNullabilityLinkedListLatest.kt	rejects invalid	on an expected line	
 tests/testsWithJava21/newListMethodsNullabilityOverrides20.kt	skip	API_VERSION	
 tests/testsWithJava21/newListMethodsNullabilityOverrides21.kt	skip	API_VERSION	
-tests/testsWithJava21/newListMethodsNullabilityOverridesLatest.kt	accepts invalid	NOTHING_TO_OVERRIDE; RETURN_TYPE_MISMATCH_ON_OVERRIDE	newListMethodsNullabilityOverridesLatest.kt:16: NOTHING_TO_OVERRIDE
+tests/testsWithJava21/newListMethodsNullabilityOverridesLatest.kt	rejects invalid	on an expected line	
 tests/testsWithJava21/newListMethodsNullabilityOverridesLinkedList20.kt	skip	API_VERSION	
 tests/testsWithJava21/newListMethodsNullabilityOverridesLinkedList21.kt	skip	API_VERSION	
-tests/testsWithJava21/newListMethodsNullabilityOverridesLinkedListLatest.kt	accepts invalid	NOTHING_TO_OVERRIDE; RETURN_TYPE_MISMATCH_ON_OVERRIDE	newListMethodsNullabilityOverridesLinkedListLatest.kt:18: NOTHING_TO_OVERRIDE
+tests/testsWithJava21/newListMethodsNullabilityOverridesLinkedListLatest.kt	rejects invalid	on an expected line	
 tests/testsWithJava21/noFalsePositiveAbstractToArray.kt	accepts valid		
 tests/testsWithJava21/otherHiddenInDeclaring.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	otherHiddenInDeclaring.kt:41: type mismatch: inferred type is Optional<Enum.EnumDesc<MyEnum!>!>! but Int was expected
 tests/thisAndSuper/QualifiedThis.kt	rejects invalid	on an expected line	

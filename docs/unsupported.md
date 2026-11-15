@@ -253,13 +253,14 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   `contains`, `remove`, `containsAll`, `removeAll`, `retainAll`,
   `indexOf`, `lastIndexOf`, and a map's `containsKey`, `containsValue`,
   `get` and `remove`; others, such as `getOrDefault`, keep Java's.
-- Of K2's predefined nullability of JDK members, only `java.util.Optional`'s
-  (`of`, `ofNullable`, `empty`, `get`, `ifPresent`) is applied. A nullable
+- K2's predefined nullability of JDK members is applied to the members
+  of the classes it names, not to their overrides in other classes:
+  `Map`'s `compute` takes a function that may return null, `HashMap`'s
+  keeps Java's platform types. A nullable
   argument for a Java method's `T!` makes `T` nullable, except in an
   in-projected type argument, where kc's substituted explicit type
   arguments stand for K2's equality constraints.
-- Java module exports aren't checked, and the Java members Kotlin
-  replaces (`Number.intValue()`) aren't hidden.
+- Java module exports aren't checked.
 - Without an expected type, a reference to a vararg function, or to a
   generic function whose type parameters its receiver's type doesn't
   give (`Box<Int>::first` for `fun <T> Box<T>.first()` is fine), is an
