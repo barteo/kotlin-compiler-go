@@ -204,7 +204,7 @@ func (c *Checker) missingDependencies() {
 		for i, cls := range s {
 			names[i] = missingName(cls)
 		}
-		c.errorf(p, "cannot access class '%s': check your module classpath for missing or conflicting dependencies", strings.Join(names, "', '"))
+		c.errorf(p, "cannot access class '%s'. Check your module classpath for missing or conflicting dependencies", strings.Join(names, "', '"))
 	}
 	superclass := func(p syntax.Pos, classes ...*types.ClassSym) {
 		if reported[p] {
@@ -216,7 +216,7 @@ func (c *Checker) missingDependencies() {
 			}
 			if ms := missingSupers(cls); len(ms) > 0 {
 				reported[p] = true
-				c.errorf(p, "cannot access '%s' which is a supertype of '%s': check your module classpath for missing or conflicting dependencies", missingName(ms[0]), cls.DisplayName())
+				c.errorf(p, "cannot access '%s' which is a supertype of '%s'. Check your module classpath for missing or conflicting dependencies", missingName(ms[0]), missingName(cls))
 				return
 			}
 		}
