@@ -796,6 +796,8 @@ func (c *Checker) binary(x *syntax.Binary, want types.Type, allowRange bool) typ
 		xw := noWant
 		if want.K != types.Invalid && want.K != types.Unit {
 			xw = want.Nullable()
+		} else if u := c.u.ext.class("kotlin/Unit"); (want.K == types.Unit || c.unitElvisWant(x)) && u != nil {
+			xw = types.ClassType(u).Nullable()
 		}
 		c.sink = c.takeBranchSink()
 		sink, n := c.sink, len(c.errs)

@@ -80,3 +80,14 @@ fun selfStar(o: Self<*>, p: Self<out Self<*>>) {
     val b: Self<Self<*>> = o.copy(o)
     val c: Self<Self<*>> = p
 }
+
+fun unitFun() {}
+fun unitLambda(x: () -> Unit) {}
+
+fun unitElvis(list: List<Int>) {
+    val u: Unit = myLet { ::foo } ?: unitFun()
+    unitLambda { myLet { ::foo } ?: unitFun() }
+    unitLambda { list.firstOrNull() ?: 1 }
+    unitLambda { list.firstOrNull() ?: return@unitLambda }
+    unitLambda { myLet { ::foo } ?: 1 } // ERROR cannot infer
+}

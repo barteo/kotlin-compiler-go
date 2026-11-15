@@ -684,6 +684,12 @@ func (c *Checker) unitBody(b *syntax.Block) types.Type {
 			if _, ok := es.X.(*syntax.Call); ok {
 				return c.unitTail(b)
 			}
+			if e, ok := es.X.(*syntax.Binary); ok && e.Op == syntax.ELVIS {
+				// As in K2, an elvis's K expects the Unit, whose
+				// nullable its left side then does: myLet { ::foo } ?:
+				// unitFun() chooses foo's overload that returns Unit.
+				c.unitElvis = e
+			}
 		}
 	}
 	return c.block(b, noWant, false)
