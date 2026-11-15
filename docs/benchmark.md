@@ -15,8 +15,8 @@ libraries. Earlier runs are in this file's git history.
 
 ```sh
 bench/run.sh                                                  # 200 files, about 1 minute
-COOLDOWN=30 SIZES=500 RUNS=1 WARM_RUNS=4 bench/run.sh         # 500 files, about 9 minutes
-COOLDOWN=10 RUNS=5 WARM_RUNS=20 bench/kotlinpoet-time.sh      # also coroutines-time.sh, ktor-time.sh
+COOLDOWN=0 SIZES=500 RUNS=1 WARM_RUNS=4 bench/run.sh          # 500 files, about 9 minutes
+COOLDOWN=0 RUNS=5 WARM_RUNS=20 bench/kotlinpoet-time.sh       # also coroutines-time.sh, ktor-time.sh
 ITERS=10 BACKEND_THREADS=1 bench/profile.sh 500               # about 12 minutes
 ```
 
