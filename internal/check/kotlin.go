@@ -543,6 +543,9 @@ func (t *classTable) ktype(kt *kmeta.Type, scope tscope) (types.Type, bool) {
 		cls = t.funcs.ComposableClass(n)
 	}
 	if cls == nil {
+		cls = t.missingClass(kt.Class, len(kt.Args))
+	}
+	if cls == nil {
 		return types.InvalidType, false
 	}
 	if len(kt.Args) == 0 || kt.Raw || kt.Upper != nil && kt.Upper.Raw {
@@ -1586,7 +1589,9 @@ func (t *classTable) loadKotlin(cls *types.ClassSym, info *classfile.Info, kc *k
 		}
 	}
 	if info.Super != "" {
-		cls.Super = t.class(info.Super)
+		if cls.Super = t.class(info.Super); cls.Super == nil {
+			cls.Super = t.missingClass(info.Super, 0)
+		}
 	}
 	var supers []types.Type
 	for _, st := range kc.Supers {
