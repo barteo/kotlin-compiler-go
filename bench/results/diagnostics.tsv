@@ -663,7 +663,7 @@ tests/callResolution/eagerLambdaAnalysis/valueVsUnit.kt	skip	LANGUAGE
 tests/callResolution/eagerLambdaAnalysis/varargArgument.kt	skip	LANGUAGE	
 tests/callResolution/eagerLambdaAnalysis/withContextSensitiveResolution.kt	skip	LANGUAGE	
 tests/callResolution/errorCandidates.kt	rejects invalid	on an expected line	
-tests/callResolution/exponentialArraySetWithPlusAssign.kt	accepts invalid	ASSIGN_OPERATOR_AMBIGUITY	exponentialArraySetWithPlusAssign.kt:69: ASSIGN_OPERATOR_AMBIGUITY
+tests/callResolution/exponentialArraySetWithPlusAssign.kt	rejects invalid	on an expected line	
 tests/callResolution/extensionInvokeAfterSafeCall.kt	accepts valid		
 tests/callResolution/incorrectPlusOperatorFromJava.kt	rejects valid	unresolved reference: _	main.kt:6: unresolved reference: inc
 tests/callResolution/invokeAmbiguity.kt	accepts valid		
@@ -4246,7 +4246,7 @@ tests/inference/forks/nestedCallVariableFixation.kt	accepts valid
 tests/inference/forks/nestedCallVariableFixationSimple.kt	accepts valid		
 tests/inference/forks/overloadResolutionByLambdaReturnTypeAndExpectedType.kt	rejects invalid	on an expected line	
 tests/inference/functionPlaceholderError.kt	rejects invalid	on an expected line	
-tests/inference/genericAssignmentOperator.kt	rejects valid	operator '_' cannot be applied to Int and R<<error>>	genericAssignmentOperator.kt:9: operator '+=' cannot be applied to Int and R<<error>>
+tests/inference/genericAssignmentOperator.kt	accepts valid		
 tests/inference/genericCallInThrow.kt	accepts valid		
 tests/inference/genericInvokeInCompanion.kt	rejects invalid	on an expected line	
 tests/inference/genericOnJavaWildcardBoundedByRaw.kt	accepts valid		
@@ -6713,8 +6713,8 @@ tests/operatorRem/forbiddenModOperatorConvention.kt	rejects invalid	on an expect
 tests/operatorRem/numberRemConversions.kt	rejects invalid	on an expected line	
 tests/operatorRem/operatorRem.kt	accepts valid		
 tests/operatorRem/remAndRemAssignAmbiguity.kt	rejects invalid	on an expected line	
-tests/operatorsOverloading/AssignOperatorAmbiguity.kt	accepts invalid	ASSIGN_OPERATOR_AMBIGUITY	AssignOperatorAmbiguity.kt:15: ASSIGN_OPERATOR_AMBIGUITY
-tests/operatorsOverloading/AssignOperatorAmbiguityExtension.kt	accepts invalid	ASSIGN_OPERATOR_AMBIGUITY	AssignOperatorAmbiguityExtension.kt:19: ASSIGN_OPERATOR_AMBIGUITY
+tests/operatorsOverloading/AssignOperatorAmbiguity.kt	rejects invalid	on an expected line	
+tests/operatorsOverloading/AssignOperatorAmbiguityExtension.kt	rejects invalid	on an expected line	
 tests/operatorsOverloading/AssignOperatorWithExtensionForAny.kt	accepts valid		
 tests/operatorsOverloading/AssignmentOperations.kt	rejects invalid	on an expected line	
 tests/operatorsOverloading/EqualsOperatorOverrideHierarchies.kt	accepts valid		
@@ -6743,10 +6743,10 @@ tests/operatorsOverloading/kt45503_3.kt	accepts valid
 tests/operatorsOverloading/missingCompareToTypeMismatchOnInapplicableOperatorFun.kt	rejects invalid	on an expected line	
 tests/operatorsOverloading/operatorAliasedWithTheSameName.kt	skip	LANGUAGE	
 tests/operatorsOverloading/operatorCalledByOtherOperatorSyntax.kt	skip	LANGUAGE	
-tests/operatorsOverloading/plusAssignOnArray.kt	accepts invalid	ASSIGN_OPERATOR_AMBIGUITY	plusAssignOnArray.kt:27: ASSIGN_OPERATOR_AMBIGUITY
+tests/operatorsOverloading/plusAssignOnArray.kt	rejects invalid	on an expected line	
 tests/operatorsOverloading/plusAssignOnLocal.kt	rejects invalid	on an expected line	
 tests/operatorsOverloading/plusAssignOnProperty.kt	rejects invalid	on an expected line	
-tests/operatorsOverloading/plusAssignOnVarAndCollections.kt	rejects valid	assignment operators ambiguity: '_' and '_' both apply	plusAssignOnVarAndCollections.kt:6: assignment operators ambiguity: 'minusAssign' and 'minus' both apply
+tests/operatorsOverloading/plusAssignOnVarAndCollections.kt	accepts valid		
 tests/operatorsOverloading/unrelatedInvoke.kt	rejects invalid	on an expected line	
 tests/operatorsOverloading/unresolvedOperator.kt	rejects invalid	on an expected line	
 tests/operatorsOverloading/until/custom.kt	accepts valid		
@@ -10476,7 +10476,7 @@ testsWithStdLib/java/concurrentHashMapContainsError.kt	rejects invalid	on an exp
 testsWithStdLib/java/functionN.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	main.kt:20: type mismatch: inferred type is (<error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>) -> Unit but FunctionN<Unit!>! was expected
 testsWithStdLib/java/implementationWithBoundedTypeParameters.kt	accepts valid		
 testsWithStdLib/java/inheritedFunctionN.kt	rejects invalid	on an expected line	
-testsWithStdLib/java/intersectFlexibleAndMutable.kt	rejects valid	assignment operators ambiguity: '_' and '_' both apply	main.kt:4: assignment operators ambiguity: 'plusAssign' and 'plus' both apply
+testsWithStdLib/java/intersectFlexibleAndMutable.kt	accepts valid		
 testsWithStdLib/java/patternCompileCallableReference.kt	accepts valid		
 testsWithStdLib/javaClassOnCompanion.kt	rejects invalid	on an expected line	
 testsWithStdLib/javaEnumSynthetic.kt	accepts valid		

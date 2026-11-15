@@ -6,16 +6,16 @@ Of 10827 test files, 2312 are skipped and 8515 run.
 
 | Result | Tests | Share |
 |:---|---:|---:|
-| rejects invalid | 4132 | 48.5% |
-| accepts valid | 4001 | 47.0% |
-| accepts invalid | 252 | 3.0% |
-| rejects valid | 112 | 1.3% |
+| rejects invalid | 4136 | 48.6% |
+| accepts valid | 4004 | 47.0% |
+| accepts invalid | 248 | 2.9% |
+| rejects valid | 109 | 1.3% |
 | parse/unsupported | 16 | 0.2% |
 | crash | 1 | 0.0% |
 
 *Rejects invalid* and *accepts valid* agree with kotlinc. *Accepts invalid* is code kotlinc rejects that kc compiles; *rejects valid*, code kotlinc compiles that kc's checker rejects. Both are bugs. A *parse/unsupported* test uses a feature kc doesn't support, which says nothing about its checks.
 
-Of the 4132 tests both reject, kc reports an error on the line of an expected one in 3980.
+Of the 4136 tests both reject, kc reports an error on the line of an expected one in 3984.
 
 A test is invalid if it stops before the backend or marks an error: one that runs to it (`BACKEND`) can mark the JVM backend's errors, such as `CONFLICTING_JVM_DECLARATIONS`. Of the tests run, 222 stop at `FRONTEND` but mark no error: most add the `CHECK_TYPE` helpers, whose names (`_`) kotlinc reports outside the test infrastructure, and count as valid; the others leave their errors out with the `DIAGNOSTICS` directive. 114 run to the backend and mark one. 5 marked names have no declared severity (debug information, for one), and count as neither.
 
@@ -59,7 +59,6 @@ Tests kotlinc rejects that kc compiles, by the errors their markup expects. A te
 | `JAVA_TYPE_MISMATCH` | 7 | 7 | `tests/platformTypes/genericVarianceViolation/deepTypeHierarchy.kt`, `tests/platformTypes/genericVarianceViolation/javaOutProjection.kt` |
 | `UNSUPPORTED` | 7 | 5 | `tests/NamedFunctionTypeParameterInSupertype.kt`, `tests/callableReference/property/backingField.kt` |
 | `INITIALIZER_TYPE_MISMATCH` | 5 | 2 | `tests/callableReference/adapted/noKFunctionForAdaptation.kt`, `tests/j+k/sam/referenceToSamFunctionAgainstExpectedType.kt` |
-| `ASSIGN_OPERATOR_AMBIGUITY` | 4 | 4 | `tests/callResolution/exponentialArraySetWithPlusAssign.kt`, `tests/operatorsOverloading/AssignOperatorAmbiguity.kt` |
 | `CYCLIC_INHERITANCE_HIERARCHY` | 4 | 3 | `tests/classpathSubstitution/cyclicSupertype.kt`, `tests/classpathSubstitution/cyclicSupertype2.kt` |
 | `INAPPLICABLE_CANDIDATE` | 4 | 3 | `tests/callableReference/generic/dependOnArgumentType.kt`, `tests/j+k/sam/referenceToSamFunctionAgainstExpectedType.kt` |
 | `INCONSISTENT_TYPE_PARAMETER_BOUNDS` | 4 | 2 | `tests/enum/equalityOfEnumAndParameter.kt`, `tests/enum/equalityOfFlexibleTypeParameters.kt` |
@@ -110,7 +109,8 @@ Tests kotlinc rejects that kc compiles, by the errors their markup expects. A te
 | `ABBREVIATED_NOTHING_RETURN_TYPE` | 1 | 0 | `tests/typealias/returnTypeNothingShouldBeSpecifiedExplicitly.kt` |
 | `ABSTRACT_CLASS_MEMBER_NOT_IMPLEMENTED` | 1 | 1 | `tests/j+k/missingTypeOfParameterInFakeOverride_2.kt` |
 | `ACCIDENTAL_OVERRIDE` | 1 | 1 | `tests/j+k/kjkimplicitTypesCrash.kt` |
-| *72 more* | 72 | |
+| `ADAPTED_CALLABLE_REFERENCE_AGAINST_REFLECTION_TYPE` | 1 | 0 | `tests/callableReference/adapted/noKFunctionForAdaptation.kt` |
+| *71 more* | 71 | |
 
 ## Rejects valid
 
@@ -129,7 +129,6 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 | `type argument is not within its bounds: type parameter '_' must be subtype of '_', but actual: _` | 3 | `tests/inference/capturedTypes/capturedTypeWithInnerTypealias.kt`, `tests/inference/unsoundness2.kt` |
 | `type checking has run into a recursive problem; specify the type of '_'` | 3 | `tests/checkers/uselessCastLeadsToRecursiveProblem.kt`, `tests/problems/kt27790.kt` |
 | `'_' is not defined in this context` | 2 | `tests/functionLiterals/kt51317.kt`, `testsWithStdLib/mapList.kt` |
-| `assignment operators ambiguity: '_' and '_' both apply` | 2 | `tests/operatorsOverloading/plusAssignOnVarAndCollections.kt`, `testsWithStdLib/java/intersectFlexibleAndMutable.kt` |
 | `cannot create an instance of Function` | 2 | `tests/arguments/lambdaInLambda2.kt`, `tests/functionLiterals/lambdaInLambda2.kt` |
 | `expression '_' of type _ cannot be invoked as a function` | 2 | `tests/expresssions/invoke/incorrectInvokeReceiver.kt`, `tests/nullabilityAndSmartCasts/kt1778.kt` |
 | `expression of type _ cannot be invoked as a function` | 2 | `tests/controlFlowAnalysis/deadCode/deadCallInInvokeCall.kt`, `tests/expresssions/invoke/safeCallsWithImplicitInvoke.kt` |
@@ -146,7 +145,6 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 | `named arguments are not allowed for non-Kotlin functions` | 1 | `testsWithStdLib/problems/NamedParameterInConcurrentMap.kt` |
 | `one type argument expected for class X.Y` | 1 | `tests/innerClasses/inCallableReferenceLHS/misplacedArgumentsInInnerOnly.kt` |
 | `operator '_' cannot be applied to Enn and En` | 1 | `tests/enum/enumSubjectTypeCheck.kt` |
-| `operator '_' cannot be applied to Int and R<<error>>` | 1 | `tests/inference/genericAssignmentOperator.kt` |
 | `operator '_' cannot be applied to Nothing and Nothing` | 1 | `tests/generics/varProjection/setterProjectedOutPlusAssignDefined.kt` |
 | `type argument is not within its bounds: inferred type Long of type _ '_' is not a subtype of Comparable<Int>` | 1 | `tests/integerLiterals/literalsInInference.kt` |
 | `type arguments of the outer class of BaseIntrospector.AbstractRetriever are needed here: write BaseIntrospector<...>.AbstractRetriever` | 1 | `testsWithStdLib/intellij/baseIntrospector.kt` |
@@ -157,7 +155,7 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 15902 of 21506 expected errors (73.9%) on their lines.
+kc reports 15909 of 21506 expected errors (74.0%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
@@ -210,7 +208,6 @@ kc reports 15902 of 21506 expected errors (73.9%) on their lines.
 | `SMARTCAST_IMPOSSIBLE` | 183 | 159 | 24 |
 | `PROPERTY_INITIALIZER_NO_BACKING_FIELD` | 32 | 9 | 23 |
 | `UNINITIALIZED_ENUM_COMPANION` | 65 | 42 | 23 |
-| `ASSIGN_OPERATOR_AMBIGUITY` | 35 | 13 | 22 |
 | `INAPPLICABLE_CANDIDATE` | 127 | 105 | 22 |
 | `CLASSIFIER_REDECLARATION` | 41 | 20 | 21 |
 | `INLINE_FROM_HIGHER_PLATFORM` | 21 | 0 | 21 |
@@ -221,6 +218,7 @@ kc reports 15902 of 21506 expected errors (73.9%) on their lines.
 | `OPT_IN_MARKER_CAN_ONLY_BE_USED_AS_ANNOTATION_OR_ARGUMENT_IN_OPT_IN` | 19 | 2 | 17 |
 | `DSL_SCOPE_VIOLATION` | 108 | 92 | 16 |
 | `NO_ELSE_IN_WHEN` | 217 | 201 | 16 |
+| `WRONG_LONG_SUFFIX` | 19 | 3 | 16 |
 | *532 more* | | | |
 
 ## Errors kotlinc doesn't report
@@ -231,7 +229,7 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 |:---|---:|
 | `unresolved reference: _` | 272 |
 | `type mismatch: inferred type is _ but _ was expected` | 233 |
-| `cannot infer type for type parameter '_'. Specify it explicitly.` | 203 |
+| `cannot infer type for type parameter '_'. Specify it explicitly.` | 202 |
 | `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 199 |
 | `unresolved or unsupported type: _` | 59 |
 | `class '_' is not abstract and does not implement abstract member '_'` | 58 |
@@ -247,7 +245,6 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | `not enough information to infer type arguments of ::foon: specify the expected function type` | 14 |
 | `operator '_' cannot be applied to Any?` | 14 |
 | `ambiguous call: n candidates for '_' take (_)` | 13 |
-| `assignment operators ambiguity: '_' and '_' both apply` | 12 |
 | `private setters are not allowed for open properties` | 12 |
 | `this lambda must return a value of type _` | 12 |
 | `'_' modifier is required on '_'` | 11 |
@@ -259,7 +256,8 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | `cannot access '_': it is private to this in '_'` | 9 |
 | `expected '_', found '_'` | 9 |
 | `not enough information to infer type arguments of ::bar: specify the expected function type` | 9 |
-| *167 more* | |
+| `val cannot be reassigned` | 9 |
+| *165 more* | |
 
 ## Unsupported features
 
