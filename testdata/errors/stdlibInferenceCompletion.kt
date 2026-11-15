@@ -114,3 +114,16 @@ fun <T> localRefs(t: T) {
     val b = B::class
     val get: (A) -> T = A::t
 }
+
+fun returnInCatch(f: () -> String?) = run {
+    val foo = try {
+        f
+    } catch (e: Exception) {
+        return { "1" }
+    }
+    { "2" }
+}
+
+fun returnInLambda(b: Boolean) = run { if (b) return 1; 2 }
+fun returnUnitInLambda(b: Boolean) = run { if (b) return; 2 } // ERROR return type mismatch
+fun returnInBody(x: Int?) = x ?: return 0 // ERROR needs an explicit return type

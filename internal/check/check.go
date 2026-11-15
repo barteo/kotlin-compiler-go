@@ -359,6 +359,7 @@ type state struct {
 	fn         *types.FunSym // nil in property initializers and init blocks
 	retType    types.Type
 	retAllowed bool
+	exprRets   *[]exprRet // see exprBodyReturn
 	loops      []*loopCtx
 	finallies  []finallyCtx // the finally blocks around the code
 	allowRange bool
@@ -3280,7 +3281,10 @@ func (c *Checker) checkFun(d *syntax.FunDecl, cls *types.ClassSym) {
 		return
 	}
 	c.retAllowed = false // `return` needs an explicit return type
+	rets := []exprRet{}
+	c.exprRets = &rets
 	t := types.ApproxFlexNothing(c.expr(d.ExprBody, noWant))
+	defer func() { c.checkExprReturns(rets, sym.Ret, d.Name) }()
 	if t.K == types.Range {
 		c.errorf(d.ExprBody.Pos(), "ranges are only supported in 'for' loops and 'in' checks")
 		t = types.InvalidType

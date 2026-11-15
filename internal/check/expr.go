@@ -4340,6 +4340,7 @@ func (c *Checker) jump(x *syntax.Jump) {
 		case c.fn == nil:
 			c.errorf(x.P, "'return' is not allowed here")
 		case !c.leave(c.base, x):
+		case !c.retAllowed && c.exprBodyReturn(x):
 		case !c.retAllowed:
 			c.errorf(x.P, "'return' needs an explicit return type on '%s'", c.fn.Name)
 		case x.X != nil:
