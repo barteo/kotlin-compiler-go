@@ -1860,9 +1860,14 @@ func (c *Checker) constrain(cd *candidate, x *syntax.Call, ts []types.Type, part
 	for _, p := range partials {
 		cd.sys.merge(p.clone())
 	}
-	if ensureFun(cd.f); cd.f.Name == "<init>" && cd.f.Owner != nil {
+	switch {
+	case cd.f.Name == "<init>" && cd.f.Owner != nil:
 		cd.sys.markInvRet(cd.sub.Apply(cd.f.Owner.This()))
-	} else {
+	case cd.f.InProgress:
+		// An overload whose result is being inferred from this call:
+		// fun f(i: Int) = f(i.toString()), next to a fun f(s: String).
+	default:
+		ensureFun(cd.f)
 		cd.sys.markInvRet(cd.sub.Apply(cd.f.Ret))
 	}
 	if cd.ext.K != types.Invalid {
