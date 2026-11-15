@@ -1036,6 +1036,9 @@ func (w *optWalker) call(n *syntax.Call) {
 		w.deprecatedUse(p, "constructor", w.ctorDeprecation(n.Sym))
 		return
 	}
+	if w.c.deprecatedListSort(n.Sym) && !superCall(n) && !w.deprecated() && !w.suppressed("DEPRECATION_ERROR") {
+		w.errorf(p, "'sort' is deprecated with level ERROR: use sortWith(comparator) instead")
+	}
 	w.fun1(n.Sym, p, n.T)
 	if _, ok := n.Fun.(*syntax.Ident); ok && n.Sym.Owner != nil && !n.Sym.Owner.External {
 		// A member called on an implicit receiver, which is the class's
@@ -1068,6 +1071,34 @@ func (w *optWalker) javaPrivateKotlin(n *syntax.Call, p syntax.Pos) {
 		}
 	}
 	w.errorf(p, "this Java class extends a private Kotlin class, which can't be used here")
+}
+
+// deprecatedListSort reports whether f is java.util.List's
+// sort(Comparator), an override of it, or the standard library's
+// MutableList<T>.sort(Comparator), which Kotlin deprecates with level
+// ERROR for sortWith.
+func (c *Checker) deprecatedListSort(f *types.FunSym) bool {
+	if f.Name != "sort" || len(f.Params) != 1 || f.Static {
+		return false
+	}
+	t := f.Params[0].Type.NonNull()
+	comparator := t.K == types.Class && t.C.Name == "java/util/Comparator"
+	if f.Ext {
+		// And its sort(comparison: (T, T) -> Int).
+		r := f.Recv.NonNull()
+		return f.Owner == nil && r.K == types.Class && r.C.Name == "java/util/List" && (comparator || t.IsFunc())
+	}
+	return comparator && f.Owner != nil && c.isSubclassOf(f.Owner, "java/util/List")
+}
+
+// superCall reports whether n calls a method on super.
+func superCall(n *syntax.Call) bool {
+	m, ok := n.Fun.(*syntax.Member)
+	if !ok {
+		return false
+	}
+	_, ok = m.X.(*syntax.Super)
+	return ok
 }
 
 // extendsPrivateKotlin reports whether cls is a class of the program's

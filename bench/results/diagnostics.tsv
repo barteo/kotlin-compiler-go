@@ -5279,7 +5279,7 @@ tests/j+k/collectionOverrides/irrelevantImplMutableListKotlin.kt	rejects invalid
 tests/j+k/collectionOverrides/irrelevantMapGetAbstract.kt	accepts valid		
 tests/j+k/collectionOverrides/mapGetOverride.kt	accepts valid		
 tests/j+k/collectionOverrides/mapMethodsImplementedInJava.kt	rejects valid	class '_' is not abstract and does not implement abstract member '_'	main.kt:1: class 'Impl' is not abstract and does not implement abstract member 'remove'
-tests/j+k/collectionOverrides/nonDirectHiddenOverride.kt	accepts invalid	DEPRECATION_ERROR	nonDirectHiddenOverride.kt:12: DEPRECATION_ERROR
+tests/j+k/collectionOverrides/nonDirectHiddenOverride.kt	rejects invalid	on an expected line	
 tests/j+k/collectionOverrides/overrideAnClashWithJvmSignatureInMPP.kt	skip	LANGUAGE	
 tests/j+k/collectionOverrides/removeAt.kt	accepts valid		
 tests/j+k/collectionOverrides/sizeFromKotlinOverriddenInJava.kt	accepts valid		
@@ -8859,7 +8859,7 @@ tests/targetedBuiltIns/backwardCompatibility/basic.kt	rejects invalid	on an expe
 tests/targetedBuiltIns/backwardCompatibility/delegation.kt	rejects invalid	on an expected line	
 tests/targetedBuiltIns/backwardCompatibility/derivedInterfaces.kt	accepts valid		
 tests/targetedBuiltIns/backwardCompatibility/derivedInterfacesWithKotlinFun.kt	rejects invalid	on an expected line	
-tests/targetedBuiltIns/backwardCompatibility/fillInStackTrace.kt	rejects valid	'_' hides member of supertype '_' and needs '_' modifier	fillInStackTrace.kt:4: 'fillInStackTrace' hides member of supertype 'Throwable' and needs 'override' modifier
+tests/targetedBuiltIns/backwardCompatibility/fillInStackTrace.kt	accepts valid		
 tests/targetedBuiltIns/backwardCompatibility/finalize.kt	rejects invalid	on an expected line	
 tests/targetedBuiltIns/backwardCompatibility/hashMapGetOrDefault.kt	accepts valid		
 tests/targetedBuiltIns/concurrentMapRemove.kt	accepts invalid	ARGUMENT_TYPE_MISMATCH; NULL_FOR_NONNULL_TYPE	concurrentMapRemove.kt:11: ARGUMENT_TYPE_MISMATCH
@@ -10774,7 +10774,7 @@ testsWithStdLib/streams/basic.kt	accepts valid
 testsWithStdLib/streams/wrongNullability.kt	skip	LANGUAGE	
 testsWithStdLib/streams/wrongNullabilityWithoutWrtHack.kt	rejects invalid	elsewhere	
 testsWithStdLib/stringConstructors.kt	accepts valid		
-testsWithStdLib/targetedBuiltIns/blackListed.kt	accepts invalid	DEPRECATION_ERROR	blackListed.kt:11: DEPRECATION_ERROR
+testsWithStdLib/targetedBuiltIns/blackListed.kt	rejects invalid	on an expected line	
 testsWithStdLib/toSortedMapWithComparator.kt	accepts valid		
 testsWithStdLib/topLevelResolve.kt	accepts valid		
 testsWithStdLib/trailingComma/multiVariableDeclarationWithEnabledFeature.kt	skip	LANGUAGE	

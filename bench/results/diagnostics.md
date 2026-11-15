@@ -6,16 +6,16 @@ Of 10827 test files, 2312 are skipped and 8515 run.
 
 | Result | Tests | Share |
 |:---|---:|---:|
-| rejects invalid | 4087 | 48.0% |
-| accepts valid | 3993 | 46.9% |
-| accepts invalid | 297 | 3.5% |
-| rejects valid | 120 | 1.4% |
+| rejects invalid | 4089 | 48.0% |
+| accepts valid | 3994 | 46.9% |
+| accepts invalid | 295 | 3.5% |
+| rejects valid | 119 | 1.4% |
 | parse/unsupported | 16 | 0.2% |
 | crash | 1 | 0.0% |
 
 *Rejects invalid* and *accepts valid* agree with kotlinc. *Accepts invalid* is code kotlinc rejects that kc compiles; *rejects valid*, code kotlinc compiles that kc's checker rejects. Both are bugs. A *parse/unsupported* test uses a feature kc doesn't support, which says nothing about its checks.
 
-Of the 4087 tests both reject, kc reports an error on the line of an expected one in 3930.
+Of the 4089 tests both reject, kc reports an error on the line of an expected one in 3932.
 
 A test is invalid if it stops before the backend or marks an error: one that runs to it (`BACKEND`) can mark the JVM backend's errors, such as `CONFLICTING_JVM_DECLARATIONS`. Of the tests run, 222 stop at `FRONTEND` but mark no error: most add the `CHECK_TYPE` helpers, whose names (`_`) kotlinc reports outside the test infrastructure, and count as valid; the others leave their errors out with the `DIAGNOSTICS` directive. 114 run to the backend and mark one. 5 marked names have no declared severity (debug information, for one), and count as neither.
 
@@ -61,7 +61,6 @@ Tests kotlinc rejects that kc compiles, by the errors their markup expects. A te
 | `INITIALIZER_TYPE_MISMATCH` | 7 | 2 | `tests/callableReference/adapted/noKFunctionForAdaptation.kt`, `tests/j+k/sam/referenceToSamFunctionAgainstExpectedType.kt` |
 | `JAVA_TYPE_MISMATCH` | 7 | 7 | `tests/platformTypes/genericVarianceViolation/deepTypeHierarchy.kt`, `tests/platformTypes/genericVarianceViolation/javaOutProjection.kt` |
 | `UNSUPPORTED` | 7 | 5 | `tests/NamedFunctionTypeParameterInSupertype.kt`, `tests/callableReference/property/backingField.kt` |
-| `DEPRECATION_ERROR` | 5 | 2 | `tests/deprecated/javaDeprecatedHidden.kt`, `tests/j+k/collectionOverrides/nonDirectHiddenOverride.kt` |
 | `NOTHING_TO_OVERRIDE` | 5 | 2 | `tests/j+k/types/newListMethodsNullabilityOverridesLinkedListLatest.kt`, `tests/multimodule/duplicateSuper/sameSuperTraitDifferentBounds.kt` |
 | `ASSIGN_OPERATOR_AMBIGUITY` | 4 | 4 | `tests/callResolution/exponentialArraySetWithPlusAssign.kt`, `tests/operatorsOverloading/AssignOperatorAmbiguity.kt` |
 | `CYCLIC_INHERITANCE_HIERARCHY` | 4 | 3 | `tests/classpathSubstitution/cyclicSupertype.kt`, `tests/classpathSubstitution/cyclicSupertype2.kt` |
@@ -74,6 +73,7 @@ Tests kotlinc rejects that kc compiles, by the errors their markup expects. A te
 | `UPPER_BOUND_VIOLATED` | 4 | 1 | `tests/generics/RecursiveUpperBoundWithTwoArguments.kt`, `tests/platformTypes/comparingWithWrongNullabilityWithoutWrtHack.kt` |
 | `CANNOT_INFER_PARAMETER_TYPE` | 3 | 1 | `tests/callableReference/function/ambiguityTopLevelVsTopLevelGeneric.kt`, `tests/j+k/sam/referenceToSamFunctionAgainstExpectedType.kt` |
 | `CONST_VAL_WITH_NON_CONST_INITIALIZER` | 3 | 3 | `tests/modifiers/const/fromJavaWithNonConstInitializer.kt`, `tests/modifiers/const/kotlinJavaCycle.kt` |
+| `DEPRECATION_ERROR` | 3 | 0 | `tests/deprecated/javaDeprecatedHidden.kt`, `tests/j+k/deprecations/javaWithHiddenDeprecation.kt` |
 | `NONE_APPLICABLE` | 3 | 2 | `tests/secondaryConstructors/companionObjectScope.kt`, `tests/secondaryConstructors/generics3.kt` |
 | `PROTECTED_CALL_FROM_PUBLIC_INLINE_ERROR` | 3 | 3 | `tests/inline/inlineCallsStaticMethodFromOtherPackage.kt`, `tests/inline/protectedJavaFieldInInline.kt` |
 | `REPEATED_ANNOTATION` | 3 | 3 | `tests/annotations/repeatable/javaUnrepeatable.kt`, `tests/typealias/typeAliasExpansionRepeatedAnnotations.kt` |
@@ -134,7 +134,6 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 | `expression '_' of type _ cannot be invoked as a function` | 2 | `tests/expresssions/invoke/incorrectInvokeReceiver.kt`, `tests/nullabilityAndSmartCasts/kt1778.kt` |
 | `expression of type _ cannot be invoked as a function` | 2 | `tests/controlFlowAnalysis/deadCode/deadCallInInvokeCall.kt`, `tests/expresssions/invoke/safeCallsWithImplicitInvoke.kt` |
 | `unresolved label: _` | 2 | `tests/labelAndReceiverForInfix.kt`, `tests/labeledReturnFromNotLabeledUnnamedFunction.kt` |
-| `'_' hides member of supertype '_' and needs '_' modifier` | 1 | `tests/targetedBuiltIns/backwardCompatibility/fillInStackTrace.kt` |
 | `'_' is deprecated with level HIDDEN` | 1 | `tests/problems/kt14059.kt` |
 | `'_' modifier is required on '_'` | 1 | `tests/problems/kt36815.kt` |
 | `'_' needs an explicit return type on '_'` | 1 | `tests/inference/completion/inferLabeledElementTypeForLambdaInReturnInCatch.kt` |
@@ -162,7 +161,7 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 15710 of 21506 expected errors (73.0%) on their lines.
+kc reports 15719 of 21506 expected errors (73.1%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
@@ -264,7 +263,7 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | `cannot access '_': it is private to this in '_'` | 9 |
 | `expected '_', found '_'` | 9 |
 | `not enough information to infer type arguments of ::bar: specify the expected function type` | 9 |
-| *172 more* | |
+| *171 more* | |
 
 ## Unsupported features
 

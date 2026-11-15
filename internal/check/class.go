@@ -779,6 +779,9 @@ func (c *Checker) overridden(cls *types.ClassSym, f *types.FunSym) []*types.FunS
 		if s == cls || anyOnly && s.Name == "java/lang/Object" {
 			return true
 		}
+		if s.Name == "java/lang/Throwable" && f.Name == "fillInStackTrace" {
+			return true // not a member, as Kotlin sees Throwable
+		}
 		gs := methodsNamed(s, f)
 		if s.Name == charSequence && f.Name == "get" && !f.Ext {
 			gs = s.Methods["charAt"] // CharSequence's get, on the JVM
