@@ -2914,6 +2914,8 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type) {
 			if r = s.apply(r); !r.HasVars() {
 				w.ret, w.check = r, true
 			}
+		} else if ft, ok := c.refOverloadHint(s, l, r); ok {
+			w.ret = ft
 		}
 	}
 	var bt types.Type
