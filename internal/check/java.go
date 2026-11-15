@@ -2284,6 +2284,11 @@ func (c *Checker) construct(x *syntax.Call, cls *types.ClassSym, p syntax.Pos, w
 			return c.javaAnnotationDefault(x, cls, want, sink)
 		}
 	}
+	if _, explicit := x.Fun.(*syntax.Member); cls.Inner && x.Outer != nil && !explicit {
+		// An implicit outer instance, which an earlier check of the call
+		// found: this one records too that the lambdas around capture it.
+		c.value(x.Outer, noWant)
+	}
 	if cls.Inner && x.Outer == nil {
 		outer, ot := c.implicitOuter(cls.Outer, p)
 		if outer == nil {
