@@ -1155,6 +1155,7 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			}
 			want := captured(a.Type(), params[i], s.finalArg(params[i]))
 			c.assignable(a.Type(), want, a.Pos())
+			c.javaVariance(f, best.param(i), a, s.finalArg(params[i]))
 			if best.param(i).Exact && c.subtype(a.Type(), want) && !c.subtype(want, a.Type()) {
 				// @Exact: the argument's type must be the parameter's.
 				c.errorf(a.Pos(), "type mismatch: inferred type is %s but %s was expected", a.Type(), want)
@@ -1775,6 +1776,7 @@ func (c *Checker) resolvePlain(x *syntax.Call, cs []callee, want types.Type) typ
 	c.receiverShadowed(x, best)
 	c.dslCall(x, best)
 	c.setContexts(x, best, nil, nil)
+	c.javaVariances(x, best, func(i int) types.Type { return best.argType(i, x.Args) })
 	ensureFun(f)
 	c.suspendFunCall(x, f)
 	c.composeFunCall(x.P, f)
