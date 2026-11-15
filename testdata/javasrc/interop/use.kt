@@ -23,6 +23,13 @@ fun interopDemo() {
     println(samOverload { "generic" })
     nothingFromJava(object : Nulls.Visitor<Nothing> {})
     println(StaticOuter().Inner().test())
+    println(Labeled().text())
+}
+
+// Label.TEXT in a subclass of a Java class with getLabel() names the
+// class Label: the getter is the property label.
+class Labeled : JavaLabeled() {
+    fun text() = Label.TEXT + (label == null)
 }
 
 // foo() in an inner subclass of a Java class is its static foo(), which

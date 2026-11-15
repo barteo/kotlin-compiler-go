@@ -419,7 +419,10 @@ func (c *Checker) hasProp(cls *types.ClassSym, name string) bool {
 		found = s.KProps[name] != nil
 		return !found
 	})
-	return found || len(c.javaMethods(cls, types.GetterName(name))) > 0 ||
+	// A Java getX() is the property x, never X: Label.TEXT in a subclass of
+	// a class with getLabel() names the class Label.
+	getter := !('A' <= name[0] && name[0] <= 'Z') && len(c.javaMethods(cls, types.GetterName(name))) > 0
+	return found || getter ||
 		name == "length" && c.isCharSequence(cls) || name == "size" && c.hasSize(cls)
 }
 
