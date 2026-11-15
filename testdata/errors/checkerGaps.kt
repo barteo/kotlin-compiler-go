@@ -1,11 +1,11 @@
 // Errors of the checks added while checking kotlinpoet.
 
 class Writer {
-    fun emit(xs: java.util.ArrayList<String>) {}
+    fun emit(xs: java.util.ArrayList<String>) {} // ERROR platform declaration clash
     fun emit(xs: java.util.ArrayList<Int>) {} // ERROR platform declaration clash
 }
 
-fun top(xs: java.util.ArrayList<String>) {}
+fun top(xs: java.util.ArrayList<String>) {} // ERROR platform declaration clash
 fun top(xs: java.util.ArrayList<Int>) {} // ERROR platform declaration clash
 
 @JvmName("topNumbers")

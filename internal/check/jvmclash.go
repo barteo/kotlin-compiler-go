@@ -373,6 +373,7 @@ func (c *Checker) jvmStaticClashes(comp *types.ClassSym, inherited []jvmMember, 
 // have the same JVM signature.
 func (c *Checker) sameContainer(ms []jvmMember) {
 	seen := map[string]*jvmMember{}
+	reported := map[*jvmMember]bool{}
 	for i := range ms {
 		m := &ms[i]
 		if m.sig == "" {
@@ -386,10 +387,12 @@ func (c *Checker) sameContainer(ms []jvmMember) {
 		if m.fun != nil && first.fun != nil && c.u.conflicted[m.fun] && c.u.conflicted[first.fun] {
 			continue // conflicting overloads, reported as such
 		}
-		// At both, if one is a method that kotlinc adds: at the function
-		// it adds it for, or at the class.
+		// At every member of the group, as the backend reports it; a
+		// method that kotlinc adds at the function it adds it for, or at
+		// the class.
 		sig := strings.TrimPrefix(m.sig, "field ")
-		if (m.synth || first.synth) && first.pos != m.pos {
+		if !reported[first] && first.pos != m.pos {
+			reported[first] = true
 			c.errorf(first.pos, "platform declaration clash: the following declarations have the same JVM signature (%s)", sig)
 		}
 		c.errorf(m.pos, "platform declaration clash: the following declarations have the same JVM signature (%s)", sig)

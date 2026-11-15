@@ -30,6 +30,10 @@ key and detail. Flags after the mode go to the harness:
 - `-errors FILE` (diagnostics) writes `kc`'s errors on lines where the
   markup expects no diagnostic to a TSV file: the test, its category, the
   file and line, and the message.
+- `-marks FILE` (diagnostics) writes each diagnostic the markup expects
+  to a TSV file: the test, its category, the file and line, the
+  diagnostic and its severity, and `hit` if `kc` reported an error on
+  its line or `miss`.
 - `-baseline bench/results/box.tsv -o "" -tsv ""` compares a run with the
   committed one, printing the tests that stopped passing and those that
   started, and fails if any stopped. The baseline is read before the run,
@@ -154,7 +158,7 @@ errors per file, it also checks each expected error for one of `kc`'s on
 its line, and lists `kc`'s errors on lines that expect none and the
 warnings the tests expect (`kc` reports none).
 
-Three things differ from the test infrastructure:
+Four things differ from the test infrastructure:
 
 - **The standard library.** Without `WITH_STDLIB`, the infrastructure
   gives `kotlinc` an unpublished minimal library. Both compilers get the
@@ -173,6 +177,12 @@ Three things differ from the test infrastructure:
   mode, strict equality, `-jvm-default` modes) are skipped, as are tests
   with `LANGUAGE` features (but those on by default in Kotlin 2.4),
   multiplatform modules or `IGNORE_FIR_DIAGNOSTICS`.
+- **Switched-off backend errors.** A test that switches off
+  `CONFLICTING_JVM_DECLARATIONS`, `CONFLICTING_INHERITED_JVM_DECLARATIONS`
+  or `ACCIDENTAL_OVERRIDE` with the `DIAGNOSTICS` directive still runs
+  to the backend, which `kotlinc` outside the infrastructure stops on.
+  `kc` reports these errors in its checker, and the harness drops them
+  (by their messages, which begin as the backend's do) from such tests.
 
 Tests with Java sources run: `kc` gets a module's `.java` files with its
 `.kt` files and reads their declarations, as `kotlinc` does. The Java
@@ -206,15 +216,15 @@ Kotlin 2.4.21's tests on `kc`:
 |:---|---:|---:|
 | run (of 10,827) | 8,515 | |
 | rejects invalid | 4,001 | 47.0% |
-| accepts valid | 3,982 | 46.8% |
+| accepts valid | 3,985 | 46.8% |
 | accepts invalid | 383 | 4.5% |
-| rejects valid | 131 | 1.5% |
+| rejects valid | 128 | 1.5% |
 | parse/unsupported | 16 | 0.2% |
 | crash | 1 | |
 | harness error (`javac`) | 1 | |
 
 `kc` agrees with `kotlinc` on 93% of the diagnostics tests, and reports
-14,895 of the 21,506 expected errors (69%) on their lines. Tests with
+15,426 of the 21,506 expected errors (72%) on their lines. Tests with
 Java sources, which earlier runs skipped, add 1,229 tests to the run,
 and 185 of the 383 that *accept invalid* code. The reports break the failures down; the
 largest groups are:
