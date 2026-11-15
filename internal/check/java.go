@@ -237,6 +237,7 @@ func (t *classTable) load(cls *types.ClassSym) {
 	}
 	cls.StabilityInferred = info.StabilityInferred
 	cls.Deprecated = classFileDeprecation(info.Deprecated)
+	cls.OptInLevel, cls.SubclassOptIn = info.OptInLevel, info.SubclassOptIn
 	cls.JavaSealed = info.Sealed
 	for _, a := range slices.Concat(info.Invisible, info.Visible) {
 		if strings.HasPrefix(a, "L") && strings.HasSuffix(a, ";") {
@@ -394,6 +395,8 @@ func (t *classTable) load(cls *types.ClassSym) {
 		f.Unsupported = !ok || !vok
 		f.Abstract = m.Access&classfile.AccAbstract != 0
 		f.Annotations, f.Deprecated = m.Annotations, classFileDeprecation(m.Deprecated)
+		// @kotlin.Deprecated(level = HIDDEN) hides a Java method from calls.
+		f.Hidden = m.Hidden
 		if m.Name == "toString" && len(f.Params) == 0 && kotlinMapped[cls.Name] {
 			// Kotlin sees these classes as Kotlin types, whose toString is
 			// Any's: a String, not a platform String!.
@@ -958,15 +961,32 @@ func (c *Checker) findClassifier(name string) classifier {
 	if c.u.lookups != nil {
 		defer c.noteClassifier(name)
 	}
-	if k := c.nestedClassifier(name); k != (classifier{}) {
-		return k
+	nested := c.nestedClassifier(name)
+	if nested != (classifier{}) && !hiddenClass(nested.cls) {
+		return nested
 	}
-	if k, ok := c.classCache[name]; ok {
-		return k
+	k, ok := c.classCache[name]
+	if !ok {
+		k = c.findClassifier1(name)
+		c.classCache[name] = k
 	}
-	k := c.findClassifier1(name)
-	c.classCache[name] = k
+	if k == (classifier{}) {
+		// A nested class of the class path deprecated with level HIDDEN
+		// gives way to the classes outside, as K2's: found only if
+		// nothing else is, its use is an error.
+		return nested
+	}
 	return k
+}
+
+// hiddenClass reports whether cls is a class of the class path
+// deprecated with level HIDDEN.
+func hiddenClass(cls *types.ClassSym) bool {
+	if cls == nil || !cls.External {
+		return false
+	}
+	cls.Ensure()
+	return cls.Deprecated != nil && cls.Deprecated.Level == "HIDDEN"
 }
 
 func (c *Checker) findClassifier1(name string) classifier {

@@ -2728,7 +2728,7 @@ tests/deprecated/imports.kt	accepts valid
 tests/deprecated/insideDeprecatedClass.kt	skip	LANGUAGE	
 tests/deprecated/iteratorUsage.kt	accepts valid		
 tests/deprecated/javaDeprecated.kt	accepts invalid	(no error marked)	
-tests/deprecated/javaDeprecatedHidden.kt	accepts invalid	UNRESOLVED_REFERENCE; DEPRECATION_ERROR	test.kt:2: UNRESOLVED_REFERENCE
+tests/deprecated/javaDeprecatedHidden.kt	rejects invalid	on an expected line	
 tests/deprecated/javaDeprecatedInheritance.kt	accepts valid		
 tests/deprecated/javaDeprecatedOnStaticMethod.kt	accepts valid		
 tests/deprecated/javaDocDeprecated.kt	accepts valid		
@@ -5297,7 +5297,7 @@ tests/j+k/defaultMethods_before.kt	skip	LANGUAGE
 tests/j+k/deprecations/forFakeOverrides.kt	accepts valid		
 tests/j+k/deprecations/forMixedOverride.kt	accepts valid		
 tests/j+k/deprecations/forOverrides.kt	accepts valid		
-tests/j+k/deprecations/hiddenJavaClass.kt	rejects valid	unresolved reference: _	main.kt:6: unresolved reference: foo
+tests/j+k/deprecations/hiddenJavaClass.kt	accepts valid		
 tests/j+k/deprecations/javaWithHiddenDeprecation.kt	accepts invalid	DEPRECATION_ERROR; UNRESOLVED_REFERENCE; VARIABLE_EXPECTED	main.kt:1: DEPRECATION_ERROR
 tests/j+k/differentFilename.kt	accepts invalid	MISSING_DEPENDENCY_CLASS; UNRESOLVED_REFERENCE	main.kt:2: MISSING_DEPENDENCY_CLASS
 tests/j+k/enumGetOrdinal.kt	accepts valid		
@@ -5647,7 +5647,7 @@ tests/javac/typeParameters/InnerWithTypeParameter.kt	accepts valid
 tests/javac/typeParameters/NestedWithInner.kt	accepts valid		
 tests/javac/typeParameters/SeveralInnersWithTypeParameters.kt	accepts valid		
 tests/javac/typeParameters/TypeParametersInInnerAndOuterWithSameNames.kt	accepts valid		
-tests/jvm/classpath/classFromJdkInLibrary.kt	codegen error	harness error	javac: exit status 1 Picked up JAVA_TOOL_OPTIONS: -Djavax.net.ssl.trustStore=/etc/ssl/certs/java/cacerts -Djavax.net.ssl.trustStoreType=JKS -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=35737 -Dhttp.nonProxyHosts=localhost|127.0.0.1|::1|127.*|0.*|::|169.254.*|api.anthropic.com|api-staging.anthropic.com|api-pr-preview.anthropic.com|mcp-proxy.anthropic.com|mcp-proxy-staging.anthropic.com|registry.npmjs.org|jsr.io|npm.jsr.io|pypi.org|files.pythonhosted.org|index.crates.io|proxy.golang.org|host.docker.internal|10.*|172.16.*|172.17.*|172.18.*|172.19.*|172.20.*|172.21.*|172.22.*|172.23.*|172.24.*|172.25.*|172.26.*|172.27.*|172.28.*|172.29.*|172.30.*|172.31.*|192.168.*|100.64.0.0/10|*.svc.cluster.local|*.svc.cluster.local -Djdk.http.auth.tunneling.disabledSchemes= -Djdk.http.auth.proxying.disabledSchemes= /tmp/claude-0/-workspace-kotlin-compiler-go/8d5a602e-09c7-5a2c-a99c-472011d97f02/scratchpad/kc-conformance/5648/m0/src/java/util/Date.java:1: error: package exists in another module: java.base package java.util; ^ 1 error 
+tests/jvm/classpath/classFromJdkInLibrary.kt	codegen error	harness error	javac: exit status 1 Picked up JAVA_TOOL_OPTIONS: -Djavax.net.ssl.trustStore=/etc/ssl/certs/java/cacerts -Djavax.net.ssl.trustStoreType=JKS -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=44883 -Dhttp.nonProxyHosts=localhost|127.0.0.1|::1|127.*|0.*|::|169.254.*|api.anthropic.com|api-staging.anthropic.com|api-pr-preview.anthropic.com|mcp-proxy.anthropic.com|mcp-proxy-staging.anthropic.com|registry.npmjs.org|jsr.io|npm.jsr.io|pypi.org|files.pythonhosted.org|index.crates.io|proxy.golang.org|host.docker.internal|10.*|172.16.*|172.17.*|172.18.*|172.19.*|172.20.*|172.21.*|172.22.*|172.23.*|172.24.*|172.25.*|172.26.*|172.27.*|172.28.*|172.29.*|172.30.*|172.31.*|192.168.*|100.64.0.0/10|*.svc.cluster.local|*.svc.cluster.local -Djdk.http.auth.tunneling.disabledSchemes= -Djdk.http.auth.proxying.disabledSchemes= /tmp/claude-0/-workspace-kotlin-compiler-go/473f46e2-a9f3-5601-8bed-12091ba40d71/scratchpad/kc-conformance/5648/m0/src/java/util/Date.java:1: error: package exists in another module: java.base package java.util; ^ 1 error 
 tests/jvm/classpath/dependencyOnItself.kt	accepts valid		
 tests/jvm/classpath/prohibitNestedClassesByDollarName.kt	rejects invalid	on an expected line	
 tests/jvm/classpath/sameLibraryTwiceInClasspath.kt	accepts valid		
@@ -9698,7 +9698,7 @@ testsWithStdLib/annotations/subclassOptInRequired/InheritingDifferentOptInLevels
 testsWithStdLib/annotations/subclassOptInRequired/InnerAndNestedClasses.kt	rejects invalid	on an expected line	
 testsWithStdLib/annotations/subclassOptInRequired/InnerClasses.kt	accepts valid		
 testsWithStdLib/annotations/subclassOptInRequired/JavaKotlinInterop.kt	accepts invalid	OPT_IN_TO_INHERITANCE_ERROR	two.kt:3: OPT_IN_TO_INHERITANCE_ERROR
-testsWithStdLib/annotations/subclassOptInRequired/Module.kt	accepts invalid	OPT_IN_TO_INHERITANCE_ERROR	Module.kt:4: OPT_IN_TO_INHERITANCE_ERROR
+testsWithStdLib/annotations/subclassOptInRequired/Module.kt	rejects invalid	on an expected line	
 testsWithStdLib/annotations/subclassOptInRequired/NestedClasses.kt	accepts valid		
 testsWithStdLib/annotations/subclassOptInRequired/NotApiMarkerAsArgument.kt	rejects invalid	on an expected line	
 testsWithStdLib/annotations/subclassOptInRequired/SeveralExperimentalMarkers.kt	rejects invalid	on an expected line	
@@ -10211,7 +10211,7 @@ testsWithStdLib/experimental/deeplyNestedClass.kt	accepts valid
 testsWithStdLib/experimental/delegatedConstructorCall.kt	accepts valid		
 testsWithStdLib/experimental/delegatedConstructorCalls.kt	rejects invalid	on an expected line	
 testsWithStdLib/experimental/diffrentModules.kt	accepts invalid	OPT_IN_USAGE_ERROR	diffrentModules.kt:4: OPT_IN_USAGE_ERROR
-testsWithStdLib/experimental/enumCompanion.kt	accepts invalid	OPT_IN_USAGE_ERROR	enumCompanion.kt:25: OPT_IN_USAGE_ERROR
+testsWithStdLib/experimental/enumCompanion.kt	rejects invalid	on an expected line	
 testsWithStdLib/experimental/enumConstructor.kt	skip	LANGUAGE	
 testsWithStdLib/experimental/enumConstructorStrictCheck.kt	skip	LANGUAGE	
 testsWithStdLib/experimental/enumEntries.kt	skip	API_VERSION	
@@ -10230,7 +10230,7 @@ testsWithStdLib/experimental/incorrectTargetsForExperimentalAnnotation.kt	reject
 testsWithStdLib/experimental/incorrectUseExperimental.kt	accepts valid		
 testsWithStdLib/experimental/insideSAM.kt	rejects invalid	on an expected line	
 testsWithStdLib/experimental/noRetentionAfter.kt	accepts valid		
-testsWithStdLib/experimental/optInDifferentModules.kt	accepts invalid	OPT_IN_USAGE_ERROR	m2.kt:4: OPT_IN_USAGE_ERROR
+testsWithStdLib/experimental/optInDifferentModules.kt	rejects invalid	on an expected line	
 testsWithStdLib/experimental/overridableCheck.kt	rejects invalid	on an expected line	
 testsWithStdLib/experimental/override.kt	accepts valid		
 testsWithStdLib/experimental/overrideDifferentExperimentalities.kt	accepts valid		

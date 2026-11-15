@@ -604,3 +604,28 @@ func TestContractEffects(t *testing.T) {
 		t.Errorf("a conjunction decoded as %+v, want %+v", implies, want)
 	}
 }
+
+// A typealias's annotations, which only metadata keeps, are decoded with
+// their arguments: kc reads the markers and @Deprecated of the class
+// path's typealiases.
+func TestTypeAliasAnnotations(t *testing.T) {
+	str := &Type{Class: "kotlin/String"}
+	dep := &Annotation{Class: "kotlin/Deprecated", Args: []AnnotationArg{
+		{Name: "message", Value: AnnotationValue{Kind: ValueString, Str: "old"}},
+		{Name: "level", Value: AnnotationValue{Kind: ValueEnum, Class: "kotlin/DeprecationLevel", Str: "HIDDEN"}},
+	}}
+	a := &TypeAlias{Flags: MakeFlags(true, Public, Final, 0), Name: "S", Underlying: str, Expanded: str,
+		Annotations: []*Annotation{{Class: "a/Marker"}, dep}}
+	h := WritePackage(&PackageData{Aliases: []*TypeAlias{a}})
+	p, err := ReadPackage(&classfile.KotlinMeta{K: h.K, MV: h.MV, XI: h.XI, D1: h.D1, D2: h.D2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	as, err := p.TypeAliases("S")
+	if err != nil || len(as) != 1 {
+		t.Fatalf("typealiases: %v, %d", err, len(as))
+	}
+	if !reflect.DeepEqual(as[0].Annotations, a.Annotations) {
+		t.Errorf("annotations decoded as %+v, want %+v", as[0].Annotations, a.Annotations)
+	}
+}

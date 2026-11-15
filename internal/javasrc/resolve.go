@@ -481,7 +481,7 @@ func (s *Set) Info(name string) (*classfile.Info, error) {
 		return nil, &missingError{name}
 	}
 	r := &resolver{s: s, c: c}
-	info := &classfile.Info{Name: name, StabilityInferred: -1}
+	info := &classfile.Info{Name: name, StabilityInferred: -1, Deprecated: r.deprecation(c.Annotations)}
 	// A nested class's access is public if it is protected, and package
 	// if it is private: the InnerClasses attribute has its own.
 	flags := c.Flags & (classfile.AccPublic | classfile.AccFinal | classfile.AccAbstract)
@@ -602,7 +602,7 @@ func (s *Set) Info(name string) (*classfile.Info, error) {
 		if iface {
 			access |= classfile.AccPublic | classfile.AccStatic | classfile.AccFinal
 		}
-		m := classfile.Member{Access: access, Name: f.Name, Desc: r.desc(f.Type), Annotations: r.nullability(f.Annotations)}
+		m := classfile.Member{Access: access, Name: f.Name, Desc: r.desc(f.Type), Annotations: r.nullability(f.Annotations), Deprecated: r.deprecation(f.Annotations)}
 		if r.generic(f.Type) {
 			m.Sig = r.sig(f.Type)
 		}
@@ -657,7 +657,8 @@ func (s *Set) Info(name string) (*classfile.Info, error) {
 		}
 		desc, sig := mr.methodDesc(m.TypeParams, outer, params, ret, m.Throws)
 		declared[m.Name+desc] = true
-		mm := classfile.Member{Access: access, Name: m.Name, Desc: desc, Sig: sig, Annotations: mr.methodAnnotations(m.Annotations)}
+		mm := classfile.Member{Access: access, Name: m.Name, Desc: desc, Sig: sig, Annotations: mr.methodAnnotations(m.Annotations), Deprecated: mr.deprecation(m.Annotations)}
+		mm.Hidden = mm.Deprecated != nil && mm.Deprecated.Level == "HIDDEN"
 		for i, p := range m.Params {
 			if as := mr.nullability(p.Annotations); as != nil {
 				if mm.ParamAnnotations == nil {

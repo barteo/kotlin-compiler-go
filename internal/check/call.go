@@ -791,6 +791,9 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			c.noContextArg(x.P, noCtx)
 		case unsupported:
 			c.unsupported(x.P, "unsupported types in signature", "'%s' uses types kc doesn't support", name)
+		case !slices.ContainsFunc(cands, func(cl callee) bool { return !cl.f.Hidden }):
+			// Only @Deprecated(level = HIDDEN) ones, as a Java method's.
+			c.errorf(x.P, "unresolved reference: %s", name)
 		default:
 			c.errorf(x.P, "no function '%s' takes %d arguments", name, len(x.Args))
 		}

@@ -149,3 +149,34 @@ func (r *resolver) methodAnnotations(as []*Annotation) []string {
 	}
 	return out
 }
+
+// deprecation returns the deprecation that annotations as give a
+// declaration, as a class file's would: @kotlin.Deprecated's level,
+// WARNING unless HIDDEN or ERROR is among its arguments, or else
+// @java.lang.Deprecated's, "Deprecated in Java"; nil without either.
+func (r *resolver) deprecation(as []*Annotation) *classfile.Deprecation {
+	var java bool
+	for _, a := range as {
+		if !strings.HasSuffix(a.Name, "Deprecated") {
+			continue
+		}
+		for _, c := range r.annotations([]*Annotation{a}) {
+			switch c.Type {
+			case "Lkotlin/Deprecated;":
+				d := &classfile.Deprecation{Level: "WARNING"}
+				for _, arg := range a.Args {
+					if arg == "HIDDEN" || arg == "ERROR" {
+						d.Level = arg
+					}
+				}
+				return d
+			case "Ljava/lang/Deprecated;":
+				java = true
+			}
+		}
+	}
+	if java {
+		return &classfile.Deprecation{Message: "Deprecated in Java", Level: "WARNING", Java: true}
+	}
+	return nil
+}

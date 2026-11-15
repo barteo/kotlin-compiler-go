@@ -274,6 +274,16 @@ func parseMembers(path string, p syntax.Pos, src string) ([]syntax.Decl, error) 
 	}
 	members := f.Decls[0].(*syntax.ClassDecl).Members
 	setPos(reflect.ValueOf(members), p)
+	for _, m := range members {
+		switch m := m.(type) {
+		case *syntax.FunDecl:
+			m.Generated = true
+		case *syntax.PropDecl:
+			m.Generated = true
+		case *syntax.ClassDecl:
+			m.Generated = true
+		}
+	}
 	return members, nil
 }
 
