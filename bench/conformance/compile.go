@@ -91,23 +91,29 @@ func (c *compiler) compile(t *test, dir string, extra []*srcFile, libs libraries
 		if libs.reflect {
 			cp = append(cp, c.reflect)
 		}
-		cp = append(cp, depsFirst(t.modules[:mi], res.outDirs, m.deps)...)
+		deps, friends := moduleDeps(t.modules[:mi], res.outDirs, m)
+		cp = append(cp, deps...)
 		args := []string{"-d", out, "-module-name", m.name}
 		if len(cp) > 0 {
 			args = append(args, "-cp", strings.Join(cp, string(os.PathListSeparator)))
 		}
 		name := c.kc
+		friendFlag := "-friend-paths"
 		if c.kotlinc != "" {
 			name = c.kotlinc
+			friendFlag = "-Xfriend-paths"
 			args = append(args, "-no-stdlib", "-no-reflect", "-nowarn")
 		} else {
 			args = append(args, "-features", "-j", "1")
 		}
+		if len(friends) > 0 {
+			args = append(args, friendFlag+"="+strings.Join(friends, ","))
+		}
 		for _, o := range libs.optIns {
 			args = append(args, "-opt-in="+o)
 		}
-		if t.anyOf("JVM_DEFAULT_MODE", "disable") {
-			args = append(args, "-jvm-default=disable")
+		if mode := jvmDefaultMode(t, m); mode != "" {
+			args = append(args, "-jvm-default="+mode)
 		}
 		args = append(args, paths...)
 		// The Java sources of a module the next ones depend on are
@@ -339,24 +345,47 @@ func template(msg string) string {
 	return msg
 }
 
-// depsFirst orders the output directories of the modules before one,
-// outs[i] being mods[i]'s, with those of the modules it depends on first,
-// in the order its // MODULE: line names them, as the test
-// infrastructure's class path has them: of two modules that declare one
-// class, the one named first wins. The others follow, as before.
-func depsFirst(mods []*module, outs, deps []string) []string {
-	out := make([]string, 0, len(outs))
-	for _, d := range deps {
-		for i, m := range mods {
-			if m.name == d && i < len(outs) && !slices.Contains(out, outs[i]) {
-				out = append(out, outs[i])
+// moduleDeps returns the class path of m's output directories of the
+// modules before it, outs[i] being mods[i]'s, and those of them that
+// are its friends. As the test infrastructure's, the class path holds
+// only the modules m's // MODULE: line names, its dependencies and then
+// its friends, in that order: of two modules that declare one class,
+// the one named first wins. It isn't transitive: a module that m's
+// dependency depends on isn't on m's class path unless m names it too,
+// and a module that names none gets none.
+func moduleDeps(mods []*module, outs []string, m *module) (cp, friends []string) {
+	dir := func(name string) string {
+		for i, mod := range mods {
+			if mod.name == name && i < len(outs) {
+				return outs[i]
 			}
 		}
+		return ""
 	}
-	for _, o := range outs {
-		if !slices.Contains(out, o) {
-			out = append(out, o)
+	for _, d := range m.deps {
+		if o := dir(d); o != "" && !slices.Contains(cp, o) {
+			cp = append(cp, o)
 		}
 	}
-	return out
+	for _, f := range m.friends {
+		if o := dir(f); o != "" {
+			if !slices.Contains(cp, o) {
+				cp = append(cp, o)
+			}
+			friends = append(friends, o)
+		}
+	}
+	return cp, friends
+}
+
+// jvmDefaultMode returns the -jvm-default mode the JVM_DEFAULT_MODE
+// directive asks for in module m: its own, or the test's before its
+// first module, or "" for the default.
+func jvmDefaultMode(t *test, m *module) string {
+	for _, ds := range []map[string][]string{m.directives, t.global} {
+		if vs := ds["JVM_DEFAULT_MODE"]; len(vs) > 0 {
+			return strings.TrimSpace(vs[len(vs)-1])
+		}
+	}
+	return ""
 }
