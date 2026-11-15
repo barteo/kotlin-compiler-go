@@ -59,7 +59,7 @@ func TestInstantiateKeepsParams(t *testing.T) {
 		if !tmpl.Reifiable(classes) {
 			t.Fatalf("%s: not reifiable", tc.cls)
 		}
-		copies, err := tmpl.Instantiate("a/AKt$only$$inlined$filterIsInstance$1", classes, nil)
+		copies, err := tmpl.Instantiate("a/AKt$only$$inlined$filterIsInstance$1", classes, nil, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -78,7 +78,7 @@ func TestInstantiateKeepsParams(t *testing.T) {
 		if got := again.Params(); len(got) != 1 || got[0] != "S" {
 			t.Fatalf("%s: copy's params %v, want [S]", tc.cls, got)
 		}
-		final, err := again.Instantiate("b/BKt$main$$inlined$only$1", map[string]string{"S": "java/lang/String"}, nil)
+		final, err := again.Instantiate("b/BKt$main$$inlined$only$1", map[string]string{"S": "java/lang/String"}, nil, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -91,7 +91,7 @@ func TestInstantiateKeepsParams(t *testing.T) {
 	if tmpl.Reifiable(map[string]string{"R": "java/lang/String"}) {
 		t.Error("reifiable with a class")
 	}
-	copies, err := tmpl.Instantiate("X", map[string]string{"R": "java/lang/String"}, nil)
+	copies, err := tmpl.Instantiate("X", map[string]string{"R": "java/lang/String"}, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,13 +142,13 @@ func TestInstantiateNullable(t *testing.T) {
 		}
 		t.Fatalf("%s: no instanceof", what)
 	}
-	copies, err := tmpl.Instantiate("X", map[string]string{"R": "java/lang/String?"}, nil)
+	copies, err := tmpl.Instantiate("X", map[string]string{"R": "java/lang/String?"}, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	check("String?", copies[0].Data)
 	// Kept as S?, then reified with String.
-	kept, err := tmpl.Instantiate("Y", map[string]string{"R": "?S?"}, nil)
+	kept, err := tmpl.Instantiate("Y", map[string]string{"R": "?S?"}, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,7 +156,7 @@ func TestInstantiateNullable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	final, err := again.Instantiate("Z", map[string]string{"S": "java/lang/String"}, nil)
+	final, err := again.Instantiate("Z", map[string]string{"S": "java/lang/String"}, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

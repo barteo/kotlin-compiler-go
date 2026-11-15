@@ -418,15 +418,19 @@ func (t *Template) Reifiable(classes map[string]string) bool {
 // calls, so that the copier's copiers copy it in turn.
 //
 // A class with a "?" after it is a nullable type argument, String?: its
-// type checks, as a marked T? one, are true for null too.
-func (t *Template) Instantiate(name string, classes, sigs map[string]string) ([]Instance, error) {
-	return t.instantiate(name, classes, sigs, map[string]string{t.Name: name})
+// type checks, as a marked T? one, are true for null too. names are the
+// Kotlin names of the non-null type arguments, kotlin.String, by the type
+// parameters' names: a cast to one throws a NullPointerException for null,
+// "null cannot be cast to non-null type kotlin.String", as kotlinc's
+// reifier has it.
+func (t *Template) Instantiate(name string, classes, sigs, names map[string]string) ([]Instance, error) {
+	return t.instantiate(name, classes, sigs, names, map[string]string{t.Name: name})
 }
 
 // instantiate copies the template as name, with the classes that renames
 // maps renamed in its constants, and its nested templates, which it
 // creates instead, as name$1, name$2 and so on.
-func (t *Template) instantiate(name string, classes, sigs map[string]string, renames map[string]string) ([]Instance, error) {
+func (t *Template) instantiate(name string, classes, sigs, names map[string]string, renames map[string]string) ([]Instance, error) {
 	renames = maps.Clone(renames)
 	renames[t.Name] = name
 	for i, n := range t.nested {
@@ -434,20 +438,20 @@ func (t *Template) instantiate(name string, classes, sigs map[string]string, ren
 	}
 	var out []Instance
 	for _, n := range t.nested {
-		ins, err := n.t.instantiate(renames[n.t.Name], classes, sigs, renames)
+		ins, err := n.t.instantiate(renames[n.t.Name], classes, sigs, names, renames)
 		if err != nil {
 			return nil, err
 		}
 		out = append(out, ins...)
 	}
-	data, err := t.instantiate1(name, classes, sigs, renames)
+	data, err := t.instantiate1(name, classes, sigs, names, renames)
 	if err != nil {
 		return nil, err
 	}
 	return append([]Instance{{Name: name, Data: data}}, out...), nil
 }
 
-func (t *Template) instantiate1(name string, classes, sigs map[string]string, renames map[string]string) ([]byte, error) {
+func (t *Template) instantiate1(name string, classes, sigs, names map[string]string, renames map[string]string) ([]byte, error) {
 	data := t.data
 	dotted := map[string]string{}
 	for old, n := range renames {
@@ -460,16 +464,31 @@ func (t *Template) instantiate1(name string, classes, sigs map[string]string, re
 	var added bytes.Buffer
 	repoint := map[int]int{} // String constant -> new Utf8
 	fresh := map[int]int{}   // marker's name offset -> new String
-	names := map[string]int{}
+	utf8s := map[string]int{}
 	utf8 := func(s string) int {
-		if i, ok := names[s]; ok {
+		if i, ok := utf8s[s]; ok {
 			return i
 		}
 		added.Write([]byte{1, byte(len(s) >> 8), byte(len(s))})
 		added.WriteString(s)
-		names[s] = count
+		utf8s[s] = count
 		count++
 		return count - 1
+	}
+	// The messages of the casts' null checks, first, for ldc's one-byte
+	// index: Strings, each before its Utf8.
+	messages := map[string]int{}
+	for _, op := range t.ops {
+		n, ok := names[op.param]
+		if op.kind != As || op.nullable || !ok || messages[op.param] != 0 || strings.HasPrefix(classes[op.param], "?") {
+			continue
+		}
+		msg := "null cannot be cast to non-null type " + n
+		added.Write([]byte{8, byte((count + 1) >> 8), byte(count + 1)})
+		added.Write([]byte{1, byte(len(msg) >> 8), byte(len(msg))})
+		added.WriteString(msg)
+		messages[op.param] = count
+		count += 2
 	}
 	for _, op := range t.ops {
 		cls := classes[op.param]
@@ -532,9 +551,21 @@ func (t *Template) instantiate1(name string, classes, sigs map[string]string, re
 	}
 	pool.Write(added.Bytes())
 	// The classes of the operations, as new constants, and
-	// Objects.isNull for the checks of nullable types.
+	// Objects.isNull for the checks of nullable types and
+	// Intrinsics.checkNotNull for the casts to non-null ones.
 	index := map[string]int{}
-	isNull := 0
+	isNull, checkMsg, check := 0, 0, 0
+	methodref := func(class, name, desc string) int {
+		for _, u := range []string{class, name, desc} {
+			pool.Write([]byte{1, byte(len(u) >> 8), byte(len(u))})
+			pool.WriteString(u)
+		}
+		pool.Write([]byte{7, byte(count >> 8), byte(count)})
+		pool.Write([]byte{12, byte((count + 1) >> 8), byte(count + 1), byte((count + 2) >> 8), byte(count + 2)})
+		pool.Write([]byte{10, byte((count + 3) >> 8), byte(count + 3), byte((count + 4) >> 8), byte(count + 4)})
+		count += 6
+		return count - 1
+	}
 	for _, op := range t.ops {
 		cls, ok := classes[op.param]
 		if !ok {
@@ -545,16 +576,14 @@ func (t *Template) instantiate1(name string, classes, sigs map[string]string, re
 		}
 		cls, nullable := strings.CutSuffix(cls, "?")
 		if op.kind == Is && (nullable || op.nullable) && isNull == 0 {
-			// Utf8s, Class, NameAndType and Methodref.
-			for _, u := range []string{"java/util/Objects", "isNull", "(Ljava/lang/Object;)Z"} {
-				pool.Write([]byte{1, byte(len(u) >> 8), byte(len(u))})
-				pool.WriteString(u)
+			isNull = methodref("java/util/Objects", "isNull", "(Ljava/lang/Object;)Z")
+		}
+		if m := messages[op.param]; op.kind == As && m != 0 {
+			if m <= 0xFF && checkMsg == 0 {
+				checkMsg = methodref("kotlin/jvm/internal/Intrinsics", "checkNotNull", "(Ljava/lang/Object;Ljava/lang/String;)V")
+			} else if m > 0xFF && check == 0 {
+				check = methodref("kotlin/jvm/internal/Intrinsics", "checkNotNull", "(Ljava/lang/Object;)V")
 			}
-			pool.Write([]byte{7, byte(count >> 8), byte(count)})
-			pool.Write([]byte{12, byte((count + 1) >> 8), byte(count + 1), byte((count + 2) >> 8), byte(count + 2)})
-			pool.Write([]byte{10, byte((count + 3) >> 8), byte(count + 3), byte((count + 4) >> 8), byte(count + 4)})
-			isNull = count + 5
-			count += 6
 		}
 		if _, ok := index[cls]; ok {
 			continue
@@ -593,6 +622,21 @@ func (t *Template) instantiate1(name string, classes, sigs map[string]string, re
 				cf.DUP, cf.INVOKESTATIC, byte(isNull >> 8), byte(isNull),
 				cf.SWAP, cf.INSTANCEOF, byte(idx >> 8), byte(idx), cf.IOR,
 			})
+			continue
+		}
+		if m := messages[op.param]; op.kind == As && m != 0 {
+			// x as C, of a non-null type: a null check first, in the bytes
+			// of the marker, as kc's casts check (see checkCastNotNull).
+			if op.op-op.start != 6 || data[op.op] != cf.CHECKCAST {
+				return nil, fmt.Errorf("class %s: a cast kc can't reify", name)
+			}
+			seq := []byte{cf.DUP, cf.LDC, byte(m), cf.INVOKESTATIC, byte(checkMsg >> 8), byte(checkMsg)}
+			if m > 0xFF {
+				// No one-byte index for the message: the check without it.
+				seq = []byte{cf.DUP, cf.INVOKESTATIC, byte(check >> 8), byte(check), cf.NOP, cf.NOP}
+			}
+			copy(out[start:], seq)
+			binary.BigEndian.PutUint16(out[at+1:], uint16(idx))
 			continue
 		}
 		for k := start; k < at; k++ {

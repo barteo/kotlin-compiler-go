@@ -27,3 +27,13 @@ interface Picker {
 inline fun <reified T> picker(): Picker = object : Picker {
     override fun pick(xs: Sequence<Any?>): List<Any?> = xs.filterIsInstance<T>().toList()
 }
+
+// Casts to the type arguments: a non-null one throws for null.
+inline fun <reified T> cast(x: Any?): T = x as T
+
+inline fun <reified T> List<Any?>.castAll(): List<T> = map { it as T }
+
+// An object of the standard library's map that casts, and a copy of it.
+inline fun <reified T> List<Any?>.castSeq(): List<T> = asSequence().map { it as T }.toList()
+
+inline fun <reified E> List<Any?>.castSeq2(): List<E> = castSeq<E>()

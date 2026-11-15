@@ -8,3 +8,12 @@ null
 ([1, 2, 3], [x, y])
 [1, 3]
 [x, y]
+Failure(java.lang.NullPointerException: null cannot be cast to non-null type kotlin.String)
+Success(null)
+Failure(java.lang.NullPointerException: null cannot be cast to non-null type kotlin.collections.List<kotlin.Int>)
+Failure(java.lang.NullPointerException: null cannot be cast to non-null type kotlin.String)
+Success([a, null])
+Failure(java.lang.NullPointerException: null cannot be cast to non-null type kotlin.String)
+Success([a, null])
+Failure(java.lang.NullPointerException: null cannot be cast to non-null type kotlin.String)
+Success([a, null])

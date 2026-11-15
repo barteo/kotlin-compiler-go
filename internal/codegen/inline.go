@@ -217,6 +217,14 @@ func (in *inliner) instantiate(t *inline.Template) bool {
 			reified[p] = cls + "?"
 		}
 	}
+	// The names of non-null type arguments, for the messages of the null
+	// checks of casts to them.
+	names := map[string]string{}
+	for p, typ := range g.reifiedTypes {
+		if cls, ok := reified[p]; ok && !strings.HasPrefix(cls, "?") && !types.MayBeNull(typ) {
+			names[p] = kotlinName(typ)
+		}
+	}
 	sigs := map[string]string{}
 	for p, t := range g.reifiedTypes {
 		if !g.reifiedParam(t) {
@@ -226,7 +234,7 @@ func (in *inliner) instantiate(t *inline.Template) bool {
 		}
 	}
 	reifiable := t.Reifiable(reified)
-	copies, err := t.Instantiate(name, reified, sigs)
+	copies, err := t.Instantiate(name, reified, sigs, names)
 	if err != nil && reifiable {
 		// A class whose markers kc can't keep: a copy erased, which the
 		// function's copiers can't copy.
@@ -236,7 +244,7 @@ func (in *inliner) instantiate(t *inline.Template) bool {
 				reified[p] = "java/lang/Object"
 			}
 		}
-		copies, err = t.Instantiate(name, reified, sigs)
+		copies, err = t.Instantiate(name, reified, sigs, names)
 	}
 	if err != nil {
 		panic(err)
@@ -627,6 +635,10 @@ func (in *inliner) insn(i int) {
 		case inline.NewArray:
 			c.ANewArray(cls)
 		case inline.As:
+			if t, ok := in.g.reifiedTypes[r.Param]; ok && !r.Nullable && !types.MayBeNull(t) {
+				// x as String throws for null, as kotlinc's reifier has it.
+				in.g.checkCastNotNull(t)
+			}
 			c.Checkcast(cls)
 		case inline.SafeAs:
 			// x as? C: x if it is a C, else null.
