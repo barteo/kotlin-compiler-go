@@ -45,6 +45,8 @@ fun main() = runBlocking {
     println(flowOf(1, 2, 3).peek { println("peek $it") }.toList())
     println(flowOf(1, 2).emitTwice { delay(1); it * 5 }.toList())
     println(flowOf(1, 2).retried { if (it > 1) error("x") else it }.toList())
+    println(flowOf<Any>(1, "a", 2, "b").onlyOf<String>().toList())
+    println(flowOf<Any>(1, "a", 2, "b").onlyOf<Int>().toList())
     // Not copied: its own method.
     val m = Class.forName("store.InlineKt").getMethod("halved", Int::class.javaPrimitiveType, Continuation::class.java)
     println(runCatching { m.invoke(null, -1, Continuation<Any?>(EmptyCoroutineContext) {}) }.exceptionOrNull()?.cause)

@@ -97,3 +97,8 @@ inline fun Flow<Int>.emitTwice(crossinline f: suspend (Int) -> Int): Flow<Int> =
 
 inline fun Flow<Int>.retried(crossinline f: (Int) -> Int): Flow<Int> =
     map { f(it) }.retryWhen { _, attempt -> attempt < 1 }.catch { emit(99) }
+
+// A flow's filterIsInstance in a function with a reified type parameter:
+// its copy of the library's object, and of the classes nested in it, keep
+// the parameter, which a program copying the function reifies.
+inline fun <reified R> Flow<*>.onlyOf(): Flow<R> = filterIsInstance<R>()

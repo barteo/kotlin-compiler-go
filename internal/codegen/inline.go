@@ -177,25 +177,19 @@ func (in *inliner) desc(d string) string {
 }
 
 // instantiate generates the copy of template t that the body's
-// instruction creates, as kotlinc names it: Class$method$$inlined$f$N.
-func (in *inliner) instantiate(t *inline.Template) {
+// instruction creates, as kotlinc names it: Class$method$$inlined$f$N. It
+// reports whether the copy still operates on reified type parameters, of
+// the inline function whose method this is: the copy keeps its markers,
+// and is created after a needClassReification call, so that the
+// function's copiers, in other modules too, copy it with their type
+// arguments, as kotlinc's are.
+func (in *inliner) instantiate(t *inline.Template) bool {
 	g := in.g
 	method := strings.TrimSuffix(g.prefix, "$lambda")
 	key := g.cls.Name + "$" + method + "$$inlined$" + in.b.Name
 	g.shared.count[key]++
 	name := key + "$" + strconv.Itoa(g.shared.count[key])
-	reified, cloned := in.reified, false
-	for p, cls := range in.reified {
-		if strings.HasPrefix(cls, "?") {
-			// A reified type parameter of the inline function whose method
-			// this is: kc copies the object erased, where kotlinc would
-			// copy it with markers for its callers.
-			if !cloned {
-				reified, cloned = maps.Clone(in.reified), true
-			}
-			reified[p] = "java/lang/Object"
-		}
-	}
+	reified := in.reified
 	sigs := map[string]string{}
 	for p, t := range g.reifiedTypes {
 		if !g.reifiedParam(t) {
@@ -204,7 +198,19 @@ func (in *inliner) instantiate(t *inline.Template) {
 			sigs[p] = w.String()
 		}
 	}
+	reifiable := t.Reifiable(reified)
 	copies, err := t.Instantiate(name, reified, sigs)
+	if err != nil && reifiable {
+		// A class whose markers kc can't keep: a copy erased, which the
+		// function's copiers can't copy.
+		reified, reifiable = maps.Clone(reified), false
+		for p, cls := range reified {
+			if strings.HasPrefix(cls, "?") {
+				reified[p] = "java/lang/Object"
+			}
+		}
+		copies, err = t.Instantiate(name, reified, sigs)
+	}
 	if err != nil {
 		panic(err)
 	}
@@ -215,6 +221,10 @@ func (in *inliner) instantiate(t *inline.Template) {
 		in.renamed = map[string]string{}
 	}
 	in.renamed[t.Name] = name
+	if reifiable && g.reifiedUse != nil {
+		*g.reifiedUse = true // copies of the enclosing class create copies of this one
+	}
+	return reifiable
 }
 
 // inline copies the body b in place of a call whose arguments are on the
@@ -514,8 +524,8 @@ func (in *inliner) insn(i int) {
 		}
 		in.g.mark(inline.FakeContinuation) // still a placeholder, in a copy that is inlined in turn
 	}
-	if t := b.Templates[i]; t != nil {
-		in.instantiate(t)
+	if t := b.Templates[i]; t != nil && in.instantiate(t) {
+		c.Invoke(cf.INVOKESTATIC, intrinsics, "needClassReification", "()V")
 	}
 	if t := b.Copies[i]; t != nil && in.g.publicInline && in.renamed[t.Name] == "" {
 		// In the method of a public inline function, which kotlinc's

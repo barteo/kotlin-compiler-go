@@ -50,6 +50,9 @@ type Template struct {
 	// collect and collect$$forInline do. The copy creates the copy of the
 	// class, which renaming its constants gives.
 	copied []int
+	// literals are the String constants, by index, that code loads other
+	// than as a marker's type parameter name.
+	literals map[int]bool
 }
 
 type nestedTemplate struct {
@@ -67,11 +70,15 @@ type Instance struct {
 // three instructions from start, and the operation, which takes a class
 // constant at classAt (a class ldc's one-byte index at classAt-1 if
 // ldc). A Catch operation's astore takes none: the exception table
-// entries of its handler do, at catches.
+// entries of its handler do, at catches. The marker's ldc of the type
+// parameter's name takes its String constant's one-byte index at nameAt;
+// nullable is set if the name ends in "?".
 type reifiedOp struct {
 	start, op int // file offsets
 	kind      int
 	param     string
+	nullable  bool
+	nameAt    int
 	ldc       bool  // a class ldc, whose index is one byte
 	catches   []int // a Catch's catch_type fields, as file offsets
 }
@@ -210,6 +217,13 @@ func readTemplate(name string, data []byte) (*Template, []nestedRef, error) {
 			return nil, nil, err
 		}
 		for i, in := range insns {
+			if (in.Op == cf.LDC || in.Op == cf.LDC_W) && in.Const == cf.ConstString &&
+				(i+1 >= len(insns) || insns[i+1].Op != cf.INVOKESTATIC || insns[i+1].Name != "reifiedOperationMarker") {
+				if t.literals == nil {
+					t.literals = map[int]bool{}
+				}
+				t.literals[constIndex(m, &in)] = true
+			}
 			// An anonymous class nested in the template, which kotlinc's
 			// inliner copies with it: the copy's code creates the copy.
 			if c := created(&in); isNested(name, c) && !slices.ContainsFunc(nested, func(r nestedRef) bool { return r.class == c }) {
@@ -253,7 +267,8 @@ func readTemplate(name string, data []byte) (*Template, []nestedRef, error) {
 			}
 			t.ops = append(t.ops, reifiedOp{
 				start: m.CodeOff + insns[i-2].Off, op: m.CodeOff + op.Off, kind: kind,
-				param: trimNullable(insns[i-1].Str), ldc: op.Op == cf.LDC, catches: catches,
+				param: trimNullable(insns[i-1].Str), nullable: strings.HasSuffix(insns[i-1].Str, "?"),
+				nameAt: m.CodeOff + insns[i-1].Off + 1, ldc: op.Op == cf.LDC, catches: catches,
 			})
 		}
 	}
@@ -346,6 +361,14 @@ func isNested(outer, class string) bool {
 	return err == nil
 }
 
+// constIndex returns the constant pool index that ldc or ldc_w in takes.
+func constIndex(m *cf.Method, in *cf.Insn) int {
+	if in.Op == cf.LDC {
+		return int(m.Code[in.Off+1])
+	}
+	return int(binary.BigEndian.Uint16(m.Code[in.Off+1:]))
+}
+
 func trimNullable(s string) string {
 	if len(s) > 0 && s[len(s)-1] == '?' {
 		return s[:len(s)-1]
@@ -366,6 +389,19 @@ func (t *Template) Params() []string {
 	return out
 }
 
+// Reifiable reports whether a copy with classes keeps marked operations:
+// whether classes has, for a type parameter of its operations or those of
+// its nested templates, a reified type parameter of the copier, "?S" for
+// S, whose own copies the copier's copiers make.
+func (t *Template) Reifiable(classes map[string]string) bool {
+	for _, op := range t.ops {
+		if strings.HasPrefix(classes[op.param], "?") {
+			return true
+		}
+	}
+	return slices.ContainsFunc(t.nested, func(n nestedTemplate) bool { return n.t.Reifiable(classes) })
+}
+
 // Instantiate returns a copy of the template's class file named name,
 // whose marked operations use the classes of the type arguments, by the
 // type parameters' names (internal names, or descriptors of arrays). The
@@ -374,6 +410,12 @@ func (t *Template) Params() []string {
 // parameters' names, in place of the parameters: the superclass
 // TypeReference<T> of an object : TypeReference<T>() {} becomes the
 // TypeReference<Msg> that reflection reads.
+//
+// A class "?S" is a reified type parameter S of the copier, as kotlinc's
+// inliner copies a template into an inline function with reified type
+// parameters: the operation keeps its marker, which names S, and the copy
+// creates its nested templates that use S after needClassReification
+// calls, so that the copier's copiers copy it in turn.
 func (t *Template) Instantiate(name string, classes, sigs map[string]string) ([]Instance, error) {
 	return t.instantiate(name, classes, sigs, map[string]string{t.Name: name})
 }
@@ -408,6 +450,46 @@ func (t *Template) instantiate1(name string, classes, sigs map[string]string, re
 	for old, n := range renames {
 		dotted[strings.ReplaceAll(old, "/", ".")] = strings.ReplaceAll(n, "/", ".")
 	}
+	// The markers' names of operations on the copier's reified type
+	// parameters: their String constants, which only markers load, refer
+	// to new Utf8 constants; the others' markers load new constants.
+	count := len(t.pool)
+	var added bytes.Buffer
+	repoint := map[int]int{} // String constant -> new Utf8
+	fresh := map[int]int{}   // marker's name offset -> new String
+	names := map[string]int{}
+	utf8 := func(s string) int {
+		if i, ok := names[s]; ok {
+			return i
+		}
+		added.Write([]byte{1, byte(len(s) >> 8), byte(len(s))})
+		added.WriteString(s)
+		names[s] = count
+		count++
+		return count - 1
+	}
+	for _, op := range t.ops {
+		cls := classes[op.param]
+		param, ok := strings.CutPrefix(cls, "?")
+		if !ok {
+			continue
+		}
+		if op.nullable && !strings.HasSuffix(param, "?") {
+			param += "?"
+		}
+		str := int(data[op.nameAt])
+		if !t.literals[str] {
+			repoint[str] = utf8(param)
+			continue
+		}
+		u := utf8(param)
+		added.Write([]byte{8, byte(u >> 8), byte(u)})
+		if count > 0xFF {
+			return nil, fmt.Errorf("class %s: no one-byte constant for reified type parameter %s", name, param)
+		}
+		fresh[op.nameAt] = count
+		count++
+	}
 	var pool bytes.Buffer
 	for i := 1; i < len(t.pool); i++ {
 		start := t.pool[i]
@@ -440,18 +522,20 @@ func (t *Template) instantiate1(name string, classes, sigs map[string]string, re
 				s = substVars(s, sigs)
 			}
 			e = append([]byte{1, byte(len(s) >> 8), byte(len(s))}, s...)
+		} else if u, ok := repoint[i]; ok {
+			e = []byte{8, byte(u >> 8), byte(u)}
 		}
 		pool.Write(e)
 	}
+	pool.Write(added.Bytes())
 	// The classes of the operations, as new constants.
-	count := len(t.pool)
 	index := map[string]int{}
 	for _, op := range t.ops {
 		cls, ok := classes[op.param]
 		if !ok {
 			return nil, fmt.Errorf("no type argument for reified type parameter %s", op.param)
 		}
-		if _, ok := index[cls]; ok {
+		if _, ok := index[cls]; ok || strings.HasPrefix(cls, "?") {
 			continue
 		}
 		pool.Write([]byte{1, byte(len(cls) >> 8), byte(len(cls))})
@@ -469,6 +553,12 @@ func (t *Template) instantiate1(name string, classes, sigs map[string]string, re
 	shift := len(out) - t.poolEnd
 	out = append(out, data[t.poolEnd:]...)
 	for _, op := range t.ops {
+		if strings.HasPrefix(classes[op.param], "?") {
+			if s, ok := fresh[op.nameAt]; ok {
+				out[op.nameAt+shift] = byte(s)
+			}
+			continue // the marker stays, for the copier's copiers
+		}
 		idx := index[classes[op.param]]
 		start, at := op.start+shift, op.op+shift
 		for k := start; k < at; k++ {
@@ -488,10 +578,16 @@ func (t *Template) instantiate1(name string, classes, sigs map[string]string, re
 		}
 		binary.BigEndian.PutUint16(out[at+1:], uint16(idx))
 	}
-	// The needClassReification calls, whose classes are copied.
-	calls := slices.Clone(t.copied)
+	// The needClassReification calls, whose classes are copied, but for
+	// those of the copies that the copier's copiers copy again.
+	var calls []int
+	if !t.Reifiable(classes) {
+		calls = slices.Clone(t.copied)
+	}
 	for _, n := range t.nested {
-		calls = append(calls, n.call)
+		if !n.t.Reifiable(classes) {
+			calls = append(calls, n.call)
+		}
 	}
 	for _, call := range calls {
 		if call < 0 {
