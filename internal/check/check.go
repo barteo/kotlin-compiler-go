@@ -2683,7 +2683,9 @@ func (c *Checker) inferProp(d *syntax.PropDecl) {
 	c.trial = c.trialOf(sym.Owner)
 	if d.Getter != nil && d.Init == nil {
 		// val x get() = ...: the type is the getter's.
+		restore := getterKeepsAnon(d, sym.Owner)
 		c.inferFun(d.Getter)
+		restore()
 		sym.Type = d.Getter.Sym.Ret
 		unitGetter(d.Getter.Sym)
 	} else {
