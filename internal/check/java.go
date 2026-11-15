@@ -2823,7 +2823,8 @@ func (c *Checker) javaProperty(x *syntax.Member, rt types.Type) (types.Type, boo
 	}
 	// Kotlin decapitalizes the name of getTypeName(): typeName. A
 	// capitalized name, as TypeName, names a class, not the getter.
-	if r, _ := utf8.DecodeRuneInString(x.Name); unicode.IsUpper(r) {
+	// Nor is a name that can't start a Java identifier, as `1` of get1().
+	if r, _ := utf8.DecodeRuneInString(x.Name); unicode.IsUpper(r) || !unicode.IsLetter(r) && r != '_' && r != '$' {
 		return types.InvalidType, false
 	}
 	getterName := types.GetterName(x.Name)
@@ -2853,7 +2854,7 @@ func (c *Checker) javaProperty(x *syntax.Member, rt types.Type) (types.Type, boo
 		// overrides of them.
 		// isX() is the getter of isX whatever its result, as Rx's
 		// Maybe.isEmpty(), a Single<Boolean>.
-		if c.javaAccessorIn(cls, f) && len(f.Params) == 0 && !f.Unsupported && f.Ret.K != types.Unit {
+		if c.javaAccessorIn(cls, f) && len(f.Params) == 0 && !f.Unsupported && f.Ret.K != types.Unit && !overridesKotlinFun(f) {
 			x.Getter = f
 		}
 	}
@@ -2966,6 +2967,23 @@ func (c *Checker) javaAccessorIn(cls *types.ClassSym, f *types.FunSym) bool {
 	found := false
 	cls.Supertypes(func(s *types.ClassSym) bool {
 		found = s.External && s.KotlinName == "" && s.Java == nil && s.KProps == nil && s.Name != "java/lang/Object" &&
+			slices.ContainsFunc(s.Methods[f.Name], func(g *types.FunSym) bool { return !g.Static && len(g.Params) == len(f.Params) })
+		return !found
+	})
+	return found
+}
+
+// overridesKotlinFun reports whether Java method f overrides a function
+// of a Kotlin class, which, as in K2 (KT-63067), makes it no property's
+// getter: a Java getX() overriding a Kotlin fun getX() is called as such.
+func overridesKotlinFun(f *types.FunSym) bool {
+	if f.Owner == nil || !isJavaClass(f.Owner) || f.Static {
+		return false
+	}
+	found := false
+	f.Owner.Supertypes(func(s *types.ClassSym) bool {
+		kotlin := !s.External || s.FromKotlin || s.KProps != nil
+		found = s != f.Owner && kotlin && s.Java == nil &&
 			slices.ContainsFunc(s.Methods[f.Name], func(g *types.FunSym) bool { return !g.Static && len(g.Params) == len(f.Params) })
 		return !found
 	})
