@@ -2502,7 +2502,7 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 				c.captureThis()
 				return c.resolve(x, c.memberCallees(ms, c.cls.This()), want, sink)
 			}
-			if p := c.userProp(c.cls, name); p != nil && !(p.InProgress && c.uninvokable(p, name)) {
+			if p := c.userProp(c.cls, name); p != nil && !(inferring(p) && (c.namesCallee(name) || c.thisExtension(name, x))) {
 				// One being inferred gives way to a function of its name:
 				// val navOptions = navOptions { }.
 				ensureVar(p)
@@ -2936,7 +2936,7 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 			t = c.resolve(x, nullExts, want, sink)
 		case cls != nil && !cls.External:
 			ms := c.javaMethods(cls, fn.Name)
-			if p := c.userProp(cls, fn.Name); len(ms) == 0 && p != nil && !((!c.propVisible(p) || !c.invokeFits(p, x)) && c.extCallees(fn.Name, rt) != nil) {
+			if p := c.userProp(cls, fn.Name); len(ms) == 0 && p != nil && !((!c.propVisible(p) || p.InProgress || !c.invokeFits(p, x)) && c.extCallees(fn.Name, rt) != nil) {
 				// A property of function type, called: obj.f(x).
 				if fn.Safe {
 					return c.safeInvoke(x, fn, want, sink)
@@ -3020,7 +3020,7 @@ func (c *Checker) extPropInvoked(fn *syntax.Member, rt types.Type, cls *types.Cl
 // such a property isn't a candidate, so val Border = 1.dp doesn't hide
 // the constructor Border(width, color).
 func (c *Checker) uninvokable(v *types.VarSym, name string) bool {
-	other := c.findClass(name) != nil || len(c.topFuns(name)) > 0 || len(c.kotlinFuns(name, false)) > 0
+	other := c.namesCallee(name)
 	if v.InProgress {
 		// Its own initializer calls the class or function: val Shapes =
 		// Shapes(...).

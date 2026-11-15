@@ -194,3 +194,20 @@ func (c *Checker) projectedAssignOp(s *syntax.Assign, m *syntax.Member, write ty
 func renamedOperator(f *types.FunSym, name string) bool {
 	return f.Operator && f.Builtin == 0 && f.Name != name && f.Name != "<init>"
 }
+
+// namesCallee reports whether name names a class or a top-level function
+// that a call of the name may be instead of an invoked property.
+func (c *Checker) namesCallee(name string) bool {
+	return c.findClass(name) != nil || len(c.topFuns(name)) > 0 || len(c.kotlinFuns(name, false)) > 0
+}
+
+// inferring reports whether property p's type is being inferred: its
+// own, or its delegate's, whose initializer val lazy by lazy { 1 } calls
+// the function lazy.
+func inferring(p *types.VarSym) bool {
+	if p.InProgress {
+		return true
+	}
+	d, ok := p.Decl.(*syntax.PropDecl)
+	return ok && d.Field != nil && d.Field.DelegateOf == d && d.Field.Sym != nil && d.Field.Sym.InProgress
+}

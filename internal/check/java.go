@@ -1405,9 +1405,12 @@ func (c *Checker) extProp(x *syntax.Member, rt types.Type) (types.Type, bool) {
 	sub := func(g *types.FunSym) types.Subst { return nil }
 	fits := func(gs []*types.FunSym) {
 		for _, g := range gs {
-			ensureFun(g)
 			s := sub(g)
-			if c.recvFits(rt, s.Apply(g.Recv)) && (best == nil || c.subtype(s.Apply(g.Recv), bestSub.Apply(best.Recv))) {
+			if !c.recvFits(rt, s.Apply(g.Recv)) {
+				continue // nor is its type inferred, which may be in progress
+			}
+			ensureFun(g)
+			if best == nil || c.subtype(s.Apply(g.Recv), bestSub.Apply(best.Recv)) {
 				best, bestSub = g, s
 			}
 		}
