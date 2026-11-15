@@ -627,3 +627,11 @@ func (lx *lexer) lexNumber(p int) Kind {
 	lx.pos = intEnd
 	return KindINTEGER_LITERAL
 }
+
+// Lex splits src into the tokens of Kotlin's lexer, covering it exactly:
+// kinds[i] spans [starts[i], starts[i+1]), and starts has one extra entry,
+// len(src). Whitespace and comments are tokens too. Lex appends to kinds
+// and starts, which may be nil, and returns them.
+func Lex(src string, kinds []Kind, starts []int32) ([]Kind, []int32) {
+	return tokenize(src, kinds, starts)
+}

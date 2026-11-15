@@ -149,14 +149,6 @@ func (k Kind) String() string {
 	return fmt.Sprintf("Kind(%d)", k)
 }
 
-var keywords = map[string]Kind{
-	"fun": FUN, "val": VAL, "var": VAR, "if": IF, "else": ELSE, "when": WHEN, "while": WHILE,
-	"for": FOR, "in": IN, "return": RETURN, "break": BREAK, "continue": CONTINUE, "class": CLASS,
-	"this": THIS, "true": TRUE, "false": FALSE, "null": NULL,
-	"is": IS, "as": AS, "try": TRY, "throw": THROW, "interface": INTERFACE, "object": OBJECT,
-	"package": PACKAGE, "typealias": TYPEALIAS, "super": SUPER, "do": DO, "typeof": TYPEOF,
-}
-
 // StrPart is one piece of a string literal: either literal text or an
 // embedded template expression whose source is parsed later.
 type StrPart struct {
