@@ -6,6 +6,8 @@ import (
 	"maps"
 	"slices"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
 	"github.com/barteo/kotlin-compiler-go/internal/types"
@@ -419,7 +421,10 @@ func (c *Checker) hasProp(cls *types.ClassSym, name string) bool {
 		found = s.KProps[name] != nil
 		return !found
 	})
-	return found || len(c.javaMethods(cls, types.GetterName(name))) > 0 ||
+	// A capitalized name, as TimeZone, names a class, not the property
+	// that Kotlin sees for getTimeZone(): timeZone.
+	r, _ := utf8.DecodeRuneInString(name)
+	return found || !unicode.IsUpper(r) && len(c.javaMethods(cls, types.GetterName(name))) > 0 ||
 		name == "length" && c.isCharSequence(cls) || name == "size" && c.hasSize(cls)
 }
 
@@ -780,7 +785,13 @@ func (c *Checker) overridden(cls *types.ClassSym, f *types.FunSym) []*types.FunS
 			return true
 		}
 		if s.Name == "java/lang/Throwable" && f.Name == "fillInStackTrace" {
-			return true // not a member, as Kotlin sees Throwable
+			// Not a member, as Kotlin sees Throwable: a function of
+			// that name needs no 'override'. But K2 accepts one, as
+			// kotlinx.coroutines' exceptions have, and it then
+			// overrides Throwable's.
+			if d, ok := f.Decl.(*syntax.FunDecl); !ok || !d.Override {
+				return true
+			}
 		}
 		gs := methodsNamed(s, f)
 		if s.Name == charSequence && f.Name == "get" && !f.Ext {

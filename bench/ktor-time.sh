@@ -3,7 +3,7 @@
 # preceding modules: ktor-io, ktor-utils, then ktor-http.
 #
 #   bench/ktor-time.sh
-#   COOLDOWN=10 RUNS=5 WARM_RUNS=20 bench/ktor-time.sh
+#   COOLDOWN=0 RUNS=3 WARM_RUNS=10 bench/ktor-time.sh
 #
 # Needs the tools used by bench/run.sh, bench/survey.sh's Ktor clone,
 # and network access to Maven Central on the first run for dependencies.

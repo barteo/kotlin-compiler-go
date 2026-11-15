@@ -31,6 +31,7 @@ fun main() {
     println(Q().get(Inv("q")))
     defaults()
     inheritedMain()
+    throwables()
 }
 
 // A default value inherited through another supertype is a deprecation
@@ -80,4 +81,25 @@ fun inheritedMain() {
     println(PicksOther().f())
     val r: AbstractR = BothR()
     println(r.r())
+}
+
+// Kotlin doesn't see Throwable.fillInStackTrace as a member, but K2
+// accepts 'override' on it, as kotlinx.coroutines' exceptions have, and
+// a function of that name without it.
+class Quiet(msg: String) : RuntimeException(msg) {
+    override fun fillInStackTrace(): Quiet = this
+}
+
+class Unmarked : Exception("u") {
+    fun fillInStackTrace(): Throwable {
+        stackTrace = emptyArray()
+        return this
+    }
+}
+
+fun throwables() {
+    val q: Throwable = Quiet("q")
+    println(q.stackTrace.size)
+    println(q.fillInStackTrace() === q)
+    println(Unmarked().stackTrace.size)
 }
