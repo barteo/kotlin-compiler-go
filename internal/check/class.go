@@ -852,6 +852,24 @@ func (c *Checker) overriddenProps(cls *types.ClassSym, p *types.VarSym) []superP
 	})
 }
 
+// javaFinalAccessor returns the Java superclass of cls below o's owner
+// that declares a final method with the JVM signature of o's getter or
+// setter, which Kotlin sees as o, final: or nil.
+func javaFinalAccessor(cls *types.ClassSym, o superProp) *types.ClassSym {
+	for s := cls.Super; s != nil; s = s.Super {
+		if !javaClass(s) || s.FromKotlin || s == o.owner || !s.IsSubclassOf(o.owner) {
+			continue
+		}
+		s.Ensure()
+		for _, sig := range []string{o.getter, o.setter} {
+			if acc, ok := s.JVMMethods[sig]; ok && sig != "" && acc&classfile.AccFinal != 0 && acc&classfile.AccStatic == 0 {
+				return s
+			}
+		}
+	}
+	return nil
+}
+
 // sameContextsIn reports whether context parameters a, with substitution
 // sa, and b, with sb, have the same types, in order.
 func (c *Checker) sameContextsIn(a []*types.VarSym, sa types.Subst, b []*types.VarSym, sb types.Subst) bool {
@@ -1077,11 +1095,18 @@ func (c *Checker) checkInheritance(d *syntax.ClassDecl) {
 		if p.Mutable && !p.SetterPrivate {
 			ownSetter = types.SetterJVM(p) + "(" + descOf(types.FieldType(p)) + ")V"
 		}
+		finalReported := false
 		for _, o := range over {
 			t := c.memberSubst(this, o.owner).Apply(o.t)
 			switch {
 			case o.final:
 				c.errorf(op.pos, "'%s' in '%s' is final and cannot be overridden", p.Name, o.owner.DisplayName())
+				continue
+			case javaFinalAccessor(cls, o) != nil:
+				if !finalReported {
+					c.errorf(op.pos, "'%s' in '%s' is final and cannot be overridden", p.Name, javaFinalAccessor(cls, o).DisplayName())
+					finalReported = true
+				}
 				continue
 			case o.mutable && !p.Mutable:
 				c.errorf(op.pos, "val-property cannot override var-property '%s'", p.Name)

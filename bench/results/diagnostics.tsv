@@ -5308,7 +5308,7 @@ tests/j+k/fieldOverridesField.kt	accepts valid
 tests/j+k/fieldOverridesFieldOfDifferentType.kt	accepts valid		
 tests/j+k/fieldOverridesNothing.kt	accepts valid		
 tests/j+k/fileJvmNameSameAsClass.kt	accepts valid		
-tests/j+k/finalCollectionSize.kt	accepts invalid	OVERRIDING_FINAL_MEMBER	main.kt:3: OVERRIDING_FINAL_MEMBER
+tests/j+k/finalCollectionSize.kt	rejects invalid	on an expected line	
 tests/j+k/flexibleNothing.kt	accepts valid		
 tests/j+k/flexibleTypeVariablePosition.kt	skip	LANGUAGE	
 tests/j+k/flexibleTypeVariablePositionPreciseLowerConstraints.kt	skip	LANGUAGE	
@@ -5421,7 +5421,7 @@ tests/j+k/propagateFlexibleTypeToAnonymousFunction.kt	accepts valid
 tests/j+k/properties/falsePositiveOverride.kt	accepts valid		
 tests/j+k/properties/fieldPropertyOverloads.kt	accepts valid		
 tests/j+k/properties/interface.kt	accepts valid		
-tests/j+k/properties/isName.kt	accepts invalid	OVERRIDING_FINAL_MEMBER	main.kt:11: OVERRIDING_FINAL_MEMBER
+tests/j+k/properties/isName.kt	rejects invalid	on an expected line	
 tests/j+k/properties/staticFieldPropertyOverloads.kt	accepts invalid	OVERLOAD_RESOLUTION_AMBIGUITY	b.kt:4: OVERLOAD_RESOLUTION_AMBIGUITY
 tests/j+k/properties/syntheticPropertyFromKotlinGetter_javaOrigin.kt	accepts valid		
 tests/j+k/properties/syntheticPropertyFromKotlinGetter_kotlinOrigin.kt	rejects invalid	on an expected line	
@@ -5438,8 +5438,8 @@ tests/j+k/properties/syntheticPropertyFromKotlin_k1Like.kt	skip	LANGUAGE
 tests/j+k/properties/syntheticPropertyFromKotlin_warning.kt	skip	LANGUAGE	
 tests/j+k/properties/syntheticPropertyThroughJava.kt	rejects invalid	on an expected line	
 tests/j+k/properties/unitVsVoid.kt	rejects invalid	on an expected line	
-tests/j+k/properties/val.kt	accepts invalid	OVERRIDING_FINAL_MEMBER	main.kt:11: OVERRIDING_FINAL_MEMBER
-tests/j+k/properties/var.kt	accepts invalid	OVERRIDING_FINAL_MEMBER	main.kt:12: OVERRIDING_FINAL_MEMBER
+tests/j+k/properties/val.kt	rejects invalid	on an expected line	
+tests/j+k/properties/var.kt	rejects invalid	on an expected line	
 tests/j+k/protectedStaticSamePackage.kt	accepts valid		
 tests/j+k/purelyImplementedSupertype.kt	rejects invalid	on an expected line	
 tests/j+k/rawOverride.kt	accepts valid		

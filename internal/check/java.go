@@ -284,6 +284,7 @@ func (t *classTable) load(cls *types.ClassSym) {
 	}
 	if t.kotlin && info.Kotlin != nil && info.Kotlin.K == kmeta.KindClassFile {
 		if kc, err := kmeta.ReadClass(info.Kotlin); err == nil {
+			cls.FromKotlin = true
 			t.loadKotlin(cls, info, kc)
 			return
 		}

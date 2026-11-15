@@ -795,6 +795,9 @@ type ClassSym struct {
 	// checks: it lives as long as the check.
 	Source  bool
 	Missing bool // not found or unreadable
+	// FromKotlin is set on a class of the class path that Kotlin
+	// compiled, read from its metadata.
+	FromKotlin bool
 	// MethodAnnotations reads the annotations of a method of the class
 	// file, by its name and descriptor.
 	MethodAnnotations func(name, desc string) (*classfile.MethodAnnotations, error)
