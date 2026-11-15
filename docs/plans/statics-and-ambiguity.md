@@ -6,7 +6,7 @@ This plan covers how `kc` scopes Java static members and when it reports a name 
 
 The committed baseline (`bench/results/diagnostics.tsv`, at `0f87173`) has 286 *accepts invalid* and 118 *rejects valid* tests. The counts in the request (420 and 178) came from an older baseline. The theme was re-derived from the TSV and the test sources by running the harness on a scratch checkout of v2.4.21. The run, with `-list`, `-errors` and `-marks`, reproduces the baseline exactly: 42 accepts invalid, 13 rejects valid, 1 unsupported.
 
-One of those 42, `scopes/specialFunctionInJava_1.kt`, is about built-in name mapping (`byteValue` vs `toByte`) and falls outside this theme. That leaves 41 accepts invalid, 13 rejects valid and 1 unsupported. Seven of them, listed under [Left to the inference plan](#left-to-the-inference-plan), belong to `docs/plans/inference.md`. **This plan therefore targets 37 accepts invalid, 10 rejects valid and 1 unsupported.**
+One of those 42, `scopes/specialFunctionInJava_1.kt`, is about built-in name mapping (`byteValue` vs `toByte`) and falls outside this theme. That leaves 41 accepts invalid, 13 rejects valid and 1 unsupported. Seven of them, listed under [Left to the inference plan](#left-to-the-inference-plan), belong to a later plan for inference. **This plan therefore targets 37 accepts invalid, 10 rejects valid and 1 unsupported.**
 
 On the request's note about `check.Library.JavaTypes()`: it is already on. #102 set `JavaTypes: true` in `cmd/kc/main.go:119`, and `analysis/ka/libcache.go:66` sets it too. `j+k/primitiveOverrides/notNullAnnotated.kt` and `triangleWithNotNullType.kt` now *accept valid*. `j+k/primitiveVsBoxedOverloads.kt` is counted *rejects invalid*, but only by accident: `kc` reports an error on the `foo2` line, which expects none, and misses the expected `OVERLOAD_RESOLUTION_AMBIGUITY` on `foo4`. Milestone 6 has to fix both lines together, or the test regresses to *accepts invalid*.
 
@@ -94,7 +94,7 @@ Rejects valid:
 
 ### Left to the inference plan
 
-These seven fail on ambiguity diagnostics, but the cause is inference or lambda and callable-reference analysis. They are copied to [`docs/plans/inference.md`](inference.md):
+These seven fail on ambiguity diagnostics, but the cause is inference or lambda and callable-reference analysis. They belong to a later plan for inference:
 
 - AI `tests/callResolution/kt50386.kt`: two generic `presenter` overloads with a lambda returning a generic class.
 - AI `tests/resolve/overloadConflicts/emptyLambdaUnitNoDiscrimination.kt`: an empty lambda must not prefer `() -> Unit` (`byLambdaResult`).
