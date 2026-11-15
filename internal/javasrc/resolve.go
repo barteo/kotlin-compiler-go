@@ -651,6 +651,15 @@ func (s *Set) Info(name string) (*classfile.Info, error) {
 				continue
 			}
 			info.SerialWith = r.classLiteral(a.Args, "with")
+		case "Repeatable", "java.lang.annotation.Repeatable":
+			if n, _ := r.lookup("Repeatable"); a.Name == "Repeatable" && n != "java/lang/annotation/Repeatable" {
+				continue
+			}
+			args := a.Args
+			if len(args) == 0 || args[0] != "value" {
+				args = append([]string{"value"}, args...)
+			}
+			info.Repeatable = r.classLiteral(args, "value")
 		case "Target", "java.lang.annotation.Target":
 			for _, arg := range a.Args {
 				if arg != "ElementType" && strings.ToUpper(arg) == arg {
