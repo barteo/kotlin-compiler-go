@@ -1179,11 +1179,27 @@ func (c *Checker) checkBounds(t types.Type, ref *syntax.TypeRef) {
 			p = ref.Args[i].P
 		}
 		for _, b := range ps[i].Bounds {
+			// A bound on a star-projected parameter, C : B in
+			// Constrain<U, *, in T>, says nothing to check against.
+			if b.Has(func(u types.Type) bool { return u.IsParam() && starOf(t, u.Param()) }) {
+				continue
+			}
 			if b = s.Apply(b); !c.subtype(a.T, b) {
 				c.errorf(p, "type argument is not within its bounds: type parameter '%s' must be subtype of '%s', but actual: '%s'", ps[i].Name, b, a.T)
 			}
 		}
 	}
+}
+
+// starOf reports whether t's argument for its class's type parameter p
+// is a star projection.
+func starOf(t types.Type, p *types.TypeParamSym) bool {
+	for i, q := range t.C.TypeParams {
+		if q == p {
+			return i < len(t.A.List) && t.A.List[i].V == types.Star
+		}
+	}
+	return false
 }
 
 // lookupTypeParam finds a type parameter in scope by name.
@@ -1715,6 +1731,7 @@ func (c *Checker) resolveSignatures() {
 }
 
 func (c *Checker) resolveFun(d *syntax.FunDecl, owner *types.ClassSym) {
+	defer c.suppressBounds(d.Annotations)()
 	sym := d.Sym
 	if sym == nil {
 		sym = &types.FunSym{Name: d.Name, JVMName: jvmName(&d.Modifiers, ""), Owner: owner, Decl: d, Hidden: d.Hidden(),
@@ -1937,6 +1954,7 @@ func jvmName(m *syntax.Modifiers, target string) string {
 }
 
 func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
+	defer c.suppressBounds(d.Annotations)()
 	c.backingFieldDecl(d, owner)
 	if d.Recv != nil {
 		c.resolveExtProp(d)
