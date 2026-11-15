@@ -214,7 +214,10 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   with its variables fixed first.
 - A lambda's parameter types are fixed from the constraints known when
   the lambda is reached; K2 picks the order from the whole system, so it
-  infers some combinations of lambdas `kc` can't. A lambda that declares
+  infers some combinations of lambdas `kc` can't. Of K2's ordering,
+  `kc` runs the lambdas whose parameter types are known first, and a
+  lambda that returns a lambda for a function type whose inputs aren't
+  known yet last. A lambda that declares
   all its parameters' types is checked on its own only when its
   variable has no function type among its bounds.
 - The branches of an `if` or `when` aren't K2's synthetic call: a
@@ -246,7 +249,10 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   bound with a projection approximated as such a parameter is. Two reads
   of one `Out<*>` value are the same type, where they are different
   captures in Kotlin: only an elvis's left call, inferred with the right
-  side's type, sees a star of it as below its bound. The capture of an
+  side's type, sees a star of it as below its bound. A star for a
+  parameter with a recursive bound reads as that bound with a star for
+  the parameter (`Out3<*>` is an `Out3<Out3<*>>` for `Out3<out T :
+  Out3<T>>`), as K2 approximates its capture. The capture of an
   `in` projection is checked against the variable's bounds only at the
   top of an argument's type.
 - `@OnlyInputTypes` (`contains`, `get`, `assertEquals`) is checked only
