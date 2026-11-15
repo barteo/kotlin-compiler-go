@@ -91,6 +91,9 @@ func (l *lowerer) typeWith(n psi.NodeRef, recv bool) (*syntax.TypeRef, []syntax.
 		if t.Ret == nil {
 			l.fail(suspendAt, "expected a function type after 'suspend'")
 		}
+		if elem.NumericKind() != psi.KindFUNCTION_TYPE {
+			l.errorLater(l.pos(suspendAt), "modifier 'suspend' is not applicable to 'nullable type'")
+		}
 		t.P, t.Suspend = l.pos(suspendAt), true
 	}
 	if as != nil {
@@ -250,12 +253,13 @@ func (l *lowerer) typeArgs(n psi.NodeRef) []*syntax.TypeArg {
 			a.Variance = types.Star
 		} else {
 			if m := child(c, psi.KindMODIFIER_LIST); m.Valid() {
+				var vp syntax.Pos
 				for _, k := range kids(m) {
 					switch k.NumericKind() {
 					case psi.KindIN_KEYWORD:
-						a.Variance = types.In
+						syntax.VarianceMod(&a.Variance, &vp, types.In, l.pos(k), l)
 					case psi.KindOUT_KEYWORD:
-						a.Variance = types.Out
+						syntax.VarianceMod(&a.Variance, &vp, types.Out, l.pos(k), l)
 					}
 				}
 			}
@@ -304,14 +308,15 @@ func (l *lowerer) typeParams(n psi.NodeRef) []*syntax.TypeParam {
 		name := child(c, psi.KindIDENTIFIER)
 		tp := record(l, &syntax.TypeParam{P: l.pos(name), Name: ident(name)}, c)
 		if m := child(c, psi.KindMODIFIER_LIST); m.Valid() {
+			var vp syntax.Pos
 			for _, k := range kids(m) {
 				switch k.NumericKind() {
 				case psi.KindREIFIED_KEYWORD:
 					tp.Reified = true
 				case psi.KindIN_KEYWORD:
-					tp.Variance = types.In
+					syntax.VarianceMod(&tp.Variance, &vp, types.In, l.pos(k), l)
 				case psi.KindOUT_KEYWORD:
-					tp.Variance = types.Out
+					syntax.VarianceMod(&tp.Variance, &vp, types.Out, l.pos(k), l)
 				case psi.KindANNOTATION_ENTRY:
 					a := l.annotation(k) // kc writes no type annotations
 					tp.Annotations = append(tp.Annotations, a)

@@ -580,6 +580,8 @@ type PropDecl struct {
 	InlineGetter, InlineSetter bool
 	// AccessorMods are the modifiers written on each accessor.
 	AccessorMods [][]Mod
+	// AccessorSets tells which of AccessorMods are a setter's.
+	AccessorSets []bool
 	// Plugin is set by the checker on a property it declares as a
 	// compiler plugin's that metadata doesn't list: serialization's
 	// $cachedSerializer$delegate.
