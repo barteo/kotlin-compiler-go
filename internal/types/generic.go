@@ -453,8 +453,10 @@ func (s Subst) applyA(t Type, pos Variance, exact bool) (Type, bool) {
 			return t, false
 		}
 		if a.Raw {
-			if !t.P && !t.N {
-				// An enhanced @NotNull T: its erasure, non-null.
+			if !t.P && !t.N && !jdkParam(t.Param()) {
+				// An enhanced @NotNull T: its erasure, non-null. Not a T of
+				// the JDK, which has no such annotations: there T is K2's
+				// predefined enhancement, and a raw type's erasure Any!.
 				return withFlags(a.T.NonNull(), t), false
 			}
 			return withFlags(a.T, t), false
@@ -675,6 +677,19 @@ func (s Subst) applyArgA(a Arg, pos, v Variance, exact bool) (Arg, bool) {
 func javaParam(p *TypeParamSym) bool {
 	c, ok := p.Owner.(*ClassSym)
 	return ok && len(p.Bounds) == 0 && c.External && c.KotlinName == "" && c.Java == nil && !c.FromKotlin
+}
+
+// jdkParam reports whether p is a type parameter of a JDK class or of
+// one of its methods.
+func jdkParam(p *TypeParamSym) bool {
+	var c *ClassSym
+	switch o := p.Owner.(type) {
+	case *ClassSym:
+		c = o
+	case *FunSym:
+		c = o.Owner
+	}
+	return c != nil && c.External && (strings.HasPrefix(c.Name, "java/") || strings.HasPrefix(c.Name, "javax/"))
 }
 
 // recursiveStar reports whether p has a single class bound that p occurs in.

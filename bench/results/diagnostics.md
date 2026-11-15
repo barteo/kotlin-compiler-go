@@ -6,16 +6,16 @@ Of 10827 test files, 2312 are skipped and 8515 run.
 
 | Result | Tests | Share |
 |:---|---:|---:|
-| rejects invalid | 4095 | 48.1% |
+| rejects invalid | 4097 | 48.1% |
 | accepts valid | 3995 | 46.9% |
-| accepts invalid | 289 | 3.4% |
+| accepts invalid | 287 | 3.4% |
 | rejects valid | 118 | 1.4% |
 | parse/unsupported | 16 | 0.2% |
 | crash | 1 | 0.0% |
 
 *Rejects invalid* and *accepts valid* agree with kotlinc. *Accepts invalid* is code kotlinc rejects that kc compiles; *rejects valid*, code kotlinc compiles that kc's checker rejects. Both are bugs. A *parse/unsupported* test uses a feature kc doesn't support, which says nothing about its checks.
 
-Of the 4095 tests both reject, kc reports an error on the line of an expected one in 3938.
+Of the 4097 tests both reject, kc reports an error on the line of an expected one in 3940.
 
 A test is invalid if it stops before the backend or marks an error: one that runs to it (`BACKEND`) can mark the JVM backend's errors, such as `CONFLICTING_JVM_DECLARATIONS`. Of the tests run, 222 stop at `FRONTEND` but mark no error: most add the `CHECK_TYPE` helpers, whose names (`_`) kotlinc reports outside the test infrastructure, and count as valid; the others leave their errors out with the `DIAGNOSTICS` directive. 114 run to the backend and mark one. 5 marked names have no declared severity (debug information, for one), and count as neither.
 
@@ -52,20 +52,20 @@ Tests kotlinc rejects that kc compiles, by the errors their markup expects. A te
 |:---|---:|---:|:---|
 | `UNRESOLVED_REFERENCE` | 35 | 24 | `tests/SafeCallOnFakePackage.kt`, `tests/callResolution/eagerLambdaAnalysis/samVsDefault.kt` |
 | `OVERLOAD_RESOLUTION_AMBIGUITY` | 22 | 18 | `tests/callResolution/kt50386.kt`, `tests/imports/EnumEntryVsStaticAmbiguity.kt` |
-| `ARGUMENT_TYPE_MISMATCH` | 21 | 14 | `tests/annotations/annotationArgumentScopeForNestedClass.kt`, `tests/collectionLiterals/kt82964.kt` |
+| `ARGUMENT_TYPE_MISMATCH` | 19 | 14 | `tests/annotations/annotationArgumentScopeForNestedClass.kt`, `tests/collectionLiterals/kt82964.kt` |
 | `MISSING_DEPENDENCY_CLASS` | 16 | 10 | `tests/j+k/differentFilename.kt`, `tests/javac/Lambda.kt` |
 | `INVISIBLE_REFERENCE` | 9 | 9 | `tests/arguments/ambiguityOnJavaOverride.kt`, `tests/classObjects/companionObjectOfPrivateClassVisibility.kt` |
 | `(no error marked)` | 8 | 8 | `tests/cyclicHierarchy/javaJavaCycle.kt`, `tests/deprecated/javaDeprecated.kt` |
 | `CLASSIFIER_REDECLARATION` | 7 | 7 | `tests/j+k/brokenCode/classDuplicates.kt`, `tests/redeclarations/kotlinClassJavaClassNestedRedeclaration.kt` |
-| `INITIALIZER_TYPE_MISMATCH` | 7 | 2 | `tests/callableReference/adapted/noKFunctionForAdaptation.kt`, `tests/j+k/sam/referenceToSamFunctionAgainstExpectedType.kt` |
 | `JAVA_TYPE_MISMATCH` | 7 | 7 | `tests/platformTypes/genericVarianceViolation/deepTypeHierarchy.kt`, `tests/platformTypes/genericVarianceViolation/javaOutProjection.kt` |
 | `UNSUPPORTED` | 7 | 5 | `tests/NamedFunctionTypeParameterInSupertype.kt`, `tests/callableReference/property/backingField.kt` |
-| `NULL_FOR_NONNULL_TYPE` | 6 | 2 | `tests/j+k/jSpecifyWithVarargs.kt`, `tests/jSpecifySimple.kt` |
+| `INITIALIZER_TYPE_MISMATCH` | 5 | 2 | `tests/callableReference/adapted/noKFunctionForAdaptation.kt`, `tests/j+k/sam/referenceToSamFunctionAgainstExpectedType.kt` |
 | `ASSIGN_OPERATOR_AMBIGUITY` | 4 | 4 | `tests/callResolution/exponentialArraySetWithPlusAssign.kt`, `tests/operatorsOverloading/AssignOperatorAmbiguity.kt` |
 | `CYCLIC_INHERITANCE_HIERARCHY` | 4 | 3 | `tests/classpathSubstitution/cyclicSupertype.kt`, `tests/classpathSubstitution/cyclicSupertype2.kt` |
 | `INAPPLICABLE_CANDIDATE` | 4 | 3 | `tests/callableReference/generic/dependOnArgumentType.kt`, `tests/j+k/sam/referenceToSamFunctionAgainstExpectedType.kt` |
 | `INCONSISTENT_TYPE_PARAMETER_BOUNDS` | 4 | 2 | `tests/enum/equalityOfEnumAndParameter.kt`, `tests/enum/equalityOfFlexibleTypeParameters.kt` |
 | `MANY_IMPL_MEMBER_NOT_IMPLEMENTED` | 4 | 4 | `tests/j+k/manyImplNotImplementedComplexHierarchy.kt`, `tests/j+k/manyImplNotImplementedComplexHierarchy2.kt` |
+| `NULL_FOR_NONNULL_TYPE` | 4 | 2 | `tests/j+k/jSpecifyWithVarargs.kt`, `tests/jSpecifySimple.kt` |
 | `OPT_IN_USAGE_ERROR` | 4 | 3 | `tests/jvm/jvmDefault/annotationsFromBinariesWithNonTrivialJvmDefaultConfiguration.kt`, `testsWithStdLib/experimental/diffrentModules.kt` |
 | `POSITIONED_VALUE_ARGUMENT_FOR_JAVA_ANNOTATION` | 4 | 3 | `testsWithStdLib/annotations/annotationParameters/valueArrayAndOtherDefault.kt`, `testsWithStdLib/annotations/prohibitPositionedArgument/withValue.kt` |
 | `UNDERSCORE_USAGE_WITHOUT_BACKTICKS` | 4 | 4 | `tests/UnderscoreUsageInCall.kt`, `tests/UnderscoreUsageInCallableRefTypeLHS.kt` |
@@ -160,13 +160,13 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 15754 of 21506 expected errors (73.3%) on their lines.
+kc reports 15786 of 21506 expected errors (73.4%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
 | `SYNTAX` | 875 | 222 | 653 |
 | `UNRESOLVED_REFERENCE` | 2493 | 1912 | 581 |
-| `ARGUMENT_TYPE_MISMATCH` | 1484 | 1243 | 241 |
+| `ARGUMENT_TYPE_MISMATCH` | 1484 | 1252 | 232 |
 | `UNSUPPORTED` | 231 | 35 | 196 |
 | `WRONG_MODIFIER_TARGET` | 300 | 170 | 130 |
 | `RETURN_TYPE_MISMATCH` | 417 | 303 | 114 |
@@ -180,7 +180,6 @@ kc reports 15754 of 21506 expected errors (73.3%) on their lines.
 | `MISSING_DEPENDENCY_CLASS` | 71 | 0 | 71 |
 | `TYPE_VARIANCE_CONFLICT_ERROR` | 123 | 54 | 69 |
 | `WRONG_NUMBER_OF_TYPE_ARGUMENTS` | 163 | 96 | 67 |
-| `NULL_FOR_NONNULL_TYPE` | 155 | 89 | 66 |
 | `WRONG_ANNOTATION_TARGET` | 380 | 316 | 64 |
 | `NO_RETURN_IN_FUNCTION_WITH_BLOCK_BODY` | 148 | 91 | 57 |
 | `MIXING_SUSPEND_AND_NON_SUSPEND_SUPERTYPES` | 83 | 28 | 55 |
@@ -189,6 +188,7 @@ kc reports 15754 of 21506 expected errors (73.3%) on their lines.
 | `NO_VALUE_FOR_PARAMETER` | 175 | 127 | 48 |
 | `NON_PUBLIC_CALL_FROM_PUBLIC_INLINE` | 65 | 19 | 46 |
 | `UNINITIALIZED_VARIABLE` | 211 | 165 | 46 |
+| `NULL_FOR_NONNULL_TYPE` | 155 | 112 | 43 |
 | `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` | 87 | 45 | 42 |
 | `UPPER_BOUND_VIOLATED` | 125 | 84 | 41 |
 | `REDECLARATION` | 192 | 152 | 40 |

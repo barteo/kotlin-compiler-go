@@ -256,10 +256,19 @@ yet done. [Design](design.md) describes how `kc` compiles it.
 - K2's predefined nullability of JDK members is applied to the members
   of the classes it names, not to their overrides in other classes:
   `Map`'s `compute` takes a function that may return null, `HashMap`'s
-  keeps Java's platform types. A nullable
-  argument for a Java method's `T!` makes `T` nullable, except in an
-  in-projected type argument, where kc's substituted explicit type
-  arguments stand for K2's equality constraints.
+  keeps Java's platform types.
+- Of the JDK classes K2 sees as purely implementing a Kotlin collection
+  type (`ArrayList`, `HashSet`, `HashMap` and others), `kc` gives the
+  members that override the collection type's the class's type
+  parameters as they are, not as platform types: an `ArrayList<String>`
+  takes no `null`. Their results keep platform types, and their
+  supertypes Java's flexible arguments: an `ArrayList<String>` is also a
+  `MutableList<String?>`.
+- A nullable argument for a Java method's `T!` makes `T` nullable,
+  except in an in-projected type argument, where kc's substituted
+  explicit type arguments stand for K2's equality constraints. Even
+  where the call's expected type would have `T` not null:
+  `val s: Set<String> = java.util.HashSet(setOf(null))` is an error.
 - Java module exports aren't checked.
 - Without an expected type, a reference to a vararg function, or to a
   generic function whose type parameters its receiver's type doesn't

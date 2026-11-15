@@ -1,6 +1,10 @@
 package check
 
-import "github.com/barteo/kotlin-compiler-go/internal/types"
+import (
+	"slices"
+
+	"github.com/barteo/kotlin-compiler-go/internal/types"
+)
 
 // Qualifiers of K2's predefined enhancements of JDK members
 // (predefinedEnhancementInfo.kt), which kotlinc applies whatever the
@@ -286,4 +290,95 @@ func mapCollectionMembers(cls *types.ClassSym) {
 			retype("containsValue", "(Ljava/lang/Object;)Z", v)
 		}
 	}
+}
+
+// pureImplementations are the JDK classes that K2 sees as purely
+// implementing a Kotlin collection type (FakePureImplementationsProvider),
+// by the Java interface it is on the JVM.
+var pureImplementations = map[string]string{
+	"java/util/ArrayList": "java/util/List", "java/util/LinkedList": "java/util/List",
+	"java/util/HashSet": "java/util/Set", "java/util/TreeSet": "java/util/Set", "java/util/LinkedHashSet": "java/util/Set",
+	"java/util/HashMap": "java/util/Map", "java/util/TreeMap": "java/util/Map", "java/util/LinkedHashMap": "java/util/Map",
+	"java/util/concurrent/ConcurrentHashMap": "java/util/Map", "java/util/concurrent/ConcurrentSkipListMap": "java/util/Map",
+}
+
+// purelyImplement makes the members of cls, one of pureImplementations,
+// that override its Kotlin collection type's take its type parameters as
+// they are, not as platform types, as the Kotlin type's members do:
+// ArrayList<String>'s add(E) takes a String, not a String!. Members only
+// Java declares, as TreeMap's ceilingKey(K), keep platform types, and so
+// do results, of which Kotlin's are sometimes nullable: Map's get.
+func purelyImplement(cls *types.ClassSym) {
+	iface, ok := pureImplementations[cls.Name]
+	if !ok {
+		return
+	}
+	var ifaces []*types.ClassSym
+	seen := map[*types.ClassSym]bool{}
+	var walk func(c *types.ClassSym)
+	walk = func(c *types.ClassSym) {
+		if c == nil || seen[c] {
+			return
+		}
+		seen[c] = true
+		if c != cls {
+			c.Ensure() // not cls, whose members are being loaded
+		}
+		if c.Name == iface || c.Name == "java/util/Collection" && iface != "java/util/Map" {
+			ifaces = append(ifaces, c)
+		}
+		for _, t := range c.Supers {
+			if t.K == types.Class {
+				walk(t.C)
+			}
+		}
+		if len(c.Supers) == 0 {
+			walk(c.Super)
+			for _, i := range c.Interfaces {
+				walk(i)
+			}
+		}
+	}
+	walk(cls)
+	own := map[*types.TypeParamSym]bool{}
+	for _, p := range cls.TypeParams {
+		own[p] = true
+	}
+	for name, fs := range cls.Methods {
+		for i, f := range fs {
+			if f.Static || !slices.ContainsFunc(ifaces, func(c *types.ClassSym) bool {
+				return slices.ContainsFunc(c.Methods[name], func(g *types.FunSym) bool { return !g.Static && len(g.Params) == len(f.Params) })
+			}) {
+				continue
+			}
+			g := *f
+			g.Params = make([]*types.VarSym, len(f.Params))
+			for j, p := range f.Params {
+				q := *p
+				q.Type = notPlatformParams(p.Type, own)
+				g.Params[j] = &q
+			}
+			fs[i] = &g
+		}
+	}
+}
+
+// notPlatformParams returns t with the occurrences of the type parameters
+// ps, in it and its arguments, not platform types.
+func notPlatformParams(t types.Type, ps map[*types.TypeParamSym]bool) types.Type {
+	if t.IsParam() && ps[t.Param()] && t.P {
+		t.N, t.P = false, false
+		return t
+	}
+	if t.K != types.Class || t.A == nil {
+		return t
+	}
+	args := slices.Clone(t.A.List)
+	for i, a := range args {
+		if a.V != types.Star {
+			args[i].T = notPlatformParams(a.T, ps)
+		}
+	}
+	t.A = types.MakeArgs(args)
+	return t
 }

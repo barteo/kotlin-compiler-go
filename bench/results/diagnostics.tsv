@@ -10669,7 +10669,7 @@ testsWithStdLib/properties/backingField/untypedPropertyWithBackingFieldUsage.kt	
 testsWithStdLib/properties/explicitBackingFieldUnsupported.kt	skip	LANGUAGE	
 testsWithStdLib/pureReifiable.kt	accepts valid		
 testsWithStdLib/pureReifiableArrayOperations.kt	accepts valid		
-testsWithStdLib/purelyImplementedCollection/arrayList.kt	accepts invalid	NULL_FOR_NONNULL_TYPE; ARGUMENT_TYPE_MISMATCH; INITIALIZER_TYPE_MISMATCH	arrayList.kt:9: NULL_FOR_NONNULL_TYPE
+testsWithStdLib/purelyImplementedCollection/arrayList.kt	rejects invalid	on an expected line	
 testsWithStdLib/purelyImplementedCollection/arrayListNullable.kt	rejects invalid	on an expected line	
 testsWithStdLib/purelyImplementedCollection/customClassMutableCollection.kt	rejects invalid	on an expected line	
 testsWithStdLib/purelyImplementedCollection/customClassMutableList.kt	rejects invalid	on an expected line	
@@ -10678,7 +10678,7 @@ testsWithStdLib/purelyImplementedCollection/invalidFqName.kt	accepts valid
 testsWithStdLib/purelyImplementedCollection/maps.kt	rejects invalid	on an expected line	
 testsWithStdLib/purelyImplementedCollection/mapsWithNullableKey.kt	rejects invalid	on an expected line	
 testsWithStdLib/purelyImplementedCollection/mapsWithNullableValues.kt	rejects invalid	on an expected line	
-testsWithStdLib/purelyImplementedCollection/sets.kt	accepts invalid	NULL_FOR_NONNULL_TYPE; ARGUMENT_TYPE_MISMATCH; INITIALIZER_TYPE_MISMATCH	sets.kt:11: NULL_FOR_NONNULL_TYPE
+testsWithStdLib/purelyImplementedCollection/sets.kt	rejects invalid	on an expected line	
 testsWithStdLib/purelyImplementedCollection/wrongTypeParametersCount.kt	rejects valid	unresolved reference: _	b.kt:6: unresolved reference: add
 testsWithStdLib/rangeTo.kt	accepts valid		
 testsWithStdLib/recursiveBug.kt	accepts valid		

@@ -53,7 +53,7 @@ fun variance(p: Producer<String>, b: Box<out Number>, c: Box<in Int>, s: Box<*>)
     val y: Any? = s.value
     val list = java.util.ArrayList<String>()
     println(list.size()) // ERROR expression 'size' of type Int cannot be invoked as a function
-    list.add(1) // ERROR inferred type is Int but String! was expected
+    list.add(1) // ERROR inferred type is Int but String was expected
     val m: java.util.HashMap<String, Int> = java.util.HashMap()
     val v: Int = m.get("a") // ERROR inferred type is Int? but Int was expected
 }
