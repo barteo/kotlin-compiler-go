@@ -42,6 +42,14 @@ public class Names {
         return names.get(0);
     }
 
+    public static String none() {
+        return null;
+    }
+
+    public static String show(@NonNull String name) {
+        return "<" + name + ">";
+    }
+
     @NonNull
     public List<String> all() {
         return names;

@@ -193,7 +193,7 @@ func (g *gen) uncastErased() (types.Type, bool) {
 
 // exprAs generates x and converts it to type t.
 func (g *gen) exprAs(x syntax.Expr, t types.Type) {
-	if x.Type().P && checked(t) {
+	if x.Type().P && checked(t) && x != g.javaArg {
 		// A platform value used as a non-null type is checked in each
 		// branch, where it has its own text, as with kotlinc.
 		switch x := x.(type) {
@@ -1544,11 +1544,21 @@ func (g *gen) args(x *syntax.Call, f *types.FunSym) {
 	h := g.holdArgs(x.Args)
 	for i, a := range x.Args {
 		h.before(g, a)
+		if javaMember(f) {
+			g.javaArg = a
+		}
 		g.argAs(a, paramType(f, i))
 	}
 	h.release(g)
 	g.continuationArg(x)
 	g.line(x.Pos()) // the call, after arguments on other lines
+}
+
+// javaMember reports whether f is a method or constructor of a Java
+// class, not one that Kotlin sees as its own type.
+func javaMember(f *types.FunSym) bool {
+	c := f.Owner
+	return c != nil && c.External && c.KotlinName == "" && c.Java == nil && !c.FromKotlin
 }
 
 // paramType returns the type of the argument that a call of f passes for
