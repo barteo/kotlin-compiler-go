@@ -256,7 +256,8 @@ yet done. [Design](design.md) describes how `kc` compiles it.
 - Of the Java collection members K2 gives Kotlin's signatures, `kc` maps
   `contains`, `remove`, `containsAll`, `removeAll`, `retainAll`,
   `indexOf`, `lastIndexOf`, and a map's `containsKey`, `containsValue`,
-  `get` and both `remove`s; others, such as `getOrDefault`, keep Java's.
+  `get` and both `remove`s; others, such as `getOrDefault`, keep Java's,
+  though named arguments take Kotlin's parameter names.
 - K2's predefined nullability of JDK members is applied to the members
   of the classes it names, not to their overrides in other classes:
   `Map`'s `compute` takes a function that may return null, `HashMap`'s
