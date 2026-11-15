@@ -91,7 +91,7 @@ type system struct {
 	// error: a builder's, whose lambda isn't inferred, as K2 fixes them
 	// (see lambdaResult.nothingTail).
 	nothingFix bool
-	depth   int
+	depth      int
 	// nest counts the type arguments that sub is inside of: only a top-level
 	// argument's projection is captured.
 	nest int

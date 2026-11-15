@@ -513,7 +513,7 @@ type FunSym struct {
 	// @kotlin.internal.NoInfer: the expected type doesn't constrain the
 	// call's variables.
 	NoInferRet bool
-	Recv     Type   // Invalid if kc doesn't support the receiver's type
+	Recv       Type // Invalid if kc doesn't support the receiver's type
 	// Contexts are the context parameters of a function of the program,
 	// context(a: A) fun f(), which calls pass implicitly. On the JVM,
 	// it takes them first, before the extension receiver.
