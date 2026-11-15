@@ -30,6 +30,7 @@ fun main() {
     println(C().a)
     println(Q().get(Inv("q")))
     defaults()
+    inheritedMain()
 }
 
 // A default value inherited through another supertype is a deprecation
@@ -47,4 +48,36 @@ class D : D2, D3 {
 
 fun defaults() {
     println(D().foo("d"))
+}
+
+interface SuperF {
+    fun f(): String = "superF"
+}
+
+interface OtherF {
+    fun f(): String = "otherF"
+}
+
+abstract class AbstractF : SuperF {
+    abstract override fun f(): String
+}
+
+class PicksOther : AbstractF(), SuperF, OtherF {
+    override fun f(): String = super.f()
+}
+
+interface AbstractR {
+    fun r(): CharSequence
+}
+
+open class ImplR {
+    open fun r(): String = "r"
+}
+
+class BothR : ImplR(), AbstractR
+
+fun inheritedMain() {
+    println(PicksOther().f())
+    val r: AbstractR = BothR()
+    println(r.r())
 }

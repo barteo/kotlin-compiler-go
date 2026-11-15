@@ -815,7 +815,7 @@ type superProp struct {
 // that implements a property of its supertype s, of a name and context
 // parameters ctx, or nil.
 func (c *Checker) implementingProp(cls, s *types.ClassSym, name string, ctx []*types.VarSym) *types.VarSym {
-	q := c.userProp(cls, name)
+	q := c.memberProp(cls, name) // a superclass's private property is not cls's
 	if len(ctx) == 0 && (q == nil || q.Alt == nil) {
 		return q
 	}
@@ -1115,8 +1115,16 @@ func (c *Checker) checkInheritance(d *syntax.ClassDecl) {
 		}
 	}
 	c.inheritedBridges(d)
+	reported := map[string]bool{}
+	if !d.Annotation {
+		reported = c.checkInheritedFuns(d)
+		c.checkInheritedProps(d, reported)
+	}
+	if d.Data && !d.Object {
+		c.checkDataOverrides(d)
+	}
 	if !cls.Abstract || d.Enum {
-		c.checkImplemented(d)
+		c.checkImplemented(d, reported)
 	}
 }
 
@@ -1268,11 +1276,11 @@ func descOf(t types.Type) string {
 }
 
 // checkImplemented reports the abstract members that a class that isn't
-// abstract inherits and doesn't implement.
-func (c *Checker) checkImplemented(d *syntax.ClassDecl) {
+// abstract inherits and doesn't implement, but those named in reported,
+// which checkInheritedFuns reported.
+func (c *Checker) checkImplemented(d *syntax.ClassDecl, reported map[string]bool) {
 	cls := d.Sym
 	this := cls.This()
-	reported := map[string]bool{}
 	missing := func(name string) {
 		if !reported[name] {
 			reported[name] = true
@@ -1324,6 +1332,9 @@ func (c *Checker) checkImplemented(d *syntax.ClassDecl) {
 			return true
 		}
 		for name, fs := range s.Methods {
+			if d.Data && anyMember[name] {
+				continue // a data class generates them
+			}
 			for _, g := range fs {
 				if !g.Abstract || g.Static || s.Java != nil && g.Platform || numberJavaName(s, g) {
 					continue
@@ -1510,6 +1521,9 @@ func (c *Checker) implementation(cls *types.ClassSym, this types.Type, g *types.
 		hs := methodsNamed(s, g)
 		if name != g.Name {
 			hs = append(hs[:len(hs):len(hs)], s.Methods[name]...)
+		}
+		if !g.Owner.Interface && g.Owner.IsSubclassOf(s) {
+			return true // g, abstract, overrides its members: A's abstract toString() Any's
 		}
 		for _, h := range hs {
 			if !h.Abstract && c.sameParams(this, h, g) && (!s.Interface || s.IsSubclassOf(g.Owner)) {
@@ -1703,6 +1717,11 @@ func (c *Checker) superTarget(s *syntax.Super, name string, call bool) (types.Ty
 				has = append(has, st)
 			}
 		}
+		// A supertype that another one extends: the other's members
+		// override its own.
+		has = slices.DeleteFunc(slices.Clone(has), func(st types.Type) bool {
+			return slices.ContainsFunc(has, func(o types.Type) bool { return o.C != st.C && o.C.IsSubclassOf(st.C) })
+		})
 		if len(has) > 1 {
 			// Only the implementations count when some are abstract.
 			var impl []types.Type
@@ -1790,7 +1809,9 @@ func (c *Checker) superHasImpl(cls *types.ClassSym, name string, call bool) bool
 		// as Set.addAll for AbstractMutableSet, whose implementation is
 		// AbstractCollection's.
 		// An implementation doesn't count where a subtype of its class
-		// redeclares it abstract, as IWithToString does Any's toString.
+		// redeclares it abstract, as IWithToString does Any's toString,
+		// nor an interface's where a class declares it abstract: the
+		// intersection of them is abstract.
 		var impls, abstracts []*types.FunSym
 		cls.Supertypes(func(s *types.ClassSym) bool {
 			for _, f := range c.accessible(nil, s.Methods[name]) {
@@ -1805,7 +1826,7 @@ func (c *Checker) superHasImpl(cls *types.ClassSym, name string, call bool) bool
 		for _, f := range impls {
 			if !slices.ContainsFunc(abstracts, func(a *types.FunSym) bool {
 				return a.Owner != nil && f.Owner != nil && a.Owner != f.Owner && paramKey(a) == paramKey(f) &&
-					(f.Owner.Name == "java/lang/Object" || a.Owner.IsSubclassOf(f.Owner))
+					(f.Owner.Name == "java/lang/Object" || a.Owner.IsSubclassOf(f.Owner) || f.Owner.Interface && !a.Owner.Interface)
 			}) {
 				return true
 			}
@@ -1875,7 +1896,8 @@ func (c *Checker) superImpls(cls *types.ClassSym, ms []*types.FunSym) []*types.F
 		if m.Abstract {
 			cls.Supertypes(func(s *types.ClassSym) bool {
 				for _, f := range s.Methods[m.Name] {
-					if !f.Abstract && paramKey(f) == paramKey(m) {
+					// An interface's doesn't implement a class's.
+					if !f.Abstract && paramKey(f) == paramKey(m) && (m.Owner == nil || f.Owner == nil || m.Owner.Interface || !f.Owner.Interface) {
 						m = f
 						return false
 					}
