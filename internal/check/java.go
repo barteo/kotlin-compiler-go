@@ -755,7 +755,7 @@ func (c *Checker) resolveImports() {
 			}
 		}
 		cls := ext.class(name)
-		if cls == nil && ext.kotlin && pkg != "" {
+		if cls == nil && ext.kotlin {
 			cls = ext.pkgClass(pkg, simple)
 		}
 		fs := ext.pkgFuns(pkg, simple)
@@ -764,7 +764,7 @@ func (c *Checker) resolveImports() {
 			c.classImports = append(c.classImports, memberImport{owner: cls, name: simple, p: imp.P, path: pkg})
 		}
 		var ta *types.AliasSym
-		if cls == nil && ext.kotlin && pkg != "" {
+		if cls == nil && ext.kotlin {
 			if ta = ext.pkgAlias(pkg, simple); ta != nil {
 				c.aliasImports[alias] = ta
 			}
@@ -781,7 +781,7 @@ func (c *Checker) resolveImports() {
 		// A library's top-level property, or extension properties.
 		var v *types.VarSym
 		var gs []*types.FunSym
-		if ext.kotlin && pkg != "" {
+		if ext.kotlin {
 			if v = ext.pkgVar(pkg, simple); v != nil {
 				c.userVars[alias] = v
 			}
