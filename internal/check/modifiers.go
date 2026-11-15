@@ -263,8 +263,19 @@ func (m *modChecker) decl(d syntax.Decl, s modScope) {
 		}
 		if !hasExpectActual(&d.Modifiers) {
 			m.mods(d.Written, t, s.parent, false)
-			for _, am := range d.AccessorMods {
-				m.mods(am, tGetter|tSetter, s.parent, false)
+			if d.Mutable {
+				for _, w := range d.Written {
+					if w.Name == "const" {
+						m.errorf(w.P, "modifier 'const' is not applicable to 'vars'")
+					}
+				}
+			}
+			for i, am := range d.AccessorMods {
+				t := tGetter
+				if i < len(d.AccessorSets) && d.AccessorSets[i] {
+					t = tSetter
+				}
+				m.mods(am, t, s.parent, false)
 			}
 			m.setterVisibility(d)
 		}

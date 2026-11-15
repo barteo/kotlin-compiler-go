@@ -1396,7 +1396,7 @@ func (c *Checker) declare() {
 			}
 			c.pkg.Aliases[d.Name] = c.declareAlias(d, nil)
 		case *syntax.ClassDecl:
-			if _, dup := c.pkg.Classes[d.Name]; dup || c.pkg.Aliases[d.Name] != nil {
+			if _, dup := c.pkg.Classes[d.Name]; (dup || c.pkg.Aliases[d.Name] != nil) && d.Name != "<no name provided>" {
 				c.errorf(d.P, "redeclaration: class %s", d.Name)
 			}
 			if d.Companion {
@@ -1525,7 +1525,7 @@ func (c *Checker) declareClass(d *syntax.ClassDecl, name string, outer *types.Cl
 			c.declareClass(md, name+"$"+md.Name, sym)
 			continue
 		}
-		if _, dup := sym.Nested[md.Name]; dup || sym.Aliases[md.Name] != nil {
+		if _, dup := sym.Nested[md.Name]; (dup || sym.Aliases[md.Name] != nil) && md.Name != "<no name provided>" {
 			c.errorf(md.P, "redeclaration: class %s", md.Name)
 		}
 		n := c.declareClass(md, name+"$"+md.Name, sym)
