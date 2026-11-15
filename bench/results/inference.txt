@@ -1,6 +1,10 @@
-# The diagnostics tests that fail for a reason in type inference, with
-# their groups in docs/plans/inference.md (L is adjacent overload
-# resolution). For the harness's -list flag:
+# The diagnostics tests that failed for a reason in type inference, with
+# their groups: A @OnlyInputTypes, B empty intersections, C common
+# supertypes and intersection types, D captured types, E incorporation
+# and fixation order, F postponed arguments, G @NoInfer and @Exact,
+# H reified type arguments, I constraints from platform types, J builder
+# inference and forks, K conversions during inference, L adjacent
+# overload resolution. For the harness's -list flag:
 #   bench/kotlin-tests.sh diagnostics -list bench/results/inference.txt -o "" -tsv ""
 testsWithStdLib/inference/annotationsForResolve/kt29307.kt	A	accepts invalid
 testsWithStdLib/inference/annotationsForResolve/onlyInputTypes.kt	A	accepts invalid
