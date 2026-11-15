@@ -180,6 +180,7 @@ func (c *Checker) checkClassTypeParams(d *syntax.ClassDecl) {
 		}
 	}
 	c.tparams = saved
+	c.headerVariance(d)
 	c.checkBoundSets(d.TypeParams)
 	if p := finiteBoundsViolation(d.Sym); p != nil {
 		c.errorf(d.TypeParams[p.Index].P, "this type parameter violates the Finite Bound Restriction")
@@ -346,4 +347,26 @@ func expansiveParams(cls *types.ClassSym) []*types.TypeParamSym {
 		}
 	}
 	return out
+}
+
+// headerVariance checks that the in and out type parameters of class d
+// occur in its type parameters' bounds and its supertypes only where
+// their variance allows: both are out positions.
+func (c *Checker) headerVariance(d *syntax.ClassDecl) {
+	if !variantClass(d.Sym) {
+		return
+	}
+	for _, tp := range d.TypeParams {
+		if tp.Sym == nil || len(tp.Bounds) != len(tp.Sym.Bounds) {
+			continue
+		}
+		for i, b := range tp.Sym.Bounds {
+			c.checkVariance(b, tp.Bounds[i], types.Out, true)
+		}
+	}
+	for _, st := range d.Supers {
+		if st.T.K == types.Class {
+			c.checkVariance(st.T, st.Type, types.Out, true)
+		}
+	}
 }

@@ -193,6 +193,7 @@ func (c *Checker) checkSupers() {
 		}
 	}
 	c.tparams, c.lookupCls = nil, nil
+	c.checkAliasBounds()
 }
 
 // checkConsistentSupers reports a class whose supertypes reach a generic

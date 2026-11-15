@@ -135,6 +135,13 @@ func (c *Checker) expandAlias(a *types.AliasSym, ref *syntax.TypeRef) types.Type
 	if t.K == types.Invalid {
 		return t
 	}
+	if !c.noBoundChecks {
+		known := make([]bool, len(args))
+		for i := range known {
+			known[i] = args[i].V != types.Star && !args[i].T.HasVars()
+		}
+		c.expansionBounds(a, args, known, ref, nil, nil)
+	}
 	return c.nullable(t, ref)
 }
 
@@ -253,7 +260,11 @@ func (c *Checker) aliasUnderscores(x *syntax.Call, a *types.AliasSym, cls *types
 			args[i] = &syntax.TypeArg{P: ta.P, Type: &syntax.TypeRef{P: ta.P, Known: &t}}
 		}
 	}
+	// The placeholders have no bounds to check.
+	saved := c.noBoundChecks
+	c.noBoundChecks = true
 	t := c.expandAlias(a, &syntax.TypeRef{P: p, Name: a.Name, Args: args})
+	c.noBoundChecks = saved
 	if t.K == types.Invalid {
 		return false
 	}
@@ -275,4 +286,212 @@ func (c *Checker) aliasUnderscores(x *syntax.Call, a *types.AliasSym, cls *types
 	}
 	x.TypeArgs = out
 	return true
+}
+
+// checkAliasBounds checks the type arguments of the file's typealiases'
+// right sides against their classes' bounds, once those are resolved:
+// TC<T, Any> for class TC<T, C : Collection<T>>, as kotlinc's
+// UPPER_BOUND_VIOLATED, and those of the typealiases they name, as
+// UPPER_BOUND_VIOLATED_IN_TYPEALIAS_EXPANSION. An argument that mentions
+// the typealias's own parameters, which have no bounds, isn't checked,
+// as TC<T, C> isn't: its uses are.
+func (c *Checker) checkAliasBounds() {
+	savedParams, savedCls := c.tparams, c.lookupCls
+	for _, d := range c.aliases {
+		a := d.Sym
+		if a == nil || !a.Resolved || a.Type.K == types.Invalid || d.Type == nil {
+			continue
+		}
+		own := func(t types.Type) bool {
+			return t.Has(func(u types.Type) bool { return u.IsParam() && u.Param().Owner == a })
+		}
+		// A bound that mentions them is met if some arguments meet it:
+		// List<String> is within List<T>, but Any isn't within
+		// Collection<T>.
+		stars := types.Subst{}
+		for _, p := range a.TypeParams {
+			stars[p] = types.Arg{V: types.Star}
+		}
+		c.tparams, c.lookupCls = a.TypeParams, a.Outer
+		c.refBounds(a.Type, d.Type, own, stars)
+	}
+	c.tparams, c.lookupCls = savedParams, savedCls
+	c.abbreviatedNothing()
+}
+
+// refBounds checks the type arguments of type t, written as ref, and of
+// the types among them, against their bounds, but those skip reports,
+// with erase applied to the bounds.
+func (c *Checker) refBounds(t types.Type, ref *syntax.TypeRef, skip func(types.Type) bool, erase types.Subst) {
+	if ref == nil || t.K != types.Class || t.A == nil || ref.Ret != nil || ref.Known != nil || ref.Outer != nil {
+		return
+	}
+	if a := c.lookupAlias(ref.Name); a != nil {
+		c.resolveAlias(a)
+		if len(ref.Args) != len(a.TypeParams) || a.Type.K == types.Invalid {
+			return
+		}
+		args, known := aliasArgs(a, t)
+		c.expansionBounds(a, args, known, ref, skip, erase)
+		for i, r := range ref.Args {
+			if known[i] && r.Type != nil && args[i].V != types.Star {
+				c.refBounds(args[i].T, r.Type, skip, erase)
+			}
+		}
+		return
+	}
+	if len(ref.Args) != len(t.A.List) {
+		return
+	}
+	c.argBounds(t, func(i int) syntax.Pos { return ref.Args[i].P }, skip, erase, nil)
+	for i, r := range ref.Args {
+		if a := t.A.Get(i); r.Type != nil && a.V != types.Star {
+			c.refBounds(a.T, r.Type, skip, erase)
+		}
+	}
+}
+
+// aliasArgs returns the type arguments of a use of typealias a that
+// expands to t, and which of them t shows: those of the parameters its
+// right side uses.
+func aliasArgs(a *types.AliasSym, t types.Type) ([]types.Arg, []bool) {
+	args := make([]types.Arg, len(a.TypeParams))
+	known := make([]bool, len(a.TypeParams))
+	var match func(p, u types.Type)
+	match = func(p, u types.Type) {
+		if p.IsParam() && p.Param().Owner == a {
+			if i := p.Param().Index; i < len(args) && !known[i] {
+				if p.N {
+					u = u.NonNull()
+				}
+				args[i], known[i] = types.Arg{T: u}, true
+			}
+			return
+		}
+		if p.K != types.Class || u.K != types.Class || p.A == nil || u.A == nil || p.C != u.C || p.A.Len() != u.A.Len() {
+			return
+		}
+		for i, x := range p.A.List {
+			if y := u.A.Get(i); x.V != types.Star && y.V != types.Star {
+				match(x.T, y.T)
+			}
+		}
+	}
+	match(a.Type, t)
+	return args, known
+}
+
+// expansionBounds checks the type arguments of the generic types of
+// typealias a's right side, with the arguments args of its use ref that
+// are known, against their bounds. An error in an argument that is one
+// of a's parameters is reported on ref's argument for it, others on ref.
+func (c *Checker) expansionBounds(a *types.AliasSym, args []types.Arg, known []bool, ref *syntax.TypeRef, skip func(types.Type) bool, erase types.Subst) {
+	s := types.Subst{}
+	// The bounds that mention the unknown arguments are erased as those
+	// of the typealias's right side are (see checkAliasBounds).
+	stars := types.Subst{}
+	for p, x := range erase {
+		stars[p] = x
+	}
+	for i, p := range a.TypeParams {
+		if known[i] {
+			s[p] = args[i]
+		} else {
+			stars[p] = types.Arg{V: types.Star}
+		}
+	}
+	erase = stars
+	unknown := func(t types.Type) bool {
+		return skip != nil && skip(t) || t.Has(func(u types.Type) bool { return u.K == types.TypeVar || u.IsParam() && u.Param().Owner == a })
+	}
+	var walk func(t types.Type)
+	walk = func(t types.Type) {
+		if t.K != types.Class || t.A == nil {
+			return
+		}
+		at := func(i int) syntax.Pos {
+			if x := t.A.Get(i); x.V != types.Star && x.T.IsParam() && x.T.Param().Owner == a && x.T.Param().Index < len(ref.Args) {
+				return ref.Args[x.T.Param().Index].P
+			}
+			return ref.P
+		}
+		c.argBounds(s.ApplyExact(t), at, unknown, erase, a)
+		for _, x := range t.A.List {
+			if x.V != types.Star {
+				walk(x.T)
+			}
+		}
+	}
+	walk(a.Type)
+}
+
+// argBounds checks the type arguments of class type t, but those skip
+// reports, against the bounds of its class's type parameters, and
+// reports an error at(i) for argument i out of them; erase, if set, is
+// applied to the bounds, and alias, if set, is the typealias whose
+// expansion t is part of.
+func (c *Checker) argBounds(t types.Type, at func(int) syntax.Pos, skip func(types.Type) bool, erase types.Subst, alias *types.AliasSym) {
+	ps := t.C.TypeParams
+	if t.K != types.Class || t.A == nil || len(ps) != len(t.A.List) {
+		return
+	}
+	s := classSubst(t)
+	for i, a := range t.A.List {
+		if a.V == types.Star || a.T.K == types.Invalid || skip != nil && skip(a.T) {
+			continue
+		}
+		for _, b := range ps[i].Bounds {
+			if b = s.Apply(b); erase != nil {
+				b = erase.Apply(b)
+			}
+			if !c.subtype(a.T, b) {
+				if alias != nil {
+					c.errorf(at(i), "type argument is not within its bounds in the expansion of typealias %s: type parameter '%s' must be subtype of '%s', but actual: '%s'", alias.Name, ps[i].Name, b, a.T)
+				} else {
+					c.errorf(at(i), "type argument is not within its bounds: type parameter '%s' must be subtype of '%s', but actual: '%s'", ps[i].Name, b, a.T)
+				}
+				break
+			}
+		}
+	}
+}
+
+// abbreviatedNothing reports the file's functions and properties whose
+// declared type is a typealias for Nothing, which kotlinc wants written
+// as Nothing (ABBREVIATED_NOTHING_RETURN_TYPE and _PROPERTY_TYPE).
+func (c *Checker) abbreviatedNothing() {
+	saved := c.lookupCls
+	var walk func(decls []syntax.Decl, cls *types.ClassSym)
+	walk = func(decls []syntax.Decl, cls *types.ClassSym) {
+		for _, d := range decls {
+			c.lookupCls = cls
+			switch d := d.(type) {
+			case *syntax.FunDecl:
+				if c.nothingAlias(d.Ret) {
+					c.errorf(d.P, "'Nothing' return type needs to be specified explicitly")
+				}
+			case *syntax.PropDecl:
+				if c.nothingAlias(d.Type) {
+					c.errorf(d.P, "'Nothing' property type needs to be specified explicitly")
+				}
+			case *syntax.ClassDecl:
+				walk(d.Members, d.Sym)
+			}
+		}
+	}
+	walk(c.file.Decls, nil)
+	c.lookupCls = saved
+}
+
+// nothingAlias reports whether ref names a typealias for Nothing.
+func (c *Checker) nothingAlias(ref *syntax.TypeRef) bool {
+	if ref == nil || ref.Name == "" || ref.Nullable || ref.Ret != nil || ref.Known != nil || len(ref.Args) > 0 {
+		return false
+	}
+	a := c.lookupAlias(ref.Name)
+	if a == nil {
+		return false
+	}
+	c.resolveAlias(a)
+	return a.Type.K == types.Nothing && !a.Type.N
 }
