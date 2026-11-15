@@ -683,6 +683,11 @@ func (c *Checker) refFuns(r *syntax.CallableRef, recvType types.Type, static *ty
 		if bound {
 			rt = r.Bound.Type
 		}
+		if never(rt) {
+			// A receiver that never completes, (break)::toString, has
+			// Any's members, as Nothing is a subtype of Any.
+			rt = types.AnyType
+		}
 		if cls := c.classOf(rt.NonNull()); cls != nil {
 			ms := c.accessible(cls, c.javaMethods(cls, r.Name))
 			if len(ms) == 0 && len(c.extCallees(r.Name, rt)) == 0 {

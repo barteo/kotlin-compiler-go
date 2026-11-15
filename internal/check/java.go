@@ -971,7 +971,7 @@ func (c *Checker) findClassifier(name string) classifier {
 		c.classCache[name] = k
 	}
 	if k == (classifier{}) {
-		// A nested class of the class path deprecated with level HIDDEN
+		// A nested class deprecated with level HIDDEN
 		// gives way to the classes outside, as K2's: found only if
 		// nothing else is, its use is an error.
 		return nested
@@ -979,11 +979,14 @@ func (c *Checker) findClassifier(name string) classifier {
 	return k
 }
 
-// hiddenClass reports whether cls is a class of the class path
-// deprecated with level HIDDEN.
+// hiddenClass reports whether cls is a class deprecated with level
+// HIDDEN.
 func hiddenClass(cls *types.ClassSym) bool {
-	if cls == nil || !cls.External {
+	if cls == nil {
 		return false
+	}
+	if !cls.External {
+		return classDeprecation(cls) == "HIDDEN" // the program's, as KT-14059's
 	}
 	cls.Ensure()
 	return cls.Deprecated != nil && cls.Deprecated.Level == "HIDDEN"
@@ -1358,6 +1361,8 @@ func (c *Checker) recvFits(rt, r types.Type) bool {
 		return true
 	case rt.K == types.Null:
 		return true // null fits a nullable receiver: null.f() for Id?.f()
+	case rt.K == types.Nothing:
+		return true // Nothing is a subtype of every type: todo() * "" for Int.times
 	}
 	rn := r.NonNull()
 	switch rn.K {

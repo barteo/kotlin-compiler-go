@@ -231,7 +231,7 @@ func (c *Checker) unaryOp(x *syntax.Unary, xt types.Type, want types.Type) types
 func (c *Checker) invokeOp(x *syntax.Call, ft, want types.Type, sink *system) (types.Type, bool) {
 	// Built-in types take invoke extensions too: "a"(12) for a
 	// String.invoke(i: Int).
-	if ft.K == types.Class && ft.C.Func || ft.K == types.Nothing || !c.hasFun(ft, "invoke", x) {
+	if ft.K == types.Class && ft.C.Func || !c.hasFun(ft, "invoke", x) {
 		return types.InvalidType, false
 	}
 	m := &syntax.Member{X: checked(x.Fun, ft), Name: "invoke"}

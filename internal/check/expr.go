@@ -160,7 +160,7 @@ func (c *Checker) expr1(x syntax.Expr, want types.Type, allowRange bool, sink *s
 				x.Member = m
 				return t
 			}
-			if x.Name == "Unit" {
+			if x.Name == "Unit" || c.unitAlias(x.Name) {
 				x.Unit = true
 				return types.UnitType
 			}
@@ -530,10 +530,15 @@ func (c *Checker) unaryExt(x *syntax.Unary, t types.Type) bool {
 func (c *Checker) unary(x *syntax.Unary, want types.Type) types.Type {
 	switch x.Op {
 	case syntax.MINUS, syntax.PLUS:
-		if lit, ok := x.X.(*syntax.IntLit); ok && x.Op == syntax.MINUS {
-			// A negative literal, which may be a Byte or Short: -128.
+		if lit, ok := x.X.(*syntax.IntLit); ok {
+			// A negative literal, which may be a Byte or Short: -128. So
+			// may +1.
 			if w := want.NonNull(); w == types.ByteType || w == types.ShortType {
-				t := intLit(lit, -lit.Val, want)
+				v := lit.Val
+				if x.Op == syntax.MINUS {
+					v = -v
+				}
+				t := intLit(lit, v, want)
 				lit.SetType(t)
 				return t
 			}
@@ -2134,6 +2139,11 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 		}
 		ensureVar(v)
 		x.Prop = v
+		x.T = v.Type
+		if k, ok := c.narrowKeyOf(x); ok && k.t.K != types.Invalid && k.t != v.Type {
+			x.Cast = needsCast(v.Type, k.t) // a smart cast of a.b.x
+			return k.t
+		}
 		return v.Type
 	}
 	if v := c.libraryPackageVar(x); v != nil {
@@ -2383,9 +2393,15 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 		// its chain.
 		return c.invoke(x, want, sink)
 	}
+	if t, ok := c.safeChainInvoke(x, want, sink); ok {
+		return t
+	}
 	switch fn := x.Fun.(type) {
 	case *syntax.Ident:
 		name := fn.Name
+		if show := c.hideUnfitLocals(name, x); show != nil {
+			defer show()
+		}
 		// A variable that can't be invoked doesn't hide functions, as in
 		// fun tag(tag: Any?) = tag(Any::class, tag).
 		_, t, isVar := c.scope.lookup(name)
@@ -2611,7 +2627,7 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 			// then ONE(42) is A.ONE.invoke(42).
 			return c.invoke(x, want, sink)
 		}
-		if name == "String" && len(x.Args) == 0 {
+		if name == "String" && len(x.Args) == 0 || len(x.Args) == 0 && c.aliasOfString(name) {
 			x.Builtin = types.NewString // String(): a new empty string
 			return types.StringType
 		}
@@ -2741,6 +2757,12 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 			id.P = fn.P
 			x.Fun = id
 			return c.call(x, want, sink)
+		}
+		if a := c.qualifiedAlias(fn); a != nil && len(x.Args) == 0 && c.stringAlias(a) {
+			id := &syntax.Ident{Name: "String"} // Class.S(), S a typealias of String
+			id.P = fn.P
+			x.Fun, x.Builtin = id, types.NewString
+			return types.StringType
 		}
 		if cls := c.classRef(fn); cls != nil {
 			if name := c.qualifiedName(fn); name != "" {
@@ -3272,8 +3294,13 @@ func safeChain(x syntax.Expr) bool {
 	case *syntax.Member:
 		return x.Safe && !x.Paren
 	case *syntax.Call:
-		m, ok := x.Fun.(*syntax.Member)
-		return ok && !x.Invoke && m.Safe && !x.Paren
+		switch fn := x.Fun.(type) {
+		case *syntax.Member:
+			return !x.Invoke && fn.Safe && !x.Paren
+		case *syntax.Call, *syntax.Index:
+			return !x.Paren && safeChain(fn) // a?.f()(v), see safeChainInvoke
+		}
+		return false
 	case *syntax.Index:
 		return !x.Paren && safeChain(x.X)
 	}
@@ -3583,6 +3610,7 @@ func (c *Checker) ifExpr(x *syntax.If, want types.Type, valueUsed bool) types.Ty
 	c.pop()
 	if !valueUsed {
 		c.completeBranches(pending, c.unusedJoin(types.NothingType, x.Then, x.Else), noWant, false)
+		thenT, elseT = inferredJump(thenT, x.Then), inferredJump(elseT, x.Else)
 		if thenT.K == types.Nothing && elseT.K == types.Nothing {
 			return types.NothingType
 		}
@@ -3973,6 +4001,7 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 	unused := types.NothingType // the join of the branches, whose value isn't used: see unusedJoin
 	var later []narrow          // what the failed conditions of the branches so far imply
 	nullFirst := true           // no branch so far matches null
+	var bts []types.Type        // the branches' types
 	for i, br := range x.Branches {
 		if br.Else && br.Guard == nil { // else if guard -> can be anywhere
 			if i != len(x.Branches)-1 {
@@ -4131,6 +4160,8 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 			n := narrow{recv: subj.recv, sym: subj.sym, t: subjType(), onlyNot: true}
 			if t, ok := c.joinIs(br.Conds); ok && !c.subtype(subjType(), t) && c.subtype(t, subjType()) {
 				n.t, n.onlyNot = c.isNarrowed(subjType(), t), false
+			} else if t, ok := c.joinIsNarrowed(subjType(), br.Conds); ok {
+				n.t, n.onlyNot = t, false
 			}
 			if others := c.sealedOthers(subjType(), br.Conds); others != nil {
 				n.not = &coverage{null: true, classes: others}
@@ -4157,6 +4188,7 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 		c.scope.narrows = whenTrue
 		exits = append(exits, c.watchExit(vars))
 		bt := c.branch(br.Body, want, valueUsed, &pending)
+		bts = append(bts, bt)
 		c.pop()
 		c.pop()
 		if bt.K != types.Nothing {
@@ -4239,6 +4271,12 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 	}
 	if !valueUsed {
 		c.completeBranches(pending, unused, noWant, false)
+		if !allJump {
+			allJump = true
+			for i, br := range x.Branches {
+				allJump = allJump && inferredJump(bts[i], br.Body).K == types.Nothing
+			}
+		}
 		if allJump {
 			return types.NothingType
 		}
