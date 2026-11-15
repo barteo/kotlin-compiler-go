@@ -51,3 +51,32 @@ fun returnedLambda(a: Scope<Sub>.() -> Unit, b: (Wrapped.() -> Unit)?) {
     two({ a.invoke(this) }, run { { Wrapped(this) } })
     two({ a.invoke(this) }, b?.let { { Wrapped(this) } })
 }
+
+class Prod<out A> {
+    fun <B> product(other: Prod<(A) -> B>): Prod<B> = TODO()
+    fun <B, C, R> deep(other1: Prod<B>, other2: Prod<C>, f: (A, B, C) -> R) {
+        val x: Prod<R> = product<R>(other1.product(other2.product(of { c -> { b -> { a -> f(a, b, c) } } })))
+    }
+}
+fun <A> of(x: A): Prod<A> = TODO()
+
+class MyPair<out A, out B>
+fun <X : Del<Y>, Y> mat(): MyPair<X, Del<Y>> = TODO()
+operator fun <T> MyPair<T, T>.provideDelegate(a: Any?, b: Any?): T = TODO()
+interface Del<V> {
+    operator fun getValue(a: Any?, b: Any?): V = TODO()
+}
+
+fun provided() {
+    val x: String by mat()
+}
+
+interface Self<out T : Self<T>> {
+    fun copy(t: @UnsafeVariance T): Self<T>
+}
+
+fun selfStar(o: Self<*>, p: Self<out Self<*>>) {
+    val a: Self<Self<*>> = o
+    val b: Self<Self<*>> = o.copy(o)
+    val c: Self<Self<*>> = p
+}

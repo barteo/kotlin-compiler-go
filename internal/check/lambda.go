@@ -2895,6 +2895,9 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type) {
 			s.fixFuncInputs(r)
 			w.ret = s.upperHint(r)
 		}
+		if w.ret.K == types.Invalid && endsInLambda(l) {
+			w.ret, _ = s.deepFuncUpper(r, 0)
+		}
 		if w.ret.K == types.Invalid && s.unitBound(r) {
 			w.ret = types.UnitType
 		}

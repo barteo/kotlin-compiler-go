@@ -187,8 +187,28 @@ func starArgBound(sup types.Type, i int) types.Type {
 		// Interpreter<IS : Intermediary<SELF>, TS, SELF> in
 		// Interpreter<*, T, I> is an Intermediary<I>.
 		return classSubst(sup).Apply(tp.Bounds[0])
+	case sup.A.List[i].V == types.Star && selfBound(sup.C, tp):
+		// A recursive bound reads as itself with a star for the
+		// parameter, as K2 approximates the captured star: T of Out3<*>,
+		// for Out3<out T : Out3<T>>, is an Out3<*>.
+		return types.Subst{tp: {V: types.Star}}.Apply(tp.Bounds[0])
 	}
 	return types.AnyType.Nullable()
+}
+
+// selfBound reports whether the only bound of tp, a type parameter of cls,
+// is cls's class type of tp and no other parameter: T : Out3<T>.
+func selfBound(cls *types.ClassSym, tp *types.TypeParamSym) bool {
+	b := tp.Bounds[0]
+	if b.K != types.Class || b.C != cls || b.N || b.A.Len() != len(cls.TypeParams) {
+		return false
+	}
+	for j, a := range b.A.List {
+		if a.V != types.Inv || a.T.K != types.TypeParam || a.T.Param() != tp || cls.TypeParams[j] != tp {
+			return false
+		}
+	}
+	return true
 }
 
 // argFits reports whether type argument ta fits ua, of a type parameter

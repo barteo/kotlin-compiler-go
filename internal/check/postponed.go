@@ -278,3 +278,36 @@ func (c *Checker) returnedInputsOpen(s *system, pl pendingLambda) bool {
 	}
 	return false
 }
+
+// deepFuncUpper returns a function type that variable v is below, whose
+// result, where it is a variable, is replaced by the function type that
+// variable is below, and so on, if that gives a proper type: as in
+// Kotlin, the expected type of the lambdas a lambda returns. (B) -> (A)
+// -> R for B2 <: (B) -> B1 and B1 <: (A) -> R, of { c -> { b -> { a ->
+// f(a, b, c) } } } passed to product(Foo<(C) -> B2>).
+func (s *system) deepFuncUpper(v types.Type, depth int) (types.Type, bool) {
+	tv := s.byVar[v.Param()]
+	if tv == nil || depth > 8 {
+		return types.InvalidType, false
+	}
+	for _, u := range tv.upper {
+		u = s.apply(u)
+		ps, r, ok := funcParts(u.Flex())
+		if !ok || slices.ContainsFunc(ps, types.Type.HasVars) {
+			continue
+		}
+		if r.K == types.TypeVar && !r.N {
+			if ru, ok := s.deepFuncUpper(r, depth+1); ok {
+				f := u.Flex()
+				args := slices.Clone(f.A.List)
+				args[len(args)-1] = types.Arg{T: ru}
+				f.A = types.MakeArgs(args)
+				return f, true
+			}
+		}
+		if !u.HasVars() {
+			return u, true
+		}
+	}
+	return types.InvalidType, false
+}
