@@ -1866,9 +1866,17 @@ func (c *Checker) constrain(cd *candidate, x *syntax.Call, ts []types.Type, part
 	for _, p := range partials {
 		cd.sys.merge(p.clone())
 	}
-	if ensureFun(cd.f); cd.f.Name == "<init>" && cd.f.Owner != nil {
+	switch {
+	case cd.f.Name == "<init>" && cd.f.Owner != nil:
 		cd.sys.markInvRet(cd.sub.Apply(cd.f.Owner.This()))
-	} else {
+	case len(cd.sys.vars) > 0 && !cd.f.InProgress:
+		// Only a candidate with type variables needs its return type
+		// here. Inferring it for the others, which K2 doesn't to find
+		// the applicable ones, made a recursive problem of the function
+		// being inferred, as kotlinpoet's
+		// fun emitCode(s: String) = emitCode(CodeBlock.of(s)), and of
+		// its overloads that call it back.
+		ensureFun(cd.f)
 		cd.sys.markInvRet(cd.sub.Apply(cd.f.Ret))
 	}
 	if cd.ext.K != types.Invalid {

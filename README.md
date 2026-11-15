@@ -3,7 +3,7 @@
 `kc` is a Kotlin compiler for the JVM, written in Go. On real libraries
 it compiles 10x faster or more than `kotlinc` running in a warm JVM, and uses
 about a tenth of the memory. The libraries it builds pass their own test
-suites ([Survey of real code](docs/survey.md)), and it passes all 6,483
+suites ([Survey of real code](docs/survey.md)), and it passes all 6,543
 of `kotlinc`'s box tests that it runs ([Conformance](docs/conformance.md)).
 
 It is a prototype: it compiles most of Kotlin but not all of it, and it
@@ -11,23 +11,23 @@ checks less than `kotlinc` does ([What it doesn't do](#what-it-doesnt-do)).
 
 ## Results
 
-`kc` against `kotlinc` 2.4.21 on an Apple M2 MacBook Air (8 cores, 16 GB),
-JDK 21. `kotlinc` runs in a warm JVM, as it does in the Gradle daemon:
+`kc` against `kotlinc` 2.4.21 on a Linux x86_64 cloud machine (4 CPUs,
+15 GB), JDK 21. `kotlinc` runs in a warm JVM, as it does in the Gradle daemon:
 the median of repeated compilations in one JVM, after the JIT has warmed
 up. `kc` uses all cores, as it does by default.
 
 | Project | Files | Lines | `kotlinc` | `kc` | Speedup |
 |:---|---:|---:|---:|---:|---:|
-| kotlinpoet 2.4.0 | 39 | 8.7k | 1.11 s | 104 ms | **11x** |
-| Ktor 3.6.0 (`ktor-io`, `ktor-utils`, `ktor-http`) | 236 | 24k | 2.27 s | 244 ms | **9x** |
-| kotlinx-coroutines-core 1.11.0 | 169 | 34k | 2.32 s | 179 ms | **13x** |
+| kotlinpoet 2.4.0 | 39 | 8.7k | 3.44 s | 211 ms | **16x** |
+| Ktor 3.6.0 (`ktor-io`, `ktor-utils`, `ktor-http`) | 236 | 24k | 6.96 s | 698 ms | **10x** |
+| kotlinx-coroutines-core 1.11.0 | 169 | 34k | 6.88 s | 643 ms | **11x** |
 
-- **On one core** (`kc -j 1`) `kc` is still 6.2–7.4x faster than warm
-  `kotlinc`: 153 ms, 366 ms and 312 ms.
+- **On one core** (`kc -j 1`) `kc` is still 8.2–11x faster than warm
+  `kotlinc`: 300 ms, 849 ms and 796 ms.
 - **Cold**, with a new JVM per build as on the command line or in CI,
-  `kotlinc` takes 7.5 s, 20.0 s and 11.2 s, 63–82x slower than `kc`.
-- **Memory:** `kc` peaks at 93–130 MB, and cold `kotlinc`, with an 8 GB
-  heap limit, at 1.0–1.1 GB.
+  `kotlinc` takes 17.8 s, 45.7 s and 28.5 s, 44–84x slower than `kc`.
+- **Memory:** `kc` peaks at 94–140 MB, and cold `kotlinc`, with an 8 GB
+  heap limit, at 0.94–1.04 GB.
 
 How each number is measured, and the full tables with CPU time, are in
 [Benchmark](docs/benchmark.md).
@@ -58,14 +58,14 @@ on one thread, `kc` is faster at each phase that both of them run:
 
 | Work | `kotlinc` | `kc -j 1` | Ratio |
 |:---|---:|---:|---:|
-| Parsing | 5.2 s | 0.26 s | ~20x |
-| Resolution and type checking | 8.0 s | 1.12 s | ~7x |
-| Checkers (warnings and errors) | 4.0 s | none | |
-| Reading the class path | 0.4 s | 0.01 s | |
-| Backend, with inlining and writing | 14.1 s | 1.38 s | ~10x |
-| **Total** | **31.7 s** | **2.77 s** | **11x** |
+| Parsing | 4.0 s | 0.65 s | ~6x |
+| Resolution and type checking | 26.8 s | 3.06 s | ~9x |
+| Checkers (warnings and errors) | 17.9 s | none | |
+| Reading the class path | 1.4 s | 0.03 s | |
+| Backend, with inlining and writing | 34.7 s | 3.39 s | ~10x |
+| **Total** | **84.8 s** | **7.13 s** | **12x** |
 
-Even without its checkers, `kotlinc` would take 28 s, 10x as long as
+Even without its checkers, `kotlinc` would take 67 s, 9x as long as
 `kc`. This profile is of 500 generated files (202k lines) in a warm JVM
 ([Where kotlinc's time goes](docs/benchmark.md#where-kotlincs-time-goes)).
 
@@ -75,10 +75,10 @@ Even without its checkers, `kotlinc` would take 28 s, 10x as long as
   seconds starting the JVM and warming up the JIT.
 - **Parallelism.** `kc` parses, checks bodies and generates class files
   on all cores; `kotlinc`'s frontend uses one.
-- **Fewer passes.** `kotlinc`'s time is spread over 84 IR lowerings and
-  272 checkers, none above about 2%. `kc` generates code in one pass
+- **Fewer passes.** `kotlinc`'s time is spread over 93 IR lowerings and
+  330 checkers, none above about 2%. `kc` generates code in one pass
   over the checked AST.
-- **Lazy inputs.** `kc` indexes the class path in about 5 ms while
+- **Lazy inputs.** `kc` indexes the class path in about 30 ms while
   parsing, and decodes a class only when it's first used.
 
 [Design](docs/design.md) describes the pipeline.
@@ -171,7 +171,7 @@ An entry is a build type, which covers each variant of that type (`debug` covers
 ```sh
 git clone --depth 1 --branch 1.11.0 https://github.com/Kotlin/kotlinx.coroutines.git \
   "${TMPDIR:-/tmp}/kc-survey/kotlinx-coroutines-1.11.0"
-RUNS=5 WARM_RUNS=20 bench/coroutines-time.sh
+COOLDOWN=0 RUNS=3 WARM_RUNS=10 bench/coroutines-time.sh
 ```
 
 `bench/coroutines-time.sh` builds `kc`, downloads the library's
