@@ -2,6 +2,7 @@ package check
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -311,6 +312,14 @@ func (c *Checker) indexCompound(p syntax.Pos, ix *syntax.Index, assignOp string,
 		return stmts, elem, true
 	}
 	if assignOp != "" && !builtinOperand(et) && c.hasFun(et.NonNull(), assignOp, &syntax.Call{Args: []syntax.Expr{arg}}) {
+		// As in Kotlin, x.set(i, x.get(i).plus(v)) may apply too: then
+		// the two are ambiguous, and v isn't checked.
+		opName := strings.TrimSuffix(assignOp, "Assign")
+		probe := &syntax.Call{Args: []syntax.Expr{arg}}
+		if c.hasFun(et.NonNull(), opName, probe) && c.setFits(xt, len(idx), et, opName, probe) {
+			c.errorf(p, "assignment operators ambiguity: '%s' and '%s' both apply", assignOp, opName)
+			return stmts, elem, true
+		}
 		call, t := c.opCall(p, checked(read, et), assignOp, []syntax.Expr{arg}, noWant)
 		c.wantUnit(p, assignOp, t)
 		return append(stmts, &syntax.ExprStmt{X: call}), elem, true
@@ -318,6 +327,134 @@ func (c *Checker) indexCompound(p syntax.Pos, ix *syntax.Index, assignOp string,
 	set := &syntax.Assign{P: p, Op: syntax.ASSIGN, Target: elem(), Value: value(checked(read, et))}
 	c.assign(set)
 	return append(stmts, set), elem, true
+}
+
+// opFits reports whether a receiver of type t has an operator function
+// name that may take call x and whose result may be assigned to want:
+// whether x op= v may also be x = x.op(v), as Kotlin resolves it. It
+// decides from the declarations, without checking x's arguments (a
+// lambda's body would be checked once per form, which is exponential
+// in nested x[i] += { }), and where they can't tell, it is true. So a
+// var list: ArrayList<Int>'s list - 2, a List<Int>, doesn't fit.
+func (c *Checker) opFits(t types.Type, name string, x *syntax.Call, want types.Type) bool {
+	t = t.Flex()
+	if !types.MayBeNull(t) {
+		if builtinFun(t, name, len(x.Args)) {
+			return true
+		}
+		if cls := c.classOf(t); cls != nil {
+			cls.Ensure()
+			if cls.Missing {
+				return true
+			}
+			for _, cl := range c.memberCallees(c.accessible(cls, c.javaMethods(cls, name)), t) {
+				if c.mayTake(cl.f, x) && c.retFits(substRet(cl.recv, cl.f.Ret), want, cl.tparams) {
+					return true
+				}
+			}
+		}
+	}
+	for _, cl := range c.extCalleesFor(name, t, x) {
+		if cl.f.Operator && c.recvTakes(t, cl.f.Recv) && c.mayTake(cl.f, x) && c.retFits(substRet(c.extRecvSubst(t, cl), cl.f.Ret), want, cl.tparams) {
+			return true
+		}
+	}
+	return false
+}
+
+// substRet applies s, which may be nil, to a declared type.
+func substRet(s types.Subst, t types.Type) types.Type {
+	if len(s) == 0 {
+		return t
+	}
+	return s.Apply(t)
+}
+
+// extRecvSubst returns the type arguments of extension cl's own type
+// parameters that its receiver's type gives for a receiver of type rt:
+// T of Collection<T>.plus(T): List<T> is Int for a List<Int>.
+func (c *Checker) extRecvSubst(rt types.Type, cl callee) types.Subst {
+	if len(cl.tparams) == 0 {
+		return nil
+	}
+	own := func(u types.Type) bool { return u.K == types.TypeParam && slices.Contains(cl.tparams, u.Param()) }
+	r := cl.f.Recv.NonNull()
+	if own(r) {
+		return types.Subst{r.Param(): {T: rt.Flex().NonNull()}}
+	}
+	if r.K != types.Class {
+		return nil
+	}
+	sup, ok := c.asSuper(rt.Flex().NonNull(), r.C)
+	if !ok {
+		return nil
+	}
+	actual := classSubst(sup)
+	s := types.Subst{}
+	for p, a := range classSubst(r) {
+		if b, ok := actual[p]; ok && own(a.T) {
+			s[a.T.Param()] = b
+		}
+	}
+	return s
+}
+
+// retFits reports whether a function's result type ret, which may
+// mention its own type parameters tparams, may be assigned to want. With
+// them, only the classes and the nullability are compared.
+func (c *Checker) retFits(ret, want types.Type, tparams []*types.TypeParamSym) bool {
+	if ret.K == types.Invalid || want.K == types.Invalid {
+		return true
+	}
+	own := func(u types.Type) bool { return u.K == types.TypeParam && slices.Contains(tparams, u.Param()) }
+	if !ret.Has(own) {
+		return c.subtype(ret, want)
+	}
+	r, w := ret.Flex(), want.Flex()
+	if own(r.NonNull()) {
+		return true
+	}
+	if types.MayBeNull(r) && !types.MayBeNull(w) {
+		return false
+	}
+	if r.NonNull().K != types.Class || w.NonNull().K != types.Class {
+		return true
+	}
+	_, ok := c.asSuper(r.NonNull(), w.NonNull().C)
+	return ok
+}
+
+// setFits reports whether a receiver of type xt has an operator set
+// taking n indices whose value parameter an element's opName(arg)
+// result fits: whether x[i] op= v may also be x.set(i, x.get(i).op(v)).
+func (c *Checker) setFits(xt types.Type, n int, et types.Type, opName string, probe *syntax.Call) bool {
+	xt = xt.Flex()
+	var params []types.Type
+	if !types.MayBeNull(xt) {
+		if cls := c.classOf(xt); cls != nil {
+			cls.Ensure()
+			for _, cl := range c.memberCallees(c.accessible(cls, c.javaMethods(cls, "set")), xt) {
+				if len(cl.f.Params) == n+1 {
+					params = append(params, substRet(cl.recv, cl.f.Params[n].Type))
+				}
+			}
+		}
+	}
+	for _, cl := range c.extCalleesFor("set", xt, nil) {
+		if cl.f.Operator && len(cl.f.Params) == n+1 && c.recvTakes(xt, cl.f.Recv) {
+			p := substRet(c.extRecvSubst(xt, cl), cl.f.Params[n].Type)
+			if p.Has(func(u types.Type) bool { return u.K == types.TypeParam && slices.Contains(cl.tparams, u.Param()) }) {
+				p = types.InvalidType // unknown: fits
+			}
+			params = append(params, p)
+		}
+	}
+	for _, p := range params {
+		if c.opFits(et, opName, probe, p) {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *Checker) wantUnit(p syntax.Pos, name string, t types.Type) {
@@ -330,13 +467,19 @@ func (c *Checker) wantUnit(p syntax.Pos, name string, t types.Type) {
 // assignment target of type tt, isn't of a built-in type. With
 // x.plusAssign(v) and no plus, or a val x, it calls plusAssign; with plus
 // only, it is x = x.plus(v); with both and a var x, it is ambiguous.
-func (c *Checker) compoundOp(s *syntax.Assign, tt types.Type, mutable bool) {
+func (c *Checker) compoundOp(s *syntax.Assign, tt, want types.Type, mutable bool) {
 	assignName, opName := opNames[s.Op], opNames[arithOf(s.Op)]
 	probe := &syntax.Call{Args: []syntax.Expr{s.Value}}
 	hasAssign := c.hasFun(tt.NonNull(), assignName, probe)
 	hasOp := c.hasFun(tt.NonNull(), opName, probe)
+	fits := hasAssign && hasOp && mutable && c.opFits(tt.NonNull(), opName, probe, want)
+	if fits && tt.Flex().NonNull().IsNumeric() && c.argTypes(probe)[0].K == types.Nothing {
+		// a + todo() is ambiguous among Int's plus functions, which all
+		// take a Nothing: only a.plusAssign(todo()) applies.
+		fits = false
+	}
 	switch {
-	case hasAssign && hasOp && mutable:
+	case fits:
 		c.errorf(s.P, "assignment operators ambiguity: '%s' and '%s' both apply", assignName, opName)
 		return
 	case hasAssign:

@@ -205,10 +205,14 @@ type Checker struct {
 	// Results of name lookups that search the class path, which are the
 	// same throughout the file. They spare the shared tables' locks.
 	classCache map[string]classifier
-	funCache   map[funKey][]*types.FunSym
-	levelCache map[funKey][][]*types.FunSym // see kotlinFunLevels
-	looked     lookups                      // the lookups recorded (see lookups.go)
-	errs       []*syntax.Error
+	starCache  map[string][]classifier // see starClassifiers
+	// starFallback is set where a name that star imports give two
+	// classifiers of isn't ambiguous: see classLitType.
+	starFallback bool
+	funCache     map[funKey][]*types.FunSym
+	levelCache   map[funKey][][]*types.FunSym // see kotlinFunLevels
+	looked       lookups                      // the lookups recorded (see lookups.go)
+	errs         []*syntax.Error
 	// tailIfs are ifs without else that end a branch of the if a lambda
 	// ends with: statements, not values (see markTailIfs).
 	tailIfs map[*syntax.If]bool
@@ -759,7 +763,7 @@ func signatures(ctx context.Context, files []*syntax.File, lib *Library, rec Rec
 		checkers[i] = &Checker{u: u, file: f, done: map[any]bool{}, checked: map[*syntax.Lambda]types.Type{},
 			jumps:    map[*syntax.Lambda]inlineJumps{},
 			varSites: map[*types.VarSym]varSite{}, concurrent: map[varFrame]bool{}, nestedAssigns: map[*types.VarSym][]types.Type{}, frameAssigns: map[varFrame][]types.Type{}, assignsMemo: map[any][]string{},
-			classCache: map[string]classifier{}, funCache: map[funKey][]*types.FunSym{},
+			classCache: map[string]classifier{}, starCache: map[string][]classifier{}, funCache: map[funKey][]*types.FunSym{},
 			levelCache: map[funKey][][]*types.FunSym{}}
 	}
 	inheritDefaults(files)
@@ -934,6 +938,9 @@ func (c *Checker) resolveTypeRef(ref *syntax.TypeRef) types.Type {
 	}
 	if ref.Outer != nil {
 		return c.innerType(ref)
+	}
+	if c.lookupTypeParam(ref.Name) == nil {
+		c.starAmbiguity(ref.Name, ref.P)
 	}
 	if a := c.lookupAlias(ref.Name); a != nil && c.lookupTypeParam(ref.Name) == nil {
 		c.u.typeUses.Store(ref, a)

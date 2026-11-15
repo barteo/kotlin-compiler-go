@@ -93,6 +93,10 @@ func (c *Checker) typeName(x syntax.Expr) (string, bool) {
 // star-projected: List::class is a KClass<List<*>>. In class literals,
 // only arrays take other type arguments.
 func (c *Checker) classLitType(ref *syntax.TypeRef, callable bool) types.Type {
+	// As in K2, a name that star imports give two classifiers of isn't
+	// ambiguous here: HashMap::class is kotlin.collections.HashMap's.
+	defer func(old bool) { c.starFallback = old }(c.starFallback)
+	c.starFallback = true
 	if tp := c.lookupTypeParam(ref.Name); tp != nil {
 		if tp.Reified && !callable {
 			return types.ParamType(tp) // known in each copy of the function
@@ -232,6 +236,12 @@ func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.
 				break
 			}
 			if cls := c.lookupClass(name + "." + r.Name); cls != nil && !ensured(cls).Object && !cls.Inner {
+				if e := c.lookupClass(name); r.Name == "entries" && e != nil && e.Entries != nil && c.u.ext.kotlin {
+					// An enum's entries and its nested class entries's
+					// constructor: as in K2, neither wins.
+					c.errorf(p, "overload resolution ambiguity: %s is both the entries of %s and the constructor of its nested class", refString(r), e.DisplayName())
+					return nil, types.InvalidType, false
+				}
 				nested = cls
 				break
 			}
@@ -296,6 +306,12 @@ func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.
 	staticForm := func(ps []types.Type) refForm {
 		return refForm{params: ps, body: func() syntax.Expr { return call(member(r.X, r.Name), ps, 0) }}
 	}
+	// A Java class's static field, or an enum's entries, is a property
+	// without a receiver: JavaClass::staticField is a KProperty0, as
+	// Some::entries. An enum's entry isn't: My::V is unsupported, as in
+	// K2.
+	staticProp := static != nil && r.X != nil && (static.Entries == nil && c.staticFieldOf(static, r.Name) != nil || r.Name == "entries" && static.Entries != nil && c.u.ext.kotlin)
+	staticPropForm := refForm{body: func() syntax.Expr { return member(r.X, r.Name) }}
 	switch {
 	case nested != nil:
 		// Outer.Nested(...), with the expected parameters or else those of
@@ -317,6 +333,9 @@ func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.
 		}
 		forms = append(forms, staticForm(ps))
 	case w.prop:
+		if staticProp && !w.prop1 {
+			return c.kpropLambda(x, staticPropForm, false)
+		}
 		var ps []types.Type
 		if unbound {
 			ps = []types.Type{recvType}
@@ -344,6 +363,8 @@ func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.
 				forms = append(forms, propForm(ps))
 			}
 			forms = append(forms, funForm(ps))
+		case len(ps) == 0 && staticProp:
+			forms = append(forms, staticPropForm)
 		}
 		if static != nil {
 			forms = append(forms, staticForm(ps))
@@ -358,7 +379,16 @@ func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.
 		if unbound {
 			ps = []types.Type{recvType}
 		}
-		if !c.namesClass(r, recv != nil) && !c.localExtWins(r, recvType) {
+		if staticProp {
+			if w.kprop {
+				n := len(c.errs)
+				if ps, rt, ok := c.kpropLambda(x, staticPropForm, false); ok && len(c.errs) == n {
+					return ps, rt, ok
+				}
+				c.errs, x.KProp = c.errs[:n], nil
+			}
+			forms = append(forms, staticPropForm)
+		} else if !c.namesClass(r, recv != nil) && !c.localExtWins(r, recvType) {
 			if w.kprop {
 				// A property's reference is a KProperty object, as in
 				// Kotlin, if kc can make one, and otherwise a function.
@@ -916,7 +946,7 @@ func wantsKProp(x *syntax.Lambda, t types.Type) bool {
 // expected, the reference may be a function's, a KFunctionN: ::box.
 func (c *Checker) kpropRef(x *syntax.Lambda, want types.Type) types.Type {
 	n := len(c.errs)
-	ps, rt, ok := c.checkRef(x, lambdaWant{ret: noWant, prop: true})
+	ps, rt, ok := c.checkRef(x, lambdaWant{ret: noWant, prop: true, prop1: strings.HasSuffix(want.Flex().NonNull().C.Name, "Property1")})
 	if (!ok || rt.K == types.Invalid) && len(c.errs) > n && want.Flex().NonNull().C.Name == "kotlin/reflect/KCallable" {
 		errs := c.errs[n:]
 		c.errs, x.KProp = c.errs[:n], nil
@@ -981,6 +1011,10 @@ func (c *Checker) kpropLambda(x *syntax.Lambda, f refForm, bound bool) ([]types.
 		case e.Dispatch != nil:
 		case e.Prop != nil && e.Prop.Kind == types.Prop:
 			k.Prop, mutable = e.Prop, e.Prop.Mutable && (!e.Prop.SetterPrivate || c.inside(e.Prop.Owner))
+		case e.Static != nil && !e.Entries && e.Getter != nil && e.Getter.Static && e.Getter.Name == "getEntries":
+			// A Kotlin enum's entries, whose getter is the class's static
+			// getEntries(). A Java enum's (Entries) has no getter.
+			k.Getter = e.Getter
 		case e.Getter != nil && e.Getter.Ext && e.Getter.Owner == nil:
 			k.Getter, mutable = e.Getter, e.Getter.ExtSetter != nil
 		case e.Getter != nil && !e.Getter.Ext && e.Getter.Owner != nil:
@@ -991,6 +1025,9 @@ func (c *Checker) kpropLambda(x *syntax.Lambda, f refForm, bound bool) ([]types.
 			} else if e.Getter.Owner.External {
 				k.Getter, mutable = e.Getter, e.Setter != nil
 			}
+		case e.Field != nil:
+			// A Java class's static field.
+			k.Prop, mutable = e.Field, e.Field.Mutable
 		case e.Builtin == types.StrLength:
 			if s := c.u.ext.class("java/lang/String"); s != nil {
 				k.Getter = &types.FunSym{Name: "length", Owner: s, Desc: "()I", Ret: types.IntType, Resolved: true}
@@ -1000,6 +1037,9 @@ func (c *Checker) kpropLambda(x *syntax.Lambda, f refForm, bound bool) ([]types.
 		switch {
 		case e.Sym != nil && e.Sym.Kind == types.Global && e.Getter == nil && e.Member == nil:
 			k.Prop, mutable = e.Sym, e.Sym.Mutable
+		case e.Member != nil && e.Member.Field != nil:
+			// A Java class's static field, imported or inherited.
+			k.Prop, mutable = e.Member.Field, e.Member.Field.Mutable
 		case !bound && e.Member == nil && c.cls != nil &&
 			(e.Sym != nil && e.Sym.Kind == types.Prop && c.cls.IsSubclassOf(e.Sym.Owner) || e.Getter != nil && e.Getter.Owner != nil && c.cls.IsSubclassOf(e.Getter.Owner) ||
 				e.Sym != nil && e.Sym.Kind == types.Param && c.userProp(c.cls, e.Name) != nil && c.userProp(c.cls, e.Name).Kind == types.Prop):

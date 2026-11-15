@@ -97,6 +97,16 @@ func (c *Checker) expr1(x syntax.Expr, want types.Type, allowRange bool, sink *s
 				}
 			}
 		}
+		if c.cls == nil && c.staticCls != nil {
+			// In a delegation call's arguments, the class's static scope
+			// comes before its companion: C is the nested object C, not
+			// the companion's val C.
+			if _, _, local := c.scope.lookup(x.Name); !local {
+				if cls := c.findClass(x.Name); cls != nil && cls.Outer == c.staticCls && cls.Object && cls != c.staticCls.Companion {
+					return objectValue(x, cls)
+				}
+			}
+		}
 		sym, t, cast, ok := c.lookupVar(x.Name)
 		if ok && sym.Kind == types.Global && (c.cls != nil || c.staticCls != nil) {
 			// As in Kotlin, the implicit receivers come before the
@@ -111,8 +121,14 @@ func (c *Checker) expr1(x syntax.Expr, want types.Type, allowRange bool, sink *s
 				return t
 			}
 		}
+		if ok && sym.Ambiguous {
+			c.errorf(x.P, "overload resolution ambiguity: %s", x.Name)
+		}
 		if ok {
 			c.checkTopVar(sym, x.P)
+			if v, imported := c.userVars[x.Name]; imported && v == sym {
+				c.importAmbiguity(x)
+			}
 		}
 		if ok && sym.Kind == types.Prop && !cast {
 			// A property of this, once a smart cast has changed this's
@@ -2093,6 +2109,12 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 	if x.Object != nil {
 		return types.ClassType(x.Object) // an object, already resolved
 	}
+	if x.Safe && c.qualifierValue(x.X) {
+		return types.InvalidType
+	}
+	if id, ok := x.X.(*syntax.Ident); ok && c.starQualifierAmbiguity(id) {
+		return types.InvalidType
+	}
 	c.entriesQualifier(x.X)
 	if cls := c.classRef(x); cls != nil && !c.hasStatic(c.classRef(x.X), x.Name) {
 		if obj := objectOf(cls); obj != nil {
@@ -2231,6 +2253,9 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 		t = c.memberSubst(rt, x.Prop.Owner).Apply(x.Prop.Type)
 	default:
 		t, found = c.javaProperty(x, rt)
+	}
+	if x.Prop != nil && x.Prop.Ambiguous {
+		c.errorf(x.P, "overload resolution ambiguity: %s", x.Name)
 	}
 	if found && x.Prop == nil && x.Getter != nil && !x.Safe {
 		// A smart cast of a.b, for a friend path's stable property.
@@ -2504,6 +2529,15 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 				x.Fun = m
 				return c.call(x, want, sink)
 			}
+			if obj := c.objectExtension(name, x); obj != nil {
+				// An extension of an object in scope, the companion of a
+				// superclass too: foo() is A.Companion.foo(), for a
+				// fun A.Companion.foo().
+				m := &syntax.Member{X: objectIdent(obj, fn.P), Name: name}
+				m.P = fn.P
+				x.Fun = m
+				return c.call(x, want, sink)
+			}
 			if c.thisMethods(name) {
 				// A method of this's smart-cast type: f() is this.f().
 				this := &syntax.This{Class: true}
@@ -2682,6 +2716,10 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 		return types.InvalidType
 
 	case *syntax.Member:
+		if fn.Safe && c.qualifierValue(fn.X) {
+			c.args(x, nil)
+			return types.InvalidType
+		}
 		pkg := c.packageRef(fn.X)
 		if pkg != nil {
 			// A top-level function by its qualified name: a.b.f(). A class

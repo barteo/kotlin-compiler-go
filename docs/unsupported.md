@@ -270,6 +270,11 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   where the call's expected type would have `T` not null:
   `val s: Set<String> = java.util.HashSet(setOf(null))` is an error.
 - Java module exports aren't checked.
+- Java sources compiled with the program see the member classes a
+  Kotlin class inherits only through supertypes written without type
+  arguments: a Java subclass of `class K : Base<String>()` that names
+  `Inner`, declared in `Base<T>`, leaves the name unresolved in the
+  signatures `kc` reads, as the inner class's `T` would be lost.
 - Without an expected type, a reference to a vararg function, or to a
   generic function whose type parameters its receiver's type doesn't
   give (`Box<Int>::first` for `fun <T> Box<T>.first()` is fine), is an

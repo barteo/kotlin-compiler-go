@@ -215,31 +215,31 @@ Kotlin 2.4.21's tests on `kc`:
 | Diagnostics tests | Tests | Share of run |
 |:---|---:|---:|
 | run (of 10,827) | 8,515 | |
-| rejects invalid | 4,098 | 48.1% |
-| accepts valid | 3,995 | 46.9% |
-| accepts invalid | 286 | 3.4% |
-| rejects valid | 118 | 1.4% |
-| parse/unsupported | 16 | 0.2% |
+| rejects invalid | 4,138 | 48.6% |
+| accepts valid | 4,008 | 47.1% |
+| accepts invalid | 247 | 2.9% |
+| rejects valid | 105 | 1.2% |
+| parse/unsupported | 15 | 0.2% |
 | crash | 1 | |
 | harness error (`javac`) | 1 | |
 
 `kc` agrees with `kotlinc` on 93% of the diagnostics tests, and reports
-15,793 of the 21,506 expected errors (73%) on their lines. Tests with
+15,912 of the 21,508 expected errors (73%) on their lines. Tests with
 Java sources, which earlier runs skipped, add 1,223 tests to the run,
-and 124 of the 286 that *accept invalid* code. The reports break the
+and 95 of the 247 that *accept invalid* code. The reports break the
 failures down; the largest groups are:
 
 - **Silent miscompilation**: none. No box test that `kc` compiles
   gives a wrong result, throws, or fails to verify or link.
 - **Accepts invalid**, by the tests that expect each error: unresolved
-  names (`UNRESOLVED_REFERENCE` 35), overload ambiguities
-  (`OVERLOAD_RESOLUTION_AMBIGUITY` 22), argument type mismatches
-  (`ARGUMENT_TYPE_MISMATCH` 18) and missing dependency classes
-  (`MISSING_DEPENDENCY_CLASS` 16).
-- **Rejects valid**, by `kc`'s first error: type mismatches (50),
-  inference failures (32), unresolved names, imports and labels (30),
-  and ambiguous calls and assignment operators (10). No box test is
-  rejected.
+  names (`UNRESOLVED_REFERENCE` 20), argument type mismatches
+  (`ARGUMENT_TYPE_MISMATCH` 18), missing dependency classes
+  (`MISSING_DEPENDENCY_CLASS` 15) and class redeclarations
+  (`CLASSIFIER_REDECLARATION` 7).
+- **Rejects valid**, by `kc`'s first error: unresolved names, imports
+  and labels (26), type mismatches (25), inference failures (18: type
+  variables or parameters not inferred, bounds, recursive types) and
+  ambiguous calls (3). No box test is rejected.
 - **Crashes**: a test with Java sources, a stack overflow on a
   recursive bound. The harness error is a test that declares `java.util.Date`, which `javac`
   compiles only with `--patch-module`.

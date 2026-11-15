@@ -1254,13 +1254,18 @@ func (c *Checker) assign(s *syntax.Assign) {
 		defer c.reset([]*types.VarSym{v})
 		c.assignedNested(v, v.Type)
 	}
-	if !builtinOperand(tt) || classBound(tt) {
+	if !builtinOperand(tt) || classBound(tt) || c.assignExt(tt, s) {
 		// x += v may call x.plusAssign(v), also on a val or a var whose
-		// setter the code can't see.
+		// setter the code can't see, and on a built-in type with an
+		// extension plusAssign, as Any.plusAssign for an Int.
 		if !mutable && len(c.errs) == n+1 && (c.errs[n].Msg == "val cannot be reassigned" || strings.HasPrefix(c.errs[n].Msg, invisibleSetterMsg)) {
 			c.errs = c.errs[:n]
 		}
-		c.compoundOp(s, tt, mutable)
+		want := tt // what x = x.plus(v) assigns to: a local's declared type
+		if v != nil {
+			want = v.Type
+		}
+		c.compoundOp(s, tt, want, mutable)
 		return
 	}
 	s.OpType = tt
@@ -1304,6 +1309,22 @@ func (c *Checker) namesObject(x syntax.Expr) bool {
 }
 
 // arithOf returns the arithmetic operator of a compound assignment.
+// assignExt reports whether a target of a built-in type tt has an
+// operator extension that x op= v may call, as Any.plusAssign for an Int.
+func (c *Checker) assignExt(tt types.Type, s *syntax.Assign) bool {
+	t := tt.Flex()
+	if t.K == types.Invalid || t.K == types.Nothing || t.IsParam() {
+		return false
+	}
+	probe := &syntax.Call{Args: []syntax.Expr{s.Value}}
+	for _, cl := range c.extCalleesFor(opNames[s.Op], t, probe) {
+		if cl.f.Operator && c.recvTakes(t, cl.f.Recv) && c.mayTake(cl.f, probe) {
+			return true
+		}
+	}
+	return false
+}
+
 func arithOf(k syntax.Kind) syntax.Kind {
 	switch k {
 	case syntax.PLUS_EQ:

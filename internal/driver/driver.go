@@ -538,7 +538,15 @@ func (j *JavaSources) SetKotlin(files []*syntax.File) {
 // theirs: the class path's, and the program's Kotlin classes.
 type javaOutside struct {
 	cp     *classpath.Path
-	kotlin map[string]*syntax.ClassDecl // by internal name
+	kotlin map[string]*kotlinClass // by internal name
+}
+
+// kotlinClass is a class of the program's Kotlin sources, as the Java
+// sources see it.
+type kotlinClass struct {
+	decl  *syntax.ClassDecl
+	file  *syntax.File
+	outer string // the internal name of the class it is nested in, or ""
 }
 
 func (o *javaOutside) Has(name string) bool {
@@ -546,8 +554,24 @@ func (o *javaOutside) Has(name string) bool {
 }
 
 func (o *javaOutside) Supers(name string) ([]string, bool) {
-	if d := o.kotlin[name]; d != nil {
-		return nil, d.Interface
+	if k := o.kotlin[name]; k != nil {
+		// Its supertypes by the names written, which Java sources need
+		// for the member types it inherits: KotlinInner3 in a Java
+		// subclass of a Kotlin class whose superclass declares it. A
+		// supertype with type arguments is left out: the inner classes
+		// inherited through it would lose them, as SuperClass<String>'s
+		// NestedInSuperClass, whose T the Java sources' signatures can't
+		// give, so they stay unresolved.
+		var supers []string
+		for _, st := range k.decl.Supers {
+			if st.Type == nil || st.Type.Name == "" || len(st.Type.Args) > 0 {
+				continue
+			}
+			if n := o.kotlinType(k, st.Type.Name); n != "" {
+				supers = append(supers, n)
+			}
+		}
+		return supers, k.decl.Interface
 	}
 	info, err := o.cp.Load(name)
 	if err != nil {
@@ -558,6 +582,84 @@ func (o *javaOutside) Supers(name string) ([]string, bool) {
 		supers = append([]string{info.Super}, supers...)
 	}
 	return supers, info.Access&cf.AccInterface != 0
+}
+
+// exists reports whether a class of the program or the class path has an
+// internal name.
+func (o *javaOutside) exists(name string) bool {
+	return o.kotlin[name] != nil || o.cp.Has(name)
+}
+
+// qualified returns the internal name of a class by its dotted name, with
+// the longest package prefix it exists in, or "".
+func (o *javaOutside) qualified(dotted string) string {
+	segs := strings.Split(dotted, ".")
+	for i := len(segs) - 1; i >= 0; i-- {
+		n := strings.Join(segs[i:], "$")
+		if i > 0 {
+			n = strings.Join(segs[:i], "/") + "/" + n
+		}
+		if o.exists(n) {
+			return n
+		}
+	}
+	return ""
+}
+
+// kotlinType resolves the name of a type written in Kotlin class k's
+// supertypes, without type arguments, to an internal name, or "". It
+// looks in the classes k is nested in, the file's explicit imports, its
+// package, its star imports and java.lang, and takes the name as
+// qualified last. It doesn't know type aliases.
+func (o *javaOutside) kotlinType(k *kotlinClass, written string) string {
+	first, rest, _ := strings.Cut(written, ".")
+	nested := func(n string) string {
+		if n == "" || rest == "" {
+			return n
+		}
+		n += "$" + strings.ReplaceAll(rest, ".", "$")
+		if !o.exists(n) {
+			return ""
+		}
+		return n
+	}
+	for outer := k.outer; outer != ""; outer = o.kotlin[outer].outer {
+		if n := outer + "$" + first; o.exists(n) {
+			return nested(n)
+		}
+	}
+	f := k.file
+	for _, imp := range f.Imports {
+		if imp.Star {
+			continue
+		}
+		name := imp.Alias
+		if name == "" {
+			name = imp.Path[strings.LastIndex(imp.Path, ".")+1:]
+		}
+		if name == first {
+			return nested(o.qualified(imp.Path))
+		}
+	}
+	pkg := ""
+	if f.Package != "" {
+		pkg = strings.ReplaceAll(f.Package, ".", "/") + "/"
+	}
+	if o.exists(pkg + first) {
+		return nested(pkg + first)
+	}
+	for _, imp := range f.Imports {
+		if !imp.Star {
+			continue
+		}
+		if q := o.qualified(imp.Path + "." + first); q != "" {
+			return nested(q)
+		}
+	}
+	if o.exists("java/lang/" + first) {
+		return nested("java/lang/" + first)
+	}
+	return o.qualified(written)
 }
 
 func (o *javaOutside) Constant(class, field string) (any, string) {
@@ -578,15 +680,15 @@ func (o *javaOutside) Constant(class, field string) (any, string) {
 
 // kotlinClasses returns the program's classes by internal name, nested
 // ones too, and its files' facades.
-func kotlinClasses(files []*syntax.File) map[string]*syntax.ClassDecl {
-	m := map[string]*syntax.ClassDecl{}
-	var add func(prefix string, d *syntax.ClassDecl)
-	add = func(prefix string, d *syntax.ClassDecl) {
+func kotlinClasses(files []*syntax.File) map[string]*kotlinClass {
+	m := map[string]*kotlinClass{}
+	var add func(f *syntax.File, outer, prefix string, d *syntax.ClassDecl)
+	add = func(f *syntax.File, outer, prefix string, d *syntax.ClassDecl) {
 		name := prefix + d.Name
-		m[name] = d
+		m[name] = &kotlinClass{decl: d, file: f, outer: outer}
 		for _, n := range d.Members {
 			if n, ok := n.(*syntax.ClassDecl); ok {
-				add(name+"$", n)
+				add(f, name, name+"$", n)
 			}
 		}
 	}
@@ -597,11 +699,11 @@ func kotlinClasses(files []*syntax.File) map[string]*syntax.ClassDecl {
 		}
 		for _, d := range f.Decls {
 			if d, ok := d.(*syntax.ClassDecl); ok {
-				add(prefix, d)
+				add(f, "", prefix, d)
 			}
 		}
 		if f.HasFacade() {
-			m[f.Class()] = &syntax.ClassDecl{}
+			m[f.Class()] = &kotlinClass{decl: &syntax.ClassDecl{}, file: f}
 		}
 	}
 	return m

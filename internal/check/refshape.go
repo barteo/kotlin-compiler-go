@@ -201,6 +201,18 @@ func (c *Checker) memberRefShapes(cls *types.ClassSym, name string) []types.Type
 		}
 		out = append(out, t)
 	}
+	// A Java class's static methods of the name, which take no receiver:
+	// JavaClass::bar is (String) -> Int for a static bar(String) as well
+	// as (JavaClass, CharSequence) -> Int for an instance bar.
+	if isJavaClass(cls) {
+		for _, f := range javaStatics(cls, name) {
+			t, ok := c.funShape(f, nil)
+			if !ok {
+				return nil
+			}
+			out = append(out, t)
+		}
+	}
 	return out
 }
 

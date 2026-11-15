@@ -91,7 +91,7 @@ func (c *compiler) compile(t *test, dir string, extra []*srcFile, libs libraries
 		if libs.reflect {
 			cp = append(cp, c.reflect)
 		}
-		cp = append(cp, res.outDirs...)
+		cp = append(cp, depsFirst(t.modules[:mi], res.outDirs, m.deps)...)
 		args := []string{"-d", out, "-module-name", m.name}
 		if len(cp) > 0 {
 			args = append(args, "-cp", strings.Join(cp, string(os.PathListSeparator)))
@@ -337,4 +337,26 @@ func template(msg string) string {
 		msg = t.re.ReplaceAllString(msg, t.repl)
 	}
 	return msg
+}
+
+// depsFirst orders the output directories of the modules before one,
+// outs[i] being mods[i]'s, with those of the modules it depends on first,
+// in the order its // MODULE: line names them, as the test
+// infrastructure's class path has them: of two modules that declare one
+// class, the one named first wins. The others follow, as before.
+func depsFirst(mods []*module, outs, deps []string) []string {
+	out := make([]string, 0, len(outs))
+	for _, d := range deps {
+		for i, m := range mods {
+			if m.name == d && i < len(outs) && !slices.Contains(out, outs[i]) {
+				out = append(out, outs[i])
+			}
+		}
+	}
+	for _, o := range outs {
+		if !slices.Contains(out, o) {
+			out = append(out, o)
+		}
+	}
+	return out
 }

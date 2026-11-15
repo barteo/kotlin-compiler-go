@@ -108,7 +108,7 @@ tests/ReturnInFunctionWithoutBody.kt	rejects invalid	on an expected line
 tests/SafeCallInvoke.kt	accepts valid		
 tests/SafeCallNonNullReceiver2.kt	accepts valid		
 tests/SafeCallNonNullReceiverReturnNull.kt	rejects invalid	on an expected line	
-tests/SafeCallOnFakePackage.kt	accepts invalid	NO_COMPANION_OBJECT; UNRESOLVED_REFERENCE; EXPRESSION_EXPECTED_PACKAGE_FOUND	test.kt:2: NO_COMPANION_OBJECT
+tests/SafeCallOnFakePackage.kt	rejects invalid	on an expected line	
 tests/SafeCallOnSuperReceiver.kt	accepts invalid	UNEXPECTED_SAFE_CALL	SafeCallOnSuperReceiver.kt:10: UNEXPECTED_SAFE_CALL
 tests/SafeCallUnknownType.kt	rejects invalid	on an expected line	
 tests/Serializable.kt	rejects invalid	on an expected line	
@@ -663,7 +663,7 @@ tests/callResolution/eagerLambdaAnalysis/valueVsUnit.kt	skip	LANGUAGE
 tests/callResolution/eagerLambdaAnalysis/varargArgument.kt	skip	LANGUAGE	
 tests/callResolution/eagerLambdaAnalysis/withContextSensitiveResolution.kt	skip	LANGUAGE	
 tests/callResolution/errorCandidates.kt	rejects invalid	on an expected line	
-tests/callResolution/exponentialArraySetWithPlusAssign.kt	accepts invalid	ASSIGN_OPERATOR_AMBIGUITY	exponentialArraySetWithPlusAssign.kt:69: ASSIGN_OPERATOR_AMBIGUITY
+tests/callResolution/exponentialArraySetWithPlusAssign.kt	rejects invalid	on an expected line	
 tests/callResolution/extensionInvokeAfterSafeCall.kt	accepts valid		
 tests/callResolution/incorrectPlusOperatorFromJava.kt	rejects valid	unresolved reference: _	main.kt:6: unresolved reference: inc
 tests/callResolution/invokeAmbiguity.kt	accepts valid		
@@ -859,7 +859,7 @@ tests/callableReference/property/extensionPropertyOnNullable.kt	accepts valid
 tests/callableReference/property/extensionsSameName.kt	accepts valid		
 tests/callableReference/property/genericClass.kt	accepts valid		
 tests/callableReference/property/javaInstanceField.kt	rejects invalid	on an expected line	
-tests/callableReference/property/javaStaticFieldViaImport.kt	parse/unsupported	property reference	
+tests/callableReference/property/javaStaticFieldViaImport.kt	rejects invalid	on an expected line	
 tests/callableReference/property/kt7564.kt	accepts valid		
 tests/callableReference/property/kt7945_unrelatedClass.kt	rejects invalid	on an expected line	
 tests/callableReference/property/memberFromTopLevel.kt	rejects invalid	on an expected line	
@@ -3000,11 +3000,11 @@ tests/enum/entries/javaEnumEntriesAmbiguityPrioritized.kt	skip	LANGUAGE
 tests/enum/entries/javaFakeEnumEntries.kt	accepts valid		
 tests/enum/entries/nameShadowingOfExternallyDefinedEntriesOn.kt	skip	LANGUAGE	
 tests/enum/entries/nameShadowingOfExternallyDefinedEntriesPrioritized.kt	rejects invalid	on an expected line	
-tests/enum/entries/primitiveReference.kt	rejects valid	unresolved reference: _	primitiveReference.kt:6: unresolved reference: entries
+tests/enum/entries/primitiveReference.kt	accepts valid		
 tests/enum/entries/redeclarationOfEnumEntriesNameWithIntrinsicOn.kt	skip	LANGUAGE	
 tests/enum/entries/redeclarationOfEnumEntriesNameWithIntrinsicPrioritized.kt	skip	LANGUAGE	
 tests/enum/entries/referenceFalsePositiveWarnings.kt	skip	LANGUAGE	
-tests/enum/entries/referenceFalsePositiveWarningsPrioritized.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	referenceFalsePositiveWarningsPrioritized.kt:17: type mismatch: inferred type is KProperty1<E, Int> but KProperty0<EnumEntries<E>> was expected
+tests/enum/entries/referenceFalsePositiveWarningsPrioritized.kt	accepts valid		
 tests/enum/entries/toBeShadowed.kt	skip	LANGUAGE	
 tests/enum/entries/toBeShadowedPrioritized.kt	accepts valid		
 tests/enum/entryShouldBeOfEnumType.kt	accepts valid		
@@ -3255,7 +3255,7 @@ tests/expresssions/invoke/safeCallsWithImplicitInvoke.kt	rejects valid	expressio
 tests/expresssions/invoke/simple.kt	accepts valid		
 tests/expresssions/invoke/threeReceivers.kt	rejects invalid	on an expected line	
 tests/expresssions/invoke/threeReceiversCorrect.kt	rejects invalid	on an expected line	
-tests/expresssions/javaFieldCallable.kt	rejects valid	unresolved reference: _	test.kt:3: unresolved reference: staticField
+tests/expresssions/javaFieldCallable.kt	accepts valid		
 tests/expresssions/lambda.kt	accepts valid		
 tests/expresssions/lambdaWithReceiver.kt	accepts valid		
 tests/expresssions/localClassAccessesContainingClass.kt	accepts valid		
@@ -3797,7 +3797,7 @@ tests/imports/CheckJavaVisibility2.kt	rejects invalid	on an expected line
 tests/imports/CheckVisibility_differentModule.kt	rejects invalid	on an expected line	
 tests/imports/CheckVisibility_sameModule.kt	rejects invalid	on an expected line	
 tests/imports/ClassClash.kt	rejects invalid	on an expected line	
-tests/imports/ClassClashStarImport.kt	rejects invalid	elsewhere	
+tests/imports/ClassClashStarImport.kt	rejects invalid	on an expected line	
 tests/imports/ClassClashStarImport_topLevel.kt	rejects invalid	on an expected line	
 tests/imports/ClassClash_topLevel.kt	rejects invalid	on an expected line	
 tests/imports/ClassImportsConflicting.kt	rejects invalid	on an expected line	
@@ -3805,10 +3805,10 @@ tests/imports/CurrentPackageAndAllUnderImport.kt	accepts valid
 tests/imports/CurrentPackageAndExplicitImport.kt	accepts valid		
 tests/imports/DefaultImportsPriority.kt	accepts valid		
 tests/imports/DoubleImports.kt	rejects invalid	on an expected line	
-tests/imports/EnumEntryVsStaticAmbiguity.kt	accepts invalid	OVERLOAD_RESOLUTION_AMBIGUITY	test.kt:7: OVERLOAD_RESOLUTION_AMBIGUITY
-tests/imports/EnumEntryVsStaticAmbiguity2.kt	accepts invalid	OVERLOAD_RESOLUTION_AMBIGUITY	test.kt:8: OVERLOAD_RESOLUTION_AMBIGUITY
-tests/imports/EnumEntryVsStaticAmbiguity3.kt	accepts invalid	OVERLOAD_RESOLUTION_AMBIGUITY	test.kt:7: OVERLOAD_RESOLUTION_AMBIGUITY
-tests/imports/EnumEntryVsStaticAmbiguity4.kt	accepts invalid	OVERLOAD_RESOLUTION_AMBIGUITY	test.kt:8: OVERLOAD_RESOLUTION_AMBIGUITY
+tests/imports/EnumEntryVsStaticAmbiguity.kt	rejects invalid	on an expected line	
+tests/imports/EnumEntryVsStaticAmbiguity2.kt	rejects invalid	on an expected line	
+tests/imports/EnumEntryVsStaticAmbiguity3.kt	rejects invalid	on an expected line	
+tests/imports/EnumEntryVsStaticAmbiguity4.kt	rejects invalid	on an expected line	
 tests/imports/ExplicitImportsAmbiguity.kt	rejects invalid	on an expected line	
 tests/imports/ExplicitImportsUnambiguityForFunction.kt	accepts valid		
 tests/imports/ExplicitPackageImportsAmbiguity.kt	rejects invalid	on an expected line	
@@ -4246,7 +4246,7 @@ tests/inference/forks/nestedCallVariableFixation.kt	accepts valid
 tests/inference/forks/nestedCallVariableFixationSimple.kt	accepts valid		
 tests/inference/forks/overloadResolutionByLambdaReturnTypeAndExpectedType.kt	rejects invalid	on an expected line	
 tests/inference/functionPlaceholderError.kt	rejects invalid	on an expected line	
-tests/inference/genericAssignmentOperator.kt	rejects valid	operator '_' cannot be applied to Int and R<<error>>	genericAssignmentOperator.kt:9: operator '+=' cannot be applied to Int and R<<error>>
+tests/inference/genericAssignmentOperator.kt	accepts valid		
 tests/inference/genericCallInThrow.kt	accepts valid		
 tests/inference/genericInvokeInCompanion.kt	rejects invalid	on an expected line	
 tests/inference/genericOnJavaWildcardBoundedByRaw.kt	accepts valid		
@@ -5257,7 +5257,7 @@ tests/j+k/arrayOfStarParametrized.kt	accepts valid
 tests/j+k/asListOfToArrayJDKBased.kt	accepts valid		
 tests/j+k/asListOfToArraySimplified.kt	accepts valid		
 tests/j+k/brokenCode/classDuplicates.kt	accepts invalid	CLASSIFIER_REDECLARATION	Hello.kt:1: CLASSIFIER_REDECLARATION
-tests/j+k/brokenCode/fieldDuplicates.kt	accepts invalid	OVERLOAD_RESOLUTION_AMBIGUITY	main.kt:4: OVERLOAD_RESOLUTION_AMBIGUITY
+tests/j+k/brokenCode/fieldDuplicates.kt	rejects invalid	on an expected line	
 tests/j+k/cachedGetValue.kt	accepts valid		
 tests/j+k/callableReferencesStaticMemberClash.kt	accepts valid		
 tests/j+k/canDeclareIfSamAdapterIsInherited.kt	accepts valid		
@@ -5347,7 +5347,7 @@ tests/j+k/javaOverrideOfExtensionProperty.kt	accepts valid
 tests/j+k/javaStaticField.kt	accepts valid		
 tests/j+k/javaStaticFieldViaJJInheritance.kt	accepts valid		
 tests/j+k/javaStaticFieldViaJKJInheritance.kt	accepts valid		
-tests/j+k/javaStaticFieldViaKJInheritance.kt	accepts invalid	UNRESOLVED_REFERENCE	main.kt:4: UNRESOLVED_REFERENCE
+tests/j+k/javaStaticFieldViaKJInheritance.kt	rejects invalid	on an expected line	
 tests/j+k/javaStaticImport.kt	accepts valid		
 tests/j+k/javaSupertypeNameDisambiguation.kt	accepts valid		
 tests/j+k/jkjPrivateProperty.kt	accepts valid		
@@ -5413,7 +5413,7 @@ tests/j+k/primitiveOverrides/triangleWithNotNullType.kt	accepts valid
 tests/j+k/primitiveOverrides/triangleWithNullableType.kt	accepts valid		
 tests/j+k/primitiveOverridesWithInlineClass/inlineClassErasedToPrimitiveInt.kt	skip	LANGUAGE	
 tests/j+k/primitiveVsBoxedOverloadAndSecondParameter.kt	rejects invalid	on an expected line	
-tests/j+k/primitiveVsBoxedOverloads.kt	rejects invalid	elsewhere	
+tests/j+k/primitiveVsBoxedOverloads.kt	rejects invalid	on an expected line	
 tests/j+k/privateFieldOverridesNothing.kt	accepts valid		
 tests/j+k/privateNestedClassStaticMember.kt	rejects invalid	on an expected line	
 tests/j+k/privatePropertyAndSetterMultiModule.kt	accepts valid		
@@ -5422,7 +5422,7 @@ tests/j+k/properties/falsePositiveOverride.kt	accepts valid
 tests/j+k/properties/fieldPropertyOverloads.kt	accepts valid		
 tests/j+k/properties/interface.kt	accepts valid		
 tests/j+k/properties/isName.kt	rejects invalid	on an expected line	
-tests/j+k/properties/staticFieldPropertyOverloads.kt	accepts invalid	OVERLOAD_RESOLUTION_AMBIGUITY	b.kt:4: OVERLOAD_RESOLUTION_AMBIGUITY
+tests/j+k/properties/staticFieldPropertyOverloads.kt	rejects invalid	on an expected line	
 tests/j+k/properties/syntheticPropertyFromKotlinGetter_javaOrigin.kt	accepts valid		
 tests/j+k/properties/syntheticPropertyFromKotlinGetter_kotlinOrigin.kt	rejects invalid	on an expected line	
 tests/j+k/properties/syntheticPropertyFromKotlinGetter_mixedOrigin_1.kt	accepts valid		
@@ -5486,7 +5486,7 @@ tests/j+k/samByProjectedType/noAdapterBecuaseOfRecursiveUpperBound.kt	rejects in
 tests/j+k/samByProjectedType/starProjectionComplexUpperBound.kt	accepts valid		
 tests/j+k/samInConstructorWithGenerics.kt	accepts valid		
 tests/j+k/samWithConsumer.kt	accepts valid		
-tests/j+k/selectMoreSpecific.kt	accepts invalid	OVERLOAD_RESOLUTION_AMBIGUITY; CANNOT_INFER_PARAMETER_TYPE; UNRESOLVED_REFERENCE_WRONG_RECEIVER	main.kt:3: OVERLOAD_RESOLUTION_AMBIGUITY
+tests/j+k/selectMoreSpecific.kt	rejects invalid	on an expected line	
 tests/j+k/serializable.kt	rejects invalid	on an expected line	
 tests/j+k/shadowingPrimitiveStaticField.kt	accepts valid		
 tests/j+k/signatureAnnotations/notNullVarargOverride.kt	accepts valid		
@@ -5594,7 +5594,7 @@ tests/javac/fieldsResolution/ResolutionPriority.kt	accepts valid
 tests/javac/fieldsResolution/SameFieldInSupertypes.kt	accepts valid		
 tests/javac/fieldsResolution/StaticImport.kt	accepts valid		
 tests/javac/fieldsResolution/StaticImportsAmbiguity.kt	accepts valid		
-tests/javac/imports/AllUnderImportsAmbiguity.kt	accepts invalid	OVERLOAD_RESOLUTION_AMBIGUITY; MISSING_DEPENDENCY_CLASS	c/c.kt:6: OVERLOAD_RESOLUTION_AMBIGUITY
+tests/javac/imports/AllUnderImportsAmbiguity.kt	rejects invalid	on an expected line	
 tests/javac/imports/AllUnderImportsLessPriority.kt	accepts valid		
 tests/javac/imports/ClassImportsConflicting.kt	accepts valid		
 tests/javac/imports/CurrentPackageAndAllUnderImport.kt	accepts valid		
@@ -5616,7 +5616,7 @@ tests/javac/inheritance/InheritanceAmbiguity.kt	accepts invalid	MISSING_DEPENDEN
 tests/javac/inheritance/InheritanceAmbiguity2.kt	accepts invalid	MISSING_DEPENDENCY_CLASS	test.kt:3: MISSING_DEPENDENCY_CLASS
 tests/javac/inheritance/InheritanceAmbiguity3.kt	accepts invalid	MISSING_DEPENDENCY_CLASS	test.kt:3: MISSING_DEPENDENCY_CLASS
 tests/javac/inheritance/InheritanceAmbiguity4.kt	accepts invalid	MISSING_DEPENDENCY_CLASS	test.kt:3: MISSING_DEPENDENCY_CLASS
-tests/javac/inheritance/InheritanceWithKotlin.kt	rejects valid	unresolved reference: _	test/UseKotlinInner.kt:15: unresolved reference: javaInner
+tests/javac/inheritance/InheritanceWithKotlin.kt	accepts valid		
 tests/javac/inheritance/InheritanceWithKotlinClasses.kt	accepts valid		
 tests/javac/inheritance/InheritedInner.kt	accepts valid		
 tests/javac/inheritance/InheritedInner2.kt	rejects invalid	on an expected line	
@@ -5639,7 +5639,7 @@ tests/javac/qualifiedExpression/GenericClassVsPackage.kt	rejects invalid	on an e
 tests/javac/qualifiedExpression/PackageVsClass.kt	rejects invalid	elsewhere	
 tests/javac/qualifiedExpression/PackageVsClass2.kt	parse/unsupported	unsupported types in signature	
 tests/javac/qualifiedExpression/PackageVsRootClass.kt	accepts valid		
-tests/javac/qualifiedExpression/visibleClassVsQualifiedClass.kt	accepts invalid	UNRESOLVED_REFERENCE	c1.kt:6: UNRESOLVED_REFERENCE
+tests/javac/qualifiedExpression/visibleClassVsQualifiedClass.kt	rejects invalid	on an expected line	
 tests/javac/typeParameters/Clash.kt	accepts invalid	MISSING_DEPENDENCY_CLASS	test.kt:3: MISSING_DEPENDENCY_CLASS
 tests/javac/typeParameters/ComplexCase.kt	accepts valid		
 tests/javac/typeParameters/InheritedInnerAndTypeParameterWithSameNames.kt	accepts valid		
@@ -5649,7 +5649,7 @@ tests/javac/typeParameters/SeveralInnersWithTypeParameters.kt	accepts valid
 tests/javac/typeParameters/TypeParametersInInnerAndOuterWithSameNames.kt	accepts valid		
 tests/jvm/classpath/classFromJdkInLibrary.kt	codegen error	harness error	javac: exit status 1 Picked up JAVA_TOOL_OPTIONS: -Djavax.net.ssl.trustStore=/etc/ssl/certs/java/cacerts -Djavax.net.ssl.trustStoreType=JKS -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=35737 -Dhttp.nonProxyHosts=localhost|127.0.0.1|::1|127.*|0.*|::|169.254.*|api.anthropic.com|api-staging.anthropic.com|api-pr-preview.anthropic.com|mcp-proxy.anthropic.com|mcp-proxy-staging.anthropic.com|registry.npmjs.org|jsr.io|npm.jsr.io|pypi.org|files.pythonhosted.org|index.crates.io|proxy.golang.org|host.docker.internal|10.*|172.16.*|172.17.*|172.18.*|172.19.*|172.20.*|172.21.*|172.22.*|172.23.*|172.24.*|172.25.*|172.26.*|172.27.*|172.28.*|172.29.*|172.30.*|172.31.*|192.168.*|100.64.0.0/10|*.svc.cluster.local|*.svc.cluster.local -Djdk.http.auth.tunneling.disabledSchemes= -Djdk.http.auth.proxying.disabledSchemes= /tmp/claude-0/-workspace-kotlin-compiler-go/8d5a602e-09c7-5a2c-a99c-472011d97f02/scratchpad/kc-conformance/5648/m0/src/java/util/Date.java:1: error: package exists in another module: java.base package java.util; ^ 1 error 
 tests/jvm/classpath/dependencyOnItself.kt	accepts valid		
-tests/jvm/classpath/prohibitNestedClassesByDollarName.kt	accepts invalid	UNRESOLVED_REFERENCE	main.kt:6: UNRESOLVED_REFERENCE
+tests/jvm/classpath/prohibitNestedClassesByDollarName.kt	rejects invalid	on an expected line	
 tests/jvm/classpath/sameLibraryTwiceInClasspath.kt	accepts valid		
 tests/jvm/contextParameters/extensionAndContextParameters.kt	rejects invalid	on an expected line	
 tests/jvm/contextParameters/intersectionContextValueJava.kt	rejects invalid	on an expected line	
@@ -6035,13 +6035,13 @@ tests/multimodule/duplicateClass/sameClassNameDifferentPackages.kt	rejects inval
 tests/multimodule/duplicateClass/sameGenericArguments.kt	accepts valid		
 tests/multimodule/duplicateMethod/classGenericsInParams.kt	accepts valid		
 tests/multimodule/duplicateMethod/classGenericsInParamsBoundMismatch.kt	accepts valid		
-tests/multimodule/duplicateMethod/classGenericsInParamsIndexMismatch.kt	accepts invalid	OVERLOAD_RESOLUTION_AMBIGUITY	c.kt:5: OVERLOAD_RESOLUTION_AMBIGUITY
+tests/multimodule/duplicateMethod/classGenericsInParamsIndexMismatch.kt	rejects invalid	on an expected line	
 tests/multimodule/duplicateMethod/classGenericsInParamsNameMismatch.kt	accepts valid		
 tests/multimodule/duplicateMethod/classGenericsInReturnType.kt	accepts valid		
-tests/multimodule/duplicateMethod/classVsFunctionGenericsInParamsMismatch.kt	rejects invalid	elsewhere	
+tests/multimodule/duplicateMethod/classVsFunctionGenericsInParamsMismatch.kt	rejects invalid	on an expected line	
 tests/multimodule/duplicateMethod/covariantReturnTypes.kt	accepts valid		
 tests/multimodule/duplicateMethod/differenceInParamNames.kt	accepts valid		
-tests/multimodule/duplicateMethod/differentGenericsInParams.kt	accepts invalid	OVERLOAD_RESOLUTION_AMBIGUITY	c.kt:5: OVERLOAD_RESOLUTION_AMBIGUITY
+tests/multimodule/duplicateMethod/differentGenericsInParams.kt	rejects invalid	on an expected line	
 tests/multimodule/duplicateMethod/differentNumberOfParams.kt	accepts valid		
 tests/multimodule/duplicateMethod/differentReturnTypes.kt	accepts valid		
 tests/multimodule/duplicateMethod/extensionMatch.kt	accepts valid		
@@ -6057,7 +6057,7 @@ tests/multimodule/duplicateMethod/noParams.kt	accepts valid
 tests/multimodule/duplicateMethod/sameGenericsInParams.kt	accepts valid		
 tests/multimodule/duplicateMethod/simpleWithInheritance.kt	accepts valid		
 tests/multimodule/duplicateMethod/sinceKotlin.kt	skip	API_VERSION	
-tests/multimodule/duplicateMethod/substitutedGenericInParams.kt	rejects valid	one type argument expected for class B<T>	c.kt:3: one type argument expected for class B<T>
+tests/multimodule/duplicateMethod/substitutedGenericInParams.kt	accepts valid		
 tests/multimodule/duplicateSuper/differentSuperTraits.kt	accepts valid		
 tests/multimodule/duplicateSuper/sameSuperTrait.kt	accepts valid		
 tests/multimodule/duplicateSuper/sameSuperTraitDifferentBounds.kt	accepts invalid	NOTHING_TO_OVERRIDE	x.kt:6: NOTHING_TO_OVERRIDE
@@ -6080,7 +6080,7 @@ tests/multimodule/packagePrivate.kt	rejects invalid	on an expected line
 tests/multimodule/publishedApiInternal.kt	rejects invalid	on an expected line	
 tests/multimodule/redundantElseInWhen.kt	accepts valid		
 tests/multimodule/samWithSuspendFunctionFromAnotherModule.kt	accepts valid		
-tests/multimodule/varargConflict.kt	rejects valid	ambiguous call: n candidates for '_' take (_)	c.kt:6: ambiguous call: 4 candidates for 'foo' take (Int)
+tests/multimodule/varargConflict.kt	accepts valid		
 tests/multiplatform/abstractEnumInIr.kt	skip	modules with friends or dependsOn	
 tests/multiplatform/actualAnnotationsNotMatchExpect/actualInnerClassMissingMember.kt	skip	modules with friends or dependsOn	
 tests/multiplatform/actualAnnotationsNotMatchExpect/actualizeExpectProtectedToJavaProtected.kt	skip	modules with friends or dependsOn	
@@ -6713,8 +6713,8 @@ tests/operatorRem/forbiddenModOperatorConvention.kt	rejects invalid	on an expect
 tests/operatorRem/numberRemConversions.kt	rejects invalid	on an expected line	
 tests/operatorRem/operatorRem.kt	accepts valid		
 tests/operatorRem/remAndRemAssignAmbiguity.kt	rejects invalid	on an expected line	
-tests/operatorsOverloading/AssignOperatorAmbiguity.kt	accepts invalid	ASSIGN_OPERATOR_AMBIGUITY	AssignOperatorAmbiguity.kt:15: ASSIGN_OPERATOR_AMBIGUITY
-tests/operatorsOverloading/AssignOperatorAmbiguityExtension.kt	accepts invalid	ASSIGN_OPERATOR_AMBIGUITY	AssignOperatorAmbiguityExtension.kt:19: ASSIGN_OPERATOR_AMBIGUITY
+tests/operatorsOverloading/AssignOperatorAmbiguity.kt	rejects invalid	on an expected line	
+tests/operatorsOverloading/AssignOperatorAmbiguityExtension.kt	rejects invalid	on an expected line	
 tests/operatorsOverloading/AssignOperatorWithExtensionForAny.kt	accepts valid		
 tests/operatorsOverloading/AssignmentOperations.kt	rejects invalid	on an expected line	
 tests/operatorsOverloading/EqualsOperatorOverrideHierarchies.kt	accepts valid		
@@ -6743,10 +6743,10 @@ tests/operatorsOverloading/kt45503_3.kt	accepts valid
 tests/operatorsOverloading/missingCompareToTypeMismatchOnInapplicableOperatorFun.kt	rejects invalid	on an expected line	
 tests/operatorsOverloading/operatorAliasedWithTheSameName.kt	skip	LANGUAGE	
 tests/operatorsOverloading/operatorCalledByOtherOperatorSyntax.kt	skip	LANGUAGE	
-tests/operatorsOverloading/plusAssignOnArray.kt	accepts invalid	ASSIGN_OPERATOR_AMBIGUITY	plusAssignOnArray.kt:27: ASSIGN_OPERATOR_AMBIGUITY
+tests/operatorsOverloading/plusAssignOnArray.kt	rejects invalid	on an expected line	
 tests/operatorsOverloading/plusAssignOnLocal.kt	rejects invalid	on an expected line	
 tests/operatorsOverloading/plusAssignOnProperty.kt	rejects invalid	on an expected line	
-tests/operatorsOverloading/plusAssignOnVarAndCollections.kt	rejects valid	assignment operators ambiguity: '_' and '_' both apply	plusAssignOnVarAndCollections.kt:6: assignment operators ambiguity: 'minusAssign' and 'minus' both apply
+tests/operatorsOverloading/plusAssignOnVarAndCollections.kt	accepts valid		
 tests/operatorsOverloading/unrelatedInvoke.kt	rejects invalid	on an expected line	
 tests/operatorsOverloading/unresolvedOperator.kt	rejects invalid	on an expected line	
 tests/operatorsOverloading/until/custom.kt	accepts valid		
@@ -7139,7 +7139,7 @@ tests/problems/definitelyNotNullStarProjection.kt	accepts valid
 tests/problems/deprecatedJavaEnumEntry.kt	accepts valid		
 tests/problems/doubleGenericDiamond.kt	accepts valid		
 tests/problems/emptySelectorInQualifiedExpression.kt	rejects invalid	elsewhere	
-tests/problems/enumEntryFieldShadow.kt	accepts invalid	UNRESOLVED_REFERENCE	DerivedEnum.kt:7: UNRESOLVED_REFERENCE
+tests/problems/enumEntryFieldShadow.kt	rejects invalid	on an expected line	
 tests/problems/expectConstructor.kt	skip	LANGUAGE	
 tests/problems/fakeTypeMismatchOnExtensionReference.kt	accepts valid		
 tests/problems/falseIntersection.kt	accepts valid		
@@ -7317,7 +7317,7 @@ tests/properties/lazyValWithElvisToNothingInside.kt	accepts valid
 tests/properties/localPropertyExtensions.kt	rejects invalid	on an expected line	
 tests/properties/noBackingFieldForExtension.kt	accepts valid		
 tests/properties/noBackingFieldInProperty.kt	rejects invalid	on an expected line	
-tests/properties/protectedGetterWithPublicSetter.kt	accepts invalid	INVISIBLE_REFERENCE	k/test.kt:7: INVISIBLE_REFERENCE
+tests/properties/protectedGetterWithPublicSetter.kt	rejects invalid	on an expected line	
 tests/properties/syntheticPropertiesForJavaAnnotations.kt	accepts invalid	FUNCTION_EXPECTED	main.kt:4: FUNCTION_EXPECTED
 tests/propertyFromJavaPlusAssign.kt	accepts valid		
 tests/propertyGetterWithoutType.kt	rejects invalid	on an expected line	
@@ -7327,21 +7327,21 @@ tests/propertyVsField/fieldPropertyShadow.kt	accepts valid
 tests/propertyVsField/javaFieldAndKotlinPropertyReferenceFromInner.kt	accepts valid		
 tests/propertyVsField/propertyAndTwoFields.kt	accepts valid		
 tests/propertyVsField/propertyFieldShadow.kt	accepts invalid	JAVA_FIELD_SHADOWED_BY_KOTLIN_PROPERTY	test.kt:10: JAVA_FIELD_SHADOWED_BY_KOTLIN_PROPERTY
-tests/protectedWithGenericsInDifferentPackage.kt	accepts invalid	INVISIBLE_REFERENCE	foo/test.kt:4: INVISIBLE_REFERENCE
+tests/protectedWithGenericsInDifferentPackage.kt	rejects invalid	on an expected line	
 tests/publishedApi.kt	accepts invalid	NON_INTERNAL_PUBLISHED_API	publishedApi.kt:3: NON_INTERNAL_PUBLISHED_API
 tests/publishedApiOverride.kt	rejects invalid	on an expected line	
 tests/qualifiedExpression/GenericClassVsPackage.kt	rejects invalid	on an expected line	
 tests/qualifiedExpression/GenericClassVsPackage_topLevel.kt	rejects invalid	on an expected line	
 tests/qualifiedExpression/JavaQualifier.kt	accepts valid		
 tests/qualifiedExpression/PackageVsClass.kt	rejects invalid	on an expected line	
-tests/qualifiedExpression/PackageVsClass2.kt	accepts invalid	UNRESOLVED_REFERENCE	b.kt:5: UNRESOLVED_REFERENCE
+tests/qualifiedExpression/PackageVsClass2.kt	rejects invalid	on an expected line	
 tests/qualifiedExpression/PackageVsClass_differentOrder.kt	rejects invalid	on an expected line	
 tests/qualifiedExpression/PackageVsRootClass.kt	accepts valid		
 tests/qualifiedExpression/TypeWithError.kt	rejects invalid	on an expected line	
 tests/qualifiedExpression/calleeExpressionAsCallExpression.kt	rejects invalid	on an expected line	
 tests/qualifiedExpression/nullCalleeExpression.kt	rejects invalid	on an expected line	
 tests/qualifiedExpression/variableVsImportedClassifier.kt	rejects invalid	on an expected line	
-tests/qualifiedExpression/visibleClassVsQualifiedClass.kt	rejects invalid	elsewhere	
+tests/qualifiedExpression/visibleClassVsQualifiedClass.kt	rejects invalid	on an expected line	
 tests/qualifierWithCompanion.kt	rejects invalid	on an expected line	
 tests/qualifiers/noRootIdePackageInCli.kt	skip	LANGUAGE	
 tests/qualifiers/noRootIdePackageInCliDisabled.kt	skip	LANGUAGE	
@@ -7525,7 +7525,7 @@ tests/regressions/kt251.kt	rejects invalid	on an expected line
 tests/regressions/kt258.kt	accepts valid		
 tests/regressions/kt26-1.kt	accepts valid		
 tests/regressions/kt26.kt	accepts valid		
-tests/regressions/kt26303.kt	rejects valid	ambiguous call: n candidates for '_' take (_)	b.kt:8: ambiguous call: 2 candidates for 'foo' take ()
+tests/regressions/kt26303.kt	accepts valid		
 tests/regressions/kt2768.kt	rejects invalid	on an expected line	
 tests/regressions/kt28001.kt	accepts valid		
 tests/regressions/kt282.kt	rejects invalid	on an expected line	
@@ -7628,7 +7628,7 @@ tests/resolutionToTypealiasInsteadOfProperty.kt	accepts valid
 tests/resolve/CycleInTypeArgs.kt	rejects invalid	on an expected line	
 tests/resolve/HiddenDeclarations.kt	rejects invalid	on an expected line	
 tests/resolve/accessOnComplexProjectedReceiver.kt	accepts valid		
-tests/resolve/ambiguityOnPropertiesWithTheSamePackageName.kt	accepts invalid	OVERLOAD_RESOLUTION_AMBIGUITY	d.kt:9: OVERLOAD_RESOLUTION_AMBIGUITY
+tests/resolve/ambiguityOnPropertiesWithTheSamePackageName.kt	rejects invalid	on an expected line	
 tests/resolve/ambiguityWithTwoCorrespondingFunctionTypes.kt	rejects invalid	on an expected line	
 tests/resolve/anonymousObjectFromTopLevelMember.kt	accepts valid		
 tests/resolve/callToProtectedOnSmartcast.kt	accepts valid		
@@ -7922,7 +7922,7 @@ tests/scopes/explicitOverrideOfTwoMembers_java.kt	accepts valid
 tests/scopes/genericVsNested.kt	accepts valid		
 tests/scopes/getterOverrideAndKotlinProperty.kt	accepts valid		
 tests/scopes/implicitReceiverMemberVsParameter.kt	accepts valid		
-tests/scopes/inheritance/companionObjectsOrder.kt	rejects valid	unresolved reference: _	companionObjectsOrder.kt:8: unresolved reference: foo
+tests/scopes/inheritance/companionObjectsOrder.kt	accepts valid		
 tests/scopes/inheritance/kt3856.kt	accepts valid		
 tests/scopes/inheritance/methodsPriority.kt	rejects invalid	on an expected line	
 tests/scopes/inheritance/nestedClassesFromInterface.kt	rejects invalid	on an expected line	
@@ -7935,13 +7935,13 @@ tests/scopes/inheritance/statics/companionObject/inheritFromContainingClass.kt	r
 tests/scopes/inheritance/statics/companionObject/inheritFromJava.kt	rejects invalid	on an expected line	
 tests/scopes/inheritance/statics/companionObject/inheritFromJavaAfterKotlin.kt	rejects invalid	on an expected line	
 tests/scopes/inheritance/statics/hidePrivateByPublic.kt	rejects invalid	on an expected line	
-tests/scopes/inheritance/statics/jjkj.kt	accepts invalid	UNRESOLVED_REFERENCE	test.kt:9: UNRESOLVED_REFERENCE
+tests/scopes/inheritance/statics/jjkj.kt	rejects invalid	on an expected line	
 tests/scopes/inheritance/statics/kjk.kt	rejects invalid	on an expected line	
 tests/scopes/inheritance/statics/localVsStatic.kt	rejects invalid	on an expected line	
-tests/scopes/inheritance/statics/nameClash0.kt	accepts invalid	OVERLOAD_RESOLUTION_AMBIGUITY	test.kt:6: OVERLOAD_RESOLUTION_AMBIGUITY
-tests/scopes/inheritance/statics/nameClash1.kt	accepts invalid	OVERLOAD_RESOLUTION_AMBIGUITY	test.kt:6: OVERLOAD_RESOLUTION_AMBIGUITY
-tests/scopes/inheritance/statics/nameClash2.kt	accepts invalid	OVERLOAD_RESOLUTION_AMBIGUITY	test.kt:9: OVERLOAD_RESOLUTION_AMBIGUITY
-tests/scopes/inheritance/statics/oneInterfaceManyTimes.kt	accepts invalid	UNRESOLVED_REFERENCE	test.kt:9: UNRESOLVED_REFERENCE
+tests/scopes/inheritance/statics/nameClash0.kt	rejects invalid	on an expected line	
+tests/scopes/inheritance/statics/nameClash1.kt	rejects invalid	on an expected line	
+tests/scopes/inheritance/statics/nameClash2.kt	rejects invalid	on an expected line	
+tests/scopes/inheritance/statics/oneInterfaceManyTimes.kt	rejects invalid	on an expected line	
 tests/scopes/inheritance/statics/overloadStatic.kt	accepts valid		
 tests/scopes/inheritance/statics/staticFunAndPropertyImport.kt	rejects invalid	on an expected line	
 tests/scopes/inheritance/statics/staticFunVsImport.kt	rejects invalid	on an expected line	
@@ -7949,8 +7949,8 @@ tests/scopes/inheritance/statics/staticPropertyVsImport.kt	accepts valid
 tests/scopes/inheritance/statics/staticVsCompanion.kt	accepts valid		
 tests/scopes/inheritance/statics/staticVsMember.kt	accepts valid		
 tests/scopes/inheritance/statics/staticVsOuter.kt	accepts valid		
-tests/scopes/inheritance/statics/staticsFromjava.kt	accepts invalid	UNRESOLVED_REFERENCE	1.kt:23: UNRESOLVED_REFERENCE
-tests/scopes/inheritance/statics/staticsFromjavaAfterKotlin.kt	accepts invalid	UNRESOLVED_REFERENCE	2.kt:5: UNRESOLVED_REFERENCE
+tests/scopes/inheritance/statics/staticsFromjava.kt	rejects invalid	on an expected line	
+tests/scopes/inheritance/statics/staticsFromjavaAfterKotlin.kt	rejects invalid	on an expected line	
 tests/scopes/initializerScopeOfExtensionProperty.kt	rejects invalid	on an expected line	
 tests/scopes/intersectionOverrideOfTwoMembers.kt	accepts valid		
 tests/scopes/intersectionOverrideOfTwoMembers_java.kt	accepts valid		
@@ -8080,7 +8080,7 @@ tests/sealed/sealedJavaClassEnabled.kt	skip	LANGUAGE
 tests/sealedClass.kt	rejects invalid	on an expected line	
 tests/secondaryConstructors/argumentsResolveInBodyAndDelegationCall.kt	rejects invalid	on an expected line	
 tests/secondaryConstructors/classInitializersWithoutPrimary.kt	accepts valid		
-tests/secondaryConstructors/companionObjectScope.kt	accepts invalid	NONE_APPLICABLE	companionObjectScope.kt:17: NONE_APPLICABLE
+tests/secondaryConstructors/companionObjectScope.kt	rejects invalid	on an expected line	
 tests/secondaryConstructors/constructorCallType.kt	rejects invalid	on an expected line	
 tests/secondaryConstructors/constructorInObject.kt	rejects invalid	on an expected line	
 tests/secondaryConstructors/constructorInTrait.kt	rejects invalid	on an expected line	
@@ -9358,7 +9358,7 @@ tests/visibility/invisiblePrivateThroughSubClass.kt	rejects invalid	on an expect
 tests/visibility/invisiblePrivateThroughSubClassDoubleSmartCast.kt	rejects invalid	on an expected line	
 tests/visibility/invisiblePrivateThroughSubClassSmartCast.kt	accepts valid		
 tests/visibility/invisibleSetterOfJavaClass.kt	rejects invalid	on an expected line	
-tests/visibility/javaInterfaceFieldDirectAccess.kt	accepts invalid	UNRESOLVED_REFERENCE	Child.kt:6: UNRESOLVED_REFERENCE
+tests/visibility/javaInterfaceFieldDirectAccess.kt	rejects invalid	on an expected line	
 tests/visibility/kotlinJavaKotlinHierarchy.kt	accepts valid		
 tests/visibility/kt56283.kt	accepts valid		
 tests/visibility/kt63434.kt	rejects invalid	on an expected line	
@@ -9368,11 +9368,11 @@ tests/visibility/moreSpecificProtectedSimple.kt	rejects invalid	on an expected l
 tests/visibility/notOverridingInternal.kt	accepts valid		
 tests/visibility/notOverridingPackagePrivate.kt	accepts valid		
 tests/visibility/overrideOfMemberInPackagePrivateClass.kt	accepts valid		
-tests/visibility/packagePrivateStatic.kt	rejects valid	class Base is not public	main.kt:7: class Base is not public
-tests/visibility/packagePrivateStaticInterfaceFieldViaKotlinClass.kt	rejects invalid	elsewhere	
+tests/visibility/packagePrivateStatic.kt	accepts valid		
+tests/visibility/packagePrivateStaticInterfaceFieldViaKotlinClass.kt	rejects invalid	on an expected line	
 tests/visibility/packagePrivateStaticInterfaceMethod.kt	rejects invalid	on an expected line	
 tests/visibility/packagePrivateStaticViaInternal.kt	rejects invalid	on an expected line	
-tests/visibility/packagePrivateStaticViaTypeAlias.kt	rejects valid	class PackagePrivateGrandparentAbstractClass is not public	foo.kt:13: class PackagePrivateGrandparentAbstractClass is not public
+tests/visibility/packagePrivateStaticViaTypeAlias.kt	accepts valid		
 tests/visibility/privateAliasInSamePackage.kt	accepts valid		
 tests/visibility/privateCompanionInSuperClass.kt	rejects invalid	elsewhere	
 tests/visibility/privateDeclarationInAnotherFile.kt	rejects invalid	on an expected line	
@@ -9748,7 +9748,7 @@ testsWithStdLib/callableReferences/ifWithCR.kt	rejects invalid	on an expected li
 testsWithStdLib/callableReferences/implicitTypes.kt	rejects invalid	on an expected line	
 testsWithStdLib/callableReferences/inferenceFromCallableReferenceType.kt	accepts valid		
 testsWithStdLib/callableReferences/inferenceFromExpectedType.kt	accepts valid		
-testsWithStdLib/callableReferences/javaStatic.kt	accepts invalid	OVERLOAD_RESOLUTION_AMBIGUITY	main.kt:12: OVERLOAD_RESOLUTION_AMBIGUITY
+testsWithStdLib/callableReferences/javaStatic.kt	rejects invalid	on an expected line	
 testsWithStdLib/callableReferences/manyCandidatesInference.kt	accepts valid		
 testsWithStdLib/callableReferences/manyInnerCandidates.kt	accepts valid		
 testsWithStdLib/callableReferences/manyInnerManyOuterCandidates.kt	accepts valid		
@@ -10476,7 +10476,7 @@ testsWithStdLib/java/concurrentHashMapContainsError.kt	rejects invalid	on an exp
 testsWithStdLib/java/functionN.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	main.kt:20: type mismatch: inferred type is (<error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>, <error>) -> Unit but FunctionN<Unit!>! was expected
 testsWithStdLib/java/implementationWithBoundedTypeParameters.kt	accepts valid		
 testsWithStdLib/java/inheritedFunctionN.kt	rejects invalid	on an expected line	
-testsWithStdLib/java/intersectFlexibleAndMutable.kt	rejects valid	assignment operators ambiguity: '_' and '_' both apply	main.kt:4: assignment operators ambiguity: 'plusAssign' and 'plus' both apply
+testsWithStdLib/java/intersectFlexibleAndMutable.kt	accepts valid		
 testsWithStdLib/java/patternCompileCallableReference.kt	accepts valid		
 testsWithStdLib/javaClassOnCompanion.kt	rejects invalid	on an expected line	
 testsWithStdLib/javaEnumSynthetic.kt	accepts valid		
@@ -10719,20 +10719,20 @@ testsWithStdLib/resolve/ambiguousTypeReferences/constructorCase.kt	accepts valid
 testsWithStdLib/resolve/ambiguousTypeReferences/constructorCaseSpace.kt	accepts valid		
 testsWithStdLib/resolve/ambiguousTypeReferences/constructorVsCompanionMember.kt	accepts valid		
 testsWithStdLib/resolve/ambiguousTypeReferences/constructorVsSyntheticValues.kt	skip	LANGUAGE	
-testsWithStdLib/resolve/ambiguousTypeReferences/constructorVsSyntheticValuesPrioritized.kt	accepts invalid	OVERLOAD_RESOLUTION_AMBIGUITY	constructorVsSyntheticValuesPrioritized.kt:15: OVERLOAD_RESOLUTION_AMBIGUITY
+testsWithStdLib/resolve/ambiguousTypeReferences/constructorVsSyntheticValuesPrioritized.kt	rejects invalid	on an expected line	
 testsWithStdLib/resolve/ambiguousTypeReferences/constructorVsTopLevel.kt	accepts valid		
 testsWithStdLib/resolve/ambiguousTypeReferences/qualifierEnumEntryOrCompanionMemberCase.kt	accepts valid		
-testsWithStdLib/resolve/ambiguousTypeReferences/qualifierEnumEntryOrCompanionMemberCase2.kt	accepts invalid	OVERLOAD_RESOLUTION_AMBIGUITY; UNRESOLVED_REFERENCE	main.kt:5: OVERLOAD_RESOLUTION_AMBIGUITY
+testsWithStdLib/resolve/ambiguousTypeReferences/qualifierEnumEntryOrCompanionMemberCase2.kt	rejects invalid	on an expected line	
 testsWithStdLib/resolve/ambiguousTypeReferences/qualifierForStaticCase.kt	skip	JDK_KIND	
-testsWithStdLib/resolve/ambiguousTypeReferences/qualifierOrStaticObjectCase.kt	accepts invalid	NONE_APPLICABLE; UNRESOLVED_REFERENCE	main.kt:4: NONE_APPLICABLE
+testsWithStdLib/resolve/ambiguousTypeReferences/qualifierOrStaticObjectCase.kt	rejects invalid	on an expected line	
 testsWithStdLib/resolve/ambiguousTypeReferences/qualifierStaticObjectOrCompanionMemberCase.kt	accepts valid		
-testsWithStdLib/resolve/ambiguousTypeReferences/qualifierStaticObjectOrCompanionMemberCase2.kt	accepts invalid	OVERLOAD_RESOLUTION_AMBIGUITY; UNRESOLVED_REFERENCE	main.kt:5: OVERLOAD_RESOLUTION_AMBIGUITY
-testsWithStdLib/resolve/ambiguousTypeReferences/typeCase.kt	accepts invalid	OVERLOAD_RESOLUTION_AMBIGUITY	test.kt:10: OVERLOAD_RESOLUTION_AMBIGUITY
+testsWithStdLib/resolve/ambiguousTypeReferences/qualifierStaticObjectOrCompanionMemberCase2.kt	rejects invalid	on an expected line	
+testsWithStdLib/resolve/ambiguousTypeReferences/typeCase.kt	rejects invalid	on an expected line	
 testsWithStdLib/resolve/forEachInLocalClass.kt	accepts valid		
 testsWithStdLib/resolve/hidesMembers.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	1.kt:22: type mismatch: inferred type is CheckTypeInv<A> but CheckTypeInv<String> was expected
 testsWithStdLib/resolve/hidesMembers2.kt	rejects invalid	on an expected line	
 testsWithStdLib/resolve/javaPackageMembers.kt	accepts valid		
-testsWithStdLib/resolve/javaStaticMembers.kt	accepts invalid	NO_COMPANION_OBJECT; UNRESOLVED_REFERENCE	test.kt:3: NO_COMPANION_OBJECT
+testsWithStdLib/resolve/javaStaticMembers.kt	rejects invalid	on an expected line	
 testsWithStdLib/resolve/kt10103.kt	accepts valid		
 testsWithStdLib/resolve/kt10732a.kt	accepts valid		
 testsWithStdLib/resolve/kt4711.kt	rejects invalid	on an expected line	
