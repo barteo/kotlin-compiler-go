@@ -926,6 +926,16 @@ func (s *system) fix(tv *tvar) {
 		}
 		if len(lowers) > 1 && len(tv.lits) == 0 {
 			val = s.withinUppers(val, lowers, uppers)
+			// As K2 takes an equality constraint's type, a flexible type
+			// that is a lower and an upper bound is the value, whatever
+			// nullable type is below it: T of a Java <T> Box<T> of(T)
+			// called with a Foo? for an expected Box<Foo> is a Foo!.
+			for _, l := range lowers {
+				if l.P && slices.Contains(uppers, l) {
+					val = l
+					break
+				}
+			}
 		}
 		// A nullable lower bound with variables makes it nullable too, as
 		// in Kotlin: Out<String> and Out<M>? give Out<String>?, and M

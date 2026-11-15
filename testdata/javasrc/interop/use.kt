@@ -24,6 +24,22 @@ fun interopDemo() {
     nothingFromJava(object : Nulls.Visitor<Nothing> {})
     println(StaticOuter().Inner().test())
     println(Labeled().text())
+    println(Sources().one("a").get() + Sources().current().get() + Sources().direct().get())
+}
+
+// T of a Java <T> Source<T> fromCallable(Callable<? extends T>), for a
+// callable of a String? and an expected Source<String>, is a String!.
+class Sources {
+    private val items = hashMapOf("a" to "first")
+    private var last: String? = " last"
+
+    fun one(key: String): Source<String> {
+        return Source.fromCallable(java.util.concurrent.Callable { items[key] })
+    }
+
+    fun current(): Source<String> = Source.fromCallable { last }
+
+    fun direct(): Source<String> = Source.of(last)
 }
 
 // Label.TEXT in a subclass of a Java class with getLabel() names the
