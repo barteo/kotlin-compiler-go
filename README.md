@@ -171,7 +171,7 @@ An entry is a build type, which covers each variant of that type (`debug` covers
 ```sh
 git clone --depth 1 --branch 1.11.0 https://github.com/Kotlin/kotlinx.coroutines.git \
   "${TMPDIR:-/tmp}/kc-survey/kotlinx-coroutines-1.11.0"
-RUNS=5 WARM_RUNS=20 bench/coroutines-time.sh
+COOLDOWN=0 RUNS=3 WARM_RUNS=10 bench/coroutines-time.sh
 ```
 
 `bench/coroutines-time.sh` builds `kc`, downloads the library's
