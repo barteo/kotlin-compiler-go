@@ -284,8 +284,9 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   generic function whose type parameters its receiver's type doesn't
   give (`Box<Int>::first` for `fun <T> Box<T>.first()` is fine), is an
   error.
-- Where annotations are written, and whether they repeat, isn't checked
-  for Java annotations without `@Target` or from Java sources, nor for
+- Where annotations are written isn't checked for Java annotations
+  without `@Target` or from Java sources, nor whether they repeat on a
+  property or with a use-site target, nor, for any annotation, for
   use-site targets on local declarations and expressions (`@field:` on a
   local variable), nor across a typealias's expansion (`@A T` where
   `typealias T = @A Int`). The arguments of a

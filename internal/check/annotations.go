@@ -85,6 +85,8 @@ func (c *Checker) annotatedExpr(x syntax.Expr) {
 // checkAnnotations is annotations, or localAnnotations if local is set.
 func (c *Checker) checkAnnotations(as []syntax.Annotation, owner *types.ClassSym, site annotSite, local bool) {
 	seen := map[repeatKey]bool{}
+	var applied []appliedAnnotation
+	defer func() { c.repeatedWithContainer(applied) }()
 	for i := range as {
 		a := &as[i]
 		if a.Name == "" {
@@ -98,6 +100,7 @@ func (c *Checker) checkAnnotations(as []syntax.Annotation, owner *types.ClassSym
 			rec.Annotation(c.file, a, cls)
 		}
 		if cls.Retention != types.NoRetention {
+			applied = append(applied, appliedAnnotation{a, cls})
 			c.annotationTarget(a, cls, site)
 			c.repeated(a, cls, site, seen)
 			c.jvmAnnotation(a, cls, site)
