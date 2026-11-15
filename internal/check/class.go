@@ -1052,7 +1052,7 @@ func (c *Checker) checkInheritance(d *syntax.ClassDecl) {
 			case o.mutable && !p.Mutable:
 				c.errorf(op.pos, "val-property cannot override var-property '%s'", p.Name)
 			case p.Type.K == types.Invalid || t.K == types.Invalid:
-			case p.Mutable && !c.sameType(p.Type, t):
+			case p.Mutable && o.mutable && !c.sameType(p.Type, t):
 				c.errorf(op.pos, "type of '%s' doesn't match the type of the overridden var-property", p.Name)
 			case !c.subtype(p.Type, t):
 				c.errorf(op.pos, "type of '%s' is not a subtype of the overridden property", p.Name)

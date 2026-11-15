@@ -7,9 +7,9 @@ Of 10827 test files, 2312 are skipped and 8515 run.
 | Result | Tests | Share |
 |:---|---:|---:|
 | rejects invalid | 4001 | 47.0% |
-| accepts valid | 3985 | 46.8% |
+| accepts valid | 3988 | 46.8% |
 | accepts invalid | 383 | 4.5% |
-| rejects valid | 128 | 1.5% |
+| rejects valid | 125 | 1.5% |
 | parse/unsupported | 16 | 0.2% |
 | crash | 1 | 0.0% |
 
@@ -125,7 +125,6 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 | `unresolved import: _` | 6 | `tests/errorProneAtomicArraySuggestions.kt`, `tests/errorProneAtomicReferenceArguments.kt` |
 | `ambiguous call: n candidates for '_' take (_)` | 5 | `tests/callableReference/resolve/resolveReferenceAgainstKFunctionAndKPrpoerty.kt`, `tests/multimodule/varargConflict.kt` |
 | `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 4 | `tests/j+k/withTestConnection3.kt`, `tests/platformTypes/methodCall/multipleExactBoundsNullable.kt` |
-| `'_' overrides nothing` | 3 | `tests/genericReceiverPropertyOverride.kt`, `tests/generics/finalUpperBoundWithOverride.kt` |
 | `property must be initialized or be abstract` | 3 | `tests/backingField/FieldAsParam.kt`, `tests/backingField/FieldShadow.kt` |
 | `type argument is not within its bounds: type parameter '_' must be subtype of '_', but actual: _` | 3 | `tests/inference/capturedTypes/capturedTypeWithInnerTypealias.kt`, `tests/inference/unsoundness2.kt` |
 | `type checking has run into a recursive problem; specify the type of '_'` | 3 | `tests/checkers/uselessCastLeadsToRecursiveProblem.kt`, `tests/problems/kt27790.kt` |
@@ -135,11 +134,11 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 | `cannot create an instance of Function` | 2 | `tests/arguments/lambdaInLambda2.kt`, `tests/functionLiterals/lambdaInLambda2.kt` |
 | `expression '_' of type _ cannot be invoked as a function` | 2 | `tests/expresssions/invoke/incorrectInvokeReceiver.kt`, `tests/nullabilityAndSmartCasts/kt1778.kt` |
 | `expression of type _ cannot be invoked as a function` | 2 | `tests/controlFlowAnalysis/deadCode/deadCallInInvokeCall.kt`, `tests/expresssions/invoke/safeCallsWithImplicitInvoke.kt` |
-| `type of '_' doesn't match the type of the overridden var-property` | 2 | `tests/extraCheckers/kt69190.kt`, `tests/smartCasts/intersectionScope/propertiesConflict.kt` |
 | `unresolved label: _` | 2 | `tests/labelAndReceiverForInfix.kt`, `tests/labeledReturnFromNotLabeledUnnamedFunction.kt` |
 | `'_' is deprecated with level HIDDEN` | 1 | `tests/problems/kt14059.kt` |
 | `'_' modifier is required on '_'` | 1 | `tests/problems/kt36815.kt` |
 | `'_' needs an explicit return type on '_'` | 1 | `tests/inference/completion/inferLabeledElementTypeForLambdaInReturnInCatch.kt` |
+| `'_' overrides nothing` | 1 | `tests/suppress/oneWarning/suppressOnDeclarationItself.kt` |
 | `accidental override: the following declarations have the same JVM signature (foo()V)` | 1 | `tests/platformTypes/methodTypeParameterDefaultBound.kt` |
 | `cannot infer a type for this parameter. Please specify it explicitly.` | 1 | `tests/inference/completion/postponedArgumentsAnalysis/lackOfDeepIncorporation.kt` |
 | `class '_' is not abstract and does not implement abstract member '_'` | 1 | `tests/j+k/collectionOverrides/mapMethodsImplementedInJava.kt` |
@@ -158,6 +157,7 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 | `operator '_' cannot be applied to Enn and En` | 1 | `tests/enum/enumSubjectTypeCheck.kt` |
 | `operator '_' cannot be applied to Int and R<<error>>` | 1 | `tests/inference/genericAssignmentOperator.kt` |
 | `operator '_' cannot be applied to Nothing and Nothing` | 1 | `tests/generics/varProjection/setterProjectedOutPlusAssignDefined.kt` |
+| `type argument is not within its bounds: inferred type Long of type _ '_' is not a subtype of Comparable<Int>` | 1 | `tests/integerLiterals/literalsInInference.kt` |
 | *3 more* | 3 | |
 
 ## Errors by diagnostic
@@ -250,7 +250,6 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | `'_' expression must be exhaustive, add necessary '_' branch` | 20 |
 | `variable '_' must be initialized` | 17 |
 | `type checking has run into a recursive problem; specify the type of '_'` | 16 |
-| `'_' overrides nothing` | 15 |
 | `ambiguous call: n candidates for '_' take (_)` | 15 |
 | `expected expression, found '_'` | 15 |
 | `not enough information to infer type arguments of ::foon: specify the expected function type` | 14 |
@@ -261,12 +260,13 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 | `'_' modifier is required on '_'` | 11 |
 | `not enough information to infer type arguments of ::barn: specify the expected function type` | 11 |
 | `overload resolution ambiguity for ::foo: specify the expected function type` | 11 |
+| `'_' overrides nothing` | 10 |
 | `expected parameter of type _` | 10 |
 | `not enough information to infer type arguments of ::foo: specify the expected function type` | 10 |
 | `type checking has run into a recursive problem; specify the return type of '_'` | 10 |
 | `cannot access '_': it is private to this in '_'` | 9 |
 | `expected '_', found '_'` | 9 |
-| *175 more* | |
+| *174 more* | |
 
 ## Unsupported features
 

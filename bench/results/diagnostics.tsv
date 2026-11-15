@@ -3377,7 +3377,7 @@ tests/extraCheckers/UselessCallOnNotNullChecker/String.kt	accepts valid
 tests/extraCheckers/UselessCallOnNotNullChecker/isNullOrEmptyFromJava.kt	accepts valid		
 tests/extraCheckers/emptyRangeChecker/NoWarning.kt	accepts valid		
 tests/extraCheckers/emptyRangeChecker/Warning.kt	accepts valid		
-tests/extraCheckers/kt69190.kt	rejects valid	type of '_' doesn't match the type of the overridden var-property	kt69190.kt:15: type of 'a' doesn't match the type of the overridden var-property
+tests/extraCheckers/kt69190.kt	accepts valid		
 tests/extraCheckers/kt72164.kt	rejects invalid	on an expected line	
 tests/extraCheckers/kt72537.kt	rejects invalid	on an expected line	
 tests/extraCheckers/unused/LocalDelegate.kt	accepts valid		
@@ -3584,7 +3584,7 @@ tests/functionTypeInitializerTypeMismatch.kt	rejects invalid	on an expected line
 tests/functionTypes.kt	rejects invalid	elsewhere	
 tests/genericConstructors.kt	accepts valid		
 tests/genericFunctions.kt	accepts valid		
-tests/genericReceiverPropertyOverride.kt	rejects valid	'_' overrides nothing	genericReceiverPropertyOverride.kt:7: 'phasedFir' overrides nothing
+tests/genericReceiverPropertyOverride.kt	accepts valid		
 tests/genericTypeMismatch.kt	rejects invalid	on an expected line	
 tests/generics/InconsistentTypeParameterBounds.kt	accepts invalid	INCONSISTENT_TYPE_PARAMETER_BOUNDS	InconsistentTypeParameterBounds.kt:8: INCONSISTENT_TYPE_PARAMETER_BOUNDS
 tests/generics/Projections.kt	rejects invalid	on an expected line	
@@ -3616,7 +3616,7 @@ tests/generics/cyclicBounds/dontCheckOuterTypeParameterRefs.kt	rejects invalid	o
 tests/generics/cyclicBounds/functions.kt	rejects invalid	on an expected line	
 tests/generics/cyclicBounds/inClass.kt	rejects invalid	on an expected line	
 tests/generics/doNotCaptureSupertype.kt	accepts valid		
-tests/generics/finalUpperBoundWithOverride.kt	rejects valid	'_' overrides nothing	finalUpperBoundWithOverride.kt:86: 'x' overrides nothing
+tests/generics/finalUpperBoundWithOverride.kt	accepts valid		
 tests/generics/finalUpperBoundWithoutOverride.kt	rejects invalid	on an expected line	
 tests/generics/genericsInType.kt	rejects invalid	on an expected line	
 tests/generics/innerClasses/bareTypes.kt	rejects invalid	on an expected line	
@@ -8284,7 +8284,7 @@ tests/smartCasts/intersectionScope/moreSpecificVisibility.kt	accepts valid
 tests/smartCasts/intersectionScope/mostSpecific.kt	accepts valid		
 tests/smartCasts/intersectionScope/mostSpecificIrrelevant.kt	accepts valid		
 tests/smartCasts/intersectionScope/properties.kt	rejects invalid	on an expected line	
-tests/smartCasts/intersectionScope/propertiesConflict.kt	rejects valid	type of '_' doesn't match the type of the overridden var-property	propertiesConflict.kt:12: type of 'foo' doesn't match the type of the overridden var-property
+tests/smartCasts/intersectionScope/propertiesConflict.kt	rejects valid	val cannot be reassigned	propertiesConflict.kt:17: val cannot be reassigned
 tests/smartCasts/intersectionScope/refineReturnType.kt	accepts valid		
 tests/smartCasts/intersectionScope/simple.kt	accepts valid		
 tests/smartCasts/intersectionScope/unstableSmartCast.kt	rejects invalid	on an expected line	
