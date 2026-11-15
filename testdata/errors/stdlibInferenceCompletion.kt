@@ -91,3 +91,26 @@ fun unitElvis(list: List<Int>) {
     unitLambda { list.firstOrNull() ?: return@unitLambda }
     unitLambda { myLet { ::foo } ?: 1 } // ERROR cannot infer
 }
+
+class LocalParams {
+    private fun <E, F> make(e: E, f: F) = {
+        class C<G>(val e: E, val f: F, val g: G)
+        val c: C<F> = C<F>(e, f, f)
+        c
+    }
+
+    fun use() {
+        val c = make<CharSequence, Number>("", 1)()
+        val e: CharSequence = c.e
+        val g: Number = c.g
+        val s: String = c.e // ERROR type mismatch
+    }
+}
+
+fun <T> localRefs(t: T) {
+    class A(val t: T)
+    class B<I>
+    val a = A::class
+    val b = B::class
+    val get: (A) -> T = A::t
+}

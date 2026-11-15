@@ -1124,7 +1124,7 @@ func (c *Checker) applyTypeArgs(cls *types.ClassSym, ref *syntax.TypeRef) types.
 	if cls.Inner && cls.OuterParams > 0 {
 		return c.innerType(ref) // Inner in its outer class's code
 	}
-	ps := cls.TypeParams
+	ps, hidden := localOwnParams(cls)
 	if ref.Args == nil && len(ps) > 0 && ref == c.bareRef {
 		return c.bareType(cls, ref, c.bareSubject)
 	}
@@ -1140,10 +1140,10 @@ func (c *Checker) applyTypeArgs(cls *types.ClassSym, ref *syntax.TypeRef) types.
 		}
 		return types.InvalidType
 	}
-	if len(ps) == 0 {
+	if len(ps) == 0 && hidden == nil {
 		return c.nullable(types.ClassType(cls), ref)
 	}
-	args := make([]types.Arg, len(ps))
+	args := make([]types.Arg, len(ps), len(ps)+len(hidden))
 	for i, a := range ref.Args {
 		args[i] = types.Arg{V: a.Variance}
 		if a.Variance == types.Star {
@@ -1157,7 +1157,7 @@ func (c *Checker) applyTypeArgs(cls *types.ClassSym, ref *syntax.TypeRef) types.
 			c.errorf(a.P, "projection is conflicting with variance of the corresponding type parameter of %s", cls.DisplayName())
 		}
 	}
-	t := types.GenericType(cls, args)
+	t := types.GenericType(cls, append(args, hidden...))
 	if !c.noBoundChecks {
 		c.checkBounds(t, ref)
 	}

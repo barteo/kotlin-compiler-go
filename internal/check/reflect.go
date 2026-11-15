@@ -107,8 +107,8 @@ func (c *Checker) classLitType(ref *syntax.TypeRef, callable bool) types.Type {
 	if ref.Args == nil && !kotlinTypes[ref.Name] {
 		if cls := c.lookupClass(ref.Name); cls != nil && ensured(cls).TypeParams != nil && cls.Inner && cls.OuterParams > 0 && !callable {
 			return starInner(cls) // Outer.Inner::class, for Outer<T>
-		} else if cls != nil && len(cls.TypeParams) > 0 {
-			n := len(cls.TypeParams)
+		} else if own, _ := localOwnParams(cls); cls != nil && len(cls.TypeParams) > 0 {
+			n := len(own)
 			if a := c.lookupAlias(ref.Name); a != nil {
 				// A typealias takes its own type parameters, none for
 				// typealias Direct = Pair<String, Int>.

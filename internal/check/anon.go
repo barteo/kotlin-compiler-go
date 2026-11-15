@@ -127,6 +127,7 @@ func (c *Checker) localClass(s *syntax.LocalClass) {
 	scope := c.scope
 	c.anonClass(d, "local class", "local classes", func() string { return c.localName(d.Name) }, func(sym *types.ClassSym, frame *syntax.Lambda) {
 		sym.Local = true
+		c.localClassParams(sym)
 		scope.classes = append(scope.classes, sym)
 		if c.localClasses == nil {
 			c.localClasses = map[*types.ClassSym]localClassFrame{}
