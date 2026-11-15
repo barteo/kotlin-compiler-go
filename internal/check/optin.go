@@ -1004,6 +1004,7 @@ func (w *optWalker) call(n *syntax.Call) {
 			p = m.P
 		}
 	}
+	w.javaPrivateKotlin(n, p)
 	if n.Ctor != nil {
 		w.require(p, w.o.classMarkers(n.Ctor))
 		level := classDeprecation(n.Ctor)
@@ -1047,6 +1048,40 @@ func (w *optWalker) call(n *syntax.Call) {
 			w.require(p, w.o.classMarkers(n.Sym.Owner))
 		}
 	}
+}
+
+// javaPrivateKotlin reports call n, at p, of a constructor or method of
+// a Java class that extends a private Kotlin class of the program, or on
+// such a class's instance: the JVM doesn't let code outside the private
+// class's file use it.
+func (w *optWalker) javaPrivateKotlin(n *syntax.Call, p syntax.Pos) {
+	var cls *types.ClassSym
+	switch {
+	case n.Ctor != nil:
+		cls = n.Ctor
+	case n.Sym != nil && !n.Invoke:
+		cls = n.Sym.Owner
+	}
+	if !w.c.extendsPrivateKotlin(cls) {
+		if m, ok := n.Fun.(*syntax.Member); !ok || n.Sym == nil || n.Sym.Owner == nil || !w.c.extendsPrivateKotlin(m.X.Type().NonNull().C) {
+			return
+		}
+	}
+	w.errorf(p, "this Java class extends a private Kotlin class, which can't be used here")
+}
+
+// extendsPrivateKotlin reports whether cls is a class of the program's
+// Java sources that extends a private Kotlin class of the program.
+func (c *Checker) extendsPrivateKotlin(cls *types.ClassSym) bool {
+	if cls == nil || !c.u.ext.javaSource(cls) {
+		return false
+	}
+	for s := cls.Super; s != nil; s = s.Super {
+		if d, ok := s.Decl.(*syntax.ClassDecl); ok && !s.External && d.Visibility == syntax.Private {
+			return true
+		}
+	}
+	return false
 }
 
 // fun1 checks a call at p of function f, with result type t.

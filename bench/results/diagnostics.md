@@ -6,16 +6,16 @@ Of 10827 test files, 2312 are skipped and 8515 run.
 
 | Result | Tests | Share |
 |:---|---:|---:|
-| rejects invalid | 4079 | 47.9% |
+| rejects invalid | 4083 | 48.0% |
 | accepts valid | 3993 | 46.9% |
-| accepts invalid | 305 | 3.6% |
+| accepts invalid | 301 | 3.5% |
 | rejects valid | 120 | 1.4% |
 | parse/unsupported | 16 | 0.2% |
 | crash | 1 | 0.0% |
 
 *Rejects invalid* and *accepts valid* agree with kotlinc. *Accepts invalid* is code kotlinc rejects that kc compiles; *rejects valid*, code kotlinc compiles that kc's checker rejects. Both are bugs. A *parse/unsupported* test uses a feature kc doesn't support, which says nothing about its checks.
 
-Of the 4079 tests both reject, kc reports an error on the line of an expected one in 3922.
+Of the 4083 tests both reject, kc reports an error on the line of an expected one in 3926.
 
 A test is invalid if it stops before the backend or marks an error: one that runs to it (`BACKEND`) can mark the JVM backend's errors, such as `CONFLICTING_JVM_DECLARATIONS`. Of the tests run, 222 stop at `FRONTEND` but mark no error: most add the `CHECK_TYPE` helpers, whose names (`_`) kotlinc reports outside the test infrastructure, and count as valid; the others leave their errors out with the `DIAGNOSTICS` directive. 114 run to the backend and mark one. 5 marked names have no declared severity (debug information, for one), and count as neither.
 
@@ -85,12 +85,10 @@ Tests kotlinc rejects that kc compiles, by the errors their markup expects. A te
 | `AMBIGUOUS_ANONYMOUS_TYPE_INFERRED` | 2 | 2 | `tests/declarationChecks/localObjectInInnerClass.kt`, `tests/exposed/ambiguousAnonymousExposed.kt` |
 | `AMBIGUOUS_LABEL` | 2 | 2 | `tests/ambiguousLabelInExtensionFunctionWithOuterClass.kt`, `tests/ambiguousLabelInSuper.kt` |
 | `ASSIGNMENT_TYPE_MISMATCH` | 2 | 1 | `tests/controlFlowAnalysis/smartcastOnThisInInitializationSection.kt`, `tests/generics/varProjection/setterNotProjectedOutAssign.kt` |
-| `CLASS_INHERITS_JAVA_SEALED_CLASS` | 2 | 2 | `tests/testsWithJava17/sealedClasses/kotlinInheritsJavaClass.kt`, `tests/testsWithJava17/sealedClasses/kotlinInheritsJavaInterface.kt` |
 | `CONFLICTING_UPPER_BOUNDS` | 2 | 0 | `tests/enum/equalityOfEnumAndParameter.kt`, `tests/enum/equalityOfFlexibleTypeParameters.kt` |
 | `EXPANSIVE_INHERITANCE` | 2 | 2 | `tests/declarationChecks/nonExpansiveInheritanceRestriction/JavaWithKotlin.kt`, `tests/declarationChecks/nonExpansiveInheritanceRestriction/PureKotlin.kt` |
 | `FINITE_BOUNDS_VIOLATION` | 2 | 2 | `tests/declarationChecks/finiteBoundRestriction/CasesWithTwoTypeParameters.kt`, `tests/regressions/kt9633.kt` |
 | `INVISIBLE_SETTER` | 2 | 2 | `tests/extraCheckers/RedundantVisibilityModifierCheckerForInnerComponents.kt`, `tests/properties/kt47621.kt` |
-| `JAVA_CLASS_INHERITS_KT_PRIVATE_CLASS` | 2 | 2 | `tests/j+k/invisibleFake.kt`, `tests/j+k/invisibleFake2.kt` |
 | `JAVA_FIELD_SHADOWED_BY_KOTLIN_PROPERTY` | 2 | 1 | `tests/fieldRename/javaFieldKotlinPropertyJavaFieldInPackagePrivate.kt`, `tests/propertyVsField/propertyFieldShadow.kt` |
 | `MEMBER_PROJECTED_OUT` | 2 | 2 | `tests/scopes/variantProjections/irrelevantUnsafeVariance.kt`, `tests/typealias/starProjection.kt` |
 | `MISSING_DEPENDENCY_SUPERCLASS` | 2 | 1 | `tests/dataClasses/missingDependencyInSupertype.kt`, `tests/multimodule/inaccessibleSuperTypeWithRepeatedContext.kt` |
@@ -110,7 +108,9 @@ Tests kotlinc rejects that kc compiles, by the errors their markup expects. A te
 | `UNDERSCORE_IS_RESERVED` | 2 | 2 | `tests/labeledLambda.kt`, `tests/unnamedParameterOnOverride.kt` |
 | `UNINITIALIZED_ENUM_ENTRY` | 2 | 2 | `tests/controlFlowAnalysis/enumInterdependence.kt`, `tests/controlFlowAnalysis/uninitializedQualifiedEnumEntry.kt` |
 | `UNSAFE_CALL` | 2 | 2 | `tests/smartCasts/alwaysNullWithJava.kt`, `tests/smartCasts/noSmartcastForNonFinalMembersFromJava.kt` |
-| *79 more* | 81 | |
+| `UNSIGNED_LITERAL_WITHOUT_DECLARATIONS_ON_CLASSPATH` | 2 | 2 | `tests/inlineClasses/unsignedLiteralsWithoutArtifactOnClasspath.kt`, `tests/valueClasses/unsignedLiteralsWithoutArtifactOnClasspath.kt` |
+| `WRONG_ANNOTATION_TARGET` | 2 | 1 | `tests/annotations/options/targets/java.kt`, `tests/annotations/options/targets/mixedTargeting.kt` |
+| *77 more* | 77 | |
 
 ## Rejects valid
 
@@ -162,7 +162,7 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 15700 of 21506 expected errors (73.0%) on their lines.
+kc reports 15706 of 21506 expected errors (73.0%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|

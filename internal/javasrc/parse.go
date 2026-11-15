@@ -40,6 +40,7 @@ const (
 type Modifiers struct {
 	Flags       uint16 // classfile access flags: public, static, final and so on
 	Default     bool   // an interface's default method
+	Sealed      bool   // a sealed class or interface, not a non-sealed one
 	Annotations []*Annotation
 }
 
@@ -300,6 +301,7 @@ func (p *parser) modifiers() Modifiers {
 			p.next()
 			m.Default = true
 		case t.kind == tIdent && (t.text == "sealed" || t.text == "non") && p.sealedModifier():
+			m.Sealed = m.Sealed || t.text == "sealed"
 		default:
 			return m
 		}

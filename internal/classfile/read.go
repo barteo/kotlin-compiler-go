@@ -67,6 +67,9 @@ type Info struct {
 	// one that doesn't, "" for one that does. Super and Interfaces have
 	// java/lang/Object in place of the unresolved ones.
 	Unresolved []string
+	// Sealed is set on a sealed Java class or interface: one with a
+	// PermittedSubclasses attribute.
+	Sealed bool
 }
 
 // InnerClass is an entry of the InnerClasses attribute.
@@ -436,6 +439,8 @@ func Parse(data []byte) (*Info, error) {
 			size = 0
 		case name == "Deprecated":
 			info.Deprecated = javaDeprecation(info.Deprecated)
+		case name == "PermittedSubclasses":
+			info.Sealed = true
 		case name == "RuntimeVisibleAnnotations":
 			end := r.pos + size
 			k, e := kotlinMeta(r, p, info)

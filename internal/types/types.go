@@ -836,6 +836,9 @@ type ClassSym struct {
 	// Subclasses are their direct subclasses.
 	Sealed     bool
 	Subclasses []*ClassSym
+	// JavaSealed is set on a sealed Java class or interface, which no
+	// Kotlin class may extend.
+	JavaSealed bool
 	// Value is set on the program's value classes, whose instances are
 	// the value of their one property, Underlying, wherever they aren't
 	// boxed: see Unboxed.

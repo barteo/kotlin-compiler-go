@@ -237,6 +237,7 @@ func (t *classTable) load(cls *types.ClassSym) {
 	}
 	cls.StabilityInferred = info.StabilityInferred
 	cls.Deprecated = classFileDeprecation(info.Deprecated)
+	cls.JavaSealed = info.Sealed
 	for _, a := range slices.Concat(info.Invisible, info.Visible) {
 		if strings.HasPrefix(a, "L") && strings.HasSuffix(a, ";") {
 			if c := t.class(a[1 : len(a)-1]); c != nil {

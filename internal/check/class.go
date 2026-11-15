@@ -114,6 +114,11 @@ func (c *Checker) supertype(cd *syntax.ClassDecl, st *syntax.SuperType, seen map
 	}
 	sc := t.C
 	sc.Ensure()
+	if sc.JavaSealed {
+		// javac checks that the subclasses it permits extend it, which
+		// it doesn't see a Kotlin class do.
+		c.errorf(st.Type.P, "a Kotlin class can't inherit from sealed Java class or interface '%s'", sc.DisplayName())
+	}
 	switch {
 	case seen[sc]:
 		c.errorf(st.Type.P, "a supertype appears twice")
