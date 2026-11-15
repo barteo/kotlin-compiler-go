@@ -99,3 +99,66 @@ func TestInstantiateKeepsParams(t *testing.T) {
 		t.Fatalf("markers %v, instanceof %v", markers, insts)
 	}
 }
+
+// TestInstantiateNullable copies filterIsInstance's { it is R } for a
+// nullable type argument, and for a marker of a nullable type: the check
+// is x == null || x is C, in the bytes of the marker and the instanceof.
+func TestInstantiateNullable(t *testing.T) {
+	jar, err := classpath.FindStdlib()
+	if err != nil {
+		t.Skip(err)
+	}
+	cp, err := classpath.Open("", []string{jar})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cp.Close()
+	tmpl, err := loadTemplate("kotlin/sequences/SequencesKt___SequencesKt$filterIsInstance$1", cp.Bytes, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	check := func(what string, data []byte) {
+		t.Helper()
+		methods, err := cf.ReadMethods(data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, m := range methods {
+			insns, err := m.Decode()
+			if err != nil {
+				t.Fatal(err)
+			}
+			for i, in := range insns {
+				if in.Op != cf.INSTANCEOF {
+					continue
+				}
+				if i < 3 || i+1 >= len(insns) || insns[i-3].Op != cf.DUP || insns[i-2].Op != cf.INVOKESTATIC ||
+					insns[i-2].Owner != "java/util/Objects" || insns[i-2].Name != "isNull" || insns[i-1].Op != cf.SWAP ||
+					in.Class != "java/lang/String" || insns[i+1].Op != cf.IOR {
+					t.Fatalf("%s: instanceof %s isn't a nullable check", what, in.Class)
+				}
+				return
+			}
+		}
+		t.Fatalf("%s: no instanceof", what)
+	}
+	copies, err := tmpl.Instantiate("X", map[string]string{"R": "java/lang/String?"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	check("String?", copies[0].Data)
+	// Kept as S?, then reified with String.
+	kept, err := tmpl.Instantiate("Y", map[string]string{"R": "?S?"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, _, err := readTemplate(kept[0].Name, kept[0].Data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	final, err := again.Instantiate("Z", map[string]string{"S": "java/lang/String"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	check("S? with String", final[0].Data)
+}

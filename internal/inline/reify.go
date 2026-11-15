@@ -416,6 +416,9 @@ func (t *Template) Reifiable(classes map[string]string) bool {
 // parameters: the operation keeps its marker, which names S, and the copy
 // creates its nested templates that use S after needClassReification
 // calls, so that the copier's copiers copy it in turn.
+//
+// A class with a "?" after it is a nullable type argument, String?: its
+// type checks, as a marked T? one, are true for null too.
 func (t *Template) Instantiate(name string, classes, sigs map[string]string) ([]Instance, error) {
 	return t.instantiate(name, classes, sigs, map[string]string{t.Name: name})
 }
@@ -528,14 +531,32 @@ func (t *Template) instantiate1(name string, classes, sigs map[string]string, re
 		pool.Write(e)
 	}
 	pool.Write(added.Bytes())
-	// The classes of the operations, as new constants.
+	// The classes of the operations, as new constants, and
+	// Objects.isNull for the checks of nullable types.
 	index := map[string]int{}
+	isNull := 0
 	for _, op := range t.ops {
 		cls, ok := classes[op.param]
 		if !ok {
 			return nil, fmt.Errorf("no type argument for reified type parameter %s", op.param)
 		}
-		if _, ok := index[cls]; ok || strings.HasPrefix(cls, "?") {
+		if strings.HasPrefix(cls, "?") {
+			continue
+		}
+		cls, nullable := strings.CutSuffix(cls, "?")
+		if op.kind == Is && (nullable || op.nullable) && isNull == 0 {
+			// Utf8s, Class, NameAndType and Methodref.
+			for _, u := range []string{"java/util/Objects", "isNull", "(Ljava/lang/Object;)Z"} {
+				pool.Write([]byte{1, byte(len(u) >> 8), byte(len(u))})
+				pool.WriteString(u)
+			}
+			pool.Write([]byte{7, byte(count >> 8), byte(count)})
+			pool.Write([]byte{12, byte((count + 1) >> 8), byte(count + 1), byte((count + 2) >> 8), byte(count + 2)})
+			pool.Write([]byte{10, byte((count + 3) >> 8), byte(count + 3), byte((count + 4) >> 8), byte(count + 4)})
+			isNull = count + 5
+			count += 6
+		}
+		if _, ok := index[cls]; ok {
 			continue
 		}
 		pool.Write([]byte{1, byte(len(cls) >> 8), byte(len(cls))})
@@ -559,8 +580,21 @@ func (t *Template) instantiate1(name string, classes, sigs map[string]string, re
 			}
 			continue // the marker stays, for the copier's copiers
 		}
-		idx := index[classes[op.param]]
+		cls, nullable := strings.CutSuffix(classes[op.param], "?")
+		idx := index[cls]
 		start, at := op.start+shift, op.op+shift
+		if op.kind == Is && (nullable || op.nullable) {
+			// x is C?: x == null || x is C, without branches, in the bytes of
+			// the marker and the instanceof.
+			if op.op-op.start != 6 || data[op.op] != cf.INSTANCEOF {
+				return nil, fmt.Errorf("class %s: a nullable type check kc can't reify", name)
+			}
+			copy(out[start:], []byte{
+				cf.DUP, cf.INVOKESTATIC, byte(isNull >> 8), byte(isNull),
+				cf.SWAP, cf.INSTANCEOF, byte(idx >> 8), byte(idx), cf.IOR,
+			})
+			continue
+		}
 		for k := start; k < at; k++ {
 			out[k] = cf.NOP
 		}

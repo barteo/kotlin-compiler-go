@@ -348,9 +348,6 @@ yet done. [Design](design.md) describes how `kc` compiles it.
 - An object expression in the program's inline function is one class for
   all copies, using a crossinline lambda as a function object; `kotlinc`
   copies the class per call.
-- A check against a reified type parameter's nullable type in a library
-  inline function's body or object (`filterIsInstance<String?>()`) tests
-  the class alone, so it is false for `null`.
 - A library interface's inline member is called as an ordinary method.
   In the program, open and interface inline members are errors, even
   with `@Suppress("DECLARATION_CANT_BE_INLINED")`, which `kotlinc`

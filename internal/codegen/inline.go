@@ -160,6 +160,24 @@ type inliner struct {
 	typed map[int]bool
 }
 
+// nullable reports whether a marked operation's type is nullable: the
+// marker's, T?, or the call's type argument for T, String?.
+func (in *inliner) nullable(r inline.Reified) bool {
+	t, ok := in.g.reifiedTypes[r.Param]
+	return r.Nullable || ok && t.N
+}
+
+// nullableInstanceOf generates x is C? for x on the stack: true for null
+// too, as kotlinc's reifier does, without branches, as a template's copy
+// does it in place (see inline.Template.Instantiate).
+func nullableInstanceOf(c *cf.Code, cls string) {
+	c.Op(cf.DUP)
+	c.Invoke(cf.INVOKESTATIC, "java/util/Objects", "isNull", "(Ljava/lang/Object;)Z")
+	c.Op(cf.SWAP)
+	c.InstanceOf(cls)
+	c.Op(cf.IOR)
+}
+
 // cls returns the class that the copy refers to for class name.
 func (in *inliner) cls(name string) string {
 	if n, ok := in.renamed[name]; ok {
@@ -189,7 +207,16 @@ func (in *inliner) instantiate(t *inline.Template) bool {
 	key := g.cls.Name + "$" + method + "$$inlined$" + in.b.Name
 	g.shared.count[key]++
 	name := key + "$" + strconv.Itoa(g.shared.count[key])
-	reified := in.reified
+	reified, cloned := in.reified, false
+	for p, typ := range g.reifiedTypes {
+		if cls, ok := reified[p]; ok && typ.N && !strings.HasPrefix(cls, "?") && !strings.HasSuffix(cls, "?") {
+			// A nullable type argument, whose checks are true for null.
+			if !cloned {
+				reified, cloned = maps.Clone(in.reified), true
+			}
+			reified[p] = cls + "?"
+		}
+	}
 	sigs := map[string]string{}
 	for p, t := range g.reifiedTypes {
 		if !g.reifiedParam(t) {
@@ -614,7 +641,11 @@ func (in *inliner) insn(i int) {
 			c.Checkcast(cls)
 			c.Place(end)
 		case inline.Is:
-			c.InstanceOf(cls)
+			if in.nullable(r) {
+				nullableInstanceOf(c, cls)
+			} else {
+				c.InstanceOf(cls)
+			}
 		case inline.JavaClass:
 			c.LdcClass(cls)
 		case inline.Enum:

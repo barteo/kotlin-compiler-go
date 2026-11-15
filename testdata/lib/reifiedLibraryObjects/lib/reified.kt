@@ -10,6 +10,8 @@ inline fun <reified T> Sequence<*>.only(): List<T> = filterIsInstance<T>().toLis
 
 inline fun <reified T> Iterable<*>.firstOf(): T? = asSequence().filterIsInstance<T>().firstOrNull()
 
+inline fun <reified T> Sequence<*>.orNulls(): List<T?> = filterIsInstance<T?>().toList()
+
 // A chain: copies of copies.
 inline fun <reified E> Sequence<*>.count2(): Int = only<E>().size
 
