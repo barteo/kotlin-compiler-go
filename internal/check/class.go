@@ -114,6 +114,11 @@ func (c *Checker) supertype(cd *syntax.ClassDecl, st *syntax.SuperType, seen map
 	}
 	sc := t.C
 	sc.Ensure()
+	if sc.JavaSealed {
+		// javac checks that the subclasses it permits extend it, which
+		// it doesn't see a Kotlin class do.
+		c.errorf(st.Type.P, "a Kotlin class can't inherit from sealed Java class or interface '%s'", sc.DisplayName())
+	}
 	switch {
 	case seen[sc]:
 		c.errorf(st.Type.P, "a supertype appears twice")
@@ -774,6 +779,9 @@ func (c *Checker) overridden(cls *types.ClassSym, f *types.FunSym) []*types.FunS
 		if s == cls || anyOnly && s.Name == "java/lang/Object" {
 			return true
 		}
+		if s.Name == "java/lang/Throwable" && f.Name == "fillInStackTrace" {
+			return true // not a member, as Kotlin sees Throwable
+		}
 		gs := methodsNamed(s, f)
 		if s.Name == charSequence && f.Name == "get" && !f.Ext {
 			gs = s.Methods["charAt"] // CharSequence's get, on the JVM
@@ -781,7 +789,9 @@ func (c *Checker) overridden(cls *types.ClassSym, f *types.FunSym) []*types.FunS
 		for _, g := range gs {
 			// A private member isn't inherited: it overrides and is
 			// overridden by nothing.
-			if !g.Static && !g.Private && !f.Private && c.sameParams(this, f, g) {
+			// Nor is a Java member that is package-private in another
+			// package.
+			if !g.Static && !g.Private && !f.Private && !(g.PackagePrivate && packageOf(g.Owner) != packageOf(cls)) && c.sameParams(this, f, g) {
 				out = append(out, g)
 			}
 		}
@@ -803,13 +813,19 @@ type superProp struct {
 	setter    string // and the setter's, if it has one
 	protected bool
 	ctx       []*types.VarSym // its context parameters, in owner's type parameters
+	// vis and setterVis are the visibilities of its getter and setter.
+	// inherits is set if the property is the program's override without
+	// a visibility modifier, which has the visibility of a property it
+	// overrides, and inheritsSetter if its setter has none either.
+	vis, setterVis           syntax.Visibility
+	inherits, inheritsSetter bool
 }
 
 // implementingProp returns the property of cls, declared or inherited,
 // that implements a property of its supertype s, of a name and context
 // parameters ctx, or nil.
 func (c *Checker) implementingProp(cls, s *types.ClassSym, name string, ctx []*types.VarSym) *types.VarSym {
-	q := c.userProp(cls, name)
+	q := c.memberProp(cls, name) // a superclass's private property is not cls's
 	if len(ctx) == 0 && (q == nil || q.Alt == nil) {
 		return q
 	}
@@ -837,6 +853,24 @@ func (c *Checker) overriddenProps(cls *types.ClassSym, p *types.VarSym) []superP
 	return slices.DeleteFunc(c.superProps(cls, p.Name), func(o superProp) bool {
 		return !c.sameContextsIn(o.ctx, c.memberSubst(cls.This(), o.owner), p.Contexts, nil)
 	})
+}
+
+// javaFinalAccessor returns the Java superclass of cls below o's owner
+// that declares a final method with the JVM signature of o's getter or
+// setter, which Kotlin sees as o, final: or nil.
+func javaFinalAccessor(cls *types.ClassSym, o superProp) *types.ClassSym {
+	for s := cls.Super; s != nil; s = s.Super {
+		if !javaClass(s) || s.FromKotlin || s == o.owner || !s.IsSubclassOf(o.owner) {
+			continue
+		}
+		s.Ensure()
+		for _, sig := range []string{o.getter, o.setter} {
+			if acc, ok := s.JVMMethods[sig]; ok && sig != "" && acc&classfile.AccFinal != 0 && acc&classfile.AccStatic == 0 {
+				return s
+			}
+		}
+	}
+	return nil
 }
 
 // sameContextsIn reports whether context parameters a, with substitution
@@ -875,7 +909,14 @@ func (c *Checker) superProps(cls *types.ClassSym, name string) []superProp {
 						fd, _ := types.Desc(types.FieldType(p))
 						setter = types.SetterJVM(p) + "(" + fd + ")V"
 					}
-					out = append(out, superProp{s, p.Type, p.Final, p.Mutable, p.Abstract, types.GetterJVM(p) + "()" + d, setter, protectedProp(p), p.Contexts})
+					vis, _ := propVisibility(p)
+					setterVis := vis
+					if pd, ok := p.Decl.(*syntax.PropDecl); ok && pd.SetterVis != syntax.Public {
+						setterVis = pd.SetterVis
+					}
+					inherits := inheritsVisibility(p.Decl)
+					out = append(out, superProp{s, p.Type, p.Final, p.Mutable, p.Abstract, types.GetterJVM(p) + "()" + d, setter, protectedProp(p), p.Contexts, vis, setterVis,
+						inherits, inherits && setterVis == vis})
 				}
 			}
 			return true
@@ -886,13 +927,20 @@ func (c *Checker) superProps(cls *types.ClassSym, name string) []superProp {
 				if kp.Setter != nil {
 					setter = kp.Setter.JVM() + types.FunDesc(kp.Setter)
 				}
-				out = append(out, superProp{s, kp.Getter.Ret, kp.Getter.Final, kp.Setter != nil, kp.Getter.Abstract, kp.Getter.JVM() + types.FunDesc(kp.Getter), setter, kp.Getter.Protected, kp.Getter.Contexts})
+				vis, setterVis := syntax.Public, syntax.Public
+				if kp.Getter.Protected {
+					vis, setterVis = syntax.Protected, syntax.Protected
+				}
+				if kp.Setter != nil && kp.Setter.Protected {
+					setterVis = syntax.Protected
+				}
+				out = append(out, superProp{s, kp.Getter.Ret, kp.Getter.Final, kp.Setter != nil, kp.Getter.Abstract, kp.Getter.JVM() + types.FunDesc(kp.Getter), setter, kp.Getter.Protected, kp.Getter.Contexts, vis, setterVis, false, false})
 			}
 			return true
 		}
 		if s.Name == charSequence && name == "length" {
 			// CharSequence's length, java.lang.CharSequence.length().
-			out = append(out, superProp{s, types.IntType, false, false, true, "length()I", "", false, nil})
+			out = append(out, superProp{s, types.IntType, false, false, true, "length()I", "", false, nil, syntax.Public, syntax.Public, false, false})
 			return true
 		}
 		if s.KotlinName != "" || !builtinJava[s.Name] {
@@ -904,7 +952,11 @@ func (c *Checker) superProps(cls *types.ClassSym, name string) []superProp {
 		// A Kotlin built-in type's, as Throwable's message.
 		for _, g := range s.Methods[types.GetterName(name)] {
 			if len(g.Params) == 0 && !g.Static && g.Ret.K != types.Unit {
-				out = append(out, superProp{s, g.Ret, g.Final, false, g.Abstract, g.JVM() + types.FunDesc(g), "", g.Protected, nil})
+				vis := syntax.Public
+				if g.Protected {
+					vis = syntax.Protected
+				}
+				out = append(out, superProp{s, g.Ret, g.Final, false, g.Abstract, g.JVM() + types.FunDesc(g), "", g.Protected, nil, vis, vis, false, false})
 			}
 		}
 		return true
@@ -966,6 +1018,9 @@ func (c *Checker) checkInheritance(d *syntax.ClassDecl) {
 			if o.Final {
 				c.errorf(fd.P, "'%s' in '%s' is final and cannot be overridden", f.Name, o.Owner.DisplayName())
 				continue
+			}
+			if fd.Explicit && !o.PackagePrivate && !inheritsVisibility(o.Decl) {
+				c.overrideVisibility(fd.P, f.Name, memberVisibility(o), fd.Visibility, o.Owner)
 			}
 			switch {
 			case f.Suspend && !o.Suspend:
@@ -1043,19 +1098,45 @@ func (c *Checker) checkInheritance(d *syntax.ClassDecl) {
 		if p.Mutable && !p.SetterPrivate {
 			ownSetter = types.SetterJVM(p) + "(" + descOf(types.FieldType(p)) + ")V"
 		}
+		finalReported := false
 		for _, o := range over {
 			t := c.memberSubst(this, o.owner).Apply(o.t)
 			switch {
 			case o.final:
 				c.errorf(op.pos, "'%s' in '%s' is final and cannot be overridden", p.Name, o.owner.DisplayName())
 				continue
+			case javaFinalAccessor(cls, o) != nil:
+				if !finalReported {
+					c.errorf(op.pos, "'%s' in '%s' is final and cannot be overridden", p.Name, javaFinalAccessor(cls, o).DisplayName())
+					finalReported = true
+				}
+				continue
 			case o.mutable && !p.Mutable:
 				c.errorf(op.pos, "val-property cannot override var-property '%s'", p.Name)
 			case p.Type.K == types.Invalid || t.K == types.Invalid:
-			case p.Mutable && !c.sameType(p.Type, t):
+			case p.Mutable && o.mutable && !c.sameType(p.Type, t):
 				c.errorf(op.pos, "type of '%s' doesn't match the type of the overridden var-property", p.Name)
 			case !c.subtype(p.Type, t):
 				c.errorf(op.pos, "type of '%s' is not a subtype of the overridden property", p.Name)
+			}
+			vis, explicit := declVisibility(p.Decl)
+			if o.inherits {
+				// Its visibility is that of a member it overrides, which
+				// is among the others.
+			} else if explicit && explicitVisibility(p) {
+				c.overrideVisibility(op.pos, p.Name, o.vis, vis, o.owner)
+			}
+			if pd, ok := p.Decl.(*syntax.PropDecl); ok && o.mutable && p.Mutable && pd.SetterVis != syntax.Public && !o.inheritsSetter {
+				// A setter's visibility, if it has a modifier; a val's
+				// overrider may have any.
+				at := op.pos
+				switch {
+				case pd.Setter != nil:
+					at = pd.Setter.P
+				case pd.Getter == nil && pd.AccessorP.Line > 0:
+					at = pd.AccessorP
+				}
+				c.overrideVisibility(at, p.Name, o.setterVis, pd.SetterVis, o.owner)
 			}
 			if o.getter != own && !contains(p.Bridges, o.getter) {
 				p.Bridges = append(p.Bridges, o.getter)
@@ -1069,9 +1150,45 @@ func (c *Checker) checkInheritance(d *syntax.ClassDecl) {
 		}
 	}
 	c.inheritedBridges(d)
-	if !cls.Abstract || d.Enum {
-		c.checkImplemented(d)
+	reported := map[string]bool{}
+	if !d.Annotation {
+		reported = c.checkInheritedFuns(d)
+		c.checkInheritedProps(d, reported)
 	}
+	if d.Data && !d.Object {
+		c.checkDataOverrides(d)
+	}
+	if len(d.Delegated) > 0 || slices.ContainsFunc(d.Supers, func(st *syntax.SuperType) bool { return st.Delegate != nil }) {
+		c.checkDelegatedMembers(d)
+	}
+	if !cls.Abstract || d.Enum {
+		c.checkImplemented(d, reported)
+	}
+	if !cls.Interface && c.inheritsJavaFunctionN(cls) {
+		c.errorf(d.P, "a Kotlin class can't inherit a Java member that references 'kotlin.jvm.functions.FunctionN'")
+	}
+}
+
+// inheritsJavaFunctionN reports whether class cls inherits a method of
+// the program's Java sources whose descriptor has FunctionN, the class of
+// function types of more than 22 parameters, which kotlinc doesn't
+// support.
+func (c *Checker) inheritsJavaFunctionN(cls *types.ClassSym) bool {
+	found := false
+	cls.Supertypes(func(s *types.ClassSym) bool {
+		if s == cls || !c.u.ext.javaSource(s) {
+			return true
+		}
+		for _, fs := range s.Methods {
+			for _, f := range fs {
+				if !f.Private && !f.Static && f.Owner == s && strings.Contains(jvmDesc(f), "Lkotlin/jvm/functions/FunctionN;") {
+					found = true
+				}
+			}
+		}
+		return !found
+	})
+	return found
 }
 
 // inheritedBridges finds the members of class d's interfaces that it
@@ -1222,11 +1339,11 @@ func descOf(t types.Type) string {
 }
 
 // checkImplemented reports the abstract members that a class that isn't
-// abstract inherits and doesn't implement.
-func (c *Checker) checkImplemented(d *syntax.ClassDecl) {
+// abstract inherits and doesn't implement, but those named in reported,
+// which checkInheritedFuns reported.
+func (c *Checker) checkImplemented(d *syntax.ClassDecl, reported map[string]bool) {
 	cls := d.Sym
 	this := cls.This()
-	reported := map[string]bool{}
 	missing := func(name string) {
 		if !reported[name] {
 			reported[name] = true
@@ -1278,12 +1395,18 @@ func (c *Checker) checkImplemented(d *syntax.ClassDecl) {
 			return true
 		}
 		for name, fs := range s.Methods {
+			if d.Data && anyMember[name] {
+				continue // a data class generates them
+			}
 			for _, g := range fs {
 				if !g.Abstract || g.Static || s.Java != nil && g.Platform || numberJavaName(s, g) {
 					continue
 				}
-				if !c.implemented(cls, this, g) && !(s.Java != nil && concreteInSuper(cls, g.JVM()+types.FunDesc(g))) && !numberImplemented(cls, s, g) &&
+				if !c.implemented(cls, this, g) && !(s.Java != nil && concreteInSuper(cls, g.Owner, g.JVM()+types.FunDesc(g))) && !numberImplemented(cls, s, g) && !c.javaImplements(cls, g) &&
 					!(s.External && s.KotlinName == "" && s.Java == nil && kotlinAccessorImplements(cls, s, g)) {
+					if s.Name == charSequence && name == "charAt" {
+						name = "get"
+					}
 					missing(name)
 				}
 				if s.Interface && hasDefaults(g) && !inlineReported {
@@ -1299,7 +1422,7 @@ func (c *Checker) checkImplemented(d *syntax.ClassDecl) {
 		}
 		for name, fs := range s.ExtMethods {
 			for _, g := range fs {
-				if g.Abstract && !c.implemented(cls, this, g) {
+				if g.Abstract && !c.implemented(cls, this, g) && !c.javaImplements(cls, g) {
 					missing(name)
 				}
 			}
@@ -1318,7 +1441,7 @@ func (c *Checker) checkImplemented(d *syntax.ClassDecl) {
 		for name, kp := range s.KProps {
 			for kp := range kpropAlts(kp) {
 				if kp.Getter.Abstract {
-					if q := c.implementingProp(cls, s, name, kp.Getter.Contexts); (q == nil || q.Abstract) && !concreteInSuper(cls, kp.Getter.JVM()+types.FunDesc(kp.Getter)) &&
+					if q := c.implementingProp(cls, s, name, kp.Getter.Contexts); (q == nil || q.Abstract) && !concreteInSuper(cls, nil, kp.Getter.JVM()+types.FunDesc(kp.Getter)) &&
 						!c.javaPropImplements(cls, this, s, name, kp.Getter.Ret, kp.Getter.Contexts, kp.Setter != nil) {
 						missing(name)
 					}
@@ -1424,12 +1547,47 @@ func isInlineFun(f *types.FunSym) bool {
 }
 
 // concreteInSuper reports whether a superclass of cls on the class path
-// has a method with code with this name and descriptor.
-func concreteInSuper(cls *types.ClassSym, nd string) bool {
+// has a method with code with this name and descriptor. A Java source has
+// no bridge methods, so in a subclass of owner, if not nil, one of its
+// methods with a narrower return type counts too: String get(Object) for
+// Map's Object get(Object).
+func concreteInSuper(cls, owner *types.ClassSym, nd string) bool {
+	params, ret, _ := strings.Cut(nd, ")")
+	params += ")"
+	covariant := strings.HasPrefix(ret, "L") // a reference type
 	for s := cls.Super; s != nil; s = s.Super {
 		s.Ensure()
 		if acc, ok := s.JVMMethods[nd]; ok && acc&classfile.AccAbstract == 0 {
 			return true
+		}
+		if covariant && owner != nil && s.Java == nil && !s.FromKotlin && s.IsSubclassOf(owner) {
+			for k, acc := range s.JVMMethods {
+				if r, ok := strings.CutPrefix(k, params); ok && acc&(classfile.AccAbstract|classfile.AccStatic) == 0 && (r[0] == 'L' || r[0] == '[') {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// javaImplements reports whether a superclass of cls among the program's
+// Java sources, which inherits the program's abstract method g, has a
+// method that isn't abstract with g's JVM signature: Java's foo(String a,
+// int b) implements a Kotlin interface's context(a: String) foo(b: Int).
+func (c *Checker) javaImplements(cls *types.ClassSym, g *types.FunSym) bool {
+	if g.Owner == nil || g.Owner.External {
+		return false
+	}
+	sig := g.JVM() + memberDesc(g)
+	for s := cls.Super; s != nil; s = s.Super {
+		if !c.u.ext.javaSource(s) || !s.IsSubclassOf(g.Owner) {
+			continue
+		}
+		for _, f := range s.Methods[g.JVM()] {
+			if !f.Abstract && !f.Static && f.JVM()+jvmDesc(f) == sig {
+				return true
+			}
 		}
 	}
 	return false
@@ -1465,7 +1623,13 @@ func (c *Checker) implementation(cls *types.ClassSym, this types.Type, g *types.
 		if name != g.Name {
 			hs = append(hs[:len(hs):len(hs)], s.Methods[name]...)
 		}
+		if !g.Owner.Interface && g.Owner.IsSubclassOf(s) {
+			return true // g, abstract, overrides its members: A's abstract toString() Any's
+		}
 		for _, h := range hs {
+			if _, ok := h.Decl.(*syntax.FunDecl); ok && g.Owner.Name == charSequence && (g.Name == "charAt" || g.Name == "length") && h.Name == g.Name {
+				continue // a Kotlin charAt() or length() doesn't implement CharSequence's get or length
+			}
 			if !h.Abstract && c.sameParams(this, h, g) && (!s.Interface || s.IsSubclassOf(g.Owner)) {
 				found = h
 			}
@@ -1657,6 +1821,11 @@ func (c *Checker) superTarget(s *syntax.Super, name string, call bool) (types.Ty
 				has = append(has, st)
 			}
 		}
+		// A supertype that another one extends: the other's members
+		// override its own.
+		has = slices.DeleteFunc(slices.Clone(has), func(st types.Type) bool {
+			return slices.ContainsFunc(has, func(o types.Type) bool { return o.C != st.C && o.C.IsSubclassOf(st.C) })
+		})
 		if len(has) > 1 {
 			// Only the implementations count when some are abstract.
 			var impl []types.Type
@@ -1744,7 +1913,9 @@ func (c *Checker) superHasImpl(cls *types.ClassSym, name string, call bool) bool
 		// as Set.addAll for AbstractMutableSet, whose implementation is
 		// AbstractCollection's.
 		// An implementation doesn't count where a subtype of its class
-		// redeclares it abstract, as IWithToString does Any's toString.
+		// redeclares it abstract, as IWithToString does Any's toString,
+		// nor an interface's where a class declares it abstract: the
+		// intersection of them is abstract.
 		var impls, abstracts []*types.FunSym
 		cls.Supertypes(func(s *types.ClassSym) bool {
 			for _, f := range c.accessible(nil, s.Methods[name]) {
@@ -1759,7 +1930,7 @@ func (c *Checker) superHasImpl(cls *types.ClassSym, name string, call bool) bool
 		for _, f := range impls {
 			if !slices.ContainsFunc(abstracts, func(a *types.FunSym) bool {
 				return a.Owner != nil && f.Owner != nil && a.Owner != f.Owner && paramKey(a) == paramKey(f) &&
-					(f.Owner.Name == "java/lang/Object" || a.Owner.IsSubclassOf(f.Owner))
+					(f.Owner.Name == "java/lang/Object" || a.Owner.IsSubclassOf(f.Owner) || f.Owner.Interface && !a.Owner.Interface)
 			}) {
 				return true
 			}
@@ -1829,7 +2000,8 @@ func (c *Checker) superImpls(cls *types.ClassSym, ms []*types.FunSym) []*types.F
 		if m.Abstract {
 			cls.Supertypes(func(s *types.ClassSym) bool {
 				for _, f := range s.Methods[m.Name] {
-					if !f.Abstract && paramKey(f) == paramKey(m) {
+					// An interface's doesn't implement a class's.
+					if !f.Abstract && paramKey(f) == paramKey(m) && (m.Owner == nil || f.Owner == nil || m.Owner.Interface || !f.Owner.Interface) {
 						m = f
 						return false
 					}
@@ -2030,7 +2202,7 @@ func (c *Checker) javaProp(s *types.ClassSym, name string) (string, types.Type) 
 // javaProp), and a Java class's getX() and setX(x) implement a var x.
 func (c *Checker) javaPropImplements(cls *types.ClassSym, this types.Type, s *types.ClassSym, name string, t types.Type, ctx []*types.VarSym, mutable bool) bool {
 	if len(ctx) > 0 {
-		return false
+		return c.javaContextAccessors(cls, s, name, ctx, mutable)
 	}
 	want := c.memberSubst(this, s).Apply(t)
 	for sc := cls.Super; sc != nil; sc = sc.Super {
@@ -2043,6 +2215,33 @@ func (c *Checker) javaPropImplements(cls *types.ClassSym, this types.Type, s *ty
 			}
 		}
 		if sc.KotlinName == "" && sc.Java == nil && c.javaAccessorsImplement(this, sc, name, want, mutable) {
+			return true
+		}
+	}
+	return false
+}
+
+// javaContextAccessors reports whether a superclass of cls among the
+// program's Java sources, which inherits s, declares methods with code
+// that implement s's property name with context parameters ctx, a var if
+// mutable: getX and setX that take the context parameters first, as
+// their JVM descriptors have them.
+func (c *Checker) javaContextAccessors(cls, s *types.ClassSym, name string, ctx []*types.VarSym, mutable bool) bool {
+	cd, ok := types.ParamsDesc(ctx)
+	if !ok {
+		return false
+	}
+	cd = cd[:len(cd)-1]
+	for sc := cls.Super; sc != nil; sc = sc.Super {
+		if !c.u.ext.javaSource(sc) || !sc.IsSubclassOf(s) {
+			continue
+		}
+		has := func(acc string, params int) bool {
+			return slices.ContainsFunc(sc.Methods[acc], func(h *types.FunSym) bool {
+				return h.Owner == sc && !h.Static && !h.Abstract && len(h.Params) == params && strings.HasPrefix(jvmDesc(h), cd)
+			})
+		}
+		if has(types.GetterName(name), len(ctx)) && (!mutable || has(types.SetterName(name), len(ctx)+1)) {
 			return true
 		}
 	}
@@ -2105,4 +2304,91 @@ func (c *Checker) overrideRetFits(t, u types.Type) bool {
 	c.stubs = nil
 	defer func() { c.stubs = saved }()
 	return c.subtype(t, u)
+}
+
+// methodsOfAny reports the functions of interface d with a body that are
+// equals, hashCode or toString of Any: a class always inherits Any's,
+// which wins over an interface's.
+func (c *Checker) methodsOfAny(d *syntax.ClassDecl) {
+	for _, m := range d.Members {
+		f, ok := m.(*syntax.FunDecl)
+		if !ok || f.Sym == nil || f.Body == nil && f.ExprBody == nil || f.Recv != nil || len(f.Contexts) > 0 {
+			continue
+		}
+		any := false
+		switch f.Name {
+		case "hashCode", "toString":
+			any = len(f.Sym.Params) == 0
+		case "equals":
+			any = len(f.Sym.Params) == 1 && f.Sym.Params[0].Type.K == types.Any && f.Sym.Params[0].Type.N
+		}
+		if any && !suppresses(f.Annotations, "METHOD_OF_ANY_IMPLEMENTED_IN_INTERFACE") {
+			c.errorf(f.P, "an interface may not implement a method of 'Any'")
+		}
+	}
+}
+
+// overrideVisibility reports an override, of a name, whose visibility v
+// is weaker than, or not comparable with, the visibility ov of a member of
+// owner that it overrides.
+func (c *Checker) overrideVisibility(p syntax.Pos, name string, ov, v syntax.Visibility, owner *types.ClassSym) {
+	switch cmp, ok := compareVisibility(ov, v); {
+	case !ok:
+		c.errorf(p, "cannot change access privilege '%s' for '%s' in '%s'", visibilityName(ov), name, owner.DisplayName())
+	case cmp > 0:
+		c.errorf(p, "cannot weaken access privilege '%s' for '%s' in '%s'", visibilityName(ov), name, owner.DisplayName())
+	}
+}
+
+// compareVisibility compares visibilities a and b: positive if a is the
+// wider, and false if neither is, as protected and internal.
+func compareVisibility(a, b syntax.Visibility) (int, bool) {
+	rank := func(v syntax.Visibility) int {
+		switch v {
+		case syntax.Private:
+			return 0
+		case syntax.Public:
+			return 2
+		}
+		return 1
+	}
+	if a == b {
+		return 0, true
+	}
+	ra, rb := rank(a), rank(b)
+	if ra == rb {
+		return 0, false // protected and internal
+	}
+	return ra - rb, true
+}
+
+// visibilityName returns the keyword of visibility v.
+func visibilityName(v syntax.Visibility) string {
+	switch v {
+	case syntax.Private:
+		return "private"
+	case syntax.Protected:
+		return "protected"
+	case syntax.Internal:
+		return "internal"
+	}
+	return "public"
+}
+
+// inheritsVisibility reports whether decl is an override of the program
+// without a visibility modifier, which has the visibility of the members
+// it overrides.
+func inheritsVisibility(decl any) bool {
+	switch d := decl.(type) {
+	case *syntax.FunDecl:
+		if d.AccessorOf != nil {
+			return inheritsVisibility(d.AccessorOf.Decl)
+		}
+		return d.Override && !d.Explicit
+	case *syntax.PropDecl:
+		return d.Override && !d.Explicit
+	case *syntax.CtorParam:
+		return d.Override && !d.Explicit
+	}
+	return false
 }

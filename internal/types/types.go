@@ -795,6 +795,9 @@ type ClassSym struct {
 	// checks: it lives as long as the check.
 	Source  bool
 	Missing bool // not found or unreadable
+	// FromKotlin is set on a class of the class path that Kotlin
+	// compiled, read from its metadata.
+	FromKotlin bool
 	// MethodAnnotations reads the annotations of a method of the class
 	// file, by its name and descriptor.
 	MethodAnnotations func(name, desc string) (*classfile.MethodAnnotations, error)
@@ -836,6 +839,9 @@ type ClassSym struct {
 	// Subclasses are their direct subclasses.
 	Sealed     bool
 	Subclasses []*ClassSym
+	// JavaSealed is set on a sealed Java class or interface, which no
+	// Kotlin class may extend.
+	JavaSealed bool
 	// Value is set on the program's value classes, whose instances are
 	// the value of their one property, Underlying, wherever they aren't
 	// boxed: see Unboxed.

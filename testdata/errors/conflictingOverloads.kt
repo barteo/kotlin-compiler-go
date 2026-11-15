@@ -91,5 +91,5 @@ class C {
 class `C$D` // ERROR duplicate JVM class name 'C$D'
 
 // A vararg parameter isn't its array's, though the JVM tells them apart by neither.
-fun v(vararg x: Int) {}
+fun v(vararg x: Int) {} // ERROR platform declaration clash
 fun v(x: IntArray) {} // ERROR platform declaration clash

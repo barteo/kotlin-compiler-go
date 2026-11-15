@@ -536,6 +536,7 @@ func (s *Set) Info(name string) (*classfile.Info, error) {
 	if !slices.ContainsFunc(info.Unresolved, func(n string) bool { return n != "" }) {
 		info.Unresolved = nil
 	}
+	info.Sealed = c.Sealed
 	if c.Outer != nil {
 		// As javac writes it: the class's own kind flags too.
 		access := c.Flags | flags&(classfile.AccInterface|classfile.AccAbstract|classfile.AccAnnotation|classfile.AccEnum|classfile.AccFinal)

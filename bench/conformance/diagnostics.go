@@ -145,6 +145,9 @@ type diagConfig struct {
 	// strayErrs is the file to write kc's errors on lines without an
 	// expected diagnostic to, or "".
 	strayErrs string
+	// marks is the file to write each expected diagnostic to, with
+	// whether kc hit its line, or "".
+	marks string
 }
 
 // mark is an expected diagnostic of a test, in a file.
@@ -192,7 +195,36 @@ func runDiagnostics(c *diagConfig, tests []*test, tag string) ([]*result, string
 			return nil, "", err
 		}
 	}
+	if c.marks != "" {
+		if err := writeMarks(c.marks, c.sev, results, dts); err != nil {
+			return nil, "", err
+		}
+	}
 	return results, reportDiagnostics(c, results, dts, tag), nil
+}
+
+// writeMarks writes each expected diagnostic of the tests kc compiled as
+// TSV: the test's path, its category, file:line, the diagnostic's name,
+// its severity, and hit if kc reported an error on its line, or miss.
+func writeMarks(name string, sev map[string]string, rs []*result, dts []*diagTest) error {
+	var sb strings.Builder
+	for i, dt := range dts {
+		if dt == nil || rs[i].category == catUnsupported || rs[i].category == catCrash {
+			continue
+		}
+		for _, m := range dt.marks {
+			hit := "miss"
+			if dt.hit(m) {
+				hit = "hit"
+			}
+			s := sev[m.name]
+			if s == "" {
+				s = "-"
+			}
+			fmt.Fprintf(&sb, "%s\t%s\t%s:%d\t%s\t%s\t%s\n", rs[i].path, rs[i].category, m.file, m.line, m.name, s, hit)
+		}
+	}
+	return os.WriteFile(name, []byte(sb.String()), 0o644)
 }
 
 // writeStray writes kc's errors on lines without an expected diagnostic
@@ -325,8 +357,8 @@ func (c *diagConfig) runOne(i int, t *test) (*result, *diagTest) {
 			r.category, r.keys, r.key = catUnsupported, keys, keys[0]
 			return r, dt
 		}
-		rejected = true
-		dt.kc = cr.diags
+		dt.kc = dropOffBackendErrors(t, cr.diags)
+		rejected = len(dt.kc) > 0
 	}
 	// A code generation error isn't a diagnostic: kc's checker accepted
 	// the test.
@@ -364,11 +396,37 @@ func (c *diagConfig) runOne(i int, t *test) (*result, *diagTest) {
 			r.key = template(r.detail)
 			break
 		}
-		d := cr.diags[0]
+		d := dt.kc[0]
 		r.key = template(d.msg)
 		r.detail = fmt.Sprintf("%s:%d: %s", d.file, d.line, d.msg)
 	}
 	return r, dt
+}
+
+// backendMessages are the beginnings of kc's messages for the JVM
+// backend's errors, which kc reports in its checker.
+var backendMessages = map[string]string{
+	"CONFLICTING_JVM_DECLARATIONS":           "platform declaration clash",
+	"CONFLICTING_INHERITED_JVM_DECLARATIONS": "inherited platform declarations clash",
+	"ACCIDENTAL_OVERRIDE":                    "accidental override",
+}
+
+// dropOffBackendErrors returns kc's errors without those of the JVM
+// backend that the test's DIAGNOSTICS directive switches off. The test
+// infrastructure doesn't report them, though kotlinc does.
+func dropOffBackendErrors(t *test, ds []diag) []diag {
+	var off []string
+	for _, v := range t.values("DIAGNOSTICS") {
+		if p, ok := backendMessages[strings.TrimPrefix(v, "-")]; ok && strings.HasPrefix(v, "-") {
+			off = append(off, p)
+		}
+	}
+	if len(off) == 0 {
+		return ds
+	}
+	return slices.DeleteFunc(slices.Clone(ds), func(d diag) bool {
+		return slices.ContainsFunc(off, func(p string) bool { return strings.HasPrefix(d.msg, p) })
+	})
 }
 
 // hit reports whether kc reported an error on the line of e.

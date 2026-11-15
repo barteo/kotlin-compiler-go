@@ -453,8 +453,10 @@ func (s Subst) applyA(t Type, pos Variance, exact bool) (Type, bool) {
 			return t, false
 		}
 		if a.Raw {
-			if !t.P && !t.N {
-				// An enhanced @NotNull T: its erasure, non-null.
+			if !t.P && !t.N && !jdkParam(t.Param()) {
+				// An enhanced @NotNull T: its erasure, non-null. Not a T of
+				// the JDK, which has no such annotations: there T is K2's
+				// predefined enhancement, and a raw type's erasure Any!.
 				return withFlags(a.T.NonNull(), t), false
 			}
 			return withFlags(a.T, t), false
@@ -497,9 +499,10 @@ func (s Subst) applyA(t Type, pos Variance, exact bool) (Type, bool) {
 				r.A = MakeArgs(args)
 				r = r.Platform()
 			}
-			if t.P && r.N && !r.P {
-				// A Java T!, whose bound is Any!: the value read has a
-				// platform type, as kotlinc's capture of the projection.
+			if (t.P || !t.N && javaParam(t.Param())) && r.N && !r.P {
+				// A Java T!, or an enhanced T of a Java class, whose bound
+				// is Any!: the value read has a platform type, as kotlinc's
+				// capture of the projection. Supplier<*>'s get() is Any!.
 				r = r.Platform()
 			}
 		}
@@ -667,6 +670,26 @@ func (s Subst) applyArgA(a Arg, pos, v Variance, exact bool) (Arg, bool) {
 	}
 	t, approx := s.applyA(a.T, pos, exact)
 	return Arg{V: a.V, T: t}, approx
+}
+
+// javaParam reports whether p is a type parameter of a Java class without
+// bounds, whose bound is Any!.
+func javaParam(p *TypeParamSym) bool {
+	c, ok := p.Owner.(*ClassSym)
+	return ok && len(p.Bounds) == 0 && c.External && c.KotlinName == "" && c.Java == nil && !c.FromKotlin
+}
+
+// jdkParam reports whether p is a type parameter of a JDK class or of
+// one of its methods.
+func jdkParam(p *TypeParamSym) bool {
+	var c *ClassSym
+	switch o := p.Owner.(type) {
+	case *ClassSym:
+		c = o
+	case *FunSym:
+		c = o.Owner
+	}
+	return c != nil && c.External && (strings.HasPrefix(c.Name, "java/") || strings.HasPrefix(c.Name, "javax/"))
 }
 
 // recursiveStar reports whether p has a single class bound that p occurs in.

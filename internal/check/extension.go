@@ -282,7 +282,11 @@ func (c *Checker) overriddenExtProps(cls *types.ClassSym, name string, f *types.
 		}
 		for _, g := range s.ExtProps[name] {
 			ensureFun(g)
-			if r := c.memberSubst(this, g.Owner).Apply(g.Recv); c.sameType(r, f.Recv) {
+			// The type parameters of generic ones correspond by position.
+			if len(g.TypeParams) != len(f.TypeParams) {
+				continue
+			}
+			if r := c.overrideSubst(this, f, g).Apply(g.Recv); c.sameType(r, f.Recv) {
 				out = append(out, g)
 			}
 		}

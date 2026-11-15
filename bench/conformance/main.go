@@ -58,6 +58,7 @@ func main() {
 	filter := flag.String("filter", "", "only the tests whose path, relative to the suite, starts with this")
 	list := flag.String("list", "", "only the tests whose paths, relative to the suite, this file lists, one a line (the first field of a TSV line; # starts a comment)")
 	strayErrs := flag.String("errors", "", "diagnostics mode: the TSV file to write kc's errors on lines without an expected diagnostic to (path, category, file:line, message)")
+	marksOut := flag.String("marks", "", "diagnostics mode: the TSV file to write each expected diagnostic to, with whether kc reported an error on its line (path, category, file:line, name, severity, hit or miss)")
 	sample := flag.Int("sample", 0, "run this many tests, chosen at random among those not skipped")
 	seed := flag.Uint64("seed", 1, "the seed of -sample")
 	jobs := flag.Int("j", runtime.NumCPU(), "tests compiled at a time")
@@ -165,7 +166,7 @@ func main() {
 		p.close()
 		report = reportBox(rs, *tag, *kotlinc != "")
 	case "diagnostics":
-		c := &diagConfig{kotlin: *kotlin, suite: suite, work: *work, jobs: *jobs, keep: *keep, comp: comp, strayErrs: *strayErrs}
+		c := &diagConfig{kotlin: *kotlin, suite: suite, work: *work, jobs: *jobs, keep: *keep, comp: comp, strayErrs: *strayErrs, marks: *marksOut}
 		if rs, report, err = runDiagnostics(c, tests, *tag); err != nil {
 			log.Fatal(err)
 		}

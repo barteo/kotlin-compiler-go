@@ -237,6 +237,7 @@ func (t *classTable) load(cls *types.ClassSym) {
 	}
 	cls.StabilityInferred = info.StabilityInferred
 	cls.Deprecated = classFileDeprecation(info.Deprecated)
+	cls.JavaSealed = info.Sealed
 	for _, a := range slices.Concat(info.Invisible, info.Visible) {
 		if strings.HasPrefix(a, "L") && strings.HasSuffix(a, ";") {
 			if c := t.class(a[1 : len(a)-1]); c != nil {
@@ -283,6 +284,7 @@ func (t *classTable) load(cls *types.ClassSym) {
 	}
 	if t.kotlin && info.Kotlin != nil && info.Kotlin.K == kmeta.KindClassFile {
 		if kc, err := kmeta.ReadClass(info.Kotlin); err == nil {
+			cls.FromKotlin = true
 			t.loadKotlin(cls, info, kc)
 			return
 		}
@@ -375,7 +377,9 @@ func (t *classTable) load(cls *types.ClassSym) {
 			// javac leaves out synthetic parameters, which come first.
 			off := len(f.Params) - len(m.ParamAnnotations)
 			for i, as := range m.ParamAnnotations {
-				if off+i >= 0 {
+				// A declaration annotation on a vararg is the array's,
+				// not its elements', which the parameter's type is.
+				if off+i >= 0 && !(varargs && off+i == len(f.Params)-1) {
 					f.Params[off+i].Type = enhance(as, f.Params[off+i].Type)
 				}
 			}
@@ -423,6 +427,7 @@ func (t *classTable) load(cls *types.ClassSym) {
 		}
 	}
 	mapCollectionMembers(cls)
+	purelyImplement(cls)
 	if cls.Name == "java/lang/Number" {
 		// Kotlin's Number converts with toInt() and the others, its
 		// intValue() methods on the JVM. They are all abstract, though
@@ -1813,6 +1818,18 @@ func (c *Checker) javaMethods(cls *types.ClassSym, name string) []*types.FunSym 
 			return f.Abstract && o != nil && o.External && o.KotlinName == "" && o.Java == nil && kotlinAccessorImplements(cls, o, f)
 		})
 	}
+	if len(ms) > 0 && slices.ContainsFunc(numberConversions, func(conv [2]string) bool { return conv[1] == name }) {
+		// A Java method of Number, or of a subclass, with the Java name of
+		// one of its conversions is that conversion to Kotlin: n.intValue()
+		// is unresolved, n.toInt() not. So is one it overrides, from an
+		// interface too.
+		if number := c.u.ext.class("java/lang/Number"); number != nil && cls.IsSubclassOf(number) {
+			ms = slices.DeleteFunc(slices.Clone(ms), func(f *types.FunSym) bool {
+				o := f.Owner
+				return len(f.Params) == 0 && !f.Static && o != nil && o.External && !o.FromKotlin
+			})
+		}
+	}
 	ms = c.intersectionDefaults(cls, ms)
 	cache.methods.Store(k, ms)
 	return ms
@@ -2056,13 +2073,25 @@ func (c *Checker) dedupe(cands []callee) []callee {
 		}
 		return false
 	}
+	// A Java method whose boxed parameter an annotation makes non-null
+	// takes the primitive, as Kotlin sees it: B.foo(@NotNull Integer)
+	// overrides A.foo(int), both foo(Int) (KT-9182).
+	boxed := func(cl callee) bool {
+		if cl.f.Desc == "" || cl.f.Owner == nil || !cl.f.Owner.External {
+			return false
+		}
+		d, ok := types.ParamsDesc(cl.f.Params)
+		return ok && !strings.HasPrefix(cl.f.Desc, d)
+	}
 	any := false
 	for _, cl := range cands {
-		any = any || generic(cl)
+		any = any || generic(cl) || boxed(cl)
 	}
 	if !any {
 		return cands // erased descriptors already tell them apart
 	}
+	generic0 := generic
+	generic = func(cl callee) bool { return generic0(cl) || boxed(cl) }
 	out := cands[:0:0]
 outer:
 	for _, cl := range cands {
@@ -2431,7 +2460,15 @@ func (c *Checker) javaCall(x *syntax.Call, fn *syntax.Member, rt types.Type, wan
 	// Members that don't apply give way to extensions, as in Kotlin:
 	// Taggable's tag(type) to the extension tag<T>(), BigDecimal's
 	// plus(MathContext) to the operator BigDecimal.plus(BigDecimal).
-	if exts := c.extCalleesFor(fn.Name, rt, x); len(exts) > 0 {
+	exts := c.extCalleesFor(fn.Name, rt, x)
+	if slices.ContainsFunc(exts, func(cl callee) bool { return platformDependentExt(cl.f) }) {
+		// The member hides them, and the others don't take the arguments.
+		exts = slices.DeleteFunc(exts, func(cl callee) bool {
+			_, ok := mapArgs(cl.f, x)
+			return !ok || platformDependentExt(cl.f) && slices.ContainsFunc(ms, func(f *types.FunSym) bool { return len(f.Params) == len(cl.f.Params) })
+		})
+	}
+	if len(exts) > 0 {
 		fit := false
 		for _, f := range ms {
 			fit = fit || c.mayTake(f, x)
@@ -2466,6 +2503,13 @@ func (c *Checker) javaCall(x *syntax.Call, fn *syntax.Member, rt types.Type, wan
 		}
 	}
 	return c.mapGet(x, fn, cls, c.resolve(x, cands, want, sink))
+}
+
+// platformDependentExt reports whether f is one of the standard library's
+// extensions marked @PlatformDependent, Map's getOrDefault(key, value) and
+// MutableMap's remove(key, value): on the JVM, the member hides them.
+func platformDependentExt(f *types.FunSym) bool {
+	return f.Ext && strings.HasPrefix(f.Facade, "kotlin/collections/") && len(f.Params) == 2 && (f.Name == "remove" || f.Name == "getOrDefault")
 }
 
 // mapGet returns the type t of a call x of a member of cls, or t? for

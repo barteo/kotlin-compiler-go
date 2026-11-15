@@ -1004,6 +1004,7 @@ func (w *optWalker) call(n *syntax.Call) {
 			p = m.P
 		}
 	}
+	w.javaPrivateKotlin(n, p)
 	if n.Ctor != nil {
 		w.require(p, w.o.classMarkers(n.Ctor))
 		level := classDeprecation(n.Ctor)
@@ -1035,6 +1036,9 @@ func (w *optWalker) call(n *syntax.Call) {
 		w.deprecatedUse(p, "constructor", w.ctorDeprecation(n.Sym))
 		return
 	}
+	if w.c.deprecatedListSort(n.Sym) && !superCall(n) && !w.deprecated() && !w.suppressed("DEPRECATION_ERROR") {
+		w.errorf(p, "'sort' is deprecated with level ERROR: use sortWith(comparator) instead")
+	}
 	w.fun1(n.Sym, p, n.T)
 	if _, ok := n.Fun.(*syntax.Ident); ok && n.Sym.Owner != nil && !n.Sym.Owner.External {
 		// A member called on an implicit receiver, which is the class's
@@ -1047,6 +1051,68 @@ func (w *optWalker) call(n *syntax.Call) {
 			w.require(p, w.o.classMarkers(n.Sym.Owner))
 		}
 	}
+}
+
+// javaPrivateKotlin reports call n, at p, of a constructor or method of
+// a Java class that extends a private Kotlin class of the program, or on
+// such a class's instance: the JVM doesn't let code outside the private
+// class's file use it.
+func (w *optWalker) javaPrivateKotlin(n *syntax.Call, p syntax.Pos) {
+	var cls *types.ClassSym
+	switch {
+	case n.Ctor != nil:
+		cls = n.Ctor
+	case n.Sym != nil && !n.Invoke:
+		cls = n.Sym.Owner
+	}
+	if !w.c.extendsPrivateKotlin(cls) {
+		if m, ok := n.Fun.(*syntax.Member); !ok || n.Sym == nil || n.Sym.Owner == nil || !w.c.extendsPrivateKotlin(m.X.Type().NonNull().C) {
+			return
+		}
+	}
+	w.errorf(p, "this Java class extends a private Kotlin class, which can't be used here")
+}
+
+// deprecatedListSort reports whether f is java.util.List's
+// sort(Comparator), an override of it, or the standard library's
+// MutableList<T>.sort(Comparator), which Kotlin deprecates with level
+// ERROR for sortWith.
+func (c *Checker) deprecatedListSort(f *types.FunSym) bool {
+	if f.Name != "sort" || len(f.Params) != 1 || f.Static {
+		return false
+	}
+	t := f.Params[0].Type.NonNull()
+	comparator := t.K == types.Class && t.C.Name == "java/util/Comparator"
+	if f.Ext {
+		// And its sort(comparison: (T, T) -> Int).
+		r := f.Recv.NonNull()
+		return f.Owner == nil && r.K == types.Class && r.C.Name == "java/util/List" && (comparator || t.IsFunc())
+	}
+	return comparator && f.Owner != nil && c.isSubclassOf(f.Owner, "java/util/List")
+}
+
+// superCall reports whether n calls a method on super.
+func superCall(n *syntax.Call) bool {
+	m, ok := n.Fun.(*syntax.Member)
+	if !ok {
+		return false
+	}
+	_, ok = m.X.(*syntax.Super)
+	return ok
+}
+
+// extendsPrivateKotlin reports whether cls is a class of the program's
+// Java sources that extends a private Kotlin class of the program.
+func (c *Checker) extendsPrivateKotlin(cls *types.ClassSym) bool {
+	if cls == nil || !c.u.ext.javaSource(cls) {
+		return false
+	}
+	for s := cls.Super; s != nil; s = s.Super {
+		if d, ok := s.Decl.(*syntax.ClassDecl); ok && !s.External && d.Visibility == syntax.Private {
+			return true
+		}
+	}
+	return false
 }
 
 // fun1 checks a call at p of function f, with result type t.

@@ -30,6 +30,10 @@ key and detail. Flags after the mode go to the harness:
 - `-errors FILE` (diagnostics) writes `kc`'s errors on lines where the
   markup expects no diagnostic to a TSV file: the test, its category, the
   file and line, and the message.
+- `-marks FILE` (diagnostics) writes each diagnostic the markup expects
+  to a TSV file: the test, its category, the file and line, the
+  diagnostic and its severity, and `hit` if `kc` reported an error on
+  its line or `miss`.
 - `-baseline bench/results/box.tsv -o "" -tsv ""` compares a run with the
   committed one, printing the tests that stopped passing and those that
   started, and fails if any stopped. The baseline is read before the run,
@@ -154,7 +158,7 @@ errors per file, it also checks each expected error for one of `kc`'s on
 its line, and lists `kc`'s errors on lines that expect none and the
 warnings the tests expect (`kc` reports none).
 
-Three things differ from the test infrastructure:
+Four things differ from the test infrastructure:
 
 - **The standard library.** Without `WITH_STDLIB`, the infrastructure
   gives `kotlinc` an unpublished minimal library. Both compilers get the
@@ -173,6 +177,12 @@ Three things differ from the test infrastructure:
   mode, strict equality, `-jvm-default` modes) are skipped, as are tests
   with `LANGUAGE` features (but those on by default in Kotlin 2.4),
   multiplatform modules or `IGNORE_FIR_DIAGNOSTICS`.
+- **Switched-off backend errors.** A test that switches off
+  `CONFLICTING_JVM_DECLARATIONS`, `CONFLICTING_INHERITED_JVM_DECLARATIONS`
+  or `ACCIDENTAL_OVERRIDE` with the `DIAGNOSTICS` directive still runs
+  to the backend, which `kotlinc` outside the infrastructure stops on.
+  `kc` reports these errors in its checker, and the harness drops them
+  (by their messages, which begin as the backend's do) from such tests.
 
 Tests with Java sources run: `kc` gets a module's `.java` files with its
 `.kt` files and reads their declarations, as `kotlinc` does. The Java
@@ -205,30 +215,27 @@ Kotlin 2.4.21's tests on `kc`:
 | Diagnostics tests | Tests | Share of run |
 |:---|---:|---:|
 | run (of 10,827) | 8,515 | |
-| rejects invalid | 4,001 | 47.0% |
-| accepts valid | 3,982 | 46.8% |
-| accepts invalid | 383 | 4.5% |
-| rejects valid | 131 | 1.5% |
+| rejects invalid | 4,098 | 48.1% |
+| accepts valid | 3,995 | 46.9% |
+| accepts invalid | 286 | 3.4% |
+| rejects valid | 118 | 1.4% |
 | parse/unsupported | 16 | 0.2% |
 | crash | 1 | |
 | harness error (`javac`) | 1 | |
 
 `kc` agrees with `kotlinc` on 93% of the diagnostics tests, and reports
-14,895 of the 21,506 expected errors (69%) on their lines. Tests with
-Java sources, which earlier runs skipped, add 1,229 tests to the run,
-and 185 of the 383 that *accept invalid* code. The reports break the failures down; the
-largest groups are:
+15,793 of the 21,506 expected errors (73%) on their lines. Tests with
+Java sources, which earlier runs skipped, add 1,223 tests to the run,
+and 124 of the 286 that *accept invalid* code. The reports break the
+failures down; the largest groups are:
 
 - **Silent miscompilation**: none. No box test that `kc` compiles
   gives a wrong result, throws, or fails to verify or link.
-- **Accepts invalid**: argument type mismatches
-  (`ARGUMENT_TYPE_MISMATCH` 43), unresolved names
-  (`UNRESOLVED_REFERENCE` 37), overload ambiguities
-  (`OVERLOAD_RESOLUTION_AMBIGUITY` 24), missing dependency classes
-  (`MISSING_DEPENDENCY_CLASS` 16), and the nullability that Java
-  sources' annotations give (`NULL_FOR_NONNULL_TYPE` 15, `UNSAFE_CALL`
-  12): `kc` gives Java declarations platform types, and doesn't read
-  their `@NotNull` and `@Nullable`.
+- **Accepts invalid**, by the tests that expect each error: unresolved
+  names (`UNRESOLVED_REFERENCE` 35), overload ambiguities
+  (`OVERLOAD_RESOLUTION_AMBIGUITY` 22), argument type mismatches
+  (`ARGUMENT_TYPE_MISMATCH` 18) and missing dependency classes
+  (`MISSING_DEPENDENCY_CLASS` 16).
 - **Rejects valid**, by `kc`'s first error: type mismatches (50),
   inference failures (32), unresolved names, imports and labels (30),
   and ambiguous calls and assignment operators (10). No box test is

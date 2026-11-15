@@ -1,6 +1,10 @@
 package check
 
-import "github.com/barteo/kotlin-compiler-go/internal/types"
+import (
+	"slices"
+
+	"github.com/barteo/kotlin-compiler-go/internal/types"
+)
 
 // Qualifiers of K2's predefined enhancements of JDK members
 // (predefinedEnhancementInfo.kt), which kotlinc applies whatever the
@@ -25,19 +29,84 @@ type jdkMember struct {
 var (
 	qNP  = []jdkQual{jdkNotPlatform}
 	qNPN = []jdkQual{jdkNotPlatform, jdkNotNullable}
+	qN   = []jdkQual{jdkNullable}
+	qNN  = []jdkQual{jdkNotNullable}
+	qNP2 = []jdkQual{jdkNotPlatform, jdkNotPlatform}
+	qNP3 = []jdkQual{jdkNotPlatform, jdkNotPlatform, jdkNotPlatform}
+	qNP4 = []jdkQual{jdkNotPlatform, jdkNotPlatform, jdkNotPlatform, jdkNotPlatform}
 )
 
-// jdkEnhancements are the predefined enhancements kc applies, by class,
-// name and parameter count. Of K2's table, these are the members whose
-// types Kotlin doesn't already map: Optional's.
+// jdkEnhancements are K2's predefined enhancements of JDK members, by
+// class, name and parameter count, which tell its entries apart. Those
+// that K2 reports as errors only from a language version on, List's
+// addFirst() and the others, are errors here.
 var jdkEnhancements = map[string]map[string]map[int]jdkMember{
+	"java/util/Iterator": {
+		"forEachRemaining": {1: {params: [][]jdkQual{qNP2}}},
+	},
+	"java/lang/Iterable": {
+		"spliterator": {0: {ret: qNP2}},
+	},
+	"java/util/Collection": {
+		"removeIf":       {1: {params: [][]jdkQual{qNP2}}},
+		"stream":         {0: {ret: qNP2}},
+		"parallelStream": {0: {ret: qNP2}},
+	},
+	"java/util/List": {
+		"replaceAll":  {1: {params: [][]jdkQual{qNP2}}},
+		"addFirst":    {1: {params: [][]jdkQual{qNP}}},
+		"addLast":     {1: {params: [][]jdkQual{qNP}}},
+		"removeFirst": {0: {ret: qNP}},
+		"removeLast":  {0: {ret: qNP}},
+	},
+	"java/util/LinkedList": {
+		"addFirst":    {1: {params: [][]jdkQual{qNP}}},
+		"addLast":     {1: {params: [][]jdkQual{qNP}}},
+		"removeFirst": {0: {ret: qNP}},
+		"removeLast":  {0: {ret: qNP}},
+	},
+	"java/util/LinkedHashSet": {
+		"addFirst":    {1: {params: [][]jdkQual{qNP}}},
+		"addLast":     {1: {params: [][]jdkQual{qNP}}},
+		"removeFirst": {0: {ret: qNP}},
+		"removeLast":  {0: {ret: qNP}},
+		"getFirst":    {0: {ret: qNP}},
+		"getLast":     {0: {ret: qNP}},
+	},
+	"java/util/Map": {
+		"forEach":     {1: {params: [][]jdkQual{qNP3}}},
+		"putIfAbsent": {2: {ret: qN, params: [][]jdkQual{qNP, qNP}}},
+		"replace": {
+			2: {ret: qN, params: [][]jdkQual{qNP, qNP}},
+			3: {params: [][]jdkQual{qNP, qNP, qNP}},
+		},
+		"replaceAll":       {1: {params: [][]jdkQual{qNP4}}},
+		"compute":          {2: {ret: qN, params: [][]jdkQual{qNP, {jdkNotPlatform, jdkNotPlatform, jdkNullable, jdkNullable}}}},
+		"computeIfAbsent":  {2: {ret: qNP, params: [][]jdkQual{qNP, qNP3}}},
+		"computeIfPresent": {2: {ret: qN, params: [][]jdkQual{qNP, {jdkNotPlatform, jdkNotPlatform, jdkNotNullable, jdkNullable}}}},
+		"merge":            {3: {ret: qN, params: [][]jdkQual{qNP, qNN, {jdkNotPlatform, jdkNotNullable, jdkNotNullable, jdkNullable}}}},
+	},
+	"java/util/LinkedHashMap": {
+		"putFirst": {2: {ret: qN, params: [][]jdkQual{qNP, qNP}}},
+		"putLast":  {2: {ret: qN, params: [][]jdkQual{qNP, qNP}}},
+	},
 	"java/util/Optional": {
 		"empty":      {0: {ret: qNPN}},
-		"of":         {1: {ret: qNPN, params: [][]jdkQual{{jdkNotNullable}}}},
-		"ofNullable": {1: {ret: qNPN, params: [][]jdkQual{{jdkNullable}}}},
-		"get":        {0: {ret: []jdkQual{jdkNotNullable}}},
+		"of":         {1: {ret: qNPN, params: [][]jdkQual{qNN}}},
+		"ofNullable": {1: {ret: qNPN, params: [][]jdkQual{qN}}},
+		"get":        {0: {ret: qNN}},
 		"ifPresent":  {1: {params: [][]jdkQual{qNPN}}},
 	},
+	"java/lang/ref/Reference": {
+		"get": {0: {ret: qN}},
+	},
+	"java/util/function/Predicate":   {"test": {1: {params: [][]jdkQual{qNP}}}},
+	"java/util/function/BiPredicate": {"test": {2: {params: [][]jdkQual{qNP, qNP}}}},
+	"java/util/function/Consumer":    {"accept": {1: {params: [][]jdkQual{qNP}}}},
+	"java/util/function/BiConsumer":  {"accept": {2: {params: [][]jdkQual{qNP, qNP}}}},
+	"java/util/function/Function":    {"apply": {1: {ret: qNP, params: [][]jdkQual{qNP}}}},
+	"java/util/function/BiFunction":  {"apply": {2: {ret: qNP, params: [][]jdkQual{qNP, qNP}}}},
+	"java/util/function/Supplier":    {"get": {0: {ret: qNP}}},
 }
 
 // enhanceJDK applies the predefined enhancement of f, a member of the
@@ -219,6 +288,98 @@ func mapCollectionMembers(cls *types.ClassSym) {
 		retype("remove", "(Ljava/lang/Object;)Ljava/lang/Object;", k)
 		if v, ok := arg('m', 1); ok {
 			retype("containsValue", "(Ljava/lang/Object;)Z", v)
+			retype("remove", "(Ljava/lang/Object;Ljava/lang/Object;)Z", k, v)
 		}
 	}
+}
+
+// pureImplementations are the JDK classes that K2 sees as purely
+// implementing a Kotlin collection type (FakePureImplementationsProvider),
+// by the Java interface it is on the JVM.
+var pureImplementations = map[string]string{
+	"java/util/ArrayList": "java/util/List", "java/util/LinkedList": "java/util/List",
+	"java/util/HashSet": "java/util/Set", "java/util/TreeSet": "java/util/Set", "java/util/LinkedHashSet": "java/util/Set",
+	"java/util/HashMap": "java/util/Map", "java/util/TreeMap": "java/util/Map", "java/util/LinkedHashMap": "java/util/Map",
+	"java/util/concurrent/ConcurrentHashMap": "java/util/Map", "java/util/concurrent/ConcurrentSkipListMap": "java/util/Map",
+}
+
+// purelyImplement makes the members of cls, one of pureImplementations,
+// that override its Kotlin collection type's take its type parameters as
+// they are, not as platform types, as the Kotlin type's members do:
+// ArrayList<String>'s add(E) takes a String, not a String!. Members only
+// Java declares, as TreeMap's ceilingKey(K), keep platform types, and so
+// do results, of which Kotlin's are sometimes nullable: Map's get.
+func purelyImplement(cls *types.ClassSym) {
+	iface, ok := pureImplementations[cls.Name]
+	if !ok {
+		return
+	}
+	var ifaces []*types.ClassSym
+	seen := map[*types.ClassSym]bool{}
+	var walk func(c *types.ClassSym)
+	walk = func(c *types.ClassSym) {
+		if c == nil || seen[c] {
+			return
+		}
+		seen[c] = true
+		if c != cls {
+			c.Ensure() // not cls, whose members are being loaded
+		}
+		if c.Name == iface || c.Name == "java/util/Collection" && iface != "java/util/Map" {
+			ifaces = append(ifaces, c)
+		}
+		for _, t := range c.Supers {
+			if t.K == types.Class {
+				walk(t.C)
+			}
+		}
+		if len(c.Supers) == 0 {
+			walk(c.Super)
+			for _, i := range c.Interfaces {
+				walk(i)
+			}
+		}
+	}
+	walk(cls)
+	own := map[*types.TypeParamSym]bool{}
+	for _, p := range cls.TypeParams {
+		own[p] = true
+	}
+	for name, fs := range cls.Methods {
+		for i, f := range fs {
+			if f.Static || !slices.ContainsFunc(ifaces, func(c *types.ClassSym) bool {
+				return slices.ContainsFunc(c.Methods[name], func(g *types.FunSym) bool { return !g.Static && len(g.Params) == len(f.Params) })
+			}) {
+				continue
+			}
+			g := *f
+			g.Params = make([]*types.VarSym, len(f.Params))
+			for j, p := range f.Params {
+				q := *p
+				q.Type = notPlatformParams(p.Type, own)
+				g.Params[j] = &q
+			}
+			fs[i] = &g
+		}
+	}
+}
+
+// notPlatformParams returns t with the occurrences of the type parameters
+// ps, in it and its arguments, not platform types.
+func notPlatformParams(t types.Type, ps map[*types.TypeParamSym]bool) types.Type {
+	if t.IsParam() && ps[t.Param()] && t.P {
+		t.N, t.P = false, false
+		return t
+	}
+	if t.K != types.Class || t.A == nil {
+		return t
+	}
+	args := slices.Clone(t.A.List)
+	for i, a := range args {
+		if a.V != types.Star {
+			args[i].T = notPlatformParams(a.T, ps)
+		}
+	}
+	t.A = types.MakeArgs(args)
+	return t
 }
