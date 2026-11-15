@@ -348,10 +348,6 @@ yet done. [Design](design.md) describes how `kc` compiles it.
 - An object expression in the program's inline function is one class for
   all copies, using a crossinline lambda as a function object; `kotlinc`
   copies the class per call.
-- In the method of a function with a reified type parameter, a library
-  object that uses it (`filterIsInstance`'s `{ it is R }`) is copied
-  erased, so code in another module that copies the method filters
-  nothing.
 - A library interface's inline member is called as an ordinary method.
   In the program, open and interface inline members are errors, even
   with `@Suppress("DECLARATION_CANT_BE_INLINED")`, which `kotlinc`
