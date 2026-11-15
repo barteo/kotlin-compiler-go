@@ -230,6 +230,12 @@ Guards: `tests/qualifiedExpression/PackageVsClass*.kt`, `tests/imports/PackageVs
 
 Risk: real code with a class and a package of one name; this is K2's rule, so it is correct, and the box suite will show it.
 
+**Done.** All 5 flipped, with 0 regressions in diagnostics and box. Notes on what landed:
+- `classRef` resolves a head name that is a classifier in scope through that classifier first. `packageRef` needed no change.
+- A classifier found only by a default import (`java.lang.Package`) still gives way to a root package of the same name. Box's `innerNested/nestedInPackage.kt` (`Package.Outer.Nested()`) needs this.
+- `$` names are rejected in `classRef` (`binaryNestedName`) when the part before `$` is a class on the class path.
+- Unit test: `testdata/errors/qualifierForms/`.
+
 ### 2. Java static scopes, qualified (A: 8 AI). Medium.
 
 Add `javaStaticScope(cls, name)`, modeled on `JavaClassStaticUseSiteScope`:

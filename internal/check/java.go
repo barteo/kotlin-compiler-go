@@ -1651,14 +1651,13 @@ func (c *Checker) classRef(x syntax.Expr) *types.ClassSym {
 			path += "/" + parts[i]
 			names = append(names, parts[i])
 		}
-		if cls := c.dottedClass(names); cls != nil {
-			return cls
-		}
-		if a := c.lookupAlias(strings.Join(names, ".")); a != nil {
-			return c.aliasClass(a) // a.b.Alias, Outer.Alias
-		}
-		if first := c.findClass(id.Name); first != nil && first.External {
-			// A nested class of a class on the class path: Thread.State.
+		if first := c.findClass(id.Name); first != nil && !(c.defaultImported(id.Name, first) && c.u.isPackage(id.Name)) {
+			// As in K2, a first name that is a classifier in scope names
+			// it, not a package: in a package with a class a, a.b is a's
+			// nested b or nothing, even next to a package a with a class
+			// b. Thread.State, Outer.Nested. A root package still beats a
+			// default import: Package.Outer in a package Package isn't
+			// java.lang.Package's.
 			cls := first
 			for i := len(parts) - 1; i >= 0 && cls != nil; i-- {
 				cls = c.nestedOf(cls, parts[i])
@@ -1666,8 +1665,21 @@ func (c *Checker) classRef(x syntax.Expr) *types.ClassSym {
 			if cls != nil {
 				return cls
 			}
+			if a := c.lookupAlias(strings.Join(names, ".")); a != nil {
+				return c.aliasClass(a) // Outer.Alias
+			}
+			return nil
+		}
+		if cls := c.dottedClass(names); cls != nil {
+			return cls
+		}
+		if a := c.lookupAlias(strings.Join(names, ".")); a != nil {
+			return c.aliasClass(a) // a.b.Alias
 		}
 		if c.u.isPackage(strings.ReplaceAll(path, "/", ".")) {
+			return nil
+		}
+		if c.binaryNestedName(names) {
 			return nil
 		}
 		if cls := c.u.ext.class(path); cls != nil {
@@ -1688,6 +1700,63 @@ func (c *Checker) classRef(x syntax.Expr) *types.ClassSym {
 		}
 	}
 	return nil
+}
+
+// defaultImported reports whether a simple name finds cls, a class on the
+// class path, by a default import only: java.lang.Package, kotlin.Pair.
+func (c *Checker) defaultImported(name string, cls *types.ClassSym) bool {
+	if !cls.External || cls.Outer != nil {
+		return false
+	}
+	if _, ok := c.imports[name]; ok {
+		return false
+	}
+	pkg, _, _ := strings.Cut(cls.Name, "$")
+	if i := strings.LastIndex(pkg, "/"); i >= 0 {
+		pkg = pkg[:i]
+	} else {
+		return false
+	}
+	if pkg == "java/lang" {
+		return true
+	}
+	for _, d := range defaultPackages {
+		if strings.ReplaceAll(d, ".", "/") == pkg {
+			return true
+		}
+	}
+	return false
+}
+
+// binaryNestedName reports whether a qualified name spells a nested class
+// of the class path by its binary name, with a '$' after its outer class's
+// name: test.`Outer$Nested`, which Kotlin doesn't resolve.
+func (c *Checker) binaryNestedName(names []string) bool {
+	for i := 1; i < len(names); i++ {
+		outer, _, ok := strings.Cut(names[i], "$")
+		if ok && outer != "" && c.u.ext.class(strings.Join(names[:i], "/")+"/"+outer) != nil {
+			return true
+		}
+	}
+	return false
+}
+
+// qualifierValue reports, as K2 does, a class without a companion object
+// or a package as the receiver of a safe call x?.y, which is a value:
+// Test?.FOO for a Java class Test, or foo?.s for a package foo.
+func (c *Checker) qualifierValue(x syntax.Expr) bool {
+	if cls := c.classRef(x); cls != nil {
+		if objectOf(cls) != nil {
+			return false
+		}
+		c.errorf(x.Pos(), "classifier '%s' does not have a companion object, so it cannot be used as an expression", cls.DisplayName())
+		return true
+	}
+	if name := c.qualifiedName(x); name != "" && c.u.isPackage(name) {
+		c.errorf(x.Pos(), "expression expected, but a package name found")
+		return true
+	}
+	return false
 }
 
 // jdkPackage reports whether class name is in one of the JDK's packages,

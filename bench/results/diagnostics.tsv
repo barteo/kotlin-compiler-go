@@ -108,7 +108,7 @@ tests/ReturnInFunctionWithoutBody.kt	rejects invalid	on an expected line
 tests/SafeCallInvoke.kt	accepts valid		
 tests/SafeCallNonNullReceiver2.kt	accepts valid		
 tests/SafeCallNonNullReceiverReturnNull.kt	rejects invalid	on an expected line	
-tests/SafeCallOnFakePackage.kt	accepts invalid	NO_COMPANION_OBJECT; UNRESOLVED_REFERENCE; EXPRESSION_EXPECTED_PACKAGE_FOUND	test.kt:2: NO_COMPANION_OBJECT
+tests/SafeCallOnFakePackage.kt	rejects invalid	on an expected line	
 tests/SafeCallOnSuperReceiver.kt	accepts invalid	UNEXPECTED_SAFE_CALL	SafeCallOnSuperReceiver.kt:10: UNEXPECTED_SAFE_CALL
 tests/SafeCallUnknownType.kt	rejects invalid	on an expected line	
 tests/Serializable.kt	rejects invalid	on an expected line	
@@ -5639,7 +5639,7 @@ tests/javac/qualifiedExpression/GenericClassVsPackage.kt	rejects invalid	on an e
 tests/javac/qualifiedExpression/PackageVsClass.kt	rejects invalid	elsewhere	
 tests/javac/qualifiedExpression/PackageVsClass2.kt	parse/unsupported	unsupported types in signature	
 tests/javac/qualifiedExpression/PackageVsRootClass.kt	accepts valid		
-tests/javac/qualifiedExpression/visibleClassVsQualifiedClass.kt	accepts invalid	UNRESOLVED_REFERENCE	c1.kt:6: UNRESOLVED_REFERENCE
+tests/javac/qualifiedExpression/visibleClassVsQualifiedClass.kt	rejects invalid	on an expected line	
 tests/javac/typeParameters/Clash.kt	accepts invalid	MISSING_DEPENDENCY_CLASS	test.kt:3: MISSING_DEPENDENCY_CLASS
 tests/javac/typeParameters/ComplexCase.kt	accepts valid		
 tests/javac/typeParameters/InheritedInnerAndTypeParameterWithSameNames.kt	accepts valid		
@@ -5649,7 +5649,7 @@ tests/javac/typeParameters/SeveralInnersWithTypeParameters.kt	accepts valid
 tests/javac/typeParameters/TypeParametersInInnerAndOuterWithSameNames.kt	accepts valid		
 tests/jvm/classpath/classFromJdkInLibrary.kt	codegen error	harness error	javac: exit status 1 Picked up JAVA_TOOL_OPTIONS: -Djavax.net.ssl.trustStore=/etc/ssl/certs/java/cacerts -Djavax.net.ssl.trustStoreType=JKS -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=35737 -Dhttp.nonProxyHosts=localhost|127.0.0.1|::1|127.*|0.*|::|169.254.*|api.anthropic.com|api-staging.anthropic.com|api-pr-preview.anthropic.com|mcp-proxy.anthropic.com|mcp-proxy-staging.anthropic.com|registry.npmjs.org|jsr.io|npm.jsr.io|pypi.org|files.pythonhosted.org|index.crates.io|proxy.golang.org|host.docker.internal|10.*|172.16.*|172.17.*|172.18.*|172.19.*|172.20.*|172.21.*|172.22.*|172.23.*|172.24.*|172.25.*|172.26.*|172.27.*|172.28.*|172.29.*|172.30.*|172.31.*|192.168.*|100.64.0.0/10|*.svc.cluster.local|*.svc.cluster.local -Djdk.http.auth.tunneling.disabledSchemes= -Djdk.http.auth.proxying.disabledSchemes= /tmp/claude-0/-workspace-kotlin-compiler-go/8d5a602e-09c7-5a2c-a99c-472011d97f02/scratchpad/kc-conformance/5648/m0/src/java/util/Date.java:1: error: package exists in another module: java.base package java.util; ^ 1 error 
 tests/jvm/classpath/dependencyOnItself.kt	accepts valid		
-tests/jvm/classpath/prohibitNestedClassesByDollarName.kt	accepts invalid	UNRESOLVED_REFERENCE	main.kt:6: UNRESOLVED_REFERENCE
+tests/jvm/classpath/prohibitNestedClassesByDollarName.kt	rejects invalid	on an expected line	
 tests/jvm/classpath/sameLibraryTwiceInClasspath.kt	accepts valid		
 tests/jvm/contextParameters/extensionAndContextParameters.kt	rejects invalid	on an expected line	
 tests/jvm/contextParameters/intersectionContextValueJava.kt	rejects invalid	on an expected line	
@@ -7334,14 +7334,14 @@ tests/qualifiedExpression/GenericClassVsPackage.kt	rejects invalid	on an expecte
 tests/qualifiedExpression/GenericClassVsPackage_topLevel.kt	rejects invalid	on an expected line	
 tests/qualifiedExpression/JavaQualifier.kt	accepts valid		
 tests/qualifiedExpression/PackageVsClass.kt	rejects invalid	on an expected line	
-tests/qualifiedExpression/PackageVsClass2.kt	accepts invalid	UNRESOLVED_REFERENCE	b.kt:5: UNRESOLVED_REFERENCE
+tests/qualifiedExpression/PackageVsClass2.kt	rejects invalid	on an expected line	
 tests/qualifiedExpression/PackageVsClass_differentOrder.kt	rejects invalid	on an expected line	
 tests/qualifiedExpression/PackageVsRootClass.kt	accepts valid		
 tests/qualifiedExpression/TypeWithError.kt	rejects invalid	on an expected line	
 tests/qualifiedExpression/calleeExpressionAsCallExpression.kt	rejects invalid	on an expected line	
 tests/qualifiedExpression/nullCalleeExpression.kt	rejects invalid	on an expected line	
 tests/qualifiedExpression/variableVsImportedClassifier.kt	rejects invalid	on an expected line	
-tests/qualifiedExpression/visibleClassVsQualifiedClass.kt	rejects invalid	elsewhere	
+tests/qualifiedExpression/visibleClassVsQualifiedClass.kt	rejects invalid	on an expected line	
 tests/qualifierWithCompanion.kt	rejects invalid	on an expected line	
 tests/qualifiers/noRootIdePackageInCli.kt	skip	LANGUAGE	
 tests/qualifiers/noRootIdePackageInCliDisabled.kt	skip	LANGUAGE	
@@ -10732,7 +10732,7 @@ testsWithStdLib/resolve/forEachInLocalClass.kt	accepts valid
 testsWithStdLib/resolve/hidesMembers.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	1.kt:22: type mismatch: inferred type is CheckTypeInv<A> but CheckTypeInv<String> was expected
 testsWithStdLib/resolve/hidesMembers2.kt	rejects invalid	on an expected line	
 testsWithStdLib/resolve/javaPackageMembers.kt	accepts valid		
-testsWithStdLib/resolve/javaStaticMembers.kt	accepts invalid	NO_COMPANION_OBJECT; UNRESOLVED_REFERENCE	test.kt:3: NO_COMPANION_OBJECT
+testsWithStdLib/resolve/javaStaticMembers.kt	rejects invalid	on an expected line	
 testsWithStdLib/resolve/kt10103.kt	accepts valid		
 testsWithStdLib/resolve/kt10732a.kt	accepts valid		
 testsWithStdLib/resolve/kt4711.kt	rejects invalid	on an expected line	

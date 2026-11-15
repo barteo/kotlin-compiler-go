@@ -2093,6 +2093,9 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 	if x.Object != nil {
 		return types.ClassType(x.Object) // an object, already resolved
 	}
+	if x.Safe && c.qualifierValue(x.X) {
+		return types.InvalidType
+	}
 	c.entriesQualifier(x.X)
 	if cls := c.classRef(x); cls != nil && !c.hasStatic(c.classRef(x.X), x.Name) {
 		if obj := objectOf(cls); obj != nil {
@@ -2682,6 +2685,10 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 		return types.InvalidType
 
 	case *syntax.Member:
+		if fn.Safe && c.qualifierValue(fn.X) {
+			c.args(x, nil)
+			return types.InvalidType
+		}
 		pkg := c.packageRef(fn.X)
 		if pkg != nil {
 			// A top-level function by its qualified name: a.b.f(). A class

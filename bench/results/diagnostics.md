@@ -6,16 +6,16 @@ Of 10827 test files, 2312 are skipped and 8515 run.
 
 | Result | Tests | Share |
 |:---|---:|---:|
-| rejects invalid | 4098 | 48.1% |
+| rejects invalid | 4103 | 48.2% |
 | accepts valid | 3995 | 46.9% |
-| accepts invalid | 286 | 3.4% |
+| accepts invalid | 281 | 3.3% |
 | rejects valid | 118 | 1.4% |
 | parse/unsupported | 16 | 0.2% |
 | crash | 1 | 0.0% |
 
 *Rejects invalid* and *accepts valid* agree with kotlinc. *Accepts invalid* is code kotlinc rejects that kc compiles; *rejects valid*, code kotlinc compiles that kc's checker rejects. Both are bugs. A *parse/unsupported* test uses a feature kc doesn't support, which says nothing about its checks.
 
-Of the 4098 tests both reject, kc reports an error on the line of an expected one in 3941.
+Of the 4103 tests both reject, kc reports an error on the line of an expected one in 3947.
 
 A test is invalid if it stops before the backend or marks an error: one that runs to it (`BACKEND`) can mark the JVM backend's errors, such as `CONFLICTING_JVM_DECLARATIONS`. Of the tests run, 222 stop at `FRONTEND` but mark no error: most add the `CHECK_TYPE` helpers, whose names (`_`) kotlinc reports outside the test infrastructure, and count as valid; the others leave their errors out with the `DIAGNOSTICS` directive. 114 run to the backend and mark one. 5 marked names have no declared severity (debug information, for one), and count as neither.
 
@@ -50,7 +50,7 @@ Tests kotlinc rejects that kc compiles, by the errors their markup expects. A te
 
 | Expected error | Tests | Only error | Examples |
 |:---|---:|---:|:---|
-| `UNRESOLVED_REFERENCE` | 35 | 24 | `tests/SafeCallOnFakePackage.kt`, `tests/callResolution/eagerLambdaAnalysis/samVsDefault.kt` |
+| `UNRESOLVED_REFERENCE` | 30 | 21 | `tests/callResolution/eagerLambdaAnalysis/samVsDefault.kt`, `tests/deprecated/javaDeprecatedHidden.kt` |
 | `OVERLOAD_RESOLUTION_AMBIGUITY` | 22 | 18 | `tests/callResolution/kt50386.kt`, `tests/imports/EnumEntryVsStaticAmbiguity.kt` |
 | `ARGUMENT_TYPE_MISMATCH` | 18 | 14 | `tests/annotations/annotationArgumentScopeForNestedClass.kt`, `tests/collectionLiterals/kt82964.kt` |
 | `MISSING_DEPENDENCY_CLASS` | 16 | 10 | `tests/j+k/differentFilename.kt`, `tests/javac/Lambda.kt` |
@@ -93,7 +93,6 @@ Tests kotlinc rejects that kc compiles, by the errors their markup expects. A te
 | `NOTHING_TO_OVERRIDE` | 2 | 2 | `tests/multimodule/duplicateSuper/sameSuperTraitDifferentBounds.kt`, `tests/rawTypes/overrideRawTypedJavaMethodWithGenericTyped.kt` |
 | `NOT_FUNCTION_AS_OPERATOR` | 2 | 2 | `tests/kt34857.kt`, `tests/problems/kt12610.kt` |
 | `NOT_YET_SUPPORTED_IN_INLINE` | 2 | 2 | `tests/inline/defaultLambdaInlineSuspend.kt`, `tests/inlineFunctionContextBug.kt` |
-| `NO_COMPANION_OBJECT` | 2 | 0 | `tests/SafeCallOnFakePackage.kt`, `testsWithStdLib/resolve/javaStaticMembers.kt` |
 | `NO_ELSE_IN_WHEN` | 2 | 2 | `tests/sealed/WhenOnEmptySealed.kt`, `tests/testsWithJava17/sealedClasses/flexibleSealedInSubject.kt` |
 | `NO_VALUE_FOR_PARAMETER` | 2 | 2 | `tests/resolve/invoke/kt9805.kt`, `testsWithStdLib/annotations/annotationParameters/valueArray.kt` |
 | `ONLY_ONE_CLASS_BOUND_ALLOWED` | 2 | 0 | `tests/enum/equalityOfEnumAndParameter.kt`, `tests/enum/equalityOfFlexibleTypeParameters.kt` |
@@ -110,7 +109,8 @@ Tests kotlinc rejects that kc compiles, by the errors their markup expects. A te
 | `WRONG_ANNOTATION_TARGET` | 2 | 1 | `tests/annotations/options/targets/java.kt`, `tests/annotations/options/targets/mixedTargeting.kt` |
 | `ABBREVIATED_NOTHING_PROPERTY_TYPE` | 1 | 0 | `tests/typealias/returnTypeNothingShouldBeSpecifiedExplicitly.kt` |
 | `ABBREVIATED_NOTHING_RETURN_TYPE` | 1 | 0 | `tests/typealias/returnTypeNothingShouldBeSpecifiedExplicitly.kt` |
-| *74 more* | 74 | |
+| `ABSTRACT_CLASS_MEMBER_NOT_IMPLEMENTED` | 1 | 1 | `tests/j+k/missingTypeOfParameterInFakeOverride_2.kt` |
+| *72 more* | 72 | |
 
 ## Rejects valid
 
@@ -160,12 +160,12 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 15793 of 21506 expected errors (73.4%) on their lines.
+kc reports 15810 of 21506 expected errors (73.5%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
 | `SYNTAX` | 875 | 222 | 653 |
-| `UNRESOLVED_REFERENCE` | 2493 | 1912 | 581 |
+| `UNRESOLVED_REFERENCE` | 2493 | 1924 | 569 |
 | `ARGUMENT_TYPE_MISMATCH` | 1484 | 1255 | 229 |
 | `UNSUPPORTED` | 231 | 35 | 196 |
 | `WRONG_MODIFIER_TARGET` | 300 | 170 | 130 |
@@ -232,7 +232,7 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 
 | Error | Count |
 |:---|---:|
-| `unresolved reference: _` | 288 |
+| `unresolved reference: _` | 286 |
 | `type mismatch: inferred type is _ but _ was expected` | 233 |
 | `cannot infer type for type parameter '_'. Specify it explicitly.` | 203 |
 | `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 199 |
