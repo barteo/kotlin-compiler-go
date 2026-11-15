@@ -370,7 +370,10 @@ func (s *system) sub(a, b types.Type) {
 		s.addLower(tv, a)
 		if a.K == types.TypeVar && !a.N && s.byVar[a.Param()] != nil {
 			// The constraint bounds both: the other variable is then
-			// fixed after this one.
+			// fixed after this one. V & Any <: b gives V <: b?.
+			if dnn {
+				b = b.Nullable()
+			}
 			s.addUpper(s.byVar[a.Param()], b)
 		}
 	case a.K == types.TypeVar && s.byVar[a.Param()] != nil:
@@ -832,7 +835,7 @@ func (s *system) fix(tv *tvar) {
 	// them on, as K2 incorporates ILT <: T1 and T1 <: T: T of both(id(1),
 	// id("")) has 1 and "" below.
 	for _, l := range tv.lower {
-		if w := s.unfixedVar(l); w != nil && w != tv && len(w.lits) > 0 && len(w.lower) == 0 {
+		if w := s.unfixedVar(l); w != nil && w != tv && len(w.lits) > 0 && !s.hasProperLower(w) {
 			for _, lit := range w.lits {
 				if !slices.Contains(tv.lits, lit) {
 					tv.lits = append(tv.lits, lit)
@@ -1105,6 +1108,13 @@ func (s *system) fix(tv *tvar) {
 				val.String() + " of type parameter '" + tv.v.Name + "' is not a subtype of " + b.String()})
 		}
 	}
+}
+
+// hasProperLower reports whether a lower bound of tv is known: not
+// only other variables, as T of ArrayList<T> <: MutableList<R>, equal
+// to an R with only a literal below, whose literal is then T's too.
+func (s *system) hasProperLower(tv *tvar) bool {
+	return slices.ContainsFunc(tv.lower, func(l types.Type) bool { return !s.apply(l).HasVars() })
 }
 
 // selfTypeBounds reports whether tv, which has no other bounds, is
