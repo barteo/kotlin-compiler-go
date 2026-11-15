@@ -388,6 +388,7 @@ func (t *classTable) load(cls *types.ClassSym) {
 		}
 		if ok {
 			enhanceJDK(cls.Name, f)
+			javaSuspend(f)
 		}
 		if varargs && len(f.Params) > 0 {
 			p := f.Params[len(f.Params)-1]
