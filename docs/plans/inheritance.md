@@ -4,7 +4,30 @@ This plan covers the diagnostics tests that fail because `kc` doesn't
 check the members a class inherits as K2 does. That includes Java
 supertypes, the JDK classes that Kotlin maps to its own types, and
 Kotlin-only rules about intersections, delegation and default values.
-It is a plan only. Nothing here has been implemented.
+
+**Status.** M0 to M11 have landed, each with no regressions in the
+diagnostics and box baselines: *accepts invalid* went from 383 to 286
+and *rejects valid* from 131 to 118. Left out, with the reason:
+
+- M8: `kjkimplicitTypesCrash` (a K2 quirk), `classObjectCopiedField`,
+  and the stray errors of
+  `supertypeDifferentParameterNullability.kt` in `typeEnhancement`.
+- M9: `notImplementedMembersAroundJava`, and
+  `missingTypeOfParameterInFakeOverride`, which needs several modules.
+- M10: `containsAll.kt`, which expects the standard library's
+  `containsAll` extension to be missing, as it is without
+  `WITH_STDLIB`; the harness always gives `kc` the standard library.
+  `specialFunctionInJava_1.kt` stops at its Java source's missing `;`,
+  which `kc` reports and K2 doesn't.
+- M11: the purely implemented collections' members take their Kotlin
+  parameter types, but their supertypes keep Java's flexible arguments.
+  `kc` infers a nullable type argument from a nullable argument of a
+  flexible parameter even where the expected type has a non-null one,
+  an inference difference, and the flexible arguments make up for it. `wrongTypeParametersCount.kt` puts an import before its first
+  `// FILE:`, which the harness drops.
+
+The sections below are the plan as written, with its numbers from
+before the work.
 
 The numbers come from Kotlin 2.4.21's diagnostics suite, run on this
 branch's `kc` with `bench/kotlin-tests.sh diagnostics`. That run

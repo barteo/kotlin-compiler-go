@@ -226,19 +226,16 @@ Kotlin 2.4.21's tests on `kc`:
 `kc` agrees with `kotlinc` on 93% of the diagnostics tests, and reports
 15,793 of the 21,506 expected errors (73%) on their lines. Tests with
 Java sources, which earlier runs skipped, add 1,223 tests to the run,
-and 124 of the 286 that *accept invalid* code. The reports break the failures down; the
-largest groups are:
+and 124 of the 286 that *accept invalid* code. The reports break the
+failures down; the largest groups are:
 
 - **Silent miscompilation**: none. No box test that `kc` compiles
   gives a wrong result, throws, or fails to verify or link.
-- **Accepts invalid**: argument type mismatches
-  (`ARGUMENT_TYPE_MISMATCH` 43), unresolved names
-  (`UNRESOLVED_REFERENCE` 37), overload ambiguities
-  (`OVERLOAD_RESOLUTION_AMBIGUITY` 24), missing dependency classes
-  (`MISSING_DEPENDENCY_CLASS` 16), and the nullability that Java
-  sources' annotations give (`NULL_FOR_NONNULL_TYPE` 15, `UNSAFE_CALL`
-  12): `kc` gives Java declarations platform types, and doesn't read
-  their `@NotNull` and `@Nullable`.
+- **Accepts invalid**, by the tests that expect each error: unresolved
+  names (`UNRESOLVED_REFERENCE` 35), overload ambiguities
+  (`OVERLOAD_RESOLUTION_AMBIGUITY` 22), argument type mismatches
+  (`ARGUMENT_TYPE_MISMATCH` 18) and missing dependency classes
+  (`MISSING_DEPENDENCY_CLASS` 16).
 - **Rejects valid**, by `kc`'s first error: type mismatches (50),
   inference failures (32), unresolved names, imports and labels (30),
   and ambiguous calls and assignment operators (10). No box test is
