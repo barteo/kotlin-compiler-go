@@ -2649,6 +2649,9 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 		if alt := c.packageClassTaking(name, cls, x); alt != nil {
 			cls = alt
 		}
+		if name == "Array" && cls != nil && cls != types.ArrayClass && !cls.External && !c.ctorsTake(cls, x) {
+			cls = types.ArrayClass // kotlin.Array(n) { }, past a class Array of the program's
+		}
 		var fs []*types.FunSym
 		if cls == nil || !constructible(cls) {
 			// A function may have a class's name: kotlin.random.Random(seed).
@@ -2965,6 +2968,8 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 			}
 			if x.Operator && !x.Sym.Operator {
 				c.errorf(x.P, "'operator' modifier is required on '%s'", fn.Name)
+			} else if x.Operator && renamedOperator(x.Sym, fn.Name) {
+				c.errorf(x.P, "'operator' modifier is required on '%s': operator '%s' is imported as '%s'", fn.Name, x.Sym.Name, fn.Name)
 			}
 			if isArrayFactory(x.Builtin) {
 				c.reified(x, t)

@@ -171,3 +171,26 @@ func (c *Checker) qualifiedAlias(m *syntax.Member) *types.AliasSym {
 	}
 	return nil
 }
+
+// projectedAssignOp returns the type that x op= v on a property of a
+// projected receiver works on: the type read, not the type written,
+// Nothing for t.v of a Tr<out C>, when it has an op-assign operator,
+// t.v += c calling C.plusAssign(c), which assigns nothing.
+func (c *Checker) projectedAssignOp(s *syntax.Assign, m *syntax.Member, write types.Type) types.Type {
+	read := m.T
+	if !never(write) || read.K != types.Class || never(read) {
+		return write
+	}
+	probe := &syntax.Call{Args: []syntax.Expr{s.Value}}
+	if !c.hasFun(read.NonNull(), opNames[s.Op], probe) {
+		return write
+	}
+	return read
+}
+
+// renamedOperator reports whether operator function f is called as
+// operator name through an import that renames it: a - b for import
+// a.plus as minus, which isn't an operator minus.
+func renamedOperator(f *types.FunSym, name string) bool {
+	return f.Operator && f.Builtin == 0 && f.Name != name && f.Name != "<init>"
+}

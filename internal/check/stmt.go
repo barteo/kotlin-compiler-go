@@ -1200,6 +1200,9 @@ func (c *Checker) assign(s *syntax.Assign) {
 			break
 		}
 		tt, mutable = c.lvalue(s.Target)
+		if s.Op != syntax.ASSIGN {
+			tt = c.projectedAssignOp(s, t, tt)
+		}
 	case *syntax.Ident, *syntax.Index:
 		if c.namesObject(s.Target) && s.Op != syntax.ASSIGN {
 			tt = c.expr(s.Target, noWant) // Obj += v: Obj.plusAssign(v)
