@@ -3294,7 +3294,7 @@ tests/expresssions/receiverConsistency.kt	rejects invalid	on an expected line
 tests/expresssions/sameReceiver.kt	accepts valid		
 tests/expresssions/simple.kt	accepts valid		
 tests/expresssions/syntheticInImplicitBody.kt	accepts valid		
-tests/expresssions/syntheticSmartCast.kt	rejects invalid	elsewhere	
+tests/expresssions/syntheticSmartCast.kt	rejects invalid	on an expected line	
 tests/expresssions/this.kt	accepts valid		
 tests/expresssions/topExtensionVsOuterMember.kt	accepts valid		
 tests/expresssions/typeAliasConstructor.kt	accepts valid		
@@ -5243,8 +5243,8 @@ tests/j+k/KJKInheritanceGeneric.kt	accepts valid
 tests/j+k/OverrideVararg.kt	accepts valid		
 tests/j+k/Simple.kt	accepts valid		
 tests/j+k/StaticMembersFromSuperclasses.kt	accepts valid		
-tests/j+k/SupertypeArgumentsNullability-NotNull-SpecialTypes.kt	accepts invalid	NULL_FOR_NONNULL_TYPE	test.kt:4: NULL_FOR_NONNULL_TYPE
-tests/j+k/SupertypeArgumentsNullability-NotNull-UserTypes.kt	accepts invalid	NULL_FOR_NONNULL_TYPE	test.kt:4: NULL_FOR_NONNULL_TYPE
+tests/j+k/SupertypeArgumentsNullability-NotNull-SpecialTypes.kt	rejects invalid	on an expected line	
+tests/j+k/SupertypeArgumentsNullability-NotNull-UserTypes.kt	rejects invalid	on an expected line	
 tests/j+k/SupertypeArgumentsNullability-SpecialTypes.kt	accepts valid		
 tests/j+k/SupertypeArgumentsNullability-UserTypes.kt	accepts valid		
 tests/j+k/UnboxingNulls.kt	accepts valid		
@@ -5413,7 +5413,7 @@ tests/j+k/primitiveOverrides/triangleWithNotNullType.kt	accepts valid
 tests/j+k/primitiveOverrides/triangleWithNullableType.kt	accepts valid		
 tests/j+k/primitiveOverridesWithInlineClass/inlineClassErasedToPrimitiveInt.kt	skip	LANGUAGE	
 tests/j+k/primitiveVsBoxedOverloadAndSecondParameter.kt	rejects invalid	on an expected line	
-tests/j+k/primitiveVsBoxedOverloads.kt	accepts invalid	OVERLOAD_RESOLUTION_AMBIGUITY	main.kt:5: OVERLOAD_RESOLUTION_AMBIGUITY
+tests/j+k/primitiveVsBoxedOverloads.kt	rejects invalid	elsewhere	
 tests/j+k/privateFieldOverridesNothing.kt	accepts valid		
 tests/j+k/privateNestedClassStaticMember.kt	rejects invalid	on an expected line	
 tests/j+k/privatePropertyAndSetterMultiModule.kt	accepts valid		
@@ -7025,15 +7025,15 @@ tests/platformTypes/methodCall/sam.kt	accepts valid
 tests/platformTypes/methodCall/singleton.kt	rejects invalid	on an expected line	
 tests/platformTypes/methodCall/string.kt	accepts valid		
 tests/platformTypes/methodCall/visitor.kt	accepts valid		
-tests/platformTypes/methodTypeParameterDefaultBound.kt	rejects valid	accidental override: the following declarations have the same JVM signature (foo()V)	main.kt:6: accidental override: the following declarations have the same JVM signature (foo()V)
+tests/platformTypes/methodTypeParameterDefaultBound.kt	accepts valid		
 tests/platformTypes/noAnnotationInClassPath.kt	rejects invalid	on an expected line	
 tests/platformTypes/notNullTypeParameter/enhancementFromAnnotation.kt	accepts invalid	NULL_FOR_NONNULL_TYPE	main.kt:3: NULL_FOR_NONNULL_TYPE
 tests/platformTypes/notNullTypeParameter/enhancementFromKotlin.kt	rejects valid	unresolved import: _	A.kt:2: unresolved import: org.jetbrains.annotations.NotNull
-tests/platformTypes/notNullTypeParameter/methodTypeParameter.kt	accepts invalid	NULL_FOR_NONNULL_TYPE	k.kt:3: NULL_FOR_NONNULL_TYPE
+tests/platformTypes/notNullTypeParameter/methodTypeParameter.kt	rejects invalid	on an expected line	
 tests/platformTypes/notNullTypeParameter/noInheritanceReturnType.kt	accepts valid		
-tests/platformTypes/notNullTypeParameter/noInheritanceValueParameter.kt	accepts invalid	NULL_FOR_NONNULL_TYPE	k.kt:3: NULL_FOR_NONNULL_TYPE
+tests/platformTypes/notNullTypeParameter/noInheritanceValueParameter.kt	rejects invalid	on an expected line	
 tests/platformTypes/notNullTypeParameter/onTypeProjection.kt	accepts valid		
-tests/platformTypes/notNullTypeParameter/substitutionInSuperType.kt	rejects invalid	elsewhere	
+tests/platformTypes/notNullTypeParameter/substitutionInSuperType.kt	rejects invalid	on an expected line	
 tests/platformTypes/notNullTypeParameter/supplier.kt	accepts valid		
 tests/platformTypes/nullabilityWarnings/arithmetic.kt	accepts invalid	UNSAFE_CALL; INFIX_MODIFIER_REQUIRED	k.kt:11: UNSAFE_CALL
 tests/platformTypes/nullabilityWarnings/array.kt	accepts invalid	UNSAFE_CALL	k.kt:11: UNSAFE_CALL
@@ -7134,7 +7134,7 @@ tests/problems/classLiteralWithExclExcl.kt	rejects invalid	on an expected line
 tests/problems/compilerPhase.kt	rejects invalid	elsewhere	
 tests/problems/complexLambdaWithTypeVariableAsExpectedType.kt	accepts valid		
 tests/problems/defaultParametersFromDifferentScopes.kt	accepts valid		
-tests/problems/definitelyNotNullAndOriginalType.kt	accepts invalid	ARGUMENT_TYPE_MISMATCH	main.kt:3: ARGUMENT_TYPE_MISMATCH
+tests/problems/definitelyNotNullAndOriginalType.kt	rejects invalid	on an expected line	
 tests/problems/definitelyNotNullStarProjection.kt	accepts valid		
 tests/problems/deprecatedJavaEnumEntry.kt	accepts valid		
 tests/problems/doubleGenericDiamond.kt	accepts valid		
@@ -8164,7 +8164,7 @@ tests/shadowing/ShadowVariableInNestedClosure.kt	accepts valid
 tests/shadowing/ShadowVariableInNestedClosureParam.kt	accepts valid		
 tests/shadowing/noNameShadowingForSimpleParameters.kt	accepts valid		
 tests/signatureEnhancementCycleTypeBound.kt	accepts valid		
-tests/signatureEnhancementOuterClassBoundsToInner.kt	rejects valid	no type arguments expected for class OuterClass	main.kt:1: no type arguments expected for class OuterClass
+tests/signatureEnhancementOuterClassBoundsToInner.kt	accepts valid		
 tests/simpleClass.kt	rejects invalid	on an expected line	
 tests/simpleTypeAlias.kt	accepts valid		
 tests/smartCasts/NullableFunctionTypeAsMemberMutableProperty.kt	rejects invalid	on an expected line	
@@ -9366,7 +9366,7 @@ tests/visibility/lackOfInvisibleSetterOfJavaClassInSamePackage.kt	rejects invali
 tests/visibility/moreSpecificProtected.kt	rejects invalid	on an expected line	
 tests/visibility/moreSpecificProtectedSimple.kt	rejects invalid	on an expected line	
 tests/visibility/notOverridingInternal.kt	accepts valid		
-tests/visibility/notOverridingPackagePrivate.kt	rejects valid	'_' hides member of supertype '_' and needs '_' modifier	Impl.kt:5: 'packagePrivateFoo' hides member of supertype 'Base' and needs 'override' modifier
+tests/visibility/notOverridingPackagePrivate.kt	accepts valid		
 tests/visibility/overrideOfMemberInPackagePrivateClass.kt	accepts valid		
 tests/visibility/packagePrivateStatic.kt	rejects valid	class Base is not public	main.kt:7: class Base is not public
 tests/visibility/packagePrivateStaticInterfaceFieldViaKotlinClass.kt	rejects invalid	elsewhere	

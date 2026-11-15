@@ -261,6 +261,23 @@ func (c *Checker) sameMember(this types.Type, a, b *jvmMember) bool {
 	return a.fun.Name == b.fun.Name && c.sameParams(this, a.fun, b.fun)
 }
 
+// overridesViaJava reports whether own function m of class cls overrides
+// inherited function g through a Java method, which overrides both: Java
+// ignores type parameters' bounds, so it may override g while m, whose
+// bounds differ from g's, doesn't.
+func (c *Checker) overridesViaJava(cls *types.ClassSym, m, g *jvmMember) bool {
+	if m.fun == nil || g.fun == nil || m.fun.Name != g.fun.Name {
+		return false
+	}
+	this := cls.This()
+	for _, h := range c.overridden(cls, m.fun) {
+		if h.Decl == nil && c.sameParams(this, h, g.fun) {
+			return true
+		}
+	}
+	return false
+}
+
 // inheritedMembers returns the JVM methods that class cls inherits from
 // its supertypes declared in the program, but not by value classes: their
 // instance methods, of each one's own erasure, as its bridges have them.
@@ -316,7 +333,7 @@ func (c *Checker) classClashes(d *syntax.ClassDecl) {
 		}
 		for j := range inherited {
 			g := &inherited[j]
-			if g.sig == m.sig && !c.sameMember(this, m, g) {
+			if g.sig == m.sig && !c.sameMember(this, m, g) && !c.overridesViaJava(cls, m, g) {
 				c.errorf(m.pos, "accidental override: the following declarations have the same JVM signature (%s)", m.sig)
 				break
 			}

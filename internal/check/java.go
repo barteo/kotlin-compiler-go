@@ -375,7 +375,9 @@ func (t *classTable) load(cls *types.ClassSym) {
 			// javac leaves out synthetic parameters, which come first.
 			off := len(f.Params) - len(m.ParamAnnotations)
 			for i, as := range m.ParamAnnotations {
-				if off+i >= 0 {
+				// A declaration annotation on a vararg is the array's,
+				// not its elements', which the parameter's type is.
+				if off+i >= 0 && !(varargs && off+i == len(f.Params)-1) {
 					f.Params[off+i].Type = enhance(as, f.Params[off+i].Type)
 				}
 			}

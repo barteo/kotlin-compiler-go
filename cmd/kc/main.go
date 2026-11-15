@@ -116,7 +116,7 @@ func compile(args []string, stderr io.Writer, libs *driver.Libraries) (int, erro
 	}
 	opts := driver.Options{OutDir: *outDir, Jobs: *jobs, JDKHome: *jdkHome, NoJDK: *noJDK, ModuleName: *moduleName,
 		NoJVMDefault: *jvmDefault == "disable", JVMDefaultCompat: *jvmDefault == "enable", Parcelize: *parcelize, Serialization: *serialization, Compose: *compose, Metro: *metro, MetroOptions: metroOptions, Debug: *debug, OptIns: optIns,
-		Libraries: libs}
+		Libraries: libs, JavaTypes: true}
 	if classPath != "" {
 		opts.ClassPath = filepath.SplitList(classPath)
 	}

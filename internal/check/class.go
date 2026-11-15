@@ -781,7 +781,9 @@ func (c *Checker) overridden(cls *types.ClassSym, f *types.FunSym) []*types.FunS
 		for _, g := range gs {
 			// A private member isn't inherited: it overrides and is
 			// overridden by nothing.
-			if !g.Static && !g.Private && !f.Private && c.sameParams(this, f, g) {
+			// Nor is a Java member that is package-private in another
+			// package.
+			if !g.Static && !g.Private && !f.Private && !(g.PackagePrivate && packageOf(g.Owner) != packageOf(cls)) && c.sameParams(this, f, g) {
 				out = append(out, g)
 			}
 		}
