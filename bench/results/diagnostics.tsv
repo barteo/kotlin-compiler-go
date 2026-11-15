@@ -859,7 +859,7 @@ tests/callableReference/property/extensionPropertyOnNullable.kt	accepts valid
 tests/callableReference/property/extensionsSameName.kt	accepts valid		
 tests/callableReference/property/genericClass.kt	accepts valid		
 tests/callableReference/property/javaInstanceField.kt	rejects invalid	on an expected line	
-tests/callableReference/property/javaStaticFieldViaImport.kt	parse/unsupported	property reference	
+tests/callableReference/property/javaStaticFieldViaImport.kt	rejects invalid	on an expected line	
 tests/callableReference/property/kt7564.kt	accepts valid		
 tests/callableReference/property/kt7945_unrelatedClass.kt	rejects invalid	on an expected line	
 tests/callableReference/property/memberFromTopLevel.kt	rejects invalid	on an expected line	
@@ -3000,11 +3000,11 @@ tests/enum/entries/javaEnumEntriesAmbiguityPrioritized.kt	skip	LANGUAGE
 tests/enum/entries/javaFakeEnumEntries.kt	accepts valid		
 tests/enum/entries/nameShadowingOfExternallyDefinedEntriesOn.kt	skip	LANGUAGE	
 tests/enum/entries/nameShadowingOfExternallyDefinedEntriesPrioritized.kt	rejects invalid	on an expected line	
-tests/enum/entries/primitiveReference.kt	rejects valid	unresolved reference: _	primitiveReference.kt:6: unresolved reference: entries
+tests/enum/entries/primitiveReference.kt	accepts valid		
 tests/enum/entries/redeclarationOfEnumEntriesNameWithIntrinsicOn.kt	skip	LANGUAGE	
 tests/enum/entries/redeclarationOfEnumEntriesNameWithIntrinsicPrioritized.kt	skip	LANGUAGE	
 tests/enum/entries/referenceFalsePositiveWarnings.kt	skip	LANGUAGE	
-tests/enum/entries/referenceFalsePositiveWarningsPrioritized.kt	rejects valid	type mismatch: inferred type is _ but _ was expected	referenceFalsePositiveWarningsPrioritized.kt:17: type mismatch: inferred type is KProperty1<E, Int> but KProperty0<EnumEntries<E>> was expected
+tests/enum/entries/referenceFalsePositiveWarningsPrioritized.kt	accepts valid		
 tests/enum/entries/toBeShadowed.kt	skip	LANGUAGE	
 tests/enum/entries/toBeShadowedPrioritized.kt	accepts valid		
 tests/enum/entryShouldBeOfEnumType.kt	accepts valid		
@@ -3255,7 +3255,7 @@ tests/expresssions/invoke/safeCallsWithImplicitInvoke.kt	rejects valid	expressio
 tests/expresssions/invoke/simple.kt	accepts valid		
 tests/expresssions/invoke/threeReceivers.kt	rejects invalid	on an expected line	
 tests/expresssions/invoke/threeReceiversCorrect.kt	rejects invalid	on an expected line	
-tests/expresssions/javaFieldCallable.kt	rejects valid	unresolved reference: _	test.kt:3: unresolved reference: staticField
+tests/expresssions/javaFieldCallable.kt	accepts valid		
 tests/expresssions/lambda.kt	accepts valid		
 tests/expresssions/lambdaWithReceiver.kt	accepts valid		
 tests/expresssions/localClassAccessesContainingClass.kt	accepts valid		
@@ -10719,7 +10719,7 @@ testsWithStdLib/resolve/ambiguousTypeReferences/constructorCase.kt	accepts valid
 testsWithStdLib/resolve/ambiguousTypeReferences/constructorCaseSpace.kt	accepts valid		
 testsWithStdLib/resolve/ambiguousTypeReferences/constructorVsCompanionMember.kt	accepts valid		
 testsWithStdLib/resolve/ambiguousTypeReferences/constructorVsSyntheticValues.kt	skip	LANGUAGE	
-testsWithStdLib/resolve/ambiguousTypeReferences/constructorVsSyntheticValuesPrioritized.kt	accepts invalid	OVERLOAD_RESOLUTION_AMBIGUITY	constructorVsSyntheticValuesPrioritized.kt:15: OVERLOAD_RESOLUTION_AMBIGUITY
+testsWithStdLib/resolve/ambiguousTypeReferences/constructorVsSyntheticValuesPrioritized.kt	rejects invalid	on an expected line	
 testsWithStdLib/resolve/ambiguousTypeReferences/constructorVsTopLevel.kt	accepts valid		
 testsWithStdLib/resolve/ambiguousTypeReferences/qualifierEnumEntryOrCompanionMemberCase.kt	accepts valid		
 testsWithStdLib/resolve/ambiguousTypeReferences/qualifierEnumEntryOrCompanionMemberCase2.kt	rejects invalid	on an expected line	

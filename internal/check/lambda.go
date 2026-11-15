@@ -35,6 +35,7 @@ type lambdaWant struct {
 	check      bool         // the body must have type ret; otherwise ret is only a hint
 	recover    bool         // checking after an error: unknown parameters are not reported
 	prop       bool         // a callable reference must name a property: see kpropRef
+	prop1      bool         // with prop: the expected type is a KProperty1, which has a receiver
 	kprop      bool         // a callable reference to a property may be a KProperty object
 	// stars are the parameters whose type is a star projection, which
 	// any declared type takes, as the captured type's Nothing below it.

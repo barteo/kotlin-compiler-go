@@ -377,6 +377,8 @@ Risk: box-suite codegen; checking can't land without it, since the box suite wou
 
 Expected total: 37 AI and 10 RV flipped, and 1 unsupported supported. The `-marks` hit count rises on the same lines.
 
+**Done.** In `checkRef` (`internal/check/reflect.go`), a Java class's static field and an enum's `entries` are a property form without a receiver, `JavaClass.staticField`. This is `staticProp`, which leaves out enum entries: `My::V` stays unsupported, as in K2. That form is tried before the instance form, and it is the `KProperty0` form where a `KProperty0` (not a `KProperty1`) is expected. So `E::entries` is `KProperty1<E, Int>` for an enum with its own `entries` property. `kpropLambda` accepts a static field, also one named through a star import (`::publicFinal`), and a Kotlin enum's static `getEntries()`. The existing `PropertyReference0Impl` code generation takes them, with the getter-style signature that kotlinc passes, which kotlin-reflect resolves (checked with `returnType`). Instance Java fields already worked through the class-property path. `SomeClass::entries`, where the enum also nests a class `entries`, reports `overload resolution ambiguity`. Fixed: `javaFieldCallable`, `primitiveReference` and `referenceFalsePositiveWarningsPrioritized` (RV), `constructorVsSyntheticValuesPrioritized` (AI), and `javaStaticFieldViaImport` (unsupported, now on an expected line); 0 regressions in diagnostics and box. `TestRun` can't compile Java sources, so the run check was done by hand. Unit test: `testdata/errors/stdlibJavaFieldRefs/`.
+
 ## Validation
 
 - **Per milestone**, run the theme list and the affected directories:

@@ -215,18 +215,18 @@ Kotlin 2.4.21's tests on `kc`:
 | Diagnostics tests | Tests | Share of run |
 |:---|---:|---:|
 | run (of 10,827) | 8,515 | |
-| rejects invalid | 4,136 | 48.6% |
-| accepts valid | 4,005 | 47.0% |
-| accepts invalid | 248 | 2.9% |
-| rejects valid | 108 | 1.3% |
-| parse/unsupported | 16 | 0.2% |
+| rejects invalid | 4,138 | 48.6% |
+| accepts valid | 4,008 | 47.1% |
+| accepts invalid | 247 | 2.9% |
+| rejects valid | 105 | 1.2% |
+| parse/unsupported | 15 | 0.2% |
 | crash | 1 | |
 | harness error (`javac`) | 1 | |
 
 `kc` agrees with `kotlinc` on 93% of the diagnostics tests, and reports
-15,909 of the 21,506 expected errors (73%) on their lines. Tests with
+15,912 of the 21,508 expected errors (73%) on their lines. Tests with
 Java sources, which earlier runs skipped, add 1,223 tests to the run,
-and 95 of the 248 that *accept invalid* code. The reports break the
+and 95 of the 247 that *accept invalid* code. The reports break the
 failures down; the largest groups are:
 
 - **Silent miscompilation**: none. No box test that `kc` compiles
@@ -236,8 +236,8 @@ failures down; the largest groups are:
   (`ARGUMENT_TYPE_MISMATCH` 18), missing dependency classes
   (`MISSING_DEPENDENCY_CLASS` 15) and class redeclarations
   (`CLASSIFIER_REDECLARATION` 7).
-- **Rejects valid**, by `kc`'s first error: type mismatches (50),
-  inference failures (32), unresolved names, imports and labels (27),
+- **Rejects valid**, by `kc`'s first error: type mismatches (49),
+  inference failures (32), unresolved names, imports and labels (25),
   and ambiguous calls and assignment operators (6). No box test is
   rejected.
 - **Crashes**: a test with Java sources, a stack overflow on a
