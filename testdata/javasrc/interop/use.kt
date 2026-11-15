@@ -25,6 +25,7 @@ fun interopDemo() {
     println(StaticOuter().Inner().test())
     println(Labeled().text())
     println(Sources().one("a").get() + Sources().current().get() + Sources().direct().get())
+    println(Sources().longer("abc", 2).get() + " " + Sources().longer("a", 2).get() + " " + Sources().longer("", 2).get())
 }
 
 // T of a Java <T> Source<T> fromCallable(Callable<? extends T>), for a
@@ -40,6 +41,13 @@ class Sources {
     fun current(): Source<String> = Source.fromCallable { last }
 
     fun direct(): Source<String> = Source.of(last)
+
+    // The lambda for a Java Check<T>, whose test(@NonNull T) takes a
+    // T & Any, takes a String for the String? that map's lambda returns.
+    fun longer(s: String, n: Int): Source<String?> =
+        Source.of(s)
+            .map { v: String -> v.ifEmpty { null } }
+            .filter { v: String -> v.length > n }
 }
 
 // Label.TEXT in a subclass of a Java class with getLabel() names the

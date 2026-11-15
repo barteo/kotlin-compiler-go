@@ -22,6 +22,15 @@ public class Source<T> {
         }
     }
 
+    public <R> Source<R> map(Fn<? super T, ? extends R> f) {
+        return new Source<R>(f.apply(value));
+    }
+
+    // Tests the value unless it is null.
+    public Source<T> filter(Check<? super T> check) {
+        return value == null || check.test(value) ? this : new Source<T>(null);
+    }
+
     public T get() {
         return value;
     }
