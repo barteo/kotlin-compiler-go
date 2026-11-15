@@ -250,6 +250,11 @@ type VarSym struct {
 	Captured bool
 	Owner    *ClassSym // Prop, Static
 	Facade   string    // Global: internal name of the file facade class
+	// Annotations are the descriptors of the annotations of a top-level
+	// property of the class path, and Deprecated its deprecation: what
+	// the opt-in and deprecation checks know of it.
+	Annotations []string
+	Deprecated  *Deprecation
 	// Part is set on a Global of a multi-file class's part that isn't
 	// private: the part, whose field and accessors the facade's call.
 	Part string
@@ -538,7 +543,12 @@ type FunSym struct {
 	// program's functions have their declaration's.
 	Annotations []string
 	Deprecated  *Deprecation
-	Why         string // why it is unsupported, if not for its types
+	// PropAnnotations are, for an accessor of a property of the class
+	// path, the descriptors of the property's annotations, which kotlinc
+	// keeps on its $annotations method: its opt-in markers apply to the
+	// accessors' uses.
+	PropAnnotations []string
+	Why             string // why it is unsupported, if not for its types
 	// Feature is the feature that Why reports unsupported, if it isn't
 	// an inline-only call.
 	Feature string
@@ -941,6 +951,12 @@ type ClassSym struct {
 	StabilityInferred int
 	// Deprecated is the deprecation of a class of the class path.
 	Deprecated *Deprecation
+	// OptInLevel is the level of the @RequiresOptIn of an annotation
+	// class of the class path, ERROR or WARNING, or "" if it isn't an
+	// opt-in requirement marker; SubclassOptIn are the internal names of
+	// the markers of a class's @SubclassOptInRequired.
+	OptInLevel    string
+	SubclassOptIn []string
 
 	// Global is set on a class that a package-level variable declares for
 	// all compilations in the process, such as kotlin.Array: see MakeArgs.

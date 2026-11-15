@@ -3446,6 +3446,12 @@ func (c *Checker) builtinMember(x *syntax.Call, fn *syntax.Member, rt types.Type
 			// not String?.equals(String?).
 			return c.resolve(x, c.memberCallees(c.javaMethods(object, fn.Name), types.AnyType), want, sink)
 		}
+		if str := c.u.ext.class("java/lang/String"); str != nil && rt == types.StringType && fn.Name == "subSequence" && x.Names == nil && len(x.Args) == 2 {
+			// String's member subSequence(startIndex, endIndex), which
+			// wins over the standard library's deprecated extension
+			// String.subSequence(start, end).
+			return c.resolve(x, c.memberCallees(c.javaMethods(str, fn.Name), types.StringType), want, sink)
+		}
 		if cands := c.extCalleesFor(fn.Name, rt, x); len(cands) > 0 {
 			return c.resolve(x, cands, want, sink)
 		}

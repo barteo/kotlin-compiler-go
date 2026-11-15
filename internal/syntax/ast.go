@@ -491,7 +491,10 @@ func (m *Modifiers) Hidden() bool {
 
 type FunDecl struct {
 	Modifiers
-	P          Pos
+	P Pos
+	// Generated is set on a declaration a compiler plugin of kc's
+	// declares, which the opt-in and deprecation checks skip.
+	Generated  bool
 	End        Pos // the last token's, of a function declared in a file or a class, or an accessor
 	Name       string
 	TypeParams []*TypeParam
@@ -557,7 +560,10 @@ func SourceInline(f *types.FunSym) *FunDecl {
 
 type PropDecl struct {
 	Modifiers
-	P          Pos
+	P Pos
+	// Generated is set on a declaration a compiler plugin of kc's
+	// declares, which the opt-in and deprecation checks skip.
+	Generated  bool
 	Name       string
 	Mutable    bool
 	TypeParams []*TypeParam // only on an extension property: val <T> List<T>.x
@@ -632,7 +638,10 @@ type CtorParam struct {
 
 type ClassDecl struct {
 	Modifiers
-	P          Pos
+	P Pos
+	// Generated is set on a declaration a compiler plugin of kc's
+	// declares, which the opt-in and deprecation checks skip.
+	Generated  bool
 	End        Pos // the closing brace's, of a class with a body
 	Name       string
 	Interface  bool

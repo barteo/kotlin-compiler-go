@@ -1237,8 +1237,11 @@ func (g *gen) invokeJava(f *types.FunSym, rt types.Type) {
 		return
 	}
 	owner := "java/lang/Object"
-	if rt.K == types.Class {
+	switch {
+	case rt.K == types.Class:
 		owner = rt.C.Name
+	case rt.K == types.StringType.K && f.Owner != nil && f.Owner.Name == "java/lang/String":
+		owner = "java/lang/String" // String's subSequence
 	}
 	g.code.Invoke(cf.INVOKEVIRTUAL, owner, f.JVM(), d)
 }

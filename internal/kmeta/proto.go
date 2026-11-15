@@ -330,7 +330,7 @@ type TypeAlias struct {
 	Underlying *Type
 	Expanded   *Type
 	// Annotations are its annotations, which metadata keeps, as a type
-	// alias has nothing on the JVM to annotate. Decoding leaves them out.
+	// alias has nothing on the JVM to annotate.
 	Annotations []*Annotation
 }
 
@@ -1142,6 +1142,8 @@ func (s scope) typeAlias(msg []byte) *TypeAlias {
 			a.Expanded = s.typ(d.bytes())
 		case 7:
 			a.Expanded = s.typeID(d.int())
+		case 8:
+			a.Annotations = append(a.Annotations, s.annotation(d.bytes()))
 		default:
 			d.skip(w)
 		}

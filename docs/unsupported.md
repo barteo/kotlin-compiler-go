@@ -16,11 +16,15 @@ own tests.
   aren't `private`.
 - Local `external` functions, which are reported as unsupported.
 - Opt-in requirements (`@RequiresOptIn`, `@SubclassOptInRequired`) and
-  `@Deprecated` with level `ERROR` or `HIDDEN` are checked only for the
-  program's own declarations: the markers and deprecations of the class
-  path, the standard library's included, aren't read from class files.
-  The class path's functions and members deprecated `HIDDEN` stay hidden,
-  as `kotlinc` compiles them synthetic, but its classes don't.
+  `@Deprecated` are checked, the class path's read from its class files
+  and metadata, but only their errors are reported: markers with level
+  `WARNING` and deprecations with level `WARNING` (Java's `@Deprecated`
+  among them) give no warning. `@DeprecatedSinceKotlin` and
+  `@SinceKotlin` are read as if their versions were reached: `kc` acts
+  as the newest API version, as `kotlinc` does by default, and has no
+  `-api-version`. A class path's typealias opts in to nothing, as the
+  `@OptIn` it may have had in its source isn't in its class files: the
+  markers of what it expands to are required of its uses.
 - Builder inference isn't K2's PCLA: a builder's lambda is checked with
   its variables unfixed and then again with them fixed. A call in a
   nested builder that combines both builders' variables, as

@@ -34,7 +34,7 @@ class Hidden {
 }
 
 fun hidden() {
-    Hidden().old() // ERROR no function 'old' takes 0 arguments
+    Hidden().old() // ERROR unresolved reference: old
 }
 
 fun f(a: Int, b: Int = 0, c: Int = 0) {}
