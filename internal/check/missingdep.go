@@ -241,8 +241,23 @@ func (c *Checker) missingDependencies() {
 			report(p, fromExpr)
 		}
 	}
+	// getter checks the read of a property of a class through its
+	// getter: its types, and the classes of its owner, of x when x is the
+	// dispatch receiver, and of its extension receiver.
+	getter := func(p syntax.Pos, expr types.Type, g *types.FunSym, x syntax.Expr) {
+		var recv *types.Type
+		var dispatch, ext *types.ClassSym
+		if g.Ext {
+			recv, ext = &g.Recv, classOf(g.Recv)
+		} else if x != nil {
+			dispatch = classOf(x.Type())
+		}
+		access(p, expr, g.Ret, recv, nil)
+		superclass(p, dispatch, g.Owner, ext)
+	}
 	var decl func(d syntax.Decl)
-	visit := func(n any) bool {
+	var visit func(n any) bool
+	visit = func(n any) bool {
 		switch x := n.(type) {
 		case *syntax.Call:
 			f := x.Sym
@@ -278,18 +293,27 @@ func (c *Checker) missingDependencies() {
 			}
 			superclass(p, dispatch, f.Owner, ext)
 		case *syntax.Member:
-			if v := x.Prop; v != nil {
-				access(x.P, x.T, v.Type, nil, nil)
+			switch {
+			case x.Prop != nil:
+				access(x.P, x.T, x.Prop.Type, nil, nil)
 				var dispatch *types.ClassSym
 				if x.X != nil {
 					dispatch = classOf(x.X.Type())
 				}
-				superclass(x.P, dispatch, ownerClass(v))
+				superclass(x.P, dispatch, ownerClass(x.Prop))
+			case x.Getter != nil && x.Field == nil && x.Static == nil:
+				getter(x.P, x.T, x.Getter, x.X)
 			}
 		case *syntax.Ident:
-			if v := x.Sym; v != nil && x.Call == nil {
-				access(x.P, x.T, v.Type, nil, nil)
-				superclass(x.P, ownerClass(v))
+			switch {
+			case x.Call != nil:
+			case x.Getter != nil:
+				getter(x.P, x.T, x.Getter, nil)
+			case x.Member != nil:
+				syntax.Inspect(x.Member, visit)
+			case x.Sym != nil:
+				access(x.P, x.T, x.Sym.Type, nil, nil)
+				superclass(x.P, ownerClass(x.Sym))
 			}
 		case *syntax.Lambda:
 			var s missingSet
