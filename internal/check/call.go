@@ -1,6 +1,7 @@
 package check
 
 import (
+	"maps"
 	"math/bits"
 	"slices"
 	"strconv"
@@ -51,6 +52,15 @@ func (cl *callee) argType(i int, args []syntax.Expr) types.Type {
 		return types.VarargElem(p.Type)
 	}
 	return p.Type
+}
+
+// isCallArg reports whether argument x is a call, spread or not.
+func isCallArg(x syntax.Expr) bool {
+	if sp, ok := x.(*syntax.Spread); ok {
+		x = sp.X
+	}
+	_, ok := x.(*syntax.Call)
+	return ok
 }
 
 func isSpread(x syntax.Expr) bool {
@@ -679,7 +689,9 @@ func (c *Checker) typeArgBounds(x *syntax.Call, cd *candidate, targs []types.Typ
 			continue
 		}
 		for _, b := range p.Bounds {
-			if b = s.final(cd.sub.Apply(b)); !b.HasVars() && b.K != types.Invalid && !c.subtype(t, b) {
+			// A bound with a receiver's projection holds its capture,
+			// which only a written type takes: X : C<T> for a B<out N>.
+			if b = s.final(cd.sub.ApplyIn(b)); !b.HasVars() && b.K != types.Invalid && !c.subtype(t, b) {
 				c.errorf(x.TypeArgs[j].P, "type argument is not within its bounds: type parameter '%s' must be subtype of '%s', but actual: '%s'", p.Name, b, t)
 			}
 		}
@@ -851,6 +863,8 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 		for j := range x.Args {
 			if cl.param(j).UnsafeVariance {
 				cd.params[j] = cd.sub.Apply(cl.argType(j, x.Args))
+			} else if cs := capturedSubst(cd.sub, cl.recv, cl.argType(j, x.Args), x.Args[j]); cs != nil {
+				cd.params[j] = cs.ApplyIn(cl.argType(j, x.Args))
 			} else {
 				cd.params[j] = cd.sub.ApplyIn(cl.argType(j, x.Args))
 			}
@@ -893,7 +907,7 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			ts[i] = c.value(a, p)
 			continue
 		}
-		if _, isCall := a.(*syntax.Call); isCall {
+		if isCallArg(a) {
 			inner := newSystem(c)
 			c.sink = inner
 			ts[i] = c.value(a, noWant)
@@ -917,10 +931,10 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			// this call: compareBy's T in nullsLast(if (b) compareBy({
 			// it.a }) else compareBy({ it.b })) for a Comparator<Foo?>.
 			inner := newSystem(c)
-			c.branchSink = inner
+			c.branchSink, c.branchArg = inner, true
 			t := c.value(a, noWant)
 			ts[i] = t
-			c.branchSink = nil
+			c.branchSink, c.branchArg = nil, false
 			if len(inner.vars) > 0 || len(inner.fixups) > 0 {
 				inner.fixups = append(inner.fixups, func(s *system) { a.SetType(s.final(t)) })
 				partials = append(partials, inner)
@@ -1040,7 +1054,15 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 	for i, m := range best.sams {
 		x.Args[i] = c.samConverted(x.Args[i], m, best.params[i])
 	}
+	var lateSusps map[int]bool // converted once the variables are fixed
 	for i := range best.susps {
+		if best.params[i].HasVars() {
+			if lateSusps == nil {
+				lateSusps = map[int]bool{}
+			}
+			lateSusps[i] = true
+			continue
+		}
 		x.Args[i] = c.suspendConverted(x.Args[i], best.params[i])
 	}
 	f := best.f
@@ -1116,10 +1138,19 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 				ch.T = s.final(params[i]).NonNull()
 				continue
 			}
+			if lateSusps[i] {
+				x.Args[i] = c.suspendConverted(a, s.final(params[i]))
+				continue
+			}
 			if lit, ok := a.(*syntax.IntLit); ok && !lit.Long && fitsLit(lit, s.final(params[i])) {
 				lit.T = s.final(params[i]).NonNull()
 			}
-			c.assignable(a.Type(), captured(a.Type(), params[i], s.finalArg(params[i])), a.Pos())
+			want := captured(a.Type(), params[i], s.finalArg(params[i]))
+			c.assignable(a.Type(), want, a.Pos())
+			if best.param(i).Exact && c.subtype(a.Type(), want) && !c.subtype(want, a.Type()) {
+				// @Exact: the argument's type must be the parameter's.
+				c.errorf(a.Pos(), "type mismatch: inferred type is %s but %s was expected", a.Type(), want)
+			}
 		}
 		for _, p := range f.Params {
 			if p.Vararg {
@@ -1145,7 +1176,7 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 		// of a builder's stubs relates the call's variables to them: as
 		// in Kotlin, myBuilder2 { add("") } that myBuilder1's lambda ends
 		// with, for its Foo<K1>, infers K2 with K1 (see stubRelated).
-		if want.K != types.Invalid && (!want.HasVars() || c.onlyStubs(want)) && ret.HasVars() {
+		if want.K != types.Invalid && (!want.HasVars() || c.onlyStubs(want)) && ret.HasVars() && !f.NoInferRet {
 			trial := sys.clone()
 			trial.sub(ret, want)
 			if trial.ok {
@@ -1157,7 +1188,7 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 	// A builder's variable that stubInference infers counts as known: as
 	// in Kotlin, o.p = materialize() for a p of the builder's type
 	// variable infers materialize's T with it (see joinRun).
-	if want.K != types.Invalid && (!want.HasVars() || c.onlyStubs(want)) && ret.HasVars() {
+	if want.K != types.Invalid && (!want.HasVars() || c.onlyStubs(want)) && ret.HasVars() && !f.NoInferRet {
 		trial := sys.clone()
 		trial.sub(ret, want)
 		if trial.ok {
@@ -1374,8 +1405,15 @@ func (c *Checker) byLambdaResult(x *syntax.Call, match []*candidate) *candidate 
 		if !ok {
 			return nil
 		}
+		n := len(sys.errs)
 		for _, p := range ps {
 			sys.fixVarsIn(p)
+		}
+		if len(sys.errs) > n {
+			// As in K2, a lambda whose parameter types need its body to
+			// infer, as a builder's MutableList<E1> receiver, doesn't
+			// choose: buildL { add(""); "" } is ambiguous.
+			return nil
 		}
 		for i := range ps {
 			if ps[i] = sys.final(ps[i]); ps[i].K == types.Invalid {
@@ -1840,12 +1878,17 @@ func (c *Checker) constrain(cd *candidate, x *syntax.Call, ts []types.Type, part
 				continue
 			}
 		}
-		if ft, ok := c.suspendConstraint(t, p, x.Args[i]); ok {
+		if ft, ok := c.suspendConstraint(cd, t, p, x.Args[i]); ok {
 			if cd.susps == nil {
 				cd.susps = map[int]bool{}
 			}
 			cd.susps[i] = true
 			cd.sys.sub(t, ft)
+			continue
+		}
+		if cd.param(i).NoInfer && p.HasVars() {
+			// A @NoInfer parameter's argument adds no constraint: it is
+			// checked against the type the others infer.
 			continue
 		}
 		if m, ft, ok := c.samConstraint(cd, t, p, x.Args[i]); ok {
@@ -1895,17 +1938,37 @@ func (c *Checker) constrainContexts(cd *candidate, x *syntax.Call) {
 // value that a candidate takes for a suspend function type p only by
 // suspend conversion (see suspendConverted), and returns the function
 // type it takes without it: () -> String for suspend () -> String.
-func (c *Checker) suspendConstraint(t, p types.Type, a syntax.Expr) (types.Type, bool) {
+func (c *Checker) suspendConstraint(cd *candidate, t, p types.Type, a syntax.Expr) (types.Type, bool) {
 	pt := p.NonNull()
 	switch a.(type) {
 	case *syntax.Lambda, *syntax.Checked:
 		return types.InvalidType, false
 	}
-	ft, _ := c.funcView(t, pt.A.Len()-1)
+	vt := t
+	if t.K == types.TypeVar && cd != nil && p.HasVars() {
+		// A generic call's result, as id(f)'s, by the function value
+		// it is inferred from.
+		if tv := cd.sys.byVar[t.Param()]; tv != nil && len(tv.lower) == 1 && !tv.fixed {
+			vt = tv.lower[0]
+		}
+	}
+	ft, _ := c.funcView(vt, pt.A.Len()-1)
 	ft = ft.NonNull()
-	if !pt.IsSuspendFunc() || p.HasVars() || !ft.IsFunc() || ft.C.Suspend || ft.C.Composable ||
-		ft.A.Len() != pt.A.Len() || types.MayBeNull(t) && !types.AcceptsNull(p) {
+	if !pt.IsSuspendFunc() || !ft.IsFunc() || ft.C.Suspend || ft.C.Composable ||
+		ft.A.Len() != pt.A.Len() || types.MayBeNull(vt) && !types.AcceptsNull(p) {
 		return types.InvalidType, false
+	}
+	if p.HasVars() {
+		if cd == nil {
+			return types.InvalidType, false
+		}
+		// The conversion's constraint, as K2 adds it, when the type
+		// itself doesn't fit: (Int) -> String for suspend (T) -> String
+		// gives T := Int.
+		trial := cd.sys.clone()
+		if trial.sub(vt, p); trial.ok {
+			return types.InvalidType, false
+		}
 	}
 	return c.unsuspended(p), true
 }
@@ -2012,7 +2075,64 @@ func (c *Checker) applicable(cs []*candidate, x *syntax.Call, ts []types.Type, p
 			out = append(out, try)
 		}
 	}
+	if len(cs) > 1 {
+		// As in K2, among several candidates, one whose variable's upper
+		// constraints have an empty intersection is inapplicable: S of
+		// greater(x: Bar<in S>, t: T) for S : T would be Long & Bar<Long>.
+		// A single one only gets a warning.
+		out = slices.DeleteFunc(out, c.emptyUppers)
+	}
 	return out
+}
+
+// emptyUppers reports whether a variable of candidate cd without lower
+// constraints has upper constraints, its declared bounds among them,
+// whose intersection is or may be empty (see emptyIntersection), as
+// K2's CheckIncompatibleTypeVariableUpperBounds finds them.
+func (c *Checker) emptyUppers(cd *candidate) bool {
+	s := cd.sys.clone()
+	for _, p := range cd.tparams {
+		if v := cd.sub[p].T; v.K == types.TypeVar {
+			for _, b := range v.Param().Bounds {
+				s.sub(v, b)
+			}
+		}
+	}
+	for _, tv := range s.vars {
+		if tv.fixed || len(tv.lits) > 0 || slices.ContainsFunc(tv.lower, s.proper) {
+			continue
+		}
+		var ups []types.Type
+		seen := map[*tvar]bool{}
+		var collect func(tv *tvar)
+		collect = func(tv *tvar) {
+			if seen[tv] {
+				return
+			}
+			seen[tv] = true
+			for _, u := range tv.upper {
+				u = s.apply(u)
+				if u.K == types.TypeVar {
+					if uv := s.byVar[u.Param()]; uv != nil && !uv.fixed {
+						collect(uv)
+					}
+					continue
+				}
+				if !u.HasVars() && (u.K == types.Class || u.IsParam() || isBuiltin(u)) {
+					ups = append(ups, u)
+				}
+			}
+		}
+		collect(tv)
+		for i := range ups {
+			for _, u := range ups[i+1:] {
+				if c.emptyIntersection(ups[i], u) || c.mayBeEmptyIntersection(ups[i], u) {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 // withinBounds reports whether a candidate's type parameters can satisfy
@@ -2528,4 +2648,28 @@ func (c *Checker) restoreStubCons(cons map[*stubRun][][2]types.Type) {
 	for r, ks := range cons {
 		r.cons = append(r.cons, ks...)
 	}
+}
+
+// capturedSubst returns sub with the receiver's out projections that
+// function type t, of a parameter that lambda a is passed for, mentions
+// replaced by their bounds, if it has any: K2 approximates the captures
+// in a lambda's parameter types and its result's expected type by their
+// upper bounds, so x.foo { it } on an Inv<out CharSequence>, for foo(x:
+// (E) -> E), returns a CharSequence. Elsewhere an out position takes
+// Nothing (see Subst.ApplyIn).
+func capturedSubst(sub, recv types.Subst, t types.Type, a syntax.Expr) types.Subst {
+	if _, ok := a.(*syntax.Lambda); !ok || !t.NonNull().IsFunc() {
+		return nil
+	}
+	var out types.Subst
+	for p, ra := range recv {
+		if ra.V != types.Out || ra.T.HasVars() || !t.Has(func(u types.Type) bool { return u.K == types.TypeParam && u.Param() == p }) {
+			continue
+		}
+		if out == nil {
+			out = maps.Clone(sub)
+		}
+		out[p] = types.Arg{T: ra.T}
+	}
+	return out
 }

@@ -289,7 +289,20 @@ func (c *Checker) expr1(x syntax.Expr, want types.Type, allowRange bool, sink *s
 		return t.NonNull()
 	case *syntax.Spread:
 		// An argument for a vararg parameter: resolve checks where it goes.
-		t := c.value(x.X, want)
+		var t types.Type
+		if _, call := x.X.(*syntax.Call); call && sink != nil {
+			// A generic call's variables are the outer call's, as
+			// unspread: T of Arrays.asList(*x.toArray(y)) for a
+			// List<String>.
+			n := len(sink.vars)
+			c.sink = sink
+			t = c.value(x.X, want)
+			if len(sink.vars) > n {
+				sink.fixups = append(sink.fixups, func(s *system) { x.SetType(s.final(t).Flex()) })
+			}
+		} else {
+			t = c.value(x.X, want)
+		}
 		switch {
 		case t.K == types.Invalid:
 		case !t.NonNull().IsArray() && !(t.K == types.Class && types.IsUnsignedArray(t.C)):
@@ -777,7 +790,7 @@ func (c *Checker) binary(x *syntax.Binary, want types.Type, allowRange bool) typ
 			// V of fun <V : A> test(): V? is Nothing in test() ?: error("").
 			if yt, ok := c.elvisRightFirst(x.Y); ok {
 				c.errs = c.errs[:n]
-				xt = c.safeUnit(x.X, c.value(x.X, yt.Nullable()))
+				xt = c.safeUnit(x.X, c.value(x.X, starsBounded(yt).Nullable()))
 			}
 		}
 		nn, nonNull := len(c.scope.narrows), c.notNullOf(x.X) // the right side's casts may not run
@@ -832,6 +845,12 @@ func (c *Checker) binary(x *syntax.Binary, want types.Type, allowRange bool) typ
 			// a ?: javaCall() is of a platform type, as the Java value:
 			// null if both are, and unchecked where a T? is expected.
 			t = t.Platform()
+		}
+		if isRaw(t) && javaClass(t.C) {
+			// As K2's, whose elvis is a call, the raw type is lost: a
+			// raw Generic's ?: return is a Generic<Any!>, whose generic
+			// methods aren't erased.
+			t = rawLower(t)
 		}
 		return t
 
@@ -1677,10 +1696,24 @@ func (c *Checker) identNarrows(x *syntax.Binary) []narrow {
 		if ot.K != types.Class && ot.K != types.String && ot.K != types.TypeParam || types.MayBeNull(ot) {
 			continue
 		}
-		if k, ok := c.narrowKeyOf(side[0]); ok && !c.subtype(k.t, ot) && (ot.A == nil || k.t.K != types.Class || k.t.A == nil) {
-			k.t = c.isNarrowed(k.t, ot)
-			out = append(out, k)
+		k, ok := c.narrowKeyOf(side[0])
+		if !ok || c.subtype(k.t, ot) {
+			continue
 		}
+		if ot.A != nil && k.t.K == types.Class && k.t.A != nil {
+			// Both generic: the value is both, Box<T> & Box<A>, as K2's
+			// smart cast is an intersection with the declared type. The
+			// declared type first, which inference, without K2's forks
+			// over the components, takes: bar(s) for an expected X?.
+			if ot.K != types.Class || ot.C.Func || k.t.C.Func || types.MayBeNull(k.t) {
+				continue
+			}
+			k.t = c.intersect([]types.Type{k.t, ot})
+			out = append(out, k)
+			continue
+		}
+		k.t = c.narrowedTo(k.t, ot, false)
+		out = append(out, k)
 	}
 	return out
 }
@@ -2183,6 +2216,7 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 		}
 		ensureVar(x.Prop)
 		t = c.memberSubst(rt, x.Prop.Owner).Apply(x.Prop.Type)
+		t = c.intersectionProp(xt.NonNull(), rt, x.Prop, t)
 		if !x.Safe && c.stableOn(x.Prop, rt) {
 			// A smart cast of a.b.
 			x.T = t
@@ -2220,6 +2254,50 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 		t = t.Nullable()
 	}
 	return t
+}
+
+// intersectionProp returns the type of property p, of type t seen
+// through rt, read on a receiver of intersection type xt: the
+// intersection of its types seen through each component of rt's class,
+// as K2's intersection scope has it. value of a C<out T> & C<out V> is a
+// T & V.
+func (c *Checker) intersectionProp(xt, rt types.Type, p *types.VarSym, t types.Type) types.Type {
+	if !xt.IsIntersection() || rt.K != types.Class || p.Owner == nil {
+		return t
+	}
+	ts := []types.Type{t}
+	for _, o := range xt.Param().Bounds {
+		if o = o.NonNull(); o == rt || o.K != types.Class || o.C != rt.C {
+			continue
+		}
+		u := c.memberSubst(o, p.Owner).Apply(p.Type)
+		if u.K == types.Invalid || u.HasVars() {
+			return t
+		}
+		ts = append(ts, u)
+	}
+	if len(ts) == 1 || t.HasVars() {
+		return t
+	}
+	// The components as they are, T & V of two type parameters that may
+	// be null, not (T & Any & V & Any)?: of equal ones the first stays.
+	var comps []types.Type
+	for i, u := range ts {
+		if !slices.ContainsFunc(ts[:i], func(o types.Type) bool { return c.subtype(o, u) }) &&
+			!slices.ContainsFunc(ts[i+1:], func(o types.Type) bool { return c.subtype(o, u) && !c.subtype(u, o) }) {
+			comps = append(comps, u)
+		}
+	}
+	if len(comps) == 1 {
+		return comps[0]
+	}
+	if slices.ContainsFunc(comps, func(u types.Type) bool { return u.N || u.D || u.P || u.IsIntersection() }) {
+		if r := c.intersect(comps); r.K != types.Invalid {
+			return r
+		}
+		return t
+	}
+	return c.internIntersection(comps)
 }
 
 // kotlinSuperProp reports whether Java class cls inherits property name
@@ -3407,6 +3485,7 @@ func deprecatedConversion(from types.Type, b types.Builtin) string {
 
 func (c *Checker) ifExpr(x *syntax.If, want types.Type, valueUsed bool) types.Type {
 	sink := c.takeBranchSink()
+	defer c.sinkLambdas(sink != nil && c.branchArg)()
 	c.value(x.Cond, types.BoolType)
 	c.wantBool(x.Cond)
 	whenTrue, whenFalse := c.narrowing(x.Cond)
@@ -3518,6 +3597,13 @@ type pendingBranch struct {
 	t    types.Type
 	body *syntax.Block
 	lit  syntax.Expr // an integer literal's value, as 0 in if (c) 1L else 0
+	// lambda is set for a branch that is only a lambda without its
+	// parameters' types, which, as K2's postponed argument, takes them
+	// from the others' function type: when { a -> {{ x -> }} b -> f }.
+	lambda bool
+	// sunk is set for a lambda branch postponed with the call the if or
+	// when is an argument of.
+	sunk bool
 	// open is set when the call needs the other branches' types: it has
 	// no lambdas, or they don't give their parameter types. See openLast.
 	open bool
@@ -3527,6 +3613,11 @@ type pendingBranch struct {
 	// scope is the branch's block's, with its locals and smart casts,
 	// which its lambdas see.
 	scope *scope
+	// free is the builder's run the call's variables are related to, if
+	// nothing constrained that run's variables yet when the branch was
+	// checked (see freeStubRun).
+	free   *stubRun
+	freeAt int // the number of free's constraints then
 }
 
 // branch checks a branch of an if or when. Without a known expected
@@ -3537,12 +3628,38 @@ type pendingBranch struct {
 // if (c) build { yield(x) } else build {}, also unused. It is then seen as
 // Nothing, which the join ignores, until completeBranches.
 func (c *Checker) branch(b *syntax.Block, want types.Type, valueUsed bool, pending *[]pendingBranch) types.Type {
+	if c.lambdaSink && valueUsed && want.K == types.Invalid && len(b.Stmts) == 1 {
+		// A lambda of an if or a when that is a call's argument is, as
+		// K2's synthetic call's, postponed with the call's: { -> } of
+		// Foo(if (b) { -> } else null) for an expected Foo<suspend ()
+		// -> Unit> is a suspend lambda (see sinkBranches).
+		if es, ok := b.Stmts[0].(*syntax.ExprStmt); ok {
+			if l, ok := es.X.(*syntax.Lambda); ok && l.Arrow && len(l.Params) == 0 && !l.Anon && l.Ref == nil && !l.SuspendMod {
+				*pending = append(*pending, pendingBranch{body: b, lambda: true, sunk: true, scope: c.scope})
+				return types.NothingType
+			}
+		}
+	}
+	if n := len(b.Stmts); n > 0 && want.Flex().E {
+		if es, ok := b.Stmts[n-1].(*syntax.ExprStmt); ok {
+			if l, ok := es.X.(*syntax.Lambda); ok && l.Arrow && !l.Anon {
+				if c.branchLambdas == nil {
+					c.branchLambdas = map[*syntax.Lambda]bool{}
+				}
+				c.branchLambdas[l] = true
+			}
+		}
+	}
 	if want.K != types.Invalid && want.K != types.Any && !want.HasVars() || len(b.Stmts) == 0 {
 		return c.block(b, want, valueUsed)
 	}
 	es, ok := b.Stmts[len(b.Stmts)-1].(*syntax.ExprStmt)
 	if !ok {
 		return c.block(b, want, valueUsed)
+	}
+	if l, ok := es.X.(*syntax.Lambda); ok && valueUsed && len(b.Stmts) == 1 && l.Arrow && len(l.Params) > 0 && untypedParams(l) && want.K == types.Invalid {
+		*pending = append(*pending, pendingBranch{body: b, lambda: true, scope: c.scope})
+		return types.NothingType
 	}
 	if valueUsed && literalArith(es.X) {
 		// An integer literal takes the type of the other branches if it
@@ -3580,11 +3697,28 @@ func (c *Checker) branch(b *syntax.Block, want types.Type, valueUsed bool, pendi
 		b.T = t
 		return t
 	}
-	*pending = append(*pending, pendingBranch{sys: inner, t: t, body: b, scope: c.blockScope, unused: !valueUsed})
+	free, freeAt := c.freeStubRun(inner), 0
+	if free != nil {
+		freeAt = len(free.cons)
+	}
+	*pending = append(*pending, pendingBranch{sys: inner, t: t, body: b, scope: c.blockScope, unused: !valueUsed, free: free, freeAt: freeAt})
 	if !valueUsed {
 		return bt
 	}
 	return types.NothingType
+}
+
+// branchLambda checks pending branch p, a lambda (see pendingBranch),
+// with the others' type, result, if it is a function type, or want.
+func (c *Checker) branchLambda(p pendingBranch, result, want types.Type) types.Type {
+	target := result
+	if !target.Flex().IsFunc() || target.HasVars() {
+		target = want
+	}
+	saved := c.scope
+	c.scope = p.scope
+	defer func() { c.scope = saved }()
+	return c.block(p.body, target, true)
 }
 
 // completeBranches completes the pending branches with the type of the
@@ -3594,6 +3728,13 @@ func (c *Checker) completeBranches(pending []pendingBranch, result, want types.T
 	c.openLast(pending)
 	done := types.NothingType // the completed pending branches' type
 	for _, p := range pending {
+		if p.lambda {
+			bt := c.branchLambda(p, result, want)
+			if j, ok := c.join(result, bt); ok {
+				result = j
+			}
+			continue
+		}
 		if p.lit != nil {
 			bt := p.t
 			switch r := result.Flex().NonNull(); r {
@@ -3612,12 +3753,16 @@ func (c *Checker) completeBranches(pending []pendingBranch, result, want types.T
 			// unusedJoin.
 			target = done
 		}
-		if target.K == types.Nothing || target.K == types.Invalid || target.HasVars() {
+		if target.K == types.Nothing || target.K == types.Null || target.K == types.Invalid || target.HasVars() {
+			// Nothing, or null's Nothing?, which the branches join with.
 			target = want
 		}
+		forced := false
 		if target.K != types.Invalid && !target.HasVars() && (valueUsed || p.open) {
 			if trial := c.branchTrial(p.sys, p.t, target); trial != nil { // see expected.go
 				p.sys = trial
+			} else {
+				forced = p.free != nil
 			}
 		}
 		// The branch's lambdas, as sequence { yield(1) }'s in
@@ -3629,6 +3774,14 @@ func (c *Checker) completeBranches(pending []pendingBranch, result, want types.T
 		c.runLambdas(p.sys, false)
 		c.scope = saved
 		p.sys.finish()
+		if forced && slices.Contains(p.free.joined, p.sys) {
+			// K2 infers the call with the builder's variables, which
+			// nothing bounded when the branch was checked: the join of
+			// the branches is its upper bound whatever the lambda does
+			// after, as add(42) after removeLast() in an if's branches
+			// is a mismatch for its Boolean.
+			p.free.force(p.freeAt, p.t, target)
+		}
 		bt := p.sys.final(p.t)
 		if !p.unused {
 			p.body.T = bt
@@ -3720,6 +3873,7 @@ func (c *Checker) openLast(pending []pendingBranch) {
 
 func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) types.Type {
 	sink := c.takeBranchSink()
+	defer c.sinkLambdas(sink != nil && c.branchArg)()
 	var pending []pendingBranch
 	softFail := false
 	// As after an if, the vars the branches assign have the join of their
@@ -3857,6 +4011,10 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 				} else if r.Op == syntax.STEP {
 					c.errorf(cond.X.Pos(), "'in' is only supported with ranges written in place, without 'step'")
 					rt = c.rangeExpr(cond.X)
+				}
+				if e := rt.RangeElem(); st.IsIntersection() && slices.Contains(st.Param().Bounds, e) {
+					// A T smart cast to Char, a Char & T, as a Char.
+					st = e
 				}
 				if !(isIntOrLong(st) && isIntOrLong(rt.RangeElem())) {
 					c.wantType(x.Subject, st, rt.RangeElem())
@@ -4214,4 +4372,39 @@ func (c *Checker) ctorsFit(cls *types.ClassSym, fs []*types.FunSym, x *syntax.Ca
 		return c.takeTypes(cls.Ctors, x, ts) || !c.takeTypes(fs, x, ts)
 	}
 	return true
+}
+
+// sinkLambdas sets lambdaSink to on, and returns the function that
+// restores it. branchArg is consumed.
+func (c *Checker) sinkLambdas(on bool) func() {
+	saved := c.lambdaSink
+	c.lambdaSink, c.branchArg = on, false
+	return func() { c.lambdaSink = saved }
+}
+
+// starsBounded returns t, a value's type, with its star arguments of
+// out parameters replaced by out projections of their bounds: K2
+// captures the stars, so that E of Out<E> <: Out<*> is below the
+// capture, which kc approximates by its bound.
+func starsBounded(t types.Type) types.Type {
+	n := t.NonNull()
+	if n.K != types.Class || n.A == nil {
+		return t
+	}
+	args := slices.Clone(n.A.List)
+	changed := false
+	for i, a := range args {
+		if a.V == types.Star && i < len(n.C.TypeParams) && n.C.TypeParams[i].Var == types.Out {
+			args[i] = types.Arg{V: types.Out, T: starArgBound(n, i)}
+			changed = true
+		}
+	}
+	if !changed {
+		return t
+	}
+	n.A = types.MakeArgs(args)
+	if t.N {
+		n = n.Nullable()
+	}
+	return n
 }

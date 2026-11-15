@@ -520,6 +520,15 @@ func (c *Checker) memberCallees(ms []*types.FunSym, rt types.Type) []callee {
 		if g, ok := c.unerased(rt, cl); ok {
 			cls[i] = callee{f: g, tparams: g.TypeParams, recv: c.memberSubst(rt, g.Owner)}
 		}
+		if cl := &cls[i]; len(cl.tparams) > 0 && cl.f.Owner != nil && javaClass(cl.f.Owner) && rawSubst(cl.recv) && !rt.IsParam() {
+			// A raw type's generic method is erased too, as in Kotlin:
+			// a raw StubElement's <E> E bar(E) is bar(Any!): Any!.
+			s := maps.Clone(cl.recv)
+			for _, p := range cl.tparams {
+				s[p] = types.Arg{T: erasure(p), Raw: true}
+			}
+			cl.recv, cl.tparams = s, nil
+		}
 	}
 	return cls
 }
@@ -976,7 +985,7 @@ func (c *Checker) checkInheritance(d *syntax.ClassDecl) {
 				continue
 			}
 			ret := c.overrideSubst(this, f, o).Apply(o.Ret)
-			if f.Ret.K != types.Invalid && ret.K != types.Invalid && !c.subtype(f.Ret, ret) {
+			if f.Ret.K != types.Invalid && ret.K != types.Invalid && !c.overrideRetFits(f.Ret, ret) {
 				c.errorf(fd.P, "return type of '%s' is not a subtype of the return type of the overridden member '%s' defined in '%s'", f.Name, f.Name, o.Owner.DisplayName())
 			}
 			for i, p := range f.Params {
@@ -2079,4 +2088,21 @@ func numberImplemented(cls, s *types.ClassSym, g *types.FunSym) bool {
 		}
 	}
 	return false
+}
+
+// overrideRetFits reports whether an override's return type t is a
+// subtype of the overridden member's u. As in K2, a builder's variable
+// in t isn't constrained by it: a stub returned by an anonymous object's
+// member fits, and one in an argument doesn't (see stubInference).
+func (c *Checker) overrideRetFits(t, u types.Type) bool {
+	if !c.hasStub(t) {
+		return c.subtype(t, u)
+	}
+	if c.stub(t.Flex()) != nil {
+		return true
+	}
+	saved := c.stubs
+	c.stubs = nil
+	defer func() { c.stubs = saved }()
+	return c.subtype(t, u)
 }

@@ -1,6 +1,8 @@
 package check
 
 import (
+	"slices"
+
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
 	"github.com/barteo/kotlin-compiler-go/internal/types"
 )
@@ -88,6 +90,11 @@ func (c *Checker) subtype1(t, u types.Type) bool {
 	if t.IsParam() {
 		if len(t.Param().Bounds) == 0 {
 			return u.K == types.Any
+		}
+		if t.IsIntersection() && u.K == types.Class && c.hasStub(u) && c.forkOverStubs(t, u) {
+			// Instances of a builder's variables' class that differ: its
+			// run's fork chooses one (see system.stubFork), none here.
+			return true
 		}
 		for _, b := range t.Param().Bounds {
 			if c.subtype(b.NonNull(), u) {
@@ -340,6 +347,9 @@ func classSubst(t types.Type) types.Subst {
 				// A projection the parameter's own variance makes
 				// redundant, as out T of a Holder<out T>, is no capture.
 				s[p] = types.Arg{T: a.T}
+			} else if a.V == types.Star && p.Var == types.Out && !p.Bound().HasParams() {
+				// So is a star for an out T: Out<*> is Out<out Any?>.
+				s[p] = types.Arg{T: p.Bound()}
 			}
 		} else if t.A == nil {
 			s[p] = types.Arg{T: erasure(p), Raw: true}
@@ -493,6 +503,57 @@ func isBuiltin(t types.Type) bool {
 // that b also has, or Any. Marker interfaces such as Serializable, and
 // Java interfaces, are only used if nothing else is shared.
 func (c *Checker) commonSuper(a, b types.Type, depth int) types.Type {
+	if b.IsIntersection() && !a.IsIntersection() {
+		a, b = b, a
+	}
+	if a.IsIntersection() {
+		// An intersection's supertypes are its components': Base & Base2
+		// and a Three, of Base and Base3, give Base & Base3 for Base2 :
+		// Base3.
+		var rs []types.Type
+		for _, comp := range a.Param().Bounds {
+			r := c.commonSuper(comp.NonNull(), b, depth)
+			if r.K == types.Any || slices.ContainsFunc(rs, func(o types.Type) bool { return c.subtype(o, r) }) {
+				continue
+			}
+			rs = slices.DeleteFunc(rs, func(o types.Type) bool { return c.subtype(r, o) })
+			rs = append(rs, r)
+		}
+		// A component that b is a subtype of, common to both, first: A<T>
+		// of B & A<T> and C & A<T>.
+		slices.SortStableFunc(rs, func(x, y types.Type) int {
+			ex := slices.Contains(a.Param().Bounds, x) && c.subtype(b, x)
+			ey := slices.Contains(a.Param().Bounds, y) && c.subtype(b, y)
+			switch {
+			case ex && !ey:
+				return -1
+			case ey && !ex:
+				return 1
+			}
+			return 0
+		})
+		switch {
+		case len(rs) == 0:
+			return types.AnyType
+		case len(rs) == 1 || slices.ContainsFunc(rs, func(t types.Type) bool {
+			// Generic class types may mention type parameters: Box<T> &
+			// Box<out Super> join Box<T> & Box<SubA> and Box<T> &
+			// Box<SubB>.
+			return !intersectable(t) && (t.K != types.Class || t.HasVars())
+		}):
+			return rs[0]
+		}
+		return c.intersect(rs)
+	}
+	// A type parameter's supertypes are its bounds, which may be type
+	// parameters too: APP_SERVICE : SERVICE and MODULE_SERVICE : SERVICE
+	// give SERVICE.
+	for p, seen := a, 0; p.IsParam() && seen < 8; seen++ {
+		if b.IsParam() && c.subtype(b, p.NonNull()) {
+			return p.NonNull()
+		}
+		p = p.Param().Bound()
+	}
 	if a.IsParam() {
 		a = a.Param().Bound().NonNull()
 	}
@@ -507,7 +568,7 @@ func (c *Checker) commonSuper(a, b types.Type, depth int) types.Type {
 			continue
 		}
 		r := c.joinArgs(s, sb, depth)
-		javaIface := s.C.External && s.C.Interface && s.C.KProps == nil && s.C.KotlinName == ""
+		javaIface := s.C.External && s.C.Interface && s.C.KProps == nil && s.C.KotlinName == "" && len(s.C.TypeParams) == 0
 		if !markerInterfaces[s.C.Name] && !javaIface {
 			shared = append(shared, r)
 			continue
@@ -532,7 +593,7 @@ func (c *Checker) commonSuper(a, b types.Type, depth int) types.Type {
 func (c *Checker) minimalSupers(shared []types.Type) types.Type {
 	var min []types.Type
 	for _, s := range shared {
-		if s.C.External && s.C.KProps == nil && s.C.KotlinName == "" {
+		if s.C.External && s.C.KProps == nil && s.C.KotlinName == "" && len(s.C.TypeParams) == 0 {
 			continue // a Java class's supertypes keep the first
 		}
 		below := false
@@ -585,8 +646,11 @@ func (c *Checker) joinArgs(a, b types.Type, depth int) types.Type {
 				args[i] = x
 			case x.V == types.Inv && y.V == types.Inv && c.subtype(y.T, x.T):
 				args[i] = y
-			case x.V == types.Inv && y.V == types.Inv && intersectable(x.T) && intersectable(y.T):
+			case x.V == types.Inv && y.V == types.Inv && intersectable(x.T) && intersectable(y.T) && !(depth > 0 && c.emptyIntersection(x.T, y.T)):
 				// Or their intersection: In<A> and In<B> give In<A & B>.
+				// Nested, an empty one is a star, which keeps the type
+				// intersectable: Comparable<*> of String and Int in X<out
+				// Comparable<*>> & I<out Comparable<*>>.
 				args[i] = types.Arg{T: c.intersect([]types.Type{x.T, y.T})}
 			default:
 				args[i] = types.Arg{V: types.Star}
@@ -694,6 +758,30 @@ func (c *Checker) emptyIntersection(t, u types.Type) bool {
 	return false
 }
 
+// mayBeEmptyIntersection reports whether t & u may be empty, as K2's
+// FINAL_CLASS_AND_INTERFACE: a final class and an interface it doesn't
+// implement.
+func (c *Checker) mayBeEmptyIntersection(t, u types.Type) bool {
+	ts, us := c.boundClasses(t, nil, 0), c.boundClasses(u, nil, 0)
+	for _, a := range ts {
+		a.Ensure()
+		for _, b := range us {
+			b.Ensure()
+			if a.Interface == b.Interface || !a.Interface && !a.Final || !b.Interface && !b.Final {
+				continue
+			}
+			if _, ok := c.asSuper(rawType(a), b); ok {
+				continue
+			}
+			if _, ok := c.asSuper(rawType(b), a); ok {
+				continue
+			}
+			return true
+		}
+	}
+	return false
+}
+
 // boundClasses appends the classes t is: its own, or those of a type
 // parameter's bounds. Any is none.
 func (c *Checker) boundClasses(t types.Type, out []*types.ClassSym, depth int) []*types.ClassSym {
@@ -713,4 +801,16 @@ func (c *Checker) boundClasses(t types.Type, out []*types.ClassSym, depth int) [
 		}
 	}
 	return out
+}
+
+// forkOverStubs reports whether components of intersection t are
+// different instances of class type u's class.
+func (c *Checker) forkOverStubs(t, u types.Type) bool {
+	var sups []types.Type
+	for _, comp := range t.Param().Bounds {
+		if sup, ok := c.asSuper(comp.NonNull(), u.C); ok && !slices.Contains(sups, sup) {
+			sups = append(sups, sup)
+		}
+	}
+	return len(sups) > 1
 }

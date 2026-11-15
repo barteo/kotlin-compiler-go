@@ -21,10 +21,30 @@ own tests.
   path, the standard library's included, aren't read from class files.
   The class path's functions and members deprecated `HIDDEN` stay hidden,
   as `kotlinc` compiles them synthetic, but its classes don't.
-- Builder inference of a builder nested in another whose lambda combines
-  values of both builders' variables, as `select(this@outer.get(),
-  get())`, and where Kotlin forks the constraint system for a call in the
-  lambda: it needs a type argument or an expected type.
+- Builder inference isn't K2's PCLA: a builder's lambda is checked with
+  its variables unfixed and then again with them fixed. A call in a
+  nested builder that combines both builders' variables, as
+  `select(this@outer.get(), get())`, is inferred with the inner
+  builder's first, the outer one's in the system but left unfixed, and
+  again with the outer one's. A fork of the constraint system over a
+  builder's variables waits for its lambda's constraints. Of K2's
+  fixation on demand, `kc` fixes a builder's variable for a member of a
+  value of its type and for a nested call's lambda that takes the
+  variable itself as a parameter, `it` of `flatMap { }` in `buildList`,
+  not one in a type argument. A call's variable that captures an `out`
+  projection of a builder's variable is reported as uninferred, as K2
+  reports it, but kc infers its other captures of builders' variables,
+  which K2 may not. An `if` or `when` whose branches mention a builder's
+  variable joins them into its inference. A branch's generic call that
+  only the builder's variable, not yet bounded, gives a type to, as
+  `removeLast()` before `add(42)` in the other branch, takes the other
+  branches' join as its bound, as K2's fixation of the join's variable
+  first does; K2's own order of fixation isn't modeled otherwise, but
+  for KT-58232: a builder call returned by the one-branch `when` a
+  lambda ends with can't infer its variables, which are `Nothing`. A
+  builder's lambda that casts its receiver to a
+  star-projected subtype, `this as DerivedBuildee<*>`, infers the
+  variable as `Unit`, where K2 infers a captured type.
 
 ## Without the standard library
 
@@ -156,22 +176,88 @@ yet done. [Design](design.md) describes how `kc` compiles it.
 
 **Checking**
 
-- Intersection types (`A & B`) are inferred only for Kotlin classes'
-  shared supertypes, smart casts between a class type and an unrelated
-  interface, smart casts of a value of a type parameter's type to a class
-  type or `String` (`String & T`), and incomparable upper bounds of a
-  variable. A smart cast of a `T` to a primitive type or a value class is
+- Intersection types (`A & B`) are inferred only for the shared
+  supertypes of Kotlin classes and generic Java ones (a Java class's
+  non-generic interfaces only when nothing else is shared), smart casts between a class type and an unrelated
+  interface, or of such an intersection to another (`C & A & B`),
+  smart casts of a value of a type parameter's type to a class
+  type, a primitive type or `String` (`String & T`, `Int & T`), identity or safe equality of two
+  generic class types or a cast of one to the other (`Box<T> & Box<A>`),
+  an `is` check or cast of one to a subclass of another instance
+  (`B & A<T>` for a `B : A<Int>`), and incomparable upper bounds of a
+  variable. Other smart casts are to the target type alone: a class type
+  of a generic or Java type, a type parameter to another. A call on an
+  intersection takes the first component with a member of the name
+  whose parameters take its arguments, and a property read on one is
+  the intersection of its types only over components of the same class;
+  where a call's variable is constrained by an intersection whose
+  components are different instances of one class, inference forks
+  over them as K2 does, taking the first whose constraint system holds,
+  but only over the call's own constraints, not its value's use, and
+  with the cast's type first. A variable whose upper constraints don't meet its declared
+  bounds, as `T` of `fun <T : Foo> foo(): T?` for a `Bar?`, is inferred
+  from the constraints alone, where Kotlin infers `Foo & Bar`. A smart cast of a `T` to a value class is
   that type alone, which a generic call expecting a `T` takes only
   directly, as `listOf(o)`, not through another call, as `mapOf(o to o)`
-  for an `Int` `o`. The common
+  for an `o` of a value class. The common
   supertype of two builtin types is `Any`, or `Number` for numbers (for
   `Int` and `String`, Kotlin's is `Comparable<*> & Serializable`).
+- Variables are fixed in K2's readiness order, but their constraints
+  are bounds without K2's kinds and origins: an invariant argument is
+  two bounds rather than an equality, and of the origins only declared
+  bounds are told apart. A safe call passed to a generic call, whose
+  selector K2 completes on its own, is part of the outer call's system,
+  with its variables fixed first.
 - A lambda's parameter types are fixed from the constraints known when
   the lambda is reached; K2 picks the order from the whole system, so it
-  infers some combinations of lambdas `kc` can't.
+  infers some combinations of lambdas `kc` can't. A lambda that declares
+  all its parameters' types is checked on its own only when its
+  variable has no function type among its bounds.
+- The branches of an `if` or `when` aren't K2's synthetic call: a
+  branch that is a lambda without its parameters' types takes them from
+  the other branches only when the `if` has no expected type, and one
+  takes an expected receiver as its first parameter only when it is a
+  branch's value. Only a branch lambda written without parameters
+  (`{ -> }`) of an `if` or `when` that is a generic call's argument is
+  postponed with the call, as K2's synthetic call's arguments are.
+- Conversions during inference are partial. A function value passed for
+  a suspend function type with variables gives the converted type's
+  constraint, and so does a generic call's result (`id(f)`) whose
+  variable has one lower bound. A lambda passed for a variable takes
+  its type from the variable's upper bound only when that is a suspend
+  function type or a Java SAM interface; a lambda passed through another
+  call (`id({ -> })`) isn't converted. A Java type parameter without
+  constraints is inferred as its bound only when that bound is one
+  class other than `Object`.
+- `kc` has no captured types: a projection a variable stands for is
+  approximated by its bounds where it is substituted. A variable that
+  captures a projection of an argument is inferred as that projection,
+  so a parameter of the argument's own or a supertype's type takes it
+  (`Future<F>` for a `CompletableFuture<*>`), and a reified one is an
+  error. A member's parameter whose type holds a projected argument
+  takes `Nothing` there, except a lambda's function type, whose `out`
+  projections are their bounds in its parameters and result, as K2
+  approximates them; a function value passed for it can't return the
+  capture, and a member's explicit type argument is checked against a
+  bound with a projection approximated as such a parameter is. Two reads
+  of one `Out<*>` value are the same type, where they are different
+  captures in Kotlin: only an elvis's left call, inferred with the right
+  side's type, sees a star of it as below its bound. The capture of an
+  `in` projection is checked against the variable's bounds only at the
+  top of an argument's type.
 - `@OnlyInputTypes` (`contains`, `get`, `assertEquals`) is checked only
-  when the types a call's variable is constrained by have no platform
-  types, projections or captured types, and aren't literals.
+  when the types a call's variable is constrained by have no captured
+  types (star projections), and the inferred type isn't an
+  intersection's component.
+- Of the Java collection members K2 gives Kotlin's signatures, `kc` maps
+  `contains`, `remove`, `containsAll`, `removeAll`, `retainAll`,
+  `indexOf`, `lastIndexOf`, and a map's `containsKey`, `containsValue`,
+  `get` and `remove`; others, such as `getOrDefault`, keep Java's.
+- Of K2's predefined nullability of JDK members, only `java.util.Optional`'s
+  (`of`, `ofNullable`, `empty`, `get`, `ifPresent`) is applied. A nullable
+  argument for a Java method's `T!` makes `T` nullable, except in an
+  in-projected type argument, where kc's substituted explicit type
+  arguments stand for K2's equality constraints.
 - Java module exports aren't checked, and the Java members Kotlin
   replaces (`Number.intValue()`) aren't hidden.
 - Without an expected type, a reference to a vararg function, or to a

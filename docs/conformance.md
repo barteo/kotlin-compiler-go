@@ -25,6 +25,11 @@ with a `.tsv` file beside it: one line per test, with its path, category,
 key and detail. Flags after the mode go to the harness:
 
 - `-filter when/` runs the tests whose path starts with it.
+- `-list FILE` runs the tests whose paths the file lists, one a line
+  (the first field of a TSV line; `#` starts a comment).
+- `-errors FILE` (diagnostics) writes `kc`'s errors on lines where the
+  markup expects no diagnostic to a TSV file: the test, its category, the
+  file and line, and the message.
 - `-baseline bench/results/box.tsv -o "" -tsv ""` compares a run with the
   committed one, printing the tests that stopped passing and those that
   started, and fails if any stopped. The baseline is read before the run,
@@ -200,18 +205,18 @@ Kotlin 2.4.21's tests on `kc`:
 | Diagnostics tests | Tests | Share of run |
 |:---|---:|---:|
 | run (of 10,827) | 8,515 | |
-| rejects invalid | 3,964 | 46.6% |
-| accepts valid | 3,935 | 46.2% |
-| accepts invalid | 420 | 4.9% |
-| rejects valid | 178 | 2.1% |
+| rejects invalid | 4,001 | 47.0% |
+| accepts valid | 3,982 | 46.8% |
+| accepts invalid | 383 | 4.5% |
+| rejects valid | 131 | 1.5% |
 | parse/unsupported | 16 | 0.2% |
 | crash | 1 | |
 | harness error (`javac`) | 1 | |
 
 `kc` agrees with `kotlinc` on 93% of the diagnostics tests, and reports
-14,758 of the 21,506 expected errors (69%) on their lines. Tests with
+14,895 of the 21,506 expected errors (69%) on their lines. Tests with
 Java sources, which earlier runs skipped, add 1,229 tests to the run,
-and 187 of the 420 that *accept invalid* code. The reports break the failures down; the
+and 185 of the 383 that *accept invalid* code. The reports break the failures down; the
 largest groups are:
 
 - **Silent miscompilation**: none. No box test that `kc` compiles

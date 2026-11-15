@@ -212,6 +212,12 @@ type Checker struct {
 	// tailIfs are ifs without else that end a branch of the if a lambda
 	// ends with: statements, not values (see markTailIfs).
 	tailIfs map[*syntax.If]bool
+	// branchLambdas are the lambdas that are the values of branches of an
+	// if or when, which, as K2's synthetic call's postponed arguments, may
+	// take an expected receiver as their first parameter.
+	branchLambdas map[*syntax.Lambda]bool
+	// stubDepth is the number of stubInference runs in progress.
+	stubDepth int
 	// shadowed are the calls whose implicit receiver a context parameter
 	// shadows, reported once checked (see receiverShadowed).
 	shadowed map[syntax.Expr]shadowedUse
@@ -245,6 +251,10 @@ type Checker struct {
 	// the calls in a builder's lambda that it inferred with the builder's
 	// (see stubHint).
 	stubHints map[stubHintKey]types.Type
+	// stubCapts are the variables of calls in a builder's lambda that
+	// capture an out projection of one of the builder's variables: see
+	// system.subArgs.
+	stubCapts map[stubHintKey]bool
 	// ambiguities counts the ambiguous calls reported.
 	ambiguities int
 	// origSAM is set while candidates compare by the fun interfaces
@@ -268,10 +278,18 @@ type Checker struct {
 	// branchSink is the system of the delegate an if, a try or an
 	// elvis is: see delegateValue.
 	branchSink *system
+	// branchArg is set with branchSink for an if or a when that is a
+	// call's argument, whose lambda branches are then the call's
+	// postponed arguments (see branch). lambdaSink is set while the
+	// branches of such an if or when are checked.
+	branchArg, lambdaSink bool
 	// inferAliasArgs are the calls of typealiases' constructors that
 	// infer the aliases' type arguments: see aliasConstruct.
 	inferAliasArgs map[*syntax.Call]bool
 	tailSink       *system
+	// nothingTail is set while the value of the return that a lambda's
+	// last when gives is checked: see lambdaResult.nothingTail.
+	nothingTail bool
 	// bareRef is the type of an is or as being resolved, whose class's type
 	// arguments may be left out, and bareSubject the type checked.
 	bareRef     *syntax.TypeRef
@@ -1194,6 +1212,14 @@ func (c *Checker) declareTypeParams(decls []*syntax.TypeParam, owner any, allowV
 			c.errorf(d.P, "variance annotations are only allowed for type parameters of classes")
 		}
 		d.Sym = &types.TypeParamSym{Name: d.Name, Var: d.Variance, Index: i, Owner: owner, Reified: d.Reified, OnlyInput: d.OnlyInput}
+		for _, a := range d.Annotations {
+			// As imported: @OnlyInputTypes for kotlin.internal's.
+			if !d.Sym.OnlyInput && strings.HasSuffix(a.Name, "OnlyInputTypes") {
+				if cls := c.lookupClass(a.Name); cls != nil && cls.Name == "kotlin/internal/OnlyInputTypes" {
+					d.Sym.OnlyInput = true
+				}
+			}
+		}
 		if d.Reified {
 			if _, fn := owner.(*types.FunSym); !fn {
 				c.errorf(d.P, "only type parameters of inline functions can be reified")
@@ -1765,6 +1791,7 @@ func (c *Checker) resolveFun(d *syntax.FunDecl, owner *types.ClassSym) {
 	switch {
 	case d.Ret != nil:
 		sym.Ret, sym.Resolved = c.resolveType(d.Ret), true
+		sym.NoInferRet = d.Ret.NoInfer
 	case d.ExprBody == nil:
 		sym.Ret, sym.Resolved = types.UnitType, true
 	default:
@@ -1794,7 +1821,7 @@ func (c *Checker) resolveFun(d *syntax.FunDecl, owner *types.ClassSym) {
 // of declared type t. A vararg parameter's type is an array of t.
 func (c *Checker) paramSym(p *syntax.Param, t types.Type, decl any) *types.VarSym {
 	sym := &types.VarSym{Name: p.Name, Type: t, Kind: types.Param, Decl: decl, Default: p.Default != nil,
-		UnsafeVariance: p.Type != nil && p.Type.UnsafeVariance}
+		UnsafeVariance: p.Type != nil && p.Type.UnsafeVariance, NoInfer: noInfer(p.Type), Exact: p.Type != nil && p.Type.Exact}
 	if p.External {
 		c.errorf(p.ExternalP, "modifier 'external' is not applicable to 'value parameter'")
 	}
@@ -3283,7 +3310,11 @@ func (c *Checker) provideDelegate(d, p *syntax.PropDecl, t, want types.Type) typ
 	if !c.providesDelegate(t, call) {
 		return t
 	}
+	init := d.Init
 	d.Init = call
+	// A builder's lambda that is checked again declares the property
+	// anew: provideDelegate is called on the delegate as written.
+	c.onUndo(func() { d.Init = init })
 	return c.value(call, want)
 }
 

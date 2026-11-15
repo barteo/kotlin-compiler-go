@@ -6,16 +6,16 @@ Of 10827 test files, 2312 are skipped and 8515 run.
 
 | Result | Tests | Share |
 |:---|---:|---:|
-| rejects invalid | 3964 | 46.6% |
-| accepts valid | 3935 | 46.2% |
-| accepts invalid | 420 | 4.9% |
-| rejects valid | 178 | 2.1% |
+| rejects invalid | 4001 | 47.0% |
+| accepts valid | 3982 | 46.8% |
+| accepts invalid | 383 | 4.5% |
+| rejects valid | 131 | 1.5% |
 | parse/unsupported | 16 | 0.2% |
 | crash | 1 | 0.0% |
 
 *Rejects invalid* and *accepts valid* agree with kotlinc. *Accepts invalid* is code kotlinc rejects that kc compiles; *rejects valid*, code kotlinc compiles that kc's checker rejects. Both are bugs. A *parse/unsupported* test uses a feature kc doesn't support, which says nothing about its checks.
 
-Of the 3964 tests both reject, kc reports an error on the line of an expected one in 3798.
+Of the 4001 tests both reject, kc reports an error on the line of an expected one in 3838.
 
 A test is invalid if it stops before the backend or marks an error: one that runs to it (`BACKEND`) can mark the JVM backend's errors, such as `CONFLICTING_JVM_DECLARATIONS`. Of the tests run, 222 stop at `FRONTEND` but mark no error: most add the `CHECK_TYPE` helpers, whose names (`_`) kotlinc reports outside the test infrastructure, and count as valid; the others leave their errors out with the `DIAGNOSTICS` directive. 114 run to the backend and mark one. 5 marked names have no declared severity (debug information, for one), and count as neither.
 
@@ -50,30 +50,24 @@ Tests kotlinc rejects that kc compiles, by the errors their markup expects. A te
 
 | Expected error | Tests | Only error | Examples |
 |:---|---:|---:|:---|
-| `ARGUMENT_TYPE_MISMATCH` | 43 | 28 | `tests/annotations/annotationArgumentScopeForNestedClass.kt`, `tests/collectionLiterals/kt82964.kt` |
-| `UNRESOLVED_REFERENCE` | 37 | 25 | `tests/SafeCallOnFakePackage.kt`, `tests/callResolution/eagerLambdaAnalysis/samVsDefault.kt` |
-| `OVERLOAD_RESOLUTION_AMBIGUITY` | 24 | 19 | `tests/callResolution/kt50386.kt`, `tests/imports/EnumEntryVsStaticAmbiguity.kt` |
+| `UNRESOLVED_REFERENCE` | 35 | 24 | `tests/SafeCallOnFakePackage.kt`, `tests/callResolution/eagerLambdaAnalysis/samVsDefault.kt` |
+| `ARGUMENT_TYPE_MISMATCH` | 29 | 19 | `tests/annotations/annotationArgumentScopeForNestedClass.kt`, `tests/collectionLiterals/kt82964.kt` |
+| `OVERLOAD_RESOLUTION_AMBIGUITY` | 23 | 19 | `tests/callResolution/kt50386.kt`, `tests/imports/EnumEntryVsStaticAmbiguity.kt` |
 | `MISSING_DEPENDENCY_CLASS` | 16 | 10 | `tests/j+k/differentFilename.kt`, `tests/javac/Lambda.kt` |
 | `NULL_FOR_NONNULL_TYPE` | 15 | 10 | `tests/j+k/SupertypeArgumentsNullability-NotNull-SpecialTypes.kt`, `tests/j+k/SupertypeArgumentsNullability-NotNull-UserTypes.kt` |
 | `UNSAFE_CALL` | 12 | 9 | `tests/j+k/sam/enhancedSamConstructor.kt`, `tests/platformTypes/nullabilityWarnings/arithmetic.kt` |
-| `CANNOT_INFER_PARAMETER_TYPE` | 11 | 3 | `tests/callableReference/function/ambiguityTopLevelVsTopLevelGeneric.kt`, `tests/generics/kt30590.kt` |
-| `INITIALIZER_TYPE_MISMATCH` | 11 | 6 | `tests/callableReference/adapted/noKFunctionForAdaptation.kt`, `tests/inference/flexibleConstraints2.kt` |
 | `ACCIDENTAL_OVERRIDE` | 10 | 8 | `tests/j+k/kjkimplicitTypesCrash.kt`, `tests/jvm/contextParameters/intersectionContextValueJava.kt` |
 | `INVISIBLE_REFERENCE` | 9 | 9 | `tests/arguments/ambiguityOnJavaOverride.kt`, `tests/classObjects/companionObjectOfPrivateClassVisibility.kt` |
 | `(no error marked)` | 8 | 8 | `tests/cyclicHierarchy/javaJavaCycle.kt`, `tests/deprecated/javaDeprecated.kt` |
-| `UNSUPPORTED` | 8 | 5 | `tests/NamedFunctionTypeParameterInSupertype.kt`, `tests/callableReference/property/backingField.kt` |
+| `INITIALIZER_TYPE_MISMATCH` | 8 | 3 | `tests/callableReference/adapted/noKFunctionForAdaptation.kt`, `tests/j+k/sam/referenceToSamFunctionAgainstExpectedType.kt` |
 | `CLASSIFIER_REDECLARATION` | 7 | 7 | `tests/j+k/brokenCode/classDuplicates.kt`, `tests/redeclarations/kotlinClassJavaClassNestedRedeclaration.kt` |
 | `JAVA_TYPE_MISMATCH` | 7 | 7 | `tests/platformTypes/genericVarianceViolation/deepTypeHierarchy.kt`, `tests/platformTypes/genericVarianceViolation/javaOutProjection.kt` |
+| `UNSUPPORTED` | 7 | 5 | `tests/NamedFunctionTypeParameterInSupertype.kt`, `tests/callableReference/property/backingField.kt` |
 | `MANY_IMPL_MEMBER_NOT_IMPLEMENTED` | 6 | 5 | `tests/j+k/manyImplNotImplementedComplexHierarchy.kt`, `tests/j+k/manyImplNotImplementedComplexHierarchy2.kt` |
 | `NOTHING_TO_OVERRIDE` | 6 | 3 | `tests/j+k/types/newListMethodsNullabilityOverridesLinkedListLatest.kt`, `tests/multimodule/duplicateSuper/sameSuperTraitDifferentBounds.kt` |
-| `TYPE_INFERENCE_ONLY_INPUT_TYPES_ERROR` | 6 | 5 | `testsWithStdLib/commonCollections.kt`, `testsWithStdLib/inference/annotationsForResolve/kt29307.kt` |
 | `ASSIGNMENT_TYPE_MISMATCH` | 5 | 2 | `tests/controlFlowAnalysis/smartcastOnThisInInitializationSection.kt`, `tests/generics/varProjection/setterNotProjectedOutAssign.kt` |
 | `CANNOT_WEAKEN_ACCESS_PRIVILEGE` | 5 | 4 | `tests/intersectedVisibilitiesAccessorDifferences_Small.kt`, `tests/intersectedVisibilitiesForNonAbstractPropertyAccessors.kt` |
 | `DEPRECATION_ERROR` | 5 | 2 | `tests/deprecated/javaDeprecatedHidden.kt`, `tests/j+k/collectionOverrides/nonDirectHiddenOverride.kt` |
-| `REIFIED_TYPE_FORBIDDEN_SUBSTITUTION` | 5 | 3 | `tests/generics/tpAsReified/CapturedAsReified.kt`, `tests/inference/constraints/ignoreConstraintFromImplicitInNothing.kt` |
-| `RETURN_TYPE_MISMATCH` | 5 | 3 | `tests/inference/noInferUnit.kt`, `tests/j+k/rawTypesFromCaptured.kt` |
-| `RETURN_TYPE_MISMATCH_ON_OVERRIDE` | 5 | 1 | `tests/inference/pcla/issues/kt47989b.kt`, `tests/j+k/types/newListMethodsNullabilityOverridesLinkedListLatest.kt` |
-| `UPPER_BOUND_VIOLATED` | 5 | 2 | `tests/generics/RecursiveUpperBoundWithTwoArguments.kt`, `tests/inference/capturedTypes/kt49101.kt` |
 | `ASSIGN_OPERATOR_AMBIGUITY` | 4 | 4 | `tests/callResolution/exponentialArraySetWithPlusAssign.kt`, `tests/operatorsOverloading/AssignOperatorAmbiguity.kt` |
 | `CYCLIC_INHERITANCE_HIERARCHY` | 4 | 3 | `tests/classpathSubstitution/cyclicSupertype.kt`, `tests/classpathSubstitution/cyclicSupertype2.kt` |
 | `INAPPLICABLE_CANDIDATE` | 4 | 3 | `tests/callableReference/generic/dependOnArgumentType.kt`, `tests/j+k/sam/referenceToSamFunctionAgainstExpectedType.kt` |
@@ -84,11 +78,13 @@ Tests kotlinc rejects that kc compiles, by the errors their markup expects. A te
 | `OVERRIDING_FINAL_MEMBER` | 4 | 4 | `tests/j+k/finalCollectionSize.kt`, `tests/j+k/properties/isName.kt` |
 | `POSITIONED_VALUE_ARGUMENT_FOR_JAVA_ANNOTATION` | 4 | 3 | `testsWithStdLib/annotations/annotationParameters/valueArrayAndOtherDefault.kt`, `testsWithStdLib/annotations/prohibitPositionedArgument/withValue.kt` |
 | `RETURN_TYPE_MISMATCH_ON_INHERITANCE` | 4 | 4 | `tests/override/clashesOnInheritance/flexibleReturnTypeList.kt`, `tests/override/clashesOnInheritance/kt13355viaJava.kt` |
-| `TYPE_MISMATCH` | 4 | 4 | `tests/inference/noInferUpperLower.kt`, `tests/platformTypes/nullabilityWarnings/delegation.kt` |
+| `RETURN_TYPE_MISMATCH_ON_OVERRIDE` | 4 | 1 | `tests/j+k/types/newListMethodsNullabilityOverridesLinkedListLatest.kt`, `tests/platformTypes/typeEnhancement/supertypeDifferentReturnNullability.kt` |
 | `UNDERSCORE_USAGE_WITHOUT_BACKTICKS` | 4 | 4 | `tests/UnderscoreUsageInCall.kt`, `tests/UnderscoreUsageInCallableRefTypeLHS.kt` |
+| `UPPER_BOUND_VIOLATED` | 4 | 1 | `tests/generics/RecursiveUpperBoundWithTwoArguments.kt`, `tests/platformTypes/comparingWithWrongNullabilityWithoutWrtHack.kt` |
 | `ABSTRACT_CLASS_MEMBER_NOT_IMPLEMENTED` | 3 | 3 | `tests/annotations/rendering/notImplementedMembersAroundJava.kt`, `tests/j+k/missingTypeOfParameterInFakeOverride_2.kt` |
 | `ABSTRACT_MEMBER_NOT_IMPLEMENTED` | 3 | 3 | `tests/j+k/collectionOverrides/irrelevantImplCharSequenceKotlin.kt`, `tests/override/ProtectedAndPrivateFromSupertypes.kt` |
 | `ABSTRACT_SUPER_CALL` | 3 | 3 | `tests/missingAbstractSuperCall.kt`, `tests/missingAbstractSuperCallWithClass.kt` |
+| `CANNOT_INFER_PARAMETER_TYPE` | 3 | 1 | `tests/callableReference/function/ambiguityTopLevelVsTopLevelGeneric.kt`, `tests/j+k/sam/referenceToSamFunctionAgainstExpectedType.kt` |
 | `CONFLICTING_INHERITED_JVM_DECLARATIONS` | 3 | 1 | `tests/jvm/contextParameters/intersectionContextValueJava.kt`, `tests/jvm/contextParameters/intersectionExtensionValueContextJava.kt` |
 | `CONST_VAL_WITH_NON_CONST_INITIALIZER` | 3 | 3 | `tests/modifiers/const/fromJavaWithNonConstInitializer.kt`, `tests/modifiers/const/kotlinJavaCycle.kt` |
 | `MANY_INTERFACES_MEMBER_NOT_IMPLEMENTED` | 3 | 2 | `tests/override/ParentInheritsManyImplementations.kt`, `tests/regressions/kt302.kt` |
@@ -98,6 +94,7 @@ Tests kotlinc rejects that kc compiles, by the errors their markup expects. A te
 | `PROPERTY_TYPE_MISMATCH_BY_DELEGATION` | 3 | 0 | `tests/delegation/covariantOverrides/fromClass.kt`, `tests/delegation/covariantOverrides/irrelevant.kt` |
 | `PROTECTED_CALL_FROM_PUBLIC_INLINE_ERROR` | 3 | 3 | `tests/inline/inlineCallsStaticMethodFromOtherPackage.kt`, `tests/inline/protectedJavaFieldInInline.kt` |
 | `REPEATED_ANNOTATION` | 3 | 3 | `tests/annotations/repeatable/javaUnrepeatable.kt`, `tests/typealias/typeAliasExpansionRepeatedAnnotations.kt` |
+| `RETURN_TYPE_MISMATCH` | 3 | 2 | `tests/j+k/sam/enhancedSamConstructor.kt`, `tests/smartCasts/safecalls/receiverAndChainFalse.kt` |
 | `RETURN_TYPE_MISMATCH_BY_DELEGATION` | 3 | 0 | `tests/delegation/covariantOverrides/fromClass.kt`, `tests/delegation/covariantOverrides/irrelevant.kt` |
 | `SYNTAX` | 3 | 2 | `tests/explicitDefinitelyNotNullableViaIntersection/isAsOperators.kt`, `tests/modifiers/primaryConstructorMissingBrackets.kt` |
 | `UNRESOLVED_REFERENCE_WRONG_RECEIVER` | 3 | 2 | `tests/j+k/selectMoreSpecific.kt`, `tests/platformTypes/commonSupertype/withNothing.kt` |
@@ -110,7 +107,10 @@ Tests kotlinc rejects that kc compiles, by the errors their markup expects. A te
 | `EXPANSIVE_INHERITANCE` | 2 | 2 | `tests/declarationChecks/nonExpansiveInheritanceRestriction/JavaWithKotlin.kt`, `tests/declarationChecks/nonExpansiveInheritanceRestriction/PureKotlin.kt` |
 | `FINITE_BOUNDS_VIOLATION` | 2 | 2 | `tests/declarationChecks/finiteBoundRestriction/CasesWithTwoTypeParameters.kt`, `tests/regressions/kt9633.kt` |
 | `INVISIBLE_SETTER` | 2 | 2 | `tests/extraCheckers/RedundantVisibilityModifierCheckerForInnerComponents.kt`, `tests/properties/kt47621.kt` |
-| *100 more* | 119 | |
+| `JAVA_CLASS_INHERITS_KT_PRIVATE_CLASS` | 2 | 2 | `tests/j+k/invisibleFake.kt`, `tests/j+k/invisibleFake2.kt` |
+| `JAVA_FIELD_SHADOWED_BY_KOTLIN_PROPERTY` | 2 | 1 | `tests/fieldRename/javaFieldKotlinPropertyJavaFieldInPackagePrivate.kt`, `tests/propertyVsField/propertyFieldShadow.kt` |
+| `MEMBER_PROJECTED_OUT` | 2 | 2 | `tests/scopes/variantProjections/irrelevantUnsafeVariance.kt`, `tests/typealias/starProjection.kt` |
+| *97 more* | 114 | |
 
 ## Rejects valid
 
@@ -118,15 +118,14 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 | First error | Tests | Examples |
 |:---|---:|:---|
-| `type mismatch: inferred type is _ but _ was expected` | 49 | `tests/annotations/javaAnnotationWithClassArray.kt`, `tests/annotations/parameters/expressions/unaryPlus.kt` |
-| `cannot infer type for type parameter '_'. Specify it explicitly.` | 23 | `tests/delegatedProperty/provideDelegate/commonSupertype.kt`, `tests/inference/capturedTypes/differentCapturedTypes.kt` |
+| `type mismatch: inferred type is _ but _ was expected` | 25 | `tests/annotations/javaAnnotationWithClassArray.kt`, `tests/annotations/parameters/expressions/unaryPlus.kt` |
 | `unresolved reference: _` | 22 | `tests/callResolution/incorrectPlusOperatorFromJava.kt`, `tests/callResolution/suspendCOnversionForReceiver.kt` |
-| `ambiguous call: n candidates for '_' take (_)` | 8 | `tests/callableReference/resolve/resolveReferenceAgainstKFunctionAndKPrpoerty.kt`, `tests/inference/emptyIntersectionTypes/kt51016.kt` |
+| `cannot infer type for type parameter '_'. Specify it explicitly.` | 8 | `tests/delegatedProperty/provideDelegate/commonSupertype.kt`, `tests/inference/commonSystem/postponedCompletionWithExactAnnotation.kt` |
 | `no function '_' takes n arguments` | 6 | `tests/annotations/javaAnnotationWithParameter.kt`, `tests/cast/kt15161.kt` |
 | `unresolved import: _` | 6 | `tests/errorProneAtomicArraySuggestions.kt`, `tests/errorProneAtomicReferenceArguments.kt` |
+| `ambiguous call: n candidates for '_' take (_)` | 5 | `tests/callableReference/resolve/resolveReferenceAgainstKFunctionAndKPrpoerty.kt`, `tests/multimodule/varargConflict.kt` |
 | `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 4 | `tests/j+k/withTestConnection3.kt`, `tests/platformTypes/methodCall/multipleExactBoundsNullable.kt` |
 | `'_' overrides nothing` | 3 | `tests/genericReceiverPropertyOverride.kt`, `tests/generics/finalUpperBoundWithOverride.kt` |
-| `cannot infer a type for this parameter. Please specify it explicitly.` | 3 | `tests/inference/completion/postponedArgumentsAnalysis/lackOfDeepIncorporation.kt`, `tests/inference/kt36819.kt` |
 | `platform declaration clash: _` | 3 | `tests/overload/noConflictingOverloadsWithDeprecatedHidden/ConstructorsInMemberScope.kt`, `tests/overload/noConflictingOverloadsWithDeprecatedHidden/ConstructorsInPackage.kt` |
 | `property must be initialized or be abstract` | 3 | `tests/backingField/FieldAsParam.kt`, `tests/backingField/FieldShadow.kt` |
 | `type argument is not within its bounds: type parameter '_' must be subtype of '_', but actual: _` | 3 | `tests/inference/capturedTypes/capturedTypeWithInnerTypealias.kt`, `tests/inference/unsoundness2.kt` |
@@ -143,11 +142,10 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 | `'_' modifier is required on '_'` | 1 | `tests/problems/kt36815.kt` |
 | `'_' needs an explicit return type on '_'` | 1 | `tests/inference/completion/inferLabeledElementTypeForLambdaInReturnInCatch.kt` |
 | `accidental override: the following declarations have the same JVM signature (foo()V)` | 1 | `tests/platformTypes/methodTypeParameterDefaultBound.kt` |
+| `cannot infer a type for this parameter. Please specify it explicitly.` | 1 | `tests/inference/completion/postponedArgumentsAnalysis/lackOfDeepIncorporation.kt` |
 | `class '_' is not abstract and does not implement abstract member '_'` | 1 | `tests/j+k/collectionOverrides/mapMethodsImplementedInJava.kt` |
 | `class Base is not public` | 1 | `tests/visibility/packagePrivateStatic.kt` |
 | `class PackagePrivateGrandparentAbstractClass is not public` | 1 | `tests/visibility/packagePrivateStaticViaTypeAlias.kt` |
-| `expected no parameters, but n were declared` | 1 | `tests/inference/extensionLambdasAndArrow.kt` |
-| `expected parameter of type _` | 1 | `tests/resolve/starProjectionAndFunctionType.kt` |
 | `function invocation '_' expected; use ::bar for a reference` | 1 | `tests/resolve/resolveAnnotatedLambdaArgument.kt` |
 | `function invocation '_' expected; use ::foo for a reference` | 1 | `tests/syntax/incorrectLTGTFallback.kt` |
 | `inherited platform declarations clash: the following declarations have the same JVM signature (foo(Ljava/lang/String;I)Ljava/lang/String;)` | 1 | `tests/contextParameters/overrides/KJKHierarchyWithOverride.kt` |
@@ -158,29 +156,31 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 | `no type arguments expected for class OuterClass` | 1 | `tests/signatureEnhancementOuterClassBoundsToInner.kt` |
 | `one type argument expected for class B<T>` | 1 | `tests/multimodule/duplicateMethod/substitutedGenericInParams.kt` |
 | `one type argument expected for class X.Y` | 1 | `tests/innerClasses/inCallableReferenceLHS/misplacedArgumentsInInnerOnly.kt` |
-| *7 more* | 7 | |
+| `operator '_' cannot be applied to Enn and En` | 1 | `tests/enum/enumSubjectTypeCheck.kt` |
+| `operator '_' cannot be applied to Int and R<<error>>` | 1 | `tests/inference/genericAssignmentOperator.kt` |
+| *4 more* | 4 | |
 
 ## Errors by diagnostic
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 14758 of 21506 expected errors (68.6%) on their lines.
+kc reports 14895 of 21506 expected errors (69.3%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
 | `SYNTAX` | 875 | 222 | 653 |
-| `UNRESOLVED_REFERENCE` | 2493 | 1910 | 583 |
+| `UNRESOLVED_REFERENCE` | 2493 | 1913 | 580 |
 | `CONFLICTING_JVM_DECLARATIONS` | 996 | 518 | 478 |
-| `ARGUMENT_TYPE_MISMATCH` | 1484 | 1179 | 305 |
+| `ARGUMENT_TYPE_MISMATCH` | 1484 | 1228 | 256 |
 | `UNSUPPORTED` | 231 | 35 | 196 |
 | `WRONG_MODIFIER_TARGET` | 300 | 170 | 130 |
 | `CONFLICTING_OVERLOADS` | 726 | 602 | 124 |
-| `RETURN_TYPE_MISMATCH` | 417 | 305 | 112 |
+| `RETURN_TYPE_MISMATCH` | 417 | 302 | 115 |
 | `INVISIBLE_REFERENCE` | 513 | 404 | 109 |
 | `NULL_FOR_NONNULL_TYPE` | 155 | 53 | 102 |
-| `CANNOT_INFER_PARAMETER_TYPE` | 627 | 527 | 100 |
-| `UNRESOLVED_REFERENCE_WRONG_RECEIVER` | 250 | 158 | 92 |
+| `UNRESOLVED_REFERENCE_WRONG_RECEIVER` | 250 | 157 | 93 |
 | `CONST_VAL_WITH_NON_CONST_INITIALIZER` | 251 | 166 | 85 |
+| `CANNOT_INFER_PARAMETER_TYPE` | 627 | 546 | 81 |
 | `MUST_BE_INITIALIZED` | 102 | 21 | 81 |
 | `ANNOTATION_ARGUMENT_MUST_BE_CONST` | 224 | 144 | 80 |
 | `REDECLARATION` | 192 | 119 | 73 |
@@ -189,16 +189,15 @@ kc reports 14758 of 21506 expected errors (68.6%) on their lines.
 | `WRONG_NUMBER_OF_TYPE_ARGUMENTS` | 163 | 96 | 67 |
 | `WRONG_ANNOTATION_TARGET` | 380 | 316 | 64 |
 | `CANNOT_WEAKEN_ACCESS_PRIVILEGE` | 59 | 1 | 58 |
-| `INITIALIZER_TYPE_MISMATCH` | 428 | 370 | 58 |
 | `NO_RETURN_IN_FUNCTION_WITH_BLOCK_BODY` | 148 | 91 | 57 |
 | `MIXING_SUSPEND_AND_NON_SUSPEND_SUPERTYPES` | 83 | 28 | 55 |
-| `OVERLOAD_RESOLUTION_AMBIGUITY` | 159 | 104 | 55 |
+| `INITIALIZER_TYPE_MISMATCH` | 428 | 374 | 54 |
+| `OVERLOAD_RESOLUTION_AMBIGUITY` | 159 | 105 | 54 |
 | `NO_VALUE_FOR_PARAMETER` | 175 | 127 | 48 |
-| `UPPER_BOUND_VIOLATED` | 125 | 78 | 47 |
 | `NON_PUBLIC_CALL_FROM_PUBLIC_INLINE` | 65 | 19 | 46 |
 | `UNINITIALIZED_VARIABLE` | 211 | 165 | 46 |
 | `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` | 87 | 45 | 42 |
-| `TYPE_INFERENCE_ONLY_INPUT_TYPES_ERROR` | 61 | 21 | 40 |
+| `UPPER_BOUND_VIOLATED` | 125 | 84 | 41 |
 | `INAPPLICABLE_OPERATOR_MODIFIER` | 143 | 104 | 39 |
 | `TOO_MANY_ARGUMENTS` | 118 | 81 | 37 |
 | `AMBIGUOUS_ANONYMOUS_TYPE_INFERRED` | 38 | 2 | 36 |
@@ -208,7 +207,6 @@ kc reports 14758 of 21506 expected errors (68.6%) on their lines.
 | `EXPLICIT_TYPE_ARGUMENTS_IN_PROPERTY_ACCESS` | 37 | 5 | 32 |
 | `NON_PUBLIC_INLINE_CALL_FROM_PUBLIC_INLINE` | 60 | 28 | 32 |
 | `INAPPLICABLE_JVM_FIELD` | 33 | 2 | 31 |
-| `UNSAFE_CALL` | 523 | 492 | 31 |
 | `OPT_IN_USAGE_ERROR` | 96 | 66 | 30 |
 | `ASSIGNMENT_IN_EXPRESSION_CONTEXT` | 32 | 3 | 29 |
 | `NOTHING_TO_OVERRIDE` | 93 | 64 | 29 |
@@ -217,17 +215,19 @@ kc reports 14758 of 21506 expected errors (68.6%) on their lines.
 | `WRONG_ANNOTATION_TARGET_WITH_USE_SITE_TARGET` | 80 | 52 | 28 |
 | `UNDERSCORE_USAGE_WITHOUT_BACKTICKS` | 28 | 1 | 27 |
 | `TYPE_ARGUMENTS_FOR_OUTER_CLASS_WHEN_NESTED_REFERENCED` | 41 | 15 | 26 |
-| `INAPPLICABLE_CANDIDATE` | 127 | 102 | 25 |
 | `SUBCLASS_OPT_IN_INAPPLICABLE` | 25 | 0 | 25 |
+| `UNSAFE_CALL` | 523 | 498 | 25 |
 | `CONCURRENT_HASH_MAP_CONTAINS_OPERATOR_ERROR` | 24 | 0 | 24 |
 | `SMARTCAST_IMPOSSIBLE` | 183 | 159 | 24 |
 | `PROPERTY_INITIALIZER_NO_BACKING_FIELD` | 32 | 9 | 23 |
 | `UNINITIALIZED_ENUM_COMPANION` | 65 | 42 | 23 |
 | `ASSIGN_OPERATOR_AMBIGUITY` | 35 | 13 | 22 |
+| `INAPPLICABLE_CANDIDATE` | 127 | 105 | 22 |
 | `CLASSIFIER_REDECLARATION` | 41 | 20 | 21 |
 | `INLINE_FROM_HIGHER_PLATFORM` | 21 | 0 | 21 |
 | `REPEATED_ANNOTATION` | 69 | 48 | 21 |
 | `RETURN_TYPE_MISMATCH_ON_OVERRIDE` | 41 | 20 | 21 |
+| `INCORRECT_TYPE_PARAMETER_OF_PROPERTY` | 30 | 11 | 19 |
 | *532 more* | | | |
 
 ## Errors kotlinc doesn't report
@@ -236,37 +236,37 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 
 | Error | Count |
 |:---|---:|
-| `type mismatch: inferred type is _ but _ was expected` | 320 |
-| `cannot infer type for type parameter '_'. Specify it explicitly.` | 317 |
-| `unresolved reference: _` | 290 |
+| `unresolved reference: _` | 288 |
+| `type mismatch: inferred type is _ but _ was expected` | 235 |
+| `cannot infer type for type parameter '_'. Specify it explicitly.` | 201 |
 | `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 199 |
 | `platform declaration clash: _` | 150 |
 | `class '_' is not abstract and does not implement abstract member '_'` | 68 |
 | `unresolved or unsupported type: _` | 59 |
-| `cannot infer a type for this parameter. Please specify it explicitly.` | 55 |
 | `suspend function '_' cannot override non-suspend function '_' defined in '_'` | 50 |
+| `cannot infer a type for this parameter. Please specify it explicitly.` | 48 |
 | `missing return statement in function '_'` | 38 |
 | `unresolved import: _` | 35 |
 | `no function '_' takes n arguments` | 27 |
 | `'_' expression must be exhaustive, add necessary '_' branch` | 20 |
-| `ambiguous call: n candidates for '_' take (_)` | 18 |
 | `variable '_' must be initialized` | 17 |
 | `type checking has run into a recursive problem; specify the type of '_'` | 16 |
 | `'_' overrides nothing` | 15 |
+| `ambiguous call: n candidates for '_' take (_)` | 15 |
 | `expected expression, found '_'` | 15 |
-| `expected n parameter of type _ but n were declared` | 14 |
 | `not enough information to infer type arguments of ::foon: specify the expected function type` | 14 |
 | `operator '_' cannot be applied to Any?` | 14 |
-| `expected parameter of type _` | 13 |
 | `assignment operators ambiguity: '_' and '_' both apply` | 12 |
-| `expected no parameters, but n were declared` | 12 |
 | `private setters are not allowed for open properties` | 12 |
 | `this lambda must return a value of type _` | 12 |
 | `'_' modifier is required on '_'` | 11 |
 | `not enough information to infer type arguments of ::barn: specify the expected function type` | 11 |
 | `overload resolution ambiguity for ::foo: specify the expected function type` | 11 |
+| `expected parameter of type _` | 10 |
 | `not enough information to infer type arguments of ::foo: specify the expected function type` | 10 |
-| *174 more* | |
+| `type checking has run into a recursive problem; specify the return type of '_'` | 10 |
+| `cannot access '_': it is private to this in '_'` | 9 |
+| *173 more* | |
 
 ## Unsupported features
 

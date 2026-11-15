@@ -380,6 +380,9 @@ func (t *classTable) load(cls *types.ClassSym) {
 				}
 			}
 		}
+		if ok {
+			enhanceJDK(cls.Name, f)
+		}
 		if varargs && len(f.Params) > 0 {
 			p := f.Params[len(f.Params)-1]
 			p.Vararg, p.Type = true, types.VarargArray(p.Type)
@@ -419,6 +422,7 @@ func (t *classTable) load(cls *types.ClassSym) {
 			cls.Methods[m.Name] = append(cls.Methods[m.Name], f)
 		}
 	}
+	mapCollectionMembers(cls)
 	if cls.Name == "java/lang/Number" {
 		// Kotlin's Number converts with toInt() and the others, its
 		// intValue() methods on the JVM. They are all abstract, though

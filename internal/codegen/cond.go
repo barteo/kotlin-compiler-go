@@ -367,6 +367,17 @@ func (g *gen) inRange(eval, load0 func(), vt types.Type, r *syntax.Binary, in bo
 	if vt.Flex() == types.LongType || r.X.Type().Flex() == types.LongType || r.Y.Type().Flex() == types.LongType {
 		t = types.LongType
 	}
+	if vt.IsIntersection() {
+		// A T smart cast to Char, a Char & T: unboxed as a Char.
+		for _, b := range vt.Param().Bounds {
+			if b.IsPrimitive() {
+				l := load0
+				load0 = func() { l(); g.castErased(types.AnyType.Nullable(), b) }
+				vt = b
+				break
+			}
+		}
+	}
 	load := func() {
 		load0()
 		g.coerce(vt, t)

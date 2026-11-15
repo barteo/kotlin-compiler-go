@@ -464,9 +464,32 @@ func (c *Checker) narrowSym(x syntax.Expr) *types.VarSym {
 // T leaves a T & Any (see declaredIfNull). An interface unrelated to a
 // class type gives their intersection, as in Kotlin: an a: A? that is a B
 // is an A & B, whatever expression it is passed through.
+// otherInstance reports whether b is, or is a subclass of, another
+// instance of generic class type a's class than a.
+func (c *Checker) otherInstance(b, a types.Type) bool {
+	if b.C == a.C {
+		return b.A != nil && !c.subtype(b, a)
+	}
+	sup, ok := c.asSuper(b, a.C)
+	return ok && sup.A != nil && !c.subtype(sup, a)
+}
+
 func (c *Checker) isNarrowed(cur, t types.Type) types.Type {
+	return c.narrowedTo(cur, t, true)
+}
+
+// narrowedTo is isNarrowed; subclass is whether a subclass of another
+// instance of cur's generic class is intersected with cur, as after an
+// is or a cast, not an identity, which kc's overload resolution by a
+// lambda's result would then see differently from K2's.
+func (c *Checker) narrowedTo(cur, t types.Type, subclass bool) types.Type {
 	if c.subtype(cur.NonNull(), t) {
 		if types.MayBeNull(t) {
+			if t.IsParam() && !c.subtype(cur, t) && (c.subtype(t, cur) || cur.K == types.Null || cur.K == types.Nothing) {
+				// t: T? is T & T?, a T, after t is T, as a t known
+				// to be null is a Nothing? & T.
+				return t
+			}
 			return cur
 		}
 		return cur.NonNull()
@@ -478,6 +501,18 @@ func (c *Checker) isNarrowed(cur, t types.Type) types.Type {
 		return i
 	}
 	if i, ok := c.paramIntersection(cur, t); ok {
+		return i
+	}
+	if a, b := cur.Flex().NonNull(), t.NonNull(); a.K == types.Class && b.K == types.Class && a.A != nil && (subclass || a.C == b.C) && c.otherInstance(b, a) {
+		// Two instances of a generic class, Inv<T> & Inv<A> for an f of
+		// Inv<T> after f as Inv<A>, the cast's type first: K2's fork of
+		// them takes the first that leaves no errors; so is a subclass
+		// of another instance, B & A<T> for an a of A<T> after a is B, for
+		// a B : A<Int>.
+		i := c.intersect([]types.Type{b, a})
+		if types.MayBeNull(t) && types.MayBeNull(cur) {
+			i = i.Nullable()
+		}
 		return i
 	}
 	return t
@@ -493,9 +528,9 @@ func (c *Checker) paramIntersection(cur, t types.Type) (types.Type, bool) {
 	if a.K != types.TypeParam || a.IsIntersection() || types.IsValue(b) {
 		return types.InvalidType, false
 	}
-	switch b.K {
-	case types.String:
-	case types.Class:
+	switch {
+	case b.K == types.String, types.IsPrimitiveKind(b.K):
+	case b.K == types.Class:
 		b.C.Ensure()
 		if b.C.Func || b.HasVars() {
 			return types.InvalidType, false
@@ -516,6 +551,29 @@ func (c *Checker) paramIntersection(cur, t types.Type) (types.Type, bool) {
 // subclass of cur's class: t & cur.
 func (c *Checker) narrowedIntersection(cur, t types.Type) (types.Type, bool) {
 	a, b := cur.Flex().NonNull(), t.NonNull()
+	if a.IsIntersection() && b.K == types.Class && intersectable(b) && !b.C.Func && !c.subtype(b, a) {
+		// A further smart cast of an intersection adds to it: b of a
+		// class B that is an A and a C is a C & A & B. Each component
+		// must be intersectable with the target.
+		b.C.Ensure()
+		for _, u := range a.Param().Bounds {
+			if u.K != types.Class || !intersectable(u) {
+				return types.InvalidType, false
+			}
+			if c.subtype(u, b) {
+				continue
+			}
+			u.C.Ensure()
+			if !u.C.Interface && !b.C.Interface && !c.subtype(b, u) {
+				return types.InvalidType, false
+			}
+		}
+		i := c.intersect(append([]types.Type{b}, a.Param().Bounds...))
+		if types.MayBeNull(t) && types.MayBeNull(cur) {
+			i = i.Nullable()
+		}
+		return i, true
+	}
 	if a.K != types.Class || b.K != types.Class || !intersectable(a) || !intersectable(b) ||
 		a.C.Func || b.C.Func || c.subtype(b, a) {
 		return types.InvalidType, false

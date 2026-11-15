@@ -124,6 +124,9 @@ type TypeRef struct {
 	// NoInfer is set on a type annotated @kotlin.internal.NoInfer, which
 	// doesn't infer a call's type arguments.
 	NoInfer bool
+	// Exact is set on a type annotated @kotlin.internal.Exact: a
+	// parameter's argument must be of that type, not a subtype.
+	Exact bool
 	// Wildcards is what the type's annotations say of the wildcards of
 	// generic signatures: SuppressWildcards for @JvmSuppressWildcards,
 	// ForceWildcards for @JvmWildcard or @JvmSuppressWildcards(false).

@@ -1,6 +1,7 @@
 package check
 
 import (
+	"path"
 	"slices"
 	"strings"
 
@@ -533,6 +534,9 @@ func (c *Checker) thisExtension(name string, x *syntax.Call) bool {
 			fs = append(fs, cl.f)
 		}
 	}
+	if len(fs) > 0 && c.sameScopeTopFun(name, x, fs) {
+		return false
+	}
 	if len(fs) == 0 || !hasLambda(x.Args) {
 		return len(fs) > 0
 	}
@@ -542,6 +546,36 @@ func (c *Checker) thisExtension(name string, x *syntax.Call) bool {
 	// message) gives way to the top-level log(tag: String, priority,
 	// message) in log(TAG, INFO) { }.
 	return c.takeTypes(fs, x, c.argTypes(x))
+}
+
+// sameScopeTopFun reports whether a top-level function that isn't an
+// extension may take call x, in the package of each of extensions fs:
+// K2 tries a scope's functions before its extensions of implicit
+// receivers, so run { } in a class is kotlin's run(block), not
+// this.run { }, whose lambda would read the class's properties through
+// its own receiver, without their smart casts.
+func (c *Checker) sameScopeTopFun(name string, x *syntax.Call, fs []*types.FunSym) bool {
+	pkgs := map[string]bool{}
+	var ts []types.Type
+	for _, f := range append(slices.Clip(c.topFuns(name)), c.kotlinFuns(name, false)...) {
+		if !f.Ext && f.Facade != "" && c.mayTake(f, x) {
+			if ts == nil {
+				ts = c.argTypes(x)
+			}
+			if c.takeTypes([]*types.FunSym{f}, x, ts) {
+				pkgs[path.Dir(f.Facade)] = true
+			}
+		}
+	}
+	if len(pkgs) == 0 {
+		return false
+	}
+	for _, f := range fs {
+		if f.Facade == "" || !pkgs[path.Dir(f.Facade)] {
+			return false
+		}
+	}
+	return true
 }
 
 // lowPriorityGivesWay drops the members marked
@@ -1028,6 +1062,29 @@ func (c *Checker) callBound(t types.Type, x *syntax.Call, name string) types.Typ
 	b := c.boundWith(t, has)
 	if b == t || x.Names != nil {
 		return b
+	}
+	if t.IsIntersection() && len(x.Args) > 0 {
+		// An intersection's members are those of all its components, of
+		// which a call picks one that takes its arguments: x.add(1) for
+		// an x of StringSet & ArrayList (raw) is the raw list's.
+		var others []types.Type
+		for _, o := range t.Param().Bounds {
+			if o = o.NonNull(); o != b {
+				if cls := c.classOf(o); cls != nil && has(cls) {
+					others = append(others, o)
+				}
+			}
+		}
+		if len(others) > 0 {
+			ts := c.argTypes(x)
+			if !c.membersTake(b, name, x, ts) {
+				for _, o := range others {
+					if c.membersTake(o, name, x, ts) {
+						return o
+					}
+				}
+			}
+		}
 	}
 	ret := func(b types.Type) (types.Type, bool) {
 		cls := c.classOf(b)

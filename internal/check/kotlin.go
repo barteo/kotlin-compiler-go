@@ -761,6 +761,7 @@ func (t *classTable) kfun(f *kmeta.Function, owner *types.ClassSym, scope tscope
 	sym.Params, ok = t.kparams(f.Params, scope, ok)
 	ret, rok := t.ktype(f.Ret, scope)
 	sym.Ret = ret
+	sym.NoInferRet = f.Ret != nil && f.Ret.NoInfer
 	if f.Recv != nil {
 		sym.Ext = true
 		recv, recvOK := t.ktype(f.Recv, scope)
