@@ -1277,6 +1277,7 @@ func (c *Checker) resolveBounds(decls []*syntax.TypeParam) {
 	if saved {
 		return
 	}
+	c.checkBoundSets(decls)
 	for _, d := range decls {
 		if len(refs[d]) != len(d.Sym.Bounds) {
 			continue // a cyclic bound was dropped
@@ -1301,7 +1302,7 @@ func (c *Checker) checkBoundKinds(d *syntax.TypeParam, refs []*syntax.TypeRef) {
 		switch {
 		case b.IsParam():
 			c.errorf(refs[i].P, "type parameter cannot have any other bounds if it's bounded by another type parameter")
-		case b.K == types.Class && !b.C.Interface:
+		case classUpperBound(b):
 			if classes++; classes == 2 {
 				c.errorf(refs[i].P, "only one of the upper bounds can be a class")
 			}
@@ -2217,6 +2218,7 @@ func (c *Checker) resolveClass(d *syntax.ClassDecl) {
 		c.enumMembers(d)
 	}
 	c.checkClassVariance(d)
+	c.checkClassTypeParams(d)
 }
 
 // enumMembers declares an enum class's entries, as static fields, and its
