@@ -114,6 +114,9 @@ func (l *lowerer) expr1(n psi.NodeRef) syntax.Expr {
 	case psi.KindINTEGER_CONSTANT:
 		t := first(n)
 		text := t.Text()
+		if syntax.IllegalUnderscore(text) {
+			l.errorLater(l.pos(t), "illegal underscore")
+		}
 		lit, ok := syntax.IntLiteral(l.pos(t), text, strings.ContainsAny(text, "uU"))
 		if !ok {
 			l.fail(t, "the value is out of range")
@@ -121,6 +124,9 @@ func (l *lowerer) expr1(n psi.NodeRef) syntax.Expr {
 		return lit
 	case psi.KindFLOAT_CONSTANT:
 		t := first(n)
+		if syntax.IllegalUnderscore(t.Text()) {
+			l.errorLater(l.pos(t), "illegal underscore")
+		}
 		lit, msg := syntax.FloatLiteral(l.pos(t), t.Text())
 		if msg != "" {
 			l.fail(t, "%s", msg)
@@ -261,7 +267,12 @@ func (l *lowerer) label(n psi.NodeRef) string {
 	if !q.Valid() {
 		return ""
 	}
-	return ident(child(child(q, psi.KindLABEL), psi.KindIDENTIFIER))
+	name := ident(child(child(q, psi.KindLABEL), psi.KindIDENTIFIER))
+	if n.NumericKind() == psi.KindLABELED_EXPRESSION && strings.Trim(name, "_") == "" {
+		// As the lexer, of a label's definition: __@{ }.
+		l.errorLater(l.pos(q), "names _, __, ___, ... are reserved in Kotlin")
+	}
+	return name
 }
 
 // annotationsOf lowers the annotations of an ANNOTATED_EXPRESSION.

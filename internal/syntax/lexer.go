@@ -348,6 +348,9 @@ func (lx *lexer) number(p Pos) {
 // illegalUnderscore reports whether a numeric literal has an underscore
 // that doesn't separate digits: one that starts or ends a group of
 // digits, as in 1_, 0x_f, 1_.1 and 1.0e_1.
+// IllegalUnderscore is illegalUnderscore, for the psi frontend.
+func IllegalUnderscore(text string) bool { return illegalUnderscore(text) }
+
 func illegalUnderscore(text string) bool {
 	if !strings.Contains(text, "_") {
 		return false
