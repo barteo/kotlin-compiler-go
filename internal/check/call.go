@@ -1138,6 +1138,7 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 	if targs != nil {
 		sys.fixups = append(sys.fixups, func(s *system) { c.typeArgBounds(x, best, targs, s) })
 	}
+	c.javaNamedArgs(x, f)
 	sys.fixups = append(sys.fixups, func(s *system) {
 		for i, a := range x.Args {
 			if _, ok := a.(*syntax.Lambda); ok {

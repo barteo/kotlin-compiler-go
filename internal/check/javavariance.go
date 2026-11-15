@@ -6,11 +6,12 @@ import (
 )
 
 // javaVariances checks the arguments of a call x of cl's function, whose
-// parameter types are param(i), with javaVariance.
+// parameter types are param(i), with javaVariance, and their names.
 func (c *Checker) javaVariances(x *syntax.Call, cl *callee, param func(i int) types.Type) {
 	if cl.f.Owner == nil || !isJavaClass(cl.f.Owner) {
 		return
 	}
+	c.javaNamedArgs(x, cl.f)
 	for i, a := range x.Args {
 		if _, ok := a.(*syntax.Lambda); !ok {
 			c.javaVariance(cl.f, cl.param(i), a, param(i))
