@@ -803,6 +803,12 @@ type superProp struct {
 	setter    string // and the setter's, if it has one
 	protected bool
 	ctx       []*types.VarSym // its context parameters, in owner's type parameters
+	// vis and setterVis are the visibilities of its getter and setter.
+	// inherits is set if the property is the program's override without
+	// a visibility modifier, which has the visibility of a property it
+	// overrides, and inheritsSetter if its setter has none either.
+	vis, setterVis           syntax.Visibility
+	inherits, inheritsSetter bool
 }
 
 // implementingProp returns the property of cls, declared or inherited,
@@ -875,7 +881,14 @@ func (c *Checker) superProps(cls *types.ClassSym, name string) []superProp {
 						fd, _ := types.Desc(types.FieldType(p))
 						setter = types.SetterJVM(p) + "(" + fd + ")V"
 					}
-					out = append(out, superProp{s, p.Type, p.Final, p.Mutable, p.Abstract, types.GetterJVM(p) + "()" + d, setter, protectedProp(p), p.Contexts})
+					vis, _ := propVisibility(p)
+					setterVis := vis
+					if pd, ok := p.Decl.(*syntax.PropDecl); ok && pd.SetterVis != syntax.Public {
+						setterVis = pd.SetterVis
+					}
+					inherits := inheritsVisibility(p.Decl)
+					out = append(out, superProp{s, p.Type, p.Final, p.Mutable, p.Abstract, types.GetterJVM(p) + "()" + d, setter, protectedProp(p), p.Contexts, vis, setterVis,
+						inherits, inherits && setterVis == vis})
 				}
 			}
 			return true
@@ -886,13 +899,20 @@ func (c *Checker) superProps(cls *types.ClassSym, name string) []superProp {
 				if kp.Setter != nil {
 					setter = kp.Setter.JVM() + types.FunDesc(kp.Setter)
 				}
-				out = append(out, superProp{s, kp.Getter.Ret, kp.Getter.Final, kp.Setter != nil, kp.Getter.Abstract, kp.Getter.JVM() + types.FunDesc(kp.Getter), setter, kp.Getter.Protected, kp.Getter.Contexts})
+				vis, setterVis := syntax.Public, syntax.Public
+				if kp.Getter.Protected {
+					vis, setterVis = syntax.Protected, syntax.Protected
+				}
+				if kp.Setter != nil && kp.Setter.Protected {
+					setterVis = syntax.Protected
+				}
+				out = append(out, superProp{s, kp.Getter.Ret, kp.Getter.Final, kp.Setter != nil, kp.Getter.Abstract, kp.Getter.JVM() + types.FunDesc(kp.Getter), setter, kp.Getter.Protected, kp.Getter.Contexts, vis, setterVis, false, false})
 			}
 			return true
 		}
 		if s.Name == charSequence && name == "length" {
 			// CharSequence's length, java.lang.CharSequence.length().
-			out = append(out, superProp{s, types.IntType, false, false, true, "length()I", "", false, nil})
+			out = append(out, superProp{s, types.IntType, false, false, true, "length()I", "", false, nil, syntax.Public, syntax.Public, false, false})
 			return true
 		}
 		if s.KotlinName != "" || !builtinJava[s.Name] {
@@ -904,7 +924,11 @@ func (c *Checker) superProps(cls *types.ClassSym, name string) []superProp {
 		// A Kotlin built-in type's, as Throwable's message.
 		for _, g := range s.Methods[types.GetterName(name)] {
 			if len(g.Params) == 0 && !g.Static && g.Ret.K != types.Unit {
-				out = append(out, superProp{s, g.Ret, g.Final, false, g.Abstract, g.JVM() + types.FunDesc(g), "", g.Protected, nil})
+				vis := syntax.Public
+				if g.Protected {
+					vis = syntax.Protected
+				}
+				out = append(out, superProp{s, g.Ret, g.Final, false, g.Abstract, g.JVM() + types.FunDesc(g), "", g.Protected, nil, vis, vis, false, false})
 			}
 		}
 		return true
@@ -966,6 +990,9 @@ func (c *Checker) checkInheritance(d *syntax.ClassDecl) {
 			if o.Final {
 				c.errorf(fd.P, "'%s' in '%s' is final and cannot be overridden", f.Name, o.Owner.DisplayName())
 				continue
+			}
+			if fd.Explicit && !o.PackagePrivate && !inheritsVisibility(o.Decl) {
+				c.overrideVisibility(fd.P, f.Name, memberVisibility(o), fd.Visibility, o.Owner)
 			}
 			switch {
 			case f.Suspend && !o.Suspend:
@@ -1056,6 +1083,25 @@ func (c *Checker) checkInheritance(d *syntax.ClassDecl) {
 				c.errorf(op.pos, "type of '%s' doesn't match the type of the overridden var-property", p.Name)
 			case !c.subtype(p.Type, t):
 				c.errorf(op.pos, "type of '%s' is not a subtype of the overridden property", p.Name)
+			}
+			vis, explicit := declVisibility(p.Decl)
+			if o.inherits {
+				// Its visibility is that of a member it overrides, which
+				// is among the others.
+			} else if explicit && explicitVisibility(p) {
+				c.overrideVisibility(op.pos, p.Name, o.vis, vis, o.owner)
+			}
+			if pd, ok := p.Decl.(*syntax.PropDecl); ok && o.mutable && p.Mutable && pd.SetterVis != syntax.Public && !o.inheritsSetter {
+				// A setter's visibility, if it has a modifier; a val's
+				// overrider may have any.
+				at := op.pos
+				switch {
+				case pd.Setter != nil:
+					at = pd.Setter.P
+				case pd.Getter == nil && pd.AccessorP.Line > 0:
+					at = pd.AccessorP
+				}
+				c.overrideVisibility(at, p.Name, o.setterVis, pd.SetterVis, o.owner)
 			}
 			if o.getter != own && !contains(p.Bridges, o.getter) {
 				p.Bridges = append(p.Bridges, o.getter)
@@ -2105,4 +2151,91 @@ func (c *Checker) overrideRetFits(t, u types.Type) bool {
 	c.stubs = nil
 	defer func() { c.stubs = saved }()
 	return c.subtype(t, u)
+}
+
+// methodsOfAny reports the functions of interface d with a body that are
+// equals, hashCode or toString of Any: a class always inherits Any's,
+// which wins over an interface's.
+func (c *Checker) methodsOfAny(d *syntax.ClassDecl) {
+	for _, m := range d.Members {
+		f, ok := m.(*syntax.FunDecl)
+		if !ok || f.Sym == nil || f.Body == nil && f.ExprBody == nil || f.Recv != nil || len(f.Contexts) > 0 {
+			continue
+		}
+		any := false
+		switch f.Name {
+		case "hashCode", "toString":
+			any = len(f.Sym.Params) == 0
+		case "equals":
+			any = len(f.Sym.Params) == 1 && f.Sym.Params[0].Type.K == types.Any && f.Sym.Params[0].Type.N
+		}
+		if any && !suppresses(f.Annotations, "METHOD_OF_ANY_IMPLEMENTED_IN_INTERFACE") {
+			c.errorf(f.P, "an interface may not implement a method of 'Any'")
+		}
+	}
+}
+
+// overrideVisibility reports an override, of a name, whose visibility v
+// is weaker than, or not comparable with, the visibility ov of a member of
+// owner that it overrides.
+func (c *Checker) overrideVisibility(p syntax.Pos, name string, ov, v syntax.Visibility, owner *types.ClassSym) {
+	switch cmp, ok := compareVisibility(ov, v); {
+	case !ok:
+		c.errorf(p, "cannot change access privilege '%s' for '%s' in '%s'", visibilityName(ov), name, owner.DisplayName())
+	case cmp > 0:
+		c.errorf(p, "cannot weaken access privilege '%s' for '%s' in '%s'", visibilityName(ov), name, owner.DisplayName())
+	}
+}
+
+// compareVisibility compares visibilities a and b: positive if a is the
+// wider, and false if neither is, as protected and internal.
+func compareVisibility(a, b syntax.Visibility) (int, bool) {
+	rank := func(v syntax.Visibility) int {
+		switch v {
+		case syntax.Private:
+			return 0
+		case syntax.Public:
+			return 2
+		}
+		return 1
+	}
+	if a == b {
+		return 0, true
+	}
+	ra, rb := rank(a), rank(b)
+	if ra == rb {
+		return 0, false // protected and internal
+	}
+	return ra - rb, true
+}
+
+// visibilityName returns the keyword of visibility v.
+func visibilityName(v syntax.Visibility) string {
+	switch v {
+	case syntax.Private:
+		return "private"
+	case syntax.Protected:
+		return "protected"
+	case syntax.Internal:
+		return "internal"
+	}
+	return "public"
+}
+
+// inheritsVisibility reports whether decl is an override of the program
+// without a visibility modifier, which has the visibility of the members
+// it overrides.
+func inheritsVisibility(decl any) bool {
+	switch d := decl.(type) {
+	case *syntax.FunDecl:
+		if d.AccessorOf != nil {
+			return inheritsVisibility(d.AccessorOf.Decl)
+		}
+		return d.Override && !d.Explicit
+	case *syntax.PropDecl:
+		return d.Override && !d.Explicit
+	case *syntax.CtorParam:
+		return d.Override && !d.Explicit
+	}
+	return false
 }

@@ -2836,6 +2836,9 @@ func (c *Checker) localStmtAnnotations(body *syntax.Block, f *types.FunSym, owne
 func (c *Checker) checkClass(d *syntax.ClassDecl) {
 	{
 		c.checkInheritance(d)
+		if d.Interface {
+			c.methodsOfAny(d)
+		}
 		if d.Fun {
 			c.checkFunInterface(d)
 		}
@@ -2945,6 +2948,7 @@ func (c *Checker) inheritDefaults() {
 					c.errorf(p.Default.Pos(), "an overriding function is not allowed to specify default values for its parameters")
 				}
 			}
+			c.multipleDefaults(fd)
 			for _, o := range c.overridden(d.Sym, fd.Sym) {
 				// As in Kotlin, an override of an operator or infix
 				// function is one too.
@@ -3040,6 +3044,45 @@ func (c *Checker) inheritModule(d *syntax.ClassDecl) {
 }
 
 // funDeclaresDefaults reports whether a function declares default values.
+// multipleDefaults reports the parameters of override fd that inherit
+// default values from more than one function of its direct supertypes: an
+// override inherits a default value, and only a function that overrides
+// nothing declares one.
+func (c *Checker) multipleDefaults(fd *syntax.FunDecl) {
+	over := c.overridden(fd.Sym.Owner, fd.Sym)
+	for _, o := range over {
+		c.inheritExtDefaults(o)
+	}
+	for i, p := range fd.Params {
+		n := 0
+		for _, o := range over {
+			// Only a direct supertype's; one inherited through another
+			// supertype is a deprecation warning in Kotlin 2.4.
+			if i < len(o.Params) && declaresDefault(o, i) && directSupertype(fd.Sym.Owner, o.Owner) {
+				n++
+			}
+		}
+		if n > 1 {
+			c.errorf(p.P, "more than one overridden descriptor declares a default value for '%s'", p.Name)
+		}
+	}
+}
+
+// directSupertype reports whether class s is a superclass or an interface
+// that class cls names in its supertypes.
+func directSupertype(cls, s *types.ClassSym) bool {
+	return cls != nil && s != nil && (cls.Super == s || slices.Contains(cls.Interfaces, s))
+}
+
+// declaresDefault reports whether function f declares a default value for
+// its parameter i, rather than inheriting one.
+func declaresDefault(f *types.FunSym, i int) bool {
+	if d, ok := f.Decl.(*syntax.FunDecl); ok {
+		return i < len(d.Params) && d.Params[i].Default != nil
+	}
+	return f.Decl == nil && f.DefaultsOf == nil && f.Params[i].Default
+}
+
 func funDeclaresDefaults(d *syntax.FunDecl) bool {
 	for _, p := range d.Params {
 		if p.Default != nil {

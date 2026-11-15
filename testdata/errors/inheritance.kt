@@ -1,57 +1,52 @@
-interface I {
-    fun f(): Int
-    val p: String
+// The checks of inherited members: visibility, default values and
+// interfaces that implement Any's methods.
+
+interface Shape {
+    val area: Int
+    var name: String
+    fun draw()
 }
 
-open class A {
-    open fun g(): Int = 1
-    fun h(): Int = 2
-    open var v: Int = 0
-    final override fun toString(): String = "A"
+class Square : Shape {
+    internal override val area: Int = 1 // ERROR cannot weaken access privilege 'public'
+    override var name: String = ""
+        private set // ERROR cannot weaken access privilege 'public'
+    protected override fun draw() {} // ERROR cannot weaken access privilege 'public'
 }
 
-class B : A() {
-    fun g(): Int = 3 // ERROR 'g' hides member of supertype 'A' and needs 'override' modifier
-    override fun h(): Int = 4 // ERROR 'h' in 'A' is final and cannot be overridden
-    override fun k(): Int = 5 // ERROR 'k' overrides nothing
-    override val v: Int = 1 // ERROR val-property cannot override var-property 'v'
-    override fun toString(): String = "B" // ERROR 'toString' in 'A' is final and cannot be overridden
+open class Base {
+    protected open fun f() {}
+    internal open fun g() {}
 }
 
-class C : I { // ERROR class 'C' is not abstract and does not implement abstract member 'f'
+class Derived : Base() {
+    internal override fun f() {} // ERROR cannot change access privilege 'protected'
+    protected override fun g() {} // ERROR cannot change access privilege 'internal'
 }
 
-class D : I {
-    override fun f(): String = "" // ERROR return type of 'f' is not a subtype of the return type of the overridden member
-    override val p: String = ""
+// An override without a visibility has the overridden member's.
+open class Mid : Base() {
+    override fun g() {}
 }
 
-class Final
-class E : Final() // ERROR this type is final, so it cannot be inherited from
-class F : A(), Final() // ERROR only one class may appear in a supertype list
-class G : A // ERROR this type has a constructor, and thus must be initialized here
-class H : I() // ERROR this type has no constructor, and thus must not be called
-interface J : A() // ERROR an interface cannot inherit from a class
-
-open class Cycle1 : Cycle2() // ERROR there's a cycle in the inheritance hierarchy for this type
-open class Cycle2 : Cycle1() // ERROR there's a cycle in the inheritance hierarchy for this type
-
-abstract class K {
-    abstract fun m(): Int
-    fun n(): Int = 1
+class Leaf : Mid() {
+    internal override fun g() {}
 }
 
-class L : K() {
-    override fun m(): Int = super.m() // ERROR abstract member cannot be accessed directly
+interface X {
+    fun foo(a: Int = 1)
 }
 
-class M {
-    abstract fun m(): Int // ERROR abstract function 'm' in non-abstract class 'M'
-    fun noBody(): Int // ERROR function 'noBody' must have a body
+interface Y {
+    fun foo(a: Int = 2)
 }
 
-fun make() {
-    val i = I() // ERROR cannot create an instance of an interface: I
-    val k = K() // ERROR cannot create an instance of an abstract class: K
-    val s = super.toString() // ERROR 'super' is not
+class XY : X, Y {
+    override fun foo(a: Int) {} // ERROR more than one overridden descriptor declares a default value for 'a'
+}
+
+interface WithAny {
+    override fun toString(): String = "" // ERROR an interface may not implement a method of 'Any'
+    override fun equals(other: Any?): Boolean // abstract: allowed
+    fun hashCode(x: Int): Int = x // not Any's
 }

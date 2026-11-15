@@ -29,4 +29,22 @@ class Q : P() {
 fun main() {
     println(C().a)
     println(Q().get(Inv("q")))
+    defaults()
+}
+
+// A default value inherited through another supertype is a deprecation
+// warning only.
+interface D1 {
+    fun foo(a: String = "d1"): String
+}
+interface D2 : D1
+interface D3 {
+    fun foo(a: String = "d3"): String
+}
+class D : D2, D3 {
+    override fun foo(a: String) = a
+}
+
+fun defaults() {
+    println(D().foo("d"))
 }

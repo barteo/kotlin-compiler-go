@@ -88,7 +88,7 @@ tests/PackageInTypePosition.kt	rejects invalid	on an expected line
 tests/PackageQualified.kt	rejects invalid	on an expected line	
 tests/PrimaryConstructors.kt	rejects invalid	on an expected line	
 tests/PrivateFromOuterPackage.kt	rejects invalid	on an expected line	
-tests/PrivateSetterForOverridden.kt	rejects invalid	elsewhere	
+tests/PrivateSetterForOverridden.kt	rejects invalid	on an expected line	
 tests/ProcessingEmptyImport.kt	rejects invalid	on an expected line	
 tests/ProjectionOnFunctionArgumentErrror.kt	rejects invalid	on an expected line	
 tests/ProjectionsInSupertypes.kt	rejects invalid	on an expected line	
@@ -5569,11 +5569,11 @@ tests/java8Overrides/abstractVsAbstract.kt	rejects invalid	on an expected line
 tests/java8Overrides/defaultVsAbstract.kt	rejects invalid	on an expected line	
 tests/java8Overrides/falseManyImplementations.kt	accepts valid		
 tests/java8Overrides/hidingMethodOfAny.kt	rejects invalid	on an expected line	
-tests/java8Overrides/implementingMethodOfAny.kt	accepts invalid	METHOD_OF_ANY_IMPLEMENTED_IN_INTERFACE	implementingMethodOfAny.kt:3: METHOD_OF_ANY_IMPLEMENTED_IN_INTERFACE
+tests/java8Overrides/implementingMethodOfAny.kt	rejects invalid	on an expected line	
 tests/java8Overrides/kt45508.kt	rejects invalid	on an expected line	
 tests/java8Overrides/notAMethodOfAny.kt	accepts valid		
-tests/java8Overrides/overridingMethodOfAnyChain.kt	accepts invalid	METHOD_OF_ANY_IMPLEMENTED_IN_INTERFACE	overridingMethodOfAnyChain.kt:5: METHOD_OF_ANY_IMPLEMENTED_IN_INTERFACE
-tests/java8Overrides/overridingMethodOfAnyDiamond.kt	accepts invalid	METHOD_OF_ANY_IMPLEMENTED_IN_INTERFACE	overridingMethodOfAnyDiamond.kt:11: METHOD_OF_ANY_IMPLEMENTED_IN_INTERFACE
+tests/java8Overrides/overridingMethodOfAnyChain.kt	rejects invalid	on an expected line	
+tests/java8Overrides/overridingMethodOfAnyDiamond.kt	rejects invalid	on an expected line	
 tests/java8Overrides/singleRelevantDefault.kt	accepts valid		
 tests/javaFieldVsAccessor.kt	accepts valid		
 tests/javaStaticScopeInheritance.kt	accepts valid		
@@ -5926,7 +5926,7 @@ tests/missingConflictingOverloads.kt	rejects invalid	on an expected line
 tests/missingDependencyTypealias.kt	accepts valid		
 tests/missingIteratorMissing.kt	rejects invalid	on an expected line	
 tests/missingMultipleDefaultsOnTransitiveInheritance1.kt	accepts valid		
-tests/missingMultipleDefaultsOnTransitiveInheritance2.kt	accepts invalid	MULTIPLE_DEFAULTS_INHERITED_FROM_SUPERTYPES	missingMultipleDefaultsOnTransitiveInheritance2.kt:14: MULTIPLE_DEFAULTS_INHERITED_FROM_SUPERTYPES
+tests/missingMultipleDefaultsOnTransitiveInheritance2.kt	rejects invalid	on an expected line	
 tests/missingVisibilityErrorAccessThroughTypealias.kt	rejects invalid	on an expected line	
 tests/missingWrongAnnotationTarget.kt	rejects invalid	on an expected line	
 tests/modifiers/IllegalModifiers.kt	parse/unsupported	package	IllegalModifiers.kt:3: 'package' is not supported
@@ -6544,8 +6544,8 @@ tests/multiplatform/widerVisibility_expectIsEffectivelyFinal_fakeOverride.kt	ski
 tests/multiplatform/widerVisibility_expectIsEffectivelyFinal_oldLanguageVersion.kt	skip	LANGUAGE	
 tests/multiplatform/widerVisibility_expectSetterIsEffectivelyFinal.kt	skip	modules with friends or dependsOn	
 tests/multiplatform/widerVisibility_expectSetterIsEffectivelyFinal_fakeOverride.kt	skip	modules with friends or dependsOn	
-tests/multipleDefaultsAnonymousObject.kt	accepts invalid	MULTIPLE_DEFAULTS_INHERITED_FROM_SUPERTYPES	multipleDefaultsAnonymousObject.kt:12: MULTIPLE_DEFAULTS_INHERITED_FROM_SUPERTYPES
-tests/multipleDefaultsIncorrectlyAllowed1.kt	accepts invalid	MULTIPLE_DEFAULTS_INHERITED_FROM_SUPERTYPES	multipleDefaultsIncorrectlyAllowed1.kt:11: MULTIPLE_DEFAULTS_INHERITED_FROM_SUPERTYPES
+tests/multipleDefaultsAnonymousObject.kt	rejects invalid	on an expected line	
+tests/multipleDefaultsIncorrectlyAllowed1.kt	rejects invalid	on an expected line	
 tests/multipleDefaultsIncorrectlyAllowed2.kt	accepts valid		
 tests/multipleDefaultsNoSource.kt	accepts invalid	MULTIPLE_DEFAULTS_INHERITED_FROM_SUPERTYPES_WHEN_NO_EXPLICIT_OVERRIDE	multipleDefaultsNoSource.kt:14: MULTIPLE_DEFAULTS_INHERITED_FROM_SUPERTYPES_WHEN_NO_EXPLICIT_OVERRIDE
 tests/namedArguments/allowForJavaAnnotation.kt	accepts valid		
@@ -6840,7 +6840,7 @@ tests/override/InheritingJavaClassWithRawTypeInOverrideSignature.kt	accepts vali
 tests/override/InternalPotentialOverride.kt	accepts valid		
 tests/override/InvisiblePotentialOverride.kt	accepts valid		
 tests/override/MissingDelegate.kt	rejects invalid	on an expected line	
-tests/override/MultipleDefaultParametersInSupertypes.kt	accepts invalid	MULTIPLE_DEFAULTS_INHERITED_FROM_SUPERTYPES	MultipleDefaultParametersInSupertypes.kt:11: MULTIPLE_DEFAULTS_INHERITED_FROM_SUPERTYPES
+tests/override/MultipleDefaultParametersInSupertypes.kt	rejects invalid	on an expected line	
 tests/override/MultipleDefaultParametersInSupertypesNoOverride.kt	rejects invalid	on an expected line	
 tests/override/MultipleDefaultParametersInSupertypesWithOverloads.kt	accepts valid		
 tests/override/MultipleDefaultsAndNamesInSupertypes.kt	accepts invalid	MULTIPLE_DEFAULTS_INHERITED_FROM_SUPERTYPES_WHEN_NO_EXPLICIT_OVERRIDE	MultipleDefaultsAndNamesInSupertypes.kt:14: MULTIPLE_DEFAULTS_INHERITED_FROM_SUPERTYPES_WHEN_NO_EXPLICIT_OVERRIDE
@@ -7965,7 +7965,7 @@ tests/scopes/kotlinAccessorsLikeFunctionsThrowJavaClass.kt	rejects invalid	elsew
 tests/scopes/kt1078.kt	accepts valid		
 tests/scopes/kt1080.kt	rejects invalid	on an expected line	
 tests/scopes/kt1244.kt	rejects invalid	on an expected line	
-tests/scopes/kt1248.kt	accepts invalid	CANNOT_WEAKEN_ACCESS_PRIVILEGE	kt1248.kt:10: CANNOT_WEAKEN_ACCESS_PRIVILEGE
+tests/scopes/kt1248.kt	rejects invalid	on an expected line	
 tests/scopes/kt151.kt	rejects invalid	on an expected line	
 tests/scopes/kt1579.kt	accepts valid		
 tests/scopes/kt1579_map_entry.kt	accepts valid		

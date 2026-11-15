@@ -6,16 +6,16 @@ Of 10827 test files, 2312 are skipped and 8515 run.
 
 | Result | Tests | Share |
 |:---|---:|---:|
-| rejects invalid | 4001 | 47.0% |
+| rejects invalid | 4009 | 47.1% |
 | accepts valid | 3988 | 46.8% |
-| accepts invalid | 383 | 4.5% |
+| accepts invalid | 375 | 4.4% |
 | rejects valid | 125 | 1.5% |
 | parse/unsupported | 16 | 0.2% |
 | crash | 1 | 0.0% |
 
 *Rejects invalid* and *accepts valid* agree with kotlinc. *Accepts invalid* is code kotlinc rejects that kc compiles; *rejects valid*, code kotlinc compiles that kc's checker rejects. Both are bugs. A *parse/unsupported* test uses a feature kc doesn't support, which says nothing about its checks.
 
-Of the 4001 tests both reject, kc reports an error on the line of an expected one in 3838.
+Of the 4009 tests both reject, kc reports an error on the line of an expected one in 3847.
 
 A test is invalid if it stops before the backend or marks an error: one that runs to it (`BACKEND`) can mark the JVM backend's errors, such as `CONFLICTING_JVM_DECLARATIONS`. Of the tests run, 222 stop at `FRONTEND` but mark no error: most add the `CHECK_TYPE` helpers, whose names (`_`) kotlinc reports outside the test infrastructure, and count as valid; the others leave their errors out with the `DIAGNOSTICS` directive. 114 run to the backend and mark one. 5 marked names have no declared severity (debug information, for one), and count as neither.
 
@@ -66,13 +66,12 @@ Tests kotlinc rejects that kc compiles, by the errors their markup expects. A te
 | `MANY_IMPL_MEMBER_NOT_IMPLEMENTED` | 6 | 5 | `tests/j+k/manyImplNotImplementedComplexHierarchy.kt`, `tests/j+k/manyImplNotImplementedComplexHierarchy2.kt` |
 | `NOTHING_TO_OVERRIDE` | 6 | 3 | `tests/j+k/types/newListMethodsNullabilityOverridesLinkedListLatest.kt`, `tests/multimodule/duplicateSuper/sameSuperTraitDifferentBounds.kt` |
 | `ASSIGNMENT_TYPE_MISMATCH` | 5 | 2 | `tests/controlFlowAnalysis/smartcastOnThisInInitializationSection.kt`, `tests/generics/varProjection/setterNotProjectedOutAssign.kt` |
-| `CANNOT_WEAKEN_ACCESS_PRIVILEGE` | 5 | 4 | `tests/intersectedVisibilitiesAccessorDifferences_Small.kt`, `tests/intersectedVisibilitiesForNonAbstractPropertyAccessors.kt` |
 | `DEPRECATION_ERROR` | 5 | 2 | `tests/deprecated/javaDeprecatedHidden.kt`, `tests/j+k/collectionOverrides/nonDirectHiddenOverride.kt` |
 | `ASSIGN_OPERATOR_AMBIGUITY` | 4 | 4 | `tests/callResolution/exponentialArraySetWithPlusAssign.kt`, `tests/operatorsOverloading/AssignOperatorAmbiguity.kt` |
+| `CANNOT_WEAKEN_ACCESS_PRIVILEGE` | 4 | 3 | `tests/intersectedVisibilitiesAccessorDifferences_Small.kt`, `tests/intersectedVisibilitiesForNonAbstractPropertyAccessors.kt` |
 | `CYCLIC_INHERITANCE_HIERARCHY` | 4 | 3 | `tests/classpathSubstitution/cyclicSupertype.kt`, `tests/classpathSubstitution/cyclicSupertype2.kt` |
 | `INAPPLICABLE_CANDIDATE` | 4 | 3 | `tests/callableReference/generic/dependOnArgumentType.kt`, `tests/j+k/sam/referenceToSamFunctionAgainstExpectedType.kt` |
 | `INCONSISTENT_TYPE_PARAMETER_BOUNDS` | 4 | 2 | `tests/enum/equalityOfEnumAndParameter.kt`, `tests/enum/equalityOfFlexibleTypeParameters.kt` |
-| `MULTIPLE_DEFAULTS_INHERITED_FROM_SUPERTYPES` | 4 | 4 | `tests/missingMultipleDefaultsOnTransitiveInheritance2.kt`, `tests/multipleDefaultsAnonymousObject.kt` |
 | `MULTIPLE_DEFAULTS_INHERITED_FROM_SUPERTYPES_WHEN_NO_EXPLICIT_OVERRIDE` | 4 | 4 | `tests/moreThanOneOverriddenMissingK2.kt`, `tests/multipleDefaultsNoSource.kt` |
 | `OPT_IN_USAGE_ERROR` | 4 | 3 | `tests/jvm/jvmDefault/annotationsFromBinariesWithNonTrivialJvmDefaultConfiguration.kt`, `testsWithStdLib/experimental/diffrentModules.kt` |
 | `OVERRIDING_FINAL_MEMBER` | 4 | 4 | `tests/j+k/finalCollectionSize.kt`, `tests/j+k/properties/isName.kt` |
@@ -88,7 +87,6 @@ Tests kotlinc rejects that kc compiles, by the errors their markup expects. A te
 | `CONFLICTING_INHERITED_JVM_DECLARATIONS` | 3 | 1 | `tests/jvm/contextParameters/intersectionContextValueJava.kt`, `tests/jvm/contextParameters/intersectionExtensionValueContextJava.kt` |
 | `CONST_VAL_WITH_NON_CONST_INITIALIZER` | 3 | 3 | `tests/modifiers/const/fromJavaWithNonConstInitializer.kt`, `tests/modifiers/const/kotlinJavaCycle.kt` |
 | `MANY_INTERFACES_MEMBER_NOT_IMPLEMENTED` | 3 | 2 | `tests/override/ParentInheritsManyImplementations.kt`, `tests/regressions/kt302.kt` |
-| `METHOD_OF_ANY_IMPLEMENTED_IN_INTERFACE` | 3 | 3 | `tests/java8Overrides/implementingMethodOfAny.kt`, `tests/java8Overrides/overridingMethodOfAnyChain.kt` |
 | `NONE_APPLICABLE` | 3 | 2 | `tests/secondaryConstructors/companionObjectScope.kt`, `tests/secondaryConstructors/generics3.kt` |
 | `NO_ELSE_IN_WHEN` | 3 | 3 | `tests/sealed/WhenOnEmptySealed.kt`, `tests/testsWithJava17/sealedClasses/flexibleSealedInSubject.kt` |
 | `PROPERTY_TYPE_MISMATCH_BY_DELEGATION` | 3 | 0 | `tests/delegation/covariantOverrides/fromClass.kt`, `tests/delegation/covariantOverrides/irrelevant.kt` |
@@ -110,7 +108,9 @@ Tests kotlinc rejects that kc compiles, by the errors their markup expects. A te
 | `JAVA_CLASS_INHERITS_KT_PRIVATE_CLASS` | 2 | 2 | `tests/j+k/invisibleFake.kt`, `tests/j+k/invisibleFake2.kt` |
 | `JAVA_FIELD_SHADOWED_BY_KOTLIN_PROPERTY` | 2 | 1 | `tests/fieldRename/javaFieldKotlinPropertyJavaFieldInPackagePrivate.kt`, `tests/propertyVsField/propertyFieldShadow.kt` |
 | `MEMBER_PROJECTED_OUT` | 2 | 2 | `tests/scopes/variantProjections/irrelevantUnsafeVariance.kt`, `tests/typealias/starProjection.kt` |
-| *97 more* | 114 | |
+| `MISSING_DEPENDENCY_SUPERCLASS` | 2 | 1 | `tests/dataClasses/missingDependencyInSupertype.kt`, `tests/multimodule/inaccessibleSuperTypeWithRepeatedContext.kt` |
+| `NAMED_ARGUMENTS_NOT_ALLOWED` | 2 | 2 | `tests/namedArguments/disallowForFunctionTypes.kt`, `tests/syntheticExtensions/samAdapters/NoNamedArgsAllowed.kt` |
+| *95 more* | 110 | |
 
 ## Rejects valid
 
@@ -164,7 +164,7 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 15426 of 21506 expected errors (71.7%) on their lines.
+kc reports 15466 of 21506 expected errors (71.9%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
@@ -186,7 +186,6 @@ kc reports 15426 of 21506 expected errors (71.7%) on their lines.
 | `TYPE_VARIANCE_CONFLICT_ERROR` | 123 | 54 | 69 |
 | `WRONG_NUMBER_OF_TYPE_ARGUMENTS` | 163 | 96 | 67 |
 | `WRONG_ANNOTATION_TARGET` | 380 | 316 | 64 |
-| `CANNOT_WEAKEN_ACCESS_PRIVILEGE` | 59 | 1 | 58 |
 | `NO_RETURN_IN_FUNCTION_WITH_BLOCK_BODY` | 148 | 91 | 57 |
 | `MIXING_SUSPEND_AND_NON_SUSPEND_SUPERTYPES` | 83 | 28 | 55 |
 | `INITIALIZER_TYPE_MISMATCH` | 428 | 374 | 54 |
@@ -194,6 +193,7 @@ kc reports 15426 of 21506 expected errors (71.7%) on their lines.
 | `NO_VALUE_FOR_PARAMETER` | 175 | 127 | 48 |
 | `NON_PUBLIC_CALL_FROM_PUBLIC_INLINE` | 65 | 19 | 46 |
 | `UNINITIALIZED_VARIABLE` | 211 | 165 | 46 |
+| `CANNOT_WEAKEN_ACCESS_PRIVILEGE` | 59 | 14 | 45 |
 | `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` | 87 | 45 | 42 |
 | `UPPER_BOUND_VIOLATED` | 125 | 84 | 41 |
 | `REDECLARATION` | 192 | 152 | 40 |
