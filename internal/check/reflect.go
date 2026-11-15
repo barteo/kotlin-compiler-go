@@ -224,6 +224,9 @@ func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.
 	switch {
 	case r.Type != nil:
 		recvType = c.classLitType(r.Type, true)
+		if recvType.K == types.Class && isJavaClass(recvType.C) {
+			static = recvType.C // JavaClass<*>::staticMethod
+		}
 	case r.X == nil:
 	case r.Bound != nil:
 		recv = func() syntax.Expr { return ident(r.Bound.Name) }
@@ -304,7 +307,19 @@ func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.
 		}}
 	}
 	staticForm := func(ps []types.Type) refForm {
-		return refForm{params: ps, body: func() syntax.Expr { return call(member(r.X, r.Name), ps, 0) }}
+		return refForm{params: ps, body: func() syntax.Expr {
+			x := r.X
+			if x == nil { // JavaClass<*>::staticMethod
+				for i, n := range strings.Split(r.Type.Name, ".") {
+					if i == 0 {
+						x = ident(n)
+					} else {
+						x = member(x, n)
+					}
+				}
+			}
+			return call(member(x, r.Name), ps, 0)
+		}}
 	}
 	// A Java class's static field, or an enum's entries, is a property
 	// without a receiver: JavaClass::staticField is a KProperty0, as

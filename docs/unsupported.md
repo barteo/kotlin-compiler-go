@@ -264,7 +264,8 @@ yet done. [Design](design.md) describes how `kc` compiles it.
 - Of the Java collection members K2 gives Kotlin's signatures, `kc` maps
   `contains`, `remove`, `containsAll`, `removeAll`, `retainAll`,
   `indexOf`, `lastIndexOf`, and a map's `containsKey`, `containsValue`,
-  `get` and both `remove`s; others, such as `getOrDefault`, keep Java's.
+  `get` and both `remove`s; others, such as `getOrDefault`, keep Java's,
+  though named arguments take Kotlin's parameter names.
 - K2's predefined nullability of JDK members is applied to the members
   of the classes it names, not to their overrides in other classes:
   `Map`'s `compute` takes a function that may return null, `HashMap`'s
@@ -291,8 +292,9 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   generic function whose type parameters its receiver's type doesn't
   give (`Box<Int>::first` for `fun <T> Box<T>.first()` is fine), is an
   error.
-- Where annotations are written, and whether they repeat, isn't checked
-  for Java annotations without `@Target` or from Java sources, nor for
+- Where annotations are written isn't checked for Java annotations
+  without `@Target` or from Java sources, nor whether they repeat on a
+  property or with a use-site target, nor, for any annotation, for
   use-site targets on local declarations and expressions (`@field:` on a
   local variable), nor across a typealias's expansion (`@A T` where
   `typealias T = @A Int`). The arguments of a
