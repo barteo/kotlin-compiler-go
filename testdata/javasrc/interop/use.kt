@@ -26,6 +26,9 @@ fun interopDemo() {
     println(Sources().one("a").get() + Sources().current().get() + Sources().direct().get())
     println(Sources().longer("abc", 2).get() + " " + Sources().longer("a", 2).get() + " " + Sources().longer("", 2).get())
     println(Named().run())
+    // A platform value isn't checked for null where a Java method takes
+    // it, a parameter that an annotation makes non-null too.
+    println(Names.show(Names.none()))
 }
 
 // An annotated Java List or Map is a mutable collection and a read-only
