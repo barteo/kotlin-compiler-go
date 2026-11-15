@@ -1,18 +1,57 @@
 package check
 
 import (
-	"strings"
+	"regexp"
 
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
 )
 
 // suppressible maps the names of the errors that @Suppress may name to
-// the start of kc's message for each, or, with a leading '*', a part of
-// it. kotlinc reports a suppressed error as a warning (ERROR_SUPPRESSION).
-var suppressible = map[string]string{
-	"ARGUMENT_TYPE_MISMATCH": "type mismatch: inferred type is ",
-	"NOTHING_TO_OVERRIDE":    "*' overrides nothing",
-	"UPPER_BOUND_VIOLATED":   "type argument is not within its bounds",
+// kc's messages for each. kotlinc reports a suppressed error as a warning
+// (ERROR_SUPPRESSION) and compiles the code. Errors whose code the
+// backend can't generate, as an unresolved reference or a missing
+// argument, aren't listed. kc's messages don't tell apart some errors
+// kotlinc names differently: one type mismatch message is all of
+// ARGUMENT_TYPE_MISMATCH, INITIALIZER_TYPE_MISMATCH and the others.
+var suppressible = map[string]*regexp.Regexp{}
+
+func init() {
+	typeMismatch := `^type mismatch: inferred type is `
+	notImplemented := `^(class '.*' is|object is) not abstract and does not implement abstract member `
+	invisible := `^cannot access '.*': it is `
+	for n, m := range map[string]string{
+		"ABSTRACT_CLASS_MEMBER_NOT_IMPLEMENTED":     notImplemented,
+		"ABSTRACT_FUNCTION_IN_NON_ABSTRACT_CLASS":   `^abstract function '.*' in non-abstract class `,
+		"ABSTRACT_MEMBER_NOT_IMPLEMENTED":           notImplemented,
+		"ABSTRACT_PROPERTY_IN_NON_ABSTRACT_CLASS":   `^abstract property '.*' in non-abstract class `,
+		"ARGUMENT_TYPE_MISMATCH":                    typeMismatch,
+		"ASSIGNMENT_TYPE_MISMATCH":                  typeMismatch,
+		"CONFLICTING_OVERLOADS":                     `^conflicting overloads: `,
+		"CREATING_AN_INSTANCE_OF_ABSTRACT_CLASS":    `^cannot create an instance of an abstract class`,
+		"DATA_CLASS_VARARG_PARAMETER":               `^primary constructor vararg parameters are forbidden for data classes`,
+		"DEPRECATION_ERROR":                         `' is deprecated with level ERROR`,
+		"EQUALITY_NOT_APPLICABLE":                   `^operator '(==|!=|===|!==)' cannot be applied to `,
+		"INITIALIZER_TYPE_MISMATCH":                 typeMismatch,
+		"INTERFACE_WITH_SUPERCLASS":                 `^an interface cannot inherit from a class`,
+		"INVISIBLE_MEMBER":                          invisible,
+		"INVISIBLE_REFERENCE":                       invisible,
+		"METHOD_OF_ANY_IMPLEMENTED_IN_INTERFACE":    `^an interface may not implement a method of 'Any'`,
+		"MUST_BE_INITIALIZED":                       `^property must be initialized`,
+		"MUST_BE_INITIALIZED_OR_BE_ABSTRACT":        `^property must be initialized or be abstract`,
+		"NON_CONST_VAL_USED_IN_CONSTANT_EXPRESSION": `^only 'const val' can be used in constant expressions`,
+		"NOTHING_TO_OVERRIDE":                       `' overrides nothing$`,
+		"OVERRIDING_FINAL_MEMBER":                   `' is final and cannot be overridden$`,
+		"PROPERTY_WITH_NO_TYPE_NO_INITIALIZER":      `^this property must have a type, be initialized`,
+		"REPEATED_ANNOTATION":                       `^this annotation is not repeatable`,
+		"RETURN_TYPE_MISMATCH":                      typeMismatch,
+		"TYPE_MISMATCH":                             typeMismatch,
+		"UNSAFE_CALL":                               `^only safe \(\?\.\) or non-null asserted \(!!\.\) calls are allowed`,
+		"UPPER_BOUND_VIOLATED":                      `^type argument is not within its bounds`,
+		"VAL_REASSIGNMENT":                          `^val cannot be reassigned`,
+		"VALUE_CLASS_CANNOT_EXTEND_CLASSES":         `^value class cannot extend classes`,
+	} {
+		suppressible[n] = regexp.MustCompile(m)
+	}
 }
 
 // suppressRange is the lines of a declaration whose @Suppress names
@@ -51,8 +90,7 @@ func suppressedBy(e *syntax.Error, rs []suppressRange) bool {
 			continue
 		}
 		for _, n := range r.names {
-			m := suppressible[n]
-			if rest, ok := strings.CutPrefix(m, "*"); ok && strings.Contains(e.Msg, rest) || !ok && strings.HasPrefix(e.Msg, m) {
+			if suppressible[n].MatchString(e.Msg) {
 				return true
 			}
 		}
