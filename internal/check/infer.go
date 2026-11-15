@@ -789,6 +789,14 @@ func (s *system) complete() {
 					}
 				}
 			}
+			if best >= 0 && len(k2.lower) == 0 && len(k2.upper) == 0 && len(k2.lits) == 0 && !k2.star {
+				// One without bounds still waits for the others, whose
+				// values may give it some: T of failure(e) in
+				// cont.resume(failure(e)), for a builder's Continuation
+				// of its variable, is known once resume's T is that
+				// variable.
+				k2 = pick
+			}
 			if k2 != pick {
 				if k2Readiness == "log" {
 					fmt.Fprintf(os.Stderr, "READINESS %s: kc %s, K2 %s\n", pick.pos, pick.v.Name, k2.v.Name)
