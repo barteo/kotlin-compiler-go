@@ -375,10 +375,10 @@ func (t *classTable) load(cls *types.ClassSym) {
 		for _, p := range f.Params {
 			p.Type = javaParam(p.Type)
 		}
+		// javac leaves out synthetic parameters, which come first.
+		off := len(f.Params) - len(m.ParamAnnotations)
 		if t.javaTypes {
 			f.Ret = enhance(m.Annotations, f.Ret)
-			// javac leaves out synthetic parameters, which come first.
-			off := len(f.Params) - len(m.ParamAnnotations)
 			for i, as := range m.ParamAnnotations {
 				// A declaration annotation on a vararg is the array's,
 				// not its elements', which the parameter's type is.
@@ -392,6 +392,22 @@ func (t *classTable) load(cls *types.ClassSym) {
 					f.Params[off+i].Type = enhance(slices.DeleteFunc(slices.Clone(as), func(a string) bool {
 						return !strings.HasPrefix(a, "Lorg/jspecify/annotations/")
 					}), f.Params[off+i].Type)
+				}
+			}
+		} else if m.Access&classfile.AccAbstract != 0 {
+			// An abstract method's parameter of a type parameter's type
+			// that is annotated as not null is a T & Any: the lambda for
+			// a Java Predicate<T> with test(@NonNull T) takes an Item for
+			// a T that is Item?.
+			for i, as := range m.ParamAnnotations {
+				if off+i < 0 {
+					continue
+				}
+				if pt := f.Params[off+i].Type; pt.P && pt.IsParam() {
+					if pt = enhance(as, pt); !pt.N {
+						pt.D = true
+						f.Params[off+i].Type = pt
+					}
 				}
 			}
 		}

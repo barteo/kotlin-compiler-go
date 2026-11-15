@@ -23,6 +23,30 @@ fun interopDemo() {
     println(samOverload { "generic" })
     nothingFromJava(object : Nulls.Visitor<Nothing> {})
     println(StaticOuter().Inner().test())
+    println(Sources().one("a").get() + Sources().current().get() + Sources().direct().get())
+    println(Sources().longer("abc", 2).get() + " " + Sources().longer("a", 2).get() + " " + Sources().longer("", 2).get())
+}
+
+// T of a Java <T> Source<T> fromCallable(Callable<? extends T>), for a
+// callable of a String? and an expected Source<String>, is a String!.
+class Sources {
+    private val items = hashMapOf("a" to "first")
+    private var last: String? = " last"
+
+    fun one(key: String): Source<String> {
+        return Source.fromCallable(java.util.concurrent.Callable { items[key] })
+    }
+
+    fun current(): Source<String> = Source.fromCallable { last }
+
+    fun direct(): Source<String> = Source.of(last)
+
+    // The lambda for a Java Check<T>, whose test(@NonNull T) takes a
+    // T & Any, takes a String for the String? that map's lambda returns.
+    fun longer(s: String, n: Int): Source<String?> =
+        Source.of(s)
+            .map { v: String -> v.ifEmpty { null } }
+            .filter { v: String -> v.length > n }
 }
 
 // foo() in an inner subclass of a Java class is its static foo(), which
