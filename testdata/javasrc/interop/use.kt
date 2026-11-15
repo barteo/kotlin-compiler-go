@@ -29,6 +29,11 @@ fun interopDemo() {
     // A platform value isn't checked for null where a Java method takes
     // it, a parameter that an annotation makes non-null too.
     println(Names.show(Names.none()))
+    val id = 5L
+    val next: Long = Ids.next(id)
+    val ids = Ids(3)
+    ids.last = ids.get() + ids.last
+    println("${Ids.show(id, 2L)} ${Ids.show(listOf(3L)[0], id)} ${next + Ids.next(next)} ${ids.last == 20L}")
 }
 
 // An annotated Java List or Map is a mutable collection and a read-only

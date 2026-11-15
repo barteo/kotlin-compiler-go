@@ -1575,6 +1575,9 @@ func javaMember(f *types.FunSym) bool {
 func paramType(f *types.FunSym, j int) types.Type {
 	t := f.Params[j].Type
 	if slices.Contains(f.BoxedParams, j) {
+		if t.IsPrimitive() {
+			return t.Nullable() // a Java method's @NonNull Long
+		}
 		return types.Boxed(t)
 	}
 	return t
