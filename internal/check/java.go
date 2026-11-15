@@ -2646,7 +2646,7 @@ func (c *Checker) javaCall(x *syntax.Call, fn *syntax.Member, rt types.Type, wan
 		for _, f := range ms {
 			fit = fit || c.mayTake(f, x)
 		}
-		if !fit {
+		if !fit || c.refsMissAll(cands, x) && !c.refsMissAll(exts, x) {
 			return c.resolve(x, exts, want, sink)
 		}
 		if !x.Operator && hasLambda(x.Args) || len(c.stubs) > 0 {

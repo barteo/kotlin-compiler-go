@@ -206,3 +206,17 @@ fun whenAlias(x: Any?) {
         else -> x.bar()
     }
 }
+
+// A member that doesn't take a callable reference gives way to an
+// extension that does: String::length isn't a KProperty1<String?, *>.
+class RefMem
+class RefExt
+class RefBaz<T> {
+    fun baz(prop: kotlin.reflect.KProperty1<T, *>): RefMem = RefMem()
+}
+fun <T> RefBaz<T>.baz(prop: kotlin.reflect.KProperty1<T & Any, *>): RefExt = RefExt()
+
+fun refGiveWay() {
+    val r: RefExt = RefBaz<String?>().baz(String::length)
+    val m: RefMem = RefBaz<String>().baz(String::length)
+}
