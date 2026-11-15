@@ -1030,11 +1030,21 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 		}
 		if len(maximal) == 0 && len(c.stubs) > 0 {
 			// In a builder's lambda, a stub in the candidates' parameter
-			// types leaves none more specific than the others: the tie
-			// breaks as between equally specific ones, the candidate
-			// without a vararg first, make(it: Iterable<T>) of B<T>'s
-			// two for make(listOf("a")).
-			maximal = match
+			// types leaves none more specific than the others: the one
+			// candidate without a vararg is chosen, make(it: Iterable<T>)
+			// of B<T>'s two for make(listOf("a")). Candidates that differ
+			// in the parameters left to their defaults stay ambiguous,
+			// which the builder's other lambdas resolve (see
+			// stubInference): Entry(key: T, id: Any = key) and
+			// Entry(entry: Entry<T>) for an Entry(it) of a stub.
+			for _, cd := range match {
+				if !cd.usesVararg() {
+					maximal = append(maximal, cd)
+				}
+			}
+			if len(maximal) != 1 {
+				maximal = nil
+			}
 		}
 		if i := preferred(len(maximal), x.Args, func(i int) *callee { return &maximal[i].callee }); i >= 0 {
 			best = maximal[i]
