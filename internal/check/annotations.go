@@ -101,6 +101,7 @@ func (c *Checker) checkAnnotations(as []syntax.Annotation, owner *types.ClassSym
 			c.annotationTarget(a, cls, site)
 			c.repeated(a, cls, site, seen)
 			c.jvmAnnotation(a, cls, site)
+			c.javaPositionalArgs(a, cls)
 		}
 		if ps := cls.TypeParams; cls.Annotation && len(a.TypeArgs) != len(ps) && c.lookupAlias(a.Name) == nil {
 			// Unlike a call, an annotation entry doesn't infer its
