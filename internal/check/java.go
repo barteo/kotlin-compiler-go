@@ -380,7 +380,13 @@ func (t *classTable) load(cls *types.ClassSym) {
 				// A declaration annotation on a vararg is the array's,
 				// not its elements', which the parameter's type is.
 				if off+i >= 0 && !(varargs && off+i == len(f.Params)-1) {
-					f.Params[off+i].Type = enhanceSignature(as, f.Params[off+i].Type)
+					pt := f.Params[off+i].Type
+					f.Params[off+i].Type = enhanceSignature(as, pt)
+					if pt.P && f.Params[off+i].Type.IsPrimitive() {
+						// A java.lang.Long that isn't null is a Long,
+						// which the method still takes boxed.
+						f.BoxedParams = append(f.BoxedParams, off+i)
+					}
 				}
 			}
 		} else if m.Access&classfile.AccAbstract != 0 {
@@ -521,12 +527,16 @@ func (t *classTable) load(cls *types.ClassSym) {
 }
 
 // fieldNullability returns the type ft of field fd as its annotations
-// make it, under Library.JavaTypes.
+// make it, under Library.JavaTypes. A java.lang.Long that isn't null
+// stays a platform type: the field holds the box, not a Long.
 func (t *classTable) fieldNullability(fd classfile.Member, ft types.Type) types.Type {
 	if !t.javaTypes {
 		return ft
 	}
-	return enhance(fd.Annotations, ft)
+	if e := enhance(fd.Annotations, ft); !e.IsPrimitive() {
+		return e
+	}
+	return ft
 }
 
 // Nullability annotations kotlinc reads on Java declarations, by
