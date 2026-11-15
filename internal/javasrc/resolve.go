@@ -712,6 +712,11 @@ func (s *Set) Info(name string) (*classfile.Info, error) {
 		declared[m.Name+desc] = true
 		mm := classfile.Member{Access: access, Name: m.Name, Desc: desc, Sig: sig, Annotations: mr.methodAnnotations(m.Annotations), Deprecated: mr.deprecation(m.Annotations)}
 		mm.Hidden = mm.Deprecated != nil && mm.Deprecated.Level == "HIDDEN"
+		if c.Kind == KindAnnotation && m.HasDefault {
+			// The value isn't evaluated, as in Details: an element value
+			// of no kind says that there is one.
+			mm.Default = &classfile.ElementValue{}
+		}
 		for i, p := range m.Params {
 			if as := mr.nullability(p.Annotations); as != nil {
 				if mm.ParamAnnotations == nil {

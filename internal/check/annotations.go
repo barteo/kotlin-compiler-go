@@ -239,8 +239,11 @@ func (c *Checker) kclassOfJava(t types.Type) types.Type {
 		}
 		return t
 	}
-	if t.C.Name != "java/lang/Class" || t.A == nil {
+	if t.C.Name != "java/lang/Class" {
 		return t
+	}
+	if t.A == nil { // a raw Class, KClass<*>
+		return types.GenericType(kclass, []types.Arg{{V: types.Star}}).Platform()
 	}
 	return types.GenericType(kclass, t.A.List).Platform()
 }
