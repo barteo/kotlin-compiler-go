@@ -101,3 +101,43 @@ func (t *classTable) loadAtomic(cls *types.ClassSym) {
 		cls.Ctors = append(cls.Ctors, f)
 	}
 }
+
+// atomicMismatch reports whether Java method jm, of the JVM signature of
+// Kotlin member m, takes or returns a Java atomic class where m has
+// its Kotlin atomic type: foo(AtomicInteger) for foo(AtomicInt). Both are
+// AtomicInteger on the JVM, but Kotlin sees two members.
+func atomicMismatch(jm, m *jvmMember) bool {
+	var ts []types.Type
+	switch {
+	case m.fun != nil:
+		for _, p := range m.fun.Params {
+			ts = append(ts, p.Type)
+		}
+		ts = append(ts, m.fun.Ret)
+	case m.prop != nil && m.setter:
+		ts = append(ts, m.prop.Type, types.UnitType)
+	case m.prop != nil:
+		ts = append(ts, m.prop.Type)
+	default:
+		return false
+	}
+	js := make([]types.Type, 0, len(jm.fun.Params)+1)
+	for _, p := range jm.fun.Params {
+		js = append(js, p.Type)
+	}
+	js = append(js, jm.fun.Ret)
+	if len(js) != len(ts) {
+		return false
+	}
+	for i, t := range ts {
+		a, b := t.C, js[i].C
+		if t.K == types.Class && js[i].K == types.Class && a != b && (isAtomic(a) || isAtomic(b)) {
+			return true
+		}
+	}
+	return false
+}
+
+func isAtomic(c *types.ClassSym) bool {
+	return c != nil && strings.HasPrefix(c.KotlinName, "kotlin/concurrent/atomics/")
+}
