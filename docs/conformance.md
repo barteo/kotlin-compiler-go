@@ -216,9 +216,9 @@ Kotlin 2.4.21's tests on `kc`:
 |:---|---:|---:|
 | run (of 10,827) | 8,515 | |
 | rejects invalid | 4,136 | 48.6% |
-| accepts valid | 4,004 | 47.0% |
+| accepts valid | 4,005 | 47.0% |
 | accepts invalid | 248 | 2.9% |
-| rejects valid | 109 | 1.3% |
+| rejects valid | 108 | 1.3% |
 | parse/unsupported | 16 | 0.2% |
 | crash | 1 | |
 | harness error (`javac`) | 1 | |
@@ -237,7 +237,7 @@ failures down; the largest groups are:
   (`MISSING_DEPENDENCY_CLASS` 15) and class redeclarations
   (`CLASSIFIER_REDECLARATION` 7).
 - **Rejects valid**, by `kc`'s first error: type mismatches (50),
-  inference failures (32), unresolved names, imports and labels (28),
+  inference failures (32), unresolved names, imports and labels (27),
   and ambiguous calls and assignment operators (6). No box test is
   rejected.
 - **Crashes**: a test with Java sources, a stack overflow on a

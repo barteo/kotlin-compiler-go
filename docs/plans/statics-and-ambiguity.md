@@ -361,6 +361,8 @@ Files: `internal/javasrc/resolve.go`.
 
 Guards: `tests/javac/inheritance/*`.
 
+**Done.** The fix is in the driver, not `internal/javasrc`. `javasrc`'s `memberType` already walks the supertypes that `Classes.Supers` returns, but `javaOutside.Supers` returned none for a Kotlin class. Now it resolves a Kotlin class's written supertypes (`kotlinType`), looking in the classes it is nested in, the file's explicit imports, its package, its star imports and `java.lang`, and finally taking the name as qualified. So `UseKotlinInner.java` finds `KotlinInner3` and `JavaInner` two levels up. A supertype written with type arguments is left out. Through `KFirst : SuperClass<String>()`, the inner `NestedInSuperClass` would resolve without its outer type argument, as `SuperClass.NestedInSuperClass` with an unknown `T`, and `testsWithStdLib/j+k/KJKComplexHierarchyWithNested.kt` would then accept both mistyped calls. Writing `SuperClass<String>.NestedInSuperClass` needs the supertypes' type arguments substituted along the chain and Kotlin types mapped to Java signatures, which is left for later. 1 RV fixed; 0 regressions in diagnostics and box. Unit test: `testdata/errors/javaInheritedNested/`.
+
 ### 9. References to Java fields and to `entries` (G: 2 RV, 1 unsupported, 1 AI). Large.
 
 - `JavaClass::staticField` is a `KProperty0`/`KMutableProperty0`.

@@ -5616,7 +5616,7 @@ tests/javac/inheritance/InheritanceAmbiguity.kt	accepts invalid	MISSING_DEPENDEN
 tests/javac/inheritance/InheritanceAmbiguity2.kt	accepts invalid	MISSING_DEPENDENCY_CLASS	test.kt:3: MISSING_DEPENDENCY_CLASS
 tests/javac/inheritance/InheritanceAmbiguity3.kt	accepts invalid	MISSING_DEPENDENCY_CLASS	test.kt:3: MISSING_DEPENDENCY_CLASS
 tests/javac/inheritance/InheritanceAmbiguity4.kt	accepts invalid	MISSING_DEPENDENCY_CLASS	test.kt:3: MISSING_DEPENDENCY_CLASS
-tests/javac/inheritance/InheritanceWithKotlin.kt	rejects valid	unresolved reference: _	test/UseKotlinInner.kt:15: unresolved reference: javaInner
+tests/javac/inheritance/InheritanceWithKotlin.kt	accepts valid		
 tests/javac/inheritance/InheritanceWithKotlinClasses.kt	accepts valid		
 tests/javac/inheritance/InheritedInner.kt	accepts valid		
 tests/javac/inheritance/InheritedInner2.kt	rejects invalid	on an expected line	

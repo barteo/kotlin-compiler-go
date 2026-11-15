@@ -7,9 +7,9 @@ Of 10827 test files, 2312 are skipped and 8515 run.
 | Result | Tests | Share |
 |:---|---:|---:|
 | rejects invalid | 4136 | 48.6% |
-| accepts valid | 4004 | 47.0% |
+| accepts valid | 4005 | 47.0% |
 | accepts invalid | 248 | 2.9% |
-| rejects valid | 109 | 1.3% |
+| rejects valid | 108 | 1.3% |
 | parse/unsupported | 16 | 0.2% |
 | crash | 1 | 0.0% |
 
@@ -119,7 +119,7 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 | First error | Tests | Examples |
 |:---|---:|:---|
 | `type mismatch: inferred type is _ but _ was expected` | 25 | `tests/annotations/javaAnnotationWithClassArray.kt`, `tests/annotations/parameters/expressions/unaryPlus.kt` |
-| `unresolved reference: _` | 21 | `tests/callResolution/incorrectPlusOperatorFromJava.kt`, `tests/callResolution/suspendCOnversionForReceiver.kt` |
+| `unresolved reference: _` | 20 | `tests/callResolution/incorrectPlusOperatorFromJava.kt`, `tests/callResolution/suspendCOnversionForReceiver.kt` |
 | `cannot infer type for type parameter '_'. Specify it explicitly.` | 8 | `tests/delegatedProperty/provideDelegate/commonSupertype.kt`, `tests/inference/commonSystem/postponedCompletionWithExactAnnotation.kt` |
 | `no function '_' takes n arguments` | 6 | `tests/annotations/javaAnnotationWithParameter.kt`, `tests/cast/kt15161.kt` |
 | `unresolved import: _` | 6 | `tests/errorProneAtomicArraySuggestions.kt`, `tests/errorProneAtomicReferenceArguments.kt` |
@@ -227,7 +227,7 @@ kc's errors on lines where the markup expects no diagnostic, in the tests it che
 
 | Error | Count |
 |:---|---:|
-| `unresolved reference: _` | 272 |
+| `unresolved reference: _` | 270 |
 | `type mismatch: inferred type is _ but _ was expected` | 233 |
 | `cannot infer type for type parameter '_'. Specify it explicitly.` | 202 |
 | `only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type _` | 199 |
