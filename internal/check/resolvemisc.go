@@ -211,3 +211,17 @@ func inferring(p *types.VarSym) bool {
 	d, ok := p.Decl.(*syntax.PropDecl)
 	return ok && d.Field != nil && d.Field.DelegateOf == d && d.Field.Sym != nil && d.Field.Sym.InProgress
 }
+
+// useSiteProjected reports whether receiver substitution recv projects an
+// invariant type parameter that parameter type t mentions, A<out Any?> or A<*> of an interface A<T>:
+// through it, a parameter of type @UnsafeVariance T takes Nothing, as
+// for one without the annotation, which only declaration-site variance
+// makes relevant (KT-57609).
+func useSiteProjected(recv types.Subst, t types.Type) bool {
+	for p, a := range recv {
+		if p.Var == types.Inv && a.V != types.Inv && mentionsParam(t, p) {
+			return true
+		}
+	}
+	return false
+}

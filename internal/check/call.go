@@ -865,7 +865,7 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 		}
 		cd.params = make([]types.Type, len(x.Args))
 		for j := range x.Args {
-			if cl.param(j).UnsafeVariance {
+			if cl.param(j).UnsafeVariance && !useSiteProjected(cl.recv, cl.argType(j, x.Args)) {
 				cd.params[j] = cd.sub.Apply(cl.argType(j, x.Args))
 			} else if cs := capturedSubst(cd.sub, cl.recv, cl.argType(j, x.Args), x.Args[j]); cs != nil {
 				cd.params[j] = cs.ApplyIn(cl.argType(j, x.Args))
