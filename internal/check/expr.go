@@ -4045,6 +4045,7 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 			cov = coverage{}
 		}
 		laterLen := len(later)
+		nonNull := 0
 		for j := range br.Conds {
 			cond := &br.Conds[j]
 			switch {
@@ -4148,9 +4149,13 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 						whenTrue, later = append(whenTrue, t...), append(later, f...)
 					}
 				}
-				if single && equalsNonNull(ct) {
-					// Equal to a value that isn't null: neither the
-					// subject nor the receivers of its safe calls are.
+				if equalsNonNull(ct) {
+					nonNull++
+				}
+				if nonNull == len(br.Conds) {
+					// Equal to a value that isn't null, or to one of
+					// several: neither the subject nor the receivers of
+					// its safe calls are.
 					if hasSubj && types.MayBeNull(subjType()) {
 						n := narrow{recv: subj.recv, sym: subj.sym, t: subjType().NonNull()}
 						whenTrue = append(append(whenTrue, n), c.impliedBy(n)...)

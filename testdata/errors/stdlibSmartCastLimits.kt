@@ -48,3 +48,8 @@ fun untrusted(o: Open, d: Data, i: Int, a: Any?, b: String?) {
     if (i == a) a.inc() // ERROR unresolved reference: inc
     if (b == a) a.length // ERROR Any?
 }
+
+fun oneOfSeveralIsNull(a: String?): Int = when (a) {
+    "d", null -> a.length // ERROR String?
+    else -> 0
+}
