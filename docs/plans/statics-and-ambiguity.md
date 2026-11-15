@@ -279,6 +279,15 @@ Risk:
 - Real projects star-import packages with clashing class names (`java.util.*` with `java.awt.*` and `List`). Under K2 these fail only on use, and the same must hold here.
 - Performance of collecting from all stars: this happens only on a miss in the explicit and package levels, so it should be cheap.
 
+**Done.** All 13 flipped, plus 2 *rejects valid* tests (`protectedGetterWithPublicSetter`, `protectedWithGenericsInDifferentPackage`) that had failed on the same Java parse error as `EnumEntryVsStaticAmbiguity4`. 0 regressions in diagnostics and box. Notes on what landed:
+- `importAmbiguity` (`imports.go`) counts the distinct values an imported name stands for: explicit imports first, then star member imports only if the explicit level gave none. Two are an overload resolution ambiguity. `importMembers` now keeps star imports of the same name from other owners.
+- `starimports.go` collects the visible classifiers that star imports give a name, after the explicit imports, the file's package (program and class path), local and nested classes. Two are an ambiguity in a type, and as a qualifier when more than one is a value, or none is and no default import has the name. Class literals and unbound callable references don't report it (`starFallback`), as K2 resolves them past the ambiguity.
+- `equivalentFun` drops top-level functions with the same name, descriptor and package from different modules (`varargConflict`).
+- For the invoke convention, non-operator candidates give way to operator ones (`kt26303`).
+- Two imported extension properties with the same receiver type are ambiguous.
+- `internal/javasrc` accepts a missing `;` after the package declaration, as Kotlin's Java parser does.
+- Unit test: `testdata/errors/importAmbiguity/`.
+
 ### 4. Unqualified statics and supertype companions (B: 3 AI, 3 RV). Medium.
 
 - `inheritedStatic` and `staticInScope` take, for each enclosing class, its own statics and those of its superclass chain. For each Java superclass they use `javaStaticScope` from milestone 2, and never a directly implemented interface.

@@ -242,7 +242,9 @@ func (p *parser) compilationUnit() {
 	if p.isWord("package") {
 		p.next()
 		p.file.Package = p.qualified()
-		p.semi()
+		// As Kotlin's Java parser, a missing ; after the package
+		// declaration is no error: kotlinc's EnumEntryVsStaticAmbiguity4.
+		p.accept(";")
 		mods = p.modifiers()
 	}
 	for p.isWord("import") {

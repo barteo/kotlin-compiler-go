@@ -93,6 +93,10 @@ func (c *Checker) typeName(x syntax.Expr) (string, bool) {
 // star-projected: List::class is a KClass<List<*>>. In class literals,
 // only arrays take other type arguments.
 func (c *Checker) classLitType(ref *syntax.TypeRef, callable bool) types.Type {
+	// As in K2, a name that star imports give two classifiers of isn't
+	// ambiguous here: HashMap::class is kotlin.collections.HashMap's.
+	defer func(old bool) { c.starFallback = old }(c.starFallback)
+	c.starFallback = true
 	if tp := c.lookupTypeParam(ref.Name); tp != nil {
 		if tp.Reified && !callable {
 			return types.ParamType(tp) // known in each copy of the function

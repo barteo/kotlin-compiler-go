@@ -759,9 +759,11 @@ func (c *Checker) resolveImports() {
 			}
 		}
 		// Functions and extension properties of one name imported from
-		// several packages are overloads, as the program's own above.
+		// several packages are overloads, as the program's own above. As
+		// in K2, one function of two modules, by its package, name and
+		// signature, is one candidate.
 		for _, f := range fs {
-			if !slices.Contains(c.funImports[alias], f) {
+			if !slices.ContainsFunc(c.funImports[alias], func(g *types.FunSym) bool { return equivalentFun(f, g) }) {
 				c.funImports[alias] = append(c.funImports[alias], f)
 			}
 		}
@@ -1162,6 +1164,12 @@ func (c *Checker) extCalleesFor(name string, rt types.Type, x *syntax.Call) []ca
 				return nil
 			}
 		}
+		if x != nil && x.Operator && slices.ContainsFunc(out, func(cl callee) bool { return cl.f.Operator }) {
+			// An operator call's candidates are operator functions:
+			// import foo.foo as invoke doesn't make foo one of 42()'s
+			// next to an operator Int.invoke.
+			out = slices.DeleteFunc(out, func(cl callee) bool { return !cl.f.Operator })
+		}
 		if x != nil && len(out) > 0 && !slices.ContainsFunc(out, func(cl callee) bool { return c.recvTakes(rt, cl.f.Recv) && c.mayTake(cl.f, x) }) {
 			if unfit == nil {
 				unfit = out
@@ -1410,7 +1418,16 @@ func (c *Checker) extProp(x *syntax.Member, rt types.Type) (types.Type, bool) {
 	}
 	if best == nil {
 		dispatch = nil
-		fits(c.userExtProps[x.Name])
+		if fits(c.userExtProps[x.Name]); best != nil && len(best.TypeParams) == 0 {
+			// Two explicitly imported ones for one receiver type are
+			// ambiguous: import b.d, import c.d of A.d.
+			for _, g := range c.userExtProps[x.Name] {
+				if g != best && len(g.TypeParams) == 0 && c.recvFits(rt, g.Recv) && c.sameType(g.Recv, best.Recv) {
+					c.errorf(x.P, "overload resolution ambiguity: %s", x.Name)
+					break
+				}
+			}
+		}
 	}
 	if best == nil {
 		fits(c.pkg.ExtProps[x.Name])
@@ -2926,4 +2943,21 @@ func classFileDeprecation(d *classfile.Deprecation) *types.Deprecation {
 		return nil
 	}
 	return &types.Deprecation{Message: d.Message, Level: d.Level}
+}
+
+// equivalentFun reports whether f and g are one top-level function: the
+// same, or of the same package, name and signature, as one library's
+// functions in two modules on the class path.
+func equivalentFun(f, g *types.FunSym) bool {
+	if f == g {
+		return true
+	}
+	if f.Desc == "" || f.Desc != g.Desc || f.Name != g.Name || f.Facade == "" || g.Facade == "" || f.Ext != g.Ext {
+		return false
+	}
+	pkg := func(facade string) string {
+		i := strings.LastIndexByte(facade, '/')
+		return facade[:max(i, 0)]
+	}
+	return pkg(f.Facade) == pkg(g.Facade)
 }

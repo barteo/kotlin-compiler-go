@@ -113,6 +113,9 @@ func (c *Checker) expr1(x syntax.Expr, want types.Type, allowRange bool, sink *s
 		}
 		if ok {
 			c.checkTopVar(sym, x.P)
+			if v, imported := c.userVars[x.Name]; imported && v == sym {
+				c.importAmbiguity(x)
+			}
 		}
 		if ok && sym.Kind == types.Prop && !cast {
 			// A property of this, once a smart cast has changed this's
@@ -2094,6 +2097,9 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 		return types.ClassType(x.Object) // an object, already resolved
 	}
 	if x.Safe && c.qualifierValue(x.X) {
+		return types.InvalidType
+	}
+	if id, ok := x.X.(*syntax.Ident); ok && c.starQualifierAmbiguity(id) {
 		return types.InvalidType
 	}
 	c.entriesQualifier(x.X)
