@@ -335,8 +335,12 @@ func (c *Checker) noDefaultsChecks(d *syntax.ClassDecl) {
 // interface member g: a static method with its name that takes the
 // instance and its parameters.
 func hasImpl(impls *types.ClassSym, g *types.FunSym) bool {
+	n := len(g.Params) + 1 // and the interface's instance
+	if g.Ext {
+		n++ // and the receiver of a member extension: val T.prop
+	}
 	for _, h := range impls.Statics[g.JVM()] {
-		if len(h.Params) == len(g.Params)+1 {
+		if len(h.Params) == n {
 			return true
 		}
 	}

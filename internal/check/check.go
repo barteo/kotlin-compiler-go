@@ -738,6 +738,8 @@ func CheckOptions(ctx context.Context, files []*syntax.File, lib *Library, jobs 
 		c.dslErrors()
 		c.versionOverloads()
 		c.checkModifiers()
+		c.classPathChecks()
+		c.jvmDefaultModeAnnotations()
 		c.suppressErrors()
 		sort.SliceStable(c.errs, func(i, j int) bool {
 			a, b := c.errs[i].Pos, c.errs[j].Pos
