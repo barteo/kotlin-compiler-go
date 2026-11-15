@@ -209,7 +209,7 @@ func (c *Checker) annotationParams(cls *types.ClassSym) []*types.VarSym {
 		for _, f := range fs {
 			if f.Abstract && len(f.Params) == 0 {
 				t := c.kclassOfJava(f.Ret)
-				ps = append(ps, &types.VarSym{Name: f.Name, Type: t, Kind: types.Param, Vararg: f.Name == "value" && t.IsArray()})
+				ps = append(ps, &types.VarSym{Name: f.Name, Type: t, Kind: types.Param, Vararg: f.Name == "value" && t.IsArray(), Default: cls.AnnotationDefaults[f.Name] != nil})
 			}
 		}
 	}
@@ -300,7 +300,7 @@ func (c *Checker) annotationValues(cls *types.ClassSym, args []annotArg, p synta
 			case v.Vararg:
 				// No arguments for a vararg parameter: kotlinc writes [].
 				values = append(values, syntax.AnnotationValue{Name: v.Name, Type: v.Type, Array: true, Omitted: true})
-			case !v.Default && cls.Annotation:
+			case !v.Default && (cls.Annotation || javaAnnotation(cls)):
 				c.errorf(p, "no value passed for parameter '%s'", v.Name)
 				ok = false
 			}
