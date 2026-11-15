@@ -580,7 +580,7 @@ func (c *Checker) narrowedIntersection(cur, t types.Type) (types.Type, bool) {
 	}
 	a.C.Ensure()
 	b.C.Ensure()
-	if !a.C.Interface && !b.C.Interface {
+	if !a.C.Interface && !b.C.Interface && !c.disjointClasses(a, b) {
 		return types.InvalidType, false
 	}
 	// The target first, whose members win, as they did when the value

@@ -282,7 +282,8 @@ type Checker struct {
 	// branchSink is the system of the delegate an if, a try or an
 	// elvis is: see delegateValue.
 	branchSink *system
-	unitElvis  syntax.Expr // see unitBody
+	unitElvis  syntax.Expr    // see unitBody
+	varTarget  *syntax.Member // see propBound
 	// branchArg is set with branchSink for an if or a when that is a
 	// call's argument, whose lambda branches are then the call's
 	// postponed arguments (see branch). lambdaSink is set while the

@@ -127,3 +127,82 @@ fun returnInCatch(f: () -> String?) = run {
 fun returnInLambda(b: Boolean) = run { if (b) return 1; 2 }
 fun returnUnitInLambda(b: Boolean) = run { if (b) return; 2 } // ERROR return type mismatch
 fun returnInBody(x: Int?) = x ?: return 0 // ERROR needs an explicit return type
+
+enum class EnOne { A }
+enum class EnTwo { D }
+fun useEnOne(x: EnOne) = x
+fun impossibleBoth(x: Any) {
+    if (x is EnOne && x is EnTwo) {
+        useEnOne(x)
+    }
+}
+
+val receiverLambda: (String.() -> String)? = null
+fun whenLambdaBranch(): String {
+    val g = when {
+        receiverLambda != null -> receiverLambda
+        else -> { { this + "K" } }
+    }
+    return g("O")
+}
+
+interface HasVal { val n: Int }
+interface HasVar { var n: Int }
+fun assignVar(a: Any) {
+    if (a is HasVal && a is HasVar) {
+        a.n = 5
+    }
+}
+
+interface BoundA { fun doA() }
+interface BoundB { fun doB() }
+class TwoBounds<T>(val value: T) where T : BoundA, T : BoundB
+fun starBounds(c: TwoBounds<*>) {
+    c.value.doA()
+    c.value.doB()
+}
+
+fun funcIdentity(c: (Int) -> Number, b: (Any) -> Int) {
+    if (c === b) {
+        val x: Int = c("")
+    }
+}
+
+sealed interface Status<out T : Any> {
+    val value: T?
+    data class Pending<out T : Any>(override val value: T? = null) : Status<T>
+    sealed interface Done<out T : Any> : Status<T>
+    data class Ok<out T : Any>(override val value: T) : Done<T>
+}
+
+@OptIn(kotlin.contracts.ExperimentalContracts::class)
+fun <T : Any> Status<T>.isPending(): Boolean {
+    kotlin.contracts.contract { returns(false) implies (this@isPending is Status.Done) }
+    return this is Status.Pending
+}
+
+@OptIn(kotlin.contracts.ExperimentalContracts::class)
+fun <T : Any> Status.Done<T>.isOk(): Boolean {
+    kotlin.contracts.contract { returns(true) implies (this@isOk is Status.Ok) }
+    return this is Status.Ok
+}
+
+fun contractArgs() {
+    val s = Status.Pending<String>()
+    if (!s.isPending() && s.isOk()) {
+        val v: String = s.value
+    }
+}
+
+interface WhenA { fun foo() }
+interface WhenB { fun bar() }
+fun whenAlias(x: Any?) {
+    when (val y = x) {
+        !is WhenA -> {}
+        !is WhenB -> {
+            x.foo()
+            y.foo()
+        }
+        else -> x.bar()
+    }
+}
