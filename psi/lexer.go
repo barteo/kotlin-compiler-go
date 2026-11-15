@@ -365,6 +365,17 @@ var multiOps = []struct {
 	{"..", KindRANGE}, {"::", KindCOLONCOLON}, {";;", KindDOUBLE_SEMICOLON},
 }
 
+// multiOpsByFirst are multiOps by first byte, in the same order.
+var multiOpsByFirst = func() (t [256][]struct {
+	text string
+	kind Kind
+}) {
+	for _, op := range multiOps {
+		t[op.text[0]] = append(t[op.text[0]], op)
+	}
+	return
+}()
+
 func (lx *lexer) lexMain() (Kind, bool) {
 	p := lx.pos
 	c := lx.src[p]
@@ -479,7 +490,7 @@ func (lx *lexer) lexMain() (Kind, bool) {
 			return KindEXCL, true
 		}
 	}
-	for _, op := range multiOps {
+	for _, op := range multiOpsByFirst[c] {
 		if lx.has(p, op.text) {
 			lx.pos = p + len(op.text)
 			return op.kind, true
