@@ -183,6 +183,8 @@ public class C extends Other {
     public static final double INF = 1.0 / 0.0, NOT = Math.random();
     public static final int DIV0 = 1 / 0, CYCLE = CYCLE2, CYCLE2 = CYCLE;
 }
+`
+	other := `package p;
 class Other {
     static final int BASE = 41;
     public static final int INHERITED = 7;
@@ -192,7 +194,11 @@ class Other {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := NewSet([]*File{f})
+	g, err := Parse("Other.java", other)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := NewSet([]*File{f, g})
 	info, err := s.Info("p/C")
 	if err != nil {
 		t.Fatal(err)

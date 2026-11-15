@@ -258,8 +258,21 @@ func (t *classTable) classType(name string, args []types.Arg) types.Type {
 	if c == nil {
 		return types.InvalidType
 	}
+	if covariantMapped[name] {
+		// Iterable<? super T> is a (Mutable)Iterable<in T>, which
+		// conflicts with its out T: a star projection.
+		for i, a := range args {
+			if a.V == types.In {
+				args[i] = types.Arg{V: types.Star}
+			}
+		}
+	}
 	return types.GenericType(c, args).Platform()
 }
+
+// covariantMapped are the Java classes Kotlin maps to classes whose type
+// parameter is out in both their read-only and mutable forms.
+var covariantMapped = map[string]bool{"java/lang/Iterable": true, "java/util/Iterator": true}
 
 // classSignature reads a class's type parameters and generic supertypes.
 // An inner class's outer type parameters, outer, are in scope and are its

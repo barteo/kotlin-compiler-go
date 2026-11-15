@@ -1415,6 +1415,7 @@ func (c *Checker) declare() {
 func (c *Checker) declareClass(d *syntax.ClassDecl, name string, outer *types.ClassSym) *types.ClassSym {
 	c.funModifiers(d.Modifiers, d.P, "class")
 	c.expectMembers(d)
+	c.javaRedeclaration(d, name)
 	if d.Annotation {
 		c.annotationClass(d)
 	}
