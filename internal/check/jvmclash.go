@@ -1,6 +1,7 @@
 package check
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
@@ -24,6 +25,9 @@ type jvmMember struct {
 	static  bool
 	private bool
 	synth   bool // a method that kotlinc adds: foo$default, a @JvmOverloads overload, values()
+	// via is the Java method that overrides an inherited Kotlin member,
+	// which Kotlin sees as that member.
+	via *types.FunSym
 }
 
 // accessor reports whether m is a property's getter or setter.
@@ -278,13 +282,75 @@ func (c *Checker) overridesViaJava(cls *types.ClassSym, m, g *jvmMember) bool {
 	return false
 }
 
+// javaNullabilityClash reports whether g and h, methods of the program's
+// Java sources of which neither class inherits the other's, take a
+// parameter that one annotates nullable and the other not-null: Kotlin
+// sees two members.
+func (c *Checker) javaNullabilityClash(g, h *jvmMember) bool {
+	if g.fun == nil || h.fun == nil || g.via != nil || h.via != nil || len(g.fun.Params) != len(h.fun.Params) {
+		return false
+	}
+	a, b := g.fun.Owner, h.fun.Owner
+	if !c.u.ext.javaSource(a) || !c.u.ext.javaSource(b) || a.IsSubclassOf(b) || b.IsSubclassOf(a) {
+		return false
+	}
+	for i, p := range g.fun.Params {
+		q := h.fun.Params[i]
+		if !p.Type.P && !q.Type.P && p.Type.N != q.Type.N {
+			return true
+		}
+	}
+	return false
+}
+
+// javaInherits reports whether a class of the program's Java sources
+// among cls's supertypes inherits both a and b: their members' clash is
+// that class's, which Java reports.
+func (c *Checker) javaInherits(cls, a, b *types.ClassSym) bool {
+	if a == nil || b == nil {
+		return false
+	}
+	found := false
+	cls.Supertypes(func(s *types.ClassSym) bool {
+		found = s != cls && c.u.ext.javaSource(s) && s.IsSubclassOf(a) && s.IsSubclassOf(b)
+		return !found
+	})
+	return found
+}
+
+// joinedByJava reports whether own function m of class cls is no
+// accidental override of inherited Java method g: it overrides g, or a
+// member that a Java class among cls's supertypes inherits along with g,
+// which Java joins, or nothing, which is reported instead.
+func (c *Checker) joinedByJava(cls *types.ClassSym, m, g *jvmMember) bool {
+	if m.fun == nil || g.fun == nil || g.via != nil || !c.u.ext.javaSource(g.fun.Owner) {
+		return false
+	}
+	over := c.overridden(cls, m.fun)
+	if fd, ok := m.fun.Decl.(*syntax.FunDecl); ok && fd.Override && len(over) == 0 {
+		return true // it overrides nothing, which is reported instead
+	}
+	for _, h := range over {
+		if h == g.fun || c.javaInherits(cls, h.Owner, g.fun.Owner) {
+			return true
+		}
+	}
+	return false
+}
+
 // inheritedMembers returns the JVM methods that class cls inherits from
 // its supertypes declared in the program, but not by value classes: their
 // instance methods, of each one's own erasure, as its bridges have them.
 func (c *Checker) inheritedMembers(cls *types.ClassSym) []jvmMember {
-	var out []jvmMember
+	var out, java []jvmMember
 	cls.Supertypes(func(s *types.ClassSym) bool {
-		if s == cls || s.External {
+		if s == cls {
+			return true
+		}
+		if s.External {
+			if c.u.ext.javaSource(s) {
+				java = append(java, c.javaMembers(cls, s)...)
+			}
 			return true
 		}
 		sd, ok := s.Decl.(*syntax.ClassDecl)
@@ -298,6 +364,83 @@ func (c *Checker) inheritedMembers(cls *types.ClassSym) []jvmMember {
 		}
 		return true
 	})
+	if len(java) == 0 {
+		return out
+	}
+	// A Java method that overrides Kotlin members is those members, as
+	// Kotlin sees it, and they aren't inherited past it: copies of them
+	// through the same Java method are one member, not a clash.
+	overridden := map[int]bool{}
+	var vias []jvmMember
+	for _, jm := range java {
+		// Nor is a Java method that another one below it overrides.
+		if !jm.static && slices.ContainsFunc(java, func(k jvmMember) bool {
+			return !k.static && k.sig == jm.sig && k.fun.Owner != jm.fun.Owner && k.fun.Owner.IsSubclassOf(jm.fun.Owner)
+		}) {
+			continue
+		}
+		found := false
+		for i := range out {
+			m := &out[i]
+			owner := m.owner()
+			if !jm.static && jm.sig == m.sig && owner != nil && jm.fun.Owner != owner && jm.fun.Owner.IsSubclassOf(owner) {
+				overridden[i] = true
+				v := *m
+				v.via = jm.fun
+				vias = append(vias, v)
+				found = true
+			}
+		}
+		if !found {
+			vias = append(vias, jm)
+		}
+	}
+	kept := out[:0]
+	for i, m := range out {
+		if !overridden[i] {
+			kept = append(kept, m)
+		}
+	}
+	return append(kept, vias...)
+}
+
+// owner returns the class that declares m.
+func (m *jvmMember) owner() *types.ClassSym {
+	switch {
+	case m.prop != nil:
+		return m.prop.Owner
+	case m.fun != nil:
+		return m.fun.Owner
+	}
+	return nil
+}
+
+// javaMembers returns the JVM methods that class cls inherits from s, a
+// class of the program's Java sources: its instance methods, and the
+// static ones of a class, which the JVM sees as inherited too, but not
+// those that are private or package-private in another package.
+func (c *Checker) javaMembers(cls, s *types.ClassSym) []jvmMember {
+	var out []jvmMember
+	add := func(f *types.FunSym, static bool) {
+		if f.Private || f.Owner != s || f.PackagePrivate && packageOf(s) != packageOf(cls) {
+			return
+		}
+		if d := jvmDesc(f); d != "" {
+			out = append(out, jvmMember{sig: f.JVM() + d, fun: f, static: static})
+		}
+	}
+	for _, fs := range s.Methods {
+		for _, f := range fs {
+			add(f, false)
+		}
+	}
+	if !s.Interface {
+		for _, fs := range s.Statics {
+			for _, f := range fs {
+				add(f, true)
+			}
+		}
+	}
 	return out
 }
 
@@ -333,7 +476,7 @@ func (c *Checker) classClashes(d *syntax.ClassDecl) {
 		}
 		for j := range inherited {
 			g := &inherited[j]
-			if g.sig == m.sig && !c.sameMember(this, m, g) && !c.overridesViaJava(cls, m, g) {
+			if g.sig == m.sig && (g.static || !c.sameMember(this, m, g) && !c.overridesViaJava(cls, m, g) && !c.joinedByJava(cls, m, g)) {
 				c.errorf(m.pos, "accidental override: the following declarations have the same JVM signature (%s)", m.sig)
 				break
 			}
@@ -346,12 +489,12 @@ func (c *Checker) classClashes(d *syntax.ClassDecl) {
 	// doesn't declare one of.
 	for i := range inherited {
 		g := &inherited[i]
-		if ownSigs[g.sig] {
+		if ownSigs[g.sig] || g.static {
 			continue
 		}
 		for j := i + 1; j < len(inherited); j++ {
 			h := &inherited[j]
-			if h.sig == g.sig && !(g.fun != nil && g.fun == h.fun || g.prop != nil && g.prop == h.prop && g.setter == h.setter) && !c.sameMember(this, g, h) {
+			if h.sig == g.sig && !h.static && !(g.via != nil && g.via == h.via) && !c.javaInherits(cls, g.owner(), h.owner()) && !(g.fun != nil && g.fun == h.fun || g.prop != nil && g.prop == h.prop && g.setter == h.setter) && (!c.sameMember(this, g, h) || c.javaNullabilityClash(g, h)) {
 				c.errorf(d.P, "inherited platform declarations clash: the following declarations have the same JVM signature (%s)", g.sig)
 				return
 			}

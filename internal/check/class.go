@@ -1131,6 +1131,31 @@ func (c *Checker) checkInheritance(d *syntax.ClassDecl) {
 	if !cls.Abstract || d.Enum {
 		c.checkImplemented(d, reported)
 	}
+	if !cls.Interface && c.inheritsJavaFunctionN(cls) {
+		c.errorf(d.P, "a Kotlin class can't inherit a Java member that references 'kotlin.jvm.functions.FunctionN'")
+	}
+}
+
+// inheritsJavaFunctionN reports whether class cls inherits a method of
+// the program's Java sources whose descriptor has FunctionN, the class of
+// function types of more than 22 parameters, which kotlinc doesn't
+// support.
+func (c *Checker) inheritsJavaFunctionN(cls *types.ClassSym) bool {
+	found := false
+	cls.Supertypes(func(s *types.ClassSym) bool {
+		if s == cls || !c.u.ext.javaSource(s) {
+			return true
+		}
+		for _, fs := range s.Methods {
+			for _, f := range fs {
+				if !f.Private && !f.Static && f.Owner == s && strings.Contains(jvmDesc(f), "Lkotlin/jvm/functions/FunctionN;") {
+					found = true
+				}
+			}
+		}
+		return !found
+	})
+	return found
 }
 
 // inheritedBridges finds the members of class d's interfaces that it
@@ -1344,7 +1369,7 @@ func (c *Checker) checkImplemented(d *syntax.ClassDecl, reported map[string]bool
 				if !g.Abstract || g.Static || s.Java != nil && g.Platform || numberJavaName(s, g) {
 					continue
 				}
-				if !c.implemented(cls, this, g) && !(s.Java != nil && concreteInSuper(cls, g.JVM()+types.FunDesc(g))) && !numberImplemented(cls, s, g) &&
+				if !c.implemented(cls, this, g) && !(s.Java != nil && concreteInSuper(cls, g.JVM()+types.FunDesc(g))) && !numberImplemented(cls, s, g) && !c.javaImplements(cls, g) &&
 					!(s.External && s.KotlinName == "" && s.Java == nil && kotlinAccessorImplements(cls, s, g)) {
 					missing(name)
 				}
@@ -1361,7 +1386,7 @@ func (c *Checker) checkImplemented(d *syntax.ClassDecl, reported map[string]bool
 		}
 		for name, fs := range s.ExtMethods {
 			for _, g := range fs {
-				if g.Abstract && !c.implemented(cls, this, g) {
+				if g.Abstract && !c.implemented(cls, this, g) && !c.javaImplements(cls, g) {
 					missing(name)
 				}
 			}
@@ -1492,6 +1517,28 @@ func concreteInSuper(cls *types.ClassSym, nd string) bool {
 		s.Ensure()
 		if acc, ok := s.JVMMethods[nd]; ok && acc&classfile.AccAbstract == 0 {
 			return true
+		}
+	}
+	return false
+}
+
+// javaImplements reports whether a superclass of cls among the program's
+// Java sources, which inherits the program's abstract method g, has a
+// method that isn't abstract with g's JVM signature: Java's foo(String a,
+// int b) implements a Kotlin interface's context(a: String) foo(b: Int).
+func (c *Checker) javaImplements(cls *types.ClassSym, g *types.FunSym) bool {
+	if g.Owner == nil || g.Owner.External {
+		return false
+	}
+	sig := g.JVM() + memberDesc(g)
+	for s := cls.Super; s != nil; s = s.Super {
+		if !c.u.ext.javaSource(s) || !s.IsSubclassOf(g.Owner) {
+			continue
+		}
+		for _, f := range s.Methods[g.JVM()] {
+			if !f.Abstract && !f.Static && f.JVM()+jvmDesc(f) == sig {
+				return true
+			}
 		}
 	}
 	return false
@@ -2103,7 +2150,7 @@ func (c *Checker) javaProp(s *types.ClassSym, name string) (string, types.Type) 
 // javaProp), and a Java class's getX() and setX(x) implement a var x.
 func (c *Checker) javaPropImplements(cls *types.ClassSym, this types.Type, s *types.ClassSym, name string, t types.Type, ctx []*types.VarSym, mutable bool) bool {
 	if len(ctx) > 0 {
-		return false
+		return c.javaContextAccessors(cls, s, name, ctx, mutable)
 	}
 	want := c.memberSubst(this, s).Apply(t)
 	for sc := cls.Super; sc != nil; sc = sc.Super {
@@ -2116,6 +2163,33 @@ func (c *Checker) javaPropImplements(cls *types.ClassSym, this types.Type, s *ty
 			}
 		}
 		if sc.KotlinName == "" && sc.Java == nil && c.javaAccessorsImplement(this, sc, name, want, mutable) {
+			return true
+		}
+	}
+	return false
+}
+
+// javaContextAccessors reports whether a superclass of cls among the
+// program's Java sources, which inherits s, declares methods with code
+// that implement s's property name with context parameters ctx, a var if
+// mutable: getX and setX that take the context parameters first, as
+// their JVM descriptors have them.
+func (c *Checker) javaContextAccessors(cls, s *types.ClassSym, name string, ctx []*types.VarSym, mutable bool) bool {
+	cd, ok := types.ParamsDesc(ctx)
+	if !ok {
+		return false
+	}
+	cd = cd[:len(cd)-1]
+	for sc := cls.Super; sc != nil; sc = sc.Super {
+		if !c.u.ext.javaSource(sc) || !sc.IsSubclassOf(s) {
+			continue
+		}
+		has := func(acc string, params int) bool {
+			return slices.ContainsFunc(sc.Methods[acc], func(h *types.FunSym) bool {
+				return h.Owner == sc && !h.Static && !h.Abstract && len(h.Params) == params && strings.HasPrefix(jvmDesc(h), cd)
+			})
+		}
+		if has(types.GetterName(name), len(ctx)) && (!mutable || has(types.SetterName(name), len(ctx)+1)) {
 			return true
 		}
 	}

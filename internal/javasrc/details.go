@@ -96,12 +96,45 @@ func (r *resolver) nullability(as []*Annotation) []string {
 		if !nullabilityNames[a.Name[strings.LastIndexByte(a.Name, '.')+1:]] {
 			continue
 		}
+		if n := r.starNullability(a.Name); n != "" {
+			out = append(out, n)
+			continue
+		}
 		for _, c := range r.annotations([]*Annotation{a}) {
 			out = append(out, c.Type)
 		}
 	}
 	return out
 }
+
+// starNullability returns the descriptor of the nullability annotation
+// that simple name names through a star import of its package, as with
+// import org.jetbrains.annotations.*, when no class it could name is
+// known: kotlinc has those annotations whether the class path does or
+// not. It returns "" otherwise.
+func (r *resolver) starNullability(name string) string {
+	if strings.Contains(name, ".") {
+		return ""
+	}
+	if n, _ := r.classType(&Type{Segs: []Seg{{Name: name}}}); n != "" && r.s.known(n) {
+		return ""
+	}
+	for _, imp := range r.c.file.Imports {
+		if imp.Star && !imp.Static && nullabilityPackages[imp.Name] {
+			return "L" + strings.ReplaceAll(imp.Name, ".", "/") + "/" + name + ";"
+		}
+	}
+	return ""
+}
+
+// nullabilityPackages are the packages of the nullability annotations
+// that kotlinc reads.
+var nullabilityPackages = map[string]bool{"org.jetbrains.annotations": true, "androidx.annotation": true,
+	"android.support.annotation": true, "android.annotation": true, "com.android.annotations": true,
+	"org.eclipse.jdt.annotation": true, "org.checkerframework.checker.nullness.qual": true,
+	"org.checkerframework.checker.nullness.compatqual": true, "edu.umd.cs.findbugs.annotations": true,
+	"lombok": true, "io.reactivex.annotations": true, "io.reactivex.rxjava3.annotations": true,
+	"javax.annotation": true}
 
 // methodAnnotations returns the descriptors of a method's annotations as
 // its class file's member lists them: all of them, as annotationNames

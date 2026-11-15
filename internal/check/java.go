@@ -2058,13 +2058,25 @@ func (c *Checker) dedupe(cands []callee) []callee {
 		}
 		return false
 	}
+	// A Java method whose boxed parameter an annotation makes non-null
+	// takes the primitive, as Kotlin sees it: B.foo(@NotNull Integer)
+	// overrides A.foo(int), both foo(Int) (KT-9182).
+	boxed := func(cl callee) bool {
+		if cl.f.Desc == "" || cl.f.Owner == nil || !cl.f.Owner.External {
+			return false
+		}
+		d, ok := types.ParamsDesc(cl.f.Params)
+		return ok && !strings.HasPrefix(cl.f.Desc, d)
+	}
 	any := false
 	for _, cl := range cands {
-		any = any || generic(cl)
+		any = any || generic(cl) || boxed(cl)
 	}
 	if !any {
 		return cands // erased descriptors already tell them apart
 	}
+	generic0 := generic
+	generic = func(cl callee) bool { return generic0(cl) || boxed(cl) }
 	out := cands[:0:0]
 outer:
 	for _, cl := range cands {
