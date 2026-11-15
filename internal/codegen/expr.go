@@ -1363,6 +1363,8 @@ func (g *gen) member(x *syntax.Member) {
 			g.invokeJava(x.Getter, rt)
 			if o := x.Getter.Owner; o != nil && o.KotlinAnnotation() {
 				g.kotlinClasses(cf.RetDesc(x.Getter.Desc), x.Getter.Ret)
+			} else if o != nil && o.External && o.Retention != types.NoRetention {
+				g.kotlinClasses(cf.RetDesc(x.Getter.Desc), x.T) // a Java annotation's Class element
 			}
 		})
 		return

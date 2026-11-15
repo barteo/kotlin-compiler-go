@@ -662,6 +662,10 @@ func (o *javaOutside) kotlinType(k *kotlinClass, written string) string {
 	return o.qualified(written)
 }
 
+// IsKotlin reports whether a class is one of the program's Kotlin classes
+// or facades, whose const vals the Java sources can't evaluate.
+func (o *javaOutside) IsKotlin(class string) bool { return o.kotlin[class] != nil }
+
 func (o *javaOutside) Constant(class, field string) (any, string) {
 	if o.kotlin[class] != nil {
 		return nil, ""

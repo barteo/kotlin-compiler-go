@@ -741,6 +741,8 @@ func CheckOptions(ctx context.Context, files []*syntax.File, lib *Library, jobs 
 		c.dslErrors()
 		c.versionOverloads()
 		c.checkModifiers()
+		c.classPathChecks()
+		c.jvmDefaultModeAnnotations()
 		sort.SliceStable(c.errs, func(i, j int) bool {
 			a, b := c.errs[i].Pos, c.errs[j].Pos
 			return a.Line < b.Line || a.Line == b.Line && a.Col < b.Col
@@ -1416,6 +1418,7 @@ func (c *Checker) declare() {
 func (c *Checker) declareClass(d *syntax.ClassDecl, name string, outer *types.ClassSym) *types.ClassSym {
 	c.funModifiers(d.Modifiers, d.P, "class")
 	c.expectMembers(d)
+	c.javaRedeclaration(d, name)
 	if d.Annotation {
 		c.annotationClass(d)
 	}

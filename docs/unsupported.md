@@ -25,6 +25,14 @@ own tests.
   `-api-version`. A class path's typealias opts in to nothing, as the
   `@OptIn` it may have had in its source isn't in its class files: the
   markers of what it expands to are required of its uses.
+- A class of the program with the name of a class of the class path
+  doesn't replace it in the class path's signatures and supertypes, as
+  it does in K2: a class path's class whose supertype is shadowed this
+  way still has the class path's supertype. Only the cycles of
+  supertypes this closes are reported.
+- Two classes of one name on the class path, from different modules,
+  are one class, the first; a signature that names the other with
+  other type arguments isn't reported.
 - Builder inference isn't K2's PCLA: a builder's lambda is checked with
   its variables unfixed and then again with them fixed. A call in a
   nested builder that combines both builders' variables, as
@@ -262,7 +270,8 @@ yet done. [Design](design.md) describes how `kc` compiles it.
 - Of the Java collection members K2 gives Kotlin's signatures, `kc` maps
   `contains`, `remove`, `containsAll`, `removeAll`, `retainAll`,
   `indexOf`, `lastIndexOf`, and a map's `containsKey`, `containsValue`,
-  `get` and both `remove`s; others, such as `getOrDefault`, keep Java's.
+  `get` and both `remove`s; others, such as `getOrDefault`, keep Java's,
+  though named arguments take Kotlin's parameter names.
 - K2's predefined nullability of JDK members is applied to the members
   of the classes it names, not to their overrides in other classes:
   `Map`'s `compute` takes a function that may return null, `HashMap`'s
@@ -289,8 +298,9 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   generic function whose type parameters its receiver's type doesn't
   give (`Box<Int>::first` for `fun <T> Box<T>.first()` is fine), is an
   error.
-- Where annotations are written, and whether they repeat, isn't checked
-  for Java annotations without `@Target` or from Java sources, nor for
+- Where annotations are written isn't checked for Java annotations
+  without `@Target` or from Java sources, nor whether they repeat on a
+  property or with a use-site target, nor, for any annotation, for
   use-site targets on local declarations and expressions (`@field:` on a
   local variable), nor across a typealias's expansion (`@A T` where
   `typealias T = @A Int`). The arguments of a

@@ -55,7 +55,8 @@ and leaves each test's own classes to that test's check, as
 `analysis/ka` does for KSP. Only class paths of the JDK and jars are
 kept, keyed by their size and modification time and by the settings the
 library reads classes with; a later module of a test, compiled against
-the earlier ones' output directories, gets a class path of its own.
+the output directories of the modules it depends on, gets a class path
+of its own.
 
 On 4 CPUs this takes each suite from about 3 minutes to 10 to 15
 seconds; each server peaks at about 225 MB.
@@ -84,20 +85,24 @@ like. `-serve=false` rules out such order effects.
 
 ## Box tests
 
-The harness compiles a test's modules (`// MODULE: main(lib)`,
-`// FILE: a.kt`) in order, each against the ones before it, with
-`kc -features`, which names the unsupported feature behind an error.
+The harness compiles a test's modules (`// MODULE: main(lib)(friend)`,
+`// FILE: a.kt`) in order, each against the modules it names as
+dependencies and friends, as the test infrastructure does: only those,
+not theirs, so a library's own dependencies are missing from the class
+path unless the module names them too. Friends' output directories are
+also its `-friend-paths`. It compiles with `kc -features`, which names the unsupported feature behind an error.
 It then runs `box()` in a fresh class loader of a long-lived JVM
 (`bench/conformance/BoxRunner.java`), with a 10 s timeout. As the test
 infrastructure does, it puts the standard library and kotlin-test on the
 class path (and kotlin-reflect for `WITH_REFLECT`), adds the helper
 sources for `WITH_COROUTINES`, `CHECK_TYPE` and `INFERENCE_HELPERS`,
 turns `OPTIONAL_JVM_INLINE_ANNOTATION` into `@JvmInline` and
-`JVM_DEFAULT_MODE: disable` into `-jvm-default=disable`, removes
+a module's `JVM_DEFAULT_MODE` (or the test's, before its first
+module) into `-jvm-default`, removes
 diagnostic markup, and looks for `box()` in the class `kotlinc` puts it
 in. It skips tests for other backends, tests `kotlinc`'s JVM backend
 ignores, and tests that need `LANGUAGE` features, compiler arguments,
-Java sources, or modules with friends or `dependsOn`. A `LANGUAGE` that
+Java sources, or modules with `dependsOn`. A `LANGUAGE` that
 only sets features as Kotlin 2.4 has them by default, or as `kc`
 follows them (`+AllowAccessToProtectedFieldFromSuperCompanion`,
 `+AllowReifiedTypeInCatchClause`,
@@ -174,7 +179,7 @@ Four things differ from the test infrastructure:
   frontend even when valid, so only its marks count.
 - **Directory options.** Directories whose test classes give `kotlinc`
   options (the return value checker in `crv/`, explicit API mode, header
-  mode, strict equality, `-jvm-default` modes) are skipped, as are tests
+  mode, strict equality) are skipped, as are tests
   with `LANGUAGE` features (but those on by default in Kotlin 2.4),
   multiplatform modules or `IGNORE_FIR_DIAGNOSTICS`.
 - **Switched-off backend errors.** A test that switches off
