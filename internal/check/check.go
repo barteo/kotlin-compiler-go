@@ -738,6 +738,7 @@ func CheckOptions(ctx context.Context, files []*syntax.File, lib *Library, jobs 
 		c.dslErrors()
 		c.versionOverloads()
 		c.checkModifiers()
+		c.suppressErrors()
 		sort.SliceStable(c.errs, func(i, j int) bool {
 			a, b := c.errs[i].Pos, c.errs[j].Pos
 			return a.Line < b.Line || a.Line == b.Line && a.Col < b.Col
@@ -1731,7 +1732,6 @@ func (c *Checker) resolveSignatures() {
 }
 
 func (c *Checker) resolveFun(d *syntax.FunDecl, owner *types.ClassSym) {
-	defer c.suppressBounds(d.Annotations)()
 	sym := d.Sym
 	if sym == nil {
 		sym = &types.FunSym{Name: d.Name, JVMName: jvmName(&d.Modifiers, ""), Owner: owner, Decl: d, Hidden: d.Hidden(),
@@ -1954,7 +1954,6 @@ func jvmName(m *syntax.Modifiers, target string) string {
 }
 
 func (c *Checker) resolveProp(d *syntax.PropDecl, owner *types.ClassSym) {
-	defer c.suppressBounds(d.Annotations)()
 	c.backingFieldDecl(d, owner)
 	if d.Recv != nil {
 		c.resolveExtProp(d)
