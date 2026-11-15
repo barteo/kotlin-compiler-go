@@ -57,6 +57,13 @@ type lambdaResult struct {
 	// for stubInference, and tailType its type: see stubTail.
 	tail     syntax.Expr
 	tailType types.Type
+	// nothingTail is the return@label that the when the lambda ends with,
+	// with only an else branch, ends with. As K2 resolves it (KT-58232),
+	// the when's type, Nothing, is one of the lambda's results too, which
+	// fixes the lambda's result variable before the return's value is
+	// inferred: a builder call there can't infer its variables, which are
+	// Nothing, and its lambda is checked with them (see returnValue).
+	nothingTail *syntax.Jump
 }
 
 type postponedRet struct {
@@ -487,7 +494,7 @@ func (c *Checker) checkLambda1(x *syntax.Lambda, w lambdaWant) ([]types.Type, ty
 		c.retAllowed, c.loops, c.ctorArgs = false, nil, false
 	}
 	c.allowRange = false
-	lr := &lambdaResult{label: x.Label, want: w.ret, check: w.check}
+	lr := &lambdaResult{label: x.Label, want: w.ret, check: w.check, nothingTail: whenTailReturn(x)}
 	c.lrets = append(c.lrets[:len(c.lrets):len(c.lrets)], lr)
 	unit := w.ret.K == types.Unit
 	var bt types.Type
@@ -933,7 +940,15 @@ func (c *Checker) labeledReturn(x *syntax.Jump) bool {
 		lr.bare = true
 	default:
 		n := len(c.errs)
-		t := c.value(x.X, lr.want)
+		var t types.Type
+		if x == lr.nothingTail && lr.want.K == types.Invalid {
+			saved := c.nothingTail
+			c.nothingTail = true
+			t = c.value(x.X, lr.want)
+			c.nothingTail = saved
+		} else {
+			t = c.value(x.X, lr.want)
+		}
 		switch {
 		case lr.check && lr.want.K != types.Invalid:
 			c.assignable(t, lr.want, x.X.Pos())
@@ -1922,6 +1937,13 @@ func noInputs(t types.Type) bool {
 // it changes outside l undone (see trial): l is checked again once the
 // variables are fixed.
 func (c *Checker) stubInference(s *system, l *syntax.Lambda, params []types.Type, ft types.Type) {
+	if c.nothingTail {
+		// The value of a lambda's nothingTail: its variables aren't
+		// inferred from l, but are Nothing.
+		c.nothingTail = false
+		s.nothingFix = true
+		return
+	}
 	group := []stubLambda{{l, params, ft, c.scope}}
 	vars := c.stubVars(s, params, nil)
 	if !stubbable(s, group[0]) || len(vars) == 0 {
@@ -3075,6 +3097,36 @@ func returnsCall(l *syntax.Lambda) bool {
 		}
 	}
 	return false
+}
+
+// whenTailReturn returns the return@label of lambda l that a when l
+// ends with, with only an else branch, ends with, if it is one: the
+// lambdaResult's nothingTail.
+func whenTailReturn(l *syntax.Lambda) *syntax.Jump {
+	if l.Body == nil || len(l.Body.Stmts) == 0 {
+		return nil
+	}
+	es, ok := l.Body.Stmts[len(l.Body.Stmts)-1].(*syntax.ExprStmt)
+	if !ok {
+		return nil
+	}
+	w, ok := es.X.(*syntax.When)
+	if !ok || len(w.Branches) != 1 || !w.Branches[0].Else {
+		return nil
+	}
+	b := w.Branches[0].Body
+	if b == nil || len(b.Stmts) == 0 {
+		return nil
+	}
+	es, ok = b.Stmts[len(b.Stmts)-1].(*syntax.ExprStmt)
+	if !ok {
+		return nil
+	}
+	j, ok := es.X.(*syntax.Jump)
+	if !ok || j.Kind != syntax.RETURN || j.Label == "" || j.Label != l.Label {
+		return nil
+	}
+	return j
 }
 
 // lastReturned returns the value of the return@label lambda l ends with.

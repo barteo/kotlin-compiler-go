@@ -287,6 +287,9 @@ type Checker struct {
 	// infer the aliases' type arguments: see aliasConstruct.
 	inferAliasArgs map[*syntax.Call]bool
 	tailSink       *system
+	// nothingTail is set while the value of the return that a lambda's
+	// last when gives is checked: see lambdaResult.nothingTail.
+	nothingTail bool
 	// bareRef is the type of an is or as being resolved, whose class's type
 	// arguments may be left out, and bareSubject the type checked.
 	bareRef     *syntax.TypeRef

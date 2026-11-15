@@ -39,7 +39,10 @@ own tests.
   only the builder's variable, not yet bounded, gives a type to, as
   `removeLast()` before `add(42)` in the other branch, takes the other
   branches' join as its bound, as K2's fixation of the join's variable
-  first does; K2's own order of fixation isn't modeled otherwise. A builder's lambda that casts its receiver to a
+  first does; K2's own order of fixation isn't modeled otherwise, but
+  for KT-58232: a builder call returned by the one-branch `when` a
+  lambda ends with can't infer its variables, which are `Nothing`. A
+  builder's lambda that casts its receiver to a
   star-projected subtype, `this as DerivedBuildee<*>`, infers the
   variable as `Unit`, where K2 infers a captured type.
 

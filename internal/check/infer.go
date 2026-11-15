@@ -87,6 +87,10 @@ type system struct {
 	// still unknown to the outer call.
 	lambdas []pendingLambda
 	ok      bool // false once a constraint cannot hold
+	// nothingFix makes the variables it can't infer Nothing, besides the
+	// error: a builder's, whose lambda isn't inferred, as K2 fixes them
+	// (see lambdaResult.nothingTail).
+	nothingFix bool
 	depth   int
 	// nest counts the type arguments that sub is inside of: only a top-level
 	// argument's projection is captured.
@@ -1019,6 +1023,9 @@ func (s *system) fix(tv *tvar) {
 			break
 		}
 		s.errs = append(s.errs, inferError{tv.pos, "cannot infer type for type parameter '" + tv.v.Name + "'. Specify it explicitly."})
+		if s.nothingFix {
+			val = types.NothingType
+		}
 	}
 	// A variable with only upper constraints is their intersection with
 	// its declared bounds, as K2 infers it. kc has no intersection types:

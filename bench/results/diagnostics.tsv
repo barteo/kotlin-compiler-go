@@ -4393,7 +4393,7 @@ tests/inference/nothingType/nullableExpectedTypeFromVariable.kt	accepts valid
 tests/inference/nothingType/platformNothingAsUsefulConstraint.kt	accepts valid		
 tests/inference/nothingType/reifiedParameterWithRecursiveBound.kt	accepts valid		
 tests/inference/nothingType/reportImplicitNothingOnlyForOwnTypeParameters.kt	accepts valid		
-tests/inference/nothingType/returnAsLastStatementInLambda.kt	accepts invalid	CANNOT_INFER_PARAMETER_TYPE; ARGUMENT_TYPE_MISMATCH	returnAsLastStatementInLambda.kt:36: CANNOT_INFER_PARAMETER_TYPE
+tests/inference/nothingType/returnAsLastStatementInLambda.kt	rejects invalid	on an expected line	
 tests/inference/nothingType/selectWithNull.kt	accepts valid		
 tests/inference/nothingType/specialCallWithMaterializeAndExpectedType.kt	accepts valid		
 tests/inference/nothingVsParameterBound.kt	accepts valid		

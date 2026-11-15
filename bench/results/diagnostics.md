@@ -6,16 +6,16 @@ Of 10827 test files, 2312 are skipped and 8515 run.
 
 | Result | Tests | Share |
 |:---|---:|---:|
-| rejects invalid | 4000 | 47.0% |
+| rejects invalid | 4001 | 47.0% |
 | accepts valid | 3982 | 46.8% |
-| accepts invalid | 384 | 4.5% |
+| accepts invalid | 383 | 4.5% |
 | rejects valid | 131 | 1.5% |
 | parse/unsupported | 16 | 0.2% |
 | crash | 1 | 0.0% |
 
 *Rejects invalid* and *accepts valid* agree with kotlinc. *Accepts invalid* is code kotlinc rejects that kc compiles; *rejects valid*, code kotlinc compiles that kc's checker rejects. Both are bugs. A *parse/unsupported* test uses a feature kc doesn't support, which says nothing about its checks.
 
-Of the 4000 tests both reject, kc reports an error on the line of an expected one in 3837.
+Of the 4001 tests both reject, kc reports an error on the line of an expected one in 3838.
 
 A test is invalid if it stops before the backend or marks an error: one that runs to it (`BACKEND`) can mark the JVM backend's errors, such as `CONFLICTING_JVM_DECLARATIONS`. Of the tests run, 222 stop at `FRONTEND` but mark no error: most add the `CHECK_TYPE` helpers, whose names (`_`) kotlinc reports outside the test infrastructure, and count as valid; the others leave their errors out with the `DIAGNOSTICS` directive. 114 run to the backend and mark one. 5 marked names have no declared severity (debug information, for one), and count as neither.
 
@@ -51,7 +51,7 @@ Tests kotlinc rejects that kc compiles, by the errors their markup expects. A te
 | Expected error | Tests | Only error | Examples |
 |:---|---:|---:|:---|
 | `UNRESOLVED_REFERENCE` | 35 | 24 | `tests/SafeCallOnFakePackage.kt`, `tests/callResolution/eagerLambdaAnalysis/samVsDefault.kt` |
-| `ARGUMENT_TYPE_MISMATCH` | 30 | 19 | `tests/annotations/annotationArgumentScopeForNestedClass.kt`, `tests/collectionLiterals/kt82964.kt` |
+| `ARGUMENT_TYPE_MISMATCH` | 29 | 19 | `tests/annotations/annotationArgumentScopeForNestedClass.kt`, `tests/collectionLiterals/kt82964.kt` |
 | `OVERLOAD_RESOLUTION_AMBIGUITY` | 23 | 19 | `tests/callResolution/kt50386.kt`, `tests/imports/EnumEntryVsStaticAmbiguity.kt` |
 | `MISSING_DEPENDENCY_CLASS` | 16 | 10 | `tests/j+k/differentFilename.kt`, `tests/javac/Lambda.kt` |
 | `NULL_FOR_NONNULL_TYPE` | 15 | 10 | `tests/j+k/SupertypeArgumentsNullability-NotNull-SpecialTypes.kt`, `tests/j+k/SupertypeArgumentsNullability-NotNull-UserTypes.kt` |
@@ -69,7 +69,6 @@ Tests kotlinc rejects that kc compiles, by the errors their markup expects. A te
 | `CANNOT_WEAKEN_ACCESS_PRIVILEGE` | 5 | 4 | `tests/intersectedVisibilitiesAccessorDifferences_Small.kt`, `tests/intersectedVisibilitiesForNonAbstractPropertyAccessors.kt` |
 | `DEPRECATION_ERROR` | 5 | 2 | `tests/deprecated/javaDeprecatedHidden.kt`, `tests/j+k/collectionOverrides/nonDirectHiddenOverride.kt` |
 | `ASSIGN_OPERATOR_AMBIGUITY` | 4 | 4 | `tests/callResolution/exponentialArraySetWithPlusAssign.kt`, `tests/operatorsOverloading/AssignOperatorAmbiguity.kt` |
-| `CANNOT_INFER_PARAMETER_TYPE` | 4 | 1 | `tests/callableReference/function/ambiguityTopLevelVsTopLevelGeneric.kt`, `tests/inference/nothingType/returnAsLastStatementInLambda.kt` |
 | `CYCLIC_INHERITANCE_HIERARCHY` | 4 | 3 | `tests/classpathSubstitution/cyclicSupertype.kt`, `tests/classpathSubstitution/cyclicSupertype2.kt` |
 | `INAPPLICABLE_CANDIDATE` | 4 | 3 | `tests/callableReference/generic/dependOnArgumentType.kt`, `tests/j+k/sam/referenceToSamFunctionAgainstExpectedType.kt` |
 | `INCONSISTENT_TYPE_PARAMETER_BOUNDS` | 4 | 2 | `tests/enum/equalityOfEnumAndParameter.kt`, `tests/enum/equalityOfFlexibleTypeParameters.kt` |
@@ -85,6 +84,7 @@ Tests kotlinc rejects that kc compiles, by the errors their markup expects. A te
 | `ABSTRACT_CLASS_MEMBER_NOT_IMPLEMENTED` | 3 | 3 | `tests/annotations/rendering/notImplementedMembersAroundJava.kt`, `tests/j+k/missingTypeOfParameterInFakeOverride_2.kt` |
 | `ABSTRACT_MEMBER_NOT_IMPLEMENTED` | 3 | 3 | `tests/j+k/collectionOverrides/irrelevantImplCharSequenceKotlin.kt`, `tests/override/ProtectedAndPrivateFromSupertypes.kt` |
 | `ABSTRACT_SUPER_CALL` | 3 | 3 | `tests/missingAbstractSuperCall.kt`, `tests/missingAbstractSuperCallWithClass.kt` |
+| `CANNOT_INFER_PARAMETER_TYPE` | 3 | 1 | `tests/callableReference/function/ambiguityTopLevelVsTopLevelGeneric.kt`, `tests/j+k/sam/referenceToSamFunctionAgainstExpectedType.kt` |
 | `CONFLICTING_INHERITED_JVM_DECLARATIONS` | 3 | 1 | `tests/jvm/contextParameters/intersectionContextValueJava.kt`, `tests/jvm/contextParameters/intersectionExtensionValueContextJava.kt` |
 | `CONST_VAL_WITH_NON_CONST_INITIALIZER` | 3 | 3 | `tests/modifiers/const/fromJavaWithNonConstInitializer.kt`, `tests/modifiers/const/kotlinJavaCycle.kt` |
 | `MANY_INTERFACES_MEMBER_NOT_IMPLEMENTED` | 3 | 2 | `tests/override/ParentInheritsManyImplementations.kt`, `tests/regressions/kt302.kt` |
@@ -164,14 +164,14 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 14893 of 21506 expected errors (69.3%) on their lines.
+kc reports 14895 of 21506 expected errors (69.3%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|
 | `SYNTAX` | 875 | 222 | 653 |
 | `UNRESOLVED_REFERENCE` | 2493 | 1913 | 580 |
 | `CONFLICTING_JVM_DECLARATIONS` | 996 | 518 | 478 |
-| `ARGUMENT_TYPE_MISMATCH` | 1484 | 1227 | 257 |
+| `ARGUMENT_TYPE_MISMATCH` | 1484 | 1228 | 256 |
 | `UNSUPPORTED` | 231 | 35 | 196 |
 | `WRONG_MODIFIER_TARGET` | 300 | 170 | 130 |
 | `CONFLICTING_OVERLOADS` | 726 | 602 | 124 |
@@ -180,7 +180,7 @@ kc reports 14893 of 21506 expected errors (69.3%) on their lines.
 | `NULL_FOR_NONNULL_TYPE` | 155 | 53 | 102 |
 | `UNRESOLVED_REFERENCE_WRONG_RECEIVER` | 250 | 157 | 93 |
 | `CONST_VAL_WITH_NON_CONST_INITIALIZER` | 251 | 166 | 85 |
-| `CANNOT_INFER_PARAMETER_TYPE` | 627 | 545 | 82 |
+| `CANNOT_INFER_PARAMETER_TYPE` | 627 | 546 | 81 |
 | `MUST_BE_INITIALIZED` | 102 | 21 | 81 |
 | `ANNOTATION_ARGUMENT_MUST_BE_CONST` | 224 | 144 | 80 |
 | `REDECLARATION` | 192 | 119 | 73 |
