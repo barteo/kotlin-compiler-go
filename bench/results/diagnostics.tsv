@@ -5273,12 +5273,12 @@ tests/j+k/collectionOverrides/getCharSequence.kt	accepts valid
 tests/j+k/collectionOverrides/intersectionWithMappedSignature.kt	accepts valid		
 tests/j+k/collectionOverrides/irrelevantCharAtAbstract.kt	accepts valid		
 tests/j+k/collectionOverrides/irrelevantImplCharSequence.kt	accepts valid		
-tests/j+k/collectionOverrides/irrelevantImplCharSequenceKotlin.kt	accepts invalid	ABSTRACT_MEMBER_NOT_IMPLEMENTED	X.kt:1: ABSTRACT_MEMBER_NOT_IMPLEMENTED
+tests/j+k/collectionOverrides/irrelevantImplCharSequenceKotlin.kt	rejects invalid	on an expected line	
 tests/j+k/collectionOverrides/irrelevantImplMutableList.kt	rejects invalid	on an expected line	
 tests/j+k/collectionOverrides/irrelevantImplMutableListKotlin.kt	rejects invalid	on an expected line	
 tests/j+k/collectionOverrides/irrelevantMapGetAbstract.kt	accepts valid		
 tests/j+k/collectionOverrides/mapGetOverride.kt	accepts valid		
-tests/j+k/collectionOverrides/mapMethodsImplementedInJava.kt	rejects valid	class '_' is not abstract and does not implement abstract member '_'	main.kt:1: class 'Impl' is not abstract and does not implement abstract member 'remove'
+tests/j+k/collectionOverrides/mapMethodsImplementedInJava.kt	accepts valid		
 tests/j+k/collectionOverrides/nonDirectHiddenOverride.kt	rejects invalid	on an expected line	
 tests/j+k/collectionOverrides/overrideAnClashWithJvmSignatureInMPP.kt	skip	LANGUAGE	
 tests/j+k/collectionOverrides/removeAt.kt	accepts valid		

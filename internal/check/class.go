@@ -1402,8 +1402,11 @@ func (c *Checker) checkImplemented(d *syntax.ClassDecl, reported map[string]bool
 				if !g.Abstract || g.Static || s.Java != nil && g.Platform || numberJavaName(s, g) {
 					continue
 				}
-				if !c.implemented(cls, this, g) && !(s.Java != nil && concreteInSuper(cls, g.JVM()+types.FunDesc(g))) && !numberImplemented(cls, s, g) && !c.javaImplements(cls, g) &&
+				if !c.implemented(cls, this, g) && !(s.Java != nil && concreteInSuper(cls, g.Owner, g.JVM()+types.FunDesc(g))) && !numberImplemented(cls, s, g) && !c.javaImplements(cls, g) &&
 					!(s.External && s.KotlinName == "" && s.Java == nil && kotlinAccessorImplements(cls, s, g)) {
+					if s.Name == charSequence && name == "charAt" {
+						name = "get"
+					}
 					missing(name)
 				}
 				if s.Interface && hasDefaults(g) && !inlineReported {
@@ -1438,7 +1441,7 @@ func (c *Checker) checkImplemented(d *syntax.ClassDecl, reported map[string]bool
 		for name, kp := range s.KProps {
 			for kp := range kpropAlts(kp) {
 				if kp.Getter.Abstract {
-					if q := c.implementingProp(cls, s, name, kp.Getter.Contexts); (q == nil || q.Abstract) && !concreteInSuper(cls, kp.Getter.JVM()+types.FunDesc(kp.Getter)) &&
+					if q := c.implementingProp(cls, s, name, kp.Getter.Contexts); (q == nil || q.Abstract) && !concreteInSuper(cls, nil, kp.Getter.JVM()+types.FunDesc(kp.Getter)) &&
 						!c.javaPropImplements(cls, this, s, name, kp.Getter.Ret, kp.Getter.Contexts, kp.Setter != nil) {
 						missing(name)
 					}
@@ -1544,12 +1547,25 @@ func isInlineFun(f *types.FunSym) bool {
 }
 
 // concreteInSuper reports whether a superclass of cls on the class path
-// has a method with code with this name and descriptor.
-func concreteInSuper(cls *types.ClassSym, nd string) bool {
+// has a method with code with this name and descriptor. A Java source has
+// no bridge methods, so in a subclass of owner, if not nil, one of its
+// methods with a narrower return type counts too: String get(Object) for
+// Map's Object get(Object).
+func concreteInSuper(cls, owner *types.ClassSym, nd string) bool {
+	params, ret, _ := strings.Cut(nd, ")")
+	params += ")"
+	covariant := strings.HasPrefix(ret, "L") // a reference type
 	for s := cls.Super; s != nil; s = s.Super {
 		s.Ensure()
 		if acc, ok := s.JVMMethods[nd]; ok && acc&classfile.AccAbstract == 0 {
 			return true
+		}
+		if covariant && owner != nil && s.Java == nil && !s.FromKotlin && s.IsSubclassOf(owner) {
+			for k, acc := range s.JVMMethods {
+				if r, ok := strings.CutPrefix(k, params); ok && acc&(classfile.AccAbstract|classfile.AccStatic) == 0 && (r[0] == 'L' || r[0] == '[') {
+					return true
+				}
+			}
 		}
 	}
 	return false
@@ -1611,6 +1627,9 @@ func (c *Checker) implementation(cls *types.ClassSym, this types.Type, g *types.
 			return true // g, abstract, overrides its members: A's abstract toString() Any's
 		}
 		for _, h := range hs {
+			if _, ok := h.Decl.(*syntax.FunDecl); ok && g.Owner.Name == charSequence && (g.Name == "charAt" || g.Name == "length") && h.Name == g.Name {
+				continue // a Kotlin charAt() or length() doesn't implement CharSequence's get or length
+			}
 			if !h.Abstract && c.sameParams(this, h, g) && (!s.Interface || s.IsSubclassOf(g.Owner)) {
 				found = h
 			}

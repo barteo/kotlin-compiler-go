@@ -1817,6 +1817,18 @@ func (c *Checker) javaMethods(cls *types.ClassSym, name string) []*types.FunSym 
 			return f.Abstract && o != nil && o.External && o.KotlinName == "" && o.Java == nil && kotlinAccessorImplements(cls, o, f)
 		})
 	}
+	if len(ms) > 0 && slices.ContainsFunc(numberConversions, func(conv [2]string) bool { return conv[1] == name }) {
+		// A Java method of Number, or of a subclass, with the Java name of
+		// one of its conversions is that conversion to Kotlin: n.intValue()
+		// is unresolved, n.toInt() not. So is one it overrides, from an
+		// interface too.
+		if number := c.u.ext.class("java/lang/Number"); number != nil && cls.IsSubclassOf(number) {
+			ms = slices.DeleteFunc(slices.Clone(ms), func(f *types.FunSym) bool {
+				o := f.Owner
+				return len(f.Params) == 0 && !f.Static && o != nil && o.External && !o.FromKotlin
+			})
+		}
+	}
 	ms = c.intersectionDefaults(cls, ms)
 	cache.methods.Store(k, ms)
 	return ms
