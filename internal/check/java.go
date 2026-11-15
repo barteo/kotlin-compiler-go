@@ -399,6 +399,7 @@ func (t *classTable) load(cls *types.ClassSym) {
 		f.Annotations, f.Deprecated = m.Annotations, classFileDeprecation(m.Deprecated)
 		// @kotlin.Deprecated(level = HIDDEN) hides a Java method from calls.
 		f.Hidden = m.Hidden
+		hideJDK(cls.Name, f)
 		if m.Name == "toString" && len(f.Params) == 0 && kotlinMapped[cls.Name] {
 			// Kotlin sees these classes as Kotlin types, whose toString is
 			// Any's: a String, not a platform String!.
@@ -1072,6 +1073,13 @@ func (c *Checker) extClass(name string) *types.ClassSym {
 		return cls
 	}
 	if builtinClasses[name] && ext.kotlin {
+		// But after the file's own package's: a Java interface Function
+		// in it hides kotlin.Function.
+		if own := strings.ReplaceAll(c.file.Package, ".", "/"); len(c.stars) > 0 && c.stars[0] == own && ext.hasPackage(own) {
+			if cls := ext.pkgClass(c.file.Package, name); cls != nil {
+				return cls
+			}
+		}
 		for _, pkg := range defaultPackages {
 			if cls := ext.pkgClass(pkg, name); cls != nil {
 				return cls
