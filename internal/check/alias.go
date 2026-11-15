@@ -268,6 +268,9 @@ func (c *Checker) aliasUnderscores(x *syntax.Call, a *types.AliasSym, cls *types
 		arg := t.A.Get(i)
 		if arg.V == types.Star || arg.T.Has(func(u types.Type) bool { return u.IsParam() && holes[u.Param()] }) {
 			out[i] = &syntax.TypeArg{P: pos, Underscore: true}
+			if dep, ok := holeDep(arg.T, t, cls, holes); ok && arg.V == types.Inv && !(arg.T.IsParam() && holes[arg.T.Param()]) {
+				out[i].Type = &syntax.TypeRef{P: pos, Known: &dep} // see relateUnderscores
+			}
 			continue
 		}
 		at := arg.T

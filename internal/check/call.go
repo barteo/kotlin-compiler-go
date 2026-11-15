@@ -649,6 +649,7 @@ func underscoreSub(sys *system, tparams []*types.TypeParamSym, recv types.Subst,
 			}
 		}
 	}
+	relateUnderscores(sys, tparams, typeArgs, sub)
 	return sub, sys
 }
 

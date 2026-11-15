@@ -935,7 +935,7 @@ func (s *system) fix(tv *tvar) {
 		// String.
 		if !types.MayBeNull(val) && slices.ContainsFunc(tv.lower, func(l types.Type) bool {
 			l = s.apply(l)
-			return l.HasVars() && l.N && l.K != types.TypeVar
+			return l.HasVars() && l.N && (l.K != types.TypeVar || len(lowers) > 0 && !l.P)
 		}) {
 			val = val.Nullable()
 		}
