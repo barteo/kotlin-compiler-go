@@ -185,6 +185,9 @@ func (l *lowerer) params(n psi.NodeRef) []*syntax.Param {
 		if !name.Valid() {
 			l.fail(c, "expected a name")
 		}
+		if s := name.Text(); strings.Trim(s, "_") == "" {
+			l.errorLater(l.pos(name), "names _, __, ___, ... are reserved in Kotlin")
+		}
 		p := record(l, &syntax.Param{P: l.pos(name), Name: ident(name), Type: l.paramType(c, name), Vararg: m.Vararg,
 			Noinline: m.Noinline, Crossinline: m.Crossinline, Annotations: m.Annotations}, c)
 		p.External, p.ExternalP = m.External, m.ExternalP

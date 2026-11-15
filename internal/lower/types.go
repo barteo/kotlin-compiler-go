@@ -198,6 +198,9 @@ func (l *lowerer) userType(n psi.NodeRef) *syntax.TypeRef {
 			case psi.KindUSER_TYPE:
 				flatten(c)
 			case psi.KindREFERENCE_EXPRESSION:
+				if t := first(c); t.Text() != "_" || l.typeArgDepth == 0 {
+					l.underscoreRef(t)
+				}
 				s.name = ident(first(c))
 			case psi.KindTYPE_ARGUMENT_LIST:
 				s.args = c
@@ -235,6 +238,8 @@ func (l *lowerer) userType(n psi.NodeRef) *syntax.TypeRef {
 
 // typeArgs lowers a TYPE_ARGUMENT_LIST: <A, out B, in C, *>.
 func (l *lowerer) typeArgs(n psi.NodeRef) []*syntax.TypeArg {
+	l.typeArgDepth++
+	defer func() { l.typeArgDepth-- }()
 	args := []*syntax.TypeArg{}
 	for _, c := range kids(n) {
 		if c.NumericKind() != psi.KindTYPE_PROJECTION {
@@ -338,6 +343,7 @@ func (l *lowerer) whereClause(n psi.NodeRef, tps []*syntax.TypeParam) {
 		for _, k := range kids(c) {
 			if k.NumericKind() == psi.KindANNOTATION_ENTRY {
 				l.annotation(k)
+				l.errorLater(l.pos(k), "type parameter annotations are not allowed inside where clauses")
 			}
 		}
 		ref := child(c, psi.KindREFERENCE_EXPRESSION)

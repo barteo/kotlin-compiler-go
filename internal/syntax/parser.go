@@ -847,6 +847,9 @@ func (p *parser) parseType() *TypeRef {
 		return p.parseParenType()
 	}
 	t := p.ident()
+	if t.Text != "_" || p.typeArgs == 0 {
+		p.underscoreRef(t)
+	}
 	ref := &TypeRef{P: t.Pos, Name: t.Text}
 	for {
 		if p.typeArgs > 0 && p.at(NL) && p.peekPastNL() == DOT {
@@ -857,7 +860,7 @@ func (p *parser) parseType() *TypeRef {
 		}
 		p.next()
 		p.skipNL()
-		ref.Name += "." + p.ident().Text
+		ref.Name += "." + p.underscoreRef(p.ident()).Text
 	}
 	if p.at(LT) {
 		ref.Args = p.parseTypeArgs()
@@ -1173,6 +1176,9 @@ func (p *parser) params() []*Param {
 		m := p.modifiers()
 		NoContexts(&m, "value parameters", p)
 		pn := p.ident()
+		if strings.Trim(pn.Text, "_") == "" && !pn.Quoted {
+			p.errorLater(pn.Pos, "names _, __, ___, ... are reserved in Kotlin")
+		}
 		p.expect(COLON)
 		param := &Param{P: pn.Pos, Name: pn.Text, Type: p.parseType(), Vararg: m.Vararg, Noinline: m.Noinline, Crossinline: m.Crossinline,
 			Annotations: m.Annotations}
@@ -1304,6 +1310,16 @@ func (p *parser) receiverDot(fun bool) int {
 // whereClause parses a generic where clause, which can start on the next
 // line: where T : A, T : B, U : C. Its bounds are added to those of the
 // declaration's type parameters tps.
+// underscoreRef reports t, a name in a reference, if it is all
+// underscores and not in backticks (UNDERSCORE_USAGE_WITHOUT_BACKTICKS),
+// and returns it.
+func (p *parser) underscoreRef(t Token) Token {
+	if t.Kind == IDENT && !t.Quoted && t.Text != "" && strings.Trim(t.Text, "_") == "" {
+		p.errorLater(t.Pos, "names _, __, ___, ..., can be used only in back-ticks (`_`, `__`, `___`, ...)")
+	}
+	return t
+}
+
 func (p *parser) whereClause(tps []*TypeParam) {
 	j := p.i
 	for p.toks[j].Kind == NL {
@@ -1316,7 +1332,8 @@ func (p *parser) whereClause(tps []*TypeParam) {
 	for {
 		p.skipNL()
 		for p.at(AT) {
-			p.annotation() // ignored, as on type parameters
+			a := p.annotation()
+			p.errorLater(a.P, "type parameter annotations are not allowed inside where clauses")
 			p.skipNL()
 		}
 		name := p.ident()
@@ -2351,6 +2368,11 @@ func (p *parser) parseBinary(min int8) Expr {
 		case k == IDENT && rangeWords[op.Text] == 0:
 			m := &Member{X: x, Name: op.Text}
 			m.P = op.Pos
+			if op.Text == "suspend" && p.at(FUN) {
+				// x suspend fun() {} reads as kotlin.suspend's modifier form,
+				// which an infix suspend function must not take.
+				p.errorLater(op.Pos, "modifier form for a non-built-in 'suspend' function is not allowed")
+			}
 			c := &Call{Fun: m, Args: []Expr{p.parseBinary(lv + 1)}, Infix: true}
 			c.P = op.Pos
 			LabelLambdas(c)
@@ -2464,7 +2486,7 @@ func (p *parser) parsePostfix() Expr {
 				x = c
 				continue
 			}
-			name := p.ident()
+			name := p.underscoreRef(p.ident())
 			m := &Member{X: x, Name: name.Text, Safe: op.Kind == SAFE_DOT}
 			m.P = name.Pos
 			x = m
@@ -2618,7 +2640,7 @@ func (p *parser) parseColonColon(x Expr, ref *TypeRef) Expr {
 		cl.P = t.Pos
 		return cl
 	}
-	return p.callableRef(t.Pos, &CallableRef{X: x, Type: ref, Name: p.ident().Text})
+	return p.callableRef(t.Pos, &CallableRef{X: x, Type: ref, Name: p.underscoreRef(p.ident()).Text})
 }
 
 // callableRef returns a callable reference, as a lambda for the checker to
@@ -2737,6 +2759,10 @@ func (p *parser) parsePrimary() Expr {
 			return l
 		}
 		p.next()
+		if t.Text != "_" || !p.at(LT) {
+			// _<T>() calls the CHECK_TYPE helper of kotlinc's tests.
+			p.underscoreRef(*t)
+		}
 		id := &Ident{Name: t.Text}
 		id.P = t.Pos
 		return id
@@ -2813,7 +2839,7 @@ func (p *parser) parsePrimary() Expr {
 		if p.at(CLASS) {
 			p.failAt(t.Pos, "a class literal needs a class or a value before ::")
 		}
-		return p.callableRef(t.Pos, &CallableRef{Name: p.ident().Text})
+		return p.callableRef(t.Pos, &CallableRef{Name: p.underscoreRef(p.ident()).Text})
 	case AT:
 		// An annotated expression, whose annotation can be on the line
 		// before it (see File.Annotated, and annotateLambda).

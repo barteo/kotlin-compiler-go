@@ -247,6 +247,9 @@ func (l *lowerer) ident(n psi.NodeRef) *syntax.Ident {
 	if !t.IsLeaf() || t.NumericKind() == psi.KindTHIS_KEYWORD || t.NumericKind() == psi.KindSUPER_KEYWORD {
 		l.fail(t, "unexpected %s", describeNode(t))
 	}
+	if p := n.Parent(); t.Text() != "_" || p.NumericKind() != psi.KindCALL_EXPRESSION || !has(p, psi.KindTYPE_ARGUMENT_LIST) {
+		l.underscoreRef(t)
+	}
 	id := &syntax.Ident{Name: ident(t)}
 	id.P = l.pos(t)
 	return record(l, id, n)
@@ -294,6 +297,9 @@ func (l *lowerer) binary(n psi.NodeRef) syntax.Expr {
 		default:
 			m := &syntax.Member{X: l.expr(ops[0]), Name: ident(op)}
 			m.P = opPos
+			if op.Text() == "suspend" && ops[1].NumericKind() == psi.KindFUN {
+				l.errorLater(opPos, "modifier form for a non-built-in 'suspend' function is not allowed")
+			}
 			c := &syntax.Call{Fun: m, Args: []syntax.Expr{l.expr(ops[1])}, Infix: true}
 			c.P = opPos
 			syntax.LabelLambdas(c)
@@ -384,6 +390,7 @@ func (l *lowerer) memberExpr(x syntax.Expr, name psi.NodeRef, safe bool) *syntax
 	if t.NumericKind() != psi.KindIDENTIFIER {
 		l.fail(t, "expected a name")
 	}
+	l.underscoreRef(t)
 	m := &syntax.Member{X: x, Name: ident(t), Safe: safe}
 	m.P = l.pos(t)
 	return record(l, m, name)
@@ -553,6 +560,7 @@ func (l *lowerer) callableRef(n psi.NodeRef) syntax.Expr {
 	if name.NumericKind() != psi.KindREFERENCE_EXPRESSION {
 		l.failAt(l.end(cc), "expected a name")
 	}
+	l.underscoreRef(first(name))
 	return syntax.CallableRefLambda(l.pos(cc), &syntax.CallableRef{X: x, Type: ref, Name: ident(first(name))})
 }
 

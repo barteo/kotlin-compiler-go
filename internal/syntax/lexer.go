@@ -175,6 +175,9 @@ func (lx *lexer) next() {
 		case !ok && lx.peekByte(0) == '@':
 			// A label: loop@ for (...), lit@{ ... }.
 			lx.advance(1)
+			if strings.Trim(word, "_") == "" {
+				lx.errorf(p, "names _, __, ___, ... are reserved in Kotlin")
+			}
 			lx.emit(LABEL, p, word)
 		case !ok:
 			lx.emit(IDENT, p, word)
@@ -336,7 +339,32 @@ func (lx *lexer) number(p Pos) {
 		}
 		k = UNSIGNED
 	}
+	if illegalUnderscore(lx.src[start:lx.off]) {
+		lx.errorf(p, "illegal underscore")
+	}
 	lx.emit(k, p, lx.src[start:lx.off])
+}
+
+// illegalUnderscore reports whether a numeric literal has an underscore
+// that doesn't separate digits: one that starts or ends a group of
+// digits, as in 1_, 0x_f, 1_.1 and 1.0e_1.
+func illegalUnderscore(text string) bool {
+	if !strings.Contains(text, "_") {
+		return false
+	}
+	text = strings.TrimRight(text, "LuU")
+	if len(text) > 2 && text[0] == '0' && strings.ContainsRune("xXbB", rune(text[1])) {
+		body := text[2:]
+		return body == "" || body[0] == '_' || body[len(body)-1] == '_'
+	}
+	text = strings.TrimRight(text, "fF")
+	groups := strings.FieldsFunc(text, func(r rune) bool { return r == '.' || r == 'e' || r == 'E' || r == '+' || r == '-' })
+	for _, g := range groups {
+		if g[0] == '_' || g[len(g)-1] == '_' {
+			return true
+		}
+	}
+	return false
 }
 
 // char lexes a character literal: 'a', '\n', '\u0041'.

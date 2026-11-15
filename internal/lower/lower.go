@@ -87,11 +87,12 @@ type WhenSubject struct{ When *syntax.When }
 type bailout struct{}
 
 type lowerer struct {
-	s     *psi.Snapshot
-	src   string
-	path  string
-	lines []int // the offsets at which lines start
-	prov  map[any]psi.NodeID
+	typeArgDepth int // how deep in type arguments the type being lowered is
+	s            *psi.Snapshot
+	src          string
+	path         string
+	lines        []int // the offsets at which lines start
+	prov         map[any]psi.NodeID
 	// annots are the annotation entries, by position.
 	annots map[syntax.Pos]psi.NodeID
 	// negated are the prefix expressions folded into negative literals.
@@ -456,6 +457,14 @@ func childAfter(n psi.NodeRef, after psi.Kind) psi.NodeRef {
 }
 
 // ident returns the text of an IDENTIFIER leaf without backticks.
+// underscoreRef reports leaf t, a name in a reference, if it is all
+// underscores and not in backticks, as kc's parser does.
+func (l *lowerer) underscoreRef(t psi.NodeRef) {
+	if s := t.Text(); s != "" && strings.Trim(s, "_") == "" {
+		l.errorLater(l.pos(t), "names _, __, ___, ..., can be used only in back-ticks (`_`, `__`, `___`, ...)")
+	}
+}
+
 func ident(n psi.NodeRef) string {
 	s := n.Text()
 	if len(s) >= 2 && s[0] == '`' && s[len(s)-1] == '`' {
