@@ -2432,7 +2432,11 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 			}
 			if len(ms) > 0 && (c.anyMayTake(ms, x) ||
 				c.objectTaking(name, x) == nil && !c.memberImportTakes(name, x) && !c.anyMayTake(c.topFuns(name), x) && !c.anyMayTake(c.kotlinFuns(name, false), x) &&
-					!c.thisExtension(name, x) && !c.propInvokeFits(name, x) && !c.ctorTakes(name, x)) {
+					!c.thisExtension(name, x) && !c.propInvokeFits(name, x) && !c.ctorTakes(name, x)) &&
+				// Members that don't take the arguments' types give way to
+				// a property of the name whose value does: sut(state) next
+				// to fun sut(a: A), for a state whose type is inferred.
+				!(c.propInvokeFits(name, x) && !c.takeTypes(ms, x, c.argTypes(x))) {
 				if c.thisExtension(name, x) && !c.takeTypes(ms, x, c.argTypes(x)) {
 					// Members that don't take the arguments' types give way
 					// to the extensions of this, as with this.f():
