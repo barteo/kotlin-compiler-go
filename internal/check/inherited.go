@@ -367,3 +367,94 @@ func (c *Checker) checkDataOverrides(d *syntax.ClassDecl) {
 		c.errorf(d.P, "the copy function of data class '%s' overrides a function of a supertype, whose default values it can't declare", cls.DisplayName())
 	}
 }
+
+// checkDelegatedMembers checks the members that class d's delegation
+// implements against the members of its supertypes they override: their
+// types must have one that is a subtype of the others, which the
+// delegated member's must be too, a delegated val can't implement a var,
+// and only one of the direct supertypes may declare a default value.
+func (c *Checker) checkDelegatedMembers(d *syntax.ClassDecl) {
+	cls := d.Sym
+	this := cls.This()
+	// fits returns how type t, the delegated member's, fits the others:
+	// whether one of all of them is a subtype of the rest, and whether t
+	// is.
+	fits := func(t types.Type, ts []types.Type) (common, sub bool) {
+		all := append([]types.Type{t}, ts...)
+		subOfAll := func(r types.Type) bool {
+			return !slices.ContainsFunc(all, func(o types.Type) bool { return !c.subtype(r, o) })
+		}
+		return slices.ContainsFunc(all, subOfAll), subOfAll(t)
+	}
+	reported := map[string]bool{}
+	for _, name := range slices.Sorted(maps.Keys(cls.Methods)) {
+		for _, f := range cls.Methods[name] {
+			if _, ok := f.Decl.(*syntax.Delegated); !ok || f.Ext || reported[name] {
+				continue
+			}
+			over := c.overridden(cls, f)
+			for i := range f.Params {
+				n := 0
+				for _, o := range over {
+					c.inheritExtDefaults(o)
+					if declaresDefault(o, i) && directSupertype(cls, o.Owner) {
+						n++
+					}
+				}
+				if n > 1 {
+					c.errorf(d.P, "more than one inherited member declares a default value for parameter %d of '%s': it must be overridden explicitly", i+1, name)
+					break
+				}
+			}
+			var ts []types.Type
+			for _, o := range over {
+				ensureFun(o)
+				if o.Owner.External {
+					ts = nil
+					break
+				}
+				ts = append(ts, c.overrideSubst(this, f, o).Apply(o.Ret))
+			}
+			if len(ts) == 0 || slices.ContainsFunc(ts, func(t types.Type) bool { return t.K == types.Invalid }) {
+				continue
+			}
+			switch common, sub := fits(f.Ret, ts); {
+			case !common:
+				c.errorf(d.P, "return types of inherited members '%s' are incompatible", name)
+				reported[name] = true
+			case !sub:
+				c.errorf(d.P, "the return type of '%s', which delegation implements, isn't a subtype of the return types of the members it overrides", name)
+				reported[name] = true
+			}
+		}
+	}
+	for _, p := range cls.Props {
+		if _, ok := p.Decl.(*syntax.Delegated); !ok || reported["prop "+p.Name] {
+			continue
+		}
+		var ts []types.Type
+		mutable := false
+		for _, o := range c.overriddenProps(cls, p) {
+			if o.owner.External {
+				ts = nil
+				break
+			}
+			ts = append(ts, c.memberSubst(this, o.owner).Apply(o.t))
+			mutable = mutable || o.mutable
+		}
+		if len(ts) == 0 || slices.ContainsFunc(ts, func(t types.Type) bool { return t.K == types.Invalid }) {
+			continue
+		}
+		reported["prop "+p.Name] = true
+		if mutable && !p.Mutable {
+			c.errorf(d.P, "var '%s' is overridden by a val that delegation implements", p.Name)
+			continue
+		}
+		switch common, sub := fits(p.Type, ts); {
+		case !common:
+			c.errorf(d.P, "the types of the inherited property '%s' don't match", p.Name)
+		case !sub:
+			c.errorf(d.P, "the type of property '%s', which delegation implements, isn't a subtype of the types of the properties it overrides", p.Name)
+		}
+	}
+}

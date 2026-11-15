@@ -2653,11 +2653,11 @@ tests/delegation/clashes/nestedNameClash3.kt	accepts valid
 tests/delegation/clashes/nestedNameClashAndAnnotations.kt	accepts valid		
 tests/delegation/clashes/propertyTypeMismatch.kt	rejects invalid	on an expected line	
 tests/delegation/clashes/returnTypeMismatch.kt	rejects invalid	on an expected line	
-tests/delegation/clashes/varOverriddenByVal.kt	accepts invalid	VAR_OVERRIDDEN_BY_VAL_BY_DELEGATION	varOverriddenByVal.kt:24: VAR_OVERRIDDEN_BY_VAL_BY_DELEGATION
-tests/delegation/covariantOverrides/fromClass.kt	accepts invalid	RETURN_TYPE_MISMATCH_BY_DELEGATION; PROPERTY_TYPE_MISMATCH_BY_DELEGATION	fromClass.kt:10: RETURN_TYPE_MISMATCH_BY_DELEGATION
-tests/delegation/covariantOverrides/irrelevant.kt	accepts invalid	RETURN_TYPE_MISMATCH_BY_DELEGATION; PROPERTY_TYPE_MISMATCH_BY_DELEGATION	irrelevant.kt:10: RETURN_TYPE_MISMATCH_BY_DELEGATION
-tests/delegation/covariantOverrides/kt13952.kt	rejects invalid	elsewhere	
-tests/delegation/covariantOverrides/simple.kt	accepts invalid	RETURN_TYPE_MISMATCH_BY_DELEGATION; PROPERTY_TYPE_MISMATCH_BY_DELEGATION	simple.kt:10: RETURN_TYPE_MISMATCH_BY_DELEGATION
+tests/delegation/clashes/varOverriddenByVal.kt	rejects invalid	on an expected line	
+tests/delegation/covariantOverrides/fromClass.kt	rejects invalid	on an expected line	
+tests/delegation/covariantOverrides/irrelevant.kt	rejects invalid	on an expected line	
+tests/delegation/covariantOverrides/kt13952.kt	rejects invalid	on an expected line	
+tests/delegation/covariantOverrides/simple.kt	rejects invalid	on an expected line	
 tests/delegation/kt40510.kt	rejects invalid	on an expected line	
 tests/delegation/kt44843.kt	rejects invalid	on an expected line	
 tests/delegation/kt48546.kt	rejects invalid	elsewhere	
@@ -6547,7 +6547,7 @@ tests/multiplatform/widerVisibility_expectSetterIsEffectivelyFinal_fakeOverride.
 tests/multipleDefaultsAnonymousObject.kt	rejects invalid	on an expected line	
 tests/multipleDefaultsIncorrectlyAllowed1.kt	rejects invalid	on an expected line	
 tests/multipleDefaultsIncorrectlyAllowed2.kt	accepts valid		
-tests/multipleDefaultsNoSource.kt	accepts invalid	MULTIPLE_DEFAULTS_INHERITED_FROM_SUPERTYPES_WHEN_NO_EXPLICIT_OVERRIDE	multipleDefaultsNoSource.kt:14: MULTIPLE_DEFAULTS_INHERITED_FROM_SUPERTYPES_WHEN_NO_EXPLICIT_OVERRIDE
+tests/multipleDefaultsNoSource.kt	rejects invalid	on an expected line	
 tests/namedArguments/allowForJavaAnnotation.kt	accepts valid		
 tests/namedArguments/ambiguousNamedArguments1.kt	rejects invalid	on an expected line	
 tests/namedArguments/ambiguousNamedArguments2.kt	rejects invalid	on an expected line	

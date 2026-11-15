@@ -146,3 +146,38 @@ interface First {
 }
 
 data class Pair1(val a: Int) : First // ERROR overrides an implementation of a componentN function
+
+// Members that delegation implements.
+interface AnyFoo {
+    fun foo(): Any
+    val bar: Any
+}
+
+interface StrFoo : AnyFoo {
+    override fun foo(): String
+    override val bar: String
+}
+
+class DelegatesAny(a: AnyFoo) : AnyFoo by a, StrFoo // ERROR which delegation implements, isn't a subtype
+
+interface IntFoo {
+    fun foo(): Int
+}
+
+abstract class DelegatesStr(s: StrFoo) : StrFoo by s, IntFoo // ERROR return types of inherited members 'foo' are incompatible
+
+interface VarX {
+    var x: Int
+}
+
+interface ValX {
+    val x: Int
+}
+
+class ValXImpl : ValX {
+    override val x: Int get() = 1
+}
+
+abstract class DelegatesVal : VarX, ValX by ValXImpl() // ERROR var 'x' is overridden by a val that delegation implements
+
+class DelegatesStrOk(s: StrFoo) : StrFoo by s, AnyFoo

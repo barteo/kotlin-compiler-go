@@ -6,16 +6,16 @@ Of 10827 test files, 2312 are skipped and 8515 run.
 
 | Result | Tests | Share |
 |:---|---:|---:|
-| rejects invalid | 4031 | 47.3% |
+| rejects invalid | 4036 | 47.4% |
 | accepts valid | 3989 | 46.8% |
-| accepts invalid | 353 | 4.1% |
+| accepts invalid | 348 | 4.1% |
 | rejects valid | 124 | 1.5% |
 | parse/unsupported | 16 | 0.2% |
 | crash | 1 | 0.0% |
 
 *Rejects invalid* and *accepts valid* agree with kotlinc. *Accepts invalid* is code kotlinc rejects that kc compiles; *rejects valid*, code kotlinc compiles that kc's checker rejects. Both are bugs. A *parse/unsupported* test uses a feature kc doesn't support, which says nothing about its checks.
 
-Of the 4031 tests both reject, kc reports an error on the line of an expected one in 3872.
+Of the 4036 tests both reject, kc reports an error on the line of an expected one in 3878.
 
 A test is invalid if it stops before the backend or marks an error: one that runs to it (`BACKEND`) can mark the JVM backend's errors, such as `CONFLICTING_JVM_DECLARATIONS`. Of the tests run, 222 stop at `FRONTEND` but mark no error: most add the `CHECK_TYPE` helpers, whose names (`_`) kotlinc reports outside the test infrastructure, and count as valid; the others leave their errors out with the `DIAGNOSTICS` directive. 114 run to the backend and mark one. 5 marked names have no declared severity (debug information, for one), and count as neither.
 
@@ -82,11 +82,9 @@ Tests kotlinc rejects that kc compiles, by the errors their markup expects. A te
 | `CONST_VAL_WITH_NON_CONST_INITIALIZER` | 3 | 3 | `tests/modifiers/const/fromJavaWithNonConstInitializer.kt`, `tests/modifiers/const/kotlinJavaCycle.kt` |
 | `NONE_APPLICABLE` | 3 | 2 | `tests/secondaryConstructors/companionObjectScope.kt`, `tests/secondaryConstructors/generics3.kt` |
 | `NO_ELSE_IN_WHEN` | 3 | 3 | `tests/sealed/WhenOnEmptySealed.kt`, `tests/testsWithJava17/sealedClasses/flexibleSealedInSubject.kt` |
-| `PROPERTY_TYPE_MISMATCH_BY_DELEGATION` | 3 | 0 | `tests/delegation/covariantOverrides/fromClass.kt`, `tests/delegation/covariantOverrides/irrelevant.kt` |
 | `PROTECTED_CALL_FROM_PUBLIC_INLINE_ERROR` | 3 | 3 | `tests/inline/inlineCallsStaticMethodFromOtherPackage.kt`, `tests/inline/protectedJavaFieldInInline.kt` |
 | `REPEATED_ANNOTATION` | 3 | 3 | `tests/annotations/repeatable/javaUnrepeatable.kt`, `tests/typealias/typeAliasExpansionRepeatedAnnotations.kt` |
 | `RETURN_TYPE_MISMATCH` | 3 | 2 | `tests/j+k/sam/enhancedSamConstructor.kt`, `tests/smartCasts/safecalls/receiverAndChainFalse.kt` |
-| `RETURN_TYPE_MISMATCH_BY_DELEGATION` | 3 | 0 | `tests/delegation/covariantOverrides/fromClass.kt`, `tests/delegation/covariantOverrides/irrelevant.kt` |
 | `SYNTAX` | 3 | 2 | `tests/explicitDefinitelyNotNullableViaIntersection/isAsOperators.kt`, `tests/modifiers/primaryConstructorMissingBrackets.kt` |
 | `UNRESOLVED_REFERENCE_WRONG_RECEIVER` | 3 | 2 | `tests/j+k/selectMoreSpecific.kt`, `tests/platformTypes/commonSupertype/withNothing.kt` |
 | `UPPER_BOUND_VIOLATED_IN_TYPEALIAS_EXPANSION` | 3 | 1 | `tests/typealias/boundsViolationInTypeAliasRHS.kt`, `tests/typealias/kt19601.kt` |
@@ -110,7 +108,9 @@ Tests kotlinc rejects that kc compiles, by the errors their markup expects. A te
 | `NO_VALUE_FOR_PARAMETER` | 2 | 2 | `tests/resolve/invoke/kt9805.kt`, `testsWithStdLib/annotations/annotationParameters/valueArray.kt` |
 | `ONLY_ONE_CLASS_BOUND_ALLOWED` | 2 | 0 | `tests/enum/equalityOfEnumAndParameter.kt`, `tests/enum/equalityOfFlexibleTypeParameters.kt` |
 | `OPT_IN_TO_INHERITANCE_ERROR` | 2 | 2 | `testsWithStdLib/annotations/subclassOptInRequired/JavaKotlinInterop.kt`, `testsWithStdLib/annotations/subclassOptInRequired/Module.kt` |
-| *87 more* | 96 | |
+| `SETTER_VISIBILITY_INCONSISTENT_WITH_PROPERTY_VISIBILITY` | 2 | 2 | `tests/SetterVisibility.kt`, `tests/lateinit/setter.kt` |
+| `TYPECHECKER_HAS_RUN_INTO_RECURSIVE_PROBLEM` | 2 | 2 | `tests/j+k/recursionWithJavaSyntheticProperty.kt`, `tests/j+k/syntheticPropertyOverridden2.kt` |
+| *83 more* | 90 | |
 
 ## Rejects valid
 
@@ -164,7 +164,7 @@ Tests kotlinc compiles that kc's checker rejects, by kc's first error, with name
 
 For each expected error of the tests kc checked (not unsupported), whether kc reported an error on its line. Sorted by the errors kc missed.
 
-kc reports 15564 of 21506 expected errors (72.4%) on their lines.
+kc reports 15591 of 21506 expected errors (72.5%) on their lines.
 
 | Diagnostic | Expected | Reported | Missed |
 |:---|---:|---:|---:|

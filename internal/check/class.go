@@ -1123,6 +1123,9 @@ func (c *Checker) checkInheritance(d *syntax.ClassDecl) {
 	if d.Data && !d.Object {
 		c.checkDataOverrides(d)
 	}
+	if len(d.Delegated) > 0 || slices.ContainsFunc(d.Supers, func(st *syntax.SuperType) bool { return st.Delegate != nil }) {
+		c.checkDelegatedMembers(d)
+	}
 	if !cls.Abstract || d.Enum {
 		c.checkImplemented(d, reported)
 	}
