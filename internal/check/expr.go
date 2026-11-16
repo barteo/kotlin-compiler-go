@@ -1580,6 +1580,31 @@ func (c *Checker) objectNamed(name string) *types.ClassSym {
 	return c.starObject(name, cls)
 }
 
+// suspendRecv returns the suspend function type that receiver fn.X, a
+// callable reference of type t, is converted to for a call of fn.Name:
+// one that names no member or extension of t but an extension of the
+// suspend type.
+func (c *Checker) suspendRecv(fn *syntax.Member, t types.Type) (types.Type, bool) {
+	l, ok := fn.X.(*syntax.Lambda)
+	if !ok || l.Ref == nil || t.N || t.K != types.Class || t.A == nil || c.extCallees(fn.Name, t) != nil || c.hasNamed(t, fn.Name) {
+		return types.InvalidType, false
+	}
+	n, suspend, ok := kfunctionArity(t.C)
+	if !ok || suspend {
+		return types.InvalidType, false
+	}
+	ft, ok := c.asSuper(t, c.u.ext.funcs.Class(n))
+	if !ok || ft.E || ft.X != 0 {
+		return types.InvalidType, false
+	}
+	ps := make([]types.Type, n)
+	for i := range ps {
+		ps[i] = ft.A.List[i].T
+	}
+	st := c.u.ext.funcs.SuspendType(ps, ft.A.List[n].T)
+	return st, len(c.extCallees(fn.Name, st)) > 0
+}
+
 // builtinNamed reports whether builtin type t, as Int or String, has a
 // member or extension name.
 func (c *Checker) builtinNamed(t types.Type, name string) bool {
@@ -2166,6 +2191,13 @@ func (c *Checker) callReceiver(fn *syntax.Member, want types.Type) (types.Type, 
 			fn.X = checked(fn.X, vt)
 			return vt, cands, true
 		}
+	}
+	if st, ok := c.suspendRecv(fn, t); ok {
+		// A reference receiver is suspend converted for a suspend
+		// function type's extension: (::f).ext() for
+		// fun (suspend () -> Unit).ext().
+		fn.X = c.suspendConverted(fn.X, st)
+		return st, nil, true
 	}
 	if c.extCallees(fn.Name, t) == nil {
 		fn.X, t = builtinBound(fn.X, t)
