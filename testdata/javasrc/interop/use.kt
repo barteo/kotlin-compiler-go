@@ -34,6 +34,43 @@ fun interopDemo() {
     val ids = Ids(3)
     ids.last = ids.get() + ids.last
     println("${Ids.show(id, 2L)} ${Ids.show(listOf(3L)[0], id)} ${next + Ids.next(next)} ${ids.last == 20L}")
+    val job: Job<String> = FixedJob("a")
+    println("${job.clone().run()} ${FixedJob("b").clone().run()} ${Leaf().step()} ${Both().step()}")
+    for (c in listOf(FixedJob::class.java, Leaf::class.java, Both::class.java)) {
+        for (m in c.declaredMethods.filter { !it.isBridge && (it.name == "clone" || it.name == "step") }) {
+            println("${c.simpleName}.${m.name} ${java.lang.reflect.Modifier.toString(m.modifiers)}")
+        }
+    }
+}
+
+// An override without a visibility modifier is public where one of the
+// functions it overrides is: the clone() of a Java interface that extends
+// Cloneable, whose own clone() is protected, a function that a superclass
+// makes public, and one that an interface declares too.
+class FixedJob<T>(private val v: T) : Job<T> {
+    override fun run(): T = v
+
+    override fun clone(): Job<T> = FixedJob(v)
+}
+
+open class Step {
+    protected open fun step(): String = "step"
+}
+
+open class Wide : Step() {
+    public override fun step(): String = "wide"
+}
+
+class Leaf : Wide() {
+    override fun step(): String = "leaf"
+}
+
+interface Stepper {
+    fun step(): String
+}
+
+class Both : Step(), Stepper {
+    override fun step(): String = "both"
 }
 
 // An annotated Java List or Map is a mutable collection and a read-only
