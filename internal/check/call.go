@@ -2031,6 +2031,8 @@ func (c *Checker) suspendConstraint(cd *candidate, t, p types.Type, a syntax.Exp
 		if trial.sub(vt, p); trial.ok {
 			return types.InvalidType, false
 		}
+	} else if !c.subtype(vt, c.unsuspended(p)) {
+		return types.InvalidType, false // a () -> String? for a suspend () -> String
 	}
 	return c.unsuspended(p), true
 }

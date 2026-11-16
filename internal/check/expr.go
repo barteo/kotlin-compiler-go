@@ -2943,9 +2943,10 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 			// returned: requireNotNull(x).let { x.f() }.
 			n = append(n, c.returnNarrows(r)...)
 		}
-		if len(n) > 0 {
+		if len(n) > 0 || fn.Safe {
 			// The arguments are evaluated only if the receiver isn't
-			// null: x?.let { f(x) }.
+			// null: x?.let { f(x) }, whose smart casts don't outlive
+			// it: a?.f(y!!).
 			c.push()
 			c.scope.narrows = n
 			defer func() {
