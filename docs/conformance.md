@@ -1,8 +1,8 @@
 # Conformance with kotlinc's own tests
 
 ```sh
-bench/kotlin-tests.sh box            # 7,480 box tests, about 15 s after the first clone
-bench/kotlin-tests.sh diagnostics    # 10,827 diagnostics tests, about 40 s
+bench/kotlin-tests.sh box            # 7,480 box tests, about 20 s after the first clone
+bench/kotlin-tests.sh diagnostics    # 10,827 diagnostics tests, about 45 s
 ```
 
 The [survey](survey.md) counts the features real code uses, but can't say
@@ -68,8 +68,8 @@ seconds; each server peaks at about 225 MB.
 
 Those times are from before the diagnostics tests with Java sources
 ran. A compile with Java sources gets a class path of its own, since
-the sources are added to it, so those 1,229 tests take most of the
-diagnostics suite's 40 s now.
+the sources are added to it, so those 1,221 tests take most of the
+diagnostics suite's 45 s now.
 
 A server compiles one test at a time, so a panic, which ends it with
 its trace as it would end `kc`, is charged to the test that caused it,
@@ -212,39 +212,37 @@ Kotlin 2.4.21's tests on `kc`:
 
 | Box tests | Tests | Share of run |
 |:---|---:|---:|
-| run (of 7,480) | 6,543 | |
-| pass | 6,543 | 100% |
+| run (of 7,480) | 6,575 | |
+| pass | 6,575 | 100% |
 | check error, parse/unsupported, crash, codegen error, timeout | 0 | |
 | VerifyError, linkage error, exception, wrong result | 0 | |
 
 | Diagnostics tests | Tests | Share of run |
 |:---|---:|---:|
-| run (of 10,827) | 8,515 | |
-| rejects invalid | 4,142 | 48.6% |
-| accepts valid | 4,009 | 47.1% |
-| accepts invalid | 243 | 2.9% |
-| rejects valid | 104 | 1.2% |
-| parse/unsupported | 15 | 0.2% |
+| run (of 10,827) | 8,532 | |
+| rejects invalid | 4,233 | 49.6% |
+| accepts valid | 4,104 | 48.1% |
+| accepts invalid | 159 | 1.9% |
+| rejects valid | 20 | 0.2% |
+| parse/unsupported | 14 | 0.2% |
 | crash | 1 | |
 | harness error (`javac`) | 1 | |
 
-`kc` agrees with `kotlinc` on 96% of the diagnostics tests, and reports
-15,925 of the 21,508 expected errors (74%) on their lines. Tests with
-Java sources, which earlier runs skipped, add 1,223 tests to the run,
-and 94 of the 243 that *accept invalid* code. The reports break the
-failures down; the largest groups are:
+`kc` agrees with `kotlinc` on 98% of the diagnostics tests, and reports
+16,633 of the 21,532 expected errors (77%) on their lines. Tests with
+Java sources are 1,221 of the run, and 56 of the 159 that *accept
+invalid* code. The reports break the failures down; the largest groups
+are:
 
 - **Silent miscompilation**: none. No box test that `kc` compiles
   gives a wrong result, throws, or fails to verify or link.
-- **Accepts invalid**, by the tests that expect each error: unresolved
-  names (`UNRESOLVED_REFERENCE` 19), argument type mismatches
-  (`ARGUMENT_TYPE_MISMATCH` 18), missing dependency classes
-  (`MISSING_DEPENDENCY_CLASS` 15) and class redeclarations
-  (`CLASSIFIER_REDECLARATION` 7).
-- **Rejects valid**, by `kc`'s first error: unresolved names, imports
-  and labels (25), type mismatches (25), inference failures (18: type
-  variables or parameters not inferred, bounds, recursive types) and
-  ambiguous calls (3). No box test is rejected.
+- **Accepts invalid**, by the tests that expect each error: argument
+  type mismatches (`ARGUMENT_TYPE_MISMATCH` 17), unresolved names
+  (`UNRESOLVED_REFERENCE` 15), invisible references
+  (`INVISIBLE_REFERENCE` 7) and unsupported constructs (`UNSUPPORTED` 7).
+- **Rejects valid**, by `kc`'s first error: unresolved names and
+  imports (7), type mismatches (5), ambiguous calls (3), and five others
+  of one test each. No box test is rejected.
 - **Crashes**: a test with Java sources, a stack overflow on a
   recursive bound. The harness error is a test that declares `java.util.Date`, which `javac`
   compiles only with `--patch-module`.
