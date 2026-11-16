@@ -91,9 +91,13 @@ func fqClassID(fq string) string {
 	return strings.ReplaceAll(fq[:i], ".", "/") + "/" + fq[i+1:]
 }
 
+// binaryToDotted turns a JVM binary name, a/b/C$D, into a/b/C/D's dotted
+// form. It is shared: building a Replacer costs more than using one.
+var binaryToDotted = strings.NewReplacer("/", ".", "$", ".")
+
 // javaFQ returns the JVM binary name of c, dotted.
 func javaFQ(c *types.ClassSym) string {
-	return strings.NewReplacer("/", ".", "$", ".").Replace(c.Name)
+	return binaryToDotted.Replace(c.Name)
 }
 
 // facadePackage returns the dotted package of a facade class's internal
@@ -182,6 +186,25 @@ type converter struct {
 	decl func(any) *ElementID
 	// supers caches classes' supertypes.
 	supers map[*types.ClassSym][]string
+	// names caches classes' names, class ids and SAM-ness.
+	names map[*types.ClassSym]className
+}
+
+type className struct {
+	fq, id string
+	sam    bool
+}
+
+func (cv *converter) nameOf(c *types.ClassSym) className {
+	if n, ok := cv.names[c]; ok {
+		return n
+	}
+	n := className{fq: classFQ(c), id: classID(c), sam: c.Fun || (kotlinNames[javaFQ(c)] == "" && check.JavaSAM(c))}
+	if cv.names == nil {
+		cv.names = map[*types.ClassSym]className{}
+	}
+	cv.names[c] = n
+	return n
 }
 
 func (cv *converter) supertypesOf(c *types.ClassSym) []string {
@@ -207,9 +230,8 @@ func (cv *converter) value(t types.Type, depth int) Type {
 	switch t.K {
 	case types.Class:
 		c := t.C
-		out.Name = classFQ(c)
-		out.ClassID = classID(c)
-		out.SAM = c.Fun || (kotlinNames[javaFQ(c)] == "" && check.JavaSAM(c))
+		n := cv.nameOf(c)
+		out.Name, out.ClassID, out.SAM = n.fq, n.id, n.sam
 		out.Suspend = c.Suspend
 		if depth == 0 {
 			out.Supertypes = cv.supertypesOf(c)
