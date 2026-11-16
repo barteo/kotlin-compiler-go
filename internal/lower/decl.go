@@ -145,7 +145,7 @@ func (l *lowerer) fun(n psi.NodeRef) *syntax.FunDecl {
 			seenName = true
 			fd.Name = ident(c)
 		case psi.KindVALUE_PARAMETER_LIST:
-			fd.Params = l.params(c)
+			fd.Params = l.params(c, "function")
 		case psi.KindCOLON:
 			seenColon = true
 		case psi.KindTYPE_CONSTRAINT_LIST:
@@ -173,7 +173,7 @@ func (l *lowerer) fun(n psi.NodeRef) *syntax.FunDecl {
 
 // params lowers the VALUE_PARAMETER_LIST of a function or a secondary
 // constructor.
-func (l *lowerer) params(n psi.NodeRef) []*syntax.Param {
+func (l *lowerer) params(n psi.NodeRef, of string) []*syntax.Param {
 	var ps []*syntax.Param
 	for _, c := range kids(n) {
 		if c.NumericKind() != psi.KindVALUE_PARAMETER {
@@ -181,9 +181,17 @@ func (l *lowerer) params(n psi.NodeRef) []*syntax.Param {
 		}
 		m := l.modifiers(child(c, psi.KindMODIFIER_LIST))
 		syntax.NoContexts(&m, "value parameters", l)
+		for _, k := range kids(c) {
+			if k.NumericKind() == psi.KindVAL_KEYWORD || k.NumericKind() == psi.KindVAR_KEYWORD {
+				syntax.ValOnParam(k.Text(), of, l.pos(k), l)
+			}
+		}
 		name := child(c, psi.KindIDENTIFIER)
 		if !name.Valid() {
 			l.fail(c, "expected a name")
+		}
+		if s := name.Text(); strings.Trim(s, "_") == "" {
+			l.errorLater(l.pos(name), "names _, __, ___, ... are reserved in Kotlin")
 		}
 		p := record(l, &syntax.Param{P: l.pos(name), Name: ident(name), Type: l.paramType(c, name), Vararg: m.Vararg,
 			Noinline: m.Noinline, Crossinline: m.Crossinline, Annotations: m.Annotations}, c)
@@ -406,19 +414,21 @@ func (l *lowerer) class(n psi.NodeRef, m syntax.Modifiers) *syntax.ClassDecl {
 		cd.Fun = true
 	}
 	name := child(n, psi.KindIDENTIFIER)
+	if m.Companion && !isObject {
+		// The modifier checks report companion on a class (WRONG_MODIFIER_TARGET).
+		cd.Companion = false
+	}
 	switch {
-	case m.Companion && !isObject:
-		l.failAt(kpos, "modifier 'companion' is only allowed on objects")
-	case m.Companion && !name.Valid():
+	case cd.Companion && !name.Valid():
 		cd.Name = "Companion"
-	case m.Companion && strings.Contains(l.src[kw.Range().End:name.Range().Start], "\n"):
+	case cd.Companion && strings.Contains(l.src[kw.Range().End:name.Range().Start], "\n"):
 		// companion object, then a name on the next line: kc ends the
 		// header at the newline, where psi reads on.
 		cd.Name = "Companion"
 		l.detachName(n, name)
-	case !name.Valid() && isObject && kw.Valid():
-		// An object declaration without its name: FIR keeps it, named
-		// <no name provided>, and KSP lists it.
+	case !name.Valid() && kw.Valid():
+		// A class or object declaration without its name: FIR keeps it,
+		// named <no name provided>, and KSP lists it.
 		pos, msg := l.end(kw), "expected a name"
 		if e := child(n, psi.KindERROR_ELEMENT); e.Valid() {
 			pos, msg = l.syntaxMessage(e)
@@ -561,7 +571,10 @@ func (l *lowerer) enumEntry(cd *syntax.ClassDecl, n psi.NodeRef) {
 				l.contextParams(c)
 				l.errorLater(l.pos(c), "context parameters on enum entries are unsupported")
 			default:
-				l.unexpected(c)
+				if !c.IsLeaf() {
+					l.unexpected(c)
+				}
+				l.errorLater(l.pos(c), "modifier '%s' is not applicable to 'enum entry'", c.Text())
 			}
 		}
 	}
@@ -682,7 +695,7 @@ func (l *lowerer) member(cd *syntax.ClassDecl, n psi.NodeRef) {
 // secondaryCtor lowers a SECONDARY_CONSTRUCTOR with modifiers m.
 func (l *lowerer) secondaryCtor(n psi.NodeRef, m syntax.Modifiers) *syntax.SecondaryCtor {
 	sc := record(l, &syntax.SecondaryCtor{Modifiers: m, P: l.pos(child(n, psi.KindCONSTRUCTOR_KEYWORD))}, n)
-	sc.Params = l.params(child(n, psi.KindVALUE_PARAMETER_LIST))
+	sc.Params = l.params(child(n, psi.KindVALUE_PARAMETER_LIST), "secondary constructor")
 	if dc := child(n, psi.KindCONSTRUCTOR_DELEGATION_CALL); dc.Valid() {
 		ref := child(dc, psi.KindCONSTRUCTOR_DELEGATION_REFERENCE)
 		if kw := first(ref); kw.Valid() {
@@ -710,7 +723,7 @@ func (l *lowerer) localClass(n psi.NodeRef, m syntax.Modifiers) *syntax.LocalCla
 		l.fail(child(n, psi.KindOBJECT_KEYWORD), "named object '%s' cannot be local: use an anonymous object instead",
 			ident(child(n, psi.KindIDENTIFIER)))
 	case m.Enum:
-		l.fail(child(n, psi.KindCLASS_KEYWORD), "local enum classes are not allowed")
+		l.errorLater(l.pos(child(n, psi.KindCLASS_KEYWORD)), "local enum classes are not allowed")
 	}
 	cd := l.class(n, m)
 	cd.Local = true

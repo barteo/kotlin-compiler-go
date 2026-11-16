@@ -91,6 +91,9 @@ func (l *lowerer) typeWith(n psi.NodeRef, recv bool) (*syntax.TypeRef, []syntax.
 		if t.Ret == nil {
 			l.fail(suspendAt, "expected a function type after 'suspend'")
 		}
+		if elem.NumericKind() != psi.KindFUNCTION_TYPE {
+			l.errorLater(l.pos(suspendAt), "modifier 'suspend' is not applicable to 'nullable type'")
+		}
 		t.P, t.Suspend = l.pos(suspendAt), true
 	}
 	if as != nil {
@@ -198,6 +201,9 @@ func (l *lowerer) userType(n psi.NodeRef) *syntax.TypeRef {
 			case psi.KindUSER_TYPE:
 				flatten(c)
 			case psi.KindREFERENCE_EXPRESSION:
+				if t := first(c); t.Text() != "_" || l.typeArgDepth == 0 {
+					l.underscoreRef(t)
+				}
 				s.name = ident(first(c))
 			case psi.KindTYPE_ARGUMENT_LIST:
 				s.args = c
@@ -235,6 +241,8 @@ func (l *lowerer) userType(n psi.NodeRef) *syntax.TypeRef {
 
 // typeArgs lowers a TYPE_ARGUMENT_LIST: <A, out B, in C, *>.
 func (l *lowerer) typeArgs(n psi.NodeRef) []*syntax.TypeArg {
+	l.typeArgDepth++
+	defer func() { l.typeArgDepth-- }()
 	args := []*syntax.TypeArg{}
 	for _, c := range kids(n) {
 		if c.NumericKind() != psi.KindTYPE_PROJECTION {
@@ -245,12 +253,13 @@ func (l *lowerer) typeArgs(n psi.NodeRef) []*syntax.TypeArg {
 			a.Variance = types.Star
 		} else {
 			if m := child(c, psi.KindMODIFIER_LIST); m.Valid() {
+				var vp syntax.Pos
 				for _, k := range kids(m) {
 					switch k.NumericKind() {
 					case psi.KindIN_KEYWORD:
-						a.Variance = types.In
+						syntax.VarianceMod(&a.Variance, &vp, types.In, l.pos(k), l)
 					case psi.KindOUT_KEYWORD:
-						a.Variance = types.Out
+						syntax.VarianceMod(&a.Variance, &vp, types.Out, l.pos(k), l)
 					}
 				}
 			}
@@ -299,14 +308,15 @@ func (l *lowerer) typeParams(n psi.NodeRef) []*syntax.TypeParam {
 		name := child(c, psi.KindIDENTIFIER)
 		tp := record(l, &syntax.TypeParam{P: l.pos(name), Name: ident(name)}, c)
 		if m := child(c, psi.KindMODIFIER_LIST); m.Valid() {
+			var vp syntax.Pos
 			for _, k := range kids(m) {
 				switch k.NumericKind() {
 				case psi.KindREIFIED_KEYWORD:
 					tp.Reified = true
 				case psi.KindIN_KEYWORD:
-					tp.Variance = types.In
+					syntax.VarianceMod(&tp.Variance, &vp, types.In, l.pos(k), l)
 				case psi.KindOUT_KEYWORD:
-					tp.Variance = types.Out
+					syntax.VarianceMod(&tp.Variance, &vp, types.Out, l.pos(k), l)
 				case psi.KindANNOTATION_ENTRY:
 					a := l.annotation(k) // kc writes no type annotations
 					tp.Annotations = append(tp.Annotations, a)
@@ -338,6 +348,7 @@ func (l *lowerer) whereClause(n psi.NodeRef, tps []*syntax.TypeParam) {
 		for _, k := range kids(c) {
 			if k.NumericKind() == psi.KindANNOTATION_ENTRY {
 				l.annotation(k)
+				l.errorLater(l.pos(k), "type parameter annotations are not allowed inside where clauses")
 			}
 		}
 		ref := child(c, psi.KindREFERENCE_EXPRESSION)

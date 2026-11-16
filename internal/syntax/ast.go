@@ -572,11 +572,16 @@ type PropDecl struct {
 	Init       Expr       // nil for an abstract property, or one with a getter
 	Getter     *FunDecl   // get() = ..., or nil
 	SetterVis  Visibility // private set, ...
+	// SetterVisP is the position of the setter's visibility modifier, if
+	// it has one.
+	SetterVisP Pos
 	// InlineGetter and InlineSetter are set on inline get and inline set,
 	// which compile as ordinary accessors.
 	InlineGetter, InlineSetter bool
 	// AccessorMods are the modifiers written on each accessor.
 	AccessorMods [][]Mod
+	// AccessorSets tells which of AccessorMods are a setter's.
+	AccessorSets []bool
 	// Plugin is set by the checker on a property it declares as a
 	// compiler plugin's that metadata doesn't list: serialization's
 	// $cachedSerializer$delegate.

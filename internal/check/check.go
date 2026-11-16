@@ -743,6 +743,7 @@ func CheckOptions(ctx context.Context, files []*syntax.File, lib *Library, jobs 
 		c.checkModifiers()
 		c.classPathChecks()
 		c.jvmDefaultModeAnnotations()
+		c.suppressErrors()
 		sort.SliceStable(c.errs, func(i, j int) bool {
 			a, b := c.errs[i].Pos, c.errs[j].Pos
 			return a.Line < b.Line || a.Line == b.Line && a.Col < b.Col
@@ -1184,11 +1185,27 @@ func (c *Checker) checkBounds(t types.Type, ref *syntax.TypeRef) {
 			p = ref.Args[i].P
 		}
 		for _, b := range ps[i].Bounds {
+			// A bound on a star-projected parameter, C : B in
+			// Constrain<U, *, in T>, says nothing to check against.
+			if b.Has(func(u types.Type) bool { return u.IsParam() && starOf(t, u.Param()) }) {
+				continue
+			}
 			if b = s.Apply(b); !c.subtype(a.T, b) {
 				c.errorf(p, "type argument is not within its bounds: type parameter '%s' must be subtype of '%s', but actual: '%s'", ps[i].Name, b, a.T)
 			}
 		}
 	}
+}
+
+// starOf reports whether t's argument for its class's type parameter p
+// is a star projection.
+func starOf(t types.Type, p *types.TypeParamSym) bool {
+	for i, q := range t.C.TypeParams {
+		if q == p {
+			return i < len(t.A.List) && t.A.List[i].V == types.Star
+		}
+	}
+	return false
 }
 
 // lookupTypeParam finds a type parameter in scope by name.
@@ -1282,6 +1299,7 @@ func (c *Checker) resolveBounds(decls []*syntax.TypeParam) {
 	if saved {
 		return
 	}
+	c.checkBoundSets(decls)
 	for _, d := range decls {
 		if len(refs[d]) != len(d.Sym.Bounds) {
 			continue // a cyclic bound was dropped
@@ -1306,7 +1324,7 @@ func (c *Checker) checkBoundKinds(d *syntax.TypeParam, refs []*syntax.TypeRef) {
 		switch {
 		case b.IsParam():
 			c.errorf(refs[i].P, "type parameter cannot have any other bounds if it's bounded by another type parameter")
-		case b.K == types.Class && !b.C.Interface:
+		case classUpperBound(b):
 			if classes++; classes == 2 {
 				c.errorf(refs[i].P, "only one of the upper bounds can be a class")
 			}
@@ -1400,7 +1418,7 @@ func (c *Checker) declare() {
 			}
 			c.pkg.Aliases[d.Name] = c.declareAlias(d, nil)
 		case *syntax.ClassDecl:
-			if _, dup := c.pkg.Classes[d.Name]; dup || c.pkg.Aliases[d.Name] != nil {
+			if _, dup := c.pkg.Classes[d.Name]; (dup || c.pkg.Aliases[d.Name] != nil) && d.Name != "<no name provided>" {
 				c.errorf(d.P, "redeclaration: class %s", d.Name)
 			}
 			if d.Companion {
@@ -1530,7 +1548,7 @@ func (c *Checker) declareClass(d *syntax.ClassDecl, name string, outer *types.Cl
 			c.declareClass(md, name+"$"+md.Name, sym)
 			continue
 		}
-		if _, dup := sym.Nested[md.Name]; dup || sym.Aliases[md.Name] != nil {
+		if _, dup := sym.Nested[md.Name]; (dup || sym.Aliases[md.Name] != nil) && md.Name != "<no name provided>" {
 			c.errorf(md.P, "redeclaration: class %s", md.Name)
 		}
 		n := c.declareClass(md, name+"$"+md.Name, sym)
@@ -2223,6 +2241,7 @@ func (c *Checker) resolveClass(d *syntax.ClassDecl) {
 		c.enumMembers(d)
 	}
 	c.checkClassVariance(d)
+	c.checkClassTypeParams(d)
 }
 
 // enumMembers declares an enum class's entries, as static fields, and its
@@ -3293,6 +3312,7 @@ func (c *Checker) checkFun(d *syntax.FunDecl, cls *types.ClassSym) {
 		c.errorf(d.ExprBody.Pos(), "ranges are only supported in 'for' loops and 'in' checks")
 		t = types.InvalidType
 	}
+	c.ambiguousAnon(d, cls, t)
 	if sym.Ret = t; !keepsAnon(&d.Modifiers, cls) {
 		sym.Ret = approx(c.approxIntersections(t))
 	}
@@ -3337,6 +3357,7 @@ func (c *Checker) checkPropInit(d *syntax.PropDecl, cls *types.ClassSym) {
 	if p := d.DelegateOf; p != nil && p.Ref != nil && t.K != types.Invalid {
 		t = c.provideDelegate(d, p, t, provided)
 	}
+	c.ambiguousAnon(d, cls, t)
 	if sym.Type = t; !keepsAnon(&d.Modifiers, cls) {
 		sym.Type = approx(c.approxIntersections(t))
 	}

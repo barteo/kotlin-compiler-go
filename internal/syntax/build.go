@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/barteo/kotlin-compiler-go/internal/intbits"
+	"github.com/barteo/kotlin-compiler-go/internal/types"
 )
 
 // The desugarings here are shared by the token parser and by
@@ -390,6 +391,7 @@ func AccessorMods(pd *PropDecl, name string, pos Pos, m *Modifiers, r Reporter) 
 	}
 	if len(m.Written) > 0 {
 		pd.AccessorMods = append(pd.AccessorMods, m.Written)
+		pd.AccessorSets = append(pd.AccessorSets, name == "set")
 	}
 	for _, a := range m.Annotations {
 		if a.Target == "" {
@@ -399,9 +401,46 @@ func AccessorMods(pd *PropDecl, name string, pos Pos, m *Modifiers, r Reporter) 
 	}
 	if name == "set" {
 		pd.SetterVis = m.Visibility
+		for _, w := range m.Written {
+			if w.Name == "public" || w.Name == "private" || w.Name == "protected" || w.Name == "internal" {
+				pd.SetterVisP = w.P
+			}
+		}
 		pd.InlineSetter = m.Inline
 	} else {
 		pd.InlineGetter = m.Inline
+	}
+}
+
+// ValOnParam reports val or var, kw, written at p on a parameter of a
+// function or a secondary constructor, of
+// (VAL_OR_VAR_ON_FUN_PARAMETER, VAL_OR_VAR_ON_SECONDARY_CONSTRUCTOR_PARAMETER).
+func ValOnParam(kw, of string, p Pos, r Reporter) {
+	r.Later(p, "'%s' on %s parameter is not allowed", kw, of)
+}
+
+// VarianceMod adds variance modifier w, written at p, to the variance v
+// of a type parameter or argument, reporting a repeated one
+// (REPEATED_MODIFIER) and in with out (INCOMPATIBLE_MODIFIERS, at both,
+// prevP being where v's modifier is). The first modifier written wins.
+func VarianceMod(v *types.Variance, prevP *Pos, w types.Variance, p Pos, r Reporter) {
+	name := func(v types.Variance) string {
+		if v == types.In {
+			return "in"
+		}
+		return "out"
+	}
+	switch {
+	case *v == types.Inv:
+		*v, *prevP = w, p
+	case *v == w:
+		r.Later(p, "repeated '%s'", name(w))
+	default:
+		if prevP.Line != 0 {
+			r.Later(*prevP, "modifier '%s' is incompatible with '%s'", name(*v), name(w))
+			*prevP = Pos{}
+		}
+		r.Later(p, "modifier '%s' is incompatible with '%s'", name(w), name(*v))
 	}
 }
 

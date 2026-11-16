@@ -193,6 +193,7 @@ func (c *Checker) checkSupers() {
 		}
 	}
 	c.tparams, c.lookupCls = nil, nil
+	c.checkAliasBounds()
 }
 
 // checkConsistentSupers reports a class whose supertypes reach a generic
@@ -1680,6 +1681,12 @@ func (c *Checker) superCtor(d *syntax.ClassDecl) {
 		return
 	}
 	want := noWant
+	if len(x.TypeArgs) > 0 && sc.OuterParams == 0 && c.superViaAlias(d, x) {
+		// A typealias's type arguments are its own, Alias<String> for
+		// typealias Alias<X> = Inv<X, Inv<X, X>>: its expansion, the
+		// supertype, gives the class's.
+		x.TypeArgs = nil
+	}
 	if len(x.TypeArgs) == 0 {
 		// Through a typealias, the supertype gives the type arguments:
 		// class D : FooStr() for typealias FooStr = Foo<String>.
@@ -1701,6 +1708,17 @@ func (c *Checker) superCtor(d *syntax.ClassDecl) {
 	if sc.Local {
 		c.localConstructed(sc) // the class passes its superclass's captures
 	}
+}
+
+// superViaAlias reports whether class d's superclass call x names a
+// typealias.
+func (c *Checker) superViaAlias(d *syntax.ClassDecl, x *syntax.Call) bool {
+	for _, st := range d.Supers {
+		if st.Call == x {
+			return st.Type != nil && st.Type.Name != "" && c.lookupAlias(st.Type.Name) != nil
+		}
+	}
+	return false
 }
 
 // superOuterArgs reports whether the outer class type arguments of inner
