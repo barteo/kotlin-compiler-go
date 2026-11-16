@@ -1,6 +1,7 @@
 package syntax
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -197,6 +198,20 @@ func TestLaterErrors(t *testing.T) {
 				t.Errorf("got %s: %s, want %s: %s", e.Pos, e.Msg, tt.pos, tt.msg)
 			}
 		})
+	}
+}
+
+// TestParseKeepsLaterErrors checks that a parse that stops returns the
+// error it stopped at first, then those it went on after before it.
+func TestParseKeepsLaterErrors(t *testing.T) {
+	_, errs := Parse("t.kt", "val a = 1l\nfun f() { 1 + }")
+	var got []string
+	for _, e := range errs {
+		got = append(got, e.Pos.String()+" "+e.Msg)
+	}
+	want := []string{"2:15 expected expression, found '}'", "1:9 use 'L' instead of 'l'"}
+	if !slices.Equal(got, want) {
+		t.Errorf("got %q, want %q", got, want)
 	}
 }
 

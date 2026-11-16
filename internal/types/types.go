@@ -827,6 +827,9 @@ type ClassSym struct {
 	// visibility, which only code in its package sees, as its
 	// package-private members.
 	PackagePrivate bool
+	// ProtectedNested is set on a protected nested Java class, which
+	// only its package and the subclasses of the class it is in see.
+	ProtectedNested bool
 	// Internal is set on a Kotlin class that is internal to its module,
 	// with Private: code under @Suppress("INVISIBLE_REFERENCE") may use it.
 	Internal   bool

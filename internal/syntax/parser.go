@@ -28,6 +28,10 @@ type parser struct {
 	// a qualified type name goes on past newlines: List<a.b
 	// .C>.
 	typeArgs int
+	// noIntersection is set for the type parseType parses next, which
+	// can't be an intersection, T & Any, as kotlinc's grammar doesn't let
+	// the type of as and is be (parseTypeRefWithoutIntersections).
+	noIntersection bool
 	// anonFuns numbers the file's anonymous functions, whose labels are
 	// fun$1, fun$2, ...
 	anonFuns int
@@ -53,7 +57,9 @@ func (p *parser) annotate(n any, as []Annotation) { Annotate(&p.annotated, n, as
 
 type bailout struct{}
 
-// Parse parses one source file. Parsing stops at the first syntax error.
+// Parse parses one source file. Parsing stops at the first syntax error,
+// which is the first of the errors it returns; the others are those found
+// before it that parsing went on after (see File.Errors).
 func Parse(path, src string) (f *File, errs []*Error) {
 	toks, lexErrs := Tokenize(path, src)
 	if len(lexErrs) > 0 {
@@ -65,7 +71,7 @@ func Parse(path, src string) (f *File, errs []*Error) {
 			if _, ok := r.(bailout); !ok {
 				panic(r)
 			}
-			f, errs = nil, []*Error{p.err}
+			f, errs = nil, append([]*Error{p.err}, p.later...)
 		}
 	}()
 	f = p.parseFile()
@@ -675,10 +681,18 @@ func (p *parser) parseFile() *File {
 		p.decl(func() {
 			p.next()
 			f.PackageP = p.tok().Pos
-			name := p.ident().Text
-			for p.at(DOT) {
+			var name string
+			for {
+				t := p.ident()
+				if InvalidNameChars(t.Text) {
+					p.errorLater(f.PackageP, "the package name has characters the JVM doesn't allow: %s", t.Text)
+				}
+				name += t.Text
+				if !p.at(DOT) {
+					break
+				}
 				p.next()
-				name += "." + p.ident().Text
+				name += "."
 			}
 			f.Package = name
 			p.endOfStatement()
@@ -775,7 +789,16 @@ func (p *parser) parseImport() *Import {
 	return imp
 }
 
+// parseTypeWithoutIntersection parses a type that can't be T & Any, the
+// type of as, as?, is and !is.
+func (p *parser) parseTypeWithoutIntersection() *TypeRef {
+	p.noIntersection = true
+	return p.parseType()
+}
+
 func (p *parser) parseType() *TypeRef {
+	noIntersection := p.noIntersection
+	p.noIntersection = false
 	unsafe, composable, noInfer, exact := false, false, false, false
 	var wild Wildcards
 	var as []Annotation
@@ -796,6 +819,7 @@ func (p *parser) parseType() *TypeRef {
 		}
 	}
 	if as != nil {
+		p.noIntersection = noIntersection
 		t := p.parseType()
 		t.Annotations = append(as, t.Annotations...)
 		t.UnsafeVariance = t.UnsafeVariance || unsafe
@@ -888,7 +912,7 @@ func (p *parser) parseType() *TypeRef {
 	if p.quests() {
 		ref.Nullable = true
 	}
-	if p.at(AMP) {
+	if p.at(AMP) && !noIntersection {
 		// A definitely non-nullable type, T & Any, which the checker
 		// checks.
 		p.next()
@@ -1697,6 +1721,10 @@ func (p *parser) parseClass(m Modifiers) *ClassDecl {
 		NoContexts(&cd.CtorMods, "primary constructors", p)
 		if t := p.tok(); t.Kind == IDENT && t.Text == "constructor" {
 			p.next()
+			if p.peekPastNL() != LPAREN {
+				p.failAt(p.tok().Pos, "expected '(' after 'constructor'")
+			}
+			p.skipNL()
 		}
 	}
 	if p.at(LPAREN) {
@@ -2421,7 +2449,7 @@ func (p *parser) parseBinary(min int8) Expr {
 		op := p.op()
 		switch {
 		case k == IS || k == NOT_IS:
-			is := &Is{X: x, Ref: p.parseType(), Not: k == NOT_IS}
+			is := &Is{X: x, Ref: p.parseTypeWithoutIntersection(), Not: k == NOT_IS}
 			is.P = op.Pos
 			x = is
 		case k == IDENT && rangeWords[op.Text] == 0:
@@ -2453,7 +2481,7 @@ func (p *parser) parseAs() Expr {
 	x := p.parsePrefix()
 	for k := p.peekPastNL(); k == AS || k == AS_SAFE; k = p.peekPastNL() {
 		op := p.op()
-		as := &As{X: x, Ref: p.parseType(), Safe: op.Kind == AS_SAFE}
+		as := &As{X: x, Ref: p.parseTypeWithoutIntersection(), Safe: op.Kind == AS_SAFE}
 		as.P = op.Pos
 		x = as
 	}
@@ -3013,6 +3041,9 @@ func (p *parser) parseLambda() *Lambda {
 }
 
 func (p *parser) intLit(t Token) Expr {
+	for _, msg := range IntLiteralErrors(t.Text) {
+		p.errorLater(t.Pos, "%s", msg)
+	}
 	lit, ok := IntLiteral(t.Pos, t.Text, t.Kind == UNSIGNED)
 	if !ok {
 		p.failAt(t.Pos, "the value is out of range")
@@ -3213,6 +3244,23 @@ func (p *parser) parseIf() Expr {
 	return n
 }
 
+// confusingCond reports whether x, a condition of a when with a subject
+// not in parentheses, is one kotlinc reserves
+// (CONFUSING_BRANCH_CONDITION_ERROR): a comparison, in, is, && or ||,
+// where when (s) { a == b -> } could read as s == a == b.
+func confusingCond(x Expr) bool {
+	switch x := x.(type) {
+	case *Is:
+		return true
+	case *Binary:
+		switch x.Op {
+		case IN, NOT_IN, LT, GT, LE, GE, EQ, NE, EQ_EQ_EQ, NOT_EQ_EQ, AND, OR:
+			return true
+		}
+	}
+	return false
+}
+
 func (p *parser) parseWhen() Expr {
 	n := &When{}
 	n.P = p.expect(WHEN).Pos
@@ -3257,7 +3305,12 @@ func (p *parser) parseWhen() Expr {
 					c.Type = p.parseType()
 				}
 				if c.Type == nil {
+					start := p.i
 					c.X = p.parseExpr()
+					parens := p.toks[start].Kind == LPAREN && p.matching(start) == p.i-1
+					if n.Subject != nil && !parens && confusingCond(c.X) {
+						p.errorLater(p.toks[start].Pos, "confusing branch condition: wrap it in parentheses, or use a guard (if)")
+					}
 				}
 				br.Conds = append(br.Conds, c)
 				if !p.comma() {

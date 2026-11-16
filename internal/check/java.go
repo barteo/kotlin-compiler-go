@@ -296,6 +296,7 @@ func (t *classTable) load(cls *types.ClassSym) {
 	cls.Final = info.Access&classfile.AccFinal != 0
 	cls.Private = info.Access&classfile.AccPublic == 0
 	cls.PackagePrivate = cls.Private && (info.Inner == nil || info.Inner.Access&classfile.AccPrivate == 0)
+	cls.ProtectedNested = info.Inner != nil && info.Inner.Access&classfile.AccProtected != 0
 	// The package-private members of Java classes are their package's
 	// code's, which Kotlin code in another module may be, but not the
 	// JDK's.
@@ -381,8 +382,16 @@ func (t *classTable) load(cls *types.ClassSym) {
 			for i, as := range m.ParamAnnotations {
 				// A declaration annotation on a vararg is the array's,
 				// not its elements', which the parameter's type is.
-				if off+i >= 0 && !(varargs && off+i == len(f.Params)-1) {
+				// jSpecify's are type annotations: a vararg's are its
+				// elements'.
+				switch {
+				case off+i < 0:
+				case !(varargs && off+i == len(f.Params)-1):
 					f.Params[off+i].Type = enhance(as, f.Params[off+i].Type)
+				default:
+					f.Params[off+i].Type = enhance(slices.DeleteFunc(slices.Clone(as), func(a string) bool {
+						return !strings.HasPrefix(a, "Lorg/jspecify/annotations/")
+					}), f.Params[off+i].Type)
 				}
 			}
 		}
@@ -538,7 +547,8 @@ var javaNullability = func() map[string]bool {
 		"android/support/annotation/NonNull", "android/annotation/NonNull", "com/android/annotations/NonNull",
 		"org/eclipse/jdt/annotation/NonNull", "org/checkerframework/checker/nullness/qual/NonNull",
 		"org/checkerframework/checker/nullness/compatqual/NonNullDecl", "edu/umd/cs/findbugs/annotations/NonNull",
-		"lombok/NonNull", "io/reactivex/annotations/NonNull", "io/reactivex/rxjava3/annotations/NonNull"} {
+		"lombok/NonNull", "io/reactivex/annotations/NonNull", "io/reactivex/rxjava3/annotations/NonNull",
+		"org/jspecify/annotations/NonNull"} {
 		m["L"+n+";"] = true
 	}
 	for _, n := range []string{"org/jetbrains/annotations/Nullable", "androidx/annotation/Nullable", "androidx/annotation/RecentlyNullable",
@@ -546,7 +556,8 @@ var javaNullability = func() map[string]bool {
 		"org/eclipse/jdt/annotation/Nullable", "org/checkerframework/checker/nullness/qual/Nullable",
 		"org/checkerframework/checker/nullness/compatqual/NullableDecl", "edu/umd/cs/findbugs/annotations/Nullable",
 		"edu/umd/cs/findbugs/annotations/CheckForNull", "edu/umd/cs/findbugs/annotations/PossiblyNull",
-		"io/reactivex/annotations/Nullable", "io/reactivex/rxjava3/annotations/Nullable"} {
+		"io/reactivex/annotations/Nullable", "io/reactivex/rxjava3/annotations/Nullable",
+		"org/jspecify/annotations/Nullable"} {
 		m["L"+n+";"] = false
 	}
 	return m
@@ -1965,8 +1976,113 @@ func (c *Checker) javaMethods(cls *types.ClassSym, name string) []*types.FunSym 
 	}
 	ms = c.notHidden(cls, name, ms)
 	ms = c.intersectionDefaults(cls, ms)
+	ms = c.functionNOverrides(cls, ms)
+	ms = c.enhancedOverrides(cls, ms)
 	cache.methods.Store(k, ms)
 	return ms
+}
+
+// enhancedOverrides replaces each Java method of ms with a parameter of a
+// platform type that, in a Java method it overrides, an annotation makes
+// non-null, with a copy whose parameter is non-null: as in Kotlin, an
+// override inherits the nullability of its parameters, C's foo(F x) of
+// A's foo(@NotNull T x).
+func (c *Checker) enhancedOverrides(cls *types.ClassSym, ms []*types.FunSym) []*types.FunSym {
+	var out []*types.FunSym
+	for i, f := range ms {
+		if f.Static || f.Owner == nil || !isJavaClass(f.Owner) || f.Name == "<init>" || !slices.ContainsFunc(f.Params, func(p *types.VarSym) bool { return p.Type.P }) {
+			continue
+		}
+		var fo *types.FunSym
+		f.Owner.Supertypes(func(s *types.ClassSym) bool {
+			if s == f.Owner || !isJavaClass(s) {
+				return true
+			}
+			for _, g := range s.Methods[f.Name] {
+				if g.Static || g.Private || len(g.Params) != len(f.Params) || jvmDesc(g) != jvmDesc(f) {
+					continue
+				}
+				for j, p := range f.Params {
+					if q := g.Params[j].Type; p.Type.P && !q.P && !types.MayBeNull(q) && q.K != types.Invalid {
+						if fo == nil {
+							cp := *f
+							cp.Params = slices.Clone(f.Params)
+							fo = &cp
+						}
+						if fo.Params[j] == p {
+							v := *p
+							v.Type = p.Type.NonNull()
+							fo.Params[j] = &v
+						}
+					}
+				}
+			}
+			return true
+		})
+		if fo == nil {
+			continue
+		}
+		if out == nil {
+			out = slices.Clone(ms)
+		}
+		out[i] = fo
+	}
+	if out == nil {
+		return ms
+	}
+	return out
+}
+
+// functionNOverrides adds to ms, for each Java method whose parameter is
+// a kotlin.jvm.functions.FunctionN and which overrides a Kotlin function
+// whose parameter there is a function type of more than 22 parameters,
+// the JVM's FunctionN, a copy that takes the function type: as in
+// Kotlin, both a lambda and a FunctionN are arguments.
+func (c *Checker) functionNOverrides(cls *types.ClassSym, ms []*types.FunSym) []*types.FunSym {
+	var out []*types.FunSym
+	for _, f := range ms {
+		if f.Static || f.Owner == nil || !isJavaClass(f.Owner) || !slices.ContainsFunc(f.Params, functionNParam) {
+			continue
+		}
+		var g *types.FunSym
+		cls.Supertypes(func(s *types.ClassSym) bool {
+			if s == f.Owner || isJavaClass(s) || !f.Owner.IsSubclassOf(s) {
+				return true
+			}
+			for _, h := range s.Methods[f.Name] {
+				if !h.Static && len(h.Params) == len(f.Params) && jvmDesc(h) == jvmDesc(f) {
+					g = h
+					return false
+				}
+			}
+			return true
+		})
+		if g == nil {
+			continue
+		}
+		if out == nil {
+			out = slices.Clone(ms)
+		}
+		fo := *f
+		fo.Params = slices.Clone(f.Params)
+		for j, p := range f.Params {
+			if t := g.Params[j].Type; functionNParam(p) && t.IsFunc() && t.A.Len() > 22 {
+				q := *p
+				q.Type = g.Params[j].Type
+				fo.Params[j] = &q
+			}
+		}
+		out = append(out, &fo)
+	}
+	if out == nil {
+		return ms
+	}
+	return out
+}
+
+func functionNParam(p *types.VarSym) bool {
+	t := p.Type.NonNull()
+	return t.K == types.Class && t.C != nil && t.C.Name == "kotlin/jvm/functions/FunctionN"
 }
 
 // notHidden adds to ms the methods of cls's supertypes compiled by
@@ -2093,7 +2209,14 @@ func (c *Checker) inheritExtDefaults(f *types.FunSym) {
 		}
 		for _, g := range c.overridden(f.Owner, f) {
 			c.inheritExtDefaults(g)
-			if g.Decl == nil && declaresDefaults(g) {
+			// A class-path function's, or one of the program's Kotlin
+			// functions: a Java class's override of one.
+			gd, src := g.Decl.(*syntax.FunDecl)
+			if src && !funDeclaresDefaults(gd) && g.DefaultsOf != nil {
+				g = g.DefaultsOf
+				gd, src = g.Decl.(*syntax.FunDecl)
+			}
+			if g.Decl == nil && declaresDefaults(g) || src && funDeclaresDefaults(gd) && len(g.Params) == len(f.Params) {
 				for i, p := range f.Params {
 					p.Default = g.Params[i].Default
 				}
@@ -2617,7 +2740,7 @@ func (c *Checker) javaCall(x *syntax.Call, fn *syntax.Member, rt types.Type, wan
 	if hides := c.hidingExts(fn.Name, rt, x); len(hides) > 0 {
 		return c.resolve(x, hides, want, sink)
 	}
-	ms := c.lowPriorityGivesWay(c.accessible(cls, c.javaMethods(cls, fn.Name), c.declaredClass(fn.X, cls)), fn.Name, rt, x)
+	ms := c.lowPriorityGivesWay(c.callableOn(c.accessible(cls, c.javaMethods(cls, fn.Name), c.declaredClass(fn.X, cls)), fn.X), fn.Name, rt, x)
 	if x.Operator {
 		ms = slices.DeleteFunc(slices.Clone(ms), varargNonOperator)
 	}
@@ -3095,4 +3218,66 @@ func equivalentFun(f, g *types.FunSym) bool {
 		return facade[:max(i, 0)]
 	}
 	return pkg(f.Facade) == pkg(g.Facade)
+}
+
+// javaCycle reports a supertype that is a class of the program's Java
+// sources in a cycle of its hierarchy, or that inherits from one:
+// interface A extends A, which javac rejects. kotlinc runs out of stack generating code for its subclasses.
+func (c *Checker) javaCycle(st *syntax.SuperType) {
+	if st.Type == nil || st.T.K != types.Class || st.T.C == nil || !st.T.C.External || !c.u.ext.javaSource(st.T.C) {
+		return
+	}
+	// It, or a Java class it inherits from.
+	var cyclic *types.ClassSym
+	st.T.C.Supertypes(func(s *types.ClassSym) bool {
+		if s.External && c.u.ext.javaSource(s) && inherits(s, s, c.u.ext.javaSource, map[*types.ClassSym]bool{}) {
+			cyclic = s
+		}
+		return cyclic == nil
+	})
+	if cyclic != nil {
+		c.errorf(st.Type.P, "there's a cycle in the inheritance hierarchy of '%s'", cyclic.DisplayName())
+	}
+}
+
+// javaBoundCycle reports a type of a class of the program's Java sources
+// whose type parameters' bounds are a cycle, X extends Y, Y extends X,
+// which javac rejects. kotlinc can't write its erasure to metadata.
+func (c *Checker) javaBoundCycle(ref *syntax.TypeRef, t types.Type) {
+	if t.K != types.Class || t.C == nil || !t.C.External || len(t.C.TypeParams) == 0 || !c.u.ext.javaSource(t.C) {
+		return
+	}
+	for _, p := range t.C.TypeParams {
+		if types.ParamCycle(p) {
+			c.errorf(ref.P, "the upper bounds of the type parameters of '%s' are a cycle", t.C.DisplayName())
+			return
+		}
+	}
+}
+
+// javaHidden reports whether the functions over, which a function of cls
+// overrides, are all hidden by methods of Java classes cls inherits from
+// that override them with other parameter types, as Base's foo(Box box),
+// with a raw Box, does I<String>'s foo(Box<T>): the function overrides
+// nothing, as in K2.
+func javaHidden(cls *types.ClassSym, over []*types.FunSym) bool {
+	for _, g := range over {
+		hidden := false
+		cls.Supertypes(func(s *types.ClassSym) bool {
+			if s == cls || s == g.Owner || !isJavaClass(s) || !isJavaClass(g.Owner) || g.Owner.Name == charSequence || !s.IsSubclassOf(g.Owner) {
+				return true
+			}
+			for _, m := range s.Methods[g.Name] {
+				if !m.Static && !m.Private && len(m.Params) == len(g.Params) && !slices.Contains(over, m) && jvmDesc(m) == jvmDesc(g) {
+					hidden = true
+					return false
+				}
+			}
+			return true
+		})
+		if !hidden {
+			return false
+		}
+	}
+	return len(over) > 0
 }
