@@ -476,6 +476,31 @@ func annotationScope(owner, lookup *types.ClassSym, site annotSite) *types.Class
 // can. The rule doesn't apply in owner's own package for a Java class,
 // to a companion object's members, nor on this or super.
 func (c *Checker) protectedVia(owner *types.ClassSym, x syntax.Expr) bool {
+	return c.protectedVia1(owner, nil, x)
+}
+
+// callableOn drops the protected members of fs that the code can't call
+// on receiver x (see protectedVia), so that the call resolves to another
+// overload, as kotlinc's: a.foo(d, d) of a: A in a subclass of A calls
+// A's public foo, not a more specific protected one.
+func (c *Checker) callableOn(fs []*types.FunSym, x syntax.Expr) []*types.FunSym {
+	for i, f := range fs {
+		if protectedFun(f) && !c.protectedVia1(f.Owner, f, x) {
+			out := slices.Clone(fs[:i])
+			for _, g := range fs[i+1:] {
+				if !protectedFun(g) || c.protectedVia1(g.Owner, g, x) {
+					out = append(out, g)
+				}
+			}
+			return out
+		}
+	}
+	return fs
+}
+
+// protectedVia1 is protectedVia for function f, or a property if f is
+// nil.
+func (c *Checker) protectedVia1(owner *types.ClassSym, f *types.FunSym, x syntax.Expr) bool {
 	if owner == nil || owner.CompanionOf != nil || owner.Object || c.javaPackage(owner) ||
 		c.file != nil && c.file.SuppressInvisible {
 		return true
@@ -493,7 +518,7 @@ func (c *Checker) protectedVia(owner *types.ClassSym, x syntax.Expr) bool {
 			return true
 		}
 		for k := c.visFirst(); k != nil; k = c.nextEnclosing(k) {
-			if (k == owner || k.IsSubclassOf(owner) || owner.IsSubclassOf(k)) && (rc == k || rc.IsSubclassOf(k)) {
+			if (k == owner || k.IsSubclassOf(owner) || owner.IsSubclassOf(k) && c.declaresOverridden(k, f)) && (rc == k || rc.IsSubclassOf(k)) {
 				return true
 			}
 			if k.Companion != nil && k.Companion.IsSubclassOf(owner) && (rc == k.Companion || rc.IsSubclassOf(k.Companion)) {
@@ -576,4 +601,20 @@ func (c *Checker) companionProtectedProp(v *types.VarSym, p syntax.Pos) {
 		return
 	}
 	c.companionProtected(v.Owner, v.Name, v.JvmStatic || v.JvmField || v.Const, p)
+}
+
+// declaresOverridden reports whether class k declares a member that f, a
+// member of a subclass of k, overrides: A's code may call b.f() on b: B
+// for B's override of A's protected f, but not that of a member A
+// inherits. A property (nil f) is assumed to.
+func (c *Checker) declaresOverridden(k *types.ClassSym, f *types.FunSym) bool {
+	if f == nil {
+		return true
+	}
+	for _, g := range k.Methods[f.Name] {
+		if g.Owner == k && c.sameParams(f.Owner.This(), f, g) {
+			return true
+		}
+	}
+	return false
 }

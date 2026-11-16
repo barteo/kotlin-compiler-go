@@ -2615,7 +2615,7 @@ func (c *Checker) javaCall(x *syntax.Call, fn *syntax.Member, rt types.Type, wan
 		c.args(x, nil)
 		return types.InvalidType
 	}
-	ms := c.lowPriorityGivesWay(c.accessible(cls, c.javaMethods(cls, fn.Name), c.declaredClass(fn.X, cls)), fn.Name, rt, x)
+	ms := c.lowPriorityGivesWay(c.callableOn(c.accessible(cls, c.javaMethods(cls, fn.Name), c.declaredClass(fn.X, cls)), fn.X), fn.Name, rt, x)
 	if x.Operator {
 		ms = slices.DeleteFunc(slices.Clone(ms), varargNonOperator)
 	}
