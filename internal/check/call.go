@@ -1431,7 +1431,7 @@ func (c *Checker) byLambdaResult(x *syntax.Call, match []*candidate) *candidate 
 			li = i
 		}
 	}
-	if li < 0 {
+	if li < 0 || !slices.ContainsFunc(match, func(cd *candidate) bool { return !sourceNotByLambdaResult(cd.f) }) {
 		return nil
 	}
 	l := x.Args[li].(*syntax.Lambda)
@@ -1509,6 +1509,17 @@ func (c *Checker) byLambdaResult(x *syntax.Call, match []*candidate) *candidate 
 		c.checked[l] = bt // else checked again, its literal of the type expected
 	}
 	return maximal[0]
+}
+
+// sourceNotByLambdaResult reports whether f is a function of the program
+// not marked @OverloadResolutionByLambdaReturnType. A lambda's result
+// chooses only between overloads one of which is marked: e {} for
+// e(block: () -> String) and e(block: () -> Unit) is ambiguous. A library
+// function's mark isn't read: those of the standard library that a
+// lambda's result chooses between are marked.
+func sourceNotByLambdaResult(f *types.FunSym) bool {
+	d, ok := f.Decl.(*syntax.FunDecl)
+	return ok && d.Find("", "OverloadResolutionByLambdaReturnType") == nil && d.Find("", "kotlin.OverloadResolutionByLambdaReturnType") == nil
 }
 
 // branchesClass returns the class of the calls the branches of e, an if
