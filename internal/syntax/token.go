@@ -19,9 +19,36 @@ type Error struct {
 	// Feature is set when the error is about a Kotlin feature kc doesn't
 	// support, to a stable name such as "interface" or "modifier data".
 	Feature string
+	// Severity is SevError, or SevWarning for a warning, which doesn't
+	// stop the compile.
+	Severity Severity
+	// Name is the name kotlinc gives the diagnostic, as DEPRECATION, if
+	// kc knows it: every warning has one. @Suppress names it.
+	Name string
 }
 
+// Severity is a diagnostic's severity.
+type Severity uint8
+
+const (
+	SevError Severity = iota
+	SevWarning
+)
+
+func (s Severity) String() string {
+	if s == SevWarning {
+		return "warning"
+	}
+	return "error"
+}
+
+// IsWarning reports whether e is a warning.
+func (e *Error) IsWarning() bool { return e.Severity == SevWarning }
+
 func (e *Error) Error() string {
+	if e.IsWarning() {
+		return fmt.Sprintf("%s:%d:%d: warning: %s", e.File, e.Pos.Line, e.Pos.Col, e.Msg)
+	}
 	return fmt.Sprintf("%s:%d:%d: %s", e.File, e.Pos.Line, e.Pos.Col, e.Msg)
 }
 

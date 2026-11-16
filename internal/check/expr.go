@@ -297,12 +297,14 @@ func (c *Checker) expr1(x syntax.Expr, want types.Type, allowRange bool, sink *s
 			n := len(sink.vars)
 			c.sink = sink
 			t := c.value(x.X, xw)
+			c.noteMaybeNull(x, t)
 			if len(sink.vars) > n {
 				sink.fixups = append(sink.fixups, func(s *system) { x.SetType(s.final(t).NonNull()) })
 			}
 			return t.NonNull()
 		}
 		t := c.declaredIfNull(x.X, c.value(x.X, xw))
+		c.noteMaybeNull(x, t)
 		if t.K == types.Invalid {
 			return t
 		}
@@ -831,6 +833,7 @@ func (c *Checker) binary(x *syntax.Binary, want types.Type, allowRange bool) typ
 			}
 		}
 		nn, nonNull := len(c.scope.narrows), c.notNullOf(x.X) // the right side's casts may not run
+		c.noteMaybeNull(x, xt)
 		var yt types.Type
 		if lt := xt.Flex().NonNull(); intLitExpr(x.Y) && (lt == types.LongType || lt == types.ShortType || lt == types.ByteType) {
 			// An integer literal is of the left side's type: l ?: 0 is
