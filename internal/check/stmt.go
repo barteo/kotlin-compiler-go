@@ -918,6 +918,9 @@ func (c *Checker) lvalue(x syntax.Expr) (types.Type, bool) {
 			// gives a MutableList.
 			return c.memberSubst(x.X.Type().NonNull(), x.Setter.Owner).Apply(x.Setter.Params[0].Type), true
 		case x.Getter != nil:
+			if c.extSetterProjectedOut(x) {
+				return types.NothingType, true
+			}
 			return t.Flex(), true
 		}
 		if x.Prop == nil {
@@ -943,6 +946,64 @@ func (c *Checker) lvalue(x syntax.Expr) (types.Type, bool) {
 	}
 	c.errorf(x.Pos(), "variable expected")
 	return types.InvalidType, false
+}
+
+// extSetterProjectedOut reports whether generic extension property x's
+// value is of a type parameter that its receiver projects out, which
+// only Nothing is of: list.p = v for var <T> MutableList<T>.p: T, of a
+// MutableList<out Any> list.
+func (c *Checker) extSetterProjectedOut(x *syntax.Member) bool {
+	g := x.Getter
+	if len(g.TypeParams) == 0 || g.Ret.K != types.TypeParam || g.Recv.K != types.Class || g.Recv.A == nil {
+		return false
+	}
+	rt, ok := c.asSuper(x.X.Type().NonNull(), g.Recv.C)
+	if !ok || rt.A == nil || rt.A.Len() != g.Recv.A.Len() {
+		return false
+	}
+	for i, a := range g.Recv.A.List {
+		if a.V == types.Inv && a.T.K == types.TypeParam && a.T.Param() == g.Ret.Param() {
+			if v := rt.A.List[i].V; v == types.Out || v == types.Star {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// starWrite reports value type vt that property target can't be set to
+// through a star projected receiver: an invariant argument of the
+// property's type that is the star's capture is one only Nothing fits,
+// t.v = t for var v: Tr<T> of a Tr<*> t.
+func (c *Checker) starWrite(target syntax.Expr, vt types.Type) {
+	x, ok := target.(*syntax.Member)
+	if !ok || x.Prop == nil || x.X == nil || vt.K == types.Null {
+		return
+	}
+	rt := x.X.Type().NonNull()
+	pt := x.Prop.Type.NonNull()
+	if rt.K != types.Class || rt.A == nil || pt.K != types.Class || pt.A == nil || x.Prop.Owner == nil {
+		return
+	}
+	sub := c.memberSubst(rt, x.Prop.Owner)
+	wt := sub.ApplyIn(x.Prop.Type).NonNull()
+	if wt.K != types.Class || wt.C != pt.C || wt.A == nil || wt.A.Len() != pt.A.Len() {
+		return
+	}
+	var args []types.Arg
+	for i, a := range pt.A.List {
+		w := wt.A.List[i]
+		if a.V == types.Inv && a.T.K == types.TypeParam && !a.T.N && i < len(pt.C.TypeParams) && pt.C.TypeParams[i].Var == types.Inv {
+			if r, ok := sub[a.T.Param()]; ok && r.V == types.Star {
+				w = types.Arg{V: types.Out, T: types.NothingType}
+			}
+		}
+		args = append(args, w)
+	}
+	want := types.GenericType(wt.C, args)
+	if !c.subtype(vt.NonNull(), want) {
+		c.errorf(x.P, "type mismatch: inferred type is %s but %s was expected", vt, want)
+	}
 }
 
 // forIterator checks a loop over a collection, or anything else with an
@@ -1232,8 +1293,14 @@ func (c *Checker) assign(s *syntax.Assign) {
 		v = id.Sym
 	}
 	if s.Op == syntax.ASSIGN {
+		n := len(c.errs)
 		vt := c.value(s.Value, tt)
 		c.assignable(vt, tt, s.Value.Pos())
+		if id, ok := s.Value.(*syntax.Ident); len(c.errs) == n && !(ok && strings.HasPrefix(id.Name, "$p")) {
+			// Not a property reference's set, which is mutable still,
+			// as kotlinc's: Klass<*>::mutableProperty.
+			c.starWrite(s.Target, vt)
+		}
 		if v != nil {
 			c.assignedVar(v, vt)
 			c.assignedNested(v, vt)
