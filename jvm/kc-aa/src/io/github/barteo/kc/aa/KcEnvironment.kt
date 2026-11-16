@@ -45,9 +45,13 @@ internal class KcEnvironment(val key: String, config: KSPConfig) {
             // (checked exceptions, member order, backing fields, Java
             // annotation defaults) through the Java file manager, which
             // must give PSI-backed classes (JavaClassImpl).
-            conf.addJvmClasspathRoots((config.libraries + config.friends).distinct())
+            // A build passes paths that need not exist (an output directory
+            // nothing is written to, a source set without sources). The
+            // environment reports a missing root as an error; stock KSP
+            // leaves it out.
+            conf.addJvmClasspathRoots((config.libraries + config.friends).distinct().filter { it.exists() })
             jvm.jdkHome?.let { conf.put(JVMConfigurationKeys.JDK_HOME, it) }
-            conf.addJavaSourceRoots(sourceRoots(config))
+            conf.addJavaSourceRoots(sourceRoots(config).filter { it.exists() })
             conf.put(JVMConfigurationKeys.USE_PSI_CLASS_FILES_READING, true)
         }
         KotlinCoreEnvironment.createForProduction(disposable, conf, EnvironmentConfigFiles.JVM_CONFIG_FILES)
