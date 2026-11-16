@@ -104,6 +104,7 @@ func (c *Checker) classLitType(ref *syntax.TypeRef, callable bool) types.Type {
 		c.errorf(ref.P, "cannot use '%s' as reified type parameter", ref.Name)
 		return types.InvalidType
 	}
+	written := ref.Args != nil
 	if ref.Args == nil && !kotlinTypes[ref.Name] {
 		if cls := c.lookupClass(ref.Name); cls != nil && ensured(cls).TypeParams != nil && cls.Inner && cls.OuterParams > 0 && !callable {
 			return starInner(cls) // Outer.Inner::class, for Outer<T>
@@ -123,7 +124,10 @@ func (c *Checker) classLitType(ref *syntax.TypeRef, callable bool) types.Type {
 			}
 		}
 	}
+	old := c.refLHS
+	c.refLHS = callable && written
 	t := c.resolveType(ref)
+	c.refLHS = old
 	if t.K != types.Invalid && !t.IsArray() && !callable {
 		for _, a := range ref.Args {
 			if a.Variance != types.Star {

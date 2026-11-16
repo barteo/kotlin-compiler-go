@@ -2437,7 +2437,9 @@ func (c *Checker) overriddenGiveWay(cs []*candidate) []*candidate {
 // a is more specific than one of number type b, though neither is a
 // subtype of the other: f(Int?) is more specific than f(Long?) for
 // f(null). As in kotlinc, Double comes before Float, Int before Long,
-// Short and Byte, and Short before Byte.
+// Short and Byte, and Short before Byte; any signed integer type before
+// any unsigned one, UInt before the other unsigned types, and UShort
+// before UByte.
 func numberMoreSpecific(a, b types.Type) bool {
 	if a.P || b.P || a.N && !b.N {
 		return false
@@ -2446,9 +2448,17 @@ func numberMoreSpecific(a, b types.Type) bool {
 	case types.Double:
 		return b.K == types.Float
 	case types.Int:
-		return b.K == types.Short || b.K == types.Byte || b.K == types.Long
-	case types.Short:
-		return b.K == types.Byte
+		return b.K == types.Short || b.K == types.Byte || b.K == types.Long || isUnsigned(b)
+	case types.Short, types.Byte, types.Long:
+		return a.K == types.Short && b.K == types.Byte || isUnsigned(b)
+	}
+	if isUnsigned(a) && isUnsigned(b) {
+		switch a.C.Name {
+		case "kotlin/UInt":
+			return b.C.Name != "kotlin/UInt"
+		case "kotlin/UShort":
+			return b.C.Name == "kotlin/UByte"
+		}
 	}
 	return false
 }

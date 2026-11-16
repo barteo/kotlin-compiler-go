@@ -3192,6 +3192,11 @@ func (c *Checker) ctorTakes(name string, x *syntax.Call) bool {
 func (c *Checker) invokeFitsType(ft types.Type, x *syntax.Call) bool {
 	ft = ft.Flex()
 	if !ft.IsFunc() {
+		if x.Infix && ft.K != types.Invalid {
+			// b f 3 calls a property f's invoke only if it is infix;
+			// otherwise an infix extension f of b is called.
+			return c.infixInvoke(ft, x)
+		}
 		return ft.K == types.Invalid || c.hasFun(ft, "invoke", x)
 	}
 	for _, n := range x.Names {
@@ -3224,6 +3229,25 @@ func (c *Checker) invokeFitsType(ft types.Type, x *syntax.Call) bool {
 		}
 	}
 	return true
+}
+
+// infixInvoke reports whether a value of type ft, which isn't a function
+// type, has an infix invoke operator that may take call x.
+func (c *Checker) infixInvoke(ft types.Type, x *syntax.Call) bool {
+	if cls := c.classOf(ft); cls != nil && !types.MayBeNull(ft) {
+		cls.Ensure()
+		for _, f := range c.accessible(cls, c.javaMethods(cls, "invoke")) {
+			if f.Infix && c.mayTake(f, x) {
+				return true
+			}
+		}
+	}
+	for _, cl := range c.extCalleesFor("invoke", ft, x) {
+		if cl.f.Infix && c.mayTake(cl.f, x) {
+			return true
+		}
+	}
+	return false
 }
 
 // implicitOf reports whether an implicit receiver in scope, or this, may

@@ -213,6 +213,12 @@ type Checker struct {
 	levelCache   map[funKey][][]*types.FunSym // see kotlinFunLevels
 	looked       lookups                      // the lookups recorded (see lookups.go)
 	errs         []*syntax.Error
+
+	// refLHS is set while the type on a callable reference's left side
+	// is resolved, where an inner class's type arguments may go on to
+	// its outer classes': Y<Int, Int>::foo for X<A>.Y<B>.
+	refLHS bool
+
 	// tailIfs are ifs without else that end a branch of the if a lambda
 	// ends with: statements, not values (see markTailIfs).
 	tailIfs map[*syntax.If]bool
