@@ -213,6 +213,14 @@ func collectionArgs(cls *types.ClassSym) map[byte]types.Type {
 			}
 		}
 		s := classSubst(t)
+		if t.C == cls {
+			// cls's arguments are its own parameters, so its supertypes
+			// stand as written. Substituting would ask for the variance
+			// of cls's parameters where a supertype's argument is cls's
+			// own type (Node<T> implements Comparable<Node<T>>), which
+			// loads cls and never returns.
+			s = nil
+		}
 		for _, st := range supers {
 			if s != nil {
 				st = s.Apply(st)

@@ -599,3 +599,32 @@ func TestLibraryPrivateNested(t *testing.T) {
 		}
 	}
 }
+
+// TestJavaSelfBound checks that a generic Java class whose supertype's
+// argument is the class's own type loads, with a member that a Kotlin
+// collection declares and without.
+func TestJavaSelfBound(t *testing.T) {
+	java := `package j;
+
+public class Node<T> implements Comparable<Node<T>> {
+    public int compareTo(Node<T> other) { return 0; }
+}
+
+class Bag<T> implements Comparable<Bag<T>> {
+    public int compareTo(Bag<T> other) { return 0; }
+    public boolean contains(Object o) { return false; }
+}
+`
+	kotlin := "package j\nprivate fun f(n: Node<String>, b: Bag<String>) = n.compareTo(n) + b.compareTo(b)\n"
+	sources := []Source{{Path: "j/Uses.kt", Text: &kotlin}, {Path: "j/Node.java", Text: &java}}
+	s := Open(withJDK(t))
+	defer s.Close()
+	m, err := s.Update(context.Background(), sources)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close()
+	for _, d := range m.Diagnostics {
+		t.Errorf("diagnostic: %+v", d)
+	}
+}
