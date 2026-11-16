@@ -274,8 +274,8 @@ func EnumEntryClass(enum string, e *EnumEntry) *ClassDecl {
 // its value is out of range.
 func IntLiteral(pos Pos, text string, unsigned bool) (*IntLit, bool) {
 	text = strings.ReplaceAll(text, "_", "")
-	long := strings.HasSuffix(text, "L")
-	text = strings.TrimSuffix(text, "L")
+	long := hasLongSuffix(text)
+	text = strings.TrimRight(text, "Ll")
 	if unsigned {
 		text = strings.TrimRight(text, "uU")
 	}
@@ -325,9 +325,38 @@ func NegateLiteral(lit *IntLit, text string, pos Pos) bool {
 		return false
 	}
 	lit.Val = -lit.Val
-	lit.Long = strings.HasSuffix(text, "L") || lit.Val < math.MinInt32
+	lit.Long = hasLongSuffix(text) || lit.Val < math.MinInt32
 	lit.P = pos
 	return true
+}
+
+// hasLongSuffix reports whether an integer literal ends in L, or in l,
+// which is an error (see IntLiteralErrors).
+func hasLongSuffix(text string) bool {
+	return strings.HasSuffix(text, "L") || strings.HasSuffix(text, "l")
+}
+
+// InvalidNameChars reports whether a name has characters the JVM doesn't
+// allow in one, which kotlinc reports as INVALID_CHARACTERS. Only a name
+// in backticks can.
+func InvalidNameChars(name string) bool {
+	return strings.ContainsAny(name, ".;[]/<>:\\")
+}
+
+// IntLiteralErrors returns the errors kotlinc reports for the integer
+// literal text that don't stop it from being one: a lowercase l suffix
+// (WRONG_LONG_SUFFIX), and leading zeros in a decimal literal
+// (INT_LITERAL_WITH_LEADING_ZEROS), as 01, 0_1 and 00.
+func IntLiteralErrors(text string) []string {
+	var msgs []string
+	if strings.HasSuffix(text, "l") {
+		msgs = append(msgs, "use 'L' instead of 'l'")
+	}
+	digits := strings.TrimRight(text, "LluU")
+	if len(digits) > 1 && digits[0] == '0' && !strings.ContainsAny(digits[1:2], "xXbB") {
+		msgs = append(msgs, "unsupported leading zeros in an integer literal")
+	}
+	return msgs
 }
 
 // TokenizeAt lexes src, which starts at pos, as an expression: newlines

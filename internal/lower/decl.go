@@ -41,6 +41,11 @@ func (l *lowerer) file(root psi.NodeRef) *syntax.File {
 				l.decl(c, func() {
 					f.Package = l.dotted(c)
 					f.PackageP = l.pos(next(child(c, psi.KindPACKAGE_KEYWORD)))
+					for id, end := c.ID(), c.SubtreeEnd(); id < end; id++ {
+						if n := l.s.Node(id); n.NumericKind() == psi.KindIDENTIFIER && syntax.InvalidNameChars(ident(n)) {
+							l.errorLater(f.PackageP, "the package name has characters the JVM doesn't allow: %s", ident(n))
+						}
+					}
 				})
 			}
 		case psi.KindIMPORT_LIST:

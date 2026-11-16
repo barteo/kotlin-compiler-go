@@ -70,6 +70,12 @@ Medians of 6 runs, Go 1.27.2, 4-core Intel Xeon (linux/amd64), on
   (`treeWriter.add`, 27%). A reused `Parser` keeps those buffers between
   files and cuts the parse to about 2.4× `syntax`. Runs of the same
   benchmark varied by up to 10%.
+- **So `kc` parses a file with `psi` only when its own parser rejects
+  it**, to report every syntax error as `kotlinc` does, with those of
+  `lower.TreeErrors`: code `kotlinc`'s grammar accepts and its FIR builder
+  rejects. Parsing every file with both would add about 35 ms, 5%, to
+  compiling kotlinx-coroutines-core: the parse ends after the class path's
+  index, so nothing hides it.
 
 ## analysis
 
