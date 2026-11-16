@@ -12,8 +12,9 @@
 # test/moshi/want, and Dagger's, Room's, Hilt's and kotlin-inject's (with
 # kotlin-inject-anvil's) the same way, over
 # test/{dagger,room,hilt,hilt-android,inject}/src, checks incremental
-# processing's dirty set over test/ic, and what a Java source's class
-# literals name in each of two rounds (test/rounds). "stock" does what
+# processing's dirty set over test/ic, what a Java source's class literals
+# name in each of two rounds (test/rounds), and that a run a processor
+# fails (test/errors) reports the processor's errors only. "stock" does what
 # "test" does, and then runs
 # each on stock KSP 2.3.13 (its embeddable Analysis API, Kotlin 2.4) over
 # the same sources: the processors' output must match the same want
@@ -475,6 +476,28 @@ if [ "$mode" = stock ]; then
 	diff -u "$here/test/rounds/want.txt" "$out/stock-rounds/resources/rounds.txt"
 	echo "rounds: stock KSP ok"
 fi
+
+# A run that a processor fails: test/errors/Fail.kt reports an error for
+# each class of test/errors/src it is asked to. KSP then checks the
+# sources, and must report nothing more for a Java source that names
+# Kotlin classes, passes a reference to a method with checked exceptions
+# and calls a method whose result has wildcard arguments. Stock KSP 2.3.13
+# fails in that check (it lacks an IntelliJ extension point), so it isn't
+# run.
+rm -rf "$out/errors-classes" "$out/errors"
+kotlinc -cp "$lib/kotlin-stdlib-2.4.21.jar:$kspwork/symbol-processing-api.jar" -d "$out/errors-classes" -jvm-target 17 -nowarn \
+	"$here/test/errors/Fail.kt"
+mkdir -p "$out/errors-classes/META-INF/services"
+echo FailProvider > "$out/errors-classes/META-INF/services/com.google.devtools.ksp.processing.SymbolProcessorProvider"
+if LD_PRELOAD=$java_home/lib/libjsig.so java -Dksp.backend=kc -Dkc.lib="$out/libkc.so" -Didea.home.path="$out" \
+	-cp "$out/runksp-classes:$out/errors-classes:$out/kc-aa.jar:$deps" RunKspKt "$here/test/errors/src" "$out/errors" \
+	"$lib/kotlin-stdlib-2.4.21.jar" > "$out/errors.txt" 2> "$out/errors.err"; then
+	echo "build.sh: test/errors: KSP didn't fail" >&2
+	exit 1
+fi
+{ grep -E '^(e: |KSP exited|Exception|[a-zA-Z.]+(Exception|Error))' "$out/errors.err" || true; } > "$out/errors.got"
+diff -u "$here/test/errors/want.txt" "$out/errors.got"
+echo "errors: ok"
 
 # test/dump/Dump.kt over test/dump/src, on kc and on stock KSP: what
 # KSP says about each declaration, and the files in the order KSP lists

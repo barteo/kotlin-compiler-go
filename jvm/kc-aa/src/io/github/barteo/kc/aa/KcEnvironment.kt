@@ -2,6 +2,8 @@ package io.github.barteo.kc.aa
 
 import com.google.devtools.ksp.processing.KSPConfig
 import com.google.devtools.ksp.processing.KSPJvmConfig
+import com.intellij.codeInsight.CustomExceptionHandler
+import com.intellij.core.CoreApplicationEnvironment
 import com.intellij.diagnostic.PluginException
 import com.intellij.diagnostic.PluginProblemReporter
 import com.intellij.openapi.Disposable
@@ -78,6 +80,18 @@ internal class KcEnvironment(val key: String, config: KSPConfig) {
             app.javaClass.getMethod("registerService", Class::class.java, Any::class.java)
                 .invoke(app, PluginProblemReporter::class.java, KcPluginProblemReporter)
         }
+        // What Java PSI's type inference needs and the core environment
+        // lacks. KSP checks the Java sources after a processor's error,
+        // which resolves their calls: one that takes a reference to a
+        // method with checked exceptions asks this extension point for
+        // handlers, and one whose result has wildcard arguments reads this
+        // registry key, which the IDE's Java plugin declares as true. The
+        // registry reads a key's system property before its own values.
+        if (!app.extensionArea.hasExtensionPoint(CustomExceptionHandler.KEY)) {
+            CoreApplicationEnvironment.registerApplicationExtensionPoint(CustomExceptionHandler.KEY, CustomExceptionHandler::class.java)
+        }
+        val freshVariables = "javac.fresh.variables.for.captured.wildcards.only"
+        if (System.getProperty(freshVariables) == null) System.setProperty(freshVariables, "true")
     }
 
     /** How many files [psiFile] parsed again because their text changed, and how many it reused. */
