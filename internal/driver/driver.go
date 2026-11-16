@@ -728,8 +728,6 @@ func frontendOf(opts Options) (string, error) {
 	return "", fmt.Errorf("unknown frontend %q: want syntax or psi", f)
 }
 
-// parse parses a source file with frontend. Like syntax.Parse, it returns
-// only the first error.
 // MetroPluginID is the id of Metro's compiler plugin, whose options
 // MetroOptions are.
 const MetroPluginID = "dev.zacsweers.metro.compiler"
@@ -760,13 +758,20 @@ func planMetro(files []*syntax.File, srcs []string, frontend string, lib *check.
 	return again, nil
 }
 
+// parse parses a source file with frontend. If it has syntax errors, it
+// returns all of them, as kotlinc reports them (see syntaxErrors).
 func parse(frontend, path, src string) (*syntax.File, []*syntax.Error) {
 	if frontend != "psi" {
-		return syntax.Parse(path, src)
+		f, errs := syntax.Parse(path, src)
+		if len(errs) > 0 {
+			return nil, syntaxErrors(path, src, nil, errs)
+		}
+		return f, nil
 	}
-	f, _, errs := lower.File(psi.Parse(path, src))
+	s := psi.Parse(path, src)
+	f, _, errs := lower.File(s)
 	if len(errs) > 0 {
-		return nil, errs[:1]
+		return nil, syntaxErrors(path, src, s, errs)
 	}
 	return f, nil
 }

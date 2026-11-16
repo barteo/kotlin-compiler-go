@@ -28,6 +28,10 @@ type parser struct {
 	// a qualified type name goes on past newlines: List<a.b
 	// .C>.
 	typeArgs int
+	// noIntersection is set for the type parseType parses next, which
+	// can't be an intersection, T & Any, as kotlinc's grammar doesn't let
+	// the type of as and is be (parseTypeRefWithoutIntersections).
+	noIntersection bool
 	// anonFuns numbers the file's anonymous functions, whose labels are
 	// fun$1, fun$2, ...
 	anonFuns int
@@ -53,7 +57,9 @@ func (p *parser) annotate(n any, as []Annotation) { Annotate(&p.annotated, n, as
 
 type bailout struct{}
 
-// Parse parses one source file. Parsing stops at the first syntax error.
+// Parse parses one source file. Parsing stops at the first syntax error,
+// which is the first of the errors it returns; the others are those found
+// before it that parsing went on after (see File.Errors).
 func Parse(path, src string) (f *File, errs []*Error) {
 	toks, lexErrs := Tokenize(path, src)
 	if len(lexErrs) > 0 {
@@ -65,7 +71,7 @@ func Parse(path, src string) (f *File, errs []*Error) {
 			if _, ok := r.(bailout); !ok {
 				panic(r)
 			}
-			f, errs = nil, []*Error{p.err}
+			f, errs = nil, append([]*Error{p.err}, p.later...)
 		}
 	}()
 	f = p.parseFile()
@@ -775,7 +781,16 @@ func (p *parser) parseImport() *Import {
 	return imp
 }
 
+// parseTypeWithoutIntersection parses a type that can't be T & Any, the
+// type of as, as?, is and !is.
+func (p *parser) parseTypeWithoutIntersection() *TypeRef {
+	p.noIntersection = true
+	return p.parseType()
+}
+
 func (p *parser) parseType() *TypeRef {
+	noIntersection := p.noIntersection
+	p.noIntersection = false
 	unsafe, composable, noInfer, exact := false, false, false, false
 	var wild Wildcards
 	var as []Annotation
@@ -796,6 +811,7 @@ func (p *parser) parseType() *TypeRef {
 		}
 	}
 	if as != nil {
+		p.noIntersection = noIntersection
 		t := p.parseType()
 		t.Annotations = append(as, t.Annotations...)
 		t.UnsafeVariance = t.UnsafeVariance || unsafe
@@ -888,7 +904,7 @@ func (p *parser) parseType() *TypeRef {
 	if p.quests() {
 		ref.Nullable = true
 	}
-	if p.at(AMP) {
+	if p.at(AMP) && !noIntersection {
 		// A definitely non-nullable type, T & Any, which the checker
 		// checks.
 		p.next()
@@ -1697,6 +1713,10 @@ func (p *parser) parseClass(m Modifiers) *ClassDecl {
 		NoContexts(&cd.CtorMods, "primary constructors", p)
 		if t := p.tok(); t.Kind == IDENT && t.Text == "constructor" {
 			p.next()
+			if p.peekPastNL() != LPAREN {
+				p.failAt(p.tok().Pos, "expected '(' after 'constructor'")
+			}
+			p.skipNL()
 		}
 	}
 	if p.at(LPAREN) {
@@ -2421,7 +2441,7 @@ func (p *parser) parseBinary(min int8) Expr {
 		op := p.op()
 		switch {
 		case k == IS || k == NOT_IS:
-			is := &Is{X: x, Ref: p.parseType(), Not: k == NOT_IS}
+			is := &Is{X: x, Ref: p.parseTypeWithoutIntersection(), Not: k == NOT_IS}
 			is.P = op.Pos
 			x = is
 		case k == IDENT && rangeWords[op.Text] == 0:
@@ -2453,7 +2473,7 @@ func (p *parser) parseAs() Expr {
 	x := p.parsePrefix()
 	for k := p.peekPastNL(); k == AS || k == AS_SAFE; k = p.peekPastNL() {
 		op := p.op()
-		as := &As{X: x, Ref: p.parseType(), Safe: op.Kind == AS_SAFE}
+		as := &As{X: x, Ref: p.parseTypeWithoutIntersection(), Safe: op.Kind == AS_SAFE}
 		as.P = op.Pos
 		x = as
 	}
