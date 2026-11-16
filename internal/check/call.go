@@ -138,6 +138,26 @@ func fewestSAM[C any](cs []C, args []syntax.Expr, cl func(C) *callee) ([]C, bool
 	return out, len(out) < len(cs)
 }
 
+// hidingExts returns the extensions name of a receiver of type rt
+// annotated @kotlin.internal.HidesMembers that may take call x, which
+// come before its members.
+func (c *Checker) hidingExts(name string, rt types.Type, x *syntax.Call) []callee {
+	var out []callee
+	for _, cl := range c.extCalleesFor(name, rt, x) {
+		if hidesMembers(cl.f) && c.mayTake(cl.f, x) {
+			out = append(out, cl)
+		}
+	}
+	return out
+}
+
+// hidesMembers reports whether function f of the program is annotated
+// @kotlin.internal.HidesMembers.
+func hidesMembers(f *types.FunSym) bool {
+	d, ok := f.Decl.(*syntax.FunDecl)
+	return ok && (d.Find("", "internal.HidesMembers") != nil || d.Find("", "HidesMembers") != nil)
+}
+
 // notLowPriority leaves out the candidates marked
 // @LowPriorityInOverloadResolution when any other fits, before the most
 // specific is chosen, as Kotlin does: foo(1) calls foo(Any) over a
@@ -1435,7 +1455,7 @@ func (c *Checker) byLambdaResult(x *syntax.Call, match []*candidate) *candidate 
 			li = i
 		}
 	}
-	if li < 0 {
+	if li < 0 || !slices.ContainsFunc(match, func(cd *candidate) bool { return !sourceNotByLambdaResult(cd.f) }) {
 		return nil
 	}
 	l := x.Args[li].(*syntax.Lambda)
@@ -1513,6 +1533,17 @@ func (c *Checker) byLambdaResult(x *syntax.Call, match []*candidate) *candidate 
 		c.checked[l] = bt // else checked again, its literal of the type expected
 	}
 	return maximal[0]
+}
+
+// sourceNotByLambdaResult reports whether f is a function of the program
+// not marked @OverloadResolutionByLambdaReturnType. A lambda's result
+// chooses only between overloads one of which is marked: e {} for
+// e(block: () -> String) and e(block: () -> Unit) is ambiguous. A library
+// function's mark isn't read: those of the standard library that a
+// lambda's result chooses between are marked.
+func sourceNotByLambdaResult(f *types.FunSym) bool {
+	d, ok := f.Decl.(*syntax.FunDecl)
+	return ok && d.Find("", "OverloadResolutionByLambdaReturnType") == nil && d.Find("", "kotlin.OverloadResolutionByLambdaReturnType") == nil
 }
 
 // branchesClass returns the class of the calls the branches of e, an if
@@ -2024,6 +2055,8 @@ func (c *Checker) suspendConstraint(cd *candidate, t, p types.Type, a syntax.Exp
 		if trial.sub(vt, p); trial.ok {
 			return types.InvalidType, false
 		}
+	} else if !c.subtype(vt, c.unsuspended(p)) {
+		return types.InvalidType, false // a () -> String? for a suspend () -> String
 	}
 	return c.unsuspended(p), true
 }
@@ -2461,7 +2494,9 @@ func (c *Checker) overriddenGiveWay(cs []*candidate) []*candidate {
 // a is more specific than one of number type b, though neither is a
 // subtype of the other: f(Int?) is more specific than f(Long?) for
 // f(null). As in kotlinc, Double comes before Float, Int before Long,
-// Short and Byte, and Short before Byte.
+// Short and Byte, and Short before Byte; any signed integer type before
+// any unsigned one, UInt before the other unsigned types, and UShort
+// before UByte.
 func numberMoreSpecific(a, b types.Type) bool {
 	if a.P || b.P || a.N && !b.N {
 		return false
@@ -2470,9 +2505,17 @@ func numberMoreSpecific(a, b types.Type) bool {
 	case types.Double:
 		return b.K == types.Float
 	case types.Int:
-		return b.K == types.Short || b.K == types.Byte || b.K == types.Long
-	case types.Short:
-		return b.K == types.Byte
+		return b.K == types.Short || b.K == types.Byte || b.K == types.Long || isUnsigned(b)
+	case types.Short, types.Byte, types.Long:
+		return a.K == types.Short && b.K == types.Byte || isUnsigned(b)
+	}
+	if isUnsigned(a) && isUnsigned(b) {
+		switch a.C.Name {
+		case "kotlin/UInt":
+			return b.C.Name != "kotlin/UInt"
+		case "kotlin/UShort":
+			return b.C.Name == "kotlin/UByte"
+		}
 	}
 	return false
 }

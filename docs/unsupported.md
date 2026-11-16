@@ -202,8 +202,8 @@ yet done. [Design](design.md) describes how `kc` compiles it.
 
 - Intersection types (`A & B`) are inferred only for the shared
   supertypes of Kotlin classes and generic Java ones (a Java class's
-  non-generic interfaces only when nothing else is shared), smart casts between a class type and an unrelated
-  interface, or of such an intersection to another (`C & A & B`),
+  non-generic interfaces only when nothing else is shared), smart casts between a class type, `String` or a
+  primitive type and an unrelated interface (`Int & A`), or of such an intersection to another (`C & A & B`),
   smart casts of a value of a type parameter's type to a class
   type, a primitive type or `String` (`String & T`, `Int & T`), identity or safe equality of two
   generic class types or a cast of one to the other (`Box<T> & Box<A>`),
@@ -274,7 +274,18 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   the parameter (`Out3<*>` is an `Out3<Out3<*>>` for `Out3<out T :
   Out3<T>>`), as K2 approximates its capture. The capture of an
   `in` projection is checked against the variable's bounds only at the
-  top of an argument's type.
+  top of an argument's type. A property written through a projected
+  receiver takes `Nothing` for a generic extension property's type
+  parameter its receiver projects out, and for an invariant argument of
+  a member property's type that a star captures, checked after the
+  value is inferred against the read type.
+- A lambda's result chooses between overloads of the program's
+  functions only when one of them is marked
+  `@OverloadResolutionByLambdaReturnType`, as in K2, but between
+  library functions' whether or not they are, since `kc` doesn't read
+  the mark from class files. `@HidesMembers` is read only on the
+  program's functions; the standard library's `forEach` hides only
+  members that just Java's collection interfaces declare.
 - `@OnlyInputTypes` (`contains`, `get`, `assertEquals`) is checked only
   when the types a call's variable is constrained by have no captured
   types (star projections), and the inferred type isn't an

@@ -1,6 +1,7 @@
 package check
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
@@ -216,6 +217,22 @@ func (c *Checker) enclosingSubclass(outer *types.ClassSym) *types.ClassSym {
 	return nil
 }
 
+// typeParamInScope reports whether type parameter p is one the code
+// being checked sees, even where a parameter of the same name shadows it:
+// an inner class's own D in its supertype list, inside an outer class
+// with a D of its own.
+func (c *Checker) typeParamInScope(p *types.TypeParamSym) bool {
+	if slices.Contains(c.tparams, p) {
+		return true
+	}
+	for k := c.lookupCls; k != nil && (k.Anonymous || k.Inner || k.Local); k = k.Outer {
+		if slices.Contains(c.anon[k].tparams, p) {
+			return true
+		}
+	}
+	return false
+}
+
 // innerType resolves a type of an inner class of a generic class: its own
 // type arguments, then the outer class's, of the type written before it,
 // Outer<A>.Inner<B>, or in the outer class's code, its own type
@@ -232,10 +249,18 @@ func (c *Checker) innerType(ref *syntax.TypeRef) types.Type {
 	}
 	own := len(cls.TypeParams) - cls.OuterParams
 	args := make([]types.Arg, 0, len(cls.TypeParams))
-	if len(ref.Args) != own {
+	// On a callable reference's left side, kotlinc takes more arguments
+	// than the class's own for its outer classes', with a warning.
+	extra := 0
+	if c.refLHS && len(ref.Args) > own && len(ref.Args) <= len(cls.TypeParams) {
+		extra = len(ref.Args) - own
+	} else if len(ref.Args) != own {
 		c.errorf(ref.P, "%s expected for class %s", countArgs(own), cls.DisplayName())
 		return types.InvalidType
 	}
+	inner := c.refLHS
+	c.refLHS = false
+	defer func() { c.refLHS = inner }()
 	for _, a := range ref.Args {
 		arg := types.Arg{V: a.Variance}
 		if a.Variance != types.Star {
@@ -258,8 +283,8 @@ func (c *Checker) innerType(ref *syntax.TypeRef) types.Type {
 		outer = k.This()
 	} else {
 		// In the outer class's code, where its type parameters are.
-		for _, p := range cls.TypeParams[own:] {
-			if c.lookupTypeParam(p.Name) == p {
+		for _, p := range cls.TypeParams[own+extra:] {
+			if c.typeParamInScope(p) {
 				continue
 			}
 			if strings.Contains(ref.Name, ".") { // G.I for G<T>.I
@@ -276,8 +301,8 @@ func (c *Checker) innerType(ref *syntax.TypeRef) types.Type {
 		c.errorf(ref.P, "%s is not an inner class of %s", ref.Name, outer)
 		return types.InvalidType
 	}
-	for i := range cls.TypeParams[own:] {
-		args = append(args, sup.A.Get(i))
+	for i := range cls.TypeParams[own+extra:] {
+		args = append(args, sup.A.Get(extra+i))
 	}
 	return c.nullable(types.GenericType(cls, args), ref)
 }

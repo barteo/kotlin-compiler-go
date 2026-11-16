@@ -657,6 +657,16 @@ func (s Subst) applyArgA(a Arg, pos, v Variance, exact bool) (Arg, bool) {
 					return Arg{V: Out, T: a.T}, r.V == Out || r.V == In
 				}
 				return r, true
+			case pos == In && r.V == In && a.V == In:
+				// Written to, in of an in projection's capture is in its
+				// parameter's bound: B<in CharSequence>.foo(x: A<in E>)
+				// takes an A<in Any?>.
+				if p := a.T.Param(); len(p.Bounds) == 0 {
+					return Arg{V: In, T: withFlags(AnyType.Nullable(), a.T)}, true
+				} else if len(p.Bounds) == 1 && !p.Bounds[0].HasParams() {
+					return Arg{V: In, T: withFlags(p.Bounds[0], a.T)}, true
+				}
+				return Arg{V: a.V, T: withFlags(r.T, a.T)}, true
 			case r.V == Star:
 				// Read, a star in an invariant argument is a capture
 				// approximated, which makes the argument out: T of
