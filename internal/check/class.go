@@ -1002,6 +1002,8 @@ func (c *Checker) checkInheritance(d *syntax.ClassDecl) {
 			if c.u.ext.class("java/lang/Object") != nil || !anyMember[f.Name] {
 				c.errorf(fd.P, "'%s' overrides nothing", f.Name)
 			}
+		case fd.Override && javaHidden(cls, over):
+			c.errorf(fd.P, "'%s' overrides nothing", f.Name)
 		case len(over) > 0 && !fd.Override && !platformOnly(over):
 			c.errorf(fd.P, "'%s' hides member of supertype '%s' and needs 'override' modifier", f.Name, over[0].Owner.DisplayName())
 		}

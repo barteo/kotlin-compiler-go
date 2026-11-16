@@ -3251,3 +3251,30 @@ func (c *Checker) javaBoundCycle(ref *syntax.TypeRef, t types.Type) {
 		}
 	}
 }
+
+// javaHidden reports whether the functions over, which a function of cls
+// overrides, are all hidden by methods of Java classes cls inherits from
+// that override them with other parameter types, as Base's foo(Box box),
+// with a raw Box, does I<String>'s foo(Box<T>): the function overrides
+// nothing, as in K2.
+func javaHidden(cls *types.ClassSym, over []*types.FunSym) bool {
+	for _, g := range over {
+		hidden := false
+		cls.Supertypes(func(s *types.ClassSym) bool {
+			if s == cls || s == g.Owner || !isJavaClass(s) || !isJavaClass(g.Owner) || g.Owner.Name == charSequence || !s.IsSubclassOf(g.Owner) {
+				return true
+			}
+			for _, m := range s.Methods[g.Name] {
+				if !m.Static && !m.Private && len(m.Params) == len(g.Params) && !slices.Contains(over, m) && jvmDesc(m) == jvmDesc(g) {
+					hidden = true
+					return false
+				}
+			}
+			return true
+		})
+		if !hidden {
+			return false
+		}
+	}
+	return len(over) > 0
+}
