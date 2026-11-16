@@ -2614,6 +2614,9 @@ func (c *Checker) javaCall(x *syntax.Call, fn *syntax.Member, rt types.Type, wan
 		c.args(x, nil)
 		return types.InvalidType
 	}
+	if hides := c.hidingExts(fn.Name, rt, x); len(hides) > 0 {
+		return c.resolve(x, hides, want, sink)
+	}
 	ms := c.lowPriorityGivesWay(c.accessible(cls, c.javaMethods(cls, fn.Name), c.declaredClass(fn.X, cls)), fn.Name, rt, x)
 	if x.Operator {
 		ms = slices.DeleteFunc(slices.Clone(ms), varargNonOperator)

@@ -138,6 +138,26 @@ func fewestSAM[C any](cs []C, args []syntax.Expr, cl func(C) *callee) ([]C, bool
 	return out, len(out) < len(cs)
 }
 
+// hidingExts returns the extensions name of a receiver of type rt
+// annotated @kotlin.internal.HidesMembers that may take call x, which
+// come before its members.
+func (c *Checker) hidingExts(name string, rt types.Type, x *syntax.Call) []callee {
+	var out []callee
+	for _, cl := range c.extCalleesFor(name, rt, x) {
+		if hidesMembers(cl.f) && c.mayTake(cl.f, x) {
+			out = append(out, cl)
+		}
+	}
+	return out
+}
+
+// hidesMembers reports whether function f of the program is annotated
+// @kotlin.internal.HidesMembers.
+func hidesMembers(f *types.FunSym) bool {
+	d, ok := f.Decl.(*syntax.FunDecl)
+	return ok && (d.Find("", "internal.HidesMembers") != nil || d.Find("", "HidesMembers") != nil)
+}
+
 // notLowPriority leaves out the candidates marked
 // @LowPriorityInOverloadResolution when any other fits, before the most
 // specific is chosen, as Kotlin does: foo(1) calls foo(Any) over a
