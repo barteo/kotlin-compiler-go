@@ -148,6 +148,7 @@ private class KcSession(private val config: KSPConfig, @Suppress("UNUSED_PARAMET
         }
         if (this::round.isInitialized && round !== next) round.token.invalidation = "replaced by the next round"
         round = next
+        environment.kotlinClasses.round = next
         provider.session = KcAnalysis.session(KcAnalysis(round, module, libraryModule))
         t.mark("round")
         t.print("round files=${paths.size} same=${model.same} psi-reused=${environment.reused - reused} psi-reparsed=${environment.reparsed - reparsed}")

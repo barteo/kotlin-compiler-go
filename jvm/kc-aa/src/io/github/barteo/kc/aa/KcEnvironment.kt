@@ -9,6 +9,7 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.fileEditor.impl.LoadTextUtil
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.psi.PsiElementFinder
 import com.intellij.psi.PsiFile
 import com.intellij.psi.PsiManager
 import com.intellij.psi.impl.PsiManagerEx
@@ -60,6 +61,7 @@ internal class KcEnvironment(val key: String, config: KSPConfig) {
     val project get() = env.project
     val provider = KcSessionProvider(project)
     private val psiManager = PsiManager.getInstance(project)
+    val kotlinClasses = KcKotlinClassFinder(psiManager)
 
     init {
         // MockProject.registerService, called reflectively: kotlinc can't see
@@ -67,6 +69,7 @@ internal class KcEnvironment(val key: String, config: KSPConfig) {
         val register = project.javaClass.getMethod("registerService", Class::class.java, Any::class.java)
         register.invoke(project, KaSessionProvider::class.java, provider)
         register.invoke(project, KotlinModificationTrackerFactory::class.java, KcModificationTrackers)
+        PsiElementFinder.EP.getPoint(project).registerExtension(kotlinClasses, disposable)
         // The application's, which the environments of a process share, as
         // KSP's standalone backend registers it: PluginException.createByClass
         // needs one.
@@ -186,6 +189,7 @@ internal object KcEnvironments {
     @Synchronized
     fun release(e: KcEnvironment) {
         e.provider.clear()
+        e.kotlinClasses.round = null
         if (!enabled) {
             e.dispose()
             return

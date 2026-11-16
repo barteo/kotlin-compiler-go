@@ -11,15 +11,18 @@
 # test/moshi/src (test/RunKsp.kt) and compares what it generates with
 # test/moshi/want, and Dagger's, Room's, Hilt's and kotlin-inject's (with
 # kotlin-inject-anvil's) the same way, over
-# test/{dagger,room,hilt,inject}/src, and checks incremental processing's dirty
-# set over test/ic. "stock" does what "test" does, and then runs
+# test/{dagger,room,hilt,hilt-android,inject}/src, checks incremental
+# processing's dirty set over test/ic, and what a Java source's class
+# literals name in each of two rounds (test/rounds). "stock" does what
+# "test" does, and then runs
 # each on stock KSP 2.3.13 (its embeddable Analysis API, Kotlin 2.4) over
 # the same sources: the processors' output must match the same want
 # directories, and the slice's want.txt but for test/slice/stock.diff.
 # It also runs test/dump/Dump.kt over test/dump/src on both and compares
 # their outputs with each other.
 # Room's jars come from Google's Maven repository (GOOGLE_MAVEN_REPO), the
-# rest from Maven Central (MAVEN_REPO).
+# rest from Maven Central (MAVEN_REPO). hilt-android is an Android archive,
+# whose classes.jar unzip extracts.
 #
 # "ksp" runs KSP's own unit tests (its kotlin-analysis-api test suite, with
 # the processors of its test-utils) on the kc backend with ksptest/KspSuite.kt,
@@ -128,6 +131,15 @@ jars() {
 		cp=$cp:$out/m2/$a-$v.jar
 	done
 	echo "$cp"
+}
+# aar GROUP:ARTIFACT:VERSION fetches that Android archive and prints the
+# path of its classes.jar.
+aar() {
+	local g a v
+	IFS=: read -r g a v <<< "$1"
+	fetch "${g//.//}/$a/$v/$a-$v.aar"
+	[ -s "$out/m2/$a-$v-classes.jar" ] || unzip -p "$out/m2/$a-$v.aar" classes.jar > "$out/m2/$a-$v-classes.jar"
+	echo "$out/m2/$a-$v-classes.jar"
 }
 
 mode=${1:-}
@@ -254,12 +266,12 @@ if [ "$mode" = stock ]; then
 	diff -u "$here/test/slice/stock.diff" "$out/stock-slice.diff"
 	echo "slice: stock KSP differs as recorded"
 fi
-# stock NAME SRC LIBS PROCS runs PROCS on stock KSP over SRC, with
-# libraries LIBS, and compares the output with test/NAME/want.
+# stock NAME SRC LIBS PROCS [JAVA_OPTS] runs PROCS on stock KSP over SRC,
+# with libraries LIBS, and compares the output with test/NAME/want.
 stock() {
 	[ "$mode" = stock ] || return 0
 	rm -rf "$out/stock-$1"
-	java -cp "$out/runksp-stock$4$stockcp" RunKspKt "$2" "$out/stock-$1" "$3" > "$out/stock-$1.txt"
+	java ${5:-} -cp "$out/runksp-stock$4$stockcp" RunKspKt "$2" "$out/stock-$1" "$3" > "$out/stock-$1.txt"
 	rm -rf "$out/stock-$1/caches" "$out/stock-$1/classes"
 	diff -ru "$here/test/$1/want" "$out/stock-$1"
 	echo "$1: stock KSP ok"
@@ -404,6 +416,30 @@ diff -ru "$here/test/hilt/want" "$out/hilt"
 echo "hilt: ok"
 stock hilt "$here/test/hilt/src" "$hiltlibs" "$procs"
 
+# Hilt's Android processors over test/hilt-android/src, with the options
+# Hilt's Gradle plugin passes: @AndroidEntryPoint and @HiltAndroidApp
+# without a base class, which Hilt reads from the annotation's default
+# (Void.class) in hilt-android's class file, and the Java sources Hilt
+# generates for a @HiltViewModel and a non-public module, whose class
+# literals name Kotlin source classes. test/hilt-android/stubs stands in
+# for the Android classes Hilt looks up. A library and a source root that
+# don't exist are listed, as a build lists an output directory nothing is
+# written to and a source set without sources.
+rm -rf "$out/hilt-android" "$out/hilt-android-stubs"
+mkdir -p "$out/hilt-android-stubs"
+javac -d "$out/hilt-android-stubs" $(find "$here/test/hilt-android/stubs" -name '*.java')
+androidlibs=$hiltlibs:$(aar com.google.dagger:hilt-android:2.59.2):$out/hilt-android-stubs:$out/hilt-android-missing
+androidsrc=$here/test/hilt-android/src:$here/test/hilt-android/missing
+androidopts="-Dksp.arg.dagger.hilt.android.internal.disableAndroidSuperclassValidation=true"
+androidopts="$androidopts -Dksp.arg.dagger.hilt.internal.useAggregatingRootProcessor=false"
+LD_PRELOAD=$java_home/lib/libjsig.so java $androidopts -Dksp.backend=kc -Dkc.lib="$out/libkc.so" -Didea.home.path="$out" \
+	-cp "$out/runksp-classes$procs:$out/kc-aa.jar:$deps" RunKspKt "$androidsrc" "$out/hilt-android" "$androidlibs" \
+	> "$out/hilt-android.txt"
+rm -rf "$out/hilt-android/caches" "$out/hilt-android/classes"
+diff -ru "$here/test/hilt-android/want" "$out/hilt-android"
+echo "hilt-android: ok"
+stock hilt-android "$androidsrc" "$androidlibs" "$procs" "$androidopts"
+
 # kotlin-inject's processor with kotlin-inject-anvil's over
 # test/inject/src: typealiased qualifiers and function types, assisted and
 # function injection, generated components that later rounds merge.
@@ -418,6 +454,27 @@ rm -rf "$out/inject/caches" "$out/inject/classes"
 diff -ru "$here/test/inject/want" "$out/inject"
 echo "inject: ok"
 stock inject "$here/test/inject/src" "$injectlibs" "$procs"
+
+# test/rounds/Rounds.kt over test/rounds/src: the class literals in a Java
+# source's annotation that name Kotlin source classes, one of which the
+# processor generates in its first round and the second round must find.
+rm -rf "$out/rounds-classes" "$out/rounds"
+kotlinc -cp "$lib/kotlin-stdlib-2.4.21.jar:$kspwork/symbol-processing-api.jar" -d "$out/rounds-classes" -jvm-target 17 -nowarn \
+	"$here/test/rounds/Rounds.kt"
+mkdir -p "$out/rounds-classes/META-INF/services"
+echo RoundsProvider > "$out/rounds-classes/META-INF/services/com.google.devtools.ksp.processing.SymbolProcessorProvider"
+LD_PRELOAD=$java_home/lib/libjsig.so java -Dksp.backend=kc -Dkc.lib="$out/libkc.so" -Didea.home.path="$out" \
+	-cp "$out/runksp-classes:$out/rounds-classes:$out/kc-aa.jar:$deps" RunKspKt "$here/test/rounds/src" "$out/rounds" \
+	"$lib/kotlin-stdlib-2.4.21.jar" > "$out/rounds.txt"
+diff -u "$here/test/rounds/want.txt" "$out/rounds/resources/rounds.txt"
+echo "rounds: ok"
+if [ "$mode" = stock ]; then
+	rm -rf "$out/stock-rounds"
+	java -cp "$out/runksp-stock:$out/rounds-classes$stockcp" RunKspKt "$here/test/rounds/src" "$out/stock-rounds" \
+		"$lib/kotlin-stdlib-2.4.21.jar" > "$out/stock-rounds.txt"
+	diff -u "$here/test/rounds/want.txt" "$out/stock-rounds/resources/rounds.txt"
+	echo "rounds: stock KSP ok"
+fi
 
 # test/dump/Dump.kt over test/dump/src, on kc and on stock KSP: what
 # KSP says about each declaration, and the files in the order KSP lists
