@@ -13,8 +13,9 @@ import (
 // than one supertype and doesn't override itself, grouped by signature:
 // each group holds the members of the supertypes that no other member of
 // the group overrides, as Kotlin's intersection override of them has.
-// Only the program's methods are grouped, and not those of an interface
-// that d delegates to, whose members delegation implements.
+// Only the program's methods, of Kotlin or Java sources, are grouped, and
+// not those of an interface that d delegates to, whose members delegation
+// implements.
 func (c *Checker) inheritedFunGroups(d *syntax.ClassDecl) [][]*types.FunSym {
 	cls := d.Sym
 	this := cls.This()
@@ -52,14 +53,16 @@ func (c *Checker) inheritedFunGroups(d *syntax.ClassDecl) [][]*types.FunSym {
 					continue
 				}
 				_, ok := g.Decl.(*syntax.FunDecl)
-				add(g, !ok || s.External || slices.ContainsFunc(delegated, func(i *types.ClassSym) bool { return i.IsSubclassOf(s) }))
+				// And a method of the program's Java sources.
+				java := s.External && isJavaClass(s) && c.u.ext.javaSource(s)
+				add(g, !ok && !java || s.External && !java || slices.ContainsFunc(delegated, func(i *types.ClassSym) bool { return i.IsSubclassOf(s) }))
 			}
 		}
 		return true
 	})
 	var out [][]*types.FunSym
 	for i, gr := range groups {
-		if external[i] || len(gr) < 2 {
+		if external[i] || len(gr) < 2 || !sameJVMParams(gr) {
 			continue
 		}
 		// The class's own override of them.
@@ -82,6 +85,26 @@ func (c *Checker) inheritedFunGroups(d *syntax.ClassDecl) [][]*types.FunSym {
 		out = append(out, gr)
 	}
 	return out
+}
+
+// sameJVMParams reports whether the members gr of a group, if it has a
+// Java method, all take the same parameters on the JVM: a Java method
+// that takes an Integer and a Kotlin function that takes an Int, an int,
+// are overloads, not one member, as in K2.
+func sameJVMParams(gr []*types.FunSym) bool {
+	if !slices.ContainsFunc(gr, func(g *types.FunSym) bool { return isJavaClass(g.Owner) }) {
+		return true
+	}
+	params := func(g *types.FunSym) string {
+		d := jvmDesc(g)
+		return d[:strings.IndexByte(d, ')')+1]
+	}
+	for _, g := range gr {
+		if jvmDesc(g) == "" || params(g) != params(gr[0]) {
+			return false
+		}
+	}
+	return true
 }
 
 // checkInheritedFuns checks the methods class d inherits from more than
