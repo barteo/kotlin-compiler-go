@@ -1,8 +1,8 @@
 # Conformance with kotlinc's own tests
 
 ```sh
-bench/kotlin-tests.sh box            # 7,480 box tests, about 15 s after the first clone
-bench/kotlin-tests.sh diagnostics    # 10,827 diagnostics tests, about 40 s
+bench/kotlin-tests.sh box            # 7,480 box tests, about 20 s after the first clone
+bench/kotlin-tests.sh diagnostics    # 10,827 diagnostics tests, about 45 s
 ```
 
 The [survey](survey.md) counts the features real code uses, but can't say
@@ -55,7 +55,8 @@ and leaves each test's own classes to that test's check, as
 `analysis/ka` does for KSP. Only class paths of the JDK and jars are
 kept, keyed by their size and modification time and by the settings the
 library reads classes with; a later module of a test, compiled against
-the earlier ones' output directories, gets a class path of its own.
+the output directories of the modules it depends on, gets a class path
+of its own.
 
 On 4 CPUs this takes each suite from about 3 minutes to 10 to 15
 seconds; each server peaks at about 225 MB.
@@ -67,8 +68,8 @@ seconds; each server peaks at about 225 MB.
 
 Those times are from before the diagnostics tests with Java sources
 ran. A compile with Java sources gets a class path of its own, since
-the sources are added to it, so those 1,229 tests take most of the
-diagnostics suite's 40 s now.
+the sources are added to it, so those 1,221 tests take most of the
+diagnostics suite's 45 s now.
 
 A server compiles one test at a time, so a panic, which ends it with
 its trace as it would end `kc`, is charged to the test that caused it,
@@ -84,20 +85,24 @@ like. `-serve=false` rules out such order effects.
 
 ## Box tests
 
-The harness compiles a test's modules (`// MODULE: main(lib)`,
-`// FILE: a.kt`) in order, each against the ones before it, with
-`kc -features`, which names the unsupported feature behind an error.
+The harness compiles a test's modules (`// MODULE: main(lib)(friend)`,
+`// FILE: a.kt`) in order, each against the modules it names as
+dependencies and friends, as the test infrastructure does: only those,
+not theirs, so a library's own dependencies are missing from the class
+path unless the module names them too. Friends' output directories are
+also its `-friend-paths`. It compiles with `kc -features`, which names the unsupported feature behind an error.
 It then runs `box()` in a fresh class loader of a long-lived JVM
 (`bench/conformance/BoxRunner.java`), with a 10 s timeout. As the test
 infrastructure does, it puts the standard library and kotlin-test on the
 class path (and kotlin-reflect for `WITH_REFLECT`), adds the helper
 sources for `WITH_COROUTINES`, `CHECK_TYPE` and `INFERENCE_HELPERS`,
 turns `OPTIONAL_JVM_INLINE_ANNOTATION` into `@JvmInline` and
-`JVM_DEFAULT_MODE: disable` into `-jvm-default=disable`, removes
+a module's `JVM_DEFAULT_MODE` (or the test's, before its first
+module) into `-jvm-default`, removes
 diagnostic markup, and looks for `box()` in the class `kotlinc` puts it
 in. It skips tests for other backends, tests `kotlinc`'s JVM backend
 ignores, and tests that need `LANGUAGE` features, compiler arguments,
-Java sources, or modules with friends or `dependsOn`. A `LANGUAGE` that
+Java sources, or modules with `dependsOn`. A `LANGUAGE` that
 only sets features as Kotlin 2.4 has them by default, or as `kc`
 follows them (`+AllowAccessToProtectedFieldFromSuperCompanion`,
 `+AllowReifiedTypeInCatchClause`,
@@ -174,7 +179,7 @@ Four things differ from the test infrastructure:
   frontend even when valid, so only its marks count.
 - **Directory options.** Directories whose test classes give `kotlinc`
   options (the return value checker in `crv/`, explicit API mode, header
-  mode, strict equality, `-jvm-default` modes) are skipped, as are tests
+  mode, strict equality) are skipped, as are tests
   with `LANGUAGE` features (but those on by default in Kotlin 2.4),
   multiplatform modules or `IGNORE_FIR_DIAGNOSTICS`.
 - **Switched-off backend errors.** A test that switches off
@@ -207,39 +212,37 @@ Kotlin 2.4.21's tests on `kc`:
 
 | Box tests | Tests | Share of run |
 |:---|---:|---:|
-| run (of 7,480) | 6,543 | |
-| pass | 6,543 | 100% |
+| run (of 7,480) | 6,575 | |
+| pass | 6,575 | 100% |
 | check error, parse/unsupported, crash, codegen error, timeout | 0 | |
 | VerifyError, linkage error, exception, wrong result | 0 | |
 
 | Diagnostics tests | Tests | Share of run |
 |:---|---:|---:|
-| run (of 10,827) | 8,515 | |
-| rejects invalid | 4,098 | 48.1% |
-| accepts valid | 3,996 | 46.9% |
-| accepts invalid | 286 | 3.4% |
-| rejects valid | 117 | 1.4% |
-| parse/unsupported | 16 | 0.2% |
+| run (of 10,827) | 8,532 | |
+| rejects invalid | 4,233 | 49.6% |
+| accepts valid | 4,104 | 48.1% |
+| accepts invalid | 159 | 1.9% |
+| rejects valid | 20 | 0.2% |
+| parse/unsupported | 14 | 0.2% |
 | crash | 1 | |
 | harness error (`javac`) | 1 | |
 
-`kc` agrees with `kotlinc` on 93% of the diagnostics tests, and reports
-15,800 of the 21,506 expected errors (73%) on their lines. Tests with
-Java sources, which earlier runs skipped, add 1,223 tests to the run,
-and 124 of the 286 that *accept invalid* code. The reports break the
-failures down; the largest groups are:
+`kc` agrees with `kotlinc` on 98% of the diagnostics tests, and reports
+16,633 of the 21,532 expected errors (77%) on their lines. Tests with
+Java sources are 1,221 of the run, and 56 of the 159 that *accept
+invalid* code. The reports break the failures down; the largest groups
+are:
 
 - **Silent miscompilation**: none. No box test that `kc` compiles
   gives a wrong result, throws, or fails to verify or link.
-- **Accepts invalid**, by the tests that expect each error: unresolved
-  names (`UNRESOLVED_REFERENCE` 35), overload ambiguities
-  (`OVERLOAD_RESOLUTION_AMBIGUITY` 22), argument type mismatches
-  (`ARGUMENT_TYPE_MISMATCH` 18) and missing dependency classes
-  (`MISSING_DEPENDENCY_CLASS` 16).
-- **Rejects valid**, by `kc`'s first error: type mismatches (50),
-  inference failures (32), unresolved names, imports and labels (30),
-  and ambiguous calls and assignment operators (10). No box test is
-  rejected.
+- **Accepts invalid**, by the tests that expect each error: argument
+  type mismatches (`ARGUMENT_TYPE_MISMATCH` 17), unresolved names
+  (`UNRESOLVED_REFERENCE` 15), invisible references
+  (`INVISIBLE_REFERENCE` 7) and unsupported constructs (`UNSUPPORTED` 7).
+- **Rejects valid**, by `kc`'s first error: unresolved names and
+  imports (7), type mismatches (5), ambiguous calls (3), and five others
+  of one test each. No box test is rejected.
 - **Crashes**: a test with Java sources, a stack overflow on a
   recursive bound. The harness error is a test that declares `java.util.Date`, which `javac`
   compiles only with `--patch-module`.

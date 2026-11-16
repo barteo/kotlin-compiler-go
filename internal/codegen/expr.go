@@ -1248,8 +1248,11 @@ func (g *gen) invokeJava(f *types.FunSym, rt types.Type) {
 		return
 	}
 	owner := "java/lang/Object"
-	if rt.K == types.Class {
+	switch {
+	case rt.K == types.Class:
 		owner = rt.C.Name
+	case rt.K == types.StringType.K && f.Owner != nil && f.Owner.Name == "java/lang/String":
+		owner = "java/lang/String" // String's subSequence
 	}
 	g.code.Invoke(cf.INVOKEVIRTUAL, owner, f.JVM(), d)
 }
@@ -1371,6 +1374,8 @@ func (g *gen) member(x *syntax.Member) {
 			g.invokeJava(x.Getter, rt)
 			if o := x.Getter.Owner; o != nil && o.KotlinAnnotation() {
 				g.kotlinClasses(cf.RetDesc(x.Getter.Desc), x.Getter.Ret)
+			} else if o != nil && o.External && o.Retention != types.NoRetention {
+				g.kotlinClasses(cf.RetDesc(x.Getter.Desc), x.T) // a Java annotation's Class element
 			}
 		})
 		return
@@ -1428,7 +1433,11 @@ func (g *gen) member(x *syntax.Member) {
 	if p.Kind == types.Global {
 		// A top-level property by its qualified name: a.b.x.
 		g.global(p)
-		g.coerce(p.Type, x.T)
+		if x.Cast {
+			g.smartCast(p.Type, x.T) // after a.b.x is T
+		} else {
+			g.coerce(p.Type, x.T)
+		}
 		return
 	}
 	if p.Const && !x.Safe && objectQualifier(x.X) {

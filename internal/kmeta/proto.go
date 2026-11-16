@@ -180,6 +180,7 @@ type Implies struct {
 	Returns, Param int
 	Is             *Type
 	Holds          bool
+	Negated        bool // with Holds: the parameter is false, implies (!p)
 }
 
 // The values of Implies.Returns.
@@ -330,7 +331,7 @@ type TypeAlias struct {
 	Underlying *Type
 	Expanded   *Type
 	// Annotations are its annotations, which metadata keeps, as a type
-	// alias has nothing on the JVM to annotate. Decoding leaves them out.
+	// alias has nothing on the JVM to annotate.
 	Annotations []*Annotation
 }
 
@@ -874,6 +875,8 @@ func impliedBy(returns int, x expression) (Implies, bool) {
 		return Implies{Returns: returns, Param: x.param, Is: x.is}, true
 	case x.param >= 0 && x.flags == 0 && x.is == nil && x.constant < 0:
 		return Implies{Returns: returns, Param: x.param, Holds: true}, true
+	case x.param >= 0 && x.flags == 1 && x.is == nil && x.constant < 0:
+		return Implies{Returns: returns, Param: x.param, Holds: true, Negated: true}, true
 	}
 	return Implies{}, false
 }
@@ -1142,6 +1145,8 @@ func (s scope) typeAlias(msg []byte) *TypeAlias {
 			a.Expanded = s.typ(d.bytes())
 		case 7:
 			a.Expanded = s.typeID(d.int())
+		case 8:
+			a.Annotations = append(a.Annotations, s.annotation(d.bytes()))
 		default:
 			d.skip(w)
 		}

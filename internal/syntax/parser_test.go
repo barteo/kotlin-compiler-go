@@ -128,7 +128,6 @@ func TestParseValid(t *testing.T) {
 
 func TestParseErrors(t *testing.T) {
 	tests := []struct{ src, pos, msg string }{
-		{"fun f() { val x }", "1:15", "this variable must either have an explicit type or be initialized"},
 		{"fun f() { 1 + }", "1:15", "expected expression"},
 		{"fun f() { val a = 1 val b = 2 }", "1:21", "expected newline or ';'"},
 		{"val <T> x = 1", "1:1", "type parameters of a property must be used in its receiver type"},
@@ -167,6 +166,34 @@ func TestParseErrors(t *testing.T) {
 			}
 			e := errs[0]
 			if e.Pos.String() != tt.pos || !strings.Contains(e.Msg, tt.msg) {
+				t.Errorf("got %s: %s, want %s: %s", e.Pos, e.Msg, tt.pos, tt.msg)
+			}
+		})
+	}
+}
+
+// TestLaterErrors checks errors the parser reports and parses on after.
+func TestLaterErrors(t *testing.T) {
+	tests := []struct{ src, pos, msg string }{
+		{"fun f() { val x }", "1:15", "this variable must either have an explicit type or be initialized"},
+		{"fun f() { enum class E { A } }", "1:16", "local enum classes are not allowed"},
+		{"interface I<in in T>", "1:16", "repeated 'in'"},
+		{"interface I<in out T>", "1:13", "modifier 'in' is incompatible with 'out'"},
+		{"enum class E { public A }", "1:16", "modifier 'public' is not applicable to 'enum entry'"},
+		{"class C { constructor(val x: Int) }", "1:23", "'val' on secondary constructor parameter is not allowed"},
+		{"fun f(var x: Int) {}", "1:7", "'var' on function parameter is not allowed"},
+		{"val f: suspend (() -> Unit)? = null", "1:8", "modifier 'suspend' is not applicable to 'nullable type'"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.src, func(t *testing.T) {
+			f, errs := Parse("t.kt", tt.src)
+			if len(errs) > 0 {
+				t.Fatalf("unexpected error: %v", errs[0])
+			}
+			if len(f.Errors) == 0 {
+				t.Fatal("expected an error")
+			}
+			if e := f.Errors[0]; e.Pos.String() != tt.pos || !strings.Contains(e.Msg, tt.msg) {
 				t.Errorf("got %s: %s, want %s: %s", e.Pos, e.Msg, tt.pos, tt.msg)
 			}
 		})

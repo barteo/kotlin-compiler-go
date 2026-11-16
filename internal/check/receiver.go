@@ -901,6 +901,12 @@ func (c *Checker) implicitArg(x *syntax.Call, ft types.Type) {
 // object expression in a class with one too.
 func (c *Checker) memberExtFirst(fn *syntax.Member, x *syntax.Call) bool {
 	rt, ok := c.peekType(fn.X)
+	if lit, isLit := fn.X.(*syntax.IntLit); isLit && !lit.Unsigned {
+		rt, ok = types.IntType, true // 5.b()
+		if lit.Long {
+			rt = types.LongType
+		}
+	}
 	if !ok {
 		if !simpleExpr(fn.X) {
 			return false
@@ -935,6 +941,12 @@ func (c *Checker) memberExtFirst(fn *syntax.Member, x *syntax.Call) bool {
 		if !cls.External && c.userProp(cls, fn.Name) != nil || cls.External && c.hasProp(cls, fn.Name) {
 			return true
 		}
+	}
+	if c.topExtFuncVar(fn.Name) && c.extPropInvoked(fn, rt, c.classOf(rt.NonNull()), x) {
+		// A top-level val b: Int.() -> Int gives way to an extension
+		// property of the receiver, invoked: 5.b() is val Int.b: () ->
+		// String's, as in K2 (KT-64891).
+		return true
 	}
 	if v, vd := c.scope.find(fn.Name); v != nil {
 		// A local extension function as close as the local, as in
@@ -1117,4 +1129,22 @@ func (c *Checker) callBound(t types.Type, x *syntax.Call, name string) types.Typ
 		}
 	}
 	return best
+}
+
+// topExtFuncVar reports whether the function value with a receiver that
+// x.name() would call is a top-level property: no implicit receiver nor
+// enclosing class has a property of the name.
+func (c *Checker) topExtFuncVar(name string) bool {
+	if v, _ := c.scope.find(name); v != nil && v.Kind != types.Global || v == nil && c.topVar(name) == nil {
+		return false
+	}
+	if c.cls != nil && c.memberProp(c.cls, name) != nil {
+		return false
+	}
+	for _, r := range c.recvs {
+		if cls := c.classOf(r.sym.Type); cls != nil && c.hasProp(cls, name) {
+			return false
+		}
+	}
+	return true
 }

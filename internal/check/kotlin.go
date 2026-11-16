@@ -166,6 +166,7 @@ type kotlinTable struct {
 	builtinsOnce sync.Once
 	builtins     map[string]*kmeta.Class // the built-in classes, by class id
 	collections  map[string]*types.ClassSym
+	atomics      map[string]*types.ClassSym // kotlin.concurrent.atomics' types: see atomics.go
 	raw          map[string]*types.ClassSym // the Java collection interfaces themselves
 	kfuncs       map[int]*types.ClassSym    // kotlin.reflect.KFunctionN, by N, and KSuspendFunctionN, by -1-N
 
@@ -268,6 +269,9 @@ func (t *classTable) kclass(id string) *types.ClassSym {
 		t.mu.Lock()
 		defer t.mu.Unlock()
 		return t.collection(id)
+	}
+	if _, ok := atomicJVM[id]; ok {
+		return t.atomic(id)
 	}
 	if n, ok := functionArity(id, "kotlin/"); ok {
 		return t.funcs.Class(n)
@@ -543,6 +547,9 @@ func (t *classTable) ktype(kt *kmeta.Type, scope tscope) (types.Type, bool) {
 		cls = t.funcs.ComposableClass(n)
 	}
 	if cls == nil {
+		cls = t.missingClass(kt.Class, len(kt.Args))
+	}
+	if cls == nil {
 		return types.InvalidType, false
 	}
 	if len(kt.Args) == 0 || kt.Raw || kt.Upper != nil && kt.Upper.Raw {
@@ -797,7 +804,7 @@ func (t *classTable) kfun(f *kmeta.Function, owner *types.ClassSym, scope tscope
 			case kmeta.ReturnsNotNull:
 				r = 2
 			}
-			e := types.Effect{Returns: r, Param: im.Param, Holds: im.Holds}
+			e := types.Effect{Returns: r, Param: im.Param, Holds: im.Holds, Negated: im.Negated}
 			if im.Is != nil {
 				is, isOK := t.ktype(im.Is, scope)
 				if !isOK {
@@ -1292,6 +1299,32 @@ func annotatedMethods(info *classfile.Info) map[string]*classfile.Member {
 	return m
 }
 
+// defaultImplsAnnots adds to annots, the annotated methods of interface
+// cls, those of its DefaultImpls class, where an interface compiled with
+// -jvm-default=disable has its properties' $annotations methods, if one
+// of kc's properties has such a method that annots lacks.
+func (t *classTable) defaultImplsAnnots(cls *types.ClassSym, kc *kmeta.Class, annots map[string]*classfile.Member) map[string]*classfile.Member {
+	for _, p := range kc.Props {
+		if p.Synthetic == nil || annots[p.Synthetic.Name+p.Synthetic.Desc] != nil {
+			continue
+		}
+		info, err := t.cp.Load(cls.Name + "$DefaultImpls")
+		if err != nil {
+			return annots
+		}
+		for k, m := range annotatedMethods(info) {
+			if annots == nil {
+				annots = map[string]*classfile.Member{}
+			}
+			if annots[k] == nil {
+				annots[k] = m
+			}
+		}
+		return annots
+	}
+	return annots
+}
+
 // annotate gives a Kotlin function of the class path its method's
 // annotations and @Deprecated, if m isn't nil.
 func annotate(f *types.FunSym, m *classfile.Member) {
@@ -1309,6 +1342,99 @@ func annotate(f *types.FunSym, m *classfile.Member) {
 	if m.Deprecated != nil && !m.Deprecated.Java {
 		f.Deprecated = classFileDeprecation(m.Deprecated)
 	}
+}
+
+// annotateProp gives the getter and setter of a property of the class
+// path, which may be nil, their methods' annotations and @Deprecated, and
+// the property's, which kotlinc keeps on its $annotations method.
+func annotateProp(p *kmeta.Property, annots map[string]*classfile.Member, get, set *types.FunSym) {
+	var prop *classfile.Member
+	if p.Synthetic != nil {
+		prop = annots[p.Synthetic.Name+p.Synthetic.Desc]
+	}
+	for i, f := range []*types.FunSym{get, set} {
+		if f == nil {
+			continue
+		}
+		if sig := []*kmeta.JVMSig{p.Getter, p.Setter}[i]; sig != nil {
+			annotate(f, annots[sig.Name+sig.Desc])
+		}
+		if prop != nil {
+			f.PropAnnotations = prop.Annotations
+			if prop.Deprecated != nil && !prop.Deprecated.Java {
+				f.Deprecated = classFileDeprecation(prop.Deprecated)
+			}
+		}
+	}
+}
+
+// aliasRequires reports whether a typealias of the class path may have
+// an annotation that its uses must check: @Deprecated, or one that may be
+// an opt-in requirement marker. Such an alias of a class is kept as an
+// alias, which the checks see, rather than resolved as the class.
+func aliasRequires(a *kmeta.TypeAlias) bool {
+	for _, an := range a.Annotations {
+		if !neverMarker("L" + internalName(an.Class) + ";") {
+			return true
+		}
+	}
+	return false
+}
+
+// neverMarker reports whether the annotation with descriptor desc is one
+// of those that aren't opt-in requirement markers, which the checks then
+// needn't load: Kotlin's and Java's own, but kotlin.Deprecated and those
+// of the kotlin package that may be markers, and JetBrains' nullability
+// annotations.
+func neverMarker(desc string) bool {
+	switch desc {
+	case "Lkotlin/Deprecated;", "Lkotlin/DeprecatedSinceKotlin;":
+		return false
+	case "Lkotlin/SinceKotlin;", "Lkotlin/WasExperimental;", "Lkotlin/PublishedApi;", "Lkotlin/BuilderInference;",
+		"Lkotlin/OverloadResolutionByLambdaReturnType;", "Lkotlin/IgnorableReturnValue;", "Lkotlin/ReplaceWith;":
+		return true
+	}
+	for _, p := range []string{"Lkotlin/jvm/", "Lkotlin/internal/", "Lkotlin/annotation/", "Lkotlin/js/", "Ljava/lang/", "Lorg/jetbrains/annotations/", "Ljavax/annotation/", "Landroidx/annotation/"} {
+		if strings.HasPrefix(desc, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// aliasAnnotations gives a typealias of the class path the annotations
+// and @Deprecated its metadata keeps.
+func aliasAnnotations(s *types.AliasSym, a *kmeta.TypeAlias) {
+	var d *types.Deprecation
+	since := "" // the level @DeprecatedSinceKotlin gives
+	for _, an := range a.Annotations {
+		s.Annotations = append(s.Annotations, "L"+internalName(an.Class)+";")
+		switch an.Class {
+		case "kotlin/Deprecated":
+			d = &types.Deprecation{Level: "WARNING"}
+			for _, arg := range an.Args {
+				switch arg.Name {
+				case "message":
+					d.Message = arg.Value.Str
+				case "level":
+					d.Level = arg.Value.Str
+				}
+			}
+		case "kotlin/DeprecatedSinceKotlin":
+			for _, arg := range an.Args {
+				switch {
+				case arg.Name == "hiddenSince":
+					since = "HIDDEN"
+				case arg.Name == "errorSince" && since == "":
+					since = "ERROR"
+				}
+			}
+		}
+	}
+	if d != nil && (since == "HIDDEN" || since == "ERROR" && d.Level == "WARNING") {
+		d.Level = since
+	}
+	s.Deprecated = d
 }
 
 // publicMethods returns the name+desc of a class file's public and
@@ -1467,7 +1593,9 @@ func (t *classTable) loadKotlin(cls *types.ClassSym, info *classfile.Info, kc *k
 		}
 	}
 	if info.Super != "" {
-		cls.Super = t.class(info.Super)
+		if cls.Super = t.class(info.Super); cls.Super == nil {
+			cls.Super = t.missingClass(info.Super, 0)
+		}
 	}
 	var supers []types.Type
 	for _, st := range kc.Supers {
@@ -1503,6 +1631,7 @@ func (t *classTable) loadKotlin(cls *types.ClassSym, info *classfile.Info, kc *k
 			e = a.Underlying
 		}
 		s := &types.AliasSym{Name: a.Name, Outer: cls, Resolved: true}
+		aliasAnnotations(s, a)
 		ascope := tscope{}
 		atps, aok := t.ktypeParams(a.TypeParams, s, ascope)
 		if at, tok := t.ktype(e, ascope); aok && tok {
@@ -1581,6 +1710,9 @@ func (t *classTable) loadKotlin(cls *types.ClassSym, info *classfile.Info, kc *k
 		}
 	}
 	annots := annotatedMethods(info)
+	if cls.Interface {
+		annots = t.defaultImplsAnnots(cls, kc, annots)
+	}
 	hidden := map[string]bool{}
 	for _, m := range info.Methods {
 		if m.Access&classfile.AccPublic != 0 && m.Access&classfile.AccSynthetic != 0 {
@@ -1661,6 +1793,7 @@ func (t *classTable) loadKotlin(cls *types.ClassSym, info *classfile.Info, kc *k
 		}
 		if p.Recv != nil {
 			if g := t.memberExtProp(p, cls, scope, methods); g != nil {
+				annotateProp(p, annots, g, g.ExtSetter)
 				g.Static = statics[g.JVM()+g.Desc]
 				if g.ExtSetter != nil {
 					g.ExtSetter.Static = statics[g.ExtSetter.JVM()+g.ExtSetter.Desc]
@@ -1673,6 +1806,7 @@ func (t *classTable) loadKotlin(cls *types.ClassSym, info *classfile.Info, kc *k
 			continue
 		}
 		if kp := t.kprop(p, cls, scope, methods, metaGetter, metaSetter); kp != nil {
+			annotateProp(p, annots, kp.Getter, kp.Setter)
 			if cls.Value {
 				kp.Getter.Impl, kp.Getter.Facade = true, cls.Name
 			}
@@ -1728,6 +1862,7 @@ func (t *classTable) loadKotlin(cls *types.ClassSym, info *classfile.Info, kc *k
 			f.Params, ok = t.kparams(k.Params, scope, true)
 			f.Unsupported = !ok
 			matchJVM(f)
+			annotate(f, annots[k.JVM.Name+k.JVM.Desc])
 			if internal {
 				cls.InternalCtors = append(cls.InternalCtors, f)
 				continue
@@ -1735,7 +1870,37 @@ func (t *classTable) loadKotlin(cls *types.ClassSym, info *classfile.Info, kc *k
 			cls.Ctors = append(cls.Ctors, f)
 		}
 	}
+	if cls.Data {
+		componentMarkers(kc, cls, annots)
+	}
 	t.timed(start, len(kc.Funcs)+len(kc.Props)+len(kc.Ctors))
+}
+
+// componentMarkers gives a data class's componentN functions the
+// annotations of the properties of its primary constructor they return,
+// whose opt-in requirements they have, as K2's.
+func componentMarkers(kc *kmeta.Class, cls *types.ClassSym, annots map[string]*classfile.Member) {
+	for _, k := range kc.Ctors {
+		if k.Flags&kmeta.CtorSecondary != 0 {
+			continue
+		}
+		for i, prm := range k.Params {
+			for _, p := range kc.Props {
+				if p.Name != prm.Name || p.Synthetic == nil {
+					continue
+				}
+				m := annots[p.Synthetic.Name+p.Synthetic.Desc]
+				if m == nil {
+					continue
+				}
+				for _, f := range cls.Methods["component"+strconv.Itoa(i+1)] {
+					if len(f.Params) == 0 {
+						f.PropAnnotations = m.Annotations
+					}
+				}
+			}
+		}
+	}
 }
 
 // internalName returns the JVM internal name of a class id: nested
@@ -2083,6 +2248,11 @@ func (t *classTable) pkgFunsOf(pkg, name string, internal bool) []*types.FunSym 
 				// start the movable group.
 				sym.Inline, sym.Builtin = nil, types.ComposeKey
 			}
+			// As in K2, one function of two modules on the class path, by
+			// its package, name and signature, is one candidate.
+			if slices.ContainsFunc(fs, func(g *types.FunSym) bool { return sameDeclaration(sym, g) }) {
+				continue
+			}
 			fs = append(fs, sym)
 		}
 	}
@@ -2142,6 +2312,7 @@ func (t *classTable) pkgExtProps(pkg, name string) []*types.FunSym {
 				matchJVM(set)
 				sym.ExtSetter = set
 			}
+			annotateProp(pr, part.annots, sym, sym.ExtSetter)
 			gs = append(gs, sym)
 		}
 	}
@@ -2190,6 +2361,14 @@ func (t *classTable) pkgVar(pkg, name string) *types.VarSym {
 			}
 			if v.Const {
 				v.Constant = t.facadeConstant(part.facade, pr.Name)
+			}
+			if pr.Synthetic != nil {
+				if m := part.annots[pr.Synthetic.Name+pr.Synthetic.Desc]; m != nil {
+					v.Annotations = m.Annotations
+					if m.Deprecated != nil && !m.Deprecated.Java {
+						v.Deprecated = classFileDeprecation(m.Deprecated)
+					}
+				}
 			}
 			if (pkg == "kotlin.coroutines" || pkg == "kotlin/coroutines") && name == "coroutineContext" {
 				v.Suspend = true // an intrinsic: its getter only throws
@@ -2297,6 +2476,9 @@ func (t *classTable) pkgClass(pkg, name string) *types.ClassSym {
 	if _, ok := collectionJVM[id]; ok {
 		return t.kclass(id)
 	}
+	if _, ok := atomicJVM[id]; ok {
+		return t.atomic(id)
+	}
 	if a := types.ArrayByID(id); a != nil {
 		return a
 	}
@@ -2325,7 +2507,7 @@ func (t *classTable) pkgClass(pkg, name string) *types.ClassSym {
 			continue
 		}
 		for _, a := range as {
-			if c := t.aliasClass(a); c != nil && public(a.Flags.Visibility(), part.friend) {
+			if c := t.aliasClass(a); c != nil && public(a.Flags.Visibility(), part.friend) && !aliasRequires(a) {
 				found = c
 			}
 		}
@@ -2359,10 +2541,11 @@ func (t *classTable) pkgAlias(pkg, name string) *types.AliasSym {
 			if e == nil {
 				e = a.Underlying
 			}
-			if !public(a.Flags.Visibility(), part.friend) || t.aliasClass(a) != nil || e == nil {
+			if !public(a.Flags.Visibility(), part.friend) || t.aliasClass(a) != nil && !aliasRequires(a) || e == nil {
 				continue
 			}
 			s := &types.AliasSym{Name: name, Pkg: pkg, Resolved: true}
+			aliasAnnotations(s, a)
 			scope := tscope{}
 			tps, ok := t.ktypeParams(a.TypeParams, s, scope)
 			typ, tok := t.ktype(e, scope)

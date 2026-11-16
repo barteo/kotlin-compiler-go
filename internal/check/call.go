@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/barteo/kotlin-compiler-go/internal/classfile"
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
 	"github.com/barteo/kotlin-compiler-go/internal/types"
 )
@@ -56,8 +57,12 @@ func (cl *callee) argType(i int, args []syntax.Expr) types.Type {
 
 // isCallArg reports whether argument x is a call, spread or not.
 func isCallArg(x syntax.Expr) bool {
-	if sp, ok := x.(*syntax.Spread); ok {
-		x = sp.X
+	switch y := x.(type) {
+	case *syntax.Spread:
+		x = y.X
+	case *syntax.NotNull:
+		// As K2's checkNotNull call: id(emptyList()!!) for a List<Int>.
+		x = y.X
 	}
 	_, ok := x.(*syntax.Call)
 	return ok
@@ -644,6 +649,7 @@ func underscoreSub(sys *system, tparams []*types.TypeParamSym, recv types.Subst,
 			}
 		}
 	}
+	relateUnderscores(sys, tparams, typeArgs, sub)
 	return sub, sys
 }
 
@@ -788,8 +794,12 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			c.unsupported(x.P, feature, "%s", why)
 		case noCtx != nil:
 			c.noContextArg(x.P, noCtx)
+		case unsupported && c.javaMissingClass(x, cands):
 		case unsupported:
 			c.unsupported(x.P, "unsupported types in signature", "'%s' uses types kc doesn't support", name)
+		case !slices.ContainsFunc(cands, func(cl callee) bool { return !cl.f.Hidden }):
+			// Only @Deprecated(level = HIDDEN) ones, as a Java method's.
+			c.errorf(x.P, "unresolved reference: %s", name)
 		default:
 			c.errorf(x.P, "no function '%s' takes %d arguments", name, len(x.Args))
 		}
@@ -861,7 +871,7 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 		}
 		cd.params = make([]types.Type, len(x.Args))
 		for j := range x.Args {
-			if cl.param(j).UnsafeVariance {
+			if cl.param(j).UnsafeVariance && !useSiteProjected(cl.recv, cl.argType(j, x.Args)) {
 				cd.params[j] = cd.sub.Apply(cl.argType(j, x.Args))
 			} else if cs := capturedSubst(cd.sub, cl.recv, cl.argType(j, x.Args), x.Args[j]); cs != nil {
 				cd.params[j] = cs.ApplyIn(cl.argType(j, x.Args))
@@ -959,8 +969,12 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 		// others: assertEquals(long, long) for assertEquals(1, aLong),
 		// not assertEquals(Object, Object).
 		match := c.applicable(cs, x, ts, partials, false)
+		// As in K2, an Int! candidate, a Java Integer, doesn't make the
+		// literal an Int: foo(Integer) and foo(long) for foo(1) is
+		// ambiguous, neither being more specific.
 		if wide := c.applicable(cs, x, ts, partials, true); len(match) == 0 || len(wide) > len(match) &&
-			slices.ContainsFunc(wide, func(cd *candidate) bool { return c.mostSpecific(cd, wide, x.Args) }) &&
+			(slices.ContainsFunc(wide, func(cd *candidate) bool { return c.mostSpecific(cd, wide, x.Args) }) ||
+				platformLitParams(match, wide, x.Args, func(cd *candidate) *callee { return &cd.callee })) &&
 			!slices.ContainsFunc(match, func(cd *candidate) bool { return c.mostSpecific(cd, wide, x.Args) }) {
 			match = wide
 		}
@@ -981,7 +995,7 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 				maximal = append(maximal, cd)
 			}
 		}
-		maximal = overriddenGiveWay(maximal)
+		maximal = c.overriddenGiveWay(maximal)
 		if len(maximal) > 1 {
 			if orig := c.origSAMMaximal(maximal, x.Args); len(orig) == 1 {
 				maximal = orig
@@ -1139,6 +1153,7 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 	if targs != nil {
 		sys.fixups = append(sys.fixups, func(s *system) { c.typeArgBounds(x, best, targs, s) })
 	}
+	c.javaNamedArgs(x, f)
 	sys.fixups = append(sys.fixups, func(s *system) {
 		for i, a := range x.Args {
 			if _, ok := a.(*syntax.Lambda); ok {
@@ -1161,8 +1176,11 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 				// the Unit it is written as stands for.
 				continue
 			}
+			x.Args[i] = c.retypeArith(a, s.final(params[i]))
+			a = x.Args[i]
 			want := captured(a.Type(), params[i], pt)
 			c.assignable(a.Type(), want, a.Pos())
+			c.javaVariance(f, best.param(i), a, s.finalArg(params[i]))
 			if best.param(i).Exact && c.subtype(a.Type(), want) && !c.subtype(want, a.Type()) {
 				// @Exact: the argument's type must be the parameter's.
 				c.errorf(a.Pos(), "type mismatch: inferred type is %s but %s was expected", a.Type(), want)
@@ -1705,7 +1723,8 @@ func (c *Checker) resolvePlain(x *syntax.Call, cs []callee, want types.Type) typ
 		// or one that takes them as a Long is the most specific, as above.
 		match := c.plainApplicable(cs, x.Args, ts, false)
 		if wide := c.plainApplicable(cs, x.Args, ts, true); len(match) == 0 || len(wide) > len(match) &&
-			slices.ContainsFunc(wide, func(cl *callee) bool { return c.plainMostSpecific(cl, wide, x.Args, ts) }) &&
+			(slices.ContainsFunc(wide, func(cl *callee) bool { return c.plainMostSpecific(cl, wide, x.Args, ts) }) ||
+				platformLitParams(match, wide, x.Args, func(cl *callee) *callee { return cl })) &&
 			!slices.ContainsFunc(match, func(cl *callee) bool { return c.plainMostSpecific(cl, wide, x.Args, ts) }) {
 			match = wide
 		}
@@ -1786,6 +1805,7 @@ func (c *Checker) resolvePlain(x *syntax.Call, cs []callee, want types.Type) typ
 	c.receiverShadowed(x, best)
 	c.dslCall(x, best)
 	c.setContexts(x, best, nil, nil)
+	c.javaVariances(x, best, func(i int) types.Type { return best.argType(i, x.Args) })
 	ensureFun(f)
 	c.suspendFunCall(x, f)
 	c.composeFunCall(x.P, f)
@@ -1830,7 +1850,7 @@ func (c *Checker) plainMostSpecific(f *callee, cs []*callee, args []syntax.Expr,
 	for _, g := range cs {
 		for i := range args {
 			fa, ga := c.plainFunInterfaceView(f, i, args, ts), c.plainFunInterfaceView(g, i, args, ts)
-			if boxedPrimitive(fa, ga) || !c.subtype(fa, ga) && !numberMoreSpecific(fa, ga) {
+			if boxedPrimitive(fa, ga) || enhancedBoxed(f, g, i, fa, ga) || !c.subtype(fa, ga) && !numberMoreSpecific(fa, ga) {
 				return false
 			}
 		}
@@ -1883,10 +1903,14 @@ func (c *Checker) constrain(cd *candidate, x *syntax.Call, ts []types.Type, part
 	switch {
 	case cd.f.Name == "<init>" && cd.f.Owner != nil:
 		cd.sys.markInvRet(cd.sub.Apply(cd.f.Owner.This()))
-	case cd.f.InProgress:
-		// An overload whose result is being inferred from this call:
+	case len(cd.sys.vars) > 0 && !cd.f.InProgress:
+		// Only a candidate with type variables needs its return type
+		// here. Inferring it for the others, which K2 doesn't to find
+		// the applicable ones, made a recursive problem of the function
+		// being inferred, as kotlinpoet's
+		// fun emitCode(s: String) = emitCode(CodeBlock.of(s)), and of
+		// its overloads that call it back, or
 		// fun f(i: Int) = f(i.toString()), next to a fun f(s: String).
-	default:
 		ensureFun(cd.f)
 		cd.sys.markInvRet(cd.sub.Apply(cd.f.Ret))
 	}
@@ -1902,6 +1926,9 @@ func (c *Checker) constrain(cd *candidate, x *syntax.Call, ts []types.Type, part
 			if longLits && fitsLit(lit, p) {
 				continue
 			}
+		}
+		if lit := arithLit(x.Args[i]); lit != nil && p.K == types.TypeVar && cd.sys.addLit(p, lit) {
+			continue
 		}
 		if ft, ok := c.suspendConstraint(cd, t, p, x.Args[i]); ok {
 			if cd.susps == nil {
@@ -2206,7 +2233,7 @@ func (c *Checker) mostSpecific(f *candidate, cs []*candidate, args []syntax.Expr
 		for i := range args {
 			fa, ga := f.recv.ApplyIn(f.argType(i, args)), sub.ApplyIn(g.argType(i, args))
 			fa, ga = c.funInterfaceView(f, i, args, fa), c.funInterfaceView(g, i, args, ga)
-			if boxedPrimitive(fa, ga) {
+			if boxedPrimitive(fa, ga) || enhancedBoxed(&f.callee, &g.callee, i, fa, ga) {
 				return false
 			}
 			if numberMoreSpecific(fa, ga) {
@@ -2397,7 +2424,7 @@ func (c *Checker) nonGenericMaximal(cs []*candidate, args []syntax.Expr) []*cand
 			out = append(out, cd)
 		}
 	}
-	return overriddenGiveWay(out)
+	return c.overriddenGiveWay(out)
 }
 
 // overriddenGiveWay drops the candidates among equally specific ones
@@ -2405,7 +2432,7 @@ func (c *Checker) nonGenericMaximal(cs []*candidate, args []syntax.Expr) []*cand
 // parameters, overrides: Kotlin sees only the override, as value class
 // Tag's Int.ext(n) for the T.ext(n) of its supertype Ext<Int>, which
 // dropOverridden keeps, as their JVM descriptors differ.
-func overriddenGiveWay(cs []*candidate) []*candidate {
+func (c *Checker) overriddenGiveWay(cs []*candidate) []*candidate {
 	if len(cs) < 2 {
 		return cs
 	}
@@ -2418,7 +2445,7 @@ func overriddenGiveWay(cs []*candidate) []*candidate {
 			// A Java static method overrides none: C.foo(Runnable) hides
 			// A.foo(Runnable), not A.foo(Function0<Unit>).
 			return f.f.Owner != nil && g.f.Owner != nil && g.f.Owner != f.f.Owner && g.f.Name == f.f.Name && !g.f.Static &&
-				g.f.Owner.IsSubclassOf(f.f.Owner) && sameParams(f.f, g.f)
+				g.f.Owner.IsSubclassOf(f.f.Owner) && sameParams(f.f, g.f) && !c.notOverridden(g.f, f.f)
 		})
 		if !overridden {
 			out = append(out, f)
@@ -2445,6 +2472,53 @@ func numberMoreSpecific(a, b types.Type) bool {
 		return b.K == types.Byte
 	}
 	return false
+}
+
+// platformLitParams reports whether every candidate of match takes an
+// integer literal argument as Int!, a Java method's Integer, and one of
+// wide that match leaves out takes it as a type that isn't a platform
+// one, a Java long: as in K2, neither is more specific. Of Java's Integer
+// and Long, Integer is.
+func platformLitParams[T comparable](match, wide []T, args []syntax.Expr, cl func(T) *callee) bool {
+	for i, a := range args {
+		if _, ok := a.(*syntax.IntLit); !ok || len(match) == 0 {
+			continue
+		}
+		if slices.ContainsFunc(match, func(c T) bool {
+			p := cl(c).argType(i, args)
+			return !p.P || p.K != types.Int
+		}) {
+			continue
+		}
+		if slices.ContainsFunc(wide, func(c T) bool {
+			return !slices.Contains(match, c) && !cl(c).argType(i, args).P
+		}) {
+			return true
+		}
+	}
+	return false
+}
+
+// enhancedBoxed reports whether argument i of a call goes to a Java boxed
+// primitive parameter of f that an annotation makes non-null, and to the
+// primitive parameter of g: both are Int to Kotlin, but foo(int) is more
+// specific than foo(@NotNull Integer) (KT-9182).
+func enhancedBoxed(f, g *callee, i int, fa, ga types.Type) bool {
+	return fa.IsPrimitive() && !fa.P && !ga.P && fa.K == ga.K && fa.N == ga.N && javaBoxedParam(f, i) && !javaBoxedParam(g, i)
+}
+
+// javaBoxedParam reports whether the parameter that argument i of a call
+// of cl is passed to is a Java method's boxed primitive, Integer, which
+// Kotlin sees as a primitive type, Int, where an annotation makes it
+// non-null.
+func javaBoxedParam(cl *callee, i int) bool {
+	f := cl.f
+	if f.Desc == "" || f.Owner == nil || !isJavaClass(f.Owner) {
+		return false
+	}
+	ds := classfile.DescParams(f.Desc)
+	j := slices.Index(f.Params, cl.param(i))
+	return len(ds) == len(f.Params) && j >= 0 && strings.HasPrefix(ds[j], "Ljava/lang/")
 }
 
 // boxedPrimitive reports whether a is a Java boxed primitive, Long!, and b

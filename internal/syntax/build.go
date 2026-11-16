@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/barteo/kotlin-compiler-go/internal/intbits"
+	"github.com/barteo/kotlin-compiler-go/internal/types"
 )
 
 // The desugarings here are shared by the token parser and by
@@ -170,10 +171,31 @@ func LabelLambdas(c *Call) {
 	default:
 		return
 	}
-	for _, a := range c.Args {
-		if l, ok := a.(*Lambda); ok && l.Label == "" {
+	label := func(a Expr) {
+		l, ok := a.(*Lambda)
+		switch {
+		case !ok:
+		case l.Label == "":
 			l.Label = name
+		case l.Anon && strings.HasPrefix(l.Label, "fun$"):
+			// An anonymous function without a label of its own has the
+			// function's name too: return@notInline in
+			// notInline(fun() { ... }), as its plain returns are.
+			old := l.Label
+			l.Label = name
+			Inspect(l.Body, func(n any) bool {
+				if j, ok := n.(*Jump); ok && j.Kind == RETURN && j.Label == old {
+					j.Label = name
+				}
+				return true
+			})
 		}
+	}
+	for _, a := range c.Args {
+		label(a)
+	}
+	if m, ok := c.Fun.(*Member); ok && c.Infix {
+		label(m.X) // { return@foo } foo { }, as in K2
 	}
 }
 
@@ -390,6 +412,7 @@ func AccessorMods(pd *PropDecl, name string, pos Pos, m *Modifiers, r Reporter) 
 	}
 	if len(m.Written) > 0 {
 		pd.AccessorMods = append(pd.AccessorMods, m.Written)
+		pd.AccessorSets = append(pd.AccessorSets, name == "set")
 	}
 	for _, a := range m.Annotations {
 		if a.Target == "" {
@@ -399,9 +422,46 @@ func AccessorMods(pd *PropDecl, name string, pos Pos, m *Modifiers, r Reporter) 
 	}
 	if name == "set" {
 		pd.SetterVis = m.Visibility
+		for _, w := range m.Written {
+			if w.Name == "public" || w.Name == "private" || w.Name == "protected" || w.Name == "internal" {
+				pd.SetterVisP = w.P
+			}
+		}
 		pd.InlineSetter = m.Inline
 	} else {
 		pd.InlineGetter = m.Inline
+	}
+}
+
+// ValOnParam reports val or var, kw, written at p on a parameter of a
+// function or a secondary constructor, of
+// (VAL_OR_VAR_ON_FUN_PARAMETER, VAL_OR_VAR_ON_SECONDARY_CONSTRUCTOR_PARAMETER).
+func ValOnParam(kw, of string, p Pos, r Reporter) {
+	r.Later(p, "'%s' on %s parameter is not allowed", kw, of)
+}
+
+// VarianceMod adds variance modifier w, written at p, to the variance v
+// of a type parameter or argument, reporting a repeated one
+// (REPEATED_MODIFIER) and in with out (INCOMPATIBLE_MODIFIERS, at both,
+// prevP being where v's modifier is). The first modifier written wins.
+func VarianceMod(v *types.Variance, prevP *Pos, w types.Variance, p Pos, r Reporter) {
+	name := func(v types.Variance) string {
+		if v == types.In {
+			return "in"
+		}
+		return "out"
+	}
+	switch {
+	case *v == types.Inv:
+		*v, *prevP = w, p
+	case *v == w:
+		r.Later(p, "repeated '%s'", name(w))
+	default:
+		if prevP.Line != 0 {
+			r.Later(*prevP, "modifier '%s' is incompatible with '%s'", name(*v), name(w))
+			*prevP = Pos{}
+		}
+		r.Later(p, "modifier '%s' is incompatible with '%s'", name(w), name(*v))
 	}
 }
 

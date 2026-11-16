@@ -175,7 +175,9 @@ func (r *resolver) lookup(name string) (string, *TypeParam) {
 			}
 		}
 		if !r.noInherit {
-			if n := r.inherited(k, name, 0); n != "" {
+			if n := r.inherited(k, name, 0); n == ambiguous {
+				return r.missing(name), nil
+			} else if n != "" {
 				return n, nil
 			}
 		}
@@ -193,18 +195,31 @@ func (r *resolver) lookup(name string) (string, *TypeParam) {
 	if r.s.known(pkg + name) {
 		return pkg + name, nil
 	}
+	// Classes that star imports name: two of them make the name
+	// ambiguous, which kotlinc leaves unresolved.
+	found := ""
 	for _, imp := range f.Imports {
 		if !imp.Star {
 			continue
 		}
 		// import a.b.* names a package's classes, and import a.b.C.* and
 		// import static a.b.C.* the nested classes of C.
+		n := ""
 		if p := strings.ReplaceAll(imp.Name, ".", "/") + "/" + name; !imp.Static && r.s.known(p) {
-			return p, nil
+			n = p
+		} else {
+			n = r.s.memberType(r.s.qualified(imp.Name), name, 0)
 		}
-		if n := r.s.memberType(r.s.qualified(imp.Name), name, 0); n != "" {
-			return n, nil
+		switch {
+		case n == "" || n == found:
+		case found != "" || n == ambiguous:
+			return r.missing(name), nil
+		default:
+			found = n
 		}
+	}
+	if found != "" {
+		return found, nil
 	}
 	for _, imp := range f.Imports {
 		if imp.Static && !imp.Star && strings.HasSuffix(imp.Name, "."+name) {
@@ -219,27 +234,55 @@ func (r *resolver) lookup(name string) (string, *TypeParam) {
 	return "", nil
 }
 
+// ambiguous is what inherited and memberType return for a member type
+// that a class inherits from more than one supertype, different classes
+// of the same name, which kotlinc leaves unresolved.
+const ambiguous = "?"
+
+// missing returns the name a type that doesn't resolve has: a class of
+// the package that doesn't exist, as javac would complain.
+func (r *resolver) missing(name string) string {
+	if r.c.file.Package == "" {
+		return name
+	}
+	return strings.ReplaceAll(r.c.file.Package, ".", "/") + "/" + name
+}
+
 // inherited returns the internal name of a member type that class k
-// inherits from its supertypes, or "".
+// inherits from its supertypes, "", or ambiguous.
 func (r *resolver) inherited(k *Class, name string, depth int) string {
 	if depth > 16 {
 		return ""
 	}
 	sr := superResolver(r.s, k)
+	var supers []string
 	for _, t := range append(append([]*Type{}, k.Extends...), k.Implements...) {
-		super, _ := sr.classType(t)
-		if super == "" {
-			continue
-		}
-		if n := r.s.memberType(super, name, depth+1); n != "" {
-			return n
+		if super, _ := sr.classType(t); super != "" {
+			supers = append(supers, super)
 		}
 	}
-	return ""
+	return r.s.inheritedFrom(supers, name, depth)
+}
+
+// inheritedFrom returns the member type of the given name of a class with
+// supertypes supers: the one they have, "", or ambiguous if they have
+// different ones.
+func (s *Set) inheritedFrom(supers []string, name string, depth int) string {
+	found := ""
+	for _, super := range supers {
+		switch n := s.memberType(super, name, depth+1); {
+		case n == "" || n == found:
+		case n == ambiguous || found != "":
+			return ambiguous
+		default:
+			found = n
+		}
+	}
+	return found
 }
 
 // memberType returns the internal name of a member type of a class,
-// declared or inherited, or "".
+// declared or inherited, "", or ambiguous.
 func (s *Set) memberType(class, name string, depth int) string {
 	if depth > 16 {
 		return ""
@@ -254,12 +297,7 @@ func (s *Set) memberType(class, name string, depth int) string {
 		return ""
 	}
 	supers, _ := s.Outside.Supers(class)
-	for _, super := range supers {
-		if n := s.memberType(super, name, depth+1); n != "" {
-			return n
-		}
-	}
-	return ""
+	return s.inheritedFrom(supers, name, depth)
 }
 
 // qualified returns the internal name of a class by its dotted name: the
@@ -305,7 +343,7 @@ func (r *resolver) classType(t *Type) (string, *TypeParam) {
 	}
 	if n != "" {
 		for _, seg := range t.Segs[1:] {
-			if m := r.s.memberType(n, seg.Name, 0); m != "" {
+			if m := r.s.memberType(n, seg.Name, 0); m != "" && m != ambiguous {
 				n = m
 			} else {
 				n += "$" + seg.Name
@@ -364,8 +402,12 @@ func (r *resolver) generic(t *Type) bool {
 			return true
 		}
 	}
-	_, tp := r.classType(t)
-	return tp != nil
+	n, tp := r.classType(t)
+	if tp != nil {
+		return true
+	}
+	_, implied := r.impliedOuter(t, n)
+	return implied
 }
 
 // sig returns a type's generic signature. A nested class's type whose
@@ -381,6 +423,10 @@ func (r *resolver) sig(t *Type) string {
 	n, tp := r.classType(t)
 	if tp != nil {
 		b.WriteString("T" + tp.Name + ";")
+		return b.String()
+	}
+	if s, ok := r.impliedOuter(t, n); ok {
+		b.WriteString(s)
 		return b.String()
 	}
 	if s, ok := r.innerSig(t, n); ok {
@@ -481,7 +527,7 @@ func (s *Set) Info(name string) (*classfile.Info, error) {
 		return nil, &missingError{name}
 	}
 	r := &resolver{s: s, c: c}
-	info := &classfile.Info{Name: name, StabilityInferred: -1}
+	info := &classfile.Info{Name: name, StabilityInferred: -1, Deprecated: r.deprecation(c.Annotations)}
 	// A nested class's access is public if it is protected, and package
 	// if it is private: the InnerClasses attribute has its own.
 	flags := c.Flags & (classfile.AccPublic | classfile.AccFinal | classfile.AccAbstract)
@@ -515,6 +561,9 @@ func (s *Set) Info(name string) (*classfile.Info, error) {
 		flags |= classfile.AccFinal
 		info.Super = "java/lang/Record"
 		supers = c.Implements
+		for _, p := range c.Components {
+			info.RecordComponents = append(info.RecordComponents, p.Name)
+		}
 	}
 	if c.Kind == KindEnum && c.ConstantBodies {
 		flags &^= classfile.AccFinal
@@ -587,6 +636,15 @@ func (s *Set) Info(name string) (*classfile.Info, error) {
 				continue
 			}
 			info.SerialWith = r.classLiteral(a.Args, "with")
+		case "Repeatable", "java.lang.annotation.Repeatable":
+			if n, _ := r.lookup("Repeatable"); a.Name == "Repeatable" && n != "java/lang/annotation/Repeatable" {
+				continue
+			}
+			args := a.Args
+			if len(args) == 0 || args[0] != "value" {
+				args = append([]string{"value"}, args...)
+			}
+			info.Repeatable = r.classLiteral(args, "value")
 		case "Target", "java.lang.annotation.Target":
 			for _, arg := range a.Args {
 				if arg != "ElementType" && strings.ToUpper(arg) == arg {
@@ -602,12 +660,12 @@ func (s *Set) Info(name string) (*classfile.Info, error) {
 		if iface {
 			access |= classfile.AccPublic | classfile.AccStatic | classfile.AccFinal
 		}
-		m := classfile.Member{Access: access, Name: f.Name, Desc: r.desc(f.Type), Annotations: r.nullability(f.Annotations)}
+		m := classfile.Member{Access: access, Name: f.Name, Desc: r.desc(f.Type), Annotations: r.nullability(f.Annotations), Deprecated: r.deprecation(f.Annotations)}
 		if r.generic(f.Type) {
 			m.Sig = r.sig(f.Type)
 		}
 		if access&classfile.AccStatic != 0 && access&classfile.AccFinal != 0 && f.Init != nil {
-			m.Constant = s.constant(c, f, nil)
+			m.Constant, m.MaybeConstant = s.constant(c, f, nil)
 		}
 		info.Fields = append(info.Fields, m)
 	}
@@ -657,7 +715,13 @@ func (s *Set) Info(name string) (*classfile.Info, error) {
 		}
 		desc, sig := mr.methodDesc(m.TypeParams, outer, params, ret, m.Throws)
 		declared[m.Name+desc] = true
-		mm := classfile.Member{Access: access, Name: m.Name, Desc: desc, Sig: sig, Annotations: mr.methodAnnotations(m.Annotations)}
+		mm := classfile.Member{Access: access, Name: m.Name, Desc: desc, Sig: sig, Annotations: mr.methodAnnotations(m.Annotations), Deprecated: mr.deprecation(m.Annotations)}
+		mm.Hidden = mm.Deprecated != nil && mm.Deprecated.Level == "HIDDEN"
+		if c.Kind == KindAnnotation && m.HasDefault {
+			// The value isn't evaluated, as in Details: an element value
+			// of no kind says that there is one.
+			mm.Default = &classfile.ElementValue{}
+		}
 		for i, p := range m.Params {
 			if as := mr.nullability(p.Annotations); as != nil {
 				if mm.ParamAnnotations == nil {

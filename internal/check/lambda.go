@@ -35,6 +35,7 @@ type lambdaWant struct {
 	check      bool         // the body must have type ret; otherwise ret is only a hint
 	recover    bool         // checking after an error: unknown parameters are not reported
 	prop       bool         // a callable reference must name a property: see kpropRef
+	prop1      bool         // with prop: the expected type is a KProperty1, which has a receiver
 	kprop      bool         // a callable reference to a property may be a KProperty object
 	// stars are the parameters whose type is a star projection, which
 	// any declared type takes, as the captured type's Nothing below it.
@@ -682,6 +683,12 @@ func (c *Checker) unitBody(b *syntax.Block) types.Type {
 			}
 			if _, ok := es.X.(*syntax.Call); ok {
 				return c.unitTail(b)
+			}
+			if e, ok := es.X.(*syntax.Binary); ok && e.Op == syntax.ELVIS {
+				// As in K2, an elvis's K expects the Unit, whose
+				// nullable its left side then does: myLet { ::foo } ?:
+				// unitFun() chooses foo's overload that returns Unit.
+				c.unitElvis = e
 			}
 		}
 	}
@@ -2894,6 +2901,9 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type) {
 			s.fixFuncInputs(r)
 			w.ret = s.upperHint(r)
 		}
+		if w.ret.K == types.Invalid && endsInLambda(l) {
+			w.ret, _ = s.deepFuncUpper(r, 0)
+		}
 		if w.ret.K == types.Invalid && s.unitBound(r) {
 			w.ret = types.UnitType
 		}
@@ -2913,6 +2923,8 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type) {
 			if r = s.apply(r); !r.HasVars() {
 				w.ret, w.check = r, true
 			}
+		} else if ft, ok := c.refOverloadHint(s, l, r); ok {
+			w.ret = ft
 		}
 	}
 	var bt types.Type

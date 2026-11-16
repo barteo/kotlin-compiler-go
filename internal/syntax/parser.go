@@ -603,7 +603,7 @@ func (p *parser) localClass(m Modifiers) *LocalClass {
 	case t.Kind == OBJECT:
 		p.failAt(t.Pos, "named object cannot be local: use an anonymous object instead")
 	case m.Enum:
-		p.failAt(t.Pos, "local enum classes are not allowed")
+		p.errorLater(t.Pos, "local enum classes are not allowed")
 	}
 	cd := p.parseClass(m)
 	cd.Local = true
@@ -813,6 +813,13 @@ func (p *parser) parseType() *TypeRef {
 		if n := p.tok(); n.Kind == IDENT && n.Text == "suspend" {
 			p.errorLater(t.Pos, "repeated 'suspend'")
 		}
+		if p.at(LPAREN) {
+			// suspend (() -> R)?: the modifier of a nullable or parenthesized
+			// type, which still is a suspend function type.
+			if k := p.toks[p.matching(p.i)+1].Kind; k != ARROW && k != DOT && k != SAFE_DOT {
+				p.errorLater(t.Pos, "modifier 'suspend' is not applicable to 'nullable type'")
+			}
+		}
 		ft := p.parseType()
 		if ft.Ret == nil {
 			p.failAt(t.Pos, "expected a function type after 'suspend'")
@@ -847,6 +854,9 @@ func (p *parser) parseType() *TypeRef {
 		return p.parseParenType()
 	}
 	t := p.ident()
+	if t.Text != "_" || p.typeArgs == 0 {
+		p.underscoreRef(t)
+	}
 	ref := &TypeRef{P: t.Pos, Name: t.Text}
 	for {
 		if p.typeArgs > 0 && p.at(NL) && p.peekPastNL() == DOT {
@@ -857,7 +867,7 @@ func (p *parser) parseType() *TypeRef {
 		}
 		p.next()
 		p.skipNL()
-		ref.Name += "." + p.ident().Text
+		ref.Name += "." + p.underscoreRef(p.ident()).Text
 	}
 	if p.at(LT) {
 		ref.Args = p.parseTypeArgs()
@@ -999,15 +1009,19 @@ func (p *parser) parseTypeArgs() []*TypeArg {
 // variance parses an optional `in` or `out` before a type argument or
 // type parameter. `out` is only a keyword when a name follows it.
 func (p *parser) variance() types.Variance {
-	switch t := p.tok(); {
-	case t.Kind == IN:
-		p.next()
-		return types.In
-	case t.Kind == IDENT && t.Text == "out" && (p.toks[p.i+1].Kind == IDENT || p.toks[p.i+1].Kind == AT):
-		p.next()
-		return types.Out
+	v, vp := types.Inv, Pos{}
+	for {
+		var w types.Variance
+		switch t := p.tok(); {
+		case t.Kind == IN:
+			w = types.In
+		case t.Kind == IDENT && t.Text == "out" && (p.toks[p.i+1].Kind == IDENT || p.toks[p.i+1].Kind == AT || p.toks[p.i+1].Kind == IN):
+			w = types.Out
+		default:
+			return v
+		}
+		VarianceMod(&v, &vp, w, p.next().Pos, p)
 	}
-	return types.Inv
 }
 
 // parseTypeParams parses <T, out U : Bound>.
@@ -1071,7 +1085,7 @@ func (p *parser) typeArgsAhead() bool {
 				k := p.toks[j+1].Kind
 				// f<T> sc@{ ... } has a labeled trailing lambda.
 				return k == LPAREN || k == LBRACE || k == NL && p.peekAfterNL(j+1) == LBRACE ||
-					k == LABEL && p.toks[j+2].Kind == LBRACE
+					(k == LABEL || k == AT) && p.lambdaAfter(j+1)
 			}
 		case AT:
 			// An annotation, whose arguments can be any expressions.
@@ -1141,7 +1155,7 @@ func (p *parser) parseFun() *FunDecl {
 	}
 	recv, recvAs := p.receiver(true)
 	name := p.ident()
-	fd := &FunDecl{P: pos, Name: name.Text, TypeParams: tps, Recv: recv, RecvAnnotations: recvAs, Params: p.params()}
+	fd := &FunDecl{P: pos, Name: name.Text, TypeParams: tps, Recv: recv, RecvAnnotations: recvAs, Params: p.params("function")}
 	// The return type can go on the next line, and its ':' too.
 	if p.peekPastNL() == COLON {
 		p.op()
@@ -1166,13 +1180,20 @@ func (p *parser) parseFun() *FunDecl {
 
 // params parses the parameters of a function or a secondary constructor,
 // in parentheses.
-func (p *parser) params() []*Param {
+func (p *parser) params(of string) []*Param {
 	var ps []*Param
 	p.expect(LPAREN)
 	for !p.at(RPAREN) {
 		m := p.modifiers()
 		NoContexts(&m, "value parameters", p)
+		if t := p.tok(); t.Kind == VAL || t.Kind == VAR {
+			p.next()
+			ValOnParam(t.Kind.String(), of, t.Pos, p)
+		}
 		pn := p.ident()
+		if strings.Trim(pn.Text, "_") == "" && !pn.Quoted {
+			p.errorLater(pn.Pos, "names _, __, ___, ... are reserved in Kotlin")
+		}
 		p.expect(COLON)
 		param := &Param{P: pn.Pos, Name: pn.Text, Type: p.parseType(), Vararg: m.Vararg, Noinline: m.Noinline, Crossinline: m.Crossinline,
 			Annotations: m.Annotations}
@@ -1196,7 +1217,7 @@ func (p *parser) params() []*Param {
 // constructor(x: Int) : this(x, 0) { ... }.
 func (p *parser) secondaryCtor(m Modifiers) *SecondaryCtor {
 	sc := &SecondaryCtor{Modifiers: m, P: p.next().Pos}
-	sc.Params = p.params()
+	sc.Params = p.params("secondary constructor")
 	if p.peekPastNL() == COLON {
 		p.op()
 		t := p.tok()
@@ -1304,6 +1325,16 @@ func (p *parser) receiverDot(fun bool) int {
 // whereClause parses a generic where clause, which can start on the next
 // line: where T : A, T : B, U : C. Its bounds are added to those of the
 // declaration's type parameters tps.
+// underscoreRef reports t, a name in a reference, if it is all
+// underscores and not in backticks (UNDERSCORE_USAGE_WITHOUT_BACKTICKS),
+// and returns it.
+func (p *parser) underscoreRef(t Token) Token {
+	if t.Kind == IDENT && !t.Quoted && t.Text != "" && strings.Trim(t.Text, "_") == "" {
+		p.errorLater(t.Pos, "names _, __, ___, ..., can be used only in back-ticks (`_`, `__`, `___`, ...)")
+	}
+	return t
+}
+
 func (p *parser) whereClause(tps []*TypeParam) {
 	j := p.i
 	for p.toks[j].Kind == NL {
@@ -1316,7 +1347,8 @@ func (p *parser) whereClause(tps []*TypeParam) {
 	for {
 		p.skipNL()
 		for p.at(AT) {
-			p.annotation() // ignored, as on type parameters
+			a := p.annotation()
+			p.errorLater(a.P, "type parameter annotations are not allowed inside where clauses")
 			p.skipNL()
 		}
 		name := p.ident()
@@ -1393,6 +1425,29 @@ func (p *parser) parseProp(m Modifiers) *PropDecl {
 	return pd
 }
 
+// accessorFollows reports whether the other accessor of a property
+// starts at j, on the line of one without a body: var x: Int get set,
+// or abstract get abstract set.
+func (p *parser) accessorFollows(j int) bool {
+	for {
+		t := p.toks[j]
+		switch {
+		case t.Kind == AT:
+			j = p.annotationEnd(j)
+		case t.Kind == IDENT && (t.Text == "get" || t.Text == "set"):
+			switch p.toks[j+1].Kind {
+			case LPAREN, NL, SEMI, RBRACE, EOF:
+				return true
+			}
+			return false
+		case t.Kind == IDENT && (isModifier(t.Text) || isVisibility(t.Text)) && p.toks[j+1].Kind == IDENT:
+			j++
+		default:
+			return false
+		}
+	}
+}
+
 // accessors parses a property's getter and setter, which can follow it on
 // the next lines: get() = ..., get() { ... }, private set. kc supports
 // getters with a body, and accessors without one, which only change
@@ -1433,13 +1488,16 @@ func (p *parser) accessors(pd *PropDecl) {
 			p.backingField(pd)
 			continue
 		}
-		if other || t.Kind != IDENT || t.Text != "get" && t.Text != "set" {
+		if t.Kind != IDENT || t.Text != "get" && t.Text != "set" {
 			return
 		}
+		_ = other // the modifier checks report modifiers accessors can't have
 		switch p.toks[j+1].Kind {
 		case LPAREN, NL, SEMI, RBRACE, EOF:
 		default:
-			return
+			if !p.accessorFollows(j + 1) {
+				return
+			}
 		}
 		p.i = start
 		m := p.modifiers()
@@ -1601,11 +1659,18 @@ func (p *parser) parseClass(m Modifiers) *ClassDecl {
 			cd.HasPrimary = true
 		}
 	}()
+	if m.Companion && kw.Kind != OBJECT {
+		// The modifier checks report companion on a class (WRONG_MODIFIER_TARGET).
+		cd.Companion = false
+	}
 	switch {
-	case m.Companion && kw.Kind != OBJECT:
-		p.failAt(kw.Pos, "modifier 'companion' is only allowed on objects")
-	case m.Companion && !p.at(IDENT):
+	case cd.Companion && !p.at(IDENT):
 		cd.Name = "Companion"
+	case p.at(LBRACE) || p.at(LPAREN) || p.at(COLON) || p.at(LT):
+		// A class or object without its name: FIR keeps it, named
+		// <no name provided>.
+		p.errorLater(Pos{Line: kw.Pos.Line, Col: kw.Pos.Col + len(kw.Text)}, "Name expected")
+		cd.Name = "<no name provided>"
 	default:
 		// The name can go on the next line: kotlinpoet wraps long ones.
 		p.skipNL()
@@ -1745,11 +1810,21 @@ func (p *parser) enumEntries(cd *ClassDecl) {
 				p.skipNL()
 			}
 		}
-		if !p.at(IDENT) {
+		if !p.at(IDENT) && !p.at(IN) {
 			break
 		}
-		if p.tok().Text == "external" && p.toks[p.i+1].Kind == IDENT && enumEntryEnd(p.toks[p.i+2].Kind) {
-			p.next() // deprecated on an entry, where it means nothing
+		// Modifiers on an entry, which takes none: public A. external is
+		// deprecated there, where it means nothing.
+		j := p.i
+		for t := p.toks[j]; (t.Kind == IN || t.Kind == IDENT && (isModifier(t.Text) || isVisibility(t.Text) || t.Text == "out" || t.Text == "reified")) && p.toks[j+1].Kind == IDENT; t = p.toks[j] {
+			j++
+		}
+		if j > p.i && enumEntryEnd(p.toks[j+1].Kind) {
+			for p.i < j {
+				if t := p.next(); t.Text != "external" {
+					p.errorLater(t.Pos, "modifier '%s' is not applicable to 'enum entry'", t.Text)
+				}
+			}
 		}
 		if !enumEntryEnd(p.toks[p.i+1].Kind) {
 			return // a member
@@ -2173,7 +2248,8 @@ func (p *parser) parseStmtAfterAnnotations() Stmt {
 			// Assigned later: the checker checks that it is before it is
 			// read.
 			if vs.Type == nil {
-				p.failAt(name.Pos, "this variable must either have an explicit type or be initialized")
+				p.errorLater(name.Pos, "this variable must either have an explicit type or be initialized")
+				vs.Type = &TypeRef{P: name.Pos, Known: &types.InvalidType}
 			}
 			return vs
 		}
@@ -2351,6 +2427,11 @@ func (p *parser) parseBinary(min int8) Expr {
 		case k == IDENT && rangeWords[op.Text] == 0:
 			m := &Member{X: x, Name: op.Text}
 			m.P = op.Pos
+			if op.Text == "suspend" && p.at(FUN) {
+				// x suspend fun() {} reads as kotlin.suspend's modifier form,
+				// which an infix suspend function must not take.
+				p.errorLater(op.Pos, "modifier form for a non-built-in 'suspend' function is not allowed")
+			}
 			c := &Call{Fun: m, Args: []Expr{p.parseBinary(lv + 1)}, Infix: true}
 			c.P = op.Pos
 			LabelLambdas(c)
@@ -2464,7 +2545,7 @@ func (p *parser) parsePostfix() Expr {
 				x = c
 				continue
 			}
-			name := p.ident()
+			name := p.underscoreRef(p.ident())
 			m := &Member{X: x, Name: name.Text, Safe: op.Kind == SAFE_DOT}
 			m.P = name.Pos
 			x = m
@@ -2514,7 +2595,7 @@ func (p *parser) parsePostfix() Expr {
 		case LBRACE, LABEL, AT:
 			// A brace after a call or name is a trailing lambda, which may
 			// have a label, and annotations before them.
-			if p.noTrailing || t.Kind == LABEL && p.toks[p.i+1].Kind != LBRACE {
+			if p.noTrailing || t.Kind == LABEL && !p.lambdaAfter(p.i) {
 				return x
 			}
 			// After an expression in parentheses, (a to b) { ... }, the
@@ -2529,7 +2610,7 @@ func (p *parser) parsePostfix() Expr {
 			for p.at(AT) {
 				as = append(as, p.annotation())
 			}
-			if !p.at(LBRACE) && (!p.at(LABEL) || p.toks[p.i+1].Kind != LBRACE) {
+			if !p.at(LBRACE) && (!p.at(LABEL) || !p.lambdaAfter(p.i)) {
 				p.i = start
 				return x
 			}
@@ -2552,10 +2633,42 @@ func (p *parser) parsePostfix() Expr {
 	}
 }
 
+// lambdaAfter reports whether the tokens from j are a lambda with
+// annotations or a label before it, which may be on the next line:
+// @Ann @[Ann] label@ { x -> x }.
+func (p *parser) lambdaAfter(j int) bool {
+	for p.toks[j].Kind == AT {
+		j++
+		if p.toks[j].Kind == IDENT && p.toks[j+1].Kind == COLON {
+			j += 2
+		}
+		if p.toks[j].Kind == LBRACK {
+			j = p.matching(j) + 1
+			continue
+		}
+		if p.toks[j].Kind != IDENT {
+			return false
+		}
+		for j++; p.toks[j].Kind == DOT && p.toks[j+1].Kind == IDENT; j += 2 {
+		}
+		if p.toks[j].Kind == LPAREN {
+			j = p.matching(j) + 1
+		}
+	}
+	if p.toks[j].Kind == LABEL {
+		j++
+		for p.toks[j].Kind == NL {
+			j++
+		}
+	}
+	return p.toks[j].Kind == LBRACE
+}
+
 // trailingLambda parses a trailing lambda, with its label if it has one.
 func (p *parser) trailingLambda() *Lambda {
 	if t := p.tok(); t.Kind == LABEL {
 		p.next()
+		p.skipNL() // label@ NL { ... }
 		l := p.parseLambda()
 		l.Label = t.Text
 		return l
@@ -2568,7 +2681,7 @@ func (p *parser) parseCall(fn Expr, targs []*TypeArg) Expr {
 	if targs != nil && p.at(NL) && p.peekPastNL() == LBRACE {
 		p.skipNL() // f<T>\n{ ... }
 	}
-	if p.at(LBRACE) || targs != nil && p.at(LABEL) { // f<T> { ... }, f<T> sc@{ ... }
+	if p.at(LBRACE) || targs != nil && (p.at(LABEL) || p.at(AT)) && p.lambdaAfter(p.i) { // f<T> { ... }, f<T> sc@{ ... }, f<T> @A { ... }
 		c.P = p.tok().Pos
 		return c
 	}
@@ -2618,7 +2731,7 @@ func (p *parser) parseColonColon(x Expr, ref *TypeRef) Expr {
 		cl.P = t.Pos
 		return cl
 	}
-	return p.callableRef(t.Pos, &CallableRef{X: x, Type: ref, Name: p.ident().Text})
+	return p.callableRef(t.Pos, &CallableRef{X: x, Type: ref, Name: p.underscoreRef(p.ident()).Text})
 }
 
 // callableRef returns a callable reference, as a lambda for the checker to
@@ -2737,6 +2850,10 @@ func (p *parser) parsePrimary() Expr {
 			return l
 		}
 		p.next()
+		if t.Text != "_" || !p.at(LT) {
+			// _<T>() calls the CHECK_TYPE helper of kotlinc's tests.
+			p.underscoreRef(*t)
+		}
 		id := &Ident{Name: t.Text}
 		id.P = t.Pos
 		return id
@@ -2813,7 +2930,7 @@ func (p *parser) parsePrimary() Expr {
 		if p.at(CLASS) {
 			p.failAt(t.Pos, "a class literal needs a class or a value before ::")
 		}
-		return p.callableRef(t.Pos, &CallableRef{Name: p.ident().Text})
+		return p.callableRef(t.Pos, &CallableRef{Name: p.underscoreRef(p.ident()).Text})
 	case AT:
 		// An annotated expression, whose annotation can be on the line
 		// before it (see File.Annotated, and annotateLambda).

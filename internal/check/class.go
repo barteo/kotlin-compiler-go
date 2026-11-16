@@ -6,6 +6,8 @@ import (
 	"maps"
 	"slices"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
 	"github.com/barteo/kotlin-compiler-go/internal/types"
@@ -191,6 +193,7 @@ func (c *Checker) checkSupers() {
 		}
 	}
 	c.tparams, c.lookupCls = nil, nil
+	c.checkAliasBounds()
 }
 
 // checkConsistentSupers reports a class whose supertypes reach a generic
@@ -419,10 +422,10 @@ func (c *Checker) hasProp(cls *types.ClassSym, name string) bool {
 		found = s.KProps[name] != nil
 		return !found
 	})
-	// A Java getX() is the property x, never X: Label.TEXT in a subclass of
-	// a class with getLabel() names the class Label.
-	getter := !('A' <= name[0] && name[0] <= 'Z') && len(c.javaMethods(cls, types.GetterName(name))) > 0
-	return found || getter ||
+	// A capitalized name, as TimeZone or Label in Label.TEXT, names a class,
+	// not the property that Kotlin sees for getTimeZone(): timeZone.
+	r, _ := utf8.DecodeRuneInString(name)
+	return found || !unicode.IsUpper(r) && len(c.javaMethods(cls, types.GetterName(name))) > 0 ||
 		name == "length" && c.isCharSequence(cls) || name == "size" && c.hasSize(cls)
 }
 
@@ -783,7 +786,13 @@ func (c *Checker) overridden(cls *types.ClassSym, f *types.FunSym) []*types.FunS
 			return true
 		}
 		if s.Name == "java/lang/Throwable" && f.Name == "fillInStackTrace" {
-			return true // not a member, as Kotlin sees Throwable
+			// Not a member, as Kotlin sees Throwable: a function of
+			// that name needs no 'override'. But K2 accepts one, as
+			// kotlinx.coroutines' exceptions have, and it then
+			// overrides Throwable's.
+			if d, ok := f.Decl.(*syntax.FunDecl); !ok || !d.Override {
+				return true
+			}
 		}
 		gs := methodsNamed(s, f)
 		if s.Name == charSequence && f.Name == "get" && !f.Ext {
@@ -1672,6 +1681,12 @@ func (c *Checker) superCtor(d *syntax.ClassDecl) {
 		return
 	}
 	want := noWant
+	if len(x.TypeArgs) > 0 && sc.OuterParams == 0 && c.superViaAlias(d, x) {
+		// A typealias's type arguments are its own, Alias<String> for
+		// typealias Alias<X> = Inv<X, Inv<X, X>>: its expansion, the
+		// supertype, gives the class's.
+		x.TypeArgs = nil
+	}
 	if len(x.TypeArgs) == 0 {
 		// Through a typealias, the supertype gives the type arguments:
 		// class D : FooStr() for typealias FooStr = Foo<String>.
@@ -1693,6 +1708,17 @@ func (c *Checker) superCtor(d *syntax.ClassDecl) {
 	if sc.Local {
 		c.localConstructed(sc) // the class passes its superclass's captures
 	}
+}
+
+// superViaAlias reports whether class d's superclass call x names a
+// typealias.
+func (c *Checker) superViaAlias(d *syntax.ClassDecl, x *syntax.Call) bool {
+	for _, st := range d.Supers {
+		if st.Call == x {
+			return st.Type != nil && st.Type.Name != "" && c.lookupAlias(st.Type.Name) != nil
+		}
+	}
+	return false
 }
 
 // superOuterArgs reports whether the outer class type arguments of inner

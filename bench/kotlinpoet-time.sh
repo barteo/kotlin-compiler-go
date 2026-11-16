@@ -3,7 +3,7 @@
 # with kc and kotlinc, and writes bench/results/time-kotlinpoet.md.
 #
 #   bench/kotlinpoet-time.sh                      # about 2 minutes
-#   RUNS=5 WARM_RUNS=20 bench/kotlinpoet-time.sh
+#   COOLDOWN=0 RUNS=3 WARM_RUNS=10 bench/kotlinpoet-time.sh
 #
 # Both compilers get the build's options: the module name, the opt-in and
 # -jvm-default=no-compatibility, and kotlin-reflect on the class path;

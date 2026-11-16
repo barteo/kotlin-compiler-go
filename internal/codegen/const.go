@@ -257,6 +257,8 @@ func constOf(e syntax.Expr, depth int) (any, bool) {
 			return constBitwise(e, depth)
 		case types.ToInt, types.ToLong, types.ToShort, types.ToByte, types.ToChar:
 			return constConvert(e, depth)
+		case types.ToFloat, types.ToDouble:
+			return constFloat(e, depth)
 		}
 		if s, ok := constTrim(e, depth); ok {
 			return s, true
@@ -403,6 +405,32 @@ func constConvert(e *syntax.Call, depth int) (any, bool) {
 		return int64(int8(v)), true
 	case types.ToChar:
 		return int64(uint16(v)), true
+	}
+	return v, true
+}
+
+// constFloat computes x.toFloat() or x.toDouble() of a constant Float or
+// Double, as an annotation argument +1.0.toFloat().
+func constFloat(e *syntax.Call, depth int) (any, bool) {
+	m, ok := e.Fun.(*syntax.Member)
+	if !ok || m.Safe || len(e.Args) != 0 {
+		return nil, false
+	}
+	x, ok := constOf(m.X, depth+1)
+	if !ok {
+		return nil, false
+	}
+	var v float64
+	switch x := x.(type) {
+	case float64:
+		v = x
+	case float32:
+		v = float64(x)
+	default:
+		return nil, false
+	}
+	if e.Builtin == types.ToFloat {
+		return float32(v), true
 	}
 	return v, true
 }

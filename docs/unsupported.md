@@ -16,11 +16,23 @@ own tests.
   aren't `private`.
 - Local `external` functions, which are reported as unsupported.
 - Opt-in requirements (`@RequiresOptIn`, `@SubclassOptInRequired`) and
-  `@Deprecated` with level `ERROR` or `HIDDEN` are checked only for the
-  program's own declarations: the markers and deprecations of the class
-  path, the standard library's included, aren't read from class files.
-  The class path's functions and members deprecated `HIDDEN` stay hidden,
-  as `kotlinc` compiles them synthetic, but its classes don't.
+  `@Deprecated` are checked, the class path's read from its class files
+  and metadata, but only their errors are reported: markers with level
+  `WARNING` and deprecations with level `WARNING` (Java's `@Deprecated`
+  among them) give no warning. `@DeprecatedSinceKotlin` and
+  `@SinceKotlin` are read as if their versions were reached: `kc` acts
+  as the newest API version, as `kotlinc` does by default, and has no
+  `-api-version`. A class path's typealias opts in to nothing, as the
+  `@OptIn` it may have had in its source isn't in its class files: the
+  markers of what it expands to are required of its uses.
+- A class of the program with the name of a class of the class path
+  doesn't replace it in the class path's signatures and supertypes, as
+  it does in K2: a class path's class whose supertype is shadowed this
+  way still has the class path's supertype. Only the cycles of
+  supertypes this closes are reported.
+- Two classes of one name on the class path, from different modules,
+  are one class, the first; a signature that names the other with
+  other type arguments isn't reported.
 - Builder inference isn't K2's PCLA: a builder's lambda is checked with
   its variables unfixed and then again with them fixed. A call in a
   nested builder that combines both builders' variables, as
@@ -210,7 +222,10 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   with its variables fixed first.
 - A lambda's parameter types are fixed from the constraints known when
   the lambda is reached; K2 picks the order from the whole system, so it
-  infers some combinations of lambdas `kc` can't. A lambda that declares
+  infers some combinations of lambdas `kc` can't. Of K2's ordering,
+  `kc` runs the lambdas whose parameter types are known first, and a
+  lambda that returns a lambda for a function type whose inputs aren't
+  known yet last. A lambda that declares
   all its parameters' types is checked on its own only when its
   variable has no function type among its bounds.
 - The branches of an `if` or `when` aren't K2's synthetic call: a
@@ -242,7 +257,10 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   bound with a projection approximated as such a parameter is. Two reads
   of one `Out<*>` value are the same type, where they are different
   captures in Kotlin: only an elvis's left call, inferred with the right
-  side's type, sees a star of it as below its bound. The capture of an
+  side's type, sees a star of it as below its bound. A star for a
+  parameter with a recursive bound reads as that bound with a star for
+  the parameter (`Out3<*>` is an `Out3<Out3<*>>` for `Out3<out T :
+  Out3<T>>`), as K2 approximates its capture. The capture of an
   `in` projection is checked against the variable's bounds only at the
   top of an argument's type.
 - `@OnlyInputTypes` (`contains`, `get`, `assertEquals`) is checked only
@@ -252,7 +270,8 @@ yet done. [Design](design.md) describes how `kc` compiles it.
 - Of the Java collection members K2 gives Kotlin's signatures, `kc` maps
   `contains`, `remove`, `containsAll`, `removeAll`, `retainAll`,
   `indexOf`, `lastIndexOf`, and a map's `containsKey`, `containsValue`,
-  `get` and both `remove`s; others, such as `getOrDefault`, keep Java's.
+  `get` and both `remove`s; others, such as `getOrDefault`, keep Java's,
+  though named arguments take Kotlin's parameter names.
 - K2's predefined nullability of JDK members is applied to the members
   of the classes it names, not to their overrides in other classes:
   `Map`'s `compute` takes a function that may return null, `HashMap`'s
@@ -270,12 +289,18 @@ yet done. [Design](design.md) describes how `kc` compiles it.
   where the call's expected type would have `T` not null:
   `val s: Set<String> = java.util.HashSet(setOf(null))` is an error.
 - Java module exports aren't checked.
+- Java sources compiled with the program see the member classes a
+  Kotlin class inherits only through supertypes written without type
+  arguments: a Java subclass of `class K : Base<String>()` that names
+  `Inner`, declared in `Base<T>`, leaves the name unresolved in the
+  signatures `kc` reads, as the inner class's `T` would be lost.
 - Without an expected type, a reference to a vararg function, or to a
   generic function whose type parameters its receiver's type doesn't
   give (`Box<Int>::first` for `fun <T> Box<T>.first()` is fine), is an
   error.
-- Where annotations are written, and whether they repeat, isn't checked
-  for Java annotations without `@Target` or from Java sources, nor for
+- Where annotations are written isn't checked for Java annotations
+  without `@Target` or from Java sources, nor whether they repeat on a
+  property or with a use-site target, nor, for any annotation, for
   use-site targets on local declarations and expressions (`@field:` on a
   local variable), nor across a typealias's expansion (`@A T` where
   `typealias T = @A Int`). The arguments of a
@@ -343,10 +368,6 @@ yet done. [Design](design.md) describes how `kc` compiles it.
 - An object expression in the program's inline function is one class for
   all copies, using a crossinline lambda as a function object; `kotlinc`
   copies the class per call.
-- In the method of a function with a reified type parameter, a library
-  object that uses it (`filterIsInstance`'s `{ it is R }`) is copied
-  erased, so code in another module that copies the method filters
-  nothing.
 - A library interface's inline member is called as an ordinary method.
   In the program, open and interface inline members are errors, even
   with `@Suppress("DECLARATION_CANT_BE_INLINED")`, which `kotlinc`

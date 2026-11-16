@@ -203,7 +203,7 @@ func impliedCondition(im syntax.Implies, cond syntax.Expr) (syntax.Implies, bool
 	var p syntax.Expr
 	switch x := cond.(type) {
 	case *syntax.Binary:
-		if _, null := x.Y.(*syntax.NullLit); !null || x.Op != syntax.NE {
+		if _, null := x.Y.(*syntax.NullLit); !null || x.Op != syntax.NE && x.Op != syntax.NOT_EQ_EQ {
 			return im, false
 		}
 		p = x.X
@@ -214,6 +214,12 @@ func impliedCondition(im syntax.Implies, cond syntax.Expr) (syntax.Implies, bool
 		p, im.Is = x.X, x.Ref
 	case *syntax.Ident:
 		p, im.Holds = x, true
+	case *syntax.Unary:
+		id, ok := x.X.(*syntax.Ident)
+		if x.Op != syntax.NOT || !ok {
+			return im, false
+		}
+		p, im.Holds, im.Negated = id, true, true // implies (!p)
 	default:
 		return im, false
 	}
@@ -233,7 +239,7 @@ func impliedCondition(im syntax.Implies, cond syntax.Expr) (syntax.Implies, bool
 // symbol, once its parameters are declared.
 func (c *Checker) contractEffects(d *syntax.FunDecl, sym *types.FunSym) {
 	for _, im := range d.Implies {
-		e := types.Effect{Returns: im.Returns, Param: -2, Holds: im.Holds}
+		e := types.Effect{Returns: im.Returns, Param: -2, Holds: im.Holds, Negated: im.Negated}
 		if im.Param == "this" {
 			if d.Recv != nil {
 				e.Param = -1

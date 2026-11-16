@@ -555,7 +555,7 @@ func (g *gen) funMeta(s *metaScope, fd *syntax.FunDecl, owner *types.ClassSym) *
 		}
 	}
 	for _, e := range sym.Implies {
-		im := kmeta.Implies{Returns: kmeta.ReturnsAny, Param: e.Param, Holds: e.Holds}
+		im := kmeta.Implies{Returns: kmeta.ReturnsAny, Param: e.Param, Holds: e.Holds, Negated: e.Negated}
 		switch e.Returns {
 		case 1:
 			im.Returns = kmeta.ReturnsTrue

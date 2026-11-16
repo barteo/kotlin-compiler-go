@@ -609,7 +609,7 @@ func (c *Checker) serialCompanion(cd *syntax.ClassDecl, src string) []syntax.Dec
 			return members
 		}
 	}
-	comp := &syntax.ClassDecl{P: cd.P, Name: "Companion", Object: true, HasPrimary: true, Members: members}
+	comp := &syntax.ClassDecl{P: cd.P, Name: "Companion", Object: true, HasPrimary: true, Members: members, Generated: true}
 	comp.Companion = true
 	cd.Members = append(cd.Members, comp)
 	return members

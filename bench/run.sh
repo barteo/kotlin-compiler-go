@@ -2,7 +2,7 @@
 # Benchmarks kc against kotlinc on generated projects.
 #
 #   bench/run.sh                                        # quick: 200 files, about 1 minute
-#   SIZES="100 1000" RUNS=1 WARM_RUNS=4 bench/run.sh    # thorough: about 6 minutes
+#   SIZES=500 RUNS=1 WARM_RUNS=4 bench/run.sh           # thorough: about 9 minutes
 #
 # SIZES: project sizes in files. RUNS: cold kotlinc runs per size (kc
 # always gets 5). WARM_RUNS: kotlinc runs in one JVM; the median of the

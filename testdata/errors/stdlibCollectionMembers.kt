@@ -18,6 +18,8 @@ class Names : java.util.ArrayList<String>()
 
 fun subclass(n: Names) {
     n.contains("")
-    n.remove(1) // remove(int index)
+    // remove(int index) is the stdlib's deprecated remove(index), level
+    // ERROR: Kotlin calls it removeAt.
+    n.remove(1) // ERROR 'remove' is deprecated with level ERROR
     n.containsAll(listOf(1)) // ERROR must be mentioned in input types
 }

@@ -125,3 +125,8 @@ suspend inline fun <T> recovered(onError: (Throwable) -> T? = { null }, block: (
         delay(1)
         onError(e)
     }
+
+// A flow's filterIsInstance in a function with a reified type parameter:
+// its copy of the library's object, and of the classes nested in it, keep
+// the parameter, which a program copying the function reifies.
+inline fun <reified R> Flow<*>.onlyOf(): Flow<R> = filterIsInstance<R>()

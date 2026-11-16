@@ -41,6 +41,9 @@ func skipPSIGrammar(t *testing.T, srcs ...string) {
 		return
 	}
 	for _, path := range srcs {
+		if !strings.HasSuffix(path, ".kt") {
+			continue
+		}
 		b, err := os.ReadFile(path)
 		if err != nil {
 			continue
@@ -261,12 +264,17 @@ func kotlincFlags(path string) []string {
 	return strings.Fields(flags)
 }
 
-// flagOptions sets the options for kotlinc's flags -jvm-default and
-// -Xdebug among flags.
+// flagOptions sets the options for kotlinc's flags -jvm-default,
+// -Xdebug and -opt-in=<marker> among flags.
 func flagOptions(opts *Options, flags []string) {
 	opts.NoJVMDefault = slices.Contains(flags, "-jvm-default=disable")
 	opts.JVMDefaultCompat = slices.Contains(flags, "-jvm-default=enable")
 	opts.Debug = slices.Contains(flags, "-Xdebug")
+	for _, f := range flags {
+		if m, ok := strings.CutPrefix(f, "-opt-in="); ok {
+			opts.OptIns = append(opts.OptIns, m)
+		}
+	}
 }
 
 func sources(t *testing.T, dir string) []string {
@@ -538,7 +546,7 @@ func TestErrors(t *testing.T) {
 	lib := stdlib()
 	for _, f := range files {
 		t.Run(filepath.Base(f), func(t *testing.T) {
-			opts := Options{OutDir: t.TempDir(), Jobs: 1}
+			opts := Options{OutDir: t.TempDir(), Jobs: 1, JavaTypes: true} // as kc
 			if usesStdlib(f) {
 				if lib == "" {
 					t.Skip("kotlin-stdlib.jar not found: set KOTLIN_HOME")
@@ -551,51 +559,97 @@ func TestErrors(t *testing.T) {
 				javas, _ := filepath.Glob(filepath.Join(f, "*.java")) // the module's Java sources
 				srcs = append(srcs, javas...)
 			}
-			// By file name and line.
-			want := map[string]string{}
-			for _, src := range srcs {
-				b, err := os.ReadFile(src)
-				if err != nil {
-					t.Fatal(err)
-				}
-				for i, line := range strings.Split(string(b), "\n") {
-					if m := errorComment.FindStringSubmatch(line); m != nil {
-						want[fmt.Sprintf("%s:%d", filepath.Base(src), i+1)] = m[1]
-					}
-				}
-			}
 			skipPSIGrammar(t, srcs...)
-			err := Compile(srcs, opts)
-			if err == nil {
-				t.Fatal("expected errors, compiled successfully")
+			checkErrors(t, srcs, Compile(srcs, opts))
+		})
+	}
+}
+
+// checkErrors compares a compile's errors with the "// ERROR <substring>"
+// comments of srcs: every marked line has an error containing its
+// substring, and no other line has one.
+func checkErrors(t *testing.T, srcs []string, err error) {
+	t.Helper()
+	// By file name and line.
+	want := map[string]string{}
+	for _, src := range srcs {
+		b, err := os.ReadFile(src)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i, line := range strings.Split(string(b), "\n") {
+			if m := errorComment.FindStringSubmatch(line); m != nil {
+				want[fmt.Sprintf("%s:%d", filepath.Base(src), i+1)] = m[1]
 			}
-			got := map[string][]string{}
-			for _, line := range strings.Split(err.Error(), "\n") {
-				// path:line:col: message
-				parts := strings.SplitN(line, ":", 4)
-				if len(parts) < 4 {
-					t.Errorf("malformed diagnostic: %s", line)
-					continue
-				}
-				at := filepath.Base(parts[0]) + ":" + parts[1]
-				got[at] = append(got[at], strings.TrimSpace(parts[3]))
+		}
+	}
+	if err == nil {
+		t.Fatal("expected errors, compiled successfully")
+	}
+	got := map[string][]string{}
+	for _, line := range strings.Split(err.Error(), "\n") {
+		// path:line:col: message
+		parts := strings.SplitN(line, ":", 4)
+		if len(parts) < 4 {
+			t.Errorf("malformed diagnostic: %s", line)
+			continue
+		}
+		at := filepath.Base(parts[0]) + ":" + parts[1]
+		got[at] = append(got[at], strings.TrimSpace(parts[3]))
+	}
+	for at, sub := range want {
+		found := false
+		for _, msg := range got[at] {
+			if strings.Contains(msg, sub) {
+				found = true
 			}
-			for at, sub := range want {
-				found := false
-				for _, msg := range got[at] {
-					if strings.Contains(msg, sub) {
-						found = true
-					}
+		}
+		if !found {
+			t.Errorf("%s: want error containing %q, got %q", at, sub, got[at])
+		}
+	}
+	for at, msgs := range got {
+		if _, ok := want[at]; !ok {
+			t.Errorf("%s: unexpected errors %q", at, msgs)
+		}
+	}
+}
+
+// TestLibraryErrors checks diagnostics about a library's declarations,
+// which kc reads from class files: testdata/liberrors/X/lib/ is compiled
+// first (its Java files by javac), then X/use/ against it, with
+// "// ERROR <substring>" comments as in TestErrors. A first line
+// "// kotlinc: <flags>" of either's first file gives its flags.
+func TestLibraryErrors(t *testing.T) {
+	lib := stdlib()
+	if lib == "" {
+		t.Skip("kotlin-stdlib.jar not found: set KOTLIN_HOME")
+	}
+	dirs, _ := filepath.Glob("../../testdata/liberrors/*")
+	for _, dir := range dirs {
+		t.Run(filepath.Base(dir), func(t *testing.T) {
+			libOut := t.TempDir()
+			libSrcs, _ := filepath.Glob(filepath.Join(dir, "lib", "*.kt"))
+			javas, _ := filepath.Glob(filepath.Join(dir, "lib", "*.java"))
+			libOpts := Options{OutDir: libOut, Jobs: 1, ClassPath: []string{lib}, ModuleName: "lib"}
+			flagOptions(&libOpts, kotlincFlags(libSrcs[0]))
+			if err := Compile(append(libSrcs, javas...), libOpts); err != nil {
+				t.Fatalf("compile library: %v", err)
+			}
+			if len(javas) > 0 {
+				javac, err := exec.LookPath("javac")
+				if err != nil {
+					t.Skip("javac not found on PATH")
 				}
-				if !found {
-					t.Errorf("%s: want error containing %q, got %q", at, sub, got[at])
+				args := append([]string{"-nowarn", "-cp", libOut + string(os.PathListSeparator) + lib, "-d", libOut}, javas...)
+				if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+					t.Fatalf("javac: %v\n%s", err, out)
 				}
 			}
-			for at, msgs := range got {
-				if _, ok := want[at]; !ok {
-					t.Errorf("%s: unexpected errors %q", at, msgs)
-				}
-			}
+			srcs, _ := filepath.Glob(filepath.Join(dir, "use", "*.kt"))
+			opts := Options{OutDir: t.TempDir(), Jobs: 1, JavaTypes: true, ClassPath: []string{lib, libOut}}
+			flagOptions(&opts, kotlincFlags(srcs[0]))
+			checkErrors(t, srcs, Compile(srcs, opts))
 		})
 	}
 }

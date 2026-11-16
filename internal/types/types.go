@@ -237,15 +237,24 @@ const (
 
 // VarSym is a local, parameter, top-level property or class property.
 type VarSym struct {
-	Name    string
-	Type    Type
-	Kind    VarKind
-	Mutable bool
+	Name string
+	// Ambiguous is set on a Java class's field when the class declares
+	// another of the name, which only broken code does: a use of it is
+	// ambiguous, as in K2.
+	Ambiguous bool
+	Type      Type
+	Kind      VarKind
+	Mutable   bool
 	// Captured is set when a lambda uses a Local or Param. A captured var
 	// is kept in a one-element array that the lambda shares.
 	Captured bool
 	Owner    *ClassSym // Prop, Static
 	Facade   string    // Global: internal name of the file facade class
+	// Annotations are the descriptors of the annotations of a top-level
+	// property of the class path, and Deprecated its deprecation: what
+	// the opt-in and deprecation checks know of it.
+	Annotations []string
+	Deprecated  *Deprecation
 	// Part is set on a Global of a multi-file class's part that isn't
 	// private: the part, whose field and accessors the facade's call.
 	Part string
@@ -336,6 +345,9 @@ type VarSym struct {
 	// class or file facade uses its field, and other classes static
 	// access$getX$p methods.
 	Private bool
+	// MaybeConst is set on a static final field of a Java source with no
+	// Constant only because it reads a Kotlin class's const val.
+	MaybeConst bool
 	// Protected is set on a protected field of a Java class, which only
 	// code in its subclasses sees.
 	Protected bool
@@ -489,6 +501,7 @@ type Effect struct {
 	Returns, Param int
 	Is             *Type
 	Holds          bool // the parameter, a Boolean, is true: its argument's smart casts
+	Negated        bool // with Holds, it is false: the smart casts of its argument being false
 }
 
 type FunSym struct {
@@ -534,7 +547,12 @@ type FunSym struct {
 	// program's functions have their declaration's.
 	Annotations []string
 	Deprecated  *Deprecation
-	Why         string // why it is unsupported, if not for its types
+	// PropAnnotations are, for an accessor of a property of the class
+	// path, the descriptors of the property's annotations, which kotlinc
+	// keeps on its $annotations method: its opt-in markers apply to the
+	// accessors' uses.
+	PropAnnotations []string
+	Why             string // why it is unsupported, if not for its types
 	// Feature is the feature that Why reports unsupported, if it isn't
 	// an inline-only call.
 	Feature string
@@ -844,6 +862,9 @@ type ClassSym struct {
 	// JavaSealed is set on a sealed Java class or interface, which no
 	// Kotlin class may extend.
 	JavaSealed bool
+	// RecordComponents are the names of a Java record's components, which
+	// are its properties to Kotlin, read by their accessors.
+	RecordComponents []string
 	// Value is set on the program's value classes, whose instances are
 	// the value of their one property, Underlying, wherever they aren't
 	// boxed: see Unboxed.
@@ -939,6 +960,12 @@ type ClassSym struct {
 	StabilityInferred int
 	// Deprecated is the deprecation of a class of the class path.
 	Deprecated *Deprecation
+	// OptInLevel is the level of the @RequiresOptIn of an annotation
+	// class of the class path, ERROR or WARNING, or "" if it isn't an
+	// opt-in requirement marker; SubclassOptIn are the internal names of
+	// the markers of a class's @SubclassOptInRequired.
+	OptInLevel    string
+	SubclassOptIn []string
 
 	// Global is set on a class that a package-level variable declares for
 	// all compilations in the process, such as kotlin.Array: see MakeArgs.

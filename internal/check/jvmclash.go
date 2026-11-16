@@ -305,14 +305,17 @@ func (c *Checker) javaNullabilityClash(g, h *jvmMember) bool {
 
 // javaInherits reports whether a class of the program's Java sources
 // among cls's supertypes inherits both a and b: their members' clash is
-// that class's, which Java reports.
+// that class's, which Java reports. A member of a itself or of b itself
+// is no such member: a Java method of the JVM signature of an inherited
+// member of other Kotlin types, foo(AtomicInteger) for foo(AtomicInt),
+// doesn't override it, as Kotlin sees it.
 func (c *Checker) javaInherits(cls, a, b *types.ClassSym) bool {
 	if a == nil || b == nil {
 		return false
 	}
 	found := false
 	cls.Supertypes(func(s *types.ClassSym) bool {
-		found = s != cls && c.u.ext.javaSource(s) && s.IsSubclassOf(a) && s.IsSubclassOf(b)
+		found = s != cls && s != a && s != b && c.u.ext.javaSource(s) && s.IsSubclassOf(a) && s.IsSubclassOf(b)
 		return !found
 	})
 	return found
@@ -383,7 +386,7 @@ func (c *Checker) inheritedMembers(cls *types.ClassSym) []jvmMember {
 		for i := range out {
 			m := &out[i]
 			owner := m.owner()
-			if !jm.static && jm.sig == m.sig && owner != nil && jm.fun.Owner != owner && jm.fun.Owner.IsSubclassOf(owner) {
+			if !jm.static && jm.sig == m.sig && owner != nil && jm.fun.Owner != owner && jm.fun.Owner.IsSubclassOf(owner) && !atomicMismatch(&jm, m) {
 				overridden[i] = true
 				v := *m
 				v.via = jm.fun

@@ -28,8 +28,14 @@ import (
 // is otherwise invisible, is an error to use, outside of deprecated code.
 //
 // The checks run after the bodies are checked, on what the checker
-// resolved, and only know the program's markers and deprecations: those
-// of the class path aren't read from class files.
+// resolved. They know the program's markers and deprecations from its
+// declarations, and the class path's from its class files: the
+// descriptors of its classes' and members' annotations, a property's on
+// its $annotations method, a typealias's in its metadata, the level of a
+// marker's @RequiresOptIn, and @Deprecated and @DeprecatedSinceKotlin,
+// whose versions kc takes as reached. An @OptIn of the class path, a
+// SOURCE annotation, isn't known: its declarations need the markers of
+// those they use, too.
 
 // optInErrors reports the program's uses of declarations that need opt-in
 // or are deprecated with level ERROR or HIDDEN, and errors in the markers
@@ -39,7 +45,8 @@ func optInErrors(checkers []*Checker) {
 		return
 	}
 	o := &optPass{u: checkers[0].u, annClasses: map[string][]*types.ClassSym{}, aliases: map[string][]*types.AliasSym{},
-		markers: map[*types.ClassSym]*optMarker{}, seen: map[optErrKey]bool{}}
+		markers: map[*types.ClassSym]*optMarker{}, descs: map[string]*optMarker{}, extClasses: map[*types.ClassSym][]*optMarker{},
+		seen: map[optErrKey]bool{}}
 	for _, c := range checkers {
 		o.collect(c.file.Decls)
 	}
@@ -61,6 +68,11 @@ type optPass struct {
 	annClasses map[string][]*types.ClassSym
 	aliases    map[string][]*types.AliasSym
 	markers    map[*types.ClassSym]*optMarker
+	// descs are the markers that annotation descriptors of the class path
+	// name, nil for those that aren't, and extClasses the error-level
+	// markers of classes of the class path.
+	descs      map[string]*optMarker
+	extClasses map[*types.ClassSym][]*optMarker
 	seen       map[optErrKey]bool
 }
 
@@ -138,6 +150,13 @@ func (o *optPass) marker(cls *types.ClassSym) *optMarker {
 		return m
 	}
 	var m *optMarker
+	if cls.External && !neverMarker("L"+cls.Name+";") {
+		cls.Ensure()
+		if cls.OptInLevel != "" {
+			q := qualName(cls)
+			m = &optMarker{cls: cls, simple: q[strings.LastIndexByte(q, '.')+1:], qual: q, err: cls.OptInLevel != "WARNING"}
+		}
+	}
 	if d, ok := cls.Decl.(*syntax.ClassDecl); ok && d.Annotation {
 		if a := d.Find("", "RequiresOptIn"); a != nil {
 			q := qualName(cls)
@@ -153,6 +172,55 @@ func (o *optPass) marker(cls *types.ClassSym) *optMarker {
 	}
 	o.markers[cls] = m
 	return m
+}
+
+// descMarkers returns the error-level markers among the annotations of a
+// declaration of the class path, by their descriptors: La/b/C;.
+func (o *optPass) descMarkers(descs []string) []*optMarker {
+	var out []*optMarker
+	for _, d := range descs {
+		m, ok := o.descs[d]
+		if !ok {
+			if !neverMarker(d) && len(d) > 2 && d[0] == 'L' && d[len(d)-1] == ';' {
+				m = o.marker(o.u.ext.class(d[1 : len(d)-1]))
+			}
+			o.descs[d] = m
+		}
+		if m != nil && m.err {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+// extNamed returns the class of the class path with this qualified name,
+// as written, or nil: a.b.C, or a.b.C.D for a nested class.
+func (o *optPass) extNamed(name string) *types.ClassSym {
+	if !strings.Contains(name, ".") {
+		return nil
+	}
+	n := strings.ReplaceAll(name, ".", "/")
+	for {
+		if cls := o.u.ext.class(n); cls != nil {
+			if cls.Ensure(); !cls.Missing {
+				return cls
+			}
+		}
+		i := strings.LastIndexByte(n, '/')
+		if i < 0 {
+			return nil
+		}
+		n = n[:i] + "$" + n[i+1:]
+	}
+}
+
+// deprecationLevel returns the level of a deprecation that the class path
+// gives, if it is ERROR or HIDDEN: "ERROR", "HIDDEN" or "".
+func deprecationLevel(d *types.Deprecation) string {
+	if d != nil && (d.Level == "ERROR" || d.Level == "HIDDEN") {
+		return d.Level
+	}
+	return ""
 }
 
 // annMarkers returns the error-level markers among annotations as whose
@@ -210,16 +278,59 @@ func (o *optPass) classMarkers(cls *types.ClassSym) []*optMarker {
 	for depth := 0; cls != nil && depth < 32; depth++ {
 		if d, ok := cls.Decl.(*syntax.ClassDecl); ok {
 			out = append(out, o.annMarkers(d.Annotations, "")...)
+		} else if cls.External {
+			out = append(out, o.extClassMarkers(cls)...)
+			if cls.Outer == nil {
+				cls = o.extOuter(cls)
+				continue
+			}
 		}
 		cls = cls.Outer
 	}
 	return out
 }
 
+// extOuter returns the class a nested class of the class path is declared
+// in, which its Outer is only for an inner class: the class its binary
+// name is nested in, Outer$Nested.
+func (o *optPass) extOuter(cls *types.ClassSym) *types.ClassSym {
+	i := strings.LastIndexByte(cls.Name, '$')
+	if i <= strings.LastIndexByte(cls.Name, '/')+1 {
+		return nil
+	}
+	if out := o.u.ext.class(cls.Name[:i]); out != nil {
+		if out.Ensure(); !out.Missing {
+			return out
+		}
+	}
+	return nil
+}
+
+// extClassMarkers returns the error-level markers among the annotations of
+// a class of the class path.
+func (o *optPass) extClassMarkers(cls *types.ClassSym) []*optMarker {
+	ms, ok := o.extClasses[cls]
+	if ok {
+		return ms
+	}
+	cls.Ensure()
+	for _, a := range cls.Annotations {
+		if m := o.marker(a); m != nil && m.err {
+			ms = append(ms, m)
+		}
+	}
+	o.extClasses[cls] = ms
+	return ms
+}
+
 // aliasMarkers returns the error-level markers of a typealias: its own,
 // and those of the classifiers it expands to that it doesn't opt in to.
 func (o *optPass) aliasMarkers(a *types.AliasSym, depth int) []*optMarker {
 	d, ok := a.Decl.(*syntax.TypeAliasDecl)
+	if !ok && a.Decl == nil && depth <= 16 {
+		// One of the class path: whether it opts in isn't known.
+		return append(o.descMarkers(a.Annotations), o.typeMarkers(a.Type)...)
+	}
 	if !ok || depth > 16 {
 		return nil
 	}
@@ -365,6 +476,10 @@ func classDeprecation(cls *types.ClassSym) string {
 	if d, ok := cls.Decl.(*syntax.ClassDecl); ok && !d.Synthetic {
 		return deprecation(d.Annotations)
 	}
+	if cls.External {
+		cls.Ensure()
+		return deprecationLevel(cls.Deprecated)
+	}
 	return ""
 }
 
@@ -454,6 +569,8 @@ func (w *optWalker) typeRef(ref *syntax.TypeRef) {
 		case *types.AliasSym:
 			if d, ok := k.Decl.(*syntax.TypeAliasDecl); ok {
 				w.deprecatedUse(r.P, k.Name, deprecation(d.Annotations))
+			} else if k.Decl == nil {
+				w.deprecatedUse(r.P, k.Name, deprecationLevel(k.Deprecated))
 			}
 			if cls := w.expansionDeprecated(k.Type, 0); cls != nil && !w.deprecated() && !w.suppressed("TYPEALIAS_EXPANSION_DEPRECATION_ERROR") {
 				w.errorf(r.P, "the expansion of typealias '%s' uses '%s', which is deprecated", k.Name, cls.DisplayName())
@@ -721,6 +838,11 @@ func (w *optWalker) class(d *syntax.ClassDecl, extra []syntax.Annotation) {
 		w.pop()
 	}
 	for _, m := range d.Members {
+		// kotlinc doesn't check a compiler plugin's code: serialization's
+		// calls internal API such as createSimpleEnumSerializer.
+		if generated(m) {
+			continue
+		}
 		switch m := m.(type) {
 		case *syntax.FunDecl:
 			w.fun(m, d.Sym)
@@ -785,23 +907,33 @@ func (w *optWalker) inheritance(st *syntax.SuperType) {
 	if cls == nil || w.suppressed("OPT_IN_TO_INHERITANCE_ERROR") {
 		return
 	}
-	d, ok := cls.Decl.(*syntax.ClassDecl)
-	if !ok {
-		return
-	}
-	for i := range d.Annotations {
-		a := &d.Annotations[i]
-		if !a.Is("SubclassOptInRequired") {
-			continue
-		}
-		for _, n := range classLitNames(a) {
-			m := w.o.marker(w.o.classNamed(n))
-			if m == nil || !m.err || w.o.optsIn(w.scope, m, true) {
+	var ms []*optMarker
+	if d, ok := cls.Decl.(*syntax.ClassDecl); ok {
+		for i := range d.Annotations {
+			a := &d.Annotations[i]
+			if !a.Is("SubclassOptInRequired") {
 				continue
 			}
-			if st.Type != nil {
-				w.errorf(st.Type.P, "this class needs opt-in to inherit from '%s': mark the subclass with '@SubclassOptInRequired(%s::class)' or '@OptIn(%s::class)'", cls.DisplayName(), m.simple, m.simple)
+			for _, n := range classLitNames(a) {
+				k := w.o.classNamed(n)
+				if k == nil {
+					k = w.o.extNamed(n)
+				}
+				ms = append(ms, w.o.marker(k))
 			}
+		}
+	} else if cls.External {
+		cls.Ensure()
+		for _, n := range cls.SubclassOptIn {
+			ms = append(ms, w.o.marker(w.o.u.ext.class(n)))
+		}
+	}
+	for _, m := range ms {
+		if m == nil || !m.err || w.o.optsIn(w.scope, m, true) {
+			continue
+		}
+		if st.Type != nil {
+			w.errorf(st.Type.P, "this class needs opt-in to inherit from '%s': mark the subclass with '@SubclassOptInRequired(%s::class)' or '@OptIn(%s::class)'", cls.DisplayName(), m.simple, m.simple)
 		}
 	}
 }
@@ -817,6 +949,8 @@ func (w *optWalker) fun(d *syntax.FunDecl, owner *types.ClassSym) {
 		for _, o := range w.c.overridden(owner, d.Sym) {
 			if fd, ok := o.Decl.(*syntax.FunDecl); ok {
 				w.overrideOf(d.P, w.o.annMarkers(fd.Annotations, ""))
+			} else if o.Decl == nil && o.Owner != nil && o.Owner.External {
+				w.overrideOf(d.P, w.o.descMarkers(o.Annotations))
 			}
 		}
 	}
@@ -848,7 +982,13 @@ func (w *optWalker) overrideOf(p syntax.Pos, ms []*optMarker) {
 // propOverride checks an overriding property of class cls.
 func (w *optWalker) propOverride(cls *types.ClassSym, p *types.VarSym, pos syntax.Pos) {
 	cls.Supertypes(func(s *types.ClassSym) bool {
-		if s == cls || s.External {
+		if s == cls {
+			return true
+		}
+		if s.External {
+			if kp := s.KProps[p.Name]; kp != nil {
+				w.overrideOf(pos, slices.Concat(w.o.descMarkers(kp.Getter.Annotations), w.o.descMarkers(kp.Getter.PropAnnotations)))
+			}
 			return true
 		}
 		if sp := s.Prop(p.Name); sp != nil {
@@ -1117,6 +1257,11 @@ func (c *Checker) extendsPrivateKotlin(cls *types.ClassSym) bool {
 
 // fun1 checks a call at p of function f, with result type t.
 func (w *optWalker) fun1(f *types.FunSym, p syntax.Pos, t types.Type) {
+	w.funNamed(f, f.Name, p, t)
+}
+
+// funNamed is fun1, with the name a deprecation error gives the function.
+func (w *optWalker) funNamed(f *types.FunSym, name string, p syntax.Pos, t types.Type) {
 	var ms []*optMarker
 	level := ""
 	switch d := f.Decl.(type) {
@@ -1144,6 +1289,16 @@ func (w *optWalker) fun1(f *types.FunSym, p syntax.Pos, t types.Type) {
 			ms = w.o.annMarkers(d.Decl.Annotations, "")
 			level = deprecation(d.Decl.Annotations)
 		}
+	case nil:
+		// A function of the class path: its markers, those of the
+		// property it is an accessor of, and those of its signature's
+		// types.
+		ms = slices.Concat(w.o.descMarkers(f.Annotations), w.o.descMarkers(f.PropAnnotations), w.o.typeMarkers(f.Recv))
+		for _, prm := range f.Params {
+			ms = append(ms, w.o.typeMarkers(prm.Type)...)
+		}
+		ms = append(ms, w.o.typeMarkers(f.Ret)...)
+		level = deprecationLevel(f.Deprecated)
 	default:
 		return
 	}
@@ -1151,7 +1306,7 @@ func (w *optWalker) fun1(f *types.FunSym, p syntax.Pos, t types.Type) {
 		ms = append(ms, w.o.typeMarkers(t)...)
 	}
 	w.require(p, ms)
-	w.deprecatedUse(p, f.Name, level)
+	w.deprecatedUse(p, name, level)
 }
 
 // ctorMarkers returns the error-level markers of a constructor of the
@@ -1174,6 +1329,12 @@ func (w *optWalker) ctorMarkers(f *types.FunSym) []*optMarker {
 			}
 		}
 		return ms
+	case nil:
+		ms := w.o.descMarkers(f.Annotations)
+		for _, p := range f.Params {
+			ms = append(ms, w.o.typeMarkers(p.Type)...)
+		}
+		return ms
 	}
 	return nil
 }
@@ -1184,6 +1345,8 @@ func (w *optWalker) ctorDeprecation(f *types.FunSym) string {
 		return deprecation(d.CtorMods.Annotations)
 	case *syntax.SecondaryCtor:
 		return deprecation(d.Annotations)
+	case nil:
+		return deprecationLevel(f.Deprecated)
 	}
 	return ""
 }
@@ -1216,6 +1379,13 @@ func (w *optWalker) propMarkers(p *types.VarSym, write bool) []*optMarker {
 			ms = append(ms, w.o.refMarkers(d.Type, 0)...)
 		}
 		return ms
+	case nil:
+		// A top-level property of the class path.
+		ms := w.o.descMarkers(p.Annotations)
+		if !write && p.Kind == types.Global {
+			ms = append(ms, w.o.typeMarkers(p.Type)...)
+		}
+		return ms
 	}
 	return nil
 }
@@ -1226,6 +1396,8 @@ func (w *optWalker) propDeprecation(p *types.VarSym) string {
 		return deprecation(d.Annotations, "property", "get")
 	case *syntax.CtorParam:
 		return deprecation(d.Modifiers.Annotations, "property", "get")
+	case nil:
+		return deprecationLevel(p.Deprecated)
 	}
 	return ""
 }
@@ -1259,23 +1431,63 @@ func (w *optWalker) ident(n *syntax.Ident) {
 			}
 		}
 	}
+	if n.Sym == nil && !write {
+		w.accessor(n.Name, n.Getter, nil, n.P, false)
+	}
 	if n.Object != nil {
 		w.object(n.Object, n.P)
+	}
+}
+
+// accessor checks a read, or with write an assignment, at p of property
+// name of the class path, by its getter and setter.
+func (w *optWalker) accessor(name string, get, set *types.FunSym, p syntax.Pos, write bool) {
+	f := get
+	if write && set != nil {
+		f = set
+	}
+	if f != nil && f.Decl == nil {
+		w.funNamed(f, name, p, types.Type{})
 	}
 }
 
 func (w *optWalker) member(n *syntax.Member) {
 	if n.Prop != nil {
 		w.variable(n.Prop, n.P, w.writes[n])
+	} else {
+		w.accessor(n.Name, n.Getter, n.Setter, n.P, w.writes[n])
 	}
 	if n.Object != nil {
 		w.object(n.Object, n.P)
 	}
+	if n.Static != nil && n.X != nil {
+		// The class of a static member: JavaClass.f().
+		w.require(n.X.Pos(), w.o.classMarkers(n.Static))
+		w.deprecatedUse(n.X.Pos(), n.Static.DisplayName(), classDeprecation(n.Static))
+	}
 }
 
 // object checks a use at p of an object, or a companion object, as a
-// value.
+// value. A companion object is named by its class, D in D.f(), whose
+// deprecation applies.
 func (w *optWalker) object(cls *types.ClassSym, p syntax.Pos) {
 	w.require(p, w.o.classMarkers(cls))
-	w.deprecatedUse(p, cls.DisplayName(), classDeprecation(cls))
+	level := classDeprecation(cls)
+	if o := cls.CompanionOf; level == "" && o != nil {
+		cls, level = o, classDeprecation(o)
+	}
+	w.deprecatedUse(p, cls.DisplayName(), level)
+}
+
+// generated reports whether a compiler plugin of kc's declares d.
+func generated(d syntax.Decl) bool {
+	switch d := d.(type) {
+	case *syntax.FunDecl:
+		return d.Generated
+	case *syntax.PropDecl:
+		return d.Generated
+	case *syntax.ClassDecl:
+		return d.Generated || d.Synthetic
+	}
+	return false
 }

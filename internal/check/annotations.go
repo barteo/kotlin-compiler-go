@@ -85,6 +85,8 @@ func (c *Checker) annotatedExpr(x syntax.Expr) {
 // checkAnnotations is annotations, or localAnnotations if local is set.
 func (c *Checker) checkAnnotations(as []syntax.Annotation, owner *types.ClassSym, site annotSite, local bool) {
 	seen := map[repeatKey]bool{}
+	var applied []appliedAnnotation
+	defer func() { c.repeatedWithContainer(applied) }()
 	for i := range as {
 		a := &as[i]
 		if a.Name == "" {
@@ -98,9 +100,11 @@ func (c *Checker) checkAnnotations(as []syntax.Annotation, owner *types.ClassSym
 			rec.Annotation(c.file, a, cls)
 		}
 		if cls.Retention != types.NoRetention {
+			applied = append(applied, appliedAnnotation{a, cls})
 			c.annotationTarget(a, cls, site)
 			c.repeated(a, cls, site, seen)
 			c.jvmAnnotation(a, cls, site)
+			c.javaPositionalArgs(a, cls)
 		}
 		if ps := cls.TypeParams; cls.Annotation && len(a.TypeArgs) != len(ps) && c.lookupAlias(a.Name) == nil {
 			// Unlike a call, an annotation entry doesn't infer its
@@ -208,7 +212,7 @@ func (c *Checker) annotationParams(cls *types.ClassSym) []*types.VarSym {
 		for _, f := range fs {
 			if f.Abstract && len(f.Params) == 0 {
 				t := c.kclassOfJava(f.Ret)
-				ps = append(ps, &types.VarSym{Name: f.Name, Type: t, Kind: types.Param, Vararg: f.Name == "value" && t.IsArray()})
+				ps = append(ps, &types.VarSym{Name: f.Name, Type: t, Kind: types.Param, Vararg: f.Name == "value" && t.IsArray(), Default: cls.AnnotationDefaults[f.Name] != nil})
 			}
 		}
 	}
@@ -238,8 +242,11 @@ func (c *Checker) kclassOfJava(t types.Type) types.Type {
 		}
 		return t
 	}
-	if t.C.Name != "java/lang/Class" || t.A == nil {
+	if t.C.Name != "java/lang/Class" {
 		return t
+	}
+	if t.A == nil { // a raw Class, KClass<*>
+		return types.GenericType(kclass, []types.Arg{{V: types.Star}}).Platform()
 	}
 	return types.GenericType(kclass, t.A.List).Platform()
 }
@@ -296,7 +303,7 @@ func (c *Checker) annotationValues(cls *types.ClassSym, args []annotArg, p synta
 			case v.Vararg:
 				// No arguments for a vararg parameter: kotlinc writes [].
 				values = append(values, syntax.AnnotationValue{Name: v.Name, Type: v.Type, Array: true, Omitted: true})
-			case !v.Default && cls.Annotation:
+			case !v.Default && (cls.Annotation || javaAnnotation(cls)):
 				c.errorf(p, "no value passed for parameter '%s'", v.Name)
 				ok = false
 			}

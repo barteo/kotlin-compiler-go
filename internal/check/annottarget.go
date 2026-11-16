@@ -206,7 +206,7 @@ type repeatKey struct {
 // another annotation among seen has the same class and target, and
 // records it.
 func (c *Checker) repeated(a *syntax.Annotation, cls *types.ClassSym, site annotSite, seen map[repeatKey]bool) {
-	if site.kind == siteUnchecked || site.bound || !cls.TargetsKnown || cls.Repeatable {
+	if site.kind == siteUnchecked || site.bound || !cls.TargetsKnown && !javaRepeatChecked(a, cls, site) || cls.Repeatable {
 		return
 	}
 	for _, m := range cls.Annotations {

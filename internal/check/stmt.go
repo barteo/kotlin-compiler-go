@@ -380,6 +380,19 @@ func alwaysEvaluated(e syntax.Expr, cast func(*syntax.As), call func(*syntax.Cal
 		alwaysEvaluated(e.X, cast, call)
 	case *syntax.NotNull:
 		alwaysEvaluated(e.X, cast, call)
+	case *syntax.If:
+		alwaysEvaluated(e.Cond, cast, call)
+	case *syntax.When:
+		// The subject, and the first condition, which always runs: x is
+		// an Int after when (x) { x as Int -> ...; else -> ... }.
+		if e.Subject != nil {
+			alwaysEvaluated(e.Subject, cast, call)
+		}
+		if len(e.Branches) > 0 && len(e.Branches[0].Conds) > 0 && !e.Branches[0].Else {
+			if cond := e.Branches[0].Conds[0]; cond.X != nil {
+				alwaysEvaluated(cond.X, cast, call)
+			}
+		}
 	case *syntax.StringLit:
 		for _, p := range e.Parts {
 			if p.X != nil {
@@ -894,6 +907,7 @@ func (c *Checker) lvalue(x syntax.Expr) (types.Type, bool) {
 			c.unsupported(x.P, "safe-call assignment", "safe-call assignment is not supported")
 			return types.InvalidType, false
 		}
+		c.varTarget = x // see propBound
 		t := c.member(x)
 		x.T = t
 		c.dslTarget(x)
@@ -1197,6 +1211,9 @@ func (c *Checker) assign(s *syntax.Assign) {
 			break
 		}
 		tt, mutable = c.lvalue(s.Target)
+		if s.Op != syntax.ASSIGN {
+			tt = c.projectedAssignOp(s, t, tt)
+		}
 	case *syntax.Ident, *syntax.Index:
 		if c.namesObject(s.Target) && s.Op != syntax.ASSIGN {
 			tt = c.expr(s.Target, noWant) // Obj += v: Obj.plusAssign(v)
@@ -1264,13 +1281,18 @@ func (c *Checker) assign(s *syntax.Assign) {
 		defer c.reset([]*types.VarSym{v})
 		c.assignedNested(v, v.Type)
 	}
-	if !builtinOperand(tt) || classBound(tt) {
+	if !builtinOperand(tt) || classBound(tt) || c.assignExt(tt, s) {
 		// x += v may call x.plusAssign(v), also on a val or a var whose
-		// setter the code can't see.
+		// setter the code can't see, and on a built-in type with an
+		// extension plusAssign, as Any.plusAssign for an Int.
 		if !mutable && len(c.errs) == n+1 && (c.errs[n].Msg == "val cannot be reassigned" || strings.HasPrefix(c.errs[n].Msg, invisibleSetterMsg)) {
 			c.errs = c.errs[:n]
 		}
-		c.compoundOp(s, tt, mutable)
+		want := tt // what x = x.plus(v) assigns to: a local's declared type
+		if v != nil {
+			want = v.Type
+		}
+		c.compoundOp(s, tt, want, mutable)
 		return
 	}
 	s.OpType = tt
@@ -1314,6 +1336,22 @@ func (c *Checker) namesObject(x syntax.Expr) bool {
 }
 
 // arithOf returns the arithmetic operator of a compound assignment.
+// assignExt reports whether a target of a built-in type tt has an
+// operator extension that x op= v may call, as Any.plusAssign for an Int.
+func (c *Checker) assignExt(tt types.Type, s *syntax.Assign) bool {
+	t := tt.Flex()
+	if t.K == types.Invalid || t.K == types.Nothing || t.IsParam() {
+		return false
+	}
+	probe := &syntax.Call{Args: []syntax.Expr{s.Value}}
+	for _, cl := range c.extCalleesFor(opNames[s.Op], t, probe) {
+		if cl.f.Operator && c.recvTakes(t, cl.f.Recv) && c.mayTake(cl.f, probe) {
+			return true
+		}
+	}
+	return false
+}
+
 func arithOf(k syntax.Kind) syntax.Kind {
 	switch k {
 	case syntax.PLUS_EQ:

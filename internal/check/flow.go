@@ -968,6 +968,10 @@ func (c *Checker) memberSym(m *syntax.Member) *types.VarSym {
 // memberKey returns the narrowing of a.p, where p is a stable property
 // of a stable value a, and the type of a.p is t.
 func (c *Checker) memberKey(m *syntax.Member, t types.Type) (narrow, bool) {
+	if p := m.Prop; p != nil && p.Kind == types.Global && c.stable(p) && c.packageRef(m.X) != nil {
+		// a.b.x, a top-level property by its qualified name, is x.
+		return narrow{sym: p, t: c.scope.narrowedMember(nil, p, t)}, true
+	}
 	sym := c.memberSym(m)
 	if sym == nil {
 		return narrow{}, false

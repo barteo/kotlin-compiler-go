@@ -32,4 +32,6 @@ false
 5
 null
 found
+[a, b]
+[1, 2]
 java.lang.IllegalArgumentException: negative: -1

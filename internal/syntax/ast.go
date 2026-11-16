@@ -491,7 +491,10 @@ func (m *Modifiers) Hidden() bool {
 
 type FunDecl struct {
 	Modifiers
-	P          Pos
+	P Pos
+	// Generated is set on a declaration a compiler plugin of kc's
+	// declares, which the opt-in and deprecation checks skip.
+	Generated  bool
 	End        Pos // the last token's, of a function declared in a file or a class, or an accessor
 	Name       string
 	TypeParams []*TypeParam
@@ -557,7 +560,10 @@ func SourceInline(f *types.FunSym) *FunDecl {
 
 type PropDecl struct {
 	Modifiers
-	P          Pos
+	P Pos
+	// Generated is set on a declaration a compiler plugin of kc's
+	// declares, which the opt-in and deprecation checks skip.
+	Generated  bool
 	Name       string
 	Mutable    bool
 	TypeParams []*TypeParam // only on an extension property: val <T> List<T>.x
@@ -566,11 +572,16 @@ type PropDecl struct {
 	Init       Expr       // nil for an abstract property, or one with a getter
 	Getter     *FunDecl   // get() = ..., or nil
 	SetterVis  Visibility // private set, ...
+	// SetterVisP is the position of the setter's visibility modifier, if
+	// it has one.
+	SetterVisP Pos
 	// InlineGetter and InlineSetter are set on inline get and inline set,
 	// which compile as ordinary accessors.
 	InlineGetter, InlineSetter bool
 	// AccessorMods are the modifiers written on each accessor.
 	AccessorMods [][]Mod
+	// AccessorSets tells which of AccessorMods are a setter's.
+	AccessorSets []bool
 	// Plugin is set by the checker on a property it declares as a
 	// compiler plugin's that metadata doesn't list: serialization's
 	// $cachedSerializer$delegate.
@@ -632,7 +643,10 @@ type CtorParam struct {
 
 type ClassDecl struct {
 	Modifiers
-	P          Pos
+	P Pos
+	// Generated is set on a declaration a compiler plugin of kc's
+	// declares, which the opt-in and deprecation checks skip.
+	Generated  bool
 	End        Pos // the closing brace's, of a class with a body
 	Name       string
 	Interface  bool
@@ -1181,6 +1195,7 @@ type Implies struct {
 	Param   string
 	Is      *TypeRef
 	Holds   bool // implies (p): p, a Boolean, is true
+	Negated bool // with Holds, implies (!p): p is false
 }
 
 type BoolLit struct {

@@ -282,7 +282,7 @@ func constVar(v *types.VarSym) bool {
 	case v.Const || v.Constant != nil:
 		return true
 	case v.Kind == types.Static:
-		return !v.Mutable
+		return !v.Mutable && !javaNonConst(v)
 	}
 	return false
 }

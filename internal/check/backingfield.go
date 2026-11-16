@@ -264,7 +264,7 @@ func (c *Checker) inPublicInline(at syntax.Pos) bool {
 		for _, x := range ds {
 			switch x := x.(type) {
 			case *syntax.ClassDecl:
-				if x.Sym != nil && within(at, x.P, x.End) && in(x.Members, x.Sym) {
+				if x.Sym != nil && !x.EnumEntry && within(at, x.P, x.End) && in(x.Members, x.Sym) {
 					return true
 				}
 			case *syntax.FunDecl:
@@ -328,4 +328,29 @@ func (c *Checker) memberField(x *syntax.Member, rt, t types.Type) types.Type {
 // cls: its type is cls's own, with its type parameters as arguments.
 func (c *Checker) isThis(recv types.Type, cls *types.ClassSym) bool {
 	return c.cls != nil && c.cls.IsSubclassOf(cls) && recv == c.cls.This()
+}
+
+// fieldShadowedByParam reports whether a setter's parameter is named
+// field, set(field), which hides the backing field in its body.
+func fieldShadowedByParam(a *syntax.FunDecl) bool {
+	for _, p := range a.Params {
+		if p.Name == "field" {
+			return true
+		}
+	}
+	return false
+}
+
+// fieldInBlock walks a block's statements with f in order, up to a local
+// named field, which hides the backing field from the statements after
+// it (val field = 2; return field).
+func fieldInBlock(b *syntax.Block, f func(any) bool) {
+	for _, st := range b.Stmts {
+		if v, ok := st.(*syntax.VarStmt); ok && v.Name == "field" {
+			syntax.Inspect(v.Init, f)
+			syntax.Inspect(v.Delegate, f)
+			return
+		}
+		syntax.Inspect(st, f)
+	}
 }

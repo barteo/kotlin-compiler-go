@@ -72,7 +72,6 @@ func diagSkip(t *test) string {
 		{"tests/testsWithExplicitReturnTypes/", "explicit API mode"},
 		{"tests/headerMode/", "header mode"},
 		{"tests/strictEquals/", "strict equality"},
-		{"testsWithStdLib/annotations/jvmDefault/", "-jvm-default modes"},
 	} {
 		if strings.HasPrefix(t.path, d.prefix) {
 			return d.reason

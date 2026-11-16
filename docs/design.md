@@ -254,7 +254,15 @@ Copying a body (`codegen/inline.go`):
   An object using the type parameters (`filterIsInstance`'s
   `{ it is R }`) is a template class (`inline.Template`) that each copy
   copies, renamed in its constant pool, with the markers made `nop`s so
-  offsets and frames stay valid.
+  offsets and frames stay valid. In the method of an inline function
+  whose own reified type parameter is the type argument, the copy keeps
+  its markers, renamed to that parameter, and the method creates it after
+  `Intrinsics.needClassReification()`, as `kotlinc`'s does: other modules'
+  copies of the method, by `kc` or `kotlinc`, copy the class in turn.
+  As `kotlinc`'s reifier, a check against a nullable type argument
+  (`is String?`) is true for null, and a cast to a non-null one
+  (`as String`) throws for null: in a template, both are written in the
+  bytes of the marker and the operation.
 
 An inlined lambda's body is generated at each invoke, with no capture
 boundary; `return@label` jumps to its end, and a plain `return`, `break`

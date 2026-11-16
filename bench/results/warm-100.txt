@@ -1,5 +1,0 @@
-run 1: 15872 ms
-run 2: 9588 ms
-run 3: 6914 ms
-run 4: 6140 ms
-warm median: 6914 ms
