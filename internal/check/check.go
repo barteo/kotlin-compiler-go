@@ -282,6 +282,8 @@ type Checker struct {
 	// branchSink is the system of the delegate an if, a try or an
 	// elvis is: see delegateValue.
 	branchSink *system
+	unitElvis  syntax.Expr    // see unitBody
+	varTarget  *syntax.Member // see propBound
 	// branchArg is set with branchSink for an if or a when that is a
 	// call's argument, whose lambda branches are then the call's
 	// postponed arguments (see branch). lambdaSink is set while the
@@ -358,6 +360,7 @@ type state struct {
 	fn         *types.FunSym // nil in property initializers and init blocks
 	retType    types.Type
 	retAllowed bool
+	exprRets   *[]exprRet // see exprBodyReturn
 	loops      []*loopCtx
 	finallies  []finallyCtx // the finally blocks around the code
 	allowRange bool
@@ -1125,7 +1128,7 @@ func (c *Checker) applyTypeArgs(cls *types.ClassSym, ref *syntax.TypeRef) types.
 	if cls.Inner && cls.OuterParams > 0 {
 		return c.innerType(ref) // Inner in its outer class's code
 	}
-	ps := cls.TypeParams
+	ps, hidden := localOwnParams(cls)
 	if ref.Args == nil && len(ps) > 0 && ref == c.bareRef {
 		return c.bareType(cls, ref, c.bareSubject)
 	}
@@ -1141,10 +1144,10 @@ func (c *Checker) applyTypeArgs(cls *types.ClassSym, ref *syntax.TypeRef) types.
 		}
 		return types.InvalidType
 	}
-	if len(ps) == 0 {
+	if len(ps) == 0 && hidden == nil {
 		return c.nullable(types.ClassType(cls), ref)
 	}
-	args := make([]types.Arg, len(ps))
+	args := make([]types.Arg, len(ps), len(ps)+len(hidden))
 	for i, a := range ref.Args {
 		args[i] = types.Arg{V: a.Variance}
 		if a.Variance == types.Star {
@@ -1158,7 +1161,7 @@ func (c *Checker) applyTypeArgs(cls *types.ClassSym, ref *syntax.TypeRef) types.
 			c.errorf(a.P, "projection is conflicting with variance of the corresponding type parameter of %s", cls.DisplayName())
 		}
 	}
-	t := types.GenericType(cls, args)
+	t := types.GenericType(cls, append(args, hidden...))
 	if !c.noBoundChecks {
 		c.checkBounds(t, ref)
 	}
@@ -2686,7 +2689,9 @@ func (c *Checker) inferProp(d *syntax.PropDecl) {
 	c.trial = c.trialOf(sym.Owner)
 	if d.Getter != nil && d.Init == nil {
 		// val x get() = ...: the type is the getter's.
+		restore := getterKeepsAnon(d, sym.Owner)
 		c.inferFun(d.Getter)
+		restore()
 		sym.Type = d.Getter.Sym.Ret
 		unitGetter(d.Getter.Sym)
 	} else {
@@ -3280,7 +3285,10 @@ func (c *Checker) checkFun(d *syntax.FunDecl, cls *types.ClassSym) {
 		return
 	}
 	c.retAllowed = false // `return` needs an explicit return type
+	rets := []exprRet{}
+	c.exprRets = &rets
 	t := types.ApproxFlexNothing(c.expr(d.ExprBody, noWant))
+	defer func() { c.checkExprReturns(rets, sym.Ret, d.Name) }()
 	if t.K == types.Range {
 		c.errorf(d.ExprBody.Pos(), "ranges are only supported in 'for' loops and 'in' checks")
 		t = types.InvalidType

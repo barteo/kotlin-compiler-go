@@ -991,7 +991,12 @@ func (g *gen) lvalue(x syntax.Expr) lvalue {
 			return g.globalLvalue(p)
 		}
 		this := isThis(x.X)
-		return g.propLvalue(x.Prop, x.T, func() { g.expr(x.X) }, recvClass(x.X.Type()), this)
+		recv, cls := func() { g.expr(x.X) }, recvClass(x.X.Type())
+		if p := x.Prop; x.X.Type().NonNull().IsParam() && p.Owner != nil && cls != nil && !cls.IsSubclassOf(p.Owner) {
+			// A property of another bound than the first, as getMember's.
+			recv, cls = func() { g.expr(x.X); g.code.Checkcast(p.Owner.Name) }, p.Owner
+		}
+		return g.propLvalue(x.Prop, x.T, recv, cls, this)
 	}
 	panic("bad assignment target")
 }

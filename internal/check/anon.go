@@ -127,6 +127,7 @@ func (c *Checker) localClass(s *syntax.LocalClass) {
 	scope := c.scope
 	c.anonClass(d, "local class", "local classes", func() string { return c.localName(d.Name) }, func(sym *types.ClassSym, frame *syntax.Lambda) {
 		sym.Local = true
+		c.localClassParams(sym)
 		scope.classes = append(scope.classes, sym)
 		if c.localClasses == nil {
 			c.localClasses = map[*types.ClassSym]localClassFrame{}
@@ -458,7 +459,10 @@ func approx(t types.Type) types.Type {
 	}
 	a := types.AnyType
 	if len(n.C.Supers) > 0 {
-		a = n.C.Supers[0]
+		// In terms of the type arguments for the type parameters it sees:
+		// ReadOnlyProperty<Any, Wrapper<Boolean>> for wrapper(true)'s
+		// object : ReadOnlyProperty<Any, Wrapper<T>>.
+		a = classSubst(n).Apply(n.C.Supers[0])
 	}
 	if types.MayBeNull(t) {
 		a = a.Nullable()
@@ -472,6 +476,20 @@ func approx(t types.Type) types.Type {
 // that isn't inline, or one of a local class or an object expression.
 func keepsAnon(m *syntax.Modifiers, cls *types.ClassSym) bool {
 	return m.Visibility == syntax.Private && !m.Inline || cls != nil && (cls.Local || cls.Anonymous)
+}
+
+// getterKeepsAnon makes the getter of property d, whose type is the
+// getter's, keep an object expression's type where d does, as a
+// delegated property's that is private: privateObj.x for a private val
+// privateObj by MyDelegate { object { val x = 42 } }. It returns the
+// function that undoes it, once the getter's type is inferred.
+func getterKeepsAnon(d *syntax.PropDecl, cls *types.ClassSym) func() {
+	g := d.Getter
+	if d.Field == nil || g.Visibility != syntax.Public || !keepsAnon(&d.Modifiers, cls) || keepsAnon(&g.Modifiers, cls) {
+		return func() {}
+	}
+	g.Visibility = d.Visibility
+	return func() { g.Visibility = syntax.Public }
 }
 
 // reified reports whether function d has a reified type parameter.

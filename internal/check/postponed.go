@@ -192,7 +192,7 @@ func (c *Checker) readyFirst(s *system) {
 	if len(s.lambdas) < 2 {
 		return
 	}
-	var ready, rest []pendingLambda
+	var ready, rest, late []pendingLambda
 	for _, pl := range s.lambdas {
 		// An anonymous function whose parameters have types has a type
 		// of its own, which the others passed for its variable then take:
@@ -203,13 +203,15 @@ func (c *Checker) readyFirst(s *system) {
 		for _, p := range c.inputs(s, pl) {
 			ok = ok && s.known(p)
 		}
-		if ok {
+		if c.returnedInputsOpen(s, pl) {
+			late = append(late, pl)
+		} else if ok {
 			ready = append(ready, pl)
 		} else {
 			rest = append(rest, pl)
 		}
 	}
-	s.lambdas = append(ready, rest...)
+	s.lambdas = slices.Concat(ready, rest, late)
 }
 
 // untypedDelegate reports whether p is a property without a type whose
@@ -253,4 +255,59 @@ func (c *Checker) sinkLambda(sink *system, p pendingBranch) types.Type {
 	body := p.body
 	sink.fixups = append(sink.fixups, func(s *system) { body.T = s.final(v) })
 	return v
+}
+
+// returnedInputsOpen reports whether pending lambda pl returns a lambda it
+// ends with for a result variable whose function-typed upper bound takes
+// inputs that aren't known yet: as in Kotlin, the call's other lambdas,
+// which may give them, go first. F of foo({ a(this) }, run { { g(this) } })
+// for foo(a: Scope<F>.() -> Unit, b: Scope<F>.() -> Unit) is the type
+// that a's body gives it.
+func (c *Checker) returnedInputsOpen(s *system, pl pendingLambda) bool {
+	if !endsInLambda(pl.l) {
+		return false
+	}
+	_, r, ok := funcParts(s.apply(pl.p))
+	if r = s.apply(r); !ok || r.K != types.TypeVar || s.byVar[r.Param()] == nil {
+		return false
+	}
+	for _, u := range s.byVar[r.Param()].upper {
+		if ps, _, ok := funcParts(s.apply(u).NonNull()); ok && slices.ContainsFunc(ps, func(p types.Type) bool { return !s.known(p) }) {
+			return true
+		}
+	}
+	return false
+}
+
+// deepFuncUpper returns a function type that variable v is below, whose
+// result, where it is a variable, is replaced by the function type that
+// variable is below, and so on, if that gives a proper type: as in
+// Kotlin, the expected type of the lambdas a lambda returns. (B) -> (A)
+// -> R for B2 <: (B) -> B1 and B1 <: (A) -> R, of { c -> { b -> { a ->
+// f(a, b, c) } } } passed to product(Foo<(C) -> B2>).
+func (s *system) deepFuncUpper(v types.Type, depth int) (types.Type, bool) {
+	tv := s.byVar[v.Param()]
+	if tv == nil || depth > 8 {
+		return types.InvalidType, false
+	}
+	for _, u := range tv.upper {
+		u = s.apply(u)
+		ps, r, ok := funcParts(u.Flex())
+		if !ok || slices.ContainsFunc(ps, types.Type.HasVars) {
+			continue
+		}
+		if r.K == types.TypeVar && !r.N {
+			if ru, ok := s.deepFuncUpper(r, depth+1); ok {
+				f := u.Flex()
+				args := slices.Clone(f.A.List)
+				args[len(args)-1] = types.Arg{T: ru}
+				f.A = types.MakeArgs(args)
+				return f, true
+			}
+		}
+		if !u.HasVars() {
+			return u, true
+		}
+	}
+	return types.InvalidType, false
 }

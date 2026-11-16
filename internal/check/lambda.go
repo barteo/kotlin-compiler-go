@@ -684,6 +684,12 @@ func (c *Checker) unitBody(b *syntax.Block) types.Type {
 			if _, ok := es.X.(*syntax.Call); ok {
 				return c.unitTail(b)
 			}
+			if e, ok := es.X.(*syntax.Binary); ok && e.Op == syntax.ELVIS {
+				// As in K2, an elvis's K expects the Unit, whose
+				// nullable its left side then does: myLet { ::foo } ?:
+				// unitFun() chooses foo's overload that returns Unit.
+				c.unitElvis = e
+			}
 		}
 	}
 	return c.block(b, noWant, false)
@@ -2895,6 +2901,9 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type) {
 			s.fixFuncInputs(r)
 			w.ret = s.upperHint(r)
 		}
+		if w.ret.K == types.Invalid && endsInLambda(l) {
+			w.ret, _ = s.deepFuncUpper(r, 0)
+		}
 		if w.ret.K == types.Invalid && s.unitBound(r) {
 			w.ret = types.UnitType
 		}
@@ -2914,6 +2923,8 @@ func (c *Checker) postponedLambda(s *system, l *syntax.Lambda, p types.Type) {
 			if r = s.apply(r); !r.HasVars() {
 				w.ret, w.check = r, true
 			}
+		} else if ft, ok := c.refOverloadHint(s, l, r); ok {
+			w.ret = ft
 		}
 	}
 	var bt types.Type

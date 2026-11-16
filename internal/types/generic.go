@@ -467,6 +467,12 @@ func (s Subst) applyA(t Type, pos Variance, exact bool) (Type, bool) {
 			r = a.T
 		case pos == Out && a.V == Out:
 			r = a.T
+			if t.P && t.K == TypeVar && r.N && !r.P && r.K != Null && r.K != Nothing {
+				// A Java F! read through the capture of out X?, as K2
+				// approximates it: X!. F of wait(Future<F>) for a
+				// CompletableFuture<*> of S : CharSequence?.
+				r = r.Platform()
+			}
 		case pos == In && a.V == In:
 			r = a.T
 		case pos == In:

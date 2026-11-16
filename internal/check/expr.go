@@ -796,6 +796,8 @@ func (c *Checker) binary(x *syntax.Binary, want types.Type, allowRange bool) typ
 		xw := noWant
 		if want.K != types.Invalid && want.K != types.Unit {
 			xw = want.Nullable()
+		} else if u := c.u.ext.class("kotlin/Unit"); (want.K == types.Unit || c.unitElvisWant(x)) && u != nil {
+			xw = types.ClassType(u).Nullable()
 		}
 		c.sink = c.takeBranchSink()
 		sink, n := c.sink, len(c.errs)
@@ -1716,6 +1718,11 @@ func (c *Checker) identNarrows(x *syntax.Binary) []narrow {
 		if !ok || c.subtype(k.t, ot) {
 			continue
 		}
+		if c.funcSubNarrow(k.t, ot) {
+			k.t = ot
+			out = append(out, k)
+			continue
+		}
 		if ot.A != nil && k.t.K == types.Class && k.t.A != nil {
 			// Both generic: the value is both, Box<T> & Box<A>, as K2's
 			// smart cast is an intersection with the declared type. The
@@ -1834,6 +1841,7 @@ func (c *Checker) contractNarrows(x *syntax.Call, returns int) []narrow {
 			}
 			is = sub.Apply(is)
 		}
+		is = c.contractArgs(f, e.Param, k.t, is)
 		own := func(t types.Type) bool {
 			return t.Has(func(u types.Type) bool { return u.K == types.TypeParam && slices.Contains(f.TypeParams, u.Param()) })
 		}
@@ -2190,7 +2198,7 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 		c.errorf(x.P, "only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type %s", xt)
 		return types.InvalidType
 	}
-	rt := c.boundWith(xt.NonNull(), func(cls *types.ClassSym) bool { return c.hasProp(cls, x.Name) })
+	rt := c.propBound(x, xt.NonNull())
 	var t types.Type
 	cls := c.classOf(rt)
 	found := true
@@ -2239,6 +2247,7 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 		ensureVar(x.Prop)
 		t = c.memberSubst(rt, x.Prop.Owner).Apply(x.Prop.Type)
 		t = c.intersectionProp(xt.NonNull(), rt, x.Prop, t)
+		t = c.starBoundsProp(rt, x.Prop, t)
 		if !x.Safe && c.stableOn(x.Prop, rt) {
 			// A smart cast of a.b.
 			x.T = t
@@ -3568,15 +3577,7 @@ func (c *Checker) ifExpr(x *syntax.If, want types.Type, valueUsed bool) types.Ty
 	c.push()
 	c.scope.narrows = whenFalse
 	exits = append(exits, c.watchExit(vars))
-	elseWant := want
-	if l := blockLambda(x.Else); l != nil && valueUsed && want.K == types.Invalid && thenT.Flex().IsFunc() && !thenT.HasVars() && (len(l.Params) > 0 || !noInputs(thenT.Flex())) {
-		// A lambda's parameters are the other branch's function type's:
-		// if (c) consumer else { node -> put(node) }. One without them
-		// has its own type, which the branches' type is above:
-		// if (c) { { 1 } } else { { 1f } }.
-		elseWant = thenT
-	}
-	elseT := c.branch(x.Else, elseWant, valueUsed, &pending)
+	elseT := c.branch(x.Else, lambdaBranchWant(x.Else, thenT, want, valueUsed), valueUsed, &pending)
 	c.pop()
 	if !valueUsed {
 		c.completeBranches(pending, c.unusedJoin(types.NothingType, x.Then, x.Else), noWant, false)
@@ -3967,9 +3968,10 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 	var cov coverage
 	result := types.NothingType
 	allJump := true
-	unused := types.NothingType // the join of the branches, whose value isn't used: see unusedJoin
-	var later []narrow          // what the failed conditions of the branches so far imply
-	nullFirst := true           // no branch so far matches null
+	unused := types.NothingType     // the join of the branches, whose value isn't used: see unusedJoin
+	var later []narrow              // what the failed conditions of the branches so far imply
+	nullFirst := true               // no branch so far matches null
+	funcBranch := types.InvalidType // see lambdaBranchWant
 	for i, br := range x.Branches {
 		if br.Else && br.Guard == nil { // else if guard -> can be anywhere
 			if i != len(x.Branches)-1 {
@@ -4014,7 +4016,7 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 						// val y = x.data, when (y) { is String -> }.
 						whenTrue = append(append(whenTrue, n), c.impliedBy(n)...)
 					} else {
-						later = append(later, n)
+						later = append(append(later, n), c.impliedBy(n)...)
 					}
 				}
 			case cond.In || cond.NotIn:
@@ -4153,7 +4155,8 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 		c.push()
 		c.scope.narrows = whenTrue
 		exits = append(exits, c.watchExit(vars))
-		bt := c.branch(br.Body, want, valueUsed, &pending)
+		bt := c.branch(br.Body, lambdaBranchWant(br.Body, funcBranch, want, valueUsed), valueUsed, &pending)
+		funcBranch = firstFuncBranch(funcBranch, bt)
 		c.pop()
 		c.pop()
 		if bt.K != types.Nothing {
@@ -4338,6 +4341,7 @@ func (c *Checker) jump(x *syntax.Jump) {
 		case c.fn == nil:
 			c.errorf(x.P, "'return' is not allowed here")
 		case !c.leave(c.base, x):
+		case !c.retAllowed && c.exprBodyReturn(x):
 		case !c.retAllowed:
 			c.errorf(x.P, "'return' needs an explicit return type on '%s'", c.fn.Name)
 		case x.X != nil:

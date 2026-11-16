@@ -57,8 +57,12 @@ func (cl *callee) argType(i int, args []syntax.Expr) types.Type {
 
 // isCallArg reports whether argument x is a call, spread or not.
 func isCallArg(x syntax.Expr) bool {
-	if sp, ok := x.(*syntax.Spread); ok {
-		x = sp.X
+	switch y := x.(type) {
+	case *syntax.Spread:
+		x = y.X
+	case *syntax.NotNull:
+		// As K2's checkNotNull call: id(emptyList()!!) for a List<Int>.
+		x = y.X
 	}
 	_, ok := x.(*syntax.Call)
 	return ok
@@ -645,6 +649,7 @@ func underscoreSub(sys *system, tparams []*types.TypeParamSym, recv types.Subst,
 			}
 		}
 	}
+	relateUnderscores(sys, tparams, typeArgs, sub)
 	return sub, sys
 }
 
@@ -1155,6 +1160,8 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			if lit, ok := a.(*syntax.IntLit); ok && !lit.Long && fitsLit(lit, s.final(params[i])) {
 				lit.T = s.final(params[i]).NonNull()
 			}
+			x.Args[i] = c.retypeArith(a, s.final(params[i]))
+			a = x.Args[i]
 			want := captured(a.Type(), params[i], s.finalArg(params[i]))
 			c.assignable(a.Type(), want, a.Pos())
 			c.javaVariance(f, best.param(i), a, s.finalArg(params[i]))
@@ -1898,6 +1905,9 @@ func (c *Checker) constrain(cd *candidate, x *syntax.Call, ts []types.Type, part
 			if longLits && fitsLit(lit, p) {
 				continue
 			}
+		}
+		if lit := arithLit(x.Args[i]); lit != nil && p.K == types.TypeVar && cd.sys.addLit(p, lit) {
+			continue
 		}
 		if ft, ok := c.suspendConstraint(cd, t, p, x.Args[i]); ok {
 			if cd.susps == nil {
