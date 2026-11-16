@@ -42,11 +42,96 @@ func (c *Checker) refShapes(l *syntax.Lambda) []types.Type {
 	if !ok || c.isVar(id.Name) {
 		return nil // a bound reference, x::m
 	}
+	if rt, ok := c.builtinRefRecv(r); ok {
+		return c.builtinRefShapes(rt, r.Name)
+	}
 	cls := c.lookupClass(id.Name)
 	if cls == nil || len(cls.TypeParams) > 0 || cls.Object {
 		return nil
 	}
 	return c.memberRefShapes(cls, r.Name)
+}
+
+// builtinRefRecv returns the builtin type, String or a primitive, that C
+// names in reference C::name: String::toInt, Int::and.
+func (c *Checker) builtinRefRecv(r *syntax.CallableRef) (types.Type, bool) {
+	id, ok := r.X.(*syntax.Ident)
+	if !ok || c.isVar(id.Name) {
+		return types.InvalidType, false
+	}
+	rt, ok := c.refRecvType(r)
+	if !ok || !rt.IsPrimitive() && rt != types.StringType {
+		return types.InvalidType, false
+	}
+	return rt, true
+}
+
+// builtinRefShapes returns the types of T::name for a builtin type rt: its
+// builtin member's, or else its extensions', nil if kc can't tell.
+func (c *Checker) builtinRefShapes(rt types.Type, name string) []types.Type {
+	if rt == types.StringType && name == "length" {
+		if t, ok := c.kpropShape(false, &rt, types.IntType); ok {
+			return []types.Type{t}
+		}
+		return nil
+	}
+	if bps, ok := builtinRefParams(rt, name); ok {
+		ret, ok := builtinRefResult(rt, name)
+		if !ok {
+			return nil
+		}
+		return []types.Type{c.u.ext.funcs.Type(append([]types.Type{rt}, bps...), ret)}
+	}
+	if builtinFun(rt, name, 1) || builtinFun(rt, name, 2) {
+		return nil // an overloaded operator
+	}
+	var out []types.Type
+	for _, f := range calleeFuns(c.extCallees(name, rt)) {
+		ensureFun(f)
+		if f.Recv.HasParams() || !c.subtype(rt, f.Recv) {
+			return nil
+		}
+		g := *f
+		g.Ext = false
+		t, ok := c.funShape(&g, &rt)
+		if !ok {
+			return nil
+		}
+		out = append(out, t)
+	}
+	return out
+}
+
+// builtinRefResult returns the result type of a builtin type t's member
+// function name that builtinRefParams knows, if kc knows it.
+func builtinRefResult(t types.Type, name string) (types.Type, bool) {
+	if _, r, ok := conversion(name); ok {
+		return r, true
+	}
+	switch name {
+	case "equals", "not":
+		return types.BoolType, true
+	case "toString":
+		return types.StringType, true
+	case "hashCode":
+		return types.IntType, true
+	}
+	switch {
+	case t == types.StringType:
+		switch name {
+		case "uppercase", "lowercase", "plus", "substring":
+			return types.StringType, true
+		case "isEmpty":
+			return types.BoolType, true
+		case "get":
+			return types.CharType, true
+		}
+	case t == types.BoolType && (name == "and" || name == "or" || name == "xor"):
+		return t, true
+	case (t == types.IntType || t == types.LongType) && types.BitwiseOps[name]:
+		return t, true
+	}
+	return types.InvalidType, false
 }
 
 // refKinds reports whether reference l, ::name, C::name or a.b.C::name, names a
@@ -66,6 +151,13 @@ func (c *Checker) refKinds(l *syntax.Lambda) (fun, prop, known bool) {
 		}
 		fs, _ := c.scope.findFuns(r.Name)
 		return len(fs) > 0 || len(c.topFuns(r.Name)) > 0, c.topVar(r.Name) != nil, true
+	}
+	if rt, ok := c.builtinRefRecv(r); ok {
+		if rt == types.StringType && r.Name == "length" {
+			return false, true, true
+		}
+		fun = builtinFun(rt, r.Name, 0) || builtinFun(rt, r.Name, 1) || builtinFun(rt, r.Name, 2) || len(c.extCallees(r.Name, rt)) > 0
+		return fun, false, fun
 	}
 	var cls *types.ClassSym
 	switch x := r.X.(type) {
