@@ -629,7 +629,9 @@ type FunSym struct {
 	// BoxedParams are the indexes of the parameters of type Result, whose
 	// functions keep their names, that an overridden function takes as
 	// another type, as T: as with kotlinc, they are passed boxed and the
-	// function unboxes them.
+	// function unboxes them. On a Java method, they are the parameters of
+	// a primitive's wrapper class that an annotation makes non-null: a
+	// @NonNull Long is a Long to Kotlin, passed boxed.
 	BoxedParams []int
 	// DefaultsOf is set on an override that inherits default values: the
 	// overridden method, whose name$default method supplies them.

@@ -2497,7 +2497,11 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 			}
 			if len(ms) > 0 && (c.anyMayTake(ms, x) ||
 				c.objectTaking(name, x) == nil && !c.memberImportTakes(name, x) && !c.anyMayTake(c.topFuns(name), x) && !c.anyMayTake(c.kotlinFuns(name, false), x) &&
-					!c.thisExtension(name, x) && !c.propInvokeFits(name, x) && !c.ctorTakes(name, x)) {
+					!c.thisExtension(name, x) && !c.propInvokeFits(name, x) && !c.ctorTakes(name, x)) &&
+				// Members that don't take the arguments' types give way to
+				// a property of the name whose value does: sut(state) next
+				// to fun sut(a: A), for a state whose type is inferred.
+				!(c.propInvokeFits(name, x) && !c.takeTypes(ms, x, c.argTypes(x))) {
 				if c.thisExtension(name, x) && !c.takeTypes(ms, x, c.argTypes(x)) {
 					// Members that don't take the arguments' types give way
 					// to the extensions of this, as with this.f():
@@ -3858,7 +3862,10 @@ func (c *Checker) completeBranches(pending []pendingBranch, result, want types.T
 			if trial := c.branchTrial(p.sys, p.t, target); trial != nil { // see expected.go
 				p.sys = trial
 			} else {
-				forced = p.free != nil
+				// Not the Unit that a lambda's unused last statement is
+				// coerced to: put("a", listOf(1)) at the end of buildMap's
+				// lambda doesn't make V? a Unit.
+				forced = p.free != nil && !(p.unused && target.K == types.Unit)
 			}
 		}
 		// The branch's lambdas, as sequence { yield(1) }'s in
@@ -4042,6 +4049,7 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 			cov = coverage{}
 		}
 		laterLen := len(later)
+		nonNull := 0
 		for j := range br.Conds {
 			cond := &br.Conds[j]
 			switch {
@@ -4145,9 +4153,13 @@ func (c *Checker) whenExpr(x *syntax.When, want types.Type, valueUsed bool) type
 						whenTrue, later = append(whenTrue, t...), append(later, f...)
 					}
 				}
-				if single && equalsNonNull(ct) {
-					// Equal to a value that isn't null: neither the
-					// subject nor the receivers of its safe calls are.
+				if equalsNonNull(ct) {
+					nonNull++
+				}
+				if nonNull == len(br.Conds) {
+					// Equal to a value that isn't null, or to one of
+					// several: neither the subject nor the receivers of
+					// its safe calls are.
 					if hasSubj && types.MayBeNull(subjType()) {
 						n := narrow{recv: subj.recv, sym: subj.sym, t: subjType().NonNull()}
 						whenTrue = append(append(whenTrue, n), c.impliedBy(n)...)

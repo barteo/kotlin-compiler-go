@@ -104,10 +104,12 @@ func (c *Counter) Get() (int, time.Duration) {
 	return int(c.n.Load()), time.Duration(c.nanos.Load())
 }
 
-// Open indexes the JDK in jdkHome (skipped if empty) followed by the given
-// jars and directories. Earlier entries win when a class appears twice, as
-// on the JVM. The entries also in friends are friend paths (kotlinc's
-// -Xfriend-paths).
+// Open indexes the given jars and directories, followed by the JDK in
+// jdkHome (skipped if empty). Earlier entries win when a class appears
+// twice, as on the JVM, and the entries win over the JDK, as with kotlinc:
+// a jar of a platform's own java classes stands in for the JDK's, which
+// has the classes that the jar lacks. The entries also in friends are
+// friend paths (kotlinc's -Xfriend-paths).
 func Open(jdkHome string, entries []string, friends ...string) (*Path, error) {
 	start := time.Now()
 	// The JDK has about 28,000 classes in 1,000 packages.
@@ -117,12 +119,6 @@ func Open(jdkHome string, entries []string, friends ...string) (*Path, error) {
 		resources: make(map[string][]entry),
 	}
 	p.byPackage = sync.OnceValue(p.indexPackages)
-	if jdkHome != "" {
-		if err := p.addJImage(filepath.Join(jdkHome, "lib", "modules")); err != nil {
-			p.Close()
-			return nil, err
-		}
-	}
 	for _, e := range entries {
 		fi, err := os.Stat(e)
 		if err != nil {
@@ -141,6 +137,12 @@ func Open(jdkHome string, entries []string, friends ...string) (*Path, error) {
 		if err != nil {
 			p.Close()
 			return nil, fmt.Errorf("class path: %s: %w", e, err)
+		}
+	}
+	if jdkHome != "" {
+		if err := p.addJImage(filepath.Join(jdkHome, "lib", "modules")); err != nil {
+			p.Close()
+			return nil, err
 		}
 	}
 	p.IndexTime = time.Since(start)

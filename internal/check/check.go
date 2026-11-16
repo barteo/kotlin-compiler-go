@@ -3016,6 +3016,20 @@ func (c *Checker) checkDefaults(params []*syntax.Param, cls *types.ClassSym, f *
 // Java's charAt.
 var builtinOperators = map[string]bool{"get": true, "set": true, "contains": true, "iterator": true, "next": true, "hasNext": true, "charAt": true}
 
+// declaredPublic reports whether o, an overridden function, is public by
+// its own declaration, and not an override that has the visibility of the
+// functions it overrides.
+func declaredPublic(o *types.FunSym) bool {
+	if o.Protected || o.Module != "" {
+		return false
+	}
+	od, ok := o.Decl.(*syntax.FunDecl)
+	if !ok {
+		return o.Decl == nil
+	}
+	return od.Visibility == syntax.Public && (od.Explicit || !od.Override)
+}
+
 func (c *Checker) inheritDefaults() {
 	for _, d := range c.classes {
 		c.inheritModule(d)
@@ -3030,7 +3044,12 @@ func (c *Checker) inheritDefaults() {
 				}
 			}
 			c.multipleDefaults(fd)
-			for _, o := range c.overridden(d.Sym, fd.Sym) {
+			over := c.overridden(d.Sym, fd.Sym)
+			// An override declared without a visibility has the widest of
+			// the overridden functions': public where one of them is, as
+			// the clone() of a Java interface that extends Cloneable.
+			public := slices.ContainsFunc(over, declaredPublic)
+			for _, o := range over {
 				// As in Kotlin, an override of an operator or infix
 				// function is one too.
 				fd.Sym.Operator = fd.Sym.Operator || o.Operator || o.Owner != nil && o.Owner.Name == charSequence && o.Name == "charAt"
@@ -3052,7 +3071,7 @@ func (c *Checker) inheritDefaults() {
 				if kotlinOp || (o.Name == "equals" || o.Name == "compareTo") && len(o.Params) == 1 {
 					fd.Sym.KotlinOperator = true
 				}
-				if !fd.Explicit && fd.Sym.Inherited == 0 {
+				if !fd.Explicit && fd.Sym.Inherited == 0 && !public {
 					switch od, _ := o.Decl.(*syntax.FunDecl); {
 					case o.Protected || od != nil && od.Visibility == syntax.Protected:
 						fd.Sym.Inherited = types.InheritProtected

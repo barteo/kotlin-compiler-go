@@ -143,6 +143,19 @@ func (g *gen) castErased(erased, to types.Type) {
 		return
 	}
 	ref := to.Nullable()
+	if !g.code.Reachable() {
+		g.castErasedOps(erased, to, ref)
+		return
+	}
+	top := g.code.StackTop()
+	at := g.code.Pos()
+	g.castErasedOps(erased, to, ref)
+	if end := g.code.Pos(); end > at {
+		g.erasedCast = erasedCast{g.code, at, end, top, erased}
+	}
+}
+
+func (g *gen) castErasedOps(erased, to, ref types.Type) {
 	if to.IsPrimitive() && desc(ref) != desc(erased) {
 		// As kotlinc: a Long read as an Int? is unboxed by Number.intValue.
 		switch to.K {
@@ -159,32 +172,30 @@ func (g *gen) castErased(erased, to types.Type) {
 		return
 	}
 	if d := desc(ref); d != desc(erased) && g.code.Reachable() {
-		top := g.code.StackTop()
-		at := g.code.Pos()
 		g.code.Checkcast(className(d))
-		g.erasedCast = erasedCast{g.code, at, top, erased}
 	}
 	if to.IsPrimitive() {
 		g.unbox(to)
 	}
 }
 
-// erasedCast is a checkcast that castErased emitted at offset at of
-// code, of a value of type top on the stack, the erasure erased.
+// erasedCast is the checkcast and the unboxing that castErased emitted
+// from offset at to end of code, of a value of type top on the stack, the
+// erasure erased.
 type erasedCast struct {
-	code   *cf.Code
-	at     int
-	top    cf.VType
-	erased types.Type
+	code    *cf.Code
+	at, end int
+	top     cf.VType
+	erased  types.Type
 }
 
-// uncastErased removes the checkcast of a generic call's result or
-// another erased value if it is the last instruction: kotlinc casts the
-// value only where it is used. It returns the erasure the value is left
-// as, or false.
+// uncastErased removes the checkcast and the unboxing of a generic call's
+// result or another erased value if they are the last instructions:
+// kotlinc casts and unboxes the value only where it is used. It returns
+// the erasure the value is left as, or false.
 func (g *gen) uncastErased() (types.Type, bool) {
 	e := g.erasedCast
-	if e.code != g.code || !g.code.Uncast(e.at, e.top) {
+	if e.code != g.code || !g.code.Uncast(e.at, e.end, e.top) {
 		return types.Type{}, false
 	}
 	g.erasedCast = erasedCast{}
@@ -193,7 +204,7 @@ func (g *gen) uncastErased() (types.Type, bool) {
 
 // exprAs generates x and converts it to type t.
 func (g *gen) exprAs(x syntax.Expr, t types.Type) {
-	if x.Type().P && checked(t) {
+	if x.Type().P && checked(t) && x != g.javaArg {
 		// A platform value used as a non-null type is checked in each
 		// branch, where it has its own text, as with kotlinc.
 		switch x := x.(type) {
@@ -1553,6 +1564,9 @@ func (g *gen) args(x *syntax.Call, f *types.FunSym) {
 	h := g.holdArgs(x.Args)
 	for i, a := range x.Args {
 		h.before(g, a)
+		if javaMember(f) {
+			g.javaArg = a
+		}
 		g.argAs(a, paramType(f, i))
 	}
 	h.release(g)
@@ -1560,11 +1574,21 @@ func (g *gen) args(x *syntax.Call, f *types.FunSym) {
 	g.line(x.Pos()) // the call, after arguments on other lines
 }
 
+// javaMember reports whether f is a method or constructor of a Java
+// class, not one that Kotlin sees as its own type.
+func javaMember(f *types.FunSym) bool {
+	c := f.Owner
+	return c != nil && c.External && c.KotlinName == "" && c.Java == nil && !c.FromKotlin
+}
+
 // paramType returns the type of the argument that a call of f passes for
 // parameter j: a box for a Result that f takes boxed (see BoxedParams).
 func paramType(f *types.FunSym, j int) types.Type {
 	t := f.Params[j].Type
 	if slices.Contains(f.BoxedParams, j) {
+		if t.IsPrimitive() {
+			return t.Nullable() // a Java method's @NonNull Long
+		}
 		return types.Boxed(t)
 	}
 	return t

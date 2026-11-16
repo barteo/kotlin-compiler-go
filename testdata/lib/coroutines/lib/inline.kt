@@ -2,6 +2,7 @@ package store
 
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.sync.*
 import java.io.PrintWriter
 import java.io.StringWriter
 import java.io.Writer
@@ -102,3 +103,30 @@ inline fun Flow<Int>.retried(crossinline f: (Int) -> Int): Flow<Int> =
 // its copy of the library's object, and of the classes nested in it, keep
 // the parameter, which a program copying the function reifies.
 inline fun <reified R> Flow<*>.onlyOf(): Flow<R> = filterIsInstance<R>()
+
+// An inline suspend function that copies one of the library's class path:
+// the copy's suspension points are its own, marked once for its copiers.
+suspend inline fun <reified T : Any> Mutex.guarded(block: () -> T?): T {
+    val got = try {
+        withLock {
+            yield()
+            block()
+        } ?: throw IllegalStateException("nothing")
+    } catch (e: IllegalStateException) {
+        delay(1)
+        return T::class.java.cast(e.message)
+    }
+    delay(1)
+    return got
+}
+
+// An inline suspend function with a default value: copiers of its
+// name$default method copy its body with their lambdas, as kotlinc's do.
+suspend inline fun <T> recovered(onError: (Throwable) -> T? = { null }, block: () -> T): T? =
+    try {
+        delay(1)
+        block()
+    } catch (e: IllegalStateException) {
+        delay(1)
+        onError(e)
+    }

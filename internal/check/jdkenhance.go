@@ -213,6 +213,14 @@ func collectionArgs(cls *types.ClassSym) map[byte]types.Type {
 			}
 		}
 		s := classSubst(t)
+		if t.C == cls {
+			// cls's arguments are its own parameters, so its supertypes
+			// stand as written. Substituting would ask for the variance
+			// of cls's parameters where a supertype's argument is cls's
+			// own type (Node<T> implements Comparable<Node<T>>), which
+			// loads cls and never returns.
+			s = nil
+		}
 		for _, st := range supers {
 			if s != nil {
 				st = s.Apply(st)
@@ -308,7 +316,9 @@ var pureImplementations = map[string]string{
 // they are, not as platform types, as the Kotlin type's members do:
 // ArrayList<String>'s add(E) takes a String, not a String!. Members only
 // Java declares, as TreeMap's ceilingKey(K), keep platform types, and so
-// do results, of which Kotlin's are sometimes nullable: Map's get.
+// do results, of which Kotlin's are sometimes nullable: Map's get. A
+// member that overrides one with a predefined enhancement has it too:
+// HashMap's compute() takes a function that may return null, as Map's.
 func purelyImplement(cls *types.ClassSym) {
 	iface, ok := pureImplementations[cls.Name]
 	if !ok {
@@ -353,8 +363,9 @@ func purelyImplement(cls *types.ClassSym) {
 				continue
 			}
 			g := *f
-			g.Params = make([]*types.VarSym, len(f.Params))
-			for j, p := range f.Params {
+			g.Params = slices.Clone(f.Params)
+			enhanceJDK(iface, &g)
+			for j, p := range g.Params {
 				q := *p
 				q.Type = notPlatformParams(p.Type, own)
 				g.Params[j] = &q

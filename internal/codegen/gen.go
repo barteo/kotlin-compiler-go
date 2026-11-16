@@ -44,10 +44,14 @@ type gen struct {
 	// declares, whose code, as kotlinc's plugins' IR, has no checks of
 	// platform-typed values.
 	plugin bool
-	loops  []loopLabels
-	tries  []*tryCtx       // the try blocks the code is in, innermost last
-	lam    *lambdaCtx      // set in a lambda's method
-	inl    []*inlineLambda // the inlined lambdas being generated, innermost last
+	// javaArg is the argument being passed to a Java method, which
+	// kotlinc doesn't check for null where an annotation makes the
+	// parameter's type non-null.
+	javaArg syntax.Expr
+	loops   []loopLabels
+	tries   []*tryCtx       // the try blocks the code is in, innermost last
+	lam     *lambdaCtx      // set in a lambda's method
+	inl     []*inlineLambda // the inlined lambdas being generated, innermost last
 	// nonNull holds the parameters and locals whose values are never
 	// null, of which a safe call doesn't check for null: see knownNonNull.
 	nonNull map[*types.VarSym]bool
@@ -2236,12 +2240,17 @@ func (g *gen) defaults(fd *syntax.FunDecl, owner *types.ClassSym) {
 		}
 	}
 	k := g.fillDefaultsCont(fd.Params, f.Params, len(f.Contexts), f.Suspend, prologue)
-	if copied && !f.Suspend && (fd.Body != nil || fd.ExprBody != nil) {
+	if copied && (fd.Body != nil || fd.ExprBody != nil) {
 		// As kotlinc's, the body follows the default values, rather than
 		// a call of the function: copiers copy the function's lambda
-		// parameters into it.
+		// parameters into it. A suspend function's is the body of its
+		// name$$forInline method, whose suspension points are marked.
 		g.prefix = f.Name + "$lambda"
 		g.retType = types.JVMRet(f)
+		if f.Suspend {
+			g.suspendFun(fd, g.code.Name(), g.code.Desc(), k, &resumeCall{forInline: true})
+			defer g.endSuspend()
+		}
 		if fd.Body != nil {
 			g.block(fd.Body, types.UnitType, false)
 			if g.code.Reachable() {

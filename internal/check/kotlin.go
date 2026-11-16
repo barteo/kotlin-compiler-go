@@ -1863,6 +1863,7 @@ func (t *classTable) loadKotlin(cls *types.ClassSym, info *classfile.Info, kc *k
 			f.Unsupported = !ok
 			matchJVM(f)
 			annotate(f, annots[k.JVM.Name+k.JVM.Desc])
+			f.Hidden = f.Deprecated != nil && f.Deprecated.Level == "HIDDEN"
 			if internal {
 				cls.InternalCtors = append(cls.InternalCtors, f)
 				continue

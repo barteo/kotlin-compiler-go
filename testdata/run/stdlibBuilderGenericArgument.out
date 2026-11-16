@@ -1,0 +1,4 @@
+{a=[b]}
+{a=[b, c]}
+{onCreate=[Event(name=fill, args=[distance])]}
+{1=[[2]], 2=[]}

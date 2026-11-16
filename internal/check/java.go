@@ -375,10 +375,10 @@ func (t *classTable) load(cls *types.ClassSym) {
 		for _, p := range f.Params {
 			p.Type = javaParam(p.Type)
 		}
+		// javac leaves out synthetic parameters, which come first.
+		off := len(f.Params) - len(m.ParamAnnotations)
 		if t.javaTypes {
-			f.Ret = enhance(m.Annotations, f.Ret)
-			// javac leaves out synthetic parameters, which come first.
-			off := len(f.Params) - len(m.ParamAnnotations)
+			f.Ret = enhanceSignature(m.Annotations, f.Ret)
 			for i, as := range m.ParamAnnotations {
 				// A declaration annotation on a vararg is the array's,
 				// not its elements', which the parameter's type is.
@@ -387,11 +387,33 @@ func (t *classTable) load(cls *types.ClassSym) {
 				switch {
 				case off+i < 0:
 				case !(varargs && off+i == len(f.Params)-1):
-					f.Params[off+i].Type = enhance(as, f.Params[off+i].Type)
+					pt := f.Params[off+i].Type
+					f.Params[off+i].Type = enhanceSignature(as, pt)
+					if pt.P && f.Params[off+i].Type.IsPrimitive() {
+						// A java.lang.Long that isn't null is a Long,
+						// which the method still takes boxed.
+						f.BoxedParams = append(f.BoxedParams, off+i)
+					}
 				default:
-					f.Params[off+i].Type = enhance(slices.DeleteFunc(slices.Clone(as), func(a string) bool {
+					f.Params[off+i].Type = enhanceSignature(slices.DeleteFunc(slices.Clone(as), func(a string) bool {
 						return !strings.HasPrefix(a, "Lorg/jspecify/annotations/")
 					}), f.Params[off+i].Type)
+				}
+			}
+		} else if m.Access&classfile.AccAbstract != 0 {
+			// An abstract method's parameter of a type parameter's type
+			// that is annotated as not null is a T & Any: the lambda for
+			// a Java Predicate<T> with test(@NonNull T) takes an Item for
+			// a T that is Item?.
+			for i, as := range m.ParamAnnotations {
+				if off+i < 0 {
+					continue
+				}
+				if pt := f.Params[off+i].Type; pt.P && pt.IsParam() {
+					if pt = enhance(as, pt); !pt.N {
+						pt.D = true
+						f.Params[off+i].Type = pt
+					}
 				}
 			}
 		}
@@ -529,21 +551,26 @@ func (t *classTable) load(cls *types.ClassSym) {
 }
 
 // fieldNullability returns the type ft of field fd as its annotations
-// make it, under Library.JavaTypes.
+// make it, under Library.JavaTypes. A java.lang.Long that isn't null
+// stays a platform type: the field holds the box, not a Long.
 func (t *classTable) fieldNullability(fd classfile.Member, ft types.Type) types.Type {
 	if !t.javaTypes {
 		return ft
 	}
-	return enhance(fd.Annotations, ft)
+	if e := enhance(fd.Annotations, ft); !e.IsPrimitive() {
+		return e
+	}
+	return ft
 }
 
 // Nullability annotations kotlinc reads on Java declarations, by
 // descriptor: true for those that make a type non-null, false for
-// nullable. JSR-305's javax.annotation ones only warn by default, and
-// leave platform types as they are.
+// nullable. JSR-305's javax.annotation ones and androidx's RecentlyNonNull
+// and RecentlyNullable only warn by default, and leave platform types as
+// they are.
 var javaNullability = func() map[string]bool {
 	m := map[string]bool{}
-	for _, n := range []string{"org/jetbrains/annotations/NotNull", "androidx/annotation/NonNull", "androidx/annotation/RecentlyNonNull",
+	for _, n := range []string{"org/jetbrains/annotations/NotNull", "androidx/annotation/NonNull",
 		"android/support/annotation/NonNull", "android/annotation/NonNull", "com/android/annotations/NonNull",
 		"org/eclipse/jdt/annotation/NonNull", "org/checkerframework/checker/nullness/qual/NonNull",
 		"org/checkerframework/checker/nullness/compatqual/NonNullDecl", "edu/umd/cs/findbugs/annotations/NonNull",
@@ -551,7 +578,7 @@ var javaNullability = func() map[string]bool {
 		"org/jspecify/annotations/NonNull"} {
 		m["L"+n+";"] = true
 	}
-	for _, n := range []string{"org/jetbrains/annotations/Nullable", "androidx/annotation/Nullable", "androidx/annotation/RecentlyNullable",
+	for _, n := range []string{"org/jetbrains/annotations/Nullable", "androidx/annotation/Nullable",
 		"android/support/annotation/Nullable", "android/annotation/Nullable", "com/android/annotations/Nullable",
 		"org/eclipse/jdt/annotation/Nullable", "org/checkerframework/checker/nullness/qual/Nullable",
 		"org/checkerframework/checker/nullness/compatqual/NullableDecl", "edu/umd/cs/findbugs/annotations/Nullable",
@@ -564,7 +591,10 @@ var javaNullability = func() map[string]bool {
 }()
 
 // enhance returns platform type t as the nullability annotations among
-// as make it: non-null or nullable, or t itself with neither or both.
+// as make it: non-null or nullable, or t itself with neither or both. A
+// Java collection that isn't null stays a platform type, which is the
+// only type that is both the mutable collection and the read-only one: a
+// Kotlin override may declare either.
 func enhance(as []string, t types.Type) types.Type {
 	if !t.P {
 		return t
@@ -578,10 +608,29 @@ func enhance(as []string, t types.Type) types.Type {
 	switch {
 	case notNull == nullable:
 		return t
+	case notNull && javaCollection(t):
+		return t
 	case notNull:
 		return t.NonNull()
 	}
 	return t.Nullable()
+}
+
+// enhanceSignature is enhance for a method's parameter and result types,
+// of which a Java collection stays a platform type, nullable too: an
+// annotated List parameter takes a read-only list, and a result is a
+// read-only list where one is expected, as a mock's answer.
+func enhanceSignature(as []string, t types.Type) types.Type {
+	if javaCollection(t) {
+		return t
+	}
+	return enhance(as, t)
+}
+
+// javaCollection reports whether t is a Java collection type, which is a
+// Kotlin mutable collection and its read-only one.
+func javaCollection(t types.Type) bool {
+	return t.K == types.Class && t.C.ReadOnly != nil
 }
 
 // kotlinMapped are the Java classes that are Kotlin types, with Kotlin's
@@ -789,7 +838,7 @@ func (c *Checker) resolveImports() {
 		// in K2, one function of two modules, by its package, name and
 		// signature, is one candidate.
 		for _, f := range fs {
-			if !slices.ContainsFunc(c.funImports[alias], func(g *types.FunSym) bool { return equivalentFun(f, g) }) {
+			if !slices.ContainsFunc(c.funImports[alias], func(g *types.FunSym) bool { return sameDeclaration(f, g) }) {
 				c.funImports[alias] = append(c.funImports[alias], f)
 			}
 		}
@@ -1425,6 +1474,9 @@ func (c *Checker) extProp(x *syntax.Member, rt types.Type) (types.Type, bool) {
 	var best *types.FunSym
 	var bestSub types.Subst // a superclass's type parameters, for a member's
 	sub := func(g *types.FunSym) types.Subst { return nil }
+	// Another file's private one is taken only where no other fits, for
+	// the error.
+	bestSeen := false
 	fits := func(gs []*types.FunSym) {
 		for _, g := range gs {
 			s := sub(g)
@@ -1432,8 +1484,9 @@ func (c *Checker) extProp(x *syntax.Member, rt types.Type) (types.Type, bool) {
 				continue // nor is its type inferred, which may be in progress
 			}
 			ensureFun(g)
-			if best == nil || c.subtype(s.Apply(g.Recv), bestSub.Apply(best.Recv)) {
-				best, bestSub = g, s
+			seen := g.Owner != nil || !g.Private || c.canSee(syntax.Private, nil, g.Facade)
+			if best == nil || seen && !bestSeen || seen == bestSeen && c.subtype(s.Apply(g.Recv), bestSub.Apply(best.Recv)) {
+				best, bestSub, bestSeen = g, s, seen
 			}
 		}
 	}
@@ -2549,6 +2602,11 @@ func (c *Checker) construct(x *syntax.Call, cls *types.ClassSym, p syntax.Pos, w
 		if cls.Ensure(); cls.Retention != types.NoRetention {
 			return c.javaAnnotationDefault(x, cls, want, sink)
 		}
+	}
+	if _, explicit := x.Fun.(*syntax.Member); cls.Inner && x.Outer != nil && !explicit {
+		// An implicit outer instance, which an earlier check of the call
+		// found: this one records too that the lambdas around capture it.
+		c.value(x.Outer, noWant)
 	}
 	if cls.Inner && x.Outer == nil {
 		outer, ot := c.implicitOuter(cls.Outer, p)

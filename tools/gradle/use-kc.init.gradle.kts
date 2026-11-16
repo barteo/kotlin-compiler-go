@@ -19,7 +19,7 @@
 //              wrote. A module without variants, such as a Kotlin/JVM library, serves all of
 //              them: kc compiles it only in a build that runs tasks of listed variants and of no
 //              other. A task whose variant the script cannot tell keeps kotlinc.
-//   KC_JDK_HOME  JDK for modules without android.jar, in place of the task's Java toolchain
+//   KC_JDK_HOME  JDK to compile against, in place of the task's Java toolchain
 //   KC_IGNORE_PLUGINS  comma-separated compiler plugins, as artifact or group:artifact, that kc
 //              may leave out because the program works without them (default:
 //              compose-stability-compiler, which adds recomposition tracing and stability reports).
@@ -103,15 +103,16 @@ if (gradle.parent == null) {
 
       val args = mutableListOf(kc, "-d", dest.path)
       (option("getModuleName") as String?)?.let { args += listOf("-module-name", it) }
-      // An Android module's class path holds android.jar, which stands in for the JDK. Other
-      // modules compile against the JDK of the task's Java toolchain, as kotlinc does.
+      // A module compiles against its class path and then the JDK of the task's Java toolchain,
+      // as kotlinc does: an Android module's android.jar stands in for the JDK's classes, and
+      // its unit tests still see the ones android.jar lacks, such as java.lang.management.
       val toolchainJdk = runCatching {
         val toolchain = call(task, "getKotlinJavaToolchain")!!
         val java = callPrefixed(toolchain, "getJavaExecutable") as org.gradle.api.file.RegularFileProperty
         java.get().asFile.canonicalFile.parentFile.parentFile.path
       }.getOrNull()
       when {
-        option("getNoJdk") == true || libraries.any { File(it).name == "android.jar" } -> args += "-no-jdk"
+        option("getNoJdk") == true -> args += "-no-jdk"
         System.getenv("KC_JDK_HOME") != null -> args += listOf("-jdk-home", System.getenv("KC_JDK_HOME"))
         toolchainJdk != null -> args += listOf("-jdk-home", toolchainJdk)
       }
@@ -158,7 +159,9 @@ if (gradle.parent == null) {
         logger.lifecycle("kc: ${task.path}: ${sources.size} files in $ms ms")
         throw StopExecutionException()
       }
-      val excerpt = output.lineSequence().filter { it.isNotBlank() }.take(20).joinToString("\n")
+      // The errors, which follow the warnings of the files before them.
+      val lines = output.lines().filter { it.isNotBlank() }
+      val excerpt = lines.filterNot { ": warning: " in it }.ifEmpty { lines }.take(20).joinToString("\n")
       if (strict) throw GradleException("kc failed on ${task.path}:\n$excerpt")
       logger.warn("kc failed on ${task.path}, so kotlinc compiles it:\n$excerpt")
       dest.deleteRecursively()

@@ -303,6 +303,13 @@ root
   text "use shown [L] 1 n=1"
   text "scale 4"
   text "corner 25"
+  text "branches on state later 1 none true kept"
+  text "width 1"
+  text "area 1"
+  text "half 0"
+  text "doubled 2"
+  text "this 1"
+  text "narrow"
 runs: Always=1 Anything forwarded=1 Anything label=1 Anything mutable=1 Anything point=1 Bags=1 Bases=1 Board=1 Calls copied=1 Calls dont=1 Calls remembered=1 Card=2 Card plain=1 Card2=2 Card2 show=2 Clicks bound=1 Clicks card2=2 Clicks card2 this=2 Clicks computes=1 Clicks copy=1 Clicks each x=1 Clicks each y=1 Clicks in try=1 Clicks label=1 Clicks local=1 Clicks mutable=1 Clicks none=1 Clicks receiver=1 Clicks ref=1 Clicks tick=1 Clicks upper=1 Computes=1 Content inner=1 Content label=1 Content nested=1 Content tick=1 Content use=1 Defaulted=2 Eleven=2 Forward=1 ForwardT=1 Holders=1 Holds state=2 InlineItems L=1 Items items=1 Locals=1 Marks=1 Modes=1 Mutables=3 Nodes=1 Panels kept=1 Panels new=1 Points=2 Reads=2 Shapes circle=1 Shapes forwarded=1 Shapes square=1 Shows inline label=1 Shows inline mutable=1 Shows mutable=1 Shows via inline=1 ShowsVia=1 Skips=1 Skips2=1 Strings=8 Suffixed=3 Twice2=1 Unused=1 Varargs=3 badge B=4 badge U=2 box content=2 boxed L=3 content label=2 content tick=2 item items=1 item one=1 launched L=1 lib forward=1 lib label=1 lib tick=1 lib wide lib from app=1 nested inner=2 nested outer=2 scoped scope=2 twice=1 use content=2 wide app=1 wide app all=1 wide app n=1 wide use=1 wide use none=1
 -- rename
 root
@@ -604,6 +611,13 @@ root
   text "use shown [L] 1 n=1"
   text "scale 4"
   text "corner 25"
+  text "branches on state later 1 none true kept"
+  text "width 1"
+  text "area 1"
+  text "half 0"
+  text "doubled 2"
+  text "this 1"
+  text "narrow"
 runs: badge B=2 badge U=1 boxed L=1 use content=1
 -- count
 root
@@ -905,6 +919,13 @@ root
   text "use shown [L] 1 n=1"
   text "scale 4"
   text "corner 25"
+  text "branches on state later 1 none true kept"
+  text "width 1"
+  text "area 1"
+  text "half 0"
+  text "doubled 2"
+  text "this 1"
+  text "narrow"
 runs: 
 -- n
 leave r after
@@ -1219,6 +1240,13 @@ root
   text "use shown [L] 5 n=5"
   text "scale 20"
   text "corner 29"
+  text "branches on state later 5 none true kept"
+  text "width 5"
+  text "area 5"
+  text "half 2"
+  text "doubled 10"
+  text "this 5"
+  text "wide"
 runs: badge B=2 badge U=1 boxed L=3 lib wide lib from app=1 use content=1 wide app n=1 wide use=1
 -- hide
 leave shown
@@ -1526,6 +1554,13 @@ root
   text "use shown [L] 5 n=5"
   text "scale 20"
   text "corner 29"
+  text "branches none state later 5 off 5 true kept"
+  text "width 5"
+  text "area 5"
+  text "half 2"
+  text "doubled 10"
+  text "this 5"
+  text "wide"
 runs: badge B=2 badge U=1 boxed L=1 use content=1
 -- tick
 root
@@ -1832,6 +1867,13 @@ root
   text "use shown [L] 5 n=5"
   text "scale 20"
   text "corner 29"
+  text "branches none state later 5 off 5 true kept"
+  text "width 5"
+  text "area 5"
+  text "half 2"
+  text "doubled 10"
+  text "this 5"
+  text "wide"
 runs: Always=1 Bases=1 Calls copied=1 Calls dont=1 Card=1 Card2=1 Card2 show=1 Computes=1 Eleven=1 Holders=1 InlineItems L=1 Marks=1 Mutables=1 Panels new=1 Shapes circle=1 Shows via inline=1 ShowsVia=1 Skips=1 Skips2=1 Strings=1 badge B=2 badge U=1 box content=1 boxed L=1 content label=1 content tick=1 lib tick=1 nested inner=1 nested outer=1 scoped scope=1 use content=1
 -- label
 root
@@ -2138,6 +2180,13 @@ root
   text "use shown [M] 5 n=5"
   text "scale 20"
   text "corner 29"
+  text "branches none state later 5 off 5 true kept"
+  text "width 5"
+  text "area 5"
+  text "half 2"
+  text "doubled 10"
+  text "this 5"
+  text "wide"
 runs: Always=1 Bases=1 Calls copied=1 Calls dont=1 Calls remembered=1 Card=1 Card2=1 Card2 show=1 Computes=1 Eleven=1 Forward=1 ForwardT=1 Holders=1 InlineItems M=1 Locals=1 Marks=1 Mutables=1 Panels new=1 Shapes circle=1 Shows inline label=1 Shows via inline=1 ShowsVia=1 Skips=1 Skips2=1 Strings=7 Suffixed=3 Twice2=1 Unused=1 Varargs=2 badge B=2 badge U=1 box content=1 boxed M=3 content label=1 content tick=1 launched M=1 lib forward=1 lib label=1 nested inner=1 nested outer=1 scoped scope=1 use content=1
 -- text
 root
@@ -2444,6 +2493,13 @@ root
   text "use shown [M] 5 n=5"
   text "scale 20"
   text "corner 29"
+  text "branches none state later 5 off 5 true kept"
+  text "width 5"
+  text "area 5"
+  text "half 2"
+  text "doubled 10"
+  text "this 5"
+  text "wide"
 runs: Holds state=1
 -- counter
 root
@@ -2750,6 +2806,13 @@ root
   text "use shown [M] 5 n=5"
   text "scale 20"
   text "corner 29"
+  text "branches none state later 5 off 5 true kept"
+  text "width 5"
+  text "area 5"
+  text "half 2"
+  text "doubled 10"
+  text "this 5"
+  text "wide"
 runs: Reads=1
 -- nothing
 root
@@ -3056,6 +3119,13 @@ root
   text "use shown [M] 5 n=5"
   text "scale 20"
   text "corner 29"
+  text "branches none state later 5 off 5 true kept"
+  text "width 5"
+  text "area 5"
+  text "half 2"
+  text "doubled 10"
+  text "this 5"
+  text "wide"
 runs: 
 leave five
 leave if on

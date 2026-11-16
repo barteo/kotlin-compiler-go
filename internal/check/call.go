@@ -1030,11 +1030,21 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 		}
 		if len(maximal) == 0 && len(c.stubs) > 0 {
 			// In a builder's lambda, a stub in the candidates' parameter
-			// types leaves none more specific than the others: the tie
-			// breaks as between equally specific ones, the candidate
-			// without a vararg first, make(it: Iterable<T>) of B<T>'s
-			// two for make(listOf("a")).
-			maximal = match
+			// types leaves none more specific than the others: the one
+			// candidate without a vararg is chosen, make(it: Iterable<T>)
+			// of B<T>'s two for make(listOf("a")). Candidates that differ
+			// in the parameters left to their defaults stay ambiguous,
+			// which the builder's other lambdas resolve (see
+			// stubInference): Entry(key: T, id: Any = key) and
+			// Entry(entry: Entry<T>) for an Entry(it) of a stub.
+			for _, cd := range match {
+				if !cd.usesVararg() {
+					maximal = append(maximal, cd)
+				}
+			}
+			if len(maximal) != 1 {
+				maximal = nil
+			}
 		}
 		if i := preferred(len(maximal), x.Args, func(i int) *callee { return &maximal[i].callee }); i >= 0 {
 			best = maximal[i]
@@ -1166,7 +1176,13 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			}
 			x.Args[i] = c.retypeArith(a, s.final(params[i]))
 			a = x.Args[i]
-			want := captured(a.Type(), params[i], s.finalArg(params[i]))
+			pt := s.finalArg(params[i])
+			if pt.K == types.Unit && params[i].HasVars() && safeCallOf(a) && a.Type().N {
+				// A variable inferred from the Unit? of a safe call, which
+				// the Unit it is written as stands for.
+				continue
+			}
+			want := captured(a.Type(), params[i], pt)
 			c.assignable(a.Type(), want, a.Pos())
 			c.javaVariance(f, best.param(i), a, s.finalArg(params[i]))
 			if best.param(i).Exact && c.subtype(a.Type(), want) && !c.subtype(want, a.Type()) {
@@ -1188,7 +1204,11 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 	if sink != nil {
 		c.runLambdas(sys, true)
 		if sys.unfixed() || len(partials) > 0 || len(sys.lambdas) > 0 {
-			sys.fixups = append(sys.fixups, func(s *system) { x.T = c.unitResult(f.Ret, s.final(x.T)) })
+			sys.fixups = append(sys.fixups, func(s *system) {
+				// A safe call whose result is inferred as Unit here is an
+				// argument: the Unit object or null.
+				x.T = c.safeUnit(x, c.unitResult(f.Ret, s.final(x.T)))
+			})
 			sink.merge(sys)
 			return ret
 		}
