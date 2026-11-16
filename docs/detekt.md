@@ -88,6 +88,11 @@ DETEKT_HOME=.../detekt-cli jvm/kc-detekt/build.sh
 DETEKT_HOME=.../detekt-cli jvm/kc-detekt/run.sh -i src --analysis-mode full -cp ... --jdk-home ...
 ```
 
+- `run.sh` runs detekt with `--parallel` and a class-data sharing archive
+  (`KC_PARALLEL=0` and `KC_CDS=0` turn them off), and kc analyzes in the
+  background as soon as detekt builds the session.
+  [Making detekt on kc faster](detekt-performance.md) measures these and
+  the other speedups.
 - `DETEKT_HOME` is a detekt-cli distribution, for example from
   `./gradlew :detekt-cli:installDist`.
 - `run.sh` takes detekt-cli's arguments.
