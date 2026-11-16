@@ -289,7 +289,9 @@ func parseMembers(path string, p syntax.Pos, src string) ([]syntax.Decl, error) 
 
 var posType = reflect.TypeFor[syntax.Pos]()
 
-// setPos sets each position in a parsed tree to p.
+// setPos sets each position in a parsed tree to p. A zero position stays
+// zero: it says that the tree lacks what it is the position of, as a
+// setter's visibility modifier.
 func setPos(v reflect.Value, p syntax.Pos) {
 	switch v.Kind() {
 	case reflect.Pointer, reflect.Interface:
@@ -302,7 +304,7 @@ func setPos(v reflect.Value, p syntax.Pos) {
 		}
 	case reflect.Struct:
 		if v.Type() == posType {
-			if v.CanSet() {
+			if v.CanSet() && !v.IsZero() {
 				v.Set(reflect.ValueOf(p))
 			}
 			return
