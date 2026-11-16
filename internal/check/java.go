@@ -838,7 +838,7 @@ func (c *Checker) resolveImports() {
 		// in K2, one function of two modules, by its package, name and
 		// signature, is one candidate.
 		for _, f := range fs {
-			if !slices.ContainsFunc(c.funImports[alias], func(g *types.FunSym) bool { return equivalentFun(f, g) }) {
+			if !slices.ContainsFunc(c.funImports[alias], func(g *types.FunSym) bool { return sameDeclaration(f, g) }) {
 				c.funImports[alias] = append(c.funImports[alias], f)
 			}
 		}
