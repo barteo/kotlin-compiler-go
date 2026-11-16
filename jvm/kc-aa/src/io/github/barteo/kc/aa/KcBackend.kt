@@ -293,9 +293,11 @@ private class KcExtrasImpl(private val round: () -> KcRound) : KcExtras {
     }
     /**
      * Whether [type] is a Java raw type, `List` for `List<E>`: the model
-     * writes it as a platform class type without arguments.
+     * writes it as a platform class type without arguments. A Java class
+     * literal's type is marked as one.
      */
     override fun isRawType(type: KaType): Boolean {
+        if ((type as? KcClassType)?.raw == true) return true
         val t = (type as? KcFlexibleType)?.lowerBound as? KcClassType ?: return false
         return t.typeArguments.isEmpty() && (t.symbol as? KaClassSymbol)?.typeParameters?.isNotEmpty() == true
     }

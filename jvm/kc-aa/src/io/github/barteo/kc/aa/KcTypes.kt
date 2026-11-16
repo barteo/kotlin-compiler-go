@@ -159,6 +159,8 @@ internal class KcClassType(
     private val local: KaClassLikeSymbol? = null,
     /** The declaration of the local class this is the type of, if [local] isn't known yet. */
     private val localPsi: PsiElement? = null,
+    /** Set on a Java raw type that has its arguments, a class literal's: KSP lists none for it. */
+    val raw: Boolean = false,
 ) : StubKaUsualClassType(), KcBaseClassType {
     override val token get() = round.token
     private val localSymbol: KaClassLikeSymbol? get() = local ?: localPsi?.let { round.byPsi[it] as? KaClassLikeSymbol }
@@ -170,7 +172,7 @@ internal class KcClassType(
     override val qualifiers: List<KaResolvedClassTypeQualifier> get() = qualifiers(round, classId, typeArguments)
     override fun withNullability(nullable: Boolean): KcClassType =
         if (nullable == marked) this
-        else KcClassType(round, classId, typeArguments, nullable, abbrev?.withNullability(nullable), isAlias, annots, local, localPsi)
+        else KcClassType(round, classId, typeArguments, nullable, abbrev?.withNullability(nullable), isAlias, annots, local, localPsi, raw)
     // The abbreviation isn't part of the type's identity, as in FIR.
     override fun equals(other: Any?) = other is KcClassType && other.classId == classId && other.localSymbol == localSymbol &&
         other.marked == marked && other.isAlias == isAlias && other.typeArguments == typeArguments
