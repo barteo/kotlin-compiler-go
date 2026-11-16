@@ -1966,8 +1966,61 @@ func (c *Checker) javaMethods(cls *types.ClassSym, name string) []*types.FunSym 
 	}
 	ms = c.notHidden(cls, name, ms)
 	ms = c.intersectionDefaults(cls, ms)
+	ms = c.functionNOverrides(cls, ms)
 	cache.methods.Store(k, ms)
 	return ms
+}
+
+// functionNOverrides adds to ms, for each Java method whose parameter is
+// a kotlin.jvm.functions.FunctionN and which overrides a Kotlin function
+// whose parameter there is a function type of more than 22 parameters,
+// the JVM's FunctionN, a copy that takes the function type: as in
+// Kotlin, both a lambda and a FunctionN are arguments.
+func (c *Checker) functionNOverrides(cls *types.ClassSym, ms []*types.FunSym) []*types.FunSym {
+	var out []*types.FunSym
+	for _, f := range ms {
+		if f.Static || f.Owner == nil || !isJavaClass(f.Owner) || !slices.ContainsFunc(f.Params, functionNParam) {
+			continue
+		}
+		var g *types.FunSym
+		cls.Supertypes(func(s *types.ClassSym) bool {
+			if s == f.Owner || isJavaClass(s) || !f.Owner.IsSubclassOf(s) {
+				return true
+			}
+			for _, h := range s.Methods[f.Name] {
+				if !h.Static && len(h.Params) == len(f.Params) && jvmDesc(h) == jvmDesc(f) {
+					g = h
+					return false
+				}
+			}
+			return true
+		})
+		if g == nil {
+			continue
+		}
+		if out == nil {
+			out = slices.Clone(ms)
+		}
+		fo := *f
+		fo.Params = slices.Clone(f.Params)
+		for j, p := range f.Params {
+			if t := g.Params[j].Type; functionNParam(p) && t.IsFunc() && t.A.Len() > 22 {
+				q := *p
+				q.Type = g.Params[j].Type
+				fo.Params[j] = &q
+			}
+		}
+		out = append(out, &fo)
+	}
+	if out == nil {
+		return ms
+	}
+	return out
+}
+
+func functionNParam(p *types.VarSym) bool {
+	t := p.Type.NonNull()
+	return t.K == types.Class && t.C != nil && t.C.Name == "kotlin/jvm/functions/FunctionN"
 }
 
 // notHidden adds to ms the methods of cls's supertypes compiled by
@@ -2094,7 +2147,14 @@ func (c *Checker) inheritExtDefaults(f *types.FunSym) {
 		}
 		for _, g := range c.overridden(f.Owner, f) {
 			c.inheritExtDefaults(g)
-			if g.Decl == nil && declaresDefaults(g) {
+			// A class-path function's, or one of the program's Kotlin
+			// functions: a Java class's override of one.
+			gd, src := g.Decl.(*syntax.FunDecl)
+			if src && !funDeclaresDefaults(gd) && g.DefaultsOf != nil {
+				g = g.DefaultsOf
+				gd, src = g.Decl.(*syntax.FunDecl)
+			}
+			if g.Decl == nil && declaresDefaults(g) || src && funDeclaresDefaults(gd) && len(g.Params) == len(f.Params) {
 				for i, p := range f.Params {
 					p.Default = g.Params[i].Default
 				}
