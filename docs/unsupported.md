@@ -10,6 +10,15 @@ own tests.
 
 ## The language
 
+- Warnings: `kc` reports only `DEPRECATION`,
+  `TYPEALIAS_EXPANSION_DEPRECATION`, `OPT_IN_USAGE`, `ERROR_SUPPRESSION`,
+  `UNNECESSARY_SAFE_CALL`, `UNNECESSARY_NOT_NULL_ASSERTION`,
+  `USELESS_CAST`, `SENSELESS_COMPARISON` and `USELESS_ELVIS`, and those
+  only where the types make them certain: never of a platform type, a
+  type parameter or a type it couldn't resolve, so that `-Werror` doesn't
+  reject what `kotlinc` compiles. `@Suppress` silences a warning by its
+  name, or all of them with `"warnings"`.
+
 - Reified type parameters of members of interfaces and value classes
   (those of final members and member extensions of classes work).
 - `lateinit` properties of a `@file:JvmMultifileClass` class that
@@ -17,9 +26,9 @@ own tests.
 - Local `external` functions, which are reported as unsupported.
 - Opt-in requirements (`@RequiresOptIn`, `@SubclassOptInRequired`) and
   `@Deprecated` are checked, the class path's read from its class files
-  and metadata, but only their errors are reported: markers with level
-  `WARNING` and deprecations with level `WARNING` (Java's `@Deprecated`
-  among them) give no warning. `@DeprecatedSinceKotlin` and
+  and metadata. Markers and deprecations with level `WARNING` (Java's
+  `@Deprecated` among them) give the warnings `OPT_IN_USAGE` and
+  `DEPRECATION`. `@DeprecatedSinceKotlin` and
   `@SinceKotlin` are read as if their versions were reached: `kc` acts
   as the newest API version, as `kotlinc` does by default, and has no
   `-api-version`. A class path's typealias opts in to nothing, as the

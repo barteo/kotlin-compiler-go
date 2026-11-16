@@ -218,6 +218,9 @@ type Checker struct {
 	// checked code (see warnf).
 	warns  []*syntax.Error
 	warned map[warnKey]bool
+	// maybeNull are the x!! and x ?: y whose x some check of them found
+	// may be null: checked again, x may be smart cast by the first check.
+	maybeNull map[syntax.Expr]bool
 	// tailIfs are ifs without else that end a branch of the if a lambda
 	// ends with: statements, not values (see markTailIfs).
 	tailIfs map[*syntax.If]bool

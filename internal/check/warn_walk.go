@@ -132,6 +132,10 @@ func nodeEnd(n any) syntax.Pos {
 		if p.Line > last.Line {
 			last = p
 		}
+		// syntax.Inspect doesn't enter an object expression's members.
+		if o, ok := m.(*syntax.ObjectExpr); ok && o.Decl != nil && o.Decl.End.Line > last.Line {
+			last = o.Decl.End
+		}
 		return true
 	}
 	switch n := n.(type) {

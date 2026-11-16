@@ -1,7 +1,6 @@
 package check
 
 import (
-	"fmt"
 	"regexp"
 
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
@@ -60,7 +59,13 @@ func init() {
 // last line.
 type suppressRange struct {
 	from, to syntax.Pos
-	names    []string
+	names    []suppressName
+}
+
+// suppressName is a string that a @Suppress names, and where.
+type suppressName struct {
+	name string
+	p    syntax.Pos
 }
 
 // errorSuppression is kotlinc's warning about a suppressed error.
@@ -82,21 +87,6 @@ func (c *Checker) suppressErrors() {
 	if len(rs) == 0 {
 		return
 	}
-	kept := c.errs[:0]
-	var suppressed []*syntax.Error
-	for _, e := range c.errs {
-		// An unsupported feature isn't kotlinc's error to suppress.
-		if e.Feature != "" {
-			kept = append(kept, e)
-			continue
-		}
-		if n := suppressedBy(e, rs); n != "" {
-			suppressed = append(suppressed, &syntax.Error{File: e.File, Pos: e.Pos, Msg: fmt.Sprintf(errorSuppression, n), Severity: syntax.SevWarning, Name: "ERROR_SUPPRESSION"})
-		} else {
-			kept = append(kept, e)
-		}
-	}
-	c.errs = kept
 	keptW := c.warns[:0]
 	for _, w := range c.warns {
 		if !warningSuppressed(w, rs) {
@@ -104,30 +94,40 @@ func (c *Checker) suppressErrors() {
 		}
 	}
 	c.warns = keptW
-	for _, w := range suppressed {
-		if !warningSuppressed(w, rs) {
-			c.warns = append(c.warns, w)
+	kept := c.errs[:0]
+	for _, e := range c.errs {
+		// An unsupported feature isn't kotlinc's error to suppress.
+		if e.Feature != "" {
+			kept = append(kept, e)
+			continue
+		}
+		if n, ok := suppressedBy(e, rs); ok {
+			// kotlinc warns of the string that names the error.
+			c.warnf(n.p, "ERROR_SUPPRESSION", errorSuppression, n.name)
+		} else {
+			kept = append(kept, e)
 		}
 	}
+	c.errs = kept
 }
 
 // suppressedBy returns the name of the error e that a range of rs
-// suppresses, or "".
-func suppressedBy(e *syntax.Error, rs []suppressRange) string {
+// suppresses, and whether one does.
+func suppressedBy(e *syntax.Error, rs []suppressRange) (suppressName, bool) {
 	for _, r := range rs {
 		if before(e.Pos, r.from) || before(r.to, e.Pos) {
 			continue
 		}
 		for _, n := range r.names {
-			if e.Name != "" && e.Name == n {
-				return n
+			if e.Name != "" && e.Name == n.name {
+				return n, true
 			}
-			if m := suppressible[n]; m != nil && m.MatchString(e.Msg) {
-				return n
+			if m := suppressible[n.name]; m != nil && m.MatchString(e.Msg) {
+				return n, true
 			}
 		}
 	}
-	return ""
+	return suppressName{}, false
 }
 
 // warningSuppressed reports whether a range of rs suppresses warning w.
@@ -137,7 +137,7 @@ func warningSuppressed(w *syntax.Error, rs []suppressRange) bool {
 			continue
 		}
 		for _, n := range r.names {
-			if n == w.Name || n == "warnings" {
+			if n.name == w.Name || n.name == "warnings" {
 				return true
 			}
 		}
@@ -166,11 +166,44 @@ func annotationsRange(rs []suppressRange, anns []syntax.Annotation, p, end synta
 	return append(rs, suppressRange{from, end, ns})
 }
 
+// paramRanges adds to rs the ranges of the parameters ps whose @Suppress
+// names diagnostics: their types and default values.
+func paramRanges(rs []suppressRange, ps []*syntax.Param) []suppressRange {
+	for _, p := range ps {
+		if p == nil {
+			continue
+		}
+		end := syntax.Pos{Line: p.P.Line, Col: 1 << 30}
+		if p.Default != nil {
+			end = nodeEnd(p.Default)
+		}
+		rs = annotationsRange(rs, p.Annotations, p.P, end)
+	}
+	return rs
+}
+
+// funRanges adds to rs the ranges of function d and its parameters.
+func funRanges(rs []suppressRange, d *syntax.FunDecl) []suppressRange {
+	if d == nil {
+		return rs
+	}
+	end := d.End
+	if end.Line == 0 {
+		if d.Body != nil {
+			end = nodeEnd(d.Body)
+		} else if d.ExprBody != nil {
+			end = nodeEnd(d.ExprBody)
+		}
+	}
+	rs = annotationsRange(rs, d.Annotations, d.P, end)
+	return paramRanges(rs, d.Params)
+}
+
 // suppressRanges adds the ranges of declaration d and its members to rs.
 func suppressRanges(d syntax.Decl, rs []suppressRange) []suppressRange {
 	switch d := d.(type) {
 	case *syntax.FunDecl:
-		rs = annotationsRange(rs, d.Annotations, d.P, d.End)
+		rs = funRanges(rs, d)
 	case *syntax.PropDecl:
 		end := syntax.Pos{}
 		for _, a := range []*syntax.FunDecl{d.Getter, d.Setter} {
@@ -184,8 +217,18 @@ func suppressRanges(d syntax.Decl, rs []suppressRange) []suppressRange {
 			}
 		}
 		rs = annotationsRange(rs, d.Annotations, d.P, end)
+		rs = funRanges(rs, d.Getter)
+		rs = funRanges(rs, d.Setter)
 	case *syntax.ClassDecl:
 		rs = annotationsRange(rs, d.Annotations, d.P, d.End)
+		for _, p := range d.CtorParams {
+			rs = paramRanges(rs, []*syntax.Param{&p.Param})
+			end := syntax.Pos{Line: p.P.Line, Col: 1 << 30}
+			if p.Default != nil {
+				end = nodeEnd(p.Default)
+			}
+			rs = annotationsRange(rs, p.Modifiers.Annotations, p.P, end)
+		}
 		for _, m := range d.Members {
 			rs = suppressRanges(m, rs)
 		}
@@ -205,6 +248,7 @@ func suppressRanges(d syntax.Decl, rs []suppressRange) []suppressRange {
 			end = nodeEnd(d.Body)
 		}
 		rs = annotationsRange(rs, d.Annotations, d.P, end)
+		rs = paramRanges(rs, d.Params)
 	}
 	return rs
 }
@@ -216,6 +260,7 @@ func (c *Checker) codeSuppressRanges(rs []suppressRange) []suppressRange {
 		switch n := n.(type) {
 		case *syntax.LocalFun:
 			rs = annotationsRange(rs, n.Decl.Annotations, n.Decl.P, nodeEnd(n))
+			rs = paramRanges(rs, n.Decl.Params)
 		case *syntax.LocalClass:
 			end := nodeEnd(n)
 			rs = annotationsRange(rs, n.Annotations, n.Decl.P, end)
@@ -238,19 +283,35 @@ func (c *Checker) codeSuppressRanges(rs []suppressRange) []suppressRange {
 
 // suppressStrings returns the strings that the @Suppress annotations
 // among anns name.
-func suppressStrings(anns []syntax.Annotation) []string {
-	var ns []string
+func suppressStrings(anns []syntax.Annotation) []suppressName {
+	var ns []suppressName
 	for i := range anns {
 		a := &anns[i]
-		if !a.Is("Suppress") || a.Target != "" && a.Target != "file" && a.Target != "param" {
+		// An accessor's annotations are the property's, with a get or
+		// set target.
+		if !a.Is("Suppress") {
 			continue
 		}
 		for _, arg := range a.Args {
+			// "DEPR" + "ECATION" is a constant too.
+			var cur *suppressName
+			plus := false
 			for _, t := range arg.Toks {
-				for _, part := range t.Parts {
-					if part.Lit != "" {
-						ns = append(ns, part.Lit)
+				if t.Kind == syntax.STRING {
+					if lit, ok := literalString(t); ok {
+						if cur != nil && plus {
+							cur.name += lit
+						} else {
+							ns = append(ns, suppressName{lit, t.Pos})
+							cur = &ns[len(ns)-1]
+						}
+						plus = false
+						continue
 					}
+				}
+				plus = cur != nil && t.Kind == syntax.PLUS
+				if !plus && t.Kind != syntax.NL {
+					cur = nil
 				}
 			}
 		}

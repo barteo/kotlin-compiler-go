@@ -527,6 +527,9 @@ type optWalker struct {
 	writes map[syntax.Expr]bool
 	// entered is the annotated node whose annotations were just pushed.
 	entered any
+	// refReads are the positions of the property reads that callable
+	// references' bodies make, which a deprecated getter doesn't warn of.
+	refReads map[syntax.Pos]bool
 }
 
 func (w *optWalker) push(as []syntax.Annotation) { w.scope = append(w.scope, as) }
@@ -1078,13 +1081,26 @@ func (w *optWalker) prop(d *syntax.PropDecl, owner *types.ClassSym) {
 		w.node(d.Init)
 	}
 	if d.DelegateOf != nil && d.Init != nil {
+		// The delegate is the property's code: its opt-ins are in scope.
+		w.push(d.DelegateOf.Annotations)
 		w.node(d.Init)
+		w.pop()
 	}
-	for _, acc := range []*syntax.FunDecl{d.Getter, d.Setter} {
+	for i, acc := range []*syntax.FunDecl{d.Getter, d.Setter} {
 		if acc == nil {
 			continue
 		}
-		w.push(acc.Annotations)
+		// An accessor's own annotations are the property's, with the
+		// accessor as their target: in its body they are its own.
+		target := [2]string{"get", "set"}[i]
+		as := slices.Clone(acc.Annotations)
+		for _, a := range d.Annotations {
+			if a.Target == target {
+				a.Target = ""
+				as = append(as, a)
+			}
+		}
+		w.push(as)
 		if acc.Body != nil {
 			w.node(acc.Body)
 		}
@@ -1156,6 +1172,21 @@ func (w *optWalker) visit(n any) bool {
 	case *syntax.CallableRef:
 		w.typeRef(n.Type)
 	case *syntax.Lambda:
+		if n.Ref != nil && n.Body != nil {
+			syntax.Inspect(n.Body, func(m any) bool {
+				switch m := m.(type) {
+				case *syntax.Ident:
+					if m.Name == n.Ref.Name {
+						w.refRead(m.P)
+					}
+				case *syntax.Member:
+					if m.Name == n.Ref.Name {
+						w.refRead(m.P)
+					}
+				}
+				return true
+			})
+		}
 		for _, p := range n.Params {
 			if p == nil {
 				continue
@@ -1208,12 +1239,15 @@ func (w *optWalker) call(n *syntax.Call) {
 	if n.Ctor != nil {
 		w.require(p, w.o.classMarkers(n.Ctor))
 		level := classDepr(n.Ctor)
+		var alias *types.AliasSym
+		var aliasLevel depr
 		if id, ok := n.Fun.(*syntax.Ident); ok {
 			for _, a := range w.o.aliases[id.Name] {
 				if a.Class() == n.Ctor {
+					alias = a
 					w.require(p, w.o.aliasMarkers(a, 0))
 					if d, ok := a.Decl.(*syntax.TypeAliasDecl); ok {
-						level = level.or(deprecation(d.Annotations))
+						aliasLevel = aliasLevel.or(deprecation(d.Annotations))
 					}
 				}
 			}
@@ -1222,7 +1256,15 @@ func (w *optWalker) call(n *syntax.Call) {
 			w.require(p, w.ctorMarkers(n.Sym))
 			level = level.or(w.ctorDeprecation(n.Sym))
 		}
-		w.deprecatedUse(p, n.Ctor.DisplayName(), level)
+		if alias != nil && level.level != "" && !level.isError() {
+			// A class or constructor deprecated with level WARNING that
+			// a typealias names: kotlinc warns of the expansion.
+			if !w.deprecated() {
+				w.warnf(p, "TYPEALIAS_EXPANSION_DEPRECATION", "the expansion of typealias '%s' uses '%s', which is deprecated", alias.Name, n.Ctor.DisplayName())
+			}
+			level = depr{}
+		}
+		w.deprecatedUse(p, n.Ctor.DisplayName(), level.or(aliasLevel))
 		return
 	}
 	if n.Sym == nil || n.Invoke {
@@ -1448,12 +1490,36 @@ func (w *optWalker) propMarkers(p *types.VarSym, write bool) []*optMarker {
 	return nil
 }
 
+func (w *optWalker) refRead(p syntax.Pos) {
+	if w.refReads == nil {
+		w.refReads = map[syntax.Pos]bool{}
+	}
+	w.refReads[p] = true
+}
+
 func (w *optWalker) propDeprecation(p *types.VarSym) depr {
+	return w.propReadDeprecation(p, false)
+}
+
+// propReadDeprecation returns the deprecation of a read of property p,
+// or with ref of a reference to it, which a deprecated getter's level
+// WARNING doesn't make deprecated.
+func (w *optWalker) propReadDeprecation(p *types.VarSym, ref bool) depr {
+	targets := []string{"property", "get"}
+	if ref {
+		targets = targets[:1]
+	}
 	switch d := p.Decl.(type) {
 	case *syntax.PropDecl:
-		return deprecation(d.Annotations, "property", "get")
+		if ref {
+			return deprecation(d.Annotations, targets...).or(onlyErrors(deprecation(d.Annotations, "get")))
+		}
+		return deprecation(d.Annotations, targets...)
 	case *syntax.CtorParam:
-		return deprecation(d.Modifiers.Annotations, "property", "get")
+		if ref {
+			return deprecation(d.Modifiers.Annotations, targets...).or(onlyErrors(deprecation(d.Modifiers.Annotations, "get")))
+		}
+		return deprecation(d.Modifiers.Annotations, targets...)
 	case nil:
 		return deprecationLevel(p.Deprecated)
 	}
@@ -1466,7 +1532,7 @@ func (w *optWalker) variable(v *types.VarSym, p syntax.Pos, write bool) {
 	case types.Global, types.Prop:
 		w.require(p, w.propMarkers(v, write))
 		if !write {
-			w.deprecatedUse(p, v.Name, w.propDeprecation(v))
+			w.deprecatedUse(p, v.Name, w.propReadDeprecation(v, w.refReads[p]))
 		}
 	case types.Local, types.Param:
 		if !write {
@@ -1550,4 +1616,12 @@ func generated(d syntax.Decl) bool {
 		return d.Generated || d.Synthetic
 	}
 	return false
+}
+
+// onlyErrors returns d if it is an error, or no deprecation.
+func onlyErrors(d depr) depr {
+	if d.isError() {
+		return d
+	}
+	return depr{}
 }
