@@ -159,7 +159,9 @@ if (gradle.parent == null) {
         logger.lifecycle("kc: ${task.path}: ${sources.size} files in $ms ms")
         throw StopExecutionException()
       }
-      val excerpt = output.lineSequence().filter { it.isNotBlank() }.take(20).joinToString("\n")
+      // The errors, which follow the warnings of the files before them.
+      val lines = output.lines().filter { it.isNotBlank() }
+      val excerpt = lines.filterNot { ": warning: " in it }.ifEmpty { lines }.take(20).joinToString("\n")
       if (strict) throw GradleException("kc failed on ${task.path}:\n$excerpt")
       logger.warn("kc failed on ${task.path}, so kotlinc compiles it:\n$excerpt")
       dest.deleteRecursively()
