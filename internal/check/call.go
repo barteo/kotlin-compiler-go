@@ -731,6 +731,8 @@ func (c *Checker) resolve(x *syntax.Call, cands []callee, want types.Type, sink 
 			c.invisibleFun(x.Fun.Pos(), f)
 		} else if m, ok := x.Fun.(*syntax.Member); ok && f.PrivateToThis {
 			c.checkPrivateToThis(m.X, f.Name, f.Owner, m.P)
+		} else if !ok {
+			c.companionProtectedFun(f, x.Fun.Pos())
 		}
 	case f.Owner != nil && !f.Owner.External && ctorVisibility(f) == syntax.Private && !c.canSee(syntax.Private, f.Owner, ""):
 		// A superclass's private constructor, which only the classes
@@ -752,6 +754,8 @@ func (c *Checker) resolve(x *syntax.Call, cands []callee, want types.Type, sink 
 func (c *Checker) checkTopVar(v *types.VarSym, p syntax.Pos) {
 	if (v.Kind == types.Global || v.Kind == types.Prop) && !c.propVisible(v) {
 		c.invisibleProp(p, v)
+	} else {
+		c.companionProtectedProp(v, p)
 	}
 }
 

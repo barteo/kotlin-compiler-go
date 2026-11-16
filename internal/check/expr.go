@@ -373,7 +373,11 @@ func (c *Checker) receiverProp(x *syntax.Ident) (types.Type, bool) {
 	if !c.objectHasProp(x.Name) {
 		return types.InvalidType, false
 	}
-	return c.objectMember(x)
+	t, ok := c.objectMember(x)
+	if ok && x.Member != nil && x.Member.Prop != nil {
+		c.companionProtectedProp(x.Member.Prop, x.P)
+	}
+	return t, ok
 }
 
 func (c *Checker) lookupVar(name string) (*types.VarSym, types.Type, bool, bool) {
@@ -2955,6 +2959,9 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 				}
 				ensureVar(p)
 				fn.Prop = p
+				if !c.propVisible(p) {
+					c.invisibleProp(fn.P, p)
+				}
 				fn.T = c.memberSubst(rt, p.Owner).Apply(p.Type)
 				return c.invokeValue(x, fn.T, want, sink)
 			}

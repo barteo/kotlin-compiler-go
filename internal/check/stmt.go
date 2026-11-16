@@ -913,6 +913,9 @@ func (c *Checker) lvalue(x syntax.Expr) (types.Type, bool) {
 		case x.Getter != nil && x.Setter == nil:
 			c.errorf(x.P, "val cannot be reassigned")
 			return t, false
+		case x.Getter != nil && !c.javaSetterVisible(x.Setter, x.X):
+			c.errorf(x.P, invisibleSetterMsg+"'%s': the setter is %s", x.Name, visibilityOf(memberVisibility(x.Setter), x.Setter.Owner))
+			return t, false
 		case x.Getter != nil && !x.Setter.Ext && x.Setter.Owner != nil && x.X.Type().K == types.Class:
 			// A Java setter's parameter: a List, where the getter
 			// gives a MutableList.

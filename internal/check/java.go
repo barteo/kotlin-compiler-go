@@ -296,6 +296,7 @@ func (t *classTable) load(cls *types.ClassSym) {
 	cls.Final = info.Access&classfile.AccFinal != 0
 	cls.Private = info.Access&classfile.AccPublic == 0
 	cls.PackagePrivate = cls.Private && (info.Inner == nil || info.Inner.Access&classfile.AccPrivate == 0)
+	cls.ProtectedNested = info.Inner != nil && info.Inner.Access&classfile.AccProtected != 0
 	// The package-private members of Java classes are their package's
 	// code's, which Kotlin code in another module may be, but not the
 	// JDK's.
