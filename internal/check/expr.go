@@ -93,7 +93,10 @@ func (c *Checker) expr1(x syntax.Expr, want types.Type, allowRange bool, sink *s
 		if len(c.recvs) > 0 {
 			if v, _, local := c.scope.lookup(x.Name); !local || propParam(v) != nil {
 				if t, ok := c.recvMember(x); ok {
-					return t
+					if p := x.Member.Prop; p == nil || !lowPriorityVar(p) || !c.lowPriorityLoses(x.Name) {
+						return t
+					}
+					x.Member = nil
 				}
 			}
 		}
@@ -119,6 +122,13 @@ func (c *Checker) expr1(x syntax.Expr, want types.Type, allowRange bool, sink *s
 			// classes, before imported ones.
 			if t, ok := c.inheritedStatic(x); ok {
 				return t
+			}
+		}
+		if ok && lowPriorityVar(sym) {
+			// An object of the name comes before a property annotated
+			// @LowPriorityInOverloadResolution.
+			if obj := c.objectNamed(x.Name); obj != nil {
+				return objectValue(x, obj)
 			}
 		}
 		if ok && sym.Ambiguous {
@@ -1531,6 +1541,43 @@ func (c *Checker) hasNamed(t types.Type, name string) bool {
 	_, found := c.extProp(&syntax.Member{Name: name}, t)
 	c.errs = c.errs[:n]
 	return found
+}
+
+// lowPriorityVar reports whether property v of the program is annotated
+// @LowPriorityInOverloadResolution, which a property or object of the
+// same name in another scope wins over.
+func lowPriorityVar(v *types.VarSym) bool {
+	d, ok := v.Decl.(*syntax.PropDecl)
+	return ok && lowPriorityMods(&d.Modifiers)
+}
+
+// lowPriorityLoses reports whether a low-priority member property name
+// gives way to a top-level property that isn't low-priority, or to an
+// object: in fun Foo.test(), bar is a top-level bar, not Foo's
+// @LowPriorityInOverloadResolution one.
+func (c *Checker) lowPriorityLoses(name string) bool {
+	if c.objectNamed(name) != nil {
+		return true
+	}
+	n := len(c.errs)
+	sym, _, _, ok := c.lookupVar(name)
+	c.errs = c.errs[:n]
+	return ok && sym.Kind == types.Global && !lowPriorityVar(sym)
+}
+
+// objectNamed returns the object that name refers to as a value, if any.
+func (c *Checker) objectNamed(name string) *types.ClassSym {
+	if _, _, local := c.scope.lookup(name); local {
+		return nil
+	}
+	cls := c.findClass(name)
+	if cls == nil {
+		return nil
+	}
+	if obj := objectOf(cls); obj != nil {
+		return obj
+	}
+	return c.starObject(name, cls)
 }
 
 // builtinNamed reports whether builtin type t, as Int or String, has a
