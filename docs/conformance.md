@@ -227,32 +227,32 @@ Kotlin 2.4.21's tests on `kc`:
 | Diagnostics tests | Tests | Share of run |
 |:---|---:|---:|
 | run (of 10,827) | 8,532 | |
-| rejects invalid | 4,233 | 49.6% |
-| accepts valid | 4,104 | 48.1% |
-| accepts invalid | 159 | 1.9% |
-| rejects valid | 20 | 0.2% |
-| parse/unsupported | 14 | 0.2% |
-| crash | 1 | |
+| rejects invalid | 4,270 | 50.0% |
+| accepts valid | 4,115 | 48.2% |
+| accepts invalid | 123 | 1.4% |
+| rejects valid | 7 | 0.1% |
+| parse/unsupported | 16 | 0.2% |
+| crash | 0 | |
 | harness error (`javac`) | 1 | |
 
 `kc` agrees with `kotlinc` on 98% of the diagnostics tests, and reports
-16,633 of the 21,532 expected errors (77%) on their lines. Tests with
-Java sources are 1,221 of the run, and 56 of the 159 that *accept
-invalid* code. The reports break the failures down; the largest groups
-are:
+17,646 of the 21,536 expected errors (82%) on their lines, and 507 of
+the 3,634 expected warnings (14%), with 8 warnings on lines that expect
+none. Tests with Java sources are 1,221 of the run, and 39 of the 123
+that *accept invalid* code. The reports break the failures down; the
+largest groups are:
 
 - **Silent miscompilation**: none. No box test that `kc` compiles
   gives a wrong result, throws, or fails to verify or link.
 - **Accepts invalid**, by the tests that expect each error: argument
-  type mismatches (`ARGUMENT_TYPE_MISMATCH` 17), unresolved names
-  (`UNRESOLVED_REFERENCE` 15), invisible references
-  (`INVISIBLE_REFERENCE` 7) and unsupported constructs (`UNSUPPORTED` 7).
+  type mismatches (`ARGUMENT_TYPE_MISMATCH` 15), unresolved names
+  (`UNRESOLVED_REFERENCE` 15) and unsupported constructs (`UNSUPPORTED`
+  7).
 - **Rejects valid**, by `kc`'s first error: unresolved names and
-  imports (7), type mismatches (5), ambiguous calls (3), and five others
-  of one test each. No box test is rejected.
-- **Crashes**: a test with Java sources, a stack overflow on a
-  recursive bound. The harness error is a test that declares `java.util.Date`, which `javac`
-  compiles only with `--patch-module`.
+  imports (4), type mismatches (2), and a property invoked as a
+  function (1). No box test is rejected.
+- **Crashes**: none. The harness error is a test that declares
+  `java.util.Date`, which `javac` compiles only with `--patch-module`.
 
 The committed `.tsv` files serve as a ratchet: a change must make
 `-baseline` report no regressions, and the tests it fixes measure it.
