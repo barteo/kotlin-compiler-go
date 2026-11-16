@@ -7,9 +7,12 @@
 //	CGO_CFLAGS="-I$JAVA_HOME/include -I$JAVA_HOME/include/linux" \
 //		go build -tags libkc -buildmode=c-shared -o libkc.so ./cmd/libkc
 //
-// The library exports one JNI method, KcNative.call(int op, byte[] request)
-// in package io.github.barteo.kc, which runs internal/kcabi.Call and throws
-// io.github.barteo.kc.KcException when it fails. Without the libkc tag the
+// The library exports one JNI method, KcBridge.call(int op, byte[] request,
+// int[] status) in package io.github.barteo.kc, which runs
+// internal/kcabi.Call and returns its response, or the message of its
+// error with status[0] set. It names no class of the JVM's, so the class
+// loader that loads the library, which a JVM lets one do, can serve the
+// callers of every other (jvm/libkc's KcNative). Without the libkc tag the
 // command builds as a stub, so that go build ./... and go vet ./... work on
 // hosts without a JDK.
 package main

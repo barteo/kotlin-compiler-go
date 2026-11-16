@@ -11,7 +11,8 @@
 # test/moshi/src (test/RunKsp.kt) and compares what it generates with
 # test/moshi/want, and Dagger's, Room's, Hilt's and kotlin-inject's (with
 # kotlin-inject-anvil's) the same way, over
-# test/{dagger,room,hilt,hilt-android,inject}/src, checks incremental
+# test/{dagger,room,hilt,hilt-android,inject}/src, runs Moshi's and Dagger's
+# in class loaders of one JVM (test/Loaders.java), checks incremental
 # processing's dirty set over test/ic, what a Java source's class literals
 # name in each of two rounds (test/rounds), and that a run a processor
 # fails (test/errors) reports the processor's errors only. "stock" does what
@@ -290,6 +291,7 @@ for jar in com/squareup/moshi/moshi-kotlin-codegen/1.15.2/moshi-kotlin-codegen-1
 	procs=$procs:$out/m2/$(basename "$jar")
 done
 
+moshiprocs=$procs
 rm -rf "$out/runksp-classes" "$out/moshi"
 kotlinc -cp "$deps:$out/kc-aa.jar" -d "$out/runksp-classes" -jvm-target 17 -nowarn "$here/test/RunKsp.kt"
 LD_PRELOAD=$java_home/lib/libjsig.so java -Dksp.backend=kc -Dkc.lib="$out/libkc.so" -Didea.home.path="$out" \
@@ -371,6 +373,28 @@ diff -ru "$here/test/dagger/want" "$out/dagger"
 echo "dagger: ok"
 stock dagger "$here/test/dagger/src" \
 	"$lib/kotlin-stdlib-2.4.21.jar:$out/m2/dagger-2.59.2.jar:$out/m2/javax.inject-1.jar:$out/m2/jakarta.inject-api-2.0.1.jar" "$procs"
+
+# Moshi's and Dagger's runs in one JVM, each in a class loader of its own
+# (test/Loaders.java), as a build tool's daemon has a class loader for each
+# KSP class path: both at once, and then Moshi's again in a new class
+# loader after those two are dropped, as the daemon's next build runs it.
+# The class loaders share the one libkc a JVM loads, which closes what a
+# dropped class loader left open.
+rm -rf "$out/loaders" "$out/loaders-classes"
+javac -d "$out/loaders-classes" "$here/test/Loaders.java"
+moshirun=("$out/runksp-classes:$out/kc-aa.jar:$deps$moshiprocs" "$here/test/moshi/src")
+moshilibs=$lib/kotlin-stdlib-2.4.21.jar:$out/m2/moshi-1.15.2.jar:$out/m2/okio-jvm-3.7.0.jar
+LD_PRELOAD=$java_home/lib/libjsig.so java -Dksp.backend=kc -Dkc.lib="$out/libkc.so" -Didea.home.path="$out" \
+	-Djava.awt.headless=true -XX:SoftRefLRUPolicyMSPerMB=0 -cp "$out/loaders-classes" Loaders "$out/kc-aa.jar" \
+	"${moshirun[@]}" "$out/loaders/moshi" "$moshilibs" \
+	"$out/runksp-classes$procs:$out/kc-aa.jar:$deps" "$here/test/dagger/src" "$out/loaders/dagger" \
+	"$lib/kotlin-stdlib-2.4.21.jar:$out/m2/dagger-2.59.2.jar:$out/m2/javax.inject-1.jar:$out/m2/jakarta.inject-api-2.0.1.jar" \
+	"${moshirun[@]}" "$out/loaders/moshi-again" "$moshilibs" > "$out/loaders.txt"
+rm -rf "$out"/loaders/*/caches
+diff -ru "$here/test/moshi/want" "$out/loaders/moshi"
+diff -ru "$here/test/dagger/want" "$out/loaders/dagger"
+diff -ru "$here/test/moshi/want" "$out/loaders/moshi-again"
+echo "loaders: ok"
 
 # Room's processor (XProcessing, KotlinPoet output) over test/room/src,
 # and Hilt's with Dagger's over test/hilt/src: the class paths Gradle
