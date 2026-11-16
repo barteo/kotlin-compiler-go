@@ -47,7 +47,7 @@ func analyze(ctx context.Context, cfg Config, snaps []*psi.Snapshot) (*Result, e
 
 	cp, lib, err := driver.OpenLibrary(driver.Options{
 		JDKHome: cfg.JDKHome, NoJDK: cfg.NoJDK, ClassPath: cfg.ClassPath,
-		ModuleName: cfg.ModuleName, Jobs: jobs,
+		ModuleName: cfg.ModuleName, Jobs: jobs, OptIns: cfg.OptIns,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("analysis: %w", err)
@@ -244,6 +244,12 @@ type builder struct {
 	// receivers are the declarations of receivers: lambdas' and
 	// extension functions'.
 	receivers map[*types.VarSym]ElementID
+	// varDecls are the declarations of variables the checker declares
+	// without a declaration node of their own: a for loop's variable
+	// and a catch clause's parameter, at their VALUE_PARAMETERs.
+	varDecls map[*types.VarSym]ElementID
+	// getterProps are the properties of the sources' getters.
+	getterProps map[*syntax.FunDecl]*types.VarSym
 	// classAt are the classes and objects the program declares, by
 	// their declarations' elements.
 	classAt map[ElementID]*types.ClassSym
@@ -254,7 +260,7 @@ type builder struct {
 
 func newBuilder(res *Result, snaps []*psi.Snapshot, files []*syntax.File, provs []*lower.Provenance, rec *recorder) *builder {
 	b := &builder{res: res, snaps: snaps, files: files, provs: provs, rec: rec,
-		where: map[any]ElementID{}, names: map[*types.FunSym]string{}, symIDs: map[any]uint32{}, receivers: map[*types.VarSym]ElementID{}, classAt: map[ElementID]*types.ClassSym{}, negatedAt: map[*syntax.IntLit]ElementID{}, pkgAnnots: map[string][]string{}}
+		where: map[any]ElementID{}, names: map[*types.FunSym]string{}, symIDs: map[any]uint32{}, receivers: map[*types.VarSym]ElementID{}, varDecls: map[*types.VarSym]ElementID{}, getterProps: map[*syntax.FunDecl]*types.VarSym{}, classAt: map[ElementID]*types.ClassSym{}, negatedAt: map[*syntax.IntLit]ElementID{}, pkgAnnots: map[string][]string{}}
 	b.cv = converter{decl: b.decl, supers: map[*types.ClassSym][]string{}}
 	return b
 }
@@ -296,6 +302,24 @@ func (b *builder) build() {
 			}
 			return cmp.Compare(a.rank, c.rank)
 		})
+	}
+	// The properties of source getters, for a read of an extension
+	// property, which the checker sees as a call of its getter.
+	var props func([]syntax.Decl)
+	props = func(ds []syntax.Decl) {
+		for _, d := range ds {
+			switch d := d.(type) {
+			case *syntax.PropDecl:
+				if d.Getter != nil && d.Sym != nil {
+					b.getterProps[d.Getter] = d.Sym
+				}
+			case *syntax.ClassDecl:
+				props(d.Members)
+			}
+		}
+	}
+	for _, f := range b.files {
+		props(f.Decls)
 	}
 	for i, es := range entries {
 		sid := b.snaps[i].ID()
@@ -396,6 +420,23 @@ func (b *builder) sym(s any) uint32 {
 	id := uint32(len(b.syms))
 	b.symIDs[s] = id
 	return id
+}
+
+// getterSym is the symbol of a read through getter g: the property, if
+// g is a source property's getter, as kotlinc's for an extension
+// property's read, which the checker sees as g's call.
+func (b *builder) getterSym(g *types.FunSym) uint32 {
+	switch d := g.Decl.(type) {
+	case *syntax.FunDecl:
+		if v := b.getterProps[d]; v != nil {
+			return b.sym(v)
+		}
+	case *syntax.PropDecl:
+		if d.Sym != nil {
+			return b.sym(d.Sym)
+		}
+	}
+	return b.sym(g)
 }
 
 // merge sets the fields of f that are unset to src's.
@@ -507,6 +548,7 @@ func (b *builder) visit(n any, el ElementID) {
 	case lower.WhenSubject:
 		// when (val x = e): x, a local the checker declares.
 		if s := x.When.SubjSym; s != nil && x.When.SubjVar != "" {
+			b.declares(s, el)
 			b.set(el, Fact{Role: "declaration", Symbol: b.sym(s)})
 			b.typeRef(x.When.SubjType, s.Type)
 		}
@@ -553,6 +595,7 @@ func (b *builder) visit(n any, el ElementID) {
 	case *syntax.Catch:
 		if x.Sym != nil {
 			b.typeRef(x.Type, x.Sym.Type)
+			b.varDecl(x.Sym, b.node(el).ChildKind(psi.KindVALUE_PARAMETER_LIST).ChildKind(psi.KindVALUE_PARAMETER), el.Snapshot)
 		}
 	case *syntax.VarStmt:
 		b.varStmt(x, el)
@@ -565,6 +608,9 @@ func (b *builder) visit(n any, el ElementID) {
 	case *syntax.Destructure:
 		b.destructured(x, b.node(el), el.Snapshot)
 	case *syntax.For:
+		if x.Sym != nil && x.Names == nil {
+			b.varDecl(x.Sym, b.node(el).ChildKind(psi.KindVALUE_PARAMETER), el.Snapshot)
+		}
 		if x.Names != nil && x.Body != nil {
 			d := b.node(el).ChildKind(psi.KindVALUE_PARAMETER).ChildKind(psi.KindDESTRUCTURING_DECLARATION)
 			b.destructured(generatedDestructure(x.Body, x.Var), d, el.Snapshot)
@@ -579,6 +625,27 @@ func (b *builder) visit(n any, el ElementID) {
 	case syntax.Expr:
 		b.expr(x, el)
 	}
+}
+
+// declares records el as the declaration of v if v has no declaration
+// node of its own, as a when subject's variable and a destructuring
+// declaration's entries, which the checker declares in generated
+// statements, don't.
+func (b *builder) declares(v *types.VarSym, el ElementID) {
+	if _, ok := b.varDecls[v]; !ok && b.decl(v.Decl) == nil {
+		b.varDecls[v] = el
+	}
+}
+
+// varDecl records d, a VALUE_PARAMETER, as the declaration of v, which
+// has no declaration node of its own, and sets its declaration fact.
+func (b *builder) varDecl(v *types.VarSym, d psi.NodeRef, snap psi.SnapshotID) {
+	if !d.Valid() || b.decl(v.Decl) != nil {
+		return
+	}
+	el := ElementID{snap, d.ID()}
+	b.varDecls[v] = el
+	b.set(el, Fact{Role: "declaration", Symbol: b.sym(v)})
 }
 
 func (b *builder) propDecl(x *syntax.PropDecl, el ElementID) {
@@ -652,6 +719,7 @@ func (b *builder) varStmt(x *syntax.VarStmt, el ElementID) {
 	if x.Sym == nil {
 		return
 	}
+	b.declares(x.Sym, el)
 	f := Fact{Role: "declaration", Symbol: b.sym(x.Sym)}
 	if x.DelegateSym != nil {
 		f.DelegateType = b.cv.typ(x.DelegateSym.Type)
@@ -828,7 +896,7 @@ func (b *builder) ident(x *syntax.Ident, el ElementID, f *Fact) {
 		}
 		b.flow(x.Sym, x.Type(), f)
 	case x.Getter != nil:
-		f.Symbol = b.sym(x.Getter)
+		f.Symbol = b.getterSym(x.Getter)
 		f.Deprecated = deprecated(symDeprecation(x.Getter))
 		if !x.Getter.Static {
 			f.ImplicitReceiver = b.implicitReceiver(x, x.Getter.Owner, el)
@@ -901,7 +969,7 @@ func (b *builder) accessors(x *syntax.Member) []Call {
 func (b *builder) propAccessor(p *types.VarSym, kind string) Call {
 	fq := varFQ(p)
 	prefix := strings.TrimSuffix(fq, p.Name)
-	c := Call{Name: prefix + "<" + kind + "-" + p.Name + ">", Declaration: b.decl(p.Decl), StableNames: true}
+	c := Call{Name: prefix + "<" + kind + "-" + p.Name + ">", OwnerClassID: classID(p.Owner), Declaration: b.decl(p.Decl), StableNames: true}
 	t := b.cv.typ(p.Type)
 	if t == nil {
 		t = &Type{}
@@ -952,7 +1020,7 @@ func (b *builder) member(x *syntax.Member, f *Fact) {
 	case x.Field != nil:
 		f.Symbol = b.sym(x.Field)
 	case x.Getter != nil:
-		f.Symbol = b.sym(x.Getter)
+		f.Symbol = b.getterSym(x.Getter)
 		f.Deprecated = deprecated(symDeprecation(x.Getter))
 	case x.Object != nil:
 		f.Symbol = b.sym(x.Object)
@@ -1023,8 +1091,13 @@ func (b *builder) callExpr(x *syntax.Call, el ElementID, f *Fact) {
 	fe, ok := b.where[x.Fun]
 	if !ok {
 		// The checker rewrote f() to this.f() for an implicit receiver:
-		// the callee is the call's name.
-		ref := b.node(el).ChildKind(psi.KindREFERENCE_EXPRESSION)
+		// the callee is the call's name. An infix call's, a infix b, is
+		// its operation reference, not the operand a.
+		k := psi.KindREFERENCE_EXPRESSION
+		if x.Infix {
+			k = psi.KindOPERATION_REFERENCE
+		}
+		ref := b.node(el).ChildKind(k)
 		fe, ok = ElementID{el.Snapshot, ref.ID()}, ref.Valid()
 	}
 	if !ok || fe == el {
@@ -1306,7 +1379,7 @@ func (b *builder) targets(f *types.FunSym) []Call {
 // funCall describes function f as a call of it would, with no call's
 // arguments, receiver or annotations.
 func (b *builder) funCall(f *types.FunSym) Call {
-	c := Call{Name: b.funFQ(f), Declaration: b.decl(f.Decl), Extension: f.Ext}
+	c := Call{Name: b.funFQ(f), OwnerClassID: classID(f.Owner), Declaration: b.decl(f.Decl), Extension: f.Ext}
 	if f.Ext {
 		c.DeclaredReceiver = b.cv.typ(f.Recv)
 	}
@@ -1362,8 +1435,10 @@ func (b *builder) call(x *syntax.Call) *Call {
 	switch {
 	case x.Ctor != nil:
 		c.Name = classFQ(x.Ctor) + ".<init>"
+		c.OwnerClassID = classID(x.Ctor)
 	default:
 		c.Name = b.funFQ(f)
+		c.OwnerClassID = classID(f.Owner)
 	}
 	n := len(x.Args)
 	if x.ArgMap != nil {
@@ -1850,6 +1925,9 @@ func (b *builder) symbol(id uint32, s any) Symbol {
 			sym.Type = *t
 		}
 		sym.Declaration = b.decl(s.Decl)
+		if el, ok := b.varDecls[s]; ok && sym.Declaration == nil {
+			sym.Declaration = &el
+		}
 	}
 	return sym
 }

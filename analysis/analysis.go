@@ -44,6 +44,9 @@ type Config struct {
 	// Jobs is how many goroutines lower and check the sources; less than
 	// 1 means 1.
 	Jobs int
+	// OptIns are the qualified names of the requirement markers the
+	// whole module opts in to, as kotlinc's -opt-in.
+	OptIns []string
 	// ExplicitAPIMode is kotlinc's -Xexplicit-api: "", "disable",
 	// "warning" or "strict". It is validated; kc's checker doesn't
 	// enforce it.
@@ -79,6 +82,10 @@ type Type struct {
 	// it maps, kotlin.Any for java.lang.Object. A type parameter has its
 	// own name.
 	Name string `json:"name"`
+	// ClassID is the classifier's Kotlin class id: its package,
+	// slash-separated, a slash, and its relative name, dotted, as
+	// kotlin/collections/Map.Entry; "" for a type parameter.
+	ClassID string `json:"classId,omitempty"`
 	// Nullable is set on a type that holds null: T?, or a type parameter
 	// whose bound is nullable. MarkedNullable is set when it is written
 	// with ?.
@@ -145,6 +152,9 @@ type Call struct {
 	// Name is the callee's fully qualified name: pkg.f, pkg.C.m, or
 	// pkg.C.<init> for a constructor.
 	Name string `json:"name"`
+	// OwnerClassID is the class id, as Type.ClassID, of a member's or a
+	// constructor's class; "" for a top-level function.
+	OwnerClassID string `json:"ownerClassId,omitempty"`
 	// Declaration is the callee's declaration, if it is in the sources.
 	Declaration *ElementID `json:"declaration,omitempty"`
 	// Extension is set on a call of an extension function, whose

@@ -160,7 +160,7 @@ func (l *lowerer) stmt(n psi.NodeRef) syntax.Stmt {
 	}
 
 	as := l.hoist(n)
-	s := l.stmt1(n)
+	s := l.stmt1(l.annotatedStmt(n))
 	if es, ok := s.(*syntax.ExprStmt); ok {
 		if lam, ok := es.X.(*syntax.Lambda); ok {
 			for _, a := range as {
@@ -172,6 +172,26 @@ func (l *lowerer) stmt(n psi.NodeRef) syntax.Stmt {
 		syntax.Annotate(&l.annotated, s, as)
 	}
 	return s
+}
+
+// annotatedStmt returns the statement an ANNOTATED_EXPRESSION n whose
+// annotations hoist took annotates, if it is one that only a statement
+// can be: a loop, a labeled loop or an assignment, as in
+// @Suppress("x") while (f()) {}. Otherwise it returns n.
+func (l *lowerer) annotatedStmt(n psi.NodeRef) psi.NodeRef {
+	x := n
+	for x.NumericKind() == psi.KindANNOTATED_EXPRESSION && l.hoisted[x.ID()] {
+		x = exprChild(x)
+	}
+	switch x.NumericKind() {
+	case psi.KindFOR, psi.KindWHILE, psi.KindDO_WHILE, psi.KindLABELED_EXPRESSION:
+		return x
+	case psi.KindBINARY_EXPRESSION:
+		if _, ok := assignOps[opOf(x).NumericKind()]; ok {
+			return x
+		}
+	}
+	return n
 }
 
 func (l *lowerer) stmt1(n psi.NodeRef) syntax.Stmt {

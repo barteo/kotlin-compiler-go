@@ -38,6 +38,7 @@ import (
 
 	_ "github.com/barteo/kotlin-compiler-go/internal/kaops" // registers the Analysis API operations
 	"github.com/barteo/kotlin-compiler-go/internal/kcabi"
+	_ "github.com/barteo/kotlin-compiler-go/internal/lintops" // registers the linter operations
 )
 
 func main() {}

@@ -63,6 +63,34 @@ func classFQ(c *types.ClassSym) string {
 	return n
 }
 
+// classID returns the Kotlin class id of class c, as Type.ClassID: its
+// own, or a Java class's, with the Java classes Kotlin maps named by
+// Kotlin's.
+func classID(c *types.ClassSym) string {
+	if c == nil {
+		return ""
+	}
+	if c.KotlinName != "" {
+		return c.KotlinName
+	}
+	if k, ok := kotlinNames[javaFQ(c)]; ok {
+		i := strings.LastIndexByte(k, '.')
+		return k[:i] + "/" + k[i+1:]
+	}
+	i := strings.LastIndexByte(c.Name, '/')
+	return c.Name[:i+1] + strings.ReplaceAll(c.Name[i+1:], "$", ".")
+}
+
+// fqClassID returns the class id of a top-level class named by the
+// dotted fully qualified name fq, kotlin.Int.
+func fqClassID(fq string) string {
+	i := strings.LastIndexByte(fq, '.')
+	if i < 0 {
+		return fq
+	}
+	return strings.ReplaceAll(fq[:i], ".", "/") + "/" + fq[i+1:]
+}
+
 // javaFQ returns the JVM binary name of c, dotted.
 func javaFQ(c *types.ClassSym) string {
 	return strings.NewReplacer("/", ".", "$", ".").Replace(c.Name)
@@ -180,6 +208,7 @@ func (cv *converter) value(t types.Type, depth int) Type {
 	case types.Class:
 		c := t.C
 		out.Name = classFQ(c)
+		out.ClassID = classID(c)
 		out.SAM = c.Fun || (kotlinNames[javaFQ(c)] == "" && check.JavaSAM(c))
 		out.Suspend = c.Suspend
 		if depth == 0 {
@@ -187,6 +216,7 @@ func (cv *converter) value(t types.Type, depth int) Type {
 		}
 		if t.IsFunc() {
 			out.Name = functionName(t)
+			out.ClassID = fqClassID(out.Name)
 		}
 		if t.A != nil && depth < 8 {
 			for _, a := range t.A.List {
@@ -209,6 +239,7 @@ func (cv *converter) value(t types.Type, depth int) Type {
 		default:
 			out.Name = "kotlin.ranges.IntRange"
 		}
+		out.ClassID = fqClassID(out.Name)
 	case types.TypeParam, types.TypeVar:
 		p := t.Param()
 		out.Name = p.Name
@@ -224,6 +255,9 @@ func (cv *converter) value(t types.Type, depth int) Type {
 	default:
 		if int(t.K) < len(primitives) {
 			out.Name = primitives[t.K]
+			if out.Name != "" {
+				out.ClassID = fqClassID(out.Name)
+			}
 		}
 		if depth == 0 {
 			out.Supertypes = primitiveSupers[t.K]
