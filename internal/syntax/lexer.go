@@ -324,7 +324,8 @@ func (lx *lexer) number(p Pos) {
 		k = DOUBLE
 	}
 	switch lx.peekByte(0) {
-	case 'L':
+	case 'L', 'l':
+		// 1l is a Long, with an error IntLiteralErrors reports.
 		if isDouble {
 			lx.errorf(p, "invalid Long literal")
 		}
@@ -334,7 +335,7 @@ func (lx *lexer) number(p Pos) {
 		k = FLOAT
 	case 'u', 'U':
 		lx.advance(1)
-		if lx.peekByte(0) == 'L' {
+		if c := lx.peekByte(0); c == 'L' || c == 'l' {
 			lx.advance(1)
 		}
 		k = UNSIGNED
@@ -355,7 +356,7 @@ func illegalUnderscore(text string) bool {
 	if !strings.Contains(text, "_") {
 		return false
 	}
-	text = strings.TrimRight(text, "LuU")
+	text = strings.TrimRight(text, "LluU")
 	if len(text) > 2 && text[0] == '0' && strings.ContainsRune("xXbB", rune(text[1])) {
 		body := text[2:]
 		return body == "" || body[0] == '_' || body[len(body)-1] == '_'

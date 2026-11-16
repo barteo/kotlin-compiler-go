@@ -3,7 +3,9 @@ package driver
 import (
 	"cmp"
 	"slices"
+	"strings"
 
+	"github.com/barteo/kotlin-compiler-go/internal/lower"
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
 	"github.com/barteo/kotlin-compiler-go/psi"
 )
@@ -11,7 +13,7 @@ import (
 // syntaxErrors returns the errors to report for a file that failed to
 // parse with errs, kc's own: every syntax error kotlinc reports, from
 // the recovering parser in psi (s, parsed if nil), as kotlinc reports one
-// for each error element. kc's errors that psi has no counterpart for are
+// for each error element, and those of lower.TreeErrors. kc's errors that psi has no counterpart for are
 // kept: those about features kc doesn't support, and, on lines psi
 // reports nothing on, the errors parsing went on after (which kotlinc
 // reports in later phases) and the error kc's parser stopped at if it is
@@ -22,12 +24,21 @@ func syntaxErrors(path, src string, s *psi.Snapshot, errs []*syntax.Error) []*sy
 	}
 	var out []*syntax.Error
 	for _, d := range s.Diagnostics() {
-		line, col, err := s.Position(d.Range.Start)
+		off := d.Range.Start
+		if off == len(src) {
+			// kotlinc reports an error at the end of the file before the
+			// whitespace that ends it.
+			off = len(strings.TrimRight(src, " \t\r\n"))
+		}
+		line, col, err := s.Position(off)
 		if err != nil {
 			continue
 		}
 		out = append(out, &syntax.Error{File: path, Pos: syntax.Pos{Line: line, Col: col}, Msg: d.Message})
 	}
+	// What kotlinc's grammar accepts and its raw FIR builder doesn't:
+	// kc's parser stops at the first.
+	out = append(out, lower.TreeErrors(s)...)
 	lines := map[int]bool{}
 	var first *syntax.Error // psi's first error
 	for _, e := range out {

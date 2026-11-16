@@ -681,10 +681,18 @@ func (p *parser) parseFile() *File {
 		p.decl(func() {
 			p.next()
 			f.PackageP = p.tok().Pos
-			name := p.ident().Text
-			for p.at(DOT) {
+			var name string
+			for {
+				t := p.ident()
+				if InvalidNameChars(t.Text) {
+					p.errorLater(f.PackageP, "the package name has characters the JVM doesn't allow: %s", t.Text)
+				}
+				name += t.Text
+				if !p.at(DOT) {
+					break
+				}
 				p.next()
-				name += "." + p.ident().Text
+				name += "."
 			}
 			f.Package = name
 			p.endOfStatement()
@@ -3033,6 +3041,9 @@ func (p *parser) parseLambda() *Lambda {
 }
 
 func (p *parser) intLit(t Token) Expr {
+	for _, msg := range IntLiteralErrors(t.Text) {
+		p.errorLater(t.Pos, "%s", msg)
+	}
 	lit, ok := IntLiteral(t.Pos, t.Text, t.Kind == UNSIGNED)
 	if !ok {
 		p.failAt(t.Pos, "the value is out of range")
@@ -3233,6 +3244,23 @@ func (p *parser) parseIf() Expr {
 	return n
 }
 
+// confusingCond reports whether x, a condition of a when with a subject
+// not in parentheses, is one kotlinc reserves
+// (CONFUSING_BRANCH_CONDITION_ERROR): a comparison, in, is, && or ||,
+// where when (s) { a == b -> } could read as s == a == b.
+func confusingCond(x Expr) bool {
+	switch x := x.(type) {
+	case *Is:
+		return true
+	case *Binary:
+		switch x.Op {
+		case IN, NOT_IN, LT, GT, LE, GE, EQ, NE, EQ_EQ_EQ, NOT_EQ_EQ, AND, OR:
+			return true
+		}
+	}
+	return false
+}
+
 func (p *parser) parseWhen() Expr {
 	n := &When{}
 	n.P = p.expect(WHEN).Pos
@@ -3277,7 +3305,12 @@ func (p *parser) parseWhen() Expr {
 					c.Type = p.parseType()
 				}
 				if c.Type == nil {
+					start := p.i
 					c.X = p.parseExpr()
+					parens := p.toks[start].Kind == LPAREN && p.matching(start) == p.i-1
+					if n.Subject != nil && !parens && confusingCond(c.X) {
+						p.errorLater(p.toks[start].Pos, "confusing branch condition: wrap it in parentheses, or use a guard (if)")
+					}
 				}
 				br.Conds = append(br.Conds, c)
 				if !p.comma() {

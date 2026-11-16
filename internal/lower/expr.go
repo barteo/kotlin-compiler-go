@@ -117,6 +117,9 @@ func (l *lowerer) expr1(n psi.NodeRef) syntax.Expr {
 		if syntax.IllegalUnderscore(text) {
 			l.errorLater(l.pos(t), "illegal underscore")
 		}
+		for _, msg := range syntax.IntLiteralErrors(text) {
+			l.errorLater(l.pos(t), "%s", msg)
+		}
 		lit, ok := syntax.IntLiteral(l.pos(t), text, strings.ContainsAny(text, "uU"))
 		if !ok {
 			l.fail(t, "the value is out of range")
@@ -814,6 +817,16 @@ func (l *lowerer) ifExpr(n psi.NodeRef) syntax.Expr {
 	return x
 }
 
+// confusingCond lowers x, a condition of w, reporting it as kc's parser
+// does if w has a subject and x is one kotlinc reserves (see confusing).
+func (l *lowerer) confusingCond(w *syntax.When, x psi.NodeRef) syntax.Expr {
+	e := l.expr(x)
+	if w.Subject != nil && confusing(x) {
+		l.errorLater(l.pos(x), confusingMsg)
+	}
+	return e
+}
+
 func (l *lowerer) when(n psi.NodeRef) syntax.Expr {
 	w := &syntax.When{}
 	w.P = l.pos(n)
@@ -843,14 +856,14 @@ func (l *lowerer) when(n psi.NodeRef) syntax.Expr {
 			case psi.KindWHEN_CONDITION_IN_RANGE:
 				wc.In = opOf(c).NumericKind() == psi.KindIN_KEYWORD
 				wc.NotIn = !wc.In
-				wc.X = l.expr(exprChild(c))
+				wc.X = l.confusingCond(w, exprChild(c))
 			case psi.KindWHEN_CONDITION_IS_PATTERN:
 				kw := first(c)
 				wc.Is, wc.NotIs = kw.NumericKind() == psi.KindIS_KEYWORD, kw.NumericKind() == psi.KindNOT_IS
 				wc.P = l.pos(kw)
 				wc.Type = l.typeRef(child(c, psi.KindTYPE_REFERENCE))
 			case psi.KindWHEN_CONDITION_EXPRESSION:
-				wc.X = l.expr(exprChild(c))
+				wc.X = l.confusingCond(w, exprChild(c))
 			case psi.KindWHEN_ENTRY_GUARD:
 				br.Guard = l.expr(exprChild(c))
 				continue
