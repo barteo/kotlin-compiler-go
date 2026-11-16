@@ -213,6 +213,11 @@ type Checker struct {
 	levelCache   map[funKey][][]*types.FunSym // see kotlinFunLevels
 	looked       lookups                      // the lookups recorded (see lookups.go)
 	errs         []*syntax.Error
+	// warns are the file's warnings, apart from errs, which speculative
+	// checks roll back and count. Warnings are found by passes over the
+	// checked code (see warnf).
+	warns  []*syntax.Error
+	warned map[warnKey]bool
 	// tailIfs are ifs without else that end a branch of the if a lambda
 	// ends with: statements, not values (see markTailIfs).
 	tailIfs map[*syntax.If]bool
@@ -653,6 +658,10 @@ type Options struct {
 	// operators': those the checked files name. One that isn't is inferred
 	// when a checked file needs it, one at a time (lazily).
 	Infer map[string]bool
+	// Warnings is set to return the warnings, after the errors, among
+	// the diagnostics: Severity tells them apart. Without it, only the
+	// errors are returned.
+	Warnings bool
 }
 
 // CheckOptions is CheckContext, which checks what opts says.
@@ -736,7 +745,7 @@ func CheckOptions(ctx context.Context, files []*syntax.File, lib *Library, jobs 
 
 	optInErrors(checkers)
 	localClassNames(checkers)
-	var errs []*syntax.Error
+	var errs, warns []*syntax.Error
 	for _, c := range checked {
 		c.shadowedErrors()
 		c.dslErrors()
@@ -744,12 +753,23 @@ func CheckOptions(ctx context.Context, files []*syntax.File, lib *Library, jobs 
 		c.checkModifiers()
 		c.classPathChecks()
 		c.jvmDefaultModeAnnotations()
+		if !opts.Signatures {
+			c.localWarnings()
+		}
 		c.suppressErrors()
-		sort.SliceStable(c.errs, func(i, j int) bool {
-			a, b := c.errs[i].Pos, c.errs[j].Pos
-			return a.Line < b.Line || a.Line == b.Line && a.Col < b.Col
-		})
+		byPos := func(ds []*syntax.Error) {
+			sort.SliceStable(ds, func(i, j int) bool {
+				a, b := ds[i].Pos, ds[j].Pos
+				return a.Line < b.Line || a.Line == b.Line && a.Col < b.Col
+			})
+		}
+		byPos(c.errs)
+		byPos(c.warns)
 		errs = append(errs, c.errs...)
+		warns = append(warns, c.warns...)
+	}
+	if opts.Warnings {
+		errs = append(errs, warns...)
 	}
 	return errs, nil
 }
@@ -890,6 +910,28 @@ func (u *Universe) sourceClass(name string) *types.ClassSym {
 
 func (c *Checker) errorf(p syntax.Pos, format string, args ...any) {
 	c.errs = append(c.errs, &syntax.Error{File: c.file.Path, Pos: p, Msg: fmt.Sprintf(format, args...)})
+}
+
+// warnf reports a warning, which kotlinc names name. It is for the passes
+// over checked code, after speculative checks are done: a warning isn't
+// rolled back with errors. A warning at the same place, with the same
+// name, is reported once.
+func (c *Checker) warnf(p syntax.Pos, name, format string, args ...any) {
+	msg := fmt.Sprintf(format, args...)
+	k := warnKey{p, name, msg}
+	if c.warned[k] {
+		return
+	}
+	if c.warned == nil {
+		c.warned = map[warnKey]bool{}
+	}
+	c.warned[k] = true
+	c.warns = append(c.warns, &syntax.Error{File: c.file.Path, Pos: p, Msg: msg, Severity: syntax.SevWarning, Name: name})
+}
+
+type warnKey struct {
+	p         syntax.Pos
+	name, msg string
 }
 
 // unsupported reports the use of a Kotlin feature kc doesn't support,

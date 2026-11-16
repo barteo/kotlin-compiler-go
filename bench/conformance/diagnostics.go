@@ -147,6 +147,9 @@ type diagConfig struct {
 	// marks is the file to write each expected diagnostic to, with
 	// whether kc hit its line, or "".
 	marks string
+	// strayWarns is the file to write kc's warnings on lines that don't
+	// expect them to, or "".
+	strayWarns string
 }
 
 // mark is an expected diagnostic of a test, in a file.
@@ -162,6 +165,11 @@ type diagTest struct {
 	marks    []mark // its expected diagnostics
 	errors   []mark // those that are errors
 	kc       []diag // the errors kc reported, unless it crashed or found an unsupported feature
+	// kcWarns are the warnings kc reported, and off the names of the
+	// diagnostics the test's DIAGNOSTICS directive switches off, which
+	// it doesn't mark. Warnings don't decide the test's category.
+	kcWarns []diag
+	off     map[string]bool
 }
 
 // runDiagnostics runs the tests and writes the report.
@@ -199,6 +207,11 @@ func runDiagnostics(c *diagConfig, tests []*test, tag string) ([]*result, string
 			return nil, "", err
 		}
 	}
+	if c.strayWarns != "" {
+		if err := writeStrayWarnings(c.strayWarns, results, dts); err != nil {
+			return nil, "", err
+		}
+	}
 	return results, reportDiagnostics(c, results, dts, tag), nil
 }
 
@@ -213,7 +226,7 @@ func writeMarks(name string, sev map[string]string, rs []*result, dts []*diagTes
 		}
 		for _, m := range dt.marks {
 			hit := "miss"
-			if dt.hit(m) {
+			if sev[m.name] == sevWarning && dt.warnHit(m) || sev[m.name] != sevWarning && dt.hit(m) {
 				hit = "hit"
 			}
 			s := sev[m.name]
@@ -340,6 +353,7 @@ func (c *diagConfig) runOne(i int, t *test) (*result, *diagTest) {
 		r.category, r.key, r.detail = catKc, "harness error", err.Error()
 		return r, nil
 	}
+	dt.kcWarns, dt.off = cr.warns, switchedOff(t)
 	rejected := false
 	switch {
 	case cr.crash != "":
@@ -620,37 +634,7 @@ func reportDiagnostics(c *diagConfig, rs []*result, dts []*diagTest, tag string)
 		reportKeys(&sb, rs, catCrash, "Panic", 1000, false)
 	}
 
-	fmt.Fprintf(&sb, "## Warnings\n\nkc reports no warnings. The warnings the tests run expect, as a backlog.\n\n")
-	warnings := map[string]int{}
-	for _, dt := range dts {
-		if dt == nil {
-			continue
-		}
-		for _, m := range dt.marks {
-			if c.sev[m.name] == sevWarning {
-				warnings[m.name]++
-			}
-		}
-	}
-	var wl []kc
-	for k, n := range warnings {
-		wl = append(wl, kc{k, n})
-	}
-	slices.SortFunc(wl, func(a, b kc) int {
-		if a.n != b.n {
-			return b.n - a.n
-		}
-		return strings.Compare(a.key, b.key)
-	})
-	fmt.Fprintf(&sb, "| Warning | Count |\n|:---|---:|\n")
-	for i, w := range wl {
-		if i == 30 {
-			fmt.Fprintf(&sb, "| *%d more* | |\n", len(wl)-i)
-			break
-		}
-		fmt.Fprintf(&sb, "| `%s` | %d |\n", w.key, w.n)
-	}
-	fmt.Fprintln(&sb)
+	reportWarnings(&sb, c, rs, dts)
 	return sb.String()
 }
 

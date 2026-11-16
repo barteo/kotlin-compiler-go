@@ -174,7 +174,7 @@ func (o *optPass) marker(cls *types.ClassSym) *optMarker {
 	return m
 }
 
-// descMarkers returns the error-level markers among the annotations of a
+// descMarkers returns the markers among the annotations of a
 // declaration of the class path, by their descriptors: La/b/C;.
 func (o *optPass) descMarkers(descs []string) []*optMarker {
 	var out []*optMarker
@@ -186,7 +186,7 @@ func (o *optPass) descMarkers(descs []string) []*optMarker {
 			}
 			o.descs[d] = m
 		}
-		if m != nil && m.err {
+		if m != nil {
 			out = append(out, m)
 		}
 	}
@@ -214,16 +214,33 @@ func (o *optPass) extNamed(name string) *types.ClassSym {
 	}
 }
 
-// deprecationLevel returns the level of a deprecation that the class path
-// gives, if it is ERROR or HIDDEN: "ERROR", "HIDDEN" or "".
-func deprecationLevel(d *types.Deprecation) string {
-	if d != nil && (d.Level == "ERROR" || d.Level == "HIDDEN") {
-		return d.Level
-	}
-	return ""
+// depr is a deprecation: its level, WARNING, ERROR or HIDDEN, and its
+// message. The zero depr is no deprecation.
+type depr struct {
+	level, msg string
 }
 
-// annMarkers returns the error-level markers among annotations as whose
+// isError reports whether the deprecation's level is ERROR or HIDDEN.
+func (d depr) isError() bool { return d.level == "ERROR" || d.level == "HIDDEN" }
+
+// or returns d, or e if e's level is higher.
+func (d depr) or(e depr) depr {
+	rank := func(l string) int { return map[string]int{"WARNING": 1, "ERROR": 2, "HIDDEN": 3}[l] }
+	if rank(e.level) > rank(d.level) {
+		return e
+	}
+	return d
+}
+
+// deprecationLevel returns a deprecation that the class path gives.
+func deprecationLevel(d *types.Deprecation) depr {
+	if d == nil || d.Level == "" {
+		return depr{}
+	}
+	return depr{d.Level, d.Message}
+}
+
+// annMarkers returns the markers among annotations as whose
 // use-site targets are among targets.
 func (o *optPass) annMarkers(as []syntax.Annotation, targets ...string) []*optMarker {
 	var out []*optMarker
@@ -236,7 +253,7 @@ func (o *optPass) annMarkers(as []syntax.Annotation, targets ...string) []*optMa
 		if !ok {
 			continue
 		}
-		if m := o.marker(o.annClass(a)); m != nil && m.err {
+		if m := o.marker(o.annClass(a)); m != nil {
 			out = append(out, m)
 		}
 	}
@@ -271,7 +288,7 @@ func classLitNames(a *syntax.Annotation) []string {
 	return out
 }
 
-// classMarkers returns the error-level markers of a class: its own, and
+// classMarkers returns the markers of a class: its own, and
 // those of the classes it is nested in.
 func (o *optPass) classMarkers(cls *types.ClassSym) []*optMarker {
 	var out []*optMarker
@@ -306,7 +323,7 @@ func (o *optPass) extOuter(cls *types.ClassSym) *types.ClassSym {
 	return nil
 }
 
-// extClassMarkers returns the error-level markers among the annotations of
+// extClassMarkers returns the markers among the annotations of
 // a class of the class path.
 func (o *optPass) extClassMarkers(cls *types.ClassSym) []*optMarker {
 	ms, ok := o.extClasses[cls]
@@ -315,7 +332,7 @@ func (o *optPass) extClassMarkers(cls *types.ClassSym) []*optMarker {
 	}
 	cls.Ensure()
 	for _, a := range cls.Annotations {
-		if m := o.marker(a); m != nil && m.err {
+		if m := o.marker(a); m != nil {
 			ms = append(ms, m)
 		}
 	}
@@ -323,7 +340,7 @@ func (o *optPass) extClassMarkers(cls *types.ClassSym) []*optMarker {
 	return ms
 }
 
-// aliasMarkers returns the error-level markers of a typealias: its own,
+// aliasMarkers returns the markers of a typealias: its own,
 // and those of the classifiers it expands to that it doesn't opt in to.
 func (o *optPass) aliasMarkers(a *types.AliasSym, depth int) []*optMarker {
 	d, ok := a.Decl.(*syntax.TypeAliasDecl)
@@ -343,7 +360,7 @@ func (o *optPass) aliasMarkers(a *types.AliasSym, depth int) []*optMarker {
 	return out
 }
 
-// classifierMarkers returns the error-level markers of a class or a
+// classifierMarkers returns the markers of a class or a
 // typealias.
 func (o *optPass) classifierMarkers(k any, depth int) []*optMarker {
 	switch k := k.(type) {
@@ -378,7 +395,7 @@ func refTypes(ref *syntax.TypeRef, fn func(*syntax.TypeRef)) {
 	refTypes(ref.Outer, fn)
 }
 
-// refMarkers returns the error-level markers of the classifiers a type
+// refMarkers returns the markers of the classifiers a type
 // reference names.
 func (o *optPass) refMarkers(ref *syntax.TypeRef, depth int) []*optMarker {
 	var out []*optMarker
@@ -390,7 +407,7 @@ func (o *optPass) refMarkers(ref *syntax.TypeRef, depth int) []*optMarker {
 	return out
 }
 
-// typeMarkers returns the error-level markers of the classes a type is
+// typeMarkers returns the markers of the classes a type is
 // made of, its type arguments' too.
 func (o *optPass) typeMarkers(t types.Type) []*optMarker {
 	var out []*optMarker
@@ -439,10 +456,10 @@ func (o *optPass) optsIn(scope [][]syntax.Annotation, m *optMarker, inherit bool
 	return false
 }
 
-// deprecation returns the level of the @Deprecated annotation among as,
-// with no use-site target or one of targets, if it is ERROR or HIDDEN:
-// "ERROR", "HIDDEN" or "".
-func deprecation(as []syntax.Annotation, targets ...string) string {
+// deprecation returns the deprecation of the @Deprecated annotation among
+// as, with no use-site target or one of targets.
+func deprecation(as []syntax.Annotation, targets ...string) depr {
+	var out depr
 	for i := range as {
 		a := &as[i]
 		if !a.Is("Deprecated") {
@@ -455,20 +472,34 @@ func deprecation(as []syntax.Annotation, targets ...string) string {
 		if !ok {
 			continue
 		}
+		d := depr{level: "WARNING"}
+		if arg := a.Arg(0, "message"); arg != nil && len(arg.Toks) == 1 && arg.Toks[0].Kind == syntax.STRING {
+			d.msg, _ = literalString(arg.Toks[0])
+		}
 		if arg := a.Arg(2, "level"); arg != nil && len(arg.Toks) > 0 {
 			switch l := arg.Toks[len(arg.Toks)-1].Text; l {
 			case "ERROR", "HIDDEN":
-				return l
+				d.level = l
 			}
 		}
+		out = out.or(d)
+	}
+	return out
+}
+
+// classDeprecation returns the deprecation level of a class, if it is
+// ERROR or HIDDEN: "ERROR", "HIDDEN" or "".
+func classDeprecation(cls *types.ClassSym) string {
+	if d := classDepr(cls); d.isError() {
+		return d.level
 	}
 	return ""
 }
 
-// classDeprecation returns the deprecation level of a program's class.
-func classDeprecation(cls *types.ClassSym) string {
+// classDepr returns the deprecation of a class.
+func classDepr(cls *types.ClassSym) depr {
 	if cls == nil {
-		return ""
+		return depr{}
 	}
 	// A compiler plugin's synthetic class, serialization's $serializer, is
 	// deprecated with level HIDDEN so that only the plugin's own members,
@@ -480,7 +511,7 @@ func classDeprecation(cls *types.ClassSym) string {
 		cls.Ensure()
 		return deprecationLevel(cls.Deprecated)
 	}
-	return ""
+	return depr{}
 }
 
 // optWalker walks a file's declarations and code, with the annotations
@@ -537,22 +568,49 @@ func (w *optWalker) deprecated() bool {
 // require reports a use at p of a declaration with markers ms that the
 // scope doesn't opt in to.
 func (w *optWalker) require(p syntax.Pos, ms []*optMarker) {
-	if len(ms) == 0 || w.suppressed("OPT_IN_USAGE_ERROR") {
+	if len(ms) == 0 {
 		return
 	}
 	for _, m := range ms {
-		if !w.o.optsIn(w.scope, m, false) {
+		if w.o.optsIn(w.scope, m, false) {
+			continue
+		}
+		switch {
+		case m.err && !w.suppressed("OPT_IN_USAGE_ERROR"):
 			w.errorf(p, "this declaration needs opt-in: its usage must be marked with '@%s' or '@OptIn(%s::class)'", m.simple, m.simple)
+		case !m.err:
+			w.warnf(p, "OPT_IN_USAGE", "this declaration needs opt-in. Its usage should be marked with '@%s' or '@OptIn(%s::class)'", m.simple, m.simple)
 		}
 	}
 }
 
-// deprecatedUse reports a use at p of name, deprecated with level.
-func (w *optWalker) deprecatedUse(p syntax.Pos, name, level string) {
-	if level == "" || w.deprecated() || w.suppressed("DEPRECATION_ERROR") {
+// deprecatedUse reports a use at p of name, deprecated with d.
+func (w *optWalker) deprecatedUse(p syntax.Pos, name string, d depr) {
+	if d.level == "" || w.deprecated() {
 		return
 	}
-	w.errorf(p, "'%s' is deprecated with level %s", name, level)
+	if d.isError() {
+		if !w.suppressed("DEPRECATION_ERROR") {
+			w.errorf(p, "'%s' is deprecated with level %s", name, d.level)
+		}
+		return
+	}
+	if d.msg != "" {
+		w.warnf(p, "DEPRECATION", "'%s' is deprecated. %s", name, d.msg)
+	} else {
+		w.warnf(p, "DEPRECATION", "'%s' is deprecated", name)
+	}
+}
+
+// warnf reports a warning once at a line, as errorf does an error.
+func (w *optWalker) warnf(p syntax.Pos, name, format string, args ...any) {
+	msg := fmt.Sprintf(format, args...)
+	k := optErrKey{w.c.file.Path, p.Line, name + "\x00" + msg}
+	if w.o.seen[k] {
+		return
+	}
+	w.o.seen[k] = true
+	w.c.warnf(p, name, "%s", msg)
 }
 
 // typeRef checks the classifiers a type reference names.
@@ -565,7 +623,7 @@ func (w *optWalker) typeRef(ref *syntax.TypeRef) {
 		w.require(r.P, w.o.classifierMarkers(k, 0))
 		switch k := k.(type) {
 		case *types.ClassSym:
-			w.deprecatedUse(r.P, k.DisplayName(), classDeprecation(k))
+			w.deprecatedUse(r.P, k.DisplayName(), classDepr(k))
 		case *types.AliasSym:
 			if d, ok := k.Decl.(*syntax.TypeAliasDecl); ok {
 				w.deprecatedUse(r.P, k.Name, deprecation(d.Annotations))
@@ -973,7 +1031,9 @@ func (w *optWalker) overrideOf(p syntax.Pos, ms []*optMarker) {
 		return
 	}
 	for _, m := range ms {
-		if !w.o.optsIn(w.scope, m, false) {
+		// A warning-level marker's override is a warning kc doesn't
+		// report (OPT_IN_OVERRIDE).
+		if m.err && !w.o.optsIn(w.scope, m, false) {
 			w.errorf(p, "this override needs opt-in: the overridden declaration is marked with '@%s'", m.simple)
 		}
 	}
@@ -1147,22 +1207,20 @@ func (w *optWalker) call(n *syntax.Call) {
 	w.javaPrivateKotlin(n, p)
 	if n.Ctor != nil {
 		w.require(p, w.o.classMarkers(n.Ctor))
-		level := classDeprecation(n.Ctor)
+		level := classDepr(n.Ctor)
 		if id, ok := n.Fun.(*syntax.Ident); ok {
 			for _, a := range w.o.aliases[id.Name] {
 				if a.Class() == n.Ctor {
 					w.require(p, w.o.aliasMarkers(a, 0))
-					if d, ok := a.Decl.(*syntax.TypeAliasDecl); ok && level == "" {
-						level = deprecation(d.Annotations)
+					if d, ok := a.Decl.(*syntax.TypeAliasDecl); ok {
+						level = level.or(deprecation(d.Annotations))
 					}
 				}
 			}
 		}
 		if n.Sym != nil {
 			w.require(p, w.ctorMarkers(n.Sym))
-			if level == "" {
-				level = w.ctorDeprecation(n.Sym)
-			}
+			level = level.or(w.ctorDeprecation(n.Sym))
 		}
 		w.deprecatedUse(p, n.Ctor.DisplayName(), level)
 		return
@@ -1263,7 +1321,7 @@ func (w *optWalker) fun1(f *types.FunSym, p syntax.Pos, t types.Type) {
 // funNamed is fun1, with the name a deprecation error gives the function.
 func (w *optWalker) funNamed(f *types.FunSym, name string, p syntax.Pos, t types.Type) {
 	var ms []*optMarker
-	level := ""
+	var level depr
 	switch d := f.Decl.(type) {
 	case *syntax.FunDecl:
 		if d.AccessorOf != nil {
@@ -1309,7 +1367,7 @@ func (w *optWalker) funNamed(f *types.FunSym, name string, p syntax.Pos, t types
 	w.deprecatedUse(p, name, level)
 }
 
-// ctorMarkers returns the error-level markers of a constructor of the
+// ctorMarkers returns the markers of a constructor of the
 // program: its own and those of its parameters' types.
 func (w *optWalker) ctorMarkers(f *types.FunSym) []*optMarker {
 	switch d := f.Decl.(type) {
@@ -1339,7 +1397,7 @@ func (w *optWalker) ctorMarkers(f *types.FunSym) []*optMarker {
 	return nil
 }
 
-func (w *optWalker) ctorDeprecation(f *types.FunSym) string {
+func (w *optWalker) ctorDeprecation(f *types.FunSym) depr {
 	switch d := f.Decl.(type) {
 	case *syntax.ClassDecl:
 		return deprecation(d.CtorMods.Annotations)
@@ -1348,10 +1406,10 @@ func (w *optWalker) ctorDeprecation(f *types.FunSym) string {
 	case nil:
 		return deprecationLevel(f.Deprecated)
 	}
-	return ""
+	return depr{}
 }
 
-// propMarkers returns the error-level markers of a property of the
+// propMarkers returns the markers of a property of the
 // program, read or, with write, assigned: its own, its getter's or
 // setter's, and those of its type.
 func (w *optWalker) propMarkers(p *types.VarSym, write bool) []*optMarker {
@@ -1390,7 +1448,7 @@ func (w *optWalker) propMarkers(p *types.VarSym, write bool) []*optMarker {
 	return nil
 }
 
-func (w *optWalker) propDeprecation(p *types.VarSym) string {
+func (w *optWalker) propDeprecation(p *types.VarSym) depr {
 	switch d := p.Decl.(type) {
 	case *syntax.PropDecl:
 		return deprecation(d.Annotations, "property", "get")
@@ -1399,7 +1457,7 @@ func (w *optWalker) propDeprecation(p *types.VarSym) string {
 	case nil:
 		return deprecationLevel(p.Deprecated)
 	}
-	return ""
+	return depr{}
 }
 
 // variable checks a read or an assignment at p of variable v.
@@ -1463,7 +1521,7 @@ func (w *optWalker) member(n *syntax.Member) {
 	if n.Static != nil && n.X != nil {
 		// The class of a static member: JavaClass.f().
 		w.require(n.X.Pos(), w.o.classMarkers(n.Static))
-		w.deprecatedUse(n.X.Pos(), n.Static.DisplayName(), classDeprecation(n.Static))
+		w.deprecatedUse(n.X.Pos(), n.Static.DisplayName(), classDepr(n.Static))
 	}
 }
 
@@ -1472,9 +1530,11 @@ func (w *optWalker) member(n *syntax.Member) {
 // deprecation applies.
 func (w *optWalker) object(cls *types.ClassSym, p syntax.Pos) {
 	w.require(p, w.o.classMarkers(cls))
-	level := classDeprecation(cls)
-	if o := cls.CompanionOf; level == "" && o != nil {
-		cls, level = o, classDeprecation(o)
+	level := classDepr(cls)
+	if o := cls.CompanionOf; o != nil {
+		if d := classDepr(o); level.or(d) != level {
+			cls, level = o, d
+		}
 	}
 	w.deprecatedUse(p, cls.DisplayName(), level)
 }

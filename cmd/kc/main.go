@@ -1,6 +1,6 @@
 // Command kc compiles a subset of Kotlin to JVM class files.
 //
-//	kc [-d outdir] [-cp path] [-module-name name] [-parcelize] [-serialization] [-compose] [-metro] [-Xdebug] [-j N] [-time] [-features] files-or-dirs...
+//	kc [-d outdir] [-cp path] [-module-name name] [-parcelize] [-serialization] [-compose] [-metro] [-Xdebug] [-Werror] [-nowarn] [-j N] [-time] [-features] files-or-dirs...
 //	kc -serve
 //
 // kc -serve compiles again and again, as a tool that runs many small
@@ -48,7 +48,9 @@ func compile(args []string, stderr io.Writer, libs *driver.Libraries) (int, erro
 	outDir := flags.String("d", ".", "output directory for class files")
 	jobs := flags.Int("j", runtime.NumCPU(), "number of parallel workers")
 	timing := flags.Bool("time", false, "print per-phase timings to stderr")
-	features := flags.Bool("features", false, "print diagnostics as path, line:col, unsupported feature and message, separated by tabs")
+	features := flags.Bool("features", false, "print diagnostics as path, line:col, severity (error or warning), the diagnostic's name if known, unsupported feature and message, separated by tabs")
+	werror := flags.Bool("Werror", false, "fail the compile if there are warnings, as kotlinc's -Werror")
+	nowarn := flags.Bool("nowarn", false, "don't report warnings, as kotlinc's -nowarn")
 	var classPath string
 	flags.StringVar(&classPath, "cp", "", "class path: jars and directories separated by "+string(os.PathListSeparator))
 	flags.StringVar(&classPath, "classpath", "", "same as -cp")
@@ -76,9 +78,11 @@ func compile(args []string, stderr io.Writer, libs *driver.Libraries) (int, erro
 		metroOptions[key] = value
 		return nil
 	})
+	// (Keep -Werror and -nowarn above: the flags from here are another
+	// change's.)
 	jvmDefault := flags.String("jvm-default", "no-compatibility", "how interfaces' bodies compile, as with kotlinc: no-compatibility (JVM default methods), enable (also in DefaultImpls classes) or disable (DefaultImpls classes)")
 	flags.Usage = func() {
-		fmt.Fprintln(stderr, "usage: kc [-d outdir] [-cp path] [-module-name name] [-parcelize] [-serialization] [-compose] [-metro] [-j N] [-time] files-or-dirs...")
+		fmt.Fprintln(stderr, "usage: kc [-d outdir] [-cp path] [-module-name name] [-parcelize] [-serialization] [-compose] [-metro] [-Werror] [-nowarn] [-j N] [-time] files-or-dirs...")
 		flags.PrintDefaults()
 	}
 	if err := flags.Parse(args); err != nil {
@@ -126,7 +130,18 @@ func compile(args []string, stderr io.Writer, libs *driver.Libraries) (int, erro
 	if *timing {
 		opts.Timing = stderr
 	}
-	if err := driver.Compile(paths, opts); err != nil {
+	warnings, err := driver.CompileWarnings(paths, opts)
+	if *nowarn {
+		warnings = nil
+	}
+	for _, w := range warnings {
+		if *features {
+			printDiag(stderr, w)
+		} else {
+			fmt.Fprintln(stderr, w)
+		}
+	}
+	if err != nil {
 		if *features {
 			printFeatures(stderr, err)
 		} else {
@@ -134,13 +149,15 @@ func compile(args []string, stderr io.Writer, libs *driver.Libraries) (int, erro
 		}
 		return 1, err
 	}
+	if *werror && len(warnings) > 0 {
+		fmt.Fprintln(stderr, "kc: warnings found and -Werror specified")
+		return 1, nil
+	}
 	return 0, nil
 }
 
-// printFeatures prints each diagnostic of err as path, line:col, the
-// unsupported feature it is about (empty for other errors) and the
-// message, separated by tabs. Errors without a position are printed as
-// they are.
+// printFeatures prints each diagnostic of err as printDiag does. Errors
+// without a position are printed as they are.
 func printFeatures(w io.Writer, err error) {
 	var errs []error
 	if j, ok := err.(interface{ Unwrap() []error }); ok {
@@ -151,9 +168,17 @@ func printFeatures(w io.Writer, err error) {
 	for _, e := range errs {
 		var se *syntax.Error
 		if errors.As(e, &se) {
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", se.File, se.Pos, se.Feature, strings.ReplaceAll(se.Msg, "\n", " "))
+			printDiag(w, se)
 		} else {
 			fmt.Fprintln(w, e)
 		}
 	}
+}
+
+// printDiag prints diagnostic d as path, line:col, its severity (error
+// or warning), its name if kc knows it, the unsupported feature it is
+// about (empty for other diagnostics) and the message, separated by
+// tabs, on a line.
+func printDiag(w io.Writer, d *syntax.Error) {
+	fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n", d.File, d.Pos, d.Severity, d.Name, d.Feature, strings.ReplaceAll(d.Msg, "\n", " "))
 }
