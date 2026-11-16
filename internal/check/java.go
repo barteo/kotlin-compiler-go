@@ -382,8 +382,16 @@ func (t *classTable) load(cls *types.ClassSym) {
 			for i, as := range m.ParamAnnotations {
 				// A declaration annotation on a vararg is the array's,
 				// not its elements', which the parameter's type is.
-				if off+i >= 0 && !(varargs && off+i == len(f.Params)-1) {
+				// jSpecify's are type annotations: a vararg's are its
+				// elements'.
+				switch {
+				case off+i < 0:
+				case !(varargs && off+i == len(f.Params)-1):
 					f.Params[off+i].Type = enhance(as, f.Params[off+i].Type)
+				default:
+					f.Params[off+i].Type = enhance(slices.DeleteFunc(slices.Clone(as), func(a string) bool {
+						return !strings.HasPrefix(a, "Lorg/jspecify/annotations/")
+					}), f.Params[off+i].Type)
 				}
 			}
 		}
@@ -539,7 +547,8 @@ var javaNullability = func() map[string]bool {
 		"android/support/annotation/NonNull", "android/annotation/NonNull", "com/android/annotations/NonNull",
 		"org/eclipse/jdt/annotation/NonNull", "org/checkerframework/checker/nullness/qual/NonNull",
 		"org/checkerframework/checker/nullness/compatqual/NonNullDecl", "edu/umd/cs/findbugs/annotations/NonNull",
-		"lombok/NonNull", "io/reactivex/annotations/NonNull", "io/reactivex/rxjava3/annotations/NonNull"} {
+		"lombok/NonNull", "io/reactivex/annotations/NonNull", "io/reactivex/rxjava3/annotations/NonNull",
+		"org/jspecify/annotations/NonNull"} {
 		m["L"+n+";"] = true
 	}
 	for _, n := range []string{"org/jetbrains/annotations/Nullable", "androidx/annotation/Nullable", "androidx/annotation/RecentlyNullable",
@@ -547,7 +556,8 @@ var javaNullability = func() map[string]bool {
 		"org/eclipse/jdt/annotation/Nullable", "org/checkerframework/checker/nullness/qual/Nullable",
 		"org/checkerframework/checker/nullness/compatqual/NullableDecl", "edu/umd/cs/findbugs/annotations/Nullable",
 		"edu/umd/cs/findbugs/annotations/CheckForNull", "edu/umd/cs/findbugs/annotations/PossiblyNull",
-		"io/reactivex/annotations/Nullable", "io/reactivex/rxjava3/annotations/Nullable"} {
+		"io/reactivex/annotations/Nullable", "io/reactivex/rxjava3/annotations/Nullable",
+		"org/jspecify/annotations/Nullable"} {
 		m["L"+n+";"] = false
 	}
 	return m
@@ -1967,8 +1977,60 @@ func (c *Checker) javaMethods(cls *types.ClassSym, name string) []*types.FunSym 
 	ms = c.notHidden(cls, name, ms)
 	ms = c.intersectionDefaults(cls, ms)
 	ms = c.functionNOverrides(cls, ms)
+	ms = c.enhancedOverrides(cls, ms)
 	cache.methods.Store(k, ms)
 	return ms
+}
+
+// enhancedOverrides replaces each Java method of ms with a parameter of a
+// platform type that, in a Java method it overrides, an annotation makes
+// non-null, with a copy whose parameter is non-null: as in Kotlin, an
+// override inherits the nullability of its parameters, C's foo(F x) of
+// A's foo(@NotNull T x).
+func (c *Checker) enhancedOverrides(cls *types.ClassSym, ms []*types.FunSym) []*types.FunSym {
+	var out []*types.FunSym
+	for i, f := range ms {
+		if f.Static || f.Owner == nil || !isJavaClass(f.Owner) || f.Name == "<init>" || !slices.ContainsFunc(f.Params, func(p *types.VarSym) bool { return p.Type.P }) {
+			continue
+		}
+		var fo *types.FunSym
+		f.Owner.Supertypes(func(s *types.ClassSym) bool {
+			if s == f.Owner || !isJavaClass(s) {
+				return true
+			}
+			for _, g := range s.Methods[f.Name] {
+				if g.Static || g.Private || len(g.Params) != len(f.Params) || jvmDesc(g) != jvmDesc(f) {
+					continue
+				}
+				for j, p := range f.Params {
+					if q := g.Params[j].Type; p.Type.P && !q.P && !types.MayBeNull(q) && q.K != types.Invalid {
+						if fo == nil {
+							cp := *f
+							cp.Params = slices.Clone(f.Params)
+							fo = &cp
+						}
+						if fo.Params[j] == p {
+							v := *p
+							v.Type = p.Type.NonNull()
+							fo.Params[j] = &v
+						}
+					}
+				}
+			}
+			return true
+		})
+		if fo == nil {
+			continue
+		}
+		if out == nil {
+			out = slices.Clone(ms)
+		}
+		out[i] = fo
+	}
+	if out == nil {
+		return ms
+	}
+	return out
 }
 
 // functionNOverrides adds to ms, for each Java method whose parameter is

@@ -660,7 +660,8 @@ func (s *Set) Info(name string) (*classfile.Info, error) {
 		if iface {
 			access |= classfile.AccPublic | classfile.AccStatic | classfile.AccFinal
 		}
-		m := classfile.Member{Access: access, Name: f.Name, Desc: r.desc(f.Type), Annotations: r.nullability(f.Annotations), Deprecated: r.deprecation(f.Annotations)}
+		fieldMarked := r.nullMarked(nil)
+		m := classfile.Member{Access: access, Name: f.Name, Desc: r.desc(f.Type), Annotations: r.markNonNull(fieldMarked, f.Type, r.nullability(f.Annotations)), Deprecated: r.deprecation(f.Annotations)}
 		if r.generic(f.Type) {
 			m.Sig = r.sig(f.Type)
 		}
@@ -716,6 +717,10 @@ func (s *Set) Info(name string) (*classfile.Info, error) {
 		desc, sig := mr.methodDesc(m.TypeParams, outer, params, ret, m.Throws)
 		declared[m.Name+desc] = true
 		mm := classfile.Member{Access: access, Name: m.Name, Desc: desc, Sig: sig, Annotations: mr.methodAnnotations(m.Annotations), Deprecated: mr.deprecation(m.Annotations)}
+		marked := mr.nullMarked(m.Annotations)
+		if marked && m.Ret != nil && len(mr.nullability(m.Annotations)) == 0 {
+			mm.Annotations = append(mm.Annotations, mr.markNonNull(true, m.Ret, nil)...)
+		}
 		mm.Hidden = mm.Deprecated != nil && mm.Deprecated.Level == "HIDDEN"
 		if c.Kind == KindAnnotation && m.HasDefault {
 			// The value isn't evaluated, as in Details: an element value
@@ -723,7 +728,7 @@ func (s *Set) Info(name string) (*classfile.Info, error) {
 			mm.Default = &classfile.ElementValue{}
 		}
 		for i, p := range m.Params {
-			if as := mr.nullability(p.Annotations); as != nil {
+			if as := mr.markNonNull(marked, p.Type, mr.nullability(p.Annotations)); as != nil {
 				if mm.ParamAnnotations == nil {
 					mm.ParamAnnotations = make([][]string, len(m.Params))
 				}
