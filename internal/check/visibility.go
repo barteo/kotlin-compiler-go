@@ -228,6 +228,14 @@ func propNotInherited(p *types.VarSym, on *types.ClassSym) bool {
 
 // propVisible reports whether the code may read property p.
 func (c *Checker) propVisible(p *types.VarSym) bool {
+	if p.PackagePrivate {
+		// A Java field of package visibility, which its subclasses in
+		// other packages don't see either.
+		return c.samePackage(p.Owner)
+	}
+	if p.Protected && c.javaPackage(p.Owner) {
+		return true
+	}
 	v, ok := propVisibility(p)
 	if !ok {
 		if !p.Protected {
@@ -299,6 +307,10 @@ func (c *Checker) invisibleProp(p syntax.Pos, v *types.VarSym) {
 	vis, ok := propVisibility(v)
 	if !ok {
 		vis = syntax.Protected
+	}
+	if !ok && v.PackagePrivate {
+		c.errorf(p, "cannot access '%s': it is package-private in '%s'", v.Name, v.Owner.DisplayName())
+		return
 	}
 	c.errorf(p, "cannot access '%s': it is %s", v.Name, visibilityOf(vis, v.Owner))
 }
@@ -407,4 +419,55 @@ func annotationScope(owner, lookup *types.ClassSym, site annotSite) *types.Class
 		return owner
 	}
 	return lookup
+}
+
+// protectedVia reports whether the code may use a protected member of
+// owner on receiver x, by Kotlin's rule for protected members (Java's
+// too): on an explicit receiver, the member is visible in a subclass K
+// of owner only if the receiver is a K. Inside User : BaseClass,
+// tree.ui of tree: BaseClass reads a field User can't, but this.ui
+// can. The rule doesn't apply in owner's own package for a Java class,
+// to a companion object's members, nor on this or super.
+func (c *Checker) protectedVia(owner *types.ClassSym, x syntax.Expr) bool {
+	if owner == nil || owner.CompanionOf != nil || owner.Object || c.javaPackage(owner) ||
+		c.file != nil && c.file.SuppressInvisible {
+		return true
+	}
+	switch x := x.(type) {
+	case nil, *syntax.This, *syntax.Super:
+		return true
+	default:
+		t := x.Type()
+		if t.K == types.Invalid || t.IsIntersection() {
+			return true
+		}
+		rc := c.classOf(t.NonNull())
+		if rc == nil {
+			return true
+		}
+		for k := c.visFirst(); k != nil; k = c.nextEnclosing(k) {
+			if (k == owner || k.IsSubclassOf(owner) || owner.IsSubclassOf(k)) && (rc == k || rc.IsSubclassOf(k)) {
+				return true
+			}
+			if k.Companion != nil && k.Companion.IsSubclassOf(owner) && (rc == k.Companion || rc.IsSubclassOf(k.Companion)) {
+				return true
+			}
+		}
+		return false
+	}
+}
+
+// protectedFun reports whether f is a protected instance member, which
+// protectedVia checks the receiver of.
+func protectedFun(f *types.FunSym) bool {
+	return !f.Static && !f.Ext && f.Owner != nil && memberVisibility(f) == syntax.Protected
+}
+
+// protectedMember is protectedFun for a property or a Java field.
+func protectedMember(p *types.VarSym) bool {
+	if p.Owner == nil || p.Kind != types.Prop {
+		return false
+	}
+	v, ok := propVisibility(p)
+	return ok && v == syntax.Protected || !ok && p.Protected
 }

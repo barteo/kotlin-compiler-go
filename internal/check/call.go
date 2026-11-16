@@ -727,6 +727,8 @@ func (c *Checker) resolve(x *syntax.Call, cands []callee, want types.Type, sink 
 	case f.Name != "<init>":
 		if !c.funVisible(f) {
 			c.invisibleFun(x.Fun.Pos(), f)
+		} else if m, ok := x.Fun.(*syntax.Member); ok && protectedFun(f) && !c.protectedVia(f.Owner, m.X) {
+			c.invisibleFun(x.Fun.Pos(), f)
 		} else if m, ok := x.Fun.(*syntax.Member); ok && f.PrivateToThis {
 			c.checkPrivateToThis(m.X, f.Name, f.Owner, m.P)
 		}

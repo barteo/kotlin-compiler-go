@@ -2246,7 +2246,7 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 			t, found = c.javaProperty(x, rt)
 			break
 		}
-		if p := x.Prop; !c.propVisible(p) {
+		if p := x.Prop; !c.propVisible(p) || protectedMember(p) && !c.protectedVia(p.Owner, x.X) {
 			// An extension of the name is read instead, as with calls.
 			x.Prop = nil
 			if t, found = c.extProp(x, rt); found {
@@ -2272,6 +2272,9 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 		t = c.memberField(x, rt, t)
 	case cls != nil && c.visibleField(instanceField(cls, x.Name)):
 		x.Prop = instanceField(cls, x.Name)
+		if x.Prop.Protected && !c.protectedVia(x.Prop.Owner, x.X) {
+			c.invisibleProp(x.P, x.Prop)
+		}
 		t = c.memberSubst(rt, x.Prop.Owner).Apply(x.Prop.Type)
 	default:
 		t, found = c.javaProperty(x, rt)
