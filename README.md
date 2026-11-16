@@ -128,7 +128,9 @@ Arguments can be files or directories. Flags:
 | `-Xdebug` | keep dead variables in suspend functions for debuggers, as in `kotlinc` |
 | `-j` | parallel workers (default: all CPUs) |
 | `-time` | print per-phase timings |
-| `-features` | print each error with its unsupported feature, tab-separated |
+| `-features` | print each diagnostic with its severity, name and unsupported feature, tab-separated |
+| `-Werror` | fail if there are warnings, as in `kotlinc` |
+| `-nowarn` | don't print warnings (and don't fail with `-Werror`), as in `kotlinc` |
 
 `kc -serve` compiles again and again for a tool that runs many small
 compiles: each line of stdin is one compile's arguments as a JSON array,

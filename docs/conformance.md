@@ -32,8 +32,12 @@ key and detail. Flags after the mode go to the harness:
   file and line, and the message.
 - `-marks FILE` (diagnostics) writes each diagnostic the markup expects
   to a TSV file: the test, its category, the file and line, the
-  diagnostic and its severity, and `hit` if `kc` reported an error on
-  its line or `miss`.
+  diagnostic and its severity, and `hit` if `kc` reported on its line an
+  error, for an error, or the same warning, for a warning, or `miss`.
+- `-warnings FILE` (diagnostics) writes `kc`'s warnings on lines where
+  the markup doesn't expect them, other than those a test's `DIAGNOSTICS`
+  directive switches off, to a TSV file: the test, its category, the
+  file and line, the warning and its message.
 - `-baseline bench/results/box.tsv -o "" -tsv ""` compares a run with the
   committed one, printing the tests that stopped passing and those that
   started, and fails if any stopped. The baseline is read before the run,
@@ -160,8 +164,11 @@ Accepting invalid code is a correctness bug, not a missing feature. The
 report ranks those tests by the errors they expect, with *only error*
 counting the tests one check alone would fix. Since `kc` reports many
 errors per file, it also checks each expected error for one of `kc`'s on
-its line, and lists `kc`'s errors on lines that expect none and the
-warnings the tests expect (`kc` reports none).
+its line, and lists `kc`'s errors on lines that expect none. Warnings
+don't change a test's category: the report counts, by warning, those the
+tests expect that `kc` reports on their lines and those it reports on
+lines that don't expect them, which `-Werror` would turn into rejected
+valid code, and lists the warnings `kc` doesn't report.
 
 Four things differ from the test infrastructure:
 

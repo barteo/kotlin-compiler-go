@@ -2,6 +2,7 @@
 package driver
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -156,6 +157,18 @@ func newLibrary(cp *classpath.Path, opts Options) *check.Library {
 // declarations the Kotlin code sees, as kotlinc's; javac compiles them.
 // Diagnostics are returned as a joined error.
 func Compile(paths []string, opts Options) error {
+	_, err := CompileWarnings(paths, opts)
+	return err
+}
+
+// CompileWarnings is Compile, which also returns the warnings, whether
+// or not the compile fails: those of the files checked, if they were.
+func CompileWarnings(paths []string, opts Options) (warnings []*syntax.Error, err error) {
+	err = compile(paths, opts, &warnings)
+	return warnings, err
+}
+
+func compile(paths []string, opts Options, warnings *[]*syntax.Error) error {
 	var javaPaths []string
 	paths = slices.DeleteFunc(slices.Clone(paths), func(p string) bool {
 		if strings.HasSuffix(p, ".java") {
@@ -298,8 +311,13 @@ func Compile(paths []string, opts Options) error {
 		}
 		phase("metro")
 	}
-	for _, e := range check.CheckWith(files, r.lib, opts.Jobs) {
-		diags = append(diags, e)
+	checked, _ := check.CheckOptions(context.Background(), files, r.lib, opts.Jobs, nil, check.Options{Warnings: true})
+	for _, e := range checked {
+		if e.IsWarning() {
+			*warnings = append(*warnings, e)
+		} else {
+			diags = append(diags, e)
+		}
 	}
 	if len(diags) > 0 {
 		return errors.Join(diags...)
