@@ -15,10 +15,16 @@ import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.types.Variance
 import java.util.IdentityHashMap
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.CompletionException
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
+import kotlin.math.max
+import kotlin.math.min
 
 /**
- * A session over a module's files: kc analyzes them, on first use, and
+ * A session over a module's files: kc analyzes them, in the background, and
  * the session maps detekt's PSI to kc's facts by psi node, and kc's facts
  * to Analysis API types and symbols.
  */
@@ -29,20 +35,47 @@ internal class KcSession(val project: Project, files: List<KtFile>, private val 
 
     private class Analysis(val result: KcLintOps.Result?, val ok: Boolean)
 
-    private val analysis: Analysis by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+    private val paths = analyzed.map { it.virtualFile.path }
+
+    private fun analyze(): Analysis {
         val start = System.nanoTime()
         val r = try {
-            KcLintOps.analyze(cfg, analyzed.map { it.virtualFile.path })
+            KcLintOps.analyze(cfg, paths)
         } catch (e: Throwable) {
             System.err.println("kc: analysis failed, so detekt's type-resolution rules see no types: $e")
-            return@lazy Analysis(null, false)
+            return Analysis(null, false)
         }
         KcDetekt.log("analyzed ${analyzed.size} files in ${(System.nanoTime() - start) / 1_000_000} ms")
         if (r.diagnostics.isNotEmpty()) {
             System.err.println("kc: kc can't compile the sources (${r.diagnostics.size} errors), so detekt's type-resolution rules see no types:")
             r.diagnostics.take(10).forEach { System.err.println("kc:   $it") }
         }
-        Analysis(r, r.diagnostics.isEmpty())
+        return Analysis(r, r.diagnostics.isEmpty())
+    }
+
+    /**
+     * kc's analysis and each file's facts, computed in the background from
+     * the moment the session is built: kc reads the sources from disk, not
+     * detekt's PSI, so it overlaps detekt's own setup and its first rules,
+     * and the facts are decoded off the thread that runs the rules. Only
+     * the join of a file's facts with its PSI waits for that file.
+     */
+    private val pool: ExecutorService = Executors.newFixedThreadPool(max(1, min(cfg.jobs, 4))) { r ->
+        Thread(r, "kc-facts").apply { isDaemon = true }
+    }
+
+    private val analysisFuture: CompletableFuture<Analysis> = CompletableFuture.supplyAsync(::analyze, pool)
+
+    private val prefetched: List<CompletableFuture<KcFileFacts?>> = List(analyzed.size) { i ->
+        analysisFuture.thenApplyAsync({ an -> an.result?.takeIf { an.ok }?.let { KcLintOps.file(it.handle, i, it.files[i].nodes) } }, pool)
+    }.also { all -> CompletableFuture.allOf(*all.toTypedArray()).whenComplete { _, _ -> pool.shutdown() } }
+
+    private val analysis: Analysis get() = analysisFuture.join()
+
+    private fun factsOf(i: Int): KcFileFacts = try {
+        prefetched[i].join()!!
+    } catch (e: CompletionException) {
+        throw e.cause ?: e
     }
 
     /** A file's facts and the join of its PSI with kc's psi nodes. */
@@ -75,7 +108,7 @@ internal class KcSession(val project: Project, files: List<KtFile>, private val 
                 if (shape.nodes != nodes.size - 1 || shape.kinds != KcKinds.hash(nodes)) {
                     System.err.println("kc: the PSI of ${file.virtualFile.path} differs from kc's tree (${shape.nodes} nodes in kc, ${nodes.size - 1} in PSI), so it has no types")
                 } else {
-                    facts = KcLintOps.file(result.handle, i, shape.nodes)
+                    facts = factsOf(i)
                     facts.symbols.forEach { syms.putIfAbsent(it.id, it) }
                 }
             }
@@ -85,6 +118,7 @@ internal class KcSession(val project: Project, files: List<KtFile>, private val 
 
     /** The fact of [e]'s node, if kc has one. */
     fun fact(e: PsiElement?): KcFact? {
+        KcStats.count("fact(element)", e)
         if (e == null) return null
         val file = e.containingFile as? KtFile ?: return null
         val d = data(file) ?: return null
@@ -114,7 +148,26 @@ internal class KcSession(val project: Project, files: List<KtFile>, private val 
 
     /** The KaType of [t]; [nonNull] drops its nullability, as a smart cast does. */
     fun type(t: KcType?, nonNull: Boolean = false): KaType {
-        if (t == null || t.name.isEmpty()) return KcErrorType(this, "unresolved")
+        KcStats.count("type(KcType)", t)
+        if (t == null) return KcErrorType(this, "unresolved")
+        val cache = if (nonNull) nonNullTypes else types
+        cache[t]?.let { return it }
+        val made = makeType(t, nonNull)
+        return cache.putIfAbsent(t, made) ?: made
+    }
+
+    /**
+     * The KaTypes made of kc's types, by type, for [type] without and with
+     * nonNull. A file's types are interned, and rules ask for the same few
+     * thousand hundreds of thousands of times. KaTypes are immutable, so
+     * they are shared, along with what they compute lazily, such as their
+     * supertypes' names for subtyping.
+     */
+    private val types = ConcurrentHashMap<KcType, KaType>()
+    private val nonNullTypes = ConcurrentHashMap<KcType, KaType>()
+
+    private fun makeType(t: KcType, nonNull: Boolean): KaType {
+        if (t.name.isEmpty()) return KcErrorType(this, "unresolved")
         if (t.parameter) {
             val p = KcTypeParameterType(this, t, (t.markedNullable) && !nonNull)
             return if (t.platform && !nonNull) KcFlexibleType(this, p.withNullability(false), p.withNullability(true)) else p
