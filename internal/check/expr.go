@@ -2260,6 +2260,8 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 			x.Prop, found = p, true
 		} else if ensureVar(p); p.PrivateToThis {
 			c.checkPrivateToThis(x.X, x.Name, p.Owner, x.P)
+		} else {
+			c.shadowedField(cls, p, x.P)
 		}
 		ensureVar(x.Prop)
 		t = c.memberSubst(rt, x.Prop.Owner).Apply(x.Prop.Type)

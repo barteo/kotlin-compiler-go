@@ -618,3 +618,28 @@ func (c *Checker) declaresOverridden(k *types.ClassSym, f *types.FunSym) bool {
 	}
 	return false
 }
+
+// shadowedField reports a Java field read through a class, cls, in which
+// a Kotlin property with a backing field, of a subclass of the field's
+// class, that the code can't see has its name: as in K2, the property's
+// field shadows the Java one, Test2().text for Test's field text and
+// Test2's private val text.
+func (c *Checker) shadowedField(cls *types.ClassSym, f *types.VarSym, p syntax.Pos) {
+	if cls == nil || f == nil || f.Owner == nil || !isJavaClass(f.Owner) {
+		return
+	}
+	var shadow *types.VarSym
+	cls.Supertypes(func(s *types.ClassSym) bool {
+		if s.External || !s.IsSubclassOf(f.Owner) {
+			return true
+		}
+		if q := s.Prop(f.Name); q != nil && !c.propVisible(q) && q.HasField() {
+			shadow = q
+			return false
+		}
+		return true
+	})
+	if shadow != nil {
+		c.errorf(p, "the Java field '%s' is shadowed by the Kotlin property of '%s', which is invisible here", f.Name, shadow.Owner.Name)
+	}
+}
