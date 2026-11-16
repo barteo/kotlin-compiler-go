@@ -3154,3 +3154,38 @@ func equivalentFun(f, g *types.FunSym) bool {
 	}
 	return pkg(f.Facade) == pkg(g.Facade)
 }
+
+// javaCycle reports a supertype that is a class of the program's Java
+// sources in a cycle of its hierarchy, or that inherits from one:
+// interface A extends A, which javac rejects. kotlinc runs out of stack generating code for its subclasses.
+func (c *Checker) javaCycle(st *syntax.SuperType) {
+	if st.Type == nil || st.T.K != types.Class || st.T.C == nil || !st.T.C.External || !c.u.ext.javaSource(st.T.C) {
+		return
+	}
+	// It, or a Java class it inherits from.
+	var cyclic *types.ClassSym
+	st.T.C.Supertypes(func(s *types.ClassSym) bool {
+		if s.External && c.u.ext.javaSource(s) && inherits(s, s, c.u.ext.javaSource, map[*types.ClassSym]bool{}) {
+			cyclic = s
+		}
+		return cyclic == nil
+	})
+	if cyclic != nil {
+		c.errorf(st.Type.P, "there's a cycle in the inheritance hierarchy of '%s'", cyclic.DisplayName())
+	}
+}
+
+// javaBoundCycle reports a type of a class of the program's Java sources
+// whose type parameters' bounds are a cycle, X extends Y, Y extends X,
+// which javac rejects. kotlinc can't write its erasure to metadata.
+func (c *Checker) javaBoundCycle(ref *syntax.TypeRef, t types.Type) {
+	if t.K != types.Class || t.C == nil || !t.C.External || len(t.C.TypeParams) == 0 || !c.u.ext.javaSource(t.C) {
+		return
+	}
+	for _, p := range t.C.TypeParams {
+		if types.ParamCycle(p) {
+			c.errorf(ref.P, "the upper bounds of the type parameters of '%s' are a cycle", t.C.DisplayName())
+			return
+		}
+	}
+}

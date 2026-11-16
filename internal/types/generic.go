@@ -273,7 +273,7 @@ func (p *TypeParamSym) ErasureBound() Type {
 
 // Bound returns the first upper bound, or Any? if there is none.
 func (p *TypeParamSym) Bound() Type {
-	if len(p.Bounds) == 0 || p.Bounds[0].IsParam() && paramCycle(p) {
+	if len(p.Bounds) == 0 || p.Bounds[0].IsParam() && ParamCycle(p) {
 		// No bound, or bounds that are each other's parameters, as Java
 		// sources can declare (<A extends B, B extends A>): Any?.
 		return AnyType.Nullable()
@@ -486,7 +486,7 @@ func (s Subst) applyA(t Type, pos Variance, exact bool) (Type, bool) {
 			// B<*, Int>.
 			p := t.Param()
 			r = s.apply(starred(p.Bounds[0], map[*TypeParamSym]bool{p: true}), Out)
-		case a.V == Star && pos == Out && paramCycle(t.Param()):
+		case a.V == Star && pos == Out && ParamCycle(t.Param()):
 			// Bounds that are each other's parameters, Java's <A extends
 			// B, B extends A>, which kotlinc reads as Any!: substituting
 			// the bound would never end.
@@ -705,9 +705,9 @@ func jdkParam(p *TypeParamSym) bool {
 	return c != nil && c.External && (strings.HasPrefix(c.Name, "java/") || strings.HasPrefix(c.Name, "javax/"))
 }
 
-// paramCycle reports whether the bounds of p, followed through the type
+// ParamCycle reports whether the bounds of p, followed through the type
 // parameters they are, lead back to p.
-func paramCycle(p *TypeParamSym) bool {
+func ParamCycle(p *TypeParamSym) bool {
 	seen := map[*TypeParamSym]bool{}
 	for q := p; len(q.Bounds) > 0 && q.Bounds[0].IsParam(); {
 		q = q.Bounds[0].Param()

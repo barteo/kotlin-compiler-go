@@ -180,6 +180,7 @@ func (c *Checker) checkSupers() {
 		c.tparams, c.lookupCls = cd.Sym.TypeParams, cd.Sym
 		c.checkConsistentSupers(cd)
 		for _, st := range cd.Supers {
+			c.javaCycle(st)
 			if st.T.K == types.Class && st.T.A != nil {
 				c.checkBounds(st.T, st.Type)
 			}
