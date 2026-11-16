@@ -415,6 +415,9 @@ func (c *Checker) stable(v *types.VarSym) bool {
 // narrowSym returns the variable that a smart cast of x narrows: a stable
 // variable, or this. It returns nil if x can't be smart cast.
 func (c *Checker) narrowSym(x syntax.Expr) *types.VarSym {
+	if obj := objectNamed(x); obj != nil {
+		return c.objectSym(obj) // an object is stable: Obj.y is Int
+	}
 	switch x := x.(type) {
 	case *syntax.Ident:
 		if x.Sym != nil && x.Member == nil && c.stable(x.Sym) {

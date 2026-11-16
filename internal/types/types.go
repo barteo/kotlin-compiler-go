@@ -501,6 +501,7 @@ type Effect struct {
 	Returns, Param int
 	Is             *Type
 	Holds          bool // the parameter, a Boolean, is true: its argument's smart casts
+	Negated        bool // with Holds, it is false: the smart casts of its argument being false
 }
 
 type FunSym struct {

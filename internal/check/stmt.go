@@ -370,6 +370,19 @@ func alwaysCasts(e syntax.Expr, f func(*syntax.As)) {
 		alwaysCasts(e.X, f)
 	case *syntax.NotNull:
 		alwaysCasts(e.X, f)
+	case *syntax.If:
+		alwaysCasts(e.Cond, f)
+	case *syntax.When:
+		// The subject, and the first condition, which always runs: x is
+		// an Int after when (x) { x as Int -> ...; else -> ... }.
+		if e.Subject != nil {
+			alwaysCasts(e.Subject, f)
+		}
+		if len(e.Branches) > 0 && len(e.Branches[0].Conds) > 0 && !e.Branches[0].Else {
+			if cond := e.Branches[0].Conds[0]; cond.X != nil {
+				alwaysCasts(cond.X, f)
+			}
+		}
 	case *syntax.StringLit:
 		for _, p := range e.Parts {
 			if p.X != nil {
@@ -1188,6 +1201,9 @@ func (c *Checker) assign(s *syntax.Assign) {
 			break
 		}
 		tt, mutable = c.lvalue(s.Target)
+		if s.Op != syntax.ASSIGN {
+			tt = c.projectedAssignOp(s, t, tt)
+		}
 	case *syntax.Ident, *syntax.Index:
 		if c.namesObject(s.Target) && s.Op != syntax.ASSIGN {
 			tt = c.expr(s.Target, noWant) // Obj += v: Obj.plusAssign(v)

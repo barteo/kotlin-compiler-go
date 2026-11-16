@@ -759,7 +759,7 @@ func (c *Checker) resolveImports() {
 			}
 		}
 		cls := ext.class(name)
-		if cls == nil && ext.kotlin && pkg != "" {
+		if cls == nil && ext.kotlin {
 			cls = ext.pkgClass(pkg, simple)
 		}
 		fs := ext.pkgFuns(pkg, simple)
@@ -768,7 +768,7 @@ func (c *Checker) resolveImports() {
 			c.classImports = append(c.classImports, memberImport{owner: cls, name: simple, p: imp.P, path: pkg})
 		}
 		var ta *types.AliasSym
-		if cls == nil && ext.kotlin && pkg != "" {
+		if cls == nil && ext.kotlin {
 			if ta = ext.pkgAlias(pkg, simple); ta != nil {
 				c.aliasImports[alias] = ta
 			}
@@ -785,7 +785,7 @@ func (c *Checker) resolveImports() {
 		// A library's top-level property, or extension properties.
 		var v *types.VarSym
 		var gs []*types.FunSym
-		if ext.kotlin && pkg != "" {
+		if ext.kotlin {
 			if v = ext.pkgVar(pkg, simple); v != nil {
 				c.userVars[alias] = v
 			}
@@ -975,7 +975,7 @@ func (c *Checker) findClassifier(name string) classifier {
 		c.classCache[name] = k
 	}
 	if k == (classifier{}) {
-		// A nested class of the class path deprecated with level HIDDEN
+		// A nested class deprecated with level HIDDEN
 		// gives way to the classes outside, as K2's: found only if
 		// nothing else is, its use is an error.
 		return nested
@@ -983,11 +983,14 @@ func (c *Checker) findClassifier(name string) classifier {
 	return k
 }
 
-// hiddenClass reports whether cls is a class of the class path
-// deprecated with level HIDDEN.
+// hiddenClass reports whether cls is a class deprecated with level
+// HIDDEN.
 func hiddenClass(cls *types.ClassSym) bool {
-	if cls == nil || !cls.External {
+	if cls == nil {
 		return false
+	}
+	if !cls.External {
+		return classDeprecation(cls) == "HIDDEN" // the program's, as KT-14059's
 	}
 	cls.Ensure()
 	return cls.Deprecated != nil && cls.Deprecated.Level == "HIDDEN"
@@ -1369,6 +1372,8 @@ func (c *Checker) recvFits(rt, r types.Type) bool {
 		return true
 	case rt.K == types.Null:
 		return true // null fits a nullable receiver: null.f() for Id?.f()
+	case rt.K == types.Nothing:
+		return true // Nothing is a subtype of every type: todo() * "" for Int.times
 	}
 	rn := r.NonNull()
 	switch rn.K {
@@ -1411,9 +1416,12 @@ func (c *Checker) extProp(x *syntax.Member, rt types.Type) (types.Type, bool) {
 	sub := func(g *types.FunSym) types.Subst { return nil }
 	fits := func(gs []*types.FunSym) {
 		for _, g := range gs {
-			ensureFun(g)
 			s := sub(g)
-			if c.recvFits(rt, s.Apply(g.Recv)) && (best == nil || c.subtype(s.Apply(g.Recv), bestSub.Apply(best.Recv))) {
+			if !c.recvFits(rt, s.Apply(g.Recv)) {
+				continue // nor is its type inferred, which may be in progress
+			}
+			ensureFun(g)
+			if best == nil || c.subtype(s.Apply(g.Recv), bestSub.Apply(best.Recv)) {
 				best, bestSub = g, s
 			}
 		}
@@ -2607,6 +2615,9 @@ func (c *Checker) javaCall(x *syntax.Call, fn *syntax.Member, rt types.Type, wan
 		return types.InvalidType
 	}
 	ms := c.lowPriorityGivesWay(c.accessible(cls, c.javaMethods(cls, fn.Name), c.declaredClass(fn.X, cls)), fn.Name, rt, x)
+	if x.Operator {
+		ms = slices.DeleteFunc(slices.Clone(ms), varargNonOperator)
+	}
 	if len(ms) == 0 && fn.Name == "get" && c.isCharSequence(cls) {
 		ms = []*types.FunSym{c.charSequenceGet()} // s[i]: charAt(i)
 	}

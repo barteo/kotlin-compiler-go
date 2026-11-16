@@ -171,10 +171,31 @@ func LabelLambdas(c *Call) {
 	default:
 		return
 	}
-	for _, a := range c.Args {
-		if l, ok := a.(*Lambda); ok && l.Label == "" {
+	label := func(a Expr) {
+		l, ok := a.(*Lambda)
+		switch {
+		case !ok:
+		case l.Label == "":
 			l.Label = name
+		case l.Anon && strings.HasPrefix(l.Label, "fun$"):
+			// An anonymous function without a label of its own has the
+			// function's name too: return@notInline in
+			// notInline(fun() { ... }), as its plain returns are.
+			old := l.Label
+			l.Label = name
+			Inspect(l.Body, func(n any) bool {
+				if j, ok := n.(*Jump); ok && j.Kind == RETURN && j.Label == old {
+					j.Label = name
+				}
+				return true
+			})
 		}
+	}
+	for _, a := range c.Args {
+		label(a)
+	}
+	if m, ok := c.Fun.(*Member); ok && c.Infix {
+		label(m.X) // { return@foo } foo { }, as in K2
 	}
 }
 

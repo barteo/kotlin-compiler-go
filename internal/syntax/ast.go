@@ -1195,6 +1195,7 @@ type Implies struct {
 	Param   string
 	Is      *TypeRef
 	Holds   bool // implies (p): p, a Boolean, is true
+	Negated bool // with Holds, implies (!p): p is false
 }
 
 type BoolLit struct {

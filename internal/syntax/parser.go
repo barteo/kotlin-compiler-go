@@ -1085,7 +1085,7 @@ func (p *parser) typeArgsAhead() bool {
 				k := p.toks[j+1].Kind
 				// f<T> sc@{ ... } has a labeled trailing lambda.
 				return k == LPAREN || k == LBRACE || k == NL && p.peekAfterNL(j+1) == LBRACE ||
-					k == LABEL && p.toks[j+2].Kind == LBRACE
+					(k == LABEL || k == AT) && p.lambdaAfter(j+1)
 			}
 		case AT:
 			// An annotation, whose arguments can be any expressions.
@@ -2595,7 +2595,7 @@ func (p *parser) parsePostfix() Expr {
 		case LBRACE, LABEL, AT:
 			// A brace after a call or name is a trailing lambda, which may
 			// have a label, and annotations before them.
-			if p.noTrailing || t.Kind == LABEL && p.toks[p.i+1].Kind != LBRACE {
+			if p.noTrailing || t.Kind == LABEL && !p.lambdaAfter(p.i) {
 				return x
 			}
 			// After an expression in parentheses, (a to b) { ... }, the
@@ -2610,7 +2610,7 @@ func (p *parser) parsePostfix() Expr {
 			for p.at(AT) {
 				as = append(as, p.annotation())
 			}
-			if !p.at(LBRACE) && (!p.at(LABEL) || p.toks[p.i+1].Kind != LBRACE) {
+			if !p.at(LBRACE) && (!p.at(LABEL) || !p.lambdaAfter(p.i)) {
 				p.i = start
 				return x
 			}
@@ -2633,10 +2633,42 @@ func (p *parser) parsePostfix() Expr {
 	}
 }
 
+// lambdaAfter reports whether the tokens from j are a lambda with
+// annotations or a label before it, which may be on the next line:
+// @Ann @[Ann] label@ { x -> x }.
+func (p *parser) lambdaAfter(j int) bool {
+	for p.toks[j].Kind == AT {
+		j++
+		if p.toks[j].Kind == IDENT && p.toks[j+1].Kind == COLON {
+			j += 2
+		}
+		if p.toks[j].Kind == LBRACK {
+			j = p.matching(j) + 1
+			continue
+		}
+		if p.toks[j].Kind != IDENT {
+			return false
+		}
+		for j++; p.toks[j].Kind == DOT && p.toks[j+1].Kind == IDENT; j += 2 {
+		}
+		if p.toks[j].Kind == LPAREN {
+			j = p.matching(j) + 1
+		}
+	}
+	if p.toks[j].Kind == LABEL {
+		j++
+		for p.toks[j].Kind == NL {
+			j++
+		}
+	}
+	return p.toks[j].Kind == LBRACE
+}
+
 // trailingLambda parses a trailing lambda, with its label if it has one.
 func (p *parser) trailingLambda() *Lambda {
 	if t := p.tok(); t.Kind == LABEL {
 		p.next()
+		p.skipNL() // label@ NL { ... }
 		l := p.parseLambda()
 		l.Label = t.Text
 		return l
@@ -2649,7 +2681,7 @@ func (p *parser) parseCall(fn Expr, targs []*TypeArg) Expr {
 	if targs != nil && p.at(NL) && p.peekPastNL() == LBRACE {
 		p.skipNL() // f<T>\n{ ... }
 	}
-	if p.at(LBRACE) || targs != nil && p.at(LABEL) { // f<T> { ... }, f<T> sc@{ ... }
+	if p.at(LBRACE) || targs != nil && (p.at(LABEL) || p.at(AT)) && p.lambdaAfter(p.i) { // f<T> { ... }, f<T> sc@{ ... }, f<T> @A { ... }
 		c.P = p.tok().Pos
 		return c
 	}

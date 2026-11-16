@@ -166,6 +166,7 @@ type kotlinTable struct {
 	builtinsOnce sync.Once
 	builtins     map[string]*kmeta.Class // the built-in classes, by class id
 	collections  map[string]*types.ClassSym
+	atomics      map[string]*types.ClassSym // kotlin.concurrent.atomics' types: see atomics.go
 	raw          map[string]*types.ClassSym // the Java collection interfaces themselves
 	kfuncs       map[int]*types.ClassSym    // kotlin.reflect.KFunctionN, by N, and KSuspendFunctionN, by -1-N
 
@@ -268,6 +269,9 @@ func (t *classTable) kclass(id string) *types.ClassSym {
 		t.mu.Lock()
 		defer t.mu.Unlock()
 		return t.collection(id)
+	}
+	if _, ok := atomicJVM[id]; ok {
+		return t.atomic(id)
 	}
 	if n, ok := functionArity(id, "kotlin/"); ok {
 		return t.funcs.Class(n)
@@ -800,7 +804,7 @@ func (t *classTable) kfun(f *kmeta.Function, owner *types.ClassSym, scope tscope
 			case kmeta.ReturnsNotNull:
 				r = 2
 			}
-			e := types.Effect{Returns: r, Param: im.Param, Holds: im.Holds}
+			e := types.Effect{Returns: r, Param: im.Param, Holds: im.Holds, Negated: im.Negated}
 			if im.Is != nil {
 				is, isOK := t.ktype(im.Is, scope)
 				if !isOK {
@@ -2471,6 +2475,9 @@ func (t *classTable) pkgClass(pkg, name string) *types.ClassSym {
 	id := qualified(strings.ReplaceAll(pkg, ".", "/"), name)
 	if _, ok := collectionJVM[id]; ok {
 		return t.kclass(id)
+	}
+	if _, ok := atomicJVM[id]; ok {
+		return t.atomic(id)
 	}
 	if a := types.ArrayByID(id); a != nil {
 		return a

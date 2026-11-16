@@ -334,7 +334,8 @@ type Checker struct {
 	sameAs map[flowKey][]narrow
 	// paths has the values of the stable properties of stable values,
 	// a.b of a.b.c, that smart casts are of.
-	paths map[[2]*types.VarSym]*types.VarSym
+	paths      map[[2]*types.VarSym]*types.VarSym
+	objectSyms map[*types.ClassSym]*types.VarSym // see objectSym
 	// blockScope is the scope of the block checked last, after it.
 	blockScope *scope
 	exitWatch  *branchExit
@@ -922,7 +923,7 @@ func (c *Checker) hidesBuiltin(name string) bool {
 }
 
 func (c *Checker) resolveType(ref *syntax.TypeRef) types.Type {
-	t := c.typeMarkers(ref, c.resolveTypeRef(ref))
+	t := c.typeMarkers(ref, c.extFuncAnnotated(ref, c.resolveTypeRef(ref)))
 	if c.u.rec != nil && t.K != types.Invalid {
 		c.u.rec.TypeRef(ref, t)
 		c.noteType(t)
@@ -3180,6 +3181,9 @@ func usesField(a *syntax.FunDecl) bool {
 	if a == nil {
 		return false
 	}
+	if fieldShadowedByParam(a) {
+		return false
+	}
 	found := false
 	var f func(n any) bool
 	f = func(n any) bool {
@@ -3188,6 +3192,9 @@ func usesField(a *syntax.FunDecl) bool {
 			if n.Name == "field" {
 				found = true
 			}
+		case *syntax.Block:
+			fieldInBlock(n, f)
+			return false
 		case *syntax.ObjectExpr:
 			// An object literal's code sees the accessor's field, but its
 			// properties' accessors have their own.
@@ -3297,6 +3304,10 @@ func (c *Checker) checkFun(d *syntax.FunDecl, cls *types.ClassSym) {
 		if sym.Ret.K != types.Unit && sym.Ret.K != types.Invalid && t.K != types.Nothing {
 			c.errorf(d.Body.P, "missing return statement in function '%s'", d.Name)
 		}
+		return
+	}
+	if sym.Resolved && sym.Ret.K == types.Unit && delegateSetter(d) {
+		c.value(d.ExprBody, noWant) // whatever setValue returns
 		return
 	}
 	if sym.Resolved {

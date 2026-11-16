@@ -1422,7 +1422,11 @@ func (g *gen) member(x *syntax.Member) {
 	if p.Kind == types.Global {
 		// A top-level property by its qualified name: a.b.x.
 		g.global(p)
-		g.coerce(p.Type, x.T)
+		if x.Cast {
+			g.smartCast(p.Type, x.T) // after a.b.x is T
+		} else {
+			g.coerce(p.Type, x.T)
+		}
 		return
 	}
 	if p.Const && !x.Safe && objectQualifier(x.X) {
