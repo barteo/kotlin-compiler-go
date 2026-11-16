@@ -241,7 +241,7 @@ type Checker struct {
 	// allow, reported once checked, and markers the markers of classes
 	// (see dsl.go).
 	dslUses map[dslKey]shadowedUse
-	markers map[*types.ClassSym][]*types.ClassSym
+	markers map[*types.ClassSym][]string
 	// accessed names the properties with context parameters whose
 	// accessors' calls reading or assigning them are (see contextAccess).
 	accessed map[*syntax.Call]string

@@ -12,16 +12,18 @@ import (
 // as kotlinc keeps a type's attributes: T := @M A makes (@N T) @M @N A.
 // A Type holds them as M, an index into an interned table of the sets,
 // so it stays three words and comparable; the table has room for 255
-// sets, and a type with a further one keeps the ones it has.
+// sets, and a type with a further one keeps the ones it has. The table
+// is the process's, and a class is another symbol in each check, so a set
+// holds the names of its classes.
 
 var markerTab struct {
 	sync.Mutex
-	sets [][]*ClassSym // by M-1
+	sets [][]string // by M-1, each sorted
 	keys map[string]uint8
 }
 
-// Markers returns t's DSL markers.
-func (t Type) Markers() []*ClassSym {
+// Markers returns the names of t's DSL markers.
+func (t Type) Markers() []string {
 	if t.M == 0 {
 		return nil
 	}
@@ -30,8 +32,8 @@ func (t Type) Markers() []*ClassSym {
 	return markerTab.sets[t.M-1]
 }
 
-// WithMarkers returns t with DSL markers ms added to its own.
-func (t Type) WithMarkers(ms []*ClassSym) Type {
+// WithMarkers returns t with the DSL markers named ms added to its own.
+func (t Type) WithMarkers(ms []string) Type {
 	if len(ms) == 0 || t.K == Invalid {
 		return t
 	}
@@ -41,15 +43,11 @@ func (t Type) WithMarkers(ms []*ClassSym) Type {
 			all = append(all, m)
 		}
 	}
-	slices.SortFunc(all, func(a, b *ClassSym) int { return strings.Compare(a.Name, b.Name) })
-	var key strings.Builder
-	for _, m := range all {
-		key.WriteString(m.Name)
-		key.WriteByte(';')
-	}
+	slices.Sort(all)
+	key := strings.Join(all, ";")
 	markerTab.Lock()
 	defer markerTab.Unlock()
-	if i, ok := markerTab.keys[key.String()]; ok {
+	if i, ok := markerTab.keys[key]; ok {
 		t.M = i
 		return t
 	}
@@ -61,6 +59,6 @@ func (t Type) WithMarkers(ms []*ClassSym) Type {
 	}
 	markerTab.sets = append(markerTab.sets, all)
 	t.M = uint8(len(markerTab.sets))
-	markerTab.keys[key.String()] = t.M
+	markerTab.keys[key] = t.M
 	return t
 }
