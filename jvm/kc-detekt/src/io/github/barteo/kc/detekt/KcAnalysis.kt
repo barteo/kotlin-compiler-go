@@ -53,6 +53,7 @@ class KcAnalysis internal constructor(private val s: KcSession) {
     // KaExpressionTypeProvider
 
     fun getExpressionType(e: KtExpression): KaType? {
+        KcStats.count("expressionType(element)", e)
         val target = when (e) {
             is KtParenthesizedExpression -> return e.expression?.let(::getExpressionType)
             is KtLabeledExpression -> return e.baseExpression?.let(::getExpressionType)
@@ -324,8 +325,22 @@ class KcAnalysis internal constructor(private val s: KcSession) {
 
     // Calls.
 
+    /**
+     * The calls of elements, as [call] finds them, or [noCall]: rules
+     * resolve the same element several times, and a KaCall, its signature
+     * and its argument mapping are immutable.
+     */
+    private val calls = ConcurrentHashMap<KtElement, Any>()
+
     /** The call [e] makes, as the Analysis API's resolveToCall finds it. */
     internal fun call(e: KtElement): KaCall? {
+        KcStats.count("call(element)", e)
+        if (!KcSession.cacheTypes) return resolveCallOf(e)
+        val c = calls[e] ?: (resolveCallOf(e) ?: noCall).let { calls.putIfAbsent(e, it) ?: it }
+        return c as? KaCall
+    }
+
+    private fun resolveCallOf(e: KtElement): KaCall? {
         when (e) {
             is KtQualifiedExpression -> return e.selectorExpression?.let(::call)
             is KtParenthesizedExpression -> return null
@@ -439,6 +454,7 @@ class KcAnalysis internal constructor(private val s: KcSession) {
 
     /** The declaration a name refers to. */
     private fun referenced(e: KtSimpleNameExpression): KaSymbol? {
+        KcStats.count("referenced(name)", e)
         val f = s.fact(e) ?: return null
         f.call?.let { c ->
             // A constructor call's callee names the constructor; a call's, the function.
@@ -454,6 +470,8 @@ class KcAnalysis internal constructor(private val s: KcSession) {
     }
 
     companion object {
+        private val noCall = Any()
+
         private val primitives = setOf("kotlin.Int", "kotlin.Long", "kotlin.Short", "kotlin.Byte", "kotlin.Char", "kotlin.Boolean", "kotlin.Float", "kotlin.Double")
         private val primitiveArrays = primitives.map { it + "Array" }.toSet()
 
@@ -478,6 +496,7 @@ class KcAnalysis internal constructor(private val s: KcSession) {
         private class Handler(val analysis: KcAnalysis) : InvocationHandler {
             override fun invoke(proxy: Any, method: Method, args: Array<out Any?>?): Any? {
                 val a = args ?: emptyArray()
+                KcStats.count("KaSession." + method.name, null)
                 when (method.name) {
                     "equals" -> if (a.size == 1 && method.parameterTypes[0] == Any::class.java) return proxy === a[0]
                     "hashCode" -> if (a.isEmpty()) return System.identityHashCode(proxy)
