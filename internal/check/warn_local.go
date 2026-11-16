@@ -31,6 +31,7 @@ func (c *Checker) localWarnings() {
 			c.binaryWarnings(n)
 		case *syntax.As:
 			c.castWarnings(n)
+			c.uncheckedCast(n)
 		}
 		return true
 	})
@@ -140,4 +141,97 @@ func (c *Checker) castWarnings(x *syntax.As) {
 		return
 	}
 	c.warnf(x.P, "USELESS_CAST", "cast is redundant")
+}
+
+// uncheckedCast reports a cast x as T or x as? T that the JVM can't
+// check: to a type parameter that isn't reified, or to a generic class's
+// type with type arguments from Any or a star-projected supertype, which
+// tell nothing of them. Other casts that may be unchecked, from types
+// with type arguments, aren't reported.
+func (c *Checker) uncheckedCast(x *syntax.As) {
+	if x.X == nil {
+		return
+	}
+	t, target := x.X.Type(), x.Target
+	if t.P || hasInvalid(t, 0) || hasInvalid(target, 0) || c.subtype(t, target) {
+		return
+	}
+	switch {
+	case target.K == types.TypeParam:
+		p := target.Param()
+		if p == nil || p.Reified || p.Intersection || t.IsParam() {
+			return
+		}
+		switch t.K {
+		case types.Nothing:
+			return
+		case types.Null:
+			// null as T of a T that can't be null never succeeds.
+			if _, ok := x.X.(*syntax.NullLit); !ok || !target.N && !p.NullableBound() {
+				return
+			}
+		}
+	case target.K == types.Class && target.A != nil && !target.IsFunc():
+		if !argsTellMore(target) {
+			return
+		}
+		switch {
+		case t.K == types.Any && !ownParams(target):
+		case t.K == types.Class && t.C != nil && starArgsOnly(t) && target.C.IsSubclassOf(t.C):
+		default:
+			return
+		}
+	default:
+		return
+	}
+	c.warnf(x.P, "UNCHECKED_CAST", "unchecked cast of '%s' to '%s'", t, target)
+}
+
+// argsTellMore reports whether some type argument of class type t
+// tells more than a star projection would.
+func argsTellMore(t types.Type) bool {
+	ps := t.C.TypeParams
+	for i := range t.A.Len() {
+		a := t.A.Get(i)
+		if a.V == types.Star || i >= len(ps) {
+			continue
+		}
+		v := ps[i].Var
+		if a.V != types.Inv {
+			v = a.V
+		}
+		// out Any? and in Nothing take what * does.
+		if v == types.Out && a.T.K == types.Any && a.T.N && len(ps[i].Bounds) == 0 || v == types.In && a.T.K == types.Nothing {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
+// starArgsOnly reports whether class type t has no type arguments other
+// than star projections.
+func starArgsOnly(t types.Type) bool {
+	if t.A == nil {
+		return true
+	}
+	for i := range t.A.Len() {
+		if t.A.Get(i).V != types.Star {
+			return false
+		}
+	}
+	return true
+}
+
+// ownParams reports whether class type t is its class's own type, its
+// type arguments its type parameters: Qwe<T> in class Qwe<T>, which
+// kotlinc doesn't warn of a cast from Any to.
+func ownParams(t types.Type) bool {
+	for i := range t.A.Len() {
+		a := t.A.Get(i)
+		if a.V != types.Inv || a.T.K != types.TypeParam || a.T.Param() == nil || a.T.Param().Owner != any(t.C) {
+			return false
+		}
+	}
+	return t.A.Len() > 0
 }

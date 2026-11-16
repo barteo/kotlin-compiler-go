@@ -134,6 +134,31 @@ fun g(s: String?) = run { s } ?: ""
 	}
 }
 
+func TestWarningsUncheckedCast(t *testing.T) {
+	got := checkWarnings(t, `fun <T> f(a: Any, l: List<*>, c: Collection<String>, s: String, m: Any, n: Any, o: Any, p: Any, q: Any): T {
+    a as List<String>
+    l as List<Int>
+    m as? Map<String, Int>
+    n as List<*>
+    o as List<Any?>
+    c as List<String>
+    s as Comparable<String>
+    p as Array<String>
+    q as (Int) -> String
+    return null as T
+}
+inline fun <reified R> g(a: Any) = a as R
+fun <T> h(a: Any, t: T?) {
+    a as T
+    t as T
+}
+`)
+	want := "11:UNCHECKED_CAST,15:UNCHECKED_CAST,2:UNCHECKED_CAST,3:UNCHECKED_CAST,4:UNCHECKED_CAST,9:UNCHECKED_CAST"
+	if strings.Join(got, ",") != want {
+		t.Errorf("got %v, want %s", got, want)
+	}
+}
+
 func TestWarningsFileSuppress(t *testing.T) {
 	got := checkWarnings(t, `@file:Suppress("UNNECESSARY_SAFE_CALL")
 fun f(s: String) = s?.length

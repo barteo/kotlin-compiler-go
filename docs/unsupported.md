@@ -13,11 +13,14 @@ own tests.
 - Warnings: `kc` reports only `DEPRECATION`,
   `TYPEALIAS_EXPANSION_DEPRECATION`, `OPT_IN_USAGE`, `ERROR_SUPPRESSION`,
   `UNNECESSARY_SAFE_CALL`, `UNNECESSARY_NOT_NULL_ASSERTION`,
-  `USELESS_CAST`, `SENSELESS_COMPARISON` and `USELESS_ELVIS`, and those
-  only where the types make them certain: never of a platform type, a
-  type parameter or a type it couldn't resolve, so that `-Werror` doesn't
-  reject what `kotlinc` compiles. `@Suppress` silences a warning by its
-  name, or all of them with `"warnings"`.
+  `USELESS_CAST`, `UNCHECKED_CAST`, `SENSELESS_COMPARISON` and
+  `USELESS_ELVIS`, and those only where the types make them certain, so
+  that `-Werror` doesn't reject what `kotlinc` compiles: the null checks
+  never of a platform type, a type parameter or a type it couldn't
+  resolve, and `UNCHECKED_CAST` only of a cast to a type parameter that
+  isn't reified, or to a generic type from `Any` or a star-projected
+  supertype. `@Suppress` silences a warning by its name, or all of them
+  with `"warnings"`.
 
 - Reified type parameters of members of interfaces and value classes
   (those of final members and member extensions of classes work).
