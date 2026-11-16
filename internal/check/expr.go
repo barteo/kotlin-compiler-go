@@ -1533,6 +1533,17 @@ func (c *Checker) hasNamed(t types.Type, name string) bool {
 	return found
 }
 
+// builtinNamed reports whether builtin type t, as Int or String, has a
+// member or extension name.
+func (c *Checker) builtinNamed(t types.Type, name string) bool {
+	for n := range 4 {
+		if builtinFun(t, name, n) {
+			return true
+		}
+	}
+	return c.hasNamed(t, name)
+}
+
 // narrowing returns the smart casts implied by cond being true or false.
 func (c *Checker) narrowing(cond syntax.Expr) (whenTrue, whenFalse []narrow) {
 	leaf := false
@@ -2086,6 +2097,19 @@ func (c *Checker) callReceiver(fn *syntax.Member, want types.Type) (types.Type, 
 			st = st.Nullable()
 		}
 		fn.X, t = checked(fn.X, st), st
+	}
+	if t.IsIntersection() && finalBuiltin(t.Param().Bounds[0].NonNull()) && !c.builtinNamed(t.Param().Bounds[0].NonNull(), fn.Name) {
+		// An Int & A of a smart cast has A's members too: x.foo() after
+		// x is A and x is Int.
+		for _, b := range t.Param().Bounds[1:] {
+			if b.K == types.Class && c.hasNamed(b, fn.Name) {
+				if types.MayBeNull(t) {
+					b = b.Nullable()
+				}
+				fn.X, t = checked(fn.X, b), b
+				break
+			}
+		}
 	}
 	if vt.K == types.Null && t.K != types.Null && !fn.Safe && c.extCallees(fn.Name, t) == nil {
 		// A variable known to be null is a Nothing?, which any extension
