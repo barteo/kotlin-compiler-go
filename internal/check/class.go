@@ -180,6 +180,7 @@ func (c *Checker) checkSupers() {
 		c.tparams, c.lookupCls = cd.Sym.TypeParams, cd.Sym
 		c.checkConsistentSupers(cd)
 		for _, st := range cd.Supers {
+			c.javaCycle(st)
 			if st.T.K == types.Class && st.T.A != nil {
 				c.checkBounds(st.T, st.Type)
 			}
@@ -1001,6 +1002,8 @@ func (c *Checker) checkInheritance(d *syntax.ClassDecl) {
 			if c.u.ext.class("java/lang/Object") != nil || !anyMember[f.Name] {
 				c.errorf(fd.P, "'%s' overrides nothing", f.Name)
 			}
+		case fd.Override && javaHidden(cls, over):
+			c.errorf(fd.P, "'%s' overrides nothing", f.Name)
 		case len(over) > 0 && !fd.Override && !platformOnly(over):
 			c.errorf(fd.P, "'%s' hides member of supertype '%s' and needs 'override' modifier", f.Name, over[0].Owner.DisplayName())
 		}

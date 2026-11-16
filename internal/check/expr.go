@@ -373,7 +373,11 @@ func (c *Checker) receiverProp(x *syntax.Ident) (types.Type, bool) {
 	if !c.objectHasProp(x.Name) {
 		return types.InvalidType, false
 	}
-	return c.objectMember(x)
+	t, ok := c.objectMember(x)
+	if ok && x.Member != nil && x.Member.Prop != nil {
+		c.companionProtectedProp(x.Member.Prop, x.P)
+	}
+	return t, ok
 }
 
 func (c *Checker) lookupVar(name string) (*types.VarSym, types.Type, bool, bool) {
@@ -2246,7 +2250,7 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 			t, found = c.javaProperty(x, rt)
 			break
 		}
-		if p := x.Prop; !c.propVisible(p) {
+		if p := x.Prop; !c.propVisible(p) || protectedMember(p) && !c.protectedVia(p.Owner, x.X) {
 			// An extension of the name is read instead, as with calls.
 			x.Prop = nil
 			if t, found = c.extProp(x, rt); found {
@@ -2256,6 +2260,8 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 			x.Prop, found = p, true
 		} else if ensureVar(p); p.PrivateToThis {
 			c.checkPrivateToThis(x.X, x.Name, p.Owner, x.P)
+		} else {
+			c.shadowedField(cls, p, x.P)
 		}
 		ensureVar(x.Prop)
 		t = c.memberSubst(rt, x.Prop.Owner).Apply(x.Prop.Type)
@@ -2272,6 +2278,9 @@ func (c *Checker) member(x *syntax.Member) types.Type {
 		t = c.memberField(x, rt, t)
 	case cls != nil && c.visibleField(instanceField(cls, x.Name)):
 		x.Prop = instanceField(cls, x.Name)
+		if x.Prop.Protected && !c.protectedVia(x.Prop.Owner, x.X) {
+			c.invisibleProp(x.P, x.Prop)
+		}
 		t = c.memberSubst(rt, x.Prop.Owner).Apply(x.Prop.Type)
 	default:
 		t, found = c.javaProperty(x, rt)
@@ -2952,6 +2961,9 @@ func (c *Checker) call(x *syntax.Call, want types.Type, sink *system) types.Type
 				}
 				ensureVar(p)
 				fn.Prop = p
+				if !c.propVisible(p) {
+					c.invisibleProp(fn.P, p)
+				}
 				fn.T = c.memberSubst(rt, p.Owner).Apply(p.Type)
 				return c.invokeValue(x, fn.T, want, sink)
 			}

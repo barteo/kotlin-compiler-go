@@ -315,7 +315,7 @@ class Base {}
 class Orphan extends Gone implements Runnable { public void run() {} }
 abstract class Mixed implements Runnable, Lost, Comparable<String> {}
 `
-	kotlin := "package j\nclass UsesJava(val j: JavaSrc<String>) : Base()\nfun f() = JavaSrc.MAX\n"
+	kotlin := "package j\ninternal class UsesJava(val j: JavaSrc<String>) : Base()\nfun f() = JavaSrc.MAX\n"
 	sources := []Source{{Path: "j/Uses.kt", Text: &kotlin}, {Path: "j/JavaSrc.java", Text: &java}}
 	s := Open(withJDK(t))
 	defer s.Close()
