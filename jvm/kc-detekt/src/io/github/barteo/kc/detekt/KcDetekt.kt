@@ -24,6 +24,7 @@ import org.jetbrains.kotlin.config.LanguageVersionSettings
 import org.jetbrains.kotlin.platform.TargetPlatform
 import org.jetbrains.kotlin.psi.KtElement
 import org.jetbrains.kotlin.psi.KtFile
+import org.jetbrains.kotlin.psi.KotlinReferenceProvidersService
 import java.io.File
 import java.nio.file.Path
 
@@ -94,10 +95,14 @@ object KcDetekt {
                 classPath = (libraries.flatMap { it.roots }.map { it.toString() } + friendRoots).distinct(),
                 friendPaths = friendRoots.distinct(),
                 // detekt's -opt-in compiler arguments.
-                optIns = src.languageVersionSettings.getFlag(AnalysisFlags.optIn),
+                // and -Dkc.optIns, comma-separated, for a detekt-cli that can't pass them.
+                optIns = src.languageVersionSettings.getFlag(AnalysisFlags.optIn) +
+                    System.getProperty("kc.optIns").orEmpty().split(',').filter { it.isNotBlank() },
             )
             val session = KcSession(project, files, cfg)
             registerService(KaSessionProvider::class.java, KcSessionProvider(project, session))
+            // A name's mainReference, which the Analysis API's own session registers.
+            registerService(KotlinReferenceProvidersService::class.java, KcReferenceProviders())
         }
 
         fun modulesWithFiles(): Map<KaSourceModule, List<PsiFile>> =
