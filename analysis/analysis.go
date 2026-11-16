@@ -387,6 +387,22 @@ func (r *Result) Data() Data {
 	return d
 }
 
+// SharedData returns the facts, in order, and the symbols, as Data does
+// but without copying them: they are the Result's own, which the caller
+// must not change. It is for callers that only read them once, such as
+// libkc's lint operations, for which Data's copies cost as much as a
+// third of the analysis.
+func (r *Result) SharedData() (facts []*Fact, symbols []Symbol) {
+	if r == nil {
+		return nil, nil
+	}
+	facts = make([]*Fact, len(r.order))
+	for i, id := range r.order {
+		facts[i] = r.facts[id]
+	}
+	return facts, r.symbols
+}
+
 // Capabilities returns the fact families this package computes.
 func Capabilities() []string { return slices.Clone(capabilities) }
 

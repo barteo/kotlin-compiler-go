@@ -98,8 +98,8 @@ func init() {
 
 // result is an analysis and its facts and symbols, split by file.
 type result struct {
-	facts   [][]analysis.Fact // by file
-	symbols []analysis.Symbol // by ID-1
+	facts   [][]*analysis.Fact // by file; the analysis's own, read only
+	symbols []analysis.Symbol  // by ID-1
 	files   map[psi.SnapshotID]int
 }
 
@@ -145,12 +145,12 @@ func analyze(req []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	data := res.Data()
-	out := &result{facts: make([][]analysis.Fact, len(snaps)), symbols: data.Symbols, files: map[psi.SnapshotID]int{}}
+	facts, symbols := res.SharedData()
+	out := &result{facts: make([][]*analysis.Fact, len(snaps)), symbols: symbols, files: map[psi.SnapshotID]int{}}
 	for i, s := range snaps {
 		out.files[s.ID()] = i
 	}
-	for _, f := range data.Facts {
+	for _, f := range facts {
 		if i, ok := out.files[f.Element.Snapshot]; ok {
 			out.facts[i] = append(out.facts[i], f)
 		}
@@ -216,7 +216,7 @@ type encoder struct {
 	body  wire.Writer
 }
 
-func encodeFile(res *result, facts []analysis.Fact) []byte {
+func encodeFile(res *result, facts []*analysis.Fact) []byte {
 	e := &encoder{res: res, index: map[string]int{}}
 	// The symbols the facts name.
 	seen := map[uint32]bool{}
@@ -240,7 +240,7 @@ func encodeFile(res *result, facts []analysis.Fact) []byte {
 	}
 	e.body.Uint(uint64(len(facts)))
 	for i := range facts {
-		e.fact(&facts[i])
+		e.fact(facts[i])
 	}
 	var w wire.Writer
 	w.Uint(uint64(e.nType))
