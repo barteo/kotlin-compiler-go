@@ -69,6 +69,8 @@ func (c *Checker) checkOperatorDecl(d *syntax.FunDecl, owner *types.ClassSym) {
 		c.errorf(d.P, "'operator' modifier is inapplicable on this function: must have %s", countParams(n))
 	case n < 0 && n != -0x7fff && len(d.Params) < -n:
 		c.errorf(d.P, "'operator' modifier is inapplicable on this function: must have at least %s", countParams(-n))
+	case d.Suspend && (d.Name == "equals" || d.Name == "getValue" || d.Name == "setValue" || d.Name == "provideDelegate"):
+		c.errorf(d.P, "'operator' modifier is inapplicable on this function: must not be suspend")
 	case !d.Sym.Resolved:
 	case d.Name == "compareTo" && d.Sym.Ret.Flex() != types.IntType:
 		c.errorf(d.P, "'operator' modifier is inapplicable on this function: must return Int")

@@ -282,6 +282,8 @@ type Checker struct {
 	// branchSink is the system of the delegate an if, a try or an
 	// elvis is: see delegateValue.
 	branchSink *system
+	unitElvis  syntax.Expr    // see unitBody
+	varTarget  *syntax.Member // see propBound
 	// branchArg is set with branchSink for an if or a when that is a
 	// call's argument, whose lambda branches are then the call's
 	// postponed arguments (see branch). lambdaSink is set while the
@@ -359,6 +361,7 @@ type state struct {
 	fn         *types.FunSym // nil in property initializers and init blocks
 	retType    types.Type
 	retAllowed bool
+	exprRets   *[]exprRet // see exprBodyReturn
 	loops      []*loopCtx
 	finallies  []finallyCtx // the finally blocks around the code
 	allowRange bool
@@ -739,6 +742,9 @@ func CheckOptions(ctx context.Context, files []*syntax.File, lib *Library, jobs 
 		c.dslErrors()
 		c.versionOverloads()
 		c.checkModifiers()
+		c.classPathChecks()
+		c.jvmDefaultModeAnnotations()
+		c.suppressErrors()
 		sort.SliceStable(c.errs, func(i, j int) bool {
 			a, b := c.errs[i].Pos, c.errs[j].Pos
 			return a.Line < b.Line || a.Line == b.Line && a.Col < b.Col
@@ -1124,7 +1130,7 @@ func (c *Checker) applyTypeArgs(cls *types.ClassSym, ref *syntax.TypeRef) types.
 	if cls.Inner && cls.OuterParams > 0 {
 		return c.innerType(ref) // Inner in its outer class's code
 	}
-	ps := cls.TypeParams
+	ps, hidden := localOwnParams(cls)
 	if ref.Args == nil && len(ps) > 0 && ref == c.bareRef {
 		return c.bareType(cls, ref, c.bareSubject)
 	}
@@ -1140,10 +1146,10 @@ func (c *Checker) applyTypeArgs(cls *types.ClassSym, ref *syntax.TypeRef) types.
 		}
 		return types.InvalidType
 	}
-	if len(ps) == 0 {
+	if len(ps) == 0 && hidden == nil {
 		return c.nullable(types.ClassType(cls), ref)
 	}
-	args := make([]types.Arg, len(ps))
+	args := make([]types.Arg, len(ps), len(ps)+len(hidden))
 	for i, a := range ref.Args {
 		args[i] = types.Arg{V: a.Variance}
 		if a.Variance == types.Star {
@@ -1157,7 +1163,7 @@ func (c *Checker) applyTypeArgs(cls *types.ClassSym, ref *syntax.TypeRef) types.
 			c.errorf(a.P, "projection is conflicting with variance of the corresponding type parameter of %s", cls.DisplayName())
 		}
 	}
-	t := types.GenericType(cls, args)
+	t := types.GenericType(cls, append(args, hidden...))
 	if !c.noBoundChecks {
 		c.checkBounds(t, ref)
 	}
@@ -1180,11 +1186,27 @@ func (c *Checker) checkBounds(t types.Type, ref *syntax.TypeRef) {
 			p = ref.Args[i].P
 		}
 		for _, b := range ps[i].Bounds {
+			// A bound on a star-projected parameter, C : B in
+			// Constrain<U, *, in T>, says nothing to check against.
+			if b.Has(func(u types.Type) bool { return u.IsParam() && starOf(t, u.Param()) }) {
+				continue
+			}
 			if b = s.Apply(b); !c.subtype(a.T, b) {
 				c.errorf(p, "type argument is not within its bounds: type parameter '%s' must be subtype of '%s', but actual: '%s'", ps[i].Name, b, a.T)
 			}
 		}
 	}
+}
+
+// starOf reports whether t's argument for its class's type parameter p
+// is a star projection.
+func starOf(t types.Type, p *types.TypeParamSym) bool {
+	for i, q := range t.C.TypeParams {
+		if q == p {
+			return i < len(t.A.List) && t.A.List[i].V == types.Star
+		}
+	}
+	return false
 }
 
 // lookupTypeParam finds a type parameter in scope by name.
@@ -1278,6 +1300,7 @@ func (c *Checker) resolveBounds(decls []*syntax.TypeParam) {
 	if saved {
 		return
 	}
+	c.checkBoundSets(decls)
 	for _, d := range decls {
 		if len(refs[d]) != len(d.Sym.Bounds) {
 			continue // a cyclic bound was dropped
@@ -1302,7 +1325,7 @@ func (c *Checker) checkBoundKinds(d *syntax.TypeParam, refs []*syntax.TypeRef) {
 		switch {
 		case b.IsParam():
 			c.errorf(refs[i].P, "type parameter cannot have any other bounds if it's bounded by another type parameter")
-		case b.K == types.Class && !b.C.Interface:
+		case classUpperBound(b):
 			if classes++; classes == 2 {
 				c.errorf(refs[i].P, "only one of the upper bounds can be a class")
 			}
@@ -1396,7 +1419,7 @@ func (c *Checker) declare() {
 			}
 			c.pkg.Aliases[d.Name] = c.declareAlias(d, nil)
 		case *syntax.ClassDecl:
-			if _, dup := c.pkg.Classes[d.Name]; dup || c.pkg.Aliases[d.Name] != nil {
+			if _, dup := c.pkg.Classes[d.Name]; (dup || c.pkg.Aliases[d.Name] != nil) && d.Name != "<no name provided>" {
 				c.errorf(d.P, "redeclaration: class %s", d.Name)
 			}
 			if d.Companion {
@@ -1414,6 +1437,7 @@ func (c *Checker) declare() {
 func (c *Checker) declareClass(d *syntax.ClassDecl, name string, outer *types.ClassSym) *types.ClassSym {
 	c.funModifiers(d.Modifiers, d.P, "class")
 	c.expectMembers(d)
+	c.javaRedeclaration(d, name)
 	if d.Annotation {
 		c.annotationClass(d)
 	}
@@ -1525,7 +1549,7 @@ func (c *Checker) declareClass(d *syntax.ClassDecl, name string, outer *types.Cl
 			c.declareClass(md, name+"$"+md.Name, sym)
 			continue
 		}
-		if _, dup := sym.Nested[md.Name]; dup || sym.Aliases[md.Name] != nil {
+		if _, dup := sym.Nested[md.Name]; (dup || sym.Aliases[md.Name] != nil) && md.Name != "<no name provided>" {
 			c.errorf(md.P, "redeclaration: class %s", md.Name)
 		}
 		n := c.declareClass(md, name+"$"+md.Name, sym)
@@ -2218,6 +2242,7 @@ func (c *Checker) resolveClass(d *syntax.ClassDecl) {
 		c.enumMembers(d)
 	}
 	c.checkClassVariance(d)
+	c.checkClassTypeParams(d)
 }
 
 // enumMembers declares an enum class's entries, as static fields, and its
@@ -2684,7 +2709,9 @@ func (c *Checker) inferProp(d *syntax.PropDecl) {
 	c.trial = c.trialOf(sym.Owner)
 	if d.Getter != nil && d.Init == nil {
 		// val x get() = ...: the type is the getter's.
+		restore := getterKeepsAnon(d, sym.Owner)
 		c.inferFun(d.Getter)
+		restore()
 		sym.Type = d.Getter.Sym.Ret
 		unitGetter(d.Getter.Sym)
 	} else {
@@ -3288,11 +3315,15 @@ func (c *Checker) checkFun(d *syntax.FunDecl, cls *types.ClassSym) {
 		return
 	}
 	c.retAllowed = false // `return` needs an explicit return type
+	rets := []exprRet{}
+	c.exprRets = &rets
 	t := types.ApproxFlexNothing(c.expr(d.ExprBody, noWant))
+	defer func() { c.checkExprReturns(rets, sym.Ret, d.Name) }()
 	if t.K == types.Range {
 		c.errorf(d.ExprBody.Pos(), "ranges are only supported in 'for' loops and 'in' checks")
 		t = types.InvalidType
 	}
+	c.ambiguousAnon(d, cls, t)
 	if sym.Ret = t; !keepsAnon(&d.Modifiers, cls) {
 		sym.Ret = approx(c.approxIntersections(t))
 	}
@@ -3337,6 +3368,7 @@ func (c *Checker) checkPropInit(d *syntax.PropDecl, cls *types.ClassSym) {
 	if p := d.DelegateOf; p != nil && p.Ref != nil && t.K != types.Invalid {
 		t = c.provideDelegate(d, p, t, provided)
 	}
+	c.ambiguousAnon(d, cls, t)
 	if sym.Type = t; !keepsAnon(&d.Modifiers, cls) {
 		sym.Type = approx(c.approxIntersections(t))
 	}

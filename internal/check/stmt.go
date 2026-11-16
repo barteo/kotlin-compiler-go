@@ -897,6 +897,7 @@ func (c *Checker) lvalue(x syntax.Expr) (types.Type, bool) {
 			c.unsupported(x.P, "safe-call assignment", "safe-call assignment is not supported")
 			return types.InvalidType, false
 		}
+		c.varTarget = x // see propBound
 		t := c.member(x)
 		x.T = t
 		c.dslTarget(x)

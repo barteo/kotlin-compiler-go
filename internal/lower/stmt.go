@@ -2,6 +2,7 @@ package lower
 
 import (
 	"github.com/barteo/kotlin-compiler-go/internal/syntax"
+	"github.com/barteo/kotlin-compiler-go/internal/types"
 	"github.com/barteo/kotlin-compiler-go/psi"
 )
 
@@ -277,7 +278,8 @@ func (l *lowerer) localVar(n psi.NodeRef) *syntax.VarStmt {
 	case has(n, psi.KindEQ):
 		vs.Init = l.expr(exprAfter(n, psi.KindEQ))
 	case vs.Type == nil:
-		l.fail(name, "this variable must either have an explicit type or be initialized")
+		l.errorLater(l.pos(name), "this variable must either have an explicit type or be initialized")
+		vs.Type = &syntax.TypeRef{P: l.pos(name), Known: &types.InvalidType}
 	}
 	if hasKw {
 		vs.Lateinit, vs.LateinitP = m.Lateinit, kwPos

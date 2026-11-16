@@ -547,6 +547,9 @@ func (t *classTable) ktype(kt *kmeta.Type, scope tscope) (types.Type, bool) {
 		cls = t.funcs.ComposableClass(n)
 	}
 	if cls == nil {
+		cls = t.missingClass(kt.Class, len(kt.Args))
+	}
+	if cls == nil {
 		return types.InvalidType, false
 	}
 	if len(kt.Args) == 0 || kt.Raw || kt.Upper != nil && kt.Upper.Raw {
@@ -1590,7 +1593,9 @@ func (t *classTable) loadKotlin(cls *types.ClassSym, info *classfile.Info, kc *k
 		}
 	}
 	if info.Super != "" {
-		cls.Super = t.class(info.Super)
+		if cls.Super = t.class(info.Super); cls.Super == nil {
+			cls.Super = t.missingClass(info.Super, 0)
+		}
 	}
 	var supers []types.Type
 	for _, st := range kc.Supers {
@@ -2242,6 +2247,11 @@ func (t *classTable) pkgFunsOf(pkg, name string, internal bool) []*types.FunSym 
 				// An intrinsic of Compose's plugin: its body doesn't
 				// start the movable group.
 				sym.Inline, sym.Builtin = nil, types.ComposeKey
+			}
+			// As in K2, one function of two modules on the class path, by
+			// its package, name and signature, is one candidate.
+			if slices.ContainsFunc(fs, func(g *types.FunSym) bool { return sameDeclaration(sym, g) }) {
+				continue
 			}
 			fs = append(fs, sym)
 		}

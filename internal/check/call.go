@@ -57,8 +57,12 @@ func (cl *callee) argType(i int, args []syntax.Expr) types.Type {
 
 // isCallArg reports whether argument x is a call, spread or not.
 func isCallArg(x syntax.Expr) bool {
-	if sp, ok := x.(*syntax.Spread); ok {
-		x = sp.X
+	switch y := x.(type) {
+	case *syntax.Spread:
+		x = y.X
+	case *syntax.NotNull:
+		// As K2's checkNotNull call: id(emptyList()!!) for a List<Int>.
+		x = y.X
 	}
 	_, ok := x.(*syntax.Call)
 	return ok
@@ -645,6 +649,7 @@ func underscoreSub(sys *system, tparams []*types.TypeParamSym, recv types.Subst,
 			}
 		}
 	}
+	relateUnderscores(sys, tparams, typeArgs, sub)
 	return sub, sys
 }
 
@@ -789,6 +794,7 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			c.unsupported(x.P, feature, "%s", why)
 		case noCtx != nil:
 			c.noContextArg(x.P, noCtx)
+		case unsupported && c.javaMissingClass(x, cands):
 		case unsupported:
 			c.unsupported(x.P, "unsupported types in signature", "'%s' uses types kc doesn't support", name)
 		case !slices.ContainsFunc(cands, func(cl callee) bool { return !cl.f.Hidden }):
@@ -1137,6 +1143,7 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 	if targs != nil {
 		sys.fixups = append(sys.fixups, func(s *system) { c.typeArgBounds(x, best, targs, s) })
 	}
+	c.javaNamedArgs(x, f)
 	sys.fixups = append(sys.fixups, func(s *system) {
 		for i, a := range x.Args {
 			if _, ok := a.(*syntax.Lambda); ok {
@@ -1153,8 +1160,11 @@ func (c *Checker) resolve1(x *syntax.Call, cands []callee, want types.Type, sink
 			if lit, ok := a.(*syntax.IntLit); ok && !lit.Long && fitsLit(lit, s.final(params[i])) {
 				lit.T = s.final(params[i]).NonNull()
 			}
+			x.Args[i] = c.retypeArith(a, s.final(params[i]))
+			a = x.Args[i]
 			want := captured(a.Type(), params[i], s.finalArg(params[i]))
 			c.assignable(a.Type(), want, a.Pos())
+			c.javaVariance(f, best.param(i), a, s.finalArg(params[i]))
 			if best.param(i).Exact && c.subtype(a.Type(), want) && !c.subtype(want, a.Type()) {
 				// @Exact: the argument's type must be the parameter's.
 				c.errorf(a.Pos(), "type mismatch: inferred type is %s but %s was expected", a.Type(), want)
@@ -1775,6 +1785,7 @@ func (c *Checker) resolvePlain(x *syntax.Call, cs []callee, want types.Type) typ
 	c.receiverShadowed(x, best)
 	c.dslCall(x, best)
 	c.setContexts(x, best, nil, nil)
+	c.javaVariances(x, best, func(i int) types.Type { return best.argType(i, x.Args) })
 	ensureFun(f)
 	c.suspendFunCall(x, f)
 	c.composeFunCall(x.P, f)
@@ -1894,6 +1905,9 @@ func (c *Checker) constrain(cd *candidate, x *syntax.Call, ts []types.Type, part
 			if longLits && fitsLit(lit, p) {
 				continue
 			}
+		}
+		if lit := arithLit(x.Args[i]); lit != nil && p.K == types.TypeVar && cd.sys.addLit(p, lit) {
+			continue
 		}
 		if ft, ok := c.suspendConstraint(cd, t, p, x.Args[i]); ok {
 			if cd.susps == nil {

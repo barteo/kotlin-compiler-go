@@ -626,6 +626,10 @@ func (p *parser) member(c *Class) {
 		return
 	}
 	tps := p.typeParams()
+	if tps != nil {
+		// <T> @NotNull T: a return type's annotations, as the method's.
+		mods.Annotations = append(mods.Annotations, p.modifiers().Annotations...)
+	}
 	// A constructor, or a record's compact canonical constructor. A
 	// method without a return type is a misnamed constructor, as
 	// IntelliJ's Java PSI reads it.

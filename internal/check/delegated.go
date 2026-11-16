@@ -120,7 +120,7 @@ func (c *Checker) inferDelegate(x syntax.Expr, pt, owner, this types.Type, mutab
 	rt, provided := t, noWant
 	if ps, r, ok := c.delegateOp(s, rt, "provideDelegate", pos); ok {
 		try(owner, ps[0])
-		rt, provided = r, r
+		rt, provided = s.delegateRecv(r), r
 	}
 	if ps, r, ok := c.delegateOp(s, rt, "getValue", pos); ok {
 		try(this, ps[0])

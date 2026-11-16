@@ -107,8 +107,8 @@ func (c *Checker) classLitType(ref *syntax.TypeRef, callable bool) types.Type {
 	if ref.Args == nil && !kotlinTypes[ref.Name] {
 		if cls := c.lookupClass(ref.Name); cls != nil && ensured(cls).TypeParams != nil && cls.Inner && cls.OuterParams > 0 && !callable {
 			return starInner(cls) // Outer.Inner::class, for Outer<T>
-		} else if cls != nil && len(cls.TypeParams) > 0 {
-			n := len(cls.TypeParams)
+		} else if own, _ := localOwnParams(cls); cls != nil && len(cls.TypeParams) > 0 {
+			n := len(own)
 			if a := c.lookupAlias(ref.Name); a != nil {
 				// A typealias takes its own type parameters, none for
 				// typealias Direct = Pair<String, Int>.
@@ -224,6 +224,9 @@ func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.
 	switch {
 	case r.Type != nil:
 		recvType = c.classLitType(r.Type, true)
+		if recvType.K == types.Class && isJavaClass(recvType.C) {
+			static = recvType.C // JavaClass<*>::staticMethod
+		}
 	case r.X == nil:
 	case r.Bound != nil:
 		recv = func() syntax.Expr { return ident(r.Bound.Name) }
@@ -304,7 +307,19 @@ func (c *Checker) checkRef(x *syntax.Lambda, w lambdaWant) ([]types.Type, types.
 		}}
 	}
 	staticForm := func(ps []types.Type) refForm {
-		return refForm{params: ps, body: func() syntax.Expr { return call(member(r.X, r.Name), ps, 0) }}
+		return refForm{params: ps, body: func() syntax.Expr {
+			x := r.X
+			if x == nil { // JavaClass<*>::staticMethod
+				for i, n := range strings.Split(r.Type.Name, ".") {
+					if i == 0 {
+						x = ident(n)
+					} else {
+						x = member(x, n)
+					}
+				}
+			}
+			return call(member(x, r.Name), ps, 0)
+		}}
 	}
 	// A Java class's static field, or an enum's entries, is a property
 	// without a receiver: JavaClass::staticField is a KProperty0, as

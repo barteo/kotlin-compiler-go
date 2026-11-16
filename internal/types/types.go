@@ -345,6 +345,9 @@ type VarSym struct {
 	// class or file facade uses its field, and other classes static
 	// access$getX$p methods.
 	Private bool
+	// MaybeConst is set on a static final field of a Java source with no
+	// Constant only because it reads a Kotlin class's const val.
+	MaybeConst bool
 	// Protected is set on a protected field of a Java class, which only
 	// code in its subclasses sees.
 	Protected bool
@@ -857,6 +860,9 @@ type ClassSym struct {
 	// JavaSealed is set on a sealed Java class or interface, which no
 	// Kotlin class may extend.
 	JavaSealed bool
+	// RecordComponents are the names of a Java record's components, which
+	// are its properties to Kotlin, read by their accessors.
+	RecordComponents []string
 	// Value is set on the program's value classes, whose instances are
 	// the value of their one property, Underlying, wherever they aren't
 	// boxed: see Unboxed.

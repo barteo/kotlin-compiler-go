@@ -239,6 +239,7 @@ func (t *classTable) load(cls *types.ClassSym) {
 	cls.Deprecated = classFileDeprecation(info.Deprecated)
 	cls.OptInLevel, cls.SubclassOptIn = info.OptInLevel, info.SubclassOptIn
 	cls.JavaSealed = info.Sealed
+	cls.RecordComponents = info.RecordComponents
 	for _, a := range slices.Concat(info.Invisible, info.Visible) {
 		if strings.HasPrefix(a, "L") && strings.HasSuffix(a, ";") {
 			if c := t.class(a[1 : len(a)-1]); c != nil {
@@ -387,6 +388,7 @@ func (t *classTable) load(cls *types.ClassSym) {
 		}
 		if ok {
 			enhanceJDK(cls.Name, f)
+			javaSuspend(f)
 		}
 		if varargs && len(f.Params) > 0 {
 			p := f.Params[len(f.Params)-1]
@@ -397,6 +399,7 @@ func (t *classTable) load(cls *types.ClassSym) {
 		f.Annotations, f.Deprecated = m.Annotations, classFileDeprecation(m.Deprecated)
 		// @kotlin.Deprecated(level = HIDDEN) hides a Java method from calls.
 		f.Hidden = m.Hidden
+		hideJDK(cls.Name, f)
 		if m.Name == "toString" && len(f.Params) == 0 && kotlinMapped[cls.Name] {
 			// Kotlin sees these classes as Kotlin types, whose toString is
 			// Any's: a String, not a platform String!.
@@ -431,6 +434,7 @@ func (t *classTable) load(cls *types.ClassSym) {
 	}
 	mapCollectionMembers(cls)
 	purelyImplement(cls)
+	kotlinParamNames(cls)
 	if cls.Name == "java/lang/Number" {
 		// Kotlin's Number converts with toInt() and the others, its
 		// intValue() methods on the JVM. They are all abstract, though
@@ -507,7 +511,7 @@ func (t *classTable) load(cls *types.ClassSym) {
 		if ok && ft.K != types.Unit {
 			cls.Fields[fd.Name] = &types.VarSym{Name: fd.Name, Type: t.fieldNullability(fd, ft), Kind: types.Static, Owner: cls, Resolved: true,
 				Constant: fieldConstant(fd), Mutable: fd.Access&classfile.AccFinal == 0, PackagePrivate: pkgPrivate,
-				Protected: fd.Access&classfile.AccProtected != 0}
+				Protected: fd.Access&classfile.AccProtected != 0, MaybeConst: fd.MaybeConstant}
 		}
 		if fd.Access&classfile.AccEnum != 0 {
 			cls.Entries = append(cls.Entries, fd.Name)
@@ -1072,6 +1076,13 @@ func (c *Checker) extClass(name string) *types.ClassSym {
 		return cls
 	}
 	if builtinClasses[name] && ext.kotlin {
+		// But after the file's own package's: a Java interface Function
+		// in it hides kotlin.Function.
+		if own := strings.ReplaceAll(c.file.Package, ".", "/"); len(c.stars) > 0 && c.stars[0] == own && ext.hasPackage(own) {
+			if cls := ext.pkgClass(c.file.Package, name); cls != nil {
+				return cls
+			}
+		}
 		for _, pkg := range defaultPackages {
 			if cls := ext.pkgClass(pkg, name); cls != nil {
 				return cls
@@ -2657,7 +2668,7 @@ func (c *Checker) javaCall(x *syntax.Call, fn *syntax.Member, rt types.Type, wan
 		for _, f := range ms {
 			fit = fit || c.mayTake(f, x)
 		}
-		if !fit {
+		if !fit || c.refsMissAll(cands, x) && !c.refsMissAll(exts, x) {
 			return c.resolve(x, exts, want, sink)
 		}
 		if !x.Operator && hasLambda(x.Args) || len(c.stubs) > 0 {
@@ -2834,11 +2845,12 @@ func (c *Checker) javaProperty(x *syntax.Member, rt types.Type) (types.Type, boo
 	}
 	// Kotlin decapitalizes the name of getTypeName(): typeName. A
 	// capitalized name, as TypeName, names a class, not the getter.
-	if r, _ := utf8.DecodeRuneInString(x.Name); unicode.IsUpper(r) {
+	// Nor is a name that can't start a Java identifier, as `1` of get1().
+	if r, _ := utf8.DecodeRuneInString(x.Name); unicode.IsUpper(r) || !unicode.IsLetter(r) && r != '_' && r != '$' {
 		return types.InvalidType, false
 	}
 	getterName := types.GetterName(x.Name)
-	special := false
+	special, annotElem := false, false
 	switch {
 	case x.Name == "length" && c.isCharSequence(cls):
 		getterName, special = "length", true // Kotlin's CharSequence.length property
@@ -2848,6 +2860,9 @@ func (c *Checker) javaProperty(x *syntax.Member, rt types.Type) (types.Type, boo
 		getterName, special = x.Name, true // Kotlin's Enum.name and Enum.ordinal
 	case cls.External && cls.Retention != types.NoRetention:
 		getterName, special = x.Name, true // a Java annotation's element: name()
+		annotElem = true
+	case recordComponent(cls, x.Name):
+		getterName, special = x.Name, true // a Java record's component: x()
 	}
 	setterName := types.SetterName(x.Name)
 	// Not those of an earlier check of x, an extension property's: a
@@ -2864,7 +2879,7 @@ func (c *Checker) javaProperty(x *syntax.Member, rt types.Type) (types.Type, boo
 		// overrides of them.
 		// isX() is the getter of isX whatever its result, as Rx's
 		// Maybe.isEmpty(), a Single<Boolean>.
-		if c.javaAccessorIn(cls, f) && len(f.Params) == 0 && !f.Unsupported && f.Ret.K != types.Unit {
+		if c.javaAccessorIn(cls, f) && len(f.Params) == 0 && !f.Unsupported && f.Ret.K != types.Unit && !overridesKotlinFun(f) {
 			x.Getter = f
 		}
 	}
@@ -2910,6 +2925,9 @@ func (c *Checker) javaProperty(x *syntax.Member, rt types.Type) (types.Type, boo
 			slices.ContainsFunc(getters, func(g *types.FunSym) bool { return sameJavaType(f, g) }) {
 			x.Setter = f
 		}
+	}
+	if annotElem && x.Getter.Name == x.Name {
+		return c.kclassOfJava(sub.Apply(x.Getter.Ret)), true // a Class element is a KClass
 	}
 	return sub.Apply(x.Getter.Ret), true
 }
@@ -2977,6 +2995,23 @@ func (c *Checker) javaAccessorIn(cls *types.ClassSym, f *types.FunSym) bool {
 	found := false
 	cls.Supertypes(func(s *types.ClassSym) bool {
 		found = s.External && s.KotlinName == "" && s.Java == nil && s.KProps == nil && s.Name != "java/lang/Object" &&
+			slices.ContainsFunc(s.Methods[f.Name], func(g *types.FunSym) bool { return !g.Static && len(g.Params) == len(f.Params) })
+		return !found
+	})
+	return found
+}
+
+// overridesKotlinFun reports whether Java method f overrides a function
+// of a Kotlin class, which, as in K2 (KT-63067), makes it no property's
+// getter: a Java getX() overriding a Kotlin fun getX() is called as such.
+func overridesKotlinFun(f *types.FunSym) bool {
+	if f.Owner == nil || !isJavaClass(f.Owner) || f.Static {
+		return false
+	}
+	found := false
+	f.Owner.Supertypes(func(s *types.ClassSym) bool {
+		kotlin := !s.External || s.FromKotlin || s.KProps != nil
+		found = s != f.Owner && kotlin && s.Java == nil &&
 			slices.ContainsFunc(s.Methods[f.Name], func(g *types.FunSym) bool { return !g.Static && len(g.Params) == len(f.Params) })
 		return !found
 	})

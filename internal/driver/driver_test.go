@@ -41,6 +41,9 @@ func skipPSIGrammar(t *testing.T, srcs ...string) {
 		return
 	}
 	for _, path := range srcs {
+		if !strings.HasSuffix(path, ".kt") {
+			continue
+		}
 		b, err := os.ReadFile(path)
 		if err != nil {
 			continue
